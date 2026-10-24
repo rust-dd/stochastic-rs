@@ -37,8 +37,6 @@ mod tests;
 pub(crate) mod xoshiro;
 
 pub use simd_rng::SimdRng;
-pub use xoshiro::Xoshiro128PP8;
-pub use xoshiro::Xoshiro256PP4;
 use xoshiro::splitmix64_mix;
 use xoshiro::splitmix64_next;
 
@@ -123,33 +121,15 @@ pub fn rng() -> SimdRng {
   SimdRng::new()
 }
 
-/// Derives a child seed from a mutable parent seed.
+/// Advances a sampler's fork basis by one child seed; not part of the public API.
+#[doc(hidden)]
 #[inline]
 pub fn derive_seed(state: &mut u64) -> u64 {
   splitmix64_next(state)
 }
 
-/// Derives a parallel worker's stream seed from a sampler's stored
-/// [`SeedExt::next_seed`] and a worker index.
-///
-/// Pure function of its two inputs: the same `(parent_seed, stream_idx)`
-/// pair always yields the same child seed, independent of what other
-/// pairs are derived around it. Each worker passes a *different*
-/// `parent_seed` here — `fork` reads and advances the sampler's shared
-/// fork-basis cell once per worker, so `stream_idx` alone does not select
-/// the basis; it is one fresh basis per worker, not one basis drawn once
-/// per call and fanned out across workers by index. This function's purity
-/// is therefore not by itself what makes
-/// `DistributionSampler::sample_matrix`'s parallel fan-out reproducible;
-/// that guarantee comes from `fork` being invoked for every `stream_idx`
-/// sequentially on the caller thread, before any worker starts filling its
-/// chunk — two identically-[`Deterministic`]-seeded samplers issue that
-/// same sequential run of `fork` calls and so land on the same `(basis,
-/// stream_idx)` pairs regardless of how rayon later schedules the
-/// (already-seeded) fill work. `sample_matrix`'s worker count is itself a
-/// pure function of matrix size, never of `rayon::current_num_threads()`,
-/// so that agreement holds on any rayon thread-pool size, not only a fixed
-/// one.
+/// Child seed of worker `stream_idx` from one fork basis; pure in both arguments, so a fork sequence replays on any pool size.
+#[doc(hidden)]
 #[inline]
 pub fn derive_fork_seed(parent_seed: u64, stream_idx: u64) -> u64 {
   splitmix64_mix(parent_seed ^ stream_idx)
@@ -300,11 +280,9 @@ impl SeedExt for Deterministic {
 pub trait SimdRngExt:
   engine_seal::Sealed + rand::Rng + Clone + Debug + Sized + Send + Sync + 'static
 {
-  /// `true` when [`next_i32x8_pair`](Self::next_i32x8_pair) returns two
-  /// independent batches whose state updates can run in parallel. The
-  /// single-stream impl leaves this at the default `false`; the dual-stream
-  /// impl flips it to `true`. Consumers gate their loop unrolling on this
-  /// const so single-stream codegen does not pay any unroll overhead.
+  /// `true` when [`next_i32x8_pair`](Self::next_i32x8_pair) draws its two batches from independent engines,
+  /// so a consumer unrolls to 16 lanes only then.
+  #[doc(hidden)]
   const HAS_PAIR_ILP: bool = false;
 
   /// Globally-unique auto-seeded constructor.
@@ -314,13 +292,12 @@ pub trait SimdRngExt:
   fn from_seed(seed: u64) -> Self;
 
   /// Returns 8 i32 lanes from the 32-bit engine. Used in Ziggurat fast paths.
+  #[doc(hidden)]
   fn next_i32x8(&mut self) -> wide::i32x8;
 
-  /// Returns two `i32x8` batches. Default impl is two back-to-back calls
-  /// from the same engine — kept legal so any [`SimdRngExt`] can be
-  /// consumed by a `pair`-shaped algorithm. Dual-stream impls override
-  /// this to return batches from two **independent** engines so the
-  /// surrounding code can hide table-lookup latency between them.
+  /// Two `i32x8` batches: two calls on one engine by default, one batch per engine in the dual-stream impl,
+  /// which lets the caller overlap the two table lookups.
+  #[doc(hidden)]
   #[inline(always)]
   fn next_i32x8_pair(&mut self) -> (wide::i32x8, wide::i32x8) {
     (self.next_i32x8(), self.next_i32x8())

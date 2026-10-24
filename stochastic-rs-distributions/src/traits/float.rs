@@ -85,6 +85,7 @@ mod sealed {
 /// 8-lane SIMD surface over a [`RealExt`] scalar plus the uniform RNG fills the SIMD samplers
 /// draw from; sealed, `f32` and `f64` are its only implementors.
 pub trait SimdFloatExt: RealExt + sealed::Sealed {
+  #[doc(hidden)]
   type Simd: Copy
     + std::ops::Mul<Output = Self::Simd>
     + std::ops::Add<Output = Self::Simd>
@@ -92,20 +93,45 @@ pub trait SimdFloatExt: RealExt + sealed::Sealed {
     + std::ops::Div<Output = Self::Simd>
     + std::ops::Neg<Output = Self::Simd>;
 
+  #[doc(hidden)]
   fn splat(val: Self) -> Self::Simd;
+
+  #[doc(hidden)]
   fn simd_from_array(arr: [Self; 8]) -> Self::Simd;
+
+  #[doc(hidden)]
   fn simd_to_array(v: Self::Simd) -> [Self; 8];
+
+  #[doc(hidden)]
   fn simd_ln(v: Self::Simd) -> Self::Simd;
+
+  #[doc(hidden)]
   fn simd_sqrt(v: Self::Simd) -> Self::Simd;
+
+  #[doc(hidden)]
   fn simd_cos(v: Self::Simd) -> Self::Simd;
+
+  #[doc(hidden)]
   fn simd_sin(v: Self::Simd) -> Self::Simd;
+
+  #[doc(hidden)]
   fn simd_exp(v: Self::Simd) -> Self::Simd;
+
+  #[doc(hidden)]
   fn simd_tan(v: Self::Simd) -> Self::Simd;
+
+  #[doc(hidden)]
   fn simd_max(a: Self::Simd, b: Self::Simd) -> Self::Simd;
+
+  #[doc(hidden)]
   fn simd_powf(v: Self::Simd, exp: Self) -> Self::Simd;
+
   fn fill_uniform<R: Rng + ?Sized>(rng: &mut R, out: &mut [Self]);
+
   fn fill_uniform_simd<R: crate::simd_rng::SimdRngExt>(rng: &mut R, out: &mut [Self]);
+
   fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> Self;
+
   #[inline(always)]
   fn sample_uniform_simd<R: crate::simd_rng::SimdRngExt>(rng: &mut R) -> Self {
     let mut buf = [Self::zero(); 8];
@@ -113,7 +139,10 @@ pub trait SimdFloatExt: RealExt + sealed::Sealed {
     buf[0]
   }
 
+  #[doc(hidden)]
   fn simd_from_i32x8(v: wide::i32x8) -> Self::Simd;
+
+  #[doc(hidden)]
   const PREFERS_F32_WN: bool = false;
 
   /// Markov-lift factor reduction $\sum_l (w_l e_l)(H_l + J_l)$ for one path; `we` is `w_l e_l`

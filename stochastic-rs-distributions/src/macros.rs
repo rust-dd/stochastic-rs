@@ -5,7 +5,6 @@
 //! collects and registers them.
 
 #[cfg(feature = "python")]
-#[macro_export]
 macro_rules! py_distribution {
   ($py_name:ident, $inner:ident,
     sig: ($($sig:tt)*),
@@ -92,13 +91,11 @@ macro_rules! py_distribution {
 }
 
 #[cfg(not(feature = "python"))]
-#[macro_export]
 macro_rules! py_distribution {
   ($($tt:tt)*) => {};
 }
 
 #[cfg(feature = "python")]
-#[macro_export]
 macro_rules! py_distribution_int {
   ($py_name:ident, $inner:ident,
     sig: ($($sig:tt)*),
@@ -155,7 +152,6 @@ macro_rules! py_distribution_int {
 }
 
 #[cfg(not(feature = "python"))]
-#[macro_export]
 macro_rules! py_distribution_int {
   ($($tt:tt)*) => {};
 }

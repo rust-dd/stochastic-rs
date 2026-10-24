@@ -71,14 +71,8 @@ Parallel sampling is bit-reproducible too: `sample_par` / `sample_map` return bi
 
 ```rust
 pub trait SimdRngExt: rand::Rng + Clone + Debug + Sized + Send + Sync + 'static {
-  const HAS_PAIR_ILP: bool = false;
-
   fn new() -> Self;
   fn from_seed(seed: u64) -> Self;
-  fn next_i32x8(&mut self) -> wide::i32x8;
-  fn next_i32x8_pair(&mut self) -> (wide::i32x8, wide::i32x8) {
-    /* default = two single calls */
-  }
   fn next_i32(&mut self) -> i32;
   fn next_f64(&mut self) -> f64;
   fn next_f32(&mut self) -> f32;
@@ -87,7 +81,7 @@ pub trait SimdRngExt: rand::Rng + Clone + Debug + Sized + Send + Sync + 'static 
 }
 ```
 
-Through the `rand::Rng` supertrait, any `SimdRngExt` (including `SimdRng`) works wherever a `rand::Rng` is expected — e.g. `rand::distr::Distribution::sample`. The trait is sealed: `SimdRng` and `SimdRngDual` are its only implementations.
+Through the `rand::Rng` supertrait, any `SimdRngExt` (including `SimdRng`) works wherever a `rand::Rng` is expected — e.g. `rand::distr::Distribution::sample`. The trait is sealed: `SimdRng` and `SimdRngDual` are its only implementations. The lane-level items the ziggurat kernels call (`next_i32x8`, `next_i32x8_pair`, `HAS_PAIR_ILP`) are hidden and outside the stability promise.
 
 A seeded stream names its engine, `Seeded<D, R: SimdRngExt = SimdRng>`, so one stateless law serves both:
 

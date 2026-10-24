@@ -25,11 +25,12 @@ transparent to users.
 
 The umbrella re-exports `ndarray`, `num_complex`, `num_traits`, `rand` and
 `chrono` (as `stochastic_rs::ndarray` and so on) because callers build and pass
-their types; use these paths or depend on the same versions. `wide` (the SIMD
-vectors of `SimdFloatExt` and `SimdRngExt`) and `anyhow` (calibration and SLV errors)
-also appear in public signatures. A semver-incompatible release of any of these
-seven crates (for a 0.x crate, a minor bump such as ndarray 0.17 → 0.18) is a
-major release of `stochastic-rs`.
+their types; use these paths or depend on the same versions. `anyhow`
+(calibration and SLV errors) also appears in public signatures. A
+semver-incompatible release of any of these six crates (for a 0.x crate, a
+minor bump such as ndarray 0.17 → 0.18) is a major release of `stochastic-rs`.
+The `wide` vectors behind the SIMD kernels are an implementation detail: the
+trait items that name them are hidden and outside the stability promise.
 
 ## Build & test
 
@@ -66,7 +67,7 @@ older summary.
 
 - Error policy — panic for a broken constructor precondition, `Result` for data, documented NaN out of domain, `None` for an absent capability, NaN-propagating reductions (`max_or_nan`): `.claude/skills/dev-rules/SKILL.md` §14.
 - `RealExt` — scalar real-number bound (arithmetic, conversions, constants — no SIMD, no RNG); the bound analytic pricing code takes, and the door a custom scalar (AAD dual, tape node) can implement; lives in `stochastic-rs-distributions::traits`
-- `SimdFloatExt` — 8-lane SIMD surface over `RealExt`, plus the uniform RNG fills; sealed (`f32`/`f64`); carries the four hidden Markov-lift kernels (`history_sum_fused` …), so `T: FloatExt` is the only bound the rough family needs
+- `SimdFloatExt` — 8-lane SIMD surface over `RealExt`, plus the uniform RNG fills; sealed (`f32`/`f64`); the lane surface (`type Simd`, `splat`, the `simd_*` operations, `simd_from_i32x8`, `PREFERS_F32_WN`) is `#[doc(hidden)]` — still `pub` for the in-tree kernels, outside the stability promise, as are `SimdRngExt`'s `HAS_PAIR_ILP` / `next_i32x8` / `next_i32x8_pair` — so the public part is the four uniform fills (`fill_uniform`, `fill_uniform_simd`, `sample_uniform`, `sample_uniform_simd`); carries the four hidden Markov-lift kernels (`history_sum_fused` …), so `T: FloatExt` is the only bound the rough family needs
 - `FloatExt` — the full simulation-grade bound: `RealExt + SimdFloatExt` + batched normal-fill/fGN scratch; sealed through `SimdFloatExt` (only `f32`/`f64` implement it), so anything bounded on it is closed to custom scalars by construction
 - `ProcessExt<T>` — stochastic process simulation (`sample`/`sample_par`/`sample_map`, its borrowing twin `sample_map_view` for the single-row processes — the callback reads a row of the device batch where `sample_map` hands it a copy, 1.4-2.1x on Metal — plus the fallible `try_sample`/`try_sample_par` that report a `DeviceError` instead of panicking, and `device_ready()` — provided, default `true` — which says whether the configuration a process holds runs on a device backend; a `false` samples on the host bit-identically to the `Cpu` build, the one fallback rule, never a panic); lives in `stochastic-rs-stochastic::traits`; sealed together with `PathSampler` — every implementor carries `impl<…> crate::traits::Sealed for X<…> {}` with its own generics directly above the impl, which is all the seal asks of a new process. Every process also has `.on::<B>()` (a backend's default handle) and the public `with_backend(handle)` (an explicit one, `Cuda::new(1)` or `Cuda::from_env()?`; `backend()` returns `&B`), both from `backend_switch!`. **142** concrete implementors over **132** processes — the ten extra are launch and row views (`AdgRow`, `BgmRow`, `CfouParts`, `LmmLaunch`, `McgnsLaunch`, `MultiGbmLaunch`, `MultifactorHestonLaunch`, `MultivariateHawkesLaunch`, `WishartLaunch`, `WuZhangPair`), not processes of their own (`grep -rhE -A1 "impl.*ProcessExt<T>" stochastic-rs-stochastic/src --include='*.rs' | grep -oE "for [A-Z][A-Za-z0-9]*" | sed 's/for //' | sort -u | wc -l` — the `-A1` is load-bearing, an `impl` header that wraps onto a second line is invisible to a single-line grep); the exhaustive per-directory breakdown and the guard that keeps it honest live in `stochastic-rs-stochastic/tests/reproducibility_all_processes.rs`
 - `BivariateExt` / `MultivariateExt` — copula traits in `stochastic-rs-copulas::traits`; **15** bivariate + **6** multivariate implementors (note: `NCopula2DExt` was removed in v2.0 — bivariate samplers consolidated under `BivariateExt`; `VineMultivariate` and `TreeMultivariate`, Gaussian copulas with a tree-derived correlation, were removed in 3.0); every fallible method returns `CopulaError` (`#[non_exhaustive]`, `Send + Sync`, ten variants); every draw takes `&S` (`sample(n, &Deterministic::new(42))`), there is no `u64` seed parameter

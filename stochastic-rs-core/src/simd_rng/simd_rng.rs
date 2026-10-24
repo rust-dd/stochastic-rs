@@ -77,11 +77,9 @@ impl SimdRng {
     Self::from_seed(next_global_seed())
   }
 
-  /// Returns 8 random `i32` values as a SIMD vector.
-  ///
-  /// Raw bit pattern from the 32-bit engine, reinterpreted as signed.
+  /// The 32-bit engine's next eight lanes, reinterpreted as signed.
   #[inline(always)]
-  pub fn next_i32x8(&mut self) -> i32x8 {
+  pub(crate) fn next_i32x8(&mut self) -> i32x8 {
     let raw = self.f32_engine.next();
     unsafe { core::mem::transmute::<u32x8, i32x8>(raw) }
   }
@@ -132,10 +130,7 @@ impl SimdRng {
     v
   }
 
-  /// Returns a single random `i32`.
-  ///
-  /// Draws from an internal 8-element buffer, refilling via
-  /// [`next_i32x8`](Self::next_i32x8) when exhausted.
+  /// A single random `i32` from an eight-lane buffer the 32-bit engine refills.
   #[inline(always)]
   pub fn next_i32(&mut self) -> i32 {
     if self.i32_scalar_idx >= 8 {

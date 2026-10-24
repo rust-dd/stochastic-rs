@@ -60,7 +60,7 @@ The wheels (Linux, macOS, Windows) are CPU-only and carry everything except the 
 
 ### Public dependencies
 
-The umbrella re-exports `ndarray`, `num_complex`, `num_traits`, `rand` and `chrono` (as `stochastic_rs::ndarray` and so on) because callers build and pass their types; use these paths or depend on the same versions. `wide` (the SIMD vectors of `SimdFloatExt` and `SimdRngExt`) and `anyhow` (calibration and SLV errors) also appear in public signatures. A semver-incompatible release of any of these seven crates (for a 0.x crate, a minor bump such as ndarray 0.17 → 0.18) is a major release of `stochastic-rs`.
+The umbrella re-exports `ndarray`, `num_complex`, `num_traits`, `rand` and `chrono` (as `stochastic_rs::ndarray` and so on) because callers build and pass their types; use these paths or depend on the same versions. `anyhow` (calibration and SLV errors) also appears in public signatures. A semver-incompatible release of any of these six crates (for a 0.x crate, a minor bump such as ndarray 0.17 → 0.18) is a major release of `stochastic-rs`. The `wide` vectors behind the SIMD kernels are an implementation detail: the trait items that name them are hidden and outside the stability promise.
 
 ```rust
 use stochastic_rs::ndarray::Array1;

@@ -145,7 +145,7 @@ mod macros;
 
 #[cfg(doctest)]
 mod doctest_seals;
-pub mod float_impls;
+mod float_impls;
 #[cfg(feature = "python")]
 #[doc(hidden)]
 pub mod python;

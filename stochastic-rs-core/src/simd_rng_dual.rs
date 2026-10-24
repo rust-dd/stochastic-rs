@@ -217,12 +217,9 @@ impl SimdRngDual {
     Self::from_seed(next_global_seed())
   }
 
-  /// Returns two independent `i32x8` batches — one from engine A, one from
-  /// engine B. Consumers should process them as a 16-lane unrolled body so
-  /// the compiler can interleave the two `xoshiro` state updates with the
-  /// inner-loop compute / memory ops.
+  /// One `i32x8` batch from each engine; a 16-lane body lets the two state updates interleave.
   #[inline(always)]
-  pub fn next_i32x8_pair(&mut self) -> (i32x8, i32x8) {
+  pub(crate) fn next_i32x8_pair(&mut self) -> (i32x8, i32x8) {
     let raw_a = self.f32_a.next();
     let raw_b = self.f32_b.next();
     unsafe {
@@ -339,9 +336,7 @@ impl SimdRngDual {
     v
   }
 
-  /// Returns a single random `i32`. Refills its 8-element buffer via one
-  /// `next_i32x8_pair` call (writes both A and B's first batch — only
-  /// engine A's lanes are used here, B's lanes feed the next 8 draws).
+  /// A single random `i32` from engine A, buffered eight lanes at a time.
   #[inline(always)]
   pub fn next_i32(&mut self) -> i32 {
     if self.i32_scalar_idx >= 8 {
@@ -364,10 +359,6 @@ impl Default for SimdRngDual {
 impl crate::simd_rng::engine_seal::Sealed for SimdRngDual {}
 
 impl crate::simd_rng::SimdRngExt for SimdRngDual {
-  /// Two independent xoshiro engines means
-  /// [`next_i32x8_pair`](Self::next_i32x8_pair) genuinely returns two
-  /// state-independent batches — consumers should branch on this const to
-  /// pick the unrolled 16-lane body.
   const HAS_PAIR_ILP: bool = true;
 
   #[inline(always)]
