@@ -47,6 +47,7 @@ use stochastic_rs_core::simd_rng::SimdRngExt;
 use super::SimdFloatExt;
 use crate::seeded::StreamState;
 use crate::special::Estimate;
+use crate::special::KDenominator;
 use crate::special::exp_of_log_sum;
 use crate::special::k_ratio;
 use crate::special::ln_bessel_ke;
@@ -325,24 +326,42 @@ impl<T: SimdFloatExt> SimdGig<T> {
   /// $\mathbb E X^k = (\chi/\psi)^{k/2} K_{\lambda+k}(b)/K_\lambda(b)$, $b = \sqrt{\chi\psi}$: the scaled `K`s' ratio where
   /// every factor stays normal, the difference of their logarithms, which costs `ε|ln K|`, otherwise.
   pub fn raw_moment(&self, k: u32) -> f64 {
-    self.raw(k).or_nan()
+    self.raw(k, &self.denominator()).or_nan()
   }
 
-  fn raw(&self, k: u32) -> Estimate {
+  fn denominator(&self) -> KDenominator {
     let (lambda, chi, psi) = self.params();
-    let b = (chi * psi).sqrt();
+    KDenominator::new(lambda, (chi * psi).sqrt())
+  }
+
+  fn raw(&self, k: u32, den: &KDenominator) -> Estimate {
+    let (lambda, chi, psi) = self.params();
     let order = f64::from(k);
     k_ratio(
       (0.0, chi / psi, 0.5 * order),
-      (lambda + order, b),
-      (lambda, b),
+      (lambda + order, (chi * psi).sqrt()),
+      den,
       0.0,
+    )
+  }
+
+  /// The interior mgf's ratio at `t`, `shifted = ψ − 2t > 0`.
+  fn mgf_ratio(&self, t: f64, shifted: f64) -> ((f64, f64, f64), (f64, f64), KDenominator, f64) {
+    let (lambda, chi, psi) = self.params();
+    let dx = chi.sqrt() * (2.0 * t) / (psi.sqrt() + shifted.sqrt());
+    let num = (lambda, (chi * shifted).sqrt());
+    (
+      (0.0, psi / shifted, 0.5 * lambda),
+      num,
+      self.denominator(),
+      dx,
     )
   }
 
   /// `(E X, E X², Var X, μ₃, μ₄)`, the estimates carrying the central moments' cancellation.
   pub(crate) fn moments(&self) -> [Estimate; 5] {
-    let [m1, m2, m3, m4] = [1, 2, 3, 4].map(|k| self.raw(k));
+    let den = self.denominator();
+    let [m1, m2, m3, m4] = [1, 2, 3, 4].map(|k| self.raw(k, &den));
     let var = m2 - m1 * m1;
     let mu3 = m3 - 3.0 * m1 * m2 + 2.0 * m1.powi(3);
     let mu4 = m4 - 4.0 * m1 * m3 + 6.0 * m1 * m1 * m2 - 3.0 * m1.powi(4);
@@ -444,17 +463,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
         &[t_pow, t_gamma, k0, b],
       ));
     }
-    let bt = (chi * shifted).sqrt();
-    let dx = chi.sqrt() * (2.0 * t) / (psi.sqrt() + shifted.sqrt());
-    Some(
-      k_ratio(
-        (0.0, psi / shifted, 0.5 * lambda),
-        (lambda, bt),
-        (lambda, b),
-        dx,
-      )
-      .or_nan(),
-    )
+    let (power, num, den, dx) = self.mgf_ratio(t, shifted);
+    Some(k_ratio(power, num, &den, dx).or_nan())
   }
 }
 

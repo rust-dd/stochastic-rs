@@ -6,6 +6,8 @@ use crate::tests::assert_moments_within;
 use crate::tests::scalar_draws;
 use crate::traits::DistributionExt;
 use crate::traits::DistributionSampler;
+use crate::traits::distribution::SimdDistribution;
+use crate::uniform::SimdUniform;
 
 fn close(a: f64, b: f64, rel: f64) -> bool {
   (a - b).abs() <= rel * b.abs().max(1e-300)
@@ -253,11 +255,70 @@ fn mgf_takes_the_ratio_only_where_every_factor_stays_normal() {
       (100.0, 1.0, 0.0, 1.0, 0.0, 0.998_198_377_077_422_4),
       2.348_781_752_490_069_8e244,
     ),
+    (
+      (10.0, 2.0, 0.0, 1.0, -372.0, 1.99),
+      3.620_739_539_038_555e-302,
+    ),
+    (
+      (-100.0, 100.0, 0.0, 1.0, -3.962, 99.95),
+      7.902_763_890_981_962e-163,
+    ),
+    (
+      (1.0, 10.0, 9.99, 77.3, -70.0, -9.99),
+      9.403_911_324_507_613e-20,
+    ),
   ] {
     let gh = SimdGeneralizedHyperbolic::<f64>::new(lambda, alpha, beta, delta, mu);
     let got = gh.moment_generating_function(t).unwrap();
     assert!(close(got, want, 1e-12), "mgf({t}) = {got}");
   }
+}
+
+/// Seeded cells over `λ ∈ [−300, 300]`, `α, δ, |μ| ∈ [1e-6, 1e6]`, `|β| < α` and `t` from `1e-12·2α` to `2α` inside either
+/// end of `(−α − β, α − β)`: the ratio regime agrees with the log regime within both estimates and a few ulps.
+#[test]
+fn ratio_regime_agrees_with_the_log_regime() {
+  use crate::special::log_regime;
+  use crate::special::ratio_regime;
+  let mut u = SimdUniform::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(20_261_026));
+  let (mut ratios, mut logs) = (0, 0);
+  for _ in 0..8000 {
+    let lambda = 600.0 * u.sample() - 300.0;
+    let alpha = 10f64.powf(12.0 * u.sample() - 6.0);
+    let beta = alpha * (1.999_999 * u.sample() - 0.999_999_5);
+    let delta = 10f64.powf(12.0 * u.sample() - 6.0);
+    let mu = 10f64
+      .powf(12.0 * u.sample() - 6.0)
+      .copysign(u.sample() - 0.5);
+    let gap = 2.0 * alpha * 10f64.powf(12.0 * u.sample() - 12.0);
+    let t = if u.sample() < 0.5 {
+      alpha - beta - gap
+    } else {
+      gap - alpha - beta
+    };
+    let gh = SimdGeneralizedHyperbolic::<f64>::new(lambda, alpha, beta, delta, mu);
+    let shifted = gh.shifted(t);
+    if shifted <= 0.0 {
+      continue;
+    }
+    let (power, num, den, dx) = gh.mgf_ratio(t, shifted);
+    let (log, log_err) = log_regime(power, num, &den, dx).parts();
+    let Some(ratio) = ratio_regime(power, num, &den, dx) else {
+      logs += 1;
+      continue;
+    };
+    ratios += 1;
+    let (ratio, ratio_err) = ratio.parts();
+    let tol = log_err + ratio_err + 16.0 * f64::EPSILON * log.abs();
+    assert!(
+      (ratio - log).abs() <= tol,
+      "GH({lambda}, {alpha}, {beta}, {delta}, {mu}).mgf({t}): {ratio}, log {log} ± {log_err}"
+    );
+  }
+  assert!(
+    ratios > 500 && logs > 500,
+    "{ratios} ratio and {logs} log cells"
+  );
 }
 
 /// Past the exponents `e^x` represents the value is exactly 0 or `∞` whatever its error band: the far tails answer 0 and

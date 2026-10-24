@@ -27,6 +27,11 @@ impl Estimate {
     Self::with_rel(if rel.is_nan() { f64::NAN } else { sum.exp() }, rel)
   }
 
+  #[cfg(test)]
+  pub(crate) fn parts(self) -> (f64, f64) {
+    (self.value, self.err)
+  }
+
   /// The value, or NaN where a finite value's error reaches its size.
   pub(crate) fn or_nan(self) -> f64 {
     if self.value.is_finite() && self.err > 0.0 && self.err >= self.value.abs() {

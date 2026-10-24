@@ -44,6 +44,7 @@ use super::generalized_inverse_gauss::SimdGig;
 use super::normal::SimdNormal;
 use crate::seeded::Buffered;
 use crate::seeded::StreamState;
+use crate::special::KDenominator;
 use crate::special::exp_of_log_sum;
 use crate::special::k_ratio;
 use crate::special::ln_bessel_ke;
@@ -211,6 +212,31 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
       self.mu.to_f64().unwrap(),
     )
   }
+
+  /// `γ_t² = (α − β − t)(α + β + t)`, `α ∓ β` exactly as two parts (`α > |β|`), so neither factor loses `α ∓ β`'s
+  /// rounding where `t` cancels it.
+  fn shifted(&self, t: f64) -> f64 {
+    let (_, alpha, beta, _, _) = self.params();
+    let (diff, sum) = (alpha - beta, alpha + beta);
+    let below = (diff - t) + ((alpha - diff) - beta);
+    let above = (sum + t) + ((alpha - sum) + beta);
+    below * above
+  }
+
+  /// The interior mgf's ratio at `t`, `shifted = γ_t² > 0`.
+  fn mgf_ratio(&self, t: f64, shifted: f64) -> ((f64, f64, f64), (f64, f64), KDenominator, f64) {
+    let (lambda, alpha, beta, delta, mu) = self.params();
+    let gamma = (alpha * alpha - beta * beta).sqrt();
+    let gt = shifted.sqrt();
+    let dx = delta * t * (2.0 * beta + t) / (gamma + gt);
+    let den = KDenominator::new(lambda, delta * gamma);
+    (
+      (mu * t, gamma * gamma / shifted, 0.5 * lambda),
+      (lambda, delta * gt),
+      den,
+      dx,
+    )
+  }
 }
 
 impl<T: SimdFloatExt> Sealed for SimdGeneralizedHyperbolic<T> {}
@@ -315,11 +341,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
       return Some(1.0);
     }
     let (lambda, alpha, beta, delta, mu) = self.params();
-    // `α ∓ β` exactly as two parts (`α > |β|`), so neither factor loses `α ∓ β`'s rounding where `t` cancels it.
-    let (diff, sum) = (alpha - beta, alpha + beta);
-    let below = (diff - t) + ((alpha - diff) - beta);
-    let above = (sum + t) + ((alpha - sum) + beta);
-    let shifted = below * above;
+    let shifted = self.shifted(t);
     if shifted < 0.0 || (shifted == 0.0 && lambda >= 0.0) {
       return Some(f64::INFINITY);
     }
@@ -333,10 +355,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
         &[t_mu, t_pow, t_gamma, k0, dg],
       ));
     }
-    let gt = shifted.sqrt();
-    let dx = delta * t * (2.0 * beta + t) / (gamma + gt);
-    let power = (mu * t, gamma * gamma / shifted, 0.5 * lambda);
-    Some(k_ratio(power, (lambda, delta * gt), (lambda, delta * gamma), dx).or_nan())
+    let (power, num, den, dx) = self.mgf_ratio(t, shifted);
+    Some(k_ratio(power, num, &den, dx).or_nan())
   }
 }
 

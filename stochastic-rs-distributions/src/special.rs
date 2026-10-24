@@ -30,7 +30,12 @@ pub use incomplete::gamma_q;
 pub use incomplete::gamma_ui;
 pub use incomplete::ln_gamma_p;
 pub use incomplete::ln_gamma_q;
+pub(crate) use k_ratio::KDenominator;
 pub(crate) use k_ratio::k_ratio;
+#[cfg(test)]
+pub(crate) use k_ratio::log_regime;
+#[cfg(test)]
+pub(crate) use k_ratio::ratio_regime;
 
 const LANCZOS_G: f64 = 7.0;
 const LANCZOS_C: [f64; 9] = [

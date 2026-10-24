@@ -5,6 +5,8 @@ use crate::tests::assert_mean_within;
 use crate::tests::scalar_draws;
 use crate::traits::DistributionExt;
 use crate::traits::DistributionSampler;
+use crate::traits::distribution::SimdDistribution;
+use crate::uniform::SimdUniform;
 
 fn close(a: f64, b: f64, rel: f64) -> bool {
   (a - b).abs() <= rel * b.abs().max(1e-300)
@@ -404,6 +406,9 @@ fn mgf_takes_the_ratio_only_where_every_factor_stays_normal() {
     ((1.0, 1e8, 1e8, 1.0), 2.718_281_882_824_683),
     ((1.0, 1e12, 1e12, 1.0), 2.718_281_828_464_481_6),
     ((1.0, 1e16, 1e16, 1.0), 2.718_281_828_459_046),
+    ((-40.0, 1.0, 1.0, -276_024.0), 1.743_648_839_050_706_2e-267),
+    ((-20.0, 4.0, 1.0, -69_000.0), 5.613_805_003_409_576e-290),
+    ((-40.0, 1.0, 1.0, -270_000.0), 3.961_964_133_085_797_4e-264),
   ] {
     let got = SimdGig::<f64>::new(lambda, chi, psi)
       .moment_generating_function(t)
@@ -413,6 +418,45 @@ fn mgf_takes_the_ratio_only_where_every_factor_stays_normal() {
       "GIG({lambda}, {chi}, {psi}).mgf({t}) = {got}"
     );
   }
+}
+
+/// Seeded cells over `λ ∈ [−300, 300]`, `χ, ψ ∈ [1e-6, 1e6]` and `s = ψ − 2t` from `1e-12ψ` to `1e6ψ`: wherever the ratio
+/// regime is taken it agrees with the log regime within the two error estimates and a few ulps of rounding.
+#[test]
+fn ratio_regime_agrees_with_the_log_regime() {
+  use crate::special::log_regime;
+  use crate::special::ratio_regime;
+  let mut u = SimdUniform::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(20_261_025));
+  let (mut ratios, mut logs) = (0, 0);
+  for _ in 0..4000 {
+    let lambda = 600.0 * u.sample() - 300.0;
+    let (chi, psi) = (
+      10f64.powf(12.0 * u.sample() - 6.0),
+      10f64.powf(12.0 * u.sample() - 6.0),
+    );
+    let t = 0.5 * psi * (1.0 - 10f64.powf(18.0 * u.sample() - 12.0));
+    let shifted = psi - 2.0 * t;
+    if shifted <= 0.0 {
+      continue;
+    }
+    let (power, num, den, dx) = SimdGig::<f64>::new(lambda, chi, psi).mgf_ratio(t, shifted);
+    let (log, log_err) = log_regime(power, num, &den, dx).parts();
+    let Some(ratio) = ratio_regime(power, num, &den, dx) else {
+      logs += 1;
+      continue;
+    };
+    ratios += 1;
+    let (ratio, ratio_err) = ratio.parts();
+    let tol = log_err + ratio_err + 16.0 * f64::EPSILON * log.abs();
+    assert!(
+      (ratio - log).abs() <= tol,
+      "GIG({lambda}, {chi}, {psi}).mgf({t}): {ratio}, log regime {log} ± {log_err}"
+    );
+  }
+  assert!(
+    ratios > 500 && logs > 500,
+    "{ratios} ratio and {logs} log cells"
+  );
 }
 
 /// Past the exponents `e^x` represents the value is exactly 0 or `∞` whatever its error band: the far tails answer 0 and

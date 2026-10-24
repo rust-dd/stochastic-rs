@@ -1,29 +1,78 @@
 //! The ratio of two Bessel `K` that the GH and GIG moment generating functions and the GIG moments share.
 
+use std::cell::OnceCell;
 use std::f64::consts::LN_2;
 
 use super::Estimate;
 use super::bessel_ke;
 use super::ln_bessel_ke;
 
-/// `e^c·base^e·K_{ν₁}(x₁)/K_{ν₂}(x₂)` with `dx = x₂ − x₁` given free of cancellation: the scaled `K`s' ratio where the
-/// power factor, the product and the result stay normal, otherwise the logarithms' difference with its no-digit estimate.
+/// The denominator `K_ν(x)` several ratios share: its scaled value at once, its logarithm when a ratio first needs it.
+pub(crate) struct KDenominator {
+  nu: f64,
+  x: f64,
+  ke: f64,
+  ln: OnceCell<f64>,
+}
+
+impl KDenominator {
+  pub(crate) fn new(nu: f64, x: f64) -> Self {
+    Self {
+      nu,
+      x,
+      ke: bessel_ke(nu, x),
+      ln: OnceCell::new(),
+    }
+  }
+}
+
+/// `e^c·base^e·K_{ν₁}(x₁)/K_ν(x)` over `den = K_ν(x)`, `dx = x − x₁` given free of cancellation: the scaled `K`s'
+/// ratio where every value it forms stays normal, otherwise the logarithms' difference with its no-digit estimate.
 #[inline]
 pub(crate) fn k_ratio(
-  (c, base, e): (f64, f64, f64),
-  (nu1, x1): (f64, f64),
-  (nu2, x2): (f64, f64),
+  power: (f64, f64, f64),
+  num: (f64, f64),
+  den: &KDenominator,
   dx: f64,
 ) -> Estimate {
-  let power = base.powf(e);
-  let (ke1, ke2) = (bessel_ke(nu1, x1), bessel_ke(nu2, x2));
-  let product = c.exp() * power * (ke1 / ke2);
-  let value = product * dx.exp();
-  if power.is_normal() && product.is_normal() && value.is_normal() {
-    let size = c.abs() + ln_size(power) + dx.abs() + ln_size(ke1) + ln_size(ke2);
-    return Estimate::with_rel(value, f64::EPSILON * size);
+  ratio_regime(power, num, den, dx).unwrap_or_else(|| log_regime(power, num, den, dx))
+}
+
+/// The scaled `K`s' ratio, `None` unless every factor, every partial product and the result is normal.
+#[inline]
+pub(crate) fn ratio_regime(
+  (c, base, e): (f64, f64, f64),
+  (nu1, x1): (f64, f64),
+  den: &KDenominator,
+  dx: f64,
+) -> Option<Estimate> {
+  let (scale, power, shift, ke1) = (c.exp(), base.powf(e), dx.exp(), bessel_ke(nu1, x1));
+  let p = scale * power;
+  let q = ke1 / den.ke;
+  let pq = p * q;
+  let value = pq * shift;
+  if ![scale, power, p, ke1, den.ke, q, pq, shift, value]
+    .iter()
+    .all(|v| v.is_normal())
+  {
+    return None;
   }
-  let (ln_power, l1, l2) = (e * base.ln(), ln_bessel_ke(nu1, x1), ln_bessel_ke(nu2, x2));
+  let size = c.abs() + ln_size(power) + dx.abs() + ln_size(ke1) + ln_size(den.ke);
+  Some(Estimate::with_rel(value, f64::EPSILON * size))
+}
+
+/// The difference of the logarithms, with the no-digit estimate.
+pub(crate) fn log_regime(
+  (c, base, e): (f64, f64, f64),
+  (nu1, x1): (f64, f64),
+  den: &KDenominator,
+  dx: f64,
+) -> Estimate {
+  let ln_power = e * base.ln();
+  let (l1, l2) = (
+    ln_bessel_ke(nu1, x1),
+    *den.ln.get_or_init(|| ln_bessel_ke(den.nu, den.x)),
+  );
   Estimate::from_log_sum(c + ln_power + l1 - l2 + dx, &[c, ln_power, l1, l2, dx])
 }
 
