@@ -44,6 +44,7 @@ use super::generalized_inverse_gauss::SimdGig;
 use super::normal::SimdNormal;
 use crate::seeded::Buffered;
 use crate::seeded::StreamState;
+use crate::special::bessel_ke;
 use crate::special::exp_of_log_sum;
 use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
@@ -329,6 +330,17 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
       ));
     }
     let gt = shifted.sqrt();
+    // The scaled `K`s' ratio keeps its digits where both are normal; their logarithms' difference costs `ε|ln K|`.
+    let (ke_t, ke_0) = (
+      bessel_ke(lambda, delta * gt),
+      bessel_ke(lambda, delta * gamma),
+    );
+    if ke_t.is_normal() && ke_0.is_normal() {
+      return Some(
+        (mu * t).exp() * (gamma * gamma / shifted).powf(0.5 * lambda) * ke_t / ke_0
+          * (delta * (gamma - gt)).exp(),
+      );
+    }
     let (t_mu, t_pow) = (mu * t, 0.5 * lambda * (gamma * gamma / shifted).ln());
     let (kt, k0, t_exp) = (
       ln_bessel_ke(lambda, delta * gt),

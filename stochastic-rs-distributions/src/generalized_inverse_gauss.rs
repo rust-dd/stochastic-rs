@@ -450,6 +450,11 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
       ));
     }
     let bt = (chi * shifted).sqrt();
+    // The scaled `K`s' ratio keeps its digits where both are normal; their logarithms' difference costs `ε|ln K|`.
+    let (ke_t, ke_b) = (bessel_ke(lambda, bt), bessel_ke(lambda, b));
+    if ke_t.is_normal() && ke_b.is_normal() {
+      return Some((psi / shifted).powf(0.5 * lambda) * ke_t / ke_b * (b - bt).exp());
+    }
     let t_pow = 0.5 * lambda * (psi / shifted).ln();
     let (kt, k0) = (ln_bessel_ke(lambda, bt), ln_bessel_ke(lambda, b));
     Some(exp_of_log_sum(

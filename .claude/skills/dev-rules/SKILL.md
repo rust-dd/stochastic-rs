@@ -215,7 +215,9 @@ Library code reports through the `log` facade (`log::warn!`, `log::trace!`), nev
   the devices `DeviceError`; `Calibrator::Error: Debug + Display + Send + Sync + 'static`. The risk
   estimators (`empirical_cvar`, `historical_var`) still panic on an empty sample; whether short or
   degenerate data there becomes a `Result` is one pending decision for all of them.
-- **A numerical evaluation outside its domain, or an inversion with no root → documented `NaN`**:
+- **A numerical evaluation outside its domain, an inversion with no root, or an evaluation where
+  no digit of the f64 result survives (documented per law: the GH, GIG and VG laws at extreme
+  orders) → documented `NaN`**:
   a yield at `tau <= 0`, an implied volatility with no root, a Bessel K at `x <= 0`, a pricing
   *query* with a non-positive strike or spot. A `0.0` or any other plausible number is never a
   sentinel, and a query argument never panics — only a model parameter does.
