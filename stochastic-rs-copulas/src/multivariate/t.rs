@@ -139,9 +139,7 @@ impl TMultivariate {
     }
     for i in 0..d {
       for j in (i + 1)..d {
-        let rho = (0.5 * std::f64::consts::PI * tau[[i, j]])
-          .sin()
-          .clamp(-0.999_999, 0.999_999);
+        let rho = (0.5 * std::f64::consts::PI * tau[[i, j]]).sin();
         corr[[i, j]] = rho;
         corr[[j, i]] = rho;
       }

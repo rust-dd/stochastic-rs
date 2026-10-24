@@ -348,3 +348,19 @@ fn t_copula_fit_rejects_a_constant_column() {
     "{got:?}"
   );
 }
+
+/// Perfectly dependent columns have τ-b 1 and the estimate `sin(π/2) = 1`, uncapped, which the shrink's floor fits to
+/// `0.999`, as the Gaussian fit does.
+#[test]
+fn t_copula_fit_of_perfectly_dependent_columns_stops_at_the_floor() {
+  let column = Array1::from_shape_fn(50, |i| (i + 1) as f64 / 51.0);
+  let u = ndarray::stack![ndarray::Axis(1), column, column];
+  assert_eq!(
+    TMultivariate::estimate_corr_from_kendall(u.view()).unwrap()[[0, 1]],
+    1.0
+  );
+  let mut cop = TMultivariate::default();
+  cop.fit(u.view()).unwrap();
+  let rho = cop.correlation().unwrap()[[0, 1]];
+  assert!((0.999 - 1e-6..=0.999).contains(&rho), "{rho}");
+}
