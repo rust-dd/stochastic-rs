@@ -142,15 +142,23 @@ pub(crate) fn ln_norm_cdf(z: f64) -> f64 {
   }
 }
 
-/// `Φ⁻¹(p)`: `ndtri`, refined by a Newton step on `ln Φ` where the tail is subnormal and `ndtri` loses digits.
+/// `Φ⁻¹(p)`: `ndtri`, refined by a Newton step on `ln Φ` where `p` is subnormal and `ndtri` loses digits (`1 − p`
+/// never is); inlined, so a caller pays `ndtri` and two comparisons.
+#[inline]
 pub(crate) fn normal_quantile(p: f64) -> f64 {
   let t = ndtri(p);
-  let tail = p.min(1.0 - p);
-  if tail >= f64::MIN_POSITIVE || !(0.0 < p && p < 1.0) {
+  if !(0.0 < p && p < f64::MIN_POSITIVE) {
     return t;
   }
+  subnormal_quantile(p, t)
+}
+
+/// The Newton step on `ln Φ` from `ndtri`'s `t` at a subnormal `p`.
+#[cold]
+#[inline(never)]
+fn subnormal_quantile(p: f64, t: f64) -> f64 {
   let z = -t.abs();
-  t.signum() * -(z - (ln_norm_cdf(z) - tail.ln()) * mills(-z))
+  t.signum() * -(z - (ln_norm_cdf(z) - p.ln()) * mills(-z))
 }
 
 /// `ln(eᵃ + eᵇ)`; an infinite larger term is the answer, where `a − b` would be NaN.
