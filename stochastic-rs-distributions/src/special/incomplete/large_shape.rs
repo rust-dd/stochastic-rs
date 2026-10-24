@@ -307,7 +307,7 @@ fn ln_ratio(x: f64, a: f64) -> (f64, f64) {
   )
 }
 
-/// `(hi, lo)` with a low part past 1 folded in: it then lies under `hi`'s own ulp, and only a small `lo` is exponentiated.
+/// `(hi, lo)` with a low part past 1 folded into `hi`, where it is within a few of `hi`'s ulps: only a small `lo` is exponentiated.
 fn settle((hi, lo): (f64, f64)) -> (f64, f64) {
   if lo.abs() > 1.0 {
     (hi + lo, 0.0)
