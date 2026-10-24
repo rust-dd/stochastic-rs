@@ -6,6 +6,7 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use stochastic_rs::distributions::special::bessel_ie;
+use stochastic_rs::distributions::special::bessel_ke;
 use stochastic_rs::distributions::special::gamma;
 use stochastic_rs::distributions::special::ln_bessel_ie;
 
@@ -41,5 +42,18 @@ fn bench_bessel_i(c: &mut Criterion) {
   group.finish();
 }
 
-criterion_group!(benches, bench_gamma, bench_bessel_i);
+fn bench_bessel_k(c: &mut Criterion) {
+  let mut group = c.benchmark_group("special/bessel_ke");
+  group.measurement_time(Duration::from_secs(3));
+  for (nu, x) in [(0.5, 2.0), (12.0, 0.7), (100.0, 50.0), (1000.0, 1000.0)] {
+    group.bench_with_input(
+      BenchmarkId::from_parameter(format!("nu={nu},x={x}")),
+      &(nu, x),
+      |b, &(nu, x)| b.iter(|| bessel_ke(black_box(nu), black_box(x))),
+    );
+  }
+  group.finish();
+}
+
+criterion_group!(benches, bench_gamma, bench_bessel_i, bench_bessel_k);
 criterion_main!(benches);

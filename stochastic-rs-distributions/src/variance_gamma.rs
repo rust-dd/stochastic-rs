@@ -37,7 +37,7 @@ use super::gamma::SimdGamma;
 use super::normal::SimdNormal;
 use crate::seeded::Buffered;
 use crate::seeded::StreamState;
-use crate::special::bessel_ke;
+use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
@@ -260,7 +260,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
     }
     let y = d.abs() * root / (sigma * sigma);
     let log_kernel =
-      theta * d / (sigma * sigma) + a * (d.abs() / root).ln() + bessel_ke(a, y).ln() - y;
+      theta * d / (sigma * sigma) + a * (d.abs() / root).ln() + ln_bessel_ke(a, y) - y;
     Some((log_norm + log_kernel).exp())
   }
 
@@ -475,6 +475,19 @@ mod tests {
     let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05);
     assert_eq!(d.pdf(f64::INFINITY), Some(0.0));
     assert_eq!(d.pdf(f64::NEG_INFINITY), Some(0.0));
+  }
+
+  /// mpmath at `ν = 0.005` next to the centre, where the order `1/ν − ½ = 199.5` makes `K` overflow at the argument.
+  #[test]
+  fn pdf_holds_where_k_overflows() {
+    let d = SimdVarianceGamma::<f64>::new(0.2, 0.005, 0.1, 0.0);
+    for (x, want) in [
+      (1e-4, 1.764_696_697_233_343),
+      (0.01, 1.806_639_933_535_319_6),
+    ] {
+      let got = d.pdf(x).unwrap();
+      assert!(close(got, want, 1e-12), "pdf({x}) = {got}");
+    }
   }
 }
 

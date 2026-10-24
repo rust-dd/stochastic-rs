@@ -44,7 +44,7 @@ use super::generalized_inverse_gauss::SimdGig;
 use super::normal::SimdNormal;
 use crate::seeded::Buffered;
 use crate::seeded::StreamState;
-use crate::special::bessel_ke;
+use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
@@ -283,9 +283,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
       - 0.5 * (2.0 * std::f64::consts::PI).ln()
       - order * alpha.ln()
       - lambda * delta.ln()
-      - (bessel_ke(lambda, delta * gamma).ln() - delta * gamma);
+      - (ln_bessel_ke(lambda, delta * gamma) - delta * gamma);
     let y = alpha * root;
-    Some((log_norm + order * root.ln() + bessel_ke(order, y).ln() - y + beta * d).exp())
+    Some((log_norm + order * root.ln() + ln_bessel_ke(order, y) - y + beta * d).exp())
   }
 
   fn mean(&self) -> Option<f64> {
@@ -328,12 +328,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     }
     let gamma = (alpha * alpha - beta * beta).sqrt();
     if shifted == 0.0 {
-      // s^{-λ} K_λ(δs) → ½ Γ(−λ) (2/δ)^{−λ} as s → 0, in log space past Γ's overflow and K's underflow;
-      // a K that overflows (a large |λ| at a small argument) answers NaN, not a silent 0.
-      let ln_k = bessel_ke(lambda, delta * gamma).ln() - delta * gamma;
-      if !ln_k.is_finite() {
-        return Some(f64::NAN);
-      }
+      // s^{-λ} K_λ(δs) → ½ Γ(−λ) (2/δ)^{−λ} as s → 0, in log space past the overflow of Γ and K and K's underflow.
+      let ln_k = ln_bessel_ke(lambda, delta * gamma) - delta * gamma;
       return Some(
         (mu * t + lambda * (0.5 * delta * gamma).ln() + ln_gamma(-lambda)
           - std::f64::consts::LN_2
@@ -343,9 +339,10 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     }
     let gt = shifted.sqrt();
     Some(
-      (mu * t).exp() * (gamma * gamma / shifted).powf(0.5 * lambda) * bessel_ke(lambda, delta * gt)
-        / bessel_ke(lambda, delta * gamma)
-        * (delta * (gamma - gt)).exp(),
+      (mu * t + 0.5 * lambda * (gamma * gamma / shifted).ln() + ln_bessel_ke(lambda, delta * gt)
+        - ln_bessel_ke(lambda, delta * gamma)
+        + delta * (gamma - gt))
+        .exp(),
     )
   }
 }
@@ -468,11 +465,25 @@ mod tests {
     ));
   }
 
-  /// Where `K_λ` overflows (λ = −172 at a small argument) the boundary limit is NaN, not a silent 0.
+  /// mpmath at λ = −172, where `K_λ` and `Γ(−λ)` overflow: the mgf at the boundary and inside it, and the density.
   #[test]
-  fn boundary_limit_with_an_overflowing_k_is_nan() {
+  fn mgf_and_pdf_hold_where_k_overflows() {
     let gh = SimdGeneralizedHyperbolic::<f64>::new(-172.0, 2.0, 0.5, 0.5, 0.0);
-    assert!(gh.moment_generating_function(1.5).unwrap().is_nan());
+    for (t, want) in [
+      (1.5, 1.001_371_548_223_024_8),
+      (1.0, 1.000_731_257_068_310_2),
+      (0.5, 1.000_274_158_392_503_7),
+    ] {
+      let got = gh.moment_generating_function(t).unwrap();
+      assert!(close(got, want, 1e-12), "mgf({t}) = {got}");
+    }
+    for (x, want) in [
+      (0.0, 14.786_515_072_456_567),
+      (0.4, 1.569_479_944_041_449e-36),
+    ] {
+      let got = gh.pdf(x).unwrap();
+      assert!(close(got, want, 1e-12), "pdf({x}) = {got}");
+    }
   }
 
   #[test]

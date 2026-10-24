@@ -47,6 +47,7 @@ use stochastic_rs_core::simd_rng::SimdRngExt;
 use super::SimdFloatExt;
 use crate::seeded::StreamState;
 use crate::special::bessel_ke;
+use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
@@ -368,7 +369,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
     let (lambda, chi, psi) = self.params();
     let b = (chi * psi).sqrt();
     let log_norm =
-      0.5 * lambda * (psi / chi).ln() - std::f64::consts::LN_2 - (bessel_ke(lambda, b).ln() - b);
+      0.5 * lambda * (psi / chi).ln() - std::f64::consts::LN_2 - (ln_bessel_ke(lambda, b) - b);
     Some((log_norm + (lambda - 1.0) * x.ln() - 0.5 * (chi / x + psi * x)).exp())
   }
 
@@ -418,20 +419,17 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
     }
     let b = (chi * psi).sqrt();
     if shifted == 0.0 {
-      // s^{-λ} K_λ(√χ s) → ½ Γ(−λ) (2/√χ)^{−λ} as s → 0, in log space past Γ's overflow and K's underflow;
-      // a K that overflows (a large |λ| at a small argument) answers NaN, not a silent 0.
-      let ln_k = bessel_ke(lambda, b).ln() - b;
-      if !ln_k.is_finite() {
-        return Some(f64::NAN);
-      }
+      // s^{-λ} K_λ(√χ s) → ½ Γ(−λ) (2/√χ)^{−λ} as s → 0, in log space past the overflow of Γ and K and K's underflow.
+      let ln_k = ln_bessel_ke(lambda, b) - b;
       return Some(
         (lambda * (0.5 * b).ln() + ln_gamma(-lambda) - std::f64::consts::LN_2 - ln_k).exp(),
       );
     }
     let bt = (chi * shifted).sqrt();
     Some(
-      (psi / shifted).powf(0.5 * lambda) * bessel_ke(lambda, bt) / bessel_ke(lambda, b)
-        * (b - bt).exp(),
+      (0.5 * lambda * (psi / shifted).ln() + ln_bessel_ke(lambda, bt) - ln_bessel_ke(lambda, b)
+        + (b - bt))
+        .exp(),
     )
   }
 }

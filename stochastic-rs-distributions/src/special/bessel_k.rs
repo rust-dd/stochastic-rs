@@ -1,10 +1,9 @@
 //! Modified Bessel function of the second kind `K_ν(x)` for real order.
 //!
-//! Numerical Recipes' `bessik` scheme (3rd ed., §6.6): Temme's series for
-//! `x ≤ 2` and Steed's continued fraction CF2 for `x > 2` give
-//! `K_μ`, `K_{μ+1}` at the fractional part `|μ| ≤ 1/2` of the order, then
-//! the stable upward recurrence `K_{ν+1} = K_{ν-1} + (2ν/x) K_ν` climbs to
-//! `ν`. The reciprocal-gamma pieces of Temme's method,
+//! Numerical Recipes' `bessik` (3rd ed., §6.6) to order 50: Temme's series below `x = 2` or Steed's CF2 at `|μ| ≤ ½`,
+//! then the upward recurrence; Debye's uniform expansion above order 50, the small-argument forms below `x = 1e-307`.
+//!
+//! The reciprocal-gamma pieces of Temme's method,
 //!
 //! $$
 //! \gamma_1 = \frac{1/\Gamma(1-\mu) - 1/\Gamma(1+\mu)}{2\mu},\qquad
@@ -26,12 +25,21 @@
 //!   DOI: 10.1016/0010-4655(87)90111-1
 //! - Press, Teukolsky, Vetterling, Flannery (2007), *Numerical Recipes*,
 //!   3rd ed., §6.6.
+//!
+//! Reference: Olver, F. W. J. (1954), "The asymptotic expansion of Bessel functions of large order", Phil. Trans. R. Soc. A 247, 328–368, DOI 10.1098/rsta.1954.0021 (Debye's uniform expansion, DLMF 10.41.4, above order 50).
 
+use std::f64::consts::LN_2;
+use std::f64::consts::PI;
 use std::sync::OnceLock;
+
+use super::bessel_i::debye;
+use super::bessel_i::debye_sum;
 
 const EPS: f64 = 1e-16;
 const MAX_ITER: usize = 10_000;
 const X_MIN: f64 = 2.0;
+const X_TINY: f64 = 1e-307;
+const UNIFORM_MIN_ORDER: f64 = 50.0;
 const EULER_MASCHERONI: f64 = 0.577_215_664_901_532_9;
 const ZETA_TERMS: usize = 64;
 
@@ -91,7 +99,39 @@ pub fn bessel_ke(nu: f64, x: f64) -> f64 {
   if x == f64::INFINITY {
     return 0.0;
   }
-  ke_pair(nu.abs(), x).0
+  let nu = nu.abs();
+  if x < X_TINY {
+    return tiny_argument(nu, x);
+  }
+  if nu > UNIFORM_MIN_ORDER {
+    return debye_k(nu, x, true);
+  }
+  ke_pair(nu, x).0
+}
+
+/// $\ln(e^{x} K_\nu(x))$ for real `nu`, finite wherever [`bessel_ke`] overflows; NaN unless `x > 0` and `nu` is finite,
+/// `−∞` at `x = ∞`.
+pub fn ln_bessel_ke(nu: f64, x: f64) -> f64 {
+  if !nu.is_finite() || x.is_nan() || x <= 0.0 {
+    return f64::NAN;
+  }
+  if x == f64::INFINITY {
+    return f64::NEG_INFINITY;
+  }
+  let nu = nu.abs();
+  if x < X_TINY {
+    return ln_tiny_argument(nu, x);
+  }
+  if nu > UNIFORM_MIN_ORDER {
+    let d = debye(nu, x);
+    return (PI * d.prefactor * debye_sum(d.p, nu, true)).ln() - d.eta_minus_z;
+  }
+  let ke = ke_pair(nu, x).0;
+  if ke.is_finite() {
+    ke.ln()
+  } else {
+    ln_recurrence(nu, x)
+  }
 }
 
 /// Scaled $(e^x K_\nu(x), e^x K_{\nu+1}(x))$ for `nu ≥ 0` and `x > 0`; both infinite once the upward recurrence
@@ -120,25 +160,89 @@ pub(super) fn ke_pair(nu: f64, x: f64) -> (f64, f64) {
 
 /// $K_\nu(x)$ for real `nu`; NaN unless `x > 0` and `nu` is finite, 0 at `x = ∞`.
 pub fn bessel_k(nu: f64, x: f64) -> f64 {
+  let nu = nu.abs();
+  if nu > UNIFORM_MIN_ORDER && nu.is_finite() && x.is_finite() && x >= X_TINY {
+    return debye_k(nu, x, false);
+  }
   bessel_ke(nu, x) * (-x).exp()
 }
 
-/// Temme's series: scaled $(K_\mu, K_{\mu+1})$ for `x < 2`, NaN where it does not converge.
-fn temme_pair(x: f64, mu: f64, mu2: f64, xi2: f64) -> (f64, f64) {
-  let x2 = 0.5 * x;
-  let pimu = std::f64::consts::PI * mu;
+/// DLMF 10.41.4, $K_\nu(\nu z) \sim \sqrt{\pi/2\nu}\,e^{-\nu\eta}(1+z^2)^{-1/4}\sum(-1)^k U_k(p)/\nu^k$: `π·prefactor` is
+/// that constant, and the exponential is split so a large exponent does not overflow before the product would.
+// Out of line, so the small-order path of `bessel_ke` and `bessel_k` keeps its size.
+#[inline(never)]
+fn debye_k(nu: f64, x: f64, scaled: bool) -> f64 {
+  let d = debye(nu, x);
+  let m = PI * d.prefactor * debye_sum(d.p, nu, true);
+  let half = (0.5 * if scaled { -d.eta_minus_z } else { -d.eta }).exp();
+  half * (m * half)
+}
+
+/// `ln(e^x K_ν(x))` for `ν ≤ 50` below `x = 2`, where alone `K` overflows: the recurrence on `g = (x/2)K_{n+1}/K_n`, which
+/// stays near `n`, so `ln K` is a sum of logarithms that cannot overflow.
+fn ln_recurrence(nu: f64, x: f64) -> f64 {
+  let nl = (nu + 0.5).floor() as usize;
+  let mu = nu - nl as f64;
+  let (sum, sum1) = temme_sums(x, mu, mu * mu);
+  let mut g = sum1 / sum;
+  let mut total = sum.ln() + x + nl as f64 * (LN_2 - x.ln());
+  for i in 1..=nl {
+    total += g.ln();
+    g = (mu + i as f64) + 0.25 * x * x / g;
+  }
+  total
+}
+
+/// DLMF 10.30.2's `½Γ(ν)(2/x)^ν` in log space from `ν = ½`, Temme's `f₀` below, where that leading term is no limit as
+/// `ν → 0`; both hold to `O(x²)`, and `e^x = 1` here, so scaled and plain agree.
+#[cold]
+#[inline(never)]
+fn tiny_argument(nu: f64, x: f64) -> f64 {
+  let d = LN_2 - x.ln();
+  if nu < 0.5 {
+    temme_head(nu, d).0
+  } else {
+    (super::ln_gamma(nu) - LN_2 + nu * d).exp()
+  }
+}
+
+/// The logarithm of [`tiny_argument`], finite where the value overflows.
+fn ln_tiny_argument(nu: f64, x: f64) -> f64 {
+  let d = LN_2 - x.ln();
+  if nu < 0.5 {
+    temme_head(nu, d).0.ln()
+  } else {
+    super::ln_gamma(nu) - LN_2 + nu * d
+  }
+}
+
+/// Temme's `f₀`, `K_μ(x)` to `O(x²)` for `|μ| ≤ ½`, and the `μ d`, `γ₁`, `γ₂` his series goes on with, from `d = ln(2/x)`.
+fn temme_head(mu: f64, d: f64) -> (f64, f64, f64, f64) {
+  let pimu = PI * mu;
   let fact = if pimu.abs() < EPS {
     1.0
   } else {
     pimu / pimu.sin()
   };
-  let d = -x2.ln();
   let e = mu * d;
   let fact2 = if e.abs() < EPS { 1.0 } else { e.sinh() / e };
   let (gam1, gam2) = temme_gammas(mu);
+  (fact * (gam1 * e.cosh() + gam2 * fact2 * d), e, gam1, gam2)
+}
+
+/// Temme's series: scaled $(K_\mu, K_{\mu+1})$ for `x < 2`, NaN where it does not converge.
+fn temme_pair(x: f64, mu: f64, mu2: f64, xi2: f64) -> (f64, f64) {
+  let (sum, sum1) = temme_sums(x, mu, mu2);
+  let scale = x.exp();
+  (sum * scale, sum1 * xi2 * scale)
+}
+
+/// Temme's series: $(K_\mu, (x/2) K_{\mu+1})$ for `x < 2`, NaN where it does not converge.
+fn temme_sums(x: f64, mu: f64, mu2: f64) -> (f64, f64) {
+  let x2 = 0.5 * x;
+  let (mut ff, e, gam1, gam2) = temme_head(mu, -x2.ln());
   let gampl = gam2 - mu * gam1;
   let gammi = gam2 + mu * gam1;
-  let mut ff = fact * (gam1 * e.cosh() + gam2 * fact2 * d);
   let mut sum = ff;
   let e = e.exp();
   let mut p = 0.5 * e / gampl;
@@ -146,7 +250,6 @@ fn temme_pair(x: f64, mu: f64, mu2: f64, xi2: f64) -> (f64, f64) {
   let mut c = 1.0;
   let d = x2 * x2;
   let mut sum1 = p;
-  let mut converged = false;
   for i in 1..=MAX_ITER {
     let fi = i as f64;
     ff = (fi * ff + p + q) / (fi * fi - mu2);
@@ -158,15 +261,10 @@ fn temme_pair(x: f64, mu: f64, mu2: f64, xi2: f64) -> (f64, f64) {
     let del1 = c * (p - fi * ff);
     sum1 += del1;
     if del.abs() < sum.abs() * EPS {
-      converged = true;
-      break;
+      return (sum, sum1);
     }
   }
-  if !converged {
-    return (f64::NAN, f64::NAN);
-  }
-  let scale = x.exp();
-  (sum * scale, sum1 * xi2 * scale)
+  (f64::NAN, f64::NAN)
 }
 
 /// Steed's CF2: scaled $(K_\mu, K_{\mu+1})$ for `x ≥ 2`, NaN where it does not converge.
@@ -319,11 +417,119 @@ mod tests {
     assert_eq!(bessel_ke(2.5, f64::INFINITY), 0.0);
   }
 
-  /// A series that cannot converge returns NaN, and the upward recurrence stops at its first `∞`.
+  /// mpmath at the f64 arguments: below `x = 1e-307` the small-argument forms (DLMF 10.30.2–3; Temme's `f₀` below
+  /// `ν = ½`) in log space; `(0.5, 1e-300)` is the Temme path.
   #[test]
-  fn k_nu_returns_at_extreme_arguments() {
-    assert!(bessel_ke(0.5, 5e-324).is_nan());
-    assert!(bessel_ke(1e300, 1.5).is_nan());
+  fn k_nu_at_subnormal_arguments() {
+    assert!(close(
+      bessel_ke(0.5, 1e-323),
+      3.987_058_540_015_018e161,
+      1e-13
+    ));
+    assert!(close(
+      bessel_ke(0.5, 5e-324),
+      5.638_552_261_264_71e161,
+      1e-13
+    ));
+    assert!(close(bessel_ke(0.0, 1e-310), 713.917_310_343_812_6, 1e-13));
+    assert!(close(bessel_ke(1e-3, 1e-310), 776.126_946_984_750_5, 1e-13));
+    assert!(close(bessel_ke(1e-9, 1e-310), 713.917_310_343_873_2, 1e-13));
+    assert!(close(
+      bessel_ke(0.25, 5e-324),
+      1.445_980_426_164_288_5e81,
+      1e-13
+    ));
+    assert!(close(
+      bessel_ke(0.4999, 1e-308),
+      1.167_656_551_441_422_3e154,
+      1e-13
+    ));
+    assert!(close(
+      bessel_ke(0.5001, 1e-308),
+      1.345_255_505_457_928e154,
+      1e-13
+    ));
+    assert!(close(
+      bessel_ke(0.5, 1e-300),
+      1.253_314_137_315_500_2e150,
+      1e-13
+    ));
+    assert_eq!(bessel_ke(2.5, 1e-310), f64::INFINITY);
+    assert_eq!(bessel_k(0.5, 1e-323), bessel_ke(0.5, 1e-323));
+  }
+
+  /// mpmath `besselk` above order 50, where Debye's expansion replaces the upward recurrence; each side of the switch
+  /// against its own value, and huge orders and arguments return at once.
+  #[test]
+  fn k_nu_at_large_orders() {
+    assert!(close(bessel_k(60.0, 1.0), 7.960_735_226_220_905e97, 1e-12));
+    assert!(close(
+      bessel_ke(60.0, 1.0),
+      2.163_952_190_661_009_3e98,
+      1e-12
+    ));
+    assert!(close(bessel_ke(60.0, 100.0), 4_667_765.644_383_589, 1e-12));
+    assert!(close(
+      bessel_ke(200.0, 150.0),
+      7.832_615_732_173_226e50,
+      1e-12
+    ));
+    assert!(close(
+      bessel_ke(1000.0, 1000.0),
+      2.557_507_414_201_933_5e201,
+      1e-12
+    ));
+    assert!(close(
+      bessel_k(1000.0, 1000.0),
+      1.298_180_251_466_701e-233,
+      1e-12
+    ));
+    assert_eq!(bessel_k(2000.0, 10.0), f64::INFINITY);
+    assert!(close(
+      bessel_ke(50.0 + 1e-9, 7.0),
+      1.627_200_869_285_169_9e38,
+      1e-12
+    ));
+    assert!(close(
+      bessel_ke(50.0 - 1e-9, 7.0),
+      1.627_200_860_647_077e38,
+      1e-12
+    ));
     assert_eq!(bessel_ke(1e17, 1.5), f64::INFINITY);
+    assert_eq!(bessel_ke(1e300, 1.5), f64::INFINITY);
+    assert_eq!(bessel_ke(1e18, 1e18), f64::INFINITY);
+    assert_eq!(bessel_k(1e18, 1e18), 0.0);
+  }
+
+  /// mpmath `ln(e^x K_ν(x))` where `K` overflows: Debye's form above order 50, the logarithmic recurrence below it, the
+  /// small-argument forms below `1e-307`; elsewhere the logarithm of [`bessel_ke`].
+  #[test]
+  fn ln_bessel_ke_is_finite_where_k_overflows() {
+    for (nu, x, want) in [
+      (60.0, 1e-3, 639.895_829_249_177_2),
+      (60.0, 1.0, 226.425_275_381_116_45),
+      (60.0, 50.0, 30.902_637_246_772_64),
+      (172.0, 1e-3, 2_018.377_801_661_506_3),
+      (172.0, 1.0, 831.241_431_696_023),
+      (172.0, 50.0, 203.758_167_641_667_34),
+      (1000.0, 1e-3, 13_505.430_735_570_453),
+      (1000.0, 1.0, 6_598.674_206_338_348),
+      (1000.0, 50.0, 2_735.026_021_466_822_4),
+      (30.0, 1e-20, 1_472.909_362_999_833_8),
+      (10.0, 1e-35, 824.944_934_653_037),
+      (2.0, 1e-200, 921.727_184_378_178_2),
+      (50.0, 3e-307, 35_468.280_518_818_98),
+      (0.5, 5e-324, 372.445_827_313_335_37),
+      (2.5, 1e-310, 1_785.827_850_711_698_1),
+      (0.0, 1e-310, 6.570_767_143_789_475_5),
+    ] {
+      let got = ln_bessel_ke(nu, x);
+      assert!(close(got, want, 1e-12), "ln_bessel_ke({nu}, {x}) = {got}");
+    }
+    for (nu, x) in [(0.5, 2.0), (12.0, 0.7), (7.5, 25.0)] {
+      assert_eq!(ln_bessel_ke(nu, x), bessel_ke(nu, x).ln());
+    }
+    assert!(ln_bessel_ke(f64::NAN, 1.0).is_nan() && ln_bessel_ke(1.0, 0.0).is_nan());
+    assert_eq!(ln_bessel_ke(3.0, f64::INFINITY), f64::NEG_INFINITY);
   }
 }

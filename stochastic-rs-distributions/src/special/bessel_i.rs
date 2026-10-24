@@ -127,8 +127,8 @@ pub fn ln_bessel_ie(nu: f64, x: f64) -> f64 {
     return evaluate(nu, x, true).ln();
   }
   if nu > UNIFORM_MIN_ORDER {
-    let (_, eta_minus_z, prefactor) = uniform(nu, x);
-    return eta_minus_z + prefactor.ln();
+    let d = debye(nu, x);
+    return d.eta_minus_z + (d.prefactor * debye_sum(d.p, nu, false)).ln();
   }
   if x < SERIES_MAX_X {
     let g = gamma_succ(nu);
@@ -204,8 +204,9 @@ fn gamma_succ(nu: f64) -> f64 {
 /// $I_\nu(x)$ or $e^{-x} I_\nu(x)$ for `nu ≥ 0`, with `x ≥ 2` unless `nu > 50`.
 fn positive_order(nu: f64, x: f64, scaled: bool) -> f64 {
   if nu > UNIFORM_MIN_ORDER {
-    let (eta, eta_minus_z, prefactor) = uniform(nu, x);
-    return exp_times(if scaled { eta_minus_z } else { eta }, prefactor);
+    let d = debye(nu, x);
+    let m = d.prefactor * debye_sum(d.p, nu, false);
+    return exp_times(if scaled { d.eta_minus_z } else { d.eta }, m);
   }
   let ie = if x >= HANKEL_MIN_X.max(0.5 * nu * nu) {
     hankel(nu, x)
@@ -222,8 +223,16 @@ fn exp_times(a: f64, m: f64) -> f64 {
   half * (m * half)
 }
 
-/// DLMF 10.41.3 at `z = x / ν`: `(ν η, ν (η − z), (p / 2πν)^{1/2} Σ U_k(p) / ν^k)`.
-fn uniform(nu: f64, x: f64) -> (f64, f64, f64) {
+/// The pieces of Debye's uniform expansion at `z = x/ν` (DLMF 10.41.3): `νη`, `ν(η − z)`, `p = (1 + z²)^{−1/2}` and
+/// `(p/2πν)^{1/2}`; `I` and `K` differ in the sign pattern of the `U_k` sum and a factor `π`.
+pub(super) struct Debye {
+  pub eta: f64,
+  pub eta_minus_z: f64,
+  pub p: f64,
+  pub prefactor: f64,
+}
+
+pub(super) fn debye(nu: f64, x: f64) -> Debye {
   let z = x / nu;
   let root = z.hypot(1.0);
   let p = 1.0 / root;
@@ -239,18 +248,25 @@ fn uniform(nu: f64, x: f64) -> (f64, f64, f64) {
   } else {
     (1.0 / z).asinh()
   };
+  Debye {
+    eta: nu * (root - tail),
+    eta_minus_z: nu * (1.0 / (root + z) - tail),
+    p,
+    prefactor: (p / (TAU * nu)).sqrt(),
+  }
+}
+
+/// `Σ_k (±1)^k U_k(p)/ν^k` over the ten tabulated polynomials, alternating for `K` (DLMF 10.41.4).
+pub(super) fn debye_sum(p: f64, nu: f64, alternating: bool) -> f64 {
   let p2 = p * p;
+  let ratio = if alternating { -p / nu } else { p / nu };
   let mut sum = 1.0;
   let mut scale = 1.0;
   for coefficients in DEBYE {
-    scale *= p / nu;
+    scale *= ratio;
     sum += scale * coefficients.iter().rev().fold(0.0, |acc, &c| acc * p2 + c);
   }
-  (
-    nu * (root - tail),
-    nu * (1.0 / (root + z) - tail),
-    (p / (TAU * nu)).sqrt() * sum,
-  )
+  sum
 }
 
 /// DLMF 10.25.2 divided by its leading term $(x/2)^\nu / \Gamma(\nu + 1)$.
