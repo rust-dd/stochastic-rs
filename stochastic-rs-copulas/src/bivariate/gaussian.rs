@@ -60,7 +60,7 @@ impl GaussianCopula {
     Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
-  /// `∂_v C = Φ((x − ρy)/√(1 − ρ²))`, `x − ρy` from the exact gap as `(x − y) + (1 − ρ)y` where it cancels (and
+  /// `∂_v C = Φ((x − ρy)/√(1 − ρ²))`, past the rounding bound below `x − ρy = (x − y) + (1 − ρ)y` from the exact gap (and
   /// `(x + y) − (1 + ρ)y` at `ρ < 0`); at `v ∈ {0, 1}` the limit law, a point mass at 0 or 1 by the sign of `ρ`.
   pub(crate) fn h(rho: f64) -> impl Fn(f64, f64) -> f64 {
     let s = ((1.0 - rho) * (1.0 + rho)).sqrt();
@@ -80,7 +80,7 @@ impl GaussianCopula {
       let shifted = if rho > 0.0 {
         Self::difference(u, v, x, y) + (1.0 - rho) * y
       } else {
-        Self::sum(u, v, x, y, 0.0) - (1.0 + rho) * y
+        Self::sum(u, v, x, y, f64::INFINITY) - (1.0 + rho) * y
       };
       norm_cdf(shifted / s)
     }
@@ -143,29 +143,47 @@ impl GaussianCopula {
     }
   }
 
-  /// `x − y`, from the exact gap `u − v` below `1/max(1, |x|, |y|)`.
+  /// `x − y` by `quantile_gap` from the exact gap, anchored at the level farther from 1/2, wherever the gap's rounding
+  /// over `φ` at the nearer level stays below the quantiles' own `ε(|x| + |y|)`; the plain difference elsewhere.
   fn difference(u: f64, v: f64, x: f64, y: f64) -> f64 {
     let plain = x - y;
-    if plain.abs() < 1.0 / x.abs().max(y.abs()).max(1.0) {
-      quantile_gap(x, u, u - v, plain)
+    let (anchor, level, partner, gap, sign) = if x.abs() >= y.abs() {
+      (x, u, y, u - v, 1.0)
+    } else {
+      (y, v, x, v - u, -1.0)
+    };
+    let conditioned = gap.abs().ln()
+      < (x.abs() + y.abs()).ln() - 0.5 * partner * partner - 0.5 * std::f64::consts::TAU.ln();
+    if conditioned {
+      sign * quantile_gap(anchor, level, gap, sign * plain)
     } else {
       plain
     }
   }
 
   /// `ln c = −|ρ|d²/(2(1 − ρ)(1 + ρ)) + |ρ|(x² + y²)/(2(1 + |ρ|)) − ln √((1 − ρ)(1 + ρ))`, `d = x ∓ y` with the sign of
-  /// `ρ`: the quadratic form in two same-signed terms, so `ρ` near `±1` cancels only in the inputs.
+  /// `ρ`, within `1e-12·max(1, |ln c|)`: `d` from the exact gap wherever its plain rounding would reach past `150ε` of that.
   pub(crate) fn ln_density(rho: f64, u: f64, v: f64) -> f64 {
     let (x, y) = (normal_quantile(u), normal_quantile(v));
     let one_minus_rho2 = (1.0 - rho) * (1.0 + rho);
     let r = rho.abs();
-    let d = if rho >= 0.0 {
+    let ln_c = |d: f64| {
+      -r * d * d / (2.0 * one_minus_rho2) + r * (x * x + y * y) / (2.0 * (1.0 + r))
+        - 0.5 * one_minus_rho2.ln()
+    };
+    let plain = if rho >= 0.0 { x - y } else { x + y };
+    let value = ln_c(plain);
+    // `d` rounds by `ε(|x| + |y|)`, which `|ρ||d|/(1 − ρ²)` carries into `ln c`.
+    if !value.is_finite()
+      || r * plain.abs() * (x.abs() + y.abs()) <= 150.0 * one_minus_rho2 * value.abs().max(1.0)
+    {
+      return value;
+    }
+    ln_c(if rho >= 0.0 {
       Self::difference(u, v, x, y)
     } else {
-      Self::sum(u, v, x, y, 0.0)
-    };
-    -r * d * d / (2.0 * one_minus_rho2) + r * (x * x + y * y) / (2.0 * (1.0 + r))
-      - 0.5 * one_minus_rho2.ln()
+      Self::sum(u, v, x, y, f64::INFINITY)
+    })
   }
 }
 

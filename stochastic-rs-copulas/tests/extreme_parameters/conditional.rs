@@ -78,6 +78,35 @@ fn h_and_its_inverse_match_the_mpmath_table() {
   );
 }
 
+/// `<ρ> <u> <v> ; <h> <q> <ln c>` past the Gaussian h's rounding switch, where `x ∓ y` needs the exact gap: mpmath at
+/// 80 digits from the exact binary inputs, `q` reading `u` as a level.
+const GAUSSIAN_GAP: &str = include_str!("../fixtures/gaussian_gap_cells.txt");
+
+#[test]
+fn the_gaussian_h_its_inverse_and_density_hold_past_the_rounding_switch() {
+  for line in GAUSSIAN_GAP.lines() {
+    let (head, values) = line.split_once(" ; ").expect("a reference row");
+    let p: Vec<f64> = head.split(' ').map(|x| x.parse().unwrap()).collect();
+    let want: Vec<f64> = values.split(' ').map(|x| x.parse().unwrap()).collect();
+    let copula = GaussianCopula::new(p[0]);
+    let h = copula
+      .partial_derivative(array![[p[1], p[2]]].view())
+      .unwrap()[0];
+    let q = copula
+      .percent_point(array![p[1]].view(), array![p[2]].view())
+      .unwrap()[0];
+    let ln_c = copula.log_pdf(array![[p[1], p[2]]].view()).unwrap()[0];
+    assert!(
+      agrees(h, want[0]) && agrees(q, want[1]),
+      "{line}: h {h:e}, q {q:e}"
+    );
+    assert!(
+      (ln_c - want[2]).abs() <= 1e-12 * want[2].abs().max(1.0),
+      "{line}: ln c {ln_c:e}"
+    );
+  }
+}
+
 /// The t copula from `ν ≈ 1e7` up to its normal limit, where `SimdStudentT`'s `beta_i` loses accuracy: finite and in
 /// `[0, 1]`; every other family's `h` and `q` have tabulated rows.
 #[test]
