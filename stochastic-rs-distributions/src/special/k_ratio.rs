@@ -8,6 +8,7 @@ use super::ln_bessel_ke;
 
 /// `e^c·base^e·K_{ν₁}(x₁)/K_{ν₂}(x₂)` with `dx = x₂ − x₁` given free of cancellation: the scaled `K`s' ratio where the
 /// power factor, the product and the result stay normal, otherwise the logarithms' difference with its no-digit estimate.
+#[inline]
 pub(crate) fn k_ratio(
   (c, base, e): (f64, f64, f64),
   (nu1, x1): (f64, f64),
