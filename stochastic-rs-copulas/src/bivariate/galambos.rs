@@ -127,10 +127,13 @@ impl Galambos {
     small * (-ell / theta).exp() + ln_s + ln_add_exp((a1_over_s * a2).ln(), ln_tail)
   }
 
-  /// Pickands dependence function $A(t) = 1 - (t^{-\theta} + (1-t)^{-\theta})^{-1/\theta}$, by `ln_pickands` at
-  /// the nearer end `s = min(t, 1 − t)`, so no power overflows up to `θ = f64::MAX`.
+  /// Pickands dependence function $A(t) = 1 - (t^{-\theta} + (1-t)^{-\theta})^{-1/\theta}$, NaN outside `[0, 1]`, by
+  /// `ln_pickands` at the nearer end `s = min(t, 1 − t)`, so no power overflows up to `θ = f64::MAX`.
   pub fn pickands(theta: f64, t: f64) -> f64 {
-    if t <= 0.0 || t >= 1.0 {
+    if !(0.0..=1.0).contains(&t) {
+      return f64::NAN;
+    }
+    if t == 0.0 || t == 1.0 {
       return 1.0;
     }
     let s = t.min(1.0 - t);
@@ -391,6 +394,25 @@ mod tests {
         "θ={theta}: A(1/2)={a}, expected {expected}"
       );
     }
+  }
+
+  /// `A` is 1 at both ends and NaN outside `[0, 1]` or at a NaN `t`.
+  #[test]
+  fn galambos_pickands_answers_nan_off_the_unit_interval() {
+    for t in [
+      -0.5,
+      -1e-300,
+      1.0 + f64::EPSILON,
+      1.5,
+      f64::NAN,
+      f64::INFINITY,
+    ] {
+      assert!(Galambos::pickands(2.0, t).is_nan(), "A({t})");
+    }
+    assert_eq!(
+      (Galambos::pickands(2.0, 0.0), Galambos::pickands(2.0, 1.0)),
+      (1.0, 1.0)
+    );
   }
 
   /// 50-digit values of `A(t)`, which the plain form loses past `θ ≈ 1023`, and the limit `max(t, 1 − t)` at the top.

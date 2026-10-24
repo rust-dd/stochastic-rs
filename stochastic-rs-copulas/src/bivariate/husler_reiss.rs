@@ -120,10 +120,13 @@ impl HuslerReiss {
       )
   }
 
-  /// Pickands dependence function `A(t) = (1 − t)Φ(α) + tΦ(β)` by `pickands_at` at the logit of `t`, an infinite `λℓ/2`
-  /// meeting Φ's 0 or 1, so it holds up to `λ = f64::MAX`.
+  /// Pickands dependence function `A(t) = (1 − t)Φ(α) + tΦ(β)`, NaN outside `[0, 1]`, by `pickands_at` at the logit of
+  /// `t`, an infinite `λℓ/2` meeting Φ's 0 or 1, so it holds up to `λ = f64::MAX`.
   pub fn pickands(lambda: f64, t: f64) -> f64 {
-    if t <= 0.0 || t >= 1.0 {
+    if !(0.0..=1.0).contains(&t) {
+      return f64::NAN;
+    }
+    if t == 0.0 || t == 1.0 {
       return 1.0;
     }
     Self::pickands_at(lambda, (t / (1.0 - t)).ln()).4
@@ -391,6 +394,28 @@ mod tests {
         "λ={lambda}: λ_U_pickands={lambda_u_pickands}, expected {expected}"
       );
     }
+  }
+
+  /// `A` is 1 at both ends and NaN outside `[0, 1]` or at a NaN `t`.
+  #[test]
+  fn hr_pickands_answers_nan_off_the_unit_interval() {
+    for t in [
+      -0.5,
+      -1e-300,
+      1.0 + f64::EPSILON,
+      1.5,
+      f64::NAN,
+      f64::INFINITY,
+    ] {
+      assert!(HuslerReiss::pickands(2.0, t).is_nan(), "A({t})");
+    }
+    assert_eq!(
+      (
+        HuslerReiss::pickands(2.0, 0.0),
+        HuslerReiss::pickands(2.0, 1.0)
+      ),
+      (1.0, 1.0)
+    );
   }
 
   /// 50-digit values of `A(t)`, and the limits `max(t, 1 − t)` and 1 at the ends of the range.
