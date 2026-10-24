@@ -286,8 +286,7 @@ impl MultivariateExt for NestedArchimedean {
     MultivariateFamily::NestedArchimedean
   }
 
-  /// Hofert & Mächler (2011), Algorithm 3.1: a Clayton child costs O(V₀) ≈ O(1/θ_root) proposals;
-  /// a draw can round to 0 or 1, where `pdf` is NaN.
+  /// Hofert & Mächler (2011), Algorithm 3.1: a Clayton child costs O(V₀) ≈ O(1/θ_root) proposals.
   fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
     Ok(self.sample_with(self.fitted_root()?, n, &mut seed.rng()))
   }

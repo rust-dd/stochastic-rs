@@ -9,6 +9,7 @@ use stochastic_rs_distributions::gamma::SimdGamma;
 use super::Generator;
 use super::NacNode;
 use super::NestedArchimedean;
+use crate::bivariate::conditional::inside;
 use crate::bivariate::conditional::softplus;
 
 /// A node's frailty `V` as `ln V` and `w = ln V / θ`: the first is finite at small `θ`, where `V` is large, the second at
@@ -199,6 +200,7 @@ impl NestedArchimedean {
       self.sample_node(rng, root, None, &mut row);
       out.row_mut(r).assign(&row);
     }
+    out.mapv_inplace(inside);
     out
   }
 

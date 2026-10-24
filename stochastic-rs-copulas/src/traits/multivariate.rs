@@ -12,8 +12,8 @@ pub trait MultivariateExt {
   /// Which family this copula is.
   fn family(&self) -> MultivariateFamily;
 
-  /// `n` rows drawn from `seed`; a fresh `Deterministic` replays them, a shared one advances.
-  /// Generic over the seed source, so not callable on a `dyn MultivariateExt`.
+  /// `n` rows from `seed`, each coordinate in `(0, 1)` (one rounded to 0 or 1 moves one ulp inside): a fresh
+  /// `Deterministic` replays them, a shared one advances; generic over the seed, so not on a `dyn MultivariateExt`.
   fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<ndarray::Array2<f64>, CopulaError>
   where
     Self: Sized;

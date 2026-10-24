@@ -268,6 +268,18 @@ pub(crate) fn check_lengths(y: ArrayView1<f64>, v: ArrayView1<f64>) -> Result<()
   })
 }
 
+/// `u` with an exact 0 or 1 moved one ulp inside `(0, 1)`: the one adjustment a sampler or a vine's h makes to a value
+/// it computed, so a draw or a conditioning value never lands on an edge by rounding.
+pub(crate) fn inside(u: f64) -> f64 {
+  if u == 0.0 {
+    0.0_f64.next_up()
+  } else if u == 1.0 {
+    1.0_f64.next_down()
+  } else {
+    u
+  }
+}
+
 /// The quantile rule: `u` held in `[0, 1]` against rounding, NaN where it is not finite.
 pub(crate) fn confine(u: f64) -> f64 {
   // `u·0` is ±0 for a finite `u` and NaN otherwise, so the rule is one select, no branch per pair.

@@ -18,8 +18,8 @@ use super::rosenblatt::Rosenblatt;
 use super::vine_order::VineOrder;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::check_unit;
+use crate::bivariate::conditional::inside;
 use crate::error::CopulaError;
-use crate::multivariate::inside;
 use crate::multivariate::on_open_cube;
 use crate::traits::MultivariateExt;
 

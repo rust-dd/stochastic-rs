@@ -20,6 +20,7 @@ use crate::bivariate::conditional::check_lengths;
 use crate::bivariate::conditional::check_open;
 use crate::bivariate::conditional::check_pairs;
 use crate::bivariate::conditional::check_unit;
+use crate::bivariate::conditional::inside;
 use crate::correlation::kendall_tau_b;
 use crate::error::CopulaError;
 use crate::optim::zero;
@@ -108,8 +109,8 @@ pub trait BivariateExt {
     None
   }
 
-  /// `n` pairs from the conditional-inversion sampler, drawn from `seed`; a fresh `Deterministic` replays them, a shared one advances.
-  /// Generic over the seed source, so not callable on a `dyn BivariateExt`.
+  /// `n` pairs by conditional inversion from `seed`, each coordinate in `(0, 1)` (one rounded to 0 or 1 moves one ulp
+  /// inside): a fresh `Deterministic` replays them, a shared one advances; generic, so not on a `dyn BivariateExt`.
   fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<ndarray::Array2<f64>, CopulaError>
   where
     Self: Sized,
@@ -136,7 +137,7 @@ pub trait BivariateExt {
       None => self.percent_point(c.view(), v.view())?,
     };
 
-    Ok(stack![Axis(1), u, v])
+    Ok(stack![Axis(1), u.mapv(inside), v.mapv(inside)])
   }
 
   /// Kendall's τ-b of a two-column sample of pseudo-observations, inverted through `theta_from_tau`; nothing is stored

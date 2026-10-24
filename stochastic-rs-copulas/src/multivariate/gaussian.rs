@@ -23,6 +23,7 @@ use super::genz::prioritize;
 use super::qmc::sobol_points;
 use crate::bivariate::conditional::check_open;
 use crate::bivariate::conditional::check_unit;
+use crate::bivariate::conditional::inside;
 use crate::bivariate::conditional::normal_quantile;
 use crate::bivariate::gaussian::gaussian_copula_cdf;
 use crate::error::CopulaError;
@@ -128,7 +129,7 @@ impl MultivariateExt for GaussianMultivariate {
     let mut u = z.clone();
     for mut row in u.axis_iter_mut(Axis(0)) {
       for val in row.iter_mut() {
-        *val = norm_cdf(*val);
+        *val = inside(norm_cdf(*val));
       }
     }
     Ok(u)

@@ -14,12 +14,12 @@ use crate::bivariate::bb1::Bb1;
 use crate::bivariate::bb7::Bb7;
 use crate::bivariate::clayton::Clayton;
 use crate::bivariate::conditional::confine;
+use crate::bivariate::conditional::inside;
 use crate::bivariate::conditional::numerical_quantile;
 use crate::bivariate::frank::Frank;
 use crate::bivariate::gaussian::GaussianCopula;
 use crate::bivariate::t_copula::TCopula;
 use crate::error::CopulaError;
-use crate::multivariate::inside;
 
 /// Bivariate pair-copula family of the C-, D- and R-vines, held by value in their `Vec<Vec<PairCopula>>` trees; a vine
 /// constructor admits the parameters the family's bivariate `try_new` does. Pairs must be exchangeable.

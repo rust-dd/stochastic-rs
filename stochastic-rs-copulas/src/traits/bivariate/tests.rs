@@ -187,6 +187,70 @@ impl BivariateExt for HalvesTheLevel {
   }
 }
 
+/// An inverse that answers only the edges, 0 below level 1/2 and 1 from it, so every draw it makes is a rounding case.
+struct AnswersTheEdges;
+
+impl BivariateExt for AnswersTheEdges {
+  fn family(&self) -> BivariateFamily {
+    BivariateFamily::MarshallOlkin
+  }
+
+  fn theta(&self) -> Option<f64> {
+    None
+  }
+
+  fn theta_bounds(&self) -> (f64, f64) {
+    (0.0, 1.0)
+  }
+
+  fn invalid_thetas(&self) -> Vec<f64> {
+    vec![]
+  }
+
+  fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
+  }
+
+  fn tau_from_theta(&self, _theta: f64) -> f64 {
+    0.0
+  }
+
+  fn theta_from_tau(&self, _tau: f64) -> Result<f64, CopulaError> {
+    Ok(0.0)
+  }
+
+  fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
+    Ok(TailDependence {
+      lower: 0.0,
+      upper: 0.0,
+    })
+  }
+
+  fn check_fit(&self) -> Result<(), CopulaError> {
+    Ok(())
+  }
+
+  fn pdf(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(Array1::ones(x.nrows()))
+  }
+
+  fn cdf(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(&x.column(0) * &x.column(1))
+  }
+
+  fn partial_derivative(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(x.column(0).to_owned())
+  }
+
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    _v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    Ok(y.mapv(|y| if y < 0.5 { 0.0 } else { 1.0 }))
+  }
+}
+
 /// Overrides `percent_point` with a call to the hidden hook it leaves at its default, then the halving map: the hook's
 /// `None` ends the call, so neither the sampler nor `percent_point` can recurse.
 struct CallsTheHook;
@@ -417,4 +481,18 @@ fn an_override_of_percent_point_that_calls_the_hook_cannot_recurse() {
   let calls = CallsTheHook.sample(64, &Deterministic::new(7)).unwrap();
   let halves = HalvesTheLevel.sample(64, &Deterministic::new(7)).unwrap();
   assert_eq!(calls, halves);
+}
+
+/// Every draw lies in the open square: an inverse's exact 0 or 1 moves one ulp inside.
+#[test]
+fn the_sampler_moves_an_edge_draw_one_ulp_inside() {
+  let draws = AnswersTheEdges.sample(64, &Deterministic::new(7)).unwrap();
+  assert!(draws.iter().all(|&x| 0.0 < x && x < 1.0), "{draws}");
+  assert!(
+    draws
+      .column(0)
+      .iter()
+      .all(|&u| u == 0.0_f64.next_up() || u == 1.0_f64.next_down()),
+    "{draws}"
+  );
 }

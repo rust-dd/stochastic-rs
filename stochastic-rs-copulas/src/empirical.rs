@@ -21,6 +21,7 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::bivariate::conditional::check_unit;
+use crate::bivariate::conditional::inside;
 use crate::error::CopulaError;
 use crate::gof::pseudo_observations;
 
@@ -93,8 +94,8 @@ impl EmpiricalCopula2D {
     let mut out = Array2::<f64>::zeros((n, 2));
     for i in 0..n {
       let idx = ((ud.sample() * n_rows as f64) as usize).min(n_rows - 1);
-      out[[i, 0]] = self.pseudo[[idx, 0]];
-      out[[i, 1]] = self.pseudo[[idx, 1]];
+      out[[i, 0]] = inside(self.pseudo[[idx, 0]]);
+      out[[i, 1]] = inside(self.pseudo[[idx, 1]]);
     }
     out
   }
