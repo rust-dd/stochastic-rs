@@ -13,6 +13,8 @@ use stochastic_rs::distributions::cauchy::SimdCauchy;
 use stochastic_rs::distributions::chi_square::SimdChiSquared;
 use stochastic_rs::distributions::exp::SimdExp;
 use stochastic_rs::distributions::gamma::SimdGamma;
+use stochastic_rs::distributions::generalized_hyperbolic::SimdGeneralizedHyperbolic;
+use stochastic_rs::distributions::generalized_inverse_gauss::SimdGig;
 use stochastic_rs::distributions::johnson_su::SimdJohnsonSu;
 use stochastic_rs::distributions::lognormal::SimdLogNormal;
 use stochastic_rs::distributions::non_central_chi_squared::SimdNonCentralChiSquared;
@@ -21,6 +23,7 @@ use stochastic_rs::distributions::pareto::SimdPareto;
 use stochastic_rs::distributions::poisson::SimdPoisson;
 use stochastic_rs::distributions::studentt::SimdStudentT;
 use stochastic_rs::distributions::uniform::SimdUniform;
+use stochastic_rs::distributions::variance_gamma::SimdVarianceGamma;
 use stochastic_rs::distributions::weibull::SimdWeibull;
 use stochastic_rs::simd_rng::SimdRng;
 use stochastic_rs::simd_rng::Unseeded;
@@ -241,6 +244,15 @@ fn bench_distribution_ext(c: &mut Criterion) {
   let johnson = SimdJohnsonSu::<f64>::new(0.5, 1.5, 0.0, 1.0);
   let gamma = SimdGamma::<f64>::new(2.0, 1.5);
   let poisson = SimdPoisson::<u32>::new(4.0);
+  let gh = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2);
+  let gig = SimdGig::<f64>::new(1.5, 2.0, 0.5);
+  let vg = SimdVarianceGamma::<f64>::new(0.2, 0.3, 0.1, 0.0);
+  let gh_ts = (0..4096)
+    .map(|i| -2.4 + 3.8 * i as f64 / 4095.0)
+    .collect::<Vec<_>>();
+  let gig_ts = (0..4096)
+    .map(|i| -2.0 + 2.2 * i as f64 / 4095.0)
+    .collect::<Vec<_>>();
   group.bench_function("pdf/normal", |b| {
     b.iter(|| black_box(xs.iter().map(|&x| normal.pdf(x).unwrap()).sum::<f64>()))
   });
@@ -261,6 +273,35 @@ fn bench_distribution_ext(c: &mut Criterion) {
   });
   group.bench_function("pdf/poisson", |b| {
     b.iter(|| black_box(ks.iter().map(|&k| poisson.pdf(k).unwrap()).sum::<f64>()))
+  });
+  group.bench_function("pdf/generalized_hyperbolic", |b| {
+    b.iter(|| black_box(xs.iter().map(|&x| gh.pdf(x).unwrap()).sum::<f64>()))
+  });
+  group.bench_function("pdf/gig", |b| {
+    b.iter(|| black_box(xs.iter().map(|&x| gig.pdf(x.abs()).unwrap()).sum::<f64>()))
+  });
+  group.bench_function("pdf/variance_gamma", |b| {
+    b.iter(|| black_box(xs.iter().map(|&x| vg.pdf(x).unwrap()).sum::<f64>()))
+  });
+  group.bench_function("mgf/generalized_hyperbolic", |b| {
+    b.iter(|| {
+      black_box(
+        gh_ts
+          .iter()
+          .map(|&t| gh.moment_generating_function(t).unwrap())
+          .sum::<f64>(),
+      )
+    })
+  });
+  group.bench_function("mgf/gig", |b| {
+    b.iter(|| {
+      black_box(
+        gig_ts
+          .iter()
+          .map(|&t| gig.moment_generating_function(t).unwrap())
+          .sum::<f64>(),
+      )
+    })
   });
   group.finish();
 }
