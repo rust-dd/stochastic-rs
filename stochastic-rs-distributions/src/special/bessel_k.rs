@@ -128,8 +128,7 @@ pub fn ln_bessel_ke(nu: f64, x: f64) -> f64 {
     return tiny_argument(nu, x, true);
   }
   if nu > UNIFORM_MIN_ORDER {
-    let (m, d) = debye_k_terms(nu, x);
-    return m.ln() - d.eta_minus_z;
+    return ln_debye_k(nu, x);
   }
   let ke = ke_pair(nu, x).0;
   if ke.is_finite() {
@@ -180,6 +179,13 @@ fn debye_k(nu: f64, x: f64, scaled: bool) -> f64 {
   exp_times(if scaled { -d.eta_minus_z } else { -d.eta }, m)
 }
 
+/// The logarithm of [`debye_k`]'s scaled value, out of line like it.
+#[inline(never)]
+fn ln_debye_k(nu: f64, x: f64) -> f64 {
+  let (m, d) = debye_k_terms(nu, x);
+  m.ln() - d.eta_minus_z
+}
+
 /// Debye's exponents and the factor before `e^{−νη}`, its root split so that `2πν` cannot overflow at a finite order.
 fn debye_k_terms(nu: f64, x: f64) -> (f64, Debye) {
   let d = debye(nu, x);
@@ -191,6 +197,8 @@ fn debye_k_terms(nu: f64, x: f64) -> (f64, Debye) {
 
 /// `ln(e^x K_ν(x))` for `ν ≤ 50` below `x = 2`, where alone `K` overflows: the recurrence on `g = (x/2)K_{n+1}/K_n` keeps
 /// `g` near `n`, and its logarithms are summed apart from the large terms they would otherwise round against.
+#[cold]
+#[inline(never)]
 fn ln_recurrence(nu: f64, x: f64) -> f64 {
   let nl = (nu + 0.5).floor() as usize;
   let mu = nu - nl as f64;

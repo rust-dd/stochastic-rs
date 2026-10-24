@@ -48,6 +48,7 @@ use super::SimdFloatExt;
 use crate::seeded::StreamState;
 use crate::special::Estimate;
 use crate::special::bessel_ke;
+use crate::special::exp_of_log_sum;
 use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
 use crate::traits::distribution::Sealed;
@@ -396,7 +397,10 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
     let (t_pow, k0) = (0.5 * lambda * (psi / chi).ln(), ln_bessel_ke(lambda, b));
     let log_norm = t_pow - std::f64::consts::LN_2 - (k0 - b);
     let (t_x, t_exp) = ((lambda - 1.0) * x.ln(), 0.5 * (chi / x + psi * x));
-    Some(Estimate::from_log_sum(log_norm + t_x - t_exp, &[t_pow, k0, b, t_x, t_exp]).or_nan())
+    Some(exp_of_log_sum(
+      log_norm + t_x - t_exp,
+      &[t_pow, k0, b, t_x, t_exp],
+    ))
   }
 
   fn mean(&self) -> Option<f64> {
@@ -440,18 +444,18 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
       // s^{-λ} K_λ(√χ s) → ½ Γ(−λ) (2/√χ)^{−λ} as s → 0, in log space past the overflow of Γ and K and K's underflow.
       let k0 = ln_bessel_ke(lambda, b);
       let (t_pow, t_gamma) = (lambda * (0.5 * b).ln(), ln_gamma(-lambda));
-      return Some(
-        Estimate::from_log_sum(
-          t_pow + t_gamma - std::f64::consts::LN_2 - (k0 - b),
-          &[t_pow, t_gamma, k0, b],
-        )
-        .or_nan(),
-      );
+      return Some(exp_of_log_sum(
+        t_pow + t_gamma - std::f64::consts::LN_2 - (k0 - b),
+        &[t_pow, t_gamma, k0, b],
+      ));
     }
     let bt = (chi * shifted).sqrt();
     let t_pow = 0.5 * lambda * (psi / shifted).ln();
     let (kt, k0) = (ln_bessel_ke(lambda, bt), ln_bessel_ke(lambda, b));
-    Some(Estimate::from_log_sum(t_pow + kt - k0 + (b - bt), &[t_pow, kt, k0, b - bt]).or_nan())
+    Some(exp_of_log_sum(
+      t_pow + kt - k0 + (b - bt),
+      &[t_pow, kt, k0, b - bt],
+    ))
   }
 }
 

@@ -44,7 +44,7 @@ use super::generalized_inverse_gauss::SimdGig;
 use super::normal::SimdNormal;
 use crate::seeded::Buffered;
 use crate::seeded::StreamState;
-use crate::special::Estimate;
+use crate::special::exp_of_log_sum;
 use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
 use crate::traits::distribution::Sealed;
@@ -272,13 +272,10 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
       t_gamma - 0.5 * (2.0 * std::f64::consts::PI).ln() - t_alpha - t_delta - (k0 - dg);
     let y = alpha * root;
     let (t_root, k1, t_beta) = (order * root.ln(), ln_bessel_ke(order, y), beta * d);
-    Some(
-      Estimate::from_log_sum(
-        log_norm + t_root + k1 - y + t_beta,
-        &[t_gamma, t_alpha, t_delta, k0, dg, t_root, k1, y, t_beta],
-      )
-      .or_nan(),
-    )
+    Some(exp_of_log_sum(
+      log_norm + t_root + k1 - y + t_beta,
+      &[t_gamma, t_alpha, t_delta, k0, dg, t_root, k1, y, t_beta],
+    ))
   }
 
   fn mean(&self) -> Option<f64> {
@@ -326,13 +323,10 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
       // s^{-λ} K_λ(δs) → ½ Γ(−λ) (2/δ)^{−λ} as s → 0, in log space past the overflow of Γ and K and K's underflow.
       let (k0, dg) = (ln_bessel_ke(lambda, delta * gamma), delta * gamma);
       let (t_mu, t_pow, t_gamma) = (mu * t, lambda * (0.5 * dg).ln(), ln_gamma(-lambda));
-      return Some(
-        Estimate::from_log_sum(
-          t_mu + t_pow + t_gamma - std::f64::consts::LN_2 - (k0 - dg),
-          &[t_mu, t_pow, t_gamma, k0, dg],
-        )
-        .or_nan(),
-      );
+      return Some(exp_of_log_sum(
+        t_mu + t_pow + t_gamma - std::f64::consts::LN_2 - (k0 - dg),
+        &[t_mu, t_pow, t_gamma, k0, dg],
+      ));
     }
     let gt = shifted.sqrt();
     let (t_mu, t_pow) = (mu * t, 0.5 * lambda * (gamma * gamma / shifted).ln());
@@ -341,13 +335,10 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
       ln_bessel_ke(lambda, delta * gamma),
       delta * (gamma - gt),
     );
-    Some(
-      Estimate::from_log_sum(
-        t_mu + t_pow + kt - k0 + t_exp,
-        &[t_mu, t_pow, kt, k0, t_exp],
-      )
-      .or_nan(),
-    )
+    Some(exp_of_log_sum(
+      t_mu + t_pow + kt - k0 + t_exp,
+      &[t_mu, t_pow, kt, k0, t_exp],
+    ))
   }
 }
 

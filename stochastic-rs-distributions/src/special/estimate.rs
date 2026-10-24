@@ -14,21 +14,11 @@ pub(crate) struct Estimate {
 }
 
 impl Estimate {
-  /// `value`, whose logarithm sums `terms`: relative error `ε·Σ|terms|`, NaN where that reaches 1 even if `value`
-  /// under- or overflowed; where a term is not finite, IEEE arithmetic decides alone.
+  /// `value`, whose logarithm sums `terms`, with the error [`log_sum_rel`] gives it.
   pub(crate) fn of(value: f64, terms: &[f64]) -> Self {
-    if !terms.iter().all(|t| t.is_finite()) {
-      return Self { value, err: 0.0 };
-    }
-    let rel = f64::EPSILON * terms.iter().map(|t| t.abs()).sum::<f64>();
-    if rel >= 1.0 {
-      return Self {
-        value: f64::NAN,
-        err: f64::NAN,
-      };
-    }
+    let rel = log_sum_rel(terms);
     Self {
-      value,
+      value: if rel.is_nan() { f64::NAN } else { value },
       err: value.abs() * rel,
     }
   }
@@ -58,6 +48,28 @@ impl Estimate {
       value: self.value.powf(p),
       err: p.abs() * self.value.abs().powf(p - 1.0) * self.err,
     }
+  }
+}
+
+/// `e^{sum}` for a sum of the logarithms `terms`, NaN where [`log_sum_rel`] leaves no digit.
+pub(crate) fn exp_of_log_sum(sum: f64, terms: &[f64]) -> f64 {
+  if log_sum_rel(terms).is_nan() {
+    f64::NAN
+  } else {
+    sum.exp()
+  }
+}
+
+/// `ε·Σ|terms|`, the relative error of `e^{Σ terms}`: NaN where it reaches 1, even if the value under- or overflowed, and
+/// 0 where a term is not finite, as IEEE arithmetic then decides.
+fn log_sum_rel(terms: &[f64]) -> f64 {
+  let rel = f64::EPSILON * terms.iter().map(|t| t.abs()).sum::<f64>();
+  if rel < 1.0 {
+    rel
+  } else if terms.iter().all(|t| t.is_finite()) {
+    f64::NAN
+  } else {
+    0.0
   }
 }
 

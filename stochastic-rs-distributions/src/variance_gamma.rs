@@ -37,7 +37,7 @@ use super::gamma::SimdGamma;
 use super::normal::SimdNormal;
 use crate::seeded::Buffered;
 use crate::seeded::StreamState;
-use crate::special::Estimate;
+use crate::special::exp_of_log_sum;
 use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
 use crate::traits::distribution::Sealed;
@@ -258,13 +258,10 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
         (a - 1.0) * std::f64::consts::LN_2,
         ln_gamma(a),
       );
-      return Some(
-        Estimate::from_log_sum(
-          log_norm + t_scale + t_two + t_ga,
-          &[t_sigma, t_nu, t_gamma, t_scale, t_two, t_ga],
-        )
-        .or_nan(),
-      );
+      return Some(exp_of_log_sum(
+        log_norm + t_scale + t_two + t_ga,
+        &[t_sigma, t_nu, t_gamma, t_scale, t_two, t_ga],
+      ));
     }
     let y = d.abs() * root / (sigma * sigma);
     let (t_drift, t_pow, k) = (
@@ -273,13 +270,10 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
       ln_bessel_ke(a, y),
     );
     let log_kernel = t_drift + t_pow + k - y;
-    Some(
-      Estimate::from_log_sum(
-        log_norm + log_kernel,
-        &[t_sigma, t_nu, t_gamma, t_drift, t_pow, k, y],
-      )
-      .or_nan(),
-    )
+    Some(exp_of_log_sum(
+      log_norm + log_kernel,
+      &[t_sigma, t_nu, t_gamma, t_drift, t_pow, k, y],
+    ))
   }
 
   fn mean(&self) -> Option<f64> {
