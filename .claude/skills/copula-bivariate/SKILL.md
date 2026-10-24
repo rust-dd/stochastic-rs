@@ -25,7 +25,7 @@ consolidated under `BivariateExt`.)
 
 ## 1. What you must implement, and what you get free
 
-`BivariateExt` is a wide trait with only **ten** required methods.
+`BivariateExt` is a wide trait with only **eleven** required methods.
 Everything else — sampling, fitting, inversion, `log_pdf` — is
 defaulted on top of them. Required:
 
@@ -40,6 +40,7 @@ fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError>;   // Err outside
 fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError>;
 fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
+fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>; // h(u | v) = ∂_v C
 ```
 
 Two shape facts that catch every first attempt:
@@ -54,41 +55,49 @@ Two shape facts that catch every first attempt:
   which turns a θ rounded onto an excluded value into that τ error, so
   neither `fit` nor a caller storing the inverse can hold an invalid θ.
 
-- **Errors are `CopulaError`** (`crate::error`), never `Box<dyn Error>` or a `String`: a parameter outside its domain is `InvalidParameter { name, value, constraint }` in the crate's assert form, an unfitted copula is `NotFitted`, bad pseudo-observations are `MarginalOutOfRange` / `MarginalNotUniform`.
+- **Errors are `CopulaError`** (`crate::error`), never `Box<dyn Error>` or a `String`: a parameter outside its domain is `InvalidParameter { name, value, constraint }` in the crate's assert form, an unfitted copula is `NotFitted`, a batch input without two columns is `DimensionMismatch`, a pseudo-observation off `[0, 1]` (or NaN) is `MarginalOutOfRange`, a 0 or 1 in a fit or the goodness-of-fit test is `MarginalOnBoundary`, a failed uniformity diagnostic is `MarginalNotUniform`.
 
 Useful defaults you should usually **not** override:
 
 | Method | Default behaviour |
 |---|---|
-| `sample(n, &seed)` | `SimdUniform::new(0, 1).seeded(seed)`, via `sample_with_uniform` |
-| `fit(x)` | two columns, two rows, entries in `[0, 1]` (`DimensionMismatch`, `InsufficientData`, `MarginalOutOfRange` in that order, no uniformity test), Kendall's tau-b via `correlation::kendall_tau_b`, then `theta_from_tau` |
+| `sample(n, &seed)` | `SimdUniform::new(0, 1).seeded(seed)`, via `sample_with_uniform`; every coordinate in `(0, 1)` (an exact 0 or 1 moves one ulp inside) |
+| `fit(x)` | two columns, two rows, entries in `[0, 1]` (`DimensionMismatch`, `InsufficientData`, `MarginalOutOfRange` in that order, no uniformity test), none equal to 0 or 1 (`MarginalOnBoundary`), Kendall's tau-b via `correlation::kendall_tau_b`, then `theta_from_tau` |
 | `tau()` | `tau_from_theta` at the current `theta` |
-| `percent_point(y, v)` | Brent inversion of `partial_derivative_scalar` |
-| `partial_derivative(x)` | central-difference on `cdf` |
-| `generator(t)` | anchored "not Archimedean" error |
+| `percent_point(y, v)` | Brent inversion of `partial_derivative_scalar` (`percent_point_numerical`) |
+| `percent_point_unchecked(y, v)` | hidden hook, `None`: the sampler's own uniforms are already in `[0, 1]`, so it takes the family's inverse where the hook answers `Some`, else `percent_point` |
+| `generator(t)` | `MarginalOutOfRange` off `[0, 1]` or NaN, then the hidden `generator_unchecked` hook, whose default `None` is the "not Archimedean" `Unsupported` |
 | `log_pdf` | `pdf(x)?.ln()` |
 | `validate_theta` / `check_theta` / `check_fit` | validation, used by the above |
 | `check_marginal(u)` | the Kolmogorov–Smirnov uniformity diagnostic (bound `1.627/√n`); `fit` does not run it |
 
-Override `percent_point` and `partial_derivative` only when you have a
-closed form; they are independent choices. Twelve families override
-`percent_point` (`amh`, `bb1`, `bb7`, `clayton`, `fgm`, `frank`,
-`gaussian`, `gumbel`, `independence`, `marshall_olkin`, `plackett`,
-`t_copula`); `galambos`, `husler_reiss` and `joe` override only
-`partial_derivative`. Map an override through
-`bivariate::conditional::conditional_quantiles` /
-`conditional_cdf`: they own the one length check, NaN for a `y` or `v`
-outside `[0, 1]` and the `[0, 1]` codomain, whose clamp absorbs rounding
-only: a non-finite inverse reads as NaN, so a closed form must stay finite
-on the whole closed square. Name it `Family::inverse(params)` and add it to
-the excursion sweep in `bivariate/conditional.rs`. Closed forms are both faster and more accurate than the
-Brent / finite-difference defaults, but a family with neither is
-perfectly valid — the defaults compose. Override `generator` if and
-only if the family is Archimedean.
+Override `percent_point_unchecked` and `percent_point` only when you have an
+inverse; they are a pair. Answer `percent_point_unchecked` with
+`Some(self.unchecked_inverse(y, v))` and override `percent_point` with
+`checked_percent_point(self, y, v, Self::unchecked_inverse)`, which checks the
+parameters, the lengths and `[0, 1]` once (`MarginalOutOfRange`). The defaults
+are `None` and `percent_point_numerical`, so an implementation outside the crate
+may override `percent_point` alone, or call the hook from it. Every in-crate
+family has the pair: a closed form mapped through
+`bivariate::conditional::conditional_quantiles` (`amh`, `clayton`, `fgm`,
+`frank`, `gaussian`, `independence`, `marshall_olkin`, `plackett`, `t_copula`),
+or a Brent inverse of `ln h` through `numerical_quantiles` (`bb1`, `bb7`,
+`galambos`, `gumbel`, `husler_reiss`, `joe`; the last four answer the identity at
+their independence value). Both map checked inputs into the `[0, 1]` codomain,
+whose clamp absorbs rounding only: a non-finite inverse reads as NaN, so a
+closed form must stay finite on the whole closed square. Name it
+`Family::inverse(params)` and add it to the excursion sweep in
+`bivariate/conditional.rs`. The other batch methods go through `conditional_cdf`
+(`partial_derivative`, required: the family's closed form), `copula_cdf` (`cdf`,
+exact on the edges), `copula_pdf` and `on_open_square` (`pdf` and `log_pdf`, NaN
+on the boundary); each answers `DimensionMismatch` for a column count other than
+2, then `MarginalOutOfRange` off `[0, 1]`. Answer `generator_unchecked` with
+`Some` if and only if the family is Archimedean.
 
 `tail_dependence` is **required, not defaulted, on purpose**: a silent
 `(0.0, 0.0)` fallback would be a correctness bug for Clayton, Gumbel,
-Joe, Galambos, Hüsler-Reiss, Marshall-Olkin and Student-t. It returns
+Joe, Galambos, Hüsler-Reiss, Marshall-Olkin, Student-t, BB1, BB7 and Amh (at
+`θ = 1`, where it is Clayton(1)). It returns
 `Result` and opens with the gate `pdf` and `cdf` run, `self.check_fit()?`
 (`check_theta()?` is the same check only where `check_fit` is not overridden).
 
@@ -221,7 +230,12 @@ let mut v = Array1::<f64>::zeros(n);
 ud.fill_slice(v.as_slice_mut().unwrap());
 let mut c = Array1::<f64>::zeros(n);
 ud.fill_slice(c.as_slice_mut().unwrap());
-let u = self.percent_point(c.view(), v.view())?;
+let u = match self.percent_point_unchecked(c.view(), v.view()) {
+  Some(u) => u?,
+  None => self.percent_point(c.view(), v.view())?,
+};
+u.mapv_inplace(inside);
+v.mapv_inplace(inside);
 Ok(stack![Axis(1), u, v])
 ```
 
@@ -231,12 +245,14 @@ It is gated by the family's `check_fit`, which reads `theta`, not `tau`:
 `SimdUniform<f64>` stream and returns an `(n, 2)` `Array2<f64>` wrapped in
 `Result`. `sample(&self, ..)` takes `&self`, not `&mut self`.
 
-What you supply is `percent_point` — either a closed form, or nothing
+What you supply is the inverse pair of §1 — a closed form, or nothing
 at all, in which case `percent_point_numerical` Brent-inverts your
-`partial_derivative` for you. If you override `percent_point` but want
-the generic path for a degenerate branch, call
-`self.percent_point_numerical(y, v)` — calling `Self::percent_point`
-from inside the override just recurses.
+`partial_derivative` for you. The sampler calls `percent_point_unchecked` on its
+own uniforms and falls back to `percent_point` where the hook answers `None`,
+so the hook never needs `percent_point` and an override of `percent_point` may
+call the hook without recursing. For a degenerate branch use
+`self.percent_point_numerical(y, v)` — calling `Self::percent_point` from inside
+the override just recurses.
 
 Per `dev-rules` §7a, `StdRng` / `rand_distr::Uniform` are **not**
 available here: library code draws from the workspace's own
@@ -292,15 +308,15 @@ fn clayton_independence_sample_kendall_tau_near_zero() {
   `check_fit()?`, the check `pdf` and `cdf` run.
 - **Do not** implement `sample` / `fit` / `log_pdf`. They are
   defaulted and the defaults are correct.
-- **Do not** implement `generator` for a non-Archimedean family. The
-  default already returns `CopulaError::Unsupported`
-  (`"<Type> is not Archimedean: no generator"`).
+- **Do not** answer `generator_unchecked` for a non-Archimedean family.
+  Its default `None` makes `generator` return `CopulaError::Unsupported`
+  (`"<Family> is not Archimedean: no generator"`).
 
 ## 7. Reference impls
 
 - `Clayton` (`bivariate/clayton.rs`) — closed-form `theta_from_tau`,
   closed-form `percent_point` / `partial_derivative`, Archimedean
-  `generator`. The template.
+  `generator_unchecked`. The template.
 - `Frank` (`bivariate/frank.rs`) — Brent-based `theta_from_tau` with
   sign-of-tau bracketing from θ = 0.
 - `Gumbel` (`bivariate/gumbel.rs`) — closed-form via Archimedean
