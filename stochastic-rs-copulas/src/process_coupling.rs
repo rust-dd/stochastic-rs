@@ -1,23 +1,7 @@
 //! # Coupling stochastic processes via copulas
 //!
-//! Bridges [`crate::bivariate`] (Clayton, Frank, Gumbel, …) with the process
-//! samplers in `stochastic-rs-stochastic`: given two univariate marginal
-//! samples, transforms them through a fitted bivariate copula to produce a
-//! joint sample with the desired tail dependence.
-//!
-//! The module deliberately does **not** depend on `stochastic-rs-stochastic`
-//! (to keep the dependency graph acyclic and the copula crate lean). The
-//! pattern is therefore expressed via free helpers operating on
-//! `Array1<f64>` marginals.
-//!
-//! ## Pattern
-//!
-//! 1. Sample two marginal paths independently from any `ProcessExt` (e.g. two
-//!    `Bm`, two `Heston` variance paths, two `Ou`).
-//! 2. Transform each marginal to its empirical CDF on $[0, 1]$.
-//! 3. Apply the bivariate copula's percent-point function to couple them.
-//! 4. Invert through each marginal's empirical quantile to map back to the
-//!    original scale.
+//! Maps copula draws back through each series' empirical quantile, so the coupled sample keeps both
+//! marginals; free helpers over `ArrayView1<f64>` keep this crate off `stochastic-rs-stochastic`.
 //!
 //! ## Example
 //!
@@ -25,51 +9,55 @@
 //! use ndarray::Array1;
 //! use stochastic_rs_copulas::bivariate::clayton::Clayton;
 //! use stochastic_rs_copulas::process_coupling::couple_marginals;
-//! use stochastic_rs_copulas::traits::BivariateExt;
+//! use stochastic_rs_core::simd_rng::Deterministic;
 //!
-//! // Marginals from any source work identically (e.g. two `Array1<f64>`
-//! // paths from `ProcessExt::sample()`); a deterministic sequence keeps
-//! // this example self-contained per the no-stochastic-dependency note
-//! // above.
+//! // Marginals from any source work the same (e.g. two `ProcessExt::sample()` paths); fixed sequences keep the example
+//! // free of a stochastic dependency.
 //! let s1 = Array1::linspace(0.0, 1.0, 32);
 //! let s2 = Array1::linspace(1.0, 0.0, 32);
-//! let mut c = Clayton::new();
-//! c.set_tau(0.5);
-//! c._compute_theta();
-//! let coupled = couple_marginals(&s1, &s2, &mut c).unwrap();
+//! let c = Clayton::new(2.0);
+//! let coupled = couple_marginals(s1.view(), s2.view(), &c, &Deterministic::new(1)).unwrap();
 //! assert_eq!(coupled.shape(), &[32, 2]);
 //! ```
 
-use std::error::Error;
+use ndarray::ArrayView1;
+use stochastic_rs_core::simd_rng::SeedExt;
 
-use ndarray::Array1;
-
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 
-/// Couple two independent marginal samples through a bivariate copula.
-///
-/// Returns a `(n, 2)`-shaped sample with copula-induced dependence and
-/// preserved empirical marginal distributions.
-pub fn couple_marginals<C: BivariateExt>(
-  s1: &Array1<f64>,
-  s2: &Array1<f64>,
-  copula: &mut C,
-) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {
+/// Two marginal samples coupled through a copula drawn from `seed`, in an `(n, 2)` sample that keeps both marginals:
+/// `DimensionMismatch` for unequal lengths, `InsufficientData` below two values, `MarginalOutOfRange` for a NaN.
+pub fn couple_marginals<C: BivariateExt, S: SeedExt>(
+  s1: ArrayView1<f64>,
+  s2: ArrayView1<f64>,
+  copula: &C,
+  seed: &S,
+) -> Result<ndarray::Array2<f64>, CopulaError> {
   let n = s1.len();
-  assert_eq!(n, s2.len(), "marginals must have equal length");
-  assert!(n >= 2, "need at least two observations");
+  if s2.len() != n {
+    return Err(CopulaError::DimensionMismatch {
+      expected: n,
+      got: s2.len(),
+    });
+  }
+  if n < 2 {
+    return Err(CopulaError::InsufficientData { needed: 2, got: n });
+  }
+  if s1.iter().chain(s2).any(|x| x.is_nan()) {
+    return Err(CopulaError::MarginalOutOfRange);
+  }
 
-  let cop_sample = copula.sample(n)?;
+  let cop_sample = copula.sample(n, seed)?;
   let mut out = ndarray::Array2::<f64>::zeros((n, 2));
 
   let mut sorted1 = s1.to_vec();
-  sorted1.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+  sorted1.sort_by(f64::total_cmp);
   let mut sorted2 = s2.to_vec();
-  sorted2.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+  sorted2.sort_by(f64::total_cmp);
 
   for i in 0..n {
-    let u = cop_sample[[i, 0]].clamp(f64::EPSILON, 1.0 - f64::EPSILON);
-    let v = cop_sample[[i, 1]].clamp(f64::EPSILON, 1.0 - f64::EPSILON);
+    let (u, v) = (cop_sample[[i, 0]], cop_sample[[i, 1]]);
     let idx_u = ((u * n as f64) as usize).min(n - 1);
     let idx_v = ((v * n as f64) as usize).min(n - 1);
     out[[i, 0]] = sorted1[idx_u];
@@ -77,4 +65,38 @@ pub fn couple_marginals<C: BivariateExt>(
   }
 
   Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+  use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+  use crate::bivariate::clayton::Clayton;
+
+  /// Data errors are answered, not panicked on: unequal lengths, a single value, a NaN in either series.
+  #[test]
+  fn data_errors_are_answered() {
+    let (c, seed) = (Clayton::new(2.0), Deterministic::new(1));
+    let couple = |a: ndarray::Array1<f64>, b: ndarray::Array1<f64>| {
+      couple_marginals(a.view(), b.view(), &c, &seed)
+    };
+    let mismatch = CopulaError::DimensionMismatch {
+      expected: 3,
+      got: 2,
+    };
+    assert_eq!(
+      couple(array![1.0, 2.0, 3.0], array![1.0, 2.0]),
+      Err(mismatch)
+    );
+    let short = CopulaError::InsufficientData { needed: 2, got: 1 };
+    assert_eq!(couple(array![1.0], array![1.0]), Err(short));
+    for (a, b) in [
+      (array![1.0, f64::NAN], array![1.0, 2.0]),
+      (array![1.0, 2.0], array![f64::NAN, 2.0]),
+    ] {
+      assert_eq!(couple(a, b), Err(CopulaError::MarginalOutOfRange));
+    }
+  }
 }

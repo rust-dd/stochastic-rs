@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -20,8 +23,7 @@ use crate::traits::ProcessExt;
 pub struct Gn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Number of `N(0, dt)` increments sampled (no leading zero).
   pub n: usize,
-  /// Simulation horizon [0, t] that `n` increments span (defaults to 1
-  /// when omitted); sets `dt = t / n`.
+  /// Simulation horizon `[0, t]` the `n` increments span (1 when omitted); sets `dt = t / max(n, 1)`.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
@@ -119,6 +121,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Gn<T, S> { n, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Gn<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Gn<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -129,7 +136,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   fn sampler(&self) -> GnSampler<T> {
     GnSampler {
       n: self.n,
-      normal: SimdNormal::<T>::new(T::zero(), self.dt().sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), self.dt().sqrt()).seeded(&self.seed),
     }
   }
 
@@ -170,7 +177,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 #[doc(hidden)]
 pub struct GnSampler<T: FloatExt> {
   n: usize,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> GnSampler<T> {
@@ -182,6 +189,8 @@ impl<T: FloatExt> GnSampler<T> {
     self.normal.fill_slice(&mut out[..len]);
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for GnSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for GnSampler<T> {
   type Output = Array1<T>;
@@ -204,12 +213,13 @@ impl<T: FloatExt, S: SeedExt, B> Gn<T, S, B> {
       return;
     }
     let std_dev = self.dt().sqrt();
-    let normal = SimdNormal::<T>::new(T::zero(), std_dev, &self.seed);
+    let mut normal = SimdNormal::<T>::new(T::zero(), std_dev).seeded(&self.seed);
     normal.fill_slice(&mut out[..len]);
   }
 
+  /// The increment spacing `t / n`; the horizon itself when `n = 0`.
   pub fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize_(self.n)
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n.max(1))
   }
 }
 

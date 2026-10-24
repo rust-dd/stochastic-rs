@@ -8,6 +8,7 @@ uniforms on the unit square.
 from __future__ import annotations
 
 import numpy as np
+import pytest
 import stochastic_rs as sr
 
 
@@ -100,3 +101,45 @@ def test_fit_vine_recovers_a_clayton_edge():
     fit_c = sr.fit_vine(uv, structure="cvine", criterion="bic", families=["independence", "gaussian", "frank"])
     assert fit_c["families"][0][0] in ("gaussian", "frank")
     assert sorted(fit_c["order"]) == [0, 1]
+
+
+def test_kendall_tau_b_matrix_and_empirical_copula_ranks():
+    # (1,1,2,3) x (1,2,2,3): four concordant pairs and one tie per margin, so tau-b = 4 / sqrt(5 * 5) = 0.8 (tau-a is 2/3).
+    tied = np.array([[1.0, 1.0], [1.0, 2.0], [2.0, 2.0], [3.0, 3.0]])
+    tau = sr.kendall_tau_matrix(tied)
+    assert abs(tau[0, 1] - 0.8) < 1e-15 and tau[0, 1] == tau[1, 0] and tau[0, 0] == tau[1, 1] == 1.0
+    with pytest.raises(ValueError):
+        sr.kendall_tau_matrix(tied[:1])
+
+    ec = sr.EmpiricalCopula2D(np.array([3.0, 1.0, 2.0, 4.0]), np.array([10.0, 30.0, 20.0, 40.0]))
+    ranks = ec.rank_data()
+    assert np.array_equal(ranks, np.array([[0.6, 0.2], [0.2, 0.6], [0.4, 0.4], [0.8, 0.8]]))  # rank / (n + 1)
+    # C_n(0.5, 0.5): of the rank pairs (3,1), (1,3), (2,2), (4,4) only (2,2) lies at or below (2.5, 2.5) of n + 1 = 5.
+    assert np.mean((ranks[:, 0] <= 0.5) & (ranks[:, 1] <= 0.5)) == 0.25
+    assert {tuple(row) for row in ec.sample(50, seed=3)} <= {tuple(row) for row in ranks}
+    with pytest.raises(ValueError):
+        sr.EmpiricalCopula2D(np.array([1.0, 2.0]), np.array([1.0]))
+
+
+def test_pseudo_observations_share_mean_ranks_and_propagate_nan():
+    # Tied values take the mean of their ranks (R's `rank`, scipy's `rankdata`), so a row order cannot change the result.
+    a = np.array([[1.0, 1.0], [1.0, 2.0], [2.0, 2.0], [3.0, 3.0]])
+    ua, ub = sr.pseudo_observations(a), sr.pseudo_observations(a[[1, 0, 2, 3]])
+    assert np.array_equal(ua, np.array([[0.3, 0.2], [0.3, 0.5], [0.6, 0.5], [0.8, 0.8]]))
+    assert np.array_equal(ub, ua[[1, 0, 2, 3]])
+    assert abs(sr.kendall_tau_matrix(ua)[0, 1] - 0.8) < 1e-15 and abs(sr.kendall_tau_matrix(ub)[0, 1] - 0.8) < 1e-15
+    # A column holding a NaN is all NaN, at any size, and the other columns keep their ranks.
+    holed = np.column_stack([np.arange(100.0), np.arange(100.0)[::-1]])
+    holed[50, 0] = np.nan
+    out = sr.pseudo_observations(holed)
+    assert np.isnan(out[:, 0]).all() and np.array_equal(out[:, 1], np.arange(100, 0, -1) / 101)
+
+
+def test_set_theta_replaces_a_pending_tau():
+    clayton = sr.Clayton(tau=0.5)
+    clayton.set_theta(4.0)
+    assert abs(clayton.tau() - 2.0 / 3.0) < 1e-15
+    assert abs(clayton.compute_theta() - 4.0) < 1e-12
+    bb1 = sr.Bb1(tau=0.5, delta=1.5)
+    bb1.set_theta(0.8)
+    assert abs(bb1.tau() - 0.5) > 0.01 and abs(bb1.compute_theta() - 0.8) < 1e-12

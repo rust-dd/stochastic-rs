@@ -40,7 +40,7 @@ pub struct SVJCalibrator {
   pub q: Option<f64>,
   /// Time to maturity per quote (flattened). Supports multi-maturity joint calibration.
   pub flat_t: Vec<f64>,
-  /// Option type.
+  /// Whether the market quotes are call or put prices.
   pub option_type: OptionType,
   /// If true, record per-iteration calibration history.
   pub record_history: bool,
@@ -61,7 +61,7 @@ impl crate::traits::Calibrator for SVJCalibrator {
 }
 
 impl SVJCalibrator {
-  /// Create a calibrator for a single maturity slice (backwards compatible).
+  /// Create a calibrator for quotes that share one maturity `tau`.
   pub fn new(
     params: Option<SVJParams>,
     c_market: Array1<f64>,

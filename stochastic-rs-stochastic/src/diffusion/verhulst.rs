@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -118,6 +121,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Verhulst<T, S> { r, k, sigma, n, x0, t, clamp, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Verhulst<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for Verhulst<T, S, B>
 {
@@ -138,7 +146,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       k: self.k,
       diff_scale: self.sigma,
       clamp: self.clamp.unwrap_or(true),
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
@@ -185,7 +193,7 @@ pub struct VerhulstSampler<T: FloatExt> {
   k: T,
   diff_scale: T,
   clamp: bool,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> VerhulstSampler<T> {
@@ -213,6 +221,8 @@ impl<T: FloatExt> VerhulstSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for VerhulstSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for VerhulstSampler<T> {
   type Output = Array1<T>;

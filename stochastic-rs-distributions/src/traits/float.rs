@@ -48,11 +48,44 @@ pub trait RealExt:
   fn pi() -> Self;
   fn two_pi() -> Self;
   fn min_positive_val() -> Self;
+
+  /// The larger of the two, NaN when either is NaN — `Float::max` returns the other operand instead.
+  #[inline]
+  fn max_or_nan(self, other: Self) -> Self {
+    if self.is_nan() || other.is_nan() {
+      Self::nan()
+    } else {
+      self.max(other)
+    }
+  }
+
+  /// The smaller of the two, NaN when either is NaN.
+  #[inline]
+  fn min_or_nan(self, other: Self) -> Self {
+    if self.is_nan() || other.is_nan() {
+      Self::nan()
+    } else {
+      self.min(other)
+    }
+  }
 }
 
-/// 8-lane SIMD surface over a [`RealExt`] scalar, plus the uniform RNG
-/// fills the SIMD samplers draw from.
-pub trait SimdFloatExt: RealExt {
+mod sealed {
+  #[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot implement the sealed trait `SimdFloatExt`",
+    note = "`f32` and `f64` are the simulation scalars; a custom scalar stops at `RealExt`"
+  )]
+  pub trait Sealed {}
+
+  impl Sealed for f32 {}
+
+  impl Sealed for f64 {}
+}
+
+/// 8-lane SIMD surface over a [`RealExt`] scalar plus the uniform RNG fills the SIMD samplers
+/// draw from; sealed, `f32` and `f64` are its only implementors.
+pub trait SimdFloatExt: RealExt + sealed::Sealed {
+  #[doc(hidden)]
   type Simd: Copy
     + std::ops::Mul<Output = Self::Simd>
     + std::ops::Add<Output = Self::Simd>
@@ -60,20 +93,45 @@ pub trait SimdFloatExt: RealExt {
     + std::ops::Div<Output = Self::Simd>
     + std::ops::Neg<Output = Self::Simd>;
 
+  #[doc(hidden)]
   fn splat(val: Self) -> Self::Simd;
+
+  #[doc(hidden)]
   fn simd_from_array(arr: [Self; 8]) -> Self::Simd;
+
+  #[doc(hidden)]
   fn simd_to_array(v: Self::Simd) -> [Self; 8];
+
+  #[doc(hidden)]
   fn simd_ln(v: Self::Simd) -> Self::Simd;
+
+  #[doc(hidden)]
   fn simd_sqrt(v: Self::Simd) -> Self::Simd;
+
+  #[doc(hidden)]
   fn simd_cos(v: Self::Simd) -> Self::Simd;
+
+  #[doc(hidden)]
   fn simd_sin(v: Self::Simd) -> Self::Simd;
+
+  #[doc(hidden)]
   fn simd_exp(v: Self::Simd) -> Self::Simd;
+
+  #[doc(hidden)]
   fn simd_tan(v: Self::Simd) -> Self::Simd;
+
+  #[doc(hidden)]
   fn simd_max(a: Self::Simd, b: Self::Simd) -> Self::Simd;
+
+  #[doc(hidden)]
   fn simd_powf(v: Self::Simd, exp: Self) -> Self::Simd;
+
   fn fill_uniform<R: Rng + ?Sized>(rng: &mut R, out: &mut [Self]);
+
   fn fill_uniform_simd<R: crate::simd_rng::SimdRngExt>(rng: &mut R, out: &mut [Self]);
+
   fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> Self;
+
   #[inline(always)]
   fn sample_uniform_simd<R: crate::simd_rng::SimdRngExt>(rng: &mut R) -> Self {
     let mut buf = [Self::zero(); 8];
@@ -81,13 +139,46 @@ pub trait SimdFloatExt: RealExt {
     buf[0]
   }
 
+  #[doc(hidden)]
   fn simd_from_i32x8(v: wide::i32x8) -> Self::Simd;
+
+  #[doc(hidden)]
   const PREFERS_F32_WN: bool = false;
+
+  /// Markov-lift factor reduction $\sum_l (w_l e_l)(H_l + J_l)$ for one path; `we` is `w_l e_l`
+  /// pre-merged; panics unless the slices share one length.
+  #[doc(hidden)]
+  fn history_sum_fused(we: &[Self], h_state: &[Self], j_state: &[Self]) -> Self;
+
+  /// One path's factor-state update, `omx` holding $(1 - e_l)/x_l$; panics unless the slices share one length.
+  #[doc(hidden)]
+  fn update_state_fused(
+    h_state: &mut [Self],
+    j_state: &mut [Self],
+    exp_neg: &[Self],
+    omx: &[Self],
+    f_prev: Self,
+    g_dw: Self,
+  );
+
+  /// Adds `we_l (h_row + j_row)` to every path's `history`; panics unless the slices share one length.
+  #[doc(hidden)]
+  fn batch_history_accumulate(we_l: Self, h_row: &[Self], j_row: &[Self], history: &mut [Self]);
+
+  /// Factor $l$'s state update across every path; panics unless the slices share one length.
+  #[doc(hidden)]
+  fn batch_update_state(
+    e_l: Self,
+    omx_l: Self,
+    h_row: &mut [Self],
+    j_row: &mut [Self],
+    f_prev: &[Self],
+    g_dw: &[Self],
+  );
 }
 
-/// The full simulation-grade float: [`RealExt`] scalar arithmetic,
-/// [`SimdFloatExt`] lanes, and the batched standard-normal / fGN scratch
-/// machinery every path sampler draws through.
+/// The full simulation-grade float: [`RealExt`] arithmetic, [`SimdFloatExt`] lanes and the batched
+/// normal / fGN scratch every sampler draws through; sealed through `SimdFloatExt`.
 pub trait FloatExt: RealExt + SimdFloatExt {
   fn fill_standard_normal_slice(out: &mut [Self]);
   #[inline]

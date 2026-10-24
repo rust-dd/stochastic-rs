@@ -13,6 +13,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -156,6 +159,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Egarch<T, S> { omega, alpha, gamma, beta, n, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Egarch<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Egarch<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -170,7 +178,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       alpha: self.alpha.clone(),
       gamma: self.gamma.clone(),
       beta: self.beta.clone(),
-      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
     }
   }
 
@@ -250,7 +258,7 @@ pub struct EgarchSampler<T: FloatExt> {
   alpha: Array1<T>,
   gamma: Array1<T>,
   beta: Array1<T>,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> EgarchSampler<T> {
@@ -318,6 +326,8 @@ impl<T: FloatExt> EgarchSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for EgarchSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for EgarchSampler<T> {
   type Output = Array1<T>;

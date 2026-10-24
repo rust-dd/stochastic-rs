@@ -2,9 +2,9 @@
 //! Backs the quasi-Monte Carlo example on the processes page.
 
 use ndarray::Array2;
+use stochastic_rs::distributions::qmc::SobolSeq;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stochastic::mc::brownian_bridge_qmc::BrownianBridgeQmc;
-use stochastic_rs::stochastic::mc::sobol::SobolSeq;
 
 #[test]
 fn qmc_brownian_paths_price_a_martingale() {
@@ -24,7 +24,7 @@ fn qmc_brownian_paths_price_a_martingale() {
     / 4_096.0;
   assert!((mean - 1.0).abs() < 5e-3, "martingale mean {mean}");
 
-  // The sequence itself reaches far beyond the old 21-dimension ceiling.
+  // The Sobol sequence itself reaches 5,000 dimensions.
   let deep: Array2<f64> = SobolSeq::new(5_000).sample(16);
   assert!(deep.iter().all(|u| (0.0..1.0).contains(u)));
 }

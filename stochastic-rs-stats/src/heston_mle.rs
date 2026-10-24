@@ -249,6 +249,7 @@ pub fn pmle_heston_with_delta(
 mod tests {
   use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::nmle_heston;
@@ -317,11 +318,11 @@ mod tests {
       s[0] = 100.0;
       v[0] = 0.09;
 
-      let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+      let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
 
       for i in 1..n {
-        let z1: f64 = normal.sample_fast();
-        let z2: f64 = normal.sample_fast();
+        let z1: f64 = normal.sample();
+        let z2: f64 = normal.sample();
 
         let v_prev = v[i - 1].max(1e-10);
         let v_next =
@@ -396,11 +397,11 @@ mod tests {
     s[0] = 100.0;
     v[0] = theta_true;
 
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(17));
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(17));
 
     for i in 1..n {
-      let z1: f64 = normal.sample_fast();
-      let z2: f64 = normal.sample_fast();
+      let z1: f64 = normal.sample();
+      let z2: f64 = normal.sample();
 
       let dw1 = dt.sqrt() * z1;
       let dw2 = dt.sqrt() * (rho_true * z1 + (1.0 - rho_true * rho_true).sqrt() * z2);

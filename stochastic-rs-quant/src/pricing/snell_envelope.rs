@@ -33,15 +33,8 @@ pub struct SnellEnvelopeResult {
   pub exercise_boundary: Vec<(f64, f64)>,
 }
 
-/// American option priced by Snell-envelope recursion on a CRR tree.
-///
-/// The struct holds **model and method state only** — the volatility and
-/// the number of binomial time steps. Spot, strike, rate, dividend yield,
-/// maturity and the option direction are the pricing *query* and travel as
-/// arguments to [`ModelPricer::price_call`], so one instance prices a whole
-/// strike/maturity grid. The tree itself is rebuilt per call from the
-/// query, so nothing derived from a spot or a maturity is cached across
-/// queries.
+/// American option by Snell-envelope recursion on a CRR tree rebuilt per query; the struct holds σ and the step count. A query
+/// with a non-finite argument or a non-positive spot, strike or maturity is NaN; a risk-neutral `p` outside `[0, 1]` panics (raise `steps`).
 ///
 /// ```
 /// use stochastic_rs_quant::pricing::snell_envelope::SnellEnvelopePricer;
@@ -51,16 +44,6 @@ pub struct SnellEnvelopeResult {
 /// let american = model.price_put(100.0, 100.0, 0.03, 0.01, 1.0);
 /// assert!(american > 0.0);
 /// ```
-///
-/// # Panics
-/// [`price_call`](ModelPricer::price_call),
-/// [`price_put`](ModelPricer::price_put), and
-/// [`price_detailed`](Self::price_detailed) panic on a non-positive or
-/// non-finite spot / strike / rate / dividend yield / maturity, and on a
-/// risk-neutral probability outside `[0, 1]` (raise `steps`). These are the
-/// same assertions, with the same messages, that the pre-query
-/// `SnellEnvelopePricer::new` made at construction time; they moved to the
-/// call because that is where those values now arrive.
 #[derive(Debug, Clone, Copy)]
 pub struct SnellEnvelopePricer {
   /// Volatility $\sigma$.
@@ -77,14 +60,16 @@ impl SnellEnvelopePricer {
     Self { v, steps }
   }
 
-  /// Assert the query is a well-posed pricing point, with the messages the
-  /// pre-query constructor used.
-  fn validate_query(s: f64, k: f64, r: f64, q: f64, tau: f64) {
-    assert!(s.is_finite() && s > 0.0, "s must be finite and positive");
-    assert!(k.is_finite() && k > 0.0, "k must be finite and positive");
-    assert!(r.is_finite(), "r must be finite");
-    assert!(q.is_finite(), "q must be finite");
-    assert!(tau.is_finite() && tau > 0.0, "tau must be positive");
+  /// A well-posed query; the callers answer NaN for any other.
+  fn query_is_well_posed(s: f64, k: f64, r: f64, q: f64, tau: f64) -> bool {
+    s.is_finite()
+      && s > 0.0
+      && k.is_finite()
+      && k > 0.0
+      && r.is_finite()
+      && q.is_finite()
+      && tau.is_finite()
+      && tau > 0.0
   }
 
   /// CRR lattice constants `(dt, u, d, disc, p)` at one query point.
@@ -112,7 +97,9 @@ impl SnellEnvelopePricer {
     tau: f64,
     option_type: OptionType,
   ) -> f64 {
-    Self::validate_query(s, k, r, q, tau);
+    if !Self::query_is_well_posed(s, k, r, q, tau) {
+      return f64::NAN;
+    }
     let (_dt, u, d, disc, p) = self.lattice(r, q, tau);
 
     let mut values = vec![0.0_f64; self.steps + 1];
@@ -147,7 +134,14 @@ impl SnellEnvelopePricer {
     tau: f64,
     option_type: OptionType,
   ) -> SnellEnvelopeResult {
-    Self::validate_query(s, k, r, q, tau);
+    if !Self::query_is_well_posed(s, k, r, q, tau) {
+      return SnellEnvelopeResult {
+        price: f64::NAN,
+        european_price: f64::NAN,
+        early_exercise_premium: f64::NAN,
+        exercise_boundary: Vec::new(),
+      };
+    }
     let (dt, u, d, disc, p) = self.lattice(r, q, tau);
     let ud_ratio = u / d;
 
@@ -368,17 +362,16 @@ mod tests {
     }
   }
 
-  /// The query-time assertions the pre-query constructor used to make still
-  /// fire, with the same messages.
   #[test]
-  #[should_panic(expected = "s must be finite and positive")]
-  fn snell_rejects_a_nonpositive_spot() {
-    let _ = SnellEnvelopePricer::new(V, 10).price_call(-1.0, K, R, Q, TAU);
-  }
-
-  #[test]
-  #[should_panic(expected = "tau must be positive")]
-  fn snell_rejects_a_nonpositive_tau() {
-    let _ = SnellEnvelopePricer::new(V, 10).price_call(S, K, R, Q, 0.0);
+  fn snell_prices_an_ill_posed_query_as_nan() {
+    let model = SnellEnvelopePricer::new(V, 10);
+    assert!(model.price_call(-1.0, K, R, Q, TAU).is_nan());
+    assert!(model.price_put(S, K, R, Q, 0.0).is_nan());
+    assert!(model.price_call(S, K, f64::NAN, Q, TAU).is_nan());
+    let detailed = model.price_detailed(S, -K, R, Q, TAU, OptionType::Put);
+    assert!(detailed.price.is_nan());
+    assert!(detailed.european_price.is_nan());
+    assert!(detailed.early_exercise_premium.is_nan());
+    assert!(detailed.exercise_boundary.is_empty());
   }
 }

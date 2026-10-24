@@ -5,7 +5,8 @@
 //! $$
 //!
 use rand::Rng;
-use rand_distr::Distribution;
+use rand::RngExt;
+use rand::distr::Distribution;
 
 pub struct DoubleExp {
   /// Mixing probability parameter.

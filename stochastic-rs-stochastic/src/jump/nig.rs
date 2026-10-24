@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::inverse_gauss::SimdInverseGauss;
 use stochastic_rs_distributions::normal::SimdNormal;
 
@@ -66,7 +69,7 @@ impl<T: FloatExt, S: SeedExt, B> Nig<T, S, B> {}
 impl<T: FloatExt, S: SeedExt, B> Nig<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1))
   }
 }
 
@@ -118,6 +121,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Nig<T, S> { theta, sigma, kappa, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Nig<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Nig<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -137,8 +145,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       theta: self.theta,
       sigma: self.sigma,
       x0: self.x0.unwrap_or(T::zero()),
-      ig_dist: SimdInverseGauss::<T>::new(dt, shape, &self.seed),
-      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
+      ig_dist: SimdInverseGauss::<T>::new(dt, shape).seeded(&self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
     }
   }
 
@@ -182,8 +190,8 @@ pub struct NigSampler<T: FloatExt> {
   theta: T,
   sigma: T,
   x0: T,
-  ig_dist: SimdInverseGauss<T>,
-  normal: SimdNormal<T>,
+  ig_dist: Seeded<SimdInverseGauss<T>>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> NigSampler<T> {
@@ -206,6 +214,8 @@ impl<T: FloatExt> NigSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for NigSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for NigSampler<T> {
   type Output = Array1<T>;

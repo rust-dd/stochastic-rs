@@ -102,7 +102,9 @@ impl<T: FloatExt> MtGreeks<T> {
           .assets
           .iter()
           .map(|a| <T as num_traits::Float>::abs(a.s))
-          .fold(<T as num_traits::Float>::abs(*strike), |a, b| a.max(b))
+          .fold(<T as num_traits::Float>::abs(*strike), |a, b| {
+            a.max_or_nan(b)
+          })
           .max(T::one());
         let box_hi = self
           .params
@@ -123,7 +125,9 @@ impl<T: FloatExt> MtGreeks<T> {
           .assets
           .iter()
           .map(|a| <T as num_traits::Float>::abs(a.s))
-          .fold(<T as num_traits::Float>::abs(*strike), |a, b| a.max(b))
+          .fold(<T as num_traits::Float>::abs(*strike), |a, b| {
+            a.max_or_nan(b)
+          })
           .max(T::one());
         let box_hi = self
           .params
@@ -285,12 +289,12 @@ impl<T: FloatExt> MtGreeks<T> {
       .assets
       .iter()
       .map(|a| <T as num_traits::Float>::abs(a.s))
-      .fold(T::zero(), |a, b| a.max(b));
+      .fold(T::zero(), |a, b| a.max_or_nan(b));
     let terminal_scale = st
       .iter()
       .copied()
       .map(<T as num_traits::Float>::abs)
-      .fold(T::zero(), |a, b| a.max(b));
+      .fold(T::zero(), |a, b| a.max_or_nan(b));
     let payoff_scale = match payoff {
       MtPayoff::Call { strike, .. } => <T as num_traits::Float>::abs(*strike),
       MtPayoff::Put { strike, .. } => <T as num_traits::Float>::abs(*strike),

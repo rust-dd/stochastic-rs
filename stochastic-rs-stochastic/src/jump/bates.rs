@@ -12,7 +12,7 @@
 use std::any::Any;
 
 use ndarray::Array1;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -476,6 +476,14 @@ where
 
 backend_switch!([T, D, S: SeedExt] Bates1996<T, D, S> { mu, b, r, r_f, lambda, k, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, cgns, cpoisson, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
 
+impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Bates1996<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
+{
+}
+
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Bates1996<T, D, S, B>
 where
   T: FloatExt,
@@ -641,6 +649,13 @@ where
   }
 }
 
+impl<T, D, S: SeedExt> crate::traits::Sealed for BatesSampler<'_, T, D, S>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+}
+
 impl<T, D, S: SeedExt> PathSampler<T> for BatesSampler<'_, T, D, S>
 where
   T: FloatExt,
@@ -679,4 +694,5 @@ mod tests;
 #[path = "bates_python.rs"]
 mod python;
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub use python::PyBates;

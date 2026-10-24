@@ -91,14 +91,8 @@ impl<T: RealExt> TwoFactorShortRateModel<T> for G2ppTreeModel<T> {
   }
 }
 
-/// G2++ two-factor tree engine.
-///
-/// The factor trees are built exactly as independent Gaussian Ou trees and
-/// coupled at each step by a moment-matched 3x3 joint transition correction
-/// that preserves the one-factor marginals and injects the requested
-/// instantaneous correlation. This is sufficient as a Tier 0 foundation for
-/// bond-style backward induction and can be refined later for calibration-grade
-/// swaption work.
+/// G2++ two-factor tree: Gaussian OU factor trees coupled per step by a corner correction that
+/// keeps both marginals and matches ρ only until a corner clamps at 0 (at most |ρ| = 1/3).
 #[derive(Debug, Clone)]
 pub struct G2ppTree<T: RealExt> {
   /// Underlying model.

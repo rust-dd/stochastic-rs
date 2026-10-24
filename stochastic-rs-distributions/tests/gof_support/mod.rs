@@ -1,6 +1,6 @@
 //! Shared harness for this crate's sampler-vs-cdf goodness-of-fit suite
 //! (`tests/gof_continuous.rs`, `gof_truncated.rs`, `gof_discrete.rs`,
-//! `gof_scalar_and_perturbation.rs`). Not itself picked up as a test
+//! `gof_perturbation.rs`). Not itself picked up as a test
 //! binary: it lives one directory below `tests/`, so cargo's file-based
 //! discovery (which only scans `tests/*.rs`) skips it; each real test
 //! file pulls it in via `mod gof_support;`.
@@ -92,30 +92,20 @@
 //! 0.92 over six seeds and sixteen times the sample when asked again. See
 //! `integration-test-writing` skill §1.1 for why every sampler below is
 //! *reconstructed inside the seed closure* rather than handed a seeded
-//! external `Rng`: `Simd*` samplers ignore any `Rng` argument and draw
-//! from their own internally seeded stream, so the seed must reach the
-//! constructor.
+//! external `Rng`: a stateless law's seed reaches its stream through
+//! `.seeded(&seed)`, and the stream these tests draw is the seeded one.
 //!
 //! ## Coverage — every type in this crate, or its omission reason
 //!
-//! This crate exposes 32 public sampler structs (grep of `pub struct` +
+//! This crate exposes 29 public sampler structs (grep of `pub struct` +
 //! the `DistributionExt`/`DistributionSampler` impl blocks across
-//! `src/`); the umbrella crate-doc's own "29 types (30 counting
-//! `ComplexDistribution`)" tally and this task's original "31 types"
-//! framing both undercount by treating [`SimdExpZig`] as an internal
-//! primitive of [`SimdExp`] rather than its own catalog entry — it *is*
-//! a separate public struct with its own independent `DistributionExt`
-//! impl (confirmed by reading the source, not just grepping for
-//! same-line `impl ... for`, since this one's `for` wraps to the next
-//! line), so it gets its own row below rather than being silently
-//! folded into `SimdExp`'s.
+//! `src/`).
 //!
 //! | Type | Tested via | Notes |
 //! |------|-----------|-------|
 //! | `SimdNormal` | KS, own cdf | `src/normal/tests.rs` (refactored — not re-tested in `gof_continuous.rs` to avoid duplicate coverage) |
 //! | `SimdUniform` | KS, own cdf | `gof_continuous.rs` |
 //! | `SimdExp` | KS, own cdf | `src/exp/tests.rs` (refactored) |
-//! | `SimdExpZig` | KS, own cdf | `src/exp/tests.rs` (refactored); bit-identical to `SimdExp`'s path (delegation), tested separately anyway per "silent omission is not fine" |
 //! | `SimdGamma` | KS, own cdf | `src/gamma.rs` (refactored), incl. the `alpha < 1` boosted branch |
 //! | `SimdLogNormal` | KS, own cdf | `gof_continuous.rs` |
 //! | `SimdBeta` | KS, own cdf | `gof_continuous.rs` |
@@ -136,17 +126,15 @@
 //! | `SimdHypergeometric` | chi-square, own cdf | `gof_discrete.rs` |
 //! | `SimdPoisson` | chi-square, own cdf | `gof_discrete.rs`, incl. the log-space large-lambda table path |
 //! | `SimdSkellam` | chi-square, own cdf | `gof_discrete.rs`; only discrete type here with two-sided support |
-//! | `ScalarNormal` | KS, **borrowed** cdf | `gof_scalar_and_perturbation.rs`: no `DistributionExt` of its own (stateless, draws from the caller's `Rng` rather than an internal stream — see `src/scalar.rs`'s own doc: "Exact — `ndtri` is the inverse of the standard normal CDF"); tested against `SimdNormal`'s cdf, the same distribution family by construction |
-//! | `ScalarExp` | KS, **borrowed** cdf | `gof_scalar_and_perturbation.rs`: same reasoning, tested against `SimdExp`'s cdf |
-//! | `SimdAlphaStable` | **omitted** | `pdf`/`cdf`/`inv_cdf` are `unimplemented!()` by design — no closed form for general alpha (only specific special cases, e.g. alpha=2 is exactly Gaussian, are closed-form; testing only those would not cover the type's general sampling path, so this suite omits it rather than give partial coverage top billing) |
-//! | `SimdNormalInverseGauss` | **omitted** | `cdf`/`inv_cdf` are `unimplemented!()` (no closed form); `pdf` is implemented and separately validated by numerical integration in `src/normal_inverse_gauss.rs`'s own tests |
-//! | `SimdNonCentralChiSquared` | **omitted** | implements neither `DistributionSampler` nor `DistributionExt` at all — no `cdf` to test against, and no `fill_slice` (its `sample_ncp(ncp)` takes the noncentrality per draw, a different shape entirely); its `df < 1` fix is validated by closed-form cumulant moment-matching in `src/non_central_chi_squared.rs`'s own tests instead |
+//! | `SimdAlphaStable` | **omitted** | `pdf`/`cdf`/`quantile` are `None` by design — no closed form for general alpha (only specific special cases, e.g. alpha=2 is exactly Gaussian, are closed-form; testing only those would not cover the type's general sampling path, so this suite omits it rather than give partial coverage top billing) |
+//! | `SimdNormalInverseGauss` | **omitted** | `cdf`/`quantile` are `None` (no closed form); `pdf` is implemented and separately validated by numerical integration in `src/normal_inverse_gauss.rs`'s own tests |
+//! | `SimdNonCentralChiSquared` | **omitted** | implements neither `DistributionSampler` nor `DistributionExt` at all — no `cdf` to test against, and no `fill_slice` (its seeded stream's `sample_ncp(ncp)` and the law's `sample_ncp_with(rng, ncp)` take the noncentrality per draw, a different shape entirely); both are validated by closed-form cumulant moment-matching in `src/non_central_chi_squared.rs`'s own tests instead |
 //! | `ComplexDistribution` | **omitted** | composes two independent sub-distributions as `Complex<T>`'s real/imaginary parts; not itself scalar-valued, no `DistributionExt` (`f64 -> f64` doesn't fit `Complex<T>`) — its components are covered individually wherever they appear elsewhere in this table |
-//! | `SimdDirichlet` | **omitted** | simplex-valued (vector output), no `DistributionExt`; own `pdf`/`log_pdf` take a `&[T]`, not the scalar shape this suite's tests assume |
-//! | `SimdWishart` | **omitted** | SPD-matrix-valued, no `DistributionExt`; same reasoning as `SimdDirichlet` one dimension up |
+//! | `SimdDirichlet` | **omitted** | simplex-valued (vector output), no `DistributionExt`; own `pdf`/`log_pdf` take a `&[T]`, not the scalar shape this suite's tests assume; marginal means of the seeded and the honest draws are checked in `src/dirichlet.rs` |
+//! | `SimdWishart` | **omitted** | SPD-matrix-valued, no `DistributionExt`; same reasoning as `SimdDirichlet` one dimension up; the first moment `νV` of both draws is checked in `src/wishart.rs` |
 //!
-//! 26 of 32 types get a real KS-or-chi-square-against-cdf test (24 own
-//! cdf + 2 borrowed); the remaining 6 are named above with the specific
+//! 23 of 29 types get a real KS-or-chi-square test against their own
+//! cdf; the remaining 6 are named above with the specific
 //! reason each one cannot be tested this way — none are silently
 //! skipped.
 

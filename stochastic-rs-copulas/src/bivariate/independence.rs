@@ -4,152 +4,156 @@
 //! C(u,v)=uv
 //! $$
 //!
-use std::error::Error;
 
 use ndarray::Array1;
-use ndarray::Array2;
-use ndarray::Axis;
-use ndarray::stack;
-use stochastic_rs_core::simd_rng::Unseeded;
-use stochastic_rs_distributions::uniform::SimdUniform;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 
-use super::CopulaType;
+use super::BivariateFamily;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::copula_cdf;
+use crate::bivariate::conditional::on_open_square;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::admitted;
+use crate::traits::bivariate::checked_percent_point;
 
-#[derive(Debug, Clone)]
-pub struct Independence {
-  pub r#type: CopulaType,
-  pub theta: Option<f64>,
-  pub tau: Option<f64>,
-  pub theta_bounds: (f64, f64),
-  pub invalid_thetas: Vec<f64>,
-}
-
-impl Default for Independence {
-  fn default() -> Self {
-    Self {
-      r#type: CopulaType::Independence,
-      theta: None,
-      tau: None,
-      theta_bounds: (0.0, 0.0),
-      invalid_thetas: vec![],
-    }
-  }
-}
+/// No parameter, so always fitted: its `theta` is the 0 of the families it is the limit of.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Independence;
 
 impl Independence {
   pub fn new() -> Self {
-    Self::default()
+    Self
+  }
+
+  /// The identity.
+  fn unchecked_inverse(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    Ok(conditional_quantiles(y, v, |y, _| y))
+  }
+
+  /// `φ(t) = −ln t`, so `φ^{-1}(φ(u) + φ(v)) = uv`.
+  fn unchecked_generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(t.mapv(|t| -t.ln()))
   }
 }
 
 impl BivariateExt for Independence {
-  fn r#type(&self) -> CopulaType {
-    self.r#type
-  }
-
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn set_tau(&mut self, tau: f64) {
-    self.tau = Some(tau);
+  fn family(&self) -> BivariateFamily {
+    BivariateFamily::Independence
   }
 
   fn theta(&self) -> Option<f64> {
-    self.theta
+    Some(0.0)
+  }
+
+  /// Panics unless `theta == 0`, the one value the family has.
+  fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
   }
 
   fn theta_bounds(&self) -> (f64, f64) {
-    self.theta_bounds
+    (0.0, 0.0)
   }
 
   fn invalid_thetas(&self) -> Vec<f64> {
-    self.invalid_thetas.clone()
+    vec![]
   }
 
-  fn set_theta(&mut self, theta: f64) {
-    self.theta = Some(theta);
+  fn validate_theta(&self, theta: f64) -> Result<(), CopulaError> {
+    if theta == 0.0 {
+      return Ok(());
+    }
+    Err(CopulaError::InvalidParameter {
+      name: "theta",
+      value: theta,
+      constraint: "theta == 0.0".into(),
+    })
   }
 
-  fn fit(&mut self, _X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
-    self.tau = Some(0.0);
-    self.theta = Some(0.0);
-    Ok(())
+  fn generator_unchecked(&self, t: ArrayView1<f64>) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_generator(t))
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
-    let ud = SimdUniform::<f64>::new(0.0, 1.0, &Unseeded);
-    let u = Array1::from_vec((0..n).map(|_| ud.sample_fast()).collect());
-    let v = Array1::from_vec((0..n).map(|_| ud.sample_fast()).collect());
-    Ok(stack![Axis(1), u, v])
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    on_open_square(x, |_, _| 1.0)
   }
 
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    Ok(t.ln())
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    copula_cdf(x, |u, v| u * v)
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    let in_range = X.map_axis(Axis(1), |row| {
-      row.iter().all(|&val| (0.0..=1.0).contains(&val))
-    });
-
-    let out = in_range.map(|&val| if val { 1.0 } else { 0.0 });
-
-    Ok(out)
-  }
-
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    let U = X.column(0);
-    let V = X.column(1);
-
-    Ok(&U * &V)
-  }
-
-  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn std::error::Error>> {
-    let V = X.column(1);
-    Ok(V.to_owned())
+  /// `∂_v (uv) = u`.
+  fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    conditional_cdf(x, |u, _| u)
   }
 
   fn percent_point(
     &self,
-    y: &Array1<f64>,
-    _V: &Array1<f64>,
-  ) -> Result<Array1<f64>, Box<dyn Error>> {
-    Ok(y.to_owned())
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    checked_percent_point(self, y, v, Self::unchecked_inverse)
   }
 
-  fn compute_theta(&self) -> f64 {
+  fn percent_point_unchecked(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_inverse(y, v))
+  }
+
+  fn tau_from_theta(&self, _theta: f64) -> f64 {
     0.0
   }
 
+  /// The family represents τ = 0 only; a fit does not reject other data.
+  fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
+    admitted(self, tau, 0.0)
+  }
+
   /// $C(u,v) = uv$ has no tail dependence in either tail by construction.
-  fn tail_dependence(&self) -> TailDependence<f64> {
-    self.assert_theta_valid_for_tail_dependence();
-    TailDependence {
+  fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
+    Ok(TailDependence {
       lower: 0.0,
       upper: 0.0,
-    }
+    })
   }
 }
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
+  /// No parameter to set, so a new copula is fitted already: `theta` is 0, the tails are 0 and it samples.
   #[test]
-  fn independence_tail_dependence_is_zero() {
-    let mut c = Independence::new();
-    c.set_theta(0.0);
-    let td = c.tail_dependence();
-    assert_eq!(td.lower, 0.0);
-    assert_eq!(td.upper, 0.0);
+  fn independence_is_fitted_from_the_start() {
+    let c = Independence::new();
+    assert_eq!(c.theta(), Some(0.0));
+    assert_eq!(
+      c.tail_dependence(),
+      Ok(TailDependence {
+        lower: 0.0,
+        upper: 0.0,
+      })
+    );
+    assert_eq!(c.sample(4, &Deterministic::new(7)).unwrap().dim(), (4, 2));
   }
 
   #[test]
-  #[should_panic(expected = "tail_dependence requires a valid theta")]
-  fn independence_tail_dependence_panics_when_theta_unset() {
-    let _ = Independence::new().tail_dependence();
+  #[should_panic(expected = "theta must satisfy `theta == 0.0`, got theta = 0.5")]
+  fn independence_set_theta_admits_only_zero() {
+    let mut c = Independence::new();
+    c.set_theta(0.0);
+    c.set_theta(0.5);
   }
 }

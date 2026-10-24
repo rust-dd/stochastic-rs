@@ -14,7 +14,7 @@ fn heston_slv_two_factor_sample_under_an_expression_leverage() {
   // L(t, S) = 1.2 − 0.003 S, a leverage that falls with the spot, written as
   // an expression so the process can also run on a device; eta = 0.6 scales
   // the vol-of-vol.
-  let leverage = Expr::lit(1.2) - Expr::x() * 0.003;
+  let leverage = (Expr::lit(1.2) - Expr::x() * 0.003).compile().unwrap();
   let p = HestonSlv::<f64, _>::new(
     Some(100.0),
     Some(0.04),

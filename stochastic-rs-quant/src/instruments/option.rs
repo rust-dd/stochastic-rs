@@ -45,7 +45,6 @@ pub use swaption::EuropeanSwaption;
 pub use types::BermudanSwaptionValuation;
 pub use types::CapFloorValuation;
 pub use types::CollarValuation;
-pub use types::ExerciseDate;
 pub use types::ExerciseSchedule;
 pub use types::InterestRateOptionKind;
 pub use types::SwaptionDirection;

@@ -25,7 +25,7 @@ pub struct DeltaHedge {
   pub contract_size: f64,
   /// Hedge size
   pub hedge_size: f64,
-  /// Option type
+  /// Call or put being hedged.
   pub option_type: OptionType,
   /// Deep out-of-the-money threshold
   pub dotm_threshold: f64,

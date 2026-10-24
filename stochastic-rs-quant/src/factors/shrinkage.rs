@@ -154,6 +154,8 @@ pub fn ledoit_wolf_shrinkage<T: RealExt>(returns: ArrayView2<T>) -> LedoitWolfRe
 mod tests {
   use ndarray::array;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
@@ -174,7 +176,7 @@ mod tests {
 
   #[test]
   fn ledoit_wolf_alpha_in_unit_interval() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(41));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(41));
     let mut buf = vec![0.0_f64; 200 * 5];
     dist.fill_slice(&mut buf);
     let r = Array2::from_shape_vec((200, 5), buf).unwrap();
@@ -190,7 +192,7 @@ mod tests {
   fn ledoit_wolf_off_diagonals_shrunk_toward_zero() {
     // LW should make off-diagonals smaller in magnitude than the corresponding
     // sample-covariance off-diagonals, by exactly the factor (1 - alpha).
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(17));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(17));
     let mut buf = vec![0.0_f64; 5 * 20];
     dist.fill_slice(&mut buf);
     let r = Array2::from_shape_vec((5, 20), buf).unwrap();
@@ -212,7 +214,7 @@ mod tests {
   #[test]
   fn ledoit_wolf_high_shrinkage_when_sample_size_small() {
     // With p >> T, the data-driven shrinkage should be close to 1.
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(19));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(19));
     let mut buf = vec![0.0_f64; 8 * 30];
     dist.fill_slice(&mut buf);
     let r = Array2::from_shape_vec((8, 30), buf).unwrap();

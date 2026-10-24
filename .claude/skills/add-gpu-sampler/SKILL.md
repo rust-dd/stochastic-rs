@@ -15,7 +15,7 @@ switches with a turbofish or an explicit handle:
 ```rust
 let fbm = Fbm::<f64, _>::new(0.7, 1024, None, Deterministic::new(42));
 let a = fbm.clone().on::<Cuda>().sample_par(256);              // B::default()
-let b = fbm.on(Cuda::new(1).with_batch_budget(1 << 28)); // explicit
+let b = fbm.with_backend(Cuda::new(1).with_batch_budget(1 << 28)); // explicit
 ```
 
 A handle only exists when its feature is compiled, and it implements a
@@ -23,8 +23,7 @@ capability only for the precisions its kernels compute in, so selecting
 an unavailable backend — or `f64` on a `f32`-only device — is a
 **compile error**, not a silent fallback. Read
 `stochastic-rs-stochastic/src/device.rs` in full before touching any of
-this: it is 742 lines, current, and it is the contract. `euler.rs` (510
-lines) is the second half.
+this: it is current, and it is the contract. `euler.rs` is the second half.
 
 ## 0. What a back-end owes the caller
 
@@ -33,7 +32,7 @@ a new back-end:
 
 - **A budget that the device agrees with.** A handle's `batch_budget` is a
   guess (one gigabyte by default); clamp it with what the device reports —
-  `euler::metal::working_set` halves `recommended_max_working_set_size()` and
+  `device::metal::working_set` halves `recommended_max_working_set_size()` and
   the CUDA side has the driver's own figure. A guess too large is an
   allocation failure on hardware that would have served a smaller launch.
 - **An out-of-memory failure the caller can act on.** Map the driver's OOM
@@ -49,9 +48,9 @@ a new back-end:
 | Handle | Feature | What it is | Precisions |
 |---|---|---|---|
 | `Cpu` | *(none — always available)* | Default `B` for every process | `f32` / `f64` |
-| `Accelerate` | `accelerate` | Apple vDSP / AMX — a **CPU** path, not a GPU | `f32` / `f64` |
+| `Accelerate` | `accelerate` (macOS only) | Apple vDSP / AMX — a **CPU** path, not a GPU | `f32` / `f64` |
 | `Cuda` | `cuda` | `cudarc` + cuFFT + NVRTC, fused Philox kernel | `f32` / `f64` |
-| `Metal` | `metal` | Hand-written MSL via the `metal` crate | `f32` |
+| `Metal` | `metal` (Apple Silicon, macOS 15+) | Rust kernels compiled by metal-oxide into an embedded library | `f32` |
 
 The backends take the bare names (`cuda`, `metal`); the `gpu*` aliases and
 the `cuda-native` spelling were **removed before 3.0**. There is no
@@ -70,21 +69,23 @@ commit as the rename.
 their settings:
 
 ```rust
+#[non_exhaustive]
 pub struct Cuda { pub ordinal: usize, pub batch_budget: usize }
 ```
 
-`Default` reads `STOCHASTIC_RS_DEVICE` (else `0`) and
-`STOCHASTIC_RS_DEVICE_BATCH_BYTES` (else `DEFAULT_BATCH_BUDGET_BYTES`,
-1 GiB); `new(ordinal)` and `with_batch_budget(bytes)` build one
-explicitly. There is **no process-wide device state** — two processes on
-two GPUs are two handles — so never reintroduce a global selector or a
-global budget.
+`Default` is ordinal `0` with `DEFAULT_BATCH_BUDGET_BYTES` (1 GiB);
+`from_env() -> Result<Self, DeviceError>` reads `STOCHASTIC_RS_DEVICE`
+and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`; `new(ordinal)` and
+`with_batch_budget(bytes)` build one explicitly. There is **no
+process-wide device state** — two processes on two GPUs are two
+handles — so never reintroduce a global selector or a global budget.
 
-`Backend: Copy + Default + Send + Sync` requires exactly one method,
+`Backend` (`Clone + Send + Sync`; sealed, so a handle is declared in
+`device.rs` and never downstream) requires exactly one method,
 `fn probe(&self) -> Result<DeviceInfo, DeviceError>`, which opens the
 device and reports `{ backend, name, precisions, ordinal }` or says why
-it cannot be used. `DeviceError` has three kinds: `Unavailable`,
-`Compile`, `Launch`.
+it cannot be used. `DeviceError` is `#[non_exhaustive]` with
+`Unavailable`, `Compile`, `Launch`, `OutOfMemory` and `Config`.
 
 ## 3. Reproducibility: read this before you write a test
 
@@ -192,8 +193,11 @@ pub(crate) fn sample_<name>_impl<S2: SeedExt>(
 The work:
 
 1. Declare the handle in `device.rs`, feature-gated, `#[derive(Clone,
-   Copy, Debug, PartialEq, Eq)]` with a hand-written `Default` reading
-   the two env vars, plus `new` / `with_batch_budget`.
+   Debug, PartialEq, Eq)]` and `#[non_exhaustive]`, with a hand-written
+   `Default` (ordinal `0`, `DEFAULT_BATCH_BUDGET_BYTES`), plus `new` /
+   `from_env` / `with_batch_budget`, plus `impl sealed::Sealed for
+   <Handle> {}` under the handle's `cfg`, beside the other seal impls in
+   `device.rs`, and name the handle in the seal's `on_unimplemented` note.
 2. Implement `Backend::probe` for it.
 3. Write the sampler in a new `noise/fgn/<name>.rs`, gated on the
    feature: draw the launch seed **once** from `seed_src`, chunk with
@@ -230,10 +234,11 @@ A process joins the Euler engine by implementing `EulerCoefficients`
 to `via euler`. A new drift/diffusion family is one `EulerSpec` variant
 plus one `family` branch in the kernels.
 
-There is **one** kernel text: `euler/kernel.rs` holds the C body that the
-native CUDA and the Metal back-ends both render (the `Language` struct fills
-in `REAL`, `SQRT`, `LOG`, `COS` and the buffer index type). Changing the
-recursion means editing that body once and re-running the device tests.
+CUDA renders the C body in `euler/kernel.rs` (the `Language` struct fills in
+`REAL`, `SQRT`, `LOG`, `COS` and the buffer index type). Metal runs the Rust
+frame in `stochastic-rs-metal-kernels/src/euler/frame.rs`, instantiated per
+family from the same declarations. Changing the recursion means editing both
+frames, regenerating the Metal artifact and re-running the device tests.
 
 ## 7. Kernel conventions
 

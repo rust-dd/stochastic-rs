@@ -44,6 +44,7 @@
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::traits::SimdFloatExt;
 
@@ -97,13 +98,12 @@ fn sv_pf_loglik(
 
   // Propagation normals (buffer-amortised) + resampling uniforms, both
   // deterministic for common random numbers.
-  let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(pf_seed ^ 0x1234_5678));
+  let mut normal =
+    SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(pf_seed ^ 0x1234_5678));
   let mut resample_rng = Deterministic::new(pf_seed ^ 0xA5A5_5A5A).rng();
 
   // Initialise particles from the stationary distribution.
-  let mut h: Vec<f64> = (0..n)
-    .map(|_| mu + stat_sd * normal.sample_fast())
-    .collect();
+  let mut h: Vec<f64> = (0..n).map(|_| mu + stat_sd * normal.sample()).collect();
   let mut resampled = vec![0.0_f64; n];
   let mut log_obs = vec![0.0_f64; n];
 
@@ -144,7 +144,7 @@ fn sv_pf_loglik(
     // Propagate to the next step (skip after the last observation).
     if t + 1 < y.len() {
       for hi in h.iter_mut() {
-        *hi = mu + phi * (*hi - mu) + sigma_eta * normal.sample_fast();
+        *hi = mu + phi * (*hi - mu) + sigma_eta * normal.sample();
       }
     }
   }
@@ -215,14 +215,14 @@ mod tests {
   /// Simulate the SV model: AR(1) latent log-variance + conditionally
   /// Gaussian returns.
   fn simulate_sv(mu: f64, phi: f64, sigma_eta: f64, n: usize, seed: u64) -> Array1<f64> {
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
     let stat_sd = (sigma_eta * sigma_eta / (1.0 - phi * phi)).sqrt();
-    let mut h = mu + stat_sd * normal.sample_fast();
+    let mut h = mu + stat_sd * normal.sample();
     let mut y = Array1::<f64>::zeros(n);
     for t in 0..n {
-      let eps = normal.sample_fast();
+      let eps = normal.sample();
       y[t] = (h / 2.0).exp() * eps;
-      let eta = normal.sample_fast();
+      let eta = normal.sample();
       h = mu + phi * (h - mu) + sigma_eta * eta;
     }
     y

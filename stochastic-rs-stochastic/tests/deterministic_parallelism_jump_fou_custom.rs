@@ -18,14 +18,14 @@
 use ndarray::Array1;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_distributions::scalar::ScalarExp;
+use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 const SEED: u64 = 42;
 const N: usize = 128;
 
-fn jump_fou_custom(seed: u64) -> JumpFOUCustom<f64, ScalarExp<f64>, Deterministic> {
+fn jump_fou_custom(seed: u64) -> JumpFOUCustom<f64, SimdExp<f64>, Deterministic> {
   JumpFOUCustom::new(
     0.65,
     1.5,
@@ -34,8 +34,8 @@ fn jump_fou_custom(seed: u64) -> JumpFOUCustom<f64, ScalarExp<f64>, Deterministi
     N,
     Some(0.0),
     Some(1.0),
-    ScalarExp::new(20.0),
-    ScalarExp::new(5.0),
+    SimdExp::new(20.0),
+    SimdExp::new(5.0),
     Deterministic::new(seed),
   )
 }

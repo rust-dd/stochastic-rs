@@ -30,7 +30,7 @@ pub struct Deposit<T: RealExt> {
   pub rate: T,
   /// Value (start) date.
   pub value_date: NaiveDate,
-  /// Maturity date.
+  /// Date the principal and interest are repaid.
   pub maturity: NaiveDate,
   /// Day count used for the accrual factor.
   pub day_count: DayCountConvention,

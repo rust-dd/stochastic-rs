@@ -20,7 +20,7 @@ use super::read_quote;
 use crate::calendar::BusinessDayConvention;
 use crate::calendar::Frequency;
 use crate::calendar::ScheduleBuilder;
-use crate::curves::Instrument;
+use crate::curves::BootstrapInstrument;
 use crate::market::handle::Handle;
 use crate::market::indices::NamedOvernightIndex;
 use crate::market::quote::Quote;
@@ -116,7 +116,7 @@ impl<T: RealExt> RateHelper<T> for OisRateHelper<T> {
       .year_fraction(valuation_date, self.maturity_date)
   }
 
-  fn to_instrument(&self, valuation_date: NaiveDate) -> Option<Instrument<T>> {
+  fn to_instrument(&self, valuation_date: NaiveDate) -> Option<BootstrapInstrument<T>> {
     let rate = read_quote(&self.rate_quote)?;
     let day_count = self.index.index.day_count;
     let payment_times: Vec<T> = self
@@ -128,7 +128,7 @@ impl<T: RealExt> RateHelper<T> for OisRateHelper<T> {
     if payment_times.is_empty() {
       return None;
     }
-    Some(Instrument::SwapWithSchedule {
+    Some(BootstrapInstrument::SwapWithSchedule {
       rate,
       payment_times,
     })
@@ -183,7 +183,7 @@ mod tests {
     let dates = long.payment_dates();
     assert_eq!(dates.len(), 3, "three annual payments: {dates:?}");
     assert!(dates.windows(2).all(|w| w[0] < w[1]));
-    let Some(Instrument::SwapWithSchedule {
+    let Some(BootstrapInstrument::SwapWithSchedule {
       payment_times,
       rate,
     }) = long.to_instrument(settle)

@@ -1,6 +1,8 @@
 //! Vertex-centred mesh and quadrature for the forward Kolmogorov equation.
 //! Reference: Wyns & Du Toit (2016), §2 and §4, arXiv:1611.02961.
 
+use crate::traits::RealExt;
+
 /// The `(x, v)` mesh with its cell widths: `wx[i] = (Δx_i + Δx_{i+1}) / 2`,
 /// the width of the cell around node `i`, `Δx_1 = Δx_{m1+1} = 0`.
 pub(super) struct Mesh {
@@ -159,7 +161,7 @@ impl Mesh {
         (num, den)
       })
       .collect::<Vec<_>>();
-    let heaviest = sums.iter().map(|(_, den)| *den).fold(0.0, f64::max);
+    let heaviest = sums.iter().map(|(_, den)| *den).fold(0.0, f64::max_or_nan);
     sums
       .into_iter()
       .map(|(num, den)| (den > threshold * heaviest && den > 0.0).then(|| num / den))

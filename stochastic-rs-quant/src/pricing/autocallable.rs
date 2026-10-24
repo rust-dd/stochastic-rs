@@ -39,7 +39,7 @@ pub enum KnockInStyle {
 pub struct AutocallablePricer {
   /// Spot price.
   pub s: f64,
-  /// Notional.
+  /// Notional the coupons and the redemption are paid on.
   pub notional: f64,
   /// Observation times $t_1, \ldots, t_M$ (years from now).
   pub observation_times: Array1<f64>,
@@ -63,7 +63,7 @@ pub struct AutocallablePricer {
   pub r: f64,
   /// Dividend yield.
   pub q: f64,
-  /// Volatility.
+  /// Annualised Black–Scholes volatility.
   pub sigma: f64,
   /// Number of MC paths.
   pub n_paths: usize,

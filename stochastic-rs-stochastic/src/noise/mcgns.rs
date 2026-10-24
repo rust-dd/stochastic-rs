@@ -17,6 +17,8 @@ use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
@@ -83,7 +85,7 @@ impl<T: FloatExt, S: SeedExt, B> Mcgns<T, S, B> {
       return;
     }
     let sqrt_dt = self.dt().sqrt();
-    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, seed);
+    let mut normal = SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(seed);
     let mut white = Array2::<T>::zeros((k, self.n));
     for mut row in white.rows_mut() {
       normal.fill_slice(row.as_slice_mut().expect("Mcgns rows must be contiguous"));
@@ -108,6 +110,11 @@ impl<T: FloatExt, S: SeedExt, B> Mcgns<T, S, B> {
 #[doc(hidden)]
 pub struct McgnsLaunch<'a, T: FloatExt, S: SeedExt, B>(&'a Mcgns<T, S, B>);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for McgnsLaunch<'_, T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for McgnsLaunch<'_, T, S, B>
 {
@@ -130,6 +137,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 pub struct McgnsLaunchSampler<T: FloatExt, S: SeedExt> {
   inner: McgnsSampler<T, S>,
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for McgnsLaunchSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for McgnsLaunchSampler<T, S> {
   type Output = [Array1<T>; 4];
@@ -194,6 +203,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 }
 
 backend_switch!([T: FloatExt, S: SeedExt] Mcgns<T, S> { rho, n, t, seed, chol } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Mcgns<T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Mcgns<T, S, B> {
   type Output = Array2<T>;
@@ -299,6 +313,8 @@ fn slots_to_matrix<T: FloatExt>(slots: [Array1<T>; 4], k: usize) -> Array2<T> {
 pub struct McgnsSampler<T: FloatExt, S: SeedExt> {
   noise: Mcgns<T, S>,
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for McgnsSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for McgnsSampler<T, S> {
   type Output = Array2<T>;
@@ -406,6 +422,7 @@ mod tests {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyMcgns {
   inner: Option<Mcgns<f64>>,

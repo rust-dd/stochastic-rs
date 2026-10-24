@@ -45,7 +45,10 @@ fn sample_standard_deviation(values: &[f64]) -> Option<f64> {
     return None;
   }
   // Scaling keeps finite costs from overflowing the mean or squared deviations.
-  let scale = values.iter().map(|value| value.abs()).fold(0.0, f64::max);
+  let scale = values
+    .iter()
+    .map(|value| value.abs())
+    .fold(0.0, f64::max_or_nan);
   if scale == 0.0 {
     return Some(0.0);
   }

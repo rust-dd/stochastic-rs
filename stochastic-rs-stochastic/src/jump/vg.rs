@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::gamma::SimdGamma;
 use stochastic_rs_distributions::normal::SimdNormal;
 
@@ -129,7 +132,7 @@ impl<T: FloatExt> Default for Vg<T, Unseeded> {
 impl<T: FloatExt, S: SeedExt, B> Vg<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1))
   }
 }
 
@@ -182,6 +185,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Vg<T, S> { mu, sigma, nu, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Vg<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Vg<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -199,8 +207,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       mu: self.mu,
       sigma: self.sigma,
       x0: self.x0.unwrap_or(T::zero()),
-      gamma: SimdGamma::<T>::new(dt / self.nu, self.nu, &self.seed),
-      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
+      gamma: SimdGamma::<T>::new(dt / self.nu, self.nu).seeded(&self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
     }
   }
 
@@ -244,8 +252,8 @@ pub struct VgSampler<T: FloatExt> {
   mu: T,
   sigma: T,
   x0: T,
-  gamma: SimdGamma<T>,
-  normal: SimdNormal<T>,
+  gamma: Seeded<SimdGamma<T>>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> VgSampler<T> {
@@ -268,6 +276,8 @@ impl<T: FloatExt> VgSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for VgSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for VgSampler<T> {
   type Output = Array1<T>;

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use ndarray::Array2;
 use rayon::prelude::*;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_distributions::special::gamma_li;
 
@@ -111,7 +112,8 @@ pub fn simulate_rbergomi_terminal_samples(
       let path_seed = seed
         .wrapping_add(0xD134_2543_DE82_EF95_u64.wrapping_mul((path_idx as u64).wrapping_add(1)));
       let seed_ext = crate::simd_rng::Deterministic::new(path_seed);
-      let normal = crate::distributions::normal::SimdNormal::<f64>::new(0.0, 1.0, &seed_ext);
+      let mut normal =
+        crate::distributions::normal::SimdNormal::<f64>::new(0.0, 1.0).seeded(&seed_ext);
       let dim = engine.dim();
       let mut z = vec![0.0_f64; dim];
       let mut xi = vec![0.0_f64; dim];
@@ -122,12 +124,12 @@ pub fn simulate_rbergomi_terminal_samples(
 
       for step in 1..=steps {
         for zi in z.iter_mut() {
-          *zi = normal.sample_fast();
+          *zi = normal.sample();
         }
         engine.transform(&z, &mut xi);
 
         let d_w = xi[0];
-        let d_w_perp = normal.sample_fast() * sqrt_dt;
+        let d_w_perp = normal.sample() * sqrt_dt;
 
         let drift = (r - q - 0.5 * v_prev) * dt;
         let diffusion = v_prev.sqrt() * (rho * d_w + rho_orth * d_w_perp);

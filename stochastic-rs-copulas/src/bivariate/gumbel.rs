@@ -4,227 +4,239 @@
 //! C_\theta(u,v)=\exp\!\left(-\left(({-\ln u})^\theta+({-\ln v})^\theta\right)^{1/\theta}\right),\ \theta\ge1
 //! $$
 //!
-use std::error::Error;
 
 use ndarray::Array1;
-use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 
-use super::CopulaType;
+use super::BivariateFamily;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::copula_cdf;
+use crate::bivariate::conditional::copula_pdf;
+use crate::bivariate::conditional::ln_log_ratio;
+use crate::bivariate::conditional::ln_ratio;
+use crate::bivariate::conditional::log_score_parts;
+use crate::bivariate::conditional::numerical_quantiles;
+use crate::bivariate::conditional::on_open_square;
+use crate::bivariate::conditional::softplus;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::admitted;
+use crate::traits::bivariate::checked_percent_point;
+use crate::traits::bivariate::tau_out_of_range;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Gumbel {
-  pub r#type: CopulaType,
-  pub theta: Option<f64>,
-  pub tau: Option<f64>,
-  pub theta_bounds: (f64, f64),
-  pub invalid_thetas: Vec<f64>,
+  theta: Option<f64>,
 }
 
 impl Gumbel {
-  pub fn new(theta: Option<f64>, tau: Option<f64>) -> Self {
-    Self {
-      r#type: CopulaType::Gumbel,
-      theta,
-      tau,
-      theta_bounds: (1.0, f64::INFINITY),
-      invalid_thetas: vec![0.0],
+  /// A Gumbel copula; panics unless `1 <= theta < ∞`.
+  pub fn new(theta: f64) -> Self {
+    Self::try_new(theta).unwrap_or_else(|e| panic!("{e}"))
+  }
+
+  /// `new` with the domain error returned instead of a panic.
+  pub fn try_new(theta: f64) -> Result<Self, CopulaError> {
+    let copula = Self { theta: Some(theta) };
+    copula.check_theta()?;
+    Ok(copula)
+  }
+
+  /// The copula whose Kendall's τ is `tau`.
+  pub fn from_tau(tau: f64) -> Result<Self, CopulaError> {
+    Self::try_new(Self::default().theta_from_tau(tau)?)
+  }
+
+  /// `ln ∂_v C = (w − m) − m expm1(L/θ) − (1 − 1/θ)L + (θ − 1) ln(w/m)`, `x, w = −ln u, −ln v`, `m = max(x, w)`,
+  /// `L = ln(1 + (min/m)^θ)`, the ratio's logarithm by `ln_log_ratio`; the limit laws `δ₀`, `δ₁` at `v = 0, 1`.
+  pub(crate) fn ln_h(theta: f64) -> impl Fn(f64, f64) -> f64 {
+    move |u, v| {
+      if u >= 1.0 || v <= 0.0 {
+        return 0.0;
+      }
+      if u <= 0.0 || v >= 1.0 {
+        return f64::NEG_INFINITY;
+      }
+      let (x, w) = (-u.ln(), -v.ln());
+      let q = ln_log_ratio(u, v, x, w);
+      let (m, w_minus_m, ln_w_over_m) = if q > 0.0 {
+        (x, ln_ratio(u, v), -q)
+      } else {
+        (w, 0.0, 0.0)
+      };
+      let log_1p_r = (-theta * q.abs()).exp().ln_1p();
+      w_minus_m - m * (log_1p_r / theta).exp_m1() - (1.0 - 1.0 / theta) * log_1p_r
+        + (theta - 1.0) * ln_w_over_m
     }
   }
-}
 
-/// Unfit placeholder (`theta = tau = None`) — matches the zero-arg
-/// `new()`-equivalent shape of this crate's other 11 bivariate families
-/// (e.g. `Clayton::default()`); delegates to [`Gumbel::new`] so it can never
-/// drift from what that constructor already produces.
-impl Default for Gumbel {
-  fn default() -> Self {
-    Self::new(None, None)
+  /// `ln c = m − M expm1(ℓ/θ) + (θ − 1) ln(m/M) − 2(1 − 1/θ)ℓ + ln(1 + (θ − 1)/W)`, `W = M e^{ℓ/θ}`: the `θ`-sized parts of
+  /// `(θ − 1) ln(xy) + (1 − 2θ) ln W` cancelled exactly, the last term as a softplus of logarithms.
+  fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
+    if theta == 1.0 {
+      return 0.0;
+    }
+    let (small, big, ln_ratio, ell) = log_score_parts(theta, u, v);
+    let ln_w = big.ln() + ell / theta;
+    small - big * (ell / theta).exp_m1() + (theta - 1.0) * ln_ratio
+      - 2.0 * (1.0 - 1.0 / theta) * ell
+      + softplus((theta - 1.0).ln() - ln_w)
+  }
+
+  /// `numerical_quantiles` of `Gumbel::ln_h`, the identity at `θ = 1`.
+  fn unchecked_inverse(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    let theta = self.theta.unwrap();
+    if theta == 1.0 {
+      return Ok(conditional_quantiles(y, v, |y, _| y));
+    }
+    numerical_quantiles(y, v, self.family(), Self::ln_h(theta))
+  }
+
+  fn unchecked_generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    Ok((-t.ln()).powf(self.theta.unwrap()))
   }
 }
 
 impl BivariateExt for Gumbel {
-  fn r#type(&self) -> CopulaType {
-    self.r#type
-  }
-
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn set_tau(&mut self, tau: f64) {
-    self.tau = Some(tau);
+  fn family(&self) -> BivariateFamily {
+    BivariateFamily::Gumbel
   }
 
   fn theta(&self) -> Option<f64> {
     self.theta
   }
 
-  fn theta_bounds(&self) -> (f64, f64) {
-    self.theta_bounds
-  }
-
-  fn invalid_thetas(&self) -> Vec<f64> {
-    self.invalid_thetas.clone()
-  }
-
   fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
     self.theta = Some(theta);
   }
 
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    Ok((-t.ln()).powf(self.theta.unwrap()))
+  fn theta_bounds(&self) -> (f64, f64) {
+    (1.0, f64::INFINITY)
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn invalid_thetas(&self) -> Vec<f64> {
+    vec![0.0]
+  }
+
+  fn generator_unchecked(&self, t: ArrayView1<f64>) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_generator(t))
+  }
+
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
-    let U = X.column(0);
-    let V = X.column(1);
-
     let theta = self.theta.unwrap();
+    copula_pdf(x, |u, v| Self::ln_density(theta, u, v))
+  }
 
+  fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let theta = self.theta.unwrap();
+    on_open_square(x, |u, v| Self::ln_density(theta, u, v))
+  }
+
+  /// `C = min(u, v) e^{−M expm1(ℓ/θ)}`, the pieces of `Gumbel::ln_density`, as `e^{−M} = min(u, v)`; `uv` at `θ = 1`.
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let theta = self.theta.unwrap();
     if theta == 1.0 {
-      return Ok(Array1::ones(U.len()));
+      return copula_cdf(x, |u, v| u * v);
     }
-
-    let a = (&U * &V).powf(-1.0);
-    let tmp = (-U.ln()).powf(theta) + (-V.ln()).powf(theta);
-    let b = tmp.powf(-2.0 + 2.0 / theta);
-    let c = (U.ln() * V.ln()).powf(theta - 1.0);
-    let d = 1.0 + (theta - 1.0) * tmp.powf(-1.0 / theta);
-    let out = self.cdf(X)? * a * b * c * d;
-
-    Ok(out)
+    copula_cdf(x, |u, v| {
+      let (_, big, _, ell) = log_score_parts(theta, u, v);
+      u.min(v) * (-big * (ell / theta).exp_m1()).exp()
+    })
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    checked_percent_point(self, y, v, Self::unchecked_inverse)
+  }
+
+  fn percent_point_unchecked(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_inverse(y, v))
+  }
+
+  /// `exp` of `Gumbel::ln_h`, `u` at `θ = 1`.
+  fn partial_derivative(&self, uv: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
-    let U = X.column(0);
-    let V = X.column(1);
-
     let theta = self.theta.unwrap();
-
     if theta == 1.0 {
-      return Ok(&U * &V);
+      return conditional_cdf(uv, |u, _| u);
     }
-
-    let h = (-U.ln()).powf(theta) + (-V.ln()).powf(theta);
-    let h = -h.powf(1.0 / theta);
-    let cdfs = h.exp();
-
-    Ok(cdfs)
+    let ln_h = Self::ln_h(theta);
+    conditional_cdf(uv, |u, v| ln_h(u, v).exp())
   }
 
-  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.check_fit()?;
-
-    if self.theta.unwrap() == 1.0 {
-      return Ok(y.to_owned());
-    }
-
-    self.percent_point_numerical(y, V)
+  fn tau_from_theta(&self, theta: f64) -> f64 {
+    1.0 - 1.0 / theta
   }
 
-  /// $\partial_v C(u,v) = C(u,v)\big((-\ln u)^\theta+(-\ln
-  /// v)^\theta\big)^{1/\theta-1}(-\ln v)^{\theta-1}/v$. At `θ=1`
-  /// (independence, `C(u,v)=uv`), `∂_v C(u,v) = u` — not `v`. The
-  /// previous branch returned `V.to_owned()`, the same defect class as
-  /// [`crate::bivariate::frank::Frank::partial_derivative`]'s pre-fix
-  /// `θ = 0` branch. Note that [`Gumbel::percent_point`]'s own `θ = 1`
-  /// branch was already correct (it returns the fresh uniform directly,
-  /// bypassing this method entirely), so `Gumbel::sample` was never
-  /// affected by this bug — only a direct `partial_derivative` call at
-  /// `θ = 1` was wrong.
-  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn std::error::Error>> {
-    self.check_fit()?;
+  fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
+    if !(0.0..1.0).contains(&tau) {
+      return Err(tau_out_of_range(tau, "0.0 <= tau < 1.0".into()));
+    }
+    admitted(self, tau, 1.0 / (1.0 - tau))
+  }
 
-    let U = X.column(0);
-    let V = X.column(1);
-
+  /// Upper-tail dependence $\lambda_U = 2 - 2^{1/\theta}$; Gumbel has no lower-tail dependence
+  /// ($\lambda_L = 0$).
+  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, Table 5.1.
+  fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
+    self.check_theta()?;
     let theta = self.theta.unwrap();
-
-    if theta == 1.0 {
-      return Ok(U.to_owned());
-    }
-
-    let t1 = (-U.ln()).powf(theta);
-    let t2 = (-V.ln()).powf(theta);
-    let p1 = self.cdf(X)?;
-    let p2 = (t1 + t2).powf(-1.0 + 1.0 / theta);
-    let p3 = (-V.ln()).powf(theta - 1.0);
-    let out = p1 * p2 * p3 / V;
-
-    Ok(out)
-  }
-
-  fn compute_theta(&self) -> f64 {
-    let tau = self.tau.unwrap();
-
-    if tau >= 1.0 {
-      return f64::INFINITY;
-    }
-
-    1.0 / (1.0 - tau)
-  }
-
-  /// Upper-tail dependence $\lambda_U = 2 - 2^{1/\theta}$; Gumbel has no
-  /// lower-tail dependence ($\lambda_L = 0$).
-  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
-  /// Springer, Table 5.1.
-  fn tail_dependence(&self) -> TailDependence<f64> {
-    self.assert_theta_valid_for_tail_dependence();
-    let theta = self.theta.unwrap();
-    TailDependence {
+    Ok(TailDependence {
       lower: 0.0,
       upper: 2.0 - 2.0_f64.powf(1.0 / theta),
-    }
+    })
   }
 }
 
 #[cfg(test)]
 mod tests {
   use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
 
-  /// Direct regression pin for the `θ=1` `partial_derivative` bug: at
-  /// independence (`C(u,v)=uv ⟹ ∂_v C = u`), mirrors
-  /// `frank::tests::frank_partial_derivative_at_independence_returns_u`.
-  /// This is the test that actually exercises the bug fixed above — see
-  /// the next test's doc for why a Kendall's-τ sampling check does not.
+  /// At independence (`θ=1`, `C(u,v)=uv`) `partial_derivative` is `∂_v C = u`.
   #[test]
   fn gumbel_partial_derivative_at_independence_returns_u() {
-    let g = Gumbel::new(Some(1.0), None);
+    let g = Gumbel::new(1.0);
     let pd = g
-      .partial_derivative(&array![[0.3_f64, 0.6], [0.2, 0.9]])
+      .partial_derivative(array![[0.3_f64, 0.6], [0.2, 0.9]].view())
       .unwrap();
     assert!((pd[0] - 0.3).abs() < 1e-12, "got {}", pd[0]);
     assert!((pd[1] - 0.2).abs() < 1e-12, "got {}", pd[1]);
   }
 
-  /// Kendall's-τ sampling check at `θ=1`, same construction as
-  /// `clayton::tests::clayton_independence_sample_kendall_tau_near_zero`
-  /// and `frank::tests::frank_independence_sample_kendall_tau_near_zero`.
-  /// Unlike those two, this one would pass even without the
-  /// `partial_derivative` fix above: `Gumbel::percent_point` already had
-  /// its own correct `θ=1` branch, so `Gumbel::sample` never routed
-  /// through the buggy `partial_derivative` at this boundary. Kept
-  /// anyway as a direct regression guard on `sample`/`percent_point`
-  /// itself, matching this crate's standing convention of pinning
-  /// independence-limit sampling behavior for every family that has one.
+  /// At `θ=1` draws are independent, as in Clayton's and Frank's `θ=0` tests; `percent_point`
+  /// has its own `θ=1` branch, so this guards `sample` itself.
   #[test]
   fn gumbel_independence_sample_kendall_tau_near_zero() {
     let n = 4000usize;
     let se = (2.0 * (2.0 * n as f64 + 5.0) / (9.0 * n as f64 * (n as f64 - 1.0))).sqrt();
     let tol = 6.0 * se;
-    let g = Gumbel::new(Some(1.0), Some(0.0));
+    let g = Gumbel::new(1.0);
     let best_abs_tau = [2718_u64, 999, 42]
       .into_iter()
       .map(|seed| {
-        let samples = g.sample_with_seed(n, seed).unwrap();
+        let samples = g.sample(n, &Deterministic::new(seed)).unwrap();
         let u = samples.column(0).to_vec();
         let v = samples.column(1).to_vec();
         let (tau, ..) =
@@ -242,8 +254,8 @@ mod tests {
   /// Gumbel θ=2: λ_U = 2 − √2 = 0.585786437626905.
   #[test]
   fn gumbel_tail_dependence_closed_form() {
-    let g = Gumbel::new(Some(2.0), None);
-    let td = g.tail_dependence();
+    let g = Gumbel::new(2.0);
+    let td = g.tail_dependence().unwrap();
     assert!(
       (td.upper - (2.0 - std::f64::consts::SQRT_2)).abs() < 1e-12,
       "λ_U={}, expected {}",
@@ -253,14 +265,12 @@ mod tests {
     assert_eq!(td.lower, 0.0);
   }
 
-  /// θ=0.5 < `theta_bounds().0 = 1.0` — e.g. reachable via `fit()` on data
-  /// with slightly negative empirical τ, since `_compute_theta` discards
-  /// its own `check_theta()` result. Must panic, not silently return a
-  /// nonsensical (negative) `λ_U`.
+  /// θ = 0.5 lies below the bound 1, where `λ_U = 2 − 2^{1/θ}` would be negative: no copula holds it.
   #[test]
-  #[should_panic(expected = "tail_dependence requires a valid theta")]
-  fn gumbel_tail_dependence_panics_on_invalid_theta() {
-    let g = Gumbel::new(Some(0.5), None);
-    let _ = g.tail_dependence();
+  fn gumbel_rejects_an_invalid_theta() {
+    assert!(matches!(
+      Gumbel::try_new(0.5),
+      Err(CopulaError::InvalidParameter { name: "theta", .. })
+    ));
   }
 }

@@ -18,6 +18,8 @@ use ndarray::Axis;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
@@ -177,8 +179,12 @@ fn fill_wu_zhang_pair<T: FloatExt, S: SeedExt>(
     return;
   }
   let sqrt_dt = dt.sqrt();
-  SimdNormal::<T>::new(T::zero(), sqrt_dt, seed).fill_slice(&mut f[1..]);
-  SimdNormal::<T>::new(T::zero(), sqrt_dt, seed).fill_slice(&mut v[1..]);
+  SimdNormal::<T>::new(T::zero(), sqrt_dt)
+    .seeded(seed)
+    .fill_slice(&mut f[1..]);
+  SimdNormal::<T>::new(T::zero(), sqrt_dt)
+    .seeded(seed)
+    .fill_slice(&mut v[1..]);
   for j in 1..f.len() {
     let v_old = v[j - 1].max(T::zero());
     let f_old = f[j - 1].max(T::zero());
@@ -198,6 +204,11 @@ fn fill_wu_zhang_pair<T: FloatExt, S: SeedExt>(
 /// advances is the process's own.
 #[doc(hidden)]
 pub struct WuZhangPair<'a, T: FloatExt, S: SeedExt, B>(&'a WuZhangD<T, S, B>, usize);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for WuZhangPair<'_, T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for WuZhangPair<'_, T, S, B>
@@ -223,6 +234,11 @@ pub struct WuZhangPairSampler<'a, T: FloatExt, S: SeedExt, B> {
   model: &'a WuZhangD<T, S, B>,
   pair: usize,
   seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for WuZhangPairSampler<'_, T, S, B>
+{
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> PathSampler<T>
@@ -301,6 +317,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 }
 
 backend_switch!([T: FloatExt, S: SeedExt] WuZhangD<T, S> { alpha, beta, nu, lambda, x0, v0, xn, t, n, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for WuZhangD<T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for WuZhangD<T, S, B>
@@ -436,6 +457,8 @@ impl<T: FloatExt, S: SeedExt> WuZhangDSampler<T, S> {
   }
 }
 
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for WuZhangDSampler<T, S> {}
+
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for WuZhangDSampler<T, S> {
   type Output = Array2<T>;
 
@@ -451,6 +474,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for WuZhangDSampler<T, S> {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyWuZhangD {
   inner_f32: Option<WuZhangD<f32>>,

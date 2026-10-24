@@ -1,4 +1,4 @@
-//! A/B bench: production `SimdNormal` vs experimental `SimdNormalDual`.
+//! A/B bench: a `SimdNormal` stream on the production `SimdRng` vs the experimental `SimdRngDual`.
 //! Same workload, same iteration counts, criterion-managed sampling.
 //!
 //! Also benches the raw uniform fill paths
@@ -12,7 +12,9 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
-use stochastic_rs::distributions::SimdNormalDual;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::Seeded;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -35,7 +37,7 @@ fn bench_normal_fill_slice(c: &mut Criterion) {
     let mut buf = vec![0.0_f64; n];
 
     group.bench_with_input(BenchmarkId::new("single_stream", label), &n, |b, _| {
-      let dist: SimdNormal<f64> = SimdNormal::new(0.0, 1.0, &Unseeded);
+      let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Unseeded);
       b.iter(|| {
         dist.fill_slice(&mut buf);
         black_box(&buf);
@@ -43,7 +45,8 @@ fn bench_normal_fill_slice(c: &mut Criterion) {
     });
 
     group.bench_with_input(BenchmarkId::new("dual_stream", label), &n, |b, _| {
-      let dist: SimdNormalDual<f64> = SimdNormalDual::new(0.0, 1.0, &Unseeded);
+      let mut dist =
+        Seeded::<SimdNormal<f64>, SimdRngDual>::new(SimdNormal::new(0.0, 1.0), &Unseeded);
       b.iter(|| {
         dist.fill_slice(&mut buf);
         black_box(&buf);

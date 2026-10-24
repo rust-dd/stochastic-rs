@@ -111,7 +111,7 @@ Before writing code, determine which existing traits the new types should implem
 
 | Type | Required trait | Effect |
 |---|---|---|
-| Any stochastic process | `ProcessExt<T: FloatExt>: Send + Sync` | Gets `sample()`, `sample_map(m, f)`, `sample_par(m)` (rayon parallel). GPU backends are selected with `.on::<B>()`, not by a `sample_cuda` method |
+| Any stochastic process | `ProcessExt<T: FloatExt>: Send + Sync + crate::traits::Sealed` | Gets `sample()`, `sample_map(m, f)`, `sample_par(m)` (rayon parallel). GPU backends are selected with `.on::<B>()`, not by a `sample_cuda` method |
 | Process with Malliavin support | `MalliavinExt<T>` or `Malliavin2DExt<T>` | Malliavin derivative computation |
 | Probability distribution | `DistributionExt` | CF, PDF, CDF, moments |
 | SIMD-accelerated distribution | `DistributionSampler<T>` (`stochastic-rs-distributions/src/traits/distribution.rs`) | Requires `fill_slice()` + `fork()`; `sample_matrix()` / `sample_n()` are provided |
@@ -132,7 +132,7 @@ Before writing code, determine which existing traits the new types should implem
 
 | Type | Required trait | Effect |
 |---|---|---|
-| Bivariate copula | `BivariateExt` | 11 required methods; `sample()` / `fit()` / inversion are defaulted. Tau is `tau()` / `set_tau()` accessors, not a `kendall_tau()` method. See `copula-bivariate` |
+| Bivariate copula | `BivariateExt` | 10 required methods, `tau_from_theta` / `theta_from_tau` among them; `sample()` / `fit()` / `tau()` / inversion are defaulted. See `copula-bivariate` |
 | Multivariate copula | `MultivariateExt` | `sample()`, `fit()`, `pdf()`, `cdf()` |
 
 ### Blanket-impl chains (do NOT duplicate by hand)

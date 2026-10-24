@@ -14,8 +14,8 @@
 
 use super::discount_curve::DiscountCurve;
 use super::interpolation;
+use super::types::BootstrapInstrument;
 use super::types::CurvePoint;
-use super::types::Instrument;
 use super::types::InterpolationMethod;
 use crate::traits::RealExt;
 
@@ -24,10 +24,10 @@ use crate::traits::RealExt;
 /// Instruments are processed in order of increasing maturity. Each instrument
 /// provides one equation for one unknown discount factor.
 pub fn bootstrap<T: RealExt>(
-  instruments: &[Instrument<T>],
+  instruments: &[BootstrapInstrument<T>],
   method: InterpolationMethod,
 ) -> DiscountCurve<T> {
-  let mut sorted: Vec<&Instrument<T>> = instruments.iter().collect();
+  let mut sorted: Vec<&BootstrapInstrument<T>> = instruments.iter().collect();
   sorted.sort_by(|a, b| a.maturity().partial_cmp(&b.maturity()).unwrap());
 
   let mut points: Vec<CurvePoint<T>> = vec![CurvePoint {
@@ -37,14 +37,14 @@ pub fn bootstrap<T: RealExt>(
 
   for inst in &sorted {
     match inst {
-      Instrument::Deposit { maturity, rate } => {
+      BootstrapInstrument::Deposit { maturity, rate } => {
         let df = T::one() / (T::one() + *rate * *maturity);
         points.push(CurvePoint {
           time: *maturity,
           discount_factor: df,
         });
       }
-      Instrument::Fra { start, end, rate } => {
+      BootstrapInstrument::Fra { start, end, rate } => {
         let d_start = interpolation::interpolate_discount_factor(&points, *start, method);
         let delta = *end - *start;
         let df = d_start / (T::one() + *rate * delta);
@@ -53,7 +53,7 @@ pub fn bootstrap<T: RealExt>(
           discount_factor: df,
         });
       }
-      Instrument::Future {
+      BootstrapInstrument::Future {
         start,
         end,
         price,
@@ -72,12 +72,12 @@ pub fn bootstrap<T: RealExt>(
           discount_factor: df,
         });
       }
-      Instrument::Swap {
+      BootstrapInstrument::Swap {
         maturity,
         rate,
         frequency,
       } => {
-        // Round-to-integer number of payments. The free-form Instrument::Swap
+        // Round-to-integer number of payments. The free-form BootstrapInstrument::Swap
         // path requires `maturity · frequency` to be **close** to an integer:
         // a 1.4Y semi-annual swap (mat·freq = 2.8) would round to 3 payments,
         // mismatching the swap-quote convention by 0.2 (~73 days). A
@@ -95,7 +95,7 @@ pub fn bootstrap<T: RealExt>(
         let mismatch = (raw_payments - rounded).abs();
         assert!(
           mismatch < T::from_f64_fast(0.1),
-          "Instrument::Swap requires maturity · frequency to be (close to) an integer \
+          "BootstrapInstrument::Swap requires maturity · frequency to be (close to) an integer \
            (got maturity={:?}, frequency={}, payments mismatch {:?}). \
            Use market::rate_helper::SwapRateHelper for date-aware non-integer schedules.",
           maturity,
@@ -118,7 +118,7 @@ pub fn bootstrap<T: RealExt>(
           discount_factor: df_n,
         });
       }
-      Instrument::SwapWithSchedule {
+      BootstrapInstrument::SwapWithSchedule {
         rate,
         payment_times,
       } => {
@@ -131,7 +131,7 @@ pub fn bootstrap<T: RealExt>(
         // where `δ_i = t_i − t_{i−1}` with the convention `t_0 = 0`.
         assert!(
           !payment_times.is_empty(),
-          "Instrument::SwapWithSchedule requires at least one payment time"
+          "BootstrapInstrument::SwapWithSchedule requires at least one payment time"
         );
         let n = payment_times.len();
         let mut annuity = T::zero();
@@ -166,12 +166,12 @@ pub fn bootstrap<T: RealExt>(
 ///
 /// Uses the bisection method to solve for the unknown discount factor at each step.
 pub fn bootstrap_iterative<T: RealExt>(
-  instruments: &[Instrument<T>],
+  instruments: &[BootstrapInstrument<T>],
   method: InterpolationMethod,
   tol: T,
   max_iter: usize,
 ) -> DiscountCurve<T> {
-  let mut sorted: Vec<&Instrument<T>> = instruments.iter().collect();
+  let mut sorted: Vec<&BootstrapInstrument<T>> = instruments.iter().collect();
   sorted.sort_by(|a, b| a.maturity().partial_cmp(&b.maturity()).unwrap());
 
   let mut points: Vec<CurvePoint<T>> = vec![CurvePoint {
@@ -181,14 +181,14 @@ pub fn bootstrap_iterative<T: RealExt>(
 
   for inst in &sorted {
     match inst {
-      Instrument::Deposit { maturity, rate } => {
+      BootstrapInstrument::Deposit { maturity, rate } => {
         let df = T::one() / (T::one() + *rate * *maturity);
         points.push(CurvePoint {
           time: *maturity,
           discount_factor: df,
         });
       }
-      Instrument::Fra { start, end, rate } => {
+      BootstrapInstrument::Fra { start, end, rate } => {
         let d_start = interpolation::interpolate_discount_factor(&points, *start, method);
         let delta = *end - *start;
         let df = d_start / (T::one() + *rate * delta);
@@ -197,7 +197,7 @@ pub fn bootstrap_iterative<T: RealExt>(
           discount_factor: df,
         });
       }
-      Instrument::Future {
+      BootstrapInstrument::Future {
         start,
         end,
         price,
@@ -216,7 +216,7 @@ pub fn bootstrap_iterative<T: RealExt>(
           discount_factor: df,
         });
       }
-      Instrument::Swap {
+      BootstrapInstrument::Swap {
         maturity,
         rate,
         frequency,
@@ -227,7 +227,7 @@ pub fn bootstrap_iterative<T: RealExt>(
           discount_factor: df_n,
         });
       }
-      Instrument::SwapWithSchedule {
+      BootstrapInstrument::SwapWithSchedule {
         rate,
         payment_times,
       } => {
@@ -237,7 +237,7 @@ pub fn bootstrap_iterative<T: RealExt>(
         // in D(T) once the inner annuity is fixed by the interpolated curve.
         assert!(
           !payment_times.is_empty(),
-          "Instrument::SwapWithSchedule requires at least one payment time"
+          "BootstrapInstrument::SwapWithSchedule requires at least one payment time"
         );
         let n = payment_times.len();
         let mut annuity = T::zero();
@@ -320,13 +320,13 @@ fn solve_swap_df<T: RealExt>(
 
 #[cfg(test)]
 mod tests {
-  use super::super::types::Instrument;
+  use super::super::types::BootstrapInstrument;
   use super::super::types::InterpolationMethod;
   use super::*;
 
   #[test]
   fn bootstrap_single_deposit() {
-    let inst: Vec<Instrument<f64>> = vec![Instrument::Deposit {
+    let inst: Vec<BootstrapInstrument<f64>> = vec![BootstrapInstrument::Deposit {
       maturity: 1.0,
       rate: 0.05,
     }];
@@ -339,12 +339,12 @@ mod tests {
 
   #[test]
   fn bootstrap_iterative_swap() {
-    let inst: Vec<Instrument<f64>> = vec![
-      Instrument::Deposit {
+    let inst: Vec<BootstrapInstrument<f64>> = vec![
+      BootstrapInstrument::Deposit {
         maturity: 0.25,
         rate: 0.04,
       },
-      Instrument::Swap {
+      BootstrapInstrument::Swap {
         maturity: 1.0,
         rate: 0.045,
         frequency: 2,

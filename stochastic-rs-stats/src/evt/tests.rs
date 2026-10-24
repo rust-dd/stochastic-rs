@@ -1,6 +1,8 @@
 use ndarray::Array1;
 use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::pareto::SimdPareto;
 
 use super::*;
@@ -168,7 +170,7 @@ fn hill_recovers_a_pareto_tail_index() {
   let closest = [2718u64, 999, 42]
     .into_iter()
     .map(|seed| {
-      let dist = SimdPareto::<f64>::new(1.0, 3.0, &Deterministic::new(seed));
+      let mut dist = SimdPareto::<f64>::new(1.0, 3.0).seeded(&Deterministic::new(seed));
       let mut xs = vec![0.0; 20_000];
       dist.fill_slice(&mut xs);
       let h = hill_estimator(Array1::from(xs).view(), 500);
@@ -260,4 +262,12 @@ fn gpd_pwm_matches_the_hosking_wallis_formulas() {
 #[should_panic(expected = "need at least 2 exceedances")]
 fn gpd_pwm_rejects_a_single_excess() {
   let _ = gpd_pwm(array![1.0_f64].view());
+}
+
+/// A NaN observation is a NaN block maximum; `f64::max` would hide it behind its neighbours.
+#[test]
+fn a_nan_observation_makes_its_block_maximum_nan() {
+  let maxima = block_maxima(array![1.0_f64, 2.0, f64::NAN, 0.5, 3.0, 1.0].view(), 3);
+  assert!(maxima[0].is_nan());
+  assert_eq!(maxima[1], 3.0);
 }

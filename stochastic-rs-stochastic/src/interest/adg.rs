@@ -17,6 +17,8 @@ use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
@@ -134,7 +136,7 @@ impl<T: FloatExt, S: SeedExt, B> Adg<T, S, B> {
     if row.len() == 1 {
       return;
     }
-    let normal = SimdNormal::<T>::new(T::zero(), dt.sqrt(), seed);
+    let mut normal = SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(seed);
     normal.fill_slice(&mut row[1..]);
     for j in 1..row.len() {
       let t = T::from_usize_(j) * dt;
@@ -152,6 +154,11 @@ impl<T: FloatExt, S: SeedExt, B> Adg<T, S, B> {
 /// the process's own.
 #[doc(hidden)]
 pub struct AdgRow<'a, T: FloatExt, S: SeedExt, B>(&'a Adg<T, S, B>, usize);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for AdgRow<'_, T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for AdgRow<'_, T, S, B>
@@ -177,6 +184,11 @@ pub struct AdgRowSampler<'a, T: FloatExt, S: SeedExt, B> {
   adg: &'a Adg<T, S, B>,
   factor: usize,
   seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for AdgRowSampler<'_, T, S, B>
+{
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> PathSampler<T>
@@ -247,6 +259,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 }
 
 backend_switch!([T: FloatExt, S: SeedExt] Adg<T, S> { k, theta, sigma, phi, b, c, n, xn, x0, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Adg<T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Adg<T, S, B> {
   type Output = Array2<T>;
@@ -331,6 +348,11 @@ pub struct AdgSampler<'a, T: FloatExt, S: SeedExt, B> {
   seed: S,
 }
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for AdgSampler<'_, T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> PathSampler<T>
   for AdgSampler<'_, T, S, B>
 {
@@ -354,6 +376,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> PathSampler<T>
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyAdg {
   inner: Option<Adg<f64>>,

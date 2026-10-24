@@ -175,13 +175,8 @@ impl PyPairsStrategy {
   }
 }
 
-/// Empirical CVaR (Conditional Value-at-Risk / Expected Shortfall) at
-/// tail proportion `alpha`. **Convention:** `alpha = 0.05` averages the
-/// worst 5% of returns. This is **the opposite** of the confidence-level
-/// convention used by `value_at_risk` / `expected_shortfall`. Pass
-/// `1.0 - confidence` if you have a confidence level (e.g. 0.95 -> 0.05).
-/// Returns `-mean(tail)` so positive numbers indicate larger losses.
-/// Raises a Python panic if `alpha` is outside `(0, 0.5)`.
+/// Empirical CVaR, `-mean` of the worst `alpha` fraction of `returns` (`0.05` is the worst 5 %, the opposite of `value_at_risk`'s
+/// confidence level); raises `ValueError` on an empty sample or an `alpha` outside `(0, 0.5)`.
 #[pyfunction]
 #[pyo3(signature = (returns, alpha))]
 pub fn empirical_cvar<'py>(
@@ -196,8 +191,7 @@ pub fn empirical_cvar<'py>(
     )));
   }
   let mut returns_vec: Vec<f64> = returns.as_array().to_vec();
-  Ok(crate::portfolio::optimizers::empirical_cvar(
-    &mut returns_vec,
-    alpha,
-  ))
+  stochastic_rs_distributions::python::value_error_on_panic(|| {
+    crate::portfolio::optimizers::empirical_cvar(&mut returns_vec, alpha)
+  })
 }

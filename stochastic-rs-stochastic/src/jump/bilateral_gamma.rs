@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::gamma::SimdGamma;
 use stochastic_rs_distributions::normal::SimdNormal;
 
@@ -83,7 +86,7 @@ impl<T: FloatExt, S: SeedExt, B> BilateralGamma<T, S, B> {}
 impl<T: FloatExt, S: SeedExt, B> BilateralGamma<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1))
   }
 }
 
@@ -134,6 +137,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] BilateralGamma<T, S> { alpha_p, lambda_p, alpha_m, lambda_m, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for BilateralGamma<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for BilateralGamma<T, S, B>
 {
@@ -151,8 +159,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     BilateralGammaSampler {
       n: self.n,
       x0: self.x0.unwrap_or(T::zero()),
-      gamma_p: SimdGamma::<T>::new(self.alpha_p * dt, T::one() / self.lambda_p, &self.seed),
-      gamma_m: SimdGamma::<T>::new(self.alpha_m * dt, T::one() / self.lambda_m, &self.seed),
+      gamma_p: SimdGamma::<T>::new(self.alpha_p * dt, T::one() / self.lambda_p).seeded(&self.seed),
+      gamma_m: SimdGamma::<T>::new(self.alpha_m * dt, T::one() / self.lambda_m).seeded(&self.seed),
     }
   }
 
@@ -194,8 +202,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 pub struct BilateralGammaSampler<T: FloatExt> {
   n: usize,
   x0: T,
-  gamma_p: SimdGamma<T>,
-  gamma_m: SimdGamma<T>,
+  gamma_p: Seeded<SimdGamma<T>>,
+  gamma_m: Seeded<SimdGamma<T>>,
 }
 
 impl<T: FloatExt> BilateralGammaSampler<T> {
@@ -218,6 +226,8 @@ impl<T: FloatExt> BilateralGammaSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for BilateralGammaSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for BilateralGammaSampler<T> {
   type Output = Array1<T>;
@@ -302,7 +312,7 @@ impl<T: FloatExt, S: SeedExt, B> BilateralGammaMotion<T, S, B> {}
 impl<T: FloatExt, S: SeedExt, B> BilateralGammaMotion<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1))
   }
 }
 
@@ -353,6 +363,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] BilateralGammaMotion<T, S> { sigma, alpha_p, lambda_p, alpha_m, lambda_m, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for BilateralGammaMotion<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for BilateralGammaMotion<T, S, B>
 {
@@ -372,9 +387,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       sigma: self.sigma,
       x0: self.x0.unwrap_or(T::zero()),
       sqrt_dt: dt.sqrt(),
-      gamma_p: SimdGamma::<T>::new(self.alpha_p * dt, T::one() / self.lambda_p, &self.seed),
-      gamma_m: SimdGamma::<T>::new(self.alpha_m * dt, T::one() / self.lambda_m, &self.seed),
-      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
+      gamma_p: SimdGamma::<T>::new(self.alpha_p * dt, T::one() / self.lambda_p).seeded(&self.seed),
+      gamma_m: SimdGamma::<T>::new(self.alpha_m * dt, T::one() / self.lambda_m).seeded(&self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
     }
   }
 
@@ -418,9 +433,9 @@ pub struct BilateralGammaMotionSampler<T: FloatExt> {
   sigma: T,
   x0: T,
   sqrt_dt: T,
-  gamma_p: SimdGamma<T>,
-  gamma_m: SimdGamma<T>,
-  normal: SimdNormal<T>,
+  gamma_p: Seeded<SimdGamma<T>>,
+  gamma_m: Seeded<SimdGamma<T>>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> BilateralGammaMotionSampler<T> {
@@ -445,6 +460,8 @@ impl<T: FloatExt> BilateralGammaMotionSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for BilateralGammaMotionSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for BilateralGammaMotionSampler<T> {
   type Output = Array1<T>;

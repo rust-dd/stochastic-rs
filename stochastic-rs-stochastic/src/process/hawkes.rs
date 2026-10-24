@@ -133,6 +133,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Hawkes<T, S> { mu, alpha, beta, n, t_max, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Hawkes<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Hawkes<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -334,6 +339,8 @@ impl<T: FloatExt> HawkesSampler<T> {
     Array1::from(events)
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for HawkesSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for HawkesSampler<T> {
   type Output = Array1<T>;

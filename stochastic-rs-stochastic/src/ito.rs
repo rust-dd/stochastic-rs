@@ -14,8 +14,8 @@
 //! [`crate::sde::Sde`] (`<T: FloatExt>`) or any of the strongly-typed
 //! [`crate::traits::ProcessExt`] processes.
 use ndarray::Array1;
-use rand_distr::Distribution;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use rand::distr::Distribution;
+use stochastic_rs_distributions::normal::SimdNormal;
 
 /// A structure defining the drift and diffusion functions of the SDE.
 /// Optionally, a jump term can be added (e.g., for jump-diffusion models).
@@ -169,7 +169,7 @@ impl ItoCalculator {
   ) -> Array1<(f64, f64)> {
     let steps = ((t1 - t0) / dt).ceil().max(0.0) as usize;
     let sqrt_dt = dt.sqrt();
-    let standard = ScalarNormal::new(0.0_f64, 1.0);
+    let standard = SimdNormal::new(0.0_f64, 1.0);
     let mut normals = vec![0.0; steps];
     for z in normals.iter_mut() {
       *z = standard.sample(rng);

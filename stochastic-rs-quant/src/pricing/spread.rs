@@ -81,31 +81,8 @@ pub struct MargrabePricer {
 }
 
 impl MargrabePricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `sigma1` or `sigma2` is negative or `NaN` — not a volatility
-  /// - if `rho` is outside `[-1, 1]` or `NaN` — not a correlation
-  ///
-  /// An out-of-range correlation is the sharp one here, because
-  /// [`price`](Self::price)'s degenerate branch catches it and returns a
-  /// number: at `rho = 5` the combined variance
-  /// $\sigma_1^2+\sigma_2^2-2\rho\sigma_1\sigma_2$ goes *negative*, trips
-  /// the `< 1e-14` test, and the exchange option prices as its discounted
-  /// intrinsic — `10.0` against the correct `16.19`. At `rho = -5` the
-  /// variance is merely too large and the price comes back `36.94`. Both
-  /// volatilities are checked to the same standard and for the same
-  /// reason as [`KirkSpreadPricer`](crate::pricing::kirk::KirkSpreadPricer)'s:
-  /// validating one would swap the old asymmetry for a new one, and a
-  /// negative `sigma1` prices at `21.21`.
-  ///
-  /// Admissible and still accepted: perfect correlation either way, and a
-  /// zero-volatility leg. `sigma1 == sigma2` at `rho == 1` is exactly the
-  /// degenerate branch, which is a limit rather than an error.
-  ///
-  /// No longer `const fn`. What made that safe was measured rather than
-  /// assumed: **zero** `const` or `static` items of this type exist in the
-  /// workspace, against 32 `MargrabePricer::new` call sites.
+  /// Panics unless `sigma1, sigma2 ≥ 0` and `rho ∈ [-1, 1]`: at `rho = 5` the variance goes
+  /// negative and the degenerate branch would return the discounted intrinsic.
   pub fn new(sigma1: f64, sigma2: f64, rho: f64) -> Self {
     assert!(
       sigma1 >= 0.0,
@@ -141,19 +118,8 @@ impl MargrabePricer {
     (d1, d1 - v * sqrt_t)
   }
 
-  /// Price the exchange option at one query point. This is always the call
-  /// payoff $\max(S_1 - S_2, 0)$; the "put" version $\max(S_2 - S_1, 0)$ is
-  /// the same model and the same query with the two legs swapped in both.
-  ///
-  /// The degenerate branch is the $\sigma \to 0$ limit — the spread is
-  /// deterministic, so the option is worth its discounted intrinsic value
-  /// — and it is reached by an *admissible* model, `sigma1 == sigma2` at
-  /// `rho == 1`. It floors through `floor_payoff` rather than
-  /// `f64::max`, because that branch is also where a `NaN` query lands: a
-  /// `NaN` `tau` — which [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt)
-  /// returns for an expiry that never resolved — used to price a perfectly
-  /// correlated exchange option at a confident `0.0`, while the same
-  /// `tau` against any other model returns `NaN`.
+  /// Exchange-option price $\max(S_1 - S_2, 0)$ (swap the legs for the other side); the σ → 0
+  /// branch floors through `floor_payoff`, so a NaN `tau` stays NaN there too.
   pub fn price(&self, s1: f64, s2: f64, q1: f64, q2: f64, tau: f64) -> f64 {
     let v_sq = self.combined_variance();
     if v_sq < 1e-14 {
@@ -229,30 +195,8 @@ pub struct McSpreadPricer {
 }
 
 impl McSpreadPricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `sigma1` or `sigma2` is negative or `NaN` — not a volatility
-  /// - if `rho` is outside `[-1, 1]` or `NaN` — not a correlation
-  /// - if `n_paths` is `0`
-  ///
-  /// The correlation guard closes a second instance of the `f64::max`
-  /// trap, one layer up from the payoff floor: the Cholesky-free factor
-  /// `sqrt((1 - rho²).max(0.0))` *absorbs* an out-of-range correlation
-  /// instead of announcing it, so the second asset is simulated as
-  /// `rho·z1` alone and the spread call comes back `13.62` at `rho = 5`
-  /// and `35.35` at `rho = -5`, against `10.69`. Both volatilities are
-  /// checked to the same standard: a negative `sigma1` prices at `15.93`.
-  ///
-  /// `n_paths == 0` is the one guard here that does **not** close a wrong
-  /// number — the empty average is `0/0` and the price is already `NaN`.
-  /// It is rejected so that a path count is refused where it is supplied,
-  /// matching
-  /// [`GbmMalliavinPricer::new`](crate::pricing::malliavin_gbm::GbmMalliavinPricer::new),
-  /// the crate's other Monte Carlo pricer holding its own path count.
-  ///
-  /// No longer `const fn`: **zero** `const` or `static` items of this type
-  /// in the workspace, against 20 `McSpreadPricer::new` call sites.
+  /// Panics unless `sigma1, sigma2 ≥ 0`, `rho ∈ [-1, 1]` (the factor `√(1 − ρ²)` would absorb it)
+  /// and `n_paths > 0`.
   pub fn new(sigma1: f64, sigma2: f64, rho: f64, n_paths: usize) -> Self {
     assert!(
       sigma1 >= 0.0,

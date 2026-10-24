@@ -1,6 +1,5 @@
-//! Python surface of the surrogates and the surrogate calibration
-//! (`--features ai` builds only; the published wheels leave it out because
-//! candle is heavy).
+//! Python surface of the surrogates and their calibration, in `--features ai` builds only: the
+//! published wheels leave candle out.
 
 use numpy::IntoPyArray;
 use numpy::PyReadonlyArray1;
@@ -98,7 +97,8 @@ macro_rules! py_surrogate {
         report_dict(py, &report)
       }
 
-      /// Implied-volatility surface (flat, row-major maturities × strikes) at `params`.
+      /// Implied-vol surface at `params`, flat and maturity-major: 8 maturities from 0.1 to 2.0,
+      /// each with 11 strikes: 0.5 to 1.5 times the spot, Heston 2 down to 2/3 times the spot.
       fn predict_surface<'py>(&self, py: Python<'py>, params: Vec<f64>) -> PyResult<Bound<'py, numpy::PyArray1<f64>>> {
         let p: Vec<f32> = params.iter().map(|&v| v as f32).collect();
         let out = SurrogateModel::nn(&self.inner).predict_surface(&p).map_err(err)?;
@@ -199,9 +199,8 @@ fn run_calibration<'py>(
   result_dict(py, &fit)
 }
 
-/// Levenberg–Marquardt calibration of a surrogate (`HestonNn`, `RBergomiNn`
-/// or `OneFactorNn`) to a market surface on its grid; returns a dict with the
-/// parameters in the surrogate's input order plus the fit diagnostics.
+/// Levenberg–Marquardt fit of `HestonNn`, `RBergomiNn` or `OneFactorNn` to a market surface on
+/// its grid; returns the parameters in the surrogate's input order and the diagnostics as a dict.
 #[pyfunction]
 #[pyo3(signature = (model, market, initial=None, weights=None, tolerance=1e-10, patience=200))]
 pub fn calibrate_surrogate<'py>(

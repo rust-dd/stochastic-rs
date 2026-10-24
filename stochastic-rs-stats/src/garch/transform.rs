@@ -18,6 +18,7 @@
 use super::GarchKind;
 use super::GarchSpec;
 use super::MeanSpec;
+use crate::traits::RealExt;
 
 fn sigmoid(x: f64) -> f64 {
   1.0 / (1.0 + (-x).exp())
@@ -29,7 +30,7 @@ fn logit(p: f64) -> f64 {
 
 /// Softmax over `logits.len() + 1` slots, the first logit pinned at zero.
 fn softmax(logits: &[f64]) -> Vec<f64> {
-  let max = logits.iter().copied().fold(0.0_f64, f64::max);
+  let max = logits.iter().copied().fold(0.0_f64, f64::max_or_nan);
   let mut w: Vec<f64> = std::iter::once(0.0)
     .chain(logits.iter().copied())
     .map(|l| (l - max).exp())

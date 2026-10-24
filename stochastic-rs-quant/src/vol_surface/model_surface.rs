@@ -99,11 +99,8 @@ pub trait ModelSurface: VanillaEuropeanCall {
   }
 }
 
-/// Blanket: every [`VanillaEuropeanCall`] gets [`ModelSurface`] for free.
-///
-/// This was `impl<T: ModelPricer + ?Sized>` until the pricer population grew
-/// past European vanillas; [`VanillaEuropeanCall`] records what the wider
-/// bound had been asserting without saying so.
+/// Every [`VanillaEuropeanCall`] gets [`ModelSurface`]; only a European vanilla call has a Black
+/// implied volatility to invert.
 impl<T: VanillaEuropeanCall + ?Sized> ModelSurface for T {}
 
 /// Generate an implied vol surface using Carr-Madan FFT for faster pricing
@@ -443,11 +440,8 @@ mod tests {
     );
   }
 
-  /// The default forward is the literal expression `vol_surface` used to
-  /// inline, so every model that does not override the hook keeps the
-  /// surface it had. `assert_eq!` on `f64` is the point: "equal to within a
-  /// tolerance" would not distinguish a re-association that moves an ulp
-  /// from the expression itself.
+  /// The default forward is bit-identical to `s·e^{(r−q)t}`, which only `assert_eq!` can show: a
+  /// tolerance would let a re-association move an ulp.
   #[test]
   fn default_forward_is_bit_identical_to_the_inlined_expression() {
     let heston = HestonFourier {
