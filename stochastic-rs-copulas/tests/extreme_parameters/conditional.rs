@@ -1,3 +1,4 @@
+use ndarray::Array1;
 use ndarray::array;
 use stochastic_rs_copulas::bivariate::bb1::Bb1;
 use stochastic_rs_copulas::bivariate::bb7::Bb7;
@@ -71,6 +72,41 @@ fn the_gaussian_h_its_inverse_and_density_hold_past_the_rounding_switch() {
       (ln_c - want[2]).abs() <= 1e-12 * want[2].abs().max(1.0),
       "{line}: ln c {ln_c:e}"
     );
+  }
+}
+
+/// Past the normal switch `h(· | v)` keeps the t's two-point law at `v ∈ {0, 1}`, mass `t_{ν+1}(±ρ√((ν + 1)/(1 − ρ²)))`
+/// (mpmath quadrature at 40 and 60 digits), and `h⁻¹(· | v)` is its quantile: 0 up to the mass, 1 past it.
+#[test]
+fn the_t_edges_keep_the_two_point_law_past_the_normal_switch() {
+  let rows = [
+    (0.0, 1e22, [0.5, 0.5]),
+    (1e-11, 1e22, [0.8413447460685429, 0.15865525393145707]),
+    (-1e-11, 1e300, [0.0, 1.0]),
+  ];
+  for (rho, nu, masses) in rows {
+    let copula = TCopula::new(rho, nu);
+    for (v, mass) in [0.0, 1.0].into_iter().zip(masses) {
+      let h = copula
+        .partial_derivative(array![[0.3, v], [0.7, v]].view())
+        .unwrap();
+      assert!(
+        h.iter().all(|&h| agrees(h, mass)),
+        "t {rho} {nu}: h(· | {v}) = {h}, want {mass}"
+      );
+      let mut levels = vec![0.3, 0.7];
+      if mass > 0.0 && mass < 1.0 {
+        levels.extend([mass * (1.0 - 1e-9), mass * (1.0 + 1e-9)]);
+      }
+      let at = Array1::from_elem(levels.len(), v);
+      let q = copula
+        .percent_point(Array1::from(levels.clone()).view(), at.view())
+        .unwrap();
+      for (y, q) in levels.iter().zip(&q) {
+        let want = if *y <= mass { 0.0 } else { 1.0 };
+        assert_eq!(*q, want, "t {rho} {nu}: h⁻¹({y} | {v})");
+      }
+    }
   }
 }
 
