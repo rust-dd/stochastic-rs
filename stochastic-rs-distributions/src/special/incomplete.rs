@@ -47,7 +47,7 @@ fn domain(a: f64, x: f64) -> bool {
   !(x < 0.0 || a.is_nan() || a <= 0.0)
 }
 
-/// `x^a e^{−x}/Γ(a)` as `(factor, ln_scale)`: from `ln Γ(a)` below shape 10, `large_shape::scaled_prefactor` from there.
+/// `x^a e^{−x}/Γ(a)` as `(factor, ln_scale)`.
 #[inline(always)]
 fn prefactor(a: f64, x: f64) -> (f64, f64) {
   if a < STIRLING_PREFACTOR {
