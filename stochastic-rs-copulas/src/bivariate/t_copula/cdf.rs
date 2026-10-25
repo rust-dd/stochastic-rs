@@ -293,7 +293,7 @@ impl BivariateT {
     }
     let sum = self.law.quantile_sum(x, u, sum_minus_one(u, v), plain);
     let y = sum - x;
-    // Positive unless the law's quantiles are not the t law's, past `ν ≈ 4.4e12`.
+    // A solve that fails, NaN or past the crossing, leaves the plain scores.
     if y.is_nan() || y <= 0.0 {
       return None;
     }
@@ -305,7 +305,7 @@ impl BivariateT {
   }
 
   /// Whether the density can carry the tail beyond the quantile `f` of level `p`: the concave `ψ` bounds that tail's mass by
-  /// `e^ψ/(ν tanh|t|)`, so a `ψ` 50 under `ln min(p, 1 − p) B` is not the law's quantile, as `SimdStudentT`'s past `ν ≈ 1e13`.
+  /// `e^ψ/(ν tanh|t|)`, so a `ψ` 50 under `ln min(p, 1 − p) B` is not the law's quantile.
   fn reachable(&self, p: f64, f: &Feature) -> bool {
     if f.sign == 0.0 {
       return true;

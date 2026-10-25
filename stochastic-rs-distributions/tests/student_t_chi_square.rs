@@ -293,10 +293,6 @@ fn quantile_agrees(got: f64, want: f64, p: f64, kappa: f64) -> bool {
   (got - want).abs() <= tol
 }
 
-/// From this `ν` the law still takes the incomplete beta's continued fraction; each row there that misses must keep
-/// missing, so the fix fails this test.
-const CONTINUED_FRACTION_FROM: f64 = 1e6;
-
 fn report(kind: &str, total: usize, failures: Vec<String>) {
   assert!(
     failures.is_empty(),
@@ -312,9 +308,7 @@ fn the_t_cdf_matches_mpmath() {
     .iter()
     .filter_map(|&(nu, x, want)| {
       let got = SimdStudentT::<f64>::new(nu).cdf(x).unwrap();
-      let listed = nu >= CONTINUED_FRACTION_FROM;
-      (cdf_agrees(got, want) == listed)
-        .then(|| format!("ν = {nu:e}, x = {x:e}: {got:e}, want {want:e}"))
+      (!cdf_agrees(got, want)).then(|| format!("ν = {nu:e}, x = {x:e}: {got:e}, want {want:e}"))
     })
     .collect();
   report("t cdf", T_CDF.len(), failures);
@@ -326,8 +320,7 @@ fn the_t_quantile_matches_mpmath() {
     .iter()
     .filter_map(|&(nu, p, want, kappa)| {
       let got = SimdStudentT::<f64>::new(nu).quantile(p).unwrap();
-      let listed = nu >= CONTINUED_FRACTION_FROM && !(p > 0.5 && nu <= 1e12);
-      (quantile_agrees(got, want, p, kappa) == listed)
+      (!quantile_agrees(got, want, p, kappa))
         .then(|| format!("ν = {nu:e}, p = {p:e}: {got:e}, want {want:e}"))
     })
     .collect();
@@ -343,8 +336,7 @@ fn the_t_quantile_is_odd_to_the_bit() {
     .filter_map(|&(nu, p, _, _)| {
       let law = SimdStudentT::<f64>::new(nu);
       let (upper, lower) = (law.quantile(p).unwrap(), law.quantile(1.0 - p).unwrap());
-      let listed = (CONTINUED_FRACTION_FROM..=1e15).contains(&nu);
-      ((upper.to_bits() == (-lower).to_bits()) == listed)
+      (upper.to_bits() != (-lower).to_bits())
         .then(|| format!("ν = {nu:e}, p = {p:e}: {upper:e} against −{lower:e}"))
     })
     .collect();

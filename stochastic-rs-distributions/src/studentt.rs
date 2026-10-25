@@ -27,9 +27,6 @@ use crate::traits::distribution::SimdKernel;
 
 const SMALL_STUDENT_T_THRESHOLD: usize = 16;
 
-/// From this `ν` the cdf and the quantile still take the incomplete beta's continued fraction, and Newton on it.
-const CONTINUED_FRACTION_FROM: f64 = 1e6;
-
 /// Student's t law with `nu` degrees of freedom: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdStudentT<T> {
@@ -239,36 +236,6 @@ fn lower_quantile(nu: f64, ratio: f64, p: f64) -> f64 {
   t
 }
 
-/// `F(x)` for `x ≥ 0`, `1 − ½ I_{ν/(ν+x²)}(ν/2, ½)`, the other half by symmetry, by the incomplete beta's continued fraction.
-fn continued_fraction_cdf(nu: f64, x: f64) -> f64 {
-  let t = nu / (nu + x * x);
-  let half = 0.5 * crate::special::beta_i(0.5 * nu, 0.5, t);
-  if x >= 0.0 { 1.0 - half } else { half }
-}
-
-/// Newton on `continued_fraction_cdf` from the first Cornish–Fisher term, 40 steps.
-fn continued_fraction_quantile(nu: f64, p: f64) -> f64 {
-  let z = ndtri(p);
-  let mut x = z * (1.0 + (z * z + 1.0) / (4.0 * nu));
-  for _ in 0..40 {
-    let f = continued_fraction_cdf(nu, x) - p;
-    let log_norm = crate::special::ln_gamma(0.5 * (nu + 1.0))
-      - 0.5 * (nu * std::f64::consts::PI).ln()
-      - crate::special::ln_gamma(0.5 * nu);
-    let log_kernel = -0.5 * (nu + 1.0) * (1.0 + x * x / nu).ln();
-    let pdf = (log_norm + log_kernel).exp();
-    if pdf <= 0.0 {
-      break;
-    }
-    let new_x = x - f / pdf;
-    if (new_x - x).abs() < 1e-14 * (1.0 + x.abs()) {
-      return new_x;
-    }
-    x = new_x;
-  }
-  x
-}
-
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
   /// `R(ν/2)/√(2π) e^{−((ν + 1)/2) ln_1p(x²/ν)}`; past `x²/ν = f64::MAX` the logarithm from `ln|x|`.
   fn pdf(&self, x: f64) -> Option<f64> {
@@ -285,9 +252,6 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
   /// `½ ± ½ I_{x²/(ν+x²)}(½, ν/2)` near zero, `½ I_{ν/(ν+x²)}(ν/2, ½)` in the lower tail, the upper half by symmetry.
   fn cdf(&self, x: f64) -> Option<f64> {
     let nu = self.nu.to_f64().unwrap();
-    if nu >= CONTINUED_FRACTION_FROM {
-      return Some(continued_fraction_cdf(nu, x));
-    }
     if x.is_nan() {
       return Some(f64::NAN);
     }
@@ -307,9 +271,6 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
       return Some(f64::INFINITY);
     }
     let nu = self.nu.to_f64().unwrap();
-    if nu >= CONTINUED_FRACTION_FROM {
-      return Some(continued_fraction_quantile(nu, p));
-    }
     Some(if p == 0.5 {
       0.0
     } else if p > 0.5 {

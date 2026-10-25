@@ -14,86 +14,14 @@ use super::on_grid;
 /// open part: mpmath of the stable forms, each proved equal to `C` or to sympy's `∂²C/∂u∂v` (`ln` of it) in sympy.
 const DENSITIES: &str = include_str!("../fixtures/extreme_densities.txt");
 
-/// The t rows at large `ν` `(ρ, ν, bound in ms)`, which the table holds for their time and the misses below; a bound is
-/// four times a debug evaluation at least, CI's build, the 1e13 row's in the band where the integrations reach their cap.
+/// The t rows at large `ν` `(ρ, ν, bound in ms)`, which the table holds for their time; a bound is four times a debug
+/// evaluation at least, CI's build.
 const WALL_CLOCK: [(f64, f64, u64); 4] = [
   (0.5, 1e8, 500),
   (-0.8, 1e13, 2000),
   (-0.8, 1e15, 500),
   (-0.999999, 9.99e21, 500),
 ];
-
-/// Where `SimdStudentT`, off the t law by `7e-8` at `ν = 1e8` and not the t law's from `ν ≈ 4.4e12`, puts a large-`ν` cell
-/// past `1e-12` or at NaN: 368 cells, each of which must keep missing, so a fix of that law fails this test.
-const LARGE_NU_MISSES: [(f64, f64, &str, Misses); 12] = [
-  (0.5, 1e8, "cdf", Misses::Only(&[30, 31, 39, 40, 50])),
-  (0.5, 1e8, "log_pdf", Misses::AllBut(&UPPER_DENSITY)),
-  (
-    -0.95,
-    4437290359301.342,
-    "cdf",
-    Misses::Only(&[32, 33, 34, 41, 42, 43, 48, 49, 50, 57, 58, 66, 67]),
-  ),
-  (
-    -0.95,
-    4437290359301.342,
-    "log_pdf",
-    Misses::AllBut(&UPPER_OR_SUBNORMAL_DENSITY),
-  ),
-  (-0.8, 1e13, "cdf", Misses::Only(&LOWER_CDF)),
-  (
-    -0.8,
-    1e13,
-    "log_pdf",
-    Misses::AllBut(&UPPER_OR_SUBNORMAL_DENSITY),
-  ),
-  (-0.8, 4e13, "cdf", Misses::Only(&LOWER_CDF)),
-  (
-    -0.8,
-    4e13,
-    "log_pdf",
-    Misses::AllBut(&[0, 4, 6, 28, 32, 34, 42, 46, 48]),
-  ),
-  (-0.8, 1e15, "cdf", Misses::Only(&NARROW_CDF)),
-  (-0.8, 1e15, "log_pdf", Misses::AllBut(&[32])),
-  (-0.999999, 9.99e21, "cdf", Misses::AllBut(&[])),
-  (-0.999999, 9.99e21, "log_pdf", Misses::AllBut(&[32])),
-];
-
-/// The cells of a row that miss: those listed, or every other one (the cdf's edges, which are exact, never miss).
-#[derive(Clone, Copy)]
-enum Misses {
-  Only(&'static [usize]),
-  AllBut(&'static [usize]),
-}
-
-impl Misses {
-  fn contains(self, cell: usize) -> bool {
-    match self {
-      Misses::Only(cells) => cells.contains(&cell),
-      Misses::AllBut(cells) => !cells.contains(&cell),
-    }
-  }
-}
-
-/// `C(a, b)` with both levels in `[1e-15, 1 − 2⁻⁵³]`.
-const NARROW_CDF: [usize; 25] = [
-  30, 31, 32, 33, 34, 39, 40, 41, 42, 43, 48, 49, 50, 51, 52, 57, 58, 59, 60, 61, 66, 67, 68, 69,
-  70,
-];
-
-/// `NARROW_CDF` with a level under ½, and `(½, ½)`.
-const LOWER_CDF: [usize; 17] = [
-  30, 31, 32, 33, 34, 39, 40, 41, 42, 43, 48, 49, 50, 57, 58, 66, 67,
-];
-
-/// `ln c(a, b)` with both levels in `[½, 1 − 2⁻⁵³]`.
-const UPPER_DENSITY: [usize; 9] = [32, 33, 34, 39, 40, 41, 46, 47, 48];
-
-/// `UPPER_DENSITY` and the cells with a level at `5e-324` and the other at `5e-324`, `½`, `1 − 1e-15` or `1 − 2⁻⁵³`,
-/// which the t quantile's seed, `ndtri` with its subnormal step, holds within `1e-12`.
-const UPPER_OR_SUBNORMAL_DENSITY: [usize; 16] =
-  [0, 4, 5, 6, 28, 32, 33, 34, 35, 39, 40, 41, 42, 46, 47, 48];
 
 /// Within `1e-12 · max(1, |ln c|)`, an infinite truth exactly.
 fn log_agrees(got: f64, want: f64) -> bool {
@@ -130,18 +58,12 @@ fn cdf_and_log_density_match_the_mpmath_table() {
       } else {
         log_agrees(got, want)
       };
-      let listed = family == "t"
-        && !edge
-        && LARGE_NU_MISSES
-          .iter()
-          .any(|&(rho, nu, k, cells)| params == [rho, nu] && kind == k && cells.contains(i));
-      if ok == listed {
+      if !ok {
         let side = if kind == "cdf" { 9 } else { 7 };
         let offset = if kind == "cdf" { 0 } else { 1 };
         let (a, b) = (GRID[i / side + offset], GRID[i % side + offset]);
-        let note = if listed { " (a listed miss)" } else { "" };
         failures.push(format!(
-          "{family} {params:?} {kind}({a:e}, {b:e}) = {got:e}, want {want:e}{note}"
+          "{family} {params:?} {kind}({a:e}, {b:e}) = {got:e}, want {want:e}"
         ));
       }
     }
@@ -154,8 +76,8 @@ fn cdf_and_log_density_match_the_mpmath_table() {
   );
 }
 
-/// The wall-clock rows: at large `ν` every evaluation is bounded in time, whatever noise the law it reads carries, with
-/// the cells that took a minute or did not return and two of the band that reach the cap where `C` is the Fréchet floor.
+/// The wall-clock rows: at large `ν` every evaluation is bounded in time, with the cells that took a minute or did not
+/// return and two of the band where `C` is the Fréchet floor.
 #[test]
 fn the_t_cdf_is_time_bounded_at_large_nu() {
   let mut cells: Vec<(f64, f64, f64, f64, u64)> = vec![
@@ -187,11 +109,9 @@ fn the_t_cdf_is_time_bounded_at_large_nu() {
   assert!(slow.is_empty(), "{slow:#?}");
 }
 
-/// The copula should be continuous across the switch to the Gaussian at `ν = 1e22`, but below it `SimdStudentT`'s cdf
-/// and quantile are not the t law's past `ν ≈ 1e13`: each cell must keep missing, so a fix of that law fails this test.
+/// The copula is continuous across the switch to the Gaussian at `ν = 1e22`: at `ν = 9.99e21` the t cdf is its value.
 #[test]
-fn the_t_cdf_is_not_yet_continuous_at_the_gaussian_switch() {
-  let mut held = Vec::new();
+fn the_t_cdf_is_continuous_at_the_gaussian_switch() {
   for (rho, a, b) in [
     (0.5, 0.3, 0.7),
     (-0.8, 1e-15, 0.5),
@@ -201,11 +121,9 @@ fn the_t_cdf_is_not_yet_continuous_at_the_gaussian_switch() {
     let x = array![[a, b]];
     let below = TCopula::new(rho, 9.99e21).cdf(x.view()).unwrap()[0];
     let above = TCopula::new(rho, 1e22).cdf(x.view()).unwrap()[0];
-    if matches(below, above) {
-      held.push(format!(
-        "ρ = {rho}: C({a:e}, {b:e}) = {below:e} below, {above:e} above"
-      ));
-    }
+    assert!(
+      matches(below, above),
+      "ρ = {rho}: C({a:e}, {b:e}) = {below:e} below, {above:e} above"
+    );
   }
-  assert!(held.is_empty(), "{held:#?}");
 }
