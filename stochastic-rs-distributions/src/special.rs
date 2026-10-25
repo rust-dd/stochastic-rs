@@ -499,8 +499,8 @@ mod tests {
     assert_eq!(ndtri(1e-307), ndtri_lower(1e-307));
   }
 
-  /// mpmath at 60 and 120 digits (the digits `ln Γ(a)` cancels carried) from `a = 1e-300` to `1e300`, both sides of the switch
-  /// at 8: within 2 ulps.
+  /// mpmath at 60 and 120 digits (the digits `ln Γ(a)` cancels carried) from `a = 1e-300` to `1e300`, within 2 ulps here; on
+  /// 6000 random cells within 5.9 ulps below the switch at 8, the lift's roundings, and half an ulp from it.
   #[test]
   fn gamma_ratio_half_matches_high_precision_references() {
     for (a, want) in [

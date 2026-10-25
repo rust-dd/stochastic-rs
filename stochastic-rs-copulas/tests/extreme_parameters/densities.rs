@@ -76,8 +76,8 @@ fn cdf_and_log_density_match_the_mpmath_table() {
   );
 }
 
-/// The wall-clock rows: at large `ν` every evaluation is bounded in time, with the cells that took a minute or did not
-/// return and two of the band where `C` is the Fréchet floor.
+/// At large `ν` each cdf returns within its budget in milliseconds: the `WALL_CLOCK` grids, the median and the far lower
+/// corner, and two cells of the band where `C` is the Fréchet floor.
 #[test]
 fn the_t_cdf_is_time_bounded_at_large_nu() {
   let mut cells: Vec<(f64, f64, f64, f64, u64)> = vec![

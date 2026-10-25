@@ -76,7 +76,7 @@ impl Score {
 }
 
 impl Law {
-  /// `ln(K/ν)` from the law's `ln_tail_scale`; the tail holds from `t² = 2⁵³ ν(ν + 1)/(ν + 2)` for the quantile.
+  /// The quantile's tail holds from `t² = 2⁵³ ν(ν + 1)/(ν + 2)`.
   pub(crate) fn new(nu: f64) -> Self {
     let ln_scale = ln_tail_scale(nu);
     let ln_ratio = ((nu + 1.0) / (nu + 2.0)).ln();
