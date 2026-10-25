@@ -78,8 +78,8 @@ impl StudentTail {
   }
 }
 
-/// `(z, w, ξ)` at `|x|`: `x²/(ν + x²)`, `ν/(ν + x²)` and `ln(1 + x²/ν)`, from `x²/ν` up to `x² = ν` and from `ν/x²` and
-/// `ln ν − 2 ln|x|` past it, so none overflows or cancels.
+/// `(z, w, ξ)` at `|x|`: `x²/(ν + x²)`, `ν/(ν + x²)` and `ln(1 + x²/ν)`, from `x²/ν` up to `x² = ν` and from `ν/x²` past
+/// it, its logarithm from `ln ν − 2 ln|x|` once `ν/x²` is subnormal, so none overflows or cancels.
 #[inline]
 fn geometry(nu: f64, x: f64) -> (f64, f64, f64) {
   if x * x <= nu {
@@ -87,11 +87,12 @@ fn geometry(nu: f64, x: f64) -> (f64, f64, f64) {
     return (s / (1.0 + s), 1.0 / (1.0 + s), s.ln_1p());
   }
   let r = nu / x / x;
-  (
-    1.0 / (1.0 + r),
-    r / (1.0 + r),
-    r.ln_1p() - (nu.ln() - 2.0 * x.ln()),
-  )
+  let ln_r = if r >= f64::MIN_POSITIVE {
+    r.ln()
+  } else {
+    nu.ln() - 2.0 * x.ln()
+  };
+  (1.0 / (1.0 + r), r / (1.0 + r), r.ln_1p() - ln_r)
 }
 
 /// `ln(1 + x²/ν)` at any `x`, without overflow or cancellation.
