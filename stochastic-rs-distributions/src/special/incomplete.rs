@@ -256,8 +256,8 @@ pub fn ln_gamma_q(a: f64, x: f64) -> f64 {
   }
 }
 
-/// `scale` (a power of two) times the `x` with `P(a, x) = p`, `0 < p < 1`, rounded once where subnormal: Newton in `ln x` on
-/// `ln P` below ½ and on `ln Q = ln(1 − p)` above, both concave, from NR3's start, Wilson–Hilferty's in `x` so a huge `a` is itself.
+/// `scale` (a power of two) times the `x` with `P(a, x) = p`, `0 < p < 1`, rounded once if subnormal: Newton in `ln x` on the
+/// concave `ln P` (`p ≤ ½`) or `ln Q`; Wilson–Hilferty's start is formed in `x`, so at a huge `a` it is `a`, the root to the bit.
 pub(crate) fn gamma_p_inv(a: f64, p: f64, scale: f64) -> f64 {
   let upper = p > 0.5;
   let ln_target = if upper { (1.0 - p).ln() } else { p.ln() };
