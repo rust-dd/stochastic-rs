@@ -229,6 +229,7 @@ pub(super) fn tail(a: f64, x: f64) -> Tail {
 
 /// `x^a e^{−x}/Γ(a) = √(a/2π) e^{−a(λ − 1 − ln λ)}/Γ*(a)`, `λ = x/a`, as `(factor, ln_scale)`: the exponent's low part, past
 /// what `ln_scale` holds, goes into `factor`.
+#[inline(never)]
 pub(super) fn scaled_prefactor(a: f64, x: f64) -> (f64, f64) {
   let (l, l_lo) = ln_ratio(x, a);
   let (d, d_lo) = two_sum(x, -a);

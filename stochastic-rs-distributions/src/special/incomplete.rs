@@ -48,7 +48,7 @@ fn domain(a: f64, x: f64) -> bool {
 }
 
 /// `x^a e^{−x}/Γ(a)` as `(factor, ln_scale)`: from `ln Γ(a)` below shape 10, `large_shape::scaled_prefactor` from there.
-#[inline]
+#[inline(always)]
 fn prefactor(a: f64, x: f64) -> (f64, f64) {
   if a < STIRLING_PREFACTOR {
     (1.0, -x + a * x.ln() - ln_gamma(a))
@@ -59,7 +59,7 @@ fn prefactor(a: f64, x: f64) -> (f64, f64) {
 
 /// The tail the series (below `a + 1`) or the fraction (above) evaluates, scaled by `prefactor`; the large-shape path
 /// stays out of line so this one inlines into each public function.
-#[inline]
+#[inline(always)]
 fn tail(a: f64, x: f64) -> Tail {
   if a >= LARGE_SHAPE {
     return large_shape::tail(a, x);
