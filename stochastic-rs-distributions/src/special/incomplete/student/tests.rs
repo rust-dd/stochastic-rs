@@ -100,3 +100,15 @@ fn the_halves_meet_at_the_centre_and_the_ends() {
     far.ln_lower()
   );
 }
+
+/// The cap at ½ keeps a NaN from a tail branch, where `f64::min` would answer ½.
+#[test]
+fn the_half_cap_keeps_a_nan() {
+  let tail = StudentTail {
+    center: false,
+    factor: f64::NAN,
+    ln_scale: -1.0,
+    xi: 1.0,
+  };
+  assert!(tail.lower().is_nan() && tail.upper().is_nan() && tail.ln_lower().is_nan());
+}

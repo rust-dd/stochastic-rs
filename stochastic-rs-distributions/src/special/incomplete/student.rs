@@ -45,18 +45,18 @@ pub(crate) struct StudentTail {
 }
 
 impl StudentTail {
-  /// `P(T ≤ −|x|)`, at most ½ to the bit; a value below `e^{−700}` is formed in one exponential, so a subnormal one is
-  /// rounded once.
+  /// `P(T ≤ −|x|)`, at most ½ to the bit with a NaN kept; a value below `e^{−700}` is formed in one exponential, so a
+  /// subnormal one is rounded once.
   pub(crate) fn lower(self) -> f64 {
     if self.center {
       return 0.5 - 0.5 * self.factor * self.ln_scale.exp();
     }
     let half = 0.5 * self.factor;
     if self.ln_scale < -700.0 {
-      (self.ln_scale + half.ln()).exp()
-    } else {
-      (half * self.ln_scale.exp()).min(0.5)
+      return (self.ln_scale + half.ln()).exp();
     }
+    let lower = half * self.ln_scale.exp();
+    if lower > 0.5 { 0.5 } else { lower }
   }
 
   /// `P(T ≤ |x|)`, near zero as `½ + ½I_z` rather than one minus the lower half.
@@ -68,12 +68,16 @@ impl StudentTail {
     }
   }
 
-  /// `ln P(T ≤ −|x|)`, finite where the probability underflows.
+  /// `ln P(T ≤ −|x|)`, finite where the probability underflows, at most `−ln 2` with a NaN kept.
   pub(crate) fn ln_lower(self) -> f64 {
     if self.center {
-      self.lower().ln()
+      return self.lower().ln();
+    }
+    let ln_lower = (0.5 * self.factor).ln() + self.ln_scale;
+    if ln_lower > -std::f64::consts::LN_2 {
+      -std::f64::consts::LN_2
     } else {
-      ((0.5 * self.factor).ln() + self.ln_scale).min(-std::f64::consts::LN_2)
+      ln_lower
     }
   }
 }
