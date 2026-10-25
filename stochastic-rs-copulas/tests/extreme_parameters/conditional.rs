@@ -111,7 +111,7 @@ fn the_t_edges_keep_the_two_point_law_past_the_normal_switch() {
 }
 
 /// Near the diagonal as `|ρ| → 1` below the normal switch `h` takes `x − ρy` from the law's level gap, or its tails past
-/// `1e150` (mpmath at 50 and 90 digits), and meets the Gaussian copula's `h` across the switch.
+/// `1e150` (mpmath at 50 and 90 digits), and on the diagonal meets the Gaussian copula's `h` across the switch.
 #[test]
 fn the_t_h_keeps_its_digits_near_the_diagonal_and_across_the_switch() {
   let rows = [
@@ -163,6 +163,23 @@ fn the_t_h_keeps_its_digits_near_the_diagonal_and_across_the_switch() {
     assert!(
       agrees(*below, *at),
       "h below the switch {below:e}, at it {at:e}"
+    );
+  }
+}
+
+/// At small `|ρ|` `h` keeps `x − ρy` (mpmath at 50 and 90 digits): within `4e-16` at `(−0.3, 1e8)`; at `(0, 1e8)` within the
+/// `4e-15` that `h`'s slope times `|z|`, 19, sets on `z`'s last bit, with the t cdf's own `6e-16` there.
+#[test]
+fn the_t_h_keeps_the_plain_form_at_small_rho() {
+  for (rho, nu, u, v, want, bar) in [
+    (-0.3, 1e8, 0.9, 1e-100, 4.477238009175568e-8, 4e-16),
+    (0.0, 1e8, 1e-5, 1e-300, 1.0001309937134056e-5, 4e-15),
+  ] {
+    let copula = TCopula::new(rho, nu);
+    let h = copula.partial_derivative(array![[u, v]].view()).unwrap()[0];
+    assert!(
+      (h - want).abs() <= bar * want,
+      "t {rho} {nu}: h({u} | {v}) = {h:e}, want {want:e}"
     );
   }
 }

@@ -189,8 +189,8 @@ impl TCopula {
     }
   }
 
-  /// `x − ρy`, as `(x − y) + (1 − ρ)y` (`(x + y) − (1 + ρ)y` at `ρ < 0`) from the law's gaps where two bits of it cancel
-  /// and its rounding, `ε` times the quantiles' `rounding`, passes `150ε` carried by the scale and `t_{ν+1}`'s relative slope.
+  /// `x − ρy`, as `(x − y) + (1 − ρ)y` (`(x + y) − (1 + ρ)y` at `ρ < 0`) from the law's gaps where that form's rounding,
+  /// `|x ∓ y| + (1 − |ρ|)r_y`, is a quarter of the plain `r_x + |ρ|r_y` (`r`, `rounding`) or less, which carried passes `150ε`.
   fn shifted_gap(
     law: &Law,
     (rho, nu, scale): (f64, f64, f64),
@@ -198,15 +198,26 @@ impl TCopula {
   ) -> f64 {
     let (u, v, x, y) = cell;
     let plain = x.value - rho * y.value;
-    let size = Self::rounding(law, u, x.value) + Self::rounding(law, v, y.value);
+    let (rx, ry) = (
+      Self::rounding(law, u, x.value),
+      Self::rounding(law, v, y.value),
+    );
+    let size = rx + rho.abs() * ry;
+    let shifted = if rho > 0.0 {
+      x.value - y.value
+    } else {
+      x.value + y.value
+    }
+    .abs()
+      + (1.0 - rho.abs()) * ry;
     // The slope `f/F` of `t_{ν+1}` at `z` is below `|z| + 1` and below `(ν + 1)/|z|`, its limit in the lower tail.
     let z = (plain * scale).abs();
-    if size * scale * (z + 1.0).min((nu + 1.0) / z) <= 150.0 || 4.0 * plain.abs() > size {
+    if rho == 0.0 || size * scale * (z + 1.0).min((nu + 1.0) / z) <= 150.0 || 4.0 * shifted > size {
       plain
     } else if rho > 0.0 {
-      Self::difference(law, (nu, size), cell) + (1.0 - rho) * y.value
+      Self::difference(law, (nu, rx + ry), cell) + (1.0 - rho) * y.value
     } else {
-      Self::sum(law, (nu, size), cell) - (1.0 + rho) * y.value
+      Self::sum(law, (nu, rx + ry), cell) - (1.0 + rho) * y.value
     }
   }
 
