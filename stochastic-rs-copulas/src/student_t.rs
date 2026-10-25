@@ -3,7 +3,6 @@
 //! Reference: Abramowitz, M., Stegun, I.A. (1964), "Handbook of Mathematical Functions", NBS AMS 55, 26.7.5 (the Cornish–Fisher expansion of the t quantile).
 
 use std::f64::consts::LN_2;
-use std::f64::consts::PI;
 
 use ndarray::Array2;
 use ndarray::ArrayView2;
@@ -14,6 +13,7 @@ use stochastic_rs_distributions::special::ln_norm_cdf;
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::studentt::SimdStudentT;
+use stochastic_rs_distributions::studentt::ln_tail_scale;
 
 use crate::bivariate::conditional::ln_add_exp;
 use crate::bivariate::conditional::ln_ratio;
@@ -76,11 +76,9 @@ impl Score {
 }
 
 impl Law {
-  /// `ln(K/ν) = ln Γ((ν + 1)/2) − ln Γ(1 + ν/2) + (ν/2) ln ν − ln(2√π)`, `K = Γ((ν + 1)/2)ν^{ν/2}/(√π Γ(ν/2))`, free of the
-  /// cancellation of `ln Γ(ν/2)` against `ln ν` at small `ν`; the tail holds from `t² = 2⁵³ ν(ν + 1)/(ν + 2)` for the quantile.
+  /// `ln(K/ν)` from the law's `ln_tail_scale`; the tail holds from `t² = 2⁵³ ν(ν + 1)/(ν + 2)` for the quantile.
   pub(crate) fn new(nu: f64) -> Self {
-    let ln_scale = ln_gamma(0.5 * (nu + 1.0)) - ln_gamma(1.0 + 0.5 * nu) + 0.5 * nu * nu.ln()
-      - (2.0 * PI.sqrt()).ln();
+    let ln_scale = ln_tail_scale(nu);
     let ln_ratio = ((nu + 1.0) / (nu + 2.0)).ln();
     let ln_quantile_start = 0.5 * (53.0 * LN_2 + nu.ln() + ln_ratio);
     let ln_tail_start = nu.ln() + 26.5 * LN_2 + 0.5 * ln_ratio;

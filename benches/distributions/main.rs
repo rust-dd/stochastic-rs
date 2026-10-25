@@ -241,6 +241,7 @@ fn bench_distribution_ext(c: &mut Criterion) {
   let ks = (0..4096).map(|i| (i % 40) as f64).collect::<Vec<_>>();
   let normal = SimdNormal::<f64>::new(0.0, 1.0);
   let student = SimdStudentT::<f64>::new(5.0);
+  let chi = SimdChiSquared::<f64>::new(5.0);
   let johnson = SimdJohnsonSu::<f64>::new(0.5, 1.5, 0.0, 1.0);
   let gamma = SimdGamma::<f64>::new(2.0, 1.5);
   let poisson = SimdPoisson::<u32>::new(4.0);
@@ -264,6 +265,21 @@ fn bench_distribution_ext(c: &mut Criterion) {
   });
   group.bench_function("pdf/student_t", |b| {
     b.iter(|| black_box(xs.iter().map(|&x| student.pdf(x).unwrap()).sum::<f64>()))
+  });
+  group.bench_function("cdf/student_t", |b| {
+    b.iter(|| black_box(xs.iter().map(|&x| student.cdf(x).unwrap()).sum::<f64>()))
+  });
+  group.bench_function("quantile/student_t", |b| {
+    b.iter(|| {
+      black_box(
+        ps.iter()
+          .map(|&p| student.quantile(p).unwrap())
+          .sum::<f64>(),
+      )
+    })
+  });
+  group.bench_function("quantile/chi_square", |b| {
+    b.iter(|| black_box(ps.iter().map(|&p| chi.quantile(p).unwrap()).sum::<f64>()))
   });
   group.bench_function("pdf/johnson_su", |b| {
     b.iter(|| black_box(xs.iter().map(|&x| johnson.pdf(x).unwrap()).sum::<f64>()))

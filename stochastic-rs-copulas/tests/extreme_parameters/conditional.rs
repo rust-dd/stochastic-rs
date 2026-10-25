@@ -17,34 +17,6 @@ use super::on_grid;
 /// stable forms, each proved equal to `∂_v C` in sympy, `q` by bisection of that `h` in `ln u` or its closed form.
 const REFERENCE: &str = include_str!("../fixtures/extreme_parameters.txt");
 
-/// The 69 t cells `(ρ, ν, kind, cells)`, a cell `9·row + column`, where `SimdStudentT::quantile` misses `1e-12`: past
-/// `1 − 1e-12` it stops once its cdf rounds to `p`. Each must keep missing, so a fix in the law fails this test.
-const T_LAW_MISSES: [(f64, f64, &str, &[usize]); 6] = [
-  (-0.8, 2.5, "h", &[33, 34, 42, 43, 57, 58, 61, 66, 67, 69]),
-  (
-    -0.8,
-    2.5,
-    "q",
-    &[15, 16, 24, 25, 33, 34, 42, 43, 51, 52, 59],
-  ),
-  (
-    0.5,
-    4.0,
-    "h",
-    &[33, 34, 42, 43, 51, 52, 57, 58, 60, 61, 66, 67, 69, 70],
-  ),
-  (0.5, 4.0, "q", &[15, 16, 24, 25, 33, 34, 42, 43]),
-  (0.99, 30.0, "h", &[33, 34, 42, 43, 51, 52, 60, 61, 69, 70]),
-  (
-    0.99,
-    30.0,
-    "q",
-    &[
-      15, 16, 24, 25, 33, 34, 42, 43, 56, 57, 58, 59, 65, 66, 67, 68,
-    ],
-  ),
-];
-
 #[test]
 fn h_and_its_inverse_match_the_mpmath_table() {
   let mut failures = Vec::new();
@@ -58,14 +30,9 @@ fn h_and_its_inverse_match_the_mpmath_table() {
     for (i, (got, want)) in got.iter().zip(want).enumerate() {
       let (a, b) = (GRID[i / 9], GRID[i % 9]);
       let inside = got.is_finite() && (0.0..=1.0).contains(got);
-      let listed = family == "t"
-        && T_LAW_MISSES
-          .iter()
-          .any(|&(rho, nu, k, cells)| params == [rho, nu] && kind == k && cells.contains(&i));
-      if !inside || listed == agrees(*got, want) {
-        let note = if listed { " (a T_LAW_MISSES cell)" } else { "" };
+      if !inside || !agrees(*got, want) {
         failures.push(format!(
-          "{family} {params:?} {kind}({a:e} | {b:e}) = {got:e}, want {want:e}{note}"
+          "{family} {params:?} {kind}({a:e} | {b:e}) = {got:e}, want {want:e}"
         ));
       }
     }

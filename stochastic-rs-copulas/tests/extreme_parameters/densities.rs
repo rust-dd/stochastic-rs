@@ -14,16 +14,6 @@ use super::on_grid;
 /// open part: mpmath of the stable forms, each proved equal to `C` or to sympy's `∂²C/∂u∂v` (`ln` of it) in sympy.
 const DENSITIES: &str = include_str!("../fixtures/extreme_densities.txt");
 
-/// The 84 t cells `(ρ, ν, kind, cells)`, a cell `side · row + column`, where `SimdStudentT::quantile` past `1 − 1e-12` is
-/// off by up to 12%; with `−t_ν⁻¹(1 − p)` all pass. Each must keep missing, so a fix fails this test.
-const T_LAW_MISSES: [(f64, f64, &str, Misses); 5] = [
-  (-0.8, 2.5, "cdf", Misses::Only(&COUNTERMONOTONE_CDF_MISSES)),
-  (0.5, 4.0, "cdf", Misses::Only(&CDF_MISSES)),
-  (-0.8, 2.5, "log_pdf", Misses::Only(&DENSITY_MISSES)),
-  (0.5, 4.0, "log_pdf", Misses::Only(&DENSITY_MISSES)),
-  (0.99, 30.0, "log_pdf", Misses::Only(&DENSITY_MISSES)),
-];
-
 /// The t rows at large `ν` `(ρ, ν, bound in ms)`, which the table holds for their time and the misses below; a bound is
 /// four times a debug evaluation at least, CI's build, the 1e13 row's in the band where the integrations reach their cap.
 const WALL_CLOCK: [(f64, f64, u64); 4] = [
@@ -105,18 +95,6 @@ const UPPER_DENSITY: [usize; 9] = [32, 33, 34, 39, 40, 41, 46, 47, 48];
 const UPPER_OR_SUBNORMAL_DENSITY: [usize; 16] =
   [0, 4, 5, 6, 28, 32, 33, 34, 35, 39, 40, 41, 42, 46, 47, 48];
 
-/// `C(a, b)` with one level in `{1e-15, 2⁻⁵³}` and the other in `{1 − 1e-15, 1 − 2⁻⁵³}`.
-const CDF_MISSES: [usize; 8] = [33, 34, 42, 43, 57, 58, 66, 67];
-
-/// `CDF_MISSES` at `ρ < 0` where the scores do not cancel: at `(1e-15, 1 − 1e-15)` and `(2⁻⁵³, 1 − 2⁻⁵³)` the cdf reads the
-/// exact `x + y` and the lower quantile alone.
-const COUNTERMONOTONE_CDF_MISSES: [usize; 4] = [34, 42, 58, 66];
-
-/// `ln c(a, b)` with a level in `{1 − 1e-15, 1 − 2⁻⁵³}`.
-const DENSITY_MISSES: [usize; 24] = [
-  5, 6, 12, 13, 19, 20, 26, 27, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
-];
-
 /// Within `1e-12 · max(1, |ln c|)`, an infinite truth exactly.
 fn log_agrees(got: f64, want: f64) -> bool {
   if want.is_infinite() {
@@ -154,9 +132,8 @@ fn cdf_and_log_density_match_the_mpmath_table() {
       };
       let listed = family == "t"
         && !edge
-        && T_LAW_MISSES
+        && LARGE_NU_MISSES
           .iter()
-          .chain(&LARGE_NU_MISSES)
           .any(|&(rho, nu, k, cells)| params == [rho, nu] && kind == k && cells.contains(i));
       if ok == listed {
         let side = if kind == "cdf" { 9 } else { 7 };

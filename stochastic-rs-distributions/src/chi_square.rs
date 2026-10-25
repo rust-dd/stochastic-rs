@@ -114,6 +114,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdChiSquared<T> {
     Some(crate::special::gamma_p(0.5 * k, 0.5 * x))
   }
 
+  /// Twice the gamma quantile at shape `k/2`, solved in `ln x` on `ln P` or `ln Q`.
   fn quantile(&self, p: f64) -> Option<f64> {
     if !(0.0..=1.0).contains(&p) {
       return Some(f64::NAN);
@@ -125,32 +126,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdChiSquared<T> {
       return Some(f64::INFINITY);
     }
     let k = self.df.to_f64().unwrap();
-    // χ²_k = 2 · Gamma(α=k/2, scale=1) → use gamma quantile via Newton's
-    // method, mirrored against a Wilson-Hilferty Gaussian start.
-    let z = crate::special::ndtri(p);
-    let mut x = k * (1.0 - 2.0 / (9.0 * k) + z * (2.0 / (9.0 * k)).sqrt()).powi(3);
-    if x <= 0.0 {
-      x = 0.5 * k;
-    }
-    let half_k = 0.5 * k;
-    for _ in 0..30 {
-      let f = crate::special::gamma_p(half_k, 0.5 * x) - p;
-      let log_pdf = (half_k - 1.0) * x.ln()
-        - 0.5 * x
-        - half_k * std::f64::consts::LN_2
-        - crate::special::ln_gamma(half_k);
-      let pdf = log_pdf.exp();
-      if pdf <= 0.0 {
-        break;
-      }
-      let dx = f / pdf;
-      let new_x = (x - dx).max(x * 1e-12);
-      if (new_x - x).abs() < 1e-14 * x.max(1.0) {
-        return Some(new_x);
-      }
-      x = new_x;
-    }
-    Some(x)
+    Some(2.0 * crate::special::gamma_p_inv(0.5 * k, p))
   }
 
   fn mean(&self) -> Option<f64> {
@@ -158,9 +134,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdChiSquared<T> {
   }
 
   fn median(&self) -> Option<f64> {
-    // Wilson-Hilferty approximation k * (1 - 2/(9k))³.
-    let k = self.df.to_f64().unwrap();
-    Some(k * (1.0 - 2.0 / (9.0 * k)).powi(3))
+    self.quantile(0.5)
   }
 
   fn mode(&self) -> Option<f64> {

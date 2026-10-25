@@ -239,8 +239,8 @@ impl BivariateExt for TCopula {
     on_open_square(x, self.ln_density())
   }
 
-  /// To a relative `1e-12` where `SimdStudentT` is accurate: not near `u = 1`, and NaN or loose from `ν ≈ 4.4e12`;
-  /// the Gaussian copula from `ν = 1e22`, `pM + (1 − p)W` below `ν = 1e-30`.
+  /// To a relative `1e-12` where `SimdStudentT` is accurate, NaN or loose from `ν ≈ 4.4e12`; the Gaussian copula from
+  /// `ν = 1e22`, `pM + (1 − p)W` below `ν = 1e-30`.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let bivariate = BivariateT::new(self.theta.unwrap(), self.nu);

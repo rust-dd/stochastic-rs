@@ -305,3 +305,73 @@ fn beta_i_known_values() {
   let b = beta_i(2.0, 2.0, 0.3);
   assert!(close(a + b, 1.0, 1e-10));
 }
+
+/// mpmath at 60 and 120 digits below `x = a + 1` at shapes under 1, where `1 − P` cancels: `Q` and its logarithm to
+/// `4e-15`, and `Q` meeting the continued fraction above `x = a + 1`.
+#[test]
+fn small_shapes_keep_the_upper_tail_below_a_plus_one() {
+  let rel = |got: f64, want: f64| ((got - want) / want).abs();
+  for (a, x, want) in [
+    (0.005, 0.0818, 0.010000335370426125),
+    (0.005, 1e-300, 0.9682864762680914),
+    (0.05, 1.08, 0.010122775586616872),
+    (0.05, 1.1, 0.00980453385801599),
+    (0.5, 1.09, 0.13981446180315324),
+    (0.5, 1.4, 0.09426430684121032),
+    (0.9, 1.0, 0.3246075583259468),
+    (0.3, 1.2, 0.0633947195692591),
+    (0.999, 1.5, 0.22281093247600395),
+    (1e-10, 0.5, 5.597735948054988e-11),
+  ] {
+    assert!(
+      rel(gamma_q(a, x), want) <= 4e-15,
+      "Q({a}, {x}) = {:e}",
+      gamma_q(a, x)
+    );
+    assert!(
+      (ln_gamma_q(a, x) - want.ln()).abs() <= 4e-15 * want.ln().abs().max(1.0),
+      "ln Q({a}, {x}) = {}",
+      ln_gamma_q(a, x)
+    );
+  }
+  let (below, above) = (gamma_q(0.5, 1.5_f64.next_down()), gamma_q(0.5, 1.5));
+  assert!(rel(below, above) < 1e-14, "{below:e} against {above:e}");
+}
+
+/// The inverse round-trips `P` below ½ and `Q` above it on a grid of shapes and levels, and keeps the root at or above
+/// `(p Γ(a + 1))^{1/a}`, where it underflows to 0.
+#[test]
+fn gamma_p_inv_inverts_the_tail_it_solves() {
+  for a in [1e-3, 0.02, 0.5, 1.0, 2.5, 50.0, 1e4] {
+    for p in [
+      1e-300,
+      1e-30,
+      1e-6,
+      0.01,
+      0.3,
+      0.5,
+      0.7,
+      0.99,
+      1.0 - 1e-9,
+      1.0 - 1e-15,
+    ] {
+      let x = gamma_p_inv(a, p);
+      if x == 0.0 {
+        assert!(
+          (p.ln() + ln_gamma(a + 1.0)) / a < -744.0,
+          "a = {a}, p = {p:e}"
+        );
+        continue;
+      }
+      let (got, want) = if p > 0.5 {
+        (gamma_q(a, x), 1.0 - p)
+      } else {
+        (gamma_p(a, x), p)
+      };
+      assert!(
+        ((got - want) / want).abs() < 1e-12,
+        "a = {a}, p = {p:e}: x = {x:e}"
+      );
+    }
+  }
+}

@@ -5,6 +5,7 @@
 //! $$
 //!
 //! Sampling: `Z/sqrt(V/ν)` with `V ~ χ²_ν`, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §IX.5, DOI 10.1007/978-1-4613-8643-8.
+//! Reference: Abramowitz, M., Stegun, I.A. (1964), "Handbook of Mathematical Functions", NBS AMS 55, 26.7.5 (the Cornish–Fisher expansion of the quantile, `g₁` to `g₄`).
 
 use rand::Rng;
 use rand::distr::Distribution;
@@ -17,17 +18,25 @@ use super::gamma::GammaState;
 use super::normal::SimdNormal;
 use crate::seeded::Buffered;
 use crate::seeded::StreamState;
+use crate::special::gamma_ratio_half;
+use crate::special::ndtri;
+use crate::special::student_tail;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
 const SMALL_STUDENT_T_THRESHOLD: usize = 16;
 
+/// From this `ν` the cdf and the quantile still take the incomplete beta's continued fraction, and Newton on it.
+const CONTINUED_FRACTION_FROM: f64 = 1e6;
+
 /// Student's t law with `nu` degrees of freedom: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdStudentT<T> {
   nu: T,
   chisq: SimdChiSquared<T>,
+  /// `R(ν/2) = Γ((ν + 1)/2)/(Γ(ν/2)√(ν/2))`, which every cdf, quantile and density reads.
+  ratio: f64,
 }
 
 /// A Student-t stream: the normal and chi-squared sub-streams and the single-draw buffer.
@@ -60,6 +69,7 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
     Self {
       nu,
       chisq: SimdChiSquared::new(nu),
+      ratio: gamma_ratio_half(0.5 * nu.to_f64().unwrap()),
     }
   }
 
@@ -169,30 +179,123 @@ impl<T: SimdFloatExt> Distribution<T> for SimdStudentT<T> {
   }
 }
 
-impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
-  fn pdf(&self, x: f64) -> Option<f64> {
-    let nu = self.nu.to_f64().unwrap();
-    // f(x) = Γ((ν+1)/2) / (√(νπ) Γ(ν/2)) · (1 + x²/ν)^(−(ν+1)/2)
+/// `ln(K/ν)` of the tail `P(T ≤ −t) ≈ (K/ν)t^{−ν}`, `K = Γ((ν + 1)/2)ν^{ν/2}/(√π Γ(ν/2))`, with `Γ(ν/2) = Γ(1 + ν/2)/(ν/2)`,
+/// free of the cancellation of `ln Γ(ν/2)` against `ln ν` at small `ν`; the t copulas' tail reads it too.
+#[doc(hidden)]
+pub fn ln_tail_scale(nu: f64) -> f64 {
+  crate::special::ln_gamma(0.5 * (nu + 1.0)) - crate::special::ln_gamma(1.0 + 0.5 * nu)
+    + 0.5 * nu * nu.ln()
+    - (2.0 * std::f64::consts::PI.sqrt()).ln()
+}
+
+/// `ln(Γ((ν + 1)/2)/(Γ(ν/2)√(νπ))) = ln(R(ν/2)/√(2π))`, the gammas' cancellation spared.
+#[inline]
+fn ln_normaliser(ratio: f64) -> f64 {
+  (ratio / std::f64::consts::TAU.sqrt()).ln()
+}
+
+/// A&S 26.7.5 to `g₄`: `t = z + g₁(z)/ν + g₂(z)/ν² + g₃(z)/ν³ + g₄(z)/ν⁴` at the normal quantile `z`.
+fn cornish_fisher(z: f64, nu: f64) -> f64 {
+  let z2 = z * z;
+  let g1 = (z2 + 1.0) * z / 4.0;
+  let g2 = ((5.0 * z2 + 16.0) * z2 + 3.0) * z / 96.0;
+  let g3 = (((3.0 * z2 + 19.0) * z2 + 17.0) * z2 - 15.0) * z / 384.0;
+  let g4 = ((((79.0 * z2 + 776.0) * z2 + 1482.0) * z2 - 1920.0) * z2 - 945.0) * z / 92160.0;
+  z + (g1 + (g2 + (g3 + g4 / nu) / nu) / nu) / nu
+}
+
+/// The quantile below ½: Newton in `ln|t|` on `ln F`, which is concave there, from A&S 26.7.5 where it holds, else from
+/// the root of the tail bound `F(−t) < (K/ν)t^{−ν}`, which caps every step; `−∞` below `F(−f64::MAX)`.
+fn lower_quantile(nu: f64, ratio: f64, p: f64) -> f64 {
+  let ln_p = p.ln();
+  let ln_max = f64::MAX.ln();
+  let bound = (ln_tail_scale(nu) - ln_p) / nu;
+  if bound > ln_max && student_tail(nu, ratio, f64::MAX).ln_lower() >= ln_p {
+    return f64::NEG_INFINITY;
+  }
+  let cap = if bound < ln_max { bound } else { ln_max };
+  let z = ndtri(p);
+  let ln_start = if nu >= 1.0 && z.abs() < 2.0 * nu.powf(0.25) + 1.0 {
+    (-cornish_fisher(z, nu)).ln().min(cap)
+  } else {
+    cap
+  };
+  let (ln_norm, exponent) = (ln_normaliser(ratio), 0.5 * (nu + 1.0));
+  let mut t = -ln_start.exp();
+  for _ in 0..64 {
+    let tail = student_tail(nu, ratio, t);
+    let (ln_lower, ln_abs) = (tail.ln_lower(), (-t).ln());
+    let ln_density = ln_norm - exponent * tail.xi;
+    let step = ((ln_lower - ln_p) * (ln_lower - ln_density - ln_abs).exp()).min(cap - ln_abs);
+    let mut next = t + t * step.exp_m1();
+    if next < -f64::MAX {
+      next = -f64::MAX;
+    }
+    if step.abs() <= 1e-9 {
+      return next;
+    }
+    t = next;
+  }
+  t
+}
+
+/// `F(x)` for `x ≥ 0`, `1 − ½ I_{ν/(ν+x²)}(ν/2, ½)`, the other half by symmetry, by the incomplete beta's continued fraction.
+fn continued_fraction_cdf(nu: f64, x: f64) -> f64 {
+  let t = nu / (nu + x * x);
+  let half = 0.5 * crate::special::beta_i(0.5 * nu, 0.5, t);
+  if x >= 0.0 { 1.0 - half } else { half }
+}
+
+/// Newton on `continued_fraction_cdf` from the first Cornish–Fisher term, 40 steps.
+fn continued_fraction_quantile(nu: f64, p: f64) -> f64 {
+  let z = ndtri(p);
+  let mut x = z * (1.0 + (z * z + 1.0) / (4.0 * nu));
+  for _ in 0..40 {
+    let f = continued_fraction_cdf(nu, x) - p;
     let log_norm = crate::special::ln_gamma(0.5 * (nu + 1.0))
       - 0.5 * (nu * std::f64::consts::PI).ln()
       - crate::special::ln_gamma(0.5 * nu);
     let log_kernel = -0.5 * (nu + 1.0) * (1.0 + x * x / nu).ln();
-    Some((log_norm + log_kernel).exp())
-  }
-
-  fn cdf(&self, x: f64) -> Option<f64> {
-    // For x ≥ 0:  F(x) = 1 − ½ I_{ν/(ν+x²)}(ν/2, ½)
-    // By symmetry F(−x) = 1 − F(x).
-    let nu = self.nu.to_f64().unwrap();
-    let t = nu / (nu + x * x);
-    let half = 0.5 * crate::special::beta_i(0.5 * nu, 0.5, t);
-    if x >= 0.0 {
-      Some(1.0 - half)
-    } else {
-      Some(half)
+    let pdf = (log_norm + log_kernel).exp();
+    if pdf <= 0.0 {
+      break;
     }
+    let new_x = x - f / pdf;
+    if (new_x - x).abs() < 1e-14 * (1.0 + x.abs()) {
+      return new_x;
+    }
+    x = new_x;
+  }
+  x
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
+  /// `R(ν/2)/√(2π) e^{−((ν + 1)/2) ln_1p(x²/ν)}`; past `x²/ν = f64::MAX` the logarithm from `ln|x|`.
+  fn pdf(&self, x: f64) -> Option<f64> {
+    let nu = self.nu.to_f64().unwrap();
+    let s = x * x / nu;
+    let xi = if s.is_finite() {
+      s.ln_1p()
+    } else {
+      crate::special::student_xi(nu, x)
+    };
+    Some((ln_normaliser(self.ratio) - 0.5 * (nu + 1.0) * xi).exp())
   }
 
+  /// `½ ± ½ I_{x²/(ν+x²)}(½, ν/2)` near zero, `½ I_{ν/(ν+x²)}(ν/2, ½)` in the lower tail, the upper half by symmetry.
+  fn cdf(&self, x: f64) -> Option<f64> {
+    let nu = self.nu.to_f64().unwrap();
+    if nu >= CONTINUED_FRACTION_FROM {
+      return Some(continued_fraction_cdf(nu, x));
+    }
+    if x.is_nan() {
+      return Some(f64::NAN);
+    }
+    let tail = student_tail(nu, self.ratio, x);
+    Some(if x <= 0.0 { tail.lower() } else { tail.upper() })
+  }
+
+  /// The lower half solved on `ln F`, the upper half its reflection `q(p) = −q(1 − p)`, `1 − p` exact.
   fn quantile(&self, p: f64) -> Option<f64> {
     if !(0.0..=1.0).contains(&p) {
       return Some(f64::NAN);
@@ -204,32 +307,16 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
       return Some(f64::INFINITY);
     }
     let nu = self.nu.to_f64().unwrap();
-    // Use the Cornish-Fisher-style normal seed and refine with Newton's method.
-    let z = crate::special::ndtri(p);
-    let mut x = z * (1.0 + (z * z + 1.0) / (4.0 * nu));
-    for _ in 0..40 {
-      let cdf = {
-        let t = nu / (nu + x * x);
-        let half = 0.5 * crate::special::beta_i(0.5 * nu, 0.5, t);
-        if x >= 0.0 { 1.0 - half } else { half }
-      };
-      let f = cdf - p;
-      let log_norm = crate::special::ln_gamma(0.5 * (nu + 1.0))
-        - 0.5 * (nu * std::f64::consts::PI).ln()
-        - crate::special::ln_gamma(0.5 * nu);
-      let log_kernel = -0.5 * (nu + 1.0) * (1.0 + x * x / nu).ln();
-      let pdf = (log_norm + log_kernel).exp();
-      if pdf <= 0.0 {
-        break;
-      }
-      let dx = f / pdf;
-      let new_x = x - dx;
-      if (new_x - x).abs() < 1e-14 * (1.0 + x.abs()) {
-        return Some(new_x);
-      }
-      x = new_x;
+    if nu >= CONTINUED_FRACTION_FROM {
+      return Some(continued_fraction_quantile(nu, p));
     }
-    Some(x)
+    Some(if p == 0.5 {
+      0.0
+    } else if p > 0.5 {
+      -lower_quantile(nu, self.ratio, 1.0 - p)
+    } else {
+      lower_quantile(nu, self.ratio, p)
+    })
   }
 
   /// `NaN` at `nu <= 1` (`nu = 1` is the Cauchy distribution — see

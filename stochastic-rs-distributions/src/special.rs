@@ -1,11 +1,13 @@
 //! Special functions behind the closed-form `DistributionExt` impls: Lanczos `gamma`/`ln_gamma`, Acklam's `ndtri`,
 //! `libm` `erf`/`erfc`, Mills' ratio, the regularised incomplete gamma and beta functions and the modified Bessel `I`, `K`.
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 7.9.3 (the continued fraction of `w(z)`), <https://dlmf.nist.gov/7.9.3>.
+//! Reference: NIST Digital Library of Mathematical Functions, eq. 5.11.8 (Stirling's series for `ln Γ(z + h)`, at `h = ½` less `h = 0` the ratio of eq. 5.11.13), <https://dlmf.nist.gov/5.11.8>.
 //! Reference: Acklam, P.J. (2003), "An algorithm for computing the inverse normal cumulative distribution function" (the rational approximation and Halley step of `ndtri`).
 
 mod bessel;
 mod bessel_i;
 mod bessel_k;
+mod erfc;
 mod estimate;
 mod incomplete;
 mod k_ratio;
@@ -26,10 +28,13 @@ pub(crate) use estimate::exp_of_log_sum;
 pub use incomplete::beta_i;
 pub use incomplete::gamma_li;
 pub use incomplete::gamma_p;
+pub(crate) use incomplete::gamma_p_inv;
 pub use incomplete::gamma_q;
 pub use incomplete::gamma_ui;
 pub use incomplete::ln_gamma_p;
 pub use incomplete::ln_gamma_q;
+pub(crate) use incomplete::student_tail;
+pub(crate) use incomplete::student_xi;
 pub(crate) use k_ratio::KDenominator;
 pub(crate) use k_ratio::k_ratio;
 #[cfg(test)]
@@ -81,6 +86,45 @@ pub fn gamma(x: f64) -> f64 {
   } else {
     ln_gamma(x).exp()
   }
+}
+
+/// `Γ(a + ½)/(Γ(a)√a)`, which tends to 1, free of the cancellation of the two logarithms: Stirling's difference series
+/// from `a = 8`, below it `Γ(a + 1) = aΓ(a)` lifting `a` past 8.
+pub(crate) fn gamma_ratio_half(a: f64) -> f64 {
+  const LIFT: f64 = 8.0;
+
+  /// `−(2 − 2^{1−2m})B_{2m}/(2m(2m − 1))`, `m = 1, 2, …`: the coefficient of `a^{1−2m}` in `ln Γ(a + ½) − ln Γ(a) − ½ ln a`.
+  const C: [f64; 11] = [
+    -1.0 / 8.0,
+    1.0 / 192.0,
+    -1.0 / 640.0,
+    17.0 / 14336.0,
+    -31.0 / 18432.0,
+    691.0 / 180224.0,
+    -5461.0 / 425984.0,
+    929569.0 / 15728640.0,
+    -3202291.0 / 8912896.0,
+    221930581.0 / 79691776.0,
+    -4722116521.0 / 176160768.0,
+  ];
+  let series = |b: f64| {
+    let r = b.recip();
+    let r2 = r * r;
+    (C.iter().rev().fold(0.0, |acc, &c| acc * r2 + c) * r).exp()
+  };
+  if a >= LIFT {
+    return series(a);
+  }
+  let n = (LIFT - a).ceil();
+  let (mut num, mut den) = (1.0, a + 0.5);
+  let mut k = 1.0;
+  while k < n {
+    num *= a + k;
+    den *= a + k + 0.5;
+    k += 1.0;
+  }
+  let b = a + n;
+  series(b) * b.sqrt() * a.sqrt() * (num / den)
 }
 
 /// The non-positive integers, where Γ, ln Γ and ψ have their poles.
@@ -150,7 +194,7 @@ pub fn erf(x: f64) -> f64 {
 /// precision: `erfc(10)` is `2.09e-45`, where `1 − erf(10)` rounds to zero.
 #[inline]
 pub fn erfc(x: f64) -> f64 {
-  libm::erfc(x)
+  erfc::erfc(x)
 }
 
 /// Standard-normal quantile: Acklam's (2003) rational approximation and Halley step on `(0, ½]`, mirrored through the exact
@@ -453,6 +497,32 @@ mod tests {
     }
     assert_eq!(ndtri(f64::MIN_POSITIVE), ndtri_lower(f64::MIN_POSITIVE));
     assert_eq!(ndtri(1e-307), ndtri_lower(1e-307));
+  }
+
+  /// mpmath at 60 and 120 digits (the digits `ln Γ(a)` cancels carried) from `a = 1e-300` to `1e300`, both sides of the switch
+  /// at 8: within 2 ulps.
+  #[test]
+  fn gamma_ratio_half_matches_high_precision_references() {
+    for (a, want) in [
+      (1e-300, 1.7724538509055162e-150),
+      (0.005, 0.12447076785780854),
+      (0.25, 0.6759782400672847),
+      (0.5, 0.7978845608028654),
+      (1.0, 0.886226925452758),
+      (2.5, 0.9515328619481446),
+      (7.999999999999999, 0.9845064054718315),
+      (8.0, 0.9845064054718315),
+      (15.0, 0.9917028210095853),
+      (1000.0, 0.9998750078173821),
+      (1e8, 0.99999999875),
+      (1e300, 1.0),
+    ] {
+      let got = gamma_ratio_half(a);
+      assert!(
+        ((got - want) / want).abs() <= 2.0 * f64::EPSILON,
+        "gamma_ratio_half({a:e}) = {got:e}, want {want:e}"
+      );
+    }
   }
 
   /// mpmath at 60 digits on both sides of the switch to the continued fraction at 3, and far into it.

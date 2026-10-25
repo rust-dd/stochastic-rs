@@ -1,10 +1,18 @@
 //! Regularised incomplete gamma and beta functions (Numerical Recipes 3e §6.2, §6.4: series below `a + 1`, Lentz's
 //! continued fraction above); from shape 100 on, Temme's uniform expansion near `x = a` and Stirling's scaling elsewhere.
+//! Reference: Press, W.H., Teukolsky, S.A., Vetterling, W.T., Flannery, B.P. (2007), *Numerical Recipes* 3rd ed., Cambridge UP, §6.2.1 (`invgammp`'s starts: `(p/t)^{1/a}`, `t = 1 − a(0.253 + 0.12a)`, at `a ≤ 1`, Wilson–Hilferty above).
+//! Reference: DiDonato, A.R., Morris, A.H. (1986), "Computation of the incomplete gamma function ratios and their inverse", ACM TOMS 12(4), 377-393, DOI 10.1145/22721.23109 (the small-shape form `Q = (x^a J − (x^a − 1))g − (g − 1)`).
+//! Reference: Abramowitz, M., Stegun, I.A. (1964), "Handbook of Mathematical Functions", NBS AMS 55, 6.1.34 (the power series of `1/Γ`).
 
 mod large_shape;
+mod student;
+
+pub(crate) use student::student_tail;
+pub(crate) use student::student_xi;
 
 use super::gamma;
 use super::ln_gamma;
+use super::ndtri;
 
 /// From this shape on the series and the fraction need `O(√a)` terms near `x = a`, the switch Numerical Recipes takes.
 const LARGE_SHAPE: f64 = 100.0;
@@ -124,8 +132,65 @@ pub fn gamma_q(a: f64, x: f64) -> f64 {
   if x == f64::INFINITY {
     return 0.0;
   }
+  if a < 1.0 && x < a + 1.0 {
+    return small_shape_q(a, x);
+  }
   let t = tail(a, x);
   if t.upper { t.value() } else { 1.0 - t.value() }
+}
+
+/// `Q(a, x)` at `a < 1` below `x = a + 1`, where `1 − P` cancels: `Q = (x^a J − (x^a − 1))g − (g − 1)`, `P = x^a g(1 − J)`,
+/// `g = 1/Γ(1 + a)`, from quantities that vanish with `a`: within `6e-15` on 22 000 cells there, where `1 − P` reaches `7e-12`.
+fn small_shape_q(a: f64, x: f64) -> f64 {
+  // `J = −Σ_{n≥1} a(−x)^n/(n!(a + n))`.
+  let (mut power, mut j, mut n) = (1.0, 0.0, 1.0);
+  while n < 64.0 {
+    power *= -x / n;
+    let term = -a * power / (a + n);
+    j += term;
+    if term.abs() <= 1e-17 * j.abs() {
+      break;
+    }
+    n += 1.0;
+  }
+  let l = (a * x.ln()).exp_m1();
+  let h = recip_gamma_1p_m1(a);
+  ((l + 1.0) * j - l) * (1.0 + h) - h
+}
+
+/// `1/Γ(1 + a) − 1` for `0 < a < 1` to its relative digits, by the power series of `1/Γ` (A&S 6.1.34).
+fn recip_gamma_1p_m1(a: f64) -> f64 {
+  const C: [f64; 28] = [
+    0.5772156649015329,
+    -0.6558780715202539,
+    -0.04200263503409524,
+    0.16653861138229148,
+    -0.04219773455554433,
+    -0.009621971527876973,
+    0.0072189432466631,
+    -0.0011651675918590652,
+    -0.00021524167411495098,
+    0.0001280502823881162,
+    -2.013485478078824e-5,
+    -1.2504934821426706e-6,
+    1.133027231981696e-6,
+    -2.056338416977607e-7,
+    6.116095104481416e-9,
+    5.002007644469223e-9,
+    -1.18127457048702e-9,
+    1.0434267116911005e-10,
+    7.782263439905071e-12,
+    -3.696805618642206e-12,
+    5.100370287454476e-13,
+    -2.0583260535665066e-14,
+    -5.348122539423018e-15,
+    1.2267786282382608e-15,
+    -1.1812593016974588e-16,
+    1.1866922547516004e-18,
+    1.4123806553180319e-18,
+    -2.29874568443537e-19,
+  ];
+  C.iter().rev().fold(0.0, |acc, &c| acc * a + c) * a
 }
 
 /// `ln P(a, x)`, finite where `P` underflows.
@@ -158,12 +223,63 @@ pub fn ln_gamma_q(a: f64, x: f64) -> f64 {
   if x == f64::INFINITY {
     return f64::NEG_INFINITY;
   }
+  if a < 1.0 && x < a + 1.0 {
+    return small_shape_q(a, x).ln();
+  }
   let t = tail(a, x);
   if t.upper {
     t.ln()
   } else {
     (-t.ln().exp()).ln_1p()
   }
+}
+
+/// The `x` with `P(a, x) = p` for `0 < p < 1`: Newton in `ln x` on `ln P` below ½ and on `ln Q = ln(1 − p)` above, both
+/// concave in `ln x`, from NR3's start; below ½ never under `(p Γ(a + 1))^{1/a}`, the root where that is below `e^{−700}`.
+pub(crate) fn gamma_p_inv(a: f64, p: f64) -> f64 {
+  let upper = p > 0.5;
+  let ln_target = if upper { (1.0 - p).ln() } else { p.ln() };
+  // `P(a, x) ≤ x^a/Γ(a + 1)`, with equality to rounding below `e^{−700}`.
+  let floor = (p.ln() + ln_gamma(a + 1.0)) / a;
+  if !upper && floor < -700.0 {
+    return floor.exp();
+  }
+  let start = if a <= 1.0 {
+    let t = 1.0 - a * (0.253 + 0.12 * a);
+    if p < t {
+      (p.ln() - t.ln()) / a
+    } else {
+      (1.0 - ((1.0 - p) / (1.0 - t)).ln()).ln()
+    }
+  } else {
+    let base = 1.0 - 1.0 / (9.0 * a) + ndtri(p) / (3.0 * a.sqrt());
+    if base > 0.0 {
+      (a * base * base * base).ln()
+    } else {
+      floor
+    }
+  };
+  let ln_gamma_a = ln_gamma(a);
+  let mut x = if upper { start } else { start.max(floor) }.exp();
+  for _ in 0..64 {
+    let value = if upper {
+      ln_gamma_q(a, x)
+    } else {
+      ln_gamma_p(a, x)
+    };
+    // `d ln P / d ln x = x^a e^{−x}/(Γ(a) P)`, and `d ln Q / d ln x` its negative over `Q`.
+    let slope = (a * x.ln() - x - ln_gamma_a - value).exp();
+    let step = ((ln_target - value) / if upper { -slope } else { slope }).clamp(-2.0, 2.0);
+    let mut next = x + x * step.exp_m1();
+    if !upper && next.ln() < floor {
+      next = floor.exp();
+    }
+    if step.abs() <= 1e-9 {
+      return next;
+    }
+    x = next;
+  }
+  x
 }
 
 /// Unregularised lower incomplete gamma `γ(a, x) = P(a, x)·Γ(a)`; in log space once `Γ(a)` overflows.
