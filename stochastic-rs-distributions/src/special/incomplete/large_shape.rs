@@ -12,6 +12,11 @@ use super::continued_fraction;
 use super::series;
 use crate::special::mills_ratio;
 
+/// `ln 2` in two parts, the first with 21 trailing zero bits, so its products with small integers are exact.
+pub(super) const LN2_HI: f64 = f64::from_bits(0x3fe6_2e42_fee0_0000);
+
+pub(super) const LN2_LO: f64 = f64::from_bits(0x3dea_39ef_3579_3c76);
+
 /// `x/a` where Temme's expansion is summed, `|η| ≤ 1.004`; outside it the series or the fraction converge within 30 terms.
 const TEMME_BAND: (f64, f64) = (0.3, 2.35);
 
@@ -285,9 +290,7 @@ fn exponent(a: f64, x: f64) -> (f64, f64) {
 
 /// `ln(x/a)` as `(hi, lo)`: the quotient's remainder from a fused multiply-add, then `x/a = 2^k m` with
 /// `m ∈ [1/√2, √2)`, `k ln 2` in two parts and `ln m = 2 atanh((m − 1)/(m + 1))` with its leading term compensated.
-fn ln_ratio(x: f64, a: f64) -> (f64, f64) {
-  const LN2_HI: f64 = f64::from_bits(0x3fe6_2e42_fee0_0000);
-  const LN2_LO: f64 = f64::from_bits(0x3dea_39ef_3579_3c76);
+pub(super) fn ln_ratio(x: f64, a: f64) -> (f64, f64) {
   let lambda = x / a;
   if lambda < f64::MIN_POSITIVE {
     return (x.ln() - a.ln(), 0.0);

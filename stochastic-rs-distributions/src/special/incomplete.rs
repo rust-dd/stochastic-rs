@@ -180,7 +180,8 @@ fn small_shape_q(a: f64, x: f64) -> f64 {
   ((l + 1.0) * j - l) * (1.0 + h) - h
 }
 
-/// `1/Γ(1 + a) − 1` for `0 < a < 1` to its relative digits, by the power series of `1/Γ` (A&S 6.1.34).
+/// `1/Γ(1 + a) − 1` for `0 < a < 1` to its relative digits and to `a = 1.07` absolutely, by the power series of `1/Γ`
+/// (A&S 6.1.34).
 fn recip_gamma_1p_m1(a: f64) -> f64 {
   const C: [f64; 28] = [
     0.5772156649015329,
@@ -261,12 +262,13 @@ pub fn ln_gamma_q(a: f64, x: f64) -> f64 {
 pub(crate) fn gamma_p_inv(a: f64, p: f64, scale: f64) -> f64 {
   let upper = p > 0.5;
   let ln_target = if upper { (1.0 - p).ln() } else { p.ln() };
-  // Below ½, `P ≤ x^a/Γ(a + 1)` makes `(pΓ(a + 1))^{1/a}` a lower bound of the root, and the root to rounding below `e^{−700}`.
-  let floor = (!upper && a < FLOOR_BINDS).then(|| (p.ln() + ln_gamma(a + 1.0)) / a);
-  if let Some(floor) = floor.filter(|&floor| floor < -700.0) {
-    return (floor + scale.ln()).exp();
+  // `P ≤ x^a/Γ(a + 1)` makes `(pΓ(a + 1))^{1/a}` a lower bound of the root at every `p`, the root to rounding below
+  // `e^{−700}`; it floors Newton only below ½, as above it its rounding over `a` outgrows the root's conditioning.
+  let bound = (a < FLOOR_BINDS).then(|| (p.ln() + ln_gamma(a + 1.0)) / a);
+  if bound.is_some_and(|bound| bound < -700.0) {
+    return bound_root(a, p, scale);
   }
-  let floor = floor.unwrap_or(f64::NEG_INFINITY);
+  let floor = bound.filter(|_| !upper).unwrap_or(f64::NEG_INFINITY);
   let mut x = if a <= 1.0 {
     let t = 1.0 - a * (0.253 + 0.12 * a);
     let start = if p < t {
@@ -296,6 +298,17 @@ pub(crate) fn gamma_p_inv(a: f64, p: f64, scale: f64) -> f64 {
     x = next;
   }
   scale * x
+}
+
+/// `scale·(pΓ(a + 1))^{1/a}`: `ln p` in two parts over `a`, `ln Γ(a + 1)` from `1/Γ(1 + a) − 1` and `2⁶⁴` taken out
+/// exactly, as the exponent's rounding would cost `ε|ln p|/a` of the root; the last multiply is its one rounding.
+fn bound_root(a: f64, p: f64, scale: f64) -> f64 {
+  const TWO_POW_M64: f64 = 1.0 / 18_446_744_073_709_551_616.0;
+  let (l, l_lo) = large_shape::ln_ratio(p, 1.0);
+  let q = l / a;
+  let q_lo = ((-q).mul_add(a, l) + l_lo) / a;
+  let rest = q_lo - recip_gamma_1p_m1(a).ln_1p() / a + scale.ln() + 64.0 * large_shape::LN2_LO;
+  (q + 64.0 * large_shape::LN2_HI).exp() * rest.exp() * TWO_POW_M64
 }
 
 /// `ln P(a, x)`, or `ln Q` if `upper`, and its derivative in `ln x`: `1/S` or `−1/h` where the tail solved is the series'
