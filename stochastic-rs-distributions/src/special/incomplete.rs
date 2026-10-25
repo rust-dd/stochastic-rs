@@ -300,11 +300,19 @@ pub(crate) fn gamma_p_inv(a: f64, p: f64, scale: f64) -> f64 {
   scale * x
 }
 
-/// `scale·(pΓ(a + 1))^{1/a}`: `ln p` in two parts over `a`, `ln Γ(a + 1)` from `1/Γ(1 + a) − 1` and `2⁶⁴` taken out
-/// exactly, as the exponent's rounding would cost `ε|ln p|/a` of the root; the last multiply is its one rounding.
+/// `scale·(pΓ(a + 1))^{1/a}`: `ln p` in two parts (from `p·2⁶⁴` if subnormal) over `a`, `ln Γ(a + 1)` from `1/Γ(1 + a) − 1`
+/// and `2⁶⁴` taken out exactly, as the exponent's rounding would cost `ε|ln p|/a` of the root; the last multiply rounds it.
 fn bound_root(a: f64, p: f64, scale: f64) -> f64 {
   const TWO_POW_M64: f64 = 1.0 / 18_446_744_073_709_551_616.0;
-  let (l, l_lo) = large_shape::ln_ratio(p, 1.0);
+  let (l, l_lo) = if p < f64::MIN_POSITIVE {
+    let (hi, lo) = large_shape::ln_ratio(p, TWO_POW_M64);
+    (
+      hi - 64.0 * large_shape::LN2_HI,
+      lo - 64.0 * large_shape::LN2_LO,
+    )
+  } else {
+    large_shape::ln_ratio(p, 1.0)
+  };
   let q = l / a;
   // Below `q = −746` the root, `e^q` within `e^{0.73}`, rounds to 0, and `q`'s remainder can pass `f64::MAX`.
   if q < -746.0 {
