@@ -114,7 +114,6 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdChiSquared<T> {
     Some(crate::special::gamma_p(0.5 * k, 0.5 * x))
   }
 
-  /// Twice the gamma quantile at shape `k/2`, solved in `ln x` on `ln P` or `ln Q`.
   fn quantile(&self, p: f64) -> Option<f64> {
     if !(0.0..=1.0).contains(&p) {
       return Some(f64::NAN);
@@ -126,7 +125,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdChiSquared<T> {
       return Some(f64::INFINITY);
     }
     let k = self.df.to_f64().unwrap();
-    Some(2.0 * crate::special::gamma_p_inv(0.5 * k, p))
+    Some(crate::special::gamma_p_inv(0.5 * k, p, 2.0))
   }
 
   fn mean(&self) -> Option<f64> {

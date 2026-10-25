@@ -1,7 +1,8 @@
-//! The gamma family's tails from shape 100 on: Temme's uniform expansion for `0.3 ≤ x/a ≤ 2.35`, the series or fraction
-//! scaled by Stirling's `Γ*` outside, and on both sides the exponent `a(λ − 1 − ln λ)` carried past double precision.
+//! The gamma family's prefactor `x^a e^{−x}/Γ(a)` scaled by Stirling's `Γ*` from shape 10, its exponent `a(λ − 1 − ln λ)`
+//! carried past double precision, and from shape 100 Temme's uniform expansion for `0.3 ≤ x/a ≤ 2.35`.
 //! Reference: Temme, N.M. (1979), "The asymptotic expansion of the incomplete gamma functions", *SIAM Journal on Mathematical Analysis* 10(4), 757-766, DOI 10.1137/0510071 (DLMF 8.12.3–8.12.4, 8.12.7, 8.12.11–8.12.14).
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 5.11.1 (Stirling's series for `ln Γ`), <https://dlmf.nist.gov/5.11.1>.
+//! Reference: DiDonato, A.R., Morris, A.H. (1986), "Computation of the incomplete gamma function ratios and their inverse", ACM TOMS 12(4), 377-393, DOI 10.1145/22721.23109 (`rcomp`: `x^a e^{−x}/Γ(a)` from `ln Γ` below shape 20, Stirling-scaled from it).
 //! Reference: Shewchuk, J.R. (1997), "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates", *Discrete & Computational Geometry* 18(3), 305-363, Theorem 7 (Knuth's two-sum).
 
 use std::f64::consts::TAU;
@@ -182,7 +183,7 @@ const TEMME: [&[f64]; 8] = [
 ];
 
 /// Temme's `Q = ½ erfc(η√(a/2)) + S` (DLMF 8.12.4) in the band, as `e^{−aη²/2}/√(2π)` times Mills' ratio at `|η|√a` plus
-/// `S`'s `c_k` sum over `√a`, `P` alike below `x = a`; outside, `√(a/2π) e^{−a(λ−1−ln λ)}/Γ*(a)` times the series or fraction.
+/// `S`'s `c_k` sum over `√a`, `P` alike below `x = a`; outside, `scaled_prefactor` times the series or fraction.
 #[inline(never)]
 pub(super) fn tail(a: f64, x: f64) -> Tail {
   let lambda = x / a;
@@ -203,8 +204,32 @@ pub(super) fn tail(a: f64, x: f64) -> Tail {
       upper,
       factor: bracket / TAU.sqrt() * (-y_lo).exp(),
       ln_scale: -y,
+      kernel: f64::NAN,
     };
   }
+  let (scale, ln_scale) = scaled_prefactor(a, x);
+  if x < a {
+    let sum = series(a, x);
+    Tail {
+      upper: false,
+      factor: scale * sum,
+      ln_scale,
+      kernel: sum,
+    }
+  } else {
+    let fraction = continued_fraction(a, x);
+    Tail {
+      upper: true,
+      factor: scale * fraction,
+      ln_scale,
+      kernel: fraction,
+    }
+  }
+}
+
+/// `x^a e^{−x}/Γ(a) = √(a/2π) e^{−a(λ − 1 − ln λ)}/Γ*(a)`, `λ = x/a`, as `(factor, ln_scale)`: the exponent's low part, past
+/// what `ln_scale` holds, goes into `factor`.
+pub(super) fn scaled_prefactor(a: f64, x: f64) -> (f64, f64) {
   let (l, l_lo) = ln_ratio(x, a);
   let (d, d_lo) = two_sum(x, -a);
   let p = a * l;
@@ -214,20 +239,10 @@ pub(super) fn tail(a: f64, x: f64) -> Tail {
   } else {
     (p, 0.0)
   };
-  let scale = (a / TAU).sqrt() * (ln_scale_lo - ln_gamma_star(a)).exp();
-  if x < a {
-    Tail {
-      upper: false,
-      factor: scale * series(a, x),
-      ln_scale,
-    }
-  } else {
-    Tail {
-      upper: true,
-      factor: scale * continued_fraction(a, x),
-      ln_scale,
-    }
-  }
+  (
+    (a / TAU).sqrt() * (ln_scale_lo - ln_gamma_star(a)).exp(),
+    ln_scale,
+  )
 }
 
 /// `a(λ − 1 − ln λ) = D·T − 2aT³ Σ_j T^{2j}/(2j + 3)`, `D = x − a`, `T = D/(x + a)`, as `y + y_lo`: two-sums and fused
@@ -323,9 +338,22 @@ fn two_sum(a: f64, b: f64) -> (f64, f64) {
   (s, (a - (s - z)) + (b - z))
 }
 
-/// `ln Γ*(a) = ln Γ(a) − (a − ½) ln a + a − ½ ln 2π` by Stirling's series, whose fourth term is below `1e-17` from `a = 100`.
+/// `ln Γ*(a) = ln Γ(a) − (a − ½) ln a + a − ½ ln 2π` by Stirling's series through `B₁₈`, the first omitted term
+/// `174611/(125400a¹⁹)` below `2e-19` from `a = 10`.
 fn ln_gamma_star(a: f64) -> f64 {
+  /// `B_{2k}/(2k(2k − 1))`, `k = 1, …, 9`.
+  const STIRLING: [f64; 9] = [
+    1.0 / 12.0,
+    -1.0 / 360.0,
+    1.0 / 1260.0,
+    -1.0 / 1680.0,
+    1.0 / 1188.0,
+    -691.0 / 360360.0,
+    1.0 / 156.0,
+    -3617.0 / 122400.0,
+    43867.0 / 244188.0,
+  ];
   let r = 1.0 / a;
   let r2 = r * r;
-  r * (1.0 / 12.0 - r2 * (1.0 / 360.0 - r2 / 1260.0))
+  STIRLING.iter().rev().fold(0.0, |acc, &c| acc * r2 + c) * r
 }

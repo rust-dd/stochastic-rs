@@ -17,12 +17,20 @@ use super::ndtri;
 /// From this shape on the series and the fraction need `O(√a)` terms near `x = a`, the switch Numerical Recipes takes.
 const LARGE_SHAPE: f64 = 100.0;
 
+/// From this shape on `ln Γ(a)`'s last place and `a ln x − x`'s rounding outgrow `ε` in the prefactor: it is Stirling-scaled.
+const STIRLING_PREFACTOR: f64 = 10.0;
+
+/// Below this shape `(pΓ(a + 1))^{1/a}` can fall under `e^{−700}`, which needs `700a < −ln p − ln Γ(a + 1) ≤ 745`.
+const FLOOR_BINDS: f64 = 1.07;
+
 /// One tail of the gamma law as `factor · e^{ln_scale}`, the upper `Q` if `upper`, else `P`; the other is one minus it.
+/// `kernel` is the series' `S` or the fraction's `h` that `factor` scales, NaN in Temme's band.
 #[derive(Clone, Copy)]
 struct Tail {
   upper: bool,
   factor: f64,
   ln_scale: f64,
+  kernel: f64,
 }
 
 impl Tail {
@@ -39,25 +47,39 @@ fn domain(a: f64, x: f64) -> bool {
   !(x < 0.0 || a.is_nan() || a <= 0.0)
 }
 
-/// The tail the series (below `a + 1`) or the fraction (above) evaluates, scaled by `x^a e^{−x}/Γ(a)`; the large-shape
-/// path stays out of line so this one inlines into each public function.
+/// `x^a e^{−x}/Γ(a)` as `(factor, ln_scale)`: from `ln Γ(a)` below shape 10, `large_shape::scaled_prefactor` from there.
+#[inline]
+fn prefactor(a: f64, x: f64) -> (f64, f64) {
+  if a < STIRLING_PREFACTOR {
+    (1.0, -x + a * x.ln() - ln_gamma(a))
+  } else {
+    large_shape::scaled_prefactor(a, x)
+  }
+}
+
+/// The tail the series (below `a + 1`) or the fraction (above) evaluates, scaled by `prefactor`; the large-shape path
+/// stays out of line so this one inlines into each public function.
 #[inline]
 fn tail(a: f64, x: f64) -> Tail {
   if a >= LARGE_SHAPE {
     return large_shape::tail(a, x);
   }
-  let ln_scale = -x + a * x.ln() - ln_gamma(a);
+  let (scale, ln_scale) = prefactor(a, x);
   if x < a + 1.0 {
+    let sum = series(a, x);
     Tail {
       upper: false,
-      factor: series(a, x),
+      factor: scale * sum,
       ln_scale,
+      kernel: sum,
     }
   } else {
+    let fraction = continued_fraction(a, x);
     Tail {
       upper: true,
-      factor: continued_fraction(a, x),
+      factor: scale * fraction,
       ln_scale,
+      kernel: fraction,
     }
   }
 }
@@ -234,52 +256,68 @@ pub fn ln_gamma_q(a: f64, x: f64) -> f64 {
   }
 }
 
-/// The `x` with `P(a, x) = p` for `0 < p < 1`: Newton in `ln x` on `ln P` below ½ and on `ln Q = ln(1 − p)` above, both
-/// concave in `ln x`, from NR3's start; below ½ never under `(p Γ(a + 1))^{1/a}`, the root where that is below `e^{−700}`.
-pub(crate) fn gamma_p_inv(a: f64, p: f64) -> f64 {
+/// `scale` (a power of two) times the `x` with `P(a, x) = p`, `0 < p < 1`, rounded once where subnormal: Newton in `ln x` on
+/// `ln P` below ½ and on `ln Q = ln(1 − p)` above, both concave, from NR3's start, Wilson–Hilferty's in `x` so a huge `a` is itself.
+pub(crate) fn gamma_p_inv(a: f64, p: f64, scale: f64) -> f64 {
   let upper = p > 0.5;
   let ln_target = if upper { (1.0 - p).ln() } else { p.ln() };
-  // `P(a, x) ≤ x^a/Γ(a + 1)`, with equality to rounding below `e^{−700}`.
-  let floor = (p.ln() + ln_gamma(a + 1.0)) / a;
-  if !upper && floor < -700.0 {
-    return floor.exp();
+  // Below ½, `P ≤ x^a/Γ(a + 1)` makes `(pΓ(a + 1))^{1/a}` a lower bound of the root, and the root to rounding below `e^{−700}`.
+  let floor = (!upper && a < FLOOR_BINDS).then(|| (p.ln() + ln_gamma(a + 1.0)) / a);
+  if let Some(floor) = floor.filter(|&floor| floor < -700.0) {
+    return (floor + scale.ln()).exp();
   }
-  let start = if a <= 1.0 {
+  let floor = floor.unwrap_or(f64::NEG_INFINITY);
+  let mut x = if a <= 1.0 {
     let t = 1.0 - a * (0.253 + 0.12 * a);
-    if p < t {
+    let start = if p < t {
       (p.ln() - t.ln()) / a
     } else {
       (1.0 - ((1.0 - p) / (1.0 - t)).ln()).ln()
-    }
+    };
+    start.max(floor).exp()
   } else {
     let base = 1.0 - 1.0 / (9.0 * a) + ndtri(p) / (3.0 * a.sqrt());
     if base > 0.0 {
-      (a * base * base * base).ln()
+      a * base * base * base
     } else {
-      floor
+      ((p.ln() + ln_gamma(a + 1.0)) / a).exp()
     }
   };
-  let ln_gamma_a = ln_gamma(a);
-  let mut x = if upper { start } else { start.max(floor) }.exp();
   for _ in 0..64 {
-    let value = if upper {
-      ln_gamma_q(a, x)
-    } else {
-      ln_gamma_p(a, x)
-    };
-    // `d ln P / d ln x = x^a e^{−x}/(Γ(a) P)`, and `d ln Q / d ln x` its negative over `Q`.
-    let slope = (a * x.ln() - x - ln_gamma_a - value).exp();
-    let step = ((ln_target - value) / if upper { -slope } else { slope }).clamp(-2.0, 2.0);
+    let (value, slope) = solved_tail(a, x, upper);
+    let step = ((ln_target - value) / slope).clamp(-2.0, 2.0);
     let mut next = x + x * step.exp_m1();
-    if !upper && next.ln() < floor {
+    if next.ln() < floor {
       next = floor.exp();
     }
     if step.abs() <= 1e-9 {
-      return next;
+      return scale * next;
     }
     x = next;
   }
-  x
+  scale * x
+}
+
+/// `ln P(a, x)`, or `ln Q` if `upper`, and its derivative in `ln x`: `1/S` or `−1/h` where the tail solved is the series'
+/// or the fraction's own, else `prefactor` over the tail.
+fn solved_tail(a: f64, x: f64, upper: bool) -> (f64, f64) {
+  let (value, kernel) = if upper && a < 1.0 && x < a + 1.0 {
+    (small_shape_q(a, x).ln(), f64::NAN)
+  } else {
+    let t = tail(a, x);
+    if t.upper == upper {
+      (t.ln(), t.kernel)
+    } else {
+      ((-t.ln().exp()).ln_1p(), f64::NAN)
+    }
+  };
+  let slope = if kernel.is_nan() {
+    let (scale, ln_scale) = prefactor(a, x);
+    (scale.ln() + ln_scale - value).exp()
+  } else {
+    kernel.recip()
+  };
+  (value, if upper { -slope } else { slope })
 }
 
 /// Unregularised lower incomplete gamma `γ(a, x) = P(a, x)·Γ(a)`; in log space once `Γ(a)` overflows.

@@ -338,8 +338,34 @@ fn small_shapes_keep_the_upper_tail_below_a_plus_one() {
   assert!(rel(below, above) < 1e-14, "{below:e} against {above:e}");
 }
 
-/// The inverse round-trips `P` below ½ and `Q` above it on a grid of shapes and levels, and keeps the root at or above
-/// `(p Γ(a + 1))^{1/a}`, where it underflows to 0.
+/// `(k, p, χ²_k quantile, κ)` by DLMF 8.12's uniform expansion at 120 and 200 digits, its truncation below `1e-40`.
+const LARGE_K: [(f64, f64, f64, f64); 12] = [
+  (1e16, 1e-300, 9999994760750312.0, 3.814565222494844e-10),
+  (1e16, 0.01, 9999999671004732.0, 5.30619102617046e-09),
+  (1e16, 0.3, 9999999925838568.0, 1.2202274435331952e-08),
+  (1e16, 0.5, 1e16, 1.772453850905516e-08),
+  (1e16, 0.7, 1.0000000074161432e16, 1.2202274375002745e-08),
+  (
+    1e16,
+    1.0 - 1e-10,
+    1.0000000899629482e16,
+    2.171841221065021e-09,
+  ),
+  (1e20, 1e-300, 9.999999947607494e19, 3.814564562974588e-12),
+  (1e20, 0.01, 9.999999996710047e19, 5.3061909685619726e-11),
+  (1e20, 0.3, 9.999999999258386e19, 1.2202274405468994e-10),
+  (1e20, 0.5, 1e20, 1.772453850905516e-10),
+  (1e20, 0.7, 1.0000000000741614e20, 1.2202274404865703e-10),
+  (
+    1e20,
+    1.0 - 1e-10,
+    1.0000000008996294e20,
+    2.1718412855421487e-11,
+  ),
+];
+
+/// The inverse round-trips `P` below ½ and `Q` above on a grid of shapes, the root under `e^{−744}` exactly 0; at `k = 1e16`
+/// and `1e20` it is `LARGE_K`'s within `4e-15·max(1, κ)·max(1, |ln p̃|)`, and from `1e300`, within `6e-149` of `k`, `k`.
 #[test]
 fn gamma_p_inv_inverts_the_tail_it_solves() {
   for a in [1e-3, 0.02, 0.5, 1.0, 2.5, 50.0, 1e4] {
@@ -355,7 +381,7 @@ fn gamma_p_inv_inverts_the_tail_it_solves() {
       1.0 - 1e-9,
       1.0 - 1e-15,
     ] {
-      let x = gamma_p_inv(a, p);
+      let x = gamma_p_inv(a, p, 1.0);
       if x == 0.0 {
         assert!(
           (p.ln() + ln_gamma(a + 1.0)) / a < -744.0,
@@ -372,6 +398,19 @@ fn gamma_p_inv_inverts_the_tail_it_solves() {
         ((got - want) / want).abs() < 1e-12,
         "a = {a}, p = {p:e}: x = {x:e}"
       );
+    }
+  }
+  for (k, p, want, kappa) in LARGE_K {
+    let got = gamma_p_inv(0.5 * k, p, 2.0);
+    let tol = 4e-15 * kappa.max(1.0) * p.min(1.0 - p).ln().abs().max(1.0) * want;
+    assert!(
+      (got - want).abs() <= tol,
+      "k = {k:e}, p = {p:e}: {got:e}, want {want:e}"
+    );
+  }
+  for k in [1e300, 1e306, f64::MAX] {
+    for p in [1e-300, 0.01, 0.3, 0.5, 0.7, 1.0 - 1e-10] {
+      assert_eq!(gamma_p_inv(0.5 * k, p, 2.0), k, "k = {k:e}, p = {p:e}");
     }
   }
 }
