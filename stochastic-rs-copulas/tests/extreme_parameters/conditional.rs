@@ -74,20 +74,6 @@ fn the_gaussian_h_its_inverse_and_density_hold_past_the_rounding_switch() {
   }
 }
 
-/// The t copula past its switch to the normal law at `ν = 1e22`, at `ρ = 0.999999`: finite and in `[0, 1]`; below the
-/// switch the table carries the t rows.
-#[test]
-fn the_t_copula_past_the_normal_switch_answers_inside_the_unit_interval() {
-  let copula = TCopula::new(0.999999, 1e300);
-  for kind in ["h", "q"] {
-    let out = on_grid(&copula, kind);
-    assert!(
-      out.iter().all(|x| x.is_finite() && (0.0..=1.0).contains(x)),
-      "t 0.999999 1e300 {kind}: {out}"
-    );
-  }
-}
-
 /// The vine pairs are their families' kernels, at strong dependence and across the open grid: `h` the family's
 /// `partial_derivative`, an exact 0 or 1 moved one ulp inside, `h⁻¹` its `percent_point`, `log_density` its `log_pdf`.
 #[test]

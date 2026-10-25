@@ -121,15 +121,19 @@ impl TCopula {
     }
   }
 
-  /// `∂_v C = t_{ν+1}((x − ρy)√((ν + 1)/((ν + y²)(1 − ρ²))))`, `x, y = t_ν⁻¹(u), t_ν⁻¹(v)`, in logarithms where a quantile
-  /// passes `LARGE`, and its `v → 0, 1` limit `t_{ν+1}(±ρ√((ν + 1)/(1 − ρ²)))` at the edges.
+  /// `∂_v C = t_{ν+1}((x − ρy)√((ν + 1)/((ν + y²)(1 − ρ²))))`, `x, y = t_ν⁻¹(u), t_ν⁻¹(v)`, in logarithms past `LARGE`, its
+  /// `v → 0, 1` limit `t_{ν+1}(±ρ√((ν + 1)/(1 − ρ²)))` at the edges; the Gaussian copula's from `NORMAL_ABOVE`.
   pub(crate) fn h(rho: f64, nu: f64) -> impl Fn(f64, f64) -> f64 {
+    let gaussian = GaussianCopula::h(rho);
     let (law, wide) = (Law::new(nu), Law::new(nu + 1.0));
     let sqrt_one_minus_rho2 = ((1.0 - rho) * (1.0 + rho)).sqrt();
     let nu_plus_one = nu + 1.0;
     let boundary_arg = rho * nu_plus_one.sqrt() / sqrt_one_minus_rho2;
     let reach = nu_plus_one.sqrt() / sqrt_one_minus_rho2;
     move |u, v| {
+      if nu >= NORMAL_ABOVE {
+        return gaussian(u, v);
+      }
       if u >= 1.0 {
         return 1.0;
       }
