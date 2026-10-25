@@ -45,7 +45,8 @@ pub(crate) struct StudentTail {
 }
 
 impl StudentTail {
-  /// `P(T ≤ −|x|)`; a value below `e^{−700}` is formed in one exponential, so a subnormal one is rounded once.
+  /// `P(T ≤ −|x|)`, at most ½ to the bit; a value below `e^{−700}` is formed in one exponential, so a subnormal one is
+  /// rounded once.
   pub(crate) fn lower(self) -> f64 {
     if self.center {
       return 0.5 - 0.5 * self.factor * self.ln_scale.exp();
@@ -54,7 +55,7 @@ impl StudentTail {
     if self.ln_scale < -700.0 {
       (self.ln_scale + half.ln()).exp()
     } else {
-      half * self.ln_scale.exp()
+      (half * self.ln_scale.exp()).min(0.5)
     }
   }
 
@@ -72,7 +73,7 @@ impl StudentTail {
     if self.center {
       self.lower().ln()
     } else {
-      (0.5 * self.factor).ln() + self.ln_scale
+      ((0.5 * self.factor).ln() + self.ln_scale).min(-std::f64::consts::LN_2)
     }
   }
 }

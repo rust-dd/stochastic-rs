@@ -361,3 +361,20 @@ fn the_chi_square_quantile_and_median_match_mpmath() {
     quantiles.chain(medians).collect(),
   );
 }
+
+/// `P(T ≤ −|x|) ≤ ½` holds to the bit, so the cdf never crosses `F(0) = ½` the wrong way where the lower tail's factor
+/// rounds past 1.
+#[test]
+fn the_t_cdf_is_monotone_through_zero_at_tiny_nu() {
+  let magnitudes: Vec<f64> = (-3000..=3000)
+    .map(|i| 10f64.powf(f64::from(i) / 10.0))
+    .collect();
+  for nu in [1e-300, 1e-20, 1e-15] {
+    let law = SimdStudentT::<f64>::new(nu);
+    let centre = law.cdf(0.0).unwrap();
+    let crossing = magnitudes
+      .iter()
+      .find(|&&m| law.cdf(-m).unwrap() > centre || law.cdf(m).unwrap() < centre);
+    assert!(crossing.is_none(), "ν = {nu:e}: |x| = {crossing:?}");
+  }
+}
