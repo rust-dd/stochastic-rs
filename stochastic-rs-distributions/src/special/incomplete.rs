@@ -306,6 +306,10 @@ fn bound_root(a: f64, p: f64, scale: f64) -> f64 {
   const TWO_POW_M64: f64 = 1.0 / 18_446_744_073_709_551_616.0;
   let (l, l_lo) = large_shape::ln_ratio(p, 1.0);
   let q = l / a;
+  // Below `q = −746` the root, `e^q` within `e^{0.73}`, rounds to 0, and `q`'s remainder can pass `f64::MAX`.
+  if q < -746.0 {
+    return 0.0;
+  }
   let q_lo = ((-q).mul_add(a, l) + l_lo) / a;
   let rest = q_lo - recip_gamma_1p_m1(a).ln_1p() / a + scale.ln() + 64.0 * large_shape::LN2_LO;
   (q + 64.0 * large_shape::LN2_HI).exp() * rest.exp() * TWO_POW_M64
