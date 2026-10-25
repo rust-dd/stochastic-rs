@@ -21,6 +21,8 @@ use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::copula_cdf;
 use crate::bivariate::conditional::copula_pdf;
+use crate::bivariate::conditional::level_difference;
+use crate::bivariate::conditional::level_sum;
 use crate::bivariate::conditional::on_open_square;
 use crate::bivariate::gaussian::GaussianCopula;
 use crate::bivariate::t_copula::cdf::BivariateT;
@@ -28,6 +30,7 @@ use crate::error::CopulaError;
 use crate::student_t;
 use crate::student_t::Law;
 use crate::student_t::NORMAL_ABOVE;
+use crate::student_t::Score;
 use crate::student_t::TDensity;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -149,28 +152,113 @@ impl TCopula {
       }
       let (x, y) = (law.quantile(u), law.quantile(v));
       if x.value.is_finite() && y.value.abs() < LARGE {
-        let gap = x.value - rho * y.value;
+        let scale = (nu_plus_one / (nu + y.value * y.value)).sqrt() / sqrt_one_minus_rho2;
+        let gap = Self::shifted_gap(&law, (rho, nu, scale), (u, v, x, y));
         // At the median a tiny `ν` overflows the scale: the argument is 0 there.
         if gap == 0.0 {
           return wide.cdf_at(0.0);
         }
-        let scale = (nu_plus_one / (nu + y.value * y.value)).sqrt() / sqrt_one_minus_rho2;
         return wide.cdf_at(gap * scale);
       }
       // `x/√(ν + y²)` and `y/√(ν + y²)` from the logarithms; past `f64::MAX` the first carries the argument alone.
-      let (ln_x_over_root, y_over_root) = if y.value.abs() < LARGE {
+      let (ln_x_over_root, y_over_root, logs) = if y.value.abs() < LARGE {
         let root = (nu + y.value * y.value).sqrt();
-        (x.ln_abs() - root.ln(), y.value / root)
+        (x.ln_abs() - root.ln(), y.value / root, None)
       } else {
         let lift = 0.5 * (nu * (-2.0 * y.ln_abs()).exp()).ln_1p();
-        (law.ln_ratio(x, y) - lift, y.value.signum() * (-lift).exp())
+        let ln_ratio = law.ln_ratio(x, y);
+        (
+          ln_ratio - lift,
+          y.value.signum() * (-lift).exp(),
+          Some((ln_ratio, lift)),
+        )
       };
       let ratio = x.value.signum() * ln_x_over_root.exp();
       if ratio.is_finite() {
-        wide.cdf_at((ratio - rho * y_over_root) * reach)
+        let gap = match logs {
+          // Where the signs and `ρ` cancel, `(|x| − |ρy|)/√(ν + y²) = e^{−lift}(expm1(ln|x/y|) + (1 − |ρ|))`.
+          Some((ln_ratio, lift)) if x.value.signum() * y.value.signum() == rho.signum() => {
+            x.value.signum() * (-lift).exp() * (ln_ratio.exp_m1() + (1.0 - rho.abs()))
+          }
+          _ => ratio - rho * y_over_root,
+        };
+        wide.cdf_at(gap * reach)
       } else {
         wide.cdf(x.value.signum(), ln_x_over_root + reach.ln())
       }
+    }
+  }
+
+  /// `x − ρy`, as `(x − y) + (1 − ρ)y` (`(x + y) − (1 + ρ)y` at `ρ < 0`) from the law's gaps where two bits of it cancel
+  /// and its rounding, `ε` times the quantiles' `rounding`, passes `150ε` carried by the scale and `t_{ν+1}`'s relative slope.
+  fn shifted_gap(
+    law: &Law,
+    (rho, nu, scale): (f64, f64, f64),
+    cell: (f64, f64, Score, Score),
+  ) -> f64 {
+    let (u, v, x, y) = cell;
+    let plain = x.value - rho * y.value;
+    let size = Self::rounding(law, u, x.value) + Self::rounding(law, v, y.value);
+    // The slope `f/F` of `t_{ν+1}` at `z` is below `|z| + 1` and below `(ν + 1)/|z|`, its limit in the lower tail.
+    let z = (plain * scale).abs();
+    if size * scale * (z + 1.0).min((nu + 1.0) / z) <= 150.0 || 4.0 * plain.abs() > size {
+      plain
+    } else if rho > 0.0 {
+      Self::difference(law, (nu, size), cell) + (1.0 - rho) * y.value
+    } else {
+      Self::sum(law, (nu, size), cell) - (1.0 + rho) * y.value
+    }
+  }
+
+  /// `|q| + min(p, 1 − p)/f(q)`: a quantile's rounding, its own and what the law's rounding of `p` moves it, which near the
+  /// median outgrows `|q|`.
+  fn rounding(law: &Law, p: f64, q: f64) -> f64 {
+    q.abs() + p.min(1.0 - p) / law.ln_pdf(q).exp()
+  }
+
+  /// `ln f(b)` where `quantile_gap`'s Gauss–Legendre mass holds over the gap `d` from `a` to `b`: within a quarter of the
+  /// density's scale `√(ν + a²)`, and the density normal at `a` and within a factor `e` at `b`.
+  fn integrable(law: &Law, nu: f64, (a, b): (f64, f64), d: f64) -> Option<f64> {
+    let (ln_a, ln_b) = (law.ln_pdf(a), law.ln_pdf(b));
+    let holds =
+      d.abs() <= 0.25 * (nu + a * a).sqrt() && ln_a > -700.0 && (ln_a - ln_b).abs() <= 1.0;
+    holds.then_some(ln_b)
+  }
+
+  /// `x − y` from the tails where both quantiles have one, else from the exact level gap where it is `integrable` and its
+  /// rounding over the density beats `size`.
+  fn difference(law: &Law, (nu, size): (f64, f64), (u, v, x, y): (f64, f64, Score, Score)) -> f64 {
+    if let Some(gap) = law.tail_gap(x, y).filter(|_| x.sign() == y.sign()) {
+      return x.sign() * gap;
+    }
+    let threshold = |anchor: f64, partner: f64| {
+      Self::integrable(law, nu, (anchor, partner), anchor - partner)
+        .map_or(f64::NEG_INFINITY, |ln_f| size.ln() + ln_f)
+    };
+    let solve = |anchor, level, gap, start| law.quantile_gap(anchor, level, gap, start);
+    let gap = level_difference((u, v, x.value, y.value), threshold, solve);
+    if gap.is_finite() {
+      gap
+    } else {
+      x.value - y.value
+    }
+  }
+
+  /// `x + y` alike, from the exact `u + v − 1`, where the levels lie in opposite halves or the gap's rounding beats `size`.
+  fn sum(law: &Law, (nu, size): (f64, f64), (u, v, x, y): (f64, f64, Score, Score)) -> f64 {
+    if let Some(gap) = law.tail_gap(y, x).filter(|_| x.sign() != y.sign()) {
+      return y.sign() * gap;
+    }
+    let admit = |plain, gap: f64, score, other| {
+      Self::integrable(law, nu, (score, other), plain)
+        .is_some_and(|ln_f| u.min(v) <= 0.5 && 0.5 <= u.max(v) || gap.abs().ln() < size.ln() + ln_f)
+    };
+    let solve = |score, level, gap, start| law.quantile_gap(score, level, gap, start);
+    let gap = level_sum((u, v, x.value, y.value), admit, solve);
+    if gap.is_finite() {
+      gap
+    } else {
+      x.value + y.value
     }
   }
 

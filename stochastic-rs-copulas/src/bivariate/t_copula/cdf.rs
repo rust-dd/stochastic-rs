@@ -283,7 +283,7 @@ impl BivariateT {
     sums.1 - sums.0
   }
 
-  /// `y = (x + y) − x` and `|t_x| − |t_y|` at `ρ < 0` from the exact sum (`Law::quantile_sum`) where at least two bits of
+  /// `y = (x + y) − x` and `|t_x| − |t_y|` at `ρ < 0` from the exact sum (`Law::quantile_gap`) where at least two bits of
   /// the opposite scores cancel in it, so neither their rounding nor the upper quantile's error moves the crossing.
   fn countermonotone(&self, u: f64, v: f64, su: Score, sv: Score) -> Option<(Feature, f64)> {
     let (x, y) = (su.value, sv.value);
@@ -291,7 +291,7 @@ impl BivariateT {
     if !(self.rho < 0.0 && x < 0.0 && 0.0 < y && y.is_finite() && plain.abs() <= 0.25 * y.min(-x)) {
       return None;
     }
-    let sum = self.law.quantile_sum(x, u, sum_minus_one(u, v), plain);
+    let sum = self.law.quantile_gap(x, u, sum_minus_one(u, v), plain);
     let y = sum - x;
     // A solve that fails, NaN or past the crossing, leaves the plain scores.
     if y.is_nan() || y <= 0.0 {

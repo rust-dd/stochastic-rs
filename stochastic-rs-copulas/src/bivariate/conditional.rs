@@ -136,6 +136,43 @@ pub(crate) fn sum_minus_one(u: f64, v: f64) -> f64 {
   (s - 1.0) + e
 }
 
+/// `x − y` of the quantiles of `u` and `v` by `solve(anchor, level, gap, start)` from the exact level gap, anchored at the
+/// level farther from ½, where `ln|gap|` is below `threshold(anchor, partner)`; the plain difference elsewhere.
+pub(crate) fn level_difference(
+  (u, v, x, y): (f64, f64, f64, f64),
+  threshold: impl FnOnce(f64, f64) -> f64,
+  solve: impl FnOnce(f64, f64, f64, f64) -> f64,
+) -> f64 {
+  let plain = x - y;
+  let (anchor, level, partner, gap, sign) = if x.abs() >= y.abs() {
+    (x, u, y, u - v, 1.0)
+  } else {
+    (y, v, x, v - u, -1.0)
+  };
+  if gap.abs().ln() < threshold(anchor, partner) {
+    sign * solve(anchor, level, gap, sign * plain)
+  } else {
+    plain
+  }
+}
+
+/// `x + y` of the quantiles of `u` and `v` by `solve(score, level, gap, start)` from the exact gap `u + v − 1`, anchored
+/// at the lower level, where `admit(plain, gap, score, other)`; the plain sum elsewhere.
+pub(crate) fn level_sum(
+  (u, v, x, y): (f64, f64, f64, f64),
+  admit: impl FnOnce(f64, f64, f64, f64) -> bool,
+  solve: impl FnOnce(f64, f64, f64, f64) -> f64,
+) -> f64 {
+  let plain = x + y;
+  let (p, score, other) = if u <= v { (u, x, y) } else { (v, y, x) };
+  let gap = sum_minus_one(u, v);
+  if admit(plain, gap, score, other) {
+    solve(score, p, gap, plain)
+  } else {
+    plain
+  }
+}
+
 /// `ln(1 + eˣ)`.
 pub(crate) fn softplus(x: f64) -> f64 {
   x.max(0.0) + (-x.abs()).exp().ln_1p()

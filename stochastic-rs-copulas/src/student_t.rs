@@ -34,6 +34,8 @@ pub(crate) struct Law {
   tail_level: f64,
   tail_start: f64,
   ln_tail_start: f64,
+  /// `ln Γ((ν + 1)/2) − ln Γ(ν/2) − ½ ln(νπ) = −½(ln 2π + G)`, free of the gammas' cancellation at large `ν`.
+  ln_norm: f64,
 }
 
 /// A quantile `t`, `+∞` where it overflows, and in the tail `ln|t|` and `ln P(T ≤ −|t|)`, which stay finite there.
@@ -89,6 +91,7 @@ impl Law {
       tail_level: (ln_scale - nu * ln_quantile_start).exp(),
       tail_start: ln_tail_start.exp(),
       ln_tail_start,
+      ln_norm: -0.5 * (std::f64::consts::TAU.ln() + ln_gamma_constant(nu)),
     }
   }
 
@@ -381,16 +384,25 @@ impl Law {
     ln_gap + (b.corr - a.corr)
   }
 
-  /// `x + y` of the quantiles of `u` and `v` from `x̂`, the exact gap `g = u + v − 1` and `start`: Newton on
-  /// `T(x̂) − T(x̂ − d) = g + r`, `r = T(x̂) − u`, the mass by Gauss–Legendre of the density, less `r/f(x̂)`.
-  pub(crate) fn quantile_sum(&self, x: f64, u: f64, g: f64, start: f64) -> f64 {
+  /// `ln f(s)` at a finite `s`.
+  pub(crate) fn ln_pdf(&self, s: f64) -> f64 {
+    self.ln_norm - 0.5 * (self.nu + 1.0) * (s * s / self.nu).ln_1p()
+  }
+
+  /// `|a| − |b|` from the tail probabilities where both quantiles have one, so two near ones keep their difference.
+  pub(crate) fn tail_gap(&self, a: Score, b: Score) -> Option<f64> {
+    (!a.ln_tail.is_nan() && !b.ln_tail.is_nan())
+      .then(|| b.value.abs() * self.ln_ratio(a, b).exp_m1())
+  }
+
+  /// `x̂ − T⁻¹(u − g)` from `x̂ ≈ T⁻¹(u)`, the exact level gap `g` and `start` (`x + y` at `g = u + v − 1`, `x − y` at
+  /// `u − v`): Newton on `T(x̂) − T(x̂ − d) = g + r`, `r = T(x̂) − u`, the mass by Gauss–Legendre of the density, less `r/f(x̂)`.
+  pub(crate) fn quantile_gap(&self, x: f64, u: f64, g: f64, start: f64) -> f64 {
     if g == 0.0 {
       return 0.0;
     }
-    // `ln Γ((ν + 1)/2) − ln Γ(ν/2) − ½ ln(νπ) = −½(ln 2π + G)`, free of the gammas' cancellation at large `ν`.
-    let ln_norm = -0.5 * (std::f64::consts::TAU.ln() + ln_gamma_constant(self.nu));
-    let pdf = |s: f64| (ln_norm - 0.5 * (self.nu + 1.0) * (s * s / self.nu).ln_1p()).exp();
-    // `T(x) − T(x − d)` over a `d` within a quarter of the density's scale `√(ν + s²)`, as the caller keeps it.
+    let pdf = |s: f64| self.ln_pdf(s).exp();
+    // `T(x) − T(x − d)` over a `d` across which the density changes little, as the callers keep it.
     let mass = |d: f64| {
       let (mid, half) = (x - 0.5 * d, 0.5 * d);
       half

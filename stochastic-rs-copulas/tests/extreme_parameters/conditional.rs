@@ -110,6 +110,63 @@ fn the_t_edges_keep_the_two_point_law_past_the_normal_switch() {
   }
 }
 
+/// Near the diagonal as `|ρ| → 1` below the normal switch `h` takes `x − ρy` from the law's level gap, or its tails past
+/// `1e150` (mpmath at 50 and 90 digits), and meets the Gaussian copula's `h` across the switch.
+#[test]
+fn the_t_h_keeps_its_digits_near_the_diagonal_and_across_the_switch() {
+  let rows = [
+    (0.9999999999, 4.0, 1e-15, 1e-15, 0.49999399789119663),
+    (0.9999999999, 4.0, 0.5, 0.5000000001, 0.49999199718797105),
+    (
+      0.9999999999,
+      9.999999999999998e21,
+      1e-300,
+      1e-300,
+      0.4998954920677052,
+    ),
+    (-0.9999999999, 4.0, 0.3, 0.7, 0.4999983585079172),
+    (-0.9999999999, 4.0, 0.5, 0.4999999999, 0.49999199718797105),
+    (
+      0.9999999999,
+      0.5,
+      1e-100,
+      1.0000000001e-100,
+      0.4999911474465587,
+    ),
+    (
+      0.9999999999,
+      0.5,
+      1e-300,
+      1.0000001e-300,
+      0.49409583858729905,
+    ),
+  ];
+  for (rho, nu, u, v, want) in rows {
+    let copula = TCopula::new(rho, nu);
+    let h = copula.partial_derivative(array![[u, v]].view()).unwrap()[0];
+    assert!(
+      agrees(h, want),
+      "t {rho} {nu}: h({u} | {v}) = {h:e}, want {want:e}"
+    );
+  }
+  let rho = 0.9999999999;
+  let diagonal = array![
+    [1e-300, 1e-300],
+    [1e-15, 1e-15],
+    [0.3, 0.3],
+    [0.7, 0.7],
+    [1.0 - 1e-15, 1.0 - 1e-15]
+  ];
+  let below = TCopula::new(rho, 9.999999999999998e21).partial_derivative(diagonal.view());
+  let at = TCopula::new(rho, 1e22).partial_derivative(diagonal.view());
+  for (below, at) in below.unwrap().iter().zip(&at.unwrap()) {
+    assert!(
+      agrees(*below, *at),
+      "h below the switch {below:e}, at it {at:e}"
+    );
+  }
+}
+
 /// The vine pairs are their families' kernels, at strong dependence and across the open grid: `h` the family's
 /// `partial_derivative`, an exact 0 or 1 moved one ulp inside, `h⁻¹` its `percent_point`, `log_density` its `log_pdf`.
 #[test]

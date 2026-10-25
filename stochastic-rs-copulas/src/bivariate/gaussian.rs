@@ -23,6 +23,8 @@ use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::copula_cdf;
 use crate::bivariate::conditional::copula_pdf;
+use crate::bivariate::conditional::level_difference;
+use crate::bivariate::conditional::level_sum;
 use crate::bivariate::conditional::on_open_square;
 use crate::bivariate::conditional::sum_minus_one;
 use crate::error::CopulaError;
@@ -128,37 +130,23 @@ impl GaussianCopula {
   /// `x + y` (`x, y = Φ⁻¹(u), Φ⁻¹(v)`) by `quantile_gap` from the exact gap `g = u + v − 1`: below `1/max(1, |x|, |y|)`, and
   /// below `reach` for levels in opposite halves or a `g` whose rounding over `φ` at the larger level beats `ε(|x| + |y|)`.
   fn sum(u: f64, v: f64, x: f64, y: f64, reach: f64) -> f64 {
-    let plain = x + y;
-    let (p, score, other) = if u <= v { (u, x, y) } else { (v, y, x) };
-    let gap = sum_minus_one(u, v);
-    let conditioned = || {
-      u.min(v) <= 0.5 && 0.5 <= u.max(v)
-        || gap.abs().ln()
-          < (x.abs() + y.abs()).ln() - 0.5 * other * other - 0.5 * std::f64::consts::TAU.ln()
+    let admit = |plain: f64, gap: f64, _, other: f64| {
+      plain.abs() < 1.0 / x.abs().max(y.abs()).max(1.0)
+        || (plain.abs() < reach
+          && (u.min(v) <= 0.5 && 0.5 <= u.max(v)
+            || gap.abs().ln()
+              < (x.abs() + y.abs()).ln() - 0.5 * other * other - 0.5 * std::f64::consts::TAU.ln()))
     };
-    if plain.abs() < 1.0 / x.abs().max(y.abs()).max(1.0) || (plain.abs() < reach && conditioned()) {
-      quantile_gap(score, p, gap, plain)
-    } else {
-      plain
-    }
+    level_sum((u, v, x, y), admit, quantile_gap)
   }
 
   /// `x − y` by `quantile_gap` from the exact gap, anchored at the level farther from 1/2, wherever the gap's rounding
   /// over `φ` at the nearer level stays below the quantiles' own `ε(|x| + |y|)`; the plain difference elsewhere.
   fn difference(u: f64, v: f64, x: f64, y: f64) -> f64 {
-    let plain = x - y;
-    let (anchor, level, partner, gap, sign) = if x.abs() >= y.abs() {
-      (x, u, y, u - v, 1.0)
-    } else {
-      (y, v, x, v - u, -1.0)
+    let threshold = |_, partner: f64| {
+      (x.abs() + y.abs()).ln() - 0.5 * partner * partner - 0.5 * std::f64::consts::TAU.ln()
     };
-    let conditioned = gap.abs().ln()
-      < (x.abs() + y.abs()).ln() - 0.5 * partner * partner - 0.5 * std::f64::consts::TAU.ln();
-    if conditioned {
-      sign * quantile_gap(anchor, level, gap, sign * plain)
-    } else {
-      plain
-    }
+    level_difference((u, v, x, y), threshold, quantile_gap)
   }
 
   /// `ln c = −|ρ|d²/(2(1 − ρ)(1 + ρ)) + |ρ|(x² + y²)/(2(1 + |ρ|)) − ln √((1 − ρ)(1 + ρ))`, `d = x ∓ y` with the sign of
