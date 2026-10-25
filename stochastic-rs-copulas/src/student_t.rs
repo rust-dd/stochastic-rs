@@ -395,8 +395,8 @@ impl Law {
       .then(|| b.value.abs() * self.ln_ratio(a, b).exp_m1())
   }
 
-  /// `x̂ − T⁻¹(u − g)` from `x̂ ≈ T⁻¹(u)`, the exact level gap `g` and `start` (`x + y` at `g = u + v − 1`, `x − y` at
-  /// `u − v`): Newton on `T(x̂) − T(x̂ − d) = g + r`, `r = T(x̂) − u`, the mass by Gauss–Legendre of the density, less `r/f(x̂)`.
+  /// `T⁻¹(u) − T⁻¹(u − g)` (`x + y` at `g = u + v − 1`, `x − y` at `u − v`), `x̂ ≈ T⁻¹(u)`'s own error removed: Newton on
+  /// `T(x̂) − T(x̂ − d) = g + r`, `r = T(x̂) − u`, from `start`, the mass by Gauss–Legendre of the density, less `r/f(x̂)`.
   pub(crate) fn quantile_gap(&self, x: f64, u: f64, g: f64, start: f64) -> f64 {
     if g == 0.0 {
       return 0.0;

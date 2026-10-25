@@ -137,7 +137,7 @@ pub(crate) fn sum_minus_one(u: f64, v: f64) -> f64 {
 }
 
 /// `x − y` of the quantiles of `u` and `v` by `solve(anchor, level, gap, start)` from the exact level gap, anchored at the
-/// level farther from ½, where `ln|gap|` is below `threshold(anchor, partner)`; the plain difference elsewhere.
+/// level farther from ½.
 pub(crate) fn level_difference(
   (u, v, x, y): (f64, f64, f64, f64),
   threshold: impl FnOnce(f64, f64) -> f64,
@@ -157,7 +157,7 @@ pub(crate) fn level_difference(
 }
 
 /// `x + y` of the quantiles of `u` and `v` by `solve(score, level, gap, start)` from the exact gap `u + v − 1`, anchored
-/// at the lower level, where `admit(plain, gap, score, other)`; the plain sum elsewhere.
+/// at the lower level.
 pub(crate) fn level_sum(
   (u, v, x, y): (f64, f64, f64, f64),
   admit: impl FnOnce(f64, f64, f64, f64) -> bool,
