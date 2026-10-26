@@ -161,9 +161,8 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
       Path::PointMass(alpha_f * theta_f * (lambda_f.powf(alpha_f) / lambda_f))
     } else if scale.is_normal()
       && (tilt.is_normal() || lambda_f == 0.0)
-      // Beyond these the tilt term and `1 − 1/ζ²` err by about `λ'^α ε`, and the hat ratio has lost half its digits.
+      // Past `2⁴⁰` the tilt term and `1 − 1/ζ²` err by about `λ'^α ε`.
       && lambda_alpha <= 2f64.powi(40)
-      && root_gamma <= alpha_f * 2f64.powi(26)
       && root_gamma.max(alpha_f * zeta_min).ln() / alpha_f > -700.0
       && (root_gamma + alpha_f).ln() / alpha_f < 700.0
     {

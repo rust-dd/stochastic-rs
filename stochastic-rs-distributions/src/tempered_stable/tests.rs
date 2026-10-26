@@ -277,7 +277,7 @@ fn huge_scale_draws_sit_at_the_mean() {
 }
 
 /// Where the relative spread `√((1 − α)/(α λ^α θ))` is below 2⁻⁵³ or `λ^α θ` overflows, every draw is κ₁ = θαλ^{α−1}
-/// (mpmath, 50 and 100 digits); the last two cells, off that bound, round `√γ + αζ` to `√γ`, spreads 3e-16 and 5e-17.
+/// (mpmath, 50 and 100 digits); the last two cells sit off that bound on the log path, spreads 3e-16 and 1.5e-16.
 #[test]
 fn concentrated_laws_draw_their_mean() {
   let cells = [
@@ -309,7 +309,7 @@ fn concentrated_laws_draw_their_mean() {
     ((0.999, 1e300, 1e-10), 1.0222696992884735e300),
     ((0.999, 1e300, 1.0), 9.990000000000001e299),
     ((0.1, 1e32, 1.0), 1.0000000000000001e31),
-    ((0.3, 1e33, 1.0), 2.9999999999999996e32),
+    ((0.3, 1e32, 1.0), 3e31),
   ];
   let draws = draws_within_a_bound(cells.iter().map(|c| c.0).collect());
   for (((alpha, theta, lambda), xs), (_, k1)) in draws.into_iter().zip(cells) {
