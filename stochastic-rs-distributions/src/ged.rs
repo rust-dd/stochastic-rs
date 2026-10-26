@@ -240,9 +240,22 @@ impl<T: SimdFloatExt> DistributionExt for SimdGed<T> {
       return Some(f64::NAN);
     }
     let (mu, a, b) = (self.mu.to_f64()?, self.alpha.to_f64()?, self.beta.to_f64()?);
-    let u = 2.0 * p - 1.0;
-    let g = SimdGamma::<f64>::new(1.0 / b, 1.0).quantile(u.abs())?;
-    Some(mu + u.signum() * a * g.powf(1.0 / b))
+    // The two-sided tail level `2·min(p, 1 − p)` is exact; `|2p − 1|` is exact only where it is at most ½.
+    let tail = 2.0 * p.min(1.0 - p);
+    let g = if tail >= 0.5 {
+      let level = (2.0 * p - 1.0).abs();
+      if level == 0.0 {
+        0.0
+      } else {
+        crate::special::gamma_p_inv(1.0 / b, level, 1.0)
+      }
+    } else if tail == 0.0 {
+      f64::INFINITY
+    } else {
+      crate::special::gamma_q_inv(1.0 / b, tail, 1.0)
+    };
+    let side = if p < 0.5 { -1.0 } else { 1.0 };
+    Some(mu + side * a * g.powf(1.0 / b))
   }
 
   fn mean(&self) -> Option<f64> {

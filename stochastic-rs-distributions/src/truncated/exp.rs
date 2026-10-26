@@ -23,8 +23,8 @@ pub struct SimdTruncatedExp<T> {
   lambda: T,
   lower: T,
   upper: T,
-  /// $e^{-\lambda(\text{upper} - \text{lower})}$, the survival at `upper` relative to `lower`; zero for an infinite `upper`.
-  tail_ratio: f64,
+  /// $1 − e^{-\lambda(\text{upper} − \text{lower})}$ through `exp_m1`, the interval's mass relative to `lower`; exactly 1 for an open tail.
+  tail_mass: f64,
 }
 
 /// A truncated-exponential stream: the engine of its inversion uniforms.
@@ -68,7 +68,7 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
       lambda,
       lower,
       upper,
-      tail_ratio: (-lam * (up - lo)).exp(),
+      tail_mass: -(-lam * (up - lo)).exp_m1(),
     }
   }
 
@@ -87,12 +87,10 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
     self.upper
   }
 
-  /// `lower − ln(V)/λ` with `V = 1 − u(1 − tail_ratio)` in `(tail_ratio, 1]`: in the cdf form `1 − e^{−λx}` both bounds
-  /// round to 1 once `λ·lower` passes about 36.
+  /// `lower − ln(1 − u·m)/λ` with `m` the interval's mass: the inverse of the cdf referred to `lower`, shared with `quantile`.
   #[inline]
   fn inverse_cdf(&self, u: f64) -> f64 {
-    let v = 1.0 - u * (1.0 - self.tail_ratio);
-    self.lower.to_f64().unwrap() - v.ln() / self.lambda.to_f64().unwrap()
+    self.lower.to_f64().unwrap() - (-u * self.tail_mass).ln_1p() / self.lambda.to_f64().unwrap()
   }
 
   #[inline]
@@ -154,7 +152,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     let lam = self.lambda.to_f64().unwrap();
     // Referred to `lower` for the same reason the draw is; the leading
     // `e^{-λ·lower}` cancels between the density and the interval's mass.
-    Some(lam * (-lam * (x - lo)).exp() / (1.0 - self.tail_ratio))
+    Some(lam * (-lam * (x - lo)).exp() / self.tail_mass)
   }
 
   fn cdf(&self, x: f64) -> Option<f64> {
@@ -167,7 +165,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
       return Some(1.0);
     }
     let lam = self.lambda.to_f64().unwrap();
-    Some((1.0 - (-lam * (x - lo)).exp()) / (1.0 - self.tail_ratio))
+    Some(-(-lam * (x - lo)).exp_m1() / self.tail_mass)
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
@@ -186,7 +184,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
 
   fn mean(&self) -> Option<f64> {
     let (lam, lo) = (self.lambda.to_f64()?, self.lower.to_f64()?);
-    if self.tail_ratio == 0.0 {
+    if self.upper.to_f64()?.is_infinite() {
       return Some(lo + 1.0 / lam);
     }
     let len = self.length()?;
@@ -203,7 +201,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
 
   fn variance(&self) -> Option<f64> {
     let lam = self.lambda.to_f64()?;
-    if self.tail_ratio == 0.0 {
+    if self.upper.to_f64()?.is_infinite() {
       return Some(1.0 / (lam * lam));
     }
     let len = self.length()?;
@@ -212,7 +210,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
 
   fn entropy(&self) -> Option<f64> {
     let lam = self.lambda.to_f64()?;
-    if self.tail_ratio == 0.0 {
+    if self.upper.to_f64()?.is_infinite() {
       return Some(1.0 - lam.ln());
     }
     let x = lam * self.length()?;
@@ -380,5 +378,23 @@ mod tests {
     let d = SimdTruncatedExp::<f64>::new(2.0, 0.0, 1.5);
     let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
     assert!(best > 0.01, "best p = {best}");
+  }
+
+  /// `1 − e^{−λL}` through `exp_m1` and `ln(1 − u·m)` through `ln_1p`, where the plain forms read `∞`, NaN and `lower`
+  /// at λL = 1e-17; mpmath references.
+  #[test]
+  fn tiny_rate_times_length_keeps_pdf_cdf_quantile() {
+    let rel = |a: f64, b: f64| ((a - b) / b).abs();
+    let flat = SimdTruncatedExp::<f64>::new(1e-17, 0.0, 1.0);
+    assert!(rel(flat.pdf(0.5).unwrap(), 1.0) < 1e-12);
+    assert!(rel(flat.cdf(0.5).unwrap(), 0.5) < 1e-12);
+    assert!(rel(flat.quantile(0.25).unwrap(), 0.25) < 1e-12);
+    let short = SimdTruncatedExp::<f64>::new(1.0, 0.0, 1e-17);
+    assert!(rel(short.pdf(5e-18).unwrap(), 1e17) < 1e-12);
+    assert!(rel(short.quantile(0.25).unwrap(), 2.5e-18) < 1e-12);
+    let nano = SimdTruncatedExp::<f64>::new(1.0, 0.0, 1e-9);
+    assert!(rel(nano.quantile(0.25).unwrap(), 2.499_999_999_062_5e-10) < 1e-12);
+    assert!(rel(nano.cdf(5e-10).unwrap(), 0.500_000_000_125) < 1e-12);
+    assert!(rel(nano.pdf(5e-10).unwrap(), 999_999_999.999_999_9) < 1e-12);
   }
 }

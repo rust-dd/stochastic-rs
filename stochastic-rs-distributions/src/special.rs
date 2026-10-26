@@ -30,6 +30,7 @@ pub use incomplete::gamma_li;
 pub use incomplete::gamma_p;
 pub(crate) use incomplete::gamma_p_inv;
 pub use incomplete::gamma_q;
+pub(crate) use incomplete::gamma_q_inv;
 pub use incomplete::gamma_ui;
 pub use incomplete::ln_gamma_p;
 pub use incomplete::ln_gamma_q;

@@ -2,14 +2,19 @@
 
 use num_complex::Complex64;
 use stochastic_rs_distributions::DistributionExt;
+use stochastic_rs_distributions::cauchy::SimdCauchy;
+use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::gamma::SimdGamma;
 use stochastic_rs_distributions::ged::SimdGed;
 use stochastic_rs_distributions::hypergeometric::SimdHypergeometric;
 use stochastic_rs_distributions::inverse_gauss::SimdInverseGauss;
+use stochastic_rs_distributions::pareto::SimdPareto;
 use stochastic_rs_distributions::skellam::SimdSkellam;
 use stochastic_rs_distributions::truncated::SimdTruncatedBeta;
 use stochastic_rs_distributions::truncated::SimdTruncatedExp;
 use stochastic_rs_distributions::truncated::SimdTruncatedGamma;
 use stochastic_rs_distributions::truncated::SimdTruncatedNormal;
+use stochastic_rs_distributions::weibull::SimdWeibull;
 
 fn rel(a: f64, b: f64) -> f64 {
   (a - b).abs() / b.abs().max(1e-300)
@@ -30,6 +35,211 @@ fn ged_moments_and_quantile() {
   assert!((d.cdf(q).unwrap() - 0.9).abs() < 1e-10);
   assert!(d.characteristic_function(0.4).is_none());
   assert!(d.moment_generating_function(0.4).is_none());
+}
+
+type QuantileRows = Vec<(&'static str, Box<dyn DistributionExt>, Vec<(f64, f64)>)>;
+
+/// Both tails against mpmath (50 and 80 digits agreeing): `ln(1 − p)` through `ln_1p`, the Cauchy cot on the smaller tail
+/// level, the GED's gamma root from its exact tail level; 1e-13 holds the rounded `1/k` times `ln 1e-300` in Weibull's power.
+#[test]
+fn closed_form_quantiles_keep_their_digits_in_both_tails() {
+  let (mid, top, far) = (0.5 - 2f64.powi(-30), 1.0 - 2f64.powi(-53), 1.0 - 1e-10);
+  let rows: QuantileRows = vec![
+    (
+      "cauchy(0, 1)",
+      Box::new(SimdCauchy::<f64>::new(0.0, 1.0)),
+      vec![
+        (1e-300, -3.183_098_861_837_906_6e299),
+        (1e-20, -3.183_098_861_837_906_9e19),
+        (1e-10, -3.183_098_861_837_907e9),
+        (0.3, -0.726_542_528_005_360_9),
+        (mid, -2.925_836_158_534_319_4e-9),
+        (top, 2.867_080_569_611_329_3e15),
+        (far, 3.183_098_598_467_148e9),
+      ],
+    ),
+    (
+      "cauchy(1.5, 2)",
+      Box::new(SimdCauchy::<f64>::new(1.5, 2.0)),
+      vec![
+        (1e-300, -6.366_197_723_675_813e299),
+        (1e-10, -6.366_197_722_175_814e9),
+        (0.3, 0.046_914_943_989_278_122),
+        (top, 5.734_161_139_222_66e15),
+        (far, 6.366_197_198_434_296e9),
+      ],
+    ),
+    (
+      "exp(1.5)",
+      Box::new(SimdExp::<f64>::new(1.5)),
+      vec![
+        (1e-300, 6.666_666_666_666_667e-301),
+        (1e-20, 6.666_666_666_666_666_3e-21),
+        (1e-10, 6.666_666_667e-11),
+        (0.3, 0.237_783_295_959_154_9),
+        (top, 24.491_200_379_784_734),
+        (far, 15.350_567_231_466_726),
+      ],
+    ),
+    (
+      "weibull(1, 1.5)",
+      Box::new(SimdWeibull::<f64>::new(1.0, 1.5)),
+      vec![
+        (1e-300, 1e-200),
+        (1e-20, 4.641_588_833_612_779e-14),
+        (1e-10, 2.154_434_690_103_698_3e-7),
+        (0.3, 0.502_938_714_915_718_4),
+        (top, 11.050_982_396_216_67),
+        (far, 8.093_638_287_050_528),
+      ],
+    ),
+    (
+      "pareto(1, 1.5)",
+      Box::new(SimdPareto::<f64>::new(1.0, 1.5)),
+      vec![
+        (1e-10, 1.000_000_000_066_666_7),
+        (0.3, 1.268_434_288_203_715_3),
+        (mid, 1.587_401_049_997_022_9),
+        (top, 4.329_055_763_872_372e10),
+        (far, 4.641_588_577_581_609e6),
+      ],
+    ),
+    (
+      "pareto(2, 1e-6)",
+      Box::new(SimdPareto::<f64>::new(2.0, 1e-6)),
+      vec![
+        (1e-300, 2.0),
+        (1e-20, 2.000_000_000_000_02),
+        (1e-10, 2.000_200_010_000_343),
+      ],
+    ),
+    (
+      "ged(0.3, 1.5, 1.3)",
+      Box::new(SimdGed::<f64>::new(0.3, 1.5, 1.3)),
+      vec![
+        (1e-300, -228.281_734_535_254_16),
+        (1e-20, -27.402_814_084_878_373),
+        (1e-10, -15.548_578_013_133_544),
+        (0.2, -0.785_278_805_266_326_1),
+        (0.25, -0.542_299_567_220_020_6),
+        (0.3, -0.336_010_689_909_271_4),
+        (mid, 0.299_999_997_419_556_44),
+        (0.75, 1.142_299_567_220_020_6),
+        (0.8, 1.385_278_805_266_326_4),
+        (top, 23.429_036_970_834_56),
+        (far, 16.148_577_966_549_114),
+      ],
+    ),
+    (
+      "ged(0, 1, 0.5)",
+      Box::new(SimdGed::<f64>::new(0.0, 1.0, 0.5)),
+      vec![
+        (1e-300, -485_293.454_001_605_1),
+        (1e-20, -2_428.132_472_088_273),
+        (1e-10, -656.084_508_753_798_7),
+        (0.3, -1.894_535_710_886_198_6),
+        (mid, -3.725_441_886_694_842_3e-9),
+        (top, 1_580.152_903_408_869_7),
+        (far, 656.084_504_349_670_2),
+      ],
+    ),
+  ];
+  for (name, law, cells) in rows {
+    for (p, want) in cells {
+      let got = law.quantile(p).unwrap();
+      assert!(
+        rel(got, want) < 1e-13,
+        "{name}: quantile({p:e}) = {got:e}, want {want:e}"
+      );
+    }
+  }
+}
+
+/// The gamma root solved in its own tail (mpmath, 50 and 80 digits agreeing); a root below the f64 range is 0. The bar
+/// scales with `1/shape`, the lower tail's `d ln x / d ln P`.
+#[test]
+fn gamma_quantile_keeps_its_digits_in_both_tails() {
+  let (top, far) = (1.0 - 2f64.powi(-53), 1.0 - 1e-10);
+  let rows: [(f64, [f64; 6]); 5] = [
+    (
+      0.01,
+      [
+        0.0,
+        0.0,
+        0.0,
+        4.465_535_018_910_355e-31,
+        15.645_562_811_872_313,
+        28.778_516_948_644_56,
+      ],
+    ),
+    (
+      0.5,
+      [
+        0.0,
+        7.853_981_633_974_482e-41,
+        7.853_981_633_974_484e-21,
+        0.227_468_211_559_786_4,
+        20.910_728_101_491_394,
+        34.381_626_105_834_21,
+      ],
+    ),
+    (
+      2.5,
+      [
+        1.616_703_890_291_564e-120,
+        1.616_703_897_759_368_4e-8,
+        1.616_778_573_124_846_7e-4,
+        2.175_730_095_547_763_7,
+        27.781_199_171_832_426,
+        42.097_516_118_260_66,
+      ],
+    ),
+    (
+      30.0,
+      [
+        1.204_449_703_859_961e-9,
+        2.843_820_242_015_226_7,
+        7.000_511_700_351_835,
+        29.667_333_138_221_23,
+        78.889_527_406_845_56,
+        99.111_328_401_108_44,
+      ],
+    ),
+    (
+      1e4,
+      [
+        6_737.687_191_590_329,
+        9_101.824_101_229_72,
+        9_376.961_682_044_388,
+        9_999.666_668_642_047,
+        10_649.348_143_058_445,
+        10_843.221_779_893_306,
+      ],
+    ),
+  ];
+  for (shape, wants) in rows {
+    let law = SimdGamma::<f64>::new(shape, 1.0);
+    for (p, want) in [1e-300, 1e-20, 1e-10, 0.5, far, top].into_iter().zip(wants) {
+      let got = law.quantile(p).unwrap();
+      let bar = 1e-13 * shape.recip().max(1.0);
+      assert!(
+        if want == 0.0 {
+          got == 0.0
+        } else {
+          rel(got, want) < bar
+        },
+        "shape {shape}: quantile({p:e}) = {got:e}, want {want:e}"
+      );
+    }
+  }
+  let scaled = SimdGamma::<f64>::new(2.5, 1.5);
+  assert!(
+    rel(
+      scaled.quantile(1e-10).unwrap(),
+      1.5 * 1.616_778_573_124_846_7e-4
+    ) < 1e-13
+  );
+  assert!(rel(scaled.quantile(top).unwrap(), 1.5 * 42.097_516_118_260_66) < 1e-13);
 }
 
 /// Where `Γ(3/β)`, `Γ(5/β)` or `Γ(1/β)` overflow although the moment itself is finite.

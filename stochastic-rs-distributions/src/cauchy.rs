@@ -156,7 +156,13 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdCauchy<T> {
     }
     let x0 = self.x0.to_f64().unwrap();
     let g = self.gamma.to_f64().unwrap();
-    Some(x0 + g * (std::f64::consts::PI * (p - 0.5)).tan())
+    let tail = p.min(1.0 - p);
+    if tail >= 0.25 {
+      return Some(x0 + g * (std::f64::consts::PI * (p - 0.5)).tan());
+    }
+    // `p − ½` is exact only on [¼, ¾]; past it the cot of the smaller tail level keeps what `tan` loses at its pole.
+    let offset = g / (std::f64::consts::PI * tail).tan();
+    Some(if p < 0.5 { x0 - offset } else { x0 + offset })
   }
 
   /// `NaN`, not `None`: `∫x·f(x)dx` does not converge absolutely, so the law provably has no mean —

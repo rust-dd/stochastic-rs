@@ -22,9 +22,11 @@ use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::distributions::pareto::SimdPareto;
 use stochastic_rs::distributions::poisson::SimdPoisson;
 use stochastic_rs::distributions::studentt::SimdStudentT;
+use stochastic_rs::distributions::truncated::SimdTruncatedExp;
 use stochastic_rs::distributions::uniform::SimdUniform;
 use stochastic_rs::distributions::variance_gamma::SimdVarianceGamma;
 use stochastic_rs::distributions::weibull::SimdWeibull;
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::SimdRng;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::traits::DistributionExt;
@@ -357,6 +359,24 @@ fn bench_ncx2_per_draw_construction(c: &mut Criterion) {
   group.finish();
 }
 
+fn bench_truncated_exp(c: &mut Criterion) {
+  let mut group = c.benchmark_group("TruncatedExp");
+  let law = SimdTruncatedExp::<f64>::new(2.0, 0.0, 1.5);
+  group.bench_function("seeded/f64", |b| {
+    let mut s = law.seeded(&Deterministic::new(7));
+    b.iter(|| black_box(s.sample()))
+  });
+  group.bench_function("fill_slice/f64/4096", |b| {
+    let mut s = law.seeded(&Deterministic::new(7));
+    let mut out = vec![0.0_f64; 4096];
+    b.iter(|| {
+      s.fill_slice(&mut out);
+      black_box(&out);
+    })
+  });
+  group.finish();
+}
+
 criterion_group!(
   benches,
   bench_normal,
@@ -379,6 +399,8 @@ criterion_group!(
   heavy_tailed::bench_skew_t,
   discrete::bench_binomial,
   discrete::bench_hypergeometric,
+  discrete::bench_geometric,
+  bench_truncated_exp,
   bench_distribution_ext,
   bench_ncx2_per_draw_construction,
   plot::generate_shape_comparison_plot,

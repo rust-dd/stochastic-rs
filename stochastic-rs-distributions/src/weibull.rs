@@ -183,7 +183,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdWeibull<T> {
     }
     let lambda = self.lambda.to_f64().unwrap();
     let inv_k = self.inv_k.to_f64().unwrap();
-    Some(lambda * (-(1.0 - p).ln()).powf(inv_k))
+    Some(lambda * (-(-p).ln_1p()).powf(inv_k))
   }
 
   fn mean(&self) -> Option<f64> {

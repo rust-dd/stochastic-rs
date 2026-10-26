@@ -7,6 +7,7 @@ use rand::distr::Distribution;
 use stochastic_rs::distributions::DistributionSampler;
 use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::binomial::SimdBinomial;
+use stochastic_rs::distributions::geometric::SimdGeometric;
 use stochastic_rs::distributions::hypergeometric::SimdHypergeometric;
 use stochastic_rs::distributions::poisson::SimdPoisson;
 use stochastic_rs::simd_rng::SimdRng;
@@ -90,4 +91,11 @@ bench_discrete!(
   "Hypergeometric",
   SimdHypergeometric::<u32>::new(60, 25, 20),
   rand_distr::Hypergeometric::new(60, 25, 20).unwrap()
+);
+
+bench_discrete!(
+  bench_geometric,
+  "Geometric",
+  SimdGeometric::<u32>::new(0.15),
+  rand_distr::Geometric::new(0.15).unwrap()
 );

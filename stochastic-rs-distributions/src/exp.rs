@@ -343,7 +343,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdExp<T> {
       return Some(f64::NAN);
     }
     let lambda = self.lambda.to_f64().unwrap();
-    Some(-(1.0 - p).ln() / lambda)
+    Some(-(-p).ln_1p() / lambda)
   }
 
   fn mean(&self) -> Option<f64> {

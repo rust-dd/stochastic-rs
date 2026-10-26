@@ -260,8 +260,20 @@ pub fn ln_gamma_q(a: f64, x: f64) -> f64 {
 /// `scale` (a power of two) times the `x` with `P(a, x) = p`, `0 < p < 1`, rounded once if subnormal: Newton in `ln x` on the
 /// concave `ln P` (`p ≤ ½`) or `ln Q`; Wilson–Hilferty's start is formed in `x`, so at a huge `a` it is `a`, the root to the bit.
 pub(crate) fn gamma_p_inv(a: f64, p: f64, scale: f64) -> f64 {
+  invert(a, p, 1.0 - p, false, scale)
+}
+
+/// The same root from the upper level `q = Q(a, x)`, `0 < q < 1`, which `p = 1 − q` would round below ½.
+pub(crate) fn gamma_q_inv(a: f64, q: f64, scale: f64) -> f64 {
+  invert(a, 1.0 - q, q, true, scale)
+}
+
+/// `p` and `q = 1 − p`, the one named by `from_q` exact: the target and the starts read the exact one; inlined into
+/// each entry, so `from_q` folds out of the Newton loop.
+#[inline(always)]
+fn invert(a: f64, p: f64, q: f64, from_q: bool, scale: f64) -> f64 {
   let upper = p > 0.5;
-  let ln_target = if upper { (1.0 - p).ln() } else { p.ln() };
+  let ln_target = if upper { q.ln() } else { p.ln() };
   // `P ≤ x^a/Γ(a + 1)` makes `(pΓ(a + 1))^{1/a}` a lower bound of the root at every `p`, the root to rounding below
   // `e^{−700}`; it floors Newton only below ½, as above it its rounding over `a` outgrows the root's conditioning.
   let bound = (a < FLOOR_BINDS).then(|| (p.ln() + ln_gamma(a + 1.0)) / a);
@@ -274,11 +286,12 @@ pub(crate) fn gamma_p_inv(a: f64, p: f64, scale: f64) -> f64 {
     let start = if p < t {
       (p.ln() - t.ln()) / a
     } else {
-      (1.0 - ((1.0 - p) / (1.0 - t)).ln()).ln()
+      (1.0 - (q / (1.0 - t)).ln()).ln()
     };
     start.max(floor).exp()
   } else {
-    let base = 1.0 - 1.0 / (9.0 * a) + ndtri(p) / (3.0 * a.sqrt());
+    let z = if from_q { -ndtri(q) } else { ndtri(p) };
+    let base = 1.0 - 1.0 / (9.0 * a) + z / (3.0 * a.sqrt());
     if base > 0.0 {
       a * base * base * base
     } else {

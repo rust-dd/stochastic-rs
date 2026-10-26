@@ -4,7 +4,7 @@
 //! \mathbb{P}(X=k)=(1-p)^{k-1}p,\ k\ge 1
 //! $$
 //!
-//! Sampling: inversion `⌊ln U / ln(1 − p)⌋ + 1`, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §X.2, DOI 10.1007/978-1-4613-8643-8.
+//! Sampling: inversion `⌊ln(1 − U)/ln(1 − p)⌋ + 1` with `ln(1 − p)` as `ln_1p(−p)`, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §X.2, DOI 10.1007/978-1-4613-8643-8.
 
 use std::marker::PhantomData;
 
@@ -27,6 +27,8 @@ const SMALL_GEOMETRIC_THRESHOLD: usize = 16;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdGeometric<T: PrimInt> {
   p: f64,
+  /// `1/ln(1 − p)` through `ln_1p`, stored so a single draw takes no logarithm of `p`.
+  inv_ln_q: f64,
   out: PhantomData<T>,
 }
 
@@ -47,6 +49,7 @@ impl<T: PrimInt> SimdGeometric<T> {
     );
     Self {
       p,
+      inv_ln_q: 1.0 / (-p).ln_1p(),
       out: PhantomData,
     }
   }
@@ -56,7 +59,7 @@ impl<T: PrimInt> SimdGeometric<T> {
     self.p
   }
 
-  /// The trial count of the floored inversion `t = ⌊ln u / ln(1 − p)⌋`, shifted onto `{1, 2, …}`; an overflow of
+  /// The trial count of the floored inversion `t = ⌊ln(1 − u) / ln(1 − p)⌋`, shifted onto `{1, 2, …}`; an overflow of
   /// `T` saturates (and asserts in debug).
   #[inline]
   fn count(t: f64) -> T {
@@ -70,20 +73,20 @@ impl<T: PrimInt> SimdGeometric<T> {
   }
 
   fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [T]) {
-    let ln1p = (1.0 - self.p).ln();
     if out.len() < SMALL_GEOMETRIC_THRESHOLD {
-      let inv_ln1p = 1.0 / ln1p;
       for x in out.iter_mut() {
-        *x = Self::count((rng.next_f64().ln() * inv_ln1p).floor());
+        *x = Self::count(((1.0 - rng.next_f64()).ln() * self.inv_ln_q).floor());
       }
       return;
     }
-    let inv_ln1p = f64x8::splat(1.0 / ln1p);
+    let inv_ln1p = f64x8::splat(self.inv_ln_q);
     let (chunks, rem) = out.as_chunks_mut::<8>();
     for chunk in chunks {
       let mut u = [0.0_f64; 8];
       rng.fill_uniform_f64(&mut u);
-      let tmp = (f64x8::from(u).ln() * inv_ln1p).floor().to_array();
+      let tmp = ((f64x8::ONE - f64x8::from(u)).ln() * inv_ln1p)
+        .floor()
+        .to_array();
       for (o, &t) in chunk.iter_mut().zip(tmp.iter()) {
         *o = Self::count(t);
       }
@@ -91,7 +94,9 @@ impl<T: PrimInt> SimdGeometric<T> {
     if !rem.is_empty() {
       let mut u = [0.0_f64; 8];
       rng.fill_uniform_f64(&mut u);
-      let tmp = (f64x8::from(u).ln() * inv_ln1p).floor().to_array();
+      let tmp = ((f64x8::ONE - f64x8::from(u)).ln() * inv_ln1p)
+        .floor()
+        .to_array();
       for (o, &t) in rem.iter_mut().zip(tmp.iter()) {
         *o = Self::count(t);
       }
@@ -99,8 +104,7 @@ impl<T: PrimInt> SimdGeometric<T> {
   }
 
   pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
-    let inv_ln1p = 1.0 / (1.0 - self.p).ln();
-    Self::count((uniform53(rng.next_u64()).ln() * inv_ln1p).floor())
+    Self::count(((1.0 - uniform53(rng.next_u64())).ln() * self.inv_ln_q).floor())
   }
 }
 
@@ -175,7 +179,7 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdGeometric<T> {
       return Some(f64::INFINITY);
     }
     // Smallest k such that 1-(1-p)^k ≥ prob ⟹ k = ⌈ln(1-prob)/ln(1-p)⌉
-    Some(((1.0 - prob).ln() / (1.0 - self.p).ln()).ceil())
+    Some(((-prob).ln_1p() / (-self.p).ln_1p()).ceil())
   }
 
   fn mean(&self) -> Option<f64> {
@@ -183,7 +187,7 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdGeometric<T> {
   }
 
   fn median(&self) -> Option<f64> {
-    Some((-(2.0_f64.ln()) / (1.0 - self.p).ln()).ceil())
+    Some((-std::f64::consts::LN_2 / (-self.p).ln_1p()).ceil())
   }
 
   fn mode(&self) -> Option<f64> {
@@ -421,5 +425,23 @@ mod tests {
     for prob in [0.0, 1e-300, 0.5, 1.0 - f64::EPSILON, 1.0] {
       assert_eq!(sure.quantile(prob), Some(1.0), "prob = {prob}");
     }
+  }
+
+  /// `ln(1 − p)` through `ln_1p` and `ln(1 − prob)` likewise: at p = 1e-10 the plain logs lose eight digits (mpmath exact counts).
+  #[test]
+  fn quantile_and_median_keep_their_digits_at_small_p() {
+    let rare = SimdGeometric::<u64>::new(1e-10);
+    assert_eq!(rare.quantile(0.3), Some(3_566_749_440.0));
+    assert_eq!(rare.quantile(0.5), Some(6_931_471_806.0));
+    assert_eq!(rare.median(), Some(6_931_471_806.0));
+    assert_eq!(SimdGeometric::<u64>::new(0.15).quantile(0.999), Some(43.0));
+  }
+
+  /// A rare success: the sampler's counts agree with the cdf over the bulk of the support.
+  #[test]
+  fn scalar_sample_matches_cdf_at_small_p() {
+    let d = SimdGeometric::<u64>::new(1e-4);
+    let best = scalar_chi_square_best_p(&d, (1, 50_000), |k| d.cdf(k as f64).unwrap());
+    assert!(best > 0.01, "best p = {best}");
   }
 }

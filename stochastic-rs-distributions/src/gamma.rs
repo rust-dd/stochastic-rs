@@ -253,7 +253,6 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGamma<T> {
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
-    // Newton-bisection hybrid on the CDF.
     if !(0.0..=1.0).contains(&p) {
       return Some(f64::NAN);
     }
@@ -265,30 +264,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGamma<T> {
     }
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
-    // Start from the Wilson-Hilferty Gaussian approximation.
-    let z = crate::special::ndtri(p);
-    let mut x = alpha * (1.0 - 1.0 / (9.0 * alpha) + z / (3.0 * alpha.sqrt())).powi(3);
-    if x <= 0.0 {
-      x = 0.5 * alpha;
-    }
-    x *= scale;
-    // 30 Newton iterations using f(x) = P(α, x/θ) − p, f'(x) = pdf(x).
-    for _ in 0..30 {
-      let f = crate::special::gamma_p(alpha, x / scale) - p;
-      let pdf =
-        ((alpha - 1.0) * x.ln() - x / scale - alpha * scale.ln() - crate::special::ln_gamma(alpha))
-          .exp();
-      if pdf <= 0.0 {
-        break;
-      }
-      let dx = f / pdf;
-      let new_x = (x - dx).max(x * 1e-12);
-      if (new_x - x).abs() < 1e-14 * x.max(1.0) {
-        return Some(new_x);
-      }
-      x = new_x;
-    }
-    Some(x)
+    Some(crate::special::gamma_p_inv(alpha, p, 1.0) * scale)
   }
 
   fn mean(&self) -> Option<f64> {
