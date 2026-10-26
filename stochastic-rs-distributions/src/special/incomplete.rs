@@ -182,7 +182,7 @@ fn small_shape_q(a: f64, x: f64) -> f64 {
 
 /// `1/Γ(1 + a) − 1` for `0 < a < 1` to its relative digits and to `a = 1.07` absolutely, by the power series of `1/Γ`
 /// (A&S 6.1.34).
-fn recip_gamma_1p_m1(a: f64) -> f64 {
+pub(crate) fn recip_gamma_1p_m1(a: f64) -> f64 {
   const C: [f64; 28] = [
     0.5772156649015329,
     -0.6558780715202539,
@@ -318,8 +318,8 @@ fn newton(a: f64, p: f64, q: f64, from_q: bool, upper: bool, floor: f64) -> f64 
   x
 }
 
-/// `scale·(pΓ(a + 1))^{1/a}` from one exponent: `ln p` in two parts (from `p·2⁶⁴` if subnormal), `ln Γ(a + 1)`, and
-/// `scale = 2ᵏm` as `ln m` and `k ln 2` through ln 2's halves, lifted by `2⁶⁴` so that only the last multiply rounds.
+/// `scale·(pΓ(a + 1))^{1/a}` from one exponent: `ln p` in two parts (from `p·2⁶⁴` if subnormal), `ln Γ(a + 1)` and
+/// `ln m + k ln 2` for `scale = 2ᵏm`, ln 2 in halves, lifted by `2⁶⁴`: a subnormal result rounds at the last multiply.
 fn bound_root(a: f64, p: f64, scale: f64) -> f64 {
   const TWO_POW_M64: f64 = 1.0 / 18_446_744_073_709_551_616.0;
   let (l, l_lo) = if p < f64::MIN_POSITIVE {

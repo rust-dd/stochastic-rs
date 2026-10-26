@@ -35,6 +35,7 @@ pub(crate) use incomplete::gamma_q_inv;
 pub use incomplete::gamma_ui;
 pub use incomplete::ln_gamma_p;
 pub use incomplete::ln_gamma_q;
+pub(crate) use incomplete::recip_gamma_1p_m1;
 pub(crate) use incomplete::student_tail;
 pub(crate) use incomplete::student_xi;
 pub(crate) use k_ratio::KDenominator;

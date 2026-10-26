@@ -81,6 +81,61 @@ fn truncated_exponential_quantile_keeps_its_upper_tail() {
   );
 }
 
+/// Next to level 1 the quantile stays at or below `upper`: the re-review's two laws, then 2 000 with `lower > 0` and
+/// `λL ∈ (0, 2]` over the last 64 floats below 1.
+#[test]
+fn truncated_exponential_quantile_never_passes_upper() {
+  let top = 1.0 - 2f64.powi(-53);
+  for ((lam, lo, up), want) in [
+    (
+      (0.7084577105104433, 0.41565089865904625, 1.8272409458231267),
+      1.8272409458231265,
+    ),
+    (
+      (
+        0.07614087868245493,
+        0.050999404207654975,
+        0.8741749367382086,
+      ),
+      0.8741749367382085,
+    ),
+  ] {
+    let got = SimdTruncatedExp::<f64>::new(lam, lo, up)
+      .quantile(top)
+      .unwrap();
+    assert!(
+      got <= up && rel(got, want) < 1e-15,
+      "({lam}, {lo}, {up}): {got}"
+    );
+  }
+  let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+  let mut next = || {
+    state = state
+      .wrapping_mul(6_364_136_223_846_793_005)
+      .wrapping_add(1_442_695_040_888_963_407);
+    (state >> 11) as f64 / (1u64 << 53) as f64
+  };
+  for _ in 0..2000 {
+    let (lo, lam_len, len) = (
+      1e-3 + 5.0 * next(),
+      1e-9 + 2.0 * next(),
+      10f64.powf(-3.0 + 6.0 * next()),
+    );
+    let law = SimdTruncatedExp::<f64>::new(lam_len / len, lo, lo + len);
+    let mut p = 1.0_f64;
+    for _ in 0..64 {
+      p = p.next_down();
+      let q = law.quantile(p).unwrap();
+      assert!(
+        q <= law.upper(),
+        "({}, {lo}, {}) at p = {p}: {q}",
+        lam_len / len,
+        law.upper()
+      );
+    }
+  }
+}
+
 /// The map below ½ and the two-term form above meet without a step down, over 10⁴ floats on each side.
 #[test]
 fn truncated_exponential_quantile_is_monotone_through_one_half() {
@@ -161,14 +216,21 @@ fn gamma_quantile_at_a_large_scale() {
   );
 }
 
-/// The cot's first order to half an ulp: `(γ/π)/p` at a subnormal level, where `πp` would round, and `γ/(πp)` at a
-/// normal one, where a tiny `γ/π` would.
+/// The cot's first order to half an ulp, its quotient ordered so no intermediate rounds in the subnormals, at a tiny `γ` or
+/// a subnormal level or both.
 #[test]
 fn cauchy_quantile_at_a_subnormal_level() {
   let got = SimdCauchy::<f64>::new(0.0, 1e-5).quantile(1e-310).unwrap();
   assert!(rel(got, -3.1830988618379165e304) < 1e-15, "{got:e}");
-  let tiny = SimdCauchy::<f64>::new(0.0, 5e-324).quantile(1e-20).unwrap();
-  assert!(rel(tiny, -1.5726597949504822e-304) < 1e-15, "{tiny:e}");
+  for (gamma, p, want) in [
+    (5e-324, 1e-20, -1.5726597949504822e-304),
+    (5e-324, 1e-315, -1.572659797338277e-9),
+    (1e-320, 1e-320, -std::f64::consts::FRAC_1_PI),
+    (1.0, 1e-10, -3183098861.837907),
+  ] {
+    let got = SimdCauchy::<f64>::new(0.0, gamma).quantile(p).unwrap();
+    assert!(rel(got, want) < 1e-15, "γ = {gamma:e}, p = {p:e}: {got:e}");
+  }
 }
 
 /// One form at every level keeps the quantile monotone through ½; a form switched at ½ can step down an ulp there.

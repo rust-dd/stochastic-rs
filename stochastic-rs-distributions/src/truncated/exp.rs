@@ -202,13 +202,19 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     if p == 1.0 {
       return self.upper.to_f64();
     }
-    let (lo, lam) = (self.lower.to_f64()?, self.lambda.to_f64()?);
-    let lam_len = lam * self.length()?;
-    if p <= 0.5 || lam_len <= 1.0 {
+    if p <= 0.5 {
       return Some(self.inverse_cdf(p));
     }
-    // `1 − p·m` as `(1 − p) + p·e^{−λL}`: above ½ `1 − p` is exact and both terms are positive, where the map cancels.
-    Some(lo - ((1.0 - p) + p * (-lam_len).exp()).ln() / lam)
+    let (lo, lam) = (self.lower.to_f64()?, self.lambda.to_f64()?);
+    let lam_len = lam * self.length()?;
+    let x = if lam_len <= 1.0 {
+      self.inverse_cdf(p)
+    } else {
+      // `1 − p·m` as `(1 − p) + p·e^{−λL}`: above ½ `1 − p` is exact and both terms positive, where the map cancels.
+      lo - ((1.0 - p) + p * (-lam_len).exp()).ln() / lam
+    };
+    // Next to level 1 the roundings of `lower + y` and of `λL` can pass `upper`, which bounds the support exactly.
+    Some(x.min(self.upper.to_f64()?))
   }
 
   fn mean(&self) -> Option<f64> {

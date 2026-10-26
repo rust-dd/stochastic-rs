@@ -254,11 +254,12 @@ impl<T: SimdFloatExt> DistributionExt for SimdGed<T> {
     } else {
       crate::special::gamma_q_inv(1.0 / b, tail, 1.0)
     };
-    // Below the normals the root is `(level·Γ(1 + 1/β))^β` to rounding, so its `1/β` power is that base.
+    // Below the normals the root is `(level·Γ(1 + 1/β))^β` to rounding, so its `1/β` power is that base; that occurs
+    // only at β > 1, where `1/Γ(1 + 1/β) − 1` keeps the digits `Γ` loses next to 1.
     let r = if g == 0.0 && level == 0.0 || g >= f64::MIN_POSITIVE {
       g.powf(1.0 / b)
     } else {
-      level * crate::special::gamma(1.0 + 1.0 / b)
+      level / (1.0 + crate::special::recip_gamma_1p_m1(1.0 / b))
     };
     let side = if p < 0.5 { -1.0 } else { 1.0 };
     Some(mu + side * a * r)
@@ -357,6 +358,42 @@ mod tests {
   }
 
   /// CDF round-trip via PDF integration.
+  /// Where the tail branch's root leaves the normals for the closed form, the quantile steps up on both sides, the two
+  /// floats across each switch found by bisection on the root.
+  #[test]
+  fn large_beta_quantile_is_monotone_across_the_closed_form_switch() {
+    let law = SimdGed::<f64>::new(0.0, 1.0, 1500.0);
+    let normal =
+      |tail: f64| crate::special::gamma_q_inv(1.0 / 1500.0, tail, 1.0) >= f64::MIN_POSITIVE;
+    for (mut normal_side, mut closed_side, tail) in [
+      (0.1_f64, 0.25_f64, (|p: f64| 2.0 * p) as fn(f64) -> f64),
+      (0.9, 0.75, |p: f64| 2.0 * (1.0 - p)),
+    ] {
+      loop {
+        let mid = 0.5 * (normal_side + closed_side);
+        if mid == normal_side || mid == closed_side {
+          break;
+        }
+        if normal(tail(mid)) {
+          normal_side = mid;
+        } else {
+          closed_side = mid;
+        }
+      }
+      let (lo, hi) = if normal_side < closed_side {
+        (normal_side, closed_side)
+      } else {
+        (closed_side, normal_side)
+      };
+      assert!(
+        law.quantile(lo).unwrap() <= law.quantile(hi).unwrap(),
+        "across the switch at p = {lo}: {} then {}",
+        law.quantile(lo).unwrap(),
+        law.quantile(hi).unwrap()
+      );
+    }
+  }
+
   #[test]
   fn ged_cdf_at_mu_is_half() {
     let g = SimdGed::<f64>::new(1.5, 0.8, 1.7);
