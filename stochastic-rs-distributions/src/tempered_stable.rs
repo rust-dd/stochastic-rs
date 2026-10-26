@@ -61,8 +61,17 @@ pub struct SimdTemperedStable<T> {
   ln_scale: f64,
   /// $\lambda'^\alpha = \lambda^\alpha\theta$, formed without $\lambda'$.
   lambda_alpha: f64,
-  /// Devroye's algorithm in logarithms, where `scale`, `tilt` or $(\sqrt\gamma + \alpha\zeta)^{1/\alpha}$ leaves the normal range.
-  log_path: bool,
+  path: Path,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Path {
+  /// Devroye's algorithm as printed.
+  Plain,
+  /// The same algorithm from `λ'^α` and logarithms, never forming `λ'` or `θ^{1/α}`.
+  Log,
+  /// The law's mean κ₁: its relative spread is below 2⁻⁵³.
+  PointMass(f64),
 }
 
 /// $\mathcal S(x) = \sin x / x$.
@@ -79,6 +88,26 @@ fn sinc(x: f64) -> f64 {
 #[inline]
 fn zolotarev_ratio(alpha: f64, x: f64) -> f64 {
   sinc(x) / (sinc(alpha * x).powf(alpha) * sinc((1.0 - alpha) * x).powf(1.0 - alpha))
+}
+
+/// $\ln(B(x)/B(0))$; below `x = 0.01` from $\ln\mathcal S(x) = -x^2/6 - x^4/180 - x^6/2835 - x^8/37800$, as the ratio
+/// rounds its `−α(1 − α)x²/2` away next to 1, where `λ'^α` multiplies it.
+fn ln_zolotarev_ratio(alpha: f64, x: f64) -> f64 {
+  if x.abs() >= 0.01 {
+    return zolotarev_ratio(alpha, x).ln();
+  }
+  let x2 = x * x;
+  let mut power = x2;
+  let mut sum = -0.5 * alpha * (1.0 - alpha) * x2;
+  for (k, c) in [-1.0 / 180.0, -1.0 / 2835.0, -1.0 / 37800.0]
+    .into_iter()
+    .enumerate()
+  {
+    power *= x2;
+    let p = 2 * k as i32 + 5;
+    sum += c * (1.0 - alpha.powi(p) - (1.0 - alpha).powi(p)) * power;
+  }
+  sum
 }
 
 /// Zolotarev's $A(u) = \bigl((\sin\alpha u)^\alpha(\sin(1-\alpha)u)^{1-\alpha}/\sin u\bigr)^{1/(1-\alpha)}$,
@@ -124,10 +153,24 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
     let tilt = lambda_f * scale;
     let lambda_alpha = lambda_f.powf(alpha_f) * theta_f;
     let root_gamma = (lambda_alpha * alpha_f * (1.0 - alpha_f)).sqrt();
-    let plain = scale.is_normal()
-      && tilt.is_finite()
-      && root_gamma.max(alpha_f).ln() / alpha_f > -700.0
-      && (root_gamma + alpha_f).ln() / alpha_f < 700.0;
+    // ζ at the largest angle a draw reaches, `U = pred(π)`, the smallest the hat's `(√γ + αζ)^{1/α}` meets.
+    let zeta_min = zolotarev_ratio(alpha_f, std::f64::consts::PI.next_down()).sqrt();
+    // The relative spread is `√((1 − α)/(α λ'^α))`, zero where `λ'^α` overflows; `αθ · λ^α/λ` overflows only with κ₁,
+    // and keeps the exponent `α` exact where `α − 1` would round.
+    let path = if lambda_alpha > (1.0 - alpha_f) / alpha_f * 2f64.powi(106) {
+      Path::PointMass(alpha_f * theta_f * (lambda_f.powf(alpha_f) / lambda_f))
+    } else if scale.is_normal()
+      && (tilt.is_normal() || lambda_f == 0.0)
+      // Beyond these the tilt term and `1 − 1/ζ²` err by about `λ'^α ε`, and the hat ratio has lost half its digits.
+      && lambda_alpha <= 2f64.powi(40)
+      && root_gamma <= alpha_f * 2f64.powi(26)
+      && root_gamma.max(alpha_f * zeta_min).ln() / alpha_f > -700.0
+      && (root_gamma + alpha_f).ln() / alpha_f < 700.0
+    {
+      Path::Plain
+    } else {
+      Path::Log
+    };
     Self {
       alpha,
       lambda,
@@ -136,7 +179,7 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
       scale,
       ln_scale: theta_f.ln() / alpha_f,
       lambda_alpha,
-      log_path: !plain,
+      path,
     }
   }
 
@@ -155,12 +198,12 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
     self.theta
   }
 
-  /// One draw of $\theta^{1/\alpha} S_{\alpha,\lambda'}$ with $\lambda' = $ `self.tilt`: Devroye's Appendix algorithm,
-  /// step for step, with $\lambda'$, $m$, the tilt term and the result in logarithms on the log path.
+  /// One draw of $\theta^{1/\alpha} S_{\alpha,\lambda'}$, $\lambda' = \lambda\theta^{1/\alpha}$, by Devroye's Appendix
+  /// algorithm step for step; the log path forms the hat ratio, $m$, the tilt term and the result from `λ'^α` and logs.
   fn draw_scaled<S: NormalUniformSource<T>>(&self, src: &mut S) -> f64 {
+    let log = self.path == Path::Log;
     let alpha = self.alpha.to_f64().unwrap();
     let lambda = self.tilt;
-    let log = self.log_path;
     let pi = std::f64::consts::PI;
     let uniform = |src: &mut S| src.uniform().to_f64().unwrap();
     let normal = |src: &mut S| src.normal().to_f64().unwrap();
@@ -198,7 +241,13 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
           pi * (1.0 - w_prime * w_prime)
         };
         let w = uniform(src);
-        let zeta = zolotarev_ratio(alpha, u).sqrt();
+        let (zeta, decay) = if log {
+          let ln_ratio = ln_zolotarev_ratio(alpha, u);
+          ((0.5 * ln_ratio).exp(), lambda_alpha * (-ln_ratio).exp_m1())
+        } else {
+          let zeta = zolotarev_ratio(alpha, u).sqrt();
+          (zeta, -lambda_alpha * (1.0 - 1.0 / (zeta * zeta)))
+        };
         let zed = if log {
           -1.0 / (-(alpha * zeta / sqrt_gamma).ln_1p() / alpha).exp_m1()
         } else {
@@ -206,7 +255,7 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
           phi / (phi - sqrt_gamma_pow)
         };
         let numerator = pi
-          * (-lambda_alpha * (1.0 - 1.0 / (zeta * zeta))).exp()
+          * decay.exp()
           * (if u >= 0.0 && gamma >= 1.0 {
             xi * (-gamma * u * u / 2.0).exp()
           } else {
@@ -253,9 +302,9 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
       };
       let e = -z.ln();
       if x > 0.0 {
-        // `λ' m^{−b} = λ'^α (a/b)^{1−α}`, so the log path never forms `λ'`.
+        // `λ' m^{−b} = λ'^α (a/b)^{1−α}`, and `x − m` is exact where the sum cancels.
         let tilt_term = if log {
-          lambda_alpha * (a / b).powf(1.0 - alpha) * (b * (m / x).ln()).exp_m1()
+          lambda_alpha * (a / b).powf(1.0 - alpha) * (-b * ((x - m) / m).ln_1p()).exp_m1()
         } else if lambda > 0.0 {
           lambda * (x.powf(-b) - m.powf(-b))
         } else {
@@ -281,6 +330,10 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
     rng: &mut R,
     out: &mut [T],
   ) {
+    if let Path::PointMass(mean) = self.path {
+      out.fill(T::from_f64_fast(mean));
+      return;
+    }
     let mut src = (normal, rng);
     for x in out.iter_mut() {
       *x = T::from_f64_fast(self.draw_scaled(&mut src));
@@ -288,7 +341,10 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
   }
 
   pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
-    T::from_f64_fast(self.draw_scaled(&mut AnyRng(rng)))
+    T::from_f64_fast(match self.path {
+      Path::PointMass(mean) => mean,
+      _ => self.draw_scaled(&mut AnyRng(rng)),
+    })
   }
 
   fn params(&self) -> (f64, f64, f64) {
