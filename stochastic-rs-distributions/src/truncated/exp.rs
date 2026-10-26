@@ -91,18 +91,27 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
   /// its first order `u·m/λ`, which the logarithm of the rounded product would lose.
   #[inline]
   fn inverse_cdf(&self, u: f64) -> f64 {
-    let (lo, lam) = (self.lower.to_f64().unwrap(), self.lambda.to_f64().unwrap());
     let y = u * self.tail_mass;
     if y < f64::MIN_POSITIVE {
-      lo + u * (self.tail_mass / lam)
+      self.lower.to_f64().unwrap() + u * (self.tail_mass / self.lambda.to_f64().unwrap())
     } else {
-      lo - (-y).ln_1p() / lam
+      self.log_map(y)
     }
   }
 
   #[inline]
+  fn log_map(&self, y: f64) -> f64 {
+    self.lower.to_f64().unwrap() - (-y).ln_1p() / self.lambda.to_f64().unwrap()
+  }
+
+  /// A draw's uniform is 0 or at least `2⁻⁵³`, so its `u·m` is normal unless the mass is below `2⁵³·MIN_POSITIVE`.
+  #[inline]
   fn invert(&self, u: f64) -> T {
-    T::from_f64_fast(self.inverse_cdf(u))
+    T::from_f64_fast(if self.tail_mass >= f64::MIN_POSITIVE * 2f64.powi(53) {
+      self.log_map(u * self.tail_mass)
+    } else {
+      self.inverse_cdf(u)
+    })
   }
 
   /// Infinite for an open tail.
