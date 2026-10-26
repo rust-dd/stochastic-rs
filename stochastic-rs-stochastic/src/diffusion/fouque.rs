@@ -13,6 +13,8 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
@@ -130,6 +132,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] FouqueOU2D<T, S> { kappa, theta, epsilon, alpha, n, x0, y0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for FouqueOU2D<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for FouqueOU2D<T, S, B>
 {
@@ -214,8 +221,8 @@ impl<T: FloatExt, S: SeedExt> FouqueOU2DSampler<T, S> {
     let mut gn_x = vec![T::zero(); n_increments];
     let mut gn_y = vec![T::zero(); n_increments];
 
-    let nx = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-    let ny = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
+    let mut nx = SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(&self.seed);
+    let mut ny = SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(&self.seed);
     nx.fill_slice(&mut gn_x);
     ny.fill_slice(&mut gn_y);
 
@@ -231,6 +238,8 @@ impl<T: FloatExt, S: SeedExt> FouqueOU2DSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for FouqueOU2DSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for FouqueOU2DSampler<T, S> {
   type Output = [Array1<T>; 2];

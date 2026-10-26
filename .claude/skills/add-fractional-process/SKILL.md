@@ -64,6 +64,8 @@ impl<T: FloatExt, S: SeedExt, B> Fou<T, S, B> {
     }
 }
 
+impl<T: FloatExt, S: SeedExt, B: Backend> crate::traits::Sealed for Fou<T, S, B> {}
+
 impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fou<T, S, B> {
     type Output = Array1<T>;
     type Sampler<'s> = FouSampler<'s, T, S, B> where Self: 's;
@@ -180,10 +182,9 @@ what `evaluate` returns, and `integral_from_zero` must be that same
 `K`'s integral. Any normalising constant (e.g. Riemann-Liouville's
 `1/Γ(H+1/2)`) is **already folded into** `weights`, `evaluate` and
 `integral_from_zero` — a kernel-generic caller must not apply another
-one on top. `MarkovLift` deliberately does the opposite: it reads
-`RlKernel`'s *inherent*, un-normalised `weights`/`evaluate` and applies
-the factor once, outside the sum. That split is specific to
-`MarkovLift`'s hand-written loop; do not copy it into anything built on
+one on top. `RlKernel`'s *inherent*, un-normalised `scaled_weights`/`exp_sum`
+sit outside that contract (`MarkovLift` is `VolterraLift<T, RlKernel<T>>`
+and reads only the trait methods); never feed them to anything built on
 the trait.
 
 Existing implementors: `ExponentialKernel`, `GammaKernel`,
@@ -246,8 +247,7 @@ mod tests {
         assert_eq!(a.sample(), b.sample());
     }
 
-    /// 5. `sample_par(m)` bit-identical across rayon thread-pool sizes,
-    ///    and registration in
+    /// 5. `sample_par(m)` bit-identical across rayon pool sizes; registered in
     ///    `tests/reproducibility_all_processes.rs`.
     #[test]
     fn sample_par_is_thread_count_stable() { }

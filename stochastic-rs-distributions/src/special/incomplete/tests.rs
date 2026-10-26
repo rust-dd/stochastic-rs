@@ -1,0 +1,416 @@
+use super::*;
+use crate::special::erf;
+
+fn close(a: f64, b: f64, tol: f64) -> bool {
+  (a - b).abs() < tol || ((a - b) / b).abs() < tol
+}
+
+#[test]
+fn gamma_p_known_values() {
+  // P(1, x) = 1 − e^{−x}
+  assert!(close(gamma_p(1.0, 1.0), 1.0 - (-1.0_f64).exp(), 1e-12));
+  // P(½, x) = erf(√x)
+  assert!(close(gamma_p(0.5, 1.0), erf(1.0), 1e-6));
+  assert_eq!(gamma_p(2.5, f64::INFINITY), 1.0);
+  assert_eq!(gamma_q(2.5, f64::INFINITY), 0.0);
+  assert_eq!(gamma_li(2.5, f64::INFINITY), gamma(2.5));
+  assert_eq!(gamma_ui(2.5, f64::INFINITY), 0.0);
+  for x in [0.0, 1.0, f64::INFINITY] {
+    assert!(gamma_p(f64::NAN, x).is_nan(), "gamma_p(NaN, {x})");
+    assert!(gamma_q(f64::NAN, x).is_nan(), "gamma_q(NaN, {x})");
+    assert!(gamma_li(f64::NAN, x).is_nan(), "gamma_li(NaN, {x})");
+    assert!(gamma_ui(f64::NAN, x).is_nan(), "gamma_ui(NaN, {x})");
+  }
+}
+
+/// mpmath at 60 digits: the direct upper tail, the log forms where the value underflows, the overflow of Γ(a).
+#[test]
+fn incomplete_gammas_keep_their_digits_in_the_tails() {
+  let rel = |a: f64, b: f64| ((a - b) / b).abs();
+  assert!(rel(gamma_q(2.5, 37.5), 9.302_951_809_402_614e-15) < 1e-13);
+  assert!(rel(gamma_q(5.0, 20.0), 1.694_474_393_006_738_5e-5) < 1e-13);
+  assert!(rel(gamma_q(0.5, 1.0), 0.157_299_207_050_285_13) < 1e-14);
+  assert!(rel(ln_gamma_q(2.5, 800.0), -790.255_890_865_637_9) < 1e-14);
+  assert!(rel(ln_gamma_p(2.5, 0.01), gamma_p(2.5, 0.01).ln()) < 1e-14);
+  assert!(rel(gamma_ui(200.0, 1000.0), 6.335_068_535_476_873e162) < 1e-12);
+  assert!(rel(gamma_ui(2.5, 37.5), 1.236_678_956_952_307_4e-14) < 1e-13);
+  assert_eq!(gamma_ui(200.0, f64::INFINITY), 0.0);
+  assert_eq!(gamma_li(200.0, 1000.0), f64::INFINITY);
+  assert_eq!(gamma_li(2.5, f64::INFINITY), gamma(2.5));
+  assert_eq!(ln_gamma_q(2.5, f64::INFINITY), f64::NEG_INFINITY);
+  assert_eq!(ln_gamma_p(2.5, 0.0), f64::NEG_INFINITY);
+  assert!(ln_gamma_q(f64::NAN, 1.0).is_nan() && ln_gamma_p(2.0, -1.0).is_nan());
+}
+
+/// mpmath at 80 digits from shape 100 on, `x/a ∈ {½, 0.99, 1, 1.01, 2}` and the Poisson points `(λ + 1, λ)`: `P`, `Q` and
+/// the logarithm of the smaller, which carries the relative bar where the tail itself underflows.
+#[test]
+fn large_shapes_keep_the_smaller_tail_to_1e_13() {
+  let rel = |got: f64, want: f64| {
+    if want == 0.0 {
+      got.abs()
+    } else {
+      ((got - want) / want).abs()
+    }
+  };
+  for (a, x, p, q, ln_smaller) in [
+    (
+      100.0,
+      50.0,
+      3.200_065_324_585_125e-10,
+      0.999_999_999_679_993_4,
+      -21.862_679_706_410_287,
+    ),
+    (
+      100.0,
+      99.0,
+      0.473_304_330_399_461,
+      0.526_695_669_600_539,
+      -0.748_016_692_736_212_2,
+    ),
+    (
+      100.0,
+      100.0,
+      0.513_298_798_279_148_7,
+      0.486_701_201_720_851_35,
+      -0.720_104_893_025_474,
+    ),
+    (
+      100.0,
+      101.0,
+      0.552_896_293_434_511_3,
+      0.447_103_706_565_488_76,
+      -0.804_964_705_538_389_4,
+    ),
+    (
+      100.0,
+      200.0,
+      0.999_999_999_999_998_1,
+      1.843_893_649_711_574e-15,
+      -33.926_896_945_131_68,
+    ),
+    (
+      1_500.0,
+      750.0,
+      3.084_337_230_598_379_3e-128,
+      1.0,
+      -293.604_555_105_071_8,
+    ),
+    (
+      1_500.0,
+      1_485.0,
+      0.351_979_035_470_244_56,
+      0.648_020_964_529_755_4,
+      -1.044_183_663_480_876,
+    ),
+    (
+      1_500.0,
+      1_500.0,
+      0.503_433_561_160_348_7,
+      0.496_566_438_839_651_35,
+      -0.700_037_990_069_292_9,
+    ),
+    (
+      1_500.0,
+      1_515.0,
+      0.653_436_271_465_214_1,
+      0.346_563_728_534_785_95,
+      -1.059_688_556_528_211,
+    ),
+    (
+      1_500.0,
+      3_000.0,
+      1.0,
+      1.304_768_389_379_951e-202,
+      -464.856_163_239_176_2,
+    ),
+    (100_000.0, 50_000.0, 0.0, 1.0, -19_320.700_330_911_593),
+    (
+      100_000.0,
+      99_000.0,
+      7.574_199_211_747_679e-4,
+      0.999_242_580_078_825_3,
+      -7.185_592_740_789_702,
+    ),
+    (
+      100_000.0,
+      100_000.0,
+      0.500_420_522_110_365_1,
+      0.499_579_477_889_634_8,
+      -0.693_988_578_656_797_2,
+    ),
+    (
+      100_000.0,
+      101_000.0,
+      0.999_191_578_487_074_4,
+      8.084_215_129_255_907e-4,
+      -7.120_426_961_055_11,
+    ),
+    (100_000.0, 200_000.0, 1.0, 0.0, -30_691.957_366_103_692),
+    (
+      10_000_000.0,
+      5_000_000.0,
+      0.0,
+      1.0,
+      -1_931_480.090_438_839_5,
+    ),
+    (
+      10_000_000.0,
+      9_900_000.0,
+      3.123_539_470_267_389e-221,
+      1.0,
+      -507.732_338_747_261_34,
+    ),
+    (
+      10_000_000.0,
+      10_000_000.0,
+      0.500_042_052_208_723_7,
+      0.499_957_947_791_276_3,
+      -0.693_231_288_514_367_5,
+    ),
+    (
+      10_000_000.0,
+      10_100_000.0,
+      1.0,
+      2.455_322_949_189_105e-218,
+      -501.065_291_972_575_9,
+    ),
+    (10_000_000.0, 20_000_000.0, 1.0, 0.0, -3_068_537.172_387_114),
+    (
+      1_501.0,
+      1_500.0,
+      0.493_133_488_015_236_43,
+      0.506_866_511_984_763_6,
+      -0.706_975_374_824_966_3,
+    ),
+    (
+      2_001.0,
+      2_000.0,
+      0.494_053_299_548_216_3,
+      0.505_946_700_451_783_7,
+      -0.705_111_873_792_034_2,
+    ),
+    (
+      100_001.0,
+      100_000.0,
+      0.499_158_956_900_659_87,
+      0.500_841_043_099_340_1,
+      -0.694_830_683_054_058_9,
+    ),
+    (
+      100_949.0,
+      100_000.0,
+      1.371_218_460_561_666e-3,
+      0.998_628_781_539_438_3,
+      -6.592_055_547_141_325,
+    ),
+  ] {
+    assert!(
+      rel(gamma_p(a, x), p) < 1e-13,
+      "P({a}, {x}) = {}",
+      gamma_p(a, x)
+    );
+    assert!(
+      rel(gamma_q(a, x), q) < 1e-13,
+      "Q({a}, {x}) = {}",
+      gamma_q(a, x)
+    );
+    let ln = if p <= q {
+      ln_gamma_p(a, x)
+    } else {
+      ln_gamma_q(a, x)
+    };
+    assert!(
+      rel(ln, ln_smaller) < 1e-13,
+      "ln of the smaller tail at ({a}, {x}) = {ln}"
+    );
+  }
+}
+
+/// mpmath at 90 digits near and past the band edges, where the exponent is in the hundreds: the smaller tail to
+/// `1e-13`, and at `λ = 3`, `a = 1100`, where it underflows, its logarithm to `1e-15`.
+#[test]
+fn large_shapes_keep_the_smaller_tail_at_the_band_edges() {
+  let rel = |got: f64, want: f64| ((got - want) / want).abs();
+  for (a, x, lower, want) in [
+    (
+      1_140.268_085_462_692_2,
+      300.150_922_081_388_5,
+      true,
+      1.221_793_964_061_139e-298,
+    ),
+    (1_088.79, 292.79, true, 7.656_305_455_227_544e-278),
+    (
+      1_317.032_022_087_383_4,
+      398.498_579_612_561_6,
+      true,
+      2.230_773_990_223_533_2e-287,
+    ),
+    (
+      1_389.0,
+      3_264.150_000_000_001,
+      false,
+      8.805_613_654_371_118e-302,
+    ),
+    (1_389.0, 3_264.15, false, 8.805_613_654_375_722e-302),
+    (1_100.0, 275.0, true, 1.705_695_816_273_308e-306),
+    (1_300.0, 390.0, true, 4.615_493_113_533_604e-287),
+    (
+      1_389.0,
+      3_264.149_999_999_999_6,
+      false,
+      8.805_613_654_378_025e-302,
+    ),
+    (
+      1_389.0,
+      3_264.150_000_000_000_5,
+      false,
+      8.805_613_654_373_42e-302,
+    ),
+    (700.0, 2_100.0, false, 7.069_986_467_703_053e-277),
+  ] {
+    let got = if lower { gamma_p(a, x) } else { gamma_q(a, x) };
+    assert!(rel(got, want) < 1e-13, "({a}, {x}): {got}, want {want}");
+  }
+  assert_eq!(gamma_q(1100.0, 3300.0), 0.0);
+  assert!(rel(ln_gamma_q(1100.0, 3300.0), -996.640_857_633_860_4) < 1e-15);
+}
+
+/// Past an exponent of `2^62` the low parts fold into their high parts, so the tails answer `0` or `1` and their logarithms
+/// stay finite (mpmath: the asymptotic series at 60 digits, and `gammainc` where it converges).
+#[test]
+fn huge_exponents_keep_their_logarithms() {
+  use crate::traits::DistributionExt;
+  let rel = |got: f64, want: f64| ((got - want) / want).abs();
+  assert_eq!(gamma_q(100.0, 1e20), 0.0);
+  assert!(rel(ln_gamma_q(100.0, 1e20), -1e20) < 1e-15);
+  assert_eq!(gamma_p(100.0, 5e19), 1.0);
+  let chi2 = crate::chi_square::SimdChiSquared::<f64>::new(200.0);
+  assert_eq!(chi2.cdf(1e20), Some(1.0));
+  assert_eq!(gamma_p(1e18, 1.0), 0.0);
+  assert!(rel(ln_gamma_p(1e18, 1.0), -4.044_653_167_389_282e19) < 1e-15);
+  assert_eq!(gamma_q(120.0, 4e19), 0.0);
+  assert!(rel(ln_gamma_q(120.0, 4e19), -3.999_999_999_999_999e19) < 1e-15);
+  assert_eq!(gamma_p(1e20, 3e19), 0.0);
+  assert!(rel(ln_gamma_p(1e20, 3e19), -5.039_728_043_259_36e19) < 1e-15);
+  assert!(rel(ln_gamma_q(1e20, 2e20), -3.068_528_194_400_547e19) < 1e-15);
+}
+
+#[test]
+fn beta_i_known_values() {
+  // I_{0.5}(1, 1) = 0.5
+  assert!(close(beta_i(1.0, 1.0, 0.5), 0.5, 1e-10));
+  // I_x(a, a) symmetric: I_{0.7}(2, 2) and I_{0.3}(2,2) sum to 1.
+  let a = beta_i(2.0, 2.0, 0.7);
+  let b = beta_i(2.0, 2.0, 0.3);
+  assert!(close(a + b, 1.0, 1e-10));
+}
+
+/// mpmath at 60 and 120 digits below `x = a + 1` at shapes under 1, where `1 − P` cancels: `Q` and its logarithm to
+/// `4e-15`, and `Q` meeting the continued fraction above `x = a + 1`.
+#[test]
+fn small_shapes_keep_the_upper_tail_below_a_plus_one() {
+  let rel = |got: f64, want: f64| ((got - want) / want).abs();
+  for (a, x, want) in [
+    (0.005, 0.0818, 0.010000335370426125),
+    (0.005, 1e-300, 0.9682864762680914),
+    (0.05, 1.08, 0.010122775586616872),
+    (0.05, 1.1, 0.00980453385801599),
+    (0.5, 1.09, 0.13981446180315324),
+    (0.5, 1.4, 0.09426430684121032),
+    (0.9, 1.0, 0.3246075583259468),
+    (0.3, 1.2, 0.0633947195692591),
+    (0.999, 1.5, 0.22281093247600395),
+    (1e-10, 0.5, 5.597735948054988e-11),
+  ] {
+    assert!(
+      rel(gamma_q(a, x), want) <= 4e-15,
+      "Q({a}, {x}) = {:e}",
+      gamma_q(a, x)
+    );
+    assert!(
+      (ln_gamma_q(a, x) - want.ln()).abs() <= 4e-15 * want.ln().abs().max(1.0),
+      "ln Q({a}, {x}) = {}",
+      ln_gamma_q(a, x)
+    );
+  }
+  let (below, above) = (gamma_q(0.5, 1.5_f64.next_down()), gamma_q(0.5, 1.5));
+  assert!(rel(below, above) < 1e-14, "{below:e} against {above:e}");
+}
+
+/// `(k, p, χ²_k quantile, κ)` by DLMF 8.12's uniform expansion at 120 and 200 digits, its truncation below `1e-40`.
+const LARGE_K: [(f64, f64, f64, f64); 12] = [
+  (1e16, 1e-300, 9999994760750312.0, 3.814565222494844e-10),
+  (1e16, 0.01, 9999999671004732.0, 5.30619102617046e-09),
+  (1e16, 0.3, 9999999925838568.0, 1.2202274435331952e-08),
+  (1e16, 0.5, 1e16, 1.772453850905516e-08),
+  (1e16, 0.7, 1.0000000074161432e16, 1.2202274375002745e-08),
+  (
+    1e16,
+    1.0 - 1e-10,
+    1.0000000899629482e16,
+    2.171841221065021e-09,
+  ),
+  (1e20, 1e-300, 9.999999947607494e19, 3.814564562974588e-12),
+  (1e20, 0.01, 9.999999996710047e19, 5.3061909685619726e-11),
+  (1e20, 0.3, 9.999999999258386e19, 1.2202274405468994e-10),
+  (1e20, 0.5, 1e20, 1.772453850905516e-10),
+  (1e20, 0.7, 1.0000000000741614e20, 1.2202274404865703e-10),
+  (
+    1e20,
+    1.0 - 1e-10,
+    1.0000000008996294e20,
+    2.1718412855421487e-11,
+  ),
+];
+
+/// The inverse round-trips `P` below ½ and `Q` above on a grid of shapes, the root under `e^{−744}` exactly 0; at `k = 1e16`
+/// and `1e20` it is `LARGE_K`'s within `4e-15·max(1, κ)·max(1, |ln p̃|)`, and from `1e300`, within `6e-149` of `k`, `k`.
+#[test]
+fn gamma_p_inv_inverts_the_tail_it_solves() {
+  for a in [1e-3, 0.02, 0.5, 1.0, 2.5, 50.0, 1e4] {
+    for p in [
+      1e-300,
+      1e-30,
+      1e-6,
+      0.01,
+      0.3,
+      0.5,
+      0.7,
+      0.99,
+      1.0 - 1e-9,
+      1.0 - 1e-15,
+    ] {
+      let x = gamma_p_inv(a, p, 1.0);
+      if x == 0.0 {
+        assert!(
+          (p.ln() + ln_gamma(a + 1.0)) / a < -744.0,
+          "a = {a}, p = {p:e}"
+        );
+        continue;
+      }
+      let (got, want) = if p > 0.5 {
+        (gamma_q(a, x), 1.0 - p)
+      } else {
+        (gamma_p(a, x), p)
+      };
+      assert!(
+        ((got - want) / want).abs() < 1e-12,
+        "a = {a}, p = {p:e}: x = {x:e}"
+      );
+    }
+  }
+  for (k, p, want, kappa) in LARGE_K {
+    let got = gamma_p_inv(0.5 * k, p, 2.0);
+    let tol = 4e-15 * kappa.max(1.0) * p.min(1.0 - p).ln().abs().max(1.0) * want;
+    assert!(
+      (got - want).abs() <= tol,
+      "k = {k:e}, p = {p:e}: {got:e}, want {want:e}"
+    );
+  }
+  for k in [1e300, 1e306, f64::MAX] {
+    for p in [1e-300, 0.01, 0.3, 0.5, 0.7, 1.0 - 1e-10] {
+      assert_eq!(gamma_p_inv(0.5 * k, p, 2.0), k, "k = {k:e}, p = {p:e}");
+    }
+  }
+}

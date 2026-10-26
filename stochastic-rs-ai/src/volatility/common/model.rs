@@ -169,12 +169,8 @@ impl StochVolNn {
     Ok(arr.row(0).to_vec())
   }
 
-  /// Surface prediction together with its Jacobian `∂F̃_k/∂θ_j` (rows = grid
-  /// points, columns = parameters) by reverse-mode differentiation through
-  /// the network — one backward pass per grid point — with the affine
-  /// derivatives of the parameter scaling (`1 / half-range_j`) and of the
-  /// output de-standardisation (`std_k`) applied, so the Jacobian is in
-  /// parameter and implied-volatility units.
+  /// Surface and Jacobian `∂F̃_k/∂θ_j` (rows grid points, columns parameters), one backward pass
+  /// per grid point, in parameter and implied-volatility units.
   pub fn predict_surface_with_jacobian(&self, params: &[f32]) -> Result<(Vec<f32>, Array2<f32>)> {
     let scaler = self
       .output_scaler
@@ -203,18 +199,8 @@ impl StochVolNn {
     Ok((surface, jacobian))
   }
 
-  /// Build an [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface)
-  /// by running the network on `params` and
-  /// reshaping the flat prediction into the standard `(N_T, N_K)` layout.
-  ///
-  /// The network's `output_dim` must equal `maturities.len() × strikes.len()`,
-  /// and the prediction must already be in the IV (sigma) domain — the
-  /// surrogates trained on Romano-Touzi data satisfy both.
-  ///
-  /// `forwards` carries the per-maturity forward used to compute log-moneyness
-  /// and total variance inside the surface struct.
-  ///
-  /// Available with the `quant` cargo feature.
+  /// The IV prediction at `params` as an [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface), `strikes` in column
+  /// order sorted ascending (feature `quant`); `Err` unless `output_dim` is `N_T × N_K`, forwards match, maturities ascend, strikes distinct.
   #[cfg(feature = "quant")]
   pub fn predict_implied_vol_surface(
     &self,
@@ -237,9 +223,18 @@ impl StochVolNn {
         n_k * n_t,
       );
     }
+    if !maturities.windows(2).all(|w| w[0] < w[1]) {
+      bail!("maturities must be strictly ascending");
+    }
+    let mut order = (0..n_k).collect::<Vec<usize>>();
+    order.sort_by(|&a, &b| strikes[a].total_cmp(&strikes[b]));
+    let strikes = order.iter().map(|&k| strikes[k]).collect::<Vec<f64>>();
+    if !strikes.windows(2).all(|w| w[0] < w[1]) {
+      bail!("strikes must be distinct and not NaN");
+    }
     let pred = self.predict_surface(params)?;
     let ivs =
-      Array2::<f64>::from_shape_vec((n_t, n_k), pred.into_iter().map(|v| v as f64).collect())?;
+      Array2::<f64>::from_shape_fn((n_t, n_k), |(t, k)| f64::from(pred[t * n_k + order[k]]));
     Ok(
       stochastic_rs_quant::vol_surface::ImpliedVolSurface::from_iv_grid(
         strikes, maturities, forwards, ivs,
@@ -322,5 +317,78 @@ impl StochVolNn {
       .load(dir.join(WEIGHTS_FILE))
       .with_context(|| format!("failed to load weights from {:?}", dir.join(WEIGHTS_FILE)))?;
     Ok(model)
+  }
+}
+
+#[cfg(all(test, feature = "quant"))]
+mod tests {
+  use super::*;
+  use crate::volatility::common::synthetic_surface_dataset;
+
+  const N_T: usize = 2;
+  const N_K: usize = 5;
+
+  fn trained() -> Result<StochVolNn> {
+    let (lb, ub) = ([0.0_f32; 2], [1.0_f32; 2]);
+    let spec = StochVolModelSpec::new("bridge", 2, N_T * N_K, 8, lb.to_vec(), ub.to_vec())?;
+    let (params, surfaces) = synthetic_surface_dataset(&lb, &ub, 64, N_T * N_K, 5);
+    let mut nn = StochVolNn::new(spec, &Device::Cpu)?;
+    let cfg = TrainConfig {
+      epochs: 3,
+      ..TrainConfig::default()
+    };
+    nn.train(&params, &surfaces, &cfg)?;
+    Ok(nn)
+  }
+
+  #[test]
+  fn surface_bridge_pairs_each_strike_with_its_own_column() -> Result<()> {
+    let nn = trained()?;
+    let params = [0.3_f32, 0.6];
+    let flat = nn.predict_surface(&params)?;
+    let maturities = vec![0.5, 1.0];
+    let build = |strikes: &[f64]| {
+      nn.predict_implied_vol_surface(
+        &params,
+        strikes.to_vec(),
+        maturities.clone(),
+        vec![1.0; N_T],
+      )
+    };
+
+    let ascending = [0.8, 0.9, 1.0, 1.1, 1.2];
+    let unchanged = build(&ascending)?;
+    assert_eq!(unchanged.strikes, ascending);
+    for ((t, k), iv) in unchanged.ivs.indexed_iter() {
+      assert_eq!(*iv, f64::from(flat[t * N_K + k]));
+    }
+
+    let rotated = [0.9, 1.0, 1.1, 1.2, 0.8];
+    let shuffled = [1.1, 0.8, 1.2, 0.9, 1.0];
+    for strikes in [rotated, shuffled] {
+      let surface = build(&strikes)?;
+      assert_eq!(surface.strikes, ascending);
+      for t in 0..N_T {
+        for (j, strike) in strikes.iter().enumerate() {
+          let k = surface.strikes.iter().position(|s| s == strike).unwrap();
+          assert_eq!(surface.ivs[[t, k]], f64::from(flat[t * N_K + j]));
+        }
+      }
+    }
+    Ok(())
+  }
+
+  #[test]
+  fn an_unsorted_maturity_or_a_repeated_strike_is_an_error_not_a_panic() -> Result<()> {
+    let nn = trained()?;
+    let params = [0.3_f32, 0.6];
+    let strikes = vec![0.8, 0.9, 1.0, 1.1, 1.2];
+    let unsorted = nn.predict_implied_vol_surface(&params, strikes, vec![1.0, 0.5], vec![1.0; N_T]);
+    assert!(unsorted.is_err());
+    let repeated = vec![0.8, 0.9, 0.9, 1.1, 1.2];
+    let duplicate =
+      nn.predict_implied_vol_surface(&params, repeated, vec![0.5, 1.0], vec![1.0; N_T]);
+    assert!(duplicate.is_err());
+    Ok(())
   }
 }

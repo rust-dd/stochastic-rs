@@ -61,9 +61,9 @@ impl CgmysvParams {
   /// Lévy symbol of the standard Cgmy distribution $\psi_{\mathrm{stdCGMY}}(u)$ (Eq. 3).
   ///
   /// $$
-  /// \psi(u) = \frac{\lambda_+^{\alpha-1}-\lambda_-^{\alpha-1}}{(\alpha-1)\,D}\,iu
-  /// + \frac{(\lambda_+-iu)^\alpha - \lambda_+^\alpha + (\lambda_-+iu)^\alpha - \lambda_-^\alpha}
-  ///        {\alpha(\alpha-1)\,D}
+  /// \psi(u) = \frac{\lambda_+^{\alpha-1}-\lambda_-^{\alpha-1}}{(\alpha-1)\,D}\,iu +
+  ///   \frac{(\lambda_+-iu)^\alpha - \lambda_+^\alpha + (\lambda_-+iu)^\alpha - \lambda_-^\alpha}
+  ///   {\alpha(\alpha-1)\,D}
   /// $$
   pub fn psi_std_cgmy(&self, u: Complex64) -> Complex64 {
     let a = self.alpha;
@@ -145,7 +145,7 @@ impl FourierModelExt for CgmysvModel {
     Cumulants {
       c1: (fp - fm).im / (2.0 * h),
       c2: -(fp - 2.0 * f0 + fm).re / (h * h),
-      c4: (f2p - 4.0 * fp + 6.0 * f0 - 4.0 * fm + f2m).re / h.powi(4),
+      c4: Some((f2p - 4.0 * fp + 6.0 * f0 - 4.0 * fm + f2m).re / h.powi(4)),
     }
   }
 }

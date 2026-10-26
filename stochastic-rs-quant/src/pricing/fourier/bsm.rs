@@ -24,7 +24,7 @@ impl FourierModelExt for BSMFourier {
     Cumulants {
       c1: (self.r - self.q - 0.5 * self.sigma.powi(2)) * t,
       c2: self.sigma.powi(2) * t,
-      c4: 0.0,
+      c4: Some(0.0),
     }
   }
 }

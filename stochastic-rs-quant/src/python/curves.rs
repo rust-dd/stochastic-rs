@@ -68,11 +68,11 @@ impl PyDiscountCurve {
       ));
     }
     let method = parse_interpolation(interp)?;
-    let instruments: Vec<crate::curves::Instrument<f64>> = payment_schedules
+    let instruments: Vec<crate::curves::BootstrapInstrument<f64>> = payment_schedules
       .into_iter()
       .zip(rates)
       .map(
-        |(payment_times, rate)| crate::curves::Instrument::SwapWithSchedule {
+        |(payment_times, rate)| crate::curves::BootstrapInstrument::SwapWithSchedule {
           rate,
           payment_times,
         },

@@ -234,6 +234,7 @@ pub fn mle_ou_closed_form<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> QmleRe
 mod tests {
   use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::gamma::SimdGamma;
   use stochastic_rs_distributions::normal::SimdNormal;
   use stochastic_rs_distributions::poisson::SimdPoisson;
@@ -253,11 +254,11 @@ mod tests {
   ) -> Array1<f64> {
     let a = (-kappa * dt).exp();
     let sd = (sigma * sigma * (1.0 - a * a) / (2.0 * kappa)).sqrt();
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
     let mut path = Array1::<f64>::zeros(n);
     path[0] = x0;
     for t in 1..n {
-      let z = normal.sample_fast();
+      let z = normal.sample();
       path[t] = theta + (path[t - 1] - theta) * a + sd * z;
     }
     path
@@ -289,11 +290,15 @@ mod tests {
       let pois_seed = seed ^ (t as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15);
       let gamma_seed = seed ^ (t as u64).wrapping_mul(0xbf58_476d_1ce4_e5b9);
       let n_pois: f64 = f64::from(
-        SimdPoisson::<u32>::new(lambda / 2.0, &Deterministic::new(pois_seed)).sample_fast(),
+        SimdPoisson::<u32>::new(lambda / 2.0)
+          .seeded(&Deterministic::new(pois_seed))
+          .sample(),
       );
       let shape = d / 2.0 + n_pois;
       let chi2 = if shape > 0.0 {
-        SimdGamma::<f64>::new(shape, 2.0, &Deterministic::new(gamma_seed)).sample_fast()
+        SimdGamma::<f64>::new(shape, 2.0)
+          .seeded(&Deterministic::new(gamma_seed))
+          .sample()
       } else {
         0.0
       };

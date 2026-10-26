@@ -39,7 +39,7 @@ pub struct PoolName {
   pub weight: f64,
   /// Recovery rate.
   pub recovery: f64,
-  /// Survival curve.
+  /// Probability that this name survives to each date.
   pub survival: SurvivalCurve<f64>,
 }
 

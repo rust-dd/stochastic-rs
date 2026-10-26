@@ -46,10 +46,7 @@ fn optimizer_handles_empty_inputs() {
   assert_eq!(result.volatility, 0.0);
 }
 
-/// Regression: confidence-style values (e.g. `0.95`) passed as
-/// `cvar_alpha` must panic loudly. The rc.0 implementation accepted any
-/// `alpha ∈ [0, 1]`, silently averaging nearly the whole distribution
-/// when users got the convention backwards. rc.1 rejects `alpha >= 0.5`.
+/// A confidence level such as `0.95` passed as the tail proportion `cvar_alpha` panics.
 #[test]
 #[should_panic(expected = "tail proportion")]
 fn empirical_cvar_rejects_confidence_level_misuse() {

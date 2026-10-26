@@ -92,6 +92,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Cbms<T, S> { rho, n, t, seed, cgns } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Cbms<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Cbms<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
@@ -158,6 +163,8 @@ impl<T: FloatExt, S: SeedExt> CbmsSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for CbmsSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for CbmsSampler<T, S> {
   type Output = [Array1<T>; 2];

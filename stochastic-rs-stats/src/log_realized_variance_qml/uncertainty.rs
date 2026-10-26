@@ -3,6 +3,7 @@ use super::LogRealizedVarianceParameterUncertainty;
 use super::LogRealizedVarianceParameters;
 use super::LogRealizedVarianceQmlBounds;
 use super::filter::filter_centered_log_observations;
+use crate::traits::RealExt;
 
 const BOUNDARY_FRACTION: f64 = 1e-4;
 const CONDITION_NUMBER_CAP: f64 = 1e8;
@@ -321,7 +322,7 @@ fn infinity_norm(matrix: [[f64; 3]; 3]) -> f64 {
   matrix
     .iter()
     .map(|row| row.iter().map(|value| value.abs()).sum::<f64>())
-    .fold(0.0, f64::max)
+    .fold(0.0, f64::max_or_nan)
 }
 
 fn normalized_position(value: f64, lower: f64, upper: f64) -> f64 {

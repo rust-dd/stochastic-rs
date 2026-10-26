@@ -1,29 +1,32 @@
-//! `MultivariateExt` — feature-gated multivariate copula trait.
-
-use std::error::Error;
+//! `MultivariateExt` — multivariate copula trait.
 
 use ndarray::Array1;
+use stochastic_rs_core::simd_rng::SeedExt;
 
-use crate::multivariate::CopulaType as MultivariateCopulaType;
+use crate::error::CopulaError;
+use crate::multivariate::MultivariateFamily;
 
+/// `cdf`, `pdf` and `log_pdf` answer `MarginalOutOfRange` for a value outside `[0, 1]` or NaN, and `pdf` and `log_pdf`
+/// are NaN on the boundary; `fit` answers `MarginalOnBoundary` for a 0 or 1.
 pub trait MultivariateExt {
-  fn r#type(&self) -> MultivariateCopulaType;
+  /// Which family this copula is.
+  fn family(&self) -> MultivariateFamily;
 
-  fn sample(&self, n: usize) -> Result<ndarray::Array2<f64>, Box<dyn Error>>;
+  /// `n` rows from `seed`, each coordinate in `(0, 1)` (one rounded to 0 or 1 moves one ulp inside): a fresh
+  /// `Deterministic` replays them, a shared one advances; generic over the seed, so not on a `dyn MultivariateExt`.
+  fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<ndarray::Array2<f64>, CopulaError>
+  where
+    Self: Sized;
 
-  /// Deterministic sampler. Returns the same matrix for a fixed `seed`,
-  /// mirroring [`crate::traits::BivariateExt::sample_with_seed`].
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<ndarray::Array2<f64>, Box<dyn Error>>;
+  fn fit(&mut self, x: ndarray::ArrayView2<f64>) -> Result<(), CopulaError>;
 
-  fn fit(&mut self, X: ndarray::Array2<f64>) -> Result<(), Box<dyn Error>>;
+  fn check_fit(&self, x: ndarray::ArrayView2<f64>) -> Result<(), CopulaError>;
 
-  fn check_fit(&self, X: &ndarray::Array2<f64>) -> Result<(), Box<dyn Error>>;
+  fn pdf(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 
-  fn pdf(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
-
-  fn log_pdf(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    Ok(self.pdf(X)?.ln())
+  fn log_pdf(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(self.pdf(x)?.ln())
   }
 
-  fn cdf(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
+  fn cdf(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 }

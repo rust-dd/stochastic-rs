@@ -25,8 +25,8 @@ export const FACTS = {
   processesOnEngine: 130,
   /** `Simd*` samplers in stochastic-rs-distributions (37 types minus `ComplexDistribution`). */
   distributions: 36,
-  /** 15 bivariate + 8 multivariate `BivariateExt` / `MultivariateExt` implementors. */
-  copulas: 23,
+  /** 15 bivariate + 6 multivariate `BivariateExt` / `MultivariateExt` implementors. */
+  copulas: 21,
   /** `impl Calibrator for` in stochastic-rs-quant. */
   calibrators: 15,
   /** `public/python-parity.json` count minus the four `ai`-feature registrations. */

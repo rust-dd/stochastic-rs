@@ -1,6 +1,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::gamma::SimdGamma;
 
 use crate::buffer::array1_from_fill;
@@ -89,6 +92,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] GammaSubordinator<T, S> { nu, rate, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for GammaSubordinator<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for GammaSubordinator<T, S, B>
 {
@@ -107,7 +115,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     GammaSubordinatorSampler {
       n: self.n,
       x0,
-      gamma: SimdGamma::<T>::new(shape, scale, &self.seed),
+      gamma: SimdGamma::<T>::new(shape, scale).seeded(&self.seed),
     }
   }
 
@@ -149,7 +157,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 pub struct GammaSubordinatorSampler<T: FloatExt> {
   n: usize,
   x0: T,
-  gamma: SimdGamma<T>,
+  gamma: Seeded<SimdGamma<T>>,
 }
 
 impl<T: FloatExt> GammaSubordinatorSampler<T> {
@@ -170,6 +178,8 @@ impl<T: FloatExt> GammaSubordinatorSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for GammaSubordinatorSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for GammaSubordinatorSampler<T> {
   type Output = Array1<T>;

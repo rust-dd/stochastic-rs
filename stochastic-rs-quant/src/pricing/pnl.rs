@@ -6,13 +6,13 @@
 //!
 #[derive(Clone, Debug)]
 pub struct GreekPnL {
-  /// Delta
+  /// `∂V/∂S`, the coefficient of `ΔS`.
   pub delta: f64,
-  /// Gamma
+  /// `∂²V/∂S²`, the coefficient of `½ΔS²`.
   pub gamma: f64,
-  /// Vega
+  /// `∂V/∂σ`, the coefficient of `Δσ`.
   pub vega: f64,
-  /// Theta
+  /// `∂V/∂t`, the coefficient of `Δt`.
   pub theta: f64,
 }
 
@@ -56,11 +56,11 @@ impl DiscretePnL {
 
 #[derive(Clone, Debug)]
 pub struct DeltaHedgedPnL {
-  /// Theta
+  /// `∂V/∂t` of the hedged option.
   pub theta: f64,
-  /// Gamma
+  /// `∂²V/∂S²` of the hedged option.
   pub gamma: f64,
-  /// Volatility
+  /// Volatility the realised moves are assumed to have.
   pub sigma: f64,
   /// Spot price.
   pub s: f64,

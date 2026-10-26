@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -125,6 +128,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] HoLee<T, S> { f_T, theta, sigma, n, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for HoLee<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for HoLee<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -142,7 +150,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       diff_scale: self.sigma,
       f_T: self.f_T.as_ref(),
       theta: self.theta,
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
@@ -189,7 +197,7 @@ pub struct HoLeeSampler<'a, T: FloatExt> {
   diff_scale: T,
   f_T: Option<&'a Fn1D<T>>,
   theta: Option<T>,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> HoLeeSampler<'_, T> {
@@ -227,6 +235,8 @@ impl<T: FloatExt> HoLeeSampler<'_, T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for HoLeeSampler<'_, T> {}
 
 impl<T: FloatExt> PathSampler<T> for HoLeeSampler<'_, T> {
   type Output = Array1<T>;
@@ -268,6 +278,7 @@ mod tests {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyHoLee {
   inner: Option<HoLee<f64>>,

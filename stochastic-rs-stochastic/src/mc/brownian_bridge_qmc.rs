@@ -26,9 +26,10 @@
 
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::qmc::MAX_DIMENSIONS;
+use stochastic_rs_distributions::qmc::SobolSeq;
 use stochastic_rs_distributions::special::ndtri;
 
-use super::sobol::SobolSeq;
 use crate::traits::FloatExt;
 
 /// Bisection order of the bridge: the index list `(target, left, right)`
@@ -56,6 +57,13 @@ fn bridge_schedule(steps: usize) -> Vec<(usize, Option<usize>, usize)> {
   schedule
 }
 
+fn assert_steps(steps: usize) {
+  assert!(
+    steps > 0 && steps <= MAX_DIMENSIONS,
+    "steps must satisfy `0 < steps <= {MAX_DIMENSIONS}`, got steps = {steps}"
+  );
+}
+
 /// Sobol-driven Brownian paths on an equispaced grid $t_i = iT/m$,
 /// $i = 1, \ldots, m$, built by Brownian-bridge bisection.
 #[derive(Debug, Clone)]
@@ -67,21 +75,21 @@ pub struct BrownianBridgeQmc {
 }
 
 impl BrownianBridgeQmc {
-  /// Unscrambled Sobol driver for `steps` time steps up to `horizon`.
+  /// Unscrambled Sobol driver for `steps` time steps up to `horizon`; panics unless
+  /// `0 < steps <= MAX_DIMENSIONS` (one Sobol dimension per step) and `horizon > 0`.
   pub fn new(steps: usize, horizon: f64) -> Self {
-    assert!(steps >= 1, "steps must be at least 1");
+    assert_steps(steps);
     Self::with_sequence(steps, horizon, SobolSeq::new(steps))
   }
 
-  /// Owen-scrambled Sobol driver seeded from `seed`, for randomised-QMC
-  /// replications.
+  /// Owen-scrambled Sobol driver seeded from `seed`, for randomised-QMC replications; panics unless
+  /// `0 < steps <= MAX_DIMENSIONS` (one Sobol dimension per step) and `horizon > 0`.
   pub fn scrambled<S: SeedExt>(steps: usize, horizon: f64, seed: &S) -> Self {
-    assert!(steps >= 1, "steps must be at least 1");
+    assert_steps(steps);
     Self::with_sequence(steps, horizon, SobolSeq::scrambled(steps, seed))
   }
 
   fn with_sequence(steps: usize, horizon: f64, sequence: SobolSeq) -> Self {
-    assert!(steps >= 1, "steps must be at least 1");
     assert!(horizon > 0.0, "horizon must be positive");
     assert_eq!(
       sequence.n_dims(),
@@ -223,13 +231,87 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "steps must be at least 1")]
+  #[should_panic(expected = "steps must satisfy `0 < steps <= 21201`, got steps = 0")]
   fn rejects_zero_steps() {
     let _ = BrownianBridgeQmc::new(0, 1.0);
+  }
+
+  #[test]
+  #[should_panic(expected = "steps must satisfy `0 < steps <= 21201`, got steps = 21202")]
+  fn rejects_more_steps_than_sobol_dimensions() {
+    let _ = BrownianBridgeQmc::new(MAX_DIMENSIONS + 1, 1.0);
+  }
+
+  #[test]
+  #[should_panic(expected = "steps must satisfy `0 < steps <= 21201`, got steps = 0")]
+  fn scrambled_rejects_zero_steps() {
+    let _ = BrownianBridgeQmc::scrambled(0, 1.0, &Deterministic::new(1));
+  }
+
+  #[test]
+  #[should_panic(expected = "steps must satisfy `0 < steps <= 21201`, got steps = 21202")]
+  fn scrambled_rejects_more_steps_than_sobol_dimensions() {
+    let _ = BrownianBridgeQmc::scrambled(MAX_DIMENSIONS + 1, 1.0, &Deterministic::new(1));
+  }
+
+  #[test]
+  fn accepts_one_step_per_sobol_dimension() {
+    let plain = BrownianBridgeQmc::new(MAX_DIMENSIONS, 1.0);
+    let scrambled = BrownianBridgeQmc::scrambled(MAX_DIMENSIONS, 1.0, &Deterministic::new(1));
+    assert_eq!(
+      (plain.steps(), scrambled.steps()),
+      (MAX_DIMENSIONS, MAX_DIMENSIONS)
+    );
+  }
+
+  fn bits(path: ndarray::ArrayView1<'_, f64>) -> Vec<String> {
+    path
+      .iter()
+      .map(|x| format!("{:016x}", x.to_bits()))
+      .collect()
+  }
+
+  /// Golden bits of a plain path: the bridge schedule, `ndtri` and the Sobol order together fix every QMC estimate.
+  #[test]
+  fn a_plain_path_is_pinned_bit_for_bit() {
+    let w = BrownianBridgeQmc::new(8, 1.0).paths::<f64>(4);
+    assert_eq!(
+      bits(w.row(3)),
+      [
+        "bfba5da976cdfda7",
+        "bfa7e44c6bc5fbdc",
+        "bfde1864b525a47e",
+        "bfd464965bdc7eb0",
+        "bfc8f3eed63c1116",
+        "3fb68bcace3ab3c8",
+        "3fc60e05d8a83912",
+        "bfd464965bdc7eb0",
+      ]
+    );
+  }
+
+  /// Golden bits of a scrambled path: the scramble stream joins the schedule, `ndtri` and the Sobol order.
+  #[test]
+  fn a_scrambled_path_is_pinned_bit_for_bit() {
+    let w = BrownianBridgeQmc::scrambled(8, 1.0, &Deterministic::new(11)).paths::<f64>(1);
+    assert_eq!(
+      bits(w.row(0)),
+      [
+        "3fbb0ef2f7909514",
+        "bfc84ca6b6e4b94a",
+        "3fc2f1dac650985e",
+        "3fd3ca3331f4436a",
+        "bf9e9b0ece13c389",
+        "bfd8445419bef1c8",
+        "bfd22861b1761574",
+        "bfb6aaf00e4fd3d4",
+      ]
+    );
   }
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyBrownianBridgeQmc {
   inner: BrownianBridgeQmc,

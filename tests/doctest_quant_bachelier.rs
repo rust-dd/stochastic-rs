@@ -1,9 +1,9 @@
 // docs: quant#bachelier-normal-model-and-implied-normal-volatility
 //! Backs the Bachelier example on the quant catalog page.
 
+use stochastic_rs::quant::OptionType;
 use stochastic_rs::quant::pricing::bachelier::BachelierPricer;
 use stochastic_rs::quant::pricing::bachelier::normal_implied_volatility;
-use stochastic_rs::quant::types::OptionType;
 use stochastic_rs::traits::ModelPricer;
 
 #[test]

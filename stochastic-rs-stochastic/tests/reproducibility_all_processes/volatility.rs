@@ -168,7 +168,7 @@ guard!(heston_slv, "HestonSlv", |s| HestonSlv::new(
   -0.7,
   0.05,
   0.6,
-  Expr::lit(0.8) + Expr::x() * 0.002,
+  (Expr::lit(0.8) + Expr::x() * 0.002).compile().unwrap(),
   N,
   Some(1.0),
   s

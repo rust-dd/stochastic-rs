@@ -3,354 +3,406 @@
 //! $$
 //! C_{\rho,\nu}(u,v) = T_{\rho,\nu}\!\big(t_\nu^{-1}(u),\, t_\nu^{-1}(v)\big),
 //! $$
-//! where $T_{\rho,\nu}$ is the bivariate Student-t CDF with correlation
-//! $\rho \in (-1, 1)$ and degrees of freedom $\nu > 0$, and $t_\nu^{-1}$
-//! the univariate Student-t quantile.
-//!
-//! - **Kendall's tau:** $\tau = \tfrac{2}{\pi}\arcsin\rho$ (same as Gaussian).
-//! - **Tail dependence:** $\lambda_U = \lambda_L = 2\, t_{\nu+1}\!\big(
-//!   -\sqrt{(\nu+1)(1-\rho)/(1+\rho)}\big)$ — symmetric and strictly
-//!   positive for finite $\nu$, in contrast to Gaussian.
-//!
-//! In the limit $\nu \to \infty$ the t-copula collapses to the Gaussian
-//! copula.
-//!
-//! The bivariate CDF is evaluated through the Dunnett-Sobel (1955) 1D
-//! reduction
-//! $$
-//! T_{\rho,\nu}(h, k) = \int_{-\infty}^{h} t_\nu(s)\, T_{\nu+1}\!\Bigg(
-//! \frac{k - \rho s}{\sqrt{1-\rho^2}} \sqrt{\frac{\nu+1}{\nu+s^2}}
-//! \Bigg) ds,
-//! $$
-//! with the substitution $u = F_\nu(s)$ collapsing the half-infinite range
-//! to $[0, F_\nu(h)]$; Gauss-Legendre on 64 nodes delivers $\sim
-//! 10^{-10}$ accuracy across $\nu \in [2, 30]$.
+//! $T_{\rho,\nu}$ is the bivariate Student-t cdf of correlation $\rho$, $t_\nu^{-1}$ the quantile;
+//! $\nu \to \infty$ gives the Gaussian copula, and `cdf.rs` evaluates $T_{\rho,\nu}$.
 //!
 //! Reference: Embrechts, P., Lindskog, F., McNeil, A.J. (2003),
 //! "Modelling Dependence with Copulas and Applications to Risk
 //! Management", in *Handbook of Heavy Tailed Distributions in Finance*,
 //! Elsevier, ch. 8.
-//! Reference: Dunnett, C.W., Sobel, M. (1955), "Approximations to the
-//! probability integral and certain percentage points of a multivariate
-//! analogue of Student's t-distribution", *Biometrika* 42(1/2), 258-260.
+//! Reference: Aas, K., Czado, C., Frigessi, A., Bakken, H. (2009), "Pair-copula constructions of multiple dependence", *Insurance: Mathematics and Economics* 44(2), 182-198, App. B.2 (the h-function inverse), DOI 10.1016/j.insmatheco.2007.02.001.
 
-use std::error::Error;
-use std::f64;
-
-use gauss_quad::GaussLegendre;
 use ndarray::Array1;
-use ndarray::Array2;
-use stochastic_rs_distributions::special::beta_i;
-use stochastic_rs_distributions::special::ln_gamma;
-use stochastic_rs_distributions::special::ndtri;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 
-use crate::bivariate::CopulaType;
+use crate::bivariate::BivariateFamily;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::copula_cdf;
+use crate::bivariate::conditional::copula_pdf;
+use crate::bivariate::conditional::level_difference;
+use crate::bivariate::conditional::level_sum;
+use crate::bivariate::conditional::on_open_square;
+use crate::bivariate::gaussian::GaussianCopula;
+use crate::bivariate::t_copula::cdf::BivariateT;
+use crate::error::CopulaError;
+use crate::student_t;
+use crate::student_t::Law;
+use crate::student_t::NORMAL_ABOVE;
+use crate::student_t::Score;
+use crate::student_t::TDensity;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::admitted;
+use crate::traits::bivariate::checked_percent_point;
+use crate::traits::bivariate::tau_out_of_range;
+
+/// Below this a quantile's square, `ν` added, stays finite: past it the h-function and its inverse take logarithms.
+const LARGE: f64 = 1e150;
 
 #[derive(Debug, Clone)]
 pub struct TCopula {
-  pub r#type: CopulaType,
-  /// Correlation $\rho \in (-1, 1)$, stored under the trait's `theta`
-  /// field for single-parameter compatibility. Set degrees of freedom
-  /// `nu` via [`TCopula::with_nu`].
-  pub theta: Option<f64>,
-  pub tau: Option<f64>,
-  pub theta_bounds: (f64, f64),
-  pub invalid_thetas: Vec<f64>,
-  /// Degrees of freedom $\nu > 0$. Default 4. Private and validated — read
-  /// via [`TCopula::nu`], write via [`TCopula::set_nu`].
+  theta: Option<f64>,
   nu: f64,
 }
 
 impl Default for TCopula {
   fn default() -> Self {
     Self {
-      r#type: CopulaType::TCopula,
       theta: None,
-      tau: None,
-      theta_bounds: (-1.0, 1.0),
-      // Mirrors `GaussianCopula`'s own `invalid_thetas`: `rho = ±1` divides
-      // by `sqrt(1 - rho^2)` in `pdf` (and, less directly, in
-      // `partial_derivative`/`percent_point`), so it is rejected the same
-      // way here rather than silently producing `NaN`.
-      invalid_thetas: vec![-1.0, 1.0],
       nu: 4.0,
     }
   }
 }
 
 impl TCopula {
-  pub fn new() -> Self {
-    Self::default()
+  /// A t copula with correlation `rho` and `nu` degrees of freedom; panics unless `-1 < rho < 1`
+  /// and `nu` passes `check_nu` (`0 < nu < ∞`, `nu / 2 > 0`).
+  pub fn new(rho: f64, nu: f64) -> Self {
+    Self::try_new(rho, nu).unwrap_or_else(|e| panic!("{e}"))
   }
 
-  /// Construct with explicit degrees of freedom.
-  pub fn with_nu(nu: f64) -> Self {
-    let mut c = Self::default();
-    if let Err(e) = c.set_nu(nu) {
-      panic!("nu must be positive, got {nu}: {e}");
-    }
-    c
+  /// `new` with the domain error returned instead of a panic.
+  pub fn try_new(rho: f64, nu: f64) -> Result<Self, CopulaError> {
+    student_t::check_nu(nu)?;
+    let copula = Self {
+      theta: Some(rho),
+      nu,
+    };
+    copula.check_theta()?;
+    Ok(copula)
   }
 
-  /// Current degrees of freedom $\nu$.
+  /// The t copula whose Kendall's τ is `tau`, at `nu` degrees of freedom.
+  pub fn from_tau(tau: f64, nu: f64) -> Result<Self, CopulaError> {
+    Self::try_new(Self::default().theta_from_tau(tau)?, nu)
+  }
+
   pub fn nu(&self) -> f64 {
     self.nu
   }
 
-  /// Override the degrees of freedom. Mirrors the feature-gated
-  /// `TMultivariate::set_nu`; returns an error instead of silently
-  /// accepting a value (e.g. negative or NaN) that produces NaN downstream.
-  pub fn set_nu(&mut self, nu: f64) -> Result<(), Box<dyn Error>> {
-    if nu <= 0.0 || nu.is_nan() {
-      return Err("Degrees of freedom must be positive".into());
-    }
+  /// Panics under the rule of `check_nu`: unless `0 < nu < ∞` and `nu / 2 > 0`.
+  pub fn set_nu(&mut self, nu: f64) {
+    student_t::check_nu(nu).unwrap_or_else(|e| panic!("{e}"));
     self.nu = nu;
-    Ok(())
   }
 
-  /// Standard Student-t density $f_\nu(x)$.
-  fn t_pdf(x: f64, nu: f64) -> f64 {
-    let log_norm =
-      ln_gamma(0.5 * (nu + 1.0)) - 0.5 * (nu * std::f64::consts::PI).ln() - ln_gamma(0.5 * nu);
-    let log_kernel = -0.5 * (nu + 1.0) * (1.0 + x * x / nu).ln();
-    (log_norm + log_kernel).exp()
-  }
-
-  /// Standard Student-t CDF $F_\nu(x)$ via the regularised incomplete-beta
-  /// identity $F_\nu(x) = 1 - \tfrac{1}{2} I_{\nu/(\nu+x^2)}(\nu/2, 1/2)$
-  /// for $x \ge 0$.
-  /// Reference: Abramowitz, M., Stegun, I.A. (1964), "Handbook of
-  /// Mathematical Functions", formula 26.7.1.
-  fn t_cdf(x: f64, nu: f64) -> f64 {
-    if !x.is_finite() {
-      return if x > 0.0 { 1.0 } else { 0.0 };
-    }
-    let t = nu / (nu + x * x);
-    let half = 0.5 * beta_i(0.5 * nu, 0.5, t);
-    if x >= 0.0 { 1.0 - half } else { half }
-  }
-
-  /// Quantile $t_\nu^{-1}(p)$: Cornish-Fisher-style normal seed refined by
-  /// 40 Newton steps on `[0, 1]`. Identical to the routine in
-  /// `stochastic_rs_distributions::studentt::SimdStudentT::inv_cdf`.
-  fn t_quantile(p: f64, nu: f64) -> f64 {
-    if p <= 0.0 {
-      return f64::NEG_INFINITY;
-    }
-    if p >= 1.0 {
-      return f64::INFINITY;
-    }
-    let z = ndtri(p);
-    let mut x = z * (1.0 + (z * z + 1.0) / (4.0 * nu));
-    for _ in 0..40 {
-      let cdf = Self::t_cdf(x, nu);
-      let f = cdf - p;
-      let pdf = Self::t_pdf(x, nu);
-      if pdf <= 0.0 {
-        break;
+  /// `u = t_ν(t_{ν+1}⁻¹(y)√((ν + x²)(1 − ρ²)/(ν + 1)) + ρx)`, `x = t_ν⁻¹(v)`, in logarithms where a quantile passes
+  /// `LARGE`, and the two-point law the `v → 0, 1` limit of `∂_v C` leaves at the edges.
+  pub(crate) fn inverse(rho: f64, nu: f64) -> impl Fn(f64, f64) -> f64 {
+    let (law, wide) = (Law::new(nu), Law::new(nu + 1.0));
+    let one_minus_rho2 = (1.0 - rho) * (1.0 + rho);
+    let edge = rho * ((nu + 1.0) / one_minus_rho2).sqrt();
+    let ln_spread = 0.5 * (one_minus_rho2 / (nu + 1.0)).ln();
+    move |y, v| {
+      let (x, q) = (law.quantile(v), wide.quantile(y));
+      if v <= 0.0 || v >= 1.0 {
+        return if y < 1.0 && q.value <= -x.value.signum() * edge {
+          0.0
+        } else {
+          1.0
+        };
       }
-      let dx = f / pdf;
-      let new_x = x - dx;
-      if (new_x - x).abs() < 1e-14 * (1.0 + x.abs()) {
-        return new_x;
+      if x.value.abs() < LARGE && q.value.is_finite() {
+        let scale = ((nu + x.value * x.value) * one_minus_rho2 / (nu + 1.0)).sqrt();
+        return law.cdf_at(q.value * scale + rho * x.value);
       }
-      x = new_x;
-    }
-    x
-  }
-
-  /// Bivariate Student-t CDF $T_{\rho,\nu}(h, k)$ via Dunnett-Sobel
-  /// 1D reduction with $u = F_\nu(s)$ change-of-variable.
-  fn bivariate_t_cdf(h: f64, k: f64, rho: f64, nu: f64) -> f64 {
-    // Degenerate marginals.
-    let f_h = Self::t_cdf(h, nu);
-    if f_h <= 0.0 {
-      return 0.0;
-    }
-    if rho.abs() >= 1.0 - 1e-12 {
-      return if rho > 0.0 {
-        f_h.min(Self::t_cdf(k, nu))
+      if x.value.abs() < LARGE {
+        let ln_scale = 0.5 * (nu + x.value * x.value).ln() + ln_spread;
+        return law.cdf(q.value.signum(), q.ln_abs() + ln_scale);
+      }
+      // `B = xw`, `w = ρ + sgn(x) q √((1 + ν/x²)(1 − ρ²)/(ν + 1))`, whose `ν/x²` is below every rounding unit here.
+      let (sign_w, ln_w) = if q.value.is_finite() {
+        let w = rho + x.value.signum() * q.value * ln_spread.exp();
+        (w.signum(), w.abs().ln())
       } else {
-        (f_h + Self::t_cdf(k, nu) - 1.0).max(0.0)
+        (x.value.signum() * q.value.signum(), q.ln_abs() + ln_spread)
       };
+      law.cdf_scaled(x, x.value.signum() * sign_w, ln_w)
     }
-    let one_minus_rho2 = 1.0 - rho * rho;
-    let nu_plus_one = nu + 1.0;
-    let sqrt_one_minus_rho2 = one_minus_rho2.sqrt();
-    let quad = GaussLegendre::new(std::num::NonZeroUsize::new(64).unwrap());
-    quad.integrate(0.0, f_h, |u| {
-      let s = Self::t_quantile(u, nu);
-      let scale = (nu_plus_one / (nu + s * s)).sqrt() / sqrt_one_minus_rho2;
-      Self::t_cdf((k - rho * s) * scale, nu_plus_one)
-    })
   }
 
-  /// Bivariate Student-t density $f_{\rho,\nu}(x, y)$.
-  fn bivariate_t_pdf(x: f64, y: f64, rho: f64, nu: f64) -> f64 {
-    let one_minus_rho2 = 1.0 - rho * rho;
-    let log_norm = ln_gamma(0.5 * (nu + 2.0))
-      - ln_gamma(0.5 * nu)
-      - (nu * std::f64::consts::PI).ln()
-      - 0.5 * one_minus_rho2.ln();
-    let q = (x * x - 2.0 * rho * x * y + y * y) / (nu * one_minus_rho2);
-    let log_kernel = -0.5 * (nu + 2.0) * (1.0 + q).ln();
-    (log_norm + log_kernel).exp()
+  /// `∂_v C = t_{ν+1}((x − ρy)√((ν + 1)/((ν + y²)(1 − ρ²))))`, `x, y = t_ν⁻¹(u), t_ν⁻¹(v)`, in logarithms past `LARGE`; on
+  /// the open square the Gaussian copula's from `NORMAL_ABOVE`, at `v ∈ {0, 1}` the limit `t_{ν+1}(±ρ√((ν + 1)/(1 − ρ²)))`.
+  pub(crate) fn h(rho: f64, nu: f64) -> impl Fn(f64, f64) -> f64 {
+    let gaussian = GaussianCopula::h(rho);
+    let (law, wide) = (Law::new(nu), Law::new(nu + 1.0));
+    let sqrt_one_minus_rho2 = ((1.0 - rho) * (1.0 + rho)).sqrt();
+    let nu_plus_one = nu + 1.0;
+    let boundary_arg = rho * nu_plus_one.sqrt() / sqrt_one_minus_rho2;
+    let reach = nu_plus_one.sqrt() / sqrt_one_minus_rho2;
+    move |u, v| {
+      if u >= 1.0 {
+        return 1.0;
+      }
+      if v <= 0.0 || v >= 1.0 {
+        return wide.cdf_at(if v <= 0.0 {
+          boundary_arg
+        } else {
+          -boundary_arg
+        });
+      }
+      if u <= 0.0 {
+        return 0.0;
+      }
+      if nu >= NORMAL_ABOVE {
+        return gaussian(u, v);
+      }
+      let (x, y) = (law.quantile(u), law.quantile(v));
+      if x.value.is_finite() && y.value.abs() < LARGE {
+        let scale = (nu_plus_one / (nu + y.value * y.value)).sqrt() / sqrt_one_minus_rho2;
+        let gap = Self::shifted_gap(&law, (rho, nu, scale), (u, v, x, y));
+        // At the median a tiny `ν` overflows the scale: the argument is 0 there.
+        if gap == 0.0 {
+          return wide.cdf_at(0.0);
+        }
+        return wide.cdf_at(gap * scale);
+      }
+      // `x/√(ν + y²)` and `y/√(ν + y²)` from the logarithms; past `f64::MAX` the first carries the argument alone.
+      let (ln_x_over_root, y_over_root, logs) = if y.value.abs() < LARGE {
+        let root = (nu + y.value * y.value).sqrt();
+        (x.ln_abs() - root.ln(), y.value / root, None)
+      } else {
+        let lift = 0.5 * (nu * (-2.0 * y.ln_abs()).exp()).ln_1p();
+        let ln_ratio = law.ln_ratio(x, y);
+        (
+          ln_ratio - lift,
+          y.value.signum() * (-lift).exp(),
+          Some((ln_ratio, lift)),
+        )
+      };
+      let ratio = x.value.signum() * ln_x_over_root.exp();
+      if ratio.is_finite() {
+        let gap = match logs {
+          // Where the signs and `ρ` cancel, `(|x| − |ρy|)/√(ν + y²) = e^{−lift}(expm1(ln|x/y|) + (1 − |ρ|))`.
+          Some((ln_ratio, lift)) if x.value.signum() * y.value.signum() == rho.signum() => {
+            x.value.signum() * (-lift).exp() * (ln_ratio.exp_m1() + (1.0 - rho.abs()))
+          }
+          _ => ratio - rho * y_over_root,
+        };
+        wide.cdf_at(gap * reach)
+      } else {
+        wide.cdf(x.value.signum(), ln_x_over_root + reach.ln())
+      }
+    }
+  }
+
+  /// `x − ρy`, as `(x − y) + (1 − ρ)y` (`(x + y) − (1 + ρ)y` at `ρ < 0`) from the law's gaps where that form's rounding,
+  /// `|x ∓ y| + (1 − |ρ|)r_y`, is a quarter of the plain `r_x + |ρ|r_y` (`r`, `rounding`) or less, which carried passes `150ε`.
+  fn shifted_gap(
+    law: &Law,
+    (rho, nu, scale): (f64, f64, f64),
+    cell: (f64, f64, Score, Score),
+  ) -> f64 {
+    let (u, v, x, y) = cell;
+    let plain = x.value - rho * y.value;
+    let (rx, ry) = (
+      Self::rounding(law, u, x.value),
+      Self::rounding(law, v, y.value),
+    );
+    let size = rx + rho.abs() * ry;
+    let shifted = if rho > 0.0 {
+      x.value - y.value
+    } else {
+      x.value + y.value
+    }
+    .abs()
+      + (1.0 - rho.abs()) * ry;
+    // The slope `f/F` of `t_{ν+1}` at `z` is below `|z| + 1` and below `(ν + 1)/|z|`, its limit in the lower tail.
+    let z = (plain * scale).abs();
+    if rho == 0.0 || size * scale * (z + 1.0).min((nu + 1.0) / z) <= 150.0 || 4.0 * shifted > size {
+      plain
+    } else if rho > 0.0 {
+      Self::difference(law, (nu, rx + ry), cell) + (1.0 - rho) * y.value
+    } else {
+      Self::sum(law, (nu, rx + ry), cell) - (1.0 + rho) * y.value
+    }
+  }
+
+  /// `|q| + min(p, 1 − p)/f(q)`: a quantile's rounding, its own and what the law's rounding of `p` moves it, which near the
+  /// median outgrows `|q|`.
+  fn rounding(law: &Law, p: f64, q: f64) -> f64 {
+    q.abs() + p.min(1.0 - p) / law.ln_pdf(q).exp()
+  }
+
+  /// `ln f(b)` where `quantile_gap`'s Gauss–Legendre mass holds over the gap `d` from `a` to `b`: within a quarter of the
+  /// density's scale `√(ν + a²)`, and the density normal at `a` and within a factor `e` at `b`.
+  fn integrable(law: &Law, nu: f64, (a, b): (f64, f64), d: f64) -> Option<f64> {
+    let (ln_a, ln_b) = (law.ln_pdf(a), law.ln_pdf(b));
+    let holds =
+      d.abs() <= 0.25 * (nu + a * a).sqrt() && ln_a > -700.0 && (ln_a - ln_b).abs() <= 1.0;
+    holds.then_some(ln_b)
+  }
+
+  /// `x − y` from the tails where both quantiles have one, else from the exact level gap where it is `integrable` and its
+  /// rounding over the density beats `size`.
+  fn difference(law: &Law, (nu, size): (f64, f64), (u, v, x, y): (f64, f64, Score, Score)) -> f64 {
+    if let Some(gap) = law.tail_gap(x, y).filter(|_| x.sign() == y.sign()) {
+      return x.sign() * gap;
+    }
+    let threshold = |anchor: f64, partner: f64| {
+      Self::integrable(law, nu, (anchor, partner), anchor - partner)
+        .map_or(f64::NEG_INFINITY, |ln_f| size.ln() + ln_f)
+    };
+    let solve = |anchor, level, gap, start| law.quantile_gap(anchor, level, gap, start);
+    let gap = level_difference((u, v, x.value, y.value), threshold, solve);
+    if gap.is_finite() {
+      gap
+    } else {
+      x.value - y.value
+    }
+  }
+
+  /// `x + y` alike, from the exact `u + v − 1`, where the levels lie in opposite halves or the gap's rounding beats `size`.
+  fn sum(law: &Law, (nu, size): (f64, f64), (u, v, x, y): (f64, f64, Score, Score)) -> f64 {
+    if let Some(gap) = law.tail_gap(y, x).filter(|_| x.sign() != y.sign()) {
+      return y.sign() * gap;
+    }
+    let admit = |plain, gap: f64, score, other| {
+      Self::integrable(law, nu, (score, other), plain)
+        .is_some_and(|ln_f| u.min(v) <= 0.5 && 0.5 <= u.max(v) || gap.abs().ln() < size.ln() + ln_f)
+    };
+    let solve = |score, level, gap, start| law.quantile_gap(score, level, gap, start);
+    let gap = level_sum((u, v, x.value, y.value), admit, solve);
+    if gap.is_finite() {
+      gap
+    } else {
+      x.value + y.value
+    }
+  }
+
+  /// `ln c` on the open square: the Gaussian copula's past `NORMAL_ABOVE`, else `TDensity::moderate` at the law's scores,
+  /// else `student_t::ln_density` at their features, whose gap stays exact past `f64::MAX`.
+  fn ln_density(&self) -> impl Fn(f64, f64) -> f64 {
+    Self::ln_density_at(self.theta.unwrap(), self.nu)
+  }
+
+  /// `TCopula::ln_density` at `(ρ, ν)`, the vines' Student-t pair density.
+  pub(crate) fn ln_density_at(rho: f64, nu: f64) -> impl Fn(f64, f64) -> f64 {
+    let (law, density) = (Law::new(nu), TDensity::new(rho, nu));
+    move |u, v| {
+      if nu >= NORMAL_ABOVE {
+        return GaussianCopula::ln_density(rho, u, v);
+      }
+      let (sx, sy) = (law.quantile(u), law.quantile(v));
+      if let Some(ln_c) = density.moderate(sx.value, sy.value) {
+        return ln_c;
+      }
+      let (fx, fy) = (law.feature(sx), law.feature(sy));
+      student_t::ln_density(&fx, &fy, law.abs_t_gap(&fx, &fy), rho, nu)
+    }
+  }
+
+  /// `TCopula::inverse` (Aas et al. App. B.2).
+  fn unchecked_inverse(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    Ok(conditional_quantiles(
+      y,
+      v,
+      Self::inverse(self.theta.unwrap(), self.nu),
+    ))
   }
 }
 
 impl BivariateExt for TCopula {
-  fn r#type(&self) -> CopulaType {
-    self.r#type
-  }
-
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn set_tau(&mut self, tau: f64) {
-    self.tau = Some(tau);
+  fn family(&self) -> BivariateFamily {
+    BivariateFamily::TCopula
   }
 
   fn theta(&self) -> Option<f64> {
     self.theta
   }
 
-  fn theta_bounds(&self) -> (f64, f64) {
-    self.theta_bounds
-  }
-
-  fn invalid_thetas(&self) -> Vec<f64> {
-    self.invalid_thetas.clone()
-  }
-
   fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
     self.theta = Some(theta);
   }
 
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn theta_bounds(&self) -> (f64, f64) {
+    (-1.0, 1.0)
+  }
+
+  /// `ρ = ±1` divides by `√(1 − ρ²)`.
+  fn invalid_thetas(&self) -> Vec<f64> {
+    vec![-1.0, 1.0]
+  }
+
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let rho = self.theta.unwrap();
-    let nu = self.nu;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      if u <= 0.0 || u >= 1.0 || v <= 0.0 || v >= 1.0 {
-        out[i] = 0.0;
-        continue;
-      }
-      let xx = Self::t_quantile(u, nu);
-      let yy = Self::t_quantile(v, nu);
-      let num = Self::bivariate_t_pdf(xx, yy, rho, nu);
-      let den = Self::t_pdf(xx, nu) * Self::t_pdf(yy, nu);
-      out[i] = num / den;
-    }
-    Ok(out)
+    copula_pdf(x, self.ln_density())
   }
 
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let rho = self.theta.unwrap();
-    let nu = self.nu;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      if u <= 0.0 || v <= 0.0 {
-        out[i] = 0.0;
-        continue;
-      }
-      if u >= 1.0 {
-        out[i] = v;
-        continue;
-      }
-      if v >= 1.0 {
-        out[i] = u;
-        continue;
-      }
-      let xx = Self::t_quantile(u, nu);
-      let yy = Self::t_quantile(v, nu);
-      out[i] = Self::bivariate_t_cdf(xx, yy, rho, nu);
-    }
-    Ok(out)
+    on_open_square(x, self.ln_density())
   }
 
-  /// $\partial_v C(u,v) = T_{\nu+1}\!\Big(\frac{x - \rho y}{\sqrt{1-\rho^2}}
-  /// \sqrt{\frac{\nu+1}{\nu+y^2}}\Big)$ where $x = t_\nu^{-1}(u),\,
-  /// y = t_\nu^{-1}(v)$.
-  ///
-  /// At the `v \to 0^+/1^-` boundary, `y \to \mp\infty`, and — unlike the
-  /// Gaussian copula — the scale factor `\sqrt{(\nu+1)/(\nu+y^2)}` shrinks
-  /// like `O(1/|y|)` at the same rate `y` diverges, so the `x`-term
-  /// vanishes while `-\rho y \cdot \sqrt{(\nu+1)/(\nu+y^2)} \to
-  /// \pm\rho\sqrt{\nu+1}` stays finite: the whole expression converges to
-  /// `\mp\rho\sqrt{\nu+1}/\sqrt{1-\rho^2}`, independent of `u`. Hardcoding
-  /// `0.0`/`1.0` (only correct in the sub-limit `\rho \to \pm1`) is wrong
-  /// for every finite `\rho`; this closed form was verified against the
-  /// raw formula by taking `y \to -\infty` directly (bypassing the
-  /// quantile inversion's precision loss at extreme probabilities), giving
-  /// agreement to `1e-16` relative and tighter as `|y|` grows further,
-  /// across `\nu \in \{3,10,30,100\}` and both signs of `\rho`.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  /// To a relative `1e-12`; the Gaussian copula from `ν = 1e22`, `pM + (1 − p)W` below `ν = 1e-30`.
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let rho = self.theta.unwrap();
-    let nu = self.nu;
-    let one_minus_rho2 = 1.0 - rho * rho;
-    let sqrt_one_minus_rho2 = one_minus_rho2.sqrt();
-    let nu_plus_one = nu + 1.0;
-    let boundary_arg = rho * nu_plus_one.sqrt() / sqrt_one_minus_rho2;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      if v <= 0.0 {
-        out[i] = Self::t_cdf(boundary_arg, nu_plus_one);
-        continue;
-      }
-      if v >= 1.0 {
-        out[i] = Self::t_cdf(-boundary_arg, nu_plus_one);
-        continue;
-      }
-      let xx = Self::t_quantile(u, nu);
-      let yy = Self::t_quantile(v, nu);
-      let scale = (nu_plus_one / (nu + yy * yy)).sqrt() / sqrt_one_minus_rho2;
-      out[i] = Self::t_cdf((xx - rho * yy) * scale, nu_plus_one);
+    let bivariate = BivariateT::new(self.theta.unwrap(), self.nu);
+    copula_cdf(x, |u, v| bivariate.copula_cdf(u, v))
+  }
+
+  /// `TCopula::h`.
+  fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    conditional_cdf(x, Self::h(self.theta.unwrap(), self.nu))
+  }
+
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    checked_percent_point(self, y, v, Self::unchecked_inverse)
+  }
+
+  fn percent_point_unchecked(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_inverse(y, v))
+  }
+
+  fn tau_from_theta(&self, theta: f64) -> f64 {
+    2.0 / std::f64::consts::PI * theta.asin()
+  }
+
+  fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
+    if !(tau > -1.0 && tau < 1.0) {
+      return Err(tau_out_of_range(tau, "-1.0 < tau < 1.0".into()));
     }
-    Ok(out)
+    // `ρ` rounds onto the excluded `±1` once `|τ| > 1 − 6e-9`.
+    admitted(self, tau, (std::f64::consts::FRAC_PI_2 * tau).sin())
   }
 
-  /// Closed-form Kendall's tau inversion $\rho = \sin(\pi\tau/2)$.
-  fn compute_theta(&self) -> f64 {
-    let tau = self.tau.unwrap();
-    (0.5 * std::f64::consts::PI * tau).sin().clamp(-1.0, 1.0)
-  }
-
-  /// Symmetric tail dependence $\lambda_L = \lambda_U = 2\,t_{\nu+1}\!\big(
-  /// -\sqrt{(\nu+1)(1-\rho)/(1+\rho)}\big)$, strictly positive for every
-  /// finite $\nu$ and $\rho \in (-1,1)$ — in contrast to the Gaussian
-  /// copula's asymptotic independence
-  /// ([`crate::bivariate::gaussian::GaussianCopula`]).
+  /// $$
+  /// \lambda_L = \lambda_U = 2\,t_{\nu+1}\!\big(-\sqrt{(\nu+1)(1-\rho)/(1+\rho)}\big)
+  /// $$
+  /// Symmetric and positive for finite $\nu$; the Gaussian copula's are zero.
   /// Reference: Embrechts, Lindskog, McNeil (2003), §3.2 (module header).
-  fn tail_dependence(&self) -> TailDependence<f64> {
-    self.assert_theta_valid_for_tail_dependence();
+  fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
+    self.check_theta()?;
     let rho = self.theta.unwrap();
     let nu = self.nu;
     let arg = -(((nu + 1.0) * (1.0 - rho) / (1.0 + rho)).sqrt());
-    let lambda = 2.0 * Self::t_cdf(arg, nu + 1.0);
-    TailDependence {
+    let lambda = 2.0 * student_t::cdf(arg, nu + 1.0);
+    Ok(TailDependence {
       lower: lambda,
       upper: lambda,
-    }
+    })
   }
 }
+
+pub(crate) mod cdf;
+mod dunnett_sobel;
 
 #[cfg(test)]
 mod tests;

@@ -56,7 +56,8 @@ per-call mutable state and implementing `PathSampler<T>` (`src/traits/sampler.rs
 `type Output`, `sample_into(&mut self, out: &mut Self::Output)`, `sample(&mut self)
 -> Self::Output` (allocate via `crate::buffer::array1_from_fill(n, |out| ..)`).
 `ProcessExt<T>` then needs only `type Output`, `type Sampler<'s>` and `fn sampler(&self)
--> Self::Sampler<'_>`.
+-> Self::Sampler<'_>`. Both traits are sealed: write `impl<…> crate::traits::Sealed for Foo<…> {}`
+and `… for FooSampler<…> {}` with the impl's own generics directly above each impl.
 
 **Seed derivation — read the "Reproducibility requirement on implementors" block
 on `ProcessExt` in `src/traits/process.rs` before writing `sampler()`.** Its rules:
@@ -94,11 +95,12 @@ with a one-line grep — a wrapped `backend_switch!` call is invisible to it.
 Never hand-write a kernel: the CUDA and Metal bodies are generated (`grep -c "family =="
 src/euler/{cuda,metal}.rs` → `0` for both).
 
-**2a. Declare the family** in the table `src/euler/families.rs`, appended in code
-order with the next free integer code. Read that file's module doc — it is the DSL
-specification. The generator `euler_families!` lives in `src/euler/families/codegen.rs`
-(pulled in with `#[macro_use]`, not a `use`, because the generated child modules
-recurse into it); the vocabulary pair is in `src/euler/families/vocabulary.rs`.
+**2a. Declare the family** in the fitting chunk of `src/euler/families/definitions/`,
+with the next free integer code. Read the module doc of `src/euler/families.rs` — it
+is the DSL specification. The host and CUDA generator `euler_families!` lives in
+`src/euler/families/codegen.rs`; the Metal kernel crate expands the same declarations
+in `stochastic-rs-metal-kernels/src/euler/families/codegen.rs`. The vocabulary pair is
+in `src/euler/families/vocabulary.rs`, mirrored by the kernel crate's `vocabulary.rs`.
 
 ```rust
   /// `dX = θ(μ − X) dt + σ dW`.
@@ -121,8 +123,8 @@ with `bind name = expr;` lines. A step reads `x` (its own state names), `dt`, it
 names, its parameters, plus `ct`/`ct1`..`ct7`, `nj`, `js`, `gm`, `gm2`, `u`, `u2`, `lv`,
 `cv`, `sj`, `iv`.
 Vocabulary: `sqrt exp ln pow abs negate tanh atan sin recip positive max min lit less
-leq geq pick` — a **new** intrinsic goes into both implementations in
-`vocabulary.rs` (host `ops`, `C_PRELUDE`).
+leq geq pick` — a **new** intrinsic goes into host `ops` and `C_PRELUDE` in
+`vocabulary.rs` and into `stochastic-rs-metal-kernels/src/euler/vocabulary.rs`.
 
 Traps, each learned from a real failure:
 
@@ -140,7 +142,7 @@ Traps, each learned from a real failure:
   `RoughHestonMemory` has four states, two reports.
 
 **2b. The `EulerSpec` variant.** `src/euler.rs` carries one
-`pub enum EulerSpec<T: FloatExt>` variant per family (110 today, one-to-one) plus an
+`pub enum EulerSpec<T: FloatExt>` variant per family (121 today, one-to-one) plus an
 `encode()` arm — `(Family::Foo.code(), pad([theta, mu, sigma]))`, `pad` widening to
 `PARAM_SLOTS = 20`. Capacities: 4 state slots, 4 noise components, 20 parameters,
 `CURVE_SLOTS = 8` (`ct`, `ct1`..`ct7`), 2 uniforms `u`/`u2`, Poisson count `nj`, jump
@@ -166,7 +168,7 @@ table points, `CORRELATED_STREAMS = 4`.
 | `jump_intensity()` / `jump_sizes()` | default `None` | `JumpSizes` carries 7 laws |
 | `gamma_draws()` | default `None` | `GammaDraws { first, second }` |
 | `step_first()` | default `false` | `true` when the first grid point is itself a draw |
-| `fgn_spec()` | default `None` | `FgnSpec { sqrt_eigenvalues, n, offset, hurst, t, streams }` |
+| `fgn_spec()` | default `None` | `Some(self.fgn.fgn_spec(streams))` — the embedded `Fgn` builds the `FgnSpec` |
 | `lift_spec()` | default `None` | `LiftSpec { decay, weight, drift_scale, drift_boundary, diffusion_boundary, x0 }` |
 | `series_terms()` | default `None` | `Some(j)` terms per path for a family with a `series` clause — exactly when, the launch asserts both ways |
 | `table_spec()` | default `None` | `Some(TableSpec { points, u_max })` for a family with a `table` clause — same both-ways assert; `points ≤ TABLE_SLOTS` |
@@ -182,9 +184,10 @@ host fallback chunk-correct:
   }
 ```
 
-**2d. Nothing to dispatch by hand.** The C body the CUDA and Metal kernels
-render is generated from the table, family by family; there is no second
-kernel to keep in step.
+**2d. Regenerate the Metal kernels.** CUDA renders its C body from the declarations.
+Metal embeds precompiled Rust kernels: run `python3 scripts/generate-euler-kernels.py`,
+then `bash scripts/build-metal-kernels.sh` on Apple Silicon with the pinned `cargo-metal`
+toolchain, and commit the regenerated artifact. CI's `--check` rejects stale entries.
 
 **2e. `src/euler/family_parity.rs`.** `family_name`'s `match` has no wildcard, so
 a new `EulerSpec` variant fails to compile until it is named. Then add a probe to
@@ -197,11 +200,12 @@ jump law no other family reaches.
 
 **2f. A new *per-step value* is a frame change**, not a family addition: the
 matchers and expansions in `codegen.rs`, its four signature blocks, the
-`step_inputs(...)` invocation in `families.rs`, and the frame in
-`src/euler/kernel.rs`. Script it, and re-read the traps first.
+`step_inputs(...)` invocation in `families/definitions/mod.rs`, the C frame in
+`src/euler/kernel/`, and the Metal frame and `Inputs` in
+`stochastic-rs-metal-kernels/src/euler/`. Script it, and re-read the traps first.
 
 Verify §2: `cargo test -p stochastic-rs-stochastic --lib -- euler::families` renders
-every family into the C body, families counted by `grep -cE "^  [0-9]+ => " src/euler/families.rs`.
+every family into the C body, families counted by `cat src/euler/families/definitions/*.rs | grep -cE "^  [0-9]+ => "`.
 A probe needs no series or table work of its own: `Probe::series_terms` and
 `Probe::table_spec` answer from `Family::has_series()` / `has_table()`.
 
@@ -273,7 +277,7 @@ seed it advances is the process's own. Examples: `MultiGbmLaunch`, `McgnsLaunch`
 
 **4a. Device law** — `tests/device_law/<group>.rs`, declared
 `pub(crate) mod <group>;` inside the `mod device_law { .. }` block of
-`tests/device_law.rs`. The binary is gated `#![cfg(any(feature = "metal", feature =
+`tests/device_law.rs`. The binary is gated `#![cfg(any(all(feature = "metal", target_os = "macos"), feature =
 "cuda"))]` and is `f32` throughout. Groups — pick by what the comparison must allow for,
 not by source directory: `bounded`, `conditional_variance`, `curves`, `fractional`,
 `gaussian`, `jumps`, `levy`, `memory`, `rows`, `systems`. Helpers in
@@ -379,7 +383,9 @@ the same names with Rust types, in `new()`'s order.
 ```
 
 A process generic over a distribution has no monomorphic signature, so it gets a
-hand-written `#[pyclass]` fixing `D = CallableDist<T>` instead — see `PyMerton`.
+hand-written `#[pyclass]` fixing `D = CallableDist<T>` instead — see `PyMerton`. Put
+`#[doc(hidden)]` on the line above that `#[pyclass]` (the macros already carry it) and
+above any `pub use python::…` re-export of it; `tests/python_surface_hidden.rs` fails without it.
 
 Register in the single flat `#[pymodule]` of `stochastic-rs-py/src/lib.rs` (its only
 source file): a `use` in the `// Stochastic — <dir>` banner group, then
@@ -468,7 +474,7 @@ All three clippy runs matter, and the `cuda` one compiles on a machine with no G
 batch path, and a launch scalar added to one and not the others is an arity error only
 that build shows — the history/series/table scalars once shipped that way for three
 commits. A helper only device launches call is dead code in the no-feature build, so give it the crate's guard, as `flatten_curves` and `history_slot`
-in `euler.rs` have — `#[cfg_attr(not(any(feature = "cuda", feature = "metal")),
+in `euler.rs` have — `#[cfg_attr(not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
 allow(dead_code))]`. `src/lib.rs` carries
 `#![deny(rustdoc::broken_intra_doc_links)]`, so a mistyped `[`Foo`]` fails `cargo doc`
 rather than warning.
@@ -545,7 +551,7 @@ shrinks as the engine grows (empty today) — check the nine documented ways rou
    than a recursion gets a capability trait beside `FgnBackend`
    (`SheetBackend<T>` in `device.rs`), a `via sheet` switch arm, and one
    pipeline file per backend under its module (`sheet/fbs/{metal,cuda}.rs`)
-   reusing the fGN pipeline's butterflies, hash and bit-reverse table. The host
+   reusing the fGN pipeline's FFT stages, hash and bit reversal. The host
    devices route through the process's own sampler, so a fallback is
    bit-identical to the `Cpu` build, and `device_ready()` names what the
    kernels take (radix-2: embedding sides that are powers of two). This is
@@ -569,7 +575,7 @@ shrinks as the engine grows (empty today) — check the nine documented ways rou
 - [ ] `//!` header with the LaTeX SDE and the paper reference (title, authors, DOI/arXiv)
 - [ ] `pub` fields, `seed: S`, `backend: B = Cpu`, `Option<T>` optionals, `n >= 2` assert
 - [ ] `new(..)`, a `with_*` per field, `Default` at `n = 252`, `t = 1`; `pub mod` registered alphabetically
-- [ ] `#[doc(hidden)]` sampler implementing `PathSampler<T>`; `ProcessExt<T>` implementing only `sampler()`
+- [ ] `#[doc(hidden)]` sampler implementing `PathSampler<T>`; `ProcessExt<T>` implementing only `sampler()`; each impl preceded by its `crate::traits::Sealed` marker
 - [ ] `sampler()` derives (`self.seed.derive()`), constructs no `Unseeded`, races no shared atomic
 - [ ] `backend_switch!` with the right arm and **every** field named
 - [ ] Family declared in `families.rs`; the six DSL traps checked

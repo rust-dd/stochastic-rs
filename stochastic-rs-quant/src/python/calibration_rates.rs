@@ -48,16 +48,21 @@ pub struct PyHullWhiteSwaptionCalibrator {
   quotes: Vec<SwaptionQuote>,
   curve: DiscountCurve<f64>,
   notional: f64,
+  initial_rate: f64,
+  theta: f64,
 }
 
 #[pymethods]
 impl PyHullWhiteSwaptionCalibrator {
   /// `quotes` are `(expiry, tenor, black_vol, fixed_accrual, direction)`.
+  /// `initial_rate` and `theta` are the tree model's time-0 short rate and drift offset.
   #[new]
-  #[pyo3(signature = (quotes, curve, notional=1.0))]
+  #[pyo3(signature = (quotes, curve, initial_rate, theta, notional=1.0))]
   fn new(
     quotes: Vec<(f64, f64, f64, f64, String)>,
     curve: &PyDiscountCurve,
+    initial_rate: f64,
+    theta: f64,
     notional: f64,
   ) -> PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
@@ -65,6 +70,8 @@ impl PyHullWhiteSwaptionCalibrator {
         quotes: parse_quotes(quotes)?,
         curve: curve.inner.clone(),
         notional,
+        initial_rate,
+        theta,
       })
     })?
   }
@@ -75,7 +82,13 @@ impl PyHullWhiteSwaptionCalibrator {
   /// An iteration limit or nonfinite simplex costs returns `false`.
   #[pyo3(signature = (initial_guess=None))]
   fn calibrate(&self, initial_guess: Option<(f64, f64)>) -> PyResult<(f64, f64, f64, bool)> {
-    let calibrator = HullWhiteSwaptionCalibrator::new(&self.quotes, &self.curve, self.notional);
+    let calibrator = HullWhiteSwaptionCalibrator::new(
+      &self.quotes,
+      &self.curve,
+      self.notional,
+      self.initial_rate,
+      self.theta,
+    );
     let r = calibrator
       .calibrate(initial_guess)
       .map_err(as_value_error)?;

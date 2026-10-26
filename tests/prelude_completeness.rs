@@ -33,38 +33,26 @@ use stochastic_rs::prelude::Moneyness;
 use stochastic_rs::prelude::MultivariateExt;
 use stochastic_rs::prelude::OptionStyle;
 use stochastic_rs::prelude::OptionType;
-use stochastic_rs::prelude::PathSampler;
 use stochastic_rs::prelude::ProcessExt;
 use stochastic_rs::prelude::RealExt;
+use stochastic_rs::prelude::Seeded;
+use stochastic_rs::prelude::SimdDistribution;
 use stochastic_rs::prelude::SimdFloatExt;
+use stochastic_rs::prelude::SimdKernel;
 use stochastic_rs::prelude::TailDependence;
 use stochastic_rs::prelude::TimeExt;
 use stochastic_rs::prelude::ToModel;
 use stochastic_rs::prelude::VolterraKernel;
 
 #[test]
-fn all_twenty_five_documented_prelude_items_resolve() {
+fn all_twenty_seven_documented_prelude_items_resolve() {
   // The import above is the assertion: if it compiles, every name CLAUDE.md
   // and prelude.mdx list is still a real prelude export. Nothing to run.
 }
 
-/// The other half of the documented contract: a trait kept **out** of the
-/// prelude is still reachable via `stochastic_rs::traits::*`. CLAUDE.md says
-/// that for `CallableDist`, `GreeksExt` and the
-/// `Instrument`/`PricingEngine` four,
-/// and `prelude.mdx`'s "What is *not* in the prelude (and why)" section
-/// repeats it — but nothing forced the hub to keep the promise, and
-/// `ShortRatePricer` (half of the headline `ModelPricer`/`ShortRatePricer`
-/// pair) and `VanillaEuropeanCall` had both fallen through it, reachable only
-/// as the much longer `stochastic_rs::quant::traits::…`.
-///
-/// Every bullet of that section is named below, the two feature-gated ones
-/// behind the same gates the hub uses — so this compiles on a default build
-/// and still covers `MultivariateExt` / `CallableDist` when those features
-/// are on.
+/// A trait kept out of the prelude stays reachable via `stochastic_rs::traits::*`, as CLAUDE.md and
+/// `prelude.mdx` promise; every bullet of "What is *not* in the prelude" is named below.
 mod prelude_excluded_traits_stay_hub_reachable {
-  #[cfg(feature = "python")]
-  use stochastic_rs::traits::CallableDist;
   use stochastic_rs::traits::FgnBackend;
   use stochastic_rs::traits::GreeksExt;
   use stochastic_rs::traits::Instrument;

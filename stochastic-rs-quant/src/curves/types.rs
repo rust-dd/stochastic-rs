@@ -50,10 +50,10 @@ impl Compounding {
     }
   }
 
-  /// Convert a discount factor to a zero rate.
+  /// Convert a discount factor to a zero rate; NaN at a non-positive `tau`.
   pub fn zero_rate<T: RealExt>(&self, df: T, tau: T) -> T {
     if tau <= T::zero() {
-      return T::zero();
+      return T::nan();
     }
     match self {
       Self::Continuous => -df.ln() / tau,
@@ -92,10 +92,7 @@ impl Display for InterpolationMethod {
   }
 }
 
-/// Rate instrument type used in bootstrapping. Renamed in rc.2 from
-/// `Instrument` to `BootstrapInstrument` to disambiguate from the
-/// `crate::instruments::*` namespace; the old name is re-exported as a
-/// type alias from `curves::Instrument` for backward compatibility.
+/// A market quote the curve bootstrapper turns into a discount factor.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum BootstrapInstrument<T: RealExt> {
@@ -127,9 +124,6 @@ pub enum BootstrapInstrument<T: RealExt> {
   /// via `with_calendar`.
   SwapWithSchedule { rate: T, payment_times: Vec<T> },
 }
-
-/// Backward-compat alias. Prefer [`BootstrapInstrument`] in new code.
-pub type Instrument<T> = BootstrapInstrument<T>;
 
 impl<T: RealExt> BootstrapInstrument<T> {
   /// The maturity (or end date) of the instrument.
@@ -187,12 +181,12 @@ mod tests {
 
   #[test]
   fn instrument_maturity() {
-    let dep: Instrument<f64> = Instrument::Deposit {
+    let dep = BootstrapInstrument::<f64>::Deposit {
       maturity: 0.5,
       rate: 0.03,
     };
     assert_eq!(dep.maturity(), 0.5);
-    let fra: Instrument<f64> = Instrument::Fra {
+    let fra = BootstrapInstrument::<f64>::Fra {
       start: 0.5,
       end: 1.0,
       rate: 0.04,

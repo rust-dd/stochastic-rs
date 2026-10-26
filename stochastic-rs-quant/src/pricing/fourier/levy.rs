@@ -1,7 +1,7 @@
-//! Pure-jump Lévy and jump-diffusion Fourier models.
+//! Pure-jump Lévy and jump-diffusion Fourier models: Variance Gamma, CGMY, Merton jump-diffusion,
+//! Kou double-exponential and Normal Inverse Gaussian.
 //!
-//! Variance Gamma, CGMY, Merton jump-diffusion, Kou double-exponential, and
-//! Normal Inverse Gaussian.
+//! Cumulants of the jump parts: Cont & Tankov (2004), Financial Modelling with Jump Processes, Chapman & Hall/CRC, DOI 10.1201/9780203485217, Prop. 3.13 (κₙ = λ t E[Yⁿ]).
 
 use num_complex::Complex64;
 
@@ -34,11 +34,13 @@ impl FourierModelExt for VarianceGammaFourier {
     Cumulants {
       c1: (self.r - self.q + self.theta) * t,
       c2: (self.sigma.powi(2) + self.nu * self.theta.powi(2)) * t,
-      c4: 3.0
-        * (self.sigma.powi(4) * self.nu
-          + 2.0 * self.theta.powi(4) * self.nu.powi(3)
-          + 4.0 * self.sigma.powi(2) * self.theta.powi(2) * self.nu.powi(2))
-        * t,
+      c4: Some(
+        3.0
+          * (self.sigma.powi(4) * self.nu
+            + 2.0 * self.theta.powi(4) * self.nu.powi(3)
+            + 4.0 * self.sigma.powi(2) * self.theta.powi(2) * self.nu.powi(2))
+          * t,
+      ),
     }
   }
 }
@@ -84,10 +86,12 @@ impl FourierModelExt for CGMYFourier {
         * gamma_fn(2.0 - self.y)
         * (self.m.powf(self.y - 2.0) + self.g.powf(self.y - 2.0))
         * t,
-      c4: self.c
-        * gamma_fn(4.0 - self.y)
-        * (self.m.powf(self.y - 4.0) + self.g.powf(self.y - 4.0))
-        * t,
+      c4: Some(
+        self.c
+          * gamma_fn(4.0 - self.y)
+          * (self.m.powf(self.y - 4.0) + self.g.powf(self.y - 4.0))
+          * t,
+      ),
     }
   }
 }
@@ -119,7 +123,13 @@ impl FourierModelExt for MertonJDFourier {
     Cumulants {
       c1: (self.r - self.q - 0.5 * self.sigma.powi(2)) * t + self.lambda * self.mu_j * t,
       c2: (self.sigma.powi(2) + self.lambda * (self.mu_j.powi(2) + self.sigma_j.powi(2))) * t,
-      c4: 0.0,
+      c4: Some(
+        self.lambda
+          * t
+          * (self.mu_j.powi(4)
+            + 6.0 * self.mu_j.powi(2) * self.sigma_j.powi(2)
+            + 3.0 * self.sigma_j.powi(4)),
+      ),
     }
   }
 }
@@ -160,7 +170,12 @@ impl FourierModelExt for KouFourier {
     Cumulants {
       c1: (self.r - self.q - 0.5 * self.sigma.powi(2)) * t + c1_jump * t,
       c2: (self.sigma.powi(2) + c2_jump) * t,
-      c4: 0.0,
+      c4: Some(
+        24.0
+          * self.lambda
+          * t
+          * (self.p_up / self.eta1.powi(4) + (1.0 - self.p_up) / self.eta2.powi(4)),
+      ),
     }
   }
 }
@@ -227,6 +242,55 @@ impl FourierModelExt for NigFourier {
     let c1 = (self.r - self.q) * t + delta * beta / denom * t;
     let c2 = delta * a2 / denom3 * t;
     let c4 = 3.0 * delta * a2 * (a2 + 4.0 * b2) / (a2 - b2).powf(3.5) * t;
-    Cumulants { c1, c2, c4 }
+    Cumulants {
+      c1,
+      c2,
+      c4: Some(c4),
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// κ₄ = λ t E[Y⁴] (Cont & Tankov 2004, Prop. 3.13), pinned to mpmath's 4th derivative at 0 of
+  /// each model's own log-chf.
+  #[test]
+  fn merton_and_kou_fourth_cumulants_are_the_jump_moments() {
+    let merton = |sigma, lambda, mu_j, sigma_j, t| {
+      let model = MertonJDFourier {
+        sigma,
+        lambda,
+        mu_j,
+        sigma_j,
+        r: 0.03,
+        q: 0.0,
+      };
+      model.cumulants(t).c4.unwrap()
+    };
+    let kou = |sigma, lambda, p_up, eta1, eta2, t| {
+      let model = KouFourier {
+        sigma,
+        lambda,
+        p_up,
+        eta1,
+        eta2,
+        r: 0.03,
+        q: 0.0,
+      };
+      model.cumulants(t).c4.unwrap()
+    };
+    for (got, want) in [
+      (merton(0.2, 0.5, -0.1, 0.15, 2.0), 0.00296875),
+      (merton(0.12, 0.4, -0.12, 0.18, 1.0), 0.0024624),
+      (kou(0.2, 0.8, 0.4, 10.0, 5.0, 1.5), 0.0288),
+      (kou(0.15, 3.0, 0.2, 25.0, 10.0, 1.0), 0.005796864),
+    ] {
+      assert!(
+        ((got - want) / want).abs() < 1e-14,
+        "c4 = {got}, mpmath {want}"
+      );
+    }
   }
 }

@@ -206,8 +206,7 @@ fn the_atom_is_a_convention_not_a_limit() {
   assert_eq!(heaviside_at_tie - laplace_cdf(0.0, 0.0), 0.0);
 }
 
-/// A negative bandwidth has no limit interpretation, and the old
-/// `l <= 0.0` guard folded it in with the well-defined `l == 0`.
+/// A negative bandwidth has no limit interpretation, unlike `l == 0`.
 #[test]
 #[should_panic(expected = "laplace bandwidth l must be non-negative (got -1)")]
 fn negative_bandwidth_is_rejected() {

@@ -22,7 +22,7 @@ pub struct AccrualPeriod<T: RealExt> {
   pub accrual_start: NaiveDate,
   /// Coupon accrual end.
   pub accrual_end: NaiveDate,
-  /// Payment date.
+  /// Date the coupon is paid, which may lag `accrual_end`.
   pub payment_date: NaiveDate,
   /// Day count convention used for accrual.
   pub day_count: DayCountConvention,
@@ -303,7 +303,7 @@ impl<T: RealExt> RateIndex<T> for FloatingIndex<T> {
 pub struct CmsIndex<T: RealExt> {
   /// Human-readable name.
   pub name: String,
-  /// Swap tenor in months.
+  /// Tenor, in months, of the reference swap whose par rate the index fixes.
   pub swap_tenor_months: i32,
   /// Fixed-leg payment frequency of the reference swap.
   pub payment_frequency: Frequency,

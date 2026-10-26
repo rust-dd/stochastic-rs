@@ -36,21 +36,21 @@
 use ndarray::Array1;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 const SEED: u64 = 42;
 const N: usize = 128;
 
-fn jump_fou_zero_jump(seed: u64) -> JumpFou<f64, ScalarNormal<f64>, Deterministic> {
+fn jump_fou_zero_jump(seed: u64) -> JumpFou<f64, SimdNormal<f64>, Deterministic> {
   JumpFou::new(
     0.65,
     1.5,
     0.0,
     0.2,
     0.0,
-    ScalarNormal::new(0.0, 1.0),
+    SimdNormal::new(0.0, 1.0),
     N,
     Some(0.0),
     Some(1.0),

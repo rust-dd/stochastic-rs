@@ -6,10 +6,10 @@
 //! Par rate verified against manual derivation.
 
 use ndarray::array;
+use stochastic_rs::quant::curves::BootstrapInstrument;
 use stochastic_rs::quant::curves::Compounding;
 use stochastic_rs::quant::curves::CurvePoint;
 use stochastic_rs::quant::curves::DiscountCurve;
-use stochastic_rs::quant::curves::Instrument;
 use stochastic_rs::quant::curves::InterpolationMethod;
 use stochastic_rs::quant::curves::MultiCurve;
 use stochastic_rs::quant::curves::NelsonSiegel;
@@ -211,19 +211,19 @@ fn nelson_siegel_discount_factor_consistency() {
 fn bootstrap_deposits_simple_compounding() {
   // D(T) = 1 / (1 + r * T) for deposits
   let instruments = vec![
-    Instrument::Deposit {
+    BootstrapInstrument::Deposit {
       maturity: 1.0 / 12.0,
       rate: 0.05,
     },
-    Instrument::Deposit {
+    BootstrapInstrument::Deposit {
       maturity: 0.25,
       rate: 0.052,
     },
-    Instrument::Deposit {
+    BootstrapInstrument::Deposit {
       maturity: 0.50,
       rate: 0.054,
     },
-    Instrument::Deposit {
+    BootstrapInstrument::Deposit {
       maturity: 1.00,
       rate: 0.056,
     },
@@ -246,11 +246,11 @@ fn bootstrap_deposit_plus_swap() {
   // D(1) = 1/(1+0.056) = 0.946970
   // D(2) = (1 - 0.058 * D(1)) / (1 + 0.058) = (1 - 0.054924) / 1.058
   let instruments = vec![
-    Instrument::Deposit {
+    BootstrapInstrument::Deposit {
       maturity: 1.0,
       rate: 0.056,
     },
-    Instrument::Swap {
+    BootstrapInstrument::Swap {
       maturity: 2.0,
       rate: 0.058,
       frequency: 1,
@@ -271,11 +271,11 @@ fn bootstrap_fra() {
   // D(0.25) = 1/(1 + 0.05 * 0.25)
   // D(0.50) = D(0.25) / (1 + fra_rate * 0.25)
   let instruments = vec![
-    Instrument::Deposit {
+    BootstrapInstrument::Deposit {
       maturity: 0.25,
       rate: 0.05,
     },
-    Instrument::Fra {
+    BootstrapInstrument::Fra {
       start: 0.25,
       end: 0.50,
       rate: 0.055,
@@ -297,11 +297,11 @@ fn bootstrap_futures_with_convexity_adjustment() {
   // Convexity adj = 0.5 * 0.01^2 * 0.25 * 0.50 = 0.00000625
   // FRA rate = 0.055 - 0.00000625
   let instruments = vec![
-    Instrument::Deposit {
+    BootstrapInstrument::Deposit {
       maturity: 0.25,
       rate: 0.05,
     },
-    Instrument::Future {
+    BootstrapInstrument::Future {
       start: 0.25,
       end: 0.50,
       price: 94.5,

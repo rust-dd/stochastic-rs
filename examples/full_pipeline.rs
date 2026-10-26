@@ -1,19 +1,5 @@
-//! End-to-end pricing pipeline demonstrating the v2 architecture.
-//!
-//! ```sh
-//! cargo run --release --example full_pipeline
-//! ```
-//!
-//! Walks through:
-//!   1. Build reactive market handles (`SimpleQuote` + `Handle`).
-//!   2. Wire two pricing engines (`AnalyticBSEngine`, `AnalyticHestonEngine`)
-//!      against the same market handles.
-//!   3. Define a multi-instrument portfolio: equity option, variance swap,
-//!      total return swap.
-//!   4. Show reactive re-pricing — change a spot quote and watch every
-//!      engine output update.
-//!   5. Build an FX vol smile (Vanna–Volga from ATM/RR/BFLY quotes).
-//!   6. Aggregate Greeks and run parametric VaR on simulated PnL.
+//! End-to-end pricing: two engines on shared reactive quotes, a mixed portfolio, a Vanna–Volga FX
+//! smile, aggregated Greeks and parametric VaR (`cargo run --release --example full_pipeline`).
 
 use std::sync::Arc;
 

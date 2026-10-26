@@ -17,22 +17,27 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+/// Fractional geometric Brownian motion `dS = μS dt + σS dB^H` on `n` points
+/// over `[0, t]`.
+///
+/// Fields are private: the fGN driver caches a spectrum derived from `hurst`, `n` and `t`, so
+/// parameters are read through getters and changed through the cache-rebuilding `with_*` setters.
+///
+/// ```compile_fail,E0616
+/// use stochastic_rs_core::simd_rng::Unseeded;
+/// use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
+/// let mut p = Fgbm::<f64>::new(0.7, 0.05, 0.2, 10, None, None, Unseeded);
+/// p.n = 1000;
+/// ```
 #[derive(Clone)]
 pub struct Fgbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Hurst exponent controlling roughness and long-memory.
-  pub hurst: T,
-  /// Constant proportional drift rate μ — fGBM has no mean reversion.
-  pub mu: T,
-  /// Diffusion scale σ multiplying `S_t dB_t^H`.
-  pub sigma: T,
-  /// Number of points sampled along the fGBM path.
-  pub n: usize,
-  /// Initial value S₀ of the fGBM path.
-  pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
-  pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
-  pub seed: S,
+  hurst: T,
+  mu: T,
+  sigma: T,
+  n: usize,
+  x0: Option<T>,
+  t: Option<T>,
+  seed: S,
   fgn: Fgn<T, Unseeded, B>,
 }
 
@@ -49,9 +54,104 @@ impl<T: FloatExt, S: SeedExt> Fgbm<T, S, Cpu> {
       x0,
       t,
       seed,
-      fgn: Fgn::new(hurst, n - 1, t, Unseeded),
+      fgn: Self::fgn_for(hurst, n, t),
     }
   }
+
+  /// Shared by `new()` and the `with_*` setters so they cannot drift.
+  fn fgn_for(hurst: T, n: usize, t: Option<T>) -> Fgn<T, Unseeded, Cpu> {
+    Fgn::new(hurst, n - 1, t, Unseeded)
+  }
+
+  /// Replace `hurst`; rebuilds the embedded `fgn`.
+  pub fn with_hurst(mut self, hurst: T) -> Self {
+    self.hurst = hurst;
+    self.fgn = Self::fgn_for(hurst, self.n, self.t);
+    self
+  }
+
+  /// Replace `mu`, all else unchanged.
+  pub fn with_mu(mut self, mu: T) -> Self {
+    self.mu = mu;
+    self
+  }
+
+  /// Replace `sigma`, all else unchanged.
+  pub fn with_sigma(mut self, sigma: T) -> Self {
+    self.sigma = sigma;
+    self
+  }
+
+  /// Replace the number of simulation steps `n`; rebuilds the embedded
+  /// `fgn`. Panics if `n < 2`, matching `new()`'s own assertion.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+    self.n = n;
+    self.fgn = Self::fgn_for(self.hurst, n, self.t);
+    self
+  }
+
+  /// Replace `x0`, all else unchanged.
+  pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    self.x0 = x0;
+    self
+  }
+
+  /// Replace the simulation horizon `t`; rebuilds the embedded `fgn`.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self.fgn = Self::fgn_for(self.hurst, self.n, t);
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged. `fgn`'s own
+  /// seed is a never-read dummy, so this does not touch it.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B> Fgbm<T, S, B> {
+  /// Hurst exponent controlling roughness and long-memory.
+  pub fn hurst(&self) -> T {
+    self.hurst
+  }
+
+  /// Constant proportional drift rate μ — fGBM has no mean reversion.
+  pub fn mu(&self) -> T {
+    self.mu
+  }
+
+  /// Diffusion scale σ multiplying `S_t dB_t^H`.
+  pub fn sigma(&self) -> T {
+    self.sigma
+  }
+
+  /// Number of points sampled along the fGBM path.
+  pub fn n(&self) -> usize {
+    self.n
+  }
+
+  /// Initial value S₀ of the fGBM path.
+  pub fn x0(&self) -> Option<T> {
+    self.x0
+  }
+
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  pub fn t(&self) -> Option<T> {
+    self.t
+  }
+
+  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  pub fn seed(&self) -> &S {
+    &self.seed
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::traits::Sealed for Fgbm<T, S, B>
+{
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
@@ -144,6 +244,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FgbmSampler<'_, T, S, B> {
   }
 }
 
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed for FgbmSampler<'_, T, S, B> {}
+
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FgbmSampler<'_, T, S, B> {
   type Output = Array1<T>;
 
@@ -201,14 +303,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
   /// The pipeline that produces this process's increments: the device runs it
   /// and keeps the result in its own buffer.
   fn fgn_spec(&self) -> Option<crate::euler::FgnSpec<'_, T>> {
-    Some(crate::euler::FgnSpec {
-      sqrt_eigenvalues: self.fgn.sqrt_eigenvalues.as_slice().expect("contiguous"),
-      n: self.fgn.n,
-      offset: self.fgn.offset,
-      hurst: self.fgn.hurst.to_f64().unwrap_or(0.5),
-      t: self.fgn.t.unwrap_or(T::one()).to_f64().unwrap_or(1.0),
-      streams: 1,
-    })
+    Some(self.fgn.fgn_spec(1))
   }
 }
 

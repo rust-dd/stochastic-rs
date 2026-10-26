@@ -1,0 +1,481 @@
+use stochastic_rs_core::simd_rng::Deterministic;
+
+use super::*;
+use crate::tests::assert_mean_within;
+use crate::tests::scalar_draws;
+use crate::traits::DistributionExt;
+use crate::traits::DistributionSampler;
+use crate::traits::distribution::SimdDistribution;
+use crate::uniform::SimdUniform;
+
+fn close(a: f64, b: f64, rel: f64) -> bool {
+  (a - b).abs() <= rel * b.abs().max(1e-300)
+}
+
+/// `scipy.stats.geninvgauss(p=λ, b=√(χψ), scale=√(χ/ψ))`: pdf on a grid,
+/// `stats('mvsk')` and the closed-form mode, across all three sampler
+/// regimes, λ = 0 and λ < 0.
+#[test]
+fn matches_scipy_geninvgauss() {
+  let cases: [((f64, f64, f64), [f64; 5], [f64; 5]); 6] = [
+    (
+      (-0.5, 1.0, 4.0),
+      [
+        0.514_242_212_635_176_6,
+        1.128_379_167_095_512_8,
+        0.241_970_724_519_143_34,
+        0.014_866_286_152_953_675,
+        1.083_102_992_885_464e-5,
+      ],
+      [
+        0.5,
+        0.125_000_000_000_000_06,
+        2.121_320_343_559_638_4,
+        7.499_999_999_999_998,
+        0.25,
+      ],
+    ),
+    (
+      (0.3, 2.0, 0.5),
+      [
+        0.000_207_154_166_797_105_37,
+        0.181_109_435_668_869_9,
+        0.267_440_855_009_698,
+        0.211_388_022_266_015_88,
+        0.070_972_459_002_713_6,
+      ],
+      [
+        3.510_406_673_837_61,
+        9.931_159_688_231_931,
+        2.266_483_108_101_507_8,
+        8.099_683_845_591_92,
+        1.041_311_123_146_740_7,
+      ],
+    ),
+    (
+      (1.5, 0.2, 3.0),
+      [
+        0.253_779_589_649_395,
+        0.693_107_485_732_857_7,
+        0.511_710_317_868_987,
+        0.169_750_934_196_500_7,
+        0.003_072_457_210_418_208_3,
+      ],
+      [
+        1.112_701_665_379_257_9,
+        0.683_064_446_160_988_5,
+        1.592_679_045_829_844,
+        3.836_661_502_533_310_4,
+        0.473_984_815_243_096_27,
+      ],
+    ),
+    (
+      (0.0, 1.0, 1.0),
+      [
+        0.076_115_931_334_513_58,
+        0.680_494_457_892_701_8,
+        0.436_886_089_924_687_64,
+        0.170_123_614_473_175_45,
+        0.017_641_156_063_218_862,
+      ],
+      [
+        1.429_625_398_260_401_7,
+        1.815_422_017_169_591_4,
+        2.517_766_867_950_683,
+        10.168_858_438_704_254,
+        0.414_213_562_373_095_15,
+      ],
+    ),
+    (
+      (-2.0, 3.0, 0.3),
+      [
+        0.000_819_140_933_607_579_6,
+        1.004_441_689_077_8,
+        0.522_040_719_315_402_3,
+        0.118_902_526_154_247_41,
+        0.007_609_761_673_871_839,
+      ],
+      [
+        1.130_335_190_237_882_4,
+        1.186_774_422_790_675,
+        4.513_096_168_856_083,
+        41.651_500_096_330_146,
+        0.488_088_481_701_516_3,
+      ],
+    ),
+    (
+      (0.2, 0.01, 1.0),
+      [
+        1.746_805_491_733_430_1,
+        0.410_753_646_911_001,
+        0.184_652_538_917_075_06,
+        0.064_486_644_906_236_72,
+        0.006_923_528_656_657_863,
+      ],
+      [
+        0.639_899_966_429_868_3,
+        1.136_287_952_394_739,
+        3.603_221_141_680_864_4,
+        19.812_668_188_757_524,
+        0.006_225_774_829_854_98,
+      ],
+    ),
+  ];
+  for ((lambda, chi, psi), pdf, stats) in cases {
+    let d = SimdGig::<f64>::new(lambda, chi, psi);
+    for (x, want) in [0.1, 0.5, 1.0, 2.0, 5.0].into_iter().zip(pdf) {
+      assert!(
+        close(d.pdf(x).unwrap(), want, 1e-11),
+        "λ={lambda}: pdf({x}) = {}",
+        d.pdf(x).unwrap()
+      );
+    }
+    assert!(
+      close(d.mean().unwrap(), stats[0], 1e-11),
+      "λ={lambda}: mean {}",
+      d.mean().unwrap()
+    );
+    assert!(
+      close(d.variance().unwrap(), stats[1], 1e-10),
+      "λ={lambda}: variance {}",
+      d.variance().unwrap()
+    );
+    assert!(
+      close(d.skewness().unwrap(), stats[2], 1e-9),
+      "λ={lambda}: skewness {}",
+      d.skewness().unwrap()
+    );
+    assert!(
+      close(d.kurtosis().unwrap(), stats[3], 1e-8),
+      "λ={lambda}: kurtosis {}",
+      d.kurtosis().unwrap()
+    );
+    assert!(
+      close(d.mode().unwrap(), stats[4], 1e-12),
+      "λ={lambda}: mode {}",
+      d.mode().unwrap()
+    );
+    assert!(close(
+      d.moment_generating_function(0.0).unwrap(),
+      1.0,
+      1e-12
+    ));
+  }
+}
+
+/// Each generator regime reproduces the Bessel-ratio mean and variance.
+#[test]
+fn sample_moments_match_closed_forms_in_every_regime() {
+  let cases = [
+    (0.2, 0.01, 1.0, Regime::Hat),
+    (0.3, 2.0, 0.5, Regime::RatioOfUniforms),
+    (-2.0, 3.0, 0.3, Regime::RatioOfUniforms),
+    (3.0, 4.0, 4.0, Regime::RatioOfUniformsShifted),
+    (0.5, 1.0, 25.0, Regime::RatioOfUniformsShifted),
+  ];
+  for (lambda, chi, psi, regime) in cases {
+    let d = SimdGig::<f64>::new(lambda, chi, psi);
+    assert_eq!(d.setup.regime, regime, "λ={lambda}");
+    let n = 400_000;
+    let mut xs = vec![0.0; n];
+    d.seeded(&Deterministic::new(11)).fill_slice(&mut xs);
+    assert!(xs.iter().all(|x| *x > 0.0));
+    let mean = xs.iter().sum::<f64>() / n as f64;
+    let var = xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n as f64;
+    assert!(
+      (mean - d.mean().unwrap()).abs() / d.mean().unwrap() < 0.01,
+      "λ={lambda}: mean {mean} vs {}",
+      d.mean().unwrap()
+    );
+    assert!(
+      (var - d.variance().unwrap()).abs() / d.variance().unwrap() < 0.05,
+      "λ={lambda}: var {var} vs {}",
+      d.variance().unwrap()
+    );
+  }
+}
+
+#[test]
+fn pdf_integrates_to_one() {
+  let d = SimdGig::<f64>::new(0.3, 2.0, 0.5);
+  let (hi, n) = (80.0_f64, 400_000usize);
+  let h = hi / n as f64;
+  let s: f64 = (0..n)
+    .map(|k| d.pdf((k as f64 + 0.5) * h).unwrap() * h)
+    .sum();
+  assert!((s - 1.0).abs() < 1e-6, "integral = {s}");
+}
+
+/// All three generator regimes, the unshifted ratio-of-uniforms one also at a negative `λ`.
+#[test]
+fn scalar_sample_raw_moments_match_the_bessel_ratios() {
+  for (lambda, chi, psi) in [
+    (0.2, 0.01, 1.0),
+    (0.3, 2.0, 0.5),
+    (-2.0, 3.0, 0.3),
+    (3.0, 4.0, 4.0),
+  ] {
+    let d = SimdGig::<f64>::new(lambda, chi, psi);
+    let xs = scalar_draws(&d, 29, 200_000);
+    let squares = xs.iter().map(|x| x * x).collect::<Vec<_>>();
+    assert_mean_within(&xs, d.raw_moment(1), 6.0, &format!("λ={lambda} mean"));
+    assert_mean_within(&squares, d.raw_moment(2), 6.0, &format!("λ={lambda} E X²"));
+  }
+}
+
+#[test]
+fn deterministic_seed_reproduces_stream() {
+  let mut a = SimdGig::<f64>::new(0.3, 2.0, 0.5).seeded(&Deterministic::new(7));
+  let mut b = SimdGig::<f64>::new(0.3, 2.0, 0.5).seeded(&Deterministic::new(7));
+  for _ in 0..256 {
+    assert_eq!(a.sample(), b.sample());
+  }
+}
+
+#[test]
+#[should_panic(expected = "chi must satisfy `chi > T::zero()`")]
+fn rejects_zero_chi() {
+  let _ = SimdGig::<f64>::new(1.0, 0.0, 1.0);
+}
+
+/// Every single-precision draw lands inside the support.
+///
+/// Both ratio-of-uniforms regimes draw from `0 < v ≤ sqrt(g(u/v))`, and
+/// `v = 0` is not a point of that region — but a single-precision uniform
+/// hands back an exact zero about once in 8.4 million draws, `u/v` is
+/// then `+inf`, and for `λ < 1` both sides of the acceptance test come
+/// out `-inf`, so the infinity leaves as a draw. At `λ < 0` the same
+/// event shows as an exact zero, since that branch inverts what it drew
+/// — which is how the generalized hyperbolic family picks it up through
+/// its mixing clock. The seeds are pinned where the offending uniform
+/// lands early: 182 puts it at draw 7303 of the un-shifted regime, 571 at
+/// draw 8052 of the mode-shifted one that `β = √(χψ) > 3` selects.
+#[test]
+fn single_precision_draws_stay_in_the_support() {
+  for (lambda, chi, psi, seed, draws) in [
+    (-0.5_f32, 1.0_f32, 1.0_f32, 182u64, 8_192usize),
+    (0.0, 1.0, 1.0, 182, 8_192),
+    (0.5, 1.0, 1.0, 182, 8_192),
+    (0.5, 100.0, 100.0, 571, 16_384),
+  ] {
+    let d = SimdGig::<f32>::new(lambda, chi, psi);
+    let mut out = vec![0.0_f32; draws];
+    d.seeded(&Deterministic::new(seed)).fill_slice(&mut out);
+    let bad = out.iter().filter(|x| !x.is_finite() || **x <= 0.0).count();
+    assert_eq!(
+      bad, 0,
+      "lambda = {lambda}, chi = {chi}, psi = {psi}: {bad} of {draws} draws outside (0, inf)"
+    );
+  }
+}
+
+/// At λ = −1/2 the mgf's limit at `t = ψ/2` is the inverse Gaussian's `e^{λ/μ}`: `GIG(−½, λ, λ/μ²)` is `IG(μ, λ)`,
+/// and a power-of-two `μ` puts both laws exactly on the boundary.
+#[test]
+fn half_negative_lambda_boundary_mgf_is_the_inverse_gaussian() {
+  for (mu, lambda) in [(2.0, 3.0), (0.5, 0.3), (4.0, 40.0)] {
+    let psi = lambda / (mu * mu);
+    let gig = SimdGig::<f64>::new(-0.5, lambda, psi);
+    let ig = crate::inverse_gauss::SimdInverseGauss::<f64>::new(mu, lambda);
+    let (got, want) = (
+      gig.moment_generating_function(0.5 * psi).unwrap(),
+      ig.moment_generating_function(0.5 * psi).unwrap(),
+    );
+    assert!(
+      close(got, want, 1e-13),
+      "mu = {mu}, lambda = {lambda}: {got} vs {want}"
+    );
+  }
+}
+
+/// mpmath at λ = −172, where `K_λ` and `Γ(−λ)` overflow: the mgf at the boundary `t = ψ/2` and inside it, and the density.
+#[test]
+fn mgf_and_pdf_hold_where_k_overflows() {
+  let gig = SimdGig::<f64>::new(-172.0, 1.0, 1.0);
+  for (t, want) in [
+    (0.5, 1.001_463_051_234_371_6),
+    (0.25, 1.000_731_256_675_126_3),
+    (-1.0, 0.997_080_344_191_247_6),
+  ] {
+    let got = gig.moment_generating_function(t).unwrap();
+    assert!(close(got, want, 1e-12), "mgf({t}) = {got}");
+  }
+  for (x, want) in [
+    (0.003, 1_601.973_813_039_057_2),
+    (0.004, 0.484_886_669_533_809_27),
+  ] {
+    let got = gig.pdf(x).unwrap();
+    assert!(close(got, want, 1e-12), "pdf({x}) = {got}");
+  }
+}
+
+/// mpmath at 120 and 250 digits where both `K` overflow; the central moments lose the raw moments' `ε|ln K|` to their
+/// cancellation, hence a tolerance per moment.
+#[test]
+fn moments_hold_where_k_overflows() {
+  for ((lambda, chi, psi), want) in [
+    (
+      (-172.0, 1.0, 1.0),
+      [
+        0.002_923_951_462_624_529_6,
+        5.029_025_511_391_121e-8,
+        0.308_597_197_431_851_7,
+        0.179_411_615_657_454_17,
+      ],
+    ),
+    (
+      (172.0, 1e-3, 1.0),
+      [
+        344.000_002_923_976_6,
+        688.0,
+        0.152_498_570_332_604_64,
+        0.034_883_720_930_232_55,
+      ],
+    ),
+  ] {
+    let d = SimdGig::<f64>::new(lambda, chi, psi);
+    let got = [d.mean(), d.variance(), d.skewness(), d.kurtosis()].map(Option::unwrap);
+    for ((g, w), tol) in got.into_iter().zip(want).zip([1e-12, 1e-10, 1e-7, 1e-5]) {
+      assert!(
+        close(g, w, tol),
+        "GIG({lambda}, {chi}, {psi}): {g}, want {w}"
+      );
+    }
+  }
+}
+
+/// No digit survives here: `ε·Σ|ln terms|` reaches 1 at these orders, and this concentrated a law's kurtosis cancels
+/// below its raw moments' rounding.
+#[test]
+fn no_surviving_digit_answers_nan() {
+  let far = SimdGig::<f64>::new(-1e15, 1.0, 1.0);
+  assert!(far.moment_generating_function(0.5).unwrap().is_nan());
+  assert!(far.mean().unwrap().is_nan());
+  let farther = SimdGig::<f64>::new(-1e300, 1.0, 1.0);
+  assert!(farther.moment_generating_function(0.25).unwrap().is_nan());
+  assert!(
+    SimdGig::<f64>::new(1.0, 1e12, 1e12)
+      .kurtosis()
+      .unwrap()
+      .is_nan()
+  );
+}
+
+/// mpmath: within `1e-12` at `|λ| = 10³`, and within the documented `ε·Σ|ln terms|`, worked out beside each cell, at
+/// `|λ| = 10¹⁰` and where small arguments make the terms large at `|λ| = 300`.
+#[test]
+fn large_orders_keep_the_documented_bound() {
+  let near = SimdGig::<f64>::new(-1e3, 1.0, 1.0)
+    .moment_generating_function(0.5)
+    .unwrap();
+  assert!(close(near, 1.000_250_281_534_073, 1e-12), "{near}");
+  let far = SimdGig::<f64>::new(-1e10, 1.0, 1.0)
+    .moment_generating_function(0.25)
+    .unwrap();
+  assert!(close(far, 1.000_000_000_012_5, 1.03e-4), "{far}");
+  let tiny = SimdGig::<f64>::new(-300.0, 1e-30, 1e-30)
+    .pdf(2.491_694_352_159_468_4e-33)
+    .unwrap();
+  assert!(close(tiny, 1.545_141_899_238_939_7e24, 1.01e-11), "{tiny}");
+  for (scale, t, want, bound) in [
+    (1e-10, 2.5e-11, 1.0, 3.84e-12),
+    (1e-6, -1e-6, 0.999_999_999_999_998_3, 2.56e-12),
+  ] {
+    let got = SimdGig::<f64>::new(-300.0, scale, scale)
+      .moment_generating_function(t)
+      .unwrap();
+    assert!(
+      close(got, want, bound),
+      "GIG(-300, {scale}, {scale}).mgf({t}) = {got}"
+    );
+  }
+}
+
+/// mpmath at 120 and 240 digits where the power factor goes subnormal (`λ = −100`), where its product with `K` overflows
+/// (`λ = 50, 100`), and where a concentrated law's `√(χψ) − √(χs)` would cancel.
+#[test]
+fn mgf_takes_the_ratio_only_where_every_factor_stays_normal() {
+  for ((lambda, chi, psi, t), want) in [
+    ((-100.0, 1.0, 10_000.0, 4_999.998_2), 7_765_652_107.033_22),
+    ((-100.0, 1.0, 10_000.0, 4_999.998), 7_765_644_262.944_897),
+    ((100.0, 1.0, 1.0, 0.475), 1.270_695_290_655_983_9e130),
+    ((100.0, 1.0, 1.0, 0.495), 1.002_503_094_993_455e200),
+    ((100.0, 1.0, 1.0, 0.498), 6.238_686_601_068_762e239),
+    ((50.0, 1.0, 1.0, 0.499_995), 1.005_114_754_835_354_9e250),
+    ((50.0, 1.0, 1.0, 0.499_999_5), 1.005_114_799_314_732_1e300),
+    ((1.0, 1e8, 1e8, 1.0), 2.718_281_882_824_683),
+    ((1.0, 1e12, 1e12, 1.0), 2.718_281_828_464_481_6),
+    ((1.0, 1e16, 1e16, 1.0), 2.718_281_828_459_046),
+    ((-40.0, 1.0, 1.0, -276_024.0), 1.743_648_839_050_706_2e-267),
+    ((-20.0, 4.0, 1.0, -69_000.0), 5.613_805_003_409_576e-290),
+    ((-40.0, 1.0, 1.0, -270_000.0), 3.961_964_133_085_797_4e-264),
+  ] {
+    let got = SimdGig::<f64>::new(lambda, chi, psi)
+      .moment_generating_function(t)
+      .unwrap();
+    assert!(
+      close(got, want, 1e-12),
+      "GIG({lambda}, {chi}, {psi}).mgf({t}) = {got}"
+    );
+  }
+}
+
+/// Seeded cells over `λ ∈ [−300, 300]`, `χ, ψ ∈ [1e-6, 1e6]` and `s = ψ − 2t` from `1e-12ψ` to `1e6ψ`: wherever the ratio
+/// regime is taken it agrees with the log regime within the two error estimates and a few ulps of rounding.
+#[test]
+fn ratio_regime_agrees_with_the_log_regime() {
+  use crate::special::log_regime;
+  use crate::special::ratio_regime;
+  let mut u = SimdUniform::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(20_261_025));
+  let (mut ratios, mut logs) = (0, 0);
+  for _ in 0..4000 {
+    let lambda = 600.0 * u.sample() - 300.0;
+    let (chi, psi) = (
+      10f64.powf(12.0 * u.sample() - 6.0),
+      10f64.powf(12.0 * u.sample() - 6.0),
+    );
+    let t = 0.5 * psi * (1.0 - 10f64.powf(18.0 * u.sample() - 12.0));
+    let shifted = psi - 2.0 * t;
+    if shifted <= 0.0 {
+      continue;
+    }
+    let (power, num, den, dx) = SimdGig::<f64>::new(lambda, chi, psi).mgf_ratio(t, shifted);
+    let (log, log_err) = log_regime(power, num, &den, dx).parts();
+    let Some(ratio) = ratio_regime(power, num, &den, dx) else {
+      logs += 1;
+      continue;
+    };
+    ratios += 1;
+    let (ratio, ratio_err) = ratio.parts();
+    let tol = log_err + ratio_err + 16.0 * f64::EPSILON * log.abs();
+    assert!(
+      (ratio - log).abs() <= tol,
+      "GIG({lambda}, {chi}, {psi}).mgf({t}): {ratio}, log regime {log} ± {log_err}"
+    );
+  }
+  assert!(
+    ratios > 500 && logs > 500,
+    "{ratios} ratio and {logs} log cells"
+  );
+}
+
+/// Past the exponents `e^x` represents the value is exactly 0 or `∞` whatever its error band: the far tails answer 0 and
+/// an overflowing mgf `+∞`, not NaN.
+#[test]
+fn far_tails_answer_the_exact_zero_or_infinity() {
+  let d = SimdGig::<f64>::new(1.0, 1.0, 1.0);
+  assert_eq!(d.pdf(1e16), Some(0.0));
+  assert_eq!(d.pdf(1e-16), Some(0.0));
+  let wide = SimdGig::<f64>::new(1e15, 1.0, 1.0);
+  assert_eq!(wide.moment_generating_function(0.4), Some(f64::INFINITY));
+}
+
+/// `pdf(∞) = 0` for every index (`λ ≥ 1` reads `∞ − ∞` in log space) and `E[e^{tX}] → 0` as `t → −∞`.
+#[test]
+fn pdf_and_mgf_at_infinity() {
+  for lambda in [-0.5, 1.0, 2.0] {
+    let d = SimdGig::<f64>::new(lambda, 1.0, 2.0);
+    assert_eq!(d.pdf(f64::INFINITY), Some(0.0));
+    assert_eq!(d.moment_generating_function(f64::NEG_INFINITY), Some(0.0));
+  }
+}

@@ -91,10 +91,8 @@ fn ssvi_surface_interpolation() {
   assert!(iv_interp.is_finite() && iv_interp > 0.0);
 }
 
-/// Regression: a non-monotonic θ_t term structure must fail BOTH the ATM
-/// and the smile-wide checks. A monotonic θ_t with a strong-skew SSVI can
-/// still violate calendar arb off-ATM — pre-rc.1 the surface flag would
-/// say "arb-free" in that scenario, hiding the issue.
+/// A non-monotonic θ_t fails both the ATM and the smile-wide calendar checks; a monotonic θ_t with
+/// strong skew can still break calendar arbitrage off-ATM.
 #[test]
 fn calendar_spread_free_grid_catches_off_atm_violations() {
   let params = SsviParams::<f64>::new(-0.3, 0.5, 0.5);

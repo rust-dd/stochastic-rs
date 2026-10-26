@@ -22,7 +22,7 @@ use stochastic_rs_stochastic::traits::ProcessExt;
 #[test]
 fn a_process_reports_the_backend_it_holds() {
   let gbm = Gbm::<f64, _>::new(0.05, 0.2, 256, Some(100.0), None, Deterministic::new(1));
-  assert_eq!(gbm.backend(), Cpu);
+  assert_eq!(*gbm.backend(), Cpu);
   let info = gbm.probe().expect("the CPU device always opens");
   assert_eq!(info.backend, "Cpu");
   assert!(info.precisions.contains(&"f64"));
@@ -34,7 +34,7 @@ fn a_process_reports_the_backend_it_holds() {
 #[test]
 fn a_fractional_process_reports_its_backend_too() {
   let fgn = Fgn::<f64, _>::new(0.7, 128, Some(1.0), Deterministic::new(2));
-  assert_eq!(fgn.backend(), Cpu);
+  assert_eq!(*fgn.backend(), Cpu);
   assert_eq!(fgn.probe().expect("cpu").backend, "Cpu");
 }
 

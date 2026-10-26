@@ -10,15 +10,7 @@
 //! `σ_n = √(d² + z²·n/τ)` is zero only where the *diffusive* volatility `d`
 //! is, so what reaches this branch is a zero total volatility — `v = 0`,
 //! which `new` accepts on purpose — and the pure-jump corner `gamma = 1`,
-//! at the `n = 0` term alone. The corner used to reach it only about half
-//! the time: `diffusive_std` computed `v² − λz²` after round-tripping `z`
-//! through a `sqrt`, so `(v, λ) = (0.5, 1)` landed on `d = 0` while
-//! `(0.2, 0.5)` landed one ulp below and returned `NaN`. `λz²` is `v²γ` by
-//! construction, so it is now taken directly and the corner is `0` for
-//! every intensity;
-//! `the_pure_jump_corner_is_zero_for_every_intensity` pins that, and
-//! `an_inadmissible_gamma_still_announces_itself` pins the `NaN` the
-//! direct form must not silence along with it.
+//! at the `n = 0` term alone, for every intensity, since `λz²` is taken as `v²γ` directly.
 //!
 //! An ordinary configuration has `σ_0 = d > 0` and never touches the
 //! branch; `an_ordinary_configuration_never_reaches_the_branch` is the pin
@@ -29,9 +21,7 @@
 //! forms tend to `0` while the rest are already saturated; at the forward
 //! `delta → ±½e^{(b−r)τ}`, `rho → ±½Kτe^{−rτ}` and `gamma → +∞`, and only
 //! the price — which is what the six bump-based Greeks difference — tends
-//! to `0` there. A single floor answered `0` for all of them, which was
-//! right away from the forward, right for `theta` everywhere, and wrong for
-//! `delta`, `gamma` and `rho` at the singular strike.
+//! to `0` there.
 //!
 //! Which strike is singular is set by the cost of carry, not by the
 //! volatility: `Black1976` and `Asay1982` have `b = 0`, so the hole lands on
@@ -125,8 +115,6 @@ fn zero_total_volatility_away_from_the_forward_is_discounted_intrinsic() {
 
 /// The singularity is at the *forward*, not at the money — `Bsm1973` hits
 /// the identical `0/0` once `r = 0` moves its forward onto the strike.
-/// This is the pin that stops the fix being read as a `BSMCoc` special
-/// case.
 #[test]
 fn carrying_conventions_hit_the_same_hole_at_their_own_forward() {
   let m = frozen(BSMCoc::Bsm1973);
@@ -150,14 +138,8 @@ fn parity_holds_at_the_filled_in_point() {
   assert!((call - put).abs() < TOL, "call {call} vs put {put}");
 }
 
-/// The reachability claim, made falsifiable: with `σ_0 = d > 0` an ordinary
-/// configuration has no degenerate term at all, so `term_call_put` must
-/// hand back exactly what `BSMPricer` produced for every `n`, at the very
-/// query — an at-the-money futures option — that used to be `NaN`.
-///
-/// Without this, "the branch is now unreachable in practice" would be a
-/// claim with nothing checking it, and the branch could quietly start
-/// intercepting live prices again.
+/// With `σ_0 = d > 0` no term is degenerate, so `term_call_put` returns exactly `BSMPricer`'s value
+/// for every `n`, at an at-the-money futures option as well.
 #[test]
 fn an_ordinary_configuration_never_reaches_the_branch() {
   let m = Merton1976Pricer::new(0.2, 0.5, 0.4, 10, BSMCoc::Black1976);
@@ -175,15 +157,8 @@ fn an_ordinary_configuration_never_reaches_the_branch() {
   assert!(call.is_finite() && call > 0.0, "ATM futures call {call}");
 }
 
-/// The pure-jump corner made deterministic: at `gamma = 1` the whole
-/// variance is jump variance, so `d² = v² − λz²` is `0` exactly — for
-/// every intensity, not for the half of them whose `sqrt` round-trip
-/// happened to land on zero rather than one ulp below it.
-///
-/// The six `(v, λ)` pairs are the reported split: the first four returned
-/// `0` before the fix and the last two returned `NaN`, from the same model
-/// and the same `gamma`. The sweep is what makes "every intensity" a
-/// falsifiable claim rather than six lucky draws.
+/// At `gamma = 1` the whole variance is jump variance, so `d² = v² − λz²` is `0` exactly for every
+/// `(v, λ)` in the sweep.
 #[test]
 fn the_pure_jump_corner_is_zero_for_every_intensity() {
   for &(v, lambda) in &[
@@ -272,30 +247,8 @@ fn a_degenerate_term_away_from_the_forward_is_its_saturated_limit() {
   }
 }
 
-/// The half that used to be **wrong**, now the limit it should always have
-/// been. This replaces a test that asserted `0.0` for three Greeks whose
-/// limits are not zero, alongside the right answers, so that the gap could
-/// not drift while it went unfixed.
-///
-/// At the forward a degenerate term's `d₁` is `0/0`, so every closed form
-/// is `NaN` and the retired floor answered `0.0` for all of them. Three of
-/// those answers were wrong. Both CDFs converge to `½` as `σ → 0⁺` along
-/// `Se^{bτ} = K` — `d₁ = σ√τ/2 → 0⁺`, `d₂ = -σ√τ/2 → 0⁻` — which gives
-/// `delta → ±½e^{(b−r)τ}` and `rho → ±½Kτe^{−rτ}`, while
-/// `gamma = φ(d₁)/(Sσ√τ)` holds a strictly positive numerator over a
-/// vanishing `σ` and diverges like `1/σ`.
-///
-/// The closed forms below would only restate the implementation, so the
-/// sweep is what adjudicates them: it reaches each value from models with
-/// `v > 0`, which have no degenerate term and never enter the branch. The
-/// gaps close **linearly in `σ`** — a decade of `v` buys a decade of
-/// accuracy — which is a stronger statement than "close enough", and `σΓ`
-/// is constant to ten figures across four decades, which is the signature
-/// of a pole rather than of a merely large number.
-///
-/// `theta` is the one the floor got right, for a reason that does not
-/// generalise: what the bump-based Greeks difference is a *price*, whose
-/// forward limit genuinely is `½(Se^{(b−r)τ} − Ke^{−rτ}) = 0`.
+/// At the forward `delta → ±½e^{(b−r)τ}`, `rho → ±½Kτe^{−rτ}` and `gamma → +∞`, approached from
+/// `v > 0` with gaps closing linearly in σ; `theta`, a price difference, tends to `0`.
 #[test]
 fn the_forward_point_greeks_of_a_degenerate_term_are_their_limits() {
   let m = frozen(BSMCoc::Black1976);

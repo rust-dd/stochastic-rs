@@ -1,4 +1,3 @@
-#![allow(clippy::doc_lazy_continuation)]
 //! Nelson-Siegel parametric yield curve model.
 //!
 //! Reference: Nelson & Siegel, "Parsimonious Modeling of Yield Curves",
@@ -8,9 +7,9 @@
 //! Journal of Econometrics, 130(2), 337-364 (2006).
 //!
 //! $$
-//! y(\tau) = \beta_0
-//!   + \beta_1 \frac{1 - e^{-\tau/\lambda}}{\tau/\lambda}
-//!   + \beta_2 \left(\frac{1 - e^{-\tau/\lambda}}{\tau/\lambda} - e^{-\tau/\lambda}\right)
+//! y(\tau) = \beta_0 +
+//!   \beta_1 \frac{1 - e^{-\tau/\lambda}}{\tau/\lambda} +
+//!   \beta_2 \left(\frac{1 - e^{-\tau/\lambda}}{\tau/\lambda} - e^{-\tau/\lambda}\right)
 //! $$
 
 use ndarray::Array1;
@@ -59,7 +58,7 @@ impl<T: RealExt> NelsonSiegel<T> {
     (T::one() - (-x).exp()) / x - (-x).exp()
   }
 
-  /// Compute the zero rate at maturity `tau`.
+  /// Zero rate `y(τ)` of the formula in the module doc.
   pub fn zero_rate(&self, tau: T) -> T {
     self.beta0 + self.beta1 * self.slope_loading(tau) + self.beta2 * self.curvature_loading(tau)
   }

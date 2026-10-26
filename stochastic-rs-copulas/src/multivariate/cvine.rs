@@ -1,92 +1,88 @@
-//! # Canonical vine (C-vine) pair-copula construction
-//!
-//! $$
-//! c(u_1, \dots, u_d) \;=\; \prod_{m=1}^{d-1} \prod_{i=1}^{d-m}
-//!     c_{m,\,m+i \mid 1,\dots,m-1}\!\bigl(
-//!         F(u_m \mid u_1, \dots, u_{m-1}),\;
-//!         F(u_{m+i} \mid u_1, \dots, u_{m-1})
-//!     \bigr).
-//! $$
-//!
-//! In the C-vine, tree $T_m$ has variable $m$ as its **single root**: all
-//! edges of $T_m$ emanate from node $m$. This contrasts with the D-vine's
-//! path-shaped trees ([`super::dvine::DVine`]).
-//!
-//! The pair-copula tree is stored identically to [`super::dvine::DVine`]:
-//! `pair_copulas[m][i]` is the $(m+1, m+i+2 \mid 1, \dots, m)$ edge of
-//! tree $T_{m+1}$ (1-based on paper; 0-based in storage).
-//!
-//! ## Sampling — Aas-Czado-Frigessi-Bakken (2009), Algorithm 3
-//!
-//! Independent uniforms $w_1, \dots, w_d$ are inverted through nested
-//! $h^{-1}$ calls anchored at the root variable of each tree.
-//!
-//! ## Density — direct chain
-//!
-//! Apply `PairCopula::log_density` at every edge after the conditional
-//! pseudo-observations are propagated via `h(\cdot, \cdot)` along the
-//! root chain.
-//!
-//! References: Aas-Czado-Frigessi-Bakken (2009), §4 and Algorithm 3.
-
-use std::error::Error;
+//! C-vine: tree $T_j$ joins its root $j$ to each $j+i$ given $1, \dots, j-1$; sampled by Aas et al. (2009) Algorithm 1 and evaluated
+//! by its Algorithm 3 (density (9)) with the printed 1-based indices, taking an edge's ends in either order: exact, as every pair is exchangeable.
+//! Reference: Aas, K., Czado, C., Frigessi, A. & Bakken, H. (2009), "Pair-copula constructions of multiple dependence", Insurance: Mathematics and Economics 44(2), 182–198, doi:10.1016/j.insmatheco.2007.02.001 (preprint: SFB 386 Discussion Paper 487).
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 use rand::Rng;
-use stochastic_rs_core::simd_rng::SimdRng;
+use rand::RngExt;
+use stochastic_rs_core::simd_rng::SeedExt;
 
-use super::CopulaType;
+use super::MultivariateFamily;
 use super::dvine::PairCopula;
+use super::dvine::pair_copula::check_parameters;
+use super::fit::SelectionCriterion;
+use super::fit::fit_cvine;
+use super::rosenblatt;
+use super::rosenblatt::Rosenblatt;
+use super::vine_order::VineOrder;
+use crate::bivariate::BivariateFamily;
+use crate::bivariate::conditional::check_unit;
+use crate::bivariate::conditional::inside;
+use crate::error::CopulaError;
+use crate::multivariate::on_open_cube;
 use crate::traits::MultivariateExt;
 
-/// Canonical vine (C-vine) pair-copula construction over `dim` marginals.
-///
-/// `pair_copulas[m][i]` is the bivariate pair-copula on edge
-/// $(m+1,\,m+i+2 \mid 1,\dots,m)$ of tree $T_{m+1}$. Outer length = $d-1$;
-/// inner length of tree $m$ is $d-1-m$.
+/// Canonical vine (C-vine) over `dim` marginals: `pair_copulas[m][i]` is the pair-copula on edge
+/// $(m+1,\,m+i+2 \mid 1,\dots,m)$ of tree $T_{m+1}$, which has $d-1-m$ edges.
 #[derive(Debug, Clone)]
 pub struct CVine {
   dim: usize,
+  order: VineOrder,
   pair_copulas: Vec<Vec<PairCopula>>,
 }
 
 impl CVine {
-  /// Build a C-vine from a precomputed tree of pair copulas. Identical
-  /// shape contract to [`super::dvine::DVine::new`].
-  pub fn new(dim: usize, pair_copulas: Vec<Vec<PairCopula>>) -> Result<Self, Box<dyn Error>> {
+  /// Build a C-vine from a precomputed tree of pair copulas, under the shape and pair-parameter checks of
+  /// [`super::dvine::DVine::new`].
+  pub fn new(dim: usize, pair_copulas: Vec<Vec<PairCopula>>) -> Result<Self, CopulaError> {
     if dim < 2 {
-      return Err(format!("C-vine requires dim ≥ 2, got {dim}").into());
+      return Err(CopulaError::InvalidStructure(format!(
+        "a C-vine needs dim >= 2, got {dim}"
+      )));
     }
     if pair_copulas.len() != dim - 1 {
-      return Err(
-        format!(
-          "Expected {} trees for dim={dim}, got {}",
-          dim - 1,
-          pair_copulas.len()
-        )
-        .into(),
-      );
+      return Err(CopulaError::InvalidStructure(format!(
+        "expected {} trees for dim {dim}, got {}",
+        dim - 1,
+        pair_copulas.len()
+      )));
     }
     for (m, tree) in pair_copulas.iter().enumerate() {
       let expected = dim - 1 - m;
       if tree.len() != expected {
-        return Err(
-          format!(
-            "Tree T_{} should have {expected} edges (got {})",
-            m + 1,
-            tree.len()
-          )
-          .into(),
-        );
+        return Err(CopulaError::InvalidStructure(format!(
+          "tree T_{} should have {expected} edges, got {}",
+          m + 1,
+          tree.len()
+        )));
       }
     }
-    Ok(Self { dim, pair_copulas })
+    check_parameters(&pair_copulas)?;
+    Ok(Self {
+      dim,
+      order: VineOrder::identity(dim),
+      pair_copulas,
+    })
+  }
+
+  /// Which data column each vine variable reads; panics unless `order` is a permutation of `0..dim`.
+  pub fn with_order(mut self, order: Vec<usize>) -> Self {
+    self.order = VineOrder::new(order, self.dim);
+    self
+  }
+
+  /// Data column of each vine variable.
+  pub fn order(&self) -> &[usize] {
+    self.order.as_slice()
   }
 
   /// All-Independence C-vine of the given dimension.
-  pub fn independence(dim: usize) -> Result<Self, Box<dyn Error>> {
-    let pc: Vec<Vec<PairCopula>> = (0..dim - 1)
+  pub fn independence(dim: usize) -> Result<Self, CopulaError> {
+    // `new` names a `dim` below 2; the trees of such a `dim` are empty.
+    let pc: Vec<Vec<PairCopula>> = (0..dim.saturating_sub(1))
       .map(|m| vec![PairCopula::Independence; dim - 1 - m])
       .collect();
     Self::new(dim, pc)
@@ -102,181 +98,146 @@ impl CVine {
     &self.pair_copulas
   }
 
-  /// Aas-Czado (2009) Algorithm 3: invert independent uniforms $w$ to a
-  /// single C-vine observation $u$. The pyramid `v[i][j]` stores
-  /// conditional pseudo-observations at increasing conditioning depth.
   fn sample_with<R: Rng + ?Sized>(&self, n: usize, rng: &mut R) -> Array2<f64> {
-    let mut out = Array2::<f64>::zeros((n, self.dim));
-    for r in 0..n {
-      let row = self.sample_one(rng);
-      for c in 0..self.dim {
-        out[[r, c]] = row[c].clamp(1e-12, 1.0 - 1e-12);
+    let d = self.dim;
+    let mut out = Array2::<f64>::zeros((n, d));
+    let mut w = vec![0.0_f64; d + 1];
+    let mut v = self.workspace();
+    for mut x in out.rows_mut() {
+      for wi in &mut w[1..] {
+        *wi = rng.random::<f64>();
+      }
+      self.walk(&mut v, |i, _| Some(w[i]));
+      for i in 1..=d {
+        x[i - 1] = inside(v[i][1]);
       }
     }
     out
   }
 
-  fn sample_one<R: Rng + ?Sized>(&self, rng: &mut R) -> Array1<f64> {
-    let d = self.dim;
-    let w: Vec<f64> = (0..d).map(|_| rng.random::<f64>()).collect();
-    let mut u = Array1::<f64>::zeros(d);
-    let mut v = vec![vec![0.0_f64; d + 1]; d + 1];
-
-    u[0] = w[0];
-    v[0][0] = w[0];
-
-    for i in 1..d {
-      v[i][0] = w[i];
-      // Invert through all preceding trees from T_i down to T_1.
-      for k in (0..i).rev() {
-        let cop = self.pair_copulas[k][i - k - 1];
-        v[i][0] = cop.h_inverse(v[i][0], v[k][k]);
-      }
-      u[i] = v[i][0];
-      if i == d - 1 {
-        break;
-      }
-      // Forward h-pass through trees T_1, ..., T_i for the conditioning
-      // values at column i.
-      for j in 0..i {
-        let cop = self.pair_copulas[j][i - j - 1];
-        v[i][j + 1] = cop.h(v[i][j], v[j][j]);
-      }
-    }
-    u
-  }
-
-  /// Log-density at a single observation. Recursive structure mirrors the
-  /// sampling pyramid: traverse trees $T_1, \dots, T_{d-1}$, summing the
-  /// edge log-densities while propagating conditional pseudo-observations.
-  fn log_density_one(&self, u: &[f64]) -> f64 {
-    let d = self.dim;
-    let mut v = vec![vec![0.0_f64; d + 1]; d + 1];
+  /// Log-density of one observation by Aas et al. (2009) Algorithm 3, `v[j][i]` holding $v_{j,i}$ (row 0 is the data).
+  fn log_density_one(&self, x: ArrayView1<f64>, v: &mut [Vec<f64>]) -> f64 {
+    let n = self.dim;
+    let theta = |j: usize, i: usize| self.pair_copulas[j - 1][i - 1];
     let mut log_c = 0.0_f64;
-    for (i, &ui) in u.iter().enumerate() {
-      v[i][0] = ui;
+    for i in 1..=n {
+      v[0][i] = x[i - 1];
     }
-    // Tree T_m has root variable m+1 (0-based: index m).
-    for m in 0..d - 1 {
-      for i in 0..d - 1 - m {
-        let cop = self.pair_copulas[m][i];
-        log_c += cop.log_density(v[m][m], v[m + i + 1][m]);
+    for j in 1..n {
+      for i in 1..=n - j {
+        log_c += theta(j, i).log_density(v[j - 1][1], v[j - 1][i + 1]);
       }
-      if m + 1 == d - 1 {
+      if j == n - 1 {
         break;
       }
-      // Forward h-pass to produce the conditional pseudo-observations
-      // needed by the next tree T_{m+2}.
-      for i in 0..d - 1 - m {
-        let cop = self.pair_copulas[m][i];
-        v[m + i + 1][m + 1] = cop.h(v[m + i + 1][m], v[m][m]);
+      for i in 1..=n - j {
+        v[j][i] = theta(j, i).h(v[j - 1][i + 1], v[j - 1][1]);
       }
     }
     log_c
   }
+
+  fn log_density_rows(&self, x: ArrayView2<f64>) -> Array1<f64> {
+    let mut v = vec![vec![0.0_f64; self.dim + 1]; self.dim];
+    x.rows()
+      .into_iter()
+      .map(|row| self.log_density_one(row, &mut v))
+      .collect()
+  }
 }
 
 impl MultivariateExt for CVine {
-  fn r#type(&self) -> CopulaType {
-    CopulaType::CVine
+  fn family(&self) -> MultivariateFamily {
+    MultivariateFamily::CVine
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
-    Ok(self.sample_with(n, &mut SimdRng::new()))
+  fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
+    Ok(self.order.to_data(self.sample_with(n, &mut seed.rng())))
   }
 
-  /// Reproducible counterpart of [`MultivariateExt::sample`]: the same
-  /// `seed` always yields the same matrix.
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, Box<dyn Error>> {
-    Ok(self.sample_with(n, &mut SimdRng::from_seed(seed)))
-  }
-
-  fn fit(&mut self, _X: Array2<f64>) -> Result<(), Box<dyn Error>> {
-    Err(
-      "CVine::fit not implemented — supply the tree explicitly via CVine::new \
-       and seed each PairCopula parameter from pairwise Kendall τ. Sequential MLE + \
-       AIC/BIC family selection (Dißmann 2013) is not yet implemented."
-        .into(),
-    )
-  }
-
-  fn check_fit(&self, X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
-    if X.ncols() != self.dim {
-      return Err(
-        format!(
-          "Dimension mismatch: X has {} columns, C-vine has dim {}",
-          X.ncols(),
-          self.dim
-        )
-        .into(),
-      );
-    }
-    if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
-      return Err("Input X must be in [0,1] for the C-vine".into());
-    }
+  /// Dißmann et al. (2013) over `BivariateFamily::VINE_CANDIDATES` by AIC; `fit_vine` exposes the candidates and the criterion.
+  fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
+    let (vine, _) = fit_cvine(x, BivariateFamily::VINE_CANDIDATES, SelectionCriterion::Aic)?;
+    *self = vine;
     Ok(())
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.check_fit(X)?;
-    let mut out = Array1::<f64>::zeros(X.nrows());
-    for (i, row) in X.rows().into_iter().enumerate() {
-      let u: Vec<f64> = row.iter().copied().collect();
-      out[i] = self.log_density_one(&u).exp();
+  fn check_fit(&self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
+    if x.ncols() != self.dim {
+      return Err(CopulaError::DimensionMismatch {
+        expected: self.dim,
+        got: x.ncols(),
+      });
     }
-    Ok(out)
+    check_unit(x)
   }
 
-  fn log_pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.check_fit(X)?;
-    let mut out = Array1::<f64>::zeros(X.nrows());
-    for (i, row) in X.rows().into_iter().enumerate() {
-      let u: Vec<f64> = row.iter().copied().collect();
-      out[i] = self.log_density_one(&u);
-    }
-    Ok(out)
+  fn pdf(&self, uv: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(self.log_pdf(uv)?.mapv_into(f64::exp))
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    // MC estimator on 4000 samples per query (same approach as D-vine and
-    // multivariate t-copula): closed-form C-vine CDF requires nested
-    // numerical integration in d ≥ 3 dims.
-    self.check_fit(X)?;
-    let m = 4_000usize;
-    let sample = self.sample(m)?;
-    let mut out = Array1::<f64>::zeros(X.nrows());
-    for (i, row) in X.rows().into_iter().enumerate() {
-      let u: Vec<f64> = row.iter().copied().collect();
-      let mut count = 0usize;
-      for r in 0..m {
-        let mut all_le = true;
-        for c in 0..self.dim {
-          if sample[[r, c]] > u[c] {
-            all_le = false;
-            break;
-          }
-        }
-        if all_le {
-          count += 1;
-        }
+  fn log_pdf(&self, uv: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit(uv)?;
+    let x = self.order.to_vine(uv);
+    Ok(on_open_cube(uv, self.log_density_rows(x.view())))
+  }
+
+  /// Genz's separation of variables through the Rosenblatt map `sample` walks, averaged over 4096 Sobol points; a zero
+  /// coordinate gives 0 and a unit one contributes `F(1 | ·) = 1` exactly.
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit(x)?;
+    Ok(rosenblatt::cdf(self, self.order.to_vine(x).view()))
+  }
+}
+
+impl Rosenblatt for CVine {
+  fn workspace(&self) -> Vec<Vec<f64>> {
+    vec![vec![0.0; self.dim + 1]; self.dim + 1]
+  }
+
+  /// Aas et al. (2009) Algorithm 1 with `target(i, v)` in place of `w_i`, leaving $x_i = v_{i,1}$ in `v[i][1]`.
+  fn walk(&self, v: &mut [Vec<f64>], mut target: impl FnMut(usize, &[Vec<f64>]) -> Option<f64>) {
+    let n = self.dim;
+    let theta = |j: usize, i: usize| self.pair_copulas[j - 1][i - 1];
+    for i in 1..=n {
+      let Some(p) = target(i, v) else {
+        return;
+      };
+      v[i][1] = p;
+      for k in (1..i).rev() {
+        v[i][1] = theta(k, i - k).h_inverse(v[i][1], v[k][k]);
       }
-      out[i] = count as f64 / m as f64;
+      if i == n {
+        return;
+      }
+      for j in 1..i {
+        v[i][j + 1] = theta(j, i - j).h(v[i][j], v[j][j]);
+      }
     }
-    Ok(out)
+  }
+
+  /// Algorithm 1's inversion loop run forward, `h` in place of `h⁻¹`, over $v_{k,k}$ for `k = 1, …, i − 1`.
+  fn conditional_cdf(&self, i: usize, u: f64, v: &[Vec<f64>]) -> f64 {
+    (1..i).fold(u, |t, k| self.pair_copulas[k - 1][i - k - 1].h(t, v[k][k]))
   }
 }
 
 #[cfg(test)]
 mod tests {
   use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
+  use crate::bivariate::clayton::Clayton;
+  use crate::bivariate::frank::Frank;
+  use crate::bivariate::gaussian::GaussianCopula;
+  use crate::traits::BivariateExt;
 
   /// All-Independence C-vine on d=3: marginals uniform, log-density ≡ 0.
   #[test]
   fn cvine_independence_three_dim_uniform_marginals() {
     let cv = CVine::independence(3).unwrap();
-    let s = cv.sample(10_000).unwrap();
+    let s = cv.sample(10_000, &Deterministic::new(7)).unwrap();
     for j in 0..3 {
       let col = s.column(j);
       let m: f64 = col.iter().sum::<f64>() / col.len() as f64;
@@ -285,7 +246,7 @@ mod tests {
         "marginal {j} mean = {m}, expected ~0.5"
       );
     }
-    let lp = cv.log_pdf(&array![[0.2, 0.4, 0.7]]).unwrap();
+    let lp = cv.log_pdf(array![[0.2, 0.4, 0.7]].view()).unwrap();
     assert!(lp[0].abs() < 1e-12);
   }
 
@@ -294,9 +255,9 @@ mod tests {
   #[test]
   fn cvine_two_dim_clayton_matches_bivariate() {
     let cv = CVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).unwrap();
-    let s = cv.sample(10_000).unwrap();
+    let s = cv.sample(10_000, &Deterministic::new(7)).unwrap();
     use crate::correlation::kendall_tau;
-    let tau = kendall_tau(&s);
+    let tau = kendall_tau(s.view()).unwrap();
     // Clayton(θ=2): τ = θ/(θ+2) = 0.5
     assert!(
       (tau[[0, 1]] - 0.5).abs() < 0.04,
@@ -305,9 +266,8 @@ mod tests {
     );
   }
 
-  /// 3-dim C-vine with Gaussian pair-copulas T_1 = [ρ_12, ρ_13] and
-  /// independence T_2 = [(2,3|1)]: variables 2 and 3 are conditionally
-  /// independent given 1, and both share strong dependence with the root.
+  /// 3-dim C-vine with Gaussian pairs ρ_12, ρ_13 and an independent (2,3|1): variables 2 and 3 are
+  /// conditionally independent given the root 1, yet both depend strongly on it.
   #[test]
   fn cvine_three_dim_gaussian_star() {
     let t1 = vec![
@@ -316,9 +276,9 @@ mod tests {
     ];
     let t2 = vec![PairCopula::Independence]; // (2, 3 | 1)
     let cv = CVine::new(3, vec![t1, t2]).unwrap();
-    let s = cv.sample(10_000).unwrap();
+    let s = cv.sample(10_000, &Deterministic::new(7)).unwrap();
     use crate::correlation::kendall_tau;
-    let tau = kendall_tau(&s);
+    let tau = kendall_tau(s.view()).unwrap();
     let expected_tau = (2.0 / std::f64::consts::PI) * 0.6_f64.asin();
     // (1, 2) and (1, 3) should both match the Gaussian τ identity.
     assert!(
@@ -331,9 +291,7 @@ mod tests {
       "τ_(0,2) = {} vs expected {expected_tau}",
       tau[[0, 2]]
     );
-    // (2, 3) has the implied "shared root" dependence ≈ ρ² in Gaussian.
-    // ρ = 0.36 → τ ≈ 0.234. The conditional copula is independence so
-    // the unconditional correlation comes from the shared common factor.
+    // (2, 3) are tied only through the root: ρ_23 = 0.6² = 0.36, so τ ≈ 0.234.
     assert!(
       tau[[1, 2]] > 0.15 && tau[[1, 2]] < 0.32,
       "τ_(1,2) = {} should sit between [0.15, 0.32] (Gaussian common-factor)",
@@ -353,17 +311,92 @@ mod tests {
     assert!(CVine::new(1, vec![]).is_err());
   }
 
-  /// `fit` returns a descriptive not-implemented error.
+  /// `fit` roots the first tree at the variable with the largest total |τ| and keeps the data's column order outside.
   #[test]
-  fn cvine_fit_rejects_with_descriptive_error() {
-    let mut cv = CVine::independence(3).unwrap();
-    let data = ndarray::Array2::<f64>::from_elem((10, 3), 0.5);
-    let res = cv.fit(data);
-    assert!(res.is_err());
-    let msg = res.unwrap_err().to_string();
+  fn cvine_fit_roots_the_strongest_variable() {
+    let corr = ndarray::array![[1.0, 0.8, 0.6], [0.8, 1.0, 0.5], [0.6, 0.5, 1.0]];
+    let truth = crate::multivariate::gaussian::GaussianMultivariate::try_new(corr).unwrap();
+    let u = truth.sample(3000, &Deterministic::new(5)).unwrap();
+    let mut fitted = CVine::independence(3).unwrap();
+    fitted.fit(u.view()).unwrap();
+    assert_eq!(fitted.order()[0], 0, "{:?}", fitted.order());
     assert!(
-      msg.contains("not implemented") || msg.contains("MLE"),
-      "fit error should point at the unimplemented sequential MLE; got: {msg}"
+      fitted.pair_copulas()[0]
+        .iter()
+        .all(|p| matches!(p, PairCopula::Gaussian { rho } if *rho > 0.4))
     );
+    let density = fitted.pdf(u.view()).unwrap();
+    assert!(density.iter().all(|d| d.is_finite() && *d > 0.0));
+  }
+
+  /// Aas et al. (2009) Eq. (9) at n = 3, c₁₂ · c₁₃ · c₂₃|₁, from the bivariate copulas' own densities and h-functions.
+  #[test]
+  fn cvine_density_is_the_root_centred_product() {
+    let tree = vec![
+      vec![
+        PairCopula::Gaussian { rho: 0.4 },
+        PairCopula::Clayton { theta: 2.0 },
+      ],
+      vec![PairCopula::Frank { theta: 3.0 }],
+    ];
+    let (c12, c13, c23_1) = (GaussianCopula::new(0.4), Clayton::new(2.0), Frank::new(3.0));
+    let points = array![
+      [0.3, 0.6, 0.8],
+      [0.1, 0.5, 0.9],
+      [0.7, 0.2, 0.4],
+      [0.95, 0.9, 0.05]
+    ];
+    let got = CVine::new(3, tree).unwrap().pdf(points.view()).unwrap();
+    let at = |a: f64, b: f64| array![[a, b]];
+    for (row, p) in points.rows().into_iter().enumerate() {
+      let h2_1 = c12.partial_derivative(at(p[1], p[0]).view()).unwrap()[0];
+      let h3_1 = c13.partial_derivative(at(p[2], p[0]).view()).unwrap()[0];
+      let want = c12.pdf(at(p[0], p[1]).view()).unwrap()[0]
+        * c13.pdf(at(p[0], p[2]).view()).unwrap()[0]
+        * c23_1.pdf(at(h2_1, h3_1).view()).unwrap()[0];
+      assert!(
+        (got[row] / want - 1.0).abs() < 1e-10,
+        "row {row}: {} vs {want}",
+        got[row]
+      );
+    }
+  }
+
+  /// At a draw the walk places, the forward chain gives back every uniform: Algorithm 1's inversion run backwards.
+  #[test]
+  fn the_conditional_cdf_inverts_the_walk() {
+    let trees = vec![
+      vec![
+        PairCopula::Gaussian { rho: 0.5 },
+        PairCopula::Clayton { theta: 2.0 },
+        PairCopula::Frank { theta: -3.0 },
+        PairCopula::StudentT { rho: -0.2, nu: 4.0 },
+      ],
+      vec![
+        PairCopula::Clayton { theta: 3.0 },
+        PairCopula::Gaussian { rho: 0.6 },
+        PairCopula::Frank { theta: 5.0 },
+      ],
+      vec![
+        PairCopula::Frank { theta: 4.0 },
+        PairCopula::Bb1 {
+          theta: 0.8,
+          delta: 1.6,
+        },
+      ],
+      vec![PairCopula::Gaussian { rho: -0.4 }],
+    ];
+    let vine = CVine::new(5, trees).unwrap();
+    let mut v = vine.workspace();
+    for w in [
+      [0.0, 0.3, 0.7, 0.2, 0.9, 0.55],
+      [0.0, 0.05, 0.5, 0.95, 0.4, 0.15],
+    ] {
+      vine.walk(&mut v, |i, _| Some(w[i]));
+      for i in 1..=5 {
+        let back = vine.conditional_cdf(i, v[i][1], &v);
+        assert!((back - w[i]).abs() < 1e-13, "x_{i}: {back} vs {}", w[i]);
+      }
+    }
   }
 }

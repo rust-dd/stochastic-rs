@@ -1,5 +1,6 @@
 use super::*;
 
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyCirPlusPlus {
   inner: Option<CirPlusPlus<f64>>,

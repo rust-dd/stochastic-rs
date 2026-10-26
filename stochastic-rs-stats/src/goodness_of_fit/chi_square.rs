@@ -86,22 +86,19 @@ impl HypothesisTest for ChiSquareGofResult {
   }
 }
 
-/// Upper-tail chi-square critical value: the `c` such that `P(X > c) =
-/// alpha` for `X ~ ChiSquared(df)`. Computed via
-/// [`SimdChiSquared`](stochastic_rs_distributions::chi_square::SimdChiSquared)'s
-/// `DistributionExt::inv_cdf`, itself cross-validated against `statrs`
-/// in `stochastic-rs-distributions/tests/distribution_ext_vs_reference.rs`
-/// (`chi_squared_matches_statrs`).
+/// Upper-tail chi-square critical value: the `c` with `P(X > c) = alpha` for `X ~ ChiSquared(df)`
+/// (`SimdChiSquared::quantile(1 - alpha)`); panics unless `0 < alpha < 1` and `df >= 1`.
 pub fn chi_square_critical_value(alpha: f64, df: usize) -> f64 {
   assert!(alpha > 0.0 && alpha < 1.0, "alpha must be in (0, 1)");
   assert!(
     df >= 1,
     "chi-square test needs at least 1 degree of freedom"
   );
-  use stochastic_rs_core::simd_rng::Unseeded;
   use stochastic_rs_distributions::DistributionExt;
   use stochastic_rs_distributions::chi_square::SimdChiSquared;
-  SimdChiSquared::<f64>::new(df as f64, &Unseeded).inv_cdf(1.0 - alpha)
+  SimdChiSquared::<f64>::new(df as f64)
+    .quantile(1.0 - alpha)
+    .expect("SimdChiSquared has a closed-form quantile")
 }
 
 /// Pearson's chi-square goodness-of-fit statistic for pre-binned counts.
@@ -152,12 +149,16 @@ pub fn chi_square_gof_test(
   }
 
   let df = observed.len() - 1;
-  use stochastic_rs_core::simd_rng::Unseeded;
   use stochastic_rs_distributions::DistributionExt;
   use stochastic_rs_distributions::chi_square::SimdChiSquared;
-  let chi2 = SimdChiSquared::<f64>::new(df as f64, &Unseeded);
-  let p_value = (1.0 - chi2.cdf(statistic)).clamp(0.0, 1.0);
-  let critical_value = chi2.inv_cdf(1.0 - cfg.alpha);
+  let chi2 = SimdChiSquared::<f64>::new(df as f64);
+  let cdf = chi2
+    .cdf(statistic)
+    .expect("SimdChiSquared has a closed-form cdf");
+  let p_value = (1.0 - cdf).clamp(0.0, 1.0);
+  let critical_value = chi2
+    .quantile(1.0 - cfg.alpha)
+    .expect("SimdChiSquared has a closed-form quantile");
 
   ChiSquareGofResult {
     statistic,
@@ -237,6 +238,7 @@ pub fn bin_observed(samples: &[i64], edges: &[i64]) -> Vec<u64> {
 mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::DistributionExt;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::poisson::SimdPoisson;
 
   use super::ChiSquareGofConfig;
@@ -264,8 +266,8 @@ mod tests {
   /// (telescoping cdf differences), regardless of window tightness.
   #[test]
   fn pool_integer_bins_conserves_total_mass() {
-    let dist = SimdPoisson::<u64>::new(10.0, &Deterministic::new(1));
-    let (_, probs) = pool_integer_bins(20_000, 0, 30, |k| dist.cdf(k as f64), 5.0);
+    let dist = SimdPoisson::<u64>::new(10.0);
+    let (_, probs) = pool_integer_bins(20_000, 0, 30, |k| dist.cdf(k as f64).unwrap(), 5.0);
     let total = probs.iter().sum::<f64>();
     assert!((total - 1.0).abs() < 1e-9, "bin mass sums to {total}");
   }
@@ -273,9 +275,9 @@ mod tests {
   /// Every pooled bin must clear the requested `min_expected` floor.
   #[test]
   fn pool_integer_bins_respects_min_expected() {
-    let dist = SimdPoisson::<u64>::new(10.0, &Deterministic::new(1));
+    let dist = SimdPoisson::<u64>::new(10.0);
     let n = 5_000u64;
-    let (_, probs) = pool_integer_bins(n, 0, 30, |k| dist.cdf(k as f64), 5.0);
+    let (_, probs) = pool_integer_bins(n, 0, 30, |k| dist.cdf(k as f64).unwrap(), 5.0);
     for &p in &probs {
       assert!(
         n as f64 * p >= 5.0 - 1e-9,
@@ -293,12 +295,11 @@ mod tests {
     let best_p = [7u64, 123, 555]
       .into_iter()
       .map(|seed| {
-        let dist = SimdPoisson::<u64>::new(10.0, &Deterministic::new(seed));
-        let samples = (0..N)
-          .map(|_| dist.sample_fast() as i64)
-          .collect::<Vec<_>>();
+        let dist = SimdPoisson::<u64>::new(10.0);
+        let mut stream = dist.clone().seeded(&Deterministic::new(seed));
+        let samples = (0..N).map(|_| stream.sample() as i64).collect::<Vec<_>>();
         let (edges, expected_prob) =
-          pool_integer_bins(N as u64, 0, 35, |k| dist.cdf(k.max(0) as f64), 5.0);
+          pool_integer_bins(N as u64, 0, 35, |k| dist.cdf(k.max(0) as f64).unwrap(), 5.0);
         let observed = bin_observed(&samples, &edges);
         chi_square_gof_test(&observed, &expected_prob, ChiSquareGofConfig::default()).p_value
       })
@@ -313,13 +314,16 @@ mod tests {
   #[test]
   fn rejects_mismatched_poisson_rate() {
     const N: usize = 20_000;
-    let sampler = SimdPoisson::<u64>::new(10.0, &Deterministic::new(3));
-    let reference = SimdPoisson::<u64>::new(16.0, &Deterministic::new(3));
-    let samples = (0..N)
-      .map(|_| sampler.sample_fast() as i64)
-      .collect::<Vec<_>>();
-    let (edges, expected_prob) =
-      pool_integer_bins(N as u64, 0, 45, |k| reference.cdf(k.max(0) as f64), 5.0);
+    let mut sampler = SimdPoisson::<u64>::new(10.0).seeded(&Deterministic::new(3));
+    let reference = SimdPoisson::<u64>::new(16.0);
+    let samples = (0..N).map(|_| sampler.sample() as i64).collect::<Vec<_>>();
+    let (edges, expected_prob) = pool_integer_bins(
+      N as u64,
+      0,
+      45,
+      |k| reference.cdf(k.max(0) as f64).unwrap(),
+      5.0,
+    );
     let observed = bin_observed(&samples, &edges);
     let res = chi_square_gof_test(&observed, &expected_prob, ChiSquareGofConfig::default());
     assert!(res.reject, "expected rejection, got {res:?}");

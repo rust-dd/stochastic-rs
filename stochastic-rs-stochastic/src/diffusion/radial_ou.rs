@@ -15,6 +15,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -96,6 +99,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] RadialOU<T, S> { kappa, sigma, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for RadialOU<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for RadialOU<T, S, B>
 {
@@ -114,7 +122,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       dt,
       kappa: self.kappa,
       sigma: self.sigma,
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
@@ -159,7 +167,7 @@ pub struct RadialOuSampler<T: FloatExt> {
   dt: T,
   kappa: T,
   sigma: T,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> RadialOuSampler<T> {
@@ -186,6 +194,8 @@ impl<T: FloatExt> RadialOuSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for RadialOuSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for RadialOuSampler<T> {
   type Output = Array1<T>;

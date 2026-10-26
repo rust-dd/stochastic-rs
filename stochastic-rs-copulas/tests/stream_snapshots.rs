@@ -1,0 +1,344 @@
+//! Seeded copula streams pinned by hash; a row moves only with a `### Numerical changes` entry
+//! (`STREAM_SNAPSHOT_REGEN=1 cargo test -p stochastic-rs-copulas --test stream_snapshots -- --nocapture` prints the table).
+
+use ndarray::Array1;
+use ndarray::Array2;
+use ndarray::ArrayView2;
+use ndarray::array;
+use stochastic_rs_copulas::bivariate::BivariateFamily;
+use stochastic_rs_copulas::bivariate::amh::Amh;
+use stochastic_rs_copulas::bivariate::bb1::Bb1;
+use stochastic_rs_copulas::bivariate::bb7::Bb7;
+use stochastic_rs_copulas::bivariate::clayton::Clayton;
+use stochastic_rs_copulas::bivariate::fgm::Fgm;
+use stochastic_rs_copulas::bivariate::frank::Frank;
+use stochastic_rs_copulas::bivariate::galambos::Galambos;
+use stochastic_rs_copulas::bivariate::gaussian::GaussianCopula;
+use stochastic_rs_copulas::bivariate::gumbel::Gumbel;
+use stochastic_rs_copulas::bivariate::husler_reiss::HuslerReiss;
+use stochastic_rs_copulas::bivariate::independence::Independence;
+use stochastic_rs_copulas::bivariate::joe::Joe;
+use stochastic_rs_copulas::bivariate::marshall_olkin::MarshallOlkin;
+use stochastic_rs_copulas::bivariate::plackett::Plackett;
+use stochastic_rs_copulas::bivariate::t_copula::TCopula;
+use stochastic_rs_copulas::empirical::EmpiricalCopula2D;
+use stochastic_rs_copulas::multivariate::cvine::CVine;
+use stochastic_rs_copulas::multivariate::dvine::DVine;
+use stochastic_rs_copulas::multivariate::dvine::PairCopula;
+use stochastic_rs_copulas::multivariate::gaussian::GaussianMultivariate;
+use stochastic_rs_copulas::multivariate::nac::NacNode;
+use stochastic_rs_copulas::multivariate::nac::NestedArchimedean;
+use stochastic_rs_copulas::multivariate::rvine::RVine;
+use stochastic_rs_copulas::multivariate::t::TMultivariate;
+use stochastic_rs_copulas::traits::BivariateExt;
+use stochastic_rs_copulas::traits::MultivariateExt;
+use stochastic_rs_core::simd_rng::Deterministic;
+
+const SEED: u64 = 7;
+
+const N: usize = 64;
+
+/// `(name, fnv1a of the f64 bit patterns of the (N, d) sample)`.
+const PINS: &[(&str, u64)] = &[
+  ("amh", 0x1a7d7e663cabb487),
+  ("bb1", 0x41bb2447c3d055b9),
+  ("bb7", 0x95d3a343a54d24c1),
+  ("clayton", 0x6d34355ca15d6eef),
+  ("fgm", 0x680eb8c8e0f2c5c7),
+  ("frank", 0xc294915e38a3554b),
+  ("galambos", 0x3294462e5ae45130),
+  ("gaussian", 0x90fa5bfa8ac6ddc5),
+  ("gumbel", 0x23d0438c21d8afcb),
+  ("husler_reiss", 0x44c777b40e77d62e),
+  ("independence", 0xf87c848c3bc70b34),
+  ("joe", 0xa1c60fc1c302ba4c),
+  ("plackett", 0x48f721e10828ab28),
+  ("marshall_olkin", 0xe6fbf6836be8f931),
+  ("t_copula", 0x0aaa31a46bb669dc),
+  ("gaussian_multivariate", 0xa9e6f7560842916c),
+  ("t_multivariate", 0x7a7e74e6b77a75f4),
+  ("cvine", 0x8ab4583e4da231f7),
+  ("dvine", 0xdbdc0ee66a9c79ff),
+  ("dvine_mixed_d5", 0x26465bf003b8f9d0),
+  ("rvine_independence", 0xc269b264798404c9),
+  ("nac_gumbel_nested", 0x6e8fd491c0867c57),
+  ("nac_clayton_flat", 0x9afadada5485e18d),
+  ("nac_clayton_nested", 0xdd293b44c7f64e5e),
+  ("empirical", 0xf1800d610f0b16aa),
+];
+
+fn fnv1a(values: impl Iterator<Item = u64>) -> u64 {
+  let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+  for value in values {
+    for byte in value.to_le_bytes() {
+      hash ^= u64::from(byte);
+      hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+  }
+  hash
+}
+
+fn hash(sample: ArrayView2<f64>) -> u64 {
+  fnv1a(sample.iter().map(|x| x.to_bits()))
+}
+
+fn with_theta<C: BivariateExt>(mut copula: C, theta: f64) -> C {
+  copula.set_theta(theta);
+  copula
+}
+
+fn corr3() -> Array2<f64> {
+  array![[1.0, 0.7, 0.3], [0.7, 1.0, 0.5], [0.3, 0.5, 1.0]]
+}
+
+fn pair_trees() -> Vec<Vec<PairCopula>> {
+  vec![
+    vec![
+      PairCopula::Gaussian { rho: 0.6 },
+      PairCopula::Clayton { theta: 2.0 },
+    ],
+    vec![PairCopula::Independence],
+  ]
+}
+
+/// A different dependent pair on every edge, in dimension 5: the first at which the `i > 3` loop of Aas et al. (2009)
+/// Algorithm 2 runs, so every conditioning value the D-vine sampler builds above its first tree reaches the pin.
+fn mixed_trees() -> Vec<Vec<PairCopula>> {
+  vec![
+    vec![
+      PairCopula::Gaussian { rho: 0.5 },
+      PairCopula::Clayton { theta: 2.0 },
+      PairCopula::Frank { theta: -3.0 },
+      PairCopula::Gaussian { rho: -0.2 },
+    ],
+    vec![
+      PairCopula::Clayton { theta: 3.0 },
+      PairCopula::Gaussian { rho: 0.6 },
+      PairCopula::Frank { theta: 5.0 },
+    ],
+    vec![
+      PairCopula::Frank { theta: 4.0 },
+      PairCopula::Clayton { theta: 1.0 },
+    ],
+    vec![PairCopula::Gaussian { rho: -0.4 }],
+  ]
+}
+
+fn empirical() -> EmpiricalCopula2D {
+  let x = Array1::from_vec((0..50).map(|i| i as f64).collect());
+  let y = Array1::from_vec((0..50).map(|i| (i as f64 * 1.7) % 37.0).collect());
+  EmpiricalCopula2D::new(x.view(), y.view()).unwrap()
+}
+
+fn samples() -> Vec<(&'static str, Array2<f64>)> {
+  let mut rows = Vec::new();
+  macro_rules! row {
+    ($name:literal, $sample:expr) => {
+      rows.push(($name, $sample));
+    };
+  }
+  row!(
+    "amh",
+    with_theta(Amh::default(), 0.5)
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "bb1",
+    Bb1::new(0.8, 1.6)
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "bb7",
+    Bb7::new(1.7, 0.9)
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "clayton",
+    with_theta(Clayton::default(), 2.0)
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "fgm",
+    with_theta(Fgm::default(), 0.5)
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "frank",
+    Frank::new(4.0)
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "galambos",
+    with_theta(Galambos::default(), 1.5)
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "gaussian",
+    with_theta(GaussianCopula::default(), 0.5)
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "gumbel",
+    Gumbel::new(2.0)
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "husler_reiss",
+    with_theta(HuslerReiss::default(), 1.5)
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "independence",
+    with_theta(Independence::new(), 0.0)
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "joe",
+    with_theta(Joe::default(), 2.0)
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "plackett",
+    with_theta(Plackett::default(), 3.0)
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "marshall_olkin",
+    MarshallOlkin::new(0.3, 0.6)
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "t_copula",
+    TCopula::new(0.5, 4.0)
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "gaussian_multivariate",
+    GaussianMultivariate::new(corr3())
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "t_multivariate",
+    TMultivariate::new(corr3(), 5.0)
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "cvine",
+    CVine::new(3, pair_trees())
+      .unwrap()
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "dvine",
+    DVine::new(3, pair_trees())
+      .unwrap()
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "dvine_mixed_d5",
+    DVine::new(5, mixed_trees())
+      .unwrap()
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "rvine_independence",
+    RVine::independence(3)
+      .unwrap()
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  let nested = NacNode {
+    theta: 1.5,
+    leaves: vec![2],
+    children: vec![NacNode::leaf_group(3.0, vec![0, 1])],
+  };
+  row!(
+    "nac_gumbel_nested",
+    NestedArchimedean::new(BivariateFamily::Gumbel, nested, 3)
+      .unwrap()
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  let flat = NacNode::leaf_group(2.0, vec![0, 1, 2]);
+  row!(
+    "nac_clayton_flat",
+    NestedArchimedean::new(BivariateFamily::Clayton, flat, 3)
+      .unwrap()
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  let clayton_nested = NacNode {
+    theta: 0.5,
+    leaves: vec![3],
+    children: vec![NacNode {
+      theta: 1.5,
+      leaves: vec![2],
+      children: vec![NacNode::leaf_group(4.0, vec![0, 1])],
+    }],
+  };
+  row!(
+    "nac_clayton_nested",
+    NestedArchimedean::new(BivariateFamily::Clayton, clayton_nested, 4)
+      .unwrap()
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "empirical",
+    empirical().sample(N, &Deterministic::new(SEED))
+  );
+  rows
+}
+
+// The bits depend on libm and FMA, so they are pinned for aarch64 macOS only and other targets skip this test.
+#[test]
+#[cfg_attr(not(all(target_arch = "aarch64", target_os = "macos")), ignore)]
+fn seeded_copula_streams_are_pinned() {
+  let rows = samples();
+  if std::env::var("STREAM_SNAPSHOT_REGEN").as_deref() == Ok("1") {
+    for (name, sample) in &rows {
+      println!("  (\"{name}\", 0x{:016x}),", hash(sample.view()));
+    }
+    return;
+  }
+  assert_eq!(
+    rows.len(),
+    PINS.len(),
+    "{} samplers, {} pins",
+    rows.len(),
+    PINS.len()
+  );
+  for ((name, sample), (pinned, want)) in rows.iter().zip(PINS) {
+    assert_eq!(name, pinned);
+    assert_eq!(hash(sample.view()), *want, "{name} moved");
+  }
+}
+
+#[test]
+fn the_same_seed_replays_every_sampler() {
+  let first = samples();
+  let second = samples();
+  for ((name, a), (_, b)) in first.iter().zip(&second) {
+    assert_eq!(a, b, "{name} is not a function of its seed");
+  }
+}

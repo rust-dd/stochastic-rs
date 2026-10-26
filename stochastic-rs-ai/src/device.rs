@@ -1,23 +1,11 @@
-//! # Training device
-//!
-//! candle runs the surrogates on the CPU by default. The `metal` cargo
-//! feature of this crate turns on candle's Metal back-end; CUDA comes from
-//! enabling `candle-core/cuda` in the consuming manifest (candle-kernels needs
-//! a CUDA toolkit to build, so this crate cannot carry it as a feature). In
-//! both cases [`best_available`] detects the device at run time. Every
-//! constructor in [`crate::volatility`] takes a `&Device`, so a training run
-//! moves to the GPU by passing this device instead of `Device::Cpu` — the
-//! weights are stored device-independently (`safetensors`), so a model trained
-//! on one device loads on any other.
+//! Training runs on the CPU, on Metal with this crate's `metal` feature, or on CUDA when the
+//! consumer enables `candle-core/cuda` (it needs a CUDA toolkit); saved weights load anywhere.
 
 use anyhow::Result;
 use candle_core::Device;
 
-/// The fastest device this build can reach: CUDA when candle's CUDA back-end
-/// is compiled in and a device is present, Metal when candle's Metal
-/// back-end is compiled in (this crate's `metal` feature) on macOS, the CPU
-/// otherwise. Errors only when a compiled-in back-end fails to initialise
-/// its device.
+/// The fastest compiled-in device that is present (CUDA, then Metal, then the CPU); errors only
+/// when a compiled-in back-end fails to initialise.
 pub fn best_available() -> Result<Device> {
   if candle_core::utils::cuda_is_available() {
     return Ok(Device::new_cuda(0)?);
@@ -54,9 +42,7 @@ mod tests {
     assert_eq!(name, "cpu");
   }
 
-  /// A training step on the selected device produces the same kind of
-  /// report as the CPU path (and, with a GPU feature compiled in, runs
-  /// there).
+  /// A training step runs on the selected device and reports as the CPU path does.
   #[test]
   fn training_runs_on_the_best_device() {
     let device = best_available().unwrap();

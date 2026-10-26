@@ -14,20 +14,13 @@ use super::run_nelder_mead;
 use crate::portfolio::types::PortfolioResult;
 use crate::portfolio::types::empty_result;
 
-/// Empirical CVaR (Conditional Value-at-Risk).
-///
-/// **Convention:** `alpha` is the **tail proportion** to average — `0.05`
-/// means "average the worst 5% of returns". This is the **opposite** of the
-/// confidence-level convention used by [`crate::risk::var::value_at_risk`]
-/// and [`crate::risk::expected_shortfall::expected_shortfall`], where
-/// `confidence = 0.95` selects the worst 5%. Translation:
-/// `cvar_tail_proportion = 1 - confidence`. The runtime assertion below
-/// makes accidentally passing a confidence-level value (e.g. `0.95`) panic
-/// loudly rather than silently averaging nearly the whole distribution.
+/// Empirical CVaR: minus the mean of the worst `alpha` fraction of `returns` — a tail proportion (`0.05` is the worst 5 %),
+/// the opposite of `value_at_risk`'s confidence level; panics on an empty sample or an `alpha` outside `(0, 0.5)`.
 pub fn empirical_cvar(returns: &mut [f64], alpha: f64) -> f64 {
-  if returns.is_empty() {
-    return 0.0;
-  }
+  assert!(
+    !returns.is_empty(),
+    "returns must satisfy `!returns.is_empty()`"
+  );
   assert!(
     alpha > 0.0 && alpha < 0.5,
     "empirical_cvar `alpha` is the tail proportion (typical values 0.01–0.10), \

@@ -1,0 +1,289 @@
+use ndarray::Array1;
+use ndarray::array;
+use stochastic_rs_copulas::bivariate::bb1::Bb1;
+use stochastic_rs_copulas::bivariate::bb7::Bb7;
+use stochastic_rs_copulas::bivariate::clayton::Clayton;
+use stochastic_rs_copulas::bivariate::frank::Frank;
+use stochastic_rs_copulas::bivariate::gaussian::GaussianCopula;
+use stochastic_rs_copulas::bivariate::t_copula::TCopula;
+use stochastic_rs_copulas::multivariate::dvine::PairCopula;
+use stochastic_rs_copulas::traits::BivariateExt;
+
+use super::GRID;
+use super::agrees;
+use super::build;
+use super::on_grid;
+
+/// `<family> <h|q> <parameters> ; <81 values>`, row-major in the first argument: mpmath at 60 or more digits of the
+/// stable forms, each proved equal to `∂_v C` in sympy, `q` by bisection of that `h` in `ln u` or its closed form.
+const REFERENCE: &str = include_str!("../fixtures/extreme_parameters.txt");
+
+#[test]
+fn h_and_its_inverse_match_the_mpmath_table() {
+  let mut failures = Vec::new();
+  for line in REFERENCE.lines() {
+    let (head, values) = line.split_once(" ; ").expect("a reference row");
+    let mut fields = head.split(' ');
+    let (family, kind) = (fields.next().unwrap(), fields.next().unwrap());
+    let params = fields.map(|p| p.parse().unwrap()).collect::<Vec<f64>>();
+    let want = values.split(' ').map(|x| x.parse().unwrap());
+    let got = on_grid(build(family, &params).as_ref(), kind);
+    for (i, (got, want)) in got.iter().zip(want).enumerate() {
+      let (a, b) = (GRID[i / 9], GRID[i % 9]);
+      let inside = got.is_finite() && (0.0..=1.0).contains(got);
+      if !inside || !agrees(*got, want) {
+        failures.push(format!(
+          "{family} {params:?} {kind}({a:e} | {b:e}) = {got:e}, want {want:e}"
+        ));
+      }
+    }
+  }
+  assert!(
+    failures.is_empty(),
+    "{} cells:\n{}",
+    failures.len(),
+    failures.join("\n")
+  );
+}
+
+/// `<ρ> <u> <v> ; <h> <q> <ln c>` past the Gaussian h's rounding switch, where `x ∓ y` needs the exact gap: mpmath at
+/// 80 digits from the exact binary inputs, `q` reading `u` as a level.
+const GAUSSIAN_GAP: &str = include_str!("../fixtures/gaussian_gap_cells.txt");
+
+#[test]
+fn the_gaussian_h_its_inverse_and_density_hold_past_the_rounding_switch() {
+  for line in GAUSSIAN_GAP.lines() {
+    let (head, values) = line.split_once(" ; ").expect("a reference row");
+    let p: Vec<f64> = head.split(' ').map(|x| x.parse().unwrap()).collect();
+    let want: Vec<f64> = values.split(' ').map(|x| x.parse().unwrap()).collect();
+    let copula = GaussianCopula::new(p[0]);
+    let h = copula
+      .partial_derivative(array![[p[1], p[2]]].view())
+      .unwrap()[0];
+    let q = copula
+      .percent_point(array![p[1]].view(), array![p[2]].view())
+      .unwrap()[0];
+    let ln_c = copula.log_pdf(array![[p[1], p[2]]].view()).unwrap()[0];
+    assert!(
+      agrees(h, want[0]) && agrees(q, want[1]),
+      "{line}: h {h:e}, q {q:e}"
+    );
+    assert!(
+      (ln_c - want[2]).abs() <= 1e-12 * want[2].abs().max(1.0),
+      "{line}: ln c {ln_c:e}"
+    );
+  }
+}
+
+/// Past the normal switch `h(· | v)` keeps the t's two-point law at `v ∈ {0, 1}`, mass `t_{ν+1}(±ρ√((ν + 1)/(1 − ρ²)))`
+/// (mpmath quadrature at 40 and 60 digits), and `h⁻¹(· | v)` is its quantile: 0 up to the mass, 1 past it.
+#[test]
+fn the_t_edges_keep_the_two_point_law_past_the_normal_switch() {
+  let rows = [
+    (0.0, 1e22, [0.5, 0.5]),
+    (1e-11, 1e22, [0.8413447460685429, 0.15865525393145707]),
+    (-1e-11, 1e300, [0.0, 1.0]),
+  ];
+  for (rho, nu, masses) in rows {
+    let copula = TCopula::new(rho, nu);
+    for (v, mass) in [0.0, 1.0].into_iter().zip(masses) {
+      let h = copula
+        .partial_derivative(array![[0.3, v], [0.7, v]].view())
+        .unwrap();
+      assert!(
+        h.iter().all(|&h| agrees(h, mass)),
+        "t {rho} {nu}: h(· | {v}) = {h}, want {mass}"
+      );
+      let mut levels = vec![0.3, 0.7];
+      if mass > 0.0 && mass < 1.0 {
+        levels.extend([mass * (1.0 - 1e-9), mass * (1.0 + 1e-9)]);
+      }
+      let at = Array1::from_elem(levels.len(), v);
+      let q = copula
+        .percent_point(Array1::from(levels.clone()).view(), at.view())
+        .unwrap();
+      for (y, q) in levels.iter().zip(&q) {
+        let want = if *y <= mass { 0.0 } else { 1.0 };
+        assert_eq!(*q, want, "t {rho} {nu}: h⁻¹({y} | {v})");
+      }
+    }
+  }
+}
+
+/// Near the diagonal as `|ρ| → 1` below the normal switch `h` takes `x − ρy` from the law's level gap, or its tails past
+/// `1e150` (mpmath at 50 and 90 digits), and on the diagonal meets the Gaussian copula's `h` across the switch.
+#[test]
+fn the_t_h_keeps_its_digits_near_the_diagonal_and_across_the_switch() {
+  let rows = [
+    (0.9999999999, 4.0, 1e-15, 1e-15, 0.49999399789119663),
+    (0.9999999999, 4.0, 0.5, 0.5000000001, 0.49999199718797105),
+    (
+      0.9999999999,
+      9.999999999999998e21,
+      1e-300,
+      1e-300,
+      0.4998954920677052,
+    ),
+    (-0.9999999999, 4.0, 0.3, 0.7, 0.4999983585079172),
+    (-0.9999999999, 4.0, 0.5, 0.4999999999, 0.49999199718797105),
+    (
+      0.9999999999,
+      0.5,
+      1e-100,
+      1.0000000001e-100,
+      0.4999911474465587,
+    ),
+    (
+      0.9999999999,
+      0.5,
+      1e-300,
+      1.0000001e-300,
+      0.49409583858729905,
+    ),
+  ];
+  for (rho, nu, u, v, want) in rows {
+    let copula = TCopula::new(rho, nu);
+    let h = copula.partial_derivative(array![[u, v]].view()).unwrap()[0];
+    assert!(
+      agrees(h, want),
+      "t {rho} {nu}: h({u} | {v}) = {h:e}, want {want:e}"
+    );
+  }
+  let rho = 0.9999999999;
+  let diagonal = array![
+    [1e-300, 1e-300],
+    [1e-15, 1e-15],
+    [0.3, 0.3],
+    [0.7, 0.7],
+    [1.0 - 1e-15, 1.0 - 1e-15]
+  ];
+  let below = TCopula::new(rho, 9.999999999999998e21).partial_derivative(diagonal.view());
+  let at = TCopula::new(rho, 1e22).partial_derivative(diagonal.view());
+  for (below, at) in below.unwrap().iter().zip(&at.unwrap()) {
+    assert!(
+      agrees(*below, *at),
+      "h below the switch {below:e}, at it {at:e}"
+    );
+  }
+}
+
+/// At small `|ρ|` `h` keeps `x − ρy` (mpmath at 50 and 90 digits): within `4e-16` at `(−0.3, 1e8)`; at `(0, 1e8)` within the
+/// `4e-15` that `h`'s slope times `|z|`, 19, sets on `z`'s last bit, with the t cdf's own `6e-16` there.
+#[test]
+fn the_t_h_keeps_the_plain_form_at_small_rho() {
+  for (rho, nu, u, v, want, bar) in [
+    (-0.3, 1e8, 0.9, 1e-100, 4.477238009175568e-8, 4e-16),
+    (0.0, 1e8, 1e-5, 1e-300, 1.0001309937134056e-5, 4e-15),
+  ] {
+    let copula = TCopula::new(rho, nu);
+    let h = copula.partial_derivative(array![[u, v]].view()).unwrap()[0];
+    assert!(
+      (h - want).abs() <= bar * want,
+      "t {rho} {nu}: h({u} | {v}) = {h:e}, want {want:e}"
+    );
+  }
+}
+
+/// The vine pairs are their families' kernels, at strong dependence and across the open grid: `h` the family's
+/// `partial_derivative`, an exact 0 or 1 moved one ulp inside, `h⁻¹` its `percent_point`, `log_density` its `log_pdf`.
+#[test]
+fn vine_pairs_are_their_bivariate_kernels() {
+  let cases: Vec<(PairCopula, Box<dyn BivariateExt>)> = vec![
+    (
+      PairCopula::Gaussian { rho: 0.0 },
+      Box::new(GaussianCopula::new(0.0)),
+    ),
+    (
+      PairCopula::Gaussian { rho: 0.6 },
+      Box::new(GaussianCopula::new(0.6)),
+    ),
+    (
+      PairCopula::Gaussian {
+        rho: -0.9999999999999999,
+      },
+      Box::new(GaussianCopula::new(-0.9999999999999999)),
+    ),
+    (
+      PairCopula::Clayton { theta: 0.0 },
+      Box::new(Clayton::new(0.0)),
+    ),
+    (
+      PairCopula::Clayton { theta: 1e-300 },
+      Box::new(Clayton::new(1e-300)),
+    ),
+    (
+      PairCopula::Clayton { theta: 103.0 },
+      Box::new(Clayton::new(103.0)),
+    ),
+    (
+      PairCopula::Clayton { theta: 1e300 },
+      Box::new(Clayton::new(1e300)),
+    ),
+    (PairCopula::Frank { theta: 0.0 }, Box::new(Frank::new(0.0))),
+    (
+      PairCopula::Frank { theta: -40.0 },
+      Box::new(Frank::new(-40.0)),
+    ),
+    (
+      PairCopula::StudentT { rho: 0.5, nu: 4.0 },
+      Box::new(TCopula::new(0.5, 4.0)),
+    ),
+    (
+      PairCopula::StudentT { rho: -0.8, nu: 0.5 },
+      Box::new(TCopula::new(-0.8, 0.5)),
+    ),
+    (
+      PairCopula::Bb1 {
+        theta: 100.0,
+        delta: 1.0,
+      },
+      Box::new(Bb1::new(100.0, 1.0)),
+    ),
+    (
+      PairCopula::Bb1 {
+        theta: 1.0,
+        delta: 100.0,
+      },
+      Box::new(Bb1::new(1.0, 100.0)),
+    ),
+    (
+      PairCopula::Bb7 {
+        theta: 100.0,
+        delta: 100.0,
+      },
+      Box::new(Bb7::new(100.0, 100.0)),
+    ),
+    (
+      PairCopula::Bb7 {
+        theta: 1.0,
+        delta: 1e-300,
+      },
+      Box::new(Bb7::new(1.0, 1e-300)),
+    ),
+  ];
+  let inside = |h: f64| match h {
+    0.0 => f64::from_bits(1),
+    1.0 => 1.0 - f64::EPSILON / 2.0,
+    h => h,
+  };
+  let same = |a: f64, b: f64| a.to_bits() == b.to_bits() || (a.is_nan() && b.is_nan());
+  let open = &GRID[1..8];
+  let points = open.iter().flat_map(|&u| open.iter().map(move |&v| (u, v)));
+  let strong = [(0.5, 1e-3), (0.3, 0.29), (0.999, 0.9989), (1e-6, 1e-3)];
+  for (pair, family) in &cases {
+    for (u, v) in points.clone().chain(strong) {
+      let x = array![[u, v]];
+      let h = family.partial_derivative(x.view()).unwrap()[0];
+      let q = family
+        .percent_point(array![u].view(), array![v].view())
+        .unwrap()[0];
+      let ln_c = family.log_pdf(x.view()).unwrap()[0];
+      assert!(same(pair.h(u, v), inside(h)), "{pair:?} h({u:e} | {v:e})");
+      assert!(same(pair.h_inverse(u, v), q), "{pair:?} h⁻¹({u:e} | {v:e})");
+      assert!(
+        same(pair.log_density(u, v), ln_c),
+        "{pair:?} ln c({u:e}, {v:e})"
+      );
+    }
+  }
+}

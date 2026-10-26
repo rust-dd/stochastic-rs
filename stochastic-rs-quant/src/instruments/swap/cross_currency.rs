@@ -18,9 +18,9 @@ use crate::traits::RealExt;
 pub struct CrossCurrencyBasisSwap<T: RealExt> {
   /// Receive/pay orientation in domestic currency terms.
   pub direction: CrossCurrencySwapDirection,
-  /// Domestic currency.
+  /// Currency the swap's value is reported in.
   pub domestic_currency: Currency,
-  /// Foreign currency.
+  /// Currency of the foreign leg, converted at `fx_spot_domestic_per_foreign`.
   pub foreign_currency: Currency,
   /// Spot FX rate expressed as domestic-currency units per one foreign-currency unit.
   pub fx_spot_domestic_per_foreign: T,

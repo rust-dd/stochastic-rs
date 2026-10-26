@@ -1,5 +1,8 @@
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::common::fit_ar;
@@ -103,7 +106,7 @@ fn lm_statistic_with_prewhitening(
   (stat, phi, sigma)
 }
 
-fn simulate_ar(phi: &[f64], noise: &SimdNormal<f64>, n: usize) -> Vec<f64> {
+fn simulate_ar(phi: &[f64], noise: &mut Seeded<SimdNormal<f64>>, n: usize) -> Vec<f64> {
   let p = phi.len();
   let burnin = (20 * p).max(200);
   let total = n + burnin;
@@ -156,14 +159,11 @@ pub fn leybourne_mccabe_test(
 
   let (obs_stat, phi, sigma) = lm_statistic_with_prewhitening(y, cfg.trend, cfg.ar_lags);
 
-  let noise = SimdNormal::<f64>::new(
-    0.0,
-    sigma.max(1e-12),
-    &Deterministic::new(cfg.bootstrap_seed),
-  );
+  let mut noise =
+    SimdNormal::<f64>::new(0.0, sigma.max(1e-12)).seeded(&Deterministic::new(cfg.bootstrap_seed));
   let mut exceed = 0usize;
   for _ in 0..cfg.bootstrap_samples {
-    let sim = simulate_ar(&phi, &noise, y.len());
+    let sim = simulate_ar(&phi, &mut noise, y.len());
     let (sim_stat, _, _) = lm_statistic_with_prewhitening(&sim, cfg.trend, cfg.ar_lags);
     if sim_stat >= obs_stat {
       exceed += 1;
@@ -183,6 +183,7 @@ pub fn leybourne_mccabe_test(
 #[cfg(test)]
 mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::LeybourneMcCabeConfig;
@@ -190,8 +191,8 @@ mod tests {
 
   fn simulate_ar1(phi: f64, n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
-      let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
-      (0..n).map(|_| dist.sample_fast()).collect::<Vec<_>>()
+      let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
+      (0..n).map(|_| dist.sample()).collect::<Vec<_>>()
     };
 
     let mut x = vec![0.0; n];
@@ -203,8 +204,8 @@ mod tests {
 
   fn simulate_random_walk(n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
-      let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
-      (0..n).map(|_| dist.sample_fast()).collect::<Vec<_>>()
+      let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
+      (0..n).map(|_| dist.sample()).collect::<Vec<_>>()
     };
 
     let mut x = vec![0.0; n];

@@ -32,13 +32,7 @@ references:
     doi: "10.1007/s11432-017-9215-8"
 ---
 
-The Heston model is a stochastic volatility model in which the variance of an
-asset follows a mean-reverting square-root (CIR) process driven by a Brownian
-motion correlated with the asset's own. stochastic-rs simulates it under an
-Euler or Andersen's quadratic-exponential scheme on the CPU or a GPU, prices
-European options in semi-closed form, by Fourier inversion and by ADI finite
-differences, calibrates it to option prices and estimates it from time series,
-from Rust and from Python.
+The Heston model is a stochastic volatility model in which the variance of an asset follows a mean-reverting square-root (CIR) process driven by a Brownian motion correlated with the asset's own. stochastic-rs simulates it under an Euler or Andersen's quadratic-exponential scheme on the CPU or a GPU, prices European options in semi-closed form, by Fourier inversion and by ADI finite differences, calibrates it to option prices and estimates it from time series, from Rust and from Python.
 
 ## Model
 
@@ -49,8 +43,7 @@ dv_t &= \kappa(\theta - v_t)\,dt + \sigma\, v_t^{\,p}\,dW^v_t,\qquad d\langle W^
 \end{aligned}
 $$
 
-with $p = \tfrac12$ for the Heston model. `HestonPow::ThreeHalves` sets
-$p = \tfrac32$, a 3/2-type diffusion under the same linear drift.
+with $p = \tfrac12$ for the Heston model. `HestonPow::ThreeHalves` sets $p = \tfrac32$, a 3/2-type diffusion under the same linear drift.
 
 | Symbol | Argument | Meaning |
 |---|---|---|
@@ -66,9 +59,7 @@ $p = \tfrac32$, a 3/2-type diffusion under the same linear drift.
 | | `use_sym` | `Some(true)` reflects the variance, $\lvert v \rvert$, instead of truncating it at 0 |
 | | `seed` | `Unseeded` or `Deterministic::new(seed)`; Python `seed=` |
 
-The constructor asserts the signs above and the range of `rho`. It does not
-check the Feller condition $2\kappa\theta \ge \sigma^2$: both variance schemes
-keep the simulated variance non-negative whether it holds or not.
+The constructor asserts the signs above and the range of `rho`. It does not check the Feller condition $2\kappa\theta \ge \sigma^2$: both variance schemes keep the simulated variance non-negative whether it holds or not.
 
 ## What the library has for it
 
@@ -87,9 +78,7 @@ keep the simulated variance non-negative whether it holds or not.
 
 ## Simulate paths
 
-`sample()` returns `[s, v]`, two arrays of `n` points; `sample_par(m)` returns
-`m` of them. The default variance step is Euler with truncation at zero;
-`.qe()` switches the same model to Andersen's quadratic-exponential scheme.
+`sample()` returns `[s, v]`, two arrays of `n` points; `sample_par(m)` returns `m` of them. The default variance step is Euler with truncation at zero; `.qe()` switches the same model to Andersen's quadratic-exponential scheme.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -122,16 +111,7 @@ C = S e^{-q\tau} P_1 - K e^{-r\tau} P_2,\qquad
 P_j = \frac12 + \frac1\pi \int_0^\infty \operatorname{Re}\!\left[\frac{e^{-i\phi \ln K} f_j(\phi)}{i\phi}\right] d\phi,
 $$
 
-with the characteristic functions $f_j$ in the "little Heston trap" form of
-Albrecher et al. (2007), which keeps the complex logarithm on its principal
-branch at long maturities. The struct holds the model only, so one instance
-prices a whole strike and maturity grid; `greeks(s, k, r, q, tau, option_type)`
-returns all nine first- and second-order Greeks by central differences, with
-vega, vanna, volga and veta built on the analytic derivative in $v_0$ and
-reported per unit of $\sqrt{v_0}$. `HestonFourier` prices the same model through
-the crate's Fourier pricers (Gil-Pelaez by default, also Carr-Madan, Lewis and
-COS), and `HestonAdiPricer` solves the Heston PDE on the sinh-stretched meshes
-of in 't Hout and Foulon, with an optional down-and-out barrier.
+with the characteristic functions $f_j$ in the "little Heston trap" form of Albrecher et al. (2007), which keeps the complex logarithm on its principal branch at long maturities. The struct holds the model only, so one instance prices a whole strike and maturity grid; `greeks(s, k, r, q, tau, option_type)` returns all nine first- and second-order Greeks by central differences, with vega, vanna, volga and veta built on the analytic derivative in $v_0$ and reported per unit of $\sqrt{v_0}$. `HestonFourier` prices the same model through the crate's Fourier pricers (Gil-Pelaez by default, also Carr-Madan, Lewis and COS), and `HestonAdiPricer` solves the Heston PDE on the sinh-stretched meshes of in 't Hout and Foulon, with an optional down-and-out barrier.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -159,18 +139,7 @@ print(f"{adi.price():.4f}")                                        # 6.9153, dow
 
 ## Calibrate to market data
 
-`HestonCalibrator` fits $(v_0, \kappa, \theta, \sigma, \rho)$ to option prices
-by Levenberg-Marquardt on the price residuals, jointly over every maturity
-slice, with the analytic Jacobian of Cui et al. (2017) by default
-(`HestonJacobianMethod::NumericFiniteDiff` switches to finite differences).
-The optimiser moves in logistic coordinates, which keeps the parameters inside
-fixed boxes: $v_0 \in (0.005, 0.25)$, $\kappa \in (0.1, 20)$,
-$\theta \in (0.001, 0.4)$, $\sigma \in (0.01, 3)$ and
-$\lvert\rho\rvert \lt 0.9999$. Without an initial guess it starts from an NMLE
-fit when price and variance series are attached (`HestonCalibrator::new`'s
-`mle_s`, `mle_v`, `mle_r`), and from fixed defaults otherwise. A Tikhonov pull
-toward an anchor is available through `with_regularization` (Python
-`regularization=(anchor, weights)`).
+`HestonCalibrator` fits $(v_0, \kappa, \theta, \sigma, \rho)$ to option prices by Levenberg-Marquardt on the price residuals, jointly over every maturity slice, with the analytic Jacobian of Cui et al. (2017) by default (`HestonJacobianMethod::NumericFiniteDiff` switches to finite differences). The optimiser moves in logistic coordinates, which keeps the parameters inside fixed boxes: $v_0 \in (0.005, 0.25)$, $\kappa \in (0.1, 20)$, $\theta \in (0.001, 0.4)$, $\sigma \in (0.01, 3)$ and $\lvert\rho\rvert \lt 0.9999$. Without an initial guess it starts from an NMLE fit when price and variance series are attached (`HestonCalibrator::new`'s `mle_s`, `mle_v`, `mle_r`), and from fixed defaults otherwise. A Tikhonov pull toward an anchor is available through `with_regularization` (Python `regularization=(anchor, weights)`).
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -197,19 +166,11 @@ print(f"v0={v0:.4f} kappa={kappa:.3f} theta={theta:.4f} sigma={sigma:.3f} rho={r
 </Tab>
 </Tabs>
 
-Every quote is priced as the calibrator's `option_type` (`"call"` by default);
-the slices' `is_call` flags are not read. The result converts to a
-`HestonFourier` pricer through `to_model(r, q)`.
+Every quote is priced as the calibrator's `option_type` (`"call"` by default); the slices' `is_call` flags are not read. The result converts to a `HestonFourier` pricer through `to_model(r, q)`.
 
 ## Estimate from data
 
-`HestonMLE.nmle(s, v, r)` and `HestonMLE.pmle(s, v, r)` estimate the parameters
-from observed price and variance series with the closed-form estimators of
-Wang et al. (2018). They take the sampling step as $1/(\text{len} - 1)$, a
-series spanning one unit of time; in Rust, `nmle_heston_with_delta` and
-`pmle_heston_with_delta` take the step explicitly. `HestonNMLECEKF(s, r, delta,
-max_iters)` works from prices alone, alternating a consistent extended Kalman
-filter for the variance with the NMLE update.
+`HestonMLE.nmle(s, v, r)` and `HestonMLE.pmle(s, v, r)` estimate the parameters from observed price and variance series with the closed-form estimators of Wang et al. (2018). They take the sampling step as $1/(\text{len} - 1)$, a series spanning one unit of time; in Rust, `nmle_heston_with_delta` and `pmle_heston_with_delta` take the step explicitly. `HestonNMLECEKF(s, r, delta, max_iters)` works from prices alone, alternating a consistent extended Kalman filter for the variance with the NMLE update.
 
 ```python
 import stochastic_rs as srs
@@ -221,79 +182,38 @@ est = srs.HestonMLE.nmle(s, v, 0.03)
 print(round(est.sigma, 3), round(est.rho, 3))  # 0.304 -0.708
 ```
 
-A year of data pins down $\sigma$ and $\rho$; the mean reversion is identified
-by the length of the sample rather than its frequency, and the same run
-returns $\kappa \approx 5.5$ against a true 2.
+A year of data pins down $\sigma$ and $\rho$; the mean reversion is identified by the length of the sample rather than its frequency, and the same run returns $\kappa \approx 5.5$ against a true 2.
 
 ## GPU sampling
 
-`Heston`, under both variance schemes, and `HestonLog` run on the
-[Euler engine](/docs/concepts/gpu-support): a whole path per kernel thread,
-`sample_par(m)` as one launch. In Rust, re-type the process with
-`.on::<Metal>()` (`f32` only) or `.on::<Cuda>()` (`f32` or `f64`), calling
-`.qe()` first for the QE scheme; in Python, pass `device="metal"` together
-with `dtype="f32"`, or `device="cuda"`. The device draws its own random stream,
-so its paths agree with the CPU's in distribution, not bit for bit. The
-published wheels are CPU-only; the device backends need a source build with
-the `metal` or `cuda` feature.
+`Heston`, under both variance schemes, and `HestonLog` run on the [Euler engine](/docs/concepts/gpu-support): a whole path per kernel thread, `sample_par(m)` as one launch. In Rust, re-type the process with `.on::<Metal>()` (`f32` only) or `.on::<Cuda>()` (`f32` or `f64`), calling `.qe()` first for the QE scheme; in Python, pass `device="metal"` together with `dtype="f32"`, or `device="cuda"`. The device draws its own random stream, so its paths agree with the CPU's in distribution, not bit for bit. The published wheels are CPU-only; the device backends need a source build with the `metal` or `cuda` feature.
 
 ## Notes
 
-- **Euler scheme.** The price takes an Euler step on $S$ itself,
-  $S_{i} = S_{i-1}(1 + \mu\Delta t + \sqrt{v^+_{i-1}}\,\Delta W^S)$, and the
-  variance steps from $v^+ = \max(v, 0)$ and is truncated at zero (or reflected
-  with `use_sym`). `HestonLog` steps $\ln S$ instead, so its price stays
-  positive; its drift comes from the pair `r`, `r_f` (as $r - r_f$), else `b`
-  (cost of carry), else `mu`, one of which is required, and its vol-of-vol
-  argument is named `xi`.
-- **QE scheme.** `.qe()` is Andersen's (2008) quadratic-exponential step with
-  $\psi_c = 1.5$ and the central discretisation $\gamma_1 = \gamma_2 = \tfrac12$
-  of the integrated variance, on the log-price. It needs `HestonPow::Sqrt`,
-  $\kappa > 0$ and $S_0 > 0$, and it is Rust-only: `PyHeston` uses the Euler
-  scheme.
-- **Argument order.** The Rust constructors differ:
-  `HestonPricer::new(v0, rho, kappa, theta, sigma, lambda)`,
-  `HestonAdiPricer::new(v0, kappa, theta, sigma, rho)` and
-  `Heston::new(s0, v0, kappa, theta, sigma, rho, mu, …)`. `lambda` is the
-  market price of volatility risk; `None` is 0.
-- **`HestonFourier` holds `r` and `q`** for the drift of its characteristic
-  function, while `price_call(s, k, r, q, tau)` discounts with its arguments:
-  pass the same rates to both.
-- **Deep out of the money.** `HestonPricer`'s price is not floored at zero:
-  at short maturities far out of the money its quadrature can land a few
-  $10^{-5}$ below zero. The Gil-Pelaez pricer behind
-  `HestonFourier::price_call` floors at zero.
-- **Precision.** The processes are generic over `f32` and `f64`
-  (`Heston::<f32, _>`); the pricers, calibrators and estimators work in `f64`.
+- **Euler scheme.** The price takes an Euler step on $S$ itself, $S_{i} = S_{i-1}(1 + \mu\Delta t + \sqrt{v^+_{i-1}}\,\Delta W^S)$, and the variance steps from $v^+ = \max(v, 0)$ and is truncated at zero (or reflected with `use_sym`). `HestonLog` steps $\ln S$ instead, so its price stays positive; its drift comes from the pair `r`, `r_f` (as $r - r_f$), else `b` (cost of carry), else `mu`, one of which is required, and its vol-of-vol argument is named `xi`.
+- **QE scheme.** `.qe()` is Andersen's (2008) quadratic-exponential step with $\psi_c = 1.5$ and the central discretisation $\gamma_1 = \gamma_2 = \tfrac12$ of the integrated variance, on the log-price. It needs `HestonPow::Sqrt`, $\kappa > 0$ and $S_0 > 0$, and it is Rust-only: `PyHeston` uses the Euler scheme.
+- **Argument order.** The Rust constructors differ: `HestonPricer::new(v0, rho, kappa, theta, sigma, lambda)`, `HestonAdiPricer::new(v0, kappa, theta, sigma, rho)` and `Heston::new(s0, v0, kappa, theta, sigma, rho, mu, …)`. `lambda` is the market price of volatility risk; `None` is 0.
+- **`HestonFourier` holds `r` and `q`** for the drift of its characteristic function, while `price_call(s, k, r, q, tau)` discounts with its arguments: pass the same rates to both.
+- **Deep out of the money.** `HestonPricer`'s price is not floored at zero: at short maturities far out of the money its quadrature can land a few $10^{-5}$ below zero. The Gil-Pelaez pricer behind `HestonFourier::price_call` floors at zero.
+- **Precision.** The processes are generic over `f32` and `f64` (`Heston::<f32, _>`); the pricers, calibrators and estimators work in `f64`.
 
 ## FAQ
 
 ### How do I simulate the Heston model in Python?
 
-Build `srs.PyHeston(kappa, theta, sigma, rho, mu, n, s0=..., v0=..., t=..., seed=...)`
-and call `sample()` for one `(s, v)` pair of arrays or `sample_par(m)` for two
-`(m, n)` arrays. `PyHestonLog` is the log-price variant.
+Build `srs.PyHeston(kappa, theta, sigma, rho, mu, n, s0=..., v0=..., t=..., seed=...)` and call `sample()` for one `(s, v)` pair of arrays or `sample_par(m)` for two `(m, n)` arrays. `PyHestonLog` is the log-price variant.
 
 ### Does stochastic-rs enforce the Feller condition?
 
-No. Neither the process, the pricers nor `HestonCalibrator` imposes
-$2\kappa\theta \ge \sigma^2$, since market fits often violate it.
-`HestonParams::satisfies_feller_condition()` reports it and
-`projected_with_feller_condition()` returns a parameter set that satisfies it.
+No. Neither the process, the pricers nor `HestonCalibrator` imposes $2\kappa\theta \ge \sigma^2$, since market fits often violate it. `HestonParams::satisfies_feller_condition()` reports it and `projected_with_feller_condition()` returns a parameter set that satisfies it.
 
 ### How do I calibrate the Heston model to option prices?
 
-Collect one `MarketSlice(strikes, prices, is_call, tau)` per expiry and pass
-the list to `HestonCalibrator(slices, s, r)` in Python, or to
-`HestonCalibrator::from_slices` in Rust. `calibrate()` returns
-`(v0, kappa, theta, sigma, rho, converged, rmse)` in Python and a
-`HestonCalibrationResult` in Rust.
+Collect one `MarketSlice(strikes, prices, is_call, tau)` per expiry and pass the list to `HestonCalibrator(slices, s, r)` in Python, or to `HestonCalibrator::from_slices` in Rust. `calibrate()` returns `(v0, kappa, theta, sigma, rho, converged, rmse)` in Python and a `HestonCalibrationResult` in Rust.
 
 ### Which discretisation should I use for Monte Carlo?
 
-Euler is the default and the cheapest. The QE scheme (`.qe()` in Rust) has a
-markedly lower bias when the vol-of-vol is large or the Feller condition is
-violated, at about the same cost per step.
+Euler is the default and the cheapest. The QE scheme (`.qe()` in Rust) has a markedly lower bias when the vol-of-vol is large or the Feller condition is violated, at about the same cost per step.
 
 ## Where to go next
 

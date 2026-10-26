@@ -30,90 +30,160 @@
 //! ## Inverse-Wishart
 //!
 //! If $X \sim \mathcal{W}_p(\nu, V)$ then $X^{-1} \sim
-//! \mathcal{IW}_p(\nu, V^{-1})$. Use [`SimdWishart::sample_inverse`] for
-//! the Bayesian-prior variant.
+//! \mathcal{IW}_p(\nu, V^{-1})$. Use the stream's
+//! [`sample_inverse`](crate::Seeded::sample_inverse) for the Bayesian-prior variant.
 //!
 //! References:
 //! - Bartlett, M.S. (1933), "On the theory of statistical regression",
-//!   *Proceedings of the Royal Society of Edinburgh* 53, 260-283.
+//!   *Proceedings of the Royal Society of Edinburgh* 53, 260-283,
+//!   DOI 10.1017/S0370164600015637.
 //! - Smith, W.B., Hocking, R.R. (1972), "Algorithm AS 53: Wishart
-//!   variate generator", *Applied Statistics* 21(3), 341-345.
+//!   variate generator", *Applied Statistics* 21(3), 341-345,
+//!   DOI 10.2307/2346290.
 
 use ndarray::Array2;
+use rand::Rng;
+use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use crate::chi_square::SimdChiSquared;
+use crate::gamma::GammaState;
 use crate::normal::SimdNormal;
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::seeded::Seeded;
+use crate::seeded::StreamState;
+use crate::source::AnyRng;
 use crate::traits::SimdFloatExt;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
-pub struct SimdWishart<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
-  /// Degrees of freedom $\nu > p - 1$.
+/// Wishart law `W_p(nu, scale)`: parameters and the scale's Cholesky factor; a [`Seeded`] stream draws its matrices.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SimdWishart<T> {
   nu: f64,
-  /// Dimensionality $p$.
+  scale: Array2<f64>,
   p: usize,
   /// Lower-triangular Cholesky factor of the scale matrix $V$.
   chol: Array2<f64>,
-  /// Per-row diagonal $\chi^2_{\nu - j + 1}$ samplers (one per dim).
-  diag_chi: Vec<SimdChiSquared<T, R>>,
-  /// Auxiliary standard normal for off-diagonal Bartlett entries.
-  normal: SimdNormal<T, 64, R>,
+  /// The $\chi^2_{\nu - j}$ laws of the Bartlett diagonal, one per row.
+  diag: Vec<SimdChiSquared<T>>,
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> SimdWishart<T, R> {
-  /// Construct a Wishart$(\nu, V)$ generator.
-  ///
-  /// `scale` is the $p \times p$ positive-definite scale matrix; the
-  /// constructor Cholesky-factorises it eagerly so subsequent draws are
-  /// cheap. Returns a panic on a non-SPD scale matrix or on $\nu \le p - 1$.
-  pub fn new<S: SeedExt>(nu: f64, scale: Array2<f64>, seed: &S) -> Self {
+/// A Wishart stream: one gamma sub-stream per Bartlett diagonal entry, then the below-diagonal normal.
+#[doc(hidden)]
+#[derive(Clone, Debug)]
+pub struct WishartState<T: SimdFloatExt, R: SimdRngExt> {
+  diag: Vec<GammaState<T, R>>,
+  normal: StreamState<T, R, 64>,
+}
+
+/// The diagonal χ² and the below-diagonal normal of a Bartlett factor, from a stream or the caller's rng.
+trait BartlettSource<T: SimdFloatExt> {
+  fn chi2(&mut self, law: &SimdChiSquared<T>, j: usize) -> T;
+
+  fn normal(&mut self) -> T;
+}
+
+impl<T: SimdFloatExt, R: SimdRngExt> BartlettSource<T> for WishartState<T, R> {
+  #[inline]
+  fn chi2(&mut self, law: &SimdChiSquared<T>, j: usize) -> T {
+    law.next(&mut self.diag[j])
+  }
+
+  #[inline]
+  fn normal(&mut self) -> T {
+    SimdNormal::<T>::standard().next(&mut self.normal)
+  }
+}
+
+impl<T: SimdFloatExt, G: Rng + ?Sized> BartlettSource<T> for AnyRng<'_, G> {
+  #[inline]
+  fn chi2(&mut self, law: &SimdChiSquared<T>, _j: usize) -> T {
+    law.draw_with(self.0)
+  }
+
+  #[inline]
+  fn normal(&mut self) -> T {
+    SimdNormal::<T>::standard().draw_with(self.0)
+  }
+}
+
+impl<T: SimdFloatExt> SimdWishart<T> {
+  /// Wishart$(\nu, V)$ for a $p \times p$ positive-definite `scale`, $p \ge 1$, Cholesky-factorised once here.
+  /// Panics on an empty, non-square or non-SPD `scale`, or on $\nu \le p - 1$.
+  pub fn new(nu: f64, scale: Array2<f64>) -> Self {
+    assert!(
+      nu.is_finite(),
+      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
+    );
+    for ((i, j), v) in scale.indexed_iter() {
+      assert!(
+        v.is_finite(),
+        "scale must satisfy `scale[[i, j]].is_finite()`, got scale[[{i}, {j}]] = {v:?}"
+      );
+    }
     let p = scale.nrows();
-    assert_eq!(scale.ncols(), p, "scale must be square");
-    assert!(nu > (p - 1) as f64, "Wishart needs ν > p − 1");
-
-    let chol = cholesky_lower(&scale).expect("scale matrix must be positive definite");
-
-    let diag_chi: Vec<SimdChiSquared<T, R>> = (0..p)
-      .map(|j| SimdChiSquared::<T, R>::new(T::from_f64_fast(nu - j as f64), seed))
-      .collect();
-    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
-
+    assert!(
+      p >= 1,
+      "scale must satisfy `scale.nrows() >= 1`, got scale.nrows() = {p}"
+    );
+    assert!(
+      scale.ncols() == p,
+      "scale must satisfy `scale.ncols() == scale.nrows()`, got scale.shape() = {:?}",
+      scale.shape()
+    );
+    assert!(
+      nu > (p - 1) as f64,
+      "nu must satisfy `nu > p - 1`, got nu = {nu:?}, p = {p}"
+    );
+    let chol = cholesky_lower(&scale).unwrap_or_else(|(i, pivot)| {
+      panic!("scale must satisfy `pivot[i] > 0.0` (positive definite), got pivot[{i}] = {pivot:?}")
+    });
+    let diag = (0..p)
+      .map(|j| {
+        let k = T::from_f64_fast(nu - j as f64);
+        assert!(
+          k.is_finite() && k * T::from_f64_fast(0.5) > T::zero(),
+          "nu must satisfy `0 < (nu - j) / 2 < ∞`, got nu = {nu:?}, j = {j}"
+        );
+        SimdChiSquared::<T>::new(k)
+      })
+      .collect::<Vec<_>>();
     Self {
       nu,
+      scale,
       p,
       chol,
-      diag_chi,
-      normal,
+      diag,
     }
+  }
+
+  /// The degrees of freedom `ν`.
+  pub fn nu(&self) -> f64 {
+    self.nu
+  }
+
+  /// The scale matrix `V`.
+  pub fn scale(&self) -> &Array2<f64> {
+    &self.scale
   }
 
   pub fn dim(&self) -> usize {
     self.p
   }
 
-  /// Bartlett-decomposition sample: returns a $p \times p$ Wishart matrix.
-  pub fn sample_fast(&self) -> Array2<f64> {
-    // Build A: lower-triangular with χ² diagonal and N(0, 1) sub-diagonal.
+  /// `L·A·Aᵀ·Lᵀ` for Bartlett's lower-triangular `A`: `√χ²_{ν−j}` on the diagonal, `N(0, 1)` below, column by column.
+  fn bartlett<S: BartlettSource<T>>(&self, src: &mut S) -> Array2<f64> {
     let mut a = Array2::<f64>::zeros((self.p, self.p));
-    for j in 0..self.p {
-      let chi2_j = self.diag_chi[j].sample_fast().to_f64().unwrap();
-      a[[j, j]] = chi2_j.max(0.0).sqrt();
+    for (j, chi2) in self.diag.iter().enumerate() {
+      a[[j, j]] = src.chi2(chi2, j).to_f64().unwrap().max(0.0).sqrt();
       for i in (j + 1)..self.p {
-        a[[i, j]] = self.normal.sample_fast().to_f64().unwrap();
+        a[[i, j]] = src.normal().to_f64().unwrap();
       }
     }
-    // X = L · A · Aᵀ · Lᵀ. Compute step by step: M = L · A, then X = M · Mᵀ.
     let m = self.chol.dot(&a);
     m.dot(&m.t())
-  }
-
-  /// Inverse-Wishart sample: if $X \sim \mathcal{W}_p(\nu, V)$ then
-  /// $X^{-1} \sim \mathcal{IW}_p(\nu, V^{-1})$. We sample $X$ and invert.
-  pub fn sample_inverse(&self) -> Option<Array2<f64>> {
-    let x = self.sample_fast();
-    invert_spd(&x)
   }
 
   /// Log-density of `X` (must be SPD). NaN if `X` is not positive definite
@@ -122,12 +192,11 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdWishart<T, R> {
     let nu = self.nu;
     let p = self.p as f64;
     let det_x_log = match cholesky_lower(x) {
-      Some(l) => 2.0 * (0..self.p).map(|i| l[[i, i]].ln()).sum::<f64>(),
-      None => return f64::NAN,
+      Ok(l) => 2.0 * (0..self.p).map(|i| l[[i, i]].ln()).sum::<f64>(),
+      Err(_) => return f64::NAN,
     };
-    let v = self.chol.dot(&self.chol.t());
     let det_v_log = 2.0 * (0..self.p).map(|i| self.chol[[i, i]].ln()).sum::<f64>();
-    let v_inv = invert_spd(&v).expect("scale matrix should be invertible");
+    let v_inv = invert_spd(&self.scale).expect("scale matrix should be invertible");
     let tr_vinv_x: f64 = (0..self.p)
       .map(|i| (0..self.p).map(|j| v_inv[[i, j]] * x[[j, i]]).sum::<f64>())
       .sum();
@@ -142,17 +211,49 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdWishart<T, R> {
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdWishart<T, R> {
-  fn clone(&self) -> Self {
-    let v = self.chol.dot(&self.chol.t());
-    Self::new(self.nu, v, &Unseeded)
+impl<T: SimdFloatExt> Sealed for SimdWishart<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdWishart<T> {
+  type State<R: SimdRngExt> = WishartState<T, R>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (WishartState<T, R>, u64) {
+    let mut diag = Vec::with_capacity(self.p);
+    let mut basis = 0;
+    for chi2 in &self.diag {
+      let (state, stream_seed) = chi2.init::<R, S>(seed);
+      if diag.is_empty() {
+        basis = stream_seed;
+      }
+      diag.push(state);
+    }
+    let (normal, _) = SimdNormal::<T>::standard().init::<R, S>(seed);
+    (WishartState { diag, normal }, basis)
   }
 }
 
-/// Plain in-place Cholesky decomposition (no external linalg dependency
-/// needed for this 2.3.0 implementation; dim ≤ 10 in practice for
-/// portfolio / factor-model use cases).
-fn cholesky_lower(a: &Array2<f64>) -> Option<Array2<f64>> {
+impl<T: SimdFloatExt, R: SimdRngExt> Seeded<SimdWishart<T>, R> {
+  /// One Bartlett draw, a `p × p` Wishart matrix.
+  pub fn sample(&mut self) -> Array2<f64> {
+    let (law, state) = self.parts_mut();
+    law.bartlett(state)
+  }
+
+  /// The inverse of one Wishart draw, an inverse-Wishart `IW_p(ν, V⁻¹)` draw; `None` if it is not numerically SPD.
+  pub fn sample_inverse(&mut self) -> Option<Array2<f64>> {
+    invert_spd(&self.sample())
+  }
+}
+
+impl<T: SimdFloatExt> Distribution<Array2<f64>> for SimdWishart<T> {
+  /// One Bartlett draw from scalar χ² and normal draws on the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> Array2<f64> {
+    self.bartlett(&mut AnyRng(rng))
+  }
+}
+
+/// Plain Cholesky factor `L` of `a = L·Lᵀ` (dim ≤ 10 in practice); `Err((i, d))` names the first pivot `d` that
+/// is not positive.
+fn cholesky_lower(a: &Array2<f64>) -> Result<Array2<f64>, (usize, f64)> {
   let n = a.nrows();
   let mut l = Array2::<f64>::zeros((n, n));
   for i in 0..n {
@@ -163,8 +264,8 @@ fn cholesky_lower(a: &Array2<f64>) -> Option<Array2<f64>> {
       }
       if i == j {
         let diag = a[[i, i]] - sum;
-        if diag <= 0.0 {
-          return None;
+        if diag.is_nan() || diag <= 0.0 {
+          return Err((i, diag));
         }
         l[[i, i]] = diag.sqrt();
       } else {
@@ -172,14 +273,14 @@ fn cholesky_lower(a: &Array2<f64>) -> Option<Array2<f64>> {
       }
     }
   }
-  Some(l)
+  Ok(l)
 }
 
 /// Invert a positive-definite matrix via L · Lᵀ Cholesky → forward / back
 /// substitution. Returns `None` if `a` is not SPD.
 fn invert_spd(a: &Array2<f64>) -> Option<Array2<f64>> {
   let n = a.nrows();
-  let l = cholesky_lower(a)?;
+  let l = cholesky_lower(a).ok()?;
   let mut inv = Array2::<f64>::zeros((n, n));
   for col in 0..n {
     let mut y = vec![0.0_f64; n];
@@ -210,6 +311,8 @@ fn invert_spd(a: &Array2<f64>) -> Option<Array2<f64>> {
 #[cfg(test)]
 mod tests {
   use ndarray::array;
+  use stochastic_rs_core::simd_rng::SimdRng;
+  use stochastic_rs_core::simd_rng::Unseeded;
 
   use super::*;
 
@@ -217,9 +320,9 @@ mod tests {
   #[test]
   fn wishart_samples_are_spd() {
     let v = array![[2.0, 0.5], [0.5, 1.0]];
-    let w = SimdWishart::<f64>::new(5.0, v, &Unseeded);
+    let mut w = SimdWishart::<f64>::new(5.0, v).seeded(&Unseeded);
     for _ in 0..200 {
-      let x = w.sample_fast();
+      let x = w.sample();
       // Symmetry.
       for i in 0..2 {
         for j in 0..2 {
@@ -230,20 +333,15 @@ mod tests {
         }
       }
       // SPD via Cholesky.
-      assert!(cholesky_lower(&x).is_some(), "non-SPD sample");
+      assert!(cholesky_lower(&x).is_ok(), "non-SPD sample");
     }
   }
 
-  /// Sample mean equals $\nu V$ (Wishart first moment).
-  #[test]
-  fn wishart_sample_mean_matches_nu_v() {
-    let v = array![[2.0, 0.5], [0.5, 1.0]];
-    let nu = 8.0;
-    let w = SimdWishart::<f64>::new(nu, v.clone(), &Unseeded);
+  fn assert_mean_is_nu_v(nu: f64, v: &Array2<f64>, mut draw: impl FnMut() -> Array2<f64>) {
     let n = 5_000;
     let mut acc = Array2::<f64>::zeros((2, 2));
     for _ in 0..n {
-      acc += &w.sample_fast();
+      acc += &draw();
     }
     let mean = acc.mapv(|x| x / n as f64);
     for i in 0..2 {
@@ -260,14 +358,31 @@ mod tests {
     }
   }
 
+  /// Sample mean equals $\nu V$ (Wishart first moment).
+  #[test]
+  fn wishart_sample_mean_matches_nu_v() {
+    let v = array![[2.0, 0.5], [0.5, 1.0]];
+    let mut w = SimdWishart::<f64>::new(8.0, v.clone()).seeded(&Unseeded);
+    assert_mean_is_nu_v(8.0, &v, || w.sample());
+  }
+
+  /// The honest draw on the caller's rng has the same first moment.
+  #[test]
+  fn scalar_sample_mean_matches_nu_v() {
+    let v = array![[2.0, 0.5], [0.5, 1.0]];
+    let w = SimdWishart::<f64>::new(8.0, v.clone());
+    let mut rng = SimdRng::from_seed(2718);
+    assert_mean_is_nu_v(8.0, &v, || w.sample(&mut rng));
+  }
+
   /// Inverse-Wishart sampling produces SPD inverses.
   #[test]
   fn inverse_wishart_samples_are_spd() {
     let v = array![[2.0, 0.5], [0.5, 1.0]];
-    let w = SimdWishart::<f64>::new(6.0, v, &Unseeded);
+    let mut w = SimdWishart::<f64>::new(6.0, v).seeded(&Unseeded);
     for _ in 0..100 {
       let x_inv = w.sample_inverse().expect("invertible");
-      assert!(cholesky_lower(&x_inv).is_some(), "non-SPD inverse");
+      assert!(cholesky_lower(&x_inv).is_ok(), "non-SPD inverse");
     }
   }
 
@@ -275,9 +390,24 @@ mod tests {
   #[test]
   fn wishart_log_pdf_nan_on_non_spd() {
     let v = array![[1.0, 0.0], [0.0, 1.0]];
-    let w = SimdWishart::<f64>::new(3.0, v, &Unseeded);
+    let w = SimdWishart::<f64>::new(3.0, v);
     // Non-SPD test matrix (negative eigenvalue).
     let bad = array![[1.0, 2.0], [2.0, 1.0]];
     assert!(w.log_pdf(&bad).is_nan());
+  }
+
+  /// An empty scale is named before the `nu > p - 1` bound, which `p = 0` cannot form.
+  #[test]
+  #[should_panic(expected = "scale must satisfy `scale.nrows() >= 1`, got scale.nrows() = 0")]
+  fn an_empty_scale_is_rejected() {
+    SimdWishart::<f64>::new(3.0, Array2::zeros((0, 0)));
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "scale must satisfy `scale.ncols() == scale.nrows()`, got scale.shape() = [2, 3]"
+  )]
+  fn a_non_square_scale_is_rejected() {
+    SimdWishart::<f64>::new(3.0, Array2::zeros((2, 3)));
   }
 }

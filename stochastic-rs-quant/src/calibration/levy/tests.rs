@@ -120,12 +120,8 @@ fn test_levy_vg_calibrate() {
   println!("Vg params: {:?}, loss: {:?}", result.params, result.loss);
 }
 
-/// Regression: `LevyCalibrationResult::to_model` for `LevyModelType::Nig`
-/// must produce a model whose `price_call` matches the calibrated NIG
-/// dynamics. The rc.0 implementation wrapped the NIG triple `(α, β, δ)` into
-/// a `CGMYFourier` with hardcoded `y = 0.5`, producing prices unrelated to
-/// the NIG ChF. After the fix, `to_model` builds a `NigFourier` and the
-/// round-trip price agrees with the calibrator's internal `fourier_call_price`.
+/// `to_model` for `LevyModelType::Nig` builds a `NigFourier` whose `price_call` matches the
+/// calibrator's own `fourier_call_price`.
 #[test]
 fn nig_to_model_matches_calibrator_pricer() {
   // Pick a representative NIG triple from the literature (Schoutens 2003 §5.3

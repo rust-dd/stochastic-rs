@@ -17,9 +17,10 @@
 //!
 
 use ndarray::Array1;
-use rand_distr::Distribution;
+use rand::RngExt;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
 use crate::device::Cpu;
@@ -313,6 +314,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Hkde<T, S> { mu, kappa, theta, sigma_v, rho, v0, lambda, p_up, eta1, eta2, n, s0, t, use_sym, seed, cgns } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Hkde<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Hkde<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
@@ -432,11 +438,8 @@ impl<T: FloatExt, S: SeedExt> HkdeSampler<T, S> {
     let k_bar = self.k_bar;
     let mut rng = self.seed.rng();
 
-    let pois = if self.lambda > T::zero() {
-      Some(SimdPoisson::<u32>::new(
-        (self.lambda * dt).to_f64().unwrap(),
-        &self.seed,
-      ))
+    let mut pois = if self.lambda > T::zero() {
+      Some(SimdPoisson::<u32>::new((self.lambda * dt).to_f64().unwrap()).seeded(&self.seed))
     } else {
       None
     };
@@ -450,8 +453,8 @@ impl<T: FloatExt, S: SeedExt> HkdeSampler<T, S> {
 
       // Kou jumps
       let mut jump_log = T::zero();
-      if let Some(pois) = &pois {
-        let k: u32 = pois.sample(&mut rng);
+      if let Some(pois) = &mut pois {
+        let k = pois.sample();
         for _ in 0..k {
           jump_log += self.sample_kou_jump(&mut rng);
         }
@@ -472,6 +475,8 @@ impl<T: FloatExt, S: SeedExt> HkdeSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for HkdeSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for HkdeSampler<T, S> {
   type Output = [Array1<T>; 2];
