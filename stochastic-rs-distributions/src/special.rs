@@ -4,8 +4,6 @@
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 5.11.8 (Stirling's series for `ln Γ(z + h)`, at `h = ½` less `h = 0` the ratio of eq. 5.11.13), <https://dlmf.nist.gov/5.11.8>.
 //! Reference: Acklam, P.J. (2003), "An algorithm for computing the inverse normal cumulative distribution function" (the rational approximation and Halley step of `ndtri`).
 
-use num_traits::Float;
-
 mod bessel;
 mod bessel_i;
 mod bessel_k;
@@ -13,6 +11,7 @@ mod erfc;
 mod estimate;
 mod incomplete;
 mod k_ratio;
+mod quotient;
 
 pub use bessel::bessel_i0;
 pub use bessel::bessel_i1;
@@ -44,6 +43,11 @@ pub(crate) use k_ratio::k_ratio;
 pub(crate) use k_ratio::log_regime;
 #[cfg(test)]
 pub(crate) use k_ratio::ratio_regime;
+pub(crate) use quotient::SHAPE_CUT;
+pub use quotient::expm1_over;
+pub use quotient::ln_1p_over;
+pub(crate) use quotient::ln_1p_over_xi;
+pub(crate) use quotient::pow_m1_over_xi;
 
 const LANCZOS_G: f64 = 7.0;
 const LANCZOS_C: [f64; 9] = [
@@ -331,47 +335,6 @@ pub fn ln_norm_cdf(z: f64) -> f64 {
     -0.5 * z * z - 0.5 * std::f64::consts::TAU.ln() + mills_ratio(-z).ln()
   }
 }
-
-/// `expm1(t)/t`, 1 at `t = 0`.
-pub fn expm1_over<T: Float>(t: T) -> T {
-  if t == T::zero() {
-    T::one()
-  } else {
-    t.exp_m1() / t
-  }
-}
-
-/// `ln_1p(t)/t`, 1 at `t = 0`.
-pub fn ln_1p_over<T: Float>(t: T) -> T {
-  if t == T::zero() {
-    T::one()
-  } else {
-    t.ln_1p() / t
-  }
-}
-
-/// `(y^{−ξ} − 1)/ξ` from `ln y`, `−ln y` at `ξ = 0`; where `ξ ln y` overflows, `(e^{∓∞} − 1)/ξ`.
-pub(crate) fn pow_m1_over_xi<T: Float>(xi: T, ln_y: T) -> T {
-  let t = -xi * ln_y;
-  if t.is_infinite() {
-    t.exp_m1() / xi
-  } else {
-    -ln_y * expm1_over(t)
-  }
-}
-
-/// `ln(1 + ξz)/ξ` for `ξz > −1`, `z` at `ξ = 0`; where `ξz` overflows, its logarithm is `ln|ξ| + ln|z|` to the bit.
-pub(crate) fn ln_1p_over_xi(xi: f64, z: f64) -> f64 {
-  let xz = xi * z;
-  if xz.is_finite() {
-    z * ln_1p_over(xz)
-  } else {
-    (xi.abs().ln() + z.abs().ln()) / xi
-  }
-}
-
-/// Below it `(y^{−ξ} − 1)/ξ` is `−ln y` to half an ulp: the correction `|ξ ln y|/2` stays under `2⁻⁵⁴` for `|ln y| ≤ 745`.
-pub(crate) const SHAPE_CUT: f64 = 1e-19;
 
 #[cfg(test)]
 mod tests {
