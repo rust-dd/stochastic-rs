@@ -48,6 +48,9 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use crate::seeded::StreamState;
+use crate::special::SHAPE_CUT;
+use crate::special::ln_1p_over_xi;
+use crate::special::pow_m1_over_xi;
 use crate::traits::DistributionExt;
 use crate::traits::SimdFloatExt;
 use crate::traits::distribution::Sealed;
@@ -107,8 +110,7 @@ impl<T: SimdFloatExt> SimdGpd<T> {
     self.xi
   }
 
-  /// Clamp a uniform draw to the open unit interval so the `ln` / `powf`
-  /// chain stays finite at the lane level.
+  /// Clamp a uniform draw to the open unit interval so its logarithm stays finite at the lane level.
   #[inline]
   fn clamp_open_unit(x: T) -> T {
     let eps = T::from_f64_fast(1e-12);
@@ -117,7 +119,7 @@ impl<T: SimdFloatExt> SimdGpd<T> {
 
   #[inline]
   fn is_exponential(&self) -> bool {
-    self.xi == T::zero()
+    self.xi.abs() < T::from_f64_fast(SHAPE_CUT)
   }
 
   /// The inverse cdf at `1 − u`, which is uniform when `u` is.
@@ -127,7 +129,7 @@ impl<T: SimdFloatExt> SimdGpd<T> {
     if exponential {
       self.mu - self.sigma * u.ln()
     } else {
-      self.mu + (self.sigma / self.xi) * (-self.xi * u.ln()).exp_m1()
+      self.mu + self.sigma * pow_m1_over_xi(self.xi, u.ln())
     }
   }
 
@@ -151,7 +153,9 @@ impl<T: SimdFloatExt> SimdGpd<T> {
       let x = if exponential {
         mu - T::splat(self.sigma) * T::simd_ln(uv)
       } else {
-        mu + T::splat(self.sigma / self.xi) * T::simd_exp_m1(T::splat(-self.xi) * T::simd_ln(uv))
+        // `σ` enters last: above the cut `σ/ξ` overflows once `σ > 1.8e289` (`3.4e19` in `f32`).
+        let rise = T::simd_exp_m1(T::splat(-self.xi) * T::simd_ln(uv)) * T::splat(self.xi.recip());
+        mu + T::splat(self.sigma) * rise
       };
       *chunk = T::simd_to_array(x);
     }
@@ -218,56 +222,36 @@ impl<T: SimdFloatExt> Distribution<T> for SimdGpd<T> {
 }
 
 impl<T: SimdFloatExt> DistributionExt for SimdGpd<T> {
-  /// `ξ = −1` would read `NaN⁰ = 1` for a NaN `x`.
   fn pdf(&self, x: f64) -> Option<f64> {
-    if x.is_nan() {
-      return Some(f64::NAN);
-    }
     let (mu, sigma, xi) = self.params();
     let z = (x - mu) / sigma;
-    if z < 0.0 {
+    if z < 0.0 || z.is_infinite() || xi * z <= -1.0 {
       return Some(0.0);
     }
-    if xi == 0.0 {
-      Some((-z).exp() / sigma)
-    } else {
-      let xz = xi * z;
-      if xz <= -1.0 {
-        return Some(0.0);
-      }
-      // `ln t` from `ξz` itself: the rounded `t = 1 + ξz` loses `ξz`'s digits next to ξ = 0.
-      Some((-(1.0 / xi + 1.0) * xz.ln_1p()).exp() / sigma)
-    }
+    Some((-(1.0 + xi) * ln_1p_over_xi(xi, z)).exp() / sigma)
   }
 
   fn cdf(&self, x: f64) -> Option<f64> {
     let (mu, sigma, xi) = self.params();
     let z = (x - mu) / sigma;
-    if z < 0.0 {
-      return Some(0.0);
+    if z < 0.0 || z.is_infinite() || xi * z <= -1.0 {
+      return Some(if z > 0.0 { 1.0 } else { 0.0 });
     }
-    if xi == 0.0 {
-      Some(-(-z).exp_m1())
-    } else {
-      let xz = xi * z;
-      if xz <= -1.0 {
-        return Some(1.0);
-      }
-      Some(-(-xz.ln_1p() / xi).exp_m1())
-    }
+    Some(-(-ln_1p_over_xi(xi, z)).exp_m1())
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
     if !(0.0..=1.0).contains(&p) {
       return Some(f64::NAN);
     }
+    if p == 0.0 {
+      return Some(self.support().0);
+    }
+    if p == 1.0 {
+      return Some(self.support().1);
+    }
     let (mu, sigma, xi) = self.params();
-    let ln_q = (-p).ln_1p();
-    Some(if xi == 0.0 {
-      mu - sigma * ln_q
-    } else {
-      mu + sigma * (-xi * ln_q).exp_m1() / xi
-    })
+    Some(mu + sigma * pow_m1_over_xi(xi, (-p).ln_1p()))
   }
 
   /// `+∞` for ξ ≥ 1, where the mean integral diverges.
@@ -282,11 +266,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdGpd<T> {
 
   fn median(&self) -> Option<f64> {
     let (mu, sigma, xi) = self.params();
-    Some(if xi == 0.0 {
-      mu + sigma * std::f64::consts::LN_2
-    } else {
-      mu + sigma * (xi * std::f64::consts::LN_2).exp_m1() / xi
-    })
+    Some(mu + sigma * pow_m1_over_xi(xi, -std::f64::consts::LN_2))
   }
 
   /// The density is decreasing for ξ > −1, so the mode sits at μ; below
@@ -464,6 +444,112 @@ mod tests {
       assert!(
         (a - b).abs() < 1e-9,
         "ξ = 1e-11 draw {a} against the exponential draw {b}"
+      );
+    }
+  }
+
+  /// mpmath at 50 and 100 digits: where `ξ ln(1 − p)` or `ξz` leaves the normals, the forms keep the exponential's digits.
+  #[test]
+  fn subnormal_shape_products_keep_their_digits() {
+    for xi in [1e-15, 1e-12] {
+      assert_eq!(
+        SimdGpd::<f64>::new(0.0, 1.0, xi).quantile(1e-300),
+        Some(1e-300)
+      );
+    }
+    assert_eq!(
+      SimdGpd::<f64>::new(0.0, 1.0, 1e-4).quantile(3e-308),
+      Some(3e-308)
+    );
+    assert_eq!(SimdGpd::<f64>::new(0.0, 1.0, 1e-310).pdf(0.0), Some(1.0));
+  }
+
+  /// A chunked fill with a scalar remainder, and a fill short enough to be all scalar.
+  fn draws<T: SimdFloatExt>(sigma: T, xi: T) -> Vec<T> {
+    let (mut long, mut short) = (vec![T::zero(); 4099], vec![T::zero(); 5]);
+    let law = SimdGpd::new(T::zero(), sigma, xi);
+    law.seeded(&Deterministic::new(42)).fill_slice(&mut long);
+    law.seeded(&Deterministic::new(43)).fill_slice(&mut short);
+    long.extend(short);
+    long
+  }
+
+  /// Below the cut a stream draws the exponential's bits; above it no draw overflows at a scale the exponential keeps
+  /// finite.
+  #[test]
+  fn tiny_shapes_draw_finite_values() {
+    assert_eq!(draws(1000.0_f32, 1e-36), draws(1000.0_f32, 0.0));
+    for (sigma, xi) in [(1.0, 1e-310), (1.0, 5e-324), (1e10, 1e-300)] {
+      assert_eq!(
+        draws(sigma, xi),
+        draws(sigma, 0.0),
+        "sigma = {sigma}, xi = {xi}"
+      );
+    }
+    fn near<T: SimdFloatExt>(sigma: T, xi: T, tol: f64) {
+      for (a, b) in draws(sigma, xi).into_iter().zip(draws(sigma, T::zero())) {
+        let (a, b) = (a.to_f64().unwrap(), b.to_f64().unwrap());
+        assert!(
+          a.is_finite() && ((a - b) / b).abs() < tol,
+          "sigma = {sigma:?}, xi = {xi:?}: {a} against {b}"
+        );
+      }
+    }
+    near(1e300, 2e-19, 1e-15);
+    near(1e300, -1e-18, 1e-15);
+    near(1e30_f32, 2e-19, 5e-7);
+  }
+
+  /// mpmath at 50 and 100 digits: the quantile at the tail levels next to ξ = 0 and at ξ = 0.2.
+  #[test]
+  fn quantile_at_the_tail_levels() {
+    let levels = [1e-300, 1e-20, 1e-10, 1.0 - f64::EPSILON / 2.0, 1.0 - 1e-10];
+    for (xi, upper) in [
+      (
+        1e-15,
+        [1.00000000005e-10, 36.736800569677776, 23.025850847200353],
+      ),
+      (
+        -1e-15,
+        [1.00000000005e-10, 36.736800569676426, 23.025850847199823],
+      ),
+      (
+        1e-8,
+        [1.00000000005e-10, 36.736807317640505, 23.025853498149328],
+      ),
+      (
+        -1e-8,
+        [1.00000000005e-10, 36.736793821715345, 23.025848196251257],
+      ),
+      (
+        0.2,
+        [1.00000000006e-10, 7755.468820533241, 494.9999917259634],
+      ),
+    ] {
+      let g = SimdGpd::<f64>::new(0.0, 1.0, xi);
+      for (p, w) in levels
+        .into_iter()
+        .zip([1e-300, 1e-20].into_iter().chain(upper))
+      {
+        let q = g.quantile(p).unwrap();
+        assert!(((q - w) / w).abs() < 1e-13, "xi = {xi:e}, p = {p:e}: {q:e}");
+      }
+    }
+  }
+
+  #[test]
+  fn pdf_and_cdf_at_infinite_arguments() {
+    for xi in [-2.0, -1.0, -0.5, 0.0, 0.5] {
+      let g = SimdGpd::<f64>::new(0.0, 1.0, xi);
+      assert_eq!(
+        [f64::NEG_INFINITY, f64::INFINITY].map(|x| g.pdf(x)),
+        [Some(0.0); 2],
+        "xi = {xi}"
+      );
+      assert_eq!(
+        [f64::NEG_INFINITY, f64::INFINITY].map(|x| g.cdf(x)),
+        [Some(0.0), Some(1.0)],
+        "xi = {xi}"
       );
     }
   }

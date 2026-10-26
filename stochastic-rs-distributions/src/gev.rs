@@ -52,6 +52,9 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use crate::seeded::StreamState;
+use crate::special::SHAPE_CUT;
+use crate::special::ln_1p_over_xi;
+use crate::special::pow_m1_over_xi;
 use crate::traits::DistributionExt;
 use crate::traits::SimdFloatExt;
 use crate::traits::distribution::Sealed;
@@ -126,7 +129,7 @@ impl<T: SimdFloatExt> SimdGev<T> {
 
   #[inline]
   fn is_gumbel(&self) -> bool {
-    self.xi == T::zero()
+    self.xi.abs() < T::from_f64_fast(SHAPE_CUT)
   }
 
   #[inline]
@@ -136,7 +139,7 @@ impl<T: SimdFloatExt> SimdGev<T> {
     if gumbel {
       self.mu - self.sigma * ln_m_ln_u
     } else {
-      self.mu + (self.sigma / self.xi) * (-self.xi * ln_m_ln_u).exp_m1()
+      self.mu + self.sigma * pow_m1_over_xi(self.xi, ln_m_ln_u)
     }
   }
 
@@ -160,7 +163,9 @@ impl<T: SimdFloatExt> SimdGev<T> {
       let x = if gumbel {
         mu - T::splat(self.sigma) * ln_m_ln_u
       } else {
-        mu + T::splat(self.sigma / self.xi) * T::simd_exp_m1(T::splat(-self.xi) * ln_m_ln_u)
+        // `σ` enters last: above the cut `σ/ξ` overflows once `σ > 1.8e289` (`3.4e19` in `f32`).
+        let rise = T::simd_exp_m1(T::splat(-self.xi) * ln_m_ln_u) * T::splat(self.xi.recip());
+        mu + T::splat(self.sigma) * rise
       };
       *chunk = T::simd_to_array(x);
     }
@@ -232,65 +237,43 @@ impl<T: SimdFloatExt> Distribution<T> for SimdGev<T> {
 
 impl<T: SimdFloatExt> DistributionExt for SimdGev<T> {
   fn pdf(&self, x: f64) -> Option<f64> {
-    let mu = self.mu.to_f64().unwrap();
-    let sigma = self.sigma.to_f64().unwrap();
-    let xi = self.xi.to_f64().unwrap();
+    let (mu, sigma, xi) = self.params();
     let z = (x - mu) / sigma;
-    if xi == 0.0 {
-      let m_z = -z;
-      Some((-z - m_z.exp()).exp() / sigma)
-    } else {
-      let xz = xi * z;
-      if xz <= -1.0 {
-        return Some(0.0);
-      }
-      // `ln t` from `ξz` itself: the rounded `t = 1 + ξz` loses `ξz`'s digits next to ξ = 0.
-      let ln_t = xz.ln_1p();
-      Some((-(1.0 / xi + 1.0) * ln_t - (-ln_t / xi).exp()).exp() / sigma)
+    if z.is_infinite() || xi * z <= -1.0 {
+      return Some(0.0);
     }
+    let w = ln_1p_over_xi(xi, z);
+    Some((-(1.0 + xi) * w - (-w).exp()).exp() / sigma)
   }
 
   fn cdf(&self, x: f64) -> Option<f64> {
-    let mu = self.mu.to_f64().unwrap();
-    let sigma = self.sigma.to_f64().unwrap();
-    let xi = self.xi.to_f64().unwrap();
+    let (mu, sigma, xi) = self.params();
     let z = (x - mu) / sigma;
-    if xi == 0.0 {
-      Some((-(-z).exp()).exp())
-    } else {
-      let xz = xi * z;
-      if xz <= -1.0 {
-        return Some(if xi > 0.0 { 0.0 } else { 1.0 });
-      }
-      Some((-(-xz.ln_1p() / xi).exp()).exp())
+    if z.is_infinite() || xi * z <= -1.0 {
+      return Some(if z > 0.0 { 1.0 } else { 0.0 });
     }
+    Some((-(-ln_1p_over_xi(xi, z)).exp()).exp())
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
     if !(0.0..=1.0).contains(&p) {
       return Some(f64::NAN);
     }
-    let (lo, hi) = self.support();
     if p == 0.0 {
-      return Some(lo);
+      return Some(self.support().0);
     }
     if p == 1.0 {
-      return Some(hi);
+      return Some(self.support().1);
     }
     let (mu, sigma, xi) = self.params();
-    let ln_m_ln_p = (-p.ln()).ln();
-    Some(if xi == 0.0 {
-      mu - sigma * ln_m_ln_p
-    } else {
-      mu + sigma * (-xi * ln_m_ln_p).exp_m1() / xi
-    })
+    Some(mu + sigma * pow_m1_over_xi(xi, (-p.ln()).ln()))
   }
 
   /// $\mu + \sigma(\Gamma(1-\xi) - 1)/\xi$ for $\xi < 1$; `+∞` for $\xi \ge 1$.
   fn mean(&self) -> Option<f64> {
     let (mu, sigma, xi) = self.params();
     if xi < 1.0 {
-      Some(mu + sigma * series::standardised(xi).0)
+      Some(mu + sigma * series::mean(xi))
     } else {
       Some(f64::INFINITY)
     }
@@ -298,20 +281,16 @@ impl<T: SimdFloatExt> DistributionExt for SimdGev<T> {
 
   fn median(&self) -> Option<f64> {
     let (mu, sigma, xi) = self.params();
-    let ln_ln_2 = std::f64::consts::LN_2.ln();
-    Some(if xi == 0.0 {
-      mu - sigma * ln_ln_2
-    } else {
-      mu + sigma * (-xi * ln_ln_2).exp_m1() / xi
-    })
+    Some(mu + sigma * pow_m1_over_xi(xi, std::f64::consts::LN_2.ln()))
   }
 
+  /// From ξ = −1 down the density rises to the upper end of the support, `μ − σ/ξ`.
   fn mode(&self) -> Option<f64> {
     let (mu, sigma, xi) = self.params();
-    Some(if xi == 0.0 {
-      mu
+    Some(if xi <= -1.0 {
+      mu - sigma / xi
     } else {
-      mu + sigma * (-xi * xi.ln_1p()).exp_m1() / xi
+      mu + sigma * pow_m1_over_xi(xi, xi.ln_1p())
     })
   }
 
@@ -319,7 +298,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdGev<T> {
   fn variance(&self) -> Option<f64> {
     let (_, sigma, xi) = self.params();
     if xi < 0.5 {
-      Some(sigma * sigma * series::standardised(xi).1)
+      Some(sigma * sigma * series::variance(xi))
     } else {
       Some(f64::INFINITY)
     }
@@ -329,7 +308,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdGev<T> {
   fn skewness(&self) -> Option<f64> {
     let (_, _, xi) = self.params();
     if xi < 1.0 / 3.0 {
-      Some(series::standardised(xi).2)
+      Some(series::skewness(xi))
     } else {
       Some(f64::NAN)
     }
@@ -339,7 +318,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdGev<T> {
   fn kurtosis(&self) -> Option<f64> {
     let (_, _, xi) = self.params();
     if xi < 0.25 {
-      Some(series::standardised(xi).3)
+      Some(series::kurtosis(xi))
     } else {
       Some(f64::NAN)
     }

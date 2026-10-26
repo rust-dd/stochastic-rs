@@ -76,7 +76,6 @@ fn gev_cdf_inverse_round_trip() {
   }
 }
 
-/// Two streams from one deterministic seed agree draw for draw.
 #[test]
 fn gev_deterministic_seed_reproduces_stream() {
   let mut a = SimdGev::<f64>::new(0.5, 1.2, 0.3).seeded(&Deterministic::new(7));
@@ -152,8 +151,8 @@ fn pdf_near_the_frechet_lower_end_is_zero() {
   );
 }
 
-/// mpmath at 80 digits (120 at ξ = 1e-12): the standardised moments through the series below |ξ| = 1/8 and the Γ forms
-/// above it.
+/// mpmath at 80 digits (120 at ξ = 1e-12 and ±1/8): the standardised moments through the series up to |ξ| = 1/8 and the
+/// Γ forms above it.
 #[test]
 fn moments_across_the_series_switch() {
   let rel = |a: f64, b: f64| ((a - b) / b).abs();
@@ -185,6 +184,20 @@ fn moments_across_the_series_switch() {
       1.649248889005169,
       1.1455260279346362,
       2.429_070_973_712_183,
+    ),
+    (
+      0.125,
+      0.7172188593831756,
+      2.436764315385656,
+      2.1892703794084754,
+      11.165888718064755,
+    ),
+    (
+      -0.125,
+      0.4660584012023881,
+      1.2494825174574165,
+      0.5337263880578925,
+      0.32767551339611833,
     ),
     (
       0.124,
@@ -237,4 +250,161 @@ fn moments_across_the_series_switch() {
       "xi = {xi}: kurtosis"
     );
   }
+}
+
+/// mpmath at 50 and 100 digits: where `ξ ln y` or `ξz` leaves the normals, the forms take the Gumbel law's values.
+#[test]
+fn subnormal_shape_products_meet_the_gumbel_law() {
+  let rel = |a: f64, b: f64| ((a - b) / b).abs();
+  let g = SimdGev::<f64>::new(0.0, 1.0, 5e-324);
+  assert!(rel(g.quantile(0.5).unwrap(), 0.36651292058166435) < 1e-15);
+  assert!(rel(g.cdf(0.3).unwrap(), 0.4767236907145941) < 1e-15);
+  let g = SimdGev::<f64>::new(0.0, 1.0, 1e-310);
+  for (x, want) in [
+    (-3.0, 3.8005425040443575e-8),
+    (0.0, 0.36787944117144233),
+    (1.0, 0.2546463800435825),
+  ] {
+    assert!(rel(g.pdf(x).unwrap(), want) < 1e-15, "pdf({x})");
+  }
+  assert!(
+    rel(
+      SimdGev::<f64>::new(0.0, 1.0, 1e-160).mode().unwrap(),
+      -1e-160
+    ) < 1e-15
+  );
+}
+
+/// A chunked fill with a scalar remainder, and a fill short enough to be all scalar.
+fn draws<T: SimdFloatExt>(sigma: T, xi: T) -> Vec<T> {
+  let (mut long, mut short) = (vec![T::zero(); 4099], vec![T::zero(); 5]);
+  let law = SimdGev::new(T::zero(), sigma, xi);
+  law.seeded(&Deterministic::new(42)).fill_slice(&mut long);
+  law.seeded(&Deterministic::new(43)).fill_slice(&mut short);
+  long.extend(short);
+  long
+}
+
+/// Below the cut a stream draws the Gumbel law's bits; above it no draw overflows at a scale the Gumbel law keeps finite.
+#[test]
+fn tiny_shapes_draw_finite_values() {
+  assert_eq!(draws(1000.0_f32, 1e-36), draws(1000.0_f32, 0.0));
+  for (sigma, xi) in [(1.0, 1e-310), (1.0, 5e-324), (1e10, 1e-300)] {
+    assert_eq!(
+      draws(sigma, xi),
+      draws(sigma, 0.0),
+      "sigma = {sigma}, xi = {xi}"
+    );
+  }
+  fn near<T: SimdFloatExt>(sigma: T, xi: T, tol: f64) {
+    for (a, b) in draws(sigma, xi).into_iter().zip(draws(sigma, T::zero())) {
+      let (a, b) = (a.to_f64().unwrap(), b.to_f64().unwrap());
+      assert!(
+        a.is_finite() && ((a - b) / b).abs() < tol,
+        "sigma = {sigma:?}, xi = {xi:?}: {a} against {b}"
+      );
+    }
+  }
+  near(1e300, 2e-19, 1e-15);
+  near(1e300, -1e-18, 1e-15);
+  near(1e30_f32, 2e-19, 5e-7);
+}
+
+/// mpmath at 50 and 100 digits: the quantile at the tail levels next to ξ = 0 and at ξ = 0.2.
+#[test]
+fn quantile_at_the_tail_levels() {
+  let levels = [1e-300, 1e-20, 1e-10, 1.0 - f64::EPSILON / 2.0, 1.0 - 1e-10];
+  for (xi, want) in [
+    (
+      1e-15,
+      [
+        -6.537814919904135,
+        -3.8297647188019397,
+        -3.1366175382419965,
+        36.736800569677776,
+        23.025850847150355,
+      ],
+    ),
+    (
+      -1e-15,
+      [
+        -6.537814919904179,
+        -3.829764718801954,
+        -3.1366175382420063,
+        36.736800569676426,
+        23.025850847149822,
+      ],
+    ),
+    (
+      1e-8,
+      [
+        -6.5378147061890415,
+        -3.829764645466459,
+        -3.136617489050154,
+        36.736807317640505,
+        23.02585349809933,
+      ],
+    ),
+    (
+      -1e-8,
+      [
+        -6.537815133619281,
+        -3.8297647921374365,
+        -3.1366175874338498,
+        36.736793821715345,
+        23.025848196201256,
+      ],
+    ),
+    (
+      0.2,
+      [
+        -3.647607929636647,
+        -2.6755464743675588,
+        -2.329904058838957,
+        7755.46882053324,
+        494.9999917209634,
+      ],
+    ),
+  ] {
+    let g = SimdGev::<f64>::new(0.0, 1.0, xi);
+    for (p, w) in levels.into_iter().zip(want) {
+      let q = g.quantile(p).unwrap();
+      assert!(((q - w) / w).abs() < 1e-13, "xi = {xi:e}, p = {p:e}: {q:e}");
+    }
+  }
+}
+
+#[test]
+fn mode_from_minus_one_down_is_the_upper_end() {
+  assert_eq!(SimdGev::<f64>::new(0.0, 1.0, -2.0).mode(), Some(0.5));
+  assert_eq!(SimdGev::<f64>::new(0.0, 1.0, -1.0).mode(), Some(1.0));
+  assert_eq!(SimdGev::<f64>::new(1.0, 2.0, -4.0).mode(), Some(1.5));
+}
+
+#[test]
+fn pdf_and_cdf_at_infinite_arguments() {
+  for xi in [-2.0, -1.0, -0.5, 0.0, 0.5] {
+    let g = SimdGev::<f64>::new(0.0, 1.0, xi);
+    assert_eq!(
+      [f64::NEG_INFINITY, f64::INFINITY].map(|x| g.pdf(x)),
+      [Some(0.0); 2],
+      "xi = {xi}"
+    );
+    assert_eq!(
+      [f64::NEG_INFINITY, f64::INFINITY].map(|x| g.cdf(x)),
+      [Some(0.0), Some(1.0)],
+      "xi = {xi}"
+    );
+  }
+}
+
+/// mpmath at 120 and 200 digits: the moments where the Γ values overflow; at ξ = −100 the variance itself does.
+#[test]
+fn moments_past_the_gamma_overflow() {
+  let rel = |a: f64, b: f64| ((a - b) / b).abs();
+  let g = |xi| SimdGev::<f64>::new(0.0, 1.0, xi);
+  assert!(rel(g(-43.0).kurtosis().unwrap(), 3.6366696639941765e50) < 1e-12);
+  assert!(rel(g(-57.0).skewness().unwrap(), -3.0592515834733692e29) < 1e-12);
+  assert_eq!(g(-100.0).variance(), Some(f64::INFINITY));
+  assert!(rel(g(-171.0).mean().unwrap(), -7.257415615307999e306) < 1e-12);
 }

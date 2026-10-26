@@ -1,8 +1,8 @@
-//! The standardised GEV(0, 1, ξ) moments: a Taylor series in ξ on |ξ| < 1/8, where the Γ forms cancel as ε/ξ² to ε/ξ⁴,
-//! and the Γ forms above it. Coefficients: mpmath, 60 digits, cut at |cₙ 8⁻ⁿ| < 1e-17.
+//! The standardised GEV(0, 1, ξ) moments: a Taylor series in ξ on |ξ| ≤ 1/8, where the Γ forms cancel as ε/ξ (the mean)
+//! to ε/ξ⁴ (the kurtosis), and the Γ forms above it. Coefficients: mpmath, 60 digits, cut at |cₙ 8⁻ⁿ| < 1e-17.
 //! Reference: Johnson, N.L., Kotz, S., Balakrishnan, N. (1995), *Continuous Univariate Distributions* vol. 2, 2nd ed., Wiley, ch. 22, ISBN 0-471-58494-0 (the moments' Γ forms).
 
-use crate::special::gamma;
+use crate::special::ln_gamma;
 
 const SWITCH: f64 = 0.125;
 
@@ -173,22 +173,57 @@ fn horner(coefficients: &[f64], xi: f64) -> f64 {
   coefficients.iter().rev().fold(0.0, |acc, &c| acc * xi + c)
 }
 
-/// `(mean, variance, skewness, excess kurtosis)` of GEV(0, 1, ξ), each valid below its existence threshold (1, ½, ⅓,
-/// ¼), which the caller applies.
-pub(super) fn standardised(xi: f64) -> (f64, f64, f64, f64) {
-  if xi.abs() < SWITCH {
-    return (
-      horner(&GEV_MEAN_SERIES, xi),
-      horner(&GEV_VARIANCE_SERIES, xi),
-      horner(&GEV_SKEWNESS_SERIES, xi),
-      horner(&GEV_KURTOSIS_SERIES, xi),
-    );
+fn ln_g(xi: f64, k: f64) -> f64 {
+  ln_gamma(1.0 - k * xi)
+}
+
+/// `ln g₂` and `ln(g₁/√g₂)` with `gₖ = Γ(1 − kξ)`, and `g₁²/g₂ − 1`. The moments take `gₖ` as ratios to `g₂`'s powers in
+/// logarithms, finite where `g₄` overflows (from ξ ≈ −42.7), their sums of `gₖ/g₂^{k/2} − 1` cancelling through `expm1`.
+fn second(xi: f64) -> (f64, f64, f64) {
+  let l2 = ln_g(xi, 2.0);
+  let d1 = ln_g(xi, 1.0) - 0.5 * l2;
+  (l2, d1, (2.0 * d1).exp_m1())
+}
+
+/// The four standardised GEV(0, 1, ξ) moments here are valid under their existence thresholds (1, ½, ⅓, ¼); the caller
+/// applies them.
+pub(super) fn mean(xi: f64) -> f64 {
+  if xi.abs() <= SWITCH {
+    return horner(&GEV_MEAN_SERIES, xi);
   }
-  let g = |k: f64| gamma(1.0 - k * xi);
-  let (g1, g2, g3, g4) = (g(1.0), g(2.0), g(3.0), g(4.0));
-  let var = (g2 - g1 * g1) / (xi * xi);
-  let skew = xi.signum() * (g3 - 3.0 * g2 * g1 + 2.0 * g1.powi(3)) / (g2 - g1 * g1).powf(1.5);
-  let kurt =
-    (g4 - 4.0 * g3 * g1 + 6.0 * g2 * g1 * g1 - 3.0 * g1.powi(4)) / (g2 - g1 * g1).powi(2) - 3.0;
-  ((g1 - 1.0) / xi, var, skew, kurt)
+  let l1 = ln_g(xi, 1.0);
+  if l1 < 709.0 {
+    l1.exp_m1() / xi
+  } else {
+    -(l1 - (-xi).ln()).exp()
+  }
+}
+
+pub(super) fn variance(xi: f64) -> f64 {
+  if xi.abs() <= SWITCH {
+    return horner(&GEV_VARIANCE_SERIES, xi);
+  }
+  let (l2, _, e2) = second(xi);
+  -(l2 - 2.0 * xi.abs().ln()).exp() * e2
+}
+
+pub(super) fn skewness(xi: f64) -> f64 {
+  if xi.abs() <= SWITCH {
+    return horner(&GEV_SKEWNESS_SERIES, xi);
+  }
+  let (l2, d1, e2) = second(xi);
+  let d3 = ln_g(xi, 3.0) - 1.5 * l2;
+  let third = d3.exp_m1() - 3.0 * d1.exp_m1() + 2.0 * (3.0 * d1).exp_m1();
+  xi.signum() * third / (-e2).powf(1.5)
+}
+
+/// The excess kurtosis.
+pub(super) fn kurtosis(xi: f64) -> f64 {
+  if xi.abs() <= SWITCH {
+    return horner(&GEV_KURTOSIS_SERIES, xi);
+  }
+  let (l2, d1, e2) = second(xi);
+  let (d3, d4) = (ln_g(xi, 3.0) - 1.5 * l2, ln_g(xi, 4.0) - 2.0 * l2);
+  let fourth = d4.exp_m1() - 4.0 * (d1 + d3).exp_m1() + 6.0 * e2 - 3.0 * (4.0 * d1).exp_m1();
+  (fourth - 3.0 * e2 * e2) / (e2 * e2)
 }
