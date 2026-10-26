@@ -187,7 +187,7 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdGeometric<T> {
   }
 
   fn median(&self) -> Option<f64> {
-    Some((-std::f64::consts::LN_2 / (-self.p).ln_1p()).ceil())
+    self.quantile(0.5)
   }
 
   fn mode(&self) -> Option<f64> {

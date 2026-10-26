@@ -268,12 +268,9 @@ pub(crate) fn gamma_q_inv(a: f64, q: f64, scale: f64) -> f64 {
   invert(a, 1.0 - q, q, true, scale)
 }
 
-/// `p` and `q = 1 − p`, the one named by `from_q` exact: the target and the starts read the exact one; inlined into
-/// each entry, so `from_q` folds out of the Newton loop.
-#[inline(always)]
+/// `p` and `q = 1 − p`, the one named by `from_q` exact: the target and the starts read the exact one.
 fn invert(a: f64, p: f64, q: f64, from_q: bool, scale: f64) -> f64 {
   let upper = p > 0.5;
-  let ln_target = if upper { q.ln() } else { p.ln() };
   // `P ≤ x^a/Γ(a + 1)` makes `(pΓ(a + 1))^{1/a}` a lower bound of the root at every `p`, the root to rounding below
   // `e^{−700}`; it floors Newton only below ½, as above it its rounding over `a` outgrows the root's conditioning.
   let bound = (a < FLOOR_BINDS).then(|| (p.ln() + ln_gamma(a + 1.0)) / a);
@@ -281,6 +278,14 @@ fn invert(a: f64, p: f64, q: f64, from_q: bool, scale: f64) -> f64 {
     return bound_root(a, p, scale);
   }
   let floor = bound.filter(|_| !upper).unwrap_or(f64::NEG_INFINITY);
+  scale * newton(a, p, q, from_q, upper, floor)
+}
+
+/// Newton in `ln x` on `ln P` (or `ln Q` if `upper`) from the starts, held above `floor` (a log root). Scale-free and out
+/// of line: inlined into a solver copy that both the χ² and gamma quantiles call, the loop runs 13 % slower.
+#[inline(never)]
+fn newton(a: f64, p: f64, q: f64, from_q: bool, upper: bool, floor: f64) -> f64 {
+  let ln_target = if upper { q.ln() } else { p.ln() };
   let mut x = if a <= 1.0 {
     let t = 1.0 - a * (0.253 + 0.12 * a);
     let start = if p < t {
@@ -306,11 +311,11 @@ fn invert(a: f64, p: f64, q: f64, from_q: bool, scale: f64) -> f64 {
       next = floor.exp();
     }
     if step.abs() <= 1e-9 {
-      return scale * next;
+      return next;
     }
     x = next;
   }
-  scale * x
+  x
 }
 
 /// `scale·(pΓ(a + 1))^{1/a}`: `ln p` in two parts (from `p·2⁶⁴` if subnormal) over `a`, `ln Γ(a + 1)` from `1/Γ(1 + a) − 1`

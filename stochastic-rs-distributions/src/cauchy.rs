@@ -160,8 +160,13 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdCauchy<T> {
     if tail >= 0.25 {
       return Some(x0 + g * (std::f64::consts::PI * (p - 0.5)).tan());
     }
-    // `p − ½` is exact only on [¼, ¾]; past it the cot of the smaller tail level keeps what `tan` loses at its pole.
-    let offset = g / (std::f64::consts::PI * tail).tan();
+    // Below ¼ `p − ½` drops the level's digits and above ¾ `π(p − ½)` rounds against its distance to the pole.
+    let offset = if tail < 4e-9 {
+      // There `cot(πp) = 1/(πp)` to half an ulp, and `πp` would round in the subnormals.
+      g / std::f64::consts::PI / tail
+    } else {
+      g / (std::f64::consts::PI * tail).tan()
+    };
     Some(if p < 0.5 { x0 - offset } else { x0 + offset })
   }
 

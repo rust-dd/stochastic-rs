@@ -87,10 +87,17 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
     self.upper
   }
 
-  /// `lower − ln(1 − u·m)/λ` with `m` the interval's mass: the inverse of the cdf referred to `lower`, shared with `quantile`.
+  /// `lower − ln(1 − u·m)/λ` with `m` the interval's mass, the cdf's inverse referred to `lower`; a subnormal `u·m` takes
+  /// its first order `u·m/λ`, which the logarithm of the rounded product would lose.
   #[inline]
   fn inverse_cdf(&self, u: f64) -> f64 {
-    self.lower.to_f64().unwrap() - (-u * self.tail_mass).ln_1p() / self.lambda.to_f64().unwrap()
+    let (lo, lam) = (self.lower.to_f64().unwrap(), self.lambda.to_f64().unwrap());
+    let y = u * self.tail_mass;
+    if y < f64::MIN_POSITIVE {
+      lo + u * (self.tail_mass / lam)
+    } else {
+      lo - (-y).ln_1p() / lam
+    }
   }
 
   #[inline]
@@ -101,6 +108,13 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
   /// Infinite for an open tail.
   fn length(&self) -> Option<f64> {
     Some(self.upper.to_f64()? - self.lower.to_f64()?)
+  }
+
+  /// An infinite `upper`, or `e^{−λL}` below the subnormals: there the bounded moments meet `∞·0` and equal the open
+  /// tail's to the last bit.
+  fn open_tail(&self) -> Option<bool> {
+    let len = self.length()?;
+    Some(len.is_infinite() || (-self.lambda.to_f64()? * len).exp() == 0.0)
   }
 }
 
@@ -179,12 +193,22 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     if p == 1.0 {
       return self.upper.to_f64();
     }
-    Some(self.inverse_cdf(p))
+    if p <= 0.5 {
+      return Some(self.inverse_cdf(p));
+    }
+    // Referred to `upper`, where `1 − p·m` would cancel the `e^{−λL}` it carries; past `expm1`'s range the open tail's form.
+    let (lo, lam, len) = (self.lower.to_f64()?, self.lambda.to_f64()?, self.length()?);
+    let span = (lam * len).exp_m1();
+    Some(if span.is_finite() {
+      self.upper.to_f64()? - ((1.0 - p) * span).ln_1p() / lam
+    } else {
+      lo - (1.0 - p).ln() / lam
+    })
   }
 
   fn mean(&self) -> Option<f64> {
     let (lam, lo) = (self.lambda.to_f64()?, self.lower.to_f64()?);
-    if self.upper.to_f64()?.is_infinite() {
+    if self.open_tail()? {
       return Some(lo + 1.0 / lam);
     }
     let len = self.length()?;
@@ -201,7 +225,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
 
   fn variance(&self) -> Option<f64> {
     let lam = self.lambda.to_f64()?;
-    if self.upper.to_f64()?.is_infinite() {
+    if self.open_tail()? {
       return Some(1.0 / (lam * lam));
     }
     let len = self.length()?;
@@ -210,14 +234,14 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
 
   fn entropy(&self) -> Option<f64> {
     let lam = self.lambda.to_f64()?;
-    if self.upper.to_f64()?.is_infinite() {
+    if self.open_tail()? {
       return Some(1.0 - lam.ln());
     }
     let x = lam * self.length()?;
     Some((-(-x).exp_m1() / lam).ln() + x * mean_fraction(x))
   }
 
-  /// Finite for every `t` on a bounded interval (`λL e^{λ·lower}/(1 − r)` at `t = λ`); an open tail diverges from `t = λ` on.
+  /// Finite for every `t` on a bounded interval (`λL e^{λ·lower}/m` at `t = λ`, `m` the mass); an open tail diverges from `t = λ` on.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
     if t.is_nan() {
       return Some(f64::NAN);
@@ -239,7 +263,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     } else {
       (s * len).exp_m1() / s
     };
-    Some((t * lo).exp() * lam * integral / -(-lam * len).exp_m1())
+    Some((t * lo).exp() * lam * integral / self.tail_mass)
   }
 }
 

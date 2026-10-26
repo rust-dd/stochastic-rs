@@ -264,7 +264,13 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGamma<T> {
     }
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
-    Some(crate::special::gamma_p_inv(alpha, p, 1.0) * scale)
+    // `θ`'s power of two enters the solver, so a root below the normals is formed at its final scale and rounded once.
+    let pow2 = if scale.is_normal() {
+      f64::from_bits(scale.to_bits() & 0x7FF0_0000_0000_0000)
+    } else {
+      1.0
+    };
+    Some(crate::special::gamma_p_inv(alpha, p, pow2) * (scale / pow2))
   }
 
   fn mean(&self) -> Option<f64> {

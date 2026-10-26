@@ -164,12 +164,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdPareto<T> {
     }
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
-    // Below ½ `1 − p` drops a small `p`, which `ln_1p` keeps; from ½ on it is exact and `powf` rounds once.
-    Some(if p < 0.5 {
-      xm * (-(-p).ln_1p() / a).exp()
-    } else {
-      xm / (1.0 - p).powf(1.0 / a)
-    })
+    Some(xm * (-(-p).ln_1p() / a).exp())
   }
 
   /// `+∞`, not `NaN`, at `alpha <= 1`: the mean integral `∫x·f(x)dx`
