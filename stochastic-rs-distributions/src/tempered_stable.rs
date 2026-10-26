@@ -57,6 +57,12 @@ pub struct SimdTemperedStable<T> {
   tilt: f64,
   /// $\theta^{1/\alpha}$.
   scale: f64,
+  /// $\ln\theta/\alpha$, the log path's `scale`.
+  ln_scale: f64,
+  /// $\lambda'^\alpha = \lambda^\alpha\theta$, formed without $\lambda'$.
+  lambda_alpha: f64,
+  /// Devroye's algorithm in logarithms, where `scale`, `tilt` or $(\sqrt\gamma + \alpha\zeta)^{1/\alpha}$ leaves the normal range.
+  log_path: bool,
 }
 
 /// $\mathcal S(x) = \sin x / x$.
@@ -115,12 +121,22 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
       "theta must satisfy `theta > 0.0`, got theta = {theta:?}"
     );
     let scale = theta_f.powf(1.0 / alpha_f);
+    let tilt = lambda_f * scale;
+    let lambda_alpha = lambda_f.powf(alpha_f) * theta_f;
+    let root_gamma = (lambda_alpha * alpha_f * (1.0 - alpha_f)).sqrt();
+    let plain = scale.is_normal()
+      && tilt.is_finite()
+      && root_gamma.max(alpha_f).ln() / alpha_f > -700.0
+      && (root_gamma + alpha_f).ln() / alpha_f < 700.0;
     Self {
       alpha,
       lambda,
       theta,
-      tilt: lambda_f * scale,
+      tilt,
       scale,
+      ln_scale: theta_f.ln() / alpha_f,
+      lambda_alpha,
+      log_path: !plain,
     }
   }
 
@@ -139,17 +155,22 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
     self.theta
   }
 
-  /// One draw of $S_{\alpha,\lambda'}$ with $\lambda' = $ `self.tilt` —
-  /// Devroye's Appendix algorithm, step for step.
-  fn draw_unit<S: NormalUniformSource<T>>(&self, src: &mut S) -> f64 {
+  /// One draw of $\theta^{1/\alpha} S_{\alpha,\lambda'}$ with $\lambda' = $ `self.tilt`: Devroye's Appendix algorithm,
+  /// step for step, with $\lambda'$, $m$, the tilt term and the result in logarithms on the log path.
+  fn draw_scaled<S: NormalUniformSource<T>>(&self, src: &mut S) -> f64 {
     let alpha = self.alpha.to_f64().unwrap();
     let lambda = self.tilt;
+    let log = self.log_path;
     let pi = std::f64::consts::PI;
     let uniform = |src: &mut S| src.uniform().to_f64().unwrap();
     let normal = |src: &mut S| src.normal().to_f64().unwrap();
     let exponential = |src: &mut S| -uniform(src).max(1e-300).ln();
 
-    let lambda_alpha = lambda.powf(alpha);
+    let lambda_alpha = if log {
+      self.lambda_alpha
+    } else {
+      lambda.powf(alpha)
+    };
     let gamma = lambda_alpha * alpha * (1.0 - alpha);
     let root_half_pi = (pi / 2.0).sqrt();
     let xi = ((2.0 + root_half_pi) * (2.0 * gamma).sqrt() + 1.0) / pi;
@@ -178,8 +199,12 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
         };
         let w = uniform(src);
         let zeta = zolotarev_ratio(alpha, u).sqrt();
-        let phi = (sqrt_gamma + alpha * zeta).powf(1.0 / alpha);
-        let zed = phi / (phi - sqrt_gamma_pow);
+        let zed = if log {
+          -1.0 / (-(alpha * zeta / sqrt_gamma).ln_1p() / alpha).exp_m1()
+        } else {
+          let phi = (sqrt_gamma + alpha * zeta).powf(1.0 / alpha);
+          phi / (phi - sqrt_gamma_pow)
+        };
         let numerator = pi
           * (-lambda_alpha * (1.0 - 1.0 / (zeta * zeta))).exp()
           * (if u >= 0.0 && gamma >= 1.0 {
@@ -203,7 +228,11 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
       };
       let _ = zeta;
       let a = zolotarev_a(alpha, u);
-      let m = (b * lambda / a).powf(alpha);
+      let m = if log {
+        lambda_alpha * (b / a).powf(alpha)
+      } else {
+        (b * lambda / a).powf(alpha)
+      };
       let delta = (m * alpha / a).sqrt();
       let a1 = delta * root_half_pi;
       let a2 = delta;
@@ -224,7 +253,10 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
       };
       let e = -z.ln();
       if x > 0.0 {
-        let tilt_term = if lambda > 0.0 {
+        // `λ' m^{−b} = λ'^α (a/b)^{1−α}`, so the log path never forms `λ'`.
+        let tilt_term = if log {
+          lambda_alpha * (a / b).powf(1.0 - alpha) * (b * (m / x).ln()).exp_m1()
+        } else if lambda > 0.0 {
           lambda * (x.powf(-b) - m.powf(-b))
         } else {
           0.0
@@ -232,7 +264,12 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
         let penalty = if x < m { n_prime * n_prime / 2.0 } else { 0.0 }
           + if x > m + delta { e_prime } else { 0.0 };
         if a * (x - m) + tilt_term - penalty <= e {
-          return x.powf(-b);
+          let unit = x.powf(-b);
+          return if log || unit < f64::MIN_POSITIVE {
+            (self.ln_scale - b * x.ln()).exp()
+          } else {
+            self.scale * unit
+          };
         }
       }
     }
@@ -246,12 +283,12 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
   ) {
     let mut src = (normal, rng);
     for x in out.iter_mut() {
-      *x = T::from_f64_fast(self.scale * self.draw_unit(&mut src));
+      *x = T::from_f64_fast(self.draw_scaled(&mut src));
     }
   }
 
   pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
-    T::from_f64_fast(self.scale * self.draw_unit(&mut AnyRng(rng)))
+    T::from_f64_fast(self.draw_scaled(&mut AnyRng(rng)))
   }
 
   fn params(&self) -> (f64, f64, f64) {
@@ -350,110 +387,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdTemperedStable<T> {
 }
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::*;
-  use crate::tests::assert_moments_within;
-  use crate::tests::scalar_draws;
-  use crate::traits::DistributionExt;
-  use crate::traits::DistributionSampler;
-
-  fn laplace_transform(xs: &[f64], u: f64) -> f64 {
-    xs.iter().map(|x| (-u * x).exp()).sum::<f64>() / xs.len() as f64
-  }
-
-  /// The empirical Laplace transform of the draws matches
-  /// $\exp(\theta(\lambda^\alpha - (u+\lambda)^\alpha))$ across tilting
-  /// regimes, including the untilted Kanter limit and a strong tilt where
-  /// naive rejection would need $e^{\lambda^\alpha}$ tries.
-  #[test]
-  fn laplace_transform_matches_the_closed_form() {
-    for (alpha, lambda, theta, seed) in [
-      (0.5, 0.0, 1.0, 1u64),
-      (0.7, 1.0, 1.0, 2),
-      (0.3, 4.0, 2.0, 3),
-      (0.9, 30.0, 0.5, 4),
-    ] {
-      let d = SimdTemperedStable::<f64>::new(alpha, lambda, theta);
-      let n = 300_000;
-      let mut xs = vec![0.0; n];
-      d.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
-      assert!(xs.iter().all(|x| *x > 0.0 && x.is_finite()));
-      for u in [0.5, 1.0, 2.0] {
-        let want = (theta * (lambda.powf(alpha) - (u + lambda).powf(alpha))).exp();
-        let got = laplace_transform(&xs, u);
-        assert!(
-          (got - want).abs() < 4e-3,
-          "α={alpha} λ={lambda} u={u}: {got} vs {want}"
-        );
-      }
-    }
-  }
-
-  /// Cumulant moments: sample mean and variance against κ₁, κ₂.
-  #[test]
-  fn sample_moments_match_the_cumulants() {
-    let d = SimdTemperedStable::<f64>::new(0.6, 2.0, 1.5);
-    let n = 400_000;
-    let mut xs = vec![0.0; n];
-    d.seeded(&Deterministic::new(9)).fill_slice(&mut xs);
-    let mean = xs.iter().sum::<f64>() / n as f64;
-    let var = xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n as f64;
-    assert!(
-      (mean - d.mean().unwrap()).abs() / d.mean().unwrap() < 0.01,
-      "mean {mean} vs {}",
-      d.mean().unwrap()
-    );
-    assert!(
-      (var - d.variance().unwrap()).abs() / d.variance().unwrap() < 0.03,
-      "var {var} vs {}",
-      d.variance().unwrap()
-    );
-    assert!((d.mean().unwrap() - 1.5 * 0.6 * 2.0_f64.powf(-0.4)).abs() < 1e-14);
-    assert!((d.variance().unwrap() - 1.5 * 0.6 * 0.4 * 2.0_f64.powf(-1.4)).abs() < 1e-14);
-    assert!(d.skewness().unwrap() > 0.0 && d.kurtosis().unwrap() > 0.0);
-    assert!((d.moment_generating_function(0.0).unwrap() - 1.0).abs() < 1e-15);
-    assert_eq!(d.moment_generating_function(3.0), Some(f64::INFINITY));
-    let cf = d.characteristic_function(0.0).unwrap();
-    assert!((cf.re - 1.0).abs() < 1e-15 && cf.im.abs() < 1e-15);
-  }
-
-  #[test]
-  fn scalar_sample_moments_match_the_cumulants() {
-    let d = SimdTemperedStable::<f64>::new(0.6, 2.0, 1.5);
-    let xs = scalar_draws(&d, 13, 200_000);
-    assert_moments_within(
-      &xs,
-      d.cumulant(1),
-      d.cumulant(2),
-      None,
-      6.0,
-      "tempered stable",
-    );
-  }
-
-  #[test]
-  fn untilted_law_has_infinite_mean() {
-    let d = SimdTemperedStable::<f64>::new(0.5, 0.0, 1.0);
-    assert_eq!(d.mean().unwrap(), f64::INFINITY);
-  }
-
-  #[test]
-  fn deterministic_seed_reproduces_stream() {
-    let mut a = SimdTemperedStable::<f64>::new(0.7, 1.0, 1.0).seeded(&Deterministic::new(7));
-    let mut b = SimdTemperedStable::<f64>::new(0.7, 1.0, 1.0).seeded(&Deterministic::new(7));
-    for _ in 0..256 {
-      assert_eq!(a.sample(), b.sample());
-    }
-  }
-
-  #[test]
-  #[should_panic(expected = "alpha must satisfy `alpha > 0.0 && alpha < 1.0`")]
-  fn rejects_alpha_of_one() {
-    let _ = SimdTemperedStable::<f64>::new(1.0, 1.0, 1.0);
-  }
-}
+mod tests;
 
 py_distribution!(PyTemperedStable, SimdTemperedStable,
   sig: (alpha, lambda, theta, seed=None, dtype=None),
