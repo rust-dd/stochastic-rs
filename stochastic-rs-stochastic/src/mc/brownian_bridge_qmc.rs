@@ -278,14 +278,14 @@ mod tests {
     assert_eq!(
       bits(w.row(3)),
       [
-        "bfba5da976cdfda6",
+        "bfba5da976cdfda7",
         "bfa7e44c6bc5fbdc",
-        "bfde1864b525a47d",
-        "bfd464965bdc7eaf",
-        "bfc8f3eed63c1114",
-        "3fb68bcace3ab3cc",
-        "3fc60e05d8a83914",
-        "bfd464965bdc7eaf",
+        "bfde1864b525a47e",
+        "bfd464965bdc7eb0",
+        "bfc8f3eed63c1116",
+        "3fb68bcace3ab3c8",
+        "3fc60e05d8a83912",
+        "bfd464965bdc7eb0",
       ]
     );
   }
