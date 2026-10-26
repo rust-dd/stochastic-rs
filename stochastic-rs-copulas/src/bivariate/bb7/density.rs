@@ -1,9 +1,9 @@
 use stochastic_rs_distributions::RealExt;
+use stochastic_rs_distributions::special::expm1_over;
+use stochastic_rs_distributions::special::ln_1p_over;
 
 use super::Bb7;
 use super::ln_phi;
-use crate::bivariate::conditional::expm1_over;
-use crate::bivariate::conditional::ln_1p_over;
 use crate::bivariate::conditional::ln_add_exp;
 use crate::bivariate::conditional::ln_one_minus_exp;
 use crate::bivariate::conditional::ln_one_minus_pow_ratio;

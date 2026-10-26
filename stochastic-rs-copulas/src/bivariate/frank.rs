@@ -12,14 +12,14 @@ use std::sync::OnceLock;
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
+use stochastic_rs_distributions::special::expm1_over;
+use stochastic_rs_distributions::special::ln_1p_over;
 
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::copula_cdf;
 use crate::bivariate::conditional::copula_pdf;
-use crate::bivariate::conditional::expm1_over;
-use crate::bivariate::conditional::ln_1p_over;
 use crate::bivariate::conditional::ln_one_minus_exp;
 use crate::bivariate::conditional::ln_one_minus_pow;
 use crate::bivariate::conditional::on_open_square;

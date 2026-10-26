@@ -34,12 +34,12 @@ use ndarray::Array2;
 use ndarray::ArrayView2;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::RealExt;
+use stochastic_rs_distributions::special::expm1_over;
+use stochastic_rs_distributions::special::ln_1p_over;
 
 use super::MultivariateFamily;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::check_unit;
-use crate::bivariate::conditional::expm1_over;
-use crate::bivariate::conditional::ln_1p_over;
 use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
 

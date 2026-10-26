@@ -28,13 +28,13 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use stochastic_rs_distributions::RealExt;
+use stochastic_rs_distributions::special::expm1_over;
+use stochastic_rs_distributions::special::ln_1p_over;
 
 use super::BivariateFamily;
 use super::conditional::conditional_cdf;
 use super::conditional::copula_cdf;
 use super::conditional::copula_pdf;
-use super::conditional::expm1_over;
-use super::conditional::ln_1p_over;
 use super::conditional::ln_add_exp;
 use super::conditional::ln_expm1;
 use super::conditional::ln_one_minus_exp;

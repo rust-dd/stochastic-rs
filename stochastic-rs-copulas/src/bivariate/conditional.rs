@@ -9,6 +9,7 @@ use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::Zip;
 use stochastic_rs_distributions::RealExt;
+use stochastic_rs_distributions::special::expm1_over;
 
 use crate::bivariate::BivariateFamily;
 use crate::error::CopulaError;
@@ -80,16 +81,6 @@ pub(crate) fn ln_one_minus_pow_ratio(theta: f64, ln_a: f64, ln_b: f64) -> f64 {
   } else {
     ln_one_minus_pow(theta, ln_a) - ln_one_minus_pow(theta, ln_b)
   }
-}
-
-/// `expm1(t)/t`, 1 at `t = 0`.
-pub(crate) fn expm1_over(t: f64) -> f64 {
-  if t == 0.0 { 1.0 } else { t.exp_m1() / t }
-}
-
-/// `ln_1p(t)/t`, 1 at `t = 0`.
-pub(crate) fn ln_1p_over(t: f64) -> f64 {
-  if t == 0.0 { 1.0 } else { t.ln_1p() / t }
 }
 
 /// `ln(expm1(z))` for `z ≥ 0`, from `ln z` where `z` is subnormal.

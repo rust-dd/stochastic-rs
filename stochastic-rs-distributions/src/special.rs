@@ -330,6 +330,16 @@ pub fn ln_norm_cdf(z: f64) -> f64 {
   }
 }
 
+/// `expm1(t)/t`, 1 at `t = 0`.
+pub fn expm1_over(t: f64) -> f64 {
+  if t == 0.0 { 1.0 } else { t.exp_m1() / t }
+}
+
+/// `ln_1p(t)/t`, 1 at `t = 0`.
+pub fn ln_1p_over(t: f64) -> f64 {
+  if t == 0.0 { 1.0 } else { t.ln_1p() / t }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
