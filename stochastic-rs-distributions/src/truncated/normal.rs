@@ -522,6 +522,7 @@ mod tests {
       (3.0, 6.0),
       (3.0, 3.4),
       (3.0, 3.2),
+      (1.5, 2.1),
       (0.0, 1.7),
       (-6.0, -3.0),
       (-0.05, 0.05),
@@ -532,7 +533,8 @@ mod tests {
     }
   }
 
-  /// Robert (1995), rule (2.1): the exponential proposal from the width `2√e/(a + √(a²+4)) · exp((a² − a√(a²+4))/4)` on.
+  /// Each pair brackets Robert's (2.1) width at a = 3, 0 and 8 (0.317, 1.649, 0.124), inside the band the old `2/α*`
+  /// switch sent to the uniform.
   #[test]
   fn tail_proposal_follows_roberts_rule() {
     let exponential = |a: f64, b: f64| {
