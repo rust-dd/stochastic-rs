@@ -242,23 +242,23 @@ impl<T: SimdFloatExt> DistributionExt for SimdGed<T> {
     let (mu, a, b) = (self.mu.to_f64()?, self.alpha.to_f64()?, self.beta.to_f64()?);
     // `2p − 1` is exact from ¼ up; below ¼ the lower tail's level `2p` is, and the root is solved from it.
     let tail = 2.0 * p.min(1.0 - p);
-    let r = if tail >= 0.5 {
-      let level = (2.0 * p - 1.0).abs();
-      let g = if level == 0.0 {
+    let level = (2.0 * p - 1.0).abs();
+    let g = if tail >= 0.5 {
+      if level == 0.0 {
         0.0
       } else {
         crate::special::gamma_p_inv(1.0 / b, level, 1.0)
-      };
-      // Below the normals the root is `(level·Γ(1 + 1/β))^β` to rounding, so its `1/β` power is that base.
-      if level == 0.0 || g >= f64::MIN_POSITIVE {
-        g.powf(1.0 / b)
-      } else {
-        level * crate::special::gamma(1.0 + 1.0 / b)
       }
     } else if tail == 0.0 {
       f64::INFINITY
     } else {
-      crate::special::gamma_q_inv(1.0 / b, tail, 1.0).powf(1.0 / b)
+      crate::special::gamma_q_inv(1.0 / b, tail, 1.0)
+    };
+    // Below the normals the root is `(level·Γ(1 + 1/β))^β` to rounding, so its `1/β` power is that base.
+    let r = if g == 0.0 && level == 0.0 || g >= f64::MIN_POSITIVE {
+      g.powf(1.0 / b)
+    } else {
+      level * crate::special::gamma(1.0 + 1.0 / b)
     };
     let side = if p < 0.5 { -1.0 } else { 1.0 };
     Some(mu + side * a * r)

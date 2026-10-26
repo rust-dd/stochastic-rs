@@ -12,7 +12,7 @@ fn rel(a: f64, b: f64) -> f64 {
   (a - b).abs() / b.abs()
 }
 
-/// Where the gamma root underflows, its `1/β` power is `level·Γ(1 + 1/β)`, still representable; β = 20 takes the root.
+/// Where the gamma root underflows, in either branch, its `1/β` power is `level·Γ(1 + 1/β)`; β = 20 takes the root.
 #[test]
 fn ged_quantile_at_large_beta_keeps_its_offset() {
   for (beta, p, want) in [
@@ -25,6 +25,15 @@ fn ged_quantile_at_large_beta_keeps_its_offset() {
     (25.0, 0.5 + 2f64.powi(-52), 4.3451384753112375e-16),
     (20.0, 0.3, -0.3894017063442717),
     (20.0, 0.5 - 2f64.powi(-30), -1.8132929980061496e-9),
+    (2000.0, 0.2, -0.5998269835909047),
+    (1074.0, 1e-10, -1.0023722824375438),
+    (1074.0, 0.2, -0.5996780471831865),
+    (1074.0, 0.8, 0.5996780471831866),
+    (1074.0, 1.0 - 1e-10, 1.002372282431897),
+    (1e4, 1e-10, -1.000236789374925),
+    (1e4, 0.2, -0.5999653729938974),
+    (1e4, 0.8, 0.5999653729938975),
+    (1e4, 1.0 - 1e-10, 1.0002367893742115),
   ] {
     let got = SimdGed::<f64>::new(0.0, 1.0, beta).quantile(p).unwrap();
     assert!(
@@ -34,7 +43,7 @@ fn ged_quantile_at_large_beta_keeps_its_offset() {
   }
 }
 
-/// Above ½ the map referred to `upper` keeps the `e^{−λL}` that `1 − p·m` cancels next to level 1.
+/// Above ½ `1 − p·m` as `(1 − p) + p·e^{−λL}` keeps what the map cancels, next to level 1 and far below `upper`.
 #[test]
 fn truncated_exponential_quantile_keeps_its_upper_tail() {
   let levels = [1.0 - 2f64.powi(-53), 1.0 - 1e-15, 1.0 - 1e-10];
@@ -62,10 +71,36 @@ fn truncated_exponential_quantile_keeps_its_upper_tail() {
       );
     }
   }
+  let bulk = SimdTruncatedExp::<f64>::new(7.0, 0.0, 101.39)
+    .quantile(0.5180645342510322)
+    .unwrap();
+  assert!(rel(bulk, 0.104277866054717) < 1e-15, "{bulk}");
   assert_eq!(
     SimdTruncatedExp::<f64>::new(1e-17, 0.0, 1.0).quantile(1e-300),
     Some(1e-300)
   );
+}
+
+/// The map below ½ and the two-term form above meet without a step down, over 10⁴ floats on each side.
+#[test]
+fn truncated_exponential_quantile_is_monotone_through_one_half() {
+  for (lam, lo, up) in [(25.0, 0.0, 1.0), (7.0, 0.0, 101.39), (0.5, 0.0, 3.0)] {
+    let law = SimdTruncatedExp::<f64>::new(lam, lo, up);
+    let mut p = 0.5_f64;
+    for _ in 0..10_000 {
+      p = p.next_down();
+    }
+    let mut last = law.quantile(p).unwrap();
+    for _ in 0..20_000 {
+      p = p.next_up();
+      let q = law.quantile(p).unwrap();
+      assert!(
+        q >= last,
+        "({lam}, {lo}, {up}) at p = {p}: {q} after {last}"
+      );
+      last = q;
+    }
+  }
 }
 
 /// Past `e^{−λL}`'s underflow the bounded moments meet `∞·0`; the open tail's values hold there.
@@ -93,23 +128,50 @@ fn truncated_exponential_moments_at_a_huge_finite_upper() {
   }
 }
 
-/// θ's power of two enters the solver, so a unit root below the normals keeps its digits at a large scale.
+/// θ enters the solver's exponent, so a unit root below the normals keeps its digits at any scale, and a subnormal
+/// result rounds once.
 #[test]
 fn gamma_quantile_at_a_large_scale() {
-  let low = SimdGamma::<f64>::new(0.5, 1e10).quantile(1e-158).unwrap();
-  assert!(rel(low, 7.853981633974484e-307) < 1e-13, "{low:e}");
-  let lower = SimdGamma::<f64>::new(0.5, 1e30).quantile(1e-160).unwrap();
-  assert!(rel(lower, 7.853981633974483e-291) < 1e-13, "{lower:e}");
+  for (shape, scale, p, want) in [
+    (0.5, 1e10, 1e-158, 7.853981633974484e-307),
+    (0.5, 1e30, 1e-160, 7.853981633974483e-291),
+    (0.5, 1e100, 1e-200, 7.853981633974482e-301),
+    (0.01, 1e300, 1e-5, 5.6607381470620634e-201),
+    (
+      0.5678006476703295,
+      2.3367910557514248e119,
+      3.477217825905003e-176,
+      1.8407855932429324e-190,
+    ),
+  ] {
+    let got = SimdGamma::<f64>::new(shape, scale).quantile(p).unwrap();
+    assert!(
+      rel(got, want) < 1e-15,
+      "({shape}, {scale:e}) at {p:e}: {got:e}"
+    );
+  }
+  assert_eq!(
+    SimdGamma::<f64>::new(0.5, 1e30).quantile(1e-170),
+    Some(7.8539816339746e-311)
+  );
+  assert_eq!(
+    SimdGamma::<f64>::new(5.930266202879256, 9.635923662524929e-267)
+      .quantile(1.7547492875562472e-273),
+    Some(2.89952531937e-312)
+  );
 }
 
-/// At a subnormal level `πp` would round; `(γ/π)/p` is the cot's first order to half an ulp there.
+/// The cot's first order to half an ulp: `(γ/π)/p` at a subnormal level, where `πp` would round, and `γ/(πp)` at a
+/// normal one, where a tiny `γ/π` would.
 #[test]
 fn cauchy_quantile_at_a_subnormal_level() {
   let got = SimdCauchy::<f64>::new(0.0, 1e-5).quantile(1e-310).unwrap();
   assert!(rel(got, -3.1830988618379165e304) < 1e-15, "{got:e}");
+  let tiny = SimdCauchy::<f64>::new(0.0, 5e-324).quantile(1e-20).unwrap();
+  assert!(rel(tiny, -1.5726597949504822e-304) < 1e-15, "{tiny:e}");
 }
 
-/// One form at every level keeps the quantile monotone through ½, where a split at ½ stepped down an ulp.
+/// One form at every level keeps the quantile monotone through ½; a form switched at ½ can step down an ulp there.
 #[test]
 fn pareto_quantile_is_monotone_through_one_half() {
   let law = SimdPareto::<f64>::new(1.0, 7.244359600749906);

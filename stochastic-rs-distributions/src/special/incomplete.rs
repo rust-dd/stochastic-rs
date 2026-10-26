@@ -257,8 +257,8 @@ pub fn ln_gamma_q(a: f64, x: f64) -> f64 {
   }
 }
 
-/// `scale` (a power of two) times the `x` with `P(a, x) = p`, `0 < p < 1`, rounded once if subnormal: Newton in `ln x` on the
-/// concave `ln P` (`p ≤ ½`) or `ln Q`; Wilson–Hilferty's start is formed in `x`, so at a huge `a` it is `a`, the root to the bit.
+/// `scale` times the `x` with `P(a, x) = p`, `0 < p < 1`, rounded once: Newton in `ln x` on the concave `ln P` (`p ≤ ½`)
+/// or `ln Q`; Wilson–Hilferty's start is formed in `x`, so at a huge `a` it is `a`, the root to the bit.
 pub(crate) fn gamma_p_inv(a: f64, p: f64, scale: f64) -> f64 {
   invert(a, p, 1.0 - p, false, scale)
 }
@@ -318,8 +318,8 @@ fn newton(a: f64, p: f64, q: f64, from_q: bool, upper: bool, floor: f64) -> f64 
   x
 }
 
-/// `scale·(pΓ(a + 1))^{1/a}`: `ln p` in two parts (from `p·2⁶⁴` if subnormal) over `a`, `ln Γ(a + 1)` from `1/Γ(1 + a) − 1`
-/// and `2⁶⁴` taken out exactly, as the exponent's rounding would cost `ε|ln p|/a` of the root; the last multiply rounds it.
+/// `scale·(pΓ(a + 1))^{1/a}` from one exponent: `ln p` in two parts (from `p·2⁶⁴` if subnormal), `ln Γ(a + 1)`, and
+/// `scale = 2ᵏm` as `ln m` and `k ln 2` through ln 2's halves, lifted by `2⁶⁴` so that only the last multiply rounds.
 fn bound_root(a: f64, p: f64, scale: f64) -> f64 {
   const TWO_POW_M64: f64 = 1.0 / 18_446_744_073_709_551_616.0;
   let (l, l_lo) = if p < f64::MIN_POSITIVE {
@@ -332,13 +332,29 @@ fn bound_root(a: f64, p: f64, scale: f64) -> f64 {
     large_shape::ln_ratio(p, 1.0)
   };
   let q = l / a;
-  // Below `q = −746` the root, `e^q` within `e^{0.73}`, rounds to 0, and `q`'s remainder can pass `f64::MAX`.
-  if q < -746.0 {
+  let (k, m) = split_pow2(scale);
+  let ln_m = m.ln();
+  // Below `e^{−746}` the result, `e^{q + k ln 2 + ln m}` within `e^{0.73}`, rounds to 0, and `q`'s remainder can pass
+  // `f64::MAX`.
+  if q + f64::from(k) * large_shape::LN2_HI + ln_m < -746.0 {
     return 0.0;
   }
   let q_lo = ((-q).mul_add(a, l) + l_lo) / a;
-  let rest = q_lo - recip_gamma_1p_m1(a).ln_1p() / a + scale.ln() + 64.0 * large_shape::LN2_LO;
-  (q + 64.0 * large_shape::LN2_HI).exp() * rest.exp() * TWO_POW_M64
+  let lift = f64::from(k + 64);
+  let rest = q_lo - recip_gamma_1p_m1(a).ln_1p() / a + ln_m + lift * large_shape::LN2_LO;
+  (q + lift * large_shape::LN2_HI).exp() * rest.exp() * TWO_POW_M64
+}
+
+/// `(k, m)` with `s = 2ᵏm`, `m ∈ [1, 2)`, for a positive finite `s`.
+fn split_pow2(s: f64) -> (i32, f64) {
+  let (s, shift) = if s < f64::MIN_POSITIVE {
+    (s * 18_446_744_073_709_551_616.0, -64)
+  } else {
+    (s, 0)
+  };
+  let bits = s.to_bits();
+  let m = f64::from_bits((bits & 0x000f_ffff_ffff_ffff) | 0x3ff0_0000_0000_0000);
+  (((bits >> 52) & 0x7ff) as i32 - 1023 + shift, m)
 }
 
 /// `ln P(a, x)`, or `ln Q` if `upper`, and its derivative in `ln x`: `1/S` or `−1/h` where the tail solved is the series'
