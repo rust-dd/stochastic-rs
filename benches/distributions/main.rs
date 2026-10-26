@@ -15,6 +15,8 @@ use stochastic_rs::distributions::exp::SimdExp;
 use stochastic_rs::distributions::gamma::SimdGamma;
 use stochastic_rs::distributions::generalized_hyperbolic::SimdGeneralizedHyperbolic;
 use stochastic_rs::distributions::generalized_inverse_gauss::SimdGig;
+use stochastic_rs::distributions::gev::SimdGev;
+use stochastic_rs::distributions::gpd::SimdGpd;
 use stochastic_rs::distributions::johnson_su::SimdJohnsonSu;
 use stochastic_rs::distributions::lognormal::SimdLogNormal;
 use stochastic_rs::distributions::non_central_chi_squared::SimdNonCentralChiSquared;
@@ -377,6 +379,39 @@ fn bench_truncated_exp(c: &mut Criterion) {
   group.finish();
 }
 
+fn bench_gev_gpd(c: &mut Criterion) {
+  let mut group = c.benchmark_group("Gev");
+  let gev = SimdGev::<f64>::new(0.0, 1.0, 0.3);
+  group.bench_function("seeded/f64", |b| {
+    let mut s = gev.seeded(&Deterministic::new(7));
+    b.iter(|| black_box(s.sample()))
+  });
+  group.bench_function("fill_slice/f64/4096", |b| {
+    let mut s = gev.seeded(&Deterministic::new(7));
+    let mut out = vec![0.0_f64; 4096];
+    b.iter(|| {
+      s.fill_slice(&mut out);
+      black_box(&out);
+    })
+  });
+  group.finish();
+  let mut group = c.benchmark_group("Gpd");
+  let gpd = SimdGpd::<f64>::new(0.0, 1.0, 0.3);
+  group.bench_function("seeded/f64", |b| {
+    let mut s = gpd.seeded(&Deterministic::new(7));
+    b.iter(|| black_box(s.sample()))
+  });
+  group.bench_function("fill_slice/f64/4096", |b| {
+    let mut s = gpd.seeded(&Deterministic::new(7));
+    let mut out = vec![0.0_f64; 4096];
+    b.iter(|| {
+      s.fill_slice(&mut out);
+      black_box(&out);
+    })
+  });
+  group.finish();
+}
+
 criterion_group!(
   benches,
   bench_normal,
@@ -401,6 +436,7 @@ criterion_group!(
   discrete::bench_hypergeometric,
   discrete::bench_geometric,
   bench_truncated_exp,
+  bench_gev_gpd,
   bench_distribution_ext,
   bench_ncx2_per_draw_construction,
   plot::generate_shape_comparison_plot,

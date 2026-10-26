@@ -117,6 +117,10 @@ pub trait SimdFloatExt: RealExt + sealed::Sealed {
   #[doc(hidden)]
   fn simd_exp(v: Self::Simd) -> Self::Simd;
 
+  /// Lane-wise `e^v − 1`, exact where the subtraction alone would cancel.
+  #[doc(hidden)]
+  fn simd_exp_m1(v: Self::Simd) -> Self::Simd;
+
   #[doc(hidden)]
   fn simd_tan(v: Self::Simd) -> Self::Simd;
 

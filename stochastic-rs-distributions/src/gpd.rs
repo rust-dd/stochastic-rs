@@ -24,7 +24,7 @@
 //!
 //! $$
 //! X = \begin{cases}
-//!   \mu + \dfrac{\sigma}{\xi}\bigl(U^{-\xi} - 1\bigr), & \xi \neq 0 \\\\\[4pt\]
+//!   \mu + \dfrac{\sigma}{\xi}\,\mathrm{expm1}(-\xi\ln U), & \xi \neq 0 \\\\\[4pt\]
 //!   \mu - \sigma\,\ln U, & \xi = 0
 //! \end{cases},
 //! \qquad U \sim \mathrm{Uniform}(0, 1).
@@ -117,7 +117,7 @@ impl<T: SimdFloatExt> SimdGpd<T> {
 
   #[inline]
   fn is_exponential(&self) -> bool {
-    self.xi.to_f64().unwrap().abs() < 1e-12
+    self.xi == T::zero()
   }
 
   /// The inverse cdf at `1 − u`, which is uniform when `u` is.
@@ -127,7 +127,7 @@ impl<T: SimdFloatExt> SimdGpd<T> {
     if exponential {
       self.mu - self.sigma * u.ln()
     } else {
-      self.mu + (self.sigma / self.xi) * (u.powf(-self.xi) - T::one())
+      self.mu + (self.sigma / self.xi) * (-self.xi * u.ln()).exp_m1()
     }
   }
 
@@ -140,7 +140,6 @@ impl<T: SimdFloatExt> SimdGpd<T> {
       return;
     }
     let mu = T::splat(self.mu);
-    let one = T::splat(T::one());
     let mut u = [T::zero(); 8];
     let (chunks, rem) = out.as_chunks_mut::<8>();
     for chunk in chunks {
@@ -152,7 +151,7 @@ impl<T: SimdFloatExt> SimdGpd<T> {
       let x = if exponential {
         mu - T::splat(self.sigma) * T::simd_ln(uv)
       } else {
-        mu + T::splat(self.sigma / self.xi) * (T::simd_powf(uv, -self.xi) - one)
+        mu + T::splat(self.sigma / self.xi) * T::simd_exp_m1(T::splat(-self.xi) * T::simd_ln(uv))
       };
       *chunk = T::simd_to_array(x);
     }
@@ -229,14 +228,15 @@ impl<T: SimdFloatExt> DistributionExt for SimdGpd<T> {
     if z < 0.0 {
       return Some(0.0);
     }
-    if xi.abs() < 1e-12 {
+    if xi == 0.0 {
       Some((-z).exp() / sigma)
     } else {
-      let t = 1.0 + xi * z;
-      if t <= 0.0 {
+      let xz = xi * z;
+      if xz <= -1.0 {
         return Some(0.0);
       }
-      Some(t.powf(-1.0 / xi - 1.0) / sigma)
+      // `ln t` from `ξz` itself: the rounded `t = 1 + ξz` loses `ξz`'s digits next to ξ = 0.
+      Some((-(1.0 / xi + 1.0) * xz.ln_1p()).exp() / sigma)
     }
   }
 
@@ -246,14 +246,14 @@ impl<T: SimdFloatExt> DistributionExt for SimdGpd<T> {
     if z < 0.0 {
       return Some(0.0);
     }
-    if xi.abs() < 1e-12 {
-      Some(1.0 - (-z).exp())
+    if xi == 0.0 {
+      Some(-(-z).exp_m1())
     } else {
-      let t = 1.0 + xi * z;
-      if t <= 0.0 {
+      let xz = xi * z;
+      if xz <= -1.0 {
         return Some(1.0);
       }
-      Some(1.0 - t.powf(-1.0 / xi))
+      Some(-(-xz.ln_1p() / xi).exp_m1())
     }
   }
 
@@ -262,11 +262,12 @@ impl<T: SimdFloatExt> DistributionExt for SimdGpd<T> {
       return Some(f64::NAN);
     }
     let (mu, sigma, xi) = self.params();
-    if xi.abs() < 1e-12 {
-      Some(mu - sigma * (1.0 - p).ln())
+    let ln_q = (-p).ln_1p();
+    Some(if xi == 0.0 {
+      mu - sigma * ln_q
     } else {
-      Some(mu + sigma / xi * ((1.0 - p).powf(-xi) - 1.0))
-    }
+      mu + sigma * (-xi * ln_q).exp_m1() / xi
+    })
   }
 
   /// `+∞` for ξ ≥ 1, where the mean integral diverges.
@@ -281,11 +282,11 @@ impl<T: SimdFloatExt> DistributionExt for SimdGpd<T> {
 
   fn median(&self) -> Option<f64> {
     let (mu, sigma, xi) = self.params();
-    if xi.abs() < 1e-12 {
-      Some(mu + sigma * std::f64::consts::LN_2)
+    Some(if xi == 0.0 {
+      mu + sigma * std::f64::consts::LN_2
     } else {
-      Some(mu + sigma * (2.0_f64.powf(xi) - 1.0) / xi)
-    }
+      mu + sigma * (xi * std::f64::consts::LN_2).exp_m1() / xi
+    })
   }
 
   /// The density is decreasing for ξ > −1, so the mode sits at μ; below
@@ -418,6 +419,52 @@ mod tests {
     let mut b = SimdGpd::<f64>::new(0.5, 1.2, 0.3).seeded(&Deterministic::new(7));
     for _ in 0..256 {
       assert_eq!(a.sample(), b.sample());
+    }
+  }
+
+  /// mpmath at 50 and 80 digits: `1 − t^{−1/ξ}` and `((1 − p)^{−ξ} − 1)/ξ` through `exp_m1` at tiny ξ.
+  #[test]
+  fn tiny_shape_keeps_its_digits() {
+    let rel = |a: f64, b: f64| ((a - b) / b).abs();
+    for (xi, q, c, median) in [
+      (
+        1e-12,
+        2.302_585_092_996_697,
+        0.864_664_716_763_116_6,
+        0.693_147_180_560_185_5,
+      ),
+      (
+        1e-9,
+        2.302585095644995,
+        0.864_664_716_492_716_7,
+        0.693_147_180_800_171_8,
+      ),
+      (
+        1e-7,
+        2.302_585_358_088_972,
+        0.864_664_689_696_331_6,
+        0.693_147_204_582_596_6,
+      ),
+    ] {
+      let g = SimdGpd::<f64>::new(0.0, 1.0, xi);
+      assert!(
+        rel(g.quantile(0.9).unwrap(), q) < 1e-13,
+        "xi = {xi}: quantile"
+      );
+      assert!(rel(g.cdf(2.0).unwrap(), c) < 1e-13, "xi = {xi}: cdf");
+      assert!(
+        rel(g.median().unwrap(), median) < 1e-13,
+        "xi = {xi}: median"
+      );
+    }
+    let mut near = SimdGpd::<f64>::new(0.0, 1.0, 1e-11).seeded(&Deterministic::new(42));
+    let mut exp = SimdGpd::<f64>::new(0.0, 1.0, 0.0).seeded(&Deterministic::new(42));
+    for _ in 0..1_000 {
+      let (a, b) = (near.sample(), exp.sample());
+      assert!(
+        (a - b).abs() < 1e-9,
+        "ξ = 1e-11 draw {a} against the exponential draw {b}"
+      );
     }
   }
 

@@ -69,6 +69,11 @@ impl SimdFloatExt for f32 {
   }
 
   #[inline]
+  fn simd_exp_m1(v: f32x8) -> f32x8 {
+    v.exp_m1()
+  }
+
+  #[inline]
   fn simd_tan(v: f32x8) -> f32x8 {
     v.tan()
   }
@@ -189,6 +194,11 @@ impl SimdFloatExt for f64 {
   }
 
   #[inline]
+  fn simd_exp_m1(v: f64x8) -> f64x8 {
+    v.exp_m1()
+  }
+
+  #[inline]
   fn simd_tan(v: f64x8) -> f64x8 {
     v.tan()
   }
@@ -269,5 +279,34 @@ impl SimdFloatExt for f64 {
     g_dw: &[Self],
   ) {
     markov_lift::f64_lanes::batch_update_state(e_l, omx_l, h_row, j_row, f_prev, g_dw)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// Lanes against the scalar `exp_m1` at both ends of the range, where a plain `e^v − 1` cancels or overflows.
+  #[test]
+  fn simd_exp_m1_matches_the_scalar_form() {
+    for z in [
+      0.0, 1e-300, -1e-300, 1e-12, -1e-12, 1e-8, -1e-8, 1e-4, -1e-4, 0.1, -0.1, 1.0, -1.0, 5.0,
+      -5.0, 20.0, -20.0, 40.0, -40.0,
+    ] {
+      let lanes = f64::simd_to_array(f64::simd_exp_m1(f64::splat(z)));
+      let want = z.exp_m1();
+      assert!(
+        (lanes[0] - want).abs() <= 4.0 * f64::EPSILON * want.abs().max(f64::MIN_POSITIVE),
+        "f64 exp_m1({z}) = {} vs {want}",
+        lanes[0]
+      );
+      let lanes32 = f32::simd_to_array(f32::simd_exp_m1(f32::splat(z as f32)));
+      let want32 = (z as f32).exp_m1();
+      assert!(
+        (lanes32[0] - want32).abs() <= 4.0 * f32::EPSILON * want32.abs().max(f32::MIN_POSITIVE),
+        "f32 exp_m1({z}) = {} vs {want32}",
+        lanes32[0]
+      );
+    }
   }
 }

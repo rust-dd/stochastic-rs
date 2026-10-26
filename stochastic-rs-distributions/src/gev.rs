@@ -30,7 +30,7 @@
 //!
 //! $$
 //! X = \begin{cases}
-//!   \mu - \dfrac{\sigma}{\xi}\bigl(1 - (-\ln U)^{-\xi}\bigr), & \xi \neq 0 \\\\\[4pt\]
+//!   \mu + \dfrac{\sigma}{\xi}\,\mathrm{expm1}\bigl(-\xi\ln(-\ln U)\bigr), & \xi \neq 0 \\\\\[4pt\]
 //!   \mu - \sigma\,\ln(-\ln U), & \xi = 0
 //! \end{cases},
 //! \qquad U \sim \mathrm{Uniform}(0, 1).
@@ -58,13 +58,12 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
+mod series;
+
 const SMALL_GEV_THRESHOLD: usize = 16;
 
 /// Euler–Mascheroni $\gamma_E$, the Gumbel mean.
 const EULER_MASCHERONI: f64 = 0.577_215_664_901_532_9;
-
-/// Apéry's constant $\zeta(3)$, in the Gumbel skewness $12\sqrt6\,\zeta(3)/\pi^3$.
-const APERY: f64 = 1.202_056_903_159_594_3;
 
 /// Generalized Extreme Value distribution. Three free parameters: location
 /// `μ`, scale `σ > 0`, shape `ξ`; a [`Seeded`](crate::Seeded) stream draws it in bulk.
@@ -127,17 +126,17 @@ impl<T: SimdFloatExt> SimdGev<T> {
 
   #[inline]
   fn is_gumbel(&self) -> bool {
-    self.xi.to_f64().unwrap().abs() < 1e-12
+    self.xi == T::zero()
   }
 
   #[inline]
   fn invert(&self, u: T, gumbel: bool) -> T {
     let u = Self::clamp_open_unit(u);
-    let m_ln_u = -u.ln();
+    let ln_m_ln_u = (-u.ln()).ln();
     if gumbel {
-      self.mu - self.sigma * m_ln_u.ln()
+      self.mu - self.sigma * ln_m_ln_u
     } else {
-      self.mu - (self.sigma / self.xi) * (T::one() - m_ln_u.powf(-self.xi))
+      self.mu + (self.sigma / self.xi) * (-self.xi * ln_m_ln_u).exp_m1()
     }
   }
 
@@ -150,7 +149,6 @@ impl<T: SimdFloatExt> SimdGev<T> {
       return;
     }
     let mu = T::splat(self.mu);
-    let one = T::splat(T::one());
     let mut u = [T::zero(); 8];
     let (chunks, rem) = out.as_chunks_mut::<8>();
     for chunk in chunks {
@@ -158,11 +156,11 @@ impl<T: SimdFloatExt> SimdGev<T> {
       for x in u.iter_mut() {
         *x = Self::clamp_open_unit(*x);
       }
-      let m_ln_u = -T::simd_ln(T::simd_from_array(u));
+      let ln_m_ln_u = T::simd_ln(-T::simd_ln(T::simd_from_array(u)));
       let x = if gumbel {
-        mu - T::splat(self.sigma) * T::simd_ln(m_ln_u)
+        mu - T::splat(self.sigma) * ln_m_ln_u
       } else {
-        mu - T::splat(self.sigma / self.xi) * (one - T::simd_powf(m_ln_u, -self.xi))
+        mu + T::splat(self.sigma / self.xi) * T::simd_exp_m1(T::splat(-self.xi) * ln_m_ln_u)
       };
       *chunk = T::simd_to_array(x);
     }
@@ -190,7 +188,7 @@ impl<T: SimdFloatExt> SimdGev<T> {
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
     let xi = self.xi.to_f64().unwrap();
-    if xi.abs() < 1e-12 {
+    if xi == 0.0 {
       (f64::NEG_INFINITY, f64::INFINITY)
     } else if xi > 0.0 {
       (mu - sigma / xi, f64::INFINITY)
@@ -238,18 +236,17 @@ impl<T: SimdFloatExt> DistributionExt for SimdGev<T> {
     let sigma = self.sigma.to_f64().unwrap();
     let xi = self.xi.to_f64().unwrap();
     let z = (x - mu) / sigma;
-    if xi.abs() < 1e-12 {
+    if xi == 0.0 {
       let m_z = -z;
       Some((-z - m_z.exp()).exp() / sigma)
     } else {
-      let t = 1.0 + xi * z;
-      if t <= 0.0 {
+      let xz = xi * z;
+      if xz <= -1.0 {
         return Some(0.0);
       }
-      let inv_xi = 1.0 / xi;
-      let t_inv_xi = t.powf(-inv_xi);
-      let t_pow = t.powf(-inv_xi - 1.0);
-      Some((1.0 / sigma) * t_pow * (-t_inv_xi).exp())
+      // `ln t` from `ξz` itself: the rounded `t = 1 + ξz` loses `ξz`'s digits next to ξ = 0.
+      let ln_t = xz.ln_1p();
+      Some((-(1.0 / xi + 1.0) * ln_t - (-ln_t / xi).exp()).exp() / sigma)
     }
   }
 
@@ -258,14 +255,14 @@ impl<T: SimdFloatExt> DistributionExt for SimdGev<T> {
     let sigma = self.sigma.to_f64().unwrap();
     let xi = self.xi.to_f64().unwrap();
     let z = (x - mu) / sigma;
-    if xi.abs() < 1e-12 {
+    if xi == 0.0 {
       Some((-(-z).exp()).exp())
     } else {
-      let t = 1.0 + xi * z;
-      if t <= 0.0 {
+      let xz = xi * z;
+      if xz <= -1.0 {
         return Some(if xi > 0.0 { 0.0 } else { 1.0 });
       }
-      Some((-(t.powf(-1.0 / xi))).exp())
+      Some((-(-xz.ln_1p() / xi).exp()).exp())
     }
   }
 
@@ -273,7 +270,6 @@ impl<T: SimdFloatExt> DistributionExt for SimdGev<T> {
     if !(0.0..=1.0).contains(&p) {
       return Some(f64::NAN);
     }
-    // At level 1 `−ln p` is `−0.0`, which an odd-integer `ξ > 0` would send to `−∞`.
     let (lo, hi) = self.support();
     if p == 0.0 {
       return Some(lo);
@@ -282,22 +278,19 @@ impl<T: SimdFloatExt> DistributionExt for SimdGev<T> {
       return Some(hi);
     }
     let (mu, sigma, xi) = self.params();
-    let m_ln_p = -p.ln();
-    if xi.abs() < 1e-12 {
-      Some(mu - sigma * m_ln_p.ln())
+    let ln_m_ln_p = (-p.ln()).ln();
+    Some(if xi == 0.0 {
+      mu - sigma * ln_m_ln_p
     } else {
-      Some(mu + sigma / xi * (m_ln_p.powf(-xi) - 1.0))
-    }
+      mu + sigma * (-xi * ln_m_ln_p).exp_m1() / xi
+    })
   }
 
-  /// $\mu + \sigma(\Gamma(1-\xi) - 1)/\xi$ for $\xi < 1$ ($\mu + \gamma_E\sigma$
-  /// at $\xi = 0$); `+∞` for $\xi \ge 1$.
+  /// $\mu + \sigma(\Gamma(1-\xi) - 1)/\xi$ for $\xi < 1$; `+∞` for $\xi \ge 1$.
   fn mean(&self) -> Option<f64> {
     let (mu, sigma, xi) = self.params();
-    if xi.abs() < 1e-12 {
-      Some(mu + EULER_MASCHERONI * sigma)
-    } else if xi < 1.0 {
-      Some(mu + sigma * (crate::special::gamma(1.0 - xi) - 1.0) / xi)
+    if xi < 1.0 {
+      Some(mu + sigma * series::standardised(xi).0)
     } else {
       Some(f64::INFINITY)
     }
@@ -305,32 +298,28 @@ impl<T: SimdFloatExt> DistributionExt for SimdGev<T> {
 
   fn median(&self) -> Option<f64> {
     let (mu, sigma, xi) = self.params();
-    if xi.abs() < 1e-12 {
-      Some(mu - sigma * std::f64::consts::LN_2.ln())
+    let ln_ln_2 = std::f64::consts::LN_2.ln();
+    Some(if xi == 0.0 {
+      mu - sigma * ln_ln_2
     } else {
-      Some(mu + sigma * (std::f64::consts::LN_2.powf(-xi) - 1.0) / xi)
-    }
+      mu + sigma * (-xi * ln_ln_2).exp_m1() / xi
+    })
   }
 
   fn mode(&self) -> Option<f64> {
     let (mu, sigma, xi) = self.params();
-    if xi.abs() < 1e-12 {
-      Some(mu)
+    Some(if xi == 0.0 {
+      mu
     } else {
-      Some(mu + sigma * ((1.0 + xi).powf(-xi) - 1.0) / xi)
-    }
+      mu + sigma * (-xi * xi.ln_1p()).exp_m1() / xi
+    })
   }
 
-  /// $\sigma^2(g_2 - g_1^2)/\xi^2$ with $g_k = \Gamma(1 - k\xi)$ for
-  /// $\xi < 1/2$ ($\sigma^2\pi^2/6$ at $\xi = 0$); `+∞` for $\xi \ge 1/2$.
+  /// $\sigma^2(g_2 - g_1^2)/\xi^2$ with $g_k = \Gamma(1 - k\xi)$ for $\xi < 1/2$; `+∞` for $\xi \ge 1/2$.
   fn variance(&self) -> Option<f64> {
     let (_, sigma, xi) = self.params();
-    if xi.abs() < 1e-12 {
-      Some(sigma * sigma * std::f64::consts::PI.powi(2) / 6.0)
-    } else if xi < 0.5 {
-      let g1 = crate::special::gamma(1.0 - xi);
-      let g2 = crate::special::gamma(1.0 - 2.0 * xi);
-      Some(sigma * sigma * (g2 - g1 * g1) / (xi * xi))
+    if xi < 0.5 {
+      Some(sigma * sigma * series::standardised(xi).1)
     } else {
       Some(f64::INFINITY)
     }
@@ -339,13 +328,8 @@ impl<T: SimdFloatExt> DistributionExt for SimdGev<T> {
   /// `NaN` for $\xi \ge 1/3$, where the third moment is undefined.
   fn skewness(&self) -> Option<f64> {
     let (_, _, xi) = self.params();
-    if xi.abs() < 1e-12 {
-      Some(12.0 * 6.0_f64.sqrt() * APERY / std::f64::consts::PI.powi(3))
-    } else if xi < 1.0 / 3.0 {
-      let g1 = crate::special::gamma(1.0 - xi);
-      let g2 = crate::special::gamma(1.0 - 2.0 * xi);
-      let g3 = crate::special::gamma(1.0 - 3.0 * xi);
-      Some(xi.signum() * (g3 - 3.0 * g2 * g1 + 2.0 * g1.powi(3)) / (g2 - g1 * g1).powf(1.5))
+    if xi < 1.0 / 3.0 {
+      Some(series::standardised(xi).2)
     } else {
       Some(f64::NAN)
     }
@@ -354,16 +338,8 @@ impl<T: SimdFloatExt> DistributionExt for SimdGev<T> {
   /// Excess kurtosis; `NaN` for $\xi \ge 1/4$.
   fn kurtosis(&self) -> Option<f64> {
     let (_, _, xi) = self.params();
-    if xi.abs() < 1e-12 {
-      Some(12.0 / 5.0)
-    } else if xi < 0.25 {
-      let g1 = crate::special::gamma(1.0 - xi);
-      let g2 = crate::special::gamma(1.0 - 2.0 * xi);
-      let g3 = crate::special::gamma(1.0 - 3.0 * xi);
-      let g4 = crate::special::gamma(1.0 - 4.0 * xi);
-      Some(
-        (g4 - 4.0 * g3 * g1 + 6.0 * g2 * g1 * g1 - 3.0 * g1.powi(4)) / (g2 - g1 * g1).powi(2) - 3.0,
-      )
+    if xi < 0.25 {
+      Some(series::standardised(xi).3)
     } else {
       Some(f64::NAN)
     }
@@ -377,117 +353,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdGev<T> {
 }
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Unseeded;
-
-  use super::*;
-  use crate::tests::scalar_ks_best_p;
-
-  /// Gumbel (ξ = 0): mean = μ + γσ (Euler-Mascheroni γ ≈ 0.5772157).
-  /// Sample mean must match within 3σ on 30k draws.
-  #[test]
-  fn gev_gumbel_sample_mean_euler() {
-    let mut g = SimdGev::<f64>::new(0.0, 1.0, 0.0).seeded(&Unseeded);
-    let n = 30_000;
-    let mut sum = 0.0;
-    for _ in 0..n {
-      sum += g.sample();
-    }
-    let mean = sum / n as f64;
-    let euler = 0.577_215_664_901_532_9_f64;
-    assert!(
-      (mean - euler).abs() < 0.05,
-      "Gumbel mean = {mean}, expected ≈ γ ≈ {euler}"
-    );
-  }
-
-  /// Fréchet (ξ > 0): heavy upper tail; mean is finite only when ξ < 1.
-  /// Use ξ = 0.5 → E[X] = μ + σ(Γ(1 - ξ) - 1)/ξ.
-  #[test]
-  fn gev_frechet_sample_mean_closed_form() {
-    let xi = 0.5_f64;
-    let mut g = SimdGev::<f64>::new(0.0, 1.0, xi).seeded(&Unseeded);
-    let n = 30_000;
-    let mut sum = 0.0;
-    for _ in 0..n {
-      sum += g.sample();
-    }
-    let mean = sum / n as f64;
-    let gamma_term: f64 = crate::special::ln_gamma(1.0 - xi).exp();
-    let expected = (gamma_term - 1.0) / xi;
-    // Heavy-tail variance is ∞ for ξ ∈ [0.5, 1), so allow a 15% band on the mean.
-    assert!(
-      (mean - expected).abs() / expected.abs() < 0.15,
-      "Fréchet(ξ=0.5) sample mean = {mean}, expected ≈ {expected}"
-    );
-  }
-
-  #[test]
-  fn scalar_sample_matches_cdf() {
-    for xi in [0.0, 0.3, -0.3] {
-      let d = SimdGev::<f64>::new(0.0, 1.0, xi);
-      let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
-      assert!(best > 0.01, "xi = {xi}: best p = {best}");
-    }
-  }
-
-  /// PDF integrates to 1 within the support (numerical Riemann).
-  #[test]
-  fn gev_pdf_normalised_gumbel() {
-    let g = SimdGev::<f64>::new(0.0, 1.0, 0.0);
-    let n = 5000usize;
-    let lo = -10.0_f64;
-    let up = 30.0_f64;
-    let h = (up - lo) / n as f64;
-    let s: f64 = (0..n)
-      .map(|k| g.pdf(lo + (k as f64 + 0.5) * h).unwrap() * h)
-      .sum();
-    assert!((s - 1.0).abs() < 1e-3, "Gumbel PDF integrates to {s}");
-  }
-
-  /// CDF matches inverse-CDF identity: F(F⁻¹(u)) = u on a grid.
-  #[test]
-  fn gev_cdf_inverse_round_trip() {
-    let g = SimdGev::<f64>::new(0.0, 1.0, 0.2);
-    for u in [0.1_f64, 0.3, 0.5, 0.7, 0.9] {
-      // X = μ - σ/ξ · (1 - (-ln U)^{-ξ})
-      let m_ln_u = -u.ln();
-      let x = -(1.0 / 0.2) * (1.0 - m_ln_u.powf(-0.2));
-      let f = g.cdf(x).unwrap();
-      assert!((f - u).abs() < 1e-10, "F({x}) = {f}, expected {u}");
-    }
-  }
-
-  /// Deterministic seeds must reproduce identical streams (the seed was
-  /// silently ignored before the internal RNG landed).
-  #[test]
-  fn gev_deterministic_seed_reproduces_stream() {
-    use stochastic_rs_core::simd_rng::Deterministic;
-    let mut a = SimdGev::<f64>::new(0.5, 1.2, 0.3).seeded(&Deterministic::new(7));
-    let mut b = SimdGev::<f64>::new(0.5, 1.2, 0.3).seeded(&Deterministic::new(7));
-    for _ in 0..256 {
-      assert_eq!(a.sample(), b.sample());
-    }
-  }
-
-  /// Support edge: Reverse Weibull (ξ < 0) is bounded above by μ - σ/ξ.
-  #[test]
-  fn gev_reverse_weibull_bounded_support() {
-    let xi = -0.5_f64;
-    let g = SimdGev::<f64>::new(0.0, 1.0, xi);
-    let (lo, hi) = g.support();
-    assert_eq!(lo, f64::NEG_INFINITY);
-    assert_eq!(hi, -1.0 / xi); // = 2.0
-    let mut stream = g.seeded(&Unseeded);
-    for _ in 0..2_000 {
-      let x = stream.sample();
-      assert!(
-        x <= hi + 1e-9,
-        "Reverse Weibull sample {x} exceeds bound {hi}"
-      );
-    }
-  }
-}
+mod tests;
 
 py_distribution!(PyGev, SimdGev,
   sig: (mu, sigma, xi, seed=None, dtype=None),
