@@ -81,8 +81,8 @@ fn truncated_exponential_quantile_keeps_its_upper_tail() {
   );
 }
 
-/// Next to level 1 the quantile stays at or below `upper`: the re-review's two laws, then 2 000 with `lower > 0` and
-/// `λL ∈ (0, 2]` over the last 64 floats below 1.
+/// Next to level 1, where `lower + y` and `λL` round, the quantile stays at or below `upper`: two laws at that
+/// edge, then 2 000 with `lower > 0` and `λL ∈ (0, 2]` over the last 64 floats below 1.
 #[test]
 fn truncated_exponential_quantile_never_passes_upper() {
   let top = 1.0 - 2f64.powi(-53);

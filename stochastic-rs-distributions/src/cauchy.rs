@@ -164,7 +164,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdCauchy<T> {
     let pi = std::f64::consts::PI;
     let offset = if tail < 4e-9 {
       // There `cot(πp) = 1/(πp)` to half an ulp, divided in the order that keeps each intermediate normal: `γ/π` per
-      // law where it is normal, else `πp` at a normal `p` and `γ/p` (below `1.4e16`) at a subnormal one.
+      // law where it is normal, else `πp` at a normal `p` and `γ/p` (below `π·2⁵²`) at a subnormal one.
       if g >= pi * f64::MIN_POSITIVE {
         g / pi / tail
       } else if tail >= f64::MIN_POSITIVE {

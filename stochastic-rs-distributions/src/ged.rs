@@ -357,7 +357,6 @@ mod tests {
     );
   }
 
-  /// CDF round-trip via PDF integration.
   /// Where the tail branch's root leaves the normals for the closed form, the quantile steps up on both sides, the two
   /// floats across each switch found by bisection on the root.
   #[test]
