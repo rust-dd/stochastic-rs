@@ -278,7 +278,12 @@ fn ndtri_lower(p: f64) -> f64 {
       / (((((B[0] * r + B[1]) * r + B[2]) * r + B[3]) * r + B[4]) * r + 1.0)
   };
 
-  let e = 0.5 * erfc(-x / std::f64::consts::SQRT_2) - p;
+  // On [¼, ½] `p − ½` is exact and `erf` keeps the residual's digits next to ½, where `Φ(x) − p` cancels.
+  let e = if p >= 0.25 {
+    0.5 * erf(x / std::f64::consts::SQRT_2) - (p - 0.5)
+  } else {
+    0.5 * erfc(-x / std::f64::consts::SQRT_2) - p
+  };
   let u = e * (2.0 * std::f64::consts::PI).sqrt() * (0.5 * x * x).exp();
   // Past p ≈ 1e-308 the exponential overflows; the approximation stands alone.
   if u.is_finite() {

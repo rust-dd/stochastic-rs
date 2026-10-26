@@ -149,6 +149,23 @@ fn ndtri_matches_high_precision_references() {
   assert_eq!(ndtri(0.5), 0.0);
 }
 
+/// mpmath at 50 and 100 digits next to ½, where `Φ(x) − p` would carry an absolute error of ulp(½) into the step.
+#[test]
+fn ndtri_keeps_its_digits_next_to_one_half() {
+  let (a, b) = (2f64.powi(-30), 2f64.powi(-53));
+  for (p, want) in [
+    (0.5 - a, -2.3344794983332983e-9),
+    (0.5 + a, 2.3344794983332983e-9),
+    (0.5 - 1e-12, -2.5065728237018603e-12),
+    (0.5 + 1e-12, 2.5065728237018603e-12),
+    (0.5 - b, -2.782916424671767e-16),
+    (0.5 + b, 2.782916424671767e-16),
+  ] {
+    let got = ndtri(p);
+    assert!(((got - want) / want).abs() < 1e-15, "ndtri({p}) = {got:e}");
+  }
+}
+
 /// mpmath at 60 digits at subnormal levels, where a Newton step on `ln Φ` refines the approximation; normal levels keep
 /// the unrefined value, even `1e-307`, where the step would move it.
 #[test]
