@@ -533,8 +533,8 @@ mod tests {
     }
   }
 
-  /// Each pair brackets Robert's (2.1) width at a = 3, 0 and 8 (0.317, 1.649, 0.124), inside the band the old `2/α*`
-  /// switch sent to the uniform.
+  /// Each pair brackets Robert's (2.1) width at a = 3, 0 and 8 (0.317, 1.649, 0.124), inside the band where a `2/α*`
+  /// switch would take the uniform proposal.
   #[test]
   fn tail_proposal_follows_roberts_rule() {
     let exponential = |a: f64, b: f64| {
