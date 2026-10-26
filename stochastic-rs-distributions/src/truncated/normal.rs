@@ -38,9 +38,12 @@ struct TailSetup {
 
 impl TailSetup {
   fn new(a: f64, b: f64, mirrored: bool) -> Self {
-    let alpha_star = 0.5 * (a + (a * a + 4.0).sqrt());
-    // Not Robert's faster rule (2.1): switching would move the pinned `truncated_normal_uniform_tail_f64` stream.
-    let proposal = if b - a >= 2.0 / alpha_star {
+    let root = (a * a + 4.0).sqrt();
+    let alpha_star = 0.5 * (a + root);
+    // Robert (1995), (2.1): the exponential proposal accepts more often from this width on.
+    let exponential_from =
+      2.0 * std::f64::consts::E.sqrt() / (a + root) * (0.25 * (a * a - a * root)).exp();
+    let proposal = if b - a > exponential_from {
       TailProposal::Exponential { alpha_star }
     } else {
       TailProposal::Uniform
@@ -518,6 +521,8 @@ mod tests {
       (-1.0, 2.0),
       (3.0, 6.0),
       (3.0, 3.4),
+      (3.0, 3.2),
+      (0.0, 1.7),
       (-6.0, -3.0),
       (-0.05, 0.05),
     ] {
@@ -525,6 +530,24 @@ mod tests {
       let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
       assert!(best > 0.01, "[{lo}, {hi}]: best p = {best}");
     }
+  }
+
+  /// Robert (1995), rule (2.1): the exponential proposal from the width `2√e/(a + √(a²+4)) · exp((a² − a√(a²+4))/4)` on.
+  #[test]
+  fn tail_proposal_follows_roberts_rule() {
+    let exponential = |a: f64, b: f64| {
+      matches!(
+        TailSetup::new(a, b, false).proposal,
+        TailProposal::Exponential { .. }
+      )
+    };
+    assert!(exponential(3.0, 3.4));
+    assert!(!exponential(3.0, 3.2));
+    assert!(exponential(0.0, 1.7));
+    assert!(!exponential(0.0, 1.6));
+    assert!(exponential(8.0, 8.2));
+    assert!(!exponential(8.0, 8.1));
+    assert!(exponential(3.0, f64::INFINITY));
   }
 
   /// PDF / CDF degenerate cases: outside the bounds must produce 0 PDF

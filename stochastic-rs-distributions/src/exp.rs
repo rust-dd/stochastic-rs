@@ -13,6 +13,7 @@ use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
 use wide::i32x8;
+use wide::u32x8;
 
 use crate::seeded::StreamState;
 use crate::source::AnyRng;
@@ -147,18 +148,19 @@ fn exp_batch8<T: SimdFloatExt, R: SimdRngExt>(
   let iz_arr = iz.to_array();
   let abs_hz = hz.abs();
   unsafe {
-    let ke_vals = i32x8::new([
-      *tables.ke.get_unchecked(iz_arr[0] as usize),
-      *tables.ke.get_unchecked(iz_arr[1] as usize),
-      *tables.ke.get_unchecked(iz_arr[2] as usize),
-      *tables.ke.get_unchecked(iz_arr[3] as usize),
-      *tables.ke.get_unchecked(iz_arr[4] as usize),
-      *tables.ke.get_unchecked(iz_arr[5] as usize),
-      *tables.ke.get_unchecked(iz_arr[6] as usize),
-      *tables.ke.get_unchecked(iz_arr[7] as usize),
+    let ke_vals = u32x8::new([
+      *tables.ke.get_unchecked(iz_arr[0] as usize) as u32,
+      *tables.ke.get_unchecked(iz_arr[1] as usize) as u32,
+      *tables.ke.get_unchecked(iz_arr[2] as usize) as u32,
+      *tables.ke.get_unchecked(iz_arr[3] as usize) as u32,
+      *tables.ke.get_unchecked(iz_arr[4] as usize) as u32,
+      *tables.ke.get_unchecked(iz_arr[5] as usize) as u32,
+      *tables.ke.get_unchecked(iz_arr[6] as usize) as u32,
+      *tables.ke.get_unchecked(iz_arr[7] as usize) as u32,
     ]);
 
-    let accept = abs_hz.simd_lt(ke_vals);
+    // `abs` wraps `i32::MIN` to itself, which read unsigned is 2³¹, past every layer's bound.
+    let accept = u32x8::new(abs_hz.to_array().map(|v| v as u32)).simd_lt(ke_vals);
 
     let we_arr: [T; 8] = [
       T::from_f64_fast(*tables.we.get_unchecked(iz_arr[0] as usize)),
@@ -402,3 +404,23 @@ py_distribution!(PyExp, SimdExp,
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod zig_tests {
+  use stochastic_rs_core::simd_rng::SimdRng;
+  use wide::i32x8;
+
+  use super::*;
+
+  /// `i32::MIN` has no magnitude in `i32`: `abs` wraps, and a lane accepted on it is a negative draw.
+  #[test]
+  fn minimum_hz_lane_is_rejected_into_the_fix_up() {
+    let tables = exp_zig_tables();
+    let mut rng = SimdRng::from_seed(11);
+    let mut out = [0.0_f64; 8];
+    let hz = i32x8::new([i32::MIN, 1, 2, 3, 4, 5, 6, 7]);
+    exp_batch8::<f64, SimdRng>(hz, tables, 1.0, f64::splat(1.0), &mut rng, &mut out);
+    assert!(out[0] >= 0.0, "lane 0 is a draw, got {}", out[0]);
+    assert!(out[0] >= ZIG_EXP_R, "lane 0 is a tail draw, got {}", out[0]);
+  }
+}

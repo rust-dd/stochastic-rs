@@ -25,6 +25,7 @@ use stochastic_rs::distributions::pareto::SimdPareto;
 use stochastic_rs::distributions::poisson::SimdPoisson;
 use stochastic_rs::distributions::studentt::SimdStudentT;
 use stochastic_rs::distributions::truncated::SimdTruncatedExp;
+use stochastic_rs::distributions::truncated::SimdTruncatedNormal;
 use stochastic_rs::distributions::uniform::SimdUniform;
 use stochastic_rs::distributions::variance_gamma::SimdVarianceGamma;
 use stochastic_rs::distributions::weibull::SimdWeibull;
@@ -412,6 +413,23 @@ fn bench_gev_gpd(c: &mut Criterion) {
   group.finish();
 }
 
+fn bench_truncated_normal(c: &mut Criterion) {
+  let mut group = c.benchmark_group("TruncatedNormal");
+  for (label, lo, hi) in [
+    ("seeded/f64/bulk", -1.0, 2.0),
+    ("seeded/f64/exp_tail", 3.0, 6.0),
+    ("seeded/f64/short_tail", 3.0, 3.4),
+    ("seeded/f64/uniform_tail", 3.0, 3.2),
+  ] {
+    let law = SimdTruncatedNormal::<f64>::new(0.0, 1.0, lo, hi);
+    group.bench_function(label, |b| {
+      let mut s = law.seeded(&Deterministic::new(7));
+      b.iter(|| black_box(s.sample()))
+    });
+  }
+  group.finish();
+}
+
 criterion_group!(
   benches,
   bench_normal,
@@ -437,6 +455,7 @@ criterion_group!(
   discrete::bench_geometric,
   bench_truncated_exp,
   bench_gev_gpd,
+  bench_truncated_normal,
   bench_distribution_ext,
   bench_ncx2_per_draw_construction,
   plot::generate_shape_comparison_plot,

@@ -428,6 +428,10 @@ snapshot_singles! {
     move || vec![s.sample().bits()]
   };
   truncated_normal_uniform_tail_f64: ScalarKind::F64, |det| {
+    let mut s = SimdTruncatedNormal::<f64>::new(0.0, 1.0, 3.0, 3.2).seeded(det);
+    move || vec![s.sample().bits()]
+  };
+  truncated_normal_exp_tail_short_f64: ScalarKind::F64, |det| {
     let mut s = SimdTruncatedNormal::<f64>::new(0.0, 1.0, 3.0, 3.4).seeded(det);
     move || vec![s.sample().bits()]
   };

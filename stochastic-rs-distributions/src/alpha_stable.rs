@@ -19,8 +19,8 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
-/// Alpha-stable law `S_α(scale, β, location)` in the `S₁` parametrization: parameters only; a
-/// [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Alpha-stable law `S_α(scale, β, location)` in the `S₁` parametrization, drawn in bulk by a [`Seeded`](crate::Seeded) stream;
+/// α = 1 and α = 2 take their closed formulas exactly there (S₁ jumps at α = 1 for β ≠ 0; the general draw's error grows like ε/|α − 1|).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdAlphaStable<T> {
   alpha: T,
@@ -114,10 +114,9 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
   }
 
   fn branch(&self) -> Branch {
-    let eps = T::from(1e-6).unwrap();
-    if (self.alpha - T::from(2.0).unwrap()).abs() < eps {
+    if self.alpha == T::from(2.0).unwrap() {
       Branch::Gaussian
-    } else if (self.alpha - T::one()).abs() < eps {
+    } else if self.alpha == T::one() {
       Branch::UnitIndex
     } else {
       Branch::General
@@ -416,7 +415,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdAlphaStable<T> {
     let mu = self.location.to_f64().unwrap();
     let abs_ct_alpha = (c * t.abs()).powf(alpha);
     let sgn_t = t.signum();
-    let phi = if (alpha - 1.0).abs() < 1e-15 {
+    let phi = if alpha == 1.0 {
       -(2.0 / std::f64::consts::PI) * t.abs().ln()
     } else {
       (std::f64::consts::PI * alpha / 2.0).tan()
@@ -541,6 +540,30 @@ mod tests {
     let normal = SimdNormal::<f64>::new(0.0, std::f64::consts::SQRT_2);
     let best = scalar_ks_best_p(&d, |x| normal.cdf(x).unwrap());
     assert!(best > 0.01, "best p = {best}");
+  }
+
+  /// Just off α = 1 the S₁ law sits at β tan(πα/2) (3.18e6 here), which only the general formula reaches; α = 1 itself
+  /// takes the unit-index formula, whose median is 0.2235 (scipy's S₁ quantile).
+  #[test]
+  fn near_unit_index_takes_the_general_formula() {
+    let d = SimdAlphaStable::<f64>::new(1.0 - 1e-7, 0.5, 1.0, 0.0);
+    let mut xs = vec![0.0; 20_001];
+    d.seeded(&Deterministic::new(3)).fill_slice(&mut xs);
+    xs.sort_by(f64::total_cmp);
+    let median = xs[10_000];
+    assert!(
+      (median / 3_183_098.863_513_323 - 1.0).abs() < 1e-4,
+      "median {median}"
+    );
+    let exact = SimdAlphaStable::<f64>::new(1.0, 0.5, 1.0, 0.0);
+    let mut ys = vec![0.0; 20_001];
+    exact.seeded(&Deterministic::new(3)).fill_slice(&mut ys);
+    ys.sort_by(f64::total_cmp);
+    assert!(
+      (ys[10_000] - 0.2235).abs() < 0.06,
+      "α = 1 median {}",
+      ys[10_000]
+    );
   }
 
   /// β = ±1 on the light side: mpmath's closed form, which a quadrature of scipy's S1 density matches to 1e-15.
