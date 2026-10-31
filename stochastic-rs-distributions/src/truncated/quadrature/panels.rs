@@ -137,7 +137,7 @@ impl Cut {
     self.from.unwrap_or((self.x, 0.0, 0.0))
   }
 
-  /// The point `self + d`, still beside its anchor.
+  /// `self + d` rounded, for a kernel's `x`: exact offsets go through `span`.
   pub(in crate::truncated) fn plus(self, d: f64) -> f64 {
     let (s, lo, t) = self.parts();
     s + (lo + (t + d))
@@ -320,6 +320,7 @@ fn piece<K: Kernel, B>(
   if (n > CAP || n.is_nan()) && recut {
     return piece(kernel, c, recut_piece(kernel, c, cl, cr), rev, false, visit);
   }
+  debug_assert!(n <= CAP, "a piece of {n} panels after its recut");
   let n = if n >= 1.0 { n.min(CAP) as usize } else { 1 };
   let at = |i: usize| {
     if i == n {
@@ -342,9 +343,17 @@ fn piece<K: Kernel, B>(
 }
 
 /// A piece the budgets would split past `CAP` panels is one the clip did not cut: it is cut again where the kernel
-/// falls `e^{−CLIP}` below its larger end, and what remains takes at most `CAP` panels.
+/// falls `e^{−CLIP}` below its maximum over the piece, at the mode the piece holds or else its higher end.
 fn recut_piece<K: Kernel>(kernel: &K, c: Cut, cl: Cut, cr: Cut) -> (Cut, Cut) {
   let ln = |cut: Cut| kernel.ln_rel(cut.x, span(c, cut), cut.branch());
+  let mode = kernel.mode();
+  if span(cl, mode) > 0.0 && span(mode, cr) > 0.0 {
+    let top = ln(mode);
+    return (
+      clip(kernel, c, mode, cl.x, top - CLIP),
+      clip(kernel, c, mode, cr.x, top - CLIP),
+    );
+  }
   let (ll, lr) = (ln(cl), ln(cr));
   if ll >= lr {
     (cl, clip(kernel, c, cl, cr.x, ll - CLIP))

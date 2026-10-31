@@ -241,7 +241,7 @@ impl<T: SimdFloatExt> Distribution<T> for SimdTruncatedExp<T> {
 
 impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
   /// `e^{it·lower} (λL/m) φ₁((λ − it)L)`, `φ₁(w) = (1 − e^{−w})/w`, `m` the mass; an open tail `e^{it·lower}/(1 − it/λ)`
-  /// divided scaled, so no `λ²` or `t²` leaves the range. NaN where `t·lower` overflows: the phase keeps no digit.
+  /// divided scaled, so no `λ²` or `t²` leaves the range. NaN where `t·lower`, `tL` or, on an open tail, `t/λ` overflows.
   fn characteristic_function(&self, t: f64) -> Option<Complex64> {
     if t == 0.0 {
       return Some(Complex64::new(1.0, 0.0));

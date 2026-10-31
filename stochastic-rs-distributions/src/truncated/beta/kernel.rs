@@ -221,9 +221,8 @@ impl Kernel for BetaKernel {
   }
 }
 
-/// The interior mode when both shapes exceed 1, a double-double beside the end it lies nearer and exact while that
-/// offset is normal; one past the least double is held at it, off the kernel's zero. Else the end the density rises
-/// toward, the heavier of both (0 on a tie), and ½ for the uniform.
+/// The interior mode beside its nearer end, exact while that offset is normal and held off the kernel's zero where it
+/// underflows; else the end the density rises toward, the heavier on a U (0 on a tie), ½ for the uniform.
 fn held_mode(a: f64, b: f64) -> (Cut, bool) {
   if a > 1.0 && b > 1.0 {
     // Halves, so `a + b − 2` cannot overflow, summed and divided exactly to a double-double.

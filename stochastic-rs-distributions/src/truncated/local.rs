@@ -146,9 +146,8 @@ pub(super) struct Local {
 }
 
 impl Local {
-  /// `e^{ψy + κy²/2}` on `[r + lo, r + up]`, `lo ≤ 0 ≤ up`, in units of the shortest of its e-fold length, its normal
-  /// width and its interval, so the model's coefficients are at most 1 and its interval at least 1 long; `None` where
-  /// no such scale exists.
+  /// `e^{ψy + κy²/2}` on `[r + lo, r + up]` in units of the shortest of its e-fold length, normal width and interval,
+  /// so its coefficients are at most 1 and its interval at least 1 long; `None` where no such scale exists.
   pub(super) fn new(
     r: f64,
     (lo, up): (f64, f64),

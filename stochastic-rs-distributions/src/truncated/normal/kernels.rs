@@ -102,8 +102,8 @@ impl Kernel for TiltedKernel {
   }
 }
 
-/// `e^{tv − (v/σ)²/2}` in the law's own offset `v = x − μ`, for a `t` whose `σt` overflows: no product of the two
-/// is formed.
+/// `e^{tv − (v/σ)²/2}` in the law's own offset `v = x − μ`, for a `t` whose `σt` overflows: the log-kernel forms no
+/// `σt`, while the mode `tσ²` overflows toward the end `t` points to, where the engine clamps it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct OffsetTiltedKernel {
   pub(super) t: f64,
