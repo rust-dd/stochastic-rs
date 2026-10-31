@@ -216,16 +216,16 @@ impl<T: SimdFloatExt> Distribution<T> for SimdTruncatedExp<T> {
 }
 
 impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
-  /// `e^{it·lower} (λL/m) φ₁((λ − it)L)` with `φ₁(w) = (1 − e^{−w})/w` and `m` the mass; an open tail is
-  /// `e^{it·lower} λ/(λ − it)`.
+  /// `e^{it·lower} (λL/m) φ₁((λ − it)L)` with `φ₁(w) = (1 − e^{−w})/w` and `m` the mass; an open tail, or one whose
+  /// `e^{−λL}` underflows, is `e^{it·lower}/(1 − it/λ)`, divided scaled so that no `λ²` or `t²` leaves the range.
   fn characteristic_function(&self, t: f64) -> Option<Complex64> {
     if t == 0.0 {
       return Some(Complex64::new(1.0, 0.0));
     }
     let (lam, lo, len) = (self.lambda.to_f64()?, self.lower.to_f64()?, self.length()?);
     let phase = Complex64::new(0.0, t * lo).exp();
-    if len.is_infinite() {
-      return Some(phase * lam / Complex64::new(lam, -t));
+    if self.open_tail()? {
+      return Some(phase.fdiv(Complex64::new(1.0, -t / lam)));
     }
     Some(phase * (lam * len / self.tail_mass) * phi1(Complex64::new(lam, -t) * len))
   }
@@ -351,7 +351,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
 }
 
 /// `(1 − e^{−w})/w`, by its series `Σ (−w)^n/(n+1)!` for `|w| < ½`, where the quotient's imaginary part `−Im(w)/2`
-/// sits below the real part's rounding.
+/// sits below the real part's rounding; the quotient divides scaled.
 fn phi1(w: Complex64) -> Complex64 {
   if w.norm() < 0.5 {
     // 18 terms: the next is below 0.5^18/19! ≈ 3e-23.
@@ -359,7 +359,7 @@ fn phi1(w: Complex64) -> Complex64 {
       (acc * -w + 1.0) / n as f64
     });
   }
-  -exp_m1_complex(-w) / w
+  (-exp_m1_complex(-w)).fdiv(w)
 }
 
 /// `e^{u+iv} − 1` as `(expm1(u) cos v − 2 sin²(v/2), e^u sin v)`: no `e^w − 1` subtraction.

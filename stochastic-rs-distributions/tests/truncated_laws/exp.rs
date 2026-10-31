@@ -163,8 +163,8 @@ fn moments_at_extreme_rates() {
   }
 }
 
-/// `E[e^{itX}] = e^{it·lo} λ/(λ − it) · (1 − e^{−(λ−it)L})/(1 − e^{−λL})` by mpmath; at small `|(λ − it)L|` the series of
-/// `(1 − e^{−w})/w` keeps the imaginary part the quotient cancels.
+/// `E[e^{itX}] = e^{it·lo} λ/(λ − it) · (1 − e^{−(λ−it)L})/(1 − e^{−λL})` by mpmath at `t = f64(0.7)`; a small
+/// `|(λ − it)L|` takes the series, and an `e^{−λL}` that underflows the open tail's `1/(1 − it/λ)`, divided scaled.
 #[test]
 fn characteristic_function_matches_mpmath() {
   for (lam, lo, up, re, im) in [
@@ -178,8 +178,18 @@ fn characteristic_function_matches_mpmath() {
     ),
     (1.0, 0.0, 1e-9, 1.0, 3.499999999416667e-10),
     (1.0, 0.0, 1e-17, 1.0, 3.5e-18),
-    (1e-17, 0.0, 1.0, 0.9203109817681301, 0.33593973245073083),
-    (1.0, 50.0, 60.0, -0.4053709569329224, -0.711920167791829),
+    (1e-17, 0.0, 1.0, 0.9203109817681301, 0.3359397324507308),
+    (1.0, 50.0, 60.0, -0.405370956932924, -0.7119201677918281),
+    (1.0, 0.0, 1e200, 0.6711409395973155, 0.4697986577181208),
+    (1.0, 0.0, f64::MAX, 0.6711409395973155, 0.4697986577181208),
+    (1e200, 0.0, 1.0, 1.0, 7e-201),
+    (
+      1e160,
+      0.5,
+      f64::INFINITY,
+      0.9393727128473789,
+      0.34289780745545134,
+    ),
   ] {
     let cf = te(lam, lo, up).characteristic_function(0.7).unwrap();
     assert!(
