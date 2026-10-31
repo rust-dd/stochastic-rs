@@ -68,7 +68,7 @@ fn whole_line_mass_is_sqrt_two_pi() {
     (t.kernel.ln_k(t.centre.x) + t.mass().ln() - 0.5 * (2.0 * std::f64::consts::PI).ln()).abs()
       < 1e-15
   );
-  assert!(t.a.x < -9.1 && t.b.x > 9.1 && t.quantile(0.5).abs() < 1e-15);
+  assert!(t.a.x < -9.1 && t.b.x > 9.1 && t.quantile(0.5).value().abs() < 1e-15);
   assert_eq!(t.moments(1.0), [0.0, 1.0, 0.0, 0.0]);
   let [mean, var, skew, kurt] = t.summed_moments(1.0);
   assert!(
@@ -98,7 +98,7 @@ fn far_below_the_clip_keeps_its_digits() {
     ((p - 1.8178381703127302e-33) / 1.8178381703127302e-33).abs() < 1e-12,
     "{p}"
   );
-  assert!((t.quantile(p) + 12.0).abs() < 1e-13);
+  assert!((t.quantile(p).value() + 12.0).abs() < 1e-13);
 }
 
 /// `Φ⁻¹(1e-300 Φ(2))` by mpmath: a level far below the clip, found by walking the panels from where the kernel is
@@ -106,7 +106,7 @@ fn far_below_the_clip_keeps_its_digits() {
 #[test]
 fn far_below_the_clip_the_quantile_walks_the_tail() {
   let t = Truncation::new(Normal::default(), f64::NEG_INFINITY, 2.0);
-  assert!((t.quantile(1e-300) + 37.04771702239952).abs() < 1e-13);
+  assert!((t.quantile(1e-300).value() + 37.04771702239952).abs() < 1e-13);
 }
 
 /// `x^0.1 e^{−x}` on `[0, ∞)`, the Gamma(1.1, 1) kernel, whose lower clip sits near 1e-181.
@@ -172,5 +172,5 @@ fn ladder_reaches_an_end_far_below_the_clip() {
     ((p - 9.5557909646525e-221) / 9.5557909646525e-221).abs() < 1e-12,
     "{p}"
   );
-  assert!(((t.quantile(p) - 1e-200) / 1e-200).abs() < 1e-12);
+  assert!(((t.quantile(p).value() - 1e-200) / 1e-200).abs() < 1e-12);
 }

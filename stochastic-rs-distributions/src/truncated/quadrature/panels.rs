@@ -88,10 +88,11 @@ pub(super) const GL64_W: [f64; 32] = [
   0.001783280721696433,
 ];
 
-/// `[origin + l, origin + r]`; a graded panel's origin is its branch point, so its offsets stay exact beside it.
+/// `[origin + l, origin + r]`; the origin is a branch point, or the reference point held exactly, so the offsets stay
+/// exact beside it.
 #[derive(Clone, Copy)]
 pub(super) struct Panel {
-  pub(super) origin: f64,
+  pub(super) origin: Cut,
   pub(super) l: f64,
   pub(super) r: f64,
   pub(super) graded: bool,
@@ -99,11 +100,12 @@ pub(super) struct Panel {
   pub(super) singular: Option<f64>,
 }
 
-/// A breakpoint and, beside a point `s` (a branch point or the reference point), its exact offset from `s`.
+/// A breakpoint and, beside a point `s + s_lo` (a branch point, or a reference point no double holds), its exact
+/// offset `t` from it: the point `s + s_lo + t`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(in crate::truncated) struct Cut {
   pub(in crate::truncated) x: f64,
-  from: Option<(f64, f64)>,
+  from: Option<(f64, f64, f64)>,
   /// On an end within a tenth of the width of a singular branch point `(s, e)`: its piece is the innermost.
   inner: Option<(f64, f64)>,
 }
@@ -119,45 +121,56 @@ impl Cut {
 
   /// `s + t`, its offset `t` kept however much finer than an ulp of `s`.
   pub(in crate::truncated) fn beside(s: f64, t: f64) -> Self {
+    Self::at(s).shifted(t)
+  }
+
+  /// The double-double `hi + lo`, so offsets from it are exact where `lo` dwarfs the law's width.
+  pub(in crate::truncated) fn exact(hi: f64, lo: f64) -> Self {
     Self {
-      x: s + t,
-      from: Some((s, t)),
+      x: hi + lo,
+      from: Some((hi, lo, 0.0)),
       inner: None,
     }
   }
 
-  /// `(s, t)` with the point `s + t`, `s` the point it is held beside or itself.
-  pub(super) fn anchor(self) -> (f64, f64) {
-    self.from.unwrap_or((self.x, 0.0))
+  fn parts(self) -> (f64, f64, f64) {
+    self.from.unwrap_or((self.x, 0.0, 0.0))
+  }
+
+  /// The point `self + d`, still beside its anchor.
+  pub(in crate::truncated) fn plus(self, d: f64) -> f64 {
+    let (s, lo, t) = self.parts();
+    s + (lo + (t + d))
   }
 
   /// The same point moved by `d`, still beside its anchor.
   pub(super) fn shifted(self, d: f64) -> Self {
-    let (s, t) = self.anchor();
-    Self::beside(s, t + d)
+    let (s, lo, t) = self.parts();
+    Self {
+      x: s + (lo + (t + d)),
+      from: Some((s, lo, t + d)),
+      inner: None,
+    }
   }
 
-  /// Its exact offset from the point it is held beside, as the `branch` a kernel reads.
+  /// Its offset from the double it is held beside, as the `branch` a kernel reads.
   pub(super) fn branch(self) -> Option<(f64, f64)> {
-    self.from
+    self.from.map(|(s, lo, t)| (s, lo + t))
   }
 
   pub(in crate::truncated) fn offset(self, origin: f64) -> f64 {
-    match self.from {
-      Some((s, t)) if s == origin => t,
-      Some((s, t)) => (s - origin) + t,
-      None => self.x - origin,
-    }
+    span(Self::at(origin), self)
   }
 }
 
-/// `r − l`, measured from the point one end is an exact offset of, so two cuts beside it keep their difference.
+/// `r − l`, exact where both are held beside the same point.
 #[inline]
-pub(super) fn span(l: Cut, r: Cut) -> f64 {
-  match (l.from, r.from) {
-    (Some((s, t)), _) => r.offset(s) - t,
-    (None, Some((s, t))) => t - l.offset(s),
-    (None, None) => r.x - l.x,
+pub(in crate::truncated) fn span(l: Cut, r: Cut) -> f64 {
+  let ((ls, ll, lt), (rs, rl, rt)) = (l.parts(), r.parts());
+  if ls == rs && ll == rl {
+    rt - lt
+  } else {
+    ((rs - ls) + (rl - ll)) + (rt - lt)
   }
 }
 
@@ -171,49 +184,52 @@ pub(super) fn panels<K: Kernel, B>(
   rev: bool,
   mut visit: impl FnMut(Panel) -> ControlFlow<B>,
 ) -> ControlFlow<B> {
-  let (l, r, width) = (lc.x, rc.x, span(lc, rc));
-  let ladders = kernel
-    .branch_points()
-    .map(|point| point.filter(|&(s, _)| s >= l - 20.0 * width && s <= r + 20.0 * width));
-  let rungs = ladders.into_iter().flatten().flat_map(move |(s, e)| {
-    // Beside a vanishing kernel, deep enough for the mass there to fall below 1e-18 and to reach an end that stops
-    // short of `s`; beside a singular one 19 normal decades, below which the innermost panel's `u` is exact.
-    let steps = if e < 1.0 {
-      19
-    } else {
-      let gap = (l - s).max(s - r).max(0.0);
-      let mass = (18.0 / e).ceil() + 1.0;
-      let reach = if gap > 0.0 {
-        (width / gap).log10().ceil() + 1.0
-      } else {
-        0.0
-      };
-      mass.max(reach).min(330.0) as i32
-    };
-    let h = move |j: i32| width / 10_f64.powi(j);
-    (1..=steps)
-      .map(move |j| -h(j))
-      .chain((1..=steps).rev().map(h))
-      .filter(move |&t| l - s < t && t < r - s && (e > 1.0 || t.abs() >= f64::MIN_POSITIVE))
-      .map(move |t| Cut {
-        x: s + t,
-        from: Some((s, t)),
-        inner: None,
-      })
+  let width = span(lc, rc);
+  // Each branch point's offsets to the two ends, exact beside it.
+  let ladders = kernel.branch_points().map(|point| {
+    point
+      .map(|(s, e)| (s, e, lc.offset(s), rc.offset(s)))
+      .filter(|&(_, _, tl, tr)| tl <= 20.0 * width && tr >= -20.0 * width)
   });
+  let rungs = ladders
+    .into_iter()
+    .flatten()
+    .flat_map(move |(s, e, tl, tr)| {
+      // Beside a vanishing kernel, deep enough for the mass there to fall below 1e-18 and to reach an end that stops
+      // short of `s`; beside a singular one 19 normal decades, below which the innermost panel's `u` is exact.
+      let steps = if e < 1.0 {
+        19
+      } else {
+        let gap = tl.max(-tr).max(0.0);
+        let mass = (18.0 / e).ceil() + 1.0;
+        let reach = if gap > 0.0 {
+          (width / gap).log10().ceil() + 1.0
+        } else {
+          0.0
+        };
+        mass.max(reach).min(330.0) as i32
+      };
+      let h = move |j: i32| width / 10_f64.powi(j);
+      (1..=steps)
+        .map(move |j| -h(j))
+        .chain((1..=steps).rev().map(h))
+        .filter(move |&t| tl < t && t < tr && (e > 1.0 || t.abs() >= f64::MIN_POSITIVE))
+        .map(move |t| Cut::beside(s, t))
+    });
   let end = |cut: Cut| Cut {
     x: cut.x,
     from: cut.from.or_else(|| {
       ladders
         .into_iter()
         .flatten()
-        .min_by(|p, q| (cut.x - p.0).abs().total_cmp(&(cut.x - q.0).abs()))
-        .map(|(s, _)| (s, cut.x - s))
+        .min_by(|p, q| cut.offset(p.0).abs().total_cmp(&cut.offset(q.0).abs()))
+        .map(|(s, ..)| (s, 0.0, cut.x - s))
     }),
     inner: ladders
       .into_iter()
       .flatten()
-      .find(|&(s, e)| e < 1.0 && 10.0 * (cut.x - s).abs() < width),
+      .find(|&(s, e, ..)| e < 1.0 && 10.0 * cut.offset(s).abs() < width)
+      .map(|(s, e, ..)| (s, e)),
   };
   let cuts = std::iter::once(end(lc))
     .chain(rungs)
@@ -259,18 +275,20 @@ fn piece<K: Kernel, B>(
       return ControlFlow::Continue(());
     }
     return visit(Panel {
-      origin: s,
+      origin: Cut::at(s),
       l: tl,
       r: tr,
       graded: true,
       singular: Some(e),
     });
   }
-  let distance = |z: f64| {
-    if (cl.x..=cr.x).contains(&z) {
+  // By exact offsets: a reference point within an ulp of a branch point still leaves the pieces beside it graded.
+  let distance = |z: Cut| {
+    let (dl, dr) = (span(z, cl), span(z, cr));
+    if dl <= 0.0 && dr >= 0.0 {
       0.0
     } else {
-      (cl.x - z).abs().min((cr.x - z).abs())
+      dl.abs().min(dr.abs())
     }
   };
   let branch = kernel
@@ -278,9 +296,9 @@ fn piece<K: Kernel, B>(
     .into_iter()
     .flatten()
     .map(|(s, _)| s)
-    .find(|&s| distance(s) < 0.5 * distance(c.x));
-  let origin = branch.unwrap_or(c.x);
-  let (tl, tr) = (cl.offset(origin), cr.offset(origin));
+    .find(|&s| distance(Cut::at(s)) < 0.5 * distance(c));
+  let origin = branch.map_or(c, Cut::at);
+  let (tl, tr) = (span(origin, cl), span(origin, cr));
   if tr <= tl {
     return ControlFlow::Continue(());
   }

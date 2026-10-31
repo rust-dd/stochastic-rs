@@ -11,10 +11,12 @@ use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
 
-use super::quadrature::Cut;
-use super::quadrature::Kernel;
+use super::local::Local;
+use super::local::Model;
+use super::local::Signed;
+use super::quadrature::Point;
 use super::quadrature::Truncation;
-use super::quadrature::ln_1p_mx;
+use super::quadrature::ldexp;
 use crate::gamma::GammaState;
 use crate::gamma::SimdGamma;
 use crate::source::AnyRng;
@@ -24,125 +26,9 @@ use crate::traits::SimdFloatExt;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
+use kernel::GammaKernel;
 
-/// `u^{k−1} e^{−u/s}` on `[0, ∞)` about the reference point `c`; a unit shape has no log term, whose `0·ln 0` would
-/// read NaN at 0.
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct GammaKernel {
-  k: f64,
-  /// The scale in the kernel's own units: 1 in units of θ, θ in the law's.
-  s: f64,
-  c: f64,
-  ln_c: f64,
-  /// `(k − 1)/c − 1/s`, the slope at `c`, `None` where it overflows: the linear part, so `ln_rel` sums no two large
-  /// terms that cancel.
-  slope: Option<f64>,
-}
-
-impl GammaKernel {
-  fn new(k: f64, s: f64) -> Self {
-    Self {
-      k,
-      s,
-      c: 0.0,
-      ln_c: f64::NEG_INFINITY,
-      slope: None,
-    }
-  }
-}
-
-impl Kernel for GammaKernel {
-  fn ln_k(&self, x: f64) -> f64 {
-    if x < 0.0 {
-      return f64::NEG_INFINITY;
-    }
-    let lead = if self.k == 1.0 {
-      0.0
-    } else {
-      (self.k - 1.0) * x.ln()
-    };
-    lead - x / self.s
-  }
-
-  /// Above a unit shape the slope from `(k − 1)s − c` by an exact product, 0 at the mode; below one the two terms share
-  /// a sign.
-  fn anchor(&mut self, c: Cut, at_mode: bool) {
-    self.c = c.x;
-    self.ln_c = c.x.ln();
-    let slope = if self.k == 1.0 {
-      -1.0 / self.s
-    } else if self.k < 1.0 {
-      (self.k - 1.0) / c.x - 1.0 / self.s
-    } else {
-      if at_mode {
-        0.0
-      } else {
-        (self.k - 1.0).mul_add(self.s, -c.x) / (c.x * self.s)
-      }
-    };
-    self.slope = slope.is_finite().then_some(slope);
-  }
-
-  /// `(k − 1)(ln(x/c) − y/c) + slope·y`, the first part `ln_1p_mx` beside `c` and read from `x` toward 0; where the
-  /// slope overflows the mode is far, and `(k − 1) ln(x/c) − y/s` cancels nothing.
-  fn ln_rel(&self, x: f64, y: f64, _branch: Option<(f64, f64)>) -> f64 {
-    let z = y / self.c;
-    let ln_ratio = || {
-      if z < -0.5 {
-        x.ln() - self.ln_c
-      } else {
-        z.ln_1p()
-      }
-    };
-    match self.slope {
-      _ if self.k == 1.0 => -y / self.s,
-      Some(slope) if z < -0.5 => (self.k - 1.0) * (ln_ratio() - z) + slope * y,
-      Some(slope) => (self.k - 1.0) * ln_1p_mx(z) + slope * y,
-      None => (self.k - 1.0) * ln_ratio() - y / self.s,
-    }
-  }
-
-  fn ln_rel_regular(&self, _x: f64, y: f64, _s: f64) -> f64 {
-    -(self.k - 1.0) * self.ln_c - y / self.s
-  }
-
-  fn d1(&self, x: f64, y: f64) -> f64 {
-    match self.slope {
-      _ if self.k == 1.0 => -1.0 / self.s,
-      Some(slope) => slope - (self.k - 1.0) * (y / self.c) / x,
-      None => (self.k - 1.0) / x - 1.0 / self.s,
-    }
-  }
-
-  fn d2(&self, x: f64, _y: f64) -> f64 {
-    if self.k == 1.0 {
-      0.0
-    } else {
-      -(self.k - 1.0) / (x * x)
-    }
-  }
-
-  fn mode(&self) -> Cut {
-    Cut::at(((self.k - 1.0) * self.s).max(0.0))
-  }
-
-  fn branch_points(&self) -> [Option<(f64, f64)>; 2] {
-    [(self.k != 1.0).then_some((0.0, self.k)), None]
-  }
-
-  fn length_scale(&self) -> f64 {
-    self.s
-  }
-
-  fn support(&self) -> (f64, f64) {
-    (0.0, f64::INFINITY)
-  }
-
-  fn base_moments(&self) -> [f64; 4] {
-    let root = self.k.sqrt();
-    [self.k * self.s, root * self.s, 2.0 / root, 6.0 / self.k]
-  }
-}
+mod kernel;
 
 /// Truncated $\mathrm{Gamma}(k, \theta)$ on $[\text{lower}, \text{upper}]$, $\text{lower} \ge 0$: parameters and the
 /// base mass on the interval; a [`Seeded`](crate::Seeded) stream draws it.
@@ -153,10 +39,10 @@ pub struct SimdTruncatedGamma<T> {
   upper: T,
   /// The base law's mass on the interval: the sampler's regime switch.
   mass: f64,
-  /// The kernel's unit, a power of two: see `unit_of`.
-  unit: f64,
+  /// The kernel's unit `2^p`: see `unit_exponent`.
+  p: i32,
   /// The interval's kernel integral, built by the first analytic call or inverse-cdf draw.
-  analytics: OnceLock<Truncation<GammaKernel>>,
+  analytics: OnceLock<Model<GammaKernel>>,
 }
 
 impl<T: fmt::Debug> fmt::Debug for SimdTruncatedGamma<T> {
@@ -259,27 +145,91 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
       lower,
       upper,
       mass,
-      unit: unit_of(k, theta),
+      p: unit_exponent(theta),
       analytics: OnceLock::new(),
     }
   }
 
-  fn analytics(&self) -> Option<&Truncation<GammaKernel>> {
-    if let Some(t) = self.analytics.get() {
-      return Some(t);
+  fn analytics(&self) -> Option<&Model<GammaKernel>> {
+    if let Some(m) = self.analytics.get() {
+      return Some(m);
     }
     let (k, theta) = (self.base.alpha().to_f64()?, self.base.scale().to_f64()?);
-    let unit = self.unit()?;
-    let (lo, up) = (self.lower.to_f64()? / unit, self.upper.to_f64()? / unit);
-    Some(
-      self
-        .analytics
-        .get_or_init(|| Truncation::new(GammaKernel::new(k, theta / unit), lo, up)),
+    let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
+    let (lo_u, up_u) = (self.units(lo), self.units(up));
+    Some(self.analytics.get_or_init(|| {
+      // Past θ·f64::MAX the law sits at `lo`, its mode `(k − 1)θ` below: an exponential of scale θ there.
+      if lo_u == f64::INFINITY
+        && let Some(l) = self.local(lo)
+      {
+        return Model::Local(l);
+      }
+      let t = Truncation::new(GammaKernel::new(k, self.units(theta)), lo_u, up_u);
+      Model::of(t, |c| {
+        self.local(if c == lo_u {
+          lo
+        } else if c == up_u {
+          up
+        } else {
+          ldexp(c, self.p)
+        })
+      })
+    }))
+  }
+
+  /// The local model at `r`: slope `(k − 1)/r − 1/θ` and curvature `−(k − 1)/r²`, in logs.
+  fn local(&self, r: f64) -> Option<Local> {
+    let (k, theta) = (self.base.alpha().to_f64()?, self.base.scale().to_f64()?);
+    let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
+    let ln_r = r.ln();
+    let slope = Signed::over(k - 1.0, ln_r).plus(Signed::new(-1.0, -theta.ln()));
+    Local::new(
+      r,
+      (lo - r, up - r),
+      slope,
+      Signed::over(1.0 - k, 2.0 * ln_r),
     )
   }
 
-  fn unit(&self) -> Option<f64> {
-    Some(self.unit)
+  /// `x` in the kernel's unit, exact unless it leaves the range.
+  fn units(&self, x: f64) -> f64 {
+    ldexp(x, -self.p)
+  }
+
+  /// `ln 2^p`.
+  fn ln_unit(&self) -> f64 {
+    f64::from(self.p) * std::f64::consts::LN_2
+  }
+
+  /// `x/2^p` below the normal doubles beside 0, given by its log: where the lower end is 0 the engine reads it there.
+  fn beside_zero(&self, x: f64) -> Option<f64> {
+    let u = self.units(x);
+    (x > 0.0 && u < f64::MIN_POSITIVE && self.lower.to_f64()? == 0.0)
+      .then(|| x.ln() - self.ln_unit())
+  }
+
+  /// A position the engine reports, back in the law's coordinate: beside 0 its log carries the unit.
+  fn located(&self, point: Point) -> f64 {
+    match point {
+      Point::Beside { s: 0.0, sign, ln_t } => sign * (ln_t + self.ln_unit()).exp(),
+      _ => ldexp(point.value(), self.p),
+    }
+  }
+
+  /// `(mean, variance, skewness, excess kurtosis)` in the law's coordinate.
+  fn moments(&self) -> Option<[f64; 4]> {
+    Some(match self.analytics()? {
+      Model::Full(t) => {
+        let [mean, variance, skewness, kurtosis] = t.moments(1.0);
+        [
+          ldexp(mean, self.p),
+          ldexp(variance, 2 * self.p),
+          skewness,
+          kurtosis,
+        ]
+      }
+      Model::Local(l) => l.moments(),
+    })
   }
 
   /// The shape `k` of the untruncated base.
@@ -316,33 +266,29 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
     self.invert(src.uniform())
   }
 
-  /// Out of line, so the rejection loop stays lean.
+  /// Out of line, so the rejection loop stays lean; clamped to the support as `quantile` is, since the last exp of a
+  /// deep singular panel rounds past its near end.
   #[inline(never)]
-  /// Clamped to the support as `quantile` is: the last exp of a deep singular panel rounds past its near end.
   fn invert(&self, u: f64) -> T {
     let (lo, up) = (self.lower.to_f64().unwrap(), self.upper.to_f64().unwrap());
-    let x = self
-      .analytics()
-      .zip(self.unit())
-      .map_or(f64::NAN, |(a, unit)| (a.quantile(u) * unit).clamp(lo, up));
-    T::from_f64_fast(x)
+    let x = match self.analytics() {
+      Some(Model::Full(t)) => self.located(t.quantile(u)),
+      Some(Model::Local(l)) => l.quantile(u),
+      None => f64::NAN,
+    };
+    T::from_f64_fast(x.clamp(lo, up))
   }
 }
 
-/// The power of two at or above θ: `x/unit` is exact and the mode `(k − 1)θ/unit` representable; a shape below 1 with
-/// θ above 1 stays in `x`, its singular end holding mass under `unit·2⁻¹⁰⁷⁴` (40 % of TG(0.001, 1e300) below 1e-100).
-fn unit_of(k: f64, theta: f64) -> f64 {
-  if k < 1.0 && theta > 1.0 && theta <= f64::MAX / 128.0 {
-    return 1.0;
+/// The least power of two at or above θ, 2⁻¹⁰²² for a subnormal θ: `x/2^p` is exact and the mode `(k − 1)θ/2^p`
+/// never overflows; past 2¹⁰²³ the unit is 2¹⁰²⁴, which only its exponent holds.
+fn unit_exponent(theta: f64) -> i32 {
+  let biased = ((theta.to_bits() >> 52) & 0x7ff) as i32;
+  if biased == 0 {
+    return -1022;
   }
-  let floor = f64::from_bits(theta.to_bits() & (0x7ff << 52));
-  if floor == 0.0 {
-    f64::MIN_POSITIVE
-  } else if floor == theta || floor >= 2f64.powi(1023) {
-    floor
-  } else {
-    2.0 * floor
-  }
+  let exact = theta.to_bits() & ((1 << 52) - 1) == 0;
+  biased - 1023 + i32::from(!exact)
 }
 
 impl<T: SimdFloatExt> Sealed for SimdTruncatedGamma<T> {}
@@ -378,19 +324,23 @@ impl<T: SimdFloatExt> Distribution<T> for SimdTruncatedGamma<T> {
 }
 
 impl<T: SimdFloatExt> DistributionExt for SimdTruncatedGamma<T> {
-  /// At a point whose `x/θ` overflows the limit 0, where the kernel's `(k − 1) ln u − u` reads `∞ − ∞`.
+  /// At a point whose `x/2^p` overflows the limit 0, where the kernel's `(k − 1) ln u − u` reads `∞ − ∞`.
   fn pdf(&self, x: f64) -> Option<f64> {
     if x < self.lower.to_f64()? || x > self.upper.to_f64()? {
       return Some(0.0);
     }
-    let unit = self.unit()?;
-    let u = x / unit;
+    let t = match self.analytics()? {
+      Model::Full(t) => t,
+      Model::Local(l) => return Some(l.pdf(x, 0.0)),
+    };
+    let u = self.units(x);
     if u == f64::INFINITY {
       return Some(0.0);
     }
-    // A power of two: its logarithm is its exponent's multiple of ln 2.
-    let ln_unit = f64::from(((unit.to_bits() >> 52) as i32) - 1023) * std::f64::consts::LN_2;
-    Some(self.analytics()?.density(u, ln_unit))
+    Some(match self.beside_zero(x) {
+      Some(ln_t) => t.density_beside(0.0, self.base.alpha().to_f64()?, ln_t, self.ln_unit()),
+      None => t.density(u, self.ln_unit()),
+    })
   }
 
   fn cdf(&self, x: f64) -> Option<f64> {
@@ -400,7 +350,14 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedGamma<T> {
     if x >= self.upper.to_f64()? {
       return Some(1.0);
     }
-    Some(self.analytics()?.cdf(x / self.unit()?))
+    let t = match self.analytics()? {
+      Model::Full(t) => t,
+      Model::Local(l) => return Some(l.cdf(x)),
+    };
+    Some(match self.beside_zero(x) {
+      Some(ln_t) => t.cdf_beside(0.0, self.base.alpha().to_f64()?, ln_t),
+      None => t.cdf(self.units(x)),
+    })
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
@@ -414,12 +371,15 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedGamma<T> {
     if p == 1.0 {
       return Some(up);
     }
-    Some((self.analytics()?.quantile(p) * self.unit()?).clamp(lo, up))
+    let x = match self.analytics()? {
+      Model::Full(t) => self.located(t.quantile(p)),
+      Model::Local(l) => l.quantile(p),
+    };
+    Some(x.clamp(lo, up))
   }
 
   fn mean(&self) -> Option<f64> {
-    let unit = self.unit()?;
-    Some(self.analytics()?.moments(unit)[0] * unit)
+    Some(self.moments()?[0])
   }
 
   fn median(&self) -> Option<f64> {
@@ -437,20 +397,22 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedGamma<T> {
   }
 
   fn variance(&self) -> Option<f64> {
-    Some(self.analytics()?.moments(self.unit()?)[1])
+    Some(self.moments()?[1])
   }
 
-  /// NaN, with kurtosis and entropy, for a law narrower than any offset from its reference point resolves.
   fn skewness(&self) -> Option<f64> {
-    Some(self.analytics()?.moments(1.0)[2])
+    Some(self.moments()?[2])
   }
 
   fn kurtosis(&self) -> Option<f64> {
-    Some(self.analytics()?.moments(1.0)[3])
+    Some(self.moments()?[3])
   }
 
   fn entropy(&self) -> Option<f64> {
-    Some(self.analytics()?.entropy() + self.unit()?.ln())
+    Some(match self.analytics()? {
+      Model::Full(t) => t.entropy() + self.ln_unit(),
+      Model::Local(l) => l.entropy(),
+    })
   }
 }
 

@@ -5,15 +5,18 @@
 
 use std::ops::ControlFlow;
 
+use clip::clip;
 pub(super) use panels::Cut;
 use panels::GL64_W;
 use panels::GL64_X;
 use panels::Panel;
 use panels::panels;
-use panels::span;
+pub(super) use panels::span;
+use singular::Frame;
 
 use crate::traits::RealExt;
 
+mod clip;
 mod panels;
 mod quantile;
 mod singular;
@@ -96,8 +99,38 @@ pub(super) fn ln_1p_mx(z: f64) -> f64 {
   2.0 * w * x * sum - w * z
 }
 
+/// `x·2^p` for any `p`, by normal factors, so `2^p` itself may lie past the doubles (θ above 2¹⁰²³).
+pub(super) fn ldexp(mut x: f64, mut p: i32) -> f64 {
+  while p > 1023 {
+    x *= 2f64.powi(1023);
+    p -= 1023;
+  }
+  while p < -1022 {
+    x *= 2f64.powi(-1022);
+    p += 1022;
+  }
+  x * 2f64.powi(p)
+}
+
 /// Relative kernel below `e^{−CLIP}` is dropped: 1e-18 of the mass near the reference point.
 const CLIP: f64 = 41.5;
+
+/// A position the engine reports: a point, or one beside the branch point `s` whose offset `sign·e^{ln_t}` no double
+/// may hold.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum Point {
+  At(f64),
+  Beside { s: f64, sign: f64, ln_t: f64 },
+}
+
+impl Point {
+  pub(super) fn value(self) -> f64 {
+    match self {
+      Self::At(x) => x,
+      Self::Beside { s, sign, ln_t } => s + sign * ln_t.exp(),
+    }
+  }
+}
 
 /// An interval's reference point, clipped ends and normalising sums, cached so a pdf costs one `exp`.
 #[derive(Clone, Debug)]
@@ -105,8 +138,8 @@ pub(super) struct Truncation<K> {
   kernel: K,
   lo: f64,
   up: f64,
-  /// The point every offset is formed from: the clamped mode, a tenth of a scale off a singular end, or the midpoint;
-  /// beside the end it would round onto, so `ln k(centre)` stays finite.
+  /// The point every offset is formed from, held exactly: the clamped mode, a tenth of a scale off a singular end, or
+  /// the midpoint.
   centre: Cut,
   /// The point the moments are summed about: the singular branch point the centre steps off, where the mass may sit
   /// closer than any offset from the centre resolves, else the centre.
@@ -121,8 +154,8 @@ pub(super) struct Truncation<K> {
   m0: f64,
   /// `ln(width·m0)`, so a density costs one `exp` and overflows only where its value does.
   ln_norm: f64,
-  /// The clipped width is 0: the law lies closer to its reference point than any offset resolves.
-  point: bool,
+  /// No normal width: no panel places its nodes, and the law answers in its own scale (`truncated::local`).
+  narrow: bool,
   /// `∫_lo^a` and `∫_b^up` of `k/k(centre)`, in units of `width`: the cdf adds the first, the quantile both.
   tail_lo: f64,
   tail_up: f64,
@@ -132,12 +165,18 @@ impl<K: Kernel> Truncation<K> {
   /// `kernel` on `[lo, up]`, `lo < up`, with the mass beyond the clips that the cdf and the quantile read.
   pub(super) fn new(kernel: K, lo: f64, up: f64) -> Self {
     let mut t = Self::mass_only(kernel, lo, up);
-    if t.a.x > lo {
+    if t.a.offset(lo) > 0.0 {
       t.tail_lo = t.integrate(clip(&t.kernel, t.centre, t.a, lo, -2.0 * CLIP), t.a, 0.0);
     }
-    if t.b.x < up {
+    if t.b.offset(up) < 0.0 {
       t.tail_up = t.integrate(t.b, clip(&t.kernel, t.centre, t.b, up, -2.0 * CLIP), 0.0);
     }
+    debug_assert!(
+      t.narrow || (t.m0 > 0.0 && t.m0.is_finite()),
+      "a resolvable width {:e} with mass {:e}",
+      t.width,
+      t.m0
+    );
     t
   }
 
@@ -151,10 +190,11 @@ impl<K: Kernel> Truncation<K> {
     };
     let (lo_singular, up_singular) = (singular(Cut::at(lo)), singular(Cut::at(up)));
     let mode = kernel.mode();
-    let mut at_mode = mode.offset(lo) >= 0.0 && mode.offset(up) <= 0.0;
-    let mut centre = if mode.offset(lo) < 0.0 {
+    let (past_lo, past_up) = (mode.offset(lo), mode.offset(up));
+    let mut at_mode = past_lo >= 0.0 && past_up <= 0.0;
+    let mut centre = if past_lo < 0.0 {
       Cut::at(lo)
-    } else if mode.offset(up) > 0.0 {
+    } else if past_up > 0.0 {
       Cut::at(up)
     } else {
       mode
@@ -205,13 +245,15 @@ impl<K: Kernel> Truncation<K> {
       width: span(a, b),
       m0: 0.0,
       ln_norm: 0.0,
-      point: false,
+      narrow: false,
       tail_lo: 0.0,
       tail_up: 0.0,
     };
-    t.m0 = t.integrate(a, b, 0.0);
-    t.ln_norm = t.width.ln() + t.m0.ln();
-    t.point = !(t.width > 0.0 && t.m0 > 0.0 && t.m0.is_finite());
+    t.narrow = t.width.is_nan() || t.width < f64::MIN_POSITIVE;
+    if !t.narrow {
+      t.m0 = t.integrate(a, b, 0.0);
+      t.ln_norm = t.width.ln() + t.m0.ln();
+    }
     t
   }
 
@@ -220,22 +262,38 @@ impl<K: Kernel> Truncation<K> {
     self.centre.x
   }
 
+  pub(super) fn kernel(&self) -> &K {
+    &self.kernel
+  }
+
+  pub(super) fn bounds(&self) -> (f64, f64) {
+    (self.lo, self.up)
+  }
+
   /// `∫_a^b k/k(c)` over the clipped interval.
   pub(super) fn mass(&self) -> f64 {
     self.width * self.m0
   }
 
+  /// The reference point of a law with no normal width, which the law answers through its local model.
+  pub(super) fn narrow(&self) -> Option<f64> {
+    self.narrow.then_some(self.centre.x)
+  }
+
   /// `(mean, scale²·variance, skewness, excess kurtosis)`; an interval that cuts neither end removes less than the clip
   /// resolves and reads the base's closed forms, keeping relative digits sums lose (2/√k at k = 1e300).
   pub(super) fn moments(&self, scale: f64) -> [f64; 4] {
-    if let Some(c) = self.point() {
-      return [c, 0.0, f64::NAN, f64::NAN];
-    }
     let (lo, up) = self.kernel.support();
-    if (self.lo <= lo || self.a.x > self.lo) && (self.up >= up || self.b.x < self.up) {
+    // By exact offsets: a clip within an ulp of its bound still cuts nothing.
+    if (self.lo <= lo || self.a.offset(self.lo) > 0.0)
+      && (self.up >= up || self.b.offset(self.up) < 0.0)
+    {
       let [mean, sd, skewness, kurtosis] = self.kernel.base_moments();
       let unit = scale * sd;
       return [mean, unit * unit, skewness, kurtosis];
+    }
+    if self.narrow {
+      return [self.centre.x, 0.0, f64::NAN, f64::NAN];
     }
     self.summed_moments(scale)
   }
@@ -252,9 +310,8 @@ impl<K: Kernel> Truncation<K> {
     let mu3 = r3 - 3.0 * e * r2 + 2.0 * e * e * e;
     let mu4 = r4 - 4.0 * e * r3 + 6.0 * e * e * r2 - 3.0 * e * e * e * e;
     let unit = scale * self.width;
-    let (s, t) = self.frame.anchor();
     [
-      s + (t + self.width * (d + e)),
+      self.frame.plus(self.width * (d + e)),
       (unit * mu2) * unit,
       (mu3 / mu2) / mu2.sqrt(),
       (mu4 / mu2) / mu2 - 3.0,
@@ -283,39 +340,49 @@ impl<K: Kernel> Truncation<K> {
 
   /// `−∫ f ln f` as `ln M₀ − E[ln k(X) − ln k(c)]`, so no large `ln k(c)` cancels against `E[ln k(X)]`.
   pub(super) fn entropy(&self) -> f64 {
-    if self.point().is_some() {
+    if self.narrow {
       return f64::NAN;
     }
+    // Relative to `m0`: past 1e154 a mass and its log's own size overflow in one product (`β = 4.9e-165` at 1).
+    let shift = self.m0.ln();
     let (mut mass, mut log) = (0.0, 0.0);
     let _ = self.walk(self.a, self.b, false, |panel| {
       self.nodes(&panel, |w, ln_v, _, ln_g| {
-        let g = w * ln_v.exp();
+        let g = w * (ln_v - shift).exp();
         if g > 0.0 {
           mass += g;
           log += g * ln_g;
         }
       });
       if let Some(e) = panel.singular {
-        log += self.ln_u_correction(&panel, e);
+        log += self.ln_u_correction(&panel, e, shift);
       }
       ControlFlow::<()>::Continue(())
     });
-    (self.width.ln() + mass.ln()) - log / mass
+    (self.width.ln() + shift + mass.ln()) - log / mass
   }
 
   /// The normalised density `k(x)/∫k` over `e^{ln_scale}` at a point of `[lo, up]`, whose support the law checks at
-  /// its own bounds; a law narrower than any offset resolves is its reference point's.
+  /// its own bounds.
   pub(super) fn density(&self, x: f64, ln_scale: f64) -> f64 {
-    if let Some(c) = self.point() {
-      return if x == c { f64::INFINITY } else { 0.0 };
+    if self.narrow {
+      return if x == self.centre.x {
+        f64::INFINITY
+      } else {
+        0.0
+      };
     }
     let ln_g = self.kernel.ln_rel(x, span(self.centre, Cut::at(x)), None);
     (ln_g - (self.ln_norm + ln_scale)).exp()
   }
 
-  /// The reference point of a law with no clipped width, whose spread and shape read NaN.
-  pub(super) fn point(&self) -> Option<f64> {
-    self.point.then_some(self.centre.x)
+  /// The density at `s + e^{ln_t}` beside the branch point `s` of exponent `e`, an offset no double holds: the power
+  /// law's log apart from the kernel's smooth factor.
+  pub(super) fn density_beside(&self, s: f64, e: f64, ln_t: f64, ln_scale: f64) -> f64 {
+    let t = ln_t.exp();
+    let y = t - span(Cut::at(s), self.centre);
+    let ln_g = (e - 1.0) * ln_t + self.kernel.ln_rel_regular(s + t, y, s);
+    (ln_g - (self.ln_norm + ln_scale)).exp()
   }
 
   /// `∫_lo^x k / ∫k`, integrated up from `lo`: no survival function reads it, so a level near 1 needs absolute digits.
@@ -326,31 +393,43 @@ impl<K: Kernel> Truncation<K> {
     if x <= self.lo {
       return 0.0;
     }
-    if let Some(c) = self.point() {
-      return if x < c { 0.0 } else { 1.0 };
+    if self.narrow {
+      return if x < self.centre.x { 0.0 } else { 1.0 };
     }
-    if x >= self.b.x {
+    let at = Cut::at(x);
+    if span(self.b, at) >= 0.0 {
       return 1.0;
     }
-    if x < self.a.x {
+    if span(self.a, at) < 0.0 {
       return self.below_clip(x);
     }
-    ((self.tail_lo + self.integrate(self.a, Cut::at(x), 0.0)) / self.m0).min_or_nan(1.0)
+    ((self.tail_lo + self.integrate(self.a, at, 0.0)) / self.m0).min_or_nan(1.0)
+  }
+
+  /// The cdf at `s + e^{ln_t}` beside the lower end's branch point `s` of exponent `e`: its mass in `u = (t/h)^e`, `h`
+  /// the point's own offset, so no offset below the doubles' range is formed.
+  pub(super) fn cdf_beside(&self, s: f64, e: f64, ln_t: f64) -> f64 {
+    let frame = Frame::beside(ln_t, e);
+    let mut mass = 0.0;
+    self.frame_nodes(Cut::at(s), &frame, e, 0, None, |w, ln_v, _, _| {
+      mass += w * ln_v.exp()
+    });
+    ((self.tail_lo + mass) / self.m0).min_or_nan(1.0)
   }
 
   /// `cdf⁻¹(p)`: the bounds at 0 and 1; else the panel holding `p`, walked to from the nearer end, then Newton in it.
-  pub(super) fn quantile(&self, p: f64) -> f64 {
+  pub(super) fn quantile(&self, p: f64) -> Point {
     if p.is_nan() {
-      return f64::NAN;
+      return Point::At(f64::NAN);
     }
     if p <= 0.0 {
-      return self.lo;
+      return Point::At(self.lo);
     }
     if p >= 1.0 {
-      return self.up;
+      return Point::At(self.up);
     }
-    if let Some(c) = self.point() {
-      return c;
+    if self.narrow {
+      return Point::At(self.centre.x);
     }
     self.invert(p)
   }
@@ -376,7 +455,7 @@ impl<K: Kernel> Truncation<K> {
 
   /// `∫_l^r k/k(c)` in units of `width`, over `e^{shift}`, signed.
   fn integrate(&self, l: Cut, r: Cut, shift: f64) -> f64 {
-    if r.x < l.x {
+    if span(l, r) < 0.0 {
       return -self.integrate(r, l, shift);
     }
     let mut sum = 0.0;
@@ -403,100 +482,30 @@ impl<K: Kernel> Truncation<K> {
     mass
   }
 
-  /// `f(w, ln v, y, ln g)` at each node: the weight over `width`, the integrand it multiplies, the offset from the
-  /// centre and `ln k(x) − ln k(c)`; a singular panel's integrand is in `u`, so `v` is its smooth factor.
+  /// `f(w, ln v, y, ln g)` at each node: a weight and the log of the integrand it multiplies, in units of `width`, the
+  /// offset from the frame and `ln k(x) − ln k(c)`; a singular panel's integrand is in `u`, so `v` is its smooth factor.
   fn nodes(&self, panel: &Panel, mut f: impl FnMut(f64, f64, f64, f64)) {
     if let Some(e) = panel.singular {
       return self.singular_nodes(panel, e, 0, None, f);
     }
     let half = 0.5 * (panel.r - panel.l);
-    let scaled = half / self.width;
+    // In logs: deep beside a singular end the panel's share of `width` underflows where its kernel ratio overflows.
+    let ln_scaled = half.ln() - self.width.ln();
     let (to_centre, to_frame) = (
-      self.centre.offset(panel.origin),
-      self.frame.offset(panel.origin),
+      span(panel.origin, self.centre),
+      span(panel.origin, self.frame),
     );
     for (node, weight) in GL64_X.iter().zip(&GL64_W) {
       for xi in [-node, *node] {
         let t = panel.l + half * (1.0 + xi);
-        let branch = panel.graded.then_some((panel.origin, t));
-        let ln_g = self.kernel.ln_rel(panel.origin + t, t - to_centre, branch);
-        f(weight * scaled, ln_g, t - to_frame, ln_g);
+        let branch = panel.graded.then_some((panel.origin.x, t));
+        let ln_g = self
+          .kernel
+          .ln_rel(panel.origin.plus(t), t - to_centre, branch);
+        f(*weight, ln_g + ln_scaled, t - to_frame, ln_g);
       }
     }
   }
-}
-
-/// Where `ln k − ln k(c)` falls below `floor` from `from` toward `end`, `end` if never: a doubling probe beside `c`, then
-/// bisection beside `c` or, if the bracket lies nearer it, the branch point `end` is nearer, so the cut stays exact.
-fn clip<K: Kernel>(kernel: &K, c: Cut, from: Cut, end: f64, floor: f64) -> Cut {
-  let below = |origin: f64, t: f64| {
-    let v = kernel.ln_rel(origin + t, t - c.offset(origin), Some((origin, t)));
-    v < floor || v.is_nan()
-  };
-  if end.is_finite() && !below(end, 0.0) {
-    return Cut::at(end);
-  }
-  let gap = from.offset(end);
-  if gap == 0.0 {
-    return Cut::at(end);
-  }
-  let (from_t, end_t, dir) = (from.offset(c.x), end - c.x, -gap.signum());
-  let (mut inside, mut outside) = (from_t, end_t);
-  // From the kernel's length or its e-fold length at `from`, whichever is shorter, and positive: doubling overflows
-  // within 2100 steps.
-  let local = 1.0 / kernel.d1(from.x, span(c, from)).abs();
-  let mut step = kernel
-    .length_scale()
-    .min(local)
-    .max(f64::from_bits(1))
-    .min(f64::MAX);
-  for _ in 0..2100 {
-    let t = from_t + dir * step;
-    if !t.is_finite() || (end_t.is_finite() && dir * (t - end_t) >= 0.0) {
-      break;
-    }
-    if below(c.x, t) {
-      outside = t;
-      break;
-    }
-    inside = t;
-    step *= 2.0;
-  }
-  // An open end the probe overflowed toward is bisected from the largest double.
-  if outside.is_infinite() {
-    outside = dir * f64::MAX;
-  }
-  let mut points = kernel.branch_points().into_iter().flatten();
-  let near = points.find(|&(s, _)| (end - s).abs() < c.offset(end).abs());
-  let (origin, mut inside, mut outside) = match near {
-    Some((s, _)) if (outside - (s - c.x)).abs() < outside.abs() => (
-      s,
-      if inside == from_t {
-        from.offset(s)
-      } else {
-        (c.x - s) + inside
-      },
-      if outside == end_t {
-        end - s
-      } else {
-        (c.x - s) + outside
-      },
-    ),
-    _ => (c.x, inside, outside),
-  };
-  // Toward an end at a branch point the halvings run down to the crossing however deep (2⁻¹⁰⁷⁴ at most).
-  for _ in 0..1200 {
-    if (outside - inside).abs() <= 4.0 * f64::EPSILON * outside.abs() {
-      break;
-    }
-    let m = 0.5 * (inside + outside);
-    if below(origin, m) {
-      outside = m;
-    } else {
-      inside = m;
-    }
-  }
-  Cut::beside(origin, inside)
 }
 
 #[cfg(test)]

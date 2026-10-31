@@ -10,6 +10,9 @@ use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
 
+use super::local::Local;
+use super::local::Model;
+use super::local::Signed;
 use super::quadrature::Truncation;
 use crate::normal::SimdNormal;
 use crate::seeded::StreamState;
@@ -84,9 +87,7 @@ pub struct SimdTruncatedNormal<T> {
   /// Set when the interval lies wholly on one side of `μ`, where the inverse cdf loses its digits first.
   tail: Option<TailSetup>,
   /// The standardised interval's kernel integral, built by the first analytic call; construction and draws skip it.
-  analytics: OnceLock<Truncation<NormalKernel>>,
-  /// `1/σ`, so a density costs a product.
-  inv_sigma: f64,
+  analytics: OnceLock<Model<NormalKernel>>,
 }
 
 impl<T: fmt::Debug> fmt::Debug for SimdTruncatedNormal<T> {
@@ -195,20 +196,52 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       norm_mass: f_up - f_lo,
       tail,
       analytics: OnceLock::new(),
-      inv_sigma: 1.0 / sigma_f64,
     }
   }
 
-  fn analytics(&self) -> Option<&Truncation<NormalKernel>> {
-    if let Some(t) = self.analytics.get() {
-      return Some(t);
+  fn analytics(&self) -> Option<&Model<NormalKernel>> {
+    if let Some(m) = self.analytics.get() {
+      return Some(m);
     }
     let (alpha, beta) = self.standardised_bounds()?;
-    Some(
-      self
-        .analytics
-        .get_or_init(|| Truncation::new(NormalKernel::default(), alpha, beta)),
-    )
+    Some(self.analytics.get_or_init(|| {
+      // Past `μ ± σ·f64::MAX` the standardised near bound is infinite: the law is its local model at that bound.
+      if self.beyond().is_some()
+        && let Some(l) = self.local()
+      {
+        return Model::Local(l);
+      }
+      Model::of(
+        Truncation::new(NormalKernel::default(), alpha, beta),
+        |_| self.local(),
+      )
+    }))
+  }
+
+  /// The local model at `r = clamp(μ)`: slope `(μ − r)/σ²` and curvature `−1/σ²`, exact, in logs.
+  fn local(&self) -> Option<Local> {
+    let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
+    let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
+    let r = mu.clamp(lo, up);
+    let ln_var = 2.0 * sigma.ln();
+    // From halves where `μ − r` overflows.
+    let slope = if (mu - r).is_finite() {
+      Signed::over(mu - r, ln_var)
+    } else {
+      Signed::over(0.5 * mu - 0.5 * r, ln_var - std::f64::consts::LN_2)
+    };
+    Local::new(r, (lo - r, up - r), slope, Signed::new(-1.0, -ln_var))
+  }
+
+  /// `(mean, variance, skewness, excess kurtosis)`.
+  fn moments(&self) -> Option<[f64; 4]> {
+    Some(match self.analytics()? {
+      Model::Full(t) => {
+        let [mean, variance, skewness, kurtosis] = t.moments(self.base.std_dev().to_f64()?);
+        [self.unstandardise(mean), variance, skewness, kurtosis]
+      }
+      Model::Local(l) => l.moments(),
+    })
   }
 
   /// The parent normal's location `μ`, not the truncated law's mean.
@@ -299,8 +332,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     self.base.mean().to_f64().unwrap() + self.base.std_dev().to_f64().unwrap() * z
   }
 
-  /// The near bound of an interval past `μ ± σ·f64::MAX`, whose law lies closer to it than any double: its spread is 0
-  /// and its shape and entropy NaN.
+  /// The near bound of an interval past `μ ± σ·f64::MAX`, whose law lies closer to it than any double: every draw.
   fn beyond(&self) -> Option<f64> {
     let setup = self.tail?;
     let near = if setup.mirrored {
@@ -389,14 +421,16 @@ impl<T: SimdFloatExt> Distribution<T> for SimdTruncatedNormal<T> {
 }
 
 impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
+  /// In logs with `σ`, so a subnormal `σ` meets the density's 0 at an open end before `1/σ` overflows.
   fn pdf(&self, x: f64) -> Option<f64> {
     if x < self.lower.to_f64()? || x > self.upper.to_f64()? {
       return Some(0.0);
     }
-    if let Some(near) = self.beyond() {
-      return Some(if x == near { f64::INFINITY } else { 0.0 });
-    }
-    Some(self.analytics()?.density(self.standardise(x)?, 0.0) * self.inv_sigma)
+    let ln_sigma = self.base.std_dev().to_f64()?.ln();
+    Some(match self.analytics()? {
+      Model::Full(t) => t.density(self.standardise(x)?, ln_sigma),
+      Model::Local(l) => l.pdf(x, 0.0),
+    })
   }
 
   fn cdf(&self, x: f64) -> Option<f64> {
@@ -406,10 +440,10 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     if x >= self.upper.to_f64()? {
       return Some(1.0);
     }
-    if let Some(near) = self.beyond() {
-      return Some(if x < near { 0.0 } else { 1.0 });
-    }
-    Some(self.analytics()?.cdf(self.standardise(x)?))
+    Some(match self.analytics()? {
+      Model::Full(t) => t.cdf(self.standardise(x)?),
+      Model::Local(l) => l.cdf(x),
+    })
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
@@ -424,21 +458,15 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     if p == 1.0 {
       return Some(up);
     }
-    if let Some(near) = self.beyond() {
-      return Some(near);
-    }
-    Some(
-      self
-        .unstandardise(self.analytics()?.quantile(p))
-        .clamp(lo, up),
-    )
+    let x = match self.analytics()? {
+      Model::Full(t) => self.unstandardise(t.quantile(p).value()),
+      Model::Local(l) => l.quantile(p),
+    };
+    Some(x.clamp(lo, up))
   }
 
   fn mean(&self) -> Option<f64> {
-    if let Some(near) = self.beyond() {
-      return Some(near);
-    }
-    Some(self.unstandardise(self.analytics()?.moments(1.0)[0]))
+    Some(self.moments()?[0])
   }
 
   fn median(&self) -> Option<f64> {
@@ -451,33 +479,22 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
   }
 
   fn variance(&self) -> Option<f64> {
-    if self.beyond().is_some() {
-      return Some(0.0);
-    }
-    let sigma = self.base.std_dev().to_f64()?;
-    Some(self.analytics()?.moments(sigma)[1])
+    Some(self.moments()?[1])
   }
 
-  /// NaN, with kurtosis and entropy, for a law past `μ ± σ·f64::MAX` or narrower than any offset resolves.
   fn skewness(&self) -> Option<f64> {
-    if self.beyond().is_some() {
-      return Some(f64::NAN);
-    }
-    Some(self.analytics()?.moments(1.0)[2])
+    Some(self.moments()?[2])
   }
 
   fn kurtosis(&self) -> Option<f64> {
-    if self.beyond().is_some() {
-      return Some(f64::NAN);
-    }
-    Some(self.analytics()?.moments(1.0)[3])
+    Some(self.moments()?[3])
   }
 
   fn entropy(&self) -> Option<f64> {
-    if self.beyond().is_some() {
-      return Some(f64::NAN);
-    }
-    Some(self.base.std_dev().to_f64()?.ln() + self.analytics()?.entropy())
+    Some(match self.analytics()? {
+      Model::Full(t) => self.base.std_dev().to_f64()?.ln() + t.entropy(),
+      Model::Local(l) => l.entropy(),
+    })
   }
 
   /// `e^{μt + ln k_s(c_s) − ln k(c)}` times the tilted and plain masses' ratio on `[α, β]`, `s = σt`: with no `s²` term
@@ -490,12 +507,12 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
       let end = if t > 0.0 { self.upper } else { self.lower }.to_f64()?;
       return Some(if end * t > 0.0 { f64::INFINITY } else { 0.0 });
     }
-    if let Some(near) = self.beyond() {
-      return Some((t * near).exp());
-    }
+    let plain = match self.analytics()? {
+      Model::Full(plain) => plain,
+      Model::Local(l) => return Some(l.mgf(t)),
+    };
     let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
     let (alpha, beta) = self.standardised_bounds()?;
-    let plain = self.analytics()?;
     let s = sigma * t;
     if s.is_infinite() {
       return self.mgf_by_offset(t, mu, sigma, plain);

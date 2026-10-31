@@ -11,10 +11,10 @@ use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
 
-use super::quadrature::Cut;
-use super::quadrature::Kernel;
+use super::local::Local;
+use super::local::Model;
+use super::local::Signed;
 use super::quadrature::Truncation;
-use super::quadrature::ln_1p_mx;
 use crate::beta::BetaState;
 use crate::beta::SimdBeta;
 use crate::source::AnyRng;
@@ -24,219 +24,9 @@ use crate::traits::SimdFloatExt;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
+use kernel::BetaKernel;
 
-/// `x^{a−1} (1 − x)^{b−1}` on `[0, 1]` about the reference point `c`; a unit shape has no log term, whose `0·ln 0`
-/// would read NaN at its end.
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct BetaKernel {
-  a: f64,
-  b: f64,
-  c: f64,
-  /// `1 − c`, exact where `c` is held beside 1.
-  cc: f64,
-  ln_c: f64,
-  ln_cc: f64,
-  /// `(a − 1)/c − (b − 1)/(1 − c)`, the slope at `c`, `None` where it overflows; zero at the mode.
-  slope: Option<f64>,
-}
-
-impl BetaKernel {
-  fn new(a: f64, b: f64) -> Self {
-    Self {
-      a,
-      b,
-      c: 0.5,
-      cc: 0.5,
-      ln_c: -std::f64::consts::LN_2,
-      ln_cc: -std::f64::consts::LN_2,
-      slope: None,
-    }
-  }
-
-  /// `(a − 1)(ln(x/c) − y/c)`: `ln_1p_mx` beside `c`, read from `x` toward 0.
-  fn left(&self, x: f64, y: f64) -> f64 {
-    let z = y / self.c;
-    if self.a == 1.0 {
-      0.0
-    } else if z < -0.5 {
-      (self.a - 1.0) * ((x.ln() - self.ln_c) - z)
-    } else {
-      (self.a - 1.0) * ln_1p_mx(z)
-    }
-  }
-
-  /// `(b − 1)(ln((1 − x)/(1 − c)) + y/(1 − c))`, `1 − x` toward 1 as the offset from 1 where `branch` holds it, else as
-  /// `(1 − c) − y`: never from a rounded `x`.
-  fn right(&self, y: f64, branch: Option<(f64, f64)>) -> f64 {
-    let z = -y / self.cc;
-    if self.b == 1.0 {
-      0.0
-    } else if z < -0.5 {
-      let gap = match branch {
-        Some((1.0, t)) => -t,
-        _ => self.cc - y,
-      };
-      (self.b - 1.0) * ((gap.ln() - self.ln_cc) - z)
-    } else {
-      (self.b - 1.0) * ln_1p_mx(z)
-    }
-  }
-
-  /// `(a − 1)y/c − (b − 1)y/(1 − c)`, from the slope where it is finite; where it overflows the mode is far and the two
-  /// terms do not cancel.
-  fn linear(&self, y: f64) -> f64 {
-    match self.slope {
-      Some(slope) => slope * y,
-      None => self.per(self.a, y, self.c) - self.per(self.b, y, self.cc),
-    }
-  }
-
-  /// `(e − 1)·y/d`, 0 for a unit exponent, whose end `d` may be 0.
-  fn per(&self, e: f64, y: f64, d: f64) -> f64 {
-    if e == 1.0 { 0.0 } else { (e - 1.0) * (y / d) }
-  }
-}
-
-impl Kernel for BetaKernel {
-  fn ln_k(&self, x: f64) -> f64 {
-    if !(0.0..=1.0).contains(&x) {
-      return f64::NEG_INFINITY;
-    }
-    let left = if self.a == 1.0 {
-      0.0
-    } else {
-      (self.a - 1.0) * x.ln()
-    };
-    let right = if self.b == 1.0 {
-      0.0
-    } else {
-      (self.b - 1.0) * (-x).ln_1p()
-    };
-    left + right
-  }
-
-  /// The slope from `(a − 1)(1 − c) − (b − 1)c` by an exact product, so a clamped end next to the mode keeps it; 0 at
-  /// the mode, which `mode` holds to a double-double.
-  fn anchor(&mut self, c: Cut, at_mode: bool) {
-    self.c = c.x;
-    self.cc = -c.offset(1.0);
-    self.ln_c = self.c.ln();
-    self.ln_cc = self.cc.ln();
-    let (a1, b1) = (self.a - 1.0, self.b - 1.0);
-    let slope = if a1 == 0.0 || b1 == 0.0 {
-      self.per(self.a, 1.0, self.c) - self.per(self.b, 1.0, self.cc)
-    } else {
-      let p = b1 * self.c;
-      let e = b1.mul_add(self.c, -p);
-      (a1.mul_add(self.cc, -p) - e) / self.c / self.cc
-    };
-    let slope = if at_mode { 0.0 } else { slope };
-    self.slope = slope.is_finite().then_some(slope);
-  }
-
-  fn ln_rel(&self, x: f64, y: f64, branch: Option<(f64, f64)>) -> f64 {
-    if y == 0.0 {
-      return 0.0;
-    }
-    self.left(x, y) + self.right(y, branch) + self.linear(y)
-  }
-
-  fn ln_rel_regular(&self, x: f64, y: f64, s: f64) -> f64 {
-    let (a1, b1) = (self.a - 1.0, self.b - 1.0);
-    if s == 0.0 {
-      -a1 * self.ln_c + self.right(y, None) - b1 * (y / self.cc)
-    } else {
-      self.left(x, y) + a1 * (y / self.c) - b1 * self.ln_cc
-    }
-  }
-
-  fn d1(&self, x: f64, y: f64) -> f64 {
-    match self.slope {
-      Some(slope) => {
-        slope - self.per(self.a, y, self.c) / x - self.per(self.b, y, self.cc) / (self.cc - y)
-      }
-      None => self.per(self.a, 1.0, x) - self.per(self.b, 1.0, self.cc - y),
-    }
-  }
-
-  fn d2(&self, x: f64, y: f64) -> f64 {
-    let gap = self.cc - y;
-    -self.per(self.a, 1.0, x * x) - self.per(self.b, 1.0, gap * gap)
-  }
-
-  /// The interior mode when both shapes exceed 1, exact to a double-double beside its rounding (beside 1 where it rounds
-  /// onto 1); else the end the density rises toward, the heavier of both (0 on a tie), and ½ for the uniform.
-  fn mode(&self) -> Cut {
-    let (a, b) = (self.a, self.b);
-    if a > 1.0 && b > 1.0 {
-      // Halves, so `a + b − 2` cannot overflow, summed and divided exactly to a double-double.
-      let (ha, hb) = (0.5 * (a - 1.0), 0.5 * (b - 1.0));
-      let d = ha + hb;
-      let d_lo = (ha - (d - (d - ha))) + (hb - (d - ha));
-      let quotient = |n: f64| {
-        let q = n / d;
-        (q, ((-q).mul_add(d, n) - q * d_lo) / d)
-      };
-      let ((m, m_lo), (gap, gap_lo)) = (quotient(ha), quotient(hb));
-      if m <= 0.5 {
-        Cut::beside(m, m_lo)
-      } else if 1.0 - gap < 1.0 {
-        let hi = 1.0 - gap;
-        Cut::beside(hi, ((1.0 - hi) - gap) - gap_lo)
-      } else {
-        Cut::beside(1.0, -gap)
-      }
-    } else if a == 1.0 && b == 1.0 {
-      Cut::at(0.5)
-    } else if a < 1.0 && (1.0 <= b || a <= b) || (a == 1.0 && b > 1.0) {
-      Cut::at(0.0)
-    } else {
-      Cut::at(1.0)
-    }
-  }
-
-  fn branch_points(&self) -> [Option<(f64, f64)>; 2] {
-    [
-      (self.a != 1.0).then_some((0.0, self.a)),
-      (self.b != 1.0).then_some((1.0, self.b)),
-    ]
-  }
-
-  /// `1/(α + β)` from halves, so it never overflows to 0: beside 0 the factor `(1 − x)^{β−1}` falls an e-fold in
-  /// about `1/β`, beside 1 `x^{α−1}` in `1/α`.
-  fn length_scale(&self) -> f64 {
-    0.5 / (0.5 * self.a + 0.5 * self.b)
-  }
-
-  fn support(&self) -> (f64, f64) {
-    (0.0, 1.0)
-  }
-
-  /// The closed forms in `r = (a − b)/√(ab)` and `1/(a + b)`, so no product of the shapes over- or underflows.
-  fn base_moments(&self) -> [f64; 4] {
-    let (a, b) = (self.a, self.b);
-    let root = a.sqrt() * b.sqrt();
-    let s = a + b;
-    if s < 2.0 {
-      let r = (a - b) / root;
-      return [
-        a / s,
-        root / s / (s + 1.0).sqrt(),
-        -2.0 * r * (s + 1.0).sqrt() / (s + 2.0),
-        6.0 * (r * r * (s + 1.0) / ((s + 2.0) * (s + 3.0)) - 1.0 / (s + 3.0)),
-      ];
-    }
-    let inv = self.length_scale();
-    let f = inv * (1.0 + inv) / ((1.0 + 2.0 * inv) * (1.0 + 3.0 * inv));
-    let rf = (a - b) * f.sqrt() / root;
-    [
-      a * inv,
-      root * inv * (inv / (1.0 + inv)).sqrt(),
-      -2.0 * ((a - b) * (inv * (1.0 + inv)).sqrt() / root) / (1.0 + 2.0 * inv),
-      6.0 * (rf * rf - inv / (1.0 + 3.0 * inv)),
-    ]
-  }
-}
+mod kernel;
 
 /// Truncated beta law on $[\text{lower}, \text{upper}] \subseteq [0, 1]$: parameters and the base mass on the
 /// interval; a [`Seeded`](crate::Seeded) stream draws it.
@@ -248,7 +38,7 @@ pub struct SimdTruncatedBeta<T> {
   /// The base law's mass on the interval: the sampler's regime switch.
   mass: f64,
   /// The interval's kernel integral, built by the first analytic call or inverse-cdf draw.
-  analytics: OnceLock<Truncation<BetaKernel>>,
+  analytics: OnceLock<Model<BetaKernel>>,
 }
 
 impl<T: fmt::Debug> fmt::Debug for SimdTruncatedBeta<T> {
@@ -356,17 +146,36 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
     }
   }
 
-  fn analytics(&self) -> Option<&Truncation<BetaKernel>> {
-    if let Some(t) = self.analytics.get() {
-      return Some(t);
+  fn analytics(&self) -> Option<&Model<BetaKernel>> {
+    if let Some(m) = self.analytics.get() {
+      return Some(m);
     }
     let (a, b) = (self.base.alpha().to_f64()?, self.base.beta().to_f64()?);
     let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
-    Some(
-      self
-        .analytics
-        .get_or_init(|| Truncation::new(BetaKernel::new(a, b), lo, up)),
-    )
+    Some(self.analytics.get_or_init(|| {
+      Model::of(Truncation::new(BetaKernel::new(a, b), lo, up), |r| {
+        self.local(r)
+      })
+    }))
+  }
+
+  /// The local model at `r`: slope `(α − 1)/r − (β − 1)/(1 − r)` and curvature `−(α − 1)/r² − (β − 1)/(1 − r)²`, in
+  /// logs.
+  fn local(&self, r: f64) -> Option<Local> {
+    let (a, b) = (self.base.alpha().to_f64()?, self.base.beta().to_f64()?);
+    let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
+    let (ln_r, ln_rc) = (r.ln(), (1.0 - r).ln());
+    let slope = Signed::over(a - 1.0, ln_r).plus(Signed::over(1.0 - b, ln_rc));
+    let curvature = Signed::over(1.0 - a, 2.0 * ln_r).plus(Signed::over(1.0 - b, 2.0 * ln_rc));
+    Local::new(r, (lo - r, up - r), slope, curvature)
+  }
+
+  /// `(mean, variance, skewness, excess kurtosis)`.
+  fn moments(&self) -> Option<[f64; 4]> {
+    Some(match self.analytics()? {
+      Model::Full(t) => t.moments(1.0),
+      Model::Local(l) => l.moments(),
+    })
   }
 
   /// The first shape `α` of the untruncated base.
@@ -403,16 +212,17 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
     self.invert(src.uniform())
   }
 
-  /// Out of line, so the rejection loop stays lean.
+  /// Out of line, so the rejection loop stays lean; clamped to the support as `quantile` is, since the last exp of a
+  /// deep singular panel rounds past its near end.
   #[inline(never)]
-  /// Clamped to the support as `quantile` is: the last exp of a deep singular panel rounds past its near end.
   fn invert(&self, u: f64) -> T {
     let (lo, up) = (self.lower.to_f64().unwrap(), self.upper.to_f64().unwrap());
-    T::from_f64_fast(
-      self
-        .analytics()
-        .map_or(f64::NAN, |a| a.quantile(u).clamp(lo, up)),
-    )
+    let x = match self.analytics() {
+      Some(Model::Full(t)) => t.quantile(u).value(),
+      Some(Model::Local(l)) => l.quantile(u),
+      None => f64::NAN,
+    };
+    T::from_f64_fast(x.clamp(lo, up))
   }
 }
 
@@ -453,7 +263,10 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
     if x < self.lower.to_f64()? || x > self.upper.to_f64()? {
       return Some(0.0);
     }
-    Some(self.analytics()?.density(x, 0.0))
+    Some(match self.analytics()? {
+      Model::Full(t) => t.density(x, 0.0),
+      Model::Local(l) => l.pdf(x, 0.0),
+    })
   }
 
   fn cdf(&self, x: f64) -> Option<f64> {
@@ -463,7 +276,10 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
     if x >= self.upper.to_f64()? {
       return Some(1.0);
     }
-    Some(self.analytics()?.cdf(x))
+    Some(match self.analytics()? {
+      Model::Full(t) => t.cdf(x),
+      Model::Local(l) => l.cdf(x),
+    })
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
@@ -477,11 +293,15 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
     if p == 1.0 {
       return Some(up);
     }
-    Some(self.analytics()?.quantile(p).clamp(lo, up))
+    let x = match self.analytics()? {
+      Model::Full(t) => t.quantile(p).value(),
+      Model::Local(l) => l.quantile(p),
+    };
+    Some(x.clamp(lo, up))
   }
 
   fn mean(&self) -> Option<f64> {
-    Some(self.analytics()?.moments(1.0)[0])
+    Some(self.moments()?[0])
   }
 
   fn median(&self) -> Option<f64> {
@@ -524,20 +344,22 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
   }
 
   fn variance(&self) -> Option<f64> {
-    Some(self.analytics()?.moments(1.0)[1])
+    Some(self.moments()?[1])
   }
 
-  /// NaN, with kurtosis and entropy, for a law narrower than any offset from its reference point resolves.
   fn skewness(&self) -> Option<f64> {
-    Some(self.analytics()?.moments(1.0)[2])
+    Some(self.moments()?[2])
   }
 
   fn kurtosis(&self) -> Option<f64> {
-    Some(self.analytics()?.moments(1.0)[3])
+    Some(self.moments()?[3])
   }
 
   fn entropy(&self) -> Option<f64> {
-    Some(self.analytics()?.entropy())
+    Some(match self.analytics()? {
+      Model::Full(t) => t.entropy(),
+      Model::Local(l) => l.entropy(),
+    })
   }
 }
 

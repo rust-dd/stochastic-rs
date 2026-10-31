@@ -6,11 +6,13 @@ use super::GL64_X;
 use super::Kernel;
 use super::Panel;
 use super::Truncation;
+use super::panels::Cut;
+use super::panels::span;
 
 impl<K: Kernel> Truncation<K> {
   /// On a singular panel `ln g` carries `((e − 1)/e) ln u`, whose endpoint log the rule cannot integrate: the rule's
-  /// error on `ln u` against `[u ln u − u]`, times the smooth factor at the near end.
-  pub(super) fn ln_u_correction(&self, panel: &Panel, e: f64) -> f64 {
+  /// error on `ln u` against `[u ln u − u]`, times the smooth factor at the near end, over `e^{shift}`.
+  pub(super) fn ln_u_correction(&self, panel: &Panel, e: f64, shift: f64) -> f64 {
     let frame = Frame::of(panel, e);
     if frame.reflect {
       return 0.0;
@@ -29,10 +31,11 @@ impl<K: Kernel> Truncation<K> {
     } else {
       -1.0
     };
-    let v0 = self.singular_point(panel, &frame, u0).0;
+    let v0 = self.singular_point(panel.origin, &frame, u0).0;
     // In logs: `(e − 1)/e` and the Jacobian each overflow alone for a tiny `e`.
     let gap = exact - rule;
-    let ln = (1.0 - e).ln() - e.ln() + frame.ln_jacobian() - self.width.ln() + v0 + gap.abs().ln();
+    let ln =
+      (1.0 - e).ln() - e.ln() + frame.ln_jacobian() - self.width.ln() + v0 + gap.abs().ln() - shift;
     -gap.signum() * ln.exp()
   }
 
@@ -51,7 +54,7 @@ impl<K: Kernel> Truncation<K> {
         *r += w * ln_v.exp()
       });
     }
-    let delta = -self.frame.offset(panel.origin) / self.width - about;
+    let delta = -span(panel.origin, self.frame) / self.width - about;
     for (j, slot) in m.iter_mut().enumerate() {
       let mut binomial = 1.0;
       for (i, r) in raw.iter().enumerate().take(j + 1) {
@@ -69,10 +72,22 @@ impl<K: Kernel> Truncation<K> {
     e: f64,
     i: i32,
     range: Option<(f64, f64)>,
+    f: impl FnMut(f64, f64, f64, f64),
+  ) {
+    let frame = Frame::of(panel, e + f64::from(i));
+    self.frame_nodes(panel.origin, &frame, e, i, range, f);
+  }
+
+  /// `singular_nodes` over a frame beside the branch point `origin`, whose far end may be given by its log alone.
+  pub(super) fn frame_nodes(
+    &self,
+    origin: Cut,
+    frame: &Frame,
+    e: f64,
+    i: i32,
+    range: Option<(f64, f64)>,
     mut f: impl FnMut(f64, f64, f64, f64),
   ) {
-    let ei = e + f64::from(i);
-    let frame = Frame::of(panel, ei);
     let (q0, q1) = range.unwrap_or_else(|| {
       let (near, far) = (frame.q_near, frame.q_far());
       (near.min(far), near.max(far))
@@ -83,7 +98,7 @@ impl<K: Kernel> Truncation<K> {
     for (node, weight) in GL64_X.iter().zip(&GL64_W) {
       for xi in [-node, *node] {
         let q = q0 + 0.5 * (q1 - q0) * (1.0 + xi);
-        let (ln_v, offset, ln_t) = self.singular_point(panel, &frame, q);
+        let (ln_v, offset, ln_t) = self.singular_point(origin, frame, q);
         f(
           weight * half,
           ln_v + ln_jacobian,
@@ -96,12 +111,12 @@ impl<K: Kernel> Truncation<K> {
 
   /// `(ln v, x − frame, ln|x − s|)` at `q`: `|x − s|` is formed only through its logarithm, so a point next to `s`
   /// keeps its smooth factor however small `u` is.
-  pub(super) fn singular_point(&self, panel: &Panel, frame: &Frame, q: f64) -> (f64, f64, f64) {
+  pub(super) fn singular_point(&self, origin: Cut, frame: &Frame, q: f64) -> (f64, f64, f64) {
     let ln_t = frame.ln_far + frame.ln_u(q) / frame.e;
     let t = frame.sign * ln_t.exp();
-    let (x, y) = (panel.origin + t, t - self.centre.offset(panel.origin));
-    let ln_v = self.kernel.ln_rel_regular(x, y, panel.origin);
-    (ln_v, t - self.frame.offset(panel.origin), ln_t)
+    let (x, y) = (origin.plus(t), t - span(origin, self.centre));
+    let ln_v = self.kernel.ln_rel_regular(x, y, origin.x);
+    (ln_v, t - span(origin, self.frame), ln_t)
   }
 }
 
@@ -135,6 +150,17 @@ impl Frame {
       } else {
         ln_u_near.exp()
       },
+    }
+  }
+
+  /// The panel from the branch point out to `e^{ln_far}`, an offset no double need hold.
+  pub(super) fn beside(ln_far: f64, e: f64) -> Self {
+    Self {
+      sign: 1.0,
+      ln_far,
+      e,
+      reflect: false,
+      q_near: 0.0,
     }
   }
 

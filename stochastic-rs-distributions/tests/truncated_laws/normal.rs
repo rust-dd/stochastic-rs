@@ -431,7 +431,7 @@ fn mgf_at_overflow() {
 }
 
 /// An interval past `μ + σ·f64::MAX` holds the law closer to its near bound than any double: every draw, quantile and
-/// the mean are that bound, the variance 0, and the shape NaN.
+/// the mean are that bound and the variance 0 (its shape is pinned in `narrow_laws`).
 #[test]
 fn an_interval_past_the_doubles_reach() {
   let law = tn(0.0, 1e-300, 1e10, 1e20);
@@ -445,7 +445,6 @@ fn an_interval_past_the_doubles_reach() {
     ],
     [Some(1e10), Some(0.0), Some(1e10), Some(1.0), Some(0.0)]
   );
-  assert!(law.skewness().unwrap().is_nan() && law.entropy().unwrap().is_nan());
   let mut rng = stochastic_rs_core::simd_rng::SimdRng::from_seed(7);
   let draw = rand::distr::Distribution::<f64>::sample(&law, &mut rng);
   assert_eq!(draw, 1e10);

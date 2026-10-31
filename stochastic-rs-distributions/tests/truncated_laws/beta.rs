@@ -360,9 +360,22 @@ fn quantile_and_cdf_beside_a_singular_end() {
   }
 }
 
-/// A unit first shape drops the `(a − 1) ln x` term, which reads `0·(−∞)` at 0.
+/// A unit first shape drops the `(a − 1) ln x` term, which reads `0·(−∞)` at 0; its mode is an end, where the slope
+/// stays the kernel's own `−(β − 1)` (mpmath, 60 and 120 digits).
 #[test]
 fn unit_shape_has_no_log_term() {
+  let steep = tb(1.0, 100.0, 0.0, 0.5);
+  for (what, got, want) in [
+    ("cdf(0.01)", steep.cdf(0.01), 0.6339676587267705),
+    ("median", steep.median(), 0.006907504562964098),
+    ("pdf(0.01)", steep.pdf(0.01), 36.972963764972675),
+    ("entropy", steep.entropy(), -3.6151701859880916),
+  ] {
+    assert!(
+      rel(got.unwrap(), want) < 1e-12,
+      "TB(1, 100, [0, 0.5]): {what} = {got:?}"
+    );
+  }
   check(
     "TB(1, 3, [0, 0.5])",
     &tb(1.0, 3.0, 0.0, 0.5),

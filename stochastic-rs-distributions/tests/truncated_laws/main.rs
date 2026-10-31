@@ -5,7 +5,9 @@ use stochastic_rs_distributions::traits::DistributionExt;
 mod beta;
 mod exp;
 mod gamma;
+mod narrow_laws;
 mod normal;
+mod range_ends;
 mod survey;
 
 /// Reference values of one interval; `None` where the reference run printed none.
@@ -26,7 +28,7 @@ pub fn rel(got: f64, want: f64) -> f64 {
 }
 
 /// Relative `rtol` or absolute `atol`, whichever is looser; kurtosis carries 1e-11 against a worst measured 2.2e-12.
-fn close(name: &str, what: &str, got: f64, want: f64, rtol: f64, atol: f64) {
+pub fn close(name: &str, what: &str, got: f64, want: f64, rtol: f64, atol: f64) {
   assert!(
     (got - want).abs() <= atol || rel(got, want) <= rtol,
     "{name}: {what} = {got:e}, expected {want:e}"

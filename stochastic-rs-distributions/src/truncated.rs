@@ -4,6 +4,7 @@
 mod beta;
 mod exp;
 mod gamma;
+mod local;
 mod normal;
 mod quadrature;
 

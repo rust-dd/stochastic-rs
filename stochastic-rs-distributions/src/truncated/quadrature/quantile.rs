@@ -4,6 +4,7 @@ use std::ops::ControlFlow;
 
 use super::CLIP;
 use super::Kernel;
+use super::Point;
 use super::Truncation;
 use super::clip;
 use super::panels::Cut;
@@ -13,7 +14,7 @@ use super::singular::Frame;
 
 impl<K: Kernel> Truncation<K> {
   /// Above ½ the level is walked from `up`, so `1 − p` keeps the digits a level next to 1 has.
-  pub(super) fn invert(&self, p: f64) -> f64 {
+  pub(super) fn invert(&self, p: f64) -> Point {
     if p > 0.5 {
       return self.locate(
         self.a,
@@ -28,8 +29,8 @@ impl<K: Kernel> Truncation<K> {
       return self.locate(self.a, self.b, want, true, 0.0);
     }
     // `p·M₀` underflowed against an end that was never clipped.
-    if self.a.x <= self.lo {
-      return self.lo;
+    if self.a.offset(self.lo) <= 0.0 {
+      return Point::At(self.lo);
     }
     // Below the clip: from where the kernel is `e^{−CLIP}` below `p` times its reference value, every value taken
     // relative to the kernel there, so no node underflows.
@@ -43,7 +44,7 @@ impl<K: Kernel> Truncation<K> {
 
   /// The point of `[l, r]` with `want` of the mass beyond the end `from_lo` names, every value relative to `e^{shift}`:
   /// the panels walked from that end, then Newton in the one that holds it.
-  fn locate(&self, l: Cut, r: Cut, want: f64, from_lo: bool, shift: f64) -> f64 {
+  fn locate(&self, l: Cut, r: Cut, want: f64, from_lo: bool, shift: f64) -> Point {
     let mut acc = 0.0;
     let mut hit = None;
     let _ = self.walk(l, r, !from_lo, |panel| {
@@ -59,15 +60,15 @@ impl<K: Kernel> Truncation<K> {
     match hit {
       Some((panel, rest, mass)) => match panel.singular {
         Some(e) => self.solve_singular(&panel, e, rest, mass, from_lo, shift),
-        None => self.solve(panel, rest, mass, from_lo, shift),
+        None => Point::At(self.solve(panel, rest, mass, from_lo, shift)),
       },
-      None if from_lo => l.x,
-      None => r.x,
+      None if from_lo => Point::At(l.x),
+      None => Point::At(r.x),
     }
   }
 
   /// Newton in the singular panel's `q`, bracketed by its two ends: the tolerance is relative in `q`, so a level whose
-  /// point lies deep beside either end keeps its digits.
+  /// point lies deep beside either end keeps its digits, and its offset is returned as a log.
   fn solve_singular(
     &self,
     panel: &Panel,
@@ -76,7 +77,7 @@ impl<K: Kernel> Truncation<K> {
     mass: f64,
     from_lo: bool,
     shift: f64,
-  ) -> f64 {
+  ) -> Point {
     let frame = Frame::of(panel, e);
     let ln_jacobian = frame.ln_jacobian() - self.width.ln();
     // Walked into from the branch point's side the panel's mass grows from its near end, from the other side from far.
@@ -114,7 +115,7 @@ impl<K: Kernel> Truncation<K> {
       } else {
         lb = q;
       }
-      let slope = (ln_jacobian + self.singular_point(panel, &frame, q).0 - shift).exp();
+      let slope = (ln_jacobian + self.singular_point(panel.origin, &frame, q).0 - shift).exp();
       let mut next = q - dir * f / slope;
       if !(lb..=rb).contains(&next) {
         next = 0.5 * (lb + rb);
@@ -125,13 +126,17 @@ impl<K: Kernel> Truncation<K> {
         break;
       }
     }
-    panel.origin + frame.sign * (frame.ln_far + frame.ln_u(q) / frame.e).exp()
+    Point::Beside {
+      s: panel.origin.x,
+      sign: frame.sign,
+      ln_t: frame.ln_far + frame.ln_u(q) / frame.e,
+    }
   }
 
   /// Newton on the panel's partial mass, bisecting whenever a step leaves the bracket, which reaches one ulp past the
   /// panel's rounded ends.
   fn solve(&self, panel: Panel, want: f64, mass: f64, from_lo: bool, shift: f64) -> f64 {
-    let (l, r) = (panel.origin + panel.l, panel.origin + panel.r);
+    let (l, r) = (panel.origin.plus(panel.l), panel.origin.plus(panel.r));
     let (mut lb, mut rb) = (l.next_down().max(self.lo), r.next_up().min(self.up));
     let frac = want / mass;
     let frac = if frac.is_finite() {
@@ -141,10 +146,9 @@ impl<K: Kernel> Truncation<K> {
     };
     // The start inverts the panel's exponential model, its decay read from the kernel at the two ends.
     let at = |t: f64| {
-      let y = t - self.centre.offset(panel.origin);
-      self
-        .kernel
-        .ln_rel(panel.origin + t, y, Some((panel.origin, t)))
+      let y = t - span(panel.origin, self.centre);
+      let branch = panel.origin.shifted(t).branch();
+      self.kernel.ln_rel(panel.origin.plus(t), y, branch)
     };
     let decay = at(panel.l) - at(panel.r);
     let span = if from_lo { decay } else { -decay };
@@ -194,7 +198,7 @@ impl<K: Kernel> Truncation<K> {
 
   /// `panel`'s mass from its exact near end to `x`, one rule on the sub-panel the panel's budgets already cover.
   fn partial(&self, panel: &Panel, x: f64, from_lo: bool, shift: f64) -> f64 {
-    let t = x - panel.origin;
+    let t = span(panel.origin, Cut::at(x));
     let sub = if from_lo {
       Panel { r: t, ..*panel }
     } else {
