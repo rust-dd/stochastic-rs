@@ -1,6 +1,7 @@
 use stochastic_rs_distributions::traits::DistributionExt;
 use stochastic_rs_distributions::truncated::SimdTruncatedBeta;
 
+use super::NEXT_TO_ONE;
 use super::Want;
 use super::check;
 use super::moments_match;
@@ -186,6 +187,28 @@ fn moments_on_a_tiny_interval() {
       -0.565685424949238,
       -0.6,
     ],
+  );
+}
+
+/// Levels next to 1 subtract the mass past the upper clip, and the least level walks the deep range relative to its
+/// start's kernel value (mpmath, 60 and 120 digits).
+#[test]
+fn quantile_tails_keep_their_digits() {
+  let law = tb(50.0, 30.0, 0.0, 1.0);
+  for (p, want) in NEXT_TO_ONE
+    .into_iter()
+    .zip([0.9388210716845806, 0.9134908997128216])
+  {
+    let got = law.quantile(p).unwrap();
+    assert!(
+      rel(got, want) < 1e-12,
+      "TB(50, 30, [0, 1]): quantile({p}) = {got}"
+    );
+  }
+  let got = law.quantile(5e-324).unwrap();
+  assert!(
+    rel(got, 1.2689229249447996e-7) < 1e-12,
+    "TB(50, 30, [0, 1]): quantile(5e-324) = {got}"
   );
 }
 

@@ -1,6 +1,7 @@
 use stochastic_rs_distributions::traits::DistributionExt;
 use stochastic_rs_distributions::truncated::SimdTruncatedNormal;
 
+use super::NEXT_TO_ONE;
 use super::Want;
 use super::check;
 use super::moments_match;
@@ -319,6 +320,46 @@ fn moments_at_an_extreme_scale() {
     &tn(0.0, 1e200, 0.0, 1.0),
     [0.5, 0.08333333333333333, 0.0, -1.2],
   );
+}
+
+/// A level next to 1 subtracts the mass past the upper clip, and the least level walks the deep range relative to its
+/// start's kernel value, so no node underflows (mpmath, 60 and 120 digits).
+#[test]
+fn quantile_tails_keep_their_digits() {
+  let whole = tn(0.0, 1.0, f64::NEG_INFINITY, f64::INFINITY);
+  for (name, law, wants) in [
+    (
+      "TN(0, 1, (-inf, inf))",
+      &whole,
+      [8.209536151601387, 7.0344869100478356],
+    ),
+    (
+      "TN(2, 0.5, [1, inf))",
+      &tn(2.0, 0.5, 1.0, f64::INFINITY),
+      [6.106149513030761, 5.518847593566399],
+    ),
+    (
+      "TN(0, 1, [-2, inf))",
+      &tn(0.0, 1.0, -2.0, f64::INFINITY),
+      [8.212299026061523, 7.0376951871327975],
+    ),
+  ] {
+    for (p, want) in NEXT_TO_ONE.into_iter().zip(wants) {
+      let got = law.quantile(p).unwrap();
+      assert!(rel(got, want) < 1e-12, "{name}: quantile({p}) = {got}");
+    }
+  }
+  for (name, law, want) in [
+    (
+      "TN(0, 1, (-inf, -8])",
+      &tn(0.0, 1.0, f64::NEG_INFINITY, -8.0),
+      -39.366508884639934,
+    ),
+    ("TN(0, 1, (-inf, inf))", &whole, -38.467405617144344),
+  ] {
+    let got = law.quantile(5e-324).unwrap();
+    assert!(rel(got, want) < 1e-12, "{name}: quantile(5e-324) = {got}");
+  }
 }
 
 /// The ends and the guard: `quantile(0)`/`quantile(1)` are the bounds, infinite ones included.

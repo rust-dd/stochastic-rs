@@ -38,9 +38,6 @@ pub(super) trait Kernel {
 /// Relative kernel below `e^{−CLIP}` is dropped: 1e-18 of the mass near the reference point.
 const CLIP: f64 = 41.5;
 
-/// Past `e^{−DEEP}` of the reference value the kernel holds less than any level a double can ask the quantile for.
-const DEEP: f64 = 800.0;
-
 /// An interval's reference point, clipped ends and normalising sums, cached so a pdf costs one `exp`.
 #[derive(Clone, Debug)]
 pub(super) struct Truncation<K> {
@@ -58,8 +55,9 @@ pub(super) struct Truncation<K> {
   m0: f64,
   /// `1/(width·m0)`, so a density costs a product.
   inv_m0: f64,
-  /// `∫_lo^a k/k(centre)`, in units of `width`, which the cdf and the lower quantile add.
-  tail: f64,
+  /// `∫_lo^a` and `∫_b^up` of `k/k(centre)`, in units of `width`: the cdf adds the first, the quantile both.
+  tail_lo: f64,
+  tail_up: f64,
 }
 
 impl<K: Kernel> Truncation<K> {
@@ -67,7 +65,10 @@ impl<K: Kernel> Truncation<K> {
   pub(super) fn new(kernel: K, lo: f64, up: f64) -> Self {
     let mut t = Self::mass_only(kernel, lo, up);
     if t.a > lo {
-      t.tail = t.integrate(clip(&t.kernel, t.centre, t.a, lo, -2.0 * CLIP), t.a);
+      t.tail_lo = t.integrate(clip(&t.kernel, t.centre, t.a, lo, -2.0 * CLIP), t.a, 0.0);
+    }
+    if t.b < up {
+      t.tail_up = t.integrate(t.b, clip(&t.kernel, t.centre, t.b, up, -2.0 * CLIP), 0.0);
     }
     t
   }
@@ -114,9 +115,10 @@ impl<K: Kernel> Truncation<K> {
       width: b - a,
       m0: 0.0,
       inv_m0: 0.0,
-      tail: 0.0,
+      tail_lo: 0.0,
+      tail_up: 0.0,
     };
-    t.m0 = t.integrate(a, b);
+    t.m0 = t.integrate(a, b, 0.0);
     t.inv_m0 = 1.0 / (t.width * t.m0);
     t
   }
@@ -136,7 +138,7 @@ impl<K: Kernel> Truncation<K> {
   pub(super) fn moments(&self, scale: f64) -> [f64; 4] {
     let mut m = [0.0; 5];
     let _ = self.walk(self.a, self.b, false, |panel| {
-      for (slot, part) in m.iter_mut().zip(self.sums::<5>(&panel)) {
+      for (slot, part) in m.iter_mut().zip(self.sums::<5>(&panel, 0.0)) {
         *slot += part;
       }
       ControlFlow::<()>::Continue(())
@@ -173,7 +175,7 @@ impl<K: Kernel> Truncation<K> {
 
   /// The normalised density `k(x)/∫k` at a point of `[lo, up]`, whose support the law checks at its own bounds.
   pub(super) fn density(&self, x: f64) -> f64 {
-    self.ratio(x) * self.inv_m0
+    self.ratio(x, 0.0) * self.inv_m0
   }
 
   /// `∫_lo^x k / ∫k`, integrated up from `lo`: no survival function reads it, so a level near 1 needs absolute digits.
@@ -187,12 +189,10 @@ impl<K: Kernel> Truncation<K> {
     if x >= self.b {
       return 1.0;
     }
-    let below = if x < self.a {
-      self.below_clip_mass(x)
-    } else {
-      self.tail + self.integrate(self.a, x)
-    };
-    (below / self.m0).min(1.0)
+    if x < self.a {
+      return self.below_clip(x);
+    }
+    ((self.tail_lo + self.integrate(self.a, x, 0.0)) / self.m0).min(1.0)
   }
 
   /// `cdf⁻¹(p)`: the bounds at 0 and 1; else the panel holding `p`, walked to from the nearer end, then Newton in it.
@@ -210,31 +210,40 @@ impl<K: Kernel> Truncation<K> {
   }
 
   fn invert(&self, p: f64) -> f64 {
-    let from_lo = p <= 0.5;
-    let want = if from_lo {
-      p * self.m0 - self.tail
-    } else {
-      (1.0 - p) * self.m0
-    };
-    if from_lo && want <= 0.0 {
-      // `p·M₀` underflowed against an end that was never clipped.
-      if self.a <= self.lo {
-        return self.lo;
-      }
-      // Below the clip: from where the kernel is `e^{−DEEP}` below its reference value.
-      let start = clip(&self.kernel, self.centre, self.a, self.lo, -DEEP);
-      return self.locate(start, self.a, p * self.m0, true);
+    if p > 0.5 {
+      return self.locate(
+        self.a,
+        self.b,
+        (1.0 - p) * self.m0 - self.tail_up,
+        false,
+        0.0,
+      );
     }
-    self.locate(self.a, self.b, want, from_lo)
+    let want = p * self.m0 - self.tail_lo;
+    if want > 0.0 {
+      return self.locate(self.a, self.b, want, true, 0.0);
+    }
+    // `p·M₀` underflowed against an end that was never clipped.
+    if self.a <= self.lo {
+      return self.lo;
+    }
+    // Below the clip: from where the kernel is `e^{−CLIP}` below `p` times its reference value, every value taken
+    // relative to the kernel there, so no node underflows.
+    let start = clip(&self.kernel, self.centre, self.a, self.lo, p.ln() - CLIP);
+    let shift = self
+      .kernel
+      .ln_rel(start, start - self.centre, self.centre, None);
+    let want = (p.ln() + self.m0.ln() - shift).exp();
+    self.locate(start, self.a, want, true, shift)
   }
 
-  /// The point of `[l, r]` with `want` of the mass beyond the end `from_lo` names: the panels walked from that end, then
-  /// Newton in the one that holds it.
-  fn locate(&self, l: f64, r: f64, want: f64, from_lo: bool) -> f64 {
+  /// The point of `[l, r]` with `want` of the mass beyond the end `from_lo` names, every value relative to `e^{shift}`:
+  /// the panels walked from that end, then Newton in the one that holds it.
+  fn locate(&self, l: f64, r: f64, want: f64, from_lo: bool, shift: f64) -> f64 {
     let mut acc = 0.0;
     let mut hit = None;
     let _ = self.walk(l, r, !from_lo, |panel| {
-      let mass = self.sums::<1>(&panel)[0];
+      let mass = self.sums::<1>(&panel, shift)[0];
       hit = Some((panel, want - acc, mass));
       acc += mass;
       if acc >= want {
@@ -244,7 +253,7 @@ impl<K: Kernel> Truncation<K> {
       }
     });
     match hit {
-      Some((panel, rest, mass)) => self.solve(panel, rest, mass, from_lo),
+      Some((panel, rest, mass)) => self.solve(panel, rest, mass, from_lo, shift),
       None if from_lo => l,
       None => r,
     }
@@ -252,7 +261,7 @@ impl<K: Kernel> Truncation<K> {
 
   /// Newton on the panel's partial mass, bisecting whenever a step leaves the bracket, which reaches one ulp past the
   /// panel's rounded ends.
-  fn solve(&self, panel: Panel, want: f64, mass: f64, from_lo: bool) -> f64 {
+  fn solve(&self, panel: Panel, want: f64, mass: f64, from_lo: bool, shift: f64) -> f64 {
     let (l, r) = (panel.origin + panel.l, panel.origin + panel.r);
     let (mut lb, mut rb) = (l.next_down().max(self.lo), r.next_up().min(self.up));
     let frac = want / mass;
@@ -283,7 +292,7 @@ impl<K: Kernel> Truncation<K> {
     };
     let tol = f64::EPSILON * (r - l);
     for _ in 0..100 {
-      let f = self.partial(&panel, x, from_lo) - want;
+      let f = self.partial(&panel, x, from_lo, shift) - want;
       if f == 0.0 {
         return x;
       }
@@ -293,9 +302,9 @@ impl<K: Kernel> Truncation<K> {
         lb = x;
       }
       let slope = if from_lo {
-        self.ratio(x) / self.width
+        self.ratio(x, shift) / self.width
       } else {
-        -self.ratio(x) / self.width
+        -self.ratio(x, shift) / self.width
       };
       let mut next = x - f / slope;
       if !(lb..=rb).contains(&next) {
@@ -310,41 +319,41 @@ impl<K: Kernel> Truncation<K> {
   }
 
   /// `panel`'s mass from its exact near end to `x`, one rule on the sub-panel the panel's budgets already cover.
-  fn partial(&self, panel: &Panel, x: f64, from_lo: bool) -> f64 {
+  fn partial(&self, panel: &Panel, x: f64, from_lo: bool, shift: f64) -> f64 {
     let t = x - panel.origin;
     let sub = if from_lo {
       Panel { r: t, ..*panel }
     } else {
       Panel { l: t, ..*panel }
     };
-    self.sums::<1>(&sub)[0]
+    self.sums::<1>(&sub, shift)[0]
   }
 
-  /// `∫_lo^x k/k(c)` for `x` below the clip, from where the kernel is `e^{−CLIP}` below its value at `x`.
-  fn below_clip_mass(&self, x: f64) -> f64 {
+  /// The cdf below the lower clip: the mass from where the kernel is `e^{−CLIP}` below its value at `x`, relative to
+  /// that value, which one `exp` restores, so a subnormal answer is rounded once.
+  fn below_clip(&self, x: f64) -> f64 {
     let ln_g = self.kernel.ln_rel(x, x - self.centre, self.centre, None);
-    if ln_g <= -DEEP || ln_g.is_nan() {
+    if ln_g == f64::NEG_INFINITY {
       return 0.0;
     }
-    self.integrate(clip(&self.kernel, self.centre, x, self.lo, ln_g - CLIP), x)
+    let start = clip(&self.kernel, self.centre, x, self.lo, ln_g - CLIP);
+    let relative = self.integrate(start, x, ln_g);
+    (ln_g + (relative / self.m0).ln()).exp().min(1.0)
   }
 
-  /// `k(x)/k(c)`.
-  fn ratio(&self, x: f64) -> f64 {
-    self
-      .kernel
-      .ln_rel(x, x - self.centre, self.centre, None)
-      .exp()
+  /// `k(x)/k(c)` over `e^{shift}`.
+  fn ratio(&self, x: f64, shift: f64) -> f64 {
+    (self.kernel.ln_rel(x, x - self.centre, self.centre, None) - shift).exp()
   }
 
-  /// `∫_l^r k/k(c)`, signed.
-  fn integrate(&self, l: f64, r: f64) -> f64 {
+  /// `∫_l^r k/k(c)` in units of `width`, over `e^{shift}`, signed.
+  fn integrate(&self, l: f64, r: f64, shift: f64) -> f64 {
     if r < l {
-      return -self.integrate(r, l);
+      return -self.integrate(r, l, shift);
     }
     let mut sum = 0.0;
     let _ = self.walk(l, r, false, |panel| {
-      sum += self.sums::<1>(&panel)[0];
+      sum += self.sums::<1>(&panel, shift)[0];
       ControlFlow::<()>::Continue(())
     });
     sum
@@ -360,11 +369,11 @@ impl<K: Kernel> Truncation<K> {
     panels(&self.kernel, self.centre, l, r, rev, visit)
   }
 
-  /// `Σ_i w_i g(x_i) (y_i/width)^j`, `j < N`, on one panel.
-  fn sums<const N: usize>(&self, panel: &Panel) -> [f64; N] {
+  /// `Σ_i w_i g(x_i) (y_i/width)^j / e^{shift}`, `j < N`, on one panel.
+  fn sums<const N: usize>(&self, panel: &Panel, shift: f64) -> [f64; N] {
     let mut sums = [0.0; N];
     self.nodes(panel, |w, y, ln_g| {
-      let (g, z) = (w * ln_g.exp(), y / self.width);
+      let (g, z) = (w * (ln_g - shift).exp(), y / self.width);
       let mut zj = 1.0;
       for slot in &mut sums {
         *slot += g * zj;

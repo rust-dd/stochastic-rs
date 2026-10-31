@@ -1,9 +1,11 @@
 use stochastic_rs_distributions::traits::DistributionExt;
 use stochastic_rs_distributions::truncated::SimdTruncatedGamma;
 
+use super::NEXT_TO_ONE;
 use super::Want;
 use super::check;
 use super::moments_match;
+use super::rel;
 
 fn tg(k: f64, theta: f64, lo: f64, up: f64) -> SimdTruncatedGamma<f64> {
   SimdTruncatedGamma::<f64>::new(k, theta, lo, up)
@@ -206,6 +208,39 @@ fn moments_at_extreme_scales() {
       [mean, variance, 0.3190481188042759, -0.9373102227975924],
     );
   }
+}
+
+/// A level next to 1 subtracts the mass past the upper clip, open or finite, and the least level walks the deep range
+/// relative to its start's kernel value (mpmath, 60 and 120 digits).
+#[test]
+fn quantile_tails_keep_their_digits() {
+  for (name, law, wants) in [
+    (
+      "TG(30, 0.5, [0, inf))",
+      tg(30.0, 0.5, 0.0, f64::INFINITY),
+      [49.55566420055422, 42.96477116124054],
+    ),
+    (
+      "TG(2.5, 1.2, [0.8, inf))",
+      tg(2.5, 1.2, 0.8, f64::INFINITY),
+      [50.60528444554982, 39.23237834482653],
+    ),
+    (
+      "TG(2.5, 1.2, [0.8, 200])",
+      tg(2.5, 1.2, 0.8, 200.0),
+      [50.60528444554982, 39.23237834482653],
+    ),
+  ] {
+    for (p, want) in NEXT_TO_ONE.into_iter().zip(wants) {
+      let got = law.quantile(p).unwrap();
+      assert!(rel(got, want) < 1e-12, "{name}: quantile({p}) = {got}");
+    }
+  }
+  let got = tg(30.0, 0.5, 0.0, f64::INFINITY).quantile(5e-324).unwrap();
+  assert!(
+    rel(got, 1.0066646743913833e-10) < 1e-12,
+    "TG(30, 0.5, [0, inf)): quantile(5e-324) = {got}"
+  );
 }
 
 /// A unit shape drops the `(k − 1) ln x` term, which reads `0·(−∞)` at 0.

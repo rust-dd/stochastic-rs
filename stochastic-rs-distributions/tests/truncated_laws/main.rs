@@ -32,6 +32,9 @@ fn close(name: &str, what: &str, got: f64, want: f64, rtol: f64, atol: f64) {
   );
 }
 
+/// The levels next to 1 whose quantiles count the mass past an upper clip: the largest double below 1, and `1 − 1e-12`.
+pub const NEXT_TO_ONE: [f64; 2] = [1.0 - f64::EPSILON / 2.0, 1.0 - 1e-12];
+
 /// The four moments at `check`'s bars; a reference that overflowed or underflowed is its rounding, matched exactly.
 pub fn moments_match(name: &str, law: &impl DistributionExt, want: [f64; 4]) {
   let got = [
