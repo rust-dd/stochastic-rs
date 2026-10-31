@@ -395,3 +395,58 @@ fn quantile_ends_are_the_bounds() {
   assert_eq!(open.quantile(1.0), Some(f64::INFINITY));
   assert_eq!(tn(0.0, 1.0, 8.0, 9.0).quantile(1.0), Some(9.0));
 }
+
+/// Past `|σt| ≈ 1.34e154` the bracket `(s² + c²)/2` overflows to the mgf's +∞ with no `∞ − ∞`; where `σt` itself
+/// overflows the tilt runs in `x − μ` (mpmath, 60 and 120 digits).
+#[test]
+fn mgf_at_overflow() {
+  let inf = f64::INFINITY;
+  for (mu, sigma, lo, up, t) in [
+    (0.0, 1.0, -inf, inf, 2e154),
+    (0.0, 1.0, -inf, inf, 1e200),
+    (0.0, 1.0, -inf, inf, -1e200),
+    (0.0, 1.0, 0.0, inf, 1e160),
+    (0.0, 1.0, 0.0, 1e300, 1e200),
+    (2.0, 0.5, 1.0, inf, 1e300),
+    (0.0, 1e-100, -inf, inf, 1e260),
+    (0.0, 1.0, -1e200, 1e200, 1e300),
+  ] {
+    let got = tn(mu, sigma, lo, up).moment_generating_function(t);
+    assert_eq!(got, Some(inf), "TN({mu}, {sigma}, [{lo}, {up}]).mgf({t:e})");
+  }
+  for (lo, up, t, want) in [
+    (-1.0, 0.0, 1e10, 1e-10),
+    (-1.0, 0.0, 1e9, 1e-9),
+    (-1.0, 1e-12, 1e10, 1.010050167083158e-10),
+    (0.0, 1.0, -1e10, 1e-10),
+  ] {
+    let got = tn(0.0, 1e300, lo, up)
+      .moment_generating_function(t)
+      .unwrap();
+    assert!(
+      rel(got, want) < 1e-12,
+      "TN(0, 1e300, [{lo}, {up}]).mgf({t:e}) = {got:e}"
+    );
+  }
+}
+
+/// An interval past `μ + σ·f64::MAX` holds the law closer to its near bound than any double: every draw, quantile and
+/// the mean are that bound, the variance 0, and the shape NaN.
+#[test]
+fn an_interval_past_the_doubles_reach() {
+  let law = tn(0.0, 1e-300, 1e10, 1e20);
+  assert_eq!(
+    [
+      law.mean(),
+      law.variance(),
+      law.quantile(0.5),
+      law.cdf(2e10),
+      law.cdf(1e10)
+    ],
+    [Some(1e10), Some(0.0), Some(1e10), Some(1.0), Some(0.0)]
+  );
+  assert!(law.skewness().unwrap().is_nan() && law.entropy().unwrap().is_nan());
+  let mut rng = stochastic_rs_core::simd_rng::SimdRng::from_seed(7);
+  let draw = rand::distr::Distribution::<f64>::sample(&law, &mut rng);
+  assert_eq!(draw, 1e10);
+}

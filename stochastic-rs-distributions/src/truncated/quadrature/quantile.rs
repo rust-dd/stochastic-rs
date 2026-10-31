@@ -3,15 +3,16 @@
 use std::ops::ControlFlow;
 
 use super::CLIP;
-use super::Frame;
 use super::Kernel;
 use super::Truncation;
 use super::clip;
 use super::panels::Cut;
 use super::panels::Panel;
+use super::panels::span;
+use super::singular::Frame;
 
 impl<K: Kernel> Truncation<K> {
-  /// `cdf⁻¹(p)` for `0 < p < 1`: below ½ from `lo`, above it from `up`.
+  /// Above ½ the level is walked from `up`, so `1 − p` keeps the digits a level next to 1 has.
   pub(super) fn invert(&self, p: f64) -> f64 {
     if p > 0.5 {
       return self.locate(
@@ -35,7 +36,7 @@ impl<K: Kernel> Truncation<K> {
     let start = clip(&self.kernel, self.centre, self.a, self.lo, p.ln() - CLIP);
     let shift = self
       .kernel
-      .ln_rel(start.x, start.offset(self.centre), self.centre, None);
+      .ln_rel(start.x, span(self.centre, start), start.branch());
     let want = (p.ln() + self.m0.ln() - shift).exp();
     self.locate(start, self.a, want, true, shift)
   }
@@ -57,7 +58,7 @@ impl<K: Kernel> Truncation<K> {
     });
     match hit {
       Some((panel, rest, mass)) => match panel.singular {
-        Some(p) => self.solve_singular(&panel, p, rest, mass, from_lo, shift),
+        Some(e) => self.solve_singular(&panel, e, rest, mass, from_lo, shift),
         None => self.solve(panel, rest, mass, from_lo, shift),
       },
       None if from_lo => l.x,
@@ -65,64 +66,66 @@ impl<K: Kernel> Truncation<K> {
     }
   }
 
-  /// Newton in `u` on a singular panel, bracketed by its `[u_near, 1]`: the tolerance is relative in `u`, so a level
-  /// whose point lies deep beside the branch point keeps its digits.
+  /// Newton in the singular panel's `q`, bracketed by its two ends: the tolerance is relative in `q`, so a level whose
+  /// point lies deep beside either end keeps its digits.
   fn solve_singular(
     &self,
     panel: &Panel,
-    p: f64,
+    e: f64,
     want: f64,
     mass: f64,
     from_lo: bool,
     shift: f64,
   ) -> f64 {
-    let frame = Frame::of(panel, p);
-    let (un, jacobian) = (frame.u_near(), frame.jacobian() / self.width);
-    // Walked into from the branch point's side the panel's mass grows from `u_near`, from the other side from 1.
-    let from_near = from_lo == (frame.sign > 0.0);
+    let frame = Frame::of(panel, e);
+    let ln_jacobian = frame.ln_jacobian() - self.width.ln();
+    // Walked into from the branch point's side the panel's mass grows from its near end, from the other side from far.
+    let (qa, qb) = if from_lo == (frame.sign > 0.0) {
+      (frame.q_near, frame.q_far())
+    } else {
+      (frame.q_far(), frame.q_near)
+    };
+    let dir = if qb > qa { 1.0 } else { -1.0 };
     let frac = want / mass;
     let frac = if frac.is_finite() {
       frac.clamp(0.0, 1.0)
     } else {
       0.5
     };
-    let (mut lb, mut rb) = (un, 1.0);
-    let mut u = if from_near {
-      un + (1.0 - un) * frac
-    } else {
-      1.0 - (1.0 - un) * frac
-    };
+    let (mut lb, mut rb) = (qa.min(qb), qa.max(qb));
+    let mut q = qa + (qb - qa) * frac;
     for _ in 0..100 {
-      let range = if from_near { (un, u) } else { (u, 1.0) };
       let mut part = 0.0;
-      self.singular_nodes(panel, p, range, |w, ln_v, _, _| {
-        part += w * (ln_v - shift).exp();
-      });
+      self.singular_nodes(
+        panel,
+        e,
+        0,
+        Some((q.min(qa), q.max(qa))),
+        |w, ln_v, _, _| {
+          part += w * (ln_v - shift).exp();
+        },
+      );
       let f = part - want;
       if f == 0.0 {
         break;
       }
-      if (f > 0.0) == from_near {
-        rb = u;
+      if (f > 0.0) == (dir > 0.0) {
+        rb = q;
       } else {
-        lb = u;
+        lb = q;
       }
-      let slope = jacobian * (self.singular_point(panel, &frame, u).0 - shift).exp();
-      let mut next = if from_near {
-        u - f / slope
-      } else {
-        u + f / slope
-      };
+      let slope = (ln_jacobian + self.singular_point(panel, &frame, q).0 - shift).exp();
+      let mut next = q - dir * f / slope;
       if !(lb..=rb).contains(&next) {
         next = 0.5 * (lb + rb);
       }
-      let done = (next - u).abs() <= 4.0 * f64::EPSILON * u;
-      u = next;
+      let done = (next - q).abs() <= 4.0 * f64::EPSILON * q.abs();
+      q = next;
       if done {
         break;
       }
     }
-    panel.origin + frame.sign * (frame.ln_far + u.ln() / frame.e).exp()
+    panel.origin + frame.sign * (frame.ln_far + frame.ln_u(q) / frame.e).exp()
   }
 
   /// Newton on the panel's partial mass, bisecting whenever a step leaves the bracket, which reaches one ulp past the
@@ -137,8 +140,13 @@ impl<K: Kernel> Truncation<K> {
       0.5
     };
     // The start inverts the panel's exponential model, its decay read from the kernel at the two ends.
-    let c = self.centre;
-    let decay = self.kernel.ln_rel(l, l - c, c, None) - self.kernel.ln_rel(r, r - c, c, None);
+    let at = |t: f64| {
+      let y = t - self.centre.offset(panel.origin);
+      self
+        .kernel
+        .ln_rel(panel.origin + t, y, Some((panel.origin, t)))
+    };
+    let decay = at(panel.l) - at(panel.r);
     let span = if from_lo { decay } else { -decay };
     let v = if span.is_finite() && span.abs() > 1e-8 {
       let share = frac * -(-span).exp_m1();

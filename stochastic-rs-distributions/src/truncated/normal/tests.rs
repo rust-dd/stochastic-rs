@@ -4,7 +4,6 @@ use super::*;
 use crate::tests::scalar_draws;
 use crate::tests::scalar_ks_best_p;
 
-/// Truncated normal samples must respect the bound.
 #[test]
 fn truncated_normal_samples_within_bounds() {
   for seed in [2718, 999, 42] {
@@ -33,8 +32,7 @@ fn construction_and_draws_skip_the_quadrature() {
   }
 }
 
-/// Truncated normal density integrates to 1 in the bulk (mid-point Riemann
-/// sum on a 1000-step grid).
+/// The density, summed by midpoints with no reference to the engine's own mass, integrates to 1.
 #[test]
 fn truncated_normal_pdf_normalised() {
   let tn = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -1.0, 2.0);
@@ -138,8 +136,7 @@ fn tail_proposal_follows_roberts_rule() {
   assert!(exponential(3.0, f64::INFINITY));
 }
 
-/// PDF / CDF degenerate cases: outside the bounds must produce 0 PDF
-/// and {0, 1} CDF.
+/// Outside the bounds the law answers from its support alone, before any analytic is built.
 #[test]
 fn truncated_pdf_cdf_outside_bounds() {
   let tn = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -1.0, 1.0);

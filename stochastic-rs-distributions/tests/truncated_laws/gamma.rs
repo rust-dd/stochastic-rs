@@ -462,3 +462,24 @@ fn whole_support_is_the_base_law() {
       && (tiny.kurtosis().unwrap() - 60.0).abs() < 6e-10
   );
 }
+
+/// A mode `(k − 1)θ` that under- or overflows, kept in the kernel's unit (mpmath, 60 and 120 digits): past f64::MAX the
+/// mean is its rounding, +∞, and on the whole support skewness and kurtosis are the base's `2/√k` and `6/k`.
+#[test]
+fn modes_past_the_doubles_range() {
+  let k = 1.0 + f64::EPSILON;
+  let law = tg(k, 1e-308, 0.0, 1.0);
+  assert!(rel(law.cdf(1e-308).unwrap(), 0.6321205588285576) < 1e-12);
+  assert_eq!(
+    [law.mean(), law.cdf(0.5), law.quantile(0.5)],
+    [Some(1e-308), Some(1.0), Some(6.93147180559945e-309)]
+  );
+  assert_eq!(tg(k, 1e-308, 0.0, 1e-300).mean(), Some(1e-308));
+  let huge = tg(1e300, 1e10, 0.0, f64::INFINITY);
+  assert_eq!(
+    (huge.mean(), huge.cdf(1e300)),
+    (Some(f64::INFINITY), Some(0.0))
+  );
+  assert!(rel(huge.skewness().unwrap(), 2e-150) < 1e-12);
+  assert!(rel(huge.kurtosis().unwrap(), 5.999999999999999e-300) < 1e-12);
+}

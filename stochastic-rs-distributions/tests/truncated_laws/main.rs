@@ -6,6 +6,7 @@ mod beta;
 mod exp;
 mod gamma;
 mod normal;
+mod survey;
 
 /// Reference values of one interval; `None` where the reference run printed none.
 pub struct Want {

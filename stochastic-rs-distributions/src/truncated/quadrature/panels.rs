@@ -2,13 +2,18 @@
 
 use std::ops::ControlFlow;
 
+use super::CLIP;
 use super::Kernel;
+use super::clip;
 
 /// How far the log-kernel may move across one panel through its slope.
 const SLOPE_BUDGET: f64 = 30.0;
 
 /// How far the log-kernel may move across one panel through its curvature.
 const CURVATURE_BUDGET: f64 = 8.0;
+
+/// The most panels one piece takes: a clipped piece needs a handful.
+const CAP: f64 = 1024.0;
 
 /// The 32 positive nodes of the 64-point Gauss–Legendre rule on `[-1, 1]`, ascending: each the double nearest its exact
 /// value (mpmath at 60 digits, the same at 120).
@@ -90,22 +95,21 @@ pub(super) struct Panel {
   pub(super) l: f64,
   pub(super) r: f64,
   pub(super) graded: bool,
-  /// `p` on the panel beside a singular branch point (`p < 0`), which integrates in `u = (t/h)^{p+1}`.
+  /// The exponent `e < 1` on the panel beside a singular branch point, which integrates in `u = (t/h)^e`.
   pub(super) singular: Option<f64>,
 }
 
 /// A breakpoint and, beside a point `s` (a branch point or the reference point), its exact offset from `s`.
-#[derive(Clone, Copy, Debug)]
-pub(super) struct Cut {
-  pub(super) x: f64,
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(in crate::truncated) struct Cut {
+  pub(in crate::truncated) x: f64,
   from: Option<(f64, f64)>,
-  /// On an end within a tenth of the width of a singular branch point `(s, p)`: its piece is the innermost.
+  /// On an end within a tenth of the width of a singular branch point `(s, e)`: its piece is the innermost.
   inner: Option<(f64, f64)>,
 }
 
 impl Cut {
-  /// A point known only as itself.
-  pub(super) fn at(x: f64) -> Self {
+  pub(in crate::truncated) fn at(x: f64) -> Self {
     Self {
       x,
       from: None,
@@ -114,7 +118,7 @@ impl Cut {
   }
 
   /// `s + t`, its offset `t` kept however much finer than an ulp of `s`.
-  pub(super) fn beside(s: f64, t: f64) -> Self {
+  pub(in crate::truncated) fn beside(s: f64, t: f64) -> Self {
     Self {
       x: s + t,
       from: Some((s, t)),
@@ -122,7 +126,23 @@ impl Cut {
     }
   }
 
-  pub(super) fn offset(self, origin: f64) -> f64 {
+  /// `(s, t)` with the point `s + t`, `s` the point it is held beside or itself.
+  pub(super) fn anchor(self) -> (f64, f64) {
+    self.from.unwrap_or((self.x, 0.0))
+  }
+
+  /// The same point moved by `d`, still beside its anchor.
+  pub(super) fn shifted(self, d: f64) -> Self {
+    let (s, t) = self.anchor();
+    Self::beside(s, t + d)
+  }
+
+  /// Its exact offset from the point it is held beside, as the `branch` a kernel reads.
+  pub(super) fn branch(self) -> Option<(f64, f64)> {
+    self.from
+  }
+
+  pub(in crate::truncated) fn offset(self, origin: f64) -> f64 {
     match self.from {
       Some((s, t)) if s == origin => t,
       Some((s, t)) => (s - origin) + t,
@@ -132,6 +152,7 @@ impl Cut {
 }
 
 /// `r − l`, measured from the point one end is an exact offset of, so two cuts beside it keep their difference.
+#[inline]
 pub(super) fn span(l: Cut, r: Cut) -> f64 {
   match (l.from, r.from) {
     (Some((s, t)), _) => r.offset(s) - t,
@@ -144,7 +165,7 @@ pub(super) fn span(l: Cut, r: Cut) -> f64 {
 /// then the slope and curvature budgets).
 pub(super) fn panels<K: Kernel, B>(
   kernel: &K,
-  c: f64,
+  c: Cut,
   lc: Cut,
   rc: Cut,
   rev: bool,
@@ -154,14 +175,14 @@ pub(super) fn panels<K: Kernel, B>(
   let ladders = kernel
     .branch_points()
     .map(|point| point.filter(|&(s, _)| s >= l - 20.0 * width && s <= r + 20.0 * width));
-  let rungs = ladders.into_iter().flatten().flat_map(move |(s, p)| {
+  let rungs = ladders.into_iter().flatten().flat_map(move |(s, e)| {
     // Beside a vanishing kernel, deep enough for the mass there to fall below 1e-18 and to reach an end that stops
     // short of `s`; beside a singular one 19 normal decades, below which the innermost panel's `u` is exact.
-    let steps = if p < 0.0 {
+    let steps = if e < 1.0 {
       19
     } else {
       let gap = (l - s).max(s - r).max(0.0);
-      let mass = (18.0 / (p + 1.0)).ceil() + 1.0;
+      let mass = (18.0 / e).ceil() + 1.0;
       let reach = if gap > 0.0 {
         (width / gap).log10().ceil() + 1.0
       } else {
@@ -173,7 +194,7 @@ pub(super) fn panels<K: Kernel, B>(
     (1..=steps)
       .map(move |j| -h(j))
       .chain((1..=steps).rev().map(h))
-      .filter(move |&t| l - s < t && t < r - s && (p > 0.0 || t.abs() >= f64::MIN_POSITIVE))
+      .filter(move |&t| l - s < t && t < r - s && (e > 1.0 || t.abs() >= f64::MIN_POSITIVE))
       .map(move |t| Cut {
         x: s + t,
         from: Some((s, t)),
@@ -192,7 +213,7 @@ pub(super) fn panels<K: Kernel, B>(
     inner: ladders
       .into_iter()
       .flatten()
-      .find(|&(s, p)| p < 0.0 && 10.0 * (cut.x - s).abs() < width),
+      .find(|&(s, e)| e < 1.0 && 10.0 * (cut.x - s).abs() < width),
   };
   let cuts = std::iter::once(end(lc))
     .chain(rungs)
@@ -206,7 +227,7 @@ pub(super) fn panels<K: Kernel, B>(
 
 fn pieces<K: Kernel, B>(
   kernel: &K,
-  c: f64,
+  c: Cut,
   cuts: impl Iterator<Item = Cut>,
   rev: bool,
   visit: &mut impl FnMut(Panel) -> ControlFlow<B>,
@@ -215,7 +236,7 @@ fn pieces<K: Kernel, B>(
   for cut in cuts {
     if let Some(last) = prev {
       let (cl, cr) = if rev { (cut, last) } else { (last, cut) };
-      piece(kernel, c, cl, cr, rev, visit)?;
+      piece(kernel, c, (cl, cr), rev, true, visit)?;
     }
     prev = Some(cut);
   }
@@ -226,13 +247,13 @@ fn pieces<K: Kernel, B>(
 /// innermost piece beside a singular branch point is one panel from it.
 fn piece<K: Kernel, B>(
   kernel: &K,
-  c: f64,
-  cl: Cut,
-  cr: Cut,
+  c: Cut,
+  (cl, cr): (Cut, Cut),
   rev: bool,
+  recut: bool,
   visit: &mut impl FnMut(Panel) -> ControlFlow<B>,
 ) -> ControlFlow<B> {
-  if let Some((s, p)) = cl.inner.or(cr.inner) {
+  if let Some((s, e)) = cl.inner.or(cr.inner) {
     let (tl, tr) = (cl.offset(s), cr.offset(s));
     if tr <= tl {
       return ControlFlow::Continue(());
@@ -242,7 +263,7 @@ fn piece<K: Kernel, B>(
       l: tl,
       r: tr,
       graded: true,
-      singular: Some(p),
+      singular: Some(e),
     });
   }
   let distance = |z: f64| {
@@ -257,19 +278,19 @@ fn piece<K: Kernel, B>(
     .into_iter()
     .flatten()
     .map(|(s, _)| s)
-    .find(|&s| distance(s) < 0.5 * distance(c));
-  let origin = branch.unwrap_or(c);
+    .find(|&s| distance(s) < 0.5 * distance(c.x));
+  let origin = branch.unwrap_or(c.x);
   let (tl, tr) = (cl.offset(origin), cr.offset(origin));
   if tr <= tl {
     return ControlFlow::Continue(());
   }
   // A rate that overflows beside a branch point says nothing: the ladder already grades that piece.
-  let rate = |d: fn(&K, f64) -> f64| {
-    let ends = [cl.x, cr.x]
+  let rate = |d: fn(&K, f64, f64) -> f64| {
+    let ends = [cl, cr]
       .into_iter()
-      .filter(|&x| kernel.ln_k(x).is_finite());
+      .filter(|cut| kernel.ln_k(cut.x).is_finite());
     ends
-      .map(|x| d(kernel, x).abs())
+      .map(|cut| d(kernel, cut.x, span(c, cut)).abs())
       .filter(|v| v.is_finite())
       .fold(0.0, f64::max)
   };
@@ -277,11 +298,10 @@ fn piece<K: Kernel, B>(
     .min(SLOPE_BUDGET / rate(K::d1))
     .min(CURVATURE_BUDGET / rate(K::d2).sqrt());
   let n = ((tr - tl) / h).ceil();
-  let n = if n >= 1.0 && n.is_finite() {
-    n as usize
-  } else {
-    1
-  };
+  if (n > CAP || n.is_nan()) && recut {
+    return piece(kernel, c, recut_piece(kernel, c, cl, cr), rev, false, visit);
+  }
+  let n = if n >= 1.0 { n.min(CAP) as usize } else { 1 };
   let at = |i: usize| {
     if i == n {
       tr
@@ -300,4 +320,16 @@ fn piece<K: Kernel, B>(
     })?;
   }
   ControlFlow::Continue(())
+}
+
+/// A piece the budgets would split past `CAP` panels is one the clip did not cut: it is cut again where the kernel
+/// falls `e^{−CLIP}` below its larger end, and what remains takes at most `CAP` panels.
+fn recut_piece<K: Kernel>(kernel: &K, c: Cut, cl: Cut, cr: Cut) -> (Cut, Cut) {
+  let ln = |cut: Cut| kernel.ln_rel(cut.x, span(c, cut), cut.branch());
+  let (ll, lr) = (ln(cl), ln(cr));
+  if ll >= lr {
+    (cl, clip(kernel, c, cl, cr.x, ll - CLIP))
+  } else {
+    (clip(kernel, c, cr, cl.x, lr - CLIP), cr)
+  }
 }

@@ -8,6 +8,7 @@ use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
 
+use super::quadrature::Cut;
 use super::quadrature::Kernel;
 use super::quadrature::Truncation;
 use crate::source::uniform53;
@@ -32,20 +33,22 @@ impl Kernel for ExpKernel {
     }
   }
 
-  fn ln_rel(&self, _x: f64, y: f64, _c: f64, _branch: Option<(f64, f64)>) -> f64 {
+  fn anchor(&mut self, _c: Cut) {}
+
+  fn ln_rel(&self, _x: f64, y: f64, _branch: Option<(f64, f64)>) -> f64 {
     -self.lambda * y
   }
 
-  fn d1(&self, _x: f64) -> f64 {
+  fn d1(&self, _x: f64, _y: f64) -> f64 {
     -self.lambda
   }
 
-  fn d2(&self, _x: f64) -> f64 {
+  fn d2(&self, _x: f64, _y: f64) -> f64 {
     0.0
   }
 
-  fn mode(&self) -> f64 {
-    0.0
+  fn mode(&self) -> Cut {
+    Cut::at(0.0)
   }
 
   fn branch_points(&self) -> [Option<(f64, f64)>; 2] {
@@ -54,6 +57,14 @@ impl Kernel for ExpKernel {
 
   fn length_scale(&self) -> f64 {
     1.0 / self.lambda
+  }
+
+  fn support(&self) -> (f64, f64) {
+    (0.0, f64::INFINITY)
+  }
+
+  fn base_moments(&self) -> [f64; 4] {
+    [1.0 / self.lambda, 1.0 / self.lambda, 2.0, 6.0]
   }
 }
 
@@ -136,9 +147,21 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
   fn inverse_cdf(&self, u: f64) -> f64 {
     let y = u * self.tail_mass;
     if y < f64::MIN_POSITIVE {
-      self.lower.to_f64().unwrap() + u * (self.tail_mass / self.lambda.to_f64().unwrap())
+      self.lower.to_f64().unwrap() + u * self.mass_per_rate()
     } else {
       self.log_map(y)
+    }
+  }
+
+  /// `∫ e^{−λ(x − lower)}` over the interval, `tail_mass/λ`; where `λL` underflows the mass, `L·φ(λL)` with
+  /// `φ(z) = (1 − e^{−z})/z`, so the law is its uniform limit, not 0/0.
+  fn mass_per_rate(&self) -> f64 {
+    let lam = self.lambda.to_f64().unwrap();
+    if self.tail_mass >= f64::MIN_POSITIVE {
+      self.tail_mass / lam
+    } else {
+      let len = self.length().unwrap();
+      len * one_minus_exp_over(lam * len)
     }
   }
 
@@ -157,11 +180,12 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
     })
   }
 
+  /// The shape depends on `λL` alone: in units of the shorter of `1/λ` and `L`, from the lower bound, neither the
+  /// rate nor the length under- or overflows.
   fn moments(&self) -> Option<[f64; 4]> {
-    let kernel = ExpKernel {
-      lambda: self.lambda.to_f64()?,
-    };
-    Some(Truncation::mass_only(kernel, self.lower.to_f64()?, self.upper.to_f64()?).moments(1.0))
+    let x = self.lambda.to_f64()? * self.length()?;
+    let kernel = ExpKernel { lambda: x.min(1.0) };
+    Some(Truncation::mass_only(kernel, 0.0, x.max(1.0)).moments(1.0))
   }
 
   /// Infinite for an open tail.
@@ -216,8 +240,8 @@ impl<T: SimdFloatExt> Distribution<T> for SimdTruncatedExp<T> {
 }
 
 impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
-  /// `e^{it·lower} (λL/m) φ₁((λ − it)L)` with `φ₁(w) = (1 − e^{−w})/w` and `m` the mass; an open tail, or one whose
-  /// `e^{−λL}` underflows, is `e^{it·lower}/(1 − it/λ)`, divided scaled so that no `λ²` or `t²` leaves the range.
+  /// `e^{it·lower} (λL/m) φ₁((λ − it)L)`, `φ₁(w) = (1 − e^{−w})/w`, `m` the mass; an open tail `e^{it·lower}/(1 − it/λ)`
+  /// divided scaled, so no `λ²` or `t²` leaves the range. NaN where `t·lower` overflows: the phase keeps no digit.
   fn characteristic_function(&self, t: f64) -> Option<Complex64> {
     if t == 0.0 {
       return Some(Complex64::new(1.0, 0.0));
@@ -227,7 +251,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     if self.open_tail()? {
       return Some(phase.fdiv(Complex64::new(1.0, -t / lam)));
     }
-    Some(phase * (lam * len / self.tail_mass) * phi1(Complex64::new(lam, -t) * len))
+    Some(phase * (len / self.mass_per_rate()) * phi1(Complex64::new(lam, -t) * len))
   }
 
   fn pdf(&self, x: f64) -> Option<f64> {
@@ -239,7 +263,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     let lam = self.lambda.to_f64().unwrap();
     // Referred to `lower` for the same reason the draw is; the leading
     // `e^{-λ·lower}` cancels between the density and the interval's mass.
-    Some(lam * (-lam * (x - lo)).exp() / self.tail_mass)
+    Some((-lam * (x - lo)).exp() / self.mass_per_rate())
   }
 
   fn cdf(&self, x: f64) -> Option<f64> {
@@ -251,8 +275,11 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     if x >= up {
       return Some(1.0);
     }
-    let lam = self.lambda.to_f64().unwrap();
-    Some(-(-lam * (x - lo)).exp_m1() / self.tail_mass)
+    let (lam, d) = (self.lambda.to_f64().unwrap(), x - lo);
+    if self.tail_mass < f64::MIN_POSITIVE {
+      return Some(d * one_minus_exp_over(lam * d) / self.mass_per_rate());
+    }
+    Some(-(-lam * d).exp_m1() / self.tail_mass)
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
@@ -346,7 +373,16 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     } else {
       (s * len).exp_m1() / s
     };
-    Some((t * lo).exp() * lam * integral / self.tail_mass)
+    Some((t * lo).exp() * integral / self.mass_per_rate())
+  }
+}
+
+/// `(1 − e^{−z})/z`, 1 where `z` is below the digits `e^{−z}` keeps.
+fn one_minus_exp_over(z: f64) -> f64 {
+  if z < 1e-8 {
+    1.0 - 0.5 * z
+  } else {
+    -(-z).exp_m1() / z
   }
 }
 
@@ -519,21 +555,23 @@ mod tests {
     assert!(rel(nano.pdf(5e-10).unwrap(), 999_999_999.999_999_9) < 1e-12);
   }
 
-  /// The engine's mean and variance against the series forms over every regime of `λL`, at `λ = 1.5`; the two smallest
-  /// sit at `lower = 0`, where `0.5 + 6.7e-18` would round to `0.5`.
+  /// The engine's mean and variance, in its units of the shorter of `1/λ` and `L` from the lower bound, against the
+  /// series forms over every regime of `λL`, at `λ = 1.5`.
   #[test]
   fn engine_agrees_with_the_series_forms() {
     for lam_len in [1e-17, 1e-9, 0.3, 1.0, 5.0, 50.0, 1050.0] {
       let lo = if lam_len < 1e-8 { 0.0 } else { 0.5 };
       let law = SimdTruncatedExp::<f64>::new(1.5, lo, lo + lam_len / 1.5);
       let [mean, variance, _, _] = law.moments().unwrap();
+      let len = law.length().unwrap();
+      let unit = len / (1.5 * len).max(1.0);
       let rel = |a: f64, b: f64| ((a - b) / b).abs();
       assert!(
-        rel(mean, law.mean().unwrap()) < 1e-13,
+        rel(lo + unit * mean, law.mean().unwrap()) < 1e-13,
         "λL = {lam_len}: mean {mean}"
       );
       assert!(
-        rel(variance, law.variance().unwrap()) < 1e-13,
+        rel(unit * unit * variance, law.variance().unwrap()) < 1e-13,
         "λL = {lam_len}: variance {variance}"
       );
     }

@@ -407,3 +407,47 @@ fn whole_support_is_the_base_law() {
     &want(0.5, 0.125, 0.0, -1.5, std::f64::consts::FRAC_2_PI, 0.5),
   );
 }
+
+/// Shapes whose sum overflows, and modes that round onto 1, held beside it: no admissible shape hangs, and each value
+/// is the double nearest mpmath's (60 and 120 digits agree) or its rounded limit.
+#[test]
+fn extreme_shapes_keep_their_values() {
+  let half = tb(1e308, 1e308, 0.5, 0.9);
+  assert_eq!((half.mean(), half.cdf(0.7)), (Some(0.5), Some(1.0)));
+  assert!(scalar_draws(&half).iter().all(|&x| x == 0.5));
+  for (a, b, mean) in [
+    (1e8, 1.0 + 1e-9, 0.9999999900000001),
+    (1e6, 1.0 + 1e-12, 0.999999000001),
+  ] {
+    let got = tb(a, b, 0.0, 1.0).mean().unwrap();
+    assert!(
+      rel(got, mean) < 1e-12,
+      "TB({a:e}, {b}, [0, 1]).mean = {got}"
+    );
+  }
+  let law = tb(1e20, 2.0, 0.0, 1.0);
+  assert!(rel(law.variance().unwrap(), 2e-40) < 1e-12);
+  assert_eq!(
+    [
+      law.mean(),
+      law.pdf(0.5),
+      law.cdf(0.5),
+      law.cdf(1.0 - 1e-10),
+      law.quantile(0.5)
+    ],
+    [Some(1.0), Some(0.0), Some(0.0), Some(0.0), Some(1.0)]
+  );
+  assert!(scalar_draws(&law).iter().all(|&x| x == 1.0));
+  let upper = tb(1e20, 2.0, 0.5, 1.0);
+  assert_eq!(
+    (upper.cdf(0.9), upper.quantile(0.5)),
+    (Some(0.0), Some(1.0))
+  );
+  assert_eq!(tb(1e17, 2.0, 0.0, 1.0).cdf(0.5), Some(0.0));
+}
+
+fn scalar_draws(law: &SimdTruncatedBeta<f64>) -> Vec<f64> {
+  use rand::distr::Distribution;
+  let mut rng = stochastic_rs_core::simd_rng::SimdRng::from_seed(7);
+  (0..10).map(|_| law.sample(&mut rng)).collect()
+}

@@ -10,7 +10,6 @@ use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
 
-use super::quadrature::Kernel;
 use super::quadrature::Truncation;
 use crate::normal::SimdNormal;
 use crate::seeded::StreamState;
@@ -21,77 +20,11 @@ use crate::traits::SimdFloatExt;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
+use kernels::NormalKernel;
+use kernels::OffsetTiltedKernel;
+use kernels::TiltedKernel;
 
-/// `e^{−z²/2}` in standardised units.
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct NormalKernel;
-
-impl Kernel for NormalKernel {
-  fn ln_k(&self, z: f64) -> f64 {
-    -0.5 * z * z
-  }
-
-  fn ln_rel(&self, _z: f64, y: f64, c: f64, _branch: Option<(f64, f64)>) -> f64 {
-    -0.5 * y * (y + 2.0 * c)
-  }
-
-  fn d1(&self, z: f64) -> f64 {
-    -z
-  }
-
-  fn d2(&self, _z: f64) -> f64 {
-    -1.0
-  }
-
-  fn mode(&self) -> f64 {
-    0.0
-  }
-
-  fn branch_points(&self) -> [Option<(f64, f64)>; 2] {
-    [None, None]
-  }
-
-  fn length_scale(&self) -> f64 {
-    1.0
-  }
-}
-
-/// `e^{−z²/2 + s·z}`, whose integral over the interval's own `[α, β]` is the mgf at `s = σt`: the interval never moves.
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct TiltedKernel {
-  s: f64,
-}
-
-impl Kernel for TiltedKernel {
-  fn ln_k(&self, z: f64) -> f64 {
-    z * (self.s - 0.5 * z)
-  }
-
-  /// `−y(y + 2c)/2 + s·y`, grouped so `s·y` never cancels against `c·y` at `c = s`.
-  fn ln_rel(&self, _z: f64, y: f64, c: f64, _branch: Option<(f64, f64)>) -> f64 {
-    y * ((self.s - c) - 0.5 * y)
-  }
-
-  fn d1(&self, z: f64) -> f64 {
-    self.s - z
-  }
-
-  fn d2(&self, _z: f64) -> f64 {
-    -1.0
-  }
-
-  fn mode(&self) -> f64 {
-    self.s
-  }
-
-  fn branch_points(&self) -> [Option<(f64, f64)>; 2] {
-    [None, None]
-  }
-
-  fn length_scale(&self) -> f64 {
-    1.0
-  }
-}
+mod kernels;
 
 /// Which of Robert (1995)'s proposals a one-sided standardised interval $[a, b]$ with $a \ge 0$ takes.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -114,10 +47,12 @@ struct TailSetup {
 impl TailSetup {
   fn new(a: f64, b: f64, mirrored: bool) -> Self {
     let root = (a * a + 4.0).sqrt();
+    // Past 1.34e154 `a²` overflows, where `√(a² + 4)` rounds to `a`.
+    let root = if root.is_finite() { root } else { a };
     let alpha_star = 0.5 * (a + root);
-    // Robert (1995), (2.1): the exponential proposal accepts more often from this width on.
-    let exponential_from =
-      2.0 * std::f64::consts::E.sqrt() / (a + root) * (0.25 * (a * a - a * root)).exp();
+    // Robert (1995), (2.1): the exponential proposal accepts more often from this width on; `(a² − a√(a² + 4))/4`
+    // is `−a/(a + √(a² + 4))`, which overflows nowhere.
+    let exponential_from = 2.0 * std::f64::consts::E.sqrt() / (a + root) * (-a / (a + root)).exp();
     let proposal = if b - a > exponential_from {
       TailProposal::Exponential { alpha_star }
     } else {
@@ -272,7 +207,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     Some(
       self
         .analytics
-        .get_or_init(|| Truncation::new(NormalKernel, alpha, beta)),
+        .get_or_init(|| Truncation::new(NormalKernel::default(), alpha, beta)),
     )
   }
 
@@ -317,6 +252,9 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
   /// Robert (1995) accept-reject on the standardised one-sided interval, which forms no cdf: deep in a tail
   /// `F(upper) − F(lower)` loses its digits, and past about 8.3σ both round to 1 and inversion returns `+inf`.
   fn tail_sample<S: TruncatedNormalSource<T>>(&self, setup: TailSetup, src: &mut S) -> T {
+    if let Some(x) = self.beyond() {
+      return T::from_f64_fast(x);
+    }
     let z = match setup.proposal {
       TailProposal::Exponential { alpha_star } => loop {
         // `1 - u` keeps the generator's `[0, 1)` off the `ln`'s zero.
@@ -331,7 +269,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       },
       TailProposal::Uniform => loop {
         let z = setup.a + src.uniform() * (setup.b - setup.a);
-        if src.uniform() <= (0.5 * (setup.a * setup.a - z * z)).exp() {
+        if src.uniform() <= (0.5 * (setup.a - z) * (setup.a + z)).exp() {
           break z;
         }
       },
@@ -361,6 +299,18 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     self.base.mean().to_f64().unwrap() + self.base.std_dev().to_f64().unwrap() * z
   }
 
+  /// The near bound of an interval past `μ ± σ·f64::MAX`, whose law lies closer to it than any double: its spread is 0
+  /// and its shape and entropy NaN.
+  fn beyond(&self) -> Option<f64> {
+    let setup = self.tail?;
+    let near = if setup.mirrored {
+      self.upper
+    } else {
+      self.lower
+    };
+    (setup.a == f64::INFINITY).then(|| near.to_f64().unwrap())
+  }
+
   fn standardise(&self, x: f64) -> Option<f64> {
     Some((x - self.base.mean().to_f64()?) / self.base.std_dev().to_f64()?)
   }
@@ -372,6 +322,35 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       (self.lower.to_f64()? - mu) / sigma,
       (self.upper.to_f64()? - mu) / sigma,
     ))
+  }
+
+  /// The mgf where `σt` overflows, from the tilt in `v = x − μ`. Toward an open end the tilted Gaussian's mode `tσ²`
+  /// lies inside, and the exponent `μt + (σt)²/2 = σt(μ/σ + σt/2)` keeps the sign of its second factor.
+  fn mgf_by_offset(
+    &self,
+    t: f64,
+    mu: f64,
+    sigma: f64,
+    plain: &Truncation<NormalKernel>,
+  ) -> Option<f64> {
+    let (vlo, vup) = (self.lower.to_f64()? - mu, self.upper.to_f64()? - mu);
+    if (if t > 0.0 { vup } else { vlo }).is_infinite() {
+      let lead = mu / sigma + 0.5 * sigma * t;
+      return Some(if lead * t > 0.0 { f64::INFINITY } else { 0.0 });
+    }
+    let kernel = OffsetTiltedKernel { t, sigma, c: 0.0 };
+    let tilted = Truncation::mass_only(kernel, vlo, vup);
+    let (c, zc) = (plain.centre(), tilted.centre() / sigma);
+    // `σ` times the standardised mass is the plain kernel's integral in `x`, whose logarithm cancels no `ln σ`.
+    let plain_x = plain.mass() * sigma;
+    let ln_plain = if plain_x.is_finite() {
+      plain_x.ln()
+    } else {
+      plain.mass().ln() + sigma.ln()
+    };
+    let exponent =
+      mu * t + t * tilted.centre() + 0.5 * (c - zc) * (c + zc) + tilted.mass().ln() - ln_plain;
+    Some(exponent.exp())
   }
 }
 
@@ -414,7 +393,10 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     if x < self.lower.to_f64()? || x > self.upper.to_f64()? {
       return Some(0.0);
     }
-    Some(self.analytics()?.density(self.standardise(x)?) * self.inv_sigma)
+    if let Some(near) = self.beyond() {
+      return Some(if x == near { f64::INFINITY } else { 0.0 });
+    }
+    Some(self.analytics()?.density(self.standardise(x)?, 0.0) * self.inv_sigma)
   }
 
   fn cdf(&self, x: f64) -> Option<f64> {
@@ -423,6 +405,9 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     }
     if x >= self.upper.to_f64()? {
       return Some(1.0);
+    }
+    if let Some(near) = self.beyond() {
+      return Some(if x < near { 0.0 } else { 1.0 });
     }
     Some(self.analytics()?.cdf(self.standardise(x)?))
   }
@@ -439,6 +424,9 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     if p == 1.0 {
       return Some(up);
     }
+    if let Some(near) = self.beyond() {
+      return Some(near);
+    }
     Some(
       self
         .unstandardise(self.analytics()?.quantile(p))
@@ -447,6 +435,9 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
   }
 
   fn mean(&self) -> Option<f64> {
+    if let Some(near) = self.beyond() {
+      return Some(near);
+    }
     Some(self.unstandardise(self.analytics()?.moments(1.0)[0]))
   }
 
@@ -460,41 +451,78 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
   }
 
   fn variance(&self) -> Option<f64> {
+    if self.beyond().is_some() {
+      return Some(0.0);
+    }
     let sigma = self.base.std_dev().to_f64()?;
     Some(self.analytics()?.moments(sigma)[1])
   }
 
+  /// NaN, with kurtosis and entropy, for a law past `μ ± σ·f64::MAX` or narrower than any offset resolves.
   fn skewness(&self) -> Option<f64> {
+    if self.beyond().is_some() {
+      return Some(f64::NAN);
+    }
     Some(self.analytics()?.moments(1.0)[2])
   }
 
   fn kurtosis(&self) -> Option<f64> {
+    if self.beyond().is_some() {
+      return Some(f64::NAN);
+    }
     Some(self.analytics()?.moments(1.0)[3])
   }
 
   fn entropy(&self) -> Option<f64> {
+    if self.beyond().is_some() {
+      return Some(f64::NAN);
+    }
     Some(self.base.std_dev().to_f64()?.ln() + self.analytics()?.entropy())
   }
 
   /// `e^{μt + ln k_s(c_s) − ln k(c)}` times the tilted and plain masses' ratio on `[α, β]`, `s = σt`: with no `s²` term
-  /// every addend is bounded by the exponent, which errs by `O(ε·|exponent|)`.
+  /// every addend is bounded by the exponent, which errs by `O(ε·|exponent|)`. At an infinite `t` the limit of `e^{tx}`.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
     if t.is_nan() {
       return Some(f64::NAN);
     }
-    let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
-    let (alpha, beta) = self.standardised_bounds()?;
-    let s = sigma * t;
-    if s.is_infinite() {
-      // The limit of `e^{tx}` across the interval, set by the end `t` points to.
+    if t.is_infinite() {
       let end = if t > 0.0 { self.upper } else { self.lower }.to_f64()?;
       return Some(if end * t > 0.0 { f64::INFINITY } else { 0.0 });
     }
+    if let Some(near) = self.beyond() {
+      return Some((t * near).exp());
+    }
+    let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
+    let (alpha, beta) = self.standardised_bounds()?;
     let plain = self.analytics()?;
-    let tilted = Truncation::mass_only(TiltedKernel { s }, alpha, beta);
+    let s = sigma * t;
+    if s.is_infinite() {
+      return self.mgf_by_offset(t, mu, sigma, plain);
+    }
+    let tilted = Truncation::mass_only(TiltedKernel { s, c: 0.0 }, alpha, beta);
     let (c, cs) = (plain.centre(), tilted.centre());
-    let exponent =
-      mu * t + (s * cs - 0.5 * (cs - c) * (cs + c)) + (tilted.mass() / plain.mass()).ln();
+    // With the tilted mode inside, `(s² + c²)/2` has no difference to overflow into `∞ − ∞`; at an end, a difference
+    // that does takes its limit from the grouping whose terms share a sign there.
+    let bracket = if cs == s {
+      0.5 * (s * s) + 0.5 * (c * c)
+    } else {
+      let b = s * cs - 0.5 * (cs - c) * (cs + c);
+      if b.is_nan() {
+        cs * (s - 0.5 * cs) + 0.5 * (c * c)
+      } else {
+        b
+      }
+    };
+    let ln_ratio = (tilted.mass() / plain.mass()).ln();
+    let exponent = mu * t + bracket + ln_ratio;
+    // `μt` and the bracket overflowing with opposite signs regroup so they meet before either overflows: inside as
+    // `s(μ/σ + s/2)`, at an end as `t(μ + σc_s)`, the tilted centre's own position.
+    let exponent = match exponent.is_nan() {
+      true if cs == s => s * (mu / sigma + 0.5 * s) + 0.5 * (c * c) + ln_ratio,
+      true => t * (mu + sigma * cs) - 0.5 * (cs - c) * (cs + c) + ln_ratio,
+      false => exponent,
+    };
     Some(exponent.exp())
   }
 }
