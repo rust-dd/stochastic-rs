@@ -23,8 +23,9 @@ pub(super) trait Kernel {
   /// `ln k(x)`: `-∞` outside the support, `+∞` at a singular end.
   fn ln_k(&self, x: f64) -> f64;
 
-  /// Fixes the reference point `c` the relative log-kernel and its derivatives are taken from.
-  fn anchor(&mut self, c: Cut);
+  /// Fixes the reference point `c` the relative log-kernel and its derivatives are taken from; `at_mode` when `c` is the
+  /// kernel's own mode, where its slope is 0 by construction.
+  fn anchor(&mut self, c: Cut, at_mode: bool);
 
   /// `ln k(x) − ln k(c)` from `y = x − c`; `branch` is `(s, x − s)`, exact beside the point `s`.
   fn ln_rel(&self, x: f64, y: f64, branch: Option<(f64, f64)>) -> f64;
@@ -150,6 +151,7 @@ impl<K: Kernel> Truncation<K> {
     };
     let (lo_singular, up_singular) = (singular(Cut::at(lo)), singular(Cut::at(up)));
     let mode = kernel.mode();
+    let mut at_mode = mode.offset(lo) >= 0.0 && mode.offset(up) <= 0.0;
     let mut centre = if mode.offset(lo) < 0.0 {
       Cut::at(lo)
     } else if mode.offset(up) > 0.0 {
@@ -169,12 +171,13 @@ impl<K: Kernel> Truncation<K> {
       } else {
         (up, up_singular, -1.0)
       };
+      at_mode = false;
       centre = point.map_or(Cut::at(end + side * step), |(s, _)| {
         frame = Some(Cut::at(s));
         Cut::beside(s, (end - s) + side * step)
       });
     }
-    kernel.anchor(centre);
+    kernel.anchor(centre, at_mode);
     let a = if lo_singular.is_some() {
       Cut::at(lo)
     } else {
@@ -189,7 +192,7 @@ impl<K: Kernel> Truncation<K> {
     // A flat kernel's odd moments about an end lose digits; about the midpoint they do not.
     if lo_singular.is_none() && up_singular.is_none() && drop(a).max(drop(b)) < 1.0 {
       centre = a.shifted(0.5 * span(a, b));
-      kernel.anchor(centre);
+      kernel.anchor(centre, false);
     }
     let mut t = Self {
       kernel,
@@ -253,8 +256,8 @@ impl<K: Kernel> Truncation<K> {
     [
       s + (t + self.width * (d + e)),
       (unit * mu2) * unit,
-      mu3 / mu2.powf(1.5),
-      mu4 / (mu2 * mu2) - 3.0,
+      (mu3 / mu2) / mu2.sqrt(),
+      (mu4 / mu2) / mu2 - 3.0,
     ]
   }
 

@@ -30,7 +30,10 @@ impl<K: Kernel> Truncation<K> {
       -1.0
     };
     let v0 = self.singular_point(panel, &frame, u0).0;
-    ((e - 1.0) / e) * (frame.ln_jacobian() - self.width.ln() + v0).exp() * (exact - rule)
+    // In logs: `(e − 1)/e` and the Jacobian each overflow alone for a tiny `e`.
+    let gap = exact - rule;
+    let ln = (1.0 - e).ln() - e.ln() + frame.ln_jacobian() - self.width.ln() + v0 + gap.abs().ln();
+    -gap.signum() * ln.exp()
   }
 
   /// A singular panel's share of `Σ g (z − about)^j` from its sums of `(t/width)^i`, each in its own `u = (|t|/h)^{e+i}`:

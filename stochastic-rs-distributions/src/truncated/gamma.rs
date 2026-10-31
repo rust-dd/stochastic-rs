@@ -64,9 +64,9 @@ impl Kernel for GammaKernel {
     lead - x / self.s
   }
 
-  /// Above a unit shape the slope from `(k − 1)s − c` by an exact product, 0 at a mode whose rounding moves it past the
-  /// law's width `c/√(k − 1)`, where the law lies within its ulp; below one the two terms share a sign.
-  fn anchor(&mut self, c: Cut) {
+  /// Above a unit shape the slope from `(k − 1)s − c` by an exact product, 0 at the mode; below one the two terms share
+  /// a sign.
+  fn anchor(&mut self, c: Cut, at_mode: bool) {
     self.c = c.x;
     self.ln_c = c.x.ln();
     let slope = if self.k == 1.0 {
@@ -74,11 +74,10 @@ impl Kernel for GammaKernel {
     } else if self.k < 1.0 {
       (self.k - 1.0) / c.x - 1.0 / self.s
     } else {
-      let slope = (self.k - 1.0).mul_add(self.s, -c.x) / (c.x * self.s);
-      if c == self.mode() && slope.abs() * c.x > (self.k - 1.0).sqrt() {
+      if at_mode {
         0.0
       } else {
-        slope
+        (self.k - 1.0).mul_add(self.s, -c.x) / (c.x * self.s)
       }
     };
     self.slope = slope.is_finite().then_some(slope);

@@ -33,7 +33,7 @@ impl Kernel for ExpKernel {
     }
   }
 
-  fn anchor(&mut self, _c: Cut) {}
+  fn anchor(&mut self, _c: Cut, _at_mode: bool) {}
 
   fn ln_rel(&self, _x: f64, y: f64, _branch: Option<(f64, f64)>) -> f64 {
     -self.lambda * y

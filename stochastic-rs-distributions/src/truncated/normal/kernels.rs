@@ -15,7 +15,7 @@ impl Kernel for NormalKernel {
     -0.5 * z * z
   }
 
-  fn anchor(&mut self, c: Cut) {
+  fn anchor(&mut self, c: Cut, _at_mode: bool) {
     self.c = c.x;
   }
 
@@ -64,7 +64,7 @@ impl Kernel for TiltedKernel {
     z * (self.s - 0.5 * z)
   }
 
-  fn anchor(&mut self, c: Cut) {
+  fn anchor(&mut self, c: Cut, _at_mode: bool) {
     self.c = c.x;
   }
 
@@ -117,7 +117,7 @@ impl Kernel for OffsetTiltedKernel {
     self.t * v - 0.5 * z * z
   }
 
-  fn anchor(&mut self, c: Cut) {
+  fn anchor(&mut self, c: Cut, _at_mode: bool) {
     self.c = c.x;
   }
 

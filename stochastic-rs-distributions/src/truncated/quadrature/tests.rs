@@ -10,7 +10,7 @@ impl Kernel for Normal {
     -0.5 * z * z
   }
 
-  fn anchor(&mut self, c: Cut) {
+  fn anchor(&mut self, c: Cut, _at_mode: bool) {
     self.c = c.x;
   }
 
@@ -124,7 +124,7 @@ impl Kernel for Power {
     }
   }
 
-  fn anchor(&mut self, c: Cut) {
+  fn anchor(&mut self, c: Cut, _at_mode: bool) {
     self.c = c.x;
   }
 

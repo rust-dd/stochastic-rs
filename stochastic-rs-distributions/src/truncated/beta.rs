@@ -36,8 +36,7 @@ struct BetaKernel {
   cc: f64,
   ln_c: f64,
   ln_cc: f64,
-  /// `(a − 1)/c − (b − 1)/(1 − c)`, the slope at `c`, `None` where it overflows; zero at the mode, whose rounding moves
-  /// the law by under an ulp.
+  /// `(a − 1)/c − (b − 1)/(1 − c)`, the slope at `c`, `None` where it overflows; zero at the mode.
   slope: Option<f64>,
 }
 
@@ -116,9 +115,9 @@ impl Kernel for BetaKernel {
     left + right
   }
 
-  /// The slope from `(a − 1)(1 − c) − (b − 1)c` by an exact product, so a clamped end next to the mode keeps it; 0 at a
-  /// mode whose rounding moves it past the law's width `|d2|^{−1/2}`, where the law lies within its ulp.
-  fn anchor(&mut self, c: Cut) {
+  /// The slope from `(a − 1)(1 − c) − (b − 1)c` by an exact product, so a clamped end next to the mode keeps it; 0 at
+  /// the mode, which `mode` holds to a double-double.
+  fn anchor(&mut self, c: Cut, at_mode: bool) {
     self.c = c.x;
     self.cc = -c.offset(1.0);
     self.ln_c = self.c.ln();
@@ -131,12 +130,7 @@ impl Kernel for BetaKernel {
       let e = b1.mul_add(self.c, -p);
       (a1.mul_add(self.cc, -p) - e) / self.c / self.cc
     };
-    let width = 1.0 / (-self.d2(self.c, 0.0)).sqrt();
-    let slope = if c == self.mode() && a1 > 0.0 && b1 > 0.0 && slope.abs() * width > 1.0 {
-      0.0
-    } else {
-      slope
-    };
+    let slope = if at_mode { 0.0 } else { slope };
     self.slope = slope.is_finite().then_some(slope);
   }
 
@@ -170,20 +164,27 @@ impl Kernel for BetaKernel {
     -self.per(self.a, 1.0, x * x) - self.per(self.b, 1.0, gap * gap)
   }
 
-  /// The interior mode when both shapes exceed 1, by halves so `a + b − 2` cannot overflow, beside 1 where it rounds
-  /// onto it; else the end the density rises toward, the heavier of both (0 on a tie), and ½ for the uniform.
+  /// The interior mode when both shapes exceed 1, exact to a double-double beside its rounding (beside 1 where it rounds
+  /// onto 1); else the end the density rises toward, the heavier of both (0 on a tie), and ½ for the uniform.
   fn mode(&self) -> Cut {
     let (a, b) = (self.a, self.b);
     if a > 1.0 && b > 1.0 {
+      // Halves, so `a + b − 2` cannot overflow, summed and divided exactly to a double-double.
       let (ha, hb) = (0.5 * (a - 1.0), 0.5 * (b - 1.0));
-      let (m, gap) = (ha / (ha + hb), hb / (ha + hb));
-      let floor = 0.1 * self.length_scale();
+      let d = ha + hb;
+      let d_lo = (ha - (d - (d - ha))) + (hb - (d - ha));
+      let quotient = |n: f64| {
+        let q = n / d;
+        (q, ((-q).mul_add(d, n) - q * d_lo) / d)
+      };
+      let ((m, m_lo), (gap, gap_lo)) = (quotient(ha), quotient(hb));
       if m <= 0.5 {
-        Cut::at(m.max(floor))
+        Cut::beside(m, m_lo)
       } else if 1.0 - gap < 1.0 {
-        Cut::at(1.0 - gap)
+        let hi = 1.0 - gap;
+        Cut::beside(hi, ((1.0 - hi) - gap) - gap_lo)
       } else {
-        Cut::beside(1.0, -gap.max(floor))
+        Cut::beside(1.0, -gap)
       }
     } else if a == 1.0 && b == 1.0 {
       Cut::at(0.5)
