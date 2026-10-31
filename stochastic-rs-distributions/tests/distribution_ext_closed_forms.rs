@@ -357,7 +357,7 @@ fn truncated_normal_mgf_keeps_its_digits_in_the_tails() {
   }
   let far = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -1.0, 2.0).moment_generating_function(40.0);
   assert!(
-    rel(far.unwrap(), 9.610_078_511_202_24e31) < 1e-12,
+    rel(far.unwrap(), 9.610_078_511_202_24e31) < 1e-15,
     "mgf(40) = {far:?}"
   );
 }

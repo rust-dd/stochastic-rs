@@ -118,10 +118,14 @@ impl<K: Kernel> Truncation<K> {
     t
   }
 
-  /// `ln(∫k over self / ∫k over other)`, formed without either mass's large logarithm.
-  pub(super) fn ln_mass_over(&self, other: &Self) -> f64 {
-    let (c, o) = (self.centre, other.centre);
-    self.kernel.ln_rel(c, c - o, o, None) + (self.m0.ln() - other.m0.ln())
+  /// The reference point `c`, whose `ln k(c)` the masses are relative to.
+  pub(super) fn centre(&self) -> f64 {
+    self.centre
+  }
+
+  /// `∫_a^b k/k(c)` over the clipped interval.
+  pub(super) fn mass(&self) -> f64 {
+    self.m0
   }
 
   /// `(mean, variance, skewness, excess kurtosis)` in the kernel's coordinate: moments about the reference point, then

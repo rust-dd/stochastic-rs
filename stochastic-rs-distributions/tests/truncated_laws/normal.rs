@@ -3,6 +3,7 @@ use stochastic_rs_distributions::truncated::SimdTruncatedNormal;
 
 use super::Want;
 use super::check;
+use super::rel;
 
 fn tn(mu: f64, sigma: f64, lo: f64, up: f64) -> SimdTruncatedNormal<f64> {
   SimdTruncatedNormal::<f64>::new(mu, sigma, lo, up)
@@ -272,6 +273,40 @@ fn narrow_and_straddling_intervals() {
       &want,
     );
   }
+}
+
+/// The mgf integrates `e^{−z²/2 + sz}`, `s = σt`, on the law's own interval, so no `s²` cancels: σ far wider than the
+/// interval and a huge `t` keep their digits (mpmath at 60 and 120 digits agree to 43 or more).
+#[test]
+fn mgf_integrates_the_tilted_kernel() {
+  for (mu, sigma, lo, up, t, want) in [
+    (0.0, 1e4, -1.0, 1.0, 1.0, 1.1752011934052586),
+    (0.0, 1e8, -1.0, 1.0, 1.0, 1.1752011936438014),
+    (0.0, 1e9, -1.0, 1.0, 1.0, 1.1752011936438014),
+    (0.0, 1.0, -1.0, 0.0, 1e8, 1.1687371345136331e-8),
+    (0.0, 1.0, -1.0, 0.0, 1e9, 1.1687371345136333e-9),
+    (0.0, 1.0, -1.0, 1e-9, 1e9, 3.176956911280677e-9),
+    (0.1, 0.7, -1.3, 0.37, 1900.0, 9.043929687581459e301),
+  ] {
+    let got = tn(mu, sigma, lo, up).moment_generating_function(t).unwrap();
+    assert!(
+      rel(got, want) < 1e-12,
+      "TN({mu}, {sigma}, [{lo}, {up}]).mgf({t}) = {got:e}"
+    );
+  }
+  let law = tn(0.5, 2.0, -1.0, 2.0);
+  assert_eq!(
+    law.moment_generating_function(f64::INFINITY),
+    Some(f64::INFINITY)
+  );
+  assert_eq!(
+    law.moment_generating_function(f64::NEG_INFINITY),
+    Some(f64::INFINITY)
+  );
+  assert_eq!(
+    tn(0.0, 1.0, -2.0, -1.0).moment_generating_function(f64::INFINITY),
+    Some(0.0)
+  );
 }
 
 /// The ends and the guard: `quantile(0)`/`quantile(1)` are the bounds, infinite ones included.

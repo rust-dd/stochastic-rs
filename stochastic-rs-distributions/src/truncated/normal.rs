@@ -1,7 +1,6 @@
 //! Truncated normal: rejection on the base normal, Robert's one-sided tail proposals, or the inverse cdf.
 //!
 //! Reference: Johnson, N. L., Kotz, S. & Balakrishnan, N. (1994), *Continuous Univariate Distributions*, vol. 1, 2nd ed., Wiley, ch. 13 §10.1, ISBN 0-471-58495-9 (truncated normal moments).
-//! Reference: Kan, R. & Robotti, C. (2017), "On Moments of Folded and Truncated Multivariate Normal Distributions", *Journal of Computational and Graphical Statistics* 26(4), 930-934, DOI 10.1080/10618600.2017.1322092 (the mgf as the shifted interval's mass).
 
 use std::fmt;
 use std::sync::OnceLock;
@@ -46,6 +45,43 @@ impl Kernel for NormalKernel {
 
   fn mode(&self) -> f64 {
     0.0
+  }
+
+  fn branch_points(&self) -> [Option<(f64, f64)>; 2] {
+    [None, None]
+  }
+
+  fn length_scale(&self) -> f64 {
+    1.0
+  }
+}
+
+/// `e^{−z²/2 + s·z}`, whose integral over the interval's own `[α, β]` is the mgf at `s = σt`: the interval never moves.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct TiltedKernel {
+  s: f64,
+}
+
+impl Kernel for TiltedKernel {
+  fn ln_k(&self, z: f64) -> f64 {
+    z * (self.s - 0.5 * z)
+  }
+
+  /// `−y(y + 2c)/2 + s·y`, grouped so `s·y` never cancels against `c·y` at `c = s`.
+  fn ln_rel(&self, _z: f64, y: f64, c: f64, _branch: Option<(f64, f64)>) -> f64 {
+    y * ((self.s - c) - 0.5 * y)
+  }
+
+  fn d1(&self, z: f64) -> f64 {
+    self.s - z
+  }
+
+  fn d2(&self, _z: f64) -> f64 {
+    -1.0
+  }
+
+  fn mode(&self) -> f64 {
+    self.s
   }
 
   fn branch_points(&self) -> [Option<(f64, f64)>; 2] {
@@ -440,30 +476,25 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     Some(self.base.std_dev().to_f64()?.ln() + self.analytics()?.entropy())
   }
 
-  /// The shifted interval's mass over the interval's, both as `exp(ln ∫k)`: finite as far as `e^{μt + σ²t²/2}` is.
+  /// `e^{μt + ln k_s(c_s) − ln k(c)}` times the tilted and plain masses' ratio on `[α, β]`, `s = σt`: with no `s²` term
+  /// every addend is bounded by the exponent, which errs by `O(ε·|exponent|)`.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
     if t.is_nan() {
       return Some(f64::NAN);
     }
     let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
     let (alpha, beta) = self.standardised_bounds()?;
-    let shift = sigma * t;
-    let (lo, up) = (alpha - shift, beta - shift);
-    let exponent = if shift.is_finite() && lo < up {
-      let shifted = Truncation::mass_only(NormalKernel, lo, up);
-      mu * t + 0.5 * shift * shift + shifted.ln_mass_over(self.analytics()?)
-    } else {
-      f64::NAN
-    };
-    if exponent.is_nan() || exponent == f64::NEG_INFINITY {
-      // A shift past ~6e8σ leaves the shifted kernel inside one ulp: `e^{t·upper}` or `e^{t·lower}` decides.
-      let end = if t > 0.0 { self.upper } else { self.lower };
-      return Some(if end.to_f64()? * t > 0.0 {
-        f64::INFINITY
-      } else {
-        0.0
-      });
+    let s = sigma * t;
+    if s.is_infinite() {
+      // The limit of `e^{tx}` across the interval, set by the end `t` points to.
+      let end = if t > 0.0 { self.upper } else { self.lower }.to_f64()?;
+      return Some(if end * t > 0.0 { f64::INFINITY } else { 0.0 });
     }
+    let plain = self.analytics()?;
+    let tilted = Truncation::mass_only(TiltedKernel { s }, alpha, beta);
+    let (c, cs) = (plain.centre(), tilted.centre());
+    let exponent =
+      mu * t + (s * cs - 0.5 * (cs - c) * (cs + c)) + (tilted.mass() / plain.mass()).ln();
     Some(exponent.exp())
   }
 }
