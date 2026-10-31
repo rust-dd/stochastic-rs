@@ -3,6 +3,9 @@
 //! Reference: Johnson, N. L., Kotz, S. & Balakrishnan, N. (1995), *Continuous Univariate Distributions*, vol. 2, 2nd ed., Wiley, ch. 25, ISBN 0-471-58494-0 (beta moments; the truncated ones renormalise the incomplete beta ratio).
 //! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2 and §II.3, DOI 10.1007/978-1-4613-8643-8 (inversion and rejection).
 
+use std::fmt;
+use std::sync::OnceLock;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -124,17 +127,34 @@ impl Kernel for BetaKernel {
   }
 }
 
-/// Truncated beta law on $[\text{lower}, \text{upper}] \subseteq [0, 1]$: parameters and the interval's kernel
-/// integral; a [`Seeded`](crate::Seeded) stream draws it.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// Truncated beta law on $[\text{lower}, \text{upper}] \subseteq [0, 1]$: parameters and the base mass on the
+/// interval; a [`Seeded`](crate::Seeded) stream draws it.
+#[derive(Clone)]
 pub struct SimdTruncatedBeta<T> {
   base: SimdBeta<T>,
   lower: T,
   upper: T,
-  /// The base law's mass on the interval, `exp(ln ∫k − ln B(α, β))`: the sampler's regime switch.
+  /// The base law's mass on the interval: the sampler's regime switch.
   mass: f64,
-  /// The interval's kernel integral, which the analytics and the inverse-cdf draw read.
-  analytics: Truncation<BetaKernel>,
+  /// The interval's kernel integral, built by the first analytic call or inverse-cdf draw.
+  analytics: OnceLock<Truncation<BetaKernel>>,
+}
+
+impl<T: fmt::Debug> fmt::Debug for SimdTruncatedBeta<T> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("SimdTruncatedBeta")
+      .field("base", &self.base)
+      .field("lower", &self.lower)
+      .field("upper", &self.upper)
+      .finish_non_exhaustive()
+  }
+}
+
+/// The parameters decide every cached value, so they alone are compared.
+impl<T: PartialEq> PartialEq for SimdTruncatedBeta<T> {
+  fn eq(&self, other: &Self) -> bool {
+    self.base == other.base && self.lower == other.lower && self.upper == other.upper
+  }
 }
 
 /// The base draw and the `[0, 1)` uniform a truncated-beta draw consumes, from a stream or the caller's rng.
@@ -210,14 +230,32 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
       "lower must satisfy `lower < upper`, got lower = {lower:?}, upper = {upper:?}"
     );
     let (a, b) = (alpha.to_f64().unwrap(), beta.to_f64().unwrap());
-    let analytics = Truncation::new(BetaKernel { a, b }, lo, up);
+    // Past the mean `I_b − I_a` cancels; the switch needs a few digits of the side that does not.
+    let mass = if lo < a / (a + b) {
+      crate::special::beta_i(a, b, up) - crate::special::beta_i(a, b, lo)
+    } else {
+      crate::special::beta_i(b, a, 1.0 - lo) - crate::special::beta_i(b, a, 1.0 - up)
+    };
     Self {
       base: SimdBeta::new(alpha, beta),
       lower,
       upper,
-      mass: (analytics.ln_mass() - crate::special::ln_beta(a, b)).exp(),
-      analytics,
+      mass,
+      analytics: OnceLock::new(),
     }
+  }
+
+  fn analytics(&self) -> Option<&Truncation<BetaKernel>> {
+    if let Some(t) = self.analytics.get() {
+      return Some(t);
+    }
+    let (a, b) = (self.base.alpha().to_f64()?, self.base.beta().to_f64()?);
+    let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
+    Some(
+      self
+        .analytics
+        .get_or_init(|| Truncation::new(BetaKernel { a, b }, lo, up)),
+    )
   }
 
   /// The first shape `α` of the untruncated base.
@@ -257,7 +295,7 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
   /// Out of line, so the rejection loop stays lean.
   #[inline(never)]
   fn invert(&self, u: f64) -> T {
-    T::from_f64_fast(self.analytics.quantile(u))
+    T::from_f64_fast(self.analytics().map_or(f64::NAN, |a| a.quantile(u)))
   }
 }
 
@@ -298,7 +336,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
     if x < self.lower.to_f64()? || x > self.upper.to_f64()? {
       return Some(0.0);
     }
-    Some(self.analytics.density(x))
+    Some(self.analytics()?.density(x))
   }
 
   fn cdf(&self, x: f64) -> Option<f64> {
@@ -308,7 +346,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
     if x >= self.upper.to_f64()? {
       return Some(1.0);
     }
-    Some(self.analytics.cdf(x))
+    Some(self.analytics()?.cdf(x))
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
@@ -322,11 +360,11 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
     if p == 1.0 {
       return Some(up);
     }
-    Some(self.analytics.quantile(p).clamp(lo, up))
+    Some(self.analytics()?.quantile(p).clamp(lo, up))
   }
 
   fn mean(&self) -> Option<f64> {
-    Some(self.analytics.moments()[0])
+    Some(self.analytics()?.moments()[0])
   }
 
   fn median(&self) -> Option<f64> {
@@ -353,15 +391,15 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
   }
 
   fn variance(&self) -> Option<f64> {
-    Some(self.analytics.moments()[1])
+    Some(self.analytics()?.moments()[1])
   }
 
   fn skewness(&self) -> Option<f64> {
-    Some(self.analytics.moments()[2])
+    Some(self.analytics()?.moments()[2])
   }
 
   fn kurtosis(&self) -> Option<f64> {
-    Some(self.analytics.moments()[3])
+    Some(self.analytics()?.moments()[3])
   }
 }
 
@@ -370,6 +408,7 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
+  use crate::tests::scalar_draws;
   use crate::tests::scalar_ks_best_p;
 
   /// Truncated beta draws stay in bounds.
@@ -383,6 +422,17 @@ mod tests {
         assert!((0.2..=0.8).contains(&x), "seed {seed}: sample {x}");
       }
     }
+  }
+
+  /// Rejection draws leave the analytics unbuilt; equality and `Debug` read the parameters, not the cache.
+  #[test]
+  fn construction_and_rejection_draws_skip_the_quadrature() {
+    let law = SimdTruncatedBeta::<f64>::new(2.0, 2.0, 0.2, 0.8);
+    let (twin, text) = (law.clone(), format!("{law:?}"));
+    let draws = scalar_draws(&law, 7, 1_000);
+    assert!(draws.iter().all(|x| (0.2..=0.8).contains(x)) && law.analytics.get().is_none());
+    law.mean();
+    assert!(law.analytics.get().is_some() && law == twin && format!("{law:?}") == text);
   }
 
   /// A bad `beta` shape is reported as `beta`, not as `alpha`.

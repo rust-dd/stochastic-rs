@@ -17,7 +17,7 @@ const N: usize = 20_000;
 fn simd_truncated_normal_matches_own_cdf() {
   gof_support::assert_ks_accepts(N, |seed| {
     let dist = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -1.0, 2.0);
-    let mut stream = dist.seeded(&Deterministic::new(seed));
+    let mut stream = dist.clone().seeded(&Deterministic::new(seed));
     let xs = (0..N).map(|_| stream.sample()).collect::<Vec<_>>();
     (
       xs,
@@ -43,7 +43,7 @@ fn simd_truncated_exp_matches_own_cdf() {
 fn simd_truncated_beta_matches_own_cdf() {
   gof_support::assert_ks_accepts(N, |seed| {
     let dist = SimdTruncatedBeta::<f64>::new(2.0, 2.0, 0.2, 0.8);
-    let mut stream = dist.seeded(&Deterministic::new(seed));
+    let mut stream = dist.clone().seeded(&Deterministic::new(seed));
     let xs = (0..N).map(|_| stream.sample()).collect::<Vec<_>>();
     (
       xs,
@@ -57,7 +57,7 @@ fn simd_truncated_beta_matches_own_cdf() {
 fn simd_truncated_beta_inversion_matches_own_cdf() {
   gof_support::assert_ks_accepts(N, |seed| {
     let dist = SimdTruncatedBeta::<f64>::new(2.0, 3.0, 0.99, 0.999);
-    let mut stream = dist.seeded(&Deterministic::new(seed));
+    let mut stream = dist.clone().seeded(&Deterministic::new(seed));
     let xs = (0..N).map(|_| stream.sample()).collect::<Vec<_>>();
     (
       xs,
@@ -70,7 +70,7 @@ fn simd_truncated_beta_inversion_matches_own_cdf() {
 fn simd_truncated_gamma_matches_own_cdf() {
   gof_support::assert_ks_accepts(N, |seed| {
     let dist = SimdTruncatedGamma::<f64>::new(2.0, 1.0, 1.0, 5.0);
-    let mut stream = dist.seeded(&Deterministic::new(seed));
+    let mut stream = dist.clone().seeded(&Deterministic::new(seed));
     let xs = (0..N).map(|_| stream.sample()).collect::<Vec<_>>();
     (
       xs,
@@ -84,7 +84,7 @@ fn simd_truncated_gamma_matches_own_cdf() {
 fn simd_truncated_gamma_inversion_matches_own_cdf() {
   gof_support::assert_ks_accepts(N, |seed| {
     let dist = SimdTruncatedGamma::<f64>::new(2.5, 1.2, 45.0, 60.0);
-    let mut stream = dist.seeded(&Deterministic::new(seed));
+    let mut stream = dist.clone().seeded(&Deterministic::new(seed));
     let xs = (0..N).map(|_| stream.sample()).collect::<Vec<_>>();
     (
       xs,

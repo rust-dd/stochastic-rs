@@ -3,6 +3,9 @@
 //! Reference: Johnson, N. L., Kotz, S. & Balakrishnan, N. (1994), *Continuous Univariate Distributions*, vol. 1, 2nd ed., Wiley, ch. 13 §10.1, ISBN 0-471-58495-9 (truncated normal moments).
 //! Reference: Kan, R. & Robotti, C. (2017), "On Moments of Folded and Truncated Multivariate Normal Distributions", *Journal of Computational and Graphical Statistics* 26(4), 930-934, DOI 10.1080/10618600.2017.1322092 (the mgf as the shifted interval's mass).
 
+use std::fmt;
+use std::sync::OnceLock;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -98,7 +101,7 @@ impl TailSetup {
 ///
 /// Robert, C.P. (1995), "Simulation of truncated normal variables", *Statistics and Computing* 5(2), 121-125, DOI 10.1007/BF00143942.
 /// Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.3, DOI 10.1007/978-1-4613-8643-8.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone)]
 pub struct SimdTruncatedNormal<T> {
   base: SimdNormal<T>,
   lower: T,
@@ -109,10 +112,27 @@ pub struct SimdTruncatedNormal<T> {
   norm_mass: f64,
   /// Set when the interval lies wholly on one side of `μ`, where the inverse cdf loses its digits first.
   tail: Option<TailSetup>,
-  /// The standardised interval's kernel integral, which every analytic reads.
-  analytics: Truncation<NormalKernel>,
+  /// The standardised interval's kernel integral, built by the first analytic call; construction and draws skip it.
+  analytics: OnceLock<Truncation<NormalKernel>>,
   /// `1/σ`, so a density costs a product.
   inv_sigma: f64,
+}
+
+impl<T: fmt::Debug> fmt::Debug for SimdTruncatedNormal<T> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("SimdTruncatedNormal")
+      .field("base", &self.base)
+      .field("lower", &self.lower)
+      .field("upper", &self.upper)
+      .finish_non_exhaustive()
+  }
+}
+
+/// The parameters decide every cached value, so they alone are compared.
+impl<T: PartialEq> PartialEq for SimdTruncatedNormal<T> {
+  fn eq(&self, other: &Self) -> bool {
+    self.base == other.base && self.lower == other.lower && self.upper == other.upper
+  }
 }
 
 /// A truncated-normal stream: the base normal's sub-stream and the engine of the tail and inverse-cdf uniforms.
@@ -203,9 +223,21 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       f_up,
       norm_mass: f_up - f_lo,
       tail,
-      analytics: Truncation::new(NormalKernel, a_std, b_std),
+      analytics: OnceLock::new(),
       inv_sigma: 1.0 / sigma_f64,
     }
+  }
+
+  fn analytics(&self) -> Option<&Truncation<NormalKernel>> {
+    if let Some(t) = self.analytics.get() {
+      return Some(t);
+    }
+    let (alpha, beta) = self.standardised_bounds()?;
+    Some(
+      self
+        .analytics
+        .get_or_init(|| Truncation::new(NormalKernel, alpha, beta)),
+    )
   }
 
   /// The parent normal's location `μ`, not the truncated law's mean.
@@ -346,7 +378,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     if x < self.lower.to_f64()? || x > self.upper.to_f64()? {
       return Some(0.0);
     }
-    Some(self.analytics.density(self.standardise(x)?) * self.inv_sigma)
+    Some(self.analytics()?.density(self.standardise(x)?) * self.inv_sigma)
   }
 
   fn cdf(&self, x: f64) -> Option<f64> {
@@ -356,7 +388,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     if x >= self.upper.to_f64()? {
       return Some(1.0);
     }
-    Some(self.analytics.cdf(self.standardise(x)?))
+    Some(self.analytics()?.cdf(self.standardise(x)?))
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
@@ -371,11 +403,15 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     if p == 1.0 {
       return Some(up);
     }
-    Some(self.unstandardise(self.analytics.quantile(p)).clamp(lo, up))
+    Some(
+      self
+        .unstandardise(self.analytics()?.quantile(p))
+        .clamp(lo, up),
+    )
   }
 
   fn mean(&self) -> Option<f64> {
-    Some(self.unstandardise(self.analytics.moments()[0]))
+    Some(self.unstandardise(self.analytics()?.moments()[0]))
   }
 
   fn median(&self) -> Option<f64> {
@@ -389,19 +425,19 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
 
   fn variance(&self) -> Option<f64> {
     let sigma = self.base.std_dev().to_f64()?;
-    Some(sigma * sigma * self.analytics.moments()[1])
+    Some(sigma * sigma * self.analytics()?.moments()[1])
   }
 
   fn skewness(&self) -> Option<f64> {
-    Some(self.analytics.moments()[2])
+    Some(self.analytics()?.moments()[2])
   }
 
   fn kurtosis(&self) -> Option<f64> {
-    Some(self.analytics.moments()[3])
+    Some(self.analytics()?.moments()[3])
   }
 
   fn entropy(&self) -> Option<f64> {
-    Some(self.base.std_dev().to_f64()?.ln() + self.analytics.entropy())
+    Some(self.base.std_dev().to_f64()?.ln() + self.analytics()?.entropy())
   }
 
   /// The shifted interval's mass over the interval's, both as `exp(ln ∫k)`: finite as far as `e^{μt + σ²t²/2}` is.
@@ -414,8 +450,8 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     let shift = sigma * t;
     let (lo, up) = (alpha - shift, beta - shift);
     let exponent = if shift.is_finite() && lo < up {
-      let shifted = Truncation::new(NormalKernel, lo, up);
-      mu * t + 0.5 * shift * shift + shifted.ln_mass_over(&self.analytics)
+      let shifted = Truncation::mass_only(NormalKernel, lo, up);
+      mu * t + 0.5 * shift * shift + shifted.ln_mass_over(self.analytics()?)
     } else {
       f64::NAN
     };
@@ -437,152 +473,4 @@ fn norm_cdf_scalar(z: f64) -> f64 {
 }
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::*;
-  use crate::tests::scalar_draws;
-  use crate::tests::scalar_ks_best_p;
-
-  /// Truncated normal samples must respect the bound.
-  #[test]
-  fn truncated_normal_samples_within_bounds() {
-    for seed in [2718, 999, 42] {
-      let law = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -1.0, 2.0);
-      let mut tn = law.seeded(&Deterministic::new(seed));
-      for _ in 0..5_000 {
-        let x = tn.sample();
-        assert!(
-          (-1.0..=2.0).contains(&x),
-          "seed {seed}: sample {x} out of [-1, 2]"
-        );
-      }
-    }
-  }
-
-  /// Truncated normal density integrates to 1 in the bulk (mid-point Riemann
-  /// sum on a 1000-step grid).
-  #[test]
-  fn truncated_normal_pdf_normalised() {
-    let tn = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -1.0, 2.0);
-    let n = 1_000;
-    let h = 3.0 / n as f64;
-    let s: f64 = (0..n)
-      .map(|k| tn.pdf(-1.0 + (k as f64 + 0.5) * h).unwrap() * h)
-      .sum();
-    assert!(
-      (s - 1.0).abs() < 5e-3,
-      "truncated normal pdf integrates to {s}, expected 1"
-    );
-  }
-
-  /// Draws in bounds and a conditional mean against Simpson quadrature of `exp(-a t - t²/2)`, the density of `Z - a`,
-  /// which forms no cdf: the inverse transform put 17 % of [8, 8.5] and all of [10, 12] at `+inf`.
-  fn assert_far_tail_means(mut draws: impl FnMut(SimdTruncatedNormal<f64>) -> Vec<f64>) {
-    for (lo, hi) in [(8.0_f64, 8.5_f64), (10.0, 12.0), (-12.0, -10.0)] {
-      let xs = draws(SimdTruncatedNormal::<f64>::new(0.0, 1.0, lo, hi));
-      for x in &xs {
-        assert!((lo..=hi).contains(x), "sample {x} out of [{lo}, {hi}]");
-      }
-      let a = lo.abs().min(hi.abs());
-      let width = hi - lo;
-      let (mut num, mut den) = (0.0, 0.0);
-      let steps = 4_000;
-      let h = width / steps as f64;
-      for k in 0..=steps {
-        let t = k as f64 * h;
-        let w = if k == 0 || k == steps {
-          1.0
-        } else if k % 2 == 1 {
-          4.0
-        } else {
-          2.0
-        };
-        let f = (-a * t - 0.5 * t * t).exp();
-        num += w * t * f;
-        den += w * f;
-      }
-      let want = (a + num / den) * lo.signum();
-      let mean = xs.iter().sum::<f64>() / xs.len() as f64;
-      assert!(
-        (mean - want).abs() < 0.01,
-        "[{lo}, {hi}]: mean = {mean}, expected ≈ {want}"
-      );
-    }
-  }
-
-  /// A far-tail interval keeps its draws inside its bounds and keeps the right conditional mean.
-  #[test]
-  fn truncated_normal_far_tail_stays_in_bounds() {
-    assert_far_tail_means(|d| {
-      let mut s = d.seeded(&Deterministic::new(2718));
-      (0..40_000).map(|_| s.sample()).collect()
-    });
-  }
-
-  /// The honest draw keeps the same far-tail bounds and conditional means on the caller's rng.
-  #[test]
-  fn scalar_far_tail_stays_in_bounds() {
-    assert_far_tail_means(|d| scalar_draws(&d, 2718, 40_000));
-  }
-
-  /// The honest `Distribution` agrees with the cdf on the rejection, both tail proposals, the mirror and the inverse cdf.
-  #[test]
-  fn scalar_sample_matches_cdf() {
-    for (lo, hi) in [
-      (-1.0, 2.0),
-      (3.0, 6.0),
-      (3.0, 3.4),
-      (3.0, 3.2),
-      (1.5, 2.1),
-      (0.0, 1.7),
-      (8.0, 8.2),
-      (-6.0, -3.0),
-      (-0.05, 0.05),
-    ] {
-      let d = SimdTruncatedNormal::<f64>::new(0.0, 1.0, lo, hi);
-      let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
-      assert!(best > 0.01, "[{lo}, {hi}]: best p = {best}");
-    }
-  }
-
-  /// Each pair brackets Robert's (2.1) width at a = 3, 0 and 8 (0.317, 1.649, 0.124), inside the band where a `2/α*`
-  /// switch would take the uniform proposal.
-  #[test]
-  fn tail_proposal_follows_roberts_rule() {
-    let exponential = |a: f64, b: f64| {
-      matches!(
-        TailSetup::new(a, b, false).proposal,
-        TailProposal::Exponential { .. }
-      )
-    };
-    assert!(exponential(3.0, 3.4));
-    assert!(!exponential(3.0, 3.2));
-    assert!(exponential(0.0, 1.7));
-    assert!(!exponential(0.0, 1.6));
-    assert!(exponential(8.0, 8.2));
-    assert!(!exponential(8.0, 8.1));
-    assert!(exponential(3.0, f64::INFINITY));
-  }
-
-  /// PDF / CDF degenerate cases: outside the bounds must produce 0 PDF
-  /// and {0, 1} CDF.
-  #[test]
-  fn truncated_pdf_cdf_outside_bounds() {
-    let tn = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -1.0, 1.0);
-    assert_eq!(tn.pdf(-1.5).unwrap(), 0.0);
-    assert_eq!(tn.pdf(1.5).unwrap(), 0.0);
-    assert_eq!(tn.cdf(-2.0).unwrap(), 0.0);
-    assert_eq!(tn.cdf(2.0).unwrap(), 1.0);
-  }
-
-  /// `mu()` and `sigma()` read back the parent's arguments, not moments of the truncated law.
-  #[test]
-  fn getters_return_the_parent_parameters() {
-    let tn = SimdTruncatedNormal::<f64>::new(0.5, 2.0, 1.0, 4.0);
-    assert_eq!(
-      (tn.mu(), tn.sigma(), tn.lower(), tn.upper()),
-      (0.5, 2.0, 1.0, 4.0)
-    );
-  }
-}
+mod tests;

@@ -42,7 +42,7 @@ const CLIP: f64 = 41.5;
 const DEEP: f64 = 800.0;
 
 /// An interval's reference point, clipped ends and normalising sums, cached so a pdf costs one `exp`.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub(super) struct Truncation<K> {
   kernel: K,
   lo: f64,
@@ -56,15 +56,22 @@ pub(super) struct Truncation<K> {
   m0: f64,
   /// `1/m0`, so a density costs a product.
   inv_m0: f64,
-  /// `∫_lo^a k/k(centre)`, which the cdf adds below the median.
+  /// `∫_lo^a k/k(centre)`, which the cdf and the lower quantile add.
   tail: f64,
-  /// The cdf integrates up from `lo` to here and down from `up` above, so an answer near 0 or 1 keeps its digits.
-  median: f64,
 }
 
 impl<K: Kernel> Truncation<K> {
-  /// The analytics of `kernel` on `[lo, up]`, `lo < up`; an infinite end is clipped, a singular one graded.
+  /// `kernel` on `[lo, up]`, `lo < up`, with the mass beyond the clips that the cdf and the quantile read.
   pub(super) fn new(kernel: K, lo: f64, up: f64) -> Self {
+    let mut t = Self::mass_only(kernel, lo, up);
+    if t.a > lo {
+      t.tail = t.integrate(clip(&t.kernel, t.centre, t.a, lo, -2.0 * CLIP), t.a);
+    }
+    t
+  }
+
+  /// The reference point, the clipped ends and their mass; an infinite end is clipped, a singular one graded.
+  pub(super) fn mass_only(kernel: K, lo: f64, up: f64) -> Self {
     let singular = |x: f64| kernel.ln_k(x) == f64::INFINITY;
     let (lo_singular, up_singular) = (singular(lo), singular(up));
     let mut centre = kernel.mode().clamp(lo, up);
@@ -105,20 +112,10 @@ impl<K: Kernel> Truncation<K> {
       m0: 0.0,
       inv_m0: 0.0,
       tail: 0.0,
-      median: up,
     };
     t.m0 = t.integrate(a, b);
     t.inv_m0 = 1.0 / t.m0;
-    if a > lo {
-      t.tail = t.integrate(clip(&t.kernel, centre, a, lo, -2.0 * CLIP), a);
-    }
-    t.median = t.invert(0.5);
     t
-  }
-
-  /// `ln ∫_lo^up k(x) dx`.
-  pub(super) fn ln_mass(&self) -> f64 {
-    self.kernel.ln_k(self.centre) + self.m0.ln()
   }
 
   /// `ln(∫k over self / ∫k over other)`, formed without either mass's large logarithm.
@@ -171,7 +168,7 @@ impl<K: Kernel> Truncation<K> {
     self.ratio(x) * self.inv_m0
   }
 
-  /// `∫_lo^x k / ∫k`, integrated from the end nearer in mass.
+  /// `∫_lo^x k / ∫k`, integrated up from `lo`: no survival function reads it, so a level near 1 needs absolute digits.
   pub(super) fn cdf(&self, x: f64) -> f64 {
     if x.is_nan() {
       return f64::NAN;
@@ -179,21 +176,15 @@ impl<K: Kernel> Truncation<K> {
     if x <= self.lo {
       return 0.0;
     }
-    if x >= self.up {
-      return 1.0;
-    }
-    if x <= self.median {
-      let below = if x < self.a {
-        self.below_clip_mass(x)
-      } else {
-        self.tail + self.integrate(self.a, x)
-      };
-      return below / self.m0;
-    }
     if x >= self.b {
       return 1.0;
     }
-    1.0 - self.integrate(x, self.b) / self.m0
+    let below = if x < self.a {
+      self.below_clip_mass(x)
+    } else {
+      self.tail + self.integrate(self.a, x)
+    };
+    (below / self.m0).min(1.0)
   }
 
   /// `cdf⁻¹(p)`: the bounds at 0 and 1; else the panel holding `p`, walked to from the nearer end, then Newton in it.
@@ -246,7 +237,8 @@ impl<K: Kernel> Truncation<K> {
     });
     match hit {
       Some((panel, rest, mass)) => self.solve(panel, rest, mass, from_lo),
-      None => self.median,
+      None if from_lo => l,
+      None => r,
     }
   }
 

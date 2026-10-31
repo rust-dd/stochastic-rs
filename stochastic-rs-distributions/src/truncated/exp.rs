@@ -161,7 +161,7 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
     let kernel = ExpKernel {
       lambda: self.lambda.to_f64()?,
     };
-    Some(Truncation::new(kernel, self.lower.to_f64()?, self.upper.to_f64()?).moments())
+    Some(Truncation::mass_only(kernel, self.lower.to_f64()?, self.upper.to_f64()?).moments())
   }
 
   /// Infinite for an open tail.

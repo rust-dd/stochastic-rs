@@ -362,6 +362,20 @@ fn bench_distribution_ext(c: &mut Criterion) {
       )
     })
   });
+  // `xs` mapped onto `t ∈ [−2, 2]`.
+  group.bench_function("mgf/truncated_normal", |b| {
+    b.iter(|| {
+      black_box(
+        xs.iter()
+          .map(|&x| {
+            truncated_normal
+              .moment_generating_function(0.5 * x)
+              .unwrap()
+          })
+          .sum::<f64>(),
+      )
+    })
+  });
   // `xs` mapped onto `[0.8, 4]` and `[0.2, 0.7]`.
   group.bench_function("pdf/truncated_gamma", |b| {
     b.iter(|| {
@@ -423,13 +437,60 @@ fn bench_truncated_exp(c: &mut Criterion) {
   group.finish();
 }
 
-/// The rejection regime: `[1, 5]` holds 0.70 of the Gamma(2, 1) mass.
+/// The rejection regime: `[1, 5]` holds 0.70 of the Gamma(2, 1) mass; `[45, 60]` holds 9e-15 of Gamma(2.5, 1.2)'s.
 fn bench_truncated_gamma(c: &mut Criterion) {
   let mut group = c.benchmark_group("TruncatedGamma");
   let law = SimdTruncatedGamma::<f64>::new(2.0, 1.0, 1.0, 5.0);
   group.bench_function("seeded/f64", |b| {
-    let mut s = law.seeded(&Deterministic::new(7));
+    let mut s = law.clone().seeded(&Deterministic::new(7));
     b.iter(|| black_box(s.sample()))
+  });
+  let far = SimdTruncatedGamma::<f64>::new(2.5, 1.2, 45.0, 60.0);
+  group.bench_function("inversion/f64", |b| {
+    let mut s = far.clone().seeded(&Deterministic::new(7));
+    b.iter(|| black_box(s.sample()))
+  });
+  group.finish();
+}
+
+/// The inverse-cdf regime: `[0.99, 0.999]` holds 4e-6 of the Beta(2, 3) mass.
+fn bench_truncated_beta(c: &mut Criterion) {
+  let mut group = c.benchmark_group("TruncatedBeta");
+  let far = SimdTruncatedBeta::<f64>::new(2.0, 3.0, 0.99, 0.999);
+  group.bench_function("inversion/f64", |b| {
+    let mut s = far.clone().seeded(&Deterministic::new(7));
+    b.iter(|| black_box(s.sample()))
+  });
+  group.finish();
+}
+
+/// A law built for every draw, as a Gibbs step builds it, drawn once from the caller's rng.
+fn bench_truncated_construct(c: &mut Criterion) {
+  let mut group = c.benchmark_group("TruncatedConstruct");
+  let mut rng = SimdRng::from_seed(7);
+  group.bench_function("normal", |b| {
+    b.iter(|| {
+      let law = SimdTruncatedNormal::<f64>::new(black_box(0.0), 1.0, -1.0, 2.0);
+      black_box(law.sample(&mut rng))
+    })
+  });
+  group.bench_function("exp", |b| {
+    b.iter(|| {
+      let law = SimdTruncatedExp::<f64>::new(black_box(2.0), 0.0, 1.5);
+      black_box(law.sample(&mut rng))
+    })
+  });
+  group.bench_function("gamma", |b| {
+    b.iter(|| {
+      let law = SimdTruncatedGamma::<f64>::new(black_box(2.0), 1.0, 1.0, 5.0);
+      black_box(law.sample(&mut rng))
+    })
+  });
+  group.bench_function("beta", |b| {
+    b.iter(|| {
+      let law = SimdTruncatedBeta::<f64>::new(black_box(2.0), 2.0, 0.2, 0.8);
+      black_box(law.sample(&mut rng))
+    })
   });
   group.finish();
 }
@@ -477,7 +538,7 @@ fn bench_truncated_normal(c: &mut Criterion) {
   ] {
     let law = SimdTruncatedNormal::<f64>::new(0.0, 1.0, lo, hi);
     group.bench_function(label, |b| {
-      let mut s = law.seeded(&Deterministic::new(7));
+      let mut s = law.clone().seeded(&Deterministic::new(7));
       b.iter(|| black_box(s.sample()))
     });
   }
@@ -509,6 +570,8 @@ criterion_group!(
   discrete::bench_geometric,
   bench_truncated_exp,
   bench_truncated_gamma,
+  bench_truncated_beta,
+  bench_truncated_construct,
   bench_gev_gpd,
   bench_truncated_normal,
   bench_distribution_ext,
