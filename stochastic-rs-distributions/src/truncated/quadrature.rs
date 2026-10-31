@@ -4,10 +4,12 @@
 
 use std::ops::ControlFlow;
 
+use panels::Cut;
 use panels::GL64_W;
 use panels::GL64_X;
 use panels::Panel;
 use panels::panels;
+use panels::span;
 
 mod panels;
 mod quantile;
@@ -52,9 +54,10 @@ pub(super) struct Truncation<K> {
   up: f64,
   /// The point every offset is formed from: the clamped mode, a tenth of a scale off a singular end, or the midpoint.
   centre: f64,
-  /// The ends moved in to where the kernel is `e^{−CLIP}` below its value at `centre`; a singular end stays.
-  a: f64,
-  b: f64,
+  /// The ends moved in to where the kernel is `e^{−CLIP}` below its value at `centre`, each an exact offset from the
+  /// point it was found from, however much finer than an ulp; a singular end stays.
+  a: Cut,
+  b: Cut,
   /// `b − a`, the unit of every sum: no power of the law's own scale leaves the range.
   width: f64,
   /// `∫_a^b k/k(centre)`, in units of `width`.
@@ -70,10 +73,10 @@ impl<K: Kernel> Truncation<K> {
   /// `kernel` on `[lo, up]`, `lo < up`, with the mass beyond the clips that the cdf and the quantile read.
   pub(super) fn new(kernel: K, lo: f64, up: f64) -> Self {
     let mut t = Self::mass_only(kernel, lo, up);
-    if t.a > lo {
+    if t.a.x > lo {
       t.tail_lo = t.integrate(clip(&t.kernel, t.centre, t.a, lo, -2.0 * CLIP), t.a, 0.0);
     }
-    if t.b < up {
+    if t.b.x < up {
       t.tail_up = t.integrate(t.b, clip(&t.kernel, t.centre, t.b, up, -2.0 * CLIP), 0.0);
     }
     t
@@ -100,19 +103,19 @@ impl<K: Kernel> Truncation<K> {
       centre = if heavier_lo { lo + step } else { up - step };
     }
     let a = if lo_singular.is_some() {
-      lo
+      Cut::at(lo)
     } else {
-      clip(&kernel, centre, centre, lo, -CLIP)
+      clip(&kernel, centre, Cut::at(centre), lo, -CLIP)
     };
     let b = if up_singular.is_some() {
-      up
+      Cut::at(up)
     } else {
-      clip(&kernel, centre, centre, up, -CLIP)
+      clip(&kernel, centre, Cut::at(centre), up, -CLIP)
     };
-    let drop = |e: f64| -kernel.ln_rel(e, e - centre, centre, None);
+    let drop = |e: Cut| -kernel.ln_rel(e.x, e.offset(centre), centre, None);
     // A flat kernel's odd moments about an end lose digits; about the midpoint they do not.
     if lo_singular.is_none() && up_singular.is_none() && drop(a).max(drop(b)) < 1.0 {
-      centre = 0.5 * (a + b);
+      centre = 0.5 * (a.x + b.x);
     }
     let mut t = Self {
       kernel,
@@ -121,7 +124,7 @@ impl<K: Kernel> Truncation<K> {
       centre,
       a,
       b,
-      width: b - a,
+      width: span(a, b),
       m0: 0.0,
       inv_m0: 0.0,
       tail_lo: 0.0,
@@ -233,13 +236,13 @@ impl<K: Kernel> Truncation<K> {
     if x <= self.lo {
       return 0.0;
     }
-    if x >= self.b {
+    if x >= self.b.x {
       return 1.0;
     }
-    if x < self.a {
+    if x < self.a.x {
       return self.below_clip(x);
     }
-    ((self.tail_lo + self.integrate(self.a, x, 0.0)) / self.m0).min(1.0)
+    ((self.tail_lo + self.integrate(self.a, Cut::at(x), 0.0)) / self.m0).min(1.0)
   }
 
   /// `cdf⁻¹(p)`: the bounds at 0 and 1; else the panel holding `p`, walked to from the nearer end, then Newton in it.
@@ -263,8 +266,8 @@ impl<K: Kernel> Truncation<K> {
     if ln_g == f64::NEG_INFINITY {
       return 0.0;
     }
-    let start = clip(&self.kernel, self.centre, x, self.lo, ln_g - CLIP);
-    let relative = self.integrate(start, x, ln_g);
+    let start = clip(&self.kernel, self.centre, Cut::at(x), self.lo, ln_g - CLIP);
+    let relative = self.integrate(start, Cut::at(x), ln_g);
     (ln_g + (relative / self.m0).ln()).exp().min(1.0)
   }
 
@@ -274,8 +277,8 @@ impl<K: Kernel> Truncation<K> {
   }
 
   /// `∫_l^r k/k(c)` in units of `width`, over `e^{shift}`, signed.
-  fn integrate(&self, l: f64, r: f64, shift: f64) -> f64 {
-    if r < l {
+  fn integrate(&self, l: Cut, r: Cut, shift: f64) -> f64 {
+    if r.x < l.x {
       return -self.integrate(r, l, shift);
     }
     let mut sum = 0.0;
@@ -288,8 +291,8 @@ impl<K: Kernel> Truncation<K> {
 
   fn walk<B>(
     &self,
-    l: f64,
-    r: f64,
+    l: Cut,
+    r: Cut,
     rev: bool,
     visit: impl FnMut(Panel) -> ControlFlow<B>,
   ) -> ControlFlow<B> {
@@ -395,29 +398,35 @@ impl Frame {
   }
 }
 
-/// The point between `from` and `end` where `ln k − ln k(c)` falls below `floor` (a doubling probe, then bisection),
-/// or `end` if it never does.
-fn clip<K: Kernel>(kernel: &K, c: f64, from: f64, end: f64, floor: f64) -> f64 {
-  let below = |x: f64| {
-    let v = kernel.ln_rel(x, x - c, c, None);
+/// Where `ln k − ln k(c)` falls below `floor` between `from` and `end` (a doubling probe, then bisection), in offsets
+/// from the branch point `end` is nearer than `c`, else from `c`, so the cut stays exact beside either; `end` if never.
+fn clip<K: Kernel>(kernel: &K, c: f64, from: Cut, end: f64, floor: f64) -> Cut {
+  let mut points = kernel.branch_points().into_iter().flatten();
+  let origin = points
+    .find(|&(s, _)| (end - s).abs() < (end - c).abs())
+    .map_or(c, |(s, _)| s);
+  let below = |t: f64| {
+    let branch = (origin != c).then_some((origin, t));
+    let v = kernel.ln_rel(origin + t, (origin - c) + t, c, branch);
     v < floor || v.is_nan()
   };
-  if end == from || (end.is_finite() && !below(end)) {
-    return end;
+  let (from, end_t) = (from.offset(origin), end - origin);
+  if end_t == from || (end.is_finite() && !below(end_t)) {
+    return Cut::at(end);
   }
-  let dir = if end > from { 1.0 } else { -1.0 };
-  let (mut inside, mut outside) = (from, end);
+  let dir = if end_t > from { 1.0 } else { -1.0 };
+  let (mut inside, mut outside) = (from, end_t);
   let mut step = kernel.length_scale();
   loop {
-    let x = from + dir * step;
-    if !x.is_finite() || (end.is_finite() && dir * (x - end) >= 0.0) {
+    let t = from + dir * step;
+    if !t.is_finite() || (end_t.is_finite() && dir * (t - end_t) >= 0.0) {
       break;
     }
-    if below(x) {
-      outside = x;
+    if below(t) {
+      outside = t;
       break;
     }
-    inside = x;
+    inside = t;
     step *= 2.0;
   }
   // Toward an end at 0 the halvings run down to the crossing however deep (2⁻¹⁰⁷⁴ at most), then refine it.
@@ -432,7 +441,7 @@ fn clip<K: Kernel>(kernel: &K, c: f64, from: f64, end: f64, floor: f64) -> f64 {
       inside = m;
     }
   }
-  inside
+  Cut::beside(origin, inside)
 }
 
 #[cfg(test)]

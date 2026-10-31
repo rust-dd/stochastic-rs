@@ -94,17 +94,35 @@ pub(super) struct Panel {
   pub(super) singular: Option<f64>,
 }
 
-/// A breakpoint and, beside a branch point `s`, its exact offset from `s`.
-#[derive(Clone, Copy)]
-struct Cut {
-  x: f64,
+/// A breakpoint and, beside a point `s` (a branch point or the reference point), its exact offset from `s`.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Cut {
+  pub(super) x: f64,
   from: Option<(f64, f64)>,
   /// On an end within a tenth of the width of a singular branch point `(s, p)`: its piece is the innermost.
   inner: Option<(f64, f64)>,
 }
 
 impl Cut {
-  fn offset(self, origin: f64) -> f64 {
+  /// A point known only as itself.
+  pub(super) fn at(x: f64) -> Self {
+    Self {
+      x,
+      from: None,
+      inner: None,
+    }
+  }
+
+  /// `s + t`, its offset `t` kept however much finer than an ulp of `s`.
+  pub(super) fn beside(s: f64, t: f64) -> Self {
+    Self {
+      x: s + t,
+      from: Some((s, t)),
+      inner: None,
+    }
+  }
+
+  pub(super) fn offset(self, origin: f64) -> f64 {
     match self.from {
       Some((s, t)) if s == origin => t,
       Some((s, t)) => (s - origin) + t,
@@ -113,17 +131,26 @@ impl Cut {
   }
 }
 
+/// `r − l`, measured from the point one end is an exact offset of, so two cuts beside it keep their difference.
+pub(super) fn span(l: Cut, r: Cut) -> f64 {
+  match (l.from, r.from) {
+    (Some((s, t)), _) => r.offset(s) - t,
+    (None, Some((s, t))) => t - l.offset(s),
+    (None, None) => r.x - l.x,
+  }
+}
+
 /// Visits the panels of `[l, r]` in order, or in reverse: the breakpoints (each branch point's ladder within 20 widths,
 /// then the slope and curvature budgets).
 pub(super) fn panels<K: Kernel, B>(
   kernel: &K,
   c: f64,
-  l: f64,
-  r: f64,
+  lc: Cut,
+  rc: Cut,
   rev: bool,
   mut visit: impl FnMut(Panel) -> ControlFlow<B>,
 ) -> ControlFlow<B> {
-  let width = r - l;
+  let (l, r, width) = (lc.x, rc.x, span(lc, rc));
   let ladders = kernel
     .branch_points()
     .map(|point| point.filter(|&(s, _)| s >= l - 20.0 * width && s <= r + 20.0 * width));
@@ -153,21 +180,23 @@ pub(super) fn panels<K: Kernel, B>(
         inner: None,
       })
   });
-  let end = |x: f64| Cut {
-    x,
-    from: ladders
-      .into_iter()
-      .flatten()
-      .min_by(|p, q| (x - p.0).abs().total_cmp(&(x - q.0).abs()))
-      .map(|(s, _)| (s, x - s)),
+  let end = |cut: Cut| Cut {
+    x: cut.x,
+    from: cut.from.or_else(|| {
+      ladders
+        .into_iter()
+        .flatten()
+        .min_by(|p, q| (cut.x - p.0).abs().total_cmp(&(cut.x - q.0).abs()))
+        .map(|(s, _)| (s, cut.x - s))
+    }),
     inner: ladders
       .into_iter()
       .flatten()
-      .find(|&(s, p)| p < 0.0 && 10.0 * (x - s).abs() < width),
+      .find(|&(s, p)| p < 0.0 && 10.0 * (cut.x - s).abs() < width),
   };
-  let cuts = std::iter::once(end(l))
+  let cuts = std::iter::once(end(lc))
     .chain(rungs)
-    .chain(std::iter::once(end(r)));
+    .chain(std::iter::once(end(rc)));
   if rev {
     pieces(kernel, c, cuts.rev(), true, &mut visit)
   } else {

@@ -54,7 +54,7 @@ fn whole_line_mass_is_sqrt_two_pi() {
     (t.kernel.ln_k(t.centre) + t.mass().ln() - 0.5 * (2.0 * std::f64::consts::PI).ln()).abs()
       < 1e-15
   );
-  assert!(t.a < -9.1 && t.b > 9.1 && t.quantile(0.5).abs() < 1e-15);
+  assert!(t.a.x < -9.1 && t.b.x > 9.1 && t.quantile(0.5).abs() < 1e-15);
   let [mean, var, skew, kurt] = t.moments(1.0);
   assert!(
     mean.abs() < 1e-15 && (var - 1.0).abs() < 1e-14 && skew.abs() < 1e-14 && kurt.abs() < 1e-13

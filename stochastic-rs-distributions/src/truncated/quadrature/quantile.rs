@@ -7,6 +7,7 @@ use super::Frame;
 use super::Kernel;
 use super::Truncation;
 use super::clip;
+use super::panels::Cut;
 use super::panels::Panel;
 
 impl<K: Kernel> Truncation<K> {
@@ -26,7 +27,7 @@ impl<K: Kernel> Truncation<K> {
       return self.locate(self.a, self.b, want, true, 0.0);
     }
     // `p·M₀` underflowed against an end that was never clipped.
-    if self.a <= self.lo {
+    if self.a.x <= self.lo {
       return self.lo;
     }
     // Below the clip: from where the kernel is `e^{−CLIP}` below `p` times its reference value, every value taken
@@ -34,14 +35,14 @@ impl<K: Kernel> Truncation<K> {
     let start = clip(&self.kernel, self.centre, self.a, self.lo, p.ln() - CLIP);
     let shift = self
       .kernel
-      .ln_rel(start, start - self.centre, self.centre, None);
+      .ln_rel(start.x, start.offset(self.centre), self.centre, None);
     let want = (p.ln() + self.m0.ln() - shift).exp();
     self.locate(start, self.a, want, true, shift)
   }
 
   /// The point of `[l, r]` with `want` of the mass beyond the end `from_lo` names, every value relative to `e^{shift}`:
   /// the panels walked from that end, then Newton in the one that holds it.
-  fn locate(&self, l: f64, r: f64, want: f64, from_lo: bool, shift: f64) -> f64 {
+  fn locate(&self, l: Cut, r: Cut, want: f64, from_lo: bool, shift: f64) -> f64 {
     let mut acc = 0.0;
     let mut hit = None;
     let _ = self.walk(l, r, !from_lo, |panel| {
@@ -59,8 +60,8 @@ impl<K: Kernel> Truncation<K> {
         Some(p) => self.solve_singular(&panel, p, rest, mass, from_lo, shift),
         None => self.solve(panel, rest, mass, from_lo, shift),
       },
-      None if from_lo => l,
-      None => r,
+      None if from_lo => l.x,
+      None => r.x,
     }
   }
 

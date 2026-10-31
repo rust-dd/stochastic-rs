@@ -362,6 +362,31 @@ fn quantile_tails_keep_their_digits() {
   }
 }
 
+/// A clipped end within an ulp of its bound stays an exact offset: at 1e9σ the law is its exponential tail, and the
+/// tilted kernel never collapses, so a huge `t` reads `+∞` or 0 as `e^{tx}` goes (mpmath, 60 and 120 digits).
+#[test]
+fn an_end_closer_than_an_ulp() {
+  let tail = tn(0.0, 1.0, 1e9, f64::INFINITY);
+  moments_match("TN(0, 1, [1e9, inf))", &tail, [1e9, 1e-18, 2.0, 6.0]);
+  let pdf = tail.pdf(1e9).unwrap();
+  assert!(
+    rel(pdf, 1e9) < 1e-12,
+    "TN(0, 1, [1e9, inf)): pdf(1e9) = {pdf}"
+  );
+  let unit = tn(0.0, 1.0, -1.0, 1.0);
+  for t in [1e18, -1e18, 1e300, -1e300] {
+    assert_eq!(
+      unit.moment_generating_function(t),
+      Some(f64::INFINITY),
+      "TN(0, 1, [-1, 1]).mgf({t:e})"
+    );
+  }
+  assert_eq!(
+    tn(0.0, 1.0, -2.0, -1.0).moment_generating_function(1e18),
+    Some(0.0)
+  );
+}
+
 /// The ends and the guard: `quantile(0)`/`quantile(1)` are the bounds, infinite ones included.
 #[test]
 fn quantile_ends_are_the_bounds() {

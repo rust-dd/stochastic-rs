@@ -237,11 +237,21 @@ fn quantile_tails_keep_their_digits() {
       assert!(rel(got, want) < 1e-12, "{name}: quantile({p}) = {got}");
     }
   }
-  let got = tg(30.0, 0.5, 0.0, f64::INFINITY).quantile(5e-324).unwrap();
-  assert!(
-    rel(got, 1.0066646743913833e-10) < 1e-12,
-    "TG(30, 0.5, [0, inf)): quantile(5e-324) = {got}"
-  );
+  for (name, law, want) in [
+    (
+      "TG(30, 0.5, [0, inf))",
+      tg(30.0, 0.5, 0.0, f64::INFINITY),
+      1.0066646743913833e-10,
+    ),
+    (
+      "TG(1.5, 1, [5e-324, 5])",
+      tg(1.5, 1.0, 5e-324, 5.0),
+      3.46354842439829e-216,
+    ),
+  ] {
+    let got = law.quantile(5e-324).unwrap();
+    assert!(rel(got, want) < 1e-12, "{name}: quantile(5e-324) = {got:e}");
+  }
 }
 
 /// Shapes down to 1e-4, whose mass sits almost wholly in the innermost panel beside 0: in `u = (t/h)^k` that panel is
