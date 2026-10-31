@@ -3,6 +3,7 @@ use stochastic_rs_distributions::truncated::SimdTruncatedBeta;
 
 use super::Want;
 use super::check;
+use super::moments_match;
 use super::rel;
 
 fn tb(a: f64, b: f64, lo: f64, up: f64) -> SimdTruncatedBeta<f64> {
@@ -171,6 +172,21 @@ fn singular_ends() {
       "TB(3, 0.4, [0.9, 1]): {what} = {got:?}"
     );
   }
+}
+
+/// Sums in units of the clipped width: an interval of 1e-70 keeps every moment (mpmath, 60 and 120 digits).
+#[test]
+fn moments_on_a_tiny_interval() {
+  moments_match(
+    "TB(2, 3, [0, 1e-70])",
+    &tb(2.0, 3.0, 0.0, 1e-70),
+    [
+      6.666666666666666e-71,
+      5.555555555555555e-142,
+      -0.565685424949238,
+      -0.6,
+    ],
+  );
 }
 
 /// A unit first shape drops the `(a − 1) ln x` term, which reads `0·(−∞)` at 0.

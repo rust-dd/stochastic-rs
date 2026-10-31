@@ -3,6 +3,7 @@ use stochastic_rs_distributions::truncated::SimdTruncatedNormal;
 
 use super::Want;
 use super::check;
+use super::moments_match;
 use super::rel;
 
 fn tn(mu: f64, sigma: f64, lo: f64, up: f64) -> SimdTruncatedNormal<f64> {
@@ -306,6 +307,17 @@ fn mgf_integrates_the_tilted_kernel() {
   assert_eq!(
     tn(0.0, 1.0, -2.0, -1.0).moment_generating_function(f64::INFINITY),
     Some(0.0)
+  );
+}
+
+/// Sums in units of the clipped width and `σ` applied with it once: at σ = 1e200 on `[0, 1]`, where `σ²` overflows
+/// and the standardised width squared underflows, the law is the uniform to 400 digits (mpmath).
+#[test]
+fn moments_at_an_extreme_scale() {
+  moments_match(
+    "TN(0, 1e200, [0, 1])",
+    &tn(0.0, 1e200, 0.0, 1.0),
+    [0.5, 0.08333333333333333, 0.0, -1.2],
   );
 }
 

@@ -4,6 +4,7 @@ use stochastic_rs_distributions::truncated::SimdTruncatedExp;
 
 use super::Want;
 use super::check;
+use super::moments_match;
 use super::rel;
 
 fn te(lambda: f64, lo: f64, up: f64) -> SimdTruncatedExp<f64> {
@@ -144,6 +145,21 @@ fn moments_pdf_cdf_and_quantile() {
         "{name}: quantile(0.25)"
       );
     }
+  }
+}
+
+/// Sums in units of the clipped width: a rate of 1e±100 at `λL = 2` keeps every moment (mpmath, 60 and 120 digits).
+#[test]
+fn moments_at_extreme_rates() {
+  for (lam, mean, variance) in [
+    (1e-100, 6.869647145006687e99, 2.7593833903368954e199),
+    (1e100, 6.869647145006686e-101, 2.7593833903368955e-201),
+  ] {
+    moments_match(
+      &format!("TE({lam:e}, 0, 2/λ)"),
+      &te(lam, 0.0, 2.0 / lam),
+      [mean, variance, 0.6799794054179359, -0.5494785442199013],
+    );
   }
 }
 

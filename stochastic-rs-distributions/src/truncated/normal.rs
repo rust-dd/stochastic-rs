@@ -447,7 +447,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
   }
 
   fn mean(&self) -> Option<f64> {
-    Some(self.unstandardise(self.analytics()?.moments()[0]))
+    Some(self.unstandardise(self.analytics()?.moments(1.0)[0]))
   }
 
   fn median(&self) -> Option<f64> {
@@ -461,15 +461,15 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
 
   fn variance(&self) -> Option<f64> {
     let sigma = self.base.std_dev().to_f64()?;
-    Some(sigma * sigma * self.analytics()?.moments()[1])
+    Some(self.analytics()?.moments(sigma)[1])
   }
 
   fn skewness(&self) -> Option<f64> {
-    Some(self.analytics()?.moments()[2])
+    Some(self.analytics()?.moments(1.0)[2])
   }
 
   fn kurtosis(&self) -> Option<f64> {
-    Some(self.analytics()?.moments()[3])
+    Some(self.analytics()?.moments(1.0)[3])
   }
 
   fn entropy(&self) -> Option<f64> {

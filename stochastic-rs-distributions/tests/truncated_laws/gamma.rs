@@ -3,6 +3,7 @@ use stochastic_rs_distributions::truncated::SimdTruncatedGamma;
 
 use super::Want;
 use super::check;
+use super::moments_match;
 
 fn tg(k: f64, theta: f64, lo: f64, up: f64) -> SimdTruncatedGamma<f64> {
   SimdTruncatedGamma::<f64>::new(k, theta, lo, up)
@@ -187,6 +188,24 @@ fn open_and_singular_ends() {
       0.6156989344620627,
     ),
   );
+}
+
+/// Sums in units of the clipped width: a scale of 1e±150 and 1e±200 moves no moment (mpmath, 60 and 120 digits); the
+/// variance at 1e-200 underflows and at 1e200 overflows, as the exact value does.
+#[test]
+fn moments_at_extreme_scales() {
+  for (theta, mean, variance) in [
+    (1e-200, 2.1679147482758088e-200, 0.0),
+    (1e-150, 2.167914748275809e-150, 7.284337949302775e-301),
+    (1e150, 2.167914748275809e150, 7.284337949302775e299),
+    (1e200, 2.167914748275809e200, f64::INFINITY),
+  ] {
+    moments_match(
+      &format!("TG(2.5, {theta:e}, [0.8θ, 4θ])"),
+      &tg(2.5, theta, 0.8 * theta, 4.0 * theta),
+      [mean, variance, 0.3190481188042759, -0.9373102227975924],
+    );
+  }
 }
 
 /// A unit shape drops the `(k − 1) ln x` term, which reads `0·(−∞)` at 0.

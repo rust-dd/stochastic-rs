@@ -52,11 +52,13 @@ pub(super) struct Truncation<K> {
   /// The ends moved in to where the kernel is `e^{−CLIP}` below its value at `centre`; a singular end stays.
   a: f64,
   b: f64,
-  /// `∫_a^b k/k(centre)`.
+  /// `b − a`, the unit of every sum: no power of the law's own scale leaves the range.
+  width: f64,
+  /// `∫_a^b k/k(centre)`, in units of `width`.
   m0: f64,
-  /// `1/m0`, so a density costs a product.
+  /// `1/(width·m0)`, so a density costs a product.
   inv_m0: f64,
-  /// `∫_lo^a k/k(centre)`, which the cdf and the lower quantile add.
+  /// `∫_lo^a k/k(centre)`, in units of `width`, which the cdf and the lower quantile add.
   tail: f64,
 }
 
@@ -109,12 +111,13 @@ impl<K: Kernel> Truncation<K> {
       centre,
       a,
       b,
+      width: b - a,
       m0: 0.0,
       inv_m0: 0.0,
       tail: 0.0,
     };
     t.m0 = t.integrate(a, b);
-    t.inv_m0 = 1.0 / t.m0;
+    t.inv_m0 = 1.0 / (t.width * t.m0);
     t
   }
 
@@ -125,12 +128,12 @@ impl<K: Kernel> Truncation<K> {
 
   /// `∫_a^b k/k(c)` over the clipped interval.
   pub(super) fn mass(&self) -> f64 {
-    self.m0
+    self.width * self.m0
   }
 
-  /// `(mean, variance, skewness, excess kurtosis)` in the kernel's coordinate: moments about the reference point, then
-  /// the binomial shift by `d = M₁/M₀`.
-  pub(super) fn moments(&self) -> [f64; 4] {
+  /// `(mean, scale²·variance, skewness, excess kurtosis)` in the kernel's coordinate: moments about the reference point
+  /// in units of `width`, the binomial shift by `d = M₁/M₀`, then `scale·width` applied once.
+  pub(super) fn moments(&self, scale: f64) -> [f64; 4] {
     let mut m = [0.0; 5];
     let _ = self.walk(self.a, self.b, false, |panel| {
       for (slot, part) in m.iter_mut().zip(self.sums::<5>(&panel)) {
@@ -143,9 +146,10 @@ impl<K: Kernel> Truncation<K> {
     let mu2 = r2 - d * d;
     let mu3 = r3 - 3.0 * d * r2 + 2.0 * d * d * d;
     let mu4 = r4 - 4.0 * d * r3 + 6.0 * d * d * r2 - 3.0 * d * d * d * d;
+    let unit = scale * self.width;
     [
-      self.centre + d,
-      mu2,
+      self.centre + self.width * d,
+      (unit * mu2) * unit,
       mu3 / mu2.powf(1.5),
       mu4 / (mu2 * mu2) - 3.0,
     ]
@@ -164,7 +168,7 @@ impl<K: Kernel> Truncation<K> {
       });
       ControlFlow::<()>::Continue(())
     });
-    mass.ln() - log / mass
+    (self.width.ln() + mass.ln()) - log / mass
   }
 
   /// The normalised density `k(x)/∫k` at a point of `[lo, up]`, whose support the law checks at its own bounds.
@@ -289,9 +293,9 @@ impl<K: Kernel> Truncation<K> {
         lb = x;
       }
       let slope = if from_lo {
-        self.ratio(x)
+        self.ratio(x) / self.width
       } else {
-        -self.ratio(x)
+        -self.ratio(x) / self.width
       };
       let mut next = x - f / slope;
       if !(lb..=rb).contains(&next) {
@@ -356,23 +360,24 @@ impl<K: Kernel> Truncation<K> {
     panels(&self.kernel, self.centre, l, r, rev, visit)
   }
 
-  /// `Σ_i w_i g(x_i) y_i^j`, `j < N`, on one panel.
+  /// `Σ_i w_i g(x_i) (y_i/width)^j`, `j < N`, on one panel.
   fn sums<const N: usize>(&self, panel: &Panel) -> [f64; N] {
     let mut sums = [0.0; N];
     self.nodes(panel, |w, y, ln_g| {
-      let g = w * ln_g.exp();
-      let mut yj = 1.0;
+      let (g, z) = (w * ln_g.exp(), y / self.width);
+      let mut zj = 1.0;
       for slot in &mut sums {
-        *slot += g * yj;
-        yj *= y;
+        *slot += g * zj;
+        zj *= z;
       }
     });
     sums
   }
 
-  /// `f(w, y, ln g)` at each node: weight times half-width, offset from the centre, `ln k(x) − ln k(c)`.
+  /// `f(w, y, ln g)` at each node: weight times half-width over `width`, offset from the centre, `ln k(x) − ln k(c)`.
   fn nodes(&self, panel: &Panel, mut f: impl FnMut(f64, f64, f64)) {
     let half = 0.5 * (panel.r - panel.l);
+    let scaled = half / self.width;
     for (node, weight) in GL64_X.iter().zip(&GL64_W) {
       for xi in [-node, *node] {
         let t = panel.l + half * (1.0 + xi);
@@ -386,7 +391,7 @@ impl<K: Kernel> Truncation<K> {
           (self.centre + t, t, None)
         };
         f(
-          weight * half,
+          weight * scaled,
           y,
           self.kernel.ln_rel(x, y, self.centre, branch),
         );

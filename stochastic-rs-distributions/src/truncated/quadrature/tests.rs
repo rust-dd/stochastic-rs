@@ -51,10 +51,11 @@ fn gl64_is_exact_to_degree_127() {
 fn whole_line_mass_is_sqrt_two_pi() {
   let t = Truncation::new(Normal, f64::NEG_INFINITY, f64::INFINITY);
   assert!(
-    (t.kernel.ln_k(t.centre) + t.m0.ln() - 0.5 * (2.0 * std::f64::consts::PI).ln()).abs() < 1e-15
+    (t.kernel.ln_k(t.centre) + t.mass().ln() - 0.5 * (2.0 * std::f64::consts::PI).ln()).abs()
+      < 1e-15
   );
   assert!(t.a < -9.1 && t.b > 9.1 && t.quantile(0.5).abs() < 1e-15);
-  let [mean, var, skew, kurt] = t.moments();
+  let [mean, var, skew, kurt] = t.moments(1.0);
   assert!(
     mean.abs() < 1e-15 && (var - 1.0).abs() < 1e-14 && skew.abs() < 1e-14 && kurt.abs() < 1e-13
   );
@@ -68,7 +69,7 @@ fn whole_line_mass_is_sqrt_two_pi() {
 fn narrow_interval_centres_on_its_midpoint() {
   let t = Truncation::new(Normal, 0.3, 0.3 + 1e-6);
   assert_eq!(t.centre, 0.3 + 0.5e-6);
-  assert!((t.moments()[3] + 1.1999999999999508).abs() < 1e-11);
+  assert!((t.moments(1.0)[3] + 1.1999999999999508).abs() < 1e-11);
   assert!((t.cdf(0.3 + 0.25e-6) - 0.25000002811116198).abs() < 1e-13);
 }
 

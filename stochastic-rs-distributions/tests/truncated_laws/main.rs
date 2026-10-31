@@ -32,6 +32,31 @@ fn close(name: &str, what: &str, got: f64, want: f64, rtol: f64, atol: f64) {
   );
 }
 
+/// The four moments at `check`'s bars; a reference that overflowed or underflowed is its rounding, matched exactly.
+pub fn moments_match(name: &str, law: &impl DistributionExt, want: [f64; 4]) {
+  let got = [
+    law.mean().unwrap(),
+    law.variance().unwrap(),
+    law.skewness().unwrap(),
+    law.kurtosis().unwrap(),
+  ];
+  for ((what, got), (want, (rtol, atol))) in ["mean", "variance", "skewness", "kurtosis"]
+    .into_iter()
+    .zip(got)
+    .zip(
+      want
+        .into_iter()
+        .zip([(1e-12, 0.0), (1e-12, 0.0), (1e-12, 1e-14), (1e-11, 0.0)]),
+    )
+  {
+    if want.is_infinite() {
+      assert_eq!(got, want, "{name}: {what}");
+    } else {
+      close(name, what, got, want, rtol, atol);
+    }
+  }
+}
+
 /// `mid` is where the reference evaluated pdf and cdf, `scale` the interval's width (or `σ`/`θ` for an open end),
 /// `points` three interior points for the quantile round trip, each with `1e-10 < cdf < 1 − 1e-10`.
 pub fn check(
