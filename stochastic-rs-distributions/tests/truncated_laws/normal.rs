@@ -4,6 +4,7 @@ use stochastic_rs_distributions::truncated::SimdTruncatedNormal;
 use super::NEXT_TO_ONE;
 use super::Want;
 use super::check;
+use super::close;
 use super::moments_match;
 use super::rel;
 
@@ -490,6 +491,44 @@ fn mgf_from_the_clamped_bound() {
     assert!(
       rel(got, want) < 1e-12,
       "TN({mu:e}, {sigma:e}, [{lo:e}, {up:e}]).mgf({t:e}) = {got:e}"
+    );
+  }
+}
+
+/// A bound whose `bound − μ` overflows standardises from halves: `TN(−1e308, 1e308, [−1e308, 1e308])` is the standard
+/// normal on `[0, 2]`, not `[0, ∞)` (mpmath, 60 and 120 digits).
+#[test]
+fn a_bound_past_the_doubles_from_mu() {
+  let law = tn(-1e308, 1e308, -1e308, 1e308);
+  let name = "TN(-1e308, 1e308, [-1e308, 1e308])";
+  close(
+    name,
+    "mean",
+    law.mean().unwrap(),
+    -2.7721024775476924e307,
+    1e-12,
+    0.0,
+  );
+  close(
+    name,
+    "median",
+    law.median().unwrap(),
+    -3.6088808912872716e307,
+    1e-12,
+    0.0,
+  );
+  for (x, want) in [
+    (0.0, 0.7152327720109061),
+    (-5e307, 0.4011786573259434),
+    (5e307, 0.907685528546034),
+  ] {
+    close(
+      name,
+      &format!("cdf({x:e})"),
+      law.cdf(x).unwrap(),
+      want,
+      1e-12,
+      0.0,
     );
   }
 }

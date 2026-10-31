@@ -18,6 +18,9 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
+mod cf;
+mod turns;
+
 /// `e^{−λx}` on `[0, ∞)`, whose integral gives the third and fourth moments.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct ExpKernel {
@@ -240,18 +243,8 @@ impl<T: SimdFloatExt> Distribution<T> for SimdTruncatedExp<T> {
 }
 
 impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
-  /// `e^{it·lower} (λL/m) φ₁((λ − it)L)`, `φ₁(w) = (1 − e^{−w})/w`, `m` the mass; an open tail `e^{it·lower}/(1 − it/λ)`
-  /// divided scaled, so no `λ²` or `t²` leaves the range. NaN where `t·lower`, `tL` or, on an open tail, `t/λ` overflows.
   fn characteristic_function(&self, t: f64) -> Option<Complex64> {
-    if t == 0.0 {
-      return Some(Complex64::new(1.0, 0.0));
-    }
-    let (lam, lo, len) = (self.lambda.to_f64()?, self.lower.to_f64()?, self.length()?);
-    let phase = Complex64::new(0.0, t * lo).exp();
-    if self.open_tail()? {
-      return Some(phase.fdiv(Complex64::new(1.0, -t / lam)));
-    }
-    Some(phase * (len / self.mass_per_rate()) * phi1(Complex64::new(lam, -t) * len))
+    self.cf(t)
   }
 
   fn pdf(&self, x: f64) -> Option<f64> {
@@ -352,12 +345,16 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
   }
 
   /// Finite for every `t` on a bounded interval (`λL e^{λ·lower}/m` at `t = λ`, `m` the mass); an open tail diverges from `t = λ` on.
+  /// At an infinite `t` the limit of `e^{tx}` on `x ≥ 0`: +∞ above, 0 below.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
     if t.is_nan() {
       return Some(f64::NAN);
     }
     if t == 0.0 {
       return Some(1.0);
+    }
+    if t.is_infinite() {
+      return Some(if t > 0.0 { f64::INFINITY } else { 0.0 });
     }
     let (lam, lo, len) = (self.lambda.to_f64()?, self.lower.to_f64()?, self.length()?);
     if len.is_infinite() {
@@ -384,27 +381,6 @@ fn one_minus_exp_over(z: f64) -> f64 {
   } else {
     -(-z).exp_m1() / z
   }
-}
-
-/// `(1 − e^{−w})/w`, by its series `Σ (−w)^n/(n+1)!` for `|w| < ½`, where the quotient's imaginary part `−Im(w)/2`
-/// sits below the real part's rounding; the quotient divides scaled.
-fn phi1(w: Complex64) -> Complex64 {
-  if w.norm() < 0.5 {
-    // 18 terms: the next is below 0.5^18/19! ≈ 3e-23.
-    return (1..=18).rev().fold(Complex64::new(0.0, 0.0), |acc, n| {
-      (acc * -w + 1.0) / n as f64
-    });
-  }
-  (-exp_m1_complex(-w)).fdiv(w)
-}
-
-/// `e^{u+iv} − 1` as `(expm1(u) cos v − 2 sin²(v/2), e^u sin v)`: no `e^w − 1` subtraction.
-fn exp_m1_complex(w: Complex64) -> Complex64 {
-  let (u, v) = (w.re, w.im);
-  Complex64::new(
-    u.exp_m1() * v.cos() - 2.0 * (0.5 * v).sin().powi(2),
-    u.exp() * v.sin(),
-  )
 }
 
 /// The $x^{2k-1}$ coefficients $-B_{2k}/(2k)!$, $k = 1..=7$, of `mean_fraction` past its constant ½, rounded to `f64`.

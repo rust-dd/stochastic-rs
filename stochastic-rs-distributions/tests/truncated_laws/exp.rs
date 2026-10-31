@@ -1,6 +1,9 @@
 use num_complex::Complex64;
 use stochastic_rs_distributions::traits::DistributionExt;
+use stochastic_rs_distributions::truncated::SimdTruncatedBeta;
 use stochastic_rs_distributions::truncated::SimdTruncatedExp;
+use stochastic_rs_distributions::truncated::SimdTruncatedGamma;
+use stochastic_rs_distributions::truncated::SimdTruncatedNormal;
 
 use super::Want;
 use super::check;
@@ -202,4 +205,103 @@ fn characteristic_function_matches_mpmath() {
     te(1.5, 0.5, 2.5).characteristic_function(0.0).unwrap(),
     Complex64::new(1.0, 0.0)
   );
+}
+
+/// The phase from the exact turns of `t·lower` (Payne–Hanek past the doubles) and `λ/(λ − it)` by Smith's division, so
+/// an inexact or overflowing product and an overflowing `t/λ` or `tL` keep the value (mpmath, 60 and 120 digits).
+#[test]
+fn characteristic_function_past_the_doubles() {
+  for (lam, lo, up, t, re, im) in [
+    (
+      1.0,
+      1e10,
+      f64::INFINITY,
+      10000000.1,
+      -4.5893984495249704e-8,
+      8.884673312592694e-8,
+    ),
+    (
+      1.0,
+      98765432109876.5,
+      f64::INFINITY,
+      1234.567,
+      0.0007325443436412384,
+      -0.0003456577961482882,
+    ),
+  ] {
+    let cf = te(lam, lo, up).characteristic_function(t).unwrap();
+    let err = (cf - Complex64::new(re, im)).norm() / Complex64::new(re, im).norm();
+    assert!(err < 1e-12, "TE({lam}, {lo}, {up}).cf({t}) = {cf}");
+  }
+  for (lam, up, t, want) in [
+    (1e-308, f64::INFINITY, 1e10, Complex64::new(0.0, 1e-318)),
+    (1e-308, f64::INFINITY, -1e10, Complex64::new(0.0, -1e-318)),
+    (
+      5e-324,
+      f64::MAX,
+      1e10,
+      Complex64::new(5.50705e-319, 6.3475e-319),
+    ),
+    (
+      5e-324,
+      f64::MAX,
+      -1e10,
+      Complex64::new(5.50705e-319, -6.3475e-319),
+    ),
+  ] {
+    assert_eq!(
+      te(lam, 0.0, up).characteristic_function(t),
+      Some(want),
+      "TE({lam:e}, 0, {up:e}).cf({t:e})"
+    );
+  }
+}
+
+/// At an infinite `t` the mgf is its limit, +∞ where the law has mass in `t`'s direction past 0 and 0 otherwise, and
+/// the cf its Riemann–Lebesgue limit 0; the gamma and beta have no mgf at any `t`.
+#[test]
+fn infinite_t_takes_the_limit() {
+  let (inf, ninf) = (f64::INFINITY, f64::NEG_INFINITY);
+  let exp = te(1e308, 0.0, inf);
+  assert_eq!(exp.moment_generating_function(ninf), Some(0.0));
+  assert_eq!(exp.moment_generating_function(inf), Some(inf));
+  for t in [inf, ninf] {
+    assert_eq!(
+      exp.characteristic_function(t),
+      Some(Complex64::new(0.0, 0.0))
+    );
+    assert_eq!(
+      te(1.5, 0.5, 2.5).characteristic_function(t),
+      Some(Complex64::new(0.0, 0.0))
+    );
+  }
+  let normal = |lo: f64, up: f64| SimdTruncatedNormal::<f64>::new(0.0, 1.0, lo, up);
+  for (lo, up, at_inf, at_ninf) in [
+    (-1.0, 2.0, inf, inf),
+    (0.0, 2.0, inf, 0.0),
+    (-2.0, 0.0, 0.0, inf),
+    (1.0, inf, inf, 0.0),
+  ] {
+    let law = normal(lo, up);
+    assert_eq!(
+      law.moment_generating_function(inf),
+      Some(at_inf),
+      "[{lo}, {up}]"
+    );
+    assert_eq!(
+      law.moment_generating_function(ninf),
+      Some(at_ninf),
+      "[{lo}, {up}]"
+    );
+  }
+  for t in [inf, ninf] {
+    assert_eq!(
+      SimdTruncatedGamma::<f64>::new(2.0, 1.0, 0.0, 1.0).moment_generating_function(t),
+      None
+    );
+    assert_eq!(
+      SimdTruncatedBeta::<f64>::new(2.0, 3.0, 0.0, 1.0).moment_generating_function(t),
+      None
+    );
+  }
 }

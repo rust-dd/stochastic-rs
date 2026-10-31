@@ -176,8 +176,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     );
     let mu_f64 = mu.to_f64().unwrap();
     let sigma_f64 = sigma.to_f64().unwrap();
-    let a_std = (lower.to_f64().unwrap() - mu_f64) / sigma_f64;
-    let b_std = (upper.to_f64().unwrap() - mu_f64) / sigma_f64;
+    let a_std = standardised(lower.to_f64().unwrap(), mu_f64, sigma_f64);
+    let b_std = standardised(upper.to_f64().unwrap(), mu_f64, sigma_f64);
     let f_lo = norm_cdf_scalar(a_std);
     let f_up = norm_cdf_scalar(b_std);
     // A left-tail interval is reflected into the right tail, so the tail sampler only sees `a >= 0`.
@@ -336,9 +336,19 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     T::from_f64_fast(self.unstandardise(z))
   }
 
+  /// From halves where `μ + σz` overflows short of its value.
   #[inline]
   fn unstandardise(&self, z: f64) -> f64 {
-    self.base.mean().to_f64().unwrap() + self.base.std_dev().to_f64().unwrap() * z
+    let (mu, sigma) = (
+      self.base.mean().to_f64().unwrap(),
+      self.base.std_dev().to_f64().unwrap(),
+    );
+    let x = mu + sigma * z;
+    if x.is_finite() || !z.is_finite() {
+      x
+    } else {
+      2.0 * (0.5 * mu + (0.5 * sigma) * z)
+    }
   }
 
   /// The near bound of an interval past `μ ± σ·f64::MAX`, whose law lies closer to it than any double: every draw.
@@ -353,15 +363,17 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
   }
 
   fn standardise(&self, x: f64) -> Option<f64> {
-    Some((x - self.base.mean().to_f64()?) / self.base.std_dev().to_f64()?)
+    Some(standardised(
+      x,
+      self.base.mean().to_f64()?,
+      self.base.std_dev().to_f64()?,
+    ))
   }
 
-  /// An infinite bound stays infinite.
   fn standardised_bounds(&self) -> Option<(f64, f64)> {
-    let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
     Some((
-      (self.lower.to_f64()? - mu) / sigma,
-      (self.upper.to_f64()? - mu) / sigma,
+      self.standardise(self.lower.to_f64()?)?,
+      self.standardise(self.upper.to_f64()?)?,
     ))
   }
 }
@@ -478,6 +490,17 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
 
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
     self.mgf(t)
+  }
+}
+
+/// `(x − μ)/σ` as `(½x − ½μ)/(½σ)` where `x − μ` overflows; an infinite `x` stays infinite.
+#[inline]
+fn standardised(x: f64, mu: f64, sigma: f64) -> f64 {
+  let d = x - mu;
+  if d.is_infinite() && x.is_finite() {
+    (0.5 * x - 0.5 * mu) / (0.5 * sigma)
+  } else {
+    d / sigma
   }
 }
 
