@@ -133,13 +133,13 @@ impl Kernel for Power {
 }
 
 /// Far below the clip the ladder reaches the range's own end instead of stopping at its 1e-18 mass rung, so
-/// `P(1.1, 1e-200)` (mpmath) takes a few dozen panels.
+/// `P(1 + f64(0.1), 1e-200)` (mpmath, 60 and 120 digits) takes a few dozen panels.
 #[test]
 fn ladder_reaches_an_end_far_below_the_clip() {
   let t = Truncation::new(Power, 0.0, f64::INFINITY);
   let p = t.cdf(1e-200);
   assert!(
-    ((p - 9.555790964652526e-221) / 9.555790964652526e-221).abs() < 1e-12,
+    ((p - 9.5557909646525e-221) / 9.5557909646525e-221).abs() < 1e-12,
     "{p}"
   );
   assert!(((t.quantile(p) - 1e-200) / 1e-200).abs() < 1e-12);

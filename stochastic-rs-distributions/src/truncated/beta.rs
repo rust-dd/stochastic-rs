@@ -434,7 +434,6 @@ mod tests {
   use crate::tests::scalar_draws;
   use crate::tests::scalar_ks_best_p;
 
-  /// Truncated beta draws stay in bounds.
   #[test]
   fn truncated_beta_samples_within_bounds() {
     for seed in [2718, 999, 42] {

@@ -293,8 +293,9 @@ impl<T: SimdFloatExt> Distribution<T> for SimdTruncatedGamma<T> {
 }
 
 impl<T: SimdFloatExt> DistributionExt for SimdTruncatedGamma<T> {
+  /// At an open upper end the limit 0, where the kernel's `(k − 1) ln x − x/θ` reads `∞ − ∞`.
   fn pdf(&self, x: f64) -> Option<f64> {
-    if x < self.lower.to_f64()? || x > self.upper.to_f64()? {
+    if x < self.lower.to_f64()? || x > self.upper.to_f64()? || x == f64::INFINITY {
       return Some(0.0);
     }
     Some(self.analytics()?.density(x))
@@ -367,7 +368,6 @@ mod tests {
   use crate::tests::scalar_draws;
   use crate::tests::scalar_ks_best_p;
 
-  /// Truncated gamma draws stay in bounds.
   #[test]
   fn truncated_gamma_samples_within_bounds() {
     for seed in [2718, 999, 42] {

@@ -119,8 +119,8 @@
 //! | `SimdGev` | KS, own cdf (all 3 shapes) | `gof_continuous.rs`: Gumbel, Frechet, reverse-Weibull |
 //! | `SimdTruncatedNormal` | KS, own cdf | `gof_truncated.rs` |
 //! | `SimdTruncatedExp` | KS, own cdf | `gof_truncated.rs` |
-//! | `SimdTruncatedBeta` | KS, own cdf | `gof_truncated.rs`; interval chosen wide enough to avoid the documented rejection-fallback regime |
-//! | `SimdTruncatedGamma` | KS, own cdf | `gof_truncated.rs`; same caveat as `SimdTruncatedBeta` |
+//! | `SimdTruncatedBeta` | KS, own cdf | `gof_truncated.rs`: the rejection and the inverse-cdf regime |
+//! | `SimdTruncatedGamma` | KS, own cdf | `gof_truncated.rs`: the rejection and the inverse-cdf regime |
 //! | `SimdBinomial` | chi-square, own cdf | `gof_discrete.rs`: both the BTRS and waiting-time branches |
 //! | `SimdGeometric` | chi-square, own cdf | `gof_discrete.rs`; this is the sampler the audit already found and fixed disagreeing with its own analytics (support convention) — see `src/geometric.rs` |
 //! | `SimdHypergeometric` | chi-square, own cdf | `gof_discrete.rs` |

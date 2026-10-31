@@ -246,6 +246,42 @@ fn quantile_at_zero_and_one_is_the_support() {
   }
 }
 
+/// At an open end the density's limit is 0, which `pdf(±∞)` answers.
+#[test]
+fn an_open_end_has_density_zero_at_infinity() {
+  let (n, p) = (f64::NEG_INFINITY, f64::INFINITY);
+  let laws: Vec<(&str, Box<dyn DistributionExt>, f64)> = vec![
+    (
+      "TruncatedNormal (−∞, 2]",
+      Box::new(SimdTruncatedNormal::<f64>::new(0.5, 2.0, n, 2.0)),
+      n,
+    ),
+    (
+      "TruncatedNormal [−1, ∞)",
+      Box::new(SimdTruncatedNormal::<f64>::new(0.5, 2.0, -1.0, p)),
+      p,
+    ),
+    (
+      "TruncatedGamma [0.8, ∞)",
+      Box::new(SimdTruncatedGamma::<f64>::new(2.5, 1.2, 0.8, p)),
+      p,
+    ),
+    (
+      "TruncatedGamma(0.7) [0, ∞)",
+      Box::new(SimdTruncatedGamma::<f64>::new(0.7, 1.0, 0.0, p)),
+      p,
+    ),
+    (
+      "TruncatedExp [0.5, ∞)",
+      Box::new(SimdTruncatedExp::<f64>::new(1.5, 0.5, p)),
+      p,
+    ),
+  ];
+  for (name, law, x) in laws {
+    assert_eq!(law.pdf(x), Some(0.0), "{name}: pdf({x})");
+  }
+}
+
 /// `E[e^{tX}] = +∞` answers `+∞`; on the boundary of the GH and GIG regions with λ < 0 the K-limit is finite (mpmath).
 #[test]
 fn a_divergent_mgf_is_infinite() {

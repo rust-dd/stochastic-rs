@@ -34,8 +34,7 @@ fn want(
   }
 }
 
-/// The bulk, a far upper tail where `P(k, b) − P(k, a)` keeps no digit, one past the mass's underflow, and a shape
-/// of 1e4.
+/// The bulk, a far upper tail where `P(k, b) − P(k, a)` keeps no digit, one where it rounds to 0, and a shape of 1e4.
 #[test]
 fn bulk_and_far_tails() {
   check(
@@ -91,7 +90,7 @@ fn bulk_and_far_tails() {
     [9950.0, 9980.0, 10020.0],
     &want(
       9979.191872186424,
-      1727.803774425042,
+      1727.8037744250419,
       -0.11270753716079686,
       -1.1031350364572177,
       0.00726288381045982,
@@ -111,7 +110,7 @@ fn narrow_intervals() {
       8.333224828851941e-6,
       -0.0035680929423097993,
       -1.1999744823608436,
-      100.0005224097927,
+      100.00052240979271,
       0.49871246819860365,
     ),
     (
@@ -128,7 +127,7 @@ fn narrow_intervals() {
       0.8000005000000868,
       8.333333333811492e-14,
       -3.608435123047343e-7,
-      -1.1999999999997397,
+      -1.19999999999974,
       999999.9999712968,
       0.499999869736302,
     ),

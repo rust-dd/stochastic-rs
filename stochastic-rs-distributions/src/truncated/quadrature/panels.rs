@@ -10,11 +10,12 @@ const SLOPE_BUDGET: f64 = 30.0;
 /// How far the log-kernel may move across one panel through its curvature.
 const CURVATURE_BUDGET: f64 = 8.0;
 
-/// The 32 positive nodes of the 64-point Gauss–Legendre rule on `[-1, 1]`, ascending (mpmath, 40 digits).
+/// The 32 positive nodes of the 64-point Gauss–Legendre rule on `[-1, 1]`, ascending: each the double nearest its exact
+/// value (mpmath at 60 digits, the same at 120).
 pub(super) const GL64_X: [f64; 32] = [
   0.024350292663424433,
   0.07299312178779904,
-  0.12146281929612054,
+  0.12146281929612056,
   0.16964442042399283,
   0.21742364374000708,
   0.2646871622087674,
@@ -48,7 +49,7 @@ pub(super) const GL64_X: [f64; 32] = [
 
 /// The weights of `GL64_X`; with the mirrored nodes they sum to 2.
 pub(super) const GL64_W: [f64; 32] = [
-  0.04869095700913972,
+  0.048690957009139724,
   0.04857546744150343,
   0.048344762234802954,
   0.04799938859645831,
@@ -65,7 +66,7 @@ pub(super) const GL64_W: [f64; 32] = [
   0.03705512854024005,
   0.035472213256882386,
   0.033805161837141606,
-  0.03205792835485156,
+  0.03205792835485155,
   0.030234657072402478,
   0.028339672614259483,
   0.02637746971505466,
@@ -79,7 +80,7 @@ pub(super) const GL64_W: [f64; 32] = [
   0.008846759826363947,
   0.006504457968978363,
   0.004147033260562468,
-  0.0017832807216964328,
+  0.001783280721696433,
 ];
 
 /// `[origin + l, origin + r]`; a graded panel's origin is its branch point, so its offsets stay exact beside it.

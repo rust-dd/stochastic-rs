@@ -66,7 +66,7 @@ fn moments_pdf_cdf_and_quantile() {
       Want {
         mean: 4.999999999166667e-10,
         variance: 8.333333333333335e-20,
-        skewness: 3.4641016151377545e-10,
+        skewness: 3.464101615137755e-10,
         kurtosis: -1.2,
         pdf_mid: Some(999999999.9999999),
         cdf_mid: Some(0.500000000125),
