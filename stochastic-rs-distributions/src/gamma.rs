@@ -44,7 +44,7 @@ pub struct SimdGamma<T> {
 #[derive(Clone, Debug)]
 pub struct GammaState<T: SimdFloatExt, R: SimdRngExt> {
   normal: StreamState<T, R, 64>,
-  rng: R,
+  pub(crate) rng: R,
   buf: Buffered<T, 16>,
 }
 

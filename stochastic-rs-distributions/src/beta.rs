@@ -34,7 +34,7 @@ pub struct SimdBeta<T> {
 #[doc(hidden)]
 #[derive(Clone, Debug)]
 pub struct BetaState<T: SimdFloatExt, R: SimdRngExt> {
-  g1: GammaState<T, R>,
+  pub(crate) g1: GammaState<T, R>,
   g2: GammaState<T, R>,
   buf: Buffered<T, 16>,
 }

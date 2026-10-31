@@ -2,6 +2,9 @@
 
 use stochastic_rs_distributions::traits::DistributionExt;
 
+mod beta;
+mod exp;
+mod gamma;
 mod normal;
 
 /// Reference values of one interval; `None` where the reference run printed none.

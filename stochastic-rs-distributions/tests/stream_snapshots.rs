@@ -467,6 +467,14 @@ snapshot_singles! {
     let mut s = SimdTruncatedGamma::<f32>::new(2.0, 1.0, 1.0, 5.0).seeded(det);
     move || vec![s.sample().bits()]
   };
+  truncated_gamma_inversion_f64: ScalarKind::F64, |det| {
+    let mut s = SimdTruncatedGamma::<f64>::new(2.5, 1.2, 45.0, 60.0).seeded(det);
+    move || vec![s.sample().bits()]
+  };
+  truncated_beta_inversion_f64: ScalarKind::F64, |det| {
+    let mut s = SimdTruncatedBeta::<f64>::new(2.0, 3.0, 0.99, 0.999).seeded(det);
+    move || vec![s.sample().bits()]
+  };
   complex_normal_f64: ScalarKind::F64, |det| {
     let mut s = ComplexDistribution::new(
       SimdNormal::<f64>::new(0.0, 1.0),

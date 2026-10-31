@@ -24,7 +24,9 @@ use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::distributions::pareto::SimdPareto;
 use stochastic_rs::distributions::poisson::SimdPoisson;
 use stochastic_rs::distributions::studentt::SimdStudentT;
+use stochastic_rs::distributions::truncated::SimdTruncatedBeta;
 use stochastic_rs::distributions::truncated::SimdTruncatedExp;
+use stochastic_rs::distributions::truncated::SimdTruncatedGamma;
 use stochastic_rs::distributions::truncated::SimdTruncatedNormal;
 use stochastic_rs::distributions::uniform::SimdUniform;
 use stochastic_rs::distributions::variance_gamma::SimdVarianceGamma;
@@ -256,6 +258,8 @@ fn bench_distribution_ext(c: &mut Criterion) {
   let gig = SimdGig::<f64>::new(1.5, 2.0, 0.5);
   let vg = SimdVarianceGamma::<f64>::new(0.2, 0.3, 0.1, 0.0);
   let truncated_normal = SimdTruncatedNormal::<f64>::new(0.5, 2.0, -1.0, 2.0);
+  let truncated_gamma = SimdTruncatedGamma::<f64>::new(2.5, 1.2, 0.8, 4.0);
+  let truncated_beta = SimdTruncatedBeta::<f64>::new(2.0, 3.0, 0.2, 0.7);
   let gh_ts = (0..4096)
     .map(|i| -2.4 + 3.8 * i as f64 / 4095.0)
     .collect::<Vec<_>>();
@@ -358,6 +362,25 @@ fn bench_distribution_ext(c: &mut Criterion) {
       )
     })
   });
+  // `xs` mapped onto `[0.8, 4]` and `[0.2, 0.7]`.
+  group.bench_function("pdf/truncated_gamma", |b| {
+    b.iter(|| {
+      black_box(
+        xs.iter()
+          .map(|&x| truncated_gamma.pdf(2.4 + 0.4 * x).unwrap())
+          .sum::<f64>(),
+      )
+    })
+  });
+  group.bench_function("pdf/truncated_beta", |b| {
+    b.iter(|| {
+      black_box(
+        xs.iter()
+          .map(|&x| truncated_beta.pdf(0.45 + 0.0625 * x).unwrap())
+          .sum::<f64>(),
+      )
+    })
+  });
   group.finish();
 }
 
@@ -396,6 +419,17 @@ fn bench_truncated_exp(c: &mut Criterion) {
       s.fill_slice(&mut out);
       black_box(&out);
     })
+  });
+  group.finish();
+}
+
+/// The rejection regime: `[1, 5]` holds 0.70 of the Gamma(2, 1) mass.
+fn bench_truncated_gamma(c: &mut Criterion) {
+  let mut group = c.benchmark_group("TruncatedGamma");
+  let law = SimdTruncatedGamma::<f64>::new(2.0, 1.0, 1.0, 5.0);
+  group.bench_function("seeded/f64", |b| {
+    let mut s = law.seeded(&Deterministic::new(7));
+    b.iter(|| black_box(s.sample()))
   });
   group.finish();
 }
@@ -474,6 +508,7 @@ criterion_group!(
   discrete::bench_hypergeometric,
   discrete::bench_geometric,
   bench_truncated_exp,
+  bench_truncated_gamma,
   bench_gev_gpd,
   bench_truncated_normal,
   bench_distribution_ext,

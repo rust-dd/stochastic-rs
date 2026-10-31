@@ -76,16 +76,8 @@
 //! [`truncated::SimdTruncatedBeta`] and [`truncated::SimdTruncatedGamma`]
 //! are not a family to choose among — each restricts one specific base
 //! distribution to an interval, so the choice is just "which base did you
-//! already want." Two of the four have a real failure mode worth knowing
-//! before you truncate to a very tight interval: when rejection
-//! acceptance falls below the crate's threshold,
-//! [`truncated::SimdTruncatedBeta`] and [`truncated::SimdTruncatedGamma`]
-//! silently return the clamped interval midpoint rather than a genuine
-//! draw — widen the interval if you see draws piling up on one value.
-//! [`truncated::SimdTruncatedNormal`] and [`truncated::SimdTruncatedExp`]
-//! have no such fallback: tight-interval Normal routes through an exact
-//! closed-form inverse-CDF instead, and Exponential never needed rejection
-//! in the first place.
+//! already want." Each draws exactly on any interval: below 1e-3 of the
+//! base mass the beta and gamma invert their cdf instead of rejecting.
 //!
 //! **Discrete counts**: [`poisson::SimdPoisson`] (constant-rate count) and
 //! [`binomial::SimdBinomial`] (fixed trials, *with* replacement) are the

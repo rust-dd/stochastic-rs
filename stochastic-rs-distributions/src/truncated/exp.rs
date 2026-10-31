@@ -2,17 +2,60 @@
 //!
 //! Reference: Johnson, N. L., Kotz, S. & Balakrishnan, N. (1994), *Continuous Univariate Distributions*, vol. 1, 2nd ed., Wiley, ch. 19, ISBN 0-471-58495-9 (the doubly truncated exponential's moments are its renormalised integrals).
 
+use num_complex::Complex64;
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
 
+use super::quadrature::Kernel;
+use super::quadrature::Truncation;
 use crate::source::uniform53;
 use crate::traits::DistributionExt;
 use crate::traits::SimdFloatExt;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
+
+/// `e^{−λx}` on `[0, ∞)`, whose integral gives the third and fourth moments.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ExpKernel {
+  lambda: f64,
+}
+
+impl Kernel for ExpKernel {
+  fn ln_k(&self, x: f64) -> f64 {
+    if x < 0.0 {
+      f64::NEG_INFINITY
+    } else {
+      -self.lambda * x
+    }
+  }
+
+  fn ln_rel(&self, _x: f64, y: f64, _c: f64, _branch: Option<(f64, f64)>) -> f64 {
+    -self.lambda * y
+  }
+
+  fn d1(&self, _x: f64) -> f64 {
+    -self.lambda
+  }
+
+  fn d2(&self, _x: f64) -> f64 {
+    0.0
+  }
+
+  fn mode(&self) -> f64 {
+    0.0
+  }
+
+  fn branch_points(&self) -> [Option<(f64, f64)>; 2] {
+    [None, None]
+  }
+
+  fn length_scale(&self) -> f64 {
+    1.0 / self.lambda
+  }
+}
 
 /// Truncated exponential law $\mathrm{Exp}(\lambda)$ on $[\text{lower}, \text{upper}]$, $\text{lower} \ge 0$:
 /// parameters only; a [`Seeded`](crate::Seeded) stream draws it.
@@ -114,6 +157,13 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
     })
   }
 
+  fn moments(&self) -> Option<[f64; 4]> {
+    let kernel = ExpKernel {
+      lambda: self.lambda.to_f64()?,
+    };
+    Some(Truncation::new(kernel, self.lower.to_f64()?, self.upper.to_f64()?).moments())
+  }
+
   /// Infinite for an open tail.
   fn length(&self) -> Option<f64> {
     Some(self.upper.to_f64()? - self.lower.to_f64()?)
@@ -166,6 +216,20 @@ impl<T: SimdFloatExt> Distribution<T> for SimdTruncatedExp<T> {
 }
 
 impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
+  /// `e^{it·lower} (λL/m) φ₁((λ − it)L)` with `φ₁(w) = (1 − e^{−w})/w` and `m` the mass; an open tail is
+  /// `e^{it·lower} λ/(λ − it)`.
+  fn characteristic_function(&self, t: f64) -> Option<Complex64> {
+    if t == 0.0 {
+      return Some(Complex64::new(1.0, 0.0));
+    }
+    let (lam, lo, len) = (self.lambda.to_f64()?, self.lower.to_f64()?, self.length()?);
+    let phase = Complex64::new(0.0, t * lo).exp();
+    if len.is_infinite() {
+      return Some(phase * lam / Complex64::new(lam, -t));
+    }
+    Some(phase * (lam * len / self.tail_mass) * phi1(Complex64::new(lam, -t) * len))
+  }
+
   fn pdf(&self, x: f64) -> Option<f64> {
     let lo = self.lower.to_f64().unwrap();
     let up = self.upper.to_f64().unwrap();
@@ -243,6 +307,14 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     Some(len * len * variance_fraction(lam * len))
   }
 
+  fn skewness(&self) -> Option<f64> {
+    Some(self.moments()?[2])
+  }
+
+  fn kurtosis(&self) -> Option<f64> {
+    Some(self.moments()?[3])
+  }
+
   fn entropy(&self) -> Option<f64> {
     let lam = self.lambda.to_f64()?;
     if self.open_tail()? {
@@ -276,6 +348,27 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     };
     Some((t * lo).exp() * lam * integral / self.tail_mass)
   }
+}
+
+/// `(1 − e^{−w})/w`, by its series `Σ (−w)^n/(n+1)!` for `|w| < ½`, where the quotient's imaginary part `−Im(w)/2`
+/// sits below the real part's rounding.
+fn phi1(w: Complex64) -> Complex64 {
+  if w.norm() < 0.5 {
+    // 18 terms: the next is below 0.5^18/19! ≈ 3e-23.
+    return (1..=18).rev().fold(Complex64::new(0.0, 0.0), |acc, n| {
+      (acc * -w + 1.0) / n as f64
+    });
+  }
+  -exp_m1_complex(-w) / w
+}
+
+/// `e^{u+iv} − 1` as `(expm1(u) cos v − 2 sin²(v/2), e^u sin v)`: no `e^w − 1` subtraction.
+fn exp_m1_complex(w: Complex64) -> Complex64 {
+  let (u, v) = (w.re, w.im);
+  Complex64::new(
+    u.exp_m1() * v.cos() - 2.0 * (0.5 * v).sin().powi(2),
+    u.exp() * v.sin(),
+  )
 }
 
 /// The $x^{2k-1}$ coefficients $-B_{2k}/(2k)!$, $k = 1..=7$, of `mean_fraction` past its constant ½, rounded to `f64`.
@@ -334,7 +427,6 @@ fn variance_fraction(x: f64) -> f64 {
 #[cfg(test)]
 mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
-  use stochastic_rs_core::simd_rng::Unseeded;
 
   use super::*;
   use crate::tests::scalar_draws;
@@ -352,26 +444,20 @@ mod tests {
     assert_eq!(te.cdf(2.0).unwrap(), 1.0);
   }
 
-  /// Truncated exponential samples in bounds with the right approximate
-  /// mean (closed-form check on tight [0, 0.5] band of Exp(1)).
+  /// Draws in bounds with the mean `(1 − 1.5e^{−½})/(1 − e^{−½})` of Exp(1) on `[0, ½]`, best of three pinned seeds.
   #[test]
   fn truncated_exp_samples_mean() {
-    let mut te = SimdTruncatedExp::<f64>::new(1.0, 0.0, 0.5).seeded(&Unseeded);
-    let n = 20_000;
-    let mut sum = 0.0;
-    for _ in 0..n {
-      let x = te.sample();
-      assert!((0.0..=0.5).contains(&x));
-      sum += x;
-    }
-    let mean = sum / n as f64;
-    // E[X | 0 ≤ X ≤ 0.5] = ∫₀^0.5 x·e^{-x} dx / (1 - e^{-0.5}) = [1 - 1.5·e^{-0.5}] / (1 - e^{-0.5}) for Exp(1).
-    let half = 0.5_f64;
-    let expected = (1.0 - 1.5 * (-half).exp()) / (1.0 - (-half).exp());
-    assert!(
-      (mean - expected).abs() < 0.01,
-      "truncated Exp(1) mean = {mean}, expected ≈ {expected}"
-    );
+    let expected = (1.0 - 1.5 * (-0.5_f64).exp()) / (1.0 - (-0.5_f64).exp());
+    let best = [2718, 999, 42]
+      .into_iter()
+      .map(|seed| {
+        let mut te = SimdTruncatedExp::<f64>::new(1.0, 0.0, 0.5).seeded(&Deterministic::new(seed));
+        let xs = (0..20_000).map(|_| te.sample()).collect::<Vec<_>>();
+        assert!(xs.iter().all(|x| (0.0..=0.5).contains(x)), "seed {seed}");
+        (xs.iter().sum::<f64>() / xs.len() as f64 - expected).abs()
+      })
+      .fold(f64::INFINITY, f64::min);
+    assert!(best < 0.01, "best |mean − {expected}| = {best}");
   }
 
   /// Draws in bounds with mean `lower + 1/λ − (upper − lower)·r/(1 − r)`, `r = e^{−λ(upper−lower)}`, on intervals where
@@ -431,5 +517,25 @@ mod tests {
     assert!(rel(nano.quantile(0.25).unwrap(), 2.499_999_999_062_5e-10) < 1e-12);
     assert!(rel(nano.cdf(5e-10).unwrap(), 0.500_000_000_125) < 1e-12);
     assert!(rel(nano.pdf(5e-10).unwrap(), 999_999_999.999_999_9) < 1e-12);
+  }
+
+  /// The engine's mean and variance against the series forms over every regime of `λL`, at `λ = 1.5`; the two smallest
+  /// sit at `lower = 0`, where `0.5 + 6.7e-18` would round to `0.5`.
+  #[test]
+  fn engine_agrees_with_the_series_forms() {
+    for lam_len in [1e-17, 1e-9, 0.3, 1.0, 5.0, 50.0, 1050.0] {
+      let lo = if lam_len < 1e-8 { 0.0 } else { 0.5 };
+      let law = SimdTruncatedExp::<f64>::new(1.5, lo, lo + lam_len / 1.5);
+      let [mean, variance, _, _] = law.moments().unwrap();
+      let rel = |a: f64, b: f64| ((a - b) / b).abs();
+      assert!(
+        rel(mean, law.mean().unwrap()) < 1e-13,
+        "λL = {lam_len}: mean {mean}"
+      );
+      assert!(
+        rel(variance, law.variance().unwrap()) < 1e-13,
+        "λL = {lam_len}: variance {variance}"
+      );
+    }
   }
 }

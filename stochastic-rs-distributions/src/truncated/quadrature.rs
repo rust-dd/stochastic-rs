@@ -116,6 +116,11 @@ impl<K: Kernel> Truncation<K> {
     t
   }
 
+  /// `ln ∫_lo^up k(x) dx`.
+  pub(super) fn ln_mass(&self) -> f64 {
+    self.kernel.ln_k(self.centre) + self.m0.ln()
+  }
+
   /// `ln(∫k over self / ∫k over other)`, formed without either mass's large logarithm.
   pub(super) fn ln_mass_over(&self, other: &Self) -> f64 {
     let (c, o) = (self.centre, other.centre);
@@ -256,10 +261,25 @@ impl<K: Kernel> Truncation<K> {
     } else {
       0.5
     };
-    let mut x = if from_lo {
-      l + (r - l) * frac
+    // The start inverts the panel's exponential model, its decay read from the kernel at the two ends.
+    let c = self.centre;
+    let decay = self.kernel.ln_rel(l, l - c, c, None) - self.kernel.ln_rel(r, r - c, c, None);
+    let span = if from_lo { decay } else { -decay };
+    let v = if span.is_finite() && span.abs() > 1e-8 {
+      let share = frac * -(-span).exp_m1();
+      -(-share).ln_1p() / span
     } else {
-      r - (r - l) * frac
+      frac
+    };
+    let v = if v.is_finite() {
+      v.clamp(0.0, 1.0)
+    } else {
+      frac
+    };
+    let mut x = if from_lo {
+      l + (r - l) * v
+    } else {
+      r - (r - l) * v
     };
     let tol = f64::EPSILON * (r - l);
     for _ in 0..100 {

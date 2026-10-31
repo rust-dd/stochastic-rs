@@ -1,14 +1,5 @@
-//! Kolmogorov-Smirnov goodness-of-fit for the four `Truncated*`
-//! wrappers, against their own `cdf`. See `tests/gof_support/mod.rs` for
-//! the full design rationale, citations, and alpha.
-//!
-//! `SimdTruncatedBeta` and `SimdTruncatedGamma` fall back to the clamped
-//! interval midpoint after 1000 failed rejection attempts on very tight
-//! intervals (`src/truncated.rs`'s own module doc); the intervals below
-//! are wide enough (matching that file's own in-module test fixtures)
-//! that acceptance stays well clear of that fallback, so this test
-//! exercises the genuine rejection-sampled draws, not the degenerate
-//! fallback path.
+//! Kolmogorov-Smirnov goodness-of-fit for the four `Truncated*` wrappers against their own `cdf` (design, citations and
+//! alpha in `tests/gof_support/mod.rs`); the gamma and beta in both regimes, rejection and inversion.
 
 mod gof_support;
 
@@ -61,10 +52,38 @@ fn simd_truncated_beta_matches_own_cdf() {
   });
 }
 
+/// `[0.99, 0.999]` holds 4e-6 of the Beta(2, 3) mass: the inverse-cdf regime.
+#[test]
+fn simd_truncated_beta_inversion_matches_own_cdf() {
+  gof_support::assert_ks_accepts(N, |seed| {
+    let dist = SimdTruncatedBeta::<f64>::new(2.0, 3.0, 0.99, 0.999);
+    let mut stream = dist.seeded(&Deterministic::new(seed));
+    let xs = (0..N).map(|_| stream.sample()).collect::<Vec<_>>();
+    (
+      xs,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
+    )
+  });
+}
+
 #[test]
 fn simd_truncated_gamma_matches_own_cdf() {
   gof_support::assert_ks_accepts(N, |seed| {
     let dist = SimdTruncatedGamma::<f64>::new(2.0, 1.0, 1.0, 5.0);
+    let mut stream = dist.seeded(&Deterministic::new(seed));
+    let xs = (0..N).map(|_| stream.sample()).collect::<Vec<_>>();
+    (
+      xs,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
+    )
+  });
+}
+
+/// `[45, 60]` holds 9e-15 of the Gamma(2.5, 1.2) mass: the inverse-cdf regime.
+#[test]
+fn simd_truncated_gamma_inversion_matches_own_cdf() {
+  gof_support::assert_ks_accepts(N, |seed| {
+    let dist = SimdTruncatedGamma::<f64>::new(2.5, 1.2, 45.0, 60.0);
     let mut stream = dist.seeded(&Deterministic::new(seed));
     let xs = (0..N).map(|_| stream.sample()).collect::<Vec<_>>();
     (
