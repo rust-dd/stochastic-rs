@@ -4,6 +4,7 @@
 mod beta_gamma;
 mod exp;
 mod normal;
+mod quadrature;
 
 pub use beta_gamma::SimdTruncatedBeta;
 pub use beta_gamma::SimdTruncatedGamma;

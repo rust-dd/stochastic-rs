@@ -255,6 +255,7 @@ fn bench_distribution_ext(c: &mut Criterion) {
   let gh = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2);
   let gig = SimdGig::<f64>::new(1.5, 2.0, 0.5);
   let vg = SimdVarianceGamma::<f64>::new(0.2, 0.3, 0.1, 0.0);
+  let truncated_normal = SimdTruncatedNormal::<f64>::new(0.5, 2.0, -1.0, 2.0);
   let gh_ts = (0..4096)
     .map(|i| -2.4 + 3.8 * i as f64 / 4095.0)
     .collect::<Vec<_>>();
@@ -334,6 +335,25 @@ fn bench_distribution_ext(c: &mut Criterion) {
         gig_ts
           .iter()
           .map(|&t| gig.moment_generating_function(t).unwrap())
+          .sum::<f64>(),
+      )
+    })
+  });
+  // `xs` mapped onto the law's `[-1, 2]`.
+  group.bench_function("pdf/truncated_normal", |b| {
+    b.iter(|| {
+      black_box(
+        xs.iter()
+          .map(|&x| truncated_normal.pdf(0.5 + 0.375 * x).unwrap())
+          .sum::<f64>(),
+      )
+    })
+  });
+  group.bench_function("cdf/truncated_normal", |b| {
+    b.iter(|| {
+      black_box(
+        xs.iter()
+          .map(|&x| truncated_normal.cdf(0.5 + 0.375 * x).unwrap())
           .sum::<f64>(),
       )
     })

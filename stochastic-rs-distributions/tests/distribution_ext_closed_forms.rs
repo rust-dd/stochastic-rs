@@ -325,7 +325,8 @@ fn truncated_normal_moments_quantile_entropy_mgf() {
   assert!(rel(open_up.median().unwrap(), 1.075_932_306_215_886_5) < 1e-10);
 }
 
-/// Shifts that push `Φ(β − σt) − Φ(α − σt)` into a tail, where `½(1 + erf)` cancels to `0`; past about 37.5σ, NaN.
+/// Shifts that push `Φ(β − σt) − Φ(α − σt)` into a tail, where `½(1 + erf)` cancels to `0`; finite at 40σ, where that
+/// mass is subnormal.
 #[test]
 fn truncated_normal_mgf_keeps_its_digits_in_the_tails() {
   let wide = (0.5, 2.0, -1.0, 2.0);
@@ -355,7 +356,10 @@ fn truncated_normal_mgf_keeps_its_digits_in_the_tails() {
     );
   }
   let far = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -1.0, 2.0).moment_generating_function(40.0);
-  assert!(far.unwrap().is_nan(), "mgf(40) = {far:?}");
+  assert!(
+    rel(far.unwrap(), 9.610_078_511_202_24e31) < 1e-12,
+    "mgf(40) = {far:?}"
+  );
 }
 
 #[test]
