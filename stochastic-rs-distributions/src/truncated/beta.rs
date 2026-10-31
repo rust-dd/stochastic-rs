@@ -11,9 +11,11 @@ use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
 
+use super::SimdTruncatedGamma;
 use super::local::Local;
 use super::local::Model;
 use super::local::Signed;
+use super::local::ln_cubic;
 use super::quadrature::Truncation;
 use crate::beta::BetaState;
 use crate::beta::SimdBeta;
@@ -38,7 +40,15 @@ pub struct SimdTruncatedBeta<T> {
   /// The base law's mass on the interval: the sampler's regime switch.
   mass: f64,
   /// The interval's kernel integral, built by the first analytic call or inverse-cdf draw.
-  analytics: OnceLock<Model<BetaKernel>>,
+  analytics: OnceLock<Analytics>,
+}
+
+/// Within the subnormals beside 0, `(1 − x)^{β−1} = e^{−(β−1)x}` to within 2⁻¹⁰²⁰: the law is the truncated gamma of
+/// rate `β − 1`, which runs at a power-of-two unit.
+#[derive(Clone, Debug)]
+enum Analytics {
+  Beta(Model<BetaKernel>),
+  Gamma(SimdTruncatedGamma<f64>),
 }
 
 impl<T: fmt::Debug> fmt::Debug for SimdTruncatedBeta<T> {
@@ -146,16 +156,26 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
     }
   }
 
-  fn analytics(&self) -> Option<&Model<BetaKernel>> {
+  fn analytics(&self) -> Option<&Analytics> {
     if let Some(m) = self.analytics.get() {
       return Some(m);
     }
     let (a, b) = (self.base.alpha().to_f64()?, self.base.beta().to_f64()?);
     let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
     Some(self.analytics.get_or_init(|| {
-      Model::of(Truncation::new(BetaKernel::new(a, b), lo, up), |r| {
-        self.local(r)
-      })
+      if up < f64::MIN_POSITIVE {
+        // Below a unit `β` the factor is 1 to within 2⁻¹⁰²², as `e^{−x/f64::MAX}` is.
+        let theta = if b > 1.0 {
+          (1.0 / (b - 1.0)).min(f64::MAX)
+        } else {
+          f64::MAX
+        };
+        return Analytics::Gamma(SimdTruncatedGamma::new(a, theta, lo, up));
+      }
+      Analytics::Beta(Model::of(
+        Truncation::new(BetaKernel::new(a, b), lo, up),
+        |r| self.local(r),
+      ))
     }))
   }
 
@@ -167,15 +187,18 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
     let (ln_r, ln_rc) = (r.ln(), (1.0 - r).ln());
     let slope = Signed::over(a - 1.0, ln_r).plus(Signed::over(1.0 - b, ln_rc));
     let curvature = Signed::over(1.0 - a, 2.0 * ln_r).plus(Signed::over(1.0 - b, 2.0 * ln_rc));
-    Local::new(r, (lo - r, up - r), slope, curvature)
+    Local::new(r, (lo - r, up - r), slope, curvature, |y| {
+      ln_cubic(a - 1.0, y / r).max(ln_cubic(b - 1.0, -y / (1.0 - r))) + std::f64::consts::LN_2
+    })
   }
 
   /// `(mean, variance, skewness, excess kurtosis)`.
   fn moments(&self) -> Option<[f64; 4]> {
-    Some(match self.analytics()? {
-      Model::Full(t) => t.moments(1.0),
-      Model::Local(l) => l.moments(),
-    })
+    match self.analytics()? {
+      Analytics::Beta(Model::Full(t)) => Some(t.moments(1.0)),
+      Analytics::Beta(Model::Local(l)) => Some(l.moments()),
+      Analytics::Gamma(g) => g.moments(),
+    }
   }
 
   /// The first shape `α` of the untruncated base.
@@ -218,8 +241,9 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
   fn invert(&self, u: f64) -> T {
     let (lo, up) = (self.lower.to_f64().unwrap(), self.upper.to_f64().unwrap());
     let x = match self.analytics() {
-      Some(Model::Full(t)) => t.quantile(u).value(),
-      Some(Model::Local(l)) => l.quantile(u),
+      Some(Analytics::Beta(Model::Full(t))) => t.quantile(u).value(),
+      Some(Analytics::Beta(Model::Local(l))) => l.quantile(u),
+      Some(Analytics::Gamma(g)) => g.quantile(u).unwrap_or(f64::NAN),
       None => f64::NAN,
     };
     T::from_f64_fast(x.clamp(lo, up))
@@ -264,8 +288,9 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
       return Some(0.0);
     }
     Some(match self.analytics()? {
-      Model::Full(t) => t.density(x, 0.0),
-      Model::Local(l) => l.pdf(x, 0.0),
+      Analytics::Beta(Model::Full(t)) => t.density(x, 0.0),
+      Analytics::Beta(Model::Local(l)) => l.pdf(x, 0.0),
+      Analytics::Gamma(g) => g.pdf(x)?,
     })
   }
 
@@ -277,8 +302,9 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
       return Some(1.0);
     }
     Some(match self.analytics()? {
-      Model::Full(t) => t.cdf(x),
-      Model::Local(l) => l.cdf(x),
+      Analytics::Beta(Model::Full(t)) => t.cdf(x),
+      Analytics::Beta(Model::Local(l)) => l.cdf(x),
+      Analytics::Gamma(g) => g.cdf(x)?,
     })
   }
 
@@ -294,8 +320,9 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
       return Some(up);
     }
     let x = match self.analytics()? {
-      Model::Full(t) => t.quantile(p).value(),
-      Model::Local(l) => l.quantile(p),
+      Analytics::Beta(Model::Full(t)) => t.quantile(p).value(),
+      Analytics::Beta(Model::Local(l)) => l.quantile(p),
+      Analytics::Gamma(g) => g.quantile(p)?,
     };
     Some(x.clamp(lo, up))
   }
@@ -357,8 +384,9 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
 
   fn entropy(&self) -> Option<f64> {
     Some(match self.analytics()? {
-      Model::Full(t) => t.entropy(),
-      Model::Local(l) => l.entropy(),
+      Analytics::Beta(Model::Full(t)) => t.entropy(),
+      Analytics::Beta(Model::Local(l)) => l.entropy(),
+      Analytics::Gamma(g) => g.entropy()?,
     })
   }
 }

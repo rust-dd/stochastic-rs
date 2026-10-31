@@ -14,6 +14,7 @@ use stochastic_rs_core::simd_rng::SimdRngExt;
 use super::local::Local;
 use super::local::Model;
 use super::local::Signed;
+use super::local::ln_cubic;
 use super::quadrature::Point;
 use super::quadrature::Truncation;
 use super::quadrature::ldexp;
@@ -194,6 +195,7 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
       (lo - r, up - r),
       slope,
       Signed::over(1.0 - k, 2.0 * ln_r),
+      |y| ln_cubic(k - 1.0, y / r),
     )
   }
 
@@ -221,7 +223,7 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
   }
 
   /// `(mean, variance, skewness, excess kurtosis)` in the law's coordinate.
-  fn moments(&self) -> Option<[f64; 4]> {
+  pub(super) fn moments(&self) -> Option<[f64; 4]> {
     Some(match self.analytics()? {
       Model::Full(t) => {
         let [mean, variance, skewness, kurtosis] = t.moments(1.0);

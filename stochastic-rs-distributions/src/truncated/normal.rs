@@ -233,7 +233,14 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     } else {
       Signed::over(0.5 * mu - 0.5 * r, ln_var - std::f64::consts::LN_2)
     };
-    Local::new(r, (lo - r, up - r), slope, Signed::new(-1.0, -ln_var))
+    // The log-kernel is its quadratic: no remainder.
+    Local::new(
+      r,
+      (lo - r, up - r),
+      slope,
+      Signed::new(-1.0, -ln_var),
+      |_| f64::NEG_INFINITY,
+    )
   }
 
   /// `(mean, variance, skewness, excess kurtosis)`.

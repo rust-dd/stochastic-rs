@@ -60,6 +60,18 @@ impl Signed {
   }
 }
 
+/// `ln` of a bound on `|e1|·|ln(1 + z) − z + z²/2|`, the term `e1·ln(1 + z)` past its quadratic: the derivative
+/// `z²/(1 + z)` bounds it by `|z|³/(3 min(1, 1 + z))`.
+pub(super) fn ln_cubic(e1: f64, z: f64) -> f64 {
+  if e1 == 0.0 || z == 0.0 {
+    return f64::NEG_INFINITY;
+  }
+  if z <= -1.0 || z.is_nan() {
+    return f64::INFINITY;
+  }
+  e1.abs().ln() + 3.0 * z.abs().ln() - 3f64.ln() - z.min(0.0).ln_1p()
+}
+
 /// `e^{a u + b u²/2}` relative to `u = 0`, about the reference point `c`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct QuadKernel {
@@ -146,13 +158,14 @@ pub(super) struct Local {
 }
 
 impl Local {
-  /// `e^{ψy + κy²/2}` on `[r + lo, r + up]` in units of the shortest of its e-fold length, normal width and interval,
-  /// so its coefficients are at most 1 and its interval at least 1 long; `None` where no such scale exists.
+  /// `e^{ψy + κy²/2}` on `[r + lo, r + up]` in units of the shortest of its e-fold length, normal width and interval;
+  /// `None` where no such scale exists, or where `ln_cubic(y)`, its remainder's log bound, passes ε at a clipped end.
   pub(super) fn new(
     r: f64,
     (lo, up): (f64, f64),
     slope: Signed,
     curvature: Signed,
+    ln_cubic: impl Fn(f64) -> f64,
   ) -> Option<Self> {
     // From halves only where the width overflows: half a subnormal width rounds to 0.
     let ln_width = if (up - lo).is_finite() {
@@ -172,6 +185,10 @@ impl Local {
       c: 0.0,
     };
     let t = Truncation::new(kernel, ldexp(lo, -p), ldexp(up, -p));
+    let (a, b) = t.clipped();
+    if ln_cubic(ldexp(a, p)).max(ln_cubic(ldexp(b, p))) > f64::EPSILON.ln() {
+      return None;
+    }
     Some(Self { r, p, t })
   }
 

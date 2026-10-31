@@ -17,7 +17,11 @@ fn tb(a: f64, b: f64, lo: f64, up: f64) -> SimdTruncatedBeta<f64> {
 }
 
 /// Skewness, kurtosis and entropy at 1e-12, kurtosis 1e-11, a skewness of 0 to 1e-14 absolute.
-fn shape(name: &str, law: &impl DistributionExt, [skewness, kurtosis, entropy]: [f64; 3]) {
+fn shape(
+  name: &str,
+  law: &(impl DistributionExt + ?Sized),
+  [skewness, kurtosis, entropy]: [f64; 3],
+) {
   close(
     name,
     "skewness",
@@ -202,4 +206,70 @@ fn modes_within_a_subnormal_of_a_kernel_zero() {
       ],
     );
   }
+}
+
+/// Mean, median, the cdf at the double midpoint, skewness, kurtosis and entropy of a law on `[lo, up]`.
+fn subnormal_row(name: &str, law: &impl DistributionExt, (lo, up): (f64, f64), want: [f64; 6]) {
+  let [mean, median, cdf, skewness, kurtosis, entropy] = want;
+  close(name, "mean", law.mean().unwrap(), mean, 1e-12, 0.0);
+  close(name, "median", law.median().unwrap(), median, 1e-12, 0.0);
+  let mid = lo + 0.5 * (up - lo);
+  close(name, "cdf(mid)", law.cdf(mid).unwrap(), cdf, 1e-12, 0.0);
+  shape(name, law, [skewness, kurtosis, entropy]);
+}
+
+/// Below the normal doubles beside 0 the beta is a gamma kernel at a power-of-two unit, not a quadratic about its end
+/// (mpmath, 60 and 120 digits).
+#[test]
+fn laws_within_the_subnormals_beside_zero() {
+  let tg = |k: f64, lo: f64, up: f64| SimdTruncatedGamma::<f64>::new(k, 1.0, lo, up);
+  let two = [
+    6.666666666667e-311,
+    7.0710678118656e-311,
+    0.2500000000000247,
+    -0.565685424949238,
+    -0.6,
+    -713.9945260087142,
+  ];
+  let half = [
+    3.333333333333e-311,
+    2.5e-311,
+    0.707106781186565,
+    0.6388765649999399,
+    -0.8571428571428571,
+    -714.1082316475943,
+  ];
+  let whole = (0.0, 1e-310);
+  subnormal_row(
+    "TB(2, 3, [0, 1e-310])",
+    &tb(2.0, 3.0, 0.0, 1e-310),
+    whole,
+    two,
+  );
+  subnormal_row(
+    "TB(0.5, 3, [0, 1e-310])",
+    &tb(0.5, 3.0, 0.0, 1e-310),
+    whole,
+    half,
+  );
+  subnormal_row("TG(2, 1, [0, 1e-310])", &tg(2.0, 0.0, 1e-310), whole, two);
+  subnormal_row(
+    "TG(0.5, 1, [0, 1e-310])",
+    &tg(0.5, 0.0, 1e-310),
+    whole,
+    half,
+  );
+  subnormal_row(
+    "TB(2, 3, [1e-312, 1e-310])",
+    &tb(2.0, 3.0, 1e-312, 1e-310),
+    (1e-312, 1e-310),
+    [
+      6.667326732673e-311,
+      7.071421356418e-311,
+      0.25495049504949746,
+      -0.5649654676188158,
+      -0.6019966574290697,
+      -713.9950865767894,
+    ],
+  );
 }

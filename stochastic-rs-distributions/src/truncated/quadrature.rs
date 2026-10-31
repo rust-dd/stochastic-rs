@@ -276,6 +276,11 @@ impl<K: Kernel> Truncation<K> {
     (self.lo, self.up)
   }
 
+  /// The clipped ends, outside which the kernel holds less mass than the sums resolve.
+  pub(super) fn clipped(&self) -> (f64, f64) {
+    (self.a.x, self.b.x)
+  }
+
   /// `∫_a^b k/k(c)` over the clipped interval.
   pub(super) fn mass(&self) -> f64 {
     self.width * self.m0
