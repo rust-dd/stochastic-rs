@@ -272,10 +272,6 @@ impl<K: Kernel> Truncation<K> {
     &self.kernel
   }
 
-  pub(super) fn bounds(&self) -> (f64, f64) {
-    (self.lo, self.up)
-  }
-
   /// The clipped ends, outside which the kernel holds less mass than the sums resolve.
   pub(super) fn clipped(&self) -> (f64, f64) {
     (self.a.x, self.b.x)

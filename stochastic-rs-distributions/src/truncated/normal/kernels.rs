@@ -1,5 +1,4 @@
-//! The truncated normal's kernels: the plain one, its mgf's tilt in standardised units, and the tilt in the law's
-//! own offset where `σt` overflows.
+//! The truncated normal's kernels: the plain one and its mgf's tilt, in standardised units.
 
 use crate::truncated::quadrature::Cut;
 use crate::truncated::quadrature::Kernel;
@@ -99,59 +98,5 @@ impl Kernel for TiltedKernel {
 
   fn base_moments(&self) -> [f64; 4] {
     [self.s, 1.0, 0.0, 0.0]
-  }
-}
-
-/// `e^{tv − (v/σ)²/2}` in the law's own offset `v = x − μ`, for a `t` whose `σt` overflows: the log-kernel forms no
-/// `σt`, while the mode `tσ²` overflows toward the end `t` points to, where the engine clamps it.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct OffsetTiltedKernel {
-  pub(super) t: f64,
-  pub(super) sigma: f64,
-  pub(super) c: f64,
-}
-
-impl Kernel for OffsetTiltedKernel {
-  fn ln_k(&self, v: f64) -> f64 {
-    let z = v / self.sigma;
-    self.t * v - 0.5 * z * z
-  }
-
-  fn anchor(&mut self, c: Cut, _at_mode: bool) {
-    self.c = c.x;
-  }
-
-  fn ln_rel(&self, _v: f64, y: f64, _branch: Option<(f64, f64)>) -> f64 {
-    let zy = y / self.sigma;
-    self.t * y - 0.5 * zy * (zy + 2.0 * (self.c / self.sigma))
-  }
-
-  fn d1(&self, v: f64, _y: f64) -> f64 {
-    self.t - v / self.sigma / self.sigma
-  }
-
-  fn d2(&self, _v: f64, _y: f64) -> f64 {
-    let inv = 1.0 / self.sigma;
-    -inv * inv
-  }
-
-  fn mode(&self) -> Cut {
-    Cut::at(self.t * self.sigma * self.sigma)
-  }
-
-  fn branch_points(&self) -> [Option<(f64, f64)>; 2] {
-    [None, None]
-  }
-
-  fn length_scale(&self) -> f64 {
-    1.0 / self.t.abs()
-  }
-
-  fn support(&self) -> (f64, f64) {
-    (f64::NEG_INFINITY, f64::INFINITY)
-  }
-
-  fn base_moments(&self) -> [f64; 4] {
-    [self.t * self.sigma * self.sigma, self.sigma, 0.0, 0.0]
   }
 }

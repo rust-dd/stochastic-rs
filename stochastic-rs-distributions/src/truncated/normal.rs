@@ -24,10 +24,9 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 use kernels::NormalKernel;
-use kernels::OffsetTiltedKernel;
-use kernels::TiltedKernel;
 
 mod kernels;
+mod mgf;
 
 /// Which of Robert (1995)'s proposals a one-sided standardised interval $[a, b]$ with $a \ge 0$ takes.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -365,35 +364,6 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       (self.upper.to_f64()? - mu) / sigma,
     ))
   }
-
-  /// The mgf where `σt` overflows, from the tilt in `v = x − μ`. Toward an open end the tilted Gaussian's mode `tσ²`
-  /// lies inside, and the exponent `μt + (σt)²/2 = σt(μ/σ + σt/2)` keeps the sign of its second factor.
-  fn mgf_by_offset(
-    &self,
-    t: f64,
-    mu: f64,
-    sigma: f64,
-    plain: &Truncation<NormalKernel>,
-  ) -> Option<f64> {
-    let (vlo, vup) = (self.lower.to_f64()? - mu, self.upper.to_f64()? - mu);
-    if (if t > 0.0 { vup } else { vlo }).is_infinite() {
-      let lead = mu / sigma + 0.5 * sigma * t;
-      return Some(if lead * t > 0.0 { f64::INFINITY } else { 0.0 });
-    }
-    let kernel = OffsetTiltedKernel { t, sigma, c: 0.0 };
-    let tilted = Truncation::mass_only(kernel, vlo, vup);
-    let (c, zc) = (plain.centre(), tilted.centre() / sigma);
-    // `σ` times the standardised mass is the plain kernel's integral in `x`, whose logarithm cancels no `ln σ`.
-    let plain_x = plain.mass() * sigma;
-    let ln_plain = if plain_x.is_finite() {
-      plain_x.ln()
-    } else {
-      plain.mass().ln() + sigma.ln()
-    };
-    let exponent =
-      mu * t + t * tilted.centre() + 0.5 * (c - zc) * (c + zc) + tilted.mass().ln() - ln_plain;
-    Some(exponent.exp())
-  }
 }
 
 impl<T: SimdFloatExt> Sealed for SimdTruncatedNormal<T> {}
@@ -506,50 +476,8 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     })
   }
 
-  /// `e^{μt + ln k_s(c_s) − ln k(c)}` times the tilted and plain masses' ratio on `[α, β]`, `s = σt`: with no `s²` term
-  /// every addend is bounded by the exponent, which errs by `O(ε·|exponent|)`. At an infinite `t` the limit of `e^{tx}`.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
-    if t.is_nan() {
-      return Some(f64::NAN);
-    }
-    if t.is_infinite() {
-      let end = if t > 0.0 { self.upper } else { self.lower }.to_f64()?;
-      return Some(if end * t > 0.0 { f64::INFINITY } else { 0.0 });
-    }
-    let plain = match self.analytics()? {
-      Model::Full(plain) => plain,
-      Model::Local(l) => return Some(l.mgf(t)),
-    };
-    let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
-    let (alpha, beta) = self.standardised_bounds()?;
-    let s = sigma * t;
-    if s.is_infinite() {
-      return self.mgf_by_offset(t, mu, sigma, plain);
-    }
-    let tilted = Truncation::mass_only(TiltedKernel { s, c: 0.0 }, alpha, beta);
-    let (c, cs) = (plain.centre(), tilted.centre());
-    // With the tilted mode inside, `(s² + c²)/2` has no difference to overflow into `∞ − ∞`; at an end, a difference
-    // that does takes its limit from the grouping whose terms share a sign there.
-    let bracket = if cs == s {
-      0.5 * (s * s) + 0.5 * (c * c)
-    } else {
-      let b = s * cs - 0.5 * (cs - c) * (cs + c);
-      if b.is_nan() {
-        cs * (s - 0.5 * cs) + 0.5 * (c * c)
-      } else {
-        b
-      }
-    };
-    let ln_ratio = (tilted.mass() / plain.mass()).ln();
-    let exponent = mu * t + bracket + ln_ratio;
-    // `μt` and the bracket overflowing with opposite signs regroup so they meet before either overflows: inside as
-    // `s(μ/σ + s/2)`, at an end as `t(μ + σc_s)`, the tilted centre's own position.
-    let exponent = match exponent.is_nan() {
-      true if cs == s => s * (mu / sigma + 0.5 * s) + 0.5 * (c * c) + ln_ratio,
-      true => t * (mu + sigma * cs) - 0.5 * (cs - c) * (cs + c) + ln_ratio,
-      false => exponent,
-    };
-    Some(exponent.exp())
+    self.mgf(t)
   }
 }
 

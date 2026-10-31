@@ -155,6 +155,10 @@ pub(super) struct Local {
   r: f64,
   p: i32,
   t: Truncation<QuadKernel>,
+  /// The interval as offsets from `r`, and the log-kernel's slope and curvature there: a tilt's own model reads them.
+  offsets: (f64, f64),
+  slope: Signed,
+  curvature: Signed,
 }
 
 impl Local {
@@ -179,17 +183,24 @@ impl Local {
     }
     let p = (ln_len / LN_2).floor() as i32;
     let ln_unit = f64::from(p) * LN_2;
-    let kernel = QuadKernel {
-      a: slope.at(ln_unit),
-      b: curvature.at(2.0 * ln_unit),
-      c: 0.0,
-    };
-    let t = Truncation::new(kernel, ldexp(lo, -p), ldexp(up, -p));
-    let (a, b) = t.clipped();
-    if ln_cubic(ldexp(a, p)).max(ln_cubic(ldexp(b, p))) > f64::EPSILON.ln() {
+    let (a, b) = (slope.at(ln_unit), curvature.at(2.0 * ln_unit));
+    // A kernel that rises toward an open end with no curvature the unit resolves has no finite mass.
+    if b == 0.0 && ((a >= 0.0 && up == f64::INFINITY) || (a <= 0.0 && lo == f64::NEG_INFINITY)) {
       return None;
     }
-    Some(Self { r, p, t })
+    let t = Truncation::new(QuadKernel { a, b, c: 0.0 }, ldexp(lo, -p), ldexp(up, -p));
+    let (ya, yb) = t.clipped();
+    if ln_cubic(ldexp(ya, p)).max(ln_cubic(ldexp(yb, p))) > f64::EPSILON.ln() {
+      return None;
+    }
+    Some(Self {
+      r,
+      p,
+      t,
+      offsets: (lo, up),
+      slope,
+      curvature,
+    })
   }
 
   fn units(&self, x: f64) -> f64 {
@@ -228,31 +239,64 @@ impl Local {
     self.r + ldexp(self.t.quantile(q).value(), self.p)
   }
 
-  /// `E e^{tX}` as `e^{t·x_c}` times the tilted model's mass at its centre `x_c` over the model's: `t·x_c` is formed
-  /// once, so no `t·r` cancels against the tilt's own offset.
-  pub(super) fn mgf(&self, t: f64) -> f64 {
-    let QuadKernel { a, b, .. } = *self.t.kernel();
-    let tau = ldexp(t, self.p);
-    let (lo, up) = self.t.bounds();
-    // The tilted exponential's mass diverges toward an open end it rises to.
-    if b == 0.0
-      && ((a + tau >= 0.0 && up == f64::INFINITY) || (a + tau <= 0.0 && lo == f64::NEG_INFINITY))
-    {
+  /// `E e^{tX}`: the tilted law is the model at `x_c`, where its log-kernel peaks on the interval (the law's own bound
+  /// where it clamps), in its own unit; the exponent is `t·x_c` plus the plain kernel's rise from `r` to `x_c`.
+  pub(super) fn mgf(&self, t: f64, (lo, up): (f64, f64)) -> f64 {
+    let tilt = self.slope.plus(Signed::over(t, 0.0));
+    // `(ψ + t)/|κ|`; a tilt that cancels the slope peaks at `r`.
+    let peak = if tilt.sign == 0.0 {
+      0.0
+    } else {
+      tilt.sign * (tilt.ln - self.curvature.ln).exp()
+    };
+    let (x_c, y_c) = if peak <= self.offsets.0 {
+      (lo, self.offsets.0)
+    } else if peak >= self.offsets.1 {
+      (up, self.offsets.1)
+    } else {
+      (self.r + peak, peak)
+    };
+    let ln_y = y_c.abs().ln();
+    let along = Signed::new(self.curvature.sign * y_c.signum(), self.curvature.ln + ln_y);
+    let Some(tilted) = Local::new(
+      x_c,
+      (lo - x_c, up - x_c),
+      tilt.plus(along),
+      self.curvature,
+      |_| f64::NEG_INFINITY,
+    ) else {
+      // A tilted kernel with no finite mass: it rises toward an open end, so `e^{tx}` does.
       return f64::INFINITY;
-    }
-    let tilted = Truncation::mass_only(
-      QuadKernel {
-        a: a + tau,
-        b,
-        c: 0.0,
-      },
-      lo,
-      up,
+    };
+    let (l1, l2) = (self.slope.ln + ln_y, self.curvature.ln + 2.0 * ln_y - LN_2);
+    let (q1, q2) = (
+      self.slope.sign * y_c.signum() * l1.exp(),
+      self.curvature.sign * l2.exp(),
     );
-    let (c, ct) = (self.t.centre(), tilted.centre());
-    let ln_k = |u: f64| u * (a + 0.5 * b * u);
-    let exponent = t * (self.r + ldexp(ct, self.p)) + ln_k(ct) - ln_k(c)
-      + (tilted.mass().ln() - self.t.mass().ln());
-    exponent.exp()
+    let head = limit_or(
+      t * x_c + (q1 + q2),
+      &[
+        (t.signum() * x_c.signum(), t.abs().ln() + x_c.abs().ln()),
+        (q1.signum(), l1),
+        (q2.signum(), l2),
+      ],
+    );
+    let ln_k = |model: &Truncation<QuadKernel>| {
+      let (QuadKernel { a, b, .. }, c) = (*model.kernel(), model.centre());
+      c * (a + 0.5 * b * c)
+    };
+    let ratio = (tilted.t.mass() / self.t.mass()).ln() + f64::from(tilted.p - self.p) * LN_2;
+    (head + (ln_k(&tilted.t) - ln_k(&self.t)) + ratio).exp()
   }
+}
+
+/// `plain`, or where its terms met `∞ − ∞` the limit the term of largest log-magnitude gives; a term is `(sign, ln|·|)`.
+pub(super) fn limit_or(plain: f64, terms: &[(f64, f64)]) -> f64 {
+  if !plain.is_nan() {
+    return plain;
+  }
+  let top = terms.iter().fold((0.0, f64::NEG_INFINITY), |best, &t| {
+    if t.1 > best.1 { t } else { best }
+  });
+  top.0 * f64::INFINITY
 }

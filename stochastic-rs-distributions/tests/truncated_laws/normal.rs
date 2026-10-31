@@ -430,6 +430,70 @@ fn mgf_at_overflow() {
   }
 }
 
+/// A tilt that clamps takes the bound itself as its reference point, a rate past 2²⁷ the exponential's mass, a local
+/// model's tilt its own unit, and `∞ − ∞` the term of larger log-magnitude (mpmath, 60 and 120 digits past the units).
+#[test]
+fn mgf_from_the_clamped_bound() {
+  let (inf, max) = (f64::INFINITY, f64::MAX);
+  for (mu, sigma, lo, up, t, want) in [
+    (
+      -3.162345277313349e-47,
+      9.678550983303382e51,
+      -3.162345277313349e-47,
+      4.95832603669164e262,
+      1e300,
+      inf,
+    ),
+    (
+      -3.162345277313349e-47,
+      9.678550983303382e51,
+      -3.162345277313349e-47,
+      4.95832603669164e262,
+      1e290,
+      inf,
+    ),
+    (
+      5.3764479816879535e79,
+      557459442.8521562,
+      5.3764479816879535e79,
+      1.5032971020264635e165,
+      1e300,
+      inf,
+    ),
+    (
+      -8.198367153579645e41,
+      1.054027912518209e234,
+      6.615502802008765e72,
+      inf,
+      -1e300,
+      0.0,
+    ),
+    (1e300, 1.0, -1e200, 1e200, -1e300, 0.0),
+    (-1e300, 1.0, 1.0, 2.0, max, inf),
+    (1e300, 1e300, -1.0, 1.0, max, inf),
+    (1e300, 1e300, -1.0, 1.0, -max, inf),
+  ] {
+    let got = tn(mu, sigma, lo, up).moment_generating_function(t);
+    assert_eq!(
+      got,
+      Some(want),
+      "TN({mu:e}, {sigma:e}, [{lo:e}, {up:e}]).mgf({t:e})"
+    );
+  }
+  for (mu, sigma, lo, up, t, want) in [
+    (1e300, 1e300, 0.0, inf, -1e10, 2.875999709392e-311),
+    (1e300, 1e300, 0.0, inf, -1.0, 2.8759997093917836e-301),
+    (1e300, 1.0, -inf, 0.0, max, 5.562684615324544e-9),
+    (1.0, 1e100, 0.0, inf, -1e200, 7.978845608028653e-301),
+  ] {
+    let got = tn(mu, sigma, lo, up).moment_generating_function(t).unwrap();
+    assert!(
+      rel(got, want) < 1e-12,
+      "TN({mu:e}, {sigma:e}, [{lo:e}, {up:e}]).mgf({t:e}) = {got:e}"
+    );
+  }
+}
+
 /// An interval past `μ + σ·f64::MAX` holds the law closer to its near bound than any double: every draw, quantile and
 /// the mean are that bound and the variance 0 (its shape is pinned in `narrow_laws`).
 #[test]
