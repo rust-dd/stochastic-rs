@@ -87,7 +87,12 @@ const ODD: [f64; 17] = [
 pub(super) fn ln_1p_mx(z: f64) -> f64 {
   let w = z / (2.0 + z);
   if w.abs() > 1.0 / 3.0 || w.is_nan() {
-    return z.ln_1p() - z;
+    // An offset past the doubles' range from its reference point: the kernel has vanished there.
+    return if z == f64::INFINITY {
+      f64::NEG_INFINITY
+    } else {
+      z.ln_1p() - z
+    };
   }
   let x = w * w;
   let (x2, x4) = (x * x, (x * x) * (x * x));
@@ -101,15 +106,16 @@ pub(super) fn ln_1p_mx(z: f64) -> f64 {
 
 /// `x·2^p` for any `p`, by normal factors, so `2^p` itself may lie past the doubles (θ above 2¹⁰²³).
 pub(super) fn ldexp(mut x: f64, mut p: i32) -> f64 {
+  let two = |p: i32| f64::from_bits(((p + 1023) as u64) << 52);
   while p > 1023 {
-    x *= 2f64.powi(1023);
+    x *= two(1023);
     p -= 1023;
   }
   while p < -1022 {
-    x *= 2f64.powi(-1022);
+    x *= two(-1022);
     p += 1022;
   }
-  x * 2f64.powi(p)
+  x * two(p)
 }
 
 /// Relative kernel below `e^{−CLIP}` is dropped: 1e-18 of the mass near the reference point.
@@ -489,8 +495,13 @@ impl<K: Kernel> Truncation<K> {
       return self.singular_nodes(panel, e, 0, None, f);
     }
     let half = 0.5 * (panel.r - panel.l);
-    // In logs: deep beside a singular end the panel's share of `width` underflows where its kernel ratio overflows.
-    let ln_scaled = half.ln() - self.width.ln();
+    // Graded, in logs: deep beside a singular end the panel's share of `width` underflows where its kernel ratio
+    // overflows.
+    let (scaled, ln_scaled) = if panel.graded {
+      (1.0, half.ln() - self.width.ln())
+    } else {
+      (half / self.width, 0.0)
+    };
     let (to_centre, to_frame) = (
       span(panel.origin, self.centre),
       span(panel.origin, self.frame),
@@ -501,8 +512,8 @@ impl<K: Kernel> Truncation<K> {
         let branch = panel.graded.then_some((panel.origin.x, t));
         let ln_g = self
           .kernel
-          .ln_rel(panel.origin.plus(t), t - to_centre, branch);
-        f(*weight, ln_g + ln_scaled, t - to_frame, ln_g);
+          .ln_rel(panel.origin.x + t, t - to_centre, branch);
+        f(weight * scaled, ln_g + ln_scaled, t - to_frame, ln_g);
       }
     }
   }

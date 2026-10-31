@@ -23,6 +23,7 @@ pub(super) struct BetaKernel {
 }
 
 impl BetaKernel {
+  #[inline]
   pub(super) fn new(a: f64, b: f64) -> Self {
     let (mode, exact) = held_mode(a, b);
     Self {
@@ -38,16 +39,14 @@ impl BetaKernel {
     }
   }
 
-  /// `(a − 1)(ln(x/c) − y/c)`: `ln_1p_mx` beside `c`, read from `x` toward 0, and `(a − 1)y/c` one quotient where
-  /// `y/c` overflows past a subnormal `c`.
+  /// `(a − 1)(ln(x/c) − y/c)`: `ln_1p_mx` beside `c`, read from `x` toward 0.
+  #[inline]
   fn left(&self, x: f64, y: f64) -> f64 {
     let z = y / self.c;
     if self.a == 1.0 {
       0.0
     } else if z < -0.5 {
       (self.a - 1.0) * ((x.ln() - self.ln_c) - z)
-    } else if z.is_infinite() {
-      (self.a - 1.0) * (x.ln() - self.ln_c) - (self.a - 1.0) * y / self.c
     } else {
       (self.a - 1.0) * ln_1p_mx(z)
     }
@@ -55,6 +54,7 @@ impl BetaKernel {
 
   /// `(b − 1)(ln((1 − x)/(1 − c)) + y/(1 − c))`, `1 − x` toward 1 as the offset from 1 where `branch` holds it, else as
   /// `(1 − c) − y`: never from a rounded `x`.
+  #[inline]
   fn right(&self, y: f64, branch: Option<(f64, f64)>) -> f64 {
     let z = -y / self.cc;
     if self.b == 1.0 {
@@ -65,8 +65,6 @@ impl BetaKernel {
         _ => self.cc - y,
       };
       (self.b - 1.0) * ((gap.ln() - self.ln_cc) - z)
-    } else if z.is_infinite() {
-      (self.b - 1.0) * ((self.cc - y).ln() - self.ln_cc) + (self.b - 1.0) * y / self.cc
     } else {
       (self.b - 1.0) * ln_1p_mx(z)
     }
@@ -74,6 +72,7 @@ impl BetaKernel {
 
   /// `(a − 1)y/c − (b − 1)y/(1 − c)`, from the slope where it is finite; where it overflows the mode is far and the two
   /// terms do not cancel.
+  #[inline]
   fn linear(&self, y: f64) -> f64 {
     match self.slope {
       Some(slope) => slope * y,
@@ -82,6 +81,7 @@ impl BetaKernel {
   }
 
   /// `(e − 1)·y/d`, 0 for a unit exponent, whose end `d` may be 0, one quotient where `y/d` overflows.
+  #[inline]
   fn per(&self, e: f64, y: f64, d: f64) -> f64 {
     let q = y / d;
     if e == 1.0 {
@@ -95,6 +95,7 @@ impl BetaKernel {
 }
 
 impl Kernel for BetaKernel {
+  #[inline]
   fn ln_k(&self, x: f64) -> f64 {
     if !(0.0..=1.0).contains(&x) {
       return f64::NEG_INFINITY;
@@ -114,6 +115,7 @@ impl Kernel for BetaKernel {
 
   /// The slope from `(a − 1)(1 − c) − (b − 1)c` by an exact product, so a clamped end next to the mode keeps it; 0 at
   /// a stationary mode held exactly, never at an end the density merely peaks at.
+  #[inline]
   fn anchor(&mut self, c: Cut, at_mode: bool) {
     self.c = c.x;
     self.cc = -c.offset(1.0);
@@ -131,6 +133,7 @@ impl Kernel for BetaKernel {
     self.slope = slope.is_finite().then_some(slope);
   }
 
+  #[inline]
   fn ln_rel(&self, x: f64, y: f64, branch: Option<(f64, f64)>) -> f64 {
     if y == 0.0 {
       return 0.0;
@@ -138,6 +141,7 @@ impl Kernel for BetaKernel {
     self.left(x, y) + self.right(y, branch) + self.linear(y)
   }
 
+  #[inline]
   fn ln_rel_regular(&self, x: f64, y: f64, s: f64) -> f64 {
     let (a1, b1) = (self.a - 1.0, self.b - 1.0);
     if s == 0.0 {
@@ -147,6 +151,7 @@ impl Kernel for BetaKernel {
     }
   }
 
+  #[inline]
   fn d1(&self, x: f64, y: f64) -> f64 {
     match self.slope {
       Some(slope) => {
@@ -156,15 +161,18 @@ impl Kernel for BetaKernel {
     }
   }
 
+  #[inline]
   fn d2(&self, x: f64, y: f64) -> f64 {
     let gap = self.cc - y;
     -self.per(self.a, 1.0, x * x) - self.per(self.b, 1.0, gap * gap)
   }
 
+  #[inline]
   fn mode(&self) -> Cut {
     self.mode
   }
 
+  #[inline]
   fn branch_points(&self) -> [Option<(f64, f64)>; 2] {
     [
       (self.a != 1.0).then_some((0.0, self.a)),
@@ -174,15 +182,18 @@ impl Kernel for BetaKernel {
 
   /// `1/(α + β)` from halves, so it never overflows to 0: beside 0 the factor `(1 − x)^{β−1}` falls an e-fold in
   /// about `1/β`, beside 1 `x^{α−1}` in `1/α`.
+  #[inline]
   fn length_scale(&self) -> f64 {
     0.5 / (0.5 * self.a + 0.5 * self.b)
   }
 
+  #[inline]
   fn support(&self) -> (f64, f64) {
     (0.0, 1.0)
   }
 
   /// The closed forms in `r = (a − b)/√(ab)` and `1/(a + b)`, so no product of the shapes over- or underflows.
+  #[inline]
   fn base_moments(&self) -> [f64; 4] {
     let (a, b) = (self.a, self.b);
     let root = a.sqrt() * b.sqrt();

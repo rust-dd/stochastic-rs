@@ -9,7 +9,8 @@ use crate::truncated::quadrature::ln_1p_mx;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct GammaKernel {
   k: f64,
-  /// θ in the kernel's unit, in `(½, 1]` for a normal θ, so `(k − 1)s` never overflows.
+  /// θ in the kernel's unit: at most 1 where θ is the shorter length, else above 1, `+∞` where `upper` lies so far
+  /// below θ that `e^{−u/s}` is 1 on the interval.
   s: f64,
   c: f64,
   ln_c: f64,
@@ -18,6 +19,7 @@ pub(super) struct GammaKernel {
 }
 
 impl GammaKernel {
+  #[inline]
   pub(super) fn new(k: f64, s: f64) -> Self {
     Self {
       k,
@@ -30,6 +32,7 @@ impl GammaKernel {
 }
 
 impl Kernel for GammaKernel {
+  #[inline]
   fn ln_k(&self, x: f64) -> f64 {
     if x < 0.0 {
       return f64::NEG_INFINITY;
@@ -44,6 +47,7 @@ impl Kernel for GammaKernel {
 
   /// Above a unit shape the slope from `(k − 1)s − c` by an exact product, 0 at the mode; below one the two terms share
   /// a sign.
+  #[inline]
   fn anchor(&mut self, c: Cut, at_mode: bool) {
     self.c = c.x;
     self.ln_c = c.x.ln();
@@ -53,6 +57,8 @@ impl Kernel for GammaKernel {
       (self.k - 1.0) / c.x - 1.0 / self.s
     } else if at_mode {
       0.0
+    } else if self.s.is_infinite() {
+      (self.k - 1.0) / c.x
     } else {
       (self.k - 1.0).mul_add(self.s, -c.x) / (c.x * self.s)
     };
@@ -61,6 +67,7 @@ impl Kernel for GammaKernel {
 
   /// Above a unit shape `(k − 1)(ln(x/c) − y/c) + slope·y`, the first part `ln_1p_mx` beside `c` and read from `x`
   /// toward 0; below one, and where the slope overflows, `(k − 1) ln(x/c) − y/s`, whose terms share a sign.
+  #[inline]
   fn ln_rel(&self, x: f64, y: f64, _branch: Option<(f64, f64)>) -> f64 {
     if self.k == 1.0 {
       return -y / self.s;
@@ -80,10 +87,12 @@ impl Kernel for GammaKernel {
     }
   }
 
+  #[inline]
   fn ln_rel_regular(&self, _x: f64, y: f64, _s: f64) -> f64 {
     -(self.k - 1.0) * self.ln_c - y / self.s
   }
 
+  #[inline]
   fn d1(&self, x: f64, y: f64) -> f64 {
     match self.slope {
       _ if self.k == 1.0 => -1.0 / self.s,
@@ -92,6 +101,7 @@ impl Kernel for GammaKernel {
     }
   }
 
+  #[inline]
   fn d2(&self, x: f64, _y: f64) -> f64 {
     if self.k == 1.0 {
       0.0
@@ -101,6 +111,7 @@ impl Kernel for GammaKernel {
   }
 
   /// `(k − 1)s` to a double-double: `k − 1` is exact below 2⁵³ and past it carries its own rounding.
+  #[inline]
   fn mode(&self) -> Cut {
     if self.k <= 1.0 {
       return Cut::at(0.0);
@@ -108,21 +119,28 @@ impl Kernel for GammaKernel {
     let k1 = self.k - 1.0;
     let k1_lo = (self.k - k1) - 1.0;
     let hi = k1 * self.s;
+    if hi.is_infinite() {
+      return Cut::at(hi);
+    }
     Cut::exact(hi, k1.mul_add(self.s, -hi) + k1_lo * self.s)
   }
 
+  #[inline]
   fn branch_points(&self) -> [Option<(f64, f64)>; 2] {
     [(self.k != 1.0).then_some((0.0, self.k)), None]
   }
 
+  #[inline]
   fn length_scale(&self) -> f64 {
     self.s
   }
 
+  #[inline]
   fn support(&self) -> (f64, f64) {
     (0.0, f64::INFINITY)
   }
 
+  #[inline]
   fn base_moments(&self) -> [f64; 4] {
     let root = self.k.sqrt();
     [self.k * self.s, root * self.s, 2.0 / root, 6.0 / self.k]

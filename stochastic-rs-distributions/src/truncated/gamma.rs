@@ -41,6 +41,9 @@ pub struct SimdTruncatedGamma<T> {
   mass: f64,
   /// The kernel's unit `2^p`: see `unit_exponent`.
   p: i32,
+  /// `2^{−p}`, exact even at `p = 1024` (a subnormal power of two), and `ln 2^p`: a coordinate costs one product.
+  inv_unit: f64,
+  ln_unit: f64,
   /// The interval's kernel integral, built by the first analytic call or inverse-cdf draw.
   analytics: OnceLock<Model<GammaKernel>>,
 }
@@ -140,12 +143,15 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
     } else {
       crate::special::gamma_q(k, x_lo) - crate::special::gamma_q(k, x_up)
     };
+    let p = unit_exponent(theta.min(upper.to_f64().unwrap()));
     Self {
       base: SimdGamma::new(shape, scale),
       lower,
       upper,
       mass,
-      p: unit_exponent(theta),
+      p,
+      inv_unit: ldexp(1.0, -p),
+      ln_unit: f64::from(p) * std::f64::consts::LN_2,
       analytics: OnceLock::new(),
     }
   }
@@ -193,17 +199,15 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
 
   /// `x` in the kernel's unit, exact unless it leaves the range.
   fn units(&self, x: f64) -> f64 {
-    ldexp(x, -self.p)
+    x * self.inv_unit
   }
 
-  /// `ln 2^p`.
   fn ln_unit(&self) -> f64 {
-    f64::from(self.p) * std::f64::consts::LN_2
+    self.ln_unit
   }
 
   /// `x/2^p` below the normal doubles beside 0, given by its log: where the lower end is 0 the engine reads it there.
-  fn beside_zero(&self, x: f64) -> Option<f64> {
-    let u = self.units(x);
+  fn beside_zero(&self, x: f64, u: f64) -> Option<f64> {
     (x > 0.0 && u < f64::MIN_POSITIVE && self.lower.to_f64()? == 0.0)
       .then(|| x.ln() - self.ln_unit())
   }
@@ -280,14 +284,14 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
   }
 }
 
-/// The least power of two at or above θ, 2⁻¹⁰²² for a subnormal θ: `x/2^p` is exact and the mode `(k − 1)θ/2^p`
-/// never overflows; past 2¹⁰²³ the unit is 2¹⁰²⁴, which only its exponent holds.
-fn unit_exponent(theta: f64) -> i32 {
-  let biased = ((theta.to_bits() >> 52) & 0x7ff) as i32;
+/// The least power of two at or above the law's length, the shorter of θ and `upper` (2⁻¹⁰²² for a subnormal one):
+/// `x/2^p` is exact, an interval far below θ keeps its digits, and past 2¹⁰²³ the unit 2¹⁰²⁴ lives in its exponent.
+fn unit_exponent(length: f64) -> i32 {
+  let biased = ((length.to_bits() >> 52) & 0x7ff) as i32;
   if biased == 0 {
     return -1022;
   }
-  let exact = theta.to_bits() & ((1 << 52) - 1) == 0;
+  let exact = length.to_bits() & ((1 << 52) - 1) == 0;
   biased - 1023 + i32::from(!exact)
 }
 
@@ -334,12 +338,15 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedGamma<T> {
       Model::Local(l) => return Some(l.pdf(x, 0.0)),
     };
     let u = self.units(x);
+    if (f64::MIN_POSITIVE..f64::INFINITY).contains(&u) {
+      return Some(t.density(u, self.ln_unit));
+    }
     if u == f64::INFINITY {
       return Some(0.0);
     }
-    Some(match self.beside_zero(x) {
-      Some(ln_t) => t.density_beside(0.0, self.base.alpha().to_f64()?, ln_t, self.ln_unit()),
-      None => t.density(u, self.ln_unit()),
+    Some(match self.beside_zero(x, u) {
+      Some(ln_t) => t.density_beside(0.0, self.base.alpha().to_f64()?, ln_t, self.ln_unit),
+      None => t.density(u, self.ln_unit),
     })
   }
 
@@ -354,9 +361,10 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedGamma<T> {
       Model::Full(t) => t,
       Model::Local(l) => return Some(l.cdf(x)),
     };
-    Some(match self.beside_zero(x) {
+    let u = self.units(x);
+    Some(match self.beside_zero(x, u) {
       Some(ln_t) => t.cdf_beside(0.0, self.base.alpha().to_f64()?, ln_t),
-      None => t.cdf(self.units(x)),
+      None => t.cdf(u),
     })
   }
 

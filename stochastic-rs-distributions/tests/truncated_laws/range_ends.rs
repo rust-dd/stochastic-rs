@@ -74,6 +74,52 @@ fn a_scale_past_two_to_the_1023() {
   close(name, "entropy", entropy, 1065.7997557476717, 1e-12, 0.0);
 }
 
+/// An interval past the doubles below θ takes its own length as the unit: the law is `k x^{k−1}/up^k` there.
+#[test]
+fn an_interval_far_below_theta() {
+  for (k, theta, up, want) in [
+    (
+      1.2874067812454076e-26,
+      3.50080844085672e91,
+      5.85699426684364e-240,
+      [
+        7.540334136849976e-266,
+        8309326853189.684,
+        7.767552684728156e25,
+        -7.767552684728156e25,
+      ],
+    ),
+    (
+      3.345256820221321e-115,
+      2.912511392697346e257,
+      5.727761855257694e-241,
+      [
+        0.0,
+        1.6300803281524263e57,
+        2.989307110758212e114,
+        -2.989307110758212e114,
+      ],
+    ),
+  ] {
+    let law = tg(k, theta, 0.0, up);
+    let name = format!("TG({k:e}, {theta:e}, [0, {up:e}])");
+    let got = [
+      law.mean().unwrap(),
+      law.skewness().unwrap(),
+      law.kurtosis().unwrap(),
+      law.entropy().unwrap(),
+    ];
+    for ((what, got), want) in ["mean", "skewness", "kurtosis", "entropy"]
+      .into_iter()
+      .zip(got)
+      .zip(want)
+    {
+      close(&name, what, got, want, 1e-12, 0.0);
+    }
+    assert_eq!(law.cdf(0.5 * up), Some(1.0), "{name}: cdf(up/2)");
+  }
+}
+
 /// Below a unit shape the kernel's two terms share a sign, so where `y/c` overflows the pdf takes its limit 0.
 #[test]
 fn small_shape_pdf_where_the_offset_overflows() {

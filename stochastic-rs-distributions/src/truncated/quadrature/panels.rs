@@ -291,12 +291,13 @@ fn piece<K: Kernel, B>(
       dl.abs().min(dr.abs())
     }
   };
+  let near = 0.5 * distance(c);
   let branch = kernel
     .branch_points()
     .into_iter()
     .flatten()
     .map(|(s, _)| s)
-    .find(|&s| distance(Cut::at(s)) < 0.5 * distance(c));
+    .find(|&s| distance(Cut::at(s)) < near);
   let origin = branch.map_or(c, Cut::at);
   let (tl, tr) = (span(origin, cl), span(origin, cr));
   if tr <= tl {

@@ -88,6 +88,8 @@ pub struct SimdTruncatedNormal<T> {
   tail: Option<TailSetup>,
   /// The standardised interval's kernel integral, built by the first analytic call; construction and draws skip it.
   analytics: OnceLock<Model<NormalKernel>>,
+  /// `ln σ`, so a density costs no logarithm of its own.
+  ln_sigma: f64,
 }
 
 impl<T: fmt::Debug> fmt::Debug for SimdTruncatedNormal<T> {
@@ -196,6 +198,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       norm_mass: f_up - f_lo,
       tail,
       analytics: OnceLock::new(),
+      ln_sigma: sigma_f64.ln(),
     }
   }
 
@@ -426,9 +429,8 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     if x < self.lower.to_f64()? || x > self.upper.to_f64()? {
       return Some(0.0);
     }
-    let ln_sigma = self.base.std_dev().to_f64()?.ln();
     Some(match self.analytics()? {
-      Model::Full(t) => t.density(self.standardise(x)?, ln_sigma),
+      Model::Full(t) => t.density(self.standardise(x)?, self.ln_sigma),
       Model::Local(l) => l.pdf(x, 0.0),
     })
   }
