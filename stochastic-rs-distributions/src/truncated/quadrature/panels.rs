@@ -89,6 +89,8 @@ pub(super) struct Panel {
   pub(super) l: f64,
   pub(super) r: f64,
   pub(super) graded: bool,
+  /// `p` on the panel beside a singular branch point (`p < 0`), which integrates in `u = (t/h)^{p+1}`.
+  pub(super) singular: Option<f64>,
 }
 
 /// A breakpoint and, beside a branch point `s`, its exact offset from `s`.
@@ -96,6 +98,8 @@ pub(super) struct Panel {
 struct Cut {
   x: f64,
   from: Option<(f64, f64)>,
+  /// On an end within a tenth of the width of a singular branch point `(s, p)`: its piece is the innermost.
+  inner: Option<(f64, f64)>,
 }
 
 impl Cut {
@@ -123,24 +127,29 @@ pub(super) fn panels<K: Kernel, B>(
     .branch_points()
     .map(|point| point.filter(|&(s, _)| s >= l - 20.0 * width && s <= r + 20.0 * width));
   let rungs = ladders.into_iter().flatten().flat_map(move |(s, p)| {
-    // Deep enough for the mass beside `s` to fall below 1e-18, and to reach an end that stops short of `s`, so no
-    // piece's regular end sits many of its widths from the branch point.
-    let gap = (l - s).max(s - r).max(0.0);
-    let mass = ((18.0 / (p + 1.0)).ceil() + 1.0).min(290.0);
-    let reach = if gap > 0.0 {
-      (width / gap).log10().ceil() + 1.0
+    // Beside a vanishing kernel, deep enough for the mass there to fall below 1e-18 and to reach an end that stops
+    // short of `s`; beside a singular one 19 normal decades, below which the innermost panel's `u` is exact.
+    let steps = if p < 0.0 {
+      19
     } else {
-      0.0
+      let gap = (l - s).max(s - r).max(0.0);
+      let mass = (18.0 / (p + 1.0)).ceil() + 1.0;
+      let reach = if gap > 0.0 {
+        (width / gap).log10().ceil() + 1.0
+      } else {
+        0.0
+      };
+      mass.max(reach).min(330.0) as i32
     };
-    let steps = mass.max(reach).min(330.0) as i32;
     let h = move |j: i32| width / 10_f64.powi(j);
     (1..=steps)
       .map(move |j| -h(j))
       .chain((1..=steps).rev().map(h))
-      .filter(move |&t| l - s < t && t < r - s)
+      .filter(move |&t| l - s < t && t < r - s && (p > 0.0 || t.abs() >= f64::MIN_POSITIVE))
       .map(move |t| Cut {
         x: s + t,
         from: Some((s, t)),
+        inner: None,
       })
   });
   let end = |x: f64| Cut {
@@ -150,6 +159,10 @@ pub(super) fn panels<K: Kernel, B>(
       .flatten()
       .min_by(|p, q| (x - p.0).abs().total_cmp(&(x - q.0).abs()))
       .map(|(s, _)| (s, x - s)),
+    inner: ladders
+      .into_iter()
+      .flatten()
+      .find(|&(s, p)| p < 0.0 && 10.0 * (x - s).abs() < width),
   };
   let cuts = std::iter::once(end(l))
     .chain(rungs)
@@ -179,7 +192,8 @@ fn pieces<K: Kernel, B>(
   ControlFlow::Continue(())
 }
 
-/// One piece between two cuts, in equal panels by the budgets, from the branch point nearer than the centre.
+/// One piece between two cuts, in equal panels by the budgets, from the branch point nearer than the centre; the
+/// innermost piece beside a singular branch point is one panel from it.
 fn piece<K: Kernel, B>(
   kernel: &K,
   c: f64,
@@ -188,6 +202,19 @@ fn piece<K: Kernel, B>(
   rev: bool,
   visit: &mut impl FnMut(Panel) -> ControlFlow<B>,
 ) -> ControlFlow<B> {
+  if let Some((s, p)) = cl.inner.or(cr.inner) {
+    let (tl, tr) = (cl.offset(s), cr.offset(s));
+    if tr <= tl {
+      return ControlFlow::Continue(());
+    }
+    return visit(Panel {
+      origin: s,
+      l: tl,
+      r: tr,
+      graded: true,
+      singular: Some(p),
+    });
+  }
   let distance = |z: f64| {
     if (cl.x..=cr.x).contains(&z) {
       0.0
@@ -239,6 +266,7 @@ fn piece<K: Kernel, B>(
       l: at(i),
       r: at(i + 1),
       graded: branch.is_some(),
+      singular: None,
     })?;
   }
   ControlFlow::Continue(())

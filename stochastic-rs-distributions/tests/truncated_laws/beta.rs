@@ -5,7 +5,9 @@ use super::NEXT_TO_ONE;
 use super::Want;
 use super::check;
 use super::moments_match;
+use super::quantile_is_monotone;
 use super::rel;
+use super::singular_row;
 
 fn tb(a: f64, b: f64, lo: f64, up: f64) -> SimdTruncatedBeta<f64> {
   SimdTruncatedBeta::<f64>::new(a, b, lo, up)
@@ -210,6 +212,152 @@ fn quantile_tails_keep_their_digits() {
     rel(got, 1.2689229249447996e-7) < 1e-12,
     "TB(50, 30, [0, 1]): quantile(5e-324) = {got}"
   );
+}
+
+/// First shapes down to 1e-4, whose mass sits almost wholly in the innermost panel beside 0: in `u = (t/h)^a` that
+/// panel is exact, and so is every analytic (mpmath, 60 and 120 digits).
+#[test]
+fn small_shapes_keep_their_digits() {
+  for (a, want) in [
+    (
+      0.0001,
+      [
+        4.9997500124993755e-5,
+        1.666444464350355e-5,
+        122.46734285361164,
+        17996.790090449034,
+        -9990.789495151635,
+        0.9550880852800381,
+        0.9955049578932621,
+        0.9999806842185378,
+      ],
+    ),
+    (
+      0.001,
+      [
+        0.0004997501249375312,
+        0.0001664446433689291,
+        38.707242941809426,
+        1796.7909044034732,
+        -993.0906014872606,
+        0.6315883018246734,
+        0.9559475786074574,
+        0.9998067465369478,
+      ],
+    ),
+    (
+      0.005,
+      [
+        0.0024937655860349127,
+        0.0008278025687976109,
+        17.270010970088705,
+        356.7945200866549,
+        -194.69350029702773,
+        0.10049999999999999,
+        0.7982998758979029,
+        0.9990316134849375,
+      ],
+    ),
+    (
+      0.01,
+      [
+        0.004975124378109453,
+        0.0016446420317381375,
+        12.17606476374401,
+        176.79903534576732,
+        -95.37854894773321,
+        0.0101,
+        0.6372669179249951,
+        0.998057957914221,
+      ],
+    ),
+    (
+      0.03,
+      [
+        0.014778325123152709,
+        0.004805256181421486,
+        6.947632926798321,
+        56.817048083706204,
+        -29.778913447046563,
+        1.0300000000000005e-6,
+        0.2587243024454868,
+        0.9941116020507308,
+      ],
+    ),
+    (
+      0.06,
+      [
+        0.029126213592233007,
+        0.009241136364056416,
+        4.8258718178380375,
+        26.843922194746785,
+        -13.760331355358995,
+        1.0600000000000011e-12,
+        0.06688147851490049,
+        0.9880420429050223,
+      ],
+    ),
+  ] {
+    singular_row(
+      &format!("TB({a:e}, 2, [0, 1])"),
+      &tb(a, 2.0, 0.0, 1.0),
+      want,
+    );
+  }
+}
+
+/// Ends a hair from both singular points step the reference point off them, and a second shape of 1e6 puts it inside
+/// the mass beside 0, an e-fold `1/(α + β)` wide (mpmath, 60 and 120 digits).
+#[test]
+fn ends_beside_the_singular_points() {
+  moments_match(
+    "TB(½, ½, [1e-300, 1 − 2⁻⁵³])",
+    &tb(0.5, 0.5, 1e-300, 1.0 - f64::EPSILON / 2.0),
+    [
+      0.4999999966460603,
+      0.12499999916151508,
+      9.486373815423206e-9,
+      -1.4999999966460602,
+    ],
+  );
+  moments_match(
+    "TB(½, 1e6, [0, 1])",
+    &tb(0.5, 1e6, 0.0, 1.0),
+    [
+      4.99999750000125e-7,
+      4.9999875000225e-13,
+      2.8284207607992133,
+      11.999928000296999,
+    ],
+  );
+}
+
+/// Beside a singular end the quantile solves in `u`, so its tolerance is relative: `sin²(πp/2)` down to the least
+/// level, where it underflows to 0, monotone all the way, and the cdf deep beside 0 (mpmath, 60 and 120 digits).
+#[test]
+fn quantile_and_cdf_beside_a_singular_end() {
+  let arcsine = tb(0.5, 0.5, 0.0, 1.0);
+  for (p, want) in [
+    (1e-8, 2.4674011002723397e-16),
+    (1e-12, 2.4674011002723395e-24),
+    (1e-30, 2.4674011002723401e-60),
+    (1e-100, 2.4674011002723397e-200),
+  ] {
+    let got = arcsine.quantile(p).unwrap();
+    assert!(
+      rel(got, want) < 1e-12,
+      "TB(½, ½, [0, 1]): quantile({p:e}) = {got:e}"
+    );
+  }
+  assert_eq!(arcsine.quantile(5e-324), Some(0.0));
+  quantile_is_monotone("TB(½, ½, [0, 1])", &arcsine);
+  for (law, x, want) in [
+    (&arcsine, 1e-300, 6.366197723675813e-151),
+    (&tb(0.3, 2.0, 0.0, 0.5), 1e-270, 1.3917284672594802e-81),
+  ] {
+    let got = law.cdf(x).unwrap();
+    assert!(rel(got, want) < 1e-12, "cdf({x:e}) = {got:e}");
+  }
 }
 
 /// A unit first shape drops the `(a − 1) ln x` term, which reads `0·(−∞)` at 0.

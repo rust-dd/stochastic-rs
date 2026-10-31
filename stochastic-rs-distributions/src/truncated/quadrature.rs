@@ -1,5 +1,5 @@
-//! Composite 64-node Gauss–Legendre quadrature of a truncated law's normalised kernel: the one engine behind the
-//! truncated laws' mass, moments, entropy, pdf, cdf and quantile.
+//! Composite 64-node Gauss–Legendre quadrature of a truncated law's normalised kernel, behind all its analytics; a
+//! singular end's innermost panel integrates in `u = (t/h)^{p+1}`, where `t^p dt = h^{p+1}/(p+1) du`.
 //! Reference: Trefethen, L. N. (2008), "Is Gauss Quadrature Better than Clenshaw–Curtis?", *SIAM Review* 50(1), 67-87, DOI 10.1137/060659831 (the Bernstein-ellipse rate that sizes the panels).
 
 use std::ops::ControlFlow;
@@ -10,6 +10,7 @@ use panels::Panel;
 use panels::panels;
 
 mod panels;
+mod quantile;
 
 /// A law's log-kernel on its support, in the law's own coordinate.
 pub(super) trait Kernel {
@@ -30,6 +31,11 @@ pub(super) trait Kernel {
 
   /// `(s, p)`: `k ~ |x − s|^p` next to `s`, `p > −1`; the points ascend and lie more than a width apart.
   fn branch_points(&self) -> [Option<(f64, f64)>; 2];
+
+  /// `ln_rel` less `p·ln|x − s|` at the branch point `s`: the smooth factor, read where `x − s` may round to 0.
+  fn ln_rel_regular(&self, x: f64, y: f64, c: f64, _s: f64) -> f64 {
+    self.ln_rel(x, y, c, None)
+  }
 
   /// The kernel's own e-fold length: the clip probe's first step and the reference point's distance from a singular end.
   fn length_scale(&self) -> f64;
@@ -75,34 +81,37 @@ impl<K: Kernel> Truncation<K> {
 
   /// The reference point, the clipped ends and their mass; an infinite end is clipped, a singular one graded.
   pub(super) fn mass_only(kernel: K, lo: f64, up: f64) -> Self {
-    let singular = |x: f64| kernel.ln_k(x) == f64::INFINITY;
+    let step = (up - lo).min(kernel.length_scale()) / 10.0;
+    // `p` of a singular branch point at a point or within `step` of it, where the power law rules the kernel's mass.
+    let singular = |x: f64| {
+      let mut points = kernel.branch_points().into_iter().flatten();
+      points
+        .find(|&(s, p)| p < 0.0 && (x - s).abs() <= step)
+        .map(|(_, p)| p)
+    };
     let (lo_singular, up_singular) = (singular(lo), singular(up));
     let mut centre = kernel.mode().clamp(lo, up);
-    if singular(centre) {
-      let exponent = |end: f64| {
-        let points = kernel.branch_points().into_iter().flatten();
-        points
-          .filter(|&(s, _)| s == end)
-          .map(|(_, p)| p)
-          .sum::<f64>()
+    if singular(centre).is_some() {
+      let heavier_lo = match (lo_singular, up_singular) {
+        (Some(p), Some(q)) => p <= q,
+        (_, None) => true,
+        (None, Some(_)) => false,
       };
-      let heavier_lo = !up_singular || (lo_singular && exponent(lo) <= exponent(up));
-      let step = (up - lo).min(kernel.length_scale()) / 10.0;
       centre = if heavier_lo { lo + step } else { up - step };
     }
-    let a = if lo_singular {
+    let a = if lo_singular.is_some() {
       lo
     } else {
       clip(&kernel, centre, centre, lo, -CLIP)
     };
-    let b = if up_singular {
+    let b = if up_singular.is_some() {
       up
     } else {
       clip(&kernel, centre, centre, up, -CLIP)
     };
     let drop = |e: f64| -kernel.ln_rel(e, e - centre, centre, None);
     // A flat kernel's odd moments about an end lose digits; about the midpoint they do not.
-    if !(lo_singular || up_singular) && drop(a).max(drop(b)) < 1.0 {
+    if lo_singular.is_none() && up_singular.is_none() && drop(a).max(drop(b)) < 1.0 {
       centre = 0.5 * (a + b);
     }
     let mut t = Self {
@@ -133,44 +142,82 @@ impl<K: Kernel> Truncation<K> {
     self.width * self.m0
   }
 
-  /// `(mean, scale²·variance, skewness, excess kurtosis)` in the kernel's coordinate: moments about the reference point
-  /// in units of `width`, the binomial shift by `d = M₁/M₀`, then `scale·width` applied once.
+  /// `(mean, scale²·variance, skewness, excess kurtosis)` in the kernel's coordinate, from sums in units of `width`:
+  /// the mean's offset `d`, then sums about it, so no binomial shift by a far reference point cancels.
   pub(super) fn moments(&self, scale: f64) -> [f64; 4] {
-    let mut m = [0.0; 5];
-    let _ = self.walk(self.a, self.b, false, |panel| {
-      for (slot, part) in m.iter_mut().zip(self.sums::<5>(&panel, 0.0)) {
-        *slot += part;
-      }
-      ControlFlow::<()>::Continue(())
-    });
-    let d = m[1] / m[0];
+    let mean = self.moment_sums::<2>(0.0);
+    let d = mean[1] / mean[0];
+    let m = self.moment_sums::<5>(d);
+    let e = m[1] / m[0];
     let (r2, r3, r4) = (m[2] / m[0], m[3] / m[0], m[4] / m[0]);
-    let mu2 = r2 - d * d;
-    let mu3 = r3 - 3.0 * d * r2 + 2.0 * d * d * d;
-    let mu4 = r4 - 4.0 * d * r3 + 6.0 * d * d * r2 - 3.0 * d * d * d * d;
+    let mu2 = r2 - e * e;
+    let mu3 = r3 - 3.0 * e * r2 + 2.0 * e * e * e;
+    let mu4 = r4 - 4.0 * e * r3 + 6.0 * e * e * r2 - 3.0 * e * e * e * e;
     let unit = scale * self.width;
     [
-      self.centre + self.width * d,
+      self.centre + self.width * (d + e),
       (unit * mu2) * unit,
       mu3 / mu2.powf(1.5),
       mu4 / (mu2 * mu2) - 3.0,
     ]
   }
 
+  /// `Σ w v (y/width − about)^j` over the clipped interval, `j < N`.
+  fn moment_sums<const N: usize>(&self, about: f64) -> [f64; N] {
+    let mut m = [0.0; N];
+    let _ = self.walk(self.a, self.b, false, |panel| {
+      self.nodes(&panel, |w, ln_v, y, _| {
+        let (g, z) = (w * ln_v.exp(), y / self.width - about);
+        let mut zj = 1.0;
+        for slot in &mut m {
+          *slot += g * zj;
+          zj *= z;
+        }
+      });
+      ControlFlow::<()>::Continue(())
+    });
+    m
+  }
+
   /// `−∫ f ln f` as `ln M₀ − E[ln k(X) − ln k(c)]`, so no large `ln k(c)` cancels against `E[ln k(X)]`.
   pub(super) fn entropy(&self) -> f64 {
     let (mut mass, mut log) = (0.0, 0.0);
     let _ = self.walk(self.a, self.b, false, |panel| {
-      self.nodes(&panel, |w, _, ln_g| {
-        let g = w * ln_g.exp();
+      self.nodes(&panel, |w, ln_v, _, ln_g| {
+        let g = w * ln_v.exp();
         if g > 0.0 {
           mass += g;
           log += g * ln_g;
         }
       });
+      if let Some(p) = panel.singular {
+        log += self.ln_u_correction(&panel, p);
+      }
       ControlFlow::<()>::Continue(())
     });
     (self.width.ln() + mass.ln()) - log / mass
+  }
+
+  /// On a singular panel `ln g` carries `(p/(p+1)) ln u`, whose endpoint log the rule cannot integrate: the rule's
+  /// error on `ln u` against `[u ln u − u]`, times the smooth factor at the near end.
+  fn ln_u_correction(&self, panel: &Panel, p: f64) -> f64 {
+    let frame = Frame::of(panel, p);
+    let u0 = frame.u_near();
+    let half = 0.5 * (1.0 - u0);
+    let rule = GL64_X
+      .iter()
+      .zip(&GL64_W)
+      .map(|(node, weight)| {
+        weight * half * ((u0 + half * (1.0 - node)).ln() + (u0 + half * (1.0 + node)).ln())
+      })
+      .sum::<f64>();
+    let exact = if u0 > 0.0 {
+      -1.0 - (u0 * u0.ln() - u0)
+    } else {
+      -1.0
+    };
+    let v0 = self.singular_point(panel, &frame, u0).0;
+    frame.jacobian() / self.width * (p / frame.e) * v0.exp() * (exact - rule)
   }
 
   /// The normalised density `k(x)/∫k` at a point of `[lo, up]`, whose support the law checks at its own bounds.
@@ -209,126 +256,6 @@ impl<K: Kernel> Truncation<K> {
     self.invert(p)
   }
 
-  fn invert(&self, p: f64) -> f64 {
-    if p > 0.5 {
-      return self.locate(
-        self.a,
-        self.b,
-        (1.0 - p) * self.m0 - self.tail_up,
-        false,
-        0.0,
-      );
-    }
-    let want = p * self.m0 - self.tail_lo;
-    if want > 0.0 {
-      return self.locate(self.a, self.b, want, true, 0.0);
-    }
-    // `p·M₀` underflowed against an end that was never clipped.
-    if self.a <= self.lo {
-      return self.lo;
-    }
-    // Below the clip: from where the kernel is `e^{−CLIP}` below `p` times its reference value, every value taken
-    // relative to the kernel there, so no node underflows.
-    let start = clip(&self.kernel, self.centre, self.a, self.lo, p.ln() - CLIP);
-    let shift = self
-      .kernel
-      .ln_rel(start, start - self.centre, self.centre, None);
-    let want = (p.ln() + self.m0.ln() - shift).exp();
-    self.locate(start, self.a, want, true, shift)
-  }
-
-  /// The point of `[l, r]` with `want` of the mass beyond the end `from_lo` names, every value relative to `e^{shift}`:
-  /// the panels walked from that end, then Newton in the one that holds it.
-  fn locate(&self, l: f64, r: f64, want: f64, from_lo: bool, shift: f64) -> f64 {
-    let mut acc = 0.0;
-    let mut hit = None;
-    let _ = self.walk(l, r, !from_lo, |panel| {
-      let mass = self.sums::<1>(&panel, shift)[0];
-      hit = Some((panel, want - acc, mass));
-      acc += mass;
-      if acc >= want {
-        ControlFlow::Break(())
-      } else {
-        ControlFlow::Continue(())
-      }
-    });
-    match hit {
-      Some((panel, rest, mass)) => self.solve(panel, rest, mass, from_lo, shift),
-      None if from_lo => l,
-      None => r,
-    }
-  }
-
-  /// Newton on the panel's partial mass, bisecting whenever a step leaves the bracket, which reaches one ulp past the
-  /// panel's rounded ends.
-  fn solve(&self, panel: Panel, want: f64, mass: f64, from_lo: bool, shift: f64) -> f64 {
-    let (l, r) = (panel.origin + panel.l, panel.origin + panel.r);
-    let (mut lb, mut rb) = (l.next_down().max(self.lo), r.next_up().min(self.up));
-    let frac = want / mass;
-    let frac = if frac.is_finite() {
-      frac.clamp(0.0, 1.0)
-    } else {
-      0.5
-    };
-    // The start inverts the panel's exponential model, its decay read from the kernel at the two ends.
-    let c = self.centre;
-    let decay = self.kernel.ln_rel(l, l - c, c, None) - self.kernel.ln_rel(r, r - c, c, None);
-    let span = if from_lo { decay } else { -decay };
-    let v = if span.is_finite() && span.abs() > 1e-8 {
-      let share = frac * -(-span).exp_m1();
-      -(-share).ln_1p() / span
-    } else {
-      frac
-    };
-    let v = if v.is_finite() {
-      v.clamp(0.0, 1.0)
-    } else {
-      frac
-    };
-    let mut x = if from_lo {
-      l + (r - l) * v
-    } else {
-      r - (r - l) * v
-    };
-    let tol = f64::EPSILON * (r - l);
-    for _ in 0..100 {
-      let f = self.partial(&panel, x, from_lo, shift) - want;
-      if f == 0.0 {
-        return x;
-      }
-      if (f > 0.0) == from_lo {
-        rb = x;
-      } else {
-        lb = x;
-      }
-      let slope = if from_lo {
-        self.ratio(x, shift) / self.width
-      } else {
-        -self.ratio(x, shift) / self.width
-      };
-      let mut next = x - f / slope;
-      if !(lb..=rb).contains(&next) {
-        next = 0.5 * (lb + rb);
-      }
-      if (next - x).abs() <= 4.0 * f64::EPSILON * x.abs() + tol {
-        return next;
-      }
-      x = next;
-    }
-    x
-  }
-
-  /// `panel`'s mass from its exact near end to `x`, one rule on the sub-panel the panel's budgets already cover.
-  fn partial(&self, panel: &Panel, x: f64, from_lo: bool, shift: f64) -> f64 {
-    let t = x - panel.origin;
-    let sub = if from_lo {
-      Panel { r: t, ..*panel }
-    } else {
-      Panel { l: t, ..*panel }
-    };
-    self.sums::<1>(&sub, shift)[0]
-  }
-
   /// The cdf below the lower clip: the mass from where the kernel is `e^{−CLIP}` below its value at `x`, relative to
   /// that value, which one `exp` restores, so a subnormal answer is rounded once.
   fn below_clip(&self, x: f64) -> f64 {
@@ -353,7 +280,7 @@ impl<K: Kernel> Truncation<K> {
     }
     let mut sum = 0.0;
     let _ = self.walk(l, r, false, |panel| {
-      sum += self.sums::<1>(&panel, shift)[0];
+      sum += self.panel_mass(&panel, shift);
       ControlFlow::<()>::Continue(())
     });
     sum
@@ -369,22 +296,20 @@ impl<K: Kernel> Truncation<K> {
     panels(&self.kernel, self.centre, l, r, rev, visit)
   }
 
-  /// `Σ_i w_i g(x_i) (y_i/width)^j / e^{shift}`, `j < N`, on one panel.
-  fn sums<const N: usize>(&self, panel: &Panel, shift: f64) -> [f64; N] {
-    let mut sums = [0.0; N];
-    self.nodes(panel, |w, y, ln_g| {
-      let (g, z) = (w * (ln_g - shift).exp(), y / self.width);
-      let mut zj = 1.0;
-      for slot in &mut sums {
-        *slot += g * zj;
-        zj *= z;
-      }
-    });
-    sums
+  /// `Σ_i w_i v_i / e^{shift}` on one panel: its mass in units of `width`.
+  fn panel_mass(&self, panel: &Panel, shift: f64) -> f64 {
+    let mut mass = 0.0;
+    self.nodes(panel, |w, ln_v, _, _| mass += w * (ln_v - shift).exp());
+    mass
   }
 
-  /// `f(w, y, ln g)` at each node: weight times half-width over `width`, offset from the centre, `ln k(x) − ln k(c)`.
-  fn nodes(&self, panel: &Panel, mut f: impl FnMut(f64, f64, f64)) {
+  /// `f(w, ln v, y, ln g)` at each node: the weight over `width`, the integrand it multiplies, the offset from the
+  /// centre and `ln k(x) − ln k(c)`; a singular panel's integrand is in `u`, so `v` is its smooth factor.
+  fn nodes(&self, panel: &Panel, mut f: impl FnMut(f64, f64, f64, f64)) {
+    if let Some(p) = panel.singular {
+      let u_near = Frame::of(panel, p).u_near();
+      return self.singular_nodes(panel, p, (u_near, 1.0), f);
+    }
     let half = 0.5 * (panel.r - panel.l);
     let scaled = half / self.width;
     for (node, weight) in GL64_X.iter().zip(&GL64_W) {
@@ -399,13 +324,74 @@ impl<K: Kernel> Truncation<K> {
         } else {
           (self.centre + t, t, None)
         };
-        f(
-          weight * scaled,
-          y,
-          self.kernel.ln_rel(x, y, self.centre, branch),
-        );
+        let ln_g = self.kernel.ln_rel(x, y, self.centre, branch);
+        f(weight * scaled, ln_g, y, ln_g);
       }
     }
+  }
+
+  /// A singular panel's nodes over `u ∈ [u0, u1]`, `|x − s| = h·u^{1/(p+1)}` from its branch point `s`, each weight
+  /// times `h^{p+1}/(p+1)`, the Jacobian that `t^p` leaves.
+  fn singular_nodes(
+    &self,
+    panel: &Panel,
+    p: f64,
+    (u0, u1): (f64, f64),
+    mut f: impl FnMut(f64, f64, f64, f64),
+  ) {
+    let frame = Frame::of(panel, p);
+    let jacobian = frame.jacobian() / self.width;
+    let half = 0.5 * (u1 - u0);
+    for (node, weight) in GL64_X.iter().zip(&GL64_W) {
+      for xi in [-node, *node] {
+        let (ln_v, y, ln_t) = self.singular_point(panel, &frame, u0 + half * (1.0 + xi));
+        f(weight * half * jacobian, ln_v, y, ln_v + p * ln_t);
+      }
+    }
+  }
+
+  /// `(ln v, y, ln|x − s|)` at `u`: `|x − s|` is formed only through its logarithm, so a point next to `s` keeps its
+  /// smooth factor however small `u` is.
+  fn singular_point(&self, panel: &Panel, frame: &Frame, u: f64) -> (f64, f64, f64) {
+    let ln_t = frame.ln_far + u.ln() / frame.e;
+    let t = frame.sign * ln_t.exp();
+    let (x, y) = (panel.origin + t, (panel.origin - self.centre) + t);
+    let ln_v = self.kernel.ln_rel_regular(x, y, self.centre, panel.origin);
+    (ln_v, y, ln_t)
+  }
+}
+
+/// A singular panel seen from its branch point: the side it lies on, its ends' distances and `e = p + 1`.
+struct Frame {
+  sign: f64,
+  near: f64,
+  ln_far: f64,
+  e: f64,
+}
+
+impl Frame {
+  fn of(panel: &Panel, p: f64) -> Self {
+    let (near, far, sign) = if panel.r > 0.0 {
+      (panel.l, panel.r, 1.0)
+    } else {
+      (-panel.r, -panel.l, -1.0)
+    };
+    Self {
+      sign,
+      near,
+      ln_far: far.ln(),
+      e: p + 1.0,
+    }
+  }
+
+  /// `u` at the near end, `(near/far)^{p+1}`.
+  fn u_near(&self) -> f64 {
+    (self.e * (self.near.ln() - self.ln_far)).exp()
+  }
+
+  /// `h^{p+1}/(p+1)`, `h` the far end's distance.
+  fn jacobian(&self) -> f64 {
+    (self.e * self.ln_far - self.e.ln()).exp()
   }
 }
 

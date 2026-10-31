@@ -5,7 +5,9 @@ use super::NEXT_TO_ONE;
 use super::Want;
 use super::check;
 use super::moments_match;
+use super::quantile_is_monotone;
 use super::rel;
+use super::singular_row;
 
 fn tg(k: f64, theta: f64, lo: f64, up: f64) -> SimdTruncatedGamma<f64> {
   SimdTruncatedGamma::<f64>::new(k, theta, lo, up)
@@ -240,6 +242,167 @@ fn quantile_tails_keep_their_digits() {
   assert!(
     rel(got, 1.0066646743913833e-10) < 1e-12,
     "TG(30, 0.5, [0, inf)): quantile(5e-324) = {got}"
+  );
+}
+
+/// Shapes down to 1e-4, whose mass sits almost wholly in the innermost panel beside 0: in `u = (t/h)^k` that panel is
+/// exact, and so is every analytic (mpmath, 60 and 120 digits).
+#[test]
+fn small_shapes_keep_their_digits() {
+  for (k, want) in [
+    (
+      0.0001,
+      [
+        6.320912545111371e-5,
+        2.6420576421232246e-5,
+        118.22824828313776,
+        16313.105239874927,
+        -9990.586081250514,
+        0.9550686582416881,
+        0.9954847087525884,
+        0.9999659595983126,
+      ],
+    ),
+    (
+      0.001,
+      [
+        0.0006318276006158304,
+        0.0002638878227153765,
+        37.36284552072828,
+        1628.0443628985454,
+        -992.8870664149445,
+        0.6314598029360329,
+        0.9557530876691439,
+        0.9996594669172038,
+      ],
+    ),
+    (
+      0.005,
+      [
+        0.003153288273779755,
+        0.0013123997619908516,
+        16.66105312260243,
+        322.70922365397416,
+        -194.48943389969932,
+        0.10039765855573454,
+        0.7974869489102778,
+        0.9982944819428411,
+      ],
+    ),
+    (
+      0.01,
+      [
+        0.006291994633251167,
+        0.0026073200163699846,
+        11.738610948138804,
+        159.5464741103446,
+        -95.17383482480531,
+        0.01007940360826197,
+        0.635967373461305,
+        0.99658190312462,
+      ],
+    ),
+    (
+      0.03,
+      [
+        0.018702409736796977,
+        0.007616111635734828,
+        6.679061763213313,
+        50.78669462660723,
+        -29.571786783434792,
+        1.0236678105946876e-6,
+        0.25713372838059134,
+        0.9896633151629415,
+      ],
+    ),
+    (
+      0.06,
+      [
+        0.03689249183162857,
+        0.014637477219608078,
+        4.618622387247142,
+        23.61994747950897,
+        -13.550097833090646,
+        1.0468786592508845e-12,
+        0.06605357788339226,
+        0.979093155602347,
+      ],
+    ),
+  ] {
+    singular_row(
+      &format!("TG({k:e}, 1, [0, 1])"),
+      &tg(k, 1.0, 0.0, 1.0),
+      want,
+    );
+  }
+}
+
+/// An end within a tenth of a scale of the singular point is treated as the point itself: the reference point steps
+/// off it, so the power law's tiny sliver is not mistaken for the mass (mpmath, 60 and 120 digits).
+#[test]
+fn an_end_beside_the_singular_point() {
+  for (name, lo, k, want) in [
+    (
+      "TG(0.1, 1, [1e-25, 1])",
+      1e-25,
+      0.1,
+      [
+        0.06058112879372996,
+        0.023208516248972647,
+        3.4630133987506295,
+        12.723771511569883,
+      ],
+    ),
+    (
+      "TG(0.7, 1, [1e-300, 1])",
+      1e-300,
+      0.7,
+      [
+        0.32767637518556353,
+        0.07735440614627132,
+        0.7070784932495472,
+        -0.6281962855616962,
+      ],
+    ),
+  ] {
+    moments_match(name, &tg(k, 1.0, lo, 1.0), want);
+  }
+}
+
+/// Beside a singular end the quantile solves in `u`, so its tolerance is relative: `P⁻¹(0.7, p)` down to the least
+/// level, where it underflows to 0, monotone all the way, and the cdf at 1e-300 (mpmath, 60 and 120 digits).
+#[test]
+fn quantile_and_cdf_beside_a_singular_end() {
+  let open = tg(0.7, 1.0, 0.0, f64::INFINITY);
+  for (p, want) in [
+    (1e-8, 3.250779361498167e-12),
+    (1e-12, 6.276272330333046e-18),
+    (1e-30, 1.2117584734026752e-43),
+    (1e-100, 1.2117584734026573e-143),
+  ] {
+    let got = open.quantile(p).unwrap();
+    assert!(
+      rel(got, want) < 1e-12,
+      "TG(0.7, 1, [0, inf)): quantile({p:e}) = {got:e}"
+    );
+  }
+  assert_eq!(open.quantile(5e-324), Some(0.0));
+  let short = tg(0.7, 1.0, 0.0, 1e-3);
+  for (p, want) in [
+    (1e-30, 1.3886784734131294e-46),
+    (1e-100, 1.388678473413109e-146),
+  ] {
+    let got = short.quantile(p).unwrap();
+    assert!(
+      rel(got, want) < 1e-12,
+      "TG(0.7, 1, [0, 1e-3]): quantile({p:e}) = {got:e}"
+    );
+  }
+  quantile_is_monotone("TG(0.7, 1, [0, inf))", &open);
+  let deep = open.cdf(1e-300).unwrap();
+  assert!(
+    rel(deep, 1.1005474055236995e-210) < 1e-12,
+    "TG(0.7, 1, [0, inf)): cdf(1e-300) = {deep:e}"
   );
 }
 

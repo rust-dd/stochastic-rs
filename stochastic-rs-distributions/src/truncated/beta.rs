@@ -30,6 +30,36 @@ struct BetaKernel {
   b: f64,
 }
 
+impl BetaKernel {
+  /// `(a − 1) ln(x/c)`, read from `x` beside 0, where `ln_1p(y/c)` would not be.
+  fn left(&self, x: f64, y: f64, c: f64) -> f64 {
+    if self.a == 1.0 {
+      0.0
+    } else if y.abs() > 0.5 * c {
+      (self.a - 1.0) * (x.ln() - c.ln())
+    } else {
+      (self.a - 1.0) * (y / c).ln_1p()
+    }
+  }
+
+  /// `(b − 1) ln((1 − x)/(1 − c))`, `1 − x` as the offset from 1 on a panel graded toward it, else as `(1 − c) − y`:
+  /// never from a rounded `x`.
+  fn right(&self, y: f64, c: f64, branch: Option<(f64, f64)>) -> f64 {
+    let cc = 1.0 - c;
+    if self.b == 1.0 {
+      0.0
+    } else if y.abs() > 0.5 * cc {
+      let gap = match branch {
+        Some((1.0, t)) => -t,
+        _ => cc - y,
+      };
+      (self.b - 1.0) * (gap.ln() - cc.ln())
+    } else {
+      (self.b - 1.0) * (-y / cc).ln_1p()
+    }
+  }
+}
+
 impl Kernel for BetaKernel {
   fn ln_k(&self, x: f64) -> f64 {
     if !(0.0..=1.0).contains(&x) {
@@ -48,28 +78,16 @@ impl Kernel for BetaKernel {
     left + right
   }
 
-  /// `1 − x` as the offset from 1 on a panel graded toward it, else as `(1 − c) − y`: never from a rounded `x`.
   fn ln_rel(&self, x: f64, y: f64, c: f64, branch: Option<(f64, f64)>) -> f64 {
-    let left = if self.a == 1.0 {
-      0.0
-    } else if y.abs() > 0.5 * c {
-      (self.a - 1.0) * (x.ln() - c.ln())
+    self.left(x, y, c) + self.right(y, c, branch)
+  }
+
+  fn ln_rel_regular(&self, x: f64, y: f64, c: f64, s: f64) -> f64 {
+    if s == 0.0 {
+      -(self.a - 1.0) * c.ln() + self.right(y, c, None)
     } else {
-      (self.a - 1.0) * (y / c).ln_1p()
-    };
-    let cc = 1.0 - c;
-    let right = if self.b == 1.0 {
-      0.0
-    } else if y.abs() > 0.5 * cc {
-      let gap = match branch {
-        Some((1.0, t)) => -t,
-        _ => cc - y,
-      };
-      (self.b - 1.0) * (gap.ln() - cc.ln())
-    } else {
-      (self.b - 1.0) * (-y / cc).ln_1p()
-    };
-    left + right
+      self.left(x, y, c) - (self.b - 1.0) * (1.0 - c).ln()
+    }
   }
 
   fn d1(&self, x: f64) -> f64 {
@@ -122,8 +140,9 @@ impl Kernel for BetaKernel {
     ]
   }
 
+  /// `1/(α + β)`: beside 0 the factor `(1 − x)^{β−1}` falls an e-fold in about `1/β`, beside 1 `x^{α−1}` in `1/α`.
   fn length_scale(&self) -> f64 {
-    1.0
+    1.0 / (self.a + self.b)
   }
 }
 
@@ -400,6 +419,10 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
 
   fn kurtosis(&self) -> Option<f64> {
     Some(self.analytics()?.moments(1.0)[3])
+  }
+
+  fn entropy(&self) -> Option<f64> {
+    Some(self.analytics()?.entropy())
   }
 }
 

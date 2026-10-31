@@ -55,6 +55,10 @@ impl Kernel for GammaKernel {
     lead - y / self.theta
   }
 
+  fn ln_rel_regular(&self, _x: f64, y: f64, c: f64, _s: f64) -> f64 {
+    -(self.k - 1.0) * c.ln() - y / self.theta
+  }
+
   fn d1(&self, x: f64) -> f64 {
     let lead = if self.k == 1.0 {
       0.0
@@ -348,6 +352,10 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedGamma<T> {
 
   fn kurtosis(&self) -> Option<f64> {
     Some(self.analytics()?.moments(1.0)[3])
+  }
+
+  fn entropy(&self) -> Option<f64> {
+    Some(self.analytics()?.entropy())
   }
 }
 

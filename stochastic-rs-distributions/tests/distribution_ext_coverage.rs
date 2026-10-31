@@ -217,7 +217,7 @@ fn rows() -> Vec<Row> {
       "SimdTruncatedBeta",
       Box::new(SimdTruncatedBeta::<f64>::new(2.0, 3.0, 0.2, 0.7)),
       [
-        false, true, true, true, true, true, true, true, true, true, false, false,
+        false, true, true, true, true, true, true, true, true, true, true, false,
       ],
     ),
     (
@@ -231,7 +231,7 @@ fn rows() -> Vec<Row> {
       "SimdTruncatedGamma",
       Box::new(SimdTruncatedGamma::<f64>::new(2.5, 1.2, 0.8, 4.0)),
       [
-        false, true, true, true, true, true, true, true, true, true, false, false,
+        false, true, true, true, true, true, true, true, true, true, true, false,
       ],
     ),
     (

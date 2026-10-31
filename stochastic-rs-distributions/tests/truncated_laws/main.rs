@@ -60,6 +60,39 @@ pub fn moments_match(name: &str, law: &impl DistributionExt, want: [f64; 4]) {
   }
 }
 
+/// A law with a singular lower end at 0: its four moments, its entropy and its cdf at 1e-200, 1e-20 and ½.
+pub fn singular_row(name: &str, law: &impl DistributionExt, want: [f64; 8]) {
+  moments_match(name, law, [want[0], want[1], want[2], want[3]]);
+  close(name, "entropy", law.entropy().unwrap(), want[4], 1e-12, 0.0);
+  for (x, cdf) in [1e-200, 1e-20, 0.5].into_iter().zip(&want[5..]) {
+    close(
+      name,
+      &format!("cdf({x:e})"),
+      law.cdf(x).unwrap(),
+      *cdf,
+      1e-12,
+      0.0,
+    );
+  }
+}
+
+/// `x` never rises as `p` falls from 0.1 to 1e-323 in quarter decades.
+pub fn quantile_is_monotone(name: &str, law: &impl DistributionExt) {
+  let mut prev = f64::INFINITY;
+  for i in 0..1290 {
+    let p = 0.1 * 10_f64.powf(-0.25 * i as f64);
+    if p < 1e-323 {
+      break;
+    }
+    let x = law.quantile(p).unwrap();
+    assert!(
+      x <= prev,
+      "{name}: quantile({p:e}) = {x:e} rises past {prev:e}"
+    );
+    prev = x;
+  }
+}
+
 /// `mid` is where the reference evaluated pdf and cdf, `scale` the interval's width (or `σ`/`θ` for an open end),
 /// `points` three interior points for the quantile round trip, each with `1e-10 < cdf < 1 − 1e-10`.
 pub fn check(
