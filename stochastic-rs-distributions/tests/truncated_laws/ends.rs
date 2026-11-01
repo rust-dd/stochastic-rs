@@ -277,3 +277,38 @@ fn a_large_shape_far_below_one() {
     ],
   );
 }
+
+/// A normal point nearer a bound than `μ` is held beside it by `(x − bound)/σ`, and a quantile the walk from that bound
+/// returns maps back from the bound itself: `(x − μ)/σ` rounds the offset away when `μ` lies far off (mpmath).
+#[test]
+fn a_normal_beside_a_bound_far_from_its_mean() {
+  let law = SimdTruncatedNormal::<f64>::new(-0.7, 0.9, 1.3, 2.0);
+  let name = "TN(−0.7, 0.9, [1.3, 2])";
+  cdfs(
+    name,
+    &law,
+    &[
+      (1.30000001, 3.1844441258684016e-8),
+      (1.3000000001, 3.184444447624846e-10),
+    ],
+  );
+  quantiles(name, &law, &[(1e-10, 1.3000000000314027)]);
+  let law = SimdTruncatedNormal::<f64>::new(
+    -2.2781875788037683e-161,
+    2.8509567226098224e-162,
+    -1.8036267976644332e-162,
+    2.5336181655655235e-31,
+  );
+  let (lo, want) = (-1.8036267976644332e-162_f64, -1.8036267976263678e-162_f64);
+  let got = law.quantile(1e-10).unwrap();
+  // Its offset from the bound, 3.8e-173, to 1e-12 or an ulp.
+  let bar = 1e-12 * (want - lo) + (want.next_down() - want).abs();
+  close(
+    "TN(−2.3e-161, 2.9e-162, [−1.8e-162, 2.5e-31])",
+    "quantile(1e-10)",
+    got,
+    want,
+    0.0,
+    bar,
+  );
+}

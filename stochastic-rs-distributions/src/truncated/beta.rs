@@ -16,6 +16,7 @@ use super::local::Local;
 use super::local::Model;
 use super::local::Signed;
 use super::local::ln_cubic;
+use super::quadrature::Cut;
 use super::quadrature::Truncation;
 use crate::beta::BetaState;
 use crate::beta::SimdBeta;
@@ -321,7 +322,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
       return Some(1.0);
     }
     Some(match self.analytics()? {
-      Analytics::Beta(Model::Full(t)) => t.cdf(x),
+      Analytics::Beta(Model::Full(t)) => t.cdf(Cut::at(x)),
       Analytics::Beta(Model::Local(l)) => l.cdf(x),
       Analytics::Gamma(g) => g.cdf(x)?,
     })

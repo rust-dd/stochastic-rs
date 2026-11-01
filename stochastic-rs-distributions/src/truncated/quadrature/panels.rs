@@ -164,6 +164,11 @@ impl Cut {
     self.from.map(|(s, lo, t)| (s, lo + t))
   }
 
+  /// Its double where nothing is held beside one.
+  pub(super) fn plain(self) -> Option<f64> {
+    self.from.is_none().then_some(self.x)
+  }
+
   pub(in crate::truncated) fn offset(self, origin: f64) -> f64 {
     span(Self::at(origin), self)
   }

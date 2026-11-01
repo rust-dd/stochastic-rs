@@ -85,7 +85,7 @@ fn narrow_interval_centres_on_its_midpoint() {
   let t = Truncation::new(Normal::default(), 0.3, 0.3 + 1e-6);
   assert_eq!(t.centre.x, 0.3 + 0.5e-6);
   assert!((t.moments(1.0)[3] + 1.1999999999999508).abs() < 1e-11);
-  assert!((t.cdf(0.3 + 0.25e-6) - 0.25000002811116198).abs() < 1e-13);
+  assert!((t.cdf(Cut::at(0.3 + 0.25e-6)) - 0.25000002811116198).abs() < 1e-13);
 }
 
 /// Below the clip the cdf integrates from where the kernel is negligible against its value at `x`, and the quantile
@@ -93,7 +93,7 @@ fn narrow_interval_centres_on_its_midpoint() {
 #[test]
 fn far_below_the_clip_keeps_its_digits() {
   let t = Truncation::new(Normal::default(), f64::NEG_INFINITY, 2.0);
-  let p = t.cdf(-12.0);
+  let p = t.cdf(Cut::at(-12.0));
   assert!(
     ((p - 1.8178381703127302e-33) / 1.8178381703127302e-33).abs() < 1e-12,
     "{p}"
@@ -167,7 +167,7 @@ impl Kernel for Power {
 #[test]
 fn ladder_reaches_an_end_far_below_the_clip() {
   let t = Truncation::new(Power::default(), 0.0, f64::INFINITY);
-  let p = t.cdf(1e-200);
+  let p = t.cdf(Cut::at(1e-200));
   assert!(
     ((p - 9.5557909646525e-221) / 9.5557909646525e-221).abs() < 1e-12,
     "{p}"

@@ -60,7 +60,7 @@ impl<K: Kernel> Truncation<K> {
     match hit {
       Some((panel, rest, mass)) => match panel.singular {
         Some(e) => self.solve_singular(&panel, e, rest, mass, from_lo, shift),
-        None => Point::At(self.solve(panel, rest, mass, from_lo, shift)),
+        None => self.solve(panel, rest, mass, from_lo, shift),
       },
       None if from_lo => Point::At(l.x),
       None => Point::At(r.x),
@@ -127,7 +127,7 @@ impl<K: Kernel> Truncation<K> {
 
   /// Newton on the panel's partial mass in the offset `t` from its origin, bisecting whenever a step leaves the panel:
   /// the point is rounded once, so a panel narrower than an ulp of its place still lands on the double its level has.
-  fn solve(&self, panel: Panel, want: f64, mass: f64, from_lo: bool, shift: f64) -> f64 {
+  fn solve(&self, panel: Panel, want: f64, mass: f64, from_lo: bool, shift: f64) -> Point {
     let (mut lb, mut rb) = (panel.l, panel.r);
     let frac = want / mass;
     let frac = if frac.is_finite() {
@@ -190,7 +190,10 @@ impl<K: Kernel> Truncation<K> {
         break;
       }
     }
-    panel.origin.plus(t)
+    match panel.origin.plain() {
+      Some(s) => Point::From { s, t },
+      None => Point::At(panel.origin.plus(t)),
+    }
   }
 
   /// `panel`'s mass from its near end to the offset `t`, one rule on the sub-panel the panel's budgets already cover.

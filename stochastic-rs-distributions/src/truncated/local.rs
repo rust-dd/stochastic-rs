@@ -232,7 +232,7 @@ impl Local {
   }
 
   pub(super) fn cdf(&self, x: f64) -> f64 {
-    self.t.cdf(self.units(x))
+    self.t.cdf(Cut::at(self.units(x)))
   }
 
   pub(super) fn quantile(&self, q: f64) -> f64 {

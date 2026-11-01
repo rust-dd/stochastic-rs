@@ -13,6 +13,8 @@ use stochastic_rs_core::simd_rng::SimdRngExt;
 use super::local::Local;
 use super::local::Model;
 use super::local::Signed;
+use super::quadrature::Cut;
+use super::quadrature::Point;
 use super::quadrature::Truncation;
 use crate::normal::SimdNormal;
 use crate::seeded::StreamState;
@@ -378,6 +380,40 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     ))
   }
 
+  /// `x` beside a bound nearer it than `μ` by its own offset `(x − bound)/σ`, so a point next to an end keeps the
+  /// digits its distance from it has, which `(x − μ)/σ` rounds away.
+  fn cut(&self, x: f64) -> Option<Cut> {
+    let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
+    let (bound, d) = if x - lo <= up - x {
+      (lo, x - lo)
+    } else {
+      (up, x - up)
+    };
+    let t = d / self.base.std_dev().to_f64()?;
+    Some(
+      if d.abs() < (x - self.base.mean().to_f64()?).abs() && t.is_finite() {
+        Cut::beside(self.standardise(bound)?, t)
+      } else {
+        Cut::at(self.standardise(x)?)
+      },
+    )
+  }
+
+  /// A point the engine reports: an offset from a bound's standardised double maps back from that bound itself.
+  fn located(&self, point: Point) -> Option<f64> {
+    let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
+    let sigma = self.base.std_dev().to_f64()?;
+    if let Point::From { s, t } = point {
+      for bound in [lo, up] {
+        let x = bound + sigma * t;
+        if bound.is_finite() && s == self.standardise(bound)? && x.is_finite() {
+          return Some(x);
+        }
+      }
+    }
+    Some(self.unstandardise(point.value()))
+  }
+
   fn standardised_bounds(&self) -> Option<(f64, f64)> {
     Some((
       self.standardise(self.lower.to_f64()?)?,
@@ -441,7 +477,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
       return Some(1.0);
     }
     Some(match self.analytics()? {
-      Model::Full(t) => t.cdf(self.standardise(x)?),
+      Model::Full(t) => t.cdf(self.cut(x)?),
       Model::Local(l) => l.cdf(x),
     })
   }
@@ -459,7 +495,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
       return Some(up);
     }
     let x = match self.analytics()? {
-      Model::Full(t) => self.unstandardise(t.quantile(p).value()),
+      Model::Full(t) => self.located(t.quantile(p))?,
       Model::Local(l) => l.quantile(p),
     };
     Some(x.clamp(lo, up))

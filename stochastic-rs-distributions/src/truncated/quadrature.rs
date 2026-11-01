@@ -152,13 +152,23 @@ const CLIP: f64 = 41.5;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Point {
   At(f64),
-  Beside { s: f64, sign: f64, ln_t: f64 },
+  /// `s + t`, the offset from the double a walk started at held apart, so a law mapping it back keeps its digits.
+  From {
+    s: f64,
+    t: f64,
+  },
+  Beside {
+    s: f64,
+    sign: f64,
+    ln_t: f64,
+  },
 }
 
 impl Point {
   pub(super) fn value(self) -> f64 {
     match self {
       Self::At(x) => x,
+      Self::From { s, t } => s + t,
       Self::Beside { s, sign, ln_t } => s + sign * ln_t.exp(),
     }
   }
@@ -426,7 +436,8 @@ impl<K: Kernel> Truncation<K> {
   }
 
   /// `∫_lo^x k / ∫k`, from the end nearer in mass: past the median one less the mass above `x`.
-  pub(super) fn cdf(&self, x: f64) -> f64 {
+  pub(super) fn cdf(&self, at: Cut) -> f64 {
+    let x = at.x;
     if x.is_nan() {
       return f64::NAN;
     }
@@ -436,12 +447,11 @@ impl<K: Kernel> Truncation<K> {
     if self.narrow {
       return if x < self.centre.x { 0.0 } else { 1.0 };
     }
-    let at = Cut::at(x);
     if span(self.b, at) >= 0.0 {
       return 1.0;
     }
     if span(self.a, at) < 0.0 {
-      return self.below_clip(x);
+      return self.below_clip(at);
     }
     if x > self.median {
       return (1.0 - (self.tail_up + self.integrate(at, self.b, 0.0)) / self.m0).max_or_nan(0.0);
@@ -479,8 +489,8 @@ impl<K: Kernel> Truncation<K> {
 
   /// The cdf below the lower clip: the mass from where the kernel is `e^{−CLIP}` below its value at `x`, relative to
   /// that value, which one `exp` restores, so a subnormal answer is rounded once.
-  fn below_clip(&self, x: f64) -> f64 {
-    let at = Cut::at(x);
+  fn below_clip(&self, at: Cut) -> f64 {
+    let x = at.x;
     let ln_g = self.kernel.ln_rel(x, self.offset(x), None);
     // The kernel rises from `lo` to `x`, so the cdf is at most `k(x)(x − lo)/∫k`: where that underflows it is 0, and
     // an `ln_g` too large to keep its units digit never feeds the walk.
