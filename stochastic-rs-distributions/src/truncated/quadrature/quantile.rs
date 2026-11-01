@@ -74,8 +74,8 @@ impl<K: Kernel> Truncation<K> {
         Some(e) => self.solve_singular(&panel, e, rest, mass, from_lo, shift),
         None => self.solve(panel, rest, mass, from_lo, shift),
       },
-      None if from_lo => Point::At(l.x),
-      None => Point::At(r.x),
+      None if from_lo => Point::From(l),
+      None => Point::From(r),
     }
   }
 

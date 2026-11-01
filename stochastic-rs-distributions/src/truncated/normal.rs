@@ -324,7 +324,10 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
       return Some(1.0);
     }
     Some(match self.analytics()? {
-      Model::Full(t) => t.cdf(self.cut(x)?),
+      Model::Full(t) => match self.zone_offset(x).and_then(|offset| t.zone_cdf(offset)) {
+        Some(f) => f,
+        None => t.cdf(self.cut(x)?),
+      },
       Model::Local(l) => l.cdf(x),
     })
   }
@@ -342,7 +345,14 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
       return Some(up);
     }
     let x = match self.analytics()? {
-      Model::Full(t) => self.located(t.quantile(p))?,
+      Model::Full(t) => {
+        let x = self.located(t.quantile(p))?;
+        // A point whose standardised offset the doubles hold only as a coarse subnormal: the engine's zone, in logs.
+        match t.zone_quantile(p).filter(|_| self.zone_offset(x).is_some()) {
+          Some(point) => self.located(point)?,
+          None => x,
+        }
+      }
       Model::Local(l) => l.quantile(p),
     };
     Some(x.clamp(lo, up))

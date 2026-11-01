@@ -4,6 +4,7 @@
 use stochastic_rs_distributions::traits::DistributionExt;
 use stochastic_rs_distributions::truncated::SimdTruncatedBeta;
 use stochastic_rs_distributions::truncated::SimdTruncatedGamma;
+use stochastic_rs_distributions::truncated::SimdTruncatedNormal;
 
 use crate::rel;
 
@@ -143,4 +144,53 @@ fn the_zone_beside_the_lower_end() {
     SimdTruncatedGamma::<f64>::new(1.3613691839394225e-283, 4.3126932660537823e-5, 0.0, inf);
   let next_to_one = tiny.cdf(5.8711677121886804e-288).unwrap();
   assert!(next_to_one <= 1.0 && 1.0 - next_to_one <= 8.0 * f64::EPSILON);
+}
+
+/// A normal whose standardised offset from its lower bound the doubles hold only as a coarse subnormal reads it in the
+/// zone, either side of `2⁻¹⁰³²`; a quantile there, or a bound the walk returns, maps back from the bound itself.
+#[test]
+fn a_normal_beside_its_lower_bound() {
+  let (max, inf) = (f64::MAX, f64::INFINITY);
+  let steep = SimdTruncatedNormal::<f64>::new(-max, 1.5, 0.0, inf);
+  assert_eq!(steep.quantile(5e-324).unwrap(), 0.0);
+  for (x, want) in [
+    (5e-324, 3.9474596431116665e-16),
+    (2e-323, 1.5789838572446656e-15),
+    (3.2e-311, 0.002553453502481282),
+    (3.3e-311, 0.0026331437770921416),
+    (1e-310, 0.007957914071510653),
+  ] {
+    let got = steep.cdf(x).unwrap();
+    assert!(
+      rel(got, want) < 1e-12,
+      "cdf({x:e}) = {got:e}, mpmath {want:e}"
+    );
+  }
+  for p in [1e-10, 0.9] {
+    let x = steep.quantile(p).unwrap();
+    let (below, at, above) = (
+      steep.cdf(x.next_down()).unwrap(),
+      steep.cdf(x).unwrap(),
+      steep.cdf(x.next_up()).unwrap(),
+    );
+    let tol = 1e-12 * p.min(1.0 - p) + 8.0 * f64::EPSILON;
+    assert!(
+      below.min(at) - tol <= p && p <= above.max(at) + tol,
+      "quantile({p})"
+    );
+  }
+  let half = SimdTruncatedNormal::<f64>::new(0.0, 18.05394799735874, 7.313071214234367e-309, inf);
+  let x = half.quantile(5e-324).unwrap();
+  assert_eq!((x, half.cdf(x).unwrap()), (7.31307121423448e-309, 5e-324));
+  let flat = SimdTruncatedNormal::<f64>::new(
+    0.0,
+    1.0897757579695164e306,
+    -1.054893599337657e-308,
+    4.3236333773498275e302,
+  );
+  let x = flat.quantile(5e-324).unwrap();
+  assert!(
+    rel(x, 2.1361586609201363e-21) < 1e-12,
+    "quantile(5e-324) = {x:e}"
+  );
 }

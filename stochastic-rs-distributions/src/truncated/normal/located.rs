@@ -5,9 +5,13 @@ use super::NormalKernel;
 use super::SimdTruncatedNormal;
 use crate::traits::SimdFloatExt;
 use crate::truncated::quadrature::Cut;
+use crate::truncated::quadrature::Offset;
 use crate::truncated::quadrature::Point;
 use crate::truncated::quadrature::Truncation;
 use crate::truncated::quadrature::two_sum;
+
+/// `2⁻¹⁰³²`: a subnormal below it is `2⁻¹⁰⁷⁴` coarse past 2e-13 of itself.
+pub(super) const SUBNORMAL_DIGITS: f64 = f64::MIN_POSITIVE / 1024.0;
 
 impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
   /// The mean from the point its sums were taken about, exact in the law's coordinate: a bound, `μ`, or the bounds'
@@ -84,6 +88,26 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     Some(Cut::at(self.standardise(x)?))
   }
 
+  /// `(x − lower)/σ` as `m·2^q` where the subnormal it rounds to holds fewer digits than 2e-13, which `cut` would
+  /// take.
+  pub(super) fn zone_offset(&self, x: f64) -> Option<Offset> {
+    let (lo, sigma) = (self.lower.to_f64()?, self.base.std_dev().to_f64()?);
+    let d = x - lo;
+    if !(lo.is_finite() && d > 0.0 && d / sigma < SUBNORMAL_DIGITS) {
+      return None;
+    }
+    let (Offset { m: md, q: qd }, Offset { m: ms, q: qs }) = (Offset::of(d), Offset::of(sigma));
+    let m = md / ms;
+    Some(if m < 1.0 {
+      Offset {
+        m: 2.0 * m,
+        q: qd - qs - 1,
+      }
+    } else {
+      Offset { m, q: qd - qs }
+    })
+  }
+
   /// A point the engine reports: one held beside a bound maps back from that bound itself, one beside a flat kernel's
   /// midpoint from the bounds' midpoint.
   pub(super) fn located(&self, point: Point) -> Option<f64> {
@@ -102,6 +126,12 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
           return Some(x);
         }
       }
+    }
+    if let Point::Beside { s, sign, ln_t } = point
+      && s == self.held().0.x
+      && lo.is_finite()
+    {
+      return Some(lo + sign * (ln_t + self.ln_sigma).exp());
     }
     Some(self.unstandardise(point.value()))
   }
