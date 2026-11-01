@@ -16,9 +16,8 @@ impl<K: Kernel> Truncation<K> {
     [frame.plus(unit * offset), variance, skewness, kurtosis]
   }
 
-  /// The mean as the point it was summed about and its offset from it, `unit·offset` (the unit `width` for sums, which
-  /// a far-smaller offset would underflow against), then the other three; an interval that cuts neither end removes less
-  /// than the clip resolves and reads the base's closed forms (2/√k at k = 1e300).
+  /// The mean as its frame and `unit·offset` (in widths, where an offset would underflow against the width), then the
+  /// other three; an interval cutting neither end reads the base's closed forms (2/√k at k = 1e300).
   pub(in crate::truncated) fn located_moments(&self, scale: f64) -> (Cut, [f64; 2], [f64; 3]) {
     let (lo, up) = self.kernel.support();
     // By exact offsets: a clip within an ulp of its bound still cuts nothing.

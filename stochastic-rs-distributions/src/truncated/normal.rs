@@ -198,13 +198,12 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     }))
   }
 
-  /// The local model at `r = clamp(μ)`: slope `(μ − r)/σ²` and curvature `−1/σ²`, exact, in logs.
+  /// The local model at `r = clamp(μ)`: slope `(μ − r)/σ²` and curvature `−1/σ²`, in logs.
   fn local(&self) -> Option<Local> {
     let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
     let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
     let r = mu.clamp(lo, up);
     let ln_var = 2.0 * sigma.ln();
-    // From halves where `μ − r` overflows.
     let slope = if (mu - r).is_finite() {
       Signed::over(mu - r, ln_var)
     } else {

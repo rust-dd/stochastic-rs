@@ -79,8 +79,8 @@ enum Exponent {
 }
 
 impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
-  /// The tilted mode is placed by its exact offsets from the bounds and the tilt integrated from the bound it clamps at
-  /// or lies nearer, so `σt` never meets a bound in a rounded difference; at an infinite `t` the limit.
+  /// The tilted mode is placed by its exact offsets from the bounds, the tilt integrated from the bound it clamps at or
+  /// lies nearer, and the exponent summed exactly, save where every term is at most 8; at an infinite `t` the limit.
   pub(super) fn mgf(&self, t: f64) -> Option<f64> {
     if t.is_nan() {
       return Some(f64::NAN);

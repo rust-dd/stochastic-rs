@@ -1,5 +1,5 @@
-//! The truncated exponential's cf: `e^{it·lower}` from the product's exact turns, times `λ/(λ − it)` on an open tail or
-//! `(1 − e^{−(λ−it)L})/((λ − it)m/λ)` on a bounded one, `m` the mass, each quotient by Smith's division at its own scale.
+//! The truncated exponential's cf: `e^{it·lower}` times `λ/(λ − it)` on an open tail or `(1 − e^{−(λ−it)L})/((λ − it)m/λ)`
+//! on a bounded one, `m` the mass, Smith's division where `|(λ − it)L| ≥ ½` and below it the series of `(1 − e^{−w})/w`.
 
 use num_complex::Complex64;
 
@@ -12,8 +12,8 @@ use crate::truncated::quadrature::ldexp;
 use crate::truncated::quadrature::split;
 
 impl<T: SimdFloatExt> SimdTruncatedExp<T> {
-  /// No product `t·x` is rounded before its reduction, and no `t/λ` or `t·m/λ` is formed; at an infinite `t` the
-  /// Riemann–Lebesgue limit 0.
+  /// A product `t·x` past 1 is reduced from its exact parts, and each quotient by `λ − it` taken at its own power of two,
+  /// so none overflows short of its value; at an infinite `t` the Riemann–Lebesgue limit 0.
   pub(super) fn cf(&self, t: f64) -> Option<Complex64> {
     if t == 0.0 {
       return Some(Complex64::new(1.0, 0.0));
