@@ -1,5 +1,6 @@
 use stochastic_rs_core::simd_rng::Deterministic;
 
+use super::sampler::TailProposal;
 use super::*;
 use crate::tests::scalar_draws;
 use crate::tests::scalar_ks_best_p;
@@ -123,7 +124,7 @@ fn scalar_sample_matches_cdf() {
 fn tail_proposal_follows_roberts_rule() {
   let exponential = |a: f64, b: f64| {
     matches!(
-      TailSetup::new(a, b, false).proposal,
+      TailSetup::new(a, b, f64::NAN, false).proposal,
       TailProposal::Exponential { .. }
     )
   };
@@ -154,4 +155,46 @@ fn getters_return_the_parent_parameters() {
     (tn.mu(), tn.sigma(), tn.lower(), tn.upper()),
     (0.5, 2.0, 1.0, 4.0)
   );
+}
+
+/// Past `MAX/2` the tail's rate no longer overflows: every draw returns, here the bound, where each law is a point to
+/// its last double.
+#[test]
+fn draws_past_half_max_return() {
+  let (max, inf) = (f64::MAX, f64::INFINITY);
+  for (mu, sigma, lo, up, at) in [
+    (0.0, 1.0, 1e308, max, 1e308),
+    (0.0, 1.0, 9e307, inf, 9e307),
+    (0.0, 1e-10, 1e298, inf, 1e298),
+    (-max, 1.0, 1.0, 2.0, 1.0),
+    (-max / 2.0, 1.0, max / 2.0, max, max / 2.0),
+    (max, 1.0, -max, -1.0, -1.0),
+  ] {
+    let law = SimdTruncatedNormal::<f64>::new(mu, sigma, lo, up);
+    let mut stream = law.clone().seeded(&Deterministic::new(7));
+    let streamed = (0..100).map(|_| stream.sample());
+    for x in scalar_draws(&law, 7, 100).into_iter().chain(streamed) {
+      assert_eq!(x, at, "TN({mu:e}, {sigma:e}, [{lo:e}, {up:e}])");
+    }
+  }
+}
+
+/// Where the law spreads over the subnormals past `μ ± σ·MAX`, or its bounds round to one standardised double, the
+/// draws follow the law the analytics answer.
+#[test]
+fn draws_past_mu_plus_sigma_max_follow_the_analytics() {
+  let (max, inf) = (f64::MAX, f64::INFINITY);
+  for (mu, sigma, lo, up) in [
+    (-max, 0.9, 1e-310, 1.0),
+    (max, 0.9, -1.0, -1e-310),
+    (-max, 1.5, 0.0, inf),
+    (-max, 1.0, 1e-310, 1.0),
+  ] {
+    let law = SimdTruncatedNormal::<f64>::new(mu, sigma, lo, up);
+    let best = scalar_ks_best_p(&law, |x| law.cdf(x).unwrap());
+    assert!(
+      best > 0.01,
+      "TN({mu:e}, {sigma}, [{lo:e}, {up:e}]): best p = {best}"
+    );
+  }
 }

@@ -26,51 +26,12 @@ use crate::traits::distribution::SimdKernel;
 use kernels::NormalKernel;
 use located::standardised;
 use located::width;
+use sampler::TailSetup;
 
 mod kernels;
 mod located;
 mod mgf;
-
-/// Which of Robert (1995)'s proposals a one-sided standardised interval $[a, b]$ with $a \ge 0$ takes.
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum TailProposal {
-  /// The translated exponential of rate $\alpha^\*$ (Robert 1995, §2.1, Proposition 2.3).
-  Exponential { alpha_star: f64 },
-  /// The uniform on $[a, b]$ reweighted by $e^{(a^2 - z^2)/2}$ (Robert 1995, §2.2).
-  Uniform,
-}
-
-/// The standardised one-sided interval $0 \le a < b \le \infty$ of a tail draw, negated back when `mirrored`.
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct TailSetup {
-  a: f64,
-  b: f64,
-  mirrored: bool,
-  proposal: TailProposal,
-}
-
-impl TailSetup {
-  fn new(a: f64, b: f64, mirrored: bool) -> Self {
-    let root = (a * a + 4.0).sqrt();
-    // Past 1.34e154 `a²` overflows, where `√(a² + 4)` rounds to `a`.
-    let root = if root.is_finite() { root } else { a };
-    let alpha_star = 0.5 * (a + root);
-    // Robert (1995), (2.1): the exponential proposal accepts more often from this width on; `(a² − a√(a² + 4))/4`
-    // is `−a/(a + √(a² + 4))`, which overflows nowhere.
-    let exponential_from = 2.0 * std::f64::consts::E.sqrt() / (a + root) * (-a / (a + root)).exp();
-    let proposal = if b - a > exponential_from {
-      TailProposal::Exponential { alpha_star }
-    } else {
-      TailProposal::Uniform
-    };
-    Self {
-      a,
-      b,
-      mirrored,
-      proposal,
-    }
-  }
-}
+mod sampler;
 
 /// Truncated normal law $\mathcal{N}(\mu, \sigma^2)$ on $[\text{lower}, \text{upper}]$: parameters and the interval's
 /// cdf constants; a [`Seeded`](crate::Seeded) stream draws it.
@@ -188,11 +149,12 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     );
     let f_lo = norm_cdf_scalar(a_std);
     let f_up = norm_cdf_scalar(b_std);
+    let w = width(a_std, b_std, lo, up, sigma_f64);
     // A left-tail interval is reflected into the right tail, so the tail sampler only sees `a >= 0`.
     let tail = if a_std >= 0.0 {
-      Some(TailSetup::new(a_std, b_std, false))
+      Some(TailSetup::new(a_std, b_std, w, false))
     } else if b_std <= 0.0 {
-      Some(TailSetup::new(-b_std, -a_std, true))
+      Some(TailSetup::new(-b_std, -a_std, w, true))
     } else {
       None
     };
@@ -204,7 +166,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       f_up,
       norm_mass: f_up - f_lo,
       tail,
-      bounds: [a_std, b_std, width(a_std, b_std, lo, up, sigma_f64)],
+      bounds: [a_std, b_std, w],
       analytics: OnceLock::new(),
       ln_sigma: sigma_f64.ln(),
     }
@@ -293,80 +255,6 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
   /// The upper bound.
   pub fn upper(&self) -> T {
     self.upper
-  }
-
-  /// Rejection on the base normal while the interval holds over 5 % of its mass (1000 tries), else the exact scheme
-  /// the interval's position allows.
-  #[inline]
-  fn draw<S: TruncatedNormalSource<T>>(&self, src: &mut S) -> T {
-    if self.norm_mass > 0.05 {
-      for _ in 0..1000 {
-        let x = src.base(&self.base);
-        if x >= self.lower && x <= self.upper {
-          return x;
-        }
-      }
-    }
-    match self.tail {
-      Some(setup) => self.tail_sample(setup, src),
-      None => self.inverse_cdf_sample(src),
-    }
-  }
-
-  /// Robert (1995) accept-reject on the standardised one-sided interval, which forms no cdf: deep in a tail
-  /// `F(upper) − F(lower)` loses its digits, and past about 8.3σ both round to 1 and inversion returns `+inf`.
-  fn tail_sample<S: TruncatedNormalSource<T>>(&self, setup: TailSetup, src: &mut S) -> T {
-    if let Some(x) = self.beyond() {
-      return T::from_f64_fast(x);
-    }
-    let z = match setup.proposal {
-      TailProposal::Exponential { alpha_star } => loop {
-        // `1 - u` keeps the generator's `[0, 1)` off the `ln`'s zero.
-        let z = setup.a - (1.0 - src.uniform()).ln() / alpha_star;
-        if z > setup.b {
-          continue;
-        }
-        let d = z - alpha_star;
-        if src.uniform() <= (-0.5 * d * d).exp() {
-          break z;
-        }
-      },
-      TailProposal::Uniform => loop {
-        let z = setup.a + src.uniform() * (setup.b - setup.a);
-        if src.uniform() <= (0.5 * (setup.a - z) * (setup.a + z)).exp() {
-          break z;
-        }
-      },
-    };
-    let z = if setup.mirrored { -z } else { z };
-    self.affine(z)
-  }
-
-  fn inverse_cdf_sample<S: TruncatedNormalSource<T>>(&self, src: &mut S) -> T {
-    T::from_f64_fast(self.inverse_cdf(src.uniform()))
-  }
-
-  /// $F^{-1}(F(\text{lower}) + u (F(\text{upper}) - F(\text{lower})))$: the sampler's inverse-cdf map.
-  fn inverse_cdf(&self, u: f64) -> f64 {
-    self.unstandardise(crate::special::ndtri(
-      self.f_lo + u * (self.f_up - self.f_lo),
-    ))
-  }
-
-  #[inline]
-  fn affine(&self, z: f64) -> T {
-    T::from_f64_fast(self.unstandardise(z))
-  }
-
-  /// The near bound of an interval past `μ ± σ·f64::MAX`, whose law lies closer to it than any double: every draw.
-  fn beyond(&self) -> Option<f64> {
-    let setup = self.tail?;
-    let near = if setup.mirrored {
-      self.upper
-    } else {
-      self.lower
-    };
-    (setup.a == f64::INFINITY).then(|| near.to_f64().unwrap())
   }
 }
 
