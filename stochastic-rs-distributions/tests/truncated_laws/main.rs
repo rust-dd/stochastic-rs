@@ -6,6 +6,7 @@ mod beta;
 mod exp;
 mod gamma;
 mod narrow_laws;
+mod near_unit_shapes;
 mod normal;
 mod range_ends;
 mod survey;
