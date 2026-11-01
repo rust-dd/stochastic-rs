@@ -6,6 +6,7 @@ use std::f64::consts::LN_2;
 use super::quadrature::Cut;
 use super::quadrature::Kernel;
 use super::quadrature::Point;
+use super::quadrature::Terms;
 use super::quadrature::Truncation;
 use super::quadrature::accurate_sum;
 use super::quadrature::ldexp;
@@ -287,36 +288,26 @@ impl Local {
       // A tilted kernel with no finite mass: it rises toward an open end, so `e^{tx}` does.
       return f64::INFINITY;
     };
-    let (l1, l2) = (self.slope.ln + ln_y, self.curvature.ln + 2.0 * ln_y - LN_2);
-    let (q1, q2) = (
-      self.slope.sign * y_c.signum() * l1.exp(),
-      self.curvature.sign * l2.exp(),
-    );
-    let head = limit_or(t * x_c + (q1 + q2), || {
-      [
-        (t.signum() * x_c.signum(), t.abs().ln() + x_c.abs().ln()),
-        (q1.signum(), l1),
-        (q2.signum(), l2),
-      ]
-    });
     let ln_k = |model: &Truncation<QuadKernel>| {
       let (QuadKernel { a, b, .. }, c) = (*model.kernel(), model.centre());
       c * (a + 0.5 * b * c)
     };
     let ratio = (tilted.t.mass() / self.t.mass()).ln() + f64::from(tilted.p - self.p) * LN_2;
-    (head + (ln_k(&tilted.t) - ln_k(&self.t)) + ratio).exp()
+    let mut terms = Terms::new();
+    terms.product(t, x_c, 0);
+    for (sign, ln) in [
+      (self.slope.sign * y_c.signum(), self.slope.ln + ln_y),
+      (self.curvature.sign, self.curvature.ln + 2.0 * ln_y - LN_2),
+    ] {
+      // `e^{ln}` as `m·2^p`, so a term past the doubles enters the sum at its own scale.
+      let p = (ln / LN_2).floor();
+      if sign != 0.0 && p.is_finite() {
+        terms.scaled(sign * (ln - p * LN_2).exp(), p as i32);
+      }
+    }
+    for v in [ln_k(&tilted.t), -ln_k(&self.t), ratio] {
+      terms.scaled(v, 0);
+    }
+    terms.total().exp()
   }
-}
-
-/// `plain`, or where its terms met `∞ − ∞` the limit the term of largest log-magnitude gives, the terms `(sign, ln|·|)` formed only then.
-pub(super) fn limit_or<const N: usize>(plain: f64, terms: impl FnOnce() -> [(f64, f64); N]) -> f64 {
-  if !plain.is_nan() {
-    return plain;
-  }
-  let top = terms()
-    .into_iter()
-    .fold((0.0, f64::NEG_INFINITY), |best, t| {
-      if t.1 > best.1 { t } else { best }
-    });
-  top.0 * f64::INFINITY
 }

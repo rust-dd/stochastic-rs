@@ -22,8 +22,9 @@ impl Kernel for NormalKernel {
     self.c = c.x;
   }
 
+  /// `−y(y/2 + c)`: `y + 2c` would overflow for a reference point past `MAX/2`.
   fn ln_rel(&self, _z: f64, y: f64, _branch: Option<(f64, f64)>) -> f64 {
-    -0.5 * y * (y + 2.0 * self.c)
+    -y * (0.5 * y + self.c)
   }
 
   fn d1(&self, z: f64, _y: f64) -> f64 {

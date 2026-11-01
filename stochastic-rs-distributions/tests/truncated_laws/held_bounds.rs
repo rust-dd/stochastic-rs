@@ -59,16 +59,21 @@ fn a_narrow_interval_far_from_mu_keeps_its_width() {
   );
 }
 
-/// A mean far from `μ` is its bound plus the engine's offset, not `μ + σz`, which cancels to `ulp(μ)`.
+/// A mean far from `μ` is its bound plus the engine's offset, not `μ + σz`, which cancels to `ulp(μ)`; the density
+/// there reads the point's offset from that bound, its far end open or not.
 #[test]
 fn a_mean_far_from_mu_maps_back_from_its_bound() {
+  let far = tn(-1000.0, 1.1, 0.0, f64::INFINITY);
   rows(
     "TN(−1000, 1.1, [0, ∞))",
-    &[(
-      "mean",
-      tn(-1000.0, 1.1, 0.0, f64::INFINITY).mean().unwrap(),
-      0.0012099970718177156,
-    )],
+    &[
+      ("mean", far.mean().unwrap(), 0.0012099970718177156),
+      (
+        "pdf",
+        far.pdf(0.00036300000000000004).unwrap(),
+        612.247170852889,
+      ),
+    ],
   );
   rows(
     "TN(300, 1, (−∞, 0])",

@@ -13,6 +13,7 @@ use panels::Panel;
 use panels::panels;
 pub(super) use panels::span;
 use sum::Sum;
+pub(super) use sum::Terms;
 pub(super) use sum::accurate_sum;
 pub(super) use sum::two_prod;
 pub(super) use sum::two_sum;

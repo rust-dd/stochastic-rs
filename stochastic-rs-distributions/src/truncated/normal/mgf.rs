@@ -9,11 +9,12 @@ use super::SimdTruncatedNormal;
 use super::kernels::TiltedKernel;
 use crate::traits::SimdFloatExt;
 use crate::truncated::local::Model;
-use crate::truncated::local::limit_or;
 use crate::truncated::quadrature::Cut;
+use crate::truncated::quadrature::Terms;
 use crate::truncated::quadrature::Truncation;
 use crate::truncated::quadrature::accurate_sum;
 use crate::truncated::quadrature::ldexp;
+use crate::truncated::quadrature::ln_ratio;
 use crate::truncated::quadrature::span;
 use crate::truncated::quadrature::split;
 use crate::truncated::quadrature::two_prod;
@@ -23,7 +24,11 @@ use crate::truncated::quadrature::two_sum;
 /// the exponential's mass, where the quadrature would meet a slope past the doubles.
 const STEEP: f64 = 134_217_728.0;
 
-/// `σ = m·2^e` and `σ²t·2^{−e−4}` as four doubles summing to it exactly; no square where `σt` lies past 4·MAX.
+/// The largest `|σt|`, `|α|`, `|β|`, `|t·lo|`, `|t·up|` the plain path takes.
+const PLAIN: f64 = 8.0;
+
+/// `σ = m·2^e` and `σ²t·2^{−e−4}` as four doubles summing to it exactly; no square where `|t·2^{e−2}|` passes MAX, `σt`
+/// past `4m·MAX`.
 #[derive(Clone, Copy)]
 struct Scale {
   m: f64,
@@ -44,16 +49,16 @@ impl Scale {
   }
 }
 
-/// A finite bound, standardised `z + z_lo` exactly, held as `cut` and `x` in the law's coordinate, with the tilted
-/// mode's offset `r + r_lo` from it, and `ln|r|` where `r` passes the doubles.
+/// A finite bound, standardised `z + z_lo` exactly and held beside `held.0` by `held.1`, `x` in the law's coordinate,
+/// with the tilted mode's offset `r = 16(q + q_lo)` from it, `q` finite where `r` passes the doubles, and `ln|r|` there.
 #[derive(Clone, Copy)]
 struct Anchor {
   z: f64,
   z_lo: f64,
-  cut: Cut,
+  held: (f64, f64),
   x: f64,
   r: f64,
-  r_lo: f64,
+  q: (f64, f64),
   ln_far: f64,
 }
 
@@ -63,6 +68,14 @@ struct Anchor {
 enum Centre {
   Beside(f64),
   Apart(f64, f64),
+}
+
+/// The exponent's form: from an anchor bound with the plain reference point against it and the tilted reference
+/// point's offset `d`, or at the tilted mode, against the anchor the plain reference point is read from.
+#[derive(Clone, Copy)]
+enum Exponent {
+  Bound(Anchor, Centre, f64),
+  Mode(Option<(Anchor, Centre)>),
 }
 
 impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
@@ -89,59 +102,68 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     let (held_lo, held_up) = self.held();
     let width = span(held_lo, held_up);
     let (centre, mass) = (plain.reference(), plain.mass());
-    let scale = Scale::new(sigma, t);
+    // Part 2's risk 6: where `|σt|`, `|α|`, `|β|`, `|t·lo|`, `|t·up|` (the finite ones) are at most 8, rounded `σt`, bounds
+    // without their rests and plain sums move `ln M` by under 2.4e-13 in all.
+    let s = sigma * t;
+    let small = |v: f64| !v.is_finite() || v.abs() <= PLAIN;
+    let rounded = s.abs() <= PLAIN && [alpha, beta, t * lo, t * up].into_iter().all(small);
+    let scale = (!rounded).then(|| Scale::new(sigma, t));
     let anchor = |z: f64, x: f64, cut: Cut| {
-      z.is_finite()
-        .then(|| Anchor::new(&scale, sigma, t, x, mu, z, cut))
+      let (s0, rest, _) = cut.parts();
+      z.is_finite().then(|| match &scale {
+        Some(scale) => Anchor::new(scale, sigma, t, x, mu, z, (s0, rest)),
+        None => Anchor::rounded(s, x, z, (s0, rest)),
+      })
     };
     let (at_lo, at_up) = (anchor(alpha, lo, held_lo), anchor(beta, up, held_up));
     // The plain reference point against an anchor: by its exact offset where both are held beside one double, else as
     // its own double with the rest of the one it is held beside, a bound's own double carrying that bound's.
     let c = |a: &Anchor| {
       let (s, rest, t) = centre.parts();
-      if s == a.cut.parts().0 {
-        return Centre::Beside(span(a.cut, centre));
+      if s == a.held.0 {
+        return Centre::Beside(span(Cut::held(a.z, a.held.0, a.held.1), centre));
       }
-      let own = [at_lo, at_up]
-        .into_iter()
-        .flatten()
-        .find(|b| b.cut == Cut::at(s));
+      let own = match (&at_lo, &at_up) {
+        (Some(b), _) if b.held == (s, 0.0) => b.z_lo,
+        (_, Some(b)) if b.held == (s, 0.0) => b.z_lo,
+        _ => 0.0,
+      };
       let (c, e) = two_sum(s, rest + t);
-      Centre::Apart(c, e + own.map_or(0.0, |b| b.z_lo))
+      Centre::Apart(c, e + own)
     };
     let clamp = match (at_lo, at_up) {
       (_, Some(a)) if a.r > 0.0 => Some(a),
       (Some(a), _) if a.r < 0.0 => Some(a),
       _ => None,
     };
-    if clamp.is_none() && (sigma * t).is_infinite() {
-      // Toward an open end the exponent is `σt(μ/σ + σt/2)`, past any double unless the bracket vanishes.
-      let lead = mu / sigma + 0.5 * sigma * t;
-      return Some(if lead * t > 0.0 { f64::INFINITY } else { 0.0 });
+    if clamp.is_none() && scale.is_some_and(|s| s.square.is_none()) {
+      // Past 4·MAX `(σt)²/2 > 8·MAX²` outweighs `|μt|` and every other term, each under `MAX²`, and no bound holds the
+      // tilt, whose mass is then at least half the normal's: `+∞`.
+      return Some(f64::INFINITY);
     }
-    let (exponent, ln_ratio) = match clamp {
+    let (exponent, masses) = match clamp {
       Some(a) if a.r.abs() >= STEEP => {
         let rate = a.r.abs();
         let reach = -(-rate * width).exp_m1();
         let tilted = reach / rate;
-        let ln_ratio = if tilted >= f64::MIN_POSITIVE {
-          (tilted / mass).ln()
+        let masses = if tilted >= f64::MIN_POSITIVE {
+          ln_ratio(tilted, mass, mass.ln())
         } else {
           reach.ln() - a.ln_r() - mass.ln()
         };
-        (from_bound(t, a, c(&a), 0.0), ln_ratio)
+        (Exponent::Bound(a, c(&a), 0.0), masses)
       }
       _ => {
         let nearer = match (at_lo, at_up) {
           (Some(l), Some(u)) => Some(if l.r.abs() < u.r.abs() { l } else { u }),
           (l, u) => l.or(u),
         };
-        // The exponent at the tilted mode, `μt + s²/2 + c²/2`, from the plain reference point's bound where it is one.
+        // At the tilted mode `μt + s²/2 + c²/2`, from the plain reference point's bound where it is one.
         let at_mode = |a: Option<Anchor>| match (at_lo, at_up, a) {
-          (Some(b), ..) if centre == held_lo => from_bound(t, b, c(&b), b.r),
-          (_, Some(b), _) if centre == held_up => from_bound(t, b, c(&b), b.r),
-          (.., Some(a)) if centre.x != 0.0 => from_bound(t, a, c(&a), a.r),
-          _ => quadratic(mu, sigma, t, &scale),
+          (Some(b), ..) if centre == held_lo => Exponent::Mode(Some((b, c(&b)))),
+          (_, Some(b), _) if centre == held_up => Exponent::Mode(Some((b, c(&b)))),
+          (.., Some(a)) if centre.x != 0.0 => Exponent::Mode(Some((a, c(&a)))),
+          _ => Exponent::Mode(None),
         };
         match clamp.or(nearer) {
           Some(a) if a.r.is_finite() => {
@@ -155,31 +177,41 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
             let exponent = if d == a.r {
               at_mode(Some(a))
             } else {
-              from_bound(t, a, c(&a), d)
+              Exponent::Bound(a, c(&a), d)
             };
-            (exponent, (tilted.mass() / mass).ln())
+            (exponent, ln_ratio(tilted.mass(), mass, mass.ln()))
           }
           // With both ends open the tilted law is the whole normal, as the plain one is.
-          None => return Some(quadratic(mu, sigma, t, &scale).exp()),
+          None => (Exponent::Mode(None), 0.0),
           // No bound within the doubles' reach of the mode: the tilted law is the whole normal about it.
-          Some(_) => {
+          Some(a) => {
             let whole = Truncation::mass_only(
               TiltedKernel { s: 0.0, c: 0.0 },
               f64::NEG_INFINITY,
               f64::INFINITY,
             );
-            (at_mode(None), (whole.mass() / mass).ln())
+            (at_mode(Some(a)), ln_ratio(whole.mass(), mass, mass.ln()))
           }
         }
       }
     };
-    Some((exponent + ln_ratio).exp())
+    let ln_m = if rounded {
+      let mut sum = Rounded(masses);
+      emit(&mut sum, exponent, t, (mu, sigma), Some(s));
+      sum.0
+    } else {
+      let mut terms = Terms::new();
+      terms.scaled(masses, 0);
+      emit(&mut terms, exponent, t, (mu, sigma), None);
+      terms.total()
+    };
+    Some(ln_m.exp())
   }
 }
 
 impl Anchor {
-  /// The offset from its numerator `σ²t − (x − μ)`, divided by `σ` to a double-double; past 4·MAX, where `z/σ` is under
-  /// a quarter of `t`, the sign of `t` and `ln σ + ln|t − z/σ|`.
+  /// The offset from its numerator `σ²t − (x − μ)`, divided by `16σ` to a double-double; past `4m·MAX`, where `z/σ` is
+  /// under a quarter of `t`, the sign of `t` and `ln σ + ln|t − z/σ|`.
   fn new(
     &Scale { m, e, square }: &Scale,
     sigma: f64,
@@ -187,20 +219,21 @@ impl Anchor {
     x: f64,
     mu: f64,
     z: f64,
-    cut: Cut,
+    held: (f64, f64),
   ) -> Self {
     let ((d, d_lo), scale) = difference(x, mu);
     // The rest `(x − μ)/σ − z` of the rounded bound, by the remainder at `σ`'s scale.
     let half = scale - e - 1;
     let z_lo = ((-z).mul_add(0.5 * m, ldexp(d, half)) + ldexp(d_lo, half)) / (0.5 * m);
     let Some((n, n_lo)) = square.map(|sq| numerator(sq, (d, d_lo), scale - e - 4)) else {
+      let r = t.signum() * f64::INFINITY;
       return Self {
         z,
         z_lo,
-        cut,
+        held,
         x,
-        r: t.signum() * f64::INFINITY,
-        r_lo: 0.0,
+        r,
+        q: (r, 0.0),
         ln_far: sigma.ln() + (t - z / sigma).abs().ln(),
       };
     };
@@ -210,15 +243,29 @@ impl Anchor {
     Self {
       z,
       z_lo,
-      cut,
+      held,
       x,
       r,
-      r_lo: 16.0 * q_lo,
+      q: (q, q_lo),
       ln_far: if r.is_infinite() {
         n.abs().ln() - m.ln() + 4.0 * LN_2
       } else {
         f64::NAN
       },
+    }
+  }
+
+  /// The offset `fl(σt) − z` of the plain path, the bound's rest dropped.
+  fn rounded(s: f64, x: f64, z: f64, held: (f64, f64)) -> Self {
+    let r = s - z;
+    Self {
+      z,
+      z_lo: 0.0,
+      held,
+      x,
+      r,
+      q: (r / 16.0, 0.0),
+      ln_far: f64::NAN,
     }
   }
 
@@ -231,58 +278,106 @@ impl Anchor {
   }
 }
 
-/// `t·x − ½(z² − c²) + d(r − d/2)`, the exponent with the tilted reference point `d` from the bound `z`: two-products of
-/// the double-double `z`, `c`, `r`, summed in thrice the precision; past the doubles its largest term's limit.
-fn from_bound(t: f64, a: Anchor, c: Centre, d: f64) -> f64 {
-  let (tx, tx_lo) = two_prod(t, a.x);
-  // `½(c² − z²)` as `δz + δ²/2` beside the anchor, where `c` and `z` round apart but their offset does not.
-  let [(p, p_lo), (q, q_lo), (rests, _)] = match c {
-    Centre::Beside(dl) => [
-      two_prod(dl, a.z),
-      two_prod(0.5 * dl, dl),
-      (dl * a.z_lo, 0.0),
-    ],
-    Centre::Apart(c, c_lo) => {
-      let ((zz, zz_lo), (cc, cc_lo)) = (two_prod(0.5 * a.z, a.z), two_prod(0.5 * c, c));
-      [(-zz, -zz_lo), (cc, cc_lo), (c * c_lo - a.z * a.z_lo, 0.0)]
-    }
-  };
-  let (bend, bend_lo) = if d == 0.0 {
-    (0.0, 0.0)
-  } else if d == a.r {
-    let (rr, rr_lo) = two_prod(0.5 * a.r, a.r);
-    (rr, rr_lo + a.r * a.r_lo)
-  } else {
-    (d * (a.r - 0.5 * d), 0.0)
-  };
-  let (sum, _) = accurate_sum([tx, tx_lo, p, p_lo, q, q_lo, rests, bend, bend_lo]);
-  limit_or(sum, || {
-    let middle = match c {
-      Centre::Beside(dl) => term(1.0, dl, a.z + 0.5 * dl),
-      Centre::Apart(c, _) => term(-2.0, 0.5 * a.z - 0.5 * c, 0.5 * a.z + 0.5 * c),
-    };
-    let ln_bend = if d == a.r {
-      2.0 * a.ln_r() - LN_2
-    } else {
-      bend.abs().ln()
-    };
-    [term(1.0, t, a.x), middle, (bend.signum(), ln_bend)]
-  })
+/// Where an exponent's terms go: exact into the scaled frame, or rounded and summed in plain doubles.
+trait Sink {
+  /// `f·g·2^p`.
+  fn product(&mut self, f: f64, g: f64, p: i32);
 }
 
-/// `μt + (σt)²/2` as `t(μ + σ²t/2)`, the bracket as `numerator` forms it; `σt` rounds only where no cancellation is
-/// left: past 4·MAX (a limit) or where `μ/σ` dwarfs it.
-fn quadratic(mu: f64, sigma: f64, t: f64, &Scale { e, square, .. }: &Scale) -> f64 {
-  let (d, scale) = difference(-mu, mu);
-  if let Some((n, _)) = square.map(|sq| numerator(sq, d, scale - e - 4))
-    && n.is_finite()
-  {
-    return scaled_product(t, n, e + 3);
+impl Sink for Terms {
+  fn product(&mut self, f: f64, g: f64, p: i32) {
+    Terms::product(self, f, g, p);
   }
-  let s = sigma * t;
-  limit_or(mu * t + 0.5 * (s * s), || {
-    [term(1.0, t, mu), term(0.5, s, s)]
-  })
+}
+
+/// The plain path's running sum.
+struct Rounded(f64);
+
+impl Sink for Rounded {
+  fn product(&mut self, f: f64, g: f64, p: i32) {
+    self.0 += ldexp(f * g, p);
+  }
+}
+
+/// The exponent's terms. At the tilted mode it is `μt + (σt)²/2 + c²/2`, exact from `μ`, `σ`, `t` and the reference
+/// point, unless `|c|` passes `|r|`: then `t·x + ½(c² − z²) + r²/2`, whose `r` is a double-double.
+fn emit(sink: &mut impl Sink, exponent: Exponent, t: f64, (mu, sigma): (f64, f64), s: Option<f64>) {
+  match exponent {
+    Exponent::Bound(a, c, d) => from_bound(sink, t, a, c, d),
+    Exponent::Mode(Some((a, c))) if c.size(&a) > a.r.abs() => from_bound(sink, t, a, c, a.r),
+    Exponent::Mode(found) => {
+      sink.product(t, mu, 0);
+      match s {
+        Some(s) => sink.product(s, s, -1),
+        None => {
+          let ((m, e), (mt, et)) = (split(sigma), split(t.abs()));
+          let (h, l) = two_prod(m, mt);
+          let p = 2 * (e + et);
+          sink.product(h, h, p - 1);
+          sink.product(h, l, p);
+          sink.product(l, l, p - 1);
+        }
+      }
+      match found {
+        Some((a, Centre::Beside(dl))) => {
+          for (f, g, p) in [
+            (a.z, a.z, -1),
+            (a.z, a.z_lo, 0),
+            (a.z, dl, 0),
+            (a.z_lo, dl, 0),
+            (a.z_lo, a.z_lo, -1),
+            (dl, dl, -1),
+          ] {
+            sink.product(f, g, p);
+          }
+        }
+        Some((_, Centre::Apart(c, c_lo))) => {
+          sink.product(c, c, -1);
+          sink.product(c, c_lo, 0);
+          sink.product(c_lo, c_lo, -1);
+        }
+        None => {}
+      }
+    }
+  }
+}
+
+/// `t·x + ½(c² − z²) + d(r − d/2)` from the anchor, `r = 16q`.
+fn from_bound(sink: &mut impl Sink, t: f64, a: Anchor, c: Centre, d: f64) {
+  sink.product(t, a.x, 0);
+  // `½(c² − z²)` as `δz + δ²/2` beside the anchor, where `c` and `z` round apart but their offset does not.
+  match c {
+    Centre::Beside(dl) => {
+      sink.product(dl, a.z, 0);
+      sink.product(dl, a.z_lo, 0);
+      sink.product(dl, dl, -1);
+    }
+    Centre::Apart(c, c_lo) => {
+      sink.product(-a.z, a.z, -1);
+      sink.product(-a.z, a.z_lo, 0);
+      sink.product(c, c, -1);
+      sink.product(c, c_lo, 0);
+    }
+  }
+  let (q, q_lo) = a.q;
+  if d == a.r {
+    sink.product(q, q, 7);
+    sink.product(q, q_lo, 8);
+  } else if d != 0.0 {
+    sink.product(d, q, 4);
+    sink.product(d, q_lo, 4);
+    sink.product(-d, d, -1);
+  }
+}
+
+impl Centre {
+  /// The reference point's size, against an anchor whose `r` a form at the tilted mode trades it for.
+  fn size(&self, a: &Anchor) -> f64 {
+    match *self {
+      Centre::Beside(dl) => (a.z + dl).abs(),
+      Centre::Apart(c, _) => c.abs(),
+    }
+  }
 }
 
 /// `x − μ` as `(d + d_lo)·2^scale`, from halves where it overflows.
@@ -297,21 +392,4 @@ fn difference(x: f64, mu: f64) -> ((f64, f64), i32) {
 /// the difference's summed in thrice the precision, so no rounded `σt` meets `x − μ`.
 fn numerator([b, b_lo, c, c_lo]: [f64; 4], (d, d_lo): (f64, f64), scale: i32) -> (f64, f64) {
   accurate_sum([b, b_lo, c, c_lo, -ldexp(d, scale), -ldexp(d_lo, scale)])
-}
-
-/// `a·b·2^p`, with no product past the doubles before the last scaling.
-fn scaled_product(a: f64, b: f64, p: i32) -> f64 {
-  if a == 0.0 || b == 0.0 {
-    return 0.0;
-  }
-  let ((ma, ea), (mb, eb)) = (split(a.abs()), split(b.abs()));
-  a.signum() * b.signum() * ldexp(ma * mb, ea + eb + p)
-}
-
-/// `k·f·g` as the `(sign, ln|·|)` that `limit_or` compares.
-fn term(k: f64, f: f64, g: f64) -> (f64, f64) {
-  (
-    k * f.signum() * g.signum(),
-    k.abs().ln() + f.abs().ln() + g.abs().ln(),
-  )
 }

@@ -7,6 +7,7 @@ mod ends;
 mod exp;
 mod gamma;
 mod held_bounds;
+mod mgf_frame;
 mod narrow_laws;
 mod near_unit_shapes;
 mod normal;
