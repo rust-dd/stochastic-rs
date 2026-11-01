@@ -186,6 +186,24 @@ fn next_to_one_the_cdf_walks_the_panels_of_its_total() {
   ]);
 }
 
+/// Past the middle of a singular panel the cdf is the panel less the part above `x`, whose frame keeps the panel's far
+/// end and so its Jacobian: in a frame of its own the part read 75 ulps of 1 off (mpmath: `(x/up)^α`).
+#[test]
+fn next_to_one_a_singular_panel_keeps_its_jacobian() {
+  let law = SimdTruncatedBeta::<f64>::new(
+    6.003384871601898e-13,
+    7.285874005119715e-71,
+    0.0,
+    8.624694115685907e-113,
+  );
+  let name = "TB(6e-13, 7.3e-71, [0, 8.6e-113])";
+  near_one(&[
+    (name, &law, 3.927672194567872e-185, 0.9999999999),
+    (name, &law, 1e-300, 0.9999999997402107),
+    (name, &law, 1e-150, 0.9999999999475603),
+  ]);
+}
+
 /// The exponential's cdf below `λL = 1` as `d·φ(λd)` over its mass, so a `λd` below the normal doubles keeps its
 /// digits, and past the median as one less the mass above; the references are mpmath's, rounded once.
 #[test]

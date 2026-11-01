@@ -208,6 +208,22 @@ impl Frame {
     }
   }
 
+  /// `q` at the offset `t` from the branch point, its `ln(|t|/far)` formed as `of` forms the near end's.
+  pub(super) fn q_at(&self, t: f64) -> f64 {
+    let (n, far) = (t.abs(), self.ends.1);
+    let ln_u = self.e
+      * if n > 0.5 * far {
+        ((n - far) / far).ln_1p()
+      } else {
+        ln_ratio(n, far, self.ln_far)
+      };
+    if self.reflect {
+      -ln_u.exp_m1()
+    } else {
+      ln_u.exp()
+    }
+  }
+
   pub(super) fn q_far(&self) -> f64 {
     if self.reflect { 0.0 } else { 1.0 }
   }

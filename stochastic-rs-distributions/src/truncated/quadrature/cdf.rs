@@ -44,7 +44,7 @@ impl<K: Kernel> Truncation<K> {
         return ControlFlow::Continue(());
       }
       if t > panel.l {
-        sum += self.panel_mass(&Panel { r: t, ..panel }, 0.0);
+        sum += self.part_below(&panel, t);
       }
       ControlFlow::Break(())
     });
@@ -60,6 +60,19 @@ impl<K: Kernel> Truncation<K> {
       mass += w * ln_v.exp()
     });
     ((self.tail_lo + mass) / self.m0).min_or_nan(1.0)
+  }
+
+  /// `panel`'s mass below the offset `t`; past the middle of a singular panel right of its branch point, the panel's mass
+  /// less the part above `t`, whose frame keeps the panel's far end and so its Jacobian's rounding.
+  fn part_below(&self, panel: &Panel, t: f64) -> f64 {
+    if let Some(e) = panel.singular {
+      let frame = Frame::of(panel, e);
+      let past = (frame.q_at(t) - frame.q_near).abs() > 0.5 * (frame.q_far() - frame.q_near).abs();
+      if frame.sign > 0.0 && past {
+        return self.panel_mass(panel, 0.0) - self.panel_mass(&Panel { l: t, ..*panel }, 0.0);
+      }
+    }
+    self.panel_mass(&Panel { r: t, ..*panel }, 0.0)
   }
 
   /// The cdf below the lower clip: the mass from where the kernel is `e^{−CLIP}` below its value at `x`, relative to
