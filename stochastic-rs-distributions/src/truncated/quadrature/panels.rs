@@ -207,7 +207,10 @@ pub(super) fn panels<K: Kernel, B>(
     .flat_map(move |(s, e, tl, tr)| {
       // Beside a vanishing kernel, deep enough for the mass there to fall below 1e-18 and to reach an end that stops
       // short of `s`; beside a singular one 19 normal decades, below which the innermost panel's `u` is exact.
-      let steps = if e < 1.0 {
+      // Every rung lies within a tenth of the width of `s`: an interval past that holds none.
+      let steps = if tl >= width / 10.0 || tr <= -width / 10.0 {
+        0
+      } else if e < 1.0 {
         19
       } else {
         let gap = tl.max(-tr).max(0.0);
