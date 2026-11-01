@@ -296,8 +296,25 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     if p <= 0.5 {
       return Some(self.inverse_cdf(p));
     }
-    let (lo, lam) = (self.lower.to_f64()?, self.lambda.to_f64()?);
-    let lam_len = lam * self.length()?;
+    let (lo, up, lam) = (
+      self.lower.to_f64()?,
+      self.upper.to_f64()?,
+      self.lambda.to_f64()?,
+    );
+    let len = self.length()?;
+    let lam_len = lam * len;
+    // Nearer a finite `upper` its offset `w`, from `e^{λw} − 1 = (1 − p)(e^{λL} − 1)`: a level next to 1 keeps its
+    // digits.
+    if up.is_finite() && lam_len < 700.0 {
+      let w = if lam_len < 1e-8 {
+        (1.0 - p) * len * (1.0 + 0.5 * p * lam_len)
+      } else {
+        ((1.0 - p) * lam_len.exp_m1()).ln_1p() / lam
+      };
+      if w <= 0.5 * len {
+        return Some((up - w).max(lo));
+      }
+    }
     let x = if lam_len <= 1.0 {
       self.inverse_cdf(p)
     } else {

@@ -165,3 +165,52 @@ fn the_exponentials_cdf_in_both_tails() {
     );
   }
 }
+
+/// Nearer a finite upper bound the exponential's quantile is that bound less its offset, the double nearest mpmath's
+/// point, where the cdf returns the level to within its step across that double's ulp.
+#[test]
+fn the_exponentials_quantile_next_to_one() {
+  let rows = [
+    (
+      6.497601518958696e-46,
+      8.048725138150996e42,
+      1.4752046733157775e45,
+      [1.4752046730704168e45, 1.4752046733157772e45],
+    ),
+    (
+      1.6695394474213777e86,
+      0.0,
+      1.067811652422418e-287,
+      [1.0678116523156369e-287, 1.0678116524224179e-287],
+    ),
+    (
+      5.817367752874037e104,
+      0.0,
+      2.3578823950611327e-108,
+      [2.3578823948251825e-108, 2.3578823950611323e-108],
+    ),
+    (
+      3.7587252230617957e9,
+      0.0,
+      1.9590086122197923e-11,
+      [1.9590086120164988e-11, 1.959008612219792e-11],
+    ),
+    (1.5, 0.5, 2.5, [2.4999999987276307, 2.4999999999999987]),
+  ];
+  for (lambda, lo, up, want) in rows {
+    let law = SimdTruncatedExp::<f64>::new(lambda, lo, up);
+    let name = format!("TE({lambda:e}, [{lo:e}, {up:e}])");
+    for (p, x) in [1.0 - 1e-10, 1.0 - f64::EPSILON / 2.0]
+      .into_iter()
+      .zip(want)
+    {
+      assert_eq!(law.quantile(p).unwrap(), x, "{name}: quantile({p:e})");
+      let step = law.pdf(x).unwrap() * (x.next_up() - x);
+      let back = law.cdf(x).unwrap();
+      assert!(
+        (back - p).abs() <= 1e-12 * (1.0 - p) + step,
+        "{name}: cdf at quantile({p:e}) = {back}"
+      );
+    }
+  }
+}
