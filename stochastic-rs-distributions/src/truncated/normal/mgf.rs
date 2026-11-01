@@ -14,7 +14,6 @@ use crate::truncated::quadrature::Terms;
 use crate::truncated::quadrature::Truncation;
 use crate::truncated::quadrature::accurate_sum;
 use crate::truncated::quadrature::ldexp;
-use crate::truncated::quadrature::ln_ratio;
 use crate::truncated::quadrature::span;
 use crate::truncated::quadrature::split;
 use crate::truncated::quadrature::two_prod;
@@ -147,7 +146,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
         let reach = -(-rate * width).exp_m1();
         let tilted = reach / rate;
         let masses = if tilted >= f64::MIN_POSITIVE {
-          ln_ratio(tilted, mass, mass.ln())
+          ln_quotient(tilted, mass)
         } else {
           reach.ln() - a.ln_r() - mass.ln()
         };
@@ -179,7 +178,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
             } else {
               Exponent::Bound(a, c(&a), d)
             };
-            (exponent, ln_ratio(tilted.mass(), mass, mass.ln()))
+            (exponent, ln_quotient(tilted.mass(), mass))
           }
           // With both ends open the tilted law is the whole normal, as the plain one is.
           None => (Exponent::Mode(None), 0.0),
@@ -190,7 +189,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
               f64::NEG_INFINITY,
               f64::INFINITY,
             );
-            (at_mode(Some(a)), ln_ratio(whole.mass(), mass, mass.ln()))
+            (at_mode(Some(a)), ln_quotient(whole.mass(), mass))
           }
         }
       }
@@ -290,12 +289,15 @@ impl Sink for Terms {
   }
 }
 
-/// The plain path's running sum.
+/// The plain path's running sum, whose powers of two lie within ±8 and whose rests are 0.
 struct Rounded(f64);
 
 impl Sink for Rounded {
+  #[inline]
   fn product(&mut self, f: f64, g: f64, p: i32) {
-    self.0 += ldexp(f * g, p);
+    if g != 0.0 {
+      self.0 += f * g * f64::from_bits(((p + 1023) as u64) << 52);
+    }
   }
 }
 
@@ -377,6 +379,16 @@ impl Centre {
       Centre::Beside(dl) => (a.z + dl).abs(),
       Centre::Apart(c, _) => c.abs(),
     }
+  }
+}
+
+/// `ln(n/d)` from the quotient where it is normal, else from the two logs.
+fn ln_quotient(n: f64, d: f64) -> f64 {
+  let q = n / d;
+  if q.is_normal() {
+    q.ln()
+  } else {
+    n.ln() - d.ln()
   }
 }
 

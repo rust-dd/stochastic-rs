@@ -51,6 +51,9 @@ pub struct SimdTruncatedNormal<T> {
   tail: Option<TailSetup>,
   /// The standardised bounds and, off `μ`, the width `(up − lo)/σ` (NaN about `μ` or past the doubles).
   bounds: [f64; 3],
+  /// The point a density's offset is read from and its standardised double: on one side of `μ` the near bound, which
+  /// the engine's reference point is held beside, else `μ`.
+  origin: (f64, f64),
   /// The standardised interval's kernel integral, built by the first analytic call; construction and draws skip it.
   analytics: OnceLock<Model<NormalKernel>>,
   /// `ln σ`, so a density costs no logarithm of its own.
@@ -167,6 +170,11 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       norm_mass: f_up - f_lo,
       tail,
       bounds: [a_std, b_std, w],
+      origin: match tail {
+        Some(setup) if setup.mirrored => (up, b_std),
+        Some(_) => (lo, a_std),
+        None => (mu_f64, 0.0),
+      },
       analytics: OnceLock::new(),
       ln_sigma: sigma_f64.ln(),
     }
@@ -299,13 +307,11 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
       return Some(0.0);
     }
     Some(match self.analytics()? {
-      // Off `μ` the reference point is held beside the near bound's double, and the point's offset from it is exact.
-      Model::Full(t) => match self.near() {
-        Some(bound) if t.narrow().is_none() => {
-          t.density_near((x - bound) / self.base.std_dev().to_f64()?, self.ln_sigma)
-        }
-        _ => t.density(self.standardise(x)?, self.ln_sigma),
-      },
+      Model::Full(t) => {
+        let (from, at) = self.origin;
+        let z = standardised(x, from, self.base.std_dev().to_f64()?);
+        t.density_from(z, at, self.ln_sigma)
+      }
       Model::Local(l) => local_pdf(l, x),
     })
   }

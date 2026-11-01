@@ -375,11 +375,16 @@ impl<K: Kernel> Truncation<K> {
     (ln_g - (self.ln_norm + ln_scale)).exp()
   }
 
-  /// The density at the offset `y` from the double the reference point is held beside, which a point far finer than
-  /// that double's ulp keeps.
+  /// The density at the offset `z` from `at`: `at` the double the reference point is held beside, a point finer than its
+  /// ulp keeps its offset; any other `at` reads as `density(at + z)` did.
   #[inline]
-  pub(super) fn density_near(&self, y: f64, ln_scale: f64) -> f64 {
-    let ln_g = self.kernel.ln_rel(self.near.0 + y, y - self.near.1, None);
+  pub(super) fn density_from(&self, z: f64, at: f64, ln_scale: f64) -> f64 {
+    if self.narrow {
+      return self.density(at + z, ln_scale);
+    }
+    let ln_g = self
+      .kernel
+      .ln_rel(at + z, (z + (at - self.near.0)) - self.near.1, None);
     (ln_g - (self.ln_norm + ln_scale)).exp()
   }
 

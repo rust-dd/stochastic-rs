@@ -106,19 +106,6 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     Some(self.unstandardise(point.value()))
   }
 
-  /// Off `μ`, the bound nearer it, whose double the engine's reference point is held beside, its far end open or not.
-  #[inline]
-  pub(super) fn near(&self) -> Option<f64> {
-    let [alpha, beta, _] = self.bounds;
-    if alpha > 0.0 && alpha.is_finite() {
-      self.lower.to_f64()
-    } else if beta < 0.0 && beta.is_finite() {
-      self.upper.to_f64()
-    } else {
-      None
-    }
-  }
-
   /// The bounds' standardised doubles.
   pub(super) fn standardised_bounds(&self) -> (f64, f64) {
     (self.bounds[0], self.bounds[1])
