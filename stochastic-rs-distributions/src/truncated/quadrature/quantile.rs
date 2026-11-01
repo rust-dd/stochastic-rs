@@ -13,16 +13,6 @@ use super::panels::span;
 use super::singular::Frame;
 
 impl<K: Kernel> Truncation<K> {
-  /// Where the cdf turns from the lower end to the upper: in the panel holding half the mass, its model's guess
-  /// without the solve, as any point between 0.2 % and 99.8 % of the mass keeps both tails' digits.
-  pub(super) fn seam(&self) -> f64 {
-    let half = 0.5 * self.m0 - self.tail_lo;
-    if self.narrow || half <= 0.0 {
-      return self.centre.x;
-    }
-    self.locate(self.a, self.b, half, true, 0.0, 0).value()
-  }
-
   /// Above ½ the level is walked from `up`, so `1 − p` keeps the digits a level next to 1 has.
   pub(super) fn invert(&self, p: f64) -> Point {
     if p > 0.5 {
@@ -32,12 +22,11 @@ impl<K: Kernel> Truncation<K> {
         (1.0 - p) * self.m0 - self.tail_up,
         false,
         0.0,
-        100,
       );
     }
     let want = p * self.m0 - self.tail_lo;
     if want > 0.0 {
-      return self.locate(self.a, self.b, want, true, 0.0, 100);
+      return self.locate(self.a, self.b, want, true, 0.0);
     }
     // `p·M₀` underflowed against an end that was never clipped.
     if self.a.offset(self.lo) <= 0.0 {
@@ -50,12 +39,12 @@ impl<K: Kernel> Truncation<K> {
       .kernel
       .ln_rel(start.x, span(self.centre, start), start.branch());
     let want = (p.ln() + self.m0.ln() - shift).exp();
-    self.locate(start, self.a, want, true, shift, 100)
+    self.locate(start, self.a, want, true, shift)
   }
 
   /// The point of `[l, r]` with `want` of the mass beyond the end `from_lo` names, every value relative to `e^{shift}`:
-  /// the panels walked from that end, then up to `iters` Newton steps in the one that holds it.
-  fn locate(&self, l: Cut, r: Cut, want: f64, from_lo: bool, shift: f64, iters: usize) -> Point {
+  /// the panels walked from that end, then Newton in the one that holds it.
+  fn locate(&self, l: Cut, r: Cut, want: f64, from_lo: bool, shift: f64) -> Point {
     let mut acc = 0.0;
     let mut hit = None;
     let _ = self.walk(l, r, !from_lo, |panel| {
@@ -71,7 +60,7 @@ impl<K: Kernel> Truncation<K> {
     match hit {
       Some((panel, rest, mass)) => match panel.singular {
         Some(e) => self.solve_singular(&panel, e, rest, mass, from_lo, shift),
-        None => self.solve(panel, rest, mass, from_lo, shift, iters),
+        None => self.solve(panel, rest, mass, from_lo, shift),
       },
       None if from_lo => Point::At(l.x),
       None => Point::At(r.x),
@@ -138,15 +127,7 @@ impl<K: Kernel> Truncation<K> {
 
   /// Newton on the panel's partial mass in the offset `t` from its origin, bisecting whenever a step leaves the panel:
   /// the point is rounded once, so a panel narrower than an ulp of its place still lands on the double its level has.
-  fn solve(
-    &self,
-    panel: Panel,
-    want: f64,
-    mass: f64,
-    from_lo: bool,
-    shift: f64,
-    iters: usize,
-  ) -> Point {
+  fn solve(&self, panel: Panel, want: f64, mass: f64, from_lo: bool, shift: f64) -> Point {
     let (mut lb, mut rb) = (panel.l, panel.r);
     let frac = want / mass;
     let frac = if frac.is_finite() {
@@ -181,7 +162,7 @@ impl<K: Kernel> Truncation<K> {
     } else {
       panel.r - width * v
     };
-    for _ in 0..iters {
+    for _ in 0..100 {
       let f = self.partial(&panel, t, from_lo, shift) - want;
       if f == 0.0 {
         break;

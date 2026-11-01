@@ -14,7 +14,7 @@ use super::singular::Frame;
 use crate::traits::RealExt;
 
 impl<K: Kernel> Truncation<K> {
-  /// `∫_lo^x k / ∫k`, from the end nearer in mass: past the median one less the mass above `x`.
+  /// `∫_lo^x k / ∫k`, integrated up from `lo`: no survival function reads it, so a level near 1 needs absolute digits.
   pub(in crate::truncated) fn cdf(&self, at: Cut) -> f64 {
     let x = at.x;
     if x.is_nan() {
@@ -31,9 +31,6 @@ impl<K: Kernel> Truncation<K> {
     }
     if span(self.a, at) < 0.0 {
       return self.below_clip(at);
-    }
-    if x > self.median {
-      return (1.0 - (self.tail_up + self.integrate(at, self.b, 0.0)) / self.m0).max_or_nan(0.0);
     }
     // The panels `M₀` was summed on, so next to 1 the two sums differ only by the panel holding `x`.
     let mut sum = 0.0;

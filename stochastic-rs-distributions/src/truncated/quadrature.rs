@@ -201,8 +201,6 @@ pub(super) struct Truncation<K> {
   /// `∫_lo^a` and `∫_b^up` of `k/k(centre)`, in units of `width`: the cdf adds the first, the quantile both.
   tail_lo: f64,
   tail_up: f64,
-  /// About the median (`seam`): past it the cdf is one less the mass above, which keeps a level next to 1's digits.
-  median: f64,
 }
 
 impl<K: Kernel> Truncation<K> {
@@ -221,7 +219,6 @@ impl<K: Kernel> Truncation<K> {
       t.width,
       t.m0
     );
-    t.median = t.seam();
     t
   }
 
@@ -294,7 +291,6 @@ impl<K: Kernel> Truncation<K> {
       narrow: false,
       tail_lo: 0.0,
       tail_up: 0.0,
-      median: f64::INFINITY,
     };
     t.narrow = t.width.is_nan() || t.width < f64::MIN_POSITIVE;
     if !t.narrow {
