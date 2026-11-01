@@ -193,6 +193,8 @@ pub(super) struct Truncation<K> {
   /// `∫_lo^a` and `∫_b^up` of `k/k(centre)`, in units of `width`: the cdf adds the first, the quantile both.
   tail_lo: f64,
   tail_up: f64,
+  /// The median: past it the cdf is one less the mass above, which keeps the digits a level next to 1 has.
+  median: f64,
 }
 
 impl<K: Kernel> Truncation<K> {
@@ -211,6 +213,7 @@ impl<K: Kernel> Truncation<K> {
       t.width,
       t.m0
     );
+    t.median = t.quantile(0.5).value();
     t
   }
 
@@ -283,6 +286,7 @@ impl<K: Kernel> Truncation<K> {
       narrow: false,
       tail_lo: 0.0,
       tail_up: 0.0,
+      median: f64::INFINITY,
     };
     t.narrow = t.width.is_nan() || t.width < f64::MIN_POSITIVE;
     if !t.narrow {
@@ -421,7 +425,7 @@ impl<K: Kernel> Truncation<K> {
     (ln_g - (self.ln_norm + ln_scale)).exp()
   }
 
-  /// `∫_lo^x k / ∫k`, integrated up from `lo`: no survival function reads it, so a level near 1 needs absolute digits.
+  /// `∫_lo^x k / ∫k`, from the end nearer in mass: past the median one less the mass above `x`.
   pub(super) fn cdf(&self, x: f64) -> f64 {
     if x.is_nan() {
       return f64::NAN;
@@ -438,6 +442,9 @@ impl<K: Kernel> Truncation<K> {
     }
     if span(self.a, at) < 0.0 {
       return self.below_clip(x);
+    }
+    if x > self.median {
+      return (1.0 - (self.tail_up + self.integrate(at, self.b, 0.0)) / self.m0).max_or_nan(0.0);
     }
     ((self.tail_lo + self.integrate(self.a, at, 0.0)) / self.m0).min_or_nan(1.0)
   }
