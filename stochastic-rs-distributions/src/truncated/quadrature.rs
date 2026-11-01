@@ -17,6 +17,7 @@ pub(super) use sum::Terms;
 pub(super) use sum::accurate_sum;
 pub(super) use sum::two_prod;
 pub(super) use sum::two_sum;
+pub(super) use zone::Offset;
 
 mod cdf;
 mod clip;
@@ -26,6 +27,7 @@ mod panels;
 mod quantile;
 mod singular;
 mod sum;
+mod zone;
 
 /// A law's log-kernel on its support, in the law's own coordinate, taken relative to a reference point `c`.
 pub(super) trait Kernel {

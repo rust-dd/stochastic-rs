@@ -16,6 +16,7 @@ use super::local::Model;
 use super::local::Signed;
 use super::local::ln_cubic;
 use super::quadrature::Cut;
+use super::quadrature::Offset;
 use super::quadrature::Point;
 use super::quadrature::Truncation;
 use super::quadrature::ldexp;
@@ -384,7 +385,14 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedGamma<T> {
     };
     let u = self.units(x);
     Some(match self.beside_zero(x, u) {
-      Some(ln_t) => t.cdf_beside(0.0, self.base.alpha().to_f64()?, ln_t),
+      Some(_) => {
+        let Offset { m, q } = Offset::of(x);
+        t.cdf_beside(
+          0.0,
+          self.base.alpha().to_f64()?,
+          Offset { m, q: q - self.p },
+        )
+      }
       None => t.cdf(Cut::at(u)),
     })
   }

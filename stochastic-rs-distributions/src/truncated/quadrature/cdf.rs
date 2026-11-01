@@ -12,6 +12,7 @@ use super::panels::Cut;
 use super::panels::Panel;
 use super::panels::span;
 use super::singular::Frame;
+use super::zone::Offset;
 use crate::traits::RealExt;
 
 impl<K: Kernel> Truncation<K> {
@@ -72,15 +73,18 @@ impl<K: Kernel> Truncation<K> {
     (2.0 * m <= self.m0 - below).then_some(m)
   }
 
-  /// The cdf at `s + e^{ln_t}` beside the lower end's branch point `s` of exponent `e`: its mass in `u = (t/h)^e`, `h`
-  /// the point's own offset, so no offset below the doubles' range is formed.
-  pub(in crate::truncated) fn cdf_beside(&self, s: f64, e: f64, ln_t: f64) -> f64 {
-    let frame = Frame::beside(ln_t, e);
+  /// The cdf at `s + t` beside the lower end's branch point `s` of exponent `e`: the whole mass from `s`, so no clipped
+  /// tail is added, in `u = (t/h)^e` relative to its value at `h`, its power of `t` scaled once.
+  pub(in crate::truncated) fn cdf_beside(&self, s: f64, e: f64, t: Offset) -> f64 {
+    let frame = Frame::beside(t.ln(), e);
+    let origin = Cut::at(s);
+    let ln_v = self.singular_point(origin, &frame, 1.0).0;
+    let shift = ln_v + frame.ln_jacobian() - self.width.ln();
     let mut mass = 0.0;
-    self.frame_nodes(Cut::at(s), &frame, e, 0, None, |w, ln_v, _, _| {
-      mass += w * ln_v.exp()
+    self.frame_nodes(origin, &frame, e, 0, None, |w, ln_v, _, _| {
+      mass += w * (ln_v - shift).exp()
     });
-    ((self.tail_lo + mass) / self.m0).min_or_nan(1.0)
+    self.end_mass(t, e, ln_v + mass.ln()).min_or_nan(1.0)
   }
 
   /// Adds `panel`'s mass below the offset `t`; past the middle of a singular panel right of its branch point, the panel's
