@@ -13,8 +13,6 @@ use stochastic_rs_core::simd_rng::SimdRngExt;
 use super::local::Local;
 use super::local::Model;
 use super::local::Signed;
-use super::quadrature::Cut;
-use super::quadrature::Point;
 use super::quadrature::Truncation;
 use crate::normal::SimdNormal;
 use crate::seeded::StreamState;
@@ -26,8 +24,11 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 use kernels::NormalKernel;
+use located::standardised;
+use located::width;
 
 mod kernels;
+mod located;
 mod mgf;
 
 /// Which of Robert (1995)'s proposals a one-sided standardised interval $[a, b]$ with $a \ge 0$ takes.
@@ -87,6 +88,8 @@ pub struct SimdTruncatedNormal<T> {
   norm_mass: f64,
   /// Set when the interval lies wholly on one side of `μ`, where the inverse cdf loses its digits first.
   tail: Option<TailSetup>,
+  /// The standardised bounds and, off `μ`, the width `(up − lo)/σ` (NaN about `μ` or past the doubles).
+  bounds: [f64; 3],
   /// The standardised interval's kernel integral, built by the first analytic call; construction and draws skip it.
   analytics: OnceLock<Model<NormalKernel>>,
   /// `ln σ`, so a density costs no logarithm of its own.
@@ -178,8 +181,11 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     );
     let mu_f64 = mu.to_f64().unwrap();
     let sigma_f64 = sigma.to_f64().unwrap();
-    let a_std = standardised(lower.to_f64().unwrap(), mu_f64, sigma_f64);
-    let b_std = standardised(upper.to_f64().unwrap(), mu_f64, sigma_f64);
+    let (lo, up) = (lower.to_f64().unwrap(), upper.to_f64().unwrap());
+    let (a_std, b_std) = (
+      standardised(lo, mu_f64, sigma_f64),
+      standardised(up, mu_f64, sigma_f64),
+    );
     let f_lo = norm_cdf_scalar(a_std);
     let f_up = norm_cdf_scalar(b_std);
     // A left-tail interval is reflected into the right tail, so the tail sampler only sees `a >= 0`.
@@ -198,6 +204,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       f_up,
       norm_mass: f_up - f_lo,
       tail,
+      bounds: [a_std, b_std, width(a_std, b_std, lo, up, sigma_f64)],
       analytics: OnceLock::new(),
       ln_sigma: sigma_f64.ln(),
     }
@@ -215,7 +222,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
   #[cold]
   #[inline(never)]
   fn fill(&self) -> Option<&Model<NormalKernel>> {
-    let (alpha, beta) = self.standardised_bounds()?;
+    let (lo, up) = self.held();
     Some(self.analytics.get_or_init(|| {
       // Past `μ ± σ·f64::MAX` the standardised near bound is infinite: the law is its local model at that bound.
       if self.beyond().is_some()
@@ -223,10 +230,9 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       {
         return Model::Local(l);
       }
-      Model::of(
-        Truncation::new(NormalKernel::default(), alpha, beta),
-        |_| self.local(),
-      )
+      Model::of(Truncation::new(NormalKernel::default(), lo, up), |_| {
+        self.local()
+      })
     }))
   }
 
@@ -256,8 +262,14 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
   fn moments(&self) -> Option<[f64; 4]> {
     Some(match self.analytics()? {
       Model::Full(t) => {
-        let [mean, variance, skewness, kurtosis] = t.moments(self.base.std_dev().to_f64()?);
-        [self.unstandardise(mean), variance, skewness, kurtosis]
+        let (frame, offset, [variance, skewness, kurtosis]) =
+          t.located_moments(self.base.std_dev().to_f64()?);
+        [
+          self.mean_from(t, frame, offset)?,
+          variance,
+          skewness,
+          kurtosis,
+        ]
       }
       Model::Local(l) => l.moments(),
     })
@@ -346,21 +358,6 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     T::from_f64_fast(self.unstandardise(z))
   }
 
-  /// From halves where `μ + σz` overflows short of its value.
-  #[inline]
-  fn unstandardise(&self, z: f64) -> f64 {
-    let (mu, sigma) = (
-      self.base.mean().to_f64().unwrap(),
-      self.base.std_dev().to_f64().unwrap(),
-    );
-    let x = mu + sigma * z;
-    if x.is_finite() || !z.is_finite() {
-      x
-    } else {
-      2.0 * (0.5 * mu + (0.5 * sigma) * z)
-    }
-  }
-
   /// The near bound of an interval past `μ ± σ·f64::MAX`, whose law lies closer to it than any double: every draw.
   fn beyond(&self) -> Option<f64> {
     let setup = self.tail?;
@@ -370,55 +367,6 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       self.lower
     };
     (setup.a == f64::INFINITY).then(|| near.to_f64().unwrap())
-  }
-
-  fn standardise(&self, x: f64) -> Option<f64> {
-    Some(standardised(
-      x,
-      self.base.mean().to_f64()?,
-      self.base.std_dev().to_f64()?,
-    ))
-  }
-
-  /// `x` beside a bound nearer it than `μ` by its own offset `(x − bound)/σ`, so a point next to an end keeps the
-  /// digits its distance from it has, which `(x − μ)/σ` rounds away.
-  fn cut(&self, x: f64) -> Option<Cut> {
-    let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
-    let (bound, d) = if x - lo <= up - x {
-      (lo, x - lo)
-    } else {
-      (up, x - up)
-    };
-    let t = d / self.base.std_dev().to_f64()?;
-    Some(
-      if d.abs() < (x - self.base.mean().to_f64()?).abs() && t.is_finite() {
-        Cut::beside(self.standardise(bound)?, t)
-      } else {
-        Cut::at(self.standardise(x)?)
-      },
-    )
-  }
-
-  /// A point the engine reports: an offset from a bound's standardised double maps back from that bound itself.
-  fn located(&self, point: Point) -> Option<f64> {
-    let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
-    let sigma = self.base.std_dev().to_f64()?;
-    if let Point::From { s, t } = point {
-      for bound in [lo, up] {
-        let x = bound + sigma * t;
-        if bound.is_finite() && s == self.standardise(bound)? && x.is_finite() {
-          return Some(x);
-        }
-      }
-    }
-    Some(self.unstandardise(point.value()))
-  }
-
-  fn standardised_bounds(&self) -> Option<(f64, f64)> {
-    Some((
-      self.standardise(self.lower.to_f64()?)?,
-      self.standardise(self.upper.to_f64()?)?,
-    ))
   }
 }
 
@@ -464,7 +412,13 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
       return Some(0.0);
     }
     Some(match self.analytics()? {
-      Model::Full(t) => t.density(self.standardise(x)?, self.ln_sigma),
+      // Off `μ` the reference point is held beside the near bound's double, and the point's offset from it is exact.
+      Model::Full(t) => match self.near() {
+        Some(bound) if t.narrow().is_none() => {
+          t.density_near((x - bound) / self.base.std_dev().to_f64()?, self.ln_sigma)
+        }
+        _ => t.density(self.standardise(x)?, self.ln_sigma),
+      },
       Model::Local(l) => local_pdf(l, x),
     })
   }
@@ -543,24 +497,6 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
 #[inline(never)]
 fn local_pdf(l: &Local, x: f64) -> f64 {
   l.pdf(x, 0.0)
-}
-
-/// `(x − μ)/σ`, from halves where `x − μ` overflows; an infinite `x` stays infinite.
-#[inline]
-fn standardised(x: f64, mu: f64, sigma: f64) -> f64 {
-  let d = x - mu;
-  if d.is_infinite() && x.is_finite() {
-    halved(x, mu, sigma)
-  } else {
-    d / sigma
-  }
-}
-
-/// Out of line, so the common path computes one quotient, not both.
-#[cold]
-#[inline(never)]
-fn halved(x: f64, mu: f64, sigma: f64) -> f64 {
-  (0.5 * x - 0.5 * mu) / (0.5 * sigma)
 }
 
 fn norm_cdf_scalar(z: f64) -> f64 {

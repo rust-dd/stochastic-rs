@@ -22,7 +22,7 @@ impl<K: Kernel> Truncation<K> {
       return f64::NAN;
     }
     // By the exact offset, as the upper side compares: a point beside `lo` finer than its ulp still lies above it.
-    if span(Cut::at(self.lo), at) <= 0.0 {
+    if span(self.lo, at) <= 0.0 {
       return 0.0;
     }
     if self.narrow {
@@ -102,10 +102,10 @@ impl<K: Kernel> Truncation<K> {
   /// that value, which one `exp` restores, so a subnormal answer is rounded once.
   fn below_clip(&self, at: Cut) -> f64 {
     let x = at.x;
-    let ln_g = self.kernel.ln_rel(x, self.offset(x), None);
+    let ln_g = self.kernel.ln_rel(x, span(self.centre, at), None);
     // The kernel rises from `lo` to `x`, so the cdf is at most `k(x)(x − lo)/∫k`: where that underflows it is 0, and
     // an `ln_g` too large to keep its units digit never feeds the walk.
-    if ln_g == f64::NEG_INFINITY || ln_g + (x - self.lo).ln() - self.ln_norm < -746.0 {
+    if ln_g == f64::NEG_INFINITY || ln_g + (x - self.lo.x).ln() - self.ln_norm < -746.0 {
       return 0.0;
     }
     let start = clip(&self.kernel, self.centre, at, self.lo, ln_g - CLIP);

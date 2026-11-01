@@ -133,7 +133,17 @@ impl Cut {
     }
   }
 
-  fn parts(self) -> (f64, f64, f64) {
+  /// `x`, its own double, also held beside `s` by `rest`: a span from a point beside `s` reads `rest`, not `x − s`.
+  pub(in crate::truncated) fn held(x: f64, s: f64, rest: f64) -> Self {
+    Self {
+      x,
+      from: Some((s, rest, 0.0)),
+      inner: None,
+    }
+  }
+
+  /// `(s, lo, t)`: the double it is held beside, that double's rest and the offset, `(x, 0, 0)` for a plain point.
+  pub(in crate::truncated) fn parts(self) -> (f64, f64, f64) {
     self.from.unwrap_or((self.x, 0.0, 0.0))
   }
 
@@ -144,7 +154,7 @@ impl Cut {
   }
 
   /// The same point moved by `d`, still beside its anchor.
-  pub(super) fn shifted(self, d: f64) -> Self {
+  pub(in crate::truncated) fn shifted(self, d: f64) -> Self {
     let (s, lo, t) = self.parts();
     Self {
       x: s + (lo + (t + d)),
@@ -164,14 +174,14 @@ impl Cut {
     self.from.map(|(s, lo, t)| (s, lo + t))
   }
 
-  /// `self + d` as the double it is held beside and the offset from it, the sum `plus` rounds once.
-  pub(super) fn parts_from(self, d: f64) -> (f64, f64) {
-    let (s, lo, t) = self.parts();
-    (s, lo + (t + d))
-  }
-
   pub(in crate::truncated) fn offset(self, origin: f64) -> f64 {
     span(Self::at(origin), self)
+  }
+}
+
+impl From<f64> for Cut {
+  fn from(x: f64) -> Self {
+    Self::at(x)
   }
 }
 
@@ -377,14 +387,14 @@ fn recut_piece<K: Kernel>(kernel: &K, c: Cut, cl: Cut, cr: Cut) -> (Cut, Cut) {
   if span(cl, mode) > 0.0 && span(mode, cr) > 0.0 {
     let top = ln(mode);
     return (
-      clip(kernel, c, mode, cl.x, top - CLIP),
-      clip(kernel, c, mode, cr.x, top - CLIP),
+      clip(kernel, c, mode, Cut::at(cl.x), top - CLIP),
+      clip(kernel, c, mode, Cut::at(cr.x), top - CLIP),
     );
   }
   let (ll, lr) = (ln(cl), ln(cr));
   if ll >= lr {
-    (cl, clip(kernel, c, cl, cr.x, ll - CLIP))
+    (cl, clip(kernel, c, cl, Cut::at(cr.x), ll - CLIP))
   } else {
-    (clip(kernel, c, cr, cl.x, lr - CLIP), cr)
+    (clip(kernel, c, cr, Cut::at(cl.x), lr - CLIP), cr)
   }
 }

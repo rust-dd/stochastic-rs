@@ -6,7 +6,7 @@ use super::panels::span;
 
 /// Where `ln k − ln k(c)` falls below `floor` from `from` toward `end`, `end` if never: a doubling probe beside `c`, then
 /// bisection beside `c` or, if the bracket lies nearer it, the branch point `end` is nearer, so the cut stays exact.
-pub(super) fn clip<K: Kernel>(kernel: &K, c: Cut, from: Cut, end: f64, floor: f64) -> Cut {
+pub(super) fn clip<K: Kernel>(kernel: &K, c: Cut, from: Cut, end: Cut, floor: f64) -> Cut {
   let below = |origin: Cut, t: f64| {
     let v = kernel.ln_rel(
       origin.plus(t),
@@ -15,15 +15,14 @@ pub(super) fn clip<K: Kernel>(kernel: &K, c: Cut, from: Cut, end: f64, floor: f6
     );
     v < floor || v.is_nan()
   };
-  let to_end = Cut::at(end);
-  if end.is_finite() && !below(to_end, 0.0) {
-    return to_end;
+  if end.x.is_finite() && !below(end, 0.0) {
+    return end;
   }
-  let gap = span(to_end, from);
+  let gap = span(end, from);
   if gap == 0.0 {
-    return to_end;
+    return end;
   }
-  let (from_t, end_t, dir) = (span(c, from), span(c, to_end), -gap.signum());
+  let (from_t, end_t, dir) = (span(c, from), span(c, end), -gap.signum());
   let (mut inside, mut outside) = (from_t, end_t);
   // From the kernel's length or its e-fold length at `from`, whichever is shorter, and positive: doubling overflows
   // within 2100 steps.
@@ -50,7 +49,7 @@ pub(super) fn clip<K: Kernel>(kernel: &K, c: Cut, from: Cut, end: f64, floor: f6
     outside = dir * f64::MAX;
   }
   let mut points = kernel.branch_points().into_iter().flatten();
-  let near = points.find(|&(s, _)| (end - s).abs() < span(to_end, c).abs());
+  let near = points.find(|&(s, _)| end.offset(s).abs() < span(end, c).abs());
   let (origin, mut inside, mut outside) = match near {
     Some((s, _)) if (outside - span(c, Cut::at(s))).abs() < outside.abs() => {
       let to_c = span(Cut::at(s), c);
@@ -62,7 +61,7 @@ pub(super) fn clip<K: Kernel>(kernel: &K, c: Cut, from: Cut, end: f64, floor: f6
           to_c + inside
         },
         if outside == end_t {
-          end - s
+          end.offset(s)
         } else {
           to_c + outside
         },

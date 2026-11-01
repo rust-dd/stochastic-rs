@@ -13,11 +13,14 @@ use panels::Panel;
 use panels::panels;
 pub(super) use panels::span;
 use sum::Sum;
+pub(super) use sum::accurate_sum;
 pub(super) use sum::two_prod;
 pub(super) use sum::two_sum;
 
 mod cdf;
 mod clip;
+mod flat;
+mod moments;
 mod panels;
 mod quantile;
 mod singular;
@@ -28,6 +31,9 @@ pub(super) trait Kernel {
   /// The law maps a quantile walked from a bound or a clip back from the double that point is held beside, so the
   /// engine reports it as `Point::From`; a law reading every point by its value pays nothing for it.
   const FROM_POINT: bool = false;
+
+  /// `ln k` is exactly its quadratic about any point (`d1`, `d2` there), so a flat kernel's odd part is `sinh` of its slope.
+  const QUADRATIC: bool = false;
 
   /// `ln k(x)`: `-∞` outside the support, `+∞` at a singular end.
   fn ln_k(&self, x: f64) -> f64;
@@ -158,10 +164,13 @@ const CLIP: f64 = 41.5;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Point {
   At(f64),
-  /// `s + t`, the offset from the double the walk's origin is held beside kept apart, so a law mapping it back from
-  /// that double keeps its digits.
-  From {
-    s: f64,
+  /// The point held beside the double the walk's origin is held beside, so a law mapping it back from that double keeps
+  /// its digits.
+  From(Cut),
+  /// `centre + width·t` from a flat kernel's midpoint, `t` apart, so a point near 0 between far bounds keeps its digits.
+  Mid {
+    centre: Cut,
+    width: f64,
     t: f64,
   },
   Beside {
@@ -175,7 +184,8 @@ impl Point {
   pub(super) fn value(self) -> f64 {
     match self {
       Self::At(x) => x,
-      Self::From { s, t } => s + t,
+      Self::From(cut) => cut.x,
+      Self::Mid { centre, width, t } => centre.plus(width * t),
       Self::Beside { s, sign, ln_t } => s + sign * ln_t.exp(),
     }
   }
@@ -185,8 +195,8 @@ impl Point {
 #[derive(Clone, Debug)]
 pub(super) struct Truncation<K> {
   kernel: K,
-  lo: f64,
-  up: f64,
+  lo: Cut,
+  up: Cut,
   /// The point every offset is formed from, held exactly: the clamped mode, a tenth of a scale off a singular end, or
   /// the midpoint.
   centre: Cut,
@@ -219,13 +229,14 @@ pub(super) struct Truncation<K> {
 
 impl<K: Kernel> Truncation<K> {
   /// `kernel` on `[lo, up]`, `lo < up`, with the mass beyond the clips that the cdf and the quantile read.
-  pub(super) fn new(kernel: K, lo: f64, up: f64) -> Self {
+  pub(super) fn new(kernel: K, lo: impl Into<Cut>, up: impl Into<Cut>) -> Self {
+    let (lo, up) = (lo.into(), up.into());
     let mut t = Self::mass_only(kernel, lo, up);
-    if t.a.offset(lo) > 0.0 {
+    if span(lo, t.a) > 0.0 {
       t.reach.0 = clip(&t.kernel, t.centre, t.a, lo, -2.0 * CLIP);
       t.tail_lo = t.integrate(t.reach.0, t.a, 0.0);
     }
-    if t.b.offset(up) < 0.0 {
+    if span(up, t.b) < 0.0 {
       t.reach.1 = clip(&t.kernel, t.centre, t.b, up, -2.0 * CLIP);
       t.tail_up = t.integrate(t.b, t.reach.1, 0.0);
     }
@@ -239,21 +250,22 @@ impl<K: Kernel> Truncation<K> {
   }
 
   /// The reference point, the clipped ends and their mass; an infinite end is clipped, a singular one graded.
-  pub(super) fn mass_only(mut kernel: K, lo: f64, up: f64) -> Self {
-    let step = (up - lo).min(kernel.length_scale()) / 10.0;
+  pub(super) fn mass_only(mut kernel: K, lo: impl Into<Cut>, up: impl Into<Cut>) -> Self {
+    let (lo, up) = (lo.into(), up.into());
+    let step = span(lo, up).min(kernel.length_scale()) / 10.0;
     // `(s, e)` of a singular branch point at a point or within `step` of it, where the power law rules the kernel's mass.
     let singular = |x: Cut| {
       let mut points = kernel.branch_points().into_iter().flatten();
       points.find(|&(s, e)| e < 1.0 && x.offset(s).abs() <= step)
     };
-    let (lo_singular, up_singular) = (singular(Cut::at(lo)), singular(Cut::at(up)));
+    let (lo_singular, up_singular) = (singular(lo), singular(up));
     let mode = kernel.mode();
-    let (past_lo, past_up) = (mode.offset(lo), mode.offset(up));
+    let (past_lo, past_up) = (span(lo, mode), span(up, mode));
     let mut at_mode = past_lo >= 0.0 && past_up <= 0.0;
     let mut centre = if past_lo < 0.0 {
-      Cut::at(lo)
+      lo
     } else if past_up > 0.0 {
-      Cut::at(up)
+      up
     } else {
       mode
     };
@@ -265,9 +277,9 @@ impl<K: Kernel> Truncation<K> {
         (None, Some(_)) => false,
       };
       let (end, point, side) = if heavier_lo {
-        (lo, lo_singular, 1.0)
+        (lo.x, lo_singular, 1.0)
       } else {
-        (up, up_singular, -1.0)
+        (up.x, up_singular, -1.0)
       };
       at_mode = false;
       centre = point.map_or(Cut::at(end + side * step), |(s, _)| {
@@ -277,12 +289,12 @@ impl<K: Kernel> Truncation<K> {
     }
     kernel.anchor(centre, at_mode);
     let a = if lo_singular.is_some() {
-      Cut::at(lo)
+      lo
     } else {
       clip(&kernel, centre, centre, lo, -CLIP)
     };
     let b = if up_singular.is_some() {
-      Cut::at(up)
+      up
     } else {
       clip(&kernel, centre, centre, up, -CLIP)
     };
@@ -324,6 +336,11 @@ impl<K: Kernel> Truncation<K> {
     self.centre.x
   }
 
+  /// The reference point as held, beside a bound or the point it was found from.
+  pub(super) fn reference(&self) -> Cut {
+    self.centre
+  }
+
   pub(super) fn kernel(&self) -> &K {
     &self.kernel
   }
@@ -343,91 +360,6 @@ impl<K: Kernel> Truncation<K> {
     self.narrow.then_some(self.centre.x)
   }
 
-  /// `(mean, scale²·variance, skewness, excess kurtosis)`; an interval that cuts neither end removes less than the clip
-  /// resolves and reads the base's closed forms, keeping relative digits sums lose (2/√k at k = 1e300).
-  pub(super) fn moments(&self, scale: f64) -> [f64; 4] {
-    let (lo, up) = self.kernel.support();
-    // By exact offsets: a clip within an ulp of its bound still cuts nothing.
-    if (self.lo <= lo || self.a.offset(self.lo) > 0.0)
-      && (self.up >= up || self.b.offset(self.up) < 0.0)
-    {
-      let [mean, sd, skewness, kurtosis] = self.kernel.base_moments();
-      let unit = scale * sd;
-      return [mean, unit * unit, skewness, kurtosis];
-    }
-    if self.narrow {
-      return [self.centre.x, 0.0, f64::NAN, f64::NAN];
-    }
-    self.summed_moments(scale)
-  }
-
-  /// The moments from sums in units of `width`: the mean's offset `d`, then sums about it, so no binomial shift by a
-  /// far reference point cancels.
-  fn summed_moments(&self, scale: f64) -> [f64; 4] {
-    let mean = self.moment_sums::<2>(0.0);
-    let d = mean[1] / mean[0];
-    let m = self.moment_sums::<5>(d);
-    let e = m[1] / m[0];
-    let (r2, r3, r4) = (m[2] / m[0], m[3] / m[0], m[4] / m[0]);
-    let mu2 = r2 - e * e;
-    let mu3 = r3 - 3.0 * e * r2 + 2.0 * e * e * e;
-    let mu4 = r4 - 4.0 * e * r3 + 6.0 * e * e * r2 - 3.0 * e * e * e * e;
-    let unit = scale * self.width;
-    [
-      self.frame.plus(self.width * (d + e)),
-      (unit * mu2) * unit,
-      (mu3 / mu2) / mu2.sqrt(),
-      (mu4 / mu2) / mu2 - 3.0,
-    ]
-  }
-
-  fn moment_sums<const N: usize>(&self, about: f64) -> [f64; N] {
-    let mut m = [0.0; N];
-    let _ = self.walk_about_centre(|panel| {
-      if let Some(e) = panel
-        .singular
-        .filter(|_| !Self::powers_on_mass_nodes(&panel, N))
-      {
-        self.singular_moments(&panel, e, about, &mut m);
-      } else {
-        self.nodes(&panel, |w, ln_v, offset, _| {
-          let (g, z) = (w * ln_v.exp(), offset / self.width - about);
-          let mut zj = 1.0;
-          for slot in &mut m {
-            *slot += g * zj;
-            zj *= z;
-          }
-        });
-      }
-      ControlFlow::<()>::Continue(())
-    });
-    m
-  }
-
-  /// `−∫ f ln f` as `ln M₀ − E[ln k(X) − ln k(c)]`, so no large `ln k(c)` cancels against `E[ln k(X)]`.
-  pub(super) fn entropy(&self) -> f64 {
-    if self.narrow {
-      return f64::NAN;
-    }
-    // Relative to `m0`: past 1e154 a mass and its log's own size overflow in one product (`β = 4.9e-165` at 1).
-    let shift = self.m0.ln();
-    let (mut mass, mut log) = (0.0, 0.0);
-    let _ = self.walk_about_centre(|panel| {
-      self.nodes(&panel, |w, ln_v, _, ln_g| {
-        let g = w * (ln_v - shift).exp();
-        if g > 0.0 {
-          mass += g;
-          log += g * ln_g;
-        }
-      });
-      if let Some(e) = panel.singular {
-        log += self.ln_u_correction(&panel, e, shift);
-      }
-      ControlFlow::<()>::Continue(())
-    });
-    (self.width.ln() + shift + mass.ln()) - log / mass
-  }
-
   /// The normalised density `k(x)/∫k` over `e^{ln_scale}` at a point of `[lo, up]`, whose support the law checks at
   /// its own bounds.
   pub(super) fn density(&self, x: f64, ln_scale: f64) -> f64 {
@@ -439,6 +371,14 @@ impl<K: Kernel> Truncation<K> {
       };
     }
     let ln_g = self.kernel.ln_rel(x, self.offset(x), None);
+    (ln_g - (self.ln_norm + ln_scale)).exp()
+  }
+
+  /// The density at the offset `y` from the double the reference point is held beside, which a point far finer than
+  /// that double's ulp keeps.
+  #[inline]
+  pub(super) fn density_near(&self, y: f64, ln_scale: f64) -> f64 {
+    let ln_g = self.kernel.ln_rel(self.near.0 + y, y - self.near.1, None);
     (ln_g - (self.ln_norm + ln_scale)).exp()
   }
 
@@ -457,10 +397,10 @@ impl<K: Kernel> Truncation<K> {
       return Point::At(f64::NAN);
     }
     if p <= 0.0 {
-      return Point::At(self.lo);
+      return Point::At(self.lo.x);
     }
     if p >= 1.0 {
-      return Point::At(self.up);
+      return Point::At(self.up.x);
     }
     if self.narrow {
       return Point::At(self.centre.x);
@@ -501,11 +441,6 @@ impl<K: Kernel> Truncation<K> {
     visit: impl FnMut(Panel) -> ControlFlow<B>,
   ) -> ControlFlow<B> {
     panels(&self.kernel, self.centre, (l, r), rev, true, visit)
-  }
-
-  /// The moments' and entropy's walk: about the centre, where a near-symmetric law's odd powers keep their digits.
-  fn walk_about_centre<B>(&self, visit: impl FnMut(Panel) -> ControlFlow<B>) -> ControlFlow<B> {
-    panels(&self.kernel, self.centre, self.reach, false, false, visit)
   }
 
   /// `Σ w·e^{ln v − shift}` over a panel's nodes; on a regular panel its own loop, whose few live values leave the sum

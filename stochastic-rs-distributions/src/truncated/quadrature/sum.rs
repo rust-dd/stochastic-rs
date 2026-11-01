@@ -13,6 +13,17 @@ pub(in crate::truncated) fn two_prod(a: f64, b: f64) -> (f64, f64) {
   (p, a.mul_add(b, -p))
 }
 
+/// The terms' sum to a double-double as if formed in thrice the precision: two cascades of two-sums that carry each
+/// rounding error to the next term, then the errors' sum added once (SumK, K = 3).
+pub(in crate::truncated) fn accurate_sum<const N: usize>(mut p: [f64; N]) -> (f64, f64) {
+  for _ in 0..2 {
+    for i in 1..N {
+      (p[i], p[i - 1]) = two_sum(p[i], p[i - 1]);
+    }
+  }
+  two_sum(p[N - 1], p[..N - 1].iter().sum::<f64>())
+}
+
 /// A running sum whose additions' rounding errors are carried apart: a panel far smaller than the sum keeps its digits,
 /// so the cdf next to 1 and `M₀` differ by the panels between them, not by the roundings of adding those.
 #[derive(Clone, Copy, Default)]

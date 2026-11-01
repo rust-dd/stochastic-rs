@@ -12,6 +12,8 @@ pub(super) struct NormalKernel {
 impl Kernel for NormalKernel {
   const FROM_POINT: bool = true;
 
+  const QUADRATIC: bool = true;
+
   fn ln_k(&self, z: f64) -> f64 {
     -0.5 * z * z
   }

@@ -5,7 +5,9 @@ use std::f64::consts::LN_2;
 
 use super::quadrature::Cut;
 use super::quadrature::Kernel;
+use super::quadrature::Point;
 use super::quadrature::Truncation;
+use super::quadrature::accurate_sum;
 use super::quadrature::ldexp;
 
 /// `sign·e^{ln}`: a derivative the doubles may not hold.
@@ -81,6 +83,8 @@ struct QuadKernel {
 }
 
 impl Kernel for QuadKernel {
+  const QUADRATIC: bool = true;
+
   fn ln_k(&self, u: f64) -> f64 {
     u * (self.a + 0.5 * self.b * u)
   }
@@ -213,13 +217,25 @@ impl Local {
 
   /// `(mean, variance, skewness, excess kurtosis)`.
   pub(super) fn moments(&self) -> [f64; 4] {
-    let [mean, variance, skewness, kurtosis] = self.t.moments(1.0);
+    let (frame, [unit, offset], [variance, skewness, kurtosis]) = self.t.located_moments(1.0);
     [
-      self.r + ldexp(mean, self.p),
+      self.at(frame, unit * offset),
       ldexp(variance, 2 * self.p),
       skewness,
       kurtosis,
     ]
+  }
+
+  /// `r + 2^p(frame + d)`, summed in units from the frame's exact parts and scaled once, so a point far nearer 0 than
+  /// both keeps its digits; where `r` passes the doubles in units the law is `r` to its last double.
+  fn at(&self, frame: Cut, d: f64) -> f64 {
+    let (s, lo, t) = frame.parts();
+    let r = ldexp(self.r, -self.p);
+    if r.is_finite() {
+      ldexp(accurate_sum([r, s, lo, t, d]).0, self.p)
+    } else {
+      accurate_sum([self.r, ldexp(s, self.p), ldexp(lo + (t + d), self.p)]).0
+    }
   }
 
   pub(super) fn entropy(&self) -> f64 {
@@ -236,7 +252,10 @@ impl Local {
   }
 
   pub(super) fn quantile(&self, q: f64) -> f64 {
-    self.r + ldexp(self.t.quantile(q).value(), self.p)
+    match self.t.quantile(q) {
+      Point::Mid { centre, width, t } => self.at(centre, width * t),
+      point => self.r + ldexp(point.value(), self.p),
+    }
   }
 
   /// `E e^{tX}`: the tilted law is the model at `x_c`, where its log-kernel peaks on the interval (the law's own bound

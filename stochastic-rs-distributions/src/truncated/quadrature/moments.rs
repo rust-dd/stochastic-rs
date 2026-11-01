@@ -1,0 +1,117 @@
+//! The moments and the entropy: sums of the kernel's powers about the centre, in units of the clipped width.
+
+use std::ops::ControlFlow;
+
+use super::Kernel;
+use super::Truncation;
+use super::panels::Cut;
+use super::panels::Panel;
+use super::panels::panels;
+use super::panels::span;
+
+impl<K: Kernel> Truncation<K> {
+  /// `(mean, scale²·variance, skewness, excess kurtosis)`.
+  pub(in crate::truncated) fn moments(&self, scale: f64) -> [f64; 4] {
+    let (frame, [unit, offset], [variance, skewness, kurtosis]) = self.located_moments(scale);
+    [frame.plus(unit * offset), variance, skewness, kurtosis]
+  }
+
+  /// The mean as the point it was summed about and its offset from it, `unit·offset` (the unit `width` for sums, which
+  /// a far-smaller offset would underflow against), then the other three; an interval that cuts neither end removes less
+  /// than the clip resolves and reads the base's closed forms (2/√k at k = 1e300).
+  pub(in crate::truncated) fn located_moments(&self, scale: f64) -> (Cut, [f64; 2], [f64; 3]) {
+    let (lo, up) = self.kernel.support();
+    // By exact offsets: a clip within an ulp of its bound still cuts nothing.
+    if (self.lo.x <= lo || span(self.lo, self.a) > 0.0)
+      && (self.up.x >= up || span(self.up, self.b) < 0.0)
+    {
+      let [mean, sd, skewness, kurtosis] = self.kernel.base_moments();
+      let unit = scale * sd;
+      return (Cut::at(mean), [1.0, 0.0], [unit * unit, skewness, kurtosis]);
+    }
+    if self.narrow {
+      return (self.centre, [1.0, 0.0], [0.0, f64::NAN, f64::NAN]);
+    }
+    self.summed_moments(scale)
+  }
+
+  /// Whether the reference point is the clipped interval's midpoint, where a flat kernel's moments are summed.
+  pub(in crate::truncated) fn about_midpoint(&self) -> bool {
+    self.centre == self.a.shifted(0.5 * span(self.a, self.b))
+  }
+
+  /// The moments from sums in units of `width`: the mean's offset `d`, then sums about it, so no binomial shift by a
+  /// far reference point cancels.
+  pub(super) fn summed_moments(&self, scale: f64) -> (Cut, [f64; 2], [f64; 3]) {
+    let mean = self.moment_sums::<2>(0.0);
+    let d = mean[1] / mean[0];
+    let m = self.moment_sums::<5>(d);
+    let e = m[1] / m[0];
+    let (r2, r3, r4) = (m[2] / m[0], m[3] / m[0], m[4] / m[0]);
+    let mu2 = r2 - e * e;
+    let mu3 = r3 - 3.0 * e * r2 + 2.0 * e * e * e;
+    let mu4 = r4 - 4.0 * e * r3 + 6.0 * e * e * r2 - 3.0 * e * e * e * e;
+    let unit = scale * self.width;
+    (
+      self.frame,
+      [self.width, self.flat_mean().unwrap_or(d + e)],
+      [
+        (unit * mu2) * unit,
+        (mu3 / mu2) / mu2.sqrt(),
+        (mu4 / mu2) / mu2 - 3.0,
+      ],
+    )
+  }
+
+  fn moment_sums<const N: usize>(&self, about: f64) -> [f64; N] {
+    let mut m = [0.0; N];
+    let _ = self.walk_about_centre(|panel| {
+      if let Some(e) = panel
+        .singular
+        .filter(|_| !Self::powers_on_mass_nodes(&panel, N))
+      {
+        self.singular_moments(&panel, e, about, &mut m);
+      } else {
+        self.nodes(&panel, |w, ln_v, offset, _| {
+          let (g, z) = (w * ln_v.exp(), offset / self.width - about);
+          let mut zj = 1.0;
+          for slot in &mut m {
+            *slot += g * zj;
+            zj *= z;
+          }
+        });
+      }
+      ControlFlow::<()>::Continue(())
+    });
+    m
+  }
+
+  /// `−∫ f ln f` as `ln M₀ − E[ln k(X) − ln k(c)]`, so no large `ln k(c)` cancels against `E[ln k(X)]`.
+  pub(in crate::truncated) fn entropy(&self) -> f64 {
+    if self.narrow {
+      return f64::NAN;
+    }
+    // Relative to `m0`: past 1e154 a mass and its log's own size overflow in one product (`β = 4.9e-165` at 1).
+    let shift = self.m0.ln();
+    let (mut mass, mut log) = (0.0, 0.0);
+    let _ = self.walk_about_centre(|panel| {
+      self.nodes(&panel, |w, ln_v, _, ln_g| {
+        let g = w * (ln_v - shift).exp();
+        if g > 0.0 {
+          mass += g;
+          log += g * ln_g;
+        }
+      });
+      if let Some(e) = panel.singular {
+        log += self.ln_u_correction(&panel, e, shift);
+      }
+      ControlFlow::<()>::Continue(())
+    });
+    (self.width.ln() + shift + mass.ln()) - log / mass
+  }
+
+  /// The moments' and entropy's walk: about the centre, where a near-symmetric law's odd powers keep their digits.
+  fn walk_about_centre<B>(&self, visit: impl FnMut(Panel) -> ControlFlow<B>) -> ControlFlow<B> {
+    panels(&self.kernel, self.centre, self.reach, false, false, visit)
+  }
+}

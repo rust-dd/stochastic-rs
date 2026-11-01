@@ -16,6 +16,15 @@ use super::singular::Frame;
 impl<K: Kernel> Truncation<K> {
   /// Above ½ the level is walked from `up`, so `1 − p` keeps the digits a level next to 1 has.
   pub(super) fn invert(&self, p: f64) -> Point {
+    if (0.25..=0.75).contains(&p)
+      && let Some(t) = self.flat_quantile(p)
+    {
+      return Point::Mid {
+        centre: self.centre,
+        width: self.width,
+        t,
+      };
+    }
     if p > 0.5 {
       return self.locate(
         self.a,
@@ -30,8 +39,8 @@ impl<K: Kernel> Truncation<K> {
       return self.locate(self.a, self.b, want, true, 0.0);
     }
     // `p·M₀` underflowed against an end that was never clipped.
-    if self.a.offset(self.lo) <= 0.0 {
-      return Point::At(self.lo);
+    if span(self.lo, self.a) <= 0.0 {
+      return Point::At(self.lo.x);
     }
     // Below the clip: from where the kernel is `e^{−CLIP}` below `p` times its reference value, every value taken
     // relative to the kernel there, so no node underflows.
@@ -192,8 +201,7 @@ impl<K: Kernel> Truncation<K> {
       }
     }
     if K::FROM_POINT {
-      let (s, rest) = panel.origin.parts_from(t);
-      Point::From { s, t: rest }
+      Point::From(panel.origin.shifted(t))
     } else {
       Point::At(panel.origin.plus(t))
     }
