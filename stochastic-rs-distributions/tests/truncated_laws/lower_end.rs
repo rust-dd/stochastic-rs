@@ -194,3 +194,34 @@ fn a_normal_beside_its_lower_bound() {
     "quantile(5e-324) = {x:e}"
   );
 }
+
+/// Below the lower clip the cdf's bound `k(x)(x − lo)/∫k` reads the point's exact offset, which a standardised double
+/// rounds to 0 beside the bound, and an open end's at most `MAX`, which read `∞` and then NaN.
+#[test]
+fn below_the_lower_clip_the_bound_reads_the_exact_offset() {
+  let clipped = SimdTruncatedNormal::<f64>::new(
+    0.0,
+    8.751602610882394e158,
+    -8.10140922086644e159,
+    -4.3051125511004263e148,
+  );
+  for (x, want) in [
+    (-8.101409220866439e159, 3.5090984557242428e-34),
+    (-8.1014092208664e159, 9.123655984884914e-33),
+  ] {
+    let got = clipped.cdf(x).unwrap();
+    assert!(
+      rel(got, want) < 1e-12,
+      "cdf({x:e}) = {got:e}, mpmath {want:e}"
+    );
+  }
+  let open = SimdTruncatedNormal::<f64>::new(
+    1.1760943437137064,
+    1.5771126610358466,
+    f64::NEG_INFINITY,
+    -1.402332453578786e124,
+  );
+  for x in [-1.4023324535787862e124, -1.5e124] {
+    assert_eq!(open.cdf(x).unwrap(), 0.0, "cdf({x:e})");
+  }
+}
