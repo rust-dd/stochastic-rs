@@ -365,3 +365,38 @@ fn a_variance_whose_factors_pass_the_doubles() {
     );
   }
 }
+
+/// The entropy's log of the mass over `λ` is `mass_per_rate`'s, `L·φ(λL)` where the tail mass underflows, so the
+/// uniform limit reads `ln L`, not `−∞`; ordinary laws either side read mpmath's doubles too.
+#[test]
+fn an_entropy_whose_mass_underflows() {
+  for (lam, lo, up, want) in [
+    (
+      1.590656767998562e-221,
+      0.0,
+      7.07905757263672e-126,
+      -288.1685809296137,
+    ),
+    (
+      3.2766256913924124e-110,
+      0.0,
+      5.11128824107049e-212,
+      -486.5165882403237,
+    ),
+    (
+      4.503602121590866e-309,
+      3.991582451497575e-309,
+      3.99654538231658e-309,
+      -716.8045525569842,
+    ),
+    (1.0, 0.0, 1e-300, -690.7755278982137),
+    (1e-5, 0.0, 1e-3, -6.907755278982137),
+    (1.0, 0.0, 2.0, 0.5415512566318096),
+  ] {
+    let got = SimdTruncatedExp::<f64>::new(lam, lo, up).entropy().unwrap();
+    assert!(
+      (got - want).abs() <= 1e-12 * want.abs().max(1.0),
+      "TE({lam:e}, [{lo:e}, {up:e}]): entropy {got}, mpmath {want}"
+    );
+  }
+}

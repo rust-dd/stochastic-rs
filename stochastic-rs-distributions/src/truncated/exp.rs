@@ -383,7 +383,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
       return Some(1.0 - lam.ln());
     }
     let x = lam * self.length()?;
-    Some((-(-x).exp_m1() / lam).ln() + x * mean_fraction(x))
+    Some(self.mass_per_rate().ln() + x * mean_fraction(x))
   }
 
   /// Finite for every `t` on a bounded interval (`λL e^{λ·lower}/m` at `t = λ`, `m` the mass); an open tail diverges from `t = λ` on.
