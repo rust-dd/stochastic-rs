@@ -9,7 +9,6 @@ use stochastic_rs_distributions::truncated::SimdTruncatedNormal;
 
 use crate::close;
 
-/// `(argument, cdf, quantile at that level)` triples whose names say which.
 fn cdfs(name: &str, law: &impl DistributionExt, rows: &[(f64, f64)]) {
   for &(x, want) in rows {
     close(
@@ -219,9 +218,8 @@ fn the_exponentials_quantile_next_to_one() {
   }
 }
 
-/// A lower bound inside a singular end's panel: the solve runs in the offset along `q` from the end the walk starts
-/// at, and the point is formed from that end's double, so it keeps its distance from the bound to 1e-12 (or two ulps);
-/// mpmath's references from the exponential integral, which these shapes (5e-235, 1e-170) follow far below the bar.
+/// A lower bound inside a singular end's panel keeps the point's distance from it to 1e-12, or two ulps; mpmath's
+/// references from the exponential integral, which these shapes (5e-235, 1e-170) follow far below that bar.
 #[test]
 fn beside_a_bound_inside_a_singular_panel() {
   let (k, theta, lo) = (
@@ -249,4 +247,33 @@ fn beside_a_bound_inside_a_singular_panel() {
     let got = law.quantile(p).unwrap();
     close(name, &format!("quantile({p:e})"), got, want, 0.0, bar);
   }
+}
+
+/// A shape in the hundreds at points far below 1: `ln(x/c)` from the quotient, as `ln x − ln c` would hand the shape
+/// their rounding; the law is `(x/up)^a` to 1e-65 on its interval (mpmath, rounded once).
+#[test]
+fn a_large_shape_far_below_one() {
+  let law = SimdTruncatedBeta::<f64>::new(
+    9.444746241328893e2,
+    4.3346600471810826e-291,
+    0.0,
+    2.3481719077754413e-65,
+  );
+  let name = "TB(944.5, 4.3e-291, [0, 2.35e-65])";
+  cdfs(
+    name,
+    &law,
+    &[
+      (1.1300378217894902e-65, 1.0000000000008914e-300),
+      (2.3e-65, 3.146228447239031e-9),
+    ],
+  );
+  quantiles(
+    name,
+    &law,
+    &[
+      (1e-300, 1.1300378217894891e-65),
+      (1e-10, 2.2916167667507703e-65),
+    ],
+  );
 }

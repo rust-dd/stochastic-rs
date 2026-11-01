@@ -48,7 +48,7 @@ impl BetaKernel {
   #[inline]
   fn ln_left(&self, x: f64, z: f64) -> f64 {
     if z.abs() > 0.5 {
-      x.ln() - self.ln_c
+      far_log(self.a, x, self.c, self.ln_c)
     } else {
       z.ln_1p()
     }
@@ -60,7 +60,7 @@ impl BetaKernel {
     if z.abs() <= 0.5 {
       return z.ln_1p();
     }
-    self.gap(y, branch).ln() - self.ln_cc
+    far_log(self.b, self.gap(y, branch), self.cc, self.ln_cc)
   }
 
   /// `1 − x` as the offset from 1 where `branch` holds it, else as `(1 − c) − y`: never from a rounded `x`.
@@ -143,6 +143,18 @@ impl BetaKernel {
     } else {
       (e - 1.0) * y / d
     }
+  }
+}
+
+/// `ln(n/d)` as `ln n − ln d`, or from the quotient where the exponent `e − 1` would carry the two logs' rounding past
+/// 1e-13 of the kernel (a shape in the hundreds at `n` far below 1).
+#[inline]
+fn far_log(e: f64, n: f64, d: f64, ln_d: f64) -> f64 {
+  let ln_n = n.ln();
+  if (e - 1.0).abs() * (ln_n.abs() + ln_d.abs()) > 450.0 {
+    ln_ratio(n, d, ln_d)
+  } else {
+    ln_n - ln_d
   }
 }
 
