@@ -67,8 +67,8 @@ impl<K: Kernel> Truncation<K> {
     }
   }
 
-  /// Newton in the singular panel's `q`, bracketed by its two ends: the tolerance is relative in `q`, so a level whose
-  /// point lies deep beside either end keeps its digits, and its offset is returned as a log.
+  /// Newton in the offset `d` along the singular panel's `q` from the end the walk starts at, relative in `d`, so a
+  /// level whose point lies deep beside either end keeps its digits.
   fn solve_singular(
     &self,
     panel: &Panel,
@@ -81,7 +81,8 @@ impl<K: Kernel> Truncation<K> {
     let frame = Frame::of(panel, e);
     let ln_jacobian = frame.ln_jacobian() - self.width.ln();
     // Walked into from the branch point's side the panel's mass grows from its near end, from the other side from far.
-    let (qa, qb) = if from_lo == (frame.sign > 0.0) {
+    let from_near = from_lo == (frame.sign > 0.0);
+    let (qa, qb) = if from_near {
       (frame.q_near, frame.q_far())
     } else {
       (frame.q_far(), frame.q_near)
@@ -93,44 +94,35 @@ impl<K: Kernel> Truncation<K> {
     } else {
       0.5
     };
-    let (mut lb, mut rb) = (qa.min(qb), qa.max(qb));
-    let mut q = qa + (qb - qa) * frac;
+    let (mut lb, mut rb) = (0.0, (qb - qa).abs());
+    let mut d = rb * frac;
     for _ in 0..100 {
       let mut part = 0.0;
-      self.singular_nodes(
-        panel,
-        e,
-        0,
-        Some((q.min(qa), q.max(qa))),
-        |w, ln_v, _, _| {
-          part += w * (ln_v - shift).exp();
-        },
-      );
+      self.singular_nodes(panel, e, 0, Some((qa, dir * d)), |w, ln_v, _, _| {
+        part += w * (ln_v - shift).exp();
+      });
       let f = part - want;
       if f == 0.0 {
         break;
       }
-      if (f > 0.0) == (dir > 0.0) {
-        rb = q;
+      if f > 0.0 {
+        rb = d;
       } else {
-        lb = q;
+        lb = d;
       }
+      let q = qa + dir * d;
       let slope = (ln_jacobian + self.singular_point(panel.origin, &frame, q).0 - shift).exp();
-      let mut next = q - dir * f / slope;
+      let mut next = d - f / slope;
       if !(lb..=rb).contains(&next) {
         next = 0.5 * (lb + rb);
       }
-      let done = (next - q).abs() <= 4.0 * f64::EPSILON * q.abs();
-      q = next;
+      let done = (next - d).abs() <= 4.0 * f64::EPSILON * next.max(f64::MIN_POSITIVE);
+      d = next;
       if done {
         break;
       }
     }
-    Point::Beside {
-      s: panel.origin.x,
-      sign: frame.sign,
-      ln_t: frame.ln_far + frame.ln_u(q) / frame.e,
-    }
+    frame.point(panel.origin, from_near, (qa, dir * d))
   }
 
   /// Newton on the panel's partial mass in the offset `t` from its origin, bisecting whenever a step leaves the panel:

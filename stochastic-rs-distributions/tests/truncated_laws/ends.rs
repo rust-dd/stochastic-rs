@@ -158,10 +158,14 @@ fn the_exponentials_cdf_in_both_tails() {
   ];
   for (lambda, lo, up, x, want) in rows {
     let law = SimdTruncatedExp::<f64>::new(lambda, lo, up);
-    assert_eq!(
+    let name = format!("TE({lambda:e}, [{lo:e}, {up:e}])");
+    close(
+      &name,
+      &format!("cdf({x:e})"),
       law.cdf(x).unwrap(),
       want,
-      "TE({lambda:e}, [{lo:e}, {up:e}]): cdf({x:e})"
+      1e-14,
+      0.0,
     );
   }
 }
@@ -212,5 +216,37 @@ fn the_exponentials_quantile_next_to_one() {
         "{name}: cdf at quantile({p:e}) = {back}"
       );
     }
+  }
+}
+
+/// A lower bound inside a singular end's panel: the solve runs in the offset along `q` from the end the walk starts
+/// at, and the point is formed from that end's double, so it keeps its distance from the bound to 1e-12 (or two ulps);
+/// mpmath's references from the exponential integral, which these shapes (5e-235, 1e-170) follow far below the bar.
+#[test]
+fn beside_a_bound_inside_a_singular_panel() {
+  let (k, theta, lo) = (
+    5.130938376779457e-235,
+    2.0685587404340502e123,
+    1.3059805401332655e-166,
+  );
+  let gamma = SimdTruncatedGamma::<f64>::new(k, theta, lo, f64::INFINITY);
+  let (a, b, lb) = (
+    1.1588573908039842e-170,
+    2.971543572469775e18,
+    9.489781194495966e-21,
+  );
+  let beta = SimdTruncatedBeta::<f64>::new(a, b, lb, 1.0);
+  let rows: [(&str, &dyn DistributionExt, f64, f64, f64); 6] = [
+    ("TG(5.1e-235)", &gamma, lo, 1e-12, 1.3059805410021733e-166),
+    ("TG(5.1e-235)", &gamma, lo, 1e-10, 1.3059806270240422e-166),
+    ("TG(5.1e-235)", &gamma, lo, 1e-8, 1.3059892292395496e-166),
+    ("TG(5.1e-235)", &gamma, lo, 0.9, 1.4793853798408395e94),
+    ("TB(1.2e-170)", &beta, lb, 1e-12, 9.489781194525437e-21),
+    ("TB(1.2e-170)", &beta, lb, 1e-10, 9.48978119744311e-21),
+  ];
+  for (name, law, bound, p, want) in rows {
+    let bar = (1e-12 * (want - bound) + 2.0 * (want.next_up() - want)).min(1e-12 * want);
+    let got = law.quantile(p).unwrap();
+    close(name, &format!("quantile({p:e})"), got, want, 0.0, bar);
   }
 }

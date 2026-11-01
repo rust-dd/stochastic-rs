@@ -5,7 +5,9 @@ use super::GL64_W;
 use super::GL64_X;
 use super::Kernel;
 use super::Panel;
+use super::Point;
 use super::Truncation;
+use super::ln_ratio;
 use super::panels::Cut;
 use super::panels::span;
 
@@ -78,7 +80,8 @@ impl<K: Kernel> Truncation<K> {
     self.frame_nodes(panel.origin, &frame, e, i, range, f);
   }
 
-  /// `singular_nodes` over a frame beside the branch point `origin`, whose far end may be given by its log alone.
+  /// `singular_nodes` over a frame beside the branch point `origin`, whose far end may be given by its log alone;
+  /// `range` is a start in `q` and a signed width, so a sliver beside either end keeps its width's digits.
   pub(super) fn frame_nodes(
     &self,
     origin: Cut,
@@ -88,16 +91,16 @@ impl<K: Kernel> Truncation<K> {
     range: Option<(f64, f64)>,
     mut f: impl FnMut(f64, f64, f64, f64),
   ) {
-    let (q0, q1) = range.unwrap_or_else(|| {
+    let (q0, w) = range.unwrap_or_else(|| {
       let (near, far) = (frame.q_near, frame.q_far());
-      (near.min(far), near.max(far))
+      (near.min(far), (far - near).abs())
     });
     // In logs, so a Jacobian that overflows alone still meets its smooth factor.
     let ln_jacobian = frame.ln_jacobian() - f64::from(i + 1) * self.width.ln();
-    let half = 0.5 * (q1 - q0) * frame.sign.powi(i);
+    let half = 0.5 * w.abs() * frame.sign.powi(i);
     for (node, weight) in GL64_X.iter().zip(&GL64_W) {
       for xi in [-node, *node] {
-        let q = q0 + 0.5 * (q1 - q0) * (1.0 + xi);
+        let q = q0 + 0.5 * w * (1.0 + xi);
         let (ln_v, offset, ln_t) = self.singular_point(origin, frame, q);
         f(
           weight * half,
@@ -128,6 +131,9 @@ pub(super) struct Frame {
   pub(super) e: f64,
   reflect: bool,
   pub(super) q_near: f64,
+  /// The ends' distances from the branch point and `u` at the near one, which a point beside an end is formed from.
+  ends: (f64, f64),
+  u_near: f64,
 }
 
 impl Frame {
@@ -138,7 +144,13 @@ impl Frame {
       (-panel.r, -panel.l, -1.0)
     };
     let ln_far = far.ln();
-    let ln_u_near = e * (near.ln() - ln_far);
+    // From the exact `near − far` where the ends lie within a factor 2, so a narrow panel's `q` keeps its digits.
+    let ln_ratio = if near > 0.5 * far {
+      ((near - far) / far).ln_1p()
+    } else {
+      ln_ratio(near, far, ln_far)
+    };
+    let ln_u_near = e * ln_ratio;
     let reflect = ln_u_near > -std::f64::consts::LN_2;
     Self {
       sign,
@@ -150,6 +162,8 @@ impl Frame {
       } else {
         ln_u_near.exp()
       },
+      ends: (near, far),
+      u_near: ln_u_near.exp(),
     }
   }
 
@@ -161,6 +175,36 @@ impl Frame {
       e,
       reflect: false,
       q_near: 0.0,
+      ends: (0.0, f64::NAN),
+      u_near: 0.0,
+    }
+  }
+
+  /// The point `w` along `q` from `qa`, the end a walk started at: from that end's double where it is one, so the
+  /// point keeps the digits its distance from the end has, else through its log.
+  pub(super) fn point(&self, origin: Cut, from_near: bool, (qa, w): (f64, f64)) -> Point {
+    let (base, rate) = if from_near {
+      let u = self.u_near;
+      (
+        if u.is_normal() { self.ends.0 } else { 0.0 },
+        (w.abs() / u).ln_1p() / self.e,
+      )
+    } else {
+      (self.ends.1, (-w.abs()).ln_1p() / self.e)
+    };
+    // Within a factor 2 of the end its offset from it, `base·(e^r − 1)`, carries the digits; past that `e^r` alone.
+    let t = if rate.abs() < std::f64::consts::LN_2 {
+      base + base * rate.exp_m1()
+    } else {
+      base * rate.exp()
+    };
+    if base.is_normal() && t.is_normal() {
+      return Point::At(origin.plus(self.sign * t));
+    }
+    Point::Beside {
+      s: origin.x,
+      sign: self.sign,
+      ln_t: self.ln_far + self.ln_u(qa + w) / self.e,
     }
   }
 
