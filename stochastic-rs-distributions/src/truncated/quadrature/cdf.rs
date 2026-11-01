@@ -1,11 +1,14 @@
 //! The cdf from the panels' masses; below the lower clip from where the kernel is `e^{−CLIP}` below its value at the
 //! point.
 
+use std::ops::ControlFlow;
+
 use super::CLIP;
 use super::Kernel;
 use super::Truncation;
 use super::clip;
 use super::panels::Cut;
+use super::panels::Panel;
 use super::panels::span;
 use super::singular::Frame;
 use crate::traits::RealExt;
@@ -32,7 +35,20 @@ impl<K: Kernel> Truncation<K> {
     if x > self.median {
       return (1.0 - (self.tail_up + self.integrate(at, self.b, 0.0)) / self.m0).max_or_nan(0.0);
     }
-    ((self.tail_lo + self.integrate(self.a, at, 0.0)) / self.m0).min_or_nan(1.0)
+    // The panels `M₀` was summed on, so next to 1 the two sums differ only by the panel holding `x`.
+    let mut sum = 0.0;
+    let _ = self.walk(self.a, self.b, false, |panel| {
+      let t = span(panel.origin, at);
+      if t >= panel.r {
+        sum += self.panel_mass(&panel, 0.0);
+        return ControlFlow::Continue(());
+      }
+      if t > panel.l {
+        sum += self.panel_mass(&Panel { r: t, ..panel }, 0.0);
+      }
+      ControlFlow::Break(())
+    });
+    ((self.tail_lo + sum) / self.m0).min_or_nan(1.0)
   }
 
   /// The cdf at `s + e^{ln_t}` beside the lower end's branch point `s` of exponent `e`: its mass in `u = (t/h)^e`, `h`

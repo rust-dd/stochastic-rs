@@ -142,6 +142,50 @@ fn next_to_one_the_quantile_walks_from_the_upper_end() {
   );
 }
 
+/// Next to 1 the cdf at `rows`' points to 8ε of mpmath's value.
+fn near_one(rows: &[(&str, &dyn DistributionExt, f64, f64)]) {
+  for &(name, law, x, want) in rows {
+    let got = law.cdf(x).unwrap();
+    assert!(
+      (got - want).abs() <= 8.0 * f64::EPSILON,
+      "{name}: cdf({x:e}) = {got}, mpmath {want}"
+    );
+  }
+}
+
+/// Next to 1 the cdf sums the panels its total was summed on: on panels laid out afresh up to `x`, these laws, spread
+/// over fifty decades, read 20–39 ulps of 1 off (mpmath, from E1).
+#[test]
+fn next_to_one_the_cdf_walks_the_panels_of_its_total() {
+  let (a, b) = (8.419970930322122e-279, 5.5279504620333736e175);
+  let first = SimdTruncatedBeta::<f64>::new(a, b, 9.653559279995389e-229, 9.999999999996447e-1);
+  let (a, b) = (1.1657359323667004e-158, 1.1822617788814124e192);
+  let second = SimdTruncatedBeta::<f64>::new(a, b, 2.44915738197029e-209, 1.0);
+  let (k, theta) = (1.1329440812770196e-204, 6.26723461668055e-223);
+  let gamma =
+    SimdTruncatedGamma::<f64>::new(k, theta, 5.200338863973879e-225, 4.582208590190747e68);
+  near_one(&[
+    (
+      "TB(8.4e-279, 5.5e175)",
+      &first,
+      2.793721802689365e-175,
+      0.9999999999,
+    ),
+    (
+      "TB(1.2e-158, 1.2e192)",
+      &second,
+      1.3990038738849746e-191,
+      0.9999999999,
+    ),
+    (
+      "TG(1.1e-204, 6.3e-223)",
+      &gamma,
+      1.166432719466721e-221,
+      0.9999999999,
+    ),
+  ]);
+}
+
 /// The exponential's cdf below `λL = 1` as `d·φ(λd)` over its mass, so a `λd` below the normal doubles keeps its
 /// digits, and past the median as one less the mass above; the references are mpmath's, rounded once.
 #[test]
