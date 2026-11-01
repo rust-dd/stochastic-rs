@@ -492,10 +492,6 @@ impl<K: Kernel> Truncation<K> {
     (ln_g + (relative / self.m0).ln()).exp().min_or_nan(1.0)
   }
 
-  fn ratio(&self, x: f64, shift: f64) -> f64 {
-    (self.kernel.ln_rel(x, self.offset(x), None) - shift).exp()
-  }
-
   /// `x − c` exact where `x` lies within a factor 2 of the centre's double, as `span` forms it.
   #[inline]
   fn offset(&self, x: f64) -> f64 {

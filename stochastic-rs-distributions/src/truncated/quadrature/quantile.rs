@@ -133,23 +133,24 @@ impl<K: Kernel> Truncation<K> {
     }
   }
 
-  /// Newton on the panel's partial mass, bisecting whenever a step leaves the bracket, which reaches one ulp past the
-  /// panel's rounded ends.
+  /// Newton on the panel's partial mass in the offset `t` from its origin, bisecting whenever a step leaves the panel:
+  /// the point is rounded once, so a panel narrower than an ulp of its place still lands on the double its level has.
   fn solve(&self, panel: Panel, want: f64, mass: f64, from_lo: bool, shift: f64) -> f64 {
-    let (l, r) = (panel.origin.plus(panel.l), panel.origin.plus(panel.r));
-    let (mut lb, mut rb) = (l.next_down().max(self.lo), r.next_up().min(self.up));
+    let (mut lb, mut rb) = (panel.l, panel.r);
     let frac = want / mass;
     let frac = if frac.is_finite() {
       frac.clamp(0.0, 1.0)
     } else {
       0.5
     };
-    // The start inverts the panel's exponential model, its decay read from the kernel at the two ends.
+    let to_centre = span(panel.origin, self.centre);
     let at = |t: f64| {
-      let y = t - span(panel.origin, self.centre);
       let branch = panel.origin.shifted(t).branch();
-      self.kernel.ln_rel(panel.origin.plus(t), y, branch)
+      self
+        .kernel
+        .ln_rel(panel.origin.plus(t), t - to_centre, branch)
     };
+    // The start inverts the panel's exponential model, its decay read from the kernel at the two ends.
     let decay = at(panel.l) - at(panel.r);
     let span = if from_lo { decay } else { -decay };
     let v = if span.is_finite() && span.abs() > 1e-8 {
@@ -163,42 +164,45 @@ impl<K: Kernel> Truncation<K> {
     } else {
       frac
     };
-    let mut x = if from_lo {
-      l + (r - l) * v
+    let width = panel.r - panel.l;
+    let mut t = if from_lo {
+      panel.l + width * v
     } else {
-      r - (r - l) * v
+      panel.r - width * v
     };
-    let tol = f64::EPSILON * (r - l);
     for _ in 0..100 {
-      let f = self.partial(&panel, x, from_lo, shift) - want;
+      let f = self.partial(&panel, t, from_lo, shift) - want;
       if f == 0.0 {
-        return x;
+        break;
       }
       if (f > 0.0) == from_lo {
-        rb = x;
+        rb = t;
       } else {
-        lb = x;
+        lb = t;
       }
-      let slope = if from_lo {
-        self.ratio(x, shift) / self.width
-      } else {
-        -self.ratio(x, shift) / self.width
-      };
-      let mut next = x - f / slope;
+      let slope = (at(t) - shift).exp() / self.width;
+      let mut next = t - if from_lo { f / slope } else { -f / slope };
       if !(lb..=rb).contains(&next) {
         next = 0.5 * (lb + rb);
       }
-      if (next - x).abs() <= 4.0 * f64::EPSILON * x.abs() + tol {
-        return next;
+      // Its digits are relative to the end it is measured from, and no finer than a quarter ulp of the point.
+      let near = if from_lo {
+        next - panel.l
+      } else {
+        panel.r - next
+      };
+      let x = panel.origin.plus(next);
+      let done = (next - t).abs() <= (4.0 * f64::EPSILON * near).max(0.25 * (x.next_up() - x));
+      t = next;
+      if done {
+        break;
       }
-      x = next;
     }
-    x
+    panel.origin.plus(t)
   }
 
-  /// `panel`'s mass from its exact near end to `x`, one rule on the sub-panel the panel's budgets already cover.
-  fn partial(&self, panel: &Panel, x: f64, from_lo: bool, shift: f64) -> f64 {
-    let t = span(panel.origin, Cut::at(x));
+  /// `panel`'s mass from its near end to the offset `t`, one rule on the sub-panel the panel's budgets already cover.
+  fn partial(&self, panel: &Panel, t: f64, from_lo: bool, shift: f64) -> f64 {
     let sub = if from_lo {
       Panel { r: t, ..*panel }
     } else {

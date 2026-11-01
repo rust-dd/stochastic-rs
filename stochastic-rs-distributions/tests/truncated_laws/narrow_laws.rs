@@ -273,3 +273,59 @@ fn laws_within_the_subnormals_beside_zero() {
     ],
   );
 }
+
+/// A law within a few ulps of its place: its quantile is the double nearest the point, found in exact offsets and
+/// rounded once (mpmath's Cornish–Fisher points, each 0.1 ulp or more from a rounding midpoint).
+#[test]
+fn quantiles_within_a_few_ulps_round_once() {
+  let inf = f64::INFINITY;
+  let gamma =
+    SimdTruncatedGamma::<f64>::new(5.2058576769933335e28, 8.649004849050829e103, 0.0, inf);
+  let beta = SimdTruncatedBeta::<f64>::new(
+    6.804891117703707e32,
+    8.214066594101003e32,
+    0.0,
+    9.999965081636855e-1,
+  );
+  for (p, g, b) in [
+    (0.1, 4.5025488291783574e132, 0.45308677527969526),
+    (0.5, 4.5025488291783826e132, 0.45308677527969526),
+    (0.9, 4.502548829178408e132, 0.4530867752796953),
+  ] {
+    assert_eq!(
+      gamma.quantile(p).unwrap(),
+      g,
+      "TG(5.2e28, 8.6e103): quantile({p})"
+    );
+    assert_eq!(
+      beta.quantile(p).unwrap(),
+      b,
+      "TB(6.8e32, 8.2e32): quantile({p})"
+    );
+  }
+  // Narrower than an ulp, 1.7e9 and 4e81 sd from a rounding midpoint: every level is the mean's double.
+  let gamma = SimdTruncatedGamma::<f64>::new(
+    1.7868349740186634e51,
+    6.936192027821196e-170,
+    3.5485810643907175e-134,
+    inf,
+  );
+  let beta = SimdTruncatedBeta::<f64>::new(
+    8.402147962011336e195,
+    7.717176741827343e280,
+    6.770615471943436e-286,
+    9.999999996195714e-1,
+  );
+  for p in [1e-10, 0.1, 0.5, 0.9, 1.0 - 1e-10] {
+    assert_eq!(
+      gamma.quantile(p).unwrap(),
+      1.2393830501820348e-118,
+      "TG(1.8e51, 6.9e-170): quantile({p})"
+    );
+    assert_eq!(
+      beta.quantile(p).unwrap(),
+      1.0887593018922876e-85,
+      "TB(8.4e195, 7.7e280): quantile({p})"
+    );
+  }
+}
