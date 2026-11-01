@@ -9,6 +9,7 @@ use super::Point;
 use super::Truncation;
 use super::ln_ratio;
 use super::panels::Cut;
+use super::panels::SLOPE_BUDGET;
 use super::panels::span;
 
 impl<K: Kernel> Truncation<K> {
@@ -39,6 +40,17 @@ impl<K: Kernel> Truncation<K> {
     let ln =
       (1.0 - e).ln() - e.ln() + frame.ln_jacobian() - self.width.ln() + v0 + gap.abs().ln() - shift;
     -gap.signum() * ln.exp()
+  }
+
+  /// A singular panel whose near end keeps `(t/far)^{n−1}` within the slope budget sums its `n` powers on the mass's
+  /// nodes: a frame per power would set its own branch point at `(near/far)^{e+i}`, beside the panel.
+  pub(super) fn powers_on_mass_nodes(panel: &Panel, n: usize) -> bool {
+    let (near, far) = if panel.r > 0.0 {
+      (panel.l, panel.r)
+    } else {
+      (-panel.r, -panel.l)
+    };
+    (near / far).ln() * (n - 1) as f64 >= -SLOPE_BUDGET
   }
 
   /// A singular panel's share of `Σ g (z − about)^j` from its sums of `(t/width)^i`, each in its own `u = (|t|/h)^{e+i}`:

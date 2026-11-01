@@ -206,6 +206,9 @@ pub(super) struct Truncation<K> {
   /// `∫_lo^a` and `∫_b^up` of `k/k(centre)`, in units of `width`: the cdf adds the first, the quantile both.
   tail_lo: f64,
   tail_up: f64,
+  /// The ends those tails are summed from, `e^{−2·CLIP}` below `centre`: the moments sum out to them, as the first
+  /// clip leaves `e^{−CLIP}·CLIP⁴` of a fourth moment, past 1e-13 of it.
+  reach: (Cut, Cut),
 }
 
 impl<K: Kernel> Truncation<K> {
@@ -213,10 +216,12 @@ impl<K: Kernel> Truncation<K> {
   pub(super) fn new(kernel: K, lo: f64, up: f64) -> Self {
     let mut t = Self::mass_only(kernel, lo, up);
     if t.a.offset(lo) > 0.0 {
-      t.tail_lo = t.integrate(clip(&t.kernel, t.centre, t.a, lo, -2.0 * CLIP), t.a, 0.0);
+      t.reach.0 = clip(&t.kernel, t.centre, t.a, lo, -2.0 * CLIP);
+      t.tail_lo = t.integrate(t.reach.0, t.a, 0.0);
     }
     if t.b.offset(up) < 0.0 {
-      t.tail_up = t.integrate(t.b, clip(&t.kernel, t.centre, t.b, up, -2.0 * CLIP), 0.0);
+      t.reach.1 = clip(&t.kernel, t.centre, t.b, up, -2.0 * CLIP);
+      t.tail_up = t.integrate(t.b, t.reach.1, 0.0);
     }
     debug_assert!(
       t.narrow || (t.m0 > 0.0 && t.m0.is_finite()),
@@ -296,6 +301,7 @@ impl<K: Kernel> Truncation<K> {
       narrow: false,
       tail_lo: 0.0,
       tail_up: 0.0,
+      reach: (a, b),
     };
     t.narrow = t.width.is_nan() || t.width < f64::MIN_POSITIVE;
     if !t.narrow {
@@ -370,7 +376,10 @@ impl<K: Kernel> Truncation<K> {
   fn moment_sums<const N: usize>(&self, about: f64) -> [f64; N] {
     let mut m = [0.0; N];
     let _ = self.walk_about_centre(|panel| {
-      if let Some(e) = panel.singular {
+      if let Some(e) = panel
+        .singular
+        .filter(|_| !Self::powers_on_mass_nodes(&panel, N))
+      {
         self.singular_moments(&panel, e, about, &mut m);
       } else {
         self.nodes(&panel, |w, ln_v, offset, _| {
@@ -483,14 +492,7 @@ impl<K: Kernel> Truncation<K> {
 
   /// The moments' and entropy's walk: about the centre, where a near-symmetric law's odd powers keep their digits.
   fn walk_about_centre<B>(&self, visit: impl FnMut(Panel) -> ControlFlow<B>) -> ControlFlow<B> {
-    panels(
-      &self.kernel,
-      self.centre,
-      (self.a, self.b),
-      false,
-      false,
-      visit,
-    )
+    panels(&self.kernel, self.centre, self.reach, false, false, visit)
   }
 
   /// `Σ w·e^{ln v − shift}` over a panel's nodes; on a regular panel its own loop, whose few live values leave the sum

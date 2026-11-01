@@ -7,7 +7,7 @@ use super::Kernel;
 use super::clip;
 
 /// How far the log-kernel may move across one panel through its slope.
-const SLOPE_BUDGET: f64 = 30.0;
+pub(super) const SLOPE_BUDGET: f64 = 30.0;
 
 /// How far the log-kernel may move across one panel through its curvature.
 const CURVATURE_BUDGET: f64 = 8.0;
