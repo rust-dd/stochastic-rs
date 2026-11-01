@@ -305,3 +305,24 @@ fn infinite_t_takes_the_limit() {
     );
   }
 }
+
+/// Below the normal doubles `λ` puts `m/λ` past them: the quantile's first order and the density take `λ` apart, and
+/// the least normal rate either side reads the same doubles mpmath gives.
+#[test]
+fn a_subnormal_rate() {
+  let inf = f64::INFINITY;
+  let law = SimdTruncatedExp::<f64>::new(1.844967326315725e-309, 0.0, inf);
+  assert_eq!(law.quantile(5e-324).unwrap(), 2.6779100030343745e-15);
+  assert_eq!(law.pdf(0.0).unwrap(), 1.844967326315725e-309);
+  assert_eq!(law.pdf(1e300).unwrap(), 1.84496732291182e-309);
+  assert_eq!(law.cdf(2.7e-15).unwrap(), 5e-324);
+  assert!(rel(law.quantile(1e-300).unwrap(), 542015018.7683444) < 1e-12);
+  for (lam, q) in [
+    (f64::MIN_POSITIVE, 2.220446049250313e-16),
+    (f64::MIN_POSITIVE.next_down(), 2.2204460492503136e-16),
+  ] {
+    let law = SimdTruncatedExp::<f64>::new(lam, 0.0, inf);
+    assert_eq!(law.quantile(5e-324).unwrap(), q, "TE({lam:e})");
+    assert_eq!(law.pdf(0.0).unwrap(), lam, "TE({lam:e})");
+  }
+}

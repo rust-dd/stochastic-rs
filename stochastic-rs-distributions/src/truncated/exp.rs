@@ -150,10 +150,20 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
   fn inverse_cdf(&self, u: f64) -> f64 {
     let y = u * self.tail_mass;
     if y < f64::MIN_POSITIVE {
-      self.lower.to_f64().unwrap() + u * self.mass_per_rate()
+      self.lower.to_f64().unwrap() + self.over_rate(u)
     } else {
       self.log_map(y)
     }
+  }
+
+  /// `v·m/λ`; where `m/λ` alone passes the doubles (a subnormal `λ`) from factors scaled by 2⁶⁴, its value of order `v/λ`.
+  fn over_rate(&self, v: f64) -> f64 {
+    let per_rate = self.mass_per_rate();
+    if per_rate.is_finite() {
+      return v * per_rate;
+    }
+    let scale = 2f64.powi(64);
+    (v * scale) * (self.tail_mass / (self.lambda.to_f64().unwrap() * scale))
   }
 
   /// `∫ e^{−λ(x − lower)}` over the interval, `tail_mass/λ`; where `λL` underflows the mass, `L·φ(λL)` with
@@ -256,7 +266,14 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     let lam = self.lambda.to_f64().unwrap();
     // Referred to `lower` for the same reason the draw is; the leading
     // `e^{-λ·lower}` cancels between the density and the interval's mass.
-    Some((-lam * (x - lo)).exp() / self.mass_per_rate())
+    let decay = (-lam * (x - lo)).exp();
+    let per_rate = self.mass_per_rate();
+    // A subnormal `λ` puts `m/λ` past the doubles: `λ·(e/m)` rounds the density once.
+    Some(if per_rate.is_finite() {
+      decay / per_rate
+    } else {
+      lam * (decay / self.tail_mass)
+    })
   }
 
   fn cdf(&self, x: f64) -> Option<f64> {
