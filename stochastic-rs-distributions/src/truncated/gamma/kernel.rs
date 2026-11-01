@@ -120,6 +120,9 @@ impl Kernel for GammaKernel {
 
   #[inline]
   fn ln_rel_regular(&self, _x: f64, y: f64, _s: f64) -> f64 {
+    if self.k == 1.0 {
+      return -y / self.s;
+    }
     -(self.k - 1.0) * self.ln_c - y / self.s
   }
 
