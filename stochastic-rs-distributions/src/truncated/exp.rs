@@ -359,13 +359,14 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     self.lower.to_f64()
   }
 
+  /// Past `λL = 50` the cut's share is below ε: `(1/λ)²` and `L·(L·f)`, neither `λ²` nor `L²` formed alone.
   fn variance(&self) -> Option<f64> {
-    let lam = self.lambda.to_f64()?;
-    if self.open_tail()? {
-      return Some(1.0 / (lam * lam));
+    let (lam, len) = (self.lambda.to_f64()?, self.length()?);
+    if self.open_tail()? || lam * len > 50.0 {
+      let r = 1.0 / lam;
+      return Some(r * r);
     }
-    let len = self.length()?;
-    Some(len * len * variance_fraction(lam * len))
+    Some(len * (len * variance_fraction(lam * len)))
   }
 
   fn skewness(&self) -> Option<f64> {

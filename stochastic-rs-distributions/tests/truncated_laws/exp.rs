@@ -326,3 +326,42 @@ fn a_subnormal_rate() {
     assert_eq!(law.pdf(0.0).unwrap(), lam, "TE({lam:e})");
   }
 }
+
+/// Neither `λ²` nor `L²` is formed alone: a variance past `1e305` or below the normal doubles is mpmath's double, either
+/// side of `λL = 50`, past which the cut's share is below ε.
+#[test]
+fn a_variance_whose_factors_pass_the_doubles() {
+  let inf = f64::INFINITY;
+  for (lam, lo, up, want) in [
+    (
+      2.092873179259114e-153,
+      4.2891826820492665e155,
+      6.386274752296123e155,
+      2.2830434408814177e305,
+    ),
+    (
+      8.986189795521304e160,
+      2.0603940986663413e-166,
+      9.800592548947501e144,
+      1.24e-322,
+    ),
+    (
+      4.761457107098813e158,
+      2.1811874079942888e-156,
+      3.008819444484602e-14,
+      4.41083e-318,
+    ),
+    (1.267040615383785e161, 4.0088144328611246e-22, inf, 6.4e-323),
+    (1.0, 0.0, 49.0, 1.0),
+    (1.0, 0.0, 51.0, 1.0),
+    (1.0, 0.0, 2.0, 0.27593833903368953),
+  ] {
+    let got = SimdTruncatedExp::<f64>::new(lam, lo, up)
+      .variance()
+      .unwrap();
+    assert!(
+      got == want || rel(got, want) < 1e-12,
+      "TE({lam:e}, [{lo:e}, {up:e}]): variance {got:e}, mpmath {want:e}"
+    );
+  }
+}
