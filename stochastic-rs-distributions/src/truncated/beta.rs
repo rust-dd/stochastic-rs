@@ -44,8 +44,8 @@ pub struct SimdTruncatedBeta<T> {
   analytics: OnceLock<Analytics>,
 }
 
-/// Within the subnormals beside 0, `(1 − x)^{β−1} = e^{−(β−1)x}` to within 2⁻¹⁰²⁰: the law is the truncated gamma of
-/// rate `β − 1`, which runs at a power-of-two unit.
+/// Beside 0, where `(1 − x)^{β−1} = e^{−(β−1)x}` to within 2⁻⁵³, a law the beta's engine has no normal width for is
+/// the truncated gamma of rate `β − 1`, which runs at a power-of-two unit.
 #[derive(Clone, Debug)]
 enum Analytics {
   Beta(Model<BetaKernel>),
@@ -172,19 +172,21 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
     let (a, b) = (self.base.alpha().to_f64()?, self.base.beta().to_f64()?);
     let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
     Some(self.analytics.get_or_init(|| {
-      if up < f64::MIN_POSITIVE {
-        // Below a unit `β` the factor is 1 to within 2⁻¹⁰²², as `e^{−x/f64::MAX}` is.
-        let theta = if b > 1.0 {
-          (1.0 / (b - 1.0)).min(f64::MAX)
-        } else {
-          f64::MAX
-        };
-        return Analytics::Gamma(SimdTruncatedGamma::new(a, theta, lo, up));
+      // A subnormal `x` holds too few bits for the beta's offsets.
+      if up < f64::MIN_POSITIVE
+        && let Some(g) = gamma_route(a, b, lo, up)
+      {
+        return Analytics::Gamma(g);
       }
-      Analytics::Beta(Model::of(
-        Truncation::new(BetaKernel::new(a, b), lo, up),
-        |r| self.local(r),
-      ))
+      let t = Truncation::new(BetaKernel::new(a, b), lo, up);
+      let Some(r) = t.narrow() else {
+        return Analytics::Beta(Model::Full(t));
+      };
+      match (self.local(r), gamma_route(a, b, lo, up)) {
+        (Some(l), _) => Analytics::Beta(Model::Local(l)),
+        (None, Some(g)) => Analytics::Gamma(g),
+        (None, None) => Analytics::Beta(Model::Full(t)),
+      }
     }))
   }
 
@@ -257,6 +259,22 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
     };
     T::from_f64_fast(x.clamp(lo, up))
   }
+}
+
+/// The truncated gamma of rate `β − 1` (θ = MAX below a unit `β`, where the factor is 1 to within `x/MAX`) where it holds
+/// the kernel to 2⁻⁵³: `ln(1 − x) + x` is at most `x²/(2(1 − x))`, and below a unit `β` the whole `(1 − β)·x/(1 − x)`.
+fn gamma_route(a: f64, b: f64, lo: f64, up: f64) -> Option<SimdTruncatedGamma<f64>> {
+  let error = if b > 1.0 {
+    (b - 1.0) * up * (up / (2.0 * (1.0 - up)))
+  } else {
+    (1.0 - b) * up / (1.0 - up)
+  };
+  let theta = if b > 1.0 {
+    (1.0 / (b - 1.0)).min(f64::MAX)
+  } else {
+    f64::MAX
+  };
+  (error <= f64::EPSILON / 2.0).then(|| SimdTruncatedGamma::new(a, theta, lo, up))
 }
 
 /// The pdf of a law the beta's own quadrature does not hold, out of line.

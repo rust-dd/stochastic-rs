@@ -201,7 +201,8 @@ pub(super) struct Truncation<K> {
   m0: f64,
   /// `ln(width·m0)`, so a density costs one `exp` and overflows only where its value does.
   ln_norm: f64,
-  /// No normal width: no panel places its nodes, and the law answers in its own scale (`truncated::local`).
+  /// No normal width: no panel places its nodes, and the law answers in its own scale (`truncated::local`, the beta's
+  /// gamma route); the point this engine then reads is for a law neither holds.
   narrow: bool,
   /// `∫_lo^a` and `∫_b^up` of `k/k(centre)`, in units of `width`: the cdf adds the first, the quantile both.
   tail_lo: f64,
