@@ -8,6 +8,7 @@ use crate::truncated::quadrature::Cut;
 use crate::truncated::quadrature::Offset;
 use crate::truncated::quadrature::Point;
 use crate::truncated::quadrature::Truncation;
+use crate::truncated::quadrature::accurate_sum;
 use crate::truncated::quadrature::two_sum;
 
 /// `2⁻¹⁰³²`: a subnormal below it is `2⁻¹⁰⁷⁴` coarse past 2e-13 of itself.
@@ -22,12 +23,33 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     frame: Cut,
     offset: [f64; 2],
   ) -> Option<f64> {
-    let anchor = if t.about_midpoint() {
-      self.midpoint()?
+    if t.about_midpoint() {
+      return self.anchored(self.midpoint()?, offset);
+    }
+    if self.tail.is_none() {
+      let mu = self.base.mean().to_f64()?;
+      return self.anchored((mu, 0.0), [1.0, self.mode_offset(t)?]);
+    }
+    self.anchored((self.located(Point::From(frame))?, 0.0), offset)
+  }
+
+  /// `E[Z] = (k(α) − k(β))/∫k` for `k = e^{−z²/2}`, an interval about `μ`: summed odd powers cancel to ε of the width
+  /// where the mean lies near `μ`, this keeps its digits; `α ± β` from the bounds themselves.
+  fn mode_offset(&self, t: &Truncation<NormalKernel>) -> Option<f64> {
+    let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
+    let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
+    let [alpha, beta, _] = self.bounds;
+    let k = |z: f64| (-0.5 * z * z).exp();
+    // `(β² − α²)/2 = (β − α)(β + α)/2`, each factor from the bounds' own doubles.
+    let half_gap = 0.5 * ((up - lo) / sigma) * (accurate_sum([lo, up, -mu, -mu]).0 / sigma);
+    let diff = if half_gap.is_nan() || !alpha.is_finite() || !beta.is_finite() {
+      k(alpha) - k(beta)
+    } else if half_gap >= 0.0 {
+      -k(alpha) * (-half_gap).exp_m1()
     } else {
-      (self.located(Point::From(frame))?, 0.0)
+      k(beta) * half_gap.exp_m1()
     };
-    self.anchored(anchor, offset)
+    Some(diff / t.mass())
   }
 
   /// `hi + lo + σ·unit·t`, from halves where it overflows short of its value.

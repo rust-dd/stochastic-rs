@@ -5,6 +5,7 @@ use stochastic_rs_distributions::traits::DistributionExt;
 use stochastic_rs_distributions::truncated::SimdTruncatedNormal;
 
 use crate::close;
+use crate::rel;
 
 fn tn(mu: f64, sigma: f64, lo: f64, up: f64) -> SimdTruncatedNormal<f64> {
   SimdTruncatedNormal::<f64>::new(mu, sigma, lo, up)
@@ -116,4 +117,46 @@ fn a_flat_law_keeps_its_offset_from_the_midpoint() {
       ("quantile", near.quantile(0.75).unwrap(), 0.5000000000375),
     ],
   );
+}
+
+/// About `μ` the mean's offset is `(k(α) − k(β))/∫k`, which keeps its digits where summed odd powers cancel to ε of the
+/// width; off `μ` (α = 0) and the flat laws keep their own routes, either side of each switch.
+#[test]
+fn a_mean_near_mu_keeps_its_digits() {
+  let inf = f64::INFINITY;
+  for (mu, sigma, lo, up, want) in [
+    (0.0, 1.0, -8.0, inf, 5.052271083536895e-15),
+    (1e-8, 1.0, -6.0, 6.0, 9.999999270894057e-9),
+    (1e-5, 1.0, -5.0, 5.0, 9.999851327963239e-6),
+    (-1e-9, 3.0, -30.0, 25.0, -1.0000009962348e-9),
+    (0.001, 1.0, -3.0, 3.0, 9.733368976440045e-4),
+    (2.0, 1.0, -8.0, 30.0, 2.0),
+    (
+      -1.0316527769715796e-138,
+      7.89869582796374e-56,
+      -6.622154449301786e-55,
+      inf,
+      1.7194384185094273e-71,
+    ),
+    (
+      3.6408138336322664e-2,
+      3.2383196373246806e117,
+      -2.1626669842289852e118,
+      inf,
+      2.6690149059513265e107,
+    ),
+    (0.0, 1.0, 0.0, 5.0, 0.7978820447921205),
+    (0.0, 1.0, -1e-300, 5.0, 0.7978820447921205),
+    (0.0, 1.0, -0.06, 0.05, -0.004994960366537966),
+  ] {
+    let got = SimdTruncatedNormal::<f64>::new(mu, sigma, lo, up)
+      .mean()
+      .unwrap();
+    assert!(
+      rel(got, want) < 1e-12,
+      "TN({mu:e}, {sigma:e}, [{lo:e}, {up:e}]): mean {got:e}, mpmath {want:e}"
+    );
+  }
+  let symmetric = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -0.05, 0.05);
+  assert_eq!(symmetric.mean().unwrap(), 0.0);
 }
