@@ -12,6 +12,7 @@ use super::panels::Cut;
 use super::panels::Panel;
 use super::panels::span;
 use super::singular::Frame;
+use super::zone::ZONE_MASS;
 
 impl<K: Kernel> Truncation<K> {
   /// Above ½ the level is walked from `up`, so `1 − p` keeps the digits a level next to 1 has.
@@ -35,12 +36,13 @@ impl<K: Kernel> Truncation<K> {
       );
     }
     let want = p * self.m0 - self.tail_lo;
+    if want < ZONE_MASS
+      && let Some(point) = self.zone_quantile(p)
+    {
+      return point;
+    }
     if want > 0.0 {
       return self.locate(self.a, self.b, want, true, 0.0);
-    }
-    // `p·M₀` underflowed against an end that was never clipped.
-    if span(self.lo, self.a) <= 0.0 {
-      return Point::At(self.lo.x);
     }
     // Below the clip: from where the kernel is `e^{−CLIP}` below `p` times its reference value, every value taken
     // relative to the kernel there, so no node underflows.

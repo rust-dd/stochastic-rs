@@ -224,10 +224,10 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
       .then(|| x.ln() - self.ln_unit())
   }
 
-  /// A position the engine reports, back in the law's coordinate: beside 0 its log carries the unit.
+  /// A position the engine reports, back in the law's coordinate: beside a point its log carries the unit.
   fn located(&self, point: Point) -> f64 {
     match point {
-      Point::Beside { s: 0.0, sign, ln_t } => sign * (ln_t + self.ln_unit()).exp(),
+      Point::Beside { s, sign, ln_t } => ldexp(s, self.p) + sign * (ln_t + self.ln_unit()).exp(),
       _ => ldexp(point.value(), self.p),
     }
   }

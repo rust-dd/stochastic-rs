@@ -2,6 +2,7 @@
 //! the normal doubles is its correctly rounded double.
 
 use stochastic_rs_distributions::traits::DistributionExt;
+use stochastic_rs_distributions::truncated::SimdTruncatedBeta;
 use stochastic_rs_distributions::truncated::SimdTruncatedGamma;
 
 use crate::rel;
@@ -91,4 +92,55 @@ fn a_gamma_cdf_beside_zero() {
     rel(got, 8.645489001060503e-308) < 1e-12,
     "cdf(3e-309) = {got:e}"
   );
+}
+
+/// Within the zone beside the lower end the cdf and the quantile take the end's own law: the power law at a branch
+/// point (the beta's at `α` beside 1 and either side of the zone's edge), else the end's exponential (a unit shape's
+/// regular end, either side of its curvature's ε); a tiny exponent's value next to 1 is the walk's.
+#[test]
+fn the_zone_beside_the_lower_end() {
+  let inf = f64::INFINITY;
+  let exp = SimdTruncatedGamma::<f64>::new(1.0, 343.2298393252409, 0.0, inf);
+  assert_eq!(exp.quantile(5e-324).unwrap(), 1.695e-321);
+  let unit = SimdTruncatedBeta::<f64>::new(1.0, 0.38424026401475586, 0.0, 1.0);
+  assert_eq!(unit.quantile(5e-324).unwrap(), 1.5e-323);
+  for (x, want) in [(1.5e-323, 5e-324), (1e-310, 3.8424026401474e-311)] {
+    assert_eq!(unit.cdf(x).unwrap(), want, "TB(1, 0.384): cdf({x:e})");
+  }
+  let near = SimdTruncatedBeta::<f64>::new(1.000001, 1.0, 0.0, 1.0);
+  for (x, want) in [
+    (5e-324, 5e-324),
+    (2e-323, 2e-323),
+    (1e-310, 9.9928645331684e-311),
+  ] {
+    assert_eq!(near.cdf(x).unwrap(), want, "TB(1 + 1e-6, 1): cdf({x:e})");
+  }
+  let vanishing = SimdTruncatedGamma::<f64>::new(1.058, 1.0, 0.0, inf);
+  for (x, want) in [(1e-305, 2e-323), (1e-300, 3.880476e-318)] {
+    assert_eq!(vanishing.cdf(x).unwrap(), want, "TG(1.058, 1): cdf({x:e})");
+  }
+  let rows = [
+    (near.cdf(1e-300).unwrap(), 9.993094630026467e-301),
+    (
+      SimdTruncatedBeta::<f64>::new(0.5, 3.0, 0.0, 1.0)
+        .cdf(1e-271)
+        .unwrap(),
+      5.929270612815711e-136,
+    ),
+    (
+      SimdTruncatedBeta::<f64>::new(0.5, 3.0, 0.0, 1.0)
+        .cdf(1e-269)
+        .unwrap(),
+      5.929270612815712e-135,
+    ),
+    (unit.cdf(1.8e-8).unwrap(), 6.916324790594754e-9),
+    (unit.cdf(2e-8).unwrap(), 7.684805327615055e-9),
+  ];
+  for (got, want) in rows {
+    assert!(rel(got, want) < 1e-12, "{got:e} against mpmath {want:e}");
+  }
+  let tiny =
+    SimdTruncatedGamma::<f64>::new(1.3613691839394225e-283, 4.3126932660537823e-5, 0.0, inf);
+  let next_to_one = tiny.cdf(5.8711677121886804e-288).unwrap();
+  assert!(next_to_one <= 1.0 && 1.0 - next_to_one <= 8.0 * f64::EPSILON);
 }

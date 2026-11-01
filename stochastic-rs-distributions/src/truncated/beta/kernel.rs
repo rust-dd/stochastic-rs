@@ -229,8 +229,19 @@ impl Kernel for BetaKernel {
   #[inline]
   fn d1(&self, x: f64, y: f64) -> f64 {
     match self.slope {
+      // A unit shape's term is 0 at its own end too, where `per(..)/x` would read `0/0`.
       Some(slope) => {
-        slope - self.per(self.a, y, self.c) / x - self.per(self.b, y, self.cc) / (self.cc - y)
+        let left = if self.a == 1.0 {
+          0.0
+        } else {
+          self.per(self.a, y, self.c) / x
+        };
+        let right = if self.b == 1.0 {
+          0.0
+        } else {
+          self.per(self.b, y, self.cc) / (self.cc - y)
+        };
+        slope - left - right
       }
       None => self.per(self.a, 1.0, x) - self.per(self.b, 1.0, self.cc - y),
     }

@@ -13,6 +13,7 @@ use super::panels::Panel;
 use super::panels::span;
 use super::singular::Frame;
 use super::zone::Offset;
+use super::zone::ZONE;
 use crate::traits::RealExt;
 
 impl<K: Kernel> Truncation<K> {
@@ -23,8 +24,14 @@ impl<K: Kernel> Truncation<K> {
       return f64::NAN;
     }
     // By the exact offset, as the upper side compares: a point beside `lo` finer than its ulp still lies above it.
-    if span(self.lo, at) <= 0.0 {
+    let t_lo = span(self.lo, at);
+    if t_lo <= 0.0 {
       return 0.0;
+    }
+    if t_lo < ZONE * self.width
+      && let Some(f) = self.zone_cdf(Offset::of(t_lo))
+    {
+      return f;
     }
     if self.narrow {
       return if x < self.centre.x { 0.0 } else { 1.0 };
