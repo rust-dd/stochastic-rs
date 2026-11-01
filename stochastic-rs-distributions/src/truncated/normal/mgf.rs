@@ -1,7 +1,7 @@
 //! The truncated normal's mgf: `e^{t·x_c − ½(c_s − c)(c_s + c)}` times the tilted and plain masses' ratio, `x_c` the
 //! tilted reference point in the law's own coordinate and `c_s`, `c` the two reference points in standard units.
 //!
-//! Reference: Shewchuk, J. R. (1997), "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates", *Discrete & Computational Geometry* 18(3), 305-363, DOI 10.1007/PL00009321 (exact sums of two-products).
+//! Reference: Ogita, T., Rump, S. M. & Oishi, S. (2005), "Accurate Sum and Dot Product", *SIAM Journal on Scientific Computing* 26(6), 1955-1988, DOI 10.1137/030601818 (SumK over two-products).
 
 use std::f64::consts::LN_2;
 
@@ -18,8 +18,29 @@ use crate::truncated::quadrature::split;
 /// the exponential's mass, where the quadrature would meet a slope past the doubles.
 const STEEP: f64 = 134_217_728.0;
 
+/// `σ = m·2^e` and `σ²t·2^{−e−4}` as four doubles summing to it exactly; no square where `σt` lies past 4·MAX.
+#[derive(Clone, Copy)]
+struct Scale {
+  m: f64,
+  e: i32,
+  square: Option<[f64; 4]>,
+}
+
+impl Scale {
+  fn new(sigma: f64, t: f64) -> Self {
+    let (m, e) = split(sigma);
+    let u = ldexp(t, e - 4);
+    let square = (4.0 * u).is_finite().then(|| {
+      let (a, a_lo) = two_prod(m, m);
+      let ((b, b_lo), (c, c_lo)) = (two_prod(a, u), two_prod(a_lo, u));
+      [b, b_lo, c, c_lo]
+    });
+    Self { m, e, square }
+  }
+}
+
 /// A finite bound, standardised `z + z_lo` exactly and `x` in the law's coordinate, with the tilted mode's offset
-/// `r + r_lo` from it and `ln|r|`.
+/// `r + r_lo` from it, and `ln|r|` where `r` passes the doubles.
 #[derive(Clone, Copy)]
 struct Anchor {
   z: f64,
@@ -27,7 +48,7 @@ struct Anchor {
   x: f64,
   r: f64,
   r_lo: f64,
-  ln_r: f64,
+  ln_far: f64,
 }
 
 impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
@@ -52,7 +73,11 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
     let (alpha, beta) = self.standardised_bounds()?;
     let (c, mass) = (plain.centre(), plain.mass());
-    let anchor = |z: f64, x: f64| z.is_finite().then(|| Anchor::new(sigma, t, x, mu, z));
+    let scale = Scale::new(sigma, t);
+    let anchor = |z: f64, x: f64| {
+      z.is_finite()
+        .then(|| Anchor::new(&scale, sigma, t, x, mu, z))
+    };
     let (at_lo, at_up) = (anchor(alpha, lo), anchor(beta, up));
     // The plain reference point exactly: a bound with its rest, else the mode or a midpoint the engine chose.
     let c = match (at_lo, at_up) {
@@ -78,7 +103,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
         let ln_ratio = if tilted >= f64::MIN_POSITIVE {
           (tilted / mass).ln()
         } else {
-          reach.ln() - a.ln_r - mass.ln()
+          reach.ln() - a.ln_r() - mass.ln()
         };
         (from_bound(t, a, c, 0.0), ln_ratio)
       }
@@ -92,7 +117,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
           (Some(b), ..) if c.0 == alpha => from_bound(t, b, c, b.r),
           (_, Some(b), _) if c.0 == beta => from_bound(t, b, c, b.r),
           (.., Some(a)) if c.0 != 0.0 => from_bound(t, a, c, a.r),
-          _ => quadratic(mu, sigma, t),
+          _ => quadratic(mu, sigma, t, &scale),
         };
         match clamp.or(nearer) {
           Some(a) if a.r.is_finite() => {
@@ -107,7 +132,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
             (exponent, (tilted.mass() / mass).ln())
           }
           // With both ends open the tilted law is the whole normal, as the plain one is.
-          None => return Some(quadratic(mu, sigma, t).exp()),
+          None => return Some(quadratic(mu, sigma, t, &scale).exp()),
           // No bound within the doubles' reach of the mode: the tilted law is the whole normal about it.
           Some(_) => {
             let whole = Truncation::mass_only(
@@ -125,55 +150,51 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
 }
 
 impl Anchor {
-  /// The offset from its numerator `σ²t − (x − μ)`, exact in expansion, divided by `σ` to a double-double; past 4·MAX,
-  /// where `z/σ` is under a quarter of `t`, the sign of `t` and `ln σ + ln|t − z/σ|`.
-  fn new(sigma: f64, t: f64, x: f64, mu: f64, z: f64) -> Self {
-    let (m, e) = split(sigma);
+  /// The offset from its numerator `σ²t − (x − μ)`, divided by `σ` to a double-double; past 4·MAX, where `z/σ` is under
+  /// a quarter of `t`, the sign of `t` and `ln σ + ln|t − z/σ|`.
+  fn new(&Scale { m, e, square }: &Scale, sigma: f64, t: f64, x: f64, mu: f64, z: f64) -> Self {
     let ((d, d_lo), scale) = difference(x, mu);
-    // The rest `(x − μ)/σ − z` of the rounded bound, at `σ`'s scale.
-    let (p, p_lo) = two_prod(z, 0.5 * m);
-    let (rest, _) = exact_sum([
-      ldexp(d, scale - e - 1),
-      ldexp(d_lo, scale - e - 1),
-      -p,
-      -p_lo,
-    ]);
-    let z_lo = rest / (0.5 * m);
-    let Some((n, n_lo)) = numerator(m, ldexp(t, e - 4), (d, d_lo), scale - e - 4) else {
-      let (r, ln_r) = (
-        t.signum() * f64::INFINITY,
-        sigma.ln() + (t - z / sigma).abs().ln(),
-      );
+    // The rest `(x − μ)/σ − z` of the rounded bound, by the remainder at `σ`'s scale.
+    let half = scale - e - 1;
+    let z_lo = ((-z).mul_add(0.5 * m, ldexp(d, half)) + ldexp(d_lo, half)) / (0.5 * m);
+    let Some((n, n_lo)) = square.map(|sq| numerator(sq, (d, d_lo), scale - e - 4)) else {
       return Self {
         z,
         z_lo,
         x,
-        r,
+        r: t.signum() * f64::INFINITY,
         r_lo: 0.0,
-        ln_r,
+        ln_far: sigma.ln() + (t - z / sigma).abs().ln(),
       };
     };
     let q = n / m;
     let q_lo = ((-q).mul_add(m, n) + n_lo) / m;
     let r = 16.0 * q;
-    let ln_r = if r.is_infinite() {
-      n.abs().ln() - m.ln() + 4.0 * LN_2
-    } else {
-      r.abs().ln()
-    };
     Self {
       z,
       z_lo,
       x,
       r,
       r_lo: 16.0 * q_lo,
-      ln_r,
+      ln_far: if r.is_infinite() {
+        n.abs().ln() - m.ln() + 4.0 * LN_2
+      } else {
+        f64::NAN
+      },
+    }
+  }
+
+  fn ln_r(&self) -> f64 {
+    if self.r.is_infinite() {
+      self.ln_far
+    } else {
+      self.r.abs().ln()
     }
   }
 }
 
-/// `t·x − ½(z² − c²) + d(r − d/2)`, the exponent whose tilted reference point lies `d` from the bound `z`: two-products
-/// of the double-double `z`, `c` and `r`, summed exactly; past the doubles the limit its largest term gives.
+/// `t·x − ½(z² − c²) + d(r − d/2)`, the exponent with the tilted reference point `d` from the bound `z`: two-products of
+/// the double-double `z`, `c`, `r`, summed in thrice the precision; past the doubles its largest term's limit.
 fn from_bound(t: f64, a: Anchor, (c, c_lo): (f64, f64), d: f64) -> f64 {
   let (tx, tx_lo) = two_prod(t, a.x);
   let ((zz, zz_lo), (cc, cc_lo)) = if c == a.z {
@@ -186,39 +207,43 @@ fn from_bound(t: f64, a: Anchor, (c, c_lo): (f64, f64), d: f64) -> f64 {
   } else {
     c * c_lo - a.z * a.z_lo
   };
-  let ((bend, bend_lo), ln_bend) = if d == 0.0 {
-    ((0.0, 0.0), f64::NEG_INFINITY)
+  let (bend, bend_lo) = if d == 0.0 {
+    (0.0, 0.0)
   } else if d == a.r {
     let (rr, rr_lo) = two_prod(0.5 * a.r, a.r);
-    ((rr, rr_lo + a.r * a.r_lo), 2.0 * a.ln_r - LN_2)
+    (rr, rr_lo + a.r * a.r_lo)
   } else {
-    let bend = d * (a.r - 0.5 * d);
-    ((bend, 0.0), bend.abs().ln())
+    (d * (a.r - 0.5 * d), 0.0)
   };
-  let (h1, h2) = (0.5 * a.z - 0.5 * c, 0.5 * a.z + 0.5 * c);
-  let (sum, _) = exact_sum([tx, tx_lo, -zz, -zz_lo, cc, cc_lo, rests, bend, bend_lo]);
-  limit_or(
-    sum,
-    &[
+  let (sum, _) = accurate_sum([tx, tx_lo, -zz, -zz_lo, cc, cc_lo, rests, bend, bend_lo]);
+  limit_or(sum, || {
+    let (h1, h2) = (0.5 * a.z - 0.5 * c, 0.5 * a.z + 0.5 * c);
+    let ln_bend = if d == a.r {
+      2.0 * a.ln_r() - LN_2
+    } else {
+      bend.abs().ln()
+    };
+    [
       term(1.0, t, a.x),
       term(-2.0, h1, h2),
       (bend.signum(), ln_bend),
-    ],
-  )
+    ]
+  })
 }
 
-/// `μt + (σt)²/2` as `t(μ + σ²t/2)`, the bracket exact in expansion; `σt` is rounded only where no cancellation is
+/// `μt + (σt)²/2` as `t(μ + σ²t/2)`, the bracket as `numerator` forms it; `σt` rounds only where no cancellation is
 /// left: past 4·MAX (a limit) or where `μ/σ` dwarfs it.
-fn quadratic(mu: f64, sigma: f64, t: f64) -> f64 {
-  let (m, e) = split(sigma);
+fn quadratic(mu: f64, sigma: f64, t: f64, &Scale { e, square, .. }: &Scale) -> f64 {
   let (d, scale) = difference(-mu, mu);
-  if let Some((n, _)) = numerator(m, ldexp(t, e - 4), d, scale - e - 4)
+  if let Some((n, _)) = square.map(|sq| numerator(sq, d, scale - e - 4))
     && n.is_finite()
   {
     return scaled_product(t, n, e + 3);
   }
   let s = sigma * t;
-  limit_or(mu * t + 0.5 * (s * s), &[term(1.0, t, mu), term(0.5, s, s)])
+  limit_or(mu * t + 0.5 * (s * s), || {
+    [term(1.0, t, mu), term(0.5, s, s)]
+  })
 }
 
 /// `x − μ` as `(d + d_lo)·2^scale`, from halves where it overflows.
@@ -229,23 +254,10 @@ fn difference(x: f64, mu: f64) -> ((f64, f64), i32) {
   }
 }
 
-/// `m²u − (d + d_lo)·2^scale` to a double-double, `σ = m·2^e` and `u = t·2^{e−4}`: `(σ²t − (x − μ))·2^{−e−4}`, by
-/// two-products and an exact sum, so no rounded `σt` meets `x − μ`; `None` where `σt` lies past 4·MAX.
-fn numerator(m: f64, u: f64, (d, d_lo): (f64, f64), scale: i32) -> Option<(f64, f64)> {
-  if !(4.0 * u).is_finite() {
-    return None;
-  }
-  let (a, a_lo) = two_prod(m, m);
-  let (b, b_lo) = two_prod(a, u);
-  let (c, c_lo) = two_prod(a_lo, u);
-  Some(exact_sum([
-    b,
-    b_lo,
-    c,
-    c_lo,
-    -ldexp(d, scale),
-    -ldexp(d_lo, scale),
-  ]))
+/// `σ²t·2^{−e−4} − (d + d_lo)·2^scale` to a double-double, `(σ²t − (x − μ))·2^{−e−4}`: the square's exact parts and
+/// the difference's summed in thrice the precision, so no rounded `σt` meets `x − μ`.
+fn numerator([b, b_lo, c, c_lo]: [f64; 4], (d, d_lo): (f64, f64), scale: i32) -> (f64, f64) {
+  accurate_sum([b, b_lo, c, c_lo, -ldexp(d, scale), -ldexp(d_lo, scale)])
 }
 
 /// `a·b·2^p`, with no product past the doubles before the last scaling.
@@ -278,31 +290,13 @@ fn two_prod(a: f64, b: f64) -> (f64, f64) {
   (p, a.mul_add(b, -p))
 }
 
-/// The terms' sum to a double-double: Shewchuk's exact growth of a nonoverlapping expansion, its sum, then the sum of
-/// what that left.
-fn exact_sum<const N: usize>(terms: [f64; N]) -> (f64, f64) {
-  const { assert!(N < 16) };
-  let mut parts = [0.0; 16];
-  let mut len = 0;
-  for x in terms {
-    len = grow(&mut parts, len, x);
-  }
-  let hi = parts[..len].iter().sum::<f64>();
-  len = grow(&mut parts, len, -hi);
-  (hi, parts[..len].iter().sum())
-}
-
-/// Shewchuk's growth by `x` with zero elimination: the parts stay nonoverlapping, least first.
-fn grow(parts: &mut [f64; 16], len: usize, x: f64) -> usize {
-  let (mut q, mut kept) = (x, 0);
-  for i in 0..len {
-    let (s, e) = two_sum(q, parts[i]);
-    if e != 0.0 {
-      parts[kept] = e;
-      kept += 1;
+/// The terms' sum to a double-double as if formed in thrice the precision: two cascades of two-sums that carry each
+/// rounding error to the next term, then the errors' sum added once (SumK, K = 3).
+fn accurate_sum<const N: usize>(mut p: [f64; N]) -> (f64, f64) {
+  for _ in 0..2 {
+    for i in 1..N {
+      (p[i], p[i - 1]) = two_sum(p[i], p[i - 1]);
     }
-    q = s;
   }
-  parts[kept] = q;
-  kept + 1
+  two_sum(p[N - 1], p[..N - 1].iter().sum::<f64>())
 }

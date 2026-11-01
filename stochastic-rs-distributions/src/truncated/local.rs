@@ -273,14 +273,13 @@ impl Local {
       self.slope.sign * y_c.signum() * l1.exp(),
       self.curvature.sign * l2.exp(),
     );
-    let head = limit_or(
-      t * x_c + (q1 + q2),
-      &[
+    let head = limit_or(t * x_c + (q1 + q2), || {
+      [
         (t.signum() * x_c.signum(), t.abs().ln() + x_c.abs().ln()),
         (q1.signum(), l1),
         (q2.signum(), l2),
-      ],
-    );
+      ]
+    });
     let ln_k = |model: &Truncation<QuadKernel>| {
       let (QuadKernel { a, b, .. }, c) = (*model.kernel(), model.centre());
       c * (a + 0.5 * b * c)
@@ -290,13 +289,15 @@ impl Local {
   }
 }
 
-/// `plain`, or where its terms met `∞ − ∞` the limit the term of largest log-magnitude gives; a term is `(sign, ln|·|)`.
-pub(super) fn limit_or(plain: f64, terms: &[(f64, f64)]) -> f64 {
+/// `plain`, or where its terms met `∞ − ∞` the limit the term of largest log-magnitude gives, the terms `(sign, ln|·|)` formed only then.
+pub(super) fn limit_or<const N: usize>(plain: f64, terms: impl FnOnce() -> [(f64, f64); N]) -> f64 {
   if !plain.is_nan() {
     return plain;
   }
-  let top = terms.iter().fold((0.0, f64::NEG_INFINITY), |best, &t| {
-    if t.1 > best.1 { t } else { best }
-  });
+  let top = terms()
+    .into_iter()
+    .fold((0.0, f64::NEG_INFINITY), |best, t| {
+      if t.1 > best.1 { t } else { best }
+    });
   top.0 * f64::INFINITY
 }

@@ -86,8 +86,7 @@ const ODD: [f64; 17] = [
 ];
 
 /// `ln(1 + z) − z` to full relative precision: `−wz + 2w³ Σ_j w^{2j}/(2j + 3)`, `w = z/(2 + z)`, by Estrin's scheme
-/// for `|w| ≤ 1/3` (from `ln(1 + z) = 2 atanh w`), on `[−3/4, −1/2)` by halving `1 + z`; past that the plain
-/// difference loses under two bits.
+/// for `|w| ≤ 1/3`, on `[−3/4, −1/2)` by halving `1 + z`; past that the plain difference loses under two bits.
 pub(super) fn ln_1p_mx(z: f64) -> f64 {
   if (-0.75..-0.5).contains(&z) {
     // `ln(1 + z) = −ln 2 + ln(1 + v)`, `v = 2z + 1`: three terms of one sign, both shifts exact.
@@ -112,7 +111,7 @@ pub(super) fn ln_1p_mx(z: f64) -> f64 {
   2.0 * w * x * sum - w * z
 }
 
-/// `ln(n/d)` from the quotient while it is normal, else `ln n − ln d`, whose `u·|ln n|` a large exponent would multiply.
+/// `ln(n/d)` from the quotient while it is normal, else `ln n − ln d`, whose `u·|ln n|` a large exponent multiplies.
 #[inline]
 pub(super) fn ln_ratio(n: f64, d: f64, ln_d: f64) -> f64 {
   let q = n / d;
