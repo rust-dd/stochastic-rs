@@ -1,25 +1,20 @@
-//! Random laws, every parameter log-uniform over its admissible range: each analytic and 20 draws answer in range (NaN
-//! only for a beta's mode on a tie), `cdf(quantile(p))` returns `p`, and the cdf matches its parent's where that holds.
+//! Random laws: the log-uniform draw over every admissible parameter, and the strata it misses (`strata.rs`). Each runs
+//! `sweep`'s checks: ranges, round trips, the parents, the cdf beside its bounds, moments and the mgf against mpmath.
 
-use rand::distr::Distribution;
-use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_core::simd_rng::SimdRng;
-use stochastic_rs_distributions::traits::DistributionExt;
-use stochastic_rs_distributions::traits::DistributionSampler;
-use stochastic_rs_distributions::traits::SimdKernel;
 use stochastic_rs_distributions::truncated::SimdTruncatedBeta;
 use stochastic_rs_distributions::truncated::SimdTruncatedExp;
 use stochastic_rs_distributions::truncated::SimdTruncatedGamma;
 use stochastic_rs_distributions::truncated::SimdTruncatedNormal;
 
-use crate::parents;
-use crate::parents::Tails;
+use crate::pinned::Pinned;
+use crate::strata;
+use crate::sweep;
 
 /// SplitMix64: the laws are the same on every run.
-struct Gen(u64);
+pub struct Gen(pub u64);
 
 impl Gen {
-  fn next(&mut self) -> u64 {
+  pub fn next(&mut self) -> u64 {
     self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
     let mut z = self.0;
     z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
@@ -27,39 +22,199 @@ impl Gen {
     z ^ (z >> 31)
   }
 
-  fn unit(&mut self) -> f64 {
+  pub fn unit(&mut self) -> f64 {
     (self.next() >> 11) as f64 * 2f64.powi(-53)
   }
 
-  fn exp10(&mut self, lo: f64, hi: f64) -> f64 {
+  pub fn exp10(&mut self, lo: f64, hi: f64) -> f64 {
     10f64.powf(lo + (hi - lo) * self.unit())
   }
 
-  fn coin(&mut self, p: f64) -> bool {
+  pub fn coin(&mut self, p: f64) -> bool {
     self.unit() < p
   }
 
-  fn sign(&mut self) -> f64 {
+  pub fn sign(&mut self) -> f64 {
     if self.coin(0.5) { 1.0 } else { -1.0 }
+  }
+
+  pub fn uniform(&mut self, lo: f64, hi: f64) -> f64 {
+    lo + (hi - lo) * self.unit()
+  }
+
+  pub fn log_uniform(&mut self, lo: f64, hi: f64) -> f64 {
+    self.exp10(lo.log10(), hi.log10())
+  }
+
+  pub fn pick(&mut self, from: &[f64]) -> f64 {
+    from[(self.next() % from.len() as u64) as usize]
   }
 }
 
-/// The interior levels of the quantile and the round trip; 0 and 1 answer the support's ends.
-const LEVELS: [f64; 8] = [
-  5e-324,
-  1e-300,
-  1e-10,
-  0.1,
-  0.5,
-  0.9,
-  1.0 - 1e-10,
-  1.0 - f64::EPSILON / 2.0,
-];
+/// A law's parameters, exact doubles.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Law {
+  N {
+    mu: f64,
+    sigma: f64,
+    lo: f64,
+    up: f64,
+  },
+  G {
+    k: f64,
+    theta: f64,
+    lo: f64,
+    up: f64,
+  },
+  B {
+    a: f64,
+    b: f64,
+    lo: f64,
+    up: f64,
+  },
+  E {
+    lam: f64,
+    lo: f64,
+    up: f64,
+  },
+}
 
-/// A reference whose own error exceeds this leaves its point unchecked.
-const REFERENCE: f64 = 2e-13;
+impl Law {
+  pub fn name(&self) -> String {
+    match *self {
+      Law::N { mu, sigma, lo, up } => format!("TN({mu:e}, {sigma:e}, [{lo:e}, {up:e}])"),
+      Law::G { k, theta, lo, up } => format!("TG({k:e}, {theta:e}, [{lo:e}, {up:e}])"),
+      Law::B { a, b, lo, up } => format!("TB({a:e}, {b:e}, [{lo:e}, {up:e}])"),
+      Law::E { lam, lo, up } => format!("TE({lam:e}, [{lo:e}, {up:e}])"),
+    }
+  }
 
-/// What a survey checked and every value it found outside its bar.
+  /// The pinned table's key: the family's letter and the parameters, each the shortest decimal that reads back exactly.
+  pub fn key(&self) -> String {
+    match *self {
+      Law::N { mu, sigma, lo, up } => format!("N {mu:e} {sigma:e} {lo:e} {up:e}"),
+      Law::G { k, theta, lo, up } => format!("G {k:e} {theta:e} {lo:e} {up:e}"),
+      Law::B { a, b, lo, up } => format!("B {a:e} {b:e} {lo:e} {up:e}"),
+      Law::E { lam, lo, up } => format!("E {lam:e} {lo:e} {up:e}"),
+    }
+  }
+
+  /// The law a key names.
+  pub fn from_key(key: &str) -> Self {
+    let mut words = key.split_whitespace();
+    let family = words.next().expect("a key names its family");
+    let p: Vec<f64> = words
+      .map(|w| w.parse().expect("a parameter parses"))
+      .collect();
+    match family {
+      "N" => Law::N {
+        mu: p[0],
+        sigma: p[1],
+        lo: p[2],
+        up: p[3],
+      },
+      "G" => Law::G {
+        k: p[0],
+        theta: p[1],
+        lo: p[2],
+        up: p[3],
+      },
+      "B" => Law::B {
+        a: p[0],
+        b: p[1],
+        lo: p[2],
+        up: p[3],
+      },
+      _ => Law::E {
+        lam: p[0],
+        lo: p[1],
+        up: p[2],
+      },
+    }
+  }
+
+  pub fn support(&self) -> (f64, f64) {
+    match *self {
+      Law::N { lo, up, .. }
+      | Law::G { lo, up, .. }
+      | Law::B { lo, up, .. }
+      | Law::E { lo, up, .. } => (lo, up),
+    }
+  }
+
+  /// Parameters every constructor accepts.
+  pub fn admissible(&self) -> bool {
+    let (lo, up) = self.support();
+    let ordered = !lo.is_nan() && !up.is_nan() && lo < up;
+    ordered
+      && match *self {
+        Law::N { mu, sigma, .. } => mu.is_finite() && sigma.is_finite() && sigma > 0.0,
+        Law::G { k, theta, .. } => {
+          k.is_finite() && theta.is_finite() && k > 0.0 && theta > 0.0 && lo >= 0.0
+        }
+        Law::B { a, b, .. } => {
+          a.is_finite() && b.is_finite() && a > 0.0 && b > 0.0 && lo >= 0.0 && up <= 1.0
+        }
+        Law::E { lam, .. } => lam.is_finite() && lam > 0.0 && lo >= 0.0,
+      }
+  }
+}
+
+/// A class of laws, each with its own counts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Stratum {
+  Draw,
+  Unit,
+  Ordinary,
+  Bound,
+  Rungs,
+  Far,
+  Extreme,
+  Mgf,
+}
+
+impl Stratum {
+  pub const ALL: [Stratum; 8] = [
+    Stratum::Draw,
+    Stratum::Unit,
+    Stratum::Ordinary,
+    Stratum::Bound,
+    Stratum::Rungs,
+    Stratum::Far,
+    Stratum::Extreme,
+    Stratum::Mgf,
+  ];
+
+  pub fn from_name(name: &str) -> Self {
+    *Self::ALL
+      .iter()
+      .find(|s| format!("{s:?}") == name)
+      .expect("a stratum's name")
+  }
+
+  pub fn label(self) -> &'static str {
+    match self {
+      Stratum::Draw => "log-uniform",
+      Stratum::Unit => "unit shapes",
+      Stratum::Ordinary => "ordinary",
+      Stratum::Bound => "beta bound at 0/1",
+      Stratum::Rungs => "shape<1 between rungs",
+      Stratum::Far => "normal far/past MAX",
+      Stratum::Extreme => "extreme",
+      Stratum::Mgf => "normal mgf past MAX",
+    }
+  }
+}
+
+/// One law of a survey with the mgf arguments its stratum adds.
+#[derive(Clone, Debug)]
+pub struct Case {
+  pub stratum: Stratum,
+  pub law: Law,
+  pub ts: Vec<f64>,
+}
+
+/// What a stratum checked, and every value it found outside its bar.
 #[derive(Default)]
 pub struct Tally {
   pub laws: usize,
@@ -67,174 +222,17 @@ pub struct Tally {
   pub bracketed: usize,
   pub parent_checked: usize,
   pub parent_skipped: usize,
+  pub beside_checked: usize,
+  pub beside_unchecked: usize,
+  pub moments_checked: usize,
+  pub moments_unchecked: usize,
+  pub mgf_checked: usize,
+  pub ks: usize,
   pub ties: usize,
   pub failures: Vec<String>,
 }
 
-/// One law of a survey, named, and the checks that run it.
-pub type Case = (String, Box<dyn Fn(&mut Tally)>);
-
-/// A law's checks: its support, the mgf (and cf) arguments, the parent's tails, and whether its mode may tie.
-struct Spec<'a> {
-  support: (f64, f64),
-  ts: &'a [f64],
-  cf: bool,
-  parent: Option<&'a dyn Fn(f64) -> Tails>,
-  tie: bool,
-}
-
-fn ulp(x: f64) -> f64 {
-  let a = x.abs();
-  a.next_up() - a
-}
-
-enum Trip {
-  Within,
-  Bracketed,
-  Off(String),
-}
-
-/// `|cdf(x) − p|` within `1e-12·min(p, 1 − p)`, and 8ε above ½ where the cdf holds absolute digits, plus its step
-/// across an ulp of `x`: `pdf(x)·ulp(x)`, or for a law narrower than that ulp the cdf beside `x` bracketing `p`.
-fn round_trip(law: &impl DistributionExt, p: f64, x: f64) -> Trip {
-  let back = law.cdf(x).unwrap();
-  let tol = 1e-12 * p.min(1.0 - p) + if p > 0.5 { 8.0 * f64::EPSILON } else { 0.0 };
-  if (back - p).abs() <= tol + law.pdf(x).unwrap() * ulp(x) {
-    return Trip::Within;
-  }
-  let (below, above) = (
-    law.cdf(x.next_down()).unwrap(),
-    law.cdf(x.next_up()).unwrap(),
-  );
-  if below.min(back) - tol <= p && p <= above.max(back) + tol {
-    return Trip::Bracketed;
-  }
-  Trip::Off(format!(
-    "cdf(quantile({p:e})) = {back:e}, off by {:e}; x = {x:e}, cdf beside it {below:e}, {above:e}",
-    back - p
-  ))
-}
-
-fn sweep<D>(name: &str, law: &D, spec: Spec, tally: &mut Tally)
-where
-  D: DistributionExt + Distribution<f64> + SimdKernel<Item = f64>,
-{
-  let (lo, up) = spec.support;
-  let mut failures = Vec::new();
-  let mut fail = |what: String| failures.push(format!("{name}: {what}"));
-  let inside = |v: f64| v >= lo && v <= up;
-  let var = law.variance().unwrap();
-  if var.is_nan() || var < 0.0 {
-    fail(format!("variance = {var:e}"));
-  }
-  let (skew, kurt) = (law.skewness().unwrap(), law.kurtosis().unwrap());
-  for (what, v) in [
-    ("skewness", skew),
-    ("kurtosis", kurt),
-    ("entropy", law.entropy().unwrap()),
-  ] {
-    if v.is_nan() {
-      fail(format!("{what} NaN at variance {var:e}"));
-    }
-  }
-  if kurt < skew * skew - 2.0 - 1e-6 * (1.0 + skew * skew) {
-    fail(format!("kurtosis {kurt:e} below skewness² − 2 ({skew:e})"));
-  }
-  let mut points = vec![lo, up, lo + 0.5 * (up - lo), 0.5 * lo + 0.5 * up];
-  let mode = law.mode().unwrap();
-  for (what, v) in [
-    ("mean", law.mean().unwrap()),
-    ("median", law.median().unwrap()),
-    ("mode", mode),
-  ] {
-    if what == "mode" && spec.tie && v.is_nan() {
-      tally.ties += 1;
-    } else if !inside(v) {
-      fail(format!("{what} = {v:e} outside [{lo:e}, {up:e}]"));
-    }
-    points.push(v);
-  }
-  if law.quantile(0.0) != Some(lo) || law.quantile(1.0) != Some(up) {
-    fail("quantile at 0 or 1 off the support's ends".into());
-  }
-  for p in LEVELS {
-    let x = law.quantile(p).unwrap();
-    if !inside(x) {
-      fail(format!("quantile({p:e}) = {x:e} outside [{lo:e}, {up:e}]"));
-      continue;
-    }
-    points.push(x);
-    tally.round_trips += 1;
-    match round_trip(law, p, x) {
-      Trip::Within => {}
-      Trip::Bracketed => tally.bracketed += 1,
-      Trip::Off(what) => fail(what),
-    }
-  }
-  for x in points.into_iter().filter(|x| !x.is_nan()) {
-    let (c, d) = (law.cdf(x).unwrap(), law.pdf(x).unwrap());
-    if !(0.0..=1.0).contains(&c) || d.is_nan() || d < 0.0 {
-      fail(format!("cdf({x:e}) = {c:e}, pdf = {d:e}"));
-    }
-  }
-  if let Some(parent) = spec.parent {
-    parent_check(law, (lo, up), parent, &mut fail, tally);
-  }
-  for &t in spec.ts {
-    let m = law.moment_generating_function(t).unwrap();
-    if m.is_nan() || m < 0.0 {
-      fail(format!("mgf({t:e}) = {m:e}"));
-    }
-    if spec.cf {
-      let z = law.characteristic_function(t).unwrap();
-      if z.re.is_nan() || z.im.is_nan() || z.norm() > 1.0 + 1e-12 {
-        fail(format!("cf({t:e}) = {z}"));
-      }
-    }
-  }
-  let mut rng = SimdRng::from_seed(11);
-  let mut draws: Vec<f64> = (0..10).map(|_| law.sample(&mut rng)).collect();
-  let stream = law.clone().seeded(&Deterministic::new(13)).sample_n(10);
-  draws.extend(stream.iter().copied());
-  for (i, x) in draws.into_iter().enumerate() {
-    if !inside(x) {
-      fail(format!("draw {i} = {x:e} outside [{lo:e}, {up:e}]"));
-    }
-  }
-  tally.failures.extend(failures);
-  tally.laws += 1;
-}
-
-/// The cdf at the law's 0.1, 0.3, …, 0.9 quantiles against `(P(x) − P(lo))/(P(up) − P(lo))`, each difference from the
-/// tail that keeps its digits, to 1e-12 wherever the reference holds 2e-13.
-fn parent_check(
-  law: &impl DistributionExt,
-  (lo, up): (f64, f64),
-  parent: &dyn Fn(f64) -> Tails,
-  fail: &mut impl FnMut(String),
-  tally: &mut Tally,
-) {
-  let (t_lo, t_up) = (parent(lo), parent(up));
-  let (mass, err_mass) = parents::between(t_lo, t_up);
-  for p in [0.1, 0.3, 0.5, 0.7, 0.9] {
-    let x = law.quantile(p).unwrap();
-    let (part, err_part) = parents::between(t_lo, parent(x));
-    let (want, err) = (part / mass, err_part + err_mass + f64::EPSILON);
-    if err.is_nan() || err > REFERENCE {
-      tally.parent_skipped += 1;
-      continue;
-    }
-    tally.parent_checked += 1;
-    let got = law.cdf(x).unwrap();
-    if (got - want).abs() > 1e-12 * want || got.is_nan() {
-      fail(format!(
-        "cdf({x:e}) = {got:e}, the parent's {want:e} (reference within {err:.1e})"
-      ));
-    }
-  }
-}
-
-fn normal(g: &mut Gen) -> Option<Case> {
+fn normal(g: &mut Gen) -> Option<Law> {
   let inf = f64::INFINITY;
   let mu = if g.coin(0.1) {
     0.0
@@ -262,35 +260,10 @@ fn normal(g: &mut Gen) -> Option<Case> {
   if lo.is_nan() || up.is_nan() || lo >= up || lo == inf || up == -inf {
     return None;
   }
-  let name = format!("TN({mu:e}, {sigma:e}, [{lo:e}, {up:e}])");
-  Some((
-    name.clone(),
-    Box::new(move |tally: &mut Tally| {
-      let law = SimdTruncatedNormal::<f64>::new(mu, sigma, lo, up);
-      let ts = [
-        1.0,
-        -1.0,
-        1.0 / sigma,
-        -2.0 / sigma,
-        1e10,
-        -1e10,
-        1e300,
-        -1e300,
-      ];
-      let parent = |x| parents::normal(mu, sigma, x);
-      let spec = Spec {
-        support: (lo, up),
-        ts: &ts,
-        cf: false,
-        parent: Some(&parent),
-        tie: false,
-      };
-      sweep(&name, &law, spec, tally);
-    }) as Box<dyn Fn(&mut Tally)>,
-  ))
+  Some(Law::N { mu, sigma, lo, up })
 }
 
-fn gamma(g: &mut Gen) -> Option<Case> {
+fn gamma(g: &mut Gen) -> Option<Law> {
   let k = g.exp10(-300.0, 300.0);
   let theta = g.exp10(-300.0, 300.0);
   let lo = if g.coin(0.3) {
@@ -306,25 +279,10 @@ fn gamma(g: &mut Gen) -> Option<Case> {
   if lo.is_nan() || up.is_nan() || lo >= up || !lo.is_finite() {
     return None;
   }
-  let name = format!("TG({k:e}, {theta:e}, [{lo:e}, {up:e}])");
-  Some((
-    name.clone(),
-    Box::new(move |tally: &mut Tally| {
-      let law = SimdTruncatedGamma::<f64>::new(k, theta, lo, up);
-      let parent = |x| parents::gamma(k, theta, x);
-      let spec = Spec {
-        support: (lo, up),
-        ts: &[],
-        cf: false,
-        parent: Some(&parent),
-        tie: false,
-      };
-      sweep(&name, &law, spec, tally);
-    }) as Box<dyn Fn(&mut Tally)>,
-  ))
+  Some(Law::G { k, theta, lo, up })
 }
 
-fn beta(g: &mut Gen) -> Option<Case> {
+fn beta(g: &mut Gen) -> Option<Law> {
   let (a, b) = (g.exp10(-300.0, 300.0), g.exp10(-300.0, 300.0));
   let lo = if g.coin(0.3) {
     0.0
@@ -339,26 +297,10 @@ fn beta(g: &mut Gen) -> Option<Case> {
   if lo.is_nan() || up.is_nan() || lo >= up || up > 1.0 {
     return None;
   }
-  let name = format!("TB({a:e}, {b:e}, [{lo:e}, {up:e}])");
-  Some((
-    name.clone(),
-    Box::new(move |tally: &mut Tally| {
-      let law = SimdTruncatedBeta::<f64>::new(a, b, lo, up);
-      let parent = |x| parents::beta(a, b, x);
-      let tie = (a < 1.0 && b < 1.0) || (a == 1.0 && b == 1.0);
-      let spec = Spec {
-        support: (lo, up),
-        ts: &[],
-        cf: false,
-        parent: Some(&parent),
-        tie,
-      };
-      sweep(&name, &law, spec, tally);
-    }) as Box<dyn Fn(&mut Tally)>,
-  ))
+  Some(Law::B { a, b, lo, up })
 }
 
-fn exp(g: &mut Gen) -> Option<Case> {
+fn exp(g: &mut Gen) -> Option<Law> {
   let lam = g.exp10(-300.0, 300.0);
   let lo = match g.next() % 3 {
     0 => 0.0,
@@ -373,25 +315,10 @@ fn exp(g: &mut Gen) -> Option<Case> {
   if lo.is_nan() || up.is_nan() || lo >= up || !lo.is_finite() {
     return None;
   }
-  let name = format!("TE({lam:e}, [{lo:e}, {up:e}])");
-  Some((
-    name.clone(),
-    Box::new(move |tally: &mut Tally| {
-      let law = SimdTruncatedExp::<f64>::new(lam, lo, up);
-      let ts = [1.0, -1.0, 0.5 * lam, -2.0 * lam, 1e10, -1e10, 1e300, -1e300];
-      let spec = Spec {
-        support: (lo, up),
-        ts: &ts,
-        cf: true,
-        parent: None,
-        tie: false,
-      };
-      sweep(&name, &law, spec, tally);
-    }) as Box<dyn Fn(&mut Tally)>,
-  ))
+  Some(Law::E { lam, lo, up })
 }
 
-/// `per_kind` laws of each of the four kinds from `seed`, in the order they are drawn.
+/// `per_kind` laws of each of the four kinds from `seed`, every parameter log-uniform, in the order they are drawn.
 pub fn cases(seed: u64, per_kind: usize) -> Vec<Case> {
   let mut g = Gen(seed);
   let mut made = [0usize; 4];
@@ -401,34 +328,159 @@ pub fn cases(seed: u64, per_kind: usize) -> Vec<Case> {
     if made[kind] >= per_kind {
       continue;
     }
-    let case = match kind {
+    let law = match kind {
       0 => normal(&mut g),
       1 => gamma(&mut g),
       2 => beta(&mut g),
       _ => exp(&mut g),
     };
-    if let Some(case) = case {
-      out.push(case);
+    if let Some(law) = law {
+      out.push(Case {
+        stratum: Stratum::Draw,
+        law,
+        ts: Vec::new(),
+      });
       made[kind] += 1;
     }
   }
   out
 }
 
-#[test]
-fn random_laws_answer_inside_their_ranges() {
-  let mut tally = Tally::default();
-  for (_, run) in cases(0x5eed_2026, 50) {
-    run(&mut tally);
+/// `per_stratum` laws of each stratum but the log-uniform draw, each stratum from its own stream of `seed`.
+pub fn strata(seed: u64, per_stratum: usize) -> Vec<Case> {
+  Stratum::ALL[1..]
+    .iter()
+    .flat_map(|&stratum| strata::draw(stratum, seed, per_stratum))
+    .collect()
+}
+
+/// Runs every case against the committed table, prints each stratum's counts and returns every failure.
+pub fn run_all(cases: &[Case], pinned: &Pinned) -> Vec<String> {
+  let mut tallies: Vec<(Stratum, Tally)> = Vec::new();
+  for case in cases {
+    let i = match tallies.iter().position(|(s, _)| *s == case.stratum) {
+      Some(i) => i,
+      None => {
+        tallies.push((case.stratum, Tally::default()));
+        tallies.len() - 1
+      }
+    };
+    sweep::run(case, &mut tallies[i].1, pinned, None);
   }
   println!(
-    "{} laws, {} round trips ({} bracketed), the parent's cdf at {} points ({} past its reference's digits), {} mode ties",
-    tally.laws,
-    tally.round_trips,
-    tally.bracketed,
-    tally.parent_checked,
-    tally.parent_skipped,
-    tally.ties
+    "{:<22} {:>5} {:>6} {:>4} {:>6} {:>6} {:>6} {:>6} {:>6} {:>6} {:>4} {:>3} {:>4} {:>4}",
+    "stratum",
+    "laws",
+    "trips",
+    "brk",
+    "par",
+    "par-",
+    "bside",
+    "bside-",
+    "mom",
+    "mom-",
+    "mgf",
+    "ks",
+    "ties",
+    "fail"
   );
-  assert!(tally.failures.is_empty(), "{}", tally.failures.join("\n"));
+  let mut failures = Vec::new();
+  for (stratum, t) in &tallies {
+    println!(
+      "{:<22} {:>5} {:>6} {:>4} {:>6} {:>6} {:>6} {:>6} {:>6} {:>6} {:>4} {:>3} {:>4} {:>4}",
+      stratum.label(),
+      t.laws,
+      t.round_trips,
+      t.bracketed,
+      t.parent_checked,
+      t.parent_skipped,
+      t.beside_checked,
+      t.beside_unchecked,
+      t.moments_checked,
+      t.moments_unchecked,
+      t.mgf_checked,
+      t.ks,
+      t.ties,
+      t.failures.len()
+    );
+    failures.extend(t.failures.iter().cloned());
+  }
+  failures
+}
+
+/// The law a case names, built.
+pub fn build_normal(law: Law) -> SimdTruncatedNormal<f64> {
+  match law {
+    Law::N { mu, sigma, lo, up } => SimdTruncatedNormal::<f64>::new(mu, sigma, lo, up),
+    _ => unreachable!(),
+  }
+}
+
+pub fn build_gamma(law: Law) -> SimdTruncatedGamma<f64> {
+  match law {
+    Law::G { k, theta, lo, up } => SimdTruncatedGamma::<f64>::new(k, theta, lo, up),
+    _ => unreachable!(),
+  }
+}
+
+pub fn build_beta(law: Law) -> SimdTruncatedBeta<f64> {
+  match law {
+    Law::B { a, b, lo, up } => SimdTruncatedBeta::<f64>::new(a, b, lo, up),
+    _ => unreachable!(),
+  }
+}
+
+pub fn build_exp(law: Law) -> SimdTruncatedExp<f64> {
+  match law {
+    Law::E { lam, lo, up } => SimdTruncatedExp::<f64>::new(lam, lo, up),
+    _ => unreachable!(),
+  }
+}
+
+/// The table's laws, `cases(0x5eed_2026, 50)` then `strata(0x5eed_2026, 24)` as the evidence survey drew them.
+fn committed(draw: bool) -> Vec<Case> {
+  crate::pinned::committed_cases()
+    .into_iter()
+    .filter(|c| (c.stratum == Stratum::Draw) == draw)
+    .collect()
+}
+
+#[test]
+fn random_laws_answer_inside_their_ranges() {
+  let failures = run_all(&committed(true), &Pinned::committed());
+  assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn strata_answer_inside_their_ranges() {
+  let failures = run_all(&committed(false), &Pinned::committed());
+  assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// The table's laws are the generator's at its seed: the same strata and families, every parameter within 1e-9 of
+/// it, the room `10^x` needs between libms (Apple's `exp10`, glibc's `pow`).
+#[test]
+fn the_table_is_the_generators() {
+  let drawn: Vec<Case> = cases(0x5eed_2026, 50)
+    .into_iter()
+    .chain(strata(0x5eed_2026, 24))
+    .collect();
+  let pinned = crate::pinned::committed_cases();
+  assert_eq!(drawn.len(), pinned.len());
+  let near = |a: f64, b: f64| a == b || (a - b).abs() <= 1e-9 * a.abs().max(b.abs());
+  for (d, p) in drawn.iter().zip(&pinned) {
+    let params = |law: Law| match law {
+      Law::N { mu, sigma, lo, up } => ('N', [mu, sigma, lo, up]),
+      Law::G { k, theta, lo, up } => ('G', [k, theta, lo, up]),
+      Law::B { a, b, lo, up } => ('B', [a, b, lo, up]),
+      Law::E { lam, lo, up } => ('E', [lam, lo, up, 0.0]),
+    };
+    let ((fd, xd), (fp, xp)) = (params(d.law), params(p.law));
+    assert!(
+      d.stratum == p.stratum && fd == fp && xd.iter().zip(xp).all(|(&a, b)| near(a, b)),
+      "{} against the table's {}",
+      d.law.name(),
+      p.law.name()
+    );
+  }
 }

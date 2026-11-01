@@ -14,10 +14,14 @@ mod near_unit_shapes;
 mod normal;
 mod offsets;
 mod parents;
+mod pinned;
 mod range_ends;
+mod recut;
 mod rungs;
 mod slopes;
+mod strata;
 mod survey;
+mod sweep;
 
 /// Reference values of one interval; `None` where the reference run printed none.
 pub struct Want {
