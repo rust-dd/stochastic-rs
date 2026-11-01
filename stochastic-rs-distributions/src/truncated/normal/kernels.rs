@@ -51,7 +51,7 @@ impl Kernel for NormalKernel {
   }
 }
 
-/// `e^{−z²/2 + s·z}`, whose integral over the interval's own `[α, β]` is the mgf at `s = σt`: the interval never moves.
+/// `e^{−y²/2 + s·y}` beside a bound at `y = 0`, `s` the tilted mode's exact offset from it: the mgf's tilt.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct TiltedKernel {
   pub(super) s: f64,
@@ -59,8 +59,10 @@ pub(super) struct TiltedKernel {
 }
 
 impl Kernel for TiltedKernel {
+  /// About the mode, so a coordinate far from 0 still reads finite.
   fn ln_k(&self, z: f64) -> f64 {
-    z * (self.s - 0.5 * z)
+    let y = z - self.s;
+    -0.5 * y * y
   }
 
   fn anchor(&mut self, c: Cut, _at_mode: bool) {
@@ -72,8 +74,8 @@ impl Kernel for TiltedKernel {
     y * ((self.s - self.c) - 0.5 * y)
   }
 
-  fn d1(&self, z: f64, _y: f64) -> f64 {
-    self.s - z
+  fn d1(&self, _z: f64, y: f64) -> f64 {
+    (self.s - self.c) - y
   }
 
   fn d2(&self, _z: f64, _y: f64) -> f64 {

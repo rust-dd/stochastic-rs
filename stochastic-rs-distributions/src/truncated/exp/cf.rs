@@ -9,6 +9,7 @@ use super::turns::reduce;
 use super::turns::turns;
 use crate::traits::SimdFloatExt;
 use crate::truncated::quadrature::ldexp;
+use crate::truncated::quadrature::split;
 
 impl<T: SimdFloatExt> SimdTruncatedExp<T> {
   /// No product `t·x` is rounded before its reduction, and no `t/λ` or `t·m/λ` is formed; at an infinite `t` the
@@ -77,18 +78,6 @@ fn angle_between(t: f64, lo: f64, up: f64) -> f64 {
 
 /// Below this a product's reduction subtracts its multiple of 2π in exact parts.
 const MODERATE: f64 = 1_048_576.0;
-
-/// `x = m·2^e`, `m` in `[1, 2)`, for a positive finite `x`.
-fn split(x: f64) -> (f64, i32) {
-  let scaled = if x < f64::MIN_POSITIVE {
-    x * 2f64.powi(64)
-  } else {
-    x
-  };
-  let e = ((scaled.to_bits() >> 52) & 0x7ff) as i32 - 1023;
-  let e = if x < f64::MIN_POSITIVE { e - 64 } else { e };
-  (ldexp(x, -e), e)
-}
 
 /// `n·2^e/(c + id)` by Smith's division of `n` by `c + id` scaled to its own power of two, both scales applied once
 /// at the end: no intermediate over- or underflows where the quotient does not.

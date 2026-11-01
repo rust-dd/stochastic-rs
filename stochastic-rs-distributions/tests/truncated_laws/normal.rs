@@ -495,6 +495,29 @@ fn mgf_from_the_clamped_bound() {
   }
 }
 
+/// The tilted mode's offset from a bound is formed exactly where `σt` and the bound round to one double (the first
+/// three), and the exponent's cancelling terms in double-double (mpmath, 60 and 120 digits past the units).
+#[test]
+fn mgf_from_the_exact_offset() {
+  let inf = f64::INFINITY;
+  for (mu, sigma, lo, up, t, want) in [
+    (1e300, 1e100, -inf, 0.0, -1e100, 2.085033101870238e17),
+    (-1e300, 1e100, 0.0, inf, 1e100, 2.085033101870238e17),
+    (1.0, 1e-100, -inf, 0.0, -1e200, inf),
+    (-1e5, 0.3, -2e5, 2e5, 2222222.222222222, 0.9999628568840959),
+    (-1e5, 0.3, -inf, inf, 2222222.222222222, 0.9999628568840959),
+    (-1000.0, 1.1, -2000.0, 100.0, 5000.0, 8.86538357183987e-5),
+    (-50.5, 1.1, -60.0, 49.5, 83.48, 0.281062626617266),
+    (61.0, 1.1, -inf, 50.0, -100.0, 25.312166020134956),
+  ] {
+    let got = tn(mu, sigma, lo, up).moment_generating_function(t).unwrap();
+    assert!(
+      got == want || rel(got, want) < 1e-12,
+      "TN({mu:e}, {sigma:e}, [{lo:e}, {up:e}]).mgf({t:e}) = {got:e}"
+    );
+  }
+}
+
 /// A bound whose `bound − μ` overflows standardises from halves: `TN(−1e308, 1e308, [−1e308, 1e308])` is the standard
 /// normal on `[0, 2]`, not `[0, ∞)` (mpmath, 60 and 120 digits).
 #[test]

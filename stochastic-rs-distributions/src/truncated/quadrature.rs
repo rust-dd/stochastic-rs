@@ -118,6 +118,18 @@ pub(super) fn ldexp(mut x: f64, mut p: i32) -> f64 {
   x * two(p)
 }
 
+/// `x = m·2^e`, `m` in `[1, 2)`, for a positive finite `x`.
+pub(super) fn split(x: f64) -> (f64, i32) {
+  let scaled = if x < f64::MIN_POSITIVE {
+    x * 2f64.powi(64)
+  } else {
+    x
+  };
+  let e = ((scaled.to_bits() >> 52) & 0x7ff) as i32 - 1023;
+  let e = if x < f64::MIN_POSITIVE { e - 64 } else { e };
+  (ldexp(x, -e), e)
+}
+
 /// Relative kernel below `e^{−CLIP}` is dropped: 1e-18 of the mass near the reference point.
 const CLIP: f64 = 41.5;
 
