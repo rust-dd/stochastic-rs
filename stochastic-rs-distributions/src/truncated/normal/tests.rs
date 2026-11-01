@@ -235,3 +235,34 @@ fn tail_draws_stay_inside_a_subnormal_width() {
     }
   }
 }
+
+/// An interval about `μ` whose mass is below 2⁻³² of `F(lower)`, which the inverse cdf's map resolves into a few cells
+/// (`σ = 1e16` drew two values, one outside the support), draws its law; a one-sided law whose standardised width
+/// underflows draws over its doubles, not its bound alone.
+#[test]
+fn draws_of_a_law_too_narrow_for_its_standardised_map() {
+  for (mu, sigma) in [(0.0, 1e16), (0.0, 1e300), (5.0, 1e17)] {
+    let law = SimdTruncatedNormal::<f64>::new(mu, sigma, -1.0, 1.0);
+    let best = scalar_ks_best_p(&law, |x| law.cdf(x).unwrap());
+    assert!(best > 0.01, "TN({mu}, {sigma:e}, [-1, 1]): best p = {best}");
+    let mut stream = law.clone().seeded(&Deterministic::new(7));
+    for x in scalar_draws(&law, 7, 1000)
+      .into_iter()
+      .chain((0..1000).map(|_| stream.sample()))
+    {
+      assert!(
+        (-1.0..=1.0).contains(&x),
+        "TN({mu}, {sigma:e}, [-1, 1]): {x}"
+      );
+    }
+  }
+  let (lo, up) = (-9.323420141090855e-309, -9.323420141090836e-309);
+  let law = SimdTruncatedNormal::<f64>::new(-1.320559811947457e302, 41.56670583661562, lo, up);
+  let mut draws = scalar_draws(&law, 7, 1000);
+  draws.sort_by(f64::total_cmp);
+  draws.dedup();
+  assert!(
+    draws.len() >= 3 && draws.iter().all(|x| (lo..=up).contains(x)),
+    "{draws:?}"
+  );
+}

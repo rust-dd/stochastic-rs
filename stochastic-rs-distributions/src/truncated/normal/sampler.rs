@@ -70,14 +70,34 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     }
     match self.tail {
       Some(setup) => self.tail_sample(setup, src),
+      // The map's cells are an ulp of `F(lower)` wide: where 2²⁰ of them do not span the interval's mass it resolves
+      // no law, and the narrow interval is drawn uniformly, kept with probability `e^{−z²/2}`.
+      None if self.norm_mass < 2f64.powi(-32) => T::from_f64_fast(self.flat_draw(src)),
       None => T::from_f64_fast(self.inverse_cdf(src.uniform())),
     }
+  }
+
+  /// An interval about `μ` too narrow for the inverse cdf: `x` uniform on it, accepted with `e^{−z²/2} ≥ e^{−w²/2}`,
+  /// near 1 here (1000 tries bound the loop).
+  fn flat_draw<S: TruncatedNormalSource<T>>(&self, src: &mut S) -> f64 {
+    let (lo, up) = (self.lower.to_f64().unwrap(), self.upper.to_f64().unwrap());
+    let mut x = lo;
+    for _ in 0..1000 {
+      let u = src.uniform();
+      x = (lo + u * (up - lo)).clamp(lo, up);
+      let z = self.standardise(x).unwrap();
+      if src.uniform() <= (-0.5 * z * z).exp() {
+        break;
+      }
+    }
+    x
   }
 
   /// Robert (1995) accept-reject on the standardised one-sided interval, which forms no cdf: deep in a tail
   /// `F(upper) − F(lower)` loses its digits, and past about 8.3σ both round to 1 and inversion returns `+inf`.
   fn tail_sample<S: TruncatedNormalSource<T>>(&self, setup: TailSetup, src: &mut S) -> T {
-    if setup.a == f64::INFINITY {
+    // A standardised width below the doubles holds no offset: in the law's own coordinate, as past `μ ± σ·MAX`.
+    if setup.a == f64::INFINITY || setup.width < f64::MIN_POSITIVE {
       return T::from_f64_fast(self.beyond_draw(setup, src.uniform()));
     }
     // The offset `y = z − a` from the near bound, which the law's own coordinate takes without `μ + σz`'s cancellation.
