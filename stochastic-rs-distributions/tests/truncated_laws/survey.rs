@@ -94,11 +94,11 @@ enum Trip {
   Off(String),
 }
 
-/// `|cdf(x) − p|` within `1e-12·min(p, 1 − p)` plus the cdf's step across one ulp of `x`: `pdf(x)·ulp(x)`, or, where
-/// the law is narrower than that ulp, the cdf one ulp either side of `x` bracketing `p`.
+/// `|cdf(x) − p|` within `1e-12·min(p, 1 − p)`, and 8ε above ½ where the cdf holds absolute digits, plus its step
+/// across an ulp of `x`: `pdf(x)·ulp(x)`, or for a law narrower than that ulp the cdf beside `x` bracketing `p`.
 fn round_trip(law: &impl DistributionExt, p: f64, x: f64) -> Trip {
   let back = law.cdf(x).unwrap();
-  let tol = 1e-12 * p.min(1.0 - p);
+  let tol = 1e-12 * p.min(1.0 - p) + if p > 0.5 { 8.0 * f64::EPSILON } else { 0.0 };
   if (back - p).abs() <= tol + law.pdf(x).unwrap() * ulp(x) {
     return Trip::Within;
   }

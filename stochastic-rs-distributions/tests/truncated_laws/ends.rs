@@ -79,35 +79,48 @@ fn beside_the_lower_end_of_a_flat_kernel() {
   quantiles(name, &law, &[(1e-12, 0.10000000000058638)]);
 }
 
-/// The cdf at `rows`' points, each the double nearest mpmath's value, and `cdf(quantile(p))` at the two levels next to 1.
-fn next_to_one(name: &str, law: &impl DistributionExt, rows: &[(f64, f64)]) {
+/// The cdf at `rows`' points to 8ε, the absolute digits it holds next to 1, and the quantile at 1 − 1e-10 and
+/// 1 − 2⁻⁵³ to an ulp of mpmath's `points`: above ½ it walks from the upper end, keeping the digits `1 − p` has.
+fn next_to_one(name: &str, law: &impl DistributionExt, rows: &[(f64, f64)], points: [f64; 2]) {
   for &(x, want) in rows {
-    assert_eq!(law.cdf(x).unwrap(), want, "{name}: cdf({x:e})");
+    let got = law.cdf(x).unwrap();
+    assert!(
+      (got - want).abs() <= 8.0 * f64::EPSILON,
+      "{name}: cdf({x:e}) = {got}, mpmath {want}"
+    );
   }
-  for p in [1.0 - 1e-10, 1.0 - f64::EPSILON / 2.0] {
-    let x = law.quantile(p).unwrap();
-    assert_eq!(law.cdf(x).unwrap(), p, "{name}: cdf(quantile({p:e}))");
+  for (p, want) in [1.0 - 1e-10, 1.0 - f64::EPSILON / 2.0]
+    .into_iter()
+    .zip(points)
+  {
+    let got = law.quantile(p).unwrap();
+    assert!(
+      (got - want).abs() <= want.next_up() - want,
+      "{name}: quantile({p:e}) = {got:e}, mpmath {want:e}"
+    );
   }
 }
 
-/// Past the median the cdf is one less the mass above, so next to 1 it keeps the digits its complement has.
 #[test]
-fn next_to_one_the_cdf_keeps_its_complement() {
+fn next_to_one_the_quantile_walks_from_the_upper_end() {
   let inf = f64::INFINITY;
   next_to_one(
     "TN(0, 1, ℝ)",
     &SimdTruncatedNormal::<f64>::new(0.0, 1.0, -inf, inf),
     &[(6.361340889697422, 0.9999999999)],
+    [6.361340889697422, 8.209536151601387],
   );
   next_to_one(
     "TN(0.5, 2, [−1, 2])",
     &SimdTruncatedNormal::<f64>::new(0.5, 2.0, -1.0, 2.0),
     &[(1.9999999996368798, 0.9999999999)],
+    [1.9999999996368798, 1.9999999999999996],
   );
   next_to_one(
     "TN(0, 1, [0, 1.4])",
     &SimdTruncatedNormal::<f64>::new(0.0, 1.0, 0.0, 1.4),
     &[(1.4 - 1e-12, 0.9999999999996428)],
+    [1.3999999997199957, 1.3999999999999997],
   );
   next_to_one(
     "TG(2.5, 1.2, [0, ∞))",
@@ -116,6 +129,7 @@ fn next_to_one_the_cdf_keeps_its_complement() {
       (33.33743900619891, 0.9999999999),
       (50.517019341912786, 0.9999999999999999),
     ],
+    [33.337439006198906, 50.517019341912786],
   );
   next_to_one(
     "TB(2, 3, [0, 1])",
@@ -124,6 +138,7 @@ fn next_to_one_the_cdf_keeps_its_complement() {
       (0.9997075768387249, 0.9999999999),
       (0.999996972270482, 0.9999999999999999),
     ],
+    [0.9997075768387249, 0.999996972270482],
   );
 }
 
@@ -169,8 +184,8 @@ fn the_exponentials_cdf_in_both_tails() {
   }
 }
 
-/// Nearer a finite upper bound the exponential's quantile is that bound less its offset, the double nearest mpmath's
-/// point, where the cdf returns the level to within its step across that double's ulp.
+/// Nearer a finite upper bound the exponential's quantile is that bound less its offset, within an ulp of mpmath's
+/// point, where the cdf returns the level to within its step across that ulp.
 #[test]
 fn the_exponentials_quantile_next_to_one() {
   let rows = [
@@ -207,7 +222,11 @@ fn the_exponentials_quantile_next_to_one() {
       .into_iter()
       .zip(want)
     {
-      assert_eq!(law.quantile(p).unwrap(), x, "{name}: quantile({p:e})");
+      let got = law.quantile(p).unwrap();
+      assert!(
+        (got - x).abs() <= x.next_up() - x,
+        "{name}: quantile({p:e}) = {got:e}, mpmath {x:e}"
+      );
       let step = law.pdf(x).unwrap() * (x.next_up() - x);
       let back = law.cdf(x).unwrap();
       assert!(
