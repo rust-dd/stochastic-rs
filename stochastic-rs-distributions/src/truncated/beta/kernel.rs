@@ -56,18 +56,20 @@ impl BetaKernel {
 
   /// `ln((1 − x)/(1 − c))` for `z = −y/(1 − c)`, `1 − x` as `gap` forms it.
   #[inline]
-  fn ln_right(&self, y: f64, z: f64, branch: Option<(f64, f64)>) -> f64 {
+  fn ln_right(&self, x: f64, y: f64, z: f64, branch: Option<(f64, f64)>) -> f64 {
     if z.abs() <= 0.5 {
       return z.ln_1p();
     }
-    far_log(self.b, self.gap(y, branch), self.cc, self.ln_cc)
+    far_log(self.b, self.gap(x, y, branch), self.cc, self.ln_cc)
   }
 
-  /// `1 − x` as the offset from 1 where `branch` holds it, else as `(1 − c) − y`: never from a rounded `x`.
+  /// `1 − x`: the offset from 1 where `branch` holds it; from `x` itself, exact, where `x ≥ ½` and the rounded `1 − c`
+  /// of a reference point below ½ would cancel; else `(1 − c) − y`, the node's own offset.
   #[inline]
-  fn gap(&self, y: f64, branch: Option<(f64, f64)>) -> f64 {
+  fn gap(&self, x: f64, y: f64, branch: Option<(f64, f64)>) -> f64 {
     match branch {
       Some((1.0, t)) => -t,
+      _ if self.c < 0.5 && x >= 0.5 => 1.0 - x,
       _ => self.cc - y,
     }
   }
@@ -84,11 +86,11 @@ impl BetaKernel {
 
   /// `(b − 1) ln((1 − x)/(1 − c))`, 0 for a unit shape.
   #[inline]
-  fn right(&self, y: f64, branch: Option<(f64, f64)>) -> f64 {
+  fn right(&self, x: f64, y: f64, branch: Option<(f64, f64)>) -> f64 {
     if self.b == 1.0 {
       0.0
     } else {
-      (self.b - 1.0) * self.ln_right(y, -y / self.cc, branch)
+      (self.b - 1.0) * self.ln_right(x, y, -y / self.cc, branch)
     }
   }
 
@@ -114,7 +116,7 @@ impl BetaKernel {
         0.0
       },
       if zr < -0.75 {
-        ln_ratio(self.gap(y, branch), self.cc, self.ln_cc)
+        ln_ratio(self.gap(x, y, branch), self.cc, self.ln_cc)
       } else {
         0.0
       },
@@ -204,7 +206,7 @@ impl Kernel for BetaKernel {
       return 0.0;
     }
     if self.plain {
-      self.left(x, y) + self.right(y, branch)
+      self.left(x, y) + self.right(x, y, branch)
     } else {
       self.ln_rel_exact(x, y, branch)
     }
@@ -213,7 +215,7 @@ impl Kernel for BetaKernel {
   #[inline]
   fn ln_rel_regular(&self, x: f64, y: f64, s: f64) -> f64 {
     if s == 0.0 {
-      -(self.a - 1.0) * self.ln_c + self.right(y, None)
+      -(self.a - 1.0) * self.ln_c + self.right(x, y, None)
     } else {
       self.left(x, y) - (self.b - 1.0) * self.ln_cc
     }

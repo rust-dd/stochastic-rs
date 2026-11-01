@@ -123,3 +123,33 @@ fn a_quantile_walked_from_a_clip_maps_back_from_its_bound() {
     rows(name, "quantile", |p| law.quantile(p).unwrap(), quantile);
   }
 }
+
+/// Next to 1 with the reference point below ½, `1 − x` comes from the point itself, not from the rounded `1 − c`.
+#[test]
+fn the_betas_kernel_next_to_one_from_a_centre_far_below() {
+  let laws: [Law; 2] = [
+    (
+      "TB(2, 3, [0, 1])",
+      [2.0, 3.0, 0.0, 1.0],
+      &[
+        (0.999999999, 1.1999999309233655e-17),
+        (0.999999999999, 1.1999469084577531e-23),
+        (0.9999999999999999, 1.479114197289397e-31),
+        (0.5, 1.5),
+      ],
+    ),
+    (
+      "TB(1.5, 4, [0, 1])",
+      [1.5, 4.0, 0.0, 1.0],
+      &[
+        (0.999999999, 9.843749159877361e-27),
+        (0.999999999999, 9.843096732399356e-36),
+        (0.9999999999999999, 1.3470734138864666e-47),
+      ],
+    ),
+  ];
+  for (name, [a, b, lo, up], pdf) in laws {
+    let law = SimdTruncatedBeta::<f64>::new(a, b, lo, up);
+    rows(name, "pdf", |x| law.pdf(x).unwrap(), pdf);
+  }
+}
