@@ -464,3 +464,35 @@ fn scalar_draws(law: &SimdTruncatedBeta<f64>) -> Vec<f64> {
   let mut rng = stochastic_rs_core::simd_rng::SimdRng::from_seed(7);
   (0..10).map(|_| law.sample(&mut rng)).collect()
 }
+
+/// Either side of the plain form's bound `α + β ≤ 1e4`: the pdf at 8 and 20 widths and at the farthest width whose pdf
+/// is a normal double, on both sides (mpmath, 60 and 120 digits).
+#[test]
+fn either_side_of_the_plain_bound() {
+  let inside = [
+    (0.4600019998500125, 9.20513278826237e-13),
+    (0.4000049996250312, 1.926940202669681e-87),
+    (0.3177330247712141, 2.225077267744367e-308),
+    (0.5399980001499876, 9.205132788261548e-13),
+    (0.5999950003749688, 1.926940202669681e-87),
+    (0.6822669752287859, 2.225077267744367e-308),
+  ];
+  let outside = [
+    (0.46000199985001244, 9.205132788262257e-13),
+    (0.4000049996250312, 1.9269402026700324e-87),
+    (0.31773302477121407, 2.225077267744021e-308),
+    (0.5399980001499874, 9.205132788262426e-13),
+    (0.5999950003749687, 1.9269402026701422e-87),
+    (0.6822669752287859, 2.2250772677433587e-308),
+  ];
+  for (b, rows) in [(5000.0, inside), (5000.0_f64.next_up(), outside)] {
+    let law = tb(5000.0, b, 0.0, 1.0);
+    for (x, want) in rows {
+      let got = law.pdf(x).unwrap();
+      assert!(
+        rel(got, want) < 1e-12,
+        "TB(5000, {b}).pdf({x}) = {got:e}, want {want:e}"
+      );
+    }
+  }
+}

@@ -3,6 +3,7 @@
 use crate::truncated::quadrature::Cut;
 use crate::truncated::quadrature::Kernel;
 use crate::truncated::quadrature::ln_1p_mx;
+use crate::truncated::quadrature::ln_ratio;
 
 /// `x^{a−1} (1 − x)^{b−1}` on `[0, 1]` about the reference point `c`; a unit shape has no log term, whose `0·ln 0`
 /// would read NaN at its end.
@@ -20,7 +21,7 @@ pub(super) struct BetaKernel {
   mode: Cut,
   /// The mode is stationary and held exactly, so its slope is 0 by construction.
   exact: bool,
-  /// `α + β ≤ 1e5`: the plain form errs by at most 4.4e-13 within eight widths of the mode, and costs two `ln_1p`.
+  /// `α + β ≤ 1e4`: the plain form's measured error, 5.5e-15·√(α + β) out to the farthest normal pdf, stays in 1e-12.
   plain: bool,
 }
 
@@ -38,7 +39,7 @@ impl BetaKernel {
       slope: None,
       mode,
       exact,
-      plain: a + b <= 1e5,
+      plain: a + b <= 1e4,
     }
   }
 
@@ -53,18 +54,22 @@ impl BetaKernel {
     }
   }
 
-  /// `ln((1 − x)/(1 − c))` for `z = −y/(1 − c)`, `1 − x` as the offset from 1 where `branch` holds it, else as
-  /// `(1 − c) − y`: never from a rounded `x`.
+  /// `ln((1 − x)/(1 − c))` for `z = −y/(1 − c)`, `1 − x` as `gap` forms it.
   #[inline]
   fn ln_right(&self, y: f64, z: f64, branch: Option<(f64, f64)>) -> f64 {
     if z.abs() <= 0.5 {
       return z.ln_1p();
     }
-    let gap = match branch {
+    self.gap(y, branch).ln() - self.ln_cc
+  }
+
+  /// `1 − x` as the offset from 1 where `branch` holds it, else as `(1 − c) − y`: never from a rounded `x`.
+  #[inline]
+  fn gap(&self, y: f64, branch: Option<(f64, f64)>) -> f64 {
+    match branch {
       Some((1.0, t)) => -t,
       _ => self.cc - y,
-    };
-    gap.ln() - self.ln_cc
+    }
   }
 
   /// `(a − 1) ln(x/c)`, 0 for a unit shape.
@@ -88,23 +93,28 @@ impl BetaKernel {
   }
 
   /// `(a − 1)(ln(x/c) − y/c) + (b − 1)(ln((1 − x)/(1 − c)) + y/(1 − c))` plus the slope's `y`, each factor's first part
-  /// `ln_1p_mx` beside `c`: out of line, as only shapes past `α + β = 1e5` take it.
+  /// `ln_1p_mx` beside `c`: out of line, as only shapes past `α + β = 1e4` take it.
   #[inline(never)]
   fn ln_rel_exact(&self, x: f64, y: f64, branch: Option<(f64, f64)>) -> f64 {
     let (zl, zr) = (y / self.c, -y / self.cc);
     let part = |e: f64, z: f64, log: f64| {
       if e == 1.0 {
         0.0
-      } else if z < -0.5 {
+      } else if z < -0.75 {
         (e - 1.0) * (log - z)
       } else {
         (e - 1.0) * ln_1p_mx(z)
       }
     };
+    // Below a quarter of `c`, or of `1 − c` from 1, the quotient's log: the shape multiplies its error, not `u·ln x`.
     let (ll, lr) = (
-      if zl < -0.5 { self.ln_left(x, zl) } else { 0.0 },
-      if zr < -0.5 {
-        self.ln_right(y, zr, branch)
+      if zl < -0.75 {
+        ln_ratio(x, self.c, self.ln_c)
+      } else {
+        0.0
+      },
+      if zr < -0.75 {
+        ln_ratio(self.gap(y, branch), self.cc, self.ln_cc)
       } else {
         0.0
       },
@@ -175,7 +185,7 @@ impl Kernel for BetaKernel {
     self.slope = slope.is_finite().then_some(slope);
   }
 
-  /// The plain form, which past `α + β = 1e5` loses digits to its two factors' cancelling linear parts.
+  /// The plain form, which past `α + β = 1e4` loses digits to its two factors' cancelling linear parts.
   #[inline]
   fn ln_rel(&self, x: f64, y: f64, branch: Option<(f64, f64)>) -> f64 {
     if y == 0.0 {

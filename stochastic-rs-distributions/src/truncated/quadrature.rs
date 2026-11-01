@@ -61,6 +61,9 @@ pub(super) trait Kernel {
   fn base_moments(&self) -> [f64; 4];
 }
 
+/// `½ − ln 2` correctly rounded (mpmath at 60 and 120 digits).
+const HALF_LESS_LN_2: f64 = -0.19314718055994531;
+
 /// `1/(2j + 3)`, `j < 17`: past `(1/9)^17/37` the series `Σ w^{2j}/(2j + 3)` below adds nothing at `|w| ≤ 1/3`.
 const ODD: [f64; 17] = [
   1.0 / 3.0,
@@ -83,8 +86,13 @@ const ODD: [f64; 17] = [
 ];
 
 /// `ln(1 + z) − z` to full relative precision: `−wz + 2w³ Σ_j w^{2j}/(2j + 3)`, `w = z/(2 + z)`, by Estrin's scheme
-/// for `|w| ≤ 1/3` (from `ln(1 + z) = 2 atanh w`); past that the plain difference loses under two bits.
+/// for `|w| ≤ 1/3` (from `ln(1 + z) = 2 atanh w`), on `[−3/4, −1/2)` by halving `1 + z`; past that the plain
+/// difference loses under two bits.
 pub(super) fn ln_1p_mx(z: f64) -> f64 {
+  if (-0.75..-0.5).contains(&z) {
+    // `ln(1 + z) = −ln 2 + ln(1 + v)`, `v = 2z + 1`: three terms of one sign, both shifts exact.
+    return HALF_LESS_LN_2 + (z + 0.5) + ln_1p_mx(2.0 * z + 1.0);
+  }
   let w = z / (2.0 + z);
   if w.abs() > 1.0 / 3.0 || w.is_nan() {
     // An offset past the doubles' range from its reference point: the kernel has vanished there.
@@ -102,6 +110,13 @@ pub(super) fn ln_1p_mx(z: f64) -> f64 {
   let x8 = x4 * x4;
   let sum = x8.mul_add(x8.mul_add(ODD[16], oct(8)), oct(0));
   2.0 * w * x * sum - w * z
+}
+
+/// `ln(n/d)` from the quotient while it is normal, else `ln n − ln d`, whose `u·|ln n|` a large exponent would multiply.
+#[inline]
+pub(super) fn ln_ratio(n: f64, d: f64, ln_d: f64) -> f64 {
+  let q = n / d;
+  if q.is_normal() { q.ln() } else { n.ln() - ln_d }
 }
 
 /// `x·2^p` for any `p`, by normal factors, so `2^p` itself may lie past the doubles (θ above 2¹⁰²³).

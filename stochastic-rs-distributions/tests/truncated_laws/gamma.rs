@@ -483,3 +483,35 @@ fn modes_past_the_doubles_range() {
   assert!(rel(huge.skewness().unwrap(), 2e-150) < 1e-12);
   assert!(rel(huge.kurtosis().unwrap(), 5.999999999999999e-300) < 1e-12);
 }
+
+/// Either side of the plain form's bound `k − 1 ≤ 3e3`, at a density near 1e300: the pdf at 8 and 20 widths and at the
+/// farthest width whose pdf is a normal double, on both sides (mpmath, 60 and 120 digits).
+#[test]
+fn either_side_of_the_plain_bound() {
+  let inside = [
+    (2.5617489304063252e-303, 2.743374377702222e288),
+    (1.9043723260158128e-303, 3.794997838033839e187),
+    (9.46142649552547e-304, 2.2250837789105274e-308),
+    (3.438251069593675e-303, 1.5181416678448107e291),
+    (4.095627673984187e-303, 4.314462724356265e233),
+    (6.912009776411738e-303, 2.225078785029349e-308),
+  ];
+  let outside = [
+    (2.5617489304063258e-303, 2.743374377702309e288),
+    (1.9043723260158135e-303, 3.7949978380343905e187),
+    (9.461426495525474e-304, 2.225083778910807e-308),
+    (3.4382510695936754e-303, 1.5181416678447888e291),
+    (4.095627673984188e-303, 4.314462724356189e233),
+    (6.91200977641174e-303, 2.2250787850286457e-308),
+  ];
+  for (k, rows) in [(3001.0, inside), (3001.0_f64.next_up(), outside)] {
+    let law = tg(k, 1e-306, 0.0, f64::INFINITY);
+    for (x, want) in rows {
+      let got = law.pdf(x).unwrap();
+      assert!(
+        rel(got, want) < 1e-12,
+        "TG({k}, 1e-306).pdf({x:e}) = {got:e}, want {want:e}"
+      );
+    }
+  }
+}

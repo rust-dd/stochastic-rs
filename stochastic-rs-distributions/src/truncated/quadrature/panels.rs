@@ -154,7 +154,7 @@ impl Cut {
   }
 
   /// `(s, lo + t)`: the double it is held beside and the rest, so `x − self` is `(x − s) − (lo + t)`.
-  pub(super) fn near(self) -> (f64, f64) {
+  pub(in crate::truncated) fn near(self) -> (f64, f64) {
     let (s, lo, t) = self.parts();
     (s, lo + t)
   }

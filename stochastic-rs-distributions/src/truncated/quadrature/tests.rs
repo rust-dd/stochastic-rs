@@ -174,3 +174,25 @@ fn ladder_reaches_an_end_far_below_the_clip() {
   );
   assert!(((t.quantile(p).value() - 1e-200) / 1e-200).abs() < 1e-12);
 }
+
+/// `ln(1 + z) − z` to a few ulps across the series and the halved range below `−1/2` (mpmath, 60 and 120 digits).
+#[test]
+fn ln_1p_mx_keeps_its_digits_to_three_quarters() {
+  for (z, want) in [
+    (-0.75, -0.6362943611198906),
+    (-0.7, -0.5039728043259359),
+    (-0.65, -0.3998221244986777),
+    (-0.6, -0.316290731874155),
+    (-0.55, -0.24850769621777166),
+    (-0.5000000000000001, -0.19314718055994543),
+    (-0.5, -0.19314718055994531),
+    (-0.25, -0.03768207245178093),
+    (0.3, -0.03763573553250894),
+  ] {
+    let got = ln_1p_mx(z);
+    assert!(
+      ((got - want) / want).abs() <= 4.0 * f64::EPSILON,
+      "ln_1p_mx({z}) = {got:e}, want {want:e}"
+    );
+  }
+}

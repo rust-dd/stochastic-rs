@@ -3,6 +3,7 @@
 use crate::truncated::quadrature::Cut;
 use crate::truncated::quadrature::Kernel;
 use crate::truncated::quadrature::ln_1p_mx;
+use crate::truncated::quadrature::ln_ratio;
 
 /// `u^{k−1} e^{−u/s}` on `[0, ∞)` about the reference point `c`; a unit shape has no log term, whose `0·ln 0` would
 /// read NaN at 0.
@@ -13,10 +14,12 @@ pub(super) struct GammaKernel {
   /// below θ that `e^{−u/s}` is 1 on the interval.
   s: f64,
   c: f64,
+  /// The rest of the exact reference point past `c`, which the offsets `y` are taken from.
+  c_lo: f64,
   ln_c: f64,
   /// `(k − 1)/c − 1/s`, the slope at `c`, `None` where it overflows.
   slope: Option<f64>,
-  /// `k − 1 ≤ 1e5`: the plain form errs by at most 4.4e-13 within eight widths of the mode, and costs a `ln_1p`.
+  /// `k − 1 ≤ 3e3`: the plain form's measured error, 1.6e-14·√(k − 1) out to the farthest normal pdf, stays in 1e-12.
   plain: bool,
 }
 
@@ -27,22 +30,29 @@ impl GammaKernel {
       k,
       s,
       c: 0.0,
+      c_lo: 0.0,
       ln_c: f64::NEG_INFINITY,
       slope: None,
-      plain: k - 1.0 <= 1e5,
+      plain: k - 1.0 <= 3e3,
     }
   }
 }
 
 impl GammaKernel {
-  /// `(k − 1)(ln(x/c) − y/c) + slope·y`, the first part `ln_1p_mx` beside `c`, read from `x` toward 0.
+  /// `(k − 1)(ln(x/c) − y/c) + slope·y`, the first part `ln_1p_mx` down to `x = c/4`, the quotient's log below.
   #[inline(never)]
   fn ln_rel_exact(&self, x: f64, y: f64, slope: f64) -> f64 {
     let z = y / self.c;
-    if z < -0.5 {
-      (self.k - 1.0) * ((x.ln() - self.ln_c) - z) + slope * y
+    if z < -0.75 {
+      (self.k - 1.0) * (ln_ratio(x, self.c, self.ln_c) - z) + slope * y
     } else {
-      (self.k - 1.0) * ln_1p_mx(z) + slope * y
+      // `y/(c + c_lo)` past its rounding, which the left tail's `1/(1 + z)` amplifies; far out it would only overflow.
+      let z_lo = if z.abs() <= 1.0 {
+        ((-z).mul_add(self.c, y) - z * self.c_lo) / self.c
+      } else {
+        0.0
+      };
+      (self.k - 1.0) * (ln_1p_mx(z) - z_lo * z / (1.0 + z)) + slope * y
     }
   }
 }
@@ -65,7 +75,9 @@ impl Kernel for GammaKernel {
   /// a sign.
   #[inline]
   fn anchor(&mut self, c: Cut, at_mode: bool) {
+    let (hi, lo) = c.near();
     self.c = c.x;
+    self.c_lo = (hi - c.x) + lo;
     self.ln_c = c.x.ln();
     let slope = if self.k == 1.0 {
       -1.0 / self.s
@@ -81,8 +93,8 @@ impl Kernel for GammaKernel {
     self.slope = slope.is_finite().then_some(slope);
   }
 
-  /// The plain `(k − 1) ln(x/c) − y/s`, `ln_1p` within half of `c` and else read from `x`, which a `y/c` past the
-  /// doubles never reaches; past `k − 1 = 1e5`, where the slope is finite, the cancellation-free form out of line.
+  /// The plain `(k − 1) ln(x/c) − y/s`, `ln_1p` within half of `c` and else the quotient's log, which a `y/c` past the
+  /// doubles never reaches; past the shape bound, where the slope is finite, the cancellation-free form out of line.
   #[inline]
   fn ln_rel(&self, x: f64, y: f64, _branch: Option<(f64, f64)>) -> f64 {
     if self.k == 1.0 {
@@ -93,7 +105,7 @@ impl Kernel for GammaKernel {
       _ => {
         let z = y / self.c;
         let ln_ratio = if z.abs() > 0.5 {
-          x.ln() - self.ln_c
+          ln_ratio(x, self.c, self.ln_c)
         } else {
           z.ln_1p()
         };
