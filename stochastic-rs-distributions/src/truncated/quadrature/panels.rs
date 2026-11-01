@@ -153,6 +153,12 @@ impl Cut {
     }
   }
 
+  /// `(s, lo + t)`: the double it is held beside and the rest, so `x − self` is `(x − s) − (lo + t)`.
+  pub(super) fn near(self) -> (f64, f64) {
+    let (s, lo, t) = self.parts();
+    (s, lo + t)
+  }
+
   /// Its offset from the double it is held beside, as the `branch` a kernel reads.
   pub(super) fn branch(self) -> Option<(f64, f64)> {
     self.from.map(|(s, lo, t)| (s, lo + t))
@@ -184,6 +190,10 @@ pub(super) fn panels<K: Kernel, B>(
   rev: bool,
   mut visit: impl FnMut(Panel) -> ControlFlow<B>,
 ) -> ControlFlow<B> {
+  // No branch point: the one piece, without the ladders' iterators.
+  if kernel.branch_points() == [None, None] {
+    return piece(kernel, c, (lc, rc), rev, true, &mut visit);
+  }
   let width = span(lc, rc);
   // Each branch point's offsets to the two ends, exact beside it.
   let ladders = kernel.branch_points().map(|point| {

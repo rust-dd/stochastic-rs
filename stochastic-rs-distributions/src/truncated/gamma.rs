@@ -157,10 +157,18 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
     }
   }
 
+  #[inline]
   fn analytics(&self) -> Option<&Model<GammaKernel>> {
-    if let Some(m) = self.analytics.get() {
-      return Some(m);
+    match self.analytics.get() {
+      Some(m) => Some(m),
+      None => self.fill(),
     }
+  }
+
+  /// The first analytic call's integral, out of the hot path.
+  #[cold]
+  #[inline(never)]
+  fn fill(&self) -> Option<&Model<GammaKernel>> {
     let (k, theta) = (self.base.alpha().to_f64()?, self.base.scale().to_f64()?);
     let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
     let (lo_u, up_u) = (self.units(lo), self.units(up));
@@ -220,6 +228,24 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
       Point::Beside { s: 0.0, sign, ln_t } => sign * (ln_t + self.ln_unit()).exp(),
       _ => ldexp(point.value(), self.p),
     }
+  }
+
+  /// The pdf off the normal doubles in the kernel's unit, out of line: the limit 0 where `x/2^p` overflows, where the
+  /// kernel's `(k − 1) ln u − u` reads `∞ − ∞`, and beside 0 through its log.
+  #[cold]
+  #[inline(never)]
+  fn pdf_rare(&self, model: &Model<GammaKernel>, x: f64, u: f64) -> Option<f64> {
+    let t = match model {
+      Model::Full(t) => t,
+      Model::Local(l) => return Some(l.pdf(x, 0.0)),
+    };
+    if u == f64::INFINITY {
+      return Some(0.0);
+    }
+    Some(match self.beside_zero(x, u) {
+      Some(ln_t) => t.density_beside(0.0, self.base.alpha().to_f64()?, ln_t, self.ln_unit),
+      None => t.density(u, self.ln_unit),
+    })
   }
 
   /// `(mean, variance, skewness, excess kurtosis)` in the law's coordinate.
@@ -330,26 +356,18 @@ impl<T: SimdFloatExt> Distribution<T> for SimdTruncatedGamma<T> {
 }
 
 impl<T: SimdFloatExt> DistributionExt for SimdTruncatedGamma<T> {
-  /// At a point whose `x/2^p` overflows the limit 0, where the kernel's `(k − 1) ln u − u` reads `∞ − ∞`.
+  #[inline]
   fn pdf(&self, x: f64) -> Option<f64> {
     if x < self.lower.to_f64()? || x > self.upper.to_f64()? {
       return Some(0.0);
     }
-    let t = match self.analytics()? {
-      Model::Full(t) => t,
-      Model::Local(l) => return Some(l.pdf(x, 0.0)),
-    };
     let u = self.units(x);
-    if (f64::MIN_POSITIVE..f64::INFINITY).contains(&u) {
-      return Some(t.density(u, self.ln_unit));
+    match self.analytics()? {
+      Model::Full(t) if (f64::MIN_POSITIVE..f64::INFINITY).contains(&u) => {
+        Some(t.density(u, self.ln_unit))
+      }
+      model => self.pdf_rare(model, x, u),
     }
-    if u == f64::INFINITY {
-      return Some(0.0);
-    }
-    Some(match self.beside_zero(x, u) {
-      Some(ln_t) => t.density_beside(0.0, self.base.alpha().to_f64()?, ln_t, self.ln_unit),
-      None => t.density(u, self.ln_unit),
-    })
   }
 
   fn cdf(&self, x: f64) -> Option<f64> {

@@ -20,6 +20,8 @@ pub(super) struct BetaKernel {
   mode: Cut,
   /// The mode is stationary and held exactly, so its slope is 0 by construction.
   exact: bool,
+  /// `α + β ≤ 1e5`: the plain form errs by at most 4.4e-13 within eight widths of the mode, and costs two `ln_1p`.
+  plain: bool,
 }
 
 impl BetaKernel {
@@ -36,38 +38,78 @@ impl BetaKernel {
       slope: None,
       mode,
       exact,
+      plain: a + b <= 1e5,
     }
   }
 
-  /// `(a − 1)(ln(x/c) − y/c)`: `ln_1p_mx` beside `c`, read from `x` toward 0.
+  /// `ln(x/c)` for `z = y/c`: `ln_1p` within half of `c`, else read from `x`, which a `y/c` past the doubles never
+  /// reaches.
   #[inline]
-  fn left(&self, x: f64, y: f64) -> f64 {
-    let z = y / self.c;
-    if self.a == 1.0 {
-      0.0
-    } else if z < -0.5 {
-      (self.a - 1.0) * ((x.ln() - self.ln_c) - z)
+  fn ln_left(&self, x: f64, z: f64) -> f64 {
+    if z.abs() > 0.5 {
+      x.ln() - self.ln_c
     } else {
-      (self.a - 1.0) * ln_1p_mx(z)
+      z.ln_1p()
     }
   }
 
-  /// `(b − 1)(ln((1 − x)/(1 − c)) + y/(1 − c))`, `1 − x` toward 1 as the offset from 1 where `branch` holds it, else as
+  /// `ln((1 − x)/(1 − c))` for `z = −y/(1 − c)`, `1 − x` as the offset from 1 where `branch` holds it, else as
   /// `(1 − c) − y`: never from a rounded `x`.
   #[inline]
+  fn ln_right(&self, y: f64, z: f64, branch: Option<(f64, f64)>) -> f64 {
+    if z.abs() <= 0.5 {
+      return z.ln_1p();
+    }
+    let gap = match branch {
+      Some((1.0, t)) => -t,
+      _ => self.cc - y,
+    };
+    gap.ln() - self.ln_cc
+  }
+
+  /// `(a − 1) ln(x/c)`, 0 for a unit shape.
+  #[inline]
+  fn left(&self, x: f64, y: f64) -> f64 {
+    if self.a == 1.0 {
+      0.0
+    } else {
+      (self.a - 1.0) * self.ln_left(x, y / self.c)
+    }
+  }
+
+  /// `(b − 1) ln((1 − x)/(1 − c))`, 0 for a unit shape.
+  #[inline]
   fn right(&self, y: f64, branch: Option<(f64, f64)>) -> f64 {
-    let z = -y / self.cc;
     if self.b == 1.0 {
       0.0
-    } else if z < -0.5 {
-      let gap = match branch {
-        Some((1.0, t)) => -t,
-        _ => self.cc - y,
-      };
-      (self.b - 1.0) * ((gap.ln() - self.ln_cc) - z)
     } else {
-      (self.b - 1.0) * ln_1p_mx(z)
+      (self.b - 1.0) * self.ln_right(y, -y / self.cc, branch)
     }
+  }
+
+  /// `(a − 1)(ln(x/c) − y/c) + (b − 1)(ln((1 − x)/(1 − c)) + y/(1 − c))` plus the slope's `y`, each factor's first part
+  /// `ln_1p_mx` beside `c`: out of line, as only shapes past `α + β = 1e5` take it.
+  #[inline(never)]
+  fn ln_rel_exact(&self, x: f64, y: f64, branch: Option<(f64, f64)>) -> f64 {
+    let (zl, zr) = (y / self.c, -y / self.cc);
+    let part = |e: f64, z: f64, log: f64| {
+      if e == 1.0 {
+        0.0
+      } else if z < -0.5 {
+        (e - 1.0) * (log - z)
+      } else {
+        (e - 1.0) * ln_1p_mx(z)
+      }
+    };
+    let (ll, lr) = (
+      if zl < -0.5 { self.ln_left(x, zl) } else { 0.0 },
+      if zr < -0.5 {
+        self.ln_right(y, zr, branch)
+      } else {
+        0.0
+      },
+    );
+    part(self.a, zl, ll) + part(self.b, zr, lr) + self.linear(y)
   }
 
   /// `(a − 1)y/c − (b − 1)y/(1 − c)`, from the slope where it is finite; where it overflows the mode is far and the two
@@ -133,21 +175,25 @@ impl Kernel for BetaKernel {
     self.slope = slope.is_finite().then_some(slope);
   }
 
+  /// The plain form, which past `α + β = 1e5` loses digits to its two factors' cancelling linear parts.
   #[inline]
   fn ln_rel(&self, x: f64, y: f64, branch: Option<(f64, f64)>) -> f64 {
     if y == 0.0 {
       return 0.0;
     }
-    self.left(x, y) + self.right(y, branch) + self.linear(y)
+    if self.plain {
+      self.left(x, y) + self.right(y, branch)
+    } else {
+      self.ln_rel_exact(x, y, branch)
+    }
   }
 
   #[inline]
   fn ln_rel_regular(&self, x: f64, y: f64, s: f64) -> f64 {
-    let (a1, b1) = (self.a - 1.0, self.b - 1.0);
     if s == 0.0 {
-      -a1 * self.ln_c + self.right(y, None) - b1 * (y / self.cc)
+      -(self.a - 1.0) * self.ln_c + self.right(y, None)
     } else {
-      self.left(x, y) + a1 * (y / self.c) - b1 * self.ln_cc
+      self.left(x, y) - (self.b - 1.0) * self.ln_cc
     }
   }
 

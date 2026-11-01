@@ -156,10 +156,18 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
     }
   }
 
+  #[inline]
   fn analytics(&self) -> Option<&Analytics> {
-    if let Some(m) = self.analytics.get() {
-      return Some(m);
+    match self.analytics.get() {
+      Some(m) => Some(m),
+      None => self.fill(),
     }
+  }
+
+  /// The first analytic call's integral, out of the hot path.
+  #[cold]
+  #[inline(never)]
+  fn fill(&self) -> Option<&Analytics> {
     let (a, b) = (self.base.alpha().to_f64()?, self.base.beta().to_f64()?);
     let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
     Some(self.analytics.get_or_init(|| {
@@ -250,6 +258,17 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
   }
 }
 
+/// The pdf of a law the beta's own quadrature does not hold, out of line.
+#[cold]
+#[inline(never)]
+fn pdf_rare(analytics: &Analytics, x: f64) -> Option<f64> {
+  match analytics {
+    Analytics::Beta(Model::Full(t)) => Some(t.density(x, 0.0)),
+    Analytics::Beta(Model::Local(l)) => Some(l.pdf(x, 0.0)),
+    Analytics::Gamma(g) => g.pdf(x),
+  }
+}
+
 impl<T: SimdFloatExt> Sealed for SimdTruncatedBeta<T> {}
 
 impl<T: SimdFloatExt> SimdDistribution for SimdTruncatedBeta<T> {
@@ -283,15 +302,15 @@ impl<T: SimdFloatExt> Distribution<T> for SimdTruncatedBeta<T> {
 }
 
 impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
+  #[inline]
   fn pdf(&self, x: f64) -> Option<f64> {
     if x < self.lower.to_f64()? || x > self.upper.to_f64()? {
       return Some(0.0);
     }
-    Some(match self.analytics()? {
-      Analytics::Beta(Model::Full(t)) => t.density(x, 0.0),
-      Analytics::Beta(Model::Local(l)) => l.pdf(x, 0.0),
-      Analytics::Gamma(g) => g.pdf(x)?,
-    })
+    match self.analytics()? {
+      Analytics::Beta(Model::Full(t)) => Some(t.density(x, 0.0)),
+      analytics => pdf_rare(analytics, x),
+    }
   }
 
   fn cdf(&self, x: f64) -> Option<f64> {

@@ -16,6 +16,8 @@ pub(super) struct GammaKernel {
   ln_c: f64,
   /// `(k − 1)/c − 1/s`, the slope at `c`, `None` where it overflows.
   slope: Option<f64>,
+  /// `k − 1 ≤ 1e5`: the plain form errs by at most 4.4e-13 within eight widths of the mode, and costs a `ln_1p`.
+  plain: bool,
 }
 
 impl GammaKernel {
@@ -27,6 +29,20 @@ impl GammaKernel {
       c: 0.0,
       ln_c: f64::NEG_INFINITY,
       slope: None,
+      plain: k - 1.0 <= 1e5,
+    }
+  }
+}
+
+impl GammaKernel {
+  /// `(k − 1)(ln(x/c) − y/c) + slope·y`, the first part `ln_1p_mx` beside `c`, read from `x` toward 0.
+  #[inline(never)]
+  fn ln_rel_exact(&self, x: f64, y: f64, slope: f64) -> f64 {
+    let z = y / self.c;
+    if z < -0.5 {
+      (self.k - 1.0) * ((x.ln() - self.ln_c) - z) + slope * y
+    } else {
+      (self.k - 1.0) * ln_1p_mx(z) + slope * y
     }
   }
 }
@@ -65,25 +81,24 @@ impl Kernel for GammaKernel {
     self.slope = slope.is_finite().then_some(slope);
   }
 
-  /// Above a unit shape `(k − 1)(ln(x/c) − y/c) + slope·y`, the first part `ln_1p_mx` beside `c` and read from `x`
-  /// toward 0; below one, and where the slope overflows, `(k − 1) ln(x/c) − y/s`, whose terms share a sign.
+  /// The plain `(k − 1) ln(x/c) − y/s`, `ln_1p` within half of `c` and else read from `x`, which a `y/c` past the
+  /// doubles never reaches; past `k − 1 = 1e5`, where the slope is finite, the cancellation-free form out of line.
   #[inline]
   fn ln_rel(&self, x: f64, y: f64, _branch: Option<(f64, f64)>) -> f64 {
     if self.k == 1.0 {
       return -y / self.s;
     }
-    let z = y / self.c;
-    let ln_ratio = || {
-      if z < -0.5 {
-        x.ln() - self.ln_c
-      } else {
-        z.ln_1p()
-      }
-    };
     match self.slope {
-      Some(slope) if self.k > 1.0 && z < -0.5 => (self.k - 1.0) * (ln_ratio() - z) + slope * y,
-      Some(slope) if self.k > 1.0 => (self.k - 1.0) * ln_1p_mx(z) + slope * y,
-      _ => (self.k - 1.0) * ln_ratio() - y / self.s,
+      Some(slope) if !self.plain => self.ln_rel_exact(x, y, slope),
+      _ => {
+        let z = y / self.c;
+        let ln_ratio = if z.abs() > 0.5 {
+          x.ln() - self.ln_c
+        } else {
+          z.ln_1p()
+        };
+        (self.k - 1.0) * ln_ratio - y / self.s
+      }
     }
   }
 

@@ -5,6 +5,7 @@ use num_complex::Complex64;
 
 use super::SimdTruncatedExp;
 use super::turns::radians;
+use super::turns::reduce;
 use super::turns::turns;
 use crate::traits::SimdFloatExt;
 use crate::truncated::quadrature::ldexp;
@@ -34,7 +35,7 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
     }
     let len = self.length()?;
     let w = Complex64::new(lam, -t) * len;
-    if w.norm() < 0.5 {
+    if w.norm_sqr() < 0.25 {
       return Some(phase * (len / self.mass_per_rate()) * phi1(w));
     }
     let gap = -exp_m1_complex(Complex64::new(-lam * len, angle_between(t, lo, up)));
@@ -43,30 +44,39 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
   }
 }
 
-/// `e^{iθ}`.
 fn cis(theta: f64) -> Complex64 {
   Complex64::new(theta.cos(), theta.sin())
 }
 
-/// `t·x` reduced to `[−π, π)`: the product itself below 1, else from its exact turns.
+/// `t·x` reduced to about `[−π, π]`: the product itself below 1, its exact two-product reduced by parts below 2²⁰,
+/// else from its exact turns.
 fn angle(t: f64, x: f64) -> f64 {
   let p = t * x;
   if p.abs() < 1.0 {
     p
+  } else if p.abs() < MODERATE {
+    reduce(p, t.mul_add(x, -p))
   } else {
     radians(turns(t, x))
   }
 }
 
-/// `t·(up − lo)` reduced to `[−π, π)`, from the two products' exact turns where it reaches 1: `up − lo` rounds.
+/// `t·(up − lo)` reduced to about `[−π, π]`: as `angle` where `up − lo` is exact, else from the two products' turns.
 fn angle_between(t: f64, lo: f64, up: f64) -> f64 {
-  let p = t * (up - lo);
+  let len = up - lo;
+  if (up - len) - lo == 0.0 {
+    return angle(t, len);
+  }
+  let p = t * len;
   if p.abs() < 1.0 {
     p
   } else {
     radians(turns(t, up).wrapping_sub(turns(t, lo)))
   }
 }
+
+/// Below this a product's reduction subtracts its multiple of 2π in exact parts.
+const MODERATE: f64 = 1_048_576.0;
 
 /// `x = m·2^e`, `m` in `[1, 2)`, for a positive finite `x`.
 fn split(x: f64) -> (f64, i32) {

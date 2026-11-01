@@ -201,10 +201,18 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     }
   }
 
+  #[inline]
   fn analytics(&self) -> Option<&Model<NormalKernel>> {
-    if let Some(m) = self.analytics.get() {
-      return Some(m);
+    match self.analytics.get() {
+      Some(m) => Some(m),
+      None => self.fill(),
     }
+  }
+
+  /// The first analytic call's integral, out of the hot path.
+  #[cold]
+  #[inline(never)]
+  fn fill(&self) -> Option<&Model<NormalKernel>> {
     let (alpha, beta) = self.standardised_bounds()?;
     Some(self.analytics.get_or_init(|| {
       // Past `μ ± σ·f64::MAX` the standardised near bound is infinite: the law is its local model at that bound.
@@ -414,13 +422,14 @@ impl<T: SimdFloatExt> Distribution<T> for SimdTruncatedNormal<T> {
 
 impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
   /// In logs with `σ`, so a subnormal `σ` meets the density's 0 at an open end before `1/σ` overflows.
+  #[inline]
   fn pdf(&self, x: f64) -> Option<f64> {
     if x < self.lower.to_f64()? || x > self.upper.to_f64()? {
       return Some(0.0);
     }
     Some(match self.analytics()? {
       Model::Full(t) => t.density(self.standardise(x)?, self.ln_sigma),
-      Model::Local(l) => l.pdf(x, 0.0),
+      Model::Local(l) => local_pdf(l, x),
     })
   }
 
@@ -493,15 +502,29 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
   }
 }
 
-/// `(x − μ)/σ` as `(½x − ½μ)/(½σ)` where `x − μ` overflows; an infinite `x` stays infinite.
+/// Out of line, so the common path's pdf inlines.
+#[cold]
+#[inline(never)]
+fn local_pdf(l: &Local, x: f64) -> f64 {
+  l.pdf(x, 0.0)
+}
+
+/// `(x − μ)/σ`, from halves where `x − μ` overflows; an infinite `x` stays infinite.
 #[inline]
 fn standardised(x: f64, mu: f64, sigma: f64) -> f64 {
   let d = x - mu;
   if d.is_infinite() && x.is_finite() {
-    (0.5 * x - 0.5 * mu) / (0.5 * sigma)
+    halved(x, mu, sigma)
   } else {
     d / sigma
   }
+}
+
+/// Out of line, so the common path computes one quotient, not both.
+#[cold]
+#[inline(never)]
+fn halved(x: f64, mu: f64, sigma: f64) -> f64 {
+  (0.5 * x - 0.5 * mu) / (0.5 * sigma)
 }
 
 fn norm_cdf_scalar(z: f64) -> f64 {

@@ -150,6 +150,8 @@ pub(super) struct Truncation<K> {
   /// The point the moments are summed about: the singular branch point the centre steps off, where the mass may sit
   /// closer than any offset from the centre resolves, else the centre.
   frame: Cut,
+  /// The centre's double and the rest of its exact value, so a point's offset from it is two subtractions.
+  near: (f64, f64),
   /// The ends moved in to where the kernel is `e^{−CLIP}` below its value at `centre`, each an exact offset from the
   /// point it was found from, however much finer than an ulp; a singular end stays.
   a: Cut,
@@ -246,6 +248,7 @@ impl<K: Kernel> Truncation<K> {
       up,
       centre,
       frame: frame.unwrap_or(centre),
+      near: centre.near(),
       a,
       b,
       width: span(a, b),
@@ -379,7 +382,7 @@ impl<K: Kernel> Truncation<K> {
         0.0
       };
     }
-    let ln_g = self.kernel.ln_rel(x, span(self.centre, Cut::at(x)), None);
+    let ln_g = self.kernel.ln_rel(x, self.offset(x), None);
     (ln_g - (self.ln_norm + ln_scale)).exp()
   }
 
@@ -445,7 +448,7 @@ impl<K: Kernel> Truncation<K> {
   /// that value, which one `exp` restores, so a subnormal answer is rounded once.
   fn below_clip(&self, x: f64) -> f64 {
     let at = Cut::at(x);
-    let ln_g = self.kernel.ln_rel(x, span(self.centre, at), None);
+    let ln_g = self.kernel.ln_rel(x, self.offset(x), None);
     // The kernel rises from `lo` to `x`, so the cdf is at most `k(x)(x − lo)/∫k`: where that underflows it is 0, and
     // an `ln_g` too large to keep its units digit never feeds the walk.
     if ln_g == f64::NEG_INFINITY || ln_g + (x - self.lo).ln() - self.ln_norm < -746.0 {
@@ -457,7 +460,13 @@ impl<K: Kernel> Truncation<K> {
   }
 
   fn ratio(&self, x: f64, shift: f64) -> f64 {
-    (self.kernel.ln_rel(x, span(self.centre, Cut::at(x)), None) - shift).exp()
+    (self.kernel.ln_rel(x, self.offset(x), None) - shift).exp()
+  }
+
+  /// `x − c` exact where `x` lies within a factor 2 of the centre's double, as `span` forms it.
+  #[inline]
+  fn offset(&self, x: f64) -> f64 {
+    (x - self.near.0) - self.near.1
   }
 
   /// `∫_l^r k/k(c)` in units of `width`, over `e^{shift}`, signed.
@@ -483,9 +492,23 @@ impl<K: Kernel> Truncation<K> {
     panels(&self.kernel, self.centre, l, r, rev, visit)
   }
 
+  /// `Σ w·e^{ln v − shift}` over a panel's nodes; on a regular panel its own loop, whose few live values leave the sum
+  /// in a register across the kernel's calls.
   fn panel_mass(&self, panel: &Panel, shift: f64) -> f64 {
     let mut mass = 0.0;
-    self.nodes(panel, |w, ln_v, _, _| mass += w * (ln_v - shift).exp());
+    if panel.singular.is_some() || panel.graded {
+      self.nodes(panel, |w, ln_v, _, _| mass += w * (ln_v - shift).exp());
+      return mass;
+    }
+    let half = 0.5 * (panel.r - panel.l);
+    let (scaled, to_centre) = (half / self.width, span(panel.origin, self.centre));
+    for (node, weight) in GL64_X.iter().zip(&GL64_W) {
+      for xi in [-node, *node] {
+        let t = panel.l + half * (1.0 + xi);
+        let ln_g = self.kernel.ln_rel(panel.origin.x + t, t - to_centre, None);
+        mass += weight * scaled * (ln_g - shift).exp();
+      }
+    }
     mass
   }
 

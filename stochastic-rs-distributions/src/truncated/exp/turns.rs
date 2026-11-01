@@ -2,6 +2,7 @@
 //! mantissas multiply exactly, and only the bits of 1/(2π) that reach the fraction enter (Payne and Hanek's reduction).
 //!
 //! Reference: Payne, M. H. & Hanek, R. N. (1983), "Radian reduction for trigonometric functions", *ACM SIGNUM Newsletter* 18(1), 19-24, DOI 10.1145/1057600.1057602.
+//! Reference: Cody, W. J. & Waite, W. (1980), *Software Manual for the Elementary Functions*, Prentice-Hall, ch. 8, ISBN 0-13-822064-6 (the reduction of a moderate argument by a split constant).
 
 use std::f64::consts::TAU;
 
@@ -97,6 +98,22 @@ pub(super) fn turns(t: f64, x: f64) -> u128 {
   }
 }
 
+/// 2π in four parts (fdlibm's π/2 split, times 4), the first three with 31, 32 and 28 bits, so `k·Cᵢ` is exact for
+/// `|k| < 2²¹`.
+const TAU_PARTS: [f64; 4] = [
+  6.2831853069365025,
+  2.4308402025215864e-10,
+  8.089064994844666e-21,
+  3.39137106414756e-31,
+];
+
+/// `hi + lo` reduced to about `[−π, π]` by Cody and Waite's subtraction of `k` parts of 2π, for `|hi| < 2²⁰`.
+pub(super) fn reduce(hi: f64, lo: f64) -> f64 {
+  let k = (hi / TAU).round();
+  let [c1, c2, c3, c3t] = TAU_PARTS;
+  ((((hi - k * c1) - k * c2) + lo) - k * c3) - k * c3t
+}
+
 /// A fraction of a turn as an angle in `[−π, π)`.
 pub(super) fn radians(r: u128) -> f64 {
   (r as i128) as f64 * (TAU / 2f64.powi(128))
@@ -122,5 +139,16 @@ mod tests {
         "{t:e}·{x:e}: {got} against {want}"
       );
     }
+  }
+
+  /// A moderate product reduced by parts agrees with its turns (mpmath: −0.77807382151921254371).
+  #[test]
+  fn parts_reduce_a_moderate_product() {
+    let got = reduce(-545054.5371010363, 0.0);
+    assert!(
+      (got - -0.7780738215192125).abs() <= 4.0 * f64::EPSILON,
+      "{got}"
+    );
+    assert!((got - radians(turns(-1.0, 545054.5371010363))).abs() <= 4.0 * f64::EPSILON);
   }
 }
