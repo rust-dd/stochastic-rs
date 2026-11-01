@@ -153,8 +153,8 @@ fn near_one(rows: &[(&str, &dyn DistributionExt, f64, f64)]) {
   }
 }
 
-/// Next to 1 the cdf sums the panels its total was summed on: on panels laid out afresh up to `x`, these laws, spread
-/// over fifty decades, read 20–39 ulps of 1 off (mpmath, from E1).
+/// Next to 1 the cdf sums the panels its total was summed on; panels laid out afresh up to `x` would leave these laws,
+/// spread over fifty decades, 20–39 ulps of 1 off (mpmath, from E1).
 #[test]
 fn next_to_one_the_cdf_walks_the_panels_of_its_total() {
   let (a, b) = (8.419970930322122e-279, 5.5279504620333736e175);
@@ -187,7 +187,7 @@ fn next_to_one_the_cdf_walks_the_panels_of_its_total() {
 }
 
 /// Past the middle of a singular panel the cdf is the panel less the part above `x`, whose frame keeps the panel's far
-/// end and so its Jacobian: in a frame of its own the part read 75 ulps of 1 off (mpmath: `(x/up)^α`).
+/// end and so its Jacobian; a frame of the part's own would leave it 75 ulps of 1 off (mpmath: `(x/up)^α`).
 #[test]
 fn next_to_one_a_singular_panel_keeps_its_jacobian() {
   let law = SimdTruncatedBeta::<f64>::new(
