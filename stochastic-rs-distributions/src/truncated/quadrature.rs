@@ -21,6 +21,10 @@ mod singular;
 
 /// A law's log-kernel on its support, in the law's own coordinate, taken relative to a reference point `c`.
 pub(super) trait Kernel {
+  /// The law maps a quantile walked from a bound or a clip back from the double that point is held beside, so the
+  /// engine reports it as `Point::From`; a law reading every point by its value pays nothing for it.
+  const FROM_POINT: bool = false;
+
   /// `ln k(x)`: `-∞` outside the support, `+∞` at a singular end.
   fn ln_k(&self, x: f64) -> f64;
 
@@ -150,7 +154,8 @@ const CLIP: f64 = 41.5;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Point {
   At(f64),
-  /// `s + t`, the offset from the double a walk started at held apart, so a law mapping it back keeps its digits.
+  /// `s + t`, the offset from the double the walk's origin is held beside kept apart, so a law mapping it back from
+  /// that double keeps its digits.
   From {
     s: f64,
     t: f64,

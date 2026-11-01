@@ -190,9 +190,11 @@ impl<K: Kernel> Truncation<K> {
         break;
       }
     }
-    match panel.origin.plain() {
-      Some(s) => Point::From { s, t },
-      None => Point::At(panel.origin.plus(t)),
+    if K::FROM_POINT {
+      let (s, rest) = panel.origin.parts_from(t);
+      Point::From { s, t: rest }
+    } else {
+      Point::At(panel.origin.plus(t))
     }
   }
 

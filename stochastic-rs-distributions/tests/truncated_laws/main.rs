@@ -9,6 +9,7 @@ mod gamma;
 mod narrow_laws;
 mod near_unit_shapes;
 mod normal;
+mod offsets;
 mod parents;
 mod range_ends;
 mod survey;

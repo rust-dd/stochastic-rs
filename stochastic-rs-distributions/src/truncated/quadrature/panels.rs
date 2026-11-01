@@ -164,9 +164,10 @@ impl Cut {
     self.from.map(|(s, lo, t)| (s, lo + t))
   }
 
-  /// Its double where nothing is held beside one.
-  pub(super) fn plain(self) -> Option<f64> {
-    self.from.is_none().then_some(self.x)
+  /// `self + d` as the double it is held beside and the offset from it, the sum `plus` rounds once.
+  pub(super) fn parts_from(self, d: f64) -> (f64, f64) {
+    let (s, lo, t) = self.parts();
+    (s, lo + (t + d))
   }
 
   pub(in crate::truncated) fn offset(self, origin: f64) -> f64 {
@@ -235,20 +236,14 @@ pub(super) fn panels<K: Kernel, B>(
         .filter(move |&t| tl < t && t < tr && (e > 1.0 || t.abs() >= f64::MIN_POSITIVE))
         .map(move |t| Cut::beside(s, t))
     });
+  // An end stays as it was cut, not re-expressed beside a branch point: a walk from it forms `x − end` from the points.
   let end = |cut: Cut| Cut {
-    x: cut.x,
-    from: cut.from.or_else(|| {
-      ladders
-        .into_iter()
-        .flatten()
-        .min_by(|p, q| cut.offset(p.0).abs().total_cmp(&cut.offset(q.0).abs()))
-        .map(|(s, ..)| (s, 0.0, cut.x - s))
-    }),
     inner: ladders
       .into_iter()
       .flatten()
       .find(|&(s, e, ..)| e < 1.0 && 10.0 * cut.offset(s).abs() < width)
       .map(|(s, e, ..)| (s, e)),
+    ..cut
   };
   let cuts = std::iter::once(end(lc))
     .chain(rungs)

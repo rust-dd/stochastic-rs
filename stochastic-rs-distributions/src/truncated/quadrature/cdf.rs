@@ -20,7 +20,8 @@ impl<K: Kernel> Truncation<K> {
     if x.is_nan() {
       return f64::NAN;
     }
-    if x <= self.lo {
+    // By the exact offset, as the upper side compares: a point beside `lo` finer than its ulp still lies above it.
+    if span(Cut::at(self.lo), at) <= 0.0 {
       return 0.0;
     }
     if self.narrow {
