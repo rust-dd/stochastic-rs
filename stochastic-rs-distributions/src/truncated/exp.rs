@@ -268,11 +268,18 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     if x >= up {
       return Some(1.0);
     }
-    let (lam, d) = (self.lambda.to_f64().unwrap(), x - lo);
-    if self.tail_mass < f64::MIN_POSITIVE {
-      return Some(d * one_minus_exp_over(lam * d) / self.mass_per_rate());
-    }
-    Some(-(-lam * d).exp_m1() / self.tail_mass)
+    let (lam, d, w) = (self.lambda.to_f64().unwrap(), x - lo, up - x);
+    // Below `λL = 1` as `d·φ(λd)` over the mass, so a `λd` below the normal doubles keeps its digits.
+    let mass = |t: f64| {
+      if lam * (up - lo) <= 1.0 {
+        t * one_minus_exp_over(lam * t) / self.mass_per_rate()
+      } else {
+        -(-lam * t).exp_m1() / self.tail_mass
+      }
+    };
+    // Past the median one less the mass above `x`, which keeps the digits a level next to 1 has.
+    let above = (-lam * d).exp() * mass(w);
+    Some(if above < 0.5 { 1.0 - above } else { mass(d) })
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {

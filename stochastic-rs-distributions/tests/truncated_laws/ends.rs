@@ -3,6 +3,7 @@
 
 use stochastic_rs_distributions::traits::DistributionExt;
 use stochastic_rs_distributions::truncated::SimdTruncatedBeta;
+use stochastic_rs_distributions::truncated::SimdTruncatedExp;
 use stochastic_rs_distributions::truncated::SimdTruncatedGamma;
 use stochastic_rs_distributions::truncated::SimdTruncatedNormal;
 
@@ -125,4 +126,42 @@ fn next_to_one_the_cdf_keeps_its_complement() {
       (0.999996972270482, 0.9999999999999999),
     ],
   );
+}
+
+/// The exponential's cdf below `λL = 1` as `d·φ(λd)` over its mass, so a `λd` below the normal doubles keeps its
+/// digits, and past the median as one less the mass above; the references are mpmath's, rounded once.
+#[test]
+fn the_exponentials_cdf_in_both_tails() {
+  let rows = [
+    (1.5, 0.5, 2.5, 2.499999998727631, 0.9999999999),
+    (
+      4.933855665380294e-281,
+      0.0,
+      3.623160885826047e275,
+      1.790063323271919e-48,
+      5e-324,
+    ),
+    (
+      5.35671572205022e-13,
+      0.0,
+      8.648310197568668e-2,
+      8.648310197568468e-302,
+      1e-300,
+    ),
+    (
+      7.1995643161400245e-233,
+      5.89435479243321e-94,
+      4.516084254166023e217,
+      5.894354792435441e-94,
+      5e-324,
+    ),
+  ];
+  for (lambda, lo, up, x, want) in rows {
+    let law = SimdTruncatedExp::<f64>::new(lambda, lo, up);
+    assert_eq!(
+      law.cdf(x).unwrap(),
+      want,
+      "TE({lambda:e}, [{lo:e}, {up:e}]): cdf({x:e})"
+    );
+  }
 }
