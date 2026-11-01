@@ -3,6 +3,7 @@
 use stochastic_rs_distributions::traits::DistributionExt;
 
 mod beta;
+mod ends;
 mod exp;
 mod gamma;
 mod narrow_laws;

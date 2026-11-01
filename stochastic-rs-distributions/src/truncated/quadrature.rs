@@ -356,7 +356,7 @@ impl<K: Kernel> Truncation<K> {
 
   fn moment_sums<const N: usize>(&self, about: f64) -> [f64; N] {
     let mut m = [0.0; N];
-    let _ = self.walk(self.a, self.b, false, |panel| {
+    let _ = self.walk_about_centre(|panel| {
       if let Some(e) = panel.singular {
         self.singular_moments(&panel, e, about, &mut m);
       } else {
@@ -382,7 +382,7 @@ impl<K: Kernel> Truncation<K> {
     // Relative to `m0`: past 1e154 a mass and its log's own size overflow in one product (`β = 4.9e-165` at 1).
     let shift = self.m0.ln();
     let (mut mass, mut log) = (0.0, 0.0);
-    let _ = self.walk(self.a, self.b, false, |panel| {
+    let _ = self.walk_about_centre(|panel| {
       self.nodes(&panel, |w, ln_v, _, ln_g| {
         let g = w * (ln_v - shift).exp();
         if g > 0.0 {
@@ -508,6 +508,7 @@ impl<K: Kernel> Truncation<K> {
     sum
   }
 
+  /// The masses' walk: each piece from the end the walk starts at.
   fn walk<B>(
     &self,
     l: Cut,
@@ -515,7 +516,19 @@ impl<K: Kernel> Truncation<K> {
     rev: bool,
     visit: impl FnMut(Panel) -> ControlFlow<B>,
   ) -> ControlFlow<B> {
-    panels(&self.kernel, self.centre, l, r, rev, visit)
+    panels(&self.kernel, self.centre, (l, r), rev, true, visit)
+  }
+
+  /// The moments' and entropy's walk: about the centre, where a near-symmetric law's odd powers keep their digits.
+  fn walk_about_centre<B>(&self, visit: impl FnMut(Panel) -> ControlFlow<B>) -> ControlFlow<B> {
+    panels(
+      &self.kernel,
+      self.centre,
+      (self.a, self.b),
+      false,
+      false,
+      visit,
+    )
   }
 
   /// `Σ w·e^{ln v − shift}` over a panel's nodes; on a regular panel its own loop, whose few live values leave the sum

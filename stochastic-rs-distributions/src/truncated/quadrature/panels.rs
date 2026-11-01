@@ -185,14 +185,15 @@ pub(in crate::truncated) fn span(l: Cut, r: Cut) -> f64 {
 pub(super) fn panels<K: Kernel, B>(
   kernel: &K,
   c: Cut,
-  lc: Cut,
-  rc: Cut,
+  (lc, rc): (Cut, Cut),
   rev: bool,
+  from_end: bool,
   mut visit: impl FnMut(Panel) -> ControlFlow<B>,
 ) -> ControlFlow<B> {
+  let walk = Walk { c, rev, from_end };
   // No branch point: the one piece, without the ladders' iterators.
   if kernel.branch_points() == [None, None] {
-    return piece(kernel, c, (lc, rc), rev, true, &mut visit);
+    return piece(kernel, walk, (lc, rc), true, &mut visit);
   }
   let width = span(lc, rc);
   // Each branch point's offsets to the two ends, exact beside it.
@@ -248,24 +249,31 @@ pub(super) fn panels<K: Kernel, B>(
     .chain(rungs)
     .chain(std::iter::once(end(rc)));
   if rev {
-    pieces(kernel, c, cuts.rev(), true, &mut visit)
+    pieces(kernel, walk, cuts.rev(), &mut visit)
   } else {
-    pieces(kernel, c, cuts, false, &mut visit)
+    pieces(kernel, walk, cuts, &mut visit)
   }
+}
+
+/// A walk's direction, and whether its pieces take their origin at the end it starts from rather than at `c`.
+#[derive(Clone, Copy)]
+struct Walk {
+  c: Cut,
+  rev: bool,
+  from_end: bool,
 }
 
 fn pieces<K: Kernel, B>(
   kernel: &K,
-  c: Cut,
+  walk: Walk,
   cuts: impl Iterator<Item = Cut>,
-  rev: bool,
   visit: &mut impl FnMut(Panel) -> ControlFlow<B>,
 ) -> ControlFlow<B> {
   let mut prev: Option<Cut> = None;
   for cut in cuts {
     if let Some(last) = prev {
-      let (cl, cr) = if rev { (cut, last) } else { (last, cut) };
-      piece(kernel, c, (cl, cr), rev, true, visit)?;
+      let (cl, cr) = if walk.rev { (cut, last) } else { (last, cut) };
+      piece(kernel, walk, (cl, cr), true, visit)?;
     }
     prev = Some(cut);
   }
@@ -276,12 +284,12 @@ fn pieces<K: Kernel, B>(
 /// innermost piece beside a singular branch point is one panel from it.
 fn piece<K: Kernel, B>(
   kernel: &K,
-  c: Cut,
+  walk: Walk,
   (cl, cr): (Cut, Cut),
-  rev: bool,
   recut: bool,
   visit: &mut impl FnMut(Panel) -> ControlFlow<B>,
 ) -> ControlFlow<B> {
+  let Walk { c, rev, from_end } = walk;
   if let Some((s, e)) = cl.inner.or(cr.inner) {
     let (tl, tr) = (cl.offset(s), cr.offset(s));
     if tr <= tl {
@@ -311,7 +319,14 @@ fn piece<K: Kernel, B>(
     .flatten()
     .map(|(s, _)| s)
     .find(|&s| distance(Cut::at(s)) < near);
-  let origin = branch.map_or(c, Cut::at);
+  // From the end a walk starts at, a partial mass beside it is a width of its own, not a difference of two offsets
+  // from a far reference point.
+  let start = match (from_end, rev) {
+    (false, _) => c,
+    (true, false) => cl,
+    (true, true) => cr,
+  };
+  let origin = branch.map_or(start, Cut::at);
   let (tl, tr) = (span(origin, cl), span(origin, cr));
   if tr <= tl {
     return ControlFlow::Continue(());
@@ -331,7 +346,7 @@ fn piece<K: Kernel, B>(
     .min(CURVATURE_BUDGET / rate(K::d2).sqrt());
   let n = ((tr - tl) / h).ceil();
   if (n > CAP || n.is_nan()) && recut {
-    return piece(kernel, c, recut_piece(kernel, c, cl, cr), rev, false, visit);
+    return piece(kernel, walk, recut_piece(kernel, c, cl, cr), false, visit);
   }
   debug_assert!(n <= CAP, "a piece of {n} panels after its recut");
   let n = if n >= 1.0 { n.min(CAP) as usize } else { 1 };
