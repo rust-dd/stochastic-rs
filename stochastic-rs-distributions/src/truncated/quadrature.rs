@@ -120,6 +120,19 @@ pub(super) fn ln_ratio(n: f64, d: f64, ln_d: f64) -> f64 {
   if q.is_normal() { q.ln() } else { n.ln() - ln_d }
 }
 
+/// `s + e = a + b` exactly.
+pub(super) fn two_sum(a: f64, b: f64) -> (f64, f64) {
+  let s = a + b;
+  let z = s - a;
+  (s, (a - (s - z)) + (b - z))
+}
+
+/// `p + e = a·b` exactly while `e` stays a normal double.
+pub(super) fn two_prod(a: f64, b: f64) -> (f64, f64) {
+  let p = a * b;
+  (p, a.mul_add(b, -p))
+}
+
 /// `x·2^p` for any `p`, by normal factors, so `2^p` itself may lie past the doubles (θ above 2¹⁰²³).
 pub(super) fn ldexp(mut x: f64, mut p: i32) -> f64 {
   let two = |p: i32| f64::from_bits(((p + 1023) as u64) << 52);

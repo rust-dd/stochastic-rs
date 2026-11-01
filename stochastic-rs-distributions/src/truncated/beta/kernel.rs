@@ -4,6 +4,8 @@ use crate::truncated::quadrature::Cut;
 use crate::truncated::quadrature::Kernel;
 use crate::truncated::quadrature::ln_1p_mx;
 use crate::truncated::quadrature::ln_ratio;
+use crate::truncated::quadrature::two_prod;
+use crate::truncated::quadrature::two_sum;
 
 /// `x^{a−1} (1 − x)^{b−1}` on `[0, 1]` about the reference point `c`; a unit shape has no log term, whose `0·ln 0`
 /// would read NaN at its end.
@@ -19,7 +21,8 @@ pub(super) struct BetaKernel {
   /// `(a − 1)/c − (b − 1)/(1 − c)`, the slope at `c`, `None` where it overflows.
   slope: Option<f64>,
   mode: Cut,
-  /// The mode is stationary and held exactly, so its slope is 0 by construction.
+  /// The mode is stationary, a double-double of exact `α − 1` and `β − 1`: zeroing its slope shifts the law by 2⁻¹⁰⁴
+  /// of its place, an ε of an ulp, which no shape statistic sees.
   exact: bool,
   /// `α + β ≤ 1e4`: the plain form's measured error, 5.5e-15·√(α + β) out to the farthest normal pdf, stays in 1e-12.
   plain: bool,
@@ -179,23 +182,27 @@ impl Kernel for BetaKernel {
     left + right
   }
 
-  /// The slope from `(a − 1)(1 − c) − (b − 1)c` by an exact product, so a clamped end next to the mode keeps it; 0 at
-  /// a stationary mode held exactly, never at an end the density merely peaks at.
+  /// The slope `((α − 1) − (α + β − 2)c)/(c(1 − c))` from exact halves of `α − 1` and `β − 1`, the product by FMA and
+  /// the exact reference point, so its sign and value hold at any `c`; 0 at a stationary mode held exactly.
   #[inline]
   fn anchor(&mut self, c: Cut, at_mode: bool) {
+    let (hi, lo) = c.near();
     self.c = c.x;
     self.cc = -c.offset(1.0);
     self.ln_c = self.c.ln();
     self.ln_cc = self.cc.ln();
-    let (a1, b1) = (self.a - 1.0, self.b - 1.0);
-    let slope = if a1 == 0.0 || b1 == 0.0 {
+    let slope = if at_mode && self.exact {
+      0.0
+    } else if self.a == 1.0 || self.b == 1.0 {
       self.per(self.a, 1.0, self.c) - self.per(self.b, 1.0, self.cc)
     } else {
-      let p = b1 * self.c;
-      let e = b1.mul_add(self.c, -p);
-      (a1.mul_add(self.cc, -p) - e) / self.c / self.cc
+      let ((a1, a1_lo), (b1, b1_lo)) = (half_less_one(self.a), half_less_one(self.b));
+      let (s, s_e) = two_sum(a1, b1);
+      let (s_lo, c_lo) = (s_e + (a1_lo + b1_lo), (hi - c.x) + lo);
+      let (p, p_lo) = two_prod(s, c.x);
+      let half = ((a1 - p) - p_lo) + ((a1_lo - s_lo * c.x) - s * c_lo);
+      2.0 * (half / self.c / self.cc)
     };
-    let slope = if at_mode && self.exact { 0.0 } else { slope };
     self.slope = slope.is_finite().then_some(slope);
   }
 
@@ -291,19 +298,25 @@ impl Kernel for BetaKernel {
   }
 }
 
+/// `(x − 1)/2` as an exact two-sum: past 2⁵³ a shape's `x − 1` rounds.
+#[inline]
+fn half_less_one(x: f64) -> (f64, f64) {
+  two_sum(0.5 * x, -0.5)
+}
+
 /// The interior mode beside its nearer end, exact while that offset is normal and held off the kernel's zero where it
 /// underflows; else the end the density rises toward, the heavier on a U (0 on a tie), ½ for the uniform.
 fn held_mode(a: f64, b: f64) -> (Cut, bool) {
   if a > 1.0 && b > 1.0 {
-    // Halves, so `a + b − 2` cannot overflow, summed and divided exactly to a double-double.
-    let (ha, hb) = (0.5 * (a - 1.0), 0.5 * (b - 1.0));
-    let d = ha + hb;
-    let d_lo = (ha - (d - (d - ha))) + (hb - (d - ha));
-    let quotient = |n: f64| {
+    // Halves of the exact `a − 1` and `b − 1`, so their sum cannot overflow, divided to a double-double.
+    let ((ha, ha_lo), (hb, hb_lo)) = (half_less_one(a), half_less_one(b));
+    let (d, d_e) = two_sum(ha, hb);
+    let d_lo = d_e + (ha_lo + hb_lo);
+    let quotient = |n: f64, n_lo: f64| {
       let q = n / d;
-      (q, ((-q).mul_add(d, n) - q * d_lo) / d)
+      (q, (((-q).mul_add(d, n) + n_lo) - q * d_lo) / d)
     };
-    let ((m, m_lo), (gap, gap_lo)) = (quotient(ha), quotient(hb));
+    let ((m, m_lo), (gap, gap_lo)) = (quotient(ha, ha_lo), quotient(hb, hb_lo));
     let least = f64::from_bits(1);
     if m <= 0.5 {
       (Cut::exact(m.max(least), m_lo), m >= f64::MIN_POSITIVE)

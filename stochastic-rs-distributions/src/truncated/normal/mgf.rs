@@ -13,6 +13,8 @@ use crate::truncated::local::limit_or;
 use crate::truncated::quadrature::Truncation;
 use crate::truncated::quadrature::ldexp;
 use crate::truncated::quadrature::split;
+use crate::truncated::quadrature::two_prod;
+use crate::truncated::quadrature::two_sum;
 
 /// A tilt clamped at an end with a rate past this is `e^{−r·y − y²/2}` there, its curvature's share `1/r²` below 2⁻⁵⁴:
 /// the exponential's mass, where the quadrature would meet a slope past the doubles.
@@ -275,19 +277,6 @@ fn term(k: f64, f: f64, g: f64) -> (f64, f64) {
     k * f.signum() * g.signum(),
     k.abs().ln() + f.abs().ln() + g.abs().ln(),
   )
-}
-
-/// `s + e = a + b` exactly.
-fn two_sum(a: f64, b: f64) -> (f64, f64) {
-  let s = a + b;
-  let z = s - a;
-  (s, (a - (s - z)) + (b - z))
-}
-
-/// `p + e = a·b` exactly while `e` stays a normal double.
-fn two_prod(a: f64, b: f64) -> (f64, f64) {
-  let p = a * b;
-  (p, a.mul_add(b, -p))
 }
 
 /// The terms' sum to a double-double as if formed in thrice the precision: two cascades of two-sums that carry each

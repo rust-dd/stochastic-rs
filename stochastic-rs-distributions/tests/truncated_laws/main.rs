@@ -13,6 +13,7 @@ mod offsets;
 mod parents;
 mod range_ends;
 mod rungs;
+mod slopes;
 mod survey;
 
 /// Reference values of one interval; `None` where the reference run printed none.

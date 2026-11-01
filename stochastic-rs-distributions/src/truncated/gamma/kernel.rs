@@ -4,6 +4,7 @@ use crate::truncated::quadrature::Cut;
 use crate::truncated::quadrature::Kernel;
 use crate::truncated::quadrature::ln_1p_mx;
 use crate::truncated::quadrature::ln_ratio;
+use crate::truncated::quadrature::two_prod;
 
 /// `u^{k−1} e^{−u/s}` on `[0, ∞)` about the reference point `c`; a unit shape has no log term, whose `0·ln 0` would
 /// read NaN at 0.
@@ -71,8 +72,8 @@ impl Kernel for GammaKernel {
     lead - x / self.s
   }
 
-  /// Above a unit shape the slope from `(k − 1)s − c` by an exact product, 0 at the mode; below one the two terms share
-  /// a sign.
+  /// Above a unit shape the slope from `(k − 1)s − c` at the exact centre `c.x + c_lo`, `k − 1` exact and the product
+  /// by FMA, so it cancels to its true value next to the mode, 0 at it; below one the two terms share a sign.
   #[inline]
   fn anchor(&mut self, c: Cut, at_mode: bool) {
     let (hi, lo) = c.near();
@@ -88,7 +89,10 @@ impl Kernel for GammaKernel {
     } else if self.s.is_infinite() {
       (self.k - 1.0) / c.x
     } else {
-      (self.k - 1.0).mul_add(self.s, -c.x) / (c.x * self.s)
+      let k1 = self.k - 1.0;
+      let k1_lo = (self.k - k1) - 1.0;
+      let (p, p_lo) = two_prod(k1, self.s);
+      (((p - c.x) + p_lo) + (k1_lo * self.s - self.c_lo)) / (c.x * self.s)
     };
     self.slope = slope.is_finite().then_some(slope);
   }
