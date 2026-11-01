@@ -102,10 +102,12 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       },
     };
     let sigma = self.base.std_dev().to_f64().unwrap();
+    let (lo, up) = (self.lower.to_f64().unwrap(), self.upper.to_f64().unwrap());
+    // `σ·y` rounds and `y ≤ w` is the rounded width: the far bound bounds the point exactly.
     T::from_f64_fast(if setup.mirrored {
-      self.upper.to_f64().unwrap() - sigma * y
+      (up - sigma * y).max(lo)
     } else {
-      self.lower.to_f64().unwrap() + sigma * y
+      (lo + sigma * y).min(up)
     })
   }
 
@@ -139,7 +141,11 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       -(u * (-reach).exp_m1()).ln_1p()
     };
     let y = ldexp(e * m, p);
-    if setup.mirrored { near - y } else { near + y }
+    if setup.mirrored {
+      (near - y).max(far)
+    } else {
+      (near + y).min(far)
+    }
   }
 
   /// The near bound of an interval past `μ ± σ·f64::MAX`, where the law is its local model.

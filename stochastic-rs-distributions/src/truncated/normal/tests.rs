@@ -198,3 +198,40 @@ fn draws_past_mu_plus_sigma_max_follow_the_analytics() {
     );
   }
 }
+
+/// A tail law whose standardised width is a subnormal of a few ulps rounds `σ·y` past its far bound: every draw stays
+/// in the support, the mirrored setup's and the plain one's, and a normal width's alike.
+#[test]
+fn tail_draws_stay_inside_a_subnormal_width() {
+  for (mu, sigma, lo, up) in [
+    (
+      2.138987604910444e-308,
+      7.105177069518093,
+      1.9886312266266864e-308,
+      1.988631226626689e-308,
+    ),
+    (
+      1.139080872023227,
+      5.571362807340318,
+      -1.469704535711771e-308,
+      -1.4697045357117684e-308,
+    ),
+    (
+      -2.138987604910444e-308,
+      7.105177069518093,
+      -1.988631226626689e-308,
+      -1.9886312266266864e-308,
+    ),
+    (0.0, 1.0, 3.0, 3.2),
+  ] {
+    let law = SimdTruncatedNormal::<f64>::new(mu, sigma, lo, up);
+    let mut stream = law.clone().seeded(&Deterministic::new(7));
+    let streamed = (0..100).map(|_| stream.sample());
+    for x in scalar_draws(&law, 7, 100).into_iter().chain(streamed) {
+      assert!(
+        (lo..=up).contains(&x),
+        "TN({mu:e}, {sigma}, [{lo:e}, {up:e}]): {x:e}"
+      );
+    }
+  }
+}
