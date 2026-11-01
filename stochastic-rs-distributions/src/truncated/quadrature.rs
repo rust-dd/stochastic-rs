@@ -12,10 +12,8 @@ use panels::GL64_X;
 use panels::Panel;
 use panels::panels;
 pub(super) use panels::span;
-use singular::Frame;
 
-use crate::traits::RealExt;
-
+mod cdf;
 mod clip;
 mod panels;
 mod quantile;
@@ -435,41 +433,6 @@ impl<K: Kernel> Truncation<K> {
     (ln_g - (self.ln_norm + ln_scale)).exp()
   }
 
-  /// `∫_lo^x k / ∫k`, from the end nearer in mass: past the median one less the mass above `x`.
-  pub(super) fn cdf(&self, at: Cut) -> f64 {
-    let x = at.x;
-    if x.is_nan() {
-      return f64::NAN;
-    }
-    if x <= self.lo {
-      return 0.0;
-    }
-    if self.narrow {
-      return if x < self.centre.x { 0.0 } else { 1.0 };
-    }
-    if span(self.b, at) >= 0.0 {
-      return 1.0;
-    }
-    if span(self.a, at) < 0.0 {
-      return self.below_clip(at);
-    }
-    if x > self.median {
-      return (1.0 - (self.tail_up + self.integrate(at, self.b, 0.0)) / self.m0).max_or_nan(0.0);
-    }
-    ((self.tail_lo + self.integrate(self.a, at, 0.0)) / self.m0).min_or_nan(1.0)
-  }
-
-  /// The cdf at `s + e^{ln_t}` beside the lower end's branch point `s` of exponent `e`: its mass in `u = (t/h)^e`, `h`
-  /// the point's own offset, so no offset below the doubles' range is formed.
-  pub(super) fn cdf_beside(&self, s: f64, e: f64, ln_t: f64) -> f64 {
-    let frame = Frame::beside(ln_t, e);
-    let mut mass = 0.0;
-    self.frame_nodes(Cut::at(s), &frame, e, 0, None, |w, ln_v, _, _| {
-      mass += w * ln_v.exp()
-    });
-    ((self.tail_lo + mass) / self.m0).min_or_nan(1.0)
-  }
-
   /// `cdf⁻¹(p)`: the bounds at 0 and 1; else the panel holding `p`, walked to from the nearer end, then Newton in it.
   pub(super) fn quantile(&self, p: f64) -> Point {
     if p.is_nan() {
@@ -485,21 +448,6 @@ impl<K: Kernel> Truncation<K> {
       return Point::At(self.centre.x);
     }
     self.invert(p)
-  }
-
-  /// The cdf below the lower clip: the mass from where the kernel is `e^{−CLIP}` below its value at `x`, relative to
-  /// that value, which one `exp` restores, so a subnormal answer is rounded once.
-  fn below_clip(&self, at: Cut) -> f64 {
-    let x = at.x;
-    let ln_g = self.kernel.ln_rel(x, self.offset(x), None);
-    // The kernel rises from `lo` to `x`, so the cdf is at most `k(x)(x − lo)/∫k`: where that underflows it is 0, and
-    // an `ln_g` too large to keep its units digit never feeds the walk.
-    if ln_g == f64::NEG_INFINITY || ln_g + (x - self.lo).ln() - self.ln_norm < -746.0 {
-      return 0.0;
-    }
-    let start = clip(&self.kernel, self.centre, at, self.lo, ln_g - CLIP);
-    let relative = self.integrate(start, at, ln_g);
-    (ln_g + (relative / self.m0).ln()).exp().min_or_nan(1.0)
   }
 
   /// `x − c` exact where `x` lies within a factor 2 of the centre's double, as `span` forms it.
