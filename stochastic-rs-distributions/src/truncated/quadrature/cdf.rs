@@ -5,6 +5,7 @@ use std::ops::ControlFlow;
 
 use super::CLIP;
 use super::Kernel;
+use super::Sum;
 use super::Truncation;
 use super::clip;
 use super::panels::Cut;
@@ -34,19 +35,41 @@ impl<K: Kernel> Truncation<K> {
       return self.below_clip(at);
     }
     // The panels `M₀` was summed on, so next to 1 the two sums differ only by the panel holding `x`.
-    let mut sum = 0.0;
+    let mut sum = Sum::default();
+    let mut above = None;
     let _ = self.walk(self.a, self.b, false, |panel| {
       let t = span(panel.origin, at);
       if t >= panel.r {
-        sum += self.panel_mass(&panel, 0.0);
+        sum.add(self.panel_mass(&panel, 0.0));
         return ControlFlow::Continue(());
       }
-      if t > panel.l {
-        sum += self.part_below(&panel, t);
+      above = self.above_in_last(&panel, t, at, sum.value());
+      if t > panel.l && above.is_none() {
+        self.part_below(&panel, t, &mut sum);
       }
       ControlFlow::Break(())
     });
-    ((self.tail_lo + sum) / self.m0).min_or_nan(1.0)
+    match above {
+      Some(m) => 1.0 - ((m - self.tail_lo) - self.m0_rest) / self.m0,
+      None => ((self.tail_lo + sum.value()) / self.m0).min_or_nan(1.0),
+    }
+  }
+
+  /// In the right half of the last regular panel, the mass above `x` measured from `b`, where it is the smaller part:
+  /// from the panel's own origin `x` is an offset whose ulp, times a density peaked at `b`, is up to 30ε of `M₀`.
+  fn above_in_last(&self, panel: &Panel, t: f64, at: Cut, below: f64) -> Option<f64> {
+    let last = !panel.graded && panel.singular.is_none() && span(panel.origin, self.b) == panel.r;
+    if !last || 2.0 * t <= panel.l + panel.r {
+      return None;
+    }
+    let part = Panel {
+      origin: self.b,
+      l: span(self.b, at),
+      r: 0.0,
+      ..*panel
+    };
+    let m = self.panel_mass(&part, 0.0);
+    (2.0 * m <= self.m0 - below).then_some(m)
   }
 
   /// The cdf at `s + e^{ln_t}` beside the lower end's branch point `s` of exponent `e`: its mass in `u = (t/h)^e`, `h`
@@ -60,17 +83,19 @@ impl<K: Kernel> Truncation<K> {
     ((self.tail_lo + mass) / self.m0).min_or_nan(1.0)
   }
 
-  /// `panel`'s mass below the offset `t`; past the middle of a singular panel right of its branch point, the panel's mass
-  /// less the part above `t`, whose frame keeps the panel's far end and so its Jacobian's rounding.
-  fn part_below(&self, panel: &Panel, t: f64) -> f64 {
+  /// Adds `panel`'s mass below the offset `t`; past the middle of a singular panel right of its branch point, the panel's
+  /// mass, then minus the part above `t`, whose frame keeps the panel's far end and so its Jacobian's rounding.
+  fn part_below(&self, panel: &Panel, t: f64, sum: &mut Sum) {
     if let Some(e) = panel.singular {
       let frame = Frame::of(panel, e);
       let past = (frame.q_at(t) - frame.q_near).abs() > 0.5 * (frame.q_far() - frame.q_near).abs();
       if frame.sign > 0.0 && past {
-        return self.panel_mass(panel, 0.0) - self.panel_mass(&Panel { l: t, ..*panel }, 0.0);
+        sum.add(self.panel_mass(panel, 0.0));
+        sum.add(-self.panel_mass(&Panel { l: t, ..*panel }, 0.0));
+        return;
       }
     }
-    self.panel_mass(&Panel { r: t, ..*panel }, 0.0)
+    sum.add(self.panel_mass(&Panel { r: t, ..*panel }, 0.0));
   }
 
   /// The cdf below the lower clip: the mass from where the kernel is `e^{−CLIP}` below its value at `x`, relative to

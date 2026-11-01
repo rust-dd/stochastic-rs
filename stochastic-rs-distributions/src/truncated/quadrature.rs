@@ -12,12 +12,16 @@ use panels::GL64_X;
 use panels::Panel;
 use panels::panels;
 pub(super) use panels::span;
+use sum::Sum;
+pub(super) use sum::two_prod;
+pub(super) use sum::two_sum;
 
 mod cdf;
 mod clip;
 mod panels;
 mod quantile;
 mod singular;
+mod sum;
 
 /// A law's log-kernel on its support, in the law's own coordinate, taken relative to a reference point `c`.
 pub(super) trait Kernel {
@@ -120,19 +124,6 @@ pub(super) fn ln_ratio(n: f64, d: f64, ln_d: f64) -> f64 {
   if q.is_normal() { q.ln() } else { n.ln() - ln_d }
 }
 
-/// `s + e = a + b` exactly.
-pub(super) fn two_sum(a: f64, b: f64) -> (f64, f64) {
-  let s = a + b;
-  let z = s - a;
-  (s, (a - (s - z)) + (b - z))
-}
-
-/// `p + e = a·b` exactly while `e` stays a normal double.
-pub(super) fn two_prod(a: f64, b: f64) -> (f64, f64) {
-  let p = a * b;
-  (p, a.mul_add(b, -p))
-}
-
 /// `x·2^p` for any `p`, by normal factors, so `2^p` itself may lie past the doubles (θ above 2¹⁰²³).
 pub(super) fn ldexp(mut x: f64, mut p: i32) -> f64 {
   let two = |p: i32| f64::from_bits(((p + 1023) as u64) << 52);
@@ -210,8 +201,9 @@ pub(super) struct Truncation<K> {
   b: Cut,
   /// `b − a`, the unit of every sum: no power of the law's own scale leaves the range.
   width: f64,
-  /// `∫_a^b k/k(centre)`, in units of `width`.
+  /// `∫_a^b k/k(centre)`, in units of `width`, and the rest of its compensated sum.
   m0: f64,
+  m0_rest: f64,
   /// `ln(width·m0)`, so a density costs one `exp` and overflows only where its value does.
   ln_norm: f64,
   /// No normal width: no panel places its nodes, and the law answers in its own scale (`truncated::local`, the beta's
@@ -311,6 +303,7 @@ impl<K: Kernel> Truncation<K> {
       b,
       width: span(a, b),
       m0: 0.0,
+      m0_rest: 0.0,
       ln_norm: 0.0,
       narrow: false,
       tail_lo: 0.0,
@@ -319,7 +312,8 @@ impl<K: Kernel> Truncation<K> {
     };
     t.narrow = t.width.is_nan() || t.width < f64::MIN_POSITIVE;
     if !t.narrow {
-      t.m0 = t.integrate(a, b, 0.0);
+      let m0 = t.integrate_sum(a, b, 0.0);
+      (t.m0, t.m0_rest) = (m0.value(), (m0.hi - m0.value()) + m0.lo);
       t.ln_norm = t.width.ln() + t.m0.ln();
     }
     t
@@ -485,9 +479,14 @@ impl<K: Kernel> Truncation<K> {
     if span(l, r) < 0.0 {
       return -self.integrate(r, l, shift);
     }
-    let mut sum = 0.0;
+    self.integrate_sum(l, r, shift).value()
+  }
+
+  /// The sum `integrate` rounds, over `l < r`.
+  fn integrate_sum(&self, l: Cut, r: Cut, shift: f64) -> Sum {
+    let mut sum = Sum::default();
     let _ = self.walk(l, r, false, |panel| {
-      sum += self.panel_mass(&panel, shift);
+      sum.add(self.panel_mass(&panel, shift));
       ControlFlow::<()>::Continue(())
     });
     sum

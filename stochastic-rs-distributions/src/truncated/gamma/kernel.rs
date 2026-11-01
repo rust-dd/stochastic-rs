@@ -1,4 +1,4 @@
-//! The truncated gamma's kernel in units of `2^p`, the least power of two at or above θ.
+//! The truncated gamma's kernel in units of `2^p`, the least power of two at or above the shorter of θ and `upper`.
 
 use crate::truncated::quadrature::Cut;
 use crate::truncated::quadrature::Kernel;

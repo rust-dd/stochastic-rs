@@ -5,6 +5,7 @@ use std::ops::ControlFlow;
 use super::CLIP;
 use super::Kernel;
 use super::Point;
+use super::Sum;
 use super::Truncation;
 use super::clip;
 use super::panels::Cut;
@@ -45,13 +46,13 @@ impl<K: Kernel> Truncation<K> {
   /// The point of `[l, r]` with `want` of the mass beyond the end `from_lo` names, every value relative to `e^{shift}`:
   /// the panels walked from that end, then Newton in the one that holds it.
   fn locate(&self, l: Cut, r: Cut, want: f64, from_lo: bool, shift: f64) -> Point {
-    let mut acc = 0.0;
+    let mut acc = Sum::default();
     let mut hit = None;
     let _ = self.walk(l, r, !from_lo, |panel| {
       let mass = self.panel_mass(&panel, shift);
-      hit = Some((panel, want - acc, mass));
-      acc += mass;
-      if acc >= want {
+      hit = Some((panel, (want - acc.hi) - acc.lo, mass));
+      acc.add(mass);
+      if acc.value() >= want {
         ControlFlow::Break(())
       } else {
         ControlFlow::Continue(())

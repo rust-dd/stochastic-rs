@@ -79,13 +79,13 @@ fn beside_the_lower_end_of_a_flat_kernel() {
   quantiles(name, &law, &[(1e-12, 0.10000000000058638)]);
 }
 
-/// The cdf at `rows`' points to 8ε, the absolute digits it holds next to 1, and the quantile at 1 − 1e-10 and
+/// The cdf at `rows`' points to 2ε, the absolute digits it holds next to 1, and the quantile at 1 − 1e-10 and
 /// 1 − 2⁻⁵³ to an ulp of mpmath's `points`: above ½ it walks from the upper end, keeping the digits `1 − p` has.
 fn next_to_one(name: &str, law: &impl DistributionExt, rows: &[(f64, f64)], points: [f64; 2]) {
   for &(x, want) in rows {
     let got = law.cdf(x).unwrap();
     assert!(
-      (got - want).abs() <= 8.0 * f64::EPSILON,
+      (got - want).abs() <= 2.0 * f64::EPSILON,
       "{name}: cdf({x:e}) = {got}, mpmath {want}"
     );
   }
@@ -142,12 +142,13 @@ fn next_to_one_the_quantile_walks_from_the_upper_end() {
   );
 }
 
-/// Next to 1 the cdf at `rows`' points to 8ε of mpmath's value.
+/// Next to 1 the cdf at `rows`' points to 2ε of mpmath's value: it and `M₀` share every rounding but their last few,
+/// and a libm an ulp apart moves it about one.
 fn near_one(rows: &[(&str, &dyn DistributionExt, f64, f64)]) {
   for &(name, law, x, want) in rows {
     let got = law.cdf(x).unwrap();
     assert!(
-      (got - want).abs() <= 8.0 * f64::EPSILON,
+      (got - want).abs() <= 2.0 * f64::EPSILON,
       "{name}: cdf({x:e}) = {got}, mpmath {want}"
     );
   }
@@ -186,8 +187,8 @@ fn next_to_one_the_cdf_walks_the_panels_of_its_total() {
   ]);
 }
 
-/// Past the middle of a singular panel the cdf is the panel less the part above `x`, whose frame keeps the panel's far
-/// end and so its Jacobian; a frame of the part's own would leave it 75 ulps of 1 off (mpmath: `(x/up)^α`).
+/// Past the middle of a singular panel the cdf is the panel less the part above `x` (a frame of the part's own leaves
+/// it 75 ulps of 1 off), and `M₀` carries the roundings of adding nineteen light rungs to it apart (else 16; `(x/up)^α`).
 #[test]
 fn next_to_one_a_singular_panel_keeps_its_jacobian() {
   let law = SimdTruncatedBeta::<f64>::new(
@@ -201,6 +202,18 @@ fn next_to_one_a_singular_panel_keeps_its_jacobian() {
     (name, &law, 3.927672194567872e-185, 0.9999999999),
     (name, &law, 1e-300, 0.9999999997402107),
     (name, &law, 1e-150, 0.9999999999475603),
+  ]);
+}
+
+/// In the right half of the last panel the cdf is one less the mass above `x`, measured from the upper bound: from
+/// the panel's origin at the clip, `x − a` rounds at an ulp of the panel's width, 19ε of 1 under a density peaked at `b`.
+#[test]
+fn next_to_one_the_last_panel_measures_from_the_upper_bound() {
+  let law = SimdTruncatedNormal::<f64>::new(1000.0, 1.1, f64::NEG_INFINITY, 0.0);
+  let name = "TN(1000, 1.1, (−∞, 0])";
+  near_one(&[
+    (name, &law, -3e-14, 0.9999999999752066),
+    (name, &law, -5e-14, 0.9999999999586776),
   ]);
 }
 

@@ -77,7 +77,6 @@ impl BetaKernel {
     }
   }
 
-  /// `(a − 1) ln(x/c)`, 0 for a unit shape.
   #[inline]
   fn left(&self, x: f64, y: f64) -> f64 {
     if self.a == 1.0 {
@@ -87,7 +86,6 @@ impl BetaKernel {
     }
   }
 
-  /// `(b − 1) ln((1 − x)/(1 − c))`, 0 for a unit shape.
   #[inline]
   fn right(&self, x: f64, y: f64, branch: Option<(f64, f64)>) -> f64 {
     if self.b == 1.0 {
