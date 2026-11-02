@@ -143,7 +143,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     let (exponent, masses) = match clamp {
       Some(a) if a.r.abs() >= STEEP => {
         let rate = a.r.abs();
-        let reach = -(-rate * width).exp_m1();
+        // `rW` from `q = r/16`, finite where `r` overflows: past the doubles `e^{−rW}` can still count.
+        let reach = -(-a.q.0.abs() * (16.0 * width)).exp_m1();
         let tilted = reach / rate;
         let masses = if tilted >= f64::MIN_POSITIVE {
           ln_quotient(tilted, mass)
@@ -229,14 +230,15 @@ impl Anchor {
       .filter(|(n, _)| n.is_finite())
     else {
       let r = t.signum() * f64::INFINITY;
+      let halves = 0.5 * t - 0.5 * z / sigma;
       return Self {
         z,
         z_lo,
         held,
         x,
         r,
-        q: (r, 0.0),
-        ln_far: sigma.ln() + (0.5 * t - 0.5 * z / sigma).abs().ln() + LN_2,
+        q: ((0.125 * sigma) * halves, 0.0),
+        ln_far: sigma.ln() + halves.abs().ln() + LN_2,
       };
     };
     let q = n / m;

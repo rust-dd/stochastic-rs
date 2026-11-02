@@ -55,6 +55,31 @@ fn a_clamped_tilt_past_the_doubles_reads_its_value() {
   }
 }
 
+/// A steep clamp whose rate `r` overflows while `rW` is 9 to 36 keeps its `e^{−rW}`: `MAX/4`, `MAX/2`, its successor
+/// past `4m·MAX`, and `MAX`, with the mirrors; mpmath at 60 and 120 digits.
+#[test]
+fn a_steep_clamp_whose_rate_overflows_keeps_its_far_end() {
+  let max = f64::MAX;
+  for (t, want) in [
+    (max / 4.0, 9.955904818219626),
+    (max / 2.0, 445.57978176024056),
+    ((max / 2.0).next_up(), 445.57978176024096),
+    (max, 1784582.0923481316),
+  ] {
+    for t in [t, -t] {
+      let name = format!("TN(0, 8, [−1e-307, 1e-307]).mgf({t:e})");
+      close(
+        &name,
+        "mgf",
+        mgf(0.0, 8.0, -1e-307, 1e-307, t),
+        want,
+        1e-12,
+        0.0,
+      );
+    }
+  }
+}
+
 /// `σ²t/2 = −μ` exactly: the exponent's two terms past the doubles cancel to 0, and the mgf is the masses' ratio 2;
 /// `μ` an ulp either side leaves `±t·ulp(μ)`, `+∞` and 0.
 #[test]
