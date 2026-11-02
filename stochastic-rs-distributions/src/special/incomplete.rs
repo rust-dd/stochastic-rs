@@ -7,8 +7,9 @@
 mod large_shape;
 mod student;
 
+pub(crate) use student::student_density;
+pub(crate) use student::student_density_precise;
 pub(crate) use student::student_tail;
-pub(crate) use student::student_xi;
 
 use super::gamma;
 use super::ln_gamma;

@@ -190,7 +190,7 @@ impl TCopula {
   }
 
   /// `x − ρy`, as `(x − y) + (1 − ρ)y` (`(x + y) − (1 + ρ)y` at `ρ < 0`) from the law's gaps where that form's rounding,
-  /// `|x ∓ y| + (1 − |ρ|)r_y`, is a quarter of the plain `r_x + |ρ|r_y` (`r`, `rounding`) or less, which carried passes `150ε`.
+  /// `|x ∓ y| + (1 − |ρ|)r_y`, is at most the plain `r_x + |ρ|r_y` (`r`, `rounding`), which carried passes `150ε`.
   fn shifted_gap(
     law: &Law,
     (rho, nu, scale): (f64, f64, f64),
@@ -212,7 +212,7 @@ impl TCopula {
       + (1.0 - rho.abs()) * ry;
     // The slope `f/F` of `t_{ν+1}` at `z` is below `|z| + 1` and below `(ν + 1)/|z|`, its limit in the lower tail.
     let z = (plain * scale).abs();
-    if rho == 0.0 || size * scale * (z + 1.0).min((nu + 1.0) / z) <= 150.0 || 4.0 * shifted > size {
+    if rho == 0.0 || size * scale * (z + 1.0).min((nu + 1.0) / z) <= 150.0 || shifted > size {
       plain
     } else if rho > 0.0 {
       Self::difference(law, (nu, rx + ry), cell) + (1.0 - rho) * y.value
@@ -227,12 +227,12 @@ impl TCopula {
     q.abs() + p.min(1.0 - p) / law.ln_pdf(q).exp()
   }
 
-  /// `ln f(b)` where `quantile_gap`'s Gauss–Legendre mass holds over the gap `d` from `a` to `b`: within a quarter of the
-  /// density's scale `√(ν + a²)`, and the density normal at `a` and within a factor `e` at `b`.
+  /// `ln f(b)` where `quantile_gap`'s 16-node mass holds to `ε` over the gap `d` from `a` to `b`: within a quarter of the
+  /// density's scale `√(ν + a²)`, the density normal at `a` and within a factor `e⁴` at `b`.
   fn integrable(law: &Law, nu: f64, (a, b): (f64, f64), d: f64) -> Option<f64> {
     let (ln_a, ln_b) = (law.ln_pdf(a), law.ln_pdf(b));
     let holds =
-      d.abs() <= 0.25 * (nu + a * a).sqrt() && ln_a > -700.0 && (ln_a - ln_b).abs() <= 1.0;
+      d.abs() <= 0.25 * (nu + a * a).sqrt() && ln_a > -700.0 && (ln_a - ln_b).abs() <= 4.0;
     holds.then_some(ln_b)
   }
 

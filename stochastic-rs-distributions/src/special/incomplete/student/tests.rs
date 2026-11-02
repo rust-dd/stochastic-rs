@@ -108,6 +108,7 @@ fn the_half_cap_keeps_a_nan() {
     center: false,
     factor: f64::NAN,
     ln_scale: -1.0,
+    rate: (0.0, 0.0),
     xi: 1.0,
   };
   assert!(tail.lower().is_nan() && tail.upper().is_nan() && tail.ln_lower().is_nan());

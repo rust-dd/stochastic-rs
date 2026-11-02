@@ -20,6 +20,8 @@ use crate::seeded::Buffered;
 use crate::seeded::StreamState;
 use crate::special::gamma_ratio_half;
 use crate::special::ndtri;
+use crate::special::student_density;
+use crate::special::student_density_precise;
 use crate::special::student_tail;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
@@ -121,6 +123,13 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
     let z = SimdNormal::<T>::standard().draw_with(rng);
     let v = self.chisq.draw_with(rng);
     z / (v / self.nu).sqrt()
+  }
+
+  /// The density within a few ulps at every `x`, its exponent past double precision from 1 on where `pdf`'s starts at 8:
+  /// for the t copulas' level gaps, which carry its rounding into `h` amplified.
+  #[doc(hidden)]
+  pub fn precise_pdf(&self, x: f64) -> f64 {
+    student_density_precise(self.nu.to_f64().unwrap(), self.ratio, x)
   }
 }
 
@@ -239,14 +248,7 @@ fn lower_quantile(nu: f64, ratio: f64, p: f64) -> f64 {
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
   /// `R(ν/2)/√(2π) e^{−((ν + 1)/2) ln_1p(x²/ν)}`; past `x²/ν = f64::MAX` the logarithm from `ln|x|`.
   fn pdf(&self, x: f64) -> Option<f64> {
-    let nu = self.nu.to_f64().unwrap();
-    let s = x * x / nu;
-    let xi = if s.is_finite() {
-      s.ln_1p()
-    } else {
-      crate::special::student_xi(nu, x)
-    };
-    Some((ln_normaliser(self.ratio) - 0.5 * (nu + 1.0) * xi).exp())
+    Some(student_density(self.nu.to_f64().unwrap(), self.ratio, x))
   }
 
   /// `½ ± ½ I_{x²/(ν+x²)}(½, ν/2)` near zero, `½ I_{ν/(ν+x²)}(ν/2, ½)` in the lower tail, the upper half by symmetry.
@@ -255,7 +257,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
     if x.is_nan() {
       return Some(f64::NAN);
     }
-    let tail = student_tail(nu, self.ratio, x);
+    let tail = student_tail(nu, self.ratio, x).refined(nu, x);
     Some(if x <= 0.0 { tail.lower() } else { tail.upper() })
   }
 

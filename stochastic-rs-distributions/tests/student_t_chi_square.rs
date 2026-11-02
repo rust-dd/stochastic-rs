@@ -1,5 +1,5 @@
-//! The Student-t cdf and quantile and the χ² quantile and median against mpmath at 60 and 120 digits: near zero, across
-//! `x² = ν`, in both tails, past `x² = f64::MAX`, near level 1, at large `ν` and at small shape.
+//! The Student-t cdf, density and quantile and the χ² quantile and median against mpmath at 60 and 120 digits: near zero,
+//! across `x² = ν`, in both tails, past `x² = f64::MAX`, near level 1, at large `ν` and at small shape.
 
 use stochastic_rs_distributions::DistributionExt;
 use stochastic_rs_distributions::chi_square::SimdChiSquared;
@@ -109,6 +109,63 @@ const T_CDF: [(f64, f64, f64); 102] = [
   (9.99e21, 1e-8, 0.5000000039894228),
   (9.99e21, 1.0, 0.8413447460685429),
   (9.99e21, 5.0, 0.9999997133484281),
+];
+
+/// `(ν, x, F(x))` where `|ln F|` reaches 700: a far-tail survey's worst cells, `p = 1e-300` at `ν = 1e6` and values below
+/// `e^{−700}`.
+const T_FAR_CDF: [(f64, f64, f64); 11] = [
+  (
+    5.510152999812152e16,
+    -2.960397111025522,
+    0.0015362136413083968,
+  ),
+  (4148.601605656144, -4.91615166294838, 4.583673134298249e-7),
+  (
+    1615194419947.5352,
+    -3.1342414368564087,
+    0.0008614951290275715,
+  ),
+  (
+    3.021976850427785e18,
+    -20.60762718890437,
+    1.1722309506181273e-94,
+  ),
+  (
+    645.8527492191172,
+    -31.79155621001271,
+    1.593022058716556e-134,
+  ),
+  (84985726803.8302, -36.75468911364496, 4.892305957067861e-296),
+  (
+    288.99512364386567,
+    -152.70279980299972,
+    1.178470136643167e-278,
+  ),
+  (1e6, -37.059820872774395, 9.999999999998563e-301),
+  (1e6, -37.431000153259696, 1.000000000000143e-306),
+  (1e15, -37.35634609308015, 9.999999999999022e-306),
+  (1.0, -1e305, 3.183098861837907e-306),
+];
+
+/// `(ν, x, f(x))` alike for the density.
+const T_FAR_PDF: [(f64, f64, f64); 5] = [
+  (1e6, -37.059820872774395, 3.703589884219988e-299),
+  (
+    66701109821.50058,
+    -34.04261115342748,
+    8.894276212841478e-253,
+  ),
+  (
+    1.4167878365750843,
+    -1.380991119795326e108,
+    2.2893377853302853e-262,
+  ),
+  (
+    288.99512364386567,
+    -152.70279980299972,
+    2.2030847892198865e-278,
+  ),
+  (1e15, -37.35634609308015, 3.738307707800662e-304),
 ];
 
 /// `(ν, p, q(p), κ)`, `κ = p̃/(|q| f(q))`, `p̃ = min(p, 1 − p)`; an infinite `q` lies past `f64::MAX`.
@@ -325,6 +382,27 @@ fn the_t_cdf_matches_mpmath() {
     })
     .collect();
   report("t cdf", T_CDF.len(), failures);
+}
+
+/// Both carry their exponent past double precision: the cdf within `2.5e-15` relative, its factor's rounding (Mills' ratio's
+/// chiefly), the density within `1.5e-15`.
+#[test]
+fn the_t_far_tail_holds_its_digits() {
+  let cdf = T_FAR_CDF.iter().filter_map(|&(nu, x, want)| {
+    let got = SimdStudentT::<f64>::new(nu).cdf(x).unwrap();
+    ((got - want).abs() > 2.5e-15 * want)
+      .then(|| format!("cdf ν = {nu:e}, x = {x:e}: {got:e}, want {want:e}"))
+  });
+  let pdf = T_FAR_PDF.iter().filter_map(|&(nu, x, want)| {
+    let got = SimdStudentT::<f64>::new(nu).pdf(x).unwrap();
+    ((got - want).abs() > 1.5e-15 * want)
+      .then(|| format!("pdf ν = {nu:e}, x = {x:e}: {got:e}, want {want:e}"))
+  });
+  report(
+    "t far tail",
+    T_FAR_CDF.len() + T_FAR_PDF.len(),
+    cdf.chain(pdf).collect(),
+  );
 }
 
 #[test]

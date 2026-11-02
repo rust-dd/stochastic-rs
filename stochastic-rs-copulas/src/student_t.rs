@@ -396,19 +396,25 @@ impl Law {
   }
 
   /// `T⁻¹(u) − T⁻¹(u − g)` (`x + y` at `g = u + v − 1`, `x − y` at `u − v`), `x̂ ≈ T⁻¹(u)`'s own error removed: Newton on
-  /// `T(x̂) − T(x̂ − d) = g + r`, `r = T(x̂) − u`, from `start`, the mass by Gauss–Legendre of the density, less `r/f(x̂)`.
+  /// `(T(x̂) − T(x̂ − d))/f(x̂) = (g + r)/f(x̂)`, `r = T(x̂) − u`, from `start`, by Gauss–Legendre of `f/f(x̂)`, less `r/f(x̂)`.
   pub(crate) fn quantile_gap(&self, x: f64, u: f64, g: f64, start: f64) -> f64 {
     if g == 0.0 {
       return 0.0;
     }
-    let pdf = |s: f64| self.ln_pdf(s).exp();
-    // `T(x) − T(x − d)` over a `d` across which the density changes little, as the callers keep it.
+    // `f(x + o)/f(x) = (1 + o(2x + o)/(ν + x²))^{−(ν + 1)/2}` at the exact offset `o`, never at a node rounded to `x`'s
+    // ulps; only `f(x)` carries the density's large exponent, which `precise_pdf` forms past double precision.
+    let fx = self.inner.precise_pdf(x);
+    let inv_root = self.nu.sqrt().hypot(x).recip();
+    let ratio = |o: f64| {
+      let q = (o * inv_root) * ((2.0 * x + o) * inv_root);
+      (-0.5 * (self.nu + 1.0) * q.ln_1p()).exp()
+    };
     let mass = |d: f64| {
-      let (mid, half) = (x - 0.5 * d, 0.5 * d);
+      let half = 0.5 * d;
       half
         * rule()
           .iter()
-          .map(|&(t, w)| w * pdf(mid + half * t))
+          .map(|&(t, w)| w * ratio(half * (t - 1.0)))
           .sum::<f64>()
     };
     let r = if x <= 0.0 {
@@ -416,15 +422,15 @@ impl Law {
     } else {
       (1.0 - u) - self.cdf_at(-x)
     };
-    let (target, mut d) = (g + r, start);
+    let (target, mut d) = ((g + r) / fx, start);
     for _ in 0..8 {
-      let step = (target - mass(d)) / pdf(x - d);
+      let step = (target - mass(d)) / ratio(-d);
       d += step;
       if step.abs() <= 1e-16 * d.abs() {
         break;
       }
     }
-    d - r / pdf(x)
+    d - r / fx
   }
 }
 

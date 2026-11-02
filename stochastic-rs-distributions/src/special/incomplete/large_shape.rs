@@ -336,7 +336,7 @@ fn settle((hi, lo): (f64, f64)) -> (f64, f64) {
 }
 
 /// `s + e = a + b` exactly.
-fn two_sum(a: f64, b: f64) -> (f64, f64) {
+pub(super) fn two_sum(a: f64, b: f64) -> (f64, f64) {
   let s = a + b;
   let z = s - a;
   (s, (a - (s - z)) + (b - z))

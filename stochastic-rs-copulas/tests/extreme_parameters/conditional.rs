@@ -8,6 +8,8 @@ use stochastic_rs_copulas::bivariate::gaussian::GaussianCopula;
 use stochastic_rs_copulas::bivariate::t_copula::TCopula;
 use stochastic_rs_copulas::multivariate::dvine::PairCopula;
 use stochastic_rs_copulas::traits::BivariateExt;
+use stochastic_rs_distributions::DistributionExt;
+use stochastic_rs_distributions::studentt::SimdStudentT;
 
 use super::GRID;
 use super::agrees;
@@ -111,7 +113,7 @@ fn the_t_edges_keep_the_two_point_law_past_the_normal_switch() {
 }
 
 /// Near the diagonal as `|ρ| → 1` below the normal switch `h` takes `x − ρy` from the law's level gap, or its tails past
-/// `1e150` (mpmath at 50 and 90 digits), and on the diagonal meets the Gaussian copula's `h` across the switch.
+/// `1e150` (mpmath at 50 to 120 digits), and on and near the diagonal meets the Gaussian copula's `h` across the switch.
 #[test]
 fn the_t_h_keeps_its_digits_near_the_diagonal_and_across_the_switch() {
   let rows = [
@@ -140,6 +142,29 @@ fn the_t_h_keeps_its_digits_near_the_diagonal_and_across_the_switch() {
       1.0000001e-300,
       0.49409583858729905,
     ),
+    (0.9999999999, 1e6, 1e-300, 1.01e-300, 1.1735469030249248e-80),
+    (
+      0.9999999999,
+      1e15,
+      1e-150,
+      1.01e-150,
+      1.255180727834686e-159,
+    ),
+    (
+      0.9999999999,
+      9.999999999999998e21,
+      4.8e-87,
+      4.848e-87,
+      3.9744500615704083e-277,
+    ),
+    (0.999999, 1e8, 1e-200, 3e-200, 2.9171328709424535e-146),
+    (
+      0.999999,
+      9.999999999999998e21,
+      1e-200,
+      3e-200,
+      2.91835175659969e-146,
+    ),
   ];
   for (rho, nu, u, v, want) in rows {
     let copula = TCopula::new(rho, nu);
@@ -155,7 +180,10 @@ fn the_t_h_keeps_its_digits_near_the_diagonal_and_across_the_switch() {
     [1e-15, 1e-15],
     [0.3, 0.3],
     [0.7, 0.7],
-    [1.0 - 1e-15, 1.0 - 1e-15]
+    [1.0 - 1e-15, 1.0 - 1e-15],
+    [1e-300, 1.01e-300],
+    [4.8e-87, 4.848e-87],
+    [1e-150, 1.01e-150]
   ];
   let below = TCopula::new(rho, 9.999999999999998e21).partial_derivative(diagonal.view());
   let at = TCopula::new(rho, 1e22).partial_derivative(diagonal.view());
@@ -167,19 +195,28 @@ fn the_t_h_keeps_its_digits_near_the_diagonal_and_across_the_switch() {
   }
 }
 
-/// At small `|ρ|` `h` keeps `x − ρy` (mpmath at 50 and 90 digits): within `4e-16` at `(−0.3, 1e8)`; at `(0, 1e8)` within the
-/// `4e-15` that `h`'s slope times `|z|`, 19, sets on `z`'s last bit, with the t cdf's own `6e-16` there.
+/// At small `|ρ|` `h` keeps `x − ρy` (mpmath at 50 and 90 digits), within what one ulp of either quantile moves it:
+/// `t_{ν+1}`'s slope `f/F` at `z = (x − ρy)s` times `s(ulp x + |ρ| ulp y)`, `s = √((ν + 1)/((ν + y²)(1 − ρ²)))`.
 #[test]
 fn the_t_h_keeps_the_plain_form_at_small_rho() {
-  for (rho, nu, u, v, want, bar) in [
-    (-0.3, 1e8, 0.9, 1e-100, 4.477238009175568e-8, 4e-16),
-    (0.0, 1e8, 1e-5, 1e-300, 1.0001309937134056e-5, 4e-15),
+  let ulp = |q: f64| f64::from_bits(q.abs().to_bits() + 1) - q.abs();
+  for (rho, nu, u, v, want) in [
+    (-0.3, 1e8, 0.9, 1e-100, 4.477238009175568e-8),
+    (0.0, 1e8, 1e-5, 1e-300, 1.0001309937134056e-5),
   ] {
+    let (law, wide) = (
+      SimdStudentT::<f64>::new(nu),
+      SimdStudentT::<f64>::new(nu + 1.0),
+    );
+    let (x, y) = (law.quantile(u).unwrap(), law.quantile(v).unwrap());
+    let s = ((nu + 1.0) / ((nu + y * y) * (1.0 - rho * rho))).sqrt();
+    let z = (x - rho * y) * s;
+    let bar = wide.pdf(z).unwrap() / wide.cdf(z).unwrap() * s * (ulp(x) + rho.abs() * ulp(y));
     let copula = TCopula::new(rho, nu);
     let h = copula.partial_derivative(array![[u, v]].view()).unwrap()[0];
     assert!(
       (h - want).abs() <= bar * want,
-      "t {rho} {nu}: h({u} | {v}) = {h:e}, want {want:e}"
+      "t {rho} {nu}: h({u} | {v}) = {h:e}, want {want:e} within {bar:e}"
     );
   }
 }

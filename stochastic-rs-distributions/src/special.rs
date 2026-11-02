@@ -36,8 +36,9 @@ pub use incomplete::gamma_ui;
 pub use incomplete::ln_gamma_p;
 pub use incomplete::ln_gamma_q;
 pub(crate) use incomplete::recip_gamma_1p_m1;
+pub(crate) use incomplete::student_density;
+pub(crate) use incomplete::student_density_precise;
 pub(crate) use incomplete::student_tail;
-pub(crate) use incomplete::student_xi;
 pub(crate) use k_ratio::KDenominator;
 pub(crate) use k_ratio::k_ratio;
 #[cfg(test)]
