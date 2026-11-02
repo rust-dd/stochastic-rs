@@ -209,8 +209,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
 }
 
 impl Anchor {
-  /// The offset from its numerator `σ²t − (x − μ)`, divided by `16σ` to a double-double; past `4m·MAX`, where `z/σ` is
-  /// under a quarter of `t`, the sign of `t` and `ln σ + ln|t − z/σ|`.
+  /// The offset from its numerator `σ²t − (x − μ)`, divided by `16σ` to a double-double; where that passes the doubles
+  /// (past `4m·MAX`, or with a far bound beside it) `z/σ` is under a quarter of `t`: `t`'s sign and `ln|r|` from halves.
   fn new(
     &Scale { m, e, square }: &Scale,
     sigma: f64,
@@ -224,7 +224,10 @@ impl Anchor {
     // The rest `(x − μ)/σ − z` of the rounded bound, by the remainder at `σ`'s scale.
     let half = scale - e - 1;
     let z_lo = ((-z).mul_add(0.5 * m, ldexp(d, half)) + ldexp(d_lo, half)) / (0.5 * m);
-    let Some((n, n_lo)) = square.map(|sq| numerator(sq, (d, d_lo), scale - e - 4)) else {
+    let Some((n, n_lo)) = square
+      .map(|sq| numerator(sq, (d, d_lo), scale - e - 4))
+      .filter(|(n, _)| n.is_finite())
+    else {
       let r = t.signum() * f64::INFINITY;
       return Self {
         z,
@@ -233,7 +236,7 @@ impl Anchor {
         x,
         r,
         q: (r, 0.0),
-        ln_far: sigma.ln() + (t - z / sigma).abs().ln(),
+        ln_far: sigma.ln() + (0.5 * t - 0.5 * z / sigma).abs().ln() + LN_2,
       };
     };
     let q = n / m;

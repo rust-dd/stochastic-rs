@@ -31,6 +31,30 @@ fn past_the_doubles_the_limit_is_the_whole_sums() {
   }
 }
 
+/// A bound on `μ`'s far side clamping a tilt whose offset `σt − z` passes the doubles, past `4m·MAX` (σ = 12, 15.99) or
+/// below it with the far bound beside (σ = 7.999): mpmath's value at 60 and 120 digits.
+#[test]
+fn a_clamped_tilt_past_the_doubles_reads_its_value() {
+  let (max, inf) = (f64::MAX, f64::INFINITY);
+  for (mu, sigma, lo, up, t, want) in [
+    (1.44e308, 12.0, -inf, 0.0, max, 0.005531912362305706),
+    (-1.44e308, 12.0, 0.0, inf, -max, 0.005531912362305706),
+    (1e300, 12.0, -inf, 0.0, max, 3.8629754486479995e-11),
+    (1.2784005e308, 15.99, -inf, 0.0, max, 0.00277362791442698),
+    (
+      6.398400099999999e307,
+      7.999,
+      -inf,
+      0.0,
+      max,
+      0.005531912362305706,
+    ),
+  ] {
+    let name = format!("TN({mu:e}, {sigma}, [{lo:e}, {up:e}]).mgf({t:e})");
+    close(&name, "mgf", mgf(mu, sigma, lo, up, t), want, 1e-12, 0.0);
+  }
+}
+
 /// `σ²t/2 = −μ` exactly: the exponent's two terms past the doubles cancel to 0, and the mgf is the masses' ratio 2;
 /// `μ` an ulp either side leaves `±t·ulp(μ)`, `+∞` and 0.
 #[test]
