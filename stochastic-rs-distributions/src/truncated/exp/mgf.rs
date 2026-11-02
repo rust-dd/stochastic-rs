@@ -14,7 +14,8 @@ use crate::truncated::quadrature::two_prod;
 const FAR: f64 = 700.0;
 
 impl<T: SimdFloatExt> SimdTruncatedExp<T> {
-  /// The three factors' mantissas multiplied and their powers of two added, so the one rounding is the last.
+  /// Plain doubles where each factor is moderate, else `scaled`.
+  #[inline]
   pub(super) fn mgf(&self, t: f64) -> Option<f64> {
     if t.is_nan() {
       return Some(f64::NAN);
@@ -31,20 +32,44 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
     if hi.is_infinite() {
       return Some(if hi > 0.0 { f64::INFINITY } else { 0.0 });
     }
-    let (m, k) = exp_split(hi, rest);
-    let (q, p) = if len.is_infinite() {
-      if t >= lam {
-        return Some(f64::INFINITY);
+    if len.is_infinite() && t < lam && hi.abs() <= FAR {
+      let open = lam / (lam - t);
+      if open.is_normal() {
+        return Some(hi.exp() * (1.0 + rest) * open);
       }
-      let (md, ed) = difference(lam, t);
-      let (ml, el) = split(lam);
-      (ml / md, el - ed)
-    } else {
-      let ((mf, ef), (mg, eg)) = (phi_plus(difference(t, lam), len), phi(lam, len));
-      (mf / mg, ef - eg)
-    };
-    Some(ldexp_once(m * q, k + p))
+    }
+    let (x, z) = ((t - lam) * len, lam * len);
+    if hi.abs() <= FAR && x.abs() <= FAR && z <= FAR {
+      // Every factor between `e^{−700}/700` and `700·e^{700}`: plain doubles, no subnormal to meet.
+      let phi_plus = if x == 0.0 { 1.0 } else { x.exp_m1() / x };
+      let over_phi = if z < 1e-8 {
+        1.0 / (1.0 - 0.5 * z)
+      } else {
+        z / self.tail_mass
+      };
+      return Some(hi.exp() * (1.0 + rest) * phi_plus * over_phi);
+    }
+    Some(scaled(t, (hi, rest), lam, len))
   }
+}
+
+/// The three factors' mantissas multiplied and their powers of two added, so the one rounding is the last.
+#[cold]
+#[inline(never)]
+fn scaled(t: f64, (hi, rest): (f64, f64), lam: f64, len: f64) -> f64 {
+  let (m, k) = exp_split(hi, rest);
+  let (q, p) = if len.is_infinite() {
+    if t >= lam {
+      return f64::INFINITY;
+    }
+    let (md, ed) = difference(lam, t);
+    let (ml, el) = split(lam);
+    (ml / md, el - ed)
+  } else {
+    let ((mf, ef), (mg, eg)) = (phi_plus(difference(t, lam), len), phi(lam, len));
+    (mf / mg, ef - eg)
+  };
+  ldexp_once(m * q, k + p)
 }
 
 /// `a − b` as `m·2^e`, the sign in `m`, from halves where it overflows; `(0, 0)` at 0.
