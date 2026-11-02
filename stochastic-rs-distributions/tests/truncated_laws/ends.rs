@@ -79,9 +79,14 @@ fn beside_the_lower_end_of_a_flat_kernel() {
   quantiles(name, &law, &[(1e-12, 0.10000000000058638)]);
 }
 
-/// The cdf at `rows`' points to 2ε, the absolute digits it holds next to 1, and the quantile at 1 − 1e-10 and
-/// 1 − 2⁻⁵³ to an ulp of mpmath's `points`: above ½ it walks from the upper end, keeping the digits `1 − p` has.
-fn next_to_one(name: &str, law: &impl DistributionExt, rows: &[(f64, f64)], points: [f64; 2]) {
+/// The cdf at `rows`' points to 2ε, the absolute digits it holds next to 1, and the quantile at 1 − 1e-10 and 1 − 2⁻⁵³
+/// one of the two doubles around mpmath's point: above ½ it walks from the upper end, keeping the digits `1 − p` has.
+fn next_to_one(
+  name: &str,
+  law: &impl DistributionExt,
+  rows: &[(f64, f64)],
+  points: [(f64, f64); 2],
+) {
   for &(x, want) in rows {
     let got = law.cdf(x).unwrap();
     assert!(
@@ -89,14 +94,14 @@ fn next_to_one(name: &str, law: &impl DistributionExt, rows: &[(f64, f64)], poin
       "{name}: cdf({x:e}) = {got}, mpmath {want}"
     );
   }
-  for (p, want) in [1.0 - 1e-10, 1.0 - f64::EPSILON / 2.0]
+  for (p, (below, above)) in [1.0 - 1e-10, 1.0 - f64::EPSILON / 2.0]
     .into_iter()
     .zip(points)
   {
     let got = law.quantile(p).unwrap();
     assert!(
-      (got - want).abs() <= want.next_up() - want,
-      "{name}: quantile({p:e}) = {got:e}, mpmath {want:e}"
+      (below..=above).contains(&got),
+      "{name}: quantile({p:e}) = {got:e}, mpmath between {below:e} and {above:e}"
     );
   }
 }
@@ -108,19 +113,28 @@ fn next_to_one_the_quantile_walks_from_the_upper_end() {
     "TN(0, 1, ℝ)",
     &SimdTruncatedNormal::<f64>::new(0.0, 1.0, -inf, inf),
     &[(6.361340889697422, 0.9999999999)],
-    [6.361340889697422, 8.209536151601387],
+    [
+      (6.361340889697422, 6.361340889697423),
+      (8.209536151601386, 8.209536151601387),
+    ],
   );
   next_to_one(
     "TN(0.5, 2, [−1, 2])",
     &SimdTruncatedNormal::<f64>::new(0.5, 2.0, -1.0, 2.0),
     &[(1.9999999996368798, 0.9999999999)],
-    [1.9999999996368798, 1.9999999999999996],
+    [
+      (1.9999999996368798, 1.99999999963688),
+      (1.9999999999999996, 1.9999999999999998),
+    ],
   );
   next_to_one(
     "TN(0, 1, [0, 1.4])",
     &SimdTruncatedNormal::<f64>::new(0.0, 1.0, 0.0, 1.4),
     &[(1.4 - 1e-12, 0.9999999999996428)],
-    [1.3999999997199957, 1.3999999999999997],
+    [
+      (1.3999999997199954, 1.3999999997199957),
+      (1.3999999999999995, 1.3999999999999997),
+    ],
   );
   next_to_one(
     "TG(2.5, 1.2, [0, ∞))",
@@ -129,7 +143,10 @@ fn next_to_one_the_quantile_walks_from_the_upper_end() {
       (33.33743900619891, 0.9999999999),
       (50.517019341912786, 0.9999999999999999),
     ],
-    [33.337439006198906, 50.517019341912786],
+    [
+      (33.337439006198906, 33.33743900619891),
+      (50.51701934191278, 50.517019341912786),
+    ],
   );
   next_to_one(
     "TB(2, 3, [0, 1])",
@@ -138,7 +155,10 @@ fn next_to_one_the_quantile_walks_from_the_upper_end() {
       (0.9997075768387249, 0.9999999999),
       (0.999996972270482, 0.9999999999999999),
     ],
-    [0.9997075768387249, 0.999996972270482],
+    [
+      (0.9997075768387248, 0.9997075768387249),
+      (0.999996972270482, 0.9999969722704821),
+    ],
   );
 }
 
@@ -187,8 +207,8 @@ fn next_to_one_the_cdf_walks_the_panels_of_its_total() {
   ]);
 }
 
-/// Past the middle of a singular panel the cdf is the panel less the part above `x` (a frame of the part's own leaves
-/// it 75 ulps of 1 off), and `M₀` carries the roundings of adding nineteen light rungs to it apart (else 16; `(x/up)^α`).
+/// Past the middle of a singular panel the cdf is the panel less the part above `x`, in the panel's own frame, and `M₀`
+/// carries the roundings of adding nineteen light rungs to it apart (`(x/up)^α`).
 #[test]
 fn next_to_one_a_singular_panel_keeps_its_jacobian() {
   let law = SimdTruncatedBeta::<f64>::new(

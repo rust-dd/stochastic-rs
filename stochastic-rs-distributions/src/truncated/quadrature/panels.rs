@@ -255,7 +255,7 @@ pub(super) fn panels<K: Kernel, B>(
         .filter(move |&t| tl < t && t < tr && (e > 1.0 || t.abs() >= f64::MIN_POSITIVE))
         .map(move |t| Cut::beside(s, t))
     });
-  // An end stays as it was cut, not re-expressed beside a branch point: a walk from it forms `x − end` from the points.
+  // Each end keeps the cut it was given, so a walk from it forms `x − end` from the two points themselves.
   let end = |cut: Cut| Cut {
     inner: ladders
       .into_iter()

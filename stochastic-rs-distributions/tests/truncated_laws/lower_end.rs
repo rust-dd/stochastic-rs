@@ -49,7 +49,6 @@ fn a_gamma_cdf_beside_zero() {
         (5e-324, 1.43e-322),
         (2e-323, 5.7e-322),
         (1e-322, 2.846e-321),
-        (1e-310, 2.881829657218485e-309),
       ],
     ),
     (
@@ -88,6 +87,12 @@ fn a_gamma_cdf_beside_zero() {
     0.0,
     1.4594968340809855e-1,
   );
+  // Within 4 of its 5.8e14 subnormal ulps: every `exp` and `ln` 4ε off moves it at most 2.
+  let got = normal.cdf(1e-310).unwrap();
+  assert!(
+    (got - 2.881829657218485e-309).abs() <= 4.0 * 5e-324,
+    "cdf(1e-310) = {got:e}"
+  );
   let got = normal.cdf(3e-309).unwrap();
   assert!(
     rel(got, 8.645489001060503e-308) < 1e-12,
@@ -95,9 +100,8 @@ fn a_gamma_cdf_beside_zero() {
   );
 }
 
-/// Within the zone beside the lower end the cdf and the quantile take the end's own law: the power law at a branch
-/// point (the beta's at `α` beside 1 and either side of the zone's edge), else the end's exponential (a unit shape's
-/// regular end, either side of its curvature's ε); a tiny exponent's value next to 1 is the walk's.
+/// Beside the lower end: a branch point's zone (exact subnormals, either side of the zone's edge), the walk beside a
+/// regular end (`TB(1, 0.384)` at 1.8e-8 and 2e-8), and next to 1 the walk's value for a tiny exponent's `t^e`.
 #[test]
 fn the_zone_beside_the_lower_end() {
   let inf = f64::INFINITY;
@@ -144,6 +148,25 @@ fn the_zone_beside_the_lower_end() {
     SimdTruncatedGamma::<f64>::new(1.3613691839394225e-283, 4.3126932660537823e-5, 0.0, inf);
   let next_to_one = tiny.cdf(5.8711677121886804e-288).unwrap();
   assert!(next_to_one <= 1.0 && 1.0 - next_to_one <= 8.0 * f64::EPSILON);
+}
+
+/// Below `ZONE_MASS` the quantile beside a regular end takes the end's exponential where the curvature moves `ln k` by
+/// under ε, `t < √ε` here, else walks: a normal 32σ below its mode either side of that (mpmath at 60 and 120 digits).
+#[test]
+fn the_zone_quantile_beside_a_regular_end() {
+  let law = SimdTruncatedNormal::<f64>::new(32.0, 1.0, 0.0, f64::INFINITY);
+  for (p, want) in [
+    (2.270276606003911e-231, 1.3e-8),
+    (2.532231659777926e-231, 1.45e-8),
+    (2.671941026932039e-231, 1.53e-8),
+    (2.968823444009824e-231, 1.7e-8),
+  ] {
+    let got = law.quantile(p).unwrap();
+    assert!(
+      rel(got, want) < 1e-12,
+      "quantile({p:e}) = {got:e}, mpmath {want:e}"
+    );
+  }
 }
 
 /// A normal whose standardised offset from its lower bound the doubles hold only as a coarse subnormal reads it in the

@@ -1,6 +1,5 @@
-//! The strata the log-uniform draw misses: unit and ordinary shapes, betas with a bound at 0 or 1, shapes below 1 with a
-//! bound between the singular end's rungs, normals far from `μ` or past `μ ± σ·MAX`, every family's extremes, and the
-//! normal's mgf where its terms pass the doubles.
+//! The strata the log-uniform draw misses: unit and ordinary shapes, beta bounds at 0 or 1, shapes below 1 between
+//! rungs, normals far from `μ` or past `μ ± σ·MAX`, every family's extremes, the normal's mgf past the doubles.
 
 use crate::survey::Case;
 use crate::survey::Gen;

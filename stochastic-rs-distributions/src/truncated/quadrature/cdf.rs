@@ -114,9 +114,8 @@ impl<K: Kernel> Truncation<K> {
   fn below_clip(&self, at: Cut) -> f64 {
     let x = at.x;
     let ln_g = self.kernel.ln_rel(x, span(self.centre, at), None);
-    // The kernel rises from `lo` to `x`, so the cdf is at most `k(x)(x − lo)/∫k`, `x − lo` the exact offset and an open
-    // end's at most `MAX`: where that underflows it is 0, and an `ln_g` too large to keep its units digit never feeds
-    // the walk.
+    // The kernel rises from `lo` to `x`, so `k(x)(x − lo)/∫k` bounds the cdf (`x − lo` exact, an open end's `MAX`): where
+    // it underflows the cdf is 0, and no `ln_g` too large to keep its units digit feeds the walk.
     let reach = span(self.lo, at).min(f64::MAX);
     if ln_g == f64::NEG_INFINITY || ln_g + reach.ln() - self.ln_norm < -746.0 {
       return 0.0;

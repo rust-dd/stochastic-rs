@@ -15,7 +15,8 @@ const LN_ZONE: f64 = -621.70;
 /// The cheap gate before the zone's own test, in widths.
 pub(super) const ZONE: f64 = 1e-270;
 
-/// No point of the zone holds more mass than this in units of `width`, an end's kernel being at least `e^{−CLIP}`.
+/// The quantile tries the zone only for a level below this mass in units of `width`, sparing every other level its
+/// logs; a level above is walked, wherever its point lies.
 pub(super) const ZONE_MASS: f64 = 1e-200;
 
 /// Cody–Waite's `ln 2`: the high part's trailing zeros keep `k·LN2_HI` exact for `|k| < 2²⁰`.

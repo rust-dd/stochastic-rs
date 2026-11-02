@@ -1,6 +1,5 @@
-//! One law's checks: each analytic and 20 draws answer in range (NaN only for a beta's mode on a tie), `cdf(quantile(p))`
-//! returns `p`, the cdf matches its parent's where that holds, and the cdf beside each finite bound, the moments and
-//! the mgf match mpmath (`survey_refs.txt`); a law far from `μ` draws a KS test.
+//! One law's checks: analytics and 20 draws in range (NaN only a beta's mode tie), round trips, the parents' cdf, and
+//! the cdf beside each bound, moments and mgf against mpmath (`survey_refs.txt`); a law far from `μ` draws a KS test.
 
 use std::fmt::Write;
 
