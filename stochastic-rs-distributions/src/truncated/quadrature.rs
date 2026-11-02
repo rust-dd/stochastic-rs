@@ -19,6 +19,7 @@ pub(super) use sum::accurate_sum;
 pub(super) use sum::two_prod;
 pub(super) use sum::two_sum;
 pub(super) use zone::Offset;
+pub(super) use zone::exp_split;
 
 mod cdf;
 mod clip;

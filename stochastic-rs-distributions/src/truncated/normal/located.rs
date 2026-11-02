@@ -9,6 +9,10 @@ use crate::truncated::quadrature::Offset;
 use crate::truncated::quadrature::Point;
 use crate::truncated::quadrature::Truncation;
 use crate::truncated::quadrature::accurate_sum;
+use crate::truncated::quadrature::exp_split;
+use crate::truncated::quadrature::ldexp;
+use crate::truncated::quadrature::split;
+use crate::truncated::quadrature::two_prod;
 use crate::truncated::quadrature::two_sum;
 
 /// `2⁻¹⁰³²`: a subnormal below it is `2⁻¹⁰⁷⁴` coarse past 2e-13 of itself.
@@ -28,28 +32,57 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     }
     if self.tail.is_none() {
       let mu = self.base.mean().to_f64()?;
-      return self.anchored((mu, 0.0), [1.0, self.mode_offset(t)?]);
+      return self.anchored_scaled((mu, 0.0), self.mode_offset(t)?);
     }
     self.anchored((self.located(Point::From(frame))?, 0.0), offset)
   }
 
-  /// `E[Z] = (k(α) − k(β))/∫k` for `k = e^{−z²/2}`, an interval about `μ`: summed odd powers cancel to ε of the width
-  /// where the mean lies near `μ`, this keeps its digits; `α ± β` from the bounds themselves.
-  fn mode_offset(&self, t: &Truncation<NormalKernel>) -> Option<f64> {
+  /// `E[Z] = (k(α) − k(β))/∫k` for `k = e^{−z²/2}`, an interval about `μ`, as `m·2^p`: summed odd powers cancel to ε of
+  /// the width where the mean lies near `μ`, this keeps its digits; `α ± β` from the bounds themselves.
+  fn mode_offset(&self, t: &Truncation<NormalKernel>) -> Option<(f64, i32)> {
     let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
     let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
     let [alpha, beta, _] = self.bounds;
-    let k = |z: f64| (-0.5 * z * z).exp();
     // `(β² − α²)/2 = (β − α)(β + α)/2`, each factor from the bounds' own doubles.
     let half_gap = 0.5 * ((up - lo) / sigma) * (accurate_sum([lo, up, -mu, -mu]).0 / sigma);
-    let diff = if half_gap.is_nan() || !alpha.is_finite() || !beta.is_finite() {
-      k(alpha) - k(beta)
-    } else if half_gap >= 0.0 {
-      -k(alpha) * (-half_gap).exp_m1()
-    } else {
-      k(beta) * half_gap.exp_m1()
+    // `k(z)/∫k·(1 − k(far)/k(z))` from the bound `z` nearer `μ`, in logs: kernel values below the doubles keep it.
+    let (z, bound, share) = match (alpha.is_finite(), beta.is_finite()) {
+      (false, false) => return Some((0.0, 0)),
+      (true, false) => (alpha, lo, 1.0),
+      (false, true) => (beta, up, -1.0),
+      _ if half_gap.is_nan() => {
+        let k = |z: f64| (-0.5 * z * z).exp();
+        return Some(split_signed((k(alpha) - k(beta)) / t.mass()));
+      }
+      _ if half_gap >= 0.0 => (alpha, lo, -(-half_gap).exp_m1()),
+      _ => (beta, up, half_gap.exp_m1()),
     };
-    Some(diff / t.mass())
+    // `z`'s rest `(bound − μ)/σ − z`: near 38σ out `z²/2` is 700, and an ulp of `z` moves it by 1e-13.
+    let (d, d_lo) = two_sum(bound, -mu);
+    let rest = if d.is_finite() {
+      ((-z).mul_add(sigma, d) + d_lo) / sigma
+    } else {
+      0.0
+    };
+    let (sq, sq_lo) = two_prod(z, z);
+    // Past `z² = MAX` the kernel value is 0 in every frame.
+    if sq.is_infinite() {
+      return Some((0.0, 0));
+    }
+    let (m, p) = exp_split(-0.5 * sq, -0.5 * sq_lo - z * rest - t.mass().ln());
+    Some((m * share, p))
+  }
+
+  /// `hi + lo + σ·m·2^p` from `σ`'s mantissa, so an offset `m·2^p` below the doubles' range still scales by `σ`.
+  fn anchored_scaled(&self, (hi, lo): (f64, f64), (m, p): (f64, i32)) -> Option<f64> {
+    let (ms, es) = split(self.base.std_dev().to_f64()?);
+    let v = ldexp(ms * m, es + p);
+    let x = hi + (lo + v);
+    Some(if x.is_finite() {
+      x
+    } else {
+      2.0 * (0.5 * hi + (0.5 * lo + 0.5 * v))
+    })
   }
 
   /// `hi + lo + σ·unit·t`, from halves where it overflows short of its value.
@@ -219,4 +252,13 @@ fn midpoint(lo: f64, up: f64) -> (f64, f64) {
   } else {
     two_sum(0.5 * lo, 0.5 * up)
   }
+}
+
+/// `x = m·2^p` with the sign in `m`; 0 as `(0, 0)`.
+fn split_signed(x: f64) -> (f64, i32) {
+  if x == 0.0 {
+    return (0.0, 0);
+  }
+  let (m, p) = split(x.abs());
+  (x.signum() * m, p)
 }

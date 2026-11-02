@@ -160,3 +160,24 @@ fn a_mean_near_mu_keeps_its_digits() {
   let symmetric = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -0.05, 0.05);
   assert_eq!(symmetric.mean().unwrap(), 0.0);
 }
+
+/// About `μ` with both bounds past 37.8σ, where both kernel values lie below the normal doubles: σ from 1e5 to 1e300,
+/// with the mirrors; mpmath's `σ(φ(α) − φ(β))/(Φ(β) − Φ(α))` at 60 and 120 digits.
+#[test]
+fn a_mean_whose_kernel_values_pass_below_the_doubles() {
+  for (sigma, lo, up, want) in [
+    (1e300, -3.9e301, 4e301, 2.0890872494293247e-31),
+    (1e300, -3.85e301, 4e301, 5.425155181337274e-23),
+    (1e10, -3.8e11, 3.9e11, 1.097221052007593e-304),
+    (1e5, -3.8e6, 3.9e6, 1.097221052007595e-309),
+    (1e20, -3.9e21, 3.95e21, 2.089087243164e-311),
+  ] {
+    for (lo, up, want) in [(lo, up, want), (-up, -lo, -want)] {
+      let got = tn(0.0, sigma, lo, up).mean().unwrap();
+      assert!(
+        rel(got, want) < 1e-12,
+        "TN(0, {sigma:e}, [{lo:e}, {up:e}]): mean {got:e}, mpmath {want:e}"
+      );
+    }
+  }
+}
