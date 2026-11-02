@@ -99,13 +99,13 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
     let (alpha, beta) = self.standardised_bounds();
     let (held_lo, held_up) = self.held();
-    let width = span(held_lo, held_up);
     let (centre, mass) = (plain.reference(), plain.mass());
-    // Part 2's risk 6: where `|σt|`, `|α|`, `|β|`, `|t·lo|`, `|t·up|` (the finite ones) are at most 8, rounded `σt`, bounds
-    // without their rests and plain sums move `ln M` by under 2.4e-13 in all.
+    // Where `|σt|`, `|α|`, `|β|`, `|t·lo|`, `|t·up|` (the finite ones) are at most 8, six plain terms of total size under
+    // 470, and their inputs' roundings, move `ln M` by under 4e-13; the width stays exact, as the plain mass's own.
     let s = sigma * t;
     let small = |v: f64| !v.is_finite() || v.abs() <= PLAIN;
     let rounded = s.abs() <= PLAIN && [alpha, beta, t * lo, t * up].into_iter().all(small);
+    let width = span(held_lo, held_up);
     let scale = (!rounded).then(|| Scale::new(sigma, t));
     let anchor = |z: f64, x: f64, cut: Cut| {
       let (s0, rest, _) = cut.parts();
@@ -118,6 +118,9 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     // The plain reference point against an anchor: by its exact offset where both are held beside one double, else as
     // its own double with the rest of the one it is held beside, a bound's own double carrying that bound's.
     let c = |a: &Anchor| {
+      if rounded {
+        return Centre::Apart(centre.x, 0.0);
+      }
       let (s, rest, t) = centre.parts();
       if s == a.held.0 {
         return Centre::Beside(span(Cut::held(a.z, a.held.0, a.held.1), centre));
