@@ -191,7 +191,6 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     Some(self.unstandardise(point.value()))
   }
 
-  /// The bounds' standardised doubles.
   pub(super) fn standardised_bounds(&self) -> (f64, f64) {
     (self.bounds[0], self.bounds[1])
   }

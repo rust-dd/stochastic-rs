@@ -219,7 +219,7 @@ fn a_normal_beside_its_lower_bound() {
 }
 
 /// Below the lower clip the cdf's bound `k(x)(x − lo)/∫k` reads the point's exact offset, which a standardised double
-/// rounds to 0 beside the bound, and an open end's at most `MAX`, which read `∞` and then NaN.
+/// rounds to 0 beside the bound, and an open end's offset capped at `MAX`.
 #[test]
 fn below_the_lower_clip_the_bound_reads_the_exact_offset() {
   let clipped = SimdTruncatedNormal::<f64>::new(

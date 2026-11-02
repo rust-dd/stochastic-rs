@@ -23,8 +23,8 @@ fn rows(name: &str, cells: &[(&str, f64, f64)]) {
   }
 }
 
-/// A narrow interval far from `μ` keeps the width `(up − lo)/σ`, which the bounds' own roundings change by an ulp of
-/// their place: 46 % of the variance one ulp wide at 1e8 sd, 6 % of the cdf eight ulps wide at 1e7 sd.
+/// A narrow interval far from `μ` keeps the width `(up − lo)/σ`, which the bounds' own roundings would change by an ulp
+/// of their place: one ulp wide at 1e8 sd, eight ulps at 1e7 sd.
 #[test]
 fn a_narrow_interval_far_from_mu_keeps_its_width() {
   let one = tn(0.3, 0.7, 7e7, 70000000.00000001);

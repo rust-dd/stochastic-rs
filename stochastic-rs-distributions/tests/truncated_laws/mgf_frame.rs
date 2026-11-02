@@ -80,14 +80,28 @@ fn a_steep_clamp_whose_rate_overflows_keeps_its_far_end() {
   }
 }
 
-/// `σ²t/2 = −μ` exactly: the exponent's two terms past the doubles cancel to 0, and the mgf is the masses' ratio 2;
-/// `μ` an ulp either side leaves `±t·ulp(μ)`, `+∞` and 0.
+/// `σ²t/2 = −μ` exactly: the exponent's two terms past the doubles cancel to 0, and the mgf is the masses' ratio 2, to
+/// 1e-12 where a 4ε change in every `exp` and `ln` moves it by 2.5e-15; `μ` an ulp either side leaves `+∞` and 0.
 #[test]
 fn an_exactly_cancelling_exponent_keeps_its_finite_value() {
   let (mu, t) = (-1.2640029854500659e308, 1.1235582092889474e308);
   let inf = f64::INFINITY;
-  assert_eq!(mgf(mu, 1.5, mu, inf, t), 2.0);
-  assert_eq!(mgf(-mu, 1.5, -inf, -mu, -t), 2.0);
+  close(
+    "TN(μ, 1.5, [μ, ∞))",
+    "mgf",
+    mgf(mu, 1.5, mu, inf, t),
+    2.0,
+    1e-12,
+    0.0,
+  );
+  close(
+    "TN(−μ, 1.5, (−∞, −μ])",
+    "mgf",
+    mgf(-mu, 1.5, -inf, -mu, -t),
+    2.0,
+    1e-12,
+    0.0,
+  );
   let (above, below) = (mu.next_up(), mu.next_down());
   assert_eq!(mgf(above, 1.5, above, inf, t), inf);
   assert_eq!(mgf(below, 1.5, below, inf, t), 0.0);
