@@ -236,9 +236,8 @@ fn tail_draws_stay_inside_a_subnormal_width() {
   }
 }
 
-/// An interval about `μ` whose mass is below 2⁻³² of `F(lower)`, which the inverse cdf's map resolves into a few cells
-/// (`σ = 1e16` drew two values, one outside the support), draws its law; a one-sided law whose standardised width
-/// underflows draws over its doubles, not its bound alone.
+/// An interval about `μ` whose mass is below 2⁻³² of `F(lower)`, which the inverse cdf's map resolves into a few cells,
+/// draws its law inside its bounds.
 #[test]
 fn draws_of_a_law_too_narrow_for_its_standardised_map() {
   for (mu, sigma) in [(0.0, 1e16), (0.0, 1e300), (5.0, 1e17)] {
@@ -256,13 +255,41 @@ fn draws_of_a_law_too_narrow_for_its_standardised_map() {
       );
     }
   }
+}
+
+/// A one-sided law whose standardised width is a subnormal spreads over its 603 207 doubles, as its mirror does.
+#[test]
+fn a_subnormal_standardised_width_draws_its_law() {
+  for (lo, up) in [(1e-300, 1.0000000001e-300), (-1.0000000001e-300, -1e-300)] {
+    let law = SimdTruncatedNormal::<f64>::new(0.0, 1.0, lo, up);
+    let best = scalar_ks_best_p(&law, |x| law.cdf(x).unwrap());
+    assert!(best > 0.01, "TN(0, 1, [{lo:e}, {up:e}]): best p = {best}");
+  }
+}
+
+/// Over five subnormal doubles the law is uniform to `λW = 1.5e-24`: χ² of 10⁴ scalar and of 10⁴ stream draws against
+/// the cells' shares ⅛, ¼, ¼, ¼, ⅛ stays below 18.47, the 0.999 quantile at 4 degrees of freedom.
+#[test]
+fn a_law_over_five_subnormal_doubles_draws_their_cells() {
   let (lo, up) = (-9.323420141090855e-309, -9.323420141090836e-309);
   let law = SimdTruncatedNormal::<f64>::new(-1.320559811947457e302, 41.56670583661562, lo, up);
-  let mut draws = scalar_draws(&law, 7, 1000);
-  draws.sort_by(f64::total_cmp);
-  draws.dedup();
-  assert!(
-    draws.len() >= 3 && draws.iter().all(|x| (lo..=up).contains(x)),
-    "{draws:?}"
-  );
+  let cells = std::iter::successors(Some(lo), |x| Some(x.next_up()))
+    .take(5)
+    .collect::<Vec<_>>();
+  assert_eq!(cells[4], up);
+  let mut stream = law.clone().seeded(&Deterministic::new(7));
+  let streamed = (0..10_000).map(|_| stream.sample()).collect::<Vec<_>>();
+  for draws in [scalar_draws(&law, 7, 10_000), streamed] {
+    assert!(draws.iter().all(|x| (lo..=up).contains(x)));
+    let n = draws.len() as f64;
+    let chi2 = cells
+      .iter()
+      .zip([0.125, 0.25, 0.25, 0.25, 0.125])
+      .map(|(cell, share)| {
+        let seen = draws.iter().filter(|&x| x == cell).count() as f64;
+        (seen - n * share).powi(2) / (n * share)
+      })
+      .sum::<f64>();
+    assert!(chi2 < 18.47, "χ² = {chi2}");
+  }
 }

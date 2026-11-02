@@ -138,8 +138,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     ))
   }
 
-  /// Past `μ ± σ·MAX` the law is the exponential of rate `|near − μ|/σ²` from its near bound, cut at the far one: the
-  /// curvature's share `σ²/(near − μ)²` there is under `1/MAX²`.
+  /// Past `μ ± σ·MAX`, or across a standardised width `w` below the doubles, the law is the exponential of rate
+  /// `|near − μ|/σ²` from its near bound, cut at the far one: its curvature moves the log by under `1/MAX²` or `w²`.
   fn beyond_draw(&self, setup: TailSetup, u: f64) -> f64 {
     let (mu, sigma) = (
       self.base.mean().to_f64().unwrap(),
@@ -154,18 +154,25 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     };
     let ((ms, es), (mg, eg)) = (split(sigma), split(gap));
     let (m, p) = (ms * ms / mg, 2 * es - eg - halved);
-    let reach = ldexp((far - near).abs() / m, -p);
-    let e = if reach > 40.0 {
-      -(1.0 - u).ln()
-    } else {
-      -(u * (-reach).exp_m1()).ln_1p()
-    };
-    let y = ldexp(e * m, p);
-    if setup.mirrored {
-      (near - y).max(far)
-    } else {
-      (near + y).min(far)
+    let width = (far - near).abs();
+    let (mw, ew) = split(width);
+    let rho = ldexp(mw / m, ew - p);
+    if rho > 40.0 {
+      let y = ldexp(-(1.0 - u).ln() * m, p);
+      return if setup.mirrored {
+        (near - y).max(far)
+      } else {
+        (near + y).min(far)
+      };
     }
+    // `near ± W·g` rounded once, `g → u` as `ρ → 0`: over a few subnormal doubles the law is uniform on their cells.
+    let g = if rho < f64::EPSILON {
+      u
+    } else {
+      -(u * (-rho).exp_m1()).ln_1p() / rho
+    };
+    let step = if setup.mirrored { -width } else { width };
+    step.mul_add(g, near).clamp(lo, up)
   }
 
   /// The near bound of an interval past `μ ± σ·f64::MAX`, where the law is its local model.
