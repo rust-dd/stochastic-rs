@@ -10,7 +10,7 @@ use crate::truncated::quadrature::Point;
 use crate::truncated::quadrature::Truncation;
 use crate::truncated::quadrature::accurate_sum;
 use crate::truncated::quadrature::exp_split;
-use crate::truncated::quadrature::ldexp;
+use crate::truncated::quadrature::ldexp_once;
 use crate::truncated::quadrature::split;
 use crate::truncated::quadrature::two_prod;
 use crate::truncated::quadrature::two_sum;
@@ -76,7 +76,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
   /// `hi + lo + σ·m·2^p` from `σ`'s mantissa, so an offset `m·2^p` below the doubles' range still scales by `σ`.
   fn anchored_scaled(&self, (hi, lo): (f64, f64), (m, p): (f64, i32)) -> Option<f64> {
     let (ms, es) = split(self.base.std_dev().to_f64()?);
-    let v = ldexp(ms * m, es + p);
+    let v = ldexp_once(ms * m, es + p);
     let x = hi + (lo + v);
     Some(if x.is_finite() {
       x
