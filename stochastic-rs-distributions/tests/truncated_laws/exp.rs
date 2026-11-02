@@ -400,3 +400,51 @@ fn an_entropy_whose_mass_underflows() {
     );
   }
 }
+
+/// A subnormal width or value keeps its digits: the cdf in a frame scaled by 2⁶⁴ or as `t·λ/m`, the mgf's factors as
+/// `m·2^k`; a value of a few subnormal ulps is mpmath's correctly rounded double, at least 0.06 ulp from a midpoint.
+#[test]
+fn subnormal_widths_and_values() {
+  let narrow = te(
+    2.0698522476336485e303,
+    1.365705055420541e-308,
+    1.365791443069982e-308,
+  );
+  let pairs = [
+    (narrow.cdf(1.3657050554205414e-308), 5.7191699216199095e-12),
+    (
+      narrow.moment_generating_function(-4.139704495267297e303),
+      0.9999434636565713,
+    ),
+    (
+      te(1.0, 1e-308, 1e-308 + 1e-312).moment_generating_function(0.5),
+      1.0,
+    ),
+    (
+      te(0.00987, 1e-305, 1e-305 + 2.7e-318).moment_generating_function(0.0049),
+      1.0,
+    ),
+    (
+      te(4.5701272711470455, 0.0, 0.4119761735892025).cdf(1e-310),
+      5.390355927431e-310,
+    ),
+  ];
+  for (got, want) in pairs {
+    assert!(rel(got.unwrap(), want) < 1e-12, "{got:?}, mpmath {want:e}");
+  }
+  let short = te(4.5701272711470455, 0.0, 0.4119761735892025);
+  assert_eq!(short.cdf(5e-324).unwrap(), 2.5e-323);
+  assert_eq!(short.cdf(2e-323).unwrap(), 1.1e-322);
+  let far = te(205.5974896098143, 0.011615127575245781, 0.2203188234636556);
+  assert_eq!(
+    far.moment_generating_function(-61679.24688294429).unwrap(),
+    2.44070674e-314
+  );
+  assert_eq!(
+    far.moment_generating_function(-62500.0).unwrap(),
+    1.74421e-318
+  );
+  let flat = te(1.0, 0.0, 2.0);
+  assert_eq!(flat.cdf(5e-324).unwrap(), 5e-324);
+  assert_eq!(flat.cdf(2e-323).unwrap(), 2.5e-323);
+}

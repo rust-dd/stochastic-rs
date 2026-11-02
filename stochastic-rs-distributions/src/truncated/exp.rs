@@ -23,7 +23,11 @@ use fractions::variance_fraction;
 
 mod cf;
 mod fractions;
+mod mgf;
 mod turns;
+
+/// 2⁶⁴: a subnormal times it is a normal double, and every value the frame scales stays below `MAX` unless past `2⁹⁶⁰`.
+const SCALE: f64 = 18_446_744_073_709_551_616.0;
 
 /// `e^{−λx}` on `[0, ∞)`, whose integral gives the third and fourth moments.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -166,8 +170,7 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
     if per_rate.is_finite() {
       return v * per_rate;
     }
-    let scale = 2f64.powi(64);
-    (v * scale) * (self.tail_mass / (self.lambda.to_f64().unwrap() * scale))
+    (v * SCALE) * (self.tail_mass / (self.lambda.to_f64().unwrap() * SCALE))
   }
 
   /// `∫ e^{−λ(x − lower)}` over the interval, `tail_mass/λ`; where `λL` underflows the mass, `L·φ(λL)` with
@@ -179,6 +182,29 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
     } else {
       let len = self.length().unwrap();
       len * one_minus_exp_over(lam * len)
+    }
+  }
+
+  /// `t·φ(λt)` over the mass per rate, `λL ≤ 1`, in `over_rate`'s frame scaled by 2⁶⁴ wherever that holds both: a
+  /// subnormal `t` or width would round on the subnormals' grid.
+  fn mass_below(&self, t: f64) -> f64 {
+    let lam = self.lambda.to_f64().unwrap();
+    let (scaled, per_rate) = (t * SCALE, self.scaled_mass_per_rate());
+    if scaled.is_finite() && per_rate.is_finite() {
+      scaled * one_minus_exp_over(lam * t) / per_rate
+    } else {
+      t * one_minus_exp_over(lam * t) / self.mass_per_rate()
+    }
+  }
+
+  /// `mass_per_rate`·2⁶⁴, from `tail_mass·2⁶⁴` or `L·2⁶⁴` as it forms them.
+  fn scaled_mass_per_rate(&self) -> f64 {
+    let lam = self.lambda.to_f64().unwrap();
+    if self.tail_mass >= f64::MIN_POSITIVE {
+      (self.tail_mass * SCALE) / lam
+    } else {
+      let len = self.length().unwrap();
+      (len * SCALE) * one_minus_exp_over(lam * len)
     }
   }
 
@@ -290,10 +316,13 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
       return Some(1.0);
     }
     let (lam, d, w) = (self.lambda.to_f64().unwrap(), x - lo, up - x);
-    // Below `λL = 1` as `d·φ(λd)` over the mass, so a `λd` below the normal doubles keeps its digits.
+    // Below `λL = 1` as `d·φ(λd)` over the mass, so a `λd` below the normal doubles keeps its digits; above it a
+    // subnormal `λt` is `t·λ/m`, which `expm1` would take rounded on the subnormals' grid.
     let mass = |t: f64| {
       if lam * (up - lo) <= 1.0 {
-        t * one_minus_exp_over(lam * t) / self.mass_per_rate()
+        self.mass_below(t)
+      } else if lam * t < f64::MIN_POSITIVE {
+        t * (lam / self.tail_mass)
       } else {
         -(-lam * t).exp_m1() / self.tail_mass
       }
@@ -393,30 +422,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
   /// Finite for every `t` on a bounded interval (`λL e^{λ·lower}/m` at `t = λ`, `m` the mass); an open tail diverges from `t = λ` on.
   /// At an infinite `t` the limit of `e^{tx}` on `x ≥ 0`: +∞ above, 0 below.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
-    if t.is_nan() {
-      return Some(f64::NAN);
-    }
-    if t == 0.0 {
-      return Some(1.0);
-    }
-    if t.is_infinite() {
-      return Some(if t > 0.0 { f64::INFINITY } else { 0.0 });
-    }
-    let (lam, lo, len) = (self.lambda.to_f64()?, self.lower.to_f64()?, self.length()?);
-    if len.is_infinite() {
-      return Some(if t < lam {
-        (t * lo).exp() * lam / (lam - t)
-      } else {
-        f64::INFINITY
-      });
-    }
-    let s = t - lam;
-    let integral = if s == 0.0 {
-      len
-    } else {
-      (s * len).exp_m1() / s
-    };
-    Some((t * lo).exp() * integral / self.mass_per_rate())
+    self.mgf(t)
   }
 }
 

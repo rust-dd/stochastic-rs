@@ -150,6 +150,15 @@ pub(super) fn ldexp(mut x: f64, mut p: i32) -> f64 {
   x * two(p)
 }
 
+/// `x·2^p` rounded once: `x` at its mantissa first, so no partial product rounds on the subnormals' grid before the last.
+pub(super) fn ldexp_once(x: f64, p: i32) -> f64 {
+  if x == 0.0 || !x.is_finite() {
+    return x;
+  }
+  let (m, e) = split(x.abs());
+  x.signum() * ldexp(m, p + e)
+}
+
 /// `x = m·2^e`, `m` in `[1, 2)`, for a positive finite `x`.
 pub(super) fn split(x: f64) -> (f64, i32) {
   let scaled = if x < f64::MIN_POSITIVE {

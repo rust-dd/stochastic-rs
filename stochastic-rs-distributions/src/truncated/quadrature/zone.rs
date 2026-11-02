@@ -58,11 +58,11 @@ pub(in crate::truncated) fn power(t: Offset, e: f64, c: f64, s: i32) -> f64 {
 }
 
 /// `e^{hi + lo}` as `m·2^k`, `m` near 1, for `hi` whose own digits the exponent would lose and a small `lo`: Cody–Waite
-/// keeps `hi − k·ln 2` exact; past `2²⁰` halvings the value lies below every scale a law multiplies it by.
+/// keeps `hi − k·ln 2` exact; past `2²⁰` halvings or doublings the value is 0 or `∞` at every scale a law applies.
 pub(in crate::truncated) fn exp_split(hi: f64, lo: f64) -> (f64, i32) {
   let k = ((hi + lo) / std::f64::consts::LN_2).round();
-  if k < -1_048_576.0 {
-    return (0.0, 0);
+  if k.abs() > 1_048_576.0 {
+    return (if k > 0.0 { f64::INFINITY } else { 0.0 }, 0);
   }
   ((((hi - k * LN2_HI) - k * LN2_LO) + lo).exp(), k as i32)
 }
