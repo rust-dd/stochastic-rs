@@ -140,6 +140,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
 
   /// Past `μ ± σ·MAX`, or across a standardised width `w` below the doubles, the law is the exponential of rate
   /// `|near − μ|/σ²` from its near bound, cut at the far one: its curvature moves the log by under `1/MAX²` or `w²`.
+  #[cold]
+  #[inline(never)]
   fn beyond_draw(&self, setup: TailSetup, u: f64) -> f64 {
     let (mu, sigma) = (
       self.base.mean().to_f64().unwrap(),
