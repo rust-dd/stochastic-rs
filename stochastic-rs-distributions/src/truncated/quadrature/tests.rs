@@ -1,7 +1,7 @@
 use super::*;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-struct Normal {
+pub(super) struct Normal {
   c: f64,
 }
 

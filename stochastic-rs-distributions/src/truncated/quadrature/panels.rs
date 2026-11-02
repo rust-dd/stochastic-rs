@@ -408,3 +408,40 @@ fn recut_piece<K: Kernel>(kernel: &K, c: Cut, cl: Cut, cr: Cut) -> (Cut, Cut) {
     (clip(kernel, c, cr, Cut::at(cl.x), lr - CLIP), cr)
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use std::ops::ControlFlow;
+
+  use super::*;
+  use crate::truncated::quadrature::tests::Normal;
+
+  /// `[−1e5, 0]` below the normal's mode: its slope alone would split it into 3e8 panels, so the recut keeps the band
+  /// within `e^{−CLIP}` of the maximum at 0, `[−√(2·CLIP), 0]`, and the debug build asserts it fits the cap.
+  #[test]
+  fn a_piece_past_the_cap_is_recut_from_its_maximum() {
+    let walk = Walk {
+      c: Cut::at(0.0),
+      rev: false,
+      from_end: false,
+    };
+    let (mut n, mut lo, mut hi) = (0.0, f64::INFINITY, f64::NEG_INFINITY);
+    let budget = SLOPE_BUDGET / 1e5;
+    assert!(1e5 / budget > CAP);
+    let _ = piece(
+      &Normal::default(),
+      walk,
+      (Cut::at(-1e5), Cut::at(0.0)),
+      true,
+      &mut |panel: Panel| {
+        (n, lo, hi) = (n + 1.0, lo.min(panel.l), hi.max(panel.r));
+        ControlFlow::<()>::Continue(())
+      },
+    );
+    let edge = -(2.0 * CLIP).sqrt();
+    assert!(
+      (1.0..=CAP).contains(&n) && ((lo - edge) / edge).abs() < 1e-14 && hi == 0.0,
+      "{n} panels on [{lo}, {hi}]"
+    );
+  }
+}

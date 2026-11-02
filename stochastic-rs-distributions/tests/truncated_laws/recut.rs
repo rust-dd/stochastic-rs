@@ -1,15 +1,14 @@
-//! An open far tail whose clipped piece the budgets would split past the cap: the recut cuts it from the kernel's maximum
-//! over it, and the debug suite runs the assertion on the recut piece.
+//! An open tail far below `μ`: the law is the exponential below its bound, each value against mpmath.
 
 use stochastic_rs_distributions::traits::DistributionExt;
 use stochastic_rs_distributions::truncated::SimdTruncatedNormal;
 
 use crate::rel;
 
-/// `(−∞, −4.72e34]`, 4.6e34 standard deviations below `μ`: a piece of 1.6e36 panels before its recut. The law is the
-/// exponential of scale `σ²/|up − μ|` = 2.3e-35 below its bound (mpmath at 60 and 120 digits).
+/// `(−∞, −4.72e34]`, 4.6e34 standard deviations below `μ`: the exponential of scale `σ²/|up − μ|` = 2.3e-35 below its
+/// bound (mpmath at 60 and 120 digits).
 #[test]
-fn a_far_open_tail_recuts_its_piece() {
+fn a_far_open_tail_is_the_exponential_below_its_bound() {
   let up = -4.722020836512684e34;
   let law = SimdTruncatedNormal::<f64>::new(
     -1.4657822581465938,
