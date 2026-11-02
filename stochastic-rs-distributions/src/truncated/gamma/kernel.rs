@@ -9,7 +9,7 @@ use crate::truncated::quadrature::two_prod;
 /// `u^{k−1} e^{−u/s}` on `[0, ∞)` about the reference point `c`; a unit shape has no log term, whose `0·ln 0` would
 /// read NaN at 0.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct GammaKernel {
+pub(in crate::truncated) struct GammaKernel {
   k: f64,
   /// θ in the kernel's unit: at most 1 where θ is the shorter length, else above 1, `+∞` where `upper` lies so far
   /// below θ that `e^{−u/s}` is 1 on the interval.
@@ -26,7 +26,7 @@ pub(super) struct GammaKernel {
 
 impl GammaKernel {
   #[inline]
-  pub(super) fn new(k: f64, s: f64) -> Self {
+  pub(in crate::truncated) fn new(k: f64, s: f64) -> Self {
     Self {
       k,
       s,

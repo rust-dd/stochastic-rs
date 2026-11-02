@@ -29,7 +29,7 @@ use crate::traits::SimdFloatExt;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
-use kernel::GammaKernel;
+pub(super) use kernel::GammaKernel;
 
 mod kernel;
 
@@ -209,6 +209,14 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
     )
   }
 
+  /// The clipped upper end of the mass, in the law's coordinate: the interval's end for a law its local model holds.
+  pub(super) fn clipped_end(&self) -> Option<f64> {
+    Some(match self.analytics()? {
+      Model::Full(t) => ldexp(t.clipped().1, self.p),
+      Model::Local(_) => self.upper.to_f64()?,
+    })
+  }
+
   /// `x` in the kernel's unit, exact unless it leaves the range.
   fn units(&self, x: f64) -> f64 {
     x * self.inv_unit
@@ -316,7 +324,7 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
 
 /// The least power of two at or above the law's length, the shorter of θ and `upper` (2⁻¹⁰²² for a subnormal one):
 /// `x/2^p` is exact, an interval far below θ keeps its digits, and past 2¹⁰²³ the unit 2¹⁰²⁴ lives in its exponent.
-fn unit_exponent(length: f64) -> i32 {
+pub(super) fn unit_exponent(length: f64) -> i32 {
   let biased = ((length.to_bits() >> 52) & 0x7ff) as i32;
   if biased == 0 {
     return -1022;

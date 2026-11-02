@@ -28,8 +28,11 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 use kernel::BetaKernel;
+use route::Mirror;
+use route::gamma_route;
 
 mod kernel;
+mod route;
 
 /// Truncated beta law on $[\text{lower}, \text{upper}] \subseteq [0, 1]$: parameters and the base mass on the
 /// interval; a [`Seeded`](crate::Seeded) stream draws it.
@@ -44,12 +47,12 @@ pub struct SimdTruncatedBeta<T> {
   analytics: OnceLock<Analytics>,
 }
 
-/// Beside 0, where `(1 − x)^{β−1} = e^{−(β−1)x}` to within 2⁻⁵³, a law the beta's engine has no normal width for is
-/// the truncated gamma of rate `β − 1`, which runs at a power-of-two unit.
+/// The beta's own integral, or beside an end the gamma that holds its kernel there (`route`).
 #[derive(Clone, Debug)]
 enum Analytics {
   Beta(Model<BetaKernel>),
   Gamma(SimdTruncatedGamma<f64>),
+  Mirror(Mirror),
 }
 
 impl<T: fmt::Debug> fmt::Debug for SimdTruncatedBeta<T> {
@@ -172,21 +175,15 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
     let (a, b) = (self.base.alpha().to_f64()?, self.base.beta().to_f64()?);
     let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
     Some(self.analytics.get_or_init(|| {
-      // A subnormal `x` holds too few bits for the beta's offsets.
-      if up < f64::MIN_POSITIVE
-        && let Some(g) = gamma_route(a, b, lo, up)
-      {
+      if let Some(g) = gamma_route(a, b, lo, up) {
         return Analytics::Gamma(g);
       }
-      let t = Truncation::new(BetaKernel::new(a, b), lo, up);
-      let Some(r) = t.narrow() else {
-        return Analytics::Beta(Model::Full(t));
-      };
-      match (self.local(r), gamma_route(a, b, lo, up)) {
-        (Some(l), _) => Analytics::Beta(Model::Local(l)),
-        (None, Some(g)) => Analytics::Gamma(g),
-        (None, None) => Analytics::Beta(Model::Full(t)),
+      if let Some(m) = Mirror::route(a, b, lo, up) {
+        return Analytics::Mirror(m);
       }
+      let t = Truncation::new(BetaKernel::new(a, b), lo, up);
+      let local = t.narrow().and_then(|r| self.local(r));
+      Analytics::Beta(local.map_or(Model::Full(t), Model::Local))
     }))
   }
 
@@ -209,6 +206,7 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
       Analytics::Beta(Model::Full(t)) => Some(t.moments(1.0)),
       Analytics::Beta(Model::Local(l)) => Some(l.moments()),
       Analytics::Gamma(g) => g.moments(),
+      Analytics::Mirror(m) => Some(m.moments()),
     }
   }
 
@@ -255,26 +253,11 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
       Some(Analytics::Beta(Model::Full(t))) => t.quantile(u).value(),
       Some(Analytics::Beta(Model::Local(l))) => l.quantile(u),
       Some(Analytics::Gamma(g)) => g.quantile(u).unwrap_or(f64::NAN),
+      Some(Analytics::Mirror(m)) => m.quantile(u),
       None => f64::NAN,
     };
     T::from_f64_fast(x.clamp(lo, up))
   }
-}
-
-/// The truncated gamma of rate `β − 1` (θ = MAX below a unit `β`, where the factor is 1 to within `x/MAX`) where it holds
-/// the kernel to 2⁻⁵³: `ln(1 − x) + x` is at most `x²/(2(1 − x))`, and below a unit `β` the whole `(1 − β)·x/(1 − x)`.
-fn gamma_route(a: f64, b: f64, lo: f64, up: f64) -> Option<SimdTruncatedGamma<f64>> {
-  let error = if b > 1.0 {
-    (b - 1.0) * up * (up / (2.0 * (1.0 - up)))
-  } else {
-    (1.0 - b) * up / (1.0 - up)
-  };
-  let theta = if b > 1.0 {
-    (1.0 / (b - 1.0)).min(f64::MAX)
-  } else {
-    f64::MAX
-  };
-  (error <= f64::EPSILON / 2.0).then(|| SimdTruncatedGamma::new(a, theta, lo, up))
 }
 
 /// The pdf of a law the beta's own quadrature does not hold, out of line.
@@ -285,6 +268,7 @@ fn pdf_rare(analytics: &Analytics, x: f64) -> Option<f64> {
     Analytics::Beta(Model::Full(t)) => Some(t.density(x, 0.0)),
     Analytics::Beta(Model::Local(l)) => Some(l.pdf(x, 0.0)),
     Analytics::Gamma(g) => g.pdf(x),
+    Analytics::Mirror(m) => Some(m.pdf(x)),
   }
 }
 
@@ -343,6 +327,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
       Analytics::Beta(Model::Full(t)) => t.cdf(Cut::at(x)),
       Analytics::Beta(Model::Local(l)) => l.cdf(x),
       Analytics::Gamma(g) => g.cdf(x)?,
+      Analytics::Mirror(m) => m.cdf(x),
     })
   }
 
@@ -361,6 +346,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
       Analytics::Beta(Model::Full(t)) => t.quantile(p).value(),
       Analytics::Beta(Model::Local(l)) => l.quantile(p),
       Analytics::Gamma(g) => g.quantile(p)?,
+      Analytics::Mirror(m) => m.quantile(p),
     };
     Some(x.clamp(lo, up))
   }
@@ -425,6 +411,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
       Analytics::Beta(Model::Full(t)) => t.entropy(),
       Analytics::Beta(Model::Local(l)) => l.entropy(),
       Analytics::Gamma(g) => g.entropy()?,
+      Analytics::Mirror(m) => m.entropy(),
     })
   }
 }

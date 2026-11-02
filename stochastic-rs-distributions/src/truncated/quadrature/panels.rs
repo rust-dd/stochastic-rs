@@ -177,6 +177,16 @@ impl Cut {
   pub(in crate::truncated) fn offset(self, origin: f64) -> f64 {
     span(Self::at(origin), self)
   }
+
+  /// `−self`, every part negated exactly (`0 − v`, so no part reads `−0`).
+  pub(in crate::truncated) fn neg(self) -> Self {
+    let neg = |v: f64| 0.0 - v;
+    Self {
+      x: neg(self.x),
+      from: self.from.map(|(s, lo, t)| (neg(s), neg(lo), neg(t))),
+      inner: self.inner.map(|(s, e)| (neg(s), e)),
+    }
+  }
 }
 
 impl From<f64> for Cut {
