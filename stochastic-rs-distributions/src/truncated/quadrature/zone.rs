@@ -116,7 +116,7 @@ impl<K: Kernel> Truncation<K> {
   /// `v·t^e/e` over `M₀ = width·m0`, the width's power of two kept apart.
   pub(super) fn end_mass(&self, t: Offset, e: f64, ln_v: f64) -> f64 {
     let (mw, qw) = split(self.width);
-    power(t, e, ln_v - e.ln() - (mw * self.m0).ln(), -qw)
+    power(t, e, ln_v - e.ln() - (mw * self.m0).ln() - self.scale, -qw)
   }
 
   /// The cdf at the offset `t` from the lower end, where it lies within the zone and below ½: a tiny exponent puts

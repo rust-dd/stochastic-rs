@@ -221,6 +221,9 @@ pub(super) struct Truncation<K> {
   m0_rest: f64,
   /// `ln(width·m0)`, so a density costs one `exp` and overflows only where its value does.
   ln_norm: f64,
+  /// Every mass is held `e^{−scale}`: below a shape of `e^{−600}` the frame beside its branch point weighs `h^e/e`, past
+  /// what the sums hold.
+  scale: f64,
   /// No normal width: no panel places its nodes, and the law answers in its own scale (`truncated::local`, the beta's
   /// gamma route); the point this engine then reads is for a law neither holds.
   narrow: bool,
@@ -322,16 +325,24 @@ impl<K: Kernel> Truncation<K> {
       m0: 0.0,
       m0_rest: 0.0,
       ln_norm: 0.0,
+      scale: 0.0,
       narrow: false,
       tail_lo: 0.0,
       tail_up: 0.0,
       reach: (a, b),
     };
     t.narrow = t.width.is_nan() || t.width < f64::MIN_POSITIVE;
+    t.scale = t
+      .kernel
+      .branch_points()
+      .into_iter()
+      .flatten()
+      .map(|(_, e)| (-e.ln() - 600.0).max(0.0))
+      .fold(0.0, f64::max);
     if !t.narrow {
       let m0 = t.integrate_sum(a, b, 0.0);
       (t.m0, t.m0_rest) = (m0.value(), (m0.hi - m0.value()) + m0.lo);
-      t.ln_norm = t.width.ln() + t.m0.ln();
+      t.ln_norm = t.width.ln() + t.m0.ln() + t.scale;
     }
     t
   }
@@ -355,8 +366,9 @@ impl<K: Kernel> Truncation<K> {
     (self.a.x, self.b.x)
   }
 
-  /// `∫_a^b k/k(c)` over the clipped interval.
+  /// `∫_a^b k/k(c)` over the clipped interval, for a kernel with no branch point to scale it.
   pub(super) fn mass(&self) -> f64 {
+    debug_assert!(self.scale == 0.0);
     self.width * self.m0
   }
 
@@ -456,6 +468,7 @@ impl<K: Kernel> Truncation<K> {
   /// `Σ w·e^{ln v − shift}` over a panel's nodes; on a regular panel its own loop, whose few live values leave the sum
   /// in a register across the kernel's calls.
   fn panel_mass(&self, panel: &Panel, shift: f64) -> f64 {
+    let shift = shift + self.scale;
     let mut mass = 0.0;
     if panel.singular.is_some() || panel.graded {
       self.nodes(panel, |w, ln_v, _, _| mass += w * (ln_v - shift).exp());

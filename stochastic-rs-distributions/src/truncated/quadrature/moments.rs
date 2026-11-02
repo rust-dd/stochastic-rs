@@ -46,18 +46,19 @@ impl<K: Kernel> Truncation<K> {
     let d = mean[1] / mean[0];
     let m = self.moment_sums::<5>(d);
     let e = m[1] / m[0];
-    let (r2, r3, r4) = (m[2] / m[0], m[3] / m[0], m[4] / m[0]);
-    let mu2 = r2 - e * e;
-    let mu3 = r3 - 3.0 * e * r2 + 2.0 * e * e * e;
-    let mu4 = r4 - 4.0 * e * r3 + 6.0 * e * e * r2 - 3.0 * e * e * e * e;
+    // The central sums before they are divided by `m[0]`: beside a near-point mass `μ₂` is subnormal, its sums are not.
+    let c2 = m[2] - e * m[1];
+    let c3 = m[3] - 3.0 * e * m[2] + 2.0 * e * e * m[1];
+    let c4 = m[4] - 4.0 * e * m[3] + 6.0 * e * e * m[2] - 3.0 * e * e * e * m[1];
+    let inv_sd = m[0].sqrt() / c2.sqrt();
     let unit = scale * self.width;
     (
       self.frame,
       [self.width, self.flat_mean().unwrap_or(d + e)],
       [
-        (unit * mu2) * unit,
-        (mu3 / mu2) / mu2.sqrt(),
-        (mu4 / mu2) / mu2 - 3.0,
+        (unit * (c2 / m[0])) * unit,
+        (c3 / c2) * inv_sd,
+        (c4 / c2) * inv_sd * inv_sd - 3.0,
       ],
     )
   }
@@ -72,7 +73,7 @@ impl<K: Kernel> Truncation<K> {
         self.singular_moments(&panel, e, about, &mut m);
       } else {
         self.nodes(&panel, |w, ln_v, offset, _| {
-          let (g, z) = (w * ln_v.exp(), offset / self.width - about);
+          let (g, z) = (w * (ln_v - self.scale).exp(), offset / self.width - about);
           let mut zj = 1.0;
           for slot in &mut m {
             *slot += g * zj;
@@ -91,22 +92,30 @@ impl<K: Kernel> Truncation<K> {
       return f64::NAN;
     }
     // Relative to `m0`: past 1e154 a mass and its log's own size overflow in one product (`β = 4.9e-165` at 1).
-    let shift = self.m0.ln();
+    let shift = self.m0.ln() + self.scale;
     let (mut mass, mut log) = (0.0, 0.0);
+    // Each singular panel's `Σ g·ln u` and exponent, scaled by `(e − 1)/e` once the mass is known.
+    let mut apart = [(0.0, 1.0); 2];
     let _ = self.walk_about_centre(|panel| {
-      self.nodes(&panel, |w, ln_v, _, ln_g| {
-        let g = w * (ln_v - shift).exp();
-        if g > 0.0 {
-          mass += g;
-          log += g * ln_g;
-        }
-      });
       if let Some(e) = panel.singular {
-        log += self.ln_u_correction(&panel, e, shift);
+        let (m, l, u) = self.singular_entropy(&panel, e, shift);
+        (mass, log) = (mass + m, log + l);
+        if let Some(slot) = apart.iter_mut().find(|(v, _)| *v == 0.0) {
+          *slot = (u, e);
+        }
+      } else {
+        self.nodes(&panel, |w, ln_v, _, ln_g| {
+          let g = w * (ln_v - shift).exp();
+          if g > 0.0 {
+            mass += g;
+            log += g * ln_g;
+          }
+        });
       }
       ControlFlow::<()>::Continue(())
     });
-    (self.width.ln() + shift + mass.ln()) - log / mass
+    let apart: f64 = apart.iter().map(|&(u, e)| (u / mass) * (e - 1.0) / e).sum();
+    (self.width.ln() + shift + mass.ln()) - log / mass - apart
   }
 
   /// The moments' and entropy's walk: about the centre, where a near-symmetric law's odd powers keep their digits.

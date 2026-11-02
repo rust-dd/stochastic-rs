@@ -90,6 +90,7 @@ impl<K: Kernel> Truncation<K> {
     from_lo: bool,
     shift: f64,
   ) -> Point {
+    let shift = shift + self.scale;
     let frame = Frame::of(panel, e);
     let ln_jacobian = frame.ln_jacobian() - self.width.ln();
     // Walked into from the branch point's side the panel's mass grows from its near end, from the other side from far.
@@ -184,7 +185,7 @@ impl<K: Kernel> Truncation<K> {
       } else {
         lb = t;
       }
-      let slope = (at(t) - shift).exp() / self.width;
+      let slope = (at(t) - shift - self.scale).exp() / self.width;
       let mut next = t - if from_lo { f / slope } else { -f / slope };
       if !(lb..=rb).contains(&next) {
         next = 0.5 * (lb + rb);
