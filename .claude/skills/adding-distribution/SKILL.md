@@ -157,7 +157,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdFoo<T> {
 }
 ```
 
-A method with no closed form is simply not overridden. `tests/distribution_ext_coverage.rs` lists, per type, which cells are `Some`: add the new type's row there with the same reference point, and a row to `tests/distribution_ext_vs_reference.rs` or `tests/distribution_ext_closed_forms.rs` with values from an independent source (`statrs` where it has the law, `mpmath` otherwise).
+A method with no closed form is simply not overridden. `quantile(p)` answers `Some(NaN)` for `p ∉ [0, 1]` (NaN included) and the support's ends at `0` and `1`; a NaN argument to `pdf`, `cdf`, `moment_generating_function` or `characteristic_function` answers NaN; an mgf whose integral diverges answers `Some(f64::INFINITY)`. `tests/distribution_ext_coverage/domain.rs` checks every row. `tests/distribution_ext_coverage.rs` lists, per type, which cells are `Some`: add the new type's row there with the same reference point, and a row to `tests/distribution_ext_vs_reference.rs` or `tests/distribution_ext_closed_forms.rs` with values from an independent source (`statrs` where it has the law, `mpmath` otherwise).
 
 ## 4. Source-file documentation
 
