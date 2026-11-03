@@ -500,7 +500,7 @@ impl<K: Kernel> Truncation<K> {
       return mass;
     }
     let half = 0.5 * (panel.r - panel.l);
-    let (scaled, to_centre) = (half / self.width, span(panel.origin, self.centre));
+    let (scaled, to_centre) = (self.share(panel, half), span(panel.origin, self.centre));
     for (node, weight) in GL64_X.iter().zip(&GL64_W) {
       for xi in [-node, *node] {
         let t = panel.l + half * (1.0 + xi);
@@ -509,6 +509,16 @@ impl<K: Kernel> Truncation<K> {
       }
     }
     mass
+  }
+
+  /// Half the panel's share of `width`; a subnormal panel's half rounds off its last unit, its quotient's half does not.
+  #[inline]
+  fn share(&self, panel: &Panel, half: f64) -> f64 {
+    if self.sharp {
+      0.5 * ((panel.r - panel.l) / self.width)
+    } else {
+      half / self.width
+    }
   }
 
   /// `f(w, ln v, y, ln g)` at each node: a weight and the log of the integrand it multiplies, in units of `width`, the
@@ -523,7 +533,7 @@ impl<K: Kernel> Truncation<K> {
     let (scaled, ln_scaled) = if panel.graded && !self.sharp {
       (1.0, half.ln() - self.width.ln())
     } else {
-      (half / self.width, 0.0)
+      (self.share(panel, half), 0.0)
     };
     let (to_centre, to_frame) = (
       span(panel.origin, self.centre),

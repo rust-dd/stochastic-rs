@@ -71,10 +71,15 @@ impl<K: Kernel> Truncation<K> {
       }
       ControlFlow::Break(())
     });
-    match above {
+    let f = match above {
       Some(m) => 1.0 - ((m - self.tail_lo) - self.m0_rest) / self.m0,
       None => ((self.tail_lo + sum.value()) / self.m0).min_or_nan(1.0),
+    };
+    // Beside a singular end the nodes' masses fall on the subnormal grid too.
+    if f < f64::MIN_POSITIVE {
+      return self.subnormal(at, ln_point());
     }
+    f
   }
 
   /// In the right half of the last regular panel, the mass above `x` measured from `b`, where it is the smaller part:
@@ -140,14 +145,17 @@ impl<K: Kernel> Truncation<K> {
     if ln_f >= LN_MIN_POSITIVE {
       return ln_f.exp().min_or_nan(1.0);
     }
-    self.subnormal_below(at, start, ln_point())
+    self.subnormal(at, ln_point())
   }
 
-  /// A subnormal cdf rounded once: the mass relative to `k(x)` summed by the kernel anchored at `x`, and `k(x)/k(c)` from
-  /// its log in two parts, whose rounded sum of logs near −700 would leave 1e-13.
+  /// A subnormal cdf rounded once: the mass from the clip below `x` relative to `k(x)`, summed in units of its own span
+  /// by the kernel anchored at `x`, and `k(x)/k(c)` from its log in two parts; a sum of logs near −700 leaves 1e-13.
   #[cold]
   #[inline(never)]
-  fn subnormal_below(&self, at: Cut, start: Cut, (hi, lo): Two) -> f64 {
+  fn subnormal(&self, at: Cut, (hi, lo): Two) -> f64 {
+    let ln_g = self.kernel.ln_rel(at.x, span(self.centre, at), None);
+    let start = clip(&self.kernel, self.centre, at, self.lo, ln_g - CLIP);
+    let local = span(start, at);
     let mut kernel = self.kernel.clone();
     kernel.anchor(at, false);
     kernel.sharpen();
@@ -156,6 +164,7 @@ impl<K: Kernel> Truncation<K> {
       centre: at,
       frame: at,
       near: at.near(),
+      width: local,
       sharp: true,
       ..*self
     };
@@ -165,8 +174,13 @@ impl<K: Kernel> Truncation<K> {
       mass.add(there.panel_mass(&panel, 0.0));
       ControlFlow::<()>::Continue(())
     });
-    let (r, r_lo) = two::div((mass.hi, mass.lo), (self.m0, self.m0_rest));
+    // `mass·local/(width·m0)`, the two widths' powers of two kept apart.
+    let ((ml, ql), (mw, qw)) = (split(local), split(self.width));
+    let (r, r_lo) = two::div(
+      two::mul((mass.hi, mass.lo), (ml, 0.0)),
+      two::mul((mw, 0.0), (self.m0, self.m0_rest)),
+    );
     let ((m, q), (mr, qr)) = (exp_split(hi, lo), split(r));
-    ldexp_once(m.mul_add(mr, m * ldexp(r_lo, -qr)), q + qr).min_or_nan(1.0)
+    ldexp_once(m.mul_add(mr, m * ldexp(r_lo, -qr)), q + qr + ql - qw).min_or_nan(1.0)
   }
 }

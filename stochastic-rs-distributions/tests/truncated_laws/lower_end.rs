@@ -137,6 +137,25 @@ fn a_subnormal_cdf_below_the_clip() {
   }
 }
 
+/// A lower bound far finer than the gamma's scale keeps its own digits in the unit: the cdf beside it and the mean
+/// against mpmath at 60 and 120 digits (shape ½ by erf, the tiny shape by its E1 limit).
+#[test]
+fn a_gamma_lower_bound_far_below_its_scale() {
+  let inf = f64::INFINITY;
+  let half = SimdTruncatedGamma::<f64>::new(0.5, 347.32, 1.8632181938306767e-308, inf);
+  let tiny = SimdTruncatedGamma::<f64>::new(2.17e-308, 1e300, 1e-200, inf);
+  for (got, want) in [
+    (
+      half.cdf(1.8632181938325403e-308).unwrap(),
+      4.133183150592195e-168,
+    ),
+    (tiny.cdf(1.01e-200).unwrap(), 8.647082894057458e-6),
+    (tiny.mean().unwrap(), 8.690246607532952e296),
+  ] {
+    assert!(rel(got, want) < 1e-12, "{got:e} for {want:e}");
+  }
+}
+
 /// Beside the lower end: a branch point's zone (exact subnormals, either side of the zone's edge), the walk beside a
 /// regular end (`TB(1, 0.384)` at 1.8e-8 and 2e-8), and next to 1 the walk's value for a tiny exponent's `t^e`.
 #[test]
