@@ -218,13 +218,9 @@ impl Local {
 
   /// `(mean, variance, skewness, excess kurtosis)`.
   pub(super) fn moments(&self) -> [f64; 4] {
-    let (frame, [unit, offset], [variance, skewness, kurtosis]) = self.t.located_moments(1.0);
-    [
-      self.at(frame, unit * offset),
-      ldexp(variance, 2 * self.p),
-      skewness,
-      kurtosis,
-    ]
+    let (frame, [unit, offset], [variance, skewness, kurtosis]) =
+      self.t.located_moments(1.0, self.p);
+    [self.at(frame, unit * offset), variance, skewness, kurtosis]
   }
 
   /// `r + 2^p(frame + d)`, summed in units from the frame's exact parts and scaled once, so a point far nearer 0 than

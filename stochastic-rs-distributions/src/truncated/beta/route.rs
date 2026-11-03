@@ -123,13 +123,8 @@ impl Mirror {
 
   /// `(mean, variance, skewness, excess kurtosis)`.
   pub(super) fn moments(&self) -> [f64; 4] {
-    let [mean, variance, skewness, kurtosis] = self.t.moments(1.0);
-    [
-      self.at(mean),
-      ldexp(variance, 2 * self.p),
-      skewness,
-      kurtosis,
-    ]
+    let [mean, variance, skewness, kurtosis] = self.t.moments(1.0, self.p);
+    [self.at(mean), variance, skewness, kurtosis]
   }
 
   pub(super) fn entropy(&self) -> f64 {

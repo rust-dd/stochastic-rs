@@ -165,6 +165,31 @@ fn a_gamma_lower_bound_far_below_its_scale() {
   }
 }
 
+/// A huge shape's mass against its upper bound: the variance, `1/λ²` of the exponential below it, formed in the law's
+/// coordinate before its square rounds (mpmath at 60 and 120 digits); in the unit it would underflow.
+#[test]
+fn a_gamma_variance_against_its_upper_bound() {
+  for (k, theta, up, want) in [
+    (
+      1e306,
+      1.086657414900513e303,
+      3.896229425657342e305,
+      0.1518060373735814,
+    ),
+    (
+      1e200,
+      1.086657414900513e100,
+      3.896229425657342e103,
+      1.518060373735814e-193,
+    ),
+  ] {
+    let got = SimdTruncatedGamma::<f64>::new(k, theta, 0.0, up)
+      .variance()
+      .unwrap();
+    assert!(rel(got, want) < 1e-12, "TG({k:e}): variance {got:e}");
+  }
+}
+
 /// Beside the lower end: a branch point's zone (exact subnormals, either side of the zone's edge), the walk beside a
 /// regular end (`TB(1, 0.384)` at 1.8e-8 and 2e-8), and next to 1 the walk's value for a tiny exponent's `t^e`.
 #[test]

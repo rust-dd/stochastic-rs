@@ -4,34 +4,39 @@ use std::ops::ControlFlow;
 
 use super::Kernel;
 use super::Truncation;
+use super::ldexp;
 use super::panels::Cut;
 use super::panels::Panel;
 use super::panels::panels;
 use super::panels::span;
 
 impl<K: Kernel> Truncation<K> {
-  /// `(mean, scale²·variance, skewness, excess kurtosis)`.
-  pub(in crate::truncated) fn moments(&self, scale: f64) -> [f64; 4] {
-    let (frame, [unit, offset], [variance, skewness, kurtosis]) = self.located_moments(scale);
+  /// `(mean, (scale·2^p)²·variance, skewness, excess kurtosis)`, `2^p` the law's unit, in the square before it rounds.
+  pub(in crate::truncated) fn moments(&self, scale: f64, p: i32) -> [f64; 4] {
+    let (frame, [unit, offset], [variance, skewness, kurtosis]) = self.located_moments(scale, p);
     [frame.plus(unit * offset), variance, skewness, kurtosis]
   }
 
   /// The mean as its frame and `unit·offset` (in widths, where an offset would underflow against the width), then the
   /// other three; an interval cutting neither end reads the base's closed forms (2/√k at k = 1e300).
-  pub(in crate::truncated) fn located_moments(&self, scale: f64) -> (Cut, [f64; 2], [f64; 3]) {
+  pub(in crate::truncated) fn located_moments(
+    &self,
+    scale: f64,
+    p: i32,
+  ) -> (Cut, [f64; 2], [f64; 3]) {
     let (lo, up) = self.kernel.support();
     // By exact offsets: a clip within an ulp of its bound still cuts nothing.
     if (self.lo.x <= lo || span(self.lo, self.a) > 0.0)
       && (self.up.x >= up || span(self.up, self.b) < 0.0)
     {
       let [mean, sd, skewness, kurtosis] = self.kernel.base_moments();
-      let unit = scale * sd;
+      let unit = ldexp(scale * sd, p);
       return (Cut::at(mean), [1.0, 0.0], [unit * unit, skewness, kurtosis]);
     }
     if self.narrow {
       return (self.centre, [1.0, 0.0], [0.0, f64::NAN, f64::NAN]);
     }
-    self.summed_moments(scale)
+    self.summed_moments(scale, p)
   }
 
   /// Whether the reference point is the clipped interval's midpoint, where a flat kernel's moments are summed.
@@ -41,7 +46,7 @@ impl<K: Kernel> Truncation<K> {
 
   /// The moments from sums in units of `width`: the mean's offset `d`, then sums about it, so no binomial shift by a
   /// far reference point cancels.
-  pub(super) fn summed_moments(&self, scale: f64) -> (Cut, [f64; 2], [f64; 3]) {
+  pub(super) fn summed_moments(&self, scale: f64, p: i32) -> (Cut, [f64; 2], [f64; 3]) {
     let mean = self.moment_sums::<2>(0.0);
     let d = mean[1] / mean[0];
     let m = self.moment_sums::<5>(d);
@@ -51,7 +56,7 @@ impl<K: Kernel> Truncation<K> {
     let c3 = m[3] - 3.0 * e * m[2] + 2.0 * e * e * m[1];
     let c4 = m[4] - 4.0 * e * m[3] + 6.0 * e * e * m[2] - 3.0 * e * e * e * m[1];
     let inv_sd = m[0].sqrt() / c2.sqrt();
-    let unit = scale * self.width;
+    let unit = ldexp(scale * self.width, p);
     (
       self.frame,
       [self.width, self.flat_mean().unwrap_or(d + e)],

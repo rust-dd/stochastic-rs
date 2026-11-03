@@ -203,7 +203,7 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
   /// `(mean, variance, skewness, excess kurtosis)`.
   fn moments(&self) -> Option<[f64; 4]> {
     match self.analytics()? {
-      Analytics::Beta(Model::Full(t)) => Some(t.moments(1.0)),
+      Analytics::Beta(Model::Full(t)) => Some(t.moments(1.0, 0)),
       Analytics::Beta(Model::Local(l)) => Some(l.moments()),
       Analytics::Gamma(g) => g.moments(),
       Analytics::Mirror(m) => Some(m.moments()),

@@ -232,7 +232,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     Some(match self.analytics()? {
       Model::Full(t) => {
         let (frame, offset, [variance, skewness, kurtosis]) =
-          t.located_moments(self.base.std_dev().to_f64()?);
+          t.located_moments(self.base.std_dev().to_f64()?, 0);
         [
           self.mean_from(t, frame, offset)?,
           variance,

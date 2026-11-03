@@ -274,13 +274,8 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
   pub(super) fn moments(&self) -> Option<[f64; 4]> {
     Some(match self.analytics()? {
       Model::Full(t) => {
-        let [mean, variance, skewness, kurtosis] = t.moments(1.0);
-        [
-          ldexp(mean, self.p),
-          ldexp(variance, 2 * self.p),
-          skewness,
-          kurtosis,
-        ]
+        let [mean, variance, skewness, kurtosis] = t.moments(1.0, self.p);
+        [ldexp(mean, self.p), variance, skewness, kurtosis]
       }
       Model::Local(l) => l.moments(),
     })

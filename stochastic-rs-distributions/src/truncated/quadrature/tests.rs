@@ -69,8 +69,8 @@ fn whole_line_mass_is_sqrt_two_pi() {
       < 1e-15
   );
   assert!(t.a.x < -9.1 && t.b.x > 9.1 && t.quantile(0.5).value().abs() < 1e-15);
-  assert_eq!(t.moments(1.0), [0.0, 1.0, 0.0, 0.0]);
-  let (frame, [unit, offset], [var, skew, kurt]) = t.summed_moments(1.0);
+  assert_eq!(t.moments(1.0, 0), [0.0, 1.0, 0.0, 0.0]);
+  let (frame, [unit, offset], [var, skew, kurt]) = t.summed_moments(1.0, 0);
   let mean = frame.plus(unit * offset);
   assert!(
     mean.abs() < 1e-15 && (var - 1.0).abs() < 1e-14 && skew.abs() < 1e-14 && kurt.abs() < 1e-13
@@ -85,7 +85,7 @@ fn whole_line_mass_is_sqrt_two_pi() {
 fn narrow_interval_centres_on_its_midpoint() {
   let t = Truncation::new(Normal::default(), 0.3, 0.3 + 1e-6);
   assert_eq!(t.centre.x, 0.3 + 0.5e-6);
-  assert!((t.moments(1.0)[3] + 1.1999999999999508).abs() < 1e-11);
+  assert!((t.moments(1.0, 0)[3] + 1.1999999999999508).abs() < 1e-11);
   assert!((t.cdf(Cut::at(0.3 + 0.25e-6)) - 0.25000002811116198).abs() < 1e-13);
 }
 
