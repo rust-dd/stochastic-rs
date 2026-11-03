@@ -328,7 +328,9 @@ pub(crate) struct Feature {
 }
 
 impl Feature {
-  fn new(sign: f64, ln_abs: f64, nu_ln_abs: f64, tail: f64, nu: f64) -> Self {
+  /// `abs = |s|`, read up to `√ν`, where `asinh(|s|/√ν)` keeps `|t|` to its rounding and `ln|s| − ½ ln ν`, whose terms pass
+  /// 10 at a large `ν`, would carry their ulps into it.
+  fn new(sign: f64, abs: f64, ln_abs: f64, nu_ln_abs: f64, tail: f64, nu: f64) -> Self {
     if sign == 0.0 {
       return Self {
         sign,
@@ -345,7 +347,7 @@ impl Feature {
       let corr = (1.0 + (-2.0 * q).exp()).sqrt().ln_1p();
       (q + corr, nu_ln_abs - nu * half_ln_nu + nu * corr, corr)
     } else {
-      let abs_t = q.exp().asinh();
+      let abs_t = (abs / nu.sqrt()).asinh();
       (abs_t, nu * abs_t, f64::NAN)
     };
     Self {
@@ -361,13 +363,20 @@ impl Feature {
   pub(crate) fn of_value(s: f64, nu: f64) -> Self {
     let ln_abs = s.abs().ln();
     let sign = if s == 0.0 { 0.0 } else { s.signum() };
-    Self::new(sign, ln_abs, nu * ln_abs, f64::NAN, nu)
+    Self::new(sign, s.abs(), ln_abs, nu * ln_abs, f64::NAN, nu)
   }
 }
 
 impl Law {
   pub(crate) fn feature(&self, s: Score) -> Feature {
-    Feature::new(s.sign(), s.ln_abs(), self.nu_ln_abs(s), s.tail, self.nu)
+    Feature::new(
+      s.sign(),
+      s.value.abs(),
+      s.ln_abs(),
+      self.nu_ln_abs(s),
+      s.tail,
+      self.nu,
+    )
   }
 
   /// `|t_b| − |t_a|`, from the tail probabilities where both scores have one, so it stays exact past `f64::MAX`.
@@ -432,11 +441,13 @@ pub(crate) fn ln_gamma_constant(nu: f64) -> f64 {
 /// `t_{ν+1}`. Read from `|t|`, its sign and the exact `|t_y| − |t|`; the centre crossing by `expm1`.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Conditional {
-  pub(crate) ln_c0: f64,
+  /// `c₀`, finite as every caller keeps `ν < 1e22`; it multiplies `1 − e^{−2|t|}` before the logarithm, since at a large `ν`
+  /// `ln c₀` and `ln(1 − e^{−2|t|})` pass 10 each and cancel, their ulps a relative error in `A` that `H` multiplies by `A²`.
+  c0: f64,
   rho: f64,
   ln_abs_rho: f64,
   sign_y: f64,
-  /// `ln(1 − e^{−2|t_y|})`.
+  /// `ln(c₀(1 − e^{−2|t_y|}))`.
   ln_y: f64,
   /// `expm1(2|t_y|)`.
   e2y: f64,
@@ -444,12 +455,13 @@ pub(crate) struct Conditional {
 
 impl Conditional {
   pub(crate) fn new(rho: f64, nu: f64, y: &Feature) -> Self {
+    let c0 = ((nu + 1.0) / ((1.0 - rho) * (1.0 + rho))).sqrt();
     Self {
-      ln_c0: 0.5 * ((nu + 1.0).ln() - ((1.0 - rho) * (1.0 + rho)).ln()),
+      c0,
       rho,
       ln_abs_rho: rho.abs().ln(),
       sign_y: y.sign,
-      ln_y: (-(-2.0 * y.abs_t).exp_m1()).ln(),
+      ln_y: (c0 * -(-2.0 * y.abs_t).exp_m1()).ln(),
       e2y: (2.0 * y.abs_t).exp_m1(),
     }
   }
@@ -458,7 +470,7 @@ impl Conditional {
   pub(crate) fn argument(&self, sign_t: f64, abs_t: f64, gap: f64) -> (f64, f64) {
     let ln_1p_e = (-2.0 * abs_t).exp().ln_1p();
     let ln_y = gap + self.ln_y - ln_1p_e;
-    let ln_r = self.ln_abs_rho + (-(-2.0 * abs_t).exp_m1()).ln() - ln_1p_e;
+    let ln_r = self.ln_abs_rho + (self.c0 * -(-2.0 * abs_t).exp_m1()).ln() - ln_1p_e;
     let sign_r = if sign_t == 0.0 {
       0.0
     } else {
@@ -479,7 +491,7 @@ impl Conditional {
     } else {
       (self.sign_y, ln_add_exp(ln_y, ln_r))
     };
-    (sign, self.ln_c0 + ln)
+    (sign, ln)
   }
 }
 

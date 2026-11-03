@@ -300,3 +300,59 @@ fn a_tiny_probability_keeps_its_relative_digits() {
   let want = 1.8473145194549695e-17;
   assert!((got - want).abs() <= 1e-12 * want, "{got}");
 }
+
+/// Past the countermonotone crossing at a large `ν`, where `ln c₀` and `ln tanh|t|` near ±20 would cancel as logarithms:
+/// within `1e-12` of mpmath's `bvt_cdf` (60 and 120 digits, agreeing to 40).
+#[test]
+fn the_cdf_past_the_countermonotone_crossing_holds_at_a_large_nu() {
+  for (rho, nu, u, v, want) in [
+    (
+      -0.999,
+      1e10,
+      2.4985486173036083e-17,
+      0.9999999999990905,
+      1.8939689979205413e-213,
+    ),
+    (
+      -0.999,
+      1e10,
+      7.621491187227433e-23,
+      0.9999999999999999,
+      1.118906724753011e-287,
+    ),
+    (
+      -0.999,
+      1e18,
+      1.208801823135543e-11,
+      0.99999999,
+      2.806227177289143e-137,
+    ),
+    (
+      -0.999,
+      1e10,
+      2.7515276207160325e-18,
+      0.9999999999999716,
+      7.913999214752562e-158,
+    ),
+    (
+      -0.999999,
+      1e18,
+      7.790174833783521e-17,
+      0.9999999999999999,
+      1.5042482384701032e-217,
+    ),
+    (
+      -0.99,
+      1e18,
+      3.903545391527111e-29,
+      0.9999999999999999,
+      7.932600010017238e-119,
+    ),
+  ] {
+    let got = TCopula::new(rho, nu).cdf(array![[u, v]].view()).unwrap()[0];
+    assert!(
+      (got - want).abs() <= 1e-12 * want,
+      "rho={rho} nu={nu} u={u} v={v}: {got:e} vs {want:e}"
+    );
+  }
+}
