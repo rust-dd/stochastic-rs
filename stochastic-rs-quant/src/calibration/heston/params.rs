@@ -12,7 +12,7 @@ pub(super) const SIGMA_MIN: f64 = 1e-8;
 
 pub(super) const P_KAPPA: (f64, f64) = (0.1, 20.0);
 pub(super) const P_THETA: (f64, f64) = (0.001, 0.4);
-pub(super) const P_SIGMA: (f64, f64) = (0.01, 0.6);
+pub(super) const P_SIGMA: (f64, f64) = (0.01, 3.0);
 pub(super) const P_RHO: (f64, f64) = (-1.0, 1.0);
 pub(super) const P_V0: (f64, f64) = (0.005, 0.25);
 
@@ -51,7 +51,7 @@ pub enum HestonMleSeedMethod {
   NmleCekf,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct HestonParams {
   /// Initial variance v0 (not volatility) in Heston model
   pub v0: f64,
@@ -88,15 +88,11 @@ impl crate::traits::ToModel for HestonParams {
 }
 
 impl HestonParams {
-  /// Project parameters to satisfy Heston admissibility constraints and periodic-range mapping.
-  /// Steps:
-  /// 1) Periodic mapping into fixed parameter ranges
-  /// 2) Enforce basic positivity/box constraints
-  /// 3) Enforce Feller by lowering sigma when needed (otherwise minimally bump theta)
+  /// Project parameters into finite positive calibration ranges.
   ///
-  /// Source:
-  /// - Heston (1993), variance process admissibility context
-  ///   https://doi.org/10.1093/rfs/6.2.327
+  /// The Feller condition is deliberately not imposed here. It is sufficient
+  /// for strict positivity of the CIR variance process, but it is not required
+  /// for Heston Fourier pricing and is frequently violated by market fits.
   pub fn project_in_place(&mut self) {
     self.kappa = periodic_map(self.kappa, P_KAPPA.0, P_KAPPA.1);
     self.theta = periodic_map(self.theta, P_THETA.0, P_THETA.1);
@@ -109,8 +105,18 @@ impl HestonParams {
     self.theta = self.theta.max(THETA_MIN);
     self.sigma = self.sigma.abs().max(SIGMA_MIN);
     self.rho = self.rho.clamp(-RHO_BOUND, RHO_BOUND);
+  }
 
-    if 2.0 * self.kappa * self.theta < self.sigma * self.sigma {
+  /// Whether the CIR variance process stays strictly positive under Feller's condition.
+  pub fn satisfies_feller_condition(&self) -> bool {
+    2.0 * self.kappa * self.theta >= self.sigma * self.sigma
+  }
+
+  /// Apply box projection and then explicitly impose the Feller condition.
+  pub fn project_feller_in_place(&mut self) {
+    self.project_in_place();
+
+    if !self.satisfies_feller_condition() {
       let sigma_star = (2.0 * self.kappa * self.theta).sqrt();
       if sigma_star >= P_SIGMA.0 {
         self.sigma = sigma_star.min(P_SIGMA.1);
@@ -123,6 +129,12 @@ impl HestonParams {
 
   pub fn projected(mut self) -> Self {
     self.project_in_place();
+    self
+  }
+
+  /// Return a box-projected parameter set that also satisfies Feller's condition.
+  pub fn projected_with_feller_condition(mut self) -> Self {
+    self.project_feller_in_place();
     self
   }
 }

@@ -18,7 +18,13 @@ pub use params::HestonParams;
 pub use result::HestonCalibrationResult;
 
 #[cfg(test)]
+mod projection_tests;
+
+#[cfg(test)]
 mod quadrature_tests;
+
+#[cfg(test)]
+mod recovery_tests;
 
 #[cfg(test)]
 mod tests;
