@@ -8,7 +8,6 @@ mod bessel;
 mod bessel_i;
 mod bessel_k;
 mod erfc;
-mod estimate;
 mod incomplete;
 mod k_ratio;
 mod quotient;
@@ -27,8 +26,6 @@ pub use bessel_i::ln_bessel_ie;
 pub use bessel_k::bessel_k;
 pub use bessel_k::bessel_ke;
 pub use bessel_k::ln_bessel_ke;
-pub(crate) use estimate::Estimate;
-pub(crate) use estimate::exp_of_log_sum;
 pub use incomplete::beta_i;
 pub use incomplete::gamma_li;
 pub use incomplete::gamma_p;
@@ -45,8 +42,11 @@ pub(crate) use incomplete::student_tail;
 pub(crate) use k_ratio::KDenominator;
 pub(crate) use k_ratio::k_half_ratio;
 pub(crate) use k_ratio::k_ratio;
+pub(crate) use k_ratio::ln_quotient;
 #[cfg(test)]
 pub(crate) use k_ratio::log_regime;
+#[cfg(test)]
+pub(crate) use k_ratio::log_size;
 #[cfg(test)]
 pub(crate) use k_ratio::ratio_regime;
 pub(crate) use quotient::SHAPE_CUT;

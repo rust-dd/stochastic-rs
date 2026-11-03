@@ -39,10 +39,10 @@ use crate::seeded::Buffered;
 use crate::seeded::StreamState;
 use crate::special::LARGE_ORDER;
 use crate::special::debye_shape;
-use crate::special::exp_of_log_sum;
 use crate::special::ln_1p_mx;
 use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
+use crate::special::ln_quotient;
 use crate::special::stirling_tail;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
@@ -286,28 +286,15 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
       if a <= 0.0 {
         return Some(f64::INFINITY);
       }
-      let scale = sigma * sigma / (root * root);
-      let (t_scale, t_two, t_ga) = (
-        a * scale.ln(),
-        (a - 1.0) * std::f64::consts::LN_2,
-        ln_gamma(a),
-      );
-      return Some(exp_of_log_sum(
-        log_norm + t_scale + t_two + t_ga,
-        &[t_sigma, t_nu, t_gamma, t_scale, t_two, t_ga],
-      ));
+      let scale = 2.0 * ln_quotient(sigma, root);
+      return Some((log_norm + a * scale + (a - 1.0) * std::f64::consts::LN_2 + ln_gamma(a)).exp());
     }
     let y = d.abs() * root / (sigma * sigma);
-    let (t_drift, t_pow, k) = (
-      theta * d / (sigma * sigma),
-      a * (d.abs() / root).ln(),
-      ln_bessel_ke(a, y),
-    );
-    let log_kernel = t_drift + t_pow + k - y;
-    Some(exp_of_log_sum(
-      log_norm + log_kernel,
-      &[t_sigma, t_nu, t_gamma, t_drift, t_pow, k, y],
-    ))
+    // `θd/σ² − y` as `−2|d|/(ν(root + |θ|)) − |d|(|θ| − θ·sgn d)/σ²`, of one sign, where `2σ²/ν ≪ θ²` would leave two
+    // large terms to cancel.
+    let tilt = -2.0 * d.abs() / (nu * (root + theta.abs()))
+      - d.abs() / sigma * ((theta.abs() - theta * d.signum()) / sigma);
+    Some((log_norm + a * ln_quotient(d.abs(), root) + ln_bessel_ke(a, y) + tilt).exp())
   }
 
   fn mean(&self) -> Option<f64> {

@@ -481,8 +481,8 @@ fn concentrated_densities_hold_at_their_double_inputs() {
   }
 }
 
-/// mpmath at 120 and 240 digits where the power factor goes subnormal (`λ = −100`), where its product with `K` overflows
-/// (`λ = 50, 100`), and where a concentrated law's `√(χψ) − √(χs)` would cancel.
+/// mpmath at 120 and 240 digits where the power factor goes subnormal (`λ = −100`), its product with `K` overflows
+/// (`λ = 50, 100`), a concentrated law's `√(χψ) − √(χs)` would cancel (`λ = 1`), and `e^{dx}` goes subnormal (`λ = −40, −20`).
 #[test]
 fn mgf_takes_the_ratio_only_where_every_factor_stays_normal() {
   for ((lambda, chi, psi, t), want) in [
@@ -511,10 +511,11 @@ fn mgf_takes_the_ratio_only_where_every_factor_stays_normal() {
 }
 
 /// Seeded cells over `λ ∈ [−300, 300]`, `χ, ψ ∈ [1e-6, 1e6]` and `s = ψ − 2t` from `1e-12ψ` to `1e6ψ`: wherever the ratio
-/// regime is taken it agrees with the log regime within the two error estimates and a few ulps of rounding.
+/// regime is taken it agrees with the log regime within `ε(2Σ|ln terms| + 16)`, the log regime's rounding and the ratio's.
 #[test]
 fn ratio_regime_agrees_with_the_log_regime() {
   use crate::special::log_regime;
+  use crate::special::log_size;
   use crate::special::ratio_regime;
   let mut u = SimdUniform::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(20_261_025));
   let (mut ratios, mut logs) = (0, 0);
@@ -530,17 +531,16 @@ fn ratio_regime_agrees_with_the_log_regime() {
       continue;
     }
     let (power, num, den, dx) = SimdGig::<f64>::new(lambda, chi, psi).mgf_ratio(t, shifted);
-    let (log, log_err) = log_regime(power, num, &den, dx).parts();
+    let log = log_regime(power, num, &den, dx);
     let Some(ratio) = ratio_regime(power, num, &den, dx) else {
       logs += 1;
       continue;
     };
     ratios += 1;
-    let (ratio, ratio_err) = ratio.parts();
-    let tol = log_err + ratio_err + 16.0 * f64::EPSILON * log.abs();
+    let tol = f64::EPSILON * (2.0 * log_size(power, num, &den, dx) + 16.0) * log.abs();
     assert!(
       (ratio - log).abs() <= tol,
-      "GIG({lambda}, {chi}, {psi}).mgf({t}): {ratio}, log regime {log} ± {log_err}"
+      "GIG({lambda}, {chi}, {psi}).mgf({t}): {ratio}, log regime {log} ± {tol}"
     );
   }
   assert!(

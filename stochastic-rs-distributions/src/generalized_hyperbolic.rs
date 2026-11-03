@@ -49,7 +49,6 @@ use crate::special::LARGE_ORDER;
 use crate::special::add_parts;
 use crate::special::debye_log_sum;
 use crate::special::divergence;
-use crate::special::exp_of_log_sum;
 use crate::special::exp_times_over;
 use crate::special::k_ratio;
 use crate::special::ln_bessel_ke;
@@ -225,6 +224,12 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
     )
   }
 
+  /// The clock's `(λ, δ², γ²)` from the parameters as doubles, `γ² = (α − β)(α + β)`, which keeps its digits at `|β| ≈ α`.
+  fn clock(&self) -> (f64, f64, f64) {
+    let (lambda, alpha, beta, delta, _) = self.params();
+    (lambda, delta * delta, (alpha - beta) * (alpha + beta))
+  }
+
   /// `γ_t² = (α − β − t)(α + β + t)`, `α ∓ β` exactly as two parts (`α > |β|`), so neither factor loses `α ∓ β`'s
   /// rounding where `t` cancels it.
   fn shifted(&self, t: f64) -> f64 {
@@ -269,16 +274,19 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
   }
 
   /// The interior mgf's ratio at `t`, `shifted = γ_t² > 0`.
-  fn mgf_ratio(&self, t: f64, shifted: f64) -> ((f64, f64, f64), (f64, f64), KDenominator, f64) {
+  fn mgf_ratio(
+    &self,
+    t: f64,
+    shifted: f64,
+  ) -> ((f64, f64, f64, f64), (f64, f64), KDenominator, f64) {
     let (lambda, alpha, beta, delta, mu) = self.params();
-    let gamma = (alpha * alpha - beta * beta).sqrt();
-    let gt = shifted.sqrt();
+    let psi = (alpha - beta) * (alpha + beta);
+    let (gamma, gt) = (psi.sqrt(), shifted.sqrt());
     let dx = delta * t * (2.0 * beta + t) / (gamma + gt);
-    let den = KDenominator::new(lambda, delta * gamma);
     (
-      (mu * t, gamma * gamma / shifted, 0.5 * lambda),
+      (mu * t, psi, shifted, 0.5 * lambda),
       (lambda, delta * gt),
-      den,
+      KDenominator::new(lambda, delta * gamma),
       dx,
     )
   }
@@ -339,36 +347,32 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     if r0 >= LARGE_ORDER {
       return Some(self.concentrated_pdf((d, d_lo), (gamma, r0)));
     }
-    let root = delta.hypot(d);
-    let order = lambda - 0.5;
-    let (t_gamma, t_alpha, t_delta) =
-      (lambda * gamma.ln(), order * alpha.ln(), lambda * delta.ln());
-    let (k0, dg) = (ln_bessel_ke(lambda, delta * gamma), delta * gamma);
-    let log_norm =
-      t_gamma - 0.5 * (2.0 * std::f64::consts::PI).ln() - t_alpha - t_delta - (k0 - dg);
-    let y = alpha * root;
-    let (t_root, k1, t_beta) = (order * root.ln(), ln_bessel_ke(order, y), beta * d);
-    Some(exp_of_log_sum(
-      log_norm + t_root + k1 - y + t_beta,
-      &[t_gamma, t_alpha, t_delta, k0, dg, t_root, k1, y, t_beta],
-    ))
+    let (root, order, dg) = (delta.hypot(d), lambda - 0.5, delta * gamma);
+    let log_norm = lambda * gamma.ln()
+      - 0.5 * std::f64::consts::TAU.ln()
+      - order * alpha.ln()
+      - lambda * delta.ln()
+      - (ln_bessel_ke(lambda, dg) - dg);
+    // `βd − α·root` as `−(α ∓ β)|d| − αδ²/(root + |d|)`, of one sign, where `α ≈ |β|` would leave two large terms to cancel.
+    let tilt = -(alpha - beta * d.signum()) * d.abs() - alpha * delta * (delta / (root + d.abs()));
+    Some((log_norm + order * root.ln() + ln_bessel_ke(order, alpha * root) + tilt).exp())
   }
 
   fn mean(&self) -> Option<f64> {
     let (_, _, beta, _, mu) = self.params();
-    Some(mu + beta * self.gig.raw_moment(1))
+    Some(mu + beta * SimdGig::<f64>::raw_moment_at(self.clock(), 1))
   }
 
   fn variance(&self) -> Option<f64> {
     let (_, _, beta, _, _) = self.params();
-    let (s, [k1, k2, _, _]) = self.gig.cumulants();
+    let (s, [k1, k2, _, _]) = SimdGig::<f64>::cumulants_at(self.clock());
     Some(s * k1 + beta * beta * (s * k2 * s))
   }
 
   /// `κ₃/κ₂^{3/2}` with `κ₃ = β(3κ₂(W) + β²κ₃(W))`, over the clock's scale `s` and `B = β²s` as `B` or `1/B`, whichever is small.
   fn skewness(&self) -> Option<f64> {
     let (_, _, beta, _, _) = self.params();
-    let (s, [k1, k2, k3, _]) = self.gig.cumulants();
+    let (s, [k1, k2, k3, _]) = SimdGig::<f64>::cumulants_at(self.clock());
     let b = beta * beta * s;
     Some(if b <= 1.0 {
       beta * s.sqrt() * (3.0 * k2 + b * k3) / (k1 + b * k2).powf(1.5)
@@ -380,7 +384,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
   /// Excess kurtosis `κ₄/κ₂²`, `κ₄ = 3κ₂(W) + 6β²κ₃(W) + β⁴κ₄(W)`, every term positive, scaled like the skewness.
   fn kurtosis(&self) -> Option<f64> {
     let (_, _, beta, _, _) = self.params();
-    let (s, [k1, k2, k3, k4]) = self.gig.cumulants();
+    let (s, [k1, k2, k3, k4]) = SimdGig::<f64>::cumulants_at(self.clock());
     let b = beta * beta * s;
     Some(if b <= 1.0 {
       (3.0 * k2 + b * (6.0 * k3 + b * k4)) / (k1 + b * k2).powi(2)
@@ -406,18 +410,18 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
         (mu * t + ln_shift(lambda, 0.5 * t * (2.0 * beta + t), (chi, psi, shifted))).exp(),
       );
     }
-    let gamma = (alpha * alpha - beta * beta).sqrt();
     if shifted == 0.0 {
       // s^{-λ} K_λ(δs) → ½ Γ(−λ) (2/δ)^{−λ} as s → 0, in log space past the overflow of Γ and K and K's underflow.
-      let (k0, dg) = (ln_bessel_ke(lambda, delta * gamma), delta * gamma);
-      let (t_mu, t_pow, t_gamma) = (mu * t, lambda * (0.5 * dg).ln(), ln_gamma(-lambda));
-      return Some(exp_of_log_sum(
-        t_mu + t_pow + t_gamma - std::f64::consts::LN_2 - (k0 - dg),
-        &[t_mu, t_pow, t_gamma, k0, dg],
-      ));
+      let dg = delta * ((alpha - beta) * (alpha + beta)).sqrt();
+      return Some(
+        (mu * t + lambda * (0.5 * dg).ln() + ln_gamma(-lambda)
+          - std::f64::consts::LN_2
+          - (ln_bessel_ke(lambda, dg) - dg))
+          .exp(),
+      );
     }
     let (power, num, den, dx) = self.mgf_ratio(t, shifted);
-    Some(k_ratio(power, num, &den, dx).or_nan())
+    Some(k_ratio(power, num, &den, dx))
   }
 }
 

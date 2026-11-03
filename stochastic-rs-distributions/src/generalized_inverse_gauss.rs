@@ -46,17 +46,16 @@ use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
 use crate::seeded::StreamState;
-use crate::special::Estimate;
 use crate::special::KDenominator;
 use crate::special::LARGE_ORDER;
 use crate::special::debye_log_sum;
 use crate::special::divergence;
-use crate::special::exp_of_log_sum;
 use crate::special::exp_times_over;
 use crate::special::k_ratio;
 use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
 use crate::special::ln_order_step;
+use crate::special::ln_quotient;
 use crate::special::ln_shift;
 use crate::special::offset;
 use crate::special::saddle;
@@ -335,44 +334,45 @@ impl<T: SimdFloatExt> SimdGig<T> {
   /// $\mathbb E X^k = (\chi/\psi)^{k/2} K_{\lambda+k}(b)/K_\lambda(b)$, $b = \sqrt{\chi\psi}$: the scaled `K`s' ratio where
   /// every factor stays normal, the difference of their logarithms, which costs `ε|ln K|`, otherwise.
   pub fn raw_moment(&self, k: u32) -> f64 {
-    self.raw(k, &self.denominator()).or_nan()
+    let (lambda, chi, psi) = self.params();
+    Self::raw_moment_at((lambda, chi, psi), k)
   }
 
-  fn denominator(&self) -> KDenominator {
-    let (lambda, chi, psi) = self.params();
-    KDenominator::new(lambda, (chi * psi).sqrt())
-  }
-
-  fn raw(&self, k: u32, den: &KDenominator) -> Estimate {
-    let (lambda, chi, psi) = self.params();
+  /// [`Self::raw_moment`] at the parameters `(λ, χ, ψ)`, which the GH mixture forms exactly from its own.
+  pub(crate) fn raw_moment_at((lambda, chi, psi): (f64, f64, f64), k: u32) -> f64 {
     let order = f64::from(k);
     if lambda.abs().min((lambda + order).abs()) >= LARGE_ORDER {
-      return Estimate::with_rel(ln_order_step(lambda, order, (chi, psi)).exp(), 0.0);
+      return ln_order_step(lambda, order, (chi, psi)).exp();
     }
+    let (root_chi, root_psi) = (chi.sqrt(), psi.sqrt());
+    let b = root_chi * root_psi;
     k_ratio(
-      (0.0, chi / psi, 0.5 * order),
-      (lambda + order, (chi * psi).sqrt()),
-      den,
+      (0.0, root_chi, root_psi, order),
+      (lambda + order, b),
+      &KDenominator::new(lambda, b),
       0.0,
     )
   }
 
   /// The interior mgf's ratio at `t`, `shifted = ψ − 2t > 0`.
-  fn mgf_ratio(&self, t: f64, shifted: f64) -> ((f64, f64, f64), (f64, f64), KDenominator, f64) {
+  fn mgf_ratio(
+    &self,
+    t: f64,
+    shifted: f64,
+  ) -> ((f64, f64, f64, f64), (f64, f64), KDenominator, f64) {
     let (lambda, chi, psi) = self.params();
-    let dx = chi.sqrt() * (2.0 * t) / (psi.sqrt() + shifted.sqrt());
-    let num = (lambda, (chi * shifted).sqrt());
+    let (root_chi, root_psi, root_shifted) = (chi.sqrt(), psi.sqrt(), shifted.sqrt());
+    let dx = root_chi * (2.0 * t) / (root_psi + root_shifted);
     (
-      (0.0, psi / shifted, 0.5 * lambda),
-      num,
-      self.denominator(),
+      (0.0, psi, shifted, 0.5 * lambda),
+      (lambda, root_chi * root_shifted),
+      KDenominator::new(lambda, root_chi * root_psi),
       dx,
     )
   }
 
-  /// `(s, [κ₁/s, κ₂/s², κ₃/s³, κ₄/s⁴])`, the cumulants over powers of a scale `s`, which the GH mixture reads too.
-  pub(crate) fn cumulants(&self) -> (f64, [f64; 4]) {
-    let (lambda, chi, psi) = self.params();
+  /// `(s, [κ₁/s, κ₂/s², κ₃/s³, κ₄/s⁴])`, the cumulants over powers of a scale `s`, at `(λ, χ, ψ)`.
+  pub(crate) fn cumulants_at((lambda, chi, psi): (f64, f64, f64)) -> (f64, [f64; 4]) {
     cumulants::cumulants(lambda, chi, psi)
   }
 }
@@ -434,13 +434,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
         x,
       ));
     }
-    let (t_pow, k0) = (0.5 * lambda * (psi / chi).ln(), ln_bessel_ke(lambda, b));
-    let log_norm = t_pow - std::f64::consts::LN_2 - (k0 - b);
-    let (t_x, t_exp) = ((lambda - 1.0) * x.ln(), 0.5 * (chi / x + psi * x));
-    Some(exp_of_log_sum(
-      log_norm + t_x - t_exp,
-      &[t_pow, k0, b, t_x, t_exp],
-    ))
+    let log_norm =
+      0.5 * lambda * ln_quotient(psi, chi) - std::f64::consts::LN_2 - (ln_bessel_ke(lambda, b) - b);
+    Some((log_norm + (lambda - 1.0) * x.ln() - 0.5 * (chi / x + psi * x)).exp())
   }
 
   fn mean(&self) -> Option<f64> {
@@ -454,18 +450,18 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
   }
 
   fn variance(&self) -> Option<f64> {
-    let (s, [_, k2, _, _]) = self.cumulants();
+    let (s, [_, k2, _, _]) = Self::cumulants_at(self.params());
     Some(s * k2 * s)
   }
 
   fn skewness(&self) -> Option<f64> {
-    let (_, [_, k2, k3, _]) = self.cumulants();
+    let (_, [_, k2, k3, _]) = Self::cumulants_at(self.params());
     Some(k3 / k2.powf(1.5))
   }
 
   /// Excess kurtosis, `κ₄/κ₂²`.
   fn kurtosis(&self) -> Option<f64> {
-    let (_, [_, k2, _, k4]) = self.cumulants();
+    let (_, [_, k2, _, k4]) = Self::cumulants_at(self.params());
     Some(k4 / (k2 * k2))
   }
 
@@ -483,18 +479,16 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
     if lambda.abs() >= LARGE_ORDER {
       return Some(ln_shift(lambda, t, (chi, psi, shifted)).exp());
     }
-    let b = (chi * psi).sqrt();
     if shifted == 0.0 {
       // s^{-λ} K_λ(√χ s) → ½ Γ(−λ) (2/√χ)^{−λ} as s → 0, in log space past the overflow of Γ and K and K's underflow.
+      let b = chi.sqrt() * psi.sqrt();
       let k0 = ln_bessel_ke(lambda, b);
-      let (t_pow, t_gamma) = (lambda * (0.5 * b).ln(), ln_gamma(-lambda));
-      return Some(exp_of_log_sum(
-        t_pow + t_gamma - std::f64::consts::LN_2 - (k0 - b),
-        &[t_pow, t_gamma, k0, b],
-      ));
+      return Some(
+        (lambda * (0.5 * b).ln() + ln_gamma(-lambda) - std::f64::consts::LN_2 - (k0 - b)).exp(),
+      );
     }
     let (power, num, den, dx) = self.mgf_ratio(t, shifted);
-    Some(k_ratio(power, num, &den, dx).or_nan())
+    Some(k_ratio(power, num, &den, dx))
   }
 }
 

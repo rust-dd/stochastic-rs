@@ -270,8 +270,8 @@ fn central_moments_hold_at_every_order() {
   }
 }
 
-/// mpmath at 60 and 120 digits: within `1e-12` from `|λ| = 10³` to `10¹⁵`, the boundary `γ_t = 0` included, and the exact 0
-/// where the density underflows.
+/// mpmath at 60 and 120 digits: within `1e-12` from `|λ| = 10³` to `10¹⁵`, the boundary `γ_t = 0` included, at `λ = 89.6` with
+/// `e^{μt}` subnormal alone, and the exact 0 where the density underflows.
 #[test]
 fn large_orders_hold_their_digits() {
   for (lambda, t, want) in [
@@ -283,6 +283,19 @@ fn large_orders_hold_their_digits() {
     let got = gh.moment_generating_function(t).unwrap();
     assert!(close(got, want, 1e-12), "λ = {lambda}: {got}");
   }
+  let scale_alone = SimdGeneralizedHyperbolic::<f64>::new(
+    89.641_103_510_172_57,
+    98.570_286_345_728_33,
+    5.015_087_874_221_497,
+    1.530_713_650_744_124_8,
+    8.526_535_614_418_794,
+  )
+  .moment_generating_function(-87.370_381_138_479_03)
+  .unwrap();
+  assert!(
+    close(scale_alone, 2.820_461_939_220_067e-263, 1e-12),
+    "{scale_alone}"
+  );
   let farthest = SimdGeneralizedHyperbolic::<f64>::new(1e300, 2.0, 0.5, 0.5, 0.0);
   assert_eq!(farthest.pdf(0.3), Some(0.0));
 }
@@ -323,11 +336,55 @@ fn concentrated_densities_hold_at_their_double_inputs() {
   }
 }
 
-/// mpmath at 120 and 240 digits where the power factor goes subnormal (`λ = −100`) or its product with `K` overflows
-/// (`λ = 100`).
+/// mpmath at 120 and 240 digits where the power factor goes subnormal (`λ = −100`), its product with `K` overflows (`λ = 100`),
+/// `e^{μt}` alone goes subnormal (`λ = 10`, the `λ = 20` family), with the power too (`μ = −3.962`), and where `e^{dx}` does.
 #[test]
 fn mgf_takes_the_ratio_only_where_every_factor_stays_normal() {
   for ((lambda, alpha, beta, delta, mu, t), want) in [
+    (
+      (
+        20.0,
+        98.570_286_345_728_33,
+        5.015_087_874_221_497,
+        1.530_713_650_744_124_8,
+        8.2,
+        -87.370_381_138_479_03,
+      ),
+      1.182_768_930_948_921_4e-276,
+    ),
+    (
+      (
+        20.0,
+        98.570_286_345_728_33,
+        5.015_087_874_221_497,
+        1.530_713_650_744_124_8,
+        8.3,
+        -87.370_381_138_479_03,
+      ),
+      1.898_683_021_781_224_4e-280,
+    ),
+    (
+      (
+        20.0,
+        98.570_286_345_728_33,
+        5.015_087_874_221_497,
+        1.530_713_650_744_124_8,
+        8.4,
+        -87.370_381_138_479_03,
+      ),
+      3.047_930_261_668_773e-284,
+    ),
+    (
+      (
+        20.0,
+        98.570_286_345_728_33,
+        5.015_087_874_221_497,
+        1.530_713_650_744_124_8,
+        8.5,
+        -87.370_381_138_479_03,
+      ),
+      4.892_801_364_643_318e-288,
+    ),
     (
       (-100.0, 100.0, 0.0, 1.0, 0.0, 99.999_981_999_998_38),
       7_765_652_107.033_232,
@@ -360,10 +417,11 @@ fn mgf_takes_the_ratio_only_where_every_factor_stays_normal() {
 }
 
 /// Seeded cells over `λ ∈ [−300, 300]`, `α, δ, |μ| ∈ [1e-6, 1e6]`, `|β| < α` and `t` from `1e-12·2α` to `2α` inside either
-/// end of `(−α − β, α − β)`: the ratio regime agrees with the log regime within both estimates and a few ulps.
+/// end of `(−α − β, α − β)`: the ratio regime agrees with the log regime within `ε(2Σ|ln terms| + 16)`.
 #[test]
 fn ratio_regime_agrees_with_the_log_regime() {
   use crate::special::log_regime;
+  use crate::special::log_size;
   use crate::special::ratio_regime;
   let mut u = SimdUniform::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(20_261_026));
   let (mut ratios, mut logs) = (0, 0);
@@ -387,17 +445,16 @@ fn ratio_regime_agrees_with_the_log_regime() {
       continue;
     }
     let (power, num, den, dx) = gh.mgf_ratio(t, shifted);
-    let (log, log_err) = log_regime(power, num, &den, dx).parts();
+    let log = log_regime(power, num, &den, dx);
     let Some(ratio) = ratio_regime(power, num, &den, dx) else {
       logs += 1;
       continue;
     };
     ratios += 1;
-    let (ratio, ratio_err) = ratio.parts();
-    let tol = log_err + ratio_err + 16.0 * f64::EPSILON * log.abs();
+    let tol = f64::EPSILON * (2.0 * log_size(power, num, &den, dx) + 16.0) * log.abs();
     assert!(
       (ratio - log).abs() <= tol,
-      "GH({lambda}, {alpha}, {beta}, {delta}, {mu}).mgf({t}): {ratio}, log {log} ± {log_err}"
+      "GH({lambda}, {alpha}, {beta}, {delta}, {mu}).mgf({t}): {ratio}, log {log} ± {tol}"
     );
   }
   assert!(
