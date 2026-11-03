@@ -95,6 +95,30 @@ fn moments_and_transforms_match_the_reference() {
   ));
 }
 
+/// mpmath at 60 and 120 digits: `ln M = ½` where `|μt|` passes 709.8 and the clock's `−ln(b)/ν` cancels it, then the exact
+/// 0 and `+∞` where `e^{μt}` alone under- and overflows.
+#[test]
+fn the_mgf_holds_where_the_location_cancels_the_clock() {
+  for ((theta, mu), want) in [
+    ((-612.254_218_087_239, 400.0), 1.648_721_270_699_973_7),
+    ((275.407_822_104_038_2, -400.0), 1.648_721_270_700_294),
+    ((-3_192.721_247_179_639_2, 1000.0), 1.648_721_270_700_003_2),
+    ((432.326_183_745_457_23, -1000.0), 1.648_721_270_701_559_7),
+  ] {
+    let got = SimdVarianceGamma::<f64>::new(0.2, 0.001, theta, mu)
+      .moment_generating_function(2.0)
+      .unwrap();
+    assert!(close(got, want, 1e-12), "μ = {mu}: {got}");
+  }
+  let lone = |mu: f64| {
+    SimdVarianceGamma::<f64>::new(0.2, 0.001, 0.1, mu)
+      .moment_generating_function(2.0)
+      .unwrap()
+  };
+  assert_eq!(lone(-375.0), 0.0);
+  assert_eq!(lone(355.0), f64::INFINITY);
+}
+
 /// mpmath at 60 and 120 digits: within `1e-12` where `σ` and `θ√ν` are far below `θ`, the law narrower than `θ`'s rounding
 /// allows `d² − θ²` to keep, so `d − θ` is formed exactly.
 #[test]

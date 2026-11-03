@@ -339,7 +339,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
     if base <= 0.0 {
       Some(f64::INFINITY)
     } else {
-      Some((mu * t).exp() * base.powf(-1.0 / nu))
+      // One exponent: a location that cancels the clock past `e^{±709}` would overflow either factor alone.
+      Some((mu * t - base.ln() / nu).exp())
     }
   }
 
