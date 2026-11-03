@@ -52,7 +52,7 @@ use crate::traits::distribution::SimdKernel;
 const SMALL_VG_THRESHOLD: usize = 16;
 
 /// Variance-gamma distribution: volatility `σ > 0`, gamma-clock variance rate `ν > 0`, drift `θ`, location `μ`; a [`Seeded`](crate::Seeded) stream draws it.
-/// Its density is within `ε·Σ|ln terms|` (`1e-12` to `ν = 1/400` at `σ ∈ [0.1, 1]`, `|θ| ≤ ½`); NaN past every digit.
+/// Its density within `ε·Σ|ln terms|` below order `1/ν − ½ = 50` and `2.1e-15` from it, its moments the gamma clock's cumulants mixed.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdVarianceGamma<T> {
   sigma: T,

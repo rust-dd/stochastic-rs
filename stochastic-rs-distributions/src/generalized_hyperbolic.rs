@@ -67,7 +67,7 @@ use crate::traits::distribution::SimdKernel;
 const SMALL_GH_THRESHOLD: usize = 16;
 
 /// Generalized hyperbolic distribution GH$(\lambda, \alpha, \beta, \delta, \mu)$; a [`Seeded`](crate::Seeded) stream draws it in bulk.
-/// Density, mgf and mean within `ε·Σ|ln terms|` (`1e-12` to `|λ| = 300` at `α ∈ [0.5, 5]`, `δ ∈ [0.1, 5]`), higher moments looser (kurtosis `1e-8` at 100); NaN past every digit.
+/// Within `ε·Σ|ln terms|` below order 50 and `3.3e-14` from it, the mgf `2ε(|μt| + |ln M|)`; from the clock's `r ≈ 1e35` a density `k` deviations off its mode carries `k√r·1e-31`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdGeneralizedHyperbolic<T> {
   lambda: T,

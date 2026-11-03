@@ -238,7 +238,7 @@ impl Setup {
 }
 
 /// Generalized inverse Gaussian distribution GIG$(\lambda, \chi, \psi)$, `chi > 0`, `psi > 0`; a [`Seeded`](crate::Seeded) stream draws it in bulk.
-/// Density, mgf and raw moments within `ε·Σ|ln terms|` (`1e-12` to `|λ| = 300` at `χ, ψ ∈ [0.1, 10]`), central ones looser (kurtosis `1e-8` at 100); NaN past every digit.
+/// Within `ε·Σ|ln terms|` below order 50 and `3.3e-14` from it; from `r = √(λ² + χψ) ≈ 1e35` a density `k` deviations off its mode carries `k√r·1e-31`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdGig<T> {
   lambda: T,
@@ -332,7 +332,7 @@ impl<T: SimdFloatExt> SimdGig<T> {
   }
 
   /// $\mathbb E X^k = (\chi/\psi)^{k/2} K_{\lambda+k}(b)/K_\lambda(b)$, $b = \sqrt{\chi\psi}$: the scaled `K`s' ratio where
-  /// every factor stays normal, the difference of their logarithms, which costs `ε|ln K|`, otherwise.
+  /// every factor stays normal, else their logarithms' difference (`ε|ln K|`), and from order 50 the saddle's `w_kᵏe^{rest}`.
   pub fn raw_moment(&self, k: u32) -> f64 {
     let (lambda, chi, psi) = self.params();
     Self::raw_moment_at((lambda, chi, psi), k)
