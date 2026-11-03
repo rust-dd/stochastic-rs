@@ -38,12 +38,15 @@ use super::normal::SimdNormal;
 use crate::seeded::Buffered;
 use crate::seeded::StreamState;
 use crate::special::LARGE_ORDER;
+use crate::special::add_parts;
 use crate::special::debye_shape;
 use crate::special::ln_1p_mx;
 use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
 use crate::special::ln_quotient;
+use crate::special::mul_parts;
 use crate::special::stirling_tail;
+use crate::special::two_prod;
 use crate::special::two_sum;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
@@ -224,6 +227,73 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
       + rests)
       .exp()
   }
+
+  /// `ln b`, `b = 1 − X`, `X = θνt + ½σ²νt²` in two parts: `ln_1p(−X)` below `X = ½`, else `1 − X` in two parts, exactly where
+  /// those leave `b` within `2⁻⁴⁰` of `X`'s terms; `None` where `b ≤ 0`. So `ln(b)/ν` carries no `1/(νb)` of `b`'s rounding.
+  fn ln_base(sigma: f64, nu: f64, theta: f64, t: f64) -> Option<f64> {
+    let nt = two_prod(nu, t);
+    let drift = mul_parts(nt, (theta, 0.0));
+    let spread = mul_parts(mul_parts(two_prod(sigma, sigma), nt), (0.5 * t, 0.0));
+    let (x, x_lo) = add_parts(drift, spread);
+    if !x_lo.is_finite() {
+      // A product past `f64::MAX`, or a NaN `t`, which must stay NaN.
+      let base = 1.0 - theta * nu * t - 0.5 * sigma * sigma * nu * t * t;
+      return (base > 0.0 || base.is_nan()).then(|| base.ln());
+    }
+    if x < 0.5 {
+      return Some((-x).ln_1p());
+    }
+    // `1 − x` is exact from `x = ½` to 2, so this rounds once.
+    let b = (1.0 - x) - x_lo;
+    let b = if b.abs() > TIGHT * (drift.0.abs() + spread.0.abs()) {
+      b
+    } else {
+      exact_base((sigma, nu, theta), t)
+    };
+    (b > 0.0).then(|| b.ln())
+  }
+}
+
+/// Past this fraction of `X`'s terms the two-part base, within about `6ε²` of their size, errs by under `2⁻⁶³` of itself.
+const TIGHT: f64 = 1.0 / (1u64 << 40) as f64;
+
+/// `1 − θνt − ½σ²νt²` exactly: Dekker's products' parts summed by Shewchuk's Grow-Expansion (1997, Thm 10, zero elimination),
+/// whose nonoverlapping parts add from the smallest to within an ulp.
+fn exact_base((sigma, nu, theta): (f64, f64, f64), t: f64) -> f64 {
+  let mut parts = [0.0_f64; 24];
+  let mut len = 0;
+  let mut grow = |value: f64| {
+    let (mut q, mut kept) = (value, 0);
+    for i in 0..len {
+      let (s, e) = two_sum(q, parts[i]);
+      q = s;
+      if e != 0.0 {
+        parts[kept] = e;
+        kept += 1;
+      }
+    }
+    if q != 0.0 {
+      parts[kept] = q;
+      kept += 1;
+    }
+    len = kept;
+  };
+  grow(1.0);
+  let (nt, s) = (two_prod(nu, t), two_prod(sigma, sigma));
+  for a in [nt.0, nt.1] {
+    let (p, e) = two_prod(a, theta);
+    grow(-p);
+    grow(-e);
+    for c in [s.0, s.1] {
+      let (q, f) = two_prod(a, c);
+      for d in [q, f] {
+        let (r, g) = two_prod(d, 0.5 * t);
+        grow(-r);
+        grow(-g);
+      }
+    }
+  }
+  parts[..len].iter().sum()
 }
 
 impl<T: SimdFloatExt> Sealed for SimdVarianceGamma<T> {}
@@ -335,13 +405,13 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
   /// `+∞` at and beyond its roots, where `E[e^{tX}]` diverges.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
     let (sigma, nu, theta, mu) = self.params();
-    let base = 1.0 - theta * nu * t - 0.5 * sigma * sigma * nu * t * t;
-    if base <= 0.0 {
-      Some(f64::INFINITY)
-    } else {
-      // One exponent: a location that cancels the clock past `e^{±709}` would overflow either factor alone.
-      Some((mu * t - base.ln() / nu).exp())
-    }
+    let Some(ln_base) = Self::ln_base(sigma, nu, theta, t) else {
+      return Some(f64::INFINITY);
+    };
+    // One exponent: a location that cancels the clock past `e^{±709}` would overflow either factor alone.
+    let (p, p_lo) = two_prod(mu, t);
+    let low = if p.is_finite() { p_lo } else { 0.0 };
+    Some((p - ln_base / nu + low).exp())
   }
 
   /// $e^{iu\mu}(1 - i\theta\nu u + \tfrac12\sigma^2\nu u^2)^{-1/\nu}$.

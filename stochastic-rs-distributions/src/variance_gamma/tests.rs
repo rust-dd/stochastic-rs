@@ -100,10 +100,10 @@ fn moments_and_transforms_match_the_reference() {
 #[test]
 fn the_mgf_holds_where_the_location_cancels_the_clock() {
   for ((theta, mu), want) in [
-    ((-612.254_218_087_239, 400.0), 1.648_721_270_699_973_7),
-    ((275.407_822_104_038_2, -400.0), 1.648_721_270_700_294),
-    ((-3_192.721_247_179_639_2, 1000.0), 1.648_721_270_700_003_2),
-    ((432.326_183_745_457_23, -1000.0), 1.648_721_270_701_559_7),
+    ((-612.254_218_087_239, 400.0), 1.648_721_270_699_987_6),
+    ((275.407_822_104_038_2, -400.0), 1.648_721_270_700_228_6),
+    ((-3_192.721_247_179_639_2, 1000.0), 1.648_721_270_700_02),
+    ((432.326_183_745_457_23, -1000.0), 1.648_721_270_701_679_6),
   ] {
     let got = SimdVarianceGamma::<f64>::new(0.2, 0.001, theta, mu)
       .moment_generating_function(2.0)
@@ -117,6 +117,47 @@ fn the_mgf_holds_where_the_location_cancels_the_clock() {
   };
   assert_eq!(lone(-375.0), 0.0);
   assert_eq!(lone(355.0), f64::INFINITY);
+}
+
+/// mpmath at 60 and 120 digits: within `1e-12` as the base `b` nears either root, one ulp of `t` short of it included, at a
+/// double `θ` that leaves `b = 3.3e-24` past two parts' reach, and where a small `ν` leaves `b` within `νt` of 1.
+#[test]
+fn the_mgf_holds_as_its_base_nears_its_root_or_one() {
+  let ordinary = (
+    0.401_897_691_031_396_4,
+    0.5,
+    0.433_968_600_983_299_26,
+    -0.374_442_225_868_635_6,
+  );
+  for ((sigma, nu, theta, mu), t, want) in [
+    (ordinary, 2.968_609_436_733_187_2, 3_290_410_677_176_551.5),
+    (ordinary, 2.968_609_458_627_874, 5.740_780_249_215_601e31),
+    (ordinary, -8.342_109_786_808_052, 2.272_891_921_830_784e17),
+    (ordinary, -8.342_109_808_702_74, 9.235_675_080_344_451e31),
+    (
+      (1.0, 1.0, 0.5, 0.0),
+      0.999_999_999_999_999_9,
+      6_004_799_503_160_662.0,
+    ),
+    (
+      (1.0, 1.0, 0.499_816_887_082_488_17, 0.0),
+      1.000_122_085_213_661_2,
+      3.022_314_549_036_573e23,
+    ),
+    ((0.2, 1e-10, 0.1, 0.0), 1.0, 1.127_496_851_580_187_5),
+    ((0.2, 1e-20, 0.1, 0.0), 1.0, 1.127_496_851_579_375_7),
+    ((0.3, 1e-300, -0.2, 0.1), 2.5, 1.031_743_407_499_102_5),
+  ] {
+    let got = SimdVarianceGamma::<f64>::new(sigma, nu, theta, mu)
+      .moment_generating_function(t)
+      .unwrap();
+    assert!(
+      close(got, want, 1e-12),
+      "VG({sigma}, {nu}, {theta}, {mu}).mgf({t}) = {got}"
+    );
+  }
+  let at_root = SimdVarianceGamma::<f64>::new(1.0, 1.0, 0.5, 0.0).moment_generating_function(1.0);
+  assert_eq!(at_root, Some(f64::INFINITY));
 }
 
 /// mpmath at 60 and 120 digits: within `1e-12` where `σ` and `θ√ν` are far below `θ`, the law narrower than `θ`'s rounding
