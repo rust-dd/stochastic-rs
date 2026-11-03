@@ -35,6 +35,15 @@ fn a_gamma_cdf_beside_zero() {
   let inf = f64::INFINITY;
   for (k, theta, up, rows) in [
     (5.0, 1.0, inf, vec![(1e-310, 0.0), (1e-300, 0.0)]),
+    // `ln v + k·ln t` and `k·q` past the doubles: the true `ln F` is −1.2e308 or less on both sides.
+    (1.25e305, 1.0, inf, vec![(5e-324, 0.0), (1e-310, 0.0)]),
+    (1.68e305, 1.0, 10.0, vec![(5e-324, 0.0)]),
+    (
+      8.98e304,
+      1.086657414900513e303,
+      3.896229425657342e305,
+      vec![(5e-324, 0.0), (1e-300, 0.0)],
+    ),
     (
       70.91814633258258,
       4.369422513910083e-2,

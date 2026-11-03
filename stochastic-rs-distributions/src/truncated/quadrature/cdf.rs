@@ -106,6 +106,10 @@ impl<K: Kernel> Truncation<K> {
     let origin = Cut::at(s);
     let ln_v = self.singular_point(origin, &frame, 1.0).0;
     let shift = ln_v + frame.ln_jacobian() - self.width.ln();
+    // `ln v + e·ln t` past −MAX: the mass beside the branch point lies below every double.
+    if shift == f64::NEG_INFINITY {
+      return 0.0;
+    }
     let mut mass = 0.0;
     self.frame_nodes(origin, &frame, e, 0, None, |w, ln_v, _, _| {
       mass += w * (ln_v - shift).exp()

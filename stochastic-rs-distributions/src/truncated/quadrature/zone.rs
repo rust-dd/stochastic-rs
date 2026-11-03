@@ -46,6 +46,10 @@ impl Offset {
 /// last `ldexp` is the one rounding a subnormal answer takes.
 pub(in crate::truncated) fn power(t: Offset, e: f64, c: f64, s: i32) -> f64 {
   let (hi, lo) = two_prod(e, f64::from(t.q));
+  // `e·q` past the doubles: `t^e` is 0 or `∞` at every scale `e^c·2^s` the laws apply.
+  if hi.is_infinite() {
+    return if hi > 0.0 { f64::INFINITY } else { 0.0 };
+  }
   let n = hi.round();
   let r = ((hi - n) + lo) * std::f64::consts::LN_2 + e * t.m.ln() + c;
   let k = (r / std::f64::consts::LN_2).round();

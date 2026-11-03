@@ -289,6 +289,10 @@ fn sweep<D>(
   for x in beside_points(lo, up, spec.scale) {
     let (got, pdf) = (law.cdf(x).unwrap(), law.pdf(x).unwrap());
     let _ = write!(line, " cdf@{x:e}={got:?} pdf@{x:e}={pdf:?}");
+    if got.is_nan() || pdf.is_nan() {
+      fail(format!("cdf({x:e}) = {got:e}, pdf {pdf:e} beside a bound"));
+      continue;
+    }
     // Above ½ the bar is 8ε, below the parent's 2e-13.
     let parent = spec
       .parent
