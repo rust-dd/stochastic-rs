@@ -1,5 +1,5 @@
-//! GIG normalisers `N(λ, χ, ψ) = ∫ w^{λ−1}e^{−(χ/w + ψw)/2} dw = 2(χ/ψ)^{λ/2}K_λ(√(χψ))` from order 50 on as `ln 2 + H_λ(w*)`
-//! plus Debye's remainder, `H_λ(w) = λ ln w − ½(χ/w + ψw)` at its maximiser, so a ratio of two meets as one divergence.
+//! GIG normalisers `N(λ, χ, ψ) = ∫ w^{λ−1}e^{−(χ/w + ψw)/2} dw = 2(χ/ψ)^{λ/2}K_λ(√(χψ))` from `√(λ² + χψ) = 50` on as
+//! `ln 2 + H_λ(w*)` plus Debye's remainder, `H_λ(w) = λ ln w − ½(χ/w + ψw)` at its maximiser, so a ratio of two meets as one divergence.
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 10.41.4 (Debye's expansion of `K_ν(νz)`, whose `−νη` with the power is `H_λ(w*)`), <https://dlmf.nist.gov/10.41.4>.
 
 use super::bessel_i::debye_sum_at;
