@@ -209,19 +209,33 @@ fn gamma_ratio_half_matches_high_precision_references() {
   }
 }
 
-/// mpmath at 60 digits on both sides of the switch to the continued fraction at 3, and far into it.
+/// mpmath at 60 and 120 digits, within an ulp: both sides of a Taylor node's edge, of 4.25 and of 1e8, and the cells the
+/// old quotient and Lentz's fraction missed by 11.7 and 11.5 ulps (2.98, 15.96).
 #[test]
 fn mills_ratio_matches_high_precision_references() {
   for (z, want) in [
-    (2.999, 0.304_676_550_771_259_44),
+    (0.0, 1.253_314_137_315_500_3),
+    (0.2, 1.075_944_639_915_213_7),
+    (0.249_999_999_999_999_97, 1.037_824_575_853_726_8),
+    (0.25, 1.037_824_575_853_726_8),
+    (1.0, 0.655_679_542_418_798_4),
+    (1.719_740_237_945_755, 0.470_042_523_814_672_3),
+    (2.975_852_618_023_534, 0.306_685_970_767_107_24),
     (3.0, 0.304_590_298_710_103_3),
+    (4.229_407_846_360_353, 0.224_984_060_810_521_4),
+    (4.249_999_999_999_994, 0.223_990_594_653_829_12),
+    (4.25, 0.223_990_594_653_828_8),
     (10.0, 0.099_028_596_471_731_93),
+    (15.958_762_681_329_075, 0.062_418_304_213_632_74),
+    (37.5, 0.026_647_744_014_898_55),
     (1e4, 9.999_999_900_000_004e-5),
+    (100_000_000.000_000_01, 9.999_999_999_999_997e-9),
+    (1e300, 1e-300),
   ] {
     let got = mills_ratio(z);
     assert!(
-      ((got - want) / want).abs() < 1e-14,
-      "mills_ratio({z}) = {got}"
+      (got - want).abs() <= want.next_up() - want,
+      "mills_ratio({z}) = {got}, want {want}"
     );
   }
 }

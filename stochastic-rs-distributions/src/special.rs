@@ -328,27 +328,97 @@ pub fn norm_cdf(x: f64) -> f64 {
   0.5 * erfc(-x / std::f64::consts::SQRT_2)
 }
 
-/// Mills' ratio `R(z) = Φ(−z)/φ(z)` for `z ≥ 0`: the quotient below 3, else Laplace's continued fraction
-/// `1/(z + 1/(z + 2/(z + …)))` (DLMF 7.9.3 at `iz/√2`) by Lentz's method, free of the `e^{−z²/2}` both factors carry.
+/// `R(k/2)`, `k = 0, …, 8`, in two parts (mpmath, 60 and 120 digits): the nodes of `mills_ratio`'s Taylor series.
+const MILLS_NODES: [(f64, f64); 9] = [
+  (1.2533141373155003, -9.164289990229583e-17),
+  (0.8763644564536923, 2.6901721135929454e-17),
+  (0.6556795424187984, 2.7085254871687876e-17),
+  (0.5158156382179634, -3.528415937755258e-17),
+  (0.4213692292880545, -7.739186451304797e-18),
+  (0.35426511132979366, 8.527077771281615e-18),
+  (0.3045902987101033, 4.686976714853152e-18),
+  (0.26656776896822376, -4.5084582405083935e-18),
+  (0.23665238291356067, 4.601651392113041e-18),
+];
+
+/// Below this `z` the Taylor series, whose seventeenth term at `|h| ≤ ¼` is under `1e-17`; above it the fraction needs at
+/// most 31 steps.
+const MILLS_TAYLOR_BELOW: f64 = 4.25;
+
+/// `1/(n + 1)`, `n = 1, …, 16`: the divisors of the Taylor recurrence `(n + 1)c_{n+1} = z₀c_n + c_{n−1}`.
+const MILLS_DIVISORS: [f64; 16] = [
+  1.0 / 2.0,
+  1.0 / 3.0,
+  1.0 / 4.0,
+  1.0 / 5.0,
+  1.0 / 6.0,
+  1.0 / 7.0,
+  1.0 / 8.0,
+  1.0 / 9.0,
+  1.0 / 10.0,
+  1.0 / 11.0,
+  1.0 / 12.0,
+  1.0 / 13.0,
+  1.0 / 14.0,
+  1.0 / 15.0,
+  1.0 / 16.0,
+  1.0 / 17.0,
+];
+
+/// Mills' ratio `R(z) = Φ(−z)/φ(z)`, within 0.64 ulps on `z ≥ 0`: below 4.25 the Taylor series of `R′ = zR − 1` about
+/// the nearest half-integer, else Laplace's fraction backward, past `1e8` `1/z − 1/z³`; the quotient below 0.
 pub fn mills_ratio(z: f64) -> f64 {
-  if z < 3.0 {
+  if z < 0.0 {
     return norm_cdf(-z) / norm_pdf(z);
   }
+  if z < MILLS_TAYLOR_BELOW {
+    return mills_taylor(z);
+  }
   if z > 1e8 {
-    return 1.0 / z;
+    let r = z.recip();
+    return if r == 0.0 {
+      r
+    } else {
+      r + ((-r).mul_add(z, 1.0) / z - r / z / z)
+    };
   }
-  let (mut f, mut c, mut d) = (z, z, 0.0);
-  for n in 1..300 {
-    let a = f64::from(n);
-    d = 1.0 / (z + a * d);
-    c = z + a / c;
-    let step = c * d;
-    f *= step;
-    if (step - 1.0).abs() <= f64::EPSILON {
-      break;
-    }
+  mills_fraction(z)
+}
+
+/// `R(z₀ + h) = Σ c_n hⁿ` (DLMF 7.10.1 gives `R′ = zR − 1`), `c₀ + c₁h` in two parts, the rest by the recurrence in
+/// `d_n = c_n hⁿ`.
+fn mills_taylor(z: f64) -> f64 {
+  let k = (2.0 * z).round();
+  let (c0, c0_lo) = MILLS_NODES[k as usize];
+  let z0 = 0.5 * k;
+  let h = z - z0;
+  let (p, p_lo) = two_prod(z0, c0);
+  let (c1, c1_err) = two_sum(p, -1.0);
+  let (a, a_lo) = two_prod(h, c1);
+  let (zh, hh) = (z0 * h, h * h);
+  let (mut prev, mut term, mut tail) = (c0, a, 0.0);
+  for inv in MILLS_DIVISORS {
+    let next = zh.mul_add(term, hh * prev) * inv;
+    tail += next;
+    (prev, term) = (term, next);
   }
-  1.0 / f
+  let (s, s_err) = two_sum(c0, a);
+  s + (s_err + a_lo + c0_lo + h * (c1_err + p_lo + z0 * c0_lo) + tail)
+}
+
+/// Laplace's fraction `1/(z + 1/(z + 2/(z + …)))` (DLMF 7.9.3 at `iz/√2`) from the depth that truncates it under `2⁻⁶⁰`,
+/// its tail `(z + √(z² + 4(n + 1)))/2`, the last division and the quotient compensated.
+fn mills_fraction(z: f64) -> f64 {
+  let n = (240.0 / (z * z) + 62.0 / z + 4.0) as usize;
+  let mut f = 0.5 * (z + z.mul_add(z, 4.0 * (n + 1) as f64).sqrt());
+  for m in (2..=n).rev() {
+    f = z + m as f64 / f;
+  }
+  let q = f.recip();
+  let (s, e) = two_sum(z, q);
+  let lo = e + (-q).mul_add(f, 1.0) / f;
+  let r = s.recip();
+  r + ((-r).mul_add(s, 1.0) - r * lo) / s
 }
 
 /// `ln Φ(z)`: `ln_1p(−Φ(−z))` above 0, `ln Φ(z)` to −30 and `−z²/2 − ln √(2π) + ln R(−z)` below, the switch a point of
