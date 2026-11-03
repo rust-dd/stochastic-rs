@@ -1,5 +1,5 @@
-//! The bivariate t cdf to a relative `1e-12`: Dunnett & Sobel's sums at an integer `ν` where their bound allows, else
-//! `P(Y ≤ y | X ≤ x)` from the law of `Y` given `X = √ν sinh t`, by panels marched out of each feature in `t`.
+//! The bivariate t cdf to a relative `1e-12`, except where `C ≪ u` off the countermonotone solve and the scores' own rounding
+//! dominates: Dunnett & Sobel's sums at an integer `ν`, else `P(Y ≤ y | X ≤ x)` by panels marched out of each feature in `t`.
 //! Reference: Genz, A. (2004), "Numerical computation of rectangular bivariate and trivariate normal and t probabilities", *Statistics and Computing* 14(3), 251-260, DOI 10.1023/B:STCO.0000035304.20635.31 (the conditional representation).
 
 use std::cell::Cell;
