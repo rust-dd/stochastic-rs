@@ -343,6 +343,16 @@ fn moments_hold_where_k_overflows() {
   }
 }
 
+/// mpmath at 60 and 120 digits: an inverse-gamma tail at `√(χψ) = 10⁻³⁰⁰`, whose Bessel ratios overflow, keeps its variance and
+/// skewness through the root-mean-square scale, and its kurtosis, `8e600`, reads `+∞`.
+#[test]
+fn heavy_tails_keep_their_moments() {
+  let d = SimdGig::<f64>::new(-1.0, 1e-300, 1e-300);
+  assert!(close(d.variance().unwrap(), 1.0, 1e-12));
+  assert!(close(d.skewness().unwrap(), 2e300, 1e-12));
+  assert_eq!(d.kurtosis(), Some(f64::INFINITY));
+}
+
 /// mpmath at 120 digits: `χ/ψ = 10⁻³²⁰` is subnormal, so the power factor is `(√χ/√ψ)ᵏ`; the mean within `1e-14`.
 #[test]
 fn a_subnormal_scale_ratio_keeps_the_mean() {

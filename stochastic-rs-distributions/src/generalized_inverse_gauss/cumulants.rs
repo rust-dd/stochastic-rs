@@ -134,38 +134,40 @@ fn exp_m1_mx(x: f64) -> f64 {
   x * x * C.iter().rev().fold(0.0_f64, |acc, &c| acc.mul_add(x, c))
 }
 
-/// Scaled by the mean `m₁`: `aᵢ = R_{λ+i}/R_λ`, `R_ν = K_{ν+1}(ω)/K_ν(ω)`, so `E Xᵏ/m₁ᵏ = a₁…a_{k−1}`; each `R` from
-/// `g_ν = (ω/2)R_ν` at `ν ≥ −½` and `R_ν = 1/R_{−ν−1}` below, the `(ω/2)²` that reflection brings kept apart.
+/// Scaled by the root mean square `s`: `ln(E Xᵏ/sᵏ) = Σ_{i<k} ln R_{λ+i} − (k/2)(ln R_λ + ln R_{λ+1})`, `R_ν = K_{ν+1}(ω)/K_ν(ω)`
+/// as `ln g_ν − h` from `ν = −½` and `h − ln g_{−ν−1}` below, `g_ν = (ω/2)R_ν`, `h = ln(ω/2)`, the `h` parts summed apart.
 fn ratios(lambda: f64, chi: f64, psi: f64, omega: f64) -> (f64, [f64; 4]) {
-  let half = 0.5 * omega;
-  let scaled = |nu: f64| {
+  let h = (0.5 * omega).ln();
+  let parts = [0.0, 1.0, 2.0, 3.0].map(|i| {
+    let nu = lambda + i;
     if nu >= -0.5 {
-      (k_half_ratio(nu, omega), false)
+      (k_half_ratio(nu, omega), -1.0)
     } else {
-      (1.0 / k_half_ratio(-nu - 1.0, omega), true)
-    }
-  };
-  let (g0, reflected) = scaled(lambda);
-  let mean = if reflected {
-    chi * g0 / 2.0
-  } else {
-    2.0 * g0 / psi
-  };
-  let [a1, a2, a3] = [1.0, 2.0, 3.0].map(|i| {
-    let (g, flipped) = scaled(lambda + i);
-    if reflected && !flipped {
-      g / g0 / half / half
-    } else {
-      g / g0
+      (1.0 / k_half_ratio(-nu - 1.0, omega), 1.0)
     }
   });
+  let ln_b = |k: usize| {
+    let (head, power) = (0.5 * k as f64, parts[0].1 + parts[1].1);
+    let g =
+      parts[..k].iter().map(|p| p.0.ln()).sum::<f64>() - head * (parts[0].0.ln() + parts[1].0.ln());
+    g + (parts[..k].iter().map(|p| p.1).sum::<f64>() - head * power) * h
+  };
+  let mean = if parts[0].1 < 0.0 {
+    2.0 * parts[0].0 / psi
+  } else {
+    0.5 * chi * parts[0].0
+  };
+  let (l1, l3, l4) = (ln_b(1), ln_b(3), ln_b(4));
+  let (b1, k2) = (l1.exp(), 1.0 - (2.0 * l1).exp());
+  // `b₄ − 4b₁b₃` with `b₄` factored out, so a heavy tail whose `b₄` and `b₁b₃` both overflow reads `+∞`, not `∞ − ∞`.
+  let mu4 = l4.exp() * (1.0 - 4.0 * (l1 + l3 - l4).exp()) + 6.0 * b1 * b1 - 3.0 * b1.powi(4);
   (
-    mean,
+    mean / b1,
     [
-      1.0,
-      a1 - 1.0,
-      a1 * a2 - 3.0 * a1 + 2.0,
-      a1 * a2 * a3 - 4.0 * a1 * a2 - 3.0 * a1 * a1 + 12.0 * a1 - 6.0,
+      b1,
+      k2,
+      l3.exp() - 3.0 * b1 + 2.0 * b1.powi(3),
+      mu4 - 3.0 * k2 * k2,
     ],
   )
 }

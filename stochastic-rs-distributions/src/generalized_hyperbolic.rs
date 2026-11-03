@@ -374,7 +374,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     let (_, _, beta, _, _) = self.params();
     let (s, [k1, k2, k3, _]) = SimdGig::<f64>::cumulants_at(self.clock());
     let b = beta * beta * s;
-    Some(if b <= 1.0 {
+    Some(if b == 0.0 {
+      0.0
+    } else if b <= 1.0 {
       beta * s.sqrt() * (3.0 * k2 + b * k3) / (k1 + b * k2).powf(1.5)
     } else {
       beta.signum() * (3.0 * k2 / b + k3) / (k1 / b + k2).powf(1.5)
@@ -386,7 +388,10 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     let (_, _, beta, _, _) = self.params();
     let (s, [k1, k2, k3, k4]) = SimdGig::<f64>::cumulants_at(self.clock());
     let b = beta * beta * s;
-    Some(if b <= 1.0 {
+    // At `β = 0` the clock's `κ₃` and `κ₄` do not enter, and an overflowed one must not read `0·∞`.
+    Some(if b == 0.0 {
+      3.0 * k2 / (k1 * k1)
+    } else if b <= 1.0 {
       (3.0 * k2 + b * (6.0 * k3 + b * k4)) / (k1 + b * k2).powi(2)
     } else {
       ((3.0 * k2 / b + 6.0 * k3) / b + k4) / (k1 / b + k2).powi(2)
