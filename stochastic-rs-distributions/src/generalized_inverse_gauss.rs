@@ -48,10 +48,16 @@ use super::SimdFloatExt;
 use crate::seeded::StreamState;
 use crate::special::Estimate;
 use crate::special::KDenominator;
+use crate::special::LARGE_ORDER;
+use crate::special::debye_shape;
+use crate::special::divergence;
 use crate::special::exp_of_log_sum;
 use crate::special::k_ratio;
 use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
+use crate::special::ln_order_step;
+use crate::special::ln_shift;
+use crate::special::saddle;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
@@ -337,6 +343,9 @@ impl<T: SimdFloatExt> SimdGig<T> {
   fn raw(&self, k: u32, den: &KDenominator) -> Estimate {
     let (lambda, chi, psi) = self.params();
     let order = f64::from(k);
+    if lambda.abs().min((lambda + order).abs()) >= LARGE_ORDER {
+      return Estimate::with_rel(ln_order_step(lambda, order, (chi, psi)).exp(), 0.0);
+    }
     k_ratio(
       (0.0, chi / psi, 0.5 * order),
       (lambda + order, (chi * psi).sqrt()),
@@ -407,6 +416,15 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
       return Some(0.0);
     }
     let (lambda, chi, psi) = self.params();
+    if lambda.abs() >= LARGE_ORDER {
+      // `H_λ(x) − ln x − ln N(λ, χ, ψ)` with `ln N = ln 2 + H_λ(w*) + T`: the order's terms meet in one divergence.
+      let w = saddle(lambda, chi.sqrt(), psi.sqrt());
+      let rest = debye_shape(lambda.abs(), chi.sqrt() * psi.sqrt()) - 0.5 * lambda.abs().ln();
+      return Some(
+        (divergence(lambda, (chi, psi), w, x / w - 1.0) - x.ln() - std::f64::consts::LN_2 - rest)
+          .exp(),
+      );
+    }
     let b = (chi * psi).sqrt();
     let (t_pow, k0) = (0.5 * lambda * (psi / chi).ln(), ln_bessel_ke(lambda, b));
     let log_norm = t_pow - std::f64::consts::LN_2 - (k0 - b);
@@ -452,6 +470,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
     let shifted = psi - 2.0 * t;
     if shifted < 0.0 || (shifted == 0.0 && lambda >= 0.0) {
       return Some(f64::INFINITY);
+    }
+    if lambda.abs() >= LARGE_ORDER {
+      return Some(ln_shift(lambda, t, (chi, psi, shifted)).exp());
     }
     let b = (chi * psi).sqrt();
     if shifted == 0.0 {

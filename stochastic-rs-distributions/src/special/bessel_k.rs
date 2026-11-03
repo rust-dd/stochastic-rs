@@ -179,6 +179,13 @@ fn debye_k(nu: f64, x: f64, scaled: bool) -> f64 {
   exp_times(if scaled { -d.eta_minus_z } else { -d.eta }, m)
 }
 
+/// `ln K_ν(x) + νη(x/ν) + ½ ln ν`, Debye's `½ ln(πp/2) + ln Σ(−1)^k U_k(p)/ν^k` past order 50, finite at `x = 0`, where with
+/// `−½ ln ν` it is the gamma function's Stirling remainder; the `½ ln ν` stays apart so two orders' remainders meet exactly.
+pub(crate) fn debye_shape(nu: f64, x: f64) -> f64 {
+  let p = debye(nu, x).p;
+  (PI * (p / TAU).sqrt() * debye_sum(p, nu, true)).ln()
+}
+
 /// The logarithm of [`debye_k`]'s scaled value, out of line like it.
 #[inline(never)]
 fn ln_debye_k(nu: f64, x: f64) -> f64 {

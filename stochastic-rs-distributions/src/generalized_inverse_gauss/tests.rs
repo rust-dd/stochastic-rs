@@ -344,15 +344,25 @@ fn moments_hold_where_k_overflows() {
   }
 }
 
-/// No digit survives here: `ε·Σ|ln terms|` reaches 1 at these orders, and this concentrated a law's kurtosis cancels
-/// below its raw moments' rounding.
+/// mpmath at 60 and 120 digits, where the order's logarithms once left no digit: within `1e-12`.
 #[test]
-fn no_surviving_digit_answers_nan() {
+fn large_orders_take_their_values() {
   let far = SimdGig::<f64>::new(-1e15, 1.0, 1.0);
-  assert!(far.moment_generating_function(0.5).unwrap().is_nan());
-  assert!(far.mean().unwrap().is_nan());
+  let mgf = far.moment_generating_function(0.5).unwrap();
+  assert!(close(mgf, 1.000_000_000_000_000_2, 1e-12), "{mgf}");
+  let mean = far.mean().unwrap();
+  assert!(close(mean, 5.000_000_000_000_005e-16, 1e-12), "{mean}");
   let farther = SimdGig::<f64>::new(-1e300, 1.0, 1.0);
-  assert!(farther.moment_generating_function(0.25).unwrap().is_nan());
+  assert!(close(
+    farther.moment_generating_function(0.25).unwrap(),
+    1.0,
+    1e-12
+  ));
+}
+
+/// This concentrated a law's kurtosis cancels below its raw moments' rounding.
+#[test]
+fn a_concentrated_kurtosis_answers_nan() {
   assert!(
     SimdGig::<f64>::new(1.0, 1e12, 1e12)
       .kurtosis()

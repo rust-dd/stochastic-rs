@@ -222,18 +222,19 @@ fn moments_hold_where_k_overflows() {
   assert!(close(var, 0.000_730_989_044_336_110_9, 1e-12), "{var}");
 }
 
-/// mpmath: within `1e-12` at `|λ| = 10³` and the documented `ε·Σ|ln terms|` (`1.03e-4`) at `|λ| = 10¹⁰`; NaN where no
-/// digit survives and the value could be representable, the exact 0 where every candidate underflows.
+/// mpmath at 60 and 120 digits: within `1e-12` from `|λ| = 10³` to `10¹⁵`, the boundary `γ_t = 0` included, and the exact 0
+/// where the density underflows.
 #[test]
-fn large_orders_keep_the_documented_bound() {
-  let near = SimdGeneralizedHyperbolic::<f64>::new(-1e3, 2.0, 0.5, 0.5, 0.0);
-  let got = near.moment_generating_function(1.5).unwrap();
-  assert!(close(got, 1.000_234_637_105_014, 1e-12), "{got}");
-  let far = SimdGeneralizedHyperbolic::<f64>::new(-1e10, 2.0, 0.5, 0.5, 0.0);
-  let got = far.moment_generating_function(1.0).unwrap();
-  assert!(close(got, 1.000_000_000_012_5, 1.03e-4), "{got}");
-  let farther = SimdGeneralizedHyperbolic::<f64>::new(-1e15, 2.0, 0.5, 0.5, 0.0);
-  assert!(farther.moment_generating_function(1.5).unwrap().is_nan());
+fn large_orders_hold_their_digits() {
+  for (lambda, t, want) in [
+    (-1e3, 1.5, 1.000_234_637_105_014),
+    (-1e10, 1.0, 1.000_000_000_012_5),
+    (-1e15, 1.5, 1.000_000_000_000_000_2),
+  ] {
+    let gh = SimdGeneralizedHyperbolic::<f64>::new(lambda, 2.0, 0.5, 0.5, 0.0);
+    let got = gh.moment_generating_function(t).unwrap();
+    assert!(close(got, want, 1e-12), "λ = {lambda}: {got}");
+  }
   let farthest = SimdGeneralizedHyperbolic::<f64>::new(1e300, 2.0, 0.5, 0.5, 0.0);
   assert_eq!(farthest.pdf(0.3), Some(0.0));
 }

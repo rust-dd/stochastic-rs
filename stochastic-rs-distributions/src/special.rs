@@ -12,6 +12,7 @@ mod estimate;
 mod incomplete;
 mod k_ratio;
 mod quotient;
+mod saddle;
 
 pub use bessel::bessel_i0;
 pub use bessel::bessel_i1;
@@ -50,6 +51,15 @@ pub use quotient::expm1_over;
 pub use quotient::ln_1p_over;
 pub(crate) use quotient::ln_1p_over_xi;
 pub(crate) use quotient::pow_m1_over_xi;
+pub(crate) use saddle::LARGE_ORDER;
+pub(crate) use saddle::debye_shape;
+pub(crate) use saddle::divergence;
+pub(crate) use saddle::ln_1p_mx;
+pub(crate) use saddle::ln_order_step;
+pub(crate) use saddle::ln_shift;
+pub(crate) use saddle::rest_step;
+pub(crate) use saddle::saddle;
+pub(crate) use saddle::stirling_tail;
 
 const LANCZOS_G: f64 = 7.0;
 const LANCZOS_C: [f64; 9] = [

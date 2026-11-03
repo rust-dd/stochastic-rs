@@ -45,10 +45,15 @@ use super::normal::SimdNormal;
 use crate::seeded::Buffered;
 use crate::seeded::StreamState;
 use crate::special::KDenominator;
+use crate::special::LARGE_ORDER;
+use crate::special::divergence;
 use crate::special::exp_of_log_sum;
 use crate::special::k_ratio;
 use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
+use crate::special::ln_shift;
+use crate::special::rest_step;
+use crate::special::saddle;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
@@ -223,6 +228,31 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
     below * above
   }
 
+  /// The density past `LARGE_ORDER`: `βd + ln N(λ − ½, δ² + d², α²) − ln N(λ, δ², γ²)` meets as `H_λ(w₁) − H_λ(w₀) − ½ ln w₁
+  /// − (d − βw₁)²/2w₁` at the two maximisers, since `α² = γ² + β²`, plus Debye's remainders.
+  fn large_order_pdf(&self, d: f64) -> f64 {
+    let (lambda, alpha, beta, delta, _) = self.params();
+    let (chi, psi) = (delta * delta, (alpha - beta) * (alpha + beta));
+    let root = delta.hypot(d);
+    if !root.is_finite() {
+      return 0.0;
+    }
+    let (w0, w1) = (
+      saddle(lambda, delta, psi.sqrt()),
+      saddle(lambda - 0.5, root, alpha),
+    );
+    let rests = rest_step(
+      lambda.abs(),
+      (lambda - 0.5).abs(),
+      (delta * psi.sqrt(), alpha * root),
+    );
+    let gap = d - beta * w1;
+    (divergence(lambda, (chi, psi), w0, w1 / w0 - 1.0) - 0.5 * w1.ln() - 0.5 * (gap / w1) * gap
+      + rests
+      - 0.5 * std::f64::consts::TAU.ln())
+    .exp()
+  }
+
   /// The interior mgf's ratio at `t`, `shifted = γ_t² > 0`.
   fn mgf_ratio(&self, t: f64, shifted: f64) -> ((f64, f64, f64), (f64, f64), KDenominator, f64) {
     let (lambda, alpha, beta, delta, mu) = self.params();
@@ -288,8 +318,11 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
       return Some(0.0);
     }
     let (lambda, alpha, beta, delta, mu) = self.params();
-    let gamma = (alpha * alpha - beta * beta).sqrt();
     let d = x - mu;
+    if lambda.abs().min((lambda - 0.5).abs()) >= LARGE_ORDER {
+      return Some(self.large_order_pdf(d));
+    }
+    let gamma = (alpha * alpha - beta * beta).sqrt();
     let root = (delta * delta + d * d).sqrt();
     let order = lambda - 0.5;
     let (t_gamma, t_alpha, t_delta) =
@@ -344,6 +377,12 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     let shifted = self.shifted(t);
     if shifted < 0.0 || (shifted == 0.0 && lambda >= 0.0) {
       return Some(f64::INFINITY);
+    }
+    if lambda.abs() >= LARGE_ORDER {
+      let (chi, psi) = (delta * delta, (alpha - beta) * (alpha + beta));
+      return Some(
+        (mu * t + ln_shift(lambda, 0.5 * t * (2.0 * beta + t), (chi, psi, shifted))).exp(),
+      );
     }
     let gamma = (alpha * alpha - beta * beta).sqrt();
     if shifted == 0.0 {
