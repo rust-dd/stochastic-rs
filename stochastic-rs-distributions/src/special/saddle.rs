@@ -2,9 +2,13 @@
 //! plus Debye's remainder, `H_λ(w) = λ ln w − ½(χ/w + ψw)` at its maximiser, so a ratio of two meets as one divergence.
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 10.41.4 (Debye's expansion of `K_ν(νz)`, whose `−νη` with the power is `H_λ(w*)`), <https://dlmf.nist.gov/10.41.4>.
 
+use super::bessel_i::debye_sum_at;
 pub(crate) use super::bessel_k::debye_shape;
+use super::twofold::two_prod;
+use super::twofold::two_sum;
 
-/// From this order on the GH, GIG and VG analytics take the saddle form, Debye's expansion holding to the last bit there.
+/// From this `√(ν² + x²)` on Debye's expansion holds to the last bit at any order `ν`; the GH, GIG and VG analytics take their
+/// saddle forms there.
 pub(crate) const LARGE_ORDER: f64 = 50.0;
 
 /// The maximiser of `H_λ` from `√χ` and `√ψ`, `(λ + √(λ² + χψ))/ψ`, at `λ < 0` as `χ/(|λ| + √(λ² + χψ))`, which does not
@@ -15,6 +19,52 @@ pub(crate) fn saddle(lambda: f64, root_chi: f64, root_psi: f64) -> f64 {
     (lambda + root) / root_psi / root_psi
   } else {
     root_chi * (root_chi / (root - lambda))
+  }
+}
+
+/// The maximiser `w ≈ guess` of `H_λ` in two parts, `λ`, `χ` and `ψ` each given in two: a Newton step on `ψw − 2λ − χ/w`, its
+/// residual formed exactly, so an offset from `w` keeps its digits where the law is narrower than `w`'s rounding.
+pub(crate) fn saddle_parts(
+  guess: f64,
+  lambda: (f64, f64),
+  chi: (f64, f64),
+  psi: (f64, f64),
+) -> (f64, f64) {
+  let w = guess;
+  let (p, p_lo) = two_prod(psi.0, w);
+  let q = chi.0 / w;
+  let q_lo = ((-q).mul_add(w, chi.0) + chi.1) / w;
+  let (s, s_lo) = two_sum(p, -2.0 * lambda.0);
+  let (g, g_lo) = two_sum(s, -q);
+  let residual = g + (g_lo + s_lo + p_lo + psi.1 * w - 2.0 * lambda.1 - q_lo);
+  // The slope `ψ + χ/w²` times `w`, which stays finite where `χ/w²` would not.
+  let step = residual / (p + q) * w;
+  if step.is_finite() {
+    (w, -step)
+  } else {
+    (w, 0.0)
+  }
+}
+
+/// `x/w − 1` for `x` and `w` in two parts, the difference formed exactly.
+pub(crate) fn offset((x, x_lo): (f64, f64), (w, w_lo): (f64, f64)) -> f64 {
+  let (d, d_lo) = two_sum(x, -w);
+  (d + (d_lo + (x_lo - w_lo))) / w
+}
+
+/// `ln S` of Debye's `S = Σ(−1)^k U_k(p)/ν^k`, `p = ν/r`, `r = √(ν² + x²)`: `ln K_ν(x) = ½ ln(π/2r) − r + ν·asinh(ν/x) + ln S`, taken
+/// in `1/r` so it holds at `ν = 0`.
+pub(crate) fn debye_log_sum(nu: f64, r: f64) -> f64 {
+  debye_sum_at(nu / r, -1.0 / r).ln()
+}
+
+/// `e^a·m/x`, the factor apart where it is normal and `e^a` too, so a large `|ln x|` does not round into the exponent.
+pub(crate) fn exp_times_over(a: f64, m: f64, x: f64) -> f64 {
+  let factor = m / x;
+  if factor.is_normal() && a > -700.0 {
+    a.exp() * factor
+  } else {
+    (a + m.ln() - x.ln()).exp()
   }
 }
 
@@ -58,7 +108,7 @@ pub(crate) fn ln_1p_mx(x: f64) -> f64 {
 }
 
 /// Debye's remainder at order `to` less that at `from`, the `½ ln ν` parts by `ln_1p` so two near orders keep their gap.
-pub(crate) fn rest_step(from: f64, to: f64, (x_from, x_to): (f64, f64)) -> f64 {
+fn rest_step(from: f64, to: f64, (x_from, x_to): (f64, f64)) -> f64 {
   debye_shape(to, x_to) - debye_shape(from, x_from) - 0.5 * ((to - from) / from).ln_1p()
 }
 

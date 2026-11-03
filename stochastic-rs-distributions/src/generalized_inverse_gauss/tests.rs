@@ -417,10 +417,10 @@ fn central_moments_hold_at_every_order() {
   }
 }
 
-/// mpmath: within `1e-12` at `|λ| = 10³`, and within the documented `ε·Σ|ln terms|`, worked out beside each cell, at
-/// `|λ| = 10¹⁰` and where small arguments make the terms large at `|λ| = 300`.
+/// mpmath at 60 and 120 digits: within `1e-12` where the terms' logarithms are large, at `|λ| = 10³` and `10¹⁰` and where
+/// small arguments meet `|λ| = 300`.
 #[test]
-fn large_orders_keep_the_documented_bound() {
+fn large_orders_hold_where_their_terms_are_large() {
   let near = SimdGig::<f64>::new(-1e3, 1.0, 1.0)
     .moment_generating_function(0.5)
     .unwrap();
@@ -428,21 +428,55 @@ fn large_orders_keep_the_documented_bound() {
   let far = SimdGig::<f64>::new(-1e10, 1.0, 1.0)
     .moment_generating_function(0.25)
     .unwrap();
-  assert!(close(far, 1.000_000_000_012_5, 1.03e-4), "{far}");
+  assert!(close(far, 1.000_000_000_012_5, 1e-12), "{far}");
   let tiny = SimdGig::<f64>::new(-300.0, 1e-30, 1e-30)
     .pdf(2.491_694_352_159_468_4e-33)
     .unwrap();
-  assert!(close(tiny, 1.545_141_899_238_939_7e24, 1.01e-11), "{tiny}");
-  for (scale, t, want, bound) in [
-    (1e-10, 2.5e-11, 1.0, 3.84e-12),
-    (1e-6, -1e-6, 0.999_999_999_999_998_3, 2.56e-12),
+  assert!(close(tiny, 1.545_141_899_238_939_6e24, 1e-12), "{tiny}");
+  for (scale, t, want) in [
+    (1e-10, 2.5e-11, 1.0),
+    (1e-6, -1e-6, 0.999_999_999_999_998_3),
   ] {
     let got = SimdGig::<f64>::new(-300.0, scale, scale)
       .moment_generating_function(t)
       .unwrap();
     assert!(
-      close(got, want, bound),
+      close(got, want, 1e-12),
       "GIG(-300, {scale}, {scale}).mgf({t}) = {got}"
+    );
+  }
+}
+
+/// mpmath at 60 and 120 digits: the density of a law narrower than its mode's rounding at its double inputs, within `1e-12`,
+/// from the order (`|λ| ≈ 10²⁸`, `10³⁰`) or from `√(χψ) = 10²⁰` and `2·10¹⁶` at small orders.
+#[test]
+fn concentrated_densities_hold_at_their_double_inputs() {
+  for ((lambda, chi, psi, x), want) in [
+    (
+      (
+        9.344_831_002_277_795e30,
+        0.271_777_619_727_283_3,
+        0.325_907_797_216_985_15,
+        5.734_647_088_578_933e31,
+      ),
+      3.677_921_780_444_181_3e-19,
+    ),
+    (
+      (
+        -3.640_186_258_343_357e28,
+        0.136_419_587_695_127_21,
+        1.225_440_946_804_156,
+        1.873_799_553_284_532_3e-30,
+      ),
+      2.279_761_305_451_977_6e42,
+    ),
+    ((1.0, 1e20, 1e20, 1.000_000_000_02), 3_910_426_926.814_115_5),
+    ((-3.0, 4e16, 1e16, 2.000_000_000_3), 28_203_132.740_600_765),
+  ] {
+    let got = SimdGig::<f64>::new(lambda, chi, psi).pdf(x).unwrap();
+    assert!(
+      close(got, want, 1e-12),
+      "GIG({lambda}, {chi}, {psi}).pdf({x}) = {got}"
     );
   }
 }

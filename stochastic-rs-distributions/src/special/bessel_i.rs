@@ -258,8 +258,12 @@ pub(super) fn debye(nu: f64, x: f64) -> Debye {
 
 /// `Σ_k (±1)^k U_k(p)/ν^k` over the ten tabulated polynomials, alternating for `K` (DLMF 10.41.4).
 pub(super) fn debye_sum(p: f64, nu: f64, alternating: bool) -> f64 {
+  debye_sum_at(p, if alternating { -p / nu } else { p / nu })
+}
+
+/// [`debye_sum`] with `±p/ν` given, so that `ν = 0` can pass `−1/x`.
+pub(crate) fn debye_sum_at(p: f64, ratio: f64) -> f64 {
   let p2 = p * p;
-  let ratio = if alternating { -p / nu } else { p / nu };
   let mut sum = 1.0;
   let mut scale = 1.0;
   for coefficients in DEBYE {

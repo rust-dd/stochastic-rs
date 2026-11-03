@@ -287,6 +287,42 @@ fn large_orders_hold_their_digits() {
   assert_eq!(farthest.pdf(0.3), Some(0.0));
 }
 
+/// mpmath at 60 and 120 digits: the density where the clock is narrower than its saddle's rounding, at the double inputs,
+/// within `1e-12`: from the order (`λ ≈ 5·10³⁰`, `9·10³⁰`) and from `δγ = 10¹⁶` at `λ = 1`.
+#[test]
+fn concentrated_densities_hold_at_their_double_inputs() {
+  for ((lambda, alpha, beta, delta, mu, x), want) in [
+    (
+      (
+        5.095_194_993_501_368e30,
+        1.286_942_957_824_578,
+        0.580_858_049_278_676_8,
+        0.118_484_329_901_837_09,
+        0.866_872_290_154_687,
+        4.488_211_170_909_544_6e30,
+      ),
+      1.078_015_377_854_249_4e-16,
+    ),
+    (
+      (
+        9.344_831_002_277_795e30,
+        1.869_540_131_209_391_6,
+        1.427_749_172_120_334_8,
+        0.874_842_423_652_626,
+        0.836_776_605_561_320_2,
+        1.831_806_039_586_267_1e31,
+      ),
+      5.655_566_713_159_638e-17,
+    ),
+    ((1.0, 1e8, 0.0, 1e8, 0.0, 0.3), 0.381_387_815_460_524_1),
+  ] {
+    let got = SimdGeneralizedHyperbolic::<f64>::new(lambda, alpha, beta, delta, mu)
+      .pdf(x)
+      .unwrap();
+    assert!(close(got, want, 1e-12), "GH({lambda}, …).pdf({x}) = {got}");
+  }
+}
+
 /// mpmath at 120 and 240 digits where the power factor goes subnormal (`λ = −100`) or its product with `K` overflows
 /// (`λ = 100`).
 #[test]

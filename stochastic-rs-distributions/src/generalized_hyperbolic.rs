@@ -46,14 +46,21 @@ use crate::seeded::Buffered;
 use crate::seeded::StreamState;
 use crate::special::KDenominator;
 use crate::special::LARGE_ORDER;
+use crate::special::add_parts;
+use crate::special::debye_log_sum;
 use crate::special::divergence;
 use crate::special::exp_of_log_sum;
+use crate::special::exp_times_over;
 use crate::special::k_ratio;
 use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
 use crate::special::ln_shift;
-use crate::special::rest_step;
+use crate::special::mul_parts;
+use crate::special::offset;
 use crate::special::saddle;
+use crate::special::saddle_parts;
+use crate::special::two_prod;
+use crate::special::two_sum;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
@@ -228,29 +235,37 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
     below * above
   }
 
-  /// The density past `LARGE_ORDER`: `βd + ln N(λ − ½, δ² + d², α²) − ln N(λ, δ², γ²)` meets as `H_λ(w₁) − H_λ(w₀) − ½ ln w₁
-  /// − (d − βw₁)²/2w₁` at the two maximisers, since `α² = γ² + β²`, plus Debye's remainders.
-  fn large_order_pdf(&self, d: f64) -> f64 {
+  /// The density from `r = √(λ² + δ²γ²) = 50`: `βd + ln N(λ − ½, δ² + d², α²) − ln N(λ, δ², γ²)` meets as
+  /// `H_λ(w₁) − H_λ(w₀) − ½ ln w₁ − (d − βw₁)²/2w₁` (`α² = γ² + β²`), both maximisers and `d` in two parts, plus `T₁ − T₀`.
+  fn concentrated_pdf(&self, d: (f64, f64), (gamma, r0): (f64, f64)) -> f64 {
     let (lambda, alpha, beta, delta, _) = self.params();
-    let (chi, psi) = (delta * delta, (alpha - beta) * (alpha + beta));
-    let root = delta.hypot(d);
+    let root = delta.hypot(d.0);
     if !root.is_finite() {
       return 0.0;
     }
+    let chi = two_prod(delta, delta);
+    let psi = mul_parts(two_sum(alpha, -beta), two_sum(alpha, beta));
+    let order = two_sum(lambda, -0.5);
+    let w0 = saddle(lambda, delta, gamma);
+    let w1 = saddle(order.0, root, alpha);
     let (w0, w1) = (
-      saddle(lambda, delta, psi.sqrt()),
-      saddle(lambda - 0.5, root, alpha),
+      saddle_parts(w0, (lambda, 0.0), chi, psi),
+      saddle_parts(
+        w1,
+        order,
+        add_parts(chi, mul_parts(d, d)),
+        two_prod(alpha, alpha),
+      ),
     );
-    let rests = rest_step(
-      lambda.abs(),
-      (lambda - 0.5).abs(),
-      (delta * psi.sqrt(), alpha * root),
-    );
-    let gap = d - beta * w1;
-    (divergence(lambda, (chi, psi), w0, w1 / w0 - 1.0) - 0.5 * w1.ln() - 0.5 * (gap / w1) * gap
-      + rests
-      - 0.5 * std::f64::consts::TAU.ln())
-    .exp()
+    let (bw, bw_lo) = two_prod(beta, w1.0);
+    let (g, g_lo) = two_sum(d.0, -bw);
+    let gap = g + (g_lo + d.1 - bw_lo - beta * w1.1);
+    let r1 = order.0.hypot(alpha * root);
+    let a = divergence(lambda, (chi.0, psi.0), w0.0, offset(w1, w0)) - 0.5 * (gap / w1.0) * gap
+      + debye_log_sum(order.0.abs(), r1)
+      - debye_log_sum(lambda.abs(), r0)
+      - 0.5 * std::f64::consts::TAU.ln();
+    exp_times_over(a, (r0 / r1).sqrt(), w1.0.sqrt())
   }
 
   /// The interior mgf's ratio at `t`, `shifted = γ_t² > 0`.
@@ -318,12 +333,13 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
       return Some(0.0);
     }
     let (lambda, alpha, beta, delta, mu) = self.params();
-    let d = x - mu;
-    if lambda.abs().min((lambda - 0.5).abs()) >= LARGE_ORDER {
-      return Some(self.large_order_pdf(d));
+    let gamma = ((alpha - beta) * (alpha + beta)).sqrt();
+    let r0 = lambda.hypot(delta * gamma);
+    let (d, d_lo) = two_sum(x, -mu);
+    if r0 >= LARGE_ORDER {
+      return Some(self.concentrated_pdf((d, d_lo), (gamma, r0)));
     }
-    let gamma = (alpha * alpha - beta * beta).sqrt();
-    let root = (delta * delta + d * d).sqrt();
+    let root = delta.hypot(d);
     let order = lambda - 0.5;
     let (t_gamma, t_alpha, t_delta) =
       (lambda * gamma.ln(), order * alpha.ln(), lambda * delta.ln());

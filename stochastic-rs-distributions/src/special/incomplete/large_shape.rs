@@ -11,6 +11,7 @@ use super::Tail;
 use super::continued_fraction;
 use super::series;
 use crate::special::mills_ratio;
+pub(super) use crate::special::twofold::two_sum;
 
 /// `ln 2` in two parts, the first with 21 trailing zero bits, so its products with small integers are exact.
 pub(super) const LN2_HI: f64 = f64::from_bits(0x3fe6_2e42_fee0_0000);
@@ -333,13 +334,6 @@ fn settle((hi, lo): (f64, f64)) -> (f64, f64) {
   } else {
     (hi, lo)
   }
-}
-
-/// `s + e = a + b` exactly.
-pub(super) fn two_sum(a: f64, b: f64) -> (f64, f64) {
-  let s = a + b;
-  let z = s - a;
-  (s, (a - (s - z)) + (b - z))
 }
 
 /// `ln Γ*(a) = ln Γ(a) − (a − ½) ln a + a − ½ ln 2π` by Stirling's series through `B₁₈`, the first omitted term

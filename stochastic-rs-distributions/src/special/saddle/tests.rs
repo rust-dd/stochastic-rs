@@ -37,3 +37,35 @@ fn the_saddle_forms_meet_the_scaled_ks() {
   let shift = ln_shift(lambda, 0.4, (chi, psi, shifted));
   assert!((shift - (ln_ns - ln_n(lambda))).abs() <= 1e-13, "{shift}");
 }
+
+/// mpmath at 80 digits: the maximiser in two parts within `4ε²` of `w`, where `w`'s own rounding exceeds the law's width.
+#[test]
+fn saddle_parts_hold_to_twice_the_precision() {
+  for ((lambda, chi, psi), (hi, lo)) in [
+    (
+      (
+        9.344_831_002_277_795e30_f64,
+        0.271_777_619_727_283_3_f64,
+        0.325_907_797_216_985_15_f64,
+      ),
+      (5.734_647_088_578_938e31, -604_304_394_585_202.0),
+    ),
+    (
+      (
+        -3.640_186_258_343_357e28,
+        0.136_419_587_695_127_21,
+        1.225_440_946_804_156,
+      ),
+      (1.873_799_553_284_555_7e-30, 9.981_538_340_473_021e-47),
+    ),
+    ((1.5, 1e20, 1e20), (1.0, 1.5e-20)),
+  ] {
+    let w = saddle(lambda, chi.sqrt(), psi.sqrt());
+    let (w, w_lo) = saddle_parts(w, (lambda, 0.0), (chi, 0.0), (psi, 0.0));
+    let gap = (w - hi) + (w_lo - lo);
+    assert!(
+      gap.abs() <= 4.0 * f64::EPSILON * f64::EPSILON * hi,
+      "({lambda}, {chi}, {psi}): {w} + {w_lo}, gap {gap:e}"
+    );
+  }
+}
