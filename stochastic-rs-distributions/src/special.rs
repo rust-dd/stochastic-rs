@@ -21,6 +21,7 @@ pub use bessel::bessel_k1;
 pub use bessel::bessel_k1e;
 pub use bessel_i::bessel_i;
 pub use bessel_i::bessel_ie;
+pub(crate) use bessel_i::debye_moments;
 pub use bessel_i::ln_bessel_ie;
 pub use bessel_k::bessel_k;
 pub use bessel_k::bessel_ke;
@@ -41,6 +42,7 @@ pub(crate) use incomplete::student_density;
 pub(crate) use incomplete::student_density_precise;
 pub(crate) use incomplete::student_tail;
 pub(crate) use k_ratio::KDenominator;
+pub(crate) use k_ratio::k_half_ratio;
 pub(crate) use k_ratio::k_ratio;
 #[cfg(test)]
 pub(crate) use k_ratio::log_regime;

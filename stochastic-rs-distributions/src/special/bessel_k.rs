@@ -256,7 +256,7 @@ fn temme_pair(x: f64, mu: f64, mu2: f64, xi2: f64) -> (f64, f64) {
 }
 
 /// Temme's series: $(K_\mu, (x/2) K_{\mu+1})$ for `x < 2`, NaN where it does not converge.
-fn temme_sums(x: f64, mu: f64, mu2: f64) -> (f64, f64) {
+pub(super) fn temme_sums(x: f64, mu: f64, mu2: f64) -> (f64, f64) {
   let x2 = 0.5 * x;
   let (mut ff, e, gam1, gam2) = temme_head(mu, -x2.ln());
   let gampl = gam2 - mu * gam1;
@@ -286,7 +286,7 @@ fn temme_sums(x: f64, mu: f64, mu2: f64) -> (f64, f64) {
 }
 
 /// Steed's CF2: scaled $(K_\mu, K_{\mu+1})$ for `x ≥ 2`, NaN where it does not converge.
-fn steed_pair(x: f64, mu: f64, mu2: f64, xi: f64) -> (f64, f64) {
+pub(super) fn steed_pair(x: f64, mu: f64, mu2: f64, xi: f64) -> (f64, f64) {
   let mut b = 2.0 * (1.0 + x);
   let mut d = 1.0 / b;
   let mut h = d;

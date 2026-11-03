@@ -1,0 +1,206 @@
+use stochastic_rs_core::simd_rng::Deterministic;
+
+use super::*;
+use crate::tests::assert_moments_within;
+use crate::tests::scalar_draws;
+use crate::traits::DistributionExt;
+use crate::traits::DistributionSampler;
+
+fn close(a: f64, b: f64, rel: f64) -> bool {
+  (a - b).abs() <= rel * b.abs().max(1e-300)
+}
+
+/// The Bessel-form density agrees with a numerical integration of the
+/// gamma-time normal mixture (`scipy.integrate.quad` over
+/// `norm.pdf(x; μ+θg, σ√g)·gamma.pdf(g; 1/ν, ν)`), including the finite
+/// `x = μ` limit for ν = 1/2.
+#[test]
+fn pdf_matches_the_mixture_integral() {
+  let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05);
+  let grid = [
+    (-1.0, 0.007_426_216_254_428_035),
+    (-0.3, 0.684_113_783_523_804_4),
+    (0.0, 2.341_138_247_888_838_7),
+    (0.05, 2.282_688_235_636_076),
+    (0.5, 0.040_416_261_951_548_835),
+    (2.0, 6.857_510_508_067_127e-10),
+  ];
+  for (x, want) in grid {
+    assert!(
+      close(d.pdf(x).unwrap(), want, 1e-9),
+      "pdf({x}) = {} vs {want}",
+      d.pdf(x).unwrap()
+    );
+  }
+  let heavy = SimdVarianceGamma::<f64>::new(1.0, 2.0, 0.3, 0.0);
+  let grid = [
+    (-1.0, 0.093_258_741_713_085_1),
+    (-0.3, 0.387_808_764_238_471_16),
+    (0.05, 0.992_415_312_923_996_3),
+    (0.5, 0.328_754_432_477_837_9),
+    (2.0, 0.059_310_979_016_730_006),
+  ];
+  for (x, want) in grid {
+    assert!(
+      close(heavy.pdf(x).unwrap(), want, 1e-9),
+      "pdf({x}) = {} vs {want}",
+      heavy.pdf(x).unwrap()
+    );
+  }
+  // ν = 2 puts the order of K at zero: the density diverges at μ.
+  assert_eq!(heavy.pdf(0.0).unwrap(), f64::INFINITY);
+}
+
+/// Closed-form moments against the same reference (numerically
+/// integrated central moments of the mixture).
+#[test]
+fn moments_and_transforms_match_the_reference() {
+  let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05);
+  assert!(close(d.mean().unwrap(), -0.05, 1e-15));
+  assert!(close(d.variance().unwrap(), 0.045, 1e-15));
+  assert!(close(
+    d.skewness().unwrap() * 0.045_f64.powf(1.5),
+    -0.0065,
+    1e-12
+  ));
+  assert!(close(
+    (d.kurtosis().unwrap() + 3.0) * 0.045 * 0.045,
+    0.00975,
+    1e-12
+  ));
+  let cf = d.characteristic_function(0.7).unwrap();
+  assert!(
+    close(cf.re, 0.988_478_712_093_533_1, 1e-12) && close(cf.im, -0.034_245_228_379_174_4, 1e-12)
+  );
+  let heavy = SimdVarianceGamma::<f64>::new(1.0, 2.0, 0.3, 0.0);
+  assert!(close(heavy.variance().unwrap(), 1.18, 1e-15));
+  assert!(close(
+    heavy.skewness().unwrap() * 1.18_f64.powf(1.5),
+    2.016,
+    1e-12
+  ));
+  assert!(close(
+    (heavy.kurtosis().unwrap() + 3.0) * 1.18 * 1.18,
+    14.886,
+    1e-12
+  ));
+  let symmetric = SimdVarianceGamma::<f64>::new(0.3, 0.7, 0.0, 0.0);
+  assert_eq!(symmetric.skewness().unwrap(), 0.0);
+  assert!(close(symmetric.kurtosis().unwrap(), 3.0 * 0.7, 1e-12));
+  assert_eq!(d.moment_generating_function(50.0), Some(f64::INFINITY));
+  assert!(close(
+    d.moment_generating_function(0.0).unwrap(),
+    1.0,
+    1e-15
+  ));
+}
+
+/// mpmath at 60 and 120 digits: the excess kurtosis `κ₄/κ₂²` keeps its digits where it nears 0 with `ν`.
+#[test]
+fn kurtosis_holds_at_small_rates() {
+  for ((sigma, nu, theta), want) in [
+    ((0.2, 1e-4, 0.1), 0.000_300_014_999_437_518_8),
+    ((0.3, 1.0 / 30.0, -0.4), 0.110_875_837_449_264_02),
+  ] {
+    let got = SimdVarianceGamma::<f64>::new(sigma, nu, theta, 0.0)
+      .kurtosis()
+      .unwrap();
+    assert!(close(got, want, 1e-12), "ν = {nu}: {got}");
+  }
+}
+
+#[test]
+fn pdf_integrates_to_one() {
+  let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05);
+  let (lo, hi, n) = (-6.0_f64, 6.0_f64, 600_000usize);
+  let h = (hi - lo) / n as f64;
+  let s: f64 = (0..n)
+    .map(|k| d.pdf(lo + (k as f64 + 0.5) * h).unwrap() * h)
+    .sum();
+  assert!((s - 1.0).abs() < 1e-6, "integral = {s}");
+}
+
+/// Sample mean, variance and skewness from the subordinated sampler
+/// match the closed forms.
+#[test]
+fn sample_moments_match_closed_forms() {
+  let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05);
+  let n = 400_000;
+  let mut xs = vec![0.0; n];
+  d.seeded(&Deterministic::new(11)).fill_slice(&mut xs);
+  let mean = xs.iter().sum::<f64>() / n as f64;
+  let var = xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n as f64;
+  let m3 = xs.iter().map(|x| (x - mean).powi(3)).sum::<f64>() / n as f64;
+  assert!((mean - d.mean().unwrap()).abs() < 2e-3, "mean {mean}");
+  assert!(
+    (var - d.variance().unwrap()).abs() / d.variance().unwrap() < 0.02,
+    "var {var}"
+  );
+  assert!(
+    (m3 / var.powf(1.5) - d.skewness().unwrap()).abs() < 0.05,
+    "skew {}",
+    m3 / var.powf(1.5)
+  );
+}
+
+#[test]
+fn scalar_sample_moments_match_closed_forms() {
+  let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05);
+  let xs = scalar_draws(&d, 19, 200_000);
+  let m3 = d.skewness().unwrap() * d.variance().unwrap().powf(1.5);
+  assert_moments_within(
+    &xs,
+    d.mean().unwrap(),
+    d.variance().unwrap(),
+    Some(m3),
+    6.0,
+    "VG",
+  );
+}
+
+#[test]
+fn deterministic_seed_reproduces_stream() {
+  let mut a = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05).seeded(&Deterministic::new(7));
+  let mut b = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05).seeded(&Deterministic::new(7));
+  for _ in 0..256 {
+    assert_eq!(a.sample(), b.sample());
+  }
+}
+
+#[test]
+fn pdf_vanishes_at_infinity() {
+  let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05);
+  assert_eq!(d.pdf(f64::INFINITY), Some(0.0));
+  assert_eq!(d.pdf(f64::NEG_INFINITY), Some(0.0));
+}
+
+/// mpmath at `ν = 0.005` next to the centre, where the order `1/ν − ½ = 199.5` makes `K` overflow at the argument.
+#[test]
+fn pdf_holds_where_k_overflows() {
+  let d = SimdVarianceGamma::<f64>::new(0.2, 0.005, 0.1, 0.0);
+  for (x, want) in [
+    (1e-4, 1.764_696_697_233_343),
+    (0.01, 1.806_639_933_535_319_6),
+  ] {
+    let got = d.pdf(x).unwrap();
+    assert!(close(got, want, 1e-12), "pdf({x}) = {got}");
+  }
+}
+
+/// mpmath at 60 and 120 digits: within `1e-12` from `ν = 10⁻³` to `10⁻¹⁷`, the order `1/ν − ½` taken in the saddle form
+/// past 50, and the exact 0 in the far tail, where every candidate value underflows.
+#[test]
+fn small_rates_hold_their_digits() {
+  for (nu, want) in [
+    (1e-3, 1.995_209_861_116_764_1),
+    (1e-10, 1.994_711_402_057_031_1),
+    (1e-17, 1.994_711_402_007_163_2),
+  ] {
+    let got = SimdVarianceGamma::<f64>::new(0.2, nu, 0.1, 0.0)
+      .pdf(0.1)
+      .unwrap();
+    assert!(close(got, want, 1e-12), "ν = {nu}: {got}");
+  }
+  let ordinary = SimdVarianceGamma::<f64>::new(0.2, 0.3, 0.1, 0.0);
+  assert_eq!(ordinary.pdf(1e15), Some(0.0));
+}

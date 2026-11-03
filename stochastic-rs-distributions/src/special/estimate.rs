@@ -1,12 +1,7 @@
 //! A value with an estimate of its absolute error, so that a law built from cancelling logarithms answers NaN where no
 //! digit survives instead of a confident wrong number.
 
-use std::ops::Add;
-use std::ops::Div;
-use std::ops::Mul;
-use std::ops::Sub;
-
-/// `value` with an absolute error about `err`, propagated to first order through `+ − × ÷` and powers.
+/// `value` with an absolute error about `err`.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Estimate {
   value: f64,
@@ -40,20 +35,6 @@ impl Estimate {
       self.value
     }
   }
-
-  pub(crate) fn powi(self, n: i32) -> Self {
-    Self {
-      value: self.value.powi(n),
-      err: f64::from(n.unsigned_abs()) * self.value.abs().powi(n - 1) * self.err,
-    }
-  }
-
-  pub(crate) fn powf(self, p: f64) -> Self {
-    Self {
-      value: self.value.powf(p),
-      err: p.abs() * self.value.abs().powf(p - 1.0) * self.err,
-    }
-  }
 }
 
 /// `e^{sum}` for a sum of the logarithms `terms`, NaN where [`log_sum_rel`] leaves no digit.
@@ -79,72 +60,5 @@ fn log_sum_rel(sum: f64, terms: &[f64]) -> f64 {
     rel
   } else {
     f64::NAN
-  }
-}
-
-impl Add for Estimate {
-  type Output = Self;
-
-  fn add(self, b: Self) -> Self {
-    Self {
-      value: self.value + b.value,
-      err: self.err + b.err,
-    }
-  }
-}
-
-impl Sub for Estimate {
-  type Output = Self;
-
-  fn sub(self, b: Self) -> Self {
-    Self {
-      value: self.value - b.value,
-      err: self.err + b.err,
-    }
-  }
-}
-
-impl Sub<f64> for Estimate {
-  type Output = Self;
-
-  fn sub(self, c: f64) -> Self {
-    Self {
-      value: self.value - c,
-      err: self.err,
-    }
-  }
-}
-
-impl Mul for Estimate {
-  type Output = Self;
-
-  fn mul(self, b: Self) -> Self {
-    Self {
-      value: self.value * b.value,
-      err: self.value.abs() * b.err + b.value.abs() * self.err,
-    }
-  }
-}
-
-impl Mul<Estimate> for f64 {
-  type Output = Estimate;
-
-  fn mul(self, b: Estimate) -> Estimate {
-    Estimate {
-      value: self * b.value,
-      err: self.abs() * b.err,
-    }
-  }
-}
-
-impl Div for Estimate {
-  type Output = Self;
-
-  fn div(self, b: Self) -> Self {
-    let value = self.value / b.value;
-    Self {
-      value,
-      err: (self.err + value.abs() * b.err) / b.value.abs(),
-    }
   }
 }

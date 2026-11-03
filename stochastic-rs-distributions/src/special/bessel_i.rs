@@ -269,6 +269,28 @@ pub(super) fn debye_sum(p: f64, nu: f64, alternating: bool) -> f64 {
   sum
 }
 
+/// `θᵐ(S − 1)` for `m = 0..=4`, `S = Σ(−1)^k U_k(p)/ν^k` as a function of `s = 1/√(ν² + x²) = p/ν` at a fixed `ν`, where
+/// `θ = s d/ds` weighs the term `c_{k,j} p^{k+2j}/ν^k` by `k + 2j`.
+pub(crate) fn debye_moments(p: f64, s: f64) -> [f64; 5] {
+  let p2 = p * p;
+  let mut out = [0.0; 5];
+  let mut scale = 1.0;
+  for (k, coefficients) in DEBYE.iter().enumerate() {
+    scale *= -s;
+    let (mut power, mut index) = (scale, (k + 1) as f64);
+    for &c in coefficients.iter() {
+      let mut term = c * power;
+      for slot in out.iter_mut() {
+        *slot += term;
+        term *= index;
+      }
+      power *= p2;
+      index += 2.0;
+    }
+  }
+  out
+}
+
 /// DLMF 10.25.2 divided by its leading term $(x/2)^\nu / \Gamma(\nu + 1)$.
 fn series(nu: f64, x: f64) -> f64 {
   let q = 0.25 * x * x;

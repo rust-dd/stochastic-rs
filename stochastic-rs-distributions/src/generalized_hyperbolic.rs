@@ -345,26 +345,32 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
 
   fn variance(&self) -> Option<f64> {
     let (_, _, beta, _, _) = self.params();
-    let [ew, _, var, _, _] = self.gig.moments();
-    Some((ew + beta * beta * var).or_nan())
+    let (s, [k1, k2, _, _]) = self.gig.cumulants();
+    Some(s * k1 + beta * beta * (s * k2 * s))
   }
 
+  /// `κ₃/κ₂^{3/2}` with `κ₃ = β(3κ₂(W) + β²κ₃(W))`, over the clock's scale `s` and `B = β²s` as `B` or `1/B`, whichever is small.
   fn skewness(&self) -> Option<f64> {
     let (_, _, beta, _, _) = self.params();
-    let [ew, _, var, mu3, _] = self.gig.moments();
-    let m2 = ew + beta * beta * var;
-    Some(((beta.powi(3) * mu3 + 3.0 * beta * var) / m2.powf(1.5)).or_nan())
+    let (s, [k1, k2, k3, _]) = self.gig.cumulants();
+    let b = beta * beta * s;
+    Some(if b <= 1.0 {
+      beta * s.sqrt() * (3.0 * k2 + b * k3) / (k1 + b * k2).powf(1.5)
+    } else {
+      beta.signum() * (3.0 * k2 / b + k3) / (k1 / b + k2).powf(1.5)
+    })
   }
 
-  /// Excess kurtosis.
+  /// Excess kurtosis `κ₄/κ₂²`, `κ₄ = 3κ₂(W) + 6β²κ₃(W) + β⁴κ₄(W)`, every term positive, scaled like the skewness.
   fn kurtosis(&self) -> Option<f64> {
     let (_, _, beta, _, _) = self.params();
-    let [ew, ew2, var, mu3, mu4] = self.gig.moments();
-    let m2 = ew + beta * beta * var;
-    Some(
-      ((beta.powi(4) * mu4 + 6.0 * beta * beta * (mu3 + ew * var) + 3.0 * ew2) / (m2 * m2) - 3.0)
-        .or_nan(),
-    )
+    let (s, [k1, k2, k3, k4]) = self.gig.cumulants();
+    let b = beta * beta * s;
+    Some(if b <= 1.0 {
+      (3.0 * k2 + b * (6.0 * k3 + b * k4)) / (k1 + b * k2).powi(2)
+    } else {
+      ((3.0 * k2 / b + 6.0 * k3) / b + k4) / (k1 / b + k2).powi(2)
+    })
   }
 
   /// $e^{\mu t}(\gamma_0/\gamma_t)^\lambda K_\lambda(\delta\gamma_t)/K_\lambda(\delta\gamma_0)$, $\gamma_t = \sqrt{\alpha^2-(\beta+t)^2}$; at $\gamma_t = 0$

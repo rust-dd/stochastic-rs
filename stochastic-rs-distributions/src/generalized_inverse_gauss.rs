@@ -367,14 +367,10 @@ impl<T: SimdFloatExt> SimdGig<T> {
     )
   }
 
-  /// `(E X, E X², Var X, μ₃, μ₄)`, the estimates carrying the central moments' cancellation.
-  pub(crate) fn moments(&self) -> [Estimate; 5] {
-    let den = self.denominator();
-    let [m1, m2, m3, m4] = [1, 2, 3, 4].map(|k| self.raw(k, &den));
-    let var = m2 - m1 * m1;
-    let mu3 = m3 - 3.0 * m1 * m2 + 2.0 * m1.powi(3);
-    let mu4 = m4 - 4.0 * m1 * m3 + 6.0 * m1 * m1 * m2 - 3.0 * m1.powi(4);
-    [m1, m2, var, mu3, mu4]
+  /// `(s, [κ₁/s, κ₂/s², κ₃/s³, κ₄/s⁴])`, the cumulants over powers of a scale `s`, which the GH mixture reads too.
+  pub(crate) fn cumulants(&self) -> (f64, [f64; 4]) {
+    let (lambda, chi, psi) = self.params();
+    cumulants::cumulants(lambda, chi, psi)
   }
 }
 
@@ -446,18 +442,19 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
   }
 
   fn variance(&self) -> Option<f64> {
-    Some(self.moments()[2].or_nan())
+    let (s, [_, k2, _, _]) = self.cumulants();
+    Some(s * k2 * s)
   }
 
   fn skewness(&self) -> Option<f64> {
-    let [_, _, var, mu3, _] = self.moments();
-    Some((mu3 / var.powf(1.5)).or_nan())
+    let (_, [_, k2, k3, _]) = self.cumulants();
+    Some(k3 / k2.powf(1.5))
   }
 
-  /// Excess kurtosis.
+  /// Excess kurtosis, `κ₄/κ₂²`.
   fn kurtosis(&self) -> Option<f64> {
-    let [_, _, var, _, mu4] = self.moments();
-    Some((mu4 / (var * var) - 3.0).or_nan())
+    let (_, [_, k2, _, k4]) = self.cumulants();
+    Some(k4 / (k2 * k2))
   }
 
   /// $(\psi/(\psi - 2t))^{\lambda/2}\,K_\lambda(\sqrt{\chi(\psi - 2t)})/K_\lambda(\sqrt{\chi\psi})$ for $t < \psi/2$; at $t = \psi/2$
@@ -493,6 +490,8 @@ py_distribution!(PyGig, SimdGig,
   sig: (lambda, chi, psi, seed=None, dtype=None),
   params: (lambda: f64, chi: f64, psi: f64)
 );
+
+mod cumulants;
 
 #[cfg(test)]
 mod tests;

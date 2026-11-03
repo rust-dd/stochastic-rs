@@ -4,6 +4,8 @@ use std::cell::OnceCell;
 use std::f64::consts::LN_2;
 
 use super::Estimate;
+use super::bessel_k::steed_pair;
+use super::bessel_k::temme_sums;
 use super::bessel_ke;
 use super::ln_bessel_ke;
 
@@ -74,6 +76,31 @@ pub(crate) fn log_regime(
     *den.ln.get_or_init(|| ln_bessel_ke(den.nu, den.x)),
   );
   Estimate::from_log_sum(c + ln_power + l1 - l2 + dx, &[c, ln_power, l1, l2, dx])
+}
+
+/// `(x/2)K_{ν+1}(x)/K_ν(x)` for `ν ≥ −½`, `x > 0`, never forming `K`: Temme's ratio below `x = 2`, Steed's above, at
+/// `μ = ν − round(ν)`, then `K`'s recurrence as a ratio (DLMF 10.29.1), stable upward, in `g` below 2 and `R = 2g/x` above.
+pub(crate) fn k_half_ratio(nu: f64, x: f64) -> f64 {
+  let n = (nu + 0.5).floor();
+  let mu = nu - n;
+  if x < 2.0 {
+    let (k, k1) = temme_sums(x, mu, mu * mu);
+    let (mut g, q) = (k1 / k, 0.25 * x * x);
+    let mut i = 1.0;
+    while i <= n {
+      g = (mu + i) + q / g;
+      i += 1.0;
+    }
+    return g;
+  }
+  let (k, k1) = steed_pair(x, mu, mu * mu, 1.0 / x);
+  let mut ratio = k1 / k;
+  let mut i = 1.0;
+  while i <= n {
+    ratio = 2.0 * (mu + i) / x + 1.0 / ratio;
+    i += 1.0;
+  }
+  0.5 * x * ratio
 }
 
 /// `|ln v|` to within `ln 2`, from a normal `v`'s exponent bits.

@@ -309,8 +309,7 @@ fn mgf_and_pdf_hold_where_k_overflows() {
   }
 }
 
-/// mpmath at 120 and 250 digits where both `K` overflow; the central moments lose the raw moments' `ε|ln K|` to their
-/// cancellation, hence a tolerance per moment.
+/// mpmath at 120 and 250 digits where both `K` overflow.
 #[test]
 fn moments_hold_where_k_overflows() {
   for ((lambda, chi, psi), want) in [
@@ -335,9 +334,9 @@ fn moments_hold_where_k_overflows() {
   ] {
     let d = SimdGig::<f64>::new(lambda, chi, psi);
     let got = [d.mean(), d.variance(), d.skewness(), d.kurtosis()].map(Option::unwrap);
-    for ((g, w), tol) in got.into_iter().zip(want).zip([1e-12, 1e-10, 1e-7, 1e-5]) {
+    for (g, w) in got.into_iter().zip(want) {
       assert!(
-        close(g, w, tol),
+        close(g, w, 1e-12),
         "GIG({lambda}, {chi}, {psi}): {g}, want {w}"
       );
     }
@@ -360,15 +359,62 @@ fn large_orders_take_their_values() {
   ));
 }
 
-/// This concentrated a law's kurtosis cancels below its raw moments' rounding.
+/// mpmath at 60 and 120 digits: variance, skewness and excess kurtosis within `1e-12` from the Bessel ratios (`r < 1.5`), the
+/// rule about the mode (to `r = 100`) and Debye's differentiated expansion, at `|λ|` from 1 to `10⁴` and `√(χψ) = 10¹²`.
 #[test]
-fn a_concentrated_kurtosis_answers_nan() {
-  assert!(
-    SimdGig::<f64>::new(1.0, 1e12, 1e12)
-      .kurtosis()
-      .unwrap()
-      .is_nan()
-  );
+fn central_moments_hold_at_every_order() {
+  for ((lambda, chi, psi), want) in [
+    (
+      (-30.0, 2.0, 0.5),
+      [
+        4.241_228_280_171_082e-5,
+        0.783_493_097_850_561_5,
+        1.186_567_664_322_788_5,
+      ],
+    ),
+    (
+      (1.0, 3.0, 7.0),
+      [
+        0.158_666_624_076_207_3,
+        1.230_164_392_260_502,
+        2.431_194_950_243_291_7,
+      ],
+    ),
+    (
+      (100.0, 0.4, 2.5),
+      [
+        64.000_000_041_640_73,
+        0.199_999_999_804_815_86,
+        0.059_999_999_921_923_64,
+      ],
+    ),
+    (
+      (-300.0, 5.0, 0.2),
+      [
+        2.345_937_762_298_445_6e-7,
+        0.232_492_964_565_494_68,
+        0.101_623_419_978_265_57,
+      ],
+    ),
+    ((1e4, 1.5, 0.8), [62_499.999_999_999_99, 0.02, 0.0006]),
+    (
+      (1.0, 1e12, 1e12),
+      [
+        1.000_000_000_003e-12,
+        2.999_999_999_998_5e-6,
+        1.499_999_999_998_2e-11,
+      ],
+    ),
+  ] {
+    let d = SimdGig::<f64>::new(lambda, chi, psi);
+    let got = [d.variance(), d.skewness(), d.kurtosis()].map(Option::unwrap);
+    for (g, w) in got.into_iter().zip(want) {
+      assert!(
+        close(g, w, 1e-12),
+        "GIG({lambda}, {chi}, {psi}): {g}, want {w}"
+      );
+    }
+  }
 }
 
 /// mpmath: within `1e-12` at `|λ| = 10³`, and within the documented `ε·Σ|ln terms|`, worked out beside each cell, at

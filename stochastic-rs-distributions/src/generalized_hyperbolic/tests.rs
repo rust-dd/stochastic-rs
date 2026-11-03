@@ -222,6 +222,54 @@ fn moments_hold_where_k_overflows() {
   assert!(close(var, 0.000_730_989_044_336_110_9, 1e-12), "{var}");
 }
 
+/// mpmath at 60 and 120 digits: the central moments from the clock's cumulants within `1e-12`, `|λ|` from 1 to `10⁴`.
+#[test]
+fn central_moments_hold_at_every_order() {
+  for ((lambda, alpha, beta, delta, mu), want) in [
+    (
+      (1.0, 2.0, 0.5, 1.5, -0.2),
+      [
+        1.310_435_697_043_943_7,
+        0.473_839_414_347_962_9,
+        1.154_197_314_931_253_9,
+      ],
+    ),
+    (
+      (-30.0, 3.0, -1.0, 0.8, 0.1),
+      [
+        0.011_021_465_439_870_41,
+        -0.011_207_586_992_617_024,
+        0.107_045_163_423_584_04,
+      ],
+    ),
+    (
+      (300.0, 1.5, 0.3, 2.0, 0.0),
+      [
+        300.932_614_740_502_9,
+        0.046_805_130_591_743_065,
+        0.011_478_779_652_235_654,
+      ],
+    ),
+    (
+      (-1e4, 2.0, 0.5, 0.5, 0.0),
+      [
+        1.250_125_009_961_171_7e-5,
+        5.304_626_937_852_686e-7,
+        0.000_300_060_011_158_022_04,
+      ],
+    ),
+  ] {
+    let d = SimdGeneralizedHyperbolic::<f64>::new(lambda, alpha, beta, delta, mu);
+    let got = [d.variance(), d.skewness(), d.kurtosis()].map(Option::unwrap);
+    for (g, w) in got.into_iter().zip(want) {
+      assert!(
+        close(g, w, 1e-12),
+        "GH({lambda}, {alpha}, {beta}, {delta}, {mu}): {g}, want {w}"
+      );
+    }
+  }
+}
+
 /// mpmath at 60 and 120 digits: within `1e-12` from `|λ| = 10³` to `10¹⁵`, the boundary `γ_t = 0` included, and the exact 0
 /// where the density underflows.
 #[test]
