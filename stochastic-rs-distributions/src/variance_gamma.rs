@@ -228,9 +228,16 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
       .exp()
   }
 
-  /// `ln b`, `b = 1 − X`, `X = θνt + ½σ²νt²` in two parts: `ln_1p(−X)` below `X = ½`, else `1 − X` in two parts, exactly where
-  /// those leave `b` within `2⁻⁴⁰` of `X`'s terms; `None` where `b ≤ 0`. So `ln(b)/ν` carries no `1/(νb)` of `b`'s rounding.
+  /// `ln b`, `b = 1 − X`, `X = θνt + ½σ²νt²`: plain where `PLAIN` bounds `X`'s rounding, else in two parts, `ln_1p(−X)` below
+  /// `X = ½` and `1 − X` in two parts, exactly within `2⁻⁴⁰` of `X`'s terms; `None` where `b ≤ 0`.
   fn ln_base(sigma: f64, nu: f64, theta: f64, t: f64) -> Option<f64> {
+    let plain_nt = nu * t;
+    let (drift, spread) = (theta * plain_nt, 0.5 * sigma * sigma * t * plain_nt);
+    let x = drift + spread;
+    let b = 1.0 - x;
+    if drift.abs() + spread <= PLAIN * nu * b.min(1.0) {
+      return Some(if x < 0.5 { (-x).ln_1p() } else { b.ln() });
+    }
     let nt = two_prod(nu, t);
     let drift = mul_parts(nt, (theta, 0.0));
     let spread = mul_parts(mul_parts(two_prod(sigma, sigma), nt), (0.5 * t, 0.0));
@@ -253,6 +260,9 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
     (b > 0.0).then(|| b.ln())
   }
 }
+
+/// Up to this `(|θνt| + ½σ²νt²)/(ν min(b, 1))` the plain `X`'s rounding moves `ln(b)/ν` by under `2.5·PLAIN·ε`.
+const PLAIN: f64 = 64.0;
 
 /// Past this fraction of `X`'s terms the two-part base, within about `6ε²` of their size, errs by under `2⁻⁶³` of itself.
 const TIGHT: f64 = 1.0 / (1u64 << 40) as f64;

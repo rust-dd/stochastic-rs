@@ -160,6 +160,52 @@ fn the_mgf_holds_as_its_base_nears_its_root_or_one() {
   assert_eq!(at_root, Some(f64::INFINITY));
 }
 
+/// mpmath at 60 and 120 digits: adjacent `t` on either side of the plain base's switch, `μ = 0` and a twin whose location
+/// cancels the clock to `ln M = ½`, within `1e-13`.
+#[test]
+fn the_mgf_agrees_on_both_sides_of_its_plain_switch() {
+  for ((sigma, nu, theta, mu), t, want) in [
+    (
+      (0.5, 0.01, 0.2, 0.0),
+      -17.494307072729228,
+      3.5231514314274156e18,
+    ),
+    (
+      (0.5, 0.01, 0.2, 0.0),
+      -17.49430707272923,
+      3.5231514314274954e18,
+    ),
+    (
+      (2.0, 0.5, -0.5, 0.0),
+      -0.8676338548009379,
+      1088.9999999999848,
+    ),
+    (
+      (2.0, 0.5, -0.5, 0.0),
+      -0.867633854800938,
+      1089.0000000000005,
+    ),
+    (
+      (0.5, 0.01, 0.2, 2.4125498300974906),
+      -17.494307072729228,
+      1.6487212707001364,
+    ),
+    (
+      (0.5, 0.01, 0.2, 2.4125498300974915),
+      -17.49430707272923,
+      1.6487212707001342,
+    ),
+  ] {
+    let got = SimdVarianceGamma::<f64>::new(sigma, nu, theta, mu)
+      .moment_generating_function(t)
+      .unwrap();
+    assert!(
+      close(got, want, 1e-13),
+      "VG({sigma}, {nu}, {theta}, {mu}).mgf({t}) = {got}"
+    );
+  }
+}
+
 /// mpmath at 60 and 120 digits: within `1e-12` where `σ` and `θ√ν` are far below `θ`, the law narrower than `θ`'s rounding
 /// allows `d² − θ²` to keep, so `d − θ` is formed exactly.
 #[test]
