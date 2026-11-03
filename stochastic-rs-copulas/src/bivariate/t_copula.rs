@@ -12,6 +12,8 @@
 //! Elsevier, ch. 8.
 //! Reference: Aas, K., Czado, C., Frigessi, A., Bakken, H. (2009), "Pair-copula constructions of multiple dependence", *Insurance: Mathematics and Economics* 44(2), 182-198, App. B.2 (the h-function inverse), DOI 10.1016/j.insmatheco.2007.02.001.
 
+use std::cell::Cell;
+
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
@@ -227,13 +229,12 @@ impl TCopula {
     q.abs() + p.min(1.0 - p) / law.ln_pdf(q).exp()
   }
 
-  /// `ln f(b)` where `quantile_gap`'s 16-node mass holds to `ε` over the gap `d` from `a` to `b`: within a quarter of the
-  /// density's scale `√(ν + a²)`, the density normal at `a` and within a factor `e⁴` at `b`.
-  fn integrable(law: &Law, nu: f64, (a, b): (f64, f64), d: f64) -> Option<f64> {
+  /// `(ln f(b), in_panels)` where `quantile_gap`'s 16-node mass holds to `ε` over the gap `d` from `a` to `b`: within a
+  /// quarter of the density's scale `√(ν + a²)` and the density normal at `a`, in panels past a factor `e⁴` at `b`.
+  fn integrable(law: &Law, nu: f64, (a, b): (f64, f64), d: f64) -> Option<(f64, bool)> {
     let (ln_a, ln_b) = (law.ln_pdf(a), law.ln_pdf(b));
-    let holds =
-      d.abs() <= 0.25 * (nu + a * a).sqrt() && ln_a > -700.0 && (ln_a - ln_b).abs() <= 4.0;
-    holds.then_some(ln_b)
+    let holds = d.abs() <= 0.25 * (nu + a * a).sqrt() && ln_a > -700.0 && ln_b.is_finite();
+    holds.then_some((ln_b, (ln_a - ln_b).abs() > 4.0))
   }
 
   /// `x − y` from the tails where both quantiles have one, else from the exact level gap where it is `integrable` and its
@@ -242,11 +243,18 @@ impl TCopula {
     if let Some(gap) = law.tail_gap(x, y).filter(|_| x.sign() == y.sign()) {
       return x.sign() * gap;
     }
+    let in_panels = Cell::new(false);
     let threshold = |anchor: f64, partner: f64| {
-      Self::integrable(law, nu, (anchor, partner), anchor - partner)
-        .map_or(f64::NEG_INFINITY, |ln_f| size.ln() + ln_f)
+      Self::integrable(law, nu, (anchor, partner), anchor - partner).map_or(
+        f64::NEG_INFINITY,
+        |(ln_f, panels)| {
+          in_panels.set(panels);
+          size.ln() + ln_f
+        },
+      )
     };
-    let solve = |anchor, level, gap, start| law.quantile_gap(anchor, level, gap, start);
+    let solve =
+      |anchor, level, gap, start| law.quantile_gap(anchor, level, gap, start, in_panels.get());
     let gap = level_difference((u, v, x.value, y.value), threshold, solve);
     if gap.is_finite() {
       gap
@@ -260,11 +268,15 @@ impl TCopula {
     if let Some(gap) = law.tail_gap(y, x).filter(|_| x.sign() != y.sign()) {
       return y.sign() * gap;
     }
+    let in_panels = Cell::new(false);
     let admit = |plain, gap: f64, score, other| {
-      Self::integrable(law, nu, (score, other), plain)
-        .is_some_and(|ln_f| u.min(v) <= 0.5 && 0.5 <= u.max(v) || gap.abs().ln() < size.ln() + ln_f)
+      Self::integrable(law, nu, (score, other), plain).is_some_and(|(ln_f, panels)| {
+        in_panels.set(panels);
+        u.min(v) <= 0.5 && 0.5 <= u.max(v) || gap.abs().ln() < size.ln() + ln_f
+      })
     };
-    let solve = |score, level, gap, start| law.quantile_gap(score, level, gap, start);
+    let solve =
+      |score, level, gap, start| law.quantile_gap(score, level, gap, start, in_panels.get());
     let gap = level_sum((u, v, x.value, y.value), admit, solve);
     if gap.is_finite() {
       gap

@@ -112,8 +112,8 @@ fn the_t_edges_keep_the_two_point_law_past_the_normal_switch() {
   }
 }
 
-/// Near the diagonal as `|ρ| → 1` below the normal switch `h` takes `x − ρy` from the law's level gap, or its tails past
-/// `1e150` (mpmath at 50 to 120 digits), and on and near the diagonal meets the Gaussian copula's `h` across the switch.
+/// Near the diagonal as `|ρ| → 1` below the normal switch `h` takes `x − ρy` from the law's level gap, in panels past `e⁴`
+/// in the density, or its tails past `1e150` (mpmath at 50 to 120 digits), and meets the Gaussian copula's `h` across the switch.
 #[test]
 fn the_t_h_keeps_its_digits_near_the_diagonal_and_across_the_switch() {
   let rows = [
@@ -164,6 +164,55 @@ fn the_t_h_keeps_its_digits_near_the_diagonal_and_across_the_switch() {
       1e-200,
       3e-200,
       2.91835175659969e-146,
+    ),
+    (
+      0.99,
+      1e6,
+      1e-300,
+      6.761793810485009e-227,
+      2.3126381053233467e-301,
+    ),
+    (
+      0.999,
+      1e8,
+      1e-250,
+      1.739274941520501e-232,
+      1.5985307441135477e-185,
+    ),
+    (
+      0.9999,
+      1e6,
+      1e-300,
+      8.886110520507872e-294,
+      9.632437648297162e-211,
+    ),
+    (
+      0.99999,
+      9.999999999999998e21,
+      1e-250,
+      2.446919322642204e-248,
+      2.9351927151162714e-292,
+    ),
+    (
+      0.99999,
+      1e22,
+      1e-250,
+      2.446919322642204e-248,
+      2.9351927151162714e-292,
+    ),
+    (
+      0.9999,
+      1e12,
+      0.9999999999999929,
+      0.9999999999999999,
+      7.548026796469889e-290,
+    ),
+    (
+      -0.9999,
+      1e12,
+      0.9999999999999929,
+      1.1102230246251565e-16,
+      7.548026796469889e-290,
     ),
   ];
   for (rho, nu, u, v, want) in rows {

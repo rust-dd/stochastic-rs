@@ -291,7 +291,9 @@ impl BivariateT {
     if !(self.rho < 0.0 && x < 0.0 && 0.0 < y && y.is_finite() && plain.abs() <= 0.25 * y.min(-x)) {
       return None;
     }
-    let sum = self.law.quantile_gap(x, u, sum_minus_one(u, v), plain);
+    let sum = self
+      .law
+      .quantile_gap(x, u, sum_minus_one(u, v), plain, false);
     let y = sum - x;
     // A solve that fails, NaN or past the crossing, leaves the plain scores.
     if y.is_nan() || y <= 0.0 {

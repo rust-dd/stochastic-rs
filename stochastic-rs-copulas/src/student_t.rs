@@ -17,7 +17,6 @@ use stochastic_rs_distributions::studentt::ln_tail_scale;
 
 use crate::bivariate::conditional::ln_add_exp;
 use crate::bivariate::conditional::ln_ratio;
-use crate::bivariate::integral::rule;
 use crate::error::CopulaError;
 
 /// Above this `ν` the law is normal to rounding: the expansion's first term `(x³ + x)/(4ν)` moves the quantile, and `Φ`
@@ -394,44 +393,6 @@ impl Law {
     (!a.ln_tail.is_nan() && !b.ln_tail.is_nan())
       .then(|| b.value.abs() * self.ln_ratio(a, b).exp_m1())
   }
-
-  /// `T⁻¹(u) − T⁻¹(u − g)` (`x + y` at `g = u + v − 1`, `x − y` at `u − v`), `x̂ ≈ T⁻¹(u)`'s own error removed: Newton on
-  /// `(T(x̂) − T(x̂ − d))/f(x̂) = (g + r)/f(x̂)`, `r = T(x̂) − u`, from `start`, by Gauss–Legendre of `f/f(x̂)`, less `r/f(x̂)`.
-  pub(crate) fn quantile_gap(&self, x: f64, u: f64, g: f64, start: f64) -> f64 {
-    if g == 0.0 {
-      return 0.0;
-    }
-    // `f(x + o)/f(x) = (1 + o(2x + o)/(ν + x²))^{−(ν + 1)/2}` at the exact offset `o`, never at a node rounded to `x`'s
-    // ulps; only `f(x)` carries the density's large exponent, which `precise_pdf` forms past double precision.
-    let fx = self.inner.precise_pdf(x);
-    let inv_root = self.nu.sqrt().hypot(x).recip();
-    let ratio = |o: f64| {
-      let q = (o * inv_root) * ((2.0 * x + o) * inv_root);
-      (-0.5 * (self.nu + 1.0) * q.ln_1p()).exp()
-    };
-    let mass = |d: f64| {
-      let half = 0.5 * d;
-      half
-        * rule()
-          .iter()
-          .map(|&(t, w)| w * ratio(half * (t - 1.0)))
-          .sum::<f64>()
-    };
-    let r = if x <= 0.0 {
-      self.cdf_at(x) - u
-    } else {
-      (1.0 - u) - self.cdf_at(-x)
-    };
-    let (target, mut d) = ((g + r) / fx, start);
-    for _ in 0..8 {
-      let step = (target - mass(d)) / ratio(-d);
-      d += step;
-      if step.abs() <= 1e-16 * d.abs() {
-        break;
-      }
-    }
-    d - r / fx
-  }
 }
 
 /// `asinh(a + δ) − asinh(a)` for `a, a + δ ≥ 0`, without the cancellation of the two `asinh`; past `a = 1e8` the ratio's
@@ -554,3 +515,5 @@ pub(crate) fn ln_density(fx: &Feature, fy: &Feature, gap: f64, rho: f64, nu: f64
   ln_gamma_constant(nu) - 0.5 * ((1.0 - rho) * (1.0 + rho)).ln() - 0.5 * (nu + 2.0) * ln_1p_a2
     + cosh_terms
 }
+
+mod gap;
