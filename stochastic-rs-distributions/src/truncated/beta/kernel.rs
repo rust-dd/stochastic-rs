@@ -2,8 +2,10 @@
 
 use crate::truncated::quadrature::Cut;
 use crate::truncated::quadrature::Kernel;
+use crate::truncated::quadrature::Two;
 use crate::truncated::quadrature::ln_1p_mx;
 use crate::truncated::quadrature::ln_ratio;
+use crate::truncated::quadrature::two;
 use crate::truncated::quadrature::two_prod;
 use crate::truncated::quadrature::two_sum;
 
@@ -14,6 +16,8 @@ pub(super) struct BetaKernel {
   a: f64,
   b: f64,
   c: f64,
+  /// The rest of the exact reference point past `c`.
+  c_lo: f64,
   /// `1 − c`, exact where `c` is held beside 1.
   cc: f64,
   ln_c: f64,
@@ -26,6 +30,8 @@ pub(super) struct BetaKernel {
   exact: bool,
   /// `α + β ≤ 1e4`: the plain form's measured error, 5.5e-15·√(α + β) out to the farthest normal pdf, stays in 1e-12.
   plain: bool,
+  /// The logs' size, times the exponent, past which `far_log` reads the quotient's log: 450 holds 1e-13, 0 an ε.
+  budget: f64,
 }
 
 impl BetaKernel {
@@ -36,6 +42,7 @@ impl BetaKernel {
       a,
       b,
       c: 0.5,
+      c_lo: 0.0,
       cc: 0.5,
       ln_c: -std::f64::consts::LN_2,
       ln_cc: -std::f64::consts::LN_2,
@@ -43,6 +50,7 @@ impl BetaKernel {
       mode,
       exact,
       plain: a + b <= 1e4,
+      budget: 450.0,
     }
   }
 
@@ -51,7 +59,7 @@ impl BetaKernel {
   #[inline]
   fn ln_left(&self, x: f64, z: f64) -> f64 {
     if z.abs() > 0.5 {
-      far_log(self.a, x, self.c, self.ln_c)
+      far_log(self.a, x, self.c, self.ln_c, self.budget)
     } else {
       z.ln_1p()
     }
@@ -63,7 +71,13 @@ impl BetaKernel {
     if z.abs() <= 0.5 {
       return z.ln_1p();
     }
-    far_log(self.b, self.gap(x, y, branch), self.cc, self.ln_cc)
+    far_log(
+      self.b,
+      self.gap(x, y, branch),
+      self.cc,
+      self.ln_cc,
+      self.budget,
+    )
   }
 
   /// `1 − x`: the offset from 1 where `branch` holds it; from `x` itself, exact, where `x ≥ ½` and the rounded `1 − c`
@@ -152,9 +166,9 @@ impl BetaKernel {
 /// `ln(n/d)` as `ln n − ln d`, or from the quotient where the exponent `e − 1` would carry the two logs' rounding past
 /// 1e-13 of the kernel (a shape in the hundreds at `n` far below 1).
 #[inline]
-fn far_log(e: f64, n: f64, d: f64, ln_d: f64) -> f64 {
+fn far_log(e: f64, n: f64, d: f64, ln_d: f64, budget: f64) -> f64 {
   let ln_n = n.ln();
-  if (e - 1.0).abs() * (ln_n.abs() + ln_d.abs()) > 450.0 {
+  if (e - 1.0).abs() * (ln_n.abs() + ln_d.abs()) > budget {
     ln_ratio(n, d, ln_d)
   } else {
     ln_n - ln_d
@@ -186,6 +200,7 @@ impl Kernel for BetaKernel {
   fn anchor(&mut self, c: Cut, at_mode: bool) {
     let (hi, lo) = c.near();
     self.c = c.x;
+    self.c_lo = (hi - c.x) + lo;
     self.cc = -c.offset(1.0);
     self.ln_c = self.c.ln();
     self.ln_cc = self.cc.ln();
@@ -196,9 +211,9 @@ impl Kernel for BetaKernel {
     } else {
       let ((a1, a1_lo), (b1, b1_lo)) = (half_less_one(self.a), half_less_one(self.b));
       let (s, s_e) = two_sum(a1, b1);
-      let (s_lo, c_lo) = (s_e + (a1_lo + b1_lo), (hi - c.x) + lo);
+      let s_lo = s_e + (a1_lo + b1_lo);
       let (p, p_lo) = two_prod(s, c.x);
-      let half = ((a1 - p) - p_lo) + ((a1_lo - s_lo * c.x) - s * c_lo);
+      let half = ((a1 - p) - p_lo) + ((a1_lo - s_lo * c.x) - s * self.c_lo);
       2.0 * (half / self.c / self.cc)
     };
     self.slope = slope.is_finite().then_some(slope);
@@ -224,6 +239,33 @@ impl Kernel for BetaKernel {
     } else {
       self.left(x, y) - (self.b - 1.0) * self.ln_cc
     }
+  }
+
+  fn sharpen(&mut self) {
+    self.budget = 0.0;
+  }
+
+  /// `(α − 1)·ln(x/c) + (β − 1)·ln((1 − x)/(1 − c))` from the exact `x` and `c`, each log from its offset within half of
+  /// its end.
+  fn ln_rel_two(&self, x: Cut, _y: f64) -> Two {
+    let (x, c, one) = (two::of(x), (self.c, self.c_lo), (1.0, 0.0));
+    let y = two::sub(x, c);
+    let term = |e: f64, offset: Two, end: Two, point: Two| {
+      if e == 1.0 {
+        return (0.0, 0.0);
+      }
+      let r = two::div(offset, end);
+      let log = if r.0.abs() <= 0.5 {
+        two::ln_1p(r)
+      } else {
+        two::sub(two::ln(point), two::ln(end))
+      };
+      two::mul(two_sum(e, -1.0), log)
+    };
+    two::add(
+      term(self.a, y, c, x),
+      term(self.b, (-y.0, -y.1), two::sub(one, c), two::sub(one, x)),
+    )
   }
 
   #[inline]

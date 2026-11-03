@@ -7,18 +7,32 @@ use super::CLIP;
 use super::Kernel;
 use super::Sum;
 use super::Truncation;
+use super::Two;
 use super::clip;
+use super::exp_split;
+use super::ldexp;
+use super::ldexp_once;
 use super::panels::Cut;
 use super::panels::Panel;
 use super::panels::span;
 use super::singular::Frame;
+use super::split;
+use super::two;
 use super::zone::Offset;
 use super::zone::ZONE;
 use crate::traits::RealExt;
 
+/// `ln(2⁻¹⁰²²)`: below it the cdf is a subnormal, which the doubles round on a grid coarser than 1e-12 of it.
+const LN_MIN_POSITIVE: f64 = -708.3964185322641;
+
 impl<K: Kernel> Truncation<K> {
   /// `∫_lo^x k / ∫k`, integrated up from `lo`: no survival function reads it, so a level near 1 needs absolute digits.
   pub(in crate::truncated) fn cdf(&self, at: Cut) -> f64 {
+    self.cdf_with(at, || self.kernel.ln_rel_two(at, span(self.centre, at)))
+  }
+
+  /// `cdf`, where `ln_point` gives `ln k(x) − ln k(c)` in two parts at the law's exact point, which `at` may round.
+  pub(in crate::truncated) fn cdf_with(&self, at: Cut, ln_point: impl FnOnce() -> Two) -> f64 {
     let x = at.x;
     if x.is_nan() {
       return f64::NAN;
@@ -40,7 +54,7 @@ impl<K: Kernel> Truncation<K> {
       return 1.0;
     }
     if span(self.a, at) < 0.0 {
-      return self.below_clip(at);
+      return self.below_clip(at, ln_point);
     }
     // The panels `M₀` was summed on, so next to 1 the two sums differ only by the panel holding `x`.
     let mut sum = Sum::default();
@@ -110,8 +124,8 @@ impl<K: Kernel> Truncation<K> {
   }
 
   /// The cdf below the lower clip: the mass from where the kernel is `e^{−CLIP}` below its value at `x`, relative to
-  /// that value, which one `exp` restores, so a subnormal answer is rounded once.
-  fn below_clip(&self, at: Cut) -> f64 {
+  /// that value, which one `exp` restores.
+  fn below_clip(&self, at: Cut, ln_point: impl FnOnce() -> Two) -> f64 {
     let x = at.x;
     let ln_g = self.kernel.ln_rel(x, span(self.centre, at), None);
     // The kernel rises from `lo` to `x`, so `k(x)(x − lo)/∫k` bounds the cdf (`x − lo` exact, an open end's `MAX`): where
@@ -122,6 +136,37 @@ impl<K: Kernel> Truncation<K> {
     }
     let start = clip(&self.kernel, self.centre, at, self.lo, ln_g - CLIP);
     let relative = self.integrate(start, at, ln_g);
-    (ln_g + (relative / self.m0).ln()).exp().min_or_nan(1.0)
+    let ln_f = ln_g + (relative / self.m0).ln();
+    if ln_f >= LN_MIN_POSITIVE {
+      return ln_f.exp().min_or_nan(1.0);
+    }
+    self.subnormal_below(at, start, ln_point())
+  }
+
+  /// A subnormal cdf rounded once: the mass relative to `k(x)` summed by the kernel anchored at `x`, and `k(x)/k(c)` from
+  /// its log in two parts, whose rounded sum of logs near −700 would leave 1e-13.
+  #[cold]
+  #[inline(never)]
+  fn subnormal_below(&self, at: Cut, start: Cut, (hi, lo): Two) -> f64 {
+    let mut kernel = self.kernel.clone();
+    kernel.anchor(at, false);
+    kernel.sharpen();
+    let there = Self {
+      kernel,
+      centre: at,
+      frame: at,
+      near: at.near(),
+      sharp: true,
+      ..*self
+    };
+    // Walked back from `x`, so each node's offset from it is exact where the slope would scale its rounding.
+    let mut mass = Sum::default();
+    let _ = there.walk(start, at, true, |panel| {
+      mass.add(there.panel_mass(&panel, 0.0));
+      ControlFlow::<()>::Continue(())
+    });
+    let (r, r_lo) = two::div((mass.hi, mass.lo), (self.m0, self.m0_rest));
+    let ((m, q), (mr, qr)) = (exp_split(hi, lo), split(r));
+    ldexp_once(m.mul_add(mr, m * ldexp(r_lo, -qr)), q + qr).min_or_nan(1.0)
   }
 }

@@ -326,7 +326,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     Some(match self.analytics()? {
       Model::Full(t) => match self.zone_offset(x).and_then(|offset| t.zone_cdf(offset)) {
         Some(f) => f,
-        None => t.cdf(self.cut(x)?),
+        None => t.cdf_with(self.cut(x)?, || self.ln_point(t, x)),
       },
       Model::Local(l) => l.cdf(x),
     })

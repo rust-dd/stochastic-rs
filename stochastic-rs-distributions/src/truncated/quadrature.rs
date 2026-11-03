@@ -18,6 +18,7 @@ pub(super) use sum::Terms;
 pub(super) use sum::accurate_sum;
 pub(super) use sum::two_prod;
 pub(super) use sum::two_sum;
+pub(super) use two::Two;
 pub(super) use zone::Offset;
 pub(super) use zone::exp_split;
 
@@ -30,10 +31,11 @@ mod quantile;
 mod reflect;
 mod singular;
 mod sum;
+pub(super) mod two;
 mod zone;
 
 /// A law's log-kernel on its support, in the law's own coordinate, taken relative to a reference point `c`.
-pub(super) trait Kernel {
+pub(super) trait Kernel: Clone {
   /// The law maps a quantile walked from a bound or a clip back from the double that point is held beside, so the
   /// engine reports it as `Point::From`; a law reading every point by its value pays nothing for it.
   const FROM_POINT: bool = false;
@@ -68,6 +70,15 @@ pub(super) trait Kernel {
   fn ln_rel_regular(&self, x: f64, y: f64, _s: f64) -> f64 {
     self.ln_rel(x, y, None)
   }
+
+  /// `ln_rel` at the exact point `x` in two parts, for a subnormal cdf; a kernel that keeps no second part reads one.
+  fn ln_rel_two(&self, x: Cut, y: f64) -> Two {
+    (self.ln_rel(x.x, y, x.branch()), 0.0)
+  }
+
+  /// Reads each `ln_rel` to an ε of its value from here on, as a subnormal cdf's walk needs, where its plain form trades
+  /// digits for speed; most kernels already do.
+  fn sharpen(&mut self) {}
 
   /// The kernel's own e-fold length: the clip probe's first step and the reference point's distance from a singular end.
   fn length_scale(&self) -> f64;
@@ -243,6 +254,9 @@ pub(super) struct Truncation<K> {
   /// The ends those tails are summed from, `e^{−2·CLIP}` below `centre`: the moments sum out to them, as the first
   /// clip leaves `e^{−CLIP}·CLIP⁴` of a fourth moment, past 1e-13 of it.
   reach: (Cut, Cut),
+  /// A graded panel's weight as `half/width`, not in logs: the subnormal cdf's walk, whose kernel stays below its value
+  /// at the point, needs each node to an ε, which a log near −700 rounds to 1e-13.
+  sharp: bool,
 }
 
 impl<K: Kernel> Truncation<K> {
@@ -340,6 +354,7 @@ impl<K: Kernel> Truncation<K> {
       tail_lo: 0.0,
       tail_up: 0.0,
       reach: (a, b),
+      sharp: false,
     };
     t.narrow = t.width.is_nan() || t.width < f64::MIN_POSITIVE;
     t.scale = t
@@ -505,7 +520,7 @@ impl<K: Kernel> Truncation<K> {
     let half = 0.5 * (panel.r - panel.l);
     // Graded, in logs: deep beside a singular end the panel's share of `width` underflows where its kernel ratio
     // overflows.
-    let (scaled, ln_scaled) = if panel.graded {
+    let (scaled, ln_scaled) = if panel.graded && !self.sharp {
       (1.0, half.ln() - self.width.ln())
     } else {
       (half / self.width, 0.0)

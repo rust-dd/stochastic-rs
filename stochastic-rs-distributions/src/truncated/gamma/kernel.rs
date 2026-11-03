@@ -2,9 +2,12 @@
 
 use crate::truncated::quadrature::Cut;
 use crate::truncated::quadrature::Kernel;
+use crate::truncated::quadrature::Two;
 use crate::truncated::quadrature::ln_1p_mx;
 use crate::truncated::quadrature::ln_ratio;
+use crate::truncated::quadrature::two;
 use crate::truncated::quadrature::two_prod;
+use crate::truncated::quadrature::two_sum;
 
 /// `u^{k−1} e^{−u/s}` on `[0, ∞)` about the reference point `c`; a unit shape has no log term, whose `0·ln 0` would
 /// read NaN at 0.
@@ -124,6 +127,27 @@ impl Kernel for GammaKernel {
       return -y / self.s;
     }
     -(self.k - 1.0) * self.ln_c - y / self.s
+  }
+
+  /// `(k − 1)·ln(x/c) − (x − c)/s` from the exact `x` and `c`, the log from `x − c` within half of `c`.
+  fn ln_rel_two(&self, x: Cut, _y: f64) -> Two {
+    let (x, c) = (two::of(x), (self.c, self.c_lo));
+    let y = two::sub(x, c);
+    let per = if self.s.is_finite() {
+      two::div(y, (self.s, 0.0))
+    } else {
+      (0.0, 0.0)
+    };
+    if self.k == 1.0 {
+      return (-per.0, -per.1);
+    }
+    let r = two::div(y, c);
+    let log = if r.0.abs() <= 0.5 {
+      two::ln_1p(r)
+    } else {
+      two::sub(two::ln(x), two::ln(c))
+    };
+    two::sub(two::mul(two_sum(self.k, -1.0), log), per)
   }
 
   #[inline]

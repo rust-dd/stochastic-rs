@@ -8,10 +8,12 @@ use crate::truncated::quadrature::Cut;
 use crate::truncated::quadrature::Offset;
 use crate::truncated::quadrature::Point;
 use crate::truncated::quadrature::Truncation;
+use crate::truncated::quadrature::Two;
 use crate::truncated::quadrature::accurate_sum;
 use crate::truncated::quadrature::exp_split;
 use crate::truncated::quadrature::ldexp_once;
 use crate::truncated::quadrature::split;
+use crate::truncated::quadrature::two;
 use crate::truncated::quadrature::two_prod;
 use crate::truncated::quadrature::two_sum;
 
@@ -114,6 +116,24 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     } else {
       2.0 * (0.5 * mu + (0.5 * sigma) * z)
     }
+  }
+
+  /// The kernel's `−y(y/2 + c)`, `y = z − c` from the held reference point, at `z = (x − μ)/σ` exactly, in two parts:
+  /// near 38σ out a rounded `z` moves it by `z²ε`.
+  pub(super) fn ln_point(&self, t: &Truncation<NormalKernel>, x: f64) -> Two {
+    let (mu, sigma) = (
+      self.base.mean().to_f64().unwrap(),
+      self.base.std_dev().to_f64().unwrap(),
+    );
+    let (d, s) = if (x - mu).is_finite() {
+      (two_sum(x, -mu), sigma)
+    } else {
+      (two_sum(0.5 * x, -0.5 * mu), 0.5 * sigma)
+    };
+    let c = t.reference();
+    let y = two::sub(two::div(d, (s, 0.0)), two::of(c));
+    let g = two::mul(y, two::add((0.5 * y.0, 0.5 * y.1), (c.x, 0.0)));
+    (-g.0, -g.1)
   }
 
   pub(super) fn standardise(&self, x: f64) -> Option<f64> {

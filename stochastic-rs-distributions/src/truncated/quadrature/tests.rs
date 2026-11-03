@@ -197,3 +197,24 @@ fn ln_1p_mx_keeps_its_digits_to_three_quarters() {
     );
   }
 }
+
+/// `power` scales to a subnormal in one rounding: `0x1.999999999bfffp-1·2⁻¹⁰³⁶`, a mantissa below 1, meets a tie after
+/// the two-step `ldexp`'s first rounding, and its exact value lies below that tie.
+#[test]
+fn power_rounds_a_subnormal_once() {
+  let m = f64::from_bits(0x3FE9_9999_9999_BFFF);
+  let got = zone::power(zone::Offset { m: 1.0, q: 0 }, 1.0, m.ln(), -1036);
+  // `power` scales `exp(ln m)`: `m` where `exp` and `ln` round it back; the exact scaled value from its bits otherwise.
+  let x = m.ln().exp();
+  let bits = (x.to_bits() & ((1 << 52) - 1)) | (1 << 52);
+  let (q, r) = (bits >> 15, bits & 0x7fff);
+  let units = if r > 0x4000 || (r == 0x4000 && q & 1 == 1) {
+    q + 1
+  } else {
+    q
+  };
+  assert_eq!(got, f64::from_bits(units));
+  if x == m {
+    assert!(got == 1.086461844973e-312 && ldexp(x, -1036) == 1.08646184498e-312);
+  }
+}

@@ -2,6 +2,7 @@
 //! follow it there.
 
 use super::Kernel;
+use super::Two;
 use super::panels::Cut;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -50,6 +51,14 @@ impl<K: Kernel> Kernel for Reflected<K> {
 
   fn ln_rel_regular(&self, x: f64, y: f64, s: f64) -> f64 {
     self.0.ln_rel_regular(neg(x), neg(y), neg(s))
+  }
+
+  fn ln_rel_two(&self, x: Cut, y: f64) -> Two {
+    self.0.ln_rel_two(x.neg(), neg(y))
+  }
+
+  fn sharpen(&mut self) {
+    self.0.sharpen();
   }
 
   fn length_scale(&self) -> f64 {

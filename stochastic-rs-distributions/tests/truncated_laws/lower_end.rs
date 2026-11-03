@@ -100,6 +100,43 @@ fn a_gamma_cdf_beside_zero() {
   );
 }
 
+/// Below the clip a subnormal cdf is its correctly rounded double (mpmath at 60 and 120 digits), each exact value at
+/// least 26ε from a rounding midpoint, where a sum of two rounded logs near −700 would leave 1e-13.
+#[test]
+fn a_subnormal_cdf_below_the_clip() {
+  let inf = f64::INFINITY;
+  let rows: [(Box<dyn DistributionExt>, f64, f64); 4] = [
+    (
+      Box::new(SimdTruncatedGamma::<f64>::new(1.5, 1.0, 0.0, inf)),
+      1.1541066389166827e-208,
+      9.3268009696e-313,
+    ),
+    (
+      Box::new(SimdTruncatedBeta::<f64>::new(1.5, 3.0, 0.0, 1.0)),
+      3.595949997637054e-209,
+      9.43405760163e-313,
+    ),
+    (
+      Box::new(SimdTruncatedGamma::<f64>::new(2.0, 1.0, 0.0, inf)),
+      2.165349055055685e-156,
+      2.344368265113e-312,
+    ),
+    (
+      Box::new(SimdTruncatedNormal::<f64>::new(
+        -0.6893128380476039,
+        14.737783074127448,
+        -inf,
+        18.819391168100644,
+      )),
+      -557.4271305288851,
+      1.53881440022e-312,
+    ),
+  ];
+  for (law, x, want) in rows {
+    assert_eq!(law.cdf(x).unwrap(), want, "cdf({x:e})");
+  }
+}
+
 /// Beside the lower end: a branch point's zone (exact subnormals, either side of the zone's edge), the walk beside a
 /// regular end (`TB(1, 0.384)` at 1.8e-8 and 2e-8), and next to 1 the walk's value for a tiny exponent's `t^e`.
 #[test]
