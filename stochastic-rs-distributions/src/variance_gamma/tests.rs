@@ -95,6 +95,30 @@ fn moments_and_transforms_match_the_reference() {
   ));
 }
 
+/// mpmath at 60 and 120 digits: within `1e-12` where `σ` and `θ√ν` are far below `θ`, the law narrower than `θ`'s rounding
+/// allows `d² − θ²` to keep, so `d − θ` is formed exactly.
+#[test]
+fn narrow_laws_hold_at_their_double_inputs() {
+  for ((sigma, nu, theta, x), want) in [
+    (
+      (1e-8, 1e-16, 0.3, 0.300_000_017_748_521_03),
+      9_008_267.873_205_834,
+    ),
+    (
+      (1e-6, 1e-12, 1.0, 1.000_002_404_163_056),
+      66_502.736_718_708_14,
+    ),
+  ] {
+    let got = SimdVarianceGamma::<f64>::new(sigma, nu, theta, 0.0)
+      .pdf(x)
+      .unwrap();
+    assert!(
+      close(got, want, 1e-12),
+      "VG({sigma}, {nu}, {theta}).pdf({x}) = {got}"
+    );
+  }
+}
+
 /// mpmath at 60 and 120 digits: the excess kurtosis `κ₄/κ₂²` keeps its digits where it nears 0 with `ν`.
 #[test]
 fn kurtosis_holds_at_small_rates() {

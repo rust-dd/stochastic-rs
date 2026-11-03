@@ -44,6 +44,7 @@ use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
 use crate::special::ln_quotient;
 use crate::special::stirling_tail;
+use crate::special::two_sum;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
@@ -195,26 +196,31 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
 
   /// The density at order `1/ν − ½` past `LARGE_ORDER`, from the gamma clock: `ln N(1/ν − ½, d²/σ², θ²/σ² + 2/ν)` less the
   /// clock's `ln Γ(1/ν) + (ln ν)/ν` meets as `ln1pmx(g − 1)/ν − ½ ln g − (d − θg)²/(2σ²g)` at the maximiser `g`.
-  fn large_order_pdf((sigma, nu, theta): (f64, f64, f64), d: f64, order: f64) -> f64 {
+  fn large_order_pdf(
+    (sigma, nu, theta): (f64, f64, f64),
+    (d, d_lo): (f64, f64),
+    order: f64,
+  ) -> f64 {
     if !d.is_finite() {
       return 0.0;
     }
-    let (s2, c) = (sigma * sigma, (theta / sigma) * (theta / sigma));
+    let c = (theta / sigma) * (theta / sigma);
     let (root_chi, psi) = (d.abs() / sigma, c + 2.0 / nu);
-    // `g − 1` itself, `(χ − 1 − c)/(R + o + 1 + c)` with `ψ = 2o + 1 + c`, `o` the order: `g` rounds within an ulp of 1 long
-    // before `1/ν` stops scaling that ulp.
+    // `g − 1` itself, `(χ − 1 − c)/(R + o + 1 + c)`, `ψ = 2o + 1 + c`, `o` the order, and `χ − c = (d − θ)(d + θ)/σ²` and the gap
+    // `(d − θ) − θ(g − 1)` from the exact `d − θ`, which keeps its digits where the law is narrower than `θ`'s rounding.
+    let (h, h_lo) = two_sum(d, -theta);
+    let near = h + (h_lo + d_lo);
     let r = order.hypot(root_chi * psi.sqrt());
-    let gm1 = (root_chi * root_chi - 1.0 - c) / (r + order + 1.0 + c);
-    let g = 1.0 + gm1;
-    let gap = d - theta * g;
+    let gm1 = ((near / sigma) * ((d + theta) / sigma) - 1.0) / (r + order + 1.0 + c);
+    let gap = (near - theta * gm1) / sigma;
     // Debye's `−½ ln(1/ν − ½)` with the clock's `−½ ln ν` is `−½ ln_1p(−ν/2)`.
     let rests = debye_shape(order, root_chi * psi.sqrt())
       - 0.5 * (-0.5 * nu).ln_1p()
       - stirling_tail(nu)
-      - 0.5 * std::f64::consts::TAU.ln();
-    (std::f64::consts::LN_2 - 0.5 * (std::f64::consts::TAU * s2).ln() + ln_1p_mx(gm1) / nu
+      - std::f64::consts::TAU.ln();
+    (std::f64::consts::LN_2 - sigma.ln() + ln_1p_mx(gm1) / nu
       - 0.5 * gm1.ln_1p()
-      - 0.5 * (gap / (s2 * g)) * gap
+      - 0.5 * gap * gap / (1.0 + gm1)
       + rests)
       .exp()
   }
@@ -274,7 +280,11 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
     let (sigma, nu, theta, mu) = self.params();
     let order = (2.0 - nu) / (2.0 * nu);
     if order >= LARGE_ORDER {
-      return Some(Self::large_order_pdf((sigma, nu, theta), x - mu, order));
+      return Some(Self::large_order_pdf(
+        (sigma, nu, theta),
+        two_sum(x, -mu),
+        order,
+      ));
     }
     let a = 1.0 / nu - 0.5;
     let root = (2.0 * sigma * sigma / nu + theta * theta).sqrt();
