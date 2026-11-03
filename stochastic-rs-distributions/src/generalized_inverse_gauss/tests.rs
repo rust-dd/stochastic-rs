@@ -343,7 +343,14 @@ fn moments_hold_where_k_overflows() {
   }
 }
 
-/// mpmath at 60 and 120 digits, where the order's logarithms once left no digit: within `1e-12`.
+/// mpmath at 120 digits: `χ/ψ = 10⁻³²⁰` is subnormal, so the power factor is `(√χ/√ψ)ᵏ`; the mean within `1e-14`.
+#[test]
+fn a_subnormal_scale_ratio_keeps_the_mean() {
+  let mean = SimdGig::<f64>::new(0.5, 1e-300, 1e20).mean().unwrap();
+  assert!(close(mean, 1e-20, 1e-14), "{mean}");
+}
+
+/// mpmath at 60 and 120 digits, where the order's logarithms meet in the saddle form: within `1e-12`.
 #[test]
 fn large_orders_take_their_values() {
   let far = SimdGig::<f64>::new(-1e15, 1.0, 1.0);

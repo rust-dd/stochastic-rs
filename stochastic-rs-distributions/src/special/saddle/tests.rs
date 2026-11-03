@@ -25,7 +25,8 @@ fn the_saddle_forms_meet_the_scaled_ks() {
   let (lambda, chi, psi) = (60.5_f64, 0.7_f64, 1.3_f64);
   let omega = (chi * psi).sqrt();
   let ln_n = |l: f64| 0.5 * l * (chi / psi).ln() + super::super::ln_bessel_ke(l, omega) - omega;
-  let step = ln_order_step(lambda, 2.0, (chi, psi));
+  let (wk, rest) = order_step(lambda, 2.0, (chi, psi));
+  let step = 2.0 * wk.ln() + rest;
   assert!(
     (step - (ln_n(lambda + 2.0) - ln_n(lambda))).abs() <= 1e-13,
     "{step}"

@@ -54,10 +54,10 @@ use crate::special::exp_times_over;
 use crate::special::k_ratio;
 use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
-use crate::special::ln_order_step;
 use crate::special::ln_quotient;
 use crate::special::ln_shift;
 use crate::special::offset;
+use crate::special::order_step;
 use crate::special::saddle;
 use crate::special::saddle_parts;
 use crate::traits::distribution::Sealed;
@@ -342,7 +342,8 @@ impl<T: SimdFloatExt> SimdGig<T> {
   pub(crate) fn raw_moment_at((lambda, chi, psi): (f64, f64, f64), k: u32) -> f64 {
     let order = f64::from(k);
     if lambda.abs().min((lambda + order).abs()) >= LARGE_ORDER {
-      return ln_order_step(lambda, order, (chi, psi)).exp();
+      let (wk, rest) = order_step(lambda, order, (chi, psi));
+      return wk.powf(order) * rest.exp();
     }
     let (root_chi, root_psi) = (chi.sqrt(), psi.sqrt());
     let b = root_chi * root_psi;

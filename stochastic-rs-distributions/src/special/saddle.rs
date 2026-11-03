@@ -112,15 +112,17 @@ fn rest_step(from: f64, to: f64, (x_from, x_to): (f64, f64)) -> f64 {
   debye_shape(to, x_to) - debye_shape(from, x_from) - 0.5 * ((to - from) / from).ln_1p()
 }
 
-/// `ln N(λ + k, χ, ψ) − ln N(λ, χ, ψ)`, `N(λ, χ, ψ) = 2(χ/ψ)^{λ/2}K_λ(√(χψ))`, both orders past `LARGE_ORDER`:
-/// `H_λ(w_k) + k ln w_k − H_λ(w)` as a divergence, `w_k` the maximiser at `λ + k`, so `ln E X^k` of the GIG keeps its digits.
-pub(crate) fn ln_order_step(lambda: f64, k: f64, (chi, psi): (f64, f64)) -> f64 {
+/// `N(λ + k, χ, ψ)/N(λ, χ, ψ) = w_kᵏe^{rest}`, `N(λ, χ, ψ) = 2(χ/ψ)^{λ/2}K_λ(√(χψ))`, both orders past `LARGE_ORDER`, as
+/// `(w_k, rest)`: `H_λ(w_k) − H_λ(w)` a divergence, `w_k` the maximiser at `λ + k`, so `E Xᵏ` of the GIG rounds no `ln w_k`.
+pub(crate) fn order_step(lambda: f64, k: f64, (chi, psi): (f64, f64)) -> (f64, f64) {
   let (rc, rp) = (chi.sqrt(), psi.sqrt());
   let (w, wk) = (saddle(lambda, rc, rp), saddle(lambda + k, rc, rp));
   let omega = rc * rp;
-  divergence(lambda, (chi, psi), w, wk / w - 1.0)
-    + k * wk.ln()
-    + rest_step(lambda.abs(), (lambda + k).abs(), (omega, omega))
+  (
+    wk,
+    divergence(lambda, (chi, psi), w, wk / w - 1.0)
+      + rest_step(lambda.abs(), (lambda + k).abs(), (omega, omega)),
+  )
 }
 
 /// `ln N(λ, χ, ψ − 2s) − ln N(λ, χ, ψ)` for `ψ − 2s = shifted ≥ 0`, `|λ|` past `LARGE_ORDER`: with `Q = |λ| + √(λ² + χψ)`
