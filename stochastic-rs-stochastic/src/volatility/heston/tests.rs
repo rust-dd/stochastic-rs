@@ -117,3 +117,39 @@ fn qe_rejects_three_halves() {
   .qe()
   .sample();
 }
+
+fn qe_switch(kappa: f64, sigma: f64, s0: f64) -> Heston<f64, Unseeded, AndersenQe> {
+  Heston::new(
+    Some(s0),
+    Some(0.04),
+    kappa,
+    0.04,
+    sigma,
+    -0.7,
+    0.0,
+    16,
+    Some(1.0),
+    HestonPow::Sqrt,
+    Some(false),
+    Unseeded,
+  )
+  .qe()
+}
+
+#[test]
+#[should_panic(expected = "kappa must satisfy `kappa > 0` under QE")]
+fn qe_switch_rejects_a_zero_mean_reversion() {
+  let _ = qe_switch(0.0, 0.5, 100.0);
+}
+
+#[test]
+#[should_panic(expected = "sigma must satisfy `sigma > 0` under QE")]
+fn qe_switch_rejects_a_zero_vol_of_vol() {
+  let _ = qe_switch(2.0, 0.0, 100.0);
+}
+
+#[test]
+#[should_panic(expected = "s0 must satisfy `s0 > 0` under QE")]
+fn qe_switch_rejects_a_non_positive_spot() {
+  let _ = qe_switch(2.0, 0.5, 0.0);
+}

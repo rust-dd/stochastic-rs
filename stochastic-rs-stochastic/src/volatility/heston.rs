@@ -224,11 +224,30 @@ impl<T: FloatExt, S: SeedExt, Sch: HestonScheme, B> Heston<T, S, Sch, B> {
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Heston<T, S, Euler, B> {
-  /// Switch to the [`AndersenQe`] variance scheme at compile time. Consumes
-  /// the model and re-tags it — zero runtime cost (the fields are moved and
-  /// the marker swapped). QE is defined for the square-root (CIR) variance,
-  /// so keep `pow = HestonPow::Sqrt`.
+  /// Re-tag the model with the [`AndersenQe`] variance scheme at no runtime cost; panics unless
+  /// `pow` is `HestonPow::Sqrt` and `kappa`, `sigma` and a given `s0` are positive.
   pub fn qe(self) -> Heston<T, S, AndersenQe> {
+    assert!(
+      matches!(self.pow, HestonPow::Sqrt),
+      "pow must satisfy `pow == HestonPow::Sqrt` (QE is defined only for the square-root (CIR) variance), got pow = {:?}",
+      self.pow
+    );
+    assert!(
+      self.kappa > T::zero(),
+      "kappa must satisfy `kappa > 0` under QE, got kappa = {:?}",
+      self.kappa
+    );
+    assert!(
+      self.sigma > T::zero(),
+      "sigma must satisfy `sigma > 0` under QE, got sigma = {:?}",
+      self.sigma
+    );
+    if let Some(s0) = self.s0 {
+      assert!(
+        s0 > T::zero(),
+        "s0 must satisfy `s0 > 0` under QE, got s0 = {s0:?}"
+      );
+    }
     Heston {
       backend: Cpu,
       s0: self.s0,
