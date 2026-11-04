@@ -33,6 +33,9 @@ use route::gamma_route;
 mod kernel;
 mod route;
 
+/// Below this lower bound `1 − lo` keeps under half of its digits, so the mass past the mean is read from `lo` itself.
+const KEPT: f64 = 1.4901161193847656e-8;
+
 /// Truncated beta law on $[\text{lower}, \text{upper}] \subseteq [0, 1]$: parameters and the base mass on the
 /// interval; a [`Seeded`](crate::Seeded) stream draws it.
 #[derive(Clone)]
@@ -147,6 +150,8 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
     // Past the mean `I_b − I_a` cancels; the switch needs a few digits of the side that does not.
     let mass = if lo < a / (a + b) {
       crate::special::beta_i(a, b, up) - crate::special::beta_i(a, b, lo)
+    } else if lo < KEPT {
+      crate::special::beta_ic(a, b, lo) - crate::special::beta_ic(a, b, up)
     } else {
       crate::special::beta_i(b, a, 1.0 - lo) - crate::special::beta_i(b, a, 1.0 - up)
     };

@@ -33,6 +33,7 @@ pub(crate) use bessel_k::ln_half_gamma_parts;
 pub(crate) use incomplete::LN2_HI;
 pub(crate) use incomplete::LN2_LO;
 pub use incomplete::beta_i;
+pub(crate) use incomplete::beta_ic;
 pub use incomplete::gamma_li;
 pub use incomplete::gamma_p;
 pub(crate) use incomplete::gamma_p_inv;

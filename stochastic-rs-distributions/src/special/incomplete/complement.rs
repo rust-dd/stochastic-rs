@@ -3,6 +3,7 @@
 //! Reference: DiDonato, A.R., Morris, A.H. (1992), "Algorithm 708: Significant digit computation of the incomplete beta function ratios", ACM TOMS 18(3), 360-373, DOI 10.1145/131766.131776 (`bpser`'s series, `algdiv`'s Stirling difference).
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 8.17.7 (`B_x(a, b) = x^a/a·F(a, 1 − b; a + 1; x)`), <https://dlmf.nist.gov/8.17.7>; eq. 5.11.1 (Stirling's series), <https://dlmf.nist.gov/5.11.1>.
 
+use super::beta_i;
 use super::recip_gamma_1p_m1_over;
 use crate::special::expm1_over;
 use crate::special::ln_1p_over;
@@ -21,6 +22,15 @@ const STIRLING: [f64; 6] = [
   1.0 / 1188.0,
   -691.0 / 360360.0,
 ];
+
+/// `1 − I_x(a, b)`: below ½ at `a ≤ 1` and `bx ≤ 2` DLMF 8.17.7's series in `x`, elsewhere `I_{1−x}(b, a)`, whose `1 − x`
+/// is exact from ½ up; NaN off `[0, 1]`.
+pub(crate) fn beta_ic(a: f64, b: f64, x: f64) -> f64 {
+  if x > 0.0 && x < 0.5 && a <= 1.0 && b * x <= 2.0 {
+    return upper_series(a, b, x);
+  }
+  beta_i(b, a, 1.0 - x)
+}
 
 /// `1 − I_x(p, q) = −expm1(E)`, `E = p ln x − ln(pB(p, q)) + ln(1 + pΣ)`, `Σ = Σ_{n≥1} (1 − q)_n xⁿ/(n!(p + n))`, at
 /// `0 < p ≤ 1`, `0 < x ≤ ½`, `qx ≤ 2`; `E` is `p` times a sum of order one, so a subnormal tail rounds once.
