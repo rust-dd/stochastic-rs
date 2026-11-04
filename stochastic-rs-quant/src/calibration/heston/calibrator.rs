@@ -188,9 +188,10 @@ impl HestonCalibrator {
       },
     );
     let converged = report.converged;
+    let termination = format!("{:?}", report.reason);
     let params = result.effective_params();
 
-    let c_model = result.compute_model_prices_for_numeric(&params);
+    let c_model = result.compute_model_prices_for(&params);
     let loss = CalibrationLossScore::compute_selected(
       result.c_market.as_standard_layout().as_slice().unwrap(),
       c_model.as_slice().unwrap(),
@@ -201,6 +202,7 @@ impl HestonCalibrator {
       params,
       loss,
       converged,
+      termination,
     }
   }
 
