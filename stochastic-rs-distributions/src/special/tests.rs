@@ -209,8 +209,8 @@ fn gamma_ratio_half_matches_high_precision_references() {
   }
 }
 
-/// mpmath at 60 and 120 digits, within an ulp: both sides of a Taylor node's edge, of 4.25 and of 1e8, and the cells the
-/// old quotient and Lentz's fraction missed by 11.7 and 11.5 ulps (2.98, 15.96).
+/// mpmath at 60 and 120 digits, within an ulp: both sides of a Taylor node's edge, of 4.25 and of 1e8, and 2.98 and 15.96,
+/// where the plain quotient and Lentz's forward fraction lose about 11 ulps.
 #[test]
 fn mills_ratio_matches_high_precision_references() {
   for (z, want) in [

@@ -384,8 +384,7 @@ fn the_t_cdf_matches_mpmath() {
   report("t cdf", T_CDF.len(), failures);
 }
 
-/// Both carry their exponent past double precision: the cdf within `2.5e-15` relative, its factor's rounding (Mills' ratio's
-/// chiefly), the density within `1.5e-15`.
+/// Both carry their exponent past double precision: the cdf within `2.5e-15` relative, the density within `1.5e-15`.
 #[test]
 fn the_t_far_tail_holds_its_digits() {
   let cdf = T_FAR_CDF.iter().filter_map(|&(nu, x, want)| {

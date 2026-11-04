@@ -136,7 +136,7 @@ fn geometry(nu: f64, x: f64) -> (f64, f64, f64) {
 const DENSITY_REFINE: f64 = 8.0;
 
 /// The t density `R(ν/2)/√(2π) e^{−((ν + 1)/2)ξ}`, its exponent in two parts past `DENSITY_REFINE`; inline, so a loop at
-/// one `ν` keeps `ln(R/√(2π))` out of it as the generic law's did.
+/// one `ν` keeps `ln(R/√(2π))` out of it.
 #[inline]
 pub(crate) fn student_density(nu: f64, ratio: f64, x: f64) -> f64 {
   density(nu, ratio, x, DENSITY_REFINE)

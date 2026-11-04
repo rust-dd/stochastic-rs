@@ -10,10 +10,8 @@ fn close(a: f64, b: f64, rel: f64) -> bool {
   (a - b).abs() <= rel * b.abs().max(1e-300)
 }
 
-/// The Bessel-form density agrees with a numerical integration of the
-/// gamma-time normal mixture (`scipy.integrate.quad` over
-/// `norm.pdf(x; μ+θg, σ√g)·gamma.pdf(g; 1/ν, ν)`), including the finite
-/// `x = μ` limit for ν = 1/2.
+/// The Bessel-form density agrees with scipy's quadrature of the gamma-time normal mixture `N(μ + θg, σ²g)·Γ(1/ν, ν)`,
+/// including the finite `x = μ` limit at ν = ½.
 #[test]
 fn pdf_matches_the_mixture_integral() {
   let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05);

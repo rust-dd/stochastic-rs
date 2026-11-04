@@ -109,7 +109,6 @@ fn trapezoid(lambda: f64, omega: f64, r: f64) -> Option<[f64; 4]> {
 
 /// `eˣ − 1 − x`, its Taylor series to `x¹⁷/17!` below `|x| = ½`, where the next term is under `1e-20` of the sum.
 fn exp_m1_mx(x: f64) -> f64 {
-  /// `1/(k + 2)!`, `k = 0, …, 15`.
   const C: [f64; 16] = [
     1.0 / 2.0,
     1.0 / 6.0,

@@ -125,8 +125,8 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
     z / (v / self.nu).sqrt()
   }
 
-  /// The density within a few ulps at every `x`, its exponent past double precision from 1 on where `pdf`'s starts at 8:
-  /// for the t copulas' level gaps, which carry its rounding into `h` amplified.
+  /// The density within a few ulps at every `x`, its exponent past double precision from 1 on where `pdf`'s starts at 8;
+  /// public for the t copulas' level gaps, which amplify its rounding into `h`, and outside the stability promise.
   #[doc(hidden)]
   pub fn precise_pdf(&self, x: f64) -> f64 {
     student_density_precise(self.nu.to_f64().unwrap(), self.ratio, x)
@@ -186,7 +186,7 @@ impl<T: SimdFloatExt> Distribution<T> for SimdStudentT<T> {
 }
 
 /// `ln(K/ν)` of the tail `P(T ≤ −t) ≈ (K/ν)t^{−ν}`, `K = Γ((ν + 1)/2)ν^{ν/2}/(√π Γ(ν/2))`, with `Γ(ν/2) = Γ(1 + ν/2)/(ν/2)`,
-/// free of the cancellation of `ln Γ(ν/2)` against `ln ν` at small `ν`; the t copulas' tail reads it too.
+/// free of the cancellation of `ln Γ(ν/2)` against `ln ν` at small `ν`; public for the t copulas' tail, outside the stability promise.
 #[doc(hidden)]
 pub fn ln_tail_scale(nu: f64) -> f64 {
   crate::special::ln_gamma(0.5 * (nu + 1.0)) - crate::special::ln_gamma(1.0 + 0.5 * nu)
