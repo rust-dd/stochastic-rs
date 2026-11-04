@@ -297,13 +297,7 @@ pub(super) fn ln_ratio(x: f64, a: f64) -> (f64, f64) {
     return (x.ln() - a.ln(), 0.0);
   }
   let lambda_lo = (-lambda).mul_add(a, x) / a;
-  let bits = lambda.to_bits();
-  let mut k = ((bits >> 52) & 0x7ff) as i32 - 1023;
-  let mut m = f64::from_bits((bits & 0x000f_ffff_ffff_ffff) | 0x3ff0_0000_0000_0000);
-  if m > std::f64::consts::SQRT_2 {
-    m *= 0.5;
-    k += 1;
-  }
+  let (k, m) = super::split_sqrt2(lambda);
   let num = m - 1.0;
   let (den, den_lo) = two_sum(m, 1.0);
   let s = num / den;

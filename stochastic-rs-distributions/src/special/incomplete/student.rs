@@ -209,13 +209,7 @@ fn ln_1p_parts(s: f64, s_lo: f64) -> (f64, f64) {
     (0.0, s, s_lo, d, d_err + s_lo)
   } else {
     let (q, q_err) = two_sum(1.0, s);
-    let bits = q.to_bits();
-    let mut k = ((bits >> 52) & 0x7ff) as i32 - 1023;
-    let mut m = f64::from_bits((bits & 0x000f_ffff_ffff_ffff) | 0x3ff0_0000_0000_0000);
-    if m > SQRT_2 {
-      m *= 0.5;
-      k += 1;
-    }
+    let (k, m) = super::split_sqrt2(q);
     let m_lo = (q_err + s_lo) * (m / q);
     let (n, n_err) = two_sum(m - 1.0, m_lo);
     let (d, d_err) = two_sum(m, 1.0);

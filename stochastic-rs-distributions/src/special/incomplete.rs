@@ -358,6 +358,16 @@ fn split_pow2(s: f64) -> (i32, f64) {
   (((bits >> 52) & 0x7ff) as i32 - 1023 + shift, m)
 }
 
+/// `(k, m)` with `s = 2ᵏm`, `m ∈ [1/√2, √2)`, the range in which `ln m = 2 atanh((m − 1)/(m + 1))` converges fastest.
+fn split_sqrt2(s: f64) -> (i32, f64) {
+  let (k, m) = split_pow2(s);
+  if m > std::f64::consts::SQRT_2 {
+    (k + 1, m * 0.5)
+  } else {
+    (k, m)
+  }
+}
+
 /// `ln P(a, x)`, or `ln Q` if `upper`, and its derivative in `ln x`: `1/S` or `−1/h` where the tail solved is the series'
 /// or the fraction's own, else `prefactor` over the tail.
 fn solved_tail(a: f64, x: f64, upper: bool) -> (f64, f64) {
