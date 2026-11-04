@@ -20,6 +20,7 @@ use super::singular::Frame;
 use super::two;
 use super::zone::Offset;
 use super::zone::ZONE;
+use crate::special::mul_parts;
 use crate::special::split_pow2;
 use crate::traits::RealExt;
 
@@ -180,8 +181,8 @@ impl<K: Kernel> Truncation<K> {
     // `mass·local/(width·m0)`, the two widths' powers of two kept apart.
     let ((ql, ml), (qw, mw)) = (split_pow2(local), split_pow2(self.width));
     let (r, r_lo) = two::div(
-      two::mul((mass.hi, mass.lo), (ml, 0.0)),
-      two::mul((mw, 0.0), (self.m0, self.m0_rest)),
+      mul_parts((mass.hi, mass.lo), (ml, 0.0)),
+      mul_parts((mw, 0.0), (self.m0, self.m0_rest)),
     );
     // A mass of 0 reads 0, where `split_pow2` would give 0 the mantissa 1.
     if r == 0.0 {

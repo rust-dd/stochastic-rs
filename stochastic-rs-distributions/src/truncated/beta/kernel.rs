@@ -1,5 +1,6 @@
 //! The truncated beta's kernel on `[0, 1]`.
 
+use crate::special::mul_parts;
 use crate::truncated::quadrature::Cut;
 use crate::truncated::quadrature::Kernel;
 use crate::truncated::quadrature::Two;
@@ -260,7 +261,7 @@ impl Kernel for BetaKernel {
       } else {
         two::sub(two::ln(point), two::ln(end))
       };
-      two::mul(two_sum(e, -1.0), log)
+      mul_parts(two_sum(e, -1.0), log)
     };
     two::add(
       term(self.a, y, c, x),

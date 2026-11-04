@@ -3,6 +3,7 @@
 
 use super::NormalKernel;
 use super::SimdTruncatedNormal;
+use crate::special::mul_parts;
 use crate::special::split_pow2;
 use crate::traits::SimdFloatExt;
 use crate::truncated::quadrature::Cut;
@@ -136,7 +137,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       two::of(centre)
     };
     let y = two::sub(self.exact(x), c);
-    let g = two::mul(y, two::add((0.5 * y.0, 0.5 * y.1), c));
+    let g = mul_parts(y, two::add((0.5 * y.0, 0.5 * y.1), c));
     (-g.0, -g.1)
   }
 

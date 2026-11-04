@@ -4,8 +4,8 @@
 
 use super::ldexp;
 use super::panels::Cut;
-use super::sum::two_prod;
 use super::sum::two_sum;
+use crate::special::mul_parts;
 use crate::special::split_pow2;
 
 /// `hi + lo`, `|lo|` within half an ulp of `hi`.
@@ -35,14 +35,9 @@ pub(in crate::truncated) fn sub(a: Two, b: Two) -> Two {
   add(a, (-b.0, -b.1))
 }
 
-pub(in crate::truncated) fn mul(a: Two, b: Two) -> Two {
-  let (p, e) = two_prod(a.0, b.0);
-  renorm(p, e + (a.0 * b.1 + a.1 * b.0))
-}
-
 pub(in crate::truncated) fn div(a: Two, b: Two) -> Two {
   let q = a.0 / b.0;
-  let r = sub(a, mul((q, 0.0), b));
+  let r = sub(a, mul_parts((q, 0.0), b));
   renorm(q, r.0 / b.0)
 }
 
@@ -55,7 +50,7 @@ pub(in crate::truncated) fn ln(a: Two) -> Two {
     (m, e)
   };
   let u = add((m - 1.0, 0.0), (ldexp(a.1, -e), 0.0));
-  add(mul((f64::from(e), 0.0), LN2), ln_1p_near(u))
+  add(mul_parts((f64::from(e), 0.0), LN2), ln_1p_near(u))
 }
 
 /// `ln(1 + u)`, `u > −1`; a small `u` keeps its own relative digits, which `1 + u` would round away.
@@ -71,16 +66,16 @@ pub(in crate::truncated) fn ln_1p(u: Two) -> Two {
 /// each tail term under `ε·w⁸/9` of the sum.
 fn ln_1p_near(u: Two) -> Two {
   let w = div(u, add((2.0, 0.0), u));
-  let w2 = mul(w, w);
+  let w2 = mul_parts(w, w);
   let tail = (4..=20).rev().fold(0.0_f64, |acc, j| {
     acc.mul_add(w2.0, 1.0 / f64::from(2 * j + 1))
   });
-  let (w4, w6) = (mul(w2, w2), mul(mul(w2, w2), w2));
+  let (w4, w6) = (mul_parts(w2, w2), mul_parts(mul_parts(w2, w2), w2));
   let mut s = add((1.0, 0.0), div(w2, (3.0, 0.0)));
   s = add(s, div(w4, (5.0, 0.0)));
   s = add(s, div(w6, (7.0, 0.0)));
-  s = add(s, mul(mul(w4, w4), (tail, 0.0)));
-  let p = mul(w, s);
+  s = add(s, mul_parts(mul_parts(w4, w4), (tail, 0.0)));
+  let p = mul_parts(w, s);
   (2.0 * p.0, 2.0 * p.1)
 }
 
