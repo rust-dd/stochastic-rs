@@ -477,6 +477,7 @@ mod tests {
   }
 }
 
+/// `scheme` is `"euler"` (default) or `"qe"`, Andersen's (2008) quadratic-exponential variance step.
 #[cfg(feature = "python")]
 #[pyo3::prelude::pyclass]
 pub struct PyHeston {
@@ -484,13 +485,33 @@ pub struct PyHeston {
   inner_f64: Option<Heston<f64>>,
   seeded_f32: Option<Heston<f32, crate::simd_rng::Deterministic>>,
   seeded_f64: Option<Heston<f64, crate::simd_rng::Deterministic>>,
+  qe: Option<PyHestonQe>,
+}
+
+/// The [`AndersenQe`] twins of [`PyHeston`]'s slots, named for `py_dispatch!`.
+#[cfg(feature = "python")]
+struct PyHestonQe {
+  inner_f32: Option<Heston<f32, Unseeded, AndersenQe>>,
+  inner_f64: Option<Heston<f64, Unseeded, AndersenQe>>,
+  seeded_f32: Option<Heston<f32, Deterministic, AndersenQe>>,
+  seeded_f64: Option<Heston<f64, Deterministic, AndersenQe>>,
+}
+
+#[cfg(feature = "python")]
+macro_rules! py_heston_dispatch {
+  ($self:expr, |$inner:ident| $body:expr) => {
+    match &$self.qe {
+      Some(qe) => py_dispatch!(qe, |$inner| $body),
+      None => py_dispatch!($self, |$inner| $body),
+    }
+  };
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyHeston {
   #[new]
-  #[pyo3(signature = (kappa, theta, sigma, rho, mu, n, s0=None, v0=None, t=None, pow=None, use_sym=None, seed=None, dtype=None))]
+  #[pyo3(signature = (kappa, theta, sigma, rho, mu, n, s0=None, v0=None, t=None, pow=None, use_sym=None, seed=None, dtype=None, scheme="euler"))]
   fn new(
     kappa: f64,
     theta: f64,
@@ -505,16 +526,40 @@ impl PyHeston {
     use_sym: Option<bool>,
     seed: Option<u64>,
     dtype: Option<&str>,
-  ) -> Self {
+    scheme: &str,
+  ) -> pyo3::PyResult<Self> {
+    use pyo3::exceptions::PyValueError;
+
     let hp = match pow.unwrap_or("sqrt") {
       "three_halves" | "3/2" => HestonPow::ThreeHalves,
       _ => HestonPow::Sqrt,
+    };
+    let qe = match scheme.to_ascii_lowercase().as_str() {
+      "euler" => false,
+      "qe" => {
+        if !matches!(hp, HestonPow::Sqrt)
+          || kappa <= 0.0
+          || sigma <= 0.0
+          || s0.is_some_and(|s0| s0 <= 0.0)
+        {
+          return Err(PyValueError::new_err(
+            "scheme='qe' needs pow='sqrt', kappa > 0, sigma > 0 and s0 > 0",
+          ));
+        }
+        true
+      }
+      other => {
+        return Err(PyValueError::new_err(format!(
+          "scheme must be 'euler' or 'qe', got '{other}'"
+        )));
+      }
     };
     let mut s = Self {
       inner_f32: None,
       inner_f64: None,
       seeded_f32: None,
       seeded_f64: None,
+      qe: None,
     };
     match (seed, dtype.unwrap_or("f64")) {
       (Some(sd), "f32") => {
@@ -571,7 +616,15 @@ impl PyHeston {
         ));
       }
     }
-    s
+    if qe {
+      s.qe = Some(PyHestonQe {
+        inner_f32: s.inner_f32.take().map(Heston::qe),
+        inner_f64: s.inner_f64.take().map(Heston::qe),
+        seeded_f32: s.seeded_f32.take().map(Heston::qe),
+        seeded_f64: s.seeded_f64.take().map(Heston::qe),
+      });
+    }
+    Ok(s)
   }
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
@@ -579,7 +632,7 @@ impl PyHeston {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    py_dispatch!(self, |inner| {
+    py_heston_dispatch!(self, |inner| {
       let [a, b] = inner.sample();
       (
         a.into_pyarray(py).into_py_any(py).unwrap(),
@@ -588,6 +641,7 @@ impl PyHeston {
     })
   }
 
+  /// Under a seed the rows are not reproducible across calls; loop over `sample()` to pair path `i` across runs.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,
@@ -598,7 +652,7 @@ impl PyHeston {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    py_dispatch!(self, |inner| {
+    py_heston_dispatch!(self, |inner| {
       let samples = inner.sample_par(m);
       let n = samples[0][0].len();
       let mut r0 = Array2::zeros((m, n));
