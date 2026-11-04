@@ -336,6 +336,34 @@ fn concentrated_densities_hold_at_their_double_inputs() {
   }
 }
 
+/// mpmath at 60 and 120 digits: right tails of negative orders, where `w₁/w₀` passes 100 and a rounded offset's `1 + e`
+/// read up to `2.1e-9` off, within `1e-12`.
+#[test]
+fn saddle_tails_hold_where_the_clocks_part_far() {
+  for ((lambda, alpha, beta, delta, mu, x), want) in [
+    (
+      (-50.5, 0.6, 0.1, 0.1, 0.0, 100.0),
+      1.345_260_355_692_504e-307,
+    ),
+    (
+      (-80.0, 2.0, 0.5, 0.5, 0.0, 30.0),
+      4.065_604_291_327_857e-284,
+    ),
+    (
+      (-50.0, 1.3, -0.9, 0.3, 0.2, 30.2),
+      1.898_543_567_319_823e-216,
+    ),
+  ] {
+    let got = SimdGeneralizedHyperbolic::<f64>::new(lambda, alpha, beta, delta, mu)
+      .pdf(x)
+      .unwrap();
+    assert!(
+      close(got, want, 1e-12),
+      "GH({lambda}, {alpha}, {beta}, {delta}, {mu}).pdf({x}) = {got:e}, want {want:e}"
+    );
+  }
+}
+
 /// mpmath at 120 and 240 digits where the power factor goes subnormal (`λ = −100`), its product with `K` overflows (`λ = 100`),
 /// `e^{μt}` alone goes subnormal (`λ = 10`, the `λ = 20` family), with the power too (`μ = −3.962`), and where `e^{dx}` does.
 #[test]

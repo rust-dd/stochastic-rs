@@ -238,7 +238,7 @@ impl Setup {
 }
 
 /// Generalized inverse Gaussian distribution GIG$(\lambda, \chi, \psi)$, `chi > 0`, `psi > 0`; a [`Seeded`](crate::Seeded) stream draws it in bulk.
-/// Within `ε·Σ|ln terms|` below order 50 and `3.3e-14` from it; from `r = √(λ² + χψ) ≈ 1e35` a density `k` deviations off its mode carries `k√r·1e-31`.
+/// Within `ε·Σ|ln terms|` below `r = √(λ² + χψ) = 50`, from it the density `4ε(|ln f| + 20)` and the mgf `2ε(|ln M| + 5)`; past `r ≈ 3e34` a density `k` deviations off its mode adds `k√r·1e-31`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdGig<T> {
   lambda: T,
@@ -422,11 +422,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
     if r >= LARGE_ORDER {
       // `ln f = D_λ(x/w − 1) − ln x − ln 2 − T`, `e^{−T} = √(2r/π)/S`: the `O(r)` terms meet in the divergence.
       let w = saddle(lambda, root_chi, root_psi);
-      let e = offset(
-        (x, 0.0),
-        saddle_parts(w, (lambda, 0.0), (chi, 0.0), (psi, 0.0)),
-      );
-      let a = divergence(lambda, (chi, psi), w, e)
+      let w_parts = saddle_parts(w, (lambda, 0.0), (chi, 0.0), (psi, 0.0));
+      let a = divergence(lambda, (chi, psi), w, offset((x, 0.0), w_parts))
         - std::f64::consts::LN_2
         - debye_log_sum(lambda.abs(), r);
       return Some(exp_times_over(

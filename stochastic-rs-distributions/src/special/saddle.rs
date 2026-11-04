@@ -46,10 +46,13 @@ pub(crate) fn saddle_parts(
   }
 }
 
-/// `x/w − 1` for `x` and `w` in two parts, the difference formed exactly.
-pub(crate) fn offset((x, x_lo): (f64, f64), (w, w_lo): (f64, f64)) -> f64 {
+/// `x/w − 1` in two parts for `x` and `w` in two parts, the difference formed exactly and the quotient's remainder by a
+/// fused multiply-add.
+pub(crate) fn offset((x, x_lo): (f64, f64), (w, w_lo): (f64, f64)) -> (f64, f64) {
   let (d, d_lo) = two_sum(x, -w);
-  (d + (d_lo + (x_lo - w_lo))) / w
+  let rest = d_lo + (x_lo - w_lo);
+  let e = (d + rest) / w;
+  (e, ((-e).mul_add(w, d) + rest - e * w_lo) / w)
 }
 
 /// `ln S` of Debye's `S = Σ(−1)^k U_k(p)/ν^k`, `p = ν/r`, `r = √(ν² + x²)`: `ln K_ν(x) = ½ ln(π/2r) − r + ν·asinh(ν/x) + ln S`, taken
@@ -68,16 +71,82 @@ pub(crate) fn exp_times_over(a: f64, m: f64, x: f64) -> f64 {
   }
 }
 
-/// `H_λ(w(1 + e)) − H_λ(w)` at the maximiser `w`, in terms of one sign: `λ·ln1pmx(e) − (χ/2w)e²/(1 + e)` at `λ ≥ 0`, else
-/// `λ·ℓ(e) − (ψw/2)e²/(1 + e)`, `ℓ(e) = −ln1pmx(−e/(1 + e))`, both from the saddle equation `λ + χ/2w = ψw/2`.
-pub(crate) fn divergence(lambda: f64, (chi, psi): (f64, f64), w: f64, e: f64) -> f64 {
-  let q = e * e / (1.0 + e);
-  if lambda >= 0.0 {
-    lambda * ln_1p_mx(e) - 0.5 * chi / w * q
+/// `H_λ(w(1 + e)) − H_λ(w)` at the maximiser `w`, `e` in two parts, in terms of one sign: `λ·ln1pmx(e) − (χ/2w)e²/(1 + e)` at
+/// `λ ≥ 0`, else `λ·ℓ(e) − (ψw/2)e²/(1 + e)`, `ℓ(e) = ln(1 + e) − e/(1 + e)`, at the high part plus the slope times the low.
+pub(crate) fn divergence(
+  lambda: f64,
+  (chi, psi): (f64, f64),
+  w: f64,
+  (e, e_lo): (f64, f64),
+) -> f64 {
+  let ratio = two_sum(1.0, e);
+  let coefficient = if lambda >= 0.0 {
+    0.5 * chi / w
   } else {
-    -lambda * ln_1p_mx(-e / (1.0 + e)) - 0.5 * psi * w * q
+    0.5 * psi * w
+  };
+  // `D′(e)·e_lo`, `D′ = −e(λ + (χ/2w)(2 + e)/(1 + e))/(1 + e)`, or `e(λ − (ψw/2)(2 + e))/(1 + e)²` at `λ < 0`.
+  let slope = if lambda >= 0.0 {
+    -e * (lambda + coefficient * (2.0 + e) / ratio.0) / ratio.0
+  } else {
+    e * (lambda - coefficient * (2.0 + e)) / ratio.0 / ratio.0
+  };
+  let low = slope * e_lo;
+  divergence_at(lambda, coefficient, e, ratio) + if low.is_finite() { low } else { 0.0 }
+}
+
+/// `divergence` at a one-part `e`, `coefficient` its `χ/2w` or `ψw/2`, `ratio` exactly `1 + e`, which keeps its digits as
+/// `e → −1` where a rounded `1 + e` would not.
+fn divergence_at(lambda: f64, coefficient: f64, e: f64, (ratio, ratio_lo): (f64, f64)) -> f64 {
+  let s = e / (2.0 + e);
+  if s.abs() <= 0.2 || (lambda >= 0.0 && s > 0.5) {
+    let q = e * e / (1.0 + e);
+    return if lambda >= 0.0 {
+      lambda * ln_1p_mx(e) - coefficient * q
+    } else {
+      -lambda * ln_1p_mx(-e / (1.0 + e)) - coefficient * q
+    };
+  }
+  let q = e * e / ratio;
+  if s.abs() <= 0.5 {
+    // `ln1pmx(e) = 2s³Σ − e²/(2 + e)` and `ℓ(e) = 2s³Σ + e²/((1 + e)(2 + e))`, where the two forms below would cancel.
+    let s2 = s * s;
+    let tail = 2.0
+      * s
+      * s2
+      * WIDE
+        .iter()
+        .rev()
+        .fold(0.0_f64, |acc, &c| acc.mul_add(s2, c));
+    let lead = e * e / (2.0 + e);
+    return if lambda >= 0.0 {
+      lambda * (tail - lead) - coefficient * q
+    } else {
+      lambda * (lead / ratio + tail) - coefficient * q
+    };
+  }
+  // A ratio past the normal range leaves the `1/x` or `x` term, or `|λ| ≥ 50` times the logarithm, past `e^{−10⁴}`.
+  if !ratio.is_normal() {
+    return f64::NEG_INFINITY;
+  }
+  let ln_ratio = ratio.ln() + ratio_lo / ratio;
+  if lambda >= 0.0 {
+    lambda * (ln_ratio - e) - coefficient * q
+  } else {
+    lambda * (ln_ratio - e / ratio) - coefficient * q
   }
 }
+
+/// `1/(2j + 3)` to `j = 26`: at `s² ≤ ¼` the next term of `Σ s^{2j}/(2j + 3)` is under `4e-18` of the sum.
+const WIDE: [f64; 27] = {
+  let mut c = [0.0; 27];
+  let mut j = 0;
+  while j < 27 {
+    c[j] = 1.0 / (2 * j + 3) as f64;
+    j += 1;
+  }
+  c
+};
 
 /// `ln(1 + x) − x` for `x > −1`: `−x²/(2 + x) + 2s³ Σ s^{2j}/(2j + 3)`, `s = x/(2 + x)`, where `|s| ≤ 0.2`, else directly.
 pub(crate) fn ln_1p_mx(x: f64) -> f64 {
@@ -120,7 +189,7 @@ pub(crate) fn order_step(lambda: f64, k: f64, (chi, psi): (f64, f64)) -> (f64, f
   let omega = rc * rp;
   (
     wk,
-    divergence(lambda, (chi, psi), w, wk / w - 1.0)
+    divergence(lambda, (chi, psi), w, (wk / w - 1.0, 0.0))
       + rest_step(lambda.abs(), (lambda + k).abs(), (omega, omega)),
   )
 }
