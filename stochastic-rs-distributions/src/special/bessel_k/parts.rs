@@ -7,7 +7,7 @@ use super::X_MIN;
 use super::ke_pair;
 use super::temme_gammas;
 use super::temme_head;
-use super::temme_sums;
+use super::temme_sums_at;
 use crate::special::LN2_HI;
 use crate::special::LN2_LO;
 use crate::special::Scaled;
@@ -23,6 +23,9 @@ const TINY_BELOW: i32 = -60;
 
 /// `½ ln(π/2)`.
 const HALF_LN_HALF_PI: f64 = 0.225_791_352_644_727_44;
+
+/// `2⁻²⁰`: over this step in `ln(2/x)` a forward difference reads the slope of Temme's sums to about `2⁻²⁰`, well above their rounding.
+const LN_STEP: f64 = 9.536_743_164_062_5e-7;
 
 /// `ln(e^x K_ν(x))` as `(hi, lo)` for `|ν| < 60`, `ν` in two parts: Hankel's two terms from `2⁶⁰`, the scaled `K` of Steed's
 /// fraction from 2, below it Temme's series carried up by the ratio recurrence, `K_ν = K_μΠgᵢ·(2/x)ⁿ`, and from `2⁻⁶⁰` down
@@ -56,17 +59,25 @@ fn ln_ke_at(nu: f64, x: Scaled) -> (f64, f64) {
   let ln_x = x.ln();
   let d = add_parts((LN2_HI, LN2_LO), (-ln_x.0, -ln_x.1));
   if x.exponent() >= TINY_BELOW {
-    let (k, k1) = temme_sums(value, mu, mu * mu);
-    let (q, mut g, mut product) = (0.25 * value * value, k1 / k, k);
-    let mut i = 1.0;
-    while i <= n {
-      product *= g;
-      g = (mu + i) + q / g;
-      i += 1.0;
-    }
+    let carried = |ln_2_x: f64| {
+      let (k, k1) = temme_sums_at(value, mu, mu * mu, ln_2_x);
+      let (q, mut g, mut product) = (0.25 * value * value, k1 / k, k);
+      let mut i = 1.0;
+      while i <= n {
+        product *= g;
+        g = (mu + i) + q / g;
+        i += 1.0;
+      }
+      (product, g)
+    };
+    // The sums read `ln(2/v)` of the double `v` they sum at, its high part, the low part through their slope in it.
+    let d_v = add_parts(d, (rel_lo, 0.0));
+    let (product, g) = carried(d_v.0);
+    let ahead = carried(d_v.0 + LN_STEP).0;
+    let slope = ((ahead - product) / product).ln_1p() / LN_STEP;
     // `K_μΠgᵢ` moves with `ln x` at `ν + n − 2gₙ`, `K_ν`'s own `xK′/K = ν − 2gₙ` less the `(2/x)ⁿ` kept apart.
     let (h, h_lo) = ln_parts(product, 0.0, 0);
-    let low = h_lo + (nu + n - 2.0 * g) * rel_lo + value * rel_lo;
+    let low = h_lo + slope * d_v.1 + (nu + n - 2.0 * g) * rel_lo + value * rel_lo;
     return add_parts(add_parts((h, low), mul_parts((n, 0.0), d)), (value, 0.0));
   }
   // From `μd = 21` on `f₀`'s second term, `Γ(−μ)/Γ(μ)·(x/2)^{2μ}` of the first, is under `2⁻⁶⁰`.

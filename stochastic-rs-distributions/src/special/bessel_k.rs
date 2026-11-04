@@ -262,8 +262,13 @@ fn temme_pair(x: f64, mu: f64, mu2: f64, xi2: f64) -> (f64, f64) {
 
 /// Temme's series: $(K_\mu, (x/2) K_{\mu+1})$ for `x < 2`, NaN where it does not converge.
 pub(super) fn temme_sums(x: f64, mu: f64, mu2: f64) -> (f64, f64) {
+  temme_sums_at(x, mu, mu2, -(0.5 * x).ln())
+}
+
+/// [`temme_sums`] with its `ln(2/x)` given.
+pub(super) fn temme_sums_at(x: f64, mu: f64, mu2: f64, ln_2_x: f64) -> (f64, f64) {
   let x2 = 0.5 * x;
-  let (mut ff, e, gam1, gam2) = temme_head(mu, -x2.ln());
+  let (mut ff, e, gam1, gam2) = temme_head(mu, ln_2_x);
   let gampl = gam2 - mu * gam1;
   let gammi = gam2 + mu * gam1;
   let mut sum = ff;
