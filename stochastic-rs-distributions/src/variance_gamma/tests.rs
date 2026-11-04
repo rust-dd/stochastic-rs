@@ -363,6 +363,44 @@ fn skewness_holds_at_extreme_parameters() {
     );
   }
 }
+
+/// mpmath at 60 and 120 digits (Debye's expansion from order `1e6`) where a rate under `1e-300`, a diffusion under `θ√ν`
+/// or a product in the mgf's base left the doubles: NaN, a false 0 or `e⁰`, now the number, or `0` below the subnormals.
+#[test]
+fn extreme_parameters_answer_numbers() {
+  let vg = SimdVarianceGamma::<f64>::new;
+  for (law, x, want) in [
+    (
+      vg(1e-300, 1e-308, 0.0, 0.0),
+      0.0,
+      3.989_422_804_014_326_6e299,
+    ),
+    (vg(1.0, 1e-308, 1.0, 0.0), 0.0, 0.241_970_724_519_143_35),
+    (vg(1e300, 1e300, 0.0, 0.0), 5e-324, 2.024_022_533_073_106e23),
+    (vg(1e-300, 1e-10, 1.0, 0.0), 1.0, 39_894.228_039_810_81),
+  ] {
+    let got = law.pdf(x).unwrap();
+    assert!(close(got, want, 1e-12), "{got:e}");
+  }
+  assert_eq!(vg(1.0, 1e-10, 0.0, 0.0).pdf(f64::MAX), Some(0.0));
+  for (law, t, want) in [
+    (
+      vg(1e300, 1e300, -1e300, 1e300),
+      1e-300,
+      2.718_281_828_459_045_4,
+    ),
+    (vg(1e300, 1.0, -1e300, 0.0), 1e-300, 0.666_666_666_666_666_7),
+    (vg(1e-300, 1e-300, 0.0, 0.0), 1e300, 1.648_721_270_700_128_2),
+  ] {
+    let got = law.moment_generating_function(t).unwrap();
+    assert!(close(got, want, 1e-12), "{got:e}");
+  }
+  assert_eq!(
+    vg(1.0, 1e-10, -1e300, 0.0).moment_generating_function(1e300),
+    Some(0.0)
+  );
+}
+
 /// mpmath at 60 and 120 digits below order `1/ν − ½ = 50` where `K` overflows at a subnormal argument `|d|·root/σ²`, which
 /// read `0.6 %` and `17 %` off.
 #[test]
@@ -381,6 +419,46 @@ fn large_logarithms_keep_their_digits() {
       (0.003_593_220_738_688_755, 0.177_497_898_575_445_84, 0.0),
       1.64e-321,
       119.169_430_466_466,
+    ),
+  ] {
+    let got = SimdVarianceGamma::<f64>::new(sigma, nu, theta, 0.0)
+      .pdf(x)
+      .unwrap();
+    assert!(close(got, want, 1e-12), "{got:e}");
+  }
+}
+
+/// mpmath at 60 and 120 digits where `νθ²/σ²` passes `1e20`, the clock's spread of the drift far wider than the diffusion,
+/// which read `5.7e-3` and `9.2e-8` off; the third, at a narrow law's mode, is its gamma clock's limit.
+#[test]
+fn a_drift_wider_than_its_diffusion_keeps_its_digits() {
+  for ((sigma, nu, theta), x, want) in [
+    (
+      (
+        1.564_308_602_782_54e-51,
+        4.510_980_159_820_432_4e-8,
+        1.782_134_037_789_231_3e-34,
+      ),
+      1.777_092_652_487_915_8e-34,
+      0.026_904_700_441_165_885,
+    ),
+    (
+      (
+        7.573_996_072_085_576e35,
+        8.899_825_487_622_758e-15,
+        -1.835_628_406_748_358_5e54,
+      ),
+      -1.835_626_407_466_031_7e54,
+      2.623_501_000_083_283e-77,
+    ),
+    (
+      (
+        2.946_250_577_607_835e-219,
+        0.018_059_528_332_604_22,
+        -2.472_405_407_713_238_7e-193,
+      ),
+      -2.472_405_407_713_238_7e-193,
+      1.198_901_739_254_771_3e193,
     ),
   ] {
     let got = SimdVarianceGamma::<f64>::new(sigma, nu, theta, 0.0)

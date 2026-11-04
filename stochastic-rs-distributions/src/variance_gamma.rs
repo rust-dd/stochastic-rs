@@ -56,7 +56,7 @@ use crate::traits::distribution::SimdKernel;
 const SMALL_VG_THRESHOLD: usize = 16;
 
 /// Variance-gamma distribution: volatility `σ > 0`, gamma-clock variance rate `ν > 0`, drift `θ`, location `μ`; a [`Seeded`](crate::Seeded) stream draws it.
-/// Its density within `ε(S + 16)` below order `1/ν − ½ = 50`, `S` its logarithms' sizes summed, or `32ε` where `S` passes 709 or its Bessel argument leaves the normal range, and `2.1e-15` from it, its mgf `2ε(|μt| + |ln M|)` up to its roots, its moments the gamma clock's cumulants mixed.
+/// Its density within `ε(S + 16)` below order `1/ν − ½ = 50`, `S` its logarithms' sizes summed, or `32ε` where `S` passes 709 or its Bessel argument leaves the normal range, and `4ε(|ln f| + |ln σ| + 20)` from it, its mgf `2ε(|μt| + |ln M|)` up to its roots, its moments the gamma clock's cumulants mixed.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdVarianceGamma<T> {
   sigma: T,
@@ -200,6 +200,7 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
 
   /// The density at order `1/ν − ½` past `LARGE_ORDER`, from the gamma clock: `ln N(1/ν − ½, d²/σ², θ²/σ² + 2/ν)` less the
   /// clock's `ln Γ(1/ν) + (ln ν)/ν` meets as `ln1pmx(g − 1)/ν − ½ ln g − (d − θg)²/(2σ²g)` at the maximiser `g`.
+  #[inline(always)]
   fn large_order_pdf(
     (sigma, nu, theta): (f64, f64, f64),
     (d, d_lo): (f64, f64),
@@ -210,13 +211,31 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
     }
     let c = (theta / sigma) * (theta / sigma);
     let (root_chi, psi) = (d.abs() / sigma, c + 2.0 / nu);
-    // `g − 1` itself, `(χ − 1 − c)/(R + o + 1 + c)`, `ψ = 2o + 1 + c`, `o` the order, and `χ − c = (d − θ)(d + θ)/σ²` and the gap
-    // `(d − θ) − θ(g − 1)` from the exact `d − θ`, which keeps its digits where the law is narrower than `θ`'s rounding.
+    // `g − 1 = (χ − 1 − c)/D`, `D = R + o + 1 + c`, `ψ = 2o + 1 + c`, `o` the order, `χ − c = (d − θ)(d + θ)/σ²` from the exact
+    // `d − θ`; past `q = θ(d + θ)/σ²D = ½`, where `θ(g − 1)` cancels `d − θ`, the gap `d − θg` is `((d − θ)(o + 1 + Δ) + θ)/D`.
     let (h, h_lo) = two_sum(d, -theta);
+    if !(nu > limits::NORMAL_CLOCK && c * nu < limits::NARROW_DIFFUSION && root_chi <= FAR)
+      || !(h.is_finite() && (d + theta).is_finite())
+    {
+      return Self::extreme_large_order((sigma, nu, theta), (d, d_lo), order);
+    }
     let near = h + (h_lo + d_lo);
     let r = order.hypot(root_chi * psi.sqrt());
-    let gm1 = ((near / sigma) * ((d + theta) / sigma) - 1.0) / (r + order + 1.0 + c);
-    let gap = (near - theta * gm1) / sigma;
+    let den = r + order + 1.0 + c;
+    let gm1 = ((near / sigma) * ((d + theta) / sigma) - 1.0) / den;
+    let q = (theta / sigma) * ((d + theta) / sigma) / den;
+    let gap = if q < 0.5 {
+      (near - theta * gm1) / sigma
+    } else {
+      let tilt = (theta / sigma) * (d / sigma) / r;
+      // `Δ = R − θd/σ²`, by `R² − (θd/σ²)² = o² + 2χ/ν` where `θd > 0`.
+      let excess = if tilt > 0.0 {
+        ((order / r) * order + (root_chi / r) * root_chi * (2.0 / nu)) / (1.0 + tilt)
+      } else {
+        r * (1.0 - tilt)
+      };
+      (near / sigma) * ((order + 1.0 + excess) / den) + (theta / sigma) / den
+    };
     // Debye's `−½ ln(1/ν − ½)` with the clock's `−½ ln ν` is `−½ ln_1p(−ν/2)`.
     let rests = debye_shape(order, root_chi * psi.sqrt())
       - 0.5 * (-0.5 * nu).ln_1p()
@@ -229,11 +248,37 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
       .exp()
   }
 
+  /// [`Self::large_order_pdf`] past its scales: a normal clock from `ν = 2⁻¹⁶⁰` down, `μ + θG` from `νθ²/σ² = 2¹⁰⁰`, `0` past
+  /// `|d|/σ = FAR`, and the law of `X/2`, exactly scaled, where `d ∓ θ` overflows.
+  #[cold]
+  #[inline(never)]
+  fn extreme_large_order(
+    (sigma, nu, theta): (f64, f64, f64),
+    (d, d_lo): (f64, f64),
+    order: f64,
+  ) -> f64 {
+    if nu <= limits::NORMAL_CLOCK {
+      return limits::normal_clock((sigma, nu, theta), (d, d_lo));
+    }
+    if (theta / sigma) * (theta / sigma) * nu >= limits::NARROW_DIFFUSION {
+      return limits::gamma_clock((nu, theta), (d, d_lo));
+    }
+    if (d / sigma).abs() > FAR {
+      return 0.0;
+    }
+    0.5 * Self::large_order_pdf((0.5 * sigma, nu, 0.5 * theta), (0.5 * d, 0.5 * d_lo), order)
+  }
+
   /// `ln b`, `b = 1 − X`, `X = θνt + ½σ²νt²`: plain where `PLAIN` bounds `X`'s rounding, else in two parts, `ln_1p(−X)` below
   /// `X = ½` and `1 − X` in two parts, exactly within `2⁻⁴⁰` of `X`'s terms; `None` where `b ≤ 0`.
   fn ln_base(sigma: f64, nu: f64, theta: f64, t: f64) -> Option<f64> {
     let plain_nt = nu * t;
     let (drift, spread) = (theta * plain_nt, 0.5 * sigma * sigma * t * plain_nt);
+    // A product of nonzero factors that leaves the normal range rounds away its digits, which `1 − X` may still carry.
+    let normal = (sigma * sigma).is_normal() && plain_nt.is_normal() && spread.is_normal();
+    if t != 0.0 && !t.is_nan() && !(normal && (theta == 0.0 || drift.is_normal())) {
+      return small_order::ln_base_far((sigma, nu, theta), t);
+    }
     let x = drift + spread;
     let b = 1.0 - x;
     if drift.abs() + spread <= PLAIN * nu * b.min(1.0) {
@@ -244,9 +289,11 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
     let spread = mul_parts(mul_parts(two_prod(sigma, sigma), nt), (0.5 * t, 0.0));
     let (x, x_lo) = add_parts(drift, spread);
     if !x_lo.is_finite() {
-      // A product past `f64::MAX`, or a NaN `t`, which must stay NaN.
-      let base = 1.0 - theta * nu * t - 0.5 * sigma * sigma * nu * t * t;
-      return (base > 0.0 || base.is_nan()).then(|| base.ln());
+      return if t.is_nan() {
+        Some(t)
+      } else {
+        small_order::ln_base_far((sigma, nu, theta), t)
+      };
     }
     if x < 0.5 {
       return Some((-x).ln_1p());
@@ -261,6 +308,9 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
     (b > 0.0).then(|| b.ln())
   }
 }
+
+/// Past this `|d|/σ`, with `νθ²/σ²` under `2¹⁰⁰` and `ν` over `2⁻¹⁶⁰`, the point lies `2⁴⁰⁰` of the law's scale out.
+const FAR: f64 = 3.273_390_607_896_142e150;
 
 /// Up to this `(|θνt| + ½σ²νt²)/(ν min(b, 1))` the plain `X`'s rounding moves `ln(b)/ν` by under `2.5·PLAIN·ε`.
 const PLAIN: f64 = 64.0;
@@ -444,8 +494,18 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
     };
     // One exponent: a location that cancels the clock past `e^{±709}` would overflow either factor alone.
     let (p, p_lo) = two_prod(mu, t);
+    let clock = ln_base / nu;
+    if p.is_infinite() && clock == p {
+      // Both terms past the doubles: the larger by its logarithm decides the sign of the exponent.
+      let larger = mu.abs().ln() + t.abs().ln() > ln_base.abs().ln() - nu.ln();
+      return Some(if larger == (p > 0.0) {
+        f64::INFINITY
+      } else {
+        0.0
+      });
+    }
     let low = if p.is_finite() { p_lo } else { 0.0 };
-    Some((p - ln_base / nu + low).exp())
+    Some((p - clock + low).exp())
   }
 
   /// $e^{iu\mu}(1 - i\theta\nu u + \tfrac12\sigma^2\nu u^2)^{-1/\nu}$.
@@ -457,6 +517,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
   }
 }
 
+mod limits;
 mod small_order;
 
 #[cfg(test)]

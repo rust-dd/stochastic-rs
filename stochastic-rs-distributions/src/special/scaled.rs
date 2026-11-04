@@ -109,6 +109,14 @@ impl Scaled {
     self.e
   }
 
+  /// The value times `2ᵏ`, exactly.
+  pub(crate) fn shift(self, k: i32) -> Self {
+    Self {
+      e: self.e + k,
+      ..self
+    }
+  }
+
   pub(crate) fn ln(self) -> (f64, f64) {
     ln_parts(self.m, self.lo, self.e)
   }

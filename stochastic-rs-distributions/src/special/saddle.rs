@@ -159,7 +159,12 @@ fn divergence_at(lambda: f64, coefficient: f64, e: f64, (ratio, ratio_lo): (f64,
       -lambda * ln_1p_mx(-e / (1.0 + e)) - coefficient * q
     };
   }
-  let q = e * e / ratio;
+  // From `e = 1e150` on `e²` nears its overflow, which `e/(1 + e)` first avoids.
+  let q = if e.abs() < 1e150 {
+    e * e / ratio
+  } else {
+    e * (e / ratio)
+  };
   if s.abs() <= 0.5 {
     // `ln1pmx(e) = 2s³Σ − e²/(2 + e)` and `ℓ(e) = 2s³Σ + e²/((1 + e)(2 + e))`, where the two forms below would cancel.
     let s2 = s * s;
@@ -177,8 +182,9 @@ fn divergence_at(lambda: f64, coefficient: f64, e: f64, (ratio, ratio_lo): (f64,
       lambda * (lead / ratio + tail) - coefficient * q
     };
   }
-  // A ratio past the normal range leaves the `1/x` or `x` term, or `|λ| ≥ 50` times the logarithm, past `e^{−10⁴}`.
-  if !ratio.is_normal() {
+  // A ratio past the normal range leaves the `1/x` or `x` term, or `|λ| ≥ 50` times the logarithm, past `e^{−10⁴}`; a high part
+  // at or below 0 is a ratio under the least normal its low part restores.
+  if !(ratio.is_normal() && ratio > 0.0) {
     return f64::NEG_INFINITY;
   }
   let ln_ratio = ratio.ln() + ratio_lo / ratio;
@@ -266,19 +272,61 @@ pub(crate) fn order_step(lambda: f64, k: f64, (rc, rp): (f64, f64)) -> (f64, f64
 /// `ln N(λ, χ, ψ − 2s) − ln N(λ, χ, ψ)` for `ψ − 2s = shifted ≥ 0`, `|λ|` past `LARGE_ORDER`: with `Q = |λ| + √(λ² + χψ)`
 /// each maximum is `λ ln(Q/ψ) − Q + λ` (`|λ| ln(Q/χ) − Q + |λ|` at `λ < 0`), so the step is `λ⁺ ln(ψ/ψ_s) + |λ| ln_1p(ΔQ/Q) − ΔQ`.
 pub(crate) fn ln_shift(lambda: f64, s: f64, (chi, psi, shifted): (f64, f64, f64)) -> f64 {
+  // `ln(ψ/ψ_s)` from whichever of `2s` and `ψ_s` is the smaller part of `ψ`, both given exactly.
+  let small_step = lambda > 0.0 && 4.0 * s < psi;
+  let (step, ratio) = (2.0 * s * chi, if small_step { 2.0 * s / psi } else { 0.0 });
+  if !(shifted.is_finite() && step.is_finite() && ratio.is_finite()) {
+    return ln_shift_far(lambda, s, (chi, psi, shifted));
+  }
   let nu = lambda.abs();
   let (omega, omega_s) = (chi.sqrt() * psi.sqrt(), chi.sqrt() * shifted.sqrt());
   let (r, r_s) = (nu.hypot(omega), nu.hypot(omega_s));
-  let dq = -2.0 * s * chi / (r + r_s);
-  // `ln(ψ/ψ_s)` from whichever of `2s` and `ψ_s` is the smaller part of `ψ`, both given exactly.
+  let dq = -step / (r + r_s);
   let power = if lambda <= 0.0 {
     0.0
-  } else if 4.0 * s < psi {
-    -lambda * (-2.0 * s / psi).ln_1p()
+  } else if small_step {
+    -lambda * (-ratio).ln_1p()
   } else {
     lambda * (psi / shifted).ln()
   };
-  power + nu * (dq / (nu + r)).ln_1p() - dq + debye_shape(nu, omega_s) - debye_shape(nu, omega)
+  power + nu * ln_step(nu + r, nu + r_s, dq) - dq + debye_shape(nu, omega_s)
+    - debye_shape(nu, omega)
+}
+
+/// `ln(Q_s/Q)` for `Q_s = Q + dq`: `ln_1p(dq/Q)` unless the step takes `Q` below half, where `Q_s` itself is the closer value.
+fn ln_step(q: f64, q_s: f64, dq: f64) -> f64 {
+  let x = dq / q;
+  if x > -0.5 { x.ln_1p() } else { (q_s / q).ln() }
+}
+
+/// [`ln_shift`] where `ψ − 2s`, `2sχ` or `2s/ψ` leaves the doubles: the shifted root as `2√(ψ/4 − s/2)`, the step
+/// `−2sχ/(r + r_s)` as `−2((s/(r + r_s))√χ)√χ` and the power from logarithms where `2s/ψ` overflows.
+#[cold]
+#[inline(never)]
+fn ln_shift_far(lambda: f64, s: f64, (chi, psi, shifted): (f64, f64, f64)) -> f64 {
+  let nu = lambda.abs();
+  let (root_chi, root_psi) = (chi.sqrt(), psi.sqrt());
+  let root_shifted = if shifted.is_finite() {
+    shifted.sqrt()
+  } else {
+    2.0 * (0.25 * psi - 0.5 * s).sqrt()
+  };
+  let (omega, omega_s) = (root_chi * root_psi, root_chi * root_shifted);
+  if !omega_s.is_finite() {
+    return f64::NEG_INFINITY;
+  }
+  let (r, r_s) = (nu.hypot(omega), nu.hypot(omega_s));
+  let dq = -2.0 * ((s / (r + r_s)) * root_chi) * root_chi;
+  let ratio = 2.0 * (s / psi);
+  let power = if lambda <= 0.0 {
+    0.0
+  } else if 4.0 * s < psi && ratio.is_finite() {
+    -lambda * (-ratio).ln_1p()
+  } else {
+    lambda * (psi.ln() - 2.0 * root_shifted.ln())
+  };
+  power + nu * ln_step(nu + r, nu + r_s, dq) - dq + debye_shape(nu, omega_s)
+    - debye_shape(nu, omega)
 }
 
 /// `ln Γ(1/ν) + (ln ν + 1)/ν − ½ ln(2πν)`, Stirling's remainder in `ν`, `Σ B_{2k}ν^{2k−1}/(2k(2k − 1))`; its first omitted term

@@ -205,3 +205,27 @@ fn extreme_parameters_keep_their_moments() {
   );
   assert_eq!(SimdGig::<f64>::new(-1e300, 1e-300, 1.0).mean(), Some(0.0));
 }
+
+/// mpmath at 60 and 120 digits (Debye's expansion at order `1e15`) where the saddle form's ratio, `e²` or `2sχ` left the
+/// doubles and read NaN: the number, `0` below half the least subnormal, `+∞` past `f64::MAX`.
+#[test]
+fn extreme_parameters_answer_numbers() {
+  let gig = SimdGig::<f64>::new;
+  assert_eq!(gig(50.0, 1.0, 1.0).pdf(5e-324), Some(0.0));
+  assert_eq!(gig(-50.0, 1e-300, 1e-300).pdf(1.0), Some(0.0));
+  assert_eq!(
+    gig(50.0, 1e-300, 1e-300).moment_generating_function(-f64::MAX),
+    Some(0.0)
+  );
+  assert_eq!(
+    gig(-50.0, 1e300, 1e300).moment_generating_function(5e299),
+    Some(f64::INFINITY)
+  );
+  let near_one = gig(-1e15, 1e-300, 1e-300)
+    .moment_generating_function(-f64::MAX)
+    .unwrap();
+  assert!(
+    close(near_one, 0.999_999_910_115_347_3, 1e-12),
+    "{near_one}"
+  );
+}

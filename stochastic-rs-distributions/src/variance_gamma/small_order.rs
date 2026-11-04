@@ -71,3 +71,51 @@ pub(super) fn density((sigma, nu, theta): (f64, f64, f64), d: (f64, f64)) -> f64
   let kernel = sub_parts(ln_bessel_ke_parts(order, far.mul(root).div(sigma2)), drop);
   exp_parts(sub_parts(add_parts(power, kernel), norm), 1.0, 0)
 }
+
+/// `ln b` where a product in `θνt` or `½σ²νt²` passes the doubles: `b = 1 − νt(θ + ½σ²t)`, the bracket in two parts at a common
+/// power of two and `νt` times it scaled, `ln` of that product once it passes `2⁶⁰`; `None` where `b ≤ 0`.
+#[cold]
+#[inline(never)]
+pub(super) fn ln_base_far((sigma, nu, theta): (f64, f64, f64), t: f64) -> Option<f64> {
+  if t == 0.0 {
+    return Some(0.0);
+  }
+  let spread = Scaled::new(sigma)
+    .mul(Scaled::new(sigma))
+    .mul(Scaled::new(t.abs()))
+    .div(Scaled::new(2.0));
+  let k = if theta == 0.0 {
+    spread.exponent()
+  } else {
+    spread.exponent().max(Scaled::new(theta.abs()).exponent())
+  };
+  let (s, s_lo) = spread.shift(-k).value_parts();
+  let bracket = add_parts(
+    (crate::special::ldexp(theta, -k), 0.0),
+    (t.signum() * s, t.signum() * s_lo),
+  );
+  if bracket.0 == 0.0 {
+    return Some(0.0);
+  }
+  let product = Scaled::new(nu)
+    .mul(Scaled::new(t.abs()))
+    .mul(Scaled::parts((
+      bracket.0.abs(),
+      bracket.1 * bracket.0.signum(),
+    )))
+    .shift(k);
+  let rising = (t < 0.0) != (bracket.0 < 0.0);
+  if product.exponent() > 60 {
+    return rising.then(|| {
+      let (h, h_lo) = product.ln();
+      h + h_lo
+    });
+  }
+  let (v, v_lo) = product.value_parts();
+  let sign = if rising { 1.0 } else { -1.0 };
+  let (b, b_lo) = add_parts((1.0, 0.0), (sign * v, sign * v_lo));
+  (b > 0.0).then(|| {
+    let (h, h_lo) = ln_parts(b, b_lo, 0);
+    h + h_lo
+  })
+}

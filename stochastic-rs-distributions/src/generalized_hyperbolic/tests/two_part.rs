@@ -270,3 +270,32 @@ fn large_logarithms_and_subnormal_clocks_keep_their_digits() {
     }
   }
 }
+
+/// mpmath at 60 and 120 digits (Debye's expansion from order `1e15`) where the clock's saddle, `w₁`, `d²` or `2sχ` left the
+/// doubles and read NaN: the number, `0` below half the least subnormal, `+∞` past `f64::MAX`.
+#[test]
+fn extreme_parameters_answer_numbers() {
+  let gh = SimdGeneralizedHyperbolic::<f64>::new;
+  for (law, want) in [
+    (
+      gh(1e15, 1e-150, 0.0, 1e-150, 0.0),
+      8.920_620_580_763_859e-159,
+    ),
+    (
+      gh(-1e300, 1e-150, 0.0, 1e-150, 0.0),
+      5.641_895_835_477_563e299,
+    ),
+    (
+      gh(1e300, 1e-150, 0.0, 1e-150, 0.0),
+      2.820_947_917_738_781_4e-301,
+    ),
+  ] {
+    let got = law.pdf(0.0).unwrap();
+    assert!(close(got, want, 1e-12), "{got:e}");
+  }
+  assert_eq!(gh(50.0, 1.0, 0.999_999, 1.0, 0.0).pdf(-f64::MAX), Some(0.0));
+  assert_eq!(
+    gh(-50.0, 1e150, 5e149, 1e150, 0.0).moment_generating_function(5e149),
+    Some(f64::INFINITY)
+  );
+}
