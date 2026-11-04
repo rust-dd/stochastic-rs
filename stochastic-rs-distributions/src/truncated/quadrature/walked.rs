@@ -6,8 +6,11 @@ use super::panels::Cut;
 use super::panels::Panel;
 use super::panels::span;
 
+/// The marks held in place: the median law walks five panels, and a fill that keeps them inline allocates nothing.
+const INLINE: usize = 8;
+
 /// A panel's far end, an offset from its run's origin, and its mass.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 struct Mark {
   far: f64,
   mass: f64,
@@ -25,7 +28,10 @@ struct Run {
 
 #[derive(Clone, Debug, Default)]
 pub(super) struct Walked {
-  marks: Vec<Mark>,
+  /// The first `INLINE` marks in place while there are no more, else all of them on the heap.
+  inline: [Mark; INLINE],
+  spilt: Vec<Mark>,
+  count: usize,
   /// The first run inline, as most walks are one, and the others.
   first: Option<Run>,
   rest: Vec<Run>,
@@ -52,7 +58,7 @@ impl Walked {
         && run.graded == panel.graded
         && run.singular.map(f64::to_bits) == panel.singular.map(f64::to_bits)
         && self
-          .marks
+          .marks()
           .last()
           .is_some_and(|m| m.far.to_bits() == near.to_bits())
     });
@@ -66,32 +72,46 @@ impl Walked {
         near,
         graded: panel.graded,
         singular: panel.singular,
-        start: self.marks.len(),
+        start: self.count,
       };
       match self.first {
         None => self.first = Some(run),
         Some(_) => self.rest.push(run),
       }
     }
-    // Room for most walks at once: the median law has five panels.
-    if self.marks.capacity() == 0 {
-      self.marks.reserve_exact(8);
+    let mark = Mark { far, mass };
+    match self.count {
+      n if n < INLINE => self.inline[n] = mark,
+      INLINE => {
+        self.spilt.reserve(4 * INLINE);
+        self.spilt.extend_from_slice(&self.inline);
+        self.spilt.push(mark);
+      }
+      _ => self.spilt.push(mark),
     }
-    self.marks.push(Mark { far, mass });
+    self.count += 1;
+  }
+
+  fn marks(&self) -> &[Mark] {
+    if self.count <= INLINE {
+      &self.inline[..self.count]
+    } else {
+      &self.spilt
+    }
   }
 
   pub(super) fn len(&self) -> usize {
-    self.marks.len()
+    self.count
   }
 
   pub(super) fn mass(&self, i: usize) -> f64 {
-    self.marks[i].mass
+    self.marks()[i].mass
   }
 
   /// The running sum before panel `i`, its additions the walk's own.
   pub(super) fn below(&self, i: usize) -> Sum {
     let mut sum = Sum::default();
-    for m in &self.marks[..i] {
+    for m in &self.marks()[..i] {
       sum.add(m.mass);
     }
     sum
@@ -104,7 +124,7 @@ impl Walked {
     for (j, run) in self.first.iter().chain(&self.rest).enumerate() {
       let end = self.end(j);
       let t = span(run.origin, at);
-      let i = run.start + self.marks[run.start..end].partition_point(|m| t >= m.far);
+      let i = run.start + self.marks()[run.start..end].partition_point(|m| t >= m.far);
       if i < end {
         return Some((i, self.panel(j, i), t));
       }
@@ -117,7 +137,7 @@ impl Walked {
   pub(super) fn reaching(&self, want: f64) -> Option<(Panel, f64, f64)> {
     let mut acc = Sum::default();
     let mut hit = None;
-    for (i, m) in self.marks.iter().enumerate() {
+    for (i, m) in self.marks().iter().enumerate() {
       hit = Some((i, (want - acc.hi) - acc.lo, m.mass));
       acc.add(m.mass);
       if acc.value() >= want {
@@ -138,17 +158,18 @@ impl Walked {
 
   /// One past the last panel of run `j`.
   fn end(&self, j: usize) -> usize {
-    self.rest.get(j).map_or(self.marks.len(), |next| next.start)
+    self.rest.get(j).map_or(self.count, |next| next.start)
   }
 
   fn panel(&self, run: usize, i: usize) -> Panel {
     let r = self.run(run);
+    let marks = self.marks();
     let near = if i == r.start {
       r.near
     } else {
-      self.marks[i - 1].far
+      marks[i - 1].far
     };
-    let far = self.marks[i].far;
+    let far = marks[i].far;
     let (l, r_end) = if self.rev { (far, near) } else { (near, far) };
     Panel {
       origin: r.origin,

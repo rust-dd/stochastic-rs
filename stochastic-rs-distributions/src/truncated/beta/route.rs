@@ -84,15 +84,17 @@ impl Mirror {
       ldexp(f64::MAX, -p)
     };
     let kernel = Reflected(GammaKernel::new(b, s));
-    let t = Filled::new(kernel, ldexp(lo - 1.0, -p), ldexp(up - 1.0, -p));
-    if t.narrow().is_some() {
-      return None;
-    }
-    let m = Self {
+    let (z_lo, z_up) = (ldexp(lo - 1.0, -p), ldexp(up - 1.0, -p));
+    // Filled where it lies, as a model's engine is.
+    let mut m = Self {
       p,
       ln_unit: f64::from(p) * LN_2,
-      t,
+      t: Filled::placed(kernel, Cut::at(z_lo), Cut::at(z_up)),
     };
+    if m.t.narrow().is_some() {
+      return None;
+    }
+    m.t.fill();
     let end = -ldexp(m.t.clipped().0, p);
     (holds(a, end) && (exact || (m.cdf(0.5) == 0.0 && m.pdf(0.5) == 0.0))).then_some(m)
   }
