@@ -413,9 +413,9 @@ pub fn beta_i(a: f64, b: f64, x: f64) -> f64 {
   let lower = x < (a + 1.0) / (a + b + 2.0);
   if bt.is_normal() {
     if lower {
-      return bt * betacf(a, b, x, 200) / a;
+      return bt * betacf::<200>(a, b, x) / a;
     }
-    let rest = bt * betacf(b, a, 1.0 - x, 200) / b;
+    let rest = bt * betacf::<200>(b, a, 1.0 - x) / b;
     if rest < 1.0 - LOST {
       return 1.0 - rest;
     }
@@ -432,27 +432,26 @@ const LOST: f64 = 1.4901161193847656e-8;
 #[inline(never)]
 fn beta_i_scaled(a: f64, b: f64, x: f64, lower: bool) -> f64 {
   let ln_n = |ga: f64, gb: f64| ln_gamma(a + b) - ga - gb + a * x.ln() + b * (1.0 - x).ln();
-  let left = |cap: usize| (ln_n(ln_gamma(a + 1.0), ln_gamma(b)) + betacf(a, b, x, cap).ln()).exp();
-  let right =
-    |cap: usize| (ln_n(ln_gamma(a), ln_gamma(b + 1.0)) + betacf(b, a, 1.0 - x, cap).ln()).exp();
+  let left = |cf: f64| (ln_n(ln_gamma(a + 1.0), ln_gamma(b)) + cf.ln()).exp();
+  let right = |cf: f64| (ln_n(ln_gamma(a), ln_gamma(b + 1.0)) + cf.ln()).exp();
   if lower {
-    let v = left(200);
+    let v = left(betacf::<200>(a, b, x));
     if v < 1.0 - LOST {
       v
     } else {
-      1.0 - right(100_000)
+      1.0 - right(betacf::<100_000>(b, a, 1.0 - x))
     }
   } else {
-    let rest = right(200);
+    let rest = right(betacf::<200>(b, a, 1.0 - x));
     if rest < 1.0 - LOST {
       1.0 - rest
     } else {
-      left(100_000)
+      left(betacf::<100_000>(a, b, x))
     }
   }
 }
 
-fn betacf(a: f64, b: f64, x: f64, cap: usize) -> f64 {
+fn betacf<const CAP: usize>(a: f64, b: f64, x: f64) -> f64 {
   let fpmin = 1e-300_f64;
   let qab = a + b;
   let qap = a + 1.0;
@@ -464,7 +463,7 @@ fn betacf(a: f64, b: f64, x: f64, cap: usize) -> f64 {
   }
   d = 1.0 / d;
   let mut h = d;
-  for m in 1..=cap {
+  for m in 1..=CAP {
     let m_f = m as f64;
     let m2 = 2.0 * m_f;
     let aa = m_f * (b - m_f) * x / ((qam + m2) * (a + m2));
