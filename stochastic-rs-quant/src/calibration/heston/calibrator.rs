@@ -64,6 +64,8 @@ pub struct HestonCalibrator {
   pub loss_metrics: &'static [LossMetric],
   /// Jacobian/method choice for calibration.
   pub jacobian_method: HestonJacobianMethod,
+  /// Project every iterate onto Feller's condition `2κθ ≥ σ²` (off by default).
+  pub feller_projection: bool,
   /// Optional common LM tolerance for research workloads.
   pub optimizer_tolerance: Option<f64>,
   /// Maximum residual-evaluation budget per fitted parameter, as defined by LM.
@@ -116,6 +118,7 @@ impl HestonCalibrator {
       record_history,
       loss_metrics: &LossMetric::ALL,
       jacobian_method: HestonJacobianMethod::default(),
+      feller_projection: false,
       optimizer_tolerance: None,
       optimizer_patience: 100,
       calibration_history: Rc::new(RefCell::new(Vec::new())),
@@ -167,6 +170,7 @@ impl HestonCalibrator {
       record_history,
       loss_metrics: &LossMetric::ALL,
       jacobian_method: HestonJacobianMethod::default(),
+      feller_projection: false,
       optimizer_tolerance: None,
       optimizer_patience: 100,
       calibration_history: Rc::new(RefCell::new(Vec::new())),
@@ -259,6 +263,10 @@ impl HestonCalibrator {
 
   pub fn set_jacobian_method(&mut self, method: HestonJacobianMethod) {
     self.jacobian_method = method;
+  }
+
+  pub fn set_feller_projection(&mut self, enabled: bool) {
+    self.feller_projection = enabled;
   }
 
   /// Set a positive common LM convergence tolerance.

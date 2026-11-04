@@ -112,7 +112,15 @@ impl HestonCalibrator {
         .infer_initial_guess_from_series()
         .unwrap_or_else(Self::fallback_params)
     };
-    canonicalize(&projected)
+    canonicalize(&self.feller_projected(projected))
+  }
+
+  fn feller_projected(&self, params: HestonParams) -> HestonParams {
+    if self.feller_projection {
+      params.projected_with_feller_condition()
+    } else {
+      params
+    }
   }
 
   pub(super) fn compute_model_prices_for_numeric(&self, params: &HestonParams) -> Array1<f64> {
@@ -185,8 +193,8 @@ impl HestonCalibrator {
       let mut minus = coordinates.clone();
       plus[col] += h;
       minus[col] -= h;
-      let params_plus = from_optimizer_coordinates(&plus);
-      let params_minus = from_optimizer_coordinates(&minus);
+      let params_plus = self.feller_projected(from_optimizer_coordinates(&plus));
+      let params_minus = self.feller_projected(from_optimizer_coordinates(&minus));
 
       let r_plus = self.residuals_for(&params_plus);
       let r_minus = self.residuals_for(&params_minus);
