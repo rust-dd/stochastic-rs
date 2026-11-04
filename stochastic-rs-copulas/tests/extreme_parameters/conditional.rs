@@ -244,8 +244,8 @@ fn the_t_h_keeps_its_digits_near_the_diagonal_and_across_the_switch() {
   }
 }
 
-/// At small `|ρ|` `h` keeps `x − ρy` (mpmath at 50 and 90 digits), within what one ulp of either quantile moves it:
-/// `t_{ν+1}`'s slope `f/F` at `z = (x − ρy)s` times `s(ulp x + |ρ| ulp y)`, `s = √((ν + 1)/((ν + y²)(1 − ρ²)))`.
+/// At small `|ρ|` `h` keeps `x − ρy` (mpmath at 50 and 90 digits) within four times `t_{ν+1}`'s `f/F` at `z = (x − ρy)s` times
+/// `s(ulp x + |ρ| ulp y)`, what an ulp of either quantile moves it; `4ε` in every `exp` and `ln` moves the rows by up to 3.3.
 #[test]
 fn the_t_h_keeps_the_plain_form_at_small_rho() {
   let ulp = |q: f64| f64::from_bits(q.abs().to_bits() + 1) - q.abs();
@@ -264,7 +264,7 @@ fn the_t_h_keeps_the_plain_form_at_small_rho() {
     let copula = TCopula::new(rho, nu);
     let h = copula.partial_derivative(array![[u, v]].view()).unwrap()[0];
     assert!(
-      (h - want).abs() <= bar * want,
+      (h - want).abs() <= 4.0 * bar * want,
       "t {rho} {nu}: h({u} | {v}) = {h:e}, want {want:e} within {bar:e}"
     );
   }

@@ -356,3 +356,20 @@ fn the_cdf_past_the_countermonotone_crossing_holds_at_a_large_nu() {
     );
   }
 }
+
+/// At small `|ρ|` `h` takes `x − ρy` as the quantiles' bits give it, whatever the libm: the shifted gap form, which reads these
+/// two cells `1.3e-14` and `1.2e-14` off, is not taken.
+#[test]
+fn the_plain_form_holds_at_small_rho() {
+  for (rho, nu, u, v) in [(-0.3_f64, 1e8_f64, 0.9, 1e-100), (0.0, 1e8, 1e-5, 1e-300)] {
+    let law = Law::new(nu);
+    let (x, y) = (law.quantile(u), law.quantile(v));
+    let scale = ((nu + 1.0) / (nu + y.value * y.value)).sqrt() / ((1.0 - rho) * (1.0 + rho)).sqrt();
+    let gap = TCopula::shifted_gap(&law, (rho, nu, scale), (u, v, x, y));
+    assert_eq!(
+      gap,
+      x.value - rho * y.value,
+      "ρ = {rho}, ν = {nu}, ({u}, {v})"
+    );
+  }
+}
