@@ -106,12 +106,21 @@ impl HestonCalibrator {
   }
 
   pub(super) fn effective_params(&self) -> HestonParams {
-    if let Some(p) = &self.params {
-      return p.clone().projected();
+    let params = match &self.params {
+      Some(p) => p.clone(),
+      None => self
+        .infer_initial_guess_from_series()
+        .unwrap_or_else(Self::fallback_params),
+    };
+    self.project(params)
+  }
+
+  pub(super) fn project(&self, params: HestonParams) -> HestonParams {
+    if self.feller_projection {
+      params.projected_with_feller_condition()
+    } else {
+      params.projected()
     }
-    self
-      .infer_initial_guess_from_series()
-      .unwrap_or_else(Self::fallback_params)
   }
 
   pub(super) fn compute_model_prices_for_numeric(&self, params: &HestonParams) -> DVector<f64> {
@@ -154,7 +163,7 @@ impl HestonCalibrator {
   }
 
   pub(super) fn residuals_for(&self, params: &HestonParams) -> DVector<f64> {
-    self.c_market.clone() - self.compute_model_prices_for(params)
+    (&self.c_market - self.compute_model_prices_for(params)).component_mul(&self.residual_weights)
   }
 
   /// Numerically approximate the Jacobian via central differences.
@@ -203,11 +212,8 @@ impl HestonCalibrator {
         _ => unreachable!(),
       }
 
-      params_plus.project_in_place();
-      params_minus.project_in_place();
-
-      let r_plus = self.residuals_for(&params_plus);
-      let r_minus = self.residuals_for(&params_minus);
+      let r_plus = self.residuals_for(&self.project(params_plus));
+      let r_minus = self.residuals_for(&self.project(params_minus));
 
       let diff = (r_plus - r_minus) / (2.0 * h);
       for row in 0..n {

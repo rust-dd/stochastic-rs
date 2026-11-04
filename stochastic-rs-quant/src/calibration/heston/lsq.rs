@@ -18,8 +18,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
   type ResidualStorage = Owned<f64, Dyn>;
 
   fn set_params(&mut self, params: &DVector<f64>) {
-    let p = HestonParams::from(params.clone()).projected();
-    self.params = Some(p);
+    self.params = Some(self.project(HestonParams::from(params.clone())));
   }
 
   fn params(&self) -> DVector<f64> {
@@ -29,13 +28,14 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
   fn residuals(&self) -> Option<DVector<f64>> {
     let params_eff = self.effective_params();
     let c_model = self.compute_model_prices_for(&params_eff);
+    let weighted_residuals = (&self.c_market - &c_model).component_mul(&self.residual_weights);
 
     if self.record_history {
       self
         .calibration_history
         .borrow_mut()
         .push(CalibrationHistory {
-          residuals: self.c_market.clone() - c_model.clone(),
+          residuals: weighted_residuals.clone(),
           call_put: self
             .c_market
             .iter()
@@ -69,7 +69,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
         });
     }
 
-    Some(self.c_market.clone() - c_model)
+    Some(weighted_residuals)
   }
 
   fn jacobian(&self) -> Option<DMatrix<f64>> {

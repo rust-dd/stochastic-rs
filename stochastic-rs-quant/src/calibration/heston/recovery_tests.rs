@@ -165,3 +165,26 @@ fn termination_reason_accompanies_converged() {
   );
 }
 
+#[test]
+fn feller_projection_keeps_a_below_feller_fit_on_the_boundary() {
+  let mut calibrator = calibrator(&CASES[0], HestonJacobianMethod::CuiAnalytic);
+  calibrator.set_feller_projection(true);
+  let fit = calibrator.calibrate(None).unwrap().params;
+  assert!(
+    fit.sigma * fit.sigma <= 2.0 * fit.kappa * fit.theta * (1.0 + 1e-12),
+    "{fit:?}"
+  );
+}
+
+#[test]
+fn residual_weights_leave_an_exact_fit_in_place() {
+  let weights = MATURITIES
+    .iter()
+    .flat_map(|_| STRIKES.iter().map(|k| 1.0 + (k / SPOT - 1.0).abs()))
+    .collect::<Vec<_>>();
+  for truth in &CASES {
+    let mut calibrator = calibrator(truth, HestonJacobianMethod::CuiAnalytic);
+    calibrator.set_residual_weights(weights.clone()).unwrap();
+    assert_recovers(&calibrator, truth, None);
+  }
+}

@@ -40,6 +40,8 @@ pub struct HestonCalibrator {
   pub flat_t: Vec<f64>,
   /// Option type of the quotes.
   pub option_type: OptionType,
+  /// Positive row weights applied to price residuals and their Jacobian.
+  pub residual_weights: DVector<f64>,
   /// Optional: time series for MLE-based initial guess
   pub mle_s: Option<Array1<f64>>,
   pub mle_v: Option<Array1<f64>>,
@@ -56,6 +58,8 @@ pub struct HestonCalibrator {
   pub loss_metrics: &'static [LossMetric],
   /// Jacobian/method choice for calibration.
   pub jacobian_method: HestonJacobianMethod,
+  /// Project every iterate onto Feller's condition `2κθ ≥ σ²` (off by default).
+  pub feller_projection: bool,
   /// History of iterations (residuals, params, loss metrics).
   pub(super) calibration_history: Rc<RefCell<Vec<CalibrationHistory<HestonParams>>>>,
 }
@@ -93,6 +97,7 @@ impl HestonCalibrator {
       q,
       flat_t: vec![tau; n],
       option_type,
+      residual_weights: DVector::from_element(n, 1.0),
       mle_s,
       mle_v,
       mle_r,
@@ -102,6 +107,7 @@ impl HestonCalibrator {
       record_history,
       loss_metrics: &LossMetric::ALL,
       jacobian_method: HestonJacobianMethod::default(),
+      feller_projection: false,
       calibration_history: Rc::new(RefCell::new(Vec::new())),
     }
   }
@@ -130,6 +136,7 @@ impl HestonCalibrator {
       }
     }
 
+    let quote_count = flat_prices.len();
     Self {
       params,
       c_market: DVector::from_vec(flat_prices),
@@ -139,6 +146,7 @@ impl HestonCalibrator {
       q,
       flat_t,
       option_type,
+      residual_weights: DVector::from_element(quote_count, 1.0),
       mle_s: None,
       mle_v: None,
       mle_r: None,
@@ -148,6 +156,7 @@ impl HestonCalibrator {
       record_history,
       loss_metrics: &LossMetric::ALL,
       jacobian_method: HestonJacobianMethod::default(),
+      feller_projection: false,
       calibration_history: Rc::new(RefCell::new(Vec::new())),
     }
   }
@@ -180,6 +189,38 @@ impl HestonCalibrator {
 
   pub fn set_initial_guess(&mut self, params: HestonParams) {
     self.params = Some(params.projected());
+  }
+
+  /// Set positive residual weights, normalized to unit root-mean-square.
+  /// Inverse Black-Scholes vega weights approximate an implied-volatility objective.
+  pub fn set_residual_weights(&mut self, weights: impl Into<DVector<f64>>) -> anyhow::Result<()> {
+    let mut weights = weights.into();
+    if weights.len() != self.c_market.len() {
+      anyhow::bail!(
+        "Heston residual weight count {} does not match quote count {}",
+        weights.len(),
+        self.c_market.len()
+      );
+    }
+    if weights.is_empty()
+      || weights
+        .iter()
+        .any(|weight| !weight.is_finite() || *weight <= 0.0)
+    {
+      anyhow::bail!("Heston residual weights must be finite and positive");
+    }
+    let root_mean_square =
+      (weights.iter().map(|weight| weight * weight).sum::<f64>() / weights.len() as f64).sqrt();
+    if !root_mean_square.is_finite() || root_mean_square <= 0.0 {
+      anyhow::bail!("Heston residual weight normalization is invalid");
+    }
+    weights /= root_mean_square;
+    self.residual_weights = weights;
+    Ok(())
+  }
+
+  pub fn set_feller_projection(&mut self, enabled: bool) {
+    self.feller_projection = enabled;
   }
 
   /// Enable or disable recording of per-iteration calibration history.

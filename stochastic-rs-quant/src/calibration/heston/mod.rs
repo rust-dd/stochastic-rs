@@ -28,3 +28,6 @@ mod recovery_tests;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod weight_tests;

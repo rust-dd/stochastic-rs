@@ -275,7 +275,7 @@ impl HestonCalibrator {
       if model_raw > 0.0 {
         c_model[idx] = model_raw;
         for col in 0..5 {
-          j_residual[(idx, col)] = -grad_model[col];
+          j_residual[(idx, col)] = -self.residual_weights[idx] * grad_model[col];
         }
       } else {
         c_model[idx] = 0.0;
