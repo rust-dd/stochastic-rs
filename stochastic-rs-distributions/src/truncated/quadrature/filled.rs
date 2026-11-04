@@ -1,16 +1,20 @@
-//! The engine and what its first calls keep beside it: the summed moments and the entropy. A cell inside the engine
-//! would let any call through its `&self` write it, and its hot loops would reload what they read.
+//! The engine and what its first calls keep beside it: the walk from `b`, the summed moments and the entropy. A cell
+//! inside the engine would let any call through its `&self` write it, and its hot loops would reload what they read.
 
 use std::ops::Deref;
 use std::sync::OnceLock;
 
 use super::Kernel;
+use super::Point;
 use super::Truncation;
+use super::Walked;
 use super::panels::Cut;
 
 #[derive(Clone, Debug)]
 pub(in crate::truncated) struct Filled<K> {
   t: Truncation<K>,
+  /// Boxed, as most laws never form it and every law's fill moves the cell.
+  upper: OnceLock<Box<Walked>>,
   summed: OnceLock<[f64; 4]>,
   entropy: OnceLock<f64>,
 }
@@ -27,6 +31,7 @@ impl<K: Kernel> From<Truncation<K>> for Filled<K> {
   fn from(t: Truncation<K>) -> Self {
     Self {
       t,
+      upper: OnceLock::new(),
       summed: OnceLock::new(),
       entropy: OnceLock::new(),
     }
@@ -48,6 +53,10 @@ impl<K: Kernel> Filled<K> {
 
   pub(in crate::truncated) fn fill(&mut self) {
     self.t.fill();
+  }
+
+  pub(in crate::truncated) fn quantile(&self, p: f64) -> Point {
+    self.t.quantile(p, &self.upper)
   }
 
   pub(in crate::truncated) fn located_moments(

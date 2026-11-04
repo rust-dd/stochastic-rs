@@ -1,12 +1,14 @@
 //! The quantile: the panels walked from the end nearer the level, then Newton inside the one that holds it.
 
 use std::ops::ControlFlow;
+use std::sync::OnceLock;
 
 use super::CLIP;
 use super::Kernel;
 use super::Point;
 use super::Sum;
 use super::Truncation;
+use super::Walked;
 use super::clip;
 use super::panels::Cut;
 use super::panels::Panel;
@@ -15,8 +17,9 @@ use super::singular::Frame;
 use super::zone::ZONE_MASS;
 
 impl<K: Kernel> Truncation<K> {
-  /// Above ½ the level is walked from `up`, so `1 − p` keeps the digits a level next to 1 has.
-  pub(super) fn invert(&self, p: f64) -> Point {
+  /// Above ½ the level is walked from `up`, so `1 − p` keeps the digits a level next to 1 has; that walk is recorded on
+  /// the first such level, in `upper`.
+  pub(super) fn invert(&self, p: f64, upper: &OnceLock<Box<Walked>>) -> Point {
     if (0.25..=0.75).contains(&p)
       && let Some(t) = self.flat_quantile(p)
     {
@@ -27,13 +30,8 @@ impl<K: Kernel> Truncation<K> {
       };
     }
     if p > 0.5 {
-      return self.locate(
-        self.a,
-        self.b,
-        (1.0 - p) * self.m0 - self.tail_up,
-        false,
-        0.0,
-      );
+      let upper = upper.get_or_init(|| Box::new(self.record(true)));
+      return self.seek(upper, (1.0 - p) * self.m0 - self.tail_up, false);
     }
     let want = p * self.m0 - self.tail_lo;
     if want < ZONE_MASS
@@ -42,7 +40,7 @@ impl<K: Kernel> Truncation<K> {
       return point;
     }
     if want > 0.0 {
-      return self.locate(self.a, self.b, want, true, 0.0);
+      return self.seek(&self.lower, want, true);
     }
     // Below the clip: from where the kernel is `e^{−CLIP}` below `p` times its reference value, every value taken
     // relative to the kernel there, so no node underflows.
@@ -70,12 +68,25 @@ impl<K: Kernel> Truncation<K> {
       }
     });
     match hit {
-      Some((panel, rest, mass)) => match panel.singular {
-        Some(e) => self.solve_singular(&panel, e, rest, mass, from_lo, shift),
-        None => self.solve(panel, rest, mass, from_lo, shift),
-      },
+      Some((panel, rest, mass)) => self.solve_in(panel, rest, mass, from_lo, shift),
       None if from_lo => Point::From(l),
       None => Point::From(r),
+    }
+  }
+
+  /// `locate` on `[a, b]` from the masses a walk of it recorded, the same panels in the same order.
+  fn seek(&self, walked: &Walked, want: f64, from_lo: bool) -> Point {
+    match walked.reaching(want) {
+      Some((panel, rest, mass)) => self.solve_in(panel, rest, mass, from_lo, 0.0),
+      None if from_lo => Point::From(self.a),
+      None => Point::From(self.b),
+    }
+  }
+
+  fn solve_in(&self, panel: Panel, want: f64, mass: f64, from_lo: bool, shift: f64) -> Point {
+    match panel.singular {
+      Some(e) => self.solve_singular(&panel, e, want, mass, from_lo, shift),
+      None => self.solve(panel, want, mass, from_lo, shift),
     }
   }
 

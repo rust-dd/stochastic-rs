@@ -4,6 +4,7 @@
 //! Reference: Press, W. H., Teukolsky, S. A., Vetterling, W. T. & Flannery, B. P. (1992), *Numerical Recipes in C*, 2nd ed., Cambridge University Press, §4.4, ISBN 0-521-43108-5 (the change of variable at an integrable power-law end).
 
 use std::ops::ControlFlow;
+use std::sync::OnceLock;
 
 use clip::clip;
 pub(super) use filled::Filled;
@@ -20,6 +21,7 @@ pub(super) use sum::accurate_sum;
 pub(super) use sum::two_prod;
 pub(super) use sum::two_sum;
 pub(super) use two::Two;
+use walked::Walked;
 pub(super) use zone::Offset;
 pub(super) use zone::exp_split;
 
@@ -35,6 +37,7 @@ mod reflect;
 mod singular;
 mod sum;
 pub(super) mod two;
+mod walked;
 mod zone;
 
 /// A law's log-kernel on its support, in the law's own coordinate, taken relative to a reference point `c`.
@@ -260,6 +263,8 @@ pub(super) struct Truncation<K> {
   /// A graded panel's weight as `half/width`, not in logs: the subnormal cdf's walk, whose kernel stays below its value
   /// at the point, needs each node to an ε, which a log near −700 rounds to 1e-13.
   sharp: bool,
+  /// `M₀`'s walk from `a`, so the cdf and the lower walk find their panel by search and keep its running sum.
+  lower: Walked,
 }
 
 impl<K: Kernel> Truncation<K> {
@@ -330,7 +335,7 @@ impl<K: Kernel> Truncation<K> {
   }
 
   /// `cdf⁻¹(p)`: the bounds at 0 and 1; else the panel holding `p`, walked to from the nearer end, then Newton in it.
-  pub(super) fn quantile(&self, p: f64) -> Point {
+  fn quantile(&self, p: f64, upper: &OnceLock<Box<Walked>>) -> Point {
     if p.is_nan() {
       return Point::At(f64::NAN);
     }
@@ -343,7 +348,7 @@ impl<K: Kernel> Truncation<K> {
     if self.narrow {
       return Point::At(self.centre.x);
     }
-    self.invert(p)
+    self.invert(p, upper)
   }
 
   /// `x − c` exact where `x` lies within a factor 2 of the centre's double, as `span` forms it.

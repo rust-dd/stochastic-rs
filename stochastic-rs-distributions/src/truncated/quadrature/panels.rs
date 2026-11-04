@@ -178,6 +178,18 @@ impl Cut {
     span(Self::at(origin), self)
   }
 
+  /// Equal to the bit, zeros' signs included, so a panel rebuilt from one reads as one from the other.
+  pub(super) fn same(self, other: Self) -> bool {
+    let bits = |c: Self| {
+      (
+        c.x.to_bits(),
+        c.from.map(|(s, lo, t)| [s, lo, t].map(f64::to_bits)),
+        c.inner.map(|(s, e)| [s, e].map(f64::to_bits)),
+      )
+    };
+    bits(self) == bits(other)
+  }
+
   /// `−self`, every part negated exactly (`0 − v`, so no part reads `−0`).
   pub(in crate::truncated) fn neg(self) -> Self {
     let neg = |v: f64| 0.0 - v;

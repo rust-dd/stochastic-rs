@@ -1,18 +1,22 @@
-//! The fill: the reference point and the clipped ends, then `M₀` and the tails beyond the clips.
+//! The fill: the reference point and the clipped ends, then `M₀` with its walk and the tails beyond the clips.
+
+use std::ops::ControlFlow;
 
 use super::CLIP;
 use super::Kernel;
 use super::Sum;
 use super::Truncation;
+use super::Walked;
 use super::clip;
 use super::panels::Cut;
 use super::panels::span;
 
 impl<K: Kernel> Truncation<K> {
-  /// `M₀`, and the mass beyond the clips that the cdf and the quantile read.
+  /// `M₀` with its walk, and the mass beyond the clips that the cdf and the quantile read.
   pub(super) fn fill(&mut self) {
     if !self.narrow {
-      self.weigh(self.integrate_sum(self.a, self.b, 0.0));
+      self.lower = self.record(false);
+      self.weigh(self.lower.below(self.lower.len()));
     }
     self.tails = true;
     let (start, end) = self.reach();
@@ -57,6 +61,16 @@ impl<K: Kernel> Truncation<K> {
       self.b
     };
     (start, end)
+  }
+
+  /// The walk of `[a, b]` from the end `rev` names, each panel's mass recorded.
+  pub(super) fn record(&self, rev: bool) -> Walked {
+    let mut walked = Walked::new(rev);
+    let _ = self.walk(self.a, self.b, rev, |panel| {
+      walked.push(&panel, self.panel_mass(&panel, 0.0));
+      ControlFlow::<()>::Continue(())
+    });
+    walked
   }
 
   /// The setup before any sum: the reference point, the clipped ends and their width.
@@ -139,6 +153,7 @@ impl<K: Kernel> Truncation<K> {
       tail_up: 0.0,
       tails: false,
       sharp: false,
+      lower: Walked::default(),
     }
   }
 }

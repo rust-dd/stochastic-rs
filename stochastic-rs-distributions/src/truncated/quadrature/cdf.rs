@@ -8,6 +8,7 @@ use super::Kernel;
 use super::Sum;
 use super::Truncation;
 use super::Two;
+use super::Walked;
 use super::clip;
 use super::exp_split;
 use super::ldexp;
@@ -56,21 +57,18 @@ impl<K: Kernel> Truncation<K> {
     if span(self.a, at) < 0.0 {
       return self.below_clip(at, ln_point);
     }
-    // The panels `M₀` was summed on, so next to 1 the two sums differ only by the panel holding `x`.
-    let mut sum = Sum::default();
-    let mut above = None;
-    let _ = self.walk(self.a, self.b, false, |panel| {
-      let t = span(panel.origin, at);
-      if t >= panel.r {
-        sum.add(self.panel_mass(&panel, 0.0));
-        return ControlFlow::Continue(());
+    // The panels and running sum of `M₀`, so next to 1 the two sums differ only by the panel holding `x`.
+    let (sum, above) = match self.lower.holding(at) {
+      Some((i, panel, t)) => {
+        let mut sum = self.lower.below(i);
+        let above = self.above_in_last(&panel, t, at, sum.value());
+        if t > panel.l && above.is_none() {
+          self.part_below(&panel, t, self.lower.mass(i), &mut sum);
+        }
+        (sum, above)
       }
-      above = self.above_in_last(&panel, t, at, sum.value());
-      if t > panel.l && above.is_none() {
-        self.part_below(&panel, t, &mut sum);
-      }
-      ControlFlow::Break(())
-    });
+      None => (self.lower.below(self.lower.len()), None),
+    };
     let f = match above {
       Some(m) => 1.0 - ((m - self.tail_lo) - self.m0_rest) / self.m0,
       None => ((self.tail_lo + sum.value()) / self.m0).min_or_nan(1.0),
@@ -118,13 +116,13 @@ impl<K: Kernel> Truncation<K> {
   }
 
   /// Adds `panel`'s mass below the offset `t`; past the middle of a singular panel right of its branch point, the panel's
-  /// mass, then minus the part above `t`, whose frame keeps the panel's far end and so its Jacobian's rounding.
-  fn part_below(&self, panel: &Panel, t: f64, sum: &mut Sum) {
+  /// `mass`, then minus the part above `t`, whose frame keeps the panel's far end and so its Jacobian's rounding.
+  fn part_below(&self, panel: &Panel, t: f64, mass: f64, sum: &mut Sum) {
     if let Some(e) = panel.singular {
       let frame = Frame::of(panel, e);
       let past = (frame.q_at(t) - frame.q_near).abs() > 0.5 * (frame.q_far() - frame.q_near).abs();
       if frame.sign > 0.0 && past {
-        sum.add(self.panel_mass(panel, 0.0));
+        sum.add(mass);
         sum.add(-self.panel_mass(&Panel { l: t, ..*panel }, 0.0));
         return;
       }
@@ -170,6 +168,7 @@ impl<K: Kernel> Truncation<K> {
       near: at.near(),
       width: local,
       sharp: true,
+      lower: Walked::default(),
       ..*self
     };
     // Walked back from `x`, so each node's offset from it is exact where the slope would scale its rounding.
