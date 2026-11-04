@@ -84,7 +84,7 @@ pub(super) fn density((sigma, nu, theta): (f64, f64, f64), d: (f64, f64)) -> f64
   let q = (theta / sigma) * ((d.0 + theta) / sigma) / den.0;
   // Past `q = θ(d + θ)/σ²D = ½` the gap `(d − θ) − θg` cancels; `((d − θ)(o + 1 + Δ) + θ)/D`, `Δ = R − θd/σ²`, does not.
   let gap = if q < 0.5 {
-    over(sub_parts(near, mul_parts((theta, 0.0), g)), (sigma, 0.0))
+    sub_parts(over(near, (sigma, 0.0)), mul_parts(theta_s, g))
   } else {
     let tilt = over(mul_parts(theta_s, d_s), r);
     // `Δ = (o² + 2χ/ν)/(R + θd/σ²)` where `θd > 0`, from `R² − (θd/σ²)² = o² + 2χ/ν`.

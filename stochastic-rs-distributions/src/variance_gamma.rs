@@ -250,7 +250,8 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
       - 0.5 * gm1.ln_1p()
       - 0.5 * gap * gap / (1.0 + gm1)
       + rests;
-    if a.abs() + ln_sigma.abs() > PARTS_FROM {
+    // Past `|a| = 760` the plain exponent, a few `ε` of it off, settles `0` or `+∞` alone.
+    if a.abs() + ln_sigma.abs() > PARTS_FROM && a.abs() < 760.0 {
       return large_order::density((sigma, nu, theta), (d, d_lo));
     }
     a.exp()
