@@ -2,8 +2,8 @@
 //! Reference: Dekker, T.J. (1971), "A floating-point technique for extending the available precision", *Numerische Mathematik* 18(3), 224-242, DOI 10.1007/BF01397083.
 //! Reference: Shewchuk, J.R. (1997), "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates", *Discrete & Computational Geometry* 18(3), 305-363, Theorem 7 (Knuth's two-sum).
 
-/// `s + e = a + b` exactly.
-pub(crate) fn two_sum(a: f64, b: f64) -> (f64, f64) {
+/// `s + e = a + b` exactly; public for the t copulas' level gaps, outside the stability promise.
+pub fn two_sum(a: f64, b: f64) -> (f64, f64) {
   let s = a + b;
   let z = s - a;
   (s, (a - (s - z)) + (b - z))

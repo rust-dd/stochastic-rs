@@ -69,7 +69,8 @@ pub(crate) use saddle::stirling_tail;
 pub(crate) use twofold::add_parts;
 pub(crate) use twofold::mul_parts;
 pub(crate) use twofold::two_prod;
-pub(crate) use twofold::two_sum;
+#[doc(hidden)]
+pub use twofold::two_sum;
 
 const LANCZOS_G: f64 = 7.0;
 const LANCZOS_C: [f64; 9] = [

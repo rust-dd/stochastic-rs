@@ -1,6 +1,8 @@
 //! `Law::quantile_gap`: two near quantiles' difference from their exact level gap, the mass by 16-node Gauss–Legendre
 //! at exact offsets, in panels each within `e⁴` where the density changes by more across the gap.
 
+use stochastic_rs_distributions::special::two_sum;
+
 use crate::bivariate::integral::rule;
 use crate::student_t::Law;
 
@@ -54,7 +56,7 @@ impl Law {
   /// `precise_pdf` so no node carries the gap's whole exponent, then Newton from `ŷ`.
   fn wide_gap(&self, x: f64, level_gap: f64, start: f64, shift: f64) -> f64 {
     let y = x - start;
-    let (hi, lo) = two_diff(x, y);
+    let (hi, lo) = two_sum(x, -y);
     let span = if x * y >= 0.0 {
       self.span(x, y)
     } else {
@@ -79,7 +81,7 @@ impl Law {
       } else {
         end
       };
-      let (w, lo) = two_diff(next, s);
+      let (w, lo) = two_sum(next, -s);
       let f_next = self.inner.precise_pdf(next);
       total += fs * mass(&self.ratio(s), -w).abs() + w.signum() * lo * f_next;
       if next == end {
@@ -99,11 +101,4 @@ fn mass(ratio: &impl Fn(f64) -> f64, d: f64) -> f64 {
       .iter()
       .map(|&(t, w)| w * ratio(half * (t - 1.0)))
       .sum::<f64>()
-}
-
-/// `a − b = d + e` exactly (Knuth's two-sum).
-fn two_diff(a: f64, b: f64) -> (f64, f64) {
-  let d = a - b;
-  let z = d - a;
-  (d, (a - (d - z)) - (b + z))
 }
