@@ -1,5 +1,5 @@
 //! The first four cumulants of GIG(λ, χ, ψ) as `sⁿk̂ₙ` for a scale `s`, none formed from cancelling raw moments: Debye's
-//! expansion differentiated from `r = √(λ² + χψ) = 100`, the trapezoidal rule about the mode from 1.5, the Bessel ratios below.
+//! expansion differentiated from `r = √(λ² + χψ) = 100`, the trapezoidal rule about the mode from 3, the Bessel ratios below.
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 10.41.4 (Debye's expansion, a function of `r` alone at a fixed order), <https://dlmf.nist.gov/10.41.4>.
 //! Reference: Trefethen, L.N., Weideman, J.A.C. (2014), "The exponentially convergent trapezoidal rule", *SIAM Review* 56(3), 385-458, DOI 10.1137/130932132.
 
@@ -11,8 +11,8 @@ use crate::special::saddle;
 /// `(4/|λ|)ᵏ`, still `1e-12` short at `r = 50`.
 const DEBYE_FROM: f64 = 100.0;
 
-/// From this `r` the rule's step `STEP/√r` holds `3e-15`; below it the law is too wide in `ln x` for a short rule.
-const QUADRATURE_FROM: f64 = 1.5;
+/// From this `r` the rule's step `STEP/√r` holds `3e-15`; below it the Bessel ratios, their cancellation under 200, hold `3e-13`.
+const QUADRATURE_FROM: f64 = 3.0;
 
 const STEP: f64 = 0.2;
 

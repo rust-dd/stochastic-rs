@@ -16,7 +16,7 @@ fn large_orders_take_their_values() {
   ));
 }
 
-/// mpmath at 60 and 120 digits: variance, skewness and excess kurtosis within `1e-12` from the Bessel ratios (`r < 1.5`), the
+/// mpmath at 60 and 120 digits: variance, skewness and excess kurtosis within `1e-12` from the Bessel ratios (`r < 3`), the
 /// rule about the mode (to `r = 100`) and Debye's differentiated expansion, at `|λ|` from 1 to `10⁴` and `√(χψ) = 10¹²`.
 #[test]
 fn central_moments_hold_at_every_order() {
