@@ -364,6 +364,37 @@ fn saddle_tails_hold_where_the_clocks_part_far() {
   }
 }
 
+/// mpmath at 60 and 120 digits at admitted extremes: `0·∞` at `β = 0`, saddles leaving the doubles into `0/0`, a subnormal
+/// clock scale, and `β²·Var W` underflowing apart.
+#[test]
+fn extreme_parameters_keep_their_moments() {
+  let wide = SimdGeneralizedHyperbolic::<f64>::new(0.5, 1e-77, 0.0, 1.0, 0.0)
+    .variance()
+    .unwrap();
+  assert!(close(wide, 1e154, 1e-12), "{wide:e}");
+  let flat = SimdGeneralizedHyperbolic::<f64>::new(1e15, 1e-150, 0.0, 1.0, 0.0);
+  assert_eq!(
+    (flat.mean(), flat.variance()),
+    (Some(0.0), Some(f64::INFINITY))
+  );
+  let steep = SimdGeneralizedHyperbolic::<f64>::new(-1e15, 1e150, 5e149, 1.0, 0.0);
+  let (v, k) = (steep.variance().unwrap(), steep.kurtosis().unwrap());
+  assert!(
+    close(v, 1.539_600_717_839_002_2e-150, 1e-12) && close(k, 6.928_203_230_275_51e-150, 1e-12),
+    "{v:e}, {k:e}"
+  );
+  let narrow = SimdGeneralizedHyperbolic::<f64>::new(-1e15, 1e150, 5e149, 1e-150, 0.0);
+  let (m, s) = (narrow.mean().unwrap(), narrow.skewness().unwrap());
+  assert!(
+    close(m, 2.500_000_000_000_002_5e-166, 1e-12) && close(s, 3.354_101_966_249_693e-23, 1e-12),
+    "{m:e}, {s:e}"
+  );
+  let far = SimdGeneralizedHyperbolic::<f64>::new(50.0, 3.2e-154, 1e-154, 1e154, 0.0)
+    .mean()
+    .unwrap();
+  assert!(close(far, 1.083_270_490_233_109_3e155, 1e-12), "{far:e}");
+}
+
 /// mpmath at 120 and 240 digits where the power factor goes subnormal (`λ = −100`), its product with `K` overflows (`λ = 100`),
 /// `e^{μt}` alone goes subnormal (`λ = 10`, the `λ = 20` family), with the power too (`μ = −3.962`), and where `e^{dx}` does.
 #[test]

@@ -181,3 +181,27 @@ fn saddle_tails_hold_where_x_is_far_from_the_mode() {
     );
   }
 }
+
+/// mpmath at 60 and 120 digits, by quadrature in `ln(x/w)` and, as a second method, the differentiated cumulant generating
+/// function: moments at admitted extremes, which read 0, NaN or `0/0`, within `1e-12`, `+∞` past `f64::MAX` and 0 below it.
+#[test]
+fn extreme_parameters_keep_their_moments() {
+  let concentrated = SimdGig::<f64>::new(1.0, 1e140, 1e140).kurtosis().unwrap();
+  assert!(close(concentrated, 1.5e-139, 1e-12), "{concentrated:e}");
+  for ((lambda, chi, psi), skew, kurt) in [
+    ((-1e300, 1.0, 1.0), 4e-150, 3e-299),
+    ((1e300, 1.0, 1e300), 2e-150, 6e-300),
+  ] {
+    let d = SimdGig::<f64>::new(lambda, chi, psi);
+    let (s, k) = (d.skewness().unwrap(), d.kurtosis().unwrap());
+    assert!(
+      close(s, skew, 1e-12) && close(k, kurt, 1e-12),
+      "GIG({lambda}, {chi}, {psi}): {s:e}, {k:e}"
+    );
+  }
+  assert_eq!(
+    SimdGig::<f64>::new(1e15, 1.0, 1e-300).mean(),
+    Some(f64::INFINITY)
+  );
+  assert_eq!(SimdGig::<f64>::new(-1e300, 1e-300, 1.0).mean(), Some(0.0));
+}

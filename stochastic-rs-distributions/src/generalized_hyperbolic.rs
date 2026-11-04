@@ -51,6 +51,7 @@ use crate::special::debye_log_sum;
 use crate::special::divergence;
 use crate::special::exp_times_over;
 use crate::special::k_ratio;
+use crate::special::ldexp;
 use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
 use crate::special::ln_shift;
@@ -58,6 +59,7 @@ use crate::special::mul_parts;
 use crate::special::offset;
 use crate::special::saddle;
 use crate::special::saddle_parts;
+use crate::special::split_pow2;
 use crate::special::two_prod;
 use crate::special::two_sum;
 use crate::traits::distribution::Sealed;
@@ -67,7 +69,7 @@ use crate::traits::distribution::SimdKernel;
 const SMALL_GH_THRESHOLD: usize = 16;
 
 /// Generalized hyperbolic distribution GH$(\lambda, \alpha, \beta, \delta, \mu)$; a [`Seeded`](crate::Seeded) stream draws it in bulk.
-/// Within `ε·Σ|ln terms|` below order 50, from it the density `4ε(|ln f| + 20)` and the mgf `2ε(|ln M| + 5)`; the mgf adds `2ε|μt|` to its edge `|β + t| = α`, the mean is within `ε(|μ| + |β|E W)/|mean|`, and past the clock's `r ≈ 3e34` a density `k` deviations off its mode adds `k√r·1e-31`.
+/// Within `ε·Σ|ln terms|` below order 50, from it the density `4ε(|ln f| + 20)` and the mgf `2ε(|ln M| + 5)`; the mgf adds `2ε|μt|` to its edge `|β + t| = α`, the mean `ε(|μ| + ℓ|β|E W)/|mean|` (`ℓ = |ln β| + |ln E W|` where `E W` or `βE W` leaves the normal range, else 1), and past the clock's `r ≈ 3e34` a density `k` deviations off its mode adds `k√r·1e-31`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdGeneralizedHyperbolic<T> {
   lambda: T,
@@ -360,41 +362,60 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
 
   fn mean(&self) -> Option<f64> {
     let (_, _, beta, _, mu) = self.params();
-    Some(mu + beta * SimdGig::<f64>::raw_moment_at(self.clock(), 1))
+    Some(mu + SimdGig::<f64>::scaled_raw_moment_at(self.clock(), 1, beta))
   }
 
+  /// `κ₁(W) + β²κ₂(W)` over the clock's `κₙ = sⁿρⁿ⁻¹kₙ`, `s·k₁ + (βs)²ρk₂` with `s = 2ᵉm` and `β` split, so neither term
+  /// leaves the doubles before the value does.
   fn variance(&self) -> Option<f64> {
     let (_, _, beta, _, _) = self.params();
-    let (s, [k1, k2, _, _]) = SimdGig::<f64>::cumulants_at(self.clock());
-    Some(s * k1 + beta * beta * (s * k2 * s))
+    let ((m, e), rho, [k1, k2, _, _]) = SimdGig::<f64>::cumulants_at(self.clock());
+    let clock_mean = ldexp(m * k1, e);
+    if beta == 0.0 {
+      return Some(clock_mean);
+    }
+    let (b, n) = split_pow2(beta.abs());
+    let tilt = n * m;
+    Some(clock_mean + ldexp(tilt * (rho * k2) * tilt, 2 * (b + e)))
   }
 
-  /// `κ₃/κ₂^{3/2}` with `κ₃ = β(3κ₂(W) + β²κ₃(W))`, over the clock's scale `s` and `B = β²s` as `B` or `1/B`, whichever is small.
+  /// `κ₃/κ₂^{3/2}` with `κ₃ = β(3κ₂(W) + β²κ₃(W))`, over the clock's `κₙ = sⁿρⁿ⁻¹kₙ` and `B = β²sρ` as `B` or `1/B`, whichever
+  /// is small; 0 at `β = 0`, where the law is symmetric.
   fn skewness(&self) -> Option<f64> {
     let (_, _, beta, _, _) = self.params();
-    let (s, [k1, k2, k3, _]) = SimdGig::<f64>::cumulants_at(self.clock());
-    let b = beta * beta * s;
-    Some(if b == 0.0 {
-      0.0
-    } else if b <= 1.0 {
-      beta * s.sqrt() * (3.0 * k2 + b * k3) / (k1 + b * k2).powf(1.5)
+    if beta == 0.0 {
+      return Some(0.0);
+    }
+    let ((m, e), rho, [k1, k2, k3, _]) = SimdGig::<f64>::cumulants_at(self.clock());
+    let (b, n) = split_pow2(beta.abs());
+    let big = tilt_ratio((b, n), (m, e), rho);
+    Some(if big <= 1.0 {
+      // `|β|√s = 2^{b + ⌊e/2⌋}·n√(m·2^{e mod 2})`.
+      let root = n * (m * f64::from(1 + (e & 1))).sqrt();
+      let scaled = root * rho * (3.0 * k2 + big * k3) / (k1 + big * k2).powf(1.5);
+      beta.signum() * ldexp(scaled, b + (e >> 1))
     } else {
-      beta.signum() * (3.0 * k2 / b + k3) / (k1 / b + k2).powf(1.5)
+      beta.signum() * rho.sqrt() * (3.0 * k2 / big + k3) / (k1 / big + k2).powf(1.5)
     })
   }
 
   /// Excess kurtosis `κ₄/κ₂²`, `κ₄ = 3κ₂(W) + 6β²κ₃(W) + β⁴κ₄(W)`, every term positive, scaled like the skewness.
   fn kurtosis(&self) -> Option<f64> {
     let (_, _, beta, _, _) = self.params();
-    let (s, [k1, k2, k3, k4]) = SimdGig::<f64>::cumulants_at(self.clock());
-    let b = beta * beta * s;
-    // At `β = 0` the clock's `κ₃` and `κ₄` do not enter, and an overflowed one must not read `0·∞`.
-    Some(if b == 0.0 {
-      3.0 * k2 / (k1 * k1)
-    } else if b <= 1.0 {
-      (3.0 * k2 + b * (6.0 * k3 + b * k4)) / (k1 + b * k2).powi(2)
+    let ((m, e), rho, [k1, k2, k3, k4]) = SimdGig::<f64>::cumulants_at(self.clock());
+    let big = if beta == 0.0 {
+      0.0
     } else {
-      ((3.0 * k2 / b + 6.0 * k3) / b + k4) / (k1 / b + k2).powi(2)
+      tilt_ratio(split_pow2(beta.abs()), (m, e), rho)
+    };
+    // Where `B` is 0 the clock's `κ₃` and `κ₄` do not enter, and an infinite one must not read `0·∞`.
+    if big == 0.0 {
+      return Some(rho * (3.0 * k2 / (k1 * k1)));
+    }
+    Some(if big <= 1.0 {
+      rho * (3.0 * k2 + big * (6.0 * k3 + big * k4)) / (k1 + big * k2).powi(2)
+    } else {
+      rho * ((3.0 * k2 / big + 6.0 * k3) / big + k4) / (k1 / big + k2).powi(2)
     })
   }
 
@@ -428,6 +449,11 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     let (power, num, den, dx) = self.mgf_ratio(t, shifted);
     Some(k_ratio(power, num, &den, dx))
   }
+}
+
+/// `B = β²sρ` from `β = 2ᵇn` and the clock's scale `s = 2ᵉm`, so a scale past the doubles does not read `0·∞`.
+fn tilt_ratio((b, n): (i32, f64), (m, e): (f64, i32), rho: f64) -> f64 {
+  ldexp((n * m) * (n * rho), 2 * b + e)
 }
 
 #[cfg(test)]

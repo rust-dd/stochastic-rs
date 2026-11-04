@@ -347,7 +347,7 @@ fn bound_root(a: f64, p: f64, scale: f64) -> f64 {
 }
 
 /// `(k, m)` with `s = 2ᵏm`, `m ∈ [1, 2)`, for a positive finite `s`.
-fn split_pow2(s: f64) -> (i32, f64) {
+pub(crate) fn split_pow2(s: f64) -> (i32, f64) {
   let (s, shift) = if s < f64::MIN_POSITIVE {
     (s * 18_446_744_073_709_551_616.0, -64)
   } else {
@@ -366,6 +366,18 @@ fn split_sqrt2(s: f64) -> (i32, f64) {
   } else {
     (k, m)
   }
+}
+
+/// `x·2ᵖ` by powers of two the doubles hold, so `2ᵖ` may lie past them; a partial product leaves the normal range only
+/// where the result does.
+pub(crate) fn ldexp(mut x: f64, mut p: i32) -> f64 {
+  let pow2 = |k: i32| f64::from_bits(((k + 1023) as u64) << 52);
+  while p.abs() > 1000 {
+    let step = 1000 * p.signum();
+    x *= pow2(step);
+    p -= step;
+  }
+  x * pow2(p)
 }
 
 /// `ln P(a, x)`, or `ln Q` if `upper`, and its derivative in `ln x`: `1/S` or `−1/h` where the tail solved is the series'

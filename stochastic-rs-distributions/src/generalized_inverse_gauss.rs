@@ -52,10 +52,13 @@ use crate::special::debye_log_sum;
 use crate::special::divergence;
 use crate::special::exp_times_over;
 use crate::special::k_ratio;
+use crate::special::ldexp;
 use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
 use crate::special::ln_quotient;
+use crate::special::ln_saddle;
 use crate::special::ln_shift;
+use crate::special::log_regime;
 use crate::special::offset;
 use crate::special::order_step;
 use crate::special::saddle;
@@ -343,7 +346,13 @@ impl<T: SimdFloatExt> SimdGig<T> {
     let order = f64::from(k);
     if lambda.abs().min((lambda + order).abs()) >= LARGE_ORDER {
       let (wk, rest) = order_step(lambda, order, (chi, psi));
-      return wk.powf(order) * rest.exp();
+      let value = wk.powf(order) * rest.exp();
+      // Where `w_kᵏ` leaves the normal range alone, the exponent `k ln w_k + rest` from the saddle's logarithm.
+      return if value.is_normal() {
+        value
+      } else {
+        (order * ln_saddle(lambda + order, chi.sqrt(), psi.sqrt()) + rest).exp()
+      };
     }
     let (root_chi, root_psi) = (chi.sqrt(), psi.sqrt());
     let b = root_chi * root_psi;
@@ -353,6 +362,38 @@ impl<T: SimdFloatExt> SimdGig<T> {
       &KDenominator::new(lambda, b),
       0.0,
     )
+  }
+
+  /// `factor·E Xᵏ` at `(λ, χ, ψ)`: the product where the moment and it are normal, else from their logarithms, so a small
+  /// `factor` against an overflowing moment, or a large one against an underflowing one, keeps its value.
+  pub(crate) fn scaled_raw_moment_at(
+    (lambda, chi, psi): (f64, f64, f64),
+    k: u32,
+    factor: f64,
+  ) -> f64 {
+    if factor == 0.0 {
+      return 0.0;
+    }
+    let moment = Self::raw_moment_at((lambda, chi, psi), k);
+    let value = factor * moment;
+    if moment.is_normal() && value.is_normal() {
+      return value;
+    }
+    let (order, ln_factor) = (f64::from(k), factor.abs().ln());
+    let (root_chi, root_psi) = (chi.sqrt(), psi.sqrt());
+    let magnitude = if lambda.abs().min((lambda + order).abs()) >= LARGE_ORDER {
+      let (_, rest) = order_step(lambda, order, (chi, psi));
+      (ln_factor + order * ln_saddle(lambda + order, root_chi, root_psi) + rest).exp()
+    } else {
+      let b = root_chi * root_psi;
+      log_regime(
+        (ln_factor, root_chi, root_psi, order),
+        (lambda + order, b),
+        &KDenominator::new(lambda, b),
+        0.0,
+      )
+    };
+    factor.signum() * magnitude
   }
 
   /// The interior mgf's ratio at `t`, `shifted = ψ − 2t > 0`.
@@ -372,8 +413,9 @@ impl<T: SimdFloatExt> SimdGig<T> {
     )
   }
 
-  /// `(s, [κ₁/s, κ₂/s², κ₃/s³, κ₄/s⁴])`, the cumulants over powers of a scale `s`, at `(λ, χ, ψ)`.
-  pub(crate) fn cumulants_at((lambda, chi, psi): (f64, f64, f64)) -> (f64, [f64; 4]) {
+  /// `((m, e), ρ, [k₁, k₂, k₃, k₄])` with the cumulants `κₙ = sⁿρⁿ⁻¹kₙ`, `s = 2ᵉm`, at `(λ, χ, ψ)`, each factor
+  /// representable where `κₙ` is not.
+  pub(crate) fn cumulants_at((lambda, chi, psi): (f64, f64, f64)) -> ((f64, i32), f64, [f64; 4]) {
     cumulants::cumulants(lambda, chi, psi)
   }
 }
@@ -448,19 +490,19 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
   }
 
   fn variance(&self) -> Option<f64> {
-    let (s, [_, k2, _, _]) = Self::cumulants_at(self.params());
-    Some(s * k2 * s)
+    let ((m, e), rho, [_, k2, _, _]) = Self::cumulants_at(self.params());
+    Some(ldexp(m * (rho * k2) * m, 2 * e))
   }
 
   fn skewness(&self) -> Option<f64> {
-    let (_, [_, k2, k3, _]) = Self::cumulants_at(self.params());
-    Some(k3 / k2.powf(1.5))
+    let (_, rho, [_, k2, k3, _]) = Self::cumulants_at(self.params());
+    Some(rho.sqrt() * (k3 / k2.powf(1.5)))
   }
 
   /// Excess kurtosis, `κ₄/κ₂²`.
   fn kurtosis(&self) -> Option<f64> {
-    let (_, [_, k2, _, k4]) = Self::cumulants_at(self.params());
-    Some(k4 / (k2 * k2))
+    let (_, rho, [_, k2, _, k4]) = Self::cumulants_at(self.params());
+    Some(rho * (k4 / (k2 * k2)))
   }
 
   /// $(\psi/(\psi - 2t))^{\lambda/2}\,K_\lambda(\sqrt{\chi(\psi - 2t)})/K_\lambda(\sqrt{\chi\psi})$ for $t < \psi/2$; at $t = \psi/2$

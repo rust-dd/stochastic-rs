@@ -397,11 +397,25 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
     Some(sigma * sigma + nu * theta * theta)
   }
 
-  /// $(2\theta^3\nu^2 + 3\theta\sigma^2\nu)/(\sigma^2 + \nu\theta^2)^{3/2}$.
+  /// `κ₃/κ₂^{3/2}` from the gamma clock's cumulants, `t(3 + 2ρ)/(1 + ρ)^{3/2}`, `t = νθ/σ`, `ρ = tθ/σ`, past `ρ = 1` as
+  /// `sgn θ·√ν(2 + 3/ρ)/(1 + 1/ρ)^{3/2}`: no power of a parameter leaves the range where the value does not.
   fn skewness(&self) -> Option<f64> {
     let (sigma, nu, theta, _) = self.params();
-    let var = sigma * sigma + nu * theta * theta;
-    Some((2.0 * theta.powi(3) * nu * nu + 3.0 * theta * sigma * sigma * nu) / var.powf(1.5))
+    let ratio = theta / sigma;
+    // `νθ/σ` in an order whose partial product is normal where `θ/σ` is not.
+    let t = if ratio.is_normal() || theta == 0.0 {
+      nu * ratio
+    } else if (nu * theta).is_normal() {
+      nu * theta / sigma
+    } else {
+      theta * (nu / sigma)
+    };
+    let rho = t * ratio;
+    Some(if rho <= 1.0 {
+      t * (3.0 + 2.0 * rho) / (1.0 + rho).powf(1.5)
+    } else {
+      theta.signum() * nu.sqrt() * (2.0 + 3.0 / rho) / (1.0 + 1.0 / rho).powf(1.5)
+    })
   }
 
   /// Excess kurtosis `κ₄/κ₂²` from the gamma clock's cumulants, `κ₄ = 3νσ⁴(2ρ² + 4ρ + 1)`, `ρ = νθ²/σ²`: $3\nu(2 - (1 + \rho)^{-2})$.

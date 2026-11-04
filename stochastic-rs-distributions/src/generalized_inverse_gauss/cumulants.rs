@@ -1,11 +1,12 @@
-//! The first four cumulants of GIG(λ, χ, ψ) as `sⁿk̂ₙ` for a scale `s`, none formed from cancelling raw moments: Debye's
+//! The first four cumulants of GIG(λ, χ, ψ) as `sⁿρⁿ⁻¹k̂ₙ` for scales `s` and `ρ`, none from cancelling raw moments: Debye's
 //! expansion differentiated from `r = √(λ² + χψ) = 100`, the trapezoidal rule about the mode from 3, the Bessel ratios below.
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 10.41.4 (Debye's expansion, a function of `r` alone at a fixed order), <https://dlmf.nist.gov/10.41.4>.
 //! Reference: Trefethen, L.N., Weideman, J.A.C. (2014), "The exponentially convergent trapezoidal rule", *SIAM Review* 56(3), 385-458, DOI 10.1137/130932132.
 
 use crate::special::debye_moments;
 use crate::special::k_half_ratio;
-use crate::special::saddle;
+use crate::special::scaled_saddle;
+use crate::special::split_pow2;
 
 /// From this `r` Debye's corrections hold double precision at either sign of `λ`; at a negative order they converge like
 /// `(4/|λ|)ᵏ`, still `1e-12` short at `r = 50`.
@@ -20,25 +21,27 @@ const STEP: f64 = 0.2;
 /// carries its moments, so the Bessel ratios do not cancel there (`Σ|terms| ≤ 33|κ₄|`).
 const SIDE: usize = 512;
 
-/// `(s, [κ₁/s, κ₂/s², κ₃/s³, κ₄/s⁴])`.
-pub(super) fn cumulants(lambda: f64, chi: f64, psi: f64) -> (f64, [f64; 4]) {
+/// `((m, e), ρ, [κ₁/s, κ₂/(s²ρ), κ₃/(s³ρ²), κ₄/(s⁴ρ³)])` with the scale `s = 2ᵉm` split, as it may leave the doubles, and
+/// `ρ = 1/r` where Debye's cumulants fall like powers of it, else 1.
+pub(super) fn cumulants(lambda: f64, chi: f64, psi: f64) -> ((f64, i32), f64, [f64; 4]) {
   let (root_chi, root_psi) = (chi.sqrt(), psi.sqrt());
   let omega = root_chi * root_psi;
   let r = lambda.hypot(omega);
-  let w = saddle(lambda, root_chi, root_psi);
+  let w = || scaled_saddle(lambda, r, (root_chi, root_psi));
   if r >= DEBYE_FROM {
-    return (w, debye(lambda, omega, r));
+    return (w(), 1.0 / r, debye(lambda, omega, r));
   }
   if r >= QUADRATURE_FROM
     && let Some(k) = trapezoid(lambda, omega, r)
   {
-    return (w, k);
+    return (w(), 1.0, k);
   }
-  ratios(lambda, chi, psi, omega)
+  let (s, k) = ratios(lambda, chi, psi, omega);
+  (s, 1.0, k)
 }
 
-/// `(−2)ⁿ dⁿ ln N/dψⁿ` over `wⁿ`, `N = 2(χ/ψ)^{λ/2}K_λ(√(χψ))`: the order's part `w(ψ) = (λ + r)/ψ` differentiated in closed
-/// form, every term positive, and `T = ½ ln(π/2r) + ln S` by `(χ/r²)ⁿθ(θ + 2)…(θ + 2n − 2)`, `θ = s d/ds`, `s = 1/r`.
+/// `(−2)ⁿ dⁿ ln N/dψⁿ` over `wⁿ/rⁿ⁻¹`, `N = 2(χ/ψ)^{λ/2}K_λ(√(χψ))`: the order's part `w(ψ) = (λ + r)/ψ` differentiated in
+/// closed form, every term positive, and `T = ½ ln(π/2r) + ln S` by `(χ/r²)ⁿθ(θ + 2)…(θ + 2n − 2)`, `θ = s d/ds`, `s = 1/r`.
 fn debye(lambda: f64, omega: f64, r: f64) -> [f64; 4] {
   let nu = lambda.abs();
   let th = debye_moments(nu / r, 1.0 / r);
@@ -57,10 +60,9 @@ fn debye(lambda: f64, omega: f64, r: f64) -> [f64; 4] {
   let a = q / r;
   [
     1.0 + a * (0.5 + l1),
-    1.0 / r + a * a * (1.0 + l2 + 2.0 * l1),
-    (2.0 + q) / (r * r) + a.powi(3) * (4.0 + l3 + 6.0 * l2 + 8.0 * l1),
-    (6.0 + 6.0 * q + 3.0 * q * q) / r.powi(3)
-      + a.powi(4) * (24.0 + l4 + 12.0 * l3 + 44.0 * l2 + 48.0 * l1),
+    1.0 + q * a * (1.0 + l2 + 2.0 * l1),
+    (2.0 + q) + q * q * a * (4.0 + l3 + 6.0 * l2 + 8.0 * l1),
+    (6.0 + 6.0 * q + 3.0 * q * q) + q * q * q * a * (24.0 + l4 + 12.0 * l3 + 44.0 * l2 + 48.0 * l1),
   ]
 }
 
@@ -135,7 +137,7 @@ fn exp_m1_mx(x: f64) -> f64 {
 
 /// Scaled by the root mean square `s`: `ln(E Xᵏ/sᵏ) = Σ_{i<k} ln R_{λ+i} − (k/2)(ln R_λ + ln R_{λ+1})`, `R_ν = K_{ν+1}(ω)/K_ν(ω)`
 /// as `ln g_ν − h` from `ν = −½` and `h − ln g_{−ν−1}` below, `g_ν = (ω/2)R_ν`, `h = ln(ω/2)`, the `h` parts summed apart.
-fn ratios(lambda: f64, chi: f64, psi: f64, omega: f64) -> (f64, [f64; 4]) {
+fn ratios(lambda: f64, chi: f64, psi: f64, omega: f64) -> ((f64, i32), [f64; 4]) {
   let h = (0.5 * omega).ln();
   let parts = [0.0, 1.0, 2.0, 3.0].map(|i| {
     let nu = lambda + i;
@@ -151,17 +153,20 @@ fn ratios(lambda: f64, chi: f64, psi: f64, omega: f64) -> (f64, [f64; 4]) {
       parts[..k].iter().map(|p| p.0.ln()).sum::<f64>() - head * (parts[0].0.ln() + parts[1].0.ln());
     g + (parts[..k].iter().map(|p| p.1).sum::<f64>() - head * power) * h
   };
-  let mean = if parts[0].1 < 0.0 {
-    2.0 * parts[0].0 / psi
+  let upper = parts[0].1 < 0.0;
+  let (k, m) = split_pow2(if upper { psi } else { chi });
+  let mean = if upper {
+    2.0 * parts[0].0 / m
   } else {
-    0.5 * chi * parts[0].0
+    0.5 * m * parts[0].0
   };
   let (l1, l3, l4) = (ln_b(1), ln_b(3), ln_b(4));
   let (b1, k2) = (l1.exp(), 1.0 - (2.0 * l1).exp());
   // `b₄ − 4b₁b₃` with `b₄` factored out, so a heavy tail whose `b₄` and `b₁b₃` both overflow reads `+∞`, not `∞ − ∞`.
   let mu4 = l4.exp() * (1.0 - 4.0 * (l1 + l3 - l4).exp()) + 6.0 * b1 * b1 - 3.0 * b1.powi(4);
+  let (j, s) = split_pow2(mean / b1);
   (
-    mean / b1,
+    (s, if upper { j - k } else { j + k }),
     [
       b1,
       k2,

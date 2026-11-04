@@ -337,3 +337,29 @@ fn small_rates_hold_their_digits() {
   let ordinary = SimdVarianceGamma::<f64>::new(0.2, 0.3, 0.1, 0.0);
   assert_eq!(ordinary.pdf(1e15), Some(0.0));
 }
+
+/// The skewness at admitted extremes, where `σ²` underflowed or `ν²` overflowed into `0/0` or `∞/∞`, or `θ/σ` into 0: 0 at
+/// `θ = 0`, `2√ν` where `νθ²/σ²` passes `1e300`, `3νθ/σ` (mpmath at 60 and 120 digits) where `θ/σ` underflows.
+#[test]
+fn skewness_holds_at_extreme_parameters() {
+  assert_eq!(
+    SimdVarianceGamma::<f64>::new(1e-300, 1.0, 0.0, 0.0).skewness(),
+    Some(0.0)
+  );
+  let wide = SimdVarianceGamma::<f64>::new(1.0, 1e300, 1.0, 0.0)
+    .skewness()
+    .unwrap();
+  assert!(close(wide, 2e150, 1e-12), "{wide:e}");
+  for ((sigma, nu, theta), skew) in [
+    ((1e300, 1e299, 1e-9), 3e-10),
+    ((1e150, 1e10, 1e-160), 3e-300),
+  ] {
+    let got = SimdVarianceGamma::<f64>::new(sigma, nu, theta, 0.0)
+      .skewness()
+      .unwrap();
+    assert!(
+      close(got, skew, 1e-14),
+      "VG({sigma}, {nu}, {theta}): {got:e}"
+    );
+  }
+}

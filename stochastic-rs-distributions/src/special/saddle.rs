@@ -4,6 +4,7 @@
 
 use super::bessel_i::debye_sum_at;
 pub(crate) use super::bessel_k::debye_shape;
+use super::split_pow2;
 use super::twofold::two_prod;
 use super::twofold::two_sum;
 
@@ -14,11 +15,47 @@ pub(crate) const LARGE_ORDER: f64 = 50.0;
 /// The maximiser of `H_λ` from `√χ` and `√ψ`, `(λ + √(λ² + χψ))/ψ`, at `λ < 0` as `χ/(|λ| + √(λ² + χψ))`, which does not
 /// cancel; neither squares a root, so it holds where `χ` or `ψ` would overflow.
 pub(crate) fn saddle(lambda: f64, root_chi: f64, root_psi: f64) -> f64 {
-  let root = lambda.hypot(root_chi * root_psi);
+  saddle_at(
+    lambda,
+    lambda.hypot(root_chi * root_psi),
+    (root_chi, root_psi),
+  )
+}
+
+/// [`saddle`] at a known `root = √(λ² + χψ)`.
+fn saddle_at(lambda: f64, root: f64, (root_chi, root_psi): (f64, f64)) -> f64 {
   if lambda >= 0.0 {
     (lambda + root) / root_psi / root_psi
   } else {
     root_chi * (root_chi / (root - lambda))
+  }
+}
+
+/// [`saddle_at`] as `(m, k)`, `w = 2ᵏm`, which may leave the doubles; where it does not, `m` holds `saddle_at`'s bits.
+pub(crate) fn scaled_saddle(
+  lambda: f64,
+  root: f64,
+  (root_chi, root_psi): (f64, f64),
+) -> (f64, i32) {
+  if lambda >= 0.0 {
+    let (k, m) = split_pow2(root_psi);
+    let (j, q) = split_pow2((lambda + root) / m / m);
+    (q, j - 2 * k)
+  } else {
+    let (k, m) = split_pow2(root_chi);
+    let (j, d) = split_pow2(root - lambda);
+    let (i, q) = split_pow2(m * (m / d));
+    (q, i + 2 * k - j)
+  }
+}
+
+/// `ln` of [`saddle`] from its factors' logarithms, finite where the maximiser leaves the range of doubles.
+pub(crate) fn ln_saddle(lambda: f64, root_chi: f64, root_psi: f64) -> f64 {
+  let root = lambda.hypot(root_chi * root_psi);
+  if lambda >= 0.0 {
+    (lambda + root).ln() - 2.0 * root_psi.ln()
+  } else {
+    2.0 * root_chi.ln() - (root - lambda).ln()
   }
 }
 
@@ -185,12 +222,30 @@ fn rest_step(from: f64, to: f64, (x_from, x_to): (f64, f64)) -> f64 {
 /// `(w_k, rest)`: `H_λ(w_k) − H_λ(w)` a divergence, `w_k` the maximiser at `λ + k`, so `E Xᵏ` of the GIG rounds no `ln w_k`.
 pub(crate) fn order_step(lambda: f64, k: f64, (chi, psi): (f64, f64)) -> (f64, f64) {
   let (rc, rp) = (chi.sqrt(), psi.sqrt());
-  let (w, wk) = (saddle(lambda, rc, rp), saddle(lambda + k, rc, rp));
+  let to = lambda + k;
   let omega = rc * rp;
+  let (r, r_k) = (lambda.hypot(omega), to.hypot(omega));
+  let wk = saddle_at(to, r_k, (rc, rp));
+  let rest = rest_step(lambda.abs(), to.abs(), (omega, omega));
+  // `w_k/w − 1` from the orders and roots alone, so a saddle past the range of doubles leaves it finite.
+  let e = if lambda >= 0.0 {
+    k * (1.0 + (lambda + to) / (r + r_k)) / (lambda + r)
+  } else if to < 0.0 {
+    k * (1.0 + (lambda.abs() + to.abs()) / (r + r_k)) / (to.abs() + r_k)
+  } else {
+    // `λ < 0 ≤ λ + k`: the divergence `λ(ln ρ − 1) − (λ_k + r_k)/2 + ψw + (λ − ψw/2)/ρ`, `ρ = w_k/w`, from `ψw_k = λ_k + r_k`.
+    let psi_w = omega * (omega / (r - lambda));
+    let ln_ratio = ln_saddle(to, rc, rp) - ln_saddle(lambda, rc, rp);
+    let divergence = lambda * (ln_ratio - 1.0) - 0.5 * (to + r_k)
+      + psi_w
+      + (lambda - 0.5 * psi_w) * (-ln_ratio).exp();
+    return (wk, divergence + rest);
+  };
+  // `χ/2w` at `λ ≥ 0` and `ψw/2` below are both `ω²/2(|λ| + r)`, which no saddle past the doubles moves.
+  let coefficient = 0.5 * omega * (omega / (lambda.abs() + r));
   (
     wk,
-    divergence(lambda, (chi, psi), w, (wk / w - 1.0, 0.0))
-      + rest_step(lambda.abs(), (lambda + k).abs(), (omega, omega)),
+    divergence_at(lambda, coefficient, e, two_sum(1.0, e)) + rest,
   )
 }
 
