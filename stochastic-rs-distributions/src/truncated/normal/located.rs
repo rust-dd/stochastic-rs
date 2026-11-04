@@ -47,6 +47,11 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     let [alpha, beta, _] = self.bounds;
     // `(β² − α²)/2 = (β − α)(β + α)/2`, each factor from the bounds' own doubles.
     let half_gap = 0.5 * ((up - lo) / sigma) * (accurate_sum([lo, up, -mu, -mu]).0 / sigma);
+    let half_gap = if half_gap.is_finite() {
+      half_gap
+    } else {
+      halved_gap(lo, up, mu, sigma)
+    };
     // `k(z)/∫k·(1 − k(far)/k(z))` from the bound `z` nearer `μ`, in logs: kernel values below the doubles keep it.
     let (z, bound, share) = match (alpha.is_finite(), beta.is_finite()) {
       (false, false) => return Some((0.0, 0)),
@@ -228,6 +233,15 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       (Cut::held(alpha, beta, -width), up)
     }
   }
+}
+
+/// `(β − α)(β + α)/2` from the bounds' halves, where `up − lo` or `lo + up − 2μ` passes MAX: with `μ` inside, no half
+/// does, so each factor keeps its digits.
+#[cold]
+#[inline(never)]
+fn halved_gap(lo: f64, up: f64, mu: f64, sigma: f64) -> f64 {
+  let width = (0.5 * up - 0.5 * lo) / sigma;
+  2.0 * width * (accurate_sum([0.5 * lo, 0.5 * up, -0.5 * mu, -0.5 * mu]).0 / sigma)
 }
 
 /// `(x − μ)/σ`, from halves where `x − μ` overflows; an infinite `x` stays infinite.

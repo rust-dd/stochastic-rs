@@ -181,3 +181,29 @@ fn a_mean_whose_kernel_values_pass_below_the_doubles() {
     }
   }
 }
+
+/// Bounds whose difference passes MAX about `μ`: the half gap `(β − α)(β + α)/2` from the bounds' halves (mpmath's closed
+/// form at 60 and 120 digits); the edge `up − lo = MAX` and one ulp past it read alike.
+#[test]
+fn a_mean_whose_bounds_lie_further_apart_than_max() {
+  let half = f64::MAX / 2.0;
+  for (mu, sigma, lo, up, want) in [
+    (2.5e307, 5e307, -half, half, 1.696171954511392e307),
+    (
+      2.5e307,
+      5e307,
+      -half.next_up(),
+      half.next_up(),
+      1.696171954511392e307,
+    ),
+    (2e307, 1e308, -1.5e308, 1.5e308, 1.099505610897181e307),
+    (1e307, 1e308, -1.7e308, 1.7e308, 6.48391977141926e306),
+    (-1e307, 1e308, -1.7e308, 1.7e308, -6.48391977141926e306),
+  ] {
+    let got = tn(mu, sigma, lo, up).mean().unwrap();
+    assert!(
+      rel(got, want) < 1e-12,
+      "TN({mu:e}, {sigma:e}).mean() = {got:e}"
+    );
+  }
+}
