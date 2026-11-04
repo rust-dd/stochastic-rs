@@ -116,7 +116,7 @@ fn a_gamma_cdf_beside_zero() {
 #[test]
 fn a_subnormal_cdf_below_the_clip() {
   let inf = f64::INFINITY;
-  let rows: [(Box<dyn DistributionExt>, f64, f64); 4] = [
+  let rows: [(Box<dyn DistributionExt>, f64, f64); 5] = [
     (
       Box::new(SimdTruncatedGamma::<f64>::new(1.5, 1.0, 0.0, inf)),
       1.1541066389166827e-208,
@@ -141,6 +141,16 @@ fn a_subnormal_cdf_below_the_clip() {
       )),
       -557.4271305288851,
       1.53881440022e-312,
+    ),
+    (
+      Box::new(SimdTruncatedNormal::<f64>::new(
+        7.5004838195075045,
+        0.032915368466766404,
+        5.721988168218167,
+        6.239668987712654,
+      )),
+      5.727166137508286,
+      1.53871788152e-312,
     ),
   ];
   for (law, x, want) in rows {

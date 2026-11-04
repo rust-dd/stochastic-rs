@@ -123,9 +123,25 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     }
   }
 
-  /// The kernel's `−y(y/2 + c)`, `y = z − c` from the held reference point, at `z = (x − μ)/σ` exactly, in two parts:
-  /// near 38σ out a rounded `z` moves it by `z²ε`.
+  /// `−(z² − c²)/2` at `z = (x − μ)/σ` exactly, in two parts, `c` the reference point, a bound at its exact standardised
+  /// value too: near 38σ out a rounded `z` or bound moves it by `z²ε`, which `M₀`, measured from its own end, does not see.
   pub(super) fn ln_point(&self, t: &Truncation<NormalKernel>, x: f64) -> Two {
+    let (lo, up) = (self.lower.to_f64().unwrap(), self.upper.to_f64().unwrap());
+    let (centre, (at_lo, at_up)) = (t.reference(), self.held());
+    let c = if centre == at_lo {
+      self.exact(lo)
+    } else if centre == at_up {
+      self.exact(up)
+    } else {
+      two::of(centre)
+    };
+    let y = two::sub(self.exact(x), c);
+    let g = two::mul(y, two::add((0.5 * y.0, 0.5 * y.1), c));
+    (-g.0, -g.1)
+  }
+
+  /// `(x − μ)/σ` in two parts, from halves where `x − μ` overflows.
+  fn exact(&self, x: f64) -> Two {
     let (mu, sigma) = (
       self.base.mean().to_f64().unwrap(),
       self.base.std_dev().to_f64().unwrap(),
@@ -135,10 +151,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     } else {
       (two_sum(0.5 * x, -0.5 * mu), 0.5 * sigma)
     };
-    let c = t.reference();
-    let y = two::sub(two::div(d, (s, 0.0)), two::of(c));
-    let g = two::mul(y, two::add((0.5 * y.0, 0.5 * y.1), (c.x, 0.0)));
-    (-g.0, -g.1)
+    two::div(d, (s, 0.0))
   }
 
   pub(super) fn standardise(&self, x: f64) -> Option<f64> {
