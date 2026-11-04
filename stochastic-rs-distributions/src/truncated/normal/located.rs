@@ -3,6 +3,7 @@
 
 use super::NormalKernel;
 use super::SimdTruncatedNormal;
+use crate::special::split_pow2;
 use crate::traits::SimdFloatExt;
 use crate::truncated::quadrature::Cut;
 use crate::truncated::quadrature::Offset;
@@ -12,7 +13,6 @@ use crate::truncated::quadrature::Two;
 use crate::truncated::quadrature::accurate_sum;
 use crate::truncated::quadrature::exp_split;
 use crate::truncated::quadrature::ldexp_once;
-use crate::truncated::quadrature::split;
 use crate::truncated::quadrature::two;
 use crate::truncated::quadrature::two_prod;
 use crate::truncated::quadrature::two_sum;
@@ -82,7 +82,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
 
   /// `hi + lo + σ·m·2^p` from `σ`'s mantissa, so an offset `m·2^p` below the doubles' range still scales by `σ`.
   fn anchored_scaled(&self, (hi, lo): (f64, f64), (m, p): (f64, i32)) -> Option<f64> {
-    let (ms, es) = split(self.base.std_dev().to_f64()?);
+    let (es, ms) = split_pow2(self.base.std_dev().to_f64()?);
     let v = ldexp_once(ms * m, es + p);
     let x = hi + (lo + v);
     Some(if x.is_finite() {
@@ -301,9 +301,9 @@ fn midpoint(lo: f64, up: f64) -> (f64, f64) {
 }
 
 fn split_signed(x: f64) -> (f64, i32) {
-  if x == 0.0 {
-    return (0.0, 0);
+  if x == 0.0 || !x.is_finite() {
+    return (x, 0);
   }
-  let (m, p) = split(x.abs());
+  let (p, m) = split_pow2(x.abs());
   (x.signum() * m, p)
 }

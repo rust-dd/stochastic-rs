@@ -4,9 +4,9 @@
 
 use super::ldexp;
 use super::panels::Cut;
-use super::split;
 use super::sum::two_prod;
 use super::sum::two_sum;
+use crate::special::split_pow2;
 
 /// `hi + lo`, `|lo|` within half an ulp of `hi`.
 pub(in crate::truncated) type Two = (f64, f64);
@@ -48,7 +48,7 @@ pub(in crate::truncated) fn div(a: Two, b: Two) -> Two {
 
 /// `ln a` for `a > 0`: `a = m·2^e` with `m` in `(√½, √2]`, so `e·ln 2` is exact and `m − 1` loses nothing.
 pub(in crate::truncated) fn ln(a: Two) -> Two {
-  let (m, e) = split(a.0);
+  let (e, m) = split_pow2(a.0);
   let (m, e) = if m > std::f64::consts::SQRT_2 {
     (0.5 * m, e + 1)
   } else {

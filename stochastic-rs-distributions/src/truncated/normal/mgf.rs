@@ -7,6 +7,7 @@ use std::f64::consts::LN_2;
 
 use super::SimdTruncatedNormal;
 use super::kernels::TiltedKernel;
+use crate::special::split_pow2;
 use crate::traits::SimdFloatExt;
 use crate::truncated::local::Model;
 use crate::truncated::quadrature::Cut;
@@ -15,7 +16,6 @@ use crate::truncated::quadrature::Truncation;
 use crate::truncated::quadrature::accurate_sum;
 use crate::truncated::quadrature::ldexp;
 use crate::truncated::quadrature::span;
-use crate::truncated::quadrature::split;
 use crate::truncated::quadrature::two_prod;
 use crate::truncated::quadrature::two_sum;
 
@@ -37,7 +37,7 @@ struct Scale {
 
 impl Scale {
   fn new(sigma: f64, t: f64) -> Self {
-    let (m, e) = split(sigma);
+    let (e, m) = split_pow2(sigma);
     let u = ldexp(t, e - 4);
     let square = (4.0 * u).is_finite().then(|| {
       let (a, a_lo) = two_prod(m, m);
@@ -320,7 +320,7 @@ fn emit(sink: &mut impl Sink, exponent: Exponent, t: f64, (mu, sigma): (f64, f64
       match s {
         Some(s) => sink.product(s, s, -1),
         None => {
-          let ((m, e), (mt, et)) = (split(sigma), split(t.abs()));
+          let ((e, m), (et, mt)) = (split_pow2(sigma), split_pow2(t.abs()));
           let (h, l) = two_prod(m, mt);
           let p = 2 * (e + et);
           sink.product(h, h, p - 1);

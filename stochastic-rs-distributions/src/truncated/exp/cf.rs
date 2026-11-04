@@ -7,9 +7,9 @@ use super::SimdTruncatedExp;
 use super::turns::radians;
 use super::turns::reduce;
 use super::turns::turns;
+use crate::special::split_pow2;
 use crate::traits::SimdFloatExt;
 use crate::truncated::quadrature::ldexp;
-use crate::truncated::quadrature::split;
 
 impl<T: SimdFloatExt> SimdTruncatedExp<T> {
   /// A product `t·x` past 1 is reduced from its exact parts, and each quotient by `λ − it` taken at its own power of two,
@@ -31,7 +31,7 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
     );
     let phase = cis(angle(t, lo));
     if self.open_tail()? {
-      let (m, e) = split(lam);
+      let (e, m) = split_pow2(lam);
       return Some(divide(phase * m, e, lam, -t));
     }
     let len = self.length()?;
@@ -40,7 +40,7 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
       return Some(phase * (len / self.mass_per_rate()) * phi1(w));
     }
     let gap = -exp_m1_complex(Complex64::new(-lam * len, angle_between(t, lo, up)));
-    let (m, e) = split(self.mass_per_rate());
+    let (e, m) = split_pow2(self.mass_per_rate());
     Some(divide(phase * gap / m, -e, lam, -t))
   }
 }
@@ -82,7 +82,7 @@ const MODERATE: f64 = 1_048_576.0;
 /// `n·2^e/(c + id)` by Smith's division of `n` by `c + id` scaled to its own power of two, both scales applied once
 /// at the end: no intermediate over- or underflows where the quotient does not.
 fn divide(n: Complex64, e: i32, c: f64, d: f64) -> Complex64 {
-  let j = split(c.abs().max(d.abs())).1;
+  let j = split_pow2(c.abs().max(d.abs())).0;
   let (c, d) = (ldexp(c, -j), ldexp(d, -j));
   let q = if c.abs() >= d.abs() {
     let r = d / c;

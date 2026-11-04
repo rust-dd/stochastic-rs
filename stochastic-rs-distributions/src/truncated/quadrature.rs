@@ -6,6 +6,7 @@
 use std::ops::ControlFlow;
 use std::sync::OnceLock;
 
+use crate::special::split_pow2;
 use clip::clip;
 pub(super) use filled::Filled;
 pub(super) use panels::Cut;
@@ -153,7 +154,8 @@ pub(super) fn ln_ratio(n: f64, d: f64, ln_d: f64) -> f64 {
   if q.is_normal() { q.ln() } else { n.ln() - ln_d }
 }
 
-/// `x·2^p` for any `p`, by normal factors, so `2^p` itself may lie past the doubles (θ above 2¹⁰²³).
+/// `x·2^p` for any `p`, by normal factors, so `2^p` itself may lie past the doubles (θ above 2¹⁰²³); its steps of `2^∓1022`
+/// round a subnormal product where `special::ldexp`'s of `2^∓1000` do not, and the reverse, so the engine keeps its own.
 pub(super) fn ldexp(mut x: f64, mut p: i32) -> f64 {
   let two = |p: i32| f64::from_bits(((p + 1023) as u64) << 52);
   while p > 1023 {
@@ -172,20 +174,8 @@ pub(super) fn ldexp_once(x: f64, p: i32) -> f64 {
   if x == 0.0 || !x.is_finite() {
     return x;
   }
-  let (m, e) = split(x.abs());
+  let (e, m) = split_pow2(x.abs());
   x.signum() * ldexp(m, p + e)
-}
-
-/// `x = m·2^e`, `m` in `[1, 2)`, for a positive finite `x`.
-pub(super) fn split(x: f64) -> (f64, i32) {
-  let scaled = if x < f64::MIN_POSITIVE {
-    x * 2f64.powi(64)
-  } else {
-    x
-  };
-  let e = ((scaled.to_bits() >> 52) & 0x7ff) as i32 - 1023;
-  let e = if x < f64::MIN_POSITIVE { e - 64 } else { e };
-  (ldexp(x, -e), e)
 }
 
 /// Relative kernel below `e^{−CLIP}` is dropped: 1e-18 of the mass near the reference point.

@@ -6,8 +6,8 @@ use super::Point;
 use super::Truncation;
 use super::ldexp_once;
 use super::panels::span;
-use super::split;
 use super::two_prod;
+use crate::special::split_pow2;
 
 /// `ln(1e-270)`: within that share of the width the kernel's slope and curvature move `ln k` by under 1e-250.
 const LN_ZONE: f64 = -621.70;
@@ -33,7 +33,7 @@ pub(in crate::truncated) struct Offset {
 
 impl Offset {
   pub(in crate::truncated) fn of(t: f64) -> Self {
-    let (m, q) = split(t);
+    let (q, m) = split_pow2(t);
     Self { m, q }
   }
 
@@ -130,7 +130,7 @@ impl<K: Kernel> Truncation<K> {
 
   /// `v·t^e/e` over `M₀ = width·m0`, the width's power of two kept apart.
   pub(super) fn end_mass(&self, t: Offset, e: f64, ln_v: f64) -> f64 {
-    let (mw, qw) = split(self.width);
+    let (qw, mw) = split_pow2(self.width);
     power(t, e, ln_v - e.ln() - (mw * self.m0).ln() - self.scale, -qw)
   }
 

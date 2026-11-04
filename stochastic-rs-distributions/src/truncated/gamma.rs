@@ -20,11 +20,11 @@ use super::quadrature::Cut;
 use super::quadrature::Offset;
 use super::quadrature::Point;
 use super::quadrature::ldexp;
-use super::quadrature::split;
 use crate::gamma::GammaState;
 use crate::gamma::SimdGamma;
 use crate::source::AnyRng;
 use crate::source::uniform53;
+use crate::special::split_pow2;
 use crate::traits::DistributionExt;
 use crate::traits::SimdFloatExt;
 use crate::traits::distribution::Sealed;
@@ -151,7 +151,7 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
     let p = unit_exponent(theta.min(up));
     // At most 2^1022 times `lower`'s exponent, so `lower/2^p` is normal and offsets beside it exact, wherever the kernel's
     // reach past its mode (under 260 scales) fits that unit; past it `lower/2^p` underflows and the law reads untruncated.
-    let floor = split(lo).1 + 1022;
+    let floor = split_pow2(lo).0 + 1022;
     let reach = (ldexp(theta, -floor) * (2.0 * k + 260.0)).min(ldexp(up, -floor));
     let p = if lo > 0.0 && floor < p && reach.is_finite() {
       floor

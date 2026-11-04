@@ -7,7 +7,7 @@ pub(in crate::truncated) use crate::special::two_prod;
 pub(in crate::truncated) use crate::special::two_sum;
 
 use super::ldexp;
-use super::split;
+use crate::special::split_pow2;
 
 /// The terms' sum to a double-double as if formed in thrice the precision: two cascades of two-sums that carry each
 /// rounding error to the next term, then the errors' sum added once (SumK, K = 3).
@@ -106,7 +106,7 @@ impl Terms {
     if !(f.is_finite() && g.is_finite()) {
       return self.scaled(f64::NAN, 0);
     }
-    let ((mf, ef), (mg, eg)) = (split(f.abs()), split(g.abs()));
+    let ((ef, mf), (eg, mg)) = (split_pow2(f.abs()), split_pow2(g.abs()));
     let (h, l) = two_prod(mf, mg);
     let sign = f.signum() * g.signum();
     self.scaled(sign * h, ef + eg + p);
@@ -122,7 +122,7 @@ impl Terms {
     }
     let top = parts
       .iter()
-      .map(|&(v, p)| split(v.abs()).1 + p)
+      .map(|&(v, p)| split_pow2(v.abs()).0 + p)
       .max()
       .unwrap_or(0);
     let k = (top - 1000).max(0);

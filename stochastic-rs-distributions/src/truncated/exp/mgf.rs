@@ -3,11 +3,11 @@
 
 use super::SimdTruncatedExp;
 use super::fractions::one_minus_exp_over;
+use crate::special::split_pow2;
 use crate::traits::SimdFloatExt;
 use crate::truncated::quadrature::exp_split;
 use crate::truncated::quadrature::ldexp;
 use crate::truncated::quadrature::ldexp_once;
-use crate::truncated::quadrature::split;
 use crate::truncated::quadrature::two_prod;
 
 /// Past this `|x|` the `e^{±x}` beside 1 is below every digit: `φ₊` and `φ` are their leading powers.
@@ -64,7 +64,7 @@ fn scaled(t: f64, (hi, rest): (f64, f64), lam: f64, len: f64) -> f64 {
       return f64::INFINITY;
     }
     let (md, ed) = difference(lam, t);
-    let (ml, el) = split(lam);
+    let (el, ml) = split_pow2(lam);
     (ml / md, el - ed)
   } else {
     let ((mf, ef), (mg, eg)) = (phi_plus(difference(t, lam), len), phi(lam, len));
@@ -82,7 +82,7 @@ fn difference(a: f64, b: f64) -> (f64, i32) {
   if d == 0.0 {
     return (0.0, 0);
   }
-  let (m, p) = split(d.abs());
+  let (p, m) = split_pow2(d.abs());
   (d.signum() * m, p + e)
 }
 
@@ -91,7 +91,7 @@ fn phi_plus((ms, es): (f64, i32), len: f64) -> (f64, i32) {
   if ms == 0.0 {
     return (1.0, 0);
   }
-  let (ml, el) = split(len);
+  let (el, ml) = split_pow2(len);
   let (xm, xe) = (ms * ml, es + el);
   let x = ldexp(xm, xe);
   if x == 0.0 {
@@ -110,7 +110,7 @@ fn phi_plus((ms, es): (f64, i32), len: f64) -> (f64, i32) {
 
 /// `φ(z) = (1 − e^{−z})/z`, whose `e^{−z}` past `FAR` lies below every digit of 1.
 fn phi(lam: f64, len: f64) -> (f64, i32) {
-  let ((ml, el), (mw, ew)) = (split(lam), split(len));
+  let ((el, ml), (ew, mw)) = (split_pow2(lam), split_pow2(len));
   let (zm, ze) = (ml * mw, el + ew);
   let z = ldexp(zm, ze);
   if z <= FAR {

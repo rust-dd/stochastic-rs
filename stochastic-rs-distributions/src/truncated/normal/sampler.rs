@@ -3,9 +3,9 @@
 
 use super::SimdTruncatedNormal;
 use super::TruncatedNormalSource;
+use crate::special::split_pow2;
 use crate::traits::SimdFloatExt;
 use crate::truncated::quadrature::ldexp;
-use crate::truncated::quadrature::split;
 
 /// Which of Robert (1995)'s proposals a one-sided standardised interval $[a, b]$ with $a \ge 0$ takes.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -154,10 +154,10 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       gap if gap.is_finite() => (gap, 0),
       _ => ((0.5 * near - 0.5 * mu).abs(), 1),
     };
-    let ((ms, es), (mg, eg)) = (split(sigma), split(gap));
+    let ((es, ms), (eg, mg)) = (split_pow2(sigma), split_pow2(gap));
     let (m, p) = (ms * ms / mg, 2 * es - eg - halved);
     let width = (far - near).abs();
-    let (mw, ew) = split(width);
+    let (ew, mw) = split_pow2(width);
     let rho = ldexp(mw / m, ew - p);
     if rho > 40.0 {
       let y = ldexp(-(1.0 - u).ln() * m, p);

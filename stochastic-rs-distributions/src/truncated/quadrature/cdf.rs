@@ -17,10 +17,10 @@ use super::panels::Cut;
 use super::panels::Panel;
 use super::panels::span;
 use super::singular::Frame;
-use super::split;
 use super::two;
 use super::zone::Offset;
 use super::zone::ZONE;
+use crate::special::split_pow2;
 use crate::traits::RealExt;
 
 /// `ln(2⁻¹⁰²²)`: below it the cdf is a subnormal, which the doubles round on a grid coarser than 1e-12 of it.
@@ -178,12 +178,16 @@ impl<K: Kernel> Truncation<K> {
       ControlFlow::<()>::Continue(())
     });
     // `mass·local/(width·m0)`, the two widths' powers of two kept apart.
-    let ((ml, ql), (mw, qw)) = (split(local), split(self.width));
+    let ((ql, ml), (qw, mw)) = (split_pow2(local), split_pow2(self.width));
     let (r, r_lo) = two::div(
       two::mul((mass.hi, mass.lo), (ml, 0.0)),
       two::mul((mw, 0.0), (self.m0, self.m0_rest)),
     );
-    let ((m, q), (mr, qr)) = (exp_split(hi, lo), split(r));
+    // A mass of 0 reads 0, where `split_pow2` would give 0 the mantissa 1.
+    if r == 0.0 {
+      return 0.0;
+    }
+    let ((m, q), (qr, mr)) = (exp_split(hi, lo), split_pow2(r));
     ldexp_once(m.mul_add(mr, m * ldexp(r_lo, -qr)), q + qr + ql - qw).min_or_nan(1.0)
   }
 }
