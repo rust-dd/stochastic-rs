@@ -58,11 +58,11 @@ use crate::special::ln_gamma;
 use crate::special::ln_quotient;
 use crate::special::ln_saddle;
 use crate::special::ln_shift;
-use crate::special::log_regime;
 use crate::special::offset;
 use crate::special::order_step;
 use crate::special::saddle;
 use crate::special::saddle_parts;
+use crate::special::split_pow2;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
@@ -241,7 +241,7 @@ impl Setup {
 }
 
 /// Generalized inverse Gaussian distribution GIG$(\lambda, \chi, \psi)$, `chi > 0`, `psi > 0`; a [`Seeded`](crate::Seeded) stream draws it in bulk.
-/// Within `ε·Σ|ln terms|` below `r = √(λ² + χψ) = 50`, from it the density `4ε(|ln f| + 20)` and the mgf `2ε(|ln M| + 5)`; past `r ≈ 3e34` a density `k` deviations off its mode adds `k√r·1e-31`.
+/// The density and mgf within `ε·Σ|ln terms|` below `r = √(λ² + χψ) = 50`, from it `4ε(|ln f| + 20)` and `2ε(|ln M| + 5)`, `E Xⁿ` below order 50 within `2ε(|ln(ω/2)| + n + 8)`, `ω = √(χψ)`; past `r ≈ 3e34` a density `k` deviations off its mode adds `k√r·1e-31`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdGig<T> {
   lambda: T,
@@ -334,66 +334,43 @@ impl<T: SimdFloatExt> SimdGig<T> {
     )
   }
 
-  /// $\mathbb E X^k = (\chi/\psi)^{k/2} K_{\lambda+k}(b)/K_\lambda(b)$, $b = \sqrt{\chi\psi}$: the scaled `K`s' ratio where
-  /// every factor stays normal, else their logarithms' difference (`ε|ln K|`), and from order 50 the saddle's `w_kᵏe^{rest}`.
+  /// $\mathbb E X^k = (\chi/\psi)^{k/2} K_{\lambda+k}(b)/K_\lambda(b)$, $b = \sqrt{\chi\psi}$: the product of its Bessel ratios
+  /// over the orders under 50 and, over a run of orders past 50, the saddle's `w_jʲe^{rest}`.
   pub fn raw_moment(&self, k: u32) -> f64 {
     let (lambda, chi, psi) = self.params();
-    Self::raw_moment_at((lambda, chi, psi), k)
+    Self::raw_moment_at((lambda, chi.sqrt(), psi.sqrt()), k)
   }
 
-  /// [`Self::raw_moment`] at the parameters `(λ, χ, ψ)`, which the GH mixture forms exactly from its own.
-  pub(crate) fn raw_moment_at((lambda, chi, psi): (f64, f64, f64), k: u32) -> f64 {
-    let order = f64::from(k);
-    if lambda.abs().min((lambda + order).abs()) >= LARGE_ORDER {
-      let (wk, rest) = order_step(lambda, order, (chi, psi));
-      let value = wk.powf(order) * rest.exp();
-      // Where `w_kᵏ` leaves the normal range alone, the exponent `k ln w_k + rest` from the saddle's logarithm.
-      return if value.is_normal() {
-        value
-      } else {
-        (order * ln_saddle(lambda + order, chi.sqrt(), psi.sqrt()) + rest).exp()
-      };
-    }
-    let (root_chi, root_psi) = (chi.sqrt(), psi.sqrt());
-    let b = root_chi * root_psi;
-    k_ratio(
-      (0.0, root_chi, root_psi, order),
-      (lambda + order, b),
-      &KDenominator::new(lambda, b),
-      0.0,
-    )
+  /// [`Self::raw_moment`] at `(λ, √χ, √ψ)`, which the GH mixture forms from `δ` and `γ` without squaring them.
+  pub(crate) fn raw_moment_at(clock: (f64, f64, f64), k: u32) -> f64 {
+    Self::scaled_raw_moment_at(clock, k, 1.0)
   }
 
-  /// `factor·E Xᵏ` at `(λ, χ, ψ)`: the product where the moment and it are normal, else from their logarithms, so a small
-  /// `factor` against an overflowing moment, or a large one against an underflowing one, keeps its value.
+  /// `factor·E Xᵏ` at `(λ, √χ, √ψ)`: below order 50 the ratios' product with `factor`'s exponent kept apart; from it the
+  /// product where it and the moment are normal, else from their logarithms.
   pub(crate) fn scaled_raw_moment_at(
-    (lambda, chi, psi): (f64, f64, f64),
+    (lambda, root_chi, root_psi): (f64, f64, f64),
     k: u32,
     factor: f64,
   ) -> f64 {
     if factor == 0.0 {
       return 0.0;
     }
-    let moment = Self::raw_moment_at((lambda, chi, psi), k);
-    let value = factor * moment;
-    if moment.is_normal() && value.is_normal() {
-      return value;
+    let order = f64::from(k);
+    if lambda.abs().min((lambda + order).abs()) >= LARGE_ORDER {
+      let (wk, rest) = order_step(lambda, order, (root_chi, root_psi));
+      let moment = wk.powf(order) * rest.exp();
+      let value = factor * moment;
+      if moment.is_normal() && value.is_normal() {
+        return value;
+      }
+      // `ln|factor| + k ln w_k + rest`, the saddle's logarithm from its factors', where `w_kᵏ` or the product leaves the range.
+      let ln_moment = order * ln_saddle(lambda + order, root_chi, root_psi) + rest;
+      return factor.signum() * (factor.abs().ln() + ln_moment).exp();
     }
-    let (order, ln_factor) = (f64::from(k), factor.abs().ln());
-    let (root_chi, root_psi) = (chi.sqrt(), psi.sqrt());
-    let magnitude = if lambda.abs().min((lambda + order).abs()) >= LARGE_ORDER {
-      let (_, rest) = order_step(lambda, order, (chi, psi));
-      (ln_factor + order * ln_saddle(lambda + order, root_chi, root_psi) + rest).exp()
-    } else {
-      let b = root_chi * root_psi;
-      log_regime(
-        (ln_factor, root_chi, root_psi, order),
-        (lambda + order, b),
-        &KDenominator::new(lambda, b),
-        0.0,
-      )
-    };
-    factor.signum() * magnitude
+    let (m, e) = ratio_moment::ratio_moment(lambda, (root_chi, root_psi), k);
+    let (b, n) = split_pow2(factor.abs());
+    factor.signum() * ldexp(n * m, b + e)
   }
 
   /// The interior mgf's ratio at `t`, `shifted = ψ − 2t > 0`.
@@ -538,6 +515,7 @@ py_distribution!(PyGig, SimdGig,
 );
 
 mod cumulants;
+mod ratio_moment;
 
 #[cfg(test)]
 mod tests;

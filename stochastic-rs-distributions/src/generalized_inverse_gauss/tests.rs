@@ -353,7 +353,7 @@ fn heavy_tails_keep_their_moments() {
   assert_eq!(d.kurtosis(), Some(f64::INFINITY));
 }
 
-/// mpmath at 120 digits: `χ/ψ = 10⁻³²⁰` is subnormal, so the power factor is `(√χ/√ψ)ᵏ`; the mean within `1e-14`.
+/// mpmath at 120 digits: `χ/ψ = 10⁻³²⁰` is subnormal, which no factor of the mean may form; within `1e-14`.
 #[test]
 fn a_subnormal_scale_ratio_keeps_the_mean() {
   let mean = SimdGig::<f64>::new(0.5, 1e-300, 1e20).mean().unwrap();
@@ -362,6 +362,28 @@ fn a_subnormal_scale_ratio_keeps_the_mean() {
 
 /// mpmath at 120 and 240 digits where the power factor goes subnormal (`λ = −100`), its product with `K` overflows
 /// (`λ = 50, 100`), a concentrated law's `√(χψ) − √(χs)` would cancel (`λ = 1`), and `e^{dx}` goes subnormal (`λ = −40, −20`).
+/// mpmath at 60 and 120 digits: below order 50 a raw moment whose `K`s overflow is the product of its Bessel ratios, where
+/// their logarithms' difference read the means `3.4e-12` and `1.0e-12` off and the 100th moment `6.0e-12`.
+#[test]
+fn small_order_raw_moments_take_bessel_ratios() {
+  for ((lambda, chi, psi), k, want, tol) in [
+    (
+      (-50.0, 1e-300, 1e-300),
+      1,
+      1.020_408_163_265_306_1e-302,
+      1e-14,
+    ),
+    ((-50.0, 1.0, 1e-300), 1, 0.010_204_081_632_653_06, 1e-14),
+    ((0.0, 1e-300, 1.0), 100, 1.712_066_102_005_118_7e183, 1e-12),
+  ] {
+    let got = SimdGig::<f64>::new(lambda, chi, psi).raw_moment(k);
+    assert!(
+      close(got, want, tol),
+      "GIG({lambda}, {chi}, {psi}) E X^{k}: {got:e}"
+    );
+  }
+}
+
 #[test]
 fn mgf_takes_the_ratio_only_where_every_factor_stays_normal() {
   for ((lambda, chi, psi, t), want) in [

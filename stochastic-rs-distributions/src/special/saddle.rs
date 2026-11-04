@@ -220,8 +220,7 @@ fn rest_step(from: f64, to: f64, (x_from, x_to): (f64, f64)) -> f64 {
 
 /// `N(λ + k, χ, ψ)/N(λ, χ, ψ) = w_kᵏe^{rest}`, `N(λ, χ, ψ) = 2(χ/ψ)^{λ/2}K_λ(√(χψ))`, both orders past `LARGE_ORDER`, as
 /// `(w_k, rest)`: `H_λ(w_k) − H_λ(w)` a divergence, `w_k` the maximiser at `λ + k`, so `E Xᵏ` of the GIG rounds no `ln w_k`.
-pub(crate) fn order_step(lambda: f64, k: f64, (chi, psi): (f64, f64)) -> (f64, f64) {
-  let (rc, rp) = (chi.sqrt(), psi.sqrt());
+pub(crate) fn order_step(lambda: f64, k: f64, (rc, rp): (f64, f64)) -> (f64, f64) {
   let to = lambda + k;
   let omega = rc * rp;
   let (r, r_k) = (lambda.hypot(omega), to.hypot(omega));

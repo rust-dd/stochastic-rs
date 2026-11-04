@@ -69,7 +69,7 @@ use crate::traits::distribution::SimdKernel;
 const SMALL_GH_THRESHOLD: usize = 16;
 
 /// Generalized hyperbolic distribution GH$(\lambda, \alpha, \beta, \delta, \mu)$; a [`Seeded`](crate::Seeded) stream draws it in bulk.
-/// Within `ε·Σ|ln terms|` below order 50, from it the density `4ε(|ln f| + 20)` and the mgf `2ε(|ln M| + 5)`; the mgf adds `2ε|μt|` to its edge `|β + t| = α`, the mean `ε(|μ| + ℓ|β|E W)/|mean|` (`ℓ = |ln β| + |ln E W|` where `E W` or `βE W` leaves the normal range, else 1), and past the clock's `r ≈ 3e34` a density `k` deviations off its mode adds `k√r·1e-31`.
+/// The density and mgf within `ε·Σ|ln terms|` below order 50, from it `4ε(|ln f| + 20)` and `2ε(|ln M| + 5)`; the mgf adds `2ε|μt|` to its edge `|β + t| = α`, the mean `ε(|μ| + ℓ|β|E W)/|mean|` (`ℓ` `2(|ln(δγ/2)| + 9)` below order 50, `|ln β| + |ln E W|` where `E W` or `βE W` leaves the normal range, else 1), and past the clock's `r ≈ 3e34` a density `k` deviations off its mode adds `k√r·1e-31`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdGeneralizedHyperbolic<T> {
   lambda: T,
@@ -362,7 +362,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
 
   fn mean(&self) -> Option<f64> {
     let (_, _, beta, _, mu) = self.params();
-    Some(mu + SimdGig::<f64>::scaled_raw_moment_at(self.clock(), 1, beta))
+    let (lambda, chi, psi) = self.clock();
+    Some(mu + SimdGig::<f64>::scaled_raw_moment_at((lambda, chi.sqrt(), psi.sqrt()), 1, beta))
   }
 
   /// `κ₁(W) + β²κ₂(W)` over the clock's `κₙ = sⁿρⁿ⁻¹kₙ`, `s·k₁ + (βs)²ρk₂` with `s = 2ᵉm` and `β` split, so neither term

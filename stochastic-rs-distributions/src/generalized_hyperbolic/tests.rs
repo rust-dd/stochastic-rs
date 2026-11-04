@@ -365,7 +365,7 @@ fn saddle_tails_hold_where_the_clocks_part_far() {
 }
 
 /// mpmath at 60 and 120 digits at admitted extremes: `0·∞` at `β = 0`, saddles leaving the doubles into `0/0`, a subnormal
-/// clock scale, and `β²·Var W` underflowing apart.
+/// clock scale, `β²·Var W` underflowing apart, and a mean whose Bessel factors overflow (`3.9e-12` from their logarithms).
 #[test]
 fn extreme_parameters_keep_their_moments() {
   let wide = SimdGeneralizedHyperbolic::<f64>::new(0.5, 1e-77, 0.0, 1.0, 0.0)
@@ -393,6 +393,13 @@ fn extreme_parameters_keep_their_moments() {
     .mean()
     .unwrap();
   assert!(close(far, 1.083_270_490_233_109_3e155, 1e-12), "{far:e}");
+  let heavy = SimdGeneralizedHyperbolic::<f64>::new(-50.0, 1.0, 0.999999, 1e-150, 0.0)
+    .mean()
+    .unwrap();
+  assert!(
+    close(heavy, 1.020_407_142_857_142_8e-302, 1e-14),
+    "{heavy:e}"
+  );
 }
 
 /// mpmath at 120 and 240 digits where the power factor goes subnormal (`λ = −100`), its product with `K` overflows (`λ = 100`),

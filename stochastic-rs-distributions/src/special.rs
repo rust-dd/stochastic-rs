@@ -45,6 +45,7 @@ pub(crate) use k_ratio::KDenominator;
 pub(crate) use k_ratio::k_half_ratio;
 pub(crate) use k_ratio::k_ratio;
 pub(crate) use k_ratio::ln_quotient;
+#[cfg(test)]
 pub(crate) use k_ratio::log_regime;
 #[cfg(test)]
 pub(crate) use k_ratio::log_size;
