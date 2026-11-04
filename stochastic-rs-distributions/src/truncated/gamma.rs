@@ -19,7 +19,6 @@ use super::local::ln_cubic;
 use super::quadrature::Cut;
 use super::quadrature::Offset;
 use super::quadrature::Point;
-use super::quadrature::Truncation;
 use super::quadrature::ldexp;
 use super::quadrature::split;
 use crate::gamma::GammaState;
@@ -193,8 +192,7 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
       {
         return Model::Local(l);
       }
-      let t = Truncation::new(GammaKernel::new(k, self.units(theta)), lo_u, up_u);
-      Model::of(t, |c| {
+      Model::new(GammaKernel::new(k, self.units(theta)), lo_u, up_u, |c| {
         self.local(if c == lo_u {
           lo
         } else if c == up_u {

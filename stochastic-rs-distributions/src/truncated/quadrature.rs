@@ -24,6 +24,7 @@ pub(super) use zone::exp_split;
 
 mod cdf;
 mod clip;
+mod fill;
 mod flat;
 mod moments;
 mod panels;
@@ -260,118 +261,6 @@ pub(super) struct Truncation<K> {
 }
 
 impl<K: Kernel> Truncation<K> {
-  /// `kernel` on `[lo, up]`, `lo < up`, with the mass beyond the clips that the cdf and the quantile read.
-  pub(super) fn new(kernel: K, lo: impl Into<Cut>, up: impl Into<Cut>) -> Self {
-    let (lo, up) = (lo.into(), up.into());
-    let mut t = Self::mass_only(kernel, lo, up);
-    if span(lo, t.a) > 0.0 {
-      t.reach.0 = clip(&t.kernel, t.centre, t.a, lo, -2.0 * CLIP);
-      t.tail_lo = t.integrate(t.reach.0, t.a, 0.0);
-    }
-    if span(up, t.b) < 0.0 {
-      t.reach.1 = clip(&t.kernel, t.centre, t.b, up, -2.0 * CLIP);
-      t.tail_up = t.integrate(t.b, t.reach.1, 0.0);
-    }
-    debug_assert!(
-      t.narrow || (t.m0 > 0.0 && t.m0.is_finite()),
-      "a resolvable width {:e} with mass {:e}",
-      t.width,
-      t.m0
-    );
-    t
-  }
-
-  /// The reference point, the clipped ends and their mass; an infinite end is clipped, a singular one graded.
-  pub(super) fn mass_only(mut kernel: K, lo: impl Into<Cut>, up: impl Into<Cut>) -> Self {
-    let (lo, up) = (lo.into(), up.into());
-    let step = span(lo, up).min(kernel.length_scale()) / 10.0;
-    // `(s, e)` of a singular branch point at a point or within `step` of it, where the power law rules the kernel's mass.
-    let singular = |x: Cut| {
-      let mut points = kernel.branch_points().into_iter().flatten();
-      points.find(|&(s, e)| e < 1.0 && x.offset(s).abs() <= step)
-    };
-    let (lo_singular, up_singular) = (singular(lo), singular(up));
-    let mode = kernel.mode();
-    let (past_lo, past_up) = (span(lo, mode), span(up, mode));
-    let mut at_mode = past_lo >= 0.0 && past_up <= 0.0;
-    let mut centre = if past_lo < 0.0 {
-      lo
-    } else if past_up > 0.0 {
-      up
-    } else {
-      mode
-    };
-    let mut frame = None;
-    if singular(centre).is_some() {
-      let heavier_lo = match (lo_singular, up_singular) {
-        (Some((_, e)), Some((_, f))) => e <= f,
-        (_, None) => true,
-        (None, Some(_)) => false,
-      };
-      let (end, point, side) = if heavier_lo {
-        (lo.x, lo_singular, 1.0)
-      } else {
-        (up.x, up_singular, -1.0)
-      };
-      at_mode = false;
-      centre = point.map_or(Cut::at(end + side * step), |(s, _)| {
-        frame = Some(Cut::at(s));
-        Cut::beside(s, (end - s) + side * step)
-      });
-    }
-    kernel.anchor(centre, at_mode);
-    let a = if lo_singular.is_some() {
-      lo
-    } else {
-      clip(&kernel, centre, centre, lo, -CLIP)
-    };
-    let b = if up_singular.is_some() {
-      up
-    } else {
-      clip(&kernel, centre, centre, up, -CLIP)
-    };
-    let drop = |e: Cut| -kernel.ln_rel(e.x, span(centre, e), e.branch());
-    // A flat kernel's odd moments about an end lose digits; about the midpoint they do not.
-    if lo_singular.is_none() && up_singular.is_none() && drop(a).max(drop(b)) < 1.0 {
-      centre = a.shifted(0.5 * span(a, b));
-      kernel.anchor(centre, false);
-    }
-    let mut t = Self {
-      kernel,
-      lo,
-      up,
-      centre,
-      frame: frame.unwrap_or(centre),
-      near: centre.near(),
-      a,
-      b,
-      width: span(a, b),
-      m0: 0.0,
-      m0_rest: 0.0,
-      ln_norm: 0.0,
-      scale: 0.0,
-      narrow: false,
-      tail_lo: 0.0,
-      tail_up: 0.0,
-      reach: (a, b),
-      sharp: false,
-    };
-    t.narrow = t.width.is_nan() || t.width < f64::MIN_POSITIVE;
-    t.scale = t
-      .kernel
-      .branch_points()
-      .into_iter()
-      .flatten()
-      .map(|(_, e)| (-e.ln() - 600.0).max(0.0))
-      .fold(0.0, f64::max);
-    if !t.narrow {
-      let m0 = t.integrate_sum(a, b, 0.0);
-      (t.m0, t.m0_rest) = (m0.value(), (m0.hi - m0.value()) + m0.lo);
-      t.ln_norm = t.width.ln() + t.m0.ln() + t.scale;
-    }
-    t
-  }
-
   /// The reference point `c`, whose `ln k(c)` the masses are relative to.
   pub(super) fn centre(&self) -> f64 {
     self.centre.x

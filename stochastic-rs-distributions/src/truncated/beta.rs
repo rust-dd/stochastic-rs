@@ -17,7 +17,6 @@ use super::local::Model;
 use super::local::Signed;
 use super::local::ln_cubic;
 use super::quadrature::Cut;
-use super::quadrature::Truncation;
 use crate::beta::BetaState;
 use crate::beta::SimdBeta;
 use crate::source::AnyRng;
@@ -181,9 +180,7 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
       if let Some(m) = Mirror::route(a, b, lo, up) {
         return Analytics::Mirror(m);
       }
-      let t = Truncation::new(BetaKernel::new(a, b), lo, up);
-      let local = t.narrow().and_then(|r| self.local(r));
-      Analytics::Beta(local.map_or(Model::Full(t), Model::Local))
+      Analytics::Beta(Model::new(BetaKernel::new(a, b), lo, up, |r| self.local(r)))
     }))
   }
 

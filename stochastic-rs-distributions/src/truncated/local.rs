@@ -145,12 +145,22 @@ pub(super) enum Model<K> {
 }
 
 impl<K: Kernel> Model<K> {
-  /// The engine's integral, or the local model where it reports no normal width and the model exists.
-  pub(super) fn of(t: Truncation<K>, local: impl FnOnce(f64) -> Option<Local>) -> Self {
-    match t.narrow().and_then(local) {
-      Some(l) => Self::Local(l),
-      None => Self::Full(t),
+  /// The engine's integral of `kernel` on `[lo, up]`, or the local model where the engine reports no normal width and
+  /// the model exists; the engine is built where the model holds it and summed there, not moved through constructors.
+  pub(super) fn new(
+    kernel: K,
+    lo: impl Into<Cut>,
+    up: impl Into<Cut>,
+    local: impl FnOnce(f64) -> Option<Local>,
+  ) -> Self {
+    let mut model = Self::Full(Truncation::placed(kernel, lo.into(), up.into()));
+    if let Self::Full(t) = &mut model {
+      match t.narrow().and_then(local) {
+        Some(l) => model = Self::Local(l),
+        None => t.fill(),
+      }
     }
+    model
   }
 }
 

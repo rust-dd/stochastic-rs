@@ -13,7 +13,6 @@ use stochastic_rs_core::simd_rng::SimdRngExt;
 use super::local::Local;
 use super::local::Model;
 use super::local::Signed;
-use super::quadrature::Truncation;
 use crate::normal::SimdNormal;
 use crate::seeded::StreamState;
 use crate::source::AnyRng;
@@ -200,9 +199,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       {
         return Model::Local(l);
       }
-      Model::of(Truncation::new(NormalKernel::default(), lo, up), |_| {
-        self.local()
-      })
+      Model::new(NormalKernel::default(), lo, up, |_| self.local())
     }))
   }
 
