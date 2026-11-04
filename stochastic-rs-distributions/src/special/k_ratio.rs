@@ -1,44 +1,35 @@
 //! The ratio of two Bessel `K` that the GH and GIG moment generating functions and the GIG moments share.
 
-use std::cell::OnceCell;
-
 use super::bessel_k::steed_pair;
 use super::bessel_k::temme_sums;
 use super::bessel_ke;
+#[cfg(test)]
 use super::ln_bessel_ke;
 
-/// The denominator `K_ν(x)` several ratios share: its scaled value at once, its logarithm when a ratio first needs it.
+/// The denominator `K_ν(x)` of an mgf's ratio, its scaled value formed once.
 pub(crate) struct KDenominator {
+  #[cfg(test)]
   nu: f64,
   x: f64,
   ke: f64,
-  ln: OnceCell<f64>,
 }
 
 impl KDenominator {
   pub(crate) fn new(nu: f64, x: f64) -> Self {
     Self {
+      #[cfg(test)]
       nu,
       x,
       ke: bessel_ke(nu, x),
-      ln: OnceCell::new(),
     }
   }
 }
 
-/// `e^c·(a/b)^e·K_{ν₁}(x₁)/K_ν(x)` over `den = K_ν(x)`, `dx = x − x₁` given free of cancellation, `power = (c, a, b, e)`: the
-/// scaled `K`s' ratio where it stays normal, else the logarithms' sum, within `ε` times the sum of their sizes.
-#[inline]
-pub(crate) fn k_ratio(
-  power: (f64, f64, f64, f64),
-  num: (f64, f64),
-  den: &KDenominator,
-  dx: f64,
-) -> f64 {
-  ratio_regime(power, num, den, dx).unwrap_or_else(|| log_regime(power, num, den, dx))
-}
+/// Below this argument Temme's `f₀` carries more than `11ε` of `ln(2/x)`'s rounding into `K`.
+const TEMME_FLOOR: f64 = 9.313_225_746_154_785e-10;
 
-/// `None` unless every factor, partial product and the value is normal: a subnormal one would round away its digits.
+/// `e^c·(a/b)^e·K_{ν₁}(x₁)/K_ν(x)` over `den = K_ν(x)`, `dx = x − x₁` given free of cancellation, `power = (c, a, b, e)`, from
+/// the scaled `K`s; `None` unless both arguments pass `TEMME_FLOOR` and every factor, partial product and the value is normal.
 #[inline]
 pub(crate) fn ratio_regime(
   (c, a, b, e): (f64, f64, f64, f64),
@@ -52,10 +43,10 @@ pub(crate) fn ratio_regime(
   let q = ke1 / den.ke;
   let pq = p * q;
   let value = pq * shift;
-  [base, scale, power, p, ke1, den.ke, q, pq, shift, value]
+  let normal = [base, scale, power, p, ke1, den.ke, q, pq, shift, value]
     .iter()
-    .all(|v| v.is_normal())
-    .then_some(value)
+    .all(|v| v.is_normal());
+  (normal && x1 >= TEMME_FLOOR && den.x >= TEMME_FLOOR).then_some(value)
 }
 
 /// `ln(a/b)`, as `ln a − ln b` where the quotient leaves the normal range, which a subnormal or infinite `a/b` would cost.
@@ -68,18 +59,7 @@ pub(crate) fn ln_quotient(a: f64, b: f64) -> f64 {
   }
 }
 
-pub(crate) fn log_regime(
-  (c, a, b, e): (f64, f64, f64, f64),
-  (nu1, x1): (f64, f64),
-  den: &KDenominator,
-  dx: f64,
-) -> f64 {
-  let ln_power = e * ln_quotient(a, b);
-  let ln_den = *den.ln.get_or_init(|| ln_bessel_ke(den.nu, den.x));
-  (c + ln_power + ln_bessel_ke(nu1, x1) - ln_den + dx).exp()
-}
-
-/// `Σ|ln terms|` of [`log_regime`], what its rounding is relative to.
+/// `Σ|ln terms|` of the mgf's logarithms, what their plain sum's rounding is relative to.
 #[cfg(test)]
 pub(crate) fn log_size(
   (c, a, b, e): (f64, f64, f64, f64),

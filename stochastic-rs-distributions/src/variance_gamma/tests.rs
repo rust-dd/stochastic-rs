@@ -363,3 +363,29 @@ fn skewness_holds_at_extreme_parameters() {
     );
   }
 }
+/// mpmath at 60 and 120 digits below order `1/ν − ½ = 50` where `K` overflows at a subnormal argument `|d|·root/σ²`, which
+/// read `0.6 %` and `17 %` off.
+#[test]
+fn large_logarithms_keep_their_digits() {
+  for ((sigma, nu, theta), x, want) in [
+    (
+      (
+        0.015_375_897_719_276_064,
+        0.026_868_625_965_098_376,
+        -0.001_090_965_064_830_249,
+      ),
+      2.2e-322,
+      26.146_077_491_408_615,
+    ),
+    (
+      (0.003_593_220_738_688_755, 0.177_497_898_575_445_84, 0.0),
+      1.64e-321,
+      119.169_430_466_466,
+    ),
+  ] {
+    let got = SimdVarianceGamma::<f64>::new(sigma, nu, theta, 0.0)
+      .pdf(x)
+      .unwrap();
+    assert!(close(got, want, 1e-12), "{got:e}");
+  }
+}

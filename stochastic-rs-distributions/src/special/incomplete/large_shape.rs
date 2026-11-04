@@ -10,6 +10,7 @@ use std::f64::consts::TAU;
 use super::Tail;
 use super::continued_fraction;
 use super::series;
+use crate::special::ln_parts;
 use crate::special::mills_ratio;
 pub(super) use crate::special::twofold::two_sum;
 
@@ -289,36 +290,13 @@ fn exponent(a: f64, x: f64) -> (f64, f64) {
   (y, y_err + p_lo - e_lo)
 }
 
-/// `ln(x/a)` as `(hi, lo)`: the quotient's remainder from a fused multiply-add, then `x/a = 2^k m` with
-/// `m ∈ [1/√2, √2)`, `k ln 2` in two parts and `ln m = 2 atanh((m − 1)/(m + 1))` with its leading term compensated.
+/// `ln(x/a)` as `(hi, lo)`, the quotient's remainder from a fused multiply-add.
 pub(super) fn ln_ratio(x: f64, a: f64) -> (f64, f64) {
   let lambda = x / a;
   if lambda < f64::MIN_POSITIVE {
     return (x.ln() - a.ln(), 0.0);
   }
-  let lambda_lo = (-lambda).mul_add(a, x) / a;
-  let (k, m) = super::split_sqrt2(lambda);
-  let num = m - 1.0;
-  let (den, den_lo) = two_sum(m, 1.0);
-  let s = num / den;
-  let s_lo = ((-s).mul_add(den, num) - s * den_lo) / den;
-  let s2 = s * s;
-  let mut term = 1.0;
-  let mut w = 1.0 / 3.0;
-  for j in 1..16 {
-    term *= s2;
-    let add = term / f64::from(2 * j + 3);
-    w += add;
-    if add <= 1e-19 * w {
-      break;
-    }
-  }
-  let kf = f64::from(k);
-  let (h, h_lo) = two_sum(kf * LN2_HI, 2.0 * s);
-  two_sum(
-    h,
-    h_lo + (kf * LN2_LO + 2.0 * s_lo + 2.0 * s * s2 * w + lambda_lo / lambda),
-  )
+  ln_parts(lambda, (-lambda).mul_add(a, x) / a, 0)
 }
 
 /// `(hi, lo)` with a low part past 1 folded into `hi`, where it is within a few of `hi`'s ulps: only a small `lo` is exponentiated.

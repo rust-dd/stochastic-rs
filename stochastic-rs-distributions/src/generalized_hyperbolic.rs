@@ -46,21 +46,14 @@ use crate::seeded::Buffered;
 use crate::seeded::StreamState;
 use crate::special::KDenominator;
 use crate::special::LARGE_ORDER;
-use crate::special::add_parts;
-use crate::special::debye_log_sum;
-use crate::special::divergence;
+use crate::special::PLAIN_LOG_SIZE;
 use crate::special::exp_times_over_pow2;
-use crate::special::k_ratio;
 use crate::special::ldexp;
 use crate::special::ln_bessel_ke;
-use crate::special::ln_gamma;
 use crate::special::ln_shift;
-use crate::special::mul_parts;
-use crate::special::offset;
+use crate::special::ratio_regime;
 use crate::special::saddle;
-use crate::special::saddle_parts;
 use crate::special::split_pow2;
-use crate::special::two_prod;
 use crate::special::two_sum;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
@@ -69,7 +62,7 @@ use crate::traits::distribution::SimdKernel;
 const SMALL_GH_THRESHOLD: usize = 16;
 
 /// Generalized hyperbolic distribution GH$(\lambda, \alpha, \beta, \delta, \mu)$; a [`Seeded`](crate::Seeded) stream draws it in bulk.
-/// The density and mgf within `ε·Σ|ln terms|` below order 50, from it `4ε(|ln f| + 20)` and `2ε(|ln M| + 5)`; the mgf adds `2ε|μt|` to its edge `|β + t| = α`, the mean `ε(|μ| + ℓ|β|E W)/|mean|` (`ℓ` `2(|ln(δγ/2)| + 9)` below order 50, `|ln β| + |ln E W|` where `E W` or `βE W` leaves the normal range, else 1), past the clock's `r ≈ 3e34` a density `k` deviations off its mode adds `k√r·1e-31`; where `δ²`, `γ²` or the clock's saddle leaves the normal range it is the law of `X/2ᵏ`, `2⁻ᵏδ ≈ 2ᵏγ`, which holds these wherever `δγ` is normal.
+/// The density within `ε(S + 16)` below order 50, `S` its logarithms' sizes summed, or `32ε` where `S` passes 709 or `δγ` leaves the normal range, and `4ε(|ln f| + 20)` from it, the mgf `2ε(|μt| + |ln M| + 32)` below it and `2ε(|μt| + |ln M| + 5)` from it, the mean `ε(|μ| + ℓ|β|E W)/|mean|` (`ℓ` `2(|ln(δγ/2)| + 9)` below order 50, `|ln β| + |ln E W|` where `E W` or `βE W` leaves the normal range, else 1), past the clock's `r ≈ 3e34` a density `k` deviations off its mode adds `k√r·1e-31`; where `δ²`, `γ²` or the clock's saddle leaves the normal range it is the law of `X/2ᵏ`, `2⁻ᵏδ ≈ 2ᵏγ`, and from order 50 a subnormal `δγ` takes its clock's limit, `ω²/|λ|` off.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdGeneralizedHyperbolic<T> {
   lambda: T,
@@ -251,14 +244,15 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
     (lambda, delta * delta, (alpha - beta) * (alpha + beta))
   }
 
-  /// `γ_t² = (α − β − t)(α + β + t)`, `α ∓ β` exactly as two parts (`α > |β|`), so neither factor loses `α ∓ β`'s
-  /// rounding where `t` cancels it.
-  fn shifted(&self, t: f64) -> f64 {
+  /// `γ_t²`'s factors `(α − β − t, α + β + t)`, `α ∓ β` exactly as two parts (`α > |β|`), so neither loses `α ∓ β`'s rounding
+  /// where `t` cancels it; their signs place `t` where their product underflows.
+  fn shifted_factors(&self, t: f64) -> (f64, f64) {
     let (_, alpha, beta, _, _) = self.params();
     let (diff, sum) = (alpha - beta, alpha + beta);
-    let below = (diff - t) + ((alpha - diff) - beta);
-    let above = (sum + t) + ((alpha - sum) + beta);
-    below * above
+    (
+      (diff - t) + ((alpha - diff) - beta),
+      (sum + t) + ((alpha - sum) + beta),
+    )
   }
 
   /// The density at `x` times `2ᵖ`, the power taken into its exponent, so a scaled value leaves the doubles only where it does.
@@ -268,55 +262,30 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
     let r0 = lambda.hypot(delta * gamma);
     let (d, d_lo) = two_sum(x, -mu);
     if r0 >= LARGE_ORDER {
-      return self.concentrated_pdf((d, d_lo), (gamma, r0), p);
+      return concentrated::density((lambda, alpha, beta, delta), (d, d_lo), (gamma, r0), p);
     }
     let (root, order, dg) = (delta.hypot(d), lambda - 0.5, delta * gamma);
-    let log_norm = lambda * gamma.ln()
-      - 0.5 * std::f64::consts::TAU.ln()
-      - order * alpha.ln()
-      - lambda * delta.ln()
-      - (ln_bessel_ke(lambda, dg) - dg);
+    let (power, mixing, scale) = (lambda * gamma.ln(), order * alpha.ln(), lambda * delta.ln());
+    let (clock, spread, kernel) = (
+      ln_bessel_ke(lambda, dg),
+      order * root.ln(),
+      ln_bessel_ke(order, alpha * root),
+    );
     // `βd − α·root` as `−(α ∓ β)|d| − αδ²/(root + |d|)`, of one sign, where `α ≈ |β|` would leave two large terms to cancel.
     let tilt = -(alpha - beta * d.signum()) * d.abs() - alpha * delta * (delta / (root + d.abs()));
-    let ln_f = log_norm + order * root.ln() + ln_bessel_ke(order, alpha * root) + tilt;
+    let size =
+      power.abs() + mixing.abs() + scale.abs() + clock.abs() + dg + spread.abs() + kernel.abs()
+        - tilt;
+    if !(size <= PLAIN_LOG_SIZE && dg.is_normal() && (alpha * root).is_normal()) {
+      return small_order::density((lambda, alpha, beta, delta), (d, d_lo), p);
+    }
+    let log_norm = power - 0.5 * std::f64::consts::TAU.ln() - mixing - scale - (clock - dg);
+    let ln_f = log_norm + spread + kernel + tilt;
     if p == 0 {
       ln_f.exp()
     } else {
       exp_times_over_pow2(ln_f, (1.0, 1.0), p)
     }
-  }
-
-  /// The density from `r = √(λ² + δ²γ²) = 50`: `βd + ln N(λ − ½, δ² + d², α²) − ln N(λ, δ², γ²)` meets as
-  /// `H_λ(w₁) − H_λ(w₀) − ½ ln w₁ − (d − βw₁)²/2w₁` (`α² = γ² + β²`), both maximisers and `d` in two parts, plus `T₁ − T₀`.
-  fn concentrated_pdf(&self, d: (f64, f64), (gamma, r0): (f64, f64), p: i32) -> f64 {
-    let (lambda, alpha, beta, delta, _) = self.params();
-    let root = delta.hypot(d.0);
-    if !root.is_finite() {
-      return 0.0;
-    }
-    let chi = two_prod(delta, delta);
-    let psi = mul_parts(two_sum(alpha, -beta), two_sum(alpha, beta));
-    let order = two_sum(lambda, -0.5);
-    let w0 = saddle(lambda, delta, gamma);
-    let w1 = saddle(order.0, root, alpha);
-    let (w0, w1) = (
-      saddle_parts(w0, (lambda, 0.0), chi, psi),
-      saddle_parts(
-        w1,
-        order,
-        add_parts(chi, mul_parts(d, d)),
-        two_prod(alpha, alpha),
-      ),
-    );
-    let (bw, bw_lo) = two_prod(beta, w1.0);
-    let (g, g_lo) = two_sum(d.0, -bw);
-    let gap = g + (g_lo + d.1 - bw_lo - beta * w1.1);
-    let r1 = order.0.hypot(alpha * root);
-    let a = divergence(lambda, (chi.0, psi.0), w0.0, offset(w1, w0)) - 0.5 * (gap / w1.0) * gap
-      + debye_log_sum(order.0.abs(), r1)
-      - debye_log_sum(lambda.abs(), r0)
-      - 0.5 * std::f64::consts::TAU.ln();
-    exp_times_over_pow2(a, ((r0 / r1).sqrt(), w1.0.sqrt()), p)
   }
 
   /// The interior mgf's ratio at `t`, `shifted = γ_t² > 0`.
@@ -493,28 +462,32 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
       return law.moment_generating_function(t);
     }
     let (lambda, alpha, beta, delta, mu) = self.params();
-    let shifted = self.shifted(t);
-    if shifted < 0.0 || (shifted == 0.0 && lambda >= 0.0) {
+    let (below, above) = self.shifted_factors(t);
+    let edge = below.min(above);
+    if edge < 0.0 || (edge == 0.0 && lambda >= 0.0) {
       return Some(f64::INFINITY);
     }
+    let shifted = below * above;
     if lambda.abs() >= LARGE_ORDER {
       let (chi, psi) = (delta * delta, (alpha - beta) * (alpha + beta));
+      if !(chi.is_normal() && psi.is_normal())
+        && delta * ((alpha - beta).sqrt() * (alpha + beta).sqrt()) < f64::MIN_POSITIVE
+      {
+        return Some(small_order::subnormal_clock_mgf(
+          (lambda, alpha, beta, delta, mu),
+          t,
+        ));
+      }
       return Some(
         (mu * t + ln_shift(lambda, 0.5 * t * (2.0 * beta + t), (chi, psi, shifted))).exp(),
       );
     }
-    if shifted == 0.0 {
-      // s^{-λ} K_λ(δs) → ½ Γ(−λ) (2/δ)^{−λ} as s → 0, in log space past the overflow of Γ and K and K's underflow.
-      let dg = delta * ((alpha - beta) * (alpha + beta)).sqrt();
-      return Some(
-        (mu * t + lambda * (0.5 * dg).ln() + ln_gamma(-lambda)
-          - std::f64::consts::LN_2
-          - (ln_bessel_ke(lambda, dg) - dg))
-          .exp(),
-      );
+    let params = (lambda, alpha, beta, delta, mu);
+    if edge == 0.0 {
+      return Some(small_order::boundary_mgf(params, t));
     }
     let (power, num, den, dx) = self.mgf_ratio(t, shifted);
-    Some(k_ratio(power, num, &den, dx))
+    Some(ratio_regime(power, num, &den, dx).unwrap_or_else(|| small_order::mgf(params, t)))
   }
 }
 
@@ -541,6 +514,9 @@ fn exact_ldexp(v: f64, p: i32) -> Option<f64> {
 fn tilt_ratio((b, n): (i32, f64), (m, e): (f64, i32), rho: f64) -> f64 {
   ldexp((n * m) * (n * rho), 2 * b + e)
 }
+
+mod concentrated;
+mod small_order;
 
 #[cfg(test)]
 mod tests;

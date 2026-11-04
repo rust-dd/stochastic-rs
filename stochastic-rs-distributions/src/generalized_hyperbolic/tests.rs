@@ -515,17 +515,16 @@ fn mgf_takes_the_ratio_only_where_every_factor_stays_normal() {
   }
 }
 
-/// Seeded cells over `λ ∈ [−300, 300]`, `α, δ, |μ| ∈ [1e-6, 1e6]`, `|β| < α` and `t` from `1e-12·2α` to `2α` inside either
-/// end of `(−α − β, α − β)`: the ratio regime agrees with the log regime within `ε(2Σ|ln terms| + 16)`.
+/// Seeded cells over `λ ∈ (−50, 50)`, `α, δ, |μ| ∈ [1e-6, 1e6]`, `|β| < α` and `t` from `1e-12·2α` to `2α` inside either
+/// end of `(−α − β, α − β)`: the ratio regime agrees with the two-part logarithms within `ε(2Σ|ln terms| + 16)`.
 #[test]
 fn ratio_regime_agrees_with_the_log_regime() {
-  use crate::special::log_regime;
   use crate::special::log_size;
   use crate::special::ratio_regime;
   let mut u = SimdUniform::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(20_261_026));
   let (mut ratios, mut logs) = (0, 0);
   for _ in 0..8000 {
-    let lambda = 600.0 * u.sample() - 300.0;
+    let lambda = 100.0 * u.sample() - 50.0;
     let alpha = 10f64.powf(12.0 * u.sample() - 6.0);
     let beta = alpha * (1.999_999 * u.sample() - 0.999_999_5);
     let delta = 10f64.powf(12.0 * u.sample() - 6.0);
@@ -539,12 +538,13 @@ fn ratio_regime_agrees_with_the_log_regime() {
       gap - alpha - beta
     };
     let gh = SimdGeneralizedHyperbolic::<f64>::new(lambda, alpha, beta, delta, mu);
-    let shifted = gh.shifted(t);
+    let (below, above) = gh.shifted_factors(t);
+    let shifted = below * above;
     if shifted <= 0.0 {
       continue;
     }
     let (power, num, den, dx) = gh.mgf_ratio(t, shifted);
-    let log = log_regime(power, num, &den, dx);
+    let log = super::small_order::mgf((lambda, alpha, beta, delta, mu), t);
     let Some(ratio) = ratio_regime(power, num, &den, dx) else {
       logs += 1;
       continue;
@@ -553,7 +553,7 @@ fn ratio_regime_agrees_with_the_log_regime() {
     let tol = f64::EPSILON * (2.0 * log_size(power, num, &den, dx) + 16.0) * log.abs();
     assert!(
       (ratio - log).abs() <= tol,
-      "GH({lambda}, {alpha}, {beta}, {delta}, {mu}).mgf({t}): {ratio}, log {log} ± {tol}"
+      "GH({lambda}, {alpha}, {beta}, {delta}, {mu}).mgf({t}): {ratio}, two-part {log} ± {tol}"
     );
   }
   assert!(
@@ -580,3 +580,5 @@ fn a_huge_index_returns() {
   let d = SimdGeneralizedHyperbolic::<f64>::new(1e300, 2.0, 0.5, 1.0, 0.0);
   assert!(d.pdf(0.0).is_some());
 }
+
+mod two_part;

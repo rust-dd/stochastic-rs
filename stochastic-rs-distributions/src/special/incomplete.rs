@@ -361,7 +361,7 @@ pub(crate) fn split_pow2(s: f64) -> (i32, f64) {
 }
 
 /// `(k, m)` with `s = 2ᵏm`, `m ∈ [1/√2, √2)`, the range in which `ln m = 2 atanh((m − 1)/(m + 1))` converges fastest.
-fn split_sqrt2(s: f64) -> (i32, f64) {
+pub(super) fn split_sqrt2(s: f64) -> (i32, f64) {
   let (k, m) = split_pow2(s);
   if m > std::f64::consts::SQRT_2 {
     (k + 1, m * 0.5)

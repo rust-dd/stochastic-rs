@@ -12,6 +12,7 @@ mod incomplete;
 mod k_ratio;
 mod quotient;
 mod saddle;
+mod scaled;
 mod twofold;
 
 pub use bessel::bessel_i0;
@@ -26,6 +27,8 @@ pub use bessel_i::ln_bessel_ie;
 pub use bessel_k::bessel_k;
 pub use bessel_k::bessel_ke;
 pub use bessel_k::ln_bessel_ke;
+pub(crate) use bessel_k::ln_bessel_ke_parts;
+pub(crate) use bessel_k::ln_half_gamma_parts;
 pub(crate) use incomplete::LN2_HI;
 pub(crate) use incomplete::LN2_LO;
 pub use incomplete::beta_i;
@@ -45,13 +48,9 @@ pub(crate) use incomplete::student_density_precise;
 pub(crate) use incomplete::student_tail;
 pub(crate) use k_ratio::KDenominator;
 pub(crate) use k_ratio::k_half_ratio;
-pub(crate) use k_ratio::k_ratio;
 pub(crate) use k_ratio::ln_quotient;
 #[cfg(test)]
-pub(crate) use k_ratio::log_regime;
-#[cfg(test)]
 pub(crate) use k_ratio::log_size;
-#[cfg(test)]
 pub(crate) use k_ratio::ratio_regime;
 pub(crate) use quotient::SHAPE_CUT;
 pub use quotient::expm1_over;
@@ -73,8 +72,14 @@ pub(crate) use saddle::saddle;
 pub(crate) use saddle::saddle_parts;
 pub(crate) use saddle::scaled_saddle;
 pub(crate) use saddle::stirling_tail;
+pub(crate) use scaled::HALF_LN_TAU;
+pub(crate) use scaled::PLAIN_LOG_SIZE;
+pub(crate) use scaled::Scaled;
+pub(crate) use scaled::exp_parts;
+pub(crate) use scaled::ln_parts;
 pub(crate) use twofold::add_parts;
 pub(crate) use twofold::mul_parts;
+pub(crate) use twofold::sub_parts;
 #[doc(hidden)]
 pub use twofold::two_prod;
 #[doc(hidden)]

@@ -411,17 +411,16 @@ fn mgf_takes_the_ratio_only_where_every_factor_stays_normal() {
   }
 }
 
-/// Seeded cells over `λ ∈ [−300, 300]`, `χ, ψ ∈ [1e-6, 1e6]` and `s = ψ − 2t` from `1e-12ψ` to `1e6ψ`: wherever the ratio
-/// regime is taken it agrees with the log regime within `ε(2Σ|ln terms| + 16)`, the log regime's rounding and the ratio's.
+/// Seeded cells over `λ ∈ (−50, 50)`, `χ, ψ ∈ [1e-6, 1e6]` and `s = ψ − 2t` from `1e-12ψ` to `1e6ψ`: wherever the ratio
+/// regime is taken it agrees with the two-part logarithms within `ε(2Σ|ln terms| + 16)`.
 #[test]
 fn ratio_regime_agrees_with_the_log_regime() {
-  use crate::special::log_regime;
   use crate::special::log_size;
   use crate::special::ratio_regime;
   let mut u = SimdUniform::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(20_261_025));
   let (mut ratios, mut logs) = (0, 0);
   for _ in 0..4000 {
-    let lambda = 600.0 * u.sample() - 300.0;
+    let lambda = 100.0 * u.sample() - 50.0;
     let (chi, psi) = (
       10f64.powf(12.0 * u.sample() - 6.0),
       10f64.powf(12.0 * u.sample() - 6.0),
@@ -432,7 +431,7 @@ fn ratio_regime_agrees_with_the_log_regime() {
       continue;
     }
     let (power, num, den, dx) = SimdGig::<f64>::new(lambda, chi, psi).mgf_ratio(t, shifted);
-    let log = log_regime(power, num, &den, dx);
+    let log = super::small_order::mgf(lambda, chi, psi, t);
     let Some(ratio) = ratio_regime(power, num, &den, dx) else {
       logs += 1;
       continue;
@@ -441,7 +440,7 @@ fn ratio_regime_agrees_with_the_log_regime() {
     let tol = f64::EPSILON * (2.0 * log_size(power, num, &den, dx) + 16.0) * log.abs();
     assert!(
       (ratio - log).abs() <= tol,
-      "GIG({lambda}, {chi}, {psi}).mgf({t}): {ratio}, log regime {log} ± {tol}"
+      "GIG({lambda}, {chi}, {psi}).mgf({t}): {ratio}, two-part {log} ± {tol}"
     );
   }
   assert!(
@@ -472,3 +471,4 @@ fn pdf_and_mgf_at_infinity() {
 }
 
 mod large_order;
+mod small_order;

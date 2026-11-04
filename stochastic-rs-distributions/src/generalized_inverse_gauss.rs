@@ -48,18 +48,18 @@ use super::SimdFloatExt;
 use crate::seeded::StreamState;
 use crate::special::KDenominator;
 use crate::special::LARGE_ORDER;
+use crate::special::PLAIN_LOG_SIZE;
 use crate::special::debye_log_sum;
 use crate::special::divergence;
 use crate::special::exp_times_over;
-use crate::special::k_ratio;
 use crate::special::ldexp;
 use crate::special::ln_bessel_ke;
-use crate::special::ln_gamma;
 use crate::special::ln_quotient;
 use crate::special::ln_saddle;
 use crate::special::ln_shift;
 use crate::special::offset;
 use crate::special::order_step;
+use crate::special::ratio_regime;
 use crate::special::saddle;
 use crate::special::saddle_parts;
 use crate::special::split_pow2;
@@ -241,7 +241,7 @@ impl Setup {
 }
 
 /// Generalized inverse Gaussian distribution GIG$(\lambda, \chi, \psi)$, `chi > 0`, `psi > 0`; a [`Seeded`](crate::Seeded) stream draws it in bulk.
-/// The density and mgf within `ε·Σ|ln terms|` below `r = √(λ² + χψ) = 50`, from it `4ε(|ln f| + 20)` and `2ε(|ln M| + 5)`, `E Xⁿ` below order 50 within `2ε(|ln(ω/2)| + n + 8)`, `ω = √(χψ)`; past `r ≈ 3e34` a density `k` deviations off its mode adds `k√r·1e-31`.
+/// The density within `ε(S + 16)`, `S` its logarithms' sizes summed, or `32ε` where `S` passes 709 or `ω = √(χψ)` leaves the normal range, and the mgf `2ε(|ln M| + 32)` below `r = √(λ² + χψ) = 50`, from it `4ε(|ln f| + 20)` and `2ε(|ln M| + 5)`, `E Xⁿ` below order 50 within `2ε(|ln(ω/2)| + n + 8)`; past `r ≈ 3e34` a density `k` deviations off its mode adds `k√r·1e-31`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdGig<T> {
   lambda: T,
@@ -451,9 +451,16 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
         x,
       ));
     }
-    let log_norm =
-      0.5 * lambda * ln_quotient(psi, chi) - std::f64::consts::LN_2 - (ln_bessel_ke(lambda, b) - b);
-    Some((log_norm + (lambda - 1.0) * x.ln() - 0.5 * (chi / x + psi * x)).exp())
+    let (power, ln_ke) = (
+      0.5 * lambda * ln_quotient(psi, chi),
+      ln_bessel_ke(lambda, b),
+    );
+    let (tail, spread) = ((lambda - 1.0) * x.ln(), 0.5 * (chi / x + psi * x));
+    if !(power.abs() + ln_ke.abs() + b + tail.abs() + spread <= PLAIN_LOG_SIZE && b.is_normal()) {
+      return Some(small_order::density(lambda, chi, psi, x));
+    }
+    let log_norm = power - std::f64::consts::LN_2 - (ln_ke - b);
+    Some((log_norm + tail - spread).exp())
   }
 
   fn mean(&self) -> Option<f64> {
@@ -497,15 +504,12 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
       return Some(ln_shift(lambda, t, (chi, psi, shifted)).exp());
     }
     if shifted == 0.0 {
-      // s^{-λ} K_λ(√χ s) → ½ Γ(−λ) (2/√χ)^{−λ} as s → 0, in log space past the overflow of Γ and K and K's underflow.
-      let b = chi.sqrt() * psi.sqrt();
-      let k0 = ln_bessel_ke(lambda, b);
-      return Some(
-        (lambda * (0.5 * b).ln() + ln_gamma(-lambda) - std::f64::consts::LN_2 - (k0 - b)).exp(),
-      );
+      return Some(small_order::boundary_mgf(lambda, chi, psi));
     }
     let (power, num, den, dx) = self.mgf_ratio(t, shifted);
-    Some(k_ratio(power, num, &den, dx))
+    Some(
+      ratio_regime(power, num, &den, dx).unwrap_or_else(|| small_order::mgf(lambda, chi, psi, t)),
+    )
   }
 }
 
@@ -516,6 +520,7 @@ py_distribution!(PyGig, SimdGig,
 
 mod cumulants;
 mod ratio_moment;
+mod small_order;
 
 #[cfg(test)]
 mod tests;

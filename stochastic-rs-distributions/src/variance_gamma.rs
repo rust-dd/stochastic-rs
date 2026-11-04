@@ -38,6 +38,7 @@ use super::normal::SimdNormal;
 use crate::seeded::Buffered;
 use crate::seeded::StreamState;
 use crate::special::LARGE_ORDER;
+use crate::special::PLAIN_LOG_SIZE;
 use crate::special::add_parts;
 use crate::special::debye_shape;
 use crate::special::ln_1p_mx;
@@ -55,7 +56,7 @@ use crate::traits::distribution::SimdKernel;
 const SMALL_VG_THRESHOLD: usize = 16;
 
 /// Variance-gamma distribution: volatility `σ > 0`, gamma-clock variance rate `ν > 0`, drift `θ`, location `μ`; a [`Seeded`](crate::Seeded) stream draws it.
-/// Its density within `ε·Σ|ln terms|` below order `1/ν − ½ = 50` and `2.1e-15` from it, its mgf `2ε(|μt| + |ln M|)` up to its roots, its moments the gamma clock's cumulants mixed.
+/// Its density within `ε(S + 16)` below order `1/ν − ½ = 50`, `S` its logarithms' sizes summed, or `32ε` where `S` passes 709 or its Bessel argument leaves the normal range, and `2.1e-15` from it, its mgf `2ε(|μt| + |ln M|)` up to its roots, its moments the gamma clock's cumulants mixed.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdVarianceGamma<T> {
   sigma: T,
@@ -371,20 +372,29 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
     let (t_sigma, t_nu, t_gamma) = (sigma.ln(), nu.ln() / nu, ln_gamma(1.0 / nu));
     let log_norm =
       std::f64::consts::LN_2 - t_sigma - 0.5 * (2.0 * std::f64::consts::PI).ln() - t_nu - t_gamma;
+    let size = t_sigma.abs() + t_nu.abs() + t_gamma.abs() + 1.62;
     let d = x - mu;
     if d == 0.0 {
       if a <= 0.0 {
         return Some(f64::INFINITY);
       }
-      let scale = 2.0 * ln_quotient(sigma, root);
-      return Some((log_norm + a * scale + (a - 1.0) * std::f64::consts::LN_2 + ln_gamma(a)).exp());
+      let (scale, gamma_a) = (2.0 * ln_quotient(sigma, root), ln_gamma(a));
+      let at_mu = size + (a * scale).abs() + gamma_a.abs();
+      if at_mu.is_nan() || at_mu > PLAIN_LOG_SIZE {
+        return Some(small_order::density((sigma, nu, theta), (0.0, 0.0)));
+      }
+      return Some((log_norm + a * scale + (a - 1.0) * std::f64::consts::LN_2 + gamma_a).exp());
     }
     let y = d.abs() * root / (sigma * sigma);
     // `θd/σ² − y` as `−2|d|/(ν(root + |θ|)) − |d|(|θ| − θ·sgn d)/σ²`, of one sign, where `2σ²/ν ≪ θ²` would leave two
     // large terms to cancel.
     let tilt = -2.0 * d.abs() / (nu * (root + theta.abs()))
       - d.abs() / sigma * ((theta.abs() - theta * d.signum()) / sigma);
-    Some((log_norm + a * ln_quotient(d.abs(), root) + ln_bessel_ke(a, y) + tilt).exp())
+    let (power, kernel) = (a * ln_quotient(d.abs(), root), ln_bessel_ke(a, y));
+    if !(size + power.abs() + kernel.abs() - tilt <= PLAIN_LOG_SIZE && y.is_normal()) {
+      return Some(small_order::density((sigma, nu, theta), two_sum(x, -mu)));
+    }
+    Some((log_norm + power + kernel + tilt).exp())
   }
 
   fn mean(&self) -> Option<f64> {
@@ -446,6 +456,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
     Some(Complex64::new(0.0, mu * u).exp() * base.powf(-1.0 / nu))
   }
 }
+
+mod small_order;
 
 #[cfg(test)]
 mod tests;

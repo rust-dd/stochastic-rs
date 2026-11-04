@@ -27,3 +27,8 @@ pub(crate) fn add_parts((a, a_lo): (f64, f64), (b, b_lo): (f64, f64)) -> (f64, f
   let (s, e) = two_sum(a, b);
   two_sum(s, e + (a_lo + b_lo))
 }
+
+/// `(a + a_lo) − (b + b_lo)` to `ε²` of the larger part.
+pub(crate) fn sub_parts(a: (f64, f64), (b, b_lo): (f64, f64)) -> (f64, f64) {
+  add_parts(a, (-b, -b_lo))
+}

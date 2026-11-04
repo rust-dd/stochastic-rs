@@ -2,13 +2,9 @@
 //! `ln 2 + H_λ(w*)` plus Debye's remainder, `H_λ(w) = λ ln w − ½(χ/w + ψw)` at its maximiser, so a ratio of two meets as one divergence.
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 10.41.4 (Debye's expansion of `K_ν(νz)`, whose `−νη` with the power is `H_λ(w*)`), <https://dlmf.nist.gov/10.41.4>.
 
-use std::f64::consts::LN_2;
-
-use super::LN2_HI;
-use super::LN2_LO;
 use super::bessel_i::debye_sum_at;
 pub(crate) use super::bessel_k::debye_shape;
-use super::ldexp;
+use super::exp_parts;
 use super::split_pow2;
 use super::twofold::two_prod;
 use super::twofold::two_sum;
@@ -113,24 +109,18 @@ pub(crate) fn exp_times_over(a: f64, m: f64, x: f64) -> f64 {
   }
 }
 
-/// [`exp_times_over`] times `2ᵖ`, `e^a = 2ⁿe^{a − n ln 2}` reduced by Cody and Waite's two-part `ln 2`, so neither `e^a` nor
-/// the product leaves the doubles before the value does; at `p = 0` its bits.
+/// [`exp_times_over`] times `2ᵖ` through [`exp_parts`], so neither `e^a` nor the product leaves the doubles before the value
+/// does; at `p = 0` its bits.
 pub(crate) fn exp_times_over_pow2(a: f64, (m, x): (f64, f64), p: i32) -> f64 {
   if p == 0 {
     return exp_times_over(a, m, x);
   }
   let factor = m / x;
-  let (a, factor) = if factor.is_normal() {
-    (a, factor)
+  if factor.is_normal() {
+    exp_parts((a, 0.0), factor, p)
   } else {
-    (a + m.ln() - x.ln(), 1.0)
-  };
-  if !a.is_finite() {
-    return a.exp() * factor;
+    exp_parts((a + m.ln() - x.ln(), 0.0), 1.0, p)
   }
-  let n = (a / LN_2).round().clamp(-4000.0, 4000.0);
-  let reduced = (a - n * LN2_HI) - n * LN2_LO;
-  ldexp(reduced.exp() * factor, n as i32 + p)
 }
 
 /// `H_λ(w(1 + e)) − H_λ(w)` at the maximiser `w`, `e` in two parts, in terms of one sign: `λ·ln1pmx(e) − (χ/2w)e²/(1 + e)` at
