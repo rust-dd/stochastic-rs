@@ -69,6 +69,7 @@ macro_rules! py_process_1d {
         $crate::py_dispatch!(self, |inner| inner.sample().into_pyarray(py).into_py_any(py).unwrap())
       }
 
+      /// Under a seed the rows are not reproducible across calls; loop over `sample()` to pair path `i` across runs.
       fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
         use numpy::IntoPyArray;
         use numpy::ndarray::Array2;
@@ -143,6 +144,7 @@ macro_rules! py_process_2x1d {
         })
       }
 
+      /// Under a seed the rows are not reproducible across calls; loop over `sample()` to pair path `i` across runs.
       fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
         use numpy::IntoPyArray;
         use numpy::ndarray::Array2;
@@ -213,6 +215,7 @@ macro_rules! py_process_2d {
         $crate::py_dispatch!(self, |inner| inner.sample().into_pyarray(py).into_py_any(py).unwrap())
       }
 
+      /// Under a seed the rows are not reproducible across calls; loop over `sample()` to pair path `i` across runs.
       fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
         use numpy::IntoPyArray;
         use $crate::traits::ProcessExt;

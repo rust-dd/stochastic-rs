@@ -70,6 +70,9 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   /// Maps `f` over `m` independently sampled paths, reusing one sampler and
   /// one output buffer per rayon worker (no per-path allocation or RNG
   /// re-init). This is the parallel primitive.
+  ///
+  /// Under a `Deterministic` seed the paths are not reproducible across calls: the workers
+  /// advance the shared seed in scheduling order, so pair paths across runs with `sample`.
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Self::Output) -> R + Sync) -> Vec<R> {
     (0..m)
       .into_par_iter()
@@ -96,6 +99,9 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   /// `m` independently sampled paths, kept. Like [`sample_map`](Self::sample_map)
   /// it reuses one sampler per rayon worker, but allocates a fresh owned path
   /// each step — cheaper than mapping then cloning when every path is wanted.
+  ///
+  /// Under a `Deterministic` seed the paths are not reproducible across calls: the workers
+  /// advance the shared seed in scheduling order, so pair paths across runs with `sample`.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
     (0..m)
       .into_par_iter()
