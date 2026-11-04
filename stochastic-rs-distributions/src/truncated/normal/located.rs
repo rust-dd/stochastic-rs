@@ -273,7 +273,6 @@ fn midpoint(lo: f64, up: f64) -> (f64, f64) {
   }
 }
 
-/// `x = m·2^p` with the sign in `m`; 0 as `(0, 0)`.
 fn split_signed(x: f64) -> (f64, i32) {
   if x == 0.0 {
     return (0.0, 0);

@@ -14,7 +14,8 @@ use crate::truncated::quadrature::two_prod;
 const FAR: f64 = 700.0;
 
 impl<T: SimdFloatExt> SimdTruncatedExp<T> {
-  /// Plain doubles where each factor is moderate, else `scaled`.
+  /// The scaled form's bookkeeping only where a factor could reach the subnormals: it costs the plain products several
+  /// times over.
   #[inline]
   pub(super) fn mgf(&self, t: f64) -> Option<f64> {
     if t.is_nan() {
@@ -107,7 +108,7 @@ fn phi_plus((ms, es): (f64, i32), len: f64) -> (f64, i32) {
   }
 }
 
-/// `φ(λL)`: below `FAR` as it stands, past it `1/(λL)`.
+/// `φ(z) = (1 − e^{−z})/z`, whose `e^{−z}` past `FAR` lies below every digit of 1.
 fn phi(lam: f64, len: f64) -> (f64, i32) {
   let ((ml, el), (mw, ew)) = (split(lam), split(len));
   let (zm, ze) = (ml * mw, el + ew);

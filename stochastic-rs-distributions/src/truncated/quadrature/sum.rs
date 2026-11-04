@@ -3,21 +3,11 @@
 //!
 //! Reference: Shewchuk, J. R. (1997), "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates", *Discrete & Computational Geometry* 18(3), 305-363, DOI 10.1007/PL00009321 (the growing expansion).
 
+pub(in crate::truncated) use crate::special::two_prod;
+pub(in crate::truncated) use crate::special::two_sum;
+
 use super::ldexp;
 use super::split;
-
-/// `s + e = a + b` exactly.
-pub(in crate::truncated) fn two_sum(a: f64, b: f64) -> (f64, f64) {
-  let s = a + b;
-  let z = s - a;
-  (s, (a - (s - z)) + (b - z))
-}
-
-/// `p + e = a·b` exactly while `e` stays a normal double.
-pub(in crate::truncated) fn two_prod(a: f64, b: f64) -> (f64, f64) {
-  let p = a * b;
-  (p, a.mul_add(b, -p))
-}
 
 /// The terms' sum to a double-double as if formed in thrice the precision: two cascades of two-sums that carry each
 /// rounding error to the next term, then the errors' sum added once (SumK, K = 3).

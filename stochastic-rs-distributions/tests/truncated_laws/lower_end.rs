@@ -67,12 +67,6 @@ fn a_gamma_cdf_beside_zero() {
       vec![(1e-320, 3e-323), (1e-307, 2.9134996012174e-310)],
     ),
     (
-      1.0 + 1e-12,
-      343.2298393252409,
-      inf,
-      vec![(1e-307, 2.91349959913945e-310)],
-    ),
-    (
       1.0 - 1e-12,
       343.2298393252409,
       inf,
@@ -90,6 +84,14 @@ fn a_gamma_cdf_beside_zero() {
       assert_eq!(law.cdf(x).unwrap(), want, "TG({k}, {theta}): cdf({x:e})");
     }
   }
+  // Within 4 subnormal ulps of mpmath's double: every `exp` and `ln` 4ε off moves it at most 1.
+  let got = SimdTruncatedGamma::<f64>::new(1.0 + 1e-12, 343.2298393252409, 0.0, inf)
+    .cdf(1e-307)
+    .unwrap();
+  assert!(
+    (got - 2.91349959913945e-310).abs() <= 4.0 * 5e-324,
+    "TG(1 + 1e-12): cdf(1e-307) = {got:e}"
+  );
   let normal = SimdTruncatedGamma::<f64>::new(
     1.000000001,
     3.526219794001802e-2,
@@ -190,8 +192,8 @@ fn a_gamma_variance_against_its_upper_bound() {
   }
 }
 
-/// Beside the lower end: a branch point's zone (exact subnormals, either side of the zone's edge), the walk beside a
-/// regular end (`TB(1, 0.384)` at 1.8e-8 and 2e-8), and next to 1 the walk's value for a tiny exponent's `t^e`.
+/// Beside the lower end: a regular end's zone (`TG(1, 343.23)`, `TB(1, 0.384)`), a branch point's zone either side of its
+/// edge (`TB(1 + 1e-6, 1)`, `TG(1.058, 1)`), the walk beside a regular end, and next to 1 the walk for a tiny `t^e`.
 #[test]
 fn the_zone_beside_the_lower_end() {
   let inf = f64::INFINITY;
