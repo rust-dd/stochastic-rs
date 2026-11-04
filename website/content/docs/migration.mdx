@@ -36,6 +36,7 @@ let put  = p.price_put(100.0, 100.0, 0.03, 0.0, 0.5);
 ## Calibrators
 
 - `HestonCalibrator`, `SabrCalibrator` and the three swaption calibrators (`HullWhiteSwaptionCalibrator`, `BlackKarasinskiSwaptionCalibrator`, `G2ppSwaptionCalibrator`) have a public `regularization: Option<Regularization>` field; a struct literal must set it (`None` reproduces v2).
+- `HestonCalibrationResult` has a public `termination: String` field, as in 2.6.2, so a struct literal must set it. It holds basin's termination reason (`SolverConverged`, `MaxCostEvals`, …), not the 2.6.x `levenberg-marquardt` text, and the reported `rmse` comes from the pricer that was fitted.
 - `SabrCalibrator::new` asserts that strikes and vols have the same length, and the shifted caplet calibrator returns `f64::MAX` residuals instead of `NaN` for an out-of-domain trial point, so a Levenberg–Marquardt step does not stall on a non-finite loss.
 - `BlackKarasinskiSwaptionCalibrator`, `HullWhiteSwaptionCalibrator`, `G2ppSwaptionCalibrator` and `SabrCapletCalibrator` report `converged` only when the simplex objective spread falls below `sd_tolerance`. An iteration limit or nonfinite simplex costs return `false` with the best parameters found. This also changes the final element of their Python return tuples.
 
@@ -66,7 +67,7 @@ Enums that will keep gaining variants (`CopulaType`, `HazardInterpolation`, the 
 
 ## Parameter asserts name the parameter and its value
 
-Constructors that rejected a bad parameter with a bare `assert!` now panic with a message of the form ``sigma must satisfy `sigma > 0.0`, got sigma = -0.2``. If a test pinned the old message through `#[should_panic(expected = …)]`, update the string. The error convention (invalid parameter → panic; not computable → documented `NaN`; data-dependent failure → `Result`) is in [design philosophy](/docs/concepts/design-philosophy#error-convention).
+Constructors that rejected a bad parameter with a bare `assert!` now panic with a message of the form ``sigma must satisfy `sigma > 0.0`, got sigma = -0.2``. If a test pinned the old message through `#[should_panic(expected = …)]`, update the string. `Heston::qe()` checks `HestonPow::Sqrt`, `kappa > 0`, `sigma > 0` and a positive `s0` when it switches the scheme, rather than at the first sample. The error convention (invalid parameter → panic; not computable → documented `NaN`; data-dependent failure → `Result`) is in [design philosophy](/docs/concepts/design-philosophy#error-convention).
 
 ## Sampling results that change for a given seed
 
