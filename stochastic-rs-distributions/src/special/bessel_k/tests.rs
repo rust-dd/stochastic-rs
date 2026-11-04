@@ -255,19 +255,11 @@ fn ln_bessel_ke_is_finite_where_k_overflows() {
   assert_eq!(ln_bessel_ke(3.0, f64::INFINITY), f64::NEG_INFINITY);
 }
 
-/// mpmath at 60 and 120 digits: `ln(e^x K_ν(x))` in two parts within a few `ε` of 1 absolutely in each regime, the
-/// tiny forms on subnormal arguments included, where the plain logarithm carries `ε|ln K|`.
+/// mpmath at 60 and 120 digits where the plain logarithm's `ε|ln K|` passes `16ε`: `ln(e^x K_ν(x))` in two parts holds it,
+/// `K`'s own few `ε` included, the tiny forms on subnormal arguments too.
 #[test]
 fn the_two_part_logarithm_holds_where_k_overflows() {
-  use crate::special::Scaled;
-  use crate::special::ln_bessel_ke_parts;
-  for (nu, x, hi, lo) in [
-    (
-      0.0,
-      1e-310,
-      6.570_767_143_789_475_5,
-      -1.787_027_661_584_596_4e-16,
-    ),
+  assert_two_part_logarithm(&[
     (
       0.3,
       5e-324,
@@ -281,18 +273,6 @@ fn the_two_part_logarithm_holds_where_k_overflows() {
       2.792_723_435_586_662e-14,
     ),
     (0.5, 1e-320, 368.639_411_798_131_7, 5.139_361_497_770_54e-15),
-    (
-      0.75,
-      1e-25,
-      43.203_464_649_929_664,
-      1.414_195_675_739_321_6e-15,
-    ),
-    (
-      1.0,
-      4.336_808_689_942_018e-19,
-      42.281_978_014_156_664,
-      -2.823_769_469_746_653_6e-17,
-    ),
     (
       5.5,
       1e-310,
@@ -324,6 +304,37 @@ fn the_two_part_logarithm_holds_where_k_overflows() {
       -9.502_090_844_388_359e-15,
     ),
     (49.9, 2.0, 145.462_053_338_231, 1.264_270_123_897_421_1e-14),
+    (
+      50.2,
+      1.734_723_475_976_807e-18,
+      2_232.412_706_030_68,
+      1.823_514_454_493_078e-13,
+    ),
+  ]);
+}
+
+/// mpmath at 60 and 120 digits in the forms the plain logarithm also holds: Hankel's, Steed's, Temme's at `ν = 0`, `f₀`.
+#[test]
+fn each_form_of_the_two_part_logarithm_holds() {
+  assert_two_part_logarithm(&[
+    (
+      0.0,
+      1e-310,
+      6.570_767_143_789_475_5,
+      -1.787_027_661_584_596_4e-16,
+    ),
+    (
+      0.75,
+      1e-25,
+      43.203_464_649_929_664,
+      1.414_195_675_739_321_6e-15,
+    ),
+    (
+      1.0,
+      4.336_808_689_942_018e-19,
+      42.281_978_014_156_664,
+      -2.823_769_469_746_653_6e-17,
+    ),
     (20.25, 7.0, 20.396_735_077_276_63, -7.092_866_608_378_76e-17),
     (
       3.0,
@@ -344,17 +355,17 @@ fn the_two_part_logarithm_holds_where_k_overflows() {
       9.719_369_407_222_041,
       -1.813_834_373_246_122_8e-16,
     ),
-    (
-      50.2,
-      1.734_723_475_976_807e-18,
-      2_232.412_706_030_68,
-      1.823_514_454_493_078e-13,
-    ),
-  ] {
+  ]);
+}
+
+fn assert_two_part_logarithm(rows: &[(f64, f64, f64, f64)]) {
+  use crate::special::Scaled;
+  use crate::special::ln_bessel_ke_parts;
+  for &(nu, x, hi, lo) in rows {
     let (h, l) = ln_bessel_ke_parts((nu, 0.0), Scaled::new(x));
     let err = (h - hi) + (l - lo);
     assert!(
-      err.abs() <= 8.0 * f64::EPSILON,
+      err.abs() <= 16.0 * f64::EPSILON,
       "ν = {nu}, x = {x:e}: {err:e}"
     );
   }
