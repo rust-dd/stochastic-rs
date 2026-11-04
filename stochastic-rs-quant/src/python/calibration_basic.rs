@@ -81,48 +81,96 @@ pub struct PyHestonCalibrator {
 
 #[pymethods]
 impl PyHestonCalibrator {
+  /// `jacobian_method` is `"cui"` or `"fd"`; `residual_weights` holds one positive weight per quote in slice order;
+  /// `feller_projection` keeps every iterate on the Feller side `2 kappa theta >= sigma^2`.
   #[new]
-  #[pyo3(signature = (slices, s, r, option_type="call", q=None))]
+  #[pyo3(signature = (slices, s, r, option_type="call", q=None, jacobian_method="cui", residual_weights=None, feller_projection=false))]
   fn new(
     slices: Vec<PyMarketSlice>,
     s: f64,
     r: f64,
     option_type: &str,
     q: Option<f64>,
+    jacobian_method: &str,
+    residual_weights: Option<Vec<f64>>,
+    feller_projection: bool,
   ) -> PyResult<Self> {
     let ot = parse_option_type(option_type)?;
     let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
       slices.into_iter().map(|s| s.inner).collect();
-    Ok(Self {
-      inner: crate::calibration::heston::HestonCalibrator::from_slices(
-        None,
-        &inner_slices,
-        s,
-        r,
-        q,
-        ot,
-        false,
-      ),
-    })
+    let mut inner = crate::calibration::heston::HestonCalibrator::from_slices(
+      None,
+      &inner_slices,
+      s,
+      r,
+      q,
+      ot,
+      false,
+    );
+    inner.set_jacobian_method(parse_heston_jacobian_method(jacobian_method)?);
+    if let Some(weights) = residual_weights {
+      inner
+        .set_residual_weights(weights)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    }
+    inner.set_feller_projection(feller_projection);
+    Ok(Self { inner })
   }
 
-  /// Returns `(v0, kappa, theta, sigma, rho, converged, loss_rmse)`.
-  fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, bool, f64)> {
+  /// `initial` is `(v0, kappa, theta, sigma, rho)`. Returns `(v0, kappa, theta, sigma, rho, converged, loss_rmse)`,
+  /// with the optimiser's termination reason appended when `full_output` is true.
+  #[pyo3(signature = (initial=None, full_output=false))]
+  fn calibrate(
+    &self,
+    py: Python<'_>,
+    initial: Option<[f64; 5]>,
+    full_output: bool,
+  ) -> PyResult<Py<PyAny>> {
+    use pyo3::IntoPyObjectExt;
+
+    use crate::calibration::heston::HestonParams;
     use crate::traits::Calibrator;
+    let initial = initial.map(|[v0, kappa, theta, sigma, rho]| HestonParams {
+      v0,
+      kappa,
+      theta,
+      sigma,
+      rho,
+    });
     let res = self
       .inner
-      .calibrate(None)
+      .calibrate(initial)
       .map_err(|e| PyValueError::new_err(format!("Heston calibration failed: {e}")))?;
     let p = &res.params;
-    Ok((
-      p.v0,
-      p.kappa,
-      p.theta,
-      p.sigma,
-      p.rho,
-      res.converged,
-      res.loss.get(crate::types::LossMetric::Rmse),
-    ))
+    let rmse = res.loss.get(crate::types::LossMetric::Rmse);
+    if full_output {
+      (
+        p.v0,
+        p.kappa,
+        p.theta,
+        p.sigma,
+        p.rho,
+        res.converged,
+        rmse,
+        res.termination,
+      )
+        .into_py_any(py)
+    } else {
+      (p.v0, p.kappa, p.theta, p.sigma, p.rho, res.converged, rmse).into_py_any(py)
+    }
+  }
+}
+
+fn parse_heston_jacobian_method(
+  s: &str,
+) -> PyResult<crate::calibration::heston::HestonJacobianMethod> {
+  use crate::calibration::heston::HestonJacobianMethod;
+  match s.to_ascii_lowercase().as_str() {
+    "cui" => Ok(HestonJacobianMethod::CuiAnalytic),
+    "fd" => Ok(HestonJacobianMethod::NumericFiniteDiff),
+    other => Err(PyValueError::new_err(format!(
+      "jacobian_method must be 'cui' or 'fd', got '{other}'"
+    ))),
   }
 }
 
