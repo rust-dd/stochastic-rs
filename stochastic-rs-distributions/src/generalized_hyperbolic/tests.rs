@@ -402,6 +402,39 @@ fn extreme_parameters_keep_their_moments() {
   );
 }
 
+/// mpmath at 60 and 120 digits where `δ²` or `γ² = (α − β)(α + β)` is subnormal, which the squared clock read up to `20 %`
+/// off, as NaN or as an mgf of 1.
+#[test]
+fn subnormal_clocks_keep_their_digits() {
+  let gh = SimdGeneralizedHyperbolic::<f64>::new;
+  let rows = [
+    (
+      gh(-5.0, 1e150, 5e149, 2.3e-162, 0.0).skewness(),
+      4.065_863_991_822_648e-13,
+    ),
+    (
+      gh(0.5, 2.3e-162, 1.15e-162, 1e-100, 0.0).mean(),
+      2.898_550_724_637_681_4e161,
+    ),
+    (
+      gh(-60.0, 0.001, 0.0, 2.3e-162, 0.0).pdf(0.0),
+      1.896_129_884_611_740_6e162,
+    ),
+    (
+      gh(0.5, 2.3e-162, 0.0, 1e-100, 0.0).pdf(0.0),
+      4.411_420_834_454_354e-160,
+    ),
+    (
+      gh(60.0, 2.3e-162, 0.0, 1e-100, 0.0).moment_generating_function(9.2e-163),
+      34_933.559_229_964_07,
+    ),
+  ];
+  for (i, (got, want)) in rows.into_iter().enumerate() {
+    let got = got.unwrap();
+    assert!(close(got, want, 1e-12), "row {i}: {got:e}");
+  }
+}
+
 /// mpmath at 120 and 240 digits where the power factor goes subnormal (`λ = −100`), its product with `K` overflows (`λ = 100`),
 /// `e^{μt}` alone goes subnormal (`λ = 10`, the `λ = 20` family), with the power too (`μ = −3.962`), and where `e^{dx}` does.
 #[test]

@@ -49,7 +49,7 @@ use crate::special::LARGE_ORDER;
 use crate::special::add_parts;
 use crate::special::debye_log_sum;
 use crate::special::divergence;
-use crate::special::exp_times_over;
+use crate::special::exp_times_over_pow2;
 use crate::special::k_ratio;
 use crate::special::ldexp;
 use crate::special::ln_bessel_ke;
@@ -69,7 +69,7 @@ use crate::traits::distribution::SimdKernel;
 const SMALL_GH_THRESHOLD: usize = 16;
 
 /// Generalized hyperbolic distribution GH$(\lambda, \alpha, \beta, \delta, \mu)$; a [`Seeded`](crate::Seeded) stream draws it in bulk.
-/// The density and mgf within `ε·Σ|ln terms|` below order 50, from it `4ε(|ln f| + 20)` and `2ε(|ln M| + 5)`; the mgf adds `2ε|μt|` to its edge `|β + t| = α`, the mean `ε(|μ| + ℓ|β|E W)/|mean|` (`ℓ` `2(|ln(δγ/2)| + 9)` below order 50, `|ln β| + |ln E W|` where `E W` or `βE W` leaves the normal range, else 1), and past the clock's `r ≈ 3e34` a density `k` deviations off its mode adds `k√r·1e-31`.
+/// The density and mgf within `ε·Σ|ln terms|` below order 50, from it `4ε(|ln f| + 20)` and `2ε(|ln M| + 5)`; the mgf adds `2ε|μt|` to its edge `|β + t| = α`, the mean `ε(|μ| + ℓ|β|E W)/|mean|` (`ℓ` `2(|ln(δγ/2)| + 9)` below order 50, `|ln β| + |ln E W|` where `E W` or `βE W` leaves the normal range, else 1), past the clock's `r ≈ 3e34` a density `k` deviations off its mode adds `k√r·1e-31`; where `δ²`, `γ²` or the clock's saddle leaves the normal range it is the law of `X/2ᵏ`, `2⁻ᵏδ ≈ 2ᵏγ`, which holds these wherever `δγ` is normal.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdGeneralizedHyperbolic<T> {
   lambda: T,
@@ -78,6 +78,7 @@ pub struct SimdGeneralizedHyperbolic<T> {
   delta: T,
   mu: T,
   gig: SimdGig<T>,
+  balance: i32,
 }
 
 /// A GH stream: the GIG-clock and normal sub-streams and the single-draw buffer.
@@ -131,6 +132,7 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
       psi > T::zero() && psi.is_finite(),
       "alpha must satisfy `0 < alpha * alpha - beta * beta < ∞`, got alpha = {alpha:?}, beta = {beta:?}"
     );
+    let at = |v: T| v.to_f64().unwrap();
     Self {
       lambda,
       alpha,
@@ -138,6 +140,7 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
       delta,
       mu,
       gig: SimdGig::new(lambda, chi, psi),
+      balance: balance_power(at(lambda), at(alpha), at(beta), at(delta)),
     }
   }
 
@@ -226,6 +229,22 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
     )
   }
 
+  /// `X/2ᵏ ~ GH(λ, 2ᵏα, 2ᵏβ, 2⁻ᵏδ, 2⁻ᵏμ)`, `k` the balancing power, where every scaling is exact and that law's squares
+  /// are normal: it carries the digits this law's squared clock or saddle would lose.
+  #[cold]
+  fn balanced(&self) -> Option<(SimdGeneralizedHyperbolic<f64>, i32)> {
+    let k = self.balance;
+    let (lambda, alpha, beta, delta, mu) = self.params();
+    let (a, b, d, m) = (
+      exact_ldexp(alpha, k)?,
+      exact_ldexp(beta, k)?,
+      exact_ldexp(delta, -k)?,
+      exact_ldexp(mu, -k)?,
+    );
+    let normal = (d * d).is_normal() && ((a - b) * (a + b)).is_normal();
+    normal.then(|| (SimdGeneralizedHyperbolic::<f64>::new(lambda, a, b, d, m), k))
+  }
+
   /// The clock's `(λ, δ², γ²)` from the parameters as doubles, `γ² = (α − β)(α + β)`, which keeps its digits at `|β| ≈ α`.
   fn clock(&self) -> (f64, f64, f64) {
     let (lambda, alpha, beta, delta, _) = self.params();
@@ -242,9 +261,34 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
     below * above
   }
 
+  /// The density at `x` times `2ᵖ`, the power taken into its exponent, so a scaled value leaves the doubles only where it does.
+  fn density(&self, x: f64, p: i32) -> f64 {
+    let (lambda, alpha, beta, delta, mu) = self.params();
+    let gamma = ((alpha - beta) * (alpha + beta)).sqrt();
+    let r0 = lambda.hypot(delta * gamma);
+    let (d, d_lo) = two_sum(x, -mu);
+    if r0 >= LARGE_ORDER {
+      return self.concentrated_pdf((d, d_lo), (gamma, r0), p);
+    }
+    let (root, order, dg) = (delta.hypot(d), lambda - 0.5, delta * gamma);
+    let log_norm = lambda * gamma.ln()
+      - 0.5 * std::f64::consts::TAU.ln()
+      - order * alpha.ln()
+      - lambda * delta.ln()
+      - (ln_bessel_ke(lambda, dg) - dg);
+    // `βd − α·root` as `−(α ∓ β)|d| − αδ²/(root + |d|)`, of one sign, where `α ≈ |β|` would leave two large terms to cancel.
+    let tilt = -(alpha - beta * d.signum()) * d.abs() - alpha * delta * (delta / (root + d.abs()));
+    let ln_f = log_norm + order * root.ln() + ln_bessel_ke(order, alpha * root) + tilt;
+    if p == 0 {
+      ln_f.exp()
+    } else {
+      exp_times_over_pow2(ln_f, (1.0, 1.0), p)
+    }
+  }
+
   /// The density from `r = √(λ² + δ²γ²) = 50`: `βd + ln N(λ − ½, δ² + d², α²) − ln N(λ, δ², γ²)` meets as
   /// `H_λ(w₁) − H_λ(w₀) − ½ ln w₁ − (d − βw₁)²/2w₁` (`α² = γ² + β²`), both maximisers and `d` in two parts, plus `T₁ − T₀`.
-  fn concentrated_pdf(&self, d: (f64, f64), (gamma, r0): (f64, f64)) -> f64 {
+  fn concentrated_pdf(&self, d: (f64, f64), (gamma, r0): (f64, f64), p: i32) -> f64 {
     let (lambda, alpha, beta, delta, _) = self.params();
     let root = delta.hypot(d.0);
     if !root.is_finite() {
@@ -272,7 +316,7 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
       + debye_log_sum(order.0.abs(), r1)
       - debye_log_sum(lambda.abs(), r0)
       - 0.5 * std::f64::consts::TAU.ln();
-    exp_times_over(a, (r0 / r1).sqrt(), w1.0.sqrt())
+    exp_times_over_pow2(a, ((r0 / r1).sqrt(), w1.0.sqrt()), p)
   }
 
   /// The interior mgf's ratio at `t`, `shifted = γ_t² > 0`.
@@ -342,25 +386,26 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     if x.is_infinite() {
       return Some(0.0);
     }
-    let (lambda, alpha, beta, delta, mu) = self.params();
-    let gamma = ((alpha - beta) * (alpha + beta)).sqrt();
-    let r0 = lambda.hypot(delta * gamma);
-    let (d, d_lo) = two_sum(x, -mu);
-    if r0 >= LARGE_ORDER {
-      return Some(self.concentrated_pdf((d, d_lo), (gamma, r0)));
+    let (_, _, _, _, mu) = self.params();
+    // Past the doubles `x − μ` lies where the density underflows, which the balanced law's finite gap would not see.
+    if (x - mu).is_infinite() {
+      return Some(0.0);
     }
-    let (root, order, dg) = (delta.hypot(d), lambda - 0.5, delta * gamma);
-    let log_norm = lambda * gamma.ln()
-      - 0.5 * std::f64::consts::TAU.ln()
-      - order * alpha.ln()
-      - lambda * delta.ln()
-      - (ln_bessel_ke(lambda, dg) - dg);
-    // `βd − α·root` as `−(α ∓ β)|d| − αδ²/(root + |d|)`, of one sign, where `α ≈ |β|` would leave two large terms to cancel.
-    let tilt = -(alpha - beta * d.signum()) * d.abs() - alpha * delta * (delta / (root + d.abs()));
-    Some((log_norm + order * root.ln() + ln_bessel_ke(order, alpha * root) + tilt).exp())
+    if self.balance != 0
+      && let Some((law, k)) = self.balanced()
+      && let Some(x) = exact_ldexp(x, -k)
+    {
+      return Some(law.density(x, -k));
+    }
+    Some(self.density(x, 0))
   }
 
   fn mean(&self) -> Option<f64> {
+    if self.balance != 0
+      && let Some((law, k)) = self.balanced()
+    {
+      return law.mean().map(|m| ldexp(m, k));
+    }
     let (_, _, beta, _, mu) = self.params();
     let (lambda, chi, psi) = self.clock();
     Some(mu + SimdGig::<f64>::scaled_raw_moment_at((lambda, chi.sqrt(), psi.sqrt()), 1, beta))
@@ -369,6 +414,11 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
   /// `κ₁(W) + β²κ₂(W)` over the clock's `κₙ = sⁿρⁿ⁻¹kₙ`, `s·k₁ + (βs)²ρk₂` with `s = 2ᵉm` and `β` split, so neither term
   /// leaves the doubles before the value does.
   fn variance(&self) -> Option<f64> {
+    if self.balance != 0
+      && let Some((law, k)) = self.balanced()
+    {
+      return law.variance().map(|v| ldexp(v, 2 * k));
+    }
     let (_, _, beta, _, _) = self.params();
     let ((m, e), rho, [k1, k2, _, _]) = SimdGig::<f64>::cumulants_at(self.clock());
     let clock_mean = ldexp(m * k1, e);
@@ -383,6 +433,11 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
   /// `κ₃/κ₂^{3/2}` with `κ₃ = β(3κ₂(W) + β²κ₃(W))`, over the clock's `κₙ = sⁿρⁿ⁻¹kₙ` and `B = β²sρ` as `B` or `1/B`, whichever
   /// is small; 0 at `β = 0`, where the law is symmetric.
   fn skewness(&self) -> Option<f64> {
+    if self.balance != 0
+      && let Some((law, _)) = self.balanced()
+    {
+      return law.skewness();
+    }
     let (_, _, beta, _, _) = self.params();
     if beta == 0.0 {
       return Some(0.0);
@@ -402,6 +457,11 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
 
   /// Excess kurtosis `κ₄/κ₂²`, `κ₄ = 3κ₂(W) + 6β²κ₃(W) + β⁴κ₄(W)`, every term positive, scaled like the skewness.
   fn kurtosis(&self) -> Option<f64> {
+    if self.balance != 0
+      && let Some((law, _)) = self.balanced()
+    {
+      return law.kurtosis();
+    }
     let (_, _, beta, _, _) = self.params();
     let ((m, e), rho, [k1, k2, k3, k4]) = SimdGig::<f64>::cumulants_at(self.clock());
     let big = if beta == 0.0 {
@@ -425,6 +485,12 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
     if t == 0.0 {
       return Some(1.0);
+    }
+    if self.balance != 0
+      && let Some((law, k)) = self.balanced()
+      && let Some(t) = exact_ldexp(t, k)
+    {
+      return law.moment_generating_function(t);
     }
     let (lambda, alpha, beta, delta, mu) = self.params();
     let shifted = self.shifted(t);
@@ -450,6 +516,25 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     let (power, num, den, dx) = self.mgf_ratio(t, shifted);
     Some(k_ratio(power, num, &den, dx))
   }
+}
+
+/// `k` with `2⁻ᵏδ ≈ 2ᵏγ ≈ √(δγ)` where `δ²`, `γ² = (α − β)(α + β)` or the clock's saddle leaves the normal range, else 0.
+fn balance_power(lambda: f64, alpha: f64, beta: f64, delta: f64) -> i32 {
+  let (diff, sum) = (alpha - beta, alpha + beta);
+  let gamma = diff.sqrt() * sum.sqrt();
+  if (delta * delta).is_normal()
+    && (diff * sum).is_normal()
+    && saddle(lambda, delta, gamma).is_normal()
+  {
+    return 0;
+  }
+  (0.5 * (delta.log2() - gamma.log2())).round() as i32
+}
+
+/// `v·2ᵖ` where that is exact: `v` zero, or the product normal.
+fn exact_ldexp(v: f64, p: i32) -> Option<f64> {
+  let scaled = ldexp(v, p);
+  (v == 0.0 || scaled.is_normal()).then_some(scaled)
 }
 
 /// `B = β²sρ` from `β = 2ᵇn` and the clock's scale `s = 2ᵉm`, so a scale past the doubles does not read `0·∞`.

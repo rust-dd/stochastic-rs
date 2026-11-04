@@ -7,6 +7,8 @@
 mod large_shape;
 mod student;
 
+pub(crate) use large_shape::LN2_HI;
+pub(crate) use large_shape::LN2_LO;
 pub(crate) use student::student_density;
 pub(crate) use student::student_density_precise;
 pub(crate) use student::student_tail;

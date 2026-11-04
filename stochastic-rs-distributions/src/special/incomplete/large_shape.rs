@@ -14,9 +14,9 @@ use crate::special::mills_ratio;
 pub(super) use crate::special::twofold::two_sum;
 
 /// `ln 2` in two parts, the first with 21 trailing zero bits, so its products with small integers are exact.
-pub(super) const LN2_HI: f64 = f64::from_bits(0x3fe6_2e42_fee0_0000);
+pub(crate) const LN2_HI: f64 = f64::from_bits(0x3fe6_2e42_fee0_0000);
 
-pub(super) const LN2_LO: f64 = f64::from_bits(0x3dea_39ef_3579_3c76);
+pub(crate) const LN2_LO: f64 = f64::from_bits(0x3dea_39ef_3579_3c76);
 
 /// `x/a` where Temme's expansion is summed, `|η| ≤ 1.004`; outside it the series or the fraction converge within 30 terms.
 const TEMME_BAND: (f64, f64) = (0.3, 2.35);
