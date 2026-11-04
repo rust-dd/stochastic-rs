@@ -375,7 +375,7 @@ const MILLS_DIVISORS: [f64; 16] = [
   1.0 / 17.0,
 ];
 
-/// Mills' ratio `R(z) = Φ(−z)/φ(z)`, within 0.64 ulps on `z ≥ 0`: below 4.25 the Taylor series of `R′ = zR − 1` about
+/// Mills' ratio `R(z) = Φ(−z)/φ(z)`, within 0.66 ulps on `z ≥ 0`: below 4.25 the Taylor series of `R′ = zR − 1` about
 /// the nearest half-integer, else Laplace's fraction backward, past `1e8` `1/z − 1/z³`; the quotient below 0.
 pub fn mills_ratio(z: f64) -> f64 {
   if z < 0.0 {
