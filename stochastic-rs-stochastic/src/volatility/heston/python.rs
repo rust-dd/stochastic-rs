@@ -1,5 +1,6 @@
 use super::*;
 
+/// `scheme` is `"euler"` (default) or `"qe"`, Andersen's (2008) quadratic-exponential variance step.
 #[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyHeston {
@@ -9,12 +10,31 @@ pub struct PyHeston {
   seeded_f64: Option<Heston<f64, crate::python_device::SharedSeed>>,
   /// The device the class samples on, chosen at construction.
   device: crate::python_device::Device,
+  qe: Option<PyHestonQe>,
+}
+
+/// The [`AndersenQe`] twins of [`PyHeston`]'s slots, named for the dispatch macros.
+struct PyHestonQe {
+  inner_f32: Option<Heston<f32, Unseeded, AndersenQe>>,
+  inner_f64: Option<Heston<f64, Unseeded, AndersenQe>>,
+  seeded_f32: Option<Heston<f32, crate::python_device::SharedSeed, AndersenQe>>,
+  seeded_f64: Option<Heston<f64, crate::python_device::SharedSeed, AndersenQe>>,
+  device: crate::python_device::Device,
+}
+
+macro_rules! py_heston_dispatch {
+  ($dispatch:ident, $self:expr, |$p:ident| $body:expr) => {
+    match &$self.qe {
+      Some(qe) => $crate::$dispatch!(qe, |$p| $body),
+      None => $crate::$dispatch!($self, |$p| $body),
+    }
+  };
 }
 
 #[pyo3::prelude::pymethods]
 impl PyHeston {
   #[new]
-  #[pyo3(signature = (kappa, theta, sigma, rho, mu, n, s0=None, v0=None, t=None, pow=None, use_sym=None, seed=None, dtype=None, device=None))]
+  #[pyo3(signature = (kappa, theta, sigma, rho, mu, n, s0=None, v0=None, t=None, pow=None, use_sym=None, seed=None, dtype=None, device=None, scheme="euler"))]
   fn new(
     kappa: f64,
     theta: f64,
@@ -30,6 +50,7 @@ impl PyHeston {
     seed: Option<u64>,
     dtype: Option<&str>,
     device: Option<&str>,
+    scheme: &str,
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> pyo3::PyResult<Self> {
       let device = crate::python_device::Device::parse(device, dtype.unwrap_or("f64"))?;
@@ -37,12 +58,22 @@ impl PyHeston {
         "three_halves" | "3/2" => HestonPow::ThreeHalves,
         _ => HestonPow::Sqrt,
       };
+      let qe = match scheme.to_ascii_lowercase().as_str() {
+        "euler" => false,
+        "qe" => true,
+        other => {
+          return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "scheme must be 'euler' or 'qe', got '{other}'"
+          )));
+        }
+      };
       let mut s = Self {
         inner_f32: None,
         inner_f64: None,
         seeded_f32: None,
         seeded_f64: None,
         device,
+        qe: None,
       };
       match (seed, dtype.unwrap_or("f64")) {
         (Some(sd), "f32") => {
@@ -99,6 +130,15 @@ impl PyHeston {
           ));
         }
       }
+      if qe {
+        s.qe = Some(PyHestonQe {
+          inner_f32: s.inner_f32.take().map(Heston::qe),
+          inner_f64: s.inner_f64.take().map(Heston::qe),
+          seeded_f32: s.seeded_f32.take().map(Heston::qe),
+          seeded_f64: s.seeded_f64.take().map(Heston::qe),
+          device: s.device,
+        });
+      }
       Ok(s)
     })?
   }
@@ -109,7 +149,7 @@ impl PyHeston {
   /// the answer is the same whatever `device=` was passed.
   fn device_fallback(&self) -> Option<&'static str> {
     use crate::traits::ProcessExt;
-    crate::py_dispatch!(self, |inner| inner.device_fallback())
+    py_heston_dispatch!(py_dispatch, self, |inner| inner.device_fallback())
   }
 
   /// Whether this configuration runs on a device kernel: the absence of a
@@ -127,7 +167,7 @@ impl PyHeston {
       use pyo3::IntoPyObjectExt;
 
       use crate::traits::ProcessExt;
-      py_device_dispatch!(self, |inner| {
+      py_heston_dispatch!(py_device_dispatch, self, |inner| {
         let [a, b] = inner.sample();
         (
           a.into_pyarray(py).into_py_any(py).unwrap(),
@@ -148,7 +188,7 @@ impl PyHeston {
       use pyo3::IntoPyObjectExt;
 
       use crate::traits::ProcessExt;
-      py_device_dispatch!(self, |inner| {
+      py_heston_dispatch!(py_device_dispatch, self, |inner| {
         let samples = inner.sample_par(m);
         let n = samples[0][0].len();
         let mut r0 = Array2::zeros((m, n));
