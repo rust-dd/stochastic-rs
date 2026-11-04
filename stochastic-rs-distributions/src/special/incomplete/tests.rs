@@ -414,3 +414,23 @@ fn gamma_p_inv_inverts_the_tail_it_solves() {
     }
   }
 }
+
+/// At a subnormal shape `bt` no longer underflows to the 0 that read `I = 1`, nor does a side next to 1 cancel the other
+/// away: mpmath at 60 and 120 digits (DLMF 8.17.8), a subnormal value its correctly rounded double.
+#[test]
+fn beta_i_at_subnormal_shapes() {
+  for (a, b, x, want) in [
+    (3.0, 5e-324, 0.95, 1e-323),
+    (0.5, 5e-324, 0.99, 3e-323),
+    (0.5, 1e-310, 0.7, 2.4198702426719e-310),
+    (0.5, 1e-20, 0.7, 2.4198702426718915e-20),
+    (1e-300, 5e-324, 0.75, 4.940656458412465e-24),
+    (5e-324, 3.0, 0.5, 1.0),
+  ] {
+    let got = beta_i(a, b, x);
+    assert!(
+      got == want || ((got - want) / want).abs() < 1e-12,
+      "I_{x}({a:e}, {b:e}) = {got:e}, want {want:e}"
+    );
+  }
+}

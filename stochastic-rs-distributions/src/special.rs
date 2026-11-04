@@ -93,7 +93,12 @@ pub fn ln_gamma(x: f64) -> f64 {
   }
   if x < 0.5 {
     // Reflection: ln Γ(x) = ln(π / sin(πx)) − ln Γ(1−x)
-    return (std::f64::consts::PI / sinpi(x)).ln() - ln_gamma(1.0 - x);
+    let ratio = std::f64::consts::PI / sinpi(x);
+    // Below 5.6e-309 the ratio passes MAX: ln Γ(x) = −ln x − γx + O(x²), the γx under 1e-311 of it.
+    if ratio.is_infinite() && x > 0.0 {
+      return -x.ln();
+    }
+    return ratio.ln() - ln_gamma(1.0 - x);
   }
   let z = x - 1.0;
   let mut a = LANCZOS_C[0];

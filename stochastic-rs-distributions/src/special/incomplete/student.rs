@@ -302,7 +302,7 @@ pub(crate) fn student_tail(nu: f64, ratio: f64, x: f64) -> StudentTail {
     // `I_w(a, ½) = √z R(a)/√(πa) w^a h`, `h` Lentz's fraction, which converges in under 20 steps below NR's switch `w*`.
     return StudentTail {
       center: false,
-      factor: z.sqrt() * scaled / std::f64::consts::PI.sqrt() * betacf(a, 0.5, w),
+      factor: z.sqrt() * scaled / std::f64::consts::PI.sqrt() * betacf(a, 0.5, w, 200),
       ln_scale: -a * xi,
       rate: (0.0, 0.0),
       xi,

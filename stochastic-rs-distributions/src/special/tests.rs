@@ -268,3 +268,11 @@ fn ln_norm_cdf_matches_high_precision_references() {
   assert_eq!(ln_norm_cdf(f64::INFINITY), 0.0);
   assert_eq!(ln_norm_cdf(f64::NEG_INFINITY), f64::NEG_INFINITY);
 }
+
+/// Below 5.6e-309 the reflection's `π/sin(πx)` passes the doubles: `ln Γ(x) = −ln x` to its last bit (mpmath, 60 and
+/// 120 digits).
+#[test]
+fn ln_gamma_at_subnormal_arguments() {
+  assert_eq!(ln_gamma(5e-324), 744.4400719213812);
+  assert_eq!(ln_gamma(1e-310), 713.8013788281542);
+}

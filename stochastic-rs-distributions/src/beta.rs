@@ -100,9 +100,27 @@ impl<T: SimdFloatExt> SimdBeta<T> {
     g1: &mut GammaState<T, R>,
     g2: &mut GammaState<T, R>,
   ) -> T {
-    let la = self.gamma1.next_log(g1);
-    let lb = self.gamma2.next_log(g2);
-    T::one() / (T::one() + (lb - la).exp())
+    let (a, b) = (
+      self.gamma1.next_log_parts(g1),
+      self.gamma2.next_log_parts(g2),
+    );
+    self.ratio_of_parts(a, b)
+  }
+
+  /// `1/(1 + e^{lb − la})`; where both `ln u/shape` pass the doubles, `lb − la` is NaN and `ln u_b·(α/β) < ln u_a`, its
+  /// sign through a ratio no subnormal product rounds to a tie, picks the 1 or the 0 the draw rounds to.
+  fn ratio_of_parts(&self, (ca, ua): (T, T), (cb, ub): (T, T)) -> T {
+    let la = ca + ua / self.alpha;
+    let lb = cb + ub / self.beta;
+    let d = lb - la;
+    if d.is_nan() {
+      return if ub * (self.alpha / self.beta) < ua {
+        T::one()
+      } else {
+        T::zero()
+      };
+    }
+    T::one() / (T::one() + d.exp())
   }
 
   fn fill_parts<R: SimdRngExt>(
@@ -165,9 +183,11 @@ impl<T: SimdFloatExt> SimdBeta<T> {
     if a + b > T::zero() {
       return a / (a + b);
     }
-    let la = self.gamma1.draw_log_with(rng);
-    let lb = self.gamma2.draw_log_with(rng);
-    T::one() / (T::one() + (lb - la).exp())
+    let (a, b) = (
+      self.gamma1.draw_log_parts_with(rng),
+      self.gamma2.draw_log_parts_with(rng),
+    );
+    self.ratio_of_parts(a, b)
   }
 }
 

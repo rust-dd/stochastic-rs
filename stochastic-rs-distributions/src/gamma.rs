@@ -159,16 +159,31 @@ impl<T: SimdFloatExt> SimdGamma<T> {
   }
 
   fn log_draw<S: NormalUniformSource<T>>(&self, src: &mut S) -> T {
+    let (log_core, ln_u) = self.log_parts(src);
+    log_core + ln_u / self.alpha
+  }
+
+  /// `(ln(scale·G(α + 1)), ln u)`, the draw's log being `ln_core + ln u/α`; `ln u = 0` at or above a unit shape.
+  fn log_parts<S: NormalUniformSource<T>>(&self, src: &mut S) -> (T, T) {
     let (d, c, inv_alpha) = self.squeeze();
     let log_core = self.scale.ln() + Self::mt_one(src, d, c).ln();
     if inv_alpha.is_some() {
       // `1 - u` lands the uniform in `(0, 1]`, so the log is finite where
       // the generator's own `[0, 1)` would have handed back a `-inf`.
       let u = T::one() - src.uniform();
-      log_core + u.ln() / self.alpha
+      (log_core, u.ln())
     } else {
-      log_core
+      (log_core, T::zero())
     }
+  }
+
+  /// `next_log`'s two parts, for a ratio whose two `ln u/α` pass the doubles.
+  pub(crate) fn next_log_parts<R: SimdRngExt>(&self, state: &mut GammaState<T, R>) -> (T, T) {
+    self.log_parts(&mut (&mut state.normal, &mut state.rng))
+  }
+
+  pub(crate) fn draw_log_parts_with<G: Rng + ?Sized>(&self, rng: &mut G) -> (T, T) {
+    self.log_parts(&mut AnyRng(rng))
   }
 
   /// `ln` of one draw without the `u^{1/α}` factor, which underflows to zero at small `α`: the Beta and Dirichlet `0/0` repair.

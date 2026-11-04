@@ -410,14 +410,49 @@ pub fn beta_i(a: f64, b: f64, x: f64) -> f64 {
     return x;
   }
   let bt = (ln_gamma(a + b) - ln_gamma(a) - ln_gamma(b) + a * x.ln() + b * (1.0 - x).ln()).exp();
-  if x < (a + 1.0) / (a + b + 2.0) {
-    bt * betacf(a, b, x) / a
+  let lower = x < (a + 1.0) / (a + b + 2.0);
+  if bt.is_normal() {
+    if lower {
+      return bt * betacf(a, b, x, 200) / a;
+    }
+    let rest = bt * betacf(b, a, 1.0 - x, 200) / b;
+    if rest < 1.0 - LOST {
+      return 1.0 - rest;
+    }
+  }
+  beta_i_scaled(a, b, x, lower)
+}
+
+/// `1 − I_{1−x}(b, a)` within this of 0 keeps under half its digits; past it the direct fraction holds them.
+const LOST: f64 = 1.4901161193847656e-8;
+
+/// `x^a(1 − x)^b/(a·B(a, b))` from `ln Γ(a + 1)`, where a subnormal shape's `Γ(a)` drove `bt` below the doubles, the
+/// fraction's log added before the one `exp`; a side within `LOST` of 1 gives way to the other's direct fraction, run longer.
+#[cold]
+#[inline(never)]
+fn beta_i_scaled(a: f64, b: f64, x: f64, lower: bool) -> f64 {
+  let ln_n = |ga: f64, gb: f64| ln_gamma(a + b) - ga - gb + a * x.ln() + b * (1.0 - x).ln();
+  let left = |cap: usize| (ln_n(ln_gamma(a + 1.0), ln_gamma(b)) + betacf(a, b, x, cap).ln()).exp();
+  let right =
+    |cap: usize| (ln_n(ln_gamma(a), ln_gamma(b + 1.0)) + betacf(b, a, 1.0 - x, cap).ln()).exp();
+  if lower {
+    let v = left(200);
+    if v < 1.0 - LOST {
+      v
+    } else {
+      1.0 - right(100_000)
+    }
   } else {
-    1.0 - bt * betacf(b, a, 1.0 - x) / b
+    let rest = right(200);
+    if rest < 1.0 - LOST {
+      1.0 - rest
+    } else {
+      left(100_000)
+    }
   }
 }
 
-fn betacf(a: f64, b: f64, x: f64) -> f64 {
+fn betacf(a: f64, b: f64, x: f64, cap: usize) -> f64 {
   let fpmin = 1e-300_f64;
   let qab = a + b;
   let qap = a + 1.0;
@@ -429,7 +464,7 @@ fn betacf(a: f64, b: f64, x: f64) -> f64 {
   }
   d = 1.0 / d;
   let mut h = d;
-  for m in 1..=200 {
+  for m in 1..=cap {
     let m_f = m as f64;
     let m2 = 2.0 * m_f;
     let aa = m_f * (b - m_f) * x / ((qam + m2) * (a + m2));
