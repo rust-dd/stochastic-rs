@@ -160,9 +160,10 @@ impl HestonCalibrator {
 
     let (result, report) = LevenbergMarquardt::new().minimize(problem);
     let converged = report.termination.was_successful();
+    let termination = format!("{:?}", report.termination);
     let params = result.effective_params();
 
-    let c_model = result.compute_model_prices_for_numeric(&params);
+    let c_model = result.compute_model_prices_for(&params);
     let loss = CalibrationLossScore::compute_selected(
       result.c_market.as_slice(),
       c_model.as_slice(),
@@ -173,6 +174,7 @@ impl HestonCalibrator {
       params,
       loss,
       converged,
+      termination,
     }
   }
 

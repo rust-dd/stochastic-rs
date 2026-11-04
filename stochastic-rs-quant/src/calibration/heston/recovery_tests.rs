@@ -4,6 +4,7 @@ use super::HestonParams;
 use crate::OptionType;
 use crate::calibration::levy::MarketSlice;
 use crate::pricing::fourier::HestonFourier;
+use crate::traits::CalibrationResult;
 use crate::traits::Calibrator;
 use crate::traits::ModelPricer;
 
@@ -70,11 +71,7 @@ fn surface(truth: &HestonParams) -> Vec<MarketSlice> {
     .collect()
 }
 
-fn assert_recovers(
-  truth: &HestonParams,
-  start: Option<HestonParams>,
-  jacobian_method: HestonJacobianMethod,
-) {
+fn calibrator(truth: &HestonParams, jacobian_method: HestonJacobianMethod) -> HestonCalibrator {
   let mut calibrator = HestonCalibrator::from_slices(
     None,
     &surface(truth),
@@ -85,6 +82,14 @@ fn assert_recovers(
     false,
   );
   calibrator.set_jacobian_method(jacobian_method);
+  calibrator
+}
+
+fn assert_recovers(
+  calibrator: &HestonCalibrator,
+  truth: &HestonParams,
+  start: Option<HestonParams>,
+) {
   let result = calibrator.calibrate(start).unwrap();
   let fit = &result.params;
   let errors = [
@@ -104,7 +109,11 @@ fn assert_recovers(
 #[test]
 fn default_start_recovers_parameters_on_both_sides_of_the_feller_boundary() {
   for truth in &CASES {
-    assert_recovers(truth, None, HestonJacobianMethod::CuiAnalytic);
+    assert_recovers(
+      &calibrator(truth, HestonJacobianMethod::CuiAnalytic),
+      truth,
+      None,
+    );
   }
 }
 
@@ -119,9 +128,40 @@ fn finite_difference_jacobian_recovers_the_same_parameter_sets() {
   };
   for truth in &CASES {
     assert_recovers(
+      &calibrator(truth, HestonJacobianMethod::NumericFiniteDiff),
       truth,
       Some(start.clone()),
-      HestonJacobianMethod::NumericFiniteDiff,
     );
   }
 }
+
+#[test]
+fn reported_rmse_is_the_price_error_of_the_fitted_pricer() {
+  let truth = &CASES[0];
+  let result = calibrator(truth, HestonJacobianMethod::CuiAnalytic)
+    .calibrate(Some(truth.clone()))
+    .unwrap();
+  assert!(
+    result.rmse() < 1e-6,
+    "rmse {:e} at an exact fit",
+    result.rmse()
+  );
+}
+
+#[test]
+fn termination_reason_accompanies_converged() {
+  let result = calibrator(&CASES[1], HestonJacobianMethod::CuiAnalytic)
+    .calibrate(None)
+    .unwrap();
+  let successful = ["Converged", "Orthogonal", "ResidualsZero"]
+    .iter()
+    .any(|reason| result.termination.starts_with(reason));
+  assert_eq!(result.message(), Some(result.termination.as_str()));
+  assert!(
+    result.converged && successful,
+    "converged = {}, termination = {}",
+    result.converged,
+    result.termination
+  );
+}
+
