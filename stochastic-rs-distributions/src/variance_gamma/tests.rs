@@ -383,6 +383,7 @@ fn extreme_parameters_answer_numbers() {
     assert!(close(got, want, 1e-12), "{got:e}");
   }
   assert_eq!(vg(1.0, 1e-10, 0.0, 0.0).pdf(f64::MAX), Some(0.0));
+  assert_eq!(vg(1e300, 1e-10, -1e300, 1e300).pdf(f64::MAX), Some(0.0));
   for (law, t, want) in [
     (
       vg(1e300, 1e300, -1e300, 1e300),
