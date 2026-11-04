@@ -4,6 +4,7 @@
 use std::f64::consts::LN_2;
 
 use super::quadrature::Cut;
+use super::quadrature::Filled;
 use super::quadrature::Kernel;
 use super::quadrature::Point;
 use super::quadrature::Terms;
@@ -140,7 +141,7 @@ impl Kernel for QuadKernel {
 /// A law's integral: the engine in the kernel's own coordinate, or the local model of a law narrower than it resolves.
 #[derive(Clone, Debug)]
 pub(super) enum Model<K> {
-  Full(Truncation<K>),
+  Full(Filled<K>),
   Local(Local),
 }
 
@@ -153,7 +154,7 @@ impl<K: Kernel> Model<K> {
     up: impl Into<Cut>,
     local: impl FnOnce(f64) -> Option<Local>,
   ) -> Self {
-    let mut model = Self::Full(Truncation::placed(kernel, lo.into(), up.into()));
+    let mut model = Self::Full(Filled::placed(kernel, lo.into(), up.into()));
     if let Self::Full(t) = &mut model {
       match t.narrow().and_then(local) {
         Some(l) => model = Self::Local(l),
@@ -169,7 +170,7 @@ impl<K: Kernel> Model<K> {
 pub(super) struct Local {
   r: f64,
   p: i32,
-  t: Truncation<QuadKernel>,
+  t: Filled<QuadKernel>,
   /// The interval as offsets from `r`, and the log-kernel's slope and curvature there: a tilt's own model reads them.
   offsets: (f64, f64),
   slope: Signed,
@@ -203,7 +204,7 @@ impl Local {
     if b == 0.0 && ((a >= 0.0 && up == f64::INFINITY) || (a <= 0.0 && lo == f64::NEG_INFINITY)) {
       return None;
     }
-    let t = Truncation::new(QuadKernel { a, b, c: 0.0 }, ldexp(lo, -p), ldexp(up, -p));
+    let t = Filled::new(QuadKernel { a, b, c: 0.0 }, ldexp(lo, -p), ldexp(up, -p));
     let (ya, yb) = t.clipped();
     if ln_cubic(ldexp(ya, p)).max(ln_cubic(ldexp(yb, p))) > f64::EPSILON.ln() {
       return None;

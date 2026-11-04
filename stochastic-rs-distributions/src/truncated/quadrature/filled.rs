@@ -1,0 +1,68 @@
+//! The engine and what its first calls keep beside it: the summed moments and the entropy. A cell inside the engine
+//! would let any call through its `&self` write it, and its hot loops would reload what they read.
+
+use std::ops::Deref;
+use std::sync::OnceLock;
+
+use super::Kernel;
+use super::Truncation;
+use super::panels::Cut;
+
+#[derive(Clone, Debug)]
+pub(in crate::truncated) struct Filled<K> {
+  t: Truncation<K>,
+  summed: OnceLock<[f64; 4]>,
+  entropy: OnceLock<f64>,
+}
+
+impl<K> Deref for Filled<K> {
+  type Target = Truncation<K>;
+
+  fn deref(&self) -> &Truncation<K> {
+    &self.t
+  }
+}
+
+impl<K: Kernel> From<Truncation<K>> for Filled<K> {
+  fn from(t: Truncation<K>) -> Self {
+    Self {
+      t,
+      summed: OnceLock::new(),
+      entropy: OnceLock::new(),
+    }
+  }
+}
+
+impl<K: Kernel> Filled<K> {
+  /// `kernel` on `[lo, up]`, `lo < up`, filled.
+  pub(in crate::truncated) fn new(kernel: K, lo: impl Into<Cut>, up: impl Into<Cut>) -> Self {
+    let mut t = Self::placed(kernel, lo.into(), up.into());
+    t.fill();
+    t
+  }
+
+  /// The engine placed, before any sum, so a model that holds it fills it where it lies.
+  pub(in crate::truncated) fn placed(kernel: K, lo: Cut, up: Cut) -> Self {
+    Self::from(Truncation::placed(kernel, lo, up))
+  }
+
+  pub(in crate::truncated) fn fill(&mut self) {
+    self.t.fill();
+  }
+
+  pub(in crate::truncated) fn located_moments(
+    &self,
+    scale: f64,
+    p: i32,
+  ) -> (Cut, [f64; 2], [f64; 3]) {
+    self.t.located_moments(scale, p, &self.summed)
+  }
+
+  pub(in crate::truncated) fn moments(&self, scale: f64, p: i32) -> [f64; 4] {
+    self.t.moments(scale, p, &self.summed)
+  }
+
+  pub(in crate::truncated) fn entropy(&self) -> f64 {
+    self.t.entropy(&self.entropy)
+  }
+}

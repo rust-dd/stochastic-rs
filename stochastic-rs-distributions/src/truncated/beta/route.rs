@@ -7,9 +7,9 @@ use super::super::SimdTruncatedGamma;
 use super::super::gamma::GammaKernel;
 use super::super::gamma::unit_exponent;
 use crate::truncated::quadrature::Cut;
+use crate::truncated::quadrature::Filled;
 use crate::truncated::quadrature::Point;
 use crate::truncated::quadrature::Reflected;
-use crate::truncated::quadrature::Truncation;
 use crate::truncated::quadrature::ldexp;
 
 /// `(e − 1)(ln(1 − x) + x)` within 2⁻⁵³: it is at most `(e − 1)x²/(2(1 − x))` above a unit exponent, below one the
@@ -61,7 +61,7 @@ pub(super) fn gamma_route(a: f64, b: f64, lo: f64, up: f64) -> Option<SimdTrunca
 /// cdf keeps the relative digits of the lower tail in `x`.
 #[derive(Clone, Debug)]
 pub(super) struct Mirror {
-  t: Truncation<Reflected<GammaKernel>>,
+  t: Filled<Reflected<GammaKernel>>,
   p: i32,
   ln_unit: f64,
 }
@@ -84,7 +84,7 @@ impl Mirror {
       ldexp(f64::MAX, -p)
     };
     let kernel = Reflected(GammaKernel::new(b, s));
-    let t = Truncation::new(kernel, ldexp(lo - 1.0, -p), ldexp(up - 1.0, -p));
+    let t = Filled::new(kernel, ldexp(lo - 1.0, -p), ldexp(up - 1.0, -p));
     if t.narrow().is_some() {
       return None;
     }

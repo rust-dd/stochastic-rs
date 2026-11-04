@@ -6,6 +6,7 @@
 use std::ops::ControlFlow;
 
 use clip::clip;
+pub(super) use filled::Filled;
 pub(super) use panels::Cut;
 use panels::GL64_W;
 use panels::GL64_X;
@@ -25,6 +26,7 @@ pub(super) use zone::exp_split;
 mod cdf;
 mod clip;
 mod fill;
+mod filled;
 mod flat;
 mod moments;
 mod panels;
@@ -252,9 +254,9 @@ pub(super) struct Truncation<K> {
   /// `∫_lo^a` and `∫_b^up` of `k/k(centre)`, in units of `width`: the cdf adds the first, the quantile both.
   tail_lo: f64,
   tail_up: f64,
-  /// The ends those tails are summed from, `e^{−2·CLIP}` below `centre`: the moments sum out to them, as the first
-  /// clip leaves `e^{−CLIP}·CLIP⁴` of a fourth moment, past 1e-13 of it.
-  reach: (Cut, Cut),
+  /// Those tails were summed, from where the kernel is `e^{−2·CLIP}` below `centre`: the moments sum out to the same
+  /// ends, as the first clip leaves `e^{−CLIP}·CLIP⁴` of a fourth moment, past 1e-13 of it.
+  tails: bool,
   /// A graded panel's weight as `half/width`, not in logs: the subnormal cdf's walk, whose kernel stays below its value
   /// at the point, needs each node to an ε, which a log near −700 rounds to 1e-13.
   sharp: bool,

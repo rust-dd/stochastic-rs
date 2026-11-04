@@ -9,25 +9,18 @@ use super::panels::Cut;
 use super::panels::span;
 
 impl<K: Kernel> Truncation<K> {
-  /// `kernel` on `[lo, up]`, `lo < up`, filled.
-  pub(in crate::truncated) fn new(kernel: K, lo: impl Into<Cut>, up: impl Into<Cut>) -> Self {
-    let mut t = Self::placed(kernel, lo.into(), up.into());
-    t.fill();
-    t
-  }
-
   /// `M₀`, and the mass beyond the clips that the cdf and the quantile read.
-  pub(in crate::truncated) fn fill(&mut self) {
+  pub(super) fn fill(&mut self) {
     if !self.narrow {
       self.weigh(self.integrate_sum(self.a, self.b, 0.0));
     }
+    self.tails = true;
+    let (start, end) = self.reach();
     if span(self.lo, self.a) > 0.0 {
-      self.reach.0 = clip(&self.kernel, self.centre, self.a, self.lo, -2.0 * CLIP);
-      self.tail_lo = self.integrate(self.reach.0, self.a, 0.0);
+      self.tail_lo = self.integrate(start, self.a, 0.0);
     }
     if span(self.up, self.b) < 0.0 {
-      self.reach.1 = clip(&self.kernel, self.centre, self.b, self.up, -2.0 * CLIP);
-      self.tail_up = self.integrate(self.b, self.reach.1, 0.0);
+      self.tail_up = self.integrate(self.b, end, 0.0);
     }
     debug_assert!(
       self.narrow || (self.m0 > 0.0 && self.m0.is_finite()),
@@ -51,8 +44,23 @@ impl<K: Kernel> Truncation<K> {
     self.ln_norm = self.width.ln() + self.m0.ln() + self.scale;
   }
 
+  /// The ends the moments sum out to: where the tails were summed from, else the clipped ends.
+  pub(super) fn reach(&self) -> (Cut, Cut) {
+    let start = if self.tails && span(self.lo, self.a) > 0.0 {
+      clip(&self.kernel, self.centre, self.a, self.lo, -2.0 * CLIP)
+    } else {
+      self.a
+    };
+    let end = if self.tails && span(self.up, self.b) < 0.0 {
+      clip(&self.kernel, self.centre, self.b, self.up, -2.0 * CLIP)
+    } else {
+      self.b
+    };
+    (start, end)
+  }
+
   /// The setup before any sum: the reference point, the clipped ends and their width.
-  pub(in crate::truncated) fn placed(mut kernel: K, lo: Cut, up: Cut) -> Self {
+  pub(super) fn placed(mut kernel: K, lo: Cut, up: Cut) -> Self {
     let step = span(lo, up).min(kernel.length_scale()) / 10.0;
     // `(s, e)` of a singular branch point at a point or within `step` of it, where the power law rules the kernel's mass.
     let singular = |x: Cut| {
@@ -129,7 +137,7 @@ impl<K: Kernel> Truncation<K> {
       narrow: width.is_nan() || width < f64::MIN_POSITIVE,
       tail_lo: 0.0,
       tail_up: 0.0,
-      reach: (a, b),
+      tails: false,
       sharp: false,
     }
   }

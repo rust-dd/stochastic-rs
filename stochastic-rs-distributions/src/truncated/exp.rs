@@ -9,6 +9,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::quadrature::Cut;
+use super::quadrature::Filled;
 use super::quadrature::Kernel;
 use super::quadrature::Truncation;
 use crate::source::uniform53;
@@ -221,7 +222,7 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
   fn moments(&self) -> Option<[f64; 4]> {
     let x = self.lambda.to_f64()? * self.length()?;
     let kernel = ExpKernel { lambda: x.min(1.0) };
-    Some(Truncation::mass_only(kernel, 0.0, x.max(1.0)).moments(1.0, 0))
+    Some(Filled::from(Truncation::mass_only(kernel, 0.0, x.max(1.0))).moments(1.0, 0))
   }
 
   /// Infinite for an open tail.
