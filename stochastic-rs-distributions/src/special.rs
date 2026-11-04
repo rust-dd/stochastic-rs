@@ -68,7 +68,8 @@ pub(crate) use saddle::saddle_parts;
 pub(crate) use saddle::stirling_tail;
 pub(crate) use twofold::add_parts;
 pub(crate) use twofold::mul_parts;
-pub(crate) use twofold::two_prod;
+#[doc(hidden)]
+pub use twofold::two_prod;
 #[doc(hidden)]
 pub use twofold::two_sum;
 

@@ -354,8 +354,8 @@ impl BivariateExt for TCopula {
     on_open_square(x, self.ln_density())
   }
 
-  /// To a relative `1e-12` but where `C ≪ u` off the countermonotone solve (`cdf.rs`); the Gaussian copula from `ν = 1e22`,
-  /// `pM + (1 − p)W` below `ν = 1e-30`.
+  /// To a relative `1e-12` but where `C ≪ u` off the countermonotone solve, where the t quantiles' last bits move it (up to
+  /// `2.3e-12` measured, `cdf.rs`); the Gaussian copula from `ν = 1e22`, `pM + (1 − p)W` below `ν = 1e-30`.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let bivariate = BivariateT::new(self.theta.unwrap(), self.nu);

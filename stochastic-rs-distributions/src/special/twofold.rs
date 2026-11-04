@@ -9,8 +9,9 @@ pub fn two_sum(a: f64, b: f64) -> (f64, f64) {
   (s, (a - (s - z)) + (b - z))
 }
 
-/// `p + e = a·b` exactly where the product neither overflows nor underflows, by a fused multiply-add.
-pub(crate) fn two_prod(a: f64, b: f64) -> (f64, f64) {
+/// `p + e = a·b` exactly where the product neither overflows nor underflows, by a fused multiply-add; public for the t
+/// copulas' conditional argument, outside the stability promise.
+pub fn two_prod(a: f64, b: f64) -> (f64, f64) {
   let p = a * b;
   (p, a.mul_add(b, -p))
 }

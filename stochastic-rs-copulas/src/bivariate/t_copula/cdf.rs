@@ -1,5 +1,5 @@
-//! The bivariate t cdf to a relative `1e-12`, except where `C ≪ u` off the countermonotone solve and the scores' own rounding
-//! dominates: Dunnett & Sobel's sums at an integer `ν`, else `P(Y ≤ y | X ≤ x)` by panels marched out of each feature in `t`.
+//! The bivariate t cdf to a relative `1e-12`, except where `C ≪ u` off the countermonotone solve and the t quantiles' own last
+//! bits move it: Dunnett & Sobel's sums at an integer `ν`, else `P(Y ≤ y | X ≤ x)` by panels marched out of each feature in `t`.
 //! Reference: Genz, A. (2004), "Numerical computation of rectangular bivariate and trivariate normal and t probabilities", *Statistics and Computing* 14(3), 251-260, DOI 10.1023/B:STCO.0000035304.20635.31 (the conditional representation).
 
 use std::cell::Cell;
@@ -8,6 +8,7 @@ use std::f64::consts::LN_2;
 use std::f64::consts::PI;
 
 use stochastic_rs_distributions::special::ln_gamma;
+use stochastic_rs_distributions::special::two_sum;
 
 use crate::bivariate::conditional::ln_add_exp;
 use crate::bivariate::conditional::sum_minus_one;
@@ -25,6 +26,7 @@ use crate::student_t::Law;
 use crate::student_t::NORMAL_ABOVE;
 use crate::student_t::Score;
 use crate::student_t::asinh_shift;
+use crate::student_t::carried::CARRIED_TO;
 use crate::student_t::ln_cosh;
 
 /// Below this `ν` the copula is its `ν → 0` limit `pM + (1 − p)W` to rounding: the remainder is under `50ν/min(p, 1 − p)`,
@@ -388,7 +390,36 @@ impl BivariateT {
   fn ln_h(&self, cond: &Conditional, a: &Anchor, delta: f64) -> f64 {
     let (sign_t, abs_t, _, d) = self.point(a, delta);
     let (sign_a, ln_a) = cond.argument(sign_t, abs_t, -d);
+    // Where `H`'s tail multiplies `A`'s rounding by `min(A², ν + 1) > 64`, `A` in two parts at the node's exact `|t|`.
+    if sign_a < 0.0 && ln_a > 3.0 * LN_2 && self.nu > 63.0 && abs_t <= CARRIED_TO && cond.carried()
+    {
+      let (abs_t, gap) = self.node_parts(a, delta);
+      let (hi, lo) = cond.argument_parts(self.nu, sign_t, abs_t, gap);
+      if hi < 0.0 {
+        let (ln_lower, slope) = self.wide.ln_lower_and_slope(hi);
+        return if ln_lower.is_finite() {
+          ln_lower + slope * lo
+        } else {
+          ln_lower
+        };
+      }
+    }
     self.wide.ln_cdf(sign_a, ln_a)
+  }
+
+  /// `|t|` and `|t_y| − |t|` at offset `delta` from `a`, each in two parts whose high part is `point`'s.
+  fn node_parts(&self, a: &Anchor, delta: f64) -> ((f64, f64), (f64, f64)) {
+    let (abs_t, d) = if a.sign != 0.0 && delta.abs() < a.abs_t {
+      let dt = a.sign * delta;
+      (two_sum(a.abs_t, dt), two_sum(a.d_y, dt))
+    } else {
+      let (t, t_lo) = two_sum(a.sign * a.abs_t, delta);
+      let (abs, abs_lo) = (t.abs(), t_lo * t.signum());
+      let (step, step_err) = two_sum(abs, -a.abs_t);
+      let (d, d_err) = two_sum(a.d_y, step);
+      ((abs, abs_lo), (d, d_err + step_err + abs_lo))
+    };
+    (abs_t, (-d.0, -d.1))
   }
 
   /// `(ψ, ψ + ln H)` at offset `delta` from anchor `a`, `ψ = −ν ln cosh t`.

@@ -451,6 +451,7 @@ pub(crate) struct Conditional {
   ln_y: f64,
   /// `expm1(2|t_y|)`.
   e2y: f64,
+  abs_ty: f64,
 }
 
 impl Conditional {
@@ -463,6 +464,7 @@ impl Conditional {
       sign_y: y.sign,
       ln_y: (c0 * -(-2.0 * y.abs_t).exp_m1()).ln(),
       e2y: (2.0 * y.abs_t).exp_m1(),
+      abs_ty: y.abs_t,
     }
   }
 
@@ -528,4 +530,5 @@ pub(crate) fn ln_density(fx: &Feature, fy: &Feature, gap: f64, rho: f64, nu: f64
     + cosh_terms
 }
 
+pub(crate) mod carried;
 mod gap;
