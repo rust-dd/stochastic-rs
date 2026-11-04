@@ -56,7 +56,7 @@ use crate::traits::distribution::SimdKernel;
 const SMALL_VG_THRESHOLD: usize = 16;
 
 /// Variance-gamma distribution: volatility `σ > 0`, gamma-clock variance rate `ν > 0`, drift `θ`, location `μ`; a [`Seeded`](crate::Seeded) stream draws it.
-/// Its density within `ε(S + 16)` below order `1/ν − ½ = 50`, `S` its logarithms' sizes summed, or `32ε` where `S` passes 709 or its Bessel argument leaves the normal range, and `4ε(|ln f| + |ln σ| + 20)` from it, its mgf `2ε(|μt| + |ln M|)` up to its roots, its moments the gamma clock's cumulants mixed.
+/// Its density within `ε(S + 16)` below order `1/ν − ½ = 50`, `S` its logarithms' sizes summed, or `32ε` where `S` passes 709 or its Bessel argument leaves the normal range, and from it `4ε(|ln f| + |ln σ| + 20)` up to `|ln f| + |ln σ| = 512` while the clock's saddle `1 + g` is past `⅔`, past either `ε(|ln f| + |ln σ| + 400)/16` in two parts, its mgf `2ε(|μt| + |ln M|)` up to its roots, its moments the gamma clock's cumulants mixed.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdVarianceGamma<T> {
   sigma: T,
@@ -223,6 +223,10 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
     let r = order.hypot(root_chi * psi.sqrt());
     let den = r + order + 1.0 + c;
     let gm1 = ((near / sigma) * ((d + theta) / sigma) - 1.0) / den;
+    // Below `g = −⅓` `ln_1p_mx(g)` leaves its series and `1 + g` carries `g`'s rounding, which `1/ν` multiplies.
+    if gm1 < -1.0 / 3.0 {
+      return large_order::density((sigma, nu, theta), (d, d_lo));
+    }
     let q = (theta / sigma) * ((d + theta) / sigma) / den;
     let gap = if q < 0.5 {
       (near - theta * gm1) / sigma
@@ -241,11 +245,15 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
       - 0.5 * (-0.5 * nu).ln_1p()
       - stirling_tail(nu)
       - std::f64::consts::TAU.ln();
-    (std::f64::consts::LN_2 - sigma.ln() + ln_1p_mx(gm1) / nu
+    let ln_sigma = sigma.ln();
+    let a = std::f64::consts::LN_2 - ln_sigma + ln_1p_mx(gm1) / nu
       - 0.5 * gm1.ln_1p()
       - 0.5 * gap * gap / (1.0 + gm1)
-      + rests)
-      .exp()
+      + rests;
+    if a.abs() + ln_sigma.abs() > PARTS_FROM {
+      return large_order::density((sigma, nu, theta), (d, d_lo));
+    }
+    a.exp()
   }
 
   /// [`Self::large_order_pdf`] past its scales: a normal clock from `ν = 2⁻¹⁶⁰` down, `μ + θG` from `νθ²/σ² = 2¹⁰⁰`, `0` past
@@ -311,6 +319,10 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
 
 /// Past this `|d|/σ`, with `νθ²/σ²` under `2¹⁰⁰` and `ν` over `2⁻¹⁶⁰`, the point lies `2⁴⁰⁰` of the law's scale out.
 const FAR: f64 = 3.273_390_607_896_142e150;
+
+/// Past this `|ln f| + |ln σ|` the large-order density sums its exponent in two parts, where the plain sum's rounding, a few
+/// `ε` of its largest terms, would near `1e-12`.
+const PARTS_FROM: f64 = 512.0;
 
 /// Up to this `(|θνt| + ½σ²νt²)/(ν min(b, 1))` the plain `X`'s rounding moves `ln(b)/ν` by under `2.5·PLAIN·ε`.
 const PLAIN: f64 = 64.0;
@@ -517,6 +529,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
   }
 }
 
+mod large_order;
 mod limits;
 mod small_order;
 

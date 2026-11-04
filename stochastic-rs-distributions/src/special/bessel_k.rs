@@ -40,6 +40,7 @@ use super::bessel_i::UNIFORM_MIN_ORDER;
 use super::bessel_i::debye;
 use super::bessel_i::debye_sum;
 use super::bessel_i::exp_times;
+use super::ln_parts;
 
 mod parts;
 
@@ -187,8 +188,17 @@ fn debye_k(nu: f64, x: f64, scaled: bool) -> f64 {
 /// `ln K_ν(x) + νη(x/ν) + ½ ln ν`, Debye's `½ ln(πp/2) + ln Σ(−1)^k U_k(p)/ν^k` past order 50, finite at `x = 0`, where with
 /// `−½ ln ν` it is the gamma function's Stirling remainder; the `½ ln ν` stays apart so two orders' remainders meet exactly.
 pub(crate) fn debye_shape(nu: f64, x: f64) -> f64 {
+  debye_factor(nu, x).ln()
+}
+
+/// [`debye_shape`] in two parts, its logarithm libm-free, so a large `½ ln p` carries no rounding of its own.
+pub(crate) fn debye_shape_parts(nu: f64, x: f64) -> (f64, f64) {
+  ln_parts(debye_factor(nu, x), 0.0, 0)
+}
+
+fn debye_factor(nu: f64, x: f64) -> f64 {
   let p = debye(nu, x).p;
-  (PI * (p / TAU).sqrt() * debye_sum(p, nu, true)).ln()
+  PI * (p / TAU).sqrt() * debye_sum(p, nu, true)
 }
 
 /// The logarithm of [`debye_k`]'s scaled value, out of line like it.

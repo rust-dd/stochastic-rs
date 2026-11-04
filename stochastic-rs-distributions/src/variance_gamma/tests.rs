@@ -467,3 +467,43 @@ fn a_drift_wider_than_its_diffusion_keeps_its_digits() {
     assert!(close(got, want, 1e-12), "{got:e}");
   }
 }
+
+/// mpmath at 60 and 120 digits at a narrow law far below its drift, where the clock's saddle `1 + g` is small and the plain
+/// sum's `g` and `ln σ` carried their rounding: they read `3.5e-8`, `2.3e-10` and `8.5e-11` off.
+#[test]
+fn a_narrow_law_far_below_its_drift_keeps_its_digits() {
+  for ((sigma, nu, theta), x, want) in [
+    (
+      (
+        7.638_478_119_635_799e-303,
+        0.016_200_179_144_496_38,
+        2.404_463_807_801_366_7e-298,
+      ),
+      -2.303_364_380_672_063_4e-306,
+      4.883_207_588_569_339_7e-126,
+    ),
+    (
+      (
+        5.634_408_094_745_906e-296,
+        0.017_573_342_508_185_732,
+        -6.454_103_477_813_998e-291,
+      ),
+      -6.334_168_581_382_663e-297,
+      3.574_725_082_773_854_4e-21,
+    ),
+    (
+      (
+        1.170_964_978_556_233_6e-305,
+        0.018_270_652_839_415_716,
+        -3.374_343_489_168_039e-300,
+      ),
+      -9.893_206_738_126_897e-306,
+      2.626_398_924_002_306_3e26,
+    ),
+  ] {
+    let got = SimdVarianceGamma::<f64>::new(sigma, nu, theta, 0.0)
+      .pdf(x)
+      .unwrap();
+    assert!(close(got, want, 1e-12), "{got:e}");
+  }
+}

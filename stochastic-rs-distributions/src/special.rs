@@ -26,6 +26,7 @@ pub(crate) use bessel_i::debye_moments;
 pub use bessel_i::ln_bessel_ie;
 pub use bessel_k::bessel_k;
 pub use bessel_k::bessel_ke;
+pub(crate) use bessel_k::debye_shape_parts;
 pub use bessel_k::ln_bessel_ke;
 pub(crate) use bessel_k::ln_bessel_ke_parts;
 pub(crate) use bessel_k::ln_half_gamma_parts;
