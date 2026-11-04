@@ -27,17 +27,6 @@ impl<K> Deref for Filled<K> {
   }
 }
 
-impl<K: Kernel> From<Truncation<K>> for Filled<K> {
-  fn from(t: Truncation<K>) -> Self {
-    Self {
-      t,
-      upper: OnceLock::new(),
-      summed: OnceLock::new(),
-      entropy: OnceLock::new(),
-    }
-  }
-}
-
 impl<K: Kernel> Filled<K> {
   /// `kernel` on `[lo, up]`, `lo < up`, filled.
   pub(in crate::truncated) fn new(kernel: K, lo: impl Into<Cut>, up: impl Into<Cut>) -> Self {
@@ -48,7 +37,12 @@ impl<K: Kernel> Filled<K> {
 
   /// The engine placed, before any sum, so a model that holds it fills it where it lies.
   pub(in crate::truncated) fn placed(kernel: K, lo: Cut, up: Cut) -> Self {
-    Self::from(Truncation::placed(kernel, lo, up))
+    Self {
+      t: Truncation::placed(kernel, lo, up),
+      upper: OnceLock::new(),
+      summed: OnceLock::new(),
+      entropy: OnceLock::new(),
+    }
   }
 
   pub(in crate::truncated) fn fill(&mut self) {

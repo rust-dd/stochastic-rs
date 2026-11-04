@@ -76,6 +76,10 @@ impl<K: Kernel> Truncation<K> {
 
   /// `locate` on `[a, b]` from the masses a walk of it recorded, the same panels in the same order.
   fn seek(&self, walked: &Walked, want: f64, from_lo: bool) -> Point {
+    debug_assert!(
+      self.tails,
+      "an engine summed for its mass alone holds no record"
+    );
     match walked.reaching(want) {
       Some((panel, rest, mass)) => self.solve_in(panel, rest, mass, from_lo, 0.0),
       None if from_lo => Point::From(self.a),

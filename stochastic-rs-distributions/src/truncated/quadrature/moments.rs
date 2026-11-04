@@ -13,7 +13,12 @@ use super::panels::span;
 
 impl<K: Kernel> Truncation<K> {
   /// `(mean, (scale·2^p)²·variance, skewness, excess kurtosis)`, `2^p` the law's unit, in the square before it rounds.
-  pub(super) fn moments(&self, scale: f64, p: i32, summed: &OnceLock<[f64; 4]>) -> [f64; 4] {
+  pub(in crate::truncated) fn moments(
+    &self,
+    scale: f64,
+    p: i32,
+    summed: &OnceLock<[f64; 4]>,
+  ) -> [f64; 4] {
     let (frame, [unit, offset], [variance, skewness, kurtosis]) =
       self.located_moments(scale, p, summed);
     [frame.plus(unit * offset), variance, skewness, kurtosis]

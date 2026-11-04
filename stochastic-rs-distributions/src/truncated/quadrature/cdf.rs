@@ -35,6 +35,10 @@ impl<K: Kernel> Truncation<K> {
 
   /// `cdf`, where `ln_point` gives `ln k(x) − ln k(c)` in two parts at the law's exact point, which `at` may round.
   pub(in crate::truncated) fn cdf_with(&self, at: Cut, ln_point: impl FnOnce() -> Two) -> f64 {
+    debug_assert!(
+      self.tails,
+      "an engine summed for its mass alone holds no record"
+    );
     let x = at.x;
     if x.is_nan() {
       return f64::NAN;
