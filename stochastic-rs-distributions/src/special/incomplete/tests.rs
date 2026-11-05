@@ -458,6 +458,25 @@ fn beta_i_reads_a_small_far_tail_from_the_complement() {
   assert_eq!(beta_i(1e4, 1e-307, 0.999), f64::from_bits(0x0013_7e69_693a));
 }
 
+/// Below the switch at a tiny first shape and a large second one `bt` carries `ε·ln Γ(b)` and `b` times `1 − x`'s rounding;
+/// a value next to 1 is one less the complement: mpmath at 60 and 120 digits raised by |log₁₀ a|, Lentz's fraction beside it.
+#[test]
+fn beta_i_reads_a_value_next_to_1_from_the_complement() {
+  for (a, b, x, want) in [
+    (1e-12, 1e8, 1e-300, 0.9999999993282224),
+    (1e-9, 1e4, 1e-10, 0.9999999867616542),
+    (1e-8, 1e8, 1e-10, 0.9999999596207049),
+    (0.01, 1e8, 1e-10, 0.9603474234749158),
+  ] {
+    let got = beta_i(a, b, x);
+    assert!(
+      ((got - want) / want).abs() < 1e-13,
+      "I_{x}({a:e}, {b:e}) = {got:e}, want {want:e}"
+    );
+  }
+  assert_eq!(beta_i(1e-300, 1e8, 1e-10), 1.0);
+}
+
 /// `1 − I_x(a, b)` from `x` where `1 − x` rounds it away or `(1 − x)^b` carries `b` ulps: mpmath at 60 and 120 digits raised
 /// by |log₁₀ a| and |log₁₀ x|, a subnormal its correctly rounded double.
 #[test]
