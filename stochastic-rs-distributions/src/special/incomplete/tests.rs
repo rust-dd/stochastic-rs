@@ -415,8 +415,8 @@ fn gamma_p_inv_inverts_the_tail_it_solves() {
   }
 }
 
-/// At a subnormal shape `bt` no longer underflows to the 0 that read `I = 1`, nor does a side next to 1 cancel the other
-/// away: mpmath at 60 and 120 digits (DLMF 8.17.8), a subnormal value its correctly rounded double.
+/// At a subnormal shape `bt` lies below the doubles and the scaled path forms it from `ln(a·B(a, b))`: mpmath at 60 and
+/// 120 digits (DLMF 8.17.8), a subnormal value its correctly rounded double.
 #[test]
 fn beta_i_at_subnormal_shapes() {
   for (a, b, x, want) in [

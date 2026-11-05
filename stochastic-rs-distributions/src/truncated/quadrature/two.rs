@@ -62,8 +62,8 @@ pub(in crate::truncated) fn ln_1p(u: Two) -> Two {
   }
 }
 
-/// `2·atanh(w)`, `w = u/(2 + u)`, for `|u| ≤ √2 − 1`: the series' first four terms in two parts, its tail in doubles,
-/// each tail term under `ε·w⁸/9` of the sum.
+/// `ln(1 + u) = 2·atanh(w)`, `w = u/(2 + u)` (DLMF 4.6.4), for `|u| ≤ √2 − 1`: the first four terms in two parts, the tail
+/// in doubles, each tail term under `ε·w⁸/9` of the sum.
 fn ln_1p_near(u: Two) -> Two {
   let w = div(u, add((2.0, 0.0), u));
   let w2 = mul_parts(w, w);

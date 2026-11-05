@@ -110,7 +110,8 @@ pub fn ln_gamma(x: f64) -> f64 {
   if x < 0.5 {
     // Reflection: ln Γ(x) = ln(π / sin(πx)) − ln Γ(1−x)
     let ratio = std::f64::consts::PI / sinpi(x);
-    // Below 5.6e-309 the ratio passes MAX: ln Γ(x) = −ln x − γx + O(x²), the γx under 1e-311 of it.
+    // Below 5.6e-309 the ratio passes MAX: ln Γ(x) = −ln x − γx + O(x²) from 1/Γ(x) = x + γx² + ⋯ (DLMF 5.7.1), the γx
+    // under 1e-311 of it.
     if ratio.is_infinite() && x > 0.0 {
       return -x.ln();
     }

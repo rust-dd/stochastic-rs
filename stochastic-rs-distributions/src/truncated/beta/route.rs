@@ -85,7 +85,6 @@ impl Mirror {
     };
     let kernel = Reflected(GammaKernel::new(b, s));
     let (z_lo, z_up) = (ldexp(lo - 1.0, -p), ldexp(up - 1.0, -p));
-    // Filled where it lies, as a model's engine is.
     let mut m = Self {
       p,
       ln_unit: f64::from(p) * LN_2,
