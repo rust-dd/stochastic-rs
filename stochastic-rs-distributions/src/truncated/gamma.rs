@@ -1,5 +1,5 @@
-//! Truncated gamma: rejection from the base law while the interval holds 1e-3 of its mass, else the inverse cdf. Past
-//! `θ(2k + 260) = MAX·2^{e+1022}`, `2^e ≤ lower`, no unit holds both, and beside `lower > 0` the law reads untruncated.
+//! Truncated gamma: rejection from the base law while the interval holds 1e-3 of its mass, else the inverse cdf. Where
+//! `θ(2k + 260)` and `upper` pass `MAX·2^{e+1022}`, `2^e ≤ lower < 2⁻¹⁰¹³`, a shape below 1 reads untruncated beside `lower`.
 //!
 //! Reference: Coffey, C. S. & Muller, K. E. (2000), "Properties of doubly-truncated gamma variables", *Communications in Statistics - Theory and Methods* 29(4), 851-857, DOI 10.1080/03610920008832519 (truncated gamma moments).
 //! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2 and §II.3, DOI 10.1007/978-1-4613-8643-8 (inversion and rejection).
@@ -149,8 +149,8 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
     };
     let (lo, up) = (lower.to_f64().unwrap(), upper.to_f64().unwrap());
     let p = unit_exponent(theta.min(up));
-    // At most 2^1022 times `lower`'s exponent, so `lower/2^p` is normal and offsets beside it exact, wherever the kernel's
-    // reach past its mode (under 260 scales) fits that unit; past it `lower/2^p` underflows and the law reads untruncated.
+    // At most 2^1022 times `lower`'s exponent, so `lower/2^p` is normal and offsets beside it exact, wherever the reach
+    // `min((2k + 260)θ, upper)` fits that unit; past it `lower/2^p` underflows and the law reads untruncated.
     let floor = split_pow2(lo).0 + 1022;
     let reach = (ldexp(theta, -floor) * (2.0 * k + 260.0)).min(ldexp(up, -floor));
     let p = if lo > 0.0 && floor < p && reach.is_finite() {
