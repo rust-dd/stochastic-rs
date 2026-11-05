@@ -450,13 +450,17 @@ pub fn beta_i(a: f64, b: f64, x: f64) -> f64 {
   let bt = (lab - la - lb + lx + ly).exp();
   let lower = x < (a + 1.0) / (a + b + 2.0);
   if bt.is_normal() {
+    // `bt`'s rounding, `ε` times its logarithms' sizes, and below the switch `b` times `1 − x`'s.
+    let size = || lab.abs() + la.abs() + lb.abs() + lx.abs() + ly.abs();
     if lower {
-      return bt * betacf(a, b, x) / a;
+      let v = bt * betacf(a, b, x) / a;
+      if v <= 0.5 || a > 1.0 || x > 0.5 || f64::EPSILON * (size() + 0.5 * b) <= TAIL_HELD {
+        return v;
+      }
+      return 1.0 - complement::upper_series(a, b, x);
     }
     let rest = bt * betacf(b, a, 1.0 - x) / b;
-    // `bt`'s rounding, `ε` times its logarithms' sizes, lands whole on a small `1 − rest`.
-    let lost = f64::EPSILON * (lab.abs() + la.abs() + lb.abs() + lx.abs() + ly.abs()) * rest;
-    if lost <= TAIL_HELD * (1.0 - rest) || b > 1.0 || x < 0.5 {
+    if f64::EPSILON * size() * rest <= TAIL_HELD * (1.0 - rest) || b > 1.0 || x < 0.5 {
       return 1.0 - rest;
     }
     return complement::upper_series(b, a, 1.0 - x);
@@ -464,7 +468,7 @@ pub fn beta_i(a: f64, b: f64, x: f64) -> f64 {
   beta_i_scaled(a, b, x, lower)
 }
 
-/// The relative error `1 − rest` may carry before the far side's complement replaces it: `2⁻⁴⁰`, under the `1e-12` bar.
+/// The relative error a value next to 1 or `1 − rest` may carry before the complement replaces it: `2⁻⁴⁰`, under the bar.
 const TAIL_HELD: f64 = 9.094947017729282e-13;
 
 /// Where `bt` left the normal doubles: `x^a(1 − x)^b/(a·B(a, b))` and the fraction's log before one `exp`, `ln(a·B(a, b))`
