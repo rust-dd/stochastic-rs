@@ -456,6 +456,28 @@ mod tests {
     SimdTruncatedBeta::<f64>::new(2.0, -1.0, 0.2, 0.8);
   }
 
+  /// Below `lo = 2⁻²⁶` past the mean the switch reads the mass from the complement at `lo`, where `1 − lo` read about 1 and
+  /// each draw spent its 10⁵ rejection tries: mpmath at 60 and 120 digits raised by |log₁₀ α|, a subnormal correctly rounded.
+  #[test]
+  fn a_lower_bound_below_half_its_digits_keeps_the_switch_mass() {
+    for (a, b, lo, up, want) in [
+      (1e-300, 3.0, 1e-20, 0.9, 4.455134134422309e-299),
+      (1e-310, 3.0, 1e-200, 0.5, 4.589488714182478e-308),
+    ] {
+      let mass = SimdTruncatedBeta::<f64>::new(a, b, lo, up).mass;
+      assert!(
+        ((mass - want) / want).abs() < 1e-13,
+        "TB({a:e}, {b}, [{lo:e}, {up}]) mass {mass:e}"
+      );
+    }
+    for b in [1.0 - f64::EPSILON, 1.0 + 2.0 * f64::EPSILON] {
+      assert_eq!(
+        SimdTruncatedBeta::<f64>::new(5e-324, b, 1e-310, 0.5).mass,
+        713.0 * 5e-324
+      );
+    }
+  }
+
   /// Both regimes of the honest `Distribution` draw from the caller's rng and agree with the cdf: rejection on
   /// `[0.2, 0.8]`, inversion on `[0.99, 0.999]`, which holds 4e-6 of the base mass.
   #[test]

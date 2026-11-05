@@ -434,3 +434,45 @@ fn beta_i_at_subnormal_shapes() {
     );
   }
 }
+
+/// Past the switch at a small second shape `1 − I_{1−x}(b, a)` hands `bt`'s rounding to the tail whole; the complement in
+/// `1 − x` (DLMF 8.17.7) holds it: mpmath at 60 and 120 digits raised by |log₁₀ b|, a subnormal its correctly rounded double.
+#[test]
+fn beta_i_reads_a_small_far_tail_from_the_complement() {
+  for (a, b, x, want) in [
+    (10.0, 1e-12, 0.999999999999999, 3.171060773787063e-11),
+    (1.0, 1e-12, 0.999999999999, 2.763104323751162e-11),
+    (1e4, 1e-9, 0.9999999999, 1.3238345724251056e-8),
+    (1e4, 1e-12, 0.9999999999999999, 2.694929453327152e-11),
+    (100.0, 1e-200, 0.999999999999999, 2.936219847470136e-199),
+    (100.0, 1e-8, 0.999999, 8.638231672948629e-8),
+    (1e8, 0.5, 0.9999999999, 0.8875370794968893),
+    (1e8, 0.01, 0.99999999, 0.002216234604452459),
+  ] {
+    let got = beta_i(a, b, x);
+    assert!(
+      ((got - want) / want).abs() < 1e-13,
+      "I_{x}({a:e}, {b:e}) = {got:e}, want {want:e}"
+    );
+  }
+  assert_eq!(beta_i(1e4, 1e-307, 0.999), f64::from_bits(0x0013_7e69_693a));
+}
+
+/// `1 − I_x(a, b)` from `x` where `1 − x` rounds it away or `(1 − x)^b` carries `b` ulps: mpmath at 60 and 120 digits raised
+/// by |log₁₀ a| and |log₁₀ x|, a subnormal its correctly rounded double.
+#[test]
+fn beta_ic_reads_the_upper_tail_from_x() {
+  for (a, b, x, want) in [
+    (1e-300, 3.0, 1e-20, 4.4551701859880917e-299),
+    (1e-12, 1e4, 1e-5, 1.8229646768913622e-12),
+    (0.5, 1e15, 1e-16, 0.654720846018577),
+    (1e-20, 1e300, 1e-301, 1.8229239584193904e-20),
+  ] {
+    let got = beta_ic(a, b, x);
+    assert!(
+      ((got - want) / want).abs() < 1e-13,
+      "1 − I_{x}({a:e}, {b:e}) = {got:e}, want {want:e}"
+    );
+  }
+  assert_eq!(beta_ic(5e-324, 1.0, 1e-310), 714.0 * 5e-324);
+}
