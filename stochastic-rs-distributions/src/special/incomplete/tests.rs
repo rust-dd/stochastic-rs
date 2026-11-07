@@ -448,6 +448,13 @@ fn beta_i_reads_a_small_far_tail_from_the_complement() {
     (100.0, 1e-8, 0.999999, 8.638231672948629e-8),
     (1e8, 0.5, 0.9999999999, 0.8875370794968893),
     (1e8, 0.01, 0.99999999, 0.002216234604452459),
+    (
+      2.5,
+      2.511886431509582e-4,
+      0.9999555486799875,
+      0.002_193_220_056_962_580_6,
+    ),
+    (0.75, 1e-4, 0.9999999999428116, 0.002_406_427_002_726_082),
   ] {
     let got = beta_i(a, b, x);
     assert!(
@@ -510,8 +517,8 @@ fn beta_i_keeps_a_value_next_to_1_at_or_below_it() {
   }
 }
 
-/// `1 − I_x(a, b)` from `x` where `1 − x` rounds it away or `(1 − x)^b` carries `b` ulps: mpmath at 60 and 120 digits raised
-/// by |log₁₀ a| and |log₁₀ x|, a subnormal its correctly rounded double.
+/// `1 − I_x(a, b)` from `x` by the series and the gamma limit, NaN where the limit fails: mpmath
+/// at 60 and 120 digits raised by |log₁₀ a| and |log₁₀ x|, a subnormal its correctly rounded value.
 #[test]
 fn beta_ic_reads_the_upper_tail_from_x() {
   for (a, b, x, want) in [
@@ -519,6 +526,7 @@ fn beta_ic_reads_the_upper_tail_from_x() {
     (1e-12, 1e4, 1e-5, 1.8229646768913622e-12),
     (0.5, 1e15, 1e-16, 0.654720846018577),
     (1e-20, 1e300, 1e-301, 1.8229239584193904e-20),
+    (0.5, 1e18, 1e-17, 7.744_216_431_044_077e-6),
   ] {
     let got = beta_ic(a, b, x);
     assert!(
@@ -527,6 +535,7 @@ fn beta_ic_reads_the_upper_tail_from_x() {
     );
   }
   assert_eq!(beta_ic(5e-324, 1.0, 1e-310), 714.0 * 5e-324);
+  assert!(beta_ic(1e8, 1e16, 1e-8).is_nan());
 }
 
 /// `ldexp` rounds a subnormal once, against `x·2ᵖ` rounded from its integer mantissa: steps of `2⁻¹⁰⁰⁰` round 18 of
