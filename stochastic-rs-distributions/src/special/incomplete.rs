@@ -8,6 +8,7 @@ mod complement;
 mod large_shape;
 mod student;
 
+pub(crate) use complement::KEPT;
 pub(crate) use complement::beta_ic;
 pub(crate) use large_shape::LN2_HI;
 pub(crate) use large_shape::LN2_LO;

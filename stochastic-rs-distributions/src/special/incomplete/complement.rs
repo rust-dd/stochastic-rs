@@ -3,11 +3,16 @@
 //! Reference: DiDonato, A.R., Morris, A.H. (1992), "Algorithm 708: Significant digit computation of the incomplete beta function ratios", ACM TOMS 18(3), 360-373, DOI 10.1145/131766.131776 (`bpser`'s series, `algdiv`'s Stirling difference).
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 8.17.7 (`B_x(a, b) = x^a/a·F(a, 1 − b; a + 1; x)`), <https://dlmf.nist.gov/8.17.7>; eq. 5.11.1 (Stirling's series), <https://dlmf.nist.gov/5.11.1>.
 
+use super::TAIL_HELD;
 use super::beta_i;
+use super::gamma_q;
 use super::recip_gamma_1p_m1_over;
 use crate::special::expm1_over;
 use crate::special::ln_1p_over;
 use crate::special::ln_gamma;
+
+/// Below this argument a rounded `1 − x` keeps under half of `x`'s digits, and below 2⁻⁵³ none.
+pub(crate) const KEPT: f64 = 1.4901161193847656e-8;
 
 /// From this argument `ln Γ` differences are Stirling's, whose seventh term is under `2e-18` of the digamma; unit shifts
 /// lift a smaller one.
@@ -23,13 +28,29 @@ const STIRLING: [f64; 6] = [
   -691.0 / 360360.0,
 ];
 
-/// `1 − I_x(a, b)`: below ½ at `a ≤ 1` and `bx ≤ 2` DLMF 8.17.7's series in `x`, elsewhere `I_{1−x}(b, a)`, whose `1 − x`
-/// is exact from ½ up; NaN off `[0, 1]`.
+/// `1 − I_x(a, b)` from `x`: below ½ at `a ≤ 1`, `bx ≤ 2` DLMF 8.17.7's series, else below `KEPT` the gamma limit (NaN
+/// where it fails), elsewhere `I_{1−x}(b, a)`, its `1 − x` exact from ½; NaN off `[0, 1]`.
 pub(crate) fn beta_ic(a: f64, b: f64, x: f64) -> f64 {
   if x > 0.0 && x < 0.5 && a <= 1.0 && b * x <= 2.0 {
     return upper_series(a, b, x);
   }
+  if x > 0.0 && x < KEPT {
+    return gamma_limit(a, b, x);
+  }
   beta_i(b, a, 1.0 - x)
+}
+
+/// `Q(a, Ns)`, `s = −ln(1 − x)`, `N = b + (a − 1)/2`: TOMS 708 `bgrat`'s leading term, NaN where its next terms,
+/// `(a − 1)(s + (a + 1)/N)²/24` and `a(a² − 1)/(24N²)` relative, may pass 2⁻⁴⁰.
+fn gamma_limit(a: f64, b: f64, x: f64) -> f64 {
+  let n = b + 0.5 * (a - 1.0);
+  let s = -(-x).ln_1p();
+  let next = (a - 1.0).abs() * (s + (a + 1.0) / n).powi(2) + a * (a * a - 1.0).abs() / (n * n);
+  if next / 24.0 <= TAIL_HELD {
+    gamma_q(a, n * s)
+  } else {
+    f64::NAN
+  }
 }
 
 /// `1 − I_x(p, q) = −expm1(E)`, `E = p ln x − ln(pB(p, q)) + ln(1 + pΣ)`, `Σ = Σ_{n≥1} (1 − q)_n xⁿ/(n!(p + n))`, at

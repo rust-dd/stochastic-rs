@@ -21,6 +21,7 @@ use crate::beta::BetaState;
 use crate::beta::SimdBeta;
 use crate::source::AnyRng;
 use crate::source::uniform53;
+use crate::special::KEPT;
 use crate::traits::DistributionExt;
 use crate::traits::SimdFloatExt;
 use crate::traits::distribution::Sealed;
@@ -33,9 +34,6 @@ use route::gamma_route;
 mod kernel;
 mod route;
 
-/// Below this lower bound `1 − lo` keeps under half of its digits, so the mass past the mean is read from `lo` itself.
-const KEPT: f64 = 1.4901161193847656e-8;
-
 /// Truncated beta law on $[\text{lower}, \text{upper}] \subseteq [0, 1]$: parameters and the base mass on the
 /// interval; a [`Seeded`](crate::Seeded) stream draws it.
 #[derive(Clone)]
@@ -43,7 +41,7 @@ pub struct SimdTruncatedBeta<T> {
   base: SimdBeta<T>,
   lower: T,
   upper: T,
-  /// The base law's mass on the interval: the sampler's regime switch.
+  /// The base law's mass on the interval, the sampler's regime switch; NaN, so the inverse cdf, where it is unresolved.
   mass: f64,
   /// The interval's kernel integral, built by the first analytic call or inverse-cdf draw.
   analytics: OnceLock<Analytics>,
@@ -475,6 +473,29 @@ mod tests {
         SimdTruncatedBeta::<f64>::new(5e-324, b, 1e-310, 0.5).mass,
         713.0 * 5e-324
       );
+    }
+  }
+
+  /// Past the mean below `KEPT` off the series' domain the switch reads the gamma limit: mpmath
+  /// at 60 and 120 digits, beside it the panels' integral and at `α = 2` `(1 − x)^β(1 + βx)`.
+  #[test]
+  fn a_huge_second_shape_reads_its_switch_mass_from_the_gamma_limit() {
+    for (a, b, lo, up, want) in [
+      (0.5, 1e18, 1e-17, 0.5, 7.744_216_431_044_077e-6),
+      (0.5, 1e17, 1e-17, 3e-17, 0.142_993_328_614_855_47),
+      (2.0, 1e19, 5e-17, 6e-17, 3.569_412_779_777_376_6e-215),
+    ] {
+      let mass = SimdTruncatedBeta::<f64>::new(a, b, lo, up).mass;
+      assert!(
+        ((mass - want) / want).abs() < 1e-12,
+        "TB({a}, {b:e}, [{lo:e}, {up:e}]) mass {mass:e}"
+      );
+    }
+    for (a, b, lo, up) in [
+      (5e-324, 1e18, 5.551_115_123_125_783e-17, 0.5),
+      (3.0, 1e300, 1e-20, 1.0),
+    ] {
+      assert_eq!(SimdTruncatedBeta::<f64>::new(a, b, lo, up).mass, 0.0);
     }
   }
 

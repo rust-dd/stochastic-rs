@@ -30,6 +30,7 @@ pub(crate) use bessel_k::debye_shape_parts;
 pub use bessel_k::ln_bessel_ke;
 pub(crate) use bessel_k::ln_bessel_ke_parts;
 pub(crate) use bessel_k::ln_half_gamma_parts;
+pub(crate) use incomplete::KEPT;
 pub(crate) use incomplete::LN2_HI;
 pub(crate) use incomplete::LN2_LO;
 pub use incomplete::beta_i;
