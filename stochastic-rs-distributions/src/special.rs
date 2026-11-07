@@ -289,6 +289,26 @@ fn pi_cot_pi(x: f64) -> f64 {
   }
 }
 
+/// From this shape the gamma law's entropy reads its series, where `k`, `ln Γ(k)` and `(1 − k)ψ(k)` cancel.
+pub(crate) const ENTROPY_SERIES_FROM: f64 = 100.0;
+
+/// `k + ln Γ(k) + (1 − k)ψ(k)` from `ENTROPY_SERIES_FROM`, DLMF 5.11.1 with 5.11.2: `½(1 + ln 2πk)`
+/// `− 1/(3k) − 1/(12k²) − ⋯`, free of three terms of size `k ln k`, its next term under 1e-20.
+pub(crate) fn gamma_entropy_series(k: f64) -> f64 {
+  const C: [f64; 8] = [
+    -1.0 / 3.0,
+    -1.0 / 12.0,
+    -1.0 / 90.0,
+    1.0 / 120.0,
+    1.0 / 210.0,
+    -1.0 / 252.0,
+    -1.0 / 210.0,
+    1.0 / 240.0,
+  ];
+  let r = k.recip();
+  0.5 + HALF_LN_TAU.0 + 0.5 * k.ln() + r * C.iter().rev().fold(0.0, |acc, &c| acc * r + c)
+}
+
 /// Beta function B(a, b) = Γ(a)Γ(b)/Γ(a+b).
 #[inline]
 pub fn beta(a: f64, b: f64) -> f64 {

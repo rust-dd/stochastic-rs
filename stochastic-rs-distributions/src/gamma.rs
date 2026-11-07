@@ -337,6 +337,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGamma<T> {
   fn entropy(&self) -> Option<f64> {
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
+    if alpha >= crate::special::ENTROPY_SERIES_FROM {
+      return Some(scale.ln() + crate::special::gamma_entropy_series(alpha));
+    }
     Some(
       alpha
         + scale.ln()

@@ -156,6 +156,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdChiSquared<T> {
   fn entropy(&self) -> Option<f64> {
     let k = self.df.to_f64().unwrap();
     let half_k = 0.5 * k;
+    if half_k >= crate::special::ENTROPY_SERIES_FROM {
+      return Some(std::f64::consts::LN_2 + crate::special::gamma_entropy_series(half_k));
+    }
     Some(
       half_k
         + std::f64::consts::LN_2

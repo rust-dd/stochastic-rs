@@ -312,3 +312,32 @@ fn ln_gamma_at_subnormal_arguments() {
   assert_eq!(ln_gamma(5e-324), 744.4400719213812);
   assert_eq!(ln_gamma(1e-310), 713.8013788281542);
 }
+
+/// From shape 100 the gamma and χ² entropies read DLMF 5.11.1 with 5.11.2, where `k`, `ln Γ(k)`
+/// and `(1 − k)ψ(k)` cancel: mpmath at 60 and 120 digits raised by `2 log₁₀ k`.
+#[test]
+fn the_gamma_entropies_hold_past_their_cancellation() {
+  use crate::chi_square::SimdChiSquared;
+  use crate::gamma::SimdGamma;
+  use crate::traits::DistributionExt;
+  for (got, want) in [
+    (
+      SimdGamma::<f64>::new(1e6, 1.0).entropy(),
+      8.326_693_478_853_393,
+    ),
+    (
+      SimdGamma::<f64>::new(1e300, 1.0).entropy(),
+      346.806_702_482_311_55,
+    ),
+    (
+      SimdChiSquared::<f64>::new(2e6).entropy(),
+      9.019_840_659_413_338,
+    ),
+  ] {
+    let got = got.unwrap();
+    assert!(
+      (got - want).abs() <= 1e-12 * want,
+      "entropy {got}, want {want}"
+    );
+  }
+}
