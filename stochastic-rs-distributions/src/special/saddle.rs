@@ -202,8 +202,16 @@ pub(crate) fn divergence(
     e * (lambda - coefficient * (2.0 + e)) / ratio.0 / ratio.0
   };
   if past_series(lambda, e) {
-    // Near `e = −1` the low part is a share of `1 + e` a slope would leave as `λ(e_lo/(1 + e))²`: it goes in the ratio.
-    return divergence_at(lambda, coefficient, e, two_sum(ratio.0, ratio.1 + e_lo));
+    // Near `e = −1` the low part is a share of `1 + e`, whose slope would leave `λ(e_lo/(1 + e))²`:
+    // it goes in the ratio, and the terms' slope in `e` at that ratio takes the rest.
+    let whole = two_sum(ratio.0, ratio.1 + e_lo);
+    let rest = if lambda >= 0.0 {
+      -lambda
+    } else {
+      -lambda / whole.0
+    } - 2.0 * coefficient * e / whole.0;
+    let low = rest * e_lo;
+    return divergence_at(lambda, coefficient, e, whole) + if low.is_finite() { low } else { 0.0 };
   }
   let low = slope * e_lo;
   divergence_at(lambda, coefficient, e, ratio) + if low.is_finite() { low } else { 0.0 }
