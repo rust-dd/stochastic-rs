@@ -54,9 +54,14 @@ impl PyHeston {
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> pyo3::PyResult<Self> {
       let device = crate::python_device::Device::parse(device, dtype.unwrap_or("f64"))?;
-      let hp = match pow.unwrap_or("sqrt") {
+      let hp = match pow.unwrap_or("sqrt").to_ascii_lowercase().as_str() {
+        "sqrt" => HestonPow::Sqrt,
         "three_halves" | "3/2" => HestonPow::ThreeHalves,
-        _ => HestonPow::Sqrt,
+        other => {
+          return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "pow must be 'sqrt' or '3/2', got '{other}'"
+          )));
+        }
       };
       let qe = match scheme.to_ascii_lowercase().as_str() {
         "euler" => false,

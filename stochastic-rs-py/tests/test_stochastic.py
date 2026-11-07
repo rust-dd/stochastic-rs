@@ -283,7 +283,7 @@ def test_heston_qe_is_seeded_and_validated():
     b = _heston(seed=3, scheme="qe").sample_par(64)
     assert np.array_equal(a[0], b[0]) and np.array_equal(a[1], b[1])
     assert not np.array_equal(a[0], _heston(seed=3).sample_par(64)[0])
-    for bad in ({"scheme": "milstein"}, {"scheme": "qe", "pow": "3/2"}):
+    for bad in ({"scheme": "milstein"}, {"scheme": "qe", "pow": "3/2"}, {"pow": "half"}):
         with pytest.raises(ValueError):
             _heston(**bad)
     with pytest.raises(ValueError):
