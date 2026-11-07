@@ -464,18 +464,29 @@ pub fn beta_i(a: f64, b: f64, x: f64) -> f64 {
     let size = || lab.abs() + la.abs() + lb.abs() + lx.abs() + ly.abs();
     if lower {
       let v = bt * betacf(a, b, x) / a;
-      if v <= 0.5 || a > 1.0 || x > 0.5 || f64::EPSILON * (size() + 0.5 * b) <= TAIL_HELD {
+      if v <= 0.5 || a > 1.0 || x > 0.5 {
         return v;
       }
-      return 1.0 - complement::upper_series(a, b, x);
+      return next_to_one(a, b, x, v, size());
     }
     let rest = bt * betacf(b, a, 1.0 - x) / b;
-    if f64::EPSILON * size() * rest <= TAIL_HELD * (1.0 - rest) || b > 1.0 || x < 0.5 {
+    if b > 1.0 || x < 0.5 || f64::EPSILON * size() * rest <= TAIL_HELD * (1.0 - rest) {
       return 1.0 - rest;
     }
     return complement::upper_series(b, a, 1.0 - x);
   }
   beta_i_scaled(a, b, x, lower)
+}
+
+/// `v > ½` below the switch at `a ≤ 1`, `x ≤ ½`: `v` where its estimate holds 2⁻⁴⁰, else one less the complement in `x`;
+/// apart and cold, since inline the compiler evaluates the estimate before the cheap tests that return first.
+#[cold]
+#[inline(never)]
+fn next_to_one(a: f64, b: f64, x: f64, v: f64, size: f64) -> f64 {
+  if f64::EPSILON * (size + 0.5 * b) <= TAIL_HELD {
+    return v;
+  }
+  1.0 - complement::upper_series(a, b, x)
 }
 
 /// The relative error a value next to 1 or `1 − rest` may carry before the complement replaces it: `2⁻⁴⁰`, under the bar.
