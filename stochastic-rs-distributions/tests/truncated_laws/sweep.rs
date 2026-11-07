@@ -11,7 +11,6 @@ use stochastic_rs_distributions::traits::DistributionSampler;
 use stochastic_rs_distributions::traits::SimdKernel;
 
 use crate::parents;
-use crate::parents::Tails;
 use crate::pinned::Pinned;
 use crate::survey;
 use crate::survey::Case;
@@ -36,15 +35,15 @@ const PARENT_LEVELS: [f64; 9] = [1e-6, 1e-3, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0 - 1e-3
 /// A reference whose own error exceeds this leaves its point unchecked.
 const REFERENCE: f64 = 2e-13;
 
-/// A law's checks: its support and scale, the mgf (and cf) arguments, those with a reference, the parent's tails,
-/// whether its mode may tie, and whether it lies far from its parent's mode.
+/// A law's checks: support and scale, the mgf (and cf) arguments and those with a reference, the
+/// parent's mass between two points, whether its mode may tie and whether it lies far from it.
 struct Spec<'a> {
   support: (f64, f64),
   scale: f64,
   ts: &'a [f64],
   valued: &'a [f64],
   cf: bool,
-  parent: Option<&'a dyn Fn(f64) -> Tails>,
+  parent: Option<&'a dyn Fn(f64, f64) -> (f64, f64)>,
   tie: bool,
   far: bool,
 }
@@ -117,7 +116,8 @@ pub fn run(case: &Case, tally: &mut Tally, pinned: &Pinned, dump: Option<&mut St
         1e300,
         -1e300,
       ];
-      let parent = |x| parents::normal(mu, sigma, x);
+      let parent =
+        |l, r| parents::between(parents::normal(mu, sigma, l), parents::normal(mu, sigma, r));
       let distance = if mu < lo {
         (lo - mu) / sigma
       } else if mu > up {
@@ -139,7 +139,8 @@ pub fn run(case: &Case, tally: &mut Tally, pinned: &Pinned, dump: Option<&mut St
     }
     Law::G { k, theta, .. } => {
       let law = survey::build_gamma(case.law);
-      let parent = |x| parents::gamma(k, theta, x);
+      let parent =
+        |l, r| parents::between(parents::gamma(k, theta, l), parents::gamma(k, theta, r));
       let spec = Spec {
         support,
         scale: theta,
@@ -154,7 +155,7 @@ pub fn run(case: &Case, tally: &mut Tally, pinned: &Pinned, dump: Option<&mut St
     }
     Law::B { a, b, .. } => {
       let law = survey::build_beta(case.law);
-      let parent = |x| parents::beta(a, b, x);
+      let parent = |l, r| parents::beta_between(a, b, l, r, REFERENCE);
       let spec = Spec {
         support,
         scale: 1.0,
@@ -385,10 +386,13 @@ pub fn beside_points(lo: f64, up: f64, scale: f64) -> Vec<f64> {
 }
 
 /// The parent's cdf at `x` where it holds 2e-13.
-fn parent_value(parent: &dyn Fn(f64) -> Tails, (lo, up): (f64, f64), x: f64) -> Option<f64> {
-  let t_lo = parent(lo);
-  let (mass, err_mass) = parents::between(t_lo, parent(up));
-  let (part, err_part) = parents::between(t_lo, parent(x));
+fn parent_value(
+  parent: &dyn Fn(f64, f64) -> (f64, f64),
+  (lo, up): (f64, f64),
+  x: f64,
+) -> Option<f64> {
+  let (mass, err_mass) = parent(lo, up);
+  let (part, err_part) = parent(lo, x);
   let err = err_part + err_mass + f64::EPSILON;
   (err <= REFERENCE).then_some(part / mass)
 }
@@ -398,7 +402,7 @@ fn parent_value(parent: &dyn Fn(f64) -> Tails, (lo, up): (f64, f64), x: f64) -> 
 fn parent_check(
   law: &impl DistributionExt,
   (lo, up): (f64, f64),
-  parent: &dyn Fn(f64) -> Tails,
+  parent: &dyn Fn(f64, f64) -> (f64, f64),
   fail: &mut impl FnMut(String),
   tally: &mut Tally,
 ) {
