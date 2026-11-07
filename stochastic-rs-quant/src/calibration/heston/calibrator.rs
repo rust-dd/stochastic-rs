@@ -265,7 +265,7 @@ impl HestonCalibrator {
   }
 
   /// Project the guess and every iterate onto `σ² ≤ 2κθ`, so the fit passes [`HestonParams::satisfies_feller_condition`];
-  /// a surface that violates it is then fitted on the boundary.
+  /// the fit can then stop on the boundary although a better one lies inside, as it must for a surface that violates it.
   pub fn set_feller_projection(&mut self, enabled: bool) {
     self.feller_projection = enabled;
   }
