@@ -155,7 +155,15 @@ pub fn run(case: &Case, tally: &mut Tally, pinned: &Pinned, dump: Option<&mut St
     }
     Law::B { a, b, .. } => {
       let law = survey::build_beta(case.law);
-      let parent = |l, r| parents::beta_between(a, b, l, r, REFERENCE);
+      // Every reference divides by the whole interval's mass, which the panels may sum.
+      let whole = parents::beta_between(a, b, support.0, support.1, REFERENCE);
+      let parent = |l, r| {
+        if (l, r) == support {
+          whole
+        } else {
+          parents::beta_between(a, b, l, r, REFERENCE)
+        }
+      };
       let spec = Spec {
         support,
         scale: 1.0,
