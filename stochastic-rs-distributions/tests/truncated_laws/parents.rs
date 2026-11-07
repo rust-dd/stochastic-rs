@@ -1,0 +1,197 @@
+//! The truncated laws' parents from the crate's own special functions: both tails at a point, each with a bound on its
+//! relative error, so a survey compares a truncated cdf only where its reference holds its digits.
+
+use std::f64::consts::FRAC_1_SQRT_2;
+use std::f64::consts::FRAC_2_SQRT_PI;
+
+use stochastic_rs_distributions::special::beta_i;
+use stochastic_rs_distributions::special::erfc;
+use stochastic_rs_distributions::special::gamma_p;
+use stochastic_rs_distributions::special::gamma_q;
+use stochastic_rs_distributions::special::ln_gamma;
+
+const EPS: f64 = f64::EPSILON;
+
+/// `1/√2 − FRAC_1_SQRT_2`, from mpmath.
+const FRAC_1_SQRT_2_LO: f64 = -4.833646656726457e-17;
+
+/// `P` and `Q = 1 − P` of a parent law at a point, each with a bound on its relative error.
+#[derive(Clone, Copy, Debug)]
+pub struct Tails {
+  pub p: f64,
+  pub q: f64,
+  pub err_p: f64,
+  pub err_q: f64,
+}
+
+impl Tails {
+  fn limit(p: f64) -> Self {
+    Self {
+      p,
+      q: 1.0 - p,
+      err_p: 0.0,
+      err_q: 0.0,
+    }
+  }
+
+  fn unknown() -> Self {
+    Self {
+      p: f64::NAN,
+      q: f64::NAN,
+      err_p: f64::INFINITY,
+      err_q: f64::INFINITY,
+    }
+  }
+}
+
+/// The parent's mass between `l` and `r` and its relative error bound, from the tail whose difference keeps more
+/// digits: a difference that cancels carries its terms' errors over its own size, and one below 1e-290 counts none.
+pub fn between(l: Tails, r: Tails) -> (f64, f64) {
+  let form = |big: f64, e_big: f64, small: f64, e_small: f64| {
+    let v = big - small;
+    if v >= 1e-290 {
+      (v, (big.abs() * e_big + small.abs() * e_small) / v + EPS)
+    } else {
+      (v, f64::INFINITY)
+    }
+  };
+  let by_p = form(r.p, r.err_p, l.p, l.err_p);
+  let by_q = form(l.q, l.err_q, r.q, r.err_q);
+  if by_p.1 <= by_q.1 { by_p } else { by_q }
+}
+
+/// A tail's error bound, unbounded where the value or the bound left its range; an underflowed 0 holds no digit worth
+/// a bound.
+fn bounded(v: f64, err: f64) -> f64 {
+  if v == 0.0 {
+    0.0
+  } else if (0.0..=1.0 + 1e-15).contains(&v) && err >= 0.0 {
+    err
+  } else {
+    f64::INFINITY
+  }
+}
+
+fn two_sum(a: f64, b: f64) -> (f64, f64) {
+  let s = a + b;
+  let bb = s - a;
+  (s, (a - (s - bb)) + (b - bb))
+}
+
+/// `ln Γ(z)`'s absolute error: Lanczos' terms each round on the scale of `|ln Γ(z)| + z`.
+fn ln_gamma_err(z: f64) -> f64 {
+  2.0 * EPS * (ln_gamma(z).abs() + z + 1.0) + 1e-15
+}
+
+/// `N(μ, σ²)` at `x`: `z = (x − μ)/σ` to double-double, its rest carried into `erfc` by its derivative.
+pub fn normal(mu: f64, sigma: f64, x: f64) -> Tails {
+  if x.is_infinite() {
+    return Tails::limit(if x > 0.0 { 1.0 } else { 0.0 });
+  }
+  let (mut d, mut d_lo) = two_sum(x, -mu);
+  let mut s = sigma;
+  if d.is_infinite() {
+    (d, d_lo) = two_sum(0.5 * x, -0.5 * mu);
+    s = 0.5 * sigma;
+  }
+  let z = d / s;
+  if !z.is_finite() {
+    return Tails::limit(if z > 0.0 { 1.0 } else { 0.0 });
+  }
+  let z_lo = ((-z).mul_add(s, d) + d_lo) / s;
+  let w = z * FRAC_1_SQRT_2;
+  let w_lo = z.mul_add(FRAC_1_SQRT_2, -w) + z * FRAC_1_SQRT_2_LO + z_lo * FRAC_1_SQRT_2;
+  let g = FRAC_2_SQRT_PI * (-w * w).exp() * w_lo;
+  Tails {
+    p: 0.5 * (erfc(-w) + g),
+    q: 0.5 * (erfc(w) - g),
+    err_p: 4.0 * EPS,
+    err_q: 4.0 * EPS,
+  }
+}
+
+/// `Gamma(k, θ)` at `x`: `u = x/θ` to double-double, its rest carried by the density `u^{k−1}e^{−u}/Γ(k)`, and each
+/// tail's error by the branch `gamma_p` and `gamma_q` take, which forms one tail as one minus the other.
+pub fn gamma(k: f64, theta: f64, x: f64) -> Tails {
+  if x <= 0.0 {
+    return Tails::limit(0.0);
+  }
+  let u = x / theta;
+  if u == f64::INFINITY {
+    return Tails::limit(1.0);
+  }
+  if u < f64::MIN_POSITIVE {
+    return Tails::unknown();
+  }
+  let u_lo = (-u).mul_add(theta, x) / theta;
+  let (mut p, mut q) = (gamma_p(k, u), gamma_q(k, u));
+  let ln_f = (k - 1.0) * u.ln() - u - ln_gamma(k);
+  let err_f = 4.0 * EPS * ((k - 1.0).abs() * u.ln().abs() + u + ln_gamma(k).abs()) + 1e-15;
+  // The density's exponent loses its digits with the shape: past 1e-3 it corrects nothing.
+  let corrected = u_lo != 0.0 && err_f <= 1e-3;
+  if corrected {
+    let shift = u_lo * ln_f.exp();
+    p += shift;
+    q -= shift;
+  }
+  // `d ln P/d ln u` and `d ln Q/d ln u` stay below this: `k` in the lower tail, `u` in the upper.
+  let slope = (u_lo / u).abs() * (k.max(u) + 1.0);
+  let err_u = if corrected {
+    slope * err_f + slope * slope
+  } else {
+    slope
+  };
+  let base = if k < 10.0 {
+    4.0 * EPS * (u + (k * u.ln()).abs() + ln_gamma(k).abs() + 1.0) + 1e-14
+  } else {
+    1e-14
+  };
+  let upper = if k < 100.0 { u >= k + 1.0 } else { u >= k };
+  let q_direct = upper || (k < 1.0 && u < k + 1.0);
+  Tails {
+    p,
+    q,
+    err_p: bounded(p, if upper { (EPS + base * q) / p } else { base } + err_u),
+    err_q: bounded(
+      q,
+      if q_direct { base } else { (EPS + base * p) / q } + err_u,
+    ),
+  }
+}
+
+/// `Beta(a, b)` at `x`: `beta_i(a, b, x)` and `beta_i(b, a, 1 − x)`, whose prefactor `e^{ln Γ(a + b) − ln Γ(a) −
+/// ln Γ(b) + a ln x + b ln(1 − x)}` errs by its terms' rounding, `1 − x` rounding below ½.
+pub fn beta(a: f64, b: f64, x: f64) -> Tails {
+  if x <= 0.0 {
+    return Tails::limit(0.0);
+  }
+  if x >= 1.0 {
+    return Tails::limit(1.0);
+  }
+  let y = 1.0 - x;
+  let (p, q) = (beta_i(a, b, x), beta_i(b, a, y));
+  let terms = (a * x.ln()).abs() + (b * y.ln()).abs();
+  let prefactor =
+    ln_gamma_err(a + b) + ln_gamma_err(a) + ln_gamma_err(b) + 2.0 * EPS * terms + 1e-15;
+  let fraction = if a.max(b) <= 1e3 {
+    4e-15
+  } else {
+    f64::INFINITY
+  };
+  let base = prefactor + fraction;
+  let argument = if x < 0.5 { EPS * (a.max(b) + 1.0) } else { 0.0 };
+  let p_direct = x < (a + 1.0) / (a + b + 2.0);
+  let q_direct = y < (b + 1.0) / (a + b + 2.0);
+  Tails {
+    p,
+    q,
+    err_p: bounded(
+      p,
+      if p_direct { base } else { (EPS + base * q) / p } + argument,
+    ),
+    err_q: bounded(
+      q,
+      if q_direct { base } else { (EPS + base * p) / q } + argument,
+    ),
+  }
+}

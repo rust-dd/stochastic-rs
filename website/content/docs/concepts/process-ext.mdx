@@ -6,12 +6,10 @@ since: 2.0.0
 status: stable
 ---
 
-Every stochastic process in `stochastic-rs-stochastic` — diffusion, jump,
-volatility, interest, rough, noise — implements `ProcessExt<T>`. The public
-surface is three methods:
+Every stochastic process in `stochastic-rs-stochastic` — diffusion, jump, volatility, interest, rough, noise — implements `ProcessExt<T>`. The trait is sealed: new processes are added inside the crate.
 
 ```rust
-pub trait ProcessExt<T: FloatExt>: Send + Sync {
+pub trait ProcessExt<T: FloatExt>: Send + Sync + Sealed {
   type Output: Send;
 
   /// One sampled path.
@@ -22,13 +20,23 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
 
   /// `m` independently sampled paths, kept.
   fn sample_par(&self, m: usize) -> Vec<Self::Output>;
+
+  /// `sample_map` with a borrowed row, for single-row processes.
+  fn sample_map_view<R: Send>(&self, m: usize, f: impl Fn(ArrayView1<T>) -> R + Sync) -> Vec<R>
+  where
+    Self: ProcessExt<T, Output = Array1<T>> + Sized;
+
+  /// `sample` / `sample_par` that return a device failure instead of panicking.
+  fn try_sample(&self) -> Result<Self::Output, DeviceError>;
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Self::Output>, DeviceError>;
+
+  /// Why this configuration samples on the host, or `None` when a device kernel carries it.
+  fn device_fallback(&self) -> Option<&'static str>;
+  fn device_ready(&self) -> bool; // device_fallback().is_none()
 }
 ```
 
-Under these sits a reusable per-thread sampler that owns the mutable sampling
-state (RNG, distribution buffers, precomputed scales). It is an
-implementation detail — you never name or construct it; the three methods
-above are the whole interface.
+The device methods are covered in [Sampling backends](/docs/concepts/backends).
 
 ## Output shape
 
@@ -37,27 +45,23 @@ above are the whole interface.
 | Family                                            | `Output`               |
 |---------------------------------------------------|------------------------|
 | Single-factor (OU, GBM, CIR, Vasicek, …)          | `Array1<T>`            |
-| Multi-state (Heston, SABR, Bergomi, …)            | `[Array1<T>; N]`       |
-| Term structure / sheet (HJM tenors, Bgm, Fbs)     | `Array2<T>`            |
+| Multi-state (Heston, SABR, Bergomi, HJM, …)       | `[Array1<T>; N]`       |
+| Matrix rows / sheet (Bgm, Adg, MultiGbm, Fbs)     | `Array2<T>`            |
+| Matrix-valued (Wishart)                           | `Array3<T>`            |
 | Variable-dimension (multivariate Hawkes)          | `Vec<Array1<T>>`       |
 | Complex-state (cfOU)                              | `Array1<Complex<T>>`   |
 
-The dimensional marker traits (`OneDimensional`, `TwoDimensional`,
-`MultiDimensional<N>`, `CurveOutput`, `VariableDimensional`,
-`ComplexPathOutput`) are auto-implemented from `Output`, so generic code can
-bound on the shape it expects.
+The dimensional marker traits (`OneDimensional`, `TwoDimensional`, `MultiDimensional<N>`, `CurveOutput`, `VariableDimensional`, `ComplexPathOutput`) are implemented automatically from `Output`, so generic code can bound on the shape it expects.
 
 ## Path length and time grid
 
-Construction of any process takes `(n, x0, t)`:
+Most constructors take `(n, x0, t)`:
 
-- `n: usize` — number of steps (a single path is length `n`)
-- `x0: Option<T>` — initial value; `None` ⇒ a sensible default per
-  process (e.g. 0 for OU, 1 for GBM)
+- `n: usize` — number of grid points, `x0` included
+- `x0: Option<T>` — initial value; `None` ⇒ a default per process (0 for OU, 1 for GBM)
 - `t: Option<T>` — horizon; `None` ⇒ `1.0`
 
-The time grid is uniform: $\Delta t = t / n$. Non-uniform grids are
-handled by user code (sample at fine $\Delta t$, then resample).
+The grid is uniform with step $\Delta t = t / (n - 1)$. For a non-uniform grid, sample at a fine $\Delta t$ and resample.
 
 ## Choosing a method
 
@@ -66,77 +70,43 @@ handled by user code (sample at fine $\Delta t$, then resample).
 | Method            | Returns            | Use when                                                                 |
 |-------------------|--------------------|--------------------------------------------------------------------------|
 | `sample()`        | one `Output`       | a single path, or you drive your own loop.                               |
-| `sample_map(m,f)` | `Vec<R>`           | a parallel Monte-Carlo **reduction** — you only need a function of each path (payoff, terminal value, a Greek). Reuses one sampler **and one output buffer** per worker; nothing is materialised. This is the fast path. |
-| `sample_par(m)`   | `Vec<Output>`      | you need to **keep** all `m` paths (storage, plotting, path-dependent processing). Allocates each path fresh. |
+| `sample_map(m,f)` | `Vec<R>`           | a parallel Monte Carlo **reduction** — you only need a function of each path (payoff, terminal value, a Greek). Reuses one sampler **and one output buffer** per worker; nothing is materialised. This is the fast path. |
+| `sample_map_view(m,f)` | `Vec<R>`      | the same, for single-row processes, with the callback borrowing the row: on a device the batch is read where the kernel wrote it. |
+| `sample_par(m)`   | `Vec<Output>`      | you need to **keep** all `m` paths (storage, plotting, path-dependent processing). Allocates each path. |
 
-Both parallel methods build **one sampler per Rayon worker**, not one per
-path, which removes the per-path RNG-setup and (for `sample_map`) the
-per-path allocation. Reach for `sample_map` whenever the answer is a number,
-not the paths themselves.
+Both parallel methods build **one sampler per Rayon worker**, not one per path, which removes the per-path RNG setup and (for `sample_map`) the per-path allocation. Use `sample_map` whenever the answer is a number, not the paths themselves.
 
 ## Performance
 
-The reuse matters most in the **many-short-paths** regime (large `m`, small
-`n`), where the fixed per-path costs are a large fraction of the work. On
-Apple Silicon, GBM, a parallel reduction over $\approx 2.6 \times 10^5$
-path-elements (`cargo bench --bench sampler_compare`):
+The reuse matters most for **many short paths** (large `m`, small `n`), where fixed per-path costs are a large fraction of the work. On Apple Silicon, GBM, a parallel reduction over $\approx 2.6 \times 10^5$ path-elements (`cargo bench --bench sampler_compare`):
 
-| `n`  | old idiom (parallel `sample()` fold) | `sample_map` | speedup |
-|-----:|-------------------------------------:|-------------:|--------:|
-|   64 |                              364 µs |       189 µs |  1.93×  |
-|  256 |                              188 µs |       173 µs |  1.09×  |
-| 1024 |                              165 µs |       159 µs |  1.04×  |
+| `n`  | parallel `sample()` fold | `sample_map` | speedup |
+|-----:|-------------------------:|-------------:|--------:|
+|   64 |                   364 µs |       189 µs |  1.93×  |
+|  256 |                   188 µs |       173 µs |  1.09×  |
+| 1024 |                   165 µs |       159 µs |  1.04×  |
 
-The dominant lever is the auto-seed counter becoming contention-free (see
-[seeding](/docs/concepts/seeding#auto-seeding-and-contention)); buffer reuse
-and uninitialised allocation add the rest. For longer paths ($n \geq 256$)
-the path computation itself dominates, so the speedup tapers to a few
-percent. Serial and single-path sampling are within a few percent of the
-pre-2.x figures — the win is specifically parallel and short-path.
+For longer paths ($n \geq 256$) the path computation dominates, so the speedup tapers to a few percent.
 
 ## Parallel sampling and determinism
 
-Each Rayon worker derives its own RNG from the process's seed source. The
-consequences depend on the seed strategy:
+Each Rayon worker derives its own RNG from the process's seed source. The consequences depend on the seed strategy:
 
-- **`Deterministic` + `sample()` (serial)** — bit-for-bit reproducible.
-  Repeated calls advance the seed, so successive paths differ. A serial loop
-  of `sample()` is the way to get reproducible Monte-Carlo runs.
-- **`Deterministic` + `sample_par` / `sample_map` (parallel)** — also
-  bit-for-bit reproducible: the same seed and the same `m` give bit-identical
-  output on any machine and under any Rayon thread-pool size. Each chunk's
-  sampler is built sequentially, before any work reaches Rayon, so scheduling
-  cannot decide which basis lands on which path. **No process is an
-  exception, full or partial**, and
-  `stochastic-rs-stochastic/tests/reproducibility_all_processes.rs` enumerates
-  every concrete implementor to enforce it. The one caveat is a *backend*,
-  not a process: `Fgn` / `Fbm` on the `accelerate` backend get
-  thread-count-independent seed *consumption* but not bit-identical *output*,
-  because vDSP's arithmetic is not bit-stable across Apple Silicon's
-  P-core / E-core scheduler.
+- **`Deterministic` + `sample()` (serial)** — bit-for-bit reproducible. Repeated calls advance the seed, so successive paths differ.
+- **`Deterministic` + `sample_par` / `sample_map` (parallel)** — also bit-for-bit reproducible: the same seed and the same `m` give bit-identical output on any machine and under any Rayon thread-pool size, for every process. Each chunk's sampler is built sequentially before any work reaches Rayon, so scheduling cannot change which seed lands on which path. The one exception is a *backend*: `Fgn` / `Fbm` on `Accelerate` consume seeds independently of the thread count but do not give bit-identical *output*, because vDSP's arithmetic is not bit-stable across Apple Silicon's P-core / E-core scheduler.
 - **`Unseeded`** — every path is independently auto-seeded in either mode.
 
-In all modes the seeds handed out are globally unique, so paths never
-collide or "get stuck" on a repeated stream — including across the
-thread-local seed-block boundary (validated in
-[`tests/sampler_v3_rng.rs`](https://github.com/dancixx/stochastic-rs/blob/main/tests/sampler_v3_rng.rs)).
+In every mode the seeds handed out are globally unique, so paths never collide on a repeated stream.
 
-FGN ships a `sample_pair` fast path that produces two independent paths in
-one FFT — a 2× shortcut over calling `sample()` twice while maintaining
-exact independence.
+`Fgn::sample_pair` produces two independent paths from one FFT, half the cost of two `sample()` calls.
 
 ## Acceleration
 
-Default implementation: CPU SIMD via `f64x4` / `f32x8` where the sampler
-allows. GPU backends (`cuda`, `metal`) are opt-in features and currently
-ship for FGN / fBM only — see the [add-gpu-sampler SKILL](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/add-gpu-sampler/SKILL.md).
+The CPU path uses `wide` SIMD (`f32x8` / `f64x8`) where the sampler allows. Every process also reaches a device backend (`cuda`, `metal`) through `.on::<B>()` — see [Sampling backends](/docs/concepts/backends).
 
 ## Construction patterns
 
-Every process follows the same canonical `new(args…, seed)` constructor —
-model parameters first, seed source **last** (see the [seeding concept
-page](/docs/concepts/seeding) for the full design). `Gbm` stands in for
-any process below; substitute the parameters of the one you want:
+Every process has one `new(args…, seed)` constructor — model parameters first, seed source **last** (see [seeding](/docs/concepts/seeding)). `Gbm` stands in for any process below:
 
 ```rust
 use stochastic_rs::simd_rng::Deterministic;
@@ -155,15 +125,6 @@ let p = Gbm::<f64, _>::new(
   Some(1.0),
   Deterministic::new(42),
 );
-
-// chain seeds: one shared source feeding several processes
-let shared = Deterministic::new(42);
-let p = Gbm::<f64, _>::new(0.05, 0.2, 1_000, Some(100.0), Some(1.0), shared.clone());
 ```
 
-Use `Deterministic` in tests so they replay bit-exactly. Pass a shared
-seed source when chaining correlated processes — each `seed.rng()` /
-`seed.rng_ext()` call atomically advances the internal counter, so the
-streams diverge despite the shared root. `SeedExt::reseed(u64)` swaps a
-`Deterministic` source in place to sweep seeds without rebuilding the
-process.
+Use `Deterministic` in tests so they replay bit-exactly. A `Deterministic` clone is a snapshot of its state, so two processes built from clones of one source draw identical paths; give each process its own `Deterministic::new(seed)` for independent streams. `SeedExt::reseed(u64)` resets a `Deterministic` source in place to sweep seeds without rebuilding the process.

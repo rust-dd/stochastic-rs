@@ -40,31 +40,8 @@ use num_complex::Complex64;
 use super::FourierModelExt;
 use crate::OptionType;
 
-/// Fang-Oosterlee (2008) Fourier-cosine (COS) pricer, generic over any
-/// [`FourierModelExt`] model.
-///
-/// `n` is the number of cosine expansion terms and `l` is the truncation
-/// half-width in cumulant-standard-deviations (Fang-Oosterlee's $L$).
-/// [`Default`] uses `n=256, l=10.0`, the paper's own §5.1 configuration.
-///
-/// # Truncation accuracy depends on `model.cumulants()`
-///
-/// The `[a, b]` truncation range — and therefore the entire expansion — is
-/// sized from `model.cumulants(t)`, not from `model.chf` directly. If a
-/// [`FourierModelExt`] implementor's `cumulants()` understates its
-/// log-return's true variance/kurtosis, `l=10` can be too narrow to cover
-/// the density's mass. The failure mode is silent: [`Self::price`] returns
-/// a finite, plausible-looking but **wrong** price, not a panic or `NaN`.
-/// This was not hypothetical: `HestonFourier::cumulants()` used to
-/// understate `c2` (an earlier version of its formula omitted the `v0`
-/// terms entirely, by 36-400× for common stochastic-volatility
-/// parameters), which made `Default` converge to the wrong price for that
-/// model — fixed by deriving the correct closed form directly from
-/// `HestonFourier::chf` (see that method's doc). When a model's
-/// `cumulants()` accuracy is unknown, cross-check the price under a couple
-/// of `l` increases and confirm it stabilizes, the way
-/// `cos_heston_matches_quadrature` does against an independent Gil-Pelaez
-/// quadrature over the same `chf`, rather than trusting `Default` blindly.
+/// Fang–Oosterlee (2008) COS pricer for any [`FourierModelExt`]: `n` terms (default 256) over `l`
+/// (default 10, §5.1) cumulant standard deviations, so understated `cumulants()` misprice silently.
 #[derive(Debug, Clone)]
 pub struct CosEngine {
   /// Number of cosine expansion terms.
@@ -127,7 +104,7 @@ impl CosEngine {
     option_type: OptionType,
   ) -> f64 {
     let cumulants = model.cumulants(t);
-    let width_arg = cumulants.c2 + cumulants.c4.sqrt();
+    let width_arg = cumulants.c2 + cumulants.c4.map_or(0.0, f64::sqrt);
     if !(width_arg.is_finite() && width_arg > 0.0) {
       return f64::NAN;
     }
@@ -208,14 +185,7 @@ mod tests {
   use crate::pricing::heston::HestonPricer;
   use crate::traits::ModelPricer;
 
-  /// Reference: Fang & Oosterlee (2008) §5.1. Verifies COS against the
-  /// in-tree analytic BSM pricer to `3e-5` — not machine precision: that
-  /// gap is the reference [`BSMPricer`]'s own `erf` approximation
-  /// (Abramowitz & Stegun 7.1.26, ~1.5e-7 relative error, documented in
-  /// `stochastic-rs-distributions/src/special.rs`), propagated through
-  /// `S`/`K·disc` (~O(100)). COS's own truncation error at N=256, L=10 is
-  /// independently machine-level — see `cos_converges_in_n`, and the `//`
-  /// comment below for the cross-check that isolated the `erf` floor.
+  /// Fang & Oosterlee (2008) §5.1: COS at `N = 256, L = 10` reproduces the closed-form BSM call.
   #[test]
   fn cos_bsm_matches_analytic() {
     let model = BSMFourier {
@@ -225,15 +195,8 @@ mod tests {
     };
     let expected = BSMPricer::new(0.25, BSMCoc::Bsm1973).price_call(100.0, 110.0, 0.05, 0.0, 1.0);
     let price = CosEngine::default().price(&model, 100.0, 110.0, 0.05, 0.0, 1.0, OptionType::Call);
-    // `BSMPricer` goes through `norm_cdf`, whose `erf` (stochastic-rs-distributions
-    // special.rs) is documented at "relative error ~1.5e-7" (Abramowitz & Stegun
-    // 7.1.26). Scaled by S/K·disc (~O(100)) that is a ~1e-5 price-level floor,
-    // independent of N/L: COS itself is machine-accurate here (cross-checked in
-    // Python against a full-precision `erf` reference — diff 3e-14 already at
-    // N=64), so 1e-8 would be testing `norm_cdf`'s approximation, not the COS
-    // engine. `cos_converges_in_n` below is what pins the engine's own N-convergence.
     assert!(
-      (price - expected).abs() < 3e-5,
+      (price - expected).abs() < 1e-10,
       "COS BSM: got={price}, expected={expected}"
     );
   }
@@ -251,16 +214,7 @@ mod tests {
     };
     let reference =
       HestonPricer::new(0.04, -0.7, 1.5, 0.04, 0.3, None).price_call(100.0, 100.0, 0.05, 0.0, 1.0);
-    // History: `HestonFourier::cumulants` used to understate `c2` for this
-    // parameter set (missing `v0` terms — see `cumulants`'s doc), so
-    // `CosEngine::default`'s `L=10` truncation was too narrow and this test
-    // used `CosEngine::new(256, 40.0)` to compensate. Now that `c2` is
-    // correct, `L=40` is instead too *wide* for `N=256` — COS needs
-    // `[a,b]` sized to the true density's support at a given `N`; an
-    // unnecessarily wide range under-resolves the density and the price
-    // degrades (empirically: `L=40,N=256` misses `reference` by 6.8e-4
-    // once `c2` is correct, worse than `Default` below). `Default` is once
-    // again the right choice, which was this test's original intent.
+    // A wider `L` under-resolves the density at `N = 256` (`L = 40` misses by 6.8e-4).
     let price = CosEngine::default().price(&model, 100.0, 100.0, 0.05, 0.0, 1.0, OptionType::Call);
     // Cross-check against an independent Gil-Pelaez quadrature over the
     // same `chf`: the two agree to ~1.25e-8, confirming COS(256, L=10) has
@@ -271,11 +225,8 @@ mod tests {
       (price - gil_pelaez).abs() < 1e-6,
       "COS vs Gil-Pelaez (same chf): cos={price}, gil_pelaez={gil_pelaez}"
     );
-    // The remaining ~1.28e-5 gap to `HestonPricer` is the two pricers'
-    // independent characteristic-function/quadrature implementations
-    // agreeing to their own tolerance floor, not a COS truncation error —
-    // the identical floor `CosEngine::new(256, 40.0)` reached under the
-    // old (understated) `c2`, before this fix.
+    // The remaining ~1.28e-5 to `HestonPricer` is the two implementations' own tolerance floor, not
+    // COS truncation.
     assert!(
       (price - reference).abs() < 2e-5,
       "COS Heston: got={price}, expected={reference}"
@@ -386,7 +337,7 @@ mod tests {
         super::super::Cumulants {
           c1: 0.0,
           c2: 0.04,
-          c4: 0.0,
+          c4: Some(0.0),
         }
       }
     }

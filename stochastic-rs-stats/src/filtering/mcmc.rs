@@ -16,6 +16,8 @@ use ndarray::Array2;
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::traits::SimdFloatExt;
@@ -63,7 +65,8 @@ where
     "n_samples must satisfy `n_samples >= 1`, got n_samples = {n_samples:?}"
   );
   let mut rng = Deterministic::new(seed).rng();
-  let dist_unit = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed.wrapping_add(1)));
+  let mut dist_unit =
+    SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed.wrapping_add(1)));
   let mut current = initial.to_owned();
   let mut current_logp = log_target(current.view());
   assert!(

@@ -24,6 +24,7 @@ pub use date_math::weekday;
 pub use day_count::DayCountConvention;
 pub use holiday::Calendar;
 pub use holiday::HolidayCalendar;
+pub use holiday::LUNAR_TABLE_YEARS;
 pub use schedule::DateGenerationRule;
 pub use schedule::Frequency;
 pub use schedule::Schedule;

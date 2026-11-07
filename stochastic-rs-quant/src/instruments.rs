@@ -41,7 +41,6 @@ pub use option::CmsFloorlet;
 pub use option::Collar;
 pub use option::CollarValuation;
 pub use option::EuropeanSwaption;
-pub use option::ExerciseDate;
 pub use option::ExerciseSchedule;
 pub use option::Floor;
 pub use option::InterestRateOptionKind;

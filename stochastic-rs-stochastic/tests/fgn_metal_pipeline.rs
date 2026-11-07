@@ -1,28 +1,8 @@
-//! What the Metal fGN pipeline is held to now that it is no longer held to
-//! the bytes of the pipeline it replaced.
-//!
-//! Three things can break silently and none of them shows up in a per-path
-//! marginal. **The cut**: the low butterfly stages run inside a threadgroup
-//! tile and the ones above it run two to a dispatch, and where the boundary
-//! falls depends on the transform length and on how wide a threadgroup the
-//! compiled kernel admits — a wrong index in either path still yields
-//! plausible Gaussian numbers and destroys only the autocovariance. **The
-//! pair**: one transform serves two rows, its real and imaginary halves,
-//! which are two independent fGn paths only because the input noise is
-//! proper complex; get a factor wrong and the two rows are correlated with
-//! the right marginal law, which every per-path check passes. **The
-//! chunking**: rows pair up, so a batch cut at an odd row has to compute the
-//! transform in front of it and drop the half it does not own.
-//!
-//! Everything here is checked in `f32`, which is what the pipeline computes
-//! in, and against the closed form rather than against a previous
-//! implementation.
-//!
-//! Reference: Davies & Harte (1987), "Tests for Hurst effect",
-//! DOI: 10.1093/biomet/74.1.95; Dietrich & Newsam (1997), SIAM J. Sci.
-//! Comput. 18(4), DOI: 10.1137/S1064827592240555.
+//! Independent fGN laws and direct-transform references supplement the recorded bit fixtures.
+//! Davies & Harte (1987), DOI: 10.1093/biomet/74.1.95;
+//! Dietrich & Newsam (1997), DOI: 10.1137/S1064827592240555.
 
-#![cfg(feature = "metal")]
+#![cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
 
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -32,12 +12,10 @@ use stochastic_rs_stochastic::traits::ProcessExt;
 
 const HURST: f64 = 0.7;
 
-/// The grid sizes that put the cut in a different place: `n = 1` is a
-/// two-point transform with no stage inside the tile at all, `n ≤ 1024` fits
-/// the tile whole, `n ≥ 2048` leaves a radix-4 pair above it, and the
-/// non-powers exercise the padding offset with each.
-const GRIDS: [usize; 12] = [
-  1, 2, 8, 100, 512, 1024, 2048, 3000, 4096, 8192, 12_000, 16_384,
+/// Sizes that move the cut: whole tiles up to 1024, read-out passes of one to three stages up to
+/// 8192, a column pass from 16 384, and non-powers that exercise the padding with each.
+const GRIDS: [usize; 13] = [
+  1, 2, 8, 100, 512, 1024, 2048, 3000, 4096, 8192, 12_000, 16_384, 32_768,
 ];
 
 /// The autocorrelation of fGn at lag `k`:
@@ -193,7 +171,7 @@ fn u01x4(cell: u64, seed: u32) -> [f64; 4] {
 /// definition: the circulant embedding's eigenvalues times a proper complex
 /// normal, summed directly against `exp(-2πijk/M)`. A direct sum rather than
 /// a transform of its own, so nothing about the device's factorisation — its
-/// tile, its radix-4 pairs, its bit-reversal — is assumed by the thing
+/// tile, its column passes, its bit-reversal — is assumed by the thing
 /// checking it. One entry at a time, because that is what makes it affordable
 /// at the grid sizes where the pipeline has stages between the tile and the
 /// read-out.
@@ -203,11 +181,12 @@ fn reference_entry(
   u: usize,
   j: usize,
 ) -> (f64, f64) {
-  let traj = 2 * fgn.n;
+  let eigs = fgn.sqrt_eigenvalues();
+  let traj = eigs.len();
   let (mut xr, mut xi) = (0.0, 0.0);
-  for k in 0..traj {
+  for (k, &eig) in eigs.iter().enumerate() {
     let q = u01x4(2 * u as u64 * traj as u64 + k as u64, seed);
-    let eig = fgn.sqrt_eigenvalues[k] as f64;
+    let eig = eig as f64;
     let zr = (-2.0 * (q[0] + 1e-10).ln()).sqrt() * (std::f64::consts::TAU * q[1]).cos() * eig;
     let zi = (-2.0 * (q[2] + 1e-10).ln()).sqrt() * (std::f64::consts::TAU * q[3]).cos() * eig;
     let a = -std::f64::consts::TAU * (j * k % traj) as f64 / traj as f64;
@@ -215,28 +194,13 @@ fn reference_entry(
     xr += zr * cs - zi * sn;
     xi += zr * sn + zi * cs;
   }
-  let out_size = fgn.n - fgn.offset;
+  let out_size = fgn.n();
   let scale = (out_size.max(1) as f64).powf(-HURST);
   (xr * scale, xi * scale)
 }
 
-/// The whole pipeline against the definition it implements.
-///
-/// This is the test that replaces bit-identity, and the reason it has to
-/// exist is worth stating: a statistic cannot tell a correct realisation from
-/// a plausible wrong one. Measured on this pipeline, a transform value
-/// exported from the wrong position of the same transform, and a twiddle
-/// whose phase advances at the wrong rate, both leave the variance, the
-/// autocorrelation at every lag and the self-similar scaling of block sums
-/// inside their sampling error — the circulant transform is stationary in its
-/// own index, so a great many wrong answers still have the right law. What
-/// separates them is recomputing the definition and comparing entry against
-/// entry.
-///
-/// The positions are chosen where an index error surfaces: the two ends of
-/// the row, and the quarter boundaries, which is where the radix-4 read-out's
-/// four exported positions meet. The device works in `f32` through the whole
-/// transform, so the agreement asked for is relative to the batch's scale.
+/// Direct sums detect transform-index errors that can preserve covariance.
+/// Endpoints and quarter boundaries exercise the readout's index mapping.
 #[test]
 fn the_device_rows_are_the_transform_they_claim_to_be() {
   for (n, m) in [
@@ -245,7 +209,9 @@ fn the_device_rows_are_the_transform_they_claim_to_be() {
     (300, 4),
     (512, 3),
     (4096, 3),
+    (8192, 2),
     (16_384, 2),
+    (32_768, 2),
   ] {
     let out_size = n;
     let probes = [
@@ -266,7 +232,7 @@ fn the_device_rows_are_the_transform_they_claim_to_be() {
       } else {
         Metal::default().with_batch_budget((2 * n.next_power_of_two() + n) * 4 * budget_rows)
       };
-      let seed = Deterministic::new(31).seed_value() as u32;
+      let seed = Deterministic::new(31).next_seed() as u32;
       let fgn =
         Fgn::<f32, _>::new(HURST as f32, n, Some(1.0), Deterministic::new(31)).with_backend(handle);
       let rows = fgn.sample_par(m);
@@ -463,9 +429,9 @@ fn the_lending_map_returns_rows_in_path_order() {
     for handle in [Metal::default(), Metal::default().with_batch_budget(budget)] {
       let fgn =
         Fgn::<f32, _>::new(HURST as f32, n, Some(1.0), Deterministic::new(13)).with_backend(handle);
-      fgn.seed.reseed(13);
+      fgn.seed().reseed(13);
       let mapped = fgn.sample_map_view(M, |row| (row[0], row[row.len() - 1]));
-      fgn.seed.reseed(13);
+      fgn.seed().reseed(13);
       let owned = fgn.sample_par(M);
       assert_eq!(mapped.len(), M);
       for (i, (first, last)) in mapped.iter().enumerate() {

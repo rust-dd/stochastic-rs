@@ -7,6 +7,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -99,6 +102,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] VanEmmerich<T, S> { kappa, mu, sigma, rho0, n, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for VanEmmerich<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for VanEmmerich<T, S, B>
 {
@@ -122,7 +130,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       sigma: self.sigma,
       rho0: self.rho0,
       dt,
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
@@ -170,7 +178,7 @@ pub struct VanEmmerichSampler<T: FloatExt> {
   sigma: T,
   rho0: T,
   dt: T,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> VanEmmerichSampler<T> {
@@ -199,6 +207,8 @@ impl<T: FloatExt> VanEmmerichSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for VanEmmerichSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for VanEmmerichSampler<T> {
   type Output = Array1<T>;

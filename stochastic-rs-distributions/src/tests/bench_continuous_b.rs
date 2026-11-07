@@ -8,6 +8,7 @@ use crate::chi_square::SimdChiSquared;
 use crate::gamma::SimdGamma;
 use crate::poisson::SimdPoisson;
 use crate::studentt::SimdStudentT;
+use crate::traits::SimdDistribution;
 use crate::weibull::SimdWeibull;
 
 #[test]
@@ -18,22 +19,21 @@ fn bench_gamma_simd_vs_rand() {
 
   {
     let mut rng = rand::rng();
-    let d = SimdGamma::<f32>::new(2.0f32, 2.0, &Unseeded);
+    let mut d = SimdGamma::<f32>::new(2.0f32, 2.0).seeded(&Unseeded);
     let rd = rand_distr::Gamma::<f32>::new(2.0, 2.0).unwrap();
     let mut s = 0.0f32;
     for _ in 0..warmup {
-      s += d.sample(&mut rng);
+      s += d.sample();
       s += rd.sample(&mut rng);
     }
     std::hint::black_box(s);
   }
 
-  let mut rng = rand::rng();
-  let simd = SimdGamma::<f32>::new(2.0, 2.0, &Unseeded);
+  let mut simd = SimdGamma::<f32>::new(2.0, 2.0).seeded(&Unseeded);
   let mut s_sum = 0.0f32;
   let t0 = Instant::now();
   for _ in 0..n {
-    s_sum += simd.sample(&mut rng);
+    s_sum += simd.sample();
   }
   let dt_s = t0.elapsed();
 
@@ -61,22 +61,21 @@ fn bench_weibull_simd_vs_rand() {
 
   {
     let mut rng = rand::rng();
-    let d = SimdWeibull::<f32>::new(1.0f32, 1.5, &Unseeded);
+    let mut d = SimdWeibull::<f32>::new(1.0f32, 1.5).seeded(&Unseeded);
     let rd = rand_distr::Weibull::<f32>::new(1.0, 1.5).unwrap();
     let mut s = 0.0f32;
     for _ in 0..warmup {
-      s += d.sample(&mut rng);
+      s += d.sample();
       s += rd.sample(&mut rng);
     }
     std::hint::black_box(s);
   }
 
-  let mut rng = rand::rng();
-  let simd = SimdWeibull::<f32>::new(1.0, 1.5, &Unseeded);
+  let mut simd = SimdWeibull::<f32>::new(1.0, 1.5).seeded(&Unseeded);
   let mut s_sum = 0.0f32;
   let t0 = Instant::now();
   for _ in 0..n {
-    s_sum += simd.sample(&mut rng);
+    s_sum += simd.sample();
   }
   let dt_s = t0.elapsed();
 
@@ -104,22 +103,21 @@ fn bench_beta_simd_vs_rand() {
 
   {
     let mut rng = rand::rng();
-    let d = SimdBeta::<f32>::new(2.0f32, 2.0, &Unseeded);
+    let mut d = SimdBeta::<f32>::new(2.0f32, 2.0).seeded(&Unseeded);
     let rd = rand_distr::Beta::<f32>::new(2.0, 2.0).unwrap();
     let mut s = 0.0f32;
     for _ in 0..warmup {
-      s += d.sample(&mut rng);
+      s += d.sample();
       s += rd.sample(&mut rng);
     }
     std::hint::black_box(s);
   }
 
-  let mut rng = rand::rng();
-  let simd = SimdBeta::<f32>::new(2.0, 2.0, &Unseeded);
+  let mut simd = SimdBeta::<f32>::new(2.0, 2.0).seeded(&Unseeded);
   let mut s_sum = 0.0f32;
   let t0 = Instant::now();
   for _ in 0..n {
-    s_sum += simd.sample(&mut rng);
+    s_sum += simd.sample();
   }
   let dt_s = t0.elapsed();
 
@@ -147,22 +145,21 @@ fn bench_chisq_simd_vs_rand() {
 
   {
     let mut rng = rand::rng();
-    let d = SimdChiSquared::<f32>::new(5.0f32, &Unseeded);
+    let mut d = SimdChiSquared::<f32>::new(5.0f32).seeded(&Unseeded);
     let rd = rand_distr::ChiSquared::<f32>::new(5.0).unwrap();
     let mut s = 0.0f32;
     for _ in 0..warmup {
-      s += d.sample(&mut rng);
+      s += d.sample();
       s += rd.sample(&mut rng);
     }
     std::hint::black_box(s);
   }
 
-  let mut rng = rand::rng();
-  let simd = SimdChiSquared::<f32>::new(5.0, &Unseeded);
+  let mut simd = SimdChiSquared::<f32>::new(5.0).seeded(&Unseeded);
   let mut s_sum = 0.0f32;
   let t0 = Instant::now();
   for _ in 0..n {
-    s_sum += simd.sample(&mut rng);
+    s_sum += simd.sample();
   }
   let dt_s = t0.elapsed();
 
@@ -190,22 +187,21 @@ fn bench_studentt_simd_vs_rand() {
 
   {
     let mut rng = rand::rng();
-    let d = SimdStudentT::<f32>::new(5.0f32, &Unseeded);
+    let mut d = SimdStudentT::<f32>::new(5.0f32).seeded(&Unseeded);
     let rd = rand_distr::StudentT::<f32>::new(5.0).unwrap();
     let mut s = 0.0f32;
     for _ in 0..warmup {
-      s += d.sample(&mut rng);
+      s += d.sample();
       s += rd.sample(&mut rng);
     }
     std::hint::black_box(s);
   }
 
-  let mut rng = rand::rng();
-  let simd = SimdStudentT::<f32>::new(5.0, &Unseeded);
+  let mut simd = SimdStudentT::<f32>::new(5.0).seeded(&Unseeded);
   let mut s_sum = 0.0f32;
   let t0 = Instant::now();
   for _ in 0..n {
-    s_sum += simd.sample(&mut rng);
+    s_sum += simd.sample();
   }
   let dt_s = t0.elapsed();
 
@@ -233,22 +229,21 @@ fn bench_poisson_simd_vs_rand() {
 
   {
     let mut rng = rand::rng();
-    let d = SimdPoisson::<u32>::new(4.0, &Unseeded);
+    let mut d = SimdPoisson::<u32>::new(4.0).seeded(&Unseeded);
     let rd = rand_distr::Poisson::<f64>::new(4.0).unwrap();
     let mut s: u64 = 0;
     for _ in 0..warmup {
-      s += d.sample(&mut rng) as u64;
+      s += d.sample() as u64;
       s += rd.sample(&mut rng) as u64;
     }
     std::hint::black_box(s);
   }
 
-  let mut rng = rand::rng();
-  let simd = SimdPoisson::<u32>::new(4.0, &Unseeded);
+  let mut simd = SimdPoisson::<u32>::new(4.0).seeded(&Unseeded);
   let mut s_sum: u64 = 0;
   let t0 = Instant::now();
   for _ in 0..n {
-    s_sum += simd.sample(&mut rng) as u64;
+    s_sum += simd.sample() as u64;
   }
   let dt_s = t0.elapsed();
 

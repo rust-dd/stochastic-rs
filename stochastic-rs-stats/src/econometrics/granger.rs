@@ -95,16 +95,18 @@ fn ols_rss(x: &Array2<f64>, y: &Array1<f64>) -> f64 {
 mod tests {
   use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
 
   #[test]
   fn granger_does_not_reject_independent_series() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(7));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(7));
     let mut x_buf = vec![0.0_f64; 500];
     dist.fill_slice(&mut x_buf);
-    let dist2 = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(13));
+    let mut dist2 = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(13));
     let mut y_buf = vec![0.0_f64; 500];
     dist2.fill_slice(&mut y_buf);
     let x = Array1::from(x_buf);
@@ -115,10 +117,10 @@ mod tests {
 
   #[test]
   fn granger_rejects_when_x_drives_y() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(17));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(17));
     let mut x_buf = vec![0.0_f64; 500];
     dist.fill_slice(&mut x_buf);
-    let dist_eps = SimdNormal::<f64>::new(0.0, 0.3, &Deterministic::new(19));
+    let mut dist_eps = SimdNormal::<f64>::new(0.0, 0.3).seeded(&Deterministic::new(19));
     let mut eps = vec![0.0_f64; 500];
     dist_eps.fill_slice(&mut eps);
     let mut y = vec![0.0_f64; 500];

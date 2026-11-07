@@ -223,6 +223,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Sabr<T, S> { nu, beta, rho, n, f0, alpha0, t, seed, cgns } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Sabr<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Sabr<T, S, B> {
   /// `[F path, α path]`: index 0 is the forward `F`, index 1 is the
   /// stochastic-volatility state `α` (see module docs for the SDE).
@@ -311,6 +316,8 @@ impl<T: FloatExt, S: SeedExt> SabrSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for SabrSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for SabrSampler<T, S> {
   type Output = [Array1<T>; 2];

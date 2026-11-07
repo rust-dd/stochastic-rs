@@ -184,6 +184,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] RoughHeston<T, S> { hurst, v0, theta, kappa, nu, c1, c2, t, n, mu, s0, rho, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for RoughHeston<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for RoughHeston<T, S, B>
 {
@@ -361,6 +366,8 @@ impl<T: FloatExt, S: SeedExt> RoughHestonSampler<T, S> {
   }
 }
 
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for RoughHestonSampler<T, S> {}
+
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for RoughHestonSampler<T, S> {
   type Output = [Array1<T>; 2];
 
@@ -386,6 +393,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for RoughHestonSampler<T, S> {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyRoughHeston {
   inner_f32: Option<RoughHeston<f32>>,

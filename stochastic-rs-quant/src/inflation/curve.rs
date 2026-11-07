@@ -30,11 +30,11 @@ pub trait InflationCurve<T: RealExt>: Debug + Send + Sync {
   fn forward_index_ratio(&self, t: T) -> T;
 
   /// Annualised zero-coupon breakeven rate $b_{\text{ZC}}(T)$ such that
-  /// $(1 + b_{\text{ZC}}(T))^T = I(0,T)/I(0)$.
+  /// $(1 + b_{\text{ZC}}(T))^T = I(0,T)/I(0)$; NaN at a non-positive (or sub-epsilon) `t`.
   fn breakeven_rate(&self, t: T) -> T {
     let ratio = self.forward_index_ratio(t);
     if t <= T::epsilon() {
-      return T::zero();
+      return T::nan();
     }
     ratio.powf(T::one() / t) - T::one()
   }

@@ -8,7 +8,7 @@
 
 use basin::MoreThuente;
 
-/// Moré–Thuente settings retained from the previous L-BFGS integrations.
+/// Moré–Thuente line search with Nocedal–Wright's quasi-Newton constants `c1 = 1e-4`, `c2 = 0.9`.
 pub(crate) fn more_thuente() -> MoreThuente<f64> {
   MoreThuente::new()
     .with_sufficient_decrease_coefficient(1e-4)

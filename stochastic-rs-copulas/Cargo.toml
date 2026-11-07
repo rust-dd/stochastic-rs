@@ -5,7 +5,7 @@ edition = "2024"
 rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
-description = "Copulas in Rust: 15 bivariate and 8 multivariate families — Clayton, Gumbel, Frank, Student-t, Gaussian, C-, D- and R-vines — with sampling, fitting and goodness-of-fit tests."
+description = "Copulas in Rust: 15 bivariate and 6 multivariate families — Clayton, Gumbel, Frank, Student-t, Gaussian, C-, D- and R-vines — with sampling, fitting and goodness-of-fit tests."
 homepage = "https://stochastic.rust-dd.com"
 documentation = "https://docs.rs/stochastic-rs-copulas"
 repository = "https://github.com/rust-dd/stochastic-rs"
@@ -23,17 +23,16 @@ python = [
 
 [dependencies]
 faer = { workspace = true }
-faer-ext = { workspace = true, features = ["ndarray"] }
+faer-ext = { workspace = true }
+gauss-quad = { workspace = true }
+kendalls = { workspace = true }
+ndarray = { workspace = true }
+numpy = { workspace = true, optional = true }
+owens-t = { workspace = true }
+pyo3 = { workspace = true, optional = true }
+rand = { workspace = true }
 stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
-ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
-num-traits = { workspace = true }
-num-complex = { workspace = true }
-rand = { workspace = true }
-roots = { workspace = true }
-kendalls = { workspace = true }
-gauss-quad = { workspace = true }
-quadrature = { workspace = true }
-owens-t = { workspace = true }
-pyo3 = { workspace = true, features = ["extension-module"], optional = true }
-numpy = { workspace = true, optional = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }

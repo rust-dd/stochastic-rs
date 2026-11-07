@@ -2,6 +2,8 @@
 //! Backs the extreme-value example on the stats page.
 
 use ndarray::Array1;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::pareto::SimdPareto;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stats::evt::block_maxima;
@@ -13,7 +15,7 @@ use stochastic_rs::stats::evt::pot_fit;
 fn evt_tail_estimates_agree_on_a_pareto_tail() {
   // Losses with an exact Pareto(α = 3) tail, so the true tail index is
   // ξ = 1/3.
-  let dist = SimdPareto::<f64>::new(1.0, 3.0, &Deterministic::new(7));
+  let mut dist = SimdPareto::<f64>::new(1.0, 3.0).seeded(&Deterministic::new(7));
   let mut losses = vec![0.0; 20_000];
   dist.fill_slice(&mut losses);
   let losses = Array1::from(losses);

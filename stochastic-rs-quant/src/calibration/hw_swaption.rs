@@ -63,34 +63,22 @@ pub struct HullWhiteCalibrationResult {
   pub model_prices: Vec<f64>,
   /// Per-quote market prices in the same order.
   pub market_prices: Vec<f64>,
-}
-
-impl HullWhiteCalibrationResult {
-  /// Convert to a [`HullWhiteTreeModel`](crate::lattice::HullWhiteTreeModel)
-  /// for short-rate / interest-rate option valuation via the lattice pipeline.
-  ///
-  /// Hull-White lattice models do **not** plug into the equity vol-surface
-  /// pipeline (`ToModel` / `ModelPricer`); they consume a yield curve and a
-  /// time grid and produce a discount tree. Use the lattice instruments
-  /// (`Cap`, `Floor`, `BermudanSwaption`, …) for valuation.
-  pub fn to_short_rate_model(
-    &self,
-    initial_rate: f64,
-    theta: f64,
-  ) -> crate::lattice::short_rate::HullWhiteTreeModel<f64> {
-    crate::lattice::short_rate::HullWhiteTreeModel::new(
-      initial_rate,
-      self.mean_reversion,
-      theta,
-      self.sigma,
-    )
-  }
+  /// Time-0 short rate the tree model starts from; not calibrated.
+  pub initial_rate: f64,
+  /// Constant drift offset of the tree model; not calibrated.
+  pub theta: f64,
 }
 
 impl crate::traits::ToShortRateModel for HullWhiteCalibrationResult {
   type Model = crate::lattice::short_rate::HullWhiteTreeModel<f64>;
-  fn to_short_rate_model(&self, initial_rate: f64, theta: f64) -> Self::Model {
-    HullWhiteCalibrationResult::to_short_rate_model(self, initial_rate, theta)
+
+  fn to_short_rate_model(&self) -> Self::Model {
+    crate::lattice::short_rate::HullWhiteTreeModel::new(
+      self.initial_rate,
+      self.mean_reversion,
+      self.theta,
+      self.sigma,
+    )
   }
 }
 
@@ -136,6 +124,10 @@ pub struct HullWhiteSwaptionCalibrator<'a> {
   pub curve: &'a DiscountCurve<f64>,
   /// Notional used consistently for all quotes.
   pub notional: f64,
+  /// Time-0 short rate the tree model starts from; not calibrated.
+  pub initial_rate: f64,
+  /// Constant drift offset of the tree model; not calibrated.
+  pub theta: f64,
   /// Optional initial guess `(a, σ)`; defaults to `(0.05, 0.01)`.
   pub initial_guess: Option<(f64, f64)>,
   /// Maximum Nelder-Mead iterations.
@@ -148,11 +140,19 @@ pub struct HullWhiteSwaptionCalibrator<'a> {
 
 impl<'a> HullWhiteSwaptionCalibrator<'a> {
   /// Construct a calibrator with sensible defaults.
-  pub fn new(quotes: &'a [SwaptionQuote], curve: &'a DiscountCurve<f64>, notional: f64) -> Self {
+  pub fn new(
+    quotes: &'a [SwaptionQuote],
+    curve: &'a DiscountCurve<f64>,
+    notional: f64,
+    initial_rate: f64,
+    theta: f64,
+  ) -> Self {
     Self {
       quotes,
       curve,
       notional,
+      initial_rate,
+      theta,
       initial_guess: None,
       max_iters: 400,
       sd_tolerance: 1e-10,
@@ -202,6 +202,8 @@ impl<'a> HullWhiteSwaptionCalibrator<'a> {
       converged,
       model_prices,
       market_prices,
+      initial_rate: self.initial_rate,
+      theta: self.theta,
     }
   }
 }
@@ -366,10 +368,10 @@ mod regularization_tests {
       InterpolationMethod::LogLinearOnDiscountFactors,
     );
     let quotes = quotes();
-    let plain = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0)
+    let plain = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, 0.03, 0.03)
       .calibrate(Some((0.1, 0.01)))
       .expect("calibration runs");
-    let pulled = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0)
+    let pulled = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, 0.03, 0.03)
       .with_regularization(Regularization::new(vec![0.3, 0.01], vec![1e6, 0.0]))
       .calibrate(Some((0.1, 0.01)))
       .expect("calibration runs");
@@ -379,5 +381,21 @@ mod regularization_tests {
       pulled.mean_reversion
     );
     assert!(pulled.sigma > 0.0 && plain.sigma > 0.0);
+  }
+
+  #[test]
+  fn the_result_carries_the_tree_inputs_it_was_given() {
+    let curve = DiscountCurve::from_zero_rates(
+      &Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]),
+      &Array1::from_vec(vec![0.03; 4]),
+      InterpolationMethod::LogLinearOnDiscountFactors,
+    );
+    let quotes = quotes();
+    let result = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, 0.03, 0.002)
+      .calibrate(Some((0.1, 0.01)))
+      .expect("calibration runs");
+    let model = crate::traits::ToShortRateModel::to_short_rate_model(&result);
+    assert_eq!((model.initial_rate, model.theta), (0.03, 0.002));
+    assert_eq!(model.sigma, result.sigma);
   }
 }

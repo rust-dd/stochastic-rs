@@ -34,9 +34,7 @@ fn bench_foo(c: &mut Criterion) {
     let mut group = c.benchmark_group("foo");
     for &n in &[1_000usize, 10_000, 100_000] {
         group.throughput(Throughput::Elements(n as u64));
-        // Build the process ONCE, outside b.iter — construction is not
-        // what you are measuring, and re-seeding per iteration hides the
-        // sampler's own per-call cost.
+        // Built once, outside `b.iter`: construction and re-seeding are not what is measured.
         let process = Gbm::<f64, _>::new(0.05, 0.2, n, None, None, Deterministic::new(42));
         group.bench_with_input(
             BenchmarkId::from_parameter(n),
@@ -79,8 +77,8 @@ The gated benches in tree today, with their exact feature sets:
 | `fgn_all_backends` | `["metal", "accelerate"]` |
 | `fgn_accelerate` | `["accelerate"]` |
 | `fgn_metal` | `["metal"]` |
-| `hotpath_profile` | `["hotpath"]` |
-| `dual_stream_compare` | `["dual-stream-rng"]` |
+| `dual_stream_compare` | `["unstable-dual-stream-rng"]` |
+| `ai_surrogate` | `["ai"]` |
 
 Without the gate, cargo tries to compile the bench regardless and you
 get a compilation error rather than a skip.
@@ -178,10 +176,8 @@ cargo build --benches -p stochastic-rs --features cuda       # if applicable
 ```
 
 Use `-p stochastic-rs`, **not** `--workspace`: every bench lives in the
-umbrella, and `--workspace` drags in `stochastic-rs-py`, which forces
-`pyo3/extension-module` unconditionally and fails to link outside a
-maturin build (same reason `cargo test --workspace` needs
-`--exclude stochastic-rs-py` — see `CLAUDE.md`).
+umbrella, and `--workspace` drags in `stochastic-rs-py`, with the PyO3
+wrapper code and a libpython link (see `CLAUDE.md`).
 
 If any leg fails, the bench has drifted from the lib's API. Fix
 before commit; the §6.1 trap was exactly a bench that hadn't compiled
@@ -190,8 +186,8 @@ does this for you.
 
 ## 8. Reference benches
 
-`benches/` holds 32 `.rs` files plus one `distributions/` **directory**,
-matched one-to-one by 33 `[[bench]]` entries. Check whether your target
+`benches/` holds 34 `.rs` files plus one `distributions/` **directory**,
+matched one-to-one by 35 `[[bench]]` entries. Check whether your target
 is a file or a directory before editing.
 
 - `benches/distributions/` — sweep over distribution × sample-count.
@@ -201,8 +197,8 @@ is a file or a directory before editing.
 - `benches/option.rs` — end-to-end pricing with reduced sample count.
 - `benches/risk.rs` — VaR / ES estimators on synthetic samples.
 - `benches/dist_multicore.rs` — `sample_par` parallelism vs serial.
-- `benches/sampler_compare.rs`, `benches/hotpath_profile.rs` — the
-  sampler-v3 refactor's own measurement harnesses.
+- `benches/sampler_compare.rs` — `sample_map` against a parallel fold of
+  one-shot `sample()` calls; the process-ext page's table cites it.
 
 ## 9. Registering a new bench
 

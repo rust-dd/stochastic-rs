@@ -110,9 +110,9 @@ fn a_heston_surface_under_its_own_parameters_gives_unit_leverage_and_reprices() 
     result.rmse()
   );
   assert!(
-    result.max_error() < 1.0,
+    result.max_error().unwrap() < 1.0,
     "worst repricing error {}",
-    result.max_error()
+    result.max_error().unwrap()
   );
 }
 
@@ -155,9 +155,9 @@ fn the_fokker_planck_route_gives_unit_leverage_and_reprices() {
   );
   assert!(result.rmse() < 0.25, "repricing rmse {}", result.rmse());
   assert!(
-    result.max_error() < 1.0,
+    result.max_error().unwrap() < 1.0,
     "worst repricing error {}",
-    result.max_error()
+    result.max_error().unwrap()
   );
 }
 
@@ -278,9 +278,9 @@ fn an_ssvi_surface_is_repriced_through_both_leverage_routes() {
     assert!(result.converged(), "{name}");
     assert!(result.rmse() < 0.2, "{name}: rmse {}", result.rmse());
     assert!(
-      result.max_error() < 0.6,
+      result.max_error().unwrap() < 0.6,
       "{name}: worst error {}",
-      result.max_error()
+      result.max_error().unwrap()
     );
     let atm = result.leverage().interpolate(100.0, 0.5);
     assert!((0.5..2.0).contains(&atm), "{name}: ATM leverage {atm}");

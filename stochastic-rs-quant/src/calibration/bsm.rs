@@ -155,20 +155,16 @@ pub struct BSMCalibrator {
   pub r_f: Option<f64>,
   /// Dividend yield.
   pub q: Option<f64>,
-  /// Time to maturity in years (kept for the legacy single-tau constructor).
-  pub tau: f64,
-  /// Time to maturity per quote (flattened). Supports multi-maturity
-  /// joint calibration. Always populated — for the single-tau
-  /// `BSMCalibrator::new` constructor every entry equals `tau`.
+  /// Time to maturity in years per quote, aligned with `c_market`.
   pub flat_t: Vec<f64>,
-  /// Option type
+  /// Whether `c_market` holds call or put prices.
   pub option_type: OptionType,
   /// Loss metrics to include in the calibration result.
   pub loss_metrics: &'static [LossMetric],
 }
 
 impl BSMCalibrator {
-  /// Create a calibrator for a single maturity slice (backwards compatible).
+  /// Create a calibrator for quotes that share one maturity `tau`.
   pub fn new(
     params: BSMParams,
     c_market: Array1<f64>,
@@ -191,7 +187,6 @@ impl BSMCalibrator {
       r_d,
       r_f,
       q,
-      tau,
       flat_t: vec![tau; n],
       option_type,
       loss_metrics: &LossMetric::ALL,
@@ -235,7 +230,6 @@ impl BSMCalibrator {
       r_d,
       r_f,
       q,
-      tau: 0.0,
       flat_t,
       option_type,
       loss_metrics: &LossMetric::ALL,

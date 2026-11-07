@@ -16,6 +16,10 @@ use super::transform::to_optimizer_coordinates;
 use crate::OptionType;
 use crate::pricing::heston::HestonPricer;
 
+/// Overshoot weight per unit of the price residuals' σ sensitivity: boundary fits keep their optimum from 0.01 to 0.3
+/// and lose it from 1 up, where the row stiffens the kink at the cap.
+const FELLER_ROW_SCALE: f64 = 0.1;
+
 impl HestonCalibrator {
   pub(super) fn fallback_params() -> HestonParams {
     HestonParams {
@@ -104,7 +108,8 @@ impl HestonCalibrator {
     }
   }
 
-  pub(super) fn effective_params(&self) -> HestonParams {
+  /// The canonical point the optimiser's coordinates stand for, before the Feller projection.
+  pub(super) fn free_params(&self) -> HestonParams {
     let projected = if let Some(p) = &self.params {
       p.clone().projected()
     } else {
@@ -113,6 +118,33 @@ impl HestonCalibrator {
         .unwrap_or_else(Self::fallback_params)
     };
     canonicalize(&projected)
+  }
+
+  /// The point every residual is evaluated at; projected last, so no rounding of the coordinates undoes Feller.
+  pub(super) fn effective_params(&self) -> HestonParams {
+    self.feller_projected(self.free_params())
+  }
+
+  /// The overshoot row's weight, scaled to the norm of the price residuals' σ column at the start; the difference
+  /// runs backwards, since lowering σ keeps the point feasible.
+  pub(super) fn feller_row_weight_at_start(&self) -> f64 {
+    let start = self.effective_params();
+    let step = 1e-5 * (1.0 + start.sigma);
+    let lowered = HestonParams {
+      sigma: start.sigma - step,
+      ..start.clone()
+    };
+    let column = (self.residuals_for(&start) - self.residuals_for(&lowered)) / step;
+    let norm = Some(column.dot(&column).sqrt()).filter(|norm| norm.is_finite() && *norm > 0.0);
+    FELLER_ROW_SCALE * norm.unwrap_or(1.0)
+  }
+
+  pub(super) fn feller_projected(&self, params: HestonParams) -> HestonParams {
+    if self.feller_projection {
+      params.projected_with_feller_condition()
+    } else {
+      params
+    }
   }
 
   pub(super) fn compute_model_prices_for_numeric(&self, params: &HestonParams) -> Array1<f64> {
@@ -178,6 +210,14 @@ impl HestonCalibrator {
     let p = 5usize;
     let coordinates = to_optimizer_coordinates(params);
     let mut J = Array2::zeros((n, p));
+    // A physical column divides by its own parameter's change, so it differentiates the unprojected prices.
+    let project = |params: HestonParams| {
+      if optimizer_denominator {
+        self.feller_projected(params)
+      } else {
+        params
+      }
+    };
 
     for col in 0..p {
       let h = 1e-5 * (1.0 + coordinates[col].abs());
@@ -185,8 +225,8 @@ impl HestonCalibrator {
       let mut minus = coordinates.clone();
       plus[col] += h;
       minus[col] -= h;
-      let params_plus = from_optimizer_coordinates(&plus);
-      let params_minus = from_optimizer_coordinates(&minus);
+      let params_plus = project(from_optimizer_coordinates(&plus));
+      let params_minus = project(from_optimizer_coordinates(&minus));
 
       let r_plus = self.residuals_for(&params_plus);
       let r_minus = self.residuals_for(&params_minus);

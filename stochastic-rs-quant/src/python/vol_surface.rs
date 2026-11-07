@@ -70,7 +70,7 @@ pub struct PyImpliedVolSurface {
 
 #[pymethods]
 impl PyImpliedVolSurface {
-  /// Build from a Heston Fourier model + grid via Carr-Madan FFT.
+  /// Build from a Heston Fourier model + grid via Carr-Madan FFT; raises `ValueError` unless both axes ascend strictly.
   #[staticmethod]
   fn from_heston(
     model: &PyHestonFourier,
@@ -79,8 +79,8 @@ impl PyImpliedVolSurface {
     q: f64,
     strikes: Vec<f64>,
     maturities: Vec<f64>,
-  ) -> Self {
-    Self {
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::vol_surface::model_surface::fourier_model_surface_fft(
         &model.inner,
         s,
@@ -89,10 +89,10 @@ impl PyImpliedVolSurface {
         &strikes,
         &maturities,
       ),
-    }
+    })
   }
 
-  /// Build from a Bates Fourier model + grid via Carr-Madan FFT.
+  /// Build from a Bates Fourier model + grid via Carr-Madan FFT; raises `ValueError` unless both axes ascend strictly.
   #[staticmethod]
   fn from_bates(
     model: &PyBatesFourier,
@@ -101,8 +101,8 @@ impl PyImpliedVolSurface {
     q: f64,
     strikes: Vec<f64>,
     maturities: Vec<f64>,
-  ) -> Self {
-    Self {
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::vol_surface::model_surface::fourier_model_surface_fft(
         &model.inner,
         s,
@@ -111,7 +111,7 @@ impl PyImpliedVolSurface {
         &strikes,
         &maturities,
       ),
-    }
+    })
   }
 
   fn strikes(&self) -> Vec<f64> {

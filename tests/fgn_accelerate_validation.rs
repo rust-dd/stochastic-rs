@@ -1,6 +1,6 @@
 //! Validates Accelerate/vDSP FFT by comparing autocovariance against theory and CPU.
 
-#[cfg(feature = "accelerate")]
+#[cfg(all(feature = "accelerate", target_os = "macos"))]
 mod accel_validation {
   use stochastic_rs::simd_rng::Unseeded;
   use stochastic_rs::stochastic::device::Accelerate;
@@ -41,7 +41,6 @@ mod accel_validation {
     let h64 = h as f64;
     let dt = 1.0 / n as f64;
     let var_th = dt.powf(2.0 * h64);
-    let cov1_th = var_th * 0.5 * (2.0_f64.powf(2.0 * h64) - 2.0 + 0.0);
     let cov1_th = var_th * 0.5 * (2.0_f64.powf(2.0 * h64) - 2.0);
     let cov1 = lag_cov(&paths, mean, 1);
 

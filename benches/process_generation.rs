@@ -7,9 +7,13 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use rand_distr::Distribution;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::ou::Ou;
+use stochastic_rs::stochastic::jump::cgmy::Cgmy;
+use stochastic_rs::stochastic::jump::cts::Cts;
 use stochastic_rs::stochastic::noise::gn::Gn;
 use stochastic_rs::stochastic::process::bm::Bm;
 use stochastic_rs::traits::ProcessExt;
@@ -23,7 +27,7 @@ fn bench_process_generation(c: &mut Criterion) {
     let std_dev = (1.0f64 / (n.saturating_sub(1).max(1) as f64)).sqrt();
 
     group.bench_with_input(BenchmarkId::new("normal/fill_slice", n), &n, |b, &n| {
-      let dist = SimdNormal::<f64, 64>::new(0.0, std_dev, &Unseeded);
+      let mut dist = SimdNormal::<f64>::new(0.0, std_dev).seeded(&Unseeded);
       let mut out = vec![0.0f64; n.saturating_sub(1)];
       b.iter(|| {
         dist.fill_slice(&mut out);
@@ -108,7 +112,7 @@ fn bench_process_generation(c: &mut Criterion) {
       },
     );
 
-    let dist = SimdNormal::<f64, 64>::new(0.0, std_dev, &Unseeded);
+    let mut dist = SimdNormal::<f64>::new(0.0, std_dev).seeded(&Unseeded);
     let mut increments = vec![0.0f64; n.saturating_sub(1)];
     dist.fill_slice(&mut increments);
 
@@ -127,6 +131,26 @@ fn bench_process_generation(c: &mut Criterion) {
       );
     });
   }
+
+  group.bench_function("process/Cts.sample", |b| {
+    let cts = Cts::<f64, _>::new(4.0, 7.0, 0.6, 1_000, 1_024, Some(0.0), Some(1.0), Unseeded);
+    b.iter(|| black_box(cts.sample()));
+  });
+
+  group.bench_function("process/Cgmy.sample", |b| {
+    let cgmy = Cgmy::<f64, _>::new(
+      0.5,
+      4.0,
+      7.0,
+      0.6,
+      1_000,
+      1_024,
+      Some(0.0),
+      Some(1.0),
+      Unseeded,
+    );
+    b.iter(|| black_box(cgmy.sample()));
+  });
 
   group.finish();
 }

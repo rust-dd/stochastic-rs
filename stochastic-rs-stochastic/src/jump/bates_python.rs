@@ -6,6 +6,7 @@
 
 use super::*;
 
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyBates {
   inner_f32: Option<Bates1996<f32, crate::traits::CallableDist<f32>>>,
@@ -151,6 +152,8 @@ impl PyBates {
     })
   }
 
+  /// `m` paths as a pair of `(m, n)` arrays, price and variance. The GIL is released while they are
+  /// generated; the Python law runs on rayon workers, one call at a time.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,
@@ -163,8 +166,8 @@ impl PyBates {
 
       use crate::traits::ProcessExt;
       py_dispatch!(self, |inner| {
-        let samples = inner.sample_par(m);
-        let n = samples[0][0].len();
+        let samples = py.detach(|| inner.sample_par(m));
+        let n = samples.first().map_or(0, |p| p[0].len());
         let mut r0 = Array2::zeros((m, n));
         let mut r1 = Array2::zeros((m, n));
         for (i, [a, b]) in samples.iter().enumerate() {

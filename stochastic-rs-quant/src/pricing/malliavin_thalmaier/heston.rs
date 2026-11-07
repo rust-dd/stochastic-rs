@@ -6,6 +6,8 @@ use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 
@@ -227,7 +229,7 @@ impl<T: FloatExt> MultiHestonParams<T> {
   /// Deterministic variant of [`sample`](Self::sample), intended for reproducible
   /// tests and benchmark comparisons.
   pub fn sample_with_seed(&self, seed: u64) -> MultiHestonPaths<T> {
-    let normal = SimdNormal::<T>::new(T::zero(), T::one(), &Deterministic::new(seed));
+    let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&Deterministic::new(seed));
     self.sample_with_fill(|z| normal.fill_slice(z))
   }
 
@@ -235,7 +237,7 @@ impl<T: FloatExt> MultiHestonParams<T> {
   /// for the failure mode (non-SPD joint Brownian correlation).
   pub fn try_sample_with_seed(&self, seed: u64) -> anyhow::Result<MultiHestonPaths<T>> {
     self.validate()?;
-    let normal = SimdNormal::<T>::new(T::zero(), T::one(), &Deterministic::new(seed));
+    let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&Deterministic::new(seed));
     Ok(self.sample_with_fill(|z| normal.fill_slice(z)))
   }
 

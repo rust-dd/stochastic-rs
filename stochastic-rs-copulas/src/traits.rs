@@ -1,7 +1,6 @@
 //! # Copula traits
 //!
-//! Organised as focused submodules: [`bivariate`] (`BivariateExt`) and the
-//! feature-gated `multivariate` (`MultivariateExt`).
+//! Organised as focused submodules: [`bivariate`] (`BivariateExt`) and [`multivariate`] (`MultivariateExt`).
 
 pub mod bivariate;
 pub mod multivariate;

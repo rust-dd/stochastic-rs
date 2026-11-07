@@ -257,17 +257,8 @@ impl SabrCalibrator {
 }
 
 impl SabrCalibrator {
-  /// Checks that every spot/forward level and strike is finite and
-  /// strictly positive, as the underlying Hagan expansion requires. Called
-  /// from [`Calibrator::calibrate`](crate::traits::Calibrator::calibrate)
-  /// so bad market data surfaces as `Err` naming the offending quote
-  /// instead of panicking inside the Levenberg-Marquardt cost callback —
-  /// see the module documentation for why this calibrator rejects rather
-  /// than shifts. Checked as `!x.is_finite() || x <= 0.0` — matching
-  /// [`RBergomiCalibrator`](crate::calibration::rbergomi::RBergomiCalibrator)'s
-  /// own `is_finite() && x > 0.0` precondition on its scalar inputs — so
-  /// `NaN` is rejected too: a plain `x <= 0.0` silently lets `NaN` through,
-  /// since every comparison against `NaN` is false.
+  /// `Err` naming the first spot or strike that is not finite and positive, where the Hagan expansion would feed NaN residuals to the
+  /// Levenberg–Marquardt fit; `!x.is_finite() || x <= 0.0` so a NaN, which fails every comparison, is rejected too.
   fn validate_market_data(&self) -> Result<(), anyhow::Error> {
     for (i, &s) in self.s.iter().enumerate() {
       if !s.is_finite() || s <= 0.0 {

@@ -25,7 +25,7 @@ pub trait Calibrator {
     type InitialGuess;                       // typically [f64; N] or Option<[f64; N]>
     type Params: Clone;                      // the calibrated parameter struct
     type Output: CalibrationResult<Params = Self::Params>;
-    type Error;                              // anyhow::Error in production code
+    type Error: Debug + Display + Send + Sync + 'static;   // anyhow::Error
 
     fn calibrate(
         &self,
@@ -44,7 +44,7 @@ pub trait CalibrationResult {
     fn loss_score(&self) -> Option<&CalibrationLossScore> { None }
     fn iterations(&self) -> Option<usize> { None }
     fn message(&self) -> Option<&str> { None }
-    fn max_error(&self) -> f64 { f64::NAN }   // NaN, not Option
+    fn max_error(&self) -> Option<f64> { None }
 }
 
 pub trait ToModel {
@@ -53,10 +53,10 @@ pub trait ToModel {
 }
 
 // Short-rate results bridge through a separate trait whose Model has
-// NO ModelPricer bound — it prices off a curve, not a spot/strike query.
+// NO ModelPricer bound — it prices off a curve, not a spot/strike query; the result carries the curve-side inputs.
 pub trait ToShortRateModel {
     type Model;
-    fn to_short_rate_model(&self, initial_rate: f64, theta: f64) -> Self::Model;
+    fn to_short_rate_model(&self) -> Self::Model;
 }
 ```
 
@@ -94,20 +94,8 @@ stochastic-rs-quant/src/calibration.rs   -- pub mod xyz
 
 use crate::pricing::xyz::XyzModel;
 
-/// Market option for XYZ calibration.
-///
-/// Field names follow the crate-wide vocabulary: `s` spot, `k` strike,
-/// `tau` time to maturity in years, `r` risk-free rate (`r_d`/`r_f` only
-/// where two rates genuinely exist). Do not reintroduce `spot`, `s0`,
-/// `maturity` or `risk_free` — one name per concept is enforced across
-/// the quant crate.
+/// Market option quote for XYZ calibration; `tau` in years.
 #[derive(Clone, Debug)]
-// NOTE: the one concrete `MarketOption` in the tree
-// (`calibration/heston_stoch_corr.rs`) spells these
-// `{ strike, tau, price, rate }`, not `{ k, tau, price, r }` — it
-// predates the short-name convention below and has not been renamed.
-// Follow the convention for new code; expect the long names when
-// reading that file.
 pub struct MarketOption {
     pub k: f64,
     pub tau: f64,
@@ -185,6 +173,12 @@ impl crate::traits::Calibrator for XyzCalibrator {
     }
 }
 ```
+
+Field names follow the crate-wide vocabulary: `s` spot, `k` strike, `tau` time to
+maturity in years, `r` risk-free rate (`r_d`/`r_f` only where two rates genuinely
+exist); never `spot`, `s0`, `maturity` or `risk_free`. The one concrete
+`MarketOption` in the tree (`calibration/heston_stoch_corr.rs`) still spells its
+fields `{ strike, tau, price, rate }`; new code follows the short names.
 
 ## 4. Optimizer choices
 
@@ -287,11 +281,8 @@ mod tests {
         // ...
     }
 
-    /// 3. final_objective < initial_sse * 0.5 — confirms the optimizer
-    ///    actually moved away from the initial guess. This catches the
-    ///    rc.0 trap where `let _ = slsqp::minimize(...)` silently
-    ///    discarded the optimizer output and `XyzCalibrationResult`
-    ///    returned the initial guess as if calibrated.
+    /// 3. `final_objective < initial_sse * 0.5`: the optimizer left the initial guess,
+    ///    so a discarded `minimize` result cannot pass as a calibration.
     #[test]
     fn optimizer_actually_runs() {
         // ...

@@ -4,7 +4,6 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::skew_t::SimdSkewT;
 use stochastic_rs_distributions::traits::DistributionExt;
 
@@ -47,9 +46,14 @@ fn log_density(x: &[f64], mu: f64, sigma: f64, eta: f64, lambda: f64) -> f64 {
   if !(sigma > 0.0 && sigma.is_finite() && eta > 2.0 && eta.is_finite() && lambda.abs() < 1.0) {
     return 1e300;
   }
-  let d = SimdSkewT::<f64>::new(eta, lambda, &Deterministic::new(0));
+  let d = SimdSkewT::<f64>::new(eta, lambda);
   let log_sigma = sigma.ln();
-  negative_log_likelihood(x, |v| d.pdf((v - mu) / sigma).ln() - log_sigma)
+  negative_log_likelihood(x, |v| {
+    d.pdf((v - mu) / sigma)
+      .expect("SimdSkewT has a closed-form pdf")
+      .ln()
+      - log_sigma
+  })
 }
 
 /// Hansen skew-t maximum-likelihood fit of `data`.

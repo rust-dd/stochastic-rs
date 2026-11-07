@@ -31,6 +31,8 @@ use ndarray::Array3;
 use ndarray::s;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::gamma::SimdGamma;
 use stochastic_rs_distributions::non_central_chi_squared::SimdNonCentralChiSquared;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -161,8 +163,8 @@ fn assert_symmetric<T: FloatExt>(x: &Array2<T>, name: &str) {
 struct StepDraws<T: FloatExt, S: SeedExt> {
   alpha: T,
   seed: S,
-  normal: SimdNormal<T>,
-  ncx2: Vec<Option<SimdNonCentralChiSquared<T>>>,
+  normal: Seeded<SimdNormal<T>>,
+  ncx2: Vec<Option<Seeded<SimdNonCentralChiSquared<T>>>>,
 }
 
 impl<T: FloatExt, S: SeedExt> StepDraws<T, S> {
@@ -170,7 +172,7 @@ impl<T: FloatExt, S: SeedExt> StepDraws<T, S> {
     Self {
       alpha,
       seed: seed.derive(),
-      normal: SimdNormal::<T>::new(T::zero(), T::one(), seed),
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(seed),
       ncx2: (0..d).map(|_| None).collect(),
     }
   }
@@ -184,7 +186,7 @@ impl<T: FloatExt, S: SeedExt> StepDraws<T, S> {
     if df <= T::zero() {
       let half = (ncp / two).to_f64().unwrap_or(0.0);
       let jumps = if half > 0.0 {
-        SimdPoisson::<u64>::new(half, &self.seed).sample_fast()
+        SimdPoisson::<u64>::new(half).seeded(&self.seed).sample()
       } else {
         0
       };
@@ -192,13 +194,15 @@ impl<T: FloatExt, S: SeedExt> StepDraws<T, S> {
         return T::zero();
       }
       return dt
-        * SimdGamma::<T>::new(T::from_f64_fast(jumps as f64), two, &self.seed).sample_fast();
+        * SimdGamma::<T>::new(T::from_f64_fast(jumps as f64), two)
+          .seeded(&self.seed)
+          .sample();
     }
     if self.ncx2[r].is_none() {
-      self.ncx2[r] = Some(SimdNonCentralChiSquared::<T>::new(df, &self.seed));
+      self.ncx2[r] = Some(SimdNonCentralChiSquared::<T>::new(df).seeded(&self.seed));
     }
     dt * self.ncx2[r]
-      .as_ref()
+      .as_mut()
       .expect("sampler built above")
       .sample_ncp(ncp)
   }
@@ -226,7 +230,7 @@ fn coordinate_step<T: FloatExt, S: SeedExt>(z: &mut Array2<T>, dt: T, draws: &mu
   let u11_next = draws.squared_bessel(r, u11, dt);
   let u_off_next: Vec<T> = u_off
     .iter()
-    .map(|u| *u + sqrt_dt * draws.normal.sample_fast())
+    .map(|u| *u + sqrt_dt * draws.normal.sample())
     .collect();
   let mut z00 = u11_next;
   for u in &u_off_next {
@@ -365,6 +369,11 @@ impl<T: FloatExt, S: SeedExt, B> Wishart<T, S, B> {
 #[doc(hidden)]
 pub struct WishartLaunch<'a, T: FloatExt, S: SeedExt, B>(&'a Wishart<T, S, B>);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for WishartLaunch<'_, T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for WishartLaunch<'_, T, S, B>
 {
@@ -385,6 +394,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 pub struct WishartLaunchSampler<T: FloatExt, S: SeedExt> {
   inner: WishartSampler<T, S>,
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for WishartLaunchSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for WishartLaunchSampler<T, S> {
   type Output = [Array1<T>; 3];
@@ -483,6 +494,11 @@ fn slots_to_matrices<T: FloatExt>(slots: [Array1<T>; 3]) -> Array3<T> {
 }
 
 backend_switch!([T: FloatExt, S: SeedExt] Wishart<T, S> { alpha, b, a, x0, n, t, seed, step } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Wishart<T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Wishart<T, S, B> {
   type Output = Array3<T>;
@@ -589,6 +605,8 @@ pub struct WishartSampler<T: FloatExt, S: SeedExt> {
   process: Wishart<T, S>,
 }
 
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for WishartSampler<T, S> {}
+
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for WishartSampler<T, S> {
   type Output = Array3<T>;
 
@@ -610,6 +628,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for WishartSampler<T, S> {
 mod tests;
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyWishart {
   inner: Option<Wishart<f64>>,

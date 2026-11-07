@@ -36,7 +36,7 @@ use crate::traits::FloatExt;
 pub struct CliquetPricer {
   /// Spot price.
   pub s: f64,
-  /// Notional.
+  /// Notional the summed period payoffs are paid on.
   pub notional: f64,
   /// Number of sub-periods.
   pub m: usize,
@@ -101,7 +101,7 @@ impl CliquetPricer {
 pub struct McCliquetPricer {
   /// Spot price.
   pub s: f64,
-  /// Notional.
+  /// Notional the summed period payoffs are paid on.
   pub notional: f64,
   /// Number of sub-periods.
   pub m: usize,
@@ -117,9 +117,9 @@ pub struct McCliquetPricer {
   pub local_floor: Option<f64>,
   /// Local cap on per-period return.
   pub local_cap: Option<f64>,
-  /// Global floor on sum.
+  /// Floor on the sum of the locally capped and floored period returns.
   pub global_floor: Option<f64>,
-  /// Global cap on sum.
+  /// Cap on that sum.
   pub global_cap: Option<f64>,
   /// Number of MC paths.
   pub n_paths: usize,

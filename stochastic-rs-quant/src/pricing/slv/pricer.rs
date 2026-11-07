@@ -1,6 +1,7 @@
 //! Monte Carlo pricing under a pre-calibrated leverage surface.
 
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::HestonSlvParams;
@@ -162,7 +163,7 @@ impl HestonSlvPricer {
     let sigma_mixed = self.params.sigma_mixed();
     let rho_bar = (1.0 - self.params.rho * self.params.rho).sqrt();
 
-    let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(self.seed));
+    let mut normals = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(self.seed));
     let mut payoff_sum = 0.0;
     let mut payoff_sq_sum = 0.0;
 
@@ -172,8 +173,8 @@ impl HestonSlvPricer {
 
       for step in 0..n_steps {
         let t = step as f64 * dt;
-        let dw_v = normals.sample_fast() * sqrt_dt;
-        let dw_ind = normals.sample_fast() * sqrt_dt;
+        let dw_v = normals.sample() * sqrt_dt;
+        let dw_ind = normals.sample() * sqrt_dt;
         let dw_x = self.params.rho * dw_v + rho_bar * dw_ind;
 
         let v_pos = v.max(0.0);

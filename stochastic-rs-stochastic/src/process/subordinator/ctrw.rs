@@ -1,6 +1,8 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
 use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::gamma::SimdGamma;
@@ -77,15 +79,15 @@ impl<T: FloatExt, S: SeedExt> Ctrw<T, S> {
 impl<T: FloatExt, S: SeedExt, B> Ctrw<T, S, B> {}
 
 enum WaitingSampler<T: FloatExt> {
-  Exp(SimdExp<T>),
-  Gamma(SimdGamma<T>),
-  Ig(SimdInverseGauss<T>),
+  Exp(Seeded<SimdExp<T>>),
+  Gamma(Seeded<SimdGamma<T>>),
+  Ig(Seeded<SimdInverseGauss<T>>),
   PosStable { alpha: f64, log_scale: f64 },
 }
 
 enum JumpSampler<T: FloatExt> {
-  Normal(SimdNormal<T>),
-  Stable(SimdAlphaStable<T>),
+  Normal(Seeded<SimdNormal<T>>),
+  Stable(Seeded<SimdAlphaStable<T>>),
   Rademacher(T),
 }
 
@@ -162,6 +164,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Ctrw<T, S> { waiting, jumps, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Ctrw<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Ctrw<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -181,21 +188,21 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
           rate > T::zero(),
           "Ctrw Exponential waiting requires rate > 0"
         );
-        WaitingSampler::Exp(SimdExp::new(rate, &self.seed))
+        WaitingSampler::Exp(SimdExp::new(rate).seeded(&self.seed))
       }
       CtrwWaitingLaw::Gamma { shape, rate } => {
         assert!(
           shape > T::zero() && rate > T::zero(),
           "Ctrw Gamma waiting requires shape > 0 and rate > 0"
         );
-        WaitingSampler::Gamma(SimdGamma::<T>::new(shape, T::one() / rate, &self.seed))
+        WaitingSampler::Gamma(SimdGamma::<T>::new(shape, T::one() / rate).seeded(&self.seed))
       }
       CtrwWaitingLaw::InverseGaussian { mu, lambda } => {
         assert!(
           mu > T::zero() && lambda > T::zero(),
           "Ctrw Ig waiting requires mu > 0 and lambda > 0"
         );
-        WaitingSampler::Ig(SimdInverseGauss::<T>::new(mu, lambda, &self.seed))
+        WaitingSampler::Ig(SimdInverseGauss::<T>::new(mu, lambda).seeded(&self.seed))
       }
       CtrwWaitingLaw::PositiveStable { alpha, scale } => {
         assert!(
@@ -212,20 +219,16 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     let jumps = match self.jumps {
       CtrwJumpLaw::Normal { mean, std } => {
         assert!(std > T::zero(), "Ctrw normal jumps require std > 0");
-        JumpSampler::Normal(SimdNormal::new(mean, std, &self.seed))
+        JumpSampler::Normal(SimdNormal::new(mean, std).seeded(&self.seed))
       }
       CtrwJumpLaw::SymmetricStable { alpha, scale } => {
         assert!(
           alpha > T::zero() && alpha <= T::from_usize_(2) && scale > T::zero(),
           "Ctrw stable jumps require alpha in (0,2] and scale > 0"
         );
-        JumpSampler::Stable(SimdAlphaStable::<T>::new(
-          alpha,
-          T::zero(),
-          scale,
-          T::zero(),
-          &self.seed,
-        ))
+        JumpSampler::Stable(
+          SimdAlphaStable::<T>::new(alpha, T::zero(), scale, T::zero()).seeded(&self.seed),
+        )
       }
       CtrwJumpLaw::Rademacher { scale } => {
         assert!(scale > T::zero(), "Ctrw rademacher jumps require scale > 0");
@@ -233,7 +236,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       }
     };
 
-    let uniform = SimdUniform::<f64>::new(0.0, 1.0, &self.seed);
+    let uniform = SimdUniform::<f64>::new(0.0, 1.0).seeded(&self.seed);
 
     CtrwSampler {
       n: self.n,
@@ -321,28 +324,28 @@ pub struct CtrwSampler<T: FloatExt> {
   dt: f64,
   waiting: WaitingSampler<T>,
   jumps: JumpSampler<T>,
-  uniform: SimdUniform<f64>,
+  uniform: Seeded<SimdUniform<f64>>,
 }
 
 impl<T: FloatExt> CtrwSampler<T> {
-  fn draw_wait(&self) -> f64 {
-    match &self.waiting {
-      WaitingSampler::Exp(d) => d.sample_fast().to_f64().unwrap(),
-      WaitingSampler::Gamma(d) => d.sample_fast().to_f64().unwrap(),
-      WaitingSampler::Ig(d) => d.sample_fast().to_f64().unwrap(),
+  fn draw_wait(&mut self) -> f64 {
+    match &mut self.waiting {
+      WaitingSampler::Exp(d) => d.sample().to_f64().unwrap(),
+      WaitingSampler::Gamma(d) => d.sample().to_f64().unwrap(),
+      WaitingSampler::Ig(d) => d.sample().to_f64().unwrap(),
       WaitingSampler::PosStable { alpha, log_scale } => {
-        sample_positive_stable(*alpha, *log_scale, &self.uniform)
+        sample_positive_stable(*alpha, *log_scale, &mut self.uniform)
       }
     }
     .max(1e-12)
   }
 
-  fn draw_jump(&self) -> f64 {
-    match &self.jumps {
-      JumpSampler::Normal(d) => d.sample_fast().to_f64().unwrap(),
-      JumpSampler::Stable(d) => d.sample_fast().to_f64().unwrap(),
+  fn draw_jump(&mut self) -> f64 {
+    match &mut self.jumps {
+      JumpSampler::Normal(d) => d.sample().to_f64().unwrap(),
+      JumpSampler::Stable(d) => d.sample().to_f64().unwrap(),
       JumpSampler::Rademacher(scale) => {
-        if self.uniform.sample_fast() < 0.5 {
+        if self.uniform.sample() < 0.5 {
           scale.to_f64().unwrap()
         } else {
           -scale.to_f64().unwrap()
@@ -379,6 +382,8 @@ impl<T: FloatExt> CtrwSampler<T> {
   }
 }
 
+impl<T: FloatExt> crate::traits::Sealed for CtrwSampler<T> {}
+
 impl<T: FloatExt> PathSampler<T> for CtrwSampler<T> {
   type Output = Array1<T>;
 
@@ -394,6 +399,7 @@ impl<T: FloatExt> PathSampler<T> for CtrwSampler<T> {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyCtrw {
   inner_f32: Option<Ctrw<f32>>,

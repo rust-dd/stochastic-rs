@@ -36,7 +36,7 @@ pub struct HKDECalibrator {
   /// Time to maturity per quote (flattened). Supports joint multi-maturity
   /// calibration.
   pub flat_t: Vec<f64>,
-  /// Option type.
+  /// Whether the market quotes are call or put prices.
   pub option_type: OptionType,
   /// Precomputed vega weights $\sqrt{w_j^{(n)}}$ applied to each residual
   /// (Eq. 13 of the paper). Length equals the number of quotes.

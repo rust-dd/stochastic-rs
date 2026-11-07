@@ -10,6 +10,8 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
@@ -188,6 +190,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Hjm<T, S> { a, b, p, q, v, alpha, sigma, n, r0, p0, f0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Hjm<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Hjm<T, S, B> {
   type Output = [Array1<T>; 3];
   type Sampler<'s>
@@ -203,7 +210,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   /// driven by user-supplied [`Fn1D`] / [`Fn2D`] callables (not clonable,
   /// since the Python variant holds a `pyo3::Py`) so there is nothing else
   /// reusable to hoist across calls beyond the borrowed process itself;
-  /// `sample_inner`'s three `SimdNormal::new(..., seed)` calls consume this
+  /// `sample_inner`'s three `SimdNormal::new(...).seeded(seed)` calls consume this
   /// owned seed directly — the same three ticks the legacy code consumed
   /// from `self.seed` per call, so the first path reproduces the legacy
   /// stream bit-for-bit.
@@ -247,6 +254,11 @@ pub struct HjmSampler<'a, T: FloatExt, S: SeedExt, B> {
   seed: S,
 }
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for HjmSampler<'_, T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> PathSampler<T>
   for HjmSampler<'_, T, S, B>
 {
@@ -285,7 +297,7 @@ impl<T: FloatExt, S: SeedExt, B> Hjm<T, S, B> {
         .as_slice_mut()
         .expect("Hjm short-rate path must be contiguous in memory");
       let r_tail = &mut r_slice[1..];
-      let normal_r = SimdNormal::<T>::new(T::zero(), sqrt_dt, seed);
+      let mut normal_r = SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(seed);
       normal_r.fill_slice(r_tail);
     }
     {
@@ -293,7 +305,7 @@ impl<T: FloatExt, S: SeedExt, B> Hjm<T, S, B> {
         .as_slice_mut()
         .expect("Hjm bond-price path must be contiguous in memory");
       let p_tail = &mut p_slice[1..];
-      let normal_p = SimdNormal::<T>::new(T::zero(), sqrt_dt, seed);
+      let mut normal_p = SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(seed);
       normal_p.fill_slice(p_tail);
     }
     {
@@ -301,7 +313,7 @@ impl<T: FloatExt, S: SeedExt, B> Hjm<T, S, B> {
         .as_slice_mut()
         .expect("Hjm forward-rate path must be contiguous in memory");
       let f_tail = &mut f_slice[1..];
-      let normal_f = SimdNormal::<T>::new(T::zero(), sqrt_dt, seed);
+      let mut normal_f = SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(seed);
       normal_f.fill_slice(f_tail);
     }
 
@@ -321,6 +333,7 @@ impl<T: FloatExt, S: SeedExt, B> Hjm<T, S, B> {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyHjm {
   inner: Option<Hjm<f64>>,

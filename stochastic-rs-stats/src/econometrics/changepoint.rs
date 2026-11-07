@@ -167,13 +167,15 @@ pub fn pelt<T: FloatExt>(series: ArrayView1<T>, penalty: f64, min_size: usize) -
 mod tests {
   use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
 
   #[test]
   fn cusum_few_alarms_under_pure_noise() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(5));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(5));
     let mut buf = vec![0.0_f64; 1_000];
     dist.fill_slice(&mut buf);
     let s = Array1::from(buf);
@@ -183,7 +185,7 @@ mod tests {
 
   #[test]
   fn cusum_detects_mean_shift() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(7));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(7));
     let mut buf = vec![0.0_f64; 500];
     dist.fill_slice(&mut buf);
     for v in buf.iter_mut().take(500).skip(250) {

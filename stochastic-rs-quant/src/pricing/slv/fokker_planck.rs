@@ -4,11 +4,11 @@
 //! The joint density $p(t, x, v)$ of the log-spot and the variance satisfies
 //!
 //! $$
-//! \partial_t p = \partial_{xx}\bigl(\tfrac12 L^2 v\, p\bigr)
-//!   + \partial_{xv}\bigl(\rho\,\xi L v\, p\bigr)
-//!   + \partial_{vv}\bigl(\tfrac12 \xi^2 v\, p\bigr)
-//!   - \partial_x\bigl((r - q - \tfrac12 L^2 v)\, p\bigr)
-//!   - \partial_v\bigl(\kappa(\theta - v)\, p\bigr),
+//! \partial_t p = \partial_{xx}\bigl(\tfrac12 L^2 v\, p\bigr) +
+//!   \partial_{xv}\bigl(\rho\,\xi L v\, p\bigr) +
+//!   \partial_{vv}\bigl(\tfrac12 \xi^2 v\, p\bigr) -
+//!   \partial_x\bigl((r - q - \tfrac12 L^2 v)\, p\bigr) -
+//!   \partial_v\bigl(\kappa(\theta - v)\, p\bigr),
 //! \qquad p(0, \cdot) = \delta_{(x_0, v_0)},
 //! $$
 //!
@@ -92,7 +92,7 @@ const DEFAULT_LOG_SPOT_HALF_WIDTH: f64 = 3.401_197_381_662_155_4;
 pub struct FokkerPlanckMethod {
   /// Log-spot nodes; made odd so the spot is a node.
   pub log_spot_nodes: usize,
-  /// Variance nodes.
+  /// Nodes of the variance mesh, uniform on `[0, v0]` and stretched above it.
   pub variance_nodes: usize,
   /// Time steps per year; every snapshot maturity is a step boundary.
   pub steps_per_year: usize,

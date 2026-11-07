@@ -76,9 +76,7 @@ fn network_jacobian_matches_finite_differences() {
   }
 }
 
-/// Calibrating the surrogate to its own surface at a known parameter point
-/// recovers that point: the Jacobian, the coordinate transform and the
-/// optimiser are consistent.
+/// Fitting the surrogate to its own surface at a known parameter point recovers that point.
 #[test]
 fn self_consistent_calibration_recovers_the_parameters() {
   let model = trained_heston(5);

@@ -4,6 +4,8 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::Array1;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::quant::microstructure::AlmgrenChrissParams;
 use stochastic_rs::quant::microstructure::ImpactKernel;
@@ -16,7 +18,7 @@ use stochastic_rs::quant::microstructure::single_period_kyle;
 use stochastic_rs::simd_rng::Deterministic;
 
 fn signed_orders(n: usize, seed: u64) -> Array1<f64> {
-  let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+  let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
   let mut z = vec![0.0_f64; n];
   dist.fill_slice(&mut z);
   Array1::from_iter(z.iter().map(|&v| if v >= 0.0 { 1.0 } else { -1.0 }))
@@ -53,7 +55,7 @@ fn bench_impact(c: &mut Criterion) {
 }
 
 fn bench_spread(c: &mut Criterion) {
-  let dist = SimdNormal::<f64>::new(100.0, 0.05, &Deterministic::new(7));
+  let mut dist = SimdNormal::<f64>::new(100.0, 0.05).seeded(&Deterministic::new(7));
   let mut buf = vec![0.0_f64; 50_000];
   dist.fill_slice(&mut buf);
   let p = Array1::from(buf);

@@ -32,9 +32,9 @@ struct FbmFields {
 
 fn fields<S: SeedExt>(x: &Fbm<f64, S>) -> FbmFields {
   FbmFields {
-    hurst: x.hurst,
-    n: x.n,
-    t: x.t,
+    hurst: x.hurst(),
+    n: x.n(),
+    t: x.t(),
   }
 }
 
@@ -44,11 +44,13 @@ fn finite(out: &Array1<f64>) -> bool {
 
 #[test]
 fn fbm_with_hurst_rebuilds_fgn_cache() {
-  let mut expected = fbm_base();
-  expected.hurst = 0.3;
+  let expected = FbmFields {
+    hurst: 0.3,
+    ..fields(&fbm_base())
+  };
   let got = fbm_base().with_hurst(0.3);
-  assert_eq!(got.hurst, 0.3);
-  assert_eq!(fields(&got), fields(&expected));
+  assert_eq!(got.hurst(), 0.3);
+  assert_eq!(fields(&got), expected);
   assert!(finite(&got.sample()));
 
   let want = Fbm::new(0.3, 64, Some(1.0), Deterministic::new(7)).sample();
@@ -60,11 +62,13 @@ fn fbm_with_hurst_rebuilds_fgn_cache() {
 
 #[test]
 fn fbm_with_steps_rebuilds_fgn_cache() {
-  let mut expected = fbm_base();
-  expected.n = 128;
+  let expected = FbmFields {
+    n: 128,
+    ..fields(&fbm_base())
+  };
   let got = fbm_base().with_steps(128);
-  assert_eq!(got.n, 128);
-  assert_eq!(fields(&got), fields(&expected));
+  assert_eq!(got.n(), 128);
+  assert_eq!(fields(&got), expected);
   assert!(finite(&got.sample()));
 
   let want = Fbm::new(0.7, 128, Some(1.0), Deterministic::new(9)).sample();
@@ -82,11 +86,13 @@ fn fbm_with_steps_rejects_too_few() {
 
 #[test]
 fn fbm_with_horizon_rebuilds_fgn_cache() {
-  let mut expected = fbm_base();
-  expected.t = Some(2.0);
+  let expected = FbmFields {
+    t: Some(2.0),
+    ..fields(&fbm_base())
+  };
   let got = fbm_base().with_horizon(Some(2.0));
-  assert_eq!(got.t, Some(2.0));
-  assert_eq!(fields(&got), fields(&expected));
+  assert_eq!(got.t(), Some(2.0));
+  assert_eq!(fields(&got), expected);
 
   let want = Fbm::new(0.7, 64, Some(2.0), Deterministic::new(11)).sample();
   let got_seeded = fbm_base_seeded(Deterministic::new(11))
@@ -120,7 +126,7 @@ fn fbm_default_with_hurst_round_trip() {
     hurst: 0.3,
     ..fields(&base)
   };
-  assert_eq!(got.hurst, 0.3);
+  assert_eq!(got.hurst(), 0.3);
   assert_eq!(fields(&got), expected);
   assert!(finite(&got.sample()));
 }

@@ -7,8 +7,6 @@
 //! Build with maturin (see `pyproject.toml` at the workspace root) — the
 //! resulting wheel exposes the Python module `stochastic_rs`.
 
-#![allow(non_snake_case)]
-
 use pyo3::prelude::*;
 
 #[pymodule]
@@ -35,6 +33,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_distributions::normal_inverse_gauss::PyNormalInverseGauss;
   use stochastic_rs_distributions::pareto::PyPareto;
   use stochastic_rs_distributions::poisson::PyPoissonD;
+  use stochastic_rs_distributions::qmc::sobol::PySobolSeq;
   use stochastic_rs_distributions::skew_t::PySkewT;
   use stochastic_rs_distributions::studentt::PyStudentT;
   use stochastic_rs_distributions::tempered_stable::PyTemperedStable;
@@ -122,7 +121,6 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::jump::rdts::PyRdts;
   use stochastic_rs_stochastic::jump::vg::PyVg;
   use stochastic_rs_stochastic::mc::brownian_bridge_qmc::PyBrownianBridgeQmc;
-  use stochastic_rs_stochastic::mc::sobol::PySobolSeq;
   // Stochastic — noise
   use stochastic_rs_stochastic::noise::cfgns::PyCfgns;
   use stochastic_rs_stochastic::noise::cgns::PyCgns;

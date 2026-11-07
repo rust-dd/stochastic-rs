@@ -11,6 +11,8 @@
 
 #[macro_use]
 mod macros;
+#[cfg(doctest)]
+mod doctest_seals;
 mod linalg;
 
 pub mod traits;
@@ -27,7 +29,7 @@ pub use crate::device::SheetBackend;
 pub use crate::traits::ProcessExt;
 
 pub mod autoregressive;
-pub mod buffer;
+pub(crate) mod buffer;
 pub mod correlation;
 pub mod device;
 pub mod diffusion;

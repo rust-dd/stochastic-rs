@@ -86,7 +86,7 @@ impl<T: RealExt> DiscountCurve<T> {
     &self.points
   }
 
-  /// The interpolation method.
+  /// How the curve interpolates between its pillars.
   pub fn method(&self) -> InterpolationMethod {
     self.method
   }
@@ -99,10 +99,10 @@ impl<T: RealExt> DiscountCurve<T> {
     interpolation::interpolate_discount_factor(&self.points, t, self.method)
   }
 
-  /// Continuously compounded zero rate at time `t`.
+  /// Continuously compounded zero rate at `t`; NaN at a non-positive `t`.
   pub fn zero_rate(&self, t: T) -> T {
     if t <= T::zero() {
-      return T::zero();
+      return T::nan();
     }
     -self.discount_factor(t).ln() / t
   }

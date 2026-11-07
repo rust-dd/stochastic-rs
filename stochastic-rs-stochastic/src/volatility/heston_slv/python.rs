@@ -97,6 +97,7 @@ fn leverage_from_py(obj: &Bound<'_, PyAny>) -> PyResult<Fn2D<f64>> {
   Ok(Fn2D::Grid(Grid2D::new(times, spots, values)))
 }
 
+#[doc(hidden)]
 #[pyclass]
 pub struct PyHestonSlv {
   inner: Option<HestonSlv<f64>>,

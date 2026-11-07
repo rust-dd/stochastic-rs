@@ -5,11 +5,7 @@
 //! `with_hurst`/`with_steps`/`with_horizon` rebuild it by calling
 //! `Self::new(..)` again wholesale (cheaper to reuse the real constructor
 //! than to hand-duplicate ~60 lines of FFT setup, and impossible to drift
-//! out of sync with it) — note `new()`'s own `n` parameter is the
-//! *requested* length, not the struct's `pub n` field, which is the
-//! power-of-two-*padded* length (the requested length itself is
-//! `pub(crate) out_len`, not reachable from this integration-test crate;
-//! the bit-exact sampled-path comparisons below are the real proof).
+//! out of sync with it).
 //! `with_seed` is a plain field write: neither cached array depends on the
 //! seed.
 //!
@@ -47,9 +43,9 @@ fn finite(out: &Array1<f64>) -> bool {
 #[test]
 fn fgn_with_hurst_rebuilds_fft_cache() {
   let got = fgn_base().with_hurst(0.3);
-  assert_eq!(got.hurst, 0.3);
-  assert_eq!(got.n, fgn_base().n);
-  assert_eq!(got.t, fgn_base().t);
+  assert_eq!(got.hurst(), 0.3);
+  assert_eq!(got.n(), fgn_base().n());
+  assert_eq!(got.t(), fgn_base().t());
 
   let want = Fgn::new(0.3, 64, Some(1.0), Deterministic::new(7)).sample();
   let got_seeded = fgn_base_seeded(Deterministic::new(7))
@@ -62,8 +58,9 @@ fn fgn_with_hurst_rebuilds_fft_cache() {
 #[test]
 fn fgn_with_steps_rebuilds_fft_cache() {
   let got = fgn_base().with_steps(128);
-  assert_eq!(got.hurst, fgn_base().hurst);
-  assert_eq!(got.t, fgn_base().t);
+  assert_eq!(got.n(), 128);
+  assert_eq!(got.hurst(), fgn_base().hurst());
+  assert_eq!(got.t(), fgn_base().t());
 
   let want = Fgn::new(0.7, 128, Some(1.0), Deterministic::new(9)).sample();
   let got_seeded = fgn_base_seeded(Deterministic::new(9))
@@ -76,8 +73,8 @@ fn fgn_with_steps_rebuilds_fft_cache() {
 #[test]
 fn fgn_with_horizon_rebuilds_fft_cache() {
   let got = fgn_base().with_horizon(Some(2.0));
-  assert_eq!(got.t, Some(2.0));
-  assert_eq!(got.hurst, fgn_base().hurst);
+  assert_eq!(got.t(), Some(2.0));
+  assert_eq!(got.hurst(), fgn_base().hurst());
 
   let want = Fgn::new(0.7, 64, Some(2.0), Deterministic::new(11)).sample();
   let got_seeded = fgn_base_seeded(Deterministic::new(11))
@@ -105,8 +102,8 @@ fn fgn_with_seed_matches_fresh_construction() {
 fn fgn_default_with_hurst_round_trip() {
   let base = Fgn::<f64>::default();
   let got = Fgn::<f64>::default().with_hurst(0.3);
-  assert_eq!(got.hurst, 0.3);
-  assert_eq!(got.n, base.n);
-  assert_eq!(got.t, base.t);
+  assert_eq!(got.hurst(), 0.3);
+  assert_eq!(got.n(), base.n());
+  assert_eq!(got.t(), base.t());
   assert!(finite(&got.sample()));
 }

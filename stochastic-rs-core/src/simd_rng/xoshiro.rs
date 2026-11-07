@@ -7,6 +7,8 @@
 //! Both are seeded via SplitMix64 expansion of a single `u64`, which gives
 //! enough decorrelated state for the full 4×u64 / 8×u32 lane vectors.
 
+use wide::f32x8;
+use wide::f64x4;
 use wide::u32x8;
 use wide::u64x4;
 
@@ -48,12 +50,19 @@ pub(super) fn splitmix64_next(state: &mut u64) -> u64 {
 /// OR-ing the high 52 bits of a `u64` into this constant gives a bit pattern
 /// in `[1.0, 2.0)` whose mantissa is the upper-52-bit fraction of the input;
 /// the subsequent subtract of `1.0` puts the value in `[0, 1)`.
-pub(super) const F64_MAGIC: u64 = 0x3FF0_0000_0000_0000;
+const F64_MAGIC: u64 = 0x3FF0_0000_0000_0000;
 /// IEEE-754 bit pattern of `1.0_f32` (biased exponent 127, mantissa 0). Same
 /// trick as [`F64_MAGIC`] but with the upper 23 bits of a `u32`.
-pub(super) const F32_MAGIC: u32 = 0x3F80_0000;
+const F32_MAGIC: u32 = 0x3F80_0000;
+
+// Built at compile time: a run-time `splat` of a constant lowers to `memset_pattern16` calls on Darwin.
+pub(crate) const F64_MAGIC_X4: u64x4 = u64x4::splat(F64_MAGIC);
+pub(crate) const F64_ONE_X4: f64x4 = f64x4::splat(1.0);
+pub(crate) const F32_MAGIC_X8: u32x8 = u32x8::splat(F32_MAGIC);
+pub(crate) const F32_ONE_X8: f32x8 = f32x8::splat(1.0);
 
 /// 4-lane parallel xoshiro256++ engine (64-bit output per lane).
+#[derive(Clone, Debug)]
 pub struct Xoshiro256PP4 {
   s0: u64x4,
   s1: u64x4,
@@ -91,6 +100,7 @@ impl Xoshiro256PP4 {
 }
 
 /// 8-lane parallel xoshiro128++ engine (32-bit output per lane).
+#[derive(Clone, Debug)]
 pub struct Xoshiro128PP8 {
   s0: u32x8,
   s1: u32x8,

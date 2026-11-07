@@ -18,9 +18,9 @@ pub struct BasisSwap<T: RealExt> {
   pub pay_spread: T,
   /// Receive-leg spread.
   pub receive_spread: T,
-  /// Pay leg.
+  /// Floating leg the holder pays.
   pub pay_leg: Leg<T>,
-  /// Receive leg.
+  /// Floating leg the holder receives.
   pub receive_leg: Leg<T>,
 }
 

@@ -32,6 +32,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -65,8 +68,8 @@ pub struct BlackKarasinski<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// convention — but is not made silently well-behaved: `a = 0` is a
   /// literal `0/0` in the mean term, so every point after `r0` comes out
   /// `NaN`, and `a < 0` makes the log-rate diverge instead of mean-revert.
-  /// [`BlackKarasinski::new`] unconditionally warns to stderr when this
-  /// happens; it never panics.
+  /// [`BlackKarasinski::new`] emits a `log::warn!` when this happens; it
+  /// never panics.
   pub a: T,
   /// Diffusion scale σ multiplying `dW_t` in the log-rate SDE.
   pub sigma: T,
@@ -101,8 +104,7 @@ impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
   ///
   /// `a <= 0` is accepted rather than rejected — matching this crate's
   /// [`Cir::new`](crate::diffusion::cir::Cir::new) boundary-condition
-  /// precedent — but unconditionally prints a one-line diagnostic to
-  /// stderr, including in release builds: the exact-OU step divides by `a`
+  /// precedent — but emits a `log::warn!`: the exact-OU step divides by `a`
   /// in both its mean and variance terms, so `a = 0` poisons every point
   /// after `r0` with `NaN` and `a < 0` makes the log-rate diverge instead
   /// of mean-revert. Never panics.
@@ -116,8 +118,8 @@ impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
     seed: S,
   ) -> Self {
     if a <= T::zero() {
-      eprintln!(
-        "warning: BlackKarasinski::new: mean-reversion speed a <= 0; the \
+      log::warn!(
+        "BlackKarasinski::new: mean-reversion speed a <= 0; the \
          exact-OU step divides by a in both its mean and variance terms, so \
          a = 0 produces a literal 0/0 in the mean term (every point after r0 \
          comes out NaN) and a < 0 makes the log-rate diverge instead of \
@@ -256,6 +258,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] BlackKarasinski<T, S> { theta, a, sigma, n, r0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for BlackKarasinski<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for BlackKarasinski<T, S, B>
 {
@@ -290,7 +297,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       decay,
       diff_scale: self.sigma,
       theta: &self.theta,
-      normal: SimdNormal::<T>::new(T::zero(), ou_std, &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), ou_std).seeded(&self.seed),
     }
   }
 
@@ -347,7 +354,7 @@ pub struct BlackKarasinskiSampler<'a, T: FloatExt> {
   /// baked into the Gaussian source's `std_dev` (see the struct doc).
   diff_scale: T,
   theta: &'a Fn1D<T>,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> BlackKarasinskiSampler<'_, T> {
@@ -378,6 +385,8 @@ impl<T: FloatExt> BlackKarasinskiSampler<'_, T> {
   }
 }
 
+impl<T: FloatExt> crate::traits::Sealed for BlackKarasinskiSampler<'_, T> {}
+
 impl<T: FloatExt> PathSampler<T> for BlackKarasinskiSampler<'_, T> {
   type Output = Array1<T>;
 
@@ -398,6 +407,7 @@ impl<T: FloatExt> PathSampler<T> for BlackKarasinskiSampler<'_, T> {
 mod python;
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub use python::PyBlackKarasinski;
 
 #[cfg(test)]
@@ -468,7 +478,7 @@ mod tests {
     }
   }
 
-  /// `a <= 0` must be accepted (never panic — construction warns to stderr
+  /// `a <= 0` must be accepted (never panic — construction emits a `log::warn!`
   /// instead) but is documented as producing an unusable path: `a = 0` is a
   /// literal 0/0 in the mean term, poisoning every point after `r0` with
   /// `NaN`; `a < 0` stays finite but diverges instead of mean-reverting.

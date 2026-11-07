@@ -40,6 +40,6 @@ fn black_karasinski_fits_a_small_swaption_grid() {
   );
 
   // The result plugs straight into the lattice pipeline through `ToShortRateModel`.
-  let model = ToShortRateModel::to_short_rate_model(&result, 0.03, 0.03);
+  let model = result.to_short_rate_model();
   assert_eq!(model.sigma, result.sigma);
 }

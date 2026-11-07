@@ -15,26 +15,23 @@ categories = ["mathematics", "science", "algorithms"]
 [features]
 default = []
 python = ["dep:pyo3", "dep:numpy", "stochastic-rs-core/python"]
-# Forwards `dual-stream-rng` to `stochastic-rs-core` and unlocks the
-# `SimdNormalDual` / `SimdExpDual` / `SimdExpZigDual` aliases (Ziggurat main
-# loop consumes two independent engine batches per iteration). Experimental:
-# measured ≈ +5 % (Normal) / parity (Exp) on 128-bit NEON.
-dual-stream-rng = ["stochastic-rs-core/dual-stream-rng"]
+# Enables the experimental `SimdRngDual` engine for seeded streams: ~2–6 % faster bulk Normal fills on NEON, Exp at parity.
+unstable-dual-stream-rng = ["stochastic-rs-core/unstable-dual-stream-rng"]
 
 [dependencies]
 libm = { workspace = true }
-ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
-num-complex = { workspace = true, features = ["rand"] }
+ndarray = { workspace = true }
+num-complex = { workspace = true }
 num-traits = { workspace = true }
 numpy = { workspace = true, optional = true }
-pyo3 = { workspace = true, features = ["extension-module"], optional = true }
+pyo3 = { workspace = true, optional = true }
 rand = { workspace = true }
-rand_distr = { workspace = true }
 rayon = { workspace = true }
 stochastic-rs-core = { workspace = true }
 wide = { workspace = true }
 
 [dev-dependencies]
+rand_distr = { workspace = true }
 # `statrs` is dev-only — used to cross-validate closed-form `DistributionExt`
 # impls in `tests/distribution_ext_vs_reference.rs`. Production code never
 # delegates to statrs.

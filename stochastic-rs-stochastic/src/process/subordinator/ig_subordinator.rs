@@ -1,6 +1,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::inverse_gauss::SimdInverseGauss;
 
 use crate::buffer::array1_from_fill;
@@ -89,6 +92,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] IGSubordinator<T, S> { delta, gamma, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for IGSubordinator<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for IGSubordinator<T, S, B>
 {
@@ -107,7 +115,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     IGSubordinatorSampler {
       n: self.n,
       x0,
-      ig: SimdInverseGauss::<T>::new(mu, lambda, &self.seed),
+      ig: SimdInverseGauss::<T>::new(mu, lambda).seeded(&self.seed),
     }
   }
 
@@ -149,7 +157,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 pub struct IGSubordinatorSampler<T: FloatExt> {
   n: usize,
   x0: T,
-  ig: SimdInverseGauss<T>,
+  ig: Seeded<SimdInverseGauss<T>>,
 }
 
 impl<T: FloatExt> IGSubordinatorSampler<T> {
@@ -170,6 +178,8 @@ impl<T: FloatExt> IGSubordinatorSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for IGSubordinatorSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for IGSubordinatorSampler<T> {
   type Output = Array1<T>;

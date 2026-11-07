@@ -15,15 +15,8 @@ use crate::traits::Greeks;
 /// implement it. The query-carrying types built on this model
 /// (`AnalyticBSEngine`, `Merton1976Pricer`) implement it and delegate here.
 impl BSMPricer {
-  /// Every Greek at one query point, in a [`Greeks`] aggregate.
-  ///
-  /// This is what the removed `GreeksExt` impl's `greeks()` provided, and
-  /// it is the **only** place the aggregate's two renamed members are
-  /// mapped: `Greeks::volga` is [`vomma`](Self::vomma) and `Greeks::veta`
-  /// is [`dvega_dtime`](Self::dvega_dtime). Callers that need the whole set
-  /// (`AnalyticBSEngine`, the `mc_greeks_demo` example) go through here
-  /// rather than re-deriving the mapping in a struct literal — see
-  /// `bsm_greeks_aggregate_matches_accessors`.
+  /// Every Greek at one query point; the one place `Greeks::volga` maps to [`vomma`](Self::vomma)
+  /// and `Greeks::veta` to [`dvega_dtime`](Self::dvega_dtime).
   pub fn greeks(
     &self,
     s: f64,

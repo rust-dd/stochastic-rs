@@ -9,30 +9,8 @@ use ndarray::ArrayView1;
 
 use crate::hurst::HurstError;
 
-/// Estimate the leverage correlation (rho) between log-returns and
-/// volatility changes from a close-price series.
-///
-/// Uses the empirical Pearson correlation between r_t and
-/// (|r_{t+1}| − |r_t|) as a proxy for the Heston-style
-/// dW_S · dW_V = ρ dt.
-///
-/// Equities typically exhibit ρ ∈ [−0.9, −0.3] (leverage effect:
-/// negative returns increase future volatility).
-///
-/// # Arguments
-/// * `closes` — Price series as `ArrayView1`, length >= 20.
-///
-/// # Errors
-///
-/// Returns [`HurstError::TooFewObservations`] when `closes` (or the
-/// finite log-returns / return-pairs derived from it) is too short, and
-/// [`HurstError::DegeneratePath`] when the return / vol-change series has
-/// (near-)zero variance, making the Pearson correlation undefined.
-/// Reuses [`HurstError`] rather than a bespoke type: both estimators fail
-/// for the same reasons (too little data, degenerate input) on the same
-/// close-price series shape. Callers that want the pre-2.7 clamp-to-default
-/// behavior can write `estimate_leverage_rho(x).unwrap_or(-0.5)` explicitly
-/// — the function itself no longer guesses on your behalf.
+/// Heston leverage ρ (`dW_S·dW_V = ρ dt`) proxied by the Pearson correlation of `r_t` with
+/// `|r_{t+1}| − |r_t|`; errors below 20 usable closes or on a (near-)zero-variance series.
 pub fn estimate_leverage_rho(closes: ArrayView1<f64>) -> Result<f64, HurstError> {
   let n = closes.len();
   if n < 20 {

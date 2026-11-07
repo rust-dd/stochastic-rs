@@ -36,9 +36,9 @@
 //! published) numerical scheme.
 
 use ndarray::Array1;
-use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 use stochastic_rs_distributions::special::gamma;
@@ -298,6 +298,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] FBatesSvj<T, S> { hurst, mu, s0, v0, theta, kappa, xi, rho, lambda, nu, omega, n, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for FBatesSvj<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for FBatesSvj<T, S, B>
 {
@@ -443,11 +448,12 @@ impl<T: FloatExt, S: SeedExt> FBatesSvjSampler<T, S> {
     let kappa_j = (self.nu + half * self.omega * self.omega).exp() - T::one();
 
     // Jump RNG
-    let z_std = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
-    let mut rng = self.seed.rng();
+    let mut z_std = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed);
+    // One seed is skipped: the pinned streams that follow take theirs after it.
+    self.seed.next_seed();
     let lambda_dt = self.lambda.to_f64().unwrap() * dt.to_f64().unwrap();
-    let pois = if lambda_dt > 0.0 {
-      Some(SimdPoisson::<u32>::new(lambda_dt, &self.seed))
+    let mut pois = if lambda_dt > 0.0 {
+      Some(SimdPoisson::<u32>::new(lambda_dt).seeded(&self.seed))
     } else {
       None
     };
@@ -476,11 +482,11 @@ impl<T: FloatExt, S: SeedExt> FBatesSvjSampler<T, S> {
 
       // Jump component
       let mut jump_sum = T::zero();
-      if let Some(pois) = &pois {
-        let n_jumps: u32 = pois.sample(&mut rng);
+      if let Some(pois) = &mut pois {
+        let n_jumps = pois.sample();
         if n_jumps > 0 {
           let kf = T::from_f64_fast(n_jumps as f64);
-          let z0 = z_std.sample_fast();
+          let z0 = z_std.sample();
           jump_sum = self.nu * kf + self.omega * kf.sqrt() * z0;
         }
       }
@@ -491,6 +497,8 @@ impl<T: FloatExt, S: SeedExt> FBatesSvjSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for FBatesSvjSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for FBatesSvjSampler<T, S> {
   type Output = [Array1<T>; 2];

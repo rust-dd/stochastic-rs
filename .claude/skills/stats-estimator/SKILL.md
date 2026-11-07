@@ -126,10 +126,7 @@ mod tests {
     /// Reference: <Author, Year>, Table 3 row 2 — H = 0.7 +/- 0.02.
     #[test]
     fn hurst_recovery_matches_paper_table3() {
-        // Seed the *process*, not an external Rng. `dev-rules` §7a:
-        // `StdRng` / `rand_distr` belong to `benches/` only, and a
-        // `Simd*` distribution ignores any `Rng` handed to `fill_slice`
-        // — the seed must reach the constructor.
+        // The seed goes to the constructor; `StdRng` and `rand_distr` are for benches only.
         let series = Fbm::<f64, _>::new(0.7, 5_000, None, Deterministic::new(42)).sample();
         let result = estimate_hurst(series.view());
         assert!(
