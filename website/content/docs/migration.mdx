@@ -36,7 +36,8 @@ let put  = p.price_put(100.0, 100.0, 0.03, 0.0, 0.5);
 ## Calibrators
 
 - `HestonCalibrator`, `SabrCalibrator` and the three swaption calibrators (`HullWhiteSwaptionCalibrator`, `BlackKarasinskiSwaptionCalibrator`, `G2ppSwaptionCalibrator`) have a public `regularization: Option<Regularization>` field; a struct literal must set it (`None` reproduces v2).
-- `HestonCalibrationResult` has a public `termination: String` field, as in 2.6.2, so a struct literal must set it. It holds basin's termination reason (`SolverConverged`, `MaxCostEvals`, …), not the 2.6.x `levenberg-marquardt` text, and the reported `rmse` comes from the pricer that was fitted.
+- `HestonCalibrationResult` has no `termination` field: 2.6.2's string is `CalibrationResult::message()`, one of `"converged"`, `"evaluation budget exhausted"`, `"no numerical progress"` and `"solver failed"`, and the private field behind it means the result can no longer be built from a struct literal. The reported `rmse` comes from the pricer that was fitted.
+- `set_feller_projection(true)` lowers σ alone to the largest value with σ² ≤ 2κθ at every point the fit evaluates, so the result passes `HestonParams::satisfies_feller_condition()` exactly, and a surface that violates Feller's condition is fitted on the boundary. `projected_with_feller_condition()` moves σ alone too; 2.6.2's could stop one ulp outside the condition.
 - `SabrCalibrator::new` asserts that strikes and vols have the same length, and the shifted caplet calibrator returns `f64::MAX` residuals instead of `NaN` for an out-of-domain trial point, so a Levenberg–Marquardt step does not stall on a non-finite loss.
 - `BlackKarasinskiSwaptionCalibrator`, `HullWhiteSwaptionCalibrator`, `G2ppSwaptionCalibrator` and `SabrCapletCalibrator` report `converged` only when the simplex objective spread falls below `sd_tolerance`. An iteration limit or nonfinite simplex costs return `false` with the best parameters found. This also changes the final element of their Python return tuples.
 
@@ -67,7 +68,7 @@ Enums that will keep gaining variants (`CopulaType`, `HazardInterpolation`, the 
 
 ## Parameter asserts name the parameter and its value
 
-Constructors that rejected a bad parameter with a bare `assert!` now panic with a message of the form ``sigma must satisfy `sigma > 0.0`, got sigma = -0.2``. If a test pinned the old message through `#[should_panic(expected = …)]`, update the string. `Heston::qe()` checks `HestonPow::Sqrt`, `kappa > 0`, `sigma > 0` and a positive `s0` when it switches the scheme, rather than at the first sample. The error convention (invalid parameter → panic; not computable → documented `NaN`; data-dependent failure → `Result`) is in [design philosophy](/docs/concepts/design-philosophy#error-convention).
+Constructors that rejected a bad parameter with a bare `assert!` now panic with a message of the form ``sigma must satisfy `sigma > 0.0`, got sigma = -0.2``. If a test pinned the old message through `#[should_panic(expected = …)]`, update the string. `Heston::qe()` checks `HestonPow::Sqrt`, `kappa > 0`, `sigma > 0` and a positive `s0` when it switches the scheme, and again when the scheme runs, since the fields stay public. The error convention (invalid parameter → panic; not computable → documented `NaN`; data-dependent failure → `Result`) is in [design philosophy](/docs/concepts/design-philosophy#error-convention).
 
 ## Sampling results that change for a given seed
 
@@ -90,6 +91,7 @@ Constructors that rejected a bad parameter with a bare `assert!` now panic with 
 - `device=` on the device-capable classes is the device entry point for the Euler engine.
 - The AI classes (`HestonNn`, `RBergomiNn`, `OneFactorNn`, `calibrate_surrogate`) are behind the `ai` feature.
 - A panic in a constructor raises `ValueError` and one in `sample` / `sample_par` raises `RuntimeError`, not `pyo3_runtime.PanicException` (a `BaseException`); code that caught `PanicException` around those calls catches the ordinary exception instead.
+- `HestonCalibrator.calibrate` takes its starting point as `initial_guess=`, as the other calibrators do, where 2.6.2 spelled it `initial=`; with `full_output=True` the appended element is the stop reason above. `PyHeston` raises `ValueError` for a `pow` other than `"sqrt"` or `"3/2"`, where 2.x fell back to the square-root variance.
 
 ## What is not a breaking change
 
