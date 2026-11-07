@@ -473,7 +473,8 @@ pub fn beta_i(a: f64, b: f64, x: f64) -> f64 {
   let bt = (lab - la - lb + lx + ly).exp();
   let lower = x < (a + 1.0) / (a + b + 2.0);
   if bt.is_normal() {
-    // `bt`'s rounding, `ε` times its logarithms' sizes, and below the switch `b` times `1 − x`'s.
+    // `bt`'s rounding: `ε` times its logs' sizes, with `REST_FLOOR` beside them past the switch
+    // and `b` times `1 − x`'s below it.
     let size = || lab.abs() + la.abs() + lb.abs() + lx.abs() + ly.abs();
     if lower {
       let v = bt * betacf(a, b, x) / a;
@@ -483,7 +484,8 @@ pub fn beta_i(a: f64, b: f64, x: f64) -> f64 {
       return next_to_one(a, b, x, v, size());
     }
     let rest = bt * betacf(b, a, 1.0 - x) / b;
-    if b > 1.0 || x < 0.5 || f64::EPSILON * size() * rest <= TAIL_HELD * (1.0 - rest) {
+    if b > 1.0 || x < 0.5 || f64::EPSILON * (size() + REST_FLOOR) * rest <= TAIL_HELD * (1.0 - rest)
+    {
       return 1.0 - rest;
     }
     return complement::upper_series(b, a, 1.0 - x);
@@ -505,6 +507,10 @@ fn next_to_one(a: f64, b: f64, x: f64, v: f64, size: f64) -> f64 {
 
 /// The relative error a value next to 1 or `1 − rest` may carry before the complement replaces it: `2⁻⁴⁰`, under the bar.
 const TAIL_HELD: f64 = 9.094947017729282e-13;
+
+/// `rest`'s ε past its logs' sizes: the fraction's 1e-15 stop and steps, `exp`, two products and
+/// ln Γ's Lanczos terms, about 17 by an `|ln Γ|` under 1 (at most 7.2, 2, 8.3 apart, 10 together).
+const REST_FLOOR: f64 = 16.0;
 
 /// Where `bt` left the normal doubles: `x^a(1 − x)^b/(a·B(a, b))` and the fraction's log before one `exp`, `ln(a·B(a, b))`
 /// cancellation-free at a shape at most 1; a side next to 1 is the complement series, which no rounded `(1 − x)^b` enters.
