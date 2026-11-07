@@ -3,9 +3,9 @@
 
 use super::SimdTruncatedNormal;
 use super::TruncatedNormalSource;
+use crate::special::ldexp;
 use crate::special::split_pow2;
 use crate::traits::SimdFloatExt;
-use crate::truncated::quadrature::ldexp;
 
 /// Which of Robert (1995)'s proposals a one-sided standardised interval $[a, b]$ with $a \ge 0$ takes.
 #[derive(Clone, Copy, Debug, PartialEq)]

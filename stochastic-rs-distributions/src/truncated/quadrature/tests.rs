@@ -201,7 +201,7 @@ fn ln_1p_mx_keeps_its_digits_to_three_quarters() {
 }
 
 /// `power` scales to a subnormal in one rounding: `0x1.999999999bfffp-1·2⁻¹⁰³⁶`, a mantissa below 1, meets a tie after
-/// the two-step `ldexp`'s first rounding, and its exact value lies below that tie.
+/// a first step of `2⁻¹⁰²²`, and its exact value lies below that tie.
 #[test]
 fn power_rounds_a_subnormal_once() {
   let m = f64::from_bits(0x3FE9_9999_9999_BFFF);
@@ -217,6 +217,6 @@ fn power_rounds_a_subnormal_once() {
   };
   assert_eq!(got, f64::from_bits(units));
   if x == m {
-    assert!(got == 1.086461844973e-312 && ldexp(x, -1036) == 1.08646184498e-312);
+    assert_eq!(got, 1.086461844973e-312);
   }
 }

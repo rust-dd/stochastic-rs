@@ -4,9 +4,9 @@
 use super::Kernel;
 use super::Point;
 use super::Truncation;
-use super::ldexp_once;
 use super::panels::span;
 use super::two_prod;
+use crate::special::ldexp;
 use crate::special::split_pow2;
 
 /// `ln(1e-270)`: within that share of the width the kernel's slope and curvature move `ln k` by under 1e-250.
@@ -58,7 +58,7 @@ pub(in crate::truncated) fn power(t: Offset, e: f64, c: f64, s: i32) -> f64 {
   if p.abs() > 4000.0 {
     return if p > 0.0 { f64::INFINITY } else { 0.0 };
   }
-  ldexp_once(r.exp(), p as i32)
+  ldexp(r.exp(), p as i32)
 }
 
 /// `e^{hi + lo}` as `m·2^k`, `m` near 1, for `hi` whose own digits the exponent would lose and a small `lo`: Cody–Waite

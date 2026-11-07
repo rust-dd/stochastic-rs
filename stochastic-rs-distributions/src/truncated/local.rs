@@ -10,7 +10,7 @@ use super::quadrature::Point;
 use super::quadrature::Terms;
 use super::quadrature::Truncation;
 use super::quadrature::accurate_sum;
-use super::quadrature::ldexp;
+use crate::special::ldexp;
 
 /// `sign·e^{ln}`: a derivative the doubles may not hold.
 #[derive(Clone, Copy, Debug, PartialEq)]

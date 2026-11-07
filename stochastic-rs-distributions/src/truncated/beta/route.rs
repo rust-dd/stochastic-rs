@@ -6,11 +6,11 @@ use std::f64::consts::LN_2;
 use super::super::SimdTruncatedGamma;
 use super::super::gamma::GammaKernel;
 use super::super::gamma::unit_exponent;
+use crate::special::ldexp;
 use crate::truncated::quadrature::Cut;
 use crate::truncated::quadrature::Filled;
 use crate::truncated::quadrature::Point;
 use crate::truncated::quadrature::Reflected;
-use crate::truncated::quadrature::ldexp;
 
 /// `(e − 1)(ln(1 − x) + x)` within 2⁻⁵³: it is at most `(e − 1)x²/(2(1 − x))` above a unit exponent, below one the
 /// whole `(1 − e)·x/(1 − x)` against a rate of 0.

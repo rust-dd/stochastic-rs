@@ -11,8 +11,6 @@ use super::Two;
 use super::Walked;
 use super::clip;
 use super::exp_split;
-use super::ldexp;
-use super::ldexp_once;
 use super::panels::Cut;
 use super::panels::Panel;
 use super::panels::span;
@@ -20,6 +18,7 @@ use super::singular::Frame;
 use super::two;
 use super::zone::Offset;
 use super::zone::ZONE;
+use crate::special::ldexp;
 use crate::special::mul_parts;
 use crate::special::split_pow2;
 use crate::traits::RealExt;
@@ -193,6 +192,6 @@ impl<K: Kernel> Truncation<K> {
       return 0.0;
     }
     let ((m, q), (qr, mr)) = (exp_split(hi, lo), split_pow2(r));
-    ldexp_once(m.mul_add(mr, m * ldexp(r_lo, -qr)), q + qr + ql - qw).min_or_nan(1.0)
+    ldexp(m.mul_add(mr, m * ldexp(r_lo, -qr)), q + qr + ql - qw).min_or_nan(1.0)
   }
 }

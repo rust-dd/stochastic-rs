@@ -495,3 +495,33 @@ fn beta_ic_reads_the_upper_tail_from_x() {
   }
   assert_eq!(beta_ic(5e-324, 1.0, 1e-310), 714.0 * 5e-324);
 }
+
+/// `ldexp` rounds a subnormal once, against `x·2ᵖ` rounded from its integer mantissa: steps of `2⁻¹⁰⁰⁰` round 18 of
+/// these 10 716 cells twice, `2⁻⁵³(1 + 2⁻⁵²)·2⁻¹⁰²²` to 0 among them, and steps of `2⁻¹⁰²²` 12.
+#[test]
+fn ldexp_rounds_a_subnormal_once() {
+  let once = |x: f64, p: i32| {
+    let (e, m) = split_pow2(x.abs());
+    let n = u128::from((m.to_bits() & ((1 << 52) - 1)) | (1 << 52));
+    let k = (-(e + p + 1022)).min(60) as u32;
+    let (q, r, half) = (n >> k, n & ((1 << k) - 1), (1 << k) >> 1);
+    let units = q + u128::from(r > half || (r == half && k > 0 && q & 1 == 1));
+    x.signum() * f64::from_bits(units as u64)
+  };
+  for bits in [
+    0x3ff0_0000_0000_0001_u64,
+    0x3fe9_9999_9999_bfff,
+    0x3fff_ffff_ffff_ffff,
+    0x3ff8_0000_0000_0001,
+    0x3ff1_2345_6789_abcd,
+  ] {
+    for shift in [-60, -53, -40, -23, -22, -1, 0, 1] {
+      let x = f64::from_bits(bits) * 2f64.powi(shift);
+      for p in -1130..=-1022 - split_pow2(x).0 {
+        assert_eq!(ldexp(x, p), once(x, p), "ldexp({x:e}, {p})");
+        assert_eq!(ldexp(-x, p), once(-x, p), "ldexp({:e}, {p})", -x);
+      }
+    }
+  }
+  assert_eq!(ldexp(f64::from_bits(0x3ca0_0000_0000_0001), -1022), 5e-324);
+}

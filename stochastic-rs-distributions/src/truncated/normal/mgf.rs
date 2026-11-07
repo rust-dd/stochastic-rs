@@ -7,6 +7,7 @@ use std::f64::consts::LN_2;
 
 use super::SimdTruncatedNormal;
 use super::kernels::TiltedKernel;
+use crate::special::ldexp;
 use crate::special::split_pow2;
 use crate::traits::SimdFloatExt;
 use crate::truncated::local::Model;
@@ -14,7 +15,6 @@ use crate::truncated::quadrature::Cut;
 use crate::truncated::quadrature::Terms;
 use crate::truncated::quadrature::Truncation;
 use crate::truncated::quadrature::accurate_sum;
-use crate::truncated::quadrature::ldexp;
 use crate::truncated::quadrature::span;
 use crate::truncated::quadrature::two_prod;
 use crate::truncated::quadrature::two_sum;

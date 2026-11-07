@@ -5,11 +5,11 @@ use std::sync::OnceLock;
 
 use super::Kernel;
 use super::Truncation;
-use super::ldexp;
 use super::panels::Cut;
 use super::panels::Panel;
 use super::panels::panels;
 use super::panels::span;
+use crate::special::ldexp;
 
 impl<K: Kernel> Truncation<K> {
   /// `(mean, (scale·2^p)²·variance, skewness, excess kurtosis)`, `2^p` the law's unit, in the square before it rounds.

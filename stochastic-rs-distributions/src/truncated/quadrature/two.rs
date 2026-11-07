@@ -2,9 +2,9 @@
 //!
 //! Reference: Dekker, T. J. (1971), "A floating-point technique for extending the available precision", *Numerische Mathematik* 18(3), 224-242, DOI 10.1007/BF01397083.
 
-use super::ldexp;
 use super::panels::Cut;
 use super::sum::two_sum;
+use crate::special::ldexp;
 use crate::special::mul_parts;
 use crate::special::split_pow2;
 

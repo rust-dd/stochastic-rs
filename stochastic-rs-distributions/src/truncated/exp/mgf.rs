@@ -3,11 +3,10 @@
 
 use super::SimdTruncatedExp;
 use super::fractions::one_minus_exp_over;
+use crate::special::ldexp;
 use crate::special::split_pow2;
 use crate::traits::SimdFloatExt;
 use crate::truncated::quadrature::exp_split;
-use crate::truncated::quadrature::ldexp;
-use crate::truncated::quadrature::ldexp_once;
 use crate::truncated::quadrature::two_prod;
 
 /// Past this `|x|` the `e^{±x}` beside 1 is below every digit: `φ₊` and `φ` are their leading powers.
@@ -70,7 +69,7 @@ fn scaled(t: f64, (hi, rest): (f64, f64), lam: f64, len: f64) -> f64 {
     let ((mf, ef), (mg, eg)) = (phi_plus(difference(t, lam), len), phi(lam, len));
     (mf / mg, ef - eg)
   };
-  ldexp_once(m * q, k + p)
+  ldexp(m * q, k + p)
 }
 
 /// `a − b` as `m·2^e`, the sign in `m`, from halves where it overflows; `(0, 0)` at 0.

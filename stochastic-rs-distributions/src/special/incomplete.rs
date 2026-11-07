@@ -377,14 +377,24 @@ pub(super) fn split_sqrt2(s: f64) -> (i32, f64) {
   }
 }
 
-/// `x·2ᵖ` by powers of two the doubles hold, so `2ᵖ` may lie past them; a partial product leaves the normal range only
-/// where the result does.
+/// `x·2ᵖ` rounded once, by musl `scalbn`'s steps: a step of `2⁻⁹⁶⁹` that rounds a subnormal leaves a last factor below
+/// `2⁻⁵³`, whose product rounds to 0 as the exact value does.
 pub(crate) fn ldexp(mut x: f64, mut p: i32) -> f64 {
   let pow2 = |k: i32| f64::from_bits(((k + 1023) as u64) << 52);
-  while p.abs() > 1000 {
-    let step = 1000 * p.signum();
-    x *= pow2(step);
-    p -= step;
+  if p > 1023 {
+    x *= pow2(1023);
+    p -= 1023;
+    if p > 1023 {
+      x *= pow2(1023);
+      p = (p - 1023).min(1023);
+    }
+  } else if p < -1022 {
+    x *= pow2(-969);
+    p += 969;
+    if p < -1022 {
+      x *= pow2(-969);
+      p = (p + 969).max(-1022);
+    }
   }
   x * pow2(p)
 }

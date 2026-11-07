@@ -6,7 +6,7 @@
 pub(in crate::truncated) use crate::special::two_prod;
 pub(in crate::truncated) use crate::special::two_sum;
 
-use super::ldexp;
+use crate::special::ldexp;
 use crate::special::split_pow2;
 
 /// The terms' sum to a double-double as if formed in thrice the precision: two cascades of two-sums that carry each

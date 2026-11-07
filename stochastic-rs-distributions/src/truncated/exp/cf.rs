@@ -7,9 +7,9 @@ use super::SimdTruncatedExp;
 use super::turns::radians;
 use super::turns::reduce;
 use super::turns::turns;
+use crate::special::ldexp;
 use crate::special::split_pow2;
 use crate::traits::SimdFloatExt;
-use crate::truncated::quadrature::ldexp;
 
 impl<T: SimdFloatExt> SimdTruncatedExp<T> {
   /// A product `t·x` past 1 is reduced from its exact parts, and each quotient by `λ − it` taken at its own power of two,
