@@ -477,6 +477,39 @@ fn beta_i_reads_a_value_next_to_1_from_the_complement() {
   assert_eq!(beta_i(1e-300, 1e8, 1e-10), 1.0);
 }
 
+/// Below the switch at a first shape at most 1 a value next to 1 stays at or below it, within 1e-12 of mpmath's: the
+/// direct fraction read above it, `1.0000000000000007` at survey law 475's bounds and up to `1.0000000000001763`.
+#[test]
+fn beta_i_keeps_a_value_next_to_1_at_or_below_it() {
+  for (a, b, x, want) in [
+    (
+      4.695248705244798e-23,
+      3.312248097819112e-8,
+      6.543618931704305e-119,
+      0.9999999999999986,
+    ),
+    (
+      4.695248705244798e-23,
+      3.312248097819112e-8,
+      5.028784517286747e-12,
+      0.9999999999999986,
+    ),
+    (1e-300, 1e-9, 0.3, 1.0),
+    (
+      1.953306771036601e-55,
+      294.26644144853367,
+      4.738157598049414e-78,
+      1.0,
+    ),
+  ] {
+    let got = beta_i(a, b, x);
+    assert!(
+      got <= 1.0 && (got - want).abs() <= 1e-12,
+      "I_{x}({a:e}, {b:e}) = {got:e}, want {want:e}"
+    );
+  }
+}
+
 /// `1 − I_x(a, b)` from `x` where `1 − x` rounds it away or `(1 − x)^b` carries `b` ulps: mpmath at 60 and 120 digits raised
 /// by |log₁₀ a| and |log₁₀ x|, a subnormal its correctly rounded double.
 #[test]
