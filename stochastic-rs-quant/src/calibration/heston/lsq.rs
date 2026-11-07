@@ -4,6 +4,7 @@ use ndarray::Array2;
 use super::calibrator::HestonCalibrator;
 use super::params::HestonJacobianMethod;
 use super::params::HestonParams;
+use super::params::feller_sigma_cap;
 use super::transform::apply_chain_rule;
 use super::transform::from_optimizer_coordinates;
 use super::transform::to_optimizer_coordinates;
@@ -73,27 +74,51 @@ impl LeastSquaresProblem for HestonCalibrator {
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
-    let p = self.effective_params();
-    let optimizer_coordinates = to_optimizer_coordinates(&p);
+    let free = self.free_params();
+    let p = self.feller_projected(free.clone());
+    let optimizer_coordinates = to_optimizer_coordinates(&free);
+    let capped = self.feller_projection && p.sigma < free.sigma;
+    let to_optimizer = |physical: Array2<f64>| {
+      let physical = if capped {
+        through_feller_cap(physical, &free)
+      } else {
+        physical
+      };
+      apply_chain_rule(physical, &optimizer_coordinates)
+    };
     let jacobian = match self.jacobian_method {
-      HestonJacobianMethod::NumericFiniteDiff => self.numeric_optimizer_jacobian(&p),
+      HestonJacobianMethod::NumericFiniteDiff => self.numeric_optimizer_jacobian(&free),
       HestonJacobianMethod::CuiAnalytic => {
         match self.compute_model_prices_and_residual_jacobian_cui(&p) {
-          Some((_, jac)) => apply_chain_rule(jac, &optimizer_coordinates),
-          None => self.numeric_optimizer_jacobian(&p),
+          Some((_, jac)) => to_optimizer(jac),
+          None => self.numeric_optimizer_jacobian(&free),
         }
       }
     };
     Some(match &self.regularization {
       // The penalty rows are diagonal in the physical parameters; the same
       // chain rule as the price rows maps them into the optimiser coordinates.
-      Some(reg) if reg.is_active() => reg.augment_jacobian(
-        jacobian,
-        apply_chain_rule(reg.jacobian_rows(), &optimizer_coordinates),
-      ),
+      Some(reg) if reg.is_active() => {
+        reg.augment_jacobian(jacobian, to_optimizer(reg.jacobian_rows()))
+      }
       _ => jacobian,
     })
   }
+}
+
+/// Where the Feller projection caps σ at √(2κθ), σ's column moves into κ's and θ's by ∂σ/∂κ = σ/(2κ) and
+/// ∂σ/∂θ = σ/(2θ), and the coordinate σ no longer moves the residuals.
+fn through_feller_cap(mut jacobian: Array2<f64>, free: &HestonParams) -> Array2<f64> {
+  let cap = feller_sigma_cap(free.kappa, free.theta);
+  let sigma_column = jacobian.column(3).to_owned();
+  jacobian
+    .column_mut(1)
+    .scaled_add(cap / (2.0 * free.kappa), &sigma_column);
+  jacobian
+    .column_mut(2)
+    .scaled_add(cap / (2.0 * free.theta), &sigma_column);
+  jacobian.column_mut(3).fill(0.0);
+  jacobian
 }
 
 /// Physical parameters in the regularisation order `(v0, κ, θ, σ, ρ)`.

@@ -64,7 +64,7 @@ pub struct HestonCalibrator {
   pub loss_metrics: &'static [LossMetric],
   /// Jacobian/method choice for calibration.
   pub jacobian_method: HestonJacobianMethod,
-  /// Project every iterate onto Feller's condition `2κθ ≥ σ²` (off by default).
+  /// Lower σ of the guess and of every iterate to Feller's bound `σ² ≤ 2κθ` (off by default).
   pub feller_projection: bool,
   /// Optional common LM tolerance for research workloads.
   pub optimizer_tolerance: Option<f64>,
@@ -264,6 +264,8 @@ impl HestonCalibrator {
     self.jacobian_method = method;
   }
 
+  /// Project the guess and every iterate onto `σ² ≤ 2κθ`, so the fit passes [`HestonParams::satisfies_feller_condition`];
+  /// a surface that violates it is then fitted on the boundary.
   pub fn set_feller_projection(&mut self, enabled: bool) {
     self.feller_projection = enabled;
   }

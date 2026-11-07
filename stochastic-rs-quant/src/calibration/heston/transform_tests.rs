@@ -153,6 +153,19 @@ fn analytic_jacobian_includes_the_optimizer_chain_rule() {
 }
 
 #[test]
+fn analytic_jacobian_differentiates_through_an_active_feller_cap() {
+  let params = non_feller_params();
+  let mut calibrator =
+    synthetic_calibrator(&params, params.clone(), HestonJacobianMethod::CuiAnalytic);
+  calibrator.set_feller_projection(true);
+  calibrator.set_params(&to_optimizer_coordinates(&params));
+  let analytic = calibrator.jacobian().unwrap();
+  let numeric = calibrator.numeric_optimizer_jacobian(&calibrator.free_params());
+  assert!(analytic.column(3).iter().all(|value| *value == 0.0));
+  assert_jacobians_close(&analytic, &numeric);
+}
+
+#[test]
 fn least_squares_numeric_path_differentiates_optimizer_coordinates() {
   let params = non_feller_params();
   let calibrator = synthetic_calibrator(

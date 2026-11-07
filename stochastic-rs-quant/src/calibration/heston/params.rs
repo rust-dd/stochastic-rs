@@ -115,19 +115,11 @@ impl HestonParams {
     2.0 * self.kappa * self.theta >= self.sigma * self.sigma
   }
 
-  /// Apply box projection and then explicitly impose the Feller condition.
+  /// Box-project, then lower σ alone to the largest value [`satisfies_feller_condition`](Self::satisfies_feller_condition)
+  /// accepts; idempotent, and the box keeps √(2κθ) ≥ √(2·0.1·0.001) above σ's floor of 0.01.
   pub fn project_feller_in_place(&mut self) {
     self.project_in_place();
-
-    if !self.satisfies_feller_condition() {
-      let sigma_star = (2.0 * self.kappa * self.theta).sqrt();
-      if sigma_star >= P_SIGMA.0 {
-        self.sigma = sigma_star.min(P_SIGMA.1);
-      } else {
-        let theta_star = ((self.sigma * self.sigma) / (2.0 * self.kappa)).max(THETA_MIN) + EPS;
-        self.theta = theta_star.min(P_THETA.1);
-      }
-    }
+    self.sigma = self.sigma.min(feller_sigma_cap(self.kappa, self.theta));
   }
 
   pub fn projected(mut self) -> Self {
@@ -140,6 +132,16 @@ impl HestonParams {
     self.project_feller_in_place();
     self
   }
+}
+
+/// The largest σ with `σ * σ <= 2.0 * kappa * theta` in `f64`; `√(2κθ)` itself can square one ulp past the bound.
+pub(super) fn feller_sigma_cap(kappa: f64, theta: f64) -> f64 {
+  let bound = 2.0 * kappa * theta;
+  let mut cap = bound.sqrt();
+  while cap * cap > bound {
+    cap = cap.next_down();
+  }
+  cap
 }
 
 impl From<HestonMleResult> for HestonParams {

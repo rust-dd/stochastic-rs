@@ -333,7 +333,7 @@ def test_heston_calibrator_options_reach_the_rust_calibrator():
     v0, kappa, theta, sigma, rho, *_ = sr.HestonCalibrator(
         slices, 100.0, 0.02, "call", 0.0, feller_projection=True
     ).calibrate()
-    assert sigma * sigma <= 2.0 * kappa * theta * (1.0 + 1e-12)
+    assert sigma * sigma <= 2.0 * kappa * theta
     for bad in ({"jacobian_method": "newton"}, {"residual_weights": [1.0]}):
         with pytest.raises(ValueError):
             sr.HestonCalibrator(slices, 100.0, 0.02, "call", 0.0, **bad)

@@ -169,13 +169,41 @@ fn stop_reason_accompanies_converged() {
 }
 
 #[test]
-fn feller_projection_keeps_a_below_feller_fit_on_the_boundary() {
-  let mut calibrator = calibrator(&CASES[0], HestonJacobianMethod::CuiAnalytic);
-  calibrator.set_feller_projection(true);
-  let fit = calibrator.calibrate(None).unwrap().params;
+fn feller_projection_fits_a_below_feller_surface_on_the_boundary_from_any_start() {
+  let fit_from = |start: Option<HestonParams>| {
+    let mut calibrator = calibrator(&CASES[0], HestonJacobianMethod::CuiAnalytic);
+    calibrator.set_feller_projection(true);
+    calibrator.set_record_history(true);
+    let result = calibrator.calibrate(start).unwrap();
+    assert!(
+      calibrator
+        .history()
+        .iter()
+        .all(|step| step.params.satisfies_feller_condition())
+    );
+    result
+  };
+  let fallback = fit_from(None);
+  let feasible = fit_from(Some(HestonParams {
+    v0: 0.03,
+    kappa: 1.5,
+    theta: 0.03,
+    sigma: 0.2,
+    rho: -0.5,
+  }));
+  for result in [&fallback, &feasible] {
+    let fit = &result.params;
+    let slack = 1.0 - fit.sigma * fit.sigma / (2.0 * fit.kappa * fit.theta);
+    assert!(
+      result.converged && fit.satisfies_feller_condition() && slack < 1e-9,
+      "{fit:?}"
+    );
+  }
   assert!(
-    fit.sigma * fit.sigma <= 2.0 * fit.kappa * fit.theta * (1.0 + 1e-12),
-    "{fit:?}"
+    (fallback.rmse() - feasible.rmse()).abs() < 1e-9 * fallback.rmse(),
+    "rmse {:e} from the fallback start, {:e} from a feasible one",
+    fallback.rmse(),
+    feasible.rmse()
   );
 }
 

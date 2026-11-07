@@ -104,7 +104,8 @@ impl HestonCalibrator {
     }
   }
 
-  pub(super) fn effective_params(&self) -> HestonParams {
+  /// The canonical point the optimiser's coordinates stand for, before the Feller projection.
+  pub(super) fn free_params(&self) -> HestonParams {
     let projected = if let Some(p) = &self.params {
       p.clone().projected()
     } else {
@@ -112,10 +113,15 @@ impl HestonCalibrator {
         .infer_initial_guess_from_series()
         .unwrap_or_else(Self::fallback_params)
     };
-    canonicalize(&self.feller_projected(projected))
+    canonicalize(&projected)
   }
 
-  fn feller_projected(&self, params: HestonParams) -> HestonParams {
+  /// The point every residual is evaluated at; projected last, so no rounding of the coordinates undoes Feller.
+  pub(super) fn effective_params(&self) -> HestonParams {
+    self.feller_projected(self.free_params())
+  }
+
+  pub(super) fn feller_projected(&self, params: HestonParams) -> HestonParams {
     if self.feller_projection {
       params.projected_with_feller_condition()
     } else {
@@ -186,6 +192,14 @@ impl HestonCalibrator {
     let p = 5usize;
     let coordinates = to_optimizer_coordinates(params);
     let mut J = Array2::zeros((n, p));
+    // A physical column divides by its own parameter's change, so it differentiates the unprojected prices.
+    let project = |params: HestonParams| {
+      if optimizer_denominator {
+        self.feller_projected(params)
+      } else {
+        params
+      }
+    };
 
     for col in 0..p {
       let h = 1e-5 * (1.0 + coordinates[col].abs());
@@ -193,8 +207,8 @@ impl HestonCalibrator {
       let mut minus = coordinates.clone();
       plus[col] += h;
       minus[col] -= h;
-      let params_plus = self.feller_projected(from_optimizer_coordinates(&plus));
-      let params_minus = self.feller_projected(from_optimizer_coordinates(&minus));
+      let params_plus = project(from_optimizer_coordinates(&plus));
+      let params_minus = project(from_optimizer_coordinates(&minus));
 
       let r_plus = self.residuals_for(&params_plus);
       let r_minus = self.residuals_for(&params_minus);
