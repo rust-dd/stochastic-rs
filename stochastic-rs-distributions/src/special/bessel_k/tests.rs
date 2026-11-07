@@ -370,3 +370,44 @@ fn assert_two_part_logarithm(rows: &[(f64, f64, f64, f64)]) {
     );
   }
 }
+
+/// mpmath at 60 and 120 digits (Hankel's expansion) from `x = 2¹⁰²³`, where Steed's `2(1 + x)`
+/// overflows: `e^x K_ν(x)` and its logarithm to order 50.
+#[test]
+fn the_scaled_k_holds_to_max() {
+  let max = f64::MAX;
+  for (nu, x, want, ln_want) in [
+    (
+      10.0,
+      9e307,
+      1.321_109_099_202_003_6e-154,
+      -354.319_632_710_609_37,
+    ),
+    (0.0, max, 9.347_643_879_329_245e-155, -354.665_565_094_047_3),
+    (0.5, max, 9.347_643_879_329_245e-155, -354.665_565_094_047_3),
+    (
+      49.0,
+      max,
+      9.347_643_879_329_245e-155,
+      -354.665_565_094_047_3,
+    ),
+    (
+      50.0,
+      max,
+      9.347_643_879_329_245e-155,
+      -354.665_565_094_047_3,
+    ),
+    (
+      1.0,
+      8.988_465_674_311_58e307,
+      1.321_956_475_038_127e-154,
+      -354.318_991_503_767_3,
+    ),
+  ] {
+    let (got, ln_got) = (bessel_ke(nu, x), ln_bessel_ke(nu, x));
+    assert!(
+      close(got, want, 1e-13) && close(ln_got, ln_want, 1e-13),
+      "ν = {nu}, x = {x:e}: {got:e}, {ln_got}"
+    );
+  }
+}

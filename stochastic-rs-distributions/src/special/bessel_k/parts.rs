@@ -3,6 +3,7 @@
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 10.30.2 (`½Γ(ν)(2/x)^ν` as `x → 0`) and eq. 10.40.2 (Hankel's expansion), <https://dlmf.nist.gov/10.30>.
 
 use super::EPS;
+use super::HALF_LN_HALF_PI;
 use super::X_MIN;
 use super::ke_pair;
 use super::temme_gammas;
@@ -22,9 +23,6 @@ const HANKEL_FROM: i32 = 60;
 
 /// Below `2⁻⁶⁰` the terms in `x²` and, from `ν = ½`, `x^{2ν}` are under `2⁻⁵⁹` of `K`.
 const TINY_BELOW: i32 = -60;
-
-/// `½ ln(π/2)`.
-const HALF_LN_HALF_PI: f64 = 0.225_791_352_644_727_44;
 
 /// `2⁻²⁰`: over this step in `ln(2/x)` a forward difference reads the slope of Temme's sums to about `2⁻²⁰`, well above their rounding.
 const LN_STEP: f64 = 9.536_743_164_062_5e-7;

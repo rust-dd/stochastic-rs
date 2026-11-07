@@ -54,6 +54,14 @@ const X_TINY: f64 = 1e-307;
 const EULER_MASCHERONI: f64 = 0.577_215_664_901_532_9;
 const ZETA_TERMS: usize = 64;
 
+/// `2¹⁰²³`: from here Steed's `2(1 + x)` overflows, and to order 50 Hankel's first correction
+/// `(4ν² − 1)/8x` is under `2⁻¹⁰¹⁰`, so `e^x K_ν(x)` is `√(π/2x)` to the last bit.
+const HANKEL_FROM: f64 = 8.988_465_674_311_58e307;
+
+const SQRT_HALF_PI: f64 = 1.253_314_137_315_500_3;
+
+const HALF_LN_HALF_PI: f64 = 0.225_791_352_644_727_44;
+
 /// ζ(k) for k = 2..=65 by direct summation (smallest terms first) plus an
 /// Euler–Maclaurin tail, computed once.
 fn zeta_table() -> &'static [f64; ZETA_TERMS] {
@@ -117,6 +125,9 @@ pub fn bessel_ke(nu: f64, x: f64) -> f64 {
   if nu > UNIFORM_MIN_ORDER {
     return debye_k(nu, x, true);
   }
+  if x >= HANKEL_FROM {
+    return SQRT_HALF_PI / x.sqrt();
+  }
   ke_pair(nu, x).0
 }
 
@@ -135,6 +146,9 @@ pub fn ln_bessel_ke(nu: f64, x: f64) -> f64 {
   }
   if nu > UNIFORM_MIN_ORDER {
     return ln_debye_k(nu, x);
+  }
+  if x >= HANKEL_FROM {
+    return HALF_LN_HALF_PI - 0.5 * x.ln();
   }
   let ke = ke_pair(nu, x).0;
   if ke.is_finite() {
