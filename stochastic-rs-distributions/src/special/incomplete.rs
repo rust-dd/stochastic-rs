@@ -478,12 +478,13 @@ pub fn beta_i(a: f64, b: f64, x: f64) -> f64 {
   beta_i_scaled(a, b, x, lower)
 }
 
-/// `v > ½` below the switch at `a ≤ 1`, `x ≤ ½`: `v` where its estimate holds 2⁻⁴⁰, else one less the complement in `x`;
-/// apart and cold, since inline the compiler evaluates the estimate before the cheap tests that return first.
+/// `v > ½` below the switch at `a ≤ 1`, `x ≤ ½`: `v` where its estimated error is within 2⁻⁴⁰ and short of `1 − v`, else
+/// one less the complement in `x`; cold and apart, since inline the compiler ran the estimate ahead of the cheap tests.
 #[cold]
 #[inline(never)]
 fn next_to_one(a: f64, b: f64, x: f64, v: f64, size: f64) -> f64 {
-  if f64::EPSILON * (size + 0.5 * b) <= TAIL_HELD {
+  let held = f64::EPSILON * (size + 0.5 * b);
+  if held <= TAIL_HELD && held * v < 1.0 - v {
     return v;
   }
   1.0 - complement::upper_series(a, b, x)
