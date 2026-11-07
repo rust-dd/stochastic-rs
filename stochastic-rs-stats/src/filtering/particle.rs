@@ -112,7 +112,6 @@ where
     }
   }
 
-  /// The largest log-weight, NaN if any is.
   fn max_log_weight(&self) -> f64 {
     f64::max_or_nan_fold(self.log_weights.iter().copied())
   }

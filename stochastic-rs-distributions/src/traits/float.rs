@@ -242,7 +242,7 @@ mod tests {
   }
 
   #[test]
-  fn a_nan_wins_at_every_position_and_length_through_the_vector_tail() {
+  fn a_nan_wins_at_every_position_of_every_short_slice() {
     for n in 1..=33_usize {
       let xs = (0..n)
         .map(|i| ((i * 7) % 11) as f64 - 5.0)

@@ -395,7 +395,6 @@ fn bench_gev_gpd(c: &mut Criterion) {
   group.finish();
 }
 
-/// A slice's NaN-propagating max: the operator folded against the vectorising helper.
 fn bench_fold(c: &mut Criterion) {
   let mut group = c.benchmark_group("Fold");
   let xs = (0..65_536)

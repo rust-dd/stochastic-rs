@@ -222,5 +222,5 @@ Library code reports through the `log` facade (`log::warn!`, `log::trace!`), nev
 - **A capability an implementor does not have → `Option::None`**: `DistributionExt`, `GreeksExt`,
   `CalibrationResult::max_error`, `Cumulants.c4`. `None` is "no closed form / not computed";
   `Some(f64::NAN)` is "computed, undefined at this point".
-- **A reduction never drops a NaN.** `f64::max`/`min` return the other operand when one is NaN:
-  `RealExt::max_or_nan_fold` / `min_or_nan_fold` fold a slice, `max_or_nan` / `min_or_nan` a pair.
+- **A reduction never drops a NaN.** `f64::max`/`min` skip a NaN operand; a slice takes
+  `RealExt::max_or_nan_fold`/`min_or_nan_fold` (−∞/+∞ if empty), a pair `max_or_nan`/`min_or_nan`.
