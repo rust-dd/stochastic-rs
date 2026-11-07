@@ -72,6 +72,8 @@ pub struct HestonCalibrator {
   pub optimizer_patience: usize,
   /// History of iterations (residuals, params, loss metrics).
   pub(super) calibration_history: Rc<RefCell<Vec<CalibrationHistory<HestonParams>>>>,
+  /// Weight of the row on σ's overshoot past the Feller cap; set only inside a projected fit.
+  pub(super) feller_row_weight: Option<f64>,
 }
 
 impl HestonCalibrator {
@@ -122,6 +124,7 @@ impl HestonCalibrator {
       optimizer_tolerance: None,
       optimizer_patience: 100,
       calibration_history: Rc::new(RefCell::new(Vec::new())),
+      feller_row_weight: None,
     }
   }
 
@@ -174,6 +177,7 @@ impl HestonCalibrator {
       optimizer_tolerance: None,
       optimizer_patience: 100,
       calibration_history: Rc::new(RefCell::new(Vec::new())),
+      feller_row_weight: None,
     }
   }
 }
@@ -182,6 +186,9 @@ impl HestonCalibrator {
   pub(super) fn solve(&self) -> HestonCalibrationResult {
     let mut problem = self.clone();
     problem.ensure_initial_guess();
+    if problem.feller_projection {
+      problem.feller_row_weight = Some(problem.feller_row_weight_at_start());
+    }
 
     let (result, report) = minimize(
       problem,
@@ -265,7 +272,7 @@ impl HestonCalibrator {
   }
 
   /// Project the guess and every iterate onto `σ² ≤ 2κθ`, so the fit passes [`HestonParams::satisfies_feller_condition`];
-  /// the fit can then stop on the boundary although a better one lies inside, as it must for a surface that violates it.
+  /// a residual on σ's overshoot past the cap brings an iterate back inside; a violating surface is fitted on the boundary.
   pub fn set_feller_projection(&mut self, enabled: bool) {
     self.feller_projection = enabled;
   }

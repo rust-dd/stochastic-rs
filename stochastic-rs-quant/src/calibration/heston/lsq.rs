@@ -23,7 +23,8 @@ impl LeastSquaresProblem for HestonCalibrator {
   }
 
   fn residuals(&self) -> Option<Array1<f64>> {
-    let params_eff = self.effective_params();
+    let free = self.free_params();
+    let params_eff = self.feller_projected(free.clone());
     let c_model = self.compute_model_prices_for(&params_eff);
     let weighted_residuals = (&self.c_market - &c_model) * &self.residual_weights;
 
@@ -65,12 +66,22 @@ impl LeastSquaresProblem for HestonCalibrator {
         });
     }
 
-    match &self.regularization {
+    let residuals = match &self.regularization {
       Some(reg) if reg.is_active() => {
-        Some(reg.augment_residuals(weighted_residuals, &physical(&params_eff)))
+        reg.augment_residuals(weighted_residuals, &physical(&params_eff))
       }
-      _ => Some(weighted_residuals),
-    }
+      _ => weighted_residuals,
+    };
+    Some(match self.feller_row_weight {
+      // Zero wherever the iterate is feasible; past the cap it gives the optimiser a gradient back.
+      Some(weight) => Array1::from_iter(
+        residuals
+          .iter()
+          .copied()
+          .chain(std::iter::once(weight * (free.sigma - params_eff.sigma))),
+      ),
+      None => residuals,
+    })
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
@@ -95,15 +106,34 @@ impl LeastSquaresProblem for HestonCalibrator {
         }
       }
     };
-    Some(match &self.regularization {
+    let jacobian = match &self.regularization {
       // The penalty rows are diagonal in the physical parameters; the same
       // chain rule as the price rows maps them into the optimiser coordinates.
       Some(reg) if reg.is_active() => {
         reg.augment_jacobian(jacobian, to_optimizer(reg.jacobian_rows()))
       }
       _ => jacobian,
+    };
+    Some(match self.feller_row_weight {
+      // w·σ(x) differentiates in the free coordinates, −w·σ(P(x)) through the projection as the price rows do.
+      Some(weight) => {
+        let overshoot = apply_chain_rule(sigma_row(weight), &optimizer_coordinates)
+          + to_optimizer(sigma_row(-weight));
+        Array2::from_shape_fn((jacobian.nrows() + 1, jacobian.ncols()), |(i, j)| {
+          if i < jacobian.nrows() {
+            jacobian[(i, j)]
+          } else {
+            overshoot[(0, j)]
+          }
+        })
+      }
+      None => jacobian,
     })
   }
+}
+
+fn sigma_row(weight: f64) -> Array2<f64> {
+  Array2::from_shape_fn((1, 5), |(_, j)| if j == 3 { weight } else { 0.0 })
 }
 
 /// Where the Feller projection caps σ at √(2κθ), σ's column moves into κ's and θ's by ∂σ/∂κ = σ/(2κ) and

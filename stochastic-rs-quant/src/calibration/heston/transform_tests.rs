@@ -166,6 +166,37 @@ fn analytic_jacobian_differentiates_through_an_active_feller_cap() {
 }
 
 #[test]
+fn feller_overshoot_row_differentiates_like_its_finite_difference() {
+  let params = non_feller_params();
+  let mut calibrator =
+    synthetic_calibrator(&params, params.clone(), HestonJacobianMethod::CuiAnalytic);
+  calibrator.set_feller_projection(true);
+  calibrator.feller_row_weight = Some(2.0);
+  let coordinates = to_optimizer_coordinates(&params);
+  calibrator.set_params(&coordinates);
+  let analytic = calibrator.jacobian().unwrap();
+  let row = analytic.nrows() - 1;
+  let overshoot_at = |coordinates: &Array1<f64>| {
+    let mut moved = calibrator.clone();
+    moved.set_params(coordinates);
+    moved.residuals().unwrap()[row]
+  };
+  for column in 0..5 {
+    let step = 1e-6 * (1.0 + coordinates[column].abs());
+    let mut plus = coordinates.clone();
+    let mut minus = coordinates.clone();
+    plus[column] += step;
+    minus[column] -= step;
+    let numeric = (overshoot_at(&plus) - overshoot_at(&minus)) / (2.0 * step);
+    assert!(
+      (analytic[(row, column)] - numeric).abs() <= 1e-6 * (1.0 + numeric.abs()),
+      "column {column}: analytic {}, numeric {numeric}",
+      analytic[(row, column)]
+    );
+  }
+}
+
+#[test]
 fn least_squares_numeric_path_differentiates_optimizer_coordinates() {
   let params = non_feller_params();
   let calibrator = synthetic_calibrator(

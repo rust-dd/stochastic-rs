@@ -16,6 +16,10 @@ use super::transform::to_optimizer_coordinates;
 use crate::OptionType;
 use crate::pricing::heston::HestonPricer;
 
+/// Overshoot weight per unit of the price residuals' σ sensitivity: boundary fits keep their optimum from 0.01 to 0.3
+/// and lose it from 1 up, where the row stiffens the kink at the cap.
+const FELLER_ROW_SCALE: f64 = 0.1;
+
 impl HestonCalibrator {
   pub(super) fn fallback_params() -> HestonParams {
     HestonParams {
@@ -119,6 +123,20 @@ impl HestonCalibrator {
   /// The point every residual is evaluated at; projected last, so no rounding of the coordinates undoes Feller.
   pub(super) fn effective_params(&self) -> HestonParams {
     self.feller_projected(self.free_params())
+  }
+
+  /// The overshoot row's weight, scaled to the norm of the price residuals' σ column at the start; the difference
+  /// runs backwards, since lowering σ keeps the point feasible.
+  pub(super) fn feller_row_weight_at_start(&self) -> f64 {
+    let start = self.effective_params();
+    let step = 1e-5 * (1.0 + start.sigma);
+    let lowered = HestonParams {
+      sigma: start.sigma - step,
+      ..start.clone()
+    };
+    let column = (self.residuals_for(&start) - self.residuals_for(&lowered)) / step;
+    let norm = Some(column.dot(&column).sqrt()).filter(|norm| norm.is_finite() && *norm > 0.0);
+    FELLER_ROW_SCALE * norm.unwrap_or(1.0)
   }
 
   pub(super) fn feller_projected(&self, params: HestonParams) -> HestonParams {

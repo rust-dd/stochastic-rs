@@ -1,3 +1,6 @@
+use ndarray::s;
+
+use super::HestonCalibrationResult;
 use super::HestonCalibrator;
 use super::HestonJacobianMethod;
 use super::HestonParams;
@@ -49,6 +52,25 @@ const CASES: [HestonParams; 4] = [
   },
 ];
 
+// Beside the fallback start, which sits past the cap: one start near the boundary (2κθ/σ² = 1.25), one well inside (2.25).
+const NEAR_START: HestonParams = HestonParams {
+  v0: 0.05,
+  kappa: 2.0,
+  theta: 0.05,
+  sigma: 0.4,
+  rho: -0.5,
+};
+
+const INNER_START: HestonParams = HestonParams {
+  v0: 0.03,
+  kappa: 1.5,
+  theta: 0.03,
+  sigma: 0.2,
+  rho: -0.5,
+};
+
+const STARTS: [Option<HestonParams>; 3] = [None, Some(NEAR_START), Some(INNER_START)];
+
 fn surface(truth: &HestonParams) -> Vec<MarketSlice> {
   let model = HestonFourier {
     v0: truth.v0,
@@ -91,7 +113,7 @@ fn assert_recovers(
   calibrator: &HestonCalibrator,
   truth: &HestonParams,
   start: Option<HestonParams>,
-) {
+) -> HestonCalibrationResult {
   let result = calibrator.calibrate(start).unwrap();
   let fit = &result.params;
   let errors = [
@@ -106,6 +128,7 @@ fn assert_recovers(
     "truth {truth:?}: fit {fit:?}, converged = {}",
     result.converged
   );
+  result
 }
 
 #[test]
@@ -121,35 +144,33 @@ fn default_start_recovers_parameters_on_both_sides_of_the_feller_boundary() {
 
 #[test]
 fn finite_difference_jacobian_recovers_the_same_parameter_sets() {
-  let start = HestonParams {
-    v0: 0.05,
-    kappa: 2.0,
-    theta: 0.05,
-    sigma: 0.4,
-    rho: -0.5,
-  };
   for truth in &CASES {
     assert_recovers(
       &calibrator(truth, HestonJacobianMethod::NumericFiniteDiff),
       truth,
-      Some(start.clone()),
+      Some(NEAR_START),
     );
   }
 }
 
-// HestonPricer's quadrature sits 3.1e-5 from this surface and the fitted Cui pricer 3.3e-8, so 1e-6 tells them apart.
+// HestonPricer's quadrature sits 2.4e-5 from this surface and the fitted Cui pricer 3.6e-8, so 1e-6 tells them apart.
 #[test]
 fn reported_rmse_is_the_price_error_of_the_fitted_pricer() {
-  let truth = &CASES[0];
-  let calibrator = calibrator(truth, HestonJacobianMethod::CuiAnalytic);
+  let truth = &CASES[2];
+  let mut calibrator = calibrator(truth, HestonJacobianMethod::CuiAnalytic);
+  calibrator.set_feller_projection(true);
   let result = calibrator.calibrate(Some(truth.clone())).unwrap();
   let mut objective = calibrator.clone();
+  objective.feller_row_weight = Some(1.0);
   objective.set_params(&to_optimizer_coordinates(&result.params));
   let residuals = objective.residuals().unwrap();
-  let objective_rmse = (residuals.mapv(|r| r * r).sum() / residuals.len() as f64).sqrt();
+  let quotes = objective.c_market.len();
+  assert_eq!(residuals.len(), quotes + 1);
+  let prices = residuals.slice(s![..quotes]);
+  let price_rmse = (prices.dot(&prices) / quotes as f64).sqrt();
   assert!(
-    result.rmse() < 1e-6 && (result.rmse() - objective_rmse).abs() <= 1e-9 * objective_rmse,
-    "rmse {:e}, the minimised residuals' {objective_rmse:e}",
+    result.rmse() < 1e-6 && (result.rmse() - price_rmse).abs() <= 1e-9 * price_rmse,
+    "rmse {:e}, the minimised price residuals' {price_rmse:e}",
     result.rmse()
   );
 }
@@ -190,13 +211,7 @@ fn feller_projection_fits_a_below_feller_surface_on_the_boundary_from_any_start(
     result
   };
   let fallback = fit_from(None);
-  let feasible = fit_from(Some(HestonParams {
-    v0: 0.03,
-    kappa: 1.5,
-    theta: 0.03,
-    sigma: 0.2,
-    rho: -0.5,
-  }));
+  let feasible = fit_from(Some(INNER_START));
   for result in [&fallback, &feasible] {
     let fit = &result.params;
     let slack = 1.0 - fit.sigma * fit.sigma / (2.0 * fit.kappa * fit.theta);
@@ -211,6 +226,16 @@ fn feller_projection_fits_a_below_feller_surface_on_the_boundary_from_any_start(
     fallback.rmse(),
     feasible.rmse()
   );
+}
+
+#[test]
+fn feller_projection_recovers_a_surface_just_inside_the_boundary_from_every_start() {
+  for start in STARTS {
+    let mut calibrator = calibrator(&CASES[2], HestonJacobianMethod::CuiAnalytic);
+    calibrator.set_feller_projection(true);
+    let result = assert_recovers(&calibrator, &CASES[2], start);
+    assert!(result.rmse() < 1e-6, "rmse {:e}", result.rmse());
+  }
 }
 
 #[test]
