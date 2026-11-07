@@ -121,13 +121,13 @@ impl PyHestonCalibrator {
     })?
   }
 
-  /// `initial` is `(v0, kappa, theta, sigma, rho)`. Returns `(v0, kappa, theta, sigma, rho, converged, loss_rmse)`,
+  /// `initial_guess` is `(v0, kappa, theta, sigma, rho)`. Returns `(v0, kappa, theta, sigma, rho, converged, loss_rmse)`,
   /// with the stop reason (`"converged"`, `"evaluation budget exhausted"`, …) appended when `full_output` is true.
-  #[pyo3(signature = (initial=None, full_output=false))]
+  #[pyo3(signature = (initial_guess=None, full_output=false))]
   fn calibrate(
     &self,
     py: Python<'_>,
-    initial: Option<[f64; 5]>,
+    initial_guess: Option<[f64; 5]>,
     full_output: bool,
   ) -> PyResult<Py<PyAny>> {
     use pyo3::IntoPyObjectExt;
@@ -135,7 +135,7 @@ impl PyHestonCalibrator {
     use crate::calibration::heston::HestonParams;
     use crate::traits::CalibrationResult;
     use crate::traits::Calibrator;
-    let initial = initial.map(|[v0, kappa, theta, sigma, rho]| HestonParams {
+    let initial_guess = initial_guess.map(|[v0, kappa, theta, sigma, rho]| HestonParams {
       v0,
       kappa,
       theta,
@@ -144,7 +144,7 @@ impl PyHestonCalibrator {
     });
     let res = self
       .inner
-      .calibrate(initial)
+      .calibrate(initial_guess)
       .map_err(|e| PyValueError::new_err(format!("Heston calibration failed: {e}")))?;
     let p = &res.params;
     let rmse = res.loss.get(crate::LossMetric::Rmse);

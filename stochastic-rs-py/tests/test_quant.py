@@ -317,7 +317,7 @@ def test_heston_calibrator_reports_the_fitted_pricer_rmse_and_stop_reason():
     calibrator = sr.HestonCalibrator(_heston_surface(BELOW_FELLER), 100.0, 0.02, "call", 0.0)
     assert len(calibrator.calibrate()) == 7
     *fit, converged, rmse, message = calibrator.calibrate(
-        initial=BELOW_FELLER, full_output=True
+        initial_guess=BELOW_FELLER, full_output=True
     )
     assert converged and message == "converged"
     assert max(abs(a - b) for a, b in zip(fit, BELOW_FELLER)) < 1e-4
