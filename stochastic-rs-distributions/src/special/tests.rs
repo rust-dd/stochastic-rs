@@ -58,16 +58,44 @@ fn gamma_matches_high_precision_references() {
   }
 }
 
+/// mpmath at 60 and 120 digits, within 2ε on `(0, 10)`, whose path reads no libm function, the two doubles about the
+/// root `x₀` included; the series cut after `1/(132y¹⁰)` read each outside it, `ψ(1)` by 6.8e4 ε.
 #[test]
-fn digamma_known_values() {
-  // ψ(1) = −γ_Euler ≈ −0.577215...
-  assert!(close(digamma(1.0), -0.577_215_664_901_532_9, 1e-9));
-  // ψ(½) = −2 ln 2 − γ ≈ −1.96351...
-  assert!(close(
-    digamma(0.5),
-    -2.0_f64.ln() * 2.0 - 0.577_215_664_901_532_9,
-    1e-9
-  ));
+fn digamma_holds_two_eps_below_its_series() {
+  for (x, want) in [
+    (0.25, -4.227_453_533_376_265_5),
+    (0.5, -1.963_510_026_021_423_5),
+    (0.75, -1.085_860_879_786_472_2),
+    (1.0, -0.577_215_664_901_532_9),
+    (1.461_632_144_968_362_2, -9.241_265_521_729_427e-17),
+    (1.461_632_144_968_362_5, 1.224_537_462_200_406_8e-16),
+    (2.0, 0.422_784_335_098_467_13),
+    (5.0, 1.506_117_668_431_800_5),
+    (9.5, 2.197_737_876_402_949_4),
+  ] {
+    let got = digamma(x);
+    assert!(
+      ((got - want) / want).abs() <= 2.0 * f64::EPSILON,
+      "digamma({x}) = {got}, want {want}"
+    );
+  }
+}
+
+/// Below 0 within `4ε(|ψ(1 − x)| + |π cot πx|)` at the doubles nearest the first and the tenth roots, where the
+/// reflection's two terms cancel and the cot nears its zero; mpmath at 60 and 120 digits.
+#[test]
+fn digamma_holds_the_reflection_beside_its_negative_roots() {
+  for (x, want, scale) in [
+    (-0.504_083_008_264_455_4, 7.289_763_902_976_895e-17, 0.080_599_773_236_188_92),
+    (-9.702_672_540_001_863, 4.939_256_869_086_382e-15, 4.646_098_614_693_24),
+    (-2.75, -1.959_055_264_977_997, 4.324_130_042_201_589),
+  ] {
+    let got = digamma(x);
+    assert!(
+      (got - want).abs() <= 4.0 * f64::EPSILON * scale,
+      "digamma({x}) = {got}, want {want}"
+    );
+  }
 }
 
 /// mpmath at 60 digits next to the poles, where the reflection's `π cot(πx)` dominates `ψ`.

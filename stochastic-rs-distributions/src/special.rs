@@ -198,33 +198,94 @@ pub(crate) fn sinpi(x: f64) -> f64 {
   if n % 2.0 == 0.0 { s } else { -s }
 }
 
-/// Digamma ψ(x) = Γ'(x)/Γ(x): the recurrence ψ(x) = ψ(x+1) − 1/x lifts x above 6, then an
-/// asymptotic series in 1/x; NaN at the poles.
+/// Digamma `ψ(x) = Γ'(x)/Γ(x)`, NaN at the poles: Boost.Math's rational on `[1, 2]`, the recurrence onto it from
+/// `(0, 10)` (DLMF 5.5.2), DLMF 5.11.2's series from 10 and below 0 the reflection (DLMF 5.5.4).
 pub fn digamma(x: f64) -> f64 {
   if is_pole(x) {
     return f64::NAN;
   }
-  // Reflection ψ(1−x) = ψ(x) + π cot(πx); since cot has period π, x − round(x) can stand in
-  // for x and keeps cot accurate next to the poles.
-  if x < 0.5 {
-    let reduced = x - x.round();
-    return digamma(1.0 - x)
-      - std::f64::consts::PI * (std::f64::consts::PI * reduced).tan().recip();
+  if x >= 10.0 {
+    return digamma_series(x);
   }
-  let mut y = x;
-  let mut sum = 0.0;
-  while y < 6.0 {
-    sum -= 1.0 / y;
-    y += 1.0;
+  if x >= 1.0 {
+    return digamma_one_plus(x - 1.0);
   }
-  // Asymptotic expansion for y ≥ 6.
-  let inv = 1.0 / y;
-  let inv2 = inv * inv;
-  sum + y.ln()
-    - 0.5 * inv
-    - inv2
-      * (1.0 / 12.0
-        - inv2 * (1.0 / 120.0 - inv2 * (1.0 / 252.0 - inv2 * (1.0 / 240.0 - inv2 * 1.0 / 132.0))))
+  if x > 0.0 {
+    return digamma_one_plus(x) - x.recip();
+  }
+  digamma_one_plus(-x) - pi_cot_pi(x)
+}
+
+/// `ψ(1 + u)` from the exact `u ≥ 0`, so no rounded `1 + u` enters below 10: `u − k` steps down onto `[0, 1)`.
+fn digamma_one_plus(u: f64) -> f64 {
+  if u >= 9.0 {
+    return digamma_series(1.0 + u);
+  }
+  let (mut t, mut sum) = (u, 0.0);
+  while t >= 1.0 {
+    sum += t.recip();
+    t -= 1.0;
+  }
+  digamma_near_root(t) + sum
+}
+
+/// `ψ(1 + t)` on `[0, 1]` as `(t − t₀)(Y + P(t)/Q(t))`, `t₀ = x₀ − 1` in three parts so the root keeps its relative
+/// digits: Boost.Math's `digamma_imp_1_2` (53 bits), within 2e-17 of `ψ(x)/(x − x₀)`.
+fn digamma_near_root(t: f64) -> f64 {
+  const Y: f64 = 1_043_943.0 / 1_048_576.0;
+  const P: [f64; 6] = [
+    0.254_798_510_611_315_53,
+    -0.325_550_311_868_044_9,
+    -0.650_318_537_708_965_1,
+    -0.289_191_264_447_747_84,
+    -0.045_251_321_448_739_06,
+    -0.002_071_332_116_774_595,
+  ];
+  const Q: [f64; 7] = [
+    1.0,
+    2.076_711_702_373_047,
+    1.460_624_290_976_351_6,
+    0.435_935_296_926_659_67,
+    0.054_151_797_245_674_226,
+    0.002_128_498_701_782_114_6,
+    -5.578_984_132_167_551e-7,
+  ];
+  const T0: [f64; 3] = [
+    495_673_741.0 / 1_073_741_824.0,
+    381_566_830.0 / 1_073_741_824.0 / 1_073_741_824.0,
+    9.016_312_093_258_695e-20,
+  ];
+  let g = t - T0[0] - T0[1] - T0[2];
+  let r = P.iter().rev().fold(0.0, |acc, &c| acc * t + c)
+    / Q.iter().rev().fold(0.0, |acc, &c| acc * t + c);
+  g.mul_add(Y, g * r)
+}
+
+/// DLMF 5.11.2 from 10: `ln x − 1/(2x) − Σ_{k≤8} B₂ₖ/(2k x²ᵏ)`, whose next term is under `2e-18` of it.
+fn digamma_series(x: f64) -> f64 {
+  const C: [f64; 8] = [
+    1.0 / 12.0,
+    -1.0 / 120.0,
+    1.0 / 252.0,
+    -1.0 / 240.0,
+    1.0 / 132.0,
+    -691.0 / 32760.0,
+    1.0 / 12.0,
+    -3617.0 / 8160.0,
+  ];
+  let z = (x * x).recip();
+  x.ln() - 0.5 / x - z * C.iter().rev().fold(0.0, |acc, &c| acc * z + c)
+}
+
+/// `π cot(πx)` from the exact `r = x − round(x)`, past `|r| = ¼` as `π tan(π(±½ − r))`, so it keeps its relative
+/// digits beside its zeros as well as its poles.
+fn pi_cot_pi(x: f64) -> f64 {
+  let r = x - x.round();
+  if r.abs() <= 0.25 {
+    std::f64::consts::PI / (std::f64::consts::PI * r).tan()
+  } else {
+    std::f64::consts::PI * (std::f64::consts::PI * (0.5_f64.copysign(r) - r)).tan()
+  }
 }
 
 /// Beta function B(a, b) = Γ(a)Γ(b)/Γ(a+b).
