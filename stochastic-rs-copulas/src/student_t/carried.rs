@@ -13,7 +13,6 @@ use crate::student_t::NORMAL_ABOVE;
 /// To this `|t|` and `|t_y|` the series hold `1e-28` of their sums.
 pub(crate) const CARRIED_TO: f64 = 1.0;
 
-/// `1/(2k + 1)!` and `1/(2k)!`, `k = 2, …, 15`.
 const TAILS: [(f64, f64); 14] = {
   let mut c = [(0.0, 0.0); 14];
   let (mut odd, mut even, mut k) = (1.0 / 6.0, 0.5, 0);
