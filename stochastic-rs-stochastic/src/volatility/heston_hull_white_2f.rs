@@ -430,3 +430,10 @@ impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: Send + Sync> PathSampler<T>
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(feature = "python")]
+mod python;
+
+#[cfg(feature = "python")]
+#[doc(hidden)]
+pub use python::PyHestonHullWhite2F;
