@@ -11,10 +11,9 @@ use crate::LossMetric;
 pub struct HestonCalibrationResult {
   pub params: HestonParams,
   pub loss: CalibrationLossScore,
-  /// Whether [`termination`](Self::termination) is a successful stop: a tolerance test, not fit quality.
+  /// Whether Levenberg-Marquardt met a relative tolerance: a stopping test, not fit quality.
   pub converged: bool,
-  /// Levenberg-Marquardt termination reason, such as `SolverConverged` or `MaxCostEvals`.
-  pub termination: String,
+  pub(super) message: &'static str,
 }
 
 impl HestonCalibrationResult {
@@ -49,6 +48,6 @@ impl crate::traits::CalibrationResult for HestonCalibrationResult {
   }
 
   fn message(&self) -> Option<&str> {
-    Some(&self.termination)
+    Some(self.message)
   }
 }

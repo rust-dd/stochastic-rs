@@ -149,16 +149,22 @@ fn reported_rmse_is_the_price_error_of_the_fitted_pricer() {
 }
 
 #[test]
-fn termination_reason_accompanies_converged() {
+fn stop_reason_accompanies_converged() {
   let result = calibrator(&CASES[1], HestonJacobianMethod::CuiAnalytic)
     .calibrate(None)
     .unwrap();
-  assert_eq!(result.message(), Some(result.termination.as_str()));
   assert!(
-    result.converged && result.termination == "SolverConverged",
-    "converged = {}, termination = {}",
-    result.converged,
-    result.termination
+    result.converged && result.message() == Some("converged"),
+    "{:?}",
+    result.message()
+  );
+  let mut starved = calibrator(&CASES[1], HestonJacobianMethod::CuiAnalytic);
+  starved.set_optimizer_patience(1).unwrap();
+  let result = starved.calibrate(None).unwrap();
+  assert!(
+    !result.converged && result.message() == Some("evaluation budget exhausted"),
+    "{:?}",
+    result.message()
   );
 }
 

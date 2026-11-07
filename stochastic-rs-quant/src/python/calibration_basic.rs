@@ -122,7 +122,7 @@ impl PyHestonCalibrator {
   }
 
   /// `initial` is `(v0, kappa, theta, sigma, rho)`. Returns `(v0, kappa, theta, sigma, rho, converged, loss_rmse)`,
-  /// with the optimiser's termination reason appended when `full_output` is true.
+  /// with the stop reason (`"converged"`, `"evaluation budget exhausted"`, …) appended when `full_output` is true.
   #[pyo3(signature = (initial=None, full_output=false))]
   fn calibrate(
     &self,
@@ -133,6 +133,7 @@ impl PyHestonCalibrator {
     use pyo3::IntoPyObjectExt;
 
     use crate::calibration::heston::HestonParams;
+    use crate::traits::CalibrationResult;
     use crate::traits::Calibrator;
     let initial = initial.map(|[v0, kappa, theta, sigma, rho]| HestonParams {
       v0,
@@ -156,7 +157,7 @@ impl PyHestonCalibrator {
         p.rho,
         res.converged,
         rmse,
-        res.termination,
+        res.message(),
       )
         .into_py_any(py)
     } else {

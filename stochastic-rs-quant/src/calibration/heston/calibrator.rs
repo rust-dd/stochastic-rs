@@ -192,7 +192,6 @@ impl HestonCalibrator {
       },
     );
     let converged = report.converged;
-    let termination = format!("{:?}", report.reason);
     let params = result.effective_params();
 
     let c_model = result.compute_model_prices_for(&params);
@@ -206,7 +205,7 @@ impl HestonCalibrator {
       params,
       loss,
       converged,
-      termination,
+      message: report.message(),
     }
   }
 
