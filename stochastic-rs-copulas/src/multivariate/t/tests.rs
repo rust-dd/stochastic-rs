@@ -1,13 +1,13 @@
 use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::linalg::is_spd;
 use stochastic_rs_distributions::special::ln_gamma;
 
 use super::*;
 use crate::bivariate::t_copula::TCopula;
 use crate::correlation::tau_matrix_to_corr_matrix;
-use crate::multivariate::linalg::condition_number;
-use crate::multivariate::linalg::is_spd;
-use crate::multivariate::linalg::smallest_eigenvalue;
+use crate::multivariate::spectrum::condition_number;
+use crate::multivariate::spectrum::smallest_eigenvalue;
 
 /// Construct a 3-dim t-copula with mild dependence and verify the
 /// sampler produces uniforms on every coordinate.
