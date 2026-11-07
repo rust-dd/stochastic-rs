@@ -1,13 +1,13 @@
 ---
 title: Stochastic processes
 seo_title: Stochastic processes in Rust and Python
-description: 132 stochastic processes — diffusion, jump, volatility, interest-rate, fractional / rough, and noise. Catalog organised by mathematical family.
+description: 133 stochastic processes — diffusion, jump, volatility, interest-rate, fractional / rough, and noise. Catalog organised by mathematical family.
 category: process
 since: 2.0.0
 status: stable
 ---
 
-The `stochastic-rs-stochastic` crate ships **132 processes** in eleven families (below). Every process implements [`ProcessExt<T>`](/docs/concepts/process-ext): `sample()` returns one path, `sample_map(m, f)` maps over `m` paths in parallel, and `sample_par(m)` returns `Vec<Output>` (one `ndarray::Array1<T>` per path for single-factor models).
+The `stochastic-rs-stochastic` crate ships **133 processes** in eleven families (below). Every process implements [`ProcessExt<T>`](/docs/concepts/process-ext): `sample()` returns one path, `sample_map(m, f)` maps over `m` paths in parallel, and `sample_par(m)` returns `Vec<Output>` (one `ndarray::Array1<T>` per path for single-factor models).
 
 ## Families
 
@@ -16,7 +16,7 @@ The `stochastic-rs-stochastic` crate ships **132 processes** in eleven families 
 | **Diffusion**                  | 36    | OU, GBM (log + standard + correlated multi-asset), CIR, CEV, CKLS, Aït-Sahalia, Pearson, Jacobi, regime-switching, Fouque, Wishart (matrix-valued CIR) |
 | **Core building blocks**       | 20    | Brownian motion (+ bridge, correlated, correlated-fractional), fBM, Poisson (+ compound, custom jump sizes), Hawkes (+ multivariate), subordinators (α-stable, gamma, inverse-Gaussian, tempered-stable, Poisson, CTRW), linear fractional stable motion, naive (direct-convolution) Volterra |
 | **Jump**                       | 17    | Merton, Kou, CGMY, NIG, VG, bilateral gamma, KoBoL, RDTS, CTS, Bates, Lévy diffusion |
-| **Volatility**                 | 16    | Heston (+ log, 2D, multifactor, stochastic-local), SABR (+ multifactor), Bergomi, rough Bergomi, rough Heston, double-Heston, BNS, HKDE, Bates SVJ (+ fractional), SVCGMY |
+| **Volatility**                 | 17    | Heston (+ log, 2D, multifactor, stochastic-local, Hull-White 2F hybrid), SABR (+ multifactor), Bergomi, rough Bergomi, rough Heston, double-Heston, BNS, HKDE, Bates SVJ (+ fractional), SVCGMY |
 | **Interest rate**               | 16    | Vasicek (+ fractional), CIR++, CIR 2-factor, ADG (affine/quadratic-Gaussian multi-factor), Hull-White (1F + 2F), Black-Karasinski, Ho-Lee, HJM, LMM, BGM, Wu-Zhang, Duffie-Kan (+ jump), Cheyette (quasi-Gaussian, local volatility) |
 | **Autoregressive / GARCH**     | 9     | AR(p), MA(q), ARIMA, SARIMA, ARCH, GARCH, EGARCH, GJR-GARCH, AGARCH |
 | **Noise**                       | 6     | Fractional Gaussian noise, Gaussian noise, white noise, correlated FGN / GN, k-dimensional correlated increments from a correlation matrix |
@@ -110,6 +110,42 @@ s, v = p.sample()                   # both numpy arrays
 ```
 </Tab>
 </Tabs>
+
+### Heston Hull-White 2F hybrid
+
+The Heston-Gaussian two-factor hybrid (H-G2++) of Grzelak, Oosterlee and van Weeren (2011): Heston equity on the `HullWhite2F` short rate, the four drivers $(x, v, r, u)$ under one correlation matrix.
+
+$$
+\begin{aligned}
+d\log S_t &= \bigl(r_t - \tfrac12 v_t\bigr)\,dt + \sqrt{v_t}\,dW^x_t, & dv_t &= \kappa(\theta - v_t)\,dt + \sigma\sqrt{v_t}\,dW^v_t, \\
+dr_t &= \bigl[\theta_r(t) + u_t - a\,r_t\bigr]\,dt + \sigma_1\,dW^r_t, & du_t &= -b\,u_t\,dt + \sigma_2\,dW^u_t, \qquad d\langle W^i, W^j\rangle_t = \rho_{ij}\,dt.
+\end{aligned}
+$$
+
+The model is simulated in full, not as the paper's affine approximation (which is its reference pricer). `sample()` returns a `5 × n` matrix: spot, variance, short rate, auxiliary factor and the integrated short rate $\int_0^t r$, so a path discounts its own payoff; the rate enters the spot and the integral through the same trapezoidal sum, which keeps the discounted spot a martingale of the scheme. `rho` is the full $4 \times 4$ correlation matrix, validated symmetric with unit diagonal and factorised once; the rate-variance entries are zero in the paper and typically in practice. The variance steps by full-truncation Euler, or by Andersen's QE scheme after `.qe()`, which requires those two entries to be zero. $\theta_r(t)$ is the additive drift target `HullWhite2F` takes, fitted to the initial curve by the user. Five state rows exceed the Euler engine's four slots, so the process samples on the host.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_processes_heston_hull_white_2f.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import numpy as np
+import stochastic_rs as srs
+
+rho = np.array([[1.0, -0.3, 0.35, 0.08], [-0.3, 1.0, 0.0, 0.0],
+                [0.35, 0.0, 1.0, -0.4], [0.08, 0.0, -0.4, 1.0]])
+p = srs.PyHestonHullWhite2F(kappa=0.8, theta=0.2, sigma=0.2, theta_r=lambda t: 1.1 * 0.03,
+                            a=1.1, sigma1=0.01, sigma2=0.015, b=0.8, rho=rho, n=253,
+                            s0=1.0, v0=0.2, r0=0.03, t=1.0, seed=42, scheme="qe")
+path = p.sample()                   # shape (5, 253): S, v, r, u, ∫r
+paths = p.sample_par(10_000)        # shape (10_000, 5, 253)
+discounted = paths[:, 0, -1] * np.exp(-paths[:, 4, -1])
+```
+</Tab>
+</Tabs>
+
+Reference: Grzelak, L. A., Oosterlee, C. W. and van Weeren, S. (2011), *The affine Heston model with correlated Gaussian interest rates for pricing hybrid derivatives*, Quantitative Finance 11(11), 1647-1663, doi:10.1080/14697688.2011.615216. `tests/heston_hull_white_2f_grzelak_tables.rs` holds the simulated implied volatilities to the paper's tables 3 and 4.
 
 ### Fractional Brownian motion
 

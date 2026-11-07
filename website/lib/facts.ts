@@ -18,8 +18,8 @@ function workspaceVersion(): string {
 export const FACTS = {
   /** `[workspace.package] version` in the root `Cargo.toml`, read at build time. */
   version: workspaceVersion(),
-  /** Root `CLAUDE.md`, `ProcessExt`: 142 implementors over 132 processes. */
-  processes: 132,
+  /** Root `CLAUDE.md`, `ProcessExt`: 143 implementors over 133 processes. */
+  processes: 133,
   /** `concepts/gpu-support.mdx`: families of the device engine and the processes they carry. */
   deviceFamilies: 121,
   processesOnEngine: 130,
