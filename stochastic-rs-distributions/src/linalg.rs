@@ -1,4 +1,5 @@
 //! `ndarray`-view linear algebra on faer for the sibling crates; outside the stability promise.
+//! SPD and eigenvalue functions read the lower triangle; symmetry and finiteness are the caller's.
 
 use faer::Side;
 use faer::linalg::solvers::ColPivQr;
@@ -100,7 +101,10 @@ mod tests {
     let a = array![[2.0, 1.0], [1.0, 3.0]];
     let b = array![5.0, 10.0];
     let x = solve(a.view(), b.view()).expect("nonsingular");
-    assert!((a.dot(&x)[0] - 5.0).abs() < 1e-12);
+    assert_eq!(x.len(), 2);
+    for (got, want) in a.dot(&x).iter().zip(b.iter()) {
+      assert!((got - want).abs() < 1e-12);
+    }
     let sing = array![[1.0, 2.0], [2.0, 4.0]];
     assert!(solve(sing.view(), b.view()).is_none());
   }
@@ -139,6 +143,7 @@ mod tests {
     let equi = |rho: f64| Array2::from_shape_fn((3, 3), |(i, j)| if i == j { 1.0 } else { rho });
     for (rho, want) in [(0.5, [0.5, 0.5, 2.0]), (-0.25, [0.5, 1.25, 1.25])] {
       let got = symmetric_eigenvalues(equi(rho).view()).expect("symmetric");
+      assert_eq!(got.len(), 3);
       for (g, w) in got.iter().zip(want) {
         assert!((g - w).abs() < 1e-12, "rho = {rho}: {g} vs {w}");
       }
