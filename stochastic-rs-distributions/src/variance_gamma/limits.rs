@@ -10,7 +10,7 @@ use crate::special::ln_parts;
 use crate::special::mul_parts;
 use crate::special::stirling_tail;
 use crate::special::sub_parts;
-use crate::special::two_sum;
+use crate::special::two_sum_far;
 
 /// From this rate down the clock's skewness `2√ν` moves a representable density by under `2⁻⁶²`.
 pub(super) const NORMAL_CLOCK: f64 = 6.842_277_657_836_021e-49;
@@ -21,7 +21,11 @@ pub(super) const NARROW_DIFFUSION: f64 = 1.267_650_600_228_229_4e30;
 /// `N(θ, σ² + νθ²)` at `d` in two parts, `|d − θ|` scaled where it passes the doubles, the variance and `(d − θ)/s` scaled.
 #[cold]
 #[inline(never)]
-pub(super) fn normal_clock((sigma, nu, theta): (f64, f64, f64), (d, d_lo): (f64, f64)) -> f64 {
+pub(super) fn normal_clock(
+  (sigma, nu, theta): (f64, f64, f64),
+  (d, d_lo): (f64, f64),
+  p: i32,
+) -> f64 {
   let ss = Scaled::new(sigma);
   let variance = if theta == 0.0 {
     ss.mul(ss)
@@ -30,11 +34,11 @@ pub(super) fn normal_clock((sigma, nu, theta): (f64, f64, f64), (d, d_lo): (f64,
     ss.mul(ss).add(Scaled::new(nu).mul(st).mul(st))
   };
   let spread = variance.sqrt();
-  let (h, h_lo) = two_sum(d, -theta);
+  let (h, h_lo) = two_sum_far(d, -theta);
   let distance = if !h.is_finite() {
     Some(Scaled::new(d.abs()).add(Scaled::new(theta.abs())))
   } else {
-    let near = two_sum(h, h_lo + d_lo);
+    let near = two_sum_far(h, h_lo + d_lo);
     (near.0 != 0.0).then(|| Scaled::parts((near.0.abs(), near.1 * near.0.signum())))
   };
   let quadratic = match distance {
@@ -54,7 +58,7 @@ pub(super) fn normal_clock((sigma, nu, theta): (f64, f64, f64), (d, d_lo): (f64,
       quadratic,
     ),
     1.0,
-    0,
+    p,
   )
 }
 
@@ -62,14 +66,18 @@ pub(super) fn normal_clock((sigma, nu, theta): (f64, f64, f64), (d, d_lo): (f64,
 /// `g − 1 = (d − θ)/θ`; below `g = ½` the shape as `(1/ν − 1) ln g − (g − 1)/ν` from `ln g = ln|d| − ln|θ|` in two parts.
 #[cold]
 #[inline(never)]
-pub(super) fn gamma_clock((nu, theta): (f64, f64), (d, d_lo): (f64, f64)) -> f64 {
+pub(super) fn gamma_clock((nu, theta): (f64, f64), (d, d_lo): (f64, f64), p: i32) -> f64 {
   // Signs, since `dθ` underflows at a narrow law's mode.
   if d == 0.0 || (d < 0.0) != (theta < 0.0) {
     return 0.0;
   }
-  let near = two_sum(d, -theta);
-  let near = two_sum(near.0, near.1 + d_lo);
+  let near = two_sum_far(d, -theta);
+  let near = two_sum_far(near.0, near.1 + d_lo);
   let gm1 = near.0 / theta;
+  // `g` past MAX puts `e^{−g/ν}` under every representable density.
+  if gm1.is_infinite() {
+    return 0.0;
+  }
   let gm1 = gm1 + ((-gm1).mul_add(theta, near.0) + near.1) / theta;
   let (lt, ln_nu) = (ln_parts(theta.abs(), 0.0, 0), ln_parts(nu, 0.0, 0));
   let scale = add_parts(add_parts(lt, HALF_LN_TAU), (0.5 * ln_nu.0, 0.5 * ln_nu.1));
@@ -85,6 +93,6 @@ pub(super) fn gamma_clock((nu, theta): (f64, f64), (d, d_lo): (f64, f64)) -> f64
   exp_parts(
     sub_parts(add_parts(shape, (-stirling_tail(nu), 0.0)), scale),
     1.0,
-    0,
+    p,
   )
 }

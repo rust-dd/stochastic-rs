@@ -14,16 +14,21 @@ use crate::special::ln_parts;
 use crate::special::mul_parts;
 use crate::special::sub_parts;
 
-/// `ln(½Γ(s))` at `s` in two parts, the low part through `ψ(s)`.
+/// `ln(½Γ(s))` at `s` in two parts, the low part through `ψ(s)`, below ½ as `ψ(1 + s) − 1/s`, since `ψ(2⁻¹⁰²⁴)` overflows.
 fn ln_half_gamma((s, s_lo): (f64, f64)) -> (f64, f64) {
-  add_parts(ln_half_gamma_parts(s), (digamma(s) * s_lo, 0.0))
+  let slope = if s < 0.5 {
+    digamma(1.0 + s) * s_lo - s_lo / s
+  } else {
+    digamma(s) * s_lo
+  };
+  add_parts(ln_half_gamma_parts(s), (slope, 0.0))
 }
 
 /// Madan–Carr–Chang eq. 23 in two parts at `d = x − μ` in two parts, `θd/σ² − |d|·root/σ²` as its one-sign
 /// `−2|d|/(ν(root + |θ|)) − |d|(|θ| − θ sgn d)/σ²`; at `d = 0` the limit `2^{a−1}Γ(a)` of `y^aK_a(y)` for `a > 0`.
 #[cold]
 #[inline(never)]
-pub(super) fn density((sigma, nu, theta): (f64, f64, f64), d: (f64, f64)) -> f64 {
+pub(super) fn density((sigma, nu, theta): (f64, f64, f64), d: (f64, f64), p: i32) -> f64 {
   if d.0.is_nan() {
     return d.0;
   }
@@ -52,7 +57,7 @@ pub(super) fn density((sigma, nu, theta): (f64, f64, f64), d: (f64, f64)) -> f64
       mul_parts((2.0, 0.0), sub_parts(ln_sigma, root.ln())),
     );
     let at_mu = add_parts(ln_half_gamma(order), mul_parts(order, ln_ratio));
-    return exp_parts(sub_parts(at_mu, norm), 1.0, 0);
+    return exp_parts(sub_parts(at_mu, norm), 1.0, p);
   }
   let sign = if d.0 < 0.0 { -1.0 } else { 1.0 };
   let far = Scaled::parts((d.0.abs(), sign * d.1));
@@ -69,7 +74,7 @@ pub(super) fn density((sigma, nu, theta): (f64, f64, f64), d: (f64, f64)) -> f64
   }
   let power = mul_parts(order, sub_parts(far.ln(), root.ln()));
   let kernel = sub_parts(ln_bessel_ke_parts(order, far.mul(root).div(sigma2)), drop);
-  exp_parts(sub_parts(add_parts(power, kernel), norm), 1.0, 0)
+  exp_parts(sub_parts(add_parts(power, kernel), norm), 1.0, p)
 }
 
 /// `ln b` where a product in `θνt` or `½σ²νt²` passes the doubles: `b = 1 − νt(θ + ½σ²t)`, the bracket in two parts at a common

@@ -51,18 +51,19 @@ use crate::special::exp_times_over_pow2;
 use crate::special::ldexp;
 use crate::special::ln_bessel_ke;
 use crate::special::ln_shift;
+use crate::special::ln_shift_per_order;
 use crate::special::ratio_regime;
 use crate::special::saddle;
 use crate::special::split_pow2;
-use crate::special::two_sum;
+use crate::special::two_sum_far;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
 const SMALL_GH_THRESHOLD: usize = 16;
 
-/// Generalized hyperbolic distribution GH$(\lambda, \alpha, \beta, \delta, \mu)$; a [`Seeded`](crate::Seeded) stream draws it in bulk.
-/// The density within `ε(S + 16)` below order 50, `S` its logarithms' sizes summed, or `32ε` where `S` passes 709 or `δγ` leaves the normal range, and `4ε(|ln f| + 20)` from it, the mgf `2ε(|μt| + |ln M| + 32)` below it and `2ε(|μt| + |ln M| + 5)` from it, the mean `ε(|μ| + ℓ|β|E W)/|mean|` (`ℓ` `2(|ln(δγ/2)| + 9)` below order 50, `|ln β| + |ln E W|` where `E W` or `βE W` leaves the normal range, else 1), past the clock's `r ≈ 3e34` a density `k` deviations off its mode adds `k√r·1e-31`; where `δ²`, `γ²` or the clock's saddle leaves the normal range it is the law of `X/2ᵏ`, `2⁻ᵏδ ≈ 2ᵏγ`, and from order 50 a subnormal `δγ` takes its clock's limit, `ω²/|λ|` off.
+/// The GH(λ, α, β, δ, μ) law: density within `ε(S + 16)` to order 50, `S` its logs' summed sizes,
+/// then `4ε(|ln f| + 20)`, plus `k√r·1e-31` at `k` deviations past the clock's `r = 3e34`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdGeneralizedHyperbolic<T> {
   lambda: T,
@@ -238,10 +239,13 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
     normal.then(|| (SimdGeneralizedHyperbolic::<f64>::new(lambda, a, b, d, m), k))
   }
 
-  /// The clock's `(λ, δ², γ²)` from the parameters as doubles, `γ² = (α − β)(α + β)`, which keeps its digits at `|β| ≈ α`.
-  fn clock(&self) -> (f64, f64, f64) {
+  /// The clock's `(λ, (δ, γ))` and its squares `δ²` and `(α − β)(α + β)` where both are normal:
+  /// no analytic reads a square rounded on the subnormal grid.
+  fn clock(&self) -> (f64, (f64, f64), Option<(f64, f64)>) {
     let (lambda, alpha, beta, delta, _) = self.params();
-    (lambda, delta * delta, (alpha - beta) * (alpha + beta))
+    let (chi, psi) = (delta * delta, (alpha - beta) * (alpha + beta));
+    let squares = (chi.is_normal() && psi.is_normal()).then_some((chi, psi));
+    (lambda, (delta, gamma_of(alpha, beta)), squares)
   }
 
   /// `γ_t²`'s factors `(α − β − t, α + β + t)`, `α ∓ β` exactly as two parts (`α > |β|`), so neither loses `α ∓ β`'s rounding
@@ -257,10 +261,25 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
 
   /// The density at `x` times `2ᵖ`, the power taken into its exponent, so a scaled value leaves the doubles only where it does.
   fn density(&self, x: f64, p: i32) -> f64 {
-    let (lambda, alpha, beta, delta, mu) = self.params();
-    let gamma = ((alpha - beta) * (alpha + beta)).sqrt();
+    Self::density_at(self.params(), x, p)
+  }
+
+  /// [`Self::density`] at `(λ, α, β, δ, μ)`; where `x − μ` passes MAX, on the law of `X/2`, every scaling exact.
+  fn density_at(
+    (lambda, alpha, beta, delta, mu): (f64, f64, f64, f64, f64),
+    x: f64,
+    p: i32,
+  ) -> f64 {
+    let (d, d_lo) = two_sum_far(x, -mu);
+    if d.is_infinite() {
+      let half = (lambda, 2.0 * alpha, 2.0 * beta, 0.5 * delta, 0.5 * mu);
+      return Self::density_at(half, 0.5 * x, p - 1);
+    }
+    let gamma = gamma_of(alpha, beta);
     let r0 = lambda.hypot(delta * gamma);
-    let (d, d_lo) = two_sum(x, -mu);
+    if r0 >= concentrated::NORMAL_CLOCK {
+      return concentrated::normal_clock((lambda, alpha, beta, delta), (d, d_lo), p);
+    }
     if r0 >= LARGE_ORDER {
       return concentrated::density((lambda, alpha, beta, delta), (d, d_lo), (gamma, r0), p);
     }
@@ -355,11 +374,6 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     if x.is_infinite() {
       return Some(0.0);
     }
-    let (_, _, _, _, mu) = self.params();
-    // Past the doubles `x − μ` lies where the density underflows, which the balanced law's finite gap would not see.
-    if (x - mu).is_infinite() {
-      return Some(0.0);
-    }
     if self.balance != 0
       && let Some((law, k)) = self.balanced()
       && let Some(x) = exact_ldexp(x, -k)
@@ -370,69 +384,68 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
   }
 
   fn mean(&self) -> Option<f64> {
-    if self.balance != 0
-      && let Some((law, k)) = self.balanced()
-    {
-      return law.mean().map(|m| ldexp(m, k));
-    }
     let (_, _, beta, _, mu) = self.params();
-    let (lambda, chi, psi) = self.clock();
-    Some(mu + SimdGig::<f64>::scaled_raw_moment_at((lambda, chi.sqrt(), psi.sqrt()), 1, beta))
+    let (lambda, (delta, gamma), _) = self.clock();
+    let tilt = SimdGig::<f64>::scaled_raw_moment_at((lambda, delta, gamma), 1, beta);
+    if tilt.is_finite() {
+      return Some(mu + tilt);
+    }
+    // `βE W` past MAX that `μ` of the other sign brings back: the halves' sum, doubled.
+    let half = SimdGig::<f64>::scaled_raw_moment_at((lambda, delta, gamma), 1, 0.5 * beta);
+    Some(2.0 * (0.5 * mu + half))
   }
 
   /// `κ₁(W) + β²κ₂(W)` over the clock's `κₙ = sⁿρⁿ⁻¹kₙ`, `s·k₁ + (βs)²ρk₂` with `s = 2ᵉm` and `β` split, so neither term
   /// leaves the doubles before the value does.
   fn variance(&self) -> Option<f64> {
-    if self.balance != 0
-      && let Some((law, k)) = self.balanced()
-    {
-      return law.variance().map(|v| ldexp(v, 2 * k));
-    }
     let (_, _, beta, _, _) = self.params();
-    let ((m, e), rho, [k1, k2, _, _]) = SimdGig::<f64>::cumulants_at(self.clock());
+    let (lambda, roots, squares) = self.clock();
+    let ((m, e), rho, ([k1, k2, _, _], _)) = SimdGig::<f64>::cumulants_at(lambda, roots, squares);
     let clock_mean = ldexp(m * k1, e);
     if beta == 0.0 {
       return Some(clock_mean);
     }
     let (b, n) = split_pow2(beta.abs());
     let tilt = n * m;
-    Some(clock_mean + ldexp(tilt * (rho * k2) * tilt, 2 * (b + e)))
+    let spread = tilt * (rho * k2) * tilt;
+    let variance = clock_mean + ldexp(spread, 2 * (b + e));
+    // Two subnormal terms round twice; at `2⁶⁰⁰` the sum rounds once.
+    if variance < f64::MIN_POSITIVE {
+      return Some(ldexp(
+        ldexp(m * k1, e + 600) + ldexp(spread, 2 * (b + e) + 600),
+        -600,
+      ));
+    }
+    Some(variance)
   }
 
   /// `κ₃/κ₂^{3/2}` with `κ₃ = β(3κ₂(W) + β²κ₃(W))`, over the clock's `κₙ = sⁿρⁿ⁻¹kₙ` and `B = β²sρ` as `B` or `1/B`, whichever
   /// is small; 0 at `β = 0`, where the law is symmetric.
   fn skewness(&self) -> Option<f64> {
-    if self.balance != 0
-      && let Some((law, _)) = self.balanced()
-    {
-      return law.skewness();
-    }
     let (_, _, beta, _, _) = self.params();
     if beta == 0.0 {
       return Some(0.0);
     }
-    let ((m, e), rho, [k1, k2, k3, _]) = SimdGig::<f64>::cumulants_at(self.clock());
+    let (lambda, roots, squares) = self.clock();
+    let ((m, e), rho, ([k1, k2, k3, _], t)) = SimdGig::<f64>::cumulants_at(lambda, roots, squares);
     let (b, n) = split_pow2(beta.abs());
     let big = tilt_ratio((b, n), (m, e), rho);
     Some(if big <= 1.0 {
       // `|β|√s = 2^{b + ⌊e/2⌋}·n√(m·2^{e mod 2})`.
       let root = n * (m * f64::from(1 + (e & 1))).sqrt();
-      let scaled = root * rho * (3.0 * k2 + big * k3) / (k1 + big * k2).powf(1.5);
+      let scaled = root * rho * (3.0 * k2 + ldexp(big, t) * k3) / (k1 + big * k2).powf(1.5);
       beta.signum() * ldexp(scaled, b + (e >> 1))
     } else {
-      beta.signum() * rho.sqrt() * (3.0 * k2 / big + k3) / (k1 / big + k2).powf(1.5)
+      let tail = ldexp(ldexp(3.0 * k2 / big, -t) + k3, t);
+      beta.signum() * rho.sqrt() * tail / (k1 / big + k2).powf(1.5)
     })
   }
 
   /// Excess kurtosis `κ₄/κ₂²`, `κ₄ = 3κ₂(W) + 6β²κ₃(W) + β⁴κ₄(W)`, every term positive, scaled like the skewness.
   fn kurtosis(&self) -> Option<f64> {
-    if self.balance != 0
-      && let Some((law, _)) = self.balanced()
-    {
-      return law.kurtosis();
-    }
     let (_, _, beta, _, _) = self.params();
-    let ((m, e), rho, [k1, k2, k3, k4]) = SimdGig::<f64>::cumulants_at(self.clock());
+    let (lambda, roots, squares) = self.clock();
+    let ((m, e), rho, ([k1, k2, k3, k4], t)) = SimdGig::<f64>::cumulants_at(lambda, roots, squares);
     let big = if beta == 0.0 {
       0.0
     } else {
@@ -442,10 +455,13 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     if big == 0.0 {
       return Some(rho * (3.0 * k2 / (k1 * k1)));
     }
+    // `k₃ = 2ᵗk̃₃` and `k₄ = 2²ᵗk̃₄` meet `B` as `2ᵗB`, so a heavy clock tail times a small tilt does not read `∞·0`.
     Some(if big <= 1.0 {
-      rho * (3.0 * k2 + big * (6.0 * k3 + big * k4)) / (k1 + big * k2).powi(2)
+      let tilt = ldexp(big, t);
+      rho * (3.0 * k2 + tilt * (6.0 * k3 + tilt * k4)) / (k1 + big * k2).powi(2)
     } else {
-      rho * ((3.0 * k2 / big + 6.0 * k3) / big + k4) / (k1 / big + k2).powi(2)
+      let head = ldexp(ldexp(3.0 * k2 / big, -t) + 6.0 * k3, -t) / big;
+      rho * ldexp(head + k4, 2 * t) / (k1 / big + k2).powi(2)
     })
   }
 
@@ -459,13 +475,20 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
       && let Some((law, k)) = self.balanced()
       && let Some(t) = exact_ldexp(t, k)
     {
-      return law.moment_generating_function(t);
+      return Some(law.unbalanced_mgf(t));
     }
+    Some(self.unbalanced_mgf(t))
+  }
+}
+
+impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
+  /// The mgf on this law itself: a balanced law balanced again can ping-pong between `±1` where `log₂(δ/γ)` is odd.
+  fn unbalanced_mgf(&self, t: f64) -> f64 {
     let (lambda, alpha, beta, delta, mu) = self.params();
     let (below, above) = self.shifted_factors(t);
     let edge = below.min(above);
     if edge < 0.0 || (edge == 0.0 && lambda >= 0.0) {
-      return Some(f64::INFINITY);
+      return f64::INFINITY;
     }
     let shifted = below * above;
     if lambda.abs() >= LARGE_ORDER {
@@ -473,21 +496,24 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
       if !(chi.is_normal() && psi.is_normal())
         && delta * ((alpha - beta).sqrt() * (alpha + beta).sqrt()) < f64::MIN_POSITIVE
       {
-        return Some(small_order::subnormal_clock_mgf(
-          (lambda, alpha, beta, delta, mu),
-          t,
-        ));
+        return small_order::subnormal_clock_mgf((lambda, alpha, beta, delta, mu), t);
       }
-      return Some(
-        (mu * t + ln_shift(lambda, 0.5 * t * (2.0 * beta + t), (chi, psi, shifted))).exp(),
-      );
+      // `t(β + t/2)`, the same bits as `½t(2β + t)`, whose `t(2β + t)` overflows before the half.
+      let s = t * (beta + 0.5 * t);
+      let (location, shift) = (mu * t, ln_shift(lambda, s, (chi, psi, shifted)));
+      if location.is_infinite() && shift.is_infinite() && location != shift {
+        let (rate, rest) = ln_shift_per_order(lambda, s, (chi, psi, shifted));
+        let nu = lambda.abs();
+        return (nu * (rate + mu * (t / nu)) + rest).exp();
+      }
+      return (location + shift).exp();
     }
     let params = (lambda, alpha, beta, delta, mu);
     if edge == 0.0 {
-      return Some(small_order::boundary_mgf(params, t));
+      return small_order::boundary_mgf(params, t);
     }
     let (power, num, den, dx) = self.mgf_ratio(t, shifted);
-    Some(ratio_regime(power, num, &den, dx).unwrap_or_else(|| small_order::mgf(params, t)))
+    ratio_regime(power, num, &den, dx).unwrap_or_else(|| small_order::mgf(params, t))
   }
 }
 
@@ -502,6 +528,16 @@ fn balance_power(lambda: f64, alpha: f64, beta: f64, delta: f64) -> i32 {
     return 0;
   }
   (0.5 * (delta.log2() - gamma.log2())).round() as i32
+}
+
+/// `γ = √((α − β)(α + β))`, which keeps its digits at `|β| ≈ α`, as `√(α − β)·√(α + β)` where the product is not normal.
+fn gamma_of(alpha: f64, beta: f64) -> f64 {
+  let psi = (alpha - beta) * (alpha + beta);
+  if psi.is_normal() {
+    psi.sqrt()
+  } else {
+    (alpha - beta).sqrt() * (alpha + beta).sqrt()
+  }
 }
 
 /// `v·2ᵖ` where that is exact: `v` zero, or the product normal.

@@ -14,8 +14,10 @@ use crate::special::Scaled;
 use crate::special::add_parts;
 use crate::special::ln_parts;
 use crate::special::mul_parts;
+use crate::special::sub_parts;
 
-/// From `2⁶⁰` Hankel's first correction `(4ν² − 1)/8x` is under `1e-15` at these orders and the next under `1e-30`.
+/// From `2⁶⁰` Hankel's first correction `(4ν² − 1)/8x` is under `1.6e-15` here (`1.08e-15` at
+/// `ν = 50`), the next under `1.2e-30`.
 const HANKEL_FROM: i32 = 60;
 
 /// Below `2⁻⁶⁰` the terms in `x²` and, from `ν = ½`, `x^{2ν}` are under `2⁻⁵⁹` of `K`.
@@ -27,9 +29,8 @@ const HALF_LN_HALF_PI: f64 = 0.225_791_352_644_727_44;
 /// `2⁻²⁰`: over this step in `ln(2/x)` a forward difference reads the slope of Temme's sums to about `2⁻²⁰`, well above their rounding.
 const LN_STEP: f64 = 9.536_743_164_062_5e-7;
 
-/// `ln(e^x K_ν(x))` as `(hi, lo)` for `|ν| < 60`, `ν` in two parts: Hankel's two terms from `2⁶⁰`, the scaled `K` of Steed's
-/// fraction from 2, below it Temme's series carried up by the ratio recurrence, `K_ν = K_μΠgᵢ·(2/x)ⁿ`, and from `2⁻⁶⁰` down
-/// `½Γ(ν)(2/x)^ν`, below `ν = ½` Temme's `f₀` while `ν ln(2/x) < 21`, every `ln(2/x)` in two parts; the low parts through the slopes.
+/// `ln(e^x K_ν(x))` in two parts at `|ν| < 60`: Hankel from `2⁶⁰`, Steed from 2, Temme's series
+/// up the ratio recurrence, below `2⁻⁶⁰` `½Γ(ν)(2/x)^ν` or `f₀`, each `ln(2/x)` in two parts.
 pub(crate) fn ln_bessel_ke_parts((nu, nu_lo): (f64, f64), x: Scaled) -> (f64, f64) {
   let at = |nu: f64| ln_ke_at(nu.abs(), x);
   let (hi, lo) = at(nu);
@@ -97,14 +98,15 @@ fn ln_ke_at(nu: f64, x: Scaled) -> (f64, f64) {
   add_parts(ln_half_gamma_parts(nu), mul_parts((nu, 0.0), d))
 }
 
-/// `ln(½Γ(ν))` in two parts for `0 < ν < 60`: `Γ(1 + μ)` from Temme's `γ₁, γ₂`, `μ = ν − round(ν)`, times `μ + i` up to `ν`.
+/// `ln(½Γ(ν))` in two parts for `0 < ν < 60`: `Γ(1 + μ)` from Temme's `γ₁, γ₂` times `μ + i` up
+/// to `ν`; below `ν = ½` less `ln ν`, since `Γ(1 + ν)/ν` overflows below `ν = 1/MAX`.
 pub(crate) fn ln_half_gamma_parts(nu: f64) -> (f64, f64) {
   let n = (nu + 0.5).floor();
   let mu = nu - n;
   let (gam1, gam2) = temme_gammas(mu);
   let mut gamma = 1.0 / (gam2 - mu * gam1);
   if n == 0.0 {
-    gamma /= mu;
+    return sub_parts(ln_parts(0.5 * gamma, 0.0, 0), ln_parts(mu, 0.0, 0));
   }
   let mut i = 1.0;
   while i < n {

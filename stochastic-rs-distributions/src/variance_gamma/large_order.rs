@@ -13,6 +13,7 @@ use crate::special::mul_parts;
 use crate::special::stirling_tail;
 use crate::special::sub_parts;
 use crate::special::two_sum;
+use crate::special::two_sum_far;
 
 /// Up to this `|g|` `ln_1p_mx(g)` is summed as its series, past it as `ln w − g`.
 const SERIES_BELOW: f64 = 9.765_625e-4;
@@ -27,7 +28,7 @@ fn over((a, a_lo): (f64, f64), (b, b_lo): (f64, f64)) -> (f64, f64) {
 /// from `ln w` in two parts past `|g| = 2⁻¹⁰`, `w = 1 + g` the clock's saddle, and below it from their series in `g`.
 #[cold]
 #[inline(never)]
-pub(super) fn density((sigma, nu, theta): (f64, f64, f64), d: (f64, f64)) -> f64 {
+pub(super) fn density((sigma, nu, theta): (f64, f64, f64), d: (f64, f64), p: i32) -> f64 {
   let order = add_parts((1.0 / nu, (-1.0 / nu).mul_add(nu, 1.0) / nu), (-0.5, 0.0));
   let two_over_nu = Scaled::new(2.0).div(Scaled::new(nu));
   let s = Scaled::new(sigma);
@@ -45,12 +46,12 @@ pub(super) fn density((sigma, nu, theta): (f64, f64, f64), d: (f64, f64)) -> f64
   };
   let den = add_parts(add_parts(r, order), add_parts((1.0, 0.0), c));
   let near = {
-    let (h, h_lo) = two_sum(d.0, -theta);
-    two_sum(h, h_lo + d.1)
+    let (h, h_lo) = two_sum_far(d.0, -theta);
+    two_sum_far(h, h_lo + d.1)
   };
   let far = {
-    let (s, s_lo) = two_sum(d.0, theta);
-    two_sum(s, s_lo + d.1)
+    let (s, s_lo) = two_sum_far(d.0, theta);
+    two_sum_far(s, s_lo + d.1)
   };
   // `g = (χ − c − 1)/D` itself, `χ − c = (d − θ)(d + θ)/σ²`, so a small `g` keeps its relative digits, which `1/ν` multiplies.
   let g = over(
@@ -120,5 +121,5 @@ pub(super) fn density((sigma, nu, theta): (f64, f64, f64), d: (f64, f64)) -> f64
       ),
     ),
   );
-  exp_parts(a, 1.0, 0)
+  exp_parts(a, 1.0, p)
 }

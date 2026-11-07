@@ -18,6 +18,18 @@ pub(crate) const PLAIN_LOG_SIZE: f64 = 709.0;
 /// `½ ln 2π` in two parts.
 pub(crate) const HALF_LN_TAU: (f64, f64) = (0.918_938_533_204_672_8, -3.878_294_158_067_241_4e-17);
 
+/// `2¹⁰²³`.
+const TOP_BINADE: f64 = 8.988_465_674_311_579e307;
+
+/// [`two_sum`] on halves from `2¹⁰²³`, where `s − a` rounds past MAX at a tie with `|b|` MAX.
+pub(crate) fn two_sum_far(a: f64, b: f64) -> (f64, f64) {
+  if a.abs().max(b.abs()) < TOP_BINADE {
+    return two_sum(a, b);
+  }
+  let (s, e) = two_sum(0.5 * a, 0.5 * b);
+  (2.0 * s, 2.0 * e)
+}
+
 /// `(m + lo)·2ᵉ` with `m ∈ [1, 2)` and `|lo|` within an ulp of `m`: a positive value whose exponent may lie past the doubles.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Scaled {
@@ -122,9 +134,12 @@ impl Scaled {
   }
 }
 
-/// `ln((x + x_lo)·2ᵉ)` as `(hi, lo)` for a positive `x` and a relatively small `x_lo`: `x = 2ᵏm`, `m ∈ [1/√2, √2)`,
-/// `(k + e) ln 2` in two parts and `ln m = 2 atanh((m − 1)/(m + 1))` with its leading term compensated.
+/// `ln((x + x_lo)·2ᵉ)` in two parts for `x > 0`, `x_lo` small: `(k + e) ln 2` in two parts and
+/// `ln m = 2 atanh((m − 1)/(m + 1))` compensated, `x = 2ᵏm`, `m ∈ [1/√2, √2)`; `ln x` off `(0, ∞)`.
 pub(crate) fn ln_parts(x: f64, x_lo: f64, e: i32) -> (f64, f64) {
+  if !(x > 0.0 && x < f64::INFINITY) {
+    return (x.ln(), 0.0);
+  }
   let (k, m) = split_sqrt2(x);
   let num = m - 1.0;
   let (den, den_lo) = two_sum(m, 1.0);

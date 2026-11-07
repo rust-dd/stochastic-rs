@@ -1,10 +1,12 @@
 //! The ratio of two Bessel `K` that the GH and GIG moment generating functions and the GIG moments share.
 
 use super::bessel_k::steed_pair;
-use super::bessel_k::temme_sums;
+use super::bessel_k::temme_sums_at;
 use super::bessel_ke;
+use super::ldexp;
 #[cfg(test)]
 use super::ln_bessel_ke;
+use super::split_pow2;
 
 /// The denominator `K_ν(x)` of an mgf's ratio, its scaled value formed once.
 pub(crate) struct KDenominator {
@@ -24,6 +26,9 @@ impl KDenominator {
     }
   }
 }
+
+/// `2¹⁰⁰⁰`.
+const HANKEL_FROM: f64 = 1.071_508_607_186_267_3e301;
 
 /// Below this argument Temme's `f₀` carries more than `11ε` of `ln(2/x)`'s rounding into `K`.
 const TEMME_FLOOR: f64 = 9.313_225_746_154_785e-10;
@@ -74,20 +79,32 @@ pub(crate) fn log_size(
     + dx.abs()
 }
 
-/// `(x/2)K_{ν+1}(x)/K_ν(x)` for `ν ≥ −½`, `x > 0`, never forming `K`: Temme's ratio below `x = 2`, Steed's above, at
-/// `μ = ν − round(ν)`, then `K`'s recurrence as a ratio (DLMF 10.29.1), stable upward, in `g` below 2 and `R = 2g/x` above.
-pub(crate) fn k_half_ratio(nu: f64, x: f64) -> f64 {
+/// `(x/2)K_{ν+1}(x)/K_ν(x)` for `ν ≥ −½` as `2ᵏm`, never forming `K`: Temme's ratio below `x = 2`,
+/// Steed's above, at `ν − round(ν)`, then `K`'s recurrence as a ratio (DLMF 10.29.1), upward.
+pub(crate) fn k_half_ratio(nu: f64, x: f64, ln_2_x: f64) -> (i32, f64) {
   let n = (nu + 0.5).floor();
   let mu = nu - n;
   if x < 2.0 {
-    let (k, k1) = temme_sums(x, mu, mu * mu);
-    let (mut g, q) = (k1 / k, 0.25 * x * x);
-    let mut i = 1.0;
+    let (k, k1) = temme_sums_at(x, mu, mu * mu, ln_2_x);
+    // Near `μ = −½` the ratio at a subnormal `x` is `(x/2)^{−2μ}`, subnormal itself or 0, its terms not.
+    let ((i, a), (j, b)) = (split_pow2(k1), split_pow2(k));
+    let (l, m) = split_pow2(a / b);
+    let e = i - j + l;
+    if n == 0.0 {
+      return (e, m);
+    }
+    let q = 0.25 * x * x;
+    let mut g = (mu + 1.0) + ldexp(q / m, -e);
+    let mut i = 2.0;
     while i <= n {
       g = (mu + i) + q / g;
       i += 1.0;
     }
-    return g;
+    return split_pow2(g);
+  }
+  // Steed's `2(1 + x)` overflows past MAX/2; from `2¹⁰⁰⁰` Hankel's `R_ν = 1 + (2ν + 1)/2x` misses by under `ν²/x²`.
+  if x >= HANKEL_FROM {
+    return split_pow2(0.5 * x + 0.25 * (2.0 * nu + 1.0));
   }
   let (k, k1) = steed_pair(x, mu, mu * mu, 1.0 / x);
   let mut ratio = k1 / k;
@@ -96,5 +113,14 @@ pub(crate) fn k_half_ratio(nu: f64, x: f64) -> f64 {
     ratio = 2.0 * (mu + i) / x + 1.0 / ratio;
     i += 1.0;
   }
-  0.5 * x * ratio
+  split_pow2(0.5 * x * ratio)
+}
+
+/// `ln(2/ω)` for `ω = √χ√ψ`, from the roots where `ω` is subnormal and carries only its own few digits.
+pub(crate) fn ln_two_over(root_chi: f64, root_psi: f64, omega: f64) -> f64 {
+  if omega.is_normal() {
+    -(0.5 * omega).ln()
+  } else {
+    std::f64::consts::LN_2 - (root_chi.ln() + root_psi.ln())
+  }
 }

@@ -75,7 +75,8 @@ pub(super) fn density(
   )
 }
 
-/// `μt + λ ln(γ/γ_t) + ln K_λ(δγ_t) − ln K_λ(δγ)` in two parts.
+/// `μt + λ ln(γ/γ_t) + ln K_λ(δγ_t) − ln K_λ(δγ)` in two parts, the `K`s' logarithms apart from
+/// `δγ − δγ_t = δt(2β + t)/(γ + γ_t)`, which their two parts lose at `δγ` near MAX.
 #[cold]
 #[inline(never)]
 pub(super) fn mgf((lambda, alpha, beta, delta, mu): (f64, f64, f64, f64, f64), t: f64) -> f64 {
@@ -86,11 +87,32 @@ pub(super) fn mgf((lambda, alpha, beta, delta, mu): (f64, f64, f64, f64, f64), t
   let (gamma, gamma_t) = (clock_root(alpha, beta, 0.0), clock_root(alpha, beta, t));
   let sd = Scaled::new(delta);
   let power = mul_parts((lambda, 0.0), sub_parts(gamma.ln(), gamma_t.ln()));
+  let lift = two_sum(2.0 * beta, t);
+  let gap = if lift.0 == 0.0 {
+    (0.0, 0.0)
+  } else {
+    let sign = (t * lift.0).signum();
+    let lift = Scaled::parts((lift.0.abs(), lift.1 * lift.0.signum()));
+    let (hi, lo) = sd
+      .mul(Scaled::new(t.abs()))
+      .mul(lift)
+      .div(gamma.add(gamma_t))
+      .value_parts();
+    (sign * hi, sign * lo)
+  };
+  // `δγ_t − δγ` past MAX puts the mgf under `e^{−MAX}`.
+  if !gap.0.is_finite() {
+    return 0.0;
+  }
   let ratio = sub_parts(
-    ln_k((lambda, 0.0), sd.mul(gamma_t)),
-    ln_k((lambda, 0.0), sd.mul(gamma)),
+    ln_bessel_ke_parts((lambda, 0.0), sd.mul(gamma_t)),
+    ln_bessel_ke_parts((lambda, 0.0), sd.mul(gamma)),
   );
-  exp_parts(add_parts(add_parts(location, power), ratio), 1.0, 0)
+  exp_parts(
+    add_parts(add_parts(location, power), add_parts(ratio, gap)),
+    1.0,
+    0,
+  )
 }
 
 /// The limit `e^{μt}½Γ(ν)(2/δγ)^ν/K_ν(δγ)` at `γ_t = 0`, `ν = −λ > 0`, in two parts.

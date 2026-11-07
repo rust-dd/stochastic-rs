@@ -41,6 +41,8 @@ use crate::special::LARGE_ORDER;
 use crate::special::PLAIN_LOG_SIZE;
 use crate::special::add_parts;
 use crate::special::debye_shape;
+use crate::special::exp_parts;
+use crate::special::ldexp;
 use crate::special::ln_1p_mx;
 use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
@@ -49,14 +51,15 @@ use crate::special::mul_parts;
 use crate::special::stirling_tail;
 use crate::special::two_prod;
 use crate::special::two_sum;
+use crate::special::two_sum_far;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
 const SMALL_VG_THRESHOLD: usize = 16;
 
-/// Variance-gamma distribution: volatility `σ > 0`, gamma-clock variance rate `ν > 0`, drift `θ`, location `μ`; a [`Seeded`](crate::Seeded) stream draws it.
-/// Its density within `ε(S + 16)` below order `1/ν − ½ = 50`, `S` its logarithms' sizes summed, or `32ε` where `S` passes 709 or its Bessel argument leaves the normal range, and from it `4ε(|ln f| + |ln σ| + 20)` up to `|ln f| + |ln σ| = 512` while the clock's saddle `1 + g` is past `⅔`, past either `ε(|ln f| + |ln σ| + 400)/16` in two parts, its mgf `2ε(|μt| + |ln M|)` up to its roots, its moments the gamma clock's cumulants mixed.
+/// The VG(σ, ν, θ, μ) law, `ν` its clock's rate: density within `ε(S + 16)` to order `1/ν − ½ = 50`
+/// (`S` its logs' summed sizes), then `4ε(|ln f| + |ln σ| + 20)` or `ε(|ln f| + |ln σ| + 400)/16`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdVarianceGamma<T> {
   sigma: T,
@@ -205,6 +208,7 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
     (sigma, nu, theta): (f64, f64, f64),
     (d, d_lo): (f64, f64),
     order: f64,
+    p: i32,
   ) -> f64 {
     if !d.is_finite() {
       return 0.0;
@@ -213,11 +217,11 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
     let (root_chi, psi) = (d.abs() / sigma, c + 2.0 / nu);
     // `g − 1 = (χ − 1 − c)/D`, `D = R + o + 1 + c`, `ψ = 2o + 1 + c`, `o` the order, `χ − c = (d − θ)(d + θ)/σ²` from the exact
     // `d − θ`; past `q = θ(d + θ)/σ²D = ½`, where `θ(g − 1)` cancels `d − θ`, the gap `d − θg` is `((d − θ)(o + 1 + Δ) + θ)/D`.
-    let (h, h_lo) = two_sum(d, -theta);
+    let (h, h_lo) = two_sum_far(d, -theta);
     if !(nu > limits::NORMAL_CLOCK && c * nu < limits::NARROW_DIFFUSION && root_chi <= FAR)
       || !(h.is_finite() && (d + theta).is_finite())
     {
-      return Self::extreme_large_order((sigma, nu, theta), (d, d_lo), order);
+      return Self::extreme_large_order((sigma, nu, theta), (d, d_lo), order, p);
     }
     let near = h + (h_lo + d_lo);
     let r = order.hypot(root_chi * psi.sqrt());
@@ -225,7 +229,7 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
     let gm1 = ((near / sigma) * ((d + theta) / sigma) - 1.0) / den;
     // Below `g = −⅓` `ln_1p_mx(g)` leaves its series and `1 + g` carries `g`'s rounding, which `1/ν` multiplies.
     if gm1 < -1.0 / 3.0 {
-      return large_order::density((sigma, nu, theta), (d, d_lo));
+      return large_order::density((sigma, nu, theta), (d, d_lo), p);
     }
     let q = (theta / sigma) * ((d + theta) / sigma) / den;
     let gap = if q < 0.5 {
@@ -252,9 +256,9 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
       + rests;
     // Past `|a| = 760` the plain exponent, a few `ε` of it off, settles `0` or `+∞` alone.
     if a.abs() + ln_sigma.abs() > PARTS_FROM && a.abs() < 760.0 {
-      return large_order::density((sigma, nu, theta), (d, d_lo));
+      return large_order::density((sigma, nu, theta), (d, d_lo), p);
     }
-    a.exp()
+    exp_pow2(a, p)
   }
 
   /// [`Self::large_order_pdf`] past its scales: a normal clock from `ν = 2⁻¹⁶⁰` down, `μ + θG` from `νθ²/σ² = 2¹⁰⁰`, `0` past
@@ -265,17 +269,71 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
     (sigma, nu, theta): (f64, f64, f64),
     (d, d_lo): (f64, f64),
     order: f64,
+    p: i32,
   ) -> f64 {
     if nu <= limits::NORMAL_CLOCK {
-      return limits::normal_clock((sigma, nu, theta), (d, d_lo));
+      return limits::normal_clock((sigma, nu, theta), (d, d_lo), p);
     }
     if (theta / sigma) * (theta / sigma) * nu >= limits::NARROW_DIFFUSION {
-      return limits::gamma_clock((nu, theta), (d, d_lo));
+      return limits::gamma_clock((nu, theta), (d, d_lo), p);
     }
     if (d / sigma).abs() > FAR {
       return 0.0;
     }
-    0.5 * Self::large_order_pdf((0.5 * sigma, nu, 0.5 * theta), (0.5 * d, 0.5 * d_lo), order)
+    Self::large_order_pdf(
+      (0.5 * sigma, nu, 0.5 * theta),
+      (0.5 * d, 0.5 * d_lo),
+      order,
+      p - 1,
+    )
+  }
+
+  /// The density at `x` times `2ᵖ`; where `x − μ` passes MAX, on `X/2 ~ VG(σ/2, ν, θ/2, μ/2)`,
+  /// whose halved subnormal `σ` moves it by `σ²/νθ²`, under `2⁻¹⁰⁰` where the gap holds a density.
+  fn density_at((sigma, nu, theta, mu): (f64, f64, f64, f64), x: f64, p: i32) -> f64 {
+    if (x - mu).is_infinite() {
+      let half = if sigma.is_normal() {
+        0.5 * sigma
+      } else {
+        sigma
+      };
+      return Self::density_at((half, nu, 0.5 * theta, 0.5 * mu), 0.5 * x, p - 1);
+    }
+    let order = (2.0 - nu) / (2.0 * nu);
+    if order >= LARGE_ORDER {
+      return Self::large_order_pdf((sigma, nu, theta), two_sum_far(x, -mu), order, p);
+    }
+    let a = 1.0 / nu - 0.5;
+    let root = (2.0 * sigma * sigma / nu + theta * theta).sqrt();
+    let (t_sigma, t_nu, t_gamma) = (sigma.ln(), nu.ln() / nu, ln_gamma(1.0 / nu));
+    let log_norm =
+      std::f64::consts::LN_2 - t_sigma - 0.5 * (2.0 * std::f64::consts::PI).ln() - t_nu - t_gamma;
+    let size = t_sigma.abs() + t_nu.abs() + t_gamma.abs() + 1.62;
+    let d = x - mu;
+    if d == 0.0 {
+      if a <= 0.0 {
+        return f64::INFINITY;
+      }
+      let (scale, gamma_a) = (2.0 * ln_quotient(sigma, root), ln_gamma(a));
+      let at_mu = size + (a * scale).abs() + gamma_a.abs();
+      if at_mu.is_nan() || at_mu > PLAIN_LOG_SIZE {
+        return small_order::density((sigma, nu, theta), (0.0, 0.0), p);
+      }
+      return exp_pow2(
+        log_norm + a * scale + (a - 1.0) * std::f64::consts::LN_2 + gamma_a,
+        p,
+      );
+    }
+    let y = d.abs() * root / (sigma * sigma);
+    // `θd/σ² − y` as `−2|d|/(ν(root + |θ|)) − |d|(|θ| − θ·sgn d)/σ²`, of one sign, where
+    // `2σ²/ν ≪ θ²` would leave two large terms to cancel.
+    let tilt = -2.0 * d.abs() / (nu * (root + theta.abs()))
+      - d.abs() / sigma * ((theta.abs() - theta * d.signum()) / sigma);
+    let (power, kernel) = (a * ln_quotient(d.abs(), root), ln_bessel_ke(a, y));
+    if !(size + power.abs() + kernel.abs() - tilt <= PLAIN_LOG_SIZE && y.is_normal()) {
+      return small_order::density((sigma, nu, theta), two_sum_far(x, -mu), p);
+    }
+    exp_pow2(log_norm + power + kernel + tilt, p)
   }
 
   /// `ln b`, `b = 1 − X`, `X = θνt + ½σ²νt²`: plain where `PLAIN` bounds `X`'s rounding, else in two parts, `ln_1p(−X)` below
@@ -330,6 +388,15 @@ const PLAIN: f64 = 64.0;
 
 /// Past this fraction of `X`'s terms the two-part base, within about `6ε²` of their size, errs by under `2⁻⁶³` of itself.
 const TIGHT: f64 = 1.0 / (1u64 << 40) as f64;
+
+/// `e^a·2ᵖ`, at `p ≠ 0` rounded once, so a subnormal density of the law of `X/2ᵏ` does not round twice.
+fn exp_pow2(a: f64, p: i32) -> f64 {
+  if p == 0 {
+    a.exp()
+  } else {
+    exp_parts((a, 0.0), 1.0, p)
+  }
+}
 
 /// `1 − θνt − ½σ²νt²` exactly: Dekker's products' parts summed by Shewchuk's Grow-Expansion (1997, Thm 10, zero elimination),
 /// whose nonoverlapping parts add from the smallest to within an ulp.
@@ -421,43 +488,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
     if x.is_infinite() {
       return Some(0.0);
     }
-    let (sigma, nu, theta, mu) = self.params();
-    let order = (2.0 - nu) / (2.0 * nu);
-    if order >= LARGE_ORDER {
-      return Some(Self::large_order_pdf(
-        (sigma, nu, theta),
-        two_sum(x, -mu),
-        order,
-      ));
-    }
-    let a = 1.0 / nu - 0.5;
-    let root = (2.0 * sigma * sigma / nu + theta * theta).sqrt();
-    let (t_sigma, t_nu, t_gamma) = (sigma.ln(), nu.ln() / nu, ln_gamma(1.0 / nu));
-    let log_norm =
-      std::f64::consts::LN_2 - t_sigma - 0.5 * (2.0 * std::f64::consts::PI).ln() - t_nu - t_gamma;
-    let size = t_sigma.abs() + t_nu.abs() + t_gamma.abs() + 1.62;
-    let d = x - mu;
-    if d == 0.0 {
-      if a <= 0.0 {
-        return Some(f64::INFINITY);
-      }
-      let (scale, gamma_a) = (2.0 * ln_quotient(sigma, root), ln_gamma(a));
-      let at_mu = size + (a * scale).abs() + gamma_a.abs();
-      if at_mu.is_nan() || at_mu > PLAIN_LOG_SIZE {
-        return Some(small_order::density((sigma, nu, theta), (0.0, 0.0)));
-      }
-      return Some((log_norm + a * scale + (a - 1.0) * std::f64::consts::LN_2 + gamma_a).exp());
-    }
-    let y = d.abs() * root / (sigma * sigma);
-    // `θd/σ² − y` as `−2|d|/(ν(root + |θ|)) − |d|(|θ| − θ·sgn d)/σ²`, of one sign, where `2σ²/ν ≪ θ²` would leave two
-    // large terms to cancel.
-    let tilt = -2.0 * d.abs() / (nu * (root + theta.abs()))
-      - d.abs() / sigma * ((theta.abs() - theta * d.signum()) / sigma);
-    let (power, kernel) = (a * ln_quotient(d.abs(), root), ln_bessel_ke(a, y));
-    if !(size + power.abs() + kernel.abs() - tilt <= PLAIN_LOG_SIZE && y.is_normal()) {
-      return Some(small_order::density((sigma, nu, theta), two_sum(x, -mu)));
-    }
-    Some((log_norm + power + kernel + tilt).exp())
+    Some(Self::density_at(self.params(), x, 0))
   }
 
   fn mean(&self) -> Option<f64> {
@@ -467,7 +498,13 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
 
   fn variance(&self) -> Option<f64> {
     let (sigma, nu, theta, _) = self.params();
-    Some(sigma * sigma + nu * theta * theta)
+    let variance = sigma * sigma + nu * theta * theta;
+    // Two subnormal terms round twice; at `2³⁰⁰` the sum rounds once, `νθ² < 2⁻¹⁰²²` holding `θ` under 3.
+    if variance < f64::MIN_POSITIVE {
+      let (s, t) = (ldexp(sigma, 300), ldexp(theta, 300));
+      return Some(ldexp(s * s + nu * t * t, -600));
+    }
+    Some(variance)
   }
 
   /// `κ₃/κ₂^{3/2}` from the gamma clock's cumulants, `t(3 + 2ρ)/(1 + ρ)^{3/2}`, `t = νθ/σ`, `ρ = tθ/σ`, past `ρ = 1` as

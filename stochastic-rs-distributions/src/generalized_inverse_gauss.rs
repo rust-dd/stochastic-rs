@@ -45,23 +45,19 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
+use crate::generalized_inverse_gauss::cumulants::Cumulants;
 use crate::seeded::StreamState;
 use crate::special::KDenominator;
 use crate::special::LARGE_ORDER;
 use crate::special::PLAIN_LOG_SIZE;
-use crate::special::debye_log_sum;
-use crate::special::divergence;
-use crate::special::exp_times_over;
+use crate::special::exp_parts;
 use crate::special::ldexp;
 use crate::special::ln_bessel_ke;
 use crate::special::ln_quotient;
-use crate::special::ln_saddle;
 use crate::special::ln_shift;
-use crate::special::offset;
 use crate::special::order_step;
 use crate::special::ratio_regime;
-use crate::special::saddle;
-use crate::special::saddle_parts;
+use crate::special::scaled_saddle;
 use crate::special::split_pow2;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
@@ -240,8 +236,8 @@ impl Setup {
   }
 }
 
-/// Generalized inverse Gaussian distribution GIG$(\lambda, \chi, \psi)$, `chi > 0`, `psi > 0`; a [`Seeded`](crate::Seeded) stream draws it in bulk.
-/// The density within `ε(S + 16)`, `S` its logarithms' sizes summed, or `32ε` where `S` passes 709 or `ω = √(χψ)` leaves the normal range, and the mgf `2ε(|ln M| + 32)` below `r = √(λ² + χψ) = 50`, from it `4ε(|ln f| + 20)` and `2ε(|ln M| + 5)`, `E Xⁿ` below order 50 within `2ε(|ln(ω/2)| + n + 8)`; past `r ≈ 3e34` a density `k` deviations off its mode adds `k√r·1e-31`.
+/// The GIG(λ, χ, ψ) law: density within `ε(S + 16)` to `r = √(λ² + χψ) = 50`, `S` its logs' sizes
+/// summed, then `4ε(|ln f| + 20)`, plus `k√r·1e-31` at `k` deviations past `r = 3e34`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdGig<T> {
   lambda: T,
@@ -364,9 +360,12 @@ impl<T: SimdFloatExt> SimdGig<T> {
       if moment.is_normal() && value.is_normal() {
         return value;
       }
-      // `ln|factor| + k ln w_k + rest`, the saddle's logarithm from its factors', where `w_kᵏ` or the product leaves the range.
-      let ln_moment = order * ln_saddle(lambda + order, root_chi, root_psi) + rest;
-      return factor.signum() * (factor.abs().ln() + ln_moment).exp();
+      // Past the doubles `w_k = 2ʲm` and the factor apart, so no `ε·|ln w_k|` enters, as a logarithm's would.
+      let to = lambda + order;
+      let (m, j) = scaled_saddle(to, to.hypot(root_chi * root_psi), (root_chi, root_psi));
+      let ((b, n), (e, mk)) = (split_pow2(factor.abs()), split_pow2(m.powf(order)));
+      let p = (i64::from(j) * i64::from(k) + i64::from(b + e)).clamp(-100_000, 100_000) as i32;
+      return factor.signum() * exp_parts((rest, 0.0), n * mk, p);
     }
     let (m, e) = ratio_moment::ratio_moment(lambda, (root_chi, root_psi), k);
     let (b, n) = split_pow2(factor.abs());
@@ -390,10 +389,19 @@ impl<T: SimdFloatExt> SimdGig<T> {
     )
   }
 
-  /// `((m, e), ρ, [k₁, k₂, k₃, k₄])` with the cumulants `κₙ = sⁿρⁿ⁻¹kₙ`, `s = 2ᵉm`, at `(λ, χ, ψ)`, each factor
-  /// representable where `κₙ` is not.
-  pub(crate) fn cumulants_at((lambda, chi, psi): (f64, f64, f64)) -> ((f64, i32), f64, [f64; 4]) {
-    cumulants::cumulants(lambda, chi, psi)
+  /// The cumulants `κₙ = sⁿρⁿ⁻¹kₙ`, `s = 2ᵉm`, at `(λ, √χ, √ψ)`, each factor representable where
+  /// `κₙ` is not; `(χ, ψ)` where both squares are exact doubles.
+  pub(crate) fn cumulants_at(
+    lambda: f64,
+    roots: (f64, f64),
+    squares: Option<(f64, f64)>,
+  ) -> Cumulants {
+    cumulants::cumulants(lambda, roots, squares)
+  }
+
+  fn cumulants(&self) -> Cumulants {
+    let (lambda, chi, psi) = self.params();
+    Self::cumulants_at(lambda, (chi.sqrt(), psi.sqrt()), Some((chi, psi)))
   }
 }
 
@@ -439,15 +447,11 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
     let b = root_chi * root_psi;
     let r = lambda.hypot(b);
     if r >= LARGE_ORDER {
-      // `ln f = D_λ(x/w − 1) − ln x − ln 2 − T`, `e^{−T} = √(2r/π)/S`: the `O(r)` terms meet in the divergence.
-      let w = saddle(lambda, root_chi, root_psi);
-      let w_parts = saddle_parts(w, (lambda, 0.0), (chi, 0.0), (psi, 0.0));
-      let a = divergence(lambda, (chi, psi), w, offset((x, 0.0), w_parts))
-        - std::f64::consts::LN_2
-        - debye_log_sum(lambda.abs(), r);
-      return Some(exp_times_over(
-        a,
-        (2.0 * r / std::f64::consts::PI).sqrt(),
+      return Some(concentrated::density(
+        lambda,
+        (chi, psi),
+        (root_chi, root_psi),
+        r,
         x,
       ));
     }
@@ -474,19 +478,19 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
   }
 
   fn variance(&self) -> Option<f64> {
-    let ((m, e), rho, [_, k2, _, _]) = Self::cumulants_at(self.params());
+    let ((m, e), rho, ([_, k2, _, _], _)) = self.cumulants();
     Some(ldexp(m * (rho * k2) * m, 2 * e))
   }
 
   fn skewness(&self) -> Option<f64> {
-    let (_, rho, [_, k2, k3, _]) = Self::cumulants_at(self.params());
-    Some(rho.sqrt() * (k3 / k2.powf(1.5)))
+    let (_, rho, ([_, k2, k3, _], t)) = self.cumulants();
+    Some(ldexp(rho.sqrt() * (k3 / k2.powf(1.5)), t))
   }
 
   /// Excess kurtosis, `κ₄/κ₂²`.
   fn kurtosis(&self) -> Option<f64> {
-    let (_, rho, [_, k2, _, k4]) = Self::cumulants_at(self.params());
-    Some(rho * (k4 / (k2 * k2)))
+    let (_, rho, ([_, k2, _, k4], t)) = self.cumulants();
+    Some(ldexp(rho * (k4 / (k2 * k2)), 2 * t))
   }
 
   /// $(\psi/(\psi - 2t))^{\lambda/2}\,K_\lambda(\sqrt{\chi(\psi - 2t)})/K_\lambda(\sqrt{\chi\psi})$ for $t < \psi/2$; at $t = \psi/2$
@@ -518,6 +522,7 @@ py_distribution!(PyGig, SimdGig,
   params: (lambda: f64, chi: f64, psi: f64)
 );
 
+mod concentrated;
 mod cumulants;
 mod ratio_moment;
 mod small_order;
