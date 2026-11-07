@@ -386,8 +386,7 @@ pub(crate) fn ldexp(x: f64, p: i32) -> f64 {
   ldexp_steps(x, p)
 }
 
-/// A step of `2⁻⁹⁶⁹` that rounds a subnormal leaves a last factor below `2⁻⁵³`, whose product rounds to 0 as the exact
-/// value does; cold and apart, since inline the compiler selected among the steps' products branch-free.
+/// A `2⁻⁹⁶⁹` step that rounds a subnormal leaves a last factor under `2⁻⁵³`, which rounds to 0 as the exact value does; cold, since inline the compiler selected among the steps' products branch-free.
 #[cold]
 #[inline(never)]
 fn ldexp_steps(mut x: f64, mut p: i32) -> f64 {
@@ -455,8 +454,7 @@ pub fn gamma_ui(a: f64, x: f64) -> f64 {
   }
 }
 
-/// Regularised incomplete beta `I_x(a, b) = B(x; a, b)/B(a, b)` by Lentz's continued fraction, past the mean through
-/// `1 − I_{1−x}(b, a)`, or DLMF 8.17.7's complement in `1 − x` where that difference would lose digits; NaN off `[0, 1]`.
+/// Regularised incomplete beta `I_x(a, b)` by Lentz's continued fraction, past the mean `1 − I_{1−x}(b, a)` or, where that loses digits, DLMF 8.17.7's complement in `1 − x`; NaN off `[0, 1]`.
 pub fn beta_i(a: f64, b: f64, x: f64) -> f64 {
   if !(0.0..=1.0).contains(&x) {
     return f64::NAN;
@@ -494,8 +492,8 @@ pub fn beta_i(a: f64, b: f64, x: f64) -> f64 {
   beta_i_scaled(a, b, x, lower)
 }
 
-/// `v > ½` below the switch at `a ≤ 1`, `x ≤ ½`: `v` where its estimated error is within 2⁻⁴⁰ and short of `1 − v`, else
-/// one less the complement in `x`; cold and apart, since inline the compiler ran the estimate ahead of the cheap tests.
+/// `v > ½` below the switch at `a ≤ 1`, `x ≤ ½`: `v` where its estimate is within 2⁻⁴⁰ and short of
+/// `1 − v`, else 1 less the complement in `x`; cold, as inline it ran before the cheap tests.
 #[cold]
 #[inline(never)]
 fn next_to_one(a: f64, b: f64, x: f64, v: f64, size: f64) -> f64 {
@@ -513,8 +511,8 @@ const TAIL_HELD: f64 = 9.094947017729282e-13;
 /// ln Γ's Lanczos terms, about 17 by an `|ln Γ|` under 1 (at most 7.2, 2, 8.3 apart, 10 together).
 const REST_FLOOR: f64 = 16.0;
 
-/// Where `bt` left the normal doubles: `x^a(1 − x)^b/(a·B(a, b))` and the fraction's log before one `exp`, `ln(a·B(a, b))`
-/// cancellation-free at a shape at most 1; a side next to 1 is the complement series, which no rounded `(1 − x)^b` enters.
+/// Off the normal `bt`: `x^a(1 − x)^b/(a·B(a, b))` and the fraction's log in one `exp`, `ln(aB)`
+/// cancellation-free at a shape at most 1; a side next to 1 the complement series.
 #[cold]
 #[inline(never)]
 fn beta_i_scaled(a: f64, b: f64, x: f64, lower: bool) -> f64 {

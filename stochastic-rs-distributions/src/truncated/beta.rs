@@ -454,8 +454,8 @@ mod tests {
     SimdTruncatedBeta::<f64>::new(2.0, -1.0, 0.2, 0.8);
   }
 
-  /// Below `lo = 2⁻²⁶` past the mean the switch reads the mass from the complement at `lo`, where `1 − lo` read about 1 and
-  /// each draw spent its 10⁵ rejection tries: mpmath at 60 and 120 digits raised by |log₁₀ α|, a subnormal correctly rounded.
+  /// Below `lo = 2⁻²⁶` past the mean the switch reads the mass from the series at `lo`, whose
+  /// `1 − lo` keeps none of its digits: mpmath at 60 and 120 digits, a subnormal correctly rounded.
   #[test]
   fn a_lower_bound_below_half_its_digits_keeps_the_switch_mass() {
     for (a, b, lo, up, want) in [

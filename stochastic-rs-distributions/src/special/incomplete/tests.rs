@@ -415,8 +415,7 @@ fn gamma_p_inv_inverts_the_tail_it_solves() {
   }
 }
 
-/// At a subnormal shape `bt` lies below the doubles and the scaled path forms it from `ln(a·B(a, b))`: mpmath at 60 and
-/// 120 digits (DLMF 8.17.8), a subnormal value its correctly rounded double.
+/// At a subnormal shape `bt` lies below the doubles and the scaled path forms it from `ln(a·B(a, b))`: mpmath at 60 and 120 digits (DLMF 8.17.8), a subnormal value its correctly rounded double.
 #[test]
 fn beta_i_at_subnormal_shapes() {
   for (a, b, x, want) in [
@@ -435,8 +434,7 @@ fn beta_i_at_subnormal_shapes() {
   }
 }
 
-/// Past the switch at a small second shape `1 − I_{1−x}(b, a)` hands `bt`'s rounding to the tail whole; the complement in
-/// `1 − x` (DLMF 8.17.7) holds it: mpmath at 60 and 120 digits raised by |log₁₀ b|, a subnormal its correctly rounded double.
+/// Past the switch at a small `b` the complement in `1 − x` (DLMF 8.17.7) holds a tail `bt`'s rounding would reach: mpmath at 60 and 120 digits raised by |log₁₀ b|, a subnormal correctly rounded.
 #[test]
 fn beta_i_reads_a_small_far_tail_from_the_complement() {
   for (a, b, x, want) in [
@@ -465,8 +463,8 @@ fn beta_i_reads_a_small_far_tail_from_the_complement() {
   assert_eq!(beta_i(1e4, 1e-307, 0.999), f64::from_bits(0x0013_7e69_693a));
 }
 
-/// Below the switch at a tiny first shape and a large second one `bt` carries `ε·ln Γ(b)` and `b` times `1 − x`'s rounding;
-/// a value next to 1 is one less the complement: mpmath at 60 and 120 digits raised by |log₁₀ a|, Lentz's fraction beside it.
+/// Below the switch at a tiny `a` and a large `b`, where `bt` carries `ε·ln Γ(b)` and `b` times
+/// `1 − x`'s rounding, a value next to 1 is 1 less the complement: mpmath at 60 and 120 digits.
 #[test]
 fn beta_i_reads_a_value_next_to_1_from_the_complement() {
   for (a, b, x, want) in [
@@ -484,8 +482,7 @@ fn beta_i_reads_a_value_next_to_1_from_the_complement() {
   assert_eq!(beta_i(1e-300, 1e8, 1e-10), 1.0);
 }
 
-/// Below the switch at a first shape at most 1 a value next to 1 stays at or below it, within 1e-12 of mpmath's: the
-/// direct fraction read above it, `1.0000000000000007` at survey law 475's bounds and up to `1.0000000000001763`.
+/// Below the switch at a first shape at most 1 a value next to 1 stays at or below 1, within 1e-12 of mpmath's, where the direct fraction passes 1 (`1.0000000000000007` at survey law 475's bounds).
 #[test]
 fn beta_i_keeps_a_value_next_to_1_at_or_below_it() {
   for (a, b, x, want) in [
@@ -538,8 +535,8 @@ fn beta_ic_reads_the_upper_tail_from_x() {
   assert!(beta_ic(1e8, 1e16, 1e-8).is_nan());
 }
 
-/// `ldexp` rounds a subnormal once, against `x·2ᵖ` rounded from its integer mantissa: steps of `2⁻¹⁰⁰⁰` round 18 of
-/// these 10 716 cells twice, `2⁻⁵³(1 + 2⁻⁵²)·2⁻¹⁰²²` to 0 among them, and steps of `2⁻¹⁰²²` 12.
+/// `ldexp` rounds a subnormal once, against `x·2ᵖ` rounded from its integer mantissa, on 10 716
+/// cells that steps of `2⁻¹⁰⁰⁰` or `2⁻¹⁰²²` round twice, `2⁻⁵³(1 + 2⁻⁵²)·2⁻¹⁰²²` among them.
 #[test]
 fn ldexp_rounds_a_subnormal_once() {
   let once = |x: f64, p: i32| {

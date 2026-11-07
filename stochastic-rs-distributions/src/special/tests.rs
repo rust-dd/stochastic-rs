@@ -58,8 +58,8 @@ fn gamma_matches_high_precision_references() {
   }
 }
 
-/// mpmath at 60 and 120 digits, within 2ε on `(0, 10)`, whose path reads no libm function, the two doubles about the
-/// root `x₀` included; the series cut after `1/(132y¹⁰)` read each outside it, `ψ(1)` by 6.8e4 ε.
+/// Within 2ε of mpmath (60 and 120 digits) on `(0, 10)`, whose path reads no libm function, the two
+/// doubles about the root `x₀` included.
 #[test]
 fn digamma_holds_two_eps_below_its_series() {
   for (x, want) in [
@@ -81,8 +81,8 @@ fn digamma_holds_two_eps_below_its_series() {
   }
 }
 
-/// Below 0 within `4ε(|ψ(1 − x)| + |π cot πx|)` at the doubles nearest the first and the tenth roots, where the
-/// reflection's two terms cancel and the cot nears its zero; mpmath at 60 and 120 digits.
+/// Below 0 within `4ε(|ψ(1 − x)| + |π cot πx|)` at the doubles by the first and tenth roots, where
+/// the reflection's terms cancel and the cot nears its zero; mpmath at 60 and 120 digits.
 #[test]
 fn digamma_holds_the_reflection_beside_its_negative_roots() {
   for (x, want, scale) in [

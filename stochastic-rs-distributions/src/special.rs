@@ -117,8 +117,8 @@ pub fn ln_gamma(x: f64) -> f64 {
   if x < 0.5 {
     // Reflection: ln Γ(x) = ln(π / sin(πx)) − ln Γ(1−x)
     let ratio = std::f64::consts::PI / sinpi(x);
-    // Below 5.6e-309 the ratio passes MAX: ln Γ(x) = −ln x − γx + O(x²) from 1/Γ(x) = x + γx² + ⋯ (DLMF 5.7.1), the γx
-    // under 1e-311 of it.
+    // Below 5.6e-309 the ratio passes MAX: ln Γ(x) = −ln x − γx + O(x²) from DLMF 5.7.1's 1/Γ(x) =
+    // x + γx² + ⋯, the γx under 1e-311 of it.
     if ratio.is_infinite() && x > 0.0 {
       return -x.ln();
     }
@@ -199,7 +199,7 @@ pub(crate) fn sinpi(x: f64) -> f64 {
   if n % 2.0 == 0.0 { s } else { -s }
 }
 
-/// Digamma `ψ(x) = Γ'(x)/Γ(x)`, NaN at the poles: Boost.Math's rational on `[1, 2]`, the recurrence onto it from
+/// Digamma `ψ(x)`, NaN at the poles: Boost.Math's rational on `[1, 2]`, the recurrence onto it from
 /// `(0, 10)` (DLMF 5.5.2), DLMF 5.11.2's series from 10 and below 0 the reflection (DLMF 5.5.4).
 pub fn digamma(x: f64) -> f64 {
   if is_pole(x) {
@@ -230,8 +230,8 @@ fn digamma_one_plus(u: f64) -> f64 {
   digamma_near_root(t) + sum
 }
 
-/// `ψ(1 + t)` on `[0, 1]` as `(t − t₀)(Y + P(t)/Q(t))`, `t₀ = x₀ − 1` in three parts so the root keeps its relative
-/// digits: Boost.Math's `digamma_imp_1_2` (53 bits), within 2e-17 of `ψ(x)/(x − x₀)`.
+/// `ψ(1 + t)` on `[0, 1]` as `(t − t₀)(Y + P(t)/Q(t))`, `t₀ = x₀ − 1` in three parts, so the root
+/// keeps its digits: Boost.Math's `digamma_imp_1_2` (53 bits), within 2e-17 of `ψ(x)/(x − x₀)`.
 fn digamma_near_root(t: f64) -> f64 {
   const Y: f64 = 1_043_943.0 / 1_048_576.0;
   const P: [f64; 6] = [
@@ -278,8 +278,8 @@ fn digamma_series(x: f64) -> f64 {
   x.ln() - 0.5 / x - z * C.iter().rev().fold(0.0, |acc, &c| acc * z + c)
 }
 
-/// `π cot(πx)` from the exact `r = x − round(x)`, past `|r| = ¼` as `π tan(π(±½ − r))`, so it keeps its relative
-/// digits beside its zeros as well as its poles.
+/// `π cot(πx)` from the exact `r = x − round(x)`, past `|r| = ¼` as `π tan(π(±½ − r))`, so it keeps
+/// its relative digits beside its zeros as well as its poles.
 fn pi_cot_pi(x: f64) -> f64 {
   let r = x - x.round();
   if r.abs() <= 0.25 {

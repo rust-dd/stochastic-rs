@@ -1,5 +1,5 @@
-//! `1 − I_x(a, b)` read from `x` itself, so neither a rounded `1 − x` nor a cancelling `1 − I` enters it, and `ln(a·B(a, b))`
-//! free of cancellation at a shape at most 1.
+//! `1 − I_x(a, b)` from `x` itself, with no rounded `1 − x` or cancelling `1 − I` in it, and
+//! `ln(a·B(a, b))` free of cancellation at a shape at most 1.
 //! Reference: DiDonato, A.R., Morris, A.H. (1992), "Algorithm 708: Significant digit computation of the incomplete beta function ratios", ACM TOMS 18(3), 360-373, DOI 10.1145/131766.131776 (`bpser`'s series, `algdiv`'s Stirling difference).
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 8.17.7 (`B_x(a, b) = x^a/a·F(a, 1 − b; a + 1; x)`), <https://dlmf.nist.gov/8.17.7>; eq. 5.11.1 (Stirling's series), <https://dlmf.nist.gov/5.11.1>.
 
@@ -14,8 +14,8 @@ use crate::special::ln_gamma;
 /// Below this argument a rounded `1 − x` keeps under half of `x`'s digits, and below 2⁻⁵³ none.
 pub(crate) const KEPT: f64 = 1.4901161193847656e-8;
 
-/// From this argument `ln Γ` differences are Stirling's, whose seventh term is under `2e-18` of the digamma; unit shifts
-/// lift a smaller one.
+/// From this argument `ln Γ` differences are Stirling's, its seventh term under `2e-18` of the
+/// digamma; unit shifts lift a smaller one.
 const STIRLING_FROM: f64 = 16.0;
 
 /// `B_{2k}/(2k(2k − 1))`, `k = 1, …, 6`, Stirling's coefficients (DLMF 5.11.1).
@@ -28,8 +28,8 @@ const STIRLING: [f64; 6] = [
   -691.0 / 360360.0,
 ];
 
-/// `1 − I_x(a, b)` from `x`: below ½ at `a ≤ 1`, `bx ≤ 2` DLMF 8.17.7's series, else below `KEPT` the gamma limit (NaN
-/// where it fails), elsewhere `I_{1−x}(b, a)`, its `1 − x` exact from ½; NaN off `[0, 1]`.
+/// `1 − I_x(a, b)` from `x`: below ½ at `a ≤ 1`, `bx ≤ 2` DLMF 8.17.7's series, else below `KEPT`
+/// the gamma limit, NaN where it fails; elsewhere `I_{1−x}(b, a)`; NaN off `[0, 1]`.
 pub(crate) fn beta_ic(a: f64, b: f64, x: f64) -> f64 {
   if x > 0.0 && x < 0.5 && a <= 1.0 && b * x <= 2.0 {
     return upper_series(a, b, x);
@@ -40,8 +40,8 @@ pub(crate) fn beta_ic(a: f64, b: f64, x: f64) -> f64 {
   beta_i(b, a, 1.0 - x)
 }
 
-/// `Q(a, Ns)`, `s = −ln(1 − x)`, `N = b + (a − 1)/2`: TOMS 708 `bgrat`'s leading term, NaN where its next terms,
-/// `(a − 1)(s + (a + 1)/N)²/24` and `a(a² − 1)/(24N²)` relative, may pass 2⁻⁴⁰.
+/// `Q(a, Ns)`, `s = −ln(1 − x)`, `N = b + (a − 1)/2`, TOMS 708 `bgrat`'s leading term; NaN where
+/// its next terms, `(a − 1)(s + (a + 1)/N)²/24` and `a(a² − 1)/(24N²)` relative, may pass 2⁻⁴⁰.
 fn gamma_limit(a: f64, b: f64, x: f64) -> f64 {
   let n = b + 0.5 * (a - 1.0);
   let s = -(-x).ln_1p();
@@ -53,8 +53,7 @@ fn gamma_limit(a: f64, b: f64, x: f64) -> f64 {
   }
 }
 
-/// `1 − I_x(p, q) = −expm1(E)`, `E = p ln x − ln(pB(p, q)) + ln(1 + pΣ)`, `Σ = Σ_{n≥1} (1 − q)_n xⁿ/(n!(p + n))`, at
-/// `0 < p ≤ 1`, `0 < x ≤ ½`, `qx ≤ 2`; `E` is `p` times a sum of order one, so a subnormal tail rounds once.
+/// `1 − I_x(p, q) = −expm1(E)`, `E = p ln x − ln(pB) + ln(1 + pΣ)`, `Σ = Σ (1 − q)_n xⁿ/(n!(p + n))` (`p ≤ 1`, `x ≤ ½`, `qx ≤ 2`): `E` is `p` times a sum of order one, rounding a subnormal tail once.
 pub(super) fn upper_series(p: f64, q: f64, x: f64) -> f64 {
   let (mut term, mut sum, mut n) = (1.0, 0.0, 1.0);
   while n <= 500.0 {
@@ -91,8 +90,7 @@ pub(super) fn ln_shape_beta(p: f64, q: f64) -> f64 {
   }
 }
 
-/// `−ln(pB(p, q)) = p(ln z + s) − t` at `0 < p ≤ 1`: `−ln Γ(1 + p)` from A&S 6.1.34, `ln Γ(z + p) − ln Γ(z)` at `z = q + n ≥ 16`
-/// by Stirling's difference, the unit shifts `ln(1 + p/(q + j))` over `p` in `s`, and `t` the first one where `1/q` overflows.
+/// `−ln(pB(p, q)) = p(ln z + s) − t`, `p ≤ 1`: `−ln Γ(1 + p)` by A&S 6.1.34, `ln Γ(z + p) − ln Γ(z)` by Stirling's difference at `z ≥ 16`, unit shifts in `s`, `t` the first where `1/q` overflows.
 fn shape_beta_parts(p: f64, q: f64) -> (f64, f64, f64) {
   let g_over = recip_gamma_1p_m1_over(p);
   let mut s = ln_1p_over(p * g_over) * g_over;
