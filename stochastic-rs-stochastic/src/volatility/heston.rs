@@ -221,33 +221,38 @@ impl<T: FloatExt, S: SeedExt, Sch: HestonScheme, B> Heston<T, S, Sch, B> {
     self.seed = seed;
     self
   }
+
+  /// QE's preconditions, checked at the switch and again where the scheme runs, since the fields stay public.
+  fn assert_qe_parameters(&self) {
+    assert!(
+      matches!(self.pow, HestonPow::Sqrt),
+      "pow must satisfy `matches!(pow, HestonPow::Sqrt)`, got pow = {:?}",
+      self.pow
+    );
+    assert!(
+      self.kappa > T::zero(),
+      "kappa must satisfy `kappa > T::zero()`, got kappa = {:?}",
+      self.kappa
+    );
+    assert!(
+      self.sigma > T::zero(),
+      "sigma must satisfy `sigma > T::zero()`, got sigma = {:?}",
+      self.sigma
+    );
+    if let Some(s0) = self.s0 {
+      assert!(
+        s0 > T::zero(),
+        "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
+      );
+    }
+  }
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Heston<T, S, Euler, B> {
   /// Re-tag the model with the [`AndersenQe`] variance scheme at no runtime cost; panics unless
   /// `pow` is `HestonPow::Sqrt` and `kappa`, `sigma` and a given `s0` are positive.
   pub fn qe(self) -> Heston<T, S, AndersenQe> {
-    assert!(
-      matches!(self.pow, HestonPow::Sqrt),
-      "pow must satisfy `pow == HestonPow::Sqrt` (QE is defined only for the square-root (CIR) variance), got pow = {:?}",
-      self.pow
-    );
-    assert!(
-      self.kappa > T::zero(),
-      "kappa must satisfy `kappa > 0` under QE, got kappa = {:?}",
-      self.kappa
-    );
-    assert!(
-      self.sigma > T::zero(),
-      "sigma must satisfy `sigma > 0` under QE, got sigma = {:?}",
-      self.sigma
-    );
-    if let Some(s0) = self.s0 {
-      assert!(
-        s0 > T::zero(),
-        "s0 must satisfy `s0 > 0` under QE, got s0 = {s0:?}"
-      );
-    }
+    self.assert_qe_parameters();
     Heston {
       backend: Cpu,
       s0: self.s0,
@@ -410,14 +415,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   for Heston<T, S, AndersenQe, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    assert!(
-      matches!(self.pow, HestonPow::Sqrt),
-      "Andersen QE is defined only for the square-root (CIR) variance; use HestonPow::Sqrt"
-    );
-    assert!(
-      self.kappa > T::zero(),
-      "Andersen QE requires a positive mean-reversion rate kappa"
-    );
+    self.assert_qe_parameters();
     let dt = self.time_step();
     let (one, two, half) = (T::one(), T::from_f64_fast(2.0), T::from_f64_fast(0.5));
     let e_kd = (-self.kappa * dt).exp();
@@ -439,11 +437,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   /// The scheme evolves the log spot, so the first slot is `ln S₀` and the
   /// report exponentiates it back.
   fn initial_state(&self) -> [T; 4] {
+    self.assert_qe_parameters();
     let s0 = self.s0.unwrap_or(T::one());
-    assert!(
-      s0 > T::zero(),
-      "Andersen QE evolves log-spot, so s0 must be > 0"
-    );
     [
       s0.ln(),
       self.v0.unwrap_or(T::zero()).max(T::zero()),

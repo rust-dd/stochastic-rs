@@ -105,14 +105,7 @@ impl HestonScheme for AndersenQe {
     model: &Heston<T, S, AndersenQe, B>,
     seed: &S,
   ) -> [Array1<T>; 2] {
-    assert!(
-      matches!(model.pow, HestonPow::Sqrt),
-      "Andersen QE is defined only for the square-root (CIR) variance; use HestonPow::Sqrt"
-    );
-    assert!(
-      model.kappa > T::zero(),
-      "Andersen QE requires a positive mean-reversion rate kappa"
-    );
+    model.assert_qe_parameters();
 
     let n = model.n;
     let dt = model.t.unwrap_or(T::one()) / T::from_usize_(n - 1);
@@ -140,10 +133,6 @@ impl HestonScheme for AndersenQe {
 
     let s0 = model.s0.unwrap_or(T::one());
     let v0 = model.v0.unwrap_or(T::zero()).max(T::zero());
-    assert!(
-      s0 > T::zero(),
-      "Andersen QE evolves log-spot, so s0 must be > 0"
-    );
 
     let mut s = Array1::<T>::zeros(n);
     let mut v = Array1::<T>::zeros(n);

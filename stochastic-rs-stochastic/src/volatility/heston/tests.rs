@@ -98,7 +98,9 @@ fn qe_variance_mean_and_asset_martingale() {
 
 /// QE is a square-root (CIR) scheme; it must reject the 3/2 variance.
 #[test]
-#[should_panic(expected = "square-root (CIR) variance")]
+#[should_panic(
+  expected = "pow must satisfy `matches!(pow, HestonPow::Sqrt)`, got pow = ThreeHalves"
+)]
 fn qe_rejects_three_halves() {
   let _ = Heston::new(
     Some(100.0_f64),
@@ -137,19 +139,25 @@ fn qe_switch(kappa: f64, sigma: f64, s0: f64) -> Heston<f64, Unseeded, AndersenQ
 }
 
 #[test]
-#[should_panic(expected = "kappa must satisfy `kappa > 0` under QE")]
+#[should_panic(expected = "kappa must satisfy `kappa > T::zero()`, got kappa = 0.0")]
 fn qe_switch_rejects_a_zero_mean_reversion() {
   let _ = qe_switch(0.0, 0.5, 100.0);
 }
 
 #[test]
-#[should_panic(expected = "sigma must satisfy `sigma > 0` under QE")]
+#[should_panic(expected = "sigma must satisfy `sigma > T::zero()`, got sigma = 0.0")]
 fn qe_switch_rejects_a_zero_vol_of_vol() {
   let _ = qe_switch(2.0, 0.0, 100.0);
 }
 
 #[test]
-#[should_panic(expected = "s0 must satisfy `s0 > 0` under QE")]
+#[should_panic(expected = "s0 must satisfy `s0 > T::zero()`, got s0 = 0.0")]
 fn qe_switch_rejects_a_non_positive_spot() {
   let _ = qe_switch(2.0, 0.5, 0.0);
+}
+
+#[test]
+#[should_panic(expected = "sigma must satisfy `sigma > T::zero()`, got sigma = 0.0")]
+fn qe_rechecks_its_parameters_where_the_scheme_runs() {
+  let _ = qe_switch(2.0, 0.5, 100.0).with_sigma(0.0).sample();
 }
