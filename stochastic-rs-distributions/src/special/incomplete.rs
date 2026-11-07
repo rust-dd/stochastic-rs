@@ -377,10 +377,19 @@ pub(super) fn split_sqrt2(s: f64) -> (i32, f64) {
   }
 }
 
-/// `x·2ᵖ` rounded once, by musl `scalbn`'s steps: a step of `2⁻⁹⁶⁹` that rounds a subnormal leaves a last factor below
-/// `2⁻⁵³`, whose product rounds to 0 as the exact value does.
-pub(crate) fn ldexp(mut x: f64, mut p: i32) -> f64 {
-  let pow2 = |k: i32| f64::from_bits(((k + 1023) as u64) << 52);
+/// `x·2ᵖ` rounded once: one product where `2ᵖ` is a normal double, musl `scalbn`'s steps past it.
+pub(crate) fn ldexp(x: f64, p: i32) -> f64 {
+  if (-1022..=1023).contains(&p) {
+    return x * pow2(p);
+  }
+  ldexp_steps(x, p)
+}
+
+/// A step of `2⁻⁹⁶⁹` that rounds a subnormal leaves a last factor below `2⁻⁵³`, whose product rounds to 0 as the exact
+/// value does; cold and apart, since inline the compiler selected among the steps' products branch-free.
+#[cold]
+#[inline(never)]
+fn ldexp_steps(mut x: f64, mut p: i32) -> f64 {
   if p > 1023 {
     x *= pow2(1023);
     p -= 1023;
@@ -388,7 +397,7 @@ pub(crate) fn ldexp(mut x: f64, mut p: i32) -> f64 {
       x *= pow2(1023);
       p = (p - 1023).min(1023);
     }
-  } else if p < -1022 {
+  } else {
     x *= pow2(-969);
     p += 969;
     if p < -1022 {
@@ -397,6 +406,10 @@ pub(crate) fn ldexp(mut x: f64, mut p: i32) -> f64 {
     }
   }
   x * pow2(p)
+}
+
+fn pow2(k: i32) -> f64 {
+  f64::from_bits(((k + 1023) as u64) << 52)
 }
 
 /// `ln P(a, x)`, or `ln Q` if `upper`, and its derivative in `ln x`: `1/S` or `−1/h` where the tail solved is the series'
