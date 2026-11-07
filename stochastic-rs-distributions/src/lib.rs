@@ -138,6 +138,8 @@ mod macros;
 #[cfg(doctest)]
 mod doctest_seals;
 mod float_impls;
+#[doc(hidden)]
+pub mod linalg;
 #[cfg(feature = "python")]
 #[doc(hidden)]
 pub mod python;
