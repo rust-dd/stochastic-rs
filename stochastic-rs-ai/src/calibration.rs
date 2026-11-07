@@ -225,7 +225,7 @@ impl<'m, M: SurrogateModel> SurrogateCalibrator<'m, M> {
       converged: report.converged,
       in_bounds,
       evaluations: report.evaluations,
-      message: format!("{:?}", report.reason),
+      message: report.message().to_owned(),
     })
   }
 }
