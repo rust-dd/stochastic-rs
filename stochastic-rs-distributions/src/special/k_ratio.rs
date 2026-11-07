@@ -86,6 +86,16 @@ pub(crate) fn k_half_ratio(nu: f64, x: f64, ln_2_x: f64) -> (i32, f64) {
   let mu = nu - n;
   if x < 2.0 {
     let (k, k1) = temme_sums_at(x, mu, mu * mu, ln_2_x);
+    let (q, plain) = (0.25 * x * x, k1 / k);
+    if plain.is_normal() {
+      let mut g = plain;
+      let mut i = 1.0;
+      while i <= n {
+        g = (mu + i) + q / g;
+        i += 1.0;
+      }
+      return split_pow2(g);
+    }
     // Near `μ = −½` the ratio at a subnormal `x` is `(x/2)^{−2μ}`, subnormal itself or 0, its terms not.
     let ((i, a), (j, b)) = (split_pow2(k1), split_pow2(k));
     let (l, m) = split_pow2(a / b);
@@ -93,7 +103,6 @@ pub(crate) fn k_half_ratio(nu: f64, x: f64, ln_2_x: f64) -> (i32, f64) {
     if n == 0.0 {
       return (e, m);
     }
-    let q = 0.25 * x * x;
     let mut g = (mu + 1.0) + ldexp(q / m, -e);
     let mut i = 2.0;
     while i <= n {

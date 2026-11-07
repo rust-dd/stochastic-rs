@@ -195,12 +195,6 @@ pub(crate) fn divergence(
   } else {
     0.5 * (psi * w)
   };
-  // `D′(e)·e_lo`, `D′ = −e(λ + (χ/2w)(2 + e)/(1 + e))/(1 + e)`, or `e(λ − (ψw/2)(2 + e))/(1 + e)²` at `λ < 0`.
-  let slope = if lambda >= 0.0 {
-    -e * (lambda + coefficient * (2.0 + e) / ratio.0) / ratio.0
-  } else {
-    e * (lambda - coefficient * (2.0 + e)) / ratio.0 / ratio.0
-  };
   if past_series(lambda, e) {
     // Near `e = −1` the low part is a share of `1 + e`, whose slope would leave `λ(e_lo/(1 + e))²`:
     // it goes in the ratio, and the terms' slope in `e` at that ratio takes the rest.
@@ -213,6 +207,12 @@ pub(crate) fn divergence(
     let low = rest * e_lo;
     return divergence_at(lambda, coefficient, e, whole) + if low.is_finite() { low } else { 0.0 };
   }
+  // `D′(e)·e_lo`, `D′ = −e(λ + (χ/2w)(2 + e)/(1 + e))/(1 + e)`, or `e(λ − (ψw/2)(2 + e))/(1 + e)²` at `λ < 0`.
+  let slope = if lambda >= 0.0 {
+    -e * (lambda + coefficient * (2.0 + e) / ratio.0) / ratio.0
+  } else {
+    e * (lambda - coefficient * (2.0 + e)) / ratio.0 / ratio.0
+  };
   let low = slope * e_lo;
   divergence_at(lambda, coefficient, e, ratio) + if low.is_finite() { low } else { 0.0 }
 }
@@ -267,7 +267,14 @@ fn divergence_at(lambda: f64, coefficient: f64, e: f64, (ratio, ratio_lo): (f64,
   if !(ratio.is_normal() && ratio > 0.0) {
     return f64::NEG_INFINITY;
   }
-  let ln_ratio = ratio.ln() + (ratio_lo / ratio).ln_1p();
+  // Under `2⁻⁴⁰` the low part's `ln_1p` is `t − t²/2` to under `2⁻⁸¹ t`.
+  let t = ratio_lo / ratio;
+  let ln_ratio = ratio.ln()
+    + if t.abs() < 9.094_947_017_729_282e-13 {
+      t - 0.5 * t * t
+    } else {
+      t.ln_1p()
+    };
   let (q, whole) = (q * (ratio / (ratio + ratio_lo)), ratio + ratio_lo);
   if lambda >= 0.0 {
     lambda * (ln_ratio - e) - coefficient * q
