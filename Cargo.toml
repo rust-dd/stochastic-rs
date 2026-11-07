@@ -127,6 +127,10 @@ name = "gn_batching"
 harness = false
 
 [[bench]]
+name = "heston_hull_white_2f"
+harness = false
+
+[[bench]]
 name = "dist_multicore"
 harness = false
 
