@@ -1,7 +1,9 @@
 use super::HestonCalibrator;
 use super::HestonJacobianMethod;
 use super::HestonParams;
+use super::transform::to_optimizer_coordinates;
 use crate::OptionType;
+use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::levy::MarketSlice;
 use crate::pricing::fourier::HestonFourier;
 use crate::traits::CalibrationResult;
@@ -135,15 +137,19 @@ fn finite_difference_jacobian_recovers_the_same_parameter_sets() {
   }
 }
 
+// HestonPricer's quadrature sits 3.1e-5 from this surface and the fitted Cui pricer 3.3e-8, so 1e-6 tells them apart.
 #[test]
 fn reported_rmse_is_the_price_error_of_the_fitted_pricer() {
   let truth = &CASES[0];
-  let result = calibrator(truth, HestonJacobianMethod::CuiAnalytic)
-    .calibrate(Some(truth.clone()))
-    .unwrap();
+  let calibrator = calibrator(truth, HestonJacobianMethod::CuiAnalytic);
+  let result = calibrator.calibrate(Some(truth.clone())).unwrap();
+  let mut objective = calibrator.clone();
+  objective.set_params(&to_optimizer_coordinates(&result.params));
+  let residuals = objective.residuals().unwrap();
+  let objective_rmse = (residuals.mapv(|r| r * r).sum() / residuals.len() as f64).sqrt();
   assert!(
-    result.rmse() < 1e-6,
-    "rmse {:e} at an exact fit",
+    result.rmse() < 1e-6 && (result.rmse() - objective_rmse).abs() <= 1e-9 * objective_rmse,
+    "rmse {:e}, the minimised residuals' {objective_rmse:e}",
     result.rmse()
   );
 }
