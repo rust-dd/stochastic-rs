@@ -138,8 +138,8 @@ fn concentrated_densities_hold_at_their_double_inputs() {
   }
 }
 
-/// mpmath at 60 and 120 digits: far tails where `x/w` is far from 1, whose `1 + e` a rounded offset read up to `2.5e-9` off,
-/// within `1e-12`; in the series band, where the offset's last bit read `4.8e-13`, within `3e-13`.
+/// mpmath at 60 and 120 digits: far tails, `x/w` far from 1, within `1e-12`, the series band within
+/// `3e-13`; the offset in two parts, where a rounded one's `1 + e` loses `|λ|ε` of the divergence.
 #[test]
 fn saddle_tails_hold_where_x_is_far_from_the_mode() {
   for ((lambda, chi, psi, x), want, tolerance) in [
@@ -182,8 +182,8 @@ fn saddle_tails_hold_where_x_is_far_from_the_mode() {
   }
 }
 
-/// mpmath at 60 and 120 digits, by quadrature in `ln(x/w)` and, as a second method, the differentiated cumulant generating
-/// function: moments at admitted extremes, which read 0, NaN or `0/0`, within `1e-12`, `+∞` past `f64::MAX` and 0 below it.
+/// mpmath at 60 and 120 digits by quadrature in `ln(x/w)`, the differentiated cumulant generating
+/// function a second method: moments at admitted extremes, `+∞` past MAX and `0` below the doubles.
 #[test]
 fn extreme_parameters_keep_their_moments() {
   let concentrated = SimdGig::<f64>::new(1.0, 1e140, 1e140).kurtosis().unwrap();
@@ -206,8 +206,8 @@ fn extreme_parameters_keep_their_moments() {
   assert_eq!(SimdGig::<f64>::new(-1e300, 1e-300, 1.0).mean(), Some(0.0));
 }
 
-/// mpmath at 60 and 120 digits (Debye's expansion at order `1e15`) where the saddle form's ratio, `e²` or `2sχ` left the
-/// doubles and read NaN: the number, `0` below half the least subnormal, `+∞` past `f64::MAX`.
+/// mpmath at 60 and 120 digits (Debye's expansion at order `1e15`) where the saddle form's ratio,
+/// `e²` or `2sχ` leave the doubles: the number, `0` under half the least subnormal, `+∞` past MAX.
 #[test]
 fn extreme_parameters_answer_numbers() {
   let gig = SimdGig::<f64>::new;

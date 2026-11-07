@@ -1,7 +1,7 @@
 use super::*;
 
-/// mpmath at 60 and 120 digits: `A` at a double node `(|t|, g)` within `4e-18` relative, at the anchors of the two worst
-/// cells of the review's class, a node off the crossing and one at `|t| = 0.8`; the plain `ln|A|` was off by up to `1.2e-15`.
+/// mpmath at 60 and 120 digits: `A` at a double node `(|t|, g)` within `4e-18`, at two class
+/// cells' anchors, off the crossing and at `|t| = 0.8`, where a plain `ln|A|` sums logs near 5.
 #[test]
 fn the_argument_holds_to_twice_the_precision() {
   for ((rho, nu, sign_y, sign_t, abs_t, gap), (hi, lo)) in [
@@ -50,19 +50,6 @@ fn the_argument_holds_to_twice_the_precision() {
     assert!(
       miss.abs() <= 4e-18,
       "ρ = {rho}, ν = {nu}: {a} + {a_lo:e}, want {hi} + {lo:e}"
-    );
-  }
-}
-
-#[test]
-fn tmp_parts() {
-  for x in [0.025_f64, 0.775, 0.8] {
-    let (s, s_lo) = sinh_parts((x, 0.0));
-    let (c, c_lo) = cosh_parts((x, 0.0));
-    eprintln!(
-      "x {x}: sinh {s:e} + {s_lo:e} (std {:e}), cosh {c:e} + {c_lo:e} (std {:e})",
-      x.sinh(),
-      x.cosh()
     );
   }
 }

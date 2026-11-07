@@ -360,10 +360,8 @@ fn a_subnormal_scale_ratio_keeps_the_mean() {
   assert!(close(mean, 1e-20, 1e-14), "{mean}");
 }
 
-/// mpmath at 120 and 240 digits where the power factor goes subnormal (`λ = −100`), its product with `K` overflows
-/// (`λ = 50, 100`), a concentrated law's `√(χψ) − √(χs)` would cancel (`λ = 1`), and `e^{dx}` goes subnormal (`λ = −40, −20`).
-/// mpmath at 60 and 120 digits: below order 50 a raw moment whose `K`s overflow is the product of its Bessel ratios, where
-/// their logarithms' difference read the means `3.4e-12` and `1.0e-12` off and the 100th moment `6.0e-12`.
+/// mpmath at 60 and 120 digits below order 50 where the `K`s overflow: the product of the Bessel
+/// ratios, where the `K`s' logarithms' difference carries `ε·|ln K|`.
 #[test]
 fn small_order_raw_moments_take_bessel_ratios() {
   for ((lambda, chi, psi), k, want, tol) in [
@@ -384,6 +382,8 @@ fn small_order_raw_moments_take_bessel_ratios() {
   }
 }
 
+/// mpmath at 120 and 240 digits where the power is subnormal (`λ = −100`), its product with `K`
+/// overflows (`λ = 50, 100`), `√(χψ) − √(χs)` cancels (`λ = 1`), `e^{dx}` is subnormal (`λ ≤ −20`).
 #[test]
 fn mgf_takes_the_ratio_only_where_every_factor_stays_normal() {
   for ((lambda, chi, psi, t), want) in [
@@ -470,5 +470,6 @@ fn pdf_and_mgf_at_infinity() {
   }
 }
 
+mod ends;
 mod large_order;
 mod small_order;

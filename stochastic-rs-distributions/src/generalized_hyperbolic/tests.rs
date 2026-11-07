@@ -336,8 +336,8 @@ fn concentrated_densities_hold_at_their_double_inputs() {
   }
 }
 
-/// mpmath at 60 and 120 digits: right tails of negative orders, where `w₁/w₀` passes 100 and a rounded offset's `1 + e`
-/// read up to `2.1e-9` off, within `1e-12`.
+/// mpmath at 60 and 120 digits, within `1e-12`: right tails of negative orders, `w₁/w₀` past 100,
+/// where `1 + e` from a rounded offset loses `|λ|ε·max(1 + e, 1/(1 + e))`.
 #[test]
 fn saddle_tails_hold_where_the_clocks_part_far() {
   for ((lambda, alpha, beta, delta, mu, x), want) in [
@@ -364,8 +364,8 @@ fn saddle_tails_hold_where_the_clocks_part_far() {
   }
 }
 
-/// mpmath at 60 and 120 digits at admitted extremes: `0·∞` at `β = 0`, saddles leaving the doubles into `0/0`, a subnormal
-/// clock scale, `β²·Var W` underflowing apart, and a mean whose Bessel factors overflow (`3.9e-12` from their logarithms).
+/// mpmath at 60 and 120 digits at admitted extremes: `β = 0`, saddles past the doubles, a subnormal
+/// clock scale, `β²·Var W` under them, and a mean whose `K`s overflow, from its Bessel ratios.
 #[test]
 fn extreme_parameters_keep_their_moments() {
   let wide = SimdGeneralizedHyperbolic::<f64>::new(0.5, 1e-77, 0.0, 1.0, 0.0)
@@ -402,8 +402,8 @@ fn extreme_parameters_keep_their_moments() {
   );
 }
 
-/// mpmath at 60 and 120 digits where `δ²` or `γ² = (α − β)(α + β)` is subnormal, which the squared clock read up to `20 %`
-/// off, as NaN or as an mgf of 1.
+/// mpmath at 60 and 120 digits where `δ²` or `γ² = (α − β)(α + β)` is subnormal: the clock from `δ`
+/// and `√(α − β)√(α + β)`, or the law of `X/2ᵏ`, never a square rounded on the subnormal grid.
 #[test]
 fn subnormal_clocks_keep_their_digits() {
   let gh = SimdGeneralizedHyperbolic::<f64>::new;
@@ -581,4 +581,6 @@ fn a_huge_index_returns() {
   assert!(d.pdf(0.0).is_some());
 }
 
+mod clock;
+mod ends;
 mod two_part;

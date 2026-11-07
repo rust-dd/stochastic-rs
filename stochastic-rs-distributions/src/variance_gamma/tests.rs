@@ -338,8 +338,8 @@ fn small_rates_hold_their_digits() {
   assert_eq!(ordinary.pdf(1e15), Some(0.0));
 }
 
-/// The skewness at admitted extremes, where `σ²` underflowed or `ν²` overflowed into `0/0` or `∞/∞`, or `θ/σ` into 0: 0 at
-/// `θ = 0`, `2√ν` where `νθ²/σ²` passes `1e300`, `3νθ/σ` (mpmath at 60 and 120 digits) where `θ/σ` underflows.
+/// The skewness where `σ²`, `ν²` or `θ/σ` leave the doubles, `t = νθ/σ` in a normal order: 0 at
+/// `θ = 0`, `2√ν` past `νθ²/σ² = 1e300`, `3νθ/σ` (mpmath, 60 and 120 digits) at a subnormal `θ/σ`.
 #[test]
 fn skewness_holds_at_extreme_parameters() {
   assert_eq!(
@@ -364,8 +364,8 @@ fn skewness_holds_at_extreme_parameters() {
   }
 }
 
-/// mpmath at 60 and 120 digits (Debye's expansion from order `1e6`) where a rate under `1e-300`, a diffusion under `θ√ν`
-/// or a product in the mgf's base left the doubles: NaN, a false 0 or `e⁰`, now the number, or `0` below the subnormals.
+/// mpmath at 60 and 120 digits (Debye's expansion from order `1e6`) where a rate under `1e-300`, a
+/// diffusion under `θ√ν` or a product in the mgf's base leaves the doubles: the number, or `0`.
 #[test]
 fn extreme_parameters_answer_numbers() {
   let vg = SimdVarianceGamma::<f64>::new;
@@ -402,8 +402,8 @@ fn extreme_parameters_answer_numbers() {
   );
 }
 
-/// mpmath at 60 and 120 digits below order `1/ν − ½ = 50` where `K` overflows at a subnormal argument `|d|·root/σ²`, which
-/// read `0.6 %` and `17 %` off.
+/// mpmath at 60 and 120 digits below order `1/ν − ½ = 50` where `K` overflows at a subnormal
+/// `|d|·root/σ²`: the two-part sums, where a one-part argument carries its subnormal rounding.
 #[test]
 fn large_logarithms_keep_their_digits() {
   for ((sigma, nu, theta), x, want) in [
@@ -429,8 +429,8 @@ fn large_logarithms_keep_their_digits() {
   }
 }
 
-/// mpmath at 60 and 120 digits where `νθ²/σ²` passes `1e20`, the clock's spread of the drift far wider than the diffusion,
-/// which read `5.7e-3` and `9.2e-8` off; the third, at a narrow law's mode, is its gamma clock's limit.
+/// mpmath at 60 and 120 digits where `νθ²/σ²` passes `1e20`: the gap `((d − θ)(o + 1 + Δ) + θ)/D`,
+/// where `(d − θ) − θg` cancels; the third, at a narrow law's mode, is its gamma clock's limit.
 #[test]
 fn a_drift_wider_than_its_diffusion_keeps_its_digits() {
   for ((sigma, nu, theta), x, want) in [
@@ -469,8 +469,8 @@ fn a_drift_wider_than_its_diffusion_keeps_its_digits() {
   }
 }
 
-/// mpmath at 60 and 120 digits at a narrow law far below its drift, where the clock's saddle `1 + g` is small and the plain
-/// sum's `g` and `ln σ` carried their rounding: they read `3.5e-8`, `2.3e-10` and `8.5e-11` off.
+/// mpmath at 60 and 120 digits at a narrow law far below its drift, its saddle `1 + g` small:
+/// `g`, `ln w` and `ln σ` in two parts, where the plain sum multiplies `g`'s rounding by `1/ν`.
 #[test]
 fn a_narrow_law_far_below_its_drift_keeps_its_digits() {
   for ((sigma, nu, theta), x, want) in [
@@ -508,3 +508,5 @@ fn a_narrow_law_far_below_its_drift_keeps_its_digits() {
     assert!(close(got, want, 1e-12), "{got:e}");
   }
 }
+
+mod ends;

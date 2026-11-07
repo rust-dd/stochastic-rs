@@ -6,8 +6,8 @@ enum At {
   Mgf,
 }
 
-/// mpmath at 60 and 120 digits where a `K` overflows at order −5 or `δγ` is subnormal at order ±60, which a one-part sum of
-/// logarithms or a subnormal clock read up to `7.7e-11` off, or NaN.
+/// mpmath at 60 and 120 digits where a `K` overflows at order −5 or `δγ` is subnormal at order ±60:
+/// the two-part sums over the scaled `K`, where one-part logarithms carry `ε·Σ|ln terms|`.
 #[test]
 fn large_logarithms_and_subnormal_clocks_keep_their_digits() {
   use At::Mgf;
@@ -271,8 +271,8 @@ fn large_logarithms_and_subnormal_clocks_keep_their_digits() {
   }
 }
 
-/// mpmath at 60 and 120 digits (Debye's expansion from order `1e15`) where the clock's saddle, `w₁`, `d²` or `2sχ` left the
-/// doubles and read NaN: the number, `0` below half the least subnormal, `+∞` past `f64::MAX`.
+/// mpmath at 60 and 120 digits (Debye's expansion from order `1e15`) where the clock's saddle,
+/// `w₁`, `d²` or `2sχ` leave the doubles: the number, `0` under half a subnormal, `+∞` past MAX.
 #[test]
 fn extreme_parameters_answer_numbers() {
   let gh = SimdGeneralizedHyperbolic::<f64>::new;

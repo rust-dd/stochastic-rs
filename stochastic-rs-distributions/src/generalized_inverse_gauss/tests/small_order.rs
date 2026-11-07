@@ -1,7 +1,7 @@
 use super::*;
 
-/// mpmath at 60 and 120 digits below order 50 where a `K` overflows or the clock `√(χψ)` is subnormal, which a one-part sum
-/// of logarithms or a subnormal argument read `8.5e-12` to `310 %` off.
+/// mpmath at 60 and 120 digits below order 50 where a `K` overflows or `√(χψ)` is subnormal: the
+/// two-part sums, where one-part logarithms carry `ε·Σ|ln terms|` and the argument its rounding.
 #[test]
 fn large_logarithms_and_subnormal_clocks_keep_their_digits() {
   let gig = SimdGig::<f64>::new;
