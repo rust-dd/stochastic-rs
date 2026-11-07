@@ -68,6 +68,29 @@ pub trait RealExt:
       self.min(other)
     }
   }
+
+  /// The largest of `items`, NaN if any is, `−∞` for none; the NaN flag is its own reduction, so
+  /// the max still vectorises where a `max_or_nan` fold does not.
+  #[inline]
+  fn max_or_nan_fold<I: IntoIterator<Item = Self>>(items: I) -> Self {
+    let (max, nan) = items
+      .into_iter()
+      .fold((Self::neg_infinity(), false), |(m, n), x| {
+        (m.max(x), n | x.is_nan())
+      });
+    if nan { Self::nan() } else { max }
+  }
+
+  /// The smallest of `items`, NaN if any is, `+∞` for none.
+  #[inline]
+  fn min_or_nan_fold<I: IntoIterator<Item = Self>>(items: I) -> Self {
+    let (min, nan) = items
+      .into_iter()
+      .fold((Self::infinity(), false), |(m, n), x| {
+        (m.min(x), n | x.is_nan())
+      });
+    if nan { Self::nan() } else { min }
+  }
 }
 
 mod sealed {
@@ -195,4 +218,49 @@ pub trait FloatExt: RealExt + SimdFloatExt {
 
   fn with_fgn_complex_scratch<R, F: FnOnce(&mut [Complex<Self>]) -> R>(len: usize, f: F) -> R;
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self>;
+}
+
+#[cfg(test)]
+mod tests {
+  use super::RealExt;
+
+  #[test]
+  fn max_and_min_or_nan_folds() {
+    assert_eq!(f64::max_or_nan_fold([1.0, 3.0, 2.0]), 3.0);
+    assert_eq!(f64::min_or_nan_fold([1.0, 3.0, 2.0]), 1.0);
+    assert_eq!(f64::max_or_nan_fold(std::iter::empty()), f64::NEG_INFINITY);
+    assert_eq!(f64::min_or_nan_fold(std::iter::empty()), f64::INFINITY);
+    assert!(f64::max_or_nan_fold([1.0, f64::NAN, 2.0]).is_nan());
+    assert!(f32::min_or_nan_fold([1.0_f32, f32::NAN]).is_nan());
+    assert_eq!(f64::max_or_nan_fold([f64::NEG_INFINITY, -1.0]), -1.0);
+    assert_eq!(f64::min_or_nan_fold([f64::INFINITY, 1.0]), 1.0);
+    let xs = (0..1_000).map(|i| (i as f64).sin()).collect::<Vec<_>>();
+    assert_eq!(
+      f64::max_or_nan_fold(xs.iter().copied()),
+      xs.iter().copied().fold(f64::NEG_INFINITY, f64::max_or_nan)
+    );
+  }
+
+  #[test]
+  fn a_nan_wins_at_every_position_and_length_through_the_vector_tail() {
+    for n in 1..=33_usize {
+      let xs = (0..n)
+        .map(|i| ((i * 7) % 11) as f64 - 5.0)
+        .collect::<Vec<_>>();
+      assert_eq!(
+        f64::max_or_nan_fold(xs.iter().copied()),
+        xs.iter().copied().fold(f64::NEG_INFINITY, f64::max)
+      );
+      assert_eq!(
+        f64::min_or_nan_fold(xs.iter().copied()),
+        xs.iter().copied().fold(f64::INFINITY, f64::min)
+      );
+      for at in 0..n {
+        let mut with_nan = xs.clone();
+        with_nan[at] = f64::NAN;
+        assert!(f64::max_or_nan_fold(with_nan.iter().copied()).is_nan());
+        assert!(f64::min_or_nan_fold(with_nan.iter().copied()).is_nan());
+      }
+    }
+  }
 }
