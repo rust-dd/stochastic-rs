@@ -87,7 +87,7 @@ s, v = p.sample()                   # both numpy arrays
 
 <RustExample path="tests/doctest_processes_heston_qe.rs" />
 
-The scheme is a zero-sized type parameter (`Heston<T, S, Sch, B>`), so the choice costs no per-step branch. QE is defined for the square-root (CIR) variance only, so keep `HestonPow::Sqrt`. Reference: Andersen, L. (2008), *Efficient simulation of the Heston stochastic volatility model*, Journal of Computational Finance 11(3). `.qe()` is Rust-only; the Python `PyHeston` uses the Euler scheme.
+The scheme is a zero-sized type parameter (`Heston<T, S, Sch, B>`), so the choice costs no per-step branch. QE is defined for the square-root (CIR) variance only, so keep `HestonPow::Sqrt`. Reference: Andersen, L. (2008), *Efficient simulation of the Heston stochastic volatility model*, Journal of Computational Finance 11(3). In Python, `PyHeston(..., scheme="qe")` selects it.
 
 ### Heston stochastic-local volatility
 

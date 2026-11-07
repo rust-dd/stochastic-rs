@@ -58,6 +58,19 @@ pub struct LmReport {
   pub reason: TerminationReason,
 }
 
+impl LmReport {
+  /// Why the fit stopped, in the crate's own words: a `CalibrationResult::message` that basin's renames do not reach.
+  pub fn message(&self) -> &'static str {
+    match self.reason {
+      TerminationReason::SolverConverged => "converged",
+      TerminationReason::MaxCostEvals | TerminationReason::MaxIter => "evaluation budget exhausted",
+      TerminationReason::NumericalNoProgress => "no numerical progress",
+      TerminationReason::SolverFailed => "solver failed",
+      _ => "stopped without convergence",
+    }
+  }
+}
+
 struct Objective<P> {
   model: RefCell<P>,
   coordinates: RefCell<Option<Array1<f64>>>,
@@ -254,6 +267,7 @@ mod tests {
         },
       );
       assert!(report.converged, "{report:?}");
+      assert_eq!(report.message(), "converged");
       assert!(distance_to_optimum(&problem.x) < 1e-8);
       assert_eq!(report.evaluations, problem.calls.get());
     }
@@ -270,6 +284,7 @@ mod tests {
     );
     assert!(!report.converged, "{report:?}");
     assert_eq!(report.reason, TerminationReason::MaxCostEvals);
+    assert_eq!(report.message(), "evaluation budget exhausted");
     assert_eq!(report.evaluations, 3);
     assert!(problem.x.iter().all(|v| v.is_finite()));
   }
@@ -282,6 +297,7 @@ mod tests {
     let (problem, report) = minimize(problem, LmOptions::default());
     assert!(!report.converged);
     assert_eq!(report.reason, TerminationReason::SolverFailed);
+    assert_eq!(report.message(), "solver failed");
     assert_eq!(report.evaluations, 2);
     assert_eq!(problem.params(), initial);
   }

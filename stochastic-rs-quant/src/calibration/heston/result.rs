@@ -11,7 +11,9 @@ use crate::LossMetric;
 pub struct HestonCalibrationResult {
   pub params: HestonParams,
   pub loss: CalibrationLossScore,
+  /// Whether Levenberg-Marquardt met a relative tolerance: a stopping test, not fit quality.
   pub converged: bool,
+  pub(super) message: &'static str,
 }
 
 impl HestonCalibrationResult {
@@ -43,5 +45,9 @@ impl crate::traits::CalibrationResult for HestonCalibrationResult {
 
   fn loss_score(&self) -> Option<&CalibrationLossScore> {
     Some(&self.loss)
+  }
+
+  fn message(&self) -> Option<&str> {
+    Some(self.message)
   }
 }

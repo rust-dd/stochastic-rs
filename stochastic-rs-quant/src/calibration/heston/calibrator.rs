@@ -64,12 +64,16 @@ pub struct HestonCalibrator {
   pub loss_metrics: &'static [LossMetric],
   /// Jacobian/method choice for calibration.
   pub jacobian_method: HestonJacobianMethod,
+  /// Lower σ of the guess and of every iterate to Feller's bound `σ² ≤ 2κθ` (off by default).
+  pub feller_projection: bool,
   /// Optional common LM tolerance for research workloads.
   pub optimizer_tolerance: Option<f64>,
   /// Maximum residual-evaluation budget per fitted parameter, as defined by LM.
   pub optimizer_patience: usize,
   /// History of iterations (residuals, params, loss metrics).
   pub(super) calibration_history: Rc<RefCell<Vec<CalibrationHistory<HestonParams>>>>,
+  /// Weight of the row on σ's overshoot past the Feller cap; set only inside a projected fit.
+  pub(super) feller_row_weight: Option<f64>,
 }
 
 impl HestonCalibrator {
@@ -116,9 +120,11 @@ impl HestonCalibrator {
       record_history,
       loss_metrics: &LossMetric::ALL,
       jacobian_method: HestonJacobianMethod::default(),
+      feller_projection: false,
       optimizer_tolerance: None,
       optimizer_patience: 100,
       calibration_history: Rc::new(RefCell::new(Vec::new())),
+      feller_row_weight: None,
     }
   }
 
@@ -167,9 +173,11 @@ impl HestonCalibrator {
       record_history,
       loss_metrics: &LossMetric::ALL,
       jacobian_method: HestonJacobianMethod::default(),
+      feller_projection: false,
       optimizer_tolerance: None,
       optimizer_patience: 100,
       calibration_history: Rc::new(RefCell::new(Vec::new())),
+      feller_row_weight: None,
     }
   }
 }
@@ -178,6 +186,9 @@ impl HestonCalibrator {
   pub(super) fn solve(&self) -> HestonCalibrationResult {
     let mut problem = self.clone();
     problem.ensure_initial_guess();
+    if problem.feller_projection {
+      problem.feller_row_weight = Some(problem.feller_row_weight_at_start());
+    }
 
     let (result, report) = minimize(
       problem,
@@ -190,7 +201,7 @@ impl HestonCalibrator {
     let converged = report.converged;
     let params = result.effective_params();
 
-    let c_model = result.compute_model_prices_for_numeric(&params);
+    let c_model = result.compute_model_prices_for(&params);
     let loss = CalibrationLossScore::compute_selected(
       result.c_market.as_standard_layout().as_slice().unwrap(),
       c_model.as_slice().unwrap(),
@@ -201,6 +212,7 @@ impl HestonCalibrator {
       params,
       loss,
       converged,
+      message: report.message(),
     }
   }
 
@@ -257,6 +269,12 @@ impl HestonCalibrator {
 
   pub fn set_jacobian_method(&mut self, method: HestonJacobianMethod) {
     self.jacobian_method = method;
+  }
+
+  /// Project the guess and every iterate onto `σ² ≤ 2κθ`, so the fit passes [`HestonParams::satisfies_feller_condition`];
+  /// a residual on σ's overshoot past the cap brings an iterate back inside; a violating surface is fitted on the boundary.
+  pub fn set_feller_projection(&mut self, enabled: bool) {
+    self.feller_projection = enabled;
   }
 
   /// Set a positive common LM convergence tolerance.
