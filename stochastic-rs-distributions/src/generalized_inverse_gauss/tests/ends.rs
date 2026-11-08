@@ -150,3 +150,29 @@ fn a_tiny_clock_keeps_its_scale_and_rounds_its_mean_once() {
     assert_eq!(got.to_bits(), want.to_bits(), "{got:e}, want {want:e}");
   }
 }
+
+/// Exact references, `2λ/ψ + χ/2(λ − 1)` and mpmath at order 60: a truth under MAX reads finite and
+/// one past `MAX + ½ ulp` reads `+∞`.
+#[test]
+fn a_mean_beside_max_reads_finite_exactly_where_its_truth_rounds_finite() {
+  let gig = SimdGig::<f64>::new;
+  let rows = [
+    (
+      gig(1e305, 1.0, 0.001_112_536_929_253_600_8),
+      1.797_693_134_862_315_5e308,
+    ),
+    (
+      gig(5e307, 1.0, 0.556_268_464_626_800_5),
+      1.797_693_134_862_315_5e308,
+    ),
+    (
+      gig(60.0, f64::MAX / 4.0, 6.689_362_965_616_521e-307),
+      1.797_693_134_862_315_5e308,
+    ),
+    (gig(1e300, 1.0, 1.112_536_929_253_600_7e-8), f64::INFINITY),
+  ];
+  for (i, (law, want)) in rows.into_iter().enumerate() {
+    let got = law.mean().unwrap();
+    assert!(holds(got, want, 1e-12), "row {i}: {got:e}, want {want:e}");
+  }
+}

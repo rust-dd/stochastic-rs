@@ -40,6 +40,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
+use super::generalized_inverse_gauss::NEAR_MAX;
 use super::generalized_inverse_gauss::SimdGig;
 use super::normal::SimdNormal;
 use crate::seeded::Buffered;
@@ -402,12 +403,11 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     let (_, _, beta, _, mu) = self.params();
     let (lambda, (delta, gamma), _) = self.clock();
     let tilt = SimdGig::<f64>::scaled_raw_moment_at((lambda, delta, gamma), 1, beta);
-    if tilt.is_finite() {
-      return Some(mu + tilt);
+    let value = mu + tilt;
+    if tilt.abs() < NEAR_MAX && value.abs() < NEAR_MAX {
+      return Some(value);
     }
-    // `βE W` past MAX that `μ` of the other sign brings back: the halves' sum, doubled.
-    let half = SimdGig::<f64>::scaled_raw_moment_at((lambda, delta, gamma), 1, 0.5 * beta);
-    Some(2.0 * (0.5 * mu + half))
+    Some(moments::mean_far(self.params(), (delta, gamma), tilt))
   }
 
   /// `κ₁(W) + β²κ₂(W)` over the clock's `κₙ = sⁿρⁿ⁻¹kₙ`, `s·k₁ + (βs)²ρk₂` with `s = 2ᵉm` and `β` split, so neither term

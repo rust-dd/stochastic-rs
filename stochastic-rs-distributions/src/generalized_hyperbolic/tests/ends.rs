@@ -124,3 +124,27 @@ fn a_tiny_clock_keeps_its_tilts_terms() {
     assert!(holds(got, want, 1e-12), "row {i}: {got:e}, want {want:e}");
   }
 }
+
+/// Exact references `μ + β(2λ/γ² + δ²/2(λ − 1))`: `βE W` a third of an ulp under MAX, and the same
+/// tilt brought back by `μ = ∓MAX`, whose sum keeps its digits.
+#[test]
+fn a_tilt_beside_max_keeps_its_digits() {
+  let gh = SimdGeneralizedHyperbolic::<f64>::new;
+  let lambda = 1.348_269_851_146_736_7e308;
+  let rows = [
+    (gh(lambda, 1.0, 0.5, 1.0, 0.0), f64::MAX),
+    (gh(lambda, 1.0, -0.5, 1.0, 0.0), -f64::MAX),
+    (
+      gh(lambda, 1.0, -0.5, 1.0, f64::MAX),
+      6.652_801_031_782_399e291,
+    ),
+    (
+      gh(lambda, 1.0, 0.5, 1.0, -f64::MAX),
+      -6.652_801_031_782_399e291,
+    ),
+  ];
+  for (i, (law, want)) in rows.into_iter().enumerate() {
+    let got = law.mean().unwrap();
+    assert!(holds(got, want, 1e-12), "row {i}: {got:e}, want {want:e}");
+  }
+}

@@ -50,6 +50,7 @@ use crate::seeded::StreamState;
 use crate::special::KDenominator;
 use crate::special::LARGE_ORDER;
 use crate::special::PLAIN_LOG_SIZE;
+use crate::special::Scaled;
 use crate::special::exp_parts;
 use crate::special::ldexp;
 use crate::special::ln_bessel_ke;
@@ -65,6 +66,10 @@ use crate::traits::distribution::SimdKernel;
 
 /// Under this `χψ` a ratio's limit `g_ν → ν` may hold within `2⁻¹¹²`, which [`ratio_moment::limit_moment`] then tests.
 const LIMIT_CLOCK: f64 = 7.703_719_777_548_943e-34;
+
+/// From here a large order's mean, its doubles a few ulps off, decides whether it is finite
+/// through [`SimdGig::mean_parts`].
+pub(crate) const NEAR_MAX: f64 = f64::MAX * (1.0 - 8.0 * f64::EPSILON);
 
 /// Which Hörmann–Leydold generator the parameters select.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -342,7 +347,27 @@ impl<T: SimdFloatExt> SimdGig<T> {
     {
       return v;
     }
-    Self::raw_moment_at((lambda, chi.sqrt(), psi.sqrt()), k)
+    let roots = (chi.sqrt(), psi.sqrt());
+    let v = Self::raw_moment_at((lambda, roots.0, roots.1), k);
+    if k == 1 && v >= NEAR_MAX && chi > 0.0 && lambda >= LARGE_ORDER {
+      return Self::mean_parts(lambda, roots, (Scaled::new(chi), Scaled::new(psi)))
+        .map_or(f64::INFINITY, Scaled::value);
+    }
+    v
+  }
+
+  /// `E X = 2λ/ψ + (χ/ψ)/E X_{λ−1}` at `λ ≥ 50`: both terms positive, the second under `1/(λ + r)`
+  /// of a mean near MAX, so the first's two parts round it once; `None` past `4·MAX`.
+  pub(crate) fn mean_parts(
+    lambda: f64,
+    roots: (f64, f64),
+    (chi, psi): (Scaled, Scaled),
+  ) -> Option<Scaled> {
+    let below = Self::scaled_raw_moment_at((lambda - 1.0, roots.0, roots.1), 1, 0.25);
+    below.is_finite().then(|| {
+      let first = Scaled::new(lambda).shift(1).div(psi);
+      first.add(chi.div(psi).div(Scaled::new(below).shift(2)))
+    })
   }
 
   /// [`Self::raw_moment`] at `(λ, √χ, √ψ)`, which the GH mixture forms from `δ` and `γ` without squaring them.

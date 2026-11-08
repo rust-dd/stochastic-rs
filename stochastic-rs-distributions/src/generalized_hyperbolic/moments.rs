@@ -1,7 +1,48 @@
-//! The GH skewness and kurtosis where the clock's `k₁2ᵖ`, the tilt `B = β²sρ` or the variance's power leave the doubles.
+//! The GH moments where the mean nears MAX, or the clock's `k₁2ᵖ`, the tilt `B = β²sρ` or the
+//! variance's power leave the doubles.
 
+use crate::generalized_inverse_gauss::SimdGig;
+use crate::special::LARGE_ORDER;
 use crate::special::Scaled;
 use crate::special::ldexp;
+use crate::special::two_sum;
+
+/// The mean where `βE W` or the value nears MAX: from order 50 `βE W` in [`Scaled`] parts with `μ`
+/// added at `2⁻²`, rounded once; below it the halves' sum, doubled, where `μ` brings `βE W` back.
+#[cold]
+#[inline(never)]
+pub(super) fn mean_far(
+  (lambda, alpha, beta, delta, mu): (f64, f64, f64, f64, f64),
+  roots: (f64, f64),
+  tilt: f64,
+) -> f64 {
+  if beta != 0.0 && lambda >= LARGE_ORDER {
+    let chi = Scaled::new(delta).mul(Scaled::new(delta));
+    let psi = exact_sum(alpha, -beta).mul(exact_sum(alpha, beta));
+    let Some(mean) = SimdGig::<f64>::mean_parts(lambda, roots, (chi, psi)) else {
+      return beta.signum() * f64::INFINITY;
+    };
+    let (hi, lo) = mean.mul(Scaled::new(beta.abs())).shift(-2).value_parts();
+    if !hi.is_finite() {
+      return beta.signum() * f64::INFINITY;
+    }
+    let (s, s_lo) = two_sum(beta.signum() * hi, 0.25 * mu);
+    return 4.0 * (s + (s_lo + beta.signum() * lo));
+  }
+  if tilt.is_finite() {
+    return mu + tilt;
+  }
+  let half = SimdGig::<f64>::scaled_raw_moment_at((lambda, roots.0, roots.1), 1, 0.5 * beta);
+  2.0 * (0.5 * mu + half)
+}
+
+/// `a + b > 0` exactly, from halves where a part nears MAX.
+fn exact_sum(a: f64, b: f64) -> Scaled {
+  if a.abs().max(b.abs()) < 0.25 * f64::MAX {
+    return Scaled::parts(two_sum(a, b));
+  }
+  Scaled::parts(two_sum(0.5 * a, 0.5 * b)).shift(1)
+}
 
 /// `B = β²sρ` from `β = 2ᵇn` and the clock's scale `s = 2ᵉm`, so a scale past the doubles does not
 /// read `0·∞`.
