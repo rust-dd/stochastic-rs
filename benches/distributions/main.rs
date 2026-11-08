@@ -340,8 +340,7 @@ fn bench_distribution_ext(c: &mut Criterion) {
   group.finish();
 }
 
-/// The one per-draw construction path: `sample_ncp` below `df = 1` builds its Poisson and Gamma laws
-/// per draw, so a constructor assert is paid on every sample here.
+/// `sample_ncp` below `df = 1` builds its Gamma law per draw, so this row pays a constructor assert per sample.
 fn bench_ncx2_per_draw_construction(c: &mut Criterion) {
   let mut group = c.benchmark_group("NonCentralChiSquared/sample_ncp");
   group.measurement_time(Duration::from_secs(3));
@@ -406,6 +405,7 @@ criterion_group!(
   bench_chi_squared,
   bench_studentt,
   discrete::bench_poisson,
+  discrete::bench_poisson_ptrs,
   bench_pareto,
   bench_uniform,
   heavy_tailed::bench_alpha_stable,

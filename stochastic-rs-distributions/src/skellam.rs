@@ -110,7 +110,7 @@ impl SimdKernel for SimdSkellam {
 }
 
 impl Distribution<i64> for SimdSkellam {
-  /// Two Poisson table inversions, `N₁` then `N₂`, on the caller's rng.
+  /// Two Poisson draws, `N₁` then `N₂`, on the caller's rng.
   fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> i64 {
     self.draw_with(rng)
   }

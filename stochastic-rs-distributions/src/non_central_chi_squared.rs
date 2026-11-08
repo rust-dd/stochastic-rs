@@ -12,6 +12,7 @@
 use rand::Rng;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::SimdRngExt;
 use stochastic_rs_core::simd_rng::derive_seed;
 
@@ -19,7 +20,7 @@ use crate::chi_square::SimdChiSquared;
 use crate::gamma::GammaState;
 use crate::gamma::SimdGamma;
 use crate::normal::SimdNormal;
-use crate::poisson::SimdPoisson;
+use crate::poisson::count_once;
 use crate::seeded::Seeded;
 use crate::seeded::StreamState;
 use crate::source::AnyRng;
@@ -31,14 +32,15 @@ use crate::traits::distribution::SimdKernel;
 
 /// The Poisson count and the gamma one Poisson-mixture draw consumes, from a seed or from the caller's rng.
 trait MixtureSource<T: SimdFloatExt> {
-  fn poisson(&mut self, law: SimdPoisson<u64>) -> u64;
+  fn poisson(&mut self, lambda: f64) -> f64;
 
   fn gamma(&mut self, law: SimdGamma<T>) -> T;
 }
 
 impl<T: SimdFloatExt, S: SeedExt> MixtureSource<T> for &S {
-  fn poisson(&mut self, law: SimdPoisson<u64>) -> u64 {
-    law.seeded(*self).sample()
+  /// The first draw of a `SimdPoisson` stream on this seed, without the table and the buffer that stream would fill.
+  fn poisson(&mut self, lambda: f64) -> f64 {
+    count_once(lambda, &mut SimdRng::from_seed(self.next_seed()))
   }
 
   fn gamma(&mut self, law: SimdGamma<T>) -> T {
@@ -47,8 +49,8 @@ impl<T: SimdFloatExt, S: SeedExt> MixtureSource<T> for &S {
 }
 
 impl<T: SimdFloatExt, G: Rng + ?Sized> MixtureSource<T> for AnyRng<'_, G> {
-  fn poisson(&mut self, law: SimdPoisson<u64>) -> u64 {
-    law.draw_with(self.0)
+  fn poisson(&mut self, lambda: f64) -> f64 {
+    count_once(lambda, self.0)
   }
 
   fn gamma(&mut self, law: SimdGamma<T>) -> T {
@@ -70,11 +72,11 @@ fn poisson_mixture<T: SimdFloatExt>(df: T, ncp: T, mut src: impl MixtureSource<T
   let two = T::from_f64_fast(2.0);
   let half_lambda = (ncp / two).to_f64().unwrap_or(f64::NAN);
   let mixture_jumps = if half_lambda > 0.0 {
-    src.poisson(SimdPoisson::new(half_lambda))
+    src.poisson(half_lambda)
   } else {
-    0
+    0.0
   };
-  let shape = df / two + T::from_f64_fast(mixture_jumps as f64);
+  let shape = df / two + T::from_f64_fast(mixture_jumps);
   src.gamma(SimdGamma::new(shape, two))
 }
 
@@ -216,6 +218,14 @@ mod tests {
         );
       }
     }
+  }
+
+  /// A noncentrality of `1e300` below `df = 1` draws its Poisson count from a few constants, not an `O(ncp)` table.
+  #[test]
+  fn huge_noncentrality_terminates() {
+    let mut s = SimdNonCentralChiSquared::<f64>::new(0.3).seeded(&Deterministic::new(1));
+    let x = s.sample_ncp(1e300);
+    assert!(x.is_finite() && x > 1e299, "{x}");
   }
 
   /// Non-negative `ncp` (including exactly zero) must stay finite.

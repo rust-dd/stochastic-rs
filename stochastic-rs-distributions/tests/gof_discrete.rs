@@ -130,6 +130,22 @@ fn simd_poisson_large_lambda_matches_own_cdf() {
   });
 }
 
+/// `lambda = 1500` draws by PTRS (`src/poisson.rs`), against the table-free cdf `Q(k + 1, lambda)`.
+#[test]
+fn simd_poisson_ptrs_matches_own_cdf() {
+  let lambda = 1500.0;
+  let (k_lo, k_hi) = gof_support::window(lambda, lambda, Some(0), None);
+  gof_support::assert_chi_square_accepts(N, k_lo, k_hi, |seed| {
+    let dist = SimdPoisson::<u64>::new(lambda);
+    let mut stream = dist.clone().seeded(&Deterministic::new(seed));
+    let xs = (0..N).map(|_| stream.sample() as i64).collect::<Vec<_>>();
+    (
+      xs,
+      Box::new(move |k: i64| dist.cdf(k as f64).unwrap()) as Box<dyn Fn(i64) -> f64>,
+    )
+  });
+}
+
 /// The only discrete type here with two-sided (possibly negative)
 /// support: `N_1 - N_2`, `N_i ~ Poisson(mu_i)`.
 #[test]
