@@ -9,8 +9,8 @@ use crate::special::Scaled;
 use crate::special::ldexp;
 use crate::special::two_sum;
 
-/// The mean where `βE W` or the value nears MAX: from order 50 `βE W` in [`Scaled`] parts with `μ`
-/// added at `2⁻²`, rounded once; below it the halves' sum, doubled, where `μ` brings `βE W` back.
+/// The mean where `βE W` or the value nears MAX: `μ + βE W` from the clock's mean in two parts
+/// against the exact `δ²` and `(α − β)(α + β)`, rounded once with its route's band at MAX.
 #[cold]
 #[inline(never)]
 pub(super) fn mean_far<T: SimdFloatExt>(law: &SimdGeneralizedHyperbolic<T>) -> f64 {
@@ -28,7 +28,8 @@ pub(super) fn mean_far<T: SimdFloatExt>(law: &SimdGeneralizedHyperbolic<T>) -> f
   )
 }
 
-/// `a + b > 0` exactly, from halves where a part nears MAX.
+/// `a + b > 0` in two parts, from halves where a part nears MAX: exact but for a low part under
+/// `2⁻¹⁰⁷⁴` of the high part's unit, or a subnormal `b`'s last bit in the halves.
 fn exact_sum(a: f64, b: f64) -> Scaled {
   if a.abs().max(b.abs()) < 0.25 * f64::MAX {
     return Scaled::parts(two_sum(a, b));
@@ -42,8 +43,8 @@ pub(super) fn tilt_ratio((b, n): (i32, f64), (m, e): (f64, i32), rho: f64) -> f6
   ldexp((n * m) * (n * rho), 2 * b + e)
 }
 
-/// The skewness where `k₁2ᵖ`, `B` or `(k₁ + Bk₂)^{3/2}` leaves the doubles, every factor `Scaled`
-/// and the value rounded once; `None` where a clock cumulant is not positive.
+/// The skewness where `p ≠ 0` (the ratios' far route), `B` or `(k₁ + Bk₂)^{3/2}` leaves the
+/// doubles, every factor `Scaled` and rounded once; `None` at a cumulant not positive.
 #[cold]
 #[inline(never)]
 pub(super) fn skewness_far(
@@ -68,7 +69,7 @@ pub(super) fn skewness_far(
   Some(beta.signum() * value.value())
 }
 
-/// The excess kurtosis where `k₁2ᵖ`, `B` or `(k₁ + Bk₂)²` leaves the doubles, as [`skewness_far`].
+/// The excess kurtosis where `p ≠ 0` or `B` or `(k₁ + Bk₂)²` leaves the doubles, as [`skewness_far`].
 #[cold]
 #[inline(never)]
 pub(super) fn kurtosis_far(

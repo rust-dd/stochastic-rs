@@ -464,8 +464,8 @@ mod tests {
     assert!(t.variance().unwrap().is_nan(), "nu=1 has no variance");
   }
 
-  /// mpmath at 60 and 120 digits from `ν = 24`, where the entropy reads its series in `1/ν`,
-  /// correctly rounded up to MAX.
+  /// mpmath at 60 and 120 digits from `ν = 24`, the series in `1/ν`: within 0.79 ulp (`1.2e-16`) on
+  /// `[24, 100]`, 104 of 3 865 past a midpoint, correctly rounded from `1e3` to MAX.
   #[test]
   fn entropy_reads_its_series_from_nu_24() {
     for (nu, want) in [
