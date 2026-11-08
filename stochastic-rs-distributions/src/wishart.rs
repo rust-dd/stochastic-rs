@@ -186,10 +186,10 @@ impl<T: SimdFloatExt> SimdWishart<T> {
     m.dot(&m.t())
   }
 
-  /// Log-density of an SPD `X`, computed in `f64` whatever `T`; NaN where `X` is not positive definite.
+  /// Log-density of an SPD `X`, in `f64` from the scale's stored factor; NaN where `X` is not positive definite.
   pub fn log_pdf(&self, x: &Array2<T>) -> T {
     let to_f64 = |m: &Array2<T>| m.mapv(|v| v.to_f64().unwrap_or(f64::NAN));
-    let (x, scale, chol) = (to_f64(x), to_f64(&self.scale), to_f64(&self.chol));
+    let (x, chol) = (to_f64(x), to_f64(&self.chol));
     let nu = self.nu.to_f64().unwrap_or(f64::NAN);
     let p = self.p as f64;
     let det_x_log = match cholesky_lower(&x) {
@@ -197,7 +197,7 @@ impl<T: SimdFloatExt> SimdWishart<T> {
       Err(_) => return T::nan(),
     };
     let det_v_log = 2.0 * (0..self.p).map(|i| chol[[i, i]].ln()).sum::<f64>();
-    let v_inv = invert_spd(&scale).expect("scale matrix should be invertible");
+    let v_inv = inverse_from_factor(&chol);
     let tr_vinv_x: f64 = (0..self.p)
       .map(|i| (0..self.p).map(|j| v_inv[[i, j]] * x[[j, i]]).sum::<f64>())
       .sum();
@@ -277,11 +277,14 @@ fn cholesky_lower<T: SimdFloatExt>(a: &Array2<T>) -> Result<Array2<T>, (usize, T
   Ok(l)
 }
 
-/// Invert a positive-definite matrix via L · Lᵀ Cholesky → forward / back
-/// substitution. Returns `None` if `a` is not SPD.
+/// The inverse of an SPD `a`; `None` where its Cholesky factor fails.
 fn invert_spd<T: SimdFloatExt>(a: &Array2<T>) -> Option<Array2<T>> {
-  let n = a.nrows();
-  let l = cholesky_lower(a).ok()?;
+  Some(inverse_from_factor(&cholesky_lower(a).ok()?))
+}
+
+/// `(L·Lᵀ)⁻¹` for a lower-triangular `L` with a positive diagonal, one column of the identity at a time.
+fn inverse_from_factor<T: SimdFloatExt>(l: &Array2<T>) -> Array2<T> {
+  let n = l.nrows();
   let mut inv = Array2::<T>::zeros((n, n));
   for col in 0..n {
     let mut y = vec![T::zero(); n];
@@ -306,7 +309,7 @@ fn invert_spd<T: SimdFloatExt>(a: &Array2<T>) -> Option<Array2<T>> {
       inv[[i, col]] = x[i];
     }
   }
-  Some(inv)
+  inv
 }
 
 #[cfg(test)]
@@ -340,7 +343,6 @@ mod tests {
     }
   }
 
-  /// The largest `|mean − νV|` entry over 5 000 draws.
   fn mean_error(nu: f64, v: &Array2<f64>, mut draw: impl FnMut() -> Array2<f64>) -> f64 {
     let n = 5_000;
     let mut acc = Array2::<f64>::zeros((2, 2));
@@ -415,6 +417,15 @@ mod tests {
       .log_pdf(&array![[16.0, 4.0], [4.0, 8.0]]);
     let x32 = law.log_pdf(&array![[16.0_f32, 4.0], [4.0, 8.0]]);
     assert!((x32 as f64 - x64).abs() < 1e-4, "{x32} vs {x64}");
+  }
+
+  /// An `f32` scale whose `f32` factor is SPD but whose `f64` factor is not answers a finite density from its own factor.
+  #[test]
+  fn f32_scale_answers_its_density_from_its_own_factor() {
+    let v = array![[3.718021_f32, 0.99840343], [0.99840343, 0.26810214]];
+    let x = SimdWishart::<f32>::new(5.0, v.clone()).log_pdf(&Array2::eye(2));
+    assert!(x.is_finite(), "{x}");
+    assert!(cholesky_lower(&v.mapv(f64::from)).is_err());
   }
 
   /// Log-pdf returns NaN on non-SPD inputs.

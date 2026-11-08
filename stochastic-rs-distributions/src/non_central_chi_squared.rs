@@ -102,7 +102,7 @@ pub struct NcxState<T: SimdFloatExt, R: SimdRngExt> {
 }
 
 impl<T: SimdFloatExt> SimdNonCentralChiSquared<T> {
-  /// The law of `χ²_df(·)` with `df` degrees of freedom ν ≥ 0; the central `χ²_{df−1}` term is dropped when `df ≈ 1`.
+  /// The law of `χ²_df(·)`, whose central `χ²_{df−1}` term is dropped when `df ≈ 1`; panics unless `0 ≤ df < ∞`.
   pub fn new(df: T) -> Self {
     assert!(
       df.is_finite(),
