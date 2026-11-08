@@ -71,8 +71,8 @@ pub(crate) fn ln_beta_parts(a: f64, b: f64) -> (f64, f64) {
   sub_parts(add_parts(lg, ln_gamma_parts(q)), ln_gamma_parts(p + q))
 }
 
-/// `ln(s·B(a, b))`, `s` one of the shapes, in two parts with the smaller shape below 16: `ln Γ(s +
-/// 1)` takes the place of `ln Γ(s)`, so a tiny `s` cancels no `ln s`.
+/// `ln(s·B(a, b))`, `s` one of the shapes, in two parts with the smaller shape to 32: `ln Γ(s + 1)`
+/// takes the place of `ln Γ(s)`, so a tiny `s` cancels no `ln s`.
 pub(crate) fn ln_shape_beta_parts(s: f64, other: f64) -> (f64, f64) {
   if s <= other {
     let lg = ln_gamma_parts(s + 1.0);
@@ -118,7 +118,6 @@ pub(crate) fn beta_entropy(a: f64, b: f64) -> f64 {
       + HALF_LN_TAU.1;
   }
   // `ln_gamma_diff` needs `q ≥ 16`, `digamma_step` `q ≥ 10`: the caller's larger shape is ≥ 100.
-  // 100.
   debug_assert!(q >= STIRLING_FROM);
   let (lb, lb_lo) = sub_parts(ln_gamma_parts(p), ln_gamma_diff(q, p));
   let step = digamma_step(q, p);

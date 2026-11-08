@@ -100,6 +100,10 @@ fn offset(a: f64, b: f64, x: f64, y: f64) -> ((f64, f64), (f64, f64), (f64, f64)
 /// `ln x` and `ln y`, each in two parts.
 pub(super) type Logs = ((f64, f64), (f64, f64));
 
+/// The inverse's per-law cache of the two-part `ln(a·B)` and `ln(b·B)`, the switch's side's, which
+/// every Newton step would otherwise form again (three two-part `ln Γ`).
+pub(super) type Norms = (Option<(f64, f64)>, Option<(f64, f64)>);
+
 /// From this shape (`2¹⁰²²`) the two-sums of `offset` would overflow: `λ` and the exponent,
 /// homogeneous in the shapes, are read from the halves and doubled.
 const HALVE_FROM: f64 = f64::MAX / 4.0;
@@ -167,7 +171,7 @@ pub(super) fn logs(x: f64, y: f64) -> Logs {
 
 /// `I_x(a, b)/(x^a y^b/(aB(a, b)))` below the switch (`λ > −1`): TOMS 708's form, reading `λ + 1`
 /// whole where `1 − (a + b)x/(a + 1)` cancels, by modified Lentz on `K/a`, free of `1/a`.
-fn fraction(a: f64, b: f64, x: f64, y: f64, lambda: f64) -> f64 {
+pub(super) fn fraction(a: f64, b: f64, x: f64, y: f64, lambda: f64) -> f64 {
   const FPMIN: f64 = 1e-300;
   let sum_finite = (a + b).is_finite();
   let (c, yp1) = (lambda + 1.0, y + 1.0);
@@ -182,11 +186,11 @@ fn fraction(a: f64, b: f64, x: f64, y: f64, lambda: f64) -> f64 {
     let s = a + 2.0 * n - 1.0;
     let u = a + n - 1.0;
     let mut w = n * x * (b - n);
-    // Where `w` overflows the step is scaled by `k`: `β_n·k` and `α_n·k·k_{n−1}`, an equivalence
-    // transformation.
+    // Where `w` overflows, `b − n` is scaled first by `k`: `β_n·k` and `α_n·k·k_{n−1}`, an
+    // equivalence transformation.
     let scale = if w.is_finite() { 1.0 } else { 2f64.powi(-20) };
     if scale < 1.0 {
-      w = n * x * (b - n) * scale;
+      w = n * x * ((b - n) * scale);
     }
     let ratio = if sum_finite {
       (u + b) / s
@@ -231,7 +235,14 @@ pub(super) struct Side {
 
 /// `I_x(a, b)`'s side: `asym` in its band, else the fraction on the switch's side, the gamma limit
 /// below `KEPT`, and the complement series where a value passes ½ at a shape at most 1.
-pub(super) fn side(a: f64, b: f64, x: f64, y: f64, given: Option<Logs>) -> Side {
+pub(super) fn side(
+  a: f64,
+  b: f64,
+  x: f64,
+  y: f64,
+  given: Option<Logs>,
+  norms: Option<&mut Norms>,
+) -> Side {
   let small = a.min(b);
   // The two-part logs are read below both shapes 10 only, so a caller without them pays for none.
   let mut given = given;
@@ -269,7 +280,12 @@ pub(super) fn side(a: f64, b: f64, x: f64, y: f64, given: Option<Logs>) -> Side 
   } else {
     let other = if lower { b } else { a };
     let (ln_x, ln_y) = *given.get_or_insert_with(|| logs(x, y));
-    ln_beta_prefactor(a, b, ln_shape_beta_parts(shape, other), ln_x, ln_y)
+    let norm = match norms {
+      Some(n) => *(if lower { &mut n.0 } else { &mut n.1 })
+        .get_or_insert_with(|| ln_shape_beta_parts(shape, other)),
+      None => ln_shape_beta_parts(shape, other),
+    };
+    ln_beta_prefactor(a, b, norm, ln_x, ln_y)
   };
   let ln_shape = shape.ln();
   let ln_prefactor = pf.ln() + ln_shape;
@@ -347,7 +363,7 @@ pub(super) fn side(a: f64, b: f64, x: f64, y: f64, given: Option<Logs>) -> Side 
 
 /// `I_x(a, b)` with `y = 1 − x`, the smaller exact, at a shape from 100.
 pub(super) fn beta_i(a: f64, b: f64, x: f64, y: f64) -> f64 {
-  let s = side(a, b, x, y, None);
+  let s = side(a, b, x, y, None, None);
   if s.lower { s.value } else { 1.0 - s.value }
 }
 
@@ -437,14 +453,15 @@ pub(super) struct Tails {
   pub(super) ln_ratio: f64,
 }
 
-/// Both tails' logarithms at `point`, at every shape, finite where the tails underflow.
-pub(super) fn ln_tails(a: f64, b: f64, point: &Point) -> Tails {
+/// Both tails' logarithms at `point`, at every shape, finite where the tails underflow; `norms`
+/// caches the law's `ln(s·B)` across a Newton's steps.
+pub(super) fn ln_tails(a: f64, b: f64, point: &Point, norms: Option<&mut Norms>) -> Tails {
   let (ln_x, ln_y) = if point.x_small {
     (point.ln_small, point.ln_other)
   } else {
     (point.ln_other, point.ln_small)
   };
-  let s = side(a, b, point.x, point.y, Some((ln_x, ln_y)));
+  let s = side(a, b, point.x, point.y, Some((ln_x, ln_y)), norms);
   let other = (-s.value).ln_1p();
   let (ln_lower, ln_upper) = if s.lower {
     (s.ln, other)

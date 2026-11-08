@@ -146,7 +146,7 @@ fn every_route_reads_its_ratio_to_the_prefactor() {
   ] {
     let y = 1.0 - x;
     let (ln_x, ln_y) = large::logs(x, y);
-    let s = large::side(a, b, x, y, Some((ln_x, ln_y)));
+    let s = large::side(a, b, x, y, Some((ln_x, ln_y)), None);
     let want = s.value / s.ln_prefactor.exp();
     let got = s.ln_ratio.exp();
     assert!(
@@ -157,7 +157,7 @@ fn every_route_reads_its_ratio_to_the_prefactor() {
 }
 
 /// A law narrower than its mean's double has every root within that double's spacing: `a/(a + b) +
-/// σz` to the bit (mpmath at 60 digits); the third to sixth cells are guards.
+/// σz` to the bit (mpmath at 60 digits); the third to sixth and the last two cells are guards.
 #[test]
 fn narrow_laws_read_their_mean_to_the_bit() {
   for (a, b, p, want) in [
@@ -376,4 +376,31 @@ fn the_inverse_reads_the_ends_and_the_symmetric_median_exactly() {
   for a in [5e-324, 4e-309, 5.5e-309, 0.01, 0.5, 1e3, 1e8] {
     assert_eq!(beta_i_inv(a, a, 0.5), 0.5, "Beta({a:e}, {a:e})");
   }
+}
+
+/// No cap NaN: a tiny shape beside one under 0.1 at a level in the mass at 1 (the side from
+/// `ln(t/(t + u))`), a huge shape beside one just above 1 at a tiny level (two guards): 1 in steps.
+#[test]
+fn admissible_laws_never_reach_the_cap_as_nan() {
+  for (a, b, p) in [
+    (1e-20, 1e-5, 0.9999999999999999),
+    (1e300, 1.01, 1e-300),
+    (8.22e192, 1.0045, 5e-324),
+  ] {
+    let (x, steps) = beta_i_inv_steps(a, b, p);
+    assert_eq!(x, 1.0, "Beta({a:e}, {b:e}) at {p:e}");
+    assert!(steps <= 10, "Beta({a:e}, {b:e}) at {p:e}: {steps} steps");
+  }
+}
+
+/// The fraction's step `n·x·(b − n)` overflows at shapes near `MAX`; scaled first, the fraction
+/// agrees with the same law at 1e300, its shape corrections being `O(1/a)`.
+#[test]
+fn the_fraction_scales_its_step_where_it_overflows() {
+  let huge = large::fraction(f64::MAX, f64::MAX, 0.4, 0.6, 0.2 * f64::MAX);
+  let big = large::fraction(1e300, 1e300, 0.4, 0.6, 0.2e300);
+  assert!(
+    huge.is_finite() && rel(huge, big) < 1e-12,
+    "{huge} against {big}"
+  );
 }
