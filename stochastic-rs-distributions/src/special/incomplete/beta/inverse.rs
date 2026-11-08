@@ -9,6 +9,7 @@ use std::f64::consts::LN_10;
 use super::large::Norms;
 use super::large::Point;
 use super::large::ln_tails;
+use crate::special::BETA_LARGE_SHAPE;
 use crate::special::STIRLING_FROM;
 use crate::special::exp_parts;
 use crate::special::ln_gamma;
@@ -60,9 +61,12 @@ pub(crate) fn beta_i_inv_steps(a: f64, b: f64, p: f64) -> (f64, usize) {
   // The root's bracket in `coord`: every iterate is an end, by the direction of its Newton step.
   let (mut lo, mut hi) = (f64::NEG_INFINITY, f64::INFINITY);
   let (mut prev_step, mut prev_raw) = (f64::INFINITY, f64::INFINITY);
-  let mut norms: Norms = (None, None);
+  // Below both shapes 100 the tail is read from one-part logs, within the bound at two thirds of
+  // the two-part chains' latency.
+  let one_part = a.max(b) < BETA_LARGE_SHAPE;
+  let mut norms = Norms::new(one_part);
   for n in 1..=STEPS {
-    let point = Point::from_ln(w, x_small);
+    let point = Point::from_ln(w, x_small, one_part);
     (w, x_small) = (point.w, point.x_small);
     let c = coord(w, x_small);
     let tails = ln_tails(a, b, &point, Some(&mut norms));

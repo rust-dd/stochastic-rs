@@ -102,7 +102,23 @@ pub(super) type Logs = ((f64, f64), (f64, f64));
 
 /// The inverse's per-law cache of the two-part `ln(a·B)` and `ln(b·B)`, the switch's side's, which
 /// every Newton step would otherwise form again (three two-part `ln Γ`).
-pub(super) type Norms = (Option<(f64, f64)>, Option<(f64, f64)>);
+pub(super) struct Norms {
+  lower: Option<(f64, f64)>,
+  upper: Option<(f64, f64)>,
+  /// Both shapes under 100: the point's logs and the prefactor's sum one-part, within the bound at
+  /// two thirds of the two-part chains' latency (the re-review's 521 cells, worst 0.71 of it).
+  one_part: bool,
+}
+
+impl Norms {
+  pub(super) fn new(one_part: bool) -> Self {
+    Self {
+      lower: None,
+      upper: None,
+      one_part,
+    }
+  }
+}
 
 /// From this shape (`2¹⁰²²`) the two-sums of `offset` would overflow: `λ` and the exponent,
 /// homogeneous in the shapes, are read from the halves and doubled.
@@ -156,6 +172,27 @@ fn ln_beta_prefactor(
   Prefactor {
     factor: h_lo.exp(),
     ln_scale: h,
+  }
+}
+
+/// The prefactor from one-part logarithms, `a ln x + b ln y − ln_norm` in one sum: the inverse's
+/// below both shapes 100, within the bound at a third less latency than the two-part chains.
+fn one_part_prefactor(
+  a: f64,
+  b: f64,
+  ln_norm: (f64, f64),
+  ln_x: (f64, f64),
+  ln_y: (f64, f64),
+) -> Prefactor {
+  if (a * ln_x.0).is_infinite() || (b * ln_y.0).is_infinite() {
+    return Prefactor {
+      factor: 1.0,
+      ln_scale: f64::NEG_INFINITY,
+    };
+  }
+  Prefactor {
+    factor: 1.0,
+    ln_scale: a * ln_x.0 + b * ln_y.0 - (ln_norm.0 + ln_norm.1),
   }
 }
 
@@ -280,12 +317,17 @@ pub(super) fn side(
   } else {
     let other = if lower { b } else { a };
     let (ln_x, ln_y) = *given.get_or_insert_with(|| logs(x, y));
+    let one_part = norms.as_ref().is_some_and(|n| n.one_part);
     let norm = match norms {
-      Some(n) => *(if lower { &mut n.0 } else { &mut n.1 })
+      Some(n) => *(if lower { &mut n.lower } else { &mut n.upper })
         .get_or_insert_with(|| ln_shape_beta_parts(shape, other)),
       None => ln_shape_beta_parts(shape, other),
     };
-    ln_beta_prefactor(a, b, norm, ln_x, ln_y)
+    if one_part {
+      one_part_prefactor(a, b, norm, ln_x, ln_y)
+    } else {
+      ln_beta_prefactor(a, b, norm, ln_x, ln_y)
+    }
   };
   let ln_shape = shape.ln();
   let ln_prefactor = pf.ln() + ln_shape;
@@ -391,17 +433,23 @@ pub(super) struct Point {
 
 impl Point {
   /// The point whose `x` (if `x_small`) or `y` is `e^w`; past ½ the roles swap, so the smaller side
-  /// is held.
-  pub(super) fn from_ln(w: f64, x_small: bool) -> Self {
+  /// is held; its logs one-part where the inverse reads a tail below both shapes 100.
+  pub(super) fn from_ln(w: f64, x_small: bool, one_part: bool) -> Self {
     let s = w.exp();
     if s > 0.5 {
       let o = 1.0 - s;
-      let ln_small = ln_parts(o, 0.0, 0);
-      return Self::arrange(o, s, !x_small, ln_small.0, ln_small, ln_parts(s, 0.0, 0));
+      let (ln_small, ln_other) = if one_part {
+        ((o.ln(), 0.0), (s.ln(), 0.0))
+      } else {
+        (ln_parts(o, 0.0, 0), ln_parts(s, 0.0, 0))
+      };
+      return Self::arrange(o, s, !x_small, ln_small.0, ln_small, ln_other);
     }
     let o = 1.0 - s;
     let (ln_small, ln_other) = if s < f64::MIN_POSITIVE {
       ((w, 0.0), ((-s).ln_1p(), 0.0))
+    } else if one_part {
+      ((s.ln(), 0.0), ((-s).ln_1p(), 0.0))
     } else {
       (ln_parts(s, 0.0, 0), ln_parts(o, (1.0 - o) - s, 0))
     };
@@ -436,9 +484,15 @@ impl Point {
     self.ln_other.0
   }
 
-  /// The held side's logarithm in two parts, exact for the double the tails were read at.
+  /// The held side's logarithm in two parts, exact for the double the tails were read at, whatever
+  /// parts the point carries.
   pub(super) fn ln_held(&self) -> (f64, f64) {
-    self.ln_small
+    let held = self.x.min(self.y);
+    if held < f64::MIN_POSITIVE {
+      (self.w, 0.0)
+    } else {
+      ln_parts(held, 0.0, 0)
+    }
   }
 }
 
