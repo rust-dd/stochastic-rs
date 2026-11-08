@@ -9,6 +9,7 @@
 //! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §X.3, DOI 10.1007/978-1-4613-8643-8.
 //! Reference: Hörmann, W. (1993), "The transformed rejection method for generating Poisson random variables", *Insurance: Mathematics and Economics* 12(1), 39-45, DOI 10.1016/0167-6687(93)90997-4.
 //! Reference: Loader, C. (2000), "Fast and Accurate Computation of Binomial Probabilities", technical report, <https://www.r-project.org/doc/reports/CLoader-dbinom-2002.pdf> (the saddle-point `ln pₖ`).
+//! Reference: Choi, K.P. (1994), "On the medians of gamma distributions and an equation of Ramanujan", *Proceedings of the American Mathematical Society* 121(1), 245-251, DOI 10.1090/S0002-9939-1994-1195477-8 (the median bracket `λ − ln 2 ≤ m < λ + 1/3`).
 
 use std::marker::PhantomData;
 
@@ -360,8 +361,24 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdPoisson<T> {
     Some(self.lambda())
   }
 
+  /// Exact from Choi's bracket `λ − ln 2 ≤ m < λ + 1/3`: one count, or two where `frac(λ) ∈ (2/3, ln 2]`, which one cdf comparison decides.
   fn median(&self) -> Option<f64> {
-    self.quantile(0.5)
+    let n = self.lambda.floor();
+    let frac = self.lambda - n;
+    // No double lies between `LN_2` and ln 2, and the fused `3 frac − 2` keeps its sign, so both ends are exact.
+    let holds_n = frac <= std::f64::consts::LN_2;
+    let holds_next = 3.0_f64.mul_add(frac, -2.0) > 0.0;
+    Some(if holds_n && holds_next {
+      if self.cdf(n).is_some_and(|c| c >= 0.5) {
+        n
+      } else {
+        n + 1.0
+      }
+    } else if holds_n {
+      n
+    } else {
+      n + 1.0
+    })
   }
 
   fn mode(&self) -> Option<f64> {

@@ -45,11 +45,41 @@ fn huge_rates_construct_and_draw() {
     (d.quantile(1e-3), d.quantile(1.0 - 1e-3)),
     (Some(1e300), Some(up))
   );
-  // `cdf(1e300)` reads ½ plus one ulp, so a 4ε move of its `exp` puts the median on either neighbour.
-  assert!(d.median().is_some_and(|m| m == 1e300 || m == up));
+  assert_eq!(d.median(), Some(1e300));
   let d = SimdPoisson::<u64>::new(1e15);
   let k = d.sample(&mut SimdRng::from_seed(1)) as f64;
   assert!((k - 1e15).abs() < 1e9, "{k}");
+}
+
+/// The median from Choi's bracket: one count from 2⁵¹ to `MAX`, and the search's count on each side of both ends of the window `frac(λ) ∈ (2/3, ln 2]`.
+#[test]
+fn median_is_chois_bracket() {
+  for (lambda, median) in [
+    (2_251_799_813_685_248.5, 2_251_799_813_685_248.0),
+    (4_503_599_627_370_496.0, 4_503_599_627_370_496.0),
+    (9_007_199_254_740_992.0, 9_007_199_254_740_992.0),
+    (1e20, 1e20),
+    (f64::MAX, f64::MAX),
+  ] {
+    assert_eq!(
+      SimdPoisson::<u64>::new(lambda).median(),
+      Some(median),
+      "median({lambda})"
+    );
+  }
+  for (lambda, median) in [
+    (1.6666666666666665, 1.0),
+    (1.6666666666666667, 1.0),
+    (1.6931471805599452, 2.0),
+    (1.6931471805599454, 2.0),
+  ] {
+    let d = SimdPoisson::<u64>::new(lambda);
+    assert_eq!(
+      (d.median(), d.quantile(0.5)),
+      (Some(median), Some(median)),
+      "median({lambda})"
+    );
+  }
 }
 
 /// Below the threshold the one-shot count inverts every uniform as the table does, at each entry and its neighbours; above it, PTRS's draw.
