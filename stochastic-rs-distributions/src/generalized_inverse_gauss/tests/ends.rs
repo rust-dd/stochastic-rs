@@ -220,7 +220,7 @@ fn a_mean_beside_max_below_order_50_reads_finite_for_a_finite_truth() {
 }
 
 /// mpmath at 60 and 120 digits (agreeing to 61) near order 0 on a subnormal clock, whose `ln(2/ω)`
-/// comes from the roots: truths 47 and 39 ulps under MAX read finite, one `3.96e-13` past reads `+∞`.
+/// comes from the roots: truths 47 and 39 ulps under MAX read finite, two past the band read `+∞`.
 #[test]
 fn a_subnormal_clock_beside_max_reads_its_ratio_from_the_roots() {
   let gig = SimdGig::<f64>::new;
@@ -240,9 +240,39 @@ fn a_subnormal_clock_beside_max_reads_its_ratio_from_the_roots() {
       f64::INFINITY,
       0.0,
     ),
+    (
+      gig(-0.002, 1.5e-323, 1.263_805_817_896e-312),
+      f64::INFINITY,
+      0.0,
+    ),
   ];
   for (i, (law, want, rel)) in rows.into_iter().enumerate() {
     let got = law.mean().unwrap();
     assert!(holds(got, want, rel), "row {i}: {got:e}, want {want:e}");
   }
+}
+
+/// A truth within its route's band of `MAX + ½ ulp` reads MAX: the closed forms' ties `1.5e-33`
+/// under it (exact in rationals, the band `2⁻¹⁰⁴`), a mean from order 50 `2.9e-18` past it (mpmath).
+#[test]
+fn a_truth_inside_its_routes_band_at_the_midpoint_reads_max() {
+  let gig = SimdGig::<f64>::new;
+  let rows = [
+    gig(-0.5, f64::MAX, 5.562_684_646_268_003e-309),
+    gig(0.5, 1.246_403_174_130_249_2e278, 5.562_684_646_268_01e-309),
+    gig(50.5, 4.438_666_445_305_384e307, 5.632_322_299_514_398e-307),
+  ];
+  for (i, law) in rows.into_iter().enumerate() {
+    let got = law.mean().unwrap();
+    assert!(holds(got, f64::MAX, 0.0), "row {i}: {got:e}, want MAX");
+  }
+}
+
+/// The bands are the powers of two their docs name.
+#[test]
+fn the_bands_are_the_documented_powers_of_two() {
+  assert_eq!(near_max::CLOSED_BAND, 2f64.powi(-104));
+  assert_eq!(near_max::PARTS_BAND, 2f64.powi(-102));
+  assert_eq!(near_max::BELOW_BAND, 2f64.powi(-47));
+  assert_eq!(near_max::ROUTE_BAND, 2f64.powi(-45));
 }

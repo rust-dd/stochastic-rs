@@ -185,3 +185,18 @@ fn a_small_tilt_beside_max_reads_its_finite_truth() {
     assert!(holds(got, want, 1e-12), "row {i}: {got:e}, want {want:e}");
   }
 }
+
+/// Exact in rationals: `μ + 2βλ/((α − β)(α + β))` lies `2⁻¹⁰³` of itself past `MAX + ½ ulp`, inside
+/// the `2⁻¹⁰²` band of the two-part sum from order 50, so it reads MAX, not `+∞`.
+#[test]
+fn a_tilt_inside_the_bands_width_past_the_midpoint_reads_max() {
+  let law = SimdGeneralizedHyperbolic::<f64>::new(
+    8.988_465_674_311_579e307,
+    2_251_799_813_685_248.5,
+    2_251_799_813_685_248.0,
+    1.0,
+    2.993_760_464_302_081e292,
+  );
+  let got = law.mean().unwrap();
+  assert!(holds(got, f64::MAX, 0.0), "{got:e}, want MAX");
+}
