@@ -56,20 +56,22 @@ pub(crate) fn beta_i_inv(a: f64, b: f64, p: f64) -> f64 {
     }
     if below && raw == f64::NEG_INFINITY {
       // The root lies past the doubles' end: exactly 0, or 1 by its complement.
-      return finish(f64::NEG_INFINITY, x_small);
+      return finish((f64::NEG_INFINITY, 0.0), x_small);
     }
     let step = if below && raw.is_finite() {
       raw
     } else {
       raw.clamp(-STEP, STEP)
     };
-    let next = (w + step).min(-1.1e-16);
     if step.abs() <= 1e-9 {
-      return finish(next, x_small);
+      // From the held double's exact logarithm, in two parts: `w` alone resolves `x` to `|w|·ε`, 1e-13 at
+      // `x ≈ 1e-240`.
+      let (hi, lo) = point.ln_held();
+      return finish((hi, lo + step), x_small);
     }
-    w = next;
+    w = (w + step).min(-1.1e-16);
   }
-  finish(w, x_small)
+  finish((w, 0.0), x_small)
 }
 
 /// The root where both shapes pass 1e3 and the law is narrower than its mean's double by a factor of 160, so
@@ -86,7 +88,9 @@ fn narrow_root(a: f64, b: f64) -> Option<f64> {
   let q_lo = (q.mul_add(-s, small) - q * s_lo) / s;
   let share = q + q_lo;
   let spacing = share.next_up() - share;
-  if 25600.0 * (0.5 * share * (1.0 - share) / s) >= spacing * spacing {
+  // `160σ < spacing` with both sides relative to the share: `σ²` itself underflows at `a + b ≈ 1e296` about a
+  // mean of `1e-186`.
+  if 12800.0 * (1.0 - share) / (s * share) >= (spacing / share).powi(2) {
     return None;
   }
   Some(if ha <= hb {
@@ -97,13 +101,10 @@ fn narrow_root(a: f64, b: f64) -> Option<f64> {
   })
 }
 
-/// `x` from the log of the held side, rounded once below the normals.
-fn finish(w: f64, x_small: bool) -> f64 {
-  if x_small {
-    exp_parts((w, 0.0), 1.0, 0)
-  } else {
-    1.0 - w.exp()
-  }
+/// `x` from the held side's two-part logarithm, rounded once.
+fn finish(w: (f64, f64), x_small: bool) -> f64 {
+  let held = exp_parts(w, 1.0, 0);
+  if x_small { held } else { 1.0 - held }
 }
 
 /// `ln(1 + e^t)` without overflow.

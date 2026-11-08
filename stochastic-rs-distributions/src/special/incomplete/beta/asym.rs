@@ -48,10 +48,14 @@ pub(super) fn expansion(a: f64, b: f64, (f, f_lo): (f64, f64), star: f64) -> (f6
   c[0] = -0.5 * a0[0];
   d[0] = -c[0];
   let z = (f + f_lo).max(0.0).sqrt() * std::f64::consts::SQRT_2;
-  let z2 = 2.0 * (f + f_lo);
-  let (mut j0, mut j1) = (E1 * mills_ratio(z), E1);
-  let mut sum = j0 + d[0] * w0 * j1;
-  let (mut s, h2, mut hn, mut w, mut znm1, mut zn) = (1.0, h * h, 1.0, w0, z, z2);
+  // `ζ = z·w0 ≤ 0.03√2` in the band: the recursion carries `J_n = j_n·w0^n`, since `z^n` alone overflows past
+  // a shape of about 1e100.
+  let zeta = z * w0;
+  let zeta2 = zeta * zeta;
+  let w2 = w0 * w0;
+  let (mut j0, mut j1) = (E1 * mills_ratio(z), E1 * w0);
+  let mut sum = j0 + d[0] * j1;
+  let (mut s, h2, mut hn, mut znm1, mut zn) = (1.0, h * h, 1.0, zeta * w0, zeta2 * w0);
   let mut n = 2;
   while n <= TERMS {
     hn *= h2;
@@ -75,14 +79,12 @@ pub(super) fn expansion(a: f64, b: f64, (f, f_lo): (f64, f64), star: f64) -> (f6
       }
       d[i - 1] = -(dsum + c[i - 1]);
     }
-    j0 = E1 * znm1 + (n as f64 - 1.0) * j0;
-    j1 = E1 * zn + n as f64 * j1;
-    znm1 *= z2;
-    zn *= z2;
-    w *= w0;
-    let t0 = d[n - 1] * w * j0;
-    w *= w0;
-    let t1 = d[n] * w * j1;
+    j0 = E1 * znm1 + (n as f64 - 1.0) * w2 * j0;
+    j1 = E1 * zn + n as f64 * w2 * j1;
+    znm1 *= zeta2;
+    zn *= zeta2;
+    let t0 = d[n - 1] * j0;
+    let t1 = d[n] * j1;
     sum += t0 + t1;
     if t0.abs() + t1.abs() <= f64::EPSILON * sum {
       break;

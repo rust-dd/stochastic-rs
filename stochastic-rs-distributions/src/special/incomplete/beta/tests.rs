@@ -89,6 +89,12 @@ fn huge_shapes_stay_in_the_unit_interval() {
     (f64::MAX, 0.5, 0.5, 0.0),
     (f64::MAX, 10.0, 1e-300, 0.0),
     (f64::MAX, 0.9999999999999998, 5e-324, 0.0),
+    (
+      1.8406996318833632e111,
+      1.9672203795406507e296,
+      9.196176908270334e-186,
+      0.0,
+    ),
   ] {
     assert_eq!(beta_i(a, b, x), want, "I_{x:e}({a:e}, {b:e})");
   }
@@ -182,6 +188,18 @@ fn narrow_laws_read_their_mean_to_the_bit() {
     ),
     (1e40, 3e39, 1e-300, 0.7692307692307693),
     (1e40, 3e39, 0.5, 0.7692307692307693),
+    (
+      1.8406996318833632e111,
+      1.9672203795406507e296,
+      1.8063081215370482e-238,
+      9.356855241166064e-186,
+    ),
+    (
+      4.09174164464156e49,
+      5.102096665990561e219,
+      2.4384541642201333e-30,
+      8.019725835294729e-171,
+    ),
   ] {
     assert_eq!(beta_i_inv(a, b, p), want, "Beta({a:e}, {b:e}) at {p:e}");
   }
@@ -195,7 +213,8 @@ fn beta_ic_reads_its_plain_route_from_x() {
 }
 
 /// mpmath roots (Newton on `ln I` at 60 and 120 digits raised), graded by the quantile's bar with κ
-/// from the root's density, the complement past ½; the twelve rows in the bulk are guards the clamp met.
+/// from the root's density, the complement past ½; twelve rows in the bulk are guards the clamp met; the
+/// last three roots lie near `1e-240`, where a step read through `w` alone held `|w|·ε` of them.
 #[test]
 fn the_inverse_holds_the_bar_in_both_tails() {
   for (a, b, p, want, kappa) in [
@@ -239,6 +258,27 @@ fn the_inverse_holds_the_bar_in_both_tails() {
     (1.0, 1e-9, 1e-10, 0.09516258196856461, 0.9508332),
     (2.0, 1e-9, 1e-10, 0.3831831680981665, 0.420091),
     (5.0, 1e-9, 1e-10, 0.7177207036451614, 0.1482182),
+    (
+      5.207052719351951,
+      4.800787204511878e240,
+      0.17713598640521838,
+      6.493710750844055e-241,
+      0.3536874,
+    ),
+    (
+      60.74187873563975,
+      7.16704305166794e128,
+      0.35731990786494083,
+      8.038565169319383e-128,
+      0.1250988,
+    ),
+    (
+      9.943961394319228,
+      9.27896184990215e230,
+      0.2174693767038595,
+      7.972039692260387e-231,
+      0.2588324,
+    ),
   ] {
     let got = beta_i_inv(a, b, p);
     let (err, side) = if p <= 0.5 {

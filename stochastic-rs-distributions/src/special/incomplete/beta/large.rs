@@ -405,6 +405,11 @@ impl Point {
   pub(super) fn ln_other(&self) -> f64 {
     self.ln_other.0
   }
+
+  /// The held side's logarithm in two parts, exact for the double the tails were read at.
+  pub(super) fn ln_held(&self) -> (f64, f64) {
+    self.ln_small
+  }
 }
 
 /// `ln I_x(a, b)`, `ln(1 − I_x(a, b))`, the smaller exact and the other through `ln_1p`, and the
