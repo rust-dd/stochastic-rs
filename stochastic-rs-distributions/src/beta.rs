@@ -24,7 +24,7 @@ const SMALL_BETA_THRESHOLD: usize = 16;
 /// `a/(a + b)` of two positive draws, from the smaller over the larger where their sum passes the
 /// doubles.
 #[inline]
-fn ratio<T: SimdFloatExt>(a: T, b: T) -> T {
+pub(crate) fn ratio<T: SimdFloatExt>(a: T, b: T) -> T {
   let sum = a + b;
   if sum < T::infinity() {
     return a / sum;
@@ -251,9 +251,27 @@ impl<T: SimdFloatExt> Distribution<T> for SimdBeta<T> {
   }
 }
 
+/// The density's rare paths, out of line so the plain one inlines: an end's limit (`+∞` below a
+/// unit shape, `b` or `a` at it, 0 above) and the Stirling-scaled density from a shape of 100.
+#[cold]
+#[inline(never)]
+fn pdf_edge(a: f64, b: f64, x: f64) -> f64 {
+  if x == 0.0 || x == 1.0 {
+    let (shape, other) = if x == 0.0 { (a, b) } else { (b, a) };
+    return if shape < 1.0 {
+      f64::INFINITY
+    } else if shape == 1.0 {
+      other
+    } else {
+      0.0
+    };
+  }
+  crate::special::beta_density(a, b, x)
+}
+
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdBeta<T> {
-  /// `(a − 1) ln x + (b − 1) ln(1 − x) − ln B(a, b)`, `ln(1 − x)` from `x` below ½; from a shape of
-  /// 100 the incomplete beta's Stirling-scaled prefactor over `x(1 − x)`, where those terms cancel.
+  /// `(a − 1) ln x + (b − 1) ln(1 − x) − ln B(a, b)`; from a shape of 100 the incomplete beta's
+  /// Stirling prefactor over `x(1 − x)`, where those terms cancel; the ends their limits.
   fn pdf(&self, x: f64) -> Option<f64> {
     if x.is_nan() {
       return Some(f64::NAN);
@@ -263,19 +281,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdBeta<T> {
     }
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
-    if x == 0.0 || x == 1.0 {
-      // The end's limit: `+∞` below a unit shape, `1/B(1, b) = b` (or `a`) at it, 0 above.
-      let (shape, other) = if x == 0.0 { (a, b) } else { (b, a) };
-      return Some(if shape < 1.0 {
-        f64::INFINITY
-      } else if shape == 1.0 {
-        other
-      } else {
-        0.0
-      });
-    }
-    if a.max(b) >= crate::special::LARGE_SHAPE {
-      return Some(crate::special::beta_density(a, b, x));
+    if x == 0.0 || x == 1.0 || a.max(b) >= crate::special::BETA_LARGE_SHAPE {
+      return Some(pdf_edge(a, b, x));
     }
     let log_pdf = (a - 1.0) * x.ln() + (b - 1.0) * (1.0 - x).ln() - crate::special::ln_beta(a, b);
     Some(log_pdf.exp())
@@ -354,7 +361,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdBeta<T> {
   fn entropy(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
-    if a.max(b) >= crate::special::LARGE_SHAPE {
+    if a.max(b) >= crate::special::BETA_LARGE_SHAPE {
       return Some(crate::special::beta_entropy(a, b));
     }
     Some(

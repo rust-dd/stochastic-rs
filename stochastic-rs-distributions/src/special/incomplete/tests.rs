@@ -514,8 +514,8 @@ fn beta_i_keeps_a_value_next_to_1_at_or_below_it() {
   }
 }
 
-/// `1 − I_x(a, b)` from `x` by the series and the gamma limit: mpmath at 60 and 120 digits raised by
-/// |log₁₀ a| and |log₁₀ x|, a subnormal its correctly rounded value.
+/// `1 − I_x(a, b)` from `x` by the series and the gamma limit: mpmath at 60 and 120 digits raised
+/// by |log₁₀ a| and |log₁₀ x|, a subnormal its correctly rounded value.
 #[test]
 fn beta_ic_reads_the_upper_tail_from_x() {
   for (a, b, x, want) in [

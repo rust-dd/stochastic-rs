@@ -9,10 +9,10 @@ mod large;
 
 use super::complement;
 use super::ln_gamma;
+use crate::special::BETA_LARGE_SHAPE;
 pub(crate) use inverse::beta_i_inv;
-
-/// From this shape, either, the plain prefactor's `ln Γ` sum outgrows the bar: `large` takes over.
-pub(super) const LARGE_SHAPE: f64 = crate::special::LARGE_SHAPE;
+#[cfg(test)]
+pub(crate) use inverse::beta_i_inv_steps;
 
 /// Regularised incomplete beta `I_x(a, b)`: the continued fraction, past the mean `1 − I_{1−x}(b,
 /// a)` or DLMF 8.17.7's complement, Stirling-scaled from a shape of 100; NaN only off `[0, 1]`.
@@ -26,8 +26,8 @@ pub(crate) fn beta_density(a: f64, b: f64, x: f64) -> f64 {
   large::density(a, b, x, 1.0 - x)
 }
 
-/// `I_x(a, b)` with `y = 1 − x` given, the smaller of the two exact and the other rounded:
-/// `beta_ic`'s plain route and the truncated beta's switch pass their own `x` as `y`.
+/// `I_x(a, b)` with `y = 1 − x` given: from a shape of 100 the smaller of the two is read exact
+/// (`beta_ic` and the truncated beta pass their `x` as `y`), below it only `x`.
 pub(crate) fn beta_i_xy(a: f64, b: f64, x: f64, y: f64) -> f64 {
   if !(0.0..=1.0).contains(&x) {
     return f64::NAN;
@@ -35,7 +35,7 @@ pub(crate) fn beta_i_xy(a: f64, b: f64, x: f64, y: f64) -> f64 {
   if x == 0.0 || x == 1.0 {
     return x;
   }
-  if a.max(b) >= LARGE_SHAPE {
+  if a.max(b) >= BETA_LARGE_SHAPE {
     return large::beta_i(a, b, x, y);
   }
   let (lab, la, lb, lx, ly) = (

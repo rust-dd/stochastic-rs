@@ -6,13 +6,8 @@ use crate::tests::scalar_ks_best_p;
 use crate::traits::DistributionExt as _;
 use crate::traits::DistributionSampler;
 
-/// Small shapes must not lose a draw to `0 / 0`.
-///
-/// The Gamma-ratio construction underflows both marginals to exactly zero
-/// once a shape is small — 13 % of the draws at `α = β = 0.01` in single
-/// precision, and it still reaches double precision at `α = β = 0.001`.
-/// Both fill paths are exercised: a 1000-long slice takes the SIMD
-/// chunks plus the scalar remainder, an 8-long one the short path.
+/// Small shapes lose no draw to `0/0`, where the gamma ratio underflows both marginals (13 % of
+/// `f32` draws at `0.01`); the SIMD chunks, the remainder and the short path all run.
 #[test]
 fn small_shapes_stay_finite() {
   for seed in [7u64, 11] {
@@ -30,9 +25,8 @@ fn small_shapes_stay_finite() {
   }
 }
 
-/// The repaired small-shape draws still carry Beta's first two moments — a fix that merely clamped
-/// the NaN away would not. Single precision is deliberate: an eighth of these draws take the
-/// repaired branch.
+/// The repaired small-shape draws carry Beta's first two moments, which a clamp of the NaN would
+/// not; single precision, where an eighth of the draws take the repaired branch.
 #[test]
 fn small_shape_moments_hold() {
   let (a, b) = (0.01_f64, 0.01_f64);
@@ -127,8 +121,8 @@ fn quantile_reads_both_tails_through_the_law() {
   assert!(law.quantile(1.5).unwrap().is_nan() && law.quantile(f64::NAN).unwrap().is_nan());
 }
 
-/// The density and the entropy from a shape of 100, where the plain logarithms cancelled, against
-/// mpmath at 60 and 120 digits; the closed form left `1e-12·max(|v|, 1)` from `a = b = 2179`.
+/// The density and the entropy from a shape of 100 against mpmath at 60 and 120 digits (420 past an
+/// overflowing sum); guards: the entropies at `(1e3, 1e3)` and `(2179, ½)`.
 #[test]
 fn pdf_and_entropy_hold_at_large_shapes() {
   for (a, b, x, want) in [
@@ -153,6 +147,9 @@ fn pdf_and_entropy_hold_at_large_shapes() {
     (1e100, 1e100, -114.75003688733753),
     (1e300, 1e300, -345.0085461867421),
     (1e300, 0.5, -690.6849179682997),
+    (f64::MAX, f64::MAX, -354.5121386843272),
+    (1e308, 1e308, -354.2188865587183),
+    (1e300, f64::MAX, -362.9760104194165),
   ] {
     let got = SimdBeta::<f64>::new(a, b).entropy().unwrap();
     assert!(
@@ -176,7 +173,7 @@ fn pdf_reads_the_ends_limits() {
 }
 
 /// Shapes whose gamma draws' sum passes `MAX` read their ratio from the smaller over the larger,
-/// inside the support, where `a/(a + b)` read 0; the stream and the honest draw alike.
+/// inside the support; the stream and the honest draw alike.
 #[test]
 fn draws_at_huge_shapes_land_inside_the_support() {
   let law = SimdBeta::<f64>::new(1e300, f64::MAX);

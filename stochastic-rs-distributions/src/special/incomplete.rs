@@ -16,6 +16,7 @@ pub(crate) use beta::beta_i_inv;
 pub(crate) use beta::beta_i_xy;
 use beta::betacf;
 pub(crate) use complement::KEPT;
+pub(crate) use complement::STIRLING_FROM;
 pub(crate) use complement::beta_ic;
 pub(crate) use large_shape::LN2_HI;
 pub(crate) use large_shape::LN2_LO;
@@ -256,7 +257,8 @@ pub fn ln_gamma_p(a: f64, x: f64) -> f64 {
   }
 }
 
-/// `ln Q(a, x)` with, where the fraction evaluates `Q`, its own logarithm `ln(Q/(x^a e^{−x}/Γ(a)))`.
+/// `ln Q(a, x)` with, where the fraction evaluates `Q`, its own logarithm `ln(Q/(x^a
+/// e^{−x}/Γ(a)))`.
 pub(crate) fn ln_gamma_q_scaled(a: f64, x: f64) -> (f64, Option<f64>) {
   if a < 1.0 && x < a + 1.0 {
     return (small_shape_q(a, x).ln(), None);

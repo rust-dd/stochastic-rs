@@ -1,5 +1,5 @@
-//! Temme's uniform expansion of `I_x(a, b)` for large `a` and `b` (DLMF 8.18.9) by DiDonato and Morris's
-//! recursion for its coefficients, the scaled `erfc` from Mills' ratio, the exponent in two parts.
+//! Temme's uniform expansion of `I_x(a, b)` at large `a`, `b` (DLMF 8.18.9): DiDonato and Morris's
+//! coefficient recursion, the scaled `erfc` from Mills' ratio, a two-part exponent.
 //! Reference: DiDonato, A.R., Morris, A.H. (1992), "Algorithm 708: Significant digit computation of the incomplete beta function ratios", ACM TOMS 18(3), 360-373, DOI 10.1145/131766.131776 (`basym`).
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 8.18.8–8.18.12, <https://dlmf.nist.gov/8.18.ii>.
 //! Reference: Temme, N.M. (1992), "Asymptotic inversion of the incomplete beta function", *Journal of Computational and Applied Mathematics* 41(1-2), 145-157, DOI 10.1016/0377-0427(92)90244-R.
@@ -18,8 +18,8 @@ const E0: f64 = std::f64::consts::FRAC_2_SQRT_PI;
 /// `2^{−3/2}`.
 const E1: f64 = 0.353_553_390_593_273_8;
 
-/// `I_x(a, b)` at `λ = a − (a + b)x ≥ 0`, shapes past 100, as `(value, ln value, ln(value/bt))`: `e^{−f}`
-/// from the two-part `f = a·g(−λ/a) + b·g(λ/b)`, Stirling's `e^{−Δ}`, `2/√π` and the series.
+/// `I_x(a, b)` at `λ = a − (a + b)x ≥ 0`, shapes past 100, as `(value, ln value, ln(value/bt))`:
+/// `e^{−f}` from the two-part `f = a·g(−λ/a) + b·g(λ/b)`, `e^{−Δ}`, `2/√π` and the series.
 pub(super) fn expansion(a: f64, b: f64, (f, f_lo): (f64, f64), star: f64) -> (f64, f64, f64) {
   let (h, r0, r1, w0) = if a < b {
     let h = a / b;
@@ -48,8 +48,8 @@ pub(super) fn expansion(a: f64, b: f64, (f, f_lo): (f64, f64), star: f64) -> (f6
   c[0] = -0.5 * a0[0];
   d[0] = -c[0];
   let z = (f + f_lo).max(0.0).sqrt() * std::f64::consts::SQRT_2;
-  // `ζ = z·w0 ≤ 0.03√2` in the band: the recursion carries `J_n = j_n·w0^n`, since `z^n` alone overflows past
-  // a shape of about 1e100.
+  // `ζ = z·w0 ≤ 0.03√2` in the band: the recursion carries `J_n = j_n·w0^n`, since `z^n` alone
+  // overflows past a shape of about 1e100.
   let zeta = z * w0;
   let zeta2 = zeta * zeta;
   let w2 = w0 * w0;

@@ -16,7 +16,7 @@ pub(crate) const KEPT: f64 = 1.4901161193847656e-8;
 
 /// From this argument `ln Γ` differences are Stirling's, its seventh term under `2e-18` of the
 /// digamma; unit shifts lift a smaller one.
-const STIRLING_FROM: f64 = 16.0;
+pub(crate) const STIRLING_FROM: f64 = 16.0;
 
 /// `B_{2k}/(2k(2k − 1))`, `k = 1, …, 6`, Stirling's coefficients (DLMF 5.11.1).
 const STIRLING: [f64; 6] = [
@@ -49,7 +49,8 @@ pub(super) fn gamma_limit(a: f64, b: f64, x: f64) -> f64 {
   gamma_limit_arg(a, b, x).map_or(f64::NAN, |(n, s)| gamma_q(a, n * s))
 }
 
-/// [`gamma_limit`]'s `(N, s)` where its next terms hold, for a caller reading `Q(a, Ns)` and its logarithms.
+/// [`gamma_limit`]'s `(N, s)` where its next terms hold, for a caller reading `Q(a, Ns)` and its
+/// logarithms.
 pub(super) fn gamma_limit_arg(a: f64, b: f64, x: f64) -> Option<(f64, f64)> {
   let n = b + 0.5 * (a - 1.0);
   let s = -(-x).ln_1p();

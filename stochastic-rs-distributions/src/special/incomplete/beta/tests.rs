@@ -15,8 +15,8 @@ fn quantile_bound(p: f64, kappa: f64, side: f64) -> f64 {
   4e-15 * kappa.max(1.0) * pt.ln().abs().max(1.0) * side
 }
 
-/// Below the switch at a second shape in the thousands and beyond, where the plain `ln Γ` sum lost
-/// 3.9e-7; the four cells with a shape under 1e-2 and the bits cell are guards, which the base met.
+/// Below the switch at a second shape in the thousands and beyond, within 4e-14 of mpmath at 60 and
+/// 120 digits; the four cells with a shape under 1e-2 are guards.
 #[test]
 fn large_shapes_keep_their_digits_below_the_switch() {
   for (a, b, x, want) in [
@@ -42,11 +42,10 @@ fn large_shapes_keep_their_digits_below_the_switch() {
       "I_{x}({a:e}, {b:e}) = {got:e}, want {want:e}"
     );
   }
-  assert_eq!(beta_i(1e4, 1e-307, 0.999), f64::from_bits(0x0013_7e69_693a));
 }
 
-/// Beside the mean at both shapes past 100 the uniform expansion converges where 200 fraction steps
-/// read `−0.306`.
+/// Beside the mean at both shapes past 100 the uniform expansion holds 4e-14 of mpmath, and `½` at
+/// `x = ½` within 8ε.
 #[test]
 fn both_shapes_large_converge_beside_the_mean() {
   for (a, b, x, want) in [
@@ -71,8 +70,8 @@ fn both_shapes_large_converge_beside_the_mean() {
   assert_eq!(beta_i(1e300, 1e300, 0.5000000000000001), 1.0);
 }
 
-/// At a huge second shape past the switch a rounded `1 − x` read `1.0000000277` and `6.2`: every
-/// value is in `[0, 1]`, none is NaN, a shape times a log past `MAX` reads its end.
+/// At a huge second shape past the switch every value is in `[0, 1]` and none is NaN; a shape times
+/// a log past `MAX` reads its end. The `(2, 1e19)` cell is a guard.
 #[test]
 fn huge_shapes_stay_in_the_unit_interval() {
   let got = beta_i(0.5, 1e18, 1e-17);
@@ -133,8 +132,8 @@ fn huge_shapes_stay_in_the_unit_interval() {
   }
 }
 
-/// Each route's `ln_ratio` is its value over the prefactor, so the inverse's slope forms no difference of
-/// two logarithms of the exponent's size: the fraction on both sides, `asym`, the gamma limit and the series.
+/// Each route's `ln_ratio` is its value over the prefactor, so the inverse's slope forms no
+/// difference of two large logs: both fractions, `asym`, the gamma limit and the series.
 #[test]
 fn every_route_reads_its_ratio_to_the_prefactor() {
   for (a, b, x) in [
@@ -147,7 +146,7 @@ fn every_route_reads_its_ratio_to_the_prefactor() {
   ] {
     let y = 1.0 - x;
     let (ln_x, ln_y) = large::logs(x, y);
-    let s = large::side(a, b, x, y, ln_x, ln_y);
+    let s = large::side(a, b, x, y, Some((ln_x, ln_y)));
     let want = s.value / s.ln_prefactor.exp();
     let got = s.ln_ratio.exp();
     assert!(
@@ -157,8 +156,8 @@ fn every_route_reads_its_ratio_to_the_prefactor() {
   }
 }
 
-/// A law narrower than its mean's double has every level's root at the mean, read to the bit where Newton on a
-/// step wandered by up to 8 % (mpmath's `a/(a + b)` at 60 digits); the last four cells are guards.
+/// A law narrower than its mean's double has every root within that double's spacing: `a/(a + b) +
+/// σz` to the bit (mpmath at 60 digits); the third to sixth cells are guards.
 #[test]
 fn narrow_laws_read_their_mean_to_the_bit() {
   for (a, b, p, want) in [
@@ -188,6 +187,8 @@ fn narrow_laws_read_their_mean_to_the_bit() {
     ),
     (1e40, 3e39, 1e-300, 0.7692307692307693),
     (1e40, 3e39, 0.5, 0.7692307692307693),
+    (1e34, 1e37, 0.3, 0.000999000999000999),
+    (1e33, 3e33, 0.7, 0.25),
     (
       1.8406996318833632e111,
       1.9672203795406507e296,
@@ -205,6 +206,51 @@ fn narrow_laws_read_their_mean_to_the_bit() {
   }
 }
 
+/// At the largest shape every `x` to `0.999` saturates the tail, `0` with `MAX` first and `1`
+/// second, and `(MAX, MAX)` steps at ½; the two-sums of the offset are read from the halves there.
+#[test]
+fn the_largest_shape_reads_its_ends_at_every_point() {
+  for b in [1e-300, 1.3e-47, 0.5, 1.0, 1.3, 3.0, 10.0, 1e3, 1e100] {
+    for i in 1..1000 {
+      let x = i as f64 / 1000.0;
+      assert_eq!(beta_i(f64::MAX, b, x), 0.0, "I_{x}(MAX, {b:e})");
+      assert_eq!(beta_i(b, f64::MAX, x), 1.0, "I_{x}({b:e}, MAX)");
+    }
+  }
+  for i in (1..1000).filter(|&i| i != 500) {
+    let x = i as f64 / 1000.0;
+    let want = if x < 0.5 { 0.0 } else { 1.0 };
+    assert_eq!(beta_i(f64::MAX, f64::MAX, x), want, "I_{x}(MAX, MAX)");
+  }
+}
+
+/// The deep lower tail starts on its power law a few steps from the root, where A&S 26.5.22 lies
+/// 190 log units out; the root agrees with `x^a/(aB)` at 50 digits, whose next term is 1e-238.
+#[test]
+fn the_deep_tail_converges_in_a_few_steps() {
+  let (x, steps) = beta_i_inv_steps(1.36, 3000.0, 5e-324);
+  assert!(
+    steps <= 10 && rel(x, 7.223334001387436e-242) < 3e-12,
+    "Beta(1.36, 3000) at 5e-324: {x:e} in {steps} steps"
+  );
+  for (a, b, p) in [
+    (1.25, 300.0, 1e-310),
+    (1.6, 1e6, 1e-320),
+    (1.0141, 1.5336, 2.0e-173),
+    (2.0, 5.0, 1e-300),
+    (1e-200, 1e-200, 0.3),
+    (f64::MAX, 1.3e-47, 3.9e-157),
+  ] {
+    let (x, steps) = beta_i_inv_steps(a, b, p);
+    assert!(
+      x.is_finite() && steps < 40,
+      "Beta({a:e}, {b:e}) at {p:e}: {x:e} in {steps} steps"
+    );
+  }
+  assert_eq!(beta_i_inv(f64::MAX, 1.3e-47, 3.9e-157), 1.0);
+  assert_eq!(beta_i_inv(1e-200, 1e-200, 0.3), 0.0);
+}
+
 /// `beta_ic` reads its plain route from `x` itself where the gamma limit's terms are too large.
 #[test]
 fn beta_ic_reads_its_plain_route_from_x() {
@@ -213,8 +259,7 @@ fn beta_ic_reads_its_plain_route_from_x() {
 }
 
 /// mpmath roots (Newton on `ln I` at 60 and 120 digits raised), graded by the quantile's bar with κ
-/// from the root's density, the complement past ½; twelve rows in the bulk are guards the clamp met; the
-/// last three roots lie near `1e-240`, where a step read through `w` alone held `|w|·ε` of them.
+/// at the root, the complement past ½; twelve bulk rows are guards, three roots near 1e-240.
 #[test]
 fn the_inverse_holds_the_bar_in_both_tails() {
   for (a, b, p, want, kappa) in [
@@ -295,7 +340,7 @@ fn the_inverse_holds_the_bar_in_both_tails() {
 }
 
 /// A root below the subnormals is exactly 0, one whose complement rounds to 1 is 1, and a symmetric
-/// law's median is ½ (the medians below 1e-2 are guards): the clamp at `1e-14` is gone.
+/// law's median is ½; the medians at and below ½ are guards.
 #[test]
 fn the_inverse_reads_the_ends_and_the_symmetric_median_exactly() {
   for (a, b, p) in [

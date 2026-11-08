@@ -34,14 +34,15 @@ use route::gamma_route;
 mod kernel;
 mod route;
 
-/// Truncated beta law on $[\text{lower}, \text{upper}] \subseteq [0, 1]$: parameters and the base mass on the
-/// interval; a [`Seeded`](crate::Seeded) stream draws it.
+/// Truncated beta law on $[\text{lower}, \text{upper}] \subseteq [0, 1]$: parameters and the base
+/// mass on the interval; a [`Seeded`](crate::Seeded) stream draws it.
 #[derive(Clone)]
 pub struct SimdTruncatedBeta<T> {
   base: SimdBeta<T>,
   lower: T,
   upper: T,
-  /// The base law's mass on the interval, the sampler's regime switch; NaN, so the inverse cdf, where it is unresolved.
+  /// The base law's mass on the interval, the sampler's regime switch; NaN, so the inverse cdf,
+  /// where it is unresolved.
   mass: f64,
   /// The interval's kernel integral, built by the first analytic call or inverse-cdf draw.
   analytics: OnceLock<Analytics>,
@@ -72,7 +73,8 @@ impl<T: PartialEq> PartialEq for SimdTruncatedBeta<T> {
   }
 }
 
-/// The base draw and the `[0, 1)` uniform a truncated-beta draw consumes, from a stream or the caller's rng.
+/// The base draw and the `[0, 1)` uniform a truncated-beta draw consumes, from a stream or the
+/// caller's rng.
 trait TruncatedBetaSource<T: SimdFloatExt> {
   fn base(&mut self, law: &SimdBeta<T>) -> T;
 
@@ -104,7 +106,8 @@ impl<T: SimdFloatExt, G: Rng + ?Sized> TruncatedBetaSource<T> for AnyRng<'_, G> 
 }
 
 impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
-  /// The base [`SimdBeta`] `Beta(alpha, beta)`, both > 0, renormalised on `[lower, upper] ⊆ [0, 1]`, `lower < upper`.
+  /// The base [`SimdBeta`] `Beta(alpha, beta)`, both > 0, renormalised on `[lower, upper] ⊆ [0,
+  /// 1]`, `lower < upper`.
   pub fn new(alpha: T, beta: T, lower: T, upper: T) -> Self {
     assert!(
       alpha.is_finite(),
@@ -146,7 +149,7 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
     );
     let (a, b) = (alpha.to_f64().unwrap(), beta.to_f64().unwrap());
     // Past the mean `I_b − I_a` cancels; the switch needs a few digits of the side that does not.
-    let mass = if lo < 0.5 * a / (0.5 * a + 0.5 * b) {
+    let mass = if lo < crate::beta::ratio(a, b) {
       crate::special::beta_i(a, b, up) - crate::special::beta_i(a, b, lo)
     } else if lo < KEPT {
       crate::special::beta_ic(a, b, lo) - crate::special::beta_ic(a, b, up)
@@ -187,8 +190,8 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
     }))
   }
 
-  /// The local model at `r`: slope `(α − 1)/r − (β − 1)/(1 − r)` and curvature `−(α − 1)/r² − (β − 1)/(1 − r)²`, in
-  /// logs.
+  /// The local model at `r`: slope `(α − 1)/r − (β − 1)/(1 − r)` and curvature `−(α − 1)/r² − (β −
+  /// 1)/(1 − r)²`, in logs.
   fn local(&self, r: f64) -> Option<Local> {
     let (a, b) = (self.base.alpha().to_f64()?, self.base.beta().to_f64()?);
     let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
@@ -230,7 +233,8 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
     self.upper
   }
 
-  /// Rejection from the base while the interval holds 1e-3 of its mass (10⁵ tries bound the loop), else the inverse cdf.
+  /// Rejection from the base while the interval holds 1e-3 of its mass (10⁵ tries bound the loop),
+  /// else the inverse cdf.
   #[inline]
   fn draw<S: TruncatedBetaSource<T>>(&self, src: &mut S) -> T {
     if self.mass >= 1e-3 {
@@ -244,8 +248,8 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
     self.invert(src.uniform())
   }
 
-  /// Out of line, so the rejection loop stays lean; clamped to the support as `quantile` is, since the last exp of a
-  /// deep singular panel rounds past its near end.
+  /// Out of line, so the rejection loop stays lean; clamped to the support as `quantile` is, since
+  /// the last exp of a deep singular panel rounds past its near end.
   #[inline(never)]
   fn invert(&self, u: f64) -> T {
     let (lo, up) = (self.lower.to_f64().unwrap(), self.upper.to_f64().unwrap());
@@ -298,7 +302,8 @@ impl<T: SimdFloatExt> SimdKernel for SimdTruncatedBeta<T> {
 }
 
 impl<T: SimdFloatExt> Distribution<T> for SimdTruncatedBeta<T> {
-  /// The same rejection or inverse-cdf draw, on scalar beta draws and uniforms from the caller's rng.
+  /// The same rejection or inverse-cdf draw, on scalar beta draws and uniforms from the caller's
+  /// rng.
   fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
     self.draw(&mut AnyRng(rng))
   }
@@ -437,7 +442,8 @@ mod tests {
     }
   }
 
-  /// Rejection draws leave the analytics unbuilt; equality and `Debug` read the parameters, not the cache.
+  /// Rejection draws leave the analytics unbuilt; equality and `Debug` read the parameters, not the
+  /// cache.
   #[test]
   fn construction_and_rejection_draws_skip_the_quadrature() {
     let law = SimdTruncatedBeta::<f64>::new(2.0, 2.0, 0.2, 0.8);
@@ -455,8 +461,8 @@ mod tests {
     SimdTruncatedBeta::<f64>::new(2.0, -1.0, 0.2, 0.8);
   }
 
-  /// Below `lo = 2⁻²⁶` past the mean the switch reads the mass from the series at `lo`, whose
-  /// `1 − lo` keeps none of its digits: mpmath at 60 and 120 digits, a subnormal correctly rounded.
+  /// Below `lo = 2⁻²⁶` past the mean the switch reads the mass from the series at `lo`, whose `1 −
+  /// lo` keeps none of its digits: mpmath at 60 and 120 digits, a subnormal correctly rounded.
   #[test]
   fn a_lower_bound_below_half_its_digits_keeps_the_switch_mass() {
     for (a, b, lo, up, want) in [
@@ -477,8 +483,8 @@ mod tests {
     }
   }
 
-  /// Past the mean below `KEPT` off the series' domain the switch reads the gamma limit: mpmath
-  /// at 60 and 120 digits, beside it the panels' integral and at `α = 2` `(1 − x)^β(1 + βx)`.
+  /// Past the mean below `KEPT` off the series' domain the switch reads the gamma limit: mpmath at
+  /// 60 and 120 digits, beside it the panels' integral and at `α = 2` `(1 − x)^β(1 + βx)`.
   #[test]
   fn a_huge_second_shape_reads_its_switch_mass_from_the_gamma_limit() {
     for (a, b, lo, up, want) in [
@@ -500,8 +506,8 @@ mod tests {
     }
   }
 
-  /// Past √MAX the fraction overflowed to a NaN mass, so the law inverted where its mass picks
-  /// rejection (`Q(10, 20)`, mpmath); shapes summing past `MAX` read their mass and draw inside.
+  /// Past √MAX the mass is `Q(10, 20)` (mpmath) and picks rejection; shapes past `MAX` in sum read
+  /// their mass and draw inside; the least subnormal switch reads its mass within 1e-14 (a guard).
   #[test]
   fn huge_shapes_pick_the_regime_their_mass_picks() {
     for b in [1e200, 1e290, 1e299, 1e300] {
@@ -522,10 +528,16 @@ mod tests {
       SimdTruncatedBeta::<f64>::new(1e300, f64::MAX, 1.4901161193847653e-8, 0.9).mass,
       0.0
     );
+    assert!(
+      SimdTruncatedBeta::<f64>::new(5e-324, 1e-300, 1e-310, 0.9)
+        .mass
+        .abs()
+        < 1e-14
+    );
   }
 
-  /// Both regimes of the honest `Distribution` draw from the caller's rng and agree with the cdf: rejection on
-  /// `[0.2, 0.8]`, inversion on `[0.99, 0.999]`, which holds 4e-6 of the base mass.
+  /// Both regimes of the honest `Distribution` draw from the caller's rng and agree with the cdf:
+  /// rejection on `[0.2, 0.8]`, inversion on `[0.99, 0.999]`, which holds 4e-6 of the base mass.
   #[test]
   fn scalar_sample_matches_cdf() {
     for (a, b, lo, up) in [(2.0, 2.0, 0.2, 0.8), (2.0, 3.0, 0.99, 0.999)] {

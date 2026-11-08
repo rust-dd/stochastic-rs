@@ -359,7 +359,7 @@ mod tests {
   }
 
   /// Two subnormal concentrations: every `ln u/α` passes the doubles and the point is the vertex of
-  /// the largest, where `−∞ − −∞` read NaN; the stream and the honest draw alike.
+  /// the largest; the stream and the honest draw alike.
   #[test]
   fn subnormal_concentrations_draw_a_vertex() {
     for alpha in [vec![5e-324_f64, 5e-324], vec![1e-310, 4e-309, 1e-312]] {

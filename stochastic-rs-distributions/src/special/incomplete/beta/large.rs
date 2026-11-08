@@ -1,5 +1,5 @@
-//! `I_x(a, b)` from a shape of 100: the prefactor `x^a y^b/B(a, b)` with its exponent in two parts, the
-//! fraction in TOMS 708's form on the switch's side, and beside the mean past both shapes 100 `asym`.
+//! `I_x(a, b)` from a shape of 100: the prefactor `x^a y^b/B(a, b)` with a two-part exponent, TOMS
+//! 708's fraction on the switch's side, and `asym` beside the mean past both shapes 100.
 //! Reference: DiDonato, A.R., Morris, A.H. (1992), "Algorithm 708: Significant digit computation of the incomplete beta function ratios", ACM TOMS 18(3), 360-373, DOI 10.1145/131766.131776 (`brcomp`: `√(ab/(2π(a + b))) e^{−a·g(−λ/a) − b·g(λ/b) − Δ}`, `g(t) = t − ln(1 + t)`, `λ = a − (a + b)x`; `bfrac`'s recurrence; `bratio`'s band `λ ≤ 0.03 min(a, b)` for `basym` past 100).
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 8.17.22 (the continued fraction), <https://dlmf.nist.gov/8.17.22>.
 
@@ -97,22 +97,29 @@ fn offset(a: f64, b: f64, x: f64, y: f64) -> ((f64, f64), (f64, f64), (f64, f64)
   (d, sx, sy)
 }
 
+/// `ln x` and `ln y`, each in two parts.
+pub(super) type Logs = ((f64, f64), (f64, f64));
+
+/// From this shape (`2¹⁰²²`) the two-sums of `offset` would overflow: `λ` and the exponent,
+/// homogeneous in the shapes, are read from the halves and doubled.
+const HALVE_FROM: f64 = f64::MAX / 4.0;
+
 /// `λ = a − (a + b)x`, the distance below the mean in the shapes' scale, from the exact side.
 fn lambda(a: f64, b: f64, x: f64, y: f64) -> f64 {
-  if (a + b).is_infinite() {
+  if a.max(b) > HALVE_FROM {
     return 2.0 * lambda(0.5 * a, 0.5 * b, x, y);
   }
   let (d, _, _) = offset(a, b, x, y);
   -(d.0 + d.1)
 }
 
-/// `a·g(D/a) + b·g(−D/b)`, `g(u) = u − ln(1 + u)`, in two parts; halved and doubled where `a + b`
-/// overflows, the exponent being homogeneous in the shapes; `+∞` at an end.
+/// `a·g(D/a) + b·g(−D/b)`, `g(u) = u − ln(1 + u)`, in two parts; from the halves, doubled, where a
+/// shape passes `HALVE_FROM`, the exponent being homogeneous in the shapes; `+∞` at an end.
 fn kl_exponent(a: f64, b: f64, x: f64, y: f64) -> (f64, f64) {
   if x == 0.0 || y == 0.0 {
     return (f64::INFINITY, 0.0);
   }
-  if (a + b).is_infinite() {
+  if a.max(b) > HALVE_FROM {
     let (e, e_lo) = kl_exponent(0.5 * a, 0.5 * b, x, y);
     return (2.0 * e, 2.0 * e_lo);
   }
@@ -150,7 +157,7 @@ fn ln_beta_prefactor(
 
 /// `ln x` and `ln y` in two parts from `(x, y)`, the smaller exact and the other carrying its
 /// rounding.
-pub(super) fn logs(x: f64, y: f64) -> ((f64, f64), (f64, f64)) {
+pub(super) fn logs(x: f64, y: f64) -> Logs {
   if x <= 0.5 {
     (ln_parts(x, 0.0, 0), ln_parts(y, (1.0 - y) - x, 0))
   } else {
@@ -169,15 +176,17 @@ fn fraction(a: f64, b: f64, x: f64, y: f64, lambda: f64) -> f64 {
     f = FPMIN;
   }
   let (mut cc, mut d) = (f, 0.0);
-  let mut n = 0.0;
+  let (mut n, mut scale_prev) = (0.0, 1.0);
   while n < STEPS {
     n += 1.0;
     let s = a + 2.0 * n - 1.0;
     let u = a + n - 1.0;
     let mut w = n * x * (b - n);
-    let rescale = !w.is_finite();
-    if rescale {
-      w = n * x * (b - n) * 2f64.powi(-20);
+    // Where `w` overflows the step is scaled by `k`: `β_n·k` and `α_n·k·k_{n−1}`, an equivalence
+    // transformation.
+    let scale = if w.is_finite() { 1.0 } else { 2f64.powi(-20) };
+    if scale < 1.0 {
+      w = n * x * (b - n) * scale;
     }
     let ratio = if sum_finite {
       (u + b) / s
@@ -185,15 +194,11 @@ fn fraction(a: f64, b: f64, x: f64, y: f64, lambda: f64) -> f64 {
       u / s + b / s
     };
     let first = if n == 1.0 { 1.0 / s } else { u / s };
-    let alpha = first * ratio * (w * x);
+    let alpha = first * ratio * (w * x) * scale_prev;
     let e = (a + n) / (a + 1.0 + 2.0 * n);
     let inner = n + e * (c + n * yp1);
-    let beta = w / s
-      + if rescale {
-        inner * 2f64.powi(-20)
-      } else {
-        inner
-      };
+    let beta = w / s + inner * scale;
+    scale_prev = scale;
     d = beta + alpha * d;
     if d == 0.0 {
       d = FPMIN;
@@ -218,18 +223,21 @@ pub(super) struct Side {
   pub(super) lower: bool,
   pub(super) value: f64,
   pub(super) ln: f64,
-  /// `ln(value/bt)` from the route itself, where the two logarithms of the exponent's size would cancel.
+  /// `ln(value/bt)` from the route itself, where the two logarithms of the exponent's size would
+  /// cancel.
   pub(super) ln_ratio: f64,
   pub(super) ln_prefactor: f64,
 }
 
 /// `I_x(a, b)`'s side: `asym` in its band, else the fraction on the switch's side, the gamma limit
 /// below `KEPT`, and the complement series where a value passes ½ at a shape at most 1.
-pub(super) fn side(a: f64, b: f64, x: f64, y: f64, ln_x: (f64, f64), ln_y: (f64, f64)) -> Side {
+pub(super) fn side(a: f64, b: f64, x: f64, y: f64, given: Option<Logs>) -> Side {
   let small = a.min(b);
+  // The two-part logs are read below both shapes 10 only, so a caller without them pays for none.
+  let mut given = given;
   let lambda = lambda(a, b, x, y);
-  // Numerical Recipes' switch `x < (a + 1)/(a + b + 2)` as `λ > 2x − 1` from the exact side: at a law
-  // narrower than the doubles about its mean the rounded `x` cannot tell the sides apart.
+  // Numerical Recipes' switch `x < (a + 1)/(a + b + 2)` as `λ > 2x − 1` from the exact side: at a
+  // law narrower than the doubles about its mean the rounded `x` cannot tell the sides apart.
   let lower = lambda
     > if x <= 0.5 {
       2.0 * x - 1.0
@@ -237,7 +245,10 @@ pub(super) fn side(a: f64, b: f64, x: f64, y: f64, ln_x: (f64, f64), ln_y: (f64,
       1.0 - 2.0 * y
     };
   let shape = if lower { a } else { b };
-  let pf = if small >= STIRLING_SHAPES {
+  // An underflowed side keeps its place only in its log, where the Stirling exponent reads `+∞`;
+  // the two-part `ln(s·B)` serves to a shape of 32, past which no root lies so low.
+  let from_logs = small < STIRLING_SHAPES || ((x == 0.0 || y == 0.0) && small <= 32.0);
+  let pf = if !from_logs {
     let st = Stirling::new(a, b, x, y);
     if small > ASYM_SHAPE && lambda.abs() <= ASYM_BAND * small {
       let below = lambda >= 0.0;
@@ -257,19 +268,21 @@ pub(super) fn side(a: f64, b: f64, x: f64, y: f64, ln_x: (f64, f64), ln_y: (f64,
     st.prefactor(shape)
   } else {
     let other = if lower { b } else { a };
+    let (ln_x, ln_y) = *given.get_or_insert_with(|| logs(x, y));
     ln_beta_prefactor(a, b, ln_shape_beta_parts(shape, other), ln_x, ln_y)
   };
   let ln_shape = shape.ln();
   let ln_prefactor = pf.ln() + ln_shape;
-  // Past the mean below `KEPT` the fraction's `1 − x` keeps under half of `x`'s digits: the gamma limit from `x`
-  // itself, its logarithm finite where `Q` underflows.
+  // Past the mean below `KEPT` the fraction's `1 − x` keeps under half of `x`'s digits: the gamma
+  // limit from `x` itself, its logarithm finite where `Q` underflows.
   let (g_shape, g_other, held) = if lower { (b, a, y) } else { (a, b, x) };
   if held < KEPT
     && let Some((n, s)) = complement::gamma_limit_arg(g_shape, g_other, held)
   {
     let z = n * s;
     let (ln, ln_kernel) = ln_gamma_q_scaled(g_shape, z);
-    // `Q/bt` from the fraction's own logarithm, where `ln Q` and `ln bt`, both about `−z`, would cancel.
+    // `Q/bt` from the fraction's own logarithm, where `ln Q` and `ln bt`, both about `−z`, would
+    // cancel.
     let ln_ratio = match ln_kernel {
       Some(k) => {
         k + g_shape * (n.ln() + ((s - held) / held).ln_1p())
@@ -290,6 +303,7 @@ pub(super) fn side(a: f64, b: f64, x: f64, y: f64, ln_x: (f64, f64), ln_y: (f64,
     let h = fraction(a, b, x, y, lambda);
     let v = pf.times(h);
     if v > 0.5 && a <= 1.0 && x <= 0.5 {
+      let (ln_x, _) = *given.get_or_insert_with(|| logs(x, y));
       let (value, ln) = complement::upper_series_ln(a, b, x, ln_x.0);
       return Side {
         lower: false,
@@ -311,6 +325,7 @@ pub(super) fn side(a: f64, b: f64, x: f64, y: f64, ln_x: (f64, f64), ln_y: (f64,
   let h = fraction(b, a, y, x, -lambda);
   let rest = pf.times(h);
   if rest > 0.5 && b <= 1.0 && y <= 0.5 {
+    let (_, ln_y) = *given.get_or_insert_with(|| logs(x, y));
     let (value, ln) = complement::upper_series_ln(b, a, y, ln_y.0);
     return Side {
       lower: true,
@@ -332,17 +347,16 @@ pub(super) fn side(a: f64, b: f64, x: f64, y: f64, ln_x: (f64, f64), ln_y: (f64,
 
 /// `I_x(a, b)` with `y = 1 − x`, the smaller exact, at a shape from 100.
 pub(super) fn beta_i(a: f64, b: f64, x: f64, y: f64) -> f64 {
-  let (ln_x, ln_y) = logs(x, y);
-  let s = side(a, b, x, y, ln_x, ln_y);
+  let s = side(a, b, x, y, None);
   if s.lower { s.value } else { 1.0 - s.value }
 }
 
 /// The density `x^{a−1} y^{b−1}/B(a, b)` at a shape from 100: the prefactor over `xy`.
 pub(super) fn density(a: f64, b: f64, x: f64, y: f64) -> f64 {
-  let (ln_x, ln_y) = logs(x, y);
   let pf = if a.min(b) >= STIRLING_SHAPES {
     Stirling::new(a, b, x, y).prefactor(1.0)
   } else {
+    let (ln_x, ln_y) = logs(x, y);
     ln_beta_prefactor(a, b, ln_beta_parts(a, b), ln_x, ln_y)
   };
   pf.times(1.0 / y) / x
@@ -430,7 +444,7 @@ pub(super) fn ln_tails(a: f64, b: f64, point: &Point) -> Tails {
   } else {
     (point.ln_other, point.ln_small)
   };
-  let s = side(a, b, point.x, point.y, ln_x, ln_y);
+  let s = side(a, b, point.x, point.y, Some((ln_x, ln_y)));
   let other = (-s.value).ln_1p();
   let (ln_lower, ln_upper) = if s.lower {
     (s.ln, other)
