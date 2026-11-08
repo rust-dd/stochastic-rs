@@ -34,6 +34,7 @@ use stochastic_rs::traits::DistributionExt;
 
 mod discrete;
 mod heavy_tailed;
+mod multivariate;
 mod plot;
 mod truncated;
 
@@ -417,6 +418,7 @@ criterion_group!(
   discrete::bench_binomial,
   discrete::bench_hypergeometric,
   discrete::bench_geometric,
+  multivariate::bench_wishart,
   truncated::bench_truncated_exp,
   truncated::bench_truncated_gamma,
   truncated::bench_truncated_beta,

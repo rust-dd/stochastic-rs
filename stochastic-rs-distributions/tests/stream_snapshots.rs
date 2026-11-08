@@ -404,6 +404,10 @@ snapshot_singles! {
     let mut s = SimdWishart::<f64>::new(5.0, array![[1.0, 0.3], [0.3, 2.0]]).seeded(det);
     move || s.sample().iter().map(|x| x.bits()).collect()
   };
+  wishart_f32: ScalarKind::F32, |det| {
+    let mut s = SimdWishart::<f32>::new(5.0, array![[1.0, 0.3], [0.3, 2.0]]).seeded(det);
+    move || s.sample().iter().map(|x| x.bits()).collect()
+  };
   ncx2_f64: ScalarKind::F64, |det| {
     let mut s = SimdNonCentralChiSquared::<f64>::new(3.0).seeded(det);
     move || vec![s.sample_ncp(2.5).bits()]

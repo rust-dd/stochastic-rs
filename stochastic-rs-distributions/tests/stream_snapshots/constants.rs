@@ -5958,6 +5958,53 @@ pub const WISHART_F64: [Snapshot; 2] = [
   },
 ];
 
+pub const WISHART_F32: [Snapshot; 2] = [
+  Snapshot {
+    seed: 42,
+    seeds_consumed: 5,
+    first8: [
+      1090827256, 1079005468, 1079005468, 1085568252, 1067136711, 1072672416, 1072672416,
+      1093040783,
+    ],
+    step_heads: [0, 0, 0, 1079864904, 0, 0, 0, 0, 0],
+    chunk_heads: [0, 0, 0, 0, 0, 0, 0, 0],
+    hashes: [
+      9151756910907339319,
+      0,
+      0,
+      14414834688936280166,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+    ],
+  },
+  Snapshot {
+    seed: 7,
+    seeds_consumed: 5,
+    first8: [
+      1091308316, 1081072267, 1081072267, 1086731401, 1083692037, 3200808556, 3200808556,
+      1067209174,
+    ],
+    step_heads: [0, 0, 0, 1087480456, 0, 0, 0, 0, 0],
+    chunk_heads: [0, 0, 0, 0, 0, 0, 0, 0],
+    hashes: [
+      15375260181153045954,
+      0,
+      0,
+      9516375613186190642,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+    ],
+  },
+];
+
 pub const NCX2_F64: [Snapshot; 2] = [
   Snapshot {
     seed: 42,
@@ -7315,6 +7362,7 @@ pub fn lookup(name: &str) -> Option<&'static [Snapshot; 2]> {
     "dirichlet_f64" => Some(&DIRICHLET_F64),
     "dirichlet_f32" => Some(&DIRICHLET_F32),
     "wishart_f64" => Some(&WISHART_F64),
+    "wishart_f32" => Some(&WISHART_F32),
     "ncx2_f64" => Some(&NCX2_F64),
     "ncx2_f32" => Some(&NCX2_F32),
     "ncx2_mixture_f64" => Some(&NCX2_MIXTURE_F64),
