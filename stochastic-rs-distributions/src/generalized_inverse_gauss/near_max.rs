@@ -7,6 +7,7 @@ use crate::SimdFloatExt;
 use crate::special::LARGE_ORDER;
 use crate::special::Scaled;
 use crate::special::k_half_ratio;
+use crate::special::ln_two_over;
 use crate::special::order_step;
 use crate::special::scaled_saddle;
 use crate::special::two_sum;
@@ -64,7 +65,7 @@ pub(crate) fn clock_mean(
     return (chi.div(psi).sqrt().add(Scaled::new(1.0).div(psi)), 0.0);
   }
   if lambda + 1.0 > -LARGE_ORDER {
-    return (ratio_mean(lambda, squares), ROUTE_BAND);
+    return (ratio_mean(lambda, roots, squares), ROUTE_BAND);
   }
   (moment_parts((lambda, roots.0, roots.1)), ROUTE_BAND)
 }
@@ -93,11 +94,19 @@ fn moment_parts((lambda, root_chi, root_psi): (f64, f64, f64)) -> Scaled {
 }
 
 /// `E X` below order 50 from one ratio, `2g_λ(ω)/ψ` from `λ = −½`, `χ/2g_{−λ−1}(ω)` below, against
-/// the exact squares and `ω = √(χψ)` rounded once: only the ratio's error is left for the band.
-fn ratio_mean(lambda: f64, (chi, psi): (Scaled, Scaled)) -> Scaled {
-  // `ω ≥ 2⁻⁵³⁷` is normal; `ln(2/ω)` as the plain route reads it, the low part added.
-  let (omega, omega_lo) = chi.mul(psi).sqrt().value_parts();
-  let d = -(0.5 * omega).ln() - omega_lo / omega;
+/// the exact squares; the ratio reads `ω` and `ln(2/ω)` as the plain route, its error alone left.
+fn ratio_mean(
+  lambda: f64,
+  (root_chi, root_psi): (f64, f64),
+  (chi, psi): (Scaled, Scaled),
+) -> Scaled {
+  let omega = root_chi * root_psi;
+  // `ln(2/ω)`, which only Temme's sums below `ω = 2` read.
+  let d = if omega < 2.0 {
+    ln_two_over(root_chi, root_psi, omega)
+  } else {
+    0.0
+  };
   let (upper, order) = if lambda >= -0.5 {
     (true, lambda)
   } else {

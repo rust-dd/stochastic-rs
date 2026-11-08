@@ -218,3 +218,31 @@ fn a_mean_beside_max_below_order_50_reads_finite_for_a_finite_truth() {
     assert!(holds(got, want, rel), "row {i}: {got:e}, want {want:e}");
   }
 }
+
+/// mpmath at 60 and 120 digits (agreeing to 61) near order 0 on a subnormal clock, whose `ln(2/ω)`
+/// comes from the roots: truths 47 and 39 ulps under MAX read finite, one `3.96e-13` past reads `+∞`.
+#[test]
+fn a_subnormal_clock_beside_max_reads_its_ratio_from_the_roots() {
+  let gig = SimdGig::<f64>::new;
+  let rows = [
+    (
+      gig(0.0, 4.45e-322, 7.638_188_568_07e-312),
+      1.797_693_134_862_306_3e308,
+      1e-12,
+    ),
+    (
+      gig(0.002, 4e-323, 2.352_502_021_918e-311),
+      1.797_693_134_862_308e308,
+      1e-12,
+    ),
+    (
+      gig(-0.002, 1.8e-322, 1.270_475_984_443e-312),
+      f64::INFINITY,
+      0.0,
+    ),
+  ];
+  for (i, (law, want, rel)) in rows.into_iter().enumerate() {
+    let got = law.mean().unwrap();
+    assert!(holds(got, want, rel), "row {i}: {got:e}, want {want:e}");
+  }
+}
