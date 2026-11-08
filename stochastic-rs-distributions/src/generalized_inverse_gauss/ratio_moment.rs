@@ -5,11 +5,14 @@
 use std::f64::consts::LN_2;
 
 use crate::special::LARGE_ORDER;
+use crate::special::Scaled;
 use crate::special::k_half_ratio;
+use crate::special::ldexp;
 use crate::special::ln_two_over;
 use crate::special::order_step;
 use crate::special::scaled_saddle;
 use crate::special::split_pow2;
+use crate::special::two_sum;
 
 /// `E Xᵏ = 2ᵉm` as `(m, e)`: for `|ν| < 50` the factor `2g_ν/ψ` from order `−½` on and `χ/(2g_{−ν−1})` below, each
 /// `(χ/ψ)^{1/2}R_ν`, `g_ν = (ω/2)R_ν` from `k_half_ratio`; the exponents are kept apart, so no factor leaves the doubles.
@@ -60,4 +63,73 @@ fn saddle_run(value: &mut (f64, i64), nu: f64, run: f64, (root_chi, root_psi): (
   let n = (ln / LN_2).round();
   value.0 *= (ln - n * LN_2).exp();
   value.1 += i64::from(a) * run as i64 + n as i64;
+}
+
+/// `factor·E Xᵏ` from the ratios' limits `g_ν → ν` where each holds within `2⁻¹¹²`: `2ν/ψ` above
+/// order `−½`, `χ/(2ν)` below, from exact `χ` and `ψ`, rounded once; `None` elsewhere.
+#[cold]
+#[inline(never)]
+pub(super) fn limit_moment(
+  lambda: f64,
+  (chi, psi): (f64, f64),
+  k: u32,
+  factor: f64,
+) -> Option<f64> {
+  if !(chi > 0.0 && psi > 0.0 && factor != 0.0 && factor.is_finite()) {
+    return None;
+  }
+  // `log₂(ω/2)` from the squares, which the rounded `ω` on the subnormal grid would not give.
+  let half_ln = 0.5 * (chi.log2() + psi.log2()) - 1.0;
+  let (mut value, mut lower, mut upper) = (Scaled::new(factor.abs()), false, false);
+  for i in 0..k {
+    let nu = two_sum(lambda, f64::from(i));
+    let (order, up) = if nu.0 >= -0.5 {
+      (nu, true)
+    } else {
+      (two_sum(-nu.0 - 1.0, -nu.1), false)
+    };
+    let g = order.0;
+    // `g_ν − ν`: under `(2 + 1/(1 − ν))(ω/2)^{2ν}ν` below order 1, `(ω/2)²/g_{ν−1}` from it.
+    let bound = if g < 1.0 {
+      2.0 * g * half_ln + (2.0 + 1.0 / (1.0 - g)).log2()
+    } else {
+      2.0 * half_ln + (1.0 / (g - 1.0)).min(2.0 * (1.0 - half_ln * LN_2)).log2()
+    };
+    if !(g > 0.0 && bound < -112.0) {
+      return None;
+    }
+    let twice = Scaled::parts(order).shift(1);
+    value = if up {
+      upper = true;
+      value.mul(twice).div(Scaled::new(psi))
+    } else {
+      lower = true;
+      value.mul(Scaled::new(chi)).div(twice)
+    };
+  }
+  // A limit at a midpoint of the subnormal grid: `g_ν > ν` puts every term below (above) its limit.
+  let bias = match (lower, upper) {
+    (true, false) => -1.0,
+    (false, true) => 1.0,
+    _ => 0.0,
+  };
+  Some(factor.signum() * round_once(value, bias))
+}
+
+/// `s` rounded once onto the doubles: its low part, or `bias` where that is 0, decides a subnormal
+/// tie that the high part alone would round to even.
+fn round_once(s: Scaled, bias: f64) -> f64 {
+  let e = s.exponent();
+  let (m, lo) = s.shift(-e).value_parts();
+  let r = ldexp(m, e);
+  if e >= -1022 || !r.is_finite() {
+    return r;
+  }
+  let back = ldexp(r, -e);
+  let d = m - back;
+  let sign = if lo != 0.0 { lo.signum() } else { bias };
+  if d.abs() == ldexp(1.0, -1075 - e) && sign == d.signum() {
+    return ldexp(back + 2.0 * d, e);
+  }
+  r
 }

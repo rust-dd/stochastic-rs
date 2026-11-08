@@ -16,6 +16,13 @@ mod bench_continuous_a;
 mod bench_continuous_b;
 mod bench_summary;
 
+pub(crate) fn holds(got: f64, want: f64, rel: f64) -> bool {
+  if want == 0.0 || want.is_infinite() {
+    return got == want;
+  }
+  (got - want).abs() <= (rel * want.abs()).max(f64::from_bits(1))
+}
+
 /// Best KS p-value of 20 000 honest `Distribution::sample` draws over three seeds, so one unlucky seed cannot fail a law.
 pub(crate) fn scalar_ks_best_p<D: Distribution<f64>>(d: &D, cdf: impl Fn(f64) -> f64) -> f64 {
   [2718u64, 999, 42]

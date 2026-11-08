@@ -248,8 +248,8 @@ fn near_minus_one(lambda: f64, coefficient: f64, (e, e_lo): (f64, f64), ratio: (
     }
 }
 
-/// `divergence` at a one-part `e`, `coefficient` its `χ/2w` or `ψw/2`, `ratio` exactly `1 + e`, which keeps its digits as
-/// `e → −1` where a rounded `1 + e` would not.
+/// `divergence` at a one-part `e`, `coefficient` its `χ/2w` or `ψw/2`, `ratio` `1 + e` in two
+/// parts, which keeps its digits as `e → −1` where a rounded `1 + e` would not.
 fn divergence_at(lambda: f64, coefficient: f64, e: f64, (ratio, ratio_lo): (f64, f64)) -> f64 {
   let s = e / (2.0 + e);
   if s.abs() <= 0.2 || (lambda >= 0.0 && s > 0.5) {

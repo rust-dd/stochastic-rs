@@ -63,6 +63,9 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
+/// Under this `χψ` a ratio's limit `g_ν → ν` may hold within `2⁻¹¹²`, which [`ratio_moment::limit_moment`] then tests.
+const LIMIT_CLOCK: f64 = 7.703_719_777_548_943e-34;
+
 /// Which Hörmann–Leydold generator the parameters select.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Regime {
@@ -334,6 +337,11 @@ impl<T: SimdFloatExt> SimdGig<T> {
   /// over the orders under 50 and, over a run of orders past 50, the saddle's `w_jʲe^{rest}`.
   pub fn raw_moment(&self, k: u32) -> f64 {
     let (lambda, chi, psi) = self.params();
+    if chi * psi < LIMIT_CLOCK
+      && let Some(v) = ratio_moment::limit_moment(lambda, (chi, psi), k, 1.0)
+    {
+      return v;
+    }
     Self::raw_moment_at((lambda, chi.sqrt(), psi.sqrt()), k)
   }
 
@@ -342,8 +350,8 @@ impl<T: SimdFloatExt> SimdGig<T> {
     Self::scaled_raw_moment_at(clock, k, 1.0)
   }
 
-  /// `factor·E Xᵏ` at `(λ, √χ, √ψ)`: below order 50 the ratios' product with `factor`'s exponent kept apart; from it the
-  /// product where it and the moment are normal, else from their logarithms.
+  /// `factor·E Xᵏ` at `(λ, √χ, √ψ)`: the ratios' product below order 50, the saddle's from it;
+  /// `factor`'s power of two, and past the doubles `w_k = 2ʲm`'s, kept apart.
   pub(crate) fn scaled_raw_moment_at(
     (lambda, root_chi, root_psi): (f64, f64, f64),
     k: u32,
@@ -478,18 +486,18 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
   }
 
   fn variance(&self) -> Option<f64> {
-    let ((m, e), rho, ([_, k2, _, _], _)) = self.cumulants();
+    let ((m, e), rho, ([_, k2, _, _], _), _) = self.cumulants();
     Some(ldexp(m * (rho * k2) * m, 2 * e))
   }
 
   fn skewness(&self) -> Option<f64> {
-    let (_, rho, ([_, k2, k3, _], t)) = self.cumulants();
+    let (_, rho, ([_, k2, k3, _], t), _) = self.cumulants();
     Some(ldexp(rho.sqrt() * (k3 / k2.powf(1.5)), t))
   }
 
   /// Excess kurtosis, `κ₄/κ₂²`.
   fn kurtosis(&self) -> Option<f64> {
-    let (_, rho, ([_, k2, _, k4], t)) = self.cumulants();
+    let (_, rho, ([_, k2, _, k4], t), _) = self.cumulants();
     Some(ldexp(rho * (k4 / (k2 * k2)), 2 * t))
   }
 

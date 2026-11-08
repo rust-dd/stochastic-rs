@@ -41,21 +41,22 @@ pub(super) fn cumulants(
     if !(r + lambda.abs()).is_finite() {
       let (l, r) = quarter(lambda, (root_chi, root_psi));
       let omega = (0.5 * root_chi) * (0.5 * root_psi);
-      return (w(), 0.25 / r, (debye(l, omega, r, 0.25), 0));
+      return (w(), 0.25 / r, (debye(l, omega, r, 0.25), 0), 0);
     }
-    return (w(), 1.0 / r, (debye(lambda, omega, r, 1.0), 0));
+    return (w(), 1.0 / r, (debye(lambda, omega, r, 1.0), 0), 0);
   }
   if r >= QUADRATURE_FROM
     && let Some(k) = trapezoid(lambda, omega, r)
   {
-    return (w(), 1.0, (k, 0));
+    return (w(), 1.0, (k, 0), 0);
   }
-  let (s, k) = ratios(lambda, (root_chi, root_psi), squares, omega);
-  (s, 1.0, k)
+  let (s, k, power) = ratios(lambda, (root_chi, root_psi), squares, omega);
+  (s, 1.0, k, power)
 }
 
-/// `((m, e), ρ, ([k₁, k₂, k₃2⁻ᵗ, k₄2⁻²ᵗ], t))`, `κₙ = sⁿρⁿ⁻¹kₙ`, `s = 2ᵉm`.
-pub(crate) type Cumulants = ((f64, i32), f64, ([f64; 4], i32));
+/// `((m, e), ρ, ([k₁2⁻ᵖ, k₂, k₃2⁻ᵗ, k₄2⁻²ᵗ], t), p)`: `κₙ = sⁿρⁿ⁻¹kₙ`, `s = 2ᵉm`, `p` 0 unless
+/// `E X/s` leaves the normal range.
+pub(crate) type Cumulants = ((f64, i32), f64, ([f64; 4], i32), i32);
 
 /// `(−2)ⁿ dⁿ ln N/dψⁿ` over `wⁿ/rⁿ⁻¹`: `w = (λ + r)/ψ` differentiated in closed form, all terms
 /// positive, `T = ½ ln(π/2r) + ln S` by `θ(θ + 2)…(θ + 2n − 2)` in `1/r`; quarters past MAX.
@@ -159,9 +160,10 @@ fn ratios(
   roots: (f64, f64),
   squares: Option<(f64, f64)>,
   omega: f64,
-) -> ((f64, i32), ([f64; 4], i32)) {
+) -> ((f64, i32), ([f64; 4], i32), i32) {
   let d = ln_two_over(roots.0, roots.1, omega);
   if omega.is_normal()
+    && d <= LOG_ROUTE_TO
     && let Some(parts) = plain_parts(lambda, omega, d)
   {
     let logs = parts.map(|p| p.0.ln());
@@ -182,11 +184,15 @@ fn ratios(
     if b1.is_normal() && quotient.is_normal() {
       let (j, s) = split_pow2(quotient);
       let scale = (s, if upper { j - k } else { j + k });
-      return (scale, shape(b1, k2, (l1, l3, l4)));
+      return (scale, shape(b1, k2, (l1, l3, l4)), 0);
     }
   }
   split_ratios(lambda, roots, squares, omega, d)
 }
+
+/// Past this `ln(2/ω)`, `ω` under `3.2e-28`, the cumulants come from the ratios' products: the
+/// logarithms' sums, of size `k ln(2/ω)`, would carry their rounding into `bₖ`.
+const LOG_ROUTE_TO: f64 = 64.0;
 
 /// The four ratios as doubles where each is normal, the route of every ordinary law.
 fn plain_parts(lambda: f64, omega: f64, d: f64) -> Option<[(f64, f64); 4]> {
@@ -243,7 +249,8 @@ fn shape(b1: f64, k2: f64, (l1, l3, l4): (f64, f64, f64)) -> ([f64; 4], i32) {
   )
 }
 
-/// [`ratios`] with each ratio as `2ᵏm`, where `ω` or a ratio leaves the normal range.
+/// [`ratios`] with each ratio as `2ᵏm`, where `ω` or a ratio leaves the normal range or `ω` is
+/// under `3.2e-28`; [`far_shape`] there unless the logarithms' route holds.
 #[cold]
 #[inline(never)]
 fn split_ratios(
@@ -252,7 +259,7 @@ fn split_ratios(
   squares: Option<(f64, f64)>,
   omega: f64,
   d: f64,
-) -> ((f64, i32), ([f64; 4], i32)) {
+) -> ((f64, i32), ([f64; 4], i32), i32) {
   let parts = [0.0, 1.0, 2.0, 3.0].map(|i| {
     let nu = lambda + i;
     if nu >= -0.5 {
@@ -290,8 +297,50 @@ fn split_ratios(
   };
   let (mean, e0) = mean_of(parts[0]);
   let (b1, k2) = (l1.exp(), 1.0 - (2.0 * l1).exp());
-  let (j, s) = split_pow2(mean / b1);
-  ((s, e0 + j), shape(b1, k2, (l1, l3, l4)))
+  let quotient = mean / b1;
+  if b1.is_normal() && quotient.is_normal() && d <= LOG_ROUTE_TO {
+    let (j, s) = split_pow2(quotient);
+    return ((s, e0 + j), shape(b1, k2, (l1, l3, l4)), 0);
+  }
+  far_shape(parts.map(mean_of))
+}
+
+/// `bₖ = E Xᵏ/sᵏ` from the products of the first `k` ratios' terms `(m, e)`, exponents added
+/// exactly where `ln bₖ` would carry `ε|ln bₖ|`; `k₁ = b₁` with its power of two apart.
+#[cold]
+#[inline(never)]
+fn far_shape(terms: [(f64, i32); 4]) -> ((f64, i32), ([f64; 4], i32), i32) {
+  let moment = |k: usize| {
+    terms[..k].iter().fold((1.0, 0), |(m, e), &(g, f)| {
+      let (j, q) = split_pow2(m * g);
+      (q, e + f + j)
+    })
+  };
+  let (q, f) = moment(2);
+  let (q, f) = if f & 1 == 0 { (q, f) } else { (2.0 * q, f - 1) };
+  let (u, s) = split_pow2(q.sqrt());
+  let scale = f / 2 + u;
+  let b = |k: usize| {
+    let (m, e) = moment(k);
+    let (j, q) = split_pow2((0..k).fold(m, |q, _| q / s));
+    (q, e + j - k as i32 * scale)
+  };
+  let ((k1, power), (m3, e3), (m4, e4)) = (b(1), b(3), b(4));
+  let b1 = ldexp(k1, power);
+  let k2 = 1.0 - b1 * b1;
+  // `ln b₄`, read only to place `t`: the values themselves keep their exponents exactly.
+  let l4 = (f64::from(e4) + m4.log2()) * LN_2;
+  let t = if l4 > EXCESS_FROM {
+    ((l4 - EXCESS_FROM) / (2.0 * LN_2)).ceil() as i32
+  } else {
+    0
+  };
+  let (b3, b4) = (ldexp(m3, e3 - t), ldexp(m4, e4 - 2 * t));
+  let cross = ldexp(k1 * m3 / m4, power + e3 - e4);
+  let k3 = b3 - ldexp(3.0 * b1 - 2.0 * b1.powi(3), -t);
+  let mu4 = b4 * (1.0 - 4.0 * cross) + ldexp(6.0 * b1 * b1 - 3.0 * b1.powi(4), -2 * t);
+  let k4 = mu4 - ldexp(3.0 * k2 * k2, -2 * t);
+  ((s, scale), ([k1, k2, k3, k4], t), power)
 }
 
 /// Past this `ln b₄` the ratios' `k₃` and `k₄` take their power of two apart.

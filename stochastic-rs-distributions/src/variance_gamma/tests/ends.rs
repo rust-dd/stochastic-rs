@@ -1,12 +1,5 @@
 use super::*;
-
-/// Within `rel` of `want` or four subnormal steps, a subnormal truth's digits; `0` and `∞` exactly.
-fn holds(got: f64, want: f64, rel: f64) -> bool {
-  if want == 0.0 || want.is_infinite() {
-    return got == want;
-  }
-  (got - want).abs() <= (rel * want.abs()).max(4.0 * f64::from_bits(1))
-}
+use crate::tests::holds;
 
 /// mpmath at 60 and 120 digits at `ν` within an ulp of MAX, its shape `1/ν` at `2⁻¹⁰²⁴`, and where
 /// `x − μ` passes MAX: the law of `X/2`, a subnormal `σ` kept, its power of two in the exponent.

@@ -1,12 +1,5 @@
 use super::*;
-
-/// Within `rel` of `want` or four subnormal steps, a subnormal truth's digits; `0` and `∞` exactly.
-fn holds(got: f64, want: f64, rel: f64) -> bool {
-  if want == 0.0 || want.is_infinite() {
-    return got == want;
-  }
-  (got - want).abs() <= (rel * want.abs()).max(4.0 * f64::from_bits(1))
-}
+use crate::tests::holds;
 
 /// mpmath at 60 and 120 digits where `δγ` is `5e-324`, `|λ|` or `δγ` nears MAX, `x − μ` or `μt`
 /// passes it, or a small tilt meets a heavy clock tail: the number, or `+∞` past MAX.
@@ -90,6 +83,40 @@ fn a_clock_past_max_meets_its_shift() {
     (
       gh(max, 2.5, 1.5, 1.0, -max).pdf(-0.25 * max),
       2.886_608_037_231_802_4e-155,
+    ),
+  ];
+  for (i, (got, want)) in rows.into_iter().enumerate() {
+    let got = got.unwrap();
+    assert!(holds(got, want, 1e-12), "row {i}: {got:e}, want {want:e}");
+  }
+}
+
+/// mpmath at 60 and 120 digits, `β ≠ 0`: the variance where `E W/s` leaves the doubles, the
+/// skewness's `(k₁ + Bk₂)^{3/2}` under them, and `B = β²sρ` under them.
+#[test]
+fn a_tiny_clock_keeps_its_tilts_terms() {
+  let gh = SimdGeneralizedHyperbolic::<f64>::new;
+  let (narrow, tiny) = (1.154_700_538_379_251_6e-150, 5e-101);
+  let rows = [
+    (
+      gh(-1.0, 2.3e-162, 1.15e-162, 2.3e-162, 0.0).variance(),
+      3.943e-321,
+    ),
+    (
+      gh(-1.0, 1e-155, 5e-156, 1e-160, 0.0).variance(),
+      7.259_074e-318,
+    ),
+    (
+      gh(-1.0, 1e-100, tiny, narrow, 0.0).skewness(),
+      1.530_978_302_140_685_6e246,
+    ),
+    (
+      gh(-1.5, 1e-100, tiny, narrow, 0.0).skewness(),
+      1.924_500_897_298_752_5,
+    ),
+    (
+      gh(-1.5, 1e-100, tiny, narrow, 0.0).kurtosis(),
+      5.333_333_333_333_333e250,
     ),
   ];
   for (i, (got, want)) in rows.into_iter().enumerate() {

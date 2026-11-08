@@ -415,8 +415,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
   fn variance(&self) -> Option<f64> {
     let (_, _, beta, _, _) = self.params();
     let (lambda, roots, squares) = self.clock();
-    let ((m, e), rho, ([k1, k2, _, _], _)) = SimdGig::<f64>::cumulants_at(lambda, roots, squares);
-    let clock_mean = ldexp(m * k1, e);
+    let ((m, e), rho, ([k1, k2, _, _], _), p) =
+      SimdGig::<f64>::cumulants_at(lambda, roots, squares);
+    let clock_mean = ldexp(m * k1, e + p);
     if beta == 0.0 {
       return Some(clock_mean);
     }
@@ -427,7 +428,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     // Two subnormal terms round twice; at `2⁶⁰⁰` the sum rounds once.
     if variance < f64::MIN_POSITIVE {
       return Some(ldexp(
-        ldexp(m * k1, e + 600) + ldexp(spread, 2 * (b + e) + 600),
+        ldexp(m * k1, e + p + 600) + ldexp(spread, 2 * (b + e) + 600),
         -600,
       ));
     }
@@ -442,9 +443,20 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
       return Some(0.0);
     }
     let (lambda, roots, squares) = self.clock();
-    let ((m, e), rho, ([k1, k2, k3, _], t)) = SimdGig::<f64>::cumulants_at(lambda, roots, squares);
+    let ((m, e), rho, ([k1, k2, k3, _], t), p) =
+      SimdGig::<f64>::cumulants_at(lambda, roots, squares);
     let (b, n) = split_pow2(beta.abs());
-    let big = tilt_ratio((b, n), (m, e), rho);
+    let big = moments::tilt_ratio((b, n), (m, e), rho);
+    let low = if big <= 1.0 {
+      k1 + big * k2
+    } else {
+      k1 / big + k2
+    };
+    if (p != 0 || !big.is_normal() || !low.powf(1.5).is_normal())
+      && let Some(v) = moments::skewness_far(beta, (m, e), rho, (k1, k2, k3), (t, p))
+    {
+      return Some(v);
+    }
     Some(if big <= 1.0 {
       // `|β|√s = 2^{b + ⌊e/2⌋}·n√(m·2^{e mod 2})`.
       let root = n * (m * f64::from(1 + (e & 1))).sqrt();
@@ -460,12 +472,23 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
   fn kurtosis(&self) -> Option<f64> {
     let (_, _, beta, _, _) = self.params();
     let (lambda, roots, squares) = self.clock();
-    let ((m, e), rho, ([k1, k2, k3, k4], t)) = SimdGig::<f64>::cumulants_at(lambda, roots, squares);
+    let ((m, e), rho, ([k1, k2, k3, k4], t), p) =
+      SimdGig::<f64>::cumulants_at(lambda, roots, squares);
     let big = if beta == 0.0 {
       0.0
     } else {
-      tilt_ratio(split_pow2(beta.abs()), (m, e), rho)
+      moments::tilt_ratio(split_pow2(beta.abs()), (m, e), rho)
     };
+    let low = if big <= 1.0 {
+      k1 + big * k2
+    } else {
+      k1 / big + k2
+    };
+    if (p != 0 || (beta != 0.0 && !big.is_normal()) || !low.powi(2).is_normal())
+      && let Some(v) = moments::kurtosis_far(beta, (m, e), rho, [k1, k2, k3, k4], (t, p))
+    {
+      return Some(v);
+    }
     // Where `B` is 0 the clock's `κ₃` and `κ₄` do not enter, and an infinite one must not read `0·∞`.
     if big == 0.0 {
       return Some(rho * (3.0 * k2 / (k1 * k1)));
@@ -561,12 +584,8 @@ fn exact_ldexp(v: f64, p: i32) -> Option<f64> {
   (v == 0.0 || scaled.is_normal()).then_some(scaled)
 }
 
-/// `B = β²sρ` from `β = 2ᵇn` and the clock's scale `s = 2ᵉm`, so a scale past the doubles does not read `0·∞`.
-fn tilt_ratio((b, n): (i32, f64), (m, e): (f64, i32), rho: f64) -> f64 {
-  ldexp((n * m) * (n * rho), 2 * b + e)
-}
-
 mod concentrated;
+mod moments;
 mod small_order;
 
 #[cfg(test)]

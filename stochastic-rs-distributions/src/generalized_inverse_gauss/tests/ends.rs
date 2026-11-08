@@ -1,12 +1,5 @@
 use super::*;
-
-/// Within `rel` of `want` or four subnormal steps, a subnormal truth's digits; `0` and `∞` exactly.
-fn holds(got: f64, want: f64, rel: f64) -> bool {
-  if want == 0.0 || want.is_infinite() {
-    return got == want;
-  }
-  (got - want).abs() <= (rel * want.abs()).max(4.0 * f64::from_bits(1))
-}
+use crate::tests::holds;
 
 /// mpmath at 60 and 120 digits where `ω` is `5e-324`, `|λ|` passes MAX/2, `χ` or `ψ` sits at an end
 /// or the saddle leaves the doubles: the number, `0` under half a subnormal, `+∞` past MAX.
@@ -41,7 +34,7 @@ fn the_parameters_ends_answer_their_values() {
       1e-12,
     ),
     (gig(10.0, max, max).mean(), 1.0, 1e-12),
-    (gig(-0.5, sub, sub).mean(), 1.0, 4e-12),
+    (gig(-0.5, sub, sub).mean(), 1.0, 1e-12),
     (gig(8.99e307, 1.0, 1.0).pdf(1.0), 0.0, 0.0),
     (gig(0.5, 1e308, 1e308).pdf(1e-300), 0.0, 0.0),
     (gig(1e15, sub, 1.0).pdf(1e300), 0.0, 0.0),
@@ -127,5 +120,33 @@ fn a_concentrated_density_reads_its_saddle_and_far_side() {
   for (i, (got, want)) in rows.into_iter().enumerate() {
     let got = got.unwrap();
     assert!(holds(got, want, 1e-12), "row {i}: {got:e}, want {want:e}");
+  }
+}
+
+/// mpmath at 60 and 120 digits where `E X/√(E X²)` leaves the normal range (`λ` near −1, `ω`
+/// subnormal), and a mean from its ratios' limits, rounded once onto the subnormal grid.
+#[test]
+fn a_tiny_clock_keeps_its_scale_and_rounds_its_mean_once() {
+  let gig = SimdGig::<f64>::new;
+  for (i, (got, want)) in [
+    (gig(-1.0, 1e-315, 1e-315).variance(), 1.0),
+    (gig(-0.99, 5e-324, 5e-324).variance(), 2_931_776.957_579_104),
+    (
+      gig(-1.001, 1e-312, 1e-312).variance(),
+      0.237_628_925_102_080_58,
+    ),
+  ]
+  .into_iter()
+  .enumerate()
+  {
+    let got = got.unwrap();
+    assert!(holds(got, want, 1e-12), "row {i}: {got:e}, want {want:e}");
+  }
+  for (law, want) in [
+    (gig(-1.2, 1e-315, 1e-315), 2.5e-315_f64),
+    (gig(-3.0, 1e-323, 1e-323), 0.0),
+  ] {
+    let got = law.mean().unwrap();
+    assert_eq!(got.to_bits(), want.to_bits(), "{got:e}, want {want:e}");
   }
 }
