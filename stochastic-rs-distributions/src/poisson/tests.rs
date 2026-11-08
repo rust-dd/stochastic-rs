@@ -82,22 +82,50 @@ fn median_is_chois_bracket() {
   }
 }
 
-/// The `n = 0` window `λ ∈ (2/3, LN_2]` has `e^{−λ} ≥ ½`, so the median is 0 though `gamma_q(1, λ)` reads 3.4e-16 low at six doubles; `next_up(LN_2)` lies past ln 2 and passes at the base: a guard.
+/// The `n = 0` window `λ ∈ (2/3, LN_2]` has `e^{−λ} ≥ ½`, so the median and `quantile(0.5)` read 0 through `LN_2`; `next_up(LN_2)` lies past ln 2 and reads 1 before the fix too: a guard.
 #[test]
-fn median_is_zero_through_ln_2() {
+fn median_and_half_quantile_are_zero_through_ln_2() {
   let ln_2 = std::f64::consts::LN_2;
   for ulps in [0, 1, 3, 5] {
-    let lambda = f64::from_bits(ln_2.to_bits() - ulps);
+    let d = SimdPoisson::<u64>::new(f64::from_bits(ln_2.to_bits() - ulps));
     assert_eq!(
-      SimdPoisson::<u64>::new(lambda).median(),
-      Some(0.0),
-      "median(LN_2 − {ulps} ulps)"
+      (d.median(), d.quantile(0.5)),
+      (Some(0.0), Some(0.0)),
+      "median and quantile(0.5) at LN_2 − {ulps} ulps"
     );
   }
+  let d = SimdPoisson::<u64>::new(ln_2.next_up());
   assert_eq!(
-    SimdPoisson::<u64>::new(ln_2.next_up()).median(),
-    Some(1.0),
-    "median(next_up(LN_2)), a guard"
+    (d.median(), d.quantile(0.5)),
+    (Some(1.0), Some(1.0)),
+    "median and quantile(0.5) at next_up(LN_2), a guard"
+  );
+}
+
+/// `cdf(0) = e^{−λ}` within 1 ulp of mpmath at 60 and 120 digits (they agree), from `1e-300` to past the underflow at `λ ≈ 745.13`.
+#[test]
+fn cdf_below_one_is_the_exponential() {
+  for (lambda, want) in [
+    (1e-300, 1.0_f64),
+    (1e-10, 0.9999999999),
+    (0.5, 0.6065306597126334),
+    (std::f64::consts::LN_2, 0.5),
+    (1.0, 0.36787944117144233),
+    (10.0, 4.5399929762484854e-05),
+    (700.0, 9.85967654375977e-305),
+    (745.0, 5e-324),
+    (746.0, 0.0),
+  ] {
+    let got = SimdPoisson::<u64>::new(lambda).cdf(0.0).unwrap();
+    assert!(
+      got.to_bits().abs_diff(want.to_bits()) <= 1,
+      "cdf(0) at {lambda}: {got:e} vs {want:e}"
+    );
+  }
+  let d = SimdPoisson::<u64>::new(0.5);
+  assert_eq!(
+    (d.cdf(0.5), d.cdf(1.0_f64.next_down())),
+    (d.cdf(0.0), d.cdf(0.0))
   );
 }
 

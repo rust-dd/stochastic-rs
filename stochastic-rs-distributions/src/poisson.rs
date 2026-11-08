@@ -296,7 +296,7 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdPoisson<T> {
     Some(ln_pmf(x, self.lambda, self.lambda.ln()).exp())
   }
 
-  /// `Q(⌊x⌋ + 1, λ)`: the regularised upper incomplete gamma, no table.
+  /// `Q(⌊x⌋ + 1, λ)`: the regularised upper incomplete gamma, no table; below 1 it is `e^{−λ}` itself, which `gamma_q(1, λ)` reads ulps off.
   fn cdf(&self, x: f64) -> Option<f64> {
     if x.is_nan() {
       return Some(f64::NAN);
@@ -306,6 +306,9 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdPoisson<T> {
     }
     if x == f64::INFINITY {
       return Some(1.0);
+    }
+    if x < 1.0 {
+      return Some((-self.lambda).exp());
     }
     Some(gamma_q(x.floor() + 1.0, self.lambda))
   }
@@ -361,7 +364,7 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdPoisson<T> {
     Some(self.lambda())
   }
 
-  /// Exact from Choi's bracket `λ − ln 2 ≤ m < λ + 1/3`: one count, or two where `frac(λ) ∈ (2/3, ln 2]`, which one cdf comparison decides, except at `n = 0`, where `e^{−λ} ≥ ½` gives 0 and `gamma_q(1, λ)` would read 3.4e-16 low.
+  /// Exact from Choi's bracket `λ − ln 2 ≤ m < λ + 1/3`: one count, or two where `frac(λ) ∈ (2/3, ln 2]`, which one cdf comparison decides, except at `n = 0`, where `e^{−λ} ≥ ½` gives 0 without it.
   fn median(&self) -> Option<f64> {
     let n = self.lambda.floor();
     let frac = self.lambda - n;
