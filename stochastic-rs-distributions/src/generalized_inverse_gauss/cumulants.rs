@@ -7,6 +7,7 @@ use std::f64::consts::LN_2;
 
 use crate::special::debye_moments;
 use crate::special::k_half_ratio;
+use crate::special::k_half_ratio_plain;
 use crate::special::ldexp;
 use crate::special::ln_two_over;
 use crate::special::quarter;
@@ -151,15 +152,107 @@ fn exp_m1_mx(x: f64) -> f64 {
   x * x * C.iter().rev().fold(0.0_f64, |acc, &c| acc.mul_add(x, c))
 }
 
-/// `ln(E Xᵏ/sᵏ)` from the ratios `R_ν = K_{ν+1}(ω)/K_ν(ω)` as `ln g_ν − h`, `g_ν = (ω/2)R_ν`
-/// split and `h = ln(ω/2)` summed apart, from `ν = −½` (`h − ln g_{−ν−1}` below).
+/// `ln(E Xᵏ/sᵏ)` from the ratios `R_ν = K_{ν+1}(ω)/K_ν(ω)` as `ln g_ν − h`, `g_ν = (ω/2)R_ν`,
+/// `h = ln(ω/2)` summed apart, from `ν = −½` (`h − ln g_{−ν−1}` below), `s` the root mean square.
 fn ratios(
   lambda: f64,
-  (root_chi, root_psi): (f64, f64),
+  roots: (f64, f64),
   squares: Option<(f64, f64)>,
   omega: f64,
 ) -> ((f64, i32), ([f64; 4], i32)) {
-  let d = ln_two_over(root_chi, root_psi, omega);
+  let d = ln_two_over(roots.0, roots.1, omega);
+  if omega.is_normal()
+    && let Some(parts) = plain_parts(lambda, omega, d)
+  {
+    let logs = parts.map(|p| p.0.ln());
+    let (l1, l3, l4) = (
+      ln_moment(&logs, &parts, d, 1),
+      ln_moment(&logs, &parts, d, 3),
+      ln_moment(&logs, &parts, d, 4),
+    );
+    let upper = parts[0].1 < 0.0;
+    let (k, m) = side(upper, roots, squares);
+    let mean = if upper {
+      2.0 * parts[0].0 / m
+    } else {
+      0.5 * m * parts[0].0
+    };
+    let (b1, k2) = (l1.exp(), 1.0 - (2.0 * l1).exp());
+    let quotient = mean / b1;
+    if b1.is_normal() && quotient.is_normal() {
+      let (j, s) = split_pow2(quotient);
+      let scale = (s, if upper { j - k } else { j + k });
+      return (scale, shape(b1, k2, (l1, l3, l4)));
+    }
+  }
+  split_ratios(lambda, roots, squares, omega, d)
+}
+
+/// The four ratios as doubles where each is normal, the route of every ordinary law.
+fn plain_parts(lambda: f64, omega: f64, d: f64) -> Option<[(f64, f64); 4]> {
+  let mut parts = [(0.0, 0.0); 4];
+  for (i, part) in parts.iter_mut().enumerate() {
+    let nu = lambda + i as f64;
+    *part = if nu >= -0.5 {
+      (k_half_ratio_plain(nu, omega, d)?, -1.0)
+    } else {
+      let inverse = 1.0 / k_half_ratio_plain(-nu - 1.0, omega, d)?;
+      if !inverse.is_normal() {
+        return None;
+      }
+      (inverse, 1.0)
+    };
+  }
+  Some(parts)
+}
+
+/// `ln b_k = ln(E Xᵏ/sᵏ)` from the parts' logarithms and powers of `ω/2`.
+fn ln_moment(logs: &[f64; 4], parts: &[(f64, f64); 4], d: f64, k: usize) -> f64 {
+  let (head, power) = (0.5 * k as f64, parts[0].1 + parts[1].1);
+  let g = logs[..k].iter().sum::<f64>() - head * (logs[0] + logs[1]);
+  g - (parts[..k].iter().map(|p| p.1).sum::<f64>() - head * power) * d
+}
+
+/// `ψ` above `ν = −½`, else `χ`, split, from the roots where a square is not exact.
+fn side(upper: bool, (root_chi, root_psi): (f64, f64), squares: Option<(f64, f64)>) -> (i32, f64) {
+  match squares {
+    Some((chi, psi)) => split_pow2(if upper { psi } else { chi }),
+    None => {
+      let (k, m) = split_pow2(if upper { root_psi } else { root_chi });
+      let (j, q) = split_pow2(m * m);
+      (2 * k + j, q)
+    }
+  }
+}
+
+/// `[k₁, k₂, k₃, k₄]` from `b₁` and the logarithms of `b₃`, `b₄`, `s` the root mean square.
+fn shape(b1: f64, k2: f64, (l1, l3, l4): (f64, f64, f64)) -> ([f64; 4], i32) {
+  if l4 > EXCESS_FROM {
+    return heavy(b1, k2, (l1, l3, l4));
+  }
+  // `b₄ − 4b₁b₃` with `b₄` factored out, so a heavy tail whose `b₄` and `b₁b₃` both overflow reads `+∞`, not `∞ − ∞`.
+  let mu4 = l4.exp() * (1.0 - 4.0 * (l1 + l3 - l4).exp()) + 6.0 * b1 * b1 - 3.0 * b1.powi(4);
+  (
+    [
+      b1,
+      k2,
+      l3.exp() - 3.0 * b1 + 2.0 * b1.powi(3),
+      mu4 - 3.0 * k2 * k2,
+    ],
+    0,
+  )
+}
+
+/// [`ratios`] with each ratio as `2ᵏm`, where `ω` or a ratio leaves the normal range.
+#[cold]
+#[inline(never)]
+fn split_ratios(
+  lambda: f64,
+  roots: (f64, f64),
+  squares: Option<(f64, f64)>,
+  omega: f64,
+  d: f64,
+) -> ((f64, i32), ([f64; 4], i32)) {
   let parts = [0.0, 1.0, 2.0, 3.0].map(|i| {
     let nu = lambda + i;
     if nu >= -0.5 {
@@ -170,7 +263,7 @@ fn ratios(
       ((i - j, q), 1.0)
     }
   });
-  // `ln g` of the double where it is normal, so an ordinary law keeps the plain logarithm's bits.
+  // `ln g` of the double where it is normal, so a law on this route keeps the plain logarithm's bits.
   let ln = |(j, g): (i32, f64)| {
     let v = ldexp(g, j);
     if v.is_normal() {
@@ -179,44 +272,26 @@ fn ratios(
       g.ln() + f64::from(j) * LN_2
     }
   };
-  let ln_b = |k: usize| {
-    let (head, power) = (0.5 * k as f64, parts[0].1 + parts[1].1);
-    let g =
-      parts[..k].iter().map(|p| ln(p.0)).sum::<f64>() - head * (ln(parts[0].0) + ln(parts[1].0));
-    g - (parts[..k].iter().map(|p| p.1).sum::<f64>() - head * power) * d
-  };
-  let upper = parts[0].1 < 0.0;
-  let (k, m) = match squares {
-    Some((chi, psi)) => split_pow2(if upper { psi } else { chi }),
-    None => {
-      let (k, m) = split_pow2(if upper { root_psi } else { root_chi });
-      let (j, q) = split_pow2(m * m);
-      (2 * k + j, q)
+  let logs = parts.map(|p| ln(p.0));
+  let plain = parts.map(|p| (0.0, p.1));
+  let (l1, l3, l4) = (
+    ln_moment(&logs, &plain, d, 1),
+    ln_moment(&logs, &plain, d, 3),
+    ln_moment(&logs, &plain, d, 4),
+  );
+  let mean_of = |((e, g), power): ((i32, f64), f64)| {
+    let upper = power < 0.0;
+    let (k, m) = side(upper, roots, squares);
+    if upper {
+      (2.0 * g / m, e - k)
+    } else {
+      (0.5 * m * g, e + k)
     }
   };
-  let (e0, g0) = parts[0].0;
-  let mean = if upper { 2.0 * g0 / m } else { 0.5 * m * g0 };
-  let (l1, l3, l4) = (ln_b(1), ln_b(3), ln_b(4));
+  let (mean, e0) = mean_of(parts[0]);
   let (b1, k2) = (l1.exp(), 1.0 - (2.0 * l1).exp());
   let (j, s) = split_pow2(mean / b1);
-  let scale = (s, e0 + if upper { j - k } else { j + k });
-  if l4 > EXCESS_FROM {
-    return (scale, heavy(b1, k2, (l1, l3, l4)));
-  }
-  // `b₄ − 4b₁b₃` with `b₄` factored out, so a heavy tail whose `b₄` and `b₁b₃` both overflow reads `+∞`, not `∞ − ∞`.
-  let mu4 = l4.exp() * (1.0 - 4.0 * (l1 + l3 - l4).exp()) + 6.0 * b1 * b1 - 3.0 * b1.powi(4);
-  (
-    scale,
-    (
-      [
-        b1,
-        k2,
-        l3.exp() - 3.0 * b1 + 2.0 * b1.powi(3),
-        mu4 - 3.0 * k2 * k2,
-      ],
-      0,
-    ),
-  )
+  ((s, e0 + j), shape(b1, k2, (l1, l3, l4)))
 }
 
 /// Past this `ln b₄` the ratios' `k₃` and `k₄` take their power of two apart.

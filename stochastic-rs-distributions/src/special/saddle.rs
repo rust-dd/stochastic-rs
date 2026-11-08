@@ -195,17 +195,8 @@ pub(crate) fn divergence(
   } else {
     0.5 * (psi * w)
   };
-  if past_series(lambda, e) {
-    // Near `e = −1` the low part is a share of `1 + e`, whose slope would leave `λ(e_lo/(1 + e))²`:
-    // it goes in the ratio, and the terms' slope in `e` at that ratio takes the rest.
-    let whole = two_sum(ratio.0, ratio.1 + e_lo);
-    let rest = if lambda >= 0.0 {
-      -lambda
-    } else {
-      -lambda / whole.0
-    } - 2.0 * coefficient * e / whole.0;
-    let low = rest * e_lo;
-    return divergence_at(lambda, coefficient, e, whole) + if low.is_finite() { low } else { 0.0 };
+  if e < NEAR_MINUS_ONE {
+    return near_minus_one(lambda, coefficient, (e, e_lo), ratio);
   }
   // `D′(e)·e_lo`, `D′ = −e(λ + (χ/2w)(2 + e)/(1 + e))/(1 + e)`, or `e(λ − (ψw/2)(2 + e))/(1 + e)²` at `λ < 0`.
   let slope = if lambda >= 0.0 {
@@ -217,14 +208,48 @@ pub(crate) fn divergence(
   divergence_at(lambda, coefficient, e, ratio) + if low.is_finite() { low } else { 0.0 }
 }
 
-/// Where [`divergence_at`] takes `ln(1 + e)` itself, from `|e/(2 + e)| > ½` (at `λ ≥ 0` only below).
-fn past_series(lambda: f64, e: f64) -> bool {
-  let s = e / (2.0 + e);
-  !(s.abs() <= 0.5 || (lambda >= 0.0 && s > 0.5))
+/// `−⅔`, under which `e/(2 + e) < −½` and `e`'s low part is a share of `1 + e` that a slope would
+/// leave as `½λ(e_lo/(1 + e))²`.
+const NEAR_MINUS_ONE: f64 = -0.666_666_666_666_666_6;
+
+/// [`divergence`] from `e < −⅔`: the low part in the ratio `1 + e`, and the terms' slope in `e` at
+/// that ratio for the rest.
+#[cold]
+#[inline(never)]
+fn near_minus_one(lambda: f64, coefficient: f64, (e, e_lo): (f64, f64), ratio: (f64, f64)) -> f64 {
+  let (whole, whole_lo) = two_sum(ratio.0, ratio.1 + e_lo);
+  let rest = if lambda >= 0.0 {
+    -lambda
+  } else {
+    -lambda / whole
+  } - 2.0 * coefficient * e / whole;
+  let low = rest * e_lo;
+  let low = if low.is_finite() { low } else { 0.0 };
+  if !(whole.is_normal() && whole > 0.0) {
+    return f64::NEG_INFINITY;
+  }
+  // Under `2⁻⁴⁰` the low part's `ln_1p` is `t − t²/2` to under `2⁻⁸¹ t`.
+  let t = whole_lo / whole;
+  let ln_ratio = whole.ln()
+    + if t.abs() < 9.094_947_017_729_282e-13 {
+      t - 0.5 * t * t
+    } else {
+      t.ln_1p()
+    };
+  let (q, total) = (
+    e * e / whole * (whole / (whole + whole_lo)),
+    whole + whole_lo,
+  );
+  low
+    + if lambda >= 0.0 {
+      lambda * (ln_ratio - e) - coefficient * q
+    } else {
+      lambda * (ln_ratio - e / total) - coefficient * q
+    }
 }
 
-/// `divergence` at a one-part `e`, `coefficient` its `χ/2w` or `ψw/2`, `ratio` `1 + e` in two
-/// parts, which keeps its digits as `e → −1` where a rounded `1 + e` would not.
+/// `divergence` at a one-part `e`, `coefficient` its `χ/2w` or `ψw/2`, `ratio` exactly `1 + e`, which keeps its digits as
+/// `e → −1` where a rounded `1 + e` would not.
 fn divergence_at(lambda: f64, coefficient: f64, e: f64, (ratio, ratio_lo): (f64, f64)) -> f64 {
   let s = e / (2.0 + e);
   if s.abs() <= 0.2 || (lambda >= 0.0 && s > 0.5) {
@@ -267,19 +292,11 @@ fn divergence_at(lambda: f64, coefficient: f64, e: f64, (ratio, ratio_lo): (f64,
   if !(ratio.is_normal() && ratio > 0.0) {
     return f64::NEG_INFINITY;
   }
-  // Under `2⁻⁴⁰` the low part's `ln_1p` is `t − t²/2` to under `2⁻⁸¹ t`.
-  let t = ratio_lo / ratio;
-  let ln_ratio = ratio.ln()
-    + if t.abs() < 9.094_947_017_729_282e-13 {
-      t - 0.5 * t * t
-    } else {
-      t.ln_1p()
-    };
-  let (q, whole) = (q * (ratio / (ratio + ratio_lo)), ratio + ratio_lo);
+  let ln_ratio = ratio.ln() + ratio_lo / ratio;
   if lambda >= 0.0 {
     lambda * (ln_ratio - e) - coefficient * q
   } else {
-    lambda * (ln_ratio - e / whole) - coefficient * q
+    lambda * (ln_ratio - e / ratio) - coefficient * q
   }
 }
 

@@ -82,38 +82,50 @@ pub(crate) fn log_size(
 /// `(x/2)K_{ν+1}(x)/K_ν(x)` for `ν ≥ −½` as `2ᵏm`, never forming `K`: Temme's ratio below `x = 2`,
 /// Steed's above, at `ν − round(ν)`, then `K`'s recurrence as a ratio (DLMF 10.29.1), upward.
 pub(crate) fn k_half_ratio(nu: f64, x: f64, ln_2_x: f64) -> (i32, f64) {
+  if let Some(g) = k_half_ratio_plain(nu, x, ln_2_x) {
+    return split_pow2(g);
+  }
+  // Only Temme's quotient leaves the normal range: near `μ = −½` at a subnormal `x` it is `(x/2)^{−2μ}`, its terms not.
+  let n = (nu + 0.5).floor();
+  let mu = nu - n;
+  let (k, k1) = temme_sums_at(x, mu, mu * mu, ln_2_x);
+  let q = 0.25 * x * x;
+  let ((i, a), (j, b)) = (split_pow2(k1), split_pow2(k));
+  let (l, m) = split_pow2(a / b);
+  let e = i - j + l;
+  if n == 0.0 {
+    return (e, m);
+  }
+  let mut g = (mu + 1.0) + ldexp(q / m, -e);
+  let mut i = 2.0;
+  while i <= n {
+    g = (mu + i) + q / g;
+    i += 1.0;
+  }
+  split_pow2(g)
+}
+
+/// [`k_half_ratio`] as one double wherever its steps stay normal, so a normal clock needs no split.
+pub(crate) fn k_half_ratio_plain(nu: f64, x: f64, ln_2_x: f64) -> Option<f64> {
   let n = (nu + 0.5).floor();
   let mu = nu - n;
   if x < 2.0 {
     let (k, k1) = temme_sums_at(x, mu, mu * mu, ln_2_x);
     let (q, plain) = (0.25 * x * x, k1 / k);
-    if plain.is_normal() {
-      let mut g = plain;
-      let mut i = 1.0;
-      while i <= n {
-        g = (mu + i) + q / g;
-        i += 1.0;
-      }
-      return split_pow2(g);
+    if !plain.is_normal() {
+      return None;
     }
-    // Near `μ = −½` the ratio at a subnormal `x` is `(x/2)^{−2μ}`, subnormal itself or 0, its terms not.
-    let ((i, a), (j, b)) = (split_pow2(k1), split_pow2(k));
-    let (l, m) = split_pow2(a / b);
-    let e = i - j + l;
-    if n == 0.0 {
-      return (e, m);
-    }
-    let mut g = (mu + 1.0) + ldexp(q / m, -e);
-    let mut i = 2.0;
+    let mut g = plain;
+    let mut i = 1.0;
     while i <= n {
       g = (mu + i) + q / g;
       i += 1.0;
     }
-    return split_pow2(g);
+    return Some(g);
   }
   // Steed's `2(1 + x)` overflows past MAX/2; from `2¹⁰⁰⁰` Hankel's `R_ν = 1 + (2ν + 1)/2x` misses by under `ν²/x²`.
   if x >= HANKEL_FROM {
-    return split_pow2(0.5 * x + 0.25 * (2.0 * nu + 1.0));
+    return Some(0.5 * x + 0.25 * (2.0 * nu + 1.0));
   }
   let (k, k1) = steed_pair(x, mu, mu * mu, 1.0 / x);
   let mut ratio = k1 / k;
@@ -122,7 +134,7 @@ pub(crate) fn k_half_ratio(nu: f64, x: f64, ln_2_x: f64) -> (i32, f64) {
     ratio = 2.0 * (mu + i) / x + 1.0 / ratio;
     i += 1.0;
   }
-  split_pow2(0.5 * x * ratio)
+  Some(0.5 * x * ratio)
 }
 
 /// `ln(2/ω)` for `ω = √χ√ψ`, from the roots where `ω` is subnormal and carries only its own few digits.

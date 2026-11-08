@@ -73,6 +73,7 @@ pub struct SimdGeneralizedHyperbolic<T> {
   mu: T,
   gig: SimdGig<T>,
   balance: i32,
+  concentrated: Option<concentrated::Clock>,
 }
 
 /// A GH stream: the GIG-clock and normal sub-streams and the single-draw buffer.
@@ -127,6 +128,10 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
       "alpha must satisfy `0 < alpha * alpha - beta * beta < ∞`, got alpha = {alpha:?}, beta = {beta:?}"
     );
     let at = |v: T| v.to_f64().unwrap();
+    let (l, a, b, d) = (at(lambda), at(alpha), at(beta), at(delta));
+    let gamma = gamma_of(a, b);
+    let r0 = l.hypot(d * gamma);
+    let saddled = (LARGE_ORDER..concentrated::NORMAL_CLOCK).contains(&r0);
     Self {
       lambda,
       alpha,
@@ -134,7 +139,10 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
       delta,
       mu,
       gig: SimdGig::new(lambda, chi, psi),
-      balance: balance_power(at(lambda), at(alpha), at(beta), at(delta)),
+      balance: balance_power(l, a, b, d),
+      concentrated: saddled
+        .then(|| concentrated::clock((l, a, b, d), (gamma, r0)))
+        .flatten(),
     }
   }
 
@@ -261,7 +269,14 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
 
   /// The density at `x` times `2ᵖ`, the power taken into its exponent, so a scaled value leaves the doubles only where it does.
   fn density(&self, x: f64, p: i32) -> f64 {
-    Self::density_at(self.params(), x, p)
+    let (lambda, alpha, beta, delta, mu) = self.params();
+    if let Some(c) = &self.concentrated {
+      let d = two_sum_far(x, -mu);
+      if !d.0.is_infinite() {
+        return concentrated::at_saddle((lambda, alpha, beta, delta), d, c, p);
+      }
+    }
+    Self::density_at((lambda, alpha, beta, delta, mu), x, p)
   }
 
   /// [`Self::density`] at `(λ, α, β, δ, μ)`; where `x − μ` passes MAX, on the law of `X/2`, every scaling exact.
