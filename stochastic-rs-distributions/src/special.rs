@@ -7,6 +7,7 @@
 mod bessel;
 mod bessel_i;
 mod bessel_k;
+mod beta_fn;
 mod erfc;
 mod incomplete;
 mod k_ratio;
@@ -30,10 +31,19 @@ pub(crate) use bessel_k::debye_shape_parts;
 pub use bessel_k::ln_bessel_ke;
 pub(crate) use bessel_k::ln_bessel_ke_parts;
 pub(crate) use bessel_k::ln_half_gamma_parts;
+pub(crate) use beta_fn::LARGE_SHAPE;
+pub(crate) use beta_fn::STIRLING_SHAPES;
+pub(crate) use beta_fn::beta_entropy;
+pub(crate) use beta_fn::ln_beta_parts;
+pub(crate) use beta_fn::ln_gamma_diff;
+pub(crate) use beta_fn::ln_shape_beta_parts;
 pub(crate) use incomplete::KEPT;
 pub(crate) use incomplete::LN2_HI;
 pub(crate) use incomplete::LN2_LO;
+pub(crate) use incomplete::beta_density;
 pub use incomplete::beta_i;
+pub(crate) use incomplete::beta_i_inv;
+pub(crate) use incomplete::beta_i_xy;
 pub(crate) use incomplete::beta_ic;
 pub use incomplete::gamma_li;
 pub use incomplete::gamma_p;
@@ -41,10 +51,14 @@ pub(crate) use incomplete::gamma_p_inv;
 pub use incomplete::gamma_q;
 pub(crate) use incomplete::gamma_q_inv;
 pub use incomplete::gamma_ui;
+pub(crate) use incomplete::kl_divergence;
 pub(crate) use incomplete::ldexp;
 pub use incomplete::ln_gamma_p;
 pub use incomplete::ln_gamma_q;
+pub(crate) use incomplete::ln_gamma_q_scaled;
+pub(crate) use incomplete::ln_gamma_star;
 pub(crate) use incomplete::recip_gamma_1p_m1;
+pub(crate) use incomplete::settle;
 pub(crate) use incomplete::split_pow2;
 pub(crate) use incomplete::student_density;
 pub(crate) use incomplete::student_density_precise;
@@ -265,6 +279,11 @@ fn digamma_near_root(t: f64) -> f64 {
 
 /// DLMF 5.11.2 from 10: `ln x − 1/(2x) − Σ_{k≤8} B₂ₖ/(2k x²ᵏ)`, whose next term is under `2e-18` of it.
 fn digamma_series(x: f64) -> f64 {
+  x.ln() - 0.5 / x - digamma_tail(x)
+}
+
+/// `ln x − 1/(2x) − ψ(x)` from 10, the series' tail `Σ_{k≤8} B₂ₖ/(2k x²ᵏ)`.
+pub(crate) fn digamma_tail(x: f64) -> f64 {
   const C: [f64; 8] = [
     1.0 / 12.0,
     -1.0 / 120.0,
@@ -276,7 +295,7 @@ fn digamma_series(x: f64) -> f64 {
     -3617.0 / 8160.0,
   ];
   let z = (x * x).recip();
-  x.ln() - 0.5 / x - z * C.iter().rev().fold(0.0, |acc, &c| acc * z + c)
+  z * C.iter().rev().fold(0.0, |acc, &c| acc * z + c)
 }
 
 /// `π cot(πx)` from the exact `r = x − round(x)`, past `|r| = ¼` as `π tan(π(±½ − r))`, so it keeps

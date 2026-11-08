@@ -4,7 +4,7 @@
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 8.17.7 (`B_x(a, b) = x^a/a·F(a, 1 − b; a + 1; x)`), <https://dlmf.nist.gov/8.17.7>; eq. 5.11.1 (Stirling's series), <https://dlmf.nist.gov/5.11.1>.
 
 use super::TAIL_HELD;
-use super::beta_i;
+use super::beta_i_xy;
 use super::gamma_q;
 use super::recip_gamma_1p_m1_over;
 use crate::special::expm1_over;
@@ -28,33 +28,57 @@ const STIRLING: [f64; 6] = [
   -691.0 / 360360.0,
 ];
 
-/// `1 − I_x(a, b)` from `x`: below ½ at `a ≤ 1`, `bx ≤ 2` DLMF 8.17.7's series, else below `KEPT`
-/// the gamma limit, NaN where it fails; elsewhere `I_{1−x}(b, a)`; NaN off `[0, 1]`.
+/// `1 − I_x(a, b)` from `x`: DLMF 8.17.7's series below ½ at `a ≤ 1`, `bx ≤ 2`, else the gamma
+/// limit below `KEPT` where it holds, else `I_{1−x}(b, a)` with `x` passed exact; NaN off `[0, 1]`.
 pub(crate) fn beta_ic(a: f64, b: f64, x: f64) -> f64 {
   if x > 0.0 && x < 0.5 && a <= 1.0 && b * x <= 2.0 {
     return upper_series(a, b, x);
   }
   if x > 0.0 && x < KEPT {
-    return gamma_limit(a, b, x);
+    let limit = gamma_limit(a, b, x);
+    if limit.is_finite() {
+      return limit;
+    }
   }
-  beta_i(b, a, 1.0 - x)
+  beta_i_xy(b, a, 1.0 - x, x)
 }
 
 /// `Q(a, Ns)`, `s = −ln(1 − x)`, `N = b + (a − 1)/2`, TOMS 708 `bgrat`'s leading term; NaN where
 /// its next terms, `(a − 1)(s + (a + 1)/N)²/24` and `a(a² − 1)/(24N²)` relative, may pass 2⁻⁴⁰.
-fn gamma_limit(a: f64, b: f64, x: f64) -> f64 {
+pub(super) fn gamma_limit(a: f64, b: f64, x: f64) -> f64 {
+  gamma_limit_arg(a, b, x).map_or(f64::NAN, |(n, s)| gamma_q(a, n * s))
+}
+
+/// [`gamma_limit`]'s `(N, s)` where its next terms hold, for a caller reading `Q(a, Ns)` and its logarithms.
+pub(super) fn gamma_limit_arg(a: f64, b: f64, x: f64) -> Option<(f64, f64)> {
   let n = b + 0.5 * (a - 1.0);
   let s = -(-x).ln_1p();
   let next = (a - 1.0).abs() * (s + (a + 1.0) / n).powi(2) + a * (a * a - 1.0).abs() / (n * n);
-  if next / 24.0 <= TAIL_HELD {
-    gamma_q(a, n * s)
-  } else {
-    f64::NAN
-  }
+  (next / 24.0 <= TAIL_HELD).then_some((n, s))
 }
 
 /// `1 − I_x(p, q) = −expm1(E)`, `E = p ln x − ln(pB) + ln(1 + pΣ)`, `Σ = Σ (1 − q)_n xⁿ/(n!(p + n))` (`p ≤ 1`, `x ≤ ½`, `qx ≤ 2`): `E` is `p` times a sum of order one, rounding a subnormal tail once.
 pub(super) fn upper_series(p: f64, q: f64, x: f64) -> f64 {
+  let (bracket, t) = upper_series_exponent(p, q, x, x.ln());
+  -p.mul_add(bracket, -t).exp_m1()
+}
+
+/// [`upper_series`] with its logarithm, finite where the value underflows (`ln p + ln(−B)` below
+/// the normals); `ln_x` is `x`'s logarithm, given so a point below the subnormals keeps its place.
+pub(super) fn upper_series_ln(p: f64, q: f64, x: f64, ln_x: f64) -> (f64, f64) {
+  let (bracket, t) = upper_series_exponent(p, q, x, ln_x);
+  let e = p.mul_add(bracket, -t);
+  let value = -e.exp_m1();
+  if e > -f64::MIN_POSITIVE && t == 0.0 {
+    (value, p.ln() + (-bracket).ln())
+  } else {
+    (value, value.ln())
+  }
+}
+
+/// `(B, t)` with `E = pB − t`: `B = ln(xz) + s + ln(1 + pΣ)/p·Σ`, `t` the first unit shift's `ln(1
+/// + p/q)` where `1/q` overflows.
+fn upper_series_exponent(p: f64, q: f64, x: f64, ln_x: f64) -> (f64, f64) {
   let (mut term, mut sum, mut n) = (1.0, 0.0, 1.0);
   while n <= 500.0 {
     term *= (n - q) / n * x;
@@ -68,13 +92,8 @@ pub(super) fn upper_series(p: f64, q: f64, x: f64) -> f64 {
   let (s, z, t) = shape_beta_parts(p, q);
   let xz = x * z;
   // `x` and `z` meet at `qx ≈ 1` with logarithms of either sign, which their product cancels exactly.
-  let ln_xz = if xz >= 1e-290 {
-    xz.ln()
-  } else {
-    x.ln() + z.ln()
-  };
-  let e = p.mul_add(ln_xz + s + ln_1p_over(p * sum) * sum, -t);
-  -e.exp_m1()
+  let ln_xz = if xz >= 1e-290 { xz.ln() } else { ln_x + z.ln() };
+  (ln_xz + s + ln_1p_over(p * sum) * sum, t)
 }
 
 /// `ln(p·B(p, q))`, free of the cancellation of `ln Γ` terms where a shape is at most 1.

@@ -251,6 +251,8 @@ fn bench_distribution_ext(c: &mut Criterion) {
   let johnson = SimdJohnsonSu::<f64>::new(0.5, 1.5, 0.0, 1.0);
   let gamma = SimdGamma::<f64>::new(2.0, 1.5);
   let gamma_30 = SimdGamma::<f64>::new(30.0, 1.5);
+  let beta = SimdBeta::<f64>::new(2.0, 5.0);
+  let beta_300 = SimdBeta::<f64>::new(300.0, 200.0);
   let poisson = SimdPoisson::<u32>::new(4.0);
   let gh = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2);
   let gig = SimdGig::<f64>::new(1.5, 2.0, 0.5);
@@ -290,6 +292,27 @@ fn bench_distribution_ext(c: &mut Criterion) {
   });
   group.bench_function("quantile/chi_square_k60", |b| {
     b.iter(|| black_box(ps.iter().map(|&p| chi_60.quantile(p).unwrap()).sum::<f64>()))
+  });
+  group.bench_function("pdf/beta", |b| {
+    b.iter(|| black_box(ps.iter().map(|&x| beta.pdf(x).unwrap()).sum::<f64>()))
+  });
+  group.bench_function("cdf/beta", |b| {
+    b.iter(|| black_box(ps.iter().map(|&x| beta.cdf(x).unwrap()).sum::<f64>()))
+  });
+  group.bench_function("quantile/beta", |b| {
+    b.iter(|| black_box(ps.iter().map(|&p| beta.quantile(p).unwrap()).sum::<f64>()))
+  });
+  group.bench_function("cdf/beta_shape_300", |b| {
+    b.iter(|| black_box(ps.iter().map(|&x| beta_300.cdf(x).unwrap()).sum::<f64>()))
+  });
+  group.bench_function("quantile/beta_shape_300", |b| {
+    b.iter(|| {
+      black_box(
+        ps.iter()
+          .map(|&p| beta_300.quantile(p).unwrap())
+          .sum::<f64>(),
+      )
+    })
   });
   group.bench_function("pdf/johnson_su", |b| {
     b.iter(|| black_box(xs.iter().map(|&x| johnson.pdf(x).unwrap()).sum::<f64>()))

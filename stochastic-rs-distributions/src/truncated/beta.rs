@@ -146,12 +146,12 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
     );
     let (a, b) = (alpha.to_f64().unwrap(), beta.to_f64().unwrap());
     // Past the mean `I_b − I_a` cancels; the switch needs a few digits of the side that does not.
-    let mass = if lo < a / (a + b) {
+    let mass = if lo < 0.5 * a / (0.5 * a + 0.5 * b) {
       crate::special::beta_i(a, b, up) - crate::special::beta_i(a, b, lo)
     } else if lo < KEPT {
       crate::special::beta_ic(a, b, lo) - crate::special::beta_ic(a, b, up)
     } else {
-      crate::special::beta_i(b, a, 1.0 - lo) - crate::special::beta_i(b, a, 1.0 - up)
+      crate::special::beta_i_xy(b, a, 1.0 - lo, lo) - crate::special::beta_i_xy(b, a, 1.0 - up, up)
     };
     Self {
       base: SimdBeta::new(alpha, beta),
@@ -419,6 +419,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
 #[cfg(test)]
 mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_core::simd_rng::SimdRng;
 
   use super::*;
   use crate::tests::scalar_draws;
@@ -497,6 +498,30 @@ mod tests {
     ] {
       assert_eq!(SimdTruncatedBeta::<f64>::new(a, b, lo, up).mass, 0.0);
     }
+  }
+
+  /// Past √MAX the fraction overflowed to a NaN mass, so the law inverted where its mass picks
+  /// rejection (`Q(10, 20)`, mpmath); shapes summing past `MAX` read their mass and draw inside.
+  #[test]
+  fn huge_shapes_pick_the_regime_their_mass_picks() {
+    for b in [1e200, 1e290, 1e299, 1e300] {
+      let mass = SimdTruncatedBeta::<f64>::new(10.0, b, 2.0 / b * 10.0, 0.5).mass;
+      assert!(
+        ((mass - 4.995412308307587e-3) / 4.995412308307587e-3).abs() < 1e-12,
+        "TB(10, {b:e}) mass {mass:e}"
+      );
+    }
+    let law = SimdTruncatedBeta::<f64>::new(1e300, f64::MAX, 2f64.powi(-54), 1.0);
+    assert_eq!(law.mass, 1.0);
+    let mut rng = SimdRng::from_seed(2718);
+    for _ in 0..1_000 {
+      let x: f64 = law.sample(&mut rng);
+      assert!((5.56e-9..5.57e-9).contains(&x), "{x:e}");
+    }
+    assert_eq!(
+      SimdTruncatedBeta::<f64>::new(1e300, f64::MAX, 1.4901161193847653e-8, 0.9).mass,
+      0.0
+    );
   }
 
   /// Both regimes of the honest `Distribution` draw from the caller's rng and agree with the cdf: rejection on

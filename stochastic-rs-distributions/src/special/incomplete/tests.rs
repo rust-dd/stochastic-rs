@@ -514,8 +514,8 @@ fn beta_i_keeps_a_value_next_to_1_at_or_below_it() {
   }
 }
 
-/// `1 − I_x(a, b)` from `x` by the series and the gamma limit, NaN where the limit fails: mpmath
-/// at 60 and 120 digits raised by |log₁₀ a| and |log₁₀ x|, a subnormal its correctly rounded value.
+/// `1 − I_x(a, b)` from `x` by the series and the gamma limit: mpmath at 60 and 120 digits raised by
+/// |log₁₀ a| and |log₁₀ x|, a subnormal its correctly rounded value.
 #[test]
 fn beta_ic_reads_the_upper_tail_from_x() {
   for (a, b, x, want) in [
@@ -532,7 +532,6 @@ fn beta_ic_reads_the_upper_tail_from_x() {
     );
   }
   assert_eq!(beta_ic(5e-324, 1.0, 1e-310), 714.0 * 5e-324);
-  assert!(beta_ic(1e8, 1e16, 1e-8).is_nan());
 }
 
 /// `ldexp` rounds a subnormal once, as `x·2ᵖ` rounded from its integer mantissa, on 5 mantissas

@@ -4,14 +4,24 @@
 //! Reference: DiDonato, A.R., Morris, A.H. (1986), "Computation of the incomplete gamma function ratios and their inverse", ACM TOMS 12(4), 377-393, DOI 10.1145/22721.23109 (the small-shape form `Q = (x^a J − (x^a − 1))g − (g − 1)`).
 //! Reference: Abramowitz, M., Stegun, I.A. (1964), "Handbook of Mathematical Functions", NBS AMS 55, 6.1.34 (the power series of `1/Γ`).
 
+mod beta;
 mod complement;
 mod large_shape;
 mod student;
 
+use beta::TAIL_HELD;
+pub(crate) use beta::beta_density;
+pub use beta::beta_i;
+pub(crate) use beta::beta_i_inv;
+pub(crate) use beta::beta_i_xy;
+use beta::betacf;
 pub(crate) use complement::KEPT;
 pub(crate) use complement::beta_ic;
 pub(crate) use large_shape::LN2_HI;
 pub(crate) use large_shape::LN2_LO;
+pub(crate) use large_shape::kl_divergence;
+pub(crate) use large_shape::ln_gamma_star;
+pub(crate) use large_shape::settle;
 pub(crate) use student::student_density;
 pub(crate) use student::student_density_precise;
 pub(crate) use student::student_tail;
@@ -246,6 +256,19 @@ pub fn ln_gamma_p(a: f64, x: f64) -> f64 {
   }
 }
 
+/// `ln Q(a, x)` with, where the fraction evaluates `Q`, its own logarithm `ln(Q/(x^a e^{−x}/Γ(a)))`.
+pub(crate) fn ln_gamma_q_scaled(a: f64, x: f64) -> (f64, Option<f64>) {
+  if a < 1.0 && x < a + 1.0 {
+    return (small_shape_q(a, x).ln(), None);
+  }
+  let t = tail(a, x);
+  if t.upper {
+    (t.ln(), t.kernel.is_finite().then(|| t.kernel.ln()))
+  } else {
+    ((-t.ln().exp()).ln_1p(), None)
+  }
+}
+
 /// `ln Q(a, x)`, finite where `Q` underflows.
 pub fn ln_gamma_q(a: f64, x: f64) -> f64 {
   if !domain(a, x) {
@@ -452,146 +475,6 @@ pub fn gamma_ui(a: f64, x: f64) -> f64 {
   } else {
     (ln_gamma(a) + ln_gamma_q(a, x)).exp()
   }
-}
-
-/// Regularised incomplete beta `I_x(a, b)` by Lentz's continued fraction, past the mean `1 − I_{1−x}(b, a)` or, where that loses digits, DLMF 8.17.7's complement in `1 − x`; NaN off `[0, 1]`.
-pub fn beta_i(a: f64, b: f64, x: f64) -> f64 {
-  if !(0.0..=1.0).contains(&x) {
-    return f64::NAN;
-  }
-  if x == 0.0 || x == 1.0 {
-    return x;
-  }
-  let (lab, la, lb, lx, ly) = (
-    ln_gamma(a + b),
-    ln_gamma(a),
-    ln_gamma(b),
-    a * x.ln(),
-    b * (1.0 - x).ln(),
-  );
-  let bt = (lab - la - lb + lx + ly).exp();
-  let lower = x < (a + 1.0) / (a + b + 2.0);
-  if bt.is_normal() {
-    // `bt`'s rounding: `ε` times its logs' sizes, with `REST_FLOOR` beside them past the switch
-    // and `b` times `1 − x`'s below it.
-    let size = || lab.abs() + la.abs() + lb.abs() + lx.abs() + ly.abs();
-    if lower {
-      let v = bt * betacf(a, b, x) / a;
-      if v <= 0.5 || a > 1.0 || x > 0.5 {
-        return v;
-      }
-      return next_to_one(a, b, x, v, size());
-    }
-    let rest = bt * betacf(b, a, 1.0 - x) / b;
-    if b > 1.0 || x < 0.5 || f64::EPSILON * (size() + REST_FLOOR) * rest <= TAIL_HELD * (1.0 - rest)
-    {
-      return 1.0 - rest;
-    }
-    return complement::upper_series(b, a, 1.0 - x);
-  }
-  beta_i_scaled(a, b, x, lower)
-}
-
-/// `v > ½` below the switch at `a ≤ 1`, `x ≤ ½`: `v` where its estimate is within 2⁻⁴⁰ and short of
-/// `1 − v`, else 1 less the complement in `x`; cold, as inline it ran before the cheap tests.
-#[cold]
-#[inline(never)]
-fn next_to_one(a: f64, b: f64, x: f64, v: f64, size: f64) -> f64 {
-  let held = f64::EPSILON * (size + 0.5 * b);
-  if held <= TAIL_HELD && held * v < 1.0 - v {
-    return v;
-  }
-  1.0 - complement::upper_series(a, b, x)
-}
-
-/// The relative error a value next to 1 or `1 − rest` may carry before the complement replaces it: `2⁻⁴⁰`, under the bar.
-const TAIL_HELD: f64 = 9.094947017729282e-13;
-
-/// `rest`'s ε past its logs' sizes: the fraction's 1e-15 stop and steps, `exp`, two products and
-/// ln Γ's Lanczos terms, about 17 by an `|ln Γ|` under 1 (at most 7.2, 2, 8.3 apart, 10.7 in all).
-const REST_FLOOR: f64 = 16.0;
-
-/// Off the normal `bt`: `x^a(1 − x)^b/(a·B(a, b))` and the fraction's log in one `exp`, `ln(aB)`
-/// cancellation-free at a shape at most 1; a side next to 1 the complement series.
-#[cold]
-#[inline(never)]
-fn beta_i_scaled(a: f64, b: f64, x: f64, lower: bool) -> f64 {
-  let small = a.min(b) <= 1.0;
-  let ln_p = |shape: f64, other: f64| {
-    a * x.ln() + b * (1.0 - x).ln() - complement::ln_shape_beta(shape, other)
-  };
-  if lower {
-    let v = if small {
-      (ln_p(a, b) + betacf(a, b, x).ln()).exp()
-    } else {
-      (ln_gamma(a + b) - ln_gamma(a + 1.0) - ln_gamma(b)
-        + a * x.ln()
-        + b * (1.0 - x).ln()
-        + betacf(a, b, x).ln())
-      .exp()
-    };
-    if v > 0.5 && a <= 1.0 && x <= 0.5 {
-      1.0 - complement::upper_series(a, b, x)
-    } else {
-      v
-    }
-  } else if b <= 1.0 && x >= 0.5 {
-    complement::upper_series(b, a, 1.0 - x)
-  } else if small {
-    1.0 - (ln_p(b, a) + betacf(b, a, 1.0 - x).ln()).exp()
-  } else {
-    1.0
-      - (ln_gamma(a + b) - ln_gamma(a) - ln_gamma(b + 1.0)
-        + a * x.ln()
-        + b * (1.0 - x).ln()
-        + betacf(b, a, 1.0 - x).ln())
-      .exp()
-  }
-}
-
-fn betacf(a: f64, b: f64, x: f64) -> f64 {
-  let fpmin = 1e-300_f64;
-  let qab = a + b;
-  let qap = a + 1.0;
-  let qam = a - 1.0;
-  let mut c = 1.0;
-  let mut d = 1.0 - qab * x / qap;
-  if d.abs() < fpmin {
-    d = fpmin;
-  }
-  d = 1.0 / d;
-  let mut h = d;
-  for m in 1..=200 {
-    let m_f = m as f64;
-    let m2 = 2.0 * m_f;
-    let aa = m_f * (b - m_f) * x / ((qam + m2) * (a + m2));
-    d = 1.0 + aa * d;
-    if d.abs() < fpmin {
-      d = fpmin;
-    }
-    c = 1.0 + aa / c;
-    if c.abs() < fpmin {
-      c = fpmin;
-    }
-    d = 1.0 / d;
-    h *= d * c;
-    let aa = -(a + m_f) * (qab + m_f) * x / ((a + m2) * (qap + m2));
-    d = 1.0 + aa * d;
-    if d.abs() < fpmin {
-      d = fpmin;
-    }
-    c = 1.0 + aa / c;
-    if c.abs() < fpmin {
-      c = fpmin;
-    }
-    d = 1.0 / d;
-    let del = d * c;
-    h *= del;
-    if (del - 1.0).abs() < 1e-15 {
-      break;
-    }
-  }
-  h
 }
 
 #[cfg(test)]

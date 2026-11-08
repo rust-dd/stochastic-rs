@@ -21,6 +21,22 @@ use crate::traits::distribution::SimdKernel;
 
 const SMALL_BETA_THRESHOLD: usize = 16;
 
+/// `a/(a + b)` of two positive draws, from the smaller over the larger where their sum passes the
+/// doubles.
+#[inline]
+fn ratio<T: SimdFloatExt>(a: T, b: T) -> T {
+  let sum = a + b;
+  if sum < T::infinity() {
+    return a / sum;
+  }
+  if a <= b {
+    let r = a / b;
+    r / (T::one() + r)
+  } else {
+    T::one() / (T::one() + b / a)
+  }
+}
+
 /// Beta law `Beta(alpha, beta)`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdBeta<T> {
@@ -134,7 +150,7 @@ impl<T: SimdFloatExt> SimdBeta<T> {
         let a = self.gamma1.next(g1);
         let b = self.gamma2.next(g2);
         *x = if a + b > T::zero() {
-          a / (a + b)
+          ratio(a, b)
         } else {
           self.ratio_from_logs(g1, g2)
         };
@@ -157,8 +173,11 @@ impl<T: SimdFloatExt> SimdBeta<T> {
         let b = T::simd_from_array(*b8);
         *sub = T::simd_to_array(a / (a + b));
         for (j, x) in sub.iter_mut().enumerate() {
-          if a8[j] + b8[j] <= T::zero() {
+          let sum = a8[j] + b8[j];
+          if sum <= T::zero() {
             *x = self.ratio_from_logs(g1, g2);
+          } else if sum == T::infinity() {
+            *x = ratio(a8[j], b8[j]);
           }
         }
       }
@@ -169,7 +188,7 @@ impl<T: SimdFloatExt> SimdBeta<T> {
       self.gamma2.fill(g2, &mut gb[..n]);
       for i in 0..n {
         rem[i] = if ga[i] + gb[i] > T::zero() {
-          ga[i] / (ga[i] + gb[i])
+          ratio(ga[i], gb[i])
         } else {
           self.ratio_from_logs(g1, g2)
         };
@@ -181,7 +200,7 @@ impl<T: SimdFloatExt> SimdBeta<T> {
     let a = self.gamma1.draw_with(rng);
     let b = self.gamma2.draw_with(rng);
     if a + b > T::zero() {
-      return a / (a + b);
+      return ratio(a, b);
     }
     let (a, b) = (
       self.gamma1.draw_log_parts_with(rng),
@@ -233,6 +252,8 @@ impl<T: SimdFloatExt> Distribution<T> for SimdBeta<T> {
 }
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdBeta<T> {
+  /// `(a − 1) ln x + (b − 1) ln(1 − x) − ln B(a, b)`, `ln(1 − x)` from `x` below ½; from a shape of
+  /// 100 the incomplete beta's Stirling-scaled prefactor over `x(1 − x)`, where those terms cancel.
   fn pdf(&self, x: f64) -> Option<f64> {
     if x.is_nan() {
       return Some(f64::NAN);
@@ -242,6 +263,20 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdBeta<T> {
     }
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
+    if x == 0.0 || x == 1.0 {
+      // The end's limit: `+∞` below a unit shape, `1/B(1, b) = b` (or `a`) at it, 0 above.
+      let (shape, other) = if x == 0.0 { (a, b) } else { (b, a) };
+      return Some(if shape < 1.0 {
+        f64::INFINITY
+      } else if shape == 1.0 {
+        other
+      } else {
+        0.0
+      });
+    }
+    if a.max(b) >= crate::special::LARGE_SHAPE {
+      return Some(crate::special::beta_density(a, b, x));
+    }
     let log_pdf = (a - 1.0) * x.ln() + (b - 1.0) * (1.0 - x).ln() - crate::special::ln_beta(a, b);
     Some(log_pdf.exp())
   }
@@ -252,35 +287,18 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdBeta<T> {
     Some(crate::special::beta_i(a, b, x.clamp(0.0, 1.0)))
   }
 
+  /// Newton in the logs of the smaller tail and of the smaller of `x` and `1 − x`, so both tails
+  /// keep their digits; a root below the subnormals is 0, one whose complement rounds to 1 is 1.
   fn quantile(&self, p: f64) -> Option<f64> {
     if !(0.0..=1.0).contains(&p) {
       return Some(f64::NAN);
     }
-    if p == 0.0 {
-      return Some(0.0);
-    }
-    if p == 1.0 {
-      return Some(1.0);
+    if p == 0.0 || p == 1.0 {
+      return Some(p);
     }
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
-    // Newton on f(x) = I_x(a,b) − p with f'(x) = pdf.
-    let mut x = a / (a + b); // start at the mean
-    for _ in 0..60 {
-      let f = crate::special::beta_i(a, b, x) - p;
-      let log_pdf = (a - 1.0) * x.ln() + (b - 1.0) * (1.0 - x).ln() - crate::special::ln_beta(a, b);
-      let pdf = log_pdf.exp();
-      if pdf <= 0.0 {
-        break;
-      }
-      let dx = f / pdf;
-      let new_x = (x - dx).clamp(1e-14, 1.0 - 1e-14);
-      if (new_x - x).abs() < 1e-14 {
-        return Some(new_x);
-      }
-      x = new_x;
-    }
-    Some(x)
+    Some(crate::special::beta_i_inv(a, b, p))
   }
 
   fn mean(&self) -> Option<f64> {
@@ -331,9 +349,14 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdBeta<T> {
     Some(num / den)
   }
 
+  /// The closed form `ln B − (a − 1)ψ(a) − (b − 1)ψ(b) + (a + b − 2)ψ(a + b)`; from a shape of 100
+  /// its cancellation-free Stirling form.
   fn entropy(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
+    if a.max(b) >= crate::special::LARGE_SHAPE {
+      return Some(crate::special::beta_entropy(a, b));
+    }
     Some(
       crate::special::ln_beta(a, b)
         - (a - 1.0) * crate::special::digamma(a)
@@ -344,111 +367,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdBeta<T> {
 }
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::*;
-  use crate::tests::scalar_ks_best_p;
-  use crate::traits::DistributionExt as _;
-  use crate::traits::DistributionSampler;
-
-  /// Small shapes must not lose a draw to `0 / 0`.
-  ///
-  /// The Gamma-ratio construction underflows both marginals to exactly zero
-  /// once a shape is small — 13 % of the draws at `α = β = 0.01` in single
-  /// precision, and it still reaches double precision at `α = β = 0.001`.
-  /// Both fill paths are exercised: a 1000-long slice takes the SIMD
-  /// chunks plus the scalar remainder, an 8-long one the short path.
-  #[test]
-  fn small_shapes_stay_finite() {
-    for seed in [7u64, 11] {
-      let mut d = SimdBeta::<f32>::new(0.01, 0.01).seeded(&Deterministic::new(seed));
-      let mut wide = vec![0.0_f32; 1_000];
-      d.fill_slice(&mut wide);
-      let bad = wide.iter().filter(|x| !x.is_finite()).count();
-      assert_eq!(bad, 0, "seed {seed}: {bad} non-finite of the wide fill");
-      let mut narrow = [0.0_f32; 8];
-      for _ in 0..200 {
-        d.fill_slice(&mut narrow);
-        let bad = narrow.iter().filter(|x| !x.is_finite()).count();
-        assert_eq!(bad, 0, "seed {seed}: {bad} non-finite of the short fill");
-      }
-    }
-  }
-
-  /// The repaired small-shape draws still carry Beta's first two moments —
-  /// a fix that merely clamped the NaN away would not. Single precision is
-  /// deliberate: an eighth of these draws take the repaired branch.
-  #[test]
-  fn small_shape_moments_hold() {
-    let (a, b) = (0.01_f64, 0.01_f64);
-    let mut d = SimdBeta::<f32>::new(a as f32, b as f32).seeded(&Deterministic::new(11));
-    let mut buf = vec![0.0_f32; 1 << 16];
-    let (mut s, mut s2) = (0.0, 0.0);
-    let reps = 8;
-    for _ in 0..reps {
-      d.fill_slice(&mut buf);
-      for &x in buf.iter() {
-        s += x as f64;
-        s2 += (x as f64) * (x as f64);
-      }
-    }
-    let n = (reps * buf.len()) as f64;
-    let (mean, m2) = (s / n, s2 / n);
-    let want_mean = a / (a + b);
-    let want_m2 = a * (a + 1.0) / ((a + b) * (a + b + 1.0));
-    // The law is all but Bernoulli(1/2) at this shape, so σ ≈ 1/2 and five
-    // standard errors of the mean is 2.5/√n.
-    let band = 2.5 / n.sqrt();
-    assert!(
-      (mean - want_mean).abs() < band,
-      "mean = {mean}, expected {want_mean} ± {band}"
-    );
-    assert!(
-      (m2 - want_m2).abs() < band,
-      "second moment = {m2}, expected {want_m2} ± {band}"
-    );
-  }
-
-  /// The honest `Distribution` draws from the caller's rng and agrees with the cdf.
-  #[test]
-  fn scalar_sample_matches_cdf() {
-    let d = SimdBeta::<f64>::new(2.5, 4.0);
-    let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
-    assert!(best > 0.01, "best p = {best}");
-  }
-
-  /// One shape ≤ 1, the other ≥ 1: the density is monotone and the mode is the end it rises toward.
-  #[test]
-  fn mode_answers_every_shape_regime() {
-    let law = |a: f64, b: f64| SimdBeta::<f64>::new(a, b);
-    assert_eq!(law(2.0, 5.0).mode(), Some(0.2));
-    for ((a, b), want) in [
-      ((0.5, 3.0), 0.0),
-      ((1.0, 3.0), 0.0),
-      ((0.5, 1.0), 0.0),
-      ((3.0, 0.5), 1.0),
-      ((3.0, 1.0), 1.0),
-      ((1.0, 0.5), 1.0),
-    ] {
-      let d = law(a, b);
-      assert_eq!(d.mode(), Some(want), "Beta({a}, {b})");
-      let pdf = [0.05, 0.5, 0.95].map(|x| d.pdf(x).unwrap());
-      let rises_to_one = pdf[0] < pdf[1] && pdf[1] < pdf[2];
-      let falls_from_zero = pdf[0] > pdf[1] && pdf[1] > pdf[2];
-      assert!(
-        if want == 1.0 {
-          rises_to_one
-        } else {
-          falls_from_zero
-        },
-        "Beta({a}, {b}) pdf {pdf:?}"
-      );
-    }
-    assert!(law(0.5, 0.5).mode().unwrap().is_nan());
-    assert!(law(1.0, 1.0).mode().unwrap().is_nan());
-  }
-}
+mod tests;
 
 py_distribution!(PyBeta, SimdBeta,
   sig: (alpha, beta, seed=None, dtype=None),

@@ -96,13 +96,16 @@ impl<T: SimdFloatExt> SimdDirichlet<T> {
     false
   }
 
-  /// The simplex point of one log draw per coordinate in `out`, for the `0/0` sum of all-underflowed gammas: at
-  /// `α = 0.001` two thirds of single-precision draws, where a `1e-300` guard is itself zero.
-  fn normalize_logs(out: &mut [T]) {
-    let peak = out
-      .iter()
-      .copied()
-      .fold(T::neg_infinity(), |m: T, x| if x > m { x } else { m });
+  /// The simplex point of the log draws about the largest, `best`, where the gammas underflowed to
+  /// `0/0` (two thirds of `f32` draws at `α = 0.001`), and `best`'s vertex where no log is finite.
+  fn normalize_logs(out: &mut [T], best: usize) {
+    let peak = out[best];
+    if !peak.is_finite() {
+      for (k, x) in out.iter_mut().enumerate() {
+        *x = if k == best { T::one() } else { T::zero() };
+      }
+      return;
+    }
     let mut sum = T::zero();
     for x in out.iter_mut() {
       *x = (*x - peak).exp();
@@ -113,13 +116,35 @@ impl<T: SimdFloatExt> SimdDirichlet<T> {
     }
   }
 
+  /// The log draws `ln core + ln u/α` into `out` from their parts, and the index of the largest.
+  fn log_draws(&self, out: &mut [T], mut parts_of: impl FnMut(usize) -> (T, T)) -> usize {
+    let mut best = (0, (T::zero(), T::zero()));
+    for (k, x) in out.iter_mut().enumerate() {
+      let parts = parts_of(k);
+      *x = parts.0 + parts.1 / self.alpha[k];
+      if k == 0 || self.log_greater(parts, k, best.1, best.0) {
+        best = (k, parts);
+      }
+    }
+    best.0
+  }
+
+  /// Whether draw `k` exceeds draw `j`: by the logs where one is finite, else (both `ln u/α` past
+  /// the doubles) by `ln u_k·(α_j/α_k)` against `ln u_j`, which no subnormal product ties.
+  fn log_greater(&self, (ck, uk): (T, T), k: usize, (cj, uj): (T, T), j: usize) -> bool {
+    let (lk, lj) = (ck + uk / self.alpha[k], cj + uj / self.alpha[j]);
+    if lk.is_finite() || lj.is_finite() {
+      lk > lj
+    } else {
+      uk * (self.alpha[j] / self.alpha[k]) > uj
+    }
+  }
+
   #[cold]
   #[inline(never)]
   fn simplex_from_logs<R: SimdRngExt>(&self, states: &mut [GammaState<T, R>], out: &mut [T]) {
-    for ((x, g), st) in out.iter_mut().zip(&self.gammas).zip(states.iter_mut()) {
-      *x = g.next_log(st);
-    }
-    Self::normalize_logs(out);
+    let best = self.log_draws(out, |k| self.gammas[k].next_log_parts(&mut states[k]));
+    Self::normalize_logs(out, best);
   }
 
   /// Log-density at point `x` (must lie on the open $K-1$-simplex).
@@ -218,10 +243,8 @@ impl<T: SimdFloatExt> Distribution<Vec<T>> for SimdDirichlet<T> {
       .map(|g| g.draw_with(rng))
       .collect::<Vec<_>>();
     if !Self::normalize(&mut out) {
-      for (x, g) in out.iter_mut().zip(&self.gammas) {
-        *x = g.draw_log_with(rng);
-      }
-      Self::normalize_logs(&mut out);
+      let best = self.log_draws(&mut out, |k| self.gammas[k].draw_log_parts_with(rng));
+      Self::normalize_logs(&mut out, best);
     }
     out
   }
@@ -332,6 +355,23 @@ mod tests {
     for (k, want) in [1.0 / 6.0, 2.0 / 6.0, 3.0 / 6.0].into_iter().enumerate() {
       let coordinate = draws.iter().map(|x| x[k]).collect::<Vec<_>>();
       assert_mean_within(&coordinate, want, 5.0, &format!("coordinate {k}"));
+    }
+  }
+
+  /// Two subnormal concentrations: every `ln u/α` passes the doubles and the point is the vertex of
+  /// the largest, where `−∞ − −∞` read NaN; the stream and the honest draw alike.
+  #[test]
+  fn subnormal_concentrations_draw_a_vertex() {
+    for alpha in [vec![5e-324_f64, 5e-324], vec![1e-310, 4e-309, 1e-312]] {
+      let mut s = SimdDirichlet::<f64>::new(alpha.clone()).seeded(&Deterministic::new(7));
+      let d = SimdDirichlet::<f64>::new(alpha);
+      let mut rng = SimdRng::from_seed(7);
+      for _ in 0..200 {
+        for x in [s.sample(), d.sample(&mut rng)] {
+          assert!(x.iter().all(|v| *v == 0.0 || *v == 1.0), "{x:?}");
+          assert_eq!(x.iter().sum::<f64>(), 1.0, "{x:?}");
+        }
+      }
     }
   }
 

@@ -12,6 +12,8 @@ use super::continued_fraction;
 use super::series;
 use crate::special::ln_parts;
 use crate::special::mills_ratio;
+use crate::special::mul_parts;
+use crate::special::sub_parts;
 pub(super) use crate::special::twofold::two_sum;
 
 /// `ln 2` in two parts, the first with 21 trailing zero bits, so its products with small integers are exact.
@@ -253,12 +255,34 @@ pub(super) fn scaled_prefactor(a: f64, x: f64) -> (f64, f64) {
   )
 }
 
-/// `a(λ − 1 − ln λ) = D·T − 2aT³ Σ_j T^{2j}/(2j + 3)`, `D = x − a`, `T = D/(x + a)`, as `y + y_lo`: two-sums and fused
-/// multiply-adds recover the roundings of `D`, `T`, `D·T`, `T³`, the sum's first term and the cubic term's product.
+/// `a(λ − 1 − ln λ)`, `λ = x/a`, as `y + y_lo` from the exact `D = x − a` and `M = (x + a)/2`.
 fn exponent(a: f64, x: f64) -> (f64, f64) {
+  kl_term(a, two_sum(x, -a), two_sum(0.5 * x, 0.5 * a))
+}
+
+/// `a·g(D/a)`, `g(u) = u − ln(1 + u)`, in two parts, `w = a + D` given exactly: `kl_term`'s series
+/// where `|D/(2a + D)| ≤ 0.6`, else `D − a ln(w/a)`, cancelling at most threefold; `+∞` at `w = 0`.
+pub(crate) fn kl_divergence(a: f64, (d, d_lo): (f64, f64), (w, w_lo): (f64, f64)) -> (f64, f64) {
+  let (m, m_err) = two_sum(a, 0.5 * d);
+  if (0.5 * d / m).abs() <= 0.6 {
+    return kl_term(a, (d, d_lo), (m, m_err + 0.5 * d_lo));
+  }
+  if w <= 0.0 {
+    return (f64::INFINITY, 0.0);
+  }
+  let q = w / a;
+  let q_lo = ((-q).mul_add(a, w) + w_lo) / a;
+  let l = ln_parts(q, q_lo, 0);
+  if (a * l.0).is_infinite() {
+    return (f64::INFINITY, 0.0);
+  }
+  sub_parts((d, d_lo), mul_parts((a, 0.0), l))
+}
+
+/// `a(λ − 1 − ln λ) = D·T − 2aT³ Σ_j T^{2j}/(2j + 3)`, `D = x − a`, `T = D/(2M)`, `M = (x + a)/2`,
+/// in two parts, with two-sums and fused multiply-adds keeping each product's rounding.
+pub(crate) fn kl_term(a: f64, (d, d_lo): (f64, f64), (m, m_lo): (f64, f64)) -> (f64, f64) {
   const THIRD_LO: f64 = 1.0 / 3.0 / 18_014_398_509_481_984.0;
-  let (d, d_lo) = two_sum(x, -a);
-  let (m, m_lo) = two_sum(0.5 * x, 0.5 * a);
   let t = 0.5 * d / m;
   let t_lo = ((-t).mul_add(m, 0.5 * d) + 0.5 * d_lo - t * m_lo) / m;
   let p = d * t;
@@ -300,7 +324,7 @@ pub(super) fn ln_ratio(x: f64, a: f64) -> (f64, f64) {
 }
 
 /// `(hi, lo)` with a low part past 1 folded into `hi`, where it is within a few of `hi`'s ulps: only a small `lo` is exponentiated.
-fn settle((hi, lo): (f64, f64)) -> (f64, f64) {
+pub(crate) fn settle((hi, lo): (f64, f64)) -> (f64, f64) {
   if lo.abs() > 1.0 {
     (hi + lo, 0.0)
   } else {
@@ -310,7 +334,7 @@ fn settle((hi, lo): (f64, f64)) -> (f64, f64) {
 
 /// `ln Γ*(a) = ln Γ(a) − (a − ½) ln a + a − ½ ln 2π` by Stirling's series through `B₁₈`, the first omitted term
 /// `174611/(125400a¹⁹)` below `2e-19` from `a = 10`.
-fn ln_gamma_star(a: f64) -> f64 {
+pub(crate) fn ln_gamma_star(a: f64) -> f64 {
   /// `B_{2k}/(2k(2k − 1))`, `k = 1, …, 9`.
   const STIRLING: [f64; 9] = [
     1.0 / 12.0,

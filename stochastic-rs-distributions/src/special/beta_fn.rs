@@ -1,0 +1,123 @@
+//! `ln B(a, b)` in two parts and the beta law's entropy without their `ln Γ` cancellation: Stirling's
+//! difference `ln Γ(z + p) − ln Γ(z)` from `z = 16`, `ln Γ` below 32 from `1/Γ(1 + f)`'s series.
+//! Reference: NIST Digital Library of Mathematical Functions, eq. 5.11.1 (Stirling's series), <https://dlmf.nist.gov/5.11.1>; eq. 5.11.2 (`ψ`'s series), <https://dlmf.nist.gov/5.11.2>.
+//! Reference: Abramowitz, M., Stegun, I.A. (1964), "Handbook of Mathematical Functions", NBS AMS 55, 6.1.34 (the power series of `1/Γ`).
+
+use super::HALF_LN_TAU;
+use super::add_parts;
+use super::digamma;
+use super::digamma_tail;
+use super::kl_divergence;
+use super::ln_gamma_star;
+use super::ln_parts;
+use super::mul_parts;
+use super::recip_gamma_1p_m1;
+use super::sub_parts;
+use super::two_sum;
+
+/// From this argument `ln Γ(z + p) − ln Γ(z)` is Stirling's difference; below it both are formed
+/// whole.
+const STIRLING_FROM: f64 = 16.0;
+
+/// From this shape, both, the entropy and `beta_i`'s prefactor read Stirling's `Γ*` in place of `ln
+/// Γ`.
+pub(crate) const STIRLING_SHAPES: f64 = 10.0;
+
+/// From this shape, either, the beta law reads this module: the plain closed forms' `ln Γ` sums pass the bar
+/// from `a + b ≈ 1200` (`I_0.26(323, 879)` read 2e-12 off, `pdf(981, 69, 0.59)` 1.1e-12).
+pub(crate) const LARGE_SHAPE: f64 = 100.0;
+
+/// `ln Γ(p)` in two parts for `0 < p ≤ 32`: `ln Γ(1 + f)` by A&S 6.1.34 and the exact product `Π (f
+/// + k)`, `p = n + f`.
+pub(crate) fn ln_gamma_parts(p: f64) -> (f64, f64) {
+  if p <= 1.0 {
+    let (l, l_lo) = ln_parts(p, 0.0, 0);
+    let g = -recip_gamma_1p_m1(p).ln_1p();
+    return two_sum(-l, g - l_lo);
+  }
+  let n = p.floor();
+  let f = p - n;
+  let mut product = (1.0, 0.0);
+  let mut k = 1.0;
+  while k < n {
+    product = mul_parts(product, two_sum(k, f));
+    k += 1.0;
+  }
+  let (l, l_lo) = ln_parts(product.0, product.1, 0);
+  two_sum(l, l_lo - recip_gamma_1p_m1(f).ln_1p())
+}
+
+/// `ln Γ(z + p) − ln Γ(z)` in two parts for `z ≥ 16`: `p ln z − z·g(p/z) + (p − ½) ln(1 + p/z)`
+/// plus the `ln Γ*` difference, `g(u) = u − ln(1 + u)`, every term of the size of the difference.
+pub(crate) fn ln_gamma_diff(z: f64, p: f64) -> (f64, f64) {
+  let first = mul_parts((p, 0.0), ln_parts(z, 0.0, 0));
+  let (w, w_err) = two_sum(z, p);
+  let q = w / z;
+  let q_lo = ((-q).mul_add(z, w) + w_err) / z;
+  let third = mul_parts((p - 0.5, 0.0), ln_parts(q, q_lo, 0));
+  let (s, s_lo) = add_parts(
+    sub_parts(first, kl_divergence(z, (p, 0.0), (w, w_err))),
+    third,
+  );
+  two_sum(s, s_lo + (ln_gamma_star(w) - ln_gamma_star(z)))
+}
+
+/// `ln B(a, b)` in two parts, the smaller shape `p` below 16: `ln Γ(p) − [ln Γ(q + p) − ln Γ(q)]`,
+/// the bracket Stirling's difference from `q = 16`, below it the three logarithms whole.
+pub(crate) fn ln_beta_parts(a: f64, b: f64) -> (f64, f64) {
+  let (p, q) = if a <= b { (a, b) } else { (b, a) };
+  debug_assert!(
+    p < STIRLING_FROM,
+    "ln_beta_parts takes a shape below 16, got {p}"
+  );
+  let lg = ln_gamma_parts(p);
+  if q >= STIRLING_FROM {
+    return sub_parts(lg, ln_gamma_diff(q, p));
+  }
+  sub_parts(add_parts(lg, ln_gamma_parts(q)), ln_gamma_parts(p + q))
+}
+
+/// `ln(s·B(a, b))`, `s` one of the shapes, in two parts with the smaller shape below 16: `ln Γ(s +
+/// 1)` takes the place of `ln Γ(s)`, so a tiny `s` cancels no `ln s`.
+pub(crate) fn ln_shape_beta_parts(s: f64, other: f64) -> (f64, f64) {
+  if s <= other {
+    let lg = ln_gamma_parts(s + 1.0);
+    if other >= STIRLING_FROM {
+      return sub_parts(lg, ln_gamma_diff(other, s));
+    }
+    return sub_parts(
+      add_parts(lg, ln_gamma_parts(other)),
+      ln_gamma_parts(s + other),
+    );
+  }
+  add_parts(ln_beta_parts(s, other), ln_parts(s, 0.0, 0))
+}
+
+/// `ψ(a + b) − ψ(b)` for `b ≥ 10`, from `ψ`'s series: `ln(1 + a/b) + 1/(2b) − 1/(2(a + b))` less
+/// the tails' difference.
+fn digamma_step(b: f64, a: f64) -> f64 {
+  let s = a + b;
+  (a / b).ln_1p() + (0.5 / b - 0.5 / s) + (digamma_tail(b) - digamma_tail(s))
+}
+
+/// `ln B(a, b) − (a − 1)ψ(a) − (b − 1)ψ(b) + (a + b − 2)ψ(a + b)`: both shapes from 10 by `Γ*` and
+/// `ψ`'s tail, where terms of order `(a + b) ln(a + b)` would cancel, else by differences.
+pub(crate) fn beta_entropy(a: f64, b: f64) -> f64 {
+  let (p, q) = if a <= b { (a, b) } else { (b, a) };
+  if p >= STIRLING_SHAPES {
+    let half = 0.5 * p + 0.5 * q;
+    // `½ ln(pq/(p + q)³)` by its logarithms, since the quotient underflows at huge shapes.
+    let spread = 0.5 * (p.ln() + q.ln() - 3.0 * (half.ln() + std::f64::consts::LN_2));
+    let star = ln_gamma_star(p) + ln_gamma_star(q) - ln_gamma_star(p + q);
+    let tails = (p - 1.0) * digamma_tail(p) + (q - 1.0) * digamma_tail(q)
+      - (p + q - 2.0) * digamma_tail(p + q);
+    return 0.5 + HALF_LN_TAU.0 + spread - 0.5 / p - 0.5 / q
+      + 0.5 / half
+      + star
+      + tails
+      + HALF_LN_TAU.1;
+  }
+  let (lb, lb_lo) = sub_parts(ln_gamma_parts(p), ln_gamma_diff(q, p));
+  let step = digamma_step(q, p);
+  lb + ((q - 1.0) * step + (p - 1.0) * (digamma(q) + step - digamma(p)) + lb_lo)
+}
