@@ -20,7 +20,6 @@ use crate::seeded::StreamState;
 use crate::source::uniform53;
 use crate::special::HALF_LN_TAU;
 use crate::special::gamma_q;
-use crate::special::ln_1p_mx;
 use crate::special::ln_gamma;
 use crate::special::ndtri;
 use crate::special::stirling_tail;
@@ -31,27 +30,47 @@ use crate::traits::distribution::SimdKernel;
 /// Rates from here on draw by PTRS (Hörmann's own floor is 10); below it the table is exact inversion and holds ≤ 1 300 entries.
 const PTRS_MIN_LAMBDA: f64 = 1000.0;
 
-/// From this count on Stirling's series holds `stirlerr(k)` within `5e-18`, under the rounding of the `ln k!` form below it.
+/// From this count on Stirling's series holds `stirlerr(k)` within `5e-18`; below it `ln pₖ` is `k ln λ − λ − ln k!`.
 const STIRLING_FROM: f64 = 15.0;
 
-/// `ln pₖ` as `−stirlerr(k) − bd0(k, λ) − ½ ln 2πk`, which keeps the digits `k ln λ − λ − ln k!` cancels at large λ.
+/// `ln pₖ` as `−stirlerr(k) − bd0(k, λ) − ½ ln 2πk` from `STIRLING_FROM` on, which keeps the digits `k ln λ − λ − ln k!` cancels at large λ.
 fn ln_pmf(k: f64, lambda: f64, ln_lambda: f64) -> f64 {
-  if k == 0.0 {
-    return -lambda;
+  if k < STIRLING_FROM {
+    return if k == 0.0 {
+      -lambda
+    } else {
+      k * ln_lambda - lambda - ln_gamma(k + 1.0)
+    };
   }
-  let stirlerr = if k >= STIRLING_FROM {
-    stirling_tail(k.recip())
-  } else {
-    ln_gamma(k + 1.0) - (k + 0.5) * k.ln() + k - HALF_LN_TAU.0
-  };
+  -stirling_tail(k.recip()) - bd0(k, lambda, ln_lambda) - HALF_LN_TAU.0 - 0.5 * k.ln()
+}
+
+/// `k ln(k/λ) + λ − k`: Loader's series in `v = (k − λ)/(k + λ)` for `|v| < ½`, whose terms do not cancel, the logarithm form outside.
+fn bd0(k: f64, lambda: f64, ln_lambda: f64) -> f64 {
   let d = k - lambda;
-  let bd0 = if d.abs() < 0.1 * (k + lambda) {
-    let e = d / lambda;
-    k * ln_1p_mx(e) + lambda * e * e
+  let v = (0.5 * d) / (0.5 * k + 0.5 * lambda);
+  if v.abs() < 0.5 {
+    let v2 = v * v;
+    let (mut s, mut term) = (d * v, 2.0 * (k * v));
+    let mut j = 1.0;
+    while j < 64.0 {
+      term *= v2;
+      let next = s + term / (2.0 * j + 1.0);
+      if next == s {
+        break;
+      }
+      s = next;
+      j += 1.0;
+    }
+    return s;
+  }
+  let ratio = k / lambda;
+  let ln_ratio = if ratio.is_finite() {
+    ratio.ln()
   } else {
-    k * (k.ln() - ln_lambda) + lambda - k
+    k.ln() - ln_lambda
   };
-  -stirlerr - bd0 - HALF_LN_TAU.0 - 0.5 * k.ln()
+  k * ln_ratio + lambda - k
 }
 
 /// Hörmann (1993), algorithm PTRS: the set-up constants of one rate.
@@ -277,11 +296,7 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdPoisson<T> {
     if x < 0.0 || x.fract() != 0.0 {
       return Some(0.0);
     }
-    let k = x as i64;
-    let lambda = self.lambda();
-    // P(N=k) = exp(−λ) λ^k / k! = exp(k ln λ − λ − ln Γ(k+1))
-    let log_pmf = k as f64 * lambda.ln() - lambda - crate::special::ln_gamma((k + 1) as f64);
-    Some(log_pmf.exp())
+    Some(ln_pmf(x, self.lambda, self.lambda.ln()).exp())
   }
 
   /// `Q(⌊x⌋ + 1, λ)`: the regularised upper incomplete gamma, no table.

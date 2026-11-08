@@ -75,6 +75,26 @@ fn one_shot_count_is_the_draw_of_the_law() {
   }
 }
 
+/// `pdf` within `1e-12` of mpmath at rates where `k ln λ − λ − ln k!` loses its digits, at the mode and in the tails.
+#[test]
+fn pdf_keeps_its_digits_at_large_rates() {
+  for (lambda, k, want) in [
+    (1e4, 1e4, 0.003989389558962826),
+    (1e5, 98_419.0, 4.444368574001188e-9),
+    (1e5, 1e5, 0.0012615652097053005),
+    (1e8, 1e8, 3.989422800689808e-5),
+    (1e12, 1e12, 3.9894228040139945e-7),
+    (1e15, 1e15, 1.2615662610100799e-8),
+    (1e15, 1_000_000_632_455_532.0, 1.7459502661017997e-95),
+  ] {
+    let got = SimdPoisson::<u64>::new(lambda).pdf(k).unwrap();
+    assert!(
+      ((got - want) / want).abs() < 1e-12,
+      "pdf({k}) at {lambda}: {got} vs {want}"
+    );
+  }
+}
+
 /// `cdf(k) = Q(⌊k⌋ + 1, λ)`, `quantile` the smallest `k` with `cdf(k) ≥ p`, the median and the exact entropy; mpmath.
 #[test]
 fn analytics_without_a_table() {
