@@ -55,7 +55,7 @@ pub(super) fn cumulants(
 }
 
 /// `((m, e), ρ, ([k₁2⁻ᵖ, k₂, k₃2⁻ᵗ, k₄2⁻²ᵗ], t), p)`: `κₙ = sⁿρⁿ⁻¹kₙ`, `s = 2ᵉm`; `p` is 0 but on
-/// [`far_shape`]'s route (`ln(2/ω) > 64`, or `b₁` or `E X/s` not normal), where `k₁ ∈ [1, 2)`.
+/// [`far_shape`]'s route (`ln(2/ω) > 64`, `b₁` or the scale `mean/b₁` not normal): `k₁ ∈ [1, 2)`.
 pub(crate) type Cumulants = ((f64, i32), f64, ([f64; 4], i32), i32);
 
 /// `(−2)ⁿ dⁿ ln N/dψⁿ` over `wⁿ/rⁿ⁻¹`: `w = (λ + r)/ψ` differentiated in closed form, all terms

@@ -465,7 +465,7 @@ mod tests {
   }
 
   /// mpmath at 60 and 120 digits from `ν = 24`, the series in `1/ν`: within 0.79 ulp (`1.2e-16`) on
-  /// `[24, 100]`, 104 of 3 865 past a midpoint, correctly rounded from `1e3` to MAX.
+  /// `[24, 100]`, 104 of 3 865 past a midpoint; from `1e3` within 0.5009 ulp, 7 of 48 000 past one.
   #[test]
   fn entropy_reads_its_series_from_nu_24() {
     for (nu, want) in [
