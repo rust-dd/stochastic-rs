@@ -25,7 +25,6 @@ pub(super) const NORMAL_CLOCK: f64 = 1.461_501_637_330_903e48;
 /// `2¹⁰²²`, under which a sum of two such parts stays finite.
 const HALF_TOP: f64 = 4.494_232_837_155_79e307;
 
-/// `√(2π)`.
 const SQRT_TAU: f64 = 2.506_628_274_631_000_7;
 
 /// The clock's saddles the concentrated density takes as they are, `2^{±512}`.

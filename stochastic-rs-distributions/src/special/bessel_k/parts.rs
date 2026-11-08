@@ -18,7 +18,7 @@ use crate::special::mul_parts;
 use crate::special::sub_parts;
 
 /// From `2⁶⁰` Hankel's first correction `(4ν² − 1)/8x` is under `1.6e-15` here (`1.08e-15` at
-/// `ν = 50`), the next under `1.2e-30`.
+/// `ν = 50`), the next under `1.22e-30`.
 const HANKEL_FROM: i32 = 60;
 
 /// Below `2⁻⁶⁰` the terms in `x²` and, from `ν = ½`, `x^{2ν}` are under `2⁻⁵⁹` of `K`.

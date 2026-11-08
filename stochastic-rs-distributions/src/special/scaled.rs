@@ -18,7 +18,6 @@ pub(crate) const PLAIN_LOG_SIZE: f64 = 709.0;
 /// `½ ln 2π` in two parts.
 pub(crate) const HALF_LN_TAU: (f64, f64) = (0.918_938_533_204_672_8, -3.878_294_158_067_241_4e-17);
 
-/// `2¹⁰²³`.
 const TOP_BINADE: f64 = 8.988_465_674_311_579e307;
 
 /// [`two_sum`] on halves from `2¹⁰²³`, where `s − a` rounds past MAX at a tie with `|b|` MAX.

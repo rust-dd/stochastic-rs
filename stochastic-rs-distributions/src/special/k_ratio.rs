@@ -27,7 +27,6 @@ impl KDenominator {
   }
 }
 
-/// `2¹⁰⁰⁰`.
 const HANKEL_FROM: f64 = 1.071_508_607_186_267_3e301;
 
 /// Below this argument Temme's `f₀` carries more than `11ε` of `ln(2/x)`'s rounding into `K`.

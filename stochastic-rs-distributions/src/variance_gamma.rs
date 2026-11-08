@@ -499,7 +499,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
   fn variance(&self) -> Option<f64> {
     let (sigma, nu, theta, _) = self.params();
     let variance = sigma * sigma + nu * theta * theta;
-    // Two subnormal terms round twice; at `2³⁰⁰` the sum rounds once, `νθ² < 2⁻¹⁰²²` holding `θ` under 3.
+    // Two subnormal terms round twice; at `2⁶⁰⁰` the sum rounds once, `νθ² < 2⁻¹⁰²²` holding `θ` under 3.
     if variance < f64::MIN_POSITIVE {
       let (s, t) = (ldexp(sigma, 300), ldexp(theta, 300));
       return Some(ldexp(s * s + nu * t * t, -600));
