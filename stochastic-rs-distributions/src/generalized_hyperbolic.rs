@@ -447,12 +447,13 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
       SimdGig::<f64>::cumulants_at(lambda, roots, squares);
     let (b, n) = split_pow2(beta.abs());
     let big = moments::tilt_ratio((b, n), (m, e), rho);
-    let low = if big <= 1.0 {
+    let den = if big <= 1.0 {
       k1 + big * k2
     } else {
       k1 / big + k2
-    };
-    if (p != 0 || !big.is_normal() || !low.powf(1.5).is_normal())
+    }
+    .powf(1.5);
+    if (p != 0 || !big.is_normal() || !den.is_normal())
       && let Some(v) = moments::skewness_far(beta, (m, e), rho, (k1, k2, k3), (t, p))
     {
       return Some(v);
@@ -460,11 +461,11 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     Some(if big <= 1.0 {
       // `|β|√s = 2^{b + ⌊e/2⌋}·n√(m·2^{e mod 2})`.
       let root = n * (m * f64::from(1 + (e & 1))).sqrt();
-      let scaled = root * rho * (3.0 * k2 + ldexp(big, t) * k3) / (k1 + big * k2).powf(1.5);
+      let scaled = root * rho * (3.0 * k2 + ldexp(big, t) * k3) / den;
       beta.signum() * ldexp(scaled, b + (e >> 1))
     } else {
       let tail = ldexp(ldexp(3.0 * k2 / big, -t) + k3, t);
-      beta.signum() * rho.sqrt() * tail / (k1 / big + k2).powf(1.5)
+      beta.signum() * rho.sqrt() * tail / den
     })
   }
 
@@ -479,12 +480,13 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     } else {
       moments::tilt_ratio(split_pow2(beta.abs()), (m, e), rho)
     };
-    let low = if big <= 1.0 {
+    let den = if big <= 1.0 {
       k1 + big * k2
     } else {
       k1 / big + k2
-    };
-    if (p != 0 || (beta != 0.0 && !big.is_normal()) || !low.powi(2).is_normal())
+    }
+    .powi(2);
+    if (p != 0 || (beta != 0.0 && !big.is_normal()) || !den.is_normal())
       && let Some(v) = moments::kurtosis_far(beta, (m, e), rho, [k1, k2, k3, k4], (t, p))
     {
       return Some(v);
@@ -496,10 +498,10 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     // `k₃ = 2ᵗk̃₃` and `k₄ = 2²ᵗk̃₄` meet `B` as `2ᵗB`, so a heavy clock tail times a small tilt does not read `∞·0`.
     Some(if big <= 1.0 {
       let tilt = ldexp(big, t);
-      rho * (3.0 * k2 + tilt * (6.0 * k3 + tilt * k4)) / (k1 + big * k2).powi(2)
+      rho * (3.0 * k2 + tilt * (6.0 * k3 + tilt * k4)) / den
     } else {
       let head = ldexp(ldexp(3.0 * k2 / big, -t) + 6.0 * k3, -t) / big;
-      rho * ldexp(head + k4, 2 * t) / (k1 / big + k2).powi(2)
+      rho * ldexp(head + k4, 2 * t) / den
     })
   }
 
