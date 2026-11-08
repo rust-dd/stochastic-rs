@@ -79,7 +79,7 @@ impl Ptrs {
     }
   }
 
-  /// Two uniforms per attempt, 87 % accepted; the squeeze accepts without the logarithm.
+  /// Two uniforms per attempt, 88 % accepted from λ = 1000 on; the squeeze accepts without the logarithm.
   #[inline]
   fn draw(&self, mut uniform: impl FnMut() -> f64) -> f64 {
     loop {
@@ -98,6 +98,12 @@ impl Ptrs {
         return k;
       }
     }
+  }
+
+  /// [`Self::draw`] on `rng`, out of line so that a table law's scalar draw stays small enough to inline.
+  #[inline(never)]
+  fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> f64 {
+    self.draw(|| uniform53(rng.next_u64()))
   }
 }
 
@@ -226,7 +232,7 @@ impl<T: PrimInt> SimdPoisson<T> {
   pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
     match &self.sampler {
       Sampler::Table(table) => Self::count(table_index(table, uniform53(rng.next_u64()))),
-      Sampler::Ptrs(ptrs) => Self::count(ptrs.draw(|| uniform53(rng.next_u64())) as u64),
+      Sampler::Ptrs(ptrs) => Self::count(ptrs.draw_with(rng) as u64),
     }
   }
 }
