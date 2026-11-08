@@ -1,8 +1,10 @@
 //! The GH moments where the mean nears MAX, or the clock's `k₁2ᵖ`, the tilt `B = β²sρ` or the
 //! variance's power leave the doubles.
 
-use crate::generalized_inverse_gauss::SimdGig;
-use crate::special::LARGE_ORDER;
+use super::SimdGeneralizedHyperbolic;
+use super::gamma_of;
+use crate::SimdFloatExt;
+use crate::generalized_inverse_gauss::near_max::mean_beside_max;
 use crate::special::Scaled;
 use crate::special::ldexp;
 use crate::special::two_sum;
@@ -11,29 +13,19 @@ use crate::special::two_sum;
 /// added at `2⁻²`, rounded once; below it the halves' sum, doubled, where `μ` brings `βE W` back.
 #[cold]
 #[inline(never)]
-pub(super) fn mean_far(
-  (lambda, alpha, beta, delta, mu): (f64, f64, f64, f64, f64),
-  roots: (f64, f64),
-  tilt: f64,
-) -> f64 {
-  if beta != 0.0 && lambda >= LARGE_ORDER {
-    let chi = Scaled::new(delta).mul(Scaled::new(delta));
-    let psi = exact_sum(alpha, -beta).mul(exact_sum(alpha, beta));
-    let Some(mean) = SimdGig::<f64>::mean_parts(lambda, roots, (chi, psi)) else {
-      return beta.signum() * f64::INFINITY;
-    };
-    let (hi, lo) = mean.mul(Scaled::new(beta.abs())).shift(-2).value_parts();
-    if !hi.is_finite() {
-      return beta.signum() * f64::INFINITY;
-    }
-    let (s, s_lo) = two_sum(beta.signum() * hi, 0.25 * mu);
-    return 4.0 * (s + (s_lo + beta.signum() * lo));
+pub(super) fn mean_far<T: SimdFloatExt>(law: &SimdGeneralizedHyperbolic<T>) -> f64 {
+  let (lambda, alpha, beta, delta, mu) = law.params();
+  if beta == 0.0 {
+    return mu;
   }
-  if tilt.is_finite() {
-    return mu + tilt;
-  }
-  let half = SimdGig::<f64>::scaled_raw_moment_at((lambda, roots.0, roots.1), 1, 0.5 * beta);
-  2.0 * (0.5 * mu + half)
+  let chi = Scaled::new(delta).mul(Scaled::new(delta));
+  let psi = exact_sum(alpha, -beta).mul(exact_sum(alpha, beta));
+  mean_beside_max(
+    lambda,
+    (delta, gamma_of(alpha, beta)),
+    (chi, psi),
+    (beta, mu),
+  )
 }
 
 /// `a + b > 0` exactly, from halves where a part nears MAX.

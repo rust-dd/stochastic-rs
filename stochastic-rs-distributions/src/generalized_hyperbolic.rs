@@ -400,14 +400,14 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
   }
 
   fn mean(&self) -> Option<f64> {
-    let (_, _, beta, _, mu) = self.params();
-    let (lambda, (delta, gamma), _) = self.clock();
-    let tilt = SimdGig::<f64>::scaled_raw_moment_at((lambda, delta, gamma), 1, beta);
+    let (lambda, alpha, beta, delta, mu) = self.params();
+    let tilt =
+      SimdGig::<f64>::scaled_raw_moment_at((lambda, delta, gamma_of(alpha, beta)), 1, beta);
     let value = mu + tilt;
-    if tilt.abs() < NEAR_MAX && value.abs() < NEAR_MAX {
+    if tilt.abs().max(value.abs()) < NEAR_MAX {
       return Some(value);
     }
-    Some(moments::mean_far(self.params(), (delta, gamma), tilt))
+    Some(moments::mean_far(self))
   }
 
   /// `κ₁(W) + β²κ₂(W)` over the clock's `κₙ = sⁿρⁿ⁻¹kₙ`, `s·k₁ + (βs)²ρk₂` with `s = 2ᵉm` and `β` split, so neither term

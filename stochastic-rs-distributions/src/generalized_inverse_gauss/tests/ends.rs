@@ -176,3 +176,45 @@ fn a_mean_beside_max_reads_finite_exactly_where_its_truth_rounds_finite() {
     assert!(holds(got, want, 1e-12), "row {i}: {got:e}, want {want:e}");
   }
 }
+
+/// mpmath at 60 and 120 digits (agreeing to 100) below order 50: a truth under MAX reads finite
+/// from the ratios' two parts, and the closed forms at `±½` read `+∞` from `MAX + ½ ulp`.
+#[test]
+fn a_mean_beside_max_below_order_50_reads_finite_for_a_finite_truth() {
+  let gig = SimdGig::<f64>::new;
+  let rows = [
+    (
+      gig(10.0, 4.433_682_798_379_86e307, 1.127_730_653_583_761_8e-307),
+      1.797_693_134_862_315_5e308,
+      1e-12,
+    ),
+    (
+      gig(2.5, 1.102_037_053_125_984_7e307, 2.835_657_831_227_886e-308),
+      f64::MAX,
+      1e-12,
+    ),
+    (
+      gig(
+        49.0,
+        4.482_590_941_754_468_5e307,
+        5.465_589_057_388_046_6e-307,
+      ),
+      f64::MAX,
+      1e-12,
+    ),
+    (
+      gig(0.5, 8.988_465_674_311_579e306, 6.953_355_807_835_004e-309),
+      f64::INFINITY,
+      0.0,
+    ),
+    (
+      gig(-0.5, f64::MAX, 5.562_684_646_268e-309),
+      f64::INFINITY,
+      0.0,
+    ),
+  ];
+  for (i, (law, want, rel)) in rows.into_iter().enumerate() {
+    let got = law.mean().unwrap();
+    assert!(holds(got, want, rel), "row {i}: {got:e}, want {want:e}");
+  }
+}

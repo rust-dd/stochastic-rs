@@ -148,3 +148,40 @@ fn a_tilt_beside_max_keeps_its_digits() {
     assert!(holds(got, want, 1e-12), "row {i}: {got:e}, want {want:e}");
   }
 }
+
+/// Exact references `μ + β(2λ/γ² + δ²/2(λ − 1))` at `|β| < ¼`, where `E W` passes `4·MAX` and `μ`
+/// may bring the sum back: a finite truth reads finite.
+#[test]
+fn a_small_tilt_beside_max_reads_its_finite_truth() {
+  let gh = SimdGeneralizedHyperbolic::<f64>::new;
+  let lambda = 9.437_888_958_027_155e307;
+  let rows = [
+    (gh(lambda, 0.5, 0.2, 1.0, 0.0), 1.797_693_134_862_315_3e308),
+    (
+      gh(lambda, 0.5, -0.2, 1.0, 1e300),
+      -1.797_693_124_862_315_3e308,
+    ),
+    (
+      gh(lambda, 0.5, 0.2, 1.0, -f64::MAX),
+      -3.468_960_538_000_823e292,
+    ),
+    (
+      gh(4.991_834_296_885_676_5e306, 0.0256, 0.01, 1.0, -1e300),
+      1.797_693_124_862_315e308,
+    ),
+    (
+      gh(
+        6.486_070_917_867_141e172,
+        3.42e-136,
+        1.94e-136,
+        1.05e-119,
+        -f64::MAX,
+      ),
+      1.374_699_357_236_880_8e308,
+    ),
+  ];
+  for (i, (law, want)) in rows.into_iter().enumerate() {
+    let got = law.mean().unwrap();
+    assert!(holds(got, want, 1e-12), "row {i}: {got:e}, want {want:e}");
+  }
+}
