@@ -56,15 +56,28 @@ pub(super) fn ratio_moment(lambda: f64, roots: (f64, f64), k: u32) -> (f64, i32)
   (m, (value.1 + i64::from(j)).clamp(-4000, 4000) as i32)
 }
 
+/// The saddle's route for `E Xᵏ` at `λ`, both orders past 50: `(w_k, rest)` from [`order_step`],
+/// `E Xᵏ = w_kᵏe^{rest}`; `None` on the ratios' route.
+#[inline]
+pub(super) fn saddle_route(lambda: f64, k: f64, roots: (f64, f64)) -> Option<(f64, f64)> {
+  (lambda.abs().min((lambda + k).abs()) >= LARGE_ORDER).then(|| order_step(lambda, k, roots))
+}
+
+/// The saddle at `λ + k` as `(m, j)`, `w_k = 2ʲm`, which may leave the doubles.
+#[inline]
+pub(super) fn saddle_scale(lambda: f64, k: f64, (rc, rp): (f64, f64)) -> (f64, i32) {
+  let to = lambda + k;
+  scaled_saddle(to, to.hypot(rc * rp), (rc, rp))
+}
+
 /// `N(ν + run)/N(ν) = wʳᵘⁿe^{rest}` from `order_step`, both orders past 50 on one side, with `w = 2ᵃb` split so only
 /// `run·ln b + rest` is exponentiated.
-fn saddle_run(value: &mut (f64, i64), nu: f64, run: f64, (root_chi, root_psi): (f64, f64)) {
+fn saddle_run(value: &mut (f64, i64), nu: f64, run: f64, roots: (f64, f64)) {
   if run <= 0.0 {
     return;
   }
-  let (_, rest) = order_step(nu, run, (root_chi, root_psi));
-  let to = nu + run;
-  let (b, a) = scaled_saddle(to, to.hypot(root_chi * root_psi), (root_chi, root_psi));
+  let (_, rest) = order_step(nu, run, roots);
+  let (b, a) = saddle_scale(nu, run, roots);
   let ln = run * b.ln() + rest;
   let n = (ln / LN_2).round();
   value.0 *= (ln - n * LN_2).exp();

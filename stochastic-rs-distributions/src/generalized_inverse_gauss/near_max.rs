@@ -3,13 +3,13 @@
 
 use super::SimdGig;
 use super::ratio_moment::ratio_moment;
+use super::ratio_moment::saddle_route;
+use super::ratio_moment::saddle_scale;
 use crate::SimdFloatExt;
 use crate::special::LARGE_ORDER;
 use crate::special::Scaled;
 use crate::special::k_half_ratio;
 use crate::special::ln_two_over;
-use crate::special::order_step;
-use crate::special::scaled_saddle;
 use crate::special::two_sum;
 
 /// `2¹⁰²¹`, an eighth of `2¹⁰²⁴`: the sum is formed at `2⁻³`, where no part or pair overflows.
@@ -101,15 +101,14 @@ pub(crate) fn mean_parts(
 }
 
 /// `E X` at `(λ, √χ, √ψ)` in two parts, which hold where the double overflows: the saddle's
-/// `w₁e^{rest}` where both orders pass 50, the ratios' `2ᵉm` below.
+/// `w₁e^{rest}` where both orders pass 50, the ratios' `2ᵉm` below, each route as the double's.
 fn moment_parts((lambda, root_chi, root_psi): (f64, f64, f64)) -> Scaled {
-  if lambda.abs().min((lambda + 1.0).abs()) >= LARGE_ORDER {
-    let (_, rest) = order_step(lambda, 1.0, (root_chi, root_psi));
-    let to = lambda + 1.0;
-    let (m, j) = scaled_saddle(to, to.hypot(root_chi * root_psi), (root_chi, root_psi));
+  let roots = (root_chi, root_psi);
+  if let Some((_, rest)) = saddle_route(lambda, 1.0, roots) {
+    let (m, j) = saddle_scale(lambda, 1.0, roots);
     return Scaled::new(m).shift(j).mul(Scaled::new(rest.exp()));
   }
-  let (m, e) = ratio_moment(lambda, (root_chi, root_psi), 1);
+  let (m, e) = ratio_moment(lambda, roots, 1);
   Scaled::new(m).shift(e)
 }
 

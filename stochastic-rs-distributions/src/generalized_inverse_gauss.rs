@@ -55,9 +55,7 @@ use crate::special::ldexp;
 use crate::special::ln_bessel_ke;
 use crate::special::ln_quotient;
 use crate::special::ln_shift;
-use crate::special::order_step;
 use crate::special::ratio_regime;
-use crate::special::scaled_saddle;
 use crate::special::split_pow2;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
@@ -369,16 +367,14 @@ impl<T: SimdFloatExt> SimdGig<T> {
       return 0.0;
     }
     let order = f64::from(k);
-    if lambda.abs().min((lambda + order).abs()) >= LARGE_ORDER {
-      let (wk, rest) = order_step(lambda, order, (root_chi, root_psi));
+    if let Some((wk, rest)) = ratio_moment::saddle_route(lambda, order, (root_chi, root_psi)) {
       let moment = wk.powf(order) * rest.exp();
       let value = factor * moment;
       if moment.is_normal() && value.is_normal() {
         return value;
       }
       // Past the doubles `w_k = 2ʲm` and the factor apart, so no `ε·|ln w_k|` enters, as a logarithm's would.
-      let to = lambda + order;
-      let (m, j) = scaled_saddle(to, to.hypot(root_chi * root_psi), (root_chi, root_psi));
+      let (m, j) = ratio_moment::saddle_scale(lambda, order, (root_chi, root_psi));
       let ((b, n), (e, mk)) = (split_pow2(factor.abs()), split_pow2(m.powf(order)));
       let p = (i64::from(j) * i64::from(k) + i64::from(b + e)).clamp(-100_000, 100_000) as i32;
       return factor.signum() * exp_parts((rest, 0.0), n * mk, p);
