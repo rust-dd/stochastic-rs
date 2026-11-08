@@ -27,6 +27,31 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
+/// From this `ν` the entropy reads `½ ln(2πe) + Σ cₖν⁻ᵏ` (DLMF 5.11.1–2), cut under `0.2ε`, where
+/// `ψ`'s difference and `ln(√ν B(ν/2, ½))` cancel past the doubles' digits.
+const ENTROPY_SERIES_FROM: f64 = 24.0;
+
+/// `½ ln(2πe)` in two parts: at large `ν` the low part decides the rounding of a sum within an ulp.
+const HALF_LN_TAU_E: (f64, f64) = (1.418_938_533_204_672_7, 7.223_936_088_184_323e-17);
+
+/// `cₖ`, `k = 1, …, 14`, of `h(ν) − ½ ln(2πe)` in `1/ν`.
+const ENTROPY_TAIL: [f64; 14] = [
+  1.0,
+  0.25,
+  -1.0 / 6.0,
+  -0.125,
+  0.3,
+  0.25,
+  -17.0 / 14.0,
+  -1.0625,
+  155.0 / 18.0,
+  7.75,
+  -2073.0 / 22.0,
+  -86.375,
+  38227.0 / 26.0,
+  1365.25,
+];
+
 const SMALL_STUDENT_T_THRESHOLD: usize = 16;
 
 /// Student's t law with `nu` degrees of freedom: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
@@ -345,6 +370,14 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
 
   fn entropy(&self) -> Option<f64> {
     let nu = self.nu.to_f64().unwrap();
+    if nu >= ENTROPY_SERIES_FROM {
+      let x = 1.0 / nu;
+      let tail = ENTROPY_TAIL
+        .iter()
+        .rev()
+        .fold(0.0_f64, |a, &c| a.mul_add(x, c));
+      return Some(HALF_LN_TAU_E.0 + x.mul_add(tail, HALF_LN_TAU_E.1));
+    }
     let half_nu = 0.5 * nu;
     let half_nu_p1 = 0.5 * (nu + 1.0);
     Some(
@@ -429,6 +462,26 @@ mod tests {
     let t = SimdStudentT::<f64>::new(1.0);
     assert!(t.mean().unwrap().is_nan(), "nu=1 has no mean");
     assert!(t.variance().unwrap().is_nan(), "nu=1 has no variance");
+  }
+
+  /// mpmath at 60 and 120 digits from `ν = 24`, where the entropy reads its series in `1/ν`,
+  /// correctly rounded up to MAX.
+  #[test]
+  fn entropy_reads_its_series_from_nu_24() {
+    for (nu, want) in [
+      (24.0, 1.461_026_833_274_863_5_f64),
+      (1e5, 1.418_948_533_229_672_5),
+      (1e16, 1.418_938_533_204_673),
+      (1e300, 1.418_938_533_204_672_7),
+      (f64::MAX, 1.418_938_533_204_672_7),
+    ] {
+      let got = SimdStudentT::<f64>::new(nu).entropy().unwrap();
+      assert_eq!(
+        got.to_bits(),
+        want.to_bits(),
+        "nu {nu:e}: {got:e}, want {want:e}"
+      );
+    }
   }
 
   /// Above every threshold, all four moments must be finite real numbers.
