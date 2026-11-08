@@ -1,5 +1,7 @@
 //! The density from `r = √(λ² + δ²γ²) = 50`: the normal mixture at its GIG clock's saddles, as the Debye forms meet.
 
+use super::gamma_of;
+use crate::special::LARGE_ORDER;
 use crate::special::Scaled;
 use crate::special::add_parts;
 use crate::special::debye_log_sum;
@@ -41,6 +43,20 @@ pub(super) struct Clock {
   r0: f64,
   omega: f64,
   debye: f64,
+}
+
+/// The [`Clock`] of a law with `r₀ = √(λ² + δ²γ²)` in `[50, 2¹⁶⁰)`, decided without a saddle term
+/// where `|λ| + δα ≥ r₀` is under 50; a law within `3ε` of that bound forms it at each density.
+pub(super) fn of_law((lambda, alpha, beta, delta): (f64, f64, f64, f64)) -> Option<Clock> {
+  if lambda.abs() + delta * alpha < LARGE_ORDER {
+    return None;
+  }
+  let gamma = gamma_of(alpha, beta);
+  let r0 = lambda.hypot(delta * gamma);
+  if !(LARGE_ORDER..NORMAL_CLOCK).contains(&r0) {
+    return None;
+  }
+  clock((lambda, alpha, beta, delta), (gamma, r0))
 }
 
 /// The [`Clock`] of a law whose saddle the density takes as it is: within `2^{±512}`, both squares normal.
