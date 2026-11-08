@@ -205,7 +205,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
 
   /// The local model at `r = clamp(μ)`: slope `(μ − r)/σ²` and curvature `−1/σ²`, in logs.
   fn local(&self) -> Option<Local> {
-    let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
+    let (mu, sigma) = (self.base.mu().to_f64()?, self.base.sigma().to_f64()?);
     let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
     let r = mu.clamp(lo, up);
     let ln_var = 2.0 * sigma.ln();
@@ -229,7 +229,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     Some(match self.analytics()? {
       Model::Full(t) => {
         let (frame, offset, [variance, skewness, kurtosis]) =
-          t.located_moments(self.base.std_dev().to_f64()?, 0);
+          t.located_moments(self.base.sigma().to_f64()?, 0);
         [
           self.mean_from(t, frame, offset)?,
           variance,
@@ -243,12 +243,12 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
 
   /// The parent normal's location `μ`, not the truncated law's mean.
   pub fn mu(&self) -> T {
-    self.base.mean()
+    self.base.mu()
   }
 
   /// The parent normal's scale `σ`, not the truncated law's standard deviation.
   pub fn sigma(&self) -> T {
-    self.base.std_dev()
+    self.base.sigma()
   }
 
   /// The lower bound.
@@ -306,7 +306,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     Some(match self.analytics()? {
       Model::Full(t) => {
         let (from, at) = self.origin;
-        let z = standardised(x, from, self.base.std_dev().to_f64()?);
+        let z = standardised(x, from, self.base.sigma().to_f64()?);
         t.density_from(z, at, self.ln_sigma)
       }
       Model::Local(l) => local_pdf(l, x),
@@ -364,7 +364,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
   }
 
   fn mode(&self) -> Option<f64> {
-    let mu = self.base.mean().to_f64()?;
+    let mu = self.base.mu().to_f64()?;
     Some(mu.clamp(self.lower.to_f64()?, self.upper.to_f64()?))
   }
 
@@ -382,7 +382,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
 
   fn entropy(&self) -> Option<f64> {
     Some(match self.analytics()? {
-      Model::Full(t) => self.base.std_dev().to_f64()?.ln() + t.entropy(),
+      Model::Full(t) => self.base.sigma().to_f64()?.ln() + t.entropy(),
       Model::Local(l) => l.entropy(),
     })
   }

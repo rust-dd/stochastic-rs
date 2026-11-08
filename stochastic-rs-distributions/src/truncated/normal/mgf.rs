@@ -96,7 +96,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       Model::Full(plain) => plain,
       Model::Local(l) => return Some(l.mgf(t, (lo, up))),
     };
-    let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
+    let (mu, sigma) = (self.base.mu().to_f64()?, self.base.sigma().to_f64()?);
     let (alpha, beta) = self.standardised_bounds();
     let (held_lo, held_up) = self.held();
     let (centre, mass) = (plain.reference(), plain.mass());

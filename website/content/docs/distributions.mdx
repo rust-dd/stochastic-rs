@@ -91,7 +91,7 @@ The tables above group by sampling strategy; this one groups by modelling role. 
 ```python
 import stochastic_rs as srs
 
-d = srs.PyNormal(mean=0.0, std_dev=1.0, seed=42)
+d = srs.PyNormal(mu=0.0, sigma=1.0, seed=42)
 samples = d.sample(10_000)                   # numpy.ndarray, shape (10_000,)
 matrix = d.sample_par(100, 10_000)           # shape (100, 10_000)
 ```
@@ -147,7 +147,7 @@ use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::Unseeded;
 
 // the law: parameters only, `Copy` and `Send + Sync`
-let law = SimdNormal::<f64>::new(/* mean */ 0.0, /* std_dev */ 1.0);
+let law = SimdNormal::<f64>::new(/* mu */ 0.0, /* sigma */ 1.0);
 
 // auto-seeded stream
 let mut s = law.seeded(&Unseeded);

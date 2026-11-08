@@ -313,47 +313,46 @@ fn fill_zig_impl<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
   }
 }
 
-/// Normal law `N(mean, std_dev)`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Normal law `N(mu, sigma²)`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdNormal<T> {
-  mean: T,
-  std_dev: T,
+  mu: T,
+  sigma: T,
 }
 
 impl<T: SimdFloatExt> SimdNormal<T> {
-  /// # Panics
-  /// `std_dev <= 0`.
-  pub fn new(mean: T, std_dev: T) -> Self {
+  /// `N(mu, sigma²)`; panics unless `mu` is finite and `0 < sigma < ∞`.
+  pub fn new(mu: T, sigma: T) -> Self {
     assert!(
-      mean.is_finite(),
-      "mean must satisfy `mean.is_finite()`, got mean = {mean:?}"
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
     );
     assert!(
-      std_dev.is_finite(),
-      "std_dev must satisfy `std_dev.is_finite()`, got std_dev = {std_dev:?}"
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
     );
     let _ = zig_tables();
     assert!(
-      std_dev > T::zero(),
-      "std_dev must satisfy `std_dev > T::zero()`, got std_dev = {std_dev:?}"
+      sigma > T::zero(),
+      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
     );
-    Self { mean, std_dev }
+    Self { mu, sigma }
   }
 
-  /// The mean `μ`; on a concrete type it shadows the `f64` `DistributionExt::mean`.
-  pub fn mean(&self) -> T {
-    self.mean
+  /// The location `μ`.
+  pub fn mu(&self) -> T {
+    self.mu
   }
 
-  /// The standard deviation `σ`.
-  pub fn std_dev(&self) -> T {
-    self.std_dev
+  /// The scale `σ`.
+  pub fn sigma(&self) -> T {
+    self.sigma
   }
 
   pub(crate) fn standard() -> Self {
     Self {
-      mean: T::zero(),
-      std_dev: T::one(),
+      mu: T::zero(),
+      sigma: T::one(),
     }
   }
 
@@ -363,7 +362,7 @@ impl<T: SimdFloatExt> SimdNormal<T> {
 
   pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
     let z = sample_one_standard::<T, _>(&mut AnyRng(rng), zig_tables());
-    self.mean + self.std_dev * z
+    self.mu + self.sigma * z
   }
 }
 
@@ -388,13 +387,13 @@ impl<T: SimdFloatExt> SimdKernel for SimdNormal<T> {
 
   #[inline]
   fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 64>, out: &mut [T]) {
-    fill_zig_impl::<T, R, false>(out, &mut state.rng, self.mean, self.std_dev);
+    fill_zig_impl::<T, R, false>(out, &mut state.rng, self.mu, self.sigma);
   }
 
   #[inline]
   fn next<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 64>) -> T {
     let StreamState { rng, buf } = state;
-    buf.pop(|b| fill_zig_impl::<T, R, false>(b, rng, self.mean, self.std_dev))
+    buf.pop(|b| fill_zig_impl::<T, R, false>(b, rng, self.mu, self.sigma))
   }
 }
 
@@ -407,44 +406,44 @@ impl<T: SimdFloatExt> Distribution<T> for SimdNormal<T> {
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdNormal<T> {
   fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> {
-    let mu = self.mean.to_f64().unwrap();
-    let sigma = self.std_dev.to_f64().unwrap();
+    let mu = self.mu.to_f64().unwrap();
+    let sigma = self.sigma.to_f64().unwrap();
     Some(num_complex::Complex64::new(0.0, mu * t).exp() * (-0.5 * sigma * sigma * t * t).exp())
   }
 
   fn pdf(&self, x: f64) -> Option<f64> {
-    let mu = self.mean.to_f64().unwrap();
-    let sigma = self.std_dev.to_f64().unwrap();
+    let mu = self.mu.to_f64().unwrap();
+    let sigma = self.sigma.to_f64().unwrap();
     let z = (x - mu) / sigma;
     Some(crate::special::norm_pdf(z) / sigma)
   }
 
   fn cdf(&self, x: f64) -> Option<f64> {
-    let mu = self.mean.to_f64().unwrap();
-    let sigma = self.std_dev.to_f64().unwrap();
+    let mu = self.mu.to_f64().unwrap();
+    let sigma = self.sigma.to_f64().unwrap();
     Some(crate::special::norm_cdf((x - mu) / sigma))
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
-    let mu = self.mean.to_f64().unwrap();
-    let sigma = self.std_dev.to_f64().unwrap();
+    let mu = self.mu.to_f64().unwrap();
+    let sigma = self.sigma.to_f64().unwrap();
     Some(mu + sigma * crate::special::ndtri(p))
   }
 
   fn mean(&self) -> Option<f64> {
-    Some(self.mean.to_f64().unwrap())
+    Some(self.mu.to_f64().unwrap())
   }
 
   fn median(&self) -> Option<f64> {
-    Some(self.mean.to_f64().unwrap())
+    Some(self.mu.to_f64().unwrap())
   }
 
   fn mode(&self) -> Option<f64> {
-    Some(self.mean.to_f64().unwrap())
+    Some(self.mu.to_f64().unwrap())
   }
 
   fn variance(&self) -> Option<f64> {
-    let s = self.std_dev.to_f64().unwrap();
+    let s = self.sigma.to_f64().unwrap();
     Some(s * s)
   }
 
@@ -457,20 +456,20 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdNormal<T> {
   }
 
   fn entropy(&self) -> Option<f64> {
-    let s = self.std_dev.to_f64().unwrap();
+    let s = self.sigma.to_f64().unwrap();
     Some(0.5 * (2.0 * std::f64::consts::PI * std::f64::consts::E * s * s).ln())
   }
 
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
-    let mu = self.mean.to_f64().unwrap();
-    let s = self.std_dev.to_f64().unwrap();
+    let mu = self.mu.to_f64().unwrap();
+    let s = self.sigma.to_f64().unwrap();
     Some((mu * t + 0.5 * s * s * t * t).exp())
   }
 }
 
 py_distribution!(PyNormal, SimdNormal,
-  sig: (mean, std_dev, seed=None, dtype=None),
-  params: (mean: f64, std_dev: f64)
+  sig: (mu, sigma, seed=None, dtype=None),
+  params: (mu: f64, sigma: f64)
 );
 
 #[cfg(test)]

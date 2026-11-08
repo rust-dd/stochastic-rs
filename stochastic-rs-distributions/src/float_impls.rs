@@ -91,10 +91,10 @@ impl FloatExt for f64 {
     })
   }
 
-  fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
+  fn normal_array(n: usize, mu: Self, sigma: Self) -> Array1<Self> {
     assert!(
-      std_dev > 0.0,
-      "std_dev must satisfy `std_dev > 0.0`, got std_dev = {std_dev:?}"
+      sigma > 0.0,
+      "sigma must satisfy `sigma > 0.0`, got sigma = {sigma:?}"
     );
     let mut out = Array1::<f64>::zeros(n);
     if n == 0 {
@@ -105,7 +105,7 @@ impl FloatExt for f64 {
       .expect("normal_array output must be contiguous");
     Self::fill_standard_normal_slice(out_slice);
     for x in out_slice.iter_mut() {
-      *x = mean + std_dev * *x;
+      *x = mu + sigma * *x;
     }
     out
   }
@@ -133,10 +133,10 @@ impl FloatExt for f32 {
     })
   }
 
-  fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
+  fn normal_array(n: usize, mu: Self, sigma: Self) -> Array1<Self> {
     assert!(
-      std_dev > 0.0,
-      "std_dev must satisfy `std_dev > 0.0`, got std_dev = {std_dev:?}"
+      sigma > 0.0,
+      "sigma must satisfy `sigma > 0.0`, got sigma = {sigma:?}"
     );
     let mut out = Array1::<f32>::zeros(n);
     if n == 0 {
@@ -147,7 +147,7 @@ impl FloatExt for f32 {
       .expect("normal_array output must be contiguous");
     Self::fill_standard_normal_slice(out_slice);
     for x in out_slice.iter_mut() {
-      *x = mean + std_dev * *x;
+      *x = mu + sigma * *x;
     }
     out
   }

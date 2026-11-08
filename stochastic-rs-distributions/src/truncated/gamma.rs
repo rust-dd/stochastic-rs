@@ -1,4 +1,4 @@
-//! Truncated gamma: rejection while the interval holds 1e-3 of its base mass, else inversion; a shape below 1 reads untruncated at `θ(2k + 260)`, `upper` > `MAX·2^{e+1022}`, `2^e ≤ lower < 2⁻¹⁰¹³`.
+//! Truncated gamma: rejection while the interval holds 1e-3 of its base mass, else inversion; a shape below 1 reads untruncated at `θ(2α + 260)`, `upper` > `MAX·2^{e+1022}`, `2^e ≤ lower < 2⁻¹⁰¹³`.
 //!
 //! Reference: Coffey, C. S. & Muller, K. E. (2000), "Properties of doubly-truncated gamma variables", *Communications in Statistics - Theory and Methods* 29(4), 851-857, DOI 10.1080/03610920008832519 (truncated gamma moments).
 //! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2 and §II.3, DOI 10.1007/978-1-4613-8643-8 (inversion and rejection).
@@ -33,7 +33,7 @@ pub(super) use kernel::GammaKernel;
 
 mod kernel;
 
-/// Truncated $\mathrm{Gamma}(k, \theta)$ on $[\text{lower}, \text{upper}]$, $\text{lower} \ge 0$: parameters and the
+/// Truncated $\mathrm{Gamma}(\alpha, \theta)$ on $[\text{lower}, \text{upper}]$: parameters and the
 /// base mass on the interval; a [`Seeded`](crate::Seeded) stream draws it.
 #[derive(Clone)]
 pub struct SimdTruncatedGamma<T> {
@@ -100,12 +100,12 @@ impl<T: SimdFloatExt, G: Rng + ?Sized> TruncatedGammaSource<T> for AnyRng<'_, G>
 }
 
 impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
-  /// The base [`SimdGamma`] `Gamma(shape, scale)` (`shape` is its `alpha`), both > 0, renormalised on `[lower, upper]`,
+  /// The base [`SimdGamma`] `Gamma(alpha, scale)`, both > 0, renormalised on `[lower, upper]`,
   /// `0 ≤ lower < upper`.
-  pub fn new(shape: T, scale: T, lower: T, upper: T) -> Self {
+  pub fn new(alpha: T, scale: T, lower: T, upper: T) -> Self {
     assert!(
-      shape.is_finite(),
-      "shape must satisfy `shape.is_finite()`, got shape = {shape:?}"
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
     );
     assert!(
       scale.is_finite(),
@@ -120,8 +120,8 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
       "upper must satisfy `!upper.is_nan()`, got upper = {upper:?}"
     );
     assert!(
-      shape > T::zero(),
-      "shape must satisfy `shape > T::zero()`, got shape = {shape:?}"
+      alpha > T::zero(),
+      "alpha must satisfy `alpha > T::zero()`, got alpha = {alpha:?}"
     );
     assert!(
       scale > T::zero(),
@@ -135,7 +135,7 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
       lower < upper,
       "lower must satisfy `lower < upper`, got lower = {lower:?}, upper = {upper:?}"
     );
-    let (k, theta) = (shape.to_f64().unwrap(), scale.to_f64().unwrap());
+    let (k, theta) = (alpha.to_f64().unwrap(), scale.to_f64().unwrap());
     let (x_lo, x_up) = (
       lower.to_f64().unwrap() / theta,
       upper.to_f64().unwrap() / theta,
@@ -157,7 +157,7 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
       p
     };
     Self {
-      base: SimdGamma::new(shape, scale),
+      base: SimdGamma::new(alpha, scale),
       lower,
       upper,
       mass,
@@ -277,8 +277,8 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
     })
   }
 
-  /// The shape `k` of the untruncated base.
-  pub fn shape(&self) -> T {
+  /// The shape `α` of the untruncated base.
+  pub fn alpha(&self) -> T {
     self.base.alpha()
   }
 

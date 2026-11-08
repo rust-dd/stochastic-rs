@@ -121,7 +121,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
         }
       },
     };
-    let sigma = self.base.std_dev().to_f64().unwrap();
+    let sigma = self.base.sigma().to_f64().unwrap();
     let (lo, up) = (self.lower.to_f64().unwrap(), self.upper.to_f64().unwrap());
     // `σ·y` rounds and `y ≤ w` is the rounded width: the far bound bounds the point exactly.
     T::from_f64_fast(if setup.mirrored {
@@ -144,8 +144,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
   #[inline(never)]
   fn beyond_draw(&self, setup: TailSetup, u: f64) -> f64 {
     let (mu, sigma) = (
-      self.base.mean().to_f64().unwrap(),
-      self.base.std_dev().to_f64().unwrap(),
+      self.base.mu().to_f64().unwrap(),
+      self.base.sigma().to_f64().unwrap(),
     );
     let (lo, up) = (self.lower.to_f64().unwrap(), self.upper.to_f64().unwrap());
     let (near, far) = if setup.mirrored { (up, lo) } else { (lo, up) };
