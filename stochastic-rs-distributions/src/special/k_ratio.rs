@@ -105,6 +105,7 @@ pub(crate) fn k_half_ratio(nu: f64, x: f64, ln_2_x: f64) -> (i32, f64) {
 }
 
 /// [`k_half_ratio`] as one double wherever its steps stay normal, so a normal clock needs no split.
+#[inline]
 pub(crate) fn k_half_ratio_plain(nu: f64, x: f64, ln_2_x: f64) -> Option<f64> {
   let n = (nu + 0.5).floor();
   let mu = nu - n;

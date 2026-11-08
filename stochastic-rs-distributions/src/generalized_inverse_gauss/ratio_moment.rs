@@ -16,10 +16,16 @@ use crate::special::two_sum;
 
 /// `E Xᵏ = 2ᵉm` as `(m, e)`: for `|ν| < 50` the factor `2g_ν/ψ` from order `−½` on and `χ/(2g_{−ν−1})` below, each
 /// `(χ/ψ)^{1/2}R_ν`, `g_ν = (ω/2)R_ν` from `k_half_ratio`; the exponents are kept apart, so no factor leaves the doubles.
+#[inline]
 pub(super) fn ratio_moment(lambda: f64, roots: (f64, f64), k: u32) -> (f64, i32) {
   let (root_chi, root_psi) = roots;
   let omega = root_chi * root_psi;
-  let d = ln_two_over(root_chi, root_psi, omega);
+  // `ln(2/ω)`, which only Temme's sums below `ω = 2` read.
+  let d = if omega < 2.0 {
+    ln_two_over(root_chi, root_psi, omega)
+  } else {
+    0.0
+  };
   let (kc, mc) = split_pow2(root_chi);
   let (kp, mp) = split_pow2(root_psi);
   let mut value = (1.0, 0_i64);
