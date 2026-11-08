@@ -556,7 +556,6 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
 fn balance_power(lambda: f64, alpha: f64, beta: f64, delta: f64) -> i32 {
   let (diff, sum) = (alpha - beta, alpha + beta);
   let (chi, psi) = (delta * delta, diff * sum);
-  // With `|λ|`, `χ` and `ψ` within `2^{±250}` the saddle lies within `2^{±502}`, so no hypot is needed to know it normal.
   let plain = |v: f64| (PLAIN_RANGE.0..=PLAIN_RANGE.1).contains(&v);
   if plain(chi) && plain(psi) && lambda.abs() <= PLAIN_RANGE.1 {
     return 0;
@@ -568,7 +567,7 @@ fn balance_power(lambda: f64, alpha: f64, beta: f64, delta: f64) -> i32 {
   (0.5 * (delta.log2() - gamma.log2())).round() as i32
 }
 
-/// `2^{±250}`.
+/// `2^{±250}`: with `|λ|`, `χ` and `ψ` inside, the saddle lies within `2^{±502}`, normal without a hypot.
 const PLAIN_RANGE: (f64, f64) = (5.527_147_875_260_445e-76, 1.809_251_394_333_065_6e75);
 
 /// `γ = √((α − β)(α + β))`, which keeps its digits at `|β| ≈ α`, as `√(α − β)·√(α + β)` where the product is not normal.
