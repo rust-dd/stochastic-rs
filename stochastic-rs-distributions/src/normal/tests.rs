@@ -218,6 +218,14 @@ fn fill_with_is_deterministic_in_the_caller_rng() {
   assert_ne!(fill(5), fill(6));
 }
 
+/// The getters read the arguments back; an inherent `mean()` must not hide `DistributionExt::mean`.
+#[test]
+fn getters_are_mu_and_sigma() {
+  let n = SimdNormal::<f64>::new(0.5, 2.0);
+  assert_eq!((n.mu(), n.sigma()), (0.5, 2.0));
+  assert_eq!(n.mean(), Some(0.5));
+}
+
 /// The affine-free fill behind `FloatExt`'s thread-local stream equals a seeded `N(0, 1)` stream's bulk fill.
 #[test]
 fn fill_standard_equals_the_standard_stream_fill() {

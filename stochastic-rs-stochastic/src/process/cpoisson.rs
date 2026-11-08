@@ -71,8 +71,8 @@ pub(crate) fn device_jump_sizes<T: FloatExt, D: Any>(
   let any: &dyn Any = distribution;
   if let Some(normal) = any.downcast_ref::<SimdNormal<T>>() {
     return Some(crate::euler::JumpSizes::Normal {
-      mean: normal.mean(),
-      sd: normal.std_dev(),
+      mean: normal.mu(),
+      sd: normal.sigma(),
     });
   }
   device_arrival_rate(distribution).map(|rate| crate::euler::JumpSizes::DoubleExponential {

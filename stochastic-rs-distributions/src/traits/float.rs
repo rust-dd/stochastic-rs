@@ -217,7 +217,7 @@ pub trait FloatExt: RealExt + SimdFloatExt {
   }
 
   fn with_fgn_complex_scratch<R, F: FnOnce(&mut [Complex<Self>]) -> R>(len: usize, f: F) -> R;
-  fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self>;
+  fn normal_array(n: usize, mu: Self, sigma: Self) -> Array1<Self>;
 }
 
 #[cfg(test)]

@@ -12,7 +12,7 @@ use stochastic_rs::traits::DistributionExt;
 #[test]
 fn normal_bulk_sample_and_closed_form() {
   let seed = Deterministic::new(42);
-  let d = SimdNormal::<f64>::new(/* mean */ 0.0, /* std */ 1.0);
+  let d = SimdNormal::<f64>::new(/* mu */ 0.0, /* sigma */ 1.0);
 
   // One scalar draw from the rng you pass, here the project's own `SimdRng`.
   let mut rng = seed.rng();

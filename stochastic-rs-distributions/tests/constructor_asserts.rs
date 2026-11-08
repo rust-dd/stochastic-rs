@@ -171,12 +171,20 @@ fn every_rejected_argument_is_named_with_its_value() {
       "upper must satisfy `0.0 <= upper <= 1.0`, got upper = 1.5",
     ),
     (
+      panic_text(|| SimdNormal::<f64>::new(0.0, 0.0)),
+      "sigma must satisfy `sigma > T::zero()`, got sigma = 0.0",
+    ),
+    (
+      panic_text(|| SimdTruncatedGamma::<f64>::new(0.0, 1.0, 0.0, 1.0)),
+      "alpha must satisfy `alpha > T::zero()`, got alpha = 0.0",
+    ),
+    (
       panic_text(|| <f64 as FloatExt>::normal_array(4, 0.0, 0.0)),
-      "std_dev must satisfy `std_dev > 0.0`, got std_dev = 0.0",
+      "sigma must satisfy `sigma > 0.0`, got sigma = 0.0",
     ),
     (
       panic_text(|| <f32 as FloatExt>::normal_array(4, 0.0, -1.0)),
-      "std_dev must satisfy `std_dev > 0.0`, got std_dev = -1.0",
+      "sigma must satisfy `sigma > 0.0`, got sigma = -1.0",
     ),
     (
       grid(vec![], vec![1.0], 0, 1),
@@ -351,7 +359,7 @@ fn ctors() -> Vec<Ctor> {
     ctor!(["df"], [2.0], |p| SimdNonCentralChiSquared::<f64>::new(
       p[0]
     )),
-    ctor!(["mean", "std_dev"], [0.0, 1.0], |p| SimdNormal::<f64>::new(
+    ctor!(["mu", "sigma"], [0.0, 1.0], |p| SimdNormal::<f64>::new(
       p[0], p[1]
     )),
     ctor!(
@@ -387,7 +395,7 @@ fn ctors() -> Vec<Ctor> {
       SimdTruncatedExp::<f64>::new(p[0], p[1], p[2])
     }),
     ctor!(
-      ["shape", "scale", "lower", "upper"],
+      ["alpha", "scale", "lower", "upper"],
       [2.0, 1.0, 0.0, 1.0],
       |p| { SimdTruncatedGamma::<f64>::new(p[0], p[1], p[2], p[3]) }
     ),

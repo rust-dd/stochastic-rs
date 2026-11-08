@@ -22,7 +22,7 @@ def test_process_sampling_raises_runtime_error():
 
 
 def test_distribution_constructor_raises_value_error():
-    with pytest.raises(ValueError, match="std_dev must satisfy"):
+    with pytest.raises(ValueError, match="sigma must satisfy"):
         sr.PyNormal(0.0, -1.0)
 
 

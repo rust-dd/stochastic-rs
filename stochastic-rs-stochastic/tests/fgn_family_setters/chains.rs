@@ -391,7 +391,7 @@ fn jump_fou_custom_setters_match_fresh_construction() {
     (64, Some(0.0), Some(1.0))
   );
   assert_eq!(
-    (chained.jump_times().mean(), chained.jump_sizes().std_dev()),
+    (chained.jump_times().mu(), chained.jump_sizes().sigma()),
     (0.5, 0.1)
   );
   assert_eq!(chained.seed().current(), 7);

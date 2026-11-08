@@ -34,7 +34,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       return self.anchored(self.midpoint()?, offset);
     }
     if self.tail.is_none() {
-      let mu = self.base.mean().to_f64()?;
+      let mu = self.base.mu().to_f64()?;
       return self.anchored_scaled((mu, 0.0), self.mode_offset(t)?);
     }
     self.anchored((self.located(Point::From(frame))?, 0.0), offset)
@@ -43,7 +43,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
   /// `E[Z] = (k(α) − k(β))/∫k` for `k = e^{−z²/2}`, an interval about `μ`, as `m·2^p`: summed odd powers cancel to ε of
   /// the width where the mean lies near `μ`, this keeps its digits; `α ± β` from the bounds themselves.
   fn mode_offset(&self, t: &Truncation<NormalKernel>) -> Option<(f64, i32)> {
-    let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
+    let (mu, sigma) = (self.base.mu().to_f64()?, self.base.sigma().to_f64()?);
     let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
     let [alpha, beta, _] = self.bounds;
     // `(β² − α²)/2 = (β − α)(β + α)/2`, each factor from the bounds' own doubles.
@@ -83,7 +83,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
 
   /// `hi + lo + σ·m·2^p` from `σ`'s mantissa, so an offset `m·2^p` below the doubles' range still scales by `σ`.
   fn anchored_scaled(&self, (hi, lo): (f64, f64), (m, p): (f64, i32)) -> Option<f64> {
-    let (es, ms) = split_pow2(self.base.std_dev().to_f64()?);
+    let (es, ms) = split_pow2(self.base.sigma().to_f64()?);
     let v = ldexp(ms * m, es + p);
     let x = hi + (lo + v);
     Some(if x.is_finite() {
@@ -95,7 +95,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
 
   /// `hi + lo + σ·unit·t`, from halves where it overflows short of its value.
   pub(super) fn anchored(&self, (hi, lo): (f64, f64), [unit, t]: [f64; 2]) -> Option<f64> {
-    let sigma = self.base.std_dev().to_f64()?;
+    let sigma = self.base.sigma().to_f64()?;
     let x = hi + (lo + (sigma * unit) * t);
     Some(if x.is_finite() {
       x
@@ -113,8 +113,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
   #[inline]
   pub(super) fn unstandardise(&self, z: f64) -> f64 {
     let (mu, sigma) = (
-      self.base.mean().to_f64().unwrap(),
-      self.base.std_dev().to_f64().unwrap(),
+      self.base.mu().to_f64().unwrap(),
+      self.base.sigma().to_f64().unwrap(),
     );
     let x = mu + sigma * z;
     if x.is_finite() || !z.is_finite() {
@@ -144,8 +144,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
   /// `(x − μ)/σ` in two parts, from halves where `x − μ` overflows.
   fn exact(&self, x: f64) -> Two {
     let (mu, sigma) = (
-      self.base.mean().to_f64().unwrap(),
-      self.base.std_dev().to_f64().unwrap(),
+      self.base.mu().to_f64().unwrap(),
+      self.base.sigma().to_f64().unwrap(),
     );
     let (d, s) = if (x - mu).is_finite() {
       (two_sum(x, -mu), sigma)
@@ -158,8 +158,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
   pub(super) fn standardise(&self, x: f64) -> Option<f64> {
     Some(standardised(
       x,
-      self.base.mean().to_f64()?,
-      self.base.std_dev().to_f64()?,
+      self.base.mu().to_f64()?,
+      self.base.sigma().to_f64()?,
     ))
   }
 
@@ -173,8 +173,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       (up, self.held().1)
     };
     let d = x - bound;
-    if d.abs() < (x - self.base.mean().to_f64()?).abs() {
-      let t = d / self.base.std_dev().to_f64()?;
+    if d.abs() < (x - self.base.mu().to_f64()?).abs() {
+      let t = d / self.base.sigma().to_f64()?;
       if t.is_finite() {
         return Some(held.shifted(t));
       }
@@ -185,7 +185,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
   /// `(x − lower)/σ` as `m·2^q` where the subnormal it rounds to holds fewer digits than 2e-13, which `cut` would
   /// take.
   pub(super) fn zone_offset(&self, x: f64) -> Option<Offset> {
-    let (lo, sigma) = (self.lower.to_f64()?, self.base.std_dev().to_f64()?);
+    let (lo, sigma) = (self.lower.to_f64()?, self.base.sigma().to_f64()?);
     let d = x - lo;
     if !(lo.is_finite() && d > 0.0 && d / sigma < SUBNORMAL_DIGITS) {
       return None;
@@ -206,7 +206,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
   /// midpoint from the bounds' midpoint.
   pub(super) fn located(&self, point: Point) -> Option<f64> {
     let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
-    let sigma = self.base.std_dev().to_f64()?;
+    let sigma = self.base.sigma().to_f64()?;
     if let Point::Mid { width, t, .. } = point {
       return self.anchored(self.midpoint()?, [width, t]);
     }
