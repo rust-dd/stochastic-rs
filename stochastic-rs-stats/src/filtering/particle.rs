@@ -20,6 +20,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::traits::RealExt;
 use crate::traits::SimdFloatExt;
 
 /// Particle resampling scheme.
@@ -111,15 +112,8 @@ where
     }
   }
 
-  /// The largest log-weight, NaN if any is; the NaN flag is its own reduction so the max still vectorizes.
   fn max_log_weight(&self) -> f64 {
-    let (max, nan) = self
-      .log_weights
-      .iter()
-      .fold((f64::NEG_INFINITY, false), |(max, nan), &lw| {
-        (max.max(lw), nan | lw.is_nan())
-      });
-    if nan { f64::NAN } else { max }
+    f64::max_or_nan_fold(self.log_weights.iter().copied())
   }
 
   /// Mean state across particles, weighted by the current normalised weights.

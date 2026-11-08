@@ -22,8 +22,6 @@ python = [
 ]
 
 [dependencies]
-faer = { workspace = true }
-faer-ext = { workspace = true }
 gauss-quad = { workspace = true }
 kendalls = { workspace = true }
 ndarray = { workspace = true }

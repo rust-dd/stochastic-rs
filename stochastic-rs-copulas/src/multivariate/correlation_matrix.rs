@@ -2,9 +2,9 @@
 //! Reference: Higham, N.J., Strabić, N., Šego, V. (2016), "Restoring definiteness via shrinking, with an application to correlation matrices with a fixed block", SIAM Review 58(2), 245-263, eq. (2.1), §2, Algorithm 3.1 and §5.3 eqs. (5.6), (5.8), DOI 10.1137/140996112.
 
 use ndarray::Array2;
+use stochastic_rs_distributions::linalg::is_spd;
+use stochastic_rs_distributions::linalg::spd_factors;
 
-use super::linalg::is_spd;
-use super::linalg::spd_factors;
 use crate::error::CopulaError;
 
 const SHRINK_TOLERANCE: f64 = 1e-6;
@@ -122,8 +122,8 @@ mod tests {
   use ndarray::array;
 
   use super::*;
-  use crate::multivariate::linalg::condition_number;
-  use crate::multivariate::linalg::smallest_eigenvalue;
+  use crate::multivariate::spectrum::condition_number;
+  use crate::multivariate::spectrum::smallest_eigenvalue;
 
   /// The documented bisection tolerance and eigenvalue floor, pinned here independently of the code's constants.
   const TOLERANCE: f64 = 1e-6;

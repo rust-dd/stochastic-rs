@@ -231,8 +231,8 @@ mod tests {
 
   use super::*;
   use crate::bivariate::gaussian::GaussianCopula;
-  use crate::multivariate::linalg::condition_number;
-  use crate::multivariate::linalg::smallest_eigenvalue;
+  use crate::multivariate::spectrum::condition_number;
+  use crate::multivariate::spectrum::smallest_eigenvalue;
   use crate::traits::BivariateExt;
 
   /// At `d = 2` the density is the bivariate Gaussian copula's closed form.

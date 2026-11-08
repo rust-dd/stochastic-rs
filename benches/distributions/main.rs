@@ -31,6 +31,7 @@ use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::SimdRng;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::traits::DistributionExt;
+use stochastic_rs::traits::RealExt;
 
 mod discrete;
 mod heavy_tailed;
@@ -394,6 +395,20 @@ fn bench_gev_gpd(c: &mut Criterion) {
   group.finish();
 }
 
+fn bench_fold(c: &mut Criterion) {
+  let mut group = c.benchmark_group("Fold");
+  let xs = (0..65_536)
+    .map(|i| ((i * 7919) % 65_536) as f64 * 1e-3)
+    .collect::<Vec<_>>();
+  group.bench_function("max_or_nan_operator/65536", |b| {
+    b.iter(|| black_box(xs.iter().copied().fold(f64::NEG_INFINITY, f64::max_or_nan)))
+  });
+  group.bench_function("max_or_nan_fold/65536", |b| {
+    b.iter(|| black_box(f64::max_or_nan_fold(xs.iter().copied())))
+  });
+  group.finish();
+}
+
 criterion_group!(
   benches,
   bench_normal,
@@ -426,6 +441,7 @@ criterion_group!(
   bench_distribution_ext,
   truncated::bench_distribution_ext,
   bench_ncx2_per_draw_construction,
+  bench_fold,
   plot::generate_shape_comparison_plot,
 );
 

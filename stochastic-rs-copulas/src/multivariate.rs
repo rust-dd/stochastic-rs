@@ -12,11 +12,12 @@ pub mod dvine;
 pub mod fit;
 pub mod gaussian;
 pub(crate) mod genz;
-pub(crate) mod linalg;
 pub mod nac;
 pub(crate) mod qmc;
 mod rosenblatt;
 pub mod rvine;
+#[cfg(test)]
+pub(crate) mod spectrum;
 pub mod t;
 mod vine_order;
 

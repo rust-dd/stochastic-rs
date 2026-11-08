@@ -19,6 +19,8 @@ python = ["dep:pyo3", "dep:numpy", "stochastic-rs-core/python"]
 unstable-dual-stream-rng = ["stochastic-rs-core/unstable-dual-stream-rng"]
 
 [dependencies]
+faer = { workspace = true }
+faer-ext = { workspace = true }
 libm = { workspace = true }
 ndarray = { workspace = true }
 num-complex = { workspace = true }
