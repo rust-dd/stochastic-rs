@@ -82,6 +82,25 @@ fn median_is_chois_bracket() {
   }
 }
 
+/// The `n = 0` window `λ ∈ (2/3, LN_2]` has `e^{−λ} ≥ ½`, so the median is 0 though `gamma_q(1, λ)` reads 3.4e-16 low at six doubles; `next_up(LN_2)` lies past ln 2 and passes at the base: a guard.
+#[test]
+fn median_is_zero_through_ln_2() {
+  let ln_2 = std::f64::consts::LN_2;
+  for ulps in [0, 1, 3, 5] {
+    let lambda = f64::from_bits(ln_2.to_bits() - ulps);
+    assert_eq!(
+      SimdPoisson::<u64>::new(lambda).median(),
+      Some(0.0),
+      "median(LN_2 − {ulps} ulps)"
+    );
+  }
+  assert_eq!(
+    SimdPoisson::<u64>::new(ln_2.next_up()).median(),
+    Some(1.0),
+    "median(next_up(LN_2)), a guard"
+  );
+}
+
 /// Below the threshold the one-shot count inverts every uniform as the table does, at each entry and its neighbours; above it, PTRS's draw.
 #[test]
 fn one_shot_count_is_the_draw_of_the_law() {
