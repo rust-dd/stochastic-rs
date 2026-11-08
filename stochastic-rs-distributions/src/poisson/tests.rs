@@ -127,9 +127,7 @@ fn analytics_without_a_table() {
   assert_eq!(d.quantile(1e-300), Some(0.0));
 }
 
-/// λ ≳ 745 made the old multiplicative table build spin forever on an
-/// underflowed `exp(-λ)`; the log-space build must terminate and sample
-/// with the right mean.
+/// Past λ ≈ 745 `exp(−λ)` underflows, so the table is built in log space; at λ = 800 it must end and keep the mean.
 #[test]
 fn poisson_large_lambda_table_terminates() {
   let dist = SimdPoisson::<u64>::new(800.0);
@@ -146,7 +144,7 @@ fn poisson_large_lambda_table_terminates() {
   assert!((dist.mean().unwrap() - 800.0).abs() < 1e-9);
 }
 
-/// An infinite rate turned the table build's log-pmf `NaN`, so neither exit fired and the table grew without bound.
+/// An infinite rate has no law; `new` panics naming it.
 #[test]
 #[should_panic(
   expected = "lambda must satisfy `lambda > 0.0 && lambda.is_finite()`, got lambda = inf"
