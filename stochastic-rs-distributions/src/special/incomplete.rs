@@ -508,7 +508,7 @@ fn next_to_one(a: f64, b: f64, x: f64, v: f64, size: f64) -> f64 {
 const TAIL_HELD: f64 = 9.094947017729282e-13;
 
 /// `rest`'s ε past its logs' sizes: the fraction's 1e-15 stop and steps, `exp`, two products and
-/// ln Γ's Lanczos terms, about 17 by an `|ln Γ|` under 1 (at most 7.2, 2, 8.3 apart, 10 together).
+/// ln Γ's Lanczos terms, about 17 by an `|ln Γ|` under 1 (at most 7.2, 2, 8.3 apart, 10.7 in all).
 const REST_FLOOR: f64 = 16.0;
 
 /// Off the normal `bt`: `x^a(1 − x)^b/(a·B(a, b))` and the fraction's log in one `exp`, `ln(aB)`

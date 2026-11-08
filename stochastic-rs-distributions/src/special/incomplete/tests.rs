@@ -535,8 +535,8 @@ fn beta_ic_reads_the_upper_tail_from_x() {
   assert!(beta_ic(1e8, 1e16, 1e-8).is_nan());
 }
 
-/// `ldexp` rounds a subnormal once, against `x·2ᵖ` rounded from its integer mantissa, on 10 716
-/// cells that steps of `2⁻¹⁰⁰⁰` or `2⁻¹⁰²²` round twice, `2⁻⁵³(1 + 2⁻⁵²)·2⁻¹⁰²²` among them.
+/// `ldexp` rounds a subnormal once, as `x·2ᵖ` rounded from its integer mantissa, on 5 mantissas
+/// × 8 shifts × every `p` (10 716 cells; steps of `2⁻¹⁰⁰⁰` or `2⁻¹⁰²²` round 18 and 12 twice).
 #[test]
 fn ldexp_rounds_a_subnormal_once() {
   let once = |x: f64, p: i32| {
