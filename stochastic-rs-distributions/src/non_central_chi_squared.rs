@@ -4,14 +4,15 @@
 //! X\sim\chi^2_\nu(\lambda),\quad f_X(x)=\tfrac12 e^{-(x+\lambda)/2}(x/\lambda)^{\nu/4-1/2}I_{\nu/2-1}(\sqrt{\lambda x})
 //! $$
 //!
-//! Sampling: the shift $\chi^2_\nu(\lambda) = \chi^2_{\nu-1} + (Z + \sqrt{\lambda})^2$ for $\nu \ge 1$, else the Poisson
-//! mixture $\mathrm{Gamma}(\nu/2 + J,\ 2)$ with $J \sim \mathrm{Poisson}(\lambda/2)$, valid for every $\nu > 0$.
+//! Sampling: $\chi^2_{\nu-1} + (Z + \sqrt{\lambda})^2$ for $\nu \ge 1$, else $\mathrm{Gamma}(\nu/2 + J, 2)$, $J \sim \mathrm{Poisson}(\lambda/2)$, whose $J = 0$ term at $\nu = 0$ is the atom at 0.
 //!
-//! - Johnson, N.L., Kotz, S., Balakrishnan, N. (1995), *Continuous Univariate Distributions*, vol. 2, 2nd ed., Wiley, ch. 29.
-//! - Abramowitz, M., Stegun, I.A. (1964), *Handbook of Mathematical Functions*, NBS AMS 55, eq. 26.4.25 (the Poisson mixture).
+//! Reference: Johnson, N.L., Kotz, S., Balakrishnan, N. (1995), *Continuous Univariate Distributions*, vol. 2, 2nd ed., Wiley, ch. 29.
+//! Reference: Abramowitz, M., Stegun, I.A. (1964), *Handbook of Mathematical Functions*, NBS AMS 55, eq. 26.4.25 (the Poisson mixture).
+//! Reference: Siegel, A. F. (1979), "The noncentral chi-squared distribution with zero degrees of freedom and testing for uniformity", *Biometrika* 66(2), 381-386, DOI 10.1093/biomet/66.2.381.
 use rand::Rng;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::SimdRngExt;
 use stochastic_rs_core::simd_rng::derive_seed;
 
@@ -19,7 +20,7 @@ use crate::chi_square::SimdChiSquared;
 use crate::gamma::GammaState;
 use crate::gamma::SimdGamma;
 use crate::normal::SimdNormal;
-use crate::poisson::SimdPoisson;
+use crate::poisson::count_once;
 use crate::seeded::Seeded;
 use crate::seeded::StreamState;
 use crate::source::AnyRng;
@@ -31,14 +32,15 @@ use crate::traits::distribution::SimdKernel;
 
 /// The Poisson count and the gamma one Poisson-mixture draw consumes, from a seed or from the caller's rng.
 trait MixtureSource<T: SimdFloatExt> {
-  fn poisson(&mut self, law: SimdPoisson<u64>) -> u64;
+  fn poisson(&mut self, lambda: f64) -> f64;
 
   fn gamma(&mut self, law: SimdGamma<T>) -> T;
 }
 
 impl<T: SimdFloatExt, S: SeedExt> MixtureSource<T> for &S {
-  fn poisson(&mut self, law: SimdPoisson<u64>) -> u64 {
-    law.seeded(*self).sample()
+  /// The first draw of a `SimdPoisson` stream on this seed, without the table and the buffer that stream would fill.
+  fn poisson(&mut self, lambda: f64) -> f64 {
+    count_once(lambda, &mut SimdRng::from_seed(self.next_seed()))
   }
 
   fn gamma(&mut self, law: SimdGamma<T>) -> T {
@@ -47,8 +49,8 @@ impl<T: SimdFloatExt, S: SeedExt> MixtureSource<T> for &S {
 }
 
 impl<T: SimdFloatExt, G: Rng + ?Sized> MixtureSource<T> for AnyRng<'_, G> {
-  fn poisson(&mut self, law: SimdPoisson<u64>) -> u64 {
-    law.draw_with(self.0)
+  fn poisson(&mut self, lambda: f64) -> f64 {
+    count_once(lambda, self.0)
   }
 
   fn gamma(&mut self, law: SimdGamma<T>) -> T {
@@ -65,16 +67,19 @@ fn check_ncp<T: SimdFloatExt>(ncp: T) {
   );
 }
 
-/// The Poisson mixture `Gamma(df/2 + J, 2)` with `J ~ Poisson(ncp/2)`, the only exact form for `0 < df < 1`.
+/// The Poisson mixture `Gamma(df/2 + J, 2)`, `J ~ Poisson(ncp/2)`, exact for `0 ≤ df < 1`; `df = 0` with `J = 0` is Siegel's atom at 0.
 fn poisson_mixture<T: SimdFloatExt>(df: T, ncp: T, mut src: impl MixtureSource<T>) -> T {
   let two = T::from_f64_fast(2.0);
   let half_lambda = (ncp / two).to_f64().unwrap_or(f64::NAN);
   let mixture_jumps = if half_lambda > 0.0 {
-    src.poisson(SimdPoisson::new(half_lambda))
+    src.poisson(half_lambda)
   } else {
-    0
+    0.0
   };
-  let shape = df / two + T::from_f64_fast(mixture_jumps as f64);
+  let shape = df / two + T::from_f64_fast(mixture_jumps);
+  if shape == T::zero() {
+    return T::zero();
+  }
   src.gamma(SimdGamma::new(shape, two))
 }
 
@@ -97,19 +102,15 @@ pub struct NcxState<T: SimdFloatExt, R: SimdRngExt> {
 }
 
 impl<T: SimdFloatExt> SimdNonCentralChiSquared<T> {
-  /// The law of `χ²_df(·)` with `df` degrees of freedom ν > 0; the central `χ²_{df−1}` term is dropped when `df ≈ 1`.
+  /// The law of `χ²_df(·)`, whose central `χ²_{df−1}` term is dropped when `df ≈ 1`; panics unless `0 ≤ df < ∞`.
   pub fn new(df: T) -> Self {
     assert!(
       df.is_finite(),
       "df must satisfy `df.is_finite()`, got df = {df:?}"
     );
     assert!(
-      df > T::zero(),
-      "df must satisfy `df > T::zero()`, got df = {df:?}"
-    );
-    assert!(
-      df / T::from_f64_fast(2.0) > T::zero(),
-      "df must satisfy `df / 2 > 0`, got df = {df:?}"
+      df >= T::zero(),
+      "df must satisfy `df >= T::zero()`, got df = {df:?}"
     );
     let rem = df - T::one();
     Self {
@@ -191,9 +192,10 @@ pub fn sample<T: FloatExt, S: SeedExt>(df: T, ncp: T, seed: &S) -> T {
 #[cfg(test)]
 mod tests {
   use stochastic_rs_core::simd_rng::SimdRng;
-  use stochastic_rs_core::simd_rng::Unseeded;
 
   use super::*;
+
+  const SEEDS: [u64; 3] = [2718, 999, 42];
 
   /// A negative, infinite or `NaN` noncentrality panics naming `ncp`, on both decompositions and every entry point.
   #[test]
@@ -203,27 +205,79 @@ mod tests {
         .and_then(|e| e.downcast::<String>().ok())
         .is_some_and(|m| m.starts_with("ncp must satisfy"))
     };
-    for df in [3.0, 0.3] {
-      for ncp in [-1.0, f64::NAN, f64::INFINITY] {
-        let law = SimdNonCentralChiSquared::<f64>::new(df);
-        let seeded = std::panic::catch_unwind(|| law.seeded(&Unseeded).sample_ncp(ncp));
-        let honest =
-          std::panic::catch_unwind(|| law.sample_ncp_with(&mut SimdRng::from_seed(1), ncp));
-        let one_shot = std::panic::catch_unwind(|| sample(df, ncp, &Deterministic::new(1)));
-        assert!(
-          names_ncp(seeded) && names_ncp(honest) && names_ncp(one_shot),
-          "df = {df}, ncp = {ncp} was not rejected as `ncp`"
-        );
+    for seed in SEEDS {
+      for df in [3.0, 0.3] {
+        for ncp in [-1.0, f64::NAN, f64::INFINITY] {
+          let law = SimdNonCentralChiSquared::<f64>::new(df);
+          let seeded =
+            std::panic::catch_unwind(|| law.seeded(&Deterministic::new(seed)).sample_ncp(ncp));
+          let honest =
+            std::panic::catch_unwind(|| law.sample_ncp_with(&mut SimdRng::from_seed(seed), ncp));
+          let one_shot = std::panic::catch_unwind(|| sample(df, ncp, &Deterministic::new(seed)));
+          assert!(
+            names_ncp(seeded) && names_ncp(honest) && names_ncp(one_shot),
+            "df = {df}, ncp = {ncp} was not rejected as `ncp`"
+          );
+        }
       }
+    }
+  }
+
+  /// Siegel (1979): `χ²₀(λ)` is `Gamma(J, 2)` for `J ~ Poisson(λ/2)`, with the atom `P(X = 0) = e^{−λ/2}`.
+  #[test]
+  fn zero_degrees_of_freedom_is_siegels_law() {
+    let mut s = SimdNonCentralChiSquared::<f64>::new(0.0).seeded(&Deterministic::new(11));
+    let samples = (0..100_000).map(|_| s.sample_ncp(2.0)).collect::<Vec<_>>();
+    let atom = samples.iter().filter(|&&x| x == 0.0).count() as f64 / samples.len() as f64;
+    let want = (-1.0_f64).exp();
+    assert!(
+      (atom - want).abs() < 6.0 * (want * (1.0 - want) / 100_000.0).sqrt(),
+      "atom {atom} vs {want}"
+    );
+    assert_cumulant_moments(&samples, 0.0, 2.0);
+    assert!(samples.iter().all(|&x| x >= 0.0));
+    let law = SimdNonCentralChiSquared::<f64>::new(0.0);
+    let mut rng = SimdRng::from_seed(7);
+    for _ in 0..100_000 {
+      let x = law.sample_ncp_with(&mut rng, 2.0);
+      assert!(x.is_finite() && x >= 0.0, "{x}");
+    }
+    assert_eq!(sample(0.0_f64, 0.0, &Deterministic::new(1)), 0.0);
+    assert!(sample(0.0_f32, 2.0, &Deterministic::new(1)) >= 0.0);
+  }
+
+  /// A negative `df` panics naming `df >= T::zero()`; `df = 0` constructs.
+  #[test]
+  fn negative_df_is_rejected_zero_is_not() {
+    let r = std::panic::catch_unwind(|| SimdNonCentralChiSquared::<f64>::new(-0.5));
+    let msg = r.err().and_then(|e| e.downcast::<String>().ok()).unwrap();
+    assert!(
+      msg.starts_with("df must satisfy `df >= T::zero()`"),
+      "{msg}"
+    );
+    assert_eq!(SimdNonCentralChiSquared::<f64>::new(0.0).df(), 0.0);
+  }
+
+  /// A noncentrality of `1e300` below `df = 1` draws its count from a few constants and as an `f64`, on every entry point.
+  #[test]
+  fn huge_noncentrality_terminates() {
+    let law = SimdNonCentralChiSquared::<f64>::new(0.3);
+    let seeded = law.seeded(&Deterministic::new(1)).sample_ncp(1e300);
+    let honest = law.sample_ncp_with(&mut SimdRng::from_seed(1), 1e300);
+    let one_shot = sample(0.3, 1e300, &Deterministic::new(1));
+    for x in [seeded, honest, one_shot] {
+      assert!(x.is_finite() && x > 1e299, "{x}");
     }
   }
 
   /// Non-negative `ncp` (including exactly zero) must stay finite.
   #[test]
   fn sample_ncp_nonnegative_is_finite() {
-    let mut s = SimdNonCentralChiSquared::<f64>::new(3.0).seeded(&Unseeded);
-    assert!(s.sample_ncp(0.0).is_finite());
-    assert!(s.sample_ncp(2.5).is_finite());
+    for seed in SEEDS {
+      let mut s = SimdNonCentralChiSquared::<f64>::new(3.0).seeded(&Deterministic::new(seed));
+      assert!(s.sample_ncp(0.0).is_finite());
+      assert!(s.sample_ncp(2.5).is_finite());
+    }
   }
 
   fn assert_cumulant_moments(samples: &[f64], df: f64, lambda: f64) {
@@ -269,7 +323,7 @@ mod tests {
   /// The honest draw on the caller's rng has the same cumulant moments on both the shift and the mixture path.
   #[test]
   fn sample_ncp_with_matches_closed_form_moments() {
-    for (df, lambda) in [(3.0, 2.5), (0.3, 2.0)] {
+    for (df, lambda) in [(3.0, 2.5), (0.3, 2.0), (0.0, 2.0)] {
       let d = SimdNonCentralChiSquared::<f64>::new(df);
       let mut rng = SimdRng::from_seed(2718);
       let samples = (0..100_000)

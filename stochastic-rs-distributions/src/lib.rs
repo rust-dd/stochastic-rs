@@ -103,7 +103,7 @@
 //! (`sample_ncp(ncp)`, not at construction), it implements neither
 //! `rand::distr::Distribution` nor [`crate::traits::DistributionExt`], and
 //! its purpose in this crate is narrow — backing the exact CIR transition
-//! density (`stochastic-rs-stats::cir`). For `0 < df < 1`, where the
+//! density (`stochastic-rs-stats::cir`). For `0 ≤ df < 1`, where the
 //! Gaussian-shift decomposition doesn't exist, `sample_ncp` falls back per
 //! draw to the same Poisson-mixture branch the free function
 //! [`non_central_chi_squared::sample`] uses; buffering only benefits the

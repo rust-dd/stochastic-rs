@@ -5465,6 +5465,47 @@ pub const POISSON_LARGE_U64: [Snapshot; 2] = [
   },
 ];
 
+pub const POISSON_PTRS_U64: [Snapshot; 2] = [
+  Snapshot {
+    seed: 42,
+    seeds_consumed: 1,
+    first8: [1519, 1429, 1520, 1531, 1544, 1539, 1541, 1494],
+    step_heads: [1495, 1506, 1507, 1474, 1498, 1506, 1559, 1433, 1529],
+    chunk_heads: [1559, 1482, 1525, 1525, 1433, 1529, 1467, 1512],
+    hashes: [
+      16379365890176329137,
+      16620854750223099573,
+      17130498401636769978,
+      4143998833698854041,
+      4791151902899548597,
+      13575344786077191307,
+      3313439287416978213,
+      7196059391322502570,
+      11280617275666044132,
+      4997378843769114439,
+    ],
+  },
+  Snapshot {
+    seed: 7,
+    seeds_consumed: 1,
+    first8: [1516, 1488, 1511, 1528, 1432, 1537, 1481, 1505],
+    step_heads: [1458, 1536, 1426, 1457, 1531, 1509, 1482, 1484, 1558],
+    chunk_heads: [1482, 1435, 1484, 1492, 1484, 1558, 1481, 1477],
+    hashes: [
+      706047641834129347,
+      8894169927801663213,
+      3545478077544818373,
+      1116976522702414803,
+      3486463385667555622,
+      13043524969503949263,
+      16679739543577310091,
+      8649181192709906051,
+      1543982262811795541,
+      2298004035300362961,
+    ],
+  },
+];
+
 pub const BINOMIAL_BTRS_U32: [Snapshot; 2] = [
   Snapshot {
     seed: 42,
@@ -5907,6 +5948,53 @@ pub const WISHART_F64: [Snapshot; 2] = [
       0,
       0,
       11069631671332404766,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+    ],
+  },
+];
+
+pub const WISHART_F32: [Snapshot; 2] = [
+  Snapshot {
+    seed: 42,
+    seeds_consumed: 5,
+    first8: [
+      1090827256, 1079005468, 1079005468, 1085568252, 1067136711, 1072672416, 1072672416,
+      1093040783,
+    ],
+    step_heads: [0, 0, 0, 1079864904, 0, 0, 0, 0, 0],
+    chunk_heads: [0, 0, 0, 0, 0, 0, 0, 0],
+    hashes: [
+      9151756910907339319,
+      0,
+      0,
+      14414834688936280166,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+    ],
+  },
+  Snapshot {
+    seed: 7,
+    seeds_consumed: 5,
+    first8: [
+      1091308316, 1081072267, 1081072267, 1086731401, 1083692037, 3200808556, 3200808556,
+      1067209174,
+    ],
+    step_heads: [0, 0, 0, 1087480456, 0, 0, 0, 0, 0],
+    chunk_heads: [0, 0, 0, 0, 0, 0, 0, 0],
+    hashes: [
+      15375260181153045954,
+      0,
+      0,
+      9516375613186190642,
       0,
       0,
       0,
@@ -7263,6 +7351,7 @@ pub fn lookup(name: &str) -> Option<&'static [Snapshot; 2]> {
     "poisson_u64" => Some(&POISSON_U64),
     "poisson_i64" => Some(&POISSON_I64),
     "poisson_large_u64" => Some(&POISSON_LARGE_U64),
+    "poisson_ptrs_u64" => Some(&POISSON_PTRS_U64),
     "binomial_btrs_u32" => Some(&BINOMIAL_BTRS_U32),
     "binomial_waiting_u32" => Some(&BINOMIAL_WAITING_U32),
     "binomial_btrs_flip_u32" => Some(&BINOMIAL_BTRS_FLIP_U32),
@@ -7273,6 +7362,7 @@ pub fn lookup(name: &str) -> Option<&'static [Snapshot; 2]> {
     "dirichlet_f64" => Some(&DIRICHLET_F64),
     "dirichlet_f32" => Some(&DIRICHLET_F32),
     "wishart_f64" => Some(&WISHART_F64),
+    "wishart_f32" => Some(&WISHART_F32),
     "ncx2_f64" => Some(&NCX2_F64),
     "ncx2_f32" => Some(&NCX2_F32),
     "ncx2_mixture_f64" => Some(&NCX2_MIXTURE_F64),

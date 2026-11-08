@@ -370,6 +370,7 @@ snapshot_cases! {
   poisson_u64: ScalarKind::Int, u64, SimdPoisson::<u64>::new(12.0);
   poisson_i64: ScalarKind::Int, i64, SimdPoisson::<i64>::new(12.0);
   poisson_large_u64: ScalarKind::Int, u64, SimdPoisson::<u64>::new(800.0);
+  poisson_ptrs_u64: ScalarKind::Int, u64, SimdPoisson::<u64>::new(1500.0);
   binomial_btrs_u32: ScalarKind::Int, u32, SimdBinomial::<u32>::new(60, 0.4);
   binomial_waiting_u32: ScalarKind::Int, u32, SimdBinomial::<u32>::new(15, 0.3);
   binomial_btrs_flip_u32: ScalarKind::Int, u32, SimdBinomial::<u32>::new(60, 0.7);
@@ -401,6 +402,10 @@ snapshot_singles! {
   };
   wishart_f64: ScalarKind::F64, |det| {
     let mut s = SimdWishart::<f64>::new(5.0, array![[1.0, 0.3], [0.3, 2.0]]).seeded(det);
+    move || s.sample().iter().map(|x| x.bits()).collect()
+  };
+  wishart_f32: ScalarKind::F32, |det| {
+    let mut s = SimdWishart::<f32>::new(5.0, array![[1.0, 0.3], [0.3, 2.0]]).seeded(det);
     move || s.sample().iter().map(|x| x.bits()).collect()
   };
   ncx2_f64: ScalarKind::F64, |det| {

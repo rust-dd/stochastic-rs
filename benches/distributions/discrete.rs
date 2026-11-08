@@ -80,6 +80,13 @@ bench_discrete!(
 );
 
 bench_discrete!(
+  bench_poisson_ptrs,
+  "PoissonPtrs",
+  SimdPoisson::<u32>::new(1500.0),
+  rand_distr::Poisson::<f64>::new(1500.0).unwrap()
+);
+
+bench_discrete!(
   bench_binomial,
   "Binomial",
   SimdBinomial::<u32>::new(60, 0.4),
