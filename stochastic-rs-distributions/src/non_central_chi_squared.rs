@@ -258,12 +258,16 @@ mod tests {
     assert_eq!(SimdNonCentralChiSquared::<f64>::new(0.0).df(), 0.0);
   }
 
-  /// A noncentrality of `1e300` below `df = 1` draws its Poisson count from a few constants, not an `O(ncp)` table.
+  /// A noncentrality of `1e300` below `df = 1` draws its count from a few constants and as an `f64`, on every entry point.
   #[test]
   fn huge_noncentrality_terminates() {
-    let mut s = SimdNonCentralChiSquared::<f64>::new(0.3).seeded(&Deterministic::new(1));
-    let x = s.sample_ncp(1e300);
-    assert!(x.is_finite() && x > 1e299, "{x}");
+    let law = SimdNonCentralChiSquared::<f64>::new(0.3);
+    let seeded = law.seeded(&Deterministic::new(1)).sample_ncp(1e300);
+    let honest = law.sample_ncp_with(&mut SimdRng::from_seed(1), 1e300);
+    let one_shot = sample(0.3, 1e300, &Deterministic::new(1));
+    for x in [seeded, honest, one_shot] {
+      assert!(x.is_finite() && x > 1e299, "{x}");
+    }
   }
 
   /// Non-negative `ncp` (including exactly zero) must stay finite.

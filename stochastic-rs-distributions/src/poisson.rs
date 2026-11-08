@@ -4,8 +4,10 @@
 //! \mathbb{P}(N=k)=e^{-\lambda}\frac{\lambda^k}{k!},\ k\in\mathbb N_0
 //! $$
 //!
-//! Sampling: inversion on a cached cumulative table below λ = 1000 (Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §X.3, DOI 10.1007/978-1-4613-8643-8) and
-//! Hörmann's PTRS from there on: Hörmann, W. (1993), "The transformed rejection method for generating Poisson random variables", *Insurance: Mathematics and Economics* 12(1), 39-45, DOI 10.1016/0167-6687(93)90997-4.
+//! Sampling: table inversion below λ = 1000, Hörmann's PTRS from it on.
+//!
+//! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §X.3, DOI 10.1007/978-1-4613-8643-8.
+//! Reference: Hörmann, W. (1993), "The transformed rejection method for generating Poisson random variables", *Insurance: Mathematics and Economics* 12(1), 39-45, DOI 10.1016/0167-6687(93)90997-4.
 //! Reference: Loader, C. (2000), "Fast and Accurate Computation of Binomial Probabilities", technical report, <https://www.r-project.org/doc/reports/CLoader-dbinom-2002.pdf> (the saddle-point `ln pₖ`).
 
 use std::marker::PhantomData;
@@ -126,27 +128,35 @@ impl Ptrs {
   }
 }
 
-/// The count whose cumulative probability first reaches `u`.
 #[inline]
 fn table_index(table: &[f64], u: f64) -> u64 {
   table.partition_point(|&c| c < u) as u64
 }
 
-/// [`table_index`] of the table `build_cdf(λ)` holds, without it: the same sums in the same order, stopped at `u`.
-fn walk_count(lambda: f64, u: f64) -> f64 {
+/// Visits the table's entries `P(N ≤ k)` from `k = 0`, in log space as `exp(−λ)` underflows at λ ≳ 745, until `visit` answers `true` or the table ends; returns that `k`.
+#[inline]
+fn walk(lambda: f64, mut visit: impl FnMut(f64) -> bool) -> f64 {
   let ln_lambda = lambda.ln();
   let mut log_pmf = -lambda;
   let mut cum = log_pmf.exp();
   let mut k = 0.0_f64;
-  while cum < u {
+  loop {
+    if visit(cum) {
+      return k;
+    }
     k += 1.0;
     log_pmf += ln_lambda - k.ln();
     cum += log_pmf.exp();
+    // Past 2λ the sum can settle a few ulp below its target.
     if cum >= 1.0 - 1e-15 || (k > 2.0 * lambda && log_pmf < -40.0) {
-      break;
+      visit(1.0);
+      return k;
     }
   }
-  k
+}
+
+fn walk_count(lambda: f64, u: f64) -> f64 {
+  walk(lambda, |cum| cum >= u)
 }
 
 /// The count a `SimdPoisson` of `lambda` draws from `rng`, as an `f64` that keeps counts past `u64`: [`walk_count`] below `PTRS_MIN_LAMBDA`, PTRS from it on.
@@ -158,7 +168,6 @@ pub(crate) fn count_once<G: Rng + ?Sized>(lambda: f64, rng: &mut G) -> f64 {
   }
 }
 
-/// How a law draws: its cumulative table below `PTRS_MIN_LAMBDA`, PTRS's constants from it on.
 #[derive(Clone, Debug, PartialEq)]
 enum Sampler {
   Table(Box<[f64]>),
@@ -174,26 +183,13 @@ pub struct SimdPoisson<T: PrimInt> {
 }
 
 impl<T: PrimInt> SimdPoisson<T> {
-  /// Log-space pmf increments (`exp(−λ)` underflows at λ ≳ 745); the second stop covers `cum` settling a few ulp below the target.
   #[inline]
   fn build_cdf(lambda: f64) -> Box<[f64]> {
     let mut cdf = Vec::new();
-    let ln_lambda = lambda.ln();
-    let mut log_pmf = -lambda;
-    let mut cum = log_pmf.exp();
-    cdf.push(cum);
-
-    loop {
-      let k = cdf.len() as f64;
-      log_pmf += ln_lambda - k.ln();
-      cum += log_pmf.exp();
-      if cum >= 1.0 - 1e-15 || (k > 2.0 * lambda && log_pmf < -40.0) {
-        cdf.push(1.0);
-        break;
-      }
+    walk(lambda, |cum| {
       cdf.push(cum);
-    }
-
+      false
+    });
     cdf.into_boxed_slice()
   }
 
@@ -313,7 +309,7 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdPoisson<T> {
     Some(gamma_q(x.floor() + 1.0, self.lambda))
   }
 
-  /// The smallest count with `cdf ≥ p`: bracketed from `λ + Φ⁻¹(p)√λ`, bisected over the doubles, so it ends where counts are a double apart.
+  /// The smallest count with `cdf ≥ p`, bracketed from `λ + Φ⁻¹(p)√λ` and bisected over the doubles, so it ends where counts are a double apart; `+∞` past `f64::MAX`.
   fn quantile(&self, p: f64) -> Option<f64> {
     if !(0.0..=1.0).contains(&p) {
       return Some(f64::NAN);

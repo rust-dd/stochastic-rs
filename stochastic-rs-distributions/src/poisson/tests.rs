@@ -45,6 +45,7 @@ fn huge_rates_construct_and_draw() {
     (d.quantile(1e-3), d.quantile(1.0 - 1e-3)),
     (Some(1e300), Some(up))
   );
+  // `cdf(1e300)` reads ½ plus one ulp, so a 4ε move of its `exp` puts the median on either neighbour.
   assert!(d.median().is_some_and(|m| m == 1e300 || m == up));
   let d = SimdPoisson::<u64>::new(1e15);
   let k = d.sample(&mut SimdRng::from_seed(1)) as f64;
