@@ -1,5 +1,5 @@
-//! The truncated exponential's cf: `e^{it·lower}` times `λ/(λ − it)` on an open tail or `(1 − e^{−(λ−it)L})/((λ − it)m/λ)`
-//! on a bounded one, `m` the mass, Smith's division where `|(λ − it)L| ≥ ½` and below it the series of `(1 − e^{−w})/w`.
+//! The cf: `e^{it·lower}`·`λ/(λ − it)` on an open tail or `(1 − e^{−(λ−it)L})/((λ − it)m/λ)`, `m`
+//! the mass, by Smith's division, below `|(λ − it)L| = ½` by series.
 
 use num_complex::Complex64;
 
@@ -12,8 +12,8 @@ use crate::special::split_pow2;
 use crate::traits::SimdFloatExt;
 
 impl<T: SimdFloatExt> SimdTruncatedExp<T> {
-  /// A product `t·x` past 1 is reduced from its exact parts, and each quotient by `λ − it` taken at its own power of two,
-  /// so none overflows short of its value; at an infinite `t` the Riemann–Lebesgue limit 0.
+  /// A product `t·x` past 1 reduced from its exact parts, each quotient by `λ − it` at its own
+  /// power of two, so none overflows short of its value; at `t = ±∞` the Riemann–Lebesgue limit 0.
   pub(super) fn cf(&self, t: f64) -> Option<Complex64> {
     if t == 0.0 {
       return Some(Complex64::new(1.0, 0.0));
@@ -49,8 +49,8 @@ fn cis(theta: f64) -> Complex64 {
   Complex64::new(theta.cos(), theta.sin())
 }
 
-/// `t·x` reduced to about `[−π, π]`: the product itself below 1, its exact two-product reduced by parts below 2²⁰,
-/// else from its exact turns.
+/// `t·x` reduced to about `[−π, π]`: the product itself below 1, its exact two-product reduced by
+/// parts below 2²⁰, else from its exact turns.
 fn angle(t: f64, x: f64) -> f64 {
   let p = t * x;
   if p.abs() < 1.0 {
@@ -79,8 +79,8 @@ fn angle_between(t: f64, lo: f64, up: f64) -> f64 {
 /// Below this a product's reduction subtracts its multiple of 2π in exact parts.
 const MODERATE: f64 = 1_048_576.0;
 
-/// `n·2^e/(c + id)` by Smith's division of `n` by `c + id` scaled to its own power of two, both scales applied once
-/// at the end: no intermediate over- or underflows where the quotient does not.
+/// `n·2^e/(c + id)` by Smith's division of `n` by `c + id` scaled to its own power of two, both
+/// scales applied once at the end: no intermediate over- or underflows where the quotient does not.
 fn divide(n: Complex64, e: i32, c: f64, d: f64) -> Complex64 {
   let j = split_pow2(c.abs().max(d.abs())).0;
   let (c, d) = (ldexp(c, -j), ldexp(d, -j));
@@ -96,8 +96,8 @@ fn divide(n: Complex64, e: i32, c: f64, d: f64) -> Complex64 {
   Complex64::new(ldexp(q.re, e - j), ldexp(q.im, e - j))
 }
 
-/// `(1 − e^{−w})/w` for `|w| < ½` by its series `Σ (−w)^n/(n+1)!`, where the quotient's imaginary part `−Im(w)/2` sits
-/// below the real part's rounding.
+/// `(1 − e^{−w})/w` for `|w| < ½` by its series `Σ (−w)^n/(n+1)!`, where the quotient's imaginary
+/// part `−Im(w)/2` sits below the real part's rounding.
 fn phi1(w: Complex64) -> Complex64 {
   // 18 terms: the next is below 0.5^18/19! ≈ 3e-23.
   (1..=18).rev().fold(Complex64::new(0.0, 0.0), |acc, n| {

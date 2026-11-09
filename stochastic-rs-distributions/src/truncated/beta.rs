@@ -365,8 +365,8 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
     self.quantile(0.5)
   }
 
-  /// Off the interior mode monotone toward the shape above 1, or U-shaped: one side of the antimode `(1 − α)/(2 − α − β)`
-  /// falls or rises, across it the higher end wins, and a tie (the uniform's too) is NaN, no mode being unique.
+  /// Off the interior mode: monotone toward the shape above 1, or a U whose higher end wins across
+  /// the antimode `(1 − α)/(2 − α − β)`; a tie, the uniform's too, is NaN, no mode being unique.
   fn mode(&self) -> Option<f64> {
     let (a, b) = (self.base.alpha().to_f64()?, self.base.beta().to_f64()?);
     let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);

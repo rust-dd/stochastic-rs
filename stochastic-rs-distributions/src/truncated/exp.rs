@@ -85,8 +85,8 @@ impl Kernel for ExpKernel {
   }
 }
 
-/// Truncated exponential law $\mathrm{Exp}(\lambda)$ on $[\text{lower}, \text{upper}]$, $\text{lower} \ge 0$:
-/// parameters only; a [`Seeded`](crate::Seeded) stream draws it.
+/// Truncated exponential law $\mathrm{Exp}(\lambda)$ on $[\text{lower}, \text{upper}]$,
+/// $\text{lower} \ge 0$: parameters only; a [`Seeded`](crate::Seeded) stream draws it.
 ///
 /// Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -158,8 +158,8 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
     self.upper
   }
 
-  /// `lower − ln(1 − u·m)/λ` with `m` the interval's mass, the cdf's inverse referred to `lower`; a subnormal `u·m` takes
-  /// its first order `u·m/λ`, which the logarithm of the rounded product would lose.
+  /// `lower − ln(1 − u·m)/λ`, `m` the interval's mass: the inverse cdf referred to `lower`; a
+  /// subnormal `u·m` takes its first order `u·m/λ`, which the log of the rounded product loses.
   #[inline]
   fn inverse_cdf(&self, u: f64) -> f64 {
     let y = u * self.tail_mass;
@@ -179,8 +179,8 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
     (v * SCALE) * (self.tail_mass / (self.lambda.to_f64().unwrap() * SCALE))
   }
 
-  /// `∫ e^{−λ(x − lower)}` over the interval, `tail_mass/λ`; where `λL` underflows the mass, `L·φ(λL)` with
-  /// `φ(z) = (1 − e^{−z})/z`, so the law is its uniform limit, not 0/0.
+  /// `∫ e^{−λ(x − lower)}` over the interval, `tail_mass/λ`; where `λL` underflows the mass,
+  /// `L·φ(λL)` with `φ(z) = (1 − e^{−z})/z`, so the law is its uniform limit, not 0/0.
   fn mass_per_rate(&self) -> f64 {
     let lam = self.lambda.to_f64().unwrap();
     if self.tail_mass >= f64::MIN_POSITIVE {
@@ -219,8 +219,8 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
     })
   }
 
-  /// The shape depends on `λL` alone: in units of the shorter of `1/λ` and `L`, from the lower bound, neither the
-  /// rate nor the length under- or overflows.
+  /// The shape depends on `λL` alone: in units of the shorter of `1/λ` and `L`, from the lower
+  /// bound, neither the rate nor the length under- or overflows.
   fn moments(&self) -> Option<[f64; 4]> {
     let x = self.lambda.to_f64()? * self.length()?;
     let kernel = ExpKernel { lambda: x.min(1.0) };
@@ -232,8 +232,8 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
     Some(self.upper.to_f64()? - self.lower.to_f64()?)
   }
 
-  /// An infinite `upper`, or `e^{−λL}` below the subnormals: there the bounded moments meet `∞·0` and equal the open
-  /// tail's to the last bit.
+  /// An infinite `upper`, or `e^{−λL}` below the subnormals: there the bounded moments meet `∞·0`
+  /// and equal the open tail's to the last bit.
   fn open_tail(&self) -> Option<bool> {
     let len = self.length()?;
     Some(len.is_infinite() || (-self.lambda.to_f64()? * len).exp() == 0.0)
@@ -312,8 +312,8 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
       return Some(1.0);
     }
     let (lam, d, w) = (self.lambda.to_f64().unwrap(), x - lo, up - x);
-    // Below `λL = 1` as `t·φ(λt)` over the mass, `t` under 2⁻⁹⁶⁰ in `over_rate`'s frame scaled by 2⁶⁴; above it a
-    // subnormal `λt` is `t·λ/m`, which `expm1` would take rounded on the subnormals' grid.
+    // Below `λL = 1` as `t·φ(λt)` over the mass, `t` under 2⁻⁹⁶⁰ in `over_rate`'s frame scaled by
+    // 2⁶⁴; above, a subnormal `λt` as `t·λ/m`, which `expm1` takes on the subnormals' grid.
     let flat = lam * (up - lo) <= 1.0;
     let mass = |t: f64| {
       let rate_t = lam * t;
@@ -355,8 +355,8 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     );
     let len = self.length()?;
     let lam_len = lam * len;
-    // Nearer a finite `upper` its offset `w`, from `e^{λw} − 1 = (1 − p)(e^{λL} − 1)`: a level next to 1 keeps its
-    // digits.
+    // Nearer a finite `upper` its offset `w`, from `e^{λw} − 1 = (1 − p)(e^{λL} − 1)`: a level next
+    // to 1 keeps its digits.
     if up.is_finite() && lam_len < 700.0 {
       let w = if lam_len < 1e-8 {
         (1.0 - p) * len * (1.0 + 0.5 * p * lam_len)
@@ -421,8 +421,8 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     Some(self.mass_per_rate().ln() + x * mean_fraction(x))
   }
 
-  /// Finite for every `t` on a bounded interval (`λL e^{λ·lower}/m` at `t = λ`, `m` the mass); an open tail diverges from `t = λ` on.
-  /// At an infinite `t` the limit of `e^{tx}` on `x ≥ 0`: +∞ above, 0 below.
+  /// Finite for every `t` on a bounded interval (`λL e^{λ·lower}/m` at `t = λ`, `m` the mass), an
+  /// open tail divergent from `t = λ`; at `t = ±∞` the limit, +∞ or 0.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
     self.mgf(t)
   }

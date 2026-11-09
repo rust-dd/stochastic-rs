@@ -1,5 +1,5 @@
-//! Beside the lower end the kernel is that end's own law: `v·t^{e−1}` at a branch point, else `v·e^{ψt}`. Within its
-//! zone the cdf and the quantile take it in closed form, where the nodes' products would pass the subnormals.
+//! Beside the lower end the kernel is its law, `v·t^{e−1}` at a branch point, else `v·e^{ψt}`; in
+//! its zone the cdf and quantile take it in closed form, where products underflow.
 
 use super::Kernel;
 use super::Point;
@@ -15,8 +15,8 @@ const LN_ZONE: f64 = -621.70;
 /// The cheap gate before the zone's own test, in widths.
 pub(super) const ZONE: f64 = 1e-270;
 
-/// The quantile tries the zone only for a level below this mass in units of `width`, sparing every other level its
-/// logs; a level above is walked, wherever its point lies.
+/// The quantile tries the zone only for a level below this mass in units of `width`, sparing every
+/// other level its logs; a level above is walked, wherever its point lies.
 pub(super) const ZONE_MASS: f64 = 1e-200;
 
 /// Cody–Waite's `ln 2`: the high part's trailing zeros keep `k·LN2_HI` exact for `|k| < 2²⁰`.
@@ -42,8 +42,8 @@ impl Offset {
   }
 }
 
-/// `t^e·e^c·2^s` for `t = m·2^q`: the integer parts of `e·q + s` and of the rest's base-2 exponent stay apart, so the
-/// last `ldexp` is the one rounding a subnormal answer takes.
+/// `t^e·e^c·2^s` for `t = m·2^q`: the integer parts of `e·q + s` and of the rest's base-2 exponent
+/// stay apart, so the last `ldexp` is the one rounding a subnormal answer takes.
 pub(in crate::truncated) fn power(t: Offset, e: f64, c: f64, s: i32) -> f64 {
   let (hi, lo) = two_prod(e, f64::from(t.q));
   // `e·q` past the doubles: `t^e` is 0 or `∞` at every scale `e^c·2^s` the laws apply.
@@ -61,8 +61,8 @@ pub(in crate::truncated) fn power(t: Offset, e: f64, c: f64, s: i32) -> f64 {
   ldexp(r.exp(), p as i32)
 }
 
-/// `e^{hi + lo}` as `m·2^k`, `m` near 1, for `hi` whose own digits the exponent would lose and a small `lo`: Cody–Waite
-/// keeps `hi − k·ln 2` exact; past `2²⁰` halvings or doublings the value is 0 or `∞` at every scale a law applies.
+/// `e^{hi + lo}` as `m·2^k`, `m` near 1, for a `hi` `exp` would round and a small `lo`: Cody–Waite
+/// keeps `hi − k·ln 2` exact; past `2²⁰` halvings or doublings, 0 or `∞` at any law's scale.
 pub(in crate::truncated) fn exp_split(hi: f64, lo: f64) -> (f64, i32) {
   let k = ((hi + lo) / std::f64::consts::LN_2).round();
   if k.abs() > 1_048_576.0 {
@@ -122,8 +122,8 @@ impl<K: Kernel> Truncation<K> {
     }
   }
 
-  /// The curvature moves `ln k` by under ε across `e^{ln_t}`, so `v·e^{ψt}` holds; it also keeps `t` far inside the
-  /// distance to a branch point beyond the end, whose higher derivatives that distance sets.
+  /// The curvature moves `ln k` under ε across `e^{ln_t}`, so `v·e^{ψt}` holds; it keeps `t` far
+  /// inside the distance to a branch point beyond the end, which sets the higher derivatives.
   fn within(ln_t: f64, curvature: f64) -> bool {
     2.0 * ln_t + curvature.abs().ln() < f64::EPSILON.ln()
   }
@@ -134,8 +134,8 @@ impl<K: Kernel> Truncation<K> {
     power(t, e, ln_v - e.ln() - (mw * self.m0).ln() - self.scale, -qw)
   }
 
-  /// The cdf at the offset `t` from the lower end, where it lies within the zone and below ½: a tiny exponent puts
-  /// `t^e` next to 1, where the walk keeps the absolute digits the closed form's relative ones would not.
+  /// The cdf at the offset `t` from the lower end, in the zone and below ½: a tiny exponent puts
+  /// `t^e` next to 1, where the walk keeps absolute digits the closed form's relative ones lose.
   pub(in crate::truncated) fn zone_cdf(&self, t: Offset) -> Option<f64> {
     let ln_t = t.ln();
     let f = match self.lo_end()? {

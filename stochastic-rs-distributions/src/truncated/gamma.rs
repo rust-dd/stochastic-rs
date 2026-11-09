@@ -249,8 +249,8 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
     }
   }
 
-  /// The pdf off the normal doubles in the kernel's unit, out of line: the limit 0 where `x/2^p` overflows, where the
-  /// kernel's `(k − 1) ln u − u` reads `∞ − ∞`, and beside 0 through its log.
+  /// The pdf off the normal doubles in the kernel's unit, out of line: the limit 0 where `x/2^p`
+  /// overflows, where the kernel's `(k − 1) ln u − u` reads `∞ − ∞`, and beside 0 through its log.
   #[cold]
   #[inline(never)]
   fn pdf_rare(&self, model: &Model<GammaKernel>, x: f64, u: f64) -> Option<f64> {
@@ -312,8 +312,8 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
     self.invert(src.uniform())
   }
 
-  /// Out of line, so the rejection loop stays lean; clamped to the support as `quantile` is, since the last exp of a
-  /// deep singular panel rounds past its near end.
+  /// Out of line, so the rejection loop stays lean; clamped to the support as `quantile` is, since
+  /// the last exp of a deep singular panel rounds past its near end.
   #[inline(never)]
   fn invert(&self, u: f64) -> T {
     let (lo, up) = (self.lower.to_f64().unwrap(), self.upper.to_f64().unwrap());
@@ -326,8 +326,8 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
   }
 }
 
-/// The least power of two at or above the law's length, the shorter of θ and `upper` (2⁻¹⁰²² for a subnormal one):
-/// `x/2^p` is exact, an interval far below θ keeps its digits, and past 2¹⁰²³ the unit 2¹⁰²⁴ lives in its exponent.
+/// The least power of two ≥ the law's length `min(θ, upper)` (2⁻¹⁰²² if subnormal): `x/2^p` is
+/// exact, an interval far below θ keeps its digits, past 2¹⁰²³ the unit 2¹⁰²⁴ is its exponent.
 pub(super) fn unit_exponent(length: f64) -> i32 {
   let biased = ((length.to_bits() >> 52) & 0x7ff) as i32;
   if biased == 0 {
@@ -496,8 +496,8 @@ mod tests {
     assert!(law.analytics.get().is_some() && law == twin && format!("{law:?}") == text);
   }
 
-  /// Both regimes of the honest `Distribution` draw from the caller's rng and agree with the cdf: rejection on
-  /// `[1, 5]`, inversion on `[45, 60]`, which holds 1.3e-18 of the base mass.
+  /// Both regimes of the honest `Distribution` draw from the caller's rng and agree with the cdf:
+  /// rejection on `[1, 5]`, inversion on `[45, 60]`, which holds 1.3e-18 of the base mass.
   #[test]
   fn scalar_sample_matches_cdf() {
     for (lo, up) in [(1.0, 5.0), (45.0, 60.0)] {

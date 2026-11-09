@@ -24,8 +24,8 @@ impl<K: Kernel> Truncation<K> {
     [frame.plus(unit * offset), variance, skewness, kurtosis]
   }
 
-  /// The mean as its frame and `unit·offset` (in widths, where an offset would underflow against the width), then the
-  /// other three; an interval cutting neither end reads the base's closed forms (2/√k at k = 1e300).
+  /// The mean as its frame and `unit·offset` (in widths where an offset would underflow), then
+  /// three more; an interval cutting no end reads the base's closed forms (2/√k at k = 1e300).
   pub(super) fn located_moments(
     &self,
     scale: f64,
@@ -52,8 +52,8 @@ impl<K: Kernel> Truncation<K> {
     self.centre == self.a.shifted(0.5 * span(self.a, self.b))
   }
 
-  /// The moments from sums in units of `width`: the mean's offset `d`, then sums about it, so no binomial shift by a
-  /// far reference point cancels; `summed` keeps what the scale leaves untouched from the first call.
+  /// Moments from sums in `width` units: the mean's offset `d`, then sums about it, so no binomial
+  /// shift by a far point cancels; `summed` keeps the first call's scale-free part.
   pub(super) fn summed_moments(
     &self,
     scale: f64,
@@ -109,8 +109,8 @@ impl<K: Kernel> Truncation<K> {
     m
   }
 
-  /// `−∫ f ln f` as `ln M₀ − E[ln k(X) − ln k(c)]`, so no large `ln k(c)` cancels against `E[ln k(X)]`; `kept` holds it
-  /// from the first call.
+  /// `−∫ f ln f` as `ln M₀ − E[ln k(X) − ln k(c)]`, so no large `ln k(c)` cancels against
+  /// `E[ln k(X)]`; `kept` holds it from the first call.
   pub(super) fn entropy(&self, kept: &OnceLock<f64>) -> f64 {
     if self.narrow {
       return f64::NAN;

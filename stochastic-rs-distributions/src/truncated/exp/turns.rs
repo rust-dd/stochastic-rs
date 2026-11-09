@@ -1,13 +1,13 @@
-//! `t·x` modulo 2π for doubles `t` and `x`, exact however far the product lies past the doubles: the integer
-//! mantissas multiply exactly, and only the bits of 1/(2π) that reach the fraction enter (Payne and Hanek's reduction).
+//! `t·x` modulo 2π of doubles, exact however far the product passes the doubles: mantissas multiply
+//! exactly and only the bits of 1/(2π) reaching the fraction enter (Payne–Hanek).
 //!
 //! Reference: Payne, M. H. & Hanek, R. N. (1983), "Radian reduction for trigonometric functions", *ACM SIGNUM Newsletter* 18(1), 19-24, DOI 10.1145/1057600.1057602.
 //! Reference: Cody, W. J. & Waite, W. (1980), *Software Manual for the Elementary Functions*, Prentice-Hall, ch. 8, ISBN 0-13-822064-6 (the reduction of a moderate argument by a split constant).
 
 use std::f64::consts::TAU;
 
-/// Bits 1 to 2304 of 1/(2π) after the binary point, 64 a word, most significant first (mpmath, 800 and 1000 digits):
-/// a product of two doubles is below 2²⁰⁴⁸, and its fraction reads 256 bits past that.
+/// Bits 1 to 2304 of 1/(2π) after the binary point, 64 a word, high first (mpmath, 800/1000
+/// digits): a product of two doubles is below 2²⁰⁴⁸, and its fraction reads 256 bits past that.
 const INV_TAU: [u64; 36] = [
   0x28BE60DB9391054A,
   0x7F09D5F47D4D3770,
@@ -98,8 +98,8 @@ pub(super) fn turns(t: f64, x: f64) -> u128 {
   }
 }
 
-/// 2π in four parts (fdlibm's π/2 split, times 4), the first three with 31, 32 and 28 bits, so `k·Cᵢ` is exact for
-/// `|k| < 2²¹`.
+/// 2π in four parts (fdlibm's π/2 split, times 4), the first three with 31, 32 and 28 bits, so
+/// `k·Cᵢ` is exact for `|k| < 2²¹`.
 const TAU_PARTS: [f64; 4] = [
   6.2831853069365025,
   2.4308402025215864e-10,

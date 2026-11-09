@@ -83,8 +83,8 @@ fn ln_1p_near(u: Two) -> Two {
 mod tests {
   use super::*;
 
-  /// Within 1e-23 of mpmath's two parts at 60 and 120 digits, the bound of the tail's doubles: `ln(1e-300)`,
-  /// `ln(1 + 3e-9)` and `ln(1 − 0.7)`.
+  /// Within 1e-23 of mpmath's two parts at 60 and 120 digits, the bound of the tail's doubles:
+  /// `ln(1e-300)`, `ln(1 + 3e-9)` and `ln(1 − 0.7)`.
   #[test]
   fn logs_hold_two_parts() {
     let cases = [

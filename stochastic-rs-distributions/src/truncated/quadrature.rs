@@ -1,4 +1,4 @@
-//! Composite 64-node Gauss–Legendre quadrature of a truncated law's normalised kernel, behind all its analytics; a
+//! 64-node Gauss–Legendre panels on a truncated law's normalised kernel, behind its analytics; a
 //! singular end's innermost panel integrates in `u = (t/h)^e`, where `t^{e−1} dt = (h^e/e) du`.
 //! Reference: Trefethen, L. N. (2008), "Is Gauss Quadrature Better than Clenshaw–Curtis?", *SIAM Review* 50(1), 67-87, DOI 10.1137/060659831 (the Bernstein-ellipse rate that sizes the panels).
 //! Reference: Press, W. H., Teukolsky, S. A., Vetterling, W. T. & Flannery, B. P. (1992), *Numerical Recipes in C*, 2nd ed., Cambridge University Press, §4.4, ISBN 0-521-43108-5 (the change of variable at an integrable power-law end).
@@ -42,8 +42,8 @@ mod zone;
 
 /// A law's log-kernel on its support, in the law's own coordinate, taken relative to a reference point `c`.
 pub(super) trait Kernel: Clone {
-  /// The law maps a quantile walked from a bound or a clip back from the double that point is held beside, so the
-  /// engine reports it as `Point::From`; a law reading every point by its value pays nothing for it.
+  /// The law maps a quantile walked from a bound or clip back from the double the point is held
+  /// beside, reported as `Point::From`; a law reading every point by value pays nothing.
   const FROM_POINT: bool = false;
 
   /// `ln k` is exactly its quadratic about any point (`d1`, `d2` there), so a flat kernel's odd part is `sinh` of its slope.
@@ -52,8 +52,8 @@ pub(super) trait Kernel: Clone {
   /// `ln k(x)`: `-∞` outside the support, `+∞` at a singular end.
   fn ln_k(&self, x: f64) -> f64;
 
-  /// Fixes the reference point `c` the relative log-kernel and its derivatives are taken from; `at_mode` when `c` is the
-  /// kernel's own mode, where its slope is 0 by construction.
+  /// Fixes the reference point `c` the relative log-kernel and its derivatives are taken from;
+  /// `at_mode` when `c` is the kernel's own mode, where its slope is 0 by construction.
   fn anchor(&mut self, c: Cut, at_mode: bool);
 
   /// `ln k(x) − ln k(c)` from `y = x − c`; `branch` is `(s, x − s)`, exact beside the point `s`.
@@ -68,8 +68,8 @@ pub(super) trait Kernel: Clone {
   /// The kernel's maximiser over its support (an end when it is monotone), held beside the end it would round onto.
   fn mode(&self) -> Cut;
 
-  /// `(s, e)`: `k ~ |x − s|^{e−1}` next to `s`, `e > 0` exact where `e − 1` would round; the points ascend and lie
-  /// more than a width apart.
+  /// `(s, e)`: `k ~ |x − s|^{e−1}` next to `s`, `e > 0` exact where `e − 1` would round; the points
+  /// ascend and lie more than a width apart.
   fn branch_points(&self) -> [Option<(f64, f64)>; 2];
 
   /// `ln_rel` less `p·ln|x − s|` at the branch point `s`: the smooth factor, read where `x − s` may round to 0.
@@ -82,8 +82,8 @@ pub(super) trait Kernel: Clone {
     (self.ln_rel(x.x, y, x.branch()), 0.0)
   }
 
-  /// Reads each `ln_rel` to an ε of its value from here on, as a subnormal cdf's walk needs, where its plain form trades
-  /// digits for speed; most kernels already do.
+  /// Reads each `ln_rel` to an ε of its value from here on, as a subnormal cdf's walk needs, where
+  /// its plain form trades digits for speed; most kernels already do.
   fn sharpen(&mut self) {}
 
   /// The kernel's own e-fold length: the clip probe's first step and the reference point's distance from a singular end.
@@ -120,8 +120,8 @@ const ODD: [f64; 17] = [
   1.0 / 35.0,
 ];
 
-/// `ln(1 + z) − z` to full relative precision: `−wz + 2w³ Σ_j w^{2j}/(2j + 3)`, `w = z/(2 + z)`, by Estrin's scheme
-/// for `|w| ≤ 1/3`, on `[−3/4, −1/2)` by halving `1 + z`; past that the plain difference loses under two bits.
+/// `ln(1 + z) − z` to relative precision: `−wz + 2w³ Σ_j w^{2j}/(2j + 3)`, `w = z/(2 + z)`, Estrin
+/// for `|w| ≤ 1/3`, halving `1 + z` on `[−3/4, −1/2)`; beyond, the plain form, < 2 bits off.
 pub(super) fn ln_1p_mx(z: f64) -> f64 {
   if (-0.75..-0.5).contains(&z) {
     // `ln(1 + z) = −ln 2 + ln(1 + v)`, `v = 2z + 1`: three terms of one sign, both shifts exact.
@@ -156,13 +156,13 @@ pub(super) fn ln_ratio(n: f64, d: f64, ln_d: f64) -> f64 {
 /// Relative kernel below `e^{−CLIP}` is dropped: 1e-18 of the mass near the reference point.
 const CLIP: f64 = 41.5;
 
-/// A position the engine reports: a point, or one beside the branch point `s` whose offset `sign·e^{ln_t}` no double
-/// may hold.
+/// A position the engine reports: a point, or one beside the branch point `s` whose offset
+/// `sign·e^{ln_t}` no double may hold.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Point {
   At(f64),
-  /// The point held beside the double the walk's origin is held beside, so a law mapping it back from that double keeps
-  /// its digits.
+  /// The point held beside the double the walk's origin is held beside, so a law mapping it back
+  /// from that double keeps its digits.
   From(Cut),
   /// `centre + width·t` from a flat kernel's midpoint, `t` apart, so a point near 0 between far bounds keeps its digits.
   Mid {
@@ -194,16 +194,16 @@ pub(super) struct Truncation<K> {
   kernel: K,
   lo: Cut,
   up: Cut,
-  /// The point every offset is formed from, held exactly: the clamped mode, a tenth of a scale off a singular end, or
-  /// the midpoint.
+  /// The point every offset is formed from, held exactly: the clamped mode, a tenth of a scale off
+  /// a singular end, or the midpoint.
   centre: Cut,
-  /// The point the moments are summed about: the singular branch point the centre steps off, where the mass may sit
-  /// closer than any offset from the centre resolves, else the centre.
+  /// The point the moments are summed about: the singular branch point the centre steps off, where
+  /// the mass may sit closer than any offset from the centre resolves, else the centre.
   frame: Cut,
   /// The centre's double and the rest of its exact value, so a point's offset from it is two subtractions.
   near: (f64, f64),
-  /// The ends moved in to where the kernel is `e^{−CLIP}` below its value at `centre`, each an exact offset from the
-  /// point it was found from, however much finer than an ulp; a singular end stays.
+  /// The ends moved in to where the kernel is `e^{−CLIP}` below `k(centre)`, each an exact offset
+  /// from the point it was found from, however far below an ulp; a singular end stays.
   a: Cut,
   b: Cut,
   /// `b − a`, the unit of every sum: no power of the law's own scale leaves the range.
@@ -213,20 +213,20 @@ pub(super) struct Truncation<K> {
   m0_rest: f64,
   /// `ln(width·m0)`, so a density costs one `exp` and overflows only where its value does.
   ln_norm: f64,
-  /// Every mass is held `e^{−scale}`: below a shape of `e^{−600}` the frame beside its branch point weighs `h^e/e`, past
-  /// what the sums hold.
+  /// Every mass is held `e^{−scale}`: below a shape of `e^{−600}` the frame beside its branch point
+  /// weighs `h^e/e`, past what the sums hold.
   scale: f64,
-  /// No normal width: no panel places its nodes, and the law answers in its own scale (`truncated::local`, the beta's
-  /// gamma route); the point this engine then reads is for a law neither holds.
+  /// No normal width: no panel places its nodes, the law answers in its own scale (`local`, the
+  /// beta's gamma route); the point it then reads is for a law neither holds.
   narrow: bool,
   /// `∫_lo^a` and `∫_b^up` of `k/k(centre)`, in units of `width`: the cdf adds the first, the quantile both.
   tail_lo: f64,
   tail_up: f64,
-  /// Those tails were summed, from where the kernel is `e^{−2·CLIP}` below `centre`: the moments sum out to the same
-  /// ends, as the first clip leaves `e^{−CLIP}·CLIP⁴` of a fourth moment, past 1e-13 of it.
+  /// Those tails summed, from where the kernel is `e^{−2·CLIP}` below `centre`: the moments sum to
+  /// those ends, as the first clip leaves `e^{−CLIP}·CLIP⁴` of a fourth moment, over 1e-13.
   tails: bool,
-  /// A graded panel's weight as `half/width`, not in logs: the subnormal cdf's walk, whose kernel stays below its value
-  /// at the point, needs each node to an ε, which a log near −700 rounds to 1e-13.
+  /// A graded panel's weight as `half/width`, not in logs: the subnormal cdf's walk, its kernel
+  /// below `k(x)`, needs each node to an ε, which a log near −700 rounds to 1e-13.
   sharp: bool,
   /// `M₀`'s walk from `a`, so the cdf and the lower walk find their panel by search and keep its running sum.
   lower: Walked,
@@ -263,8 +263,8 @@ impl<K: Kernel> Truncation<K> {
     self.narrow.then_some(self.centre.x)
   }
 
-  /// The normalised density `k(x)/∫k` over `e^{ln_scale}` at a point of `[lo, up]`, whose support the law checks at
-  /// its own bounds.
+  /// The normalised density `k(x)/∫k` over `e^{ln_scale}` at a point of `[lo, up]`, whose support
+  /// the law checks at its own bounds.
   pub(super) fn density(&self, x: f64, ln_scale: f64) -> f64 {
     if self.narrow {
       return if x == self.centre.x {
@@ -277,8 +277,8 @@ impl<K: Kernel> Truncation<K> {
     (ln_g - (self.ln_norm + ln_scale)).exp()
   }
 
-  /// The density at the offset `z` from `at`: `at` the double the reference point is held beside, a point finer than its
-  /// ulp keeps its offset; any other `at` reads as `density(at + z)` did.
+  /// The density at the offset `z` from `at`: `at` the double the reference point is held beside, a
+  /// point finer than its ulp keeps its offset; any other `at` reads as `density(at + z)` did.
   #[inline]
   pub(super) fn density_from(&self, z: f64, at: f64, ln_scale: f64) -> f64 {
     if self.narrow {
@@ -290,8 +290,8 @@ impl<K: Kernel> Truncation<K> {
     (ln_g - (self.ln_norm + ln_scale)).exp()
   }
 
-  /// The density at `s + e^{ln_t}` beside the branch point `s` of exponent `e`, an offset no double holds: the power
-  /// law's log apart from the kernel's smooth factor.
+  /// The density at `s + e^{ln_t}` beside the branch point `s` of exponent `e`, an offset no double
+  /// holds: the power law's log apart from the kernel's smooth factor.
   pub(super) fn density_beside(&self, s: f64, e: f64, ln_t: f64, ln_scale: f64) -> f64 {
     let t = ln_t.exp();
     let y = t - span(Cut::at(s), self.centre);
@@ -351,8 +351,8 @@ impl<K: Kernel> Truncation<K> {
     panels(&self.kernel, self.centre, (l, r), rev, true, visit)
   }
 
-  /// `Σ w·e^{ln v − shift}` over a panel's nodes; on a regular panel its own loop, whose few live values leave the sum
-  /// in a register across the kernel's calls.
+  /// `Σ w·e^{ln v − shift}` over a panel's nodes; on a regular panel its own loop, whose few live
+  /// values leave the sum in a register across the kernel's calls.
   fn panel_mass(&self, panel: &Panel, shift: f64) -> f64 {
     let shift = shift + self.scale;
     let mut mass = 0.0;
@@ -382,15 +382,15 @@ impl<K: Kernel> Truncation<K> {
     }
   }
 
-  /// `f(w, ln v, y, ln g)` at each node: a weight and the log of the integrand it multiplies, in units of `width`, the
-  /// offset from the frame and `ln k(x) − ln k(c)`; a singular panel's integrand is in `u`, so `v` is its smooth factor.
+  /// `f(w, ln v, y, ln g)` per node: a weight, its integrand's log in `width` units, the offset
+  /// from the frame and `ln k(x) − ln k(c)`; in a singular panel `u`'s, `v` its smooth factor.
   fn nodes(&self, panel: &Panel, mut f: impl FnMut(f64, f64, f64, f64)) {
     if let Some(e) = panel.singular {
       return self.singular_nodes(panel, e, 0, None, f);
     }
     let half = 0.5 * (panel.r - panel.l);
-    // Graded, in logs: deep beside a singular end the panel's share of `width` underflows where its kernel ratio
-    // overflows.
+    // Graded, in logs: deep beside a singular end the panel's share of `width` underflows where its
+    // kernel ratio overflows.
     let (scaled, ln_scaled) = if panel.graded && !self.sharp {
       (1.0, half.ln() - self.width.ln())
     } else {

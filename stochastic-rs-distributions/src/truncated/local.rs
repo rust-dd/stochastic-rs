@@ -1,5 +1,5 @@
-//! A law narrower than its kernel's coordinate resolves, as its local model `e^{ψy + κy²/2}`, `y = x − r`: a truncated
-//! exponential, normal or uniform in its own scale `2^p`, which the engine integrates as an ordinary law.
+//! A law below its kernel's coordinate resolution, as its local model `e^{ψy + κy²/2}`,
+//! `y = x − r`: a truncated exponential, normal or uniform in its scale `2^p`, as any law.
 
 use std::f64::consts::LN_2;
 
@@ -64,8 +64,8 @@ impl Signed {
   }
 }
 
-/// `ln` of a bound on `|e1|·|ln(1 + z) − z + z²/2|`, the term `e1·ln(1 + z)` past its quadratic: the derivative
-/// `z²/(1 + z)` bounds it by `|z|³/(3 min(1, 1 + z))`.
+/// `ln` of a bound on `|e1|·|ln(1 + z) − z + z²/2|`, the term `e1·ln(1 + z)` past its quadratic:
+/// the derivative `z²/(1 + z)` bounds it by `|z|³/(3 min(1, 1 + z))`.
 pub(super) fn ln_cubic(e1: f64, z: f64) -> f64 {
   if e1 == 0.0 || z == 0.0 {
     return f64::NEG_INFINITY;
@@ -146,8 +146,8 @@ pub(super) enum Model<K> {
 }
 
 impl<K: Kernel> Model<K> {
-  /// The engine's integral of `kernel` on `[lo, up]`, or the local model where the engine reports no normal width and
-  /// the model exists; the engine is built where the model holds it and summed there, not moved through constructors.
+  /// The engine's integral of `kernel` on `[lo, up]`, or the local model where the engine has no
+  /// normal width and the model exists; the engine is built and summed where the model holds it.
   pub(super) fn new(
     kernel: K,
     lo: impl Into<Cut>,
@@ -178,8 +178,8 @@ pub(super) struct Local {
 }
 
 impl Local {
-  /// `e^{ψy + κy²/2}` on `[r + lo, r + up]` in units of the shortest of its e-fold length, normal width and interval;
-  /// `None` where no such scale exists, or where `ln_cubic(y)`, its remainder's log bound, passes ε at a clipped end.
+  /// `e^{ψy + κy²/2}` on `[r + lo, r + up]` in units of its shortest e-fold, width or interval;
+  /// `None` without one, or where `ln_cubic(y)`, the remainder's log bound, passes ε at a clip.
   pub(super) fn new(
     r: f64,
     (lo, up): (f64, f64),
@@ -234,8 +234,8 @@ impl Local {
     [self.at(frame, unit * offset), variance, skewness, kurtosis]
   }
 
-  /// `r + 2^p(frame + d)`, summed in units from the frame's exact parts and scaled once, so a point far nearer 0 than
-  /// both keeps its digits; where `r` passes the doubles in units the law is `r` to its last double.
+  /// `r + 2^p(frame + d)`, summed in units of the frame's exact parts, scaled once, so a point far
+  /// nearer 0 than both keeps its digits; where `r` in units passes the doubles, it is `r`.
   fn at(&self, frame: Cut, d: f64) -> f64 {
     let (s, lo, t) = frame.parts();
     let r = ldexp(self.r, -self.p);
@@ -266,8 +266,8 @@ impl Local {
     }
   }
 
-  /// `E e^{tX}`: the tilted law is the model at `x_c`, where its log-kernel peaks on the interval (the law's own bound
-  /// where it clamps), in its own unit; the exponent is `t·x_c` plus the plain kernel's rise from `r` to `x_c`.
+  /// `E e^{tX}`: the tilted law is the model at `x_c`, its log-kernel's peak on the interval (a
+  /// bound where it clamps), in its unit; the exponent `t·x_c` plus the kernel's rise from `r`.
   pub(super) fn mgf(&self, t: f64, (lo, up): (f64, f64)) -> f64 {
     let tilt = self.slope.plus(Signed::over(t, 0.0));
     // `(ψ + t)/|κ|`; a tilt that cancels the slope peaks at `r`.

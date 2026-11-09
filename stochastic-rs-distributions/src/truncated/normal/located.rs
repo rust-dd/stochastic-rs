@@ -1,5 +1,5 @@
-//! The truncated normal between its own coordinate and the engine's: bounds held at their own doubles and their width,
-//! points beside a bound, and answers mapped back from the exact point nearest them.
+//! The truncated normal between its own coordinate and the engine's: bounds held at their doubles
+//! and width, points beside a bound, and answers mapped back from the exact point nearest them.
 
 use super::NormalKernel;
 use super::SimdTruncatedNormal;
@@ -22,8 +22,8 @@ use crate::truncated::quadrature::two_sum;
 pub(super) const SUBNORMAL_DIGITS: f64 = f64::MIN_POSITIVE / 1024.0;
 
 impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
-  /// The mean from the point its sums were taken about, exact in the law's coordinate: a bound, `μ`, or the bounds'
-  /// midpoint for a flat kernel, whose standardised image no rounded width maps back.
+  /// The mean from the point its sums are about, exact in the law's coordinate: a bound, `μ`, or
+  /// the bounds' midpoint for a flat kernel, whose standardised image no rounded width maps back.
   pub(super) fn mean_from(
     &self,
     t: &Truncation<NormalKernel>,
@@ -40,8 +40,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     self.anchored((self.located(Point::From(frame))?, 0.0), offset)
   }
 
-  /// `E[Z] = (k(α) − k(β))/∫k` for `k = e^{−z²/2}`, an interval about `μ`, as `m·2^p`: summed odd powers cancel to ε of
-  /// the width where the mean lies near `μ`, this keeps its digits; `α ± β` from the bounds themselves.
+  /// `E[Z] = (k(α) − k(β))/∫k`, `k = e^{−z²/2}`, about `μ`, as `m·2^p`: it keeps the digits that
+  /// summed odd powers cancel to ε of the width near `μ`; `α ± β` from the bounds themselves.
   fn mode_offset(&self, t: &Truncation<NormalKernel>) -> Option<(f64, i32)> {
     let (mu, sigma) = (self.base.mu().to_f64()?, self.base.sigma().to_f64()?);
     let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
@@ -124,8 +124,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     }
   }
 
-  /// `−(z² − c²)/2` at `z = (x − μ)/σ` exactly, in two parts, `c` the reference point, a bound at its exact standardised
-  /// value too: near 38σ out a rounded `z` or bound moves it by `z²ε`, which `M₀`, measured from its own end, does not see.
+  /// `−(z² − c²)/2` at the exact `z = (x − μ)/σ` in two parts, `c` the reference point, a bound
+  /// exact too: 38σ out a rounded `z` moves it `z²ε`, unseen by `M₀`, measured from its own end.
   pub(super) fn ln_point(&self, t: &Truncation<NormalKernel>, x: f64) -> Two {
     let (lo, up) = (self.lower.to_f64().unwrap(), self.upper.to_f64().unwrap());
     let (centre, (at_lo, at_up)) = (t.reference(), self.held());
@@ -163,8 +163,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     ))
   }
 
-  /// `x` beside a bound nearer it than `μ` by its own offset `(x − bound)/σ`, so a point next to an end keeps the
-  /// digits its distance from it has, which `(x − μ)/σ` rounds away.
+  /// `x` beside a bound nearer it than `μ` by its own offset `(x − bound)/σ`, so a point next to an
+  /// end keeps the digits its distance from it has, which `(x − μ)/σ` rounds away.
   pub(super) fn cut(&self, x: f64) -> Option<Cut> {
     let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
     let (bound, held) = if x - lo <= up - x {
@@ -182,8 +182,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     Some(Cut::at(self.standardise(x)?))
   }
 
-  /// `(x − lower)/σ` as `m·2^q` where the subnormal it rounds to holds fewer digits than 2e-13, which `cut` would
-  /// take.
+  /// `(x − lower)/σ` as `m·2^q` where the subnormal it rounds to holds fewer digits than 2e-13,
+  /// which `cut` would take.
   pub(super) fn zone_offset(&self, x: f64) -> Option<Offset> {
     let (lo, sigma) = (self.lower.to_f64()?, self.base.sigma().to_f64()?);
     let d = x - lo;
@@ -202,8 +202,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     })
   }
 
-  /// A point the engine reports: one held beside a bound maps back from that bound itself, one beside a flat kernel's
-  /// midpoint from the bounds' midpoint.
+  /// A point the engine reports: one held beside a bound maps back from that bound itself, one
+  /// beside a flat kernel's midpoint from the bounds' midpoint.
   pub(super) fn located(&self, point: Point) -> Option<f64> {
     let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
     let sigma = self.base.sigma().to_f64()?;
@@ -234,8 +234,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     (self.bounds[0], self.bounds[1])
   }
 
-  /// The engine's bounds at their own doubles; off `μ` the far one is also held beside the near one by the width, which
-  /// the two bounds' roundings would change by an ulp of their place.
+  /// The engine's bounds at their own doubles; off `μ` the far one is also held beside the near one
+  /// by the width, which the two bounds' roundings would change by an ulp of their place.
   pub(super) fn held(&self) -> (Cut, Cut) {
     let [alpha, beta, width] = self.bounds;
     let (lo, up) = (Cut::at(alpha), Cut::at(beta));
@@ -249,8 +249,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
   }
 }
 
-/// `(β − α)(β + α)/2` from the bounds' halves, where `up − lo` or `lo + up − 2μ` passes MAX: with `μ` inside, no half
-/// does, so each factor keeps its digits.
+/// `(β − α)(β + α)/2` from the bounds' halves, where `up − lo` or `lo + up − 2μ` passes MAX: with
+/// `μ` inside, no half does, so each factor keeps its digits.
 #[cold]
 #[inline(never)]
 fn halved_gap(lo: f64, up: f64, mu: f64, sigma: f64) -> f64 {

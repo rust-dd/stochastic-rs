@@ -91,8 +91,8 @@ fn narrow_interval_centres_on_its_midpoint() {
   assert!((t.cdf(Cut::at(0.3 + 0.25e-6)) - 0.25000002811116198).abs() < 1e-13);
 }
 
-/// Below the clip the cdf integrates from where the kernel is negligible against its value at `x`, and the quantile
-/// inverts it there; `Φ(−12)/(Φ(2) − Φ(−∞))` and its level by mpmath.
+/// Below the clip the cdf integrates from where the kernel is negligible against its value at `x`,
+/// and the quantile inverts it there; `Φ(−12)/(Φ(2) − Φ(−∞))` and its level by mpmath.
 #[test]
 fn far_below_the_clip_keeps_its_digits() {
   let t = Filled::new(Normal::default(), f64::NEG_INFINITY, 2.0);
@@ -104,8 +104,8 @@ fn far_below_the_clip_keeps_its_digits() {
   assert!((t.quantile(p).value() + 12.0).abs() < 1e-13);
 }
 
-/// `Φ⁻¹(1e-300 Φ(2))` by mpmath: a level far below the clip, found by walking the panels from where the kernel is
-/// negligible.
+/// `Φ⁻¹(1e-300 Φ(2))` by mpmath: a level far below the clip, found by walking the panels from where
+/// the kernel is negligible.
 #[test]
 fn far_below_the_clip_the_quantile_walks_the_tail() {
   let t = Filled::new(Normal::default(), f64::NEG_INFINITY, 2.0);
@@ -165,8 +165,8 @@ impl Kernel for Power {
   }
 }
 
-/// Far below the clip the ladder reaches the range's own end instead of stopping at its 1e-18 mass rung, so
-/// `P(1 + f64(0.1), 1e-200)` (mpmath, 60 and 120 digits) takes a few dozen panels.
+/// Far below the clip the ladder reaches the range's own end instead of stopping at its 1e-18 mass
+/// rung, so `P(1 + f64(0.1), 1e-200)` (mpmath, 60 and 120 digits) takes a few dozen panels.
 #[test]
 fn ladder_reaches_an_end_far_below_the_clip() {
   let t = Filled::new(Power::default(), 0.0, f64::INFINITY);

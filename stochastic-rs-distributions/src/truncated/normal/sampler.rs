@@ -1,5 +1,5 @@
-//! The truncated normal's draws: rejection on the base normal, Robert's one-sided proposals as offsets from the near
-//! bound, the inverse cdf, and past `μ ± σ·MAX` the exponential the law is there.
+//! The truncated normal's draws: rejection on the base normal, Robert's proposals as offsets from
+//! the near bound, the inverse cdf, and past `μ ± σ·MAX` the exponential the law is there.
 
 use super::SimdTruncatedNormal;
 use super::TruncatedNormalSource;
@@ -26,8 +26,8 @@ pub(super) struct TailSetup {
 }
 
 impl TailSetup {
-  /// `w`, the width `(up − lo)/σ` where the law holds it (NaN else, `b − a`): bounds rounding to one double past `MAX/2`
-  /// still leave the law its width.
+  /// `w`, the width `(up − lo)/σ` where the law holds it (NaN else, `b − a`): bounds rounding to
+  /// one double past `MAX/2` still leave the law its width.
   pub(super) fn new(a: f64, b: f64, w: f64, mirrored: bool) -> Self {
     let width = if w.is_nan() { b - a } else { w };
     let root = (a * a + 4.0).sqrt();
@@ -56,8 +56,8 @@ impl TailSetup {
 }
 
 impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
-  /// Rejection on the base normal while the interval holds over 5 % of its mass (1000 tries), else the exact scheme
-  /// the interval's position allows.
+  /// Rejection on the base normal while the interval holds over 5 % of its mass (1000 tries), else
+  /// the exact scheme the interval's position allows.
   #[inline]
   pub(super) fn draw<S: TruncatedNormalSource<T>>(&self, src: &mut S) -> T {
     if self.norm_mass > 0.05 {
@@ -70,15 +70,15 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     }
     match self.tail {
       Some(setup) => self.tail_sample(setup, src),
-      // The map's cells are an ulp of `F(lower)` wide: where 2²⁰ of them do not span the interval's mass it resolves
-      // no law, and the narrow interval is drawn uniformly, kept with probability `e^{−z²/2}`.
+      // The map's cells are an ulp of `F(lower)` wide: where 2²⁰ of them miss the interval's mass
+      // it resolves no law, so the interval is drawn uniformly, kept with probability `e^{−z²/2}`.
       None if self.norm_mass < 2f64.powi(-32) => T::from_f64_fast(self.flat_draw(src)),
       None => T::from_f64_fast(self.inverse_cdf(src.uniform())),
     }
   }
 
-  /// An interval about `μ` too narrow for the inverse cdf: `x` uniform on it, accepted with `e^{−z²/2} ≥ e^{−w²/2}`,
-  /// near 1 here (1000 tries bound the loop).
+  /// An interval about `μ` too narrow for the inverse cdf: `x` uniform on it, accepted with
+  /// `e^{−z²/2} ≥ e^{−w²/2}`, near 1 here (1000 tries bound the loop).
   fn flat_draw<S: TruncatedNormalSource<T>>(&self, src: &mut S) -> f64 {
     let (lo, up) = (self.lower.to_f64().unwrap(), self.upper.to_f64().unwrap());
     let mut x = lo;
@@ -138,8 +138,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     ))
   }
 
-  /// Past `μ ± σ·MAX`, or across a standardised width `w` below the doubles, the law is the exponential of rate
-  /// `|near − μ|/σ²` from its near bound, cut at the far one: its curvature moves the log by under `1/MAX²` or `w²`.
+  /// Past `μ ± σ·MAX`, or a standardised width `w` below the doubles, the law is exponential, rate
+  /// `|near − μ|/σ²`, from the near bound to the far: curvature adds under `1/MAX²` or `w²`.
   #[cold]
   #[inline(never)]
   fn beyond_draw(&self, setup: TailSetup, u: f64) -> f64 {

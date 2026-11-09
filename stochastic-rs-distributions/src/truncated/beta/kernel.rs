@@ -10,8 +10,8 @@ use crate::truncated::quadrature::two;
 use crate::truncated::quadrature::two_prod;
 use crate::truncated::quadrature::two_sum;
 
-/// `x^{a−1} (1 − x)^{b−1}` on `[0, 1]` about the reference point `c`; a unit shape has no log term, whose `0·ln 0`
-/// would read NaN at its end.
+/// `x^{a−1} (1 − x)^{b−1}` on `[0, 1]` about the reference point `c`; a unit shape has no log term,
+/// whose `0·ln 0` would read NaN at its end.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct BetaKernel {
   a: f64,
@@ -26,8 +26,8 @@ pub(super) struct BetaKernel {
   /// `(a − 1)/c − (b − 1)/(1 − c)`, the slope at `c`, `None` where it overflows.
   slope: Option<f64>,
   mode: Cut,
-  /// The mode is stationary, a double-double of exact `α − 1` and `β − 1`: zeroing its slope shifts the law by 2⁻¹⁰⁴
-  /// of its place, an ε of an ulp, which no shape statistic sees.
+  /// The mode is stationary, a double-double of exact `α − 1` and `β − 1`: zeroing its slope shifts
+  /// the law by 2⁻¹⁰⁴ of its place, an ε of an ulp, which no shape statistic sees.
   exact: bool,
   /// `α + β ≤ 1e4`: the plain form's measured error, 5.5e-15·√(α + β) out to the farthest normal pdf, stays in 1e-12.
   plain: bool,
@@ -55,8 +55,8 @@ impl BetaKernel {
     }
   }
 
-  /// `ln(x/c)` for `z = y/c`: `ln_1p` within half of `c`, else read from `x`, which a `y/c` past the doubles never
-  /// reaches.
+  /// `ln(x/c)` for `z = y/c`: `ln_1p` within half of `c`, else read from `x`, which a `y/c` past
+  /// the doubles never reaches.
   #[inline]
   fn ln_left(&self, x: f64, z: f64) -> f64 {
     if z.abs() > 0.5 {
@@ -81,8 +81,8 @@ impl BetaKernel {
     )
   }
 
-  /// `1 − x`: the offset from 1 where `branch` holds it; from `x` itself, exact, where `x ≥ ½` and the rounded `1 − c`
-  /// of a reference point below ½ would cancel; else `(1 − c) − y`, the node's own offset.
+  /// `1 − x`: the offset from 1 where `branch` holds it; exact from `x` where `x ≥ ½` and a
+  /// reference point below ½ would cancel in `1 − c`; else `(1 − c) − y`, the node's offset.
   #[inline]
   fn gap(&self, x: f64, y: f64, branch: Option<(f64, f64)>) -> f64 {
     match branch {
@@ -110,8 +110,8 @@ impl BetaKernel {
     }
   }
 
-  /// `(a − 1)(ln(x/c) − y/c) + (b − 1)(ln((1 − x)/(1 − c)) + y/(1 − c))` plus the slope's `y`, each factor's first part
-  /// `ln_1p_mx` beside `c`: out of line, as only shapes past `α + β = 1e4` take it.
+  /// `(a − 1)(ln(x/c) − y/c) + (b − 1)(ln((1 − x)/(1 − c)) + y/(1 − c))` plus the slope's `y`, each
+  /// first part `ln_1p_mx` beside `c`; out of line, only shapes past `α + β = 1e4` take it.
   #[inline(never)]
   fn ln_rel_exact(&self, x: f64, y: f64, branch: Option<(f64, f64)>) -> f64 {
     let (zl, zr) = (y / self.c, -y / self.cc);
@@ -140,8 +140,8 @@ impl BetaKernel {
     part(self.a, zl, ll) + part(self.b, zr, lr) + self.linear(y)
   }
 
-  /// `(a − 1)y/c − (b − 1)y/(1 − c)`, from the slope where it is finite; where it overflows the mode is far and the two
-  /// terms do not cancel.
+  /// `(a − 1)y/c − (b − 1)y/(1 − c)`, from the slope where it is finite; where it overflows the
+  /// mode is far and the two terms do not cancel.
   #[inline]
   fn linear(&self, y: f64) -> f64 {
     match self.slope {
@@ -164,8 +164,8 @@ impl BetaKernel {
   }
 }
 
-/// `ln(n/d)` as `ln n − ln d`, or from the quotient where the exponent `e − 1` would carry the two logs' rounding past
-/// 1e-13 of the kernel (a shape in the hundreds at `n` far below 1).
+/// `ln(n/d)` as `ln n − ln d`, or from the quotient where the exponent `e − 1` would carry the two
+/// logs' rounding past 1e-13 of the kernel (a shape in the hundreds at `n` far below 1).
 #[inline]
 fn far_log(e: f64, n: f64, d: f64, ln_d: f64, budget: f64) -> f64 {
   let ln_n = n.ln();
@@ -195,8 +195,8 @@ impl Kernel for BetaKernel {
     left + right
   }
 
-  /// The slope `((α − 1) − (α + β − 2)c)/(c(1 − c))` from exact halves of `α − 1` and `β − 1`, the product by FMA and
-  /// the exact reference point, so its sign and value hold at any `c`; 0 at a stationary mode held exactly.
+  /// The slope `((α − 1) − (α + β − 2)c)/(c(1 − c))` from exact halves of `α − 1`, `β − 1`, an FMA
+  /// product and the exact `c`: sign and value hold at any `c`, 0 at an exact stationary mode.
   #[inline]
   fn anchor(&mut self, c: Cut, at_mode: bool) {
     let (hi, lo) = c.near();
@@ -246,8 +246,8 @@ impl Kernel for BetaKernel {
     self.budget = 0.0;
   }
 
-  /// `(α − 1)·ln(x/c) + (β − 1)·ln((1 − x)/(1 − c))` from the exact `x` and `c`, each log from its offset within half of
-  /// its end.
+  /// `(α − 1)·ln(x/c) + (β − 1)·ln((1 − x)/(1 − c))` from the exact `x` and `c`, each log from its
+  /// offset within half of its end.
   fn ln_rel_two(&self, x: Cut, _y: f64) -> Two {
     let (x, c, one) = (two::of(x), (self.c, self.c_lo), (1.0, 0.0));
     let y = two::sub(x, c);
@@ -309,8 +309,8 @@ impl Kernel for BetaKernel {
     ]
   }
 
-  /// `1/(α + β)` from halves, so it never overflows to 0: beside 0 the factor `(1 − x)^{β−1}` falls an e-fold in
-  /// about `1/β`, beside 1 `x^{α−1}` in `1/α`.
+  /// `1/(α + β)` from halves, so it never overflows to 0: beside 0 the factor `(1 − x)^{β−1}` falls
+  /// an e-fold in about `1/β`, beside 1 `x^{α−1}` in `1/α`.
   #[inline]
   fn length_scale(&self) -> f64 {
     0.5 / (0.5 * self.a + 0.5 * self.b)
@@ -356,8 +356,8 @@ fn half_less_one(x: f64) -> (f64, f64) {
   two_sum(0.5 * x, -0.5)
 }
 
-/// The interior mode beside its nearer end, exact while that offset is normal and held off the kernel's zero where it
-/// underflows; else the end the density rises toward, the heavier on a U (0 on a tie), ½ for the uniform.
+/// The interior mode by its offset from the nearer end, exact while normal, held off the kernel's
+/// zero below; else the end the density rises to, a U's heavier (0 if tied), ½ if uniform.
 fn held_mode(a: f64, b: f64) -> (Cut, bool) {
   if a > 1.0 && b > 1.0 {
     // Halves of the exact `a − 1` and `b − 1`, so their sum cannot overflow, divided to a double-double.

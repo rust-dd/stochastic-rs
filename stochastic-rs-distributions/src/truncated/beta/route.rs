@@ -1,5 +1,5 @@
-//! Beside an end, where `(1 − x)^{β−1}` is `e^{−(β−1)x}` to within 2⁻⁵³ out to the clipped end of the mass, the beta is
-//! the truncated gamma of rate `β − 1`, which runs at a power-of-two unit; beside 1 its mirror, of rate `α − 1` in `1 − x`.
+//! Beside 0, where `(1 − x)^{β−1}` is `e^{−(β−1)x}` within 2⁻⁵³ to the mass's clipped end, the beta
+//! is a truncated gamma of rate `β − 1` at a power-of-two unit; at 1 its mirror in `1 − x`.
 
 use std::f64::consts::LN_2;
 
@@ -12,8 +12,8 @@ use crate::truncated::quadrature::Filled;
 use crate::truncated::quadrature::Point;
 use crate::truncated::quadrature::Reflected;
 
-/// `(e − 1)(ln(1 − x) + x)` within 2⁻⁵³: it is at most `(e − 1)x²/(2(1 − x))` above a unit exponent, below one the
-/// whole `(1 − e)·x/(1 − x)` against a rate of 0.
+/// `(e − 1)(ln(1 − x) + x)` within 2⁻⁵³: it is at most `(e − 1)x²/(2(1 − x))` above a unit
+/// exponent, below one the whole `(1 − e)·x/(1 − x)` against a rate of 0.
 fn holds(e: f64, x: f64) -> bool {
   let error = if e > 1.0 {
     (e - 1.0) * x * (x / (2.0 * (1.0 - x)))
@@ -32,8 +32,8 @@ fn scale(e: f64) -> f64 {
   }
 }
 
-/// A point the gamma's clipped upper end lies past: half its reference point, the clamped mode or a step off a
-/// singular 0.
+/// A point the gamma's clipped upper end lies past: half its reference point, the clamped mode or a
+/// step off a singular 0.
 fn reference(k: f64, theta: f64, lo: f64, up: f64) -> f64 {
   let centre = if k > 1.0 {
     (k - 1.0) * theta
@@ -43,8 +43,8 @@ fn reference(k: f64, theta: f64, lo: f64, up: f64) -> f64 {
   lo.max(0.5 * centre.min(up))
 }
 
-/// The gamma of rate `β − 1` on `[lo, up]` where it holds the kernel out to its clipped end; below a unit `β` nothing
-/// falls, so that end is `up`.
+/// The gamma of rate `β − 1` on `[lo, up]` where it holds the kernel out to its clipped end; below
+/// a unit `β` nothing falls, so that end is `up`.
 pub(super) fn gamma_route(a: f64, b: f64, lo: f64, up: f64) -> Option<SimdTruncatedGamma<f64>> {
   let theta = scale(b);
   if holds(b, up) {
@@ -57,8 +57,8 @@ pub(super) fn gamma_route(a: f64, b: f64, lo: f64, up: f64) -> Option<SimdTrunca
   holds(b, g.clipped_end()?).then_some(g)
 }
 
-/// The gamma of rate `α − 1` in `1 − x`, read in `z = (x − 1)/2^p`, where its branch point is the upper end and the
-/// cdf keeps the relative digits of the lower tail in `x`.
+/// The gamma of rate `α − 1` in `1 − x`, read in `z = (x − 1)/2^p`, where its branch point is the
+/// upper end and the cdf keeps the relative digits of the lower tail in `x`.
 #[derive(Clone, Debug)]
 pub(super) struct Mirror {
   t: Filled<Reflected<GammaKernel>>,
@@ -67,8 +67,8 @@ pub(super) struct Mirror {
 }
 
 impl Mirror {
-  /// Where it holds the kernel out to the clipped end of the mass in `1 − x`, and `1 − x` is exact on the support or
-  /// the law below ½ underflows, which at or below a unit `α`, with no rate to fall by, it never does.
+  /// If it holds the kernel to the mass's clipped end in `1 − x`, and `1 − x` is exact on the
+  /// support or the law below ½ underflows, which at `α ≤ 1`, no rate to fall by, it cannot.
   pub(super) fn route(a: f64, b: f64, lo: f64, up: f64) -> Option<Self> {
     let exact = lo >= 0.5;
     let (theta, near, far) = (scale(a), 1.0 - up, 1.0 - lo);

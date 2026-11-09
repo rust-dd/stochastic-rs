@@ -32,8 +32,8 @@ fn truncated_exp_samples_mean() {
   assert!(best < 0.01, "best |mean − {expected}| = {best}");
 }
 
-/// Draws in bounds with mean `lower + 1/λ − (upper − lower)·r/(1 − r)`, `r = e^{−λ(upper−lower)}`, on intervals where
-/// the cdf form saturated and put every draw at 690.78, the old `-ln(1e-300)` guard.
+/// Draws in bounds with mean `lower + 1/λ − (upper − lower)·r/(1 − r)`, `r = e^{−λ(upper−lower)}`,
+/// on intervals where a cdf form saturates and puts every draw at 690.78, `−ln(1e-300)`.
 fn assert_far_interval_means(mut draws: impl FnMut(SimdTruncatedExp<f64>) -> Vec<f64>) {
   for (lam, lo, hi) in [(1.0_f64, 50.0_f64, 60.0_f64), (100.0, 0.5, 0.6)] {
     let xs = draws(SimdTruncatedExp::<f64>::new(lam, lo, hi));
@@ -73,8 +73,8 @@ fn scalar_sample_matches_cdf() {
   assert!(best > 0.01, "best p = {best}");
 }
 
-/// `1 − e^{−λL}` through `exp_m1` and `ln(1 − u·m)` through `ln_1p`, where the plain forms read `∞`, NaN and `lower`
-/// at λL = 1e-17; mpmath references.
+/// `1 − e^{−λL}` through `exp_m1` and `ln(1 − u·m)` through `ln_1p`, where the plain forms read
+/// `∞`, NaN and `lower` at λL = 1e-17; mpmath references.
 #[test]
 fn tiny_rate_times_length_keeps_pdf_cdf_quantile() {
   let rel = |a: f64, b: f64| ((a - b) / b).abs();
@@ -91,8 +91,8 @@ fn tiny_rate_times_length_keeps_pdf_cdf_quantile() {
   assert!(rel(nano.pdf(5e-10).unwrap(), 999_999_999.999_999_9) < 1e-12);
 }
 
-/// The engine's mean and variance, in its units of the shorter of `1/λ` and `L` from the lower bound, against the
-/// series forms over every regime of `λL`, at `λ = 1.5`.
+/// The engine's mean and variance, in its units of the shorter of `1/λ` and `L` from the lower
+/// bound, against the series forms over every regime of `λL`, at `λ = 1.5`.
 #[test]
 fn engine_agrees_with_the_series_forms() {
   for lam_len in [1e-17, 1e-9, 0.3, 1.0, 5.0, 50.0, 1050.0] {

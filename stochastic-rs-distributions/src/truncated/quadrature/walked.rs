@@ -1,5 +1,5 @@
-//! A walk of `[a, b]` as it was taken: each panel's far end and mass in walk order, and the runs of panels that share an
-//! origin, so a point's panel is found by bisection and the walk's running sum re-formed from the same masses.
+//! A walk of `[a, b]` as taken: each panel's far end and mass in order, and the runs sharing an
+//! origin, so bisection finds a point's panel and the running sum re-forms from those masses.
 
 use super::Sum;
 use super::panels::Cut;
@@ -117,8 +117,8 @@ impl Walked {
     sum
   }
 
-  /// The forward walk's stop at `at`: the first panel whose far end its offset does not reach, that offset, and the
-  /// panel's index. A run's ends ascend from one origin, so the run is bisected.
+  /// The forward walk's stop at `at`: the first panel whose far end its offset does not reach, that
+  /// offset, and the panel's index. A run's ends ascend from one origin, so the run is bisected.
   pub(super) fn holding(&self, at: Cut) -> Option<(usize, Panel, f64)> {
     debug_assert!(!self.rev);
     for (j, run) in self.first.iter().chain(&self.rest).enumerate() {
@@ -132,8 +132,8 @@ impl Walked {
     None
   }
 
-  /// The walk's stop at `want`: the first panel whose running sum reaches it, else the last, with the part of `want`
-  /// left at it and its mass.
+  /// The walk's stop at `want`: the first panel whose running sum reaches it, else the last, with
+  /// the part of `want` left at it and its mass.
   pub(super) fn reaching(&self, want: f64) -> Option<(Panel, f64, f64)> {
     let mut acc = Sum::default();
     let mut hit = None;

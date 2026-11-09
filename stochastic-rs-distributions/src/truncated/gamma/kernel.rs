@@ -10,13 +10,13 @@ use crate::truncated::quadrature::two;
 use crate::truncated::quadrature::two_prod;
 use crate::truncated::quadrature::two_sum;
 
-/// `u^{k−1} e^{−u/s}` on `[0, ∞)` about the reference point `c`; a unit shape has no log term, whose `0·ln 0` would
-/// read NaN at 0.
+/// `u^{k−1} e^{−u/s}` on `[0, ∞)` about the reference point `c`; a unit shape has no log term,
+/// whose `0·ln 0` would read NaN at 0.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(in crate::truncated) struct GammaKernel {
   k: f64,
-  /// θ in the kernel's unit: at most 1 where θ is the shorter length, else above 1, `+∞` where `upper` lies so far
-  /// below θ that `e^{−u/s}` is 1 on the interval.
+  /// θ in the kernel's unit: at most 1 where θ is the shorter length, else above 1, `+∞` where
+  /// `upper` lies so far below θ that `e^{−u/s}` is 1 on the interval.
   s: f64,
   c: f64,
   /// The rest of the exact reference point past `c`, which the offsets `y` are taken from.
@@ -76,8 +76,8 @@ impl Kernel for GammaKernel {
     lead - x / self.s
   }
 
-  /// Above a unit shape the slope from `(k − 1)s − c` at the exact centre `c.x + c_lo`, `k − 1` exact and the product
-  /// by FMA, so it cancels to its true value next to the mode, 0 at it; below one the two terms share a sign.
+  /// Past shape 1 the slope is `(k − 1)s − c` at the exact centre, `k − 1` exact, the product by
+  /// FMA: it cancels to the truth beside the mode, 0 at it; below 1 both terms share a sign.
   #[inline]
   fn anchor(&mut self, c: Cut, at_mode: bool) {
     let (hi, lo) = c.near();
@@ -101,8 +101,8 @@ impl Kernel for GammaKernel {
     self.slope = slope.is_finite().then_some(slope);
   }
 
-  /// The plain `(k − 1) ln(x/c) − y/s`, `ln_1p` within half of `c` and else the quotient's log, which a `y/c` past the
-  /// doubles never reaches; past the shape bound, where the slope is finite, the cancellation-free form out of line.
+  /// Plain `(k − 1) ln(x/c) − y/s`, `ln_1p` within `c/2`, else the quotient's log, never reached by
+  /// an overflowing `y/c`; past the shape bound, the slope finite, the cancellation-free form.
   #[inline]
   fn ln_rel(&self, x: f64, y: f64, _branch: Option<(f64, f64)>) -> f64 {
     if self.k == 1.0 {

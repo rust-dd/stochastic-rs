@@ -48,8 +48,8 @@ fn truncated_normal_pdf_normalised() {
   );
 }
 
-/// Draws in bounds and a conditional mean against Simpson quadrature of `exp(-a t - t²/2)`, the density of `Z - a`,
-/// which forms no cdf: the inverse transform put 17 % of [8, 8.5] and all of [10, 12] at `+inf`.
+/// Draws in bounds and a conditional mean against Simpson's `exp(-a t - t²/2)`, `Z - a`'s density,
+/// which needs no cdf: inversion would put 17 % of [8, 8.5] and all of [10, 12] at `+inf`.
 fn assert_far_tail_means(mut draws: impl FnMut(SimdTruncatedNormal<f64>) -> Vec<f64>) {
   for (lo, hi) in [(8.0_f64, 8.5_f64), (10.0, 12.0), (-12.0, -10.0)] {
     let xs = draws(SimdTruncatedNormal::<f64>::new(0.0, 1.0, lo, hi));
@@ -118,8 +118,8 @@ fn scalar_sample_matches_cdf() {
   }
 }
 
-/// Each pair brackets Robert's (2.1) width at a = 3, 0 and 8 (0.317, 1.649, 0.124), inside the band where a `2/α*`
-/// switch would take the uniform proposal.
+/// Each pair brackets Robert's (2.1) width at a = 3, 0 and 8 (0.317, 1.649, 0.124), inside the band
+/// where a `2/α*` switch would take the uniform proposal.
 #[test]
 fn tail_proposal_follows_roberts_rule() {
   let exponential = |a: f64, b: f64| {
@@ -157,8 +157,8 @@ fn getters_return_the_parent_parameters() {
   );
 }
 
-/// Past `MAX/2` the tail's rate no longer overflows: every draw returns, here the bound, where each law is a point to
-/// its last double.
+/// Past `MAX/2` the tail's rate stays finite: every draw returns, here the bound, where each
+/// law is a point to its last double.
 #[test]
 fn draws_past_half_max_return() {
   let (max, inf) = (f64::MAX, f64::INFINITY);
@@ -179,8 +179,8 @@ fn draws_past_half_max_return() {
   }
 }
 
-/// Where the law spreads over the subnormals past `μ ± σ·MAX`, or its bounds round to one standardised double, the
-/// draws follow the law the analytics answer.
+/// Where the law spreads over the subnormals past `μ ± σ·MAX`, or its bounds round to one
+/// standardised double, the draws follow the law the analytics answer.
 #[test]
 fn draws_past_mu_plus_sigma_max_follow_the_analytics() {
   let (max, inf) = (f64::MAX, f64::INFINITY);
@@ -199,8 +199,8 @@ fn draws_past_mu_plus_sigma_max_follow_the_analytics() {
   }
 }
 
-/// A tail law whose standardised width is a subnormal of a few ulps rounds `σ·y` past its far bound: every draw stays
-/// in the support, the mirrored setup's and the plain one's, and a normal width's alike.
+/// A tail law whose standardised width is a few-ulp subnormal rounds `σ·y` past its far bound:
+/// every draw stays in the support, mirrored or plain, as at a normal width.
 #[test]
 fn tail_draws_stay_inside_a_subnormal_width() {
   for (mu, sigma, lo, up) in [
@@ -236,8 +236,8 @@ fn tail_draws_stay_inside_a_subnormal_width() {
   }
 }
 
-/// An interval about `μ` whose mass is below 2⁻³² of `F(lower)`, which the inverse cdf's map resolves into a few cells,
-/// draws its law inside its bounds.
+/// An interval about `μ` whose mass is below 2⁻³² of `F(lower)`, which the inverse cdf's map
+/// resolves into a few cells, draws its law inside its bounds.
 #[test]
 fn draws_of_a_law_too_narrow_for_its_standardised_map() {
   for (mu, sigma) in [(0.0, 1e16), (0.0, 1e300), (5.0, 1e17)] {
@@ -267,8 +267,8 @@ fn a_subnormal_standardised_width_draws_its_law() {
   }
 }
 
-/// Over five subnormal doubles the law is uniform to `λW = 1.5e-24`: χ² of 10⁴ scalar and of 10⁴ stream draws against
-/// the cells' shares ⅛, ¼, ¼, ¼, ⅛ stays below 18.47, the 0.999 quantile at 4 degrees of freedom.
+/// Over five subnormal doubles the law is uniform to `λW = 1.5e-24`: the χ² of 10⁴ scalar and 10⁴
+/// stream draws on the shares ⅛, ¼, ¼, ¼, ⅛ stays under 18.47, its 0.999 quantile at 4 df.
 #[test]
 fn a_law_over_five_subnormal_doubles_draws_their_cells() {
   let (lo, up) = (-9.323420141090855e-309, -9.323420141090836e-309);

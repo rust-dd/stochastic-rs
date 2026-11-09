@@ -17,8 +17,8 @@ use super::singular::Frame;
 use super::zone::ZONE_MASS;
 
 impl<K: Kernel> Truncation<K> {
-  /// Above ½ the level is walked from `up`, so `1 − p` keeps the digits a level next to 1 has; that walk is recorded on
-  /// the first such level, in `upper`.
+  /// Above ½ the level is walked from `up`, so `1 − p` keeps the digits a level next to 1 has; that
+  /// walk is recorded on the first such level, in `upper`.
   pub(super) fn invert(&self, p: f64, upper: &OnceLock<Box<Walked>>) -> Point {
     if (0.25..=0.75).contains(&p)
       && let Some(t) = self.flat_quantile(p)
@@ -42,8 +42,8 @@ impl<K: Kernel> Truncation<K> {
     if want > 0.0 {
       return self.seek(&self.lower, want, true);
     }
-    // Below the clip: from where the kernel is `e^{−CLIP}` below `p` times its reference value, every value taken
-    // relative to the kernel there, so no node underflows.
+    // Below the clip: from where the kernel is `e^{−CLIP}` below `p` times its reference value,
+    // every value taken relative to the kernel there, so no node underflows.
     let start = clip(&self.kernel, self.centre, self.a, self.lo, p.ln() - CLIP);
     let shift = self
       .kernel
@@ -52,8 +52,8 @@ impl<K: Kernel> Truncation<K> {
     self.locate(start, self.a, want, true, shift)
   }
 
-  /// The point of `[l, r]` with `want` of the mass beyond the end `from_lo` names, every value relative to `e^{shift}`:
-  /// the panels walked from that end, then Newton in the one that holds it.
+  /// The point of `[l, r]` with `want` of the mass beyond the end `from_lo` names, values relative
+  /// to `e^{shift}`: the panels walked from that end, then Newton in the one that holds it.
   fn locate(&self, l: Cut, r: Cut, want: f64, from_lo: bool, shift: f64) -> Point {
     let mut acc = Sum::default();
     let mut hit = None;
@@ -94,8 +94,8 @@ impl<K: Kernel> Truncation<K> {
     }
   }
 
-  /// Newton in the offset `d` along the singular panel's `q` from the end the walk starts at, relative in `d`, so a
-  /// level whose point lies deep beside either end keeps its digits.
+  /// Newton in the offset `d` along the singular panel's `q` from the end the walk starts at,
+  /// relative in `d`, so a level whose point lies deep beside either end keeps its digits.
   fn solve_singular(
     &self,
     panel: &Panel,
@@ -153,8 +153,8 @@ impl<K: Kernel> Truncation<K> {
     frame.point(panel.origin, from_near, (qa, dir * d))
   }
 
-  /// Newton on the panel's partial mass in the offset `t` from its origin, bisecting whenever a step leaves the panel:
-  /// the point is rounded once, so a panel narrower than an ulp of its place still lands on the double its level has.
+  /// Newton on the panel's partial mass in the offset `t` from its origin, bisecting when a step
+  /// leaves the panel; the point rounds once, so a sub-ulp panel lands on its level's double.
   fn solve(&self, panel: Panel, want: f64, mass: f64, from_lo: bool, shift: f64) -> Point {
     let (mut lb, mut rb) = (panel.l, panel.r);
     let frac = want / mass;

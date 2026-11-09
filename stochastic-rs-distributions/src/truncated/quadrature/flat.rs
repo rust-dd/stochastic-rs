@@ -1,5 +1,5 @@
-//! A flat quadratic kernel about its interval's midpoint: the mean and a middle quantile as offsets from it, its odd part
-//! through `sinh` of the slope, which a sum of the kernel's values loses below ε of the width.
+//! A flat quadratic kernel about the midpoint: the mean and a middle quantile as offsets from it,
+//! the odd part by `sinh` of the slope, which summed kernel values lose below ε of the width.
 
 use super::Kernel;
 use super::Truncation;
@@ -16,8 +16,8 @@ impl<K: Kernel> Truncation<K> {
     })
   }
 
-  /// The mean's offset from the midpoint in units of the width: `∫ z e^{κz²/2} sinh(ψz) / ∫ e^{κz²/2} cosh(ψz)` on
-  /// `[0, ½]`.
+  /// The mean's offset from the midpoint in units of the width:
+  /// `∫ z e^{κz²/2} sinh(ψz) / ∫ e^{κz²/2} cosh(ψz)` on `[0, ½]`.
   pub(super) fn flat_mean(&self) -> Option<f64> {
     let (slope, curvature) = self.flat()?;
     let even = |z: f64| (0.5 * curvature * z * z).exp();
@@ -25,8 +25,8 @@ impl<K: Kernel> Truncation<K> {
     Some(odd / rule(0.5, |z| even(z) * (slope * z).cosh()))
   }
 
-  /// The point of level `p` as its offset `z` from the midpoint in units of the width: `∫_0^z k = (p − ½)M + A`, `A` the
-  /// mass above the midpoint less that below, halved, by Newton from `z = (p − ½)M + A`.
+  /// The level-`p` point's offset `z` from the midpoint in widths: `∫_0^z k = (p − ½)M + A`, `A`
+  /// half the mass above the midpoint less that below, by Newton from `z = (p − ½)M + A`.
   pub(super) fn flat_quantile(&self, p: f64) -> Option<f64> {
     let (slope, curvature) = self.flat()?;
     let ln_k = |z: f64| z * (slope + 0.5 * curvature * z);

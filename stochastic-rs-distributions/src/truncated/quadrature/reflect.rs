@@ -1,5 +1,5 @@
-//! A kernel read in the reflected coordinate `−x`, so a law's upper end is its lower one and the cdf's relative digits
-//! follow it there.
+//! A kernel read in the reflected coordinate `−x`, so a law's upper end is its lower one and the
+//! cdf's relative digits follow it there.
 
 use super::Kernel;
 use super::Two;

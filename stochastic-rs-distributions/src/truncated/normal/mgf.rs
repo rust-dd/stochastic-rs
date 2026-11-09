@@ -1,5 +1,5 @@
-//! The truncated normal's mgf: `e^{t·x_c − ½(c_s − c)(c_s + c)}` times the tilted and plain masses' ratio, `x_c` the
-//! tilted reference point in the law's own coordinate and `c_s`, `c` the two reference points in standard units.
+//! The mgf `e^{t·x_c − ½(c_s − c)(c_s + c)}` times the tilted and plain masses' ratio, `x_c` the
+//! tilted reference point in the law's coordinate, `c_s`, `c` both in standard units.
 //!
 //! Reference: Ogita, T., Rump, S. M. & Oishi, S. (2005), "Accurate Sum and Dot Product", *SIAM Journal on Scientific Computing* 26(6), 1955-1988, DOI 10.1137/030601818 (SumK over two-products).
 
@@ -19,15 +19,15 @@ use crate::truncated::quadrature::span;
 use crate::truncated::quadrature::two_prod;
 use crate::truncated::quadrature::two_sum;
 
-/// A tilt clamped at an end with a rate past this is `e^{−r·y − y²/2}` there, its curvature's share `1/r²` below 2⁻⁵⁴:
-/// the exponential's mass, where the quadrature would meet a slope past the doubles.
+/// A tilt clamped at an end with a rate past this is `e^{−r·y − y²/2}`, curvature's share `1/r²`
+/// below 2⁻⁵⁴: the exponential's mass, where quadrature would meet a slope past the doubles.
 const STEEP: f64 = 134_217_728.0;
 
 /// The largest `|σt|`, `|α|`, `|β|`, `|t·lo|`, `|t·up|` the plain path takes.
 const PLAIN: f64 = 8.0;
 
-/// `σ = m·2^e` and `σ²t·2^{−e−4}` as four doubles summing to it exactly; no square where `|t·2^{e−2}|` passes MAX, `σt`
-/// past `4m·MAX`.
+/// `σ = m·2^e` and `σ²t·2^{−e−4}` as four doubles summing to it exactly; no square where
+/// `|t·2^{e−2}|` passes MAX, `σt` past `4m·MAX`.
 #[derive(Clone, Copy)]
 struct Scale {
   m: f64,
@@ -48,8 +48,8 @@ impl Scale {
   }
 }
 
-/// A finite bound, standardised `z + z_lo` exactly and held beside `held.0` by `held.1`, `x` in the law's coordinate,
-/// with the tilted mode's offset `r = 16(q + q_lo)` from it, `q` finite where `r` passes the doubles, and `ln|r|` there.
+/// A finite bound: `z + z_lo` exactly, held beside `held.0` by `held.1`, `x` in law units, the
+/// tilted mode's offset `r = 16(q + q_lo)`, `q` and `ln|r|` finite where `r` overflows.
 #[derive(Clone, Copy)]
 struct Anchor {
   z: f64,
@@ -61,16 +61,16 @@ struct Anchor {
   ln_far: f64,
 }
 
-/// The plain reference point against an anchor bound: its exact offset where both are held beside one double, else its
-/// own double and rest.
+/// The plain reference point against an anchor bound: its exact offset where both are held beside
+/// one double, else its own double and rest.
 #[derive(Clone, Copy)]
 enum Centre {
   Beside(f64),
   Apart(f64, f64),
 }
 
-/// The exponent's form: from an anchor bound with the plain reference point against it and the tilted reference
-/// point's offset `d`, or at the tilted mode, against the anchor the plain reference point is read from.
+/// The exponent's form: from an anchor bound, with the plain reference point against it and the
+/// tilted one's offset `d`, or at the tilted mode against the plain reference point's anchor.
 #[derive(Clone, Copy)]
 enum Exponent {
   Bound(Anchor, Centre, f64),
@@ -78,8 +78,8 @@ enum Exponent {
 }
 
 impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
-  /// The tilted mode is placed by its exact offsets from the bounds, the tilt integrated from the bound it clamps at or
-  /// lies nearer, and the exponent summed exactly, save where every term is at most 8; at an infinite `t` the limit.
+  /// The tilted mode at exact offsets from the bounds, the tilt integrated from the bound it clamps
+  /// at or nears, the exponent exact unless all terms are ≤ 8; at `t = ±∞` the limit.
   pub(super) fn mgf(&self, t: f64) -> Option<f64> {
     if t.is_nan() {
       return Some(f64::NAN);
@@ -100,8 +100,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     let (alpha, beta) = self.standardised_bounds();
     let (held_lo, held_up) = self.held();
     let (centre, mass) = (plain.reference(), plain.mass());
-    // Where `|σt|`, `|α|`, `|β|`, `|t·lo|`, `|t·up|` (the finite ones) are at most 8, six plain terms of total size under
-    // 470, and their inputs' roundings, move `ln M` by under 4e-13; the width stays exact, as the plain mass's own.
+    // Where `|σt|`, `|α|`, `|β|`, `|t·lo|`, `|t·up|` (finite ones) are ≤ 8, six plain terms under
+    // 470 in all, with their inputs' roundings, move `ln M` under 4e-13; the width stays exact.
     let s = sigma * t;
     let small = |v: f64| !v.is_finite() || v.abs() <= PLAIN;
     let rounded = s.abs() <= PLAIN && [alpha, beta, t * lo, t * up].into_iter().all(small);
@@ -115,8 +115,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       })
     };
     let (at_lo, at_up) = (anchor(alpha, lo, held_lo), anchor(beta, up, held_up));
-    // The plain reference point against an anchor: by its exact offset where both are held beside one double, else as
-    // its own double with the rest of the one it is held beside, a bound's own double carrying that bound's.
+    // The plain reference point against an anchor: by exact offset where both sit beside one
+    // double, else its own double plus the rest of the one it sits beside (a bound's, its own).
     let c = |a: &Anchor| {
       if rounded {
         return Centre::Apart(centre.x, 0.0);
@@ -139,8 +139,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       _ => None,
     };
     if clamp.is_none() && scale.is_some_and(|s| s.square.is_none()) {
-      // Past 4·MAX `(σt)²/2 > 8·MAX²` outweighs `|μt|` and every other term, each under `MAX²`, and no bound holds the
-      // tilt, whose mass is then at least half the normal's: `+∞`.
+      // Past 4·MAX `(σt)²/2 > 8·MAX²` outweighs `|μt|` and every other term, each under `MAX²`, and
+      // no bound holds the tilt, whose mass is then at least half the normal's: `+∞`.
       return Some(f64::INFINITY);
     }
     let (exponent, masses) = match clamp {
@@ -213,8 +213,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
 }
 
 impl Anchor {
-  /// The offset from its numerator `σ²t − (x − μ)`, divided by `16σ` to a double-double; where that passes the doubles
-  /// (past `4m·MAX`, or with a far bound beside it) `z/σ` is under a quarter of `t`: `t`'s sign and `ln|r|` from halves.
+  /// The offset as `(σ²t − (x − μ))/(16σ)` in double-double; past the doubles (beyond `4m·MAX`, or
+  /// by a far bound) `z/σ` is under `t/4`: `t`'s sign and `ln|r|` from halves.
   fn new(
     &Scale { m, e, square }: &Scale,
     sigma: f64,
@@ -309,8 +309,8 @@ impl Sink for Rounded {
   }
 }
 
-/// The exponent's terms. At the tilted mode it is `μt + (σt)²/2 + c²/2`, exact from `μ`, `σ`, `t` and the reference
-/// point, unless `|c|` passes `|r|`: then `t·x + ½(c² − z²) + r²/2`, whose `r` is a double-double.
+/// The exponent's terms: at the tilted mode `μt + (σt)²/2 + c²/2`, exact from `μ`, `σ`, `t` and the
+/// reference point, unless `|c|` passes `|r|`: then `t·x + ½(c² − z²) + r²/2`, `r` double-double.
 fn emit(sink: &mut impl Sink, exponent: Exponent, t: f64, (mu, sigma): (f64, f64), s: Option<f64>) {
   match exponent {
     Exponent::Bound(a, c, d) => from_bound(sink, t, a, c, d),
@@ -408,8 +408,8 @@ fn difference(x: f64, mu: f64) -> ((f64, f64), i32) {
   }
 }
 
-/// `σ²t·2^{−e−4} − (d + d_lo)·2^scale` to a double-double, `(σ²t − (x − μ))·2^{−e−4}`: the square's exact parts and
-/// the difference's summed in thrice the precision, so no rounded `σt` meets `x − μ`.
+/// `σ²t·2^{−e−4} − (d + d_lo)·2^scale` in double-double, `(σ²t − (x − μ))·2^{−e−4}`: the square's
+/// and difference's exact parts summed in triple precision, so no rounded `σt` meets `x − μ`.
 fn numerator([b, b_lo, c, c_lo]: [f64; 4], (d, d_lo): (f64, f64), scale: i32) -> (f64, f64) {
   accurate_sum([b, b_lo, c, c_lo, -ldexp(d, scale), -ldexp(d_lo, scale)])
 }

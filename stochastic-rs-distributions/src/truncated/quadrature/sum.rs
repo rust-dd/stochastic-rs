@@ -1,5 +1,5 @@
-//! Error-free sums and products, the running sum the mass walks carry their roundings in, and an exponent's terms
-//! summed exactly in a frame scaled below the doubles' range.
+//! Error-free sums and products, the running sum the mass walks carry their roundings in, and an
+//! exponent's terms summed exactly in a frame scaled below the doubles' range.
 //!
 //! Reference: Shewchuk, J. R. (1997), "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates", *Discrete & Computational Geometry* 18(3), 305-363, DOI 10.1007/PL00009321 (the growing expansion).
 
@@ -9,8 +9,8 @@ pub(in crate::truncated) use crate::special::two_sum;
 use crate::special::ldexp;
 use crate::special::split_pow2;
 
-/// The terms' sum to a double-double as if formed in thrice the precision: two cascades of two-sums that carry each
-/// rounding error to the next term, then the errors' sum added once (SumK, K = 3).
+/// The terms' sum to a double-double as if formed in thrice the precision: two cascades of two-sums
+/// that carry each rounding error to the next term, then the errors' sum added once (SumK, K = 3).
 pub(in crate::truncated) fn accurate_sum<const N: usize>(mut p: [f64; N]) -> (f64, f64) {
   for _ in 0..2 {
     for i in 1..N {
@@ -20,8 +20,8 @@ pub(in crate::truncated) fn accurate_sum<const N: usize>(mut p: [f64; N]) -> (f6
   two_sum(p[N - 1], p[..N - 1].iter().sum::<f64>())
 }
 
-/// A running sum whose additions' rounding errors are carried apart: a panel far smaller than the sum keeps its digits,
-/// so the cdf next to 1 and `M₀` differ by the panels between them, not by the roundings of adding those.
+/// A running sum carrying its additions' rounding errors apart: a panel far below the sum keeps its
+/// digits, so the cdf next to 1 and `M₀` differ by the panels between, not by their roundings.
 #[derive(Clone, Copy, Default)]
 pub(super) struct Sum {
   pub(super) hi: f64,
@@ -113,8 +113,8 @@ impl Terms {
     self.scaled(sign * l, ef + eg + p);
   }
 
-  /// The sum where `exp` reads it, else its sign as `±∞`: the parts scaled `2^{−k}` below the largest's `2^1000`, exact
-  /// down to `2^{k−1074}`; a sum that cancels to a size the doubles hold adds back what that frame rounded away.
+  /// The sum where `exp` reads it, else `±∞`: the parts scaled `2^{−k}` below the largest's
+  /// `2^1000`, exact to `2^{k−1074}`; cancelling into range, it restores what the frame dropped.
   pub(in crate::truncated) fn total(&self) -> f64 {
     let parts = &self.parts[..self.n];
     if parts.iter().any(|(v, _)| !v.is_finite()) {

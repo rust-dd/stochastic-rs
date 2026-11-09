@@ -15,8 +15,8 @@ const CURVATURE_BUDGET: f64 = 8.0;
 /// The most panels one piece takes: a clipped piece needs a handful.
 const CAP: f64 = 1024.0;
 
-/// The 32 positive nodes of the 64-point Gauss–Legendre rule on `[-1, 1]`, ascending: each the double nearest its exact
-/// value (mpmath at 60 digits, the same at 120).
+/// The 32 positive nodes of the 64-point Gauss–Legendre rule on `[-1, 1]`, ascending: each the
+/// double nearest its exact value (mpmath at 60 digits, the same at 120).
 pub(super) const GL64_X: [f64; 32] = [
   0.024350292663424433,
   0.07299312178779904,
@@ -88,8 +88,8 @@ pub(super) const GL64_W: [f64; 32] = [
   0.001783280721696433,
 ];
 
-/// `[origin + l, origin + r]`; the origin is a branch point, or the reference point held exactly, so the offsets stay
-/// exact beside it.
+/// `[origin + l, origin + r]`; the origin is a branch point, or the reference point held exactly,
+/// so the offsets stay exact beside it.
 #[derive(Clone, Copy)]
 pub(super) struct Panel {
   pub(super) origin: Cut,
@@ -100,8 +100,8 @@ pub(super) struct Panel {
   pub(super) singular: Option<f64>,
 }
 
-/// A breakpoint and, beside a point `s + s_lo` (a branch point, or a reference point no double holds), its exact
-/// offset `t` from it: the point `s + s_lo + t`.
+/// A breakpoint and, beside a point `s + s_lo` (a branch point, or a reference point no double
+/// holds), its exact offset `t` from it: the point `s + s_lo + t`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(in crate::truncated) struct Cut {
   pub(in crate::truncated) x: f64,
@@ -218,8 +218,8 @@ pub(in crate::truncated) fn span(l: Cut, r: Cut) -> f64 {
   }
 }
 
-/// Visits the panels of `[l, r]` in order, or in reverse: the breakpoints (each branch point's ladder within 20 widths,
-/// then the slope and curvature budgets).
+/// Visits the panels of `[l, r]` in order, or in reverse: the breakpoints (each branch point's
+/// ladder within 20 widths, then the slope and curvature budgets).
 pub(super) fn panels<K: Kernel, B>(
   kernel: &K,
   c: Cut,
@@ -244,8 +244,8 @@ pub(super) fn panels<K: Kernel, B>(
     .into_iter()
     .flatten()
     .flat_map(move |(s, e, tl, tr)| {
-      // Deep enough for a vanishing kernel's mass to fall below 1e-18 and reach an end short of `s`; beside a singular one
-      // 19 normal decades, below which the innermost `u` is exact. Rungs lie within a tenth of the width: none past that.
+      // Deep enough that a vanishing kernel drops below 1e-18 before `s`, 19 normal decades beside
+      // a singular end, where the innermost `u` turns exact; rungs within a tenth of the width.
       let steps = if tl >= width / 10.0 || tr <= -width / 10.0 {
         0
       } else if e < 1.0 {
@@ -311,8 +311,8 @@ fn pieces<K: Kernel, B>(
   ControlFlow::Continue(())
 }
 
-/// One piece between two cuts, in equal panels by the budgets, from the branch point nearer than the centre; the
-/// innermost piece beside a singular branch point is one panel from it.
+/// One piece between two cuts, in equal panels by the budgets, from the branch point nearer than
+/// the centre; the innermost piece beside a singular branch point is one panel from it.
 fn piece<K: Kernel, B>(
   kernel: &K,
   walk: Walk,
@@ -350,8 +350,8 @@ fn piece<K: Kernel, B>(
     .flatten()
     .map(|(s, _)| s)
     .find(|&s| distance(Cut::at(s)) < near);
-  // From the end a walk starts at, a partial mass beside it is a width of its own, not a difference of two offsets
-  // from a far reference point.
+  // From the end a walk starts at, a partial mass beside it is a width of its own, not a difference
+  // of two offsets from a far reference point.
   let start = match (from_end, rev) {
     (false, _) => c,
     (true, false) => cl,
@@ -401,8 +401,8 @@ fn piece<K: Kernel, B>(
   ControlFlow::Continue(())
 }
 
-/// A piece the budgets would split past `CAP` panels is one the clip did not cut: it is cut again where the kernel
-/// falls `e^{−CLIP}` below its maximum over the piece, at the mode the piece holds or else its higher end.
+/// A piece the budgets would split past `CAP` panels, uncut by the clip: it is cut where the kernel
+/// falls `e^{−CLIP}` below its maximum on the piece, at its mode or else its higher end.
 fn recut_piece<K: Kernel>(kernel: &K, c: Cut, cl: Cut, cr: Cut) -> (Cut, Cut) {
   let ln = |cut: Cut| kernel.ln_rel(cut.x, span(c, cut), cut.branch());
   let mode = kernel.mode();
@@ -428,8 +428,8 @@ mod tests {
   use super::*;
   use crate::truncated::quadrature::tests::Normal;
 
-  /// `[−1e5, 0]` below the normal's mode: its slope alone would split it into 3e8 panels, so the recut keeps the band
-  /// within `e^{−CLIP}` of the maximum at 0, `[−√(2·CLIP), 0]`, and the debug build asserts it fits the cap.
+  /// `[−1e5, 0]` below the normal's mode, whose slope alone would split it into 3e8 panels: the
+  /// recut keeps `[−√(2·CLIP), 0]`, within `e^{−CLIP}` of the maximum, and debug asserts the cap.
   #[test]
   fn a_piece_past_the_cap_is_recut_from_its_maximum() {
     let walk = Walk {

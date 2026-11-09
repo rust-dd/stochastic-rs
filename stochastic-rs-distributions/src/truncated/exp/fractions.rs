@@ -1,5 +1,5 @@
-//! The truncated exponential's closed-form fractions of `λL`: the mass per rate's `φ`, and the mean's and variance's
-//! offsets with their Bernoulli series where the plain forms cancel.
+//! The truncated exponential's closed-form fractions of `λL`: the mass per rate's `φ`, and the
+//! mean's and variance's offsets with their Bernoulli series where the plain forms cancel.
 
 /// `(1 − e^{−z})/z`, 1 where `z` is below the digits `e^{−z}` keeps.
 pub(super) fn one_minus_exp_over(z: f64) -> f64 {
@@ -37,8 +37,8 @@ const VARIANCE_SERIES: [f64; 12] = [
   -3.2095268777368804e-18,
 ];
 
-/// $1/x - 1/(e^x - 1)$ at $x = \lambda L$: the mean's offset from `lower` over `L`; below `x = 0.5` the two terms
-/// cancel, so it takes the Bernoulli series there.
+/// $1/x - 1/(e^x - 1)$ at $x = \lambda L$: the mean's offset from `lower` over `L`; below `x = 0.5`
+/// the two terms cancel, so it takes the Bernoulli series there.
 pub(super) fn mean_fraction(x: f64) -> f64 {
   if x < 0.5 {
     let x2 = x * x;
@@ -48,8 +48,8 @@ pub(super) fn mean_fraction(x: f64) -> f64 {
   }
 }
 
-/// $1/x^2 - 1/(4\sinh^2(x/2))$ at $x = \lambda L$: the variance over $L^2$; the series below `x = 1`, where the
-/// difference amplifies `sinh`'s rounding past 12-fold.
+/// $1/x^2 - 1/(4\sinh^2(x/2))$ at $x = \lambda L$: the variance over $L^2$; the series below
+/// `x = 1`, where the difference amplifies `sinh`'s rounding past 12-fold.
 pub(super) fn variance_fraction(x: f64) -> f64 {
   if x < 1.0 {
     let x2 = x * x;

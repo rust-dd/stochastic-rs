@@ -33,8 +33,8 @@ mod located;
 mod mgf;
 mod sampler;
 
-/// Truncated normal law $\mathcal{N}(\mu, \sigma^2)$ on $[\text{lower}, \text{upper}]$: parameters and the interval's
-/// cdf constants; a [`Seeded`](crate::Seeded) stream draws it.
+/// Truncated normal law $\mathcal{N}(\mu, \sigma^2)$ on $[\text{lower}, \text{upper}]$: parameters
+/// and the interval's cdf constants; a [`Seeded`](crate::Seeded) stream draws it.
 ///
 /// Robert, C.P. (1995), "Simulation of truncated normal variables", *Statistics and Computing* 5(2), 121-125, DOI 10.1007/BF00143942.
 /// Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.3, DOI 10.1007/978-1-4613-8643-8.
@@ -51,8 +51,8 @@ pub struct SimdTruncatedNormal<T> {
   tail: Option<TailSetup>,
   /// The standardised bounds and, off `μ`, the width `(up − lo)/σ` (NaN about `μ` or past the doubles).
   bounds: [f64; 3],
-  /// The point a density's offset is read from and its standardised double: on one side of `μ` the near bound, which
-  /// the engine's reference point is held beside, else `μ`.
+  /// The point a density's offset is read from and its standardised double: on one side of `μ` the
+  /// near bound, which the engine's reference point is held beside, else `μ`.
   origin: (f64, f64),
   /// The standardised interval's kernel integral, built by the first analytic call; construction and draws skip it.
   analytics: OnceLock<Model<NormalKernel>>,

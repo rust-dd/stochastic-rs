@@ -4,8 +4,8 @@ use super::Kernel;
 use super::panels::Cut;
 use super::panels::span;
 
-/// Where `ln k − ln k(c)` falls below `floor` from `from` toward `end`, `end` if never: a doubling probe beside `c`, then
-/// bisection beside `c` or, if the bracket lies nearer it, the branch point `end` is nearer, so the cut stays exact.
+/// Where `ln k − ln k(c)` falls below `floor` from `from` to `end` (`end` if never): a doubling
+/// probe, then bisection in offsets from `c` or from `end` if nearer, so the cut stays exact.
 pub(super) fn clip<K: Kernel>(kernel: &K, c: Cut, from: Cut, end: Cut, floor: f64) -> Cut {
   let below = |origin: Cut, t: f64| {
     let v = kernel.ln_rel(
@@ -24,8 +24,8 @@ pub(super) fn clip<K: Kernel>(kernel: &K, c: Cut, from: Cut, end: Cut, floor: f6
   }
   let (from_t, end_t, dir) = (span(c, from), span(c, end), -gap.signum());
   let (mut inside, mut outside) = (from_t, end_t);
-  // From the kernel's length or its e-fold length at `from`, whichever is shorter, and positive: doubling overflows
-  // within 2100 steps.
+  // From the kernel's length or its e-fold length at `from`, whichever is shorter, and positive:
+  // doubling overflows within 2100 steps.
   let local = 1.0 / kernel.d1(from.x, from_t).abs();
   let mut step = kernel
     .length_scale()

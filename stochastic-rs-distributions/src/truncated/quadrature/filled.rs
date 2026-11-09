@@ -1,5 +1,5 @@
-//! The engine and what its first calls keep beside it: the walk from `b`, the summed moments and the entropy. A cell
-//! inside the engine would let any call through its `&self` write it, and its hot loops would reload what they read.
+//! The engine and what its first calls cache: the walk from `b`, the moments and the entropy; cells
+//! inside it would let `&self` calls write it, and its hot loops reload what they read.
 
 use std::ops::Deref;
 use std::sync::OnceLock;

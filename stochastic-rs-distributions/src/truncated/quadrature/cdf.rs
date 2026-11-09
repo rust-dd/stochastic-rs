@@ -1,5 +1,5 @@
-//! The cdf from the panels' masses; below the lower clip from where the kernel is `e^{−CLIP}` below its value at the
-//! point.
+//! The cdf from the panels' masses; below the lower clip from where the kernel is `e^{−CLIP}` below
+//! its value at the point.
 
 use std::ops::ControlFlow;
 
@@ -84,8 +84,8 @@ impl<K: Kernel> Truncation<K> {
     f
   }
 
-  /// In the right half of the last regular panel, the mass above `x` measured from `b`, where it is the smaller part:
-  /// from the panel's own origin `x` is an offset whose ulp, times a density peaked at `b`, is up to 30ε of `M₀`.
+  /// In the last regular panel's right half the smaller mass, above `x`, from `b`: from the panel's
+  /// origin `x` is an offset whose ulp, times a density peaked at `b`, is up to 30ε of `M₀`.
   fn above_in_last(&self, panel: &Panel, t: f64, at: Cut, below: f64) -> Option<f64> {
     let last = !panel.graded && panel.singular.is_none() && span(panel.origin, self.b) == panel.r;
     if !last || 2.0 * t <= panel.l + panel.r {
@@ -101,8 +101,8 @@ impl<K: Kernel> Truncation<K> {
     (2.0 * m <= self.m0 - below).then_some(m)
   }
 
-  /// The cdf at `s + t` beside the lower end's branch point `s` of exponent `e`: the whole mass from `s`, so no clipped
-  /// tail is added, in `u = (t/h)^e` relative to its value at `h`, its power of `t` scaled once.
+  /// The cdf at `s + t` beside the lower branch point `s`, exponent `e`: the whole mass from `s`,
+  /// no clipped tail added, in `u = (t/h)^e` relative to `h`'s, its power of `t` scaled once.
   pub(in crate::truncated) fn cdf_beside(&self, s: f64, e: f64, t: Offset) -> f64 {
     let frame = Frame::beside(t.ln(), e);
     let origin = Cut::at(s);
@@ -119,8 +119,8 @@ impl<K: Kernel> Truncation<K> {
     self.end_mass(t, e, ln_v + mass.ln()).min_or_nan(1.0)
   }
 
-  /// Adds `panel`'s mass below the offset `t`; past the middle of a singular panel right of its branch point, the panel's
-  /// `mass`, then minus the part above `t`, whose frame keeps the panel's far end and so its Jacobian's rounding.
+  /// Adds `panel`'s mass below offset `t`; past the middle of a singular panel right of the branch,
+  /// its `mass` less that above `t`, framed at the far end for the Jacobian's rounding.
   fn part_below(&self, panel: &Panel, t: f64, mass: f64, sum: &mut Sum) {
     if let Some(e) = panel.singular {
       let frame = Frame::of(panel, e);
@@ -134,13 +134,13 @@ impl<K: Kernel> Truncation<K> {
     sum.add(self.panel_mass(&Panel { r: t, ..*panel }, 0.0));
   }
 
-  /// The cdf below the lower clip: the mass from where the kernel is `e^{−CLIP}` below its value at `x`, relative to
-  /// that value, which one `exp` restores.
+  /// The cdf below the lower clip: the mass from where the kernel is `e^{−CLIP}` below its value at
+  /// `x`, relative to that value, which one `exp` restores.
   fn below_clip(&self, at: Cut, ln_point: impl FnOnce() -> Two) -> f64 {
     let x = at.x;
     let ln_g = self.kernel.ln_rel(x, span(self.centre, at), None);
-    // The kernel rises from `lo` to `x`, so `k(x)(x − lo)/∫k` bounds the cdf (`x − lo` exact, an open end's `MAX`): where
-    // it underflows the cdf is 0, and no `ln_g` too large to keep its units digit feeds the walk.
+    // The kernel rises from `lo` to `x`, so `k(x)(x − lo)/∫k` bounds the cdf (`x − lo` exact, `MAX`
+    // if open): underflowing, the cdf is 0, no `ln_g` past its units digit fed to the walk.
     let reach = span(self.lo, at).min(f64::MAX);
     if ln_g == f64::NEG_INFINITY || ln_g + reach.ln() - self.ln_norm < -746.0 {
       return 0.0;
@@ -154,8 +154,8 @@ impl<K: Kernel> Truncation<K> {
     self.subnormal(at, ln_point())
   }
 
-  /// A subnormal cdf rounded once: the mass from the clip below `x` relative to `k(x)`, summed in units of its own span
-  /// by the kernel anchored at `x`, and `k(x)/k(c)` from its log in two parts; a sum of logs near −700 leaves 1e-13.
+  /// A subnormal cdf rounded once: the mass from the clip below `x` relative to `k(x)`, times
+  /// `k(x)/k(c)` from its log in two parts, where a sum of logs near −700 leaves 1e-13.
   #[cold]
   #[inline(never)]
   fn subnormal(&self, at: Cut, (hi, lo): Two) -> f64 {

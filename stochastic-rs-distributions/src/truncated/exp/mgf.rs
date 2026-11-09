@@ -1,5 +1,5 @@
-//! The truncated exponential's mgf `e^{t·lower}·φ₊(sL)/φ(λL)`, `s = t − λ`, `φ₊(x) = (e^x − 1)/x` and
-//! `φ(z) = (1 − e^{−z})/z`: each factor as `m·2^k`, so no width, value or factor below the normal doubles loses digits.
+//! The truncated exponential's mgf `e^{t·lower}·φ₊(sL)/φ(λL)`, `s = t − λ`, `φ₊(x) = (e^x − 1)/x`,
+//! `φ(z) = (1 − e^{−z})/z`, each factor as `m·2^k`: nothing subnormal loses digits.
 
 use super::SimdTruncatedExp;
 use super::fractions::one_minus_exp_over;
@@ -13,8 +13,8 @@ use crate::truncated::quadrature::two_prod;
 const FAR: f64 = 700.0;
 
 impl<T: SimdFloatExt> SimdTruncatedExp<T> {
-  /// The scaled form's bookkeeping only where a factor could reach the subnormals: it costs the plain products several
-  /// times over.
+  /// The scaled form's bookkeeping only where a factor could reach the subnormals: it costs the
+  /// plain products several times over.
   #[inline]
   pub(super) fn mgf(&self, t: f64) -> Option<f64> {
     if t.is_nan() {

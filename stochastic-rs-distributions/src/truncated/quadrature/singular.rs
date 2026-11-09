@@ -1,5 +1,5 @@
-//! The singular panel: an end with `k ~ |t|^{e−1}` integrates in `u = (|t|/h)^e`, each power of `t` the moments need
-//! in its own `u = (|t|/h)^{e+i}`, and the entropy's `ln u` endpoint corrected against its exact integral.
+//! A singular end, `k ~ |t|^{e−1}`, integrates in `u = (|t|/h)^e`, each moment's power of `t` in
+//! its own `u = (|t|/h)^{e+i}`, the entropy's `ln u` end corrected by its exact integral.
 
 use super::GL64_W;
 use super::GL64_X;
@@ -16,8 +16,8 @@ use super::panels::span;
 const LOG_FORM: f64 = 9.332636185032189e-302;
 
 impl<K: Kernel> Truncation<K> {
-  /// A singular panel's entropy sums `(Σ g, Σ g·ln g, Σ g·ln u)`: in `u` `ln g` carries `((e − 1)/e)·ln u`, whose
-  /// coefficient passes the doubles below `e ≈ 4.5e-308`, so that sum is kept apart.
+  /// A singular panel's entropy sums `(Σ g, Σ g·ln g, Σ g·ln u)`: in `u` `ln g` carries
+  /// `((e − 1)/e)·ln u`, past the doubles below `e ≈ 4.5e-308`, so that sum stays apart.
   pub(super) fn singular_entropy(&self, panel: &Panel, e: f64, shift: f64) -> (f64, f64, f64) {
     let frame = Frame::of(panel, e);
     let plain = !(frame.reflect || frame.log);
@@ -47,8 +47,8 @@ impl<K: Kernel> Truncation<K> {
     (mass, log, ulog)
   }
 
-  /// The rule's error on `ln u`'s endpoint log against `[u ln u − u]`, times the smooth factor at the near end and
-  /// `e^{ln_scale}`.
+  /// The rule's error on `ln u`'s endpoint log against `[u ln u − u]`, times the smooth factor at
+  /// the near end and `e^{ln_scale}`.
   fn ln_u_correction(&self, origin: Cut, frame: &Frame, ln_scale: f64) -> f64 {
     let u0 = frame.q_near;
     let half = 0.5 * (1.0 - u0);
@@ -69,8 +69,8 @@ impl<K: Kernel> Truncation<K> {
     gap.signum() * (ln_scale + v0 + gap.abs().ln()).exp()
   }
 
-  /// A singular panel whose near end keeps `(t/far)^{n−1}` within the slope budget sums its `n` powers on the mass's
-  /// nodes: a frame per power would set its own branch point at `(near/far)^{e+i}`, beside the panel.
+  /// A singular panel whose near end keeps `(t/far)^{n−1}` in the slope budget sums its `n` powers
+  /// on the mass's nodes, as a frame per power would put its branch point at `(near/far)^{e+i}`.
   pub(super) fn powers_on_mass_nodes(panel: &Panel, n: usize) -> bool {
     let (near, far) = if panel.r > 0.0 {
       (panel.l, panel.r)
@@ -80,8 +80,8 @@ impl<K: Kernel> Truncation<K> {
     (near / far).ln() * (n - 1) as f64 >= -SLOPE_BUDGET
   }
 
-  /// A singular panel's share of `Σ g (z − about)^j` from its sums of `(t/width)^i`, each in its own `u = (|t|/h)^{e+i}`:
-  /// in `u = (|t|/h)^e` a small `e` turns `t^i` into a power of `u` past what the rule integrates.
+  /// A singular panel's share of `Σ g (z − about)^j` from sums of `(t/width)^i`, each in its own
+  /// `u = (|t|/h)^{e+i}`: in `(|t|/h)^e` a small `e` makes `t^i` a power past the rule.
   pub(super) fn singular_moments<const N: usize>(
     &self,
     panel: &Panel,
@@ -105,8 +105,8 @@ impl<K: Kernel> Truncation<K> {
     }
   }
 
-  /// A singular panel's nodes over `q` (the whole panel when `range` is `None`) for `|t|^{e−1}(t/width)^i`, which
-  /// integrates in `u = (|t|/h)^{e+i}`: each weight carries that power's Jacobian `h^{e+i}/(e+i)` over `width^{i+1}`.
+  /// A singular panel's nodes over `q` (all of it if `range` is `None`) for `|t|^{e−1}(t/width)^i`
+  /// in `u = (|t|/h)^{e+i}`, each weight carrying the Jacobian `h^{e+i}/(e+i)` over `width^{i+1}`.
   pub(super) fn singular_nodes(
     &self,
     panel: &Panel,
@@ -119,8 +119,8 @@ impl<K: Kernel> Truncation<K> {
     self.frame_nodes(panel.origin, &frame, e, i, range, f);
   }
 
-  /// `singular_nodes` over a frame beside the branch point `origin`, whose far end may be given by its log alone;
-  /// `range` is a start in `q` and a signed width, so a sliver beside either end keeps its width's digits.
+  /// `singular_nodes` over a frame beside the branch point `origin`, the far end maybe a log alone;
+  /// `range` a start in `q` and a signed width, so a sliver at either end keeps its digits.
   pub(super) fn frame_nodes(
     &self,
     origin: Cut,
@@ -151,8 +151,8 @@ impl<K: Kernel> Truncation<K> {
     }
   }
 
-  /// `(ln v, x − frame, ln|x − s|)` at `q`: `|x − s|` is formed only through its logarithm, so a point next to `s`
-  /// keeps its smooth factor however small `u` is.
+  /// `(ln v, x − frame, ln|x − s|)` at `q`: `|x − s|` is formed only through its logarithm, so a
+  /// point next to `s` keeps its smooth factor however small `u` is.
   pub(super) fn singular_point(&self, origin: Cut, frame: &Frame, q: f64) -> (f64, f64, f64) {
     let ln_t = frame.ln_t(q);
     let t = frame.sign * ln_t.exp();
@@ -162,15 +162,15 @@ impl<K: Kernel> Truncation<K> {
   }
 }
 
-/// A singular panel seen from its branch point: the side it lies on, its far end's distance and its exponent `e`. It
-/// integrates in `q`, which is `u` or, where `u` stays above ½ (a small `e`), `1 − u`, so `u` beside 1 keeps its digits.
+/// A singular panel from its branch point: side, far end's distance, exponent `e`; integrated in
+/// `q`, `u` or, where `u` stays over ½ (small `e`), `1 − u`, so `u` near 1 keeps its digits.
 pub(super) struct Frame {
   pub(super) sign: f64,
   pub(super) ln_far: f64,
   pub(super) e: f64,
   reflect: bool,
-  /// `q = ln(|t|/far)`, the `e → 0` limit of `(u − 1)/e`, where `e·ln(far/near)` passes below 2⁻¹⁰⁰⁰: `u`'s range would
-  /// hold no node's digits, and `t^e` is 1 to the last bit.
+  /// `q = ln(|t|/far)`, the `e → 0` limit of `(u − 1)/e`, where `e·ln(far/near)` passes below
+  /// 2⁻¹⁰⁰⁰: `u`'s range would hold no node's digits, and `t^e` is 1 to the last bit.
   pub(super) log: bool,
   pub(super) q_near: f64,
   /// The ends' distances from the branch point and `u` at the near one, which a point beside an end is formed from.
@@ -227,8 +227,8 @@ impl Frame {
     }
   }
 
-  /// The point `w` along `q` from `qa`, the end a walk started at: from that end's double where it is one, so the
-  /// point keeps the digits its distance from the end has, else through its log.
+  /// The point `w` along `q` from `qa`, the end a walk started at: from that end's double where it
+  /// is one, so the point keeps the digits its distance from the end has, else through its log.
   pub(super) fn point(&self, origin: Cut, from_near: bool, (qa, w): (f64, f64)) -> Point {
     let (base, rate) = match (from_near, self.log) {
       (true, true) => (self.ends.0, w.abs()),
