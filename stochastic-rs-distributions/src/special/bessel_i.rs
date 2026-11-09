@@ -223,8 +223,8 @@ pub(super) fn exp_times(a: f64, m: f64) -> f64 {
   half * (m * half)
 }
 
-/// The pieces of Debye's uniform expansion at `z = x/ν` (DLMF 10.41.3): `νη`, `ν(η − z)`, `p = (1 + z²)^{−1/2}` and
-/// `(p/2πν)^{1/2}`; `I` and `K` differ in the sign pattern of the `U_k` sum and a factor `π`.
+/// Debye's uniform expansion at `z = x/ν` (DLMF 10.41.3): `νη`, `ν(η − z)`, `p` and
+/// `(p/2πν)^{1/2}`; `I` and `K` differ in the signs of the `U_k` sum and a factor `π`.
 pub(super) struct Debye {
   pub eta: f64,
   pub eta_minus_z: f64,
@@ -273,8 +273,8 @@ pub(crate) fn debye_sum_at(p: f64, ratio: f64) -> f64 {
   sum
 }
 
-/// `θᵐ(S − 1)` for `m = 0..=4`, `S = Σ(−1)^k U_k(p)/ν^k` as a function of `s = 1/√(ν² + x²) = p/ν` at a fixed `ν`, where
-/// `θ = s d/ds` weighs the term `c_{k,j} p^{k+2j}/ν^k` by `k + 2j`.
+/// `θᵐ(S − 1)` for `m = 0..=4`, `S = Σ(−1)^k U_k(p)/ν^k` as a function of `s = 1/√(ν² + x²) = p/ν`
+/// at a fixed `ν`, where `θ = s d/ds` weighs the term `c_{k,j} p^{k+2j}/ν^k` by `k + 2j`.
 pub(crate) fn debye_moments(p: f64, s: f64) -> [f64; 5] {
   let p2 = p * p;
   let mut out = [0.0; 5];

@@ -1,8 +1,15 @@
-//! `erfc` as the `libm` crate transcribes fdlibm's `s_erf.c`, operation for operation, so it inlines into `norm_cdf`'s
-//! callers where the crate's out-of-line copy cannot; every value keeps that crate's bits.
+//! `erfc` as `libm` transcribes fdlibm's `s_erf.c`, operation for operation, so it inlines into
+//! `norm_cdf`'s callers where `libm`'s out-of-line copy cannot; every value keeps its bits.
 //! Reference: Sun Microsystems (1993), fdlibm `s_erf.c` (the rational approximations of `erfc` on `[0, 0.84375]`, `[0.84375, 1.25]`, `[1.25, 1/0.35]` and `[1/0.35, 28]`).
-//! Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved. Developed at SunPro, a Sun Microsystems, Inc. business.
-//! Permission to use, copy, modify, and distribute this software is freely granted, provided that this notice is preserved.
+//!
+//! ```text
+//! Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
+//!
+//! Developed at SunPro, a Sun Microsystems, Inc. business.
+//! Permission to use, copy, modify, and distribute this
+//! software is freely granted, provided that this notice
+//! is preserved.
+//! ```
 
 const ERX: f64 = 0.8450629115104675;
 
@@ -182,8 +189,8 @@ fn erfc_from_084(ix: u32, x: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-  /// Bit for bit with the `libm` crate on a million xorshift cases over every double and over `[−32, 32]`, and at the ends
-  /// of each approximation's interval.
+  /// Bit for bit with the `libm` crate on a million xorshift cases over every double and over
+  /// `[−32, 32]`, and at the ends of each approximation's interval.
   #[test]
   fn erfc_keeps_the_libm_bits() {
     let mut state = 0x9e37_79b9_7f4a_7c15_u64;

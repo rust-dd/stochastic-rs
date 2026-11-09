@@ -35,8 +35,8 @@ const HANKEL_FROM: f64 = 1.071_508_607_186_267_3e301;
 /// Below this argument Temme's `f₀` carries more than `11ε` of `ln(2/x)`'s rounding into `K`.
 const TEMME_FLOOR: f64 = 9.313_225_746_154_785e-10;
 
-/// `e^c·(a/b)^e·K_{ν₁}(x₁)/K_ν(x)` over `den = K_ν(x)`, `dx = x − x₁` given free of cancellation, `power = (c, a, b, e)`, from
-/// the scaled `K`s; `None` unless both arguments pass `TEMME_FLOOR` and every factor, partial product and the value is normal.
+/// `e^c·(a/b)^e·K_{ν₁}(x₁)/K_ν(x)`, `power = (c, a, b, e)`, `dx = x − x₁` cancellation-free; `None`
+/// unless both `x` pass `TEMME_FLOOR` and every factor and product is normal.
 #[inline]
 pub(crate) fn ratio_regime(
   (c, a, b, e): (f64, f64, f64, f64),

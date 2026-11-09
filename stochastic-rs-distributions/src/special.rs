@@ -1,5 +1,5 @@
-//! Special functions behind the closed-form `DistributionExt` impls: Lanczos `gamma`/`ln_gamma`, Acklam's `ndtri`,
-//! `libm` `erf`/`erfc`, Mills' ratio, the regularised incomplete gamma and beta functions and the modified Bessel `I`, `K`.
+//! Special functions for the closed forms: Lanczos `gamma` and `ln_gamma`, Acklam's `ndtri`,
+//! `libm`'s `erf` and `erfc`, Mills' ratio, the incomplete gamma and beta, Bessel `I` and `K`.
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 7.9.3 (the continued fraction of `w(z)`), <https://dlmf.nist.gov/7.9.3>.
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 5.11.8 (Stirling's series for `ln Γ(z + h)`, at `h = ½` less `h = 0` the ratio of eq. 5.11.13), <https://dlmf.nist.gov/5.11.8>.
 //! Reference: Acklam, P.J. (2003), "An algorithm for computing the inverse normal cumulative distribution function" (the rational approximation and Halley step of `ndtri`).
@@ -163,8 +163,8 @@ pub fn gamma(x: f64) -> f64 {
   }
 }
 
-/// `Γ(a + ½)/(Γ(a)√a)`, which tends to 1, free of the cancellation of the two logarithms: Stirling's difference series
-/// from `a = 8`, below it `Γ(a + 1) = aΓ(a)` lifting `a` past 8.
+/// `Γ(a + ½)/(Γ(a)√a)`, which tends to 1, free of the cancellation of the two logarithms:
+/// Stirling's difference series from `a = 8`, below it `Γ(a + 1) = aΓ(a)` lifting `a` past 8.
 pub(crate) fn gamma_ratio_half(a: f64) -> f64 {
   const LIFT: f64 = 8.0;
 
@@ -350,8 +350,7 @@ pub fn erf(x: f64) -> f64 {
   libm::erf(x)
 }
 
-/// Complementary error function `erfc(x) = 1 − erf(x)`, computed directly
-/// rather than as the difference, so the upper tail keeps its relative
+/// The complementary error function, formed directly so the upper tail keeps its relative
 /// precision: `erfc(10)` is `2.09e-45`, where `1 − erf(10)` rounds to zero.
 #[inline]
 pub fn erfc(x: f64) -> f64 {
@@ -473,8 +472,8 @@ const MILLS_NODES: [(f64, f64); 9] = [
   (0.23665238291356067, 4.601651392113041e-18),
 ];
 
-/// Below this `z` the Taylor series, whose seventeenth term at `|h| ≤ ¼` is under `1e-17`; above it the fraction needs at
-/// most 31 steps.
+/// Below this `z` the Taylor series, whose seventeenth term at `|h| ≤ ¼` is under `1e-17`; above it
+/// the fraction needs at most 31 steps.
 const MILLS_TAYLOR_BELOW: f64 = 4.25;
 
 /// `1/(n + 1)`, `n = 1, …, 16`: the divisors of the Taylor recurrence `(n + 1)c_{n+1} = z₀c_n + c_{n−1}`.
@@ -497,8 +496,8 @@ const MILLS_DIVISORS: [f64; 16] = [
   1.0 / 17.0,
 ];
 
-/// Mills' ratio `R(z) = Φ(−z)/φ(z)`, within 0.66 ulps on `z ≥ 0`: below 4.25 the Taylor series of `R′ = zR − 1` about
-/// the nearest half-integer, else Laplace's fraction backward, past `1e8` `1/z − 1/z³`; the quotient below 0.
+/// Mills' ratio `R = Φ(−z)/φ(z)`, 0.66 ulps on `z ≥ 0`: Taylor in `R′ = zR − 1` about a
+/// half-integer to 4.25, Laplace's fraction above, `1/z − 1/z³` past `1e8`; the quotient below 0.
 pub fn mills_ratio(z: f64) -> f64 {
   if z < 0.0 {
     return norm_cdf(-z) / norm_pdf(z);
@@ -517,8 +516,8 @@ pub fn mills_ratio(z: f64) -> f64 {
   mills_fraction(z)
 }
 
-/// `R(z₀ + h) = Σ c_n hⁿ` (DLMF 7.10.1 gives `R′ = zR − 1`), `c₀ + c₁h` in two parts, the rest by the recurrence in
-/// `d_n = c_n hⁿ`.
+/// `R(z₀ + h) = Σ c_n hⁿ` (DLMF 7.10.1 gives `R′ = zR − 1`), `c₀ + c₁h` in two parts, the rest by
+/// the recurrence in `d_n = c_n hⁿ`.
 fn mills_taylor(z: f64) -> f64 {
   let k = (2.0 * z).round();
   let (c0, c0_lo) = MILLS_NODES[k as usize];
@@ -538,8 +537,8 @@ fn mills_taylor(z: f64) -> f64 {
   s + (s_err + a_lo + c0_lo + h * (c1_err + p_lo + z0 * c0_lo) + tail)
 }
 
-/// Laplace's fraction `1/(z + 1/(z + 2/(z + …)))` (DLMF 7.9.3 at `iz/√2`) from the depth that truncates it under `2⁻⁶⁰`,
-/// its tail `(z + √(z² + 4(n + 1)))/2`, the last division and the quotient compensated.
+/// Laplace's fraction `1/(z + 1/(z + 2/(z + …)))` (DLMF 7.9.3 at `iz/√2`) from the depth truncating
+/// it under `2⁻⁶⁰`, tail `(z + √(z² + 4(n + 1)))/2`, last division and quotient compensated.
 fn mills_fraction(z: f64) -> f64 {
   let n = (240.0 / (z * z) + 62.0 / z + 4.0) as usize;
   let mut f = 0.5 * (z + z.mul_add(z, 4.0 * (n + 1) as f64).sqrt());
@@ -553,8 +552,8 @@ fn mills_fraction(z: f64) -> f64 {
   r + ((-r).mul_add(s, 1.0) - r * lo) / s
 }
 
-/// `ln Φ(z)`: `ln_1p(−Φ(−z))` above 0, `ln Φ(z)` to −30 and `−z²/2 − ln √(2π) + ln R(−z)` below, the switch a point of
-/// `[−37.5, −3]`, where `Φ` is still normal and the continued fraction converged, so both forms hold to 3 ulps.
+/// `ln Φ(z)`: `ln_1p(−Φ(−z))` above 0, `ln Φ(z)` to −30 and `−z²/2 − ln √(2π) + ln R(−z)` below;
+/// any switch in `[−37.5, −3]` holds both to 3 ulps, `Φ` normal and the fraction converged.
 pub fn ln_norm_cdf(z: f64) -> f64 {
   if z > 0.0 {
     (-norm_cdf(-z)).ln_1p()

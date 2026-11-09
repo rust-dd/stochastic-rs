@@ -1,5 +1,5 @@
-//! The Student-t law's incomplete beta, `I_w(ν/2, ½)` at `w = ν/(ν + x²)` and its reflection `I_z(½, ν/2)`, `z = 1 − w`:
-//! the series in `z` near zero, in `w` in the far tail, between them Lentz's fraction or the expansion in incomplete gammas.
+//! The Student-t incomplete beta `I_w(ν/2, ½)`, `w = ν/(ν + x²)`, and its reflection in
+//! `z = 1 − w`: `z`'s series near 0, `w`'s far out, Lentz's fraction or a gamma expansion between.
 //! Reference: Abramowitz, M., Stegun, I.A. (1964), "Handbook of Mathematical Functions", NBS AMS 55, 26.7.1 (`A(t|ν) = 1 − I_w(ν/2, ½)`).
 //! Reference: NIST Digital Library of Mathematical Functions, eqs. 8.17.4 (the reflection), 8.17.8 (the series of positive terms) and 8.17.20 (the step `a → a + 1`), <https://dlmf.nist.gov/8.17>.
 //! Reference: DiDonato, A.R., Morris, A.H. (1992), "Algorithm 708: Significant digit computation of the incomplete beta function ratios", ACM TOMS 18(3), 360-373, DOI 10.1145/131766.131776, eqs. (9.1)–(9.2) (the expansion in `Γ(b + 2n, Tξ)`, `T = a + (b − 1)/2`).
@@ -23,16 +23,16 @@ const TWO_THIRDS: (f64, f64) = (0.6666666666666666, 3.700743415417188e-17);
 /// `e^{64·LN2_LO}` and `2⁻⁶⁴`, the frame `e^{ln_scale + 64 ln 2}` a value below `e^{−700}` is formed in.
 const FRAME: (f64, f64) = (1.0000000122125756, 1.0 / 18_446_744_073_709_551_616.0);
 
-/// Below this `ν/2` the expansion is taken at `ν/2 + n ≥ LIFT`, the `n` steps between by the upward recurrence: at `T = 7.75`
-/// its terms fall by `(2n)!/(2πT)^{2n}`, under `1e-16` by the eleventh.
+/// Below this `ν/2` the expansion is taken at `ν/2 + n ≥ LIFT`, the `n` steps between by the upward
+/// recurrence: at `T = 7.75` its terms fall by `(2n)!/(2πT)^{2n}`, under `1e-16` by the eleventh.
 const LIFT: f64 = 8.0;
 
-/// From this `ξ = ln(1 + x²/ν)` on the series in `w = e^{−ξ}` converges geometrically by `0.22`, and the expansion's
-/// `ξ^{2n}` would need its fourteenth term.
+/// From this `ξ = ln(1 + x²/ν)` on the series in `w = e^{−ξ}` converges geometrically by `0.22`,
+/// and the expansion's `ξ^{2n}` would need its fourteenth term.
 const FAR_TAIL: f64 = 1.5;
 
-/// `d_n`, the coefficients of `(sinh(s/2)/(s/2))^{−½} = Σ d_n s^{2n}`, exact rationals rounded; past `d_14` the expansion's
-/// terms are below `1e-19` of its sum wherever it is used.
+/// `d_n`, the coefficients of `(sinh(s/2)/(s/2))^{−½} = Σ d_n s^{2n}`, exact rationals rounded;
+/// past `d_14` the expansion's terms are below `1e-19` of its sum wherever it is used.
 const D: [f64; 15] = [
   1.0,
   -1.0 / 48.0,
@@ -63,8 +63,8 @@ pub(crate) struct StudentTail {
 }
 
 impl StudentTail {
-  /// `P(T ≤ −|x|)`, at most ½ to the bit with a NaN kept; below `e^{−700}` by `scaled_exp`, so a subnormal one rounds
-  /// at its last product.
+  /// `P(T ≤ −|x|)`, at most ½ to the bit with a NaN kept; below `e^{−700}` by `scaled_exp`, so a
+  /// subnormal one rounds at its last product.
   pub(crate) fn lower(self) -> f64 {
     if self.center {
       return 0.5 - 0.5 * self.factor * self.ln_scale.exp();
@@ -86,8 +86,8 @@ impl StudentTail {
     }
   }
 
-  /// `ln_scale` re-formed in two parts where a tail branch's passes `−REFINE`, its low part moved into `factor`, so `lower`
-  /// keeps its factor's digits where `|ln F|` nears 745; the quantile's `ln_lower` needs no such care.
+  /// `ln_scale` re-formed in two parts where a tail branch's passes `−REFINE`, its low part moved
+  /// into `factor`, so `lower` keeps its factor's digits where `|ln F|` nears 745.
   pub(crate) fn refined(self, nu: f64, x: f64) -> Self {
     if self.rate.0 == 0.0 || !(self.ln_scale < -REFINE && self.ln_scale > -800.0) {
       return self;
@@ -114,8 +114,8 @@ impl StudentTail {
   }
 }
 
-/// `(z, w, ξ)` at `|x|`: `x²/(ν + x²)`, `ν/(ν + x²)` and `ln(1 + x²/ν)`, from `x²/ν` up to `x² = ν` and from `ν/x²` past
-/// it, its logarithm from `ln ν − 2 ln|x|` once `ν/x²` is subnormal, so none overflows or cancels.
+/// `(z, w, ξ) = (x²/(ν + x²), ν/(ν + x²), ln(1 + x²/ν))` at `|x|`, from `x²/ν` below `x² = ν`, from
+/// `ν/x²` above, `ξ` from `ln ν − 2 ln|x|` once `ν/x²` is subnormal: none overflows or cancels.
 #[inline]
 fn geometry(nu: f64, x: f64) -> (f64, f64, f64) {
   if x * x <= nu {
@@ -131,12 +131,12 @@ fn geometry(nu: f64, x: f64) -> (f64, f64, f64) {
   (1.0 / (1.0 + r), r / (1.0 + r), r.ln_1p() - ln_r)
 }
 
-/// Up to this exponent the density's plain form rounds by about three ulps a unit of it; past it `student_density` forms the
-/// exponent in two parts, where it would otherwise reach a thousand ulps.
+/// Up to this exponent the density's plain form rounds by about three ulps a unit; past it
+/// `student_density` forms the exponent in two parts, where the plain form reaches a thousand ulps.
 const DENSITY_REFINE: f64 = 8.0;
 
-/// The t density `R(ν/2)/√(2π) e^{−((ν + 1)/2)ξ}`, its exponent in two parts past `DENSITY_REFINE`; inline, so a loop at
-/// one `ν` keeps `ln(R/√(2π))` out of it.
+/// The t density `R(ν/2)/√(2π) e^{−((ν + 1)/2)ξ}`, its exponent in two parts past `DENSITY_REFINE`;
+/// inline, so a loop at one `ν` keeps `ln(R/√(2π))` out of it.
 #[inline]
 pub(crate) fn student_density(nu: f64, ratio: f64, x: f64) -> f64 {
   density(nu, ratio, x, DENSITY_REFINE)
@@ -176,8 +176,8 @@ fn tail_exponent(nu: f64, x: f64, rate: (f64, f64)) -> (f64, f64) {
   (-p, -(c.mul_add(xi, -p) + c * xi_lo + c_lo * xi))
 }
 
-/// `factor·e^{hi + lo}` for a small `lo`; below `e^{−700}` `hi + 64·LN2_HI` is exact and its exponential normal, so only
-/// the last product rounds into the subnormals.
+/// `factor·e^{hi + lo}` for a small `lo`; below `e^{−700}` `hi + 64·LN2_HI` is exact and its
+/// exponential normal, so only the last product rounds into the subnormals.
 fn scaled_exp(factor: f64, hi: f64, lo: f64) -> f64 {
   let factor = factor.mul_add(lo, factor);
   if hi < -700.0 {
@@ -187,8 +187,8 @@ fn scaled_exp(factor: f64, hi: f64, lo: f64) -> f64 {
   }
 }
 
-/// `ξ = ln(1 + x²/ν)` in two parts at `|x|`, `x²/ν` from the exact square and the quotient's remainder; where that
-/// overflows `2 ln|x| − ln ν`, which `ν/x²` no longer moves.
+/// `ξ = ln(1 + x²/ν)` in two parts at `|x|`, `x²/ν` from the exact square and the quotient's
+/// remainder; where that overflows `2 ln|x| − ln ν`, which `ν/x²` no longer moves.
 fn xi_parts(nu: f64, x: f64) -> (f64, f64) {
   let x2 = x * x;
   let s = x2 / nu;
@@ -201,8 +201,8 @@ fn xi_parts(nu: f64, x: f64) -> (f64, f64) {
   (h, e + 2.0 * lx_lo - ln_lo)
 }
 
-/// `ln(1 + s)` in two parts for `s ≥ 0` given in two: `2 atanh(s/(2 + s))` below `√2 − 1`, else `k ln 2 + 2 atanh(y)`,
-/// `y = (m − 1)/(m + 1)`, `1 + s = 2ᵏm`, `m ∈ [1/√2, √2)`; `2y` and `2y³/3` compensated, the rest below `2y⁵/5`.
+/// `ln(1 + s)`, `s ≥ 0`, in two parts: `2 atanh(s/(2 + s))` below `√2 − 1`, else
+/// `k ln 2 + 2 atanh((m − 1)/(m + 1))`, `1 + s = 2ᵏm`, `m ∈ [1/√2, √2)`; two terms compensated.
 fn ln_1p_parts(s: f64, s_lo: f64) -> (f64, f64) {
   let (k, num, num_lo, den, den_lo) = if s < SQRT_2 - 1.0 {
     let (d, d_err) = two_sum(2.0, s);
@@ -253,8 +253,8 @@ fn student_xi(nu: f64, x: f64) -> f64 {
   geometry(nu, x.abs()).2
 }
 
-/// The t law's lower tail at `|x|`, `ratio = R(ν/2)`: `I_z(½, ν/2)`'s series near zero, `I_w(ν/2, ½)`'s in the far tail,
-/// between them Lentz's fraction below `ν/2 = 8` and `w*`, else the expansion, lifted past `ν/2 = 8` by 8.17.20.
+/// The t law's lower tail at `|x|`, `ratio = R(ν/2)`: `z`'s series near 0, `w`'s far out, between
+/// them Lentz's fraction below `ν/2 = 8` and `w*`, else the expansion lifted by 8.17.20.
 pub(crate) fn student_tail(nu: f64, ratio: f64, x: f64) -> StudentTail {
   let x = x.abs();
   let a = 0.5 * nu;
@@ -302,8 +302,8 @@ pub(crate) fn student_tail(nu: f64, ratio: f64, x: f64) -> StudentTail {
       xi,
     };
   }
-  // `I_w(a, ½) − I_w(b, ½) = Σ_{i<n} Γ(a + i + ½)/(Γ(a + i + 1)√π) w^{a+i} √z`, `b = a + n`, every term positive; the same
-  // steps carry `R(b) = Γ(a + ½)/Γ(a + 1) · (a + ½)/√b · Π_{0<j<n} (a + j + ½)/(a + j)`.
+  // `I_w(a, ½) − I_w(b, ½) = Σ_{i<n} Γ(a + i + ½)/(Γ(a + i + 1)√π) w^{a+i} √z`, `b = a + n`,
+  // positive terms; the same steps carry `R(b)`.
   let n = (LIFT - a).ceil();
   let b = a + n;
   let mut term = scaled / std::f64::consts::PI.sqrt() * z.sqrt();
@@ -340,8 +340,13 @@ fn series(ratio: impl Fn(f64) -> f64) -> f64 {
   sum
 }
 
-/// `I_w(a, ½) e^{Tξ}` by D&M's (9.1): `R(a)√(a/T)/√π Σ d_n g_n`, `g_n = Γ(2n + ½, u)e^u/T^{2n}`, `u = Tξ`, `T = a − ¼`,
-/// from `g_0 = √2 R_M(√(2u))` (Mills' ratio) by `T²g_{n+1} = (p + 1)p g_n + √u ξ^{2n}(p + 1 + u)`, `p = 2n + ½`.
+/// `I_w(a, ½) e^{Tξ}` by DiDonato and Morris's (9.1), `u = Tξ`, `T = a − ¼`, `p = 2n + ½`, upward
+/// from `g_0 = √2 R_M(√(2u))` (Mills' ratio):
+///
+/// $$
+/// R(a)\sqrt{a/T}\,\pi^{-1/2}\sum_n d_n g_n,\qquad g_n = \Gamma(2n + \tfrac12, u)\,e^u/T^{2n},
+/// \qquad T^2 g_{n+1} = (p + 1)p\,g_n + \sqrt u\,\xi^{2n}(p + 1 + u).
+/// $$
 fn expansion(a: f64, xi: f64, ratio: f64) -> f64 {
   let t = a - 0.25;
   let u = t * xi;

@@ -1,5 +1,5 @@
-//! Quotients kept to their limit as their argument or shape goes to 0: `expm1(t)/t`, `ln_1p(t)/t` and the GEV and GPD
-//! shape forms built on them.
+//! Quotients kept to their limit as their argument or shape goes to 0: `expm1(t)/t`, `ln_1p(t)/t`
+//! and the GEV and GPD shape forms built on them.
 
 use num_traits::Float;
 

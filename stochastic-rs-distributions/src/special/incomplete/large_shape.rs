@@ -1,5 +1,5 @@
-//! The gamma family's prefactor `x^a e^{−x}/Γ(a)` scaled by Stirling's `Γ*` from shape 10, its exponent `a(λ − 1 − ln λ)`
-//! carried past double precision, and from shape 100 Temme's uniform expansion for `0.3 ≤ x/a ≤ 2.35`.
+//! The gamma prefactor `x^a e^{−x}/Γ(a)` by Stirling's `Γ*` from shape 10, its exponent
+//! `a(λ − 1 − ln λ)` past double precision, from shape 100 Temme's expansion on `0.3 ≤ x/a ≤ 2.35`.
 //! Reference: Temme, N.M. (1979), "The asymptotic expansion of the incomplete gamma functions", *SIAM Journal on Mathematical Analysis* 10(4), 757-766, DOI 10.1137/0510071 (DLMF 8.12.3–8.12.4, 8.12.7, 8.12.11–8.12.14).
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 5.11.1 (Stirling's series for `ln Γ`), <https://dlmf.nist.gov/5.11.1>.
 //! Reference: DiDonato, A.R., Morris, A.H. (1986), "Computation of the incomplete gamma function ratios and their inverse", ACM TOMS 12(4), 377-393, DOI 10.1145/22721.23109 (`rcomp`: `x^a e^{−x}/Γ(a)` from `ln Γ` below shape 20, Stirling-scaled from it).
@@ -24,8 +24,8 @@ pub(crate) const LN2_LO: f64 = f64::from_bits(0x3dea_39ef_3579_3c76);
 /// `x/a` where Temme's expansion is summed, `|η| ≤ 1.004`; outside it the series or the fraction converge within 30 terms.
 const TEMME_BAND: (f64, f64) = (0.3, 2.35);
 
-/// `d_{k,n}` of DLMF 8.12.12, exact rationals rounded, `c_k(η) = Σ_n d_{k,n} ηⁿ`, each cut where `|η| ≤ 1.004` and `a ≥ 100`
-/// leave less than `2e-18`.
+/// `d_{k,n}` of DLMF 8.12.12, exact rationals rounded, `c_k(η) = Σ_n d_{k,n} ηⁿ`, each cut where
+/// `|η| ≤ 1.004` and `a ≥ 100` leave less than `2e-18`.
 const TEMME: [&[f64]; 8] = [
   &[
     -0.3333333333333333,
@@ -191,8 +191,8 @@ const TEMME: [&[f64]; 8] = [
   ],
 ];
 
-/// Temme's `Q = ½ erfc(η√(a/2)) + S` (DLMF 8.12.4) in the band, as `e^{−aη²/2}/√(2π)` times Mills' ratio at `|η|√a` plus
-/// `S`'s `c_k` sum over `√a`, `P` alike below `x = a`; outside, `scaled_prefactor` times the series or fraction.
+/// Temme's `Q` (DLMF 8.12.4) in the band, its erfc as `e^{−aη²/2}/√(2π)` times Mills' ratio at
+/// `|η|√a` plus the `c_k` sum over `√a` (`P` below `a`); outside, the scaled series or fraction.
 #[inline(never)]
 pub(super) fn tail(a: f64, x: f64) -> Tail {
   let lambda = x / a;
@@ -236,8 +236,8 @@ pub(super) fn tail(a: f64, x: f64) -> Tail {
   }
 }
 
-/// `x^a e^{−x}/Γ(a) = √(a/2π) e^{−a(λ − 1 − ln λ)}/Γ*(a)`, `λ = x/a`, as `(factor, ln_scale)`: the exponent's low part, past
-/// what `ln_scale` holds, goes into `factor`.
+/// `x^a e^{−x}/Γ(a) = √(a/2π) e^{−a(λ − 1 − ln λ)}/Γ*(a)`, `λ = x/a`, as `(factor, ln_scale)`: the
+/// exponent's low part, past what `ln_scale` holds, goes into `factor`.
 #[inline(never)]
 pub(super) fn scaled_prefactor(a: f64, x: f64) -> (f64, f64) {
   let (l, l_lo) = ln_ratio(x, a);
@@ -332,8 +332,8 @@ pub(crate) fn settle((hi, lo): (f64, f64)) -> (f64, f64) {
   }
 }
 
-/// `ln Γ*(a) = ln Γ(a) − (a − ½) ln a + a − ½ ln 2π` by Stirling's series through `B₁₈`, the first omitted term
-/// `174611/(125400a¹⁹)` below `2e-19` from `a = 10`.
+/// `ln Γ*(a) = ln Γ(a) − (a − ½) ln a + a − ½ ln 2π` by Stirling's series through `B₁₈`, the first
+/// omitted term `174611/(125400a¹⁹)` below `2e-19` from `a = 10`.
 pub(crate) fn ln_gamma_star(a: f64) -> f64 {
   /// `B_{2k}/(2k(2k − 1))`, `k = 1, …, 9`.
   const STIRLING: [f64; 9] = [

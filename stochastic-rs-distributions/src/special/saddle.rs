@@ -1,5 +1,11 @@
-//! GIG normalisers `N(λ, χ, ψ) = ∫ w^{λ−1}e^{−(χ/w + ψw)/2} dw = 2(χ/ψ)^{λ/2}K_λ(√(χψ))` from `√(λ² + χψ) = 50` on as
-//! `ln 2 + H_λ(w*)` plus Debye's remainder, `H_λ(w) = λ ln w − ½(χ/w + ψw)` at its maximiser, so a ratio of two meets as one divergence.
+//! The GIG normaliser past `√(λ² + χψ) = 50` as `ln 2 + H_λ(w*)` + Debye's remainder,
+//! `H_λ(w) = λ ln w − ½(χ/w + ψw)` at its peak `w*`, so a ratio of two is one divergence:
+//!
+//! $$
+//! N(\lambda, \chi, \psi) = \int_0^\infty w^{\lambda-1}e^{-(\chi/w + \psi w)/2}\,dw
+//! = 2(\chi/\psi)^{\lambda/2}K_\lambda(\sqrt{\chi\psi}).
+//! $$
+//!
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 10.41.4 (Debye's expansion of `K_ν(νz)`, whose `−νη` with the power is `H_λ(w*)`), <https://dlmf.nist.gov/10.41.4>.
 
 use super::Scaled;
@@ -10,12 +16,12 @@ use super::split_pow2;
 use super::twofold::two_prod;
 use super::twofold::two_sum;
 
-/// From this `√(ν² + x²)` on Debye's expansion holds to the last bit at any order `ν`; the GH, GIG and VG analytics take their
-/// saddle forms there.
+/// From this `√(ν² + x²)` on Debye's expansion holds to the last bit at any order `ν`; the GH, GIG
+/// and VG analytics take their saddle forms there.
 pub(crate) const LARGE_ORDER: f64 = 50.0;
 
-/// The maximiser of `H_λ` from `√χ` and `√ψ`, `(λ + √(λ² + χψ))/ψ`, at `λ < 0` as `χ/(|λ| + √(λ² + χψ))`, which does not
-/// cancel; neither squares a root, so it holds where `χ` or `ψ` would overflow.
+/// `H_λ`'s maximiser from `√χ`, `√ψ`: `(λ + √(λ² + χψ))/ψ`, at `λ < 0` the cancellation-free
+/// `χ/(|λ| + √(λ² + χψ))`; no root squared, so it holds where `χ` or `ψ` would overflow.
 pub(crate) fn saddle(lambda: f64, root_chi: f64, root_psi: f64) -> f64 {
   saddle_at(
     lambda,
@@ -107,8 +113,8 @@ pub(crate) fn ln_saddle(lambda: f64, root_chi: f64, root_psi: f64) -> f64 {
   }
 }
 
-/// The maximiser `w ≈ guess` of `H_λ` in two parts, `λ`, `χ` and `ψ` each given in two: a Newton step on `ψw − 2λ − χ/w`, its
-/// residual formed exactly, so an offset from `w` keeps its digits where the law is narrower than `w`'s rounding.
+/// `H_λ`'s peak `w ≈ guess` in two parts from `λ`, `χ`, `ψ` in two: one Newton step on
+/// `ψw − 2λ − χ/w` with an exact residual, so offsets keep digits in a law narrower than `w`'s ulp.
 pub(crate) fn saddle_parts(
   guess: f64,
   lambda: (f64, f64),
@@ -136,8 +142,8 @@ fn newton_step(w: f64, lambda: (f64, f64), chi: (f64, f64), psi: (f64, f64)) -> 
   residual / (p + q) * w
 }
 
-/// `x/w − 1` in two parts for `x` and `w` in two parts, the difference formed exactly and the quotient's remainder by a
-/// fused multiply-add.
+/// `x/w − 1` in two parts for `x` and `w` in two parts, the difference formed exactly and the
+/// quotient's remainder by a fused multiply-add.
 pub(crate) fn offset((x, x_lo): (f64, f64), (w, w_lo): (f64, f64)) -> (f64, f64) {
   let (d, d_lo) = two_sum(x, -w);
   let rest = d_lo + (x_lo - w_lo);
@@ -145,8 +151,8 @@ pub(crate) fn offset((x, x_lo): (f64, f64), (w, w_lo): (f64, f64)) -> (f64, f64)
   (e, ((-e).mul_add(w, d) + rest - e * w_lo) / w)
 }
 
-/// `ln S` of Debye's `S = Σ(−1)^k U_k(p)/ν^k`, `p = ν/r`, `r = √(ν² + x²)`: `ln K_ν(x) = ½ ln(π/2r) − r + ν·asinh(ν/x) + ln S`, taken
-/// in `1/r` so it holds at `ν = 0`.
+/// `ln S` of Debye's `S = Σ(−1)^k U_k(p)/ν^k`, `p = ν/r`, `r = √(ν² + x²)`:
+/// `ln K_ν(x) = ½ ln(π/2r) − r + ν·asinh(ν/x) + ln S`, taken in `1/r` so it holds at `ν = 0`.
 pub(crate) fn debye_log_sum(nu: f64, r: f64) -> f64 {
   debye_sum_at(nu / r, -1.0 / r).ln()
 }
@@ -166,8 +172,8 @@ pub(crate) fn exp_times_over(a: f64, m: f64, x: f64) -> f64 {
   }
 }
 
-/// [`exp_times_over`] times `2ᵖ` through [`exp_parts`], so neither `e^a` nor the product leaves the doubles before the value
-/// does; at `p = 0` its bits.
+/// [`exp_times_over`] times `2ᵖ` through [`exp_parts`], so neither `e^a` nor the product leaves the
+/// doubles before the value does; at `p = 0` its bits.
 pub(crate) fn exp_times_over_pow2(a: f64, (m, x): (f64, f64), p: i32) -> f64 {
   if p == 0 {
     return exp_times_over(a, m, x);
@@ -180,8 +186,8 @@ pub(crate) fn exp_times_over_pow2(a: f64, (m, x): (f64, f64), p: i32) -> f64 {
   }
 }
 
-/// `H_λ(w(1 + e)) − H_λ(w)` at the maximiser `w`, `e` in two parts, in terms of one sign: `λ·ln1pmx(e) − (χ/2w)e²/(1 + e)` at
-/// `λ ≥ 0`, else `λ·ℓ(e) − (ψw/2)e²/(1 + e)`, `ℓ(e) = ln(1 + e) − e/(1 + e)`, at the high part plus the slope times the low.
+/// `H_λ(w(1 + e)) − H_λ(w)` at the peak `w`, `e` in two parts, one-signed:
+/// `λ·ln1pmx(e) − (χ/2w)e²/(1 + e)` at `λ ≥ 0`, else `λ(ln1p(e) − e/(1 + e)) − (ψw/2)e²/(1 + e)`.
 pub(crate) fn divergence(
   lambda: f64,
   (chi, psi): (f64, f64),
@@ -287,8 +293,8 @@ fn divergence_at(lambda: f64, coefficient: f64, e: f64, (ratio, ratio_lo): (f64,
       lambda * (lead / ratio + tail) - coefficient * q
     };
   }
-  // A ratio past the normal range leaves the `1/x` or `x` term, or `|λ| ≥ 50` times the logarithm, past `e^{−10⁴}`; a high part
-  // at or below 0 is a ratio under the least normal its low part restores.
+  // A ratio past the normal range leaves the `1/x` or `x` term, or `|λ| ≥ 50` times the logarithm,
+  // past `e^{−10⁴}`; a high part ≤ 0 is a ratio under the least normal that its low part restores.
   if !(ratio.is_normal() && ratio > 0.0) {
     return f64::NEG_INFINITY;
   }
@@ -344,8 +350,8 @@ fn rest_step(from: f64, to: f64, (x_from, x_to): (f64, f64)) -> f64 {
   debye_shape(to, x_to) - debye_shape(from, x_from) - 0.5 * ((to - from) / from).ln_1p()
 }
 
-/// `N(λ + k, χ, ψ)/N(λ, χ, ψ) = w_kᵏe^{rest}`, `N(λ, χ, ψ) = 2(χ/ψ)^{λ/2}K_λ(√(χψ))`, both orders past `LARGE_ORDER`, as
-/// `(w_k, rest)`: `H_λ(w_k) − H_λ(w)` a divergence, `w_k` the maximiser at `λ + k`, so `E Xᵏ` of the GIG rounds no `ln w_k`.
+/// `N(λ + k, χ, ψ)/N(λ, χ, ψ) = w_kᵏe^{rest}` as `(w_k, rest)`, orders past `LARGE_ORDER`:
+/// `H_λ(w_k) − H_λ(w)` a divergence, `w_k` the peak at `λ + k`, so `E Xᵏ` rounds no `ln w_k`.
 pub(crate) fn order_step(lambda: f64, k: f64, (rc, rp): (f64, f64)) -> (f64, f64) {
   let to = lambda + k;
   let omega = rc * rp;
@@ -381,8 +387,10 @@ pub(crate) fn order_step(lambda: f64, k: f64, (rc, rp): (f64, f64)) -> (f64, f64
   )
 }
 
-/// `ln N(λ, χ, ψ − 2s) − ln N(λ, χ, ψ)` for `ψ − 2s = shifted ≥ 0`, `|λ|` past `LARGE_ORDER`: with `Q = |λ| + √(λ² + χψ)`
-/// each maximum is `λ ln(Q/ψ) − Q + λ` (`|λ| ln(Q/χ) − Q + |λ|` at `λ < 0`), so the step is `λ⁺ ln(ψ/ψ_s) + |λ| ln_1p(ΔQ/Q) − ΔQ`.
+/// `ln N(λ, χ, ψ − 2s) − ln N(λ, χ, ψ)` past `LARGE_ORDER`, from each maximum `λ ln(Q/ψ) − Q + λ`
+/// (`|λ| ln(Q/χ) − Q + |λ|` at `λ < 0`), `Q = |λ| + √(λ² + χψ)`:
+///
+/// $$\lambda^+\ln(\psi/\psi_s) + |\lambda|\,\mathrm{ln\_1p}(\Delta Q/Q) - \Delta Q.$$
 pub(crate) fn ln_shift(lambda: f64, s: f64, (chi, psi, shifted): (f64, f64, f64)) -> f64 {
   // `ln(ψ/ψ_s)` from whichever of `2s` and `ψ_s` is the smaller part of `ψ`, both given exactly.
   let small_step = lambda > 0.0 && 4.0 * s < psi;
@@ -463,8 +471,8 @@ pub(crate) fn ln_shift_per_order(
   )
 }
 
-/// `ln Γ(1/ν) + (ln ν + 1)/ν − ½ ln(2πν)`, Stirling's remainder in `ν`, `Σ B_{2k}ν^{2k−1}/(2k(2k − 1))`; its first omitted term
-/// is under `1e-25` at `ν ≤ 1/50`.
+/// `ln Γ(1/ν) + (ln ν + 1)/ν − ½ ln(2πν)`, Stirling's remainder in `ν`,
+/// `Σ B_{2k}ν^{2k−1}/(2k(2k − 1))`, its first omitted term under `1e-25` at `ν ≤ 1/50`.
 /// Reference: NIST Digital Library of Mathematical Functions, eq. 5.11.1 (Stirling's series), <https://dlmf.nist.gov/5.11.1>.
 pub(crate) fn stirling_tail(nu: f64) -> f64 {
   let n2 = nu * nu;

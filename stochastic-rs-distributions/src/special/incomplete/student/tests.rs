@@ -13,8 +13,8 @@ fn agrees(got: f64, want: f64) -> bool {
   (got - want).abs() <= 4e-15 * want.ln().abs().max(1.0) * want
 }
 
-/// mpmath at 60 and 120 digits a relative `1e-13` on either side of each switch: `z = 0.29`, `zν/2 = 0.23`, `ξ = 1.5` and
-/// `w = (ν/2 + 1)/(ν/2 + 5/2)`, below and above `ν/2 = 8`, and where the far tail underflows.
+/// mpmath at 60 and 120 digits, to `1e-13` either side of each switch, `z = 0.29`, `zν/2 = 0.23`,
+/// `ξ = 1.5`, `w = (ν/2 + 1)/(ν/2 + 5/2)` and `ν/2 = 8`, and an underflowing far tail.
 #[test]
 fn the_lower_tail_is_continuous_across_every_switch() {
   for (nu, x, want) in [
@@ -81,8 +81,8 @@ fn the_lower_tail_is_continuous_across_every_switch() {
   }
 }
 
-/// The halves meet at the centre and at the ends: `½` at `x = ±0`, `0` and `1` at `x = ±∞`; where the tail underflows its
-/// logarithm stays finite (mpmath at 60 and 120 digits at `ν = 4`, `x = 1e200`).
+/// The halves meet at the centre and the ends: `½` at `x = ±0`, `0` and `1` at `x = ±∞`; where the
+/// tail underflows its logarithm stays finite (mpmath at 60 and 120 digits, `ν = 4`, `x = 1e200`).
 #[test]
 fn the_halves_meet_at_the_centre_and_the_ends() {
   for nu in [5e-300, 0.01, 4.0, 1e5, 1e300] {

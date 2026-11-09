@@ -104,8 +104,8 @@ fn k_nu_is_nan_for_a_non_finite_order_and_zero_at_infinity() {
   assert_eq!(bessel_ke(2.5, f64::INFINITY), 0.0);
 }
 
-/// mpmath at the f64 arguments: below `x = 1e-307` the small-argument forms (DLMF 10.30.2–3; Temme's `f₀` below
-/// `ν = ½`) in log space; `(0.5, 1e-300)` is the Temme path.
+/// mpmath at the f64 arguments: below `x = 1e-307` the small-argument forms (DLMF 10.30.2–3;
+/// Temme's `f₀` below `ν = ½`) in log space; `(0.5, 1e-300)` is the Temme path.
 #[test]
 fn k_nu_at_subnormal_arguments() {
   assert!(close(
@@ -145,8 +145,8 @@ fn k_nu_at_subnormal_arguments() {
   assert_eq!(bessel_k(0.5, 1e-323), bessel_ke(0.5, 1e-323));
 }
 
-/// mpmath `besselk` above order 50, where `K` is Debye's expansion; each side of the switch against its own value, and
-/// orders and arguments past `1e17` answer `∞` or `0` without a recurrence.
+/// mpmath `besselk` above order 50, where `K` is Debye's expansion; each side of the switch against
+/// its own value, and orders and arguments past `1e17` answer `∞` or `0` without a recurrence.
 #[test]
 fn k_nu_at_large_orders() {
   assert!(close(bessel_k(60.0, 1.0), 7.960_735_226_220_905e97, 1e-12));
@@ -188,8 +188,8 @@ fn k_nu_at_large_orders() {
   assert_eq!(bessel_k(1e18, 1e18), 0.0);
 }
 
-/// mpmath at 120 and 240 digits on the two floats where `e^x K_50(x)` overflows: the recurrence side and the `ke.ln()`
-/// side each within an ulp of the logarithm.
+/// mpmath at 120 and 240 digits on the two floats where `e^x K_50(x)` overflows: the recurrence
+/// side and the `ke.ln()` side each within an ulp of the logarithm.
 #[test]
 fn ln_bessel_ke_is_continuous_where_ke_overflows() {
   let (rec, direct) = (2.429_950_310_934_274e-5, 2.429_950_310_934_274_3e-5);
@@ -204,8 +204,8 @@ fn ln_bessel_ke_is_continuous_where_ke_overflows() {
   }
 }
 
-/// Past `2πν`'s overflow at `ν = 2.86e307` an order still answers: `∞` where `K` overflows, the logarithm where it is
-/// representable (against Debye's leading terms in mpmath).
+/// Past `2πν`'s overflow at `ν = 2.86e307` an order still answers: `∞` where `K` overflows, the
+/// logarithm where it is representable (against Debye's leading terms in mpmath).
 #[test]
 fn k_nu_past_the_overflow_of_two_pi_nu() {
   assert_eq!(bessel_ke(2.9e307, 1.5), f64::INFINITY);
@@ -223,8 +223,8 @@ fn k_nu_past_the_overflow_of_two_pi_nu() {
   ));
 }
 
-/// mpmath `ln(e^x K_ν(x))` where `K` overflows: Debye's form above order 50, the logarithmic recurrence below it, the
-/// small-argument forms below `1e-307`; elsewhere the logarithm of [`bessel_ke`].
+/// mpmath `ln(e^x K_ν(x))` where `K` overflows: Debye's form above order 50, the log recurrence
+/// below it, the small-argument forms below `1e-307`; elsewhere the logarithm of [`bessel_ke`].
 #[test]
 fn ln_bessel_ke_is_finite_where_k_overflows() {
   for (nu, x, want) in [
@@ -255,8 +255,8 @@ fn ln_bessel_ke_is_finite_where_k_overflows() {
   assert_eq!(ln_bessel_ke(3.0, f64::INFINITY), f64::NEG_INFINITY);
 }
 
-/// mpmath at 60 and 120 digits where the plain logarithm's `ε|ln K|` passes `16ε`: `ln(e^x K_ν(x))` in two parts holds it,
-/// `K`'s own few `ε` included, the tiny forms on subnormal arguments too.
+/// mpmath at 60 and 120 digits where the plain logarithm's `ε|ln K|` passes `16ε`: `ln(e^x K_ν(x))`
+/// in two parts holds it, `K`'s own few `ε` included, the tiny forms on subnormal arguments too.
 #[test]
 fn the_two_part_logarithm_holds_where_k_overflows() {
   assert_two_part_logarithm(&[

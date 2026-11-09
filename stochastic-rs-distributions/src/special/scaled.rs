@@ -1,5 +1,5 @@
-//! Positive values as a two-part mantissa and a power of two, and logarithms and exponentials in two parts, so a product,
-//! root or sum of logarithms far outside the doubles keeps its digits.
+//! Positive values as a two-part mantissa and a power of two, and logarithms and exponentials in
+//! two parts, so a product, root or sum of logarithms far outside the doubles keeps its digits.
 
 use std::f64::consts::LN_2;
 
@@ -11,8 +11,8 @@ use super::split_pow2;
 use super::twofold::two_prod;
 use super::twofold::two_sum;
 
-/// Past this sum of a plain sum's logarithms' sizes, as wherever a `K` overflows, the GH, GIG and VG laws sum their
-/// logarithms in two parts; below it the plain sum's `ε·S` is kept, the two-part sums costing up to five times as much.
+/// Past this size of a plain sum's logarithms, or where a `K` overflows, GH, GIG and VG sum their
+/// logarithms in two parts; below it the plain sum's `ε·S` stands, two parts costing up to 5×.
 pub(crate) const PLAIN_LOG_SIZE: f64 = 709.0;
 
 /// `½ ln 2π` in two parts.
@@ -163,8 +163,8 @@ pub(crate) fn ln_parts(x: f64, x_lo: f64, e: i32) -> (f64, f64) {
   )
 }
 
-/// `e^{a + a_lo}·factor·2ᵖ`, `e^a = 2ⁿe^{a − n ln 2}` reduced by Cody and Waite's two-part `ln 2`, so neither `e^a` nor the
-/// product leaves the doubles before the value does, and a subnormal value rounds once.
+/// `e^{a + a_lo}·factor·2ᵖ`, `e^a = 2ⁿe^{a − n ln 2}` by Cody–Waite's two-part `ln 2`, so neither
+/// `e^a` nor the product leaves the doubles before the value does; a subnormal rounds once.
 pub(crate) fn exp_parts((a, a_lo): (f64, f64), factor: f64, p: i32) -> f64 {
   if !a.is_finite() {
     return a.exp() * factor;

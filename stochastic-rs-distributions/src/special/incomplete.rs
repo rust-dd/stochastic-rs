@@ -1,5 +1,5 @@
-//! Regularised incomplete gamma and beta functions (Numerical Recipes 3e §6.2, §6.4: series below `a + 1`, Lentz's
-//! continued fraction above); from shape 100 on, Temme's uniform expansion near `x = a` and Stirling's scaling elsewhere.
+//! Regularised incomplete gamma and beta (NR 3e §6.2, §6.4: series below `a + 1`, Lentz's fraction
+//! above); from shape 100 Temme's uniform expansion near `x = a`, else Stirling's scaling.
 //! Reference: Press, W.H., Teukolsky, S.A., Vetterling, W.T., Flannery, B.P. (2007), *Numerical Recipes* 3rd ed., Cambridge UP, §6.2.1 (`invgammp`'s starts: `(p/t)^{1/a}`, `t = 1 − a(0.253 + 0.12a)`, at `a ≤ 1`, Wilson–Hilferty above).
 //! Reference: DiDonato, A.R., Morris, A.H. (1986), "Computation of the incomplete gamma function ratios and their inverse", ACM TOMS 12(4), 377-393, DOI 10.1145/22721.23109 (the small-shape form `Q = (x^a J − (x^a − 1))g − (g − 1)`).
 //! Reference: Abramowitz, M., Stegun, I.A. (1964), "Handbook of Mathematical Functions", NBS AMS 55, 6.1.34 (the power series of `1/Γ`).
@@ -40,7 +40,7 @@ const STIRLING_PREFACTOR: f64 = 10.0;
 /// Below this shape `(pΓ(a + 1))^{1/a}` can fall under `e^{−700}`, which needs `700a < −ln p − ln Γ(a + 1) ≤ 745`.
 const FLOOR_BINDS: f64 = 1.07;
 
-/// One tail of the gamma law as `factor · e^{ln_scale}`, the upper `Q` if `upper`, else `P`; the other is one minus it.
+/// One gamma tail as `factor · e^{ln_scale}`, `Q` if `upper`, else `P`, the other one minus it;
 /// `kernel` is the series' `S` or the fraction's `h` that `factor` scales, NaN in Temme's band.
 #[derive(Clone, Copy)]
 struct Tail {
@@ -74,8 +74,8 @@ fn prefactor(a: f64, x: f64) -> (f64, f64) {
   }
 }
 
-/// The tail the series (below `a + 1`) or the fraction (above) evaluates, scaled by `prefactor`; the large-shape path
-/// stays out of line so this one inlines into each public function.
+/// The tail the series (below `a + 1`) or the fraction (above) evaluates, scaled by `prefactor`;
+/// the large-shape path stays out of line so this one inlines into each public function.
 #[inline(always)]
 fn tail(a: f64, x: f64) -> Tail {
   if a >= LARGE_SHAPE {
@@ -178,8 +178,8 @@ pub fn gamma_q(a: f64, x: f64) -> f64 {
   if t.upper { t.value() } else { 1.0 - t.value() }
 }
 
-/// `Q(a, x)` at `a < 1` below `x = a + 1`, where `1 − P` cancels: `Q = (x^a J − (x^a − 1))g − (g − 1)`, `P = x^a g(1 − J)`,
-/// `g = 1/Γ(1 + a)`, from quantities that vanish with `a`: within `6e-15` on 22 000 cells there, where `1 − P` reaches `7e-12`.
+/// `Q(a, x)` at `a < 1` below `x = a + 1`, where `1 − P` cancels: DiDonato and Morris's form, its
+/// terms vanishing with `a`, within 6e-15 where `1 − P` errs by 7e-12.
 fn small_shape_q(a: f64, x: f64) -> f64 {
   // `J = −Σ_{n≥1} a(−x)^n/(n!(a + n))`.
   let (mut power, mut j, mut n) = (1.0, 0.0, 1.0);
@@ -197,8 +197,8 @@ fn small_shape_q(a: f64, x: f64) -> f64 {
   ((l + 1.0) * j - l) * (1.0 + h) - h
 }
 
-/// `1/Γ(1 + a) − 1` for `0 < a < 1` to its relative digits and to `a = 1.07` absolutely, by the power series of `1/Γ`
-/// (A&S 6.1.34).
+/// `1/Γ(1 + a) − 1` for `0 < a < 1` to its relative digits and to `a = 1.07` absolutely, by the
+/// power series of `1/Γ` (A&S 6.1.34).
 pub(crate) fn recip_gamma_1p_m1(a: f64) -> f64 {
   recip_gamma_1p_m1_over(a) * a
 }
@@ -293,8 +293,8 @@ pub fn ln_gamma_q(a: f64, x: f64) -> f64 {
   }
 }
 
-/// `scale` times the `x` with `P(a, x) = p`, `0 < p < 1`, rounded once: Newton in `ln x` on the concave `ln P` (`p ≤ ½`)
-/// or `ln Q`; Wilson–Hilferty's start is formed in `x`, so at a huge `a` it is `a`, the root to the bit.
+/// `scale·x` for `P(a, x) = p`, `0 < p < 1`, rounded once: Newton in `ln x` on concave `ln P`
+/// (`p ≤ ½`) or `ln Q`; Wilson–Hilferty's start, in `x`, is at a huge `a` the root `a` itself.
 pub(crate) fn gamma_p_inv(a: f64, p: f64, scale: f64) -> f64 {
   invert(a, p, 1.0 - p, false, scale)
 }
@@ -307,8 +307,8 @@ pub(crate) fn gamma_q_inv(a: f64, q: f64, scale: f64) -> f64 {
 /// `p` and `q = 1 − p`, the one named by `from_q` exact: the target and the starts read the exact one.
 fn invert(a: f64, p: f64, q: f64, from_q: bool, scale: f64) -> f64 {
   let upper = p > 0.5;
-  // `P ≤ x^a/Γ(a + 1)` makes `(pΓ(a + 1))^{1/a}` a lower bound of the root at every `p`, the root to rounding below
-  // `e^{−700}`; it floors Newton only below ½, as above it its rounding over `a` outgrows the root's conditioning.
+  // `P ≤ x^a/Γ(a + 1)` makes `(pΓ(a + 1))^{1/a}` a lower bound of the root, the root itself below
+  // `e^{−700}`; it floors Newton below ½ only, where its rounding stays under the conditioning.
   let bound = (a < FLOOR_BINDS).then(|| (p.ln() + ln_gamma(a + 1.0)) / a);
   if bound.is_some_and(|bound| bound < -700.0) {
     return bound_root(a, p, scale);
@@ -317,8 +317,8 @@ fn invert(a: f64, p: f64, q: f64, from_q: bool, scale: f64) -> f64 {
   scale * newton(a, p, q, from_q, upper, floor)
 }
 
-/// Newton in `ln x` on `ln P` (or `ln Q` if `upper`) from the starts, held above `floor` (a log root). Scale-free and out
-/// of line: inlined into a solver copy that both the χ² and gamma quantiles call, the loop runs 13 % slower.
+/// Newton in `ln x` on `ln P` (or `ln Q` if `upper`), above `floor` (a log root); scale-free and
+/// out of line, as inlined into the solver both quantiles call it runs 13 % slower.
 #[inline(never)]
 fn newton(a: f64, p: f64, q: f64, from_q: bool, upper: bool, floor: f64) -> f64 {
   let ln_target = if upper { q.ln() } else { p.ln() };
@@ -354,8 +354,8 @@ fn newton(a: f64, p: f64, q: f64, from_q: bool, upper: bool, floor: f64) -> f64 
   x
 }
 
-/// `scale·(pΓ(a + 1))^{1/a}` from one exponent: `ln p` in two parts (from `p·2⁶⁴` if subnormal), `ln Γ(a + 1)` and
-/// `ln m + k ln 2` for `scale = 2ᵏm`, ln 2 in halves, lifted by `2⁶⁴`: a subnormal result rounds at the last multiply.
+/// `scale·(pΓ(a + 1))^{1/a}` from one exponent: `ln p` in two parts (`p·2⁶⁴` if subnormal),
+/// `ln Γ(a + 1)`, `ln m + k ln 2` for `scale = 2ᵏm`, all lifted by `2⁶⁴`; a subnormal rounds once.
 fn bound_root(a: f64, p: f64, scale: f64) -> f64 {
   const TWO_POW_M64: f64 = 1.0 / 18_446_744_073_709_551_616.0;
   let (l, l_lo) = if p < f64::MIN_POSITIVE {
@@ -370,8 +370,8 @@ fn bound_root(a: f64, p: f64, scale: f64) -> f64 {
   let q = l / a;
   let (k, m) = split_pow2(scale);
   let ln_m = m.ln();
-  // Below `e^{−746}` the result, `e^{q + k ln 2 + ln m}` within `e^{0.73}`, rounds to 0, and `q`'s remainder can pass
-  // `f64::MAX`.
+  // Below `e^{−746}` the result, `e^{q + k ln 2 + ln m}` within `e^{0.73}`, rounds to 0, and `q`'s
+  // remainder can pass `f64::MAX`.
   if q + f64::from(k) * large_shape::LN2_HI + ln_m < -746.0 {
     return 0.0;
   }
@@ -437,8 +437,8 @@ fn pow2(k: i32) -> f64 {
   f64::from_bits(((k + 1023) as u64) << 52)
 }
 
-/// `ln P(a, x)`, or `ln Q` if `upper`, and its derivative in `ln x`: `1/S` or `−1/h` where the tail solved is the series'
-/// or the fraction's own, else `prefactor` over the tail.
+/// `ln P(a, x)`, or `ln Q` if `upper`, and its derivative in `ln x`: `1/S` or `−1/h` where the tail
+/// solved is the series' or the fraction's own, else `prefactor` over the tail.
 fn solved_tail(a: f64, x: f64, upper: bool) -> (f64, f64) {
   let (value, kernel) = if upper && a < 1.0 && x < a + 1.0 {
     (small_shape_q(a, x).ln(), f64::NAN)

@@ -202,8 +202,8 @@ fn ndtri_keeps_its_digits_next_to_one_half() {
   }
 }
 
-/// mpmath at 60 digits at subnormal levels, where a Newton step on `ln Φ` refines the approximation; normal levels keep
-/// the unrefined value, even `1e-307`, where the step would move it.
+/// mpmath at 60 digits at subnormal levels, where a Newton step on `ln Φ` refines the value; normal
+/// levels keep the unrefined value, even `1e-307`, where the step would move it.
 #[test]
 fn ndtri_keeps_its_digits_at_subnormal_levels() {
   for (p, want) in [
@@ -219,8 +219,8 @@ fn ndtri_keeps_its_digits_at_subnormal_levels() {
   assert_eq!(ndtri(1e-307), ndtri_lower(1e-307));
 }
 
-/// mpmath at 60 and 120 digits (the digits `ln Γ(a)` cancels carried) from `a = 1e-300` to `1e300`, within 2 ulps here; on
-/// 6000 random cells within 5.9 ulps below the switch at 8, the lift's roundings, and half an ulp from it.
+/// mpmath at 60 and 120 digits (carrying the digits `ln Γ(a)` cancels) from `a = 1e-300` to `1e300`
+/// within 2 ulps; 6000 random cells within 5.9 ulps below the switch at 8, half an ulp from it.
 #[test]
 fn gamma_ratio_half_matches_high_precision_references() {
   for (a, want) in [
@@ -245,8 +245,8 @@ fn gamma_ratio_half_matches_high_precision_references() {
   }
 }
 
-/// mpmath at 60 and 120 digits, within an ulp: both sides of a Taylor node's edge, of 4.25 and of 1e8, and 2.98 and 15.96,
-/// where the plain quotient and Lentz's forward fraction lose about 11 ulps.
+/// mpmath at 60 and 120 digits, within an ulp: both sides of a Taylor node's edge, of 4.25 and of
+/// 1e8, and 2.98 and 15.96, where the plain quotient and Lentz's forward fraction lose 11 ulps.
 #[test]
 fn mills_ratio_matches_high_precision_references() {
   for (z, want) in [
@@ -305,8 +305,8 @@ fn ln_norm_cdf_matches_high_precision_references() {
   assert_eq!(ln_norm_cdf(f64::NEG_INFINITY), f64::NEG_INFINITY);
 }
 
-/// Below 5.6e-309 the reflection's `π/sin(πx)` passes the doubles: `ln Γ(x) = −ln x` to its last bit (mpmath, 60 and
-/// 120 digits).
+/// Below 5.6e-309 the reflection's `π/sin(πx)` passes the doubles: `ln Γ(x) = −ln x` to its last
+/// bit (mpmath, 60 and 120 digits).
 #[test]
 fn ln_gamma_at_subnormal_arguments() {
   assert_eq!(ln_gamma(5e-324), 744.4400719213812);

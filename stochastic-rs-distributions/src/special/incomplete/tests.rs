@@ -42,8 +42,8 @@ fn incomplete_gammas_keep_their_digits_in_the_tails() {
   assert!(ln_gamma_q(f64::NAN, 1.0).is_nan() && ln_gamma_p(2.0, -1.0).is_nan());
 }
 
-/// mpmath at 80 digits from shape 100 on, `x/a ∈ {½, 0.99, 1, 1.01, 2}` and the Poisson points `(λ + 1, λ)`: `P`, `Q` and
-/// the logarithm of the smaller, which carries the relative bar where the tail itself underflows.
+/// mpmath at 80 digits from shape 100, `x/a ∈ {½, 0.99, 1, 1.01, 2}` and the Poisson points
+/// `(λ + 1, λ)`: `P`, `Q`, and the smaller's logarithm, relative where the tail underflows.
 #[test]
 fn large_shapes_keep_the_smaller_tail_to_1e_13() {
   let rel = |got: f64, want: f64| {
@@ -227,8 +227,8 @@ fn large_shapes_keep_the_smaller_tail_to_1e_13() {
   }
 }
 
-/// mpmath at 90 digits near and past the band edges, where the exponent is in the hundreds: the smaller tail to
-/// `1e-13`, and at `λ = 3`, `a = 1100`, where it underflows, its logarithm to `1e-15`.
+/// mpmath at 90 digits about the band edges, where the exponent is in the hundreds: the smaller
+/// tail to `1e-13`, at `λ = 3`, `a = 1100`, where it underflows, its logarithm to `1e-15`.
 #[test]
 fn large_shapes_keep_the_smaller_tail_at_the_band_edges() {
   let rel = |got: f64, want: f64| ((got - want) / want).abs();
@@ -276,8 +276,8 @@ fn large_shapes_keep_the_smaller_tail_at_the_band_edges() {
   assert!(rel(ln_gamma_q(1100.0, 3300.0), -996.640_857_633_860_4) < 1e-15);
 }
 
-/// Past an exponent of `2^62` the low parts fold into their high parts, so the tails answer `0` or `1` and their logarithms
-/// stay finite (mpmath: the asymptotic series at 60 digits, and `gammainc` where it converges).
+/// Past an exponent of `2^62` low parts fold into high parts, so the tails read `0` or `1` with
+/// finite logarithms (mpmath's asymptotic series at 60 digits, `gammainc` where it converges).
 #[test]
 fn huge_exponents_keep_their_logarithms() {
   use crate::traits::DistributionExt;
@@ -306,8 +306,8 @@ fn beta_i_known_values() {
   assert!(close(a + b, 1.0, 1e-10));
 }
 
-/// mpmath at 60 and 120 digits below `x = a + 1` at shapes under 1, where `1 − P` cancels: `Q` and its logarithm to
-/// `4e-15`, and `Q` meeting the continued fraction above `x = a + 1`.
+/// mpmath at 60 and 120 digits below `x = a + 1` at shapes under 1, where `1 − P` cancels: `Q` and
+/// its logarithm to `4e-15`, and `Q` meeting the continued fraction above `x = a + 1`.
 #[test]
 fn small_shapes_keep_the_upper_tail_below_a_plus_one() {
   let rel = |got: f64, want: f64| ((got - want) / want).abs();
@@ -364,8 +364,8 @@ const LARGE_K: [(f64, f64, f64, f64); 12] = [
   ),
 ];
 
-/// The inverse round-trips `P` below ½ and `Q` above on a grid of shapes, the root under `e^{−744}` exactly 0; at `k = 1e16`
-/// and `1e20` it is `LARGE_K`'s within `4e-15·max(1, κ)·max(1, |ln p̃|)`, and from `1e300`, within `6e-149` of `k`, `k`.
+/// The inverse round-trips `P` below ½ and `Q` above, 0 below `e^{−744}`; at `k = 1e16`, `1e20` it
+/// is `LARGE_K`'s within `4e-15·max(1, κ)·max(1, |ln p̃|)`, from `1e300` `k` within `6e-149`.
 #[test]
 fn gamma_p_inv_inverts_the_tail_it_solves() {
   for a in [1e-3, 0.02, 0.5, 1.0, 2.5, 50.0, 1e4] {

@@ -1,22 +1,8 @@
-//! Modified Bessel functions `I₀`, `I₁`, `K₀`, `K₁`.
-//!
-//! Two-interval Chebyshev-polynomial scheme, evaluated with the
-//! `chbevl` recurrence (a Clenshaw-style summation). Coefficients are
-//! copied verbatim from the Cephes Math Library (S. Moshier, public
-//! domain): `i0.c`, `i1.c`, `k0.c`, `k1.c`.
-//!
-//! - `I₀`, `I₁`: Chebyshev series on `x ∈ [0, 8]`; for `x > 8` an
-//!   asymptotic Chebyshev series scaled by `e^{x} / √x`.
-//! - `K₀`, `K₁`: Chebyshev series on `x ∈ (0, 2]` combined with a
-//!   `log(x/2)` term against `I₀` / `I₁`; for `x > 2` an asymptotic
-//!   Chebyshev series scaled by `e^{-x} / √x`.
-//!
-//! `K₀` and `K₁` are defined only for `x > 0` and are NaN otherwise.
+//! The modified Bessel functions `I₀`, `I₁`, `K₀`, `K₁` from Cephes' two-interval Chebyshev series,
+//! summed by `chbevl`'s Clenshaw recurrence; `K₀` and `K₁` are NaN unless `x > 0`.
+//! Reference: Moshier, S. L., Cephes Math Library, `i0.c`, `i1.c`, `k0.c`, `k1.c` (public domain).
 
-// The mantissas below are transcribed verbatim from the Cephes C source;
-// the digits are the spec, so they are left ungrouped (unreadable_literal)
-// and untruncated (excessive_precision) rather than risking a transcription
-// slip while reformatting 180 fifteen-to-twenty-digit constants by hand.
+// Cephes' mantissas verbatim: the digits are the spec, so they are neither grouped nor truncated.
 #![allow(clippy::unreadable_literal, clippy::excessive_precision)]
 
 /// Evaluates a Chebyshev series at `x` via the Clenshaw-style recurrence
@@ -160,9 +146,8 @@ const I1_B: [f64; 25] = [
   7.78576235018280120474e-1,
 ];
 
-/// Chebyshev coefficients for `K₀(x) + log(x/2) I₀(x)` on `(0, 2]`. The
-/// odd-order coefficients are all zero and omitted upstream in Cephes;
-/// here the series is pre-expanded so only even orders remain.
+/// Chebyshev coefficients of `K₀(x) + log(x/2) I₀(x)` on `(0, 2]`, even orders only: Cephes omits
+/// the odd ones, all zero.
 const K0_A: [f64; 10] = [
   1.37446543561352307156e-16,
   4.25981614279661018399e-14,
@@ -251,11 +236,8 @@ const K1_B: [f64; 25] = [
   2.72062619048444266945e0,
 ];
 
-/// Modified Bessel function of the first kind, order 0, `I₀(x)`.
-///
-/// Cephes Math Library, S. Moshier, `i0.c`. Chebyshev series on `[0, 8]`;
-/// asymptotic Chebyshev series scaled by `e^x / √x` beyond that. Even
-/// function, so the sign of `x` is dropped up front.
+/// The modified Bessel function `I₀(x)` (Cephes' `i0.c`): a Chebyshev series on `[0, 8]`, beyond it
+/// an asymptotic one scaled by `e^x/√x`; even, so the sign of `x` drops.
 pub fn bessel_i0(x: f64) -> f64 {
   let x = x.abs();
   if x <= 8.0 {
@@ -266,10 +248,8 @@ pub fn bessel_i0(x: f64) -> f64 {
   }
 }
 
-/// Modified Bessel function of the first kind, order 1, `I₁(x)`.
-///
-/// Cephes Math Library, S. Moshier, `i1.c`. Same two-interval scheme as
-/// [`bessel_i0`]; `I₁` is odd, so the result's sign follows `x`.
+/// The modified Bessel function `I₁(x)` (Cephes' `i1.c`) on [`bessel_i0`]'s two intervals; odd, so
+/// the sign follows `x`.
 pub fn bessel_i1(x: f64) -> f64 {
   let z = x.abs();
   let out = if z <= 8.0 {
@@ -281,8 +261,8 @@ pub fn bessel_i1(x: f64) -> f64 {
   if x < 0.0 { -out } else { out }
 }
 
-/// Modified Bessel function of the second kind, order 0, `K₀(x)` (Cephes `k0.c`).
-/// NaN unless `x > 0` (`K₀` has a logarithmic singularity at `0` and is undefined for negative `x`).
+/// Modified Bessel function of the second kind, order 0, `K₀(x)` (Cephes `k0.c`). NaN unless
+/// `x > 0` (`K₀` has a logarithmic singularity at `0` and is undefined for negative `x`).
 pub fn bessel_k0(x: f64) -> f64 {
   if x.is_nan() || x <= 0.0 {
     return f64::NAN;
@@ -309,8 +289,8 @@ pub fn bessel_k1(x: f64) -> f64 {
   }
 }
 
-/// Exponentially scaled `K₁ᵉ(x) = e^x K₁(x)` (Cephes `k1e`), finite where `exp(x) * bessel_k1(x)` is `∞ · 0`.
-/// NaN unless `x > 0`.
+/// Exponentially scaled `K₁ᵉ(x) = e^x K₁(x)` (Cephes `k1e`), finite where `exp(x) * bessel_k1(x)`
+/// is `∞ · 0`. NaN unless `x > 0`.
 pub fn bessel_k1e(x: f64) -> f64 {
   if x.is_nan() || x <= 0.0 {
     return f64::NAN;
@@ -354,27 +334,14 @@ mod tests {
     assert!(bessel_k0(f64::NAN).is_nan());
   }
 
-  /// Reference: scipy.special — `from scipy.special import k1e`
-  /// k1e(1)=1.636153486263258
-  ///
-  /// A second reference point of `k1e(10)=0.3916319102912085` was
-  /// proposed for this test but is not used: it is actually `K0e(10)`
-  /// (verified via `from scipy.special import k0e; k0e(10)` and via
-  /// independent quadrature of the DLMF 10.32.10 integral representation
-  /// `K1e(10) = ∫₀^∞ exp(−10(cosh t − 1)) cosh(t) dt`, both of which give
-  /// `≈0.39163`, matching `K0e(10)` and disagreeing with the true
-  /// `K1e(10)≈0.41077`), not `K1e(10)`. The far branch is instead pinned
-  /// down below by the Wronskian identity, which needs no external value.
+  /// `k1e(1) = 1.636153486263258` (scipy.special); the Wronskian test below pins the far branch.
   #[test]
   fn bessel_k1e_matches_scipy_reference() {
     assert!(rel_close(bessel_k1e(1.0), 1.636153486263258, 1e-13));
   }
 
-  /// Wronskian identity for modified Bessel functions (Abramowitz &
-  /// Stegun 9.6.15): `I₀(x) K₁(x) + I₁(x) K₀(x) = 1/x`. Exercises the far
-  /// branch of all four functions (`x > 2` for `K`, `x > 8` for `I`)
-  /// against an exact mathematical relation rather than a single pasted
-  /// constant.
+  /// The Wronskian `I₀(x) K₁(x) + I₁(x) K₀(x) = 1/x` (Abramowitz & Stegun 9.6.15) on the far branch
+  /// of all four functions, `x > 2` for `K` and `x > 8` for `I`.
   #[test]
   fn bessel_wronskian_identity_holds() {
     for &x in &[0.5_f64, 1.0, 2.0, 3.0, 5.0, 10.0, 20.0] {
@@ -387,10 +354,8 @@ mod tests {
     }
   }
 
-  /// K₁ᵉ(x) = e^x K₁(x) is an exact identity; cross-check the two
-  /// independently-coded branches agree in the range where both are safe
-  /// to evaluate directly (K₁ itself only overflows once `e^x K₁(x)`
-  /// would exceed f64 range, well beyond this domain).
+  /// `K₁ᵉ(x) = e^x K₁(x)` exactly: the two independently coded branches agree where both evaluate
+  /// directly.
   #[test]
   fn bessel_k1e_matches_k1_times_exp() {
     for &x in &[0.3_f64, 1.0, 2.0, 5.0, 20.0, 100.0] {

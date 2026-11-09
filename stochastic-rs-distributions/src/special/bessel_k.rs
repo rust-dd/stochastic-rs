@@ -1,31 +1,17 @@
-//! Modified Bessel function of the second kind `K_ν(x)` for real order.
-//!
-//! Numerical Recipes' `bessik` (3rd ed., §6.6) to order 50: Temme's series below `x = 2` or Steed's CF2 at `|μ| ≤ ½`,
-//! then the upward recurrence; Debye's uniform expansion above order 50, the small-argument forms below `x = 1e-307`.
-//!
-//! The reciprocal-gamma pieces of Temme's method,
+//! `K_ν(x)` for real order: `bessik` to order 50 (Temme below `x = 2`, Steed's CF2 above, upward),
+//! Debye past it, DLMF 10.30 under `1e-307`; Temme's `γ₁`, `γ₂` from `ln Γ`'s series:
 //!
 //! $$
-//! \gamma_1 = \frac{1/\Gamma(1-\mu) - 1/\Gamma(1+\mu)}{2\mu},\qquad
-//! \gamma_2 = \frac{1/\Gamma(1-\mu) + 1/\Gamma(1+\mu)}{2},
+//! \ln\Gamma(1+\mu)^{-1} = \gamma_E\mu - \sum_{k\ge2}(-1)^k\zeta(k)\mu^k/k = S_e + S_o,
+//! $$
+//! $$
+//! \gamma_1 = \frac{1/\Gamma(1-\mu) - 1/\Gamma(1+\mu)}{2\mu} = -\frac{e^{S_e}\sinh S_o}{\mu},\qquad
+//! \gamma_2 = \frac{1/\Gamma(1-\mu) + 1/\Gamma(1+\mu)}{2} = e^{S_e}\cosh S_o.
 //! $$
 //!
-//! come from $\log 1/\Gamma(1+x) = \gamma_E x - \sum_{k\ge2}(-1)^k\zeta(k)x^k/k$,
-//! so $\gamma_1 = -e^{S_e}\sinh(S_o)/\mu$ and $\gamma_2 = e^{S_e}\cosh(S_o)$
-//! with the odd and even partial sums $S_o$, $S_e$ — no Chebyshev fit and
-//! no cancellation at small $\mu$.
-//!
-//! References:
-//! - Temme, N.M. (1975), "On the numerical evaluation of the modified
-//!   Bessel function of the third kind", *Journal of Computational
-//!   Physics* 19(3), 324-337. DOI: 10.1016/0021-9991(75)90082-0
-//! - Thompson, I.J., Barnett, A.R. (1987), "Modified Bessel functions
-//!   I_ν(z) and K_ν(z) of real order and complex argument, to selected
-//!   accuracy", *Computer Physics Communications* 47(2-3), 245-257.
-//!   DOI: 10.1016/0010-4655(87)90111-1
-//! - Press, Teukolsky, Vetterling, Flannery (2007), *Numerical Recipes*,
-//!   3rd ed., §6.6.
-//!
+//! Reference: Temme, N.M. (1975), "On the numerical evaluation of the modified Bessel function of the third kind", *Journal of Computational Physics* 19(3), 324-337, DOI 10.1016/0021-9991(75)90082-0.
+//! Reference: Thompson, I.J., Barnett, A.R. (1987), "Modified Bessel functions I_ν(z) and K_ν(z) of real order and complex argument, to selected accuracy", *Computer Physics Communications* 47(2-3), 245-257, DOI 10.1016/0010-4655(87)90111-1.
+//! Reference: Press, W.H., Teukolsky, S.A., Vetterling, W.T., Flannery, B.P. (2007), *Numerical Recipes* 3rd ed., Cambridge UP, §6.6 (`bessik`).
 //! Reference: Olver, F. W. J. (1954), "The asymptotic expansion of Bessel functions of large order", Phil. Trans. R. Soc. A 247, 328–368, DOI 10.1098/rsta.1954.0021 (Debye's uniform expansion, DLMF 10.41.4, above order 50).
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 10.30.2–10.30.3 (`K_ν` as `x → 0`, below `x = 1e-307`), <https://dlmf.nist.gov/10.30>.
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 10.29.1 (the recurrence whose ratio form sums `ln K` where `K` overflows), <https://dlmf.nist.gov/10.29.1>.
@@ -131,8 +117,8 @@ pub fn bessel_ke(nu: f64, x: f64) -> f64 {
   ke_pair(nu, x).0
 }
 
-/// $\ln(e^{x} K_\nu(x))$ for real `nu`, finite wherever the logarithm is representable; NaN unless `x > 0` and `nu` is
-/// finite, `−∞` at `x = ∞`.
+/// $\ln(e^{x} K_\nu(x))$ for real `nu`, finite wherever the logarithm is representable; NaN unless
+/// `x > 0` and `nu` is finite, `−∞` at `x = ∞`.
 pub fn ln_bessel_ke(nu: f64, x: f64) -> f64 {
   if !nu.is_finite() || x.is_nan() || x <= 0.0 {
     return f64::NAN;
@@ -158,8 +144,8 @@ pub fn ln_bessel_ke(nu: f64, x: f64) -> f64 {
   }
 }
 
-/// Scaled $(e^x K_\nu(x), e^x K_{\nu+1}(x))$ for `nu ≥ 0` and `x > 0`; both infinite once the upward recurrence
-/// overflows, since `K` grows with the order.
+/// Scaled $(e^x K_\nu(x), e^x K_{\nu+1}(x))$ for `nu ≥ 0` and `x > 0`; both infinite once the
+/// upward recurrence overflows, since `K` grows with the order.
 pub(super) fn ke_pair(nu: f64, x: f64) -> (f64, f64) {
   let nl = (nu + 0.5).floor() as usize;
   let mu = nu - nl as f64;
@@ -191,16 +177,16 @@ pub fn bessel_k(nu: f64, x: f64) -> f64 {
   bessel_ke(nu, x) * (-x).exp()
 }
 
-/// DLMF 10.41.4, `K_ν(νz) ~ √(π/2ν) e^{−νη} (1+z²)^{−1/4} Σ(−1)^k U_k(p)/ν^k`, out of line so the small-order path keeps
-/// its size.
+/// DLMF 10.41.4, `K_ν(νz) ~ √(π/2ν) e^{−νη} (1+z²)^{−1/4} Σ(−1)^k U_k(p)/ν^k`, out of line so the
+/// small-order path keeps its size.
 #[inline(never)]
 fn debye_k(nu: f64, x: f64, scaled: bool) -> f64 {
   let (m, d) = debye_k_terms(nu, x);
   exp_times(if scaled { -d.eta_minus_z } else { -d.eta }, m)
 }
 
-/// `ln K_ν(x) + νη(x/ν) + ½ ln ν`, Debye's `½ ln(πp/2) + ln Σ(−1)^k U_k(p)/ν^k` past order 50, finite at `x = 0`, where with
-/// `−½ ln ν` it is the gamma function's Stirling remainder; the `½ ln ν` stays apart so two orders' remainders meet exactly.
+/// `ln K_ν(x) + νη(x/ν) + ½ ln ν` by Debye, `½ ln(πp/2) + ln Σ(−1)^k U_k(p)/ν^k`, finite at
+/// `x = 0`; `½ ln ν` stays apart so two orders' Stirling remainders meet exactly.
 pub(crate) fn debye_shape(nu: f64, x: f64) -> f64 {
   debye_factor(nu, x).ln()
 }
@@ -231,8 +217,8 @@ fn debye_k_terms(nu: f64, x: f64) -> (f64, Debye) {
   )
 }
 
-/// `ln(e^x K_ν(x))` for `ν ≤ 50` below `x = 2`, where alone `K` overflows: the recurrence on `g = (x/2)K_{n+1}/K_n` keeps
-/// `g` near `n`, and its logarithms are summed apart from the large terms they would otherwise round against.
+/// `ln(e^x K_ν(x))` for `ν ≤ 50` below `x = 2`, where `K` overflows: the recurrence on
+/// `g = (x/2)K_{n+1}/K_n` keeps `g` near `n`, its logarithms summed apart from the large terms.
 #[cold]
 #[inline(never)]
 fn ln_recurrence(nu: f64, x: f64) -> f64 {
@@ -248,8 +234,8 @@ fn ln_recurrence(nu: f64, x: f64) -> f64 {
   small + (sum.ln() + x + nl as f64 * (LN_2 - x.ln()))
 }
 
-/// DLMF 10.30.2's `½Γ(ν)(2/x)^ν` in log space from `ν = ½`, off by `O(x^{2ν})` below `ν = 1` and `O(x²)` above; Temme's `f₀`
-/// below `ν = ½`, where that term is not uniform as `ν → 0`. `e^x = 1` here, so scaled and plain agree.
+/// DLMF 10.30.2's `½Γ(ν)(2/x)^ν` in logs from `ν = ½` (error `O(x^{2ν})` below `ν = 1`, `O(x²)`
+/// above), Temme's `f₀` below, as that term is not uniform in `ν → 0`; scaled is plain here.
 #[cold]
 #[inline(never)]
 fn tiny_argument(nu: f64, x: f64, log: bool) -> f64 {
