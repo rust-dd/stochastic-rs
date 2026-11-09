@@ -17,7 +17,8 @@ fn close(a: f64, b: f64, rel: f64) -> bool {
 /// regimes, λ = 0 and λ < 0.
 #[test]
 fn matches_scipy_geninvgauss() {
-  let cases: [((f64, f64, f64), [f64; 5], [f64; 5]); 6] = [
+  type ScipyRow = ((f64, f64, f64), [f64; 5], [f64; 5]);
+  let cases: [ScipyRow; 6] = [
     (
       (-0.5, 1.0, 4.0),
       [

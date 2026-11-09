@@ -361,7 +361,8 @@ mod tests {
   /// moments of the density integrated numerically with `scipy.integrate`.
   #[test]
   fn matches_arch_skew_student() {
-    let cases: [((f64, f64), [(f64, f64, f64); 6], [f64; 3], [f64; 2]); 2] = [
+    type ArchRow = ((f64, f64), [(f64, f64, f64); 6], [f64; 3], [f64; 2]);
+    let cases: [ArchRow; 2] = [
       (
         (5.0, -0.3),
         [

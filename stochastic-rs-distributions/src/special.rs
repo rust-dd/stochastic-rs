@@ -65,6 +65,7 @@ pub(crate) use incomplete::student_density;
 pub(crate) use incomplete::student_density_precise;
 pub(crate) use incomplete::student_tail;
 pub(crate) use k_ratio::KDenominator;
+pub(crate) use k_ratio::RatioParts;
 pub(crate) use k_ratio::k_half_ratio;
 pub(crate) use k_ratio::k_half_ratio_plain;
 pub(crate) use k_ratio::ln_quotient;

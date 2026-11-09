@@ -48,6 +48,7 @@ use crate::seeded::StreamState;
 use crate::special::KDenominator;
 use crate::special::LARGE_ORDER;
 use crate::special::PLAIN_LOG_SIZE;
+use crate::special::RatioParts;
 use crate::special::exp_times_over_pow2;
 use crate::special::ldexp;
 use crate::special::ln_bessel_ke;
@@ -272,11 +273,7 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
   }
 
   /// The interior mgf's ratio at `t`, `shifted = γ_t² > 0`.
-  fn mgf_ratio(
-    &self,
-    t: f64,
-    shifted: f64,
-  ) -> ((f64, f64, f64, f64), (f64, f64), KDenominator, f64) {
+  fn mgf_ratio(&self, t: f64, shifted: f64) -> RatioParts {
     let (lambda, alpha, beta, delta, mu) = self.params();
     let psi = (alpha - beta) * (alpha + beta);
     let (gamma, gt) = (psi.sqrt(), shifted.sqrt());

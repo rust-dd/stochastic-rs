@@ -99,9 +99,13 @@ fn rejects_alpha_of_one() {
   let _ = SimdTemperedStable::<f64>::new(1.0, 1.0, 1.0);
 }
 
-/// Cells where the plain path overflows `θ^{1/α}`, underflows `(√γ + αζ)^{1/α}` or loses `x^{−b}`: Laplace transform at
-/// u = 0.5, 2, 8, κ₁, κ₂, mass below `2⁻¹⁰⁷⁵`, `e^{λ^α θ} P(S_α < 2⁻¹⁰⁷⁵ θ^{−1/α})` (Kanter); mpmath, 50, 80 digits.
-const SMALL_ALPHA_CELLS: [((f64, f64, f64), [f64; 3], f64, f64, f64); 6] = [
+/// `(α, θ, λ)`, the Laplace transform at u = 0.5, 2, 8, κ₁, κ₂, and the mass below `2⁻¹⁰⁷⁵`,
+/// `e^{λ^α θ} P(S_α < 2⁻¹⁰⁷⁵ θ^{−1/α})` (Kanter).
+type SmallAlphaCell = ((f64, f64, f64), [f64; 3], f64, f64, f64);
+
+/// Cells where the plain path overflows `θ^{1/α}`, underflows `(√γ + αζ)^{1/α}` or loses `x^{−b}`;
+/// mpmath at 50 and 80 digits.
+const SMALL_ALPHA_CELLS: [SmallAlphaCell; 6] = [
   (
     (0.005, 40.0, 1.0),
     [

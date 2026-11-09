@@ -168,18 +168,30 @@ fn sample_one_standard<T: SimdFloatExt, S: Source + ?Sized>(rng: &mut S, tables:
 /// `memset_pattern16` calls on Darwin.
 const LAYER_MASK: i32x8 = i32x8::splat(127);
 
-/// One 8-lane Ziggurat batch from `hz` into `out[..8]`; `STANDARD` compiles the affine map out.
-#[inline(always)]
-fn zig_batch8<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
-  hz: i32x8,
-  tables: &ZigTables,
+/// What every batch of one fill shares: the tables, and the affine map in scalar and lane form.
+struct ZigFill<'a, T: SimdFloatExt> {
+  tables: &'a ZigTables,
   mu: T,
   sigma: T,
   mu_simd: T::Simd,
   sigma_simd: T::Simd,
+}
+
+/// One 8-lane Ziggurat batch from `hz` into `out[..8]`; `STANDARD` compiles the affine map out.
+#[inline(always)]
+fn zig_batch8<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
+  hz: i32x8,
+  fill: &ZigFill<'_, T>,
   rng: &mut R,
   out: &mut [MaybeUninit<T>],
 ) {
+  let ZigFill {
+    tables,
+    mu,
+    sigma,
+    mu_simd,
+    sigma_simd,
+  } = *fill;
   let iz = hz & LAYER_MASK;
   let iz_arr = iz.to_array();
   unsafe {
@@ -264,48 +276,26 @@ fn fill_zig_impl<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
     }
     return;
   }
-  let mu_simd = T::splat(mu);
-  let sigma_simd = T::splat(sigma);
+  let fill = ZigFill {
+    tables,
+    mu,
+    sigma,
+    mu_simd: T::splat(mu),
+    sigma_simd: T::splat(sigma),
+  };
   let mut filled = 0;
 
   if R::HAS_PAIR_ILP {
     while filled + 16 <= len {
       let (hz_a, hz_b) = rng.next_i32x8_pair();
-      zig_batch8::<T, R, STANDARD>(
-        hz_a,
-        tables,
-        mu,
-        sigma,
-        mu_simd,
-        sigma_simd,
-        rng,
-        &mut buf[filled..filled + 8],
-      );
-      zig_batch8::<T, R, STANDARD>(
-        hz_b,
-        tables,
-        mu,
-        sigma,
-        mu_simd,
-        sigma_simd,
-        rng,
-        &mut buf[filled + 8..filled + 16],
-      );
+      zig_batch8::<T, R, STANDARD>(hz_a, &fill, rng, &mut buf[filled..filled + 8]);
+      zig_batch8::<T, R, STANDARD>(hz_b, &fill, rng, &mut buf[filled + 8..filled + 16]);
       filled += 16;
     }
   }
   while filled + 8 <= len {
     let hz = rng.next_i32x8();
-    zig_batch8::<T, R, STANDARD>(
-      hz,
-      tables,
-      mu,
-      sigma,
-      mu_simd,
-      sigma_simd,
-      rng,
-      &mut buf[filled..filled + 8],
-    );
+    zig_batch8::<T, R, STANDARD>(hz, &fill, rng, &mut buf[filled..filled + 8]);
     filled += 8;
   }
   while filled < len {
@@ -494,13 +484,16 @@ mod zig_tests {
     let mut rng = SimdRng::from_seed(11);
     let mut out = [0.0_f64; 8];
     let hz = i32x8::new([i32::MIN, 1, 2, 3, 4, 5, 6, 7]);
+    let fill = ZigFill {
+      tables,
+      mu: 0.0,
+      sigma: 1.0,
+      mu_simd: f64::splat(0.0),
+      sigma_simd: f64::splat(1.0),
+    };
     zig_batch8::<f64, SimdRng, true>(
       hz,
-      tables,
-      0.0,
-      1.0,
-      f64::splat(0.0),
-      f64::splat(1.0),
+      &fill,
       &mut rng,
       // SAFETY: `zig_batch8` writes all eight lanes of `out`.
       unsafe { as_uninit_mut(&mut out) },

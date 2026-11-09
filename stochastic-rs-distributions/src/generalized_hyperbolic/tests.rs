@@ -17,7 +17,8 @@ fn close(a: f64, b: f64, rel: f64) -> bool {
 /// (`norm.pdf(x; μ+βw, √w)·geninvgauss.pdf(w)`), and the mixture moments with `geninvgauss.stats`.
 #[test]
 fn pdf_and_moments_match_the_mixture_reference() {
-  let cases: [((f64, f64, f64, f64, f64), [f64; 6], f64, f64); 3] = [
+  type MixtureRow = ((f64, f64, f64, f64, f64), [f64; 6], f64, f64);
+  let cases: [MixtureRow; 3] = [
     (
       (1.0, 2.0, 0.5, 1.5, -0.2),
       [

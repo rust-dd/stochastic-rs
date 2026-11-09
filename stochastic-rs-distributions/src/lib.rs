@@ -123,12 +123,8 @@
 //! closed upper endpoint `p = 1.0` (the entropy override's own degenerate
 //! case) stays valid rather than being excluded.
 
-// Defaults to `warn`, which is how 5 broken doc links accumulated
-// unnoticed; deny so a regression fails the build instead of drifting.
+// A broken intra-doc link fails the build instead of warning.
 #![deny(rustdoc::broken_intra_doc_links)]
-#![allow(non_snake_case)]
-#![allow(clippy::type_complexity)]
-#![allow(clippy::too_many_arguments)]
 
 #[macro_use]
 mod macros;

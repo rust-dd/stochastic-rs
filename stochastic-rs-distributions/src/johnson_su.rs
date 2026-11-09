@@ -305,7 +305,8 @@ mod tests {
   /// and `stats('mvsk')`, `median`, `ppf`, all agreeing to 1e-12.
   #[test]
   fn matches_scipy_johnsonsu() {
-    let cases: [((f64, f64, f64, f64), [(f64, f64, f64); 6], [f64; 7]); 2] = [
+    type ScipyRow = ((f64, f64, f64, f64), [(f64, f64, f64); 6], [f64; 7]);
+    let cases: [ScipyRow; 2] = [
       (
         (-0.5, 1.5, 0.2, 2.0),
         [

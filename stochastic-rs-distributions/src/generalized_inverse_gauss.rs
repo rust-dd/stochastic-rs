@@ -53,6 +53,7 @@ use crate::seeded::StreamState;
 use crate::special::KDenominator;
 use crate::special::LARGE_ORDER;
 use crate::special::PLAIN_LOG_SIZE;
+use crate::special::RatioParts;
 use crate::special::exp_parts;
 use crate::special::ldexp;
 use crate::special::ln_bessel_ke;
@@ -390,11 +391,7 @@ impl<T: SimdFloatExt> SimdGig<T> {
   }
 
   /// The interior mgf's ratio at `t`, `shifted = ψ − 2t > 0`.
-  fn mgf_ratio(
-    &self,
-    t: f64,
-    shifted: f64,
-  ) -> ((f64, f64, f64, f64), (f64, f64), KDenominator, f64) {
+  fn mgf_ratio(&self, t: f64, shifted: f64) -> RatioParts {
     let (lambda, chi, psi) = self.params();
     let (root_chi, root_psi, root_shifted) = (chi.sqrt(), psi.sqrt(), shifted.sqrt());
     let dx = root_chi * (2.0 * t) / (root_psi + root_shifted);
