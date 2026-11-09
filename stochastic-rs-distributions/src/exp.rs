@@ -13,6 +13,7 @@ use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
+use stochastic_rs_core::simd_rng::as_uninit_mut;
 use wide::i32x8;
 use wide::u32x8;
 
@@ -315,7 +316,8 @@ impl<T: SimdFloatExt> SimdKernel for SimdExp<T> {
   #[inline]
   fn next<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 64>) -> T {
     let StreamState { rng, buf } = state;
-    buf.pop(|b| fill_exp_scaled(b, rng, T::one() / self.lambda))
+    // SAFETY: `fill_exp_scaled` writes every element of the buffer.
+    buf.pop(|b| fill_exp_scaled(unsafe { as_uninit_mut(b) }, rng, T::one() / self.lambda))
   }
 }
 
@@ -416,7 +418,6 @@ mod zig_tests {
   use wide::i32x8;
 
   use super::*;
-  use crate::traits::distribution::as_uninit_mut;
 
   /// `i32::MIN` has no magnitude in `i32`: `abs` wraps, and a lane accepted on it is a negative draw.
   #[test]
@@ -431,7 +432,8 @@ mod zig_tests {
       1.0,
       f64::splat(1.0),
       &mut rng,
-      as_uninit_mut(&mut out),
+      // SAFETY: `exp_batch8` writes all eight lanes of `out`.
+      unsafe { as_uninit_mut(&mut out) },
     );
     assert!(out[0] >= 0.0, "lane 0 is a draw, got {}", out[0]);
     assert!(out[0] >= ZIG_EXP_R, "lane 0 is a tail draw, got {}", out[0]);

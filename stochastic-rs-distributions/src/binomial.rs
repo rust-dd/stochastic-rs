@@ -21,13 +21,13 @@ use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
+use stochastic_rs_core::simd_rng::as_uninit_mut;
 
 use crate::seeded::StreamState;
 use crate::source::uniform53;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
-use crate::traits::distribution::as_uninit_mut;
 
 /// Cached setup constants for Hörmann's BTRS sampler over
 /// `Binomial(n, p_eff)` with `p_eff = min(p, 1-p)`.
@@ -203,7 +203,8 @@ impl<T: PrimInt> SimdBinomial<T> {
 
   pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
     let mut out = [T::zero()];
-    self.fill_parts(rng, as_uninit_mut(&mut out));
+    // SAFETY: `fill_parts` writes the one element of `out`.
+    self.fill_parts(rng, unsafe { as_uninit_mut(&mut out) });
     out[0]
   }
 }
@@ -229,7 +230,8 @@ impl<T: PrimInt + Send + Sync + 'static> SimdKernel for SimdBinomial<T> {
   #[inline]
   fn next<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>) -> T {
     let StreamState { rng, buf } = state;
-    buf.pop(|b| self.fill_parts(rng, b))
+    // SAFETY: `fill_parts` writes every element of the buffer.
+    buf.pop(|b| self.fill_parts(rng, unsafe { as_uninit_mut(b) }))
   }
 }
 

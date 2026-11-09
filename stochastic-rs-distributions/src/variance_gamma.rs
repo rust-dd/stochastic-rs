@@ -32,6 +32,7 @@ use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
+use stochastic_rs_core::simd_rng::as_uninit_mut;
 
 use super::SimdFloatExt;
 use super::gamma::GammaState;
@@ -57,7 +58,6 @@ use crate::special::two_sum_far;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
-use crate::traits::distribution::as_uninit_mut;
 
 const SMALL_VG_THRESHOLD: usize = 16;
 
@@ -164,7 +164,9 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
     let mut zbuf = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.gamma.fill(gamma, as_uninit_mut(&mut gbuf));
+      // SAFETY: `SimdGamma::fill` writes every element of `gbuf`.
+      let slots = unsafe { as_uninit_mut(&mut gbuf) };
+      self.gamma.fill(gamma, slots);
       SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf);
       for (sub, (g8, z8)) in chunk.as_chunks_mut::<8>().0.iter_mut().zip(
         gbuf
@@ -181,7 +183,9 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
     }
     if !rem.is_empty() {
       let n = rem.len();
-      self.gamma.fill(gamma, as_uninit_mut(&mut gbuf[..n]));
+      // SAFETY: `SimdGamma::fill` writes every element of `gbuf[..n]`.
+      let slots = unsafe { as_uninit_mut(&mut gbuf[..n]) };
+      self.gamma.fill(gamma, slots);
       SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf[..n]);
       for i in 0..n {
         rem[i].write(self.mu + self.theta * gbuf[i] + self.sigma * gbuf[i].sqrt() * zbuf[i]);
@@ -471,7 +475,8 @@ impl<T: SimdFloatExt> SimdKernel for SimdVarianceGamma<T> {
   #[inline]
   fn next<R: SimdRngExt>(&self, state: &mut VgState<T, R>) -> T {
     let VgState { gamma, normal, buf } = state;
-    buf.pop(|b| self.fill_parts(gamma, normal, b))
+    // SAFETY: `fill_parts` writes every element of the buffer.
+    buf.pop(|b| self.fill_parts(gamma, normal, unsafe { as_uninit_mut(b) }))
   }
 }
 

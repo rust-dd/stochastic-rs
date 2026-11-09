@@ -3,6 +3,7 @@
 use std::mem::MaybeUninit;
 
 use stochastic_rs_core::simd_rng::SimdRngExt;
+use stochastic_rs_core::simd_rng::as_uninit_mut;
 
 use super::GhState;
 use super::SimdGeneralizedHyperbolic;
@@ -10,7 +11,6 @@ use crate::SimdFloatExt;
 use crate::normal::SimdNormal;
 use crate::seeded::StreamState;
 use crate::traits::distribution::SimdKernel;
-use crate::traits::distribution::as_uninit_mut;
 
 const SMALL_GH_THRESHOLD: usize = 16;
 
@@ -35,7 +35,8 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
     let mut zbuf = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.gig.fill(gig, as_uninit_mut(&mut wbuf));
+      // SAFETY: `SimdGig::fill` writes every element of `wbuf`.
+      self.gig.fill(gig, unsafe { as_uninit_mut(&mut wbuf) });
       SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf);
       for (sub, (w8, z8)) in chunk.as_chunks_mut::<8>().0.iter_mut().zip(
         wbuf
@@ -51,7 +52,8 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
     }
     if !rem.is_empty() {
       let n = rem.len();
-      self.gig.fill(gig, as_uninit_mut(&mut wbuf[..n]));
+      // SAFETY: `SimdGig::fill` writes every element of `wbuf[..n]`.
+      self.gig.fill(gig, unsafe { as_uninit_mut(&mut wbuf[..n]) });
       SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf[..n]);
       for i in 0..n {
         rem[i].write(self.mu + self.beta * wbuf[i] + wbuf[i].sqrt() * zbuf[i]);
@@ -71,6 +73,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdGeneralizedHyperbolic<T> {
   #[inline]
   fn next<R: SimdRngExt>(&self, state: &mut GhState<T, R>) -> T {
     let GhState { gig, normal, buf } = state;
-    buf.pop(|b| self.fill_parts(gig, normal, b))
+    // SAFETY: `fill_parts` writes every element of the buffer.
+    buf.pop(|b| self.fill_parts(gig, normal, unsafe { as_uninit_mut(b) }))
   }
 }

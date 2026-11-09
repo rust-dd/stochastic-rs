@@ -158,7 +158,8 @@ pub trait SimdFloatExt: RealExt + sealed::Sealed {
 
   fn fill_uniform_simd<R: crate::simd_rng::SimdRngExt>(rng: &mut R, out: &mut [Self]);
 
-  /// `fill_uniform_simd` into uninitialised storage: writes every element, reads none.
+  /// `fill_uniform_simd` into uninitialised storage; writes every element and reads none, so a
+  /// caller may `assume_init`.
   #[doc(hidden)]
   fn fill_uniform_simd_uninit<R: crate::simd_rng::SimdRngExt>(
     rng: &mut R,

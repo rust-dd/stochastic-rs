@@ -13,6 +13,7 @@ use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
+use stochastic_rs_core::simd_rng::as_uninit_mut;
 
 use super::SimdFloatExt;
 use super::chi_square::SimdChiSquared;
@@ -28,7 +29,6 @@ use crate::special::student_tail;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
-use crate::traits::distribution::as_uninit_mut;
 
 /// From this `ν` the entropy reads `½ ln(2πe) + Σ cₖν⁻ᵏ` (DLMF 5.11.1–2), cut under `0.2ε`, where
 /// `ψ`'s difference and `ln(√ν B(ν/2, ½))` cancel past the doubles' digits.
@@ -125,7 +125,9 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
       SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf);
-      self.chisq.fill(chisq, as_uninit_mut(&mut vbuf));
+      // SAFETY: `SimdChiSquared::fill` writes every element of `vbuf`.
+      let slots = unsafe { as_uninit_mut(&mut vbuf) };
+      self.chisq.fill(chisq, slots);
       for (sub, (z8, v8)) in chunk.as_chunks_mut::<8>().0.iter_mut().zip(
         zbuf
           .as_chunks::<8>()
@@ -140,7 +142,9 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
     if !rem.is_empty() {
       let n = rem.len();
       SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf[..n]);
-      self.chisq.fill(chisq, as_uninit_mut(&mut vbuf[..n]));
+      // SAFETY: `SimdChiSquared::fill` writes every element of `vbuf[..n]`.
+      let slots = unsafe { as_uninit_mut(&mut vbuf[..n]) };
+      self.chisq.fill(chisq, slots);
       for i in 0..n {
         rem[i].write(zbuf[i] / (vbuf[i] / self.nu).sqrt());
       }
@@ -202,7 +206,8 @@ impl<T: SimdFloatExt> SimdKernel for SimdStudentT<T> {
   #[inline]
   fn next<R: SimdRngExt>(&self, state: &mut StudentTState<T, R>) -> T {
     let StudentTState { normal, chisq, buf } = state;
-    buf.pop(|b| self.fill_parts(normal, chisq, b))
+    // SAFETY: `fill_parts` writes every element of the buffer.
+    buf.pop(|b| self.fill_parts(normal, chisq, unsafe { as_uninit_mut(b) }))
   }
 }
 

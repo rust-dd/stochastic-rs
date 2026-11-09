@@ -31,6 +31,7 @@ use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
+use stochastic_rs_core::simd_rng::as_uninit_mut;
 
 use super::SimdFloatExt;
 use super::studentt::SimdStudentT;
@@ -41,7 +42,6 @@ use crate::traits::DistributionExt;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
-use crate::traits::distribution::as_uninit_mut;
 
 const SMALL_SKEW_T_THRESHOLD: usize = 16;
 
@@ -143,7 +143,9 @@ impl<T: SimdFloatExt> SimdSkewT<T> {
     let mut ubuf = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.student.fill(student, as_uninit_mut(&mut tbuf));
+      // SAFETY: `SimdStudentT::fill` writes every element of `tbuf`.
+      let slots = unsafe { as_uninit_mut(&mut tbuf) };
+      self.student.fill(student, slots);
       T::fill_uniform_simd(rng, &mut ubuf);
       for i in 0..64 {
         let w = tbuf[i].abs();
@@ -158,7 +160,9 @@ impl<T: SimdFloatExt> SimdSkewT<T> {
     }
     if !rem.is_empty() {
       let n = rem.len();
-      self.student.fill(student, as_uninit_mut(&mut tbuf[..n]));
+      // SAFETY: `SimdStudentT::fill` writes every element of `tbuf[..n]`.
+      let slots = unsafe { as_uninit_mut(&mut tbuf[..n]) };
+      self.student.fill(student, slots);
       T::fill_uniform_simd(rng, &mut ubuf[..n]);
       for i in 0..n {
         let w = tbuf[i].abs();
@@ -239,7 +243,8 @@ impl<T: SimdFloatExt> SimdKernel for SimdSkewT<T> {
   #[inline]
   fn next<R: SimdRngExt>(&self, state: &mut SkewTState<T, R>) -> T {
     let SkewTState { student, rng, buf } = state;
-    buf.pop(|b| self.fill_parts(student, rng, b))
+    // SAFETY: `fill_parts` writes every element of the buffer.
+    buf.pop(|b| self.fill_parts(student, rng, unsafe { as_uninit_mut(b) }))
   }
 }
 

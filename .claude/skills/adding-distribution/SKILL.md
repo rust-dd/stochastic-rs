@@ -66,6 +66,7 @@ use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
+use stochastic_rs_core::simd_rng::as_uninit_mut;
 
 use crate::seeded::Buffered;
 use crate::seeded::StreamState;
@@ -118,7 +119,8 @@ impl<T: SimdFloatExt> SimdKernel for SimdFoo<T> {
 
     fn next<R: SimdRngExt>(&self, st: &mut StreamState<T, R, 16>) -> T {
         let StreamState { rng, buf } = st;
-        buf.pop(|b| self.fill_parts(rng, b))
+        // SAFETY: `fill_parts` writes every element of the buffer.
+        buf.pop(|b| self.fill_parts(rng, unsafe { as_uninit_mut(b) }))
     }
 }
 

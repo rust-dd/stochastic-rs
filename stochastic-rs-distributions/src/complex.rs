@@ -13,11 +13,11 @@ use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
+use stochastic_rs_core::simd_rng::as_uninit_mut;
 
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
-use crate::traits::distribution::as_uninit_mut;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ComplexDistribution<Re, Im = Re> {
@@ -80,8 +80,12 @@ where
     let mut im = [Re::Item::zero(); 64];
     for chunk in out.chunks_mut(64) {
       let n = chunk.len();
-      self.re.fill(&mut state.0, as_uninit_mut(&mut re[..n]));
-      self.im.fill(&mut state.1, as_uninit_mut(&mut im[..n]));
+      // SAFETY: by `SimdKernel::fill`'s contract it writes every element of `re[..n]`.
+      let slots = unsafe { as_uninit_mut(&mut re[..n]) };
+      self.re.fill(&mut state.0, slots);
+      // SAFETY: by `SimdKernel::fill`'s contract it writes every element of `im[..n]`.
+      let slots = unsafe { as_uninit_mut(&mut im[..n]) };
+      self.im.fill(&mut state.1, slots);
       for (c, (r, i)) in chunk.iter_mut().zip(re.iter().zip(im.iter())) {
         c.write(Complex::new(*r, *i));
       }

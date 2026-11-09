@@ -23,6 +23,7 @@ use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
+use stochastic_rs_core::simd_rng::as_uninit_mut;
 
 use super::SimdFloatExt;
 use super::normal::SimdNormal;
@@ -230,7 +231,8 @@ impl<T: SimdFloatExt> SimdKernel for SimdGamma<T> {
   #[inline]
   fn next<R: SimdRngExt>(&self, state: &mut GammaState<T, R>) -> T {
     let GammaState { normal, rng, buf } = state;
-    buf.pop(|b| self.fill_parts(normal, rng, b))
+    // SAFETY: `fill_parts` writes every element of the buffer.
+    buf.pop(|b| self.fill_parts(normal, rng, unsafe { as_uninit_mut(b) }))
   }
 }
 

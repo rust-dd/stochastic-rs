@@ -12,6 +12,7 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::SimdRngExt;
+use stochastic_rs_core::simd_rng::as_uninit_mut;
 
 use crate::seeded::Seeded;
 use crate::seeded::worker_count;
@@ -104,14 +105,9 @@ pub trait SimdKernel: SimdDistribution {
   /// Bulk SIMD fill driven by any rng: one `u64` from `rng` seeds a private stream.
   fn fill_with<G: Rng + ?Sized>(&self, rng: &mut G, out: &mut [Self::Item]) {
     let (mut state, _) = self.init::<SimdRng, _>(&Deterministic::new(rng.next_u64()));
-    self.fill(&mut state, as_uninit_mut(out));
+    // SAFETY: by `fill`'s contract it writes every element of `out`.
+    self.fill(&mut state, unsafe { as_uninit_mut(out) });
   }
-}
-
-#[inline]
-pub(crate) fn as_uninit_mut<T>(slice: &mut [T]) -> &mut [MaybeUninit<T>] {
-  // SAFETY: `MaybeUninit<T>` has `T`'s layout, and a kernel stores only values through the view.
-  unsafe { &mut *(slice as *mut [T] as *mut [MaybeUninit<T>]) }
 }
 
 /// Bulk sampling API of a [`Seeded`] stream; sealed, only `Seeded` implements it.
@@ -119,10 +115,12 @@ pub trait DistributionSampler<T: Copy + Zero + Send>: Sealed {
   /// Fills `out` from the stream's engine in bulk, past the single-draw buffer that `sample` pops.
   #[inline]
   fn fill_slice(&mut self, out: &mut [T]) {
-    self.fill_uninit(as_uninit_mut(out));
+    // SAFETY: by `fill_uninit`'s contract it writes every element of `out`.
+    self.fill_uninit(unsafe { as_uninit_mut(out) });
   }
 
-  /// `fill_slice` into uninitialised storage: writes every element, reads none.
+  /// `fill_slice` into uninitialised storage; writes every element and reads none, so a caller may
+  /// `assume_init`.
   #[doc(hidden)]
   fn fill_uninit(&mut self, out: &mut [MaybeUninit<T>]);
 
@@ -135,7 +133,7 @@ pub trait DistributionSampler<T: Copy + Zero + Send>: Sealed {
   fn sample_n(&mut self, n: usize) -> Array1<T> {
     let mut out = Array1::<T>::uninit(n);
     self.fill_uninit(out.as_slice_mut().expect("sample_n output is contiguous"));
-    // SAFETY: `fill_uninit` wrote every element.
+    // SAFETY: by `fill_uninit`'s contract it wrote every element.
     unsafe { out.assume_init() }
   }
 
@@ -166,7 +164,7 @@ pub trait DistributionSampler<T: Copy + Zero + Send>: Sealed {
         }
       });
     }
-    // SAFETY: `fill_uninit` wrote every element, whole or in chunks that partition `out`.
+    // SAFETY: by `fill_uninit`'s contract every chunk is written, and the chunks partition `out`.
     unsafe { out.assume_init() }
   }
 }

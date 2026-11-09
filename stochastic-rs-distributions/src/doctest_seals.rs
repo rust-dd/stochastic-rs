@@ -1,4 +1,5 @@
-//! compile_fail checks: the sealed traits reject a downstream impl, a stream without a kernel has no bulk fill, a non-exhaustive callable needs a wildcard arm.
+//! compile_fail checks: the sealed traits reject a downstream impl, a kernel-less stream has no
+//! bulk fill, a non-exhaustive callable needs a wildcard arm, `Buffered` refills only values.
 
 /// ```compile_fail,E0277
 /// use stochastic_rs_distributions::DistributionSampler;
@@ -44,3 +45,10 @@ pub struct SeededDirichletHasNoFillSlice;
 /// }
 /// ```
 pub struct Fn2DNeedsAWildcardArm;
+
+/// ```compile_fail,E0308
+/// use std::mem::MaybeUninit;
+/// use stochastic_rs_distributions::seeded::Buffered;
+/// let _ = Buffered::<f64, 8>::new().pop(|s| s.fill(MaybeUninit::uninit()));
+/// ```
+pub struct BufferedRefillsOnlyValues;

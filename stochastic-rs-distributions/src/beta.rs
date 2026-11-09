@@ -12,6 +12,7 @@ use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
+use stochastic_rs_core::simd_rng::as_uninit_mut;
 
 use super::SimdFloatExt;
 use super::gamma::GammaState;
@@ -20,7 +21,6 @@ use crate::seeded::Buffered;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
-use crate::traits::distribution::as_uninit_mut;
 
 const SMALL_BETA_THRESHOLD: usize = 16;
 
@@ -164,8 +164,10 @@ impl<T: SimdFloatExt> SimdBeta<T> {
     let mut gb = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.gamma1.fill(g1, as_uninit_mut(&mut ga));
-      self.gamma2.fill(g2, as_uninit_mut(&mut gb));
+      // SAFETY: `SimdGamma::fill` writes every element of `ga`.
+      self.gamma1.fill(g1, unsafe { as_uninit_mut(&mut ga) });
+      // SAFETY: `SimdGamma::fill` writes every element of `gb`.
+      self.gamma2.fill(g2, unsafe { as_uninit_mut(&mut gb) });
       for (sub, (a8, b8)) in chunk.as_chunks_mut::<8>().0.iter_mut().zip(
         ga.as_chunks::<8>()
           .0
@@ -188,8 +190,10 @@ impl<T: SimdFloatExt> SimdBeta<T> {
     }
     if !rem.is_empty() {
       let n = rem.len();
-      self.gamma1.fill(g1, as_uninit_mut(&mut ga[..n]));
-      self.gamma2.fill(g2, as_uninit_mut(&mut gb[..n]));
+      // SAFETY: `SimdGamma::fill` writes every element of `ga[..n]`.
+      self.gamma1.fill(g1, unsafe { as_uninit_mut(&mut ga[..n]) });
+      // SAFETY: `SimdGamma::fill` writes every element of `gb[..n]`.
+      self.gamma2.fill(g2, unsafe { as_uninit_mut(&mut gb[..n]) });
       for i in 0..n {
         rem[i].write(if ga[i] + gb[i] > T::zero() {
           ratio(ga[i], gb[i])
@@ -244,7 +248,8 @@ impl<T: SimdFloatExt> SimdKernel for SimdBeta<T> {
   #[inline]
   fn next<R: SimdRngExt>(&self, state: &mut BetaState<T, R>) -> T {
     let BetaState { g1, g2, buf } = state;
-    buf.pop(|b| self.fill_parts(g1, g2, b))
+    // SAFETY: `fill_parts` writes every element of the buffer.
+    buf.pop(|b| self.fill_parts(g1, g2, unsafe { as_uninit_mut(b) }))
   }
 }
 

@@ -34,6 +34,7 @@ use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
+use stochastic_rs_core::simd_rng::as_uninit_mut;
 
 use crate::gamma::GammaState;
 use crate::gamma::SimdGamma;
@@ -43,7 +44,6 @@ use crate::traits::SimdFloatExt;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
-use crate::traits::distribution::as_uninit_mut;
 
 const SMALL_GED_THRESHOLD: usize = 16;
 
@@ -144,7 +144,8 @@ impl<T: SimdFloatExt> SimdGed<T> {
     let mut ybuf = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.gamma.fill(gamma, as_uninit_mut(&mut ybuf));
+      // SAFETY: `SimdGamma::fill` writes every element of `ybuf`.
+      self.gamma.fill(gamma, unsafe { as_uninit_mut(&mut ybuf) });
       for (sub, y8) in chunk
         .as_chunks_mut::<8>()
         .0
@@ -207,7 +208,8 @@ impl<T: SimdFloatExt> SimdKernel for SimdGed<T> {
   #[inline]
   fn next<R: SimdRngExt>(&self, state: &mut GedState<T, R>) -> T {
     let GedState { gamma, rng, buf } = state;
-    buf.pop(|b| self.fill_parts(gamma, rng, b))
+    // SAFETY: `fill_parts` writes every element of the buffer.
+    buf.pop(|b| self.fill_parts(gamma, rng, unsafe { as_uninit_mut(b) }))
   }
 }
 

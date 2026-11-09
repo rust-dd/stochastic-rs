@@ -320,18 +320,22 @@ pub trait SimdRngExt:
   /// Bulk-fill `out` with `U(0, 1)` `f32` values.
   fn fill_uniform_f32(&mut self, out: &mut [f32]);
 
-  /// `fill_uniform_f64` into uninitialised storage: writes every element, reads none.
+  /// `fill_uniform_f64` into uninitialised storage; writes every element and reads none, so a
+  /// caller may `assume_init`.
   #[doc(hidden)]
   fn fill_uniform_f64_uninit(&mut self, out: &mut [MaybeUninit<f64>]);
 
-  /// `fill_uniform_f32` into uninitialised storage: writes every element, reads none.
+  /// `fill_uniform_f32` into uninitialised storage; writes every element and reads none, so a
+  /// caller may `assume_init`.
   #[doc(hidden)]
   fn fill_uniform_f32_uninit(&mut self, out: &mut [MaybeUninit<f32>]);
 }
 
+/// The caller stores a value into every slot of the view and never stores `MaybeUninit::uninit()`.
+#[doc(hidden)]
 #[inline]
-pub(crate) fn as_uninit_mut<T>(slice: &mut [T]) -> &mut [MaybeUninit<T>] {
-  // SAFETY: `MaybeUninit<T>` has `T`'s layout, and an uninit fill stores only values through it.
+pub unsafe fn as_uninit_mut<T>(slice: &mut [T]) -> &mut [MaybeUninit<T>] {
+  // SAFETY: `MaybeUninit<T>` has `T`'s layout, and the caller's contract keeps `slice` initialised.
   unsafe { &mut *(slice as *mut [T] as *mut [MaybeUninit<T>]) }
 }
 

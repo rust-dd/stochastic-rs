@@ -12,6 +12,7 @@ use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
+use stochastic_rs_core::simd_rng::as_uninit_mut;
 
 use super::SimdFloatExt;
 use super::exp::SimdExp;
@@ -20,7 +21,6 @@ use crate::seeded::StreamState;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
-use crate::traits::distribution::as_uninit_mut;
 
 /// Weibull law with scale `lambda` and shape `k`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -85,7 +85,8 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
     let mut tmp = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      exp1.fill(exp, as_uninit_mut(&mut tmp));
+      // SAFETY: `SimdExp::fill` writes every element of `tmp`.
+      exp1.fill(exp, unsafe { as_uninit_mut(&mut tmp) });
       for (sub, e8) in chunk
         .as_chunks_mut::<8>()
         .0
@@ -98,7 +99,8 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
     }
     if !rem.is_empty() {
       let n = rem.len();
-      exp1.fill(exp, as_uninit_mut(&mut tmp[..n]));
+      // SAFETY: `SimdExp::fill` writes every element of `tmp[..n]`.
+      exp1.fill(exp, unsafe { as_uninit_mut(&mut tmp[..n]) });
       let mut off = 0;
       let (sub, sub_rem) = rem.as_chunks_mut::<8>();
       for s in sub.iter_mut() {
@@ -147,7 +149,8 @@ impl<T: SimdFloatExt> SimdKernel for SimdWeibull<T> {
   #[inline]
   fn next<R: SimdRngExt>(&self, state: &mut ExpDerivedState<T, R>) -> T {
     let ExpDerivedState { exp, buf } = state;
-    buf.pop(|b| self.fill_parts(exp, b))
+    // SAFETY: `fill_parts` writes every element of the buffer.
+    buf.pop(|b| self.fill_parts(exp, unsafe { as_uninit_mut(b) }))
   }
 }
 

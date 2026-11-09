@@ -221,7 +221,8 @@ impl SimdRngDual {
   /// [`crate::simd_rng::SimdRng::fill_uniform_f64`]).
   #[inline]
   pub fn fill_uniform_f64(&mut self, out: &mut [f64]) {
-    self.fill_uniform_f64_uninit(as_uninit_mut(out));
+    // SAFETY: `fill_uniform_f64_uninit` writes every element of `out`.
+    self.fill_uniform_f64_uninit(unsafe { as_uninit_mut(out) });
   }
 
   #[doc(hidden)]
@@ -268,7 +269,8 @@ impl SimdRngDual {
   /// back to a scalar copy.
   #[inline]
   pub fn fill_uniform_f32(&mut self, out: &mut [f32]) {
-    self.fill_uniform_f32_uninit(as_uninit_mut(out));
+    // SAFETY: `fill_uniform_f32_uninit` writes every element of `out`.
+    self.fill_uniform_f32_uninit(unsafe { as_uninit_mut(out) });
   }
 
   #[doc(hidden)]

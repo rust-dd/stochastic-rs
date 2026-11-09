@@ -31,6 +31,7 @@ use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
+use stochastic_rs_core::simd_rng::as_uninit_mut;
 
 use super::SimdFloatExt;
 use super::lognormal::NormalDerivedState;
@@ -206,7 +207,8 @@ impl<T: SimdFloatExt> SimdKernel for SimdJohnsonSu<T> {
   #[inline]
   fn next<R: SimdRngExt>(&self, state: &mut NormalDerivedState<T, R>) -> T {
     let NormalDerivedState { normal, buf } = state;
-    buf.pop(|b| self.fill_parts(normal, b))
+    // SAFETY: `fill_parts` writes every element of the buffer.
+    buf.pop(|b| self.fill_parts(normal, unsafe { as_uninit_mut(b) }))
   }
 }
 

@@ -12,6 +12,7 @@ use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
+use stochastic_rs_core::simd_rng::as_uninit_mut;
 
 use super::SimdFloatExt;
 use super::inverse_gauss::NormalPlusOwnState;
@@ -22,7 +23,6 @@ use crate::seeded::StreamState;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
-use crate::traits::distribution::as_uninit_mut;
 
 const SMALL_NIG_THRESHOLD: usize = 16;
 
@@ -152,7 +152,8 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
     let mut zbuf = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.ig.fill(ig, as_uninit_mut(&mut dbuf));
+      // SAFETY: `SimdInverseGauss::fill` writes every element of `dbuf`.
+      self.ig.fill(ig, unsafe { as_uninit_mut(&mut dbuf) });
       SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf);
       for (sub, (d8, z8)) in chunk.as_chunks_mut::<8>().0.iter_mut().zip(
         dbuf
@@ -169,7 +170,8 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
     }
     if !rem.is_empty() {
       let n = rem.len();
-      self.ig.fill(ig, as_uninit_mut(&mut dbuf[..n]));
+      // SAFETY: `SimdInverseGauss::fill` writes every element of `dbuf[..n]`.
+      self.ig.fill(ig, unsafe { as_uninit_mut(&mut dbuf[..n]) });
       SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf[..n]);
       for i in 0..n {
         let d = dbuf[i];
@@ -217,7 +219,8 @@ impl<T: SimdFloatExt> SimdKernel for SimdNormalInverseGauss<T> {
   #[inline]
   fn next<R: SimdRngExt>(&self, state: &mut NigState<T, R>) -> T {
     let NigState { ig, normal, buf } = state;
-    buf.pop(|b| self.fill_parts(ig, normal, b))
+    // SAFETY: `fill_parts` writes every element of the buffer.
+    buf.pop(|b| self.fill_parts(ig, normal, unsafe { as_uninit_mut(b) }))
   }
 }
 

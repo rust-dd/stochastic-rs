@@ -25,7 +25,8 @@ impl SimdRng {
   /// scalar variant) in exchange for a fully vectorised pipeline.
   #[inline]
   pub fn fill_uniform_f64(&mut self, out: &mut [f64]) {
-    self.fill_uniform_f64_uninit(as_uninit_mut(out));
+    // SAFETY: `fill_uniform_f64_uninit` writes every element of `out`.
+    self.fill_uniform_f64_uninit(unsafe { as_uninit_mut(out) });
   }
 
   #[doc(hidden)]
@@ -62,7 +63,8 @@ impl SimdRng {
   /// zero integer-to-float conversion cost.
   #[inline]
   pub fn fill_uniform_f32(&mut self, out: &mut [f32]) {
-    self.fill_uniform_f32_uninit(as_uninit_mut(out));
+    // SAFETY: `fill_uniform_f32_uninit` writes every element of `out`.
+    self.fill_uniform_f32_uninit(unsafe { as_uninit_mut(out) });
   }
 
   #[doc(hidden)]

@@ -13,6 +13,7 @@ use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
+use stochastic_rs_core::simd_rng::as_uninit_mut;
 use wide::i32x8;
 use wide::u32x8;
 
@@ -23,7 +24,6 @@ use crate::traits::SimdFloatExt;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
-use crate::traits::distribution::as_uninit_mut;
 
 /// Precomputed lookup tables for the Ziggurat algorithm (normal distribution).
 /// `kn` holds threshold integers for the fast-accept test,
@@ -359,7 +359,8 @@ impl<T: SimdFloatExt> SimdNormal<T> {
   }
 
   pub(crate) fn fill_standard<R: SimdRngExt>(rng: &mut R, out: &mut [T]) {
-    fill_zig_impl::<T, R, true>(as_uninit_mut(out), rng, T::zero(), T::one());
+    // SAFETY: `fill_zig_impl` writes every element of `out`.
+    fill_zig_impl::<T, R, true>(unsafe { as_uninit_mut(out) }, rng, T::zero(), T::one());
   }
 
   pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
@@ -395,7 +396,8 @@ impl<T: SimdFloatExt> SimdKernel for SimdNormal<T> {
   #[inline]
   fn next<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 64>) -> T {
     let StreamState { rng, buf } = state;
-    buf.pop(|b| fill_zig_impl::<T, R, false>(b, rng, self.mu, self.sigma))
+    // SAFETY: `fill_zig_impl` writes every element of the buffer.
+    buf.pop(|b| fill_zig_impl::<T, R, false>(unsafe { as_uninit_mut(b) }, rng, self.mu, self.sigma))
   }
 }
 
@@ -500,7 +502,8 @@ mod zig_tests {
       f64::splat(0.0),
       f64::splat(1.0),
       &mut rng,
-      as_uninit_mut(&mut out),
+      // SAFETY: `zig_batch8` writes all eight lanes of `out`.
+      unsafe { as_uninit_mut(&mut out) },
     );
     assert_ne!(
       out[0],
