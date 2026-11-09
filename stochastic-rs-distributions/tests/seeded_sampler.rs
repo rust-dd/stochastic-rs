@@ -8,6 +8,7 @@ use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::complex::ComplexDistribution;
 use stochastic_rs_distributions::dirichlet::SimdDirichlet;
+use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
@@ -237,6 +238,19 @@ fn complex_fill_matches_its_part_streams_past_one_chunk() {
     .map(|(r, i)| Complex::new(*r, *i))
     .collect::<Vec<_>>();
   assert_eq!(complex_bits(&out), complex_bits(&parts));
+}
+
+/// `into_dist` gives back the law a stream draws, unchanged by the draws, so re-seeding it
+/// replays from the start.
+#[test]
+fn into_dist_returns_the_law_a_stream_draws() {
+  let law = SimdExp::<f64>::new(1.5);
+  let mut stream = law.seeded(&Deterministic::new(11));
+  let first = stream.sample();
+  let _ = stream.sample();
+  let back = stream.into_dist();
+  assert_eq!(back, law);
+  assert_eq!(back.seeded(&Deterministic::new(11)).sample(), first);
 }
 
 fn complex_bits(zs: &[Complex<f64>]) -> Vec<(u64, u64)> {

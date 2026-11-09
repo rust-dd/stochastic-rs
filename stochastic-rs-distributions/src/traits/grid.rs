@@ -239,6 +239,15 @@ mod tests {
     assert!((back.eval(0.375, 95.0) - g.eval(0.375, 95.0)).abs() < 1e-6);
   }
 
+  /// `into_parts` hands back the axes and values `new` took, so a grid round-trips through them.
+  #[test]
+  fn into_parts_returns_what_new_took() {
+    let g = ramp();
+    let (ts, xs, values) = g.clone().into_parts();
+    assert_eq!((&ts, &xs, &values), (g.ts(), g.xs(), g.values()));
+    assert_eq!(Grid2D::new(ts, xs, values), g);
+  }
+
   #[test]
   #[should_panic(expected = "ts must satisfy `ts[j] < ts[j + 1]`, got ts[0] = 0.5, ts[1] = 0.25")]
   fn a_non_ascending_axis_is_rejected() {
