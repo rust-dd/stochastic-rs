@@ -27,10 +27,11 @@ pub(crate) const BETA_LARGE_SHAPE: f64 = 100.0;
 /// `ln Γ(p + p_lo)` in two parts for `0 < p ≤ 32`, `p_lo` a shape sum's rounding (`ψ(p)·p_lo` is
 /// 1e-14 at 32): `ln Γ(1 + f)` by A&S 6.1.34 and the exact product `Π (f + k)`, `p = n + f`.
 pub(crate) fn ln_gamma_parts(p: f64, p_lo: f64) -> (f64, f64) {
-  let shift = |q: f64| if p_lo == 0.0 { 0.0 } else { digamma(q) * p_lo };
+  // `ln Γ(q + p_lo) = ln Γ(q) + ψ(q)·p_lo`; `−0.0` keeps a zero part's sign at an exact sum.
+  let shift = |q: f64| if p_lo == 0.0 { -0.0 } else { digamma(q) * p_lo };
   if p <= 1.0 {
     let (l, l_lo) = ln_parts(p, p_lo, 0);
-    let g = -recip_gamma_1p_m1(p).ln_1p() - shift(1.0 + p);
+    let g = -recip_gamma_1p_m1(p).ln_1p() + shift(1.0 + p);
     return two_sum(-l, g - l_lo);
   }
   let n = p.floor();
@@ -43,7 +44,7 @@ pub(crate) fn ln_gamma_parts(p: f64, p_lo: f64) -> (f64, f64) {
     k += 1.0;
   }
   let (l, l_lo) = ln_parts(product.0, product.1, 0);
-  two_sum(l, l_lo - recip_gamma_1p_m1(f).ln_1p() - shift(1.0 + f))
+  two_sum(l, l_lo - recip_gamma_1p_m1(f).ln_1p() + shift(1.0 + f))
 }
 
 /// `ln Γ(z + p) − ln Γ(z)` in two parts for `z ≥ 16`: `p ln z − z·g(p/z) + (p − ½) ln(1 + p/z)`
@@ -70,7 +71,7 @@ pub(crate) fn ln_beta_parts(a: f64, b: f64) -> (f64, f64) {
   if q >= STIRLING_FROM {
     return sub_parts(lg, ln_gamma_diff(q, p));
   }
-  // The shapes' sum in two parts: rounded, `ψ(p + q)` times its half ulp is 6e-15 at 16.
+  // The shapes' sum in two parts: rounded, `ψ(p + q)` times its half ulp reaches 6e-15 below 32.
   let (s, s_lo) = two_sum(p, q);
   sub_parts(
     add_parts(lg, ln_gamma_parts(q, 0.0)),

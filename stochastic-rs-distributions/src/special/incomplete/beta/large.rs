@@ -238,9 +238,7 @@ pub(super) struct Side {
 }
 
 /// `I_x(a, b)`'s side: `asym` in its band, else the fraction on the switch's side, the gamma limit
-/// below `KEPT`, and the complement series where a value passes ½ at a shape at most 1.
-// Each caller gets its own copy: `beta_i` passes no logs and no cache, and the shared body cost it
-// a tenth of its instructions from a shape of 100.
+/// below `KEPT`, the series past ½ at a shape ≤ 1; a copy a caller spares `beta_i` logs and cache.
 #[inline(always)]
 pub(super) fn side(
   a: f64,

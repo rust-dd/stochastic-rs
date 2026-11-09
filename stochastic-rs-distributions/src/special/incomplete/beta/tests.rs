@@ -2,6 +2,7 @@
 //! `betainc` under a shape of 2e3, the fraction or the kernel's panels above, the limits beside.
 
 use super::*;
+use crate::special::beta_fn::ln_gamma_parts;
 use crate::special::beta_ic;
 
 fn rel(got: f64, want: f64) -> f64 {
@@ -405,8 +406,8 @@ fn the_fraction_scales_its_step_where_it_overflows() {
   );
 }
 
-/// The shapes' sums enter `ln Γ` in two parts: rounded, `ψ(s + o)` times their half ulp put the root
-/// 6e-15 off its log at shapes near 16; a subnormal root is read at the double's own log.
+/// The shapes' sums enter `ln Γ` in two parts: rounded, `ψ(s + o)` times their half ulp put the
+/// root 6e-15 off its log at shapes near 16; a subnormal root is read at the double's own log.
 #[test]
 fn shape_sums_near_16_hold_the_bound() {
   let median = beta_i_inv(0.5, 15.9, 0.5);
@@ -415,4 +416,22 @@ fn shape_sums_near_16_hold_the_bound() {
     "Beta(0.5, 15.9) median {median}"
   );
   assert_eq!(beta_i_inv(15.9, 1e300, 5e-324), 3.1363e-320);
+}
+
+/// `ln Γ(p + p_lo) − ln Γ(p)` is `ψ(p)·p_lo` (mpmath's `ψ`) in both branches, so a shape sum's
+/// rounding enters `ln Γ` once, with its sign.
+#[test]
+fn the_sums_low_part_enters_ln_gamma_as_its_digamma() {
+  for (p, p_lo, psi) in [
+    (0.99, 5.551115123125783e-17, -0.5937863040555952),
+    (1.99, -1.1102230246251565e-16, 0.416314706045415),
+  ] {
+    let (h, l) = ln_gamma_parts(p, p_lo);
+    let (h0, l0) = ln_gamma_parts(p, 0.0);
+    let (got, want) = ((h - h0) + (l - l0), psi * p_lo);
+    assert!(
+      (got - want).abs() <= 0.1 * want.abs(),
+      "ln Γ({p} + {p_lo:e}) − ln Γ({p}) = {got:e}, want {want:e}"
+    );
+  }
 }
