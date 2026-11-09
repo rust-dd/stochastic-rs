@@ -43,8 +43,8 @@ use stochastic_rs_distributions::uniform::SimdUniform;
 use stochastic_rs_distributions::variance_gamma::SimdVarianceGamma;
 use stochastic_rs_distributions::weibull::SimdWeibull;
 
-/// The empty slice, the `< 16` scalar path, the 8-lane body and each remainder, the 64-draw
-/// refill and the 256-block kernels.
+/// The empty slice, the `< 16` scalar path, the 8-lane body with remainders 0, 1 and 7, the
+/// 64-draw refill and the 256-block kernels.
 const LENGTHS: [usize; 13] = [0, 1, 7, 8, 9, 15, 16, 64, 255, 256, 257, 1_001, 4_096];
 
 const SENTINEL: u8 = 0xA5;
@@ -138,6 +138,14 @@ fn continuous_kernels_write_every_element() {
     SimdTemperedStable::<f32>::new(0.6, 2.0, 1.5),
   );
   check(
+    "tempered_stable_point_mass_f64",
+    SimdTemperedStable::<f64>::new(0.5, 1e160, 1e300),
+  );
+  check(
+    "tempered_stable_point_mass_f32",
+    SimdTemperedStable::<f32>::new(0.9, 1e38, 1.0),
+  );
+  check(
     "nig_f64",
     SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.1),
   );
@@ -211,6 +219,9 @@ fn discrete_kernels_write_every_element() {
     "binomial_waiting_flip_u32",
     SimdBinomial::<u32>::new(15, 0.8),
   );
+  check("binomial_no_trials_u32", SimdBinomial::<u32>::new(0, 0.4));
+  check("binomial_never_u32", SimdBinomial::<u32>::new(15, 0.0));
+  check("binomial_always_u32", SimdBinomial::<u32>::new(15, 1.0));
   check("geometric_u64", SimdGeometric::<u64>::new(0.15));
   check(
     "hypergeometric_u32",

@@ -222,6 +222,10 @@ jobs:
       # calibration, Heston-pin and plot tests.
       - name: cargo nextest run (ai surrogates, quant and viz)
         run: cargo nextest run -p stochastic-rs-ai --features quant,viz --profile ci --locked
+      # `unstable-dual-stream-rng` is off in the workspace run; with it the pinning test covers the
+      # ziggurats' 16-lane step and the dual engine's uninit stores.
+      - name: cargo nextest run (fill pinning test, dual-stream engine)
+        run: cargo nextest run -p stochastic-rs-distributions --features unstable-dual-stream-rng --test fill_writes_every_element --profile ci --locked
       # nextest does not run doctests; this gates the crates' doc examples
       # (e.g. the README quickstart rendered on docs.rs) that plain `cargo
       # test` used to cover. `--release` reuses the artifacts built above.

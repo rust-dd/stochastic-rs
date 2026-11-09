@@ -92,7 +92,7 @@ where
     }
   }
 
-  fn next<R: SimdRngExt>(&self, state: &mut (Re::State<R>, Im::State<R>)) -> Complex<Re::Item> {
+  fn next<R: SimdRngExt>(&self, state: &mut Self::State<R>) -> Complex<Re::Item> {
     Complex::new(self.re.next(&mut state.0), self.im.next(&mut state.1))
   }
 }

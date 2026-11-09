@@ -225,9 +225,8 @@ impl SimdRngDual {
     self.fill_uniform_f64_uninit(unsafe { as_uninit_mut(out) });
   }
 
-  #[doc(hidden)]
   #[inline]
-  pub fn fill_uniform_f64_uninit(&mut self, out: &mut [MaybeUninit<f64>]) {
+  pub(crate) fn fill_uniform_f64_uninit(&mut self, out: &mut [MaybeUninit<f64>]) {
     let len = out.len();
     let ptr = out.as_mut_ptr().cast::<f64>();
 
@@ -235,7 +234,9 @@ impl SimdRngDual {
     for i in 0..pair_chunks {
       let bits_a = (self.f64_a.next() >> 12u32) | F64_MAGIC_X4;
       let bits_b = (self.f64_b.next() >> 12u32) | F64_MAGIC_X4;
+      // SAFETY: `u64x4` and `f64x4` are both 256 bits, and every bit pattern is an `f64`.
       let fa: f64x4 = unsafe { core::mem::transmute::<u64x4, f64x4>(bits_a) };
+      // SAFETY: `u64x4` and `f64x4` are both 256 bits, and every bit pattern is an `f64`.
       let fb: f64x4 = unsafe { core::mem::transmute::<u64x4, f64x4>(bits_b) };
       let ra = fa - F64_ONE_X4;
       let rb = fb - F64_ONE_X4;
@@ -249,6 +250,7 @@ impl SimdRngDual {
     let mut written = pair_chunks * 8;
     while written + 4 <= len {
       let bits = (self.f64_a.next() >> 12u32) | F64_MAGIC_X4;
+      // SAFETY: `u64x4` and `f64x4` are both 256 bits, and every bit pattern is an `f64`.
       let f: f64x4 = unsafe { core::mem::transmute::<u64x4, f64x4>(bits) };
       // SAFETY: `written + 4 <= len`, and `write_unaligned` needs no alignment.
       unsafe {
@@ -258,6 +260,7 @@ impl SimdRngDual {
     }
     if written < len {
       let bits = (self.f64_a.next() >> 12u32) | F64_MAGIC_X4;
+      // SAFETY: `u64x4` and `f64x4` are both 256 bits, and every bit pattern is an `f64`.
       let f: f64x4 = unsafe { core::mem::transmute::<u64x4, f64x4>(bits) };
       let arr: [f64; 4] = (f - F64_ONE_X4).to_array();
       out[written..].copy_from_slice(&arr.map(MaybeUninit::new)[..len - written]);
@@ -273,9 +276,8 @@ impl SimdRngDual {
     self.fill_uniform_f32_uninit(unsafe { as_uninit_mut(out) });
   }
 
-  #[doc(hidden)]
   #[inline]
-  pub fn fill_uniform_f32_uninit(&mut self, out: &mut [MaybeUninit<f32>]) {
+  pub(crate) fn fill_uniform_f32_uninit(&mut self, out: &mut [MaybeUninit<f32>]) {
     let len = out.len();
     let ptr = out.as_mut_ptr().cast::<f32>();
 
@@ -283,7 +285,9 @@ impl SimdRngDual {
     for i in 0..pair_chunks {
       let bits_a = (self.f32_a.next() >> 9u32) | F32_MAGIC_X8;
       let bits_b = (self.f32_b.next() >> 9u32) | F32_MAGIC_X8;
+      // SAFETY: `u32x8` and `f32x8` are both 256 bits, and every bit pattern is an `f32`.
       let fa: f32x8 = unsafe { core::mem::transmute::<u32x8, f32x8>(bits_a) };
+      // SAFETY: `u32x8` and `f32x8` are both 256 bits, and every bit pattern is an `f32`.
       let fb: f32x8 = unsafe { core::mem::transmute::<u32x8, f32x8>(bits_b) };
       let ra = fa - F32_ONE_X8;
       let rb = fb - F32_ONE_X8;
@@ -297,6 +301,7 @@ impl SimdRngDual {
     let mut written = pair_chunks * 16;
     while written + 8 <= len {
       let bits = (self.f32_a.next() >> 9u32) | F32_MAGIC_X8;
+      // SAFETY: `u32x8` and `f32x8` are both 256 bits, and every bit pattern is an `f32`.
       let f: f32x8 = unsafe { core::mem::transmute::<u32x8, f32x8>(bits) };
       // SAFETY: `written + 8 <= len`, and `write_unaligned` needs no alignment.
       unsafe {
@@ -306,6 +311,7 @@ impl SimdRngDual {
     }
     if written < len {
       let bits = (self.f32_a.next() >> 9u32) | F32_MAGIC_X8;
+      // SAFETY: `u32x8` and `f32x8` are both 256 bits, and every bit pattern is an `f32`.
       let f: f32x8 = unsafe { core::mem::transmute::<u32x8, f32x8>(bits) };
       let arr: [f32; 8] = (f - F32_ONE_X8).to_array();
       out[written..].copy_from_slice(&arr.map(MaybeUninit::new)[..len - written]);
