@@ -1,11 +1,5 @@
-//! Parallel xoshiro engines and the SplitMix64 mixer used to seed them.
-//!
-//! Two engines:
-//! - [`Xoshiro256PP4`] — 4×64-bit lanes for `f64` / `u64` output
-//! - [`Xoshiro128PP8`] — 8×32-bit lanes for `f32` / `i32` output
-//!
-//! Both are seeded via SplitMix64 expansion of a single `u64`, which gives
-//! enough decorrelated state for the full 4×u64 / 8×u32 lane vectors.
+//! The parallel xoshiro engines, [`Xoshiro256PP4`] (4×64-bit lanes, `f64`/`u64`) and
+//! [`Xoshiro128PP8`] (8×32-bit, `f32`/`i32`), each seeded by SplitMix64 from one `u64`.
 
 use wide::f32x8;
 use wide::f64x4;
@@ -24,11 +18,8 @@ pub(super) fn rotl_u32x8(x: u32x8, k: u32) -> u32x8 {
   (x << k) | (x >> (32 - k))
 }
 
-/// SplitMix64 bijective mixer (post-increment stage).
-///
-/// Two rounds of xor-shift-multiply applied to a pre-incremented state.
-/// Use this together with an external increment by `0x9e37_79b9_7f4a_7c15`
-/// (golden-ratio odd constant) to mirror the canonical SplitMix64 stream.
+/// SplitMix64's two xor-shift-multiply rounds on a pre-incremented state; with an external
+/// `0x9e37_79b9_7f4a_7c15` step it is the canonical stream.
 #[inline(always)]
 pub(super) fn splitmix64_mix(state: u64) -> u64 {
   let mut z = state;
@@ -37,19 +28,16 @@ pub(super) fn splitmix64_mix(state: u64) -> u64 {
   z ^ (z >> 31)
 }
 
-/// SplitMix64 bijective mixer. Advances `state` by a golden-ratio constant
-/// and applies the two-round mixer to produce a well-distributed output.
-/// Used both for initial seeding and for [`derive_seed`](super::derive_seed).
+/// SplitMix64: advances `state` by the golden-ratio constant and mixes it, for the initial seeding
+/// and [`derive_seed`](super::derive_seed).
 #[inline(always)]
 pub(super) fn splitmix64_next(state: &mut u64) -> u64 {
   *state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
   splitmix64_mix(*state)
 }
 
-/// IEEE-754 bit pattern of `1.0_f64` (biased exponent 1023, mantissa 0).
-/// OR-ing the high 52 bits of a `u64` into this constant gives a bit pattern
-/// in `[1.0, 2.0)` whose mantissa is the upper-52-bit fraction of the input;
-/// the subsequent subtract of `1.0` puts the value in `[0, 1)`.
+/// The bits of `1.0_f64`: OR-ing a `u64`'s top 52 bits in gives a value in `[1, 2)` whose fraction
+/// they are, so subtracting 1 lands in `[0, 1)`.
 const F64_MAGIC: u64 = 0x3FF0_0000_0000_0000;
 /// IEEE-754 bit pattern of `1.0_f32` (biased exponent 127, mantissa 0). Same
 /// trick as [`F64_MAGIC`] but with the upper 23 bits of a `u32`.

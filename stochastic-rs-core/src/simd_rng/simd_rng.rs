@@ -1,6 +1,5 @@
-//! Single-stream [`SimdRng`] struct, construction, scalar / batch sampling,
-//! and the [`rand::TryRng`] implementation. Bulk fill helpers live in
-//! [`super::fill`].
+//! The single-stream [`SimdRng`]: construction, scalar and batch draws, and [`rand::TryRng`]; bulk
+//! fills live in [`super::fill`].
 
 use core::convert::Infallible;
 
@@ -20,15 +19,8 @@ use super::xoshiro::Xoshiro128PP8;
 use super::xoshiro::Xoshiro256PP4;
 use super::xoshiro::splitmix64_next;
 
-/// SIMD-accelerated pseudo-random number generator.
-///
-/// Internally maintains two xoshiro engines (64-bit and 32-bit) and
-/// multiple scalar buffers for amortising SIMD-to-scalar extraction.
-///
-/// # Construction
-///
-/// - [`SimdRng::new()`] — globally-unique automatic seed
-/// - [`SimdRng::from_seed(seed)`](SimdRng::from_seed) — deterministic, reproducible stream
+/// SIMD pseudo-random generator: two xoshiro engines (64- and 32-bit) and scalar buffers that
+/// amortise lane extraction; [`SimdRng::from_seed`] replays, [`SimdRng::new()`] seeds uniquely.
 #[derive(Clone, Debug)]
 pub struct SimdRng {
   pub(super) f64_engine: Xoshiro256PP4,
@@ -44,11 +36,8 @@ pub struct SimdRng {
 }
 
 impl SimdRng {
-  /// Creates a deterministically-seeded RNG.
-  ///
-  /// The `seed` is expanded via SplitMix64 into the full internal state
-  /// of both xoshiro engines. Two instances created with the same seed
-  /// will produce identical output sequences.
+  /// A stream fixed by `seed`, expanded by SplitMix64 into both engines' state; equal seeds give
+  /// equal streams.
   #[inline]
   pub fn from_seed(seed: u64) -> Self {
     let mut state = seed;
@@ -68,10 +57,7 @@ impl SimdRng {
     }
   }
 
-  /// Creates an RNG with a globally-unique automatic seed.
-  ///
-  /// Every call returns a fresh, independent stream. Thread-safe via an
-  /// internal atomic counter.
+  /// A fresh, independent stream from a globally unique seed (an atomic counter, thread-safe).
   #[inline]
   pub fn new() -> Self {
     Self::from_seed(next_global_seed())
@@ -83,13 +69,8 @@ impl SimdRng {
     unsafe { core::mem::transmute::<u32x8, i32x8>(raw) }
   }
 
-  /// Returns a single uniform `f64` in `[0, 1)`.
-  ///
-  /// Draws from an internal 8-element buffer. Refills via two unaligned
-  /// `f64x4` stores (magic-number trick) directly into the buffer — no
-  /// `[f64; 8]` return-by-value stack round-trip. This matters because
-  /// every transcendental-heavy distribution (Gamma, Beta, NIG, …) hits
-  /// `next_f64` repeatedly.
+  /// One uniform `f64` in `[0, 1)` from an 8-element buffer refilled by two `f64x4` stores, no
+  /// stack round-trip, as every transcendental law calls it per draw.
   #[inline(always)]
   pub fn next_f64(&mut self) -> f64 {
     if self.f64_scalar_idx >= 8 {
@@ -109,10 +90,8 @@ impl SimdRng {
     v
   }
 
-  /// Returns a single uniform `f32` in `[0, 1)`.
-  ///
-  /// Same direct-refill strategy as [`next_f64`](Self::next_f64): one
-  /// unaligned `f32x8` store via the magic-number trick.
+  /// One uniform `f32` in `[0, 1)`, refilled by one `f32x8` store as in
+  /// [`next_f64`](Self::next_f64).
   #[inline(always)]
   pub fn next_f32(&mut self) -> f32 {
     if self.f32_scalar_idx >= 8 {

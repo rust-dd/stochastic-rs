@@ -1,5 +1,5 @@
-//! `compile_fail` checks: the sealed traits reject a downstream implementation, and the xoshiro engines and the
-//! inherent lane method stay private.
+//! `compile_fail` checks: the sealed traits reject a downstream implementation, and the xoshiro
+//! engines and the inherent lane method stay private.
 
 /// ```compile_fail,E0277
 /// use stochastic_rs_core::simd_rng::{SeedExt, SimdRng, SimdRngExt};

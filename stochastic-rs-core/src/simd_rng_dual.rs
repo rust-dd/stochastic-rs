@@ -1,5 +1,5 @@
-//! Experimental twin of [`crate::simd_rng::SimdRng`] with two interleaved xoshiro engines, so a consumer can overlap
-//! their state updates; its seeded stream differs.
+//! Experimental twin of [`crate::simd_rng::SimdRng`] with two interleaved xoshiro engines, so a
+//! consumer can overlap their state updates; its seeded stream differs.
 
 use core::convert::Infallible;
 use std::mem::MaybeUninit;
@@ -155,11 +155,8 @@ fn initial_seed() -> u64 {
   splitmix64_next(&mut seed)
 }
 
-/// Experimental dual-stream SIMD RNG.
-///
-/// Carries two of each underlying engine; the public methods that target
-/// bulk consumers expose both streams so the OoO core can pipeline state
-/// updates against the consumer's compute / memory ops.
+/// Experimental dual-stream SIMD RNG: two of each engine, so a bulk consumer's compute overlaps the
+/// other engine's state update on an out-of-order core.
 #[derive(Clone, Debug)]
 pub struct SimdRngDual {
   f64_a: Xoshiro256PP4,
@@ -212,13 +209,8 @@ impl SimdRngDual {
     }
   }
 
-  /// Fills `out` with uniform `f64` values in `[0, 1)` using **alternating**
-  /// engines per 4-lane chunk. The two engines have independent state, so
-  /// every other chunk's xoshiro update can overlap with the previous
-  /// chunk's store on a modern OoO core.
-  ///
-  /// 52-bit precision via the magic-number trick (same as
-  /// [`crate::simd_rng::SimdRng::fill_uniform_f64`]).
+  /// Uniform `f64` in `[0, 1)` into `out`, alternating engines per 4-lane chunk so each xoshiro
+  /// update overlaps the last store; 52 bits, as [`crate::simd_rng::SimdRng::fill_uniform_f64`].
   #[inline]
   pub fn fill_uniform_f64(&mut self, out: &mut [f64]) {
     // SAFETY: `fill_uniform_f64_uninit` writes every element of `out`.
@@ -267,9 +259,8 @@ impl SimdRngDual {
     }
   }
 
-  /// Fills `out` with uniform `f32` values in `[0, 1)`. Each 8-lane f32x8
-  /// chunk alternates between engines A and B; tails shorter than 8 fall
-  /// back to a scalar copy.
+  /// Uniform `f32` in `[0, 1)` into `out`, each 8-lane chunk from engine A or B in turn, a tail
+  /// under 8 copied scalar.
   #[inline]
   pub fn fill_uniform_f32(&mut self, out: &mut [f32]) {
     // SAFETY: `fill_uniform_f32_uninit` writes every element of `out`.
@@ -318,9 +309,8 @@ impl SimdRngDual {
     }
   }
 
-  /// Returns a single uniform `f64` in `[0, 1)`. Refills its 8-element buffer
-  /// from one engine A batch and one engine B batch in alternation —
-  /// each refill exposes both state updates to the OoO core simultaneously.
+  /// One uniform `f64` in `[0, 1)` from an 8-element buffer refilled by one A and one B batch, both
+  /// state updates exposed to the out-of-order core.
   #[inline(always)]
   pub fn next_f64(&mut self) -> f64 {
     if self.f64_scalar_idx >= 8 {

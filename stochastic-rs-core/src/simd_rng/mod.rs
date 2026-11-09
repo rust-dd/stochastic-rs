@@ -1,26 +1,11 @@
 //! # SIMD-accelerated random number generation
 //!
-//! Fast, high-quality pseudo-random number generator using SIMD parallelism.
-//!
-//! Two xoshiro engines run in parallel:
-//! - **Xoshiro256++** (4×64-bit lanes) for `f64` and `u64` output
-//! - **Xoshiro128++** (8×32-bit lanes) for `f32` and `i32` output
-//!
-//! Scalar methods buffer SIMD results to amortise lane-extraction cost.
-//!
-//! ## Seeding
-//!
-//! | constructor | behaviour |
-//! |---|---|
-//! | [`SimdRng::new()`] | globally-unique automatic seed (thread-safe atomic counter) |
-//! | [`SimdRng::from_seed(seed)`](SimdRng::from_seed) | deterministic – same `seed` ⇒ same stream |
-//!
-//! Use the [`SeedExt`] trait ([`Unseeded`] / [`Deterministic`]) to propagate
-//! determinism through composed distributions and processes at zero cost.
-//!
 //! $$
 //! u_{k+1}=F(u_k),\quad x_k = \mathrm{transform}(u_k)
 //! $$
+//!
+//! Xoshiro256++ lanes give `f64` and `u64`, Xoshiro128++ `f32` and `i32`, scalar draws buffered;
+//! [`SimdRng::from_seed`] replays, [`SimdRng::new()`] is unique, [`SeedExt`] carries either.
 
 use std::fmt::Debug;
 use std::mem::MaybeUninit;
@@ -64,9 +49,8 @@ fn global_seed_counter() -> &'static AtomicU64 {
   SEED_COUNTER.get_or_init(|| AtomicU64::new(initial_seed()))
 }
 
-/// Seeds handed to one thread per global reservation; re-reserving on
-/// exhaustion keeps the global atomic off every construction while the
-/// boundary path still gets exercised by ordinary workloads.
+/// Seeds a thread takes per global reservation, so the atomic stays off every construction while
+/// ordinary workloads still cross the block boundary.
 const SEED_BLOCK_LEN: u64 = 1 << 18;
 
 std::thread_local! {
@@ -74,11 +58,8 @@ std::thread_local! {
   static SEED_BLOCK: std::cell::Cell<(u64, u64)> = const { std::cell::Cell::new((0, 0)) };
 }
 
-/// Uniqueness: the global counter strides `SEED_BLOCK_LEN·γ`, each thread
-/// strides `γ` inside its disjoint reservation, so every construction sees a
-/// distinct multiple of γ; γ odd ⇒ injective mod 2^64, and the splitmix64
-/// finalizer is a bijection ⇒ all outputs distinct — the same contract the
-/// per-construction atomic provided, without its cache-line contention.
+/// Distinct seeds: the global counter strides `SEED_BLOCK_LEN·γ` and each thread `γ` in its
+/// reservation, odd `γ` injective mod 2⁶⁴ and splitmix64 a bijection, with no shared cache line.
 #[inline(always)]
 fn next_global_seed() -> u64 {
   SEED_BLOCK.with(|cell| {
@@ -150,14 +131,8 @@ pub trait SeedExt: seed_seal::Sealed + Clone + Send + Sync + 'static {
   /// the engine-generic streams use it (e.g. `Seeded<D, R>` in `stochastic-rs-distributions`).
   fn rng_ext<R: SimdRngExt>(&self) -> R;
 
-  /// Reset the internal seed state in place where meaningful.
-  ///
-  /// No-op for [`Unseeded`] — auto-seeded streams have no fixed point to
-  /// reset to. For [`Deterministic`] this atomically replaces the current
-  /// `state`, so a subsequent `rng()` / `rng_ext()` / `derive()` produces
-  /// the stream rooted at the new `seed`. Lets a single
-  /// `ProcessExt`-style instance replay or sweep different seeds without
-  /// rebuilding the process — `fbm.seed().reseed(seed); fbm.sample();`.
+  /// Restarts a [`Deterministic`] stream at `seed`, so `fbm.seed().reseed(s); fbm.sample();`
+  /// replays without a rebuild; a no-op for [`Unseeded`].
   fn reseed(&self, _seed: u64) {}
 
   /// Draws the next `u64` seed, advancing the source exactly as [`rng`](Self::rng) and
@@ -169,10 +144,8 @@ pub trait SeedExt: seed_seal::Sealed + Clone + Send + Sync + 'static {
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Unseeded;
 
-/// Deterministic seed — reproducible output from a fixed `u64`.
-///
-/// State is stored in an [`AtomicU64`] so `derive`/`rng` calls advance
-/// state through `&self`. Cloning snapshots the current state.
+/// Reproducible seed from a fixed `u64`, its state an [`AtomicU64`] that `derive`/`rng` advance
+/// through `&self`; a clone snapshots it.
 #[derive(Debug)]
 pub struct Deterministic {
   state: AtomicU64,
@@ -203,10 +176,8 @@ impl Deterministic {
     self.state.load(Ordering::Relaxed)
   }
 
-  /// Atomically replace the internal `state` with `seed`. Subsequent
-  /// stream-advancing calls (`rng`, `rng_ext`, `derive`) start from this
-  /// seed, so the holder reproduces the same stream as
-  /// `Deterministic::new(seed)` would.
+  /// Replaces the state with `seed` atomically, so later `rng`, `rng_ext` and `derive` calls follow
+  /// `Deterministic::new(seed)`'s stream.
   #[inline]
   pub fn reset(&self, seed: u64) {
     self.state.store(seed, Ordering::Relaxed);
@@ -239,10 +210,8 @@ impl SeedExt for Unseeded {
 
   #[inline(always)]
   fn next_seed(&self) -> u64 {
-    // `next_global_seed()` is exactly what `SimdRng::new()` /
-    // `SimdRngDual::new()` feed to `from_seed` internally, so routing `rng`
-    // / `rng_ext` through this method is behavior-identical to their old
-    // direct `SimdRng::new()` / `R::new()` bodies.
+    // What `SimdRng::new()` and `SimdRngDual::new()` feed `from_seed`, so `rng` and `rng_ext` draw
+    // as those constructors.
     next_global_seed()
   }
 }
@@ -281,8 +250,8 @@ impl SeedExt for Deterministic {
 pub trait SimdRngExt:
   engine_seal::Sealed + rand::Rng + Clone + Debug + Sized + Send + Sync + 'static
 {
-  /// `true` when [`next_i32x8_pair`](Self::next_i32x8_pair) draws its two batches from independent engines,
-  /// so a consumer unrolls to 16 lanes only then.
+  /// `true` when [`next_i32x8_pair`](Self::next_i32x8_pair) draws its two batches from independent
+  /// engines, so a consumer unrolls to 16 lanes only then.
   #[doc(hidden)]
   const HAS_PAIR_ILP: bool = false;
 
@@ -296,8 +265,8 @@ pub trait SimdRngExt:
   #[doc(hidden)]
   fn next_i32x8(&mut self) -> wide::i32x8;
 
-  /// Two `i32x8` batches: two calls on one engine by default, one batch per engine in the dual-stream impl,
-  /// which lets the caller overlap the two table lookups.
+  /// Two `i32x8` batches: two calls on one engine by default, one batch per engine in the
+  /// dual-stream impl, which lets the caller overlap the two table lookups.
   #[doc(hidden)]
   #[inline(always)]
   fn next_i32x8_pair(&mut self) -> (wide::i32x8, wide::i32x8) {
