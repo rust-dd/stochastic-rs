@@ -9,7 +9,6 @@ use std::f64::consts::LN_10;
 use super::large::Norms;
 use super::large::Point;
 use super::large::ln_tails;
-use crate::special::BETA_LARGE_SHAPE;
 use crate::special::STIRLING_FROM;
 use crate::special::exp_parts;
 use crate::special::ln_gamma;
@@ -23,18 +22,18 @@ use crate::special::two_sum;
 const STEP: f64 = 2.0;
 
 /// The iteration cap: from its half a bracketed root is bisected only, at it the bracket's midpoint
-/// is the root, and NaN is for a law that never bracketed, which no admissible law is.
+/// is the root; NaN is for a NaN tangent or a law that never bracketed, which no admissible law is.
 const STEPS: usize = 100;
 
 /// Below this many spacings of the share, `σ`, the normal law reads the root: both shapes then pass
-/// 1e21 (1.02e21 at `a = b`, 8e21 at a tiny share), its error `1e-8σ`, Newton's points `|w|ε` off.
+/// 1e21 (1.02e21 at `a = b`, 2e21 to 8e21 by binade at a tiny share), its error `1e-8σ`.
 const NARROW_SPACINGS: f64 = 1e5;
 
 /// `e^20`: the most a step below the normals changes `|w|` by, 1 000 e-folds within the cap.
 const BELOW_FACTOR: f64 = 4.851_651_954_097_903e8;
 
 /// The root `x` of `I_x(a, b) = p`, `0 < p < 1`, rounded once: 0 below the subnormals, 1 where its
-/// complement rounds to 1, `½` at `p = ½` for `a = b`; NaN only where no bracket was found.
+/// complement rounds to 1, `½` at `p = ½` for `a = b`; NaN on a NaN tangent or without a bracket.
 pub(crate) fn beta_i_inv(a: f64, b: f64, p: f64) -> f64 {
   beta_i_inv_steps(a, b, p).0
 }
@@ -61,12 +60,9 @@ pub(crate) fn beta_i_inv_steps(a: f64, b: f64, p: f64) -> (f64, usize) {
   // The root's bracket in `coord`: every iterate is an end, by the direction of its Newton step.
   let (mut lo, mut hi) = (f64::NEG_INFINITY, f64::INFINITY);
   let (mut prev_step, mut prev_raw) = (f64::INFINITY, f64::INFINITY);
-  // Below both shapes 100 the tail is read from one-part logs, within the bound at two thirds of
-  // the two-part chains' latency.
-  let one_part = a.max(b) < BETA_LARGE_SHAPE;
-  let mut norms = Norms::new(one_part);
+  let mut norms = Norms::default();
   for n in 1..=STEPS {
-    let point = Point::from_ln(w, x_small, one_part);
+    let point = Point::from_ln(w, x_small);
     (w, x_small) = (point.w, point.x_small);
     let c = coord(w, x_small);
     let tails = ln_tails(a, b, &point, Some(&mut norms));
@@ -138,7 +134,9 @@ pub(crate) fn beta_i_inv_steps(a: f64, b: f64, p: f64) -> (f64, usize) {
     {
       next = midpoint(lo, hi);
     }
-    let (w_next, x_small_next) = point_of(next);
+    // The log is held within `±1e300`, where either side's double is 0: a free step from `−1e300`
+    // would overflow to `−∞` and leave `c + step` NaN at the next point.
+    let (w_next, x_small_next) = point_of(next.clamp(-1e300, 1e300));
     // Past `e^{−746}` the held side rounds to 0 whatever the step's last digits: a step under the
     // log's own spacing, or under 1e-9 of it, leaves the double at this end.
     if below && (w_next == w || (w < -746.0 && step.abs() <= 1e-9 * w.abs())) {

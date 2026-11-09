@@ -24,12 +24,13 @@ pub(crate) const STIRLING_SHAPES: f64 = 10.0;
 /// pass the bar from `a + b ≈ 1200` (`I_0.26(323, 879)` 2e-12 off, `pdf(981, 69, 0.59)` 1.1e-12).
 pub(crate) const BETA_LARGE_SHAPE: f64 = 100.0;
 
-/// `ln Γ(p)` in two parts for `0 < p ≤ 32`: `ln Γ(1 + f)` by A&S 6.1.34 and the exact product `Π (f
-/// + k)`, `p = n + f`.
-pub(crate) fn ln_gamma_parts(p: f64) -> (f64, f64) {
+/// `ln Γ(p + p_lo)` in two parts for `0 < p ≤ 32`, `p_lo` a shape sum's rounding (`ψ(p)·p_lo` is
+/// 1e-14 at 32): `ln Γ(1 + f)` by A&S 6.1.34 and the exact product `Π (f + k)`, `p = n + f`.
+pub(crate) fn ln_gamma_parts(p: f64, p_lo: f64) -> (f64, f64) {
+  let shift = |q: f64| if p_lo == 0.0 { 0.0 } else { digamma(q) * p_lo };
   if p <= 1.0 {
-    let (l, l_lo) = ln_parts(p, 0.0, 0);
-    let g = -recip_gamma_1p_m1(p).ln_1p();
+    let (l, l_lo) = ln_parts(p, p_lo, 0);
+    let g = -recip_gamma_1p_m1(p).ln_1p() - shift(1.0 + p);
     return two_sum(-l, g - l_lo);
   }
   let n = p.floor();
@@ -37,11 +38,12 @@ pub(crate) fn ln_gamma_parts(p: f64) -> (f64, f64) {
   let mut product = (1.0, 0.0);
   let mut k = 1.0;
   while k < n {
-    product = mul_parts(product, two_sum(k, f));
+    let (t, t_lo) = two_sum(k, f);
+    product = mul_parts(product, (t, t_lo + p_lo));
     k += 1.0;
   }
   let (l, l_lo) = ln_parts(product.0, product.1, 0);
-  two_sum(l, l_lo - recip_gamma_1p_m1(f).ln_1p())
+  two_sum(l, l_lo - recip_gamma_1p_m1(f).ln_1p() - shift(1.0 + f))
 }
 
 /// `ln Γ(z + p) − ln Γ(z)` in two parts for `z ≥ 16`: `p ln z − z·g(p/z) + (p − ½) ln(1 + p/z)`
@@ -64,24 +66,31 @@ pub(crate) fn ln_gamma_diff(z: f64, p: f64) -> (f64, f64) {
 pub(crate) fn ln_beta_parts(a: f64, b: f64) -> (f64, f64) {
   let (p, q) = if a <= b { (a, b) } else { (b, a) };
   debug_assert!(p <= 32.0, "ln_beta_parts takes a shape at most 32, got {p}");
-  let lg = ln_gamma_parts(p);
+  let lg = ln_gamma_parts(p, 0.0);
   if q >= STIRLING_FROM {
     return sub_parts(lg, ln_gamma_diff(q, p));
   }
-  sub_parts(add_parts(lg, ln_gamma_parts(q)), ln_gamma_parts(p + q))
+  // The shapes' sum in two parts: rounded, `ψ(p + q)` times its half ulp is 6e-15 at 16.
+  let (s, s_lo) = two_sum(p, q);
+  sub_parts(
+    add_parts(lg, ln_gamma_parts(q, 0.0)),
+    ln_gamma_parts(s, s_lo),
+  )
 }
 
 /// `ln(s·B(a, b))`, `s` one of the shapes, in two parts with the smaller shape to 32: `ln Γ(s + 1)`
 /// takes the place of `ln Γ(s)`, so a tiny `s` cancels no `ln s`.
 pub(crate) fn ln_shape_beta_parts(s: f64, other: f64) -> (f64, f64) {
   if s <= other {
-    let lg = ln_gamma_parts(s + 1.0);
+    let (s1, s1_lo) = two_sum(s, 1.0);
+    let lg = ln_gamma_parts(s1, s1_lo);
     if other >= STIRLING_FROM {
       return sub_parts(lg, ln_gamma_diff(other, s));
     }
+    let (t, t_lo) = two_sum(s, other);
     return sub_parts(
-      add_parts(lg, ln_gamma_parts(other)),
-      ln_gamma_parts(s + other),
+      add_parts(lg, ln_gamma_parts(other, 0.0)),
+      ln_gamma_parts(t, t_lo),
     );
   }
   add_parts(ln_beta_parts(s, other), ln_parts(s, 0.0, 0))
@@ -119,7 +128,7 @@ pub(crate) fn beta_entropy(a: f64, b: f64) -> f64 {
   }
   // `ln_gamma_diff` needs `q ≥ 16`, `digamma_step` `q ≥ 10`: the caller's larger shape is ≥ 100.
   debug_assert!(q >= STIRLING_FROM);
-  let (lb, lb_lo) = sub_parts(ln_gamma_parts(p), ln_gamma_diff(q, p));
+  let (lb, lb_lo) = sub_parts(ln_gamma_parts(p, 0.0), ln_gamma_diff(q, p));
   let step = digamma_step(q, p);
   lb + ((q - 1.0) * step + (p - 1.0) * (digamma(q) + step - digamma(p)) + lb_lo)
 }

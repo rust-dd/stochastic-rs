@@ -404,3 +404,15 @@ fn the_fraction_scales_its_step_where_it_overflows() {
     "{huge} against {big}"
   );
 }
+
+/// The shapes' sums enter `ln Γ` in two parts: rounded, `ψ(s + o)` times their half ulp put the root
+/// 6e-15 off its log at shapes near 16; a subnormal root is read at the double's own log.
+#[test]
+fn shape_sums_near_16_hold_the_bound() {
+  let median = beta_i_inv(0.5, 15.9, 0.5);
+  assert!(
+    rel(median, 0.014427487626813367) <= 9e-15,
+    "Beta(0.5, 15.9) median {median}"
+  );
+  assert_eq!(beta_i_inv(15.9, 1e300, 5e-324), 3.1363e-320);
+}
