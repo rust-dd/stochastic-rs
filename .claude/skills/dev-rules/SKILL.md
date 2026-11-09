@@ -59,9 +59,8 @@ Randomness is the standing exception — see §7a.
 Library code, tests and examples draw randomness from the workspace's own
 RNG and distributions. `rand::rng()` and every concrete `rand_distr`
 distribution (`Normal`, `Exp`, `Gamma`, `Poisson`, `StandardNormal`, …) are
-reserved for `benches/` and the `src/tests/bench_*` plot harnesses, where
-`rand_distr` is a dev-dependency (of the umbrella and
-`stochastic-rs-distributions`, the only crates that declare it) and the
+reserved for `benches/`, where `rand_distr` is the umbrella's
+dev-dependency (the only crate that declares it) and the
 *baseline being measured*. The `rand` crate itself stays a dependency for
 its traits (`Rng`, `RngExt`, `rand::distr::Distribution`,
 `rand::seq::SliceRandom`).
