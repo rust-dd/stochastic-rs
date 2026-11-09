@@ -272,17 +272,21 @@ impl<T: SimdFloatExt> DistributionExt for SimdGpd<T> {
     }
   }
 
-  /// `NaN` for ξ ≥ 1/3, where the third moment is undefined.
+  /// `+∞` on ξ ∈ [1/3, 1/2), where the third central moment diverges beside a finite variance;
+  /// `NaN` from ξ = 1/2, where no finite variance divides it.
   fn skewness(&self) -> Option<f64> {
     let (_, _, xi) = self.params();
     if xi < 1.0 / 3.0 {
       Some(2.0 * (1.0 + xi) * (1.0 - 2.0 * xi).sqrt() / (1.0 - 3.0 * xi))
+    } else if xi < 0.5 {
+      Some(f64::INFINITY)
     } else {
       Some(f64::NAN)
     }
   }
 
-  /// Excess kurtosis; `NaN` for ξ ≥ 1/4.
+  /// Excess kurtosis; `+∞` on ξ ∈ [1/4, 1/2), where the fourth central moment diverges beside a
+  /// finite variance, `NaN` from ξ = 1/2.
   fn kurtosis(&self) -> Option<f64> {
     let (_, _, xi) = self.params();
     if xi < 0.25 {
@@ -290,6 +294,8 @@ impl<T: SimdFloatExt> DistributionExt for SimdGpd<T> {
         3.0 * (1.0 - 2.0 * xi) * (2.0 * xi * xi + xi + 3.0) / ((1.0 - 3.0 * xi) * (1.0 - 4.0 * xi))
           - 3.0,
       )
+    } else if xi < 0.5 {
+      Some(f64::INFINITY)
     } else {
       Some(f64::NAN)
     }
@@ -536,14 +542,14 @@ mod tests {
     }
   }
 
-  /// Moment existence thresholds: ξ = 0.3 keeps the mean and variance,
-  /// loses the skewness and kurtosis.
+  /// Moment existence thresholds: ξ = 0.3 keeps the mean, variance and skewness and its kurtosis
+  /// diverges beside the finite variance; ξ = 0.6 loses the variance, so its skewness is NaN.
   #[test]
   fn gpd_moment_thresholds() {
     let d = SimdGpd::<f64>::new(0.0, 1.0, 0.3);
     assert!(d.mean().unwrap().is_finite() && d.variance().unwrap().is_finite());
     assert!(d.skewness().unwrap().is_finite());
-    assert!(d.kurtosis().unwrap().is_nan());
+    assert_eq!(d.kurtosis(), Some(f64::INFINITY));
     let heavy = SimdGpd::<f64>::new(0.0, 1.0, 0.6);
     assert!(heavy.mean().unwrap().is_finite());
     assert_eq!(heavy.variance().unwrap(), f64::INFINITY);

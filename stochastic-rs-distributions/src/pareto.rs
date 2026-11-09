@@ -200,21 +200,27 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdPareto<T> {
     }
   }
 
-  /// NaN at `alpha ≤ 3`, where the third central moment is not finite.
+  /// `+∞` on `alpha ∈ (2, 3]`, where the third central moment diverges beside a finite variance;
+  /// NaN at `alpha ≤ 2`, where no finite variance divides it.
   fn skewness(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     if a > 3.0 {
       Some(2.0 * (1.0 + a) / (a - 3.0) * ((a - 2.0) / a).sqrt())
+    } else if a > 2.0 {
+      Some(f64::INFINITY)
     } else {
       Some(f64::NAN)
     }
   }
 
-  /// NaN at `alpha ≤ 4`, where the fourth central moment is not finite.
+  /// `+∞` on `alpha ∈ (2, 4]`, where the fourth central moment diverges beside a finite variance;
+  /// NaN at `alpha ≤ 2`.
   fn kurtosis(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     if a > 4.0 {
       Some(6.0 * (a.powi(3) + a.powi(2) - 6.0 * a - 2.0) / (a * (a - 3.0) * (a - 4.0)))
+    } else if a > 2.0 {
+      Some(f64::INFINITY)
     } else {
       Some(f64::NAN)
     }

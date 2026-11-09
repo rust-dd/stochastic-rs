@@ -379,3 +379,166 @@ fn a_divergent_mgf_is_infinite() {
   );
   assert_eq!(gig.moment_generating_function(0.3), Some(f64::INFINITY));
 }
+
+/// A third or fourth central moment that diverges beside a finite variance answers `±∞`, as a divergent mgf does; NaN only where no finite variance divides it or a symmetric integral has no sign.
+#[test]
+fn a_divergent_moment_is_infinite() {
+  let (p, n, nan) = (f64::INFINITY, f64::NEG_INFINITY, f64::NAN);
+  let same =
+    |got: Option<f64>, want: f64| got.is_some_and(|g| g == want || (g.is_nan() && want.is_nan()));
+  let skewness: Vec<(&str, Box<dyn DistributionExt>, f64)> = vec![
+    (
+      "Pareto α = 2.5",
+      Box::new(SimdPareto::<f64>::new(1.0, 2.5)),
+      p,
+    ),
+    (
+      "Pareto α = 3",
+      Box::new(SimdPareto::<f64>::new(1.0, 3.0)),
+      p,
+    ),
+    (
+      "Pareto α = 2",
+      Box::new(SimdPareto::<f64>::new(1.0, 2.0)),
+      nan,
+    ),
+    (
+      "Gpd ξ = 1/3",
+      Box::new(SimdGpd::<f64>::new(0.0, 1.0, 1.0 / 3.0)),
+      p,
+    ),
+    (
+      "Gpd ξ = 0.4",
+      Box::new(SimdGpd::<f64>::new(0.0, 1.0, 0.4)),
+      p,
+    ),
+    (
+      "Gpd ξ = 1/2",
+      Box::new(SimdGpd::<f64>::new(0.0, 1.0, 0.5)),
+      nan,
+    ),
+    (
+      "Gev ξ = 1/3",
+      Box::new(SimdGev::<f64>::new(0.0, 1.0, 1.0 / 3.0)),
+      p,
+    ),
+    (
+      "Gev ξ = 0.45",
+      Box::new(SimdGev::<f64>::new(0.0, 1.0, 0.45)),
+      p,
+    ),
+    (
+      "Gev ξ = 1/2",
+      Box::new(SimdGev::<f64>::new(0.0, 1.0, 0.5)),
+      nan,
+    ),
+    (
+      "SkewT η = 3, λ = 0.5",
+      Box::new(SimdSkewT::<f64>::new(3.0, 0.5)),
+      p,
+    ),
+    (
+      "SkewT η = 2.5, λ = −0.5",
+      Box::new(SimdSkewT::<f64>::new(2.5, -0.5)),
+      n,
+    ),
+    (
+      "SkewT η = 3, λ = 0",
+      Box::new(SimdSkewT::<f64>::new(3.0, 0.0)),
+      nan,
+    ),
+    (
+      "StudentT ν = 3",
+      Box::new(SimdStudentT::<f64>::new(3.0)),
+      nan,
+    ),
+  ];
+  for (name, law, want) in skewness {
+    assert!(
+      same(law.skewness(), want),
+      "{name}: skewness {:?}, want {want}",
+      law.skewness()
+    );
+  }
+  let kurtosis: Vec<(&str, Box<dyn DistributionExt>, f64)> = vec![
+    (
+      "Pareto α = 2.5",
+      Box::new(SimdPareto::<f64>::new(1.0, 2.5)),
+      p,
+    ),
+    (
+      "Pareto α = 4",
+      Box::new(SimdPareto::<f64>::new(1.0, 4.0)),
+      p,
+    ),
+    (
+      "Pareto α = 2",
+      Box::new(SimdPareto::<f64>::new(1.0, 2.0)),
+      nan,
+    ),
+    (
+      "Gpd ξ = 1/4",
+      Box::new(SimdGpd::<f64>::new(0.0, 1.0, 0.25)),
+      p,
+    ),
+    (
+      "Gpd ξ = 0.3",
+      Box::new(SimdGpd::<f64>::new(0.0, 1.0, 0.3)),
+      p,
+    ),
+    (
+      "Gpd ξ = 1/2",
+      Box::new(SimdGpd::<f64>::new(0.0, 1.0, 0.5)),
+      nan,
+    ),
+    (
+      "Gev ξ = 1/4",
+      Box::new(SimdGev::<f64>::new(0.0, 1.0, 0.25)),
+      p,
+    ),
+    (
+      "Gev ξ = 0.3",
+      Box::new(SimdGev::<f64>::new(0.0, 1.0, 0.3)),
+      p,
+    ),
+    (
+      "Gev ξ = 0.49",
+      Box::new(SimdGev::<f64>::new(0.0, 1.0, 0.49)),
+      p,
+    ),
+    (
+      "Gev ξ = 1/2",
+      Box::new(SimdGev::<f64>::new(0.0, 1.0, 0.5)),
+      nan,
+    ),
+    (
+      "SkewT η = 3.5, λ = 0.5",
+      Box::new(SimdSkewT::<f64>::new(3.5, 0.5)),
+      p,
+    ),
+    (
+      "SkewT η = 4, λ = 0",
+      Box::new(SimdSkewT::<f64>::new(4.0, 0.0)),
+      p,
+    ),
+    (
+      "SkewT η = 2.1, λ = 0.9",
+      Box::new(SimdSkewT::<f64>::new(2.1, 0.9)),
+      p,
+    ),
+    ("StudentT ν = 3", Box::new(SimdStudentT::<f64>::new(3.0)), p),
+    ("StudentT ν = 4", Box::new(SimdStudentT::<f64>::new(4.0)), p),
+    (
+      "StudentT ν = 2",
+      Box::new(SimdStudentT::<f64>::new(2.0)),
+      nan,
+    ),
+  ];
+  for (name, law, want) in kurtosis {
+    assert!(
+      same(law.kurtosis(), want),
+      "{name}: kurtosis {:?}, want {want}",
+      law.kurtosis()
+    );
+  }
+}

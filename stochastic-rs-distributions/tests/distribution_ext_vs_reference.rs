@@ -256,7 +256,7 @@ fn hypergeometric_matches_statrs() {
 }
 
 /// `scipy.stats.genpareto(c=xi, loc=0, scale=1)` at ξ ∈ {0.3, 0, −0.3}: pdf and cdf on a grid, the
-/// moments, median, entropy and `ppf(0.9)`; at ξ = 0.3 scipy's excess kurtosis is NaN too.
+/// moments, median, entropy and `ppf(0.9)`; at ξ = 0.3 the excess kurtosis diverges (scipy says NaN).
 #[test]
 fn gpd_matches_scipy() {
   let cases: [(f64, [[f64; 3]; 5], [f64; 7]); 3] = [
@@ -273,7 +273,7 @@ fn gpd_matches_scipy() {
         1.428_571_428_571_428_6,
         5.102_040_816_326_531,
         16.443_843_832_875_558,
-        f64::NAN,
+        f64::INFINITY,
         0.770_481_377_816_387_6,
         1.3,
         3.317_541_049_896_265_6,

@@ -281,21 +281,27 @@ impl<T: SimdFloatExt> DistributionExt for SimdGev<T> {
     }
   }
 
-  /// `NaN` for $\xi \ge 1/3$, where the third moment is undefined.
+  /// `+∞` on $\xi \in [1/3, 1/2)$, where the third central moment diverges beside a finite
+  /// variance; `NaN` from $\xi = 1/2$, where no finite variance divides it.
   fn skewness(&self) -> Option<f64> {
     let (_, _, xi) = self.params();
     if xi < 1.0 / 3.0 {
       Some(series::skewness(xi))
+    } else if xi < 0.5 {
+      Some(f64::INFINITY)
     } else {
       Some(f64::NAN)
     }
   }
 
-  /// Excess kurtosis; `NaN` for $\xi \ge 1/4$.
+  /// Excess kurtosis; `+∞` on $\xi \in [1/4, 1/2)$, where the fourth central moment diverges
+  /// beside a finite variance, `NaN` from $\xi = 1/2$.
   fn kurtosis(&self) -> Option<f64> {
     let (_, _, xi) = self.params();
     if xi < 0.25 {
       Some(series::kurtosis(xi))
+    } else if xi < 0.5 {
+      Some(f64::INFINITY)
     } else {
       Some(f64::NAN)
     }
