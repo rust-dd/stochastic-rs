@@ -1,6 +1,4 @@
-//! TDD tests for A1-c Task 1: `Default` on the six flagship distributions.
-//! See each type's own `Default` impl doc for where its parameter values
-//! come from.
+//! `Default` on the six flagship laws, at the parameters each impl's doc names.
 
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::SimdDistribution;

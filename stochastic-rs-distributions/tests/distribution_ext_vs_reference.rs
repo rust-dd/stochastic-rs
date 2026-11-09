@@ -1,6 +1,5 @@
-//! Cross-validation: every closed-form `DistributionExt` impl is tested
-//! against `statrs` at representative points. `statrs` is a dev-dep only —
-//! production code never delegates to it.
+//! Closed-form `DistributionExt` values against `statrs` and scipy; `statrs` is a dev-dependency
+//! only, never a production delegate.
 
 use statrs::distribution::Continuous as _;
 use statrs::distribution::ContinuousCDF as _;
@@ -256,9 +255,8 @@ fn hypergeometric_matches_statrs() {
   }
 }
 
-/// `scipy.stats.genpareto(c=xi, loc=0, scale=1)` at ξ ∈ {0.3, 0, −0.3}:
-/// `pdf`/`cdf` on a grid plus `mean`/`var`/`stats('sk')`/`median`/
-/// `entropy`/`ppf(0.9)`; the ξ = 0.3 excess kurtosis is NaN in scipy too.
+/// `scipy.stats.genpareto(c=xi, loc=0, scale=1)` at ξ ∈ {0.3, 0, −0.3}: pdf and cdf on a grid, the
+/// moments, median, entropy and `ppf(0.9)`; at ξ = 0.3 scipy's excess kurtosis is NaN too.
 #[test]
 fn gpd_matches_scipy() {
   let cases: [(f64, [[f64; 3]; 5], [f64; 7]); 3] = [

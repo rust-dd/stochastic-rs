@@ -1,5 +1,5 @@
-//! Laws narrower than any offset their kernel's coordinate holds, answered in their own scale, and near-two-point betas
-//! whose entropy sums pass 1e154 (mpmath, 60 and 120 digits).
+//! Laws narrower than any offset their kernel's coordinate holds, answered in their own scale, and
+//! near-two-point betas whose entropy sums pass 1e154 (mpmath, 60 and 120 digits).
 
 use stochastic_rs_distributions::traits::DistributionExt;
 use stochastic_rs_distributions::truncated::SimdTruncatedBeta;
@@ -166,8 +166,8 @@ fn near_two_point_betas() {
   close(name, "entropy", law.entropy().unwrap(), -1e250, 1e-12, 0.0);
 }
 
-/// A mode within a subnormal of a kernel zero is held at the least offset off it, with the slope there: at 1 the
-/// exponential of scale `1/f64::MAX` (closed forms, mpmath at 400 and 600 digits), and the far pdf and cdf 0 (M-3).
+/// A mode within a subnormal of a kernel zero is held at the least offset off it, with the slope
+/// there: at 1 the exponential of scale `1/MAX` (mpmath, 400/600 digits), far pdf and cdf 0.
 #[test]
 fn modes_within_a_subnormal_of_a_kernel_zero() {
   let near = 1.0 + f64::EPSILON;
@@ -218,8 +218,8 @@ fn subnormal_row(name: &str, law: &impl DistributionExt, (lo, up): (f64, f64), w
   shape(name, law, [skewness, kurtosis, entropy]);
 }
 
-/// Below the normal doubles beside 0 the beta is a gamma kernel at a power-of-two unit, not a quadratic about its end
-/// (mpmath, 60 and 120 digits).
+/// Below the normal doubles beside 0 the beta is a gamma kernel at a power-of-two unit, not a
+/// quadratic about its end (mpmath, 60 and 120 digits).
 #[test]
 fn laws_within_the_subnormals_beside_zero() {
   let tg = |k: f64, lo: f64, up: f64| SimdTruncatedGamma::<f64>::new(k, 1.0, lo, up);
@@ -274,8 +274,8 @@ fn laws_within_the_subnormals_beside_zero() {
   );
 }
 
-/// A law within a few ulps of its place: its quantile is the double nearest the point, found in exact offsets and
-/// rounded once (mpmath's Cornish–Fisher points, each 0.1 ulp or more from a rounding midpoint).
+/// A law within a few ulps of its place: its quantile is the double nearest the point, in exact
+/// offsets rounded once (mpmath's Cornish–Fisher points, each ≥ 0.1 ulp from a rounding midpoint).
 #[test]
 fn quantiles_within_a_few_ulps_round_once() {
   let inf = f64::INFINITY;
@@ -330,8 +330,8 @@ fn quantiles_within_a_few_ulps_round_once() {
   }
 }
 
-/// A beta whose clipped width lies below the normal doubles but whose interval does not: its local model refuses
-/// (`z ≈ −1` at the clip), and the gamma of rate `β − 1`, exact to 2⁻⁵³ there, answers in its own unit.
+/// A beta whose clipped width, not its interval, lies below the normal doubles: the local model
+/// refuses (`z ≈ −1` at the clip); the gamma of rate `β − 1`, exact to 2⁻⁵³ there, answers.
 #[test]
 fn a_narrow_beta_answers_in_its_own_scale() {
   let mp = f64::MIN_POSITIVE;

@@ -1,5 +1,5 @@
-//! The cdf and the quantile beside an interval's ends keep the relative digits of the tail there, against mpmath at 60
-//! and 120 digits.
+//! The cdf and the quantile beside an interval's ends keep the relative digits of the tail there,
+//! against mpmath at 60 and 120 digits.
 
 use stochastic_rs_distributions::traits::DistributionExt;
 use stochastic_rs_distributions::truncated::SimdTruncatedBeta;
@@ -35,8 +35,8 @@ fn quantiles(name: &str, law: &impl DistributionExt, rows: &[(f64, f64)]) {
   }
 }
 
-/// A kernel flat across its interval takes the midpoint as its reference point: a partial mass beside an end is a
-/// width of its own, not a difference of two offsets from the midpoint.
+/// A kernel flat across its interval takes the midpoint as its reference point: a partial mass
+/// beside an end is a width of its own, not a difference of two offsets from the midpoint.
 #[test]
 fn beside_the_lower_end_of_a_flat_kernel() {
   let law = SimdTruncatedNormal::<f64>::new(0.0, 1.0, 0.0, 1.4);
@@ -79,8 +79,8 @@ fn beside_the_lower_end_of_a_flat_kernel() {
   quantiles(name, &law, &[(1e-12, 0.10000000000058638)]);
 }
 
-/// The cdf at `rows`' points to 2ε, the absolute digits it holds next to 1, and the quantile at 1 − 1e-10 and 1 − 2⁻⁵³
-/// one of the two doubles around mpmath's point: above ½ it walks from the upper end, keeping the digits `1 − p` has.
+/// The cdf at `rows`' points to 2ε, the absolute digits it holds next to 1, and the quantile at
+/// 1 − 1e-10 and 1 − 2⁻⁵³ one of the two doubles about mpmath's, walked from the upper end above ½.
 fn next_to_one(
   name: &str,
   law: &impl DistributionExt,
@@ -162,8 +162,8 @@ fn next_to_one_the_quantile_walks_from_the_upper_end() {
   );
 }
 
-/// Next to 1 the cdf at `rows`' points to 2ε of mpmath's value: it and `M₀` share every rounding but their last few,
-/// and a libm an ulp apart moves it about one.
+/// Next to 1 the cdf at `rows`' points to 2ε of mpmath's value: it and `M₀` share every rounding
+/// but their last few, and a libm an ulp apart moves it about one.
 fn near_one(rows: &[(&str, &dyn DistributionExt, f64, f64)]) {
   for &(name, law, x, want) in rows {
     let got = law.cdf(x).unwrap();
@@ -174,8 +174,8 @@ fn near_one(rows: &[(&str, &dyn DistributionExt, f64, f64)]) {
   }
 }
 
-/// Next to 1 the cdf sums the panels its total was summed on; panels laid out afresh up to `x` would leave these laws,
-/// spread over fifty decades, 20–39 ulps of 1 off (mpmath, from E1).
+/// Next to 1 the cdf sums the panels its total was summed on; panels laid out afresh up to `x`
+/// would leave these laws, spread over fifty decades, 20–39 ulps of 1 off (mpmath, from E1).
 #[test]
 fn next_to_one_the_cdf_walks_the_panels_of_its_total() {
   let (a, b) = (8.419970930322122e-279, 5.5279504620333736e175);
@@ -207,8 +207,8 @@ fn next_to_one_the_cdf_walks_the_panels_of_its_total() {
   ]);
 }
 
-/// Past the middle of a singular panel the cdf is the panel less the part above `x`, in the panel's own frame, and `M₀`
-/// carries the roundings of adding nineteen light rungs to it apart (`(x/up)^α`).
+/// Past the middle of a singular panel the cdf is the panel less the part above `x`, in the panel's
+/// frame, and `M₀` keeps apart the roundings of adding nineteen light rungs (`(x/up)^α`).
 #[test]
 fn next_to_one_a_singular_panel_keeps_its_jacobian() {
   let law = SimdTruncatedBeta::<f64>::new(
@@ -225,8 +225,8 @@ fn next_to_one_a_singular_panel_keeps_its_jacobian() {
   ]);
 }
 
-/// In the right half of the last panel the cdf is one less the mass above `x`, measured from the upper bound: from
-/// the panel's origin at the clip, `x − a` rounds at an ulp of the panel's width, 19ε of 1 under a density peaked at `b`.
+/// In the last panel's right half the cdf is one less the mass above `x`, from the upper bound:
+/// from the clip `x − a` rounds at an ulp of the width, 19ε under a density peaked at `b`.
 #[test]
 fn next_to_one_the_last_panel_measures_from_the_upper_bound() {
   let law = SimdTruncatedNormal::<f64>::new(1000.0, 1.1, f64::NEG_INFINITY, 0.0);
@@ -237,8 +237,8 @@ fn next_to_one_the_last_panel_measures_from_the_upper_bound() {
   ]);
 }
 
-/// The exponential's cdf below `λL = 1` as `d·φ(λd)` over its mass, so a `λd` below the normal doubles keeps its
-/// digits, and past the median as one less the mass above; the references are mpmath's, rounded once.
+/// The exponential's cdf below `λL = 1` as `d·φ(λd)` over its mass, so a subnormal `λd` keeps its
+/// digits, and past the median as one less the mass above; mpmath's references, rounded once.
 #[test]
 fn the_exponentials_cdf_in_both_tails() {
   let rows = [
@@ -279,8 +279,8 @@ fn the_exponentials_cdf_in_both_tails() {
   }
 }
 
-/// Nearer a finite upper bound the exponential's quantile is that bound less its offset, within an ulp of mpmath's
-/// point, where the cdf returns the level to within its step across that ulp.
+/// Nearer a finite upper bound the exponential's quantile is that bound less its offset, within an
+/// ulp of mpmath's point, where the cdf returns the level to within its step across that ulp.
 #[test]
 fn the_exponentials_quantile_next_to_one() {
   let rows = [
@@ -332,8 +332,8 @@ fn the_exponentials_quantile_next_to_one() {
   }
 }
 
-/// A lower bound inside a singular end's panel keeps the point's distance from it to 1e-12, or two ulps; mpmath's
-/// references from the exponential integral, which these shapes (5e-235, 1e-170) follow far below that bar.
+/// A lower bound inside a singular end's panel keeps the point's distance from it to 1e-12 or two
+/// ulps (mpmath: the exponential integral, exact far below that bar at shapes 5e-235 and 1e-170).
 #[test]
 fn beside_a_bound_inside_a_singular_panel() {
   let (k, theta, lo) = (
@@ -363,8 +363,8 @@ fn beside_a_bound_inside_a_singular_panel() {
   }
 }
 
-/// A shape in the hundreds at points far below 1: `ln(x/c)` from the quotient, as `ln x − ln c` would hand the shape
-/// their rounding; the law is `(x/up)^a` to 1e-65 on its interval (mpmath, rounded once).
+/// A shape in the hundreds at points far below 1: `ln(x/c)` from the quotient, since `ln x − ln c`
+/// hands the shape their rounding; the law is `(x/up)^a` to 1e-65 (mpmath, rounded once).
 #[test]
 fn a_large_shape_far_below_one() {
   let law = SimdTruncatedBeta::<f64>::new(
@@ -392,8 +392,8 @@ fn a_large_shape_far_below_one() {
   );
 }
 
-/// A normal point nearer a bound than `μ` is held beside it by `(x − bound)/σ`, and a quantile the walk from that bound
-/// returns maps back from the bound itself: `(x − μ)/σ` rounds the offset away when `μ` lies far off (mpmath).
+/// A normal point nearer a bound than `μ` is held beside it by `(x − bound)/σ`, and a quantile
+/// walked from the bound maps back from it, where `(x − μ)/σ` rounds the offset away (mpmath).
 #[test]
 fn a_normal_beside_a_bound_far_from_its_mean() {
   let law = SimdTruncatedNormal::<f64>::new(-0.7, 0.9, 1.3, 2.0);

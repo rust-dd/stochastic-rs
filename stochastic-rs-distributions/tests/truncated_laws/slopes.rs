@@ -1,5 +1,5 @@
-//! The log-kernel's slope at the reference point is the kernel's own there, at any reference point and past 2⁵³, against
-//! mpmath at 60 and 120 digits.
+//! The log-kernel's slope at the reference point is the kernel's own there, at any reference point
+//! and past 2⁵³, against mpmath at 60 and 120 digits.
 
 use stochastic_rs_distributions::traits::DistributionExt;
 use stochastic_rs_distributions::truncated::SimdTruncatedBeta;
@@ -7,8 +7,8 @@ use stochastic_rs_distributions::truncated::SimdTruncatedGamma;
 
 use crate::close;
 
-/// A bound 1e90 sd past the mode, below ½: an exponential from it of scale `1/|ψ|` (its curvature's share 5e-181), whose
-/// variance 7.8e-406 underflows; the other law the mirror case at its upper bound.
+/// A bound 1e90 sd past the mode, below ½: an exponential from it of scale `1/|ψ|` (curvature's
+/// share 5e-181), whose variance 7.8e-406 underflows; the other law mirrors it at its upper bound.
 #[test]
 fn a_bound_far_past_a_huge_shapes_mode_reads_its_exponential() {
   let laws: [(&str, [f64; 4], [f64; 6]); 2] = [
@@ -69,8 +69,8 @@ fn a_bound_far_past_a_huge_shapes_mode_reads_its_exponential() {
   }
 }
 
-/// `TB(1e20, 1e21)` with its reference point at `lo`, below ½ and half an sd past the mode, and with its mode, past
-/// 2⁵³ in both shapes, inside the interval.
+/// `TB(1e20, 1e21)` with its reference point at `lo`, below ½ and half an sd past the mode, and
+/// with its mode, past 2⁵³ in both shapes, inside the interval.
 #[test]
 fn a_beta_slope_below_one_half_and_past_2_to_the_53() {
   let laws: [(&str, f64, [f64; 5]); 2] = [
@@ -120,8 +120,8 @@ fn a_beta_slope_below_one_half_and_past_2_to_the_53() {
   }
 }
 
-/// `TG(k, 1, [m + sd/4, m + 3sd/4])`, flat, so its reference point is the midpoint held beside `lo`: the slope there
-/// with `k − 1` exact.
+/// `TG(k, 1, [m + sd/4, m + 3sd/4])`, flat, so its reference point is the midpoint held beside
+/// `lo`: the slope there with `k − 1` exact.
 #[test]
 fn a_gamma_slope_at_its_exact_midpoint() {
   let laws: [(f64, [f64; 5]); 3] = [

@@ -15,8 +15,8 @@ fn rows(name: &str, what: &str, f: impl Fn(f64) -> f64, rows: &[(f64, f64)]) {
   }
 }
 
-/// Below ½ a point's offset from the branch point 1 rounds: a walk from the lower end reads `x − lo` from the two
-/// doubles, whether or not `lo − 1` is exact.
+/// Below ½ a point's offset from the branch point 1 rounds: a walk from the lower end reads
+/// `x − lo` from the two doubles, whether or not `lo − 1` is exact.
 #[test]
 fn beside_a_lower_end_far_below_the_branch_point_at_one() {
   let laws: [Law; 3] = [

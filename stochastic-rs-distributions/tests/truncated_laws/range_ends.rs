@@ -1,5 +1,5 @@
-//! Laws at the doubles' ends: the gamma's unit past 2¹⁰²³, bounds past θ·f64::MAX, a singular end deeper than the
-//! least offset, and a reference point a few thousand sd from a bound (mpmath, 60 and 120 digits).
+//! Laws at the doubles' ends: the gamma's unit past 2¹⁰²³, bounds past `θ·MAX`, a singular end
+//! deeper than the least offset, a reference point a few thousand sd from a bound (mpmath).
 
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -136,8 +136,8 @@ fn small_shape_pdf_where_the_offset_overflows() {
   );
 }
 
-/// A shape below 1 holds mass deeper than the least offset in its unit: the regular panels weigh in logs, and a point
-/// beside 0 reaches the singular panel through `ln x`.
+/// A shape below 1 holds mass deeper than the least offset in its unit: the regular panels weigh in
+/// logs, and a point beside 0 reaches the singular panel through `ln x`.
 #[test]
 fn the_singular_end_keeps_its_mass() {
   for (k, theta, x, want) in [
@@ -209,8 +209,8 @@ fn the_singular_end_keeps_its_mass() {
   }
 }
 
-/// The beta's mode lies a few thousand sd past 0.75: above, the interval cuts nothing and the closed forms hold; below,
-/// the law is an exponential from 0.75 bent by the curvature.
+/// The beta's mode lies a few thousand sd past 0.75: above, the interval cuts nothing and the
+/// closed forms hold; below, the law is an exponential from 0.75 bent by the curvature.
 #[test]
 fn a_mode_thousands_of_sd_from_a_bound() {
   let tb = |lo: f64, up: f64| SimdTruncatedBeta::<f64>::new(3e40, 1e40, lo, up);

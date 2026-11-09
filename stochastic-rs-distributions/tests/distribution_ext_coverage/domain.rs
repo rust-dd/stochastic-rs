@@ -180,8 +180,8 @@ fn branches() -> Vec<Branch> {
   ]
 }
 
-/// A `p` outside `[0, 1]` and a NaN argument answer NaN wherever the law answers at all; `mask` indexes
-/// `METHODS` (cf 0, pdf 1, cdf 2, quantile 3, mgf 11).
+/// A `p` outside `[0, 1]` and a NaN argument answer NaN wherever the law answers at all; `mask`
+/// indexes `METHODS` (cf 0, pdf 1, cdf 2, quantile 3, mgf 11).
 #[test]
 fn out_of_domain_and_nan_arguments_answer_nan() {
   let laws = rows().into_iter().chain(

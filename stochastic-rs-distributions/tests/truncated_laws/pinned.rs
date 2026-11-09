@@ -1,5 +1,5 @@
-//! The committed survey's laws and their mpmath values (`survey_refs.txt`): one law a row, `stratum key | item=value
-//! …`, where `-` marks a value past mpmath's reach; the laws are read, not regenerated, as `10^x` differs by platform.
+//! The survey's laws and mpmath values (`survey_refs.txt`), one row `stratum key | item=value …`
+//! each, `-` past mpmath's reach; read, never regenerated, since `10^x` differs by platform.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;

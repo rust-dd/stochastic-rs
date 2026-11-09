@@ -109,8 +109,8 @@ pub fn quantile_is_monotone(name: &str, law: &impl DistributionExt) {
   }
 }
 
-/// `mid` is where the reference evaluated pdf and cdf, `scale` the interval's width (or `σ`/`θ` for an open end),
-/// `points` three interior points for the quantile round trip, each with `1e-10 < cdf < 1 − 1e-10`.
+/// `mid` is where the reference evaluated pdf and cdf, `scale` the interval's width (`σ`/`θ` for an
+/// open end), `points` three quantile round-trip points with `1e-10 < cdf < 1 − 1e-10`.
 pub fn check(
   name: &str,
   law: &impl DistributionExt,

@@ -99,8 +99,8 @@ fn bulk_and_far_tails() {
   );
 }
 
-/// Widths 1e-2, 1e-4, 1e-6 at 0.8, where a variance from raw moments cancels `(mean/width)²`-fold (references at the
-/// f64 bound `0.8 + w`).
+/// Widths 1e-2, 1e-4, 1e-6 at 0.8, where a variance from raw moments cancels `(mean/width)²`-fold
+/// (references at the f64 bound `0.8 + w`).
 #[test]
 fn narrow_intervals() {
   for (w, mean, variance, skewness, kurtosis, pdf_mid, cdf_mid) in [
@@ -193,8 +193,8 @@ fn open_and_singular_ends() {
   );
 }
 
-/// Sums in units of the clipped width: a scale of 1e±150 and 1e±200 moves no moment (mpmath, 60 and 120 digits); the
-/// variance at 1e-200 underflows and at 1e200 overflows, as the exact value does.
+/// Sums in units of the clipped width: a scale of 1e±150 and 1e±200 moves no moment (mpmath, 60 and
+/// 120 digits); the variance at 1e-200 underflows and at 1e200 overflows, as the exact value does.
 #[test]
 fn moments_at_extreme_scales() {
   for (theta, mean, variance) in [
@@ -211,8 +211,8 @@ fn moments_at_extreme_scales() {
   }
 }
 
-/// A level next to 1 subtracts the mass past the upper clip, open or finite, and the least level walks the deep range
-/// relative to its start's kernel value (mpmath, 60 and 120 digits).
+/// A level next to 1 subtracts the mass past the upper clip, open or finite, and the least level
+/// walks the deep range relative to its start's kernel value (mpmath, 60 and 120 digits).
 #[test]
 fn quantile_tails_keep_their_digits() {
   for (name, law, wants) in [
@@ -254,8 +254,8 @@ fn quantile_tails_keep_their_digits() {
   }
 }
 
-/// Shapes down to 1e-4, whose mass sits almost wholly in the innermost panel beside 0: in `u = (t/h)^k` that panel is
-/// exact, and so is every analytic (mpmath, 60 and 120 digits).
+/// Shapes down to 1e-4, whose mass sits almost wholly in the innermost panel beside 0: in
+/// `u = (t/h)^k` that panel is exact, and so is every analytic (mpmath, 60 and 120 digits).
 #[test]
 fn small_shapes_keep_their_digits() {
   for (k, want) in [
@@ -346,8 +346,8 @@ fn small_shapes_keep_their_digits() {
   }
 }
 
-/// An end within a tenth of a scale of the singular point is treated as the point itself: the reference point steps
-/// off it, so the power law's tiny sliver is not mistaken for the mass (mpmath, 60 and 120 digits).
+/// An end within a tenth of a scale of the singular point is taken as it: the reference point
+/// steps off it, so the power law's sliver is not mistaken for the mass (mpmath, 60/120 digits).
 #[test]
 fn an_end_beside_the_singular_point() {
   for (name, lo, k, want) in [
@@ -378,8 +378,8 @@ fn an_end_beside_the_singular_point() {
   }
 }
 
-/// Beside a singular end the quantile solves in `u`, so its tolerance is relative: `P⁻¹(0.7, p)` down to the least
-/// level, where it underflows to 0, monotone all the way, and the cdf at 1e-300 (mpmath, 60 and 120 digits).
+/// Beside a singular end the quantile solves in `u`, to a relative tolerance: `P⁻¹(0.7, p)` down to
+/// its underflow at the least level, monotone, and the cdf at 1e-300 (mpmath, 60 and 120 digits).
 #[test]
 fn quantile_and_cdf_beside_a_singular_end() {
   let open = tg(0.7, 1.0, 0.0, f64::INFINITY);
@@ -463,8 +463,8 @@ fn whole_support_is_the_base_law() {
   );
 }
 
-/// A mode `(k − 1)θ` that under- or overflows, kept in the kernel's unit (mpmath, 60 and 120 digits): past f64::MAX the
-/// mean is its rounding, +∞, and on the whole support skewness and kurtosis are the base's `2/√k` and `6/k`.
+/// A mode `(k − 1)θ` that under- or overflows, in the kernel's unit (mpmath, 60 and 120 digits):
+/// past `MAX` the mean is +∞, and on the whole support skewness and kurtosis are `2/√k` and `6/k`.
 #[test]
 fn modes_past_the_doubles_range() {
   let k = 1.0 + f64::EPSILON;
@@ -484,8 +484,8 @@ fn modes_past_the_doubles_range() {
   assert!(rel(huge.kurtosis().unwrap(), 5.999999999999999e-300) < 1e-12);
 }
 
-/// Either side of the plain form's bound `k − 1 ≤ 3e3`, at a density near 1e300: the pdf at 8 and 20 widths and at the
-/// farthest width whose pdf is a normal double, on both sides (mpmath, 60 and 120 digits).
+/// Either side of the plain form's bound `k − 1 ≤ 3e3`, at a density near 1e300: the pdf at 8 and
+/// 20 widths and at the farthest with a normal pdf, on both sides (mpmath, 60 and 120 digits).
 #[test]
 fn either_side_of_the_plain_bound() {
   let inside = [

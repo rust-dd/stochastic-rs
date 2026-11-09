@@ -62,7 +62,6 @@ fn bench_density_eval(c: &mut Criterion) {
     });
   }
 
-  // Ou Exact
   group.bench_function(BenchmarkId::new("Ou", "Exact"), |b| {
     b.iter(|| black_box(DensityApprox::Exact.density(&ou, 0.5, 0.55, 0.0, 0.01)))
   });

@@ -1,17 +1,5 @@
-//! Pearson chi-square goodness-of-fit (pooled bins): discrete samplers
-//! against their own `cdf`. See `tests/gof_support/mod.rs` for the full
-//! design rationale, citations, alpha, and binning rule (Cochran 1954,
-//! `min_expected = 5`), and `gof_support::window` for how each `[k_lo,
-//! k_hi]` below was chosen (`mean +/- 8 sd`, clamped to any known finite
-//! support).
-//!
-//! Covers `SimdBinomial` (both the BTRS and small-`n*p` waiting-time
-//! sampling branches), `SimdGeometric` (the sampler the audit already
-//! found and fixed disagreeing with its own analytics — see
-//! `src/geometric.rs`), `SimdHypergeometric`, `SimdPoisson` (both the
-//! ordinary and the large-`lambda` log-space table-construction
-//! branches), and `SimdSkellam` (the one discrete type here with
-//! two-sided support).
+//! Pearson χ² goodness of fit on pooled bins (Cochran 1954, `min_expected = 5`): the discrete laws
+//! against their own `cdf` over `gof_support::window`, `mean ± 8 sd` clamped to the support.
 
 mod gof_support;
 
@@ -110,11 +98,7 @@ fn simd_poisson_matches_own_cdf() {
   });
 }
 
-/// `lambda = 800` exercises the log-space cumulative-table construction
-/// (`src/poisson.rs::build_cdf`'s own doc: the naive multiplicative
-/// recurrence underflows past `lambda ~= 745`); `poisson.rs`'s own unit
-/// test only checks the sample mean at this `lambda`, not the full
-/// distribution shape.
+/// `lambda = 800` builds its table in log space, where `exp(−λ)` underflows (from λ ≈ 745).
 #[test]
 fn simd_poisson_large_lambda_matches_own_cdf() {
   let lambda = 800.0;

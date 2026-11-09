@@ -5,8 +5,8 @@ use stochastic_rs_distributions::truncated::SimdTruncatedNormal;
 
 use crate::rel;
 
-/// `(−∞, −4.72e34]`, 4.6e34 standard deviations below `μ`: the exponential of scale `σ²/|up − μ|` = 2.3e-35 below its
-/// bound (mpmath at 60 and 120 digits).
+/// `(−∞, −4.72e34]`, 4.6e34 standard deviations below `μ`: the exponential of scale `σ²/|up − μ|` =
+/// 2.3e-35 below its bound (mpmath at 60 and 120 digits).
 #[test]
 fn a_far_open_tail_is_the_exponential_below_its_bound() {
   let up = -4.722020836512684e34;

@@ -1,5 +1,5 @@
-//! One law's checks: analytics and 20 draws in range (NaN only a beta's mode tie), round trips, the parents' cdf, and
-//! the cdf beside each bound, moments and mgf against mpmath (`survey_refs.txt`); a law far from `μ` draws a KS test.
+//! One law's checks: analytics and 20 draws in range (NaN only a beta's mode tie), round trips, the
+//! parents' cdf, the cdf at the bounds, moments and mgf (mpmath); far from `μ`, a KS test.
 
 use std::fmt::Write;
 
@@ -63,8 +63,8 @@ pub fn within_shape(got: f64, want: f64) -> bool {
   (got - want).abs() <= 1e-12 * want.abs().max(1.0)
 }
 
-/// A cdf at `x`: relative below ½; above it `1e-12·(1 − p)`, its step `pdf(x)·ulp(x)` and 8ε, where it holds absolute
-/// digits.
+/// A cdf at `x`: relative below ½; above it `1e-12·(1 − p)`, its step `pdf(x)·ulp(x)` and 8ε, where
+/// it holds absolute digits.
 pub fn within_cdf(got: f64, want: f64, pdf: f64, x: f64) -> bool {
   if want <= 0.5 {
     return within(got, want);
@@ -78,8 +78,8 @@ enum Trip {
   Off(String),
 }
 
-/// `|cdf(x) − p|` within `1e-12·min(p, 1 − p)`, and 8ε above ½ where the cdf holds absolute digits, plus its step
-/// across an ulp of `x`: `pdf(x)·ulp(x)`, or for a law narrower than that ulp the cdf beside `x` bracketing `p`.
+/// `|cdf(x) − p|` within `1e-12·min(p, 1 − p)` (8ε above ½, absolute there) plus its step over an
+/// ulp of `x`, `pdf(x)·ulp(x)`, or for a law inside that ulp the cdf beside `x` around `p`.
 fn round_trip(law: &impl DistributionExt, p: f64, x: f64) -> Trip {
   let back = law.cdf(x).unwrap();
   let tol = 1e-12 * p.min(1.0 - p) + if p > 0.5 { 8.0 * f64::EPSILON } else { 0.0 };
@@ -405,8 +405,8 @@ fn parent_value(
   (err <= REFERENCE).then_some(part / mass)
 }
 
-/// The cdf at the law's quantiles from 1e-6 to `1 − 1e-6` against `(P(x) − P(lo))/(P(up) − P(lo))`, each difference
-/// from the tail that keeps its digits, to 1e-12 wherever the reference holds 2e-13.
+/// The cdf at the quantiles from 1e-6 to `1 − 1e-6` against `(P(x) − P(lo))/(P(up) − P(lo))`, each
+/// difference from the tail that keeps its digits, to 1e-12 wherever the reference holds 2e-13.
 fn parent_check(
   law: &impl DistributionExt,
   (lo, up): (f64, f64),
@@ -445,8 +445,8 @@ fn kolmogorov(d: f64, n: f64) -> f64 {
   (2.0 * sum).clamp(0.0, 1.0)
 }
 
-/// The best KS p-value of 10⁴ draws over three seeds against the law's own cdf: a draw is a double, so the share at or
-/// below `x` is measured against `[F(x), F(x⁺)]` and the share below it against `[F(x⁻), F(x)]`.
+/// The best KS p-value of 10⁴ draws over three seeds against the law's cdf: a draw is a double, so
+/// the share at or below `x` meets `[F(x), F(x⁺)]` and the share below it `[F(x⁻), F(x)]`.
 fn ks_best_p<D: DistributionExt + Distribution<f64>>(law: &D) -> f64 {
   let gap = |v: f64, lo: f64, hi: f64| (lo - v).max(v - hi).max(0.0);
   [2718u64, 999, 42]

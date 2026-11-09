@@ -1,5 +1,5 @@
-//! The truncated laws' parents from the crate's own special functions: both tails at a point, each with a bound on its
-//! relative error, so a survey compares a truncated cdf only where its reference holds its digits.
+//! The truncated laws' parents from the crate's special functions: both tails at a point, each with
+//! a relative error bound, so a survey compares a cdf only where its reference holds digits.
 
 use std::f64::consts::FRAC_1_SQRT_2;
 use std::f64::consts::FRAC_2_SQRT_PI;
@@ -58,8 +58,8 @@ impl Tails {
   }
 }
 
-/// The parent's mass between `l` and `r` and its relative error bound, from the tail whose difference keeps more
-/// digits: a difference that cancels carries its terms' errors over its own size, and one below 1e-290 counts none.
+/// The parent's mass on `[l, r]` with its error bound, from the tail whose difference keeps more
+/// digits: a cancelling difference carries its terms' errors over its size; below 1e-290, none.
 pub fn between(l: Tails, r: Tails) -> (f64, f64) {
   let form = |big: f64, e_big: f64, small: f64, e_small: f64| {
     let v = big - small;
@@ -74,8 +74,8 @@ pub fn between(l: Tails, r: Tails) -> (f64, f64) {
   if by_p.1 <= by_q.1 { by_p } else { by_q }
 }
 
-/// A tail's error bound, unbounded where the value or the bound left its range; an underflowed 0 holds no digit worth
-/// a bound.
+/// A tail's error bound, unbounded where the value or the bound left its range; an underflowed 0
+/// holds no digit worth a bound.
 fn bounded(v: f64, err: f64) -> f64 {
   if v == 0.0 {
     0.0
@@ -124,8 +124,8 @@ pub fn normal(mu: f64, sigma: f64, x: f64) -> Tails {
   }
 }
 
-/// `Gamma(k, θ)` at `x`: `u = x/θ` to double-double, its rest carried by the density `u^{k−1}e^{−u}/Γ(k)`, and each
-/// tail's error by the branch `gamma_p` and `gamma_q` take, which forms one tail as one minus the other.
+/// `Gamma(k, θ)` at `x`: `u = x/θ` in double-double, its rest through the density, each tail's
+/// error by the branch `gamma_p` and `gamma_q` take (one tail as one minus the other).
 pub fn gamma(k: f64, theta: f64, x: f64) -> Tails {
   if x <= 0.0 {
     return Tails::limit(0.0);

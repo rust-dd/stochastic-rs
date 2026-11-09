@@ -1,5 +1,5 @@
-//! The normal's mgf summed in one frame scaled below the doubles' range, and its plain path, against mpmath at 60 and
-//! 120 digits.
+//! The normal's mgf summed in one frame scaled below the doubles' range, and its plain path,
+//! against mpmath at 60 and 120 digits.
 
 use stochastic_rs_distributions::traits::DistributionExt;
 use stochastic_rs_distributions::truncated::SimdTruncatedNormal;
@@ -12,8 +12,8 @@ fn mgf(mu: f64, sigma: f64, lo: f64, up: f64, t: f64) -> f64 {
     .unwrap()
 }
 
-/// Past the doubles the limit comes from the whole exponent: the plain mass's `α²/2` outweighs `t(μ + σ²t/2) < 0` in
-/// the first law, and two bounds an ulp apart either side of the balance read 0 and `+∞`.
+/// Past the doubles the whole exponent gives the limit: the plain mass's `α²/2` outweighs
+/// `t(μ + σ²t/2) < 0` in the first law; bounds an ulp either side of the balance read 0 and `+∞`.
 #[test]
 fn past_the_doubles_the_limit_is_the_whole_sums() {
   let inf = f64::INFINITY;
@@ -31,8 +31,8 @@ fn past_the_doubles_the_limit_is_the_whole_sums() {
   }
 }
 
-/// A bound on `μ`'s far side clamping a tilt whose offset `σt − z` passes the doubles, past `4m·MAX` (σ = 12, 15.99) or
-/// below it with the far bound beside (σ = 7.999): mpmath's value at 60 and 120 digits.
+/// A bound on `μ`'s far side clamping a tilt whose offset `σt − z` passes the doubles, past
+/// `4m·MAX` (σ = 12, 15.99) or below it beside the far bound (σ = 7.999); mpmath, 60/120 digits.
 #[test]
 fn a_clamped_tilt_past_the_doubles_reads_its_value() {
   let (max, inf) = (f64::MAX, f64::INFINITY);
@@ -55,8 +55,8 @@ fn a_clamped_tilt_past_the_doubles_reads_its_value() {
   }
 }
 
-/// A steep clamp whose rate `r` overflows while `rW` is 9 to 36 keeps its `e^{−rW}`: `MAX/4`, `MAX/2`, its successor
-/// past `4m·MAX`, and `MAX`, with the mirrors; mpmath at 60 and 120 digits.
+/// A steep clamp whose rate `r` overflows while `rW` is 9 to 36 keeps its `e^{−rW}`: `MAX/4`,
+/// `MAX/2`, its successor past `4m·MAX`, and `MAX`, with the mirrors; mpmath at 60 and 120 digits.
 #[test]
 fn a_steep_clamp_whose_rate_overflows_keeps_its_far_end() {
   let max = f64::MAX;
@@ -80,8 +80,8 @@ fn a_steep_clamp_whose_rate_overflows_keeps_its_far_end() {
   }
 }
 
-/// `σ²t/2 = −μ` exactly: the exponent's two terms past the doubles cancel to 0, and the mgf is the masses' ratio 2, to
-/// 1e-12 where a 4ε change in every `exp` and `ln` moves it by 2.5e-15; `μ` an ulp either side leaves `+∞` and 0.
+/// `σ²t/2 = −μ` exactly: the exponent's two overflowing terms cancel, the mgf is the masses' ratio
+/// 2 to 1e-12 (4ε per `exp` or `ln` moves it 2.5e-15); `μ` an ulp off reads `+∞` or 0.
 #[test]
 fn an_exactly_cancelling_exponent_keeps_its_finite_value() {
   let (mu, t) = (-1.2640029854500659e308, 1.1235582092889474e308);

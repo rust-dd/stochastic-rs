@@ -1,5 +1,5 @@
-//! Random laws: the log-uniform draw over every admissible parameter, and the strata it misses (`strata.rs`). Each runs
-//! `sweep`'s checks: ranges, round trips, the parents, the cdf beside its bounds, moments and the mgf against mpmath.
+//! Random laws, log-uniform over every admissible parameter, and the strata that misses; each runs
+//! `sweep`: ranges, round trips, parents, the cdf beside its bounds, moments and mgf (mpmath).
 
 use stochastic_rs_distributions::truncated::SimdTruncatedBeta;
 use stochastic_rs_distributions::truncated::SimdTruncatedExp;
@@ -457,8 +457,8 @@ fn strata_answer_inside_their_ranges() {
   assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-/// The table's laws are the generator's at its seed: the same strata and families, every parameter within 1e-9 of
-/// it, the room `10^x` needs between libms (Apple's `exp10`, glibc's `pow`).
+/// The table's laws are the generator's at its seed: the same strata and families, every parameter
+/// within 1e-9 of it, the room `10^x` needs between libms (Apple's `exp10`, glibc's `pow`).
 #[test]
 fn the_table_is_the_generators() {
   let drawn: Vec<Case> = cases(0x5eed_2026, 50)

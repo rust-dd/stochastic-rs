@@ -1,5 +1,5 @@
-//! Moments of a law with a shape below 1 whose bound lies between its singular end's rungs, against mpmath at 60 and
-//! 120 digits (the upper incomplete gamma's closed forms for the gammas, tanh-sinh quadrature for the betas).
+//! Moments of a shape below 1 with a bound between its singular end's rungs, against mpmath at 60
+//! and 120 digits (closed forms in the upper incomplete gamma for gammas, tanh-sinh for betas).
 
 use stochastic_rs_distributions::traits::DistributionExt;
 use stochastic_rs_distributions::truncated::SimdTruncatedBeta;
@@ -25,8 +25,8 @@ fn five(name: &str, law: &impl DistributionExt, want: [f64; 5]) {
   }
 }
 
-/// The singular panel from the bound to the next rung: a frame per power would put its own branch point at
-/// `(lo/rung)^{e+i}` beside the panel; the exponential tail's fourth moment also needs the sums past the first clip.
+/// The singular panel from the bound to the next rung, where a frame per power would put its branch
+/// point at `(lo/rung)^{e+i}`; the exponential tail's fourth moment needs sums past the first clip.
 #[test]
 fn a_gamma_bound_between_two_rungs() {
   let laws: [(&str, [f64; 4], [f64; 5]); 3] = [

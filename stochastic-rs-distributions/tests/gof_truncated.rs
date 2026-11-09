@@ -1,5 +1,5 @@
-//! Kolmogorov-Smirnov goodness-of-fit for the four `Truncated*` wrappers against their own `cdf` (design, citations and
-//! alpha in `tests/gof_support/mod.rs`); the gamma and beta in both regimes, rejection and inversion.
+//! Kolmogorov–Smirnov goodness of fit of the four `Truncated*` laws against their own `cdf`; the
+//! gamma and beta in both regimes, rejection and inversion.
 
 mod gof_support;
 

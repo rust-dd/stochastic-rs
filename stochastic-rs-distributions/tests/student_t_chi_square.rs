@@ -1,5 +1,5 @@
-//! The Student-t cdf, density and quantile and the χ² quantile and median against mpmath at 60 and 120 digits: near zero,
-//! across `x² = ν`, in both tails, past `x² = f64::MAX`, near level 1, at large `ν` and at small shape.
+//! Student-t cdf, density and quantile, χ² quantile and median against mpmath at 60 and 120 digits:
+//! near 0, across `x² = ν`, both tails, past `x² = f64::MAX`, near level 1, large `ν`, small shape.
 
 use stochastic_rs_distributions::DistributionExt;
 use stochastic_rs_distributions::chi_square::SimdChiSquared;
@@ -111,8 +111,8 @@ const T_CDF: [(f64, f64, f64); 102] = [
   (9.99e21, 5.0, 0.9999997133484281),
 ];
 
-/// `(ν, x, F(x))` where `|ln F|` reaches 700: a far-tail survey's worst cells, `p = 1e-300` at `ν = 1e6` and values below
-/// `e^{−700}`.
+/// `(ν, x, F(x))` where `|ln F|` reaches 700: a far-tail survey's worst cells, `p = 1e-300` at
+/// `ν = 1e6` and values below `e^{−700}`.
 const T_FAR_CDF: [(f64, f64, f64); 11] = [
   (
     5.510152999812152e16,
@@ -353,8 +353,8 @@ fn cdf_agrees(got: f64, want: f64) -> bool {
   (got - want).abs() <= tol
 }
 
-/// Within `4e-15 · max(1, κ) · max(1, |ln p̃|) · |q|`, the error a relative rounding of `p̃` carries; a zero or infinite
-/// truth exactly.
+/// Within `4e-15 · max(1, κ) · max(1, |ln p̃|) · |q|`, the error a relative rounding of `p̃`
+/// carries; a zero or infinite truth exactly.
 fn quantile_agrees(got: f64, want: f64, p: f64, kappa: f64) -> bool {
   if want == 0.0 || want.is_infinite() {
     return got == want;
@@ -452,8 +452,8 @@ fn the_chi_square_quantile_and_median_match_mpmath() {
   );
 }
 
-/// `P(T ≤ −|x|) ≤ ½` holds to the bit, so the cdf never crosses `F(0) = ½` the wrong way where the lower tail's factor
-/// rounds past 1.
+/// `P(T ≤ −|x|) ≤ ½` holds to the bit, so the cdf never crosses `F(0) = ½` the wrong way where the
+/// lower tail's factor rounds past 1.
 #[test]
 fn the_t_cdf_is_monotone_through_zero_at_tiny_nu() {
   let magnitudes: Vec<f64> = (-3000..=3000)

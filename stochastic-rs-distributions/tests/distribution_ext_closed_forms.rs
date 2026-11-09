@@ -39,8 +39,8 @@ fn ged_moments_and_quantile() {
 
 type QuantileRows = Vec<(&'static str, Box<dyn DistributionExt>, Vec<(f64, f64)>)>;
 
-/// Both tails against mpmath (50 and 80 digits agreeing): `ln(1 − p)` through `ln_1p`, the Cauchy cot on the smaller tail
-/// level, the GED's gamma root from its exact tail level; 1e-13 holds the rounded `1/k` times `ln 1e-300` in Weibull's power.
+/// Both tails against mpmath (50 and 80 digits): `ln(1 − p)` through `ln_1p`, the Cauchy cot on the
+/// smaller tail, the GED's gamma root from its exact tail; 1e-13 covers Weibull's rounded `1/k`.
 #[test]
 fn closed_form_quantiles_keep_their_digits_in_both_tails() {
   let (mid, top, far) = (0.5 - 2f64.powi(-30), 1.0 - 2f64.powi(-53), 1.0 - 1e-10);
@@ -155,8 +155,8 @@ fn closed_form_quantiles_keep_their_digits_in_both_tails() {
   }
 }
 
-/// The gamma root solved in its own tail (mpmath, 50 and 80 digits agreeing); a root below the f64 range is 0. The bar
-/// scales with `1/shape`, the lower tail's `d ln x / d ln P`.
+/// The gamma root solved in its own tail (mpmath, 50 and 80 digits agreeing); a root below the f64
+/// range is 0. The bar scales with `1/shape`, the lower tail's `d ln x / d ln P`.
 #[test]
 fn gamma_quantile_keeps_its_digits_in_both_tails() {
   let (top, far) = (1.0 - 2f64.powi(-53), 1.0 - 1e-10);
@@ -325,8 +325,8 @@ fn truncated_normal_moments_quantile_entropy_mgf() {
   assert!(rel(open_up.median().unwrap(), 1.075_932_306_215_886_5) < 1e-10);
 }
 
-/// Shifts that push `Φ(β − σt) − Φ(α − σt)` into a tail, where `½(1 + erf)` cancels to `0`; finite at 40σ, where that
-/// mass is subnormal.
+/// Shifts that push `Φ(β − σt) − Φ(α − σt)` into a tail, where `½(1 + erf)` cancels to `0`; finite
+/// at 40σ, where that mass is subnormal.
 #[test]
 fn truncated_normal_mgf_keeps_its_digits_in_the_tails() {
   let wide = (0.5, 2.0, -1.0, 2.0);
@@ -528,8 +528,8 @@ fn hypergeometric_mean_variance_skewness_at_the_edges() {
   assert!(law(1, 1, 1).skewness().unwrap().is_nan());
 }
 
-/// mpmath at 60 digits on both sides of `λ/μ = 355`, where `e^{2λ/μ}` alone overflows, and below it where `Φ(−b)` alone
-/// underflows (`λ = 354` at `x = ½`).
+/// mpmath at 60 digits on both sides of `λ/μ = 355`, where `e^{2λ/μ}` alone overflows, and below it
+/// where `Φ(−b)` alone underflows (`λ = 354` at `x = ½`).
 #[test]
 fn inverse_gaussian_cdf_past_the_overflow() {
   let rel = |a: f64, b: f64| ((a - b) / b).abs();

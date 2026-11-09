@@ -1,18 +1,5 @@
-//! Kolmogorov-Smirnov goodness-of-fit: continuous samplers against their
-//! own `cdf`. See `tests/gof_support/mod.rs` for the full design
-//! rationale, citations, alpha, and the complete per-type coverage
-//! table. `SimdNormal`, `SimdExp` and `SimdGamma` are
-//! covered by their own (refactored) in-crate unit tests instead of
-//! here, to avoid duplicate coverage — see that table for exactly where
-//! each type's test lives.
-//!
-//! This file covers the eleven remaining "plain" continuous types (i.e.
-//! excluding the four `Truncated*` wrappers, which get their own file:
-//! `tests/gof_truncated.rs`): `SimdUniform`, `SimdLogNormal`,
-//! `SimdBeta`, `SimdCauchy`, `SimdChiSquared`, `SimdStudentT`,
-//! `SimdPareto`, `SimdWeibull`, `SimdInverseGauss`, `SimdGed`, and
-//! `SimdGev` (all three of its Gumbel / Frechet / reverse-Weibull
-//! shapes).
+//! Kolmogorov–Smirnov goodness of fit of the plain continuous laws against their own `cdf`; the
+//! normal, exponential and gamma test theirs in their own modules, the truncated laws elsewhere.
 
 mod gof_support;
 
@@ -238,10 +225,8 @@ fn simd_skew_t_matches_own_cdf() {
   });
 }
 
-/// A CDF tabulated from a density by midpoint sums on `[lo, hi]` with
-/// linear interpolation between grid points: the null for samplers whose
-/// law has a closed-form density but no closed-form CDF (VG, GIG, GH). The
-/// mass outside `[lo, hi]` is negligible for the parameters used.
+/// The cdf of a law with a density but no closed-form cdf (VG, GIG, GH): midpoint sums on
+/// `[lo, hi]`, interpolated linearly, the mass outside negligible at the parameters used.
 fn integrated_cdf(pdf: impl Fn(f64) -> f64, lo: f64, hi: f64, n: usize) -> impl Fn(f64) -> f64 {
   let h = (hi - lo) / n as f64;
   let mut table = Vec::with_capacity(n + 1);

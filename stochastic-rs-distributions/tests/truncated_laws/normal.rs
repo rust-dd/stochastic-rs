@@ -71,8 +71,8 @@ fn bulk_and_open_tail() {
   );
 }
 
-/// Both bounds past 8σ, where `Φ(β) − Φ(α)` keeps no digit: the normalised kernel's integral holds [100, 101] to the
-/// bulk's accuracy.
+/// Both bounds past 8σ, where `Φ(β) − Φ(α)` keeps no digit: the normalised kernel's integral holds
+/// [100, 101] to the bulk's accuracy.
 #[test]
 fn far_tails() {
   for (lo, up, mid, points, want) in [
@@ -191,8 +191,8 @@ fn far_tails() {
   );
 }
 
-/// Widths down to 1e-6σ, where central moments from raw moments cancel `(mean/width)⁴`-fold: moments about the
-/// midpoint keep them (references at the f64 bounds `0.3` and `0.3 + w`).
+/// Widths down to 1e-6σ, where central moments from raw moments cancel `(mean/width)⁴`-fold:
+/// moments about the midpoint keep them (references at the f64 bounds `0.3` and `0.3 + w`).
 #[test]
 fn narrow_and_straddling_intervals() {
   for (w, mean, variance, skewness, kurtosis) in [
@@ -278,8 +278,8 @@ fn narrow_and_straddling_intervals() {
   }
 }
 
-/// The mgf integrates `e^{−z²/2 + sz}`, `s = σt`, on the law's own interval, so no `s²` cancels: σ far wider than the
-/// interval and a huge `t` keep their digits (mpmath at 60 and 120 digits agree to 43 or more).
+/// The mgf integrates `e^{−z²/2 + sz}`, `s = σt`, on the law's interval, so no `s²` cancels: σ far
+/// wider than the interval and a huge `t` keep their digits (mpmath at 60 and 120 agree to 43+).
 #[test]
 fn mgf_integrates_the_tilted_kernel() {
   for (mu, sigma, lo, up, t, want) in [
@@ -312,8 +312,8 @@ fn mgf_integrates_the_tilted_kernel() {
   );
 }
 
-/// Sums in units of the clipped width and `σ` applied with it once: at σ = 1e200 on `[0, 1]`, where `σ²` overflows
-/// and the standardised width squared underflows, the law is the uniform to 400 digits (mpmath).
+/// Sums in the clipped width's unit, `σ` applied once: at σ = 1e200 on `[0, 1]`, where `σ²`
+/// overflows and `(w/σ)²` underflows, the law is uniform to 400 digits (mpmath).
 #[test]
 fn moments_at_an_extreme_scale() {
   moments_match(
@@ -323,8 +323,8 @@ fn moments_at_an_extreme_scale() {
   );
 }
 
-/// A level next to 1 subtracts the mass past the upper clip, and the least level walks the deep range relative to its
-/// start's kernel value, so no node underflows (mpmath, 60 and 120 digits).
+/// A level next to 1 subtracts the mass past the upper clip, and the least level walks the deep
+/// range relative to its start's kernel value, so no node underflows (mpmath, 60 and 120 digits).
 #[test]
 fn quantile_tails_keep_their_digits() {
   let whole = tn(0.0, 1.0, f64::NEG_INFINITY, f64::INFINITY);
@@ -363,8 +363,8 @@ fn quantile_tails_keep_their_digits() {
   }
 }
 
-/// A clipped end within an ulp of its bound stays an exact offset: at 1e9σ the law is its exponential tail, and the
-/// tilted kernel never collapses, so a huge `t` reads `+∞` or 0 as `e^{tx}` goes (mpmath, 60 and 120 digits).
+/// A clipped end within an ulp of its bound stays an exact offset: at 1e9σ the law is exponential,
+/// the tilted kernel never collapses, and a huge `t` reads `e^{tx}`'s `+∞` or 0 (mpmath).
 #[test]
 fn an_end_closer_than_an_ulp() {
   let tail = tn(0.0, 1.0, 1e9, f64::INFINITY);
@@ -397,8 +397,8 @@ fn quantile_ends_are_the_bounds() {
   assert_eq!(tn(0.0, 1.0, 8.0, 9.0).quantile(1.0), Some(9.0));
 }
 
-/// Past `|σt| ≈ 1.34e154` the bracket `(s² + c²)/2` overflows to the mgf's +∞ with no `∞ − ∞`; where `σt` itself
-/// overflows the tilt runs in `x − μ` (mpmath, 60 and 120 digits).
+/// Past `|σt| ≈ 1.34e154` the bracket `(s² + c²)/2` overflows to the mgf's +∞ with no `∞ − ∞`;
+/// where `σt` itself overflows the tilt runs in `x − μ` (mpmath, 60 and 120 digits).
 #[test]
 fn mgf_at_overflow() {
   let inf = f64::INFINITY;
@@ -431,8 +431,8 @@ fn mgf_at_overflow() {
   }
 }
 
-/// A tilt that clamps takes the bound itself as its reference point, a rate past 2²⁷ the exponential's mass, a local
-/// model's tilt its own unit, and `∞ − ∞` the term of larger log-magnitude (mpmath, 60 and 120 digits past the units).
+/// A clamping tilt takes the bound as its reference point, a rate past 2²⁷ the exponential's mass,
+/// a local model's tilt its own unit, `∞ − ∞` the term of larger log-magnitude (mpmath).
 #[test]
 fn mgf_from_the_clamped_bound() {
   let (inf, max) = (f64::INFINITY, f64::MAX);
@@ -495,8 +495,8 @@ fn mgf_from_the_clamped_bound() {
   }
 }
 
-/// The tilted mode's offset from a bound is formed exactly where `σt` and the bound round to one double (the first
-/// three), and the exponent's cancelling terms in double-double (mpmath, 60 and 120 digits past the units).
+/// The tilted mode's offset from a bound is exact where `σt` and the bound round to one double (the
+/// first three), the exponent's cancelling terms in double-double (mpmath, 60 and 120 digits).
 #[test]
 fn mgf_from_the_exact_offset() {
   let inf = f64::INFINITY;
@@ -518,8 +518,8 @@ fn mgf_from_the_exact_offset() {
   }
 }
 
-/// A bound whose `bound − μ` overflows standardises from halves: `TN(−1e308, 1e308, [−1e308, 1e308])` is the standard
-/// normal on `[0, 2]`, not `[0, ∞)` (mpmath, 60 and 120 digits).
+/// A `bound − μ` that overflows standardises from halves: `TN(−1e308, 1e308, [−1e308, 1e308])` is
+/// the standard normal on `[0, 2]`, not `[0, ∞)` (mpmath, 60 and 120 digits).
 #[test]
 fn a_bound_past_the_doubles_from_mu() {
   let law = tn(-1e308, 1e308, -1e308, 1e308);
@@ -556,8 +556,8 @@ fn a_bound_past_the_doubles_from_mu() {
   }
 }
 
-/// An interval past `μ + σ·f64::MAX` holds the law closer to its near bound than any double: every draw, quantile and
-/// the mean are that bound and the variance 0 (its shape is pinned in `narrow_laws`).
+/// An interval past `μ + σ·MAX` holds the law closer to its near bound than any double: every draw,
+/// quantile and the mean are that bound, the variance 0 (`narrow_laws` pins its shape).
 #[test]
 fn an_interval_past_the_doubles_reach() {
   let law = tn(0.0, 1e-300, 1e10, 1e20);

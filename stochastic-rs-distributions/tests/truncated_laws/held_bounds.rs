@@ -1,5 +1,5 @@
-//! The normal's bounds at their own doubles and their width, and answers mapped back from the exact point nearest them,
-//! against mpmath at 60 and 120 digits.
+//! The normal's bounds at their own doubles and their width, and answers mapped back from the exact
+//! point nearest them, against mpmath at 60 and 120 digits.
 
 use stochastic_rs_distributions::traits::DistributionExt;
 use stochastic_rs_distributions::truncated::SimdTruncatedNormal;
@@ -23,8 +23,8 @@ fn rows(name: &str, cells: &[(&str, f64, f64)]) {
   }
 }
 
-/// A narrow interval far from `μ` keeps the width `(up − lo)/σ`, which the bounds' own roundings would change by an ulp
-/// of their place: one ulp wide at 1e8 sd, eight ulps at 1e7 sd.
+/// A narrow interval far from `μ` keeps the width `(up − lo)/σ`, which the bounds' own roundings
+/// would change by an ulp of their place: one ulp wide at 1e8 sd, eight ulps at 1e7 sd.
 #[test]
 fn a_narrow_interval_far_from_mu_keeps_its_width() {
   let one = tn(0.3, 0.7, 7e7, 70000000.00000001);
@@ -60,8 +60,8 @@ fn a_narrow_interval_far_from_mu_keeps_its_width() {
   );
 }
 
-/// A mean far from `μ` is its bound plus the engine's offset, not `μ + σz`, which cancels to `ulp(μ)`; the density
-/// there reads the point's offset from that bound, its far end open or not.
+/// A mean far from `μ` is its bound plus the engine's offset, not `μ + σz`, which cancels to
+/// `ulp(μ)`; the density there reads the point's offset from that bound, its far end open or not.
 #[test]
 fn a_mean_far_from_mu_maps_back_from_its_bound() {
   let far = tn(-1000.0, 1.1, 0.0, f64::INFINITY);
@@ -94,8 +94,8 @@ fn a_mean_far_from_mu_maps_back_from_its_bound() {
   );
 }
 
-/// A flat law's mean and middle quantiles are offsets from its bounds' midpoint, the odd part through `sinh` of its
-/// slope: about 0 they keep the digits a sum of the kernel's values loses below ε of the width.
+/// A flat law's mean and middle quantiles are offsets from its midpoint, the odd part by `sinh`
+/// of its slope: about 0 they keep the digits a sum of kernel values loses below ε of the width.
 #[test]
 fn a_flat_law_keeps_its_offset_from_the_midpoint() {
   let far = tn(1e300, 1e300, -1.0, 1.0);
@@ -119,8 +119,8 @@ fn a_flat_law_keeps_its_offset_from_the_midpoint() {
   );
 }
 
-/// About `μ` the mean's offset is `(k(α) − k(β))/∫k`, which keeps its digits where summed odd powers cancel to ε of the
-/// width; off `μ` (α = 0) and the flat laws keep their own routes, either side of each switch.
+/// About `μ` the mean's offset is `(k(α) − k(β))/∫k`, keeping digits where summed odd powers cancel
+/// to ε of the width; off `μ` (α = 0) and flat laws keep their routes, either side of each switch.
 #[test]
 fn a_mean_near_mu_keeps_its_digits() {
   let inf = f64::INFINITY;
@@ -161,8 +161,8 @@ fn a_mean_near_mu_keeps_its_digits() {
   assert_eq!(symmetric.mean().unwrap(), 0.0);
 }
 
-/// About `μ` with both bounds past 37.8σ, where both kernel values lie below the normal doubles: σ from 1e5 to 1e300,
-/// with the mirrors; mpmath's `σ(φ(α) − φ(β))/(Φ(β) − Φ(α))` at 60 and 120 digits.
+/// About `μ` with both bounds past 37.8σ, both kernel values below the normal doubles: σ from 1e5
+/// to 1e300 and the mirrors; mpmath's `σ(φ(α) − φ(β))/(Φ(β) − Φ(α))` at 60 and 120 digits.
 #[test]
 fn a_mean_whose_kernel_values_pass_below_the_doubles() {
   for (sigma, lo, up, want) in [
@@ -182,8 +182,8 @@ fn a_mean_whose_kernel_values_pass_below_the_doubles() {
   }
 }
 
-/// Bounds whose difference passes MAX about `μ`: the half gap `(β − α)(β + α)/2` from the bounds' halves (mpmath's closed
-/// form at 60 and 120 digits); the edge `up − lo = MAX` and one ulp past it read alike.
+/// Bounds whose difference passes MAX about `μ`: the half gap `(β − α)(β + α)/2` from the bounds'
+/// halves (mpmath at 60 and 120 digits); the edge `up − lo = MAX` and one ulp past it read alike.
 #[test]
 fn a_mean_whose_bounds_lie_further_apart_than_max() {
   let half = f64::MAX / 2.0;

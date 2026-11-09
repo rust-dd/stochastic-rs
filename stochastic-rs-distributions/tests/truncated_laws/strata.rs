@@ -1,5 +1,5 @@
-//! The strata the log-uniform draw misses: unit and ordinary shapes, beta bounds at 0 or 1, shapes below 1 between
-//! rungs, normals far from `μ` or past `μ ± σ·MAX`, every family's extremes, the normal's mgf past the doubles.
+//! Strata the log-uniform draw misses: unit and plain shapes, beta bounds at 0 or 1, sub-1 shapes
+//! between rungs, normals far from `μ` or past `μ ± σ·MAX`, extremes, mgfs past the doubles.
 
 use crate::survey::Case;
 use crate::survey::Gen;
@@ -366,8 +366,8 @@ fn extreme(g: &mut Gen) -> Option<Law> {
   }
 }
 
-/// I-4's family (`σt` past `MAX` with `μ + σ²t/2 < 0`), New Breakage 1's exactly cancelling exponents and their
-/// neighbours an ulp off, and `|μ|` near `MAX` with `σ|t|` near it: each law with the `t` it is drawn for.
+/// `σt` past `MAX` with `μ + σ²t/2 < 0`, exponents that cancel exactly and their neighbours an ulp
+/// off, and `|μ|` near `MAX` with `σ|t|` near it: each law with the `t` it is drawn for.
 fn mgf(g: &mut Gen) -> Option<(Law, Vec<f64>)> {
   let mirror = g.coin(0.5);
   let (law, ts) = match g.next() % 3 {

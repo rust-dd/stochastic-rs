@@ -1,5 +1,5 @@
-//! Truncated betas and gammas with a shape beside 1, whose mode sits beside a bound, against mpmath at 60 and 120 digits
-//! (`near_unit_shapes.txt`, one law a row).
+//! Truncated betas and gammas with a shape beside 1, whose mode sits beside a bound, against mpmath
+//! at 60 and 120 digits (`near_unit_shapes.txt`, one law a row).
 
 use stochastic_rs_distributions::traits::DistributionExt;
 use stochastic_rs_distributions::truncated::SimdTruncatedBeta;

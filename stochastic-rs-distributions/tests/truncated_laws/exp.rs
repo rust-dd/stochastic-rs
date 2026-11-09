@@ -166,8 +166,8 @@ fn moments_at_extreme_rates() {
   }
 }
 
-/// `E[e^{itX}] = e^{it·lo} λ/(λ − it) · (1 − e^{−(λ−it)L})/(1 − e^{−λL})` by mpmath at `t = f64(0.7)`; a small
-/// `|(λ − it)L|` takes the series, and an `e^{−λL}` that underflows the open tail's `1/(1 − it/λ)`, divided scaled.
+/// `E e^{itX} = e^{it·lo} λ/(λ − it)·(1 − e^{−(λ−it)L})/(1 − e^{−λL})` at `t = f64(0.7)` (mpmath):
+/// a small `|(λ − it)L|` takes the series, an underflowing `e^{−λL}` the open tail's, scaled.
 #[test]
 fn characteristic_function_matches_mpmath() {
   for (lam, lo, up, re, im) in [
@@ -207,8 +207,8 @@ fn characteristic_function_matches_mpmath() {
   );
 }
 
-/// The phase from the exact turns of `t·lower` (Payne–Hanek past the doubles) and `λ/(λ − it)` by Smith's division, so
-/// an inexact or overflowing product and an overflowing `t/λ` or `tL` keep the value (mpmath, 60 and 120 digits).
+/// The phase from the exact turns of `t·lower` (Payne–Hanek past the doubles), `λ/(λ − it)` by
+/// Smith's division: an inexact or overflowing `t·lower`, `t/λ` or `tL` keeps the value (mpmath).
 #[test]
 fn characteristic_function_past_the_doubles() {
   for (lam, lo, up, t, re, im) in [
@@ -257,8 +257,8 @@ fn characteristic_function_past_the_doubles() {
   }
 }
 
-/// At an infinite `t` the mgf is its limit, +∞ where the law has mass in `t`'s direction past 0 and 0 otherwise, and
-/// the cf its Riemann–Lebesgue limit 0; the gamma and beta have no mgf at any `t`.
+/// At an infinite `t` the mgf is its limit, +∞ where the law has mass in `t`'s direction past 0 and
+/// 0 otherwise, and the cf its Riemann–Lebesgue limit 0; the gamma and beta have no mgf at any `t`.
 #[test]
 fn infinite_t_takes_the_limit() {
   let (inf, ninf) = (f64::INFINITY, f64::NEG_INFINITY);
@@ -306,8 +306,8 @@ fn infinite_t_takes_the_limit() {
   }
 }
 
-/// Below the normal doubles `λ` puts `m/λ` past them: the quantile's first order and the density take `λ` apart, and
-/// the least normal rate either side reads the same doubles mpmath gives.
+/// Below the normal doubles `λ` puts `m/λ` past them: the quantile's first order and the density
+/// take `λ` apart, and the least normal rate either side reads the same doubles mpmath gives.
 #[test]
 fn a_subnormal_rate() {
   let inf = f64::INFINITY;
@@ -327,8 +327,8 @@ fn a_subnormal_rate() {
   }
 }
 
-/// Neither `λ²` nor `L²` is formed alone: a variance past `1e305` or below the normal doubles is mpmath's double, either
-/// side of `λL = 50`, past which the cut's share is below ε.
+/// Neither `λ²` nor `L²` is formed alone: a variance past `1e305` or below the normal doubles is
+/// mpmath's double, either side of `λL = 50`, past which the cut's share is below ε.
 #[test]
 fn a_variance_whose_factors_pass_the_doubles() {
   let inf = f64::INFINITY;
@@ -366,8 +366,8 @@ fn a_variance_whose_factors_pass_the_doubles() {
   }
 }
 
-/// The entropy's log of the mass over `λ` is `mass_per_rate`'s, `L·φ(λL)` where the tail mass underflows, so the
-/// uniform limit reads `ln L`, not `−∞`; ordinary laws either side read mpmath's doubles too.
+/// The entropy's log of the mass over `λ` is `mass_per_rate`'s, `L·φ(λL)` where the tail mass
+/// underflows, so the uniform limit reads `ln L`, not `−∞`; laws either side read mpmath's doubles.
 #[test]
 fn an_entropy_whose_mass_underflows() {
   for (lam, lo, up, want) in [
@@ -401,8 +401,8 @@ fn an_entropy_whose_mass_underflows() {
   }
 }
 
-/// A subnormal width or value keeps its digits: the cdf in a frame scaled by 2⁶⁴ or as `t·λ/m`, the mgf's factors as
-/// `m·2^k`; a value of a few subnormal ulps is mpmath's correctly rounded double, at least 0.06 ulp from a midpoint.
+/// A subnormal width or value keeps its digits: the cdf scaled by 2⁶⁴ or as `t·λ/m`, the mgf as
+/// `m·2^k`; a few-ulp subnormal is mpmath's correctly rounded double, ≥ 0.06 ulp off a midpoint.
 #[test]
 fn subnormal_widths_and_values() {
   let narrow = te(

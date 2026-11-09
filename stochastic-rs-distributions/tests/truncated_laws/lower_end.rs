@@ -1,5 +1,5 @@
-//! Points beside a law's lower end, where the end's own law holds, against mpmath at 60 and 120 digits; a value below
-//! the normal doubles is its correctly rounded double.
+//! Points beside a law's lower end, where the end's own law holds, against mpmath at 60 and 120
+//! digits; a value below the normal doubles is its correctly rounded double.
 
 use stochastic_rs_distributions::traits::DistributionExt;
 use stochastic_rs_distributions::truncated::SimdTruncatedBeta;
@@ -8,8 +8,8 @@ use stochastic_rs_distributions::truncated::SimdTruncatedNormal;
 
 use crate::rel;
 
-/// Below its unit's normal doubles a unit shape's gamma reads no `0·ln 0` in its regular factor; `k` an ulp-scale
-/// either side keeps its log term.
+/// Below its unit's normal doubles a unit shape's gamma reads no `0·ln 0` in its regular factor;
+/// `k` an ulp-scale either side keeps its log term.
 #[test]
 fn a_unit_gamma_beside_zero() {
   for (k, want) in [
@@ -28,8 +28,8 @@ fn a_unit_gamma_beside_zero() {
   }
 }
 
-/// Below its unit's normal doubles a gamma's cdf beside 0 is the mass from 0 alone, its power of the point scaled once:
-/// a clipped end reads its 0, an unclipped one its correctly rounded subnormal; above that the walk's normal value.
+/// Below the normal doubles a gamma's cdf beside 0 is the mass from 0, its power scaled once: a
+/// clipped end reads 0, an unclipped one its correctly rounded subnormal; above, the walk's value.
 #[test]
 fn a_gamma_cdf_beside_zero() {
   let inf = f64::INFINITY;
@@ -111,8 +111,8 @@ fn a_gamma_cdf_beside_zero() {
   );
 }
 
-/// Below the clip a subnormal cdf is its correctly rounded double (mpmath at 60 and 120 digits), each exact value at
-/// least 26ε from a rounding midpoint, where a sum of two rounded logs near −700 would leave 1e-13.
+/// Below the clip a subnormal cdf is its correctly rounded double (mpmath, 60 and 120 digits), each
+/// value 26ε or more from a midpoint, where a sum of two rounded logs near −700 would leave 1e-13.
 #[test]
 fn a_subnormal_cdf_below_the_clip() {
   let inf = f64::INFINITY;
@@ -158,8 +158,8 @@ fn a_subnormal_cdf_below_the_clip() {
   }
 }
 
-/// A lower bound far finer than the gamma's scale keeps its own digits in the unit: the cdf beside it and the mean
-/// against mpmath at 60 and 120 digits (shape ½ by erf, the tiny shape by its E1 limit).
+/// A lower bound far finer than the gamma's scale keeps its digits in the unit: the cdf beside it
+/// and the mean (mpmath at 60 and 120 digits; shape ½ by erf, the tiny shape by its E1 limit).
 #[test]
 fn a_gamma_lower_bound_far_below_its_scale() {
   let inf = f64::INFINITY;
@@ -177,8 +177,8 @@ fn a_gamma_lower_bound_far_below_its_scale() {
   }
 }
 
-/// A huge shape's mass against its upper bound: the variance, `1/λ²` of the exponential below it, formed in the law's
-/// coordinate before its square rounds (mpmath at 60 and 120 digits); in the unit it would underflow.
+/// A huge shape's mass against its upper bound: the variance, the exponential's `1/λ²`, formed in
+/// the law's coordinate before squaring, as in the unit it underflows (mpmath, 60 and 120 digits).
 #[test]
 fn a_gamma_variance_against_its_upper_bound() {
   for (k, theta, up, want) in [
@@ -202,8 +202,8 @@ fn a_gamma_variance_against_its_upper_bound() {
   }
 }
 
-/// Beside the lower end: a regular end's zone (`TG(1, 343.23)`, `TB(1, 0.384)`), a branch point's zone either side of its
-/// edge (`TB(1 + 1e-6, 1)`, `TG(1.058, 1)`), the walk beside a regular end, and next to 1 the walk for a tiny `t^e`.
+/// The lower end: a regular end's zone (`TG(1, 343.23)`, `TB(1, 0.384)`), a branch point's either
+/// side of its edge (`TB(1 + 1e-6, 1)`, `TG(1.058, 1)`), its walk, and a tiny `t^e`'s next to 1.
 #[test]
 fn the_zone_beside_the_lower_end() {
   let inf = f64::INFINITY;
@@ -252,8 +252,8 @@ fn the_zone_beside_the_lower_end() {
   assert!(next_to_one <= 1.0 && 1.0 - next_to_one <= 8.0 * f64::EPSILON);
 }
 
-/// Below `ZONE_MASS` the quantile beside a regular end takes the end's exponential where the curvature moves `ln k` by
-/// under ε, `t < √ε` here, else walks: a normal 32σ below its mode either side of that (mpmath at 60 and 120 digits).
+/// Below `ZONE_MASS` the quantile beside a regular end takes its exponential while the curvature
+/// moves `ln k` under ε (`t < √ε`), else walks: a normal 32σ below its mode on both sides (mpmath).
 #[test]
 fn the_zone_quantile_beside_a_regular_end() {
   let law = SimdTruncatedNormal::<f64>::new(32.0, 1.0, 0.0, f64::INFINITY);
@@ -271,8 +271,8 @@ fn the_zone_quantile_beside_a_regular_end() {
   }
 }
 
-/// A normal whose standardised offset from its lower bound the doubles hold only as a coarse subnormal reads it in the
-/// zone, either side of `2⁻¹⁰³²`; a quantile there, or a bound the walk returns, maps back from the bound itself.
+/// A normal whose standardised offset from its lower bound is a coarse subnormal reads it in the
+/// zone, either side of `2⁻¹⁰³²`; a quantile there, or a bound the walk returns, maps back from it.
 #[test]
 fn a_normal_beside_its_lower_bound() {
   let (max, inf) = (f64::MAX, f64::INFINITY);
@@ -320,8 +320,8 @@ fn a_normal_beside_its_lower_bound() {
   );
 }
 
-/// Below the lower clip the cdf's bound `k(x)(x − lo)/∫k` reads the point's exact offset, which a standardised double
-/// rounds to 0 beside the bound, and an open end's offset capped at `MAX`.
+/// Below the lower clip the cdf's bound `k(x)(x − lo)/∫k` reads the point's exact offset, which a
+/// standardised double rounds to 0 beside the bound, and an open end's offset capped at `MAX`.
 #[test]
 fn below_the_lower_clip_the_bound_reads_the_exact_offset() {
   let clipped = SimdTruncatedNormal::<f64>::new(

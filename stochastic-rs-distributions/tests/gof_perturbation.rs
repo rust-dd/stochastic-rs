@@ -1,5 +1,5 @@
-//! Deliberate-perturbation demonstrations: the KS and chi-square harnesses reject a visibly wrong reference in
-//! every pinned seed (design, citations and alpha in `tests/gof_support/mod.rs`).
+//! Deliberate-perturbation demonstrations: the KS and chi-square harnesses reject a visibly wrong
+//! reference in every pinned seed (design, citations and alpha in `tests/gof_support/mod.rs`).
 
 mod gof_support;
 
@@ -17,9 +17,7 @@ use stochastic_rs_stats::goodness_of_fit::chi_square::pool_integer_bins;
 use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::KolmogorovSmirnovConfig;
 use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::kolmogorov_smirnov_test;
 
-/// A `SimdNormal(0, 1)` sampler tested against a *deliberately shifted*
-/// `SimdNormal(0.15, 1)` reference must be rejected — every one of the
-/// three pinned seeds, not just some.
+/// `SimdNormal(0, 1)` draws against the shifted `SimdNormal(0.15, 1)` are rejected on every seed.
 #[test]
 fn perturbation_demo_ks_catches_shifted_mean() {
   const M: usize = 5_000;
@@ -47,9 +45,7 @@ fn perturbation_demo_ks_catches_shifted_mean() {
   );
 }
 
-/// A `SimdPoisson(10)` sampler tested against a *deliberately
-/// mismatched* `SimdPoisson(13)` reference's bins must be rejected in
-/// every one of the three pinned seeds.
+/// `SimdPoisson(10)` draws against `SimdPoisson(13)`'s bins are rejected on every seed.
 #[test]
 fn perturbation_demo_chi_square_catches_mismatched_rate() {
   const M: usize = 20_000;

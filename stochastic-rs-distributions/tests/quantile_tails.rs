@@ -81,8 +81,8 @@ fn truncated_exponential_quantile_keeps_its_upper_tail() {
   );
 }
 
-/// Next to level 1, where `lower + y` and `λL` round, the quantile stays at or below `upper`: two laws at that
-/// edge, then 2 000 with `lower > 0` and `λL ∈ (0, 2]` over the last 64 floats below 1.
+/// Next to level 1, where `lower + y` and `λL` round, the quantile stays ≤ `upper`: two laws at
+/// that edge, then 2 000 with `lower > 0` and `λL ∈ (0, 2]` over the last 64 floats below 1.
 #[test]
 fn truncated_exponential_quantile_never_passes_upper() {
   let top = 1.0 - 2f64.powi(-53);
@@ -183,8 +183,8 @@ fn truncated_exponential_moments_at_a_huge_finite_upper() {
   }
 }
 
-/// θ enters the solver's exponent, so a unit root below the normals keeps its digits at any scale, and a subnormal
-/// result rounds once.
+/// θ enters the solver's exponent, so a unit root below the normals keeps its digits at any scale,
+/// and a subnormal result rounds once.
 #[test]
 fn gamma_quantile_at_a_large_scale() {
   for (shape, scale, p, want) in [
@@ -216,8 +216,8 @@ fn gamma_quantile_at_a_large_scale() {
   );
 }
 
-/// The cot's first order to half an ulp, its quotient ordered so no intermediate rounds in the subnormals, at a tiny `γ` or
-/// a subnormal level or both.
+/// The cot's first order to half an ulp, its quotient ordered so no intermediate rounds in the
+/// subnormals, at a tiny `γ` or a subnormal level or both.
 #[test]
 fn cauchy_quantile_at_a_subnormal_level() {
   let got = SimdCauchy::<f64>::new(0.0, 1e-5).quantile(1e-310).unwrap();

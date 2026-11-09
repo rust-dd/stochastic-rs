@@ -84,8 +84,8 @@ fn bulk_and_far_tails() {
   );
 }
 
-/// Widths 1e-2, 1e-4, 1e-6 at 0.4, where a variance from raw moments cancels `(mean/width)²`-fold (references at the
-/// f64 bound `0.4 + w`).
+/// Widths 1e-2, 1e-4, 1e-6 at 0.4, where a variance from raw moments cancels `(mean/width)²`-fold
+/// (references at the f64 bound `0.4 + w`).
 #[test]
 fn narrow_intervals() {
   for (w, mean, variance, skewness, kurtosis, pdf_mid, cdf_mid) in [
@@ -192,8 +192,8 @@ fn moments_on_a_tiny_interval() {
   );
 }
 
-/// Levels next to 1 subtract the mass past the upper clip, and the least level walks the deep range relative to its
-/// start's kernel value (mpmath, 60 and 120 digits).
+/// Levels next to 1 subtract the mass past the upper clip, and the least level walks the deep range
+/// relative to its start's kernel value (mpmath, 60 and 120 digits).
 #[test]
 fn quantile_tails_keep_their_digits() {
   let law = tb(50.0, 30.0, 0.0, 1.0);
@@ -214,8 +214,8 @@ fn quantile_tails_keep_their_digits() {
   );
 }
 
-/// First shapes down to 1e-4, whose mass sits almost wholly in the innermost panel beside 0: in `u = (t/h)^a` that
-/// panel is exact, and so is every analytic (mpmath, 60 and 120 digits).
+/// First shapes down to 1e-4, whose mass sits almost wholly in the innermost panel beside 0: in
+/// `u = (t/h)^a` that panel is exact, and so is every analytic (mpmath, 60 and 120 digits).
 #[test]
 fn small_shapes_keep_their_digits() {
   for (a, want) in [
@@ -306,8 +306,8 @@ fn small_shapes_keep_their_digits() {
   }
 }
 
-/// Ends a hair from both singular points step the reference point off them, and a second shape of 1e6 puts it inside
-/// the mass beside 0, an e-fold `1/(α + β)` wide (mpmath, 60 and 120 digits).
+/// Ends a hair from both singular points step the reference point off them, and a second shape of
+/// 1e6 puts it inside the mass beside 0, an e-fold `1/(α + β)` wide (mpmath, 60 and 120 digits).
 #[test]
 fn ends_beside_the_singular_points() {
   moments_match(
@@ -332,8 +332,8 @@ fn ends_beside_the_singular_points() {
   );
 }
 
-/// Beside a singular end the quantile solves in `u`, so its tolerance is relative: `sin²(πp/2)` down to the least
-/// level, where it underflows to 0, monotone all the way, and the cdf deep beside 0 (mpmath, 60 and 120 digits).
+/// Beside a singular end the quantile solves in `u`, to a relative tolerance: `sin²(πp/2)` down to
+/// its underflow at the least level, monotone, and the cdf deep beside 0 (mpmath, 60/120 digits).
 #[test]
 fn quantile_and_cdf_beside_a_singular_end() {
   let arcsine = tb(0.5, 0.5, 0.0, 1.0);
@@ -360,8 +360,8 @@ fn quantile_and_cdf_beside_a_singular_end() {
   }
 }
 
-/// A unit first shape drops the `(a − 1) ln x` term, which reads `0·(−∞)` at 0; its mode is an end, where the slope
-/// stays the kernel's own `−(β − 1)` (mpmath, 60 and 120 digits).
+/// A unit first shape drops the `(a − 1) ln x` term, which reads `0·(−∞)` at 0; its mode is an end,
+/// where the slope stays the kernel's own `−(β − 1)` (mpmath, 60 and 120 digits).
 #[test]
 fn unit_shape_has_no_log_term() {
   let steep = tb(1.0, 100.0, 0.0, 0.5);
@@ -421,8 +421,8 @@ fn whole_support_is_the_base_law() {
   );
 }
 
-/// Shapes whose sum overflows, and modes that round onto 1, held beside it: no admissible shape hangs, and each value
-/// is the double nearest mpmath's (60 and 120 digits agree) or its rounded limit.
+/// Shapes whose sum overflows, modes held beside the 1 they round onto: no admissible shape hangs,
+/// and each value is the double nearest mpmath's (60 and 120 digits agree) or its rounded limit.
 #[test]
 fn extreme_shapes_keep_their_values() {
   let half = tb(1e308, 1e308, 0.5, 0.9);
@@ -465,8 +465,8 @@ fn scalar_draws(law: &SimdTruncatedBeta<f64>) -> Vec<f64> {
   (0..10).map(|_| law.sample(&mut rng)).collect()
 }
 
-/// Either side of the plain form's bound `α + β ≤ 1e4`: the pdf at 8 and 20 widths and at the farthest width whose pdf
-/// is a normal double, on both sides (mpmath, 60 and 120 digits).
+/// Either side of the plain form's bound `α + β ≤ 1e4`: the pdf at 8 and 20 widths and at the
+/// farthest width whose pdf is a normal double, on both sides (mpmath, 60 and 120 digits).
 #[test]
 fn either_side_of_the_plain_bound() {
   let inside = [

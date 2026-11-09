@@ -1,5 +1,5 @@
-//! Seeded-stream fixture: every law's stream from two seeds, pinned so that any moved draw fails.
-//! Re-pin: `STREAM_SNAPSHOT_REGEN=1 cargo test -p stochastic-rs-distributions --features unstable-dual-stream-rng --test stream_snapshots -- --ignored print_constants`.
+//! Every law's stream from two seeds, pinned so a moved draw fails; `STREAM_SNAPSHOT_REGEN=1` and
+//! `--features unstable-dual-stream-rng -- --ignored print_constants` re-pin it.
 
 mod stream_snapshots {
   pub mod constants;
@@ -75,8 +75,8 @@ fn chunk_firsts<T: Copy + Bits>(matrix: &Array2<T>) -> impl Iterator<Item = u64>
   matrix.iter().step_by(CHUNK).map(|x| x.bits())
 }
 
-/// Seed budget, first eight draws, step and chunk heads and ten hashes over single, bulk, matrix and fork
-/// draws; `sample_matrix` runs on the global pool, its output depends on `(m, n)` and the seed alone.
+/// Seed budget, first eight draws, step and chunk heads, ten hashes of single, bulk, matrix, fork
+/// draws; `sample_matrix` runs on the global pool, its output a function of `(m, n)` and the seed.
 fn capture_steps<D, T>(
   seed: u64,
   make: impl Fn(&Deterministic) -> D,
@@ -158,7 +158,7 @@ where
   }
 }
 
-/// The steps on a `Seeded` stream; the constants are the ones captured on the old API.
+/// The steps on a `Seeded` stream, the draws every law's pinned constants describe.
 fn capture<D, T>(seed: u64, make: impl Fn() -> D) -> Snapshot
 where
   D: SimdKernel<Item = T>,

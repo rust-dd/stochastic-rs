@@ -412,8 +412,8 @@ fn ctors() -> Vec<Ctor> {
 
 const NON_FINITE: [f64; 3] = [f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
 
-/// Every finiteness assert names its parameter and value: NaN and ±∞ at each float parameter (NaN only at a
-/// truncation bound, which may be infinite) and at each entry of Wishart's scale and Dirichlet's concentrations.
+/// Every finiteness assert names its parameter and value: NaN and ±∞ per float parameter (only NaN
+/// at a truncation bound, which may be infinite) and per Wishart-scale and Dirichlet entry.
 #[test]
 fn every_finiteness_assert_names_its_parameter() {
   let mut params = 0;
