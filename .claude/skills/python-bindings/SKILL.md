@@ -43,11 +43,12 @@ dtype=None`; `params` lists only the distribution parameters — the macro
 appends `seed` and `dtype` itself.
 
 What you get:
-- `PyNormal` `#[pyclass(unsendable)]` — note that `py_distribution!`
-  **does** emit `unsendable`, while the `py_process_*!` macros do not.
-- Two inner slots, `inner_f32` / `inner_f64`. Unlike the process macros
-  there are no separate `seeded_*` slots: the seed is folded straight
-  into the constructor as `&Deterministic::new(sd)` (or `&Unseeded`).
+- `PyNormal` holds `Mutex<Seeded<SimdNormal<_>>>` and is a plain `#[pyclass]`. `sample` / `sample_par` take the lock
+  only inside `py.detach` and convert to NumPy after re-attaching: a caller blocked on the lock while attached deadlocks
+  with a holder that needs the interpreter (NumPy's first import, a free-threaded GC pause). Concurrent callers
+  serialise on the lock. The `py_process_*!` macros are unchanged.
+- Two inner slots, `inner_f32` / `inner_f64`; the seed is folded into the constructor as
+  `.seeded(&Deterministic::new(sd))` (or `&Unseeded`).
 - `__new__(mean, std_dev, seed=None, dtype=None)` — `seed: Option<u64>`,
   `dtype: Option<&str>` ∈ {"f32", "f64"}, default f64
 - `sample(n)` returning `numpy.ndarray`
@@ -80,7 +81,9 @@ Not every two-component process uses the macro: `Heston` itself has a
 (whose jump distribution crosses the boundary as a `CallableDist`).
 Reach for a hand-written wrapper when the constructor takes something
 the macro cannot express — a Python callable, or a third type parameter
-like `Heston`'s scheme selector.
+like `Heston`'s scheme selector. Such a wrapper carries `#[doc(hidden)]` on the
+line above its `#[pyclass]` (and above a `pub use python::…` re-export of it);
+`tests/python_surface_hidden.rs` enforces both.
 
 Invoke at the **bottom of the process's source file**, e.g.
 `stochastic-rs-stochastic/src/diffusion/gbm.rs`:
@@ -254,7 +257,7 @@ Python smoke is on the maturin path under
 
 PyO3 `#[pyclass]` wrappers default to `Send + Sync`. For `unsendable` types
 (those holding `Rc<RefCell<...>>`, `RefCell<...>`, or non-`Send` external
-handles like `YahooConnector`), add `unsendable`:
+handles), add `unsendable`:
 
 ```rust
 #[pyclass(name = "RBergomiCalibrator", unsendable)]

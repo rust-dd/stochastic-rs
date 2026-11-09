@@ -46,10 +46,7 @@ fn anchor_on_nu_pulls_the_fit() {
     .calibrate(None)
     .expect("calibration runs");
   assert!((pulled.nu - 0.9).abs() < 0.05, "pulled nu {}", pulled.nu);
-  assert!(
-    pulled.loss.get(crate::types::LossMetric::Rmse)
-      >= plain.loss.get(crate::types::LossMetric::Rmse)
-  );
+  assert!(pulled.loss.get(crate::LossMetric::Rmse) >= plain.loss.get(crate::LossMetric::Rmse));
 }
 
 #[test]

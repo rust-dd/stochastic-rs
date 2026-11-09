@@ -1,0 +1,388 @@
+//! The truncated beta's kernel on `[0, 1]`.
+
+use crate::special::mul_parts;
+use crate::truncated::quadrature::Cut;
+use crate::truncated::quadrature::Kernel;
+use crate::truncated::quadrature::Two;
+use crate::truncated::quadrature::ln_1p_mx;
+use crate::truncated::quadrature::ln_ratio;
+use crate::truncated::quadrature::two;
+use crate::truncated::quadrature::two_prod;
+use crate::truncated::quadrature::two_sum;
+
+/// `x^{a−1} (1 − x)^{b−1}` on `[0, 1]` about the reference point `c`; a unit shape has no log term,
+/// whose `0·ln 0` would read NaN at its end.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct BetaKernel {
+  a: f64,
+  b: f64,
+  c: f64,
+  /// The rest of the exact reference point past `c`.
+  c_lo: f64,
+  /// `1 − c`, exact where `c` is held beside 1.
+  cc: f64,
+  ln_c: f64,
+  ln_cc: f64,
+  /// `(a − 1)/c − (b − 1)/(1 − c)`, the slope at `c`, `None` where it overflows.
+  slope: Option<f64>,
+  mode: Cut,
+  /// The mode is stationary, a double-double of exact `α − 1` and `β − 1`: zeroing its slope shifts
+  /// the law by 2⁻¹⁰⁴ of its place, an ε of an ulp, which no shape statistic sees.
+  exact: bool,
+  /// `α + β ≤ 1e4`: the plain form's measured error, 5.5e-15·√(α + β) out to the farthest normal pdf, stays in 1e-12.
+  plain: bool,
+  /// The logs' size, times the exponent, past which `far_log` reads the quotient's log: 450 holds 1e-13, 0 an ε.
+  budget: f64,
+}
+
+impl BetaKernel {
+  #[inline]
+  pub(super) fn new(a: f64, b: f64) -> Self {
+    let (mode, exact) = held_mode(a, b);
+    Self {
+      a,
+      b,
+      c: 0.5,
+      c_lo: 0.0,
+      cc: 0.5,
+      ln_c: -std::f64::consts::LN_2,
+      ln_cc: -std::f64::consts::LN_2,
+      slope: None,
+      mode,
+      exact,
+      plain: a + b <= 1e4,
+      budget: 450.0,
+    }
+  }
+
+  /// `ln(x/c)` for `z = y/c`: `ln_1p` within half of `c`, else read from `x`, which a `y/c` past
+  /// the doubles never reaches.
+  #[inline]
+  fn ln_left(&self, x: f64, z: f64) -> f64 {
+    if z.abs() > 0.5 {
+      far_log(self.a, x, self.c, self.ln_c, self.budget)
+    } else {
+      z.ln_1p()
+    }
+  }
+
+  /// `ln((1 − x)/(1 − c))` for `z = −y/(1 − c)`, `1 − x` as `gap` forms it.
+  #[inline]
+  fn ln_right(&self, x: f64, y: f64, z: f64, branch: Option<(f64, f64)>) -> f64 {
+    if z.abs() <= 0.5 {
+      return z.ln_1p();
+    }
+    far_log(
+      self.b,
+      self.gap(x, y, branch),
+      self.cc,
+      self.ln_cc,
+      self.budget,
+    )
+  }
+
+  /// `1 − x`: the offset from 1 where `branch` holds it; exact from `x` where `x ≥ ½` and a
+  /// reference point below ½ would cancel in `1 − c`; else `(1 − c) − y`, the node's offset.
+  #[inline]
+  fn gap(&self, x: f64, y: f64, branch: Option<(f64, f64)>) -> f64 {
+    match branch {
+      Some((1.0, t)) => -t,
+      _ if self.c < 0.5 && x >= 0.5 => 1.0 - x,
+      _ => self.cc - y,
+    }
+  }
+
+  #[inline]
+  fn left(&self, x: f64, y: f64) -> f64 {
+    if self.a == 1.0 {
+      0.0
+    } else {
+      (self.a - 1.0) * self.ln_left(x, y / self.c)
+    }
+  }
+
+  #[inline]
+  fn right(&self, x: f64, y: f64, branch: Option<(f64, f64)>) -> f64 {
+    if self.b == 1.0 {
+      0.0
+    } else {
+      (self.b - 1.0) * self.ln_right(x, y, -y / self.cc, branch)
+    }
+  }
+
+  /// `(a − 1)(ln(x/c) − y/c) + (b − 1)(ln((1 − x)/(1 − c)) + y/(1 − c))` plus the slope's `y`, each
+  /// first part `ln_1p_mx` beside `c`; out of line, only shapes past `α + β = 1e4` take it.
+  #[inline(never)]
+  fn ln_rel_exact(&self, x: f64, y: f64, branch: Option<(f64, f64)>) -> f64 {
+    let (zl, zr) = (y / self.c, -y / self.cc);
+    let part = |e: f64, z: f64, log: f64| {
+      if e == 1.0 {
+        0.0
+      } else if z < -0.75 {
+        (e - 1.0) * (log - z)
+      } else {
+        (e - 1.0) * ln_1p_mx(z)
+      }
+    };
+    // Below a quarter of `c`, or of `1 − c` from 1, the quotient's log: the shape multiplies its error, not `u·ln x`.
+    let (ll, lr) = (
+      if zl < -0.75 {
+        ln_ratio(x, self.c, self.ln_c)
+      } else {
+        0.0
+      },
+      if zr < -0.75 {
+        ln_ratio(self.gap(x, y, branch), self.cc, self.ln_cc)
+      } else {
+        0.0
+      },
+    );
+    part(self.a, zl, ll) + part(self.b, zr, lr) + self.linear(y)
+  }
+
+  /// `(a − 1)y/c − (b − 1)y/(1 − c)`, from the slope where it is finite; where it overflows the
+  /// mode is far and the two terms do not cancel.
+  #[inline]
+  fn linear(&self, y: f64) -> f64 {
+    match self.slope {
+      Some(slope) => slope * y,
+      None => self.per(self.a, y, self.c) - self.per(self.b, y, self.cc),
+    }
+  }
+
+  /// `(e − 1)·y/d`, 0 for a unit exponent, whose end `d` may be 0, one quotient where `y/d` overflows.
+  #[inline]
+  fn per(&self, e: f64, y: f64, d: f64) -> f64 {
+    let q = y / d;
+    if e == 1.0 {
+      0.0
+    } else if q.is_finite() {
+      (e - 1.0) * q
+    } else {
+      (e - 1.0) * y / d
+    }
+  }
+}
+
+/// `ln(n/d)` as `ln n − ln d`, or from the quotient where the exponent `e − 1` would carry the two
+/// logs' rounding past 1e-13 of the kernel (a shape in the hundreds at `n` far below 1).
+#[inline]
+fn far_log(e: f64, n: f64, d: f64, ln_d: f64, budget: f64) -> f64 {
+  let ln_n = n.ln();
+  if (e - 1.0).abs() * (ln_n.abs() + ln_d.abs()) > budget {
+    ln_ratio(n, d, ln_d)
+  } else {
+    ln_n - ln_d
+  }
+}
+
+impl Kernel for BetaKernel {
+  #[inline]
+  fn ln_k(&self, x: f64) -> f64 {
+    if !(0.0..=1.0).contains(&x) {
+      return f64::NEG_INFINITY;
+    }
+    let left = if self.a == 1.0 {
+      0.0
+    } else {
+      (self.a - 1.0) * x.ln()
+    };
+    let right = if self.b == 1.0 {
+      0.0
+    } else {
+      (self.b - 1.0) * (-x).ln_1p()
+    };
+    left + right
+  }
+
+  /// The slope `((α − 1) − (α + β − 2)c)/(c(1 − c))` from exact halves of `α − 1`, `β − 1`, an FMA
+  /// product and the exact `c`: sign and value hold at any `c`, 0 at an exact stationary mode.
+  #[inline]
+  fn anchor(&mut self, c: Cut, at_mode: bool) {
+    let (hi, lo) = c.near();
+    self.c = c.x;
+    self.c_lo = (hi - c.x) + lo;
+    self.cc = -c.offset(1.0);
+    self.ln_c = self.c.ln();
+    self.ln_cc = self.cc.ln();
+    let slope = if at_mode && self.exact {
+      0.0
+    } else if self.a == 1.0 || self.b == 1.0 {
+      self.per(self.a, 1.0, self.c) - self.per(self.b, 1.0, self.cc)
+    } else {
+      let ((a1, a1_lo), (b1, b1_lo)) = (half_less_one(self.a), half_less_one(self.b));
+      let (s, s_e) = two_sum(a1, b1);
+      let s_lo = s_e + (a1_lo + b1_lo);
+      let (p, p_lo) = two_prod(s, c.x);
+      let half = ((a1 - p) - p_lo) + ((a1_lo - s_lo * c.x) - s * self.c_lo);
+      2.0 * (half / self.c / self.cc)
+    };
+    self.slope = slope.is_finite().then_some(slope);
+  }
+
+  /// The plain form, which past `α + β = 1e4` loses digits to its two factors' cancelling linear parts.
+  #[inline]
+  fn ln_rel(&self, x: f64, y: f64, branch: Option<(f64, f64)>) -> f64 {
+    if y == 0.0 {
+      return 0.0;
+    }
+    if self.plain {
+      self.left(x, y) + self.right(x, y, branch)
+    } else {
+      self.ln_rel_exact(x, y, branch)
+    }
+  }
+
+  #[inline]
+  fn ln_rel_regular(&self, x: f64, y: f64, s: f64) -> f64 {
+    if s == 0.0 {
+      -(self.a - 1.0) * self.ln_c + self.right(x, y, None)
+    } else {
+      self.left(x, y) - (self.b - 1.0) * self.ln_cc
+    }
+  }
+
+  fn sharpen(&mut self) {
+    self.budget = 0.0;
+  }
+
+  /// `(α − 1)·ln(x/c) + (β − 1)·ln((1 − x)/(1 − c))` from the exact `x` and `c`, each log from its
+  /// offset within half of its end.
+  fn ln_rel_two(&self, x: Cut, _y: f64) -> Two {
+    let (x, c, one) = (two::of(x), (self.c, self.c_lo), (1.0, 0.0));
+    let y = two::sub(x, c);
+    let term = |e: f64, offset: Two, end: Two, point: Two| {
+      if e == 1.0 {
+        return (0.0, 0.0);
+      }
+      let r = two::div(offset, end);
+      let log = if r.0.abs() <= 0.5 {
+        two::ln_1p(r)
+      } else {
+        two::sub(two::ln(point), two::ln(end))
+      };
+      mul_parts(two_sum(e, -1.0), log)
+    };
+    two::add(
+      term(self.a, y, c, x),
+      term(self.b, (-y.0, -y.1), two::sub(one, c), two::sub(one, x)),
+    )
+  }
+
+  #[inline]
+  fn d1(&self, x: f64, y: f64) -> f64 {
+    match self.slope {
+      // A unit shape's term is 0 at its own end too, where `per(..)/x` would read `0/0`.
+      Some(slope) => {
+        let left = if self.a == 1.0 {
+          0.0
+        } else {
+          self.per(self.a, y, self.c) / x
+        };
+        let right = if self.b == 1.0 {
+          0.0
+        } else {
+          self.per(self.b, y, self.cc) / (self.cc - y)
+        };
+        slope - left - right
+      }
+      None => self.per(self.a, 1.0, x) - self.per(self.b, 1.0, self.cc - y),
+    }
+  }
+
+  #[inline]
+  fn d2(&self, x: f64, y: f64) -> f64 {
+    let gap = self.cc - y;
+    -self.per(self.a, 1.0, x * x) - self.per(self.b, 1.0, gap * gap)
+  }
+
+  #[inline]
+  fn mode(&self) -> Cut {
+    self.mode
+  }
+
+  #[inline]
+  fn branch_points(&self) -> [Option<(f64, f64)>; 2] {
+    [
+      (self.a != 1.0).then_some((0.0, self.a)),
+      (self.b != 1.0).then_some((1.0, self.b)),
+    ]
+  }
+
+  /// `1/(α + β)` from halves, so it never overflows to 0: beside 0 the factor `(1 − x)^{β−1}` falls
+  /// an e-fold in about `1/β`, beside 1 `x^{α−1}` in `1/α`.
+  #[inline]
+  fn length_scale(&self) -> f64 {
+    0.5 / (0.5 * self.a + 0.5 * self.b)
+  }
+
+  #[inline]
+  fn support(&self) -> (f64, f64) {
+    (0.0, 1.0)
+  }
+
+  /// The closed forms in `r = (a − b)/√(ab)` and `1/(a + b)`, so no product of the shapes over- or underflows.
+  #[inline]
+  fn base_moments(&self) -> [f64; 4] {
+    let (a, b) = (self.a, self.b);
+    let root = a.sqrt() * b.sqrt();
+    let s = a + b;
+    if s < 2.0 {
+      let r = (a - b) / root;
+      return [
+        a / s,
+        root / s / (s + 1.0).sqrt(),
+        -2.0 * r * (s + 1.0).sqrt() / (s + 2.0),
+        6.0 * (r * r * (s + 1.0) / ((s + 2.0) * (s + 3.0)) - 1.0 / (s + 3.0)),
+      ];
+    }
+    let inv = self.length_scale();
+    let f = inv * (1.0 + inv) / ((1.0 + 2.0 * inv) * (1.0 + 3.0 * inv));
+    let rf = (a - b) * f.sqrt() / root;
+    // From the nearer end: a subnormal `1/(a + b)` carries few bits, which `a·inv` scales up to `1`'s ulp.
+    let mean = if a > b { 1.0 - b * inv } else { a * inv };
+    [
+      mean,
+      root * inv * (inv / (1.0 + inv)).sqrt(),
+      -2.0 * ((a - b) * (inv * (1.0 + inv)).sqrt() / root) / (1.0 + 2.0 * inv),
+      6.0 * (rf * rf - inv / (1.0 + 3.0 * inv)),
+    ]
+  }
+}
+
+/// `(x − 1)/2` as an exact two-sum: past 2⁵³ a shape's `x − 1` rounds.
+#[inline]
+fn half_less_one(x: f64) -> (f64, f64) {
+  two_sum(0.5 * x, -0.5)
+}
+
+/// The interior mode by its offset from the nearer end, exact while normal, held off the kernel's
+/// zero below; else the end the density rises to, a U's heavier (0 if tied), ½ if uniform.
+fn held_mode(a: f64, b: f64) -> (Cut, bool) {
+  if a > 1.0 && b > 1.0 {
+    // Halves of the exact `a − 1` and `b − 1`, so their sum cannot overflow, divided to a double-double.
+    let ((ha, ha_lo), (hb, hb_lo)) = (half_less_one(a), half_less_one(b));
+    let (d, d_e) = two_sum(ha, hb);
+    let d_lo = d_e + (ha_lo + hb_lo);
+    let quotient = |n: f64, n_lo: f64| {
+      let q = n / d;
+      (q, (((-q).mul_add(d, n) + n_lo) - q * d_lo) / d)
+    };
+    let ((m, m_lo), (gap, gap_lo)) = (quotient(ha, ha_lo), quotient(hb, hb_lo));
+    let least = f64::from_bits(1);
+    if m <= 0.5 {
+      (Cut::exact(m.max(least), m_lo), m >= f64::MIN_POSITIVE)
+    } else if 1.0 - gap < 1.0 {
+      let hi = 1.0 - gap;
+      (Cut::exact(hi, ((1.0 - hi) - gap) - gap_lo), true)
+    } else {
+      (Cut::exact(1.0, -gap.max(least)), gap >= f64::MIN_POSITIVE)
+    }
+  } else if a == 1.0 && b == 1.0 {
+    (Cut::at(0.5), false)
+  } else if a < 1.0 && (1.0 <= b || a <= b) || (a == 1.0 && b > 1.0) {
+    (Cut::at(0.0), false)
+  } else {
+    (Cut::at(1.0), false)
+  }
+}

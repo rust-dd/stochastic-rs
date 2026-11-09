@@ -55,9 +55,9 @@ fn cuda_non_power_of_two_n() {
 #[test]
 fn cuda_eigenvalues_structural() {
   let fgn = Fgn::<f64>::new(0.72, 2048, Some(1.0), Unseeded);
-  let eigs = &*fgn.sqrt_eigenvalues;
+  let eigs = fgn.sqrt_eigenvalues();
 
-  assert_eq!(eigs.len(), 2 * fgn.n);
+  assert_eq!(eigs.len(), 2 * fgn.padded_n);
   assert!(eigs.iter().all(|&v| v >= 0.0));
 
   for i in 1..eigs.len() / 2 {
@@ -84,7 +84,7 @@ fn cuda_scale_matches_cpu() {
     let fgn = Fgn::<f64>::new(0.7, n, Some(2.0), Unseeded);
     let cpu_scale = fgn.scale;
 
-    let out_size = fgn.n - fgn.offset;
+    let out_size = fgn.padded_n - fgn.offset;
     let scale_steps = out_size.max(1);
     let cuda_scale = (scale_steps as f64).powf(-0.7) * 2.0_f64.powf(0.7);
 
@@ -233,4 +233,17 @@ fn cuda_fbm_honours_its_own_seed() {
   assert_eq!(fbm(3).sample_par(3), fbm(3).sample_par(3));
   assert_ne!(fbm(3).sample_par(1), fbm(4).sample_par(1));
   assert_eq!(fbm(3).sample(), fbm(3).sample());
+}
+
+/// The `int` work-buffer cap at `4n` values a path stops a launch exactly there, charges a
+/// two-stream row twice, keeps a fitting budget, and lets one oversized path reach the launch.
+#[test]
+fn cuda_index_rows_keep_the_work_buffer_inside_int() {
+  use super::sampler::index_rows;
+
+  let limit = i32::MAX as usize;
+  assert_eq!(index_rows(usize::MAX, 1, 1024), limit / 4096);
+  assert_eq!(index_rows(usize::MAX, 2, 1024), limit / 8192);
+  assert_eq!(index_rows(5, 1, 1024), 5);
+  assert_eq!(index_rows(5, 1, 1 << 30), 1);
 }

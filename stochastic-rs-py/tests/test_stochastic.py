@@ -262,3 +262,32 @@ def test_heston_slv_callback_failures_are_runtime_errors(operation):
             process.sample()
         else:
             process.sample_par(3)
+
+
+def _heston(**kwargs):
+    return sr.PyHeston(1.5, 0.04, 0.5, -0.7, 0.02, 53, s0=100.0, v0=0.04, t=1.0, **kwargs)
+
+
+def test_heston_qe_prices_the_atm_call_within_monte_carlo_error():
+    exact = sr.HestonFourier(0.04, 1.5, 0.04, 0.5, -0.7, 0.02, 0.0).price_call(
+        100.0, 100.0, 0.02, 0.0, 1.0
+    )
+    errors = []
+    for seed in (7, 2718, 42):
+        s, v = _heston(seed=seed, scheme="qe").sample_par(100_000)
+        payoff = np.exp(-0.02) * np.maximum(s[:, -1] - 100.0, 0.0)
+        assert np.all(v >= 0.0)
+        errors.append(abs(payoff.mean() - exact) / (payoff.std() / np.sqrt(payoff.size)))
+    assert min(errors) < 4.0, errors
+
+
+def test_heston_qe_is_seeded_and_validated():
+    a = _heston(seed=3, scheme="qe").sample_par(64)
+    b = _heston(seed=3, scheme="qe").sample_par(64)
+    assert np.array_equal(a[0], b[0]) and np.array_equal(a[1], b[1])
+    assert not np.array_equal(a[0], _heston(seed=3).sample_par(64)[0])
+    for bad in ({"scheme": "milstein"}, {"scheme": "qe", "pow": "3/2"}, {"pow": "half"}):
+        with pytest.raises(ValueError):
+            _heston(**bad)
+    with pytest.raises(ValueError):
+        sr.PyHeston(0.0, 0.04, 0.5, -0.7, 0.02, 53, s0=100.0, v0=0.04, t=1.0, scheme="qe")

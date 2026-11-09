@@ -12,22 +12,18 @@
 //! simply adapt arguments and delegate:
 //!
 //! - [`simulate`](MarkovLift::simulate) — single path, SIMD across the
-//!   $N'$ quadrature factors via `wide::f64x4` (f64) / `wide::f32x8` (f32).
+//!   $N'$ quadrature factors via the hidden `SimdFloatExt` lane kernels.
 //! - [`simulate_batch`](MarkovLift::simulate_batch) — $m$ paths in one
 //!   pass, SIMD across the *path* axis at each factor $l$ (BLAS-style
 //!   batch parallelism, matches the layout of the Python reference
 //!   `RoughHestonFast`).
 //!
-//! Load/store goes through unsafe pointer casts to avoid the element-wise
-//! scatter-gather overhead of `f64x4::from([a, b, c, d])`. Reference:
-//! Bilokon & Wong (2026), p. 16 of J. Appl. Probab. 2026.
+//! Reference: Bilokon & Wong (2026), p. 16 of J. Appl. Probab. 2026.
 
-mod simd;
 mod stepper;
 
 #[cfg(test)]
 mod tests;
 
-pub use simd::RoughSimd;
 pub use stepper::BATCH_TILE;
 pub use stepper::MarkovLift;

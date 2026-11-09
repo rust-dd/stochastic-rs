@@ -108,6 +108,11 @@ pub struct MultivariateHawkesLaunch<'a, T: FloatExt, S: SeedExt, B>(
   &'a MultivariateHawkes<T, S, B>,
 );
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for MultivariateHawkesLaunch<'_, T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for MultivariateHawkesLaunch<'_, T, S, B>
 {
@@ -128,6 +133,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 pub struct MultivariateHawkesLaunchSampler<'a, T: FloatExt, S: SeedExt> {
   inner: MultivariateHawkesSampler<'a, T, S>,
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for MultivariateHawkesLaunchSampler<'_, T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for MultivariateHawkesLaunchSampler<'_, T, S> {
   type Output = [Array1<T>; 2];
@@ -214,6 +221,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     <Self as ProcessExt<T>>::advance_chunk_seed(self);
     out
   }
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for MultivariateHawkes<T, S, B>
+{
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
@@ -421,6 +433,8 @@ impl<T: FloatExt, S: SeedExt> MultivariateHawkesSampler<'_, T, S> {
     events.into_iter().map(Array1::from_vec).collect()
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for MultivariateHawkesSampler<'_, T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for MultivariateHawkesSampler<'_, T, S> {
   type Output = Vec<Array1<T>>;

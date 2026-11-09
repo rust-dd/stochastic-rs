@@ -25,7 +25,7 @@ pub struct Cir {
   pub theta: f64,
   /// Long-run mean of the short rate (the level `r_t` reverts to; θ in Brigo).
   pub mu: f64,
-  /// Volatility.
+  /// Volatility σ of the square-root diffusion term `σ√r dW`.
   pub sigma: f64,
 }
 

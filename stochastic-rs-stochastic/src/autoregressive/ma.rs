@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -110,6 +113,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] MAq<T, S> { theta, sigma, n, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for MAq<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for MAq<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -121,7 +129,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     MAqSampler {
       n: self.n,
       theta: self.theta.clone(),
-      normal: SimdNormal::<T>::new(T::zero(), self.sigma, &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), self.sigma).seeded(&self.seed),
     }
   }
 
@@ -196,7 +204,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 pub struct MAqSampler<T: FloatExt> {
   n: usize,
   theta: Array1<T>,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> MAqSampler<T> {
@@ -224,6 +232,8 @@ impl<T: FloatExt> MAqSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for MAqSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for MAqSampler<T> {
   type Output = Array1<T>;

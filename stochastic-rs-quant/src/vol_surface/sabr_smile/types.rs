@@ -43,10 +43,7 @@ pub struct SabrSmileCalibrator {
   /// Maximum strike for `[k_rr_c, k_rr_p, k_bf_c, k_bf_p]`. Defaults to
   /// `s * 2.0`.
   pub strike_hi: f64,
-  /// Tolerance on the final objective for [`SabrSmileResult::success`] to be
-  /// `true`. Default: `1e-3`. The previous "is finite" predicate marked
-  /// nonsense fits as successful — use this threshold to surface real
-  /// non-convergence to callers.
+  /// [`SabrSmileResult::success`] holds when the final objective is below this; default `1e-3`.
   pub success_tol: f64,
 }
 

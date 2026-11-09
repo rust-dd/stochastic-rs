@@ -135,9 +135,8 @@ fn price_put_propagates_the_out_of_grid_nan() {
   assert!(p.is_nan(), "parity carries the NaN through, got {p}");
 }
 
-/// `x = ln(s)` is `NaN` for a negative spot and `(NaN - k).max(0.0)` is
-/// `0.0`, so this used to price at a confident zero. The extent gate catches
-/// it on the way in, because no leverage grid starts at or below zero.
+/// A negative spot fails the extent gate, since `x = ln(s)` is NaN and the payoff floor would turn
+/// it into a confident zero.
 #[test]
 fn a_negative_spot_no_longer_prices_as_zero() {
   let pricer = tune(HestonSlvPricer::unanchored(params(), unit_leverage()));

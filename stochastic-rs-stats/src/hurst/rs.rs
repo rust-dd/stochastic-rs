@@ -235,6 +235,8 @@ mod tests {
   use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_core::simd_rng::Unseeded;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
   use stochastic_rs_stochastic::process::fbm::Fbm;
 
@@ -254,7 +256,7 @@ mod tests {
   #[test]
   fn anis_lloyd_corrects_iid_bias() {
     let n = 2048_usize;
-    let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(0x125));
+    let mut normals = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(0x125));
     let mut x = vec![0.0_f64; n];
     normals.fill_slice(&mut x);
     let view = Array1::from_vec(x);

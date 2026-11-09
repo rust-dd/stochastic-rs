@@ -84,7 +84,7 @@ pub struct CmsCoupon<T: RealExt> {
   pub period: AccrualPeriod<T>,
   /// Coupon notional.
   pub notional: T,
-  /// CMS index.
+  /// The constant-maturity swap rate the coupon fixes on.
   pub index: CmsIndex<T>,
   /// Additive spread over the CMS fixing.
   pub spread: T,
@@ -121,7 +121,7 @@ impl<T: RealExt> CmsCoupon<T> {
 /// Simple deterministic payment.
 #[derive(Debug, Clone)]
 pub struct SimpleCashflow<T: RealExt> {
-  /// Payment date.
+  /// Date the amount changes hands; the discount factor is read here.
   pub payment_date: NaiveDate,
   /// Amount paid on the payment date.
   pub amount: T,

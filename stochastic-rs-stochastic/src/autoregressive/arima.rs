@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -117,6 +120,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Arima<T, S> { ar_coefs, ma_coefs, d, sigma, n, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Arima<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Arima<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -130,7 +138,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       ar_coefs: self.ar_coefs.clone(),
       ma_coefs: self.ma_coefs.clone(),
       d: self.d,
-      normal: SimdNormal::<T>::new(T::zero(), self.sigma, &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), self.sigma).seeded(&self.seed),
     }
   }
 
@@ -207,7 +215,7 @@ pub struct ArimaSampler<T: FloatExt> {
   ar_coefs: Array1<T>,
   ma_coefs: Array1<T>,
   d: usize,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> ArimaSampler<T> {
@@ -278,6 +286,8 @@ pub(crate) fn impulse_response<T: FloatExt>(
   }
   filter(&unit).to_vec()
 }
+
+impl<T: FloatExt> crate::traits::Sealed for ArimaSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for ArimaSampler<T> {
   type Output = Array1<T>;

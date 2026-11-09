@@ -18,8 +18,8 @@ use crate::OptionType;
 /// put, both with strike $K$ and maturity $T$.
 ///
 /// $$
-/// W = Se^{-qT}N(d) - Ke^{-rT}N(d-\sigma\sqrt T)
-///   - Se^{-qT}N(-y) + Ke^{-rT}N(-y+\sigma\sqrt{t_1})
+/// W = Se^{-qT}N(d) - Ke^{-rT}N(d-\sigma\sqrt T) -
+///   Se^{-qT}N(-y) + Ke^{-rT}N(-y+\sigma\sqrt{t_1})
 /// $$
 #[derive(Debug, Clone)]
 pub struct SimpleChooserPricer {
@@ -31,7 +31,7 @@ pub struct SimpleChooserPricer {
   pub r: f64,
   /// Dividend yield.
   pub q: f64,
-  /// Volatility.
+  /// Annualised Black–Scholes volatility.
   pub sigma: f64,
   /// Choice time (must be strictly less than `tau`).
   pub t1: f64,
@@ -70,7 +70,7 @@ pub struct ComplexChooserPricer {
   pub r: f64,
   /// Dividend yield.
   pub q: f64,
-  /// Volatility.
+  /// Annualised Black–Scholes volatility.
   pub sigma: f64,
   /// Choice time.
   pub t1: f64,
@@ -162,7 +162,7 @@ pub struct ForwardStartPricer {
   pub t1: f64,
   /// Time to maturity in years.
   pub tau: f64,
-  /// Option type.
+  /// Call or put payoff.
   pub option_type: OptionType,
 }
 

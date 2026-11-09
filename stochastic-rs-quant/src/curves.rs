@@ -38,7 +38,7 @@ pub use interpolation::interpolate_discount_factor;
 pub use multi_curve::MultiCurve;
 pub use nelson_siegel::NelsonSiegel;
 pub use svensson::Svensson;
+pub use types::BootstrapInstrument;
 pub use types::Compounding;
 pub use types::CurvePoint;
-pub use types::Instrument;
 pub use types::InterpolationMethod;

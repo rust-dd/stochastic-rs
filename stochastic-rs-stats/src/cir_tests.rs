@@ -8,6 +8,27 @@ fn exact_moments(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64) -> (f64, f64
   (mean, variance)
 }
 
+/// A vanishing `σ²` pushes `df + ncp` past the double range, through a term or, in the last case, only their sum:
+/// the draw is the conditional mean, not `NaN` or `∞`.
+#[test]
+fn vanishing_variance_returns_the_conditional_mean() {
+  let (theta, mu, t) = (0.5_f64, 0.04, 1.0);
+  for (sigma, r_t) in [
+    (1e-200, 0.0),
+    (1e-200, 0.03),
+    (1e-155, 0.0),
+    (1e-155, 0.03),
+    (2.83e-155, 0.026),
+  ] {
+    let mean = r_t * (-theta * t).exp() + mu * -(-theta * t).exp_m1();
+    assert_eq!(
+      sample_seeded(theta, mu, sigma, t, r_t, 7),
+      mean,
+      "sigma = {sigma:e}, r_t = {r_t}"
+    );
+  }
+}
+
 #[test]
 fn zero_horizon_and_invalid_inputs_are_explicit() {
   assert_eq!(sample_seeded(2.0, 0.04, 0.4, 0.0, 0.05, 7), 0.05);
@@ -68,4 +89,26 @@ fn transition_density_has_unit_mass_and_correct_first_moment() {
 fn zero_initial_state_reduces_to_the_central_chi_square_density() {
   let density = pdf(2.0, 0.04, 0.4, 1.0, 0.0, 0.03);
   assert!(density.is_finite() && density > 0.0);
+}
+
+/// `mpmath.besseli` at 80 digits, including `q < 0`, `z` in the thousands and `q` near 2000,
+/// the regimes the old power series could not reach.
+#[test]
+fn transition_density_matches_mpmath() {
+  for ((theta, mu, sigma, t, r_t, x), want) in [
+    ((2.0, 0.04, 0.3, 0.5, 0.05, 0.05), 11.078_458_423_438_674),
+    ((0.5, 0.02, 0.3, 1.0, 0.03, 0.01), 14.035_771_834_181_954),
+    (
+      (0.5, 0.05, 0.1, 1.0 / 252.0, 0.05, 0.0505),
+      264.242_211_771_611_84,
+    ),
+    ((1.0, 0.1, 0.01, 1.0, 8.6e-5, 0.0632), 282.151_624_977_580_8),
+    ((1.0, 0.1, 0.01, 1.0, 0.05, 0.0816), 224.405_805_350_199_4),
+  ] {
+    let got = pdf(theta, mu, sigma, t, r_t, x);
+    assert!(
+      ((got - want) / want).abs() < 1e-11,
+      "pdf({theta}, {mu}, {sigma}, {t}, {r_t}, {x}) = {got}, want {want}"
+    );
+  }
 }

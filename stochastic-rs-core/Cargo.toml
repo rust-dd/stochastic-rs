@@ -14,16 +14,11 @@ categories = ["algorithms", "mathematics", "simulation"]
 
 [features]
 default = []
-python = []
-# Experimental dual-stream RNG. Adds a parallel `SimdRngDual` engine
-# alongside `SimdRng` for distributions that benefit from
-# instruction-level pipelining of two independent xoshiro state updates
-# (Ziggurat-based: Normal, Exp). Default-off: the deterministic stream of
-# `SimdRngDual::from_seed` does not match `SimdRng::from_seed`, and the
-# feature is intentionally additive so callers can opt in per workload.
-dual-stream-rng = []
+python = ["dep:ndarray"]
+# Experimental `SimdRngDual` engine (two interleaved xoshiro streams); its seeded stream differs from `SimdRng`.
+unstable-dual-stream-rng = []
 
 [dependencies]
+ndarray = { workspace = true, optional = true }
 rand = { workspace = true }
 wide = { workspace = true }
-ndarray = { workspace = true }

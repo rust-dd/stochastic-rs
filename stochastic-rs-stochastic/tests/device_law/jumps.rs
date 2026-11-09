@@ -4,11 +4,11 @@
 
 use ndarray::Array1;
 use rand::Rng;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::Unseeded;
-use stochastic_rs_distributions::scalar::ScalarExp;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::jump::kou::Kou;
 use stochastic_rs_stochastic::jump::levy_diffusion::LevyDiffusion;
 use stochastic_rs_stochastic::jump::merton::Merton;
@@ -79,7 +79,7 @@ fn merton_agrees_with_the_cpu_law() {
       0.2,
       3.0,
       -0.02,
-      ScalarNormal::<f32>::new(-0.02, 0.1),
+      SimdNormal::<f32>::new(-0.02, 0.1),
       N,
       Some(1.0),
       Some(1.0),
@@ -119,7 +119,7 @@ fn kou_agrees_with_the_cpu_law() {
       0.2,
       3.0,
       0.01,
-      ScalarNormal::<f32>::new(0.01, 0.12),
+      SimdNormal::<f32>::new(0.01, 0.12),
       N,
       Some(1.0),
       Some(1.0),
@@ -153,7 +153,7 @@ fn levy_diffusion_agrees_with_the_cpu_law() {
       0.1,
       0.2,
       2.0,
-      ScalarExp::<f32>::new(8.0),
+      SimdExp::<f32>::new(8.0),
       N,
       Some(1.0),
       Some(1.0),
@@ -188,7 +188,7 @@ fn compound_poisson_events_agree_with_the_cpu_law() {
   const EVENTS: usize = 64;
   let build = || {
     CompoundPoisson::<f32, _, _>::new(
-      ScalarNormal::<f32>::new(0.5, 0.2),
+      SimdNormal::<f32>::new(0.5, 0.2),
       Poisson::new(4.0, Some(EVENTS), None, Unseeded),
       Deterministic::new(17),
     )
@@ -232,7 +232,7 @@ fn custom_jump_times_agree_with_the_cpu_law() {
     CustomJt::<f32, _, _>::new(
       Some(EVENTS),
       None,
-      ScalarExp::<f32>::new(2.0),
+      SimdExp::<f32>::new(2.0),
       Deterministic::new(23),
     )
   };
@@ -266,9 +266,9 @@ fn compound_custom_agrees_with_the_cpu_law() {
     CompoundCustom::<f32, _, _, _>::new(
       Some(EVENTS),
       None,
-      ScalarNormal::<f32>::new(1.0, 0.3),
-      ScalarExp::<f32>::new(2.0),
-      CustomJt::new(Some(EVENTS), None, ScalarExp::<f32>::new(2.0), Unseeded),
+      SimdNormal::<f32>::new(1.0, 0.3),
+      SimdExp::<f32>::new(2.0),
+      CustomJt::new(Some(EVENTS), None, SimdExp::<f32>::new(2.0), Unseeded),
       Deterministic::new(29),
     )
   };

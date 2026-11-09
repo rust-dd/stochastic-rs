@@ -1,0 +1,13 @@
+[package]
+name = "stochastic-rs-metal-kernels"
+version.workspace = true
+edition = "2024"
+rust-version.workspace = true
+license = "MIT"
+publish = false
+
+[dependencies]
+metal-oxide-device = { workspace = true }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_env, values("metal"))'] }

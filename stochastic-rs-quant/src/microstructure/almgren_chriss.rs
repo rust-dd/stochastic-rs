@@ -199,15 +199,8 @@ pub fn optimal_execution<T: RealExt>(params: &AlmgrenChrissParams<T>) -> Almgren
   }
   let variance = params.volatility * params.volatility * tau * variance_acc;
 
-  // For a Buy execution we flip ALL three series (inventory, trades, rates).
-  // Convention is *signed*: inventory[0] = -X (negative = short position to
-  // cover), inventory[N] = 0 (position fully built), trades[k] < 0 (negative
-  // = additions to the book / shares acquired), rates[k] < 0. This mirrors
-  // the academic Almgren-Chriss formulation where a buy is treated as the
-  // sign-reverse of a sell (Almgren-Chriss 2001 §2). The previous rc.0/rc.1
-  // implementation only flipped `rates`, which left `inventory` and `trades`
-  // in sell-frame and produced sign-inconsistent numbers for downstream
-  // consumers; this rc.2 fix flips all three series together.
+  // A buy is the sign reverse of a sell (Almgren–Chriss 2001, §2): all three series flip, so
+  // inventory runs from −X to 0 and trades and rates are negative.
   if matches!(params.direction, ExecutionDirection::Buy) {
     for k in 0..=n {
       inventory[k] = -inventory[k];

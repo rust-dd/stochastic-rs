@@ -79,9 +79,7 @@ fn calibrator(s: f64, k: f64) -> SabrCalibrator {
   )
 }
 
-/// `calibrate` must return `Err`, not panic, for a non-positive or `NaN`
-/// spot/strike — it used to panic inside the Levenberg-Marquardt cost
-/// callback because `s`/`k` fed `hagan_implied_vol` unchecked.
+/// `calibrate` answers `Err` naming the quote for a non-positive or NaN spot or strike.
 #[test]
 fn sabr_calibrate_rejects_nonpositive_or_nan_spot_and_strike() {
   for bad_s in [0.0, -50.0, f64::NAN] {

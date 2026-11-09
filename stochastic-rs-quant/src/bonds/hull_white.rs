@@ -256,8 +256,7 @@ mod tests {
 
   #[test]
   fn deterministic_no_clock_dependency() {
-    // The fix removes Utc::now()-dependence: prices computed at any wall-clock
-    // moment must be equal for identical inputs.
+    // Identical inputs price identically at any wall-clock moment.
     let curve = flat_curve(0.04);
     let make = || HullWhite::from_curve(&curve, 0.3, 0.015, 1.0, 2.0);
     let p1 = make().zero_coupon_price(0.04, 2.0);
@@ -277,12 +276,8 @@ mod tests {
     h.zero_coupon_price(0.05, -1.0);
   }
 
-  /// Regression: `from_curve` used to bake `p0_at_maturity` for a single
-  /// `tau`, so a later `zero_coupon_price` query at a *different* `tau`
-  /// silently priced against the wrong discount factor — plausible-looking,
-  /// wrong. A model built for `tau=5.0` must now reproject its own curve
-  /// and reproduce exactly what a model built directly for `tau=1.0` gives
-  /// when both are queried at `tau=1.0`, matching to the bit.
+  /// A model built from a curve at `tau = 5` prices `tau = 1` bit-identically to one built at
+  /// `tau = 1`: the curve is reprojected per query, never baked in at construction.
   #[test]
   fn zero_coupon_price_reprices_any_maturity_from_one_model() {
     let curve = flat_curve(0.05);
@@ -298,11 +293,7 @@ mod tests {
     );
   }
 
-  /// Same invariant, restated without `HullWhite`'s own history: two
-  /// *independently* built curve-backed models, queried at two different
-  /// `tau`s each, must agree with each other at every shared query point —
-  /// the price only depends on the query, never on which `tau` the model
-  /// happened to be constructed with.
+  /// Two curve-backed models built at different `tau`s agree at every shared query point.
   #[test]
   fn zero_coupon_price_is_independent_of_construction_tau() {
     let curve = flat_curve(0.05);

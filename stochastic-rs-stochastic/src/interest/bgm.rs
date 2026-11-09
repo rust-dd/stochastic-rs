@@ -65,6 +65,8 @@ use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
@@ -152,7 +154,7 @@ fn fill_bgm_row<T: FloatExt, S: SeedExt>(row: &mut [T], x0: T, lambda: T, sqrt_d
   if row.len() == 1 {
     return;
   }
-  let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, seed);
+  let mut normal = SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(seed);
   normal.fill_slice(&mut row[1..]);
   for j in 1..row.len() {
     let f_old = row[j - 1];
@@ -167,6 +169,11 @@ fn fill_bgm_row<T: FloatExt, S: SeedExt>(row: &mut [T], x0: T, lambda: T, sqrt_d
 /// rather than owns, so the seed it advances is the process's own.
 #[doc(hidden)]
 pub struct BgmRow<'a, T: FloatExt, S: SeedExt, B>(&'a Bgm<T, S, B>, usize);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for BgmRow<'_, T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for BgmRow<'_, T, S, B>
@@ -197,6 +204,8 @@ pub struct BgmRowSampler<T: FloatExt, S: SeedExt> {
   sqrt_dt: T,
   seed: S,
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for BgmRowSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for BgmRowSampler<T, S> {
   type Output = Array1<T>;
@@ -250,6 +259,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 }
 
 backend_switch!([T: FloatExt, S: SeedExt] Bgm<T, S> { lambda, x0, xn, t, n, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Bgm<T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Bgm<T, S, B> {
   type Output = Array2<T>;
@@ -353,6 +367,8 @@ impl<T: FloatExt, S: SeedExt> BgmSampler<T, S> {
   }
 }
 
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for BgmSampler<T, S> {}
+
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for BgmSampler<T, S> {
   type Output = Array2<T>;
 
@@ -368,6 +384,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for BgmSampler<T, S> {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyBgm {
   inner_f32: Option<Bgm<f32>>,

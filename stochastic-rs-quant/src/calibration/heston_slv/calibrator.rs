@@ -20,6 +20,7 @@ use crate::pricing::slv::ParticleMethod;
 use crate::pricing::slv::calibrate_leverage;
 use crate::pricing::slv::calibrate_leverage_fokker_planck;
 use crate::traits::Calibrator;
+use crate::traits::RealExt;
 
 /// Largest deviation between a requested rate and the calibration rate that
 /// still counts as the same rate — the pricer's own match tolerance.
@@ -412,7 +413,7 @@ impl Calibrator for HestonSlvCalibrator {
       .iter()
       .zip(model.iter())
       .map(|(a, b)| (a - b).abs())
-      .fold(0.0, f64::max);
+      .fold(0.0, f64::max_or_nan);
     let leverage_finite = leverage.values().iter().all(|l| l.is_finite());
     let converged =
       heston_fit.as_ref().is_none_or(|f| f.converged) && leverage_finite && max_error.is_finite();

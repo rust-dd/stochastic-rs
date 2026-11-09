@@ -116,7 +116,10 @@ impl<T: FloatExt, S: SeedExt> MultifactorSabr<T, S> {
       );
       assert!(nu[k] >= T::zero(), "nu[{k}] must be non-negative");
       let r = rho[k].to_f64().unwrap();
-      assert!(r.abs() < 1.0, "rho[{k}] must lie strictly in (-1, 1)");
+      assert!(
+        r.abs() < 1.0,
+        "rho[{k}] must satisfy `rho[k].abs() < 1.0`, got rho[{k}] = {r:?}"
+      );
     }
     for w in knots.windows(2) {
       assert!(w[0] < w[1], "knots must be strictly increasing");
@@ -156,7 +159,7 @@ impl<T: FloatExt, S: SeedExt, B> MultifactorSabr<T, S, B> {
   }
 
   fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1))
   }
 }
 
@@ -218,6 +221,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 }
 
 backend_switch!([T: FloatExt, S: SeedExt] MultifactorSabr<T, S> { f0, alpha0, knots, beta, rho, nu, n, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for MultifactorSabr<T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for MultifactorSabr<T, S, B>
@@ -348,6 +356,8 @@ impl<T: FloatExt, S: SeedExt> MultifactorSabrSampler<T, S> {
   }
 }
 
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for MultifactorSabrSampler<T, S> {}
+
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for MultifactorSabrSampler<T, S> {
   type Output = [Array1<T>; 2];
 
@@ -467,6 +477,22 @@ mod tests {
     assert_eq!(v1, v2, "vol path must be seed-deterministic");
   }
 
+  #[test]
+  #[should_panic(expected = "rho[1] must satisfy `rho[k].abs() < 1.0`, got rho[1] = 1.0")]
+  fn a_unit_correlation_is_named_with_its_bucket() {
+    let _ = MultifactorSabr::<f64, _>::new(
+      Some(1.0),
+      Some(0.2),
+      vec![0.5],
+      vec![0.5, 0.5],
+      vec![-0.3, 1.0],
+      vec![0.4, 0.3],
+      64,
+      Some(1.0),
+      Unseeded,
+    );
+  }
+
   /// Coefficient-vector length mismatch is rejected.
   #[test]
   #[should_panic(expected = "beta must have")]
@@ -482,6 +508,24 @@ mod tests {
       Some(1.0),
       Unseeded,
     );
+  }
+
+  #[test]
+  fn n_eq_1_keeps_initial_values() {
+    let p = MultifactorSabr::<f64, _>::new(
+      Some(1.0),
+      Some(0.2),
+      vec![],
+      vec![0.5],
+      vec![-0.3],
+      vec![0.4],
+      1,
+      Some(1.0),
+      Unseeded,
+    );
+    let [f, v] = p.sample();
+    assert_eq!((f.to_vec(), v.to_vec()), (vec![1.0], vec![0.2]));
+    assert_eq!(crate::euler::EulerSystem::<f64, 2>::time_step(&p), 1.0);
   }
 }
 

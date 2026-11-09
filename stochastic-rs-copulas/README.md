@@ -11,36 +11,33 @@ dimensions, vine and nested constructions in higher dimensions.
 
 ## What is in it
 
-- **Bivariate (`BivariateExt`)** — Clayton, Frank, Gumbel, Joe, AMH,
-  Plackett, FGM, Galambos, Hüsler-Reiss, Marshall-Olkin, Student-t and
-  independence. Each ships cdf, pdf, conditional inverse, Kendall's tau and
-  a sampler.
+- **Bivariate (`BivariateExt`)** — Gaussian, Student-t, Clayton, Frank,
+  Gumbel, Joe, AMH, Plackett, FGM, Galambos, Hüsler-Reiss, Marshall-Olkin,
+  BB1, BB7 and independence. Each ships cdf, pdf, conditional inverse,
+  Kendall's tau and a sampler.
 - **Multivariate (`MultivariateExt`)** — Gaussian, Student-t, C-vine,
   D-vine, R-vine and nested Archimedean copulas, in the default build
-  (linear algebra via the pure-Rust `faer`).
+  (linear algebra via the pure-Rust `faer`); the nested Archimedean copula
+  learns its tree with `fit`.
 - **Empirical** — pseudo-observations and the empirical copula.
 - **Process coupling** — drive two stochastic processes through a copula.
 
-Every multivariate sampler has a `sample_with_seed(n, seed)` counterpart
-when the draw needs to be reproducible, matching the bivariate one below.
+Every sampler takes its seed: `sample(n, &Deterministic::new(42))` replays, `sample(n, &Unseeded)` draws fresh entropy.
 
 ## Usage
 
 ```rust
 use stochastic_rs_copulas::bivariate::clayton::Clayton;
 use stochastic_rs_copulas::traits::BivariateExt;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::Unseeded;
 
-let c = Clayton {
-    theta: Some(2.0),
-    ..Clayton::new()
-};
-let u = c.sample(10_000).expect("theta is set");               // Array2<f64>, shape (10000, 2)
-let v = c.sample_with_seed(10_000, 42).expect("theta is set"); // reproducible
+let c = Clayton::new(2.0);
+let u = c.sample(10_000, &Unseeded).expect("theta is set");                // Array2<f64>, shape (10000, 2)
+let v = c.sample(10_000, &Deterministic::new(42)).expect("theta is set"); // reproducible
 
 // Or set Kendall's tau and invert it for theta.
-let mut from_tau = Clayton::new();
-from_tau.set_tau(0.5);
-from_tau.set_theta(from_tau.compute_theta());
+let from_tau = Clayton::from_tau(0.5).unwrap();
 ```
 
 Multivariate constructions take a tree of `PairCopula` variants:
@@ -49,10 +46,13 @@ Multivariate constructions take a tree of `PairCopula` variants:
 use stochastic_rs_copulas::multivariate::cvine::CVine;
 use stochastic_rs_copulas::multivariate::dvine::PairCopula;
 use stochastic_rs_copulas::traits::MultivariateExt;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 let cv = CVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).expect("a valid vine");
-let draws = cv.sample_with_seed(10_000, 42).expect("a valid vine");
+let draws = cv.sample(10_000, &Deterministic::new(42)).expect("a valid vine");
 ```
+
+`fit` on a vine learns its structure and pair families from pseudo-observations (Dißmann et al. 2013); `multivariate::fit::fit_vine` exposes the candidate families and the criterion.
 
 ## Part of stochastic-rs
 

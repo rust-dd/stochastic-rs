@@ -8,11 +8,14 @@
 use std::any::Any;
 
 use ndarray::Array1;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -211,6 +214,14 @@ where
 
 backend_switch!([T, D, S: SeedExt] LevyDiffusion<T, D, S> { gamma, sigma, lambda, n, x0, t, cpoisson, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
 
+impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for LevyDiffusion<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
+{
+}
+
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for LevyDiffusion<T, D, S, B>
 where
   T: FloatExt,
@@ -243,7 +254,7 @@ where
       jump_distribution: &self.cpoisson.distribution,
       lambda: self.lambda,
       jump_seed: self.cpoisson.seed.derive(),
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
@@ -329,7 +340,7 @@ where
   jump_distribution: &'a D,
   lambda: T,
   jump_seed: S,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T, D, S: SeedExt> LevyDiffusionSampler<'_, T, D, S>
@@ -362,6 +373,13 @@ where
   }
 }
 
+impl<T, D, S: SeedExt> crate::traits::Sealed for LevyDiffusionSampler<'_, T, D, S>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+}
+
 impl<T, D, S: SeedExt> PathSampler<T> for LevyDiffusionSampler<'_, T, D, S>
 where
   T: FloatExt,
@@ -384,6 +402,7 @@ where
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyLevyDiffusion {
   inner_f32: Option<LevyDiffusion<f32, crate::traits::CallableDist<f32>>>,
@@ -488,6 +507,8 @@ impl PyLevyDiffusion {
     })
   }
 
+  /// `m` paths as an `(m, n)` array. The GIL is released while they are generated; the Python
+  /// law runs on rayon workers, one call at a time.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,
@@ -500,8 +521,8 @@ impl PyLevyDiffusion {
 
       use crate::traits::ProcessExt;
       py_dispatch!(self, |inner| {
-        let paths = inner.sample_par(m);
-        let n = paths[0].len();
+        let paths = py.detach(|| inner.sample_par(m));
+        let n = paths.first().map_or(0, |p| p.len());
         let mut result = Array2::zeros((m, n));
         for (i, path) in paths.iter().enumerate() {
           result.row_mut(i).assign(path);

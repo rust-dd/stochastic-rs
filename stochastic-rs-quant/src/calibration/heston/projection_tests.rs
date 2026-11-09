@@ -52,6 +52,35 @@ fn explicit_feller_projection_remains_available() {
 }
 
 #[test]
+fn feller_projection_lowers_sigma_alone_past_a_square_root_that_rounds_up() {
+  // 2κθ = 2 exactly, and √2 rounded to f64 squares to 2 + 4.4e-16.
+  let original = HestonParams {
+    v0: 0.04,
+    kappa: 5.0,
+    theta: 0.2,
+    sigma: 2.0,
+    rho: -0.7,
+  };
+  assert!(2.0_f64.sqrt() * 2.0_f64.sqrt() > 2.0);
+
+  let projected = original.clone().projected_with_feller_condition();
+
+  assert!(projected.satisfies_feller_condition());
+  assert_eq!(projected.sigma, 2.0_f64.sqrt().next_down());
+  assert_eq!(
+    projected,
+    HestonParams {
+      sigma: projected.sigma,
+      ..original
+    }
+  );
+  assert_eq!(
+    projected.clone().projected_with_feller_condition(),
+    projected
+  );
+}
+
+#[test]
 fn exact_non_feller_surface_is_representable_by_the_calibrator() {
   let true_params = non_feller_params();
   let spot = 100.0;

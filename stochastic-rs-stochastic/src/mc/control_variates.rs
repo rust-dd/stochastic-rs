@@ -11,6 +11,7 @@
 use ndarray::Array1;
 
 use super::McEstimate;
+use super::estimate_from_samples;
 use crate::traits::FloatExt;
 
 /// Single control-variate MC estimate.
@@ -63,15 +64,8 @@ where
 
   // Adjusted estimator: W_i = Y_i + c*(V_i − E[V])
   let adjusted = &ys + &(&vs - control_mean) * c_star;
-  let adj_mean = adjusted.sum() / n;
-  let adj_var = adjusted.mapv(|x| (x - adj_mean) * (x - adj_mean)).sum() / n;
-  let std_err = (adj_var / n).sqrt();
 
-  McEstimate {
-    mean: adj_mean,
-    std_err,
-    n_samples: n_paths,
-  }
+  estimate_from_samples(adjusted)
 }
 
 #[cfg(test)]

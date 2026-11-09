@@ -1,12 +1,20 @@
 //! # Stochastic process traits
 //!
-//! Organised as focused submodules: [`process`] (`ProcessExt` + dimensional
-//! markers) and [`sampler`] ([`PathSampler`]).
-//! Upstream traits are re-exported so call-sites can write
-//! `crate::traits::FloatExt` without reaching into `stochastic_rs_distributions`.
+//! [`process`] holds `ProcessExt` and the dimensional markers, [`sampler`] holds [`PathSampler`];
+//! upstream traits are re-exported so a call site writes `crate::traits::FloatExt`.
 
 pub mod process;
 pub mod sampler;
+
+mod sealed {
+  #[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot implement the sealed traits `ProcessExt` and `PathSampler`",
+    note = "wrap or compose an in-tree process; a new process is added inside stochastic-rs-stochastic"
+  )]
+  pub trait Sealed {}
+}
+
+pub(crate) use sealed::Sealed;
 
 pub use process::ComplexPathOutput;
 pub use process::CurveOutput;
@@ -26,5 +34,6 @@ pub use stochastic_rs_distributions::traits::Fn1D;
 pub use stochastic_rs_distributions::traits::Fn2D;
 pub use stochastic_rs_distributions::traits::Grid2D;
 pub use stochastic_rs_distributions::traits::Program;
+pub use stochastic_rs_distributions::traits::ProgramError;
 pub use stochastic_rs_distributions::traits::RealExt;
 pub use stochastic_rs_distributions::traits::SimdFloatExt;

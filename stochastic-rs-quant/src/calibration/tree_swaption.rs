@@ -135,25 +135,22 @@ pub struct BlackKarasinskiCalibrationResult {
   pub converged: bool,
   pub model_prices: Vec<f64>,
   pub market_prices: Vec<f64>,
-}
-
-impl BlackKarasinskiCalibrationResult {
-  /// Tree model at the calibrated `(a, σ)`; `long_run_rate` is the level
-  /// the log-rate reverts to, in rate units.
-  pub fn to_short_rate_model(
-    &self,
-    initial_rate: f64,
-    long_run_rate: f64,
-  ) -> BlackKarasinskiTreeModel<f64> {
-    BlackKarasinskiTreeModel::new(initial_rate, self.mean_reversion, long_run_rate, self.sigma)
-  }
+  /// Time-0 short rate the tree model starts from; not calibrated.
+  pub initial_rate: f64,
+  /// Long-run level the log-rate reverts to, in rate units; not calibrated.
+  pub long_run_rate: f64,
 }
 
 impl crate::traits::ToShortRateModel for BlackKarasinskiCalibrationResult {
   type Model = BlackKarasinskiTreeModel<f64>;
-  /// `theta` is the long-run short rate (rate units, not its log).
-  fn to_short_rate_model(&self, initial_rate: f64, theta: f64) -> Self::Model {
-    BlackKarasinskiCalibrationResult::to_short_rate_model(self, initial_rate, theta)
+
+  fn to_short_rate_model(&self) -> Self::Model {
+    BlackKarasinskiTreeModel::new(
+      self.initial_rate,
+      self.mean_reversion,
+      self.long_run_rate,
+      self.sigma,
+    )
   }
 }
 
@@ -260,6 +257,8 @@ impl<'a> BlackKarasinskiSwaptionCalibrator<'a> {
       converged,
       model_prices,
       market_prices,
+      initial_rate: self.initial_rate,
+      long_run_rate: self.long_run_rate,
     }
   }
 }
@@ -352,32 +351,26 @@ pub struct G2ppCalibrationResult {
   pub converged: bool,
   pub model_prices: Vec<f64>,
   pub market_prices: Vec<f64>,
+  /// Constant shift φ of the tree model; an input of the calibrator.
+  pub initial_rate: f64,
 }
 
-impl G2ppCalibrationResult {
-  /// Tree model at the calibrated parameters with both factors starting at
-  /// zero and the constant shift `φ = initial_rate`, so `r = x + y + φ`.
-  pub fn to_short_rate_model(&self, initial_rate: f64) -> G2ppTreeModel<f64> {
+impl crate::traits::ToShortRateModel for G2ppCalibrationResult {
+  type Model = G2ppTreeModel<f64>;
+
+  /// Both factors start at zero; the constant shift is the stored `initial_rate`, so `r = x + y + φ`.
+  fn to_short_rate_model(&self) -> Self::Model {
     let p = &self.params;
     G2ppTreeModel::new(
       0.0,
       0.0,
-      initial_rate,
+      self.initial_rate,
       p.mean_reversion_x,
       p.mean_reversion_y,
       p.sigma_x,
       p.sigma_y,
       p.rho,
     )
-  }
-}
-
-impl crate::traits::ToShortRateModel for G2ppCalibrationResult {
-  type Model = G2ppTreeModel<f64>;
-  /// The constant shift is `initial_rate`; `theta` has no role in G2++ and
-  /// is ignored.
-  fn to_short_rate_model(&self, initial_rate: f64, _theta: f64) -> Self::Model {
-    G2ppCalibrationResult::to_short_rate_model(self, initial_rate)
   }
 }
 
@@ -486,6 +479,7 @@ impl<'a> G2ppSwaptionCalibrator<'a> {
       converged,
       model_prices,
       market_prices,
+      initial_rate: self.initial_rate,
     }
   }
 }

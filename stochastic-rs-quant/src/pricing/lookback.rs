@@ -33,11 +33,11 @@ pub struct FloatingLookbackPricer {
   pub r: f64,
   /// Dividend yield.
   pub q: f64,
-  /// Volatility.
+  /// Annualised Black–Scholes volatility.
   pub sigma: f64,
   /// Time to maturity in years.
   pub tau: f64,
-  /// Option type.
+  /// Call or put payoff.
   pub option_type: OptionType,
 }
 
@@ -112,11 +112,11 @@ pub struct FixedLookbackPricer {
   pub r: f64,
   /// Dividend yield.
   pub q: f64,
-  /// Volatility.
+  /// Annualised Black–Scholes volatility.
   pub sigma: f64,
   /// Time to maturity in years.
   pub tau: f64,
-  /// Option type.
+  /// Call or put payoff.
   pub option_type: OptionType,
 }
 

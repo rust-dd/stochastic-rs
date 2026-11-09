@@ -10,6 +10,7 @@
 
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_stochastic::jump::cgmy::Cgmy;
 use stochastic_rs_stochastic::jump::cts::Cts;
 use stochastic_rs_stochastic::sheet::fbs::Fbs;
@@ -116,7 +117,7 @@ fn the_cgmy_series_has_the_variance_of_its_levy_measure() {
   let last: Vec<f64> = paths.iter().map(|p| p[p.len() - 1]).collect();
   let mean = last.iter().sum::<f64>() / PATHS as f64;
   let variance = last.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / PATHS as f64;
-  let expected = c * scilib::math::basic::gamma(2.0 - y) * (g.powf(y - 2.0) + m.powf(y - 2.0)) * t;
+  let expected = c * gamma(2.0 - y) * (g.powf(y - 2.0) + m.powf(y - 2.0)) * t;
   assert!(
     (variance / expected - 1.0).abs() < 0.06,
     "CGMY variance over T = {t}: {variance}, closed form {expected}"

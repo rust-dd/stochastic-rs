@@ -4,262 +4,438 @@
 //! \mathbb{P}(N=k)=e^{-\lambda}\frac{\lambda^k}{k!},\ k\in\mathbb N_0
 //! $$
 //!
-use std::cell::Cell;
-use std::cell::UnsafeCell;
+//! Sampling: table inversion below λ = 1000, Hörmann's PTRS from it on.
+//!
+//! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §X.3, DOI 10.1007/978-1-4613-8643-8.
+//! Reference: Hörmann, W. (1993), "The transformed rejection method for generating Poisson random variables", *Insurance: Mathematics and Economics* 12(1), 39-45, DOI 10.1016/0167-6687(93)90997-4.
+//! Reference: Loader, C. (2000), "Fast and Accurate Computation of Binomial Probabilities", technical report, <https://www.r-project.org/doc/reports/CLoader-dbinom-2002.pdf> (the saddle-point `ln pₖ`).
+//! Reference: Choi, K.P. (1994), "On the medians of gamma distributions and an equation of Ramanujan", *Proceedings of the American Mathematical Society* 121(1), 245-251, DOI 10.1090/S0002-9939-1994-1195477-8 (the median bracket `λ − ln 2 ≤ m < λ + 1/3`).
+
+use std::marker::PhantomData;
+use std::mem::MaybeUninit;
 
 use num_traits::PrimInt;
 use rand::Rng;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_core::simd_rng::SimdRngExt;
+use stochastic_rs_core::simd_rng::as_uninit_mut;
 
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::seeded::StreamState;
+use crate::source::uniform53;
+use crate::special::HALF_LN_TAU;
+use crate::special::gamma_q;
+use crate::special::ln_gamma;
+use crate::special::ndtri;
+use crate::special::stirling_tail;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
-pub struct SimdPoisson<T: PrimInt, R: SimdRngExt = SimdRng> {
-  lambda: f64,
-  cdf: Box<[f64]>,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<R>,
-  stream_seed: Cell<u64>,
+/// Rates from here on draw by PTRS (Hörmann's own floor is 10); below it the table is exact inversion and holds ≤ 1 300 entries.
+const PTRS_MIN_LAMBDA: f64 = 1000.0;
+
+/// From this count on Stirling's series holds `stirlerr(k)` within `5e-18`; below it `ln pₖ` is `k ln λ − λ − ln k!`.
+const STIRLING_FROM: f64 = 15.0;
+
+/// `ln pₖ` as `−stirlerr(k) − bd0(k, λ) − ½ ln 2πk` from `STIRLING_FROM` on, which keeps the digits `k ln λ − λ − ln k!` cancels at large λ.
+fn ln_pmf(k: f64, lambda: f64, ln_lambda: f64) -> f64 {
+  if k < STIRLING_FROM {
+    return if k == 0.0 {
+      -lambda
+    } else {
+      k * ln_lambda - lambda - ln_gamma(k + 1.0)
+    };
+  }
+  -stirling_tail(k.recip()) - bd0(k, lambda, ln_lambda) - HALF_LN_TAU.0 - 0.5 * k.ln()
 }
 
-impl<T: PrimInt, R: SimdRngExt> SimdPoisson<T, R> {
-  /// Builds the cumulative table from log-space pmf increments
-  /// `ln pmf_k = -λ + k ln λ - ln Γ(k+1)`. The naive multiplicative
-  /// recurrence starts at `exp(-λ)`, which underflows to 0 for λ ≳ 745 and
-  /// then never recovers — the loop would run forever. The secondary stop
-  /// condition covers accumulated-rounding cases where `cum` converges a
-  /// few ulp below the `1 - 1e-15` target: past `2λ` with pmf < 4e-18 the
-  /// remaining tail mass is below the table's own epsilon.
+/// `k ln(k/λ) + λ − k`: Loader's series in `v = (k − λ)/(k + λ)` for `|v| < ½`, whose terms do not cancel, the logarithm form outside.
+fn bd0(k: f64, lambda: f64, ln_lambda: f64) -> f64 {
+  let d = k - lambda;
+  let v = (0.5 * d) / (0.5 * k + 0.5 * lambda);
+  if v.abs() < 0.5 {
+    let v2 = v * v;
+    let (mut s, mut term) = (d * v, 2.0 * (k * v));
+    let mut j = 1.0;
+    while j < 64.0 {
+      term *= v2;
+      let next = s + term / (2.0 * j + 1.0);
+      if next == s {
+        break;
+      }
+      s = next;
+      j += 1.0;
+    }
+    return s;
+  }
+  let ratio = k / lambda;
+  let ln_ratio = if ratio.is_finite() {
+    ratio.ln()
+  } else {
+    k.ln() - ln_lambda
+  };
+  k * ln_ratio + lambda - k
+}
+
+/// Hörmann (1993), algorithm PTRS: the set-up constants of one rate.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Ptrs {
+  mu: f64,
+  ln_mu: f64,
+  b: f64,
+  a: f64,
+  ln_inv_alpha: f64,
+  v_r: f64,
+}
+
+impl Ptrs {
+  fn new(mu: f64) -> Self {
+    let b = 0.931 + 2.53 * mu.sqrt();
+    let a = -0.059 + 0.02483 * b;
+    Self {
+      mu,
+      ln_mu: mu.ln(),
+      b,
+      a,
+      ln_inv_alpha: (1.1239 + 1.1328 / (b - 3.4)).ln(),
+      v_r: 0.9277 - 3.6224 / (b - 2.0),
+    }
+  }
+
+  /// Two uniforms per attempt, 88 % accepted from λ = 1000 on; the squeeze accepts without the logarithm.
+  #[inline]
+  fn draw(&self, mut uniform: impl FnMut() -> f64) -> f64 {
+    loop {
+      let u = uniform() - 0.5;
+      let v = uniform();
+      let us = 0.5 - u.abs();
+      let k = ((2.0 * self.a / us + self.b) * u + self.mu + 0.43).floor();
+      if us >= 0.07 && v <= self.v_r {
+        return k;
+      }
+      if k < 0.0 || (us < 0.013 && v > us) {
+        continue;
+      }
+      let lhs = v.ln() + self.ln_inv_alpha - (self.a / (us * us) + self.b).ln();
+      if lhs <= ln_pmf(k, self.mu, self.ln_mu) {
+        return k;
+      }
+    }
+  }
+
+  /// [`Self::draw`] on `rng`, out of line so that a table law's scalar draw stays small enough to inline.
+  #[inline(never)]
+  fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> f64 {
+    self.draw(|| uniform53(rng.next_u64()))
+  }
+}
+
+#[inline]
+fn table_index(table: &[f64], u: f64) -> u64 {
+  table.partition_point(|&c| c < u) as u64
+}
+
+/// Visits the table's entries `P(N ≤ k)` from `k = 0`, in log space as `exp(−λ)` underflows at λ ≳ 745, until `visit` answers `true` or the table ends; returns that `k`.
+#[inline]
+fn walk(lambda: f64, mut visit: impl FnMut(f64) -> bool) -> f64 {
+  let ln_lambda = lambda.ln();
+  let mut log_pmf = -lambda;
+  let mut cum = log_pmf.exp();
+  let mut k = 0.0_f64;
+  loop {
+    if visit(cum) {
+      return k;
+    }
+    k += 1.0;
+    log_pmf += ln_lambda - k.ln();
+    cum += log_pmf.exp();
+    // Past 2λ the sum can settle a few ulp below its target.
+    if cum >= 1.0 - 1e-15 || (k > 2.0 * lambda && log_pmf < -40.0) {
+      visit(1.0);
+      return k;
+    }
+  }
+}
+
+fn walk_count(lambda: f64, u: f64) -> f64 {
+  walk(lambda, |cum| cum >= u)
+}
+
+/// The count a `SimdPoisson` of `lambda` draws from `rng`, as an `f64` that keeps counts past `u64`: [`walk_count`] below `PTRS_MIN_LAMBDA`, PTRS from it on.
+pub(crate) fn count_once<G: Rng + ?Sized>(lambda: f64, rng: &mut G) -> f64 {
+  if lambda < PTRS_MIN_LAMBDA {
+    walk_count(lambda, uniform53(rng.next_u64()))
+  } else {
+    Ptrs::new(lambda).draw(|| uniform53(rng.next_u64()))
+  }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum Sampler {
+  Table(Box<[f64]>),
+  Ptrs(Ptrs),
+}
+
+/// Poisson law with rate `lambda`: the rate and its sampler (a table below λ = 1000, PTRS's constants from it on); a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SimdPoisson<T: PrimInt> {
+  lambda: f64,
+  sampler: Sampler,
+  out: PhantomData<T>,
+}
+
+impl<T: PrimInt> SimdPoisson<T> {
   #[inline]
   fn build_cdf(lambda: f64) -> Box<[f64]> {
     let mut cdf = Vec::new();
-    let ln_lambda = lambda.ln();
-    let mut log_pmf = -lambda;
-    let mut cum = log_pmf.exp();
-    cdf.push(cum);
-
-    loop {
-      let k = cdf.len() as f64;
-      log_pmf += ln_lambda - k.ln();
-      cum += log_pmf.exp();
-      if cum >= 1.0 - 1e-15 || (k > 2.0 * lambda && log_pmf < -40.0) {
-        cdf.push(1.0);
-        break;
-      }
+    walk(lambda, |cum| {
       cdf.push(cum);
-    }
-
+      false
+    });
     cdf.into_boxed_slice()
   }
 
-  /// Creates a Poisson distribution.
-  ///
-  /// - `lambda` — rate λ > 0 (matches the module header's λ); mean and
-  ///   variance are both λ. Stored at construction — see this type's
-  ///   internal `build_cdf` for why the cumulative table must be built
-  ///   in log space once λ ≳ 745.
-  pub fn new<S: crate::simd_rng::SeedExt>(lambda: f64, seed: &S) -> Self {
+  /// The law of rate `lambda`, its mean and variance; panics unless `0 < lambda < ∞`.
+  pub fn new(lambda: f64) -> Self {
     assert!(
-      lambda > 0.0,
-      "lambda must satisfy `lambda > 0.0`, got lambda = {lambda:?}"
+      lambda > 0.0 && lambda.is_finite(),
+      "lambda must satisfy `lambda > 0.0 && lambda.is_finite()`, got lambda = {lambda:?}"
     );
-    let stream_seed = seed.seed_value();
+    let sampler = if lambda < PTRS_MIN_LAMBDA {
+      Sampler::Table(Self::build_cdf(lambda))
+    } else {
+      Sampler::Ptrs(Ptrs::new(lambda))
+    };
     Self {
       lambda,
-      cdf: Self::build_cdf(lambda),
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed: Cell::new(stream_seed),
+      sampler,
+      out: PhantomData,
     }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.lambda,
-      &crate::simd_rng::Deterministic::new(child_seed),
+  /// The rate `λ`.
+  pub fn lambda(&self) -> f64 {
+    self.lambda
+  }
+
+  /// `k` as `T`, saturated past `T`'s range (an assertion in debug); PTRS's `f64` count saturates at `u64::MAX` first.
+  #[inline]
+  fn count(k: u64) -> T {
+    let cast = num_traits::cast(k);
+    debug_assert!(
+      cast.is_some(),
+      "Poisson draw {k} overflowed the output integer type"
+    );
+    cast.unwrap_or(T::max_value())
+  }
+
+  /// Kept out of line because inlined into a consumer's per-step pop the table search slows that loop by about 30 %.
+  #[inline(never)]
+  fn fill_parts<G: Rng + ?Sized>(&self, rng: &mut G, out: &mut [MaybeUninit<T>]) {
+    match &self.sampler {
+      Sampler::Table(table) => {
+        for x in out.iter_mut() {
+          x.write(Self::count(table_index(table, uniform53(rng.next_u64()))));
+        }
+      }
+      Sampler::Ptrs(ptrs) => {
+        for x in out.iter_mut() {
+          x.write(Self::count(ptrs.draw(|| uniform53(rng.next_u64())) as u64));
+        }
+      }
+    }
+  }
+
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    match &self.sampler {
+      Sampler::Table(table) => Self::count(table_index(table, uniform53(rng.next_u64()))),
+      Sampler::Ptrs(ptrs) => Self::count(ptrs.draw_with(rng) as u64),
+    }
+  }
+}
+
+impl<T: PrimInt + Send + Sync + 'static> Sealed for SimdPoisson<T> {}
+
+impl<T: PrimInt + Send + Sync + 'static> SimdDistribution for SimdPoisson<T> {
+  type State<R: SimdRngExt> = StreamState<T, R, 16>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (StreamState<T, R, 16>, u64) {
+    StreamState::init(seed)
+  }
+}
+
+impl<T: PrimInt + Send + Sync + 'static> SimdKernel for SimdPoisson<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [MaybeUninit<T>]) {
+    self.fill_parts(&mut state.rng, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>) -> T {
+    let StreamState { rng, buf } = state;
+    // SAFETY: `fill_parts` writes every element of the buffer.
+    buf.pop(|b| self.fill_parts(rng, unsafe { as_uninit_mut(b) }))
+  }
+}
+
+impl<T: PrimInt + Send + Sync + 'static> Distribution<T> for SimdPoisson<T> {
+  /// One draw on the caller's rng: the table inversion of a 53-bit uniform below λ = 1000, PTRS from it on.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
+  }
+}
+
+impl<T: PrimInt> crate::traits::DistributionExt for SimdPoisson<T> {
+  fn pdf(&self, x: f64) -> Option<f64> {
+    if x.is_nan() {
+      return Some(f64::NAN);
+    }
+    if x < 0.0 || x.fract() != 0.0 {
+      return Some(0.0);
+    }
+    Some(ln_pmf(x, self.lambda, self.lambda.ln()).exp())
+  }
+
+  /// `Q(⌊x⌋ + 1, λ)`: the regularised upper incomplete gamma, no table; below 1 it is `e^{−λ}` itself, which `gamma_q(1, λ)` reads ulps off.
+  fn cdf(&self, x: f64) -> Option<f64> {
+    if x.is_nan() {
+      return Some(f64::NAN);
+    }
+    if x < 0.0 {
+      return Some(0.0);
+    }
+    if x == f64::INFINITY {
+      return Some(1.0);
+    }
+    if x < 1.0 {
+      return Some((-self.lambda).exp());
+    }
+    Some(gamma_q(x.floor() + 1.0, self.lambda))
+  }
+
+  /// The smallest count with `cdf ≥ p`, bracketed from `λ + Φ⁻¹(p)√λ` and bisected over the doubles, so it ends where counts are a double apart; `+∞` past `f64::MAX`.
+  fn quantile(&self, p: f64) -> Option<f64> {
+    if !(0.0..=1.0).contains(&p) {
+      return Some(f64::NAN);
+    }
+    if p == 0.0 {
+      return Some(0.0);
+    }
+    if p == 1.0 {
+      return Some(f64::INFINITY);
+    }
+    let reaches = |k: f64| self.cdf(k).is_some_and(|c| c >= p);
+    let root = self.lambda.sqrt();
+    let guess = (self.lambda + ndtri(p) * root).floor().max(0.0);
+    let (mut lo, mut hi, mut step) = (guess, guess, root.ceil());
+    if reaches(guess) {
+      loop {
+        lo = (hi - step).min(hi.next_down()).max(-1.0);
+        if !reaches(lo) {
+          break;
+        }
+        hi = lo;
+        step *= 2.0;
+      }
+    } else {
+      loop {
+        hi = (lo + step).min(f64::MAX).max(lo.next_up());
+        if reaches(hi) {
+          break;
+        }
+        lo = hi;
+        step *= 2.0;
+      }
+    }
+    loop {
+      let mid = (lo + (hi - lo) * 0.5).floor();
+      if mid <= lo || mid >= hi {
+        return Some(hi);
+      }
+      if reaches(mid) {
+        hi = mid;
+      } else {
+        lo = mid;
+      }
+    }
+  }
+
+  fn mean(&self) -> Option<f64> {
+    Some(self.lambda())
+  }
+
+  /// Exact from Choi's bracket `λ − ln 2 ≤ m < λ + 1/3`: one count, or two where `frac(λ) ∈ (2/3, ln 2]`, which one cdf comparison decides, except at `n = 0`, where `e^{−λ} ≥ ½` gives 0 without it.
+  fn median(&self) -> Option<f64> {
+    let n = self.lambda.floor();
+    let frac = self.lambda - n;
+    // No double lies between `LN_2` and ln 2, and the fused `3 frac − 2` keeps its sign, so both ends are exact.
+    let holds_n = frac <= std::f64::consts::LN_2;
+    let holds_next = 3.0_f64.mul_add(frac, -2.0) > 0.0;
+    Some(if n > 0.0 && holds_n && holds_next {
+      if self.cdf(n).is_some_and(|c| c >= 0.5) {
+        n
+      } else {
+        n + 1.0
+      }
+    } else if holds_n {
+      n
+    } else {
+      n + 1.0
+    })
+  }
+
+  fn mode(&self) -> Option<f64> {
+    Some(self.lambda().floor())
+  }
+
+  fn variance(&self) -> Option<f64> {
+    Some(self.lambda())
+  }
+
+  fn skewness(&self) -> Option<f64> {
+    Some(1.0 / self.lambda().sqrt())
+  }
+
+  fn kurtosis(&self) -> Option<f64> {
+    Some(1.0 / self.lambda())
+  }
+
+  /// Exact below the PTRS threshold (the pmf sum to 50σ), the `O(λ⁻⁴)` asymptotic series above it.
+  fn entropy(&self) -> Option<f64> {
+    let l = self.lambda();
+    if l < PTRS_MIN_LAMBDA {
+      let (ln_l, end) = (l.ln(), (l + 50.0 * l.sqrt() + 60.0).ceil());
+      let (mut h, mut k) = (0.0, 0.0);
+      while k <= end {
+        let ln_p = ln_pmf(k, l, ln_l);
+        h -= ln_p.exp() * ln_p;
+        k += 1.0;
+      }
+      return Some(h);
+    }
+    Some(
+      0.5 * (2.0 * std::f64::consts::PI * std::f64::consts::E * l).ln()
+        - 1.0 / (12.0 * l)
+        - 1.0 / (24.0 * l * l)
+        - 19.0 / (360.0 * l.powi(3)),
     )
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
-  #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
-  }
-
-  /// Fills `out` using the internal SIMD RNG stream — the only stream this
-  /// sampler draws from (see the crate-level RNG policy). A draw that
-  /// overflows `T` saturates to `T::max_value()` rather than silently
-  /// reporting a `0` count; `debug_assert!` surfaces the overflow in debug
-  /// builds so undersized output types are caught during testing.
-  pub fn fill_slice(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
-    for x in out.iter_mut() {
-      let u: f64 = rng.random();
-      let k = self.cdf.partition_point(|&p| p < u);
-      let cast = num_traits::cast(k);
-      debug_assert!(
-        cast.is_some(),
-        "Poisson draw {k} overflowed the output integer type"
-      );
-      *x = cast.unwrap_or(T::max_value());
-    }
-  }
-
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
-  }
-}
-
-impl<T: PrimInt, R: SimdRngExt> Clone for SimdPoisson<T, R> {
-  fn clone(&self) -> Self {
-    // Cloning a stochastic source means "give me an independent stream", so
-    // the clone is auto-seeded regardless of how the original was created.
-    // Reuses the already-built `cdf` table (Unseeded is stateless, so a
-    // fresh `Self::new` would only redo that O(cdf length) work for no
-    // benefit).
-    let stream_seed = Unseeded.seed_value();
-    Self {
-      lambda: self.lambda,
-      cdf: self.cdf.clone(),
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed: Cell::new(stream_seed),
-    }
-  }
-}
-
-impl<T: PrimInt, R: SimdRngExt> Distribution<T> for SimdPoisson<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD stream seeded at construction. Use `Deterministic`
-  /// in the constructor for reproducibility.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
-  }
-}
-
-impl<T: PrimInt, R: SimdRngExt> SimdPoisson<T, R> {
-  /// The rate parameter λ (stored at construction — the old
-  /// `-ln(cdf[0])` recovery breaks down once `e^{-λ}` underflows).
-  #[inline]
-  fn lambda(&self) -> f64 {
-    self.lambda
-  }
-}
-
-impl<T: PrimInt, R: SimdRngExt> crate::traits::DistributionExt for SimdPoisson<T, R> {
-  fn pdf(&self, x: f64) -> f64 {
-    if x < 0.0 || x.fract() != 0.0 {
-      return 0.0;
-    }
-    let k = x as i64;
-    let lambda = self.lambda();
-    // P(N=k) = exp(−λ) λ^k / k! = exp(k ln λ − λ − ln Γ(k+1))
-    let log_pmf = k as f64 * lambda.ln() - lambda - crate::special::ln_gamma((k + 1) as f64);
-    log_pmf.exp()
-  }
-
-  fn cdf(&self, x: f64) -> f64 {
-    if x < 0.0 {
-      return 0.0;
-    }
-    let k = x.floor() as usize;
-    if k >= self.cdf.len() {
-      1.0
-    } else {
-      self.cdf[k]
-    }
-  }
-
-  fn inv_cdf(&self, p: f64) -> f64 {
-    if p <= 0.0 {
-      return 0.0;
-    }
-    if p >= 1.0 {
-      return f64::INFINITY;
-    }
-    // Use the cached cumulative table built in `build_cdf`.
-    match self.cdf.iter().position(|&c| c >= p) {
-      Some(k) => k as f64,
-      None => (self.cdf.len() - 1) as f64,
-    }
-  }
-
-  fn mean(&self) -> f64 {
-    self.lambda()
-  }
-
-  fn median(&self) -> f64 {
-    // Approximation: ⌊λ + 1/3 - 0.02/λ⌋
-    let l = self.lambda();
-    (l + 1.0 / 3.0 - 0.02 / l).floor()
-  }
-
-  fn mode(&self) -> f64 {
-    self.lambda().floor()
-  }
-
-  fn variance(&self) -> f64 {
-    self.lambda()
-  }
-
-  fn skewness(&self) -> f64 {
-    1.0 / self.lambda().sqrt()
-  }
-
-  fn kurtosis(&self) -> f64 {
-    1.0 / self.lambda()
-  }
-
-  fn entropy(&self) -> f64 {
-    // Closed form not elementary; fall back to an asymptotic expansion that's
-    // accurate to leading order: H(λ) ≈ ½ ln(2π e λ) - 1/(12λ) - 1/(24λ²) - ...
-    let l = self.lambda();
-    0.5 * (2.0 * std::f64::consts::PI * std::f64::consts::E * l).ln()
-      - 1.0 / (12.0 * l)
-      - 1.0 / (24.0 * l * l)
-      - 19.0 / (360.0 * l.powi(3))
-  }
-
-  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+  fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> {
     // φ(t) = exp(λ (e^{it} - 1))
     let eit = num_complex::Complex64::new(0.0, t).exp();
-    (eit - num_complex::Complex64::new(1.0, 0.0))
-      .scale(self.lambda())
-      .exp()
+    Some(
+      (eit - num_complex::Complex64::new(1.0, 0.0))
+        .scale(self.lambda())
+        .exp(),
+    )
   }
 
-  fn moment_generating_function(&self, t: f64) -> f64 {
-    (self.lambda() * (t.exp() - 1.0)).exp()
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    Some((self.lambda() * (t.exp() - 1.0)).exp())
   }
 }
 
@@ -269,45 +445,4 @@ py_distribution_int!(PyPoissonD, SimdPoisson,
 );
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::SimdPoisson;
-  use crate::traits::DistributionExt;
-
-  /// λ ≳ 745 made the old multiplicative table build spin forever on an
-  /// underflowed `exp(-λ)`; the log-space build must terminate and sample
-  /// with the right mean.
-  #[test]
-  fn poisson_large_lambda_table_terminates() {
-    let dist = SimdPoisson::<u64>::new(800.0, &Deterministic::new(3));
-    let mut buf = vec![0u64; 4096];
-    dist.fill_slice(&mut buf);
-    let mean = buf.iter().map(|&x| x as f64).sum::<f64>() / buf.len() as f64;
-    assert!(
-      (mean - 800.0).abs() < 3.0,
-      "λ=800 sample mean drift: {mean}"
-    );
-    assert!((dist.mean() - 800.0).abs() < 1e-9);
-  }
-
-  /// Log-space build must reproduce the small-λ table semantics.
-  #[test]
-  fn poisson_small_lambda_moments() {
-    let dist = SimdPoisson::<u32>::new(3.5, &Deterministic::new(11));
-    let mut buf = vec![0u32; 100_000];
-    dist.fill_slice(&mut buf);
-    let n = buf.len() as f64;
-    let mean = buf.iter().map(|&x| x as f64).sum::<f64>() / n;
-    let var = buf
-      .iter()
-      .map(|&x| {
-        let d = x as f64 - mean;
-        d * d
-      })
-      .sum::<f64>()
-      / n;
-    assert!((mean - 3.5).abs() < 0.05, "mean drift: {mean}");
-    assert!((var - 3.5).abs() < 0.15, "variance drift: {var}");
-  }
-}
+mod tests;

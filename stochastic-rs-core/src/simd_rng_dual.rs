@@ -1,38 +1,26 @@
-//! # Dual-stream SIMD RNG (experimental)
-//!
-//! Two `Xoshiro256++` / `Xoshiro128++` engines run side-by-side and the
-//! public API exposes a `_pair` flavour that returns one batch from each.
-//! Modern out-of-order CPUs can overlap the two engines' state updates with
-//! the consumer's compute / memory ops, exposing more ILP than a
-//! single-stream design where the state update is a hard serial dependency.
-//!
-//! This is a **non-production experiment** parallel to
-//! [`crate::simd_rng::SimdRng`] — same algorithms, doubled state, different
-//! deterministic output sequence under [`SimdRngDual::from_seed`]. Promotion
-//! to the production `SimdRng` is gated on a measurable bulk-fill speedup.
-//!
-//! # Layout
-//!
-//! ```text
-//!   f64_a ────────────► consumer (chunk i)
-//!   f64_b ────────────► consumer (chunk i+1)   ↘
-//!                                                interleaved by OoO core
-//!   f32_a ────────────► consumer (lanes 0..8)  ↗
-//!   f32_b ────────────► consumer (lanes 8..16)
-//! ```
+//! Experimental twin of [`crate::simd_rng::SimdRng`] with two interleaved xoshiro engines, so a
+//! consumer can overlap their state updates; its seeded stream differs.
 
+use core::convert::Infallible;
+use std::mem::MaybeUninit;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use rand::RngCore;
+use rand::TryRng;
 use wide::f32x8;
 use wide::f64x4;
 use wide::i32x8;
 use wide::u32x8;
 use wide::u64x4;
+
+use crate::simd_rng::as_uninit_mut;
+use crate::simd_rng::xoshiro::F32_MAGIC_X8;
+use crate::simd_rng::xoshiro::F32_ONE_X8;
+use crate::simd_rng::xoshiro::F64_MAGIC_X4;
+use crate::simd_rng::xoshiro::F64_ONE_X4;
 
 #[inline(always)]
 fn rotl_u64x4(x: u64x4, k: u32) -> u64x4 {
@@ -45,6 +33,7 @@ fn rotl_u32x8(x: u32x8, k: u32) -> u32x8 {
 }
 
 /// 4-lane parallel xoshiro256++ engine (identical to the single-stream variant).
+#[derive(Clone, Debug)]
 struct Xoshiro256PP4 {
   s0: u64x4,
   s1: u64x4,
@@ -96,6 +85,7 @@ impl Xoshiro256PP4 {
   }
 }
 
+#[derive(Clone, Debug)]
 struct Xoshiro128PP8 {
   s0: u32x8,
   s1: u32x8,
@@ -134,10 +124,6 @@ impl Xoshiro128PP8 {
   }
 }
 
-/// IEEE-754 bit pattern of `1.0_f64`.
-const F64_MAGIC: u64 = 0x3FF0_0000_0000_0000;
-/// IEEE-754 bit pattern of `1.0_f32`.
-const F32_MAGIC: u32 = 0x3F80_0000;
 const SEED_GAMMA: u64 = 0x9e37_79b9_7f4a_7c15;
 
 #[inline]
@@ -169,11 +155,9 @@ fn initial_seed() -> u64 {
   splitmix64_next(&mut seed)
 }
 
-/// Experimental dual-stream SIMD RNG.
-///
-/// Carries two of each underlying engine; the public methods that target
-/// bulk consumers expose both streams so the OoO core can pipeline state
-/// updates against the consumer's compute / memory ops.
+/// Experimental dual-stream SIMD RNG: two of each engine, so a bulk consumer's compute overlaps the
+/// other engine's state update on an out-of-order core.
+#[derive(Clone, Debug)]
 pub struct SimdRngDual {
   f64_a: Xoshiro256PP4,
   f64_b: Xoshiro256PP4,
@@ -212,12 +196,9 @@ impl SimdRngDual {
     Self::from_seed(next_global_seed())
   }
 
-  /// Returns two independent `i32x8` batches — one from engine A, one from
-  /// engine B. Consumers should process them as a 16-lane unrolled body so
-  /// the compiler can interleave the two `xoshiro` state updates with the
-  /// inner-loop compute / memory ops.
+  /// One `i32x8` batch from each engine; a 16-lane body lets the two state updates interleave.
   #[inline(always)]
-  pub fn next_i32x8_pair(&mut self) -> (i32x8, i32x8) {
+  pub(crate) fn next_i32x8_pair(&mut self) -> (i32x8, i32x8) {
     let raw_a = self.f32_a.next();
     let raw_b = self.f32_b.next();
     unsafe {
@@ -228,28 +209,30 @@ impl SimdRngDual {
     }
   }
 
-  /// Fills `out` with uniform `f64` values in `[0, 1)` using **alternating**
-  /// engines per 4-lane chunk. The two engines have independent state, so
-  /// every other chunk's xoshiro update can overlap with the previous
-  /// chunk's store on a modern OoO core.
-  ///
-  /// 52-bit precision via the magic-number trick (same as
-  /// [`crate::simd_rng::SimdRng::fill_uniform_f64`]).
+  /// Uniform `f64` in `[0, 1)` into `out`, alternating engines per 4-lane chunk so each xoshiro
+  /// update overlaps the last store; 52 bits, as [`crate::simd_rng::SimdRng::fill_uniform_f64`].
   #[inline]
   pub fn fill_uniform_f64(&mut self, out: &mut [f64]) {
-    let magic = u64x4::splat(F64_MAGIC);
-    let one = f64x4::splat(1.0);
+    // SAFETY: `fill_uniform_f64_uninit` writes every element of `out`.
+    self.fill_uniform_f64_uninit(unsafe { as_uninit_mut(out) });
+  }
+
+  #[inline]
+  pub(crate) fn fill_uniform_f64_uninit(&mut self, out: &mut [MaybeUninit<f64>]) {
     let len = out.len();
-    let ptr = out.as_mut_ptr();
+    let ptr = out.as_mut_ptr().cast::<f64>();
 
     let pair_chunks = len / 8;
     for i in 0..pair_chunks {
-      let bits_a = (self.f64_a.next() >> 12u32) | magic;
-      let bits_b = (self.f64_b.next() >> 12u32) | magic;
+      let bits_a = (self.f64_a.next() >> 12u32) | F64_MAGIC_X4;
+      let bits_b = (self.f64_b.next() >> 12u32) | F64_MAGIC_X4;
+      // SAFETY: `u64x4` and `f64x4` are both 256 bits, and every bit pattern is an `f64`.
       let fa: f64x4 = unsafe { core::mem::transmute::<u64x4, f64x4>(bits_a) };
+      // SAFETY: `u64x4` and `f64x4` are both 256 bits, and every bit pattern is an `f64`.
       let fb: f64x4 = unsafe { core::mem::transmute::<u64x4, f64x4>(bits_b) };
-      let ra = fa - one;
-      let rb = fb - one;
+      let ra = fa - F64_ONE_X4;
+      let rb = fb - F64_ONE_X4;
+      // SAFETY: lanes `8i..8i + 8` lie inside `out`, and `write_unaligned` needs no alignment.
       unsafe {
         core::ptr::write_unaligned(ptr.add(i * 8) as *mut f64x4, ra);
         core::ptr::write_unaligned(ptr.add(i * 8 + 4) as *mut f64x4, rb);
@@ -258,40 +241,48 @@ impl SimdRngDual {
 
     let mut written = pair_chunks * 8;
     while written + 4 <= len {
-      let bits = (self.f64_a.next() >> 12u32) | magic;
+      let bits = (self.f64_a.next() >> 12u32) | F64_MAGIC_X4;
+      // SAFETY: `u64x4` and `f64x4` are both 256 bits, and every bit pattern is an `f64`.
       let f: f64x4 = unsafe { core::mem::transmute::<u64x4, f64x4>(bits) };
+      // SAFETY: `written + 4 <= len`, and `write_unaligned` needs no alignment.
       unsafe {
-        core::ptr::write_unaligned(ptr.add(written) as *mut f64x4, f - one);
+        core::ptr::write_unaligned(ptr.add(written) as *mut f64x4, f - F64_ONE_X4);
       }
       written += 4;
     }
     if written < len {
-      let bits = (self.f64_a.next() >> 12u32) | magic;
+      let bits = (self.f64_a.next() >> 12u32) | F64_MAGIC_X4;
+      // SAFETY: `u64x4` and `f64x4` are both 256 bits, and every bit pattern is an `f64`.
       let f: f64x4 = unsafe { core::mem::transmute::<u64x4, f64x4>(bits) };
-      let arr: [f64; 4] = (f - one).to_array();
-      let tail = unsafe { core::slice::from_raw_parts_mut(ptr.add(written), len - written) };
-      tail.copy_from_slice(&arr[..len - written]);
+      let arr: [f64; 4] = (f - F64_ONE_X4).to_array();
+      out[written..].copy_from_slice(&arr.map(MaybeUninit::new)[..len - written]);
     }
   }
 
-  /// Fills `out` with uniform `f32` values in `[0, 1)`. Each 8-lane f32x8
-  /// chunk alternates between engines A and B; tails shorter than 8 fall
-  /// back to a scalar copy.
+  /// Uniform `f32` in `[0, 1)` into `out`, each 8-lane chunk from engine A or B in turn, a tail
+  /// under 8 copied scalar.
   #[inline]
   pub fn fill_uniform_f32(&mut self, out: &mut [f32]) {
-    let magic = u32x8::splat(F32_MAGIC);
-    let one = f32x8::splat(1.0);
+    // SAFETY: `fill_uniform_f32_uninit` writes every element of `out`.
+    self.fill_uniform_f32_uninit(unsafe { as_uninit_mut(out) });
+  }
+
+  #[inline]
+  pub(crate) fn fill_uniform_f32_uninit(&mut self, out: &mut [MaybeUninit<f32>]) {
     let len = out.len();
-    let ptr = out.as_mut_ptr();
+    let ptr = out.as_mut_ptr().cast::<f32>();
 
     let pair_chunks = len / 16;
     for i in 0..pair_chunks {
-      let bits_a = (self.f32_a.next() >> 9u32) | magic;
-      let bits_b = (self.f32_b.next() >> 9u32) | magic;
+      let bits_a = (self.f32_a.next() >> 9u32) | F32_MAGIC_X8;
+      let bits_b = (self.f32_b.next() >> 9u32) | F32_MAGIC_X8;
+      // SAFETY: `u32x8` and `f32x8` are both 256 bits, and every bit pattern is an `f32`.
       let fa: f32x8 = unsafe { core::mem::transmute::<u32x8, f32x8>(bits_a) };
+      // SAFETY: `u32x8` and `f32x8` are both 256 bits, and every bit pattern is an `f32`.
       let fb: f32x8 = unsafe { core::mem::transmute::<u32x8, f32x8>(bits_b) };
-      let ra = fa - one;
-      let rb = fb - one;
+      let ra = fa - F32_ONE_X8;
+      let rb = fb - F32_ONE_X8;
+      // SAFETY: lanes `16i..16i + 16` lie inside `out`, and `write_unaligned` needs no alignment.
       unsafe {
         core::ptr::write_unaligned(ptr.add(i * 16) as *mut f32x8, ra);
         core::ptr::write_unaligned(ptr.add(i * 16 + 8) as *mut f32x8, rb);
@@ -300,38 +291,37 @@ impl SimdRngDual {
 
     let mut written = pair_chunks * 16;
     while written + 8 <= len {
-      let bits = (self.f32_a.next() >> 9u32) | magic;
+      let bits = (self.f32_a.next() >> 9u32) | F32_MAGIC_X8;
+      // SAFETY: `u32x8` and `f32x8` are both 256 bits, and every bit pattern is an `f32`.
       let f: f32x8 = unsafe { core::mem::transmute::<u32x8, f32x8>(bits) };
+      // SAFETY: `written + 8 <= len`, and `write_unaligned` needs no alignment.
       unsafe {
-        core::ptr::write_unaligned(ptr.add(written) as *mut f32x8, f - one);
+        core::ptr::write_unaligned(ptr.add(written) as *mut f32x8, f - F32_ONE_X8);
       }
       written += 8;
     }
     if written < len {
-      let bits = (self.f32_a.next() >> 9u32) | magic;
+      let bits = (self.f32_a.next() >> 9u32) | F32_MAGIC_X8;
+      // SAFETY: `u32x8` and `f32x8` are both 256 bits, and every bit pattern is an `f32`.
       let f: f32x8 = unsafe { core::mem::transmute::<u32x8, f32x8>(bits) };
-      let arr: [f32; 8] = (f - one).to_array();
-      let tail = unsafe { core::slice::from_raw_parts_mut(ptr.add(written), len - written) };
-      tail.copy_from_slice(&arr[..len - written]);
+      let arr: [f32; 8] = (f - F32_ONE_X8).to_array();
+      out[written..].copy_from_slice(&arr.map(MaybeUninit::new)[..len - written]);
     }
   }
 
-  /// Returns a single uniform `f64` in `[0, 1)`. Refills its 8-element buffer
-  /// from one engine A batch and one engine B batch in alternation —
-  /// each refill exposes both state updates to the OoO core simultaneously.
+  /// One uniform `f64` in `[0, 1)` from an 8-element buffer refilled by one A and one B batch, both
+  /// state updates exposed to the out-of-order core.
   #[inline(always)]
   pub fn next_f64(&mut self) -> f64 {
     if self.f64_scalar_idx >= 8 {
-      let magic = u64x4::splat(F64_MAGIC);
-      let one = f64x4::splat(1.0);
       let buf_ptr = self.f64_scalar_buf.as_mut_ptr();
       unsafe {
-        let bits_a = (self.f64_a.next() >> 12u32) | magic;
-        let bits_b = (self.f64_b.next() >> 12u32) | magic;
+        let bits_a = (self.f64_a.next() >> 12u32) | F64_MAGIC_X4;
+        let bits_b = (self.f64_b.next() >> 12u32) | F64_MAGIC_X4;
         let fa: f64x4 = core::mem::transmute::<u64x4, f64x4>(bits_a);
         let fb: f64x4 = core::mem::transmute::<u64x4, f64x4>(bits_b);
-        core::ptr::write_unaligned(buf_ptr as *mut f64x4, fa - one);
-        core::ptr::write_unaligned(buf_ptr.add(4) as *mut f64x4, fb - one);
+        core::ptr::write_unaligned(buf_ptr as *mut f64x4, fa - F64_ONE_X4);
+        core::ptr::write_unaligned(buf_ptr.add(4) as *mut f64x4, fb - F64_ONE_X4);
       }
       self.f64_scalar_idx = 0;
     }
@@ -340,9 +330,7 @@ impl SimdRngDual {
     v
   }
 
-  /// Returns a single random `i32`. Refills its 8-element buffer via one
-  /// `next_i32x8_pair` call (writes both A and B's first batch — only
-  /// engine A's lanes are used here, B's lanes feed the next 8 draws).
+  /// A uniform `i32` over its whole range, drawn from engine A only.
   #[inline(always)]
   pub fn next_i32(&mut self) -> i32 {
     if self.i32_scalar_idx >= 8 {
@@ -362,11 +350,9 @@ impl Default for SimdRngDual {
   }
 }
 
+impl crate::simd_rng::engine_seal::Sealed for SimdRngDual {}
+
 impl crate::simd_rng::SimdRngExt for SimdRngDual {
-  /// Two independent xoshiro engines means
-  /// [`next_i32x8_pair`](Self::next_i32x8_pair) genuinely returns two
-  /// state-independent batches — consumers should branch on this const to
-  /// pick the unrolled 16-lane body.
   const HAS_PAIR_ILP: bool = true;
 
   #[inline(always)]
@@ -405,9 +391,9 @@ impl crate::simd_rng::SimdRngExt for SimdRngDual {
   fn next_f32(&mut self) -> f32 {
     // Single-sample f32 path: pull from engine A, magic-number to [0, 1),
     // discard B's lanes (the dual-stream payoff lives in the bulk fills).
-    let bits = (self.f32_a.next() >> 9u32) | u32x8::splat(F32_MAGIC);
+    let bits = (self.f32_a.next() >> 9u32) | F32_MAGIC_X8;
     let f: f32x8 = unsafe { core::mem::transmute::<u32x8, f32x8>(bits) };
-    let arr: [f32; 8] = (f - f32x8::splat(1.0)).to_array();
+    let arr: [f32; 8] = (f - F32_ONE_X8).to_array();
     arr[0]
   }
 
@@ -420,22 +406,34 @@ impl crate::simd_rng::SimdRngExt for SimdRngDual {
   fn fill_uniform_f32(&mut self, out: &mut [f32]) {
     self.fill_uniform_f32(out);
   }
+
+  #[inline(always)]
+  fn fill_uniform_f64_uninit(&mut self, out: &mut [MaybeUninit<f64>]) {
+    self.fill_uniform_f64_uninit(out);
+  }
+
+  #[inline(always)]
+  fn fill_uniform_f32_uninit(&mut self, out: &mut [MaybeUninit<f32>]) {
+    self.fill_uniform_f32_uninit(out);
+  }
 }
 
-impl RngCore for SimdRngDual {
+impl TryRng for SimdRngDual {
+  type Error = Infallible;
+
   #[inline(always)]
-  fn next_u32(&mut self) -> u32 {
-    self.next_u64() as u32
+  fn try_next_u32(&mut self) -> Result<u32, Infallible> {
+    self.try_next_u64().map(|x| x as u32)
   }
 
   #[inline(always)]
-  fn next_u64(&mut self) -> u64 {
+  fn try_next_u64(&mut self) -> Result<u64, Infallible> {
     // Pull one u64 from engine A; ignore B for the scalar path.
     let arr = self.f64_a.next().to_array();
-    arr[0]
+    Ok(arr[0])
   }
 
-  fn fill_bytes(&mut self, dest: &mut [u8]) {
+  fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Infallible> {
     let mut written = 0;
     let total = dest.len();
     while total - written >= 64 {
@@ -452,16 +450,17 @@ impl RngCore for SimdRngDual {
       written += 64;
     }
     while total - written >= 8 {
-      let v = self.next_u64();
+      let v = self.try_next_u64()?;
       dest[written..written + 8].copy_from_slice(&v.to_le_bytes());
       written += 8;
     }
     if written < total {
-      let v = self.next_u64();
+      let v = self.try_next_u64()?;
       let bytes = v.to_le_bytes();
       let take = total - written;
       dest[written..written + take].copy_from_slice(&bytes[..take]);
     }
+    Ok(())
   }
 }
 

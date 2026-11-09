@@ -17,7 +17,7 @@ fn seeding_strategies_end_to_end() {
   let fbm = Fbm::<f64, _>::new(0.7, 256, Some(1.0), Deterministic::new(0));
   let paths: Vec<_> = (1..=10u64)
     .map(|s| {
-      fbm.seed.reseed(s);
+      fbm.seed().reseed(s);
       fbm.sample()
     })
     .collect();

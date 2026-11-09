@@ -16,7 +16,3 @@ pub mod types;
 pub use covariance::portfolio_variance;
 pub use covariance::sample_covariance;
 pub use covariance::shrinkage_covariance;
-
-/// Factor-analysis utilities (PCA, Ledoit-Wolf shrinkage, Fama-MacBeth,
-/// pairs trading) re-exported here for portfolio-construction users.
-pub use crate::factors;

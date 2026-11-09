@@ -92,7 +92,7 @@ impl HestonStaticParams {
   }
 }
 
-/// Analytic Heston engine.
+/// [`PricingEngine`] pricing a European option with the semi-closed-form Heston formula.
 #[derive(Clone)]
 pub struct AnalyticHestonEngine {
   pub s: Handle<SimpleQuote<f64>>,
@@ -278,13 +278,8 @@ mod tests {
     assert!((p_h - p_b).abs() < 0.05, "heston={p_h}, bs={p_b}");
   }
 
-  /// Same missing-data convention as [`AnalyticBSEngine`], checked handle by
-  /// handle. Before the fix an unlinked spot read as `0.0`, and the Heston
-  /// characteristic-function integral at `s = 0` returned a finite NPV for a
-  /// spot the caller never supplied. `delta` and `gamma` are additionally
-  /// worth naming here: they bump `s` by `s.abs().max(1.0) * bump`, and
-  /// `f64::max` discards a `NaN` operand, so the step size stays finite —
-  /// only the re-valuation at `NaN ± h` carries the poison through.
+  /// Each unlinked handle poisons the NPV and every Greek; the delta and gamma step stays finite
+  /// (`f64::max` drops the NaN), so the NaN arrives through the re-valuation.
   #[test]
   fn every_unlinked_handle_poisons_npv_and_greeks() {
     let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
@@ -318,21 +313,8 @@ mod tests {
     assert!((c - p - parity).abs() < 1e-2);
   }
 
-  /// `HestonStaticParams::new` validates the same parameters
-  /// [`HestonPricer::new`] does, at the layer the caller actually supplied
-  /// them.
-  ///
-  /// Before this the struct built happily and the rejection arrived from
-  /// `model_and_query`'s inner `HestonPricer::new` — at *pricing* time,
-  /// naming a type the caller never mentioned, and only if they went on to
-  /// call `calculate`. The parameters are identical; only the layer moved.
-  ///
-  /// The fields are `pub`, so this is a front door and not a wall: a struct
-  /// literal still reaches them, which is why the inner constructor stays
-  /// the second line of defence. Its messages carry the `HestonPricer::new`
-  /// prefix and these carry `HestonStaticParams::new`, so neither is a
-  /// substring of the other and an `expected` anchor cannot be satisfied by
-  /// the wrong guard firing.
+  /// `HestonStaticParams::new` validates the parameters [`HestonPricer::new`] does, under its own
+  /// message prefix, so an `expected` anchor cannot match the wrong guard.
   mod construction_validation {
     use super::*;
 

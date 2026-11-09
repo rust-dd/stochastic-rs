@@ -48,7 +48,7 @@ pub struct HscmParams {
   pub rho2: f64,
 }
 
-/// Result of HSCM calibration.
+/// Calibrated HSCM parameters with the fit's RMSE, MAE and SLSQP status.
 #[derive(Clone, Debug)]
 pub struct HscmCalibrationResult {
   pub kappa_v: f64,
@@ -213,9 +213,7 @@ impl crate::traits::Calibrator for HscmCalibrator {
   type Error = anyhow::Error;
 
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
-    // Default initial guess derived from the rc.1 calibration tests — a
-    // mild-skew, short-tenor SPX-style starting point. Users with a better
-    // prior should pass `Some([...])`.
+    // A mild-skew, short-tenor SPX-style start; a caller with a better prior passes `Some(..)`.
     let guess = initial.unwrap_or([2.0, 0.04, 0.3, 0.04, 5.0, -0.5, 0.2, -0.7, 0.3]);
     Ok(calibrate_hscm(self.s, &self.options, &guess, self.max_iter))
   }
@@ -377,8 +375,7 @@ mod tests {
 
     let result = calibrate_hscm(s0, &options, &guess, 200);
 
-    // Decisive: with `let _ = slsqp::minimize(...)` final_objective stayed at
-    // initial_sse. After the fix the optimizer drives SSE strictly below.
+    // A discarded optimizer result would leave the objective at the initial SSE.
     assert!(
       result.final_objective < initial_sse * 0.5,
       "SLSQP didn't make meaningful progress: final={} initial={}",

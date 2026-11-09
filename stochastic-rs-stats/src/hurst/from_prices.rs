@@ -11,20 +11,8 @@ use super::HurstEstimator;
 use crate::fractal_dim::Higuchi;
 use crate::traits::FloatExt;
 
-/// Estimate `H` from a close-price series.
-///
-/// Uses Higuchi-fractal-dim on a rolling realized-vol proxy
-/// (rolling mean absolute return), cross-validated against an absolute-
-/// return Higuchi estimate.  Returns `H ∈ [0.05, 0.45]` on success.
-///
-/// # Errors
-///
-/// Returns [`HurstError::TooFewObservations`] when `closes` (or the
-/// finite log-returns / vol-proxy derived from it) is too short, and
-/// propagates whatever [`hurst_from_signal`] returns for the underlying
-/// Higuchi fit. Callers that want the pre-2.7 clamp-to-default behavior
-/// can write `estimate_hurst(x).unwrap_or(0.1)` explicitly at the call
-/// site — the function itself no longer guesses on your behalf.
+/// `H ∈ [0.05, 0.45]` from closes: Higuchi on a rolling mean-absolute-return vol proxy, checked
+/// against absolute returns; errors on too few closes or as [`hurst_from_signal`] does.
 pub fn estimate_hurst<T: FloatExt>(closes: ArrayView1<T>) -> Result<f64, HurstError> {
   let n = closes.len();
   if n < 30 {
@@ -86,18 +74,8 @@ pub fn estimate_hurst<T: FloatExt>(closes: ArrayView1<T>) -> Result<f64, HurstEr
   })
 }
 
-/// Estimate `H` from an arbitrary positive signal via Higuchi FD.
-///
-/// Result is clamped to `[0.05, 0.45]` on success.
-///
-/// # Errors
-///
-/// Returns [`HurstError::TooFewObservations`] when `signal` has fewer
-/// than 20 points, propagates [`Higuchi`]'s own error, and returns
-/// [`HurstError::RegressionFailed`] when the fit produces a Hurst value
-/// outside `(0, 1)` (a degenerate log-log regression). Callers that want
-/// the pre-2.7 clamp-to-default behavior can write
-/// `hurst_from_signal(x).unwrap_or(0.1)` explicitly.
+/// Higuchi `H` of a positive signal, clamped to `[0.05, 0.45]`; errors below 20 points, on a
+/// [`Higuchi`] failure, or with [`HurstError::RegressionFailed`] when the fit leaves `(0, 1)`.
 pub fn hurst_from_signal<T: FloatExt>(signal: ArrayView1<T>) -> Result<f64, HurstError> {
   let n = signal.len();
   if n < 20 {

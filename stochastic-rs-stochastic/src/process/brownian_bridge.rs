@@ -21,21 +21,17 @@
 //! $s=T$. [`BrownianBridge::x0`] / [`BrownianBridge::xt`] hold $x_0$ / $x_T$;
 //! [`BrownianBridge::sigma`] is $\sigma$.
 //!
-//! Downstream use: pinning a path's endpoint before filling in its interior
-//! is the first step of the Brownian-bridge *path-construction* technique
-//! for quasi-Monte-Carlo simulation — it hands a low-discrepancy sequence's
-//! best-equidistributed leading coordinates to a path's coarsest,
-//! highest-variance features instead of its finest ones (Glasserman (2003),
-//! *Monte Carlo Methods in Financial Engineering*, §3.1, DOI:
-//! 10.1007/978-0-387-21617-1). [`crate::mc::sobol`] and [`crate::mc::halton`]
-//! provide the low-discrepancy sequences this construction is paired with;
-//! this module supplies the endpoint-pinned process itself, not the
-//! recursive dimension-allocation logic that pairs it with those sequences
-//! (a later, phase-E integration concern).
+//! Downstream use: [`crate::mc::brownian_bridge_qmc::BrownianBridgeQmc`] runs the Brownian-bridge construction
+//! over a `stochastic_rs_distributions::qmc` sequence; this module supplies only the endpoint-pinned process itself.
+//!
+//! Reference: Glasserman (2003), *Monte Carlo Methods in Financial Engineering*, §3.1, DOI: 10.1007/978-0-387-21617-1
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -214,6 +210,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] BrownianBridge<T, S> { sigma, n, x0, xt, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for BrownianBridge<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for BrownianBridge<T, S, B>
 {
@@ -234,7 +235,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       sigma: self.sigma,
       t,
       dt,
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
@@ -290,7 +291,7 @@ pub struct BrownianBridgeSampler<T: FloatExt> {
   sigma: T,
   t: T,
   dt: T,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> BrownianBridgeSampler<T> {
@@ -332,6 +333,8 @@ impl<T: FloatExt> BrownianBridgeSampler<T> {
     out[last] = self.xt;
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for BrownianBridgeSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for BrownianBridgeSampler<T> {
   type Output = Array1<T>;

@@ -6,9 +6,9 @@
 //!
 
 use ndarray::Array1;
-use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::normal::SimdNormal;
 
@@ -331,6 +331,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] DuffieKanJumpExp<T, S> { alpha, beta, gamma, rho, a1, b1, c1, sigma1, a2, b2, c2, sigma2, lambda, jump_scale, n, r0, x0, t, seed, cgns } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for DuffieKanJumpExp<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for DuffieKanJumpExp<T, S, B>
 {
@@ -431,11 +436,12 @@ impl<T: FloatExt, S: SeedExt> DuffieKanJumpExpSampler<T, S> {
     r[0] = self.r0;
     x[0] = self.x0;
 
-    let exp_dist = SimdExp::<T>::new(self.lambda, &self.seed);
-    let jump_dist = SimdNormal::<T, 64>::new(T::zero(), self.jump_scale, &self.seed);
+    let mut exp_dist = SimdExp::<T>::new(self.lambda).seeded(&self.seed);
+    let mut jump_dist = SimdNormal::<T>::new(T::zero(), self.jump_scale).seeded(&self.seed);
 
-    let mut rng = self.seed.rng();
-    let mut next_jump_time = exp_dist.sample(&mut rng);
+    // A draw no engine reads; skipping it would move every stream seeded after this one.
+    self.seed.next_seed();
+    let mut next_jump_time = exp_dist.sample();
 
     for i in 1..self.n {
       let current_time = T::from_usize_(i) * dt;
@@ -449,9 +455,9 @@ impl<T: FloatExt, S: SeedExt> DuffieKanJumpExpSampler<T, S> {
 
       let mut jump_sum_x = T::zero();
       while next_jump_time <= current_time {
-        let jump_x = jump_dist.sample(&mut rng);
+        let jump_x = jump_dist.sample();
         jump_sum_x += jump_x;
-        next_jump_time += exp_dist.sample(&mut rng);
+        next_jump_time += exp_dist.sample();
       }
 
       r[i] = r_old + dr;
@@ -459,6 +465,8 @@ impl<T: FloatExt, S: SeedExt> DuffieKanJumpExpSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for DuffieKanJumpExpSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for DuffieKanJumpExpSampler<T, S> {
   type Output = [Array1<T>; 2];

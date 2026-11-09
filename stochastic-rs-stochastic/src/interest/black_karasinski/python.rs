@@ -1,5 +1,6 @@
 use super::*;
 
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyBlackKarasinski {
   inner: Option<BlackKarasinski<f64>>,

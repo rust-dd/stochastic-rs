@@ -12,6 +12,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -186,6 +189,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] HullWhite<T, S> { theta, alpha, sigma, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for HullWhite<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for HullWhite<T, S, B>
 {
@@ -205,7 +213,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       alpha: self.alpha,
       diff_scale: self.sigma,
       theta: &self.theta,
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
@@ -252,7 +260,7 @@ pub struct HullWhiteSampler<'a, T: FloatExt> {
   alpha: T,
   diff_scale: T,
   theta: &'a Fn1D<T>,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> HullWhiteSampler<'_, T> {
@@ -280,6 +288,8 @@ impl<T: FloatExt> HullWhiteSampler<'_, T> {
   }
 }
 
+impl<T: FloatExt> crate::traits::Sealed for HullWhiteSampler<'_, T> {}
+
 impl<T: FloatExt> PathSampler<T> for HullWhiteSampler<'_, T> {
   type Output = Array1<T>;
 
@@ -297,6 +307,7 @@ impl<T: FloatExt> PathSampler<T> for HullWhiteSampler<'_, T> {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyHullWhite {
   inner: Option<HullWhite<f64>>,

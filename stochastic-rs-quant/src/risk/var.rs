@@ -144,7 +144,7 @@ pub fn monte_carlo_var<T: RealExt>(
 /// * `confidence` — VaR confidence level
 /// * `orientation` — input is PnL or Loss
 pub fn monte_carlo_var_with_sampler<T, D>(
-  sampler: &D,
+  sampler: &mut D,
   n_samples: usize,
   confidence: T,
   orientation: PnlOrLoss,

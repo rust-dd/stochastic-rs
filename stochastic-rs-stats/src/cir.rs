@@ -11,18 +11,18 @@
 //! Term Structure of Interest Rates", *Econometrica* 53(2), 385-407.
 //! DOI: 10.2307/1911242
 //!
-use num_complex::Complex64;
-use scilib::math::bessel::i_nu;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::non_central_chi_squared;
 use stochastic_rs_distributions::special::gamma;
+use stochastic_rs_distributions::special::ln_bessel_ie;
 
 /// Samples one exact Cox-Ingersoll-Ross transition with an entropy-seeded RNG.
 ///
 /// `theta` is the mean-reversion speed and `mu` is the long-run mean. Invalid
 /// or non-finite inputs return `NaN`; at `t == 0` the current state is returned.
+/// A `sigma` so small that the χ² parameters overflow returns the conditional mean (relative spread < 1e-154).
 pub fn sample(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64) -> f64 {
   sample_with_seed(theta, mu, sigma, t, r_t, &Unseeded)
 }
@@ -60,9 +60,8 @@ pub fn pdf(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64, future_state: f64)
       std::cmp::Ordering::Greater => 0.0,
     };
   }
-  let bessel = i_nu(q, Complex64::new(2.0 * (u * v).sqrt(), 0.0));
-
-  c * (-u - v).exp() * (v / u).powf(q / 2.0) * bessel.re
+  let gap = u.sqrt() - v.sqrt();
+  (c.ln() - gap * gap + 0.5 * q * (v / u).ln() + ln_bessel_ie(q, 2.0 * (u * v).sqrt())).exp()
 }
 
 /// Cox-Ingersoll-Ross (Cir) process Asymptotic PDF.
@@ -93,6 +92,11 @@ fn sample_with_seed<S: SeedExt>(
   let scale = sigma_squared * one_minus_decay / (4.0 * theta);
   let degrees_of_freedom = 4.0 * theta * mu / sigma_squared;
   let noncentrality = r_t * decay / scale;
+  if !(degrees_of_freedom + noncentrality).is_finite() {
+    // The relative spread is at most `2/√(df + ncp)`, below 1.5e-154 once the sum leaves the double range: the draw is
+    // the conditional mean.
+    return r_t * decay + mu * one_minus_decay;
+  }
   scale * non_central_chi_squared::sample(degrees_of_freedom, noncentrality, seed)
 }
 

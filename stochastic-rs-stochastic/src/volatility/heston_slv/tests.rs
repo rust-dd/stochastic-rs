@@ -34,7 +34,12 @@ fn affine_leverage(_t: f64, s: f64) -> f64 {
 /// agree to the bit at the same seed.
 #[test]
 fn unit_leverage_under_full_mixing_is_heston_log_path_for_path() {
-  let [s, v] = slv(1.0, Expr::lit(1.0), Deterministic::new(42)).sample();
+  let [s, v] = slv(
+    1.0,
+    Expr::lit(1.0).compile().unwrap(),
+    Deterministic::new(42),
+  )
+  .sample();
   let [s_log, v_log] = HestonLog::new(
     Some(0.05),
     None,
@@ -58,10 +63,18 @@ fn unit_leverage_under_full_mixing_is_heston_log_path_for_path() {
 
 #[test]
 fn seeded_is_deterministic_and_the_seed_matters() {
-  let a = slv(0.7, Expr::lit(0.9), Deterministic::new(7));
+  let a = slv(
+    0.7,
+    Expr::lit(0.9).compile().unwrap(),
+    Deterministic::new(7),
+  );
   let b = a.clone();
   assert_eq!(a.sample(), b.sample());
-  let c = slv(0.7, Expr::lit(0.9), Deterministic::new(8));
+  let c = slv(
+    0.7,
+    Expr::lit(0.9).compile().unwrap(),
+    Deterministic::new(8),
+  );
   assert_ne!(a.sample(), c.sample());
 }
 
@@ -91,14 +104,19 @@ fn a_grid_leverage_matches_the_closure_it_tabulates() {
 /// it stays there, so the spot is a local-volatility model at `L sqrt(v0)`.
 #[test]
 fn eta_zero_freezes_the_variance_at_the_long_run_level() {
-  let [s, v] = slv(0.0, Expr::lit(1.5), Deterministic::new(11)).sample();
+  let [s, v] = slv(
+    0.0,
+    Expr::lit(1.5).compile().unwrap(),
+    Deterministic::new(11),
+  )
+  .sample();
   assert!(v.iter().all(|&x| x == 0.04));
   assert!(s.iter().all(|&x| x.is_finite() && x > 0.0));
 }
 
 #[test]
 fn only_an_expression_leverage_is_device_ready() {
-  assert!(slv(1.0, Expr::lit(1.0), Unseeded).device_ready());
+  assert!(slv(1.0, Expr::lit(1.0).compile().unwrap(), Unseeded).device_ready());
   let closure = slv(1.0, affine_leverage as fn(f64, f64) -> f64, Unseeded);
   assert_eq!(
     closure.device_fallback(),
@@ -142,7 +160,7 @@ fn rejects_n_below_two() {
     -0.7,
     0.05,
     1.0,
-    Expr::lit(1.0),
+    Expr::lit(1.0).compile().unwrap(),
     1,
     Some(1.0),
     Unseeded,
@@ -152,5 +170,5 @@ fn rejects_n_below_two() {
 #[test]
 #[should_panic(expected = "eta must be non-negative")]
 fn rejects_a_negative_mixing_fraction() {
-  let _ = slv(-0.5, Expr::lit(1.0), Unseeded);
+  let _ = slv(-0.5, Expr::lit(1.0).compile().unwrap(), Unseeded);
 }

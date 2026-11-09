@@ -9,6 +9,8 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 
 use crate::device::Cpu;
 use crate::traits::FloatExt;
@@ -35,7 +37,7 @@ impl<T: FloatExt, S: SeedExt> Cgns<T, S> {
   pub fn new(rho: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
       (-T::one()..=T::one()).contains(&rho),
-      "Correlation coefficient must be in [-1, 1]"
+      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
     );
 
     Self {
@@ -68,8 +70,10 @@ impl<T: FloatExt, S: SeedExt, B> Cgns<T, S, B> {
     let sqrt_dt = (self.t.unwrap_or(T::one()) / T::from_usize_(self.n)).sqrt();
     let gn1_slice = gn1.as_slice_mut().expect("Cgns noise 1 must be contiguous");
     let z_slice = z.as_slice_mut().expect("Cgns noise 2 must be contiguous");
-    let n1 = stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), sqrt_dt, seed);
-    let n2 = stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), sqrt_dt, seed);
+    let mut n1 =
+      stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(seed);
+    let mut n2 =
+      stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(seed);
     n1.fill_slice(gn1_slice);
     n2.fill_slice(z_slice);
     let c = (T::one() - self.rho.powi(2)).sqrt();
@@ -129,6 +133,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 }
 
 backend_switch!([T: FloatExt, S: SeedExt] Cgns<T, S> { rho, n, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Cgns<T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Cgns<T, S, B> {
   type Output = [Array1<T>; 2];
@@ -200,6 +209,8 @@ impl<T: FloatExt, S: SeedExt> CgnsSampler<T, S> {
   }
 }
 
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for CgnsSampler<T, S> {}
+
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for CgnsSampler<T, S> {
   type Output = [Array1<T>; 2];
 
@@ -220,3 +231,16 @@ py_process_2x1d!(PyCgns, Cgns,
   params: (rho: f64, n: usize, t: Option<f64>),
   device
 );
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  #[should_panic(
+    expected = "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = 1.5"
+  )]
+  fn a_correlation_outside_the_unit_interval_is_named_with_its_value() {
+    let _ = Cgns::<f64, Unseeded>::new(1.5, 8, Some(1.0), Unseeded);
+  }
+}

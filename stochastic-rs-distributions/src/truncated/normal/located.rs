@@ -1,0 +1,310 @@
+//! The truncated normal between its own coordinate and the engine's: bounds held at their doubles
+//! and width, points beside a bound, and answers mapped back from the exact point nearest them.
+
+use super::NormalKernel;
+use super::SimdTruncatedNormal;
+use crate::special::ldexp;
+use crate::special::mul_parts;
+use crate::special::split_pow2;
+use crate::traits::SimdFloatExt;
+use crate::truncated::quadrature::Cut;
+use crate::truncated::quadrature::Offset;
+use crate::truncated::quadrature::Point;
+use crate::truncated::quadrature::Truncation;
+use crate::truncated::quadrature::Two;
+use crate::truncated::quadrature::accurate_sum;
+use crate::truncated::quadrature::exp_split;
+use crate::truncated::quadrature::two;
+use crate::truncated::quadrature::two_prod;
+use crate::truncated::quadrature::two_sum;
+
+/// `2⁻¹⁰³²`: a subnormal below it is `2⁻¹⁰⁷⁴` coarse past 2e-13 of itself.
+pub(super) const SUBNORMAL_DIGITS: f64 = f64::MIN_POSITIVE / 1024.0;
+
+impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
+  /// The mean from the point its sums are about, exact in the law's coordinate: a bound, `μ`, or
+  /// the bounds' midpoint for a flat kernel, whose standardised image no rounded width maps back.
+  pub(super) fn mean_from(
+    &self,
+    t: &Truncation<NormalKernel>,
+    frame: Cut,
+    offset: [f64; 2],
+  ) -> Option<f64> {
+    if t.about_midpoint() {
+      return self.anchored(self.midpoint()?, offset);
+    }
+    if self.tail.is_none() {
+      let mu = self.base.mu().to_f64()?;
+      return self.anchored_scaled((mu, 0.0), self.mode_offset(t)?);
+    }
+    self.anchored((self.located(Point::From(frame))?, 0.0), offset)
+  }
+
+  /// `E[Z] = (k(α) − k(β))/∫k`, `k = e^{−z²/2}`, about `μ`, as `m·2^p`: it keeps the digits that
+  /// summed odd powers cancel to ε of the width near `μ`; `α ± β` from the bounds themselves.
+  fn mode_offset(&self, t: &Truncation<NormalKernel>) -> Option<(f64, i32)> {
+    let (mu, sigma) = (self.base.mu().to_f64()?, self.base.sigma().to_f64()?);
+    let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
+    let [alpha, beta, _] = self.bounds;
+    // `(β² − α²)/2 = (β − α)(β + α)/2`, each factor from the bounds' own doubles.
+    let half_gap = 0.5 * ((up - lo) / sigma) * (accurate_sum([lo, up, -mu, -mu]).0 / sigma);
+    let half_gap = if half_gap.is_finite() {
+      half_gap
+    } else {
+      halved_gap(lo, up, mu, sigma)
+    };
+    // `k(z)/∫k·(1 − k(far)/k(z))` from the bound `z` nearer `μ`, in logs: kernel values below the doubles keep it.
+    let (z, bound, share) = match (alpha.is_finite(), beta.is_finite()) {
+      (false, false) => return Some((0.0, 0)),
+      (true, false) => (alpha, lo, 1.0),
+      (false, true) => (beta, up, -1.0),
+      _ if half_gap.is_nan() => {
+        let k = |z: f64| (-0.5 * z * z).exp();
+        return Some(split_signed((k(alpha) - k(beta)) / t.mass()));
+      }
+      _ if half_gap >= 0.0 => (alpha, lo, -(-half_gap).exp_m1()),
+      _ => (beta, up, half_gap.exp_m1()),
+    };
+    // `z`'s rest `(bound − μ)/σ − z`: near 38σ out `z²/2` is 700, and an ulp of `z` moves it by 1e-13.
+    let (d, d_lo) = two_sum(bound, -mu);
+    let rest = if d.is_finite() {
+      ((-z).mul_add(sigma, d) + d_lo) / sigma
+    } else {
+      0.0
+    };
+    let (sq, sq_lo) = two_prod(z, z);
+    // Past `z² = MAX` the kernel value is 0 in every frame.
+    if sq.is_infinite() {
+      return Some((0.0, 0));
+    }
+    let (m, p) = exp_split(-0.5 * sq, -0.5 * sq_lo - z * rest - t.mass().ln());
+    Some((m * share, p))
+  }
+
+  /// `hi + lo + σ·m·2^p` from `σ`'s mantissa, so an offset `m·2^p` below the doubles' range still scales by `σ`.
+  fn anchored_scaled(&self, (hi, lo): (f64, f64), (m, p): (f64, i32)) -> Option<f64> {
+    let (es, ms) = split_pow2(self.base.sigma().to_f64()?);
+    let v = ldexp(ms * m, es + p);
+    let x = hi + (lo + v);
+    Some(if x.is_finite() {
+      x
+    } else {
+      2.0 * (0.5 * hi + (0.5 * lo + 0.5 * v))
+    })
+  }
+
+  /// `hi + lo + σ·unit·t`, from halves where it overflows short of its value.
+  pub(super) fn anchored(&self, (hi, lo): (f64, f64), [unit, t]: [f64; 2]) -> Option<f64> {
+    let sigma = self.base.sigma().to_f64()?;
+    let x = hi + (lo + (sigma * unit) * t);
+    Some(if x.is_finite() {
+      x
+    } else {
+      2.0 * (0.5 * hi + (0.5 * lo + (0.5 * sigma * unit) * t))
+    })
+  }
+
+  /// The bounds' midpoint and its rest, the law's flat reference point.
+  pub(super) fn midpoint(&self) -> Option<(f64, f64)> {
+    Some(midpoint(self.lower.to_f64()?, self.upper.to_f64()?))
+  }
+
+  /// From halves where `μ + σz` overflows short of its value.
+  #[inline]
+  pub(super) fn unstandardise(&self, z: f64) -> f64 {
+    let (mu, sigma) = (
+      self.base.mu().to_f64().unwrap(),
+      self.base.sigma().to_f64().unwrap(),
+    );
+    let x = mu + sigma * z;
+    if x.is_finite() || !z.is_finite() {
+      x
+    } else {
+      2.0 * (0.5 * mu + (0.5 * sigma) * z)
+    }
+  }
+
+  /// `−(z² − c²)/2` at the exact `z = (x − μ)/σ` in two parts, `c` the reference point, a bound
+  /// exact too: 38σ out a rounded `z` moves it `z²ε`, unseen by `M₀`, measured from its own end.
+  pub(super) fn ln_point(&self, t: &Truncation<NormalKernel>, x: f64) -> Two {
+    let (lo, up) = (self.lower.to_f64().unwrap(), self.upper.to_f64().unwrap());
+    let (centre, (at_lo, at_up)) = (t.reference(), self.held());
+    let c = if centre == at_lo {
+      self.exact(lo)
+    } else if centre == at_up {
+      self.exact(up)
+    } else {
+      two::of(centre)
+    };
+    let y = two::sub(self.exact(x), c);
+    let g = mul_parts(y, two::add((0.5 * y.0, 0.5 * y.1), c));
+    (-g.0, -g.1)
+  }
+
+  /// `(x − μ)/σ` in two parts, from halves where `x − μ` overflows.
+  fn exact(&self, x: f64) -> Two {
+    let (mu, sigma) = (
+      self.base.mu().to_f64().unwrap(),
+      self.base.sigma().to_f64().unwrap(),
+    );
+    let (d, s) = if (x - mu).is_finite() {
+      (two_sum(x, -mu), sigma)
+    } else {
+      (two_sum(0.5 * x, -0.5 * mu), 0.5 * sigma)
+    };
+    two::div(d, (s, 0.0))
+  }
+
+  pub(super) fn standardise(&self, x: f64) -> Option<f64> {
+    Some(standardised(
+      x,
+      self.base.mu().to_f64()?,
+      self.base.sigma().to_f64()?,
+    ))
+  }
+
+  /// `x` beside a bound nearer it than `μ` by its own offset `(x − bound)/σ`, so a point next to an
+  /// end keeps the digits its distance from it has, which `(x − μ)/σ` rounds away.
+  pub(super) fn cut(&self, x: f64) -> Option<Cut> {
+    let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
+    let (bound, held) = if x - lo <= up - x {
+      (lo, self.held().0)
+    } else {
+      (up, self.held().1)
+    };
+    let d = x - bound;
+    if d.abs() < (x - self.base.mu().to_f64()?).abs() {
+      let t = d / self.base.sigma().to_f64()?;
+      if t.is_finite() {
+        return Some(held.shifted(t));
+      }
+    }
+    Some(Cut::at(self.standardise(x)?))
+  }
+
+  /// `(x − lower)/σ` as `m·2^q` where the subnormal it rounds to holds fewer digits than 2e-13,
+  /// which `cut` would take.
+  pub(super) fn zone_offset(&self, x: f64) -> Option<Offset> {
+    let (lo, sigma) = (self.lower.to_f64()?, self.base.sigma().to_f64()?);
+    let d = x - lo;
+    if !(lo.is_finite() && d > 0.0 && d / sigma < SUBNORMAL_DIGITS) {
+      return None;
+    }
+    let (Offset { m: md, q: qd }, Offset { m: ms, q: qs }) = (Offset::of(d), Offset::of(sigma));
+    let m = md / ms;
+    Some(if m < 1.0 {
+      Offset {
+        m: 2.0 * m,
+        q: qd - qs - 1,
+      }
+    } else {
+      Offset { m, q: qd - qs }
+    })
+  }
+
+  /// A point the engine reports: one held beside a bound maps back from that bound itself, one
+  /// beside a flat kernel's midpoint from the bounds' midpoint.
+  pub(super) fn located(&self, point: Point) -> Option<f64> {
+    let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
+    let sigma = self.base.sigma().to_f64()?;
+    if let Point::Mid { width, t, .. } = point {
+      return self.anchored(self.midpoint()?, [width, t]);
+    }
+    if let Point::From(cut) = point {
+      let (s, rest, t) = cut.parts();
+      let (at_lo, at_up) = self.held();
+      for (bound, held) in [(lo, at_lo), (up, at_up)] {
+        let (hs, hrest, _) = held.parts();
+        let x = bound + sigma * t;
+        if bound.is_finite() && (s, rest) == (hs, hrest) && x.is_finite() {
+          return Some(x);
+        }
+      }
+    }
+    if let Point::Beside { s, sign, ln_t } = point
+      && s == self.held().0.x
+      && lo.is_finite()
+    {
+      return Some(lo + sign * (ln_t + self.ln_sigma).exp());
+    }
+    Some(self.unstandardise(point.value()))
+  }
+
+  pub(super) fn standardised_bounds(&self) -> (f64, f64) {
+    (self.bounds[0], self.bounds[1])
+  }
+
+  /// The engine's bounds at their own doubles; off `μ` the far one is also held beside the near one
+  /// by the width, which the two bounds' roundings would change by an ulp of their place.
+  pub(super) fn held(&self) -> (Cut, Cut) {
+    let [alpha, beta, width] = self.bounds;
+    let (lo, up) = (Cut::at(alpha), Cut::at(beta));
+    if width.is_nan() {
+      (lo, up)
+    } else if alpha > 0.0 {
+      (lo, Cut::held(beta, alpha, width))
+    } else {
+      (Cut::held(alpha, beta, -width), up)
+    }
+  }
+}
+
+/// `(β − α)(β + α)/2` from the bounds' halves, where `up − lo` or `lo + up − 2μ` passes MAX: with
+/// `μ` inside, no half does, so each factor keeps its digits.
+#[cold]
+#[inline(never)]
+fn halved_gap(lo: f64, up: f64, mu: f64, sigma: f64) -> f64 {
+  let width = (0.5 * up - 0.5 * lo) / sigma;
+  2.0 * width * (accurate_sum([0.5 * lo, 0.5 * up, -0.5 * mu, -0.5 * mu]).0 / sigma)
+}
+
+/// `(x − μ)/σ`, from halves where `x − μ` overflows; an infinite `x` stays infinite.
+#[inline]
+pub(super) fn standardised(x: f64, mu: f64, sigma: f64) -> f64 {
+  let d = x - mu;
+  if d.is_infinite() && x.is_finite() {
+    halved(x, mu, sigma)
+  } else {
+    d / sigma
+  }
+}
+
+/// Out of line, so the common path computes one quotient, not both.
+#[cold]
+#[inline(never)]
+fn halved(x: f64, mu: f64, sigma: f64) -> f64 {
+  (0.5 * x - 0.5 * mu) / (0.5 * sigma)
+}
+
+/// `(up − lo)/σ` for an interval off `μ`, from halves where `up − lo` overflows; NaN about `μ` or past the doubles.
+pub(super) fn width(alpha: f64, beta: f64, lo: f64, up: f64, sigma: f64) -> f64 {
+  let w = if (up - lo).is_finite() {
+    (up - lo) / sigma
+  } else {
+    (0.5 * up - 0.5 * lo) / (0.5 * sigma)
+  };
+  let off = alpha > 0.0 || beta < 0.0;
+  if off && alpha.is_finite() && beta.is_finite() && w.is_finite() {
+    w
+  } else {
+    f64::NAN
+  }
+}
+
+/// `(lo + up)/2` as a double and its rest, from halves where the sum overflows.
+fn midpoint(lo: f64, up: f64) -> (f64, f64) {
+  if (lo + up).is_finite() {
+    let (s, e) = two_sum(lo, up);
+    (0.5 * s, 0.5 * e)
+  } else {
+    two_sum(0.5 * lo, 0.5 * up)
+  }
+}
+
+fn split_signed(x: f64) -> (f64, i32) {
+  if x == 0.0 || !x.is_finite() {
+    return (x, 0);
+  }
+  let (p, m) = split_pow2(x.abs());
+  (x.signum() * m, p)
+}

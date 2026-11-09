@@ -1,0 +1,5 @@
+revision=24982235+metal-oxide-migration; metal-oxide=9a23aaa; GPU=Apple M4 Max; OS=macOS26.2(25C56); Xcode=26.6(17F113); SDK=26.5; math=Fast; Euler=metal-oxide
+format=STOEULR1
+families=121
+cases=1579
+bytes=2152832

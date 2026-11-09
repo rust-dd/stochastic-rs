@@ -5,97 +5,14 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
-use ndarray::Array0;
-use ndarray::Array1;
-use ndarray::Axis;
-use ndarray::Dim;
-use rand::rng;
-use rand_distr::Distribution;
 use rand_distr::Exp;
 use rand_distr::Normal;
-use stochastic_rs::distributions::exp::SimdExp;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::process::ccustom::CompoundCustom;
 use stochastic_rs::stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs::stochastic::process::customjt::CustomJt;
 use stochastic_rs::stochastic::process::poisson::Poisson;
 use stochastic_rs::traits::ProcessExt;
-
-fn legacy_sample_n(n: usize, lambda: f64) -> Array1<f64> {
-  let distr = SimdExp::<f64>::new(lambda, &Unseeded);
-  let exponentials = Array1::from_shape_fn(n, |_| distr.sample_fast());
-  let mut poisson = Array1::<f64>::zeros(n);
-  for i in 1..n {
-    poisson[i] = poisson[i - 1] + exponentials[i - 1];
-  }
-  poisson
-}
-
-fn legacy_sample_tmax(lambda: f64, t_max: f64) -> Array1<f64> {
-  let distr = SimdExp::<f64>::new(lambda, &Unseeded);
-  let mut poisson = Array1::from(vec![0.0_f64]);
-  let mut t = 0.0_f64;
-
-  while t < t_max {
-    t += distr.sample(&mut rng());
-    if t < t_max {
-      poisson
-        .push(Axis(0), Array0::from_elem(Dim(()), t).view())
-        .unwrap();
-    }
-  }
-
-  poisson
-}
-
-fn legacy_customjt_sample_n(n: usize, distribution: &Exp<f64>) -> Array1<f64> {
-  let mut r = rng();
-  let random = Array1::from_shape_fn(n, |_| distribution.sample(&mut r));
-  let mut x = Array1::<f64>::zeros(n);
-  for i in 1..n {
-    x[i] = x[i - 1] + random[i - 1];
-  }
-  x
-}
-
-fn legacy_customjt_sample_tmax(t_max: f64, distribution: &Exp<f64>) -> Array1<f64> {
-  let mut x = Array1::from(vec![0.0_f64]);
-  let mut t = 0.0_f64;
-
-  while t < t_max {
-    t += distribution.sample(&mut rng());
-    x.push(Axis(0), Array0::from_elem(Dim(()), t).view())
-      .unwrap();
-  }
-
-  x
-}
-
-fn legacy_compound_poisson_sample(model: &CompoundPoisson<f64, Normal<f64>>) -> [Array1<f64>; 3] {
-  let poisson = model.poisson.sample();
-  let mut jumps = Array1::<f64>::zeros(poisson.len());
-  for i in 1..poisson.len() {
-    jumps[i] = model.distribution.sample(&mut rng());
-  }
-
-  let mut cum_jupms = jumps.clone();
-  cum_jupms.accumulate_axis_inplace(Axis(0), |&prev, curr| *curr += prev);
-  [poisson, cum_jupms, jumps]
-}
-
-fn legacy_compound_custom_sample(
-  model: &CompoundCustom<f64, Normal<f64>, Exp<f64>>,
-) -> [Array1<f64>; 3] {
-  let p = model.customjt.sample();
-  let mut jumps = Array1::<f64>::zeros(model.n.unwrap_or(p.len()));
-  for i in 1..p.len() {
-    jumps[i] = model.jumps_distribution.sample(&mut rng());
-  }
-
-  let mut cum_jupms = jumps.clone();
-  cum_jupms.accumulate_axis_inplace(Axis(0), |&prev, curr| *curr += prev);
-  [p, cum_jupms, jumps]
-}
 
 fn bench_poisson_process(c: &mut Criterion) {
   let mut group = c.benchmark_group("PoissonProcess");
@@ -105,16 +22,9 @@ fn bench_poisson_process(c: &mut Criterion) {
   for &n in &[4_000usize, 100_000usize] {
     let model = Poisson::<f64, _>::new(3.0, Some(n), Some(1.0), Unseeded);
 
-    group.bench_with_input(BenchmarkId::new("current/sample_n", n), &n, |b, &_n| {
+    group.bench_with_input(BenchmarkId::new("sample_n", n), &n, |b, &_n| {
       b.iter(|| {
         let path = model.sample();
-        black_box((path.len(), *path.last().unwrap_or(&0.0)))
-      });
-    });
-
-    group.bench_with_input(BenchmarkId::new("legacy/sample_n", n), &n, |b, &n| {
-      b.iter(|| {
-        let path = legacy_sample_n(n, 3.0);
         black_box((path.len(), *path.last().unwrap_or(&0.0)))
       });
     });
@@ -124,76 +34,37 @@ fn bench_poisson_process(c: &mut Criterion) {
     let label = format!("lambda={lambda},t={t_max}");
     let model = Poisson::<f64, _>::new(lambda, None, Some(t_max), Unseeded);
 
-    group.bench_with_input(
-      BenchmarkId::new("current/sample_tmax", &label),
-      &label,
-      |b, _| {
-        b.iter(|| {
-          let path = model.sample();
-          black_box((path.len(), *path.last().unwrap_or(&0.0)))
-        });
-      },
-    );
-
-    group.bench_with_input(
-      BenchmarkId::new("legacy/sample_tmax", &label),
-      &label,
-      |b, _| {
-        b.iter(|| {
-          let path = legacy_sample_tmax(lambda, t_max);
-          black_box((path.len(), *path.last().unwrap_or(&0.0)))
-        });
-      },
-    );
-  }
-
-  for &n in &[4_000usize, 100_000usize] {
-    let exp_current = Exp::new(3.0).expect("valid rate");
-    let exp_legacy = Exp::new(3.0).expect("valid rate");
-    let model = CustomJt::<f64, _, _>::new(Some(n), Some(1.0), exp_current, Unseeded);
-
-    group.bench_with_input(BenchmarkId::new("current/customjt_n", n), &n, |b, &_n| {
+    group.bench_with_input(BenchmarkId::new("sample_tmax", &label), &label, |b, _| {
       b.iter(|| {
         let path = model.sample();
         black_box((path.len(), *path.last().unwrap_or(&0.0)))
       });
     });
+  }
 
-    group.bench_with_input(BenchmarkId::new("legacy/customjt_n", n), &n, |b, &n| {
+  for &n in &[4_000usize, 100_000usize] {
+    let exp = Exp::new(3.0).expect("valid rate");
+    let model = CustomJt::<f64, _, _>::new(Some(n), Some(1.0), exp, Unseeded);
+
+    group.bench_with_input(BenchmarkId::new("customjt_n", n), &n, |b, &_n| {
       b.iter(|| {
-        let path = legacy_customjt_sample_n(n, &exp_legacy);
+        let path = model.sample();
         black_box((path.len(), *path.last().unwrap_or(&0.0)))
       });
     });
   }
 
   for &(lambda, t_max) in &[(50.0_f64, 1.0_f64), (500.0_f64, 1.0_f64)] {
-    let exp_current = Exp::new(lambda).expect("valid rate");
-    let exp_legacy = Exp::new(lambda).expect("valid rate");
+    let exp = Exp::new(lambda).expect("valid rate");
     let label = format!("lambda={lambda},t={t_max}");
-    let model = CustomJt::<f64, _, _>::new(None, Some(t_max), exp_current, Unseeded);
+    let model = CustomJt::<f64, _, _>::new(None, Some(t_max), exp, Unseeded);
 
-    group.bench_with_input(
-      BenchmarkId::new("current/customjt_tmax", &label),
-      &label,
-      |b, _| {
-        b.iter(|| {
-          let path = model.sample();
-          black_box((path.len(), *path.last().unwrap_or(&0.0)))
-        });
-      },
-    );
-
-    group.bench_with_input(
-      BenchmarkId::new("legacy/customjt_tmax", &label),
-      &label,
-      |b, _| {
-        b.iter(|| {
-          let path = legacy_customjt_sample_tmax(t_max, &exp_legacy);
-          black_box((path.len(), *path.last().unwrap_or(&0.0)))
-        });
-      },
-    );
+    group.bench_with_input(BenchmarkId::new("customjt_tmax", &label), &label, |b, _| {
+      b.iter(|| {
+        let path = model.sample();
+        black_box((path.len(), *path.last().unwrap_or(&0.0)))
+      });
+    });
   }
 
   for &n in &[4_000usize, 100_000usize] {
@@ -202,22 +73,11 @@ fn bench_poisson_process(c: &mut Criterion) {
     let model = CompoundPoisson::new(jump_dist, poisson, Unseeded);
 
     group.bench_with_input(
-      BenchmarkId::new("current/compound_poisson_sample", n),
+      BenchmarkId::new("compound_poisson_sample", n),
       &n,
       |b, &_n| {
         b.iter(|| {
           let [p, _, j] = model.sample();
-          black_box((p.len(), j[j.len().saturating_sub(1)]))
-        });
-      },
-    );
-
-    group.bench_with_input(
-      BenchmarkId::new("legacy/compound_poisson_sample", n),
-      &n,
-      |b, &_n| {
-        b.iter(|| {
-          let [p, _, j] = legacy_compound_poisson_sample(&model);
           black_box((p.len(), j[j.len().saturating_sub(1)]))
         });
       },
@@ -239,22 +99,11 @@ fn bench_poisson_process(c: &mut Criterion) {
     );
 
     group.bench_with_input(
-      BenchmarkId::new("current/compound_custom_sample", n),
+      BenchmarkId::new("compound_custom_sample", n),
       &n,
       |b, &_n| {
         b.iter(|| {
           let [p, _, j] = model.sample();
-          black_box((p.len(), j[j.len().saturating_sub(1)]))
-        });
-      },
-    );
-
-    group.bench_with_input(
-      BenchmarkId::new("legacy/compound_custom_sample", n),
-      &n,
-      |b, &_n| {
-        b.iter(|| {
-          let [p, _, j] = legacy_compound_custom_sample(&model);
           black_box((p.len(), j[j.len().saturating_sub(1)]))
         });
       },

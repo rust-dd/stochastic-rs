@@ -47,6 +47,8 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 
 use crate::device::Cpu;
 use crate::noise::cgns::Cgns;
@@ -273,6 +275,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] RoughBergomi<T, S> { hurst, nu, v0, s0, r, rho, n, t, seed, cgns } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for RoughBergomi<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for RoughBergomi<T, S, B>
 {
@@ -412,7 +419,8 @@ impl<T: FloatExt, S: SeedExt> RoughBergomiSampler<T, S> {
     let steps = self.n - 1;
     let mut eps = vec![T::zero(); steps];
     if steps > 0 {
-      stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), T::one(), &self.seed)
+      stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), T::one())
+        .seeded(&self.seed)
         .fill_slice(&mut eps);
     }
     let sqrt_2h = (T::from_usize_(2) * self.hurst).sqrt();
@@ -436,6 +444,8 @@ impl<T: FloatExt, S: SeedExt> RoughBergomiSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for RoughBergomiSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for RoughBergomiSampler<T, S> {
   type Output = [Array1<T>; 2];
@@ -462,6 +472,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for RoughBergomiSampler<T, S> {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyRoughBergomi {
   inner_f32: Option<RoughBergomi<f32>>,

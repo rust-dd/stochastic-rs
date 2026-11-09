@@ -1,6 +1,8 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use super::sample_positive_stable;
@@ -97,6 +99,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] AlphaStableSubordinator<T, S> { alpha, c, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for AlphaStableSubordinator<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for AlphaStableSubordinator<T, S, B>
 {
@@ -119,7 +126,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       x0,
       alpha,
       log_scale,
-      uniform: SimdUniform::<f64>::new(0.0, 1.0, &self.seed),
+      uniform: SimdUniform::<f64>::new(0.0, 1.0).seeded(&self.seed),
     }
   }
 
@@ -165,7 +172,7 @@ pub struct AlphaStableSubordinatorSampler<T: FloatExt> {
   x0: T,
   alpha: f64,
   log_scale: f64,
-  uniform: SimdUniform<f64>,
+  uniform: Seeded<SimdUniform<f64>>,
 }
 
 impl<T: FloatExt> AlphaStableSubordinatorSampler<T> {
@@ -179,11 +186,13 @@ impl<T: FloatExt> AlphaStableSubordinatorSampler<T> {
     }
     let mut level = self.x0.to_f64().unwrap();
     for x in out[1..].iter_mut() {
-      level += sample_positive_stable(self.alpha, self.log_scale, &self.uniform);
+      level += sample_positive_stable(self.alpha, self.log_scale, &mut self.uniform);
       *x = T::from_f64_fast(level);
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for AlphaStableSubordinatorSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for AlphaStableSubordinatorSampler<T> {
   type Output = Array1<T>;

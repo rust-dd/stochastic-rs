@@ -1,6 +1,7 @@
 //! Base-path-only Malliavin estimation of Heston price and spot Greeks.
 
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::HestonMalliavinError;
@@ -52,7 +53,7 @@ pub(super) fn estimate_spot_greeks<P: TerminalPayoff + ?Sized>(
   payoff: &P,
 ) -> Result<HestonMalliavinSpotEstimate, HestonMalliavinError> {
   let pairs = config.paths / 2;
-  let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(config.seed));
+  let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(config.seed));
   let mut statistics = OnlineCovariance::<HESTON_MALLIAVIN_SPOT_OBSERVABLES>::default();
   let mut variance_normals = vec![0.0; config.steps];
   let mut orthogonal_normals = vec![0.0; config.steps];
@@ -60,10 +61,10 @@ pub(super) fn estimate_spot_greeks<P: TerminalPayoff + ?Sized>(
 
   for _ in 0..pairs {
     for draw in &mut variance_normals {
-      *draw = normal.sample_fast();
+      *draw = normal.sample();
     }
     for draw in &mut orthogonal_normals {
-      *draw = normal.sample_fast();
+      *draw = normal.sample();
     }
     let positive = spot_observation(
       model,

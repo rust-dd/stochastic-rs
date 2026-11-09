@@ -7,8 +7,8 @@
 use ndarray::Array1;
 use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_distributions::scalar::ScalarExp;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::diffusion::cfou::Cfou;
 use stochastic_rs_stochastic::diffusion::fcir::Fcir;
 use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
@@ -727,7 +727,7 @@ fn jump_fou_agrees_with_the_cpu_law() {
       1.0,
       0.3,
       3.0,
-      ScalarNormal::<f32>::new(0.05, 0.1),
+      SimdNormal::<f32>::new(0.05, 0.1),
       N,
       Some(0.0),
       Some(1.0),
@@ -768,8 +768,8 @@ fn jump_fou_custom_with_exponential_laws_agrees_with_the_cpu_law() {
       N,
       Some(0.0),
       Some(1.0),
-      ScalarExp::<f32>::new(3.0),
-      ScalarExp::<f32>::new(10.0),
+      SimdExp::<f32>::new(3.0),
+      SimdExp::<f32>::new(10.0),
       Deterministic::new(41),
     )
   };

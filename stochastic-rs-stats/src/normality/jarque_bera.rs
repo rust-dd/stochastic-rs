@@ -122,6 +122,8 @@ pub fn jarque_bera_test(sample: ArrayView1<f64>, cfg: JarqueBeraConfig) -> Jarqu
 mod tests {
   use ndarray::ArrayView1;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
   use stochastic_rs_distributions::uniform::SimdUniform;
 
@@ -132,7 +134,7 @@ mod tests {
   /// `fill_slice` takes no RNG at all and draws from the distribution's own
   /// SIMD stream, so only the constructor's seed controls the data.
   fn normal_sample(seed: u64, n: usize) -> Vec<f64> {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
     let mut x = vec![0.0; n];
     dist.fill_slice(&mut x);
     x
@@ -166,7 +168,9 @@ mod tests {
     // coin flips genuinely drive the data and get their own seed, distinct
     // from the one behind `normal_sample`.
     let mut coin = vec![0.0_f64; x.len()];
-    SimdUniform::<f64>::new(0.0, 1.0, &Deterministic::new(43)).fill_slice(&mut coin);
+    SimdUniform::<f64>::new(0.0, 1.0)
+      .seeded(&Deterministic::new(43))
+      .fill_slice(&mut coin);
     for (v, u) in x.iter_mut().zip(&coin) {
       *v += if *u < 0.5 { -2.0 } else { 2.0 };
     }

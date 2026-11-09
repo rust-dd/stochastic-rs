@@ -26,6 +26,7 @@ use num_complex::Complex64;
 
 use super::fourier::Cumulants;
 use super::fourier::FourierModelExt;
+use crate::traits::RealExt;
 
 fn mat_inf_norm(a: &Array2<Complex64>) -> f64 {
   // ndarray's `mapv(Complex64::norm)` + per-row sum + max gives us the
@@ -35,7 +36,7 @@ fn mat_inf_norm(a: &Array2<Complex64>) -> f64 {
     .rows()
     .into_iter()
     .map(|row| row.sum())
-    .fold(0.0_f64, f64::max)
+    .fold(0.0_f64, f64::max_or_nan)
 }
 
 fn matrix_exp_complex(a: &Array2<Complex64>) -> Array2<Complex64> {
@@ -156,7 +157,7 @@ impl FourierModelExt for RegimeSwitchingModel {
     Cumulants {
       c1: (self.r - self.q - 0.5 * mean_sig2) * t,
       c2: mean_sig2 * t,
-      c4: 3.0 * mean_sig4 * t,
+      c4: Some(3.0 * mean_sig4 * t),
     }
   }
 }
@@ -204,7 +205,8 @@ impl CosPricer {
     };
 
     let cum = model.cumulants(t);
-    let width = self.l * (cum.c2.abs().sqrt() + cum.c4.abs().powf(0.25)).max(0.1);
+    let width =
+      self.l * (cum.c2.abs().sqrt() + cum.c4.map_or(0.0, |c| c.abs().powf(0.25))).max(0.1);
     let a = cum.c1 - width;
     let b = cum.c1 + width;
     let bma = b - a;

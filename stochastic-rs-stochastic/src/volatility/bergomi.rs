@@ -229,6 +229,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Bergomi<T, S> { nu, v0, s0, r, rho, n, t, seed, cgns } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Bergomi<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Bergomi<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
@@ -313,6 +318,8 @@ impl<T: FloatExt, S: SeedExt> BergomiSampler<T, S> {
   }
 }
 
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for BergomiSampler<T, S> {}
+
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for BergomiSampler<T, S> {
   type Output = [Array1<T>; 2];
 
@@ -337,6 +344,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for BergomiSampler<T, S> {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyBergomi {
   inner_f32: Option<Bergomi<f32>>,

@@ -194,6 +194,8 @@ mod tests {
   use ndarray::Array1;
   use ndarray::ArrayView1;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::acf;
@@ -205,8 +207,8 @@ mod tests {
   /// faer-backed).
   fn simulate_ar1(phi: f64, n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
-      let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
-      (0..n).map(|_| dist.sample_fast()).collect::<Vec<_>>()
+      let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
+      (0..n).map(|_| dist.sample()).collect::<Vec<_>>()
     };
     let mut x = vec![0.0; n];
     for t in 1..n {
@@ -287,7 +289,7 @@ mod tests {
     let best_p = [2718u64, 999, 42]
       .into_iter()
       .map(|seed| {
-        let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+        let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
         let mut x = vec![0.0; 2000];
         dist.fill_slice(&mut x);
         ljung_box(ArrayView1::from(&x), 10, 0).p_value

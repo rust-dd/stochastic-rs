@@ -28,6 +28,9 @@ mod projection_tests;
 mod quadrature_tests;
 
 #[cfg(test)]
+mod recovery_tests;
+
+#[cfg(test)]
 mod tests;
 
 #[cfg(test)]

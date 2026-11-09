@@ -19,23 +19,6 @@
 /// model state and takes τ as a query argument, so it has no maturity of its
 /// own to resolve. That is the whole of the split — the instrument owns the
 /// date pair, converts once, and hands the engine a number.
-///
-/// # Why it is not in the calendar module
-///
-/// The design that retired `PricerExt` also said this trait's role should
-/// move toward [`crate::calendar`] rather than live on the pricer. The half
-/// about the pricer happened: `PricerExt: TimeExt` is gone and the pricer
-/// side of the trait went with it.
-///
-/// The move into `calendar` is **dropped, not deferred.** The arithmetic is
-/// already there —
-/// [`DayCountConvention::year_fraction`](crate::calendar::DayCountConvention::year_fraction)
-/// is what both derivations below call, and this trait adds no date maths of
-/// its own. What it adds is the instrument-side question "*which* of my two
-/// maturity slots is populated", which is an instrument concern; relocating
-/// it would put that concern inside a date-arithmetic module and leave the
-/// instruments importing a calendar type to describe themselves. A third
-/// implementor, when one arrives, will be an instrument too.
 pub trait TimeExt {
   /// Maturity in years, when the instrument was given one directly.
   ///
@@ -59,15 +42,8 @@ pub trait TimeExt {
     None
   }
 
-  /// Resolve the time-to-maturity τ from `tau()` or, if absent, from
-  /// `(eval, expiration)` via the convention returned by [`dcc`](Self::dcc)
-  /// (defaults to Actual/365 Fixed).
-  ///
-  /// Returns `f64::NAN` when neither path is available — consistent with the
-  /// crate's missing-data convention (`Greeks::default = Greeks::nan()`,
-  /// `CalibrationResult::max_error` defaults to NaN). Downstream pricers that
-  /// multiply or `.exp()` this value will produce NaN prices that callers can
-  /// detect with `.is_finite()`.
+  /// τ from `tau()`, else from `(eval, expiration)` under [`dcc`](Self::dcc) (Actual/365 Fixed by
+  /// default); `NaN` when neither is available, so a price built on it is NaN too.
   fn tau_or_from_dates(&self) -> f64 {
     if let Some(tau) = self.tau() {
       return tau;

@@ -189,6 +189,8 @@ mod tests {
   use ndarray::Array1;
   use ndarray::Array2;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
@@ -196,10 +198,10 @@ mod tests {
   #[test]
   fn ukf_tracks_linear_random_walk() {
     let n = 200usize;
-    let dist = SimdNormal::<f64>::new(0.0, 0.5, &Deterministic::new(1));
+    let mut dist = SimdNormal::<f64>::new(0.0, 0.5).seeded(&Deterministic::new(1));
     let mut steps = vec![0.0_f64; n];
     dist.fill_slice(&mut steps);
-    let obs_noise = SimdNormal::<f64>::new(0.0, 0.3, &Deterministic::new(2));
+    let mut obs_noise = SimdNormal::<f64>::new(0.0, 0.3).seeded(&Deterministic::new(2));
     let mut obs_eps = vec![0.0_f64; n];
     obs_noise.fill_slice(&mut obs_eps);
     let mut x_true = vec![0.0_f64; n];

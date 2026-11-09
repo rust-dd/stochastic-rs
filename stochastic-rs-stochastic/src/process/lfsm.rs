@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
 
 use crate::buffer::array1_from_fill;
@@ -97,7 +100,7 @@ impl<T: FloatExt, S: SeedExt, B> Lfsm<T, S, B> {}
 impl<T: FloatExt, S: SeedExt, B> Lfsm<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1))
   }
 }
 
@@ -167,6 +170,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Lfsm<T, S> { alpha, beta, hurst, scale, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Lfsm<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Lfsm<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -180,13 +188,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     let kernel_scale = dt.powf(d);
     let innovation_scale = self.scale * dt.powf(T::one() / self.alpha);
 
-    let stable = SimdAlphaStable::<T>::new(
-      self.alpha,
-      self.beta,
-      innovation_scale,
-      T::zero(),
-      &self.seed,
-    );
+    let stable = SimdAlphaStable::<T>::new(self.alpha, self.beta, innovation_scale, T::zero())
+      .seeded(&self.seed);
 
     // Moving-average weights `w_k = dt^d ((k+1)^d - k^d)` are deterministic,
     // so they are computed once and reused across samples.
@@ -278,7 +281,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 pub struct LfsmSampler<T: FloatExt> {
   n: usize,
   x0: T,
-  stable: SimdAlphaStable<T>,
+  stable: Seeded<SimdAlphaStable<T>>,
   weights: Array1<T>,
 }
 
@@ -310,6 +313,8 @@ impl<T: FloatExt> LfsmSampler<T> {
   }
 }
 
+impl<T: FloatExt> crate::traits::Sealed for LfsmSampler<T> {}
+
 impl<T: FloatExt> PathSampler<T> for LfsmSampler<T> {
   type Output = Array1<T>;
 
@@ -340,5 +345,11 @@ mod tests {
     let x = p.sample();
     assert_eq!(x.len(), 256);
     assert!(x.iter().all(|v| v.is_finite()));
+  }
+
+  #[test]
+  fn n_eq_1_samples_one_point() {
+    let p = Lfsm::new(1.5_f64, 0.0, 0.75, 1.0, 1, Some(0.0), Some(1.0), Unseeded);
+    assert_eq!(p.sample().to_vec(), vec![0.0]);
   }
 }

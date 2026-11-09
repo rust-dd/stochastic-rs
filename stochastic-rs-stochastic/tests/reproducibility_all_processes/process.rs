@@ -12,8 +12,8 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Unseeded;
-use stochastic_rs_distributions::scalar::ScalarExp;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::process::bm::Bm;
 use stochastic_rs_stochastic::process::brownian_bridge::BrownianBridge;
 use stochastic_rs_stochastic::process::cbms::Cbms;
@@ -59,9 +59,9 @@ guard!(compound_custom, "CompoundCustom", |s| {
   CompoundCustom::new(
     Some(N),
     None,
-    ScalarNormal::new(0.0, 0.1),
-    ScalarExp::new(2.0),
-    CustomJt::new(Some(N), None, ScalarExp::new(2.0), Unseeded),
+    SimdNormal::new(0.0, 0.1),
+    SimdExp::new(2.0),
+    CustomJt::new(Some(N), None, SimdExp::new(2.0), Unseeded),
     s,
   )
 });
@@ -70,7 +70,7 @@ guard!(cfbms, "Cfbms", |s| Cfbms::new(0.7, 0.3, N, Some(1.0), s));
 
 guard!(compound_poisson, "CompoundPoisson", |s| {
   CompoundPoisson::new(
-    ScalarNormal::new(0.0, 0.1),
+    SimdNormal::new(0.0, 0.1),
     Poisson::new(LAMBDA, Some(N), Some(1.0), Unseeded),
     s,
   )
@@ -79,7 +79,7 @@ guard!(compound_poisson, "CompoundPoisson", |s| {
 guard!(custom_jt, "CustomJt", |s| CustomJt::new(
   Some(N),
   None,
-  ScalarExp::new(2.0),
+  SimdExp::new(2.0),
   s
 ));
 

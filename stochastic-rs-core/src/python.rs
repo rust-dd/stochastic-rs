@@ -1,8 +1,5 @@
-//! Type-conversion shims used by the workspace-wide PyO3 wrapper macros.
-//!
-//! `IntoF32` / `IntoF64` allow a single macro body to dispatch ctor parameters
-//! to either an `f32` or `f64` inner sampler, transparently lifting `f64` /
-//! `Option<f64>` / `Vec<f64>` from Python into the right ndarray storage.
+//! Conversion shims for the PyO3 wrapper macros: `IntoF32` / `IntoF64` let one macro body hand
+//! `f64`, `Option<f64>` or `Vec<f64>` from Python to an `f32` or `f64` sampler.
 
 use ndarray::Array1;
 

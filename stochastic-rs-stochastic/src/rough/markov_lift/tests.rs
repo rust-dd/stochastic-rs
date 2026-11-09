@@ -87,3 +87,25 @@ fn batch_matches_single_path_row_by_row() {
     }
   }
 }
+
+/// The lift's kernels are reachable from `T: FloatExt` alone: this fn has no other bound.
+fn history_sum_from_float_ext<T: crate::traits::FloatExt>(we: &[T], h: &[T], j: &[T]) -> T {
+  T::history_sum_fused(we, h, j)
+}
+
+#[test]
+fn the_markov_lift_kernels_need_only_float_ext() {
+  let we = [0.5_f64, 0.25, 0.125, 0.0625, 1.0];
+  let h = [1.0_f64, 2.0, 3.0, 4.0, 5.0];
+  let j = [0.5_f64; 5];
+  let expected = we
+    .iter()
+    .zip(&h)
+    .zip(&j)
+    .map(|((w, h), j)| w * (h + j))
+    .sum::<f64>();
+  assert!((history_sum_from_float_ext(&we, &h, &j) - expected).abs() < 1e-12);
+  assert!(
+    (history_sum_from_float_ext(&[0.5_f32; 3], &[1.0_f32; 3], &[1.0_f32; 3]) - 3.0).abs() < 1e-6
+  );
+}

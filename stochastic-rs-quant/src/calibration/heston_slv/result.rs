@@ -97,8 +97,8 @@ impl crate::traits::CalibrationResult for HestonSlvCalibrationResult {
     Some(&self.loss)
   }
 
-  fn max_error(&self) -> f64 {
-    self.max_error
+  fn max_error(&self) -> Option<f64> {
+    Some(self.max_error)
   }
 }
 

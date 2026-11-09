@@ -1,5 +1,6 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 pub(super) fn simulate_heston_prices(
@@ -16,11 +17,11 @@ pub(super) fn simulate_heston_prices(
   let mut variances = Array1::<f64>::zeros(observations);
   prices[0] = 100.0;
   variances[0] = theta;
-  let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+  let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
 
   for index in 1..observations {
-    let independent_price: f64 = normal.sample_fast();
-    let variance_shock: f64 = normal.sample_fast();
+    let independent_price: f64 = normal.sample();
+    let variance_shock: f64 = normal.sample();
     let previous_variance = variances[index - 1].max(1e-8);
     let correlated_price_shock =
       rho * variance_shock + (1.0 - rho * rho).sqrt() * independent_price;

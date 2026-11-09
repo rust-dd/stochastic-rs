@@ -385,16 +385,16 @@ impl HestonMalliavinGreeks {
 }
 
 impl crate::traits::GreeksExt for HestonMalliavinGreeks {
-  fn delta(&self) -> f64 {
-    HestonMalliavinGreeks::delta(self)
+  fn delta(&self) -> Option<f64> {
+    Some(HestonMalliavinGreeks::delta(self))
   }
 
-  fn gamma(&self) -> f64 {
-    HestonMalliavinGreeks::gamma(self)
+  fn gamma(&self) -> Option<f64> {
+    Some(HestonMalliavinGreeks::gamma(self))
   }
 
-  fn vega(&self) -> f64 {
-    HestonMalliavinGreeks::vega_v0(self)
+  fn vega(&self) -> Option<f64> {
+    Some(HestonMalliavinGreeks::vega_v0(self))
   }
 
   /// Override the trait default — calling `delta()` and `gamma()`

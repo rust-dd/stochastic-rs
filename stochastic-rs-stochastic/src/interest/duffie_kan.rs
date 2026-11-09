@@ -289,6 +289,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] DuffieKan<T, S> { alpha, beta, gamma, rho, a1, b1, c1, sigma1, a2, b2, c2, sigma2, n, r0, x0, t, seed, cgns } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for DuffieKan<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for DuffieKan<T, S, B>
 {
@@ -393,6 +398,8 @@ impl<T: FloatExt, S: SeedExt> DuffieKanSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for DuffieKanSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for DuffieKanSampler<T, S> {
   type Output = [Array1<T>; 2];

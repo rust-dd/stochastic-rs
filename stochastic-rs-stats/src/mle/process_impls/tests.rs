@@ -182,3 +182,62 @@ fn cev_process_ext_with_mle() {
     result.params[2]
   );
 }
+
+/// A daily step (`z ≈ 4025`), where a truncated Bessel-I series floors the density at `1e-30`;
+/// the reference is `mpmath.besseli` at 80 digits.
+#[test]
+fn cir_exact_density_matches_mpmath_at_a_daily_step() {
+  let cir = Cir::new(
+    2.0,
+    0.04,
+    0.1,
+    100,
+    Some(0.04),
+    Some(1.0),
+    None,
+    Deterministic::new(0),
+  );
+  let density = DensityApprox::Exact.density(&cir, 0.04, 0.0405, 0.0, 0.004);
+  let want = 290.067_400_877_071_3;
+  assert!(
+    ((density - want) / want).abs() < 1e-10,
+    "Cir Exact: {density}"
+  );
+}
+
+#[test]
+fn cir_exact_mle_recovers_daily_parameters() {
+  let cir = Cir::new(
+    2.0,
+    0.04,
+    0.1,
+    5001,
+    Some(0.04),
+    Some(20.0),
+    None,
+    Deterministic::new(55),
+  );
+  let path = cir.sample();
+  let dt = 20.0 / 5000.0;
+  let mut cir_fit = Cir::new(
+    1.0,
+    0.05,
+    0.2,
+    100,
+    Some(0.04),
+    Some(1.0),
+    None,
+    Deterministic::new(0),
+  );
+  let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Exact, None);
+  assert!(
+    (result.params[1] - 0.04).abs() < 0.01,
+    "mu estimate: {} vs 0.04",
+    result.params[1]
+  );
+  assert!(
+    (result.params[2] - 0.1).abs() < 0.01,
+    "sigma estimate: {} vs 0.1",
+    result.params[2]
+  );
+}

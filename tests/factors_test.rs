@@ -1,6 +1,8 @@
 //! Integration tests for the `quant::factors` module.
 
 use ndarray::Array2;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::quant::factors::PairsSignal;
 use stochastic_rs::quant::factors::fama_macbeth;
@@ -11,7 +13,7 @@ use stochastic_rs::quant::factors::sample_covariance;
 use stochastic_rs::simd_rng::Deterministic;
 
 fn standard_normal_matrix(seed: u64, t: usize, p: usize) -> Array2<f64> {
-  let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+  let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
   let mut buf = vec![0.0_f64; t * p];
   dist.fill_slice(&mut buf);
   Array2::from_shape_vec((t, p), buf).unwrap()
@@ -33,7 +35,7 @@ fn shrinkage_matrix_within_unit_interval() {
 
 #[test]
 fn pca_collinear_factor_dominates_variance() {
-  let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(23));
+  let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(23));
   let mut z = vec![0.0_f64; 500];
   dist.fill_slice(&mut z);
   let mut x = Array2::<f64>::zeros((500, 5));
@@ -61,7 +63,7 @@ fn fama_macbeth_finite_under_no_factor_signal() {
 fn pairs_round_trip_position_management() {
   use ndarray::Array1;
   let n = 600usize;
-  let dist = SimdNormal::<f64>::new(0.0, 0.005, &Deterministic::new(41));
+  let mut dist = SimdNormal::<f64>::new(0.0, 0.005).seeded(&Deterministic::new(41));
   let mut shocks = vec![0.0_f64; n];
   dist.fill_slice(&mut shocks);
   let mut x = Array1::<f64>::zeros(n);
