@@ -20,7 +20,7 @@ The other nine:
 - `SimdNonCentralChiSquared` takes its noncentrality per draw (`sample_ncp(ncp)` on its seeded stream, `sample_ncp_with(&mut rng, ncp)` on the law), so it implements neither `rand::distr::Distribution` nor `DistributionExt` nor `fill_slice`. It backs the exact CIR transition density.
 - `Dirichlet` and `Wishart` are multivariate (a `Vec<T>` / `Array2<f64>` per draw); their seeded streams draw through their own methods (`sample_into` and `sample_matrix(m)` for `Dirichlet`, `sample_inverse` for `Wishart`) instead of `fill_slice`, and each has its own `log_pdf`.
 
-`ComplexDistribution` samples `Complex<T>` directly and has no `DistributionExt` impl. The API docs (`cargo doc -p stochastic-rs-distributions`) cover all of them.
+`ComplexDistribution` pairs two independent laws as the real and imaginary parts of a `Complex<T>` draw and has no `DistributionExt` impl. The API docs (`cargo doc -p stochastic-rs-distributions`) cover all of them.
 
 ## The list
 
@@ -62,20 +62,24 @@ The other nine:
 
 ## Choosing a distribution
 
-The tables above group by sampling strategy; this one groups by modelling role. The crate-level rustdoc of `stochastic-rs-distributions` has the full guide with citations.
+The tables above group by sampling strategy; this one groups by modelling role. Each law's rustdoc cites its source.
 
 | Need | Reach for |
 |---|---|
 | Symmetric, light-tailed, unbounded | `Normal` (default), or `Ged` to tune peakedness — `Ged` is never power-law heavy-tailed, for any shape parameter |
-| Heavy-tailed, unbounded (financial returns) | `StudentT` (`ν=1` **is** `Cauchy`, exactly) or `AlphaStable` (generalizes `Normal` at `α=2` and `Cauchy` at `α=1, β=0`, but has no closed-form pdf/cdf at general `α`); `NormalInverseGauss` or `VarianceGamma` for a skewed heavy tail with finite variance and closed-form moments (neither has a closed-form cdf); `SkewT` for Hansen's standardised skewed t with closed-form cdf and quantile — the GARCH innovation density; `JohnsonSu` when you want skew with light tails and every moment closed-form; `GeneralizedHyperbolic` is the parent family of `NormalInverseGauss` (λ = −1/2) and `VarianceGamma` over a `Gig` clock |
+| Heavy-tailed, unbounded (financial returns) | `StudentT` (`ν=1` **is** `Cauchy`, exactly) or `AlphaStable` (generalizes `Normal` at `α=2` and `Cauchy` at `α=1, β=0`, but has no closed-form pdf/cdf/quantile at general `α` and an infinite variance below `α=2`, so reach for it when the stable-sum property itself matters); `NormalInverseGauss` is the usual choice over `AlphaStable` for returns, a skewed heavy tail with finite variance and closed-form moments (Barndorff-Nielsen 1997, *Scand. J. Statist.* 24(1), 1–13, DOI 10.1111/1467-9469.00045), with `VarianceGamma` its gamma-clock sibling (neither has a closed-form cdf); `SkewT` for Hansen's standardised skewed t with closed-form cdf and quantile — the GARCH innovation density; `JohnsonSu` when you want skew with light tails and every moment closed-form; `GeneralizedHyperbolic` is the parent family of `NormalInverseGauss` (λ = −1/2) and `VarianceGamma` over a `Gig` clock |
 | Extreme-value tails | `Gev` for block maxima, `Gpd` for excesses over a threshold — a different job from bulk return modelling; both carry closed-form moments with the usual $\xi$ existence thresholds, and `stats::evt` fits them |
-| Positive, duration/volatility-shaped | `Exponential` (constant hazard), `Weibull` (rising or falling hazard), `Gamma` (waiting time; backs `Beta`/`ChiSquared`/`Ged`/`Dirichlet` internally), `LogNormal` (multiplicative growth), `InverseGauss` (first-passage time) |
+| Positive, duration/volatility-shaped | `Exponential` (constant hazard), `Weibull` (rising or falling hazard), `Gamma` (waiting time; backs `Beta`/`ChiSquared`/`Ged`/`Dirichlet` internally), `LogNormal` (multiplicative growth), `InverseGauss` (first-passage time), `TemperedStable` (the unit-time law of a tempered stable subordinator: cumulants and transforms, no closed-form density) |
 | Genuine power-law heavy tail, positive support | `Pareto` — the only positive-support type here with threshold-dependent moment existence |
 | Bounded `[0, 1]` or `[a, b]` | `Beta`, `Uniform`, or a `Truncated*` wrapper (a base distribution restricted to an interval) |
-| Discrete counts, with replacement | `Poisson`, `Binomial` |
+| Discrete counts, with replacement | `Poisson`, `Binomial`; `Geometric` for the trials up to the first success, the discrete memoryless law |
 | Discrete counts, without replacement (finite population) | `Hypergeometric` — that assumption, not a tuning knob, separates it from `Binomial` |
 | Signed count data | `Skellam` — the only discrete type here that can go negative |
 | Covariance matrices, simplex proportions | `Wishart`, `Dirichlet` — both have their own density methods instead of `DistributionExt` |
+
+The four `Truncated*` wrappers are not a family to choose among: each restricts one base law to an interval, and each draws exactly on any interval. `TruncatedExp` inverts its cdf; `TruncatedGamma` and `TruncatedBeta` reject from the base law while the interval holds 1e-3 of its mass and invert the cdf below that; `TruncatedNormal` rejects while the interval holds 5 % of the mass, then takes Robert's (1995) one-sided proposals on an interval to one side of the mean and the inverse cdf on one that straddles it (a uniform proposal accepted with $e^{-z^2/2}$ where that interval holds under $2^{-32}$ of the mass).
+
+`NonCentralChiSquared` backs the exact CIR transition: its noncentrality is a per-draw argument, and it takes any `df ≥ 0`, drawing the Poisson mixture `Gamma(df/2 + J, 2)`, `J ~ Poisson(λ/2)`, below `df = 1`, which at `df = 0` is Siegel's (1979) law with its atom at 0.
 
 `.mean()` / `.variance()` are `Option`s: `None` says the law has no closed form.
 
