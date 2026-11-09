@@ -28,10 +28,7 @@ pub struct SimdChiSquared<T> {
 }
 
 impl<T: SimdFloatExt> SimdChiSquared<T> {
-  /// Creates a chi-squared distribution, reparametrized internally as
-  /// `Gamma(k/2, scale=2)` (a χ²_k variate is exactly `2·Gamma(k/2, 1)`).
-  ///
-  /// - `k` — degrees of freedom (the module header's own ν).
+  /// `χ²_k` as `2·Gamma(k/2, 1)`; panics unless `k` is finite and `k/2 > 0`.
   pub fn new(k: T) -> Self {
     assert!(
       k.is_finite(),

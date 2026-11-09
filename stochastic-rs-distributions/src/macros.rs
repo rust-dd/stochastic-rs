@@ -1,8 +1,5 @@
-//! PyO3 wrapper macros for distribution types.
-//!
-//! Generate `PyXxx` newtype + `#[pymethods]` impl for each `Simd*` distribution
-//! when the `python` feature is enabled. The `stochastic-rs-py` cdylib then
-//! collects and registers them.
+//! The `PyXxx` newtype and its `#[pymethods]` for each `Simd*` law under the `python` feature;
+//! `stochastic-rs-py` registers them.
 
 #[cfg(feature = "python")]
 macro_rules! py_distribution {

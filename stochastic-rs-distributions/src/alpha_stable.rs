@@ -22,8 +22,8 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
-/// Alpha-stable law `S_α(scale, β, location)` in the `S₁` parametrization, drawn in bulk by a [`Seeded`](crate::Seeded) stream;
-/// α = 1 and α = 2 take their closed formulas exactly there (S₁ jumps at α = 1 for β ≠ 0; the general draw's error grows like ε/|α − 1|).
+/// Alpha-stable law `S_α(scale, β, location)` in the `S₁` parametrization; α = 1 and 2 take their
+/// closed formulas, as `S₁` jumps at α = 1 for β ≠ 0 and the general draw errs like ε/|α − 1|.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdAlphaStable<T> {
   alpha: T,
@@ -45,16 +45,8 @@ enum Branch {
 }
 
 impl<T: SimdFloatExt> SimdAlphaStable<T> {
-  /// Creates an alpha-stable distribution, Chambers-Mallows-Stuck sampled.
-  ///
-  /// - `alpha` — stability index α ∈ (0, 2] (matches the module header's
-  ///   α; α=2 is Gaussian, α=1 with β=0 is Cauchy).
-  /// - `beta` — skewness β ∈ [-1, 1] (matches the module header's β).
-  /// - `scale` — scale γ > 0 (matches the module header's γ; NOT the
-  ///   `θ` used by [`SimdGamma`](crate::gamma::SimdGamma) — unrelated
-  ///   role, same word).
-  /// - `location` — shift δ applied after the γ-scaled draw (matches the
-  ///   module header's δ).
+  /// `S_α(scale, β, location)`, stability α, skewness β; panics unless all are finite, `0 < α ≤ 2`,
+  /// `−1 ≤ β ≤ 1` and `scale > 0`.
   pub fn new(alpha: T, beta: T, scale: T, location: T) -> Self {
     assert!(
       alpha.is_finite(),
@@ -106,12 +98,12 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
     self.beta
   }
 
-  /// The scale `γ`.
+  /// The scale `γ`, the `c` of the `S₁` exponent `|ct|^α`.
   pub fn scale(&self) -> T {
     self.scale
   }
 
-  /// The location `δ`.
+  /// The location `δ`, also the mean where `α > 1`.
   pub fn location(&self) -> T {
     self.location
   }
@@ -253,13 +245,8 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
       let w = -T::simd_ln(e_v);
       let phi = a * (v + b_v);
       let numer = T::simd_sin(phi);
-      // `cos(v)` is positive everywhere `v` is drawn from, but the lane-wise
-      // cosine is an approximation: within an ulp of ±pi/2 it can come back a
-      // small negative or a denormal, and `powf` then returns a NaN or a
-      // denominator that overflows the quotient — one draw in about ten
-      // million in `f32`. The floor is the type's own epsilon, which sits
-      // below the smallest cosine a uniform of that precision can produce, so
-      // it bites only on the approximation and not on the law.
+      // Within an ulp of ±π/2 the lane cosine can go negative or subnormal (1 in 1e7 f32 draws);
+      // the floor ε lies below every true cosine a uniform yields, so it clips only that error.
       let denom = T::simd_powf(T::simd_max(T::simd_cos(v), cos_floor), inv_alpha);
       let ratio = T::simd_max(T::simd_cos(v - phi) / w, min_pos);
       let tail = T::simd_powf(ratio, exp_term);
@@ -410,9 +397,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdAlphaStable<T> {
     if t == 0.0 {
       return Some(num_complex::Complex64::new(1.0, 0.0));
     }
-    // Standard S1 parameterisation:
-    //   φ(t) = exp{ iμt − |c·t|^α [ 1 − iβ sgn(t) Φ ] }
-    // where Φ = tan(πα/2) for α ≠ 1, and Φ = −(2/π) ln|t| for α = 1.
+    // `S₁`: `φ(t) = exp{iμt − |ct|^α (1 − iβ sgn(t) Φ)}`, `Φ = tan(πα/2)` for α ≠ 1,
+    // `Φ = −(2/π) ln|t|` at α = 1.
     let alpha = self.alpha.to_f64().unwrap();
     let beta = self.beta.to_f64().unwrap();
     let c = self.scale.to_f64().unwrap();

@@ -59,15 +59,7 @@ pub struct BetaState<T: SimdFloatExt, R: SimdRngExt> {
 }
 
 impl<T: SimdFloatExt> SimdBeta<T> {
-  /// Creates a beta distribution via the Gamma-ratio construction
-  /// `X = G1/(G1+G2)`, `G1 ~ Gamma(alpha, 1)`, `G2 ~ Gamma(beta, 1)`.
-  ///
-  /// - `alpha` — first shape α > 0 (matches the module header's α).
-  /// - `beta` — second shape β > 0 (matches the module header's β; NOT
-  ///   the asymmetry role `beta` plays in
-  ///   [`SimdNormalInverseGauss`](crate::normal_inverse_gauss::SimdNormalInverseGauss)
-  ///   or the tail exponent it plays in [`SimdGed`](crate::ged::SimdGed)
-  ///   — same word, unrelated role in each).
+  /// `Gamma(α, 1)/(Gamma(α, 1) + Gamma(β, 1))`; panics unless `α` and `β` are finite and positive.
   pub fn new(alpha: T, beta: T) -> Self {
     assert!(
       alpha.is_finite(),
@@ -103,15 +95,8 @@ impl<T: SimdFloatExt> SimdBeta<T> {
     self.beta
   }
 
-  /// The ratio recovered from logs, for the draws where both Gamma
-  /// marginals underflowed to exactly zero and `a / (a + b)` is `0/0`.
-  ///
-  /// Small shapes make that ordinary rather than exotic: `Beta(0.01, 0.01)`
-  /// loses a draw this way once in eight in single precision and once in
-  /// five million in double. The ratio is scale-free, so re-forming it
-  /// from a fresh pair of log draws is exact wherever the value path was,
-  /// and where the log difference saturates `exp` the answer is the 0 or
-  /// the 1 that rounding the true draw would have given.
+  /// The ratio from logs where both gamma draws underflow to `0/0` (`Beta(0.01, 0.01)`: 1 in 8 f32,
+  /// 1 in 5e6 f64 draws); scale-free, so exact where the value path was.
   #[cold]
   #[inline(never)]
   fn ratio_from_logs<R: SimdRngExt>(
@@ -126,8 +111,8 @@ impl<T: SimdFloatExt> SimdBeta<T> {
     self.ratio_of_parts(a, b)
   }
 
-  /// `1/(1 + e^{lb − la})`; where both `ln u/shape` pass the doubles, `lb − la` is NaN and `ln u_b·(α/β) < ln u_a`, its
-  /// sign through a ratio no subnormal product rounds to a tie, picks the 1 or the 0 the draw rounds to.
+  /// `1/(1 + e^{lb − la})`; where both `ln u/shape` overflow, `lb − la` is NaN and
+  /// `ln u_b·(α/β) < ln u_a`, signed without a subnormal tie, picks the draw's rounded 1 or 0.
   fn ratio_of_parts(&self, (ca, ua): (T, T), (cb, ub): (T, T)) -> T {
     let la = ca + ua / self.alpha;
     let lb = cb + ub / self.beta;

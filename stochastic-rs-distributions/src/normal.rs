@@ -25,10 +25,8 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
-/// Precomputed lookup tables for the Ziggurat algorithm (normal distribution).
-/// `kn` holds threshold integers for the fast-accept test,
-/// `wn`/`wn_f32` hold the width of each rectangle (f64 and f32),
-/// `fn_tab` holds the function values f(x)=exp(-x²/2) at rectangle boundaries.
+/// Ziggurat tables of the normal: `kn` the fast-accept thresholds, `wn`/`wn_f32` the rectangle
+/// widths in f64 and f32, `fn_tab` the values `e^{−x²/2}` at their edges.
 pub(crate) struct ZigTables {
   pub(crate) kn: [i32; 128],
   pub(crate) wn: [f64; 128],
@@ -95,9 +93,8 @@ pub(crate) fn zig_tables() -> &'static ZigTables {
   })
 }
 
-/// Scalar fallback for the ~3% of samples that fall outside a Ziggurat rectangle.
-/// Handles tail sampling (iz==0) via the exponential-tail method and
-/// rejection sampling for intermediate rectangles.
+/// The ~3 % of draws outside a ziggurat rectangle: the tail (`iz == 0`) by the exponential method,
+/// the rest by rejection within the rectangle.
 #[cold]
 #[inline(never)]
 fn nfix<T: SimdFloatExt, S: Source + ?Sized>(
@@ -119,12 +116,8 @@ fn nfix<T: SimdFloatExt, S: Source + ?Sized>(
       loop {
         let u1: f64 = rng.next_f64();
         let u2: f64 = rng.next_f64();
-        // Marsaglia & Tsang's tail draw. `x_tail` is how far *past* the
-        // ziggurat's boundary the sample falls, so it is positive: negated,
-        // every tail draw lands back inside `R_TAIL` and the law loses
-        // everything beyond 3.44σ — a kurtosis of 2.96, no four-sigma move
-        // ever, and every Gaussian-driven process in the workspace short of
-        // its tails.
+        // Marsaglia & Tsang's tail: `x_tail` is the distance *past* `R_TAIL`, so it adds; negated,
+        // every tail draw would land inside and the law lose all mass beyond 3.44σ.
         let x_tail = -u1.ln() * R_TAIL_INV;
         let y = -u2.ln();
         if y + y >= x_tail * x_tail {
@@ -258,8 +251,8 @@ fn zig_batch8<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
   }
 }
 
-/// Core Ziggurat fill (16 lanes per step from two engines with `R::HAS_PAIR_ILP`); kept out of line because
-/// inlined into a pop loop's refill this kernel slows the loop.
+/// Core Ziggurat fill (16 lanes per step from two engines with `R::HAS_PAIR_ILP`); kept out of line
+/// because inlined into a pop loop's refill this kernel slows the loop.
 #[inline(never)]
 fn fill_zig_impl<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
   buf: &mut [MaybeUninit<T>],
@@ -476,8 +469,8 @@ mod zig_tests {
 
   use super::*;
 
-  /// `i32::MIN` has no magnitude in `i32`: `abs` wraps, and a lane accepted on it lands on the layer-0 edge, a point
-  /// mass of 2⁻³².
+  /// `i32::MIN` has no magnitude in `i32`: `abs` wraps, and a lane accepted on it lands on the
+  /// layer-0 edge, a point mass of 2⁻³².
   #[test]
   fn minimum_hz_lane_is_rejected_into_the_fix_up() {
     let tables = zig_tables();

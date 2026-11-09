@@ -37,13 +37,8 @@ pub struct NormalDerivedState<T: SimdFloatExt, R: SimdRngExt> {
 }
 
 impl<T: SimdFloatExt> SimdLogNormal<T> {
-  /// Creates a log-normal distribution.
-  ///
-  /// - `mu` — mean of **ln(X)**, not of X itself (matches the module
-  ///   header's μ; `mean() = exp(μ + σ²/2)` is the LogNormal-mean
-  ///   formula derived from it).
-  /// - `sigma` — standard deviation of **ln(X)**, not of X itself
-  ///   (matches the module header's σ), must be > 0.
+  /// `mu` and `sigma` of `ln X`, not of `X` (whose mean is `e^{μ + σ²/2}`); panics unless both are
+  /// finite and `sigma > 0`.
   pub fn new(mu: T, sigma: T) -> Self {
     assert!(
       mu.is_finite(),

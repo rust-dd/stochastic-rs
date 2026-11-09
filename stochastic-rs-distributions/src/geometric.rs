@@ -35,11 +35,7 @@ pub struct SimdGeometric<T: PrimInt> {
 }
 
 impl<T: PrimInt> SimdGeometric<T> {
-  /// Creates a geometric distribution over the shifted support `k ≥ 1`
-  /// (matches the module header's own convention — number of trials
-  /// until, and including, the first success).
-  ///
-  /// - `p` — per-trial success probability p ∈ (0, 1].
+  /// Trials up to and including the first success, support `k ≥ 1`; panics unless `p ∈ (0, 1]`.
   pub fn new(p: f64) -> Self {
     assert!(
       p.is_finite(),
@@ -61,8 +57,8 @@ impl<T: PrimInt> SimdGeometric<T> {
     self.p
   }
 
-  /// The trial count of the floored inversion `t = ⌊ln(1 − u) / ln(1 − p)⌋`, shifted onto `{1, 2, …}`; an overflow of
-  /// `T` saturates (and asserts in debug).
+  /// The trial count of the floored inversion `t = ⌊ln(1 − u) / ln(1 − p)⌋`, shifted onto
+  /// `{1, 2, …}`; an overflow of `T` saturates (and asserts in debug).
   #[inline]
   fn count(t: f64) -> T {
     let k = t.max(0.0) + 1.0;
@@ -211,13 +207,8 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdGeometric<T> {
     Some(6.0 + self.p * self.p / (1.0 - self.p))
   }
 
-  /// `p = 1.0` is a valid, documented parameter (see [`Self::new`]) — the
-  /// degenerate distribution that always succeeds on the first trial, with
-  /// zero entropy. Computed naively, `q * q.ln()` at `q = 1.0 - p = 0.0` is
-  /// the indeterminate form `0.0 * (-inf) = NaN`; the standard convention
-  /// `x * ln(x) -> 0` as `x -> 0+` (universal in entropy formulas, e.g.
-  /// Shannon entropy) is applied explicitly instead so `p = 1.0` returns
-  /// the mathematically correct `0.0` rather than `NaN`.
+  /// `0·ln 0 = 0` at `p = 1`, the law that always succeeds first, so its entropy is 0 rather than
+  /// NaN.
   fn entropy(&self) -> Option<f64> {
     let q = 1.0 - self.p;
     let q_term = if q > 0.0 { q * q.ln() } else { 0.0 };
@@ -262,9 +253,7 @@ mod tests {
   use crate::traits::DistributionExt;
   use crate::traits::DistributionSampler;
 
-  /// Backs `entropy`'s doc comment: `p = 1.0` is a valid, documented
-  /// parameter (always succeeds first try), and its entropy must be the
-  /// mathematically correct `0.0`, not `NaN` from a naive `0 * ln(0)`.
+  /// At `p = 1` the entropy is 0, not the NaN of a plain `0·ln 0`.
   #[test]
   fn entropy_at_p_one_is_zero_not_nan() {
     let g = SimdGeometric::<u64>::new(1.0);
@@ -284,18 +273,13 @@ mod tests {
     assert!(h.is_finite() && h > 0.0, "entropy at p=0.3 was {h}");
   }
 
-  /// `new`'s own doc comment documents `p ∈ (0, 1]` — `p = 1.0` is the
-  /// closed upper boundary, not an excluded limit, and must construct
-  /// without panicking (the entropy fix above already relies on this).
+  /// `p = 1`, the closed upper end of `(0, 1]`, constructs.
   #[test]
   fn new_accepts_p_one() {
     let _ = SimdGeometric::<u64>::new(1.0);
   }
 
-  /// `p = 0.0` sits just outside the documented domain `(0, 1]` (a
-  /// per-trial success probability of zero means the waiting time is
-  /// never finite) and must be rejected at construction, not silently
-  /// turned into garbage output.
+  /// `p = 0`, outside `(0, 1]` (the wait never ends), panics at construction.
   #[test]
   #[should_panic(expected = "p must satisfy `p > 0.0 && p <= 1.0`")]
   fn new_rejects_p_zero() {
@@ -310,16 +294,8 @@ mod tests {
     let _ = SimdGeometric::<u64>::new(1.5);
   }
 
-  /// Ties `fill_slice`'s own empirical mean/variance to `mean()`/
-  /// `variance()` across several `p`, including the degenerate `p = 1.0`,
-  /// tolerance derived from each plug-in estimator's standard error. This
-  /// is the test whose absence let the sampler (previously the
-  /// `{0, 1, ...}` "failures before the first success" convention) and
-  /// `pdf`/`cdf`/`mean` (the `{1, 2, ...}` "trials" convention this module
-  /// documents) silently describe two different distributions: the
-  /// sampler's empirical mean tracked `(1-p)/p`, not `mean()`'s `1/p`, and
-  /// every draw at `p = 1.0` was `0`, never the `1` the shifted convention
-  /// requires. Fails if either side reverts to the other convention.
+  /// `fill_slice`'s mean and variance match `mean()` and `variance()` within their standard errors
+  /// across `p`, `p = 1` included: the sampler and analytics share the `k ≥ 1` support.
   #[test]
   fn sampler_moments_match_analytics_across_p() {
     const N: usize = 200_000;
@@ -357,9 +333,8 @@ mod tests {
 
       let expected_mean = dist.mean().unwrap();
       let expected_var = dist.variance().unwrap();
-      // mu4 from the (shift-invariant) excess-kurtosis closed form gives
-      // the plug-in variance estimator's own standard error:
-      // Var(S^2) ~= (mu4 - sigma^4) / n.
+      // `μ₄` from the shift-invariant kurtosis gives the variance estimator's error,
+      // `Var(S²) ≈ (μ₄ − σ⁴)/n`.
       let mu4 = (dist.kurtosis().unwrap() + 3.0) * expected_var * expected_var;
       let se_mean = (expected_var / n).sqrt();
       let se_var = ((mu4 - expected_var * expected_var) / n).sqrt();
@@ -377,10 +352,8 @@ mod tests {
     }
   }
 
-  /// The scalar path taken for buffers shorter than
-  /// `SMALL_GEOMETRIC_THRESHOLD` shares the same `+ 1` shift as the SIMD
-  /// path exercised above; a tiny buffer exercises it directly so both
-  /// code paths are pinned to the same support floor.
+  /// Buffers under `SMALL_GEOMETRIC_THRESHOLD` take the scalar path, with the SIMD path's `+ 1`
+  /// shift.
   #[test]
   fn scalar_path_respects_shifted_support() {
     let mut dist = SimdGeometric::<u64>::new(0.4).seeded(&Deterministic::new(5));
@@ -397,8 +370,8 @@ mod tests {
     assert!(best > 0.01, "best p = {best}");
   }
 
-  /// NaN answers NaN, and counts past `i32::MAX` or a small `p`, where `1 − (1 − p)^k` cancels, keep the closed
-  /// form; references from mpmath.
+  /// NaN answers NaN, and counts past `i32::MAX` or a small `p`, where `1 − (1 − p)^k` cancels,
+  /// keep the closed form; references from mpmath.
   #[test]
   fn cdf_and_pmf_follow_the_closed_form_at_any_count() {
     let g = SimdGeometric::<u64>::new(0.3);

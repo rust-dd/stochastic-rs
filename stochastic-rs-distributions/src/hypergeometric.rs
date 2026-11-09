@@ -4,9 +4,8 @@
 //! \mathbb{P}(X=k)=\frac{\binom{K}{k}\binom{N-K}{n-k}}{\binom{N}{n}}
 //! $$
 //!
-//! Sampling: inverse transform on a cumulative table precomputed over the
-//! support via the log-space pmf recurrence — one uniform plus a binary
-//! search per draw instead of the naive `n_draws` Bernoulli trials.
+//! Drawn by inverting a cumulative table built from the log-space pmf recurrence: one uniform and a
+//! binary search a draw, not `n_draws` Bernoulli trials.
 //!
 //! Reference: Kachitvichyanukul, V., Schmeiser, B.W. (1985), "Computer generation of hypergeometric random variates", *Journal of Statistical Computation and Simulation* 22, 127-145, DOI 10.1080/00949658508810839 (inverse-transform family).
 //! Reference: Johnson, N. L., Kemp, A. W. & Kotz, S. (2005), *Univariate Discrete Distributions*, 3rd ed., Wiley, §6.3, DOI 10.1002/0471715816 (moments).
@@ -26,8 +25,8 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
-/// Hypergeometric law of `n_draws` draws without replacement from `n_total` items, `k_success` of them successes:
-/// parameters and the cumulative table; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Law of `n_draws` draws without replacement from `n_total` items, `k_success` of them successes:
+/// parameters and the cumulative table.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SimdHypergeometric<T: PrimInt> {
   n_total: u32,
@@ -39,10 +38,8 @@ pub struct SimdHypergeometric<T: PrimInt> {
 }
 
 impl<T: PrimInt> SimdHypergeometric<T> {
-  /// Builds the cumulative table over the support `[k_min, k_max]`. The
-  /// pmf recurrence runs in log space, so edge-of-support underflow (far
-  /// tails of large populations) only zeroes the negligible tail terms
-  /// instead of poisoning the whole table.
+  /// The cumulative table over `[k_min, k_max]`, the pmf recurrence in log space, so a far tail's
+  /// underflow zeroes only its negligible terms.
   fn build_cdf(n_total: u32, k_success: u32, n_draws: u32) -> (u32, Box<[f64]>) {
     let nn = n_total as f64;
     let kk = k_success as f64;
@@ -69,16 +66,8 @@ impl<T: PrimInt> SimdHypergeometric<T> {
     (k_min, cdf.into_boxed_slice())
   }
 
-  /// Creates a hypergeometric distribution (sampling without replacement
-  /// from a finite population).
-  ///
-  /// - `n_total` — population size (the module header's own N).
-  /// - `k_success` — number of "success" items in the population (the
-  ///   module header's own K).
-  /// - `n_draws` — number of items drawn from the population without
-  ///   replacement (the module header's own n) — an urn-draw-size
-  ///   parameter of the distribution itself, unrelated to how many i.i.d.
-  ///   variates a later `fill_slice`/`sample` call produces.
+  /// `n_draws` items drawn without replacement from `n_total`, `k_success` of them successes;
+  /// panics unless `k_success ≤ n_total` and `n_draws ≤ n_total`.
   pub fn new(n_total: u32, k_success: u32, n_draws: u32) -> Self {
     assert!(
       k_success <= n_total,
@@ -109,7 +98,7 @@ impl<T: PrimInt> SimdHypergeometric<T> {
     self.k_success
   }
 
-  /// The number of draws `n`.
+  /// The urn's draw size `n`, not a count of variates.
   pub fn n_draws(&self) -> u32 {
     self.n_draws
   }
@@ -293,8 +282,8 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdHypergeometric<T> {
     )
   }
 
-  /// `NaN` for a point mass; at `N ≤ 3` the law sits on two adjacent points, where the closed form's
-  /// `(N − 2)(N − 3)` reads `0/0` and the excess kurtosis is `1/Var − 6`.
+  /// `NaN` for a point mass; at `N ≤ 3` the law sits on two adjacent points, where the closed
+  /// form's `(N − 2)(N − 3)` reads `0/0` and the excess kurtosis is `1/Var − 6`.
   fn kurtosis(&self) -> Option<f64> {
     let var = self.variance()?;
     if var == 0.0 {

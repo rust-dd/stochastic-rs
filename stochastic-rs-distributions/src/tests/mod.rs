@@ -98,8 +98,8 @@ pub(crate) fn assert_moments_within(
   }
 }
 
-/// The empirical characteristic function at `u ∈ {0.5, 1, 2}`, real and imaginary parts within 5 CLT
-/// standard errors of `cf`.
+/// The empirical characteristic function at `u ∈ {0.5, 1, 2}`, real and imaginary parts within 5
+/// CLT standard errors of `cf`.
 pub(crate) fn assert_ecf_matches(xs: &[f64], cf: impl Fn(f64) -> Complex64, what: &str) {
   for u in [0.5, 1.0, 2.0] {
     let want = cf(u);

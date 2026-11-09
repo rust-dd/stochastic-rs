@@ -103,19 +103,8 @@ fn simd_normal_matches_theoretical_distribution() {
   );
 }
 
-/// The ziggurat's tail, which a whole-distribution statistic cannot see.
-///
-/// Marsaglia & Tsang's algorithm draws `|z| > 3.442620` from a separate
-/// exponential rejection step, and until September 2026 this crate negated
-/// that draw's offset: every tail sample landed *inside* the boundary
-/// instead of past it, so no `SimdNormal` ever returned a four-sigma move.
-/// The KS test above passed throughout — it can only see 5.8e-4 of misplaced
-/// mass as a 5.8e-4 shift in the CDF, a hundredth of its critical value at
-/// these sample sizes — which is why the tail needs a tail statistic.
-///
-/// `P(|z| > 4) = 6.3342e-5` (Abramowitz & Stegun 26.2.19), so 12 million
-/// draws hold about 760 of them; the band is five Poisson standard
-/// deviations wide, and a folded tail gives exactly zero.
+/// The ziggurat's tail, invisible to KS: `P(|z| > 4) = 6.3342e-5` (A&S 26.2.19), about 760 of 12e6
+/// draws, held within five Poisson sd, where a tail folded inside the boundary gives 0.
 #[test]
 fn the_ziggurat_tail_reaches_past_its_boundary() {
   const CHUNK: usize = 1_000_000;
@@ -144,11 +133,8 @@ fn the_ziggurat_tail_reaches_past_its_boundary() {
   );
 }
 
-/// The moments the tail carries: a normal's kurtosis is 3 and its sixth
-/// moment 15, and both are dominated by draws the ziggurat's rejection step
-/// produces. With the tail folded they came out at 2.96 and 14.15 — the
-/// shortfall that made an ARCH(1)'s sampled kurtosis miss Engle's (1982)
-/// closed form by five standard errors.
+/// The moments the tail carries, kurtosis 3 and sixth moment 15, dominated by the rejection step's
+/// draws; a tail folded inside the boundary gives 2.96 and 14.15.
 #[test]
 fn the_fourth_and_sixth_moments_match_the_normal() {
   const CHUNK: usize = 1_000_000;

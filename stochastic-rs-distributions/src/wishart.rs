@@ -5,41 +5,23 @@
 //! \iff X = \sum_{i=1}^{\nu} Z_i Z_i^\top,\ Z_i \sim \mathcal{N}_p(0, V),
 //! $$
 //!
-//! for $\nu > p - 1$ degrees of freedom and a $p \times p$ positive-definite
-//! scale matrix $V$. The PDF on the cone of $p \times p$ SPD matrices is
-//!
 //! $$
 //! f(X) = \frac{|X|^{(\nu - p - 1)/2}\,
 //!              \exp(-\tfrac{1}{2} \mathrm{tr}(V^{-1} X))}
-//!             {2^{\nu p / 2}\, |V|^{\nu/2}\, \Gamma_p(\nu/2)},
+//!             {2^{\nu p / 2}\, |V|^{\nu/2}\, \Gamma_p(\nu/2)},\qquad
+//! \Gamma_p(a) = \pi^{p(p-1)/4} \prod_{j=1}^{p} \Gamma(a - (j-1)/2),
 //! $$
 //!
-//! with the multivariate gamma $\Gamma_p(a) = \pi^{p(p-1)/4} \prod_{j=1}^{p} \Gamma(a - (j-1)/2)$.
+//! $$
+//! X = L A A^\top L^\top,\qquad V = L L^\top,
+//! \quad A_{jj} \sim \chi_{\nu - j + 1},\ A_{i>j} \sim \mathcal N(0, 1).
+//! $$
 //!
-//! ## Sampling — Bartlett (1933) decomposition
+//! For `ν > p − 1` and an SPD `V`, drawn by Bartlett's decomposition above; the stream's
+//! [`sample_inverse`](crate::Seeded::sample_inverse) draws `X⁻¹ ~ IW_p(ν, V⁻¹)`.
 //!
-//! For integer $\nu$, the **Bartlett decomposition** avoids the
-//! $\nu$-fold outer product. Let $L$ be the Cholesky factor of $V$. Build
-//! a lower-triangular $A$ with
-//!
-//! - diagonal $A_{jj} \sim \chi(\nu - j + 1)$, i.e. $\sqrt{\chi^2_{\nu - j + 1}}$;
-//! - sub-diagonal $A_{ij} \sim \mathcal{N}(0, 1)$ for $i > j$.
-//!
-//! Then $X = L A A^\top L^\top \sim \mathcal{W}_p(\nu, V)$.
-//!
-//! ## Inverse-Wishart
-//!
-//! If $X \sim \mathcal{W}_p(\nu, V)$ then $X^{-1} \sim
-//! \mathcal{IW}_p(\nu, V^{-1})$. Use the stream's
-//! [`sample_inverse`](crate::Seeded::sample_inverse) for the Bayesian-prior variant.
-//!
-//! References:
-//! - Bartlett, M.S. (1933), "On the theory of statistical regression",
-//!   *Proceedings of the Royal Society of Edinburgh* 53, 260-283,
-//!   DOI 10.1017/S0370164600015637.
-//! - Smith, W.B., Hocking, R.R. (1972), "Algorithm AS 53: Wishart
-//!   variate generator", *Applied Statistics* 21(3), 341-345,
-//!   DOI 10.2307/2346290.
+//! Reference: Bartlett, M.S. (1933), "On the theory of statistical regression", *Proceedings of the Royal Society of Edinburgh* 53, 260-283, DOI 10.1017/S0370164600015637.
+//! Reference: Smith, W.B., Hocking, R.R. (1972), "Algorithm AS 53: Wishart variate generator", *Applied Statistics* 21(3), 341-345, DOI 10.2307/2346290.
 
 use ndarray::Array2;
 use rand::Rng;
@@ -110,8 +92,8 @@ impl<T: SimdFloatExt, G: Rng + ?Sized> BartlettSource<T> for AnyRng<'_, G> {
 }
 
 impl<T: SimdFloatExt> SimdWishart<T> {
-  /// Wishart$(\nu, V)$ for a $p \times p$ positive-definite `scale`, $p \ge 1$, Cholesky-factorised once here.
-  /// Panics on an empty, non-square or non-SPD `scale`, or on $\nu \le p - 1$.
+  /// Wishart$(\nu, V)$ for a $p \times p$ positive-definite `scale`, $p \ge 1$, Cholesky-factorised
+  /// once here. Panics on an empty, non-square or non-SPD `scale`, or on $\nu \le p - 1$.
   pub fn new(nu: T, scale: Array2<T>) -> Self {
     assert!(
       nu.is_finite(),
@@ -252,8 +234,8 @@ impl<T: SimdFloatExt> Distribution<Array2<T>> for SimdWishart<T> {
   }
 }
 
-/// Plain Cholesky factor `L` of `a = L·Lᵀ` (dim ≤ 10 in practice); `Err((i, d))` names the first pivot `d` that
-/// is not positive.
+/// Plain Cholesky factor `L` of `a = L·Lᵀ` (dim ≤ 10 in practice); `Err((i, d))` names the first
+/// pivot `d` that is not positive.
 fn cholesky_lower<T: SimdFloatExt>(a: &Array2<T>) -> Result<Array2<T>, (usize, T)> {
   let n = a.nrows();
   let mut l = Array2::<T>::zeros((n, n));

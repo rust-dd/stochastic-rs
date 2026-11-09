@@ -1,5 +1,5 @@
-//! The density below order `1/ν − ½ = 50` where its logarithms are large or its Bessel argument leaves the normal range:
-//! each logarithm in two parts over `K` in scaled form, `1/ν` and the order in two parts, `root` and `|d|·root/σ²` scaled.
+//! The density below order `1/ν − ½ = 50` at large logs or where the Bessel argument is not normal:
+//! logs, `1/ν` and the order in two parts over scaled `K`, `root` and `|d|·root/σ²` scaled.
 
 use crate::special::HALF_LN_TAU;
 use crate::special::LN2_HI;
@@ -24,8 +24,8 @@ fn ln_half_gamma((s, s_lo): (f64, f64)) -> (f64, f64) {
   add_parts(ln_half_gamma_parts(s), (slope, 0.0))
 }
 
-/// Madan–Carr–Chang eq. 23 in two parts at `d = x − μ` in two parts, `θd/σ² − |d|·root/σ²` as its one-sign
-/// `−2|d|/(ν(root + |θ|)) − |d|(|θ| − θ sgn d)/σ²`; at `d = 0` the limit `2^{a−1}Γ(a)` of `y^aK_a(y)` for `a > 0`.
+/// Madan–Carr–Chang eq. 23 in two parts, at `d = 0` the `y^aK_a(y)` limit `2^{a−1}Γ(a)` (`a > 0`);
+/// `θd/σ² − |d|·root/σ²` as `−2|d|/(ν(root + |θ|)) − |d|(|θ| − θ sgn d)/σ²`.
 #[cold]
 #[inline(never)]
 pub(super) fn density((sigma, nu, theta): (f64, f64, f64), d: (f64, f64), p: i32) -> f64 {
@@ -77,8 +77,8 @@ pub(super) fn density((sigma, nu, theta): (f64, f64, f64), d: (f64, f64), p: i32
   exp_parts(sub_parts(add_parts(power, kernel), norm), 1.0, p)
 }
 
-/// `ln b` where a product in `θνt` or `½σ²νt²` passes the doubles: `b = 1 − νt(θ + ½σ²t)`, the bracket in two parts at a common
-/// power of two and `νt` times it scaled, `ln` of that product once it passes `2⁶⁰`; `None` where `b ≤ 0`.
+/// `ln b` where `θνt` or `½σ²νt²` overflows: `b = 1 − νt(θ + ½σ²t)`, the bracket in two parts at
+/// one power of two, `νt` times it scaled, its `ln` once past `2⁶⁰`; `None` at `b ≤ 0`.
 #[cold]
 #[inline(never)]
 pub(super) fn ln_base_far((sigma, nu, theta): (f64, f64, f64), t: f64) -> Option<f64> {

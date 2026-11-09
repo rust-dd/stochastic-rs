@@ -47,10 +47,8 @@ impl HaltonSeq {
     Self { n_dims }
   }
 
-  /// Generate `n_points` Halton points in `[0, 1)^d`.
-  ///
-  /// Returns an `(n_points, n_dims)` array. Points are 1-indexed
-  /// (skipping the origin).
+  /// `n_points` Halton points in `[0, 1)^d` as an `(n_points, n_dims)` array, from index 1 (the
+  /// origin skipped).
   pub fn sample<T: FloatExt>(&self, n_points: usize) -> Array2<T> {
     let mut out = Array2::<T>::zeros((n_points, self.n_dims));
     for i in 0..n_points {

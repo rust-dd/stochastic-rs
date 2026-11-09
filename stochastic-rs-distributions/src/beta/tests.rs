@@ -97,8 +97,8 @@ fn mode_answers_every_shape_regime() {
   assert!(law(1.0, 1.0).mode().unwrap().is_nan());
 }
 
-/// The quantile through the law past the old clamp's reach (graded in `special::incomplete::beta`):
-/// the public surface and the domain rule.
+/// The quantile down to subnormal levels (`2.5e-20` at `p = 1e-10`; graded in
+/// `special::incomplete::beta`), with the public surface and the domain rule.
 #[test]
 fn quantile_reads_both_tails_through_the_law() {
   let law = SimdBeta::<f64>::new(0.5, 0.5);

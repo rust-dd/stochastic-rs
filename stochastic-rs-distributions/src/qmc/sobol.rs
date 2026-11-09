@@ -5,35 +5,13 @@
 //! n = \sum_k b_k(n)\,2^k
 //! $$
 //!
-//! Gray-code Sobol sequence on Joe and Kuo's full `new-joe-kuo-6.21201`
-//! direction-number table (primitive polynomials and initial direction
-//! numbers for dimensions 2 to 21201, embedded verbatim and parsed once on
-//! first use), so any number of dimensions up to 21201 is available.
+//! Gray-code points on Joe and Kuo's `new-joe-kuo-6.21201` table, up to 21201 dimensions;
+//! [`SobolSeq::scrambled`] adds Matoušek's scramble and a digital shift, which keep its nets.
 //!
-//! [`SobolSeq::scrambled`] adds Owen-type randomisation in Matoušek's
-//! random linear form: every dimension's generating matrix is multiplied by
-//! a random non-singular lower-triangular binary matrix and each point is
-//! XOR-ed with a random digital shift. The scramble is a digit-wise
-//! bijection, so every $(t, m, s)$-net property of the sequence survives
-//! (each 1-D projection of $2^m$ points still hits every dyadic interval of
-//! width $2^{-m}$ exactly once) while the points become uniformly
-//! distributed for every seed — the basis of randomised-QMC error bars.
-//!
-//! References:
-//! - Joe, S., Kuo, F.Y. (2008), "Constructing Sobol Sequences with Better
-//!   Two-Dimensional Projections", *SIAM Journal on Scientific Computing*
-//!   30(5), 2635-2654. DOI: 10.1137/070709359 — the direction numbers
-//!   (`new-joe-kuo-6.21201`, BSD-3-Clause as published at
-//!   <https://web.maths.unsw.edu.au/~fkuo/sobol/>).
-//! - Antonov, I.A., Saleev, V.M. (1979), "An economic method of computing
-//!   LPτ-sequences", *USSR Computational Mathematics and Mathematical
-//!   Physics* 19(1), 252-256. DOI: 10.1016/0041-5553(79)90085-5 — the
-//!   Gray-code update.
-//! - Owen, A.B. (1998), "Scrambling Sobol' and Niederreiter–Xing points",
-//!   *Journal of Complexity* 14(4), 466-489. DOI: 10.1006/jcom.1998.0487
-//! - Matoušek, J. (1998), "On the L2-discrepancy for anchored boxes",
-//!   *Journal of Complexity* 14(4), 527-556. DOI: 10.1006/jcom.1998.0489 —
-//!   the random linear scrambling implemented here.
+//! Reference: Joe, S., Kuo, F.Y. (2008), "Constructing Sobol Sequences with Better Two-Dimensional Projections", *SIAM Journal on Scientific Computing* 30(5), 2635-2654, DOI 10.1137/070709359 (the direction numbers, `new-joe-kuo-6.21201`, BSD-3-Clause as published at <https://web.maths.unsw.edu.au/~fkuo/sobol/>).
+//! Reference: Antonov, I.A., Saleev, V.M. (1979), "An economic method of computing LPτ-sequences", *USSR Computational Mathematics and Mathematical Physics* 19(1), 252-256, DOI 10.1016/0041-5553(79)90085-5 (the Gray-code update).
+//! Reference: Owen, A.B. (1998), "Scrambling Sobol' and Niederreiter–Xing points", *Journal of Complexity* 14(4), 466-489, DOI 10.1006/jcom.1998.0487.
+//! Reference: Matoušek, J. (1998), "On the L2-discrepancy for anchored boxes", *Journal of Complexity* 14(4), 527-556, DOI 10.1006/jcom.1998.0489 (the random linear scrambling implemented here).
 
 use std::sync::OnceLock;
 
@@ -152,16 +130,12 @@ fn direction_numbers(n_dims: usize) -> Vec<[u32; BITS]> {
   direction
 }
 
-/// Matoušek's random linear scramble of one dimension: the direction
-/// numbers are the columns of the generating matrix, so left-multiplying by
-/// a random lower-triangular binary matrix with unit diagonal maps each
-/// direction number `v` to `L v`, evaluated bit by bit over GF(2).
+/// Matoušek's random linear scramble of one dimension: each direction number `v`, a column of the
+/// generating matrix, maps to `L v` over GF(2), `L` random unit lower-triangular.
 fn linear_scramble(direction: &mut [u32; BITS], rng: &mut SimdRng) {
   let mut rows = [0u32; BITS];
   for (i, row) in rows.iter_mut().enumerate() {
-    // Row `i` of L (bit `BITS - 1 - i` is the diagonal, the higher bits are
-    // free): random bits strictly above the diagonal in the row's own
-    // position, zero below, one on the diagonal.
+    // Row `i` of `L`: the diagonal at bit `BITS − 1 − i`, random bits above it, zeros below.
     let diagonal = 1u32 << (BITS - 1 - i);
     let free_mask = if i == 0 { 0 } else { !0u32 << (BITS - i) };
     *row = (rng.next_u32() & free_mask) | diagonal;
@@ -284,9 +258,8 @@ mod tests {
     }
   }
 
-  /// The parsed table carries the file's rows verbatim: dimension 3 is
-  /// `x² + x + 1` with m = (1, 3), and the last row the degree-18
-  /// polynomial with its 18 initial direction numbers.
+  /// The parsed table carries the file's rows verbatim: dimension 3 is `x² + x + 1` with m = (1,
+  /// 3), the last row a degree-18 polynomial with its 18 initial numbers.
   #[test]
   fn parsed_table_matches_the_joe_kuo_file() {
     let table = joe_kuo();
@@ -317,9 +290,8 @@ mod tests {
     );
   }
 
-  /// `scipy.stats.qmc.Sobol(d, scramble=False).random_base2(4)` (the same
-  /// Joe-Kuo table, emitted in the same Gray-code order with the origin as
-  /// its first point): output `i` here is scipy's point `i + 1`.
+  /// `scipy.stats.qmc.Sobol(d, scramble=False).random_base2(4)`, the same table in the same
+  /// Gray-code order from the origin: output `i` is scipy's point `i + 1`.
   #[test]
   fn matches_scipy_across_the_table() {
     let cases: [(usize, usize, [f64; 15]); 7] = [
@@ -398,10 +370,8 @@ mod tests {
     assert_eq!(checksum(4999), 4_193_280.25);
   }
 
-  /// A scrambled net keeps its stratification: the first 2^m − 1 outputs
-  /// (the crate emits the sequence from index 1, so the origin's point is
-  /// the one missing) hit 2^m − 1 distinct dyadic intervals of width 2^-m
-  /// in every coordinate — exactly one interval stays empty.
+  /// A scrambled net keeps its stratification: the first `2^m − 1` outputs, from index 1, hit
+  /// `2^m − 1` distinct dyadic intervals of width `2^{−m}` per coordinate, one left empty.
   #[test]
   fn scramble_preserves_the_net_property() {
     let m = 10;

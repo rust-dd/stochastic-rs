@@ -1,5 +1,5 @@
-//! Fused Markov-lift factor kernels behind the hidden `SimdFloatExt` methods: `f64` on `f64x4`,
-//! `f32` on `f32x8`; every kernel panics unless its slice arguments share one length (the lane loops skip bounds checks).
+//! Fused Markov-lift kernels behind hidden `SimdFloatExt` methods, `f64` on `f64x4` and `f32` on
+//! `f32x8`; each panics unless its slices share a length, the lane loops skipping bounds checks.
 
 use wide::f32x8;
 use wide::f64x4;

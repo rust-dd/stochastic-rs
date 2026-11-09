@@ -48,8 +48,8 @@ pub(crate) fn uniform53(bits: u64) -> f64 {
   (bits >> 11) as f64 * (1.0 / (1u64 << 53) as f64)
 }
 
-/// The standard normal and the `[0, 1)` uniform a scalar rejection step consumes, from a stream's parts or the
-/// caller's rng.
+/// The standard normal and the `[0, 1)` uniform a scalar rejection step consumes, from a stream's
+/// parts or the caller's rng.
 pub(crate) trait NormalUniformSource<T> {
   fn normal(&mut self) -> T;
 

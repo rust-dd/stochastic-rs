@@ -9,17 +9,8 @@ use crate::tests::scalar_ks_best_p;
 use crate::traits::DistributionExt;
 use crate::traits::DistributionSampler;
 
-/// Every single-precision draw is finite.
-///
-/// The Chambers-Mallows-Stuck form divides by `cos(v)^(1/alpha)`, and `v`
-/// is drawn from the open interval where that cosine is positive — but the
-/// lane-wise cosine is an approximation, and within an ulp of ±pi/2 it can
-/// return a small negative, which turns the fractional power into a NaN.
-/// The rate is about one draw in ten million, so the seed is pinned to one
-/// that hits it: seed 2 fails 352 453 draws in, whatever `alpha` is, since
-/// the offending value is in the uniform stream rather than the law. A
-/// Levy fractional stable motion path turning to NaN is how it first
-/// showed up.
+/// Every f32 draw is finite where the lane cosine of a `v` within an ulp of ±π/2 goes negative:
+/// seed 2 hits it 352 453 draws in, for any `alpha`.
 #[test]
 fn single_precision_draws_stay_finite() {
   for alpha in [0.9_f64, 1.1, 1.5, 1.7, 1.9] {
@@ -78,8 +69,8 @@ fn scalar_gaussian_index_matches_the_normal_cdf() {
   assert!(best > 0.01, "best p = {best}");
 }
 
-/// Just off α = 1 the S₁ law sits at β tan(πα/2) (3.18e6 here), which only the general formula reaches; α = 1 itself
-/// takes the unit-index formula, whose median is 0.2235 (scipy's S₁ quantile).
+/// Just off α = 1 the S₁ law sits at β tan(πα/2), 3.18e6 here, which only the general formula
+/// reaches; α = 1 takes the unit-index formula, median 0.2235 (scipy's S₁ quantile).
 #[test]
 fn near_unit_index_takes_the_general_formula() {
   let d = SimdAlphaStable::<f64>::new(1.0 - 1e-7, 0.5, 1.0, 0.0);

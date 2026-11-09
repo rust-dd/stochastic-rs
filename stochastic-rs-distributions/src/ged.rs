@@ -1,4 +1,4 @@
-//! # Generalized Error Distribution (GED) — Subbotin family
+//! # Generalized Error Distribution (GED), the Subbotin family
 //!
 //! $$
 //! f(x; \mu, \alpha, \beta) = \frac{\beta}{2\alpha\,\Gamma(1/\beta)}\,
@@ -6,27 +6,17 @@
 //! \qquad \alpha > 0,\ \beta > 0.
 //! $$
 //!
-//! Shape parameter $\beta$ controls tail behaviour:
-//! - $\beta = 1$ → Laplace (double exponential, heavy tails)
-//! - $\beta = 2$ → Gaussian
-//! - $\beta < 2$ → heavier-than-Gaussian (GARCH residuals, Nelson 1991)
-//! - $\beta > 2$ → lighter-than-Gaussian (platykurtic)
-//!
-//! **Sampling.** The standard form $|X|^\beta \sim \mathrm{Gamma}(1/\beta, 1)$
-//! gives the bijection
+//! `β = 1` is the Laplace law and `β = 2` the normal; in standard form `|X|^β ~ Gamma(1/β, 1)`, so
+//! a draw is
 //!
 //! $$
 //! X = \alpha \cdot Y^{1/\beta} \cdot S + \mu,
 //! \qquad Y \sim \mathrm{Gamma}(1/\beta, 1),\ S \sim \mathrm{Uniform}\{-1, +1\}.
 //! $$
 //!
-//! Used by GARCH-type volatility models with heavy-tailed innovations
-//! (Nelson 1991 EGARCH, Bollerslev 1987 GARCH-t variant).
-//!
-//! References:
-//! - Subbotin, M.T. (1923), "On the law of frequency of error", *Matematicheskii Sbornik* 31, 296-301.
-//! - Nelson, D. B. (1991), "Conditional Heteroskedasticity in Asset Returns: A New Approach", *Econometrica* 59(2), 347-370, DOI 10.2307/2938260 (the density and its variance).
-//! - Nadarajah, S. (2005), "A generalized normal distribution", *Journal of Applied Statistics* 32(7), 685-694, DOI 10.1080/02664760500079464 (variance, kurtosis, Shannon entropy).
+//! Reference: Subbotin, M.T. (1923), "On the law of frequency of error", *Matematicheskii Sbornik* 31, 296-301.
+//! Reference: Nelson, D. B. (1991), "Conditional Heteroskedasticity in Asset Returns: A New Approach", *Econometrica* 59(2), 347-370, DOI 10.2307/2938260 (the density and its variance).
+//! Reference: Nadarajah, S. (2005), "A generalized normal distribution", *Journal of Applied Statistics* 32(7), 685-694, DOI 10.1080/02664760500079464 (variance, kurtosis, Shannon entropy).
 
 use std::mem::MaybeUninit;
 
@@ -67,15 +57,8 @@ pub struct GedState<T: SimdFloatExt, R: SimdRngExt> {
 }
 
 impl<T: SimdFloatExt> SimdGed<T> {
-  /// Creates a Subbotin/GED distribution.
-  ///
-  /// - `mu` — location μ (matches the module header's μ).
-  /// - `alpha` — scale α > 0 (matches the module header's α; NOT a
-  ///   shape parameter, unlike the `alpha` in
-  ///   [`SimdBeta`](crate::beta::SimdBeta)/[`SimdGamma`]).
-  /// - `beta` — tail exponent β > 0 (matches the module header's β;
-  ///   β=1 is Laplace, β=2 is Gaussian). Consumed internally as `1/beta`
-  ///   into a `Gamma(1/beta, 1)` magnitude sampler.
+  /// Location `mu`, scale `alpha` and tail exponent `beta` (1 Laplace, 2 normal); panics unless all
+  /// are finite, `alpha` and `beta` positive and `1/beta` finite.
   pub fn new(mu: T, alpha: T, beta: T) -> Self {
     assert!(
       mu.is_finite(),
@@ -264,7 +247,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdGed<T> {
     } else {
       crate::special::gamma_q_inv(1.0 / b, tail, 1.0)
     };
-    // Below the normals the root is `(level·Γ(1 + 1/β))^β` to rounding, so its `1/β` power is that base; that occurs
+    // Below the normals the root is `(level·Γ(1 + 1/β))^β` to rounding, its `1/β` power that base;
     // only at β > 1, where `1/Γ(1 + 1/β) − 1` keeps the digits `Γ` loses next to 1.
     let r = if g == 0.0 && level == 0.0 || g >= f64::MIN_POSITIVE {
       g.powf(1.0 / b)
@@ -367,8 +350,8 @@ mod tests {
     );
   }
 
-  /// Where the tail branch's root leaves the normals for the closed form, the quantile steps up on both sides, the two
-  /// floats across each switch found by bisection on the root.
+  /// Where the tail branch's root leaves the normals for the closed form, the quantile steps up on
+  /// both sides, the two floats across each switch found by bisection on the root.
   #[test]
   fn large_beta_quantile_is_monotone_across_the_closed_form_switch() {
     let law = SimdGed::<f64>::new(0.0, 1.0, 1500.0);

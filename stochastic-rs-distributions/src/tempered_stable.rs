@@ -1,36 +1,18 @@
 //! # Tempered stable (positive, exponentially tilted stable)
 //!
-//! The one-sided stable law $S_\alpha$, $\alpha \in (0, 1)$, with Laplace
-//! transform $e^{-u^\alpha}$, exponentially tilted by $\lambda \ge 0$ and
-//! scaled by $\theta > 0$:
-//!
 //! $$
 //! \mathbb E\,e^{-uX} = \exp\!\bigl(\theta\,(\lambda^\alpha - (u + \lambda)^\alpha)\bigr),\qquad
-//! X \overset{\mathcal L}{=} \theta^{1/\alpha}\,S_{\alpha,\ \lambda\theta^{1/\alpha}},
+//! X \overset{\mathcal L}{=} \theta^{1/\alpha}\,S_{\alpha,\ \lambda\theta^{1/\alpha}},\qquad
+//! \theta = C\,\Gamma(1-\alpha)/\alpha,
+//! $$
+//! $$
+//! \kappa_n = \theta\,(-1)^{n+1}\alpha(\alpha-1)\cdots(\alpha-n+1)\,\lambda^{\alpha-n}.
 //! $$
 //!
-//! the unit-time law of the tempered stable subordinator (the positive
-//! half of a CGMY process with $Y = \alpha$, $M = \lambda$ and
-//! $\theta = C\,\Gamma(1-\alpha)/\alpha$). Cumulants come straight from the
-//! Laplace exponent, $\kappa_n = \theta\,(-1)^{n+1}\alpha(\alpha-1)\cdots(\alpha-n+1)\,\lambda^{\alpha-n}$;
-//! there is no closed-form density or CDF.
+//! The tempered stable subordinator's unit-time law (CGMY's positive half, `Y = α`, `M = λ`), no
+//! closed density; Devroye's double rejection takes under 8.12 loops, Kanter's at `λ = 0`.
 //!
-//! ## Sampling
-//!
-//! Devroye's exact double-rejection generator for $S_{\alpha,\lambda}$
-//! (Appendix algorithm of the reference), built on Zolotarev's integral
-//! representation: an auxiliary angle $U \in [0, \pi)$ is drawn from a
-//! Gaussian / beta / uniform mixture hat and accepted against the Zolotarev
-//! density, then $X$ from a three-piece bi-exponential hat and accepted
-//! against $h(x, U)$; the return value is $1/X^{(1-\alpha)/\alpha}$. The
-//! expected number of loops is uniformly bounded (below 8.12) in both
-//! $\alpha$ and $\lambda$, and at $\lambda = 0$ the scheme reduces to
-//! Kanter's method.
-//!
-//! Reference: Devroye, L. (2009), "Random variate generation for
-//! exponentially and polynomially tilted stable distributions", *ACM
-//! Transactions on Modeling and Computer Simulation* 19(4), Article 18.
-//! DOI: 10.1145/1596519.1596523
+//! Reference: Devroye, L. (2009), "Random variate generation for exponentially and polynomially tilted stable distributions", *ACM Transactions on Modeling and Computer Simulation* 19(4), Article 18, DOI 10.1145/1596519.1596523.
 
 use std::mem::MaybeUninit;
 
@@ -93,8 +75,8 @@ fn zolotarev_ratio(alpha: f64, x: f64) -> f64 {
   sinc(x) / (sinc(alpha * x).powf(alpha) * sinc((1.0 - alpha) * x).powf(1.0 - alpha))
 }
 
-/// $\ln(B(x)/B(0))$; below `x = 0.01` from $\ln\mathcal S(x) = -x^2/6 - x^4/180 - x^6/2835 - x^8/37800$, as the ratio
-/// rounds its `−α(1 − α)x²/2` away next to 1, where `λ'^α` multiplies it.
+/// `ln(B(x)/B(0))`; below `x = 0.01` from `ln S(x) = −x²/6 − x⁴/180 − x⁶/2835 − x⁸/37800`, as the
+/// ratio next to 1 rounds away its `−α(1 − α)x²/2`, which `λ'^α` multiplies.
 fn ln_zolotarev_ratio(alpha: f64, x: f64) -> f64 {
   if x.abs() >= 0.01 {
     return zolotarev_ratio(alpha, x).ln();
@@ -113,9 +95,13 @@ fn ln_zolotarev_ratio(alpha: f64, x: f64) -> f64 {
   sum
 }
 
-/// Zolotarev's $A(u) = \bigl((\sin\alpha u)^\alpha(\sin(1-\alpha)u)^{1-\alpha}/\sin u\bigr)^{1/(1-\alpha)}$,
-/// evaluated as $B(0)^{-1/(1-\alpha)}\,(B(u)/B(0))^{-1/(1-\alpha)}$ with
-/// $B(0) = \alpha^{-\alpha}(1-\alpha)^{-(1-\alpha)}$.
+/// Zolotarev's `A(u)` as `B(0)^{−1/(1−α)}(B(u)/B(0))^{−1/(1−α)}`:
+///
+/// $$
+/// A(u) = \bigl((\sin\alpha u)^\alpha(\sin(1-\alpha)u)^{1-\alpha}/\sin u\bigr)^{1/(1-\alpha)},
+/// \qquad
+/// B(0) = \alpha^{-\alpha}(1-\alpha)^{-(1-\alpha)}.
+/// $$
 #[inline]
 fn zolotarev_a(alpha: f64, u: f64) -> f64 {
   let b0 = alpha.powf(-alpha) * (1.0 - alpha).powf(-(1.0 - alpha));
@@ -158,8 +144,8 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
     let root_gamma = (lambda_alpha * alpha_f * (1.0 - alpha_f)).sqrt();
     // ζ at the largest angle a draw reaches, `U = pred(π)`, the smallest the hat's `(√γ + αζ)^{1/α}` meets.
     let zeta_min = zolotarev_ratio(alpha_f, std::f64::consts::PI.next_down()).sqrt();
-    // The relative spread is `√((1 − α)/(α λ'^α))`, zero where `λ'^α` overflows; `αθ · λ^α/λ` overflows only with κ₁,
-    // and keeps the exponent `α` exact where `α − 1` would round.
+    // The relative spread is `√((1 − α)/(α λ'^α))`, zero where `λ'^α` overflows; `αθ · λ^α/λ`
+    // overflows only with κ₁, and keeps the exponent `α` exact where `α − 1` would round.
     let path = if lambda_alpha > (1.0 - alpha_f) / alpha_f * 2f64.powi(106) {
       Path::PointMass(alpha_f * theta_f * (lambda_f.powf(alpha_f) / lambda_f))
     } else if scale.is_normal()
@@ -200,8 +186,8 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
     self.theta
   }
 
-  /// One draw of $\theta^{1/\alpha} S_{\alpha,\lambda'}$, $\lambda' = \lambda\theta^{1/\alpha}$, by Devroye's Appendix
-  /// algorithm step for step; the log path forms the hat ratio, $m$, the tilt term and the result from `λ'^α` and logs.
+  /// One draw of `θ^{1/α} S_{α,λ'}`, `λ' = λθ^{1/α}`, by Devroye's Appendix algorithm step for
+  /// step; the log path forms the hat ratio, `m`, the tilt and the result from `λ'^α` and logs.
   fn draw_scaled<S: NormalUniformSource<T>>(&self, src: &mut S) -> f64 {
     let log = self.path == Path::Log;
     let alpha = self.alpha.to_f64().unwrap();

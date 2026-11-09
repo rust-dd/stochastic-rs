@@ -39,10 +39,7 @@ pub struct ExpDerivedState<T: SimdFloatExt, R: SimdRngExt> {
 }
 
 impl<T: SimdFloatExt> SimdWeibull<T> {
-  /// Creates a Weibull distribution.
-  ///
-  /// - `lambda` — scale λ > 0 (matches the module header's λ).
-  /// - `k` — shape k > 0 (matches the module header's k).
+  /// Scale `lambda` and shape `k`; panics unless both are finite and positive.
   pub fn new(lambda: T, k: T) -> Self {
     assert!(
       lambda.is_finite(),

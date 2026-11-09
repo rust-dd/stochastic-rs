@@ -10,8 +10,8 @@ fn close(a: f64, b: f64, rel: f64) -> bool {
   (a - b).abs() <= rel * b.abs().max(1e-300)
 }
 
-/// The Bessel-form density agrees with scipy's quadrature of the gamma-time normal mixture `N(μ + θg, σ²g)·Γ(1/ν, ν)`,
-/// including the finite `x = μ` limit at ν = ½.
+/// The Bessel-form density agrees with scipy's quadrature of the gamma-time normal mixture
+/// `N(μ + θg, σ²g)·Γ(1/ν, ν)`, including the finite `x = μ` limit at ν = ½.
 #[test]
 fn pdf_matches_the_mixture_integral() {
   let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05);
@@ -93,8 +93,8 @@ fn moments_and_transforms_match_the_reference() {
   ));
 }
 
-/// mpmath at 60 and 120 digits: `ln M = ½` where `|μt|` passes 709.8 and the clock's `−ln(b)/ν` cancels it, then the exact
-/// 0 and `+∞` where `e^{μt}` alone under- and overflows.
+/// mpmath at 60 and 120 digits: `ln M = ½` where `|μt|` passes 709.8 and the clock's `−ln(b)/ν`
+/// cancels it, then the exact 0 and `+∞` where `e^{μt}` alone under- and overflows.
 #[test]
 fn the_mgf_holds_where_the_location_cancels_the_clock() {
   for ((theta, mu), want) in [
@@ -117,8 +117,8 @@ fn the_mgf_holds_where_the_location_cancels_the_clock() {
   assert_eq!(lone(355.0), f64::INFINITY);
 }
 
-/// mpmath at 60 and 120 digits: within `1e-12` as the base `b` nears either root, one ulp of `t` short of it included, at a
-/// double `θ` that leaves `b = 3.3e-24` past two parts' reach, and where a small `ν` leaves `b` within `νt` of 1.
+/// mpmath at 60 and 120 digits, within `1e-12`: `b` nearing either root to an ulp of `t`, a double
+/// `θ` leaving `b = 3.3e-24` past two parts' reach, and a small `ν` leaving `b` within `νt` of 1.
 #[test]
 fn the_mgf_holds_as_its_base_nears_its_root_or_one() {
   let ordinary = (
@@ -158,8 +158,8 @@ fn the_mgf_holds_as_its_base_nears_its_root_or_one() {
   assert_eq!(at_root, Some(f64::INFINITY));
 }
 
-/// mpmath at 60 and 120 digits: adjacent `t` on either side of the plain base's switch, `μ = 0` and a twin whose location
-/// cancels the clock to `ln M = ½`, within `1e-13`.
+/// mpmath at 60 and 120 digits: adjacent `t` on either side of the plain base's switch, `μ = 0` and
+/// a twin whose location cancels the clock to `ln M = ½`, within `1e-13`.
 #[test]
 fn the_mgf_agrees_on_both_sides_of_its_plain_switch() {
   for ((sigma, nu, theta, mu), t, want) in [
@@ -204,8 +204,8 @@ fn the_mgf_agrees_on_both_sides_of_its_plain_switch() {
   }
 }
 
-/// mpmath at 60 and 120 digits: within `1e-12` where `σ` and `θ√ν` are far below `θ`, the law narrower than `θ`'s rounding
-/// allows `d² − θ²` to keep, so `d − θ` is formed exactly.
+/// mpmath at 60 and 120 digits: within `1e-12` where `σ` and `θ√ν` are far below `θ`, the law
+/// narrower than `θ`'s rounding allows `d² − θ²` to keep, so `d − θ` is formed exactly.
 #[test]
 fn narrow_laws_hold_at_their_double_inputs() {
   for ((sigma, nu, theta, x), want) in [
@@ -320,8 +320,8 @@ fn pdf_holds_where_k_overflows() {
   }
 }
 
-/// mpmath at 60 and 120 digits: within `1e-12` from `ν = 10⁻³` to `10⁻¹⁷`, the order `1/ν − ½` taken in the saddle form
-/// past 50, and the exact 0 in the far tail, where every candidate value underflows.
+/// mpmath at 60 and 120 digits, within `1e-12` from `ν = 10⁻³` to `10⁻¹⁷` (the saddle form past
+/// order 50), and 0 in the far tail, where every candidate value underflows.
 #[test]
 fn small_rates_hold_their_digits() {
   for (nu, want) in [

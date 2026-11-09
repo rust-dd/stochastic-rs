@@ -1,8 +1,5 @@
 //! # Generalized Extreme Value (GEV) distribution
 //!
-//! Jenkinson (1955) unification of the three Fisher-Tippett extreme-value
-//! sub-families into a single three-parameter family:
-//!
 //! $$
 //! F(x;\mu,\sigma,\xi) =
 //! \begin{cases}
@@ -13,20 +10,8 @@
 //! \end{cases}
 //! $$
 //!
-//! with $\mu \in \mathbb{R}$ (location), $\sigma > 0$ (scale), $\xi \in
-//! \mathbb{R}$ (shape).
-//!
-//! - $\xi > 0$: **Fréchet** (Type II) — heavy upper tail, no upper bound.
-//! - $\xi = 0$: **Gumbel** (Type I) — light exponential tail.
-//! - $\xi < 0$: **Reverse Weibull** (Type III) — bounded upper tail at
-//!   $\mu - \sigma/\xi$.
-//!
-//! Used in extreme-value-theory (EVT) risk modelling (Value-at-Risk on
-//! the tail block-maxima) — see McNeil-Frey-Embrechts (2015) ch. 7.2.
-//!
-//! ## Sampling
-//!
-//! Closed-form inverse CDF:
+//! Jenkinson's union of the three extreme-value types: `ξ > 0` Fréchet, unbounded above, `ξ = 0`
+//! Gumbel, `ξ < 0` reverse Weibull bounded at `μ − σ/ξ`; drawn by the inverse cdf
 //!
 //! $$
 //! X = \begin{cases}
@@ -36,15 +21,9 @@
 //! \qquad U \sim \mathrm{Uniform}(0, 1).
 //! $$
 //!
-//! References:
-//! - Jenkinson, A.F. (1955), "The frequency distribution of the annual
-//!   maximum (or minimum) values of meteorological elements",
-//!   *Quarterly Journal of the Royal Meteorological Society* 81, 158-171.
-//!   DOI: 10.1002/qj.49708134804
-//! - Coles, S. (2001), *An Introduction to Statistical Modeling of
-//!   Extreme Values*, Springer.
-//! - McNeil, A.J., Frey, R., Embrechts, P. (2015),
-//!   *Quantitative Risk Management*, Princeton UP, §7.2.
+//! Reference: Jenkinson, A.F. (1955), "The frequency distribution of the annual maximum (or minimum) values of meteorological elements", *Quarterly Journal of the Royal Meteorological Society* 81, 158-171, DOI 10.1002/qj.49708134804.
+//! Reference: Coles, S. (2001), *An Introduction to Statistical Modeling of Extreme Values*, Springer.
+//! Reference: McNeil, A.J., Frey, R., Embrechts, P. (2015), *Quantitative Risk Management*, Princeton UP, §7.2.
 
 use std::mem::MaybeUninit;
 
@@ -81,12 +60,8 @@ pub struct SimdGev<T> {
 }
 
 impl<T: SimdFloatExt> SimdGev<T> {
-  /// Construct a GEV$(\mu, \sigma, \xi)$.
-  ///
-  /// - `mu` — location μ (matches the module header's μ).
-  /// - `sigma` — scale σ > 0 (matches the module header's σ).
-  /// - `xi` — shape ξ (matches the module header's ξ); sign selects
-  ///   Fréchet (ξ>0), Gumbel (ξ=0), or reverse-Weibull (ξ<0).
+  /// `GEV(μ, σ, ξ)`, the sign of `xi` choosing Fréchet, Gumbel or reverse Weibull; panics unless
+  /// all three are finite and `sigma > 0`.
   pub fn new(mu: T, sigma: T, xi: T) -> Self {
     assert!(
       mu.is_finite(),
@@ -189,9 +164,7 @@ impl<T: SimdFloatExt> SimdGev<T> {
     )
   }
 
-  /// Closed-form support: returns `(lo, hi)` as the open interval on
-  /// which the GEV density is strictly positive. Used by callers that
-  /// need to clip samples or build empirical histograms.
+  /// The open interval `(lo, hi)` where the density is positive.
   pub fn support(&self) -> (f64, f64) {
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();

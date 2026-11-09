@@ -2,16 +2,14 @@
 //!
 //! $$
 //! X \sim \mathrm{Skellam}(\mu_1, \mu_2) \;:=\; N_1 - N_2,
-//! \qquad N_i \sim \mathrm{Poisson}(\mu_i)\ \text{independent}.
+//! \qquad N_i \sim \mathrm{Poisson}(\mu_i)\ \text{independent},
+//! $$
+//! $$
+//! P(X = k) = e^{-(\mu_1 + \mu_2)} (\mu_1/\mu_2)^{k/2} I_{|k|}(2\sqrt{\mu_1 \mu_2}).
 //! $$
 //!
-//! PMF: $P(X = k) = e^{-(\mu_1 + \mu_2)} (\mu_1/\mu_2)^{k/2} I_{|k|}(2\sqrt{\mu_1 \mu_2})$
-//! where $I_n$ is the modified Bessel function of the first kind.
-//!
-//! Used in sports / queueing models (goal difference, queue net flow), and
-//! more generally any count-difference application. Sampling is a trivial
-//! two-Poisson subtraction; the PMF and CDF go through the scaled modified
-//! Bessel function [`crate::special::ln_bessel_ie`].
+//! Drawn as the difference of two Poisson draws; the pmf and cdf go through the scaled Bessel `I`,
+//! [`crate::special::ln_bessel_ie`].
 //!
 //! Reference: Skellam, J. G. (1946), "The Frequency Distribution of the Difference Between Two Poisson Variates Belonging to Different Populations", *Journal of the Royal Statistical Society* 109(3), 296, DOI 10.2307/2981372 (cf and mgf are the products of the two Poisson transforms).
 
@@ -31,8 +29,8 @@ use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
-/// Skellam law of `N₁ − N₂` for independent Poisson counts of rates `mu1` and `mu2`: parameters only; a
-/// [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Skellam law of `N₁ − N₂` for independent Poisson counts of rates `mu1` and `mu2`: parameters
+/// only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SimdSkellam {
   mu1: f64,
@@ -42,12 +40,8 @@ pub struct SimdSkellam {
 }
 
 impl SimdSkellam {
-  /// Construct a Skellam$(\mu_1, \mu_2)$ random variable.
-  ///
-  /// - `mu1` — finite rate μ₁ > 0 of the minuend Poisson N₁ (matches the module
-  ///   header's μ₁).
-  /// - `mu2` — finite rate μ₂ > 0 of the subtrahend Poisson N₂ (matches the
-  ///   module header's μ₂). The output is `N₁ - N₂`.
+  /// `N₁ − N₂` for independent Poisson `N₁`, `N₂` of rates `mu1`, `mu2`; panics unless both are
+  /// finite and positive.
   pub fn new(mu1: f64, mu2: f64) -> Self {
     assert!(
       mu1 > 0.0 && mu1.is_finite(),
@@ -133,9 +127,7 @@ impl DistributionExt for SimdSkellam {
     Some((0.5 * k * (self.mu1 / self.mu2).ln() - gap * gap + ln_bessel_ie(k.abs(), z)).exp())
   }
 
-  /// CDF via summation of the PMF on a truncated range. Skellam tails
-  /// drop super-exponentially so summing ±10·sqrt(μ₁+μ₂) lanes is
-  /// numerically tight.
+  /// The pmf summed over `±10√(μ₁ + μ₂)`, tight as the tails fall super-exponentially.
   fn cdf(&self, x: f64) -> Option<f64> {
     if x.is_nan() {
       return Some(f64::NAN);
@@ -231,8 +223,8 @@ mod tests {
     );
   }
 
-  /// Exact pmf from `mpmath.besseli` at 60 digits; the old 200-term series collapsed
-  /// once μ₁ + μ₂ reached a few hundred.
+  /// The pmf against `mpmath.besseli` at 60 digits where `μ₁ + μ₂` reaches a few hundred, past
+  /// what a 200-term series holds.
   #[test]
   fn skellam_pmf_matches_mpmath_at_large_rates() {
     for ((mu1, mu2, k), want) in [

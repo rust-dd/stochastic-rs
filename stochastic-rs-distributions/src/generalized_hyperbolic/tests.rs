@@ -271,8 +271,8 @@ fn central_moments_hold_at_every_order() {
   }
 }
 
-/// mpmath at 60 and 120 digits: within `1e-12` from `|λ| = 10³` to `10¹⁵`, the boundary `γ_t = 0` included, at `λ = 89.6` with
-/// `e^{μt}` subnormal alone, and the exact 0 where the density underflows.
+/// mpmath at 60 and 120 digits, within `1e-12`: `|λ|` from `10³` to `10¹⁵` with the boundary
+/// `γ_t = 0`, `λ = 89.6` with only `e^{μt}` subnormal, and 0 where the density underflows.
 #[test]
 fn large_orders_hold_their_digits() {
   for (lambda, t, want) in [
@@ -301,8 +301,8 @@ fn large_orders_hold_their_digits() {
   assert_eq!(farthest.pdf(0.3), Some(0.0));
 }
 
-/// mpmath at 60 and 120 digits: the density where the clock is narrower than its saddle's rounding, at the double inputs,
-/// within `1e-12`: from the order (`λ ≈ 5·10³⁰`, `9·10³⁰`) and from `δγ = 10¹⁶` at `λ = 1`.
+/// mpmath at 60 and 120 digits, within `1e-12`: the density where the clock is narrower than its
+/// saddle's rounding, by order (`λ ≈ 5·10³⁰`, `9·10³⁰`) and by `δγ = 10¹⁶` at `λ = 1`.
 #[test]
 fn concentrated_densities_hold_at_their_double_inputs() {
   for ((lambda, alpha, beta, delta, mu, x), want) in [
@@ -436,8 +436,8 @@ fn subnormal_clocks_keep_their_digits() {
   }
 }
 
-/// mpmath at 120 and 240 digits where the power factor goes subnormal (`λ = −100`), its product with `K` overflows (`λ = 100`),
-/// `e^{μt}` alone goes subnormal (`λ = 10`, the `λ = 20` family), with the power too (`μ = −3.962`), and where `e^{dx}` does.
+/// mpmath, 120/240 digits: the power underflowing (`λ = −100`), its product with `K` overflowing
+/// (`λ = 100`), `e^{μt}` (`λ = 10`, `20`), both (`μ = −3.962`), or `e^{dx}` underflowing.
 #[test]
 fn mgf_takes_the_ratio_only_where_every_factor_stays_normal() {
   for ((lambda, alpha, beta, delta, mu, t), want) in [
@@ -516,8 +516,8 @@ fn mgf_takes_the_ratio_only_where_every_factor_stays_normal() {
   }
 }
 
-/// Seeded cells over `λ ∈ (−50, 50)`, `α, δ, |μ| ∈ [1e-6, 1e6]`, `|β| < α` and `t` from `1e-12·2α` to `2α` inside either
-/// end of `(−α − β, α − β)`: the ratio regime agrees with the two-part logarithms within `ε(2Σ|ln terms| + 16)`.
+/// Cells: `λ ∈ (−50, 50)`, `α, δ, |μ| ∈ [1e-6, 1e6]`, `|β| < α`, `t` `1e-12·2α` to `2α` inside
+/// either end of `(−α − β, α − β)`: the ratio regime meets two-part logs to `ε(2Σ|ln terms| + 16)`.
 #[test]
 fn ratio_regime_agrees_with_the_log_regime() {
   use crate::special::log_size;
@@ -563,8 +563,8 @@ fn ratio_regime_agrees_with_the_log_regime() {
   );
 }
 
-/// Past the exponents `e^x` represents the value is exactly 0 or `∞` whatever its error band: the far tails answer 0 and
-/// an mgf whose `μt` passes `4.5e15` answers `+∞`, not NaN.
+/// Past the exponents `e^x` represents the value is exactly 0 or `∞` whatever its error band: the
+/// far tails answer 0 and an mgf whose `μt` passes `4.5e15` answers `+∞`, not NaN.
 #[test]
 fn far_tails_answer_the_exact_zero_or_infinity() {
   let gh = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2);

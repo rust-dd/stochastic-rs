@@ -2,42 +2,18 @@
 //!
 //! $$
 //! f(x) = \frac{(\psi/\chi)^{\lambda/2}}{2K_\lambda(\sqrt{\chi\psi})}\,x^{\lambda-1}
-//! \exp\!\Bigl(-\tfrac12\bigl(\tfrac{\chi}{x} + \psi x\bigr)\Bigr),\qquad x > 0,
+//! \exp\!\Bigl(-\tfrac12\bigl(\tfrac{\chi}{x} + \psi x\bigr)\Bigr),\qquad x > 0,\qquad
+//! \mathbb E X^k = (\chi/\psi)^{k/2}
+//! \frac{K_{\lambda+k}(\sqrt{\chi\psi})}{K_\lambda(\sqrt{\chi\psi})},
 //! $$
 //!
-//! with $\lambda \in \mathbb R$ and, for the sampler, $\chi > 0$, $\psi > 0$
-//! (the boundary cases are the gamma and inverse-gamma laws). The mixing
-//! law behind the generalized hyperbolic family; the inverse Gaussian is
-//! $\lambda = -1/2$.
+//! The GH family's clock, the inverse Gaussian at `λ = −½`, no closed-form cdf; at `χ, ψ > 0` drawn
+//! as `Y/√(ψ/χ)` by Hörmann and Leydold's three regimes of `GIGrvg`, `1/Y` at `λ < 0`.
 //!
-//! ## Sampling
-//!
-//! Hörmann and Leydold's uniformly fast generator on the two-parameter
-//! quasi-density $g(y \mid \lambda, \beta) = y^{\lambda-1}e^{-\beta(y + 1/y)/2}$
-//! with $\beta = \sqrt{\chi\psi}$, rescaled by $\alpha = \sqrt{\psi/\chi}$ as
-//! $X = Y/\alpha$, and $1/Y$ for negative $\lambda$: their Algorithm 1
-//! (three-piece hat with rejection constant below 2.73) for $\lambda < 1$ and
-//! small $\beta$, the ratio-of-uniforms without mode shift (Algorithm 2)
-//! in the $T_{-1/2}$-concave middle range, and the Dagpunar–Lehner
-//! ratio-of-uniforms with mode shift (Algorithm 3, Cardano roots) for large
-//! $\lambda$ or $\beta$ — the regime split of their `GIGrvg` reference
-//! implementation.
-//!
-//! Raw moments are Bessel ratios, $\mathbb E X^k = (\chi/\psi)^{k/2}
-//! K_{\lambda+k}(\sqrt{\chi\psi}) / K_\lambda(\sqrt{\chi\psi})$; there is no
-//! closed-form CDF or quantile.
-//!
-//! References:
-//! - Hörmann, W., Leydold, J. (2014), "Generating generalized inverse
-//!   Gaussian random variates", *Statistics and Computing* 24(4), 547-557.
-//!   DOI: 10.1007/s11222-013-9387-3
-//! - Dagpunar, J.S. (1989), "An easily implemented generalised inverse
-//!   Gaussian generator", *Communications in Statistics — Simulation and
-//!   Computation* 18(2), 703-710. DOI: 10.1080/03610918908812785
-//! - Jørgensen, B. (1982), *Statistical Properties of the Generalized
-//!   Inverse Gaussian Distribution*, Lecture Notes in Statistics 9,
-//!   Springer. DOI: 10.1007/978-1-4612-5698-4
-//! - Olver, F.W.J. et al. (eds.), *NIST Digital Library of Mathematical Functions*, eq. 10.30.2 (the mgf at its boundary).
+//! Reference: Hörmann, W., Leydold, J. (2014), "Generating generalized inverse Gaussian random variates", *Statistics and Computing* 24(4), 547-557, DOI 10.1007/s11222-013-9387-3.
+//! Reference: Dagpunar, J.S. (1989), "An easily implemented generalised inverse Gaussian generator", *Communications in Statistics — Simulation and Computation* 18(2), 703-710, DOI 10.1080/03610918908812785.
+//! Reference: Jørgensen, B. (1982), *Statistical Properties of the Generalized Inverse Gaussian Distribution*, Lecture Notes in Statistics 9, Springer, DOI 10.1007/978-1-4612-5698-4.
+//! Reference: Olver, F.W.J. et al. (eds.), *NIST Digital Library of Mathematical Functions*, eq. 10.30.2 (the mgf at its boundary).
 
 use std::mem::MaybeUninit;
 
@@ -210,13 +186,8 @@ impl Setup {
       Regime::RatioOfUniforms => loop {
         let u = uniform() * self.u_plus;
         let v = uniform();
-        // The ratio-of-uniforms region is `0 < v ≤ sqrt(g(u/v))`, so `v = 0`
-        // is not a point of it — but a single-precision uniform hands back
-        // an exact zero once in about 8.4 million draws, and then `u/v` is
-        // `+inf` while `2 ln v` is `-inf`. For `λ < 1` the normalised log
-        // density at infinity is `-inf` too, so the test passes and the
-        // infinity leaves as a draw (as a zero, once the `λ < 0` branch
-        // inverts it — either way outside the strictly positive support).
+        // `v = 0`, outside the region `0 < v ≤ √g(u/v)`, comes from an f32 uniform once in 8.4e6
+        // draws; at `λ < 1` its `−∞ ≤ −∞` test would pass and leave `u/v = +∞` (or 0) as a draw.
         if v <= 0.0 {
           continue;
         }
@@ -228,10 +199,8 @@ impl Setup {
       Regime::RatioOfUniformsShifted => loop {
         let u = self.u_minus + uniform() * (self.u_plus - self.u_minus);
         let v = uniform();
-        // The same `v = 0` exclusion. A `λ > 2` shape escapes it on its
-        // own — `log g` at infinity is a NaN there and the test fails —
-        // but this regime also takes every `λ < 1` with `β > 3`, which has
-        // the `-inf ≤ -inf` acceptance of the branch above.
+        // The same exclusion: a `λ > 2` shape fails the test on its own (`log g` at ∞ is NaN), but
+        // this regime also takes `λ < 1` at `β > 3`, accepted as above.
         if v <= 0.0 {
           continue;
         }
@@ -340,8 +309,8 @@ impl<T: SimdFloatExt> SimdGig<T> {
     )
   }
 
-  /// $\mathbb E X^k = (\chi/\psi)^{k/2} K_{\lambda+k}(b)/K_\lambda(b)$, $b = \sqrt{\chi\psi}$: the product of its Bessel ratios
-  /// over the orders under 50 and, over a run of orders past 50, the saddle's `w_jʲe^{rest}`.
+  /// $\mathbb E X^k = (\chi/\psi)^{k/2} K_{\lambda+k}(b)/K_\lambda(b)$, $b = \sqrt{\chi\psi}$: a
+  /// product of Bessel ratios under order 50, of the saddle's `w_jʲe^{rest}` over runs past it.
   pub fn raw_moment(&self, k: u32) -> f64 {
     let (lambda, chi, psi) = self.params();
     if chi * psi < LIMIT_CLOCK
@@ -508,8 +477,14 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
     Some(ldexp(rho * (k4 / (k2 * k2)), 2 * t))
   }
 
-  /// $(\psi/(\psi - 2t))^{\lambda/2}\,K_\lambda(\sqrt{\chi(\psi - 2t)})/K_\lambda(\sqrt{\chi\psi})$ for $t < \psi/2$; at $t = \psi/2$
-  /// its limit $(\sqrt{\chi\psi}/2)^\lambda\Gamma(-\lambda)/(2K_\lambda(\sqrt{\chi\psi}))$ for $\lambda < 0$, else there and beyond `+∞`.
+  /// The mgf for `t < ψ/2`; at `t = ψ/2` its limit for `λ < 0`, else there and past it `+∞`:
+  ///
+  /// $$
+  /// \Bigl(\frac{\psi}{\psi - 2t}\Bigr)^{\lambda/2}
+  /// \frac{K_\lambda(\sqrt{\chi(\psi - 2t)})}{K_\lambda(\sqrt{\chi\psi})}
+  /// \quad\to\quad \Bigl(\frac{\sqrt{\chi\psi}}{2}\Bigr)^\lambda
+  /// \frac{\Gamma(-\lambda)}{2K_\lambda(\sqrt{\chi\psi})}.
+  /// $$
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
     if t == f64::NEG_INFINITY {
       return Some(0.0);

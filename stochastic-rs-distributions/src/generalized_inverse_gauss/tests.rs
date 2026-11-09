@@ -12,9 +12,8 @@ fn close(a: f64, b: f64, rel: f64) -> bool {
   (a - b).abs() <= rel * b.abs().max(1e-300)
 }
 
-/// `scipy.stats.geninvgauss(p=λ, b=√(χψ), scale=√(χ/ψ))`: pdf on a grid,
-/// `stats('mvsk')` and the closed-form mode, across all three sampler
-/// regimes, λ = 0 and λ < 0.
+/// `scipy.stats.geninvgauss(p=λ, b=√(χψ), scale=√(χ/ψ))`: pdf on a grid, `stats('mvsk')` and the
+/// closed-form mode, across all three sampler regimes, λ = 0 and λ < 0.
 #[test]
 fn matches_scipy_geninvgauss() {
   type ScipyRow = ((f64, f64, f64), [f64; 5], [f64; 5]);
@@ -239,18 +238,8 @@ fn rejects_zero_chi() {
   let _ = SimdGig::<f64>::new(1.0, 0.0, 1.0);
 }
 
-/// Every single-precision draw lands inside the support.
-///
-/// Both ratio-of-uniforms regimes draw from `0 < v ≤ sqrt(g(u/v))`, and
-/// `v = 0` is not a point of that region — but a single-precision uniform
-/// hands back an exact zero about once in 8.4 million draws, `u/v` is
-/// then `+inf`, and for `λ < 1` both sides of the acceptance test come
-/// out `-inf`, so the infinity leaves as a draw. At `λ < 0` the same
-/// event shows as an exact zero, since that branch inverts what it drew
-/// — which is how the generalized hyperbolic family picks it up through
-/// its mixing clock. The seeds are pinned where the offending uniform
-/// lands early: 182 puts it at draw 7303 of the un-shifted regime, 571 at
-/// draw 8052 of the mode-shifted one that `β = √(χψ) > 3` selects.
+/// Every f32 draw lands in the support where a uniform `v = 0` would leave `+∞` (or 0 at `λ < 0`):
+/// seed 182 puts it at draw 7303 of the plain regime, 571 at draw 8052 of the shifted one.
 #[test]
 fn single_precision_draws_stay_in_the_support() {
   for (lambda, chi, psi, seed, draws) in [
@@ -270,8 +259,8 @@ fn single_precision_draws_stay_in_the_support() {
   }
 }
 
-/// At λ = −1/2 the mgf's limit at `t = ψ/2` is the inverse Gaussian's `e^{λ/μ}`: `GIG(−½, λ, λ/μ²)` is `IG(μ, λ)`,
-/// and a power-of-two `μ` puts both laws exactly on the boundary.
+/// At λ = −1/2 the mgf's limit at `t = ψ/2` is the inverse Gaussian's `e^{λ/μ}`: `GIG(−½, λ, λ/μ²)`
+/// is `IG(μ, λ)`, and a power-of-two `μ` puts both laws exactly on the boundary.
 #[test]
 fn half_negative_lambda_boundary_mgf_is_the_inverse_gaussian() {
   for (mu, lambda) in [(2.0, 3.0), (0.5, 0.3), (4.0, 40.0)] {
@@ -344,8 +333,8 @@ fn moments_hold_where_k_overflows() {
   }
 }
 
-/// mpmath at 60 and 120 digits: an inverse-gamma tail at `√(χψ) = 10⁻³⁰⁰`, whose Bessel ratios overflow, keeps its variance and
-/// skewness through the root-mean-square scale, and its kurtosis, `8e600`, reads `+∞`.
+/// mpmath at 60 and 120 digits: an inverse-gamma tail at `√(χψ) = 10⁻³⁰⁰`, its Bessel ratios
+/// overflowing, keeps variance and skewness by the RMS scale; its kurtosis, `8e600`, reads `+∞`.
 #[test]
 fn heavy_tails_keep_their_moments() {
   let d = SimdGig::<f64>::new(-1.0, 1e-300, 1e-300);
@@ -412,8 +401,8 @@ fn mgf_takes_the_ratio_only_where_every_factor_stays_normal() {
   }
 }
 
-/// Seeded cells over `λ ∈ (−50, 50)`, `χ, ψ ∈ [1e-6, 1e6]` and `s = ψ − 2t` from `1e-12ψ` to `1e6ψ`: wherever the ratio
-/// regime is taken it agrees with the two-part logarithms within `ε(2Σ|ln terms| + 16)`.
+/// Cells: `λ ∈ (−50, 50)`, `χ, ψ ∈ [1e-6, 1e6]`, `s = ψ − 2t` from `1e-12ψ` to `1e6ψ`: wherever
+/// taken, the ratio regime meets the two-part logs within `ε(2Σ|ln terms| + 16)`.
 #[test]
 fn ratio_regime_agrees_with_the_log_regime() {
   use crate::special::log_size;
@@ -450,8 +439,8 @@ fn ratio_regime_agrees_with_the_log_regime() {
   );
 }
 
-/// Past the exponents `e^x` represents the value is exactly 0 or `∞` whatever its error band: the far tails answer 0 and
-/// an overflowing mgf `+∞`, not NaN.
+/// Past the exponents `e^x` represents the value is exactly 0 or `∞` whatever its error band: the
+/// far tails answer 0 and an overflowing mgf `+∞`, not NaN.
 #[test]
 fn far_tails_answer_the_exact_zero_or_infinity() {
   let d = SimdGig::<f64>::new(1.0, 1.0, 1.0);

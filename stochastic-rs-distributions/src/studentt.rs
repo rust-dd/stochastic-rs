@@ -76,10 +76,7 @@ pub struct StudentTState<T: SimdFloatExt, R: SimdRngExt> {
 }
 
 impl<T: SimdFloatExt> SimdStudentT<T> {
-  /// Creates a Student's t-distribution via `Z/sqrt(V/nu)`, `Z` standard
-  /// normal, `V ~ ChiSquared(nu)`.
-  ///
-  /// - `nu` — degrees of freedom ν (matches the module header's ν).
+  /// `Z/√(V/ν)`, `Z` standard normal, `V ~ χ²_ν`; panics unless `nu` is finite and `nu/2 > 0`.
   pub fn new(nu: T) -> Self {
     assert!(
       nu.is_finite(),
@@ -157,17 +154,15 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
     z / (v / self.nu).sqrt()
   }
 
-  /// The density within a few ulps at every `x`, its exponent past double precision from 1 on where `pdf`'s starts at 8;
-  /// public for the t copulas' level gaps, which amplify its rounding into `h`, and outside the stability promise.
+  /// The density within a few ulps, its exponent extended from 1 (`pdf` from 8); public for the t
+  /// copulas' level gaps, which amplify its rounding, outside the stability promise.
   #[doc(hidden)]
   pub fn precise_pdf(&self, x: f64) -> f64 {
     student_density_precise(self.nu.to_f64().unwrap(), self.ratio, x)
   }
 }
 
-/// ν=5 — matches this crate's own `tests/distribution_ext_vs_reference.rs`
-/// fixture, also used by the umbrella crate's workspace-root
-/// `benches/distributions.rs` and `benches/dist_multicore.rs`.
+/// ν = 5, the law of this crate's reference tests and the distribution benches.
 impl<T: SimdFloatExt> Default for SimdStudentT<T> {
   fn default() -> Self {
     Self::new(T::from(5.0).unwrap())
@@ -218,8 +213,8 @@ impl<T: SimdFloatExt> Distribution<T> for SimdStudentT<T> {
   }
 }
 
-/// `ln(K/ν)` of the tail `P(T ≤ −t) ≈ (K/ν)t^{−ν}`, `K = Γ((ν + 1)/2)ν^{ν/2}/(√π Γ(ν/2))`, with `Γ(ν/2) = Γ(1 + ν/2)/(ν/2)`,
-/// free of the cancellation of `ln Γ(ν/2)` against `ln ν` at small `ν`; public for the t copulas' tail, outside the stability promise.
+/// `ln(K/ν)` of `P(T ≤ −t) ≈ (K/ν)t^{−ν}`, `K = Γ((ν + 1)/2)ν^{ν/2}/(√π Γ(ν/2))`, `Γ(ν/2)` as
+/// `Γ(1 + ν/2)/(ν/2)` so small `ν` does not cancel; hidden, for the t copulas.
 #[doc(hidden)]
 pub fn ln_tail_scale(nu: f64) -> f64 {
   crate::special::ln_gamma(0.5 * (nu + 1.0)) - crate::special::ln_gamma(1.0 + 0.5 * nu)
@@ -243,8 +238,8 @@ fn cornish_fisher(z: f64, nu: f64) -> f64 {
   z + (g1 + (g2 + (g3 + g4 / nu) / nu) / nu) / nu
 }
 
-/// The quantile below ½: Newton in `ln|t|` on `ln F`, which is concave there, from A&S 26.7.5 where it holds, else from
-/// the root of the tail bound `F(−t) < (K/ν)t^{−ν}`, which caps every step; `−∞` below `F(−f64::MAX)`.
+/// Quantile below ½: Newton in `ln|t|` on the concave `ln F`, from A&S 26.7.5 where valid, else
+/// from the tail bound `F(−t) < (K/ν)t^{−ν}`'s root, capping each step; `−∞` below `F(−MAX)`.
 fn lower_quantile(nu: f64, ratio: f64, p: f64) -> f64 {
   let ln_p = p.ln();
   let ln_max = f64::MAX.ln();
@@ -315,10 +310,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
     })
   }
 
-  /// `NaN` at `nu <= 1` (`nu = 1` is the Cauchy distribution — see
-  /// [`crate::cauchy`]'s `SimdCauchy::mean`, same underlying non-convergent
-  /// integral): the mean does not exist there, so it is `NaN` rather than
-  /// `0.0` even though `0.0` is what every finite-mean case below returns.
+  /// NaN at `nu ≤ 1` (`nu = 1` is the Cauchy), where the mean integral does not converge.
   fn mean(&self) -> Option<f64> {
     if self.nu.to_f64().unwrap() > 1.0 {
       Some(0.0)
@@ -335,11 +327,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
     Some(0.0)
   }
 
-  /// Three-way split on `nu`, all mathematically forced by the tail
-  /// behaviour of the Student-t density: `nu > 2` gives the standard finite
-  /// `nu/(nu-2)`; `1 < nu <= 2` (`nu = 2` is the common finance choice for
-  /// "just barely infinite variance") diverges to `+∞`, a definite value;
-  /// `nu <= 1` has no mean to build a variance from at all, so `NaN`.
+  /// `ν/(ν − 2)` past 2, `+∞` on `(1, 2]`, NaN at `ν ≤ 1`, where no mean exists.
   fn variance(&self) -> Option<f64> {
     let nu = self.nu.to_f64().unwrap();
     if nu > 2.0 {
@@ -351,9 +339,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
     }
   }
 
-  /// `NaN` at `nu <= 3`: `nu = 3` is itself a common fat-tail choice in
-  /// finance, and it already sits at this threshold — the third central
-  /// moment does not exist there, so skewness is `NaN`, not `0.0`.
+  /// 0 past `nu = 3`, NaN at `nu ≤ 3`, where the third central moment does not exist.
   fn skewness(&self) -> Option<f64> {
     if self.nu.to_f64().unwrap() > 3.0 {
       Some(0.0)
@@ -362,9 +348,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
     }
   }
 
-  /// Three-way split mirroring `variance` one moment order up: finite for
-  /// `nu > 4`, `+∞` for `2 < nu <= 4` (a definite divergence), `NaN` for
-  /// `nu <= 2` (no variance to build on).
+  /// Finite past 4, `+∞` on `(2, 4]`, NaN at `ν ≤ 2`, where no variance exists.
   fn kurtosis(&self) -> Option<f64> {
     let nu = self.nu.to_f64().unwrap();
     if nu > 4.0 {
@@ -415,11 +399,8 @@ mod tests {
   use crate::tests::scalar_ks_best_p;
   use crate::traits::DistributionExt;
 
-  /// Backs the doc comments on `mean`/`variance`/`skewness`/`kurtosis`:
-  /// `nu = 3` is a common fat-tail choice in finance. It clears the
-  /// mean/variance thresholds (`nu > 1`, `nu > 2`) but sits at exactly the
-  /// skewness threshold (`nu > 3` required, so `nu = 3` itself is NaN) and
-  /// inside kurtosis's divergent-but-defined middle band (`2 < nu <= 4`).
+  /// At `nu = 3` the mean and variance are finite, the skewness NaN and the kurtosis `+∞`, as the
+  /// docs state.
   #[test]
   fn studentt_low_nu_moments_match_documented_thresholds() {
     let t = SimdStudentT::<f64>::new(3.0);
@@ -444,11 +425,7 @@ mod tests {
     );
   }
 
-  /// `nu = 2` (the other boundary of variance's three-way split) clears
-  /// the mean threshold, sits in variance's divergent-but-defined middle
-  /// band (`1 < nu <= 2`), and sits at exactly kurtosis's `NaN` threshold
-  /// (`nu > 2` required there, so `nu = 2` itself has no variance to build
-  /// a kurtosis from at all).
+  /// At `nu = 2` the mean is finite, the variance `+∞` and the kurtosis NaN, as the docs state.
   #[test]
   fn studentt_nu_two_variance_diverges_kurtosis_is_nan() {
     let t = SimdStudentT::<f64>::new(2.0);

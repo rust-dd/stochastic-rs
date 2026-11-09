@@ -77,10 +77,8 @@ impl BtrsConstants {
     })
   }
 
-  /// One BTRS draw of `k ~ Binomial(n, p_eff)`; the caller applies the
-  /// complement flip when `p > 0.5`. Expected ~1.15 (u, v) pairs per
-  /// draw; the squeeze step returns without any transcendental call
-  /// ~86 % of the time.
+  /// One BTRS draw of `k ~ Binomial(n, p_eff)`, the caller flipping `p > ½`: about 1.15 `(u, v)`
+  /// pairs a draw, 86 % taken by the squeeze without a transcendental.
   fn sample<G: Rng + ?Sized>(&self, rng: &mut G, n: u32) -> u32 {
     let nf = n as f64;
     loop {
@@ -114,11 +112,7 @@ pub struct SimdBinomial<T: PrimInt> {
 }
 
 impl<T: PrimInt> SimdBinomial<T> {
-  /// Creates a binomial sampler.
-  ///
-  /// - `n` — number of Bernoulli trials (matches the module header's n).
-  /// - `p` — per-trial success probability p ∈ [0, 1] (matches the
-  ///   module header's p).
+  /// `n` trials of success probability `p`; panics unless `p` lies in `[0, 1]`.
   pub fn new(n: u32, p: f64) -> Self {
     assert!(
       p.is_finite(),

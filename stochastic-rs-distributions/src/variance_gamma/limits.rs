@@ -1,5 +1,5 @@
-//! The density's limits where the gamma clock or the diffusion is negligible at double precision: a clock of shape
-//! `1/ν ≥ 2¹⁶⁰` is normal, and where `σ²` is under `2⁻¹⁰⁰νθ²` the law is `μ + θG`, so neither squares `θ/σ` nor forms `1/ν`.
+//! The density's limits where the clock or the diffusion is below double precision: shape
+//! `1/ν ≥ 2¹⁶⁰` is normal, `σ² < 2⁻¹⁰⁰νθ²` is `μ + θG`; neither squares `θ/σ` nor forms `1/ν`.
 
 use crate::special::HALF_LN_TAU;
 use crate::special::Scaled;
@@ -62,8 +62,8 @@ pub(super) fn normal_clock(
   )
 }
 
-/// `f_G(g)/|θ|`, `G ~ Gamma(1/ν, ν)`, `g = d/θ`: `ln_1p_mx(g − 1)/ν − ln g − ½ ln ν − ½ ln 2π` less Stirling's remainder,
-/// `g − 1 = (d − θ)/θ`; below `g = ½` the shape as `(1/ν − 1) ln g − (g − 1)/ν` from `ln g = ln|d| − ln|θ|` in two parts.
+/// `f_G(g)/|θ|`, `G ~ Gamma(1/ν, ν)`, `g = d/θ`: `ln_1p_mx(g − 1)/ν − ln g − ½ ln(2πν)` less
+/// Stirling's remainder; below `g = ½` as `(1/ν − 1) ln g − (g − 1)/ν`, `ln g` in two parts.
 #[cold]
 #[inline(never)]
 pub(super) fn gamma_clock((nu, theta): (f64, f64), (d, d_lo): (f64, f64), p: i32) -> f64 {

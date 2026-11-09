@@ -82,7 +82,8 @@ fn median_is_chois_bracket() {
   }
 }
 
-/// The `n = 0` window `λ ∈ (2/3, LN_2]` has `e^{−λ} ≥ ½`, so the median and `quantile(0.5)` read 0 through `LN_2`; `next_up(LN_2)` lies past ln 2 and reads 1 before the fix too: a guard.
+/// The `n = 0` window `λ ∈ (2/3, LN_2]` has `e^{−λ} ≥ ½`, so the median and `quantile(0.5)` read 0
+/// through `LN_2`, and 1 from `next_up(LN_2)`, past ln 2.
 #[test]
 fn median_and_half_quantile_are_zero_through_ln_2() {
   let ln_2 = std::f64::consts::LN_2;

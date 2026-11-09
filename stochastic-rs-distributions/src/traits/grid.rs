@@ -1,10 +1,5 @@
-//! A coefficient of time and state tabulated on a rectangular grid:
-//! [`Grid2D`] holds one value per `(t, x)` node, evaluates by bilinear
-//! interpolation inside the grid and holds the nearest edge flat outside it.
-//! It is the third form an [`Fn2D`](super::Fn2D) takes beside a closure and
-//! an [`Expr`](super::Expr) — a calibrated leverage surface, a local
-//! volatility read off market data, any coefficient that exists as numbers
-//! rather than as a formula.
+//! A coefficient of time and state tabulated on a grid: [`Grid2D`] is the third
+//! [`Fn2D`](super::Fn2D) form beside a closure and an [`Expr`](super::Expr), for tabulated data.
 
 use std::cmp::Ordering;
 
@@ -13,17 +8,8 @@ use ndarray::Array2;
 
 use super::float::FloatExt;
 
-/// Values on a `(t, x)` grid, `values[[j, i]] = f(ts[j], xs[i])`, read back
-/// by bilinear interpolation.
-///
-/// Outside the grid the nearest edge is held **flat** — not extrapolated
-/// linearly and not `NaN`: a query at `x = 10⁹` on a grid ending at `120`
-/// answers what the grid holds at `120`, and a `NaN` coordinate is held to
-/// the first node rather than propagating. Both are what a simulation
-/// wants from a coefficient whose paths legitimately wander past the range
-/// it was tabulated on; a caller who needs to know whether a query carries
-/// tabulated information tests [`t_range`](Self::t_range) and
-/// [`x_range`](Self::x_range) itself.
+/// `values[[j, i]] = f(ts[j], xs[i])`, read bilinearly; outside, the nearest edge holds flat and a
+/// NaN coordinate the first node, as a path past the tabulated range wants.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Grid2D<T: FloatExt> {
   ts: Array1<T>,
@@ -32,14 +18,8 @@ pub struct Grid2D<T: FloatExt> {
 }
 
 impl<T: FloatExt> Grid2D<T> {
-  /// A grid over strictly ascending `ts` and `xs`, with `values` of shape
-  /// `(ts.len(), xs.len())`. An axis may hold a single node, along which
-  /// the value is then constant.
-  ///
-  /// # Panics
-  ///
-  /// When an axis is empty or not strictly ascending, or when the shape of
-  /// `values` is not `(ts.len(), xs.len())`.
+  /// A grid over non-empty, strictly ascending `ts` and `xs` and `values` of shape
+  /// `(ts.len(), xs.len())`, a one-node axis constant along it; panics otherwise.
   pub fn new(ts: Array1<T>, xs: Array1<T>, values: Array2<T>) -> Self {
     assert!(
       !ts.is_empty(),
@@ -131,10 +111,8 @@ impl<T: FloatExt> Grid2D<T> {
   }
 }
 
-/// The two nodes bracketing `x` and the weight of the upper one: `(i, i, 0)`
-/// at or past an edge — and for a `NaN`, which compares false against every
-/// node and so is held to the first — else `(i, i + 1, w)` with
-/// `w = (x − g[i]) / (g[i + 1] − g[i])`.
+/// The nodes bracketing `x` and the upper one's weight: `(i, i, 0)` at or past an edge, and for a
+/// NaN, held to the first; else `(i, i + 1, (x − g[i])/(g[i + 1] − g[i]))`.
 fn bracket<T: FloatExt>(grid: &Array1<T>, x: T) -> (usize, usize, T) {
   let last = grid.len() - 1;
   if !matches!(x.partial_cmp(&grid[0]), Some(Ordering::Greater)) {

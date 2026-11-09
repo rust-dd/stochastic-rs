@@ -1,9 +1,5 @@
-//! Helpers every binding crate uses at the Python boundary.
-//!
-//! PyO3 already stops a Rust panic before it unwinds into the interpreter, but
-//! it raises it as `pyo3_runtime.PanicException`, a `BaseException` that an
-//! `except Exception` clause does not catch. These wrappers give the panic the
-//! class a Python caller expects for its cause.
+//! Python-boundary helpers for the binding crates: PyO3 raises a stopped panic as `PanicException`,
+//! a `BaseException` that `except Exception` misses, so these re-raise it by cause.
 
 use std::any::Any;
 use std::panic::AssertUnwindSafe;
@@ -34,8 +30,8 @@ pub fn runtime_error_on_panic<T>(f: impl FnOnce() -> T) -> PyResult<T> {
     .map_err(|payload| PyRuntimeError::new_err(panic_message(payload)))
 }
 
-/// Locks a stream; call it only inside `Python::detach`, so no caller waits here holding the interpreter its holder
-/// may need. A panic caught by [`runtime_error_on_panic`] leaves the stream valid, so a poisoned lock is recovered.
+/// Locks a stream; call it in `Python::detach` only, so no caller waits holding the interpreter; a
+/// panic caught by [`runtime_error_on_panic`] leaves the stream valid, and poison cleared.
 pub fn lock_stream<T>(stream: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
   stream
     .lock()

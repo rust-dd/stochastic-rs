@@ -1,5 +1,5 @@
-//! The density and mgf below `r = √(λ² + χψ) = 50` where their logarithms are large or `ω = √(χψ)` leaves the normal range:
-//! each logarithm in two parts over `K` in scaled form, so their sum keeps the digits its large terms would round away.
+//! The density and mgf below `r = √(λ² + χψ) = 50` at large logs or where `ω = √(χψ)` leaves the
+//! normal range: each log in two parts over scaled `K`, keeping digits large terms round away.
 
 use crate::special::LN2_HI;
 use crate::special::LN2_LO;

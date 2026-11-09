@@ -1,5 +1,5 @@
-//! The first four cumulants of GIG(λ, χ, ψ) as `sⁿρⁿ⁻¹k̂ₙ` for scales `s` and `ρ`, none from cancelling raw moments: Debye's
-//! expansion differentiated from `r = √(λ² + χψ) = 100`, the trapezoidal rule about the mode from 3, the Bessel ratios below.
+//! GIG's first four cumulants as `sⁿρⁿ⁻¹k̂ₙ`, none from cancelling raw moments: Debye's expansion
+//! differentiated from `r = √(λ² + χψ) = 100`, the trapezoidal rule from 3, Bessel ratios below.
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 10.41.4 (Debye's expansion, a function of `r` alone at a fixed order), <https://dlmf.nist.gov/10.41.4>.
 //! Reference: Trefethen, L.N., Weideman, J.A.C. (2014), "The exponentially convergent trapezoidal rule", *SIAM Review* 56(3), 385-458, DOI 10.1137/130932132.
 
@@ -14,8 +14,8 @@ use crate::special::quarter;
 use crate::special::scaled_saddle;
 use crate::special::split_pow2;
 
-/// From this `r` Debye's corrections hold double precision at either sign of `λ`; at a negative order they converge like
-/// `(4/|λ|)ᵏ`, still `1e-12` short at `r = 50`.
+/// From this `r` Debye's corrections hold double precision at either sign of `λ`; at a negative
+/// order they converge like `(4/|λ|)ᵏ`, still `1e-12` short at `r = 50`.
 const DEBYE_FROM: f64 = 100.0;
 
 /// From this `r` the rule's step `STEP/√r` holds `3e-15`; below it the Bessel ratios, their cancellation under 200, hold `3e-13`.
@@ -23,8 +23,8 @@ const QUADRATURE_FROM: f64 = 3.0;
 
 const STEP: f64 = 0.2;
 
-/// Nodes on either side of the mode; a law whose fourth-moment integrand runs past them has an inverse-gamma tail, which
-/// carries its moments, so the Bessel ratios do not cancel there (`Σ|terms| ≤ 33|κ₄|`).
+/// Nodes each side of the mode; an integrand past them is an inverse-gamma tail carrying the
+/// moments, where the Bessel ratios do not cancel (`Σ|terms| ≤ 33|κ₄|`).
 const SIDE: usize = 512;
 
 /// `((m, e), ρ, [κ₁/s, κ₂/(s²ρ), κ₃/(s³ρ²), κ₄/(s⁴ρ³)])`, `s = 2ᵉm` split, `ρ = 1/r` where
@@ -84,8 +84,8 @@ fn debye(lambda: f64, omega: f64, r: f64, unit: f64) -> [f64; 4] {
   ]
 }
 
-/// The central moments of `x/w` by the trapezoidal rule in `t = ln(x/w)`, where the density is `e^{φ(t)}`,
-/// `φ = −|λ|·E(±t) − δ(cosh t − 1)`, `E(x) = eˣ − 1 − x`, `δ = ω²/(r + |λ|)`; `None` past `SIDE` nodes on a side.
+/// `x/w`'s central moments by the trapezoidal rule in `t = ln(x/w)`, density `e^{φ(t)}`,
+/// `φ = −|λ|·E(±t) − δ(cosh t − 1)`, `E(x) = eˣ − 1 − x`, `δ = ω²/(r + |λ|)`; `None` past `SIDE`.
 fn trapezoid(lambda: f64, omega: f64, r: f64) -> Option<[f64; 4]> {
   let nu = lambda.abs();
   let delta = omega * (omega / (r + nu));

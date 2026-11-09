@@ -83,16 +83,16 @@ fn poisson_mixture<T: SimdFloatExt>(df: T, ncp: T, mut src: impl MixtureSource<T
   src.gamma(SimdGamma::new(shape, two))
 }
 
-/// Noncentral chi-squared law with `df` degrees of freedom whose noncentrality is a per-draw argument, so it has no
-/// `Distribution`: a seeded stream draws it with `sample_ncp`, the caller's rng with [`Self::sample_ncp_with`].
+/// Noncentral χ² with `df` degrees of freedom and a per-draw noncentrality, so no `Distribution`: a
+/// stream draws it by `sample_ncp`, the caller's rng by [`Self::sample_ncp_with`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdNonCentralChiSquared<T> {
   df: T,
   chisq: Option<SimdChiSquared<T>>,
 }
 
-/// A noncentral chi-squared stream: the shift's normal, the central `χ²_{df−1}`, and the cursor that seeds each
-/// `df < 1` mixture draw.
+/// A noncentral chi-squared stream: the shift's normal, the central `χ²_{df−1}`, and the cursor
+/// that seeds each `df < 1` mixture draw.
 #[doc(hidden)]
 #[derive(Clone, Debug)]
 pub struct NcxState<T: SimdFloatExt, R: SimdRngExt> {
@@ -124,8 +124,8 @@ impl<T: SimdFloatExt> SimdNonCentralChiSquared<T> {
     self.df
   }
 
-  /// One draw of `χ²_df(ncp)` on the caller's rng, the shift for `df ≥ 1` and the Poisson mixture below; panics
-  /// unless `0 ≤ ncp < ∞`.
+  /// One draw of `χ²_df(ncp)` on the caller's rng, the shift for `df ≥ 1` and the Poisson mixture
+  /// below; panics unless `0 ≤ ncp < ∞`.
   pub fn sample_ncp_with<G: Rng + ?Sized>(&self, rng: &mut G, ncp: T) -> T {
     check_ncp(ncp);
     if self.df < T::one() {
@@ -178,8 +178,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> Seeded<SimdNonCentralChiSquared<T>, R> {
   }
 }
 
-/// One-shot `χ²_df(ncp)` draw, the shift for `df ≥ 1` and the Poisson mixture below; panics on the `df` that `new`
-/// rejects or unless `0 ≤ ncp < ∞`. It builds the laws per call, so repeated draws belong on a stream.
+/// One `χ²_df(ncp)` draw, the shift from `df = 1`, the Poisson mixture below; panics where `new`
+/// does or unless `0 ≤ ncp < ∞`. It builds its laws per call: repeat draws belong on a stream.
 pub fn sample<T: FloatExt, S: SeedExt>(df: T, ncp: T, seed: &S) -> T {
   let law = SimdNonCentralChiSquared::<T>::new(df);
   if df >= T::one() {
@@ -288,10 +288,8 @@ mod tests {
     let expected_mean = df + lambda;
     let expected_var = 2.0 * (df + 2.0 * lambda);
 
-    // Exact cumulant formula kappa_r = 2^(r-1) (r-1)! (df + r*lambda) gives
-    // the noncentral chi-squared's 4th cumulant, hence its 4th central
-    // moment mu4 = kappa4 + 3*kappa2^2, hence the large-n variance of the
-    // plug-in variance estimator: Var(S^2) ~= (mu4 - kappa2^2) / n.
+    // `κ_r = 2^{r−1}(r − 1)!(df + rλ)` gives `μ₄ = κ₄ + 3κ₂²`, hence the variance estimator's
+    // error, `Var(S²) ≈ (μ₄ − κ₂²)/n`.
     let se_mean = (expected_var / n as f64).sqrt();
     let kappa4 = 48.0 * (df + 4.0 * lambda);
     let mu4 = kappa4 + 3.0 * expected_var * expected_var;
@@ -309,8 +307,8 @@ mod tests {
     );
   }
 
-  /// `0 < df < 1` takes the Poisson mixture, mean `df + λ` and variance `2(df + 2λ)`; treating `df` as one would
-  /// give 3.0 / 10.0 here against 2.3 / 8.6, tens of standard errors off.
+  /// `0 < df < 1` takes the Poisson mixture, mean `df + λ` and variance `2(df + 2λ)`; treating `df`
+  /// as one would give 3.0 / 10.0 here against 2.3 / 8.6, tens of standard errors off.
   #[test]
   fn sample_ncp_df_below_one_matches_closed_form_moments() {
     let mut dist = SimdNonCentralChiSquared::<f64>::new(0.3).seeded(&Deterministic::new(11));

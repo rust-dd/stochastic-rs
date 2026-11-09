@@ -12,16 +12,8 @@ use num_complex::Complex;
 use rand::Rng;
 use stochastic_rs_core::simd_rng::SimdRngExt;
 
-/// Scalar real-number surface: arithmetic, conversions and constants —
-/// nothing that draws randomness and nothing that requires SIMD lanes.
-///
-/// This is the bound for code that only *computes*: analytic pricers,
-/// characteristic functions, Greeks, calibration objectives, quadrature.
-/// Because it asks for no lane type and no RNG, a custom scalar — an AAD
-/// dual number, a tape node, a higher-precision float — can implement it,
-/// which is exactly what [`FloatExt`] forbids: that trait additionally
-/// demands the 8-lane SIMD surface and RNG-backed fills, so `f32`/`f64`
-/// are its only possible implementors.
+/// The scalar surface for code that only computes (pricers, Greeks, quadrature): no lanes, no RNG,
+/// so an AAD dual or tape node can implement it where [`FloatExt`] cannot.
 pub trait RealExt:
   num_traits::Float
   + num_traits::FromPrimitive

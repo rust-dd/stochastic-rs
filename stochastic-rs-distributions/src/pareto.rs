@@ -30,12 +30,8 @@ pub struct SimdPareto<T> {
 }
 
 impl<T: SimdFloatExt> SimdPareto<T> {
-  /// Creates a Pareto (Type I) distribution.
-  ///
-  /// - `x_m` — minimum/scale x_m > 0 (matches the module header's x_m);
-  ///   also the mode.
-  /// - `alpha` — tail index α > 0 (matches the module header's α);
-  ///   controls which moments exist (mean requires α>1, variance α>2).
+  /// Minimum and mode `x_m`, tail index `alpha` (mean from `α > 1`, variance from `α > 2`); panics
+  /// unless both are finite and positive.
   pub fn new(x_m: T, alpha: T) -> Self {
     assert!(
       x_m.is_finite(),
@@ -171,9 +167,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdPareto<T> {
     Some(xm * (-(-p).ln_1p() / a).exp())
   }
 
-  /// `+∞`, not `NaN`, at `alpha <= 1`: the mean integral `∫x·f(x)dx`
-  /// diverges to a definite (infinite) value at these — commonly used —
-  /// shape parameters (e.g. the classic "80/20" Pareto has `alpha ≈ 1.16`).
+  /// `+∞`, not NaN, at `alpha ≤ 1`, where the mean integral diverges.
   fn mean(&self) -> Option<f64> {
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
@@ -206,10 +200,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdPareto<T> {
     }
   }
 
-  /// `NaN`, not `+∞`, at `alpha <= 3`: unlike mean/variance, the third
-  /// central moment does not merely diverge to a signed infinity here — it
-  /// is not defined at all, so `NaN` is the honest answer rather than a
-  /// sign choice.
+  /// NaN at `alpha ≤ 3`: the third central moment is undefined there, not a signed infinity.
   fn skewness(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     if a > 3.0 {
@@ -258,10 +249,7 @@ mod tests {
   use crate::tests::scalar_ks_best_p;
   use crate::traits::DistributionExt;
 
-  /// Backs the doc comments on `mean`/`variance`/`skewness`/`kurtosis`:
-  /// `alpha = 1.16` (the classic "80/20" Pareto) is a common, valid,
-  /// in-range shape parameter, yet already sits below every one of these
-  /// thresholds — mean is the only finite moment it has.
+  /// At `alpha = 1.16`, the "80/20" Pareto, the mean is the only finite moment, as the docs state.
   #[test]
   fn pareto_80_20_moments_match_documented_thresholds() {
     let p = SimdPareto::<f64>::new(1.0, 1.16);

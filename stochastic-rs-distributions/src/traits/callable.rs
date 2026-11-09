@@ -10,15 +10,8 @@ use std::ops::Sub;
 use super::float::FloatExt;
 use super::grid::Grid2D;
 
-/// A coefficient of time and state written as an expression rather than a
-/// closure: `Expr::lit(0.01) + Expr::x().abs() * 0.4`. It evaluates on the
-/// host like any [`Fn2D`], and it compiles to a short postfix [`Program`] a
-/// device kernel interprets — which is what lets a process whose coefficients
-/// are functions of the state, the Cheyette local volatility or a Volterra
-/// equation's drift and diffusion, run on a GPU. [`Expr::T`] is the time
-/// argument and [`Expr::X`] the state; the vocabulary is the one the device
-/// engine's own function table carries, so every node here has one meaning on
-/// the host and in every kernel.
+/// A coefficient of time ([`Expr::T`]) and state ([`Expr::X`]) as an expression,
+/// `Expr::lit(0.01) + Expr::x().abs() * 0.4`, compiling to the [`Program`] a device kernel runs.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum Expr {
@@ -401,9 +394,8 @@ pub enum Fn2D<T: FloatExt> {
   /// A coefficient written as an [`Expr`], compiled: the one form a device
   /// kernel can evaluate.
   Expr(Program),
-  /// A coefficient tabulated on a `(t, x)` grid and read back by bilinear
-  /// interpolation — a calibrated leverage surface, a local volatility from
-  /// market data. Host only, like a closure.
+  /// A coefficient tabulated on a `(t, x)` grid, read by bilinear interpolation (a calibrated
+  /// leverage surface, market local volatility); host only, like a closure.
   Grid(Grid2D<T>),
   #[cfg(feature = "python")]
   #[doc(hidden)]

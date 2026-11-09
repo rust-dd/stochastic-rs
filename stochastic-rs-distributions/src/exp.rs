@@ -30,10 +30,8 @@ const ZIG_EXP_V: f64 = 3.949_659_822_581_572e-3;
 const TABLE_SIZE: usize = 256;
 const SMALL_EXP_THRESHOLD: usize = 16;
 
-/// Precomputed lookup tables for the Ziggurat algorithm (exponential distribution).
-/// `ke` holds threshold integers for the fast-accept test,
-/// `we` holds the width of each rectangle,
-/// `fe` holds the function values f(x)=exp(-x) at rectangle boundaries.
+/// Ziggurat tables of the exponential: `ke` the fast-accept thresholds, `we` the rectangle widths,
+/// `fe` the values `e^{−x}` at their edges.
 struct ExpZigTables {
   ke: [i32; TABLE_SIZE],
   we: [f64; TABLE_SIZE],
@@ -86,9 +84,8 @@ fn exp_zig_tables() -> &'static ExpZigTables {
   })
 }
 
-/// Scalar fallback for exponential samples that fall outside a Ziggurat rectangle.
-/// For iz==0 (tail), uses the inversion method: R - ln(U).
-/// Otherwise performs rejection sampling within the rectangle.
+/// The draws outside a ziggurat rectangle: the tail (`iz == 0`) by inversion, `R − ln U`, the rest
+/// by rejection within the rectangle.
 #[cold]
 #[inline(never)]
 fn efix<T: SimdFloatExt, S: Source + ?Sized>(
@@ -194,8 +191,8 @@ fn exp_batch8<T: SimdFloatExt, R: SimdRngExt>(
   }
 }
 
-/// Exp(1) Ziggurat fill scaled by `factor` (= 1/λ) at the store; kept out of line because inlined into a
-/// pop loop's refill this kernel slows the loop.
+/// Exp(1) Ziggurat fill scaled by `factor` (= 1/λ) at the store; kept out of line because inlined
+/// into a pop loop's refill this kernel slows the loop.
 #[inline(never)]
 fn fill_exp_scaled<T: SimdFloatExt, R: SimdRngExt>(
   buf: &mut [MaybeUninit<T>],

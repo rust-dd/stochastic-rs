@@ -16,8 +16,8 @@ fn large_orders_take_their_values() {
   ));
 }
 
-/// mpmath at 60 and 120 digits: variance, skewness and excess kurtosis within `1e-12` from the Bessel ratios (`r < 3`), the
-/// rule about the mode (to `r = 100`) and Debye's differentiated expansion, at `|λ|` from 1 to `10⁴` and `√(χψ) = 10¹²`.
+/// mpmath, 60/120 digits: variance, skewness and excess kurtosis within `1e-12` by Bessel ratios
+/// (`r < 3`), the rule (to `r = 100`) and Debye's expansion, `|λ|` 1 to `10⁴`, `√(χψ) = 10¹²`.
 #[test]
 fn central_moments_hold_at_every_order() {
   for ((lambda, chi, psi), want) in [
@@ -74,8 +74,8 @@ fn central_moments_hold_at_every_order() {
   }
 }
 
-/// mpmath at 60 and 120 digits: within `1e-12` where the terms' logarithms are large, at `|λ| = 10³` and `10¹⁰` and where
-/// small arguments meet `|λ| = 300`.
+/// mpmath at 60 and 120 digits: within `1e-12` where the terms' logarithms are large, at
+/// `|λ| = 10³` and `10¹⁰` and where small arguments meet `|λ| = 300`.
 #[test]
 fn large_orders_hold_where_their_terms_are_large() {
   let near = SimdGig::<f64>::new(-1e3, 1.0, 1.0)
@@ -104,8 +104,8 @@ fn large_orders_hold_where_their_terms_are_large() {
   }
 }
 
-/// mpmath at 60 and 120 digits: the density of a law narrower than its mode's rounding at its double inputs, within `1e-12`,
-/// from the order (`|λ| ≈ 10²⁸`, `10³⁰`) or from `√(χψ) = 10²⁰` and `2·10¹⁶` at small orders.
+/// mpmath at 60 and 120 digits, within `1e-12`: the density of a law narrower than its mode's
+/// rounding, by order (`|λ| ≈ 10²⁸`, `10³⁰`) or by `√(χψ) = 10²⁰`, `2·10¹⁶` at small orders.
 #[test]
 fn concentrated_densities_hold_at_their_double_inputs() {
   for ((lambda, chi, psi, x), want) in [

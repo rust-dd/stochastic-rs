@@ -46,23 +46,8 @@ pub struct NigState<T: SimdFloatExt, R: SimdRngExt> {
 }
 
 impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
-  /// Creates a normal-inverse-Gaussian distribution via the Gaussian
-  /// mixture `X = mu + beta·d + sqrt(d)·Z`, `d` drawn from an internal
-  /// inverse-Gaussian subordinator.
-  ///
-  /// - `alpha` — tail heaviness α > 0, must exceed `|beta|` (matches the
-  ///   module header's α).
-  /// - `beta` — asymmetry β (matches the module header's β; a distinct
-  ///   role from the `beta` shape parameter in
-  ///   [`SimdBeta`](crate::beta::SimdBeta)/[`SimdGamma`](crate::gamma::SimdGamma)
-  ///   or the skewness in [`crate::alpha_stable::SimdAlphaStable`]).
-  /// - `delta` — scale δ > 0 (matches the module header's δ). Note this
-  ///   does **not** pass straight through as the subordinator's own
-  ///   mean/shape: internally `gamma = sqrt(alpha²−beta²)`, and the
-  ///   inverse-Gaussian subordinator is built with mean `delta/gamma`
-  ///   and shape `delta²`.
-  /// - `mu` — location/drift μ (matches the module header's μ);
-  ///   `mean() = mu + delta·beta/gamma`.
+  /// `X = μ + βd + √d Z`, `d` inverse Gaussian, mean `δ/γ` and shape `δ²`, `γ = √(α² − β²)`; panics
+  /// unless all are finite, `α > |β|`, `δ > 0` and `γ²`, `δ/γ`, `δ²` positive and finite.
   pub fn new(alpha: T, beta: T, delta: T, mu: T) -> Self {
     assert!(
       alpha.is_finite(),
@@ -237,16 +222,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdNormalInverseGauss<
     if x.is_infinite() {
       return Some(0.0);
     }
-    // f(x) = (αδ/π) exp(δγ + β(x−μ)) K₁(α q(x)) / q(x), γ = sqrt(α²−β²),
-    // q(x) = sqrt(δ² + (x−μ)²). Barndorff-Nielsen (1997) eq. 3.
-    //
-    // Evaluated via K₁ᵉ(z) = e^z K₁(z) as
-    // exp(δγ + β(x−μ) − α q(x)) · K₁ᵉ(α q(x)) rather than
-    // exp(δγ + β(x−μ)) · K₁(α q(x)): for large |x−μ| the naive exponent
-    // overflows while K₁'s far branch underflows, and ∞ · 0 = NaN. The
-    // combined exponent is bounded above by δγ for every x, since
-    // α q(x) ≥ α|x−μ| ≥ |β(x−μ)| (q(x) ≥ |x−μ|, α > |β| by construction),
-    // so it underflows to 0 gracefully instead.
+    // Barndorff-Nielsen (1997) eq. 3 as `(αδ/π) e^{δγ + β(x−μ) − αq} K₁ᵉ(αq)/q`: the exponent stays
+    // under `δγ` (`αq ≥ |β(x−μ)|`), so no `∞·0` of `e^{δγ + β(x−μ)}` and `K₁`.
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
     let d = self.delta.to_f64().unwrap();
@@ -407,12 +384,8 @@ mod tests {
     }
   }
 
-  /// Regression: naively computing `exp(δγ+β(x−μ)) · K₁(α q(x))` overflows
-  /// the `exp` term (exponent ≈1001.9 > 709.78) while `K₁`'s far branch
-  /// underflows `exp(−4000)` to exact `0.0`, producing `∞ · 0 = NaN`. The
-  /// cancellation-safe `K₁ᵉ` route must instead underflow cleanly to `0.0`
-  /// (the true limiting density at this deviation is far below f64's
-  /// smallest positive value).
+  /// Far out, where `e^{δγ + β(x−μ)}` overflows (exponent 1001.9) and `K₁` underflows, the density
+  /// reads 0, not `∞·0 = NaN`.
   #[test]
   fn nig_pdf_finite_for_large_deviation() {
     let dist = SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.0);
@@ -424,10 +397,8 @@ mod tests {
     );
   }
 
-  /// The high-skew regime (β/α close to 1) moves the overflow trigger
-  /// inward; sweep a range of moderately large deviations and require
-  /// every value to be finite and non-negative (a valid density never
-  /// goes negative or non-finite, however small).
+  /// High skew (`β/α` near 1) moves the overflow inward: across moderately large deviations every
+  /// density is finite and non-negative.
   #[test]
   fn nig_pdf_finite_across_tail_sweep() {
     let dist = SimdNormalInverseGauss::<f64>::new(2.0, 1.9, 1.0, 0.0);

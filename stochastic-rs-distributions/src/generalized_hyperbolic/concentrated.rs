@@ -89,8 +89,8 @@ fn clock_at(
   }
 }
 
-/// Where the clock's saddle is past `2^{±512}` or a square of its clock leaves the normal range, the law of `X/2ᵏ` with that
-/// saddle near 1, whose squares are below `2r` and move the clock by `ω²/r` if subnormal.
+/// Where the clock's saddle is past `2^{±512}` or a clock square leaves the normal range, the law
+/// of `X/2ᵏ` with that saddle near 1: its squares under `2r` move the clock `ω²/r` if subnormal.
 pub(super) fn density(
   (lambda, alpha, beta, delta): (f64, f64, f64, f64),
   d: (f64, f64),
@@ -119,8 +119,8 @@ fn rescaled(
   at_saddle(scaled, (ldexp(d.0, -k), ldexp(d.1, -k)), &c, p - k)
 }
 
-/// `βd + ln N(λ − ½, δ² + d², α²) − ln N(λ, δ², γ²)` meets as `H_λ(w₁) − H_λ(w₀) − ½ ln w₁ − (d − βw₁)²/2w₁`
-/// (`α² = γ² + β²`), both maximisers and `d` in two parts, plus `T₁ − T₀`, times `2ᵖ`.
+/// `βd + ln N(λ − ½, δ² + d², α²) − ln N(λ, δ², γ²)`, `α² = γ² + β²`, times `2ᵖ`, as
+/// `H_λ(w₁) − H_λ(w₀) − ½ ln w₁ − (d − βw₁)²/2w₁ + T₁ − T₀`, peaks and `d` in two parts.
 pub(super) fn at_saddle(
   (lambda, alpha, beta, delta): (f64, f64, f64, f64),
   d: (f64, f64),

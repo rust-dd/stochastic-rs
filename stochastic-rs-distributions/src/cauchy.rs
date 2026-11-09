@@ -30,12 +30,8 @@ pub struct SimdCauchy<T> {
 }
 
 impl<T: SimdFloatExt> SimdCauchy<T> {
-  /// Creates a Cauchy distribution.
-  ///
-  /// - `x0` — location x₀ (matches the module header's x₀; also the
-  ///   median and mode).
-  /// - `gamma` — scale γ > 0 (matches the module header's γ; the
-  ///   half-width at half-maximum).
+  /// Location `x0`, also the median and mode, and half-width `gamma`; panics unless both are finite
+  /// and `gamma > 0`.
   pub fn new(x0: T, gamma: T) -> Self {
     assert!(
       x0.is_finite(),
@@ -167,8 +163,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdCauchy<T> {
     // Below ¼ `p − ½` drops the level's digits and above ¾ `π(p − ½)` rounds against its distance to the pole.
     let pi = std::f64::consts::PI;
     let offset = if tail < 4e-9 {
-      // There `cot(πp) = 1/(πp)` to half an ulp, divided in the order that keeps each intermediate normal: `γ/π` per
-      // law where it is normal, else `πp` at a normal `p` and `γ/p` (below `π·2⁵²`) at a subnormal one.
+      // There `cot(πp) = 1/(πp)` to half an ulp, divided to keep each step normal: `γ/π` where
+      // normal, else `πp` at a normal `p` and `γ/p` (below `π·2⁵²`) at a subnormal.
       if g >= pi * f64::MIN_POSITIVE {
         g / pi / tail
       } else if tail >= f64::MIN_POSITIVE {
@@ -247,9 +243,7 @@ mod tests {
   use crate::tests::scalar_ks_best_p;
   use crate::traits::DistributionExt;
 
-  /// Backs the doc comments on `mean`/`variance`/`skewness`/`kurtosis`/
-  /// `moment_generating_function`: every one of these must actually return
-  /// the claimed non-finite value, not just carry prose asserting it does.
+  /// The mean, variance, skewness, kurtosis and mgf return the non-finite values their docs state.
   #[test]
   fn cauchy_moments_are_non_finite_as_documented() {
     let c = SimdCauchy::<f64>::new(1.5, 2.0);

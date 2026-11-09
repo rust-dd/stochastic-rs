@@ -1,38 +1,34 @@
 //! # Generalized Hyperbolic (GH)
 //!
-//! Barndorff-Nielsen's normal mean-variance mixture over a generalized
-//! inverse Gaussian clock,
-//!
 //! $$
-//! X = \mu + \beta W + \sqrt{W}\,Z,\qquad W \sim \mathrm{GIG}(\lambda, \delta^2, \alpha^2 - \beta^2),\ Z \sim \mathcal N(0,1),
+//! X = \mu + \beta W + \sqrt{W}\,Z,\qquad
+//! W \sim \mathrm{GIG}(\lambda, \delta^2, \alpha^2 - \beta^2),\ Z \sim \mathcal N(0,1),
 //! $$
 //!
 //! $$
-//! f(x) = \frac{(\alpha^2-\beta^2)^{\lambda/2}}{\sqrt{2\pi}\,\alpha^{\lambda-1/2}\,\delta^\lambda\,K_\lambda\bigl(\delta\sqrt{\alpha^2-\beta^2}\bigr)}
+//! f(x) = \frac{(\alpha^2-\beta^2)^{\lambda/2}}
+//! {\sqrt{2\pi}\,\alpha^{\lambda-1/2}\,\delta^\lambda\,
+//! K_\lambda\bigl(\delta\sqrt{\alpha^2-\beta^2}\bigr)}
 //! \bigl(\delta^2 + (x-\mu)^2\bigr)^{\frac{\lambda - 1/2}{2}}
 //! K_{\lambda-1/2}\!\Bigl(\alpha\sqrt{\delta^2 + (x-\mu)^2}\Bigr)\,e^{\beta(x-\mu)},
 //! $$
 //!
-//! with $\lambda \in \mathbb R$, $\alpha > |\beta|$, $\delta > 0$, $\mu \in
-//! \mathbb R$ (the sampler needs the interior of the parameter space). The
-//! normal-inverse-Gaussian is $\lambda = -1/2$, the hyperbolic $\lambda = 1$,
-//! and the variance gamma the $\delta \to 0$ limit for $\lambda > 0$. Moments
-//! follow from the mixture: the mean is $\mu + \beta\,\mathbb E W$, the
-//! variance $\mathbb E W + \beta^2\mathrm{Var}\,W$, and the third and fourth
-//! central moments $\beta^3\mu_3(W) + 3\beta\mathrm{Var}\,W$ and
-//! $\beta^4\mu_4(W) + 6\beta^2(\mu_3(W) + \mathbb E W\,\mathrm{Var}\,W) + 3\,\mathbb E W^2$.
-//! There is no closed-form CDF or quantile.
+//! $$
+//! \mathbb E X = \mu + \beta\,\mathbb E W,\quad
+//! \mathrm{Var}\,X = \mathbb E W + \beta^2\mathrm{Var}\,W,\quad
+//! \mu_3 = \beta^3\mu_3(W) + 3\beta\mathrm{Var}\,W,
+//! $$
+//! $$
+//! \mu_4 = \beta^4\mu_4(W) + 6\beta^2(\mu_3(W) + \mathbb E W\,\mathrm{Var}\,W) + 3\,\mathbb E W^2.
+//! $$
 //!
-//! References:
-//! - Barndorff-Nielsen, O. (1977), "Exponentially decreasing distributions
-//!   for the logarithm of particle size", *Proceedings of the Royal Society
-//!   A* 353(1674), 401-419. DOI: 10.1098/rspa.1977.0041
-//! - Eberlein, E., Keller, U. (1995), "Hyperbolic Distributions in Finance",
-//!   *Bernoulli* 1(3), 281-299. DOI: 10.2307/3318481
-//! - Prause, K. (1999), *The Generalized Hyperbolic Model: Estimation,
-//!   Financial Derivatives, and Risk Measures*, PhD thesis, University of
-//!   Freiburg, ch. 1.
-//! - Olver, F.W.J. et al. (eds.), *NIST Digital Library of Mathematical Functions*, eq. 10.30.2 (the mgf at its boundary).
+//! Barndorff-Nielsen's normal mixture over a GIG clock, `α > |β|`, `δ > 0`: the NIG at `λ = −½`,
+//! the hyperbolic at `λ = 1`, the VG as `δ → 0` for `λ > 0`; no closed-form cdf or quantile.
+//!
+//! Reference: Barndorff-Nielsen, O. (1977), "Exponentially decreasing distributions for the logarithm of particle size", *Proceedings of the Royal Society A* 353(1674), 401-419, DOI 10.1098/rspa.1977.0041.
+//! Reference: Eberlein, E., Keller, U. (1995), "Hyperbolic Distributions in Finance", *Bernoulli* 1(3), 281-299, DOI 10.2307/3318481.
+//! Reference: Prause, K. (1999), *The Generalized Hyperbolic Model: Estimation, Financial Derivatives, and Risk Measures*, PhD thesis, University of Freiburg, ch. 1.
+//! Reference: Olver, F.W.J. et al. (eds.), *NIST Digital Library of Mathematical Functions*, eq. 10.30.2 (the mgf at its boundary).
 
 use rand::Rng;
 use rand::distr::Distribution;
@@ -181,8 +177,8 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
     )
   }
 
-  /// `X/2ᵏ ~ GH(λ, 2ᵏα, 2ᵏβ, 2⁻ᵏδ, 2⁻ᵏμ)`, `k` the balancing power, where every scaling is exact and that law's squares
-  /// are normal: it carries the digits this law's squared clock or saddle would lose.
+  /// `X/2ᵏ ~ GH(λ, 2ᵏα, 2ᵏβ, 2⁻ᵏδ, 2⁻ᵏμ)` at the balancing `k`, every scaling exact and its squares
+  /// normal: it keeps the digits this law's squared clock or saddle would lose.
   #[cold]
   fn balanced(&self) -> Option<(SimdGeneralizedHyperbolic<f64>, i32)> {
     let k = self.balance;
@@ -206,8 +202,8 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
     (lambda, (delta, gamma_of(alpha, beta)), squares)
   }
 
-  /// `γ_t²`'s factors `(α − β − t, α + β + t)`, `α ∓ β` exactly as two parts (`α > |β|`), so neither loses `α ∓ β`'s rounding
-  /// where `t` cancels it; their signs place `t` where their product underflows.
+  /// `γ_t²`'s factors `(α − β − t, α + β + t)`, `α ∓ β` exact in two parts (`α > |β|`), so neither
+  /// loses its rounding where `t` cancels it; their signs place `t` where the product underflows.
   fn shifted_factors(&self, t: f64) -> (f64, f64) {
     let (_, alpha, beta, _, _) = self.params();
     let (diff, sum) = (alpha - beta, alpha + beta);
@@ -340,8 +336,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     Some(moments::mean_far(self))
   }
 
-  /// `κ₁(W) + β²κ₂(W)` over the clock's `κₙ = sⁿρⁿ⁻¹kₙ`, `s·k₁ + (βs)²ρk₂` with `s = 2ᵉm` and `β` split, so neither term
-  /// leaves the doubles before the value does.
+  /// `κ₁(W) + β²κ₂(W)` over the clock's `κₙ = sⁿρⁿ⁻¹kₙ`, `s·k₁ + (βs)²ρk₂` with `s = 2ᵉm` and `β`
+  /// split, so neither term leaves the doubles before the value does.
   fn variance(&self) -> Option<f64> {
     let (_, _, beta, _, _) = self.params();
     let (lambda, roots, squares) = self.clock();
@@ -365,8 +361,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     Some(variance)
   }
 
-  /// `κ₃/κ₂^{3/2}` with `κ₃ = β(3κ₂(W) + β²κ₃(W))`, over the clock's `κₙ = sⁿρⁿ⁻¹kₙ` and `B = β²sρ` as `B` or `1/B`, whichever
-  /// is small; 0 at `β = 0`, where the law is symmetric.
+  /// `κ₃/κ₂^{3/2}` with `κ₃ = β(3κ₂(W) + β²κ₃(W))`, over the clock's `κₙ = sⁿρⁿ⁻¹kₙ` and `B = β²sρ`
+  /// as `B` or `1/B`, whichever is small; 0 at `β = 0`, where the law is symmetric.
   fn skewness(&self) -> Option<f64> {
     let (_, _, beta, _, _) = self.params();
     if beta == 0.0 {
@@ -435,8 +431,15 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     })
   }
 
-  /// $e^{\mu t}(\gamma_0/\gamma_t)^\lambda K_\lambda(\delta\gamma_t)/K_\lambda(\delta\gamma_0)$, $\gamma_t = \sqrt{\alpha^2-(\beta+t)^2}$; at $\gamma_t = 0$
-  /// its limit $e^{\mu t}(\delta\gamma_0/2)^\lambda\Gamma(-\lambda)/(2K_\lambda(\delta\gamma_0))$ for $\lambda < 0$, else there and beyond `+∞`.
+  /// The mgf, `γ_t = √(α² − (β + t)²)`; at `γ_t = 0` its limit for `λ < 0`, else there and past it
+  /// `+∞`:
+  ///
+  /// $$
+  /// e^{\mu t}\Bigl(\frac{\gamma_0}{\gamma_t}\Bigr)^\lambda
+  /// \frac{K_\lambda(\delta\gamma_t)}{K_\lambda(\delta\gamma_0)}
+  /// \quad\to\quad e^{\mu t}\Bigl(\frac{\delta\gamma_0}{2}\Bigr)^\lambda
+  /// \frac{\Gamma(-\lambda)}{2K_\lambda(\delta\gamma_0)}.
+  /// $$
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
     if t == 0.0 {
       return Some(1.0);

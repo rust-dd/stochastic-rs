@@ -1,5 +1,5 @@
-//! `E Xᵏ` of GIG(λ, χ, ψ) with an end of its orders under 50: the product of the Bessel ratios over the orders under 50,
-//! a run of orders past it as one saddle step, so no `K` and no logarithm of one is formed, at a cost bounded in `k`.
+//! GIG's `E Xᵏ` with an end of its orders under 50: Bessel ratios over the orders under 50, a run
+//! past it as one saddle step, so no `K` or its log is formed, at a cost bounded in `k`.
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 10.29.1 (`K`'s recurrence, carried as a ratio), <https://dlmf.nist.gov/10.29.1>.
 
 use std::f64::consts::LN_2;
@@ -14,8 +14,8 @@ use crate::special::scaled_saddle;
 use crate::special::split_pow2;
 use crate::special::two_sum;
 
-/// `E Xᵏ = 2ᵉm` as `(m, e)`: for `|ν| < 50` the factor `2g_ν/ψ` from order `−½` on and `χ/(2g_{−ν−1})` below, each
-/// `(χ/ψ)^{1/2}R_ν`, `g_ν = (ω/2)R_ν` from `k_half_ratio`; the exponents are kept apart, so no factor leaves the doubles.
+/// `E Xᵏ = 2ᵉm` as `(m, e)`: per `|ν| < 50` the factor `2g_ν/ψ` from order `−½`, `χ/(2g_{−ν−1})`
+/// below, each `(χ/ψ)^{1/2}R_ν`, `g_ν = (ω/2)R_ν`; exponents apart, no factor leaves the doubles.
 #[inline]
 pub(super) fn ratio_moment(lambda: f64, roots: (f64, f64), k: u32) -> (f64, i32) {
   let (root_chi, root_psi) = roots;
@@ -70,8 +70,8 @@ pub(super) fn saddle_scale(lambda: f64, k: f64, (rc, rp): (f64, f64)) -> (f64, i
   scaled_saddle(to, to.hypot(rc * rp), (rc, rp))
 }
 
-/// `N(ν + run)/N(ν) = wʳᵘⁿe^{rest}` from `order_step`, both orders past 50 on one side, with `w = 2ᵃb` split so only
-/// `run·ln b + rest` is exponentiated.
+/// `N(ν + run)/N(ν) = wʳᵘⁿe^{rest}` from `order_step`, both orders past 50 on one side, with
+/// `w = 2ᵃb` split so only `run·ln b + rest` is exponentiated.
 fn saddle_run(value: &mut (f64, i64), nu: f64, run: f64, roots: (f64, f64)) {
   if run <= 0.0 {
     return;

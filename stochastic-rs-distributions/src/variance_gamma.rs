@@ -1,11 +1,8 @@
 //! # Variance Gamma
 //!
-//! Madan, Carr and Chang's VG law at unit time — a Brownian motion with
-//! drift $\theta$ and volatility $\sigma$ evaluated at a gamma time with
-//! unit mean and variance $\nu$, shifted by $\mu$:
-//!
 //! $$
-//! X = \mu + \theta G + \sigma\sqrt{G}\,Z,\qquad G \sim \mathrm{Gamma}(1/\nu,\ \nu),\ Z \sim \mathcal N(0,1),
+//! X = \mu + \theta G + \sigma\sqrt{G}\,Z,\qquad
+//! G \sim \mathrm{Gamma}(1/\nu,\ \nu),\ Z \sim \mathcal N(0,1),
 //! $$
 //!
 //! $$
@@ -16,15 +13,10 @@
 //! \varphi(u) = e^{iu\mu}\bigl(1 - i\theta\nu u + \tfrac12\sigma^2\nu u^2\bigr)^{-1/\nu}
 //! $$
 //!
-//! (Madan–Carr–Chang 1998, eq. 23 and eq. 2 at $t = 1$). The mean is
-//! $\mu + \theta$, the variance $\sigma^2 + \nu\theta^2$; skewness and excess
-//! kurtosis follow from the gamma mixture's cumulants, reducing to $0$ and
-//! $3\nu$ when $\theta = 0$. At $x = \mu$ the density is finite only for
-//! $\nu < 2$. There is no closed-form CDF or quantile.
+//! Madan, Carr and Chang's unit-time law (eqs. 23 and 2): mean `μ + θ`, variance `σ² + νθ²`, higher
+//! moments from the clock's cumulants; finite at `x = μ` only for `ν < 2`; no closed-form cdf.
 //!
-//! Reference: Madan, D.B., Carr, P.P., Chang, E.C. (1998), "The Variance
-//! Gamma Process and Option Pricing", *European Finance Review* 2(1),
-//! 79-105. DOI: 10.1023/A:1009703431535
+//! Reference: Madan, D.B., Carr, P.P., Chang, E.C. (1998), "The Variance Gamma Process and Option Pricing", *European Finance Review* 2(1), 79-105, DOI 10.1023/A:1009703431535.
 
 use std::mem::MaybeUninit;
 
@@ -123,7 +115,7 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
     }
   }
 
-  /// The volatility `σ`.
+  /// The volatility `σ` of the Brownian motion run on the gamma clock.
   pub fn sigma(&self) -> T {
     self.sigma
   }
@@ -208,8 +200,8 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
     )
   }
 
-  /// The density at order `1/ν − ½` past `LARGE_ORDER`, from the gamma clock: `ln N(1/ν − ½, d²/σ², θ²/σ² + 2/ν)` less the
-  /// clock's `ln Γ(1/ν) + (ln ν)/ν` meets as `ln1pmx(g − 1)/ν − ½ ln g − (d − θg)²/(2σ²g)` at the maximiser `g`.
+  /// Past `LARGE_ORDER` the clock's peak `g` gives `ln1pmx(g − 1)/ν − ½ ln g − (d − θg)²/(2σ²g)`
+  /// for the density's `ln N(1/ν − ½, d²/σ², θ²/σ² + 2/ν) − ln Γ(1/ν) − (ln ν)/ν`.
   #[inline(always)]
   fn large_order_pdf(
     (sigma, nu, theta): (f64, f64, f64),
@@ -222,8 +214,8 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
     }
     let c = (theta / sigma) * (theta / sigma);
     let (root_chi, psi) = (d.abs() / sigma, c + 2.0 / nu);
-    // `g − 1 = (χ − 1 − c)/D`, `D = R + o + 1 + c`, `ψ = 2o + 1 + c`, `o` the order, `χ − c = (d − θ)(d + θ)/σ²` from the exact
-    // `d − θ`; past `q = θ(d + θ)/σ²D = ½`, where `θ(g − 1)` cancels `d − θ`, the gap `d − θg` is `((d − θ)(o + 1 + Δ) + θ)/D`.
+    // `g − 1 = (χ − 1 − c)/D`, `D = R + o + 1 + c` (`o` the order), `χ − c = (d − θ)(d + θ)/σ²`;
+    // past `q = θ(d + θ)/σ²D = ½`, `d − θg = ((d − θ)(o + 1 + Δ) + θ)/D`.
     let (h, h_lo) = two_sum_far(d, -theta);
     if !(nu > limits::NORMAL_CLOCK && c * nu < limits::NARROW_DIFFUSION && root_chi <= FAR)
       || !(h.is_finite() && (d + theta).is_finite())
@@ -268,8 +260,8 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
     exp_pow2(a, p)
   }
 
-  /// [`Self::large_order_pdf`] past its scales: a normal clock from `ν = 2⁻¹⁶⁰` down, `μ + θG` from `νθ²/σ² = 2¹⁰⁰`, `0` past
-  /// `|d|/σ = FAR`, and the law of `X/2`, exactly scaled, where `d ∓ θ` overflows.
+  /// [`Self::large_order_pdf`] past its scales: a normal clock below `ν = 2⁻¹⁶⁰`, `μ + θG` from
+  /// `νθ²/σ² = 2¹⁰⁰`, 0 past `|d|/σ = FAR`, the exactly scaled `X/2` where `d ∓ θ` overflows.
   #[cold]
   #[inline(never)]
   fn extreme_large_order(
@@ -343,8 +335,8 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
     exp_pow2(log_norm + power + kernel + tilt, p)
   }
 
-  /// `ln b`, `b = 1 − X`, `X = θνt + ½σ²νt²`: plain where `PLAIN` bounds `X`'s rounding, else in two parts, `ln_1p(−X)` below
-  /// `X = ½` and `1 − X` in two parts, exactly within `2⁻⁴⁰` of `X`'s terms; `None` where `b ≤ 0`.
+  /// `ln(1 − X)`, `X = θνt + ½σ²νt²`: plain where `PLAIN` bounds the rounding, else `ln_1p(−X)`
+  /// below `X = ½`, else two-part `1 − X`, exact to `2⁻⁴⁰` of `X`'s terms; `None` if `X ≥ 1`.
   fn ln_base(sigma: f64, nu: f64, theta: f64, t: f64) -> Option<f64> {
     let plain_nt = nu * t;
     let (drift, spread) = (theta * plain_nt, 0.5 * sigma * sigma * t * plain_nt);
@@ -386,8 +378,8 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
 /// Past this `|d|/σ`, with `νθ²/σ²` under `2¹⁰⁰` and `ν` over `2⁻¹⁶⁰`, the point lies `2⁴⁰⁰` of the law's scale out.
 const FAR: f64 = 3.273_390_607_896_142e150;
 
-/// Past this `|ln f| + |ln σ|` the large-order density sums its exponent in two parts, where the plain sum's rounding, a few
-/// `ε` of its largest terms, would near `1e-12`.
+/// Past this `|ln f| + |ln σ|` the large-order density sums its exponent in two parts, where the
+/// plain sum's rounding, a few `ε` of its largest terms, would near `1e-12`.
 const PARTS_FROM: f64 = 512.0;
 
 /// Up to this `(|θνt| + ½σ²νt²)/(ν min(b, 1))` the plain `X`'s rounding moves `ln(b)/ν` by under `2.5·PLAIN·ε`.
@@ -488,9 +480,8 @@ impl<T: SimdFloatExt> Distribution<T> for SimdVarianceGamma<T> {
 }
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
-  /// Madan–Carr–Chang eq. 23, evaluated in log space through the scaled
-  /// Bessel function; at `x = μ` the $y^a K_a(y)$ limit $2^{a-1}\Gamma(a)$
-  /// for $a = 1/\nu - 1/2 > 0$, `+∞` otherwise.
+  /// Madan–Carr–Chang eq. 23 in log space through the scaled Bessel function; at `x = μ` the
+  /// `y^a K_a(y)` limit `2^{a−1}Γ(a)` for `a = 1/ν − ½ > 0`, `+∞` otherwise.
   fn pdf(&self, x: f64) -> Option<f64> {
     // The density vanishes at ±∞, where the log-space kernel would read ∞ − ∞.
     if x.is_infinite() {
@@ -515,8 +506,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
     Some(variance)
   }
 
-  /// `κ₃/κ₂^{3/2}` from the gamma clock's cumulants, `t(3 + 2ρ)/(1 + ρ)^{3/2}`, `t = νθ/σ`, `ρ = tθ/σ`, past `ρ = 1` as
-  /// `sgn θ·√ν(2 + 3/ρ)/(1 + 1/ρ)^{3/2}`: no power of a parameter leaves the range where the value does not.
+  /// `κ₃/κ₂^{3/2}` from the clock's cumulants, `t(3 + 2ρ)/(1 + ρ)^{3/2}`, `t = νθ/σ`, `ρ = tθ/σ`,
+  /// past `ρ = 1` as `sgn θ·√ν(2 + 3/ρ)/(1 + 1/ρ)^{3/2}`, so no parameter's power overflows first.
   fn skewness(&self) -> Option<f64> {
     let (sigma, nu, theta, _) = self.params();
     let ratio = theta / sigma;

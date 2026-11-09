@@ -10,8 +10,8 @@ fn laplace_transform(xs: &[f64], u: f64) -> f64 {
   xs.iter().map(|x| (-u * x).exp()).sum::<f64>() / xs.len() as f64
 }
 
-/// The empirical Laplace transform matches $\exp(\theta(\lambda^\alpha - (u+\lambda)^\alpha))$ from the untilted Kanter
-/// limit to a strong tilt, where naive rejection would need $e^{\lambda^\alpha}$ tries.
+/// The empirical Laplace transform matches `exp(θ(λ^α − (u + λ)^α))` from the untilted Kanter limit
+/// to a strong tilt, where naive rejection would need `e^{λ^α}` tries.
 #[test]
 fn laplace_transform_matches_the_closed_form() {
   for (alpha, lambda, theta, seed) in [
@@ -195,8 +195,8 @@ fn draws_within_a_bound(cells: Vec<(f64, f64, f64)>) -> Vec<((f64, f64, f64), Ve
     .collect()
 }
 
-/// Tilted cells draw finite values, zero as often as their mass below the subnormals has it (none at (0.003, 7, 1));
-/// at λ = 0, where `(αζ)^{1/α}` underflows, the `+∞` fraction is the law's mass past `f64::MAX`, 0.0283 (as above).
+/// Tilted cells draw finite values, 0 as often as their mass under the subnormals (none at (0.003,
+/// 7, 1)); at λ = 0, `(αζ)^{1/α}` underflowing, `+∞` as often as the mass past MAX, 0.0283.
 #[test]
 fn small_alpha_and_huge_scale_draws_terminate() {
   let zero_mass: Vec<f64> = SMALL_ALPHA_CELLS
@@ -237,8 +237,8 @@ fn small_alpha_and_huge_scale_draws_terminate() {
   }
 }
 
-/// The empirical Laplace transform at u = 0.5, 2, 8 within 5 SE of the closed form and the mean within 5 SE of κ₁ (SE from
-/// κ₂), best of three seeds: the summands `e^{−uX}` are bounded, so the heavy right tail does not widen the test.
+/// The empirical Laplace transform at u = 0.5, 2, 8 and the mean within 5 SE of their closed forms
+/// (κ₂'s SE), best of three seeds: bounded `e^{−uX}` keep the heavy tail out of the test.
 #[test]
 fn small_alpha_draws_follow_the_law() {
   let n = 10_000;
@@ -280,8 +280,8 @@ fn huge_scale_draws_sit_at_the_mean() {
   assert!(worst < 1e-12, "worst relative distance to κ₁: {worst}");
 }
 
-/// Where the relative spread `√((1 − α)/(α λ^α θ))` is below 2⁻⁵³ or `λ^α θ` overflows, every draw is κ₁ = θαλ^{α−1}
-/// (mpmath, 50 and 100 digits); the last two cells sit off that bound on the log path, spreads 3e-16 and 1.5e-16.
+/// Where the spread `√((1 − α)/(αλ^αθ))` is under 2⁻⁵³ or `λ^αθ` overflows, draws are
+/// `κ₁ = θαλ^{α−1}` (mpmath); the last two cells, spreads 3e-16, 1.5e-16, sit off it.
 #[test]
 fn concentrated_laws_draw_their_mean() {
   let cells = [
@@ -325,8 +325,8 @@ fn concentrated_laws_draw_their_mean() {
   }
 }
 
-/// Mean z over 10⁴ draws, best of three seeds, the SE from the relative spread (it and κ₁ from mpmath at 50 and 100
-/// digits): `λ'^α` from 1e17 to 1e20, where the plain tilt term and `1 − 1/ζ²` cancel to noise.
+/// The mean z of 10⁴ draws, best of three seeds, SE from the relative spread (both and κ₁ mpmath's,
+/// 50/100 digits): `λ'^α` 1e17 to 1e20, where the plain tilt and `1 − 1/ζ²` cancel to noise.
 #[test]
 fn large_tilt_draws_are_unbiased() {
   let n = 10_000;
@@ -358,8 +358,8 @@ fn large_tilt_draws_are_unbiased() {
   }
 }
 
-/// The first cell's tilt `λθ^{1/α}` underflows, the second's hat `(αζ)^{1/α}` for ζ < 0.71; Laplace transforms and mass
-/// past `f64::MAX` (Kanter's integral, none for the tilted law) from mpmath at 50 and 100 digits.
+/// The first cell's tilt `λθ^{1/α}` underflows, the second's hat `(αζ)^{1/α}` below ζ = 0.71;
+/// Laplace transforms and mass past MAX (Kanter's integral, 0 if tilted) by mpmath, 50/100 digits.
 #[test]
 fn underflowing_tilt_and_hat_keep_the_law() {
   for ((alpha, theta, lambda), lt, mass, n) in [

@@ -1,5 +1,5 @@
-//! The density from order `1/ν − ½ = 50` with its exponent summed in two parts past `|ln f| + |ln σ| = 512` or where the
-//! clock's saddle `w = 1 + g` falls below `⅔`, there the plain sum's rounding of its large terms or of `g` nearing `1e-12`.
+//! The density from order `1/ν − ½ = 50`, its exponent in two parts past `|ln f| + |ln σ| = 512` or
+//! a saddle `w = 1 + g` below `⅔`, where the plain sum's rounding nears `1e-12`.
 
 use crate::special::HALF_LN_TAU;
 use crate::special::LN2_HI;
@@ -24,8 +24,8 @@ fn over((a, a_lo): (f64, f64), (b, b_lo): (f64, f64)) -> (f64, f64) {
   two_sum(q, ((-q).mul_add(b, a) + (a_lo - q * b_lo)) / b)
 }
 
-/// The density of `large_order_pdf` with each term in two parts at `d = x − μ` in two parts, `ln(1 + g)` and `ln_1p_mx(g)`
-/// from `ln w` in two parts past `|g| = 2⁻¹⁰`, `w = 1 + g` the clock's saddle, and below it from their series in `g`.
+/// `large_order_pdf`'s density, each term in two parts at a two-part `d = x − μ`, `ln(1 + g)` and
+/// `ln_1p_mx(g)` from a two-part `ln w` past `|g| = 2⁻¹⁰`, below from their series in `g`.
 #[cold]
 #[inline(never)]
 pub(super) fn density((sigma, nu, theta): (f64, f64, f64), d: (f64, f64), p: i32) -> f64 {

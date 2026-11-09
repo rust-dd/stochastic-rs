@@ -1,5 +1,5 @@
-//! The density and mgf below order 50 where their logarithms are large or `ω = δγ` leaves the normal range, each logarithm
-//! in two parts over `K` in scaled form with `γ`, `δγ` and `α·root` scaled products; the mgf from order 50 at a subnormal `δγ`.
+//! The density and mgf below order 50 where their logs are large or `ω = δγ` leaves the normal
+//! range, each log in two parts over scaled `K`; from order 50 the mgf at a subnormal `δγ`.
 
 use crate::special::HALF_LN_TAU;
 use crate::special::LN2_HI;
@@ -27,8 +27,8 @@ fn ln_k(order: (f64, f64), x: Scaled) -> (f64, f64) {
   sub_parts(ln_bessel_ke_parts(order, x), x.value_parts())
 }
 
-/// `λ ln(γ/δ) − ½ ln 2π − ln K_λ(δγ) − (λ − ½) ln(α/root) + ln K_{λ−½}(α·root) + βd` in two parts at `d = x − μ` in two
-/// parts, times `2ᵖ`; `βd − α·root` as its one-sign `−(α − β sgn d)|d| − αδ²/(root + |d|)`.
+/// `λ ln(γ/δ) − ½ ln 2π − ln K_λ(δγ) − (λ − ½) ln(α/root) + ln K_{λ−½}(α·root) + βd` in two parts
+/// at a two-part `d = x − μ`, times `2ᵖ`; `βd − α·root` as `−(α − β sgn d)|d| − αδ²/(root + |d|)`.
 #[cold]
 #[inline(never)]
 pub(super) fn density(
@@ -137,8 +137,8 @@ pub(super) fn boundary_mgf(
   )
 }
 
-/// `e^{μt}(ψ/ψ_t)^{λ⁺}` from order 50 where `δγ` is subnormal, the clock's `ω²/|λ|` under the doubles: `ψ_t/ψ = 1 − q`,
-/// `q = t(2β + t)/((α − β)(α + β))` a scaled quotient, so no subnormal square enters.
+/// `e^{μt}(ψ/ψ_t)^{λ⁺}` from order 50 at a subnormal `δγ`, the clock's `ω²/|λ|` under the doubles:
+/// `ψ_t/ψ = 1 − q`, `q = t(2β + t)/((α − β)(α + β))` scaled, no subnormal square entering.
 #[cold]
 #[inline(never)]
 pub(super) fn subnormal_clock_mgf(

@@ -102,8 +102,8 @@ fn gev_reverse_weibull_bounded_support() {
   }
 }
 
-/// mpmath at 50 and 80 digits: `exp_m1(−ξ ln y)/ξ` keeps the digits `(y^{−ξ} − 1)/ξ` cancels next to ξ = 0, and only
-/// ξ = 0 itself takes the Gumbel form.
+/// mpmath at 50 and 80 digits: `exp_m1(−ξ ln y)/ξ` keeps the digits `(y^{−ξ} − 1)/ξ` cancels next
+/// to ξ = 0, and only ξ = 0 itself takes the Gumbel form.
 #[test]
 fn tiny_shape_keeps_its_digits() {
   let rel = |a: f64, b: f64| ((a - b) / b).abs();
@@ -141,8 +141,8 @@ fn tiny_shape_keeps_its_digits() {
   }
 }
 
-/// One exponential of `−(1/ξ + 1) ln t − t^{−1/ξ}`: next to a Fréchet law's lower end the density underflows to 0
-/// where `t^{−1/ξ−1}·e^{−t^{−1/ξ}}` reads `∞·0`.
+/// One exponential of `−(1/ξ + 1) ln t − t^{−1/ξ}`: next to a Fréchet law's lower end the density
+/// underflows to 0 where `t^{−1/ξ−1}·e^{−t^{−1/ξ}}` reads `∞·0`.
 #[test]
 fn pdf_near_the_frechet_lower_end_is_zero() {
   assert_eq!(
@@ -151,8 +151,8 @@ fn pdf_near_the_frechet_lower_end_is_zero() {
   );
 }
 
-/// mpmath at 80 digits (120 at ξ = 1e-12 and ±1/8): the standardised moments through the series up to |ξ| = 1/8 and the
-/// Γ forms above it.
+/// mpmath at 80 digits (120 at ξ = 1e-12 and ±1/8): the standardised moments through the series up
+/// to |ξ| = 1/8 and the Γ forms above it.
 #[test]
 fn moments_across_the_series_switch() {
   let rel = |a: f64, b: f64| ((a - b) / b).abs();

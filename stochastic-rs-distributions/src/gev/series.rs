@@ -1,5 +1,5 @@
-//! The standardised GEV(0, 1, ξ) moments: a Taylor series in ξ on |ξ| ≤ 1/8, where the Γ forms cancel as ε/ξ (the mean)
-//! to ε/ξ⁴ (the kurtosis), and the Γ forms above it. Coefficients: mpmath, 60 digits, cut at |cₙ 8⁻ⁿ| < 1e-17.
+//! The standardised GEV(0, 1, ξ) moments: Taylor in ξ on |ξ| ≤ 1/8, where the Γ forms cancel as ε/ξ
+//! (mean) to ε/ξ⁴ (kurtosis), Γ forms above; mpmath coefficients, cut at |cₙ 8⁻ⁿ| < 1e-17.
 //! Reference: Johnson, N.L., Kotz, S., Balakrishnan, N. (1995), *Continuous Univariate Distributions* vol. 2, 2nd ed., Wiley, ch. 22, ISBN 0-471-58494-0 (the moments' Γ forms).
 
 use crate::special::ln_gamma;
@@ -177,16 +177,16 @@ fn ln_g(xi: f64, k: f64) -> f64 {
   ln_gamma(1.0 - k * xi)
 }
 
-/// `ln g₂` and `ln(g₁/√g₂)` with `gₖ = Γ(1 − kξ)`, and `g₁²/g₂ − 1`. The moments take `gₖ` as ratios to `g₂`'s powers in
-/// logarithms, finite where `g₄` overflows (from ξ ≈ −42.7), their sums of `gₖ/g₂^{k/2} − 1` cancelling through `expm1`.
+/// `ln g₂`, `ln(g₁/√g₂)` and `g₁²/g₂ − 1`, `gₖ = Γ(1 − kξ)`: the moments take `gₖ/g₂^{k/2}` in
+/// logs, finite where `g₄` overflows (ξ ≲ −42.7), their sums of `gₖ/g₂^{k/2} − 1` through `expm1`.
 fn second(xi: f64) -> (f64, f64, f64) {
   let l2 = ln_g(xi, 2.0);
   let d1 = ln_g(xi, 1.0) - 0.5 * l2;
   (l2, d1, (2.0 * d1).exp_m1())
 }
 
-/// The four standardised GEV(0, 1, ξ) moments here are valid under their existence thresholds (1, ½, ⅓, ¼); the caller
-/// applies them.
+/// The four standardised GEV(0, 1, ξ) moments here are valid under their existence thresholds (1,
+/// ½, ⅓, ¼); the caller applies them.
 pub(super) fn mean(xi: f64) -> f64 {
   if xi.abs() <= SWITCH {
     return horner(&GEV_MEAN_SERIES, xi);

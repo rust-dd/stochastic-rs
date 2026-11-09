@@ -3,22 +3,12 @@
 //! $$
 //! f(x_1, \dots, x_K; \alpha_1, \dots, \alpha_K) = \frac{1}{\mathrm{B}(\alpha)}
 //! \prod_{k=1}^{K} x_k^{\alpha_k - 1},
-//! \qquad x_k \ge 0,\ \sum_k x_k = 1,
+//! \qquad x_k \ge 0,\ \sum_k x_k = 1,\qquad
+//! \mathrm{B}(\alpha) = \frac{\prod_k \Gamma(\alpha_k)}{\Gamma(\sum_k \alpha_k)}.
 //! $$
 //!
-//! where the normaliser $\mathrm{B}(\alpha) = \prod_k \Gamma(\alpha_k) / \Gamma(\sum_k \alpha_k)$
-//! is the multivariate Beta function.
-//!
-//! Used as the conjugate prior on the parameter vector of a Categorical /
-//! Multinomial distribution, and as a flexible non-negative-weights prior
-//! in Bayesian portfolio construction.
-//!
-//! ## Sampling
-//!
-//! Closed-form via the gamma trick: $Y_k \sim \mathrm{Gamma}(\alpha_k, 1)$,
-//! then $X_k = Y_k / \sum_j Y_j$. The output is `Vec<f64>` so the
-//! `DistributionExt` `pdf(f64) -> f64` signature does not apply; we
-//! expose `log_pdf(&[f64]) -> f64` as a free method on the struct.
+//! Drawn as `X_k = Y_k/Σ_j Y_j`, `Y_k ~ Gamma(α_k, 1)`; a vector law, so its density is the law's
+//! own `pdf` and `log_pdf` on a slice rather than `DistributionExt`.
 //!
 //! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §XI.4, Theorem 4.1, DOI 10.1007/978-1-4613-8643-8.
 
@@ -44,10 +34,8 @@ pub struct SimdDirichlet<T> {
 }
 
 impl<T: SimdFloatExt> SimdDirichlet<T> {
-  /// Creates a Dirichlet distribution over the `K = alpha.len()`-simplex.
-  ///
-  /// - `alpha` — concentration vector α₁..α_K (matches the module
-  ///   header's α), each entry > 0; K must be ≥ 2.
+  /// Concentrations `α₁..α_K` on the `K`-simplex; panics unless `K ≥ 2` and every `α_k` is finite
+  /// and positive.
   pub fn new(alpha: Vec<T>) -> Self {
     assert!(
       alpha.len() >= 2,
@@ -165,9 +153,7 @@ impl<T: SimdFloatExt> SimdDirichlet<T> {
     log_norm + log_kernel
   }
 
-  /// Density at point `x`. Returns 0 if `x` is outside the open simplex
-  /// (negative component) but does NOT enforce $\sum x = 1$ — caller is
-  /// responsible for projecting onto the simplex when needed.
+  /// Density at `x`: 0 at a negative component, while `Σ x = 1` is the caller's to ensure.
   pub fn pdf(&self, x: &[T]) -> f64 {
     if x.iter().any(|&xi| xi < T::zero()) {
       return 0.0;
@@ -288,8 +274,8 @@ mod tests {
     }
   }
 
-  /// Small concentrations must not lose the vector to `0 / 0` (two thirds of the `f32` draws at `α = 0.001`); the mean
-  /// check tells a real repair from one that returns a fixed point of the simplex.
+  /// Small concentrations keep the vector from `0/0` (two thirds of `f32` draws at `α = 0.001`);
+  /// the mean tells a real repair from a fixed point of the simplex.
   #[test]
   fn small_concentrations_stay_on_the_simplex() {
     let mut s =

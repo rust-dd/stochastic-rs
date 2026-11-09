@@ -1,29 +1,25 @@
 //! # Skewed Student-t (Hansen 1994)
 //!
-//! Hansen's standardised skewed t — zero mean and unit variance by
-//! construction, degrees of freedom $\eta > 2$ and skew $\lambda \in (-1, 1)$:
-//!
 //! $$
-//! g(z) = b\,c\left(1 + \frac{1}{\eta - 2}\Bigl(\frac{bz + a}{1 \mp \lambda}\Bigr)^2\right)^{-(\eta+1)/2},
+//! g(z) = b\,c\left(1 + \frac{1}{\eta - 2}
+//! \Bigl(\frac{bz + a}{1 \mp \lambda}\Bigr)^2\right)^{-(\eta+1)/2},
 //! \qquad \text{“$-$” for } z < -a/b,\ \text{“$+$” for } z \ge -a/b,
 //! $$
 //!
 //! $$
 //! a = 4\lambda c\,\frac{\eta - 2}{\eta - 1},\qquad b^2 = 1 + 3\lambda^2 - a^2,\qquad
-//! c = \frac{\Gamma\!\bigl(\tfrac{\eta+1}{2}\bigr)}{\sqrt{\pi(\eta - 2)}\,\Gamma\!\bigl(\tfrac\eta2\bigr)}.
+//! c = \frac{\Gamma\!\bigl(\tfrac{\eta+1}{2}\bigr)}
+//! {\sqrt{\pi(\eta - 2)}\,\Gamma\!\bigl(\tfrac\eta2\bigr)},
+//! $$
+//! $$
+//! z = \frac{sW - a}{b},\quad W = |T|\sqrt{(\eta-2)/\eta},\ T \sim t_\eta,\quad
+//! s = 1 + \lambda \text{ w.p. } \tfrac{1 + \lambda}{2},\ \text{else } s = -(1 - \lambda).
 //! $$
 //!
-//! Each side is a rescaled unit-variance Student-t, so the CDF and
-//! quantile are piecewise Student-t CDFs and quantiles, and a draw is
-//! $z = (sW - a)/b$ with $W = |T|\sqrt{(\eta-2)/\eta}$, $T \sim t_\eta$,
-//! and $s = 1 + \lambda$ with probability $(1 + \lambda)/2$, $s = -(1 -
-//! \lambda)$ otherwise. Skewness needs $\eta > 3$, kurtosis $\eta > 4$.
-//! This is the density used by the GARCH literature and the `arch`
-//! package, not Azzalini's skew-t.
+//! Hansen's zero-mean, unit-variance skewed t (`arch`'s), `η > 2`, `λ ∈ (−1, 1)`: each side a
+//! rescaled t, its cdf and quantile piecewise t; skewness from `η > 3`, kurtosis `η > 4`.
 //!
-//! Reference: Hansen, B.E. (1994), "Autoregressive Conditional Density
-//! Estimation", *International Economic Review* 35(3), 705-730.
-//! DOI: 10.2307/2527081
+//! Reference: Hansen, B.E. (1994), "Autoregressive Conditional Density Estimation", *International Economic Review* 35(3), 705-730, DOI 10.2307/2527081.
 
 use std::mem::MaybeUninit;
 
@@ -356,9 +352,8 @@ mod tests {
     (a - b).abs() <= rel * b.abs().max(1e-300)
   }
 
-  /// `arch.univariate.distribution.SkewStudent` (Hansen's density): the
-  /// per-observation likelihood, `cdf`, `ppf`, and the third and fourth
-  /// moments of the density integrated numerically with `scipy.integrate`.
+  /// `arch.univariate.distribution.SkewStudent`: the per-observation likelihood, `cdf` and `ppf`,
+  /// and the third and fourth moments by `scipy.integrate`.
   #[test]
   fn matches_arch_skew_student() {
     type ArchRow = ((f64, f64), [(f64, f64, f64); 6], [f64; 3], [f64; 2]);
@@ -471,11 +466,8 @@ mod tests {
       let m3 = xs.iter().map(|x| (x - mean).powi(3)).sum::<f64>() / n as f64;
       assert!(mean.abs() < 0.01, "mean {mean}");
       assert!((var - 1.0).abs() < 0.03, "var {var}");
-      // A Student t has moments below its degrees of freedom and no others,
-      // so the sample third moment has an infinite standard error at
-      // `eta = 5`: across eight seeds it spans -1.04 to -1.36 around a
-      // skewness of -1.23, and which side of a fixed band it lands on is a
-      // coin toss. It is asserted only where the sixth moment exists.
+      // The sample third moment has an infinite standard error at `eta = 5` (it spans −1.04 to
+      // −1.36 over eight seeds about −1.23), so it is asserted only where the sixth moment exists.
       if eta > 6.0 {
         assert!(
           (m3 - d.skewness().unwrap()).abs() < 0.05,

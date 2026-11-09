@@ -57,11 +57,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> NormalPlusOwnState<T, R> {
 }
 
 impl<T: SimdFloatExt> SimdInverseGauss<T> {
-  /// Creates an inverse-Gaussian distribution.
-  ///
-  /// - `mu` — mean μ > 0 (matches the module header's μ).
-  /// - `lambda` — shape λ > 0 (matches the module header's λ; despite
-  ///   the name, this is a shape, not a rate — variance = μ³/λ).
+  /// Mean `mu` and shape `lambda` (variance `μ³/λ`, not a rate); panics unless both are finite and
+  /// positive.
   pub fn new(mu: T, lambda: T) -> Self {
     assert!(
       mu.is_finite(),
@@ -82,7 +79,7 @@ impl<T: SimdFloatExt> SimdInverseGauss<T> {
     Self { mu, lambda }
   }
 
-  /// The mean `μ`.
+  /// The mean `μ`, which with the shape `λ` sets the variance `μ³/λ`.
   pub fn mu(&self) -> T {
     self.mu
   }
@@ -100,8 +97,8 @@ impl<T: SimdFloatExt> SimdInverseGauss<T> {
     let w = z * z;
     let t1 = self.mu + (self.mu * self.mu * w) / (two * self.lambda);
     let rad = (four * self.mu * self.lambda * w + self.mu * self.mu * w * w).sqrt();
-    // The small root as `μ²/big` rather than `t1 − (μ/2λ)·rad`, which cancels once `w` is large and in `f32`
-    // can come out zero or negative, where the law is strictly positive.
+    // The small root as `μ²/big` rather than `t1 − (μ/2λ)·rad`, which cancels once `w` is large and
+    // in `f32` can come out zero or negative, where the law is strictly positive.
     let big = t1 + (self.mu / (two * self.lambda)) * rad;
     let small = self.mu * self.mu / big;
     let check = self.mu / (self.mu + small);

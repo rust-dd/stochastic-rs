@@ -1,8 +1,5 @@
 //! # Generalized Pareto distribution (GPD)
 //!
-//! The limit law of excesses over a high threshold (Pickands 1975,
-//! Balkema–de Haan 1974), the peaks-over-threshold counterpart of the GEV:
-//!
 //! $$
 //! F(x;\mu,\sigma,\xi) =
 //! \begin{cases}
@@ -11,16 +8,8 @@
 //! \end{cases}
 //! $$
 //!
-//! on $x \ge \mu$, and additionally $x \le \mu - \sigma/\xi$ when $\xi < 0$,
-//! with $\mu \in \mathbb R$ (location), $\sigma > 0$ (scale) and $\xi \in
-//! \mathbb R$ (shape): $\xi > 0$ is a Pareto-type heavy tail, $\xi = 0$ the
-//! exponential, $\xi < 0$ a bounded tail. Moments exist up to order
-//! $1/\xi$: the mean needs $\xi < 1$, the variance $\xi < 1/2$, the
-//! skewness $\xi < 1/3$ and the excess kurtosis $\xi < 1/4$.
-//!
-//! ## Sampling
-//!
-//! Closed-form inverse CDF on the internal SIMD stream:
+//! The limit law of excesses over a high threshold, on `x ≥ μ` (and `x ≤ μ − σ/ξ` at `ξ < 0`), its
+//! order-`k` moment needing `ξ < 1/k`; drawn by the inverse cdf
 //!
 //! $$
 //! X = \begin{cases}
@@ -30,17 +19,10 @@
 //! \qquad U \sim \mathrm{Uniform}(0, 1).
 //! $$
 //!
-//! References:
-//! - Pickands, J. (1975), "Statistical Inference Using Extreme Order
-//!   Statistics", *Annals of Statistics* 3(1), 119-131.
-//!   DOI: 10.1214/aos/1176343003
-//! - Balkema, A.A., de Haan, L. (1974), "Residual Life Time at Great Age",
-//!   *Annals of Probability* 2(5), 792-804. DOI: 10.1214/aop/1176996548
-//! - Hosking, J.R.M., Wallis, J.R. (1987), "Parameter and Quantile
-//!   Estimation for the Generalized Pareto Distribution", *Technometrics*
-//!   29(3), 339-349 (moments). DOI: 10.1080/00401706.1987.10488243
-//! - Coles, S. (2001), *An Introduction to Statistical Modeling of Extreme
-//!   Values*, Springer, ch. 4.
+//! Reference: Pickands, J. (1975), "Statistical Inference Using Extreme Order Statistics", *Annals of Statistics* 3(1), 119-131, DOI 10.1214/aos/1176343003.
+//! Reference: Balkema, A.A., de Haan, L. (1974), "Residual Life Time at Great Age", *Annals of Probability* 2(5), 792-804, DOI 10.1214/aop/1176996548.
+//! Reference: Hosking, J.R.M., Wallis, J.R. (1987), "Parameter and Quantile Estimation for the Generalized Pareto Distribution", *Technometrics* 29(3), 339-349, DOI 10.1080/00401706.1987.10488243 (moments).
+//! Reference: Coles, S. (2001), *An Introduction to Statistical Modeling of Extreme Values*, Springer, ch. 4.
 
 use std::mem::MaybeUninit;
 
@@ -72,12 +54,8 @@ pub struct SimdGpd<T> {
 }
 
 impl<T: SimdFloatExt> SimdGpd<T> {
-  /// Construct a GPD$(\mu, \sigma, \xi)$.
-  ///
-  /// - `mu` — location μ, the lower end of the support.
-  /// - `sigma` — scale σ > 0.
-  /// - `xi` — shape ξ; positive for a heavy tail, zero for the exponential,
-  ///   negative for a tail bounded at μ − σ/ξ.
+  /// `GPD(μ, σ, ξ)`, `mu` the support's lower end, `xi > 0` heavy, 0 exponential, `< 0` bounded at
+  /// `μ − σ/ξ`; panics unless all three are finite and `sigma > 0`.
   pub fn new(mu: T, sigma: T, xi: T) -> Self {
     assert!(
       mu.is_finite(),
@@ -478,8 +456,8 @@ mod tests {
     long
   }
 
-  /// Below the cut a stream draws the exponential's bits; above it no draw overflows at a scale the exponential keeps
-  /// finite.
+  /// Below the cut a stream draws the exponential's bits; above it no draw overflows at a scale the
+  /// exponential keeps finite.
   #[test]
   fn tiny_shapes_draw_finite_values() {
     assert_eq!(draws(1000.0_f32, 1e-36), draws(1000.0_f32, 0.0));

@@ -4,19 +4,10 @@
 //! f(x)=\frac{1}{\theta^\alpha\Gamma(\alpha)}x^{\alpha-1}e^{-x/\theta},\ x>0
 //! $$
 //!
-//! Scale parametrization (mean = αθ; NOT the rate form `β=1/θ` — the
-//! `scale` constructor argument below is θ, not β).
+//! Scale form, mean `αθ`: Marsaglia–Tsang's squeeze over the SIMD normal and uniform streams, the
+//! loop scalar (8 lanes ran slower on 128-bit SIMD), `α < 1` lifted as `Gamma(α + 1)·U^{1/α}`.
 //!
-//! Sampling: Marsaglia-Tsang squeeze method over the buffered SIMD normal
-//! and uniform sources. The squeeze loop itself stays scalar — an 8-lane
-//! batched variant was measured slower on 128-bit SIMD targets, where the
-//! lane bookkeeping outweighs the vectorised arithmetic and the inputs are
-//! already SIMD-amortised. `α < 1` is boosted via
-//! $\mathrm{Gamma}(\alpha) = \mathrm{Gamma}(\alpha+1) \cdot U^{1/\alpha}$.
-//!
-//! Reference: Marsaglia, G., Tsang, W.W. (2000), "A simple method for
-//! generating gamma variables", *ACM TOMS* 26(3), 363-372,
-//! DOI: 10.1145/358407.358414.
+//! Reference: Marsaglia, G., Tsang, W.W. (2000), "A simple method for generating gamma variables", *ACM TOMS* 26(3), 363-372, DOI 10.1145/358407.358414.
 use std::mem::MaybeUninit;
 
 use rand::Rng;
@@ -52,12 +43,8 @@ pub struct GammaState<T: SimdFloatExt, R: SimdRngExt> {
 }
 
 impl<T: SimdFloatExt> SimdGamma<T> {
-  /// Creates a gamma distribution.
-  ///
-  /// - `alpha` — shape α > 0 (matches the module header's α).
-  /// - `scale` — scale θ > 0 (matches the module header's θ; mean =
-  ///   α·θ). This is the scale parametrization — pass `1.0 / rate` if
-  ///   you have a rate-parametrized β instead.
+  /// Shape `alpha`, scale `θ` (mean `αθ`; a rate `β` is `scale = 1/β`); panics unless both are
+  /// finite and positive.
   pub fn new(alpha: T, scale: T) -> Self {
     assert!(
       alpha.is_finite(),
@@ -83,7 +70,7 @@ impl<T: SimdFloatExt> SimdGamma<T> {
     self.alpha
   }
 
-  /// The scale `θ`.
+  /// The scale `θ`, so the mean is `αθ` and a rate is `1/θ`.
   pub fn scale(&self) -> T {
     self.scale
   }
@@ -191,10 +178,7 @@ impl<T: SimdFloatExt> SimdGamma<T> {
   }
 }
 
-/// Gamma(shape=2, scale=2) — mean 4, matching the repeated Gamma fixture in
-/// the umbrella crate's workspace-root `benches/distributions.rs` and
-/// `benches/dist_multicore.rs` (not this crate's own — `stochastic-rs-
-/// distributions` has no `benches/` directory of its own).
+/// `Gamma(2, 2)`, mean 4: the law the distribution benches time.
 impl<T: SimdFloatExt> Default for SimdGamma<T> {
   fn default() -> Self {
     Self::new(T::from(2.0).unwrap(), T::from(2.0).unwrap())
@@ -369,15 +353,8 @@ mod tests {
   use crate::traits::DistributionSampler;
   use crate::traits::SimdDistribution;
 
-  /// Both tests below check KS against the sampler's own `cdf`
-  /// (Kolmogorov 1933 / Smirnov 1948 / Massey 1951 critical values,
-  /// alpha=0.05 — see
-  /// `stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov`'s module
-  /// doc), best-of-three pinned seeds: a correct test still rejects a
-  /// true null at rate alpha, and the SIMD stream differs across
-  /// platforms, so one seed cannot be trusted to be lucky everywhere.
-  /// Replaces this test's own former `ks_critical = 2.0/sqrt(N)` bound,
-  /// which implied an undeclared alpha of roughly 0.0007.
+  /// KS at α = 0.05 against the sampler's own `cdf`, best of three seeds as below: a correct
+  /// sampler fails a seed at rate α, and the SIMD stream differs by platform.
   #[test]
   fn simd_gamma_fill_matches_theoretical_distribution() {
     const N: usize = 40_000;

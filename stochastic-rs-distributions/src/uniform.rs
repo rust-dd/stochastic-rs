@@ -80,10 +80,8 @@ impl<T: SimdFloatExt> SimdUniform<T> {
       T::fill_uniform_simd_uninit(rng, out);
       return;
     }
-    // Affine path: generate U(0, 1) into a 256-element stack block (one
-    // tight engine loop, stays in L1), then apply the transform 8-wide on
-    // the way out — `out` is written exactly once instead of the previous
-    // fill-then-read-modify-write double pass over the whole slice.
+    // `U(0, 1)` into a 256-element stack block that stays in L1, mapped 8-wide on the way out, so
+    // `out` is written once.
     let low = T::splat(self.low);
     let scale = T::splat(self.scale);
     let mut tmp = [T::zero(); 256];

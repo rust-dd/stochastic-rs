@@ -248,10 +248,8 @@ impl SimdFloatExt for f64 {
 
   #[inline]
   fn simd_from_i32x8(v: wide::i32x8) -> f64x8 {
-    // `wide::f64x8::from_i32x8` falls back to 8 scalar `as f64` casts on
-    // AVX2 (no AVX-512). Going through `f64x4::from_i32x4` uses a single
-    // `vcvtdq2pd` per half, replacing 8 scalar conversions with 2 SIMD
-    // ones in the Ziggurat hot path.
+    // `f64x8::from_i32x8` is 8 scalar casts on AVX2; `f64x4::from_i32x4` per half is one
+    // `vcvtdq2pd` each in the ziggurat's hot path.
     let halves: [i32x4; 2] = unsafe { core::mem::transmute::<i32x8, [i32x4; 2]>(v) };
     let fa = f64x4::from_i32x4(halves[0]).to_array();
     let fb = f64x4::from_i32x4(halves[1]).to_array();
