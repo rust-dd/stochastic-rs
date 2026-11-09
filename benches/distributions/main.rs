@@ -36,7 +36,6 @@ use stochastic_rs::traits::RealExt;
 mod discrete;
 mod heavy_tailed;
 mod multivariate;
-mod plot;
 mod truncated;
 
 const SMALL: usize = 1_000;
@@ -486,7 +485,6 @@ criterion_group!(
   bench_ncx2_per_draw_construction,
   bench_fold,
   bench_sink,
-  plot::generate_shape_comparison_plot,
 );
 
 criterion_main!(benches);
