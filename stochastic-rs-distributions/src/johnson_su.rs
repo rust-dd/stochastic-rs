@@ -25,6 +25,8 @@
 //! by Methods of Translation", *Biometrika* 36(1/2), 149-176.
 //! DOI: 10.1093/biomet/36.1-2.149
 
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -114,10 +116,14 @@ impl<T: SimdFloatExt> SimdJohnsonSu<T> {
     self.xi + self.lambda * (y.exp() - (-y).exp()) / T::from_f64_fast(2.0)
   }
 
-  fn fill_parts<R: SimdRngExt>(&self, normal: &mut StreamState<T, R, 64>, out: &mut [T]) {
+  fn fill_parts<R: SimdRngExt>(
+    &self,
+    normal: &mut StreamState<T, R, 64>,
+    out: &mut [MaybeUninit<T>],
+  ) {
     if out.len() < SMALL_JSU_THRESHOLD {
       for x in out.iter_mut() {
-        *x = self.transform(SimdNormal::<T>::standard().next(normal));
+        x.write(self.transform(SimdNormal::<T>::standard().next(normal)));
       }
       return;
     }
@@ -138,14 +144,14 @@ impl<T: SimdFloatExt> SimdJohnsonSu<T> {
       {
         let y = (T::simd_from_array(*z8) - gamma) * inv_delta;
         let sinh = T::simd_exp(y) - T::simd_exp(zero - y);
-        *sub = T::simd_to_array(xi + half_lambda * sinh);
+        *sub = T::simd_to_array(xi + half_lambda * sinh).map(MaybeUninit::new);
       }
     }
     if !rem.is_empty() {
       let n = rem.len();
       SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf[..n]);
       for i in 0..n {
-        rem[i] = self.transform(zbuf[i]);
+        rem[i].write(self.transform(zbuf[i]));
       }
     }
   }
@@ -193,7 +199,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdJohnsonSu<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut NormalDerivedState<T, R>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut NormalDerivedState<T, R>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.normal, out);
   }
 

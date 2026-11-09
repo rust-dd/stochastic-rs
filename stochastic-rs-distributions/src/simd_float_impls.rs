@@ -1,6 +1,8 @@
 //! `SimdFloatExt` implementations for `f32` (lane width 8) and `f64`
 //! (lane width 8, decomposed into two AVX2-friendly `f64x4` halves).
 
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::RngExt;
 use wide::f32x8;
@@ -96,6 +98,14 @@ impl SimdFloatExt for f32 {
   #[inline]
   fn fill_uniform_simd<R: crate::simd_rng::SimdRngExt>(rng: &mut R, out: &mut [f32]) {
     rng.fill_uniform_f32(out);
+  }
+
+  #[inline]
+  fn fill_uniform_simd_uninit<R: crate::simd_rng::SimdRngExt>(
+    rng: &mut R,
+    out: &mut [MaybeUninit<f32>],
+  ) {
+    rng.fill_uniform_f32_uninit(out);
   }
 
   #[inline]
@@ -221,6 +231,14 @@ impl SimdFloatExt for f64 {
   #[inline]
   fn fill_uniform_simd<R: crate::simd_rng::SimdRngExt>(rng: &mut R, out: &mut [f64]) {
     rng.fill_uniform_f64(out);
+  }
+
+  #[inline]
+  fn fill_uniform_simd_uninit<R: crate::simd_rng::SimdRngExt>(
+    rng: &mut R,
+    out: &mut [MaybeUninit<f64>],
+  ) {
+    rng.fill_uniform_f64_uninit(out);
   }
 
   #[inline]

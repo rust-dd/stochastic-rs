@@ -39,6 +39,8 @@
 //!   Springer. DOI: 10.1007/978-1-4612-5698-4
 //! - Olver, F.W.J. et al. (eds.), *NIST Digital Library of Mathematical Functions*, eq. 10.30.2 (the mgf at its boundary).
 
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -312,12 +314,14 @@ impl<T: SimdFloatExt> SimdGig<T> {
     T::from_f64_fast(y / self.scale_out)
   }
 
-  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [T]) {
+  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [MaybeUninit<T>]) {
     for x in out.iter_mut() {
-      *x = self.rescale(
-        self
-          .setup
-          .draw(|| T::sample_uniform_simd(rng).to_f64().unwrap()),
+      x.write(
+        self.rescale(
+          self
+            .setup
+            .draw(|| T::sample_uniform_simd(rng).to_f64().unwrap()),
+        ),
       );
     }
   }
@@ -431,7 +435,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdGig<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.rng, out);
   }
 

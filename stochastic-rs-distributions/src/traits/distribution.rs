@@ -1,6 +1,7 @@
 //! Characteristic-function / pdf / cdf / moments interface and the sealed sampling traits.
 
 use std::fmt::Debug;
+use std::mem::MaybeUninit;
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -93,8 +94,9 @@ pub trait SimdKernel: SimdDistribution {
   /// One draw: the scalar of a univariate law, `Complex<T>` for `ComplexDistribution`.
   type Item: Copy + Zero + Send + Sync + 'static;
 
+  /// Writes every element of `out` exactly once and reads none, so the callers may `assume_init`.
   #[doc(hidden)]
-  fn fill<R: SimdRngExt>(&self, state: &mut Self::State<R>, out: &mut [Self::Item]);
+  fn fill<R: SimdRngExt>(&self, state: &mut Self::State<R>, out: &mut [MaybeUninit<Self::Item>]);
 
   #[doc(hidden)]
   fn next<R: SimdRngExt>(&self, state: &mut Self::State<R>) -> Self::Item;
@@ -102,14 +104,27 @@ pub trait SimdKernel: SimdDistribution {
   /// Bulk SIMD fill driven by any rng: one `u64` from `rng` seeds a private stream.
   fn fill_with<G: Rng + ?Sized>(&self, rng: &mut G, out: &mut [Self::Item]) {
     let (mut state, _) = self.init::<SimdRng, _>(&Deterministic::new(rng.next_u64()));
-    self.fill(&mut state, out);
+    self.fill(&mut state, as_uninit_mut(out));
   }
+}
+
+#[inline]
+pub(crate) fn as_uninit_mut<T>(slice: &mut [T]) -> &mut [MaybeUninit<T>] {
+  // SAFETY: `MaybeUninit<T>` has `T`'s layout, and a kernel stores only values through the view.
+  unsafe { &mut *(slice as *mut [T] as *mut [MaybeUninit<T>]) }
 }
 
 /// Bulk sampling API of a [`Seeded`] stream; sealed, only `Seeded` implements it.
 pub trait DistributionSampler<T: Copy + Zero + Send>: Sealed {
   /// Fills `out` from the stream's engine in bulk, past the single-draw buffer that `sample` pops.
-  fn fill_slice(&mut self, out: &mut [T]);
+  #[inline]
+  fn fill_slice(&mut self, out: &mut [T]) {
+    self.fill_uninit(as_uninit_mut(out));
+  }
+
+  /// `fill_slice` into uninitialised storage: writes every element, reads none.
+  #[doc(hidden)]
+  fn fill_uninit(&mut self, out: &mut [MaybeUninit<T>]);
 
   /// An independent child stream for worker `stream_idx`; advances this stream's fork basis.
   fn fork(&mut self, stream_idx: u64) -> Self
@@ -118,9 +133,10 @@ pub trait DistributionSampler<T: Copy + Zero + Send>: Sealed {
 
   /// `n` draws in a new array: the values `fill_slice` gives an `n`-slice.
   fn sample_n(&mut self, n: usize) -> Array1<T> {
-    let mut out = Array1::<T>::zeros(n);
-    self.fill_slice(out.as_slice_mut().expect("sample_n output is contiguous"));
-    out
+    let mut out = Array1::<T>::uninit(n);
+    self.fill_uninit(out.as_slice_mut().expect("sample_n output is contiguous"));
+    // SAFETY: `fill_uninit` wrote every element.
+    unsafe { out.assume_init() }
   }
 
   /// Fills an `m × n` matrix, in parallel above 16Ki values over streams forked on this thread:
@@ -133,38 +149,24 @@ pub trait DistributionSampler<T: Copy + Zero + Send>: Sealed {
       return Array2::<T>::zeros((m, n));
     }
     let workers = worker_count(m.saturating_mul(n));
-    if workers == 1 {
-      let mut out = Array2::<T>::zeros((m, n));
-      self.fill_slice(
-        out
-          .as_slice_mut()
-          .expect("sample_matrix output is contiguous"),
-      );
-      return out;
-    }
-    // Each worker zeroes its own chunk: zeroing the whole matrix up front measured slower here.
     let mut out = Array2::<T>::uninit((m, n));
     let flat = out
       .as_slice_mut()
       .expect("sample_matrix output is contiguous");
-    let chunk_len = flat.len().div_ceil(workers);
-    let forked = (0..workers)
-      .map(|idx| self.fork(idx as u64))
-      .collect::<Vec<_>>();
-    rayon::scope(move |scope| {
-      for (mut worker, chunk) in forked.into_iter().zip(flat.chunks_mut(chunk_len)) {
-        scope.spawn(move |_| {
-          for x in chunk.iter_mut() {
-            x.write(T::zero());
-          }
-          // SAFETY: every element of `chunk` was written just above.
-          let chunk =
-            unsafe { std::slice::from_raw_parts_mut(chunk.as_mut_ptr().cast::<T>(), chunk.len()) };
-          worker.fill_slice(chunk);
-        });
-      }
-    });
-    // SAFETY: the chunks partition the storage and every worker initialised its own.
+    if workers == 1 {
+      self.fill_uninit(flat);
+    } else {
+      let chunk_len = flat.len().div_ceil(workers);
+      let forked = (0..workers)
+        .map(|idx| self.fork(idx as u64))
+        .collect::<Vec<_>>();
+      rayon::scope(move |scope| {
+        for (mut worker, chunk) in forked.into_iter().zip(flat.chunks_mut(chunk_len)) {
+          scope.spawn(move |_| worker.fill_uninit(chunk));
+        }
+      });
+    }
+    // SAFETY: `fill_uninit` wrote every element, whole or in chunks that partition `out`.
     unsafe { out.assume_init() }
   }
 }

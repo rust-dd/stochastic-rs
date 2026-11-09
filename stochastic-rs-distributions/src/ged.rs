@@ -28,6 +28,8 @@
 //! - Nelson, D. B. (1991), "Conditional Heteroskedasticity in Asset Returns: A New Approach", *Econometrica* 59(2), 347-370, DOI 10.2307/2938260 (the density and its variance).
 //! - Nadarajah, S. (2005), "A generalized normal distribution", *Journal of Applied Statistics* 32(7), 685-694, DOI 10.1080/02664760500079464 (variance, kurtosis, Shannon entropy).
 
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -41,6 +43,7 @@ use crate::traits::SimdFloatExt;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
+use crate::traits::distribution::as_uninit_mut;
 
 const SMALL_GED_THRESHOLD: usize = 16;
 
@@ -122,13 +125,18 @@ impl<T: SimdFloatExt> SimdGed<T> {
     self.beta
   }
 
-  fn fill_parts<R: SimdRngExt>(&self, gamma: &mut GammaState<T, R>, rng: &mut R, out: &mut [T]) {
+  fn fill_parts<R: SimdRngExt>(
+    &self,
+    gamma: &mut GammaState<T, R>,
+    rng: &mut R,
+    out: &mut [MaybeUninit<T>],
+  ) {
     let inv_beta = T::one() / self.beta;
     if out.len() < SMALL_GED_THRESHOLD {
       for x in out.iter_mut() {
         let mag = self.gamma.next(gamma).powf(inv_beta);
         let signed = if rng.next_i32() >= 0 { mag } else { -mag };
-        *x = self.alpha * signed + self.mu;
+        x.write(self.alpha * signed + self.mu);
       }
       return;
     }
@@ -136,7 +144,7 @@ impl<T: SimdFloatExt> SimdGed<T> {
     let mut ybuf = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.gamma.fill(gamma, &mut ybuf);
+      self.gamma.fill(gamma, as_uninit_mut(&mut ybuf));
       for (sub, y8) in chunk
         .as_chunks_mut::<8>()
         .0
@@ -147,14 +155,14 @@ impl<T: SimdFloatExt> SimdGed<T> {
         let t = T::simd_to_array(alpha * mag);
         let signs = rng.next_i32x8().to_array();
         for i in 0..8 {
-          sub[i] = self.mu + if signs[i] >= 0 { t[i] } else { -t[i] };
+          sub[i].write(self.mu + if signs[i] >= 0 { t[i] } else { -t[i] });
         }
       }
     }
     for x in rem.iter_mut() {
       let mag = self.gamma.next(gamma).powf(inv_beta);
       let signed = if rng.next_i32() >= 0 { mag } else { -mag };
-      *x = self.alpha * signed + self.mu;
+      x.write(self.alpha * signed + self.mu);
     }
   }
 
@@ -192,7 +200,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdGed<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut GedState<T, R>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut GedState<T, R>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.gamma, &mut state.rng, out);
   }
 

@@ -3,6 +3,7 @@
 //! Reference: Johnson, N. L., Kotz, S. & Balakrishnan, N. (1994), *Continuous Univariate Distributions*, vol. 1, 2nd ed., Wiley, ch. 13 §10.1, ISBN 0-471-58495-9 (truncated normal moments).
 
 use std::fmt;
+use std::mem::MaybeUninit;
 use std::sync::OnceLock;
 
 use rand::Rng;
@@ -277,9 +278,13 @@ impl<T: SimdFloatExt> SimdDistribution for SimdTruncatedNormal<T> {
 impl<T: SimdFloatExt> SimdKernel for SimdTruncatedNormal<T> {
   type Item = T;
 
-  fn fill<R: SimdRngExt>(&self, state: &mut TruncatedNormalState<T, R>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(
+    &self,
+    state: &mut TruncatedNormalState<T, R>,
+    out: &mut [MaybeUninit<T>],
+  ) {
     for x in out.iter_mut() {
-      *x = self.draw(state);
+      x.write(self.draw(state));
     }
   }
 

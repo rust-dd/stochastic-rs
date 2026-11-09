@@ -2,6 +2,7 @@
 //! their state updates; its seeded stream differs.
 
 use core::convert::Infallible;
+use std::mem::MaybeUninit;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -15,6 +16,7 @@ use wide::i32x8;
 use wide::u32x8;
 use wide::u64x4;
 
+use crate::simd_rng::as_uninit_mut;
 use crate::simd_rng::xoshiro::F32_MAGIC_X8;
 use crate::simd_rng::xoshiro::F32_ONE_X8;
 use crate::simd_rng::xoshiro::F64_MAGIC_X4;
@@ -219,8 +221,14 @@ impl SimdRngDual {
   /// [`crate::simd_rng::SimdRng::fill_uniform_f64`]).
   #[inline]
   pub fn fill_uniform_f64(&mut self, out: &mut [f64]) {
+    self.fill_uniform_f64_uninit(as_uninit_mut(out));
+  }
+
+  #[doc(hidden)]
+  #[inline]
+  pub fn fill_uniform_f64_uninit(&mut self, out: &mut [MaybeUninit<f64>]) {
     let len = out.len();
-    let ptr = out.as_mut_ptr();
+    let ptr = out.as_mut_ptr().cast::<f64>();
 
     let pair_chunks = len / 8;
     for i in 0..pair_chunks {
@@ -230,6 +238,7 @@ impl SimdRngDual {
       let fb: f64x4 = unsafe { core::mem::transmute::<u64x4, f64x4>(bits_b) };
       let ra = fa - F64_ONE_X4;
       let rb = fb - F64_ONE_X4;
+      // SAFETY: lanes `8i..8i + 8` lie inside `out`, and `write_unaligned` needs no alignment.
       unsafe {
         core::ptr::write_unaligned(ptr.add(i * 8) as *mut f64x4, ra);
         core::ptr::write_unaligned(ptr.add(i * 8 + 4) as *mut f64x4, rb);
@@ -240,6 +249,7 @@ impl SimdRngDual {
     while written + 4 <= len {
       let bits = (self.f64_a.next() >> 12u32) | F64_MAGIC_X4;
       let f: f64x4 = unsafe { core::mem::transmute::<u64x4, f64x4>(bits) };
+      // SAFETY: `written + 4 <= len`, and `write_unaligned` needs no alignment.
       unsafe {
         core::ptr::write_unaligned(ptr.add(written) as *mut f64x4, f - F64_ONE_X4);
       }
@@ -249,8 +259,7 @@ impl SimdRngDual {
       let bits = (self.f64_a.next() >> 12u32) | F64_MAGIC_X4;
       let f: f64x4 = unsafe { core::mem::transmute::<u64x4, f64x4>(bits) };
       let arr: [f64; 4] = (f - F64_ONE_X4).to_array();
-      let tail = unsafe { core::slice::from_raw_parts_mut(ptr.add(written), len - written) };
-      tail.copy_from_slice(&arr[..len - written]);
+      out[written..].copy_from_slice(&arr.map(MaybeUninit::new)[..len - written]);
     }
   }
 
@@ -259,8 +268,14 @@ impl SimdRngDual {
   /// back to a scalar copy.
   #[inline]
   pub fn fill_uniform_f32(&mut self, out: &mut [f32]) {
+    self.fill_uniform_f32_uninit(as_uninit_mut(out));
+  }
+
+  #[doc(hidden)]
+  #[inline]
+  pub fn fill_uniform_f32_uninit(&mut self, out: &mut [MaybeUninit<f32>]) {
     let len = out.len();
-    let ptr = out.as_mut_ptr();
+    let ptr = out.as_mut_ptr().cast::<f32>();
 
     let pair_chunks = len / 16;
     for i in 0..pair_chunks {
@@ -270,6 +285,7 @@ impl SimdRngDual {
       let fb: f32x8 = unsafe { core::mem::transmute::<u32x8, f32x8>(bits_b) };
       let ra = fa - F32_ONE_X8;
       let rb = fb - F32_ONE_X8;
+      // SAFETY: lanes `16i..16i + 16` lie inside `out`, and `write_unaligned` needs no alignment.
       unsafe {
         core::ptr::write_unaligned(ptr.add(i * 16) as *mut f32x8, ra);
         core::ptr::write_unaligned(ptr.add(i * 16 + 8) as *mut f32x8, rb);
@@ -280,6 +296,7 @@ impl SimdRngDual {
     while written + 8 <= len {
       let bits = (self.f32_a.next() >> 9u32) | F32_MAGIC_X8;
       let f: f32x8 = unsafe { core::mem::transmute::<u32x8, f32x8>(bits) };
+      // SAFETY: `written + 8 <= len`, and `write_unaligned` needs no alignment.
       unsafe {
         core::ptr::write_unaligned(ptr.add(written) as *mut f32x8, f - F32_ONE_X8);
       }
@@ -289,8 +306,7 @@ impl SimdRngDual {
       let bits = (self.f32_a.next() >> 9u32) | F32_MAGIC_X8;
       let f: f32x8 = unsafe { core::mem::transmute::<u32x8, f32x8>(bits) };
       let arr: [f32; 8] = (f - F32_ONE_X8).to_array();
-      let tail = unsafe { core::slice::from_raw_parts_mut(ptr.add(written), len - written) };
-      tail.copy_from_slice(&arr[..len - written]);
+      out[written..].copy_from_slice(&arr.map(MaybeUninit::new)[..len - written]);
     }
   }
 
@@ -391,6 +407,16 @@ impl crate::simd_rng::SimdRngExt for SimdRngDual {
   #[inline(always)]
   fn fill_uniform_f32(&mut self, out: &mut [f32]) {
     self.fill_uniform_f32(out);
+  }
+
+  #[inline(always)]
+  fn fill_uniform_f64_uninit(&mut self, out: &mut [MaybeUninit<f64>]) {
+    self.fill_uniform_f64_uninit(out);
+  }
+
+  #[inline(always)]
+  fn fill_uniform_f32_uninit(&mut self, out: &mut [MaybeUninit<f32>]) {
+    self.fill_uniform_f32_uninit(out);
   }
 }
 

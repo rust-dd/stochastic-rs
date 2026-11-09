@@ -2,6 +2,7 @@
 
 use std::fmt::Debug;
 use std::iter::Sum;
+use std::mem::MaybeUninit;
 use std::ops::AddAssign;
 use std::ops::SubAssign;
 
@@ -156,6 +157,13 @@ pub trait SimdFloatExt: RealExt + sealed::Sealed {
   fn fill_uniform<R: Rng + ?Sized>(rng: &mut R, out: &mut [Self]);
 
   fn fill_uniform_simd<R: crate::simd_rng::SimdRngExt>(rng: &mut R, out: &mut [Self]);
+
+  /// `fill_uniform_simd` into uninitialised storage: writes every element, reads none.
+  #[doc(hidden)]
+  fn fill_uniform_simd_uninit<R: crate::simd_rng::SimdRngExt>(
+    rng: &mut R,
+    out: &mut [MaybeUninit<Self>],
+  );
 
   fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> Self;
 

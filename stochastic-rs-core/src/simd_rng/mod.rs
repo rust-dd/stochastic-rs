@@ -23,6 +23,7 @@
 //! $$
 
 use std::fmt::Debug;
+use std::mem::MaybeUninit;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -318,6 +319,20 @@ pub trait SimdRngExt:
 
   /// Bulk-fill `out` with `U(0, 1)` `f32` values.
   fn fill_uniform_f32(&mut self, out: &mut [f32]);
+
+  /// `fill_uniform_f64` into uninitialised storage: writes every element, reads none.
+  #[doc(hidden)]
+  fn fill_uniform_f64_uninit(&mut self, out: &mut [MaybeUninit<f64>]);
+
+  /// `fill_uniform_f32` into uninitialised storage: writes every element, reads none.
+  #[doc(hidden)]
+  fn fill_uniform_f32_uninit(&mut self, out: &mut [MaybeUninit<f32>]);
+}
+
+#[inline]
+pub(crate) fn as_uninit_mut<T>(slice: &mut [T]) -> &mut [MaybeUninit<T>] {
+  // SAFETY: `MaybeUninit<T>` has `T`'s layout, and an uninit fill stores only values through it.
+  unsafe { &mut *(slice as *mut [T] as *mut [MaybeUninit<T>]) }
 }
 
 impl engine_seal::Sealed for SimdRng {}
@@ -361,5 +376,15 @@ impl SimdRngExt for SimdRng {
   #[inline(always)]
   fn fill_uniform_f32(&mut self, out: &mut [f32]) {
     self.fill_uniform_f32(out);
+  }
+
+  #[inline(always)]
+  fn fill_uniform_f64_uninit(&mut self, out: &mut [MaybeUninit<f64>]) {
+    self.fill_uniform_f64_uninit(out);
+  }
+
+  #[inline(always)]
+  fn fill_uniform_f32_uninit(&mut self, out: &mut [MaybeUninit<f32>]) {
+    self.fill_uniform_f32_uninit(out);
   }
 }

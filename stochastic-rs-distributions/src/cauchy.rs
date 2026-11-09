@@ -6,6 +6,8 @@
 //!
 //! Sampling: inversion, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
 
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -65,10 +67,10 @@ impl<T: SimdFloatExt> SimdCauchy<T> {
     self.x0 + self.gamma * (T::pi() * (u - T::from(0.5).unwrap())).tan()
   }
 
-  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [T]) {
+  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [MaybeUninit<T>]) {
     if out.len() < SMALL_CAUCHY_THRESHOLD {
       for x in out.iter_mut() {
-        *x = self.invert(T::sample_uniform_simd(rng));
+        x.write(self.invert(T::sample_uniform_simd(rng)));
       }
       return;
     }
@@ -83,14 +85,14 @@ impl<T: SimdFloatExt> SimdCauchy<T> {
       let v = T::simd_from_array(u);
       let z = T::simd_tan(pi * (v - half));
       let x = x0 + g * z;
-      *chunk = T::simd_to_array(x);
+      *chunk = T::simd_to_array(x).map(MaybeUninit::new);
     }
     if !rem.is_empty() {
       T::fill_uniform_simd(rng, &mut u);
       let v = T::simd_from_array(u);
       let z = T::simd_tan(pi * (v - half));
       let x = T::simd_to_array(x0 + g * z);
-      rem.copy_from_slice(&x[..rem.len()]);
+      rem.copy_from_slice(&x.map(MaybeUninit::new)[..rem.len()]);
     }
   }
 
@@ -113,7 +115,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdCauchy<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.rng, out);
   }
 

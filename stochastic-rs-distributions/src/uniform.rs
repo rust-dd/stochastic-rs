@@ -6,6 +6,8 @@
 //!
 //! Sampling: inversion, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
 
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -64,17 +66,17 @@ impl<T: SimdFloatExt> SimdUniform<T> {
     self.high
   }
 
-  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [T]) {
+  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [MaybeUninit<T>]) {
     if out.len() < SMALL_UNIFORM_THRESHOLD {
       for x in out.iter_mut() {
-        *x = self.low + self.scale * T::sample_uniform_simd(rng);
+        x.write(self.low + self.scale * T::sample_uniform_simd(rng));
       }
       return;
     }
     // [0, 1) fast path: fill the whole output with U(0, 1) via direct SIMD
     // stores (one engine call per 4-lane f64 chunk / 8-lane f32 chunk).
     if self.low.is_zero() && self.scale == T::one() {
-      T::fill_uniform_simd(rng, out);
+      T::fill_uniform_simd_uninit(rng, out);
       return;
     }
     // Affine path: generate U(0, 1) into a 256-element stack block (one
@@ -93,7 +95,7 @@ impl<T: SimdFloatExt> SimdUniform<T> {
         .iter_mut()
         .zip(tmp.as_chunks::<8>().0.iter())
       {
-        *sub = T::simd_to_array(low + T::simd_from_array(*u8) * scale);
+        *sub = T::simd_to_array(low + T::simd_from_array(*u8) * scale).map(MaybeUninit::new);
       }
     }
     if !rem.is_empty() {
@@ -104,11 +106,11 @@ impl<T: SimdFloatExt> SimdUniform<T> {
       for s in sub.iter_mut() {
         let mut a = [T::zero(); 8];
         a.copy_from_slice(&tmp[off..off + 8]);
-        *s = T::simd_to_array(low + T::simd_from_array(a) * scale);
+        *s = T::simd_to_array(low + T::simd_from_array(a) * scale).map(MaybeUninit::new);
         off += 8;
       }
       for (i, x) in sub_rem.iter_mut().enumerate() {
-        *x = self.low + tmp[off + i] * self.scale;
+        x.write(self.low + tmp[off + i] * self.scale);
       }
     }
   }
@@ -140,7 +142,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdUniform<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.rng, out);
   }
 

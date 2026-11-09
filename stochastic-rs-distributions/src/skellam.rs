@@ -15,6 +15,8 @@
 //!
 //! Reference: Skellam, J. G. (1946), "The Frequency Distribution of the Difference Between Two Poisson Variates Belonging to Different Populations", *Journal of the Royal Statistical Society* 109(3), 296, DOI 10.2307/2981372 (cf and mgf are the products of the two Poisson transforms).
 
+use std::mem::MaybeUninit;
+
 use num_complex::Complex64;
 use rand::Rng;
 use rand::distr::Distribution;
@@ -95,9 +97,9 @@ impl SimdDistribution for SimdSkellam {
 impl SimdKernel for SimdSkellam {
   type Item = i64;
 
-  fn fill<R: SimdRngExt>(&self, state: &mut Self::State<R>, out: &mut [i64]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut Self::State<R>, out: &mut [MaybeUninit<i64>]) {
     for x in out.iter_mut() {
-      *x = self.next(state);
+      x.write(self.next(state));
     }
   }
 

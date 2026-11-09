@@ -4,6 +4,8 @@
 //! \mathbb P(X\in A)=\int_A f_X(x)dx\ \text{or}\ \sum_{x\in A}p_X(x)
 //! $$
 //!
+use std::mem::MaybeUninit;
+
 use num_complex::Complex;
 use num_traits::Num;
 use num_traits::Zero;
@@ -15,6 +17,7 @@ use stochastic_rs_core::simd_rng::SimdRngExt;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
+use crate::traits::distribution::as_uninit_mut;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ComplexDistribution<Re, Im = Re> {
@@ -70,17 +73,17 @@ where
 
   fn fill<R: SimdRngExt>(
     &self,
-    state: &mut (Re::State<R>, Im::State<R>),
-    out: &mut [Complex<Re::Item>],
+    state: &mut Self::State<R>,
+    out: &mut [MaybeUninit<Complex<Re::Item>>],
   ) {
     let mut re = [Re::Item::zero(); 64];
     let mut im = [Re::Item::zero(); 64];
     for chunk in out.chunks_mut(64) {
       let n = chunk.len();
-      self.re.fill(&mut state.0, &mut re[..n]);
-      self.im.fill(&mut state.1, &mut im[..n]);
+      self.re.fill(&mut state.0, as_uninit_mut(&mut re[..n]));
+      self.im.fill(&mut state.1, as_uninit_mut(&mut im[..n]));
       for (c, (r, i)) in chunk.iter_mut().zip(re.iter().zip(im.iter())) {
-        *c = Complex::new(*r, *i);
+        c.write(Complex::new(*r, *i));
       }
     }
   }

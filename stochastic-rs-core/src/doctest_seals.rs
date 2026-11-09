@@ -40,6 +40,8 @@ pub struct SeedExtIsSealed;
 ///   fn next_f32(&mut self) -> f32 { 0.0 }
 ///   fn fill_uniform_f64(&mut self, _out: &mut [f64]) {}
 ///   fn fill_uniform_f32(&mut self, _out: &mut [f32]) {}
+///   fn fill_uniform_f64_uninit(&mut self, _out: &mut [core::mem::MaybeUninit<f64>]) {}
+///   fn fill_uniform_f32_uninit(&mut self, _out: &mut [core::mem::MaybeUninit<f32>]) {}
 /// }
 /// ```
 pub struct SimdRngExtIsSealed;

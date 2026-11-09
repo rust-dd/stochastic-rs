@@ -432,6 +432,24 @@ fn bench_fold(c: &mut Criterion) {
   group.finish();
 }
 
+fn bench_sink(c: &mut Criterion) {
+  let mut group = c.benchmark_group("Sink");
+  let law = SimdNormal::<f64>::new(0.0, 1.0);
+  group.bench_function("sample_n/f64/16384", |b| {
+    let mut s = law.seeded(&Deterministic::new(1));
+    b.iter(|| black_box(s.sample_n(16_384)))
+  });
+  group.bench_function("sample_matrix/f64/128x128", |b| {
+    let mut s = law.seeded(&Deterministic::new(1));
+    b.iter(|| black_box(s.sample_matrix(128, 128)))
+  });
+  group.bench_function("sample_matrix/f64/1024x1024", |b| {
+    let mut s = law.seeded(&Deterministic::new(1));
+    b.iter(|| black_box(s.sample_matrix(1024, 1024)))
+  });
+  group.finish();
+}
+
 criterion_group!(
   benches,
   bench_normal,
@@ -467,6 +485,7 @@ criterion_group!(
   truncated::bench_distribution_ext,
   bench_ncx2_per_draw_construction,
   bench_fold,
+  bench_sink,
   plot::generate_shape_comparison_plot,
 );
 

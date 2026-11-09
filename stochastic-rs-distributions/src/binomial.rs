@@ -14,6 +14,7 @@
 //! - Devroye, L. (1986), *Non-Uniform Random Variate Generation*,
 //!   Springer, §X.4 (waiting-time method).
 use std::marker::PhantomData;
+use std::mem::MaybeUninit;
 
 use num_traits::PrimInt;
 use rand::Rng;
@@ -26,6 +27,7 @@ use crate::source::uniform53;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
+use crate::traits::distribution::as_uninit_mut;
 
 /// Cached setup constants for Hörmann's BTRS sampler over
 /// `Binomial(n, p_eff)` with `p_eff = min(p, 1-p)`.
@@ -155,10 +157,10 @@ impl<T: PrimInt> SimdBinomial<T> {
     cast.unwrap_or(T::max_value())
   }
 
-  fn fill_parts<G: Rng + ?Sized>(&self, rng: &mut G, out: &mut [T]) {
+  fn fill_parts<G: Rng + ?Sized>(&self, rng: &mut G, out: &mut [MaybeUninit<T>]) {
     if self.n == 0 {
       for x in out.iter_mut() {
-        *x = T::zero();
+        x.write(T::zero());
       }
       return;
     }
@@ -169,7 +171,7 @@ impl<T: PrimInt> SimdBinomial<T> {
     if p_eff <= 0.0 {
       let cast = Self::cast(if flipped { self.n } else { 0 });
       for x in out.iter_mut() {
-        *x = cast;
+        x.write(cast);
       }
       return;
     }
@@ -177,7 +179,7 @@ impl<T: PrimInt> SimdBinomial<T> {
     if let Some(btrs) = &self.btrs {
       for x in out.iter_mut() {
         let k = btrs.sample(rng, self.n);
-        *x = Self::cast(if btrs.flipped { self.n - k } else { k });
+        x.write(Self::cast(if btrs.flipped { self.n - k } else { k }));
       }
       return;
     }
@@ -195,13 +197,13 @@ impl<T: PrimInt> SimdBinomial<T> {
         }
         count += 1;
       }
-      *x = Self::cast(if flipped { self.n - count } else { count });
+      x.write(Self::cast(if flipped { self.n - count } else { count }));
     }
   }
 
   pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
     let mut out = [T::zero()];
-    self.fill_parts(rng, &mut out);
+    self.fill_parts(rng, as_uninit_mut(&mut out));
     out[0]
   }
 }
@@ -220,7 +222,7 @@ impl<T: PrimInt + Send + Sync + 'static> SimdKernel for SimdBinomial<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.rng, out);
   }
 

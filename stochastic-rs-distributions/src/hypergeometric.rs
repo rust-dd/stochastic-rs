@@ -11,6 +11,7 @@
 //! Reference: Kachitvichyanukul, V., Schmeiser, B.W. (1985), "Computer generation of hypergeometric random variates", *Journal of Statistical Computation and Simulation* 22, 127-145, DOI 10.1080/00949658508810839 (inverse-transform family).
 //! Reference: Johnson, N. L., Kemp, A. W. & Kotz, S. (2005), *Univariate Discrete Distributions*, 3rd ed., Wiley, §6.3, DOI 10.1002/0471715816 (moments).
 use std::marker::PhantomData;
+use std::mem::MaybeUninit;
 
 use num_traits::PrimInt;
 use rand::Rng;
@@ -126,9 +127,9 @@ impl<T: PrimInt> SimdHypergeometric<T> {
 
   /// Kept out of line because inlined into `sample_matrix`'s workers the table search slows their fills by about 5 %.
   #[inline(never)]
-  fn fill_parts<G: Rng + ?Sized>(&self, rng: &mut G, out: &mut [T]) {
+  fn fill_parts<G: Rng + ?Sized>(&self, rng: &mut G, out: &mut [MaybeUninit<T>]) {
     for x in out.iter_mut() {
-      *x = self.index_of(uniform53(rng.next_u64()));
+      x.write(self.index_of(uniform53(rng.next_u64())));
     }
   }
 
@@ -151,7 +152,7 @@ impl<T: PrimInt + Send + Sync + 'static> SimdKernel for SimdHypergeometric<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.rng, out);
   }
 

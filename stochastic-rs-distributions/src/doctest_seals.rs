@@ -4,7 +4,7 @@
 /// use stochastic_rs_distributions::DistributionSampler;
 /// struct Mine;
 /// impl DistributionSampler<f64> for Mine {
-///   fn fill_slice(&mut self, _out: &mut [f64]) {}
+///   fn fill_uninit(&mut self, _out: &mut [std::mem::MaybeUninit<f64>]) {}
 ///   fn fork(&mut self, _stream_idx: u64) -> Self { Mine }
 /// }
 /// ```

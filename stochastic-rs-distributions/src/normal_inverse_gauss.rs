@@ -6,6 +6,8 @@
 //!
 //! Sampling: `μ + βW + √W·Z` with `W ~ IG(δ/γ, δ²)`, Barndorff-Nielsen, O.E. (1997), "Normal Inverse Gaussian Distributions and Stochastic Volatility Modelling", *Scandinavian Journal of Statistics* 24(1), 1-13, DOI 10.1111/1467-9469.00045.
 
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -20,6 +22,7 @@ use crate::seeded::StreamState;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
+use crate::traits::distribution::as_uninit_mut;
 
 const SMALL_NIG_THRESHOLD: usize = 16;
 
@@ -133,13 +136,13 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
     &self,
     ig: &mut NormalPlusOwnState<T, R>,
     normal: &mut StreamState<T, R, 64>,
-    out: &mut [T],
+    out: &mut [MaybeUninit<T>],
   ) {
     if out.len() < SMALL_NIG_THRESHOLD {
       for x in out.iter_mut() {
         let d = self.ig.next(ig);
         let z = SimdNormal::<T>::standard().next(normal);
-        *x = self.mu + self.beta * d + d.sqrt() * z;
+        x.write(self.mu + self.beta * d + d.sqrt() * z);
       }
       return;
     }
@@ -149,7 +152,7 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
     let mut zbuf = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.ig.fill(ig, &mut dbuf);
+      self.ig.fill(ig, as_uninit_mut(&mut dbuf));
       SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf);
       for (sub, (d8, z8)) in chunk.as_chunks_mut::<8>().0.iter_mut().zip(
         dbuf
@@ -161,17 +164,17 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
         let d = T::simd_from_array(*d8);
         let z = T::simd_from_array(*z8);
         let x = mu + beta * d + T::simd_sqrt(d) * z;
-        *sub = T::simd_to_array(x);
+        *sub = T::simd_to_array(x).map(MaybeUninit::new);
       }
     }
     if !rem.is_empty() {
       let n = rem.len();
-      self.ig.fill(ig, &mut dbuf[..n]);
+      self.ig.fill(ig, as_uninit_mut(&mut dbuf[..n]));
       SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf[..n]);
       for i in 0..n {
         let d = dbuf[i];
         let z = zbuf[i];
-        rem[i] = self.mu + self.beta * d + d.sqrt() * z;
+        rem[i].write(self.mu + self.beta * d + d.sqrt() * z);
       }
     }
   }
@@ -207,7 +210,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdNormalInverseGauss<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut NigState<T, R>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut NigState<T, R>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.ig, &mut state.normal, out);
   }
 

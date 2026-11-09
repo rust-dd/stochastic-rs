@@ -2,6 +2,7 @@
 
 use std::fmt;
 use std::fmt::Debug;
+use std::mem::MaybeUninit;
 
 use num_traits::Zero;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -16,6 +17,7 @@ use crate::traits::distribution::DistributionSampler;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
+use crate::traits::distribution::as_uninit_mut;
 
 /// Values per `sample_matrix` worker: a fork plus a rayon task cost a few hundred nanoseconds.
 const MIN_PAR_CHUNK: usize = 16 * 1024;
@@ -95,7 +97,7 @@ impl<D: SimdDistribution, R: SimdRngExt> Sealed for Seeded<D, R> {}
 
 impl<D: SimdKernel, R: SimdRngExt> DistributionSampler<D::Item> for Seeded<D, R> {
   #[inline]
-  fn fill_slice(&mut self, out: &mut [D::Item]) {
+  fn fill_uninit(&mut self, out: &mut [MaybeUninit<D::Item>]) {
     self.dist.fill(&mut self.state, out);
   }
 
@@ -124,7 +126,7 @@ impl<T: Copy + Zero, const N: usize> Buffered<T, N> {
   /// Pops one value, refilling the whole buffer through `refill` when it is empty. Always inlined: once the
   /// inlined refill makes it large, LLVM may outline it and charge a call to every draw.
   #[inline(always)]
-  pub fn pop(&mut self, refill: impl FnOnce(&mut [T])) -> T {
+  pub fn pop(&mut self, refill: impl FnOnce(&mut [MaybeUninit<T>])) -> T {
     if self.idx >= N {
       self.refill(refill);
     }
@@ -134,8 +136,8 @@ impl<T: Copy + Zero, const N: usize> Buffered<T, N> {
   }
 
   #[inline]
-  fn refill(&mut self, refill: impl FnOnce(&mut [T])) {
-    refill(&mut self.buf);
+  fn refill(&mut self, refill: impl FnOnce(&mut [MaybeUninit<T>])) {
+    refill(as_uninit_mut(&mut self.buf));
     self.idx = 0;
   }
 }

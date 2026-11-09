@@ -26,6 +26,8 @@
 //! Gamma Process and Option Pricing", *European Finance Review* 2(1),
 //! 79-105. DOI: 10.1023/A:1009703431535
 
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -55,6 +57,7 @@ use crate::special::two_sum_far;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
+use crate::traits::distribution::as_uninit_mut;
 
 const SMALL_VG_THRESHOLD: usize = 16;
 
@@ -144,13 +147,13 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
     &self,
     gamma: &mut GammaState<T, R>,
     normal: &mut StreamState<T, R, 64>,
-    out: &mut [T],
+    out: &mut [MaybeUninit<T>],
   ) {
     if out.len() < SMALL_VG_THRESHOLD {
       for x in out.iter_mut() {
         let g = self.gamma.next(gamma);
         let z = SimdNormal::<T>::standard().next(normal);
-        *x = self.mu + self.theta * g + self.sigma * g.sqrt() * z;
+        x.write(self.mu + self.theta * g + self.sigma * g.sqrt() * z);
       }
       return;
     }
@@ -161,7 +164,7 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
     let mut zbuf = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.gamma.fill(gamma, &mut gbuf);
+      self.gamma.fill(gamma, as_uninit_mut(&mut gbuf));
       SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf);
       for (sub, (g8, z8)) in chunk.as_chunks_mut::<8>().0.iter_mut().zip(
         gbuf
@@ -173,15 +176,15 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
         let g = T::simd_from_array(*g8);
         let z = T::simd_from_array(*z8);
         let x = mu + theta * g + sigma * T::simd_sqrt(g) * z;
-        *sub = T::simd_to_array(x);
+        *sub = T::simd_to_array(x).map(MaybeUninit::new);
       }
     }
     if !rem.is_empty() {
       let n = rem.len();
-      self.gamma.fill(gamma, &mut gbuf[..n]);
+      self.gamma.fill(gamma, as_uninit_mut(&mut gbuf[..n]));
       SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf[..n]);
       for i in 0..n {
-        rem[i] = self.mu + self.theta * gbuf[i] + self.sigma * gbuf[i].sqrt() * zbuf[i];
+        rem[i].write(self.mu + self.theta * gbuf[i] + self.sigma * gbuf[i].sqrt() * zbuf[i]);
       }
     }
   }
@@ -461,7 +464,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdVarianceGamma<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut VgState<T, R>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut VgState<T, R>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.gamma, &mut state.normal, out);
   }
 

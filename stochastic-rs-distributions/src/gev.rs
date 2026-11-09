@@ -46,6 +46,8 @@
 //! - McNeil, A.J., Frey, R., Embrechts, P. (2015),
 //!   *Quantitative Risk Management*, Princeton UP, §7.2.
 
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -143,11 +145,11 @@ impl<T: SimdFloatExt> SimdGev<T> {
     }
   }
 
-  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [T]) {
+  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [MaybeUninit<T>]) {
     let gumbel = self.is_gumbel();
     if out.len() < SMALL_GEV_THRESHOLD {
       for x in out.iter_mut() {
-        *x = self.invert(T::sample_uniform_simd(rng), gumbel);
+        x.write(self.invert(T::sample_uniform_simd(rng), gumbel));
       }
       return;
     }
@@ -167,10 +169,10 @@ impl<T: SimdFloatExt> SimdGev<T> {
         let rise = T::simd_exp_m1(T::splat(-self.xi) * ln_m_ln_u) * T::splat(self.xi.recip());
         mu + T::splat(self.sigma) * rise
       };
-      *chunk = T::simd_to_array(x);
+      *chunk = T::simd_to_array(x).map(MaybeUninit::new);
     }
     for x in rem.iter_mut() {
-      *x = self.invert(T::sample_uniform_simd(rng), gumbel);
+      x.write(self.invert(T::sample_uniform_simd(rng), gumbel));
     }
   }
 
@@ -217,7 +219,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdGev<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.rng, out);
   }
 

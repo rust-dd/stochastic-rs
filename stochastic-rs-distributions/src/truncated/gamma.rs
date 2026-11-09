@@ -4,6 +4,7 @@
 //! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2 and §II.3, DOI 10.1007/978-1-4613-8643-8 (inversion and rejection).
 
 use std::fmt;
+use std::mem::MaybeUninit;
 use std::sync::OnceLock;
 
 use rand::Rng;
@@ -349,9 +350,9 @@ impl<T: SimdFloatExt> SimdDistribution for SimdTruncatedGamma<T> {
 impl<T: SimdFloatExt> SimdKernel for SimdTruncatedGamma<T> {
   type Item = T;
 
-  fn fill<R: SimdRngExt>(&self, state: &mut GammaState<T, R>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut GammaState<T, R>, out: &mut [MaybeUninit<T>]) {
     for x in out.iter_mut() {
-      *x = self.draw(state);
+      x.write(self.draw(state));
     }
   }
 

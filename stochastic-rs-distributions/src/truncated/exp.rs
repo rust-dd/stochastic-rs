@@ -2,6 +2,7 @@
 //!
 //! Reference: Johnson, N. L., Kotz, S. & Balakrishnan, N. (1994), *Continuous Univariate Distributions*, vol. 1, 2nd ed., Wiley, ch. 19, ISBN 0-471-58495-9 (the doubly truncated exponential's moments are its renormalised integrals).
 
+use std::mem::MaybeUninit;
 use std::sync::OnceLock;
 
 use num_complex::Complex64;
@@ -258,9 +259,9 @@ impl<T: SimdFloatExt> SimdDistribution for SimdTruncatedExp<T> {
 impl<T: SimdFloatExt> SimdKernel for SimdTruncatedExp<T> {
   type Item = T;
 
-  fn fill<R: SimdRngExt>(&self, state: &mut TruncatedExpState<R>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut TruncatedExpState<R>, out: &mut [MaybeUninit<T>]) {
     for x in out.iter_mut() {
-      *x = self.invert(state.rng.next_f64());
+      x.write(self.invert(state.rng.next_f64()));
     }
   }
 

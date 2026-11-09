@@ -7,6 +7,8 @@
 //! Sampling: `Z/sqrt(V/ν)` with `V ~ χ²_ν`, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §IX.5, DOI 10.1007/978-1-4613-8643-8.
 //! Reference: Abramowitz, M., Stegun, I.A. (1964), "Handbook of Mathematical Functions", NBS AMS 55, 26.7.5 (the Cornish–Fisher expansion of the quantile, `g₁` to `g₄`).
 
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -26,6 +28,7 @@ use crate::special::student_tail;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
+use crate::traits::distribution::as_uninit_mut;
 
 /// From this `ν` the entropy reads `½ ln(2πe) + Σ cₖν⁻ᵏ` (DLMF 5.11.1–2), cut under `0.2ε`, where
 /// `ψ`'s difference and `ln(√ν B(ν/2, ½))` cancel past the doubles' digits.
@@ -106,13 +109,13 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
     &self,
     normal: &mut StreamState<T, R, 64>,
     chisq: &mut GammaState<T, R>,
-    out: &mut [T],
+    out: &mut [MaybeUninit<T>],
   ) {
     if out.len() < SMALL_STUDENT_T_THRESHOLD {
       for x in out.iter_mut() {
         let z = SimdNormal::<T>::standard().next(normal);
         let v = self.chisq.next(chisq);
-        *x = z / (v / self.nu).sqrt();
+        x.write(z / (v / self.nu).sqrt());
       }
       return;
     }
@@ -122,7 +125,7 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
       SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf);
-      self.chisq.fill(chisq, &mut vbuf);
+      self.chisq.fill(chisq, as_uninit_mut(&mut vbuf));
       for (sub, (z8, v8)) in chunk.as_chunks_mut::<8>().0.iter_mut().zip(
         zbuf
           .as_chunks::<8>()
@@ -131,15 +134,15 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
           .zip(vbuf.as_chunks::<8>().0.iter()),
       ) {
         let x = T::simd_from_array(*z8) / T::simd_sqrt(T::simd_from_array(*v8) * inv_nu);
-        *sub = T::simd_to_array(x);
+        *sub = T::simd_to_array(x).map(MaybeUninit::new);
       }
     }
     if !rem.is_empty() {
       let n = rem.len();
       SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf[..n]);
-      self.chisq.fill(chisq, &mut vbuf[..n]);
+      self.chisq.fill(chisq, as_uninit_mut(&mut vbuf[..n]));
       for i in 0..n {
-        rem[i] = zbuf[i] / (vbuf[i] / self.nu).sqrt();
+        rem[i].write(zbuf[i] / (vbuf[i] / self.nu).sqrt());
       }
     }
   }
@@ -192,7 +195,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdStudentT<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut StudentTState<T, R>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut StudentTState<T, R>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.normal, &mut state.chisq, out);
   }
 

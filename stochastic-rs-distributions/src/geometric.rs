@@ -7,6 +7,7 @@
 //! Sampling: inversion `⌊ln(1 − U)/ln(1 − p)⌋ + 1` with `ln(1 − p)` as `ln_1p(−p)`, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §X.2, DOI 10.1007/978-1-4613-8643-8.
 
 use std::marker::PhantomData;
+use std::mem::MaybeUninit;
 
 use num_traits::PrimInt;
 use rand::Rng;
@@ -72,10 +73,12 @@ impl<T: PrimInt> SimdGeometric<T> {
     cast.unwrap_or(T::max_value())
   }
 
-  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [T]) {
+  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [MaybeUninit<T>]) {
     if out.len() < SMALL_GEOMETRIC_THRESHOLD {
       for x in out.iter_mut() {
-        *x = Self::count(((1.0 - rng.next_f64()).ln() * self.inv_ln_q).floor());
+        x.write(Self::count(
+          ((1.0 - rng.next_f64()).ln() * self.inv_ln_q).floor(),
+        ));
       }
       return;
     }
@@ -88,7 +91,7 @@ impl<T: PrimInt> SimdGeometric<T> {
         .floor()
         .to_array();
       for (o, &t) in chunk.iter_mut().zip(tmp.iter()) {
-        *o = Self::count(t);
+        o.write(Self::count(t));
       }
     }
     if !rem.is_empty() {
@@ -98,7 +101,7 @@ impl<T: PrimInt> SimdGeometric<T> {
         .floor()
         .to_array();
       for (o, &t) in rem.iter_mut().zip(tmp.iter()) {
-        *o = Self::count(t);
+        o.write(Self::count(t));
       }
     }
   }
@@ -122,7 +125,7 @@ impl<T: PrimInt + Send + Sync + 'static> SimdKernel for SimdGeometric<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.rng, out);
   }
 

@@ -32,6 +32,8 @@
 //! Transactions on Modeling and Computer Simulation* 19(4), Article 18.
 //! DOI: 10.1145/1596519.1596523
 
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -327,15 +329,15 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
     &self,
     normal: &mut StreamState<T, R, 64>,
     rng: &mut R,
-    out: &mut [T],
+    out: &mut [MaybeUninit<T>],
   ) {
     if let Path::PointMass(mean) = self.path {
-      out.fill(T::from_f64_fast(mean));
+      out.fill(MaybeUninit::new(T::from_f64_fast(mean)));
       return;
     }
     let mut src = (normal, rng);
     for x in out.iter_mut() {
-      *x = T::from_f64_fast(self.draw_scaled(&mut src));
+      x.write(T::from_f64_fast(self.draw_scaled(&mut src)));
     }
   }
 
@@ -384,7 +386,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdTemperedStable<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut NormalPlusOwnState<T, R>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut NormalPlusOwnState<T, R>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.normal, &mut state.rng, out);
   }
 

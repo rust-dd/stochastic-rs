@@ -60,6 +60,8 @@ wrapper's own parameter name.
 ```rust
 // stochastic-rs-distributions/src/foo.rs
 
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -93,7 +95,7 @@ impl<T: SimdFloatExt> SimdFoo<T> {
     /// The scalar algorithm on any `rand` rng; composites reuse it.
     pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T { /* ... */ }
 
-    fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [T]) { /* the SIMD kernel */ }
+    fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [MaybeUninit<T>]) { /* writes every slot once, reads none */ }
 }
 
 impl<T: SimdFloatExt> Sealed for SimdFoo<T> {}
@@ -110,7 +112,7 @@ impl<T: SimdFloatExt> SimdDistribution for SimdFoo<T> {
 impl<T: SimdFloatExt> SimdKernel for SimdFoo<T> {
     type Item = T;
 
-    fn fill<R: SimdRngExt>(&self, st: &mut StreamState<T, R, 16>, out: &mut [T]) {
+    fn fill<R: SimdRngExt>(&self, st: &mut StreamState<T, R, 16>, out: &mut [MaybeUninit<T>]) {
         self.fill_parts(&mut st.rng, out);
     }
 

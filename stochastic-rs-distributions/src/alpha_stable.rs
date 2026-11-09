@@ -8,6 +8,8 @@
 //! Scale, location and the `α = 1` case: Weron, R. (1996), "On the Chambers-Mallows-Stuck method for simulating skewed stable random variables", *Statistics & Probability Letters* 28(2), 165-171, DOI 10.1016/0167-7152(95)00113-1.
 //! Laplace transform at β = ±1: Samorodnitsky, G., Taqqu, M.S. (1994), *Stable Non-Gaussian Random Processes*, Chapman & Hall, Prop. 1.2.12.
 
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -181,7 +183,7 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
     self.location + self.scale * self.cms_s * (phi.sin() / denom) * tail
   }
 
-  fn fill_gaussian_branch<R: SimdRngExt>(&self, out: &mut [T], rng: &mut R) {
+  fn fill_gaussian_branch<R: SimdRngExt>(&self, out: &mut [MaybeUninit<T>], rng: &mut R) {
     let two = T::splat(T::from(2.0).unwrap());
     let pi2 = T::splat(T::two_pi());
     let scale = T::splat(self.scale * T::from(2.0).unwrap().sqrt());
@@ -201,7 +203,7 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
       let r = T::simd_sqrt(-two * T::simd_ln(v1));
       let z = r * T::simd_cos(pi2 * v2);
       let x = loc + scale * z;
-      *chunk = T::simd_to_array(x);
+      *chunk = T::simd_to_array(x).map(MaybeUninit::new);
     }
     if !rem.is_empty() {
       T::fill_uniform_simd(rng, &mut u1);
@@ -215,11 +217,11 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
       let r = T::simd_sqrt(-two * T::simd_ln(v1));
       let z = r * T::simd_cos(pi2 * v2);
       let x = T::simd_to_array(loc + scale * z);
-      rem.copy_from_slice(&x[..rem.len()]);
+      rem.copy_from_slice(&x.map(MaybeUninit::new)[..rem.len()]);
     }
   }
 
-  fn fill_alpha_not_one_branch<R: SimdRngExt>(&self, out: &mut [T], rng: &mut R) {
+  fn fill_alpha_not_one_branch<R: SimdRngExt>(&self, out: &mut [MaybeUninit<T>], rng: &mut R) {
     let alpha = self.alpha;
     let a = T::splat(alpha);
     let b_v = T::splat(self.cms_b);
@@ -261,7 +263,7 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
       let ratio = T::simd_max(T::simd_cos(v - phi) / w, min_pos);
       let tail = T::simd_powf(ratio, exp_term);
       let x = loc + scale * s_v * (numer / denom) * tail;
-      *chunk = T::simd_to_array(x);
+      *chunk = T::simd_to_array(x).map(MaybeUninit::new);
     }
     if !rem.is_empty() {
       T::fill_uniform_simd(rng, &mut u);
@@ -281,20 +283,20 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
       let ratio = T::simd_max(T::simd_cos(v - phi) / w, min_pos);
       let tail = T::simd_powf(ratio, exp_term);
       let x = T::simd_to_array(loc + scale * s_v * (numer / denom) * tail);
-      rem.copy_from_slice(&x[..rem.len()]);
+      rem.copy_from_slice(&x.map(MaybeUninit::new)[..rem.len()]);
     }
   }
 
-  fn fill_alpha_one_branch<R: SimdRngExt>(&self, out: &mut [T], rng: &mut R) {
+  fn fill_alpha_one_branch<R: SimdRngExt>(&self, out: &mut [MaybeUninit<T>], rng: &mut R) {
     let location = self.unit_index_location();
     for x in out.iter_mut() {
       let u = T::sample_uniform_simd(rng);
       let e = T::sample_uniform_simd(rng);
-      *x = self.unit_index_one(u, e, location);
+      x.write(self.unit_index_one(u, e, location));
     }
   }
 
-  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [T]) {
+  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [MaybeUninit<T>]) {
     if out.is_empty() {
       return;
     }
@@ -330,7 +332,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdAlphaStable<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.rng, out);
   }
 
@@ -461,138 +463,4 @@ py_distribution!(PyAlphaStable, SimdAlphaStable,
 );
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::*;
-  use crate::normal::SimdNormal;
-  use crate::tests::assert_ecf_matches;
-  use crate::tests::assert_mean_within;
-  use crate::tests::scalar_draws;
-  use crate::tests::scalar_ks_best_p;
-  use crate::traits::DistributionExt;
-  use crate::traits::DistributionSampler;
-
-  /// Every single-precision draw is finite.
-  ///
-  /// The Chambers-Mallows-Stuck form divides by `cos(v)^(1/alpha)`, and `v`
-  /// is drawn from the open interval where that cosine is positive — but the
-  /// lane-wise cosine is an approximation, and within an ulp of ±pi/2 it can
-  /// return a small negative, which turns the fractional power into a NaN.
-  /// The rate is about one draw in ten million, so the seed is pinned to one
-  /// that hits it: seed 2 fails 352 453 draws in, whatever `alpha` is, since
-  /// the offending value is in the uniform stream rather than the law. A
-  /// Levy fractional stable motion path turning to NaN is how it first
-  /// showed up.
-  #[test]
-  fn single_precision_draws_stay_finite() {
-    for alpha in [0.9_f64, 1.1, 1.5, 1.7, 1.9] {
-      let dist = SimdAlphaStable::<f32>::new(alpha as f32, 0.2, 1.0, 0.0);
-      let mut out = vec![0.0_f32; 360_000];
-      dist.seeded(&Deterministic::new(2)).fill_slice(&mut out);
-      let bad = out.iter().filter(|x| !x.is_finite()).count();
-      assert_eq!(
-        bad,
-        0,
-        "alpha = {alpha}: {bad} non-finite draws of {}",
-        out.len()
-      );
-    }
-  }
-
-  #[test]
-  fn alpha_stable_samples_are_finite() {
-    let dist = SimdAlphaStable::<f64>::new(1.7_f64, 0.3, 1.0, 0.0);
-    let mut xs = vec![0.0_f64; 1024];
-    dist.seeded(&Deterministic::new(0xa1fa)).fill_slice(&mut xs);
-    assert!(xs.iter().all(|x| x.is_finite()));
-  }
-
-  /// The unit-index case has `β ≠ 0` and `σ ≠ 1`, where Weron's `(2/π)βσ ln σ` shift is visible.
-  #[test]
-  fn scalar_sample_matches_the_characteristic_function() {
-    for (alpha, beta, scale, location) in [
-      (1.7, 0.3, 1.0, 0.0),
-      (0.8, -0.6, 1.5, 0.4),
-      (1.0, 0.5, 2.0, 0.3),
-    ] {
-      let d = SimdAlphaStable::<f64>::new(alpha, beta, scale, location);
-      let xs = scalar_draws(&d, 11, 200_000);
-      assert_ecf_matches(
-        &xs,
-        |u| d.characteristic_function(u).unwrap(),
-        &format!("α={alpha}"),
-      );
-    }
-  }
-
-  #[test]
-  fn unit_index_stream_matches_the_characteristic_function() {
-    let d = SimdAlphaStable::<f64>::new(1.0, 0.5, 2.0, 0.3);
-    let mut xs = vec![0.0; 200_000];
-    d.seeded(&Deterministic::new(5)).fill_slice(&mut xs);
-    assert_ecf_matches(&xs, |u| d.characteristic_function(u).unwrap(), "seeded α=1");
-  }
-
-  #[test]
-  fn scalar_gaussian_index_matches_the_normal_cdf() {
-    let d = SimdAlphaStable::<f64>::new(2.0, 0.0, 1.0, 0.0);
-    let normal = SimdNormal::<f64>::new(0.0, std::f64::consts::SQRT_2);
-    let best = scalar_ks_best_p(&d, |x| normal.cdf(x).unwrap());
-    assert!(best > 0.01, "best p = {best}");
-  }
-
-  /// Just off α = 1 the S₁ law sits at β tan(πα/2) (3.18e6 here), which only the general formula reaches; α = 1 itself
-  /// takes the unit-index formula, whose median is 0.2235 (scipy's S₁ quantile).
-  #[test]
-  fn near_unit_index_takes_the_general_formula() {
-    let d = SimdAlphaStable::<f64>::new(1.0 - 1e-7, 0.5, 1.0, 0.0);
-    let mut xs = vec![0.0; 20_001];
-    d.seeded(&Deterministic::new(3)).fill_slice(&mut xs);
-    xs.sort_by(f64::total_cmp);
-    let median = xs[10_000];
-    assert!(
-      (median / 3_183_098.863_513_323 - 1.0).abs() < 1e-4,
-      "median {median}"
-    );
-    let exact = SimdAlphaStable::<f64>::new(1.0, 0.5, 1.0, 0.0);
-    let mut ys = vec![0.0; 20_001];
-    exact.seeded(&Deterministic::new(3)).fill_slice(&mut ys);
-    ys.sort_by(f64::total_cmp);
-    assert!(
-      (ys[10_000] - 0.2235).abs() < 0.06,
-      "α = 1 median {}",
-      ys[10_000]
-    );
-  }
-
-  /// β = ±1 on the light side: mpmath's closed form, which a quadrature of scipy's S1 density matches to 1e-15.
-  #[test]
-  fn totally_skewed_mgf_is_finite_on_the_light_side() {
-    for (alpha, beta, scale, location, t, want) in [
-      (1.5, 1.0, 1.0, 0.0, -1.0, 4.113_250_378_782_927_5),
-      (0.6, -1.0, 1.3, -0.2, 0.8, 0.149_297_822_303_602_06),
-      (1.0, 1.0, 1.0, 0.0, -2.0, 2.417_036_977_698_200_6),
-      (1.0, -1.0, 0.8, 0.4, 1.5, 2.483_707_803_701_905),
-    ] {
-      let d = SimdAlphaStable::<f64>::new(alpha, beta, scale, location);
-      let got = d.moment_generating_function(t).unwrap();
-      assert!(
-        (got - want).abs() < 1e-13 * want,
-        "α={alpha} β={beta} t={t}: {got} vs {want}"
-      );
-      assert_eq!(d.moment_generating_function(-t), Some(f64::INFINITY));
-    }
-    let d = SimdAlphaStable::<f64>::new(1.5, 1.0, 1.0, 0.0);
-    let tilted = scalar_draws(&d, 3, 200_000)
-      .iter()
-      .map(|x| (-x).exp())
-      .collect::<Vec<_>>();
-    assert_mean_within(
-      &tilted,
-      d.moment_generating_function(-1.0).unwrap(),
-      5.0,
-      "E e^(-X)",
-    );
-  }
-}
+mod tests;

@@ -6,6 +6,8 @@
 //!
 //! Sampling: inversion, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
 
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -70,11 +72,11 @@ impl<T: SimdFloatExt> SimdPareto<T> {
     self.x_m * (base.ln() * neg_inv_alpha).exp()
   }
 
-  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [T]) {
+  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [MaybeUninit<T>]) {
     if out.len() < SMALL_PARETO_THRESHOLD {
       let neg_inv_alpha = -T::one() / self.alpha;
       for x in out.iter_mut() {
-        *x = self.invert(T::sample_uniform_simd(rng), neg_inv_alpha);
+        x.write(self.invert(T::sample_uniform_simd(rng), neg_inv_alpha));
       }
       return;
     }
@@ -89,14 +91,14 @@ impl<T: SimdFloatExt> SimdPareto<T> {
       let v = T::simd_from_array(u);
       let base = T::simd_max(one - v, eps);
       let x = xm * T::simd_exp(T::simd_ln(base) * neg_inv_alpha);
-      *chunk = T::simd_to_array(x);
+      *chunk = T::simd_to_array(x).map(MaybeUninit::new);
     }
     if !rem.is_empty() {
       T::fill_uniform_simd(rng, &mut u);
       let v = T::simd_from_array(u);
       let base = T::simd_max(one - v, eps);
       let x = T::simd_to_array(xm * T::simd_exp(T::simd_ln(base) * neg_inv_alpha));
-      rem.copy_from_slice(&x[..rem.len()]);
+      rem.copy_from_slice(&x.map(MaybeUninit::new)[..rem.len()]);
     }
   }
 
@@ -119,7 +121,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdPareto<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.rng, out);
   }
 

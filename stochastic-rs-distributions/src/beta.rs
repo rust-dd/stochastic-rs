@@ -6,6 +6,8 @@
 //!
 //! Sampling: `G1/(G1 + G2)` of two gammas, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §IX.4, DOI 10.1007/978-1-4613-8643-8.
 
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -18,6 +20,7 @@ use crate::seeded::Buffered;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
+use crate::traits::distribution::as_uninit_mut;
 
 const SMALL_BETA_THRESHOLD: usize = 16;
 
@@ -143,17 +146,17 @@ impl<T: SimdFloatExt> SimdBeta<T> {
     &self,
     g1: &mut GammaState<T, R>,
     g2: &mut GammaState<T, R>,
-    out: &mut [T],
+    out: &mut [MaybeUninit<T>],
   ) {
     if out.len() < SMALL_BETA_THRESHOLD {
       for x in out.iter_mut() {
         let a = self.gamma1.next(g1);
         let b = self.gamma2.next(g2);
-        *x = if a + b > T::zero() {
+        x.write(if a + b > T::zero() {
           ratio(a, b)
         } else {
           self.ratio_from_logs(g1, g2)
-        };
+        });
       }
       return;
     }
@@ -161,8 +164,8 @@ impl<T: SimdFloatExt> SimdBeta<T> {
     let mut gb = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.gamma1.fill(g1, &mut ga);
-      self.gamma2.fill(g2, &mut gb);
+      self.gamma1.fill(g1, as_uninit_mut(&mut ga));
+      self.gamma2.fill(g2, as_uninit_mut(&mut gb));
       for (sub, (a8, b8)) in chunk.as_chunks_mut::<8>().0.iter_mut().zip(
         ga.as_chunks::<8>()
           .0
@@ -171,8 +174,8 @@ impl<T: SimdFloatExt> SimdBeta<T> {
       ) {
         let a = T::simd_from_array(*a8);
         let b = T::simd_from_array(*b8);
-        *sub = T::simd_to_array(a / (a + b));
-        for (j, x) in sub.iter_mut().enumerate() {
+        let mut r = T::simd_to_array(a / (a + b));
+        for (j, x) in r.iter_mut().enumerate() {
           let sum = a8[j] + b8[j];
           if sum <= T::zero() {
             *x = self.ratio_from_logs(g1, g2);
@@ -180,18 +183,19 @@ impl<T: SimdFloatExt> SimdBeta<T> {
             *x = ratio(a8[j], b8[j]);
           }
         }
+        *sub = r.map(MaybeUninit::new);
       }
     }
     if !rem.is_empty() {
       let n = rem.len();
-      self.gamma1.fill(g1, &mut ga[..n]);
-      self.gamma2.fill(g2, &mut gb[..n]);
+      self.gamma1.fill(g1, as_uninit_mut(&mut ga[..n]));
+      self.gamma2.fill(g2, as_uninit_mut(&mut gb[..n]));
       for i in 0..n {
-        rem[i] = if ga[i] + gb[i] > T::zero() {
+        rem[i].write(if ga[i] + gb[i] > T::zero() {
           ratio(ga[i], gb[i])
         } else {
           self.ratio_from_logs(g1, g2)
-        };
+        });
       }
     }
   }
@@ -233,7 +237,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdBeta<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut BetaState<T, R>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut BetaState<T, R>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.g1, &mut state.g2, out);
   }
 

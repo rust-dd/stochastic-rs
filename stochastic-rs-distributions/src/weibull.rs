@@ -6,6 +6,8 @@
 //!
 //! Sampling: `λ·E^{1/k}` with `E ~ Exp(1)`, inversion, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
 
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -18,6 +20,7 @@ use crate::seeded::StreamState;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
+use crate::traits::distribution::as_uninit_mut;
 
 /// Weibull law with scale `lambda` and shape `k`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -75,14 +78,14 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
   }
 
   /// `λ·E^{1/k}` over `Exp(1)` magnitudes drawn in 64-blocks, the power running 8-wide.
-  fn fill_parts<R: SimdRngExt>(&self, exp: &mut StreamState<T, R, 64>, out: &mut [T]) {
+  fn fill_parts<R: SimdRngExt>(&self, exp: &mut StreamState<T, R, 64>, out: &mut [MaybeUninit<T>]) {
     let exp1 = SimdExp::<T>::standard();
     let lambda = T::splat(self.lambda);
     let inv_k = self.inv_k;
     let mut tmp = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      exp1.fill(exp, &mut tmp);
+      exp1.fill(exp, as_uninit_mut(&mut tmp));
       for (sub, e8) in chunk
         .as_chunks_mut::<8>()
         .0
@@ -90,23 +93,23 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
         .zip(tmp.as_chunks::<8>().0.iter())
       {
         let y = lambda * T::simd_powf(T::simd_from_array(*e8), inv_k);
-        *sub = T::simd_to_array(y);
+        *sub = T::simd_to_array(y).map(MaybeUninit::new);
       }
     }
     if !rem.is_empty() {
       let n = rem.len();
-      exp1.fill(exp, &mut tmp[..n]);
+      exp1.fill(exp, as_uninit_mut(&mut tmp[..n]));
       let mut off = 0;
       let (sub, sub_rem) = rem.as_chunks_mut::<8>();
       for s in sub.iter_mut() {
         let mut a = [T::zero(); 8];
         a.copy_from_slice(&tmp[off..off + 8]);
         let y = lambda * T::simd_powf(T::simd_from_array(a), inv_k);
-        *s = T::simd_to_array(y);
+        *s = T::simd_to_array(y).map(MaybeUninit::new);
         off += 8;
       }
       for (i, x) in sub_rem.iter_mut().enumerate() {
-        *x = self.lambda * tmp[off + i].powf(inv_k);
+        x.write(self.lambda * tmp[off + i].powf(inv_k));
       }
     }
   }
@@ -137,7 +140,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdWeibull<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut ExpDerivedState<T, R>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut ExpDerivedState<T, R>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.exp, out);
   }
 

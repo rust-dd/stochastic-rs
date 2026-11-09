@@ -6,6 +6,8 @@
 //!
 //! Sampling: Michael, J.R., Schucany, W.R., Haas, R.W. (1976), "Generating Random Variates Using Transformations with Multiple Roots", *The American Statistician* 30(2), 88-90, DOI 10.1080/00031305.1976.10479147.
 
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -109,14 +111,14 @@ impl<T: SimdFloatExt> SimdInverseGauss<T> {
     &self,
     normal: &mut StreamState<T, R, 64>,
     rng: &mut R,
-    out: &mut [T],
+    out: &mut [MaybeUninit<T>],
   ) {
     if out.len() < SMALL_INVERSE_GAUSS_THRESHOLD {
       for x in out.iter_mut() {
-        *x = self.msh(
+        x.write(self.msh(
           SimdNormal::<T>::standard().next(normal),
           T::sample_uniform_simd(rng),
-        );
+        ));
       }
       return;
     }
@@ -149,7 +151,7 @@ impl<T: SimdFloatExt> SimdInverseGauss<T> {
         let ca = T::simd_to_array(check);
         let aa = T::simd_to_array(alt);
         for j in 0..8 {
-          sub[j] = if u8[j] < ca[j] { xa[j] } else { aa[j] };
+          sub[j].write(if u8[j] < ca[j] { xa[j] } else { aa[j] });
         }
       }
     }
@@ -158,7 +160,7 @@ impl<T: SimdFloatExt> SimdInverseGauss<T> {
       SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf[..n]);
       T::fill_uniform_simd(rng, &mut ubuf[..n]);
       for i in 0..n {
-        rem[i] = self.msh(zbuf[i], ubuf[i]);
+        rem[i].write(self.msh(zbuf[i], ubuf[i]));
       }
     }
   }
@@ -183,7 +185,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdInverseGauss<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut NormalPlusOwnState<T, R>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut NormalPlusOwnState<T, R>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.normal, &mut state.rng, out);
   }
 

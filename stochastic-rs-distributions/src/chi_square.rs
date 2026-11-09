@@ -6,6 +6,8 @@
 //!
 //! Sampling: `Gamma(k/2, 2)` by Marsaglia, G., Tsang, W.W. (2000), "A simple method for generating gamma variables", *ACM TOMS* 26(3), 363-372, DOI 10.1145/358407.358414.
 
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -74,7 +76,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdChiSquared<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut GammaState<T, R>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut GammaState<T, R>, out: &mut [MaybeUninit<T>]) {
     self.gamma.fill(state, out);
   }
 

@@ -6,6 +6,7 @@
 //!
 //! Sampling: Marsaglia, G., Tsang, W.W. (2000), "The Ziggurat Method for Generating Random Variables", *Journal of Statistical Software* 5(8), DOI 10.18637/jss.v005.i08.
 
+use std::mem::MaybeUninit;
 use std::sync::OnceLock;
 
 use rand::Rng;
@@ -22,6 +23,7 @@ use crate::traits::SimdFloatExt;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
+use crate::traits::distribution::as_uninit_mut;
 
 /// Precomputed lookup tables for the Ziggurat algorithm (normal distribution).
 /// `kn` holds threshold integers for the fast-accept test,
@@ -171,12 +173,12 @@ const LAYER_MASK: i32x8 = i32x8::splat(127);
 fn zig_batch8<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
   hz: i32x8,
   tables: &ZigTables,
-  mean: T,
-  std_dev: T,
-  mean_simd: T::Simd,
-  std_dev_simd: T::Simd,
+  mu: T,
+  sigma: T,
+  mu_simd: T::Simd,
+  sigma_simd: T::Simd,
   rng: &mut R,
-  out: &mut [T],
+  out: &mut [MaybeUninit<T>],
 ) {
   let iz = hz & LAYER_MASK;
   let iz_arr = iz.to_array();
@@ -225,9 +227,9 @@ fn zig_batch8<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
       let scaled = if STANDARD {
         result
       } else {
-        mean_simd + std_dev_simd * result
+        mu_simd + sigma_simd * result
       };
-      out[..8].copy_from_slice(&T::simd_to_array(scaled));
+      out[..8].copy_from_slice(&T::simd_to_array(scaled).map(MaybeUninit::new));
     } else {
       let hz_arr = hz.to_array();
       let accept_arr = accept.to_array();
@@ -238,7 +240,7 @@ fn zig_batch8<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
         } else {
           nfix::<T, R>(hz_arr[i], iz_arr[i] as usize, tables, rng)
         };
-        out[i] = if STANDARD { z } else { mean + std_dev * z };
+        out[i].write(if STANDARD { z } else { mu + sigma * z });
       }
     }
   }
@@ -248,22 +250,22 @@ fn zig_batch8<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
 /// inlined into a pop loop's refill this kernel slows the loop.
 #[inline(never)]
 fn fill_zig_impl<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
-  buf: &mut [T],
+  buf: &mut [MaybeUninit<T>],
   rng: &mut R,
-  mean: T,
-  std_dev: T,
+  mu: T,
+  sigma: T,
 ) {
   let len = buf.len();
   let tables = zig_tables();
   if len < SMALL_NORMAL_THRESHOLD {
     for x in buf.iter_mut() {
       let z = sample_one_standard::<T, R>(rng, tables);
-      *x = if STANDARD { z } else { mean + std_dev * z };
+      x.write(if STANDARD { z } else { mu + sigma * z });
     }
     return;
   }
-  let mean_simd = T::splat(mean);
-  let std_dev_simd = T::splat(std_dev);
+  let mu_simd = T::splat(mu);
+  let sigma_simd = T::splat(sigma);
   let mut filled = 0;
 
   if R::HAS_PAIR_ILP {
@@ -272,20 +274,20 @@ fn fill_zig_impl<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
       zig_batch8::<T, R, STANDARD>(
         hz_a,
         tables,
-        mean,
-        std_dev,
-        mean_simd,
-        std_dev_simd,
+        mu,
+        sigma,
+        mu_simd,
+        sigma_simd,
         rng,
         &mut buf[filled..filled + 8],
       );
       zig_batch8::<T, R, STANDARD>(
         hz_b,
         tables,
-        mean,
-        std_dev,
-        mean_simd,
-        std_dev_simd,
+        mu,
+        sigma,
+        mu_simd,
+        sigma_simd,
         rng,
         &mut buf[filled + 8..filled + 16],
       );
@@ -297,10 +299,10 @@ fn fill_zig_impl<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
     zig_batch8::<T, R, STANDARD>(
       hz,
       tables,
-      mean,
-      std_dev,
-      mean_simd,
-      std_dev_simd,
+      mu,
+      sigma,
+      mu_simd,
+      sigma_simd,
       rng,
       &mut buf[filled..filled + 8],
     );
@@ -308,7 +310,7 @@ fn fill_zig_impl<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
   }
   while filled < len {
     let z = sample_one_standard::<T, R>(rng, tables);
-    buf[filled] = if STANDARD { z } else { mean + std_dev * z };
+    buf[filled].write(if STANDARD { z } else { mu + sigma * z });
     filled += 1;
   }
 }
@@ -357,7 +359,7 @@ impl<T: SimdFloatExt> SimdNormal<T> {
   }
 
   pub(crate) fn fill_standard<R: SimdRngExt>(rng: &mut R, out: &mut [T]) {
-    fill_zig_impl::<T, R, true>(out, rng, T::zero(), T::one());
+    fill_zig_impl::<T, R, true>(as_uninit_mut(out), rng, T::zero(), T::one());
   }
 
   pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
@@ -386,7 +388,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdNormal<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 64>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 64>, out: &mut [MaybeUninit<T>]) {
     fill_zig_impl::<T, R, false>(out, &mut state.rng, self.mu, self.sigma);
   }
 
@@ -498,7 +500,7 @@ mod zig_tests {
       f64::splat(0.0),
       f64::splat(1.0),
       &mut rng,
-      &mut out,
+      as_uninit_mut(&mut out),
     );
     assert_ne!(
       out[0],

@@ -5,6 +5,8 @@
 //! $$
 //!
 
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -67,7 +69,11 @@ impl<T: SimdFloatExt> SimdLogNormal<T> {
     self.sigma
   }
 
-  fn fill_parts<R: SimdRngExt>(&self, normal: &mut StreamState<T, R, 64>, out: &mut [T]) {
+  fn fill_parts<R: SimdRngExt>(
+    &self,
+    normal: &mut StreamState<T, R, 64>,
+    out: &mut [MaybeUninit<T>],
+  ) {
     let mm = T::splat(self.mu);
     let ss = T::splat(self.sigma);
     let mut tmp = [T::zero(); 16];
@@ -80,7 +86,7 @@ impl<T: SimdFloatExt> SimdLogNormal<T> {
         a.copy_from_slice(&tmp[base..base + 8]);
         let z = T::simd_from_array(a);
         let x = T::simd_to_array(T::simd_exp(mm + ss * z));
-        chunk[base..base + 8].copy_from_slice(&x);
+        chunk[base..base + 8].copy_from_slice(&x.map(MaybeUninit::new));
       }
     }
     if !rem.is_empty() {
@@ -91,7 +97,7 @@ impl<T: SimdFloatExt> SimdLogNormal<T> {
         a.copy_from_slice(&tmp[done..done + 8]);
         let z = T::simd_from_array(a);
         let x = T::simd_to_array(T::simd_exp(mm + ss * z));
-        rem[done..done + 8].copy_from_slice(&x);
+        rem[done..done + 8].copy_from_slice(&x.map(MaybeUninit::new));
         done += 8;
       }
       if done < rem.len() {
@@ -100,7 +106,7 @@ impl<T: SimdFloatExt> SimdLogNormal<T> {
         a[..left].copy_from_slice(&tmp[done..done + left]);
         let z = T::simd_from_array(a);
         let x = T::simd_to_array(T::simd_exp(mm + ss * z));
-        rem[done..done + left].copy_from_slice(&x[..left]);
+        rem[done..done + left].copy_from_slice(&x.map(MaybeUninit::new)[..left]);
       }
     }
   }
@@ -139,7 +145,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdLogNormal<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut NormalDerivedState<T, R>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut NormalDerivedState<T, R>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.normal, out);
   }
 

@@ -25,6 +25,8 @@
 //! Estimation", *International Economic Review* 35(3), 705-730.
 //! DOI: 10.2307/2527081
 
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -39,6 +41,7 @@ use crate::traits::DistributionExt;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
+use crate::traits::distribution::as_uninit_mut;
 
 const SMALL_SKEW_T_THRESHOLD: usize = 16;
 
@@ -125,14 +128,14 @@ impl<T: SimdFloatExt> SimdSkewT<T> {
     &self,
     student: &mut StudentTState<T, R>,
     rng: &mut R,
-    out: &mut [T],
+    out: &mut [MaybeUninit<T>],
   ) {
     let (right, left, shift, p_right) = self.pieces();
     if out.len() < SMALL_SKEW_T_THRESHOLD {
       for x in out.iter_mut() {
         let w = self.student.next(student).abs();
         let u = T::sample_uniform_simd(rng);
-        *x = if u < p_right { right * w } else { left * w } + shift;
+        x.write(if u < p_right { right * w } else { left * w } + shift);
       }
       return;
     }
@@ -140,28 +143,32 @@ impl<T: SimdFloatExt> SimdSkewT<T> {
     let mut ubuf = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.student.fill(student, &mut tbuf);
+      self.student.fill(student, as_uninit_mut(&mut tbuf));
       T::fill_uniform_simd(rng, &mut ubuf);
       for i in 0..64 {
         let w = tbuf[i].abs();
-        chunk[i] = if ubuf[i] < p_right {
-          right * w
-        } else {
-          left * w
-        } + shift;
+        chunk[i].write(
+          if ubuf[i] < p_right {
+            right * w
+          } else {
+            left * w
+          } + shift,
+        );
       }
     }
     if !rem.is_empty() {
       let n = rem.len();
-      self.student.fill(student, &mut tbuf[..n]);
+      self.student.fill(student, as_uninit_mut(&mut tbuf[..n]));
       T::fill_uniform_simd(rng, &mut ubuf[..n]);
       for i in 0..n {
         let w = tbuf[i].abs();
-        rem[i] = if ubuf[i] < p_right {
-          right * w
-        } else {
-          left * w
-        } + shift;
+        rem[i].write(
+          if ubuf[i] < p_right {
+            right * w
+          } else {
+            left * w
+          } + shift,
+        );
       }
     }
   }
@@ -225,7 +232,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdSkewT<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut SkewTState<T, R>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut SkewTState<T, R>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.student, &mut state.rng, out);
   }
 

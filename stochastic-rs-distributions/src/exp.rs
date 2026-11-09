@@ -6,6 +6,7 @@
 //!
 //! Sampling: Marsaglia, G., Tsang, W.W. (2000), "The Ziggurat Method for Generating Random Variables", *Journal of Statistical Software* 5(8), DOI 10.18637/jss.v005.i08.
 
+use std::mem::MaybeUninit;
 use std::sync::OnceLock;
 
 use rand::Rng;
@@ -142,7 +143,7 @@ fn exp_batch8<T: SimdFloatExt, R: SimdRngExt>(
   factor: T,
   factor_simd: T::Simd,
   rng: &mut R,
-  out: &mut [T],
+  out: &mut [MaybeUninit<T>],
 ) {
   let iz = hz & LAYER_MASK;
   let iz_arr = iz.to_array();
@@ -176,17 +177,17 @@ fn exp_batch8<T: SimdFloatExt, R: SimdRngExt>(
     let result = hz_float * T::simd_from_array(we_arr) * factor_simd;
 
     if accept.all() {
-      out[..8].copy_from_slice(&T::simd_to_array(result));
+      out[..8].copy_from_slice(&T::simd_to_array(result).map(MaybeUninit::new));
     } else {
       let hz_arr = hz.to_array();
       let accept_arr = accept.to_array();
       let result_arr = T::simd_to_array(result);
       for i in 0..8 {
-        out[i] = if accept_arr[i] != 0 {
+        out[i].write(if accept_arr[i] != 0 {
           result_arr[i]
         } else {
           efix::<T, R>(hz_arr[i], iz_arr[i] as usize, tables, rng) * factor
-        };
+        });
       }
     }
   }
@@ -195,12 +196,16 @@ fn exp_batch8<T: SimdFloatExt, R: SimdRngExt>(
 /// Exp(1) Ziggurat fill scaled by `factor` (= 1/λ) at the store; kept out of line because inlined into a
 /// pop loop's refill this kernel slows the loop.
 #[inline(never)]
-fn fill_exp_scaled<T: SimdFloatExt, R: SimdRngExt>(buf: &mut [T], rng: &mut R, factor: T) {
+fn fill_exp_scaled<T: SimdFloatExt, R: SimdRngExt>(
+  buf: &mut [MaybeUninit<T>],
+  rng: &mut R,
+  factor: T,
+) {
   let tables = exp_zig_tables();
   let len = buf.len();
   if len < SMALL_EXP_THRESHOLD {
     for x in buf.iter_mut() {
-      *x = sample_exp1_one::<T, R>(rng, tables) * factor;
+      x.write(sample_exp1_one::<T, R>(rng, tables) * factor);
     }
     return;
   }
@@ -242,7 +247,7 @@ fn fill_exp_scaled<T: SimdFloatExt, R: SimdRngExt>(buf: &mut [T], rng: &mut R, f
     filled += 8;
   }
   while filled < len {
-    buf[filled] = sample_exp1_one::<T, R>(rng, tables) * factor;
+    buf[filled].write(sample_exp1_one::<T, R>(rng, tables) * factor);
     filled += 1;
   }
 }
@@ -303,7 +308,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdExp<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 64>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 64>, out: &mut [MaybeUninit<T>]) {
     fill_exp_scaled(out, &mut state.rng, T::one() / self.lambda);
   }
 
@@ -411,6 +416,7 @@ mod zig_tests {
   use wide::i32x8;
 
   use super::*;
+  use crate::traits::distribution::as_uninit_mut;
 
   /// `i32::MIN` has no magnitude in `i32`: `abs` wraps, and a lane accepted on it is a negative draw.
   #[test]
@@ -419,7 +425,14 @@ mod zig_tests {
     let mut rng = SimdRng::from_seed(11);
     let mut out = [0.0_f64; 8];
     let hz = i32x8::new([i32::MIN, 1, 2, 3, 4, 5, 6, 7]);
-    exp_batch8::<f64, SimdRng>(hz, tables, 1.0, f64::splat(1.0), &mut rng, &mut out);
+    exp_batch8::<f64, SimdRng>(
+      hz,
+      tables,
+      1.0,
+      f64::splat(1.0),
+      &mut rng,
+      as_uninit_mut(&mut out),
+    );
     assert!(out[0] >= 0.0, "lane 0 is a draw, got {}", out[0]);
     assert!(out[0] >= ZIG_EXP_R, "lane 0 is a tail draw, got {}", out[0]);
   }

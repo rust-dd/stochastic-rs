@@ -12,6 +12,7 @@
 //! Reference: Choi, K.P. (1994), "On the medians of gamma distributions and an equation of Ramanujan", *Proceedings of the American Mathematical Society* 121(1), 245-251, DOI 10.1090/S0002-9939-1994-1195477-8 (the median bracket `λ − ln 2 ≤ m < λ + 1/3`).
 
 use std::marker::PhantomData;
+use std::mem::MaybeUninit;
 
 use num_traits::PrimInt;
 use rand::Rng;
@@ -230,16 +231,16 @@ impl<T: PrimInt> SimdPoisson<T> {
 
   /// Kept out of line because inlined into a consumer's per-step pop the table search slows that loop by about 30 %.
   #[inline(never)]
-  fn fill_parts<G: Rng + ?Sized>(&self, rng: &mut G, out: &mut [T]) {
+  fn fill_parts<G: Rng + ?Sized>(&self, rng: &mut G, out: &mut [MaybeUninit<T>]) {
     match &self.sampler {
       Sampler::Table(table) => {
         for x in out.iter_mut() {
-          *x = Self::count(table_index(table, uniform53(rng.next_u64())));
+          x.write(Self::count(table_index(table, uniform53(rng.next_u64()))));
         }
       }
       Sampler::Ptrs(ptrs) => {
         for x in out.iter_mut() {
-          *x = Self::count(ptrs.draw(|| uniform53(rng.next_u64())) as u64);
+          x.write(Self::count(ptrs.draw(|| uniform53(rng.next_u64())) as u64));
         }
       }
     }
@@ -267,7 +268,7 @@ impl<T: PrimInt + Send + Sync + 'static> SimdKernel for SimdPoisson<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.rng, out);
   }
 

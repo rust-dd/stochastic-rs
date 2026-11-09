@@ -17,6 +17,8 @@
 //! Reference: Marsaglia, G., Tsang, W.W. (2000), "A simple method for
 //! generating gamma variables", *ACM TOMS* 26(3), 363-372,
 //! DOI: 10.1145/358407.358414.
+use std::mem::MaybeUninit;
+
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -139,7 +141,7 @@ impl<T: SimdFloatExt> SimdGamma<T> {
     &self,
     normal: &mut StreamState<T, R, 64>,
     rng: &mut R,
-    out: &mut [T],
+    out: &mut [MaybeUninit<T>],
   ) {
     let (d, c, inv_alpha) = self.squeeze();
     let mut src = (normal, rng);
@@ -147,12 +149,12 @@ impl<T: SimdFloatExt> SimdGamma<T> {
     match inv_alpha {
       Some(inv_alpha) => {
         for x in out.iter_mut() {
-          *x = self.draw(&mut src, d, c, Some(inv_alpha));
+          x.write(self.draw(&mut src, d, c, Some(inv_alpha)));
         }
       }
       None => {
         for x in out.iter_mut() {
-          *x = self.draw(&mut src, d, c, None);
+          x.write(self.draw(&mut src, d, c, None));
         }
       }
     }
@@ -221,7 +223,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdGamma<T> {
   type Item = T;
 
   #[inline]
-  fn fill<R: SimdRngExt>(&self, state: &mut GammaState<T, R>, out: &mut [T]) {
+  fn fill<R: SimdRngExt>(&self, state: &mut GammaState<T, R>, out: &mut [MaybeUninit<T>]) {
     self.fill_parts(&mut state.normal, &mut state.rng, out);
   }
 
