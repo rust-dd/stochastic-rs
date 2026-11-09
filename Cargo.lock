@@ -3455,7 +3455,6 @@ dependencies = [
  "numpy",
  "pyo3",
  "rand 0.10.3",
- "rand_distr 0.6.0",
  "rayon",
  "statrs",
  "stochastic-rs-core",

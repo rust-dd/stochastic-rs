@@ -1,4 +1,4 @@
-//! Crate-level test support, plus `#[ignore]`d visual and throughput benchmarks (5–10 M samples, not CI checks).
+//! Crate-level test support: the goodness-of-fit and moment helpers the laws' unit tests share.
 
 use ndarray::ArrayView1;
 use num_complex::Complex64;
@@ -11,10 +11,6 @@ use stochastic_rs_stats::goodness_of_fit::chi_square::chi_square_gof_test;
 use stochastic_rs_stats::goodness_of_fit::chi_square::pool_integer_bins;
 use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::KolmogorovSmirnovConfig;
 use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::kolmogorov_smirnov_test;
-
-mod bench_continuous_a;
-mod bench_continuous_b;
-mod bench_summary;
 
 pub(crate) fn holds(got: f64, want: f64, rel: f64) -> bool {
   if want == 0.0 || want.is_infinite() {
