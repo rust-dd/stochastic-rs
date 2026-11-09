@@ -18,7 +18,7 @@ The other nine:
 
 - `Ged`, `Skellam` and the four `Truncated{Normal,Exp,Beta,Gamma}` wrappers implement `DistributionExt` but have no Python class.
 - `SimdNonCentralChiSquared` takes its noncentrality per draw (`sample_ncp(ncp)` on its seeded stream, `sample_ncp_with(&mut rng, ncp)` on the law), so it implements neither `rand::distr::Distribution` nor `DistributionExt` nor `fill_slice`. It backs the exact CIR transition density.
-- `Dirichlet` and `Wishart` are multivariate (a `Vec<T>` / `Array2<f64>` per draw); their seeded streams draw through their own methods (`sample_into` and `sample_matrix(m)` for `Dirichlet`, `sample_inverse` for `Wishart`) instead of `fill_slice`, and each has its own `log_pdf`.
+- `Dirichlet` and `Wishart` are multivariate (a `Vec<T>` / `Array2<T>` per draw); their seeded streams draw through their own methods (`sample_into` and `sample_matrix(m)` for `Dirichlet`, `sample_inverse` for `Wishart`) instead of `fill_slice`, and each has its own `log_pdf`.
 
 `ComplexDistribution` pairs two independent laws as the real and imaginary parts of a `Complex<T>` draw and has no `DistributionExt` impl. The API docs (`cargo doc -p stochastic-rs-distributions`) cover all of them.
 
@@ -57,7 +57,7 @@ The other nine:
 |---------------------|----------------------------------------------|
 | Binomial            | BTRS rejection / geometric waiting-time      |
 | Geometric           | Inversion                                    |
-| Poisson             | Table inversion below λ = 1000, PTRS above   |
+| Poisson             | PTRS from λ = 1000, table inversion below    |
 | Hypergeometric      | Inverse transform (precomputed CDF table)    |
 
 ## Choosing a distribution
