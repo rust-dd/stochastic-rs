@@ -63,8 +63,8 @@ pub(crate) fn ln_gamma_diff(z: f64, p: f64) -> (f64, f64) {
 }
 
 /// `ln B(a, b)` in two parts, the smaller shape `p` to 32: `ln Γ(p) − [ln Γ(q + p) − ln Γ(q)]`,
-/// the bracket Stirling's difference from `q = 16`, below it the three logarithms whole.
-pub(crate) fn ln_beta_parts(a: f64, b: f64) -> (f64, f64) {
+/// the bracket Stirling's difference from 16, else three logs, `p + q` two-part where `exact_sums`.
+pub(crate) fn ln_beta_parts(a: f64, b: f64, exact_sums: bool) -> (f64, f64) {
   let (p, q) = if a <= b { (a, b) } else { (b, a) };
   debug_assert!(p <= 32.0, "ln_beta_parts takes a shape at most 32, got {p}");
   let lg = ln_gamma_parts(p, 0.0);
@@ -75,26 +75,27 @@ pub(crate) fn ln_beta_parts(a: f64, b: f64) -> (f64, f64) {
   let (s, s_lo) = two_sum(p, q);
   sub_parts(
     add_parts(lg, ln_gamma_parts(q, 0.0)),
-    ln_gamma_parts(s, s_lo),
+    ln_gamma_parts(s, if exact_sums { s_lo } else { 0.0 }),
   )
 }
 
 /// `ln(s·B(a, b))`, `s` one of the shapes, in two parts with the smaller shape to 32: `ln Γ(s + 1)`
-/// takes the place of `ln Γ(s)`, so a tiny `s` cancels no `ln s`.
-pub(crate) fn ln_shape_beta_parts(s: f64, other: f64) -> (f64, f64) {
+/// replaces `ln Γ(s)`, so a tiny `s` cancels no `ln s`; the shape sums two-part where `exact_sums`.
+pub(crate) fn ln_shape_beta_parts(s: f64, other: f64, exact_sums: bool) -> (f64, f64) {
+  let low = |lo: f64| if exact_sums { lo } else { 0.0 };
   if s <= other {
     let (s1, s1_lo) = two_sum(s, 1.0);
-    let lg = ln_gamma_parts(s1, s1_lo);
+    let lg = ln_gamma_parts(s1, low(s1_lo));
     if other >= STIRLING_FROM {
       return sub_parts(lg, ln_gamma_diff(other, s));
     }
     let (t, t_lo) = two_sum(s, other);
     return sub_parts(
       add_parts(lg, ln_gamma_parts(other, 0.0)),
-      ln_gamma_parts(t, t_lo),
+      ln_gamma_parts(t, low(t_lo)),
     );
   }
-  add_parts(ln_beta_parts(s, other), ln_parts(s, 0.0, 0))
+  add_parts(ln_beta_parts(s, other, exact_sums), ln_parts(s, 0.0, 0))
 }
 
 /// `ψ(a + b) − ψ(b)` for `b ≥ 10`, from `ψ`'s series: `ln(1 + a/b) + 1/(2b) − 1/(2(a + b))` less

@@ -295,7 +295,7 @@ fn power_law_start(a: f64, b: f64, p: f64, upper: bool) -> Option<(f64, bool)> {
   if shape >= STIRLING_FROM {
     return None;
   }
-  let w = (ln_shape_beta_parts(shape, other).0 + ln_level) / shape;
+  let w = (ln_shape_beta_parts(shape, other, true).0 + ln_level) / shape;
   ((other - 1.0) * w.exp() < 0.1).then_some((w, !upper))
 }
 

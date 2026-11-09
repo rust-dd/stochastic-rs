@@ -287,8 +287,9 @@ pub(super) fn side(
     let (ln_x, ln_y) = *given.get_or_insert_with(|| logs(x, y));
     let norm = match norms {
       Some(n) => *(if lower { &mut n.lower } else { &mut n.upper })
-        .get_or_insert_with(|| ln_shape_beta_parts(shape, other)),
-      None => ln_shape_beta_parts(shape, other),
+        .get_or_insert_with(|| ln_shape_beta_parts(shape, other, true)),
+      // `beta_i`, at its 1e-12 bar, reads the sums rounded, spared the digamma their low parts ask.
+      None => ln_shape_beta_parts(shape, other, false),
     };
     ln_beta_prefactor(a, b, norm, ln_x, ln_y)
   };
@@ -378,7 +379,7 @@ pub(super) fn density(a: f64, b: f64, x: f64, y: f64) -> f64 {
     Stirling::new(a, b, x, y).prefactor(1.0)
   } else {
     let (ln_x, ln_y) = logs(x, y);
-    ln_beta_prefactor(a, b, ln_beta_parts(a, b), ln_x, ln_y)
+    ln_beta_prefactor(a, b, ln_beta_parts(a, b, false), ln_x, ln_y)
   };
   pf.times(1.0 / y) / x
 }
