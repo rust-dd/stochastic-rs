@@ -5,6 +5,7 @@ use std::mem::MaybeUninit;
 
 use rand::Rng;
 use rand::RngExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 use wide::f32x8;
 use wide::f64x4;
 use wide::f64x8;
@@ -96,15 +97,12 @@ impl SimdFloatExt for f32 {
   }
 
   #[inline]
-  fn fill_uniform_simd<R: crate::simd_rng::SimdRngExt>(rng: &mut R, out: &mut [f32]) {
+  fn fill_uniform_simd<R: SimdRngExt>(rng: &mut R, out: &mut [f32]) {
     rng.fill_uniform_f32(out);
   }
 
   #[inline]
-  fn fill_uniform_simd_uninit<R: crate::simd_rng::SimdRngExt>(
-    rng: &mut R,
-    out: &mut [MaybeUninit<f32>],
-  ) {
+  fn fill_uniform_simd_uninit<R: SimdRngExt>(rng: &mut R, out: &mut [MaybeUninit<f32>]) {
     rng.fill_uniform_f32_uninit(out);
   }
 
@@ -114,7 +112,7 @@ impl SimdFloatExt for f32 {
   }
 
   #[inline(always)]
-  fn sample_uniform_simd<R: crate::simd_rng::SimdRngExt>(rng: &mut R) -> f32 {
+  fn sample_uniform_simd<R: SimdRngExt>(rng: &mut R) -> f32 {
     rng.next_f32()
   }
 
@@ -229,15 +227,12 @@ impl SimdFloatExt for f64 {
   }
 
   #[inline]
-  fn fill_uniform_simd<R: crate::simd_rng::SimdRngExt>(rng: &mut R, out: &mut [f64]) {
+  fn fill_uniform_simd<R: SimdRngExt>(rng: &mut R, out: &mut [f64]) {
     rng.fill_uniform_f64(out);
   }
 
   #[inline]
-  fn fill_uniform_simd_uninit<R: crate::simd_rng::SimdRngExt>(
-    rng: &mut R,
-    out: &mut [MaybeUninit<f64>],
-  ) {
+  fn fill_uniform_simd_uninit<R: SimdRngExt>(rng: &mut R, out: &mut [MaybeUninit<f64>]) {
     rng.fill_uniform_f64_uninit(out);
   }
 
@@ -247,7 +242,7 @@ impl SimdFloatExt for f64 {
   }
 
   #[inline(always)]
-  fn sample_uniform_simd<R: crate::simd_rng::SimdRngExt>(rng: &mut R) -> f64 {
+  fn sample_uniform_simd<R: SimdRngExt>(rng: &mut R) -> f64 {
     rng.next_f64()
   }
 

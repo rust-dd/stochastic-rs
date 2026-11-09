@@ -10,6 +10,7 @@ use ndarray::Array1;
 use ndarray::ScalarOperand;
 use num_complex::Complex;
 use rand::Rng;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
 /// Scalar real-number surface: arithmetic, conversions and constants —
 /// nothing that draws randomness and nothing that requires SIMD lanes.
@@ -156,20 +157,17 @@ pub trait SimdFloatExt: RealExt + sealed::Sealed {
 
   fn fill_uniform<R: Rng + ?Sized>(rng: &mut R, out: &mut [Self]);
 
-  fn fill_uniform_simd<R: crate::simd_rng::SimdRngExt>(rng: &mut R, out: &mut [Self]);
+  fn fill_uniform_simd<R: SimdRngExt>(rng: &mut R, out: &mut [Self]);
 
   /// `fill_uniform_simd` into uninitialised storage; writes every element and reads none, so a
   /// caller may `assume_init`.
   #[doc(hidden)]
-  fn fill_uniform_simd_uninit<R: crate::simd_rng::SimdRngExt>(
-    rng: &mut R,
-    out: &mut [MaybeUninit<Self>],
-  );
+  fn fill_uniform_simd_uninit<R: SimdRngExt>(rng: &mut R, out: &mut [MaybeUninit<Self>]);
 
   fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> Self;
 
   #[inline(always)]
-  fn sample_uniform_simd<R: crate::simd_rng::SimdRngExt>(rng: &mut R) -> Self {
+  fn sample_uniform_simd<R: SimdRngExt>(rng: &mut R) -> Self {
     let mut buf = [Self::zero(); 8];
     Self::fill_uniform_simd(rng, &mut buf);
     buf[0]

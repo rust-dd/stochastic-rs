@@ -130,8 +130,6 @@
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
 
-pub use stochastic_rs_core::simd_rng;
-
 #[macro_use]
 mod macros;
 

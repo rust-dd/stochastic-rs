@@ -6,6 +6,7 @@ use std::panic::catch_unwind;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::array;
+use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::FloatExt;
 use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
 use stochastic_rs_distributions::beta::SimdBeta;
@@ -28,7 +29,6 @@ use stochastic_rs_distributions::non_central_chi_squared::SimdNonCentralChiSquar
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::normal_inverse_gauss::SimdNormalInverseGauss;
 use stochastic_rs_distributions::pareto::SimdPareto;
-use stochastic_rs_distributions::simd_rng::Deterministic;
 use stochastic_rs_distributions::skew_t::SimdSkewT;
 use stochastic_rs_distributions::studentt::SimdStudentT;
 use stochastic_rs_distributions::tempered_stable::SimdTemperedStable;
