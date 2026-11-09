@@ -200,7 +200,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdPareto<T> {
     }
   }
 
-  /// NaN at `alpha ≤ 3`: the third central moment is undefined there, not a signed infinity.
+  /// NaN at `alpha ≤ 3`, where the third central moment is not finite.
   fn skewness(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     if a > 3.0 {
@@ -210,8 +210,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdPareto<T> {
     }
   }
 
-  /// `NaN` at `alpha <= 4`, for the same reason as `skewness` one moment
-  /// order up.
+  /// NaN at `alpha ≤ 4`, where the fourth central moment is not finite.
   fn kurtosis(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     if a > 4.0 {

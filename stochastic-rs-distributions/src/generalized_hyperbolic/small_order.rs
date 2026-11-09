@@ -27,8 +27,8 @@ fn ln_k(order: (f64, f64), x: Scaled) -> (f64, f64) {
   sub_parts(ln_bessel_ke_parts(order, x), x.value_parts())
 }
 
-/// `λ ln(γ/δ) − ½ ln 2π − ln K_λ(δγ) − (λ − ½) ln(α/root) + ln K_{λ−½}(α·root) + βd` in two parts
-/// at a two-part `d = x − μ`, times `2ᵖ`; `βd − α·root` as `−(α − β sgn d)|d| − αδ²/(root + |d|)`.
+/// `λ ln(γ/δ) − ½ ln 2π − ln K_λ(δγ) − (λ − ½) ln(α/root) + ln K_{λ−½}(α·root) + βd`, `d = x − μ`,
+/// in two parts, times `2ᵖ`; `βd − α·root` as the one-sign `−(α − β sgn d)|d| − αδ²/(root + |d|)`.
 #[cold]
 #[inline(never)]
 pub(super) fn density(

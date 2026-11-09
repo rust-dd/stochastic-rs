@@ -1,5 +1,5 @@
-//! `K_ν(x)` for real order: `bessik` to order 50 (Temme below `x = 2`, Steed's CF2 above, upward),
-//! Debye past it, DLMF 10.30 under `1e-307`; Temme's `γ₁`, `γ₂` from `ln Γ`'s series:
+//! `K_ν(x)` for real order: `bessik` (Temme below `x = 2`, Steed's CF2 above), Debye past order 50,
+//! DLMF 10.30 near 0; Temme's `γ₁`, `γ₂` from `ln Γ`'s series, which does not cancel at small `μ`:
 //!
 //! $$
 //! \ln\Gamma(1+\mu)^{-1} = \gamma_E\mu - \sum_{k\ge2}(-1)^k\zeta(k)\mu^k/k = S_e + S_o,

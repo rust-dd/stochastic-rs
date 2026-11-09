@@ -97,7 +97,7 @@ fn mode_answers_every_shape_regime() {
   assert!(law(1.0, 1.0).mode().unwrap().is_nan());
 }
 
-/// The quantile down to subnormal levels (`2.5e-20` at `p = 1e-10`; graded in
+/// The quantile to `2.5e-20` at `p = 1e-10` and its underflow to 0 at `1e-300` (graded in
 /// `special::incomplete::beta`), with the public surface and the domain rule.
 #[test]
 fn quantile_reads_both_tails_through_the_law() {

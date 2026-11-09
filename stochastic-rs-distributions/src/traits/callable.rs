@@ -10,8 +10,8 @@ use std::ops::Sub;
 use super::float::FloatExt;
 use super::grid::Grid2D;
 
-/// A coefficient of time ([`Expr::T`]) and state ([`Expr::X`]) as an expression,
-/// `Expr::lit(0.01) + Expr::x().abs() * 0.4`, compiling to the [`Program`] a device kernel runs.
+/// `Expr::lit(0.01) + Expr::x().abs() * 0.4`: a coefficient of [`Expr::T`] and [`Expr::X`] compiled
+/// to a [`Program`]; its nodes are the device engine's function table, so host and kernels agree.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum Expr {

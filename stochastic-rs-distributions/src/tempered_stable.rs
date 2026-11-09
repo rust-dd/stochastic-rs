@@ -10,7 +10,7 @@
 //! $$
 //!
 //! The tempered stable subordinator's unit-time law (CGMY's positive half, `Y = α`, `M = λ`), no
-//! closed density; Devroye's double rejection takes under 8.12 loops, Kanter's at `λ = 0`.
+//! closed density; Devroye's double rejection averages under 8.12 loops, Kanter's at `λ = 0`.
 //!
 //! Reference: Devroye, L. (2009), "Random variate generation for exponentially and polynomially tilted stable distributions", *ACM Transactions on Modeling and Computer Simulation* 19(4), Article 18, DOI 10.1145/1596519.1596523.
 
@@ -109,7 +109,7 @@ fn zolotarev_a(alpha: f64, u: f64) -> f64 {
 }
 
 impl<T: SimdFloatExt> SimdTemperedStable<T> {
-  /// Construct a tempered stable$(\alpha, \lambda, \theta)$.
+  /// Panics unless `0 < α < 1`, `λ ≥ 0` and `θ > 0`, all finite.
   pub fn new(alpha: T, lambda: T, theta: T) -> Self {
     assert!(
       alpha.is_finite(),

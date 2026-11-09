@@ -7,8 +7,8 @@
 //! \frac{K_{\lambda+k}(\sqrt{\chi\psi})}{K_\lambda(\sqrt{\chi\psi})},
 //! $$
 //!
-//! The GH family's clock, the inverse Gaussian at `λ = −½`, no closed-form cdf; at `χ, ψ > 0` drawn
-//! as `Y/√(ψ/χ)` by Hörmann and Leydold's three regimes of `GIGrvg`, `1/Y` at `λ < 0`.
+//! The GH family's clock, the inverse Gaussian at `λ = −½`, no closed cdf; at `χ, ψ > 0` (the edges
+//! are gamma and inverse gamma) drawn as `Y/√(ψ/χ)` by `GIGrvg`'s three regimes, `1/Y` at `λ < 0`.
 //!
 //! Reference: Hörmann, W., Leydold, J. (2014), "Generating generalized inverse Gaussian random variates", *Statistics and Computing* 24(4), 547-557, DOI 10.1007/s11222-013-9387-3.
 //! Reference: Dagpunar, J.S. (1989), "An easily implemented generalised inverse Gaussian generator", *Communications in Statistics — Simulation and Computation* 18(2), 703-710, DOI 10.1080/03610918908812785.

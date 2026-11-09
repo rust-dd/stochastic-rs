@@ -1,5 +1,9 @@
-//! Every law's stream from two seeds, pinned so a moved draw fails; `STREAM_SNAPSHOT_REGEN=1` and
-//! `--features unstable-dual-stream-rng -- --ignored print_constants` re-pin it.
+//! Every law's stream from two seeds, pinned so a moved draw fails; to re-pin:
+//!
+//! ```sh
+//! STREAM_SNAPSHOT_REGEN=1 cargo test -p stochastic-rs-distributions \
+//!   --features unstable-dual-stream-rng --test stream_snapshots -- --ignored print_constants
+//! ```
 
 mod stream_snapshots {
   pub mod constants;

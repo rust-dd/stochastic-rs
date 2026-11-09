@@ -36,8 +36,7 @@ pub fn best_ks_p_value(
     .fold(0.0_f64, f64::max)
 }
 
-/// Asserts a sampler's output is consistent with its own `cdf` at
-/// alpha=0.05 across all three [`SEEDS`] (best-of-three).
+/// Asserts the best KS p-value over [`SEEDS`] passes 0.01: the sampler agrees with its own `cdf`.
 pub fn assert_ks_accepts(n: usize, make: impl FnMut(u64) -> (Vec<f64>, Box<dyn Fn(f64) -> f64>)) {
   let best_p = best_ks_p_value(n, make);
   assert!(
@@ -66,8 +65,7 @@ pub fn best_chi_square_p_value(
     .fold(0.0_f64, f64::max)
 }
 
-/// Asserts a discrete sampler's output is consistent with its own cdf
-/// (via pooled-bin chi-square) at alpha=0.05, best-of-three [`SEEDS`].
+/// Asserts the best pooled χ² p-value over [`SEEDS`] passes 0.01: the law agrees with its own cdf.
 pub fn assert_chi_square_accepts(
   n: usize,
   k_lo: i64,

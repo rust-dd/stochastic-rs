@@ -5,8 +5,8 @@
 //! n = \sum_k b_k(n)\,2^k
 //! $$
 //!
-//! Gray-code points on Joe and Kuo's `new-joe-kuo-6.21201` table, up to 21201 dimensions;
-//! [`SobolSeq::scrambled`] adds Matoušek's scramble and a digital shift, which keep its nets.
+//! Gray-code points on Joe and Kuo's `new-joe-kuo-6.21201` table, to 21201 dimensions; Matoušek's
+//! net-preserving scramble and shift in [`SobolSeq::scrambled`] give randomised-QMC error bars.
 //!
 //! Reference: Joe, S., Kuo, F.Y. (2008), "Constructing Sobol Sequences with Better Two-Dimensional Projections", *SIAM Journal on Scientific Computing* 30(5), 2635-2654, DOI 10.1137/070709359 (the direction numbers, `new-joe-kuo-6.21201`, BSD-3-Clause as published at <https://web.maths.unsw.edu.au/~fkuo/sobol/>).
 //! Reference: Antonov, I.A., Saleev, V.M. (1979), "An economic method of computing LPτ-sequences", *USSR Computational Mathematics and Mathematical Physics* 19(1), 252-256, DOI 10.1016/0041-5553(79)90085-5 (the Gray-code update).
@@ -258,8 +258,8 @@ mod tests {
     }
   }
 
-  /// The parsed table carries the file's rows verbatim: dimension 3 is `x² + x + 1` with m = (1,
-  /// 3), the last row a degree-18 polynomial with its 18 initial numbers.
+  /// The parsed table carries the file's rows verbatim: dimension 3 is `x² + x + 1` with
+  /// `m = (1, 3)`, the last row a degree-18 polynomial with its 18 initial numbers.
   #[test]
   fn parsed_table_matches_the_joe_kuo_file() {
     let table = joe_kuo();

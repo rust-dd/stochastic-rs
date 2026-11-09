@@ -214,8 +214,8 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
     }
     let c = (theta / sigma) * (theta / sigma);
     let (root_chi, psi) = (d.abs() / sigma, c + 2.0 / nu);
-    // `g − 1 = (χ − 1 − c)/D`, `D = R + o + 1 + c` (`o` the order), `χ − c = (d − θ)(d + θ)/σ²`;
-    // past `q = θ(d + θ)/σ²D = ½`, `d − θg = ((d − θ)(o + 1 + Δ) + θ)/D`.
+    // `g − 1 = (χ − 1 − c)/D`, `D = R + order + 1 + c`, `χ − c = (d − θ)(d + θ)/σ²`; `θ(g − 1)`
+    // cancels `d − θ` past `q = θ(d + θ)/σ²D = ½`; there `d − θg = ((d − θ)(order + 1 + Δ) + θ)/D`.
     let (h, h_lo) = two_sum_far(d, -theta);
     if !(nu > limits::NORMAL_CLOCK && c * nu < limits::NARROW_DIFFUSION && root_chi <= FAR)
       || !(h.is_finite() && (d + theta).is_finite())
@@ -235,7 +235,7 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
       (near - theta * gm1) / sigma
     } else {
       let tilt = (theta / sigma) * (d / sigma) / r;
-      // `Δ = R − θd/σ²`, by `R² − (θd/σ²)² = o² + 2χ/ν` where `θd > 0`.
+      // `Δ = R − θd/σ²`, by `R² − (θd/σ²)² = order² + 2χ/ν` where `θd > 0`.
       let excess = if tilt > 0.0 {
         ((order / r) * order + (root_chi / r) * root_chi * (2.0 / nu)) / (1.0 + tilt)
       } else {

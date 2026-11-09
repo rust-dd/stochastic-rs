@@ -59,7 +59,7 @@ std::thread_local! {
 }
 
 /// Distinct seeds: the global counter strides `SEED_BLOCK_LEN·γ` and each thread `γ` in its
-/// reservation, odd `γ` injective mod 2⁶⁴ and splitmix64 a bijection, with no shared cache line.
+/// reservation, odd `γ` injective mod 2⁶⁴, splitmix64 bijective; the counter is hit once a block.
 #[inline(always)]
 fn next_global_seed() -> u64 {
   SEED_BLOCK.with(|cell| {

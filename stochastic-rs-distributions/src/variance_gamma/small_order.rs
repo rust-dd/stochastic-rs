@@ -25,7 +25,7 @@ fn ln_half_gamma((s, s_lo): (f64, f64)) -> (f64, f64) {
 }
 
 /// Madan–Carr–Chang eq. 23 in two parts, at `d = 0` the `y^aK_a(y)` limit `2^{a−1}Γ(a)` (`a > 0`);
-/// `θd/σ² − |d|·root/σ²` as `−2|d|/(ν(root + |θ|)) − |d|(|θ| − θ sgn d)/σ²`.
+/// `θd/σ² − |d|·root/σ²` as its one-sign `−2|d|/(ν(root + |θ|)) − |d|(|θ| − θ sgn d)/σ²`.
 #[cold]
 #[inline(never)]
 pub(super) fn density((sigma, nu, theta): (f64, f64, f64), d: (f64, f64), p: i32) -> f64 {

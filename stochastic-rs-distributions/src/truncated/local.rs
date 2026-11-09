@@ -147,7 +147,7 @@ pub(super) enum Model<K> {
 
 impl<K: Kernel> Model<K> {
   /// The engine's integral of `kernel` on `[lo, up]`, or the local model where the engine has no
-  /// normal width and the model exists; the engine is built and summed where the model holds it.
+  /// normal width and the model exists; built and summed in place, not moved through constructors.
   pub(super) fn new(
     kernel: K,
     lo: impl Into<Cut>,

@@ -86,8 +86,8 @@ impl StudentTail {
     }
   }
 
-  /// `ln_scale` re-formed in two parts where a tail branch's passes `−REFINE`, its low part moved
-  /// into `factor`, so `lower` keeps its factor's digits where `|ln F|` nears 745.
+  /// `ln_scale` in two parts past `−REFINE` in a tail branch, the low part in `factor`, so `lower`
+  /// keeps its digits where `|ln F|` nears 745; the quantile's `ln_lower` needs no such care.
   pub(crate) fn refined(self, nu: f64, x: f64) -> Self {
     if self.rate.0 == 0.0 || !(self.ln_scale < -REFINE && self.ln_scale > -800.0) {
       return self;
@@ -201,8 +201,8 @@ fn xi_parts(nu: f64, x: f64) -> (f64, f64) {
   (h, e + 2.0 * lx_lo - ln_lo)
 }
 
-/// `ln(1 + s)`, `s ≥ 0`, in two parts: `2 atanh(s/(2 + s))` below `√2 − 1`, else
-/// `k ln 2 + 2 atanh((m − 1)/(m + 1))`, `1 + s = 2ᵏm`, `m ∈ [1/√2, √2)`; two terms compensated.
+/// Two-part `ln(1 + s)`, `s ≥ 0`: `2 atanh(s/(2 + s))` below `√2 − 1`, else `k ln 2 + 2 atanh(y)`,
+/// `y = (m − 1)/(m + 1)`, `1 + s = 2ᵏm`; `2y`, `2y³/3` compensated, the rest below `2y⁵/5`.
 fn ln_1p_parts(s: f64, s_lo: f64) -> (f64, f64) {
   let (k, num, num_lo, den, den_lo) = if s < SQRT_2 - 1.0 {
     let (d, d_err) = two_sum(2.0, s);
