@@ -10,6 +10,11 @@
 //! variance stays small at twenty years where a call's does not; the volatility is the same. Run with
 //! `--nocapture` to print every cell. Pinned seed; the tolerance is in standard errors of the difference of
 //! the two Monte Carlo estimates, the paper's standard deviation and this run's standard error in quadrature.
+//!
+//! This is the comparison with the paper's own example and not the process's correctness anchor: at the
+//! paper's rate volatilities a Heston price without the rate leg already sits 0.2 to 0.5 volatility
+//! points from table 3's cells, so the tables say little about that leg. The exact anchors, one per leg
+//! of the model, are in `heston_hull_white_2f_closed_forms.rs`.
 
 use stochastic_rs::ndarray::array;
 use stochastic_rs::quant::OptionType;
@@ -39,6 +44,7 @@ const Z_MAX: f64 = 3.0;
 /// to 45.07 and then falls to 27.52 across strikes over which the paper's own 1, 10 and 20-year rows and
 /// table 4's 5-year row move by under one point, and the closed-form Heston of this workspace without the
 /// rate leg gives 44.1, 43.8, 43.5 and 43.4 there, so the printed values cannot be the stated model.
+/// The authors' preprint (SSRN abstract 1434829, version of 20 October 2010, table 4.2) prints the same row.
 const HELD_OUT: [(usize, usize); 4] = [(1, 1), (1, 2), (1, 3), (1, 4)];
 
 /// Drift target fitting the flat curve: `θ_r(t) = a f + ½ (g'(t) + a g(t))` with `g(τ)` the integrand
