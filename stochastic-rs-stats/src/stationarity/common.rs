@@ -49,6 +49,17 @@ pub fn difference(y: &[f64]) -> Vec<f64> {
   y.windows(2).map(|w| w[1] - w[0]).collect()
 }
 
+/// Shortest series for a levels autoregression of order `lags` plus `trend`'s terms: it keeps
+/// `n − lags` rows, which must outnumber its `lags + terms` regressors.
+pub fn min_sample_size(lags: usize, trend: Trend) -> usize {
+  let terms = match trend {
+    Trend::None => 0,
+    Trend::Constant => 1,
+    Trend::ConstantTrend => 2,
+  };
+  2 * lags + terms + 1
+}
+
 pub fn schwert_max_lags(n: usize) -> usize {
   if n <= 1 {
     return 0;

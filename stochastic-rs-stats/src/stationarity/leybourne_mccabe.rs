@@ -7,6 +7,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::common::Trend;
 use super::common::fit_ar;
+use super::common::min_sample_size;
 use super::common::regress_on_deterministics;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
@@ -125,8 +126,8 @@ fn simulate_ar(phi: &[f64], noise: &mut Seeded<SimdNormal<f64>>, n: usize) -> Ve
   x[burnin..].to_vec()
 }
 
-/// Leybourne–McCabe test with AR prewhitening and a bootstrap p-value; `Err` below 40 (or
-/// `ar_lags + 15`) points, on a non-finite one or a singular AR fit; panics on a bad config.
+/// Leybourne–McCabe test with a bootstrap p-value; `Err` below `max(40, p + 15, 2p + 1)` points
+/// (`p = ar_lags`), on a non-finite one or a singular AR fit; panics on a bad config.
 pub fn leybourne_mccabe_test(
   y: ArrayView1<f64>,
   cfg: LeybourneMcCabeConfig,
@@ -148,7 +149,10 @@ pub fn leybourne_mccabe_test(
   );
   assert_alpha(cfg.alpha);
   let y = as_slice_or_copy(y);
-  validate(&y, 40.max(cfg.ar_lags + 15))?;
+  let needed = 40
+    .max(cfg.ar_lags + 15)
+    .max(min_sample_size(cfg.ar_lags, Trend::None));
+  validate(&y, needed)?;
 
   let include_trend = cfg.trend == Trend::ConstantTrend;
   let (obs_stat, phi, sigma) = lm_statistic_with_prewhitening(&y, include_trend, cfg.ar_lags)?;
@@ -183,6 +187,7 @@ mod tests {
 
   use super::LeybourneMcCabeConfig;
   use super::leybourne_mccabe_test;
+  use crate::StatsError;
 
   fn simulate_ar1(phi: f64, n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
@@ -252,5 +257,21 @@ mod tests {
       .collect::<Vec<_>>()
       .join("; ");
     assert!(ok, "no seed rejected a random walk — {report}");
+  }
+
+  #[test]
+  fn an_ar_order_needs_twice_its_lags_plus_one_points() {
+    let x = simulate_ar1(0.5, 40, 0x1E7B0E);
+    let cfg = LeybourneMcCabeConfig {
+      ar_lags: 20,
+      ..LeybourneMcCabeConfig::default()
+    };
+    assert_eq!(
+      leybourne_mccabe_test(ndarray::ArrayView1::from(&x), cfg).unwrap_err(),
+      StatsError::InsufficientData {
+        needed: 41,
+        got: 40
+      }
+    );
   }
 }

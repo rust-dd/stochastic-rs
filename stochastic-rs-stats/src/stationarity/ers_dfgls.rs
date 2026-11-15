@@ -12,6 +12,7 @@ use super::common::Trend;
 use super::common::choose_lag_for_adf;
 use super::common::dfgls_critical_values;
 use super::common::fit_adf;
+use super::common::min_sample_size;
 use super::common::ols;
 use super::common::schwert_max_lags;
 use crate::StatsError;
@@ -115,8 +116,8 @@ fn gls_detrend(y: &[f64], include_trend: bool) -> Result<Vec<f64>, StatsError> {
   Ok(detrended)
 }
 
-/// ERS DF-GLS test; `Err` below 20 points, on a non-finite one, a fixed lag above `n − 5` or a
-/// singular regression, and panics unless `trend != Trend::None` and `0.01 <= alpha < 1`.
+/// ERS DF-GLS test; `Err` below 20 points or `2p + 3` for the largest lag `p`, on a non-finite one
+/// or a singular regression; panics unless `trend != Trend::None` and `0.01 <= alpha < 1`.
 pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> Result<ErsTest, StatsError> {
   assert!(
     cfg.trend != Trend::None,
@@ -130,25 +131,19 @@ pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> Result<ErsTest, Sta
   let y = as_slice_or_copy(y);
   validate(&y, 20)?;
 
-  let y_detrended = gls_detrend(&y, include_trend)?;
-  let n = y_detrended.len();
-  let max_possible_lag = n - 5;
-  let max_lags = cfg
-    .max_lags
-    .unwrap_or_else(|| schwert_max_lags(n))
-    .min(max_possible_lag);
-
-  let used_lags = match cfg.lag_selection {
-    LagSelection::Fixed(p) if p > max_possible_lag => {
-      return Err(StatsError::InsufficientData {
-        needed: p + 5,
-        got: n,
-      });
-    }
+  let n = y.len();
+  let max_lags = match cfg.lag_selection {
     LagSelection::Fixed(p) => p,
-    _ => choose_lag_for_adf(&y_detrended, Trend::None, cfg.lag_selection, max_lags)?,
+    _ => cfg.max_lags.unwrap_or_else(|| schwert_max_lags(n)),
   };
+  // The ADF stage on the detrended series is a levels autoregression of order p + 1, no terms.
+  let needed = min_sample_size(max_lags + 1, Trend::None);
+  if n < needed {
+    return Err(StatsError::InsufficientData { needed, got: n });
+  }
 
+  let y_detrended = gls_detrend(&y, include_trend)?;
+  let used_lags = choose_lag_for_adf(&y_detrended, Trend::None, cfg.lag_selection, max_lags)?;
   let fit = fit_adf(&y_detrended, used_lags, Trend::None)?;
 
   Ok(ErsTest {
@@ -169,6 +164,7 @@ mod tests {
 
   use super::ErsConfig;
   use super::ers_dfgls_test;
+  use crate::StatsError;
   use crate::stationarity::LagSelection;
   use crate::stationarity::Trend;
 
@@ -195,5 +191,27 @@ mod tests {
     };
     let res = ers_dfgls_test(ndarray::ArrayView1::from(&x), cfg).unwrap();
     assert!(res.rejects_null, "expected rejection, got {res:?}");
+  }
+
+  #[test]
+  fn a_fixed_lag_needs_two_lags_plus_three_points() {
+    let x = simulate_ar1(0.5, 20, 0xE55A12);
+    let fixed = |p| ErsConfig {
+      lag_selection: LagSelection::Fixed(p),
+      ..ErsConfig::default()
+    };
+    assert_eq!(
+      ers_dfgls_test(ndarray::ArrayView1::from(&x), fixed(9)).unwrap_err(),
+      StatsError::InsufficientData {
+        needed: 21,
+        got: 20
+      }
+    );
+    assert_eq!(
+      ers_dfgls_test(ndarray::ArrayView1::from(&x), fixed(8))
+        .unwrap()
+        .used_lags,
+      8
+    );
   }
 }

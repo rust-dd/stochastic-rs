@@ -17,6 +17,7 @@ use super::common::Trend;
 use super::common::adf_critical_values;
 use super::common::choose_lag_for_adf;
 use super::common::fit_adf;
+use super::common::min_sample_size;
 use super::common::schwert_max_lags;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
@@ -74,8 +75,8 @@ impl crate::traits::HypothesisTest for AdfTest {
   }
 }
 
-/// Augmented Dickey–Fuller test; `Err` below 20 points, on a non-finite one, a fixed lag above
-/// `n − 5` or a singular regression, and panics unless `0.01 <= alpha < 1`.
+/// Augmented Dickey–Fuller test; `Err` below 20 points or `2p + c + 3` for the largest lag `p` and
+/// `c` trend terms, on a non-finite one or a singular fit; panics unless `0.01 <= alpha < 1`.
 pub fn adf_test(y: ArrayView1<f64>, cfg: AdfConfig) -> Result<AdfTest, StatsError> {
   assert_alpha(cfg.alpha);
   let critical_values = adf_critical_values(cfg.trend);
@@ -84,23 +85,17 @@ pub fn adf_test(y: ArrayView1<f64>, cfg: AdfConfig) -> Result<AdfTest, StatsErro
   validate(&y, 20)?;
 
   let n = y.len();
-  let max_possible_lag = n - 5;
-  let max_lags = cfg
-    .max_lags
-    .unwrap_or_else(|| schwert_max_lags(n))
-    .min(max_possible_lag);
-
-  let used_lags = match cfg.lag_selection {
-    LagSelection::Fixed(p) if p > max_possible_lag => {
-      return Err(StatsError::InsufficientData {
-        needed: p + 5,
-        got: n,
-      });
-    }
+  let max_lags = match cfg.lag_selection {
     LagSelection::Fixed(p) => p,
-    _ => choose_lag_for_adf(&y, cfg.trend, cfg.lag_selection, max_lags)?,
+    _ => cfg.max_lags.unwrap_or_else(|| schwert_max_lags(n)),
   };
+  // The lag-p ADF regression has the rows and columns of a levels autoregression of order p + 1.
+  let needed = min_sample_size(max_lags + 1, cfg.trend);
+  if n < needed {
+    return Err(StatsError::InsufficientData { needed, got: n });
+  }
 
+  let used_lags = choose_lag_for_adf(&y, cfg.trend, cfg.lag_selection, max_lags)?;
   let fit = fit_adf(&y, used_lags, cfg.trend)?;
 
   Ok(AdfTest {
@@ -121,6 +116,7 @@ mod tests {
 
   use super::AdfConfig;
   use super::adf_test;
+  use crate::StatsError;
   use crate::stationarity::LagSelection;
   use crate::stationarity::Trend;
 
@@ -178,6 +174,67 @@ mod tests {
     assert!(
       !res.rejects_null,
       "expected no rejection for random walk, got {res:?}"
+    );
+  }
+
+  #[test]
+  fn a_trend_regression_with_the_default_lags_needs_twenty_one_points() {
+    let x = simulate_ar1(0.5, 20, 0xADF3);
+    let cfg = AdfConfig {
+      trend: Trend::ConstantTrend,
+      ..AdfConfig::default()
+    };
+    assert_eq!(
+      adf_test(ndarray::ArrayView1::from(&x), cfg).unwrap_err(),
+      StatsError::InsufficientData {
+        needed: 21,
+        got: 20
+      }
+    );
+  }
+
+  #[test]
+  fn a_fixed_lag_needs_two_lags_plus_the_terms_plus_three_points() {
+    let x = simulate_ar1(0.5, 20, 0xADF4);
+    let fixed = |p| AdfConfig {
+      lag_selection: LagSelection::Fixed(p),
+      ..AdfConfig::default()
+    };
+    assert_eq!(
+      adf_test(ndarray::ArrayView1::from(&x), fixed(15)).unwrap_err(),
+      StatsError::InsufficientData {
+        needed: 34,
+        got: 20
+      }
+    );
+    assert_eq!(
+      adf_test(ndarray::ArrayView1::from(&x), fixed(9)).unwrap_err(),
+      StatsError::InsufficientData {
+        needed: 22,
+        got: 20
+      }
+    );
+    assert_eq!(
+      adf_test(ndarray::ArrayView1::from(&x), fixed(8))
+        .unwrap()
+        .used_lags,
+      8
+    );
+  }
+
+  #[test]
+  fn a_max_lag_beyond_the_sample_is_insufficient_data() {
+    let x = simulate_ar1(0.5, 20, 0xADF5);
+    let cfg = AdfConfig {
+      max_lags: Some(15),
+      ..AdfConfig::default()
+    };
+    assert_eq!(
+      adf_test(ndarray::ArrayView1::from(&x), cfg).unwrap_err(),
+      StatsError::InsufficientData {
+        needed: 34,
+        got: 20
+      }
     );
   }
 }
