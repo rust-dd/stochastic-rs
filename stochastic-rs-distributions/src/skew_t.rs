@@ -306,17 +306,13 @@ impl<T: SimdFloatExt> DistributionExt for SimdSkewT<T> {
     Some(1.0)
   }
 
-  /// $\mathbb E z^3$ from the two-piece moments; at $\eta \le 3$ it diverges on the heavier piece's
-  /// side, $\operatorname{sgn}(\lambda)\cdot\infty$, and has no sign at $\lambda = 0$ (NaN).
+  /// $\mathbb E z^3$ from the two-piece moments; NaN at $\eta \le 3$, where both tails are heavy
+  /// and the integral is $\infty - \infty$.
   fn skewness(&self) -> Option<f64> {
     let eta = self.eta.to_f64().unwrap();
     let l = self.lambda.to_f64().unwrap();
     if eta <= 3.0 {
-      return Some(if l == 0.0 {
-        f64::NAN
-      } else {
-        l.signum() * f64::INFINITY
-      });
+      return Some(f64::NAN);
     }
     let (a, b) = (self.a, self.b);
     let m3w = self.abs_third_moment();

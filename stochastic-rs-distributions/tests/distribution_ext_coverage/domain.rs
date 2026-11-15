@@ -1,4 +1,4 @@
-//! One rule for every law: NaN outside the domain, the support's ends at levels 0 and 1, `+∞` for a divergent mgf.
+//! One rule for every law: NaN outside the domain, the support's ends at levels 0 and 1, `+∞` for a divergent mgf or a moment diverging beside a finite variance.
 
 use stochastic_rs_distributions::DistributionExt;
 use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
@@ -380,10 +380,10 @@ fn a_divergent_mgf_is_infinite() {
   assert_eq!(gig.moment_generating_function(0.3), Some(f64::INFINITY));
 }
 
-/// A third or fourth central moment that diverges beside a finite variance answers `±∞`, as a divergent mgf does; NaN only where no finite variance divides it or a symmetric integral has no sign.
+/// A central moment diverging in one heavy tail answers `+∞`, as a divergent mgf does; NaN where no finite variance divides it or both tails are heavy (`∞ − ∞`).
 #[test]
 fn a_divergent_moment_is_infinite() {
-  let (p, n, nan) = (f64::INFINITY, f64::NEG_INFINITY, f64::NAN);
+  let (p, nan) = (f64::INFINITY, f64::NAN);
   let same =
     |got: Option<f64>, want: f64| got.is_some_and(|g| g == want || (g.is_nan() && want.is_nan()));
   let skewness: Vec<(&str, Box<dyn DistributionExt>, f64)> = vec![
@@ -435,12 +435,22 @@ fn a_divergent_moment_is_infinite() {
     (
       "SkewT η = 3, λ = 0.5",
       Box::new(SimdSkewT::<f64>::new(3.0, 0.5)),
-      p,
+      nan,
     ),
     (
       "SkewT η = 2.5, λ = −0.5",
       Box::new(SimdSkewT::<f64>::new(2.5, -0.5)),
-      n,
+      nan,
+    ),
+    (
+      "SkewT η = 2.5, λ = 0.5",
+      Box::new(SimdSkewT::<f64>::new(2.5, 0.5)),
+      nan,
+    ),
+    (
+      "SkewT η = 2.5, λ = 0",
+      Box::new(SimdSkewT::<f64>::new(2.5, 0.0)),
+      nan,
     ),
     (
       "SkewT η = 3, λ = 0",
