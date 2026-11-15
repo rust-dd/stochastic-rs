@@ -223,6 +223,9 @@ impl StochVolNn {
     if !(spot.is_finite() && spot > 0.0) {
       bail!("spot must be finite and positive");
     }
+    if forwards.iter().any(|f| !(f.is_finite() && *f > 0.0)) {
+      bail!("forwards must be finite and positive");
+    }
     let mut order = (0..n_k).collect::<Vec<usize>>();
     order.sort_by(|&a, &b| self.spec.strikes[a].total_cmp(&self.spec.strikes[b]));
     let strikes = order

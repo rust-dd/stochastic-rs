@@ -213,7 +213,11 @@ mod tests {
     nn.save(&dir)?;
     let result = HestonNn::load(&dir, &Device::Cpu);
     let _ = fs::remove_dir_all(&dir);
-    assert!(result.is_err());
+    let message = format!("{:#}", result.err().expect("a foreign grid must not load"));
+    assert!(
+      message.contains("strikes[0]") && message.contains("0.5") && message.contains("2.0"),
+      "{message}"
+    );
     Ok(())
   }
 }

@@ -125,7 +125,9 @@ impl HestonNn {
 
   /// Loads a saved model; unlike the engine's `load`, this supplies `MODEL_ID` itself.
   pub fn load<P: AsRef<Path>>(dir: P, device: &Device) -> Result<Self> {
-    Ok(Self { inner: StochVolNn::load(MODEL_ID, dir, device)? })
+    let inner = StochVolNn::load(MODEL_ID, dir, device)?;
+    inner.spec().ensure_grid(&STRIKES, &grid::MATURITIES)?;
+    Ok(Self { inner })
   }
 }
 ```
@@ -242,6 +244,10 @@ engine's `load` takes the **expected `model_id` first** and `bail!`s if
 the metadata disagrees — that is the guard against loading a Heston
 checkpoint into an rBergomi wrapper, and it is why each wrapper hard-codes
 its own `MODEL_ID` at the call site instead of exposing the argument.
+Format 2 metadata carries the grid (`strikes=`, `maturities=`) and a
+`version`; `load` reads only the current format and errors on any other.
+A wrapper's `load` then calls `spec().ensure_grid(&STRIKES, &grid::MATURITIES)`
+so a directory with a foreign grid is rejected.
 
 ## 8. Mandatory test: `train_save_load_roundtrip`
 

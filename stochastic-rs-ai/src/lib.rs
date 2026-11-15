@@ -8,6 +8,7 @@ pub mod calibration;
 
 pub mod device;
 
+#[cfg(feature = "quant")]
 pub mod traits;
 
 /// PyO3 classes and functions (feature `python`, which implies `quant`).

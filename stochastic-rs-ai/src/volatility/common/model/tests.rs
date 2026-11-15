@@ -57,6 +57,12 @@ fn a_wrong_forward_count_or_spot_is_an_error() -> Result<()> {
     nn.predict_implied_vol_surface(&params, 100.0, &[100.0])
       .is_err()
   );
+  for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+    assert!(
+      nn.predict_implied_vol_surface(&params, 100.0, &[100.0, bad])
+        .is_err()
+    );
+  }
   assert!(
     nn.predict_implied_vol_surface(&params, 0.0, &[1.0; N_T])
       .is_err()

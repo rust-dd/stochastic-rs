@@ -15,7 +15,7 @@ exclude = ["tests/**"]
 
 [features]
 default = []
-# Enables predict_implied_vol_surface, which packages a prediction into quant's ImpliedVolSurface.
+# Enables predict_implied_vol_surface and the calibration module (SurrogateModel, the surrogate calibrators).
 quant = ["dep:stochastic-rs-quant"]
 # Gates write_surface_fit_plot_html so a train/predict-only build compiles no plotting stack.
 viz = ["dep:plotly"]

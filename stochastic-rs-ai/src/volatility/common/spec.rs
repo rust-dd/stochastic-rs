@@ -94,11 +94,26 @@ impl StochVolModelSpec {
 
   /// `Err` unless the grid is exactly `strikes` and `maturities`: a wrapper's own constants.
   pub(crate) fn ensure_grid(&self, strikes: &[f64], maturities: &[f64]) -> Result<()> {
-    if self.strikes != strikes || self.maturities != maturities {
-      bail!(
-        "the saved grid differs from the {} surrogate's own",
-        self.model_id
-      );
+    for (axis, saved, own) in [
+      ("strikes", &self.strikes[..], strikes),
+      ("maturities", &self.maturities[..], maturities),
+    ] {
+      if saved.len() != own.len() {
+        bail!(
+          "saved {axis} has {} entries, the {} surrogate's has {}",
+          saved.len(),
+          self.model_id,
+          own.len()
+        );
+      }
+      if let Some(i) = (0..own.len()).find(|&i| saved[i] != own[i]) {
+        bail!(
+          "saved {axis}[{i}] is {:?}, the {} surrogate's is {:?}",
+          saved[i],
+          self.model_id,
+          own[i]
+        );
+      }
     }
     Ok(())
   }

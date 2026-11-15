@@ -50,7 +50,7 @@ Each surrogate maps model parameters to the implied-vol surface on the grid abov
 
 ## Saving and loading
 
-`save(dir)` writes the weights as `weights.safetensors` plus a `metadata.txt` into a directory, and `load(dir, &device)` reads them back. The weights are stored device-independently, so a model trained on a GPU loads on the CPU and vice versa.
+`save(dir)` writes the weights as `weights.safetensors` plus a `metadata.txt` into a directory, and `load(dir, &device)` reads them back. The weights are stored device-independently, so a model trained on a GPU loads on the CPU and vice versa. The metadata carries the grid and a format number, `load` reads only the current format, and a wrapper's `load` requires its own grid.
 
 ## Calibrating with a surrogate
 

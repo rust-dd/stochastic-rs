@@ -16,7 +16,7 @@ use crate::volatility::common::TrainConfig;
 use crate::volatility::common::TrainReport;
 
 fn err(e: anyhow::Error) -> PyErr {
-  PyValueError::new_err(e.to_string())
+  PyValueError::new_err(format!("{e:#}"))
 }
 
 fn report_dict<'py>(py: Python<'py>, report: &TrainReport) -> PyResult<Bound<'py, PyDict>> {

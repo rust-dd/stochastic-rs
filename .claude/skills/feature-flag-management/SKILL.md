@@ -199,7 +199,7 @@ it is a summary, and the sub-crate columns are the part that drifts.
 | `unstable-dual-stream-rng` | `-core`, `-distributions`, umbrella | Experimental `SimdRngDual`; changes deterministic output. |
 | `python` | `-core`, `-distributions`, `-stochastic`, `-copulas`, `-stats`, `-quant`, `-ai` | Internal PyO3 wrapper code that `stochastic-rs-py` switches on; modules and classes are `#[doc(hidden)]`, outside the stability promise. The umbrella has no `python` feature. |
 | `ai` | umbrella | Pulls `-ai` and turns on its `quant` bridge feature. |
-| `quant` / `viz` | `-ai` | `quant` gates `predict_implied_vol_surface`; `viz` gates the plot helper. |
+| `quant` / `viz` | `-ai` | `quant` enables predict_implied_vol_surface and the calibration module (SurrogateModel, the surrogate calibrators); `viz` gates the plot helper. |
 
 ## Related SKILLs
 
