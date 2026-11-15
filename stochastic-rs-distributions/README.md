@@ -24,7 +24,8 @@ analytics and SIMD-accelerated bulk generation.
 - **`FloatExt` / `SimdFloatExt`** — the numeric trait bounds the whole
   workspace is generic over.
 - **Low-discrepancy sequences** — Sobol (Joe–Kuo 21201-dimensional table,
-  Owen-type scrambling) and Halton, in `qmc`.
+  Owen-type scrambling) and Halton, in `qmc`. The table is Joe and Kuo's,
+  BSD-3-Clause; its notice ships as `src/qmc/JOE_KUO_LICENSE`.
 
 ## Usage
 
