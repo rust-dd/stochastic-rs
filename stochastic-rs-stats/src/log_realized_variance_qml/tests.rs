@@ -146,6 +146,29 @@ fn a_zero_q_panics() {
 }
 
 #[test]
+#[should_panic(expected = "q must satisfy `q.is_finite()`, got q = inf")]
+fn an_infinite_q_fails_the_finiteness_check_first() {
+  filter_four_observations(LogRealizedVarianceParameters {
+    mu: -3.0,
+    phi: 0.8,
+    q: f64::INFINITY,
+  });
+}
+
+#[test]
+fn the_objective_filter_answers_err_on_inadmissible_parameters() {
+  let parameters = LogRealizedVarianceParameters {
+    mu: f64::NAN,
+    phi: 0.8,
+    q: 0.02,
+  };
+  assert_eq!(
+    filter::filter_centered_log_observations(&[0.0; 4], 0.5, parameters),
+    Err(StatsError::Numerical { stage: "filter" })
+  );
+}
+
+#[test]
 fn a_nonconverged_multistart_fit_reports_converged_false_and_is_not_accepted() {
   let parameters = LogRealizedVarianceParameters {
     mu: -3.0,

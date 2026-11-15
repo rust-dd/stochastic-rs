@@ -1,4 +1,4 @@
-//! One error type for every failure the crate returns; a validated precondition panics instead.
+//! One error type for every failure the crate returns.
 
 use std::fmt;
 
@@ -26,7 +26,7 @@ pub enum StatsError {
   },
   /// A regression or linear system without a finite solution.
   Singular(&'static str),
-  /// An optimiser or filter that produced no finite value at `stage`.
+  /// An optimiser or filter that produced no usable value at `stage`.
   Numerical { stage: &'static str },
 }
 
@@ -61,7 +61,7 @@ impl fmt::Display for StatsError {
         )
       }
       Self::Singular(what) => write!(f, "{what} has no finite solution"),
-      Self::Numerical { stage } => write!(f, "{stage} produced no finite value"),
+      Self::Numerical { stage } => write!(f, "{stage} produced no usable value"),
     }
   }
 }

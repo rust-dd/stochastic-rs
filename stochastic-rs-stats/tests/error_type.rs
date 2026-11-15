@@ -34,6 +34,10 @@ fn the_error_is_send_sync_and_displays_the_predicate() {
     StatsError::Singular("S00").to_string(),
     "S00 has no finite solution"
   );
+  assert_eq!(
+    StatsError::Numerical { stage: "filter" }.to_string(),
+    "filter produced no usable value"
+  );
 }
 
 #[test]

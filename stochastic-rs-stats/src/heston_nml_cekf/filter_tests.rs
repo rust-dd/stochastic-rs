@@ -298,7 +298,7 @@ fn filter_with_projection_floor(floor: f64) {
 }
 
 #[test]
-#[should_panic(expected = "floor must satisfy `floor > EPS`, got floor = NaN")]
+#[should_panic(expected = "floor must satisfy `floor.is_finite()`, got floor = NaN")]
 fn a_nan_projection_floor_panics() {
   filter_with_projection_floor(f64::NAN);
 }
@@ -313,6 +313,47 @@ fn a_zero_projection_floor_panics() {
 #[should_panic(expected = "floor must satisfy `floor > EPS`, got floor = 1e-12")]
 fn a_projection_floor_at_the_numerical_floor_panics() {
   filter_with_projection_floor(1e-12);
+}
+
+#[test]
+#[should_panic(expected = "delta must satisfy `delta.is_finite()`, got delta = inf")]
+fn an_infinite_delta_fails_the_finiteness_check_first() {
+  let prices = Array1::from_vec(vec![100.0, 100.1]);
+  let config = HestonCekfFilterConfig {
+    delta: f64::INFINITY,
+    ..HestonCekfFilterConfig::default()
+  };
+  let _ = filter_heston_cekf(prices.view(), HestonNmleCekfParams::default(), &config);
+}
+
+#[test]
+fn a_bad_previous_state_is_a_numerical_breakdown() {
+  for value in [0.0, -0.04, f64::NAN, f64::INFINITY] {
+    for previous in [
+      HestonCekfState {
+        variance: value,
+        error_covariance_bound: 0.0004,
+      },
+      HestonCekfState {
+        variance: 0.04,
+        error_covariance_bound: value,
+      },
+    ] {
+      let result = heston_cekf_step(
+        previous,
+        0.001,
+        HestonNmleCekfParams::default(),
+        &HestonCekfFilterConfig::default(),
+      );
+      assert_eq!(
+        result.unwrap_err(),
+        StatsError::Numerical {
+          stage: "previous state"
+        },
+        "{previous:?}"
+      );
+    }
+  }
 }
 
 #[test]

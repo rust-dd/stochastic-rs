@@ -64,29 +64,31 @@ pub(super) fn validate_bounds(bounds: LogRealizedVarianceQmlBounds) {
 }
 
 pub(super) fn validate_parameters(parameters: LogRealizedVarianceParameters) {
-  assert!(
-    parameters.mu.is_finite(),
-    "mu must satisfy `mu.is_finite()`, got mu = {:?}",
-    parameters.mu
-  );
-  assert!(
-    parameters.phi.is_finite() && parameters.phi.abs() < 1.0,
-    "phi must satisfy `-1.0 < phi < 1.0`, got phi = {:?}",
-    parameters.phi
-  );
-  assert!(
-    parameters.q.is_finite() && parameters.q > 0.0,
-    "q must satisfy `q > 0.0`, got q = {:?}",
-    parameters.q
-  );
+  if let Some((name, predicate, value)) = first_inadmissible(parameters) {
+    panic!("{name} must satisfy `{predicate}`, got {name} = {value:?}");
+  }
 }
 
 pub(super) fn parameters_admissible(parameters: LogRealizedVarianceParameters) -> bool {
-  parameters.mu.is_finite()
-    && parameters.phi.is_finite()
-    && parameters.phi.abs() < 1.0
-    && parameters.q.is_finite()
-    && parameters.q > 0.0
+  first_inadmissible(parameters).is_none()
+}
+
+/// The first parameter outside the stationary state space, with the predicate it breaks.
+fn first_inadmissible(
+  parameters: LogRealizedVarianceParameters,
+) -> Option<(&'static str, &'static str, f64)> {
+  let LogRealizedVarianceParameters { mu, phi, q } = parameters;
+  if !mu.is_finite() {
+    Some(("mu", "mu.is_finite()", mu))
+  } else if !(phi.is_finite() && phi.abs() < 1.0) {
+    Some(("phi", "-1.0 < phi < 1.0", phi))
+  } else if !q.is_finite() {
+    Some(("q", "q.is_finite()", q))
+  } else if q <= 0.0 {
+    Some(("q", "q > 0.0", q))
+  } else {
+    None
+  }
 }
 
 pub(super) fn validate_observations(
@@ -118,6 +120,7 @@ pub(super) fn validate_observations(
   Ok(())
 }
 
+#[track_caller]
 fn assert_block_size(block_degrees_of_freedom: usize) {
   assert!(
     block_degrees_of_freedom > 0,
