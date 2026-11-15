@@ -69,8 +69,7 @@ impl GaussianHmm {
 
   /// Forward-backward log-likelihood with log-space scaling.
   pub fn log_likelihood(&self, observations: ArrayView1<f64>) -> f64 {
-    let (alpha, scaling) = self.forward(observations);
-    let _ = alpha;
+    let (_, scaling) = self.forward(observations);
     scaling.iter().map(|s| s.ln()).sum()
   }
 

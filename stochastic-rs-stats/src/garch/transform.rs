@@ -30,7 +30,7 @@ fn logit(p: f64) -> f64 {
 
 /// Softmax over `logits.len() + 1` slots, the first logit pinned at zero.
 fn softmax(logits: &[f64]) -> Vec<f64> {
-  let max = logits.iter().copied().fold(0.0_f64, f64::max_or_nan);
+  let max = f64::max_or_nan_fold(std::iter::once(0.0).chain(logits.iter().copied()));
   let mut w: Vec<f64> = std::iter::once(0.0)
     .chain(logits.iter().copied())
     .map(|l| (l - max).exp())

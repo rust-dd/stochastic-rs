@@ -11,10 +11,6 @@ mod linalg;
 
 pub mod traits;
 
-pub use stochastic_rs_core::simd_rng;
-pub use stochastic_rs_distributions as distributions;
-pub use stochastic_rs_stochastic as stochastic;
-
 pub mod acf;
 pub mod bayesian_diffusion;
 pub mod cir;
@@ -35,7 +31,6 @@ pub mod hurst;
 pub mod leverage;
 pub mod log_realized_variance_qml;
 pub mod mle;
-pub use stochastic_rs_distributions::non_central_chi_squared;
 pub mod normality;
 pub(crate) mod optim;
 pub mod particle_mle;

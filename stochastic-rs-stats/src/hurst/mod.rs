@@ -96,7 +96,7 @@
 //! Westphal (2019, arXiv:1905.04852) estimate the roughness of a
 //! **latent volatility** process from a realized-variance time series —
 //! not the self-similarity exponent of a series sampled directly from,
-//! say, [`crate::stochastic::noise::fgn::Fgn`]. [`Whittle`] shares
+//! say, [`stochastic_rs_stochastic::noise::fgn::Fgn`]. [`Whittle`] shares
 //! [`HurstResult`]'s type with the other seven, so nothing stops you from
 //! calling `.estimate()` on a raw path — the type system cannot catch
 //! this, only the input construction can. Feeding a directly-sampled path

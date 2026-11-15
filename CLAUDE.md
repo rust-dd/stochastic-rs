@@ -109,6 +109,8 @@ diff <(grep '^pub use \(calibration\|instrument\|pricing\|short_rate\|time\)::' 
      <(grep '^pub use stochastic_rs_quant::traits::' src/traits.rs | sed 's/.*:://;s/;//' | sort)
 ```
 
+The stats half is `grep '^pub use crate::' stochastic-rs-stats/src/traits.rs` against `grep '^pub use stochastic_rs_stats::traits::' src/traits.rs`.
+
 ## Skills
 
 - Development rules and conventions: `.claude/skills/dev-rules/SKILL.md`
