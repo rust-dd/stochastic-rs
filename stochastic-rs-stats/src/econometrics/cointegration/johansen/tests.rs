@@ -349,3 +349,15 @@ fn a_non_finite_entry_is_an_invalid_observation_at_its_row() {
   assert_eq!(johansen_test(y.view(), 2).unwrap_err(), expected);
   assert_eq!(fit_vecm(y.view(), 2, 1).unwrap_err(), expected);
 }
+
+#[test]
+fn a_rank_problem_without_finite_eigenvalues_is_a_numerical_error() {
+  let s11 = ndarray::array![[2.0, 0.1], [0.1, 1.0]];
+  let m = ndarray::array![[1.0, f64::NAN], [f64::NAN, 1.0]];
+  assert_eq!(
+    ordered_eigen(&m, &s11).unwrap_err(),
+    StatsError::Numerical {
+      stage: "eigen decomposition"
+    }
+  );
+}

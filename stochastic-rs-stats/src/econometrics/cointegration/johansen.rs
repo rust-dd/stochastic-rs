@@ -212,9 +212,12 @@ fn ordered_eigen(
   let l_inv = inverse(&l).ok_or(StatsError::Singular("S11"))?;
   let whitened = l_inv.dot(m).dot(&l_inv.t());
   let symmetric = (&whitened + &whitened.t()) / 2.0;
-  let (values, vectors) = symmetric_eigen(&symmetric).ok_or(StatsError::Numerical {
-    stage: "eigen decomposition",
-  })?;
+  // faer answers a non-finite matrix with NaN eigenvalues, not an error.
+  let (values, vectors) = symmetric_eigen(&symmetric)
+    .filter(|(values, _)| values.iter().all(|v| v.is_finite()))
+    .ok_or(StatsError::Numerical {
+      stage: "eigen decomposition",
+    })?;
   let mut order: Vec<usize> = (0..k).collect();
   order.sort_by(|&a, &b| values[b].partial_cmp(&values[a]).unwrap());
   let raw = l_inv.t().dot(&vectors);
