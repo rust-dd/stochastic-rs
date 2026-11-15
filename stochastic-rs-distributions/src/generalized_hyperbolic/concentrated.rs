@@ -168,7 +168,7 @@ pub(super) fn normal_clock(
   p: i32,
 ) -> f64 {
   let chi = Scaled::new(delta).mul(Scaled::new(delta));
-  let psi = positive_sum(alpha, -beta).mul(positive_sum(alpha, beta));
+  let psi = Scaled::parts(two_sum_far(alpha, -beta)).mul(Scaled::parts(two_sum_far(alpha, beta)));
   let (w, r) = exact_saddle(lambda, chi, psi);
   let tilt = (beta != 0.0).then(|| Scaled::new(beta.abs()).mul(w));
   let variance = tilt.map_or(w, |t| w.add(t.mul(t).div(r)));
@@ -191,13 +191,4 @@ pub(super) fn normal_clock(
     (-0.5 * zz, -0.5 * zz_lo)
   };
   exp_parts(half_square, 1.0 / (SQRT_TAU * m), p - e)
-}
-
-/// `a + b > 0` in two parts and a power of two, from the halves where the sum may pass MAX.
-fn positive_sum(a: f64, b: f64) -> Scaled {
-  if a.abs().max(b.abs()) < HALF_TOP {
-    Scaled::parts(two_sum(a, b))
-  } else {
-    Scaled::parts(two_sum(0.5 * a, 0.5 * b)).shift(1)
-  }
 }

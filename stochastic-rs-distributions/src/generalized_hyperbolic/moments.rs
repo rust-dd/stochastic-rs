@@ -7,7 +7,7 @@ use crate::SimdFloatExt;
 use crate::generalized_inverse_gauss::near_max::mean_beside_max;
 use crate::special::Scaled;
 use crate::special::ldexp;
-use crate::special::two_sum;
+use crate::special::two_sum_far;
 
 /// The mean where `βE W` or the value nears MAX: `μ + βE W` from the clock's mean in two parts
 /// against the exact `δ²` and `(α − β)(α + β)`, rounded once with its route's band at MAX.
@@ -19,22 +19,13 @@ pub(super) fn mean_far<T: SimdFloatExt>(law: &SimdGeneralizedHyperbolic<T>) -> f
     return mu;
   }
   let chi = Scaled::new(delta).mul(Scaled::new(delta));
-  let psi = exact_sum(alpha, -beta).mul(exact_sum(alpha, beta));
+  let psi = Scaled::parts(two_sum_far(alpha, -beta)).mul(Scaled::parts(two_sum_far(alpha, beta)));
   mean_beside_max(
     lambda,
     (delta, gamma_of(alpha, beta)),
     (chi, psi),
     (beta, mu),
   )
-}
-
-/// `a + b > 0` in two parts, from halves where a part nears MAX: exact but for a low part under
-/// `2⁻¹⁰⁷⁴` of the high part's unit, or a subnormal `b`'s last bit in the halves.
-fn exact_sum(a: f64, b: f64) -> Scaled {
-  if a.abs().max(b.abs()) < 0.25 * f64::MAX {
-    return Scaled::parts(two_sum(a, b));
-  }
-  Scaled::parts(two_sum(0.5 * a, 0.5 * b)).shift(1)
 }
 
 /// `B = β²sρ` from `β = 2ᵇn` and the clock's scale `s = 2ᵉm`, so a scale past the doubles does not
