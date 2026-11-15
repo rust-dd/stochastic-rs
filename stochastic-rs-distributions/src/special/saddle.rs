@@ -471,22 +471,5 @@ pub(crate) fn ln_shift_per_order(
   )
 }
 
-/// `ln Γ(1/ν) + (ln ν + 1)/ν − ½ ln(2πν)`, Stirling's remainder in `ν`,
-/// `Σ B_{2k}ν^{2k−1}/(2k(2k − 1))`, its first omitted term under `1e-25` at `ν ≤ 1/50`.
-/// Reference: NIST Digital Library of Mathematical Functions, eq. 5.11.1 (Stirling's series), <https://dlmf.nist.gov/5.11.1>.
-pub(crate) fn stirling_tail(nu: f64) -> f64 {
-  let n2 = nu * nu;
-  nu * [
-    -691.0 / 360360.0,
-    1.0 / 1188.0,
-    -1.0 / 1680.0,
-    1.0 / 1260.0,
-    -1.0 / 360.0,
-    1.0 / 12.0,
-  ]
-  .iter()
-  .fold(0.0_f64, |acc, &c| acc.mul_add(n2, c))
-}
-
 #[cfg(test)]
 mod tests;

@@ -332,22 +332,34 @@ pub(crate) fn settle((hi, lo): (f64, f64)) -> (f64, f64) {
   }
 }
 
+/// Stirling's series' `B_{2k}/(2k(2k − 1))`, `k = 1, …, 9`.
+/// Reference: NIST Digital Library of Mathematical Functions, eq. 5.11.1 (Stirling's series), <https://dlmf.nist.gov/5.11.1>.
+const STIRLING: [f64; 9] = [
+  1.0 / 12.0,
+  -1.0 / 360.0,
+  1.0 / 1260.0,
+  -1.0 / 1680.0,
+  1.0 / 1188.0,
+  -691.0 / 360360.0,
+  1.0 / 156.0,
+  -3617.0 / 122400.0,
+  43867.0 / 244188.0,
+];
+
 /// `ln Γ*(a) = ln Γ(a) − (a − ½) ln a + a − ½ ln 2π` by Stirling's series through `B₁₈`, the first
 /// omitted term `174611/(125400a¹⁹)` below `2e-19` from `a = 10`.
 pub(crate) fn ln_gamma_star(a: f64) -> f64 {
-  /// `B_{2k}/(2k(2k − 1))`, `k = 1, …, 9`.
-  const STIRLING: [f64; 9] = [
-    1.0 / 12.0,
-    -1.0 / 360.0,
-    1.0 / 1260.0,
-    -1.0 / 1680.0,
-    1.0 / 1188.0,
-    -691.0 / 360360.0,
-    1.0 / 156.0,
-    -3617.0 / 122400.0,
-    43867.0 / 244188.0,
-  ];
   let r = 1.0 / a;
   let r2 = r * r;
   STIRLING.iter().rev().fold(0.0, |acc, &c| acc * r2 + c) * r
+}
+
+/// `ln Γ*(1/ν)` in `ν` by the series' first six terms, fused: its first omitted term is under
+/// `1e-25` at `ν ≤ 1/50`, and the Poisson's PTRS streams rest on this rounding.
+pub(crate) fn stirling_tail(nu: f64) -> f64 {
+  let n2 = nu * nu;
+  nu * STIRLING[..6]
+    .iter()
+    .rev()
+    .fold(0.0_f64, |acc, &c| acc.mul_add(n2, c))
 }

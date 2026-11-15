@@ -23,6 +23,7 @@ pub(crate) use large_shape::LN2_LO;
 pub(crate) use large_shape::kl_divergence;
 pub(crate) use large_shape::ln_gamma_star;
 pub(crate) use large_shape::settle;
+pub(crate) use large_shape::stirling_tail;
 pub(crate) use student::student_density;
 pub(crate) use student::student_density_precise;
 pub(crate) use student::student_tail;
