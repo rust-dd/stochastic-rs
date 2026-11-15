@@ -253,7 +253,7 @@ fn a_subnormal_clock_beside_max_reads_its_ratio_from_the_roots() {
 }
 
 /// A truth within its route's band of `MAX + ½ ulp` reads MAX: the closed forms' ties `1.5e-33`
-/// under it (exact in rationals, band `2⁻¹⁰⁴`), an order-50 mean `2.9e-18` past it (mpmath).
+/// under it (exact in rationals, band `2⁻¹⁰²`), an order-50 mean `2.9e-18` past it (mpmath).
 #[test]
 fn a_truth_inside_its_routes_band_at_the_midpoint_reads_max() {
   let gig = SimdGig::<f64>::new;
@@ -271,7 +271,7 @@ fn a_truth_inside_its_routes_band_at_the_midpoint_reads_max() {
 /// The bands are the powers of two their docs name.
 #[test]
 fn the_bands_are_the_documented_powers_of_two() {
-  assert_eq!(near_max::CLOSED_BAND, 2f64.powi(-104));
+  assert_eq!(near_max::CLOSED_BAND, 2f64.powi(-102));
   assert_eq!(near_max::PARTS_BAND, 2f64.powi(-102));
   assert_eq!(near_max::BELOW_BAND, 2f64.powi(-47));
   assert_eq!(near_max::ROUTE_BAND, 2f64.powi(-45));

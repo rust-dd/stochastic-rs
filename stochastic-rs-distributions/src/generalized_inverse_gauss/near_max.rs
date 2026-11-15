@@ -18,18 +18,20 @@ const EIGHTH_TOP: f64 = 2.247_116_418_577_895e307;
 /// `2⁹⁶⁷`, an eighth of MAX's half ulp: `(MAX + ½ ulp)/8`, no double, is `EIGHTH_TOP` less this.
 const HALF_ULP_EIGHTH: f64 = 1.247_400_193_459_2e291;
 
-/// `2⁻¹⁰⁴`: four times the closed forms' worst two-part error at orders `±½`, `9.7e-33`.
-pub(crate) const CLOSED_BAND: f64 = 4.930_380_657_631_324e-32;
+/// `2⁻¹⁰²`: the least power of two at least four times the closed forms' worst two-part error at
+/// orders `±½`, `3.92e-32`.
+pub(crate) const CLOSED_BAND: f64 = 1.972_152_263_052_529_5e-31;
 
-/// `2⁻¹⁰²`: four times the two-term sum's own worst in `Scaled` parts, `0.89·2⁻¹⁰⁴`.
+/// `2⁻¹⁰²`: the least power of two at least four times the two-term sum's own worst in `Scaled`
+/// parts, `0.89·2⁻¹⁰⁴`.
 pub(crate) const PARTS_BAND: f64 = 1.972_152_263_052_529_5e-31;
 
-/// `2⁻⁴⁷`: four times the worst two-part error of `E X_{λ−1}` from order 49 on a clock a mean near
-/// MAX reaches, 4.1ε, carried into the sum from order 50 by its second term's share.
+/// `2⁻⁴⁷`: the least power of two at least four times `E X_{λ−1}`'s worst two-part error from order
+/// 49 on a clock a mean near MAX reaches, 4.1ε; the sum from order 50 carries its second term's.
 pub(crate) const BELOW_BAND: f64 = 7.105_427_357_601_002e-15;
 
-/// `2⁻⁴⁵`: four times the ratios' route's worst two-part error on a clock a mean near MAX reaches,
-/// 17.2ε at `ω = 1.9`; its 42.6ε at `ω = 1e-160` is on a clock no such mean has.
+/// `2⁻⁴⁵`: the least power of two at least four times the ratios' route's worst two-part error on a
+/// clock a mean near MAX reaches, 17.2ε at `ω = 1.9`; its 42.6ε at `ω = 1e-160` is on none.
 pub(crate) const ROUTE_BAND: f64 = 2.842_170_943_040_401e-14;
 
 /// [`super::SimdGig::raw_moment`] where its double reaches `MAX(1 − 64ε)`: the mean again in two parts, a higher moment as it is.
@@ -48,8 +50,8 @@ pub(super) fn moment<T: SimdFloatExt>(law: &SimdGig<T>, k: u32, value: f64) -> f
   )
 }
 
-/// `μ + β·E X` rounded once where its double nears MAX: `±∞` only past `MAX + ½ ulp` by at least
-/// the route's band of `β·E X`, `±MAX` between, so a truth inside the band never reads `±∞`.
+/// `μ + β·E X` rounded once beside MAX: `±MAX` where the sum passes `MAX + ½ ulp` by less than its
+/// route's band of `β·E X`, `±∞` past it; at `μ = ±MAX` the sum's resolution, `2⁻¹⁰⁶`, decides.
 pub(crate) fn mean_beside_max(
   lambda: f64,
   roots: (f64, f64),
@@ -87,7 +89,7 @@ pub(crate) fn clock_mean(
 }
 
 /// `E X = 2λ/ψ + (χ/ψ)/E X_{λ−1}` from order 50, the first term exact, with its band: the parts'
-/// floor plus the second term's share (at most `1/2(λ − 1)`) of `E X_{λ−1}`'s bound.
+/// floor plus the second term's share of `E X_{λ−1}`'s bound.
 pub(crate) fn mean_parts(
   lambda: f64,
   roots: (f64, f64),
@@ -125,8 +127,8 @@ fn ratio_mean(lambda: f64, roots: (f64, f64), (chi, psi): (Scaled, Scaled)) -> S
   }
 }
 
-/// `sign·t + μ` rounded once at `2⁻³`; past `MAX + ½ ulp` it reads `±∞` where the sum passes it by
-/// at least `band` of `t`, else `±MAX`.
+/// `sign·t + μ` rounded once at `2⁻³`: `±∞` where it passes `MAX + ½ ulp` by `band` of `t`, else
+/// `±MAX`; at `μ = ±MAX` with a same-sign tilt the sum's resolution, about `2⁻¹⁰⁶` of it, decides.
 fn round_beside_max(t: Scaled, sign: f64, mu: f64, band: f64) -> f64 {
   // From `2¹⁰²⁶` no `|μ| ≤ MAX` brings the sum within a band of MAX.
   if t.exponent() >= 1026 {
