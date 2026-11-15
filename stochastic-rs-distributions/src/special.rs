@@ -357,8 +357,8 @@ pub fn erfc(x: f64) -> f64 {
   erfc::erfc(x)
 }
 
-/// Standard-normal quantile: Acklam's (2003) rational approximation and Halley step on `(0, ½]`, mirrored through the exact
-/// `1 − p` above, and a Newton step on `ln Φ` at a subnormal `p`, where Halley's step loses its digits; NaN off `[0, 1]`.
+/// Standard-normal quantile: Acklam's (2003) rational start and a Halley step on `(0, ½]`, mirrored
+/// through the exact `1 − p`; at a subnormal `p`, where Halley loses its digits, Newton on `ln Φ`.
 pub fn ndtri(p: f64) -> f64 {
   if !(0.0..=1.0).contains(&p) {
     return f64::NAN;

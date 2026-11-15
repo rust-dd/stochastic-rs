@@ -416,7 +416,7 @@ fn gamma_p_inv_inverts_the_tail_it_solves() {
 }
 
 /// A shape below `2⁻⁵³` in the upper tail: `ln_gamma(1)`'s noise over `a` read the bound's root
-/// `e^{−γ}` (`Q = 6.4e-48` at `q = 3.9e-157`, root near 246), and the start's `1 − t` cancelled to 0.
+/// `e^{−γ}` (`Q = 6.4e-48` at `q = 3.9e-157`, root near 246), and the start's `1 − t` cancelled.
 #[test]
 fn gamma_q_inv_at_a_tiny_shape_inverts_the_upper_tail() {
   for (a, q) in [

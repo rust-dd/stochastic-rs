@@ -311,10 +311,7 @@ mod tests {
     (actual - expected).abs() <= tol * expected.abs()
   }
 
-  /// Reference: scipy.special — `from scipy.special import k0,k1,i0,i1`
-  /// k0(1)=0.42102443824070834, k1(1)=0.6019072301972346,
-  /// k1(2)=0.13986588181652243, k1(0.5)=1.6564411200033008,
-  /// k0(5)=0.003691098334042594, i0(1)=1.2660658777520084, i1(1)=0.5651591039924851
+  /// Reference: scipy.special's `k0`, `k1`, `i0` and `i1`.
   #[test]
   fn bessel_matches_scipy_reference() {
     assert!(rel_close(bessel_k0(1.0), 0.42102443824070834, 1e-13));

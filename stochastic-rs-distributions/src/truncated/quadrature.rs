@@ -382,7 +382,7 @@ impl<K: Kernel> Truncation<K> {
     }
   }
 
-  /// `f(w, ln v, y, ln g)` per node: weight, log of the integrand weighed (in `width` units), frame
+  /// `f(w, ln v, y, ln g)` per node: weight, log of the weighted integrand in `width` units, frame
   /// offset, `ln k(x) − ln k(c)`; a singular panel's `v` is the smooth factor in `u`.
   fn nodes(&self, panel: &Panel, mut f: impl FnMut(f64, f64, f64, f64)) {
     if let Some(e) = panel.singular {

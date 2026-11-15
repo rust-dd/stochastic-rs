@@ -397,8 +397,8 @@ fn exp_pow2(a: f64, p: i32) -> f64 {
   }
 }
 
-/// `1 − θνt − ½σ²νt²` exactly: Dekker's products' parts summed by Shewchuk's Grow-Expansion (1997, Thm 10, zero elimination),
-/// whose nonoverlapping parts add from the smallest to within an ulp.
+/// `1 − θνt − ½σ²νt²` exactly: Dekker's products' parts summed by Shewchuk's Grow-Expansion (1997,
+/// Thm 10, zero elimination), whose nonoverlapping parts add from the smallest to within an ulp.
 fn exact_base((sigma, nu, theta): (f64, f64, f64), t: f64) -> f64 {
   let mut parts = [0.0_f64; 24];
   let mut len = 0;

@@ -202,7 +202,7 @@ fn xi_parts(nu: f64, x: f64) -> (f64, f64) {
 }
 
 /// Two-part `ln(1 + s)`, `s ≥ 0`: `2 atanh(s/(2 + s))` below `√2 − 1`, else `k ln 2 + 2 atanh(y)`,
-/// `y = (m − 1)/(m + 1)`, `1 + s = 2ᵏm`; `2y`, `2y³/3` compensated, the rest below `2y⁵/5`.
+/// `y = (m − 1)/(m + 1)`, `1 + s = 2ᵏm`; `2y`, `2y³/3` compensated, the rest of order `2y⁵/5`.
 fn ln_1p_parts(s: f64, s_lo: f64) -> (f64, f64) {
   let (k, num, num_lo, den, den_lo) = if s < SQRT_2 - 1.0 {
     let (d, d_err) = two_sum(2.0, s);

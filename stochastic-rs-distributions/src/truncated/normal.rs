@@ -1,6 +1,8 @@
 //! Truncated normal: rejection on the base normal, Robert's one-sided tail proposals, or the inverse cdf.
 //!
 //! Reference: Johnson, N. L., Kotz, S. & Balakrishnan, N. (1994), *Continuous Univariate Distributions*, vol. 1, 2nd ed., Wiley, ch. 13 §10.1, ISBN 0-471-58495-9 (truncated normal moments).
+//! Reference: Robert, C.P. (1995), "Simulation of truncated normal variables", *Statistics and Computing* 5(2), 121-125, DOI 10.1007/BF00143942 (the tail proposals).
+//! Reference: Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.3, DOI 10.1007/978-1-4613-8643-8 (rejection).
 
 use std::fmt;
 use std::mem::MaybeUninit;
@@ -35,9 +37,6 @@ mod sampler;
 
 /// Truncated normal law $\mathcal{N}(\mu, \sigma^2)$ on $[\text{lower}, \text{upper}]$: parameters
 /// and the interval's cdf constants; a [`Seeded`](crate::Seeded) stream draws it.
-///
-/// Robert, C.P. (1995), "Simulation of truncated normal variables", *Statistics and Computing* 5(2), 121-125, DOI 10.1007/BF00143942.
-/// Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.3, DOI 10.1007/978-1-4613-8643-8.
 #[derive(Clone)]
 pub struct SimdTruncatedNormal<T> {
   base: SimdNormal<T>,

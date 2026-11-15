@@ -15,14 +15,7 @@ fn mean(samples: &[f64]) -> f64 {
   samples.iter().sum::<f64>() / samples.len() as f64
 }
 
-/// KS against the sampler's own `cdf` (Kolmogorov 1933 / Smirnov 1948 /
-/// Massey 1951 critical values, alpha=0.05 — see
-/// `stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov`'s module
-/// doc), best-of-three pinned seeds (see [`SEEDS`]): a correct test
-/// still rejects a true null at rate alpha, and the SIMD stream differs
-/// across platforms, so one seed cannot be trusted to be lucky
-/// everywhere. Replaces this file's former `ks_critical = 2.0/sqrt(N)`
-/// bound, which implied an undeclared alpha of roughly 0.0007.
+/// KS at α = 0.05, best of three pinned seeds (`SEEDS`): one seed cannot be lucky on every platform.
 fn best_ks_p_value(
   n: usize,
   make_dist: impl Fn(u64) -> (Vec<f64>, Box<dyn Fn(f64) -> f64>),

@@ -288,8 +288,8 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdBeta<T> {
     Some(crate::special::beta_i(a, b, x.clamp(0.0, 1.0)))
   }
 
-  /// Both tails keep their digits; near `x = 1` correctly rounded but at one-spacing ties whose
-  /// root lies within the residual's double-precision noise of a midpoint, at worst 0.553 ulp.
+  /// Newton in logs on the smaller side: both tails keep their digits, 0 below the subnormals, 1
+  /// where `1 − x` rounds to it; near 1, one-spacing ties may miss by 0.553 ulp.
   fn quantile(&self, p: f64) -> Option<f64> {
     if !(0.0..=1.0).contains(&p) {
       return Some(f64::NAN);

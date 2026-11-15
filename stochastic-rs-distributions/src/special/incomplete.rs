@@ -319,7 +319,7 @@ fn invert(a: f64, p: f64, q: f64, from_q: bool, scale: f64) -> f64 {
 }
 
 /// The bound from `ln p` at its exact level and `ln Γ(1 + a)` to its relative digits: over a tiny
-/// `a`, `ln_gamma(1)`'s `1e-15` or a `1 − q` rounded to 1 read a root below `e^{−700}` for one past 1.
+/// `a`, `ln_gamma(1)`'s `1e-15` or a `1 − q` rounded to 1 read a root under `e^{−700}` past 1.
 fn bound_binds(a: f64, p: f64, q: f64, from_q: bool) -> bool {
   let ln_p = if from_q { (-q).ln_1p() } else { p.ln() };
   (ln_p - recip_gamma_1p_m1(a).ln_1p()) / a < -700.0

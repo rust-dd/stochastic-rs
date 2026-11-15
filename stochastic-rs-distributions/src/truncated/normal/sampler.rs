@@ -38,8 +38,8 @@ impl TailSetup {
       rate if rate.is_finite() => rate,
       _ => a,
     };
-    // Robert (1995), (2.1): the exponential proposal accepts more often from this width on; `(a² − a√(a² + 4))/4`
-    // is `−a/(a + √(a² + 4))`, which overflows nowhere.
+    // Robert (1995), (2.1): the exponential proposal accepts more often from this width on, its
+    // `(a² − a√(a² + 4))/4` formed as `−a/(a + √(a² + 4))`, which overflows nowhere.
     let exponential_from = 2.0 * std::f64::consts::E.sqrt() / (a + root) * (-a / (a + root)).exp();
     let proposal = if width > exponential_from {
       TailProposal::Exponential { alpha_star }
@@ -93,8 +93,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     x
   }
 
-  /// Robert (1995) accept-reject on the standardised one-sided interval, which forms no cdf: deep in a tail
-  /// `F(upper) − F(lower)` loses its digits, and past about 8.3σ both round to 1 and inversion returns `+inf`.
+  /// Robert (1995) accept-reject on the standardised one-sided interval, forming no cdf: deep in a
+  /// tail `F(upper) − F(lower)` loses its digits, and past about 8.3σ inversion returns `+inf`.
   fn tail_sample<S: TruncatedNormalSource<T>>(&self, setup: TailSetup, src: &mut S) -> T {
     // A standardised width below the doubles holds no offset: in the law's own coordinate, as past `μ ± σ·MAX`.
     if setup.a == f64::INFINITY || setup.width < f64::MIN_POSITIVE {

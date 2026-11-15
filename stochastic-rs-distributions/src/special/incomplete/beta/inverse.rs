@@ -32,8 +32,8 @@ const NARROW_SPACINGS: f64 = 1e5;
 /// `e^20`: the most a step below the normals changes `|w|` by, 1 000 e-folds within the cap.
 const BELOW_FACTOR: f64 = 4.851_651_954_097_903e8;
 
-/// The root `x` of `I_x(a, b) = p`, `0 < p < 1`, rounded once: 0 below the subnormals, 1 where its
-/// complement rounds to 1, `½` at `p = ½` for `a = b`; NaN on a NaN tangent or without a bracket.
+/// The root `x` of `I_x(a, b) = p`, `0 < p < 1`, the held side rounded once: 0 under subnormals,
+/// 1 where the complement rounds to 1, `½` at `p = ½`, `a = b`; NaN on a NaN tangent or no bracket.
 pub(crate) fn beta_i_inv(a: f64, b: f64, p: f64) -> f64 {
   beta_i_inv_steps(a, b, p).0
 }
@@ -210,7 +210,7 @@ fn narrow_root(a: f64, b: f64, p: f64) -> Option<f64> {
   })
 }
 
-/// `x` from the held side's two-part logarithm, rounded once.
+/// `x` from the held side's two-part logarithm: the held side rounded once, `1 − y` once more above ½.
 fn finish(w: (f64, f64), x_small: bool) -> f64 {
   let held = exp_parts(w, 1.0, 0);
   if x_small { held } else { 1.0 - held }
