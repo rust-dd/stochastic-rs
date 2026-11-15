@@ -285,15 +285,24 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: on a device the recursion runs in the kernel
-  /// with its time-varying coefficient bound per step, on the host devices it
-  /// is this process's own sampler, chunked exactly as `ProcessExt` chunks.
+  /// Through the Euler engine; a configuration the kernels do not carry samples on the host,
+  /// chunked exactly as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
-    self.backend.euler_sample(self)
+    if self.device_ready() {
+      self.backend.euler_sample(self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
   }
 
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
-    self.backend.euler_paths_map(self, m, f)
+    if self.device_ready() {
+      self.backend.euler_paths_map(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
   }
 
   fn sample_map_view<R: Send>(
@@ -301,19 +310,41 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     m: usize,
     f: impl Fn(ndarray::ArrayView1<T>) -> R + Sync,
   ) -> Vec<R> {
-    self.backend.euler_paths_map_view(self, m, f)
+    if self.device_ready() {
+      self.backend.euler_paths_map_view(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, |path| f(path.view()))
+    }
   }
 
   fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
-    self.backend.euler_paths(self, m)
+    if self.device_ready() {
+      self.backend.euler_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
   }
 
   fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
-    self.backend.try_sample(self)
+    if self.device_ready() {
+      self.backend.try_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
   }
 
   fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
-    self.backend.try_euler_paths(self, m)
+    if self.device_ready() {
+      self.backend.try_euler_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
+    }
+  }
+
+  /// `a = 0` stays on the host: the kernels' mean term `(θ/a)(1 − e^{−a·dt})` is `0/0` there.
+  fn device_fallback(&self) -> Option<&'static str> {
+    (self.a == T::zero())
+      .then_some("a zero mean-reversion speed, where the kernels' mean term is 0/0")
   }
 }
 
