@@ -17,16 +17,11 @@
 //! DOI: 10.1093/jjfinec/nbi025
 
 use ndarray::ArrayView1;
-use stochastic_rs_distributions::special::erf;
 
 use crate::critical_values::CriticalValues;
+use crate::critical_values::two_sided_p_value;
 use crate::realized::variance::realized_variance;
 use crate::traits::FloatExt;
-
-#[inline]
-fn standard_normal_cdf(z: f64) -> f64 {
-  0.5 * (1.0 + erf(z / std::f64::consts::SQRT_2))
-}
 
 /// Bipower variation: $BV = \mu_1^{-2}\sum_{i=2}^{n} |r_{i-1}|\,|r_i|$
 /// with $\mu_1 = \mathbb E|Z| = \sqrt{2/\pi}$, so $\mu_1^{-2} = \pi/2$.
@@ -111,7 +106,7 @@ pub struct BnsJumpTest {
   /// Standardised log-difference $\sqrt n\,(\ln RV - \ln BV) / \sqrt{\theta\,\max(1, TPQ / BV^2)}$,
   /// $\theta = (\pi/2)^2 + \pi - 5$.
   pub statistic: f64,
-  /// Two-sided p-value under $\mathcal N(0,1)$.
+  /// Two-sided p-value `2 Φ(−|statistic|)` under `N(0, 1)`.
   pub p_value: Option<f64>,
   pub critical_values: Option<CriticalValues>,
   /// Whether the no-jump null is rejected at the given $\alpha$.
@@ -157,8 +152,7 @@ pub fn bns_jump_test<T: FloatExt>(returns: ArrayView1<T>, alpha: f64) -> BnsJump
   } else {
     0.0
   };
-  let cdf = standard_normal_cdf(statistic);
-  let p_value = 2.0 * (1.0_f64.min(cdf).min(1.0 - cdf));
+  let p_value = two_sided_p_value(statistic);
   let reject_no_jump = p_value < alpha;
   BnsJumpTest {
     statistic,
@@ -279,5 +273,39 @@ mod tests {
   fn medrv_zero_when_too_short() {
     let r = array![0.01_f64];
     assert_eq!(medrv(r.view()), 0.0);
+  }
+
+  /// `p = erfc(|z|/√2)`, mpmath at 50 digits; the far tail keeps its relative digits.
+  #[test]
+  fn two_sided_p_value_keeps_its_tail() {
+    let pins = [
+      (0.0, 1.0),
+      (1.0, 0.3173105078629141),
+      (3.0, 0.002699796063260189),
+      (5.0, 5.733031437583878e-7),
+      (6.0, 1.973175290075396e-9),
+      (8.0, 1.2441921148543568e-15),
+      (9.0, 2.257176811907681e-19),
+      (12.0, 3.552964224155358e-33),
+      (20.0, 5.5072482372124674e-89),
+    ];
+    for (z, want) in pins {
+      let got = two_sided_p_value(z);
+      assert!(
+        ((got - want) / want).abs() < 1e-13,
+        "z = {z}: p = {got}, want {want}"
+      );
+      assert_eq!(two_sided_p_value(-z), got);
+    }
+  }
+
+  #[test]
+  fn a_far_tail_statistic_keeps_a_positive_p_value() {
+    let mut r = iid_normal(29, 5_000, 0.01);
+    r[2_500] = 0.5;
+    let test = bns_jump_test(r.view(), 0.05);
+    assert!(test.statistic > 8.27, "z = {}", test.statistic);
+    assert!(test.p_value.unwrap() > 0.0, "p = {:?}", test.p_value);
+    assert_eq!(test.p_value, Some(two_sided_p_value(test.statistic)));
   }
 }
