@@ -202,7 +202,7 @@ print(f"t-stat={res.statistic:.3f}, reject_unit_root={res.reject_unit_root}")
 
 ### Hurst exponent estimation
 
-The `hurst` module unifies six estimators (rescaled-range, DFA, GPH, wavelet, Whittle, variations) behind one `HurstEstimator` trait — `estimate(x) -> Result<HurstResult, HurstError>` — plus two more (`Higuchi`, `Variogram`) that reach the same trait by adapting a fractal-dimension estimate. The example uses `RescaledRange` (Hurst 1951 + Anis-Lloyd 1976 bias correction), which estimates the Hurst exponent of a signal directly:
+The `hurst` module unifies six estimators (rescaled-range, DFA, GPH, wavelet, Whittle, variations) behind one `HurstEstimator` trait — `estimate(x) -> Result<HurstResult, StatsError>` — plus two more (`Higuchi`, `Variogram`) that reach the same trait by adapting a fractal-dimension estimate. The example uses `RescaledRange` (Hurst 1951 + Anis-Lloyd 1976 bias correction), which estimates the Hurst exponent of a signal directly:
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">

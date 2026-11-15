@@ -4,8 +4,8 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 
 use super::EPS;
-use super::HestonCekfError;
 use super::HestonNmleCekfParams;
+use crate::StatsError;
 
 mod projection;
 mod step;
@@ -110,39 +110,39 @@ pub struct HestonCekfFilterResult {
   pub projection_diagnostics: HestonCekfProjectionDiagnostics,
 }
 
-/// Advances the CEKF by one observed log return.
+/// Advances the CEKF by one observed log return; `Err` on a non-finite return, a non-positive state
+/// or a filter floor hit, and panics on an invalid configuration or parameters.
 pub fn heston_cekf_step(
   previous: HestonCekfState,
   log_return: f64,
   parameters: HestonNmleCekfParams,
   config: &HestonCekfFilterConfig,
-) -> Result<HestonCekfStepResult, HestonCekfError> {
-  validate_filter_config(config)?;
-  validate_parameters(parameters, config)?;
-  validate_positive("previous variance", previous.variance)?;
-  validate_positive(
-    "previous error covariance bound",
-    previous.error_covariance_bound,
-  )?;
+) -> Result<HestonCekfStepResult, StatsError> {
+  validate_filter_config(config);
+  validate_parameters(parameters, config);
+  validate_state(previous.variance)?;
+  validate_state(previous.error_covariance_bound)?;
   if !log_return.is_finite() {
-    return Err(HestonCekfError::InvalidValue {
-      field: "log return",
+    return Err(StatsError::InvalidObservation {
+      index: 0,
       value: log_return,
+      constraint: "finite",
     });
   }
 
   step_impl(previous, log_return, parameters, config, FloorPolicy::Error)
 }
 
-/// Filters a positive price series once under fixed Heston parameters.
+/// Filters a positive price series once under fixed Heston parameters; `Err` on fewer than two or a
+/// non-positive price or a filter floor hit, and panics on an invalid configuration or parameters.
 pub fn filter_heston_cekf(
   prices: ArrayView1<'_, f64>,
   parameters: HestonNmleCekfParams,
   config: &HestonCekfFilterConfig,
-) -> Result<HestonCekfFilterResult, HestonCekfError> {
+) -> Result<HestonCekfFilterResult, StatsError> {
+  validate_filter_config(config);
+  validate_parameters(parameters, config);
   validate_prices(prices)?;
-  validate_filter_config(config)?;
-  validate_parameters(parameters, config)?;
 
   let initial = HestonCekfState {
     variance: config.initial_variance,
@@ -164,75 +164,92 @@ pub(crate) fn filter_heston_cekf_batch(
     .expect("batch CEKF configuration must be valid")
 }
 
-pub(crate) fn validate_filter_config(
-  config: &HestonCekfFilterConfig,
-) -> Result<(), HestonCekfError> {
-  if !config.r.is_finite() {
-    return Err(HestonCekfError::InvalidValue {
-      field: "r",
-      value: config.r,
-    });
-  }
-  validate_positive("delta", config.delta)?;
-  validate_positive("initial variance", config.initial_variance)?;
-  validate_positive(
-    "initial error covariance bound",
+pub(crate) fn validate_filter_config(config: &HestonCekfFilterConfig) {
+  assert!(
+    config.r.is_finite(),
+    "r must satisfy `r.is_finite()`, got r = {:?}",
+    config.r
+  );
+  assert_positive("delta", config.delta);
+  assert_positive("initial_variance", config.initial_variance);
+  assert_positive(
+    "initial_error_covariance_bound",
     config.initial_error_covariance_bound,
-  )?;
-  validate_nonnegative("q11", config.q11)?;
-  validate_finite("q12", config.q12)?;
-  validate_nonnegative("q22", config.q22)?;
-  if config.q11 * config.q22 - config.q12 * config.q12 < -EPS {
-    return Err(HestonCekfError::NonPositiveSemidefiniteNoise);
-  }
+  );
+  assert_nonnegative("q11", config.q11);
+  assert!(
+    config.q12.is_finite(),
+    "q12 must satisfy `q12.is_finite()`, got q12 = {:?}",
+    config.q12
+  );
+  assert_nonnegative("q22", config.q22);
+  let noise_determinant = config.q11 * config.q22 - config.q12 * config.q12;
+  assert!(
+    noise_determinant >= -EPS,
+    "q11 * q22 - q12 * q12 must satisfy `>= -EPS`, got q11 * q22 - q12 * q12 = {noise_determinant:?}"
+  );
   if let HestonCekfCorrection::Consistent { bounds } = config.correction {
-    validate_nonnegative("max_abs_state_transition", bounds.max_abs_state_transition)?;
-    validate_nonnegative("max_abs_kappa_theta", bounds.max_abs_kappa_theta)?;
-    validate_nonnegative("max_abs_sigma", bounds.max_abs_sigma)?;
+    assert_nonnegative("max_abs_state_transition", bounds.max_abs_state_transition);
+    assert_nonnegative("max_abs_kappa_theta", bounds.max_abs_kappa_theta);
+    assert_nonnegative("max_abs_sigma", bounds.max_abs_sigma);
   }
   if let HestonCekfPositiveStatePolicy::Project { floor } = config.positive_state_policy {
-    validate_positive("positive state projection floor", floor)?;
+    assert!(
+      floor.is_finite() && floor > EPS,
+      "floor must satisfy `floor > EPS`, got floor = {floor:?}"
+    );
   }
-  Ok(())
 }
 
 pub(crate) fn validate_parameters(
   parameters: HestonNmleCekfParams,
   config: &HestonCekfFilterConfig,
-) -> Result<(), HestonCekfError> {
-  validate_positive("kappa", parameters.kappa)?;
-  validate_positive("theta", parameters.theta)?;
-  validate_positive("sigma", parameters.sigma)?;
-  if !parameters.rho.is_finite() || parameters.rho.abs() > 1.0 {
-    return Err(HestonCekfError::InvalidValue {
-      field: "rho",
-      value: parameters.rho,
-    });
-  }
+) {
+  assert_positive("kappa", parameters.kappa);
+  assert_positive("theta", parameters.theta);
+  assert_positive("sigma", parameters.sigma);
+  assert!(
+    (-1.0..=1.0).contains(&parameters.rho),
+    "rho must satisfy `-1.0 <= rho <= 1.0`, got rho = {:?}",
+    parameters.rho
+  );
 
   if let HestonCekfCorrection::Consistent { bounds } = config.correction {
-    validate_bound(
-      "|1-kappa*delta|",
+    assert_bound(
+      "|1 - kappa * delta|",
       (1.0 - parameters.kappa * config.delta).abs(),
+      "max_abs_state_transition",
       bounds.max_abs_state_transition,
-    )?;
-    validate_bound(
-      "|kappa*theta|",
+    );
+    assert_bound(
+      "|kappa * theta|",
       (parameters.kappa * parameters.theta).abs(),
+      "max_abs_kappa_theta",
       bounds.max_abs_kappa_theta,
-    )?;
-    validate_bound("|sigma|", parameters.sigma.abs(), bounds.max_abs_sigma)?;
+    );
+    assert_bound(
+      "|sigma|",
+      parameters.sigma.abs(),
+      "max_abs_sigma",
+      bounds.max_abs_sigma,
+    );
   }
-  Ok(())
 }
 
-pub(crate) fn validate_prices(prices: ArrayView1<'_, f64>) -> Result<(), HestonCekfError> {
+pub(crate) fn validate_prices(prices: ArrayView1<'_, f64>) -> Result<(), StatsError> {
   if prices.len() < 2 {
-    return Err(HestonCekfError::TooFewPrices { len: prices.len() });
+    return Err(StatsError::InsufficientData {
+      needed: 2,
+      got: prices.len(),
+    });
   }
   for (index, value) in prices.iter().copied().enumerate() {
     if !value.is_finite() || value <= 0.0 {
-      return Err(HestonCekfError::InvalidPrice { index, value });
+      return Err(StatsError::InvalidObservation {
+        index,
+        value,
+        constraint: "finite and > 0",
+      });
     }
   }
   Ok(())
@@ -244,7 +261,7 @@ fn filter_impl(
   config: &HestonCekfFilterConfig,
   initial: HestonCekfState,
   floor_policy: FloorPolicy,
-) -> Result<HestonCekfFilterResult, HestonCekfError> {
+) -> Result<HestonCekfFilterResult, StatsError> {
   let mut variance_path = Array1::<f64>::zeros(prices.len());
   let mut covariance_path = Array1::<f64>::zeros(prices.len());
   let mut step_diagnostics = Vec::with_capacity(prices.len().saturating_sub(1));
@@ -275,42 +292,38 @@ fn filter_impl(
   })
 }
 
-fn validate_finite(field: &'static str, value: f64) -> Result<(), HestonCekfError> {
-  if value.is_finite() {
+fn validate_state(value: f64) -> Result<(), StatsError> {
+  if value.is_finite() && value > 0.0 {
     Ok(())
   } else {
-    Err(HestonCekfError::InvalidValue { field, value })
-  }
-}
-
-fn validate_nonnegative(field: &'static str, value: f64) -> Result<(), HestonCekfError> {
-  if value.is_finite() && value >= 0.0 {
-    Ok(())
-  } else {
-    Err(HestonCekfError::InvalidValue { field, value })
-  }
-}
-
-fn validate_positive(field: &'static str, value: f64) -> Result<(), HestonCekfError> {
-  if value.is_finite() && value > EPS {
-    Ok(())
-  } else {
-    Err(HestonCekfError::InvalidValue { field, value })
-  }
-}
-
-fn validate_bound(
-  coefficient: &'static str,
-  actual: f64,
-  bound: f64,
-) -> Result<(), HestonCekfError> {
-  if actual <= bound + EPS {
-    Ok(())
-  } else {
-    Err(HestonCekfError::ConsistencyBoundViolated {
-      coefficient,
-      actual,
-      bound,
+    Err(StatsError::InvalidObservation {
+      index: 0,
+      value,
+      constraint: "finite and > 0",
     })
   }
+}
+
+#[track_caller]
+fn assert_positive(name: &str, value: f64) {
+  assert!(
+    value.is_finite() && value > 0.0,
+    "{name} must satisfy `{name} > 0.0`, got {name} = {value:?}"
+  );
+}
+
+#[track_caller]
+fn assert_nonnegative(name: &str, value: f64) {
+  assert!(
+    value.is_finite() && value >= 0.0,
+    "{name} must satisfy `{name} >= 0.0`, got {name} = {value:?}"
+  );
+}
+
+#[track_caller]
+fn assert_bound(coefficient: &str, actual: f64, bound_name: &str, bound: f64) {
+  assert!(
+    actual <= bound + EPS,
+    "{coefficient} must satisfy `<= {bound_name}`, got {coefficient} = {actual:?}, {bound_name} = {bound:?}"
+  );
 }

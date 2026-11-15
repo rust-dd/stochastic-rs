@@ -14,9 +14,9 @@ use std::f64::consts::LN_2;
 use ndarray::ArrayView1;
 
 use super::FdDiagnostic;
-use super::FdError;
 use super::FdResult;
 use super::FractalDimEstimator;
+use crate::StatsError;
 use crate::traits::FloatExt;
 
 /// Variogram-ratio fractal-dimension estimator.
@@ -40,10 +40,14 @@ impl Variogram {
 }
 
 impl<T: FloatExt> FractalDimEstimator<T> for Variogram {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<FdResult<T>, FdError> {
+  fn estimate(&self, x: ArrayView1<T>) -> Result<FdResult<T>, StatsError> {
     let n_obs = x.len();
     if !(self.p.is_finite() && self.p > 0.0) {
-      return Err(FdError::NonPositiveP(self.p));
+      return Err(StatsError::InvalidParameter {
+        name: "p",
+        value: self.p,
+        constraint: "p > 0",
+      });
     }
     let p_t = T::from_f64_fast(self.p);
     let (d, v1, v2) = compute_with_diagnostic::<T>(x, p_t)?;
@@ -58,13 +62,9 @@ impl<T: FloatExt> FractalDimEstimator<T> for Variogram {
   }
 }
 
-/// Compute the variogram-based fractal dimension of `x`.
-///
-/// `p` must be strictly positive.  Returns `Err(FdError::PathTooShort)`
-/// for `< 3` points, `Err(FdError::NonPositiveP)` for `p ≤ 0`, and
-/// `Err(FdError::DegeneratePath)` when the variogram at lag 1 or 2 is
-/// non-finite or non-positive (e.g. constant path).
-pub fn compute<T: FloatExt>(x: ArrayView1<T>, p: T) -> Result<T, FdError> {
+/// Variogram-based fractal dimension of `x`; `Err` below 3 points, for a non-positive `p`, or when
+/// the lag-1 or lag-2 variogram is non-finite or zero (a constant path).
+pub fn compute<T: FloatExt>(x: ArrayView1<T>, p: T) -> Result<T, StatsError> {
   let (d, _, _) = compute_with_diagnostic::<T>(x, p)?;
   Ok(T::from_f64_fast(d))
 }
@@ -74,17 +74,21 @@ pub fn compute<T: FloatExt>(x: ArrayView1<T>, p: T) -> Result<T, FdError> {
 pub(crate) fn compute_with_diagnostic<T: FloatExt>(
   x: ArrayView1<T>,
   p: T,
-) -> Result<(f64, f64, f64), FdError> {
+) -> Result<(f64, f64, f64), StatsError> {
   if x.len() < 3 {
-    return Err(FdError::PathTooShort {
+    return Err(StatsError::InsufficientData {
+      needed: 3,
       got: x.len(),
-      required: 3,
     });
   }
 
   let p_f64 = p.to_f64().unwrap_or(f64::NAN);
   if !(p_f64 > 0.0 && p_f64.is_finite()) {
-    return Err(FdError::NonPositiveP(p_f64));
+    return Err(StatsError::InvalidParameter {
+      name: "p",
+      value: p_f64,
+      constraint: "p > 0",
+    });
   }
 
   let sum1: f64 = (1..x.len())
@@ -104,7 +108,7 @@ pub(crate) fn compute_with_diagnostic<T: FloatExt>(
   let v1 = sum1 / (2.0 * (n - 1) as f64);
   let v2 = sum2 / (2.0 * (n - 2) as f64);
   if !(v1.is_finite() && v2.is_finite() && v1 > 0.0 && v2 > 0.0) {
-    return Err(FdError::DegeneratePath);
+    return Err(StatsError::DegenerateData("constant or zero-variance path"));
   }
 
   let d = 2.0 - (1.0 / p_f64) * ((v2.ln() - v1.ln()) / LN_2);

@@ -34,25 +34,24 @@
 use ndarray::ArrayView1;
 
 use super::HurstDiagnostic;
-use super::HurstError;
 use super::HurstEstimator;
 use super::HurstResult;
-use crate::fractal_dim::FdError;
+use crate::StatsError;
 use crate::fractal_dim::FractalDimEstimator;
 use crate::fractal_dim::Higuchi;
 use crate::fractal_dim::Variogram;
 use crate::traits::FloatExt;
 
 impl<T: FloatExt> HurstEstimator<T> for Higuchi {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, HurstError> {
-    let fd_result = FractalDimEstimator::<T>::estimate(self, x).map_err(map_fd_err)?;
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, StatsError> {
+    let fd_result = FractalDimEstimator::<T>::estimate(self, x)?;
     fd_to_hurst::<T>(fd_result)
   }
 }
 
 impl<T: FloatExt> HurstEstimator<T> for Variogram {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, HurstError> {
-    let fd_result = FractalDimEstimator::<T>::estimate(self, x).map_err(map_fd_err)?;
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, StatsError> {
+    let fd_result = FractalDimEstimator::<T>::estimate(self, x)?;
     fd_to_hurst::<T>(fd_result)
   }
 }
@@ -61,10 +60,10 @@ impl<T: FloatExt> HurstEstimator<T> for Variogram {
 /// `H = 2 - D`, clamped to `(0, 1)`.
 fn fd_to_hurst<T: FloatExt>(
   fd: crate::fractal_dim::FdResult<T>,
-) -> Result<HurstResult<T>, HurstError> {
+) -> Result<HurstResult<T>, StatsError> {
   let d_f64 = fd.d.to_f64().unwrap_or(f64::NAN);
   if !d_f64.is_finite() {
-    return Err(HurstError::DegeneratePath);
+    return Err(StatsError::DegenerateData("constant or zero-variance path"));
   }
   let h = (2.0 - d_f64).clamp(0.0, 1.0);
   Ok(HurstResult {
@@ -73,17 +72,6 @@ fn fd_to_hurst<T: FloatExt>(
     n_obs: fd.n_obs,
     diagnostic: HurstDiagnostic::FractalDim { d: fd.d },
   })
-}
-
-fn map_fd_err(e: FdError) -> HurstError {
-  match e {
-    FdError::PathTooShort { got, required } => HurstError::TooFewObservations { got, required },
-    FdError::NonPositiveP(p) => HurstError::InvalidParameter("p", p),
-    FdError::KmaxTooSmall(k) => HurstError::InvalidParameter("kmax", k as f64),
-    FdError::DegeneratePath => HurstError::DegeneratePath,
-    FdError::NotEnoughScales => HurstError::NotEnoughScales,
-    FdError::RegressionFailed => HurstError::RegressionFailed,
-  }
 }
 
 #[cfg(test)]

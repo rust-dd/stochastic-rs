@@ -20,9 +20,9 @@ use ndarray::ArrayView1;
 use ndarray::array;
 
 use super::HurstDiagnostic;
-use super::HurstError;
 use super::HurstEstimator;
 use super::HurstResult;
+use crate::StatsError;
 use crate::traits::FloatExt;
 
 /// Selector for the underlying variation kernel used by [`Variations`].
@@ -63,15 +63,12 @@ impl Variations {
 }
 
 impl<T: FloatExt> HurstEstimator<T> for Variations {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, HurstError> {
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, StatsError> {
     let n = x.len();
     match self.kind {
       VariationKind::Daubechies => {
         if n < 8 {
-          return Err(HurstError::TooFewObservations {
-            got: n,
-            required: 8,
-          });
+          return Err(StatsError::InsufficientData { needed: 8, got: n });
         }
         let (h, v1, v2) = daubechies_h_inner::<T>(x)?;
         Ok(HurstResult {
@@ -86,10 +83,7 @@ impl<T: FloatExt> HurstEstimator<T> for Variations {
       }
       VariationKind::CentralDiff => {
         if n < 5 {
-          return Err(HurstError::TooFewObservations {
-            got: n,
-            required: 5,
-          });
+          return Err(StatsError::InsufficientData { needed: 5, got: n });
         }
         let (h, v1, v2) = central_diff_h_inner::<T>(x)?;
         Ok(HurstResult {
@@ -104,14 +98,25 @@ impl<T: FloatExt> HurstEstimator<T> for Variations {
       }
       VariationKind::PowerVariation { k, p } => {
         if k == 0 {
-          return Err(HurstError::InvalidParameter("k", k as f64));
+          return Err(StatsError::InvalidParameter {
+            name: "k",
+            value: k as f64,
+            constraint: "k >= 1",
+          });
         }
         if !(p.is_finite() && p > 0.0) {
-          return Err(HurstError::InvalidParameter("p", p));
+          return Err(StatsError::InvalidParameter {
+            name: "p",
+            value: p,
+            constraint: "p > 0",
+          });
         }
         let required = k + 2 + 1;
         if n < required {
-          return Err(HurstError::TooFewObservations { got: n, required });
+          return Err(StatsError::InsufficientData {
+            needed: required,
+            got: n,
+          });
         }
         let (h, v1, v2) = power_variation_h_inner::<T>(x, k, p)?;
         Ok(HurstResult {
@@ -180,7 +185,7 @@ pub(crate) fn lfilter_f64<T: FloatExt>(
 /// Daubechies-filter based H estimator returning `(H, V_short, V_long)`.
 pub(crate) fn daubechies_h_inner<T: FloatExt>(
   x: ArrayView1<T>,
-) -> Result<(f64, f64, f64), HurstError> {
+) -> Result<(f64, f64, f64), StatsError> {
   let a = daubechies_coeffs();
   let a_2 = a2_coefficients(&a);
   let v1 = lfilter_f64::<T>(&a, &array![1.0], x).mapv(|y| y * y).sum();
@@ -188,11 +193,11 @@ pub(crate) fn daubechies_h_inner<T: FloatExt>(
     .mapv(|y| y * y)
     .sum();
   if !(v1 > 0.0 && v2 > 0.0 && v1.is_finite() && v2.is_finite()) {
-    return Err(HurstError::DegeneratePath);
+    return Err(StatsError::DegenerateData("constant or zero-variance path"));
   }
   let h = 0.5 * (v2 / v1).log2();
   if !h.is_finite() {
-    return Err(HurstError::DegeneratePath);
+    return Err(StatsError::DegenerateData("constant or zero-variance path"));
   }
   Ok((h, v1, v2))
 }
@@ -201,7 +206,7 @@ pub(crate) fn daubechies_h_inner<T: FloatExt>(
 /// squared-difference ratio).  Returns `(H, V_short, V_long)`.
 pub(crate) fn central_diff_h_inner<T: FloatExt>(
   x: ArrayView1<T>,
-) -> Result<(f64, f64, f64), HurstError> {
+) -> Result<(f64, f64, f64), StatsError> {
   let n = x.len();
   let to = |i: usize| x[i].to_f64().unwrap_or(0.0);
   let sum1: f64 = (0..(n - 4))
@@ -217,11 +222,11 @@ pub(crate) fn central_diff_h_inner<T: FloatExt>(
     })
     .sum();
   if !(sum1 > 0.0 && sum2 > 0.0 && sum1.is_finite() && sum2.is_finite()) {
-    return Err(HurstError::DegeneratePath);
+    return Err(StatsError::DegenerateData("constant or zero-variance path"));
   }
   let h = 0.5 * (sum1 / sum2).log2();
   if !h.is_finite() {
-    return Err(HurstError::DegeneratePath);
+    return Err(StatsError::DegenerateData("constant or zero-variance path"));
   }
   Ok((h, sum2, sum1))
 }
@@ -239,15 +244,15 @@ pub(crate) fn power_variation_h_inner<T: FloatExt>(
   x: ArrayView1<T>,
   k: usize,
   p: f64,
-) -> Result<(f64, f64, f64), HurstError> {
+) -> Result<(f64, f64, f64), StatsError> {
   let v1 = power_variation_nonoverlap::<T>(x, k, p, 1);
   let v2 = power_variation_nonoverlap::<T>(x, k, p, 2);
   if !(v1 > 0.0 && v2 > 0.0 && v1.is_finite() && v2.is_finite()) {
-    return Err(HurstError::DegeneratePath);
+    return Err(StatsError::DegenerateData("constant or zero-variance path"));
   }
   let h = (1.0 + (v2 / v1).log2()) / p;
   if !h.is_finite() {
-    return Err(HurstError::DegeneratePath);
+    return Err(StatsError::DegenerateData("constant or zero-variance path"));
   }
   Ok((h, v1, v2))
 }

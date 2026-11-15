@@ -21,11 +21,11 @@ use std::f64::consts::PI;
 use ndarray::ArrayView1;
 
 use super::HurstDiagnostic;
-use super::HurstError;
 use super::HurstEstimator;
 use super::HurstResult;
 use super::to_f64_vec;
 use super::weighted_linreg;
+use crate::StatsError;
 use crate::traits::FloatExt;
 
 /// GPH log-periodogram Hurst estimator.
@@ -56,18 +56,19 @@ impl Gph {
 }
 
 impl<T: FloatExt> HurstEstimator<T> for Gph {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, HurstError> {
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, StatsError> {
     if !(0.1..1.0).contains(&self.bandwidth_alpha) {
-      return Err(HurstError::InvalidParameter(
-        "bandwidth_alpha",
-        self.bandwidth_alpha,
-      ));
+      return Err(StatsError::InvalidParameter {
+        name: "bandwidth_alpha",
+        value: self.bandwidth_alpha,
+        constraint: "0.1 <= bandwidth_alpha < 1.0",
+      });
     }
     let n_obs = x.len();
     if n_obs < 64 {
-      return Err(HurstError::TooFewObservations {
+      return Err(StatsError::InsufficientData {
+        needed: 64,
         got: n_obs,
-        required: 64,
       });
     }
 
@@ -79,10 +80,7 @@ impl<T: FloatExt> HurstEstimator<T> for Gph {
     };
     let n = series.len();
     if n < 32 {
-      return Err(HurstError::TooFewObservations {
-        got: n,
-        required: 32,
-      });
+      return Err(StatsError::InsufficientData { needed: 32, got: n });
     }
     let mean = series.iter().sum::<f64>() / n as f64;
     let demeaned: Vec<f64> = series.iter().map(|v| *v - mean).collect();
@@ -91,7 +89,9 @@ impl<T: FloatExt> HurstEstimator<T> for Gph {
       .max(8)
       .min(n / 2);
     if m < 4 {
-      return Err(HurstError::NotEnoughScales);
+      return Err(StatsError::DegenerateData(
+        "fewer than four valid frequencies",
+      ));
     }
 
     let mut log_freq = Vec::with_capacity(m);
@@ -115,14 +115,16 @@ impl<T: FloatExt> HurstEstimator<T> for Gph {
       log_periodogram.push(i_lambda.ln());
     }
     if log_freq.len() < 4 {
-      return Err(HurstError::NotEnoughScales);
+      return Err(StatsError::DegenerateData(
+        "fewer than four valid frequencies",
+      ));
     }
 
     let m_used = log_freq.len();
-    let (slope, intercept, r_squared) =
-      weighted_linreg(&log_freq, &log_periodogram, None).ok_or(HurstError::RegressionFailed)?;
+    let (slope, intercept, r_squared) = weighted_linreg(&log_freq, &log_periodogram, None)
+      .ok_or(StatsError::Singular("log-log regression"))?;
     if !slope.is_finite() {
-      return Err(HurstError::RegressionFailed);
+      return Err(StatsError::Singular("log-log regression"));
     }
     let d = -slope;
     let h = d + 0.5;
@@ -182,6 +184,6 @@ mod tests {
   fn gph_rejects_too_short() {
     let path = ndarray::Array1::<f64>::zeros(32);
     let r = Gph::default().estimate(path.view());
-    assert!(matches!(r, Err(HurstError::TooFewObservations { .. })));
+    assert!(matches!(r, Err(StatsError::InsufficientData { .. })));
   }
 }

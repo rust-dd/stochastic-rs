@@ -6,20 +6,17 @@
 use ndarray::Array1;
 use ndarray::ArrayView1;
 
-use super::HurstError;
 use super::HurstEstimator;
+use crate::StatsError;
 use crate::fractal_dim::Higuchi;
 use crate::traits::FloatExt;
 
 /// `H ∈ [0.05, 0.45]` from closes: Higuchi on a rolling mean-absolute-return vol proxy, checked
 /// against absolute returns; errors on too few closes or as [`hurst_from_signal`] does.
-pub fn estimate_hurst<T: FloatExt>(closes: ArrayView1<T>) -> Result<f64, HurstError> {
+pub fn estimate_hurst<T: FloatExt>(closes: ArrayView1<T>) -> Result<f64, StatsError> {
   let n = closes.len();
   if n < 30 {
-    return Err(HurstError::TooFewObservations {
-      got: n,
-      required: 30,
-    });
+    return Err(StatsError::InsufficientData { needed: 30, got: n });
   }
   let rets: Vec<f64> = (1..n)
     .filter_map(|i| {
@@ -30,9 +27,9 @@ pub fn estimate_hurst<T: FloatExt>(closes: ArrayView1<T>) -> Result<f64, HurstEr
     })
     .collect();
   if rets.len() < 30 {
-    return Err(HurstError::TooFewObservations {
+    return Err(StatsError::InsufficientData {
+      needed: 30,
       got: rets.len(),
-      required: 30,
     });
   }
 
@@ -75,23 +72,23 @@ pub fn estimate_hurst<T: FloatExt>(closes: ArrayView1<T>) -> Result<f64, HurstEr
 }
 
 /// Higuchi `H` of a positive signal, clamped to `[0.05, 0.45]`; errors below 20 points, on a
-/// [`Higuchi`] failure, or with [`HurstError::RegressionFailed`] when the fit leaves `(0, 1)`.
-pub fn hurst_from_signal<T: FloatExt>(signal: ArrayView1<T>) -> Result<f64, HurstError> {
+/// [`Higuchi`] failure, or with [`StatsError::Singular`] when the fit leaves `(0, 1)`.
+pub fn hurst_from_signal<T: FloatExt>(signal: ArrayView1<T>) -> Result<f64, StatsError> {
   let n = signal.len();
   if n < 20 {
-    return Err(HurstError::TooFewObservations {
-      got: n,
-      required: 20,
-    });
+    return Err(StatsError::InsufficientData { needed: 20, got: n });
   }
   let kmax = 64.min(n / 4).max(4);
   let est = Higuchi { kmax };
   let r = HurstEstimator::<T>::estimate(&est, signal)?;
-  let h = r.hurst.to_f64().ok_or(HurstError::RegressionFailed)?;
+  let h = r
+    .hurst
+    .to_f64()
+    .ok_or(StatsError::Singular("log-log regression"))?;
   if h.is_finite() && h > 0.0 && h < 1.0 {
     Ok(h.clamp(0.05, 0.45))
   } else {
-    Err(HurstError::RegressionFailed)
+    Err(StatsError::Singular("log-log regression"))
   }
 }
 
@@ -116,10 +113,7 @@ mod tests {
     let closes = Array1::from_vec(vec![100.0, 101.0, 99.5]);
     assert_eq!(
       estimate_hurst(closes.view()),
-      Err(HurstError::TooFewObservations {
-        got: 3,
-        required: 30
-      })
+      Err(StatsError::InsufficientData { needed: 30, got: 3 })
     );
   }
 
@@ -128,10 +122,7 @@ mod tests {
     let signal = Array1::from_vec(vec![0.1, 0.2, 0.3]);
     assert_eq!(
       hurst_from_signal(signal.view()),
-      Err(HurstError::TooFewObservations {
-        got: 3,
-        required: 20
-      })
+      Err(StatsError::InsufficientData { needed: 20, got: 3 })
     );
   }
 }

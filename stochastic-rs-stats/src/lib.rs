@@ -9,7 +9,10 @@
 
 mod linalg;
 
+pub mod error;
 pub mod traits;
+
+pub use error::StatsError;
 
 pub mod acf;
 pub mod bayesian_diffusion;

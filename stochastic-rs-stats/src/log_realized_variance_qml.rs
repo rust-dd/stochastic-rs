@@ -18,9 +18,6 @@
 //! Likelihood Estimation of Misspecified Models", *Econometrica* 50(1), 1-25,
 //! <https://doi.org/10.2307/1912526>.
 
-use std::error::Error;
-use std::fmt;
-
 mod filter;
 mod fit;
 mod math;
@@ -39,10 +36,8 @@ pub struct LogChiSquareMoments {
   pub log_variance: f64,
 }
 
-/// Returns the log-chi-square measurement moments for a positive block size.
-pub fn log_chi_square_moments(
-  block_degrees_of_freedom: usize,
-) -> Result<LogChiSquareMoments, LogRealizedVarianceQmlError> {
+/// The log-chi-square measurement moments of a block size; panics unless `block_degrees_of_freedom > 0`.
+pub fn log_chi_square_moments(block_degrees_of_freedom: usize) -> LogChiSquareMoments {
   math::measurement_moments(block_degrees_of_freedom)
 }
 
@@ -227,63 +222,6 @@ pub struct LogRealizedVarianceQmlResult {
   /// Likelihood, measurement, and optimiser audit values.
   pub diagnostics: LogRealizedVarianceQmlDiagnostics,
 }
-
-/// Typed validation, optimisation, and numerical failures.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum LogRealizedVarianceQmlError {
-  InsufficientObservations { actual: usize, minimum: usize },
-  NonFiniteObservation { index: usize },
-  NonPositiveObservation { index: usize },
-  InvalidConfig { field: &'static str },
-  InvalidParameter { field: &'static str },
-  OptimizationFailed,
-  NumericalFailure { stage: &'static str, index: usize },
-}
-
-impl fmt::Display for LogRealizedVarianceQmlError {
-  fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self {
-      Self::InsufficientObservations { actual, minimum } => write!(
-        formatter,
-        "log-realized-variance QML requires at least {minimum} observations, got {actual}"
-      ),
-      Self::NonFiniteObservation { index } => {
-        write!(
-          formatter,
-          "realized variance at index {index} is not finite"
-        )
-      }
-      Self::NonPositiveObservation { index } => {
-        write!(
-          formatter,
-          "realized variance at index {index} is not positive"
-        )
-      }
-      Self::InvalidConfig { field } => {
-        write!(
-          formatter,
-          "invalid log-realized-variance QML config field: {field}"
-        )
-      }
-      Self::InvalidParameter { field } => {
-        write!(
-          formatter,
-          "invalid log-realized-variance parameter: {field}"
-        )
-      }
-      Self::OptimizationFailed => {
-        write!(formatter, "all log-realized-variance QML starts failed")
-      }
-      Self::NumericalFailure { stage, index } => write!(
-        formatter,
-        "non-finite log-realized-variance value during {stage} at index {index}"
-      ),
-    }
-  }
-}
-
-impl Error for LogRealizedVarianceQmlError {}
 
 #[cfg(test)]
 #[path = "log_realized_variance_qml/tests.rs"]
