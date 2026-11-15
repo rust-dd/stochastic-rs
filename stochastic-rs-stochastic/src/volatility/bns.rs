@@ -248,7 +248,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       jump_shape: self.jump_shape,
       dt,
       decay: (-lam_dt).exp(), // e^{-λ·Δt}
-      counts: (jump_rate_per_step > 0.0).then(|| SimdPoisson::new(jump_rate_per_step)),
+      counts: (jump_rate_per_step != 0.0).then(|| SimdPoisson::new(jump_rate_per_step)),
       seed: self.seed.derive(),
     }
   }
@@ -288,7 +288,7 @@ pub struct BnsSampler<T: FloatExt, S: SeedExt> {
   jump_shape: T,
   dt: T,
   decay: T,
-  /// The per-step count `Poisson(ν·λ·Δt)`; `None` at a zero rate, where no step jumps.
+  /// The per-step count `Poisson(ν·λ·Δt)`; `None` only at a zero rate, so the law checks any other.
   counts: Option<SimdPoisson<u64>>,
   seed: S,
 }
@@ -486,6 +486,26 @@ mod tests {
         "step {i}: no jumps, so the OU decay is the whole step"
       );
     }
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "lambda must satisfy `lambda > 0.0 && lambda.is_finite()`, got lambda = NaN"
+  )]
+  fn a_nan_jump_rate_reaches_the_count_law_check() {
+    let mut p = Bns::<f64>::new(
+      Some(100.0),
+      0.04,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      16,
+      Some(1.0),
+      Unseeded,
+    );
+    p.nu = f64::NAN;
+    let _ = p.sample();
   }
 
   #[test]
