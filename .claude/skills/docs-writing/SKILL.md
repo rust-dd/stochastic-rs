@@ -515,12 +515,12 @@ $\theta \in <\text{interval}>$, with limits:
 Per `vol-surrogate-nn` SKILL. Required sections:
 
 ```
-1. Model spec     (StochVolModelSpec — input dims, output dims)
+1. Model spec     (StochVolModelSpec — parameter box, strike-maturity grid)
 2. Scaling        (parameter box to [-1, 1], output de-standardisation)
 3. Training set   (gzip-npy file path, generator script, sample count)
 4. Architecture   (layers, activation, hidden width)
 5. Training       (optimiser, loss, epochs, batch size)
-6. Inference      (predict_implied_vol_surface integration with ImpliedVolSurface::from_iv_grid)
+6. Inference      (predict_implied_vol_surface(params, spot, &forwards) on the spec grid -> ImpliedVolSurface)
 7. Round-trip test (train_save_load_roundtrip)
 8. Benchmark      (vs Fourier / closed-form baseline; speed + accuracy)
 9. References
