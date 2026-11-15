@@ -16,6 +16,8 @@
 //! `tests/prelude_completeness.rs` names the prelude-excluded traits
 //! explicitly, so dropping one from this hub is a compile error there.
 
+#[cfg(feature = "ai")]
+pub use stochastic_rs_ai::traits::SurrogateModel;
 pub use stochastic_rs_copulas::traits::BivariateExt;
 pub use stochastic_rs_copulas::traits::MultivariateExt;
 pub use stochastic_rs_copulas::traits::TailDependence;

@@ -26,3 +26,17 @@ fn a_model_saved_with_candle_0_9_2_predicts_the_same_surface() {
     .unwrap();
   assert!(max_diff < 1e-6, "max |diff| {max_diff}");
 }
+
+#[cfg(feature = "quant")]
+#[test]
+fn the_migrated_fixture_carries_the_shipped_heston_grid() {
+  use stochastic_rs_ai::traits::SurrogateModel;
+  use stochastic_rs_ai::volatility::grid;
+  use stochastic_rs_ai::volatility::heston;
+
+  let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/heston_nn_candle_0_9_2");
+  let model = HestonNn::load(&dir, &Device::Cpu).unwrap();
+  let spec = model.nn().spec();
+  assert_eq!(spec.strikes, heston::STRIKES);
+  assert_eq!(spec.maturities, grid::MATURITIES);
+}

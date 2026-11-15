@@ -26,6 +26,10 @@ def test_heston_nn_trains_predicts_and_calibrates(tmp_path):
     model = sr.HestonNn()
     lb, ub = np.array(model.param_lb), np.array(model.param_ub)
     assert model.input_dim == 5 and model.output_dim == 88
+    assert len(model.strikes) == 11 and len(model.maturities) == 8
+    assert model.strikes == sorted(model.strikes, reverse=True)
+    assert model.maturities == sorted(model.maturities)
+    assert len(sr.RBergomiNn().strikes) == 11
     rng = np.random.default_rng(3)
     params = lb + rng.uniform(size=(256, 5)) * (ub - lb)
     surfaces = _synthetic(params, lb, ub, 88)
@@ -46,3 +50,22 @@ def test_heston_nn_trains_predicts_and_calibrates(tmp_path):
         sr.calibrate_surrogate(model, surface[:10])
     with pytest.raises(ValueError):
         sr.calibrate_surrogate("not a model", surface)
+
+
+def test_one_seed_gives_one_network():
+    lb, ub = np.array(sr.HestonNn().param_lb), np.array(sr.HestonNn().param_ub)
+    rng = np.random.default_rng(5)
+    params = lb + rng.uniform(size=(64, 5)) * (ub - lb)
+    surfaces = _synthetic(params, lb, ub, 88)
+    theta = list(lb + 0.4 * (ub - lb))
+
+    def trained(seed: int) -> np.ndarray:
+        model = sr.HestonNn(seed=seed)
+        model.train(params, surfaces, epochs=3, seed=1)
+        return model.predict_surface(theta)
+
+    first = trained(5)
+    assert np.isfinite(first).all()
+    assert np.array_equal(first, trained(5))
+    second = trained(6)
+    assert np.isfinite(second).all() and not np.array_equal(first, second)

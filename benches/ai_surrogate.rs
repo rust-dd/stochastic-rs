@@ -9,16 +9,17 @@ use stochastic_rs::ai::Device;
 use stochastic_rs::ai::volatility::common::StochVolModelSpec;
 use stochastic_rs::ai::volatility::common::StochVolNn;
 use stochastic_rs::ai::volatility::common::TrainConfig;
+use stochastic_rs::ai::volatility::grid;
 use stochastic_rs::ai::volatility::heston;
 
 fn spec() -> StochVolModelSpec {
   StochVolModelSpec::new(
     heston::MODEL_ID,
-    heston::INPUT_DIM,
-    heston::OUTPUT_DIM,
     heston::DEFAULT_HIDDEN_DIM,
     heston::PARAM_LB.to_vec(),
     heston::PARAM_UB.to_vec(),
+    heston::STRIKES.to_vec(),
+    grid::MATURITIES.to_vec(),
   )
   .unwrap()
 }
@@ -42,7 +43,7 @@ fn bench_ai_surrogate(c: &mut Criterion) {
     batch_size: 64,
     ..TrainConfig::default()
   };
-  let mut trained = StochVolNn::new(spec(), &device).unwrap();
+  let mut trained = StochVolNn::new(spec(), &device, 1).unwrap();
   trained.train(&params, &surfaces, &cfg).unwrap();
   let theta = (0..heston::INPUT_DIM)
     .map(|j| 0.5 * (heston::PARAM_LB[j] + heston::PARAM_UB[j]))
@@ -52,7 +53,7 @@ fn bench_ai_surrogate(c: &mut Criterion) {
   let mut group = c.benchmark_group("ai_surrogate");
   group.bench_function("train_epoch/rows_2048", |b| {
     b.iter_batched_ref(
-      || StochVolNn::new(spec(), &device).unwrap(),
+      || StochVolNn::new(spec(), &device, 1).unwrap(),
       |nn| black_box(nn.train(&params, &surfaces, &cfg).unwrap()),
       BatchSize::PerIteration,
     )

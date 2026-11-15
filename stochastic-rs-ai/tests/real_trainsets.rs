@@ -67,7 +67,7 @@ fn heston_set_trains() -> Result<()> {
     heston::INPUT_DIM,
     heston::OUTPUT_DIM,
     (&heston::PARAM_LB, &heston::PARAM_UB),
-    |p, s, c| HestonNn::new(&Device::Cpu)?.train(p, s, c),
+    |p, s, c| HestonNn::new(&Device::Cpu, 7)?.train(p, s, c),
   )
 }
 
@@ -78,7 +78,7 @@ fn one_factor_set_trains() -> Result<()> {
     one_factor::INPUT_DIM,
     one_factor::OUTPUT_DIM,
     (&one_factor::PARAM_LB, &one_factor::PARAM_UB),
-    |p, s, c| OneFactorNn::new(&Device::Cpu)?.train(p, s, c),
+    |p, s, c| OneFactorNn::new(&Device::Cpu, 7)?.train(p, s, c),
   )
 }
 
@@ -89,7 +89,7 @@ fn rbergomi_set_trains() -> Result<()> {
     rbergomi::INPUT_DIM,
     rbergomi::OUTPUT_DIM,
     (&rbergomi::PARAM_LB, &rbergomi::PARAM_UB),
-    |p, s, c| RBergomiNn::new(&Device::Cpu)?.train(p, s, c),
+    |p, s, c| RBergomiNn::new(&Device::Cpu, 7)?.train(p, s, c),
   )
 }
 

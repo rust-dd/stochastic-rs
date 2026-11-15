@@ -29,21 +29,21 @@ pub struct OneFactorNn {
 }
 
 impl OneFactorNn {
-  pub fn new(device: &Device) -> Result<Self> {
-    Self::with_hidden(device, DEFAULT_HIDDEN_DIM)
+  pub fn new(device: &Device, seed: u64) -> Result<Self> {
+    Self::with_hidden(device, DEFAULT_HIDDEN_DIM, seed)
   }
 
-  pub fn with_hidden(device: &Device, hidden_dim: usize) -> Result<Self> {
+  pub fn with_hidden(device: &Device, hidden_dim: usize, seed: u64) -> Result<Self> {
     let spec = StochVolModelSpec::new(
       MODEL_ID,
-      INPUT_DIM,
-      OUTPUT_DIM,
       hidden_dim,
       PARAM_LB.to_vec(),
       PARAM_UB.to_vec(),
+      STRIKES.to_vec(),
+      grid::MATURITIES.to_vec(),
     )?;
     Ok(Self {
-      inner: StochVolNn::new(spec, device)?,
+      inner: StochVolNn::new(spec, device, seed)?,
     })
   }
 
@@ -66,19 +66,18 @@ impl OneFactorNn {
     self.inner.predict_surfaces(params)
   }
 
-  /// [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface) of the prediction
-  /// with ascending strikes; pass [`STRIKES`] times the spot, [`grid::MATURITIES`] and forwards.
+  /// [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface) at `spot` on the
+  /// training grid: strikes [`STRIKES`] times `spot`, ascending; one forward per maturity.
   #[cfg(feature = "quant")]
   pub fn predict_implied_vol_surface(
     &self,
     params: &[f32; INPUT_DIM],
-    strikes: Vec<f64>,
-    maturities: Vec<f64>,
-    forwards: Vec<f64>,
+    spot: f64,
+    forwards: &[f64],
   ) -> Result<stochastic_rs_quant::vol_surface::ImpliedVolSurface> {
     self
       .inner
-      .predict_implied_vol_surface(params, strikes, maturities, forwards)
+      .predict_implied_vol_surface(params, spot, forwards)
   }
 
   pub fn save<P: AsRef<Path>>(&self, dir: P) -> Result<()> {
@@ -86,9 +85,9 @@ impl OneFactorNn {
   }
 
   pub fn load<P: AsRef<Path>>(dir: P, device: &Device) -> Result<Self> {
-    Ok(Self {
-      inner: StochVolNn::load(MODEL_ID, dir, device)?,
-    })
+    let inner = StochVolNn::load(MODEL_ID, dir, device)?;
+    inner.spec().ensure_grid(&STRIKES, &grid::MATURITIES)?;
+    Ok(Self { inner })
   }
 }
 
@@ -110,7 +109,7 @@ mod tests {
   fn train_save_load_roundtrip() -> Result<()> {
     let device = Device::Cpu;
     let (params, surfaces) = synthetic_surface_dataset(&PARAM_LB, &PARAM_UB, 192, OUTPUT_DIM, 11);
-    let mut model = OneFactorNn::new(&device)?;
+    let mut model = OneFactorNn::new(&device, 7)?;
     let cfg = TrainConfig {
       test_ratio: 0.2,
       batch_size: 32,
