@@ -52,11 +52,13 @@
 //!   volatility for dynamic SABR model", SSRN 965265.
 
 use ndarray::Array1;
+use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
 use crate::noise::gn::Gn;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -101,32 +103,83 @@ impl<T: FloatExt, S: SeedExt> MultifactorSabr<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    let buckets = knots.len() + 1;
-    assert_eq!(
-      beta.len(),
-      buckets,
-      "beta must have knots.len() + 1 = {buckets} entries"
+    assert!(
+      f0.is_none_or(|v| v.is_finite()),
+      "f0 must satisfy `f0.is_none_or(|v| v.is_finite())`, got f0 = {f0:?}"
     );
-    assert_eq!(rho.len(), buckets, "rho must have {buckets} entries");
-    assert_eq!(nu.len(), buckets, "nu must have {buckets} entries");
+    assert!(
+      alpha0.is_none_or(|v| v.is_finite()),
+      "alpha0 must satisfy `alpha0.is_none_or(|v| v.is_finite())`, got alpha0 = {alpha0:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert_entries(
+      "knots",
+      "knots[k].is_finite()",
+      &ArrayView1::from(&knots),
+      |v| v.is_finite(),
+    );
+    assert_entries(
+      "beta",
+      "beta[k].is_finite()",
+      &ArrayView1::from(&beta),
+      |v| v.is_finite(),
+    );
+    assert_entries("rho", "rho[k].is_finite()", &ArrayView1::from(&rho), |v| {
+      v.is_finite()
+    });
+    assert_entries("nu", "nu[k].is_finite()", &ArrayView1::from(&nu), |v| {
+      v.is_finite()
+    });
+    let buckets = knots.len() + 1;
+    assert!(
+      beta.len() == knots.len() + 1,
+      "beta.len() must satisfy `beta.len() == knots.len() + 1`, got beta.len() = {:?}",
+      beta.len()
+    );
+    assert!(
+      rho.len() == knots.len() + 1,
+      "rho.len() must satisfy `rho.len() == knots.len() + 1`, got rho.len() = {:?}",
+      rho.len()
+    );
+    assert!(
+      nu.len() == knots.len() + 1,
+      "nu.len() must satisfy `nu.len() == knots.len() + 1`, got nu.len() = {:?}",
+      nu.len()
+    );
     for k in 0..buckets {
       assert!(
         beta[k] >= T::zero() && beta[k] <= T::one(),
-        "beta[{k}] must be in [0, 1]"
+        "beta[{k}] must satisfy `beta[k] >= T::zero() && beta[k] <= T::one()`, got beta[{k}] = {:?}",
+        beta[k]
       );
-      assert!(nu[k] >= T::zero(), "nu[{k}] must be non-negative");
+      assert!(
+        nu[k] >= T::zero(),
+        "nu[{k}] must satisfy `nu[k] >= T::zero()`, got nu[{k}] = {:?}",
+        nu[k]
+      );
       let r = rho[k].to_f64().unwrap();
       assert!(
         r.abs() < 1.0,
         "rho[{k}] must satisfy `rho[k].abs() < 1.0`, got rho[{k}] = {r:?}"
       );
     }
-    for w in knots.windows(2) {
-      assert!(w[0] < w[1], "knots must be strictly increasing");
+    for i in 1..knots.len() {
+      assert!(
+        knots[i - 1] < knots[i],
+        "knots[{i}] must satisfy `knots[i - 1] < knots[i]`, got knots[{i}] = {:?}, knots[{}] = {:?}",
+        knots[i],
+        i - 1,
+        knots[i - 1]
+      );
     }
-    if let Some(alpha0) = alpha0 {
-      assert!(alpha0 >= T::zero(), "alpha0 must be non-negative");
-    }
+    assert!(
+      alpha0.is_none_or(|a| a >= T::zero()),
+      "alpha0 must satisfy `alpha0.is_none_or(|a| a >= T::zero())`, got alpha0 = {alpha0:?}"
+    );
     Self {
       backend: Cpu,
       f0,
@@ -495,7 +548,9 @@ mod tests {
 
   /// Coefficient-vector length mismatch is rejected.
   #[test]
-  #[should_panic(expected = "beta must have")]
+  #[should_panic(
+    expected = "beta.len() must satisfy `beta.len() == knots.len() + 1`, got beta.len() = 1"
+  )]
   fn dynamic_sabr_length_mismatch_panics() {
     let _ = MultifactorSabr::<f64, _>::new(
       Some(1.0),
@@ -508,24 +563,6 @@ mod tests {
       Some(1.0),
       Unseeded,
     );
-  }
-
-  #[test]
-  fn n_eq_1_keeps_initial_values() {
-    let p = MultifactorSabr::<f64, _>::new(
-      Some(1.0),
-      Some(0.2),
-      vec![],
-      vec![0.5],
-      vec![-0.3],
-      vec![0.4],
-      1,
-      Some(1.0),
-      Unseeded,
-    );
-    let [f, v] = p.sample();
-    assert_eq!((f.to_vec(), v.to_vec()), (vec![1.0], vec![0.2]));
-    assert_eq!(crate::euler::EulerSystem::<f64, 2>::time_step(&p), 1.0);
   }
 }
 

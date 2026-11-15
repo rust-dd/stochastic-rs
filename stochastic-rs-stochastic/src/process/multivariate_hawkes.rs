@@ -22,6 +22,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
 use crate::device::DeviceError;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -58,9 +59,27 @@ pub struct MultivariateHawkes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> MultivariateHawkes<T, S> {
   pub fn new(mu: Array1<T>, alpha: Array2<T>, beta: Array2<T>, t_max: T, seed: S) -> Self {
-    let d = mu.len();
-    assert_eq!(alpha.shape(), [d, d], "alpha must be (D, D)");
-    assert_eq!(beta.shape(), [d, d], "beta must be (D, D)");
+    assert!(
+      t_max.is_finite(),
+      "t_max must satisfy `t_max.is_finite()`, got t_max = {t_max:?}"
+    );
+    assert_entries("mu", "mu[i].is_finite()", &mu, |v| v.is_finite());
+    assert_entries("alpha", "alpha[(i, j)].is_finite()", &alpha, |v| {
+      v.is_finite()
+    });
+    assert_entries("beta", "beta[(i, j)].is_finite()", &beta, |v| v.is_finite());
+    assert!(
+      alpha.shape() == [mu.len(), mu.len()],
+      "alpha.shape() must satisfy `alpha.shape() == [mu.len(), mu.len()]`, got alpha.shape() = {:?}, mu.len() = {:?}",
+      alpha.shape(),
+      mu.len()
+    );
+    assert!(
+      beta.shape() == [mu.len(), mu.len()],
+      "beta.shape() must satisfy `beta.shape() == [mu.len(), mu.len()]`, got beta.shape() = {:?}, mu.len() = {:?}",
+      beta.shape(),
+      mu.len()
+    );
     Self {
       backend: Cpu,
       mu,

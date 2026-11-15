@@ -35,10 +35,30 @@ pub struct AlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> 
 impl<T: FloatExt, S: SeedExt> AlphaStableSubordinator<T, S> {
   pub fn new(alpha: T, c: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(
-      alpha > T::zero() && alpha < T::one(),
-      "alpha must be in (0,1)"
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
     );
-    assert!(c > T::zero(), "c must be positive");
+    assert!(
+      c.is_finite(),
+      "c must satisfy `c.is_finite()`, got c = {c:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      alpha > T::zero() && alpha < T::one(),
+      "alpha must satisfy `alpha > T::zero() && alpha < T::one()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      c > T::zero(),
+      "c must satisfy `c > T::zero()`, got c = {c:?}"
+    );
     Self {
       backend: Cpu,
       alpha,

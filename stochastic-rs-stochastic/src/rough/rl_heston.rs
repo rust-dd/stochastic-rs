@@ -94,13 +94,59 @@ impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
     degree: Option<usize>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(kappa >= T::zero(), "kappa must be non-negative");
-    assert!(theta >= T::zero(), "theta must be non-negative");
-    assert!(nu >= T::zero(), "nu must be non-negative");
-    if let Some(v0) = v0 {
-      assert!(v0 >= T::zero(), "v0 must be non-negative");
-    }
+    assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
+    assert!(
+      s0.is_none_or(|v| v.is_finite()),
+      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+    );
+    assert!(
+      v0.is_none_or(|v| v.is_finite()),
+      "v0 must satisfy `v0.is_none_or(|v| v.is_finite())`, got v0 = {v0:?}"
+    );
+    assert!(
+      kappa.is_finite(),
+      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
+    );
+    assert!(
+      theta.is_finite(),
+      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
+    );
+    assert!(
+      nu.is_finite(),
+      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
+    );
+    assert!(
+      rho.is_finite(),
+      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
+    );
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      kappa >= T::zero(),
+      "kappa must satisfy `kappa >= T::zero()`, got kappa = {kappa:?}"
+    );
+    assert!(
+      theta >= T::zero(),
+      "theta must satisfy `theta >= T::zero()`, got theta = {theta:?}"
+    );
+    assert!(
+      nu >= T::zero(),
+      "nu must satisfy `nu >= T::zero()`, got nu = {nu:?}"
+    );
+    assert!(
+      v0.is_none_or(|v| v >= T::zero()),
+      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+    );
     Self {
       backend: Cpu,
       hurst,
@@ -372,7 +418,7 @@ mod tests {
   use crate::traits::ProcessExt;
 
   #[test]
-  #[should_panic(expected = "n must be at least 2")]
+  #[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
   fn rejects_too_short_grid() {
     let _ = RlHeston::<f64>::new(
       0.3,

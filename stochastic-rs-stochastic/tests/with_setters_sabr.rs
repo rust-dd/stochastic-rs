@@ -64,19 +64,23 @@ plain_test!(sabr_with_f0_round_trip, with_f0, f0, Some(2.0));
 plain_test!(sabr_with_alpha0_round_trip, with_alpha0, alpha0, Some(0.2));
 
 #[test]
-#[should_panic(expected = "beta must be in [0, 1]")]
+#[should_panic(
+  expected = "beta must satisfy `beta >= T::zero() && beta <= T::one()`, got beta = 1.5"
+)]
 fn sabr_with_beta_rejects_out_of_range() {
   let _ = sabr_base().with_beta(1.5);
 }
 
 #[test]
-#[should_panic(expected = "nu must be non-negative")]
+#[should_panic(expected = "nu must satisfy `nu >= T::zero()`, got nu = -0.1")]
 fn sabr_with_nu_rejects_negative() {
   let _ = sabr_base().with_nu(-0.1);
 }
 
 #[test]
-#[should_panic(expected = "alpha0 must be non-negative")]
+#[should_panic(
+  expected = "alpha0 must satisfy `alpha0.is_none_or(|a| a >= T::zero())`, got alpha0 = Some(-0.1)"
+)]
 fn sabr_with_alpha0_rejects_negative() {
   let _ = sabr_base().with_alpha0(Some(-0.1));
 }

@@ -62,6 +62,10 @@ where
     customjt: CustomJt<T, D2>,
     seed: S,
   ) -> Self {
+    assert!(
+      t_max.is_none_or(|v| v.is_finite()),
+      "t_max must satisfy `t_max.is_none_or(|v| v.is_finite())`, got t_max = {t_max:?}"
+    );
     if n.is_none() && t_max.is_none() {
       panic!("CompoundCustom: n or t_max must be provided");
     }

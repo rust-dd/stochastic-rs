@@ -82,18 +82,48 @@ impl<T: FloatExt, S: SeedExt> Cgmy<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(c > T::zero(), "c (C) must be positive");
-    assert!(lambda_plus > T::zero(), "lambda_plus (G) must be positive");
+    assert!(
+      c.is_finite(),
+      "c must satisfy `c.is_finite()`, got c = {c:?}"
+    );
+    assert!(
+      lambda_plus.is_finite(),
+      "lambda_plus must satisfy `lambda_plus.is_finite()`, got lambda_plus = {lambda_plus:?}"
+    );
+    assert!(
+      lambda_minus.is_finite(),
+      "lambda_minus must satisfy `lambda_minus.is_finite()`, got lambda_minus = {lambda_minus:?}"
+    );
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      c > T::zero(),
+      "c must satisfy `c > T::zero()`, got c = {c:?}"
+    );
+    assert!(
+      lambda_plus > T::zero(),
+      "lambda_plus must satisfy `lambda_plus > T::zero()`, got lambda_plus = {lambda_plus:?}"
+    );
     assert!(
       lambda_minus > T::zero(),
-      "lambda_minus (M) must be positive"
+      "lambda_minus must satisfy `lambda_minus > T::zero()`, got lambda_minus = {lambda_minus:?}"
     );
     assert!(
       alpha > T::zero() && alpha < T::from_usize_(2),
-      "alpha (Y) must be in (0, 2)"
+      "alpha must satisfy `alpha > T::zero() && alpha < T::from_usize_(2)`, got alpha = {alpha:?}"
     );
-    assert!(n >= 2, "n must be >= 2");
-    assert!(j >= 2, "j must be >= 2 (because we index from 1..j)");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(j >= 2, "j must satisfy `j >= 2`, got j = {j:?}");
 
     Self {
       backend: Cpu,

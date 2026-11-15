@@ -131,13 +131,13 @@ bsvj_plain_test!(
 );
 
 #[test]
-#[should_panic(expected = "lambda must be >= 0")]
+#[should_panic(expected = "lambda must satisfy `lambda >= T::zero()`, got lambda = -0.1")]
 fn bates_svj_with_lambda_rejects_negative() {
   let _ = bsvj_base().with_lambda(-0.1);
 }
 
 #[test]
-#[should_panic(expected = "omega must be >= 0")]
+#[should_panic(expected = "omega must satisfy `omega >= T::zero()`, got omega = -0.1")]
 fn bates_svj_with_omega_rejects_negative() {
   let _ = bsvj_base().with_omega(-0.1);
 }
@@ -186,7 +186,7 @@ fn bates_svj_with_rho_rebuilds_cgns_cache() {
 }
 
 #[test]
-#[should_panic(expected = "rho must be in [-1, 1]")]
+#[should_panic(expected = "rho must satisfy `rho >= -T::one() && rho <= T::one()`, got rho = 1.5")]
 fn bates_svj_with_rho_rejects_out_of_range() {
   let _ = bsvj_base().with_rho(1.5);
 }
@@ -227,7 +227,7 @@ fn bates_svj_with_steps_rebuilds_cgns_cache() {
 }
 
 #[test]
-#[should_panic(expected = "n must be at least 2")]
+#[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
 fn bates_svj_with_steps_rejects_too_few_steps() {
   let _ = bsvj_base().with_steps(1);
 }

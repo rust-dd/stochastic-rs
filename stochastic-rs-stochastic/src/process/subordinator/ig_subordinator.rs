@@ -35,8 +35,31 @@ pub struct IGSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> IGSubordinator<T, S> {
   pub fn new(delta: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(delta > T::zero(), "delta must be positive");
-    assert!(gamma > T::zero(), "gamma must be positive");
+    assert!(
+      delta.is_finite(),
+      "delta must satisfy `delta.is_finite()`, got delta = {delta:?}"
+    );
+    assert!(
+      gamma.is_finite(),
+      "gamma must satisfy `gamma.is_finite()`, got gamma = {gamma:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      delta > T::zero(),
+      "delta must satisfy `delta > T::zero()`, got delta = {delta:?}"
+    );
+    assert!(
+      gamma > T::zero(),
+      "gamma must satisfy `gamma > T::zero()`, got gamma = {gamma:?}"
+    );
     Self {
       backend: Cpu,
       delta,

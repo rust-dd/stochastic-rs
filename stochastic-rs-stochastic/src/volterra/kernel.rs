@@ -23,6 +23,7 @@
 use ndarray::Array1;
 use stochastic_rs_distributions::special::gamma_p;
 
+use crate::precondition::assert_entries;
 use crate::rough::kernel::RlKernel;
 use crate::traits::FloatExt;
 
@@ -78,8 +79,16 @@ impl<T: FloatExt> ExponentialKernel<T> {
   #[must_use]
   pub fn new(beta: T, c: T) -> Self {
     assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
+    assert!(
+      c.is_finite(),
+      "c must satisfy `c.is_finite()`, got c = {c:?}"
+    );
+    assert!(
       beta > T::zero(),
-      "ExponentialKernel requires beta > 0, got {beta:?}"
+      "beta must satisfy `beta > T::zero()`, got beta = {beta:?}"
     );
     Self {
       beta,
@@ -148,8 +157,16 @@ impl<T: FloatExt> GammaKernel<T> {
   #[must_use]
   pub fn new(hurst: T, lambda: T, degree: usize) -> Self {
     assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
+    assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(
       lambda > T::zero(),
-      "GammaKernel requires lambda > 0 (use RlKernel for the undamped case), got {lambda:?}"
+      "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
     );
     let rl = RlKernel::<T>::new(hurst, degree);
     let mut nodes = Array1::<T>::zeros(degree);
@@ -230,19 +247,21 @@ impl<T: FloatExt> SumOfExponentials<T> {
   ///   with no diagnostic at all)
   #[must_use]
   pub fn new(nodes: Array1<T>, weights: Array1<T>) -> Self {
-    assert_eq!(
+    assert_entries("nodes", "nodes[i].is_finite()", &nodes, |v| v.is_finite());
+    assert_entries("weights", "weights[i].is_finite()", &weights, |v| {
+      v.is_finite()
+    });
+    assert!(
+      nodes.len() == weights.len(),
+      "nodes.len() must satisfy `nodes.len() == weights.len()`, got nodes.len() = {:?}, weights.len() = {:?}",
       nodes.len(),
-      weights.len(),
-      "nodes and weights must have the same length"
+      weights.len()
     );
     assert!(
       !nodes.is_empty(),
-      "SumOfExponentials requires at least one term"
+      "nodes must satisfy `!nodes.is_empty()`, got nodes = []"
     );
-    assert!(
-      nodes.iter().all(|&x| x > T::zero()),
-      "SumOfExponentials requires all nodes to be strictly positive"
-    );
+    assert_entries("nodes", "nodes[i] > T::zero()", &nodes, |x| x > T::zero());
     Self { nodes, weights }
   }
 }

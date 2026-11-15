@@ -20,6 +20,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -83,8 +84,18 @@ impl<T: FloatExt, S: SeedExt> Egarch<T, S> {
     seed: S,
   ) -> Self {
     assert!(
+      omega.is_finite(),
+      "omega must satisfy `omega.is_finite()`, got omega = {omega:?}"
+    );
+    assert_entries("alpha", "alpha[i].is_finite()", &alpha, |v| v.is_finite());
+    assert_entries("gamma", "gamma[i].is_finite()", &gamma, |v| v.is_finite());
+    assert_entries("beta", "beta[i].is_finite()", &beta, |v| v.is_finite());
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
       alpha.len() == gamma.len(),
-      "Egarch requires alpha.len() == gamma.len()"
+      "alpha.len() must satisfy `alpha.len() == gamma.len()`, got alpha.len() = {:?}, gamma.len() = {:?}",
+      alpha.len(),
+      gamma.len()
     );
     Self {
       backend: Cpu,

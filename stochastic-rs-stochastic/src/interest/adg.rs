@@ -22,6 +22,7 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::PathSampler;
@@ -78,19 +79,22 @@ impl<T: FloatExt, S: SeedExt> Adg<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert_eq!(
-      sigma.len(),
-      xn,
-      "sigma length ({}) must match xn ({})",
-      sigma.len(),
-      xn
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
-    assert_eq!(
-      x0.len(),
-      xn,
-      "x0 length ({}) must match xn ({})",
-      x0.len(),
-      xn
+    assert_entries("sigma", "sigma[i].is_finite()", &sigma, |v| v.is_finite());
+    assert_entries("x0", "x0[i].is_finite()", &x0, |v| v.is_finite());
+    assert!(
+      sigma.len() == xn,
+      "sigma.len() must satisfy `sigma.len() == xn`, got sigma.len() = {:?}",
+      sigma.len()
+    );
+    assert!(
+      x0.len() == xn,
+      "x0.len() must satisfy `x0.len() == xn`, got x0.len() = {:?}",
+      x0.len()
     );
     Self {
       backend: Cpu,

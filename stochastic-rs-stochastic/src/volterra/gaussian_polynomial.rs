@@ -46,6 +46,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::noise::gn::Gn;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -105,10 +106,20 @@ where
   /// - if `coefficients` is empty (a polynomial needs at least a constant term)
   #[must_use]
   pub fn new(kernel: K, coefficients: Array1<T>, n: usize, t: Option<T>, seed: S) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert_entries(
+      "coefficients",
+      "coefficients[i].is_finite()",
+      &coefficients,
+      |v| v.is_finite(),
+    );
     assert!(
       !coefficients.is_empty(),
-      "coefficients must contain at least a constant term"
+      "coefficients must satisfy `!coefficients.is_empty()`, got coefficients = []"
     );
     let lift = VolterraLift::new(kernel.clone(), grid_spacing(n, t));
     Self {
@@ -175,7 +186,7 @@ where
   pub fn with_coefficients(mut self, coefficients: Array1<T>) -> Self {
     assert!(
       !coefficients.is_empty(),
-      "coefficients must contain at least a constant term"
+      "coefficients must satisfy `!coefficients.is_empty()`, got coefficients = []"
     );
     self.coefficients = coefficients;
     self
@@ -187,7 +198,7 @@ where
   /// - if `n < 2`
   #[must_use]
   pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(n, self.t));
     self

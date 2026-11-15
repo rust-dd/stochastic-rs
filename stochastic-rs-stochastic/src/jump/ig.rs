@@ -40,7 +40,23 @@ pub struct Ig<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> Ig<T, S> {
   pub fn new(gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(gamma > T::zero(), "gamma must be positive");
+    assert!(
+      gamma.is_finite(),
+      "gamma must satisfy `gamma.is_finite()`, got gamma = {gamma:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      gamma > T::zero(),
+      "gamma must satisfy `gamma > T::zero()`, got gamma = {gamma:?}"
+    );
     Self {
       backend: Cpu,
       gamma,
@@ -226,13 +242,5 @@ mod tests {
     let x = p.sample();
     assert_eq!(x.len(), 256);
     assert!(x.windows(2).into_iter().all(|w| w[1] >= w[0]));
-  }
-
-  #[test]
-  fn n_eq_1_keeps_initial_value() {
-    let p = Ig::new(1.0_f64, 1, Some(3.5), Some(1.0), Unseeded);
-    let x = p.sample();
-    assert_eq!(x.len(), 1);
-    assert_eq!(x[0], 3.5);
   }
 }

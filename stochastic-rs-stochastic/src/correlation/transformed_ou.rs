@@ -106,12 +106,33 @@ impl<T: FloatExt, S: SeedExt> TransformedOU<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
+    assert!(
+      kappa.is_finite(),
+      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
+    );
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      rho0.is_finite(),
+      "rho0 must satisfy `rho0.is_finite()`, got rho0 = {rho0:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     // The transform maps onto (-1, 1), so its inverse clamps: without this
     // an out-of-range `rho0` reports itself at `t = 0` on the host and the
     // clamp on a device, which is the same path disagreeing with itself.
     assert!(
       rho0 > -T::one() && rho0 < T::one(),
-      "rho0 must lie in (-1, 1)"
+      "rho0 must satisfy `rho0 > -T::one() && rho0 < T::one()`, got rho0 = {rho0:?}"
     );
     Self {
       backend: Cpu,

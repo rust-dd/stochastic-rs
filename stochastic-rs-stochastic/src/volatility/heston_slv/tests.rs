@@ -149,7 +149,7 @@ fn the_default_is_the_heston_default_under_unit_leverage() {
 }
 
 #[test]
-#[should_panic(expected = "n must be at least 2")]
+#[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
 fn rejects_n_below_two() {
   let _ = HestonSlv::<f64, _>::new(
     Some(100.0),
@@ -168,7 +168,7 @@ fn rejects_n_below_two() {
 }
 
 #[test]
-#[should_panic(expected = "eta must be non-negative")]
+#[should_panic(expected = "eta must satisfy `eta >= T::zero()`, got eta = -0.5")]
 fn rejects_a_negative_mixing_fraction() {
   let _ = slv(-0.5, Expr::lit(1.0).compile().unwrap(), Unseeded);
 }

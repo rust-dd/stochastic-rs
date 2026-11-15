@@ -186,7 +186,9 @@ bates_plain_test!(
 );
 
 #[test]
-#[should_panic(expected = "v0 must be non-negative")]
+#[should_panic(
+  expected = "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = Some(-0.1)"
+)]
 fn bates_with_v0_rejects_negative() {
   let _ = bates_base().with_v0(Some(-0.1));
 }

@@ -115,7 +115,13 @@ impl<T: FloatExt, S: SeedExt> Foo<T, S> {
         theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>,
         seed: S,                                    // <- LAST parameter
     ) -> Self {
-        assert!(n >= 2, "n must be at least 2");
+        // One `is_finite()` per float parameter, `is_none_or(..)` per `Option<T>` (dev-rules §14).
+        assert!(sigma.is_finite(), "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}");
+        assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+        assert!(
+            t.is_none_or(|t| t > T::zero() && t.is_finite()),
+            "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+        );
         Self { theta, mu, sigma, n, x0, t, seed }
     }
 
@@ -355,7 +361,7 @@ mod tests {
 
     /// 4. Constructor validates n >= 2.
     #[test]
-    #[should_panic(expected = "n must be at least 2")]
+    #[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
     fn rejects_n_below_two() {
         let _ = Foo::<f64, _>::new(0.5, 0.0, 0.1, 1, None, None, Unseeded);
     }

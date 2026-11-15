@@ -96,6 +96,23 @@ pub struct BrownianBridge<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// `self` every call.
 impl<T: FloatExt, S: SeedExt> BrownianBridge<T, S> {
   pub fn new(sigma: T, n: usize, x0: Option<T>, xt: Option<T>, t: Option<T>, seed: S) -> Self {
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      xt.is_none_or(|v| v.is_finite()),
+      "xt must satisfy `xt.is_none_or(|v| v.is_finite())`, got xt = {xt:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     Self {
       backend: Cpu,
       sigma,

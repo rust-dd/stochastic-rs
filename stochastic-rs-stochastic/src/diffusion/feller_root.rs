@@ -53,6 +53,27 @@ impl<T: FloatExt, S: SeedExt> FellerRoot<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
+    assert!(
+      theta1.is_finite(),
+      "theta1 must satisfy `theta1.is_finite()`, got theta1 = {theta1:?}"
+    );
+    assert!(
+      theta2.is_finite(),
+      "theta2 must satisfy `theta2.is_finite()`, got theta2 = {theta2:?}"
+    );
+    assert!(
+      theta3.is_finite(),
+      "theta3 must satisfy `theta3.is_finite()`, got theta3 = {theta3:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     Self {
       backend: Cpu,
       theta1,

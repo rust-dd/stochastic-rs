@@ -66,9 +66,35 @@ impl<T: FloatExt, S: SeedExt> RlBlackScholes<T, S> {
     degree: Option<usize>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(s0 > T::zero(), "s0 must be positive");
-    assert!(sigma >= T::zero(), "sigma must be non-negative");
+    assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
+    assert!(
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
+    );
+    assert!(
+      r.is_finite(),
+      "r must satisfy `r.is_finite()`, got r = {r:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      s0 > T::zero(),
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
+    );
+    assert!(
+      sigma >= T::zero(),
+      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
     Self {
       backend: Cpu,
       hurst,

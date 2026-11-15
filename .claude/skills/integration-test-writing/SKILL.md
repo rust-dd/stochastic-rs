@@ -253,7 +253,7 @@ For invariants that must hold:
 
 ```rust
 #[test]
-#[should_panic(expected = "n must be at least 2")]
+#[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
 fn rejects_n_below_two() {
     let _ = Fou::<f64>::new(0.5, 0.0, 1.0, 0.1, 1, None, None);
 }

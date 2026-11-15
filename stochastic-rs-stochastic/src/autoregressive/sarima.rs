@@ -15,6 +15,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -94,8 +95,40 @@ impl<T: FloatExt, S: SeedExt> Sarima<T, S> {
     n: usize,
     seed: S,
   ) -> Self {
-    assert!(sigma > T::zero(), "Sarima requires sigma > 0");
-    assert!(s > 0, "Sarima requires season length s > 0");
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert_entries(
+      "non_seasonal_ar_coefs",
+      "non_seasonal_ar_coefs[i].is_finite()",
+      &non_seasonal_ar_coefs,
+      |v| v.is_finite(),
+    );
+    assert_entries(
+      "non_seasonal_ma_coefs",
+      "non_seasonal_ma_coefs[i].is_finite()",
+      &non_seasonal_ma_coefs,
+      |v| v.is_finite(),
+    );
+    assert_entries(
+      "seasonal_ar_coefs",
+      "seasonal_ar_coefs[i].is_finite()",
+      &seasonal_ar_coefs,
+      |v| v.is_finite(),
+    );
+    assert_entries(
+      "seasonal_ma_coefs",
+      "seasonal_ma_coefs[i].is_finite()",
+      &seasonal_ma_coefs,
+      |v| v.is_finite(),
+    );
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
+      sigma >= T::zero(),
+      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
+    assert!(s > 0, "s must satisfy `s > 0`, got s = {s:?}");
     Sarima {
       backend: Cpu,
       non_seasonal_ar_coefs,
@@ -196,7 +229,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       d: self.d,
       big_d: self.D,
       s: self.s,
-      normal: SimdNormal::<T>::new(T::zero(), self.sigma).seeded(&self.seed),
+      sigma: self.sigma,
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
     }
   }
 
@@ -278,6 +312,7 @@ pub struct SarimaSampler<T: FloatExt> {
   d: usize,
   big_d: usize,
   s: usize,
+  sigma: T,
   normal: Seeded<SimdNormal<T>>,
 }
 
@@ -289,6 +324,8 @@ impl<T: FloatExt> SarimaSampler<T> {
       let slice = noise.as_slice_mut().expect("contiguous");
       self.normal.fill_slice(slice);
     }
+    let sigma = self.sigma;
+    noise.mapv_inplace(|z| sigma * z);
     let integrated = sarima_filter(
       &noise,
       &self.non_seasonal_ar_coefs,

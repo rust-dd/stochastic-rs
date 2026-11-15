@@ -151,13 +151,43 @@ where
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(kappa > T::zero(), "kappa must be strictly positive");
-    assert!(nu > T::zero(), "nu must be strictly positive");
-    assert!(theta >= T::zero(), "theta must be non-negative");
-    if let Some(v) = v0 {
-      assert!(v >= T::zero(), "v0 must be non-negative");
-    }
+    assert!(
+      kappa.is_finite(),
+      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
+    );
+    assert!(
+      theta.is_finite(),
+      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
+    );
+    assert!(
+      nu.is_finite(),
+      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
+    );
+    assert!(
+      v0.is_none_or(|v| v.is_finite()),
+      "v0 must satisfy `v0.is_none_or(|v| v.is_finite())`, got v0 = {v0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      kappa > T::zero(),
+      "kappa must satisfy `kappa > T::zero()`, got kappa = {kappa:?}"
+    );
+    assert!(
+      nu > T::zero(),
+      "nu must satisfy `nu > T::zero()`, got nu = {nu:?}"
+    );
+    assert!(
+      theta >= T::zero(),
+      "theta must satisfy `theta >= T::zero()`, got theta = {theta:?}"
+    );
+    assert!(
+      v0.is_none_or(|v| v >= T::zero()),
+      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+    );
     let lift = VolterraLift::new(kernel.clone(), grid_spacing(n, t));
     Self {
       backend: Cpu,
@@ -186,7 +216,10 @@ where
   /// Replace `kappa`, all else unchanged.
   #[must_use]
   pub fn with_kappa(mut self, kappa: T) -> Self {
-    assert!(kappa > T::zero(), "kappa must be strictly positive");
+    assert!(
+      kappa > T::zero(),
+      "kappa must satisfy `kappa > T::zero()`, got kappa = {kappa:?}"
+    );
     self.kappa = kappa;
     self
   }
@@ -194,7 +227,10 @@ where
   /// Replace `theta`, all else unchanged.
   #[must_use]
   pub fn with_theta(mut self, theta: T) -> Self {
-    assert!(theta >= T::zero(), "theta must be non-negative");
+    assert!(
+      theta >= T::zero(),
+      "theta must satisfy `theta >= T::zero()`, got theta = {theta:?}"
+    );
     self.theta = theta;
     self
   }
@@ -202,7 +238,10 @@ where
   /// Replace `nu`, all else unchanged.
   #[must_use]
   pub fn with_nu(mut self, nu: T) -> Self {
-    assert!(nu > T::zero(), "nu must be strictly positive");
+    assert!(
+      nu > T::zero(),
+      "nu must satisfy `nu > T::zero()`, got nu = {nu:?}"
+    );
     self.nu = nu;
     self
   }
@@ -210,7 +249,7 @@ where
   /// Replace the number of simulation steps `n`, all else unchanged.
   #[must_use]
   pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(n, self.t));
     self
@@ -219,7 +258,10 @@ where
   /// Replace the initial variance $V_0$, all else unchanged.
   #[must_use]
   pub fn with_v0(mut self, v0: T) -> Self {
-    assert!(v0 >= T::zero(), "v0 must be non-negative");
+    assert!(
+      v0 >= T::zero(),
+      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
+    );
     self.v0 = Some(v0);
     self
   }

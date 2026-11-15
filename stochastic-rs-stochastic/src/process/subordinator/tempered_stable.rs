@@ -53,12 +53,46 @@ impl<T: FloatExt, S: SeedExt> TemperedStableSubordinator<T, S> {
     seed: S,
   ) -> Self {
     assert!(
-      alpha > T::zero() && alpha < T::one(),
-      "alpha must be in (0,1)"
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
     );
-    assert!(c > T::zero(), "c must be positive");
-    assert!(mu > T::zero(), "mu must be positive");
-    assert!(epsilon > T::zero(), "epsilon must be positive");
+    assert!(
+      c.is_finite(),
+      "c must satisfy `c.is_finite()`, got c = {c:?}"
+    );
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      epsilon.is_finite(),
+      "epsilon must satisfy `epsilon.is_finite()`, got epsilon = {epsilon:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      alpha > T::zero() && alpha < T::one(),
+      "alpha must satisfy `alpha > T::zero() && alpha < T::one()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      c > T::zero(),
+      "c must satisfy `c > T::zero()`, got c = {c:?}"
+    );
+    assert!(
+      mu > T::zero(),
+      "mu must satisfy `mu > T::zero()`, got mu = {mu:?}"
+    );
+    assert!(
+      epsilon > T::zero(),
+      "epsilon must satisfy `epsilon > T::zero()`, got epsilon = {epsilon:?}"
+    );
     Self {
       backend: Cpu,
       alpha,

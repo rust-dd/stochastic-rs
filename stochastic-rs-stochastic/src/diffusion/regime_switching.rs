@@ -23,6 +23,7 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -64,10 +65,40 @@ impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusion<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    let m = vols.len();
-    assert_eq!(q_matrix.nrows(), m, "Q must be M×M");
-    assert_eq!(q_matrix.ncols(), m, "Q must be M×M");
-    assert!(initial_state < m, "initial_state must be < M");
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      s0.is_none_or(|v| v.is_finite()),
+      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert_entries("q_matrix", "q_matrix[(i, j)].is_finite()", &q_matrix, |v| {
+      v.is_finite()
+    });
+    assert_entries("vols", "vols[i].is_finite()", &vols, |v| v.is_finite());
+    assert!(
+      q_matrix.nrows() == vols.len(),
+      "q_matrix.nrows() must satisfy `q_matrix.nrows() == vols.len()`, got q_matrix.nrows() = {:?}, vols.len() = {:?}",
+      q_matrix.nrows(),
+      vols.len()
+    );
+    assert!(
+      q_matrix.ncols() == vols.len(),
+      "q_matrix.ncols() must satisfy `q_matrix.ncols() == vols.len()`, got q_matrix.ncols() = {:?}, vols.len() = {:?}",
+      q_matrix.ncols(),
+      vols.len()
+    );
+    assert!(
+      initial_state < vols.len(),
+      "initial_state must satisfy `initial_state < vols.len()`, got initial_state = {initial_state:?}, vols.len() = {:?}",
+      vols.len()
+    );
 
     Self {
       backend: Cpu,

@@ -53,7 +53,15 @@ pub struct Fbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// rebuilds it through the one helper `new()` itself builds it with.
 impl<T: FloatExt, S: SeedExt> Fbm<T, S, Cpu> {
   pub fn new(hurst: T, n: usize, t: Option<T>, seed: S) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
 
     Self {
       hurst,
@@ -79,7 +87,7 @@ impl<T: FloatExt, S: SeedExt> Fbm<T, S, Cpu> {
   /// Replace the number of simulation steps `n`; rebuilds the embedded
   /// `fgn`. Panics if `n < 2`, matching `new()`'s own assertion.
   pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.fgn = Self::fgn_for(self.hurst, n, self.t);
     self

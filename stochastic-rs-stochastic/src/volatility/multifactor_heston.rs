@@ -33,11 +33,13 @@
 //! *Management Science* 55(12), 1914-1932.
 
 use ndarray::Array1;
+use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
 use crate::noise::cgns::Cgns;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -86,16 +88,69 @@ impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHeston<T, K, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(K >= 1, "K must be ≥ 1");
+    assert!(
+      s0.is_none_or(|v| v.is_finite()),
+      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+    );
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(K >= 1, "K must satisfy `K >= 1`, got K = {K:?}");
+    assert_entries("v0", "v0[k].is_finite()", &ArrayView1::from(&v0), |v| {
+      v.is_finite()
+    });
+    assert_entries(
+      "kappa",
+      "kappa[k].is_finite()",
+      &ArrayView1::from(&kappa),
+      |v| v.is_finite(),
+    );
+    assert_entries(
+      "theta",
+      "theta[k].is_finite()",
+      &ArrayView1::from(&theta),
+      |v| v.is_finite(),
+    );
+    assert_entries(
+      "sigma",
+      "sigma[k].is_finite()",
+      &ArrayView1::from(&sigma),
+      |v| v.is_finite(),
+    );
+    assert_entries("rho", "rho[k].is_finite()", &ArrayView1::from(&rho), |v| {
+      v.is_finite()
+    });
     for k in 0..K {
-      assert!(kappa[k] >= T::zero(), "κ_k must be non-negative");
-      assert!(theta[k] >= T::zero(), "θ_k must be non-negative");
-      assert!(sigma[k] >= T::zero(), "σ_k must be non-negative");
-      assert!(v0[k] >= T::zero(), "v0_k must be non-negative");
+      assert!(
+        kappa[k] >= T::zero(),
+        "kappa[{k}] must satisfy `kappa[k] >= T::zero()`, got kappa[{k}] = {:?}",
+        kappa[k]
+      );
+      assert!(
+        theta[k] >= T::zero(),
+        "theta[{k}] must satisfy `theta[k] >= T::zero()`, got theta[{k}] = {:?}",
+        theta[k]
+      );
+      assert!(
+        sigma[k] >= T::zero(),
+        "sigma[{k}] must satisfy `sigma[k] >= T::zero()`, got sigma[{k}] = {:?}",
+        sigma[k]
+      );
+      assert!(
+        v0[k] >= T::zero(),
+        "v0[{k}] must satisfy `v0[k] >= T::zero()`, got v0[{k}] = {:?}",
+        v0[k]
+      );
       let r = rho[k].to_f64().unwrap();
       assert!(
         r.abs() < 1.0,
-        "ρ_k must lie strictly in (-1, 1); got {r} at factor {k}"
+        "rho[{k}] must satisfy `rho[k].abs() < 1.0`, got rho[{k}] = {r:?}"
       );
     }
     let cgns = (0..K)
@@ -538,7 +593,7 @@ mod tests {
 
   /// Rejecting invalid ρ_k.
   #[test]
-  #[should_panic(expected = "ρ_k must lie strictly in (-1, 1)")]
+  #[should_panic(expected = "rho[0] must satisfy `rho[k].abs() < 1.0`, got rho[0] = -1.5")]
   fn rho_out_of_range_panics() {
     let _ = MultifactorHeston::<f64, 2, _>::new(
       Some(100.0),

@@ -31,7 +31,10 @@ pub struct Lsm<T: FloatExt> {
 
 impl<T: FloatExt> Lsm<T> {
   pub fn new(r: T, tau: T, n_basis: usize) -> Self {
-    assert!(n_basis >= 2, "need at least 2 basis functions");
+    assert!(
+      n_basis >= 2,
+      "n_basis must satisfy `n_basis >= 2`, got n_basis = {n_basis:?}"
+    );
     Self { r, tau, n_basis }
   }
 

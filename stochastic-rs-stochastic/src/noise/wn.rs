@@ -36,6 +36,19 @@ pub struct Wn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> Wn<T, S> {
   pub fn new(n: usize, mean: Option<T>, std_dev: Option<T>, seed: S) -> Self {
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
+      mean.is_none_or(|v| v.is_finite()),
+      "mean must satisfy `mean.is_none_or(|v| v.is_finite())`, got mean = {mean:?}"
+    );
+    assert!(
+      std_dev.is_none_or(|v| v.is_finite()),
+      "std_dev must satisfy `std_dev.is_none_or(|v| v.is_finite())`, got std_dev = {std_dev:?}"
+    );
+    assert!(
+      std_dev.is_none_or(|s| s >= T::zero()),
+      "std_dev must satisfy `std_dev.is_none_or(|s| s >= T::zero())`, got std_dev = {std_dev:?}"
+    );
     Wn {
       backend: Cpu,
       n,
@@ -111,7 +124,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     let std_dev = self.std_dev.unwrap_or(T::one());
     WnSampler {
       n: self.n,
-      normal: SimdNormal::<T>::new(mean, std_dev).seeded(&self.seed),
+      mean,
+      normal: (std_dev > T::zero()).then(|| SimdNormal::<T>::new(mean, std_dev).seeded(&self.seed)),
     }
   }
 
@@ -147,12 +161,13 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Wn`] sampling state: the owned Gaussian source. Each path is `n`
-/// i.i.d. `N(mean, std_dev^2)` draws.
+/// Reusable [`Wn`] sampling state: the owned Gaussian source, `None` at a zero
+/// deviation, where every draw is the mean.
 #[doc(hidden)]
 pub struct WnSampler<T: FloatExt> {
   n: usize,
-  normal: Seeded<SimdNormal<T>>,
+  mean: T,
+  normal: Option<Seeded<SimdNormal<T>>>,
 }
 
 impl<T: FloatExt> WnSampler<T> {
@@ -161,7 +176,10 @@ impl<T: FloatExt> WnSampler<T> {
     if len == 0 {
       return;
     }
-    self.normal.fill_slice(&mut out[..len]);
+    match &mut self.normal {
+      Some(normal) => normal.fill_slice(&mut out[..len]),
+      None => out[..len].fill(self.mean),
+    }
   }
 }
 

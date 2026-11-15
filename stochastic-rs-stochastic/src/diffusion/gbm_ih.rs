@@ -15,6 +15,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -54,8 +55,32 @@ impl<T: FloatExt, S: SeedExt> GbmIh<T, S> {
     sigmas: Option<Array1<T>>,
     seed: S,
   ) -> Self {
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    if let Some(sigmas) = &sigmas {
+      assert_entries("sigmas", "sigmas[i].is_finite()", sigmas, |v| v.is_finite());
+    }
     if let Some(s) = &sigmas {
-      assert_eq!(s.len(), n.saturating_sub(1), "sigmas length must be n - 1");
+      assert!(
+        s.len() == n.saturating_sub(1),
+        "sigmas.len() must satisfy `sigmas.len() == n.saturating_sub(1)`, got sigmas.len() = {:?}, n = {n:?}",
+        s.len()
+      );
     }
 
     Self {

@@ -89,20 +89,76 @@ impl<T: FloatExt, S: SeedExt> Svcgmy<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(lambda_plus > T::zero(), "lambda_plus must be positive");
-    assert!(lambda_minus > T::zero(), "lambda_minus must be positive");
+    assert!(
+      lambda_plus.is_finite(),
+      "lambda_plus must satisfy `lambda_plus.is_finite()`, got lambda_plus = {lambda_plus:?}"
+    );
+    assert!(
+      lambda_minus.is_finite(),
+      "lambda_minus must satisfy `lambda_minus.is_finite()`, got lambda_minus = {lambda_minus:?}"
+    );
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      kappa.is_finite(),
+      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
+    );
+    assert!(
+      eta.is_finite(),
+      "eta must satisfy `eta.is_finite()`, got eta = {eta:?}"
+    );
+    assert!(
+      zeta.is_finite(),
+      "zeta must satisfy `zeta.is_finite()`, got zeta = {zeta:?}"
+    );
+    assert!(
+      rho.is_finite(),
+      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
+    );
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      v0.is_none_or(|v| v.is_finite()),
+      "v0 must satisfy `v0.is_none_or(|v| v.is_finite())`, got v0 = {v0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      lambda_plus > T::zero(),
+      "lambda_plus must satisfy `lambda_plus > T::zero()`, got lambda_plus = {lambda_plus:?}"
+    );
+    assert!(
+      lambda_minus > T::zero(),
+      "lambda_minus must satisfy `lambda_minus > T::zero()`, got lambda_minus = {lambda_minus:?}"
+    );
     assert!(
       alpha > T::zero() && alpha < T::from_usize_(2),
-      "alpha must be in (0, 2)"
+      "alpha must satisfy `alpha > T::zero() && alpha < T::from_usize_(2)`, got alpha = {alpha:?}"
     );
-    assert!(kappa > T::zero(), "kappa must be positive");
-    assert!(eta >= T::zero(), "eta must be non-negative");
-    assert!(zeta > T::zero(), "zeta must be positive");
-    assert!(n >= 2, "n must be >= 2");
+    assert!(
+      kappa > T::zero(),
+      "kappa must satisfy `kappa > T::zero()`, got kappa = {kappa:?}"
+    );
+    assert!(
+      eta >= T::zero(),
+      "eta must satisfy `eta >= T::zero()`, got eta = {eta:?}"
+    );
+    assert!(
+      zeta > T::zero(),
+      "zeta must satisfy `zeta > T::zero()`, got zeta = {zeta:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
 
-    if let Some(v0) = v0 {
-      assert!(v0 >= T::zero(), "v0 must be non-negative");
-    }
+    assert!(
+      v0.is_none_or(|v| v >= T::zero()),
+      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+    );
 
     Self {
       backend: Cpu,

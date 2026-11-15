@@ -188,7 +188,9 @@ fn accepts_consistent_zero_cholesky_pivot() {
 }
 
 #[test]
-#[should_panic(expected = "t must be positive")]
+#[should_panic(
+  expected = "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = Some(-1.0)"
+)]
 fn rejects_negative_time_horizon() {
   let inputs = ValidInputs {
     t: Some(-1.0),
@@ -198,7 +200,9 @@ fn rejects_negative_time_horizon() {
 }
 
 #[test]
-#[should_panic(expected = "t must be positive")]
+#[should_panic(
+  expected = "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = Some(0.0)"
+)]
 fn rejects_zero_time_horizon() {
   let inputs = ValidInputs {
     t: Some(0.0),
@@ -208,7 +212,9 @@ fn rejects_zero_time_horizon() {
 }
 
 #[test]
-#[should_panic(expected = "t must be finite")]
+#[should_panic(
+  expected = "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = Some(NaN)"
+)]
 fn rejects_non_finite_time_horizon() {
   let inputs = ValidInputs {
     t: Some(f64::NAN),
@@ -218,7 +224,9 @@ fn rejects_non_finite_time_horizon() {
 }
 
 #[test]
-#[should_panic(expected = "x0[0] must be finite")]
+#[should_panic(
+  expected = "x0[0] must satisfy `x0[i].is_none_or(|v| v.is_finite())`, got x0[0] = Some(inf)"
+)]
 fn rejects_non_finite_initial_log_price() {
   let inputs = ValidInputs {
     x0: [Some(f64::INFINITY), Some(0.0)],
@@ -228,7 +236,7 @@ fn rejects_non_finite_initial_log_price() {
 }
 
 #[test]
-#[should_panic(expected = "v0[1] must be finite")]
+#[should_panic(expected = "v0[1] must satisfy `v0[i].is_finite()`, got v0[1] = NaN")]
 fn rejects_non_finite_initial_variance() {
   let inputs = ValidInputs {
     v0: [Some(0.4), Some(f64::NAN)],
@@ -238,7 +246,7 @@ fn rejects_non_finite_initial_variance() {
 }
 
 #[test]
-#[should_panic(expected = "mu[1] must be finite")]
+#[should_panic(expected = "mu[1] must satisfy `mu[i].is_finite()`, got mu[1] = -inf")]
 fn rejects_non_finite_drift() {
   let inputs = ValidInputs {
     mu: [0.0, f64::NEG_INFINITY],
@@ -248,7 +256,7 @@ fn rejects_non_finite_drift() {
 }
 
 #[test]
-#[should_panic(expected = "theta[0] must be finite")]
+#[should_panic(expected = "theta[0] must satisfy `theta[i].is_finite()`, got theta[0] = NaN")]
 fn rejects_non_finite_long_run_variance() {
   let inputs = ValidInputs {
     theta: [f64::NAN, 0.4],
@@ -258,7 +266,7 @@ fn rejects_non_finite_long_run_variance() {
 }
 
 #[test]
-#[should_panic(expected = "kappa[1] must be finite")]
+#[should_panic(expected = "kappa[1] must satisfy `kappa[i].is_finite()`, got kappa[1] = inf")]
 fn rejects_non_finite_mean_reversion() {
   let inputs = ValidInputs {
     kappa: [2.0, f64::INFINITY],
@@ -268,7 +276,7 @@ fn rejects_non_finite_mean_reversion() {
 }
 
 #[test]
-#[should_panic(expected = "sigma[0] must be finite")]
+#[should_panic(expected = "sigma[0] must satisfy `sigma[i].is_finite()`, got sigma[0] = NaN")]
 fn rejects_non_finite_volatility_of_volatility() {
   let inputs = ValidInputs {
     sigma: [f64::NAN, 1.0],
@@ -278,7 +286,7 @@ fn rejects_non_finite_volatility_of_volatility() {
 }
 
 #[test]
-#[should_panic(expected = "rho[4] must be finite")]
+#[should_panic(expected = "rho[4] must satisfy `rho[k].is_finite()`, got rho[4] = NaN")]
 fn rejects_non_finite_correlation() {
   let inputs = ValidInputs {
     rho: [0.5, -0.5, 0.0, 0.0, f64::NAN, 0.5],
@@ -340,7 +348,7 @@ fn accepts_matlab_feller_violation_without_use_sym() {
 
 /// Reference: FSDA `Heston2D.m` requires both initial variances to be positive.
 #[test]
-#[should_panic(expected = "v0[0] must be positive")]
+#[should_panic(expected = "v0[0] must satisfy `v0[i] > T::zero()`, got v0[0] = 0.0")]
 fn rejects_zero_initial_variance_like_matlab() {
   let _ = Heston2D::<f64, _>::new(
     [Some(0.0), Some(0.0)],

@@ -62,6 +62,22 @@ fn validate_n_or_tmax<T: FloatExt>(n: Option<usize>, t_max: Option<T>, type_name
 
 impl<T: FloatExt, S: SeedExt> Hawkes<T, S> {
   pub fn new(mu: T, alpha: T, beta: T, n: Option<usize>, t_max: Option<T>, seed: S) -> Self {
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
+    assert!(
+      t_max.is_none_or(|v| v.is_finite()),
+      "t_max must satisfy `t_max.is_none_or(|v| v.is_finite())`, got t_max = {t_max:?}"
+    );
     validate_n_or_tmax(n, t_max, "Hawkes");
     Hawkes {
       backend: Cpu,

@@ -54,12 +54,15 @@ impl<T: FloatExt> Mlmc<T> {
   ///
   /// If `epsilon <= 0`, `l_max < l_min` or `n0 < 2`.
   pub fn new(epsilon: T, l_min: usize, l_max: usize, n0: usize) -> Self {
-    assert!(epsilon > T::zero(), "epsilon must be positive");
-    assert!(l_max >= l_min, "l_max must be >= l_min");
     assert!(
-      n0 >= 2,
-      "n0 must be at least 2: a level variance needs two samples"
+      epsilon > T::zero(),
+      "epsilon must satisfy `epsilon > T::zero()`, got epsilon = {epsilon:?}"
     );
+    assert!(
+      l_max >= l_min,
+      "l_max must satisfy `l_max >= l_min`, got l_max = {l_max:?}, l_min = {l_min:?}"
+    );
+    assert!(n0 >= 2, "n0 must satisfy `n0 >= 2`, got n0 = {n0:?}");
     Self {
       epsilon,
       l_min,
@@ -222,7 +225,7 @@ mod tests {
 
   /// A level variance needs two samples.
   #[test]
-  #[should_panic(expected = "n0 must be at least 2")]
+  #[should_panic(expected = "n0 must satisfy `n0 >= 2`, got n0 = 1")]
   fn rejects_a_single_initial_sample() {
     Mlmc::new(1.0, 1, 2, 1);
   }

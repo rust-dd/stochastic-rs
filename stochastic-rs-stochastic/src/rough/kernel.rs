@@ -67,16 +67,23 @@ impl<T: FloatExt> RlKernel<T> {
   /// - if `degree` exceeds [`Self::MAX_STABLE_DEGREE`]
   #[must_use]
   pub fn new(hurst: T, degree: usize) -> Self {
+    assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
     let h_f64 = hurst.to_f64().expect("Hurst must be convertible to f64");
     assert!(
       h_f64 > 0.0 && h_f64 < 0.5,
-      "RL kernel requires Hurst in (0, 1/2), got {h_f64}"
+      "hurst must satisfy `hurst > 0.0 && hurst < 0.5`, got hurst = {hurst:?}"
     );
-    assert!(degree > 0, "quadrature degree must be positive");
-    let max_degree = Self::MAX_STABLE_DEGREE;
     assert!(
-      degree <= max_degree,
-      "quadrature degree must be <= {max_degree} (see RlKernel::MAX_STABLE_DEGREE's docs — the underlying quadrature measurably produces non-finite weights above this), got {degree}"
+      degree > 0,
+      "degree must satisfy `degree > 0`, got degree = {degree:?}"
+    );
+    assert!(
+      degree <= Self::MAX_STABLE_DEGREE,
+      "degree must satisfy `degree <= Self::MAX_STABLE_DEGREE`, got degree = {degree:?}, Self::MAX_STABLE_DEGREE = {:?}",
+      Self::MAX_STABLE_DEGREE
     );
 
     let alpha = -(h_f64 + 0.5);
@@ -333,13 +340,13 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "Hurst in (0, 1/2)")]
+  #[should_panic(expected = "hurst must satisfy `hurst > 0.0 && hurst < 0.5`, got hurst = 0.5")]
   fn rejects_h_at_half() {
     let _ = RlKernel::<f64>::new(0.5, 20);
   }
 
   #[test]
-  #[should_panic(expected = "Hurst in (0, 1/2)")]
+  #[should_panic(expected = "hurst must satisfy `hurst > 0.0 && hurst < 0.5`, got hurst = 0.7")]
   fn rejects_h_above_half() {
     let _ = RlKernel::<f64>::new(0.7, 20);
   }
@@ -348,7 +355,9 @@ mod tests {
   /// non-finite weights (see `MAX_STABLE_DEGREE`'s docs) with no panic of
   /// their own — this locks in that a caller gets a hard error instead.
   #[test]
-  #[should_panic(expected = "quadrature degree must be <=")]
+  #[should_panic(
+    expected = "degree must satisfy `degree <= Self::MAX_STABLE_DEGREE`, got degree = "
+  )]
   fn rejects_degree_above_stability_ceiling() {
     let _ = RlKernel::<f64>::new(0.3, RlKernel::<f64>::MAX_STABLE_DEGREE + 1);
   }

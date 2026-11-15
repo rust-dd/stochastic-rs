@@ -34,8 +34,17 @@ pub struct Cbms<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> Cbms<T, S> {
   pub fn new(rho: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
+      rho.is_finite(),
+      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
       (-T::one()..=T::one()).contains(&rho),
-      "Correlation coefficient must be in [-1, 1]"
+      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
     );
 
     Self {

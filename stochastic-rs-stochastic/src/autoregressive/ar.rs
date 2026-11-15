@@ -15,6 +15,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -53,14 +54,25 @@ pub struct ARp<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> ARp<T, S> {
   /// Create a new AR process with given coefficients and noise standard deviation.
   pub fn new(phi: Array1<T>, sigma: T, n: usize, x0: Option<Array1<T>>, seed: S) -> Self {
-    assert!(sigma > T::zero(), "ARp requires sigma > 0");
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert_entries("phi", "phi[i].is_finite()", &phi, |v| v.is_finite());
+    if let Some(x0) = &x0 {
+      assert_entries("x0", "x0[i].is_finite()", x0, |v| v.is_finite());
+    }
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
+      sigma >= T::zero(),
+      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
     if let Some(init) = &x0 {
       let required = phi.len().min(n);
       assert!(
         init.len() >= required,
-        "ARp requires x0.len() >= min(phi.len(), n) (got {}, need at least {})",
-        init.len(),
-        required
+        "x0.len() must satisfy `x0.len() >= phi.len().min(n)`, got x0.len() = {:?}, phi.len().min(n) = {required:?}",
+        init.len()
       );
     }
     Self {
@@ -151,7 +163,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       n: self.n,
       phi: self.phi.clone(),
       x0: self.x0.clone(),
-      normal: SimdNormal::<T>::new(T::zero(), self.sigma).seeded(&self.seed),
+      sigma: self.sigma,
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
     }
   }
 
@@ -227,6 +240,7 @@ pub struct ARpSampler<T: FloatExt> {
   n: usize,
   phi: Array1<T>,
   x0: Option<Array1<T>>,
+  sigma: T,
   normal: Seeded<SimdNormal<T>>,
 }
 
@@ -259,7 +273,7 @@ impl<T: FloatExt> ARpSampler<T> {
           val += self.phi[k - 1] * out[t - k];
         }
       }
-      out[t] = val + noise[t];
+      out[t] = val + self.sigma * noise[t];
     }
   }
 }

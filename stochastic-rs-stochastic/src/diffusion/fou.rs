@@ -80,7 +80,31 @@ impl<T: FloatExt, S: SeedExt> Fou<T, S, Cpu> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
+    assert!(
+      theta.is_finite(),
+      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
+    );
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
 
     Self {
       hurst,
@@ -128,7 +152,7 @@ impl<T: FloatExt, S: SeedExt> Fou<T, S, Cpu> {
   /// Replace the number of simulation steps `n`; rebuilds the embedded
   /// `fgn`. Panics if `n < 2`, matching `new()`'s own assertion.
   pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.fgn = Self::fgn_for(self.hurst, n, self.t);
     self
@@ -380,7 +404,7 @@ mod tests {
   use crate::traits::ProcessExt;
 
   #[test]
-  #[should_panic(expected = "n must be at least 2")]
+  #[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
   fn fou_requires_at_least_two_points() {
     let _ = Fou::<f64>::new(0.7, 1.0, 0.0, 0.2, 1, Some(0.0), Some(1.0), Unseeded);
   }

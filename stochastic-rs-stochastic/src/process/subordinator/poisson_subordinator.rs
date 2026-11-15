@@ -32,7 +32,23 @@ pub struct PoissonSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> PoissonSubordinator<T, S> {
   pub fn new(lambda: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(lambda > T::zero(), "lambda must be positive");
+    assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      lambda > T::zero(),
+      "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
+    );
     Self {
       backend: Cpu,
       lambda,

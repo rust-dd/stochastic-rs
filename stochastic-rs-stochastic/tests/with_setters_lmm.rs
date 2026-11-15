@@ -122,13 +122,15 @@ fn lmm_with_tenor_round_trip() {
 }
 
 #[test]
-#[should_panic(expected = "tenor must have at least two dates")]
+#[should_panic(expected = "tenor.len() must satisfy `tenor.len() >= 2`, got tenor.len() = 1")]
 fn lmm_with_tenor_rejects_too_short() {
   let _ = lmm_base().with_tenor(Array1::from(vec![0.0]));
 }
 
 #[test]
-#[should_panic(expected = "tenor must be strictly increasing")]
+#[should_panic(
+  expected = "tenor[2] must satisfy `tenor[i + 1] > tenor[i]`, got tenor[2] = 0.4, tenor[1] = 0.5"
+)]
 fn lmm_with_tenor_rejects_non_increasing_dates() {
   // `with_tenor` cannot also cross-validate against `l0`/`sigma`'s *current*
   // length: doing so would make it impossible to ever change the Libor
@@ -152,7 +154,7 @@ fn lmm_with_sigma_round_trip() {
 }
 
 #[test]
-#[should_panic(expected = "volatility")]
+#[should_panic(expected = "sigma[1] must satisfy `sigma[i] >= T::zero()`, got sigma[1] = -0.1")]
 fn lmm_with_sigma_rejects_negative_entry() {
   let _ = lmm_base().with_sigma(Array1::from(vec![0.2, -0.1, 0.2, 0.2]));
 }
@@ -191,7 +193,7 @@ fn lmm_with_l0_same_length_preserves_correlation_cache() {
 }
 
 #[test]
-#[should_panic(expected = "positive")]
+#[should_panic(expected = "l0[1] must satisfy `l0[i] > T::zero()`, got l0[1] = 0.0")]
 fn lmm_with_l0_rejects_non_positive_entry() {
   let _ = lmm_base().with_l0(Array1::from(vec![0.03, 0.0, 0.04, 0.045]));
 }
@@ -229,7 +231,7 @@ fn lmm_with_l0_different_length_invalidates_correlation_cache() {
 }
 
 #[test]
-#[should_panic(expected = "l0 length must equal tenor.len() - 1")]
+#[should_panic(expected = "l0.len() must satisfy `l0.len() == tenor.len() - 1`, got l0.len() = 4")]
 fn lmm_sample_panics_on_leftover_shape_mismatch() {
   // If a chain changes `tenor`'s Libor count without also updating `l0`
   // and `sigma` (or vice versa), the mismatch is not silently tolerated:

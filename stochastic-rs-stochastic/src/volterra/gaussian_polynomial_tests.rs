@@ -117,7 +117,9 @@ fn is_seed_reproducible() {
 }
 
 #[test]
-#[should_panic(expected = "coefficients must contain at least a constant term")]
+#[should_panic(
+  expected = "coefficients must satisfy `!coefficients.is_empty()`, got coefficients = []"
+)]
 fn rejects_an_empty_polynomial() {
   let _ = GaussianPolynomialVolatility::new(
     kernel(),
@@ -154,7 +156,7 @@ fn quintic_zeroes_the_quadratic_and_quartic_terms() {
 }
 
 #[test]
-#[should_panic(expected = "n must be at least 2")]
+#[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
 fn rejects_n_below_two() {
   let _ = GaussianPolynomialVolatility::new(kernel(), array![0.2], 1, None, Deterministic::new(1));
 }

@@ -45,10 +45,43 @@ pub struct Jacobi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> Jacobi<T, S> {
   pub fn new(alpha: T, beta: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(alpha > T::zero(), "alpha must be positive");
-    assert!(beta > T::zero(), "beta must be positive");
-    assert!(sigma > T::zero(), "sigma must be positive");
-    assert!(alpha < beta, "alpha must be less than beta");
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      alpha > T::zero(),
+      "alpha must satisfy `alpha > T::zero()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta > T::zero(),
+      "beta must satisfy `beta > T::zero()`, got beta = {beta:?}"
+    );
+    assert!(
+      sigma > T::zero(),
+      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      alpha < beta,
+      "alpha must satisfy `alpha < beta`, got alpha = {alpha:?}, beta = {beta:?}"
+    );
 
     Self {
       backend: Cpu,

@@ -228,7 +228,9 @@ fn deterministic_seed_reproduces_and_consecutive_paths_differ() {
 }
 
 #[test]
-#[should_panic(expected = "alpha must be at least d - 1")]
+#[should_panic(
+  expected = "alpha must satisfy `alpha >= T::from_usize_(d - 1)`, got alpha = 0.9, d = 2"
+)]
 fn rejects_a_degree_below_d_minus_one() {
   let _ = Wishart::new(
     0.9,

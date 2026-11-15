@@ -98,10 +98,51 @@ impl<T: FloatExt, S: SeedExt> Bns<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(sigma2_0 > T::zero(), "σ²₀ must be positive");
-    assert!(lambda > T::zero(), "λ must be positive");
-    assert!(nu > T::zero(), "jump intensity ν must be positive");
-    assert!(jump_shape > T::zero(), "Gamma shape ω must be positive");
+    assert!(
+      s0.is_none_or(|v| v.is_finite()),
+      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+    );
+    assert!(
+      sigma2_0.is_finite(),
+      "sigma2_0 must satisfy `sigma2_0.is_finite()`, got sigma2_0 = {sigma2_0:?}"
+    );
+    assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      nu.is_finite(),
+      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
+    );
+    assert!(
+      jump_shape.is_finite(),
+      "jump_shape must satisfy `jump_shape.is_finite()`, got jump_shape = {jump_shape:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      sigma2_0 > T::zero(),
+      "sigma2_0 must satisfy `sigma2_0 > T::zero()`, got sigma2_0 = {sigma2_0:?}"
+    );
+    assert!(
+      lambda > T::zero(),
+      "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      nu > T::zero(),
+      "nu must satisfy `nu > T::zero()`, got nu = {nu:?}"
+    );
+    assert!(
+      jump_shape > T::zero(),
+      "jump_shape must satisfy `jump_shape > T::zero()`, got jump_shape = {jump_shape:?}"
+    );
     Self {
       backend: Cpu,
       s0,
@@ -471,7 +512,7 @@ mod tests {
 
   /// Reject zero / negative jump intensity.
   #[test]
-  #[should_panic(expected = "jump intensity")]
+  #[should_panic(expected = "nu must satisfy `nu > T::zero()`, got nu = 0.0")]
   fn bns_zero_intensity_panics() {
     let _ = Bns::<f64>::new(
       Some(100.0),

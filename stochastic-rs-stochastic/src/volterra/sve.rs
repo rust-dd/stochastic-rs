@@ -135,7 +135,15 @@ where
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     let lift = VolterraLift::new(
       kernel.clone(),
       t.unwrap_or(T::one()) / T::from_usize_(n - 1),
@@ -494,7 +502,7 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "n must be at least 2")]
+  #[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
   fn rejects_too_short_grid() {
     let kernel = ExponentialKernel::new(0.5_f64, 1.0_f64);
     let _ = VolterraSde::new(

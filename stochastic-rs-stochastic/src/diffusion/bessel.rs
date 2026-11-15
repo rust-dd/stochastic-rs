@@ -88,6 +88,19 @@ impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
     use_sym: Option<bool>,
     seed: S,
   ) -> Self {
+    assert!(
+      delta.is_finite(),
+      "delta must satisfy `delta.is_finite()`, got delta = {delta:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     if delta < T::from_usize_(2) && use_sym != Some(true) {
       log::warn!(
         "SquaredBessel::new: dimension below the strict-positivity \
@@ -399,6 +412,19 @@ impl<T: FloatExt, S: SeedExt> Bessel<T, S> {
     use_sym: Option<bool>,
     seed: S,
   ) -> Self {
+    assert!(
+      delta.is_finite(),
+      "delta must satisfy `delta.is_finite()`, got delta = {delta:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     if delta < T::from_usize_(2) && use_sym != Some(true) {
       log::warn!(
         "Bessel::new: dimension below the strict-positivity \

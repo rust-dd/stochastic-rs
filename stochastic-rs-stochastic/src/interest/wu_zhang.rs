@@ -23,6 +23,7 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -66,64 +67,53 @@ impl<T: FloatExt, S: SeedExt> WuZhangD<T, S> {
     n: usize,
     seed: S,
   ) -> Self {
-    assert_eq!(
-      alpha.len(),
-      xn,
-      "alpha length ({}) must match xn ({})",
-      alpha.len(),
-      xn
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
-    assert_eq!(
-      beta.len(),
-      xn,
-      "beta length ({}) must match xn ({})",
-      beta.len(),
-      xn
-    );
-    assert_eq!(
-      nu.len(),
-      xn,
-      "nu length ({}) must match xn ({})",
-      nu.len(),
-      xn
-    );
-    assert_eq!(
-      lambda.len(),
-      xn,
-      "lambda length ({}) must match xn ({})",
-      lambda.len(),
-      xn
-    );
-    assert_eq!(
-      x0.len(),
-      xn,
-      "x0 length ({}) must match xn ({})",
-      x0.len(),
-      xn
-    );
-    assert_eq!(
-      v0.len(),
-      xn,
-      "v0 length ({}) must match xn ({})",
-      v0.len(),
-      xn
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert_entries("alpha", "alpha[i].is_finite()", &alpha, |v| v.is_finite());
+    assert_entries("beta", "beta[i].is_finite()", &beta, |v| v.is_finite());
+    assert_entries("nu", "nu[i].is_finite()", &nu, |v| v.is_finite());
+    assert_entries("lambda", "lambda[i].is_finite()", &lambda, |v| {
+      v.is_finite()
+    });
+    assert_entries("x0", "x0[i].is_finite()", &x0, |v| v.is_finite());
+    assert_entries("v0", "v0[i].is_finite()", &v0, |v| v.is_finite());
+    assert!(
+      alpha.len() == xn,
+      "alpha.len() must satisfy `alpha.len() == xn`, got alpha.len() = {:?}",
+      alpha.len()
     );
     assert!(
-      alpha.iter().all(|&x| x >= T::zero()),
-      "alpha entries must be non-negative"
+      beta.len() == xn,
+      "beta.len() must satisfy `beta.len() == xn`, got beta.len() = {:?}",
+      beta.len()
     );
     assert!(
-      beta.iter().all(|&x| x >= T::zero()),
-      "beta entries must be non-negative"
+      nu.len() == xn,
+      "nu.len() must satisfy `nu.len() == xn`, got nu.len() = {:?}",
+      nu.len()
     );
     assert!(
-      nu.iter().all(|&x| x >= T::zero()),
-      "nu entries must be non-negative"
+      lambda.len() == xn,
+      "lambda.len() must satisfy `lambda.len() == xn`, got lambda.len() = {:?}",
+      lambda.len()
     );
     assert!(
-      v0.iter().all(|&x| x >= T::zero()),
-      "v0 entries must be non-negative"
+      x0.len() == xn,
+      "x0.len() must satisfy `x0.len() == xn`, got x0.len() = {:?}",
+      x0.len()
     );
+    assert!(
+      v0.len() == xn,
+      "v0.len() must satisfy `v0.len() == xn`, got v0.len() = {:?}",
+      v0.len()
+    );
+    assert_entries("alpha", "alpha[i] >= T::zero()", &alpha, |x| x >= T::zero());
+    assert_entries("beta", "beta[i] >= T::zero()", &beta, |x| x >= T::zero());
+    assert_entries("nu", "nu[i] >= T::zero()", &nu, |x| x >= T::zero());
+    assert_entries("v0", "v0[i] >= T::zero()", &v0, |x| x >= T::zero());
     Self {
       backend: Cpu,
       alpha,

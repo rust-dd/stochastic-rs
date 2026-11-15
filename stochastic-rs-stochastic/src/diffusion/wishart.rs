@@ -45,6 +45,7 @@ use crate::linalg::extended_cholesky;
 use crate::linalg::invert_matrix;
 use crate::linalg::solve_lower;
 use crate::linalg::swap_symmetric;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -150,7 +151,9 @@ fn assert_symmetric<T: FloatExt>(x: &Array2<T>, name: &str) {
     for j in 0..i {
       assert!(
         (x[(i, j)] - x[(j, i)]).abs() <= tol,
-        "{name} must be symmetric (entry {i},{j})"
+        "{name}[({i}, {j})] must satisfy `({name}[(i, j)] - {name}[(j, i)]).abs() <= tol`, got {name}[({i}, {j})] = {:?}, {name}[({j}, {i})] = {:?}",
+        x[(i, j)],
+        x[(j, i)]
       );
     }
   }
@@ -259,16 +262,42 @@ impl<T: FloatExt, S: SeedExt> Wishart<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert_entries("b", "b[(i, j)].is_finite()", &b, |v| v.is_finite());
+    assert_entries("a", "a[(i, j)].is_finite()", &a, |v| v.is_finite());
+    assert_entries("x0", "x0[(i, j)].is_finite()", &x0, |v| v.is_finite());
     let d = x0.nrows();
-    assert!(d >= 1, "need at least one dimension");
-    assert_eq!(x0.dim(), (d, d), "x0 must be square");
-    assert_eq!(a.dim(), (d, d), "a must be d × d");
-    assert_eq!(b.dim(), (d, d), "b must be d × d");
+    assert!(
+      x0.nrows() >= 1,
+      "x0.nrows() must satisfy `x0.nrows() >= 1`, got x0.nrows() = {d:?}"
+    );
+    assert!(
+      x0.dim() == (d, d),
+      "x0.dim() must satisfy `x0.dim() == (d, d)`, got x0.dim() = {:?}, d = {d:?}",
+      x0.dim()
+    );
+    assert!(
+      a.dim() == (d, d),
+      "a.dim() must satisfy `a.dim() == (d, d)`, got a.dim() = {:?}, d = {d:?}",
+      a.dim()
+    );
+    assert!(
+      b.dim() == (d, d),
+      "b.dim() must satisfy `b.dim() == (d, d)`, got b.dim() = {:?}, d = {d:?}",
+      b.dim()
+    );
     assert!(
       alpha >= T::from_usize_(d - 1),
-      "alpha must be at least d - 1"
+      "alpha must satisfy `alpha >= T::from_usize_(d - 1)`, got alpha = {alpha:?}, d = {d:?}"
     );
-    assert!(n >= 1, "n must be at least 1");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     assert_symmetric(&x0, "x0");
     let _ = extended_cholesky(&x0);
     let dt = t.unwrap_or(T::one()) / T::from_usize_(n.max(2) - 1);

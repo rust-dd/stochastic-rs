@@ -16,6 +16,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -74,10 +75,23 @@ impl<T: FloatExt, S: SeedExt> Agarch<T, S> {
     n: usize,
     seed: S,
   ) -> Self {
-    assert!(omega > T::zero(), "Agarch requires omega > 0");
+    assert!(
+      omega.is_finite(),
+      "omega must satisfy `omega.is_finite()`, got omega = {omega:?}"
+    );
+    assert_entries("alpha", "alpha[i].is_finite()", &alpha, |v| v.is_finite());
+    assert_entries("delta", "delta[i].is_finite()", &delta, |v| v.is_finite());
+    assert_entries("beta", "beta[i].is_finite()", &beta, |v| v.is_finite());
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
+      omega > T::zero(),
+      "omega must satisfy `omega > T::zero()`, got omega = {omega:?}"
+    );
     assert!(
       alpha.len() == delta.len(),
-      "Agarch requires alpha.len() == delta.len()"
+      "alpha.len() must satisfy `alpha.len() == delta.len()`, got alpha.len() = {:?}, delta.len() = {:?}",
+      alpha.len(),
+      delta.len()
     );
     Self {
       backend: Cpu,

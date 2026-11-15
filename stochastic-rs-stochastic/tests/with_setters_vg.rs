@@ -57,7 +57,7 @@ plain_test!(vg_with_steps_round_trip, with_steps, n, 64usize);
 plain_test!(vg_with_horizon_round_trip, with_horizon, t, Some(2.0));
 
 #[test]
-#[should_panic(expected = "nu must be positive")]
+#[should_panic(expected = "nu must satisfy `nu > T::zero()`, got nu = 0.0")]
 fn vg_with_nu_rejects_non_positive() {
   let _ = Vg::<f64>::default().with_nu(0.0);
 }

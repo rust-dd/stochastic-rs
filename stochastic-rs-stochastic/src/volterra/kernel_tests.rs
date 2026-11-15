@@ -134,13 +134,13 @@ fn exponential_sum_approximates_the_kernel() {
 }
 
 #[test]
-#[should_panic(expected = "beta > 0")]
+#[should_panic(expected = "beta must satisfy `beta > T::zero()`, got beta = 0.0")]
 fn exponential_kernel_rejects_non_positive_beta() {
   let _ = ExponentialKernel::<f64>::new(0.0, 1.0);
 }
 
 #[test]
-#[should_panic(expected = "lambda > 0")]
+#[should_panic(expected = "lambda must satisfy `lambda > T::zero()`, got lambda = 0.0")]
 fn gamma_kernel_rejects_non_positive_lambda() {
   let _ = GammaKernel::<f64>::new(0.3, 0.0, 10);
 }
@@ -150,7 +150,7 @@ fn gamma_kernel_rejects_non_positive_lambda() {
 /// inside it, and must still surface here as a panic, not e.g. a silent
 /// `NaN` from an out-of-range Laguerre `alpha`.
 #[test]
-#[should_panic(expected = "Hurst in (0, 1/2)")]
+#[should_panic(expected = "hurst must satisfy `hurst > 0.0 && hurst < 0.5`, got hurst = 0.7")]
 fn gamma_kernel_rejects_hurst_out_of_range() {
   let _ = GammaKernel::<f64>::new(0.7, 1.0, 10);
 }
@@ -158,13 +158,15 @@ fn gamma_kernel_rejects_hurst_out_of_range() {
 /// `degree` is not re-validated inside `GammaKernel::new`; this locks in
 /// that `RlKernel::new`'s stability ceiling still fires through it.
 #[test]
-#[should_panic(expected = "quadrature degree must be <=")]
+#[should_panic(expected = "degree must satisfy `degree <= Self::MAX_STABLE_DEGREE`, got degree = ")]
 fn gamma_kernel_rejects_degree_above_stability_ceiling() {
   let _ = GammaKernel::<f64>::new(0.3, 1.0, RlKernel::<f64>::MAX_STABLE_DEGREE + 1);
 }
 
 #[test]
-#[should_panic(expected = "same length")]
+#[should_panic(
+  expected = "nodes.len() must satisfy `nodes.len() == weights.len()`, got nodes.len() = 2, weights.len() = 1"
+)]
 fn sum_of_exponentials_rejects_mismatched_lengths() {
   let _ = SumOfExponentials::new(
     Array1::from_vec(vec![1.0, 2.0]),
@@ -173,13 +175,13 @@ fn sum_of_exponentials_rejects_mismatched_lengths() {
 }
 
 #[test]
-#[should_panic(expected = "at least one term")]
+#[should_panic(expected = "nodes must satisfy `!nodes.is_empty()`, got nodes = []")]
 fn sum_of_exponentials_rejects_empty() {
   let _ = SumOfExponentials::new(Array1::<f64>::zeros(0), Array1::<f64>::zeros(0));
 }
 
 #[test]
-#[should_panic(expected = "strictly positive")]
+#[should_panic(expected = "nodes[1] must satisfy `nodes[i] > T::zero()`, got nodes[1] = -0.5")]
 fn sum_of_exponentials_rejects_non_positive_node() {
   let _ = SumOfExponentials::new(
     Array1::from_vec(vec![1.0, -0.5]),

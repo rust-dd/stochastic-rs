@@ -55,11 +55,34 @@ impl<T: FloatExt, S: SeedExt> InverseAlphaStableSubordinator<T, S> {
     seed: S,
   ) -> Self {
     assert!(
-      alpha > T::zero() && alpha < T::one(),
-      "alpha must be in (0,1)"
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
     );
-    assert!(c > T::zero(), "c must be positive");
-    assert!(u_steps >= 2, "u_steps must be >= 2");
+    assert!(
+      c.is_finite(),
+      "c must satisfy `c.is_finite()`, got c = {c:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      u_max.is_none_or(|v| v.is_finite()),
+      "u_max must satisfy `u_max.is_none_or(|v| v.is_finite())`, got u_max = {u_max:?}"
+    );
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
+      alpha > T::zero() && alpha < T::one(),
+      "alpha must satisfy `alpha > T::zero() && alpha < T::one()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      c > T::zero(),
+      "c must satisfy `c > T::zero()`, got c = {c:?}"
+    );
+    assert!(
+      u_steps >= 2,
+      "u_steps must satisfy `u_steps >= 2`, got u_steps = {u_steps:?}"
+    );
     Self {
       backend: Cpu,
       alpha,

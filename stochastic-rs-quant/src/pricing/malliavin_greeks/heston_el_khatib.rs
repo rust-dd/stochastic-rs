@@ -180,6 +180,9 @@ impl HestonMalliavinGreeks {
   /// it is O(n_steps^2), more variance-sensitive, and mainly useful when the
   /// paper's full estimator is required explicitly.
   pub fn delta_el_khatib(&self) -> f64 {
+    if self.degenerate_query() {
+      return f64::NAN;
+    }
     let dt = self.tau / (self.n_steps - 1) as f64;
     let sqrt_dt = dt.sqrt();
     let mut normal_s = SimdNormal::new(0.0, sqrt_dt).seeded(&Unseeded);
@@ -191,6 +194,9 @@ impl HestonMalliavinGreeks {
   /// Seeded variant of [`delta_el_khatib`](Self::delta_el_khatib) for reproducible
   /// tests and benchmarks.
   pub fn delta_el_khatib_with_seed(&self, seed: u64) -> f64 {
+    if self.degenerate_query() {
+      return f64::NAN;
+    }
     let dt = self.tau / (self.n_steps - 1) as f64;
     let sqrt_dt = dt.sqrt();
     let mut normal_s = SimdNormal::new(0.0, sqrt_dt).seeded(&Deterministic::new(seed));

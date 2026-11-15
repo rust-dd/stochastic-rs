@@ -100,6 +100,55 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorr<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
+    assert!(
+      r.is_finite(),
+      "r must satisfy `r.is_finite()`, got r = {r:?}"
+    );
+    assert!(
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
+    );
+    assert!(
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
+    );
+    assert!(
+      kappa_v.is_finite(),
+      "kappa_v must satisfy `kappa_v.is_finite()`, got kappa_v = {kappa_v:?}"
+    );
+    assert!(
+      mu_v.is_finite(),
+      "mu_v must satisfy `mu_v.is_finite()`, got mu_v = {mu_v:?}"
+    );
+    assert!(
+      sigma_v.is_finite(),
+      "sigma_v must satisfy `sigma_v.is_finite()`, got sigma_v = {sigma_v:?}"
+    );
+    assert!(
+      rho0.is_finite(),
+      "rho0 must satisfy `rho0.is_finite()`, got rho0 = {rho0:?}"
+    );
+    assert!(
+      kappa_r.is_finite(),
+      "kappa_r must satisfy `kappa_r.is_finite()`, got kappa_r = {kappa_r:?}"
+    );
+    assert!(
+      mu_r.is_finite(),
+      "mu_r must satisfy `mu_r.is_finite()`, got mu_r = {mu_r:?}"
+    );
+    assert!(
+      sigma_r.is_finite(),
+      "sigma_r must satisfy `sigma_r.is_finite()`, got sigma_r = {sigma_r:?}"
+    );
+    assert!(
+      rho2.is_finite(),
+      "rho2 must satisfy `rho2.is_finite()`, got rho2 = {rho2:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     Self {
       backend: Cpu,
       r,

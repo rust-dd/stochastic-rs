@@ -81,11 +81,16 @@ impl<T: FloatExt, S: SeedExt> Cir2F<T, S> {
 impl<T: FloatExt, S: SeedExt, B> Cir2F<T, S, B> {
   /// The factors are summed point by point, so they must share the grid.
   fn assert_same_grid(x: &Cir<T, S>, y: &Cir<T, S>) {
-    assert_eq!(x.n, y.n, "x and y Cir factors must use the same n");
+    assert!(
+      x.n == y.n,
+      "x.n must satisfy `x.n == y.n`, got x.n = {:?}, y.n = {:?}",
+      x.n,
+      y.n
+    );
     if let (Some(tx), Some(ty)) = (x.t, y.t) {
       assert!(
         (tx - ty).abs() <= T::from_f64_fast(1e-12),
-        "x and y Cir factors must use the same time horizon"
+        "x.t must satisfy `(x.t - y.t).abs() <= 1e-12`, got x.t = {tx:?}, y.t = {ty:?}"
       );
     }
   }
@@ -344,7 +349,7 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "x and y Cir factors must use the same n")]
+  #[should_panic(expected = "x.n must satisfy `x.n == y.n`, got x.n = 3, y.n = 4")]
   fn mismatched_lengths_panic() {
     let x = Cir::new(
       0.0_f64,

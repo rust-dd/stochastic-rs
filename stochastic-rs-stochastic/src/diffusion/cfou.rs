@@ -70,9 +70,43 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(lambda > T::zero(), "lambda must be positive");
-    assert!(a > T::zero(), "a must be positive");
+    assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
+    assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      omega.is_finite(),
+      "omega must satisfy `omega.is_finite()`, got omega = {omega:?}"
+    );
+    assert!(
+      a.is_finite(),
+      "a must satisfy `a.is_finite()`, got a = {a:?}"
+    );
+    assert!(
+      x1_0.is_none_or(|v| v.is_finite()),
+      "x1_0 must satisfy `x1_0.is_none_or(|v| v.is_finite())`, got x1_0 = {x1_0:?}"
+    );
+    assert!(
+      x2_0.is_none_or(|v| v.is_finite()),
+      "x2_0 must satisfy `x2_0.is_none_or(|v| v.is_finite())`, got x2_0 = {x2_0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      lambda > T::zero(),
+      "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      a > T::zero(),
+      "a must satisfy `a > T::zero()`, got a = {a:?}"
+    );
 
     Self {
       hurst,
@@ -103,7 +137,10 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
   /// Replace `lambda`. Panics if `lambda <= 0`, matching `new()`'s own
   /// assertion.
   pub fn with_lambda(mut self, lambda: T) -> Self {
-    assert!(lambda > T::zero(), "lambda must be positive");
+    assert!(
+      lambda > T::zero(),
+      "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
+    );
     self.lambda = lambda;
     self
   }
@@ -116,7 +153,10 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
 
   /// Replace `a`. Panics if `a <= 0`, matching `new()`'s own assertion.
   pub fn with_a(mut self, a: T) -> Self {
-    assert!(a > T::zero(), "a must be positive");
+    assert!(
+      a > T::zero(),
+      "a must satisfy `a > T::zero()`, got a = {a:?}"
+    );
     self.a = a;
     self
   }
@@ -124,7 +164,7 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
   /// Replace the number of simulation steps `n`; rebuilds the embedded
   /// `fgn`. Panics if `n < 2`, matching `new()`'s own assertion.
   pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.fgn = Self::fgn_for(self.hurst, n, self.t);
     self

@@ -70,6 +70,7 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -105,19 +106,24 @@ pub struct Bgm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> Bgm<T, S> {
   pub fn new(lambda: Array1<T>, x0: Array1<T>, xn: usize, t: Option<T>, n: usize, seed: S) -> Self {
-    assert_eq!(
-      lambda.len(),
-      xn,
-      "lambda length ({}) must match xn ({})",
-      lambda.len(),
-      xn
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
-    assert_eq!(
-      x0.len(),
-      xn,
-      "x0 length ({}) must match xn ({})",
-      x0.len(),
-      xn
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert_entries("lambda", "lambda[i].is_finite()", &lambda, |v| {
+      v.is_finite()
+    });
+    assert_entries("x0", "x0[i].is_finite()", &x0, |v| v.is_finite());
+    assert!(
+      lambda.len() == xn,
+      "lambda.len() must satisfy `lambda.len() == xn`, got lambda.len() = {:?}",
+      lambda.len()
+    );
+    assert!(
+      x0.len() == xn,
+      "x0.len() must satisfy `x0.len() == xn`, got x0.len() = {:?}",
+      x0.len()
     );
     Self {
       backend: Cpu,

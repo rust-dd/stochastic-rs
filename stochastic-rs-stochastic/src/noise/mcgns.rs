@@ -24,6 +24,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use crate::device::Cpu;
 use crate::linalg::cholesky_lower;
 use crate::linalg::validate_correlation;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -47,6 +48,12 @@ pub struct Mcgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> Mcgns<T, S> {
   /// `rho` must be a valid, positive-definite correlation matrix.
   pub fn new(rho: Array2<T>, n: usize, t: Option<T>, seed: S) -> Self {
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert_entries("rho", "rho[(i, j)].is_finite()", &rho, |v| v.is_finite());
     validate_correlation(&rho);
     let chol = cholesky_lower(&rho);
     Self {
@@ -415,7 +422,9 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "unit diagonal")]
+  #[should_panic(
+    expected = "rho[(0, 0)] must satisfy `(rho[(i, i)] - T::one()).abs() <= tol`, got rho[(0, 0)] = 2.0"
+  )]
   fn rejects_a_covariance_matrix() {
     let _ = Mcgns::new(array![[2.0_f64, 0.5], [0.5, 1.0]], 8, None, Unseeded);
   }

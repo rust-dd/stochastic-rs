@@ -90,11 +90,14 @@ impl BrownianBridgeQmc {
   }
 
   fn with_sequence(steps: usize, horizon: f64, sequence: SobolSeq) -> Self {
-    assert!(horizon > 0.0, "horizon must be positive");
-    assert_eq!(
-      sequence.n_dims(),
-      steps,
-      "the sequence must have one dimension per step"
+    assert!(
+      horizon > 0.0,
+      "horizon must satisfy `horizon > 0.0`, got horizon = {horizon:?}"
+    );
+    assert!(
+      sequence.n_dims() == steps,
+      "sequence.n_dims() must satisfy `sequence.n_dims() == steps`, got sequence.n_dims() = {:?}, steps = {steps:?}",
+      sequence.n_dims()
     );
     Self {
       steps,

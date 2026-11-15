@@ -74,7 +74,19 @@ impl<T: FloatExt, S: SeedExt> Cheyette<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(kappa > T::zero(), "kappa must be positive");
+    assert!(
+      kappa.is_finite(),
+      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      kappa > T::zero(),
+      "kappa must satisfy `kappa > T::zero()`, got kappa = {kappa:?}"
+    );
     Self {
       backend: Cpu,
       f0: f0.into(),

@@ -15,6 +15,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -55,7 +56,21 @@ impl<T: FloatExt, S: SeedExt> Arima<T, S> {
     n: usize,
     seed: S,
   ) -> Self {
-    assert!(sigma > T::zero(), "Arima requires sigma > 0");
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert_entries("ar_coefs", "ar_coefs[i].is_finite()", &ar_coefs, |v| {
+      v.is_finite()
+    });
+    assert_entries("ma_coefs", "ma_coefs[i].is_finite()", &ma_coefs, |v| {
+      v.is_finite()
+    });
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
+      sigma >= T::zero(),
+      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
     Self {
       backend: Cpu,
       ar_coefs,
@@ -138,7 +153,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       ar_coefs: self.ar_coefs.clone(),
       ma_coefs: self.ma_coefs.clone(),
       d: self.d,
-      normal: SimdNormal::<T>::new(T::zero(), self.sigma).seeded(&self.seed),
+      sigma: self.sigma,
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
     }
   }
 
@@ -215,6 +231,7 @@ pub struct ArimaSampler<T: FloatExt> {
   ar_coefs: Array1<T>,
   ma_coefs: Array1<T>,
   d: usize,
+  sigma: T,
   normal: Seeded<SimdNormal<T>>,
 }
 
@@ -226,6 +243,8 @@ impl<T: FloatExt> ArimaSampler<T> {
       let slice = noise.as_slice_mut().expect("contiguous");
       self.normal.fill_slice(slice);
     }
+    let sigma = self.sigma;
+    noise.mapv_inplace(|z| sigma * z);
     let result = arima_filter(&noise, &self.ar_coefs, &self.ma_coefs, self.d);
     out.copy_from_slice(result.as_slice().expect("contiguous"));
   }

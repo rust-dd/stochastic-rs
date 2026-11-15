@@ -15,6 +15,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -49,7 +50,16 @@ pub struct Arch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> Arch<T, S> {
   /// Create a new Arch model.
   pub fn new(omega: T, alpha: Array1<T>, n: usize, seed: S) -> Self {
-    assert!(omega > T::zero(), "Arch requires omega > 0");
+    assert!(
+      omega.is_finite(),
+      "omega must satisfy `omega.is_finite()`, got omega = {omega:?}"
+    );
+    assert_entries("alpha", "alpha[i].is_finite()", &alpha, |v| v.is_finite());
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
+      omega > T::zero(),
+      "omega must satisfy `omega > T::zero()`, got omega = {omega:?}"
+    );
     Self {
       backend: Cpu,
       omega,

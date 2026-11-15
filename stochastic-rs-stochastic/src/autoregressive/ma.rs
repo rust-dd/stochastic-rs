@@ -15,6 +15,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -49,7 +50,16 @@ pub struct MAq<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> MAq<T, S> {
   /// Create a new MA(q) model with the given parameters.
   pub fn new(theta: Array1<T>, sigma: T, n: usize, seed: S) -> Self {
-    assert!(sigma > T::zero(), "MAq requires sigma > 0");
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert_entries("theta", "theta[i].is_finite()", &theta, |v| v.is_finite());
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
+      sigma >= T::zero(),
+      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
     Self {
       backend: Cpu,
       theta,
@@ -129,7 +139,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     MAqSampler {
       n: self.n,
       theta: self.theta.clone(),
-      normal: SimdNormal::<T>::new(T::zero(), self.sigma).seeded(&self.seed),
+      sigma: self.sigma,
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
     }
   }
 
@@ -204,6 +215,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 pub struct MAqSampler<T: FloatExt> {
   n: usize,
   theta: Array1<T>,
+  sigma: T,
   normal: Seeded<SimdNormal<T>>,
 }
 
@@ -217,6 +229,8 @@ impl<T: FloatExt> MAqSampler<T> {
       let slice = noise.as_slice_mut().expect("contiguous");
       self.normal.fill_slice(slice);
     }
+    let sigma = self.sigma;
+    noise.mapv_inplace(|z| sigma * z);
 
     // MA recursion
     for t in 0..n {

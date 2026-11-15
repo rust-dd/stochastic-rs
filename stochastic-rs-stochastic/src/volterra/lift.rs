@@ -80,7 +80,10 @@ impl<T: FloatExt, K: VolterraKernel<T>> VolterraLift<T, K> {
   /// - if $\delta t \le 0$
   #[must_use]
   pub fn new(kernel: K, dt: T) -> Self {
-    assert!(dt > T::zero(), "dt must be positive");
+    assert!(
+      dt > T::zero(),
+      "dt must satisfy `dt > T::zero()`, got dt = {dt:?}"
+    );
 
     let n_prime = kernel.degree();
     let nodes = kernel.nodes();

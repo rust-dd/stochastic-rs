@@ -87,6 +87,39 @@ impl<T: FloatExt, S: SeedExt> RoughHeston<T, S> {
     n: usize,
     seed: S,
   ) -> Self {
+    assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
+    assert!(
+      v0.is_none_or(|v| v.is_finite()),
+      "v0 must satisfy `v0.is_none_or(|v| v.is_finite())`, got v0 = {v0:?}"
+    );
+    assert!(
+      theta.is_finite(),
+      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
+    );
+    assert!(
+      kappa.is_finite(),
+      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
+    );
+    assert!(
+      nu.is_finite(),
+      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
+    );
+    assert!(
+      c1.is_none_or(|v| v.is_finite()),
+      "c1 must satisfy `c1.is_none_or(|v| v.is_finite())`, got c1 = {c1:?}"
+    );
+    assert!(
+      c2.is_none_or(|v| v.is_finite()),
+      "c2 must satisfy `c2.is_none_or(|v| v.is_finite())`, got c2 = {c2:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     RoughHeston {
       backend: Cpu,
       hurst,
