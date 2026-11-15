@@ -83,6 +83,12 @@ fn a_level_outside_the_unit_interval_is_a_precondition() {
 }
 
 #[test]
+#[should_panic(expected = "entries must satisfy `!entries.is_empty()`, got entries = []")]
+fn an_empty_table_is_a_precondition() {
+  let _ = CriticalValues::new([]);
+}
+
+#[test]
 fn every_test_result_answers_through_the_trait() {
   let x = ar1(1, 400, 0.5);
   let adf = adf_test(x.view(), AdfConfig::default()).unwrap();

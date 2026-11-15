@@ -6,7 +6,7 @@ use std::fmt;
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum StatsError {
-  /// Fewer observations (or series) than the method needs.
+  /// Fewer observations, series or bins than the method needs.
   InsufficientData { needed: usize, got: usize },
   /// Two inputs that must agree in length or shape do not.
   DimensionMismatch { expected: usize, got: usize },
@@ -34,7 +34,7 @@ impl fmt::Display for StatsError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
       Self::InsufficientData { needed, got } => {
-        write!(f, "needs at least {needed} observations, got {got}")
+        write!(f, "needs at least {needed}, got {got}")
       }
       Self::DimensionMismatch { expected, got } => {
         write!(f, "expected {expected} entries, got {got}")

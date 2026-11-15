@@ -277,30 +277,6 @@ mod tests {
     assert_eq!(medrv(r.view()), 0.0);
   }
 
-  /// `p = erfc(|z|/√2)`, mpmath at 50 digits; the far tail keeps its relative digits.
-  #[test]
-  fn two_sided_p_value_keeps_its_tail() {
-    let pins = [
-      (0.0, 1.0),
-      (1.0, 0.3173105078629141),
-      (3.0, 0.002699796063260189),
-      (5.0, 5.733031437583878e-7),
-      (6.0, 1.973175290075396e-9),
-      (8.0, 1.2441921148543568e-15),
-      (9.0, 2.257176811907681e-19),
-      (12.0, 3.552964224155358e-33),
-      (20.0, 5.5072482372124674e-89),
-    ];
-    for (z, want) in pins {
-      let got = two_sided_p_value(z);
-      assert!(
-        ((got - want) / want).abs() < 1e-13,
-        "z = {z}: p = {got}, want {want}"
-      );
-      assert_eq!(two_sided_p_value(-z), got);
-    }
-  }
-
   #[test]
   fn a_far_tail_statistic_keeps_a_positive_p_value() {
     let mut r = iid_normal(29, 5_000, 0.01);

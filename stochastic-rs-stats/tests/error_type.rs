@@ -19,7 +19,7 @@ fn the_error_is_send_sync_and_displays_the_predicate() {
   assert_send_sync::<StatsError>();
   assert_eq!(
     StatsError::InsufficientData { needed: 32, got: 5 }.to_string(),
-    "needs at least 32 observations, got 5"
+    "needs at least 32, got 5"
   );
   assert_eq!(
     StatsError::InvalidParameter {

@@ -92,10 +92,8 @@ pub(crate) fn conditional_moments(
   (mean, var.max(1e-300))
 }
 
-/// Gaussian quasi-log-likelihood of a discretely-observed diffusion path
-/// `x` (interval `dt`) at parameters $(\kappa, \theta, \sigma)$. Shared by
-/// [`qmle`] and the Bayesian sampler in
-/// [`crate::bayesian_diffusion`](crate::bayesian_diffusion).
+/// Gaussian quasi-log-likelihood of a path `x` observed every `dt` at $(\kappa, \theta, \sigma)$,
+/// shared by [`fit_diffusion_qmle`] and the sampler in [`crate::bayesian_diffusion`].
 pub(crate) fn quasi_log_likelihood(
   x: &[f64],
   dt: f64,
