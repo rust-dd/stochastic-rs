@@ -67,6 +67,35 @@ impl<T: FloatExt, S: SeedExt> WuZhangD<T, S> {
     seed: S,
   ) -> Self {
     assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      alpha.iter().all(|v| v.is_finite()),
+      "alpha must satisfy `alpha.iter().all(|v| v.is_finite())`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta.iter().all(|v| v.is_finite()),
+      "beta must satisfy `beta.iter().all(|v| v.is_finite())`, got beta = {beta:?}"
+    );
+    assert!(
+      nu.iter().all(|v| v.is_finite()),
+      "nu must satisfy `nu.iter().all(|v| v.is_finite())`, got nu = {nu:?}"
+    );
+    assert!(
+      lambda.iter().all(|v| v.is_finite()),
+      "lambda must satisfy `lambda.iter().all(|v| v.is_finite())`, got lambda = {lambda:?}"
+    );
+    assert!(
+      x0.iter().all(|v| v.is_finite()),
+      "x0 must satisfy `x0.iter().all(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      v0.iter().all(|v| v.is_finite()),
+      "v0 must satisfy `v0.iter().all(|v| v.is_finite())`, got v0 = {v0:?}"
+    );
+    assert!(
       alpha.len() == xn,
       "alpha.len() must satisfy `alpha.len() == xn`, got alpha.len() = {:?}",
       alpha.len()

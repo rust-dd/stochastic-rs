@@ -223,8 +223,8 @@ our own types implement it, and it is how `.sample()` resolves. Per `dev-rules` 
 
 Validate in `new(...)`, never in `sample()`. `Poisson::new` already
 calls `validate_n_or_tmax`; add your own asserts for the model's own
-invariants (`sigma > 0`, `lambda >= 0`, `n >= 2`) with messages a
-`#[should_panic(expected = "…")]` test can pin.
+invariants (every float finite, `sigma > 0`, `lambda >= 0`, `n >= 2`) in
+dev-rules §14's form, which a `#[should_panic(expected = "…")]` test can pin.
 
 Note that `Merton` and `Kou` as shipped do **not** carry `r` / `r_f` /
 `b` cost-of-carry fields — those live on the pricers in

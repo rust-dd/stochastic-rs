@@ -76,7 +76,7 @@ pub struct Cts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Cts<T, S> {
-  /// Create a new Cts process
+  /// Create a new Cts process; panics at alpha = 1, where Γ(1 − α) has a pole.
   pub fn new(
     lambda_plus: T,
     lambda_minus: T,
@@ -88,6 +88,27 @@ impl<T: FloatExt, S: SeedExt> Cts<T, S> {
     seed: S,
   ) -> Self {
     assert!(
+      lambda_plus.is_finite(),
+      "lambda_plus must satisfy `lambda_plus.is_finite()`, got lambda_plus = {lambda_plus:?}"
+    );
+    assert!(
+      lambda_minus.is_finite(),
+      "lambda_minus must satisfy `lambda_minus.is_finite()`, got lambda_minus = {lambda_minus:?}"
+    );
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
       lambda_plus > T::zero(),
       "lambda_plus must satisfy `lambda_plus > T::zero()`, got lambda_plus = {lambda_plus:?}"
     );
@@ -98,6 +119,10 @@ impl<T: FloatExt, S: SeedExt> Cts<T, S> {
     assert!(
       alpha > T::zero() && alpha < T::from_usize_(2),
       "alpha must satisfy `alpha > T::zero() && alpha < T::from_usize_(2)`, got alpha = {alpha:?}"
+    );
+    assert!(
+      alpha != T::one(),
+      "alpha must satisfy `alpha != T::one()`, got alpha = {alpha:?}"
     );
 
     Self {

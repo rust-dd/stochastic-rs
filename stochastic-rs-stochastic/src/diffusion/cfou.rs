@@ -70,6 +70,34 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
     t: Option<T>,
     seed: S,
   ) -> Self {
+    assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
+    assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      omega.is_finite(),
+      "omega must satisfy `omega.is_finite()`, got omega = {omega:?}"
+    );
+    assert!(
+      a.is_finite(),
+      "a must satisfy `a.is_finite()`, got a = {a:?}"
+    );
+    assert!(
+      x1_0.is_none_or(|v| v.is_finite()),
+      "x1_0 must satisfy `x1_0.is_none_or(|v| v.is_finite())`, got x1_0 = {x1_0:?}"
+    );
+    assert!(
+      x2_0.is_none_or(|v| v.is_finite()),
+      "x2_0 must satisfy `x2_0.is_none_or(|v| v.is_finite())`, got x2_0 = {x2_0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     assert!(
       lambda > T::zero(),

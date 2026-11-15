@@ -51,6 +51,27 @@ pub struct Nig<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> Nig<T, S> {
   pub fn new(theta: T, sigma: T, kappa: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(
+      theta.is_finite(),
+      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      kappa.is_finite(),
+      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
       kappa > T::zero(),
       "kappa must satisfy `kappa > T::zero()`, got kappa = {kappa:?}"
     );
@@ -230,20 +251,6 @@ impl<T: FloatExt> PathSampler<T> for NigSampler<T> {
   fn sample(&mut self) -> Array1<T> {
     let n = self.n;
     array1_from_fill(n, |out| self.fill_path(out))
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::traits::ProcessExt;
-
-  #[test]
-  fn n_eq_1_keeps_initial_value() {
-    let p = Nig::new(0.1_f64, 0.2, 0.3, 1, Some(4.0), Some(1.0), Unseeded);
-    let x = p.sample();
-    assert_eq!(x.len(), 1);
-    assert_eq!(x[0], 4.0);
   }
 }
 

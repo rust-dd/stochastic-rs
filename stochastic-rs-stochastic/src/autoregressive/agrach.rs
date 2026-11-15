@@ -75,6 +75,23 @@ impl<T: FloatExt, S: SeedExt> Agarch<T, S> {
     seed: S,
   ) -> Self {
     assert!(
+      omega.is_finite(),
+      "omega must satisfy `omega.is_finite()`, got omega = {omega:?}"
+    );
+    assert!(
+      alpha.iter().all(|v| v.is_finite()),
+      "alpha must satisfy `alpha.iter().all(|v| v.is_finite())`, got alpha = {alpha:?}"
+    );
+    assert!(
+      delta.iter().all(|v| v.is_finite()),
+      "delta must satisfy `delta.iter().all(|v| v.is_finite())`, got delta = {delta:?}"
+    );
+    assert!(
+      beta.iter().all(|v| v.is_finite()),
+      "beta must satisfy `beta.iter().all(|v| v.is_finite())`, got beta = {beta:?}"
+    );
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
       omega > T::zero(),
       "omega must satisfy `omega > T::zero()`, got omega = {omega:?}"
     );

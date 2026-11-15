@@ -50,8 +50,17 @@ impl<T: FloatExt, S: SeedExt> MAq<T, S> {
   /// Create a new MA(q) model with the given parameters.
   pub fn new(theta: Array1<T>, sigma: T, n: usize, seed: S) -> Self {
     assert!(
-      sigma > T::zero(),
-      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      theta.iter().all(|v| v.is_finite()),
+      "theta must satisfy `theta.iter().all(|v| v.is_finite())`, got theta = {theta:?}"
+    );
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
+      sigma >= T::zero(),
+      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
     );
     Self {
       backend: Cpu,
@@ -132,7 +141,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     MAqSampler {
       n: self.n,
       theta: self.theta.clone(),
-      normal: SimdNormal::<T>::new(T::zero(), self.sigma).seeded(&self.seed),
+      sigma: self.sigma,
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
     }
   }
 
@@ -207,6 +217,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 pub struct MAqSampler<T: FloatExt> {
   n: usize,
   theta: Array1<T>,
+  sigma: T,
   normal: Seeded<SimdNormal<T>>,
 }
 
@@ -220,6 +231,8 @@ impl<T: FloatExt> MAqSampler<T> {
       let slice = noise.as_slice_mut().expect("contiguous");
       self.normal.fill_slice(slice);
     }
+    let sigma = self.sigma;
+    noise.mapv_inplace(|z| sigma * z);
 
     // MA recursion
     for t in 0..n {

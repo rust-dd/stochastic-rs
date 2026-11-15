@@ -261,6 +261,26 @@ impl<T: FloatExt, S: SeedExt> Wishart<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      b.iter().all(|v| v.is_finite()),
+      "b must satisfy `b.iter().all(|v| v.is_finite())`, got b = {b:?}"
+    );
+    assert!(
+      a.iter().all(|v| v.is_finite()),
+      "a must satisfy `a.iter().all(|v| v.is_finite())`, got a = {a:?}"
+    );
+    assert!(
+      x0.iter().all(|v| v.is_finite()),
+      "x0 must satisfy `x0.iter().all(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
     let d = x0.nrows();
     assert!(
       x0.nrows() >= 1,
@@ -285,7 +305,7 @@ impl<T: FloatExt, S: SeedExt> Wishart<T, S> {
       alpha >= T::from_usize_(d - 1),
       "alpha must satisfy `alpha >= T::from_usize_(d - 1)`, got alpha = {alpha:?}, d = {d:?}"
     );
-    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     assert_symmetric(&x0, "x0");
     let _ = extended_cholesky(&x0);
     let dt = t.unwrap_or(T::one()) / T::from_usize_(n.max(2) - 1);

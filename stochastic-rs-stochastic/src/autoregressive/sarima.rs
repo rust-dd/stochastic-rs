@@ -95,8 +95,29 @@ impl<T: FloatExt, S: SeedExt> Sarima<T, S> {
     seed: S,
   ) -> Self {
     assert!(
-      sigma > T::zero(),
-      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      non_seasonal_ar_coefs.iter().all(|v| v.is_finite()),
+      "non_seasonal_ar_coefs must satisfy `non_seasonal_ar_coefs.iter().all(|v| v.is_finite())`, got non_seasonal_ar_coefs = {non_seasonal_ar_coefs:?}"
+    );
+    assert!(
+      non_seasonal_ma_coefs.iter().all(|v| v.is_finite()),
+      "non_seasonal_ma_coefs must satisfy `non_seasonal_ma_coefs.iter().all(|v| v.is_finite())`, got non_seasonal_ma_coefs = {non_seasonal_ma_coefs:?}"
+    );
+    assert!(
+      seasonal_ar_coefs.iter().all(|v| v.is_finite()),
+      "seasonal_ar_coefs must satisfy `seasonal_ar_coefs.iter().all(|v| v.is_finite())`, got seasonal_ar_coefs = {seasonal_ar_coefs:?}"
+    );
+    assert!(
+      seasonal_ma_coefs.iter().all(|v| v.is_finite()),
+      "seasonal_ma_coefs must satisfy `seasonal_ma_coefs.iter().all(|v| v.is_finite())`, got seasonal_ma_coefs = {seasonal_ma_coefs:?}"
+    );
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
+      sigma >= T::zero(),
+      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
     );
     assert!(s > 0, "s must satisfy `s > 0`, got s = {s:?}");
     Sarima {
@@ -199,7 +220,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       d: self.d,
       big_d: self.D,
       s: self.s,
-      normal: SimdNormal::<T>::new(T::zero(), self.sigma).seeded(&self.seed),
+      sigma: self.sigma,
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
     }
   }
 
@@ -281,6 +303,7 @@ pub struct SarimaSampler<T: FloatExt> {
   d: usize,
   big_d: usize,
   s: usize,
+  sigma: T,
   normal: Seeded<SimdNormal<T>>,
 }
 
@@ -292,6 +315,8 @@ impl<T: FloatExt> SarimaSampler<T> {
       let slice = noise.as_slice_mut().expect("contiguous");
       self.normal.fill_slice(slice);
     }
+    let sigma = self.sigma;
+    noise.mapv_inplace(|z| sigma * z);
     let integrated = sarima_filter(
       &noise,
       &self.non_seasonal_ar_coefs,

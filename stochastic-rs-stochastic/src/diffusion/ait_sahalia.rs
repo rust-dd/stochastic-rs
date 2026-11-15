@@ -76,6 +76,47 @@ impl<T: FloatExt, S: SeedExt> AitSahalia<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
+    assert!(
+      am1.is_finite(),
+      "am1 must satisfy `am1.is_finite()`, got am1 = {am1:?}"
+    );
+    assert!(
+      a0.is_finite(),
+      "a0 must satisfy `a0.is_finite()`, got a0 = {a0:?}"
+    );
+    assert!(
+      a1.is_finite(),
+      "a1 must satisfy `a1.is_finite()`, got a1 = {a1:?}"
+    );
+    assert!(
+      a2.is_finite(),
+      "a2 must satisfy `a2.is_finite()`, got a2 = {a2:?}"
+    );
+    assert!(
+      b0.is_finite(),
+      "b0 must satisfy `b0.is_finite()`, got b0 = {b0:?}"
+    );
+    assert!(
+      b1.is_finite(),
+      "b1 must satisfy `b1.is_finite()`, got b1 = {b1:?}"
+    );
+    assert!(
+      b2.is_finite(),
+      "b2 must satisfy `b2.is_finite()`, got b2 = {b2:?}"
+    );
+    assert!(
+      b3.is_finite(),
+      "b3 must satisfy `b3.is_finite()`, got b3 = {b3:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     Self {
       backend: Cpu,
       am1,

@@ -89,6 +89,54 @@ impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
     use_sym: Option<bool>,
     seed: S,
   ) -> Self {
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      kappa.is_finite(),
+      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
+    );
+    assert!(
+      theta.is_finite(),
+      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
+    );
+    assert!(
+      sigma_v.is_finite(),
+      "sigma_v must satisfy `sigma_v.is_finite()`, got sigma_v = {sigma_v:?}"
+    );
+    assert!(
+      rho.is_finite(),
+      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
+    );
+    assert!(
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
+    );
+    assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      p_up.is_finite(),
+      "p_up must satisfy `p_up.is_finite()`, got p_up = {p_up:?}"
+    );
+    assert!(
+      eta1.is_finite(),
+      "eta1 must satisfy `eta1.is_finite()`, got eta1 = {eta1:?}"
+    );
+    assert!(
+      eta2.is_finite(),
+      "eta2 must satisfy `eta2.is_finite()`, got eta2 = {eta2:?}"
+    );
+    assert!(
+      s0.is_none_or(|v| v.is_finite()),
+      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     assert!(
       rho >= -T::one() && rho <= T::one(),

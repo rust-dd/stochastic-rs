@@ -64,6 +64,31 @@ impl<T: FloatExt, S: SeedExt> BilateralGamma<T, S> {
     seed: S,
   ) -> Self {
     assert!(
+      alpha_p.is_finite(),
+      "alpha_p must satisfy `alpha_p.is_finite()`, got alpha_p = {alpha_p:?}"
+    );
+    assert!(
+      lambda_p.is_finite(),
+      "lambda_p must satisfy `lambda_p.is_finite()`, got lambda_p = {lambda_p:?}"
+    );
+    assert!(
+      alpha_m.is_finite(),
+      "alpha_m must satisfy `alpha_m.is_finite()`, got alpha_m = {alpha_m:?}"
+    );
+    assert!(
+      lambda_m.is_finite(),
+      "lambda_m must satisfy `lambda_m.is_finite()`, got lambda_m = {lambda_m:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
       alpha_p > T::zero(),
       "alpha_p must satisfy `alpha_p > T::zero()`, got alpha_p = {alpha_p:?}"
     );
@@ -301,6 +326,35 @@ impl<T: FloatExt, S: SeedExt> BilateralGammaMotion<T, S> {
     seed: S,
   ) -> Self {
     assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      alpha_p.is_finite(),
+      "alpha_p must satisfy `alpha_p.is_finite()`, got alpha_p = {alpha_p:?}"
+    );
+    assert!(
+      lambda_p.is_finite(),
+      "lambda_p must satisfy `lambda_p.is_finite()`, got lambda_p = {lambda_p:?}"
+    );
+    assert!(
+      alpha_m.is_finite(),
+      "alpha_m must satisfy `alpha_m.is_finite()`, got alpha_m = {alpha_m:?}"
+    );
+    assert!(
+      lambda_m.is_finite(),
+      "lambda_m must satisfy `lambda_m.is_finite()`, got lambda_m = {lambda_m:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
       alpha_p > T::zero(),
       "alpha_p must satisfy `alpha_p > T::zero()`, got alpha_p = {alpha_p:?}"
     );
@@ -510,32 +564,6 @@ mod tests {
 
   use super::*;
   use crate::traits::ProcessExt;
-
-  #[test]
-  fn bg_n_eq_1_keeps_initial_value() {
-    let p = BilateralGamma::new(1.0_f64, 2.0, 1.5, 2.5, 1, Some(3.0), Some(1.0), Unseeded);
-    let x = p.sample();
-    assert_eq!(x.len(), 1);
-    assert_eq!(x[0], 3.0);
-  }
-
-  #[test]
-  fn bgm_n_eq_1_keeps_initial_value() {
-    let p = BilateralGammaMotion::new(
-      0.2_f64,
-      1.0,
-      2.0,
-      1.5,
-      2.5,
-      1,
-      Some(3.0),
-      Some(1.0),
-      Unseeded,
-    );
-    let x = p.sample();
-    assert_eq!(x.len(), 1);
-    assert_eq!(x[0], 3.0);
-  }
 
   #[test]
   fn bg_seeded_correct_length() {

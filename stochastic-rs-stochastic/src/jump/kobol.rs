@@ -101,6 +101,38 @@ impl<T: FloatExt, S: SeedExt> KoBoL<T, S> {
     seed: S,
   ) -> Self {
     assert!(
+      d.is_finite(),
+      "d must satisfy `d.is_finite()`, got d = {d:?}"
+    );
+    assert!(
+      p.is_finite(),
+      "p must satisfy `p.is_finite()`, got p = {p:?}"
+    );
+    assert!(
+      q.is_finite(),
+      "q must satisfy `q.is_finite()`, got q = {q:?}"
+    );
+    assert!(
+      lambda_plus.is_finite(),
+      "lambda_plus must satisfy `lambda_plus.is_finite()`, got lambda_plus = {lambda_plus:?}"
+    );
+    assert!(
+      lambda_minus.is_finite(),
+      "lambda_minus must satisfy `lambda_minus.is_finite()`, got lambda_minus = {lambda_minus:?}"
+    );
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
       d > T::zero(),
       "d must satisfy `d > T::zero()`, got d = {d:?}"
     );

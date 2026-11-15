@@ -61,6 +61,26 @@ impl<T: FloatExt, S: SeedExt> MultiGbm<T, S> {
     seed: S,
   ) -> Self {
     assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      mu.iter().all(|v| v.is_finite()),
+      "mu must satisfy `mu.iter().all(|v| v.is_finite())`, got mu = {mu:?}"
+    );
+    assert!(
+      sigma.iter().all(|v| v.is_finite()),
+      "sigma must satisfy `sigma.iter().all(|v| v.is_finite())`, got sigma = {sigma:?}"
+    );
+    assert!(
+      rho.iter().all(|v| v.is_finite()),
+      "rho must satisfy `rho.iter().all(|v| v.is_finite())`, got rho = {rho:?}"
+    );
+    assert!(
+      x0.iter().all(|v| v.is_finite()),
+      "x0 must satisfy `x0.iter().all(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
       rho.nrows() >= 1,
       "rho.nrows() must satisfy `rho.nrows() >= 1`, got rho.nrows() = {:?}",
       rho.nrows()
@@ -80,7 +100,7 @@ impl<T: FloatExt, S: SeedExt> MultiGbm<T, S> {
       "x0.len() must satisfy `x0.len() == rho.nrows()`, got x0.len() = {:?}",
       x0.len()
     );
-    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     assert!(
       sigma.iter().all(|s| *s >= T::zero()),
       "sigma must satisfy `sigma.iter().all(|s| *s >= T::zero())`, got sigma = {sigma:?}"

@@ -46,9 +46,10 @@ crate's `src/lib.rs`.
   }
 ```
 
-`new(..)` takes the fields positionally, ending with `seed: S`, and asserts `n >= 2`
-where the recursion needs two points (32 sites do). Every field gets a `with_*(mut self,
-..) -> Self`; one changing a value mirrored elsewhere re-syncs it
+`new(..)` takes the fields positionally, ending with `seed: S`, and asserts each precondition
+in dev-rules §14's form: every float finite (an `Option<T>` `None` or finite), `t` `None` or
+positive, and `n >= 2` on a grid (`n >= 1` on a noise or a discrete-time series). Every field
+gets a `with_*(mut self, ..) -> Self`; one changing a value mirrored elsewhere re-syncs it
 (`Merton::resync_cpoisson_poisson`). `Default` is `n = 252`, `t = 1`.
 
 The sampler is a separate `#[doc(hidden)] pub struct FooSampler<..>` holding all
@@ -573,7 +574,7 @@ shrinks as the engine grows (empty today) — check the nine documented ways rou
 ## Definition of done
 
 - [ ] `//!` header with the LaTeX SDE and the paper reference (title, authors, DOI/arXiv)
-- [ ] `pub` fields, `seed: S`, `backend: B = Cpu`, `Option<T>` optionals, `n >= 2` assert
+- [ ] `pub` fields, `seed: S`, `backend: B = Cpu`, `Option<T>` optionals, §14 asserts (finite floats, positive `t`, `n >= 2`)
 - [ ] `new(..)`, a `with_*` per field, `Default` at `n = 252`, `t = 1`; `pub mod` registered alphabetically
 - [ ] `#[doc(hidden)]` sampler implementing `PathSampler<T>`; `ProcessExt<T>` implementing only `sampler()`; each impl preceded by its `crate::traits::Sealed` marker
 - [ ] `sampler()` derives (`self.seed.derive()`), constructs no `Unseeded`, races no shared atomic

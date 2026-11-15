@@ -73,6 +73,31 @@ fn terminal_lognormal_cache<T: FloatExt>(
 /// `Gbm::default().with_mu(0.08).with_sigma(0.35)`.
 impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
   pub fn new(mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      sigma >= T::zero(),
+      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      x0.is_none_or(|x0| x0 > T::zero()),
+      "x0 must satisfy `x0.is_none_or(|x0| x0 > T::zero())`, got x0 = {x0:?}"
+    );
     let (ln_mu, ln_sigma) = terminal_lognormal_cache(mu, sigma, x0, t);
 
     Self {
@@ -365,22 +390,19 @@ mod tests {
 
   #[test]
   fn a_degenerate_terminal_law_has_no_closed_forms() {
-    let no_volatility = Gbm::new(0.05_f64, 0.0, 10, Some(100.0), Some(1.0), Unseeded);
-    let no_horizon = Gbm::new(0.05_f64, 0.2, 10, Some(100.0), Some(0.0), Unseeded);
-    for gbm in [no_volatility, no_horizon] {
-      assert!(gbm.pdf(100.0).is_none());
-      assert!(gbm.cdf(100.0).is_none());
-      assert!(gbm.quantile(0.5).is_none());
-      assert!(gbm.mean().is_none());
-      assert!(gbm.mode().is_none());
-      assert!(gbm.median().is_none());
-      assert!(gbm.variance().is_none());
-      assert!(gbm.skewness().is_none());
-      assert!(gbm.kurtosis().is_none());
-      assert!(gbm.entropy().is_none());
-      assert!(gbm.moment_generating_function(0.0).is_none());
-      assert!(gbm.characteristic_function(0.0).is_none());
-    }
+    let gbm = Gbm::new(0.05_f64, 0.0, 10, Some(100.0), Some(1.0), Unseeded);
+    assert!(gbm.pdf(100.0).is_none());
+    assert!(gbm.cdf(100.0).is_none());
+    assert!(gbm.quantile(0.5).is_none());
+    assert!(gbm.mean().is_none());
+    assert!(gbm.mode().is_none());
+    assert!(gbm.median().is_none());
+    assert!(gbm.variance().is_none());
+    assert!(gbm.skewness().is_none());
+    assert!(gbm.kurtosis().is_none());
+    assert!(gbm.entropy().is_none());
+    assert!(gbm.moment_generating_function(0.0).is_none());
+    assert!(gbm.characteristic_function(0.0).is_none());
   }
 
   #[test]

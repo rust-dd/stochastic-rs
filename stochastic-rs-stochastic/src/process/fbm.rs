@@ -53,6 +53,14 @@ pub struct Fbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// rebuilds it through the one helper `new()` itself builds it with.
 impl<T: FloatExt, S: SeedExt> Fbm<T, S, Cpu> {
   pub fn new(hurst: T, n: usize, t: Option<T>, seed: S) -> Self {
+    assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
 
     Self {

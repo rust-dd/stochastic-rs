@@ -117,6 +117,23 @@ impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
+    assert!(
+      a.is_finite(),
+      "a must satisfy `a.is_finite()`, got a = {a:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      r0.is_none_or(|v| v.is_finite()),
+      "r0 must satisfy `r0.is_none_or(|v| v.is_finite())`, got r0 = {r0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     if a <= T::zero() {
       log::warn!(
         "BlackKarasinski::new: mean-reversion speed a <= 0; the \

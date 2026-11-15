@@ -67,6 +67,10 @@ impl<T: FloatExt> RlKernel<T> {
   /// - if `degree` exceeds [`Self::MAX_STABLE_DEGREE`]
   #[must_use]
   pub fn new(hurst: T, degree: usize) -> Self {
+    assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
     let h_f64 = hurst.to_f64().expect("Hurst must be convertible to f64");
     assert!(
       h_f64 > 0.0 && h_f64 < 0.5,

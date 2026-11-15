@@ -37,6 +37,11 @@ pub struct Bm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// builds its Gaussian source fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> Bm<T, S> {
   pub fn new(n: usize, t: Option<T>, seed: S) -> Self {
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     Self {
       backend: Cpu,
       n,

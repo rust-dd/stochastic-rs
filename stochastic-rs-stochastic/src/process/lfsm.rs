@@ -66,6 +66,31 @@ impl<T: FloatExt, S: SeedExt> Lfsm<T, S> {
     seed: S,
   ) -> Self {
     assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
+    assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
+    assert!(
+      scale.is_finite(),
+      "scale must satisfy `scale.is_finite()`, got scale = {scale:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
       alpha > T::zero() && alpha <= T::from(2.0).unwrap(),
       "alpha must satisfy `alpha > T::zero() && alpha <= T::from(2.0).unwrap()`, got alpha = {alpha:?}"
     );
@@ -345,11 +370,5 @@ mod tests {
     let x = p.sample();
     assert_eq!(x.len(), 256);
     assert!(x.iter().all(|v| v.is_finite()));
-  }
-
-  #[test]
-  fn n_eq_1_samples_one_point() {
-    let p = Lfsm::new(1.5_f64, 0.0, 0.75, 1.0, 1, Some(0.0), Some(1.0), Unseeded);
-    assert_eq!(p.sample().to_vec(), vec![0.0]);
   }
 }

@@ -105,7 +105,15 @@ where
   /// - if `coefficients` is empty (a polynomial needs at least a constant term)
   #[must_use]
   pub fn new(kernel: K, coefficients: Array1<T>, n: usize, t: Option<T>, seed: S) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      coefficients.iter().all(|v| v.is_finite()),
+      "coefficients must satisfy `coefficients.iter().all(|v| v.is_finite())`, got coefficients = {coefficients:?}"
+    );
     assert!(
       !coefficients.is_empty(),
       "coefficients must satisfy `!coefficients.is_empty()`, got coefficients = {coefficients:?}"

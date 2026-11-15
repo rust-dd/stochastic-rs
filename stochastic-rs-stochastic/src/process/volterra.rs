@@ -147,6 +147,31 @@ impl<T: FloatExt, S: SeedExt> Volterra<T, S> {
   /// which kernels take which branch) is prepared once here, reused by
   /// every subsequent [`sampler`](ProcessExt::sampler) call.
   pub fn new(kernel: VolterraKernelSpec, n: usize, t: Option<T>, seed: S) -> Self {
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    match kernel {
+      VolterraKernelSpec::FractionalBM { h } => {
+        assert!(
+          h > 0.0 && h < 1.0,
+          "h must satisfy `h > 0.0 && h < 1.0`, got h = {h:?}"
+        )
+      }
+      VolterraKernelSpec::PowerLaw { gamma } => {
+        assert!(
+          gamma > -0.5,
+          "gamma must satisfy `gamma > -0.5`, got gamma = {gamma:?}"
+        )
+      }
+      VolterraKernelSpec::Exponential { beta } => {
+        assert!(
+          beta > 0.0,
+          "beta must satisfy `beta > 0.0`, got beta = {beta:?}"
+        )
+      }
+    }
     let engine = match kernel {
       VolterraKernelSpec::FractionalBM { h } if h > 0.0 && h < 0.5 => {
         let degree = RlKernel::<T>::default_degree(n);
@@ -176,10 +201,6 @@ impl<T: FloatExt, S: SeedExt> Volterra<T, S> {
 impl<T: FloatExt> Volterra<T, Unseeded> {
   /// Fractional Brownian motion with Hurst parameter $H$.
   pub fn fbm(h: f64, n: usize, t: Option<T>) -> Self {
-    assert!(
-      h > 0.0 && h < 1.0,
-      "h must satisfy `h > 0.0 && h < 1.0`, got h = {h:?}"
-    );
     Self::new(VolterraKernelSpec::FractionalBM { h }, n, t, Unseeded)
   }
 }
@@ -687,22 +708,5 @@ mod tests {
     let path = v.sample();
     assert_eq!(path.len(), 64);
     assert!(path.iter().all(|v| v.is_finite()));
-  }
-
-  /// Exercises the `n == 1` early-return path (no randomness drawn) through
-  /// the reference-fallback branch specifically, since it is the branch
-  /// whose `fill_path` special-cases that length to preserve the exact
-  /// pre-refactor draw count.
-  #[test]
-  fn single_point_path_draws_no_randomness() {
-    let v = Volterra::<f64, Deterministic>::new(
-      VolterraKernelSpec::Exponential { beta: 1.0 },
-      1,
-      Some(1.0),
-      Deterministic::new(1),
-    );
-    let path = v.sample();
-    assert_eq!(path.len(), 1);
-    assert_eq!(path[0], 0.0);
   }
 }

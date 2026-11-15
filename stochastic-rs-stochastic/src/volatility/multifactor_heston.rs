@@ -86,7 +86,40 @@ impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHeston<T, K, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
+    assert!(
+      s0.is_none_or(|v| v.is_finite()),
+      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+    );
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     assert!(K >= 1, "K must satisfy `K >= 1`, got K = {K:?}");
+    assert!(
+      v0.iter().all(|v| v.is_finite()),
+      "v0 must satisfy `v0.iter().all(|v| v.is_finite())`, got v0 = {v0:?}"
+    );
+    assert!(
+      kappa.iter().all(|v| v.is_finite()),
+      "kappa must satisfy `kappa.iter().all(|v| v.is_finite())`, got kappa = {kappa:?}"
+    );
+    assert!(
+      theta.iter().all(|v| v.is_finite()),
+      "theta must satisfy `theta.iter().all(|v| v.is_finite())`, got theta = {theta:?}"
+    );
+    assert!(
+      sigma.iter().all(|v| v.is_finite()),
+      "sigma must satisfy `sigma.iter().all(|v| v.is_finite())`, got sigma = {sigma:?}"
+    );
+    assert!(
+      rho.iter().all(|v| v.is_finite()),
+      "rho must satisfy `rho.iter().all(|v| v.is_finite())`, got rho = {rho:?}"
+    );
     for k in 0..K {
       assert!(
         kappa[k] >= T::zero(),

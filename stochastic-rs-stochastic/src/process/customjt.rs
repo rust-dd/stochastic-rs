@@ -58,6 +58,10 @@ where
   D: Distribution<T> + Send + Sync,
 {
   pub fn new(n: Option<usize>, t_max: Option<T>, distribution: D, seed: S) -> Self {
+    assert!(
+      t_max.is_none_or(|v| v.is_finite()),
+      "t_max must satisfy `t_max.is_none_or(|v| v.is_finite())`, got t_max = {t_max:?}"
+    );
     validate_n_or_tmax(n, t_max, "CustomJt");
     CustomJt {
       backend: Cpu,

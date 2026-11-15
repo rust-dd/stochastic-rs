@@ -75,6 +75,43 @@ impl<T: FloatExt, S: SeedExt> HawkesJD<T, S> {
     seed: S,
   ) -> Self {
     assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      mu_lambda.is_finite(),
+      "mu_lambda must satisfy `mu_lambda.is_finite()`, got mu_lambda = {mu_lambda:?}"
+    );
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
+    assert!(
+      mu_j.is_finite(),
+      "mu_j must satisfy `mu_j.is_finite()`, got mu_j = {mu_j:?}"
+    );
+    assert!(
+      sigma_j.is_finite(),
+      "sigma_j must satisfy `sigma_j.is_finite()`, got sigma_j = {sigma_j:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
       beta > T::zero(),
       "beta must satisfy `beta > T::zero()`, got beta = {beta:?}"
     );

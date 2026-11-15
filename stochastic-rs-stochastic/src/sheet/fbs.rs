@@ -85,6 +85,14 @@ pub struct Fbs<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
   pub fn new(hurst: T, m: usize, n: usize, r: T, seed: S) -> Self {
+    assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
+    assert!(
+      r.is_finite(),
+      "r must satisfy `r.is_finite()`, got r = {r:?}"
+    );
     assert!(m >= 2, "m must satisfy `m >= 2`, got m = {m:?}");
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     let (lam, c2) = Self::embedding(hurst, m, n, r);

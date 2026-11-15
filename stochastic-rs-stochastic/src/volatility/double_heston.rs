@@ -102,6 +102,59 @@ impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
     seed: S,
   ) -> Self {
     assert!(
+      s0.is_none_or(|v| v.is_finite()),
+      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+    );
+    assert!(
+      v1_0.is_none_or(|v| v.is_finite()),
+      "v1_0 must satisfy `v1_0.is_none_or(|v| v.is_finite())`, got v1_0 = {v1_0:?}"
+    );
+    assert!(
+      v2_0.is_none_or(|v| v.is_finite()),
+      "v2_0 must satisfy `v2_0.is_none_or(|v| v.is_finite())`, got v2_0 = {v2_0:?}"
+    );
+    assert!(
+      kappa1.is_finite(),
+      "kappa1 must satisfy `kappa1.is_finite()`, got kappa1 = {kappa1:?}"
+    );
+    assert!(
+      theta1.is_finite(),
+      "theta1 must satisfy `theta1.is_finite()`, got theta1 = {theta1:?}"
+    );
+    assert!(
+      sigma1.is_finite(),
+      "sigma1 must satisfy `sigma1.is_finite()`, got sigma1 = {sigma1:?}"
+    );
+    assert!(
+      rho1.is_finite(),
+      "rho1 must satisfy `rho1.is_finite()`, got rho1 = {rho1:?}"
+    );
+    assert!(
+      kappa2.is_finite(),
+      "kappa2 must satisfy `kappa2.is_finite()`, got kappa2 = {kappa2:?}"
+    );
+    assert!(
+      theta2.is_finite(),
+      "theta2 must satisfy `theta2.is_finite()`, got theta2 = {theta2:?}"
+    );
+    assert!(
+      sigma2.is_finite(),
+      "sigma2 must satisfy `sigma2.is_finite()`, got sigma2 = {sigma2:?}"
+    );
+    assert!(
+      rho2.is_finite(),
+      "rho2 must satisfy `rho2.is_finite()`, got rho2 = {rho2:?}"
+    );
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
       kappa1 >= T::zero(),
       "kappa1 must satisfy `kappa1 >= T::zero()`, got kappa1 = {kappa1:?}"
     );

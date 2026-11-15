@@ -66,6 +66,31 @@ impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
     seed: S,
   ) -> Self {
     assert!(
+      nu.is_finite(),
+      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
+    );
+    assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
+    assert!(
+      rho.is_finite(),
+      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      f0.is_none_or(|v| v.is_finite()),
+      "f0 must satisfy `f0.is_none_or(|v| v.is_finite())`, got f0 = {f0:?}"
+    );
+    assert!(
+      alpha0.is_none_or(|v| v.is_finite()),
+      "alpha0 must satisfy `alpha0.is_none_or(|v| v.is_finite())`, got alpha0 = {alpha0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
       beta >= T::zero() && beta <= T::one(),
       "beta must satisfy `beta >= T::zero() && beta <= T::one()`, got beta = {beta:?}"
     );

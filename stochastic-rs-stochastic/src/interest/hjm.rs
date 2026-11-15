@@ -94,6 +94,23 @@ impl<T: FloatExt, S: SeedExt> Hjm<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      r0.is_none_or(|v| v.is_finite()),
+      "r0 must satisfy `r0.is_none_or(|v| v.is_finite())`, got r0 = {r0:?}"
+    );
+    assert!(
+      p0.is_none_or(|v| v.is_finite()),
+      "p0 must satisfy `p0.is_none_or(|v| v.is_finite())`, got p0 = {p0:?}"
+    );
+    assert!(
+      f0.is_none_or(|v| v.is_finite()),
+      "f0 must satisfy `f0.is_none_or(|v| v.is_finite())`, got f0 = {f0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     Self {
       backend: Cpu,
       a: a.into(),

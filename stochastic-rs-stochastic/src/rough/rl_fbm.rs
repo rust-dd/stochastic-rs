@@ -73,6 +73,14 @@ impl<T: FloatExt, S: SeedExt> RlFBm<T, S> {
   /// sampling call.
   #[must_use]
   pub fn new(hurst: T, n: usize, t: Option<T>, degree: Option<usize>, seed: S) -> Self {
+    assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     let markov = build_markov(hurst, n, t, degree);
     Self {

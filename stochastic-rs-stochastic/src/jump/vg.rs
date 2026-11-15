@@ -56,6 +56,27 @@ pub struct Vg<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> Vg<T, S> {
   pub fn new(mu: T, sigma: T, nu: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      nu.is_finite(),
+      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
       nu > T::zero(),
       "nu must satisfy `nu > T::zero()`, got nu = {nu:?}"
     );
@@ -295,20 +316,6 @@ impl<T: FloatExt> PathSampler<T> for VgSampler<T> {
   fn sample(&mut self) -> Array1<T> {
     let n = self.n;
     array1_from_fill(n, |out| self.fill_path(out))
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::traits::ProcessExt;
-
-  #[test]
-  fn n_eq_1_keeps_initial_value() {
-    let p = Vg::new(0.1_f64, 0.2, 0.3, 1, Some(2.5), Some(1.0), Unseeded);
-    let x = p.sample();
-    assert_eq!(x.len(), 1);
-    assert_eq!(x[0], 2.5);
   }
 }
 

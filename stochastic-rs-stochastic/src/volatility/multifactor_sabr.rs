@@ -101,6 +101,35 @@ impl<T: FloatExt, S: SeedExt> MultifactorSabr<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
+    assert!(
+      f0.is_none_or(|v| v.is_finite()),
+      "f0 must satisfy `f0.is_none_or(|v| v.is_finite())`, got f0 = {f0:?}"
+    );
+    assert!(
+      alpha0.is_none_or(|v| v.is_finite()),
+      "alpha0 must satisfy `alpha0.is_none_or(|v| v.is_finite())`, got alpha0 = {alpha0:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      knots.iter().all(|v| v.is_finite()),
+      "knots must satisfy `knots.iter().all(|v| v.is_finite())`, got knots = {knots:?}"
+    );
+    assert!(
+      beta.iter().all(|v| v.is_finite()),
+      "beta must satisfy `beta.iter().all(|v| v.is_finite())`, got beta = {beta:?}"
+    );
+    assert!(
+      rho.iter().all(|v| v.is_finite()),
+      "rho must satisfy `rho.iter().all(|v| v.is_finite())`, got rho = {rho:?}"
+    );
+    assert!(
+      nu.iter().all(|v| v.is_finite()),
+      "nu must satisfy `nu.iter().all(|v| v.is_finite())`, got nu = {nu:?}"
+    );
     let buckets = knots.len() + 1;
     assert!(
       beta.len() == knots.len() + 1,
@@ -525,24 +554,6 @@ mod tests {
       Some(1.0),
       Unseeded,
     );
-  }
-
-  #[test]
-  fn n_eq_1_keeps_initial_values() {
-    let p = MultifactorSabr::<f64, _>::new(
-      Some(1.0),
-      Some(0.2),
-      vec![],
-      vec![0.5],
-      vec![-0.3],
-      vec![0.4],
-      1,
-      Some(1.0),
-      Unseeded,
-    );
-    let [f, v] = p.sample();
-    assert_eq!((f.to_vec(), v.to_vec()), (vec![1.0], vec![0.2]));
-    assert_eq!(crate::euler::EulerSystem::<f64, 2>::time_step(&p), 1.0);
   }
 }
 

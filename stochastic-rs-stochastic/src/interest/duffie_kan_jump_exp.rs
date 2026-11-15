@@ -108,6 +108,75 @@ impl<T: FloatExt, S: SeedExt> DuffieKanJumpExp<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
+    assert!(
+      gamma.is_finite(),
+      "gamma must satisfy `gamma.is_finite()`, got gamma = {gamma:?}"
+    );
+    assert!(
+      rho.is_finite(),
+      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
+    );
+    assert!(
+      a1.is_finite(),
+      "a1 must satisfy `a1.is_finite()`, got a1 = {a1:?}"
+    );
+    assert!(
+      b1.is_finite(),
+      "b1 must satisfy `b1.is_finite()`, got b1 = {b1:?}"
+    );
+    assert!(
+      c1.is_finite(),
+      "c1 must satisfy `c1.is_finite()`, got c1 = {c1:?}"
+    );
+    assert!(
+      sigma1.is_finite(),
+      "sigma1 must satisfy `sigma1.is_finite()`, got sigma1 = {sigma1:?}"
+    );
+    assert!(
+      a2.is_finite(),
+      "a2 must satisfy `a2.is_finite()`, got a2 = {a2:?}"
+    );
+    assert!(
+      b2.is_finite(),
+      "b2 must satisfy `b2.is_finite()`, got b2 = {b2:?}"
+    );
+    assert!(
+      c2.is_finite(),
+      "c2 must satisfy `c2.is_finite()`, got c2 = {c2:?}"
+    );
+    assert!(
+      sigma2.is_finite(),
+      "sigma2 must satisfy `sigma2.is_finite()`, got sigma2 = {sigma2:?}"
+    );
+    assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      jump_scale.is_finite(),
+      "jump_scale must satisfy `jump_scale.is_finite()`, got jump_scale = {jump_scale:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      r0.is_none_or(|v| v.is_finite()),
+      "r0 must satisfy `r0.is_none_or(|v| v.is_finite())`, got r0 = {r0:?}"
+    );
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     Self {
       backend: Cpu,
       alpha,

@@ -67,6 +67,35 @@ impl<T: FloatExt, S: SeedExt> FouqueOU2D<T, S> {
     seed: S,
   ) -> Self {
     assert!(
+      kappa.is_finite(),
+      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
+    );
+    assert!(
+      theta.is_finite(),
+      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
+    );
+    assert!(
+      epsilon.is_finite(),
+      "epsilon must satisfy `epsilon.is_finite()`, got epsilon = {epsilon:?}"
+    );
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
+      y0.is_none_or(|v| v.is_finite()),
+      "y0 must satisfy `y0.is_none_or(|v| v.is_finite())`, got y0 = {y0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
       epsilon > T::zero(),
       "epsilon must satisfy `epsilon > T::zero()`, got epsilon = {epsilon:?}"
     );

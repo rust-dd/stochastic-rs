@@ -65,6 +65,27 @@ impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusion<T, S> {
     seed: S,
   ) -> Self {
     assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      s0.is_none_or(|v| v.is_finite()),
+      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+    );
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      q_matrix.iter().all(|v| v.is_finite()),
+      "q_matrix must satisfy `q_matrix.iter().all(|v| v.is_finite())`, got q_matrix = {q_matrix:?}"
+    );
+    assert!(
+      vols.iter().all(|v| v.is_finite()),
+      "vols must satisfy `vols.iter().all(|v| v.is_finite())`, got vols = {vols:?}"
+    );
+    assert!(
       q_matrix.nrows() == vols.len(),
       "q_matrix.nrows() must satisfy `q_matrix.nrows() == vols.len()`, got q_matrix.nrows() = {:?}, vols.len() = {:?}",
       q_matrix.nrows(),

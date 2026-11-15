@@ -47,6 +47,15 @@ pub struct Mcgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> Mcgns<T, S> {
   /// `rho` must be a valid, positive-definite correlation matrix.
   pub fn new(rho: Array2<T>, n: usize, t: Option<T>, seed: S) -> Self {
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      rho.iter().all(|v| v.is_finite()),
+      "rho must satisfy `rho.iter().all(|v| v.is_finite())`, got rho = {rho:?}"
+    );
     validate_correlation(&rho);
     let chol = cholesky_lower(&rho);
     Self {

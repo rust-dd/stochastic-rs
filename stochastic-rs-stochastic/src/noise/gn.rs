@@ -37,6 +37,11 @@ pub struct Gn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// builds its Gaussian source fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> Gn<T, S> {
   pub fn new(n: usize, t: Option<T>, seed: S) -> Self {
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     Gn {
       backend: Cpu,
       n,

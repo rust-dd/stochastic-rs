@@ -54,8 +54,21 @@ impl<T: FloatExt, S: SeedExt> ARp<T, S> {
   /// Create a new AR process with given coefficients and noise standard deviation.
   pub fn new(phi: Array1<T>, sigma: T, n: usize, x0: Option<Array1<T>>, seed: S) -> Self {
     assert!(
-      sigma > T::zero(),
-      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      phi.iter().all(|v| v.is_finite()),
+      "phi must satisfy `phi.iter().all(|v| v.is_finite())`, got phi = {phi:?}"
+    );
+    assert!(
+      x0.as_ref().is_none_or(|a| a.iter().all(|v| v.is_finite())),
+      "x0 must satisfy `x0.as_ref().is_none_or(|a| a.iter().all(|v| v.is_finite()))`, got x0 = {x0:?}"
+    );
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    assert!(
+      sigma >= T::zero(),
+      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
     );
     if let Some(init) = &x0 {
       let required = phi.len().min(n);
@@ -153,7 +166,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       n: self.n,
       phi: self.phi.clone(),
       x0: self.x0.clone(),
-      normal: SimdNormal::<T>::new(T::zero(), self.sigma).seeded(&self.seed),
+      sigma: self.sigma,
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
     }
   }
 
@@ -229,6 +243,7 @@ pub struct ARpSampler<T: FloatExt> {
   n: usize,
   phi: Array1<T>,
   x0: Option<Array1<T>>,
+  sigma: T,
   normal: Seeded<SimdNormal<T>>,
 }
 
@@ -261,7 +276,7 @@ impl<T: FloatExt> ARpSampler<T> {
           val += self.phi[k - 1] * out[t - k];
         }
       }
-      out[t] = val + noise[t];
+      out[t] = val + self.sigma * noise[t];
     }
   }
 }

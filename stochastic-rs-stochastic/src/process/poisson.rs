@@ -48,6 +48,14 @@ fn validate_n_or_tmax<T: FloatExt>(n: Option<usize>, t_max: Option<T>, type_name
 /// `self` every call.
 impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
   pub fn new(lambda: T, n: Option<usize>, t_max: Option<T>, seed: S) -> Self {
+    assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      t_max.is_none_or(|v| v.is_finite()),
+      "t_max must satisfy `t_max.is_none_or(|v| v.is_finite())`, got t_max = {t_max:?}"
+    );
     validate_n_or_tmax(n, t_max, "Poisson");
     Poisson {
       backend: Cpu,

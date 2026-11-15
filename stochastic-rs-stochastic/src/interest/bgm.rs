@@ -106,6 +106,19 @@ pub struct Bgm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> Bgm<T, S> {
   pub fn new(lambda: Array1<T>, x0: Array1<T>, xn: usize, t: Option<T>, n: usize, seed: S) -> Self {
     assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      lambda.iter().all(|v| v.is_finite()),
+      "lambda must satisfy `lambda.iter().all(|v| v.is_finite())`, got lambda = {lambda:?}"
+    );
+    assert!(
+      x0.iter().all(|v| v.is_finite()),
+      "x0 must satisfy `x0.iter().all(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    assert!(
       lambda.len() == xn,
       "lambda.len() must satisfy `lambda.len() == xn`, got lambda.len() = {:?}",
       lambda.len()

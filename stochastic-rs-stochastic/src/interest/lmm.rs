@@ -122,6 +122,23 @@ impl<T: FloatExt, S: SeedExt> Lmm<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
+      tenor.iter().all(|v| v.is_finite()),
+      "tenor must satisfy `tenor.iter().all(|v| v.is_finite())`, got tenor = {tenor:?}"
+    );
+    assert!(
+      l0.iter().all(|v| v.is_finite()),
+      "l0 must satisfy `l0.iter().all(|v| v.is_finite())`, got l0 = {l0:?}"
+    );
+    assert!(
+      sigma.iter().all(|v| v.is_finite()),
+      "sigma must satisfy `sigma.iter().all(|v| v.is_finite())`, got sigma = {sigma:?}"
+    );
     validate_lmm_inputs(&tenor, &l0, &sigma);
     Self {
       backend: Cpu,

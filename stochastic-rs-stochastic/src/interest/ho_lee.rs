@@ -53,6 +53,19 @@ impl<T: FloatExt, S: SeedExt> HoLee<T, S> {
     seed: S,
   ) -> Self {
     assert!(
+      theta.is_none_or(|v| v.is_finite()),
+      "theta must satisfy `theta.is_none_or(|v| v.is_finite())`, got theta = {theta:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    assert!(
       theta.is_some() || f_T.is_some(),
       "theta or f_T must be provided"
     );
