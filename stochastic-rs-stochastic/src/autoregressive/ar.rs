@@ -15,6 +15,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -57,14 +58,10 @@ impl<T: FloatExt, S: SeedExt> ARp<T, S> {
       sigma.is_finite(),
       "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
     );
-    assert!(
-      phi.iter().all(|v| v.is_finite()),
-      "phi must satisfy `phi.iter().all(|v| v.is_finite())`, got phi = {phi:?}"
-    );
-    assert!(
-      x0.as_ref().is_none_or(|a| a.iter().all(|v| v.is_finite())),
-      "x0 must satisfy `x0.as_ref().is_none_or(|a| a.iter().all(|v| v.is_finite()))`, got x0 = {x0:?}"
-    );
+    assert_entries("phi", "phi[i].is_finite()", &phi, |v| v.is_finite());
+    if let Some(x0) = &x0 {
+      assert_entries("x0", "x0[i].is_finite()", x0, |v| v.is_finite());
+    }
     assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
     assert!(
       sigma >= T::zero(),

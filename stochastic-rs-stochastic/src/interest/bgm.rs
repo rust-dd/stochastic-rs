@@ -70,6 +70,7 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -110,14 +111,10 @@ impl<T: FloatExt, S: SeedExt> Bgm<T, S> {
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      lambda.iter().all(|v| v.is_finite()),
-      "lambda must satisfy `lambda.iter().all(|v| v.is_finite())`, got lambda = {lambda:?}"
-    );
-    assert!(
-      x0.iter().all(|v| v.is_finite()),
-      "x0 must satisfy `x0.iter().all(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
+    assert_entries("lambda", "lambda[i].is_finite()", &lambda, |v| {
+      v.is_finite()
+    });
+    assert_entries("x0", "x0[i].is_finite()", &x0, |v| v.is_finite());
     assert!(
       lambda.len() == xn,
       "lambda.len() must satisfy `lambda.len() == xn`, got lambda.len() = {:?}",

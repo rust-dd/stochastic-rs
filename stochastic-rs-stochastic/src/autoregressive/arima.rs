@@ -15,6 +15,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -59,14 +60,12 @@ impl<T: FloatExt, S: SeedExt> Arima<T, S> {
       sigma.is_finite(),
       "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
     );
-    assert!(
-      ar_coefs.iter().all(|v| v.is_finite()),
-      "ar_coefs must satisfy `ar_coefs.iter().all(|v| v.is_finite())`, got ar_coefs = {ar_coefs:?}"
-    );
-    assert!(
-      ma_coefs.iter().all(|v| v.is_finite()),
-      "ma_coefs must satisfy `ma_coefs.iter().all(|v| v.is_finite())`, got ma_coefs = {ma_coefs:?}"
-    );
+    assert_entries("ar_coefs", "ar_coefs[i].is_finite()", &ar_coefs, |v| {
+      v.is_finite()
+    });
+    assert_entries("ma_coefs", "ma_coefs[i].is_finite()", &ma_coefs, |v| {
+      v.is_finite()
+    });
     assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
     assert!(
       sigma >= T::zero(),

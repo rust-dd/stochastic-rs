@@ -23,6 +23,7 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -77,14 +78,10 @@ impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusion<T, S> {
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
-    assert!(
-      q_matrix.iter().all(|v| v.is_finite()),
-      "q_matrix must satisfy `q_matrix.iter().all(|v| v.is_finite())`, got q_matrix = {q_matrix:?}"
-    );
-    assert!(
-      vols.iter().all(|v| v.is_finite()),
-      "vols must satisfy `vols.iter().all(|v| v.is_finite())`, got vols = {vols:?}"
-    );
+    assert_entries("q_matrix", "q_matrix[(i, j)].is_finite()", &q_matrix, |v| {
+      v.is_finite()
+    });
+    assert_entries("vols", "vols[i].is_finite()", &vols, |v| v.is_finite());
     assert!(
       q_matrix.nrows() == vols.len(),
       "q_matrix.nrows() must satisfy `q_matrix.nrows() == vols.len()`, got q_matrix.nrows() = {:?}, vols.len() = {:?}",

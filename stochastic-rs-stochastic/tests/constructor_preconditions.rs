@@ -29,6 +29,7 @@ use stochastic_rs_stochastic::noise::fgn::Fgn;
 use stochastic_rs_stochastic::noise::gn::Gn;
 use stochastic_rs_stochastic::noise::wn::Wn;
 use stochastic_rs_stochastic::process::lfsm::Lfsm;
+use stochastic_rs_stochastic::process::multivariate_hawkes::MultivariateHawkes;
 use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::GammaSubordinator;
 use stochastic_rs_stochastic::process::volterra::Volterra;
 use stochastic_rs_stochastic::process::volterra::VolterraKernelSpec;
@@ -103,18 +104,20 @@ refuses! {
 
   a_discrete_series_refuses_no_observations: "n must satisfy `n >= 1`, got n = 0"
     => ARp::<f64>::new(array![0.5], 1.0, 0, None, Unseeded);
-  an_autoregression_refuses_a_nan_coefficient: "phi must satisfy `phi.iter().all(|v| v.is_finite())`, got phi = [NaN]"
+  an_autoregression_refuses_a_nan_coefficient: "phi[0] must satisfy `phi[i].is_finite()`, got phi[0] = NaN"
     => ARp::<f64>::new(array![f64::NAN], 1.0, 64, None, Unseeded);
   a_correlation_process_refuses_a_nan_level: "mu must satisfy `mu.is_finite()`, got mu = NaN"
     => VanEmmerich::<f64>::new(1.0, f64::NAN, 0.2, 0.0, 64, None, Unseeded);
-  correlated_assets_refuse_a_nan_drift: "mu must satisfy `mu.iter().all(|v| v.is_finite())`, got mu = [NaN, 0.0]"
-    => MultiGbm::<f64>::new(array![f64::NAN, 0.0], array![0.2, 0.2], array![[1.0, 0.0], [0.0, 1.0]], 64, array![1.0, 1.0], None, Unseeded);
+  correlated_assets_refuse_a_nan_drift: "mu[1] must satisfy `mu[i].is_finite()`, got mu[1] = NaN"
+    => MultiGbm::<f64>::new(array![0.0, f64::NAN], array![0.2, 0.2], array![[1.0, 0.0], [0.0, 1.0]], 64, array![1.0, 1.0], None, Unseeded);
   correlated_assets_refuse_one_point: "n must satisfy `n >= 2`, got n = 1"
     => MultiGbm::<f64>::new(array![0.0, 0.0], array![0.2, 0.2], array![[1.0, 0.0], [0.0, 1.0]], 1, array![1.0, 1.0], None, Unseeded);
   a_matrix_diffusion_refuses_one_point: "n must satisfy `n >= 2`, got n = 1"
     => Wishart::<f64>::new(2.5, Array2::zeros((2, 2)), Array2::eye(2), Array2::eye(2), 1, None, Unseeded);
-  a_rate_model_refuses_a_nan_entry: "alpha must satisfy `alpha.iter().all(|v| v.is_finite())`, got alpha = [NaN]"
+  a_rate_model_refuses_a_nan_entry: "alpha[0] must satisfy `alpha[i].is_finite()`, got alpha[0] = NaN"
     => WuZhangD::<f64>::new(array![f64::NAN], array![0.1], array![0.1], array![0.1], array![0.1], array![0.1], 1, None, 64, Unseeded);
+  an_excitation_matrix_names_its_nan_entry: "alpha[(1, 0)] must satisfy `alpha[(i, j)].is_finite()`, got alpha[(1, 0)] = NaN"
+    => MultivariateHawkes::<f64>::new(array![1.0, 1.0], array![[0.1, 0.1], [f64::NAN, 0.1]], array![[1.0, 1.0], [1.0, 1.0]], 1.0, Unseeded);
   a_fractional_jump_process_refuses_a_nan_volatility: "sigma must satisfy `sigma.is_finite()`, got sigma = NaN"
     => JumpFou::<f64, SimdNormal<f64>>::new(0.7, 1.0, 0.0, f64::NAN, 2.0, SimdNormal::new(0.0, 0.1), 64, None, None, Unseeded);
   a_custom_jump_process_refuses_a_nan_level: "mu must satisfy `mu.is_finite()`, got mu = NaN"

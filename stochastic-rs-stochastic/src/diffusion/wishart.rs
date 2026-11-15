@@ -45,6 +45,7 @@ use crate::linalg::extended_cholesky;
 use crate::linalg::invert_matrix;
 use crate::linalg::solve_lower;
 use crate::linalg::swap_symmetric;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -269,18 +270,9 @@ impl<T: FloatExt, S: SeedExt> Wishart<T, S> {
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
-    assert!(
-      b.iter().all(|v| v.is_finite()),
-      "b must satisfy `b.iter().all(|v| v.is_finite())`, got b = {b:?}"
-    );
-    assert!(
-      a.iter().all(|v| v.is_finite()),
-      "a must satisfy `a.iter().all(|v| v.is_finite())`, got a = {a:?}"
-    );
-    assert!(
-      x0.iter().all(|v| v.is_finite()),
-      "x0 must satisfy `x0.iter().all(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
+    assert_entries("b", "b[(i, j)].is_finite()", &b, |v| v.is_finite());
+    assert_entries("a", "a[(i, j)].is_finite()", &a, |v| v.is_finite());
+    assert_entries("x0", "x0[(i, j)].is_finite()", &x0, |v| v.is_finite());
     let d = x0.nrows();
     assert!(
       x0.nrows() >= 1,

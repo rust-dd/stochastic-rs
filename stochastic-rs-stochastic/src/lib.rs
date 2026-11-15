@@ -42,6 +42,7 @@ pub mod jump;
 pub mod mc;
 pub mod noise;
 pub mod numerics;
+pub(crate) mod precondition;
 pub mod process;
 #[cfg(feature = "python")]
 #[doc(hidden)]

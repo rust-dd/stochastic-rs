@@ -22,6 +22,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
 use crate::noise::mcgns::Mcgns;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -64,22 +65,10 @@ impl<T: FloatExt, S: SeedExt> MultiGbm<T, S> {
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
-    assert!(
-      mu.iter().all(|v| v.is_finite()),
-      "mu must satisfy `mu.iter().all(|v| v.is_finite())`, got mu = {mu:?}"
-    );
-    assert!(
-      sigma.iter().all(|v| v.is_finite()),
-      "sigma must satisfy `sigma.iter().all(|v| v.is_finite())`, got sigma = {sigma:?}"
-    );
-    assert!(
-      rho.iter().all(|v| v.is_finite()),
-      "rho must satisfy `rho.iter().all(|v| v.is_finite())`, got rho = {rho:?}"
-    );
-    assert!(
-      x0.iter().all(|v| v.is_finite()),
-      "x0 must satisfy `x0.iter().all(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
+    assert_entries("mu", "mu[i].is_finite()", &mu, |v| v.is_finite());
+    assert_entries("sigma", "sigma[i].is_finite()", &sigma, |v| v.is_finite());
+    assert_entries("rho", "rho[(i, j)].is_finite()", &rho, |v| v.is_finite());
+    assert_entries("x0", "x0[i].is_finite()", &x0, |v| v.is_finite());
     assert!(
       rho.nrows() >= 1,
       "rho.nrows() must satisfy `rho.nrows() >= 1`, got rho.nrows() = {:?}",
@@ -101,10 +90,7 @@ impl<T: FloatExt, S: SeedExt> MultiGbm<T, S> {
       x0.len()
     );
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      sigma.iter().all(|s| *s >= T::zero()),
-      "sigma must satisfy `sigma.iter().all(|s| *s >= T::zero())`, got sigma = {sigma:?}"
-    );
+    assert_entries("sigma", "sigma[i] >= T::zero()", &sigma, |s| s >= T::zero());
     let driver = Mcgns::new(rho.clone(), n.saturating_sub(1), t, seed.clone());
     Self {
       backend: Cpu,

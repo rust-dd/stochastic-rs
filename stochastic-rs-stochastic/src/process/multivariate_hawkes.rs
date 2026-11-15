@@ -22,6 +22,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
 use crate::device::DeviceError;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -62,18 +63,11 @@ impl<T: FloatExt, S: SeedExt> MultivariateHawkes<T, S> {
       t_max.is_finite(),
       "t_max must satisfy `t_max.is_finite()`, got t_max = {t_max:?}"
     );
-    assert!(
-      mu.iter().all(|v| v.is_finite()),
-      "mu must satisfy `mu.iter().all(|v| v.is_finite())`, got mu = {mu:?}"
-    );
-    assert!(
-      alpha.iter().all(|v| v.is_finite()),
-      "alpha must satisfy `alpha.iter().all(|v| v.is_finite())`, got alpha = {alpha:?}"
-    );
-    assert!(
-      beta.iter().all(|v| v.is_finite()),
-      "beta must satisfy `beta.iter().all(|v| v.is_finite())`, got beta = {beta:?}"
-    );
+    assert_entries("mu", "mu[i].is_finite()", &mu, |v| v.is_finite());
+    assert_entries("alpha", "alpha[(i, j)].is_finite()", &alpha, |v| {
+      v.is_finite()
+    });
+    assert_entries("beta", "beta[(i, j)].is_finite()", &beta, |v| v.is_finite());
     assert!(
       alpha.shape() == [mu.len(), mu.len()],
       "alpha.shape() must satisfy `alpha.shape() == [mu.len(), mu.len()]`, got alpha.shape() = {:?}, mu.len() = {:?}",

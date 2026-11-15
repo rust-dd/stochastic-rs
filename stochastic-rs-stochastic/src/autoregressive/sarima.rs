@@ -15,6 +15,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -98,21 +99,29 @@ impl<T: FloatExt, S: SeedExt> Sarima<T, S> {
       sigma.is_finite(),
       "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
     );
-    assert!(
-      non_seasonal_ar_coefs.iter().all(|v| v.is_finite()),
-      "non_seasonal_ar_coefs must satisfy `non_seasonal_ar_coefs.iter().all(|v| v.is_finite())`, got non_seasonal_ar_coefs = {non_seasonal_ar_coefs:?}"
+    assert_entries(
+      "non_seasonal_ar_coefs",
+      "non_seasonal_ar_coefs[i].is_finite()",
+      &non_seasonal_ar_coefs,
+      |v| v.is_finite(),
     );
-    assert!(
-      non_seasonal_ma_coefs.iter().all(|v| v.is_finite()),
-      "non_seasonal_ma_coefs must satisfy `non_seasonal_ma_coefs.iter().all(|v| v.is_finite())`, got non_seasonal_ma_coefs = {non_seasonal_ma_coefs:?}"
+    assert_entries(
+      "non_seasonal_ma_coefs",
+      "non_seasonal_ma_coefs[i].is_finite()",
+      &non_seasonal_ma_coefs,
+      |v| v.is_finite(),
     );
-    assert!(
-      seasonal_ar_coefs.iter().all(|v| v.is_finite()),
-      "seasonal_ar_coefs must satisfy `seasonal_ar_coefs.iter().all(|v| v.is_finite())`, got seasonal_ar_coefs = {seasonal_ar_coefs:?}"
+    assert_entries(
+      "seasonal_ar_coefs",
+      "seasonal_ar_coefs[i].is_finite()",
+      &seasonal_ar_coefs,
+      |v| v.is_finite(),
     );
-    assert!(
-      seasonal_ma_coefs.iter().all(|v| v.is_finite()),
-      "seasonal_ma_coefs must satisfy `seasonal_ma_coefs.iter().all(|v| v.is_finite())`, got seasonal_ma_coefs = {seasonal_ma_coefs:?}"
+    assert_entries(
+      "seasonal_ma_coefs",
+      "seasonal_ma_coefs[i].is_finite()",
+      &seasonal_ma_coefs,
+      |v| v.is_finite(),
     );
     assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
     assert!(

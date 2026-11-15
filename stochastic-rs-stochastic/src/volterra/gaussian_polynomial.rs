@@ -46,6 +46,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::noise::gn::Gn;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -110,13 +111,15 @@ where
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      coefficients.iter().all(|v| v.is_finite()),
-      "coefficients must satisfy `coefficients.iter().all(|v| v.is_finite())`, got coefficients = {coefficients:?}"
+    assert_entries(
+      "coefficients",
+      "coefficients[i].is_finite()",
+      &coefficients,
+      |v| v.is_finite(),
     );
     assert!(
       !coefficients.is_empty(),
-      "coefficients must satisfy `!coefficients.is_empty()`, got coefficients = {coefficients:?}"
+      "coefficients must satisfy `!coefficients.is_empty()`, got coefficients = []"
     );
     let lift = VolterraLift::new(kernel.clone(), grid_spacing(n, t));
     Self {
@@ -183,7 +186,7 @@ where
   pub fn with_coefficients(mut self, coefficients: Array1<T>) -> Self {
     assert!(
       !coefficients.is_empty(),
-      "coefficients must satisfy `!coefficients.is_empty()`, got coefficients = {coefficients:?}"
+      "coefficients must satisfy `!coefficients.is_empty()`, got coefficients = []"
     );
     self.coefficients = coefficients;
     self

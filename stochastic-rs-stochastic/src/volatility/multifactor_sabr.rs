@@ -52,11 +52,13 @@
 //!   volatility for dynamic SABR model", SSRN 965265.
 
 use ndarray::Array1;
+use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
 use crate::noise::gn::Gn;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -114,22 +116,24 @@ impl<T: FloatExt, S: SeedExt> MultifactorSabr<T, S> {
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
-    assert!(
-      knots.iter().all(|v| v.is_finite()),
-      "knots must satisfy `knots.iter().all(|v| v.is_finite())`, got knots = {knots:?}"
+    assert_entries(
+      "knots",
+      "knots[k].is_finite()",
+      &ArrayView1::from(&knots),
+      |v| v.is_finite(),
     );
-    assert!(
-      beta.iter().all(|v| v.is_finite()),
-      "beta must satisfy `beta.iter().all(|v| v.is_finite())`, got beta = {beta:?}"
+    assert_entries(
+      "beta",
+      "beta[k].is_finite()",
+      &ArrayView1::from(&beta),
+      |v| v.is_finite(),
     );
-    assert!(
-      rho.iter().all(|v| v.is_finite()),
-      "rho must satisfy `rho.iter().all(|v| v.is_finite())`, got rho = {rho:?}"
-    );
-    assert!(
-      nu.iter().all(|v| v.is_finite()),
-      "nu must satisfy `nu.iter().all(|v| v.is_finite())`, got nu = {nu:?}"
-    );
+    assert_entries("rho", "rho[k].is_finite()", &ArrayView1::from(&rho), |v| {
+      v.is_finite()
+    });
+    assert_entries("nu", "nu[k].is_finite()", &ArrayView1::from(&nu), |v| {
+      v.is_finite()
+    });
     let buckets = knots.len() + 1;
     assert!(
       beta.len() == knots.len() + 1,
@@ -163,10 +167,15 @@ impl<T: FloatExt, S: SeedExt> MultifactorSabr<T, S> {
         "rho[{k}] must satisfy `rho[k].abs() < 1.0`, got rho[{k}] = {r:?}"
       );
     }
-    assert!(
-      knots.windows(2).all(|w| w[0] < w[1]),
-      "knots must satisfy `knots.windows(2).all(|w| w[0] < w[1])`, got knots = {knots:?}"
-    );
+    for i in 1..knots.len() {
+      assert!(
+        knots[i - 1] < knots[i],
+        "knots[{i}] must satisfy `knots[i - 1] < knots[i]`, got knots[{i}] = {:?}, knots[{}] = {:?}",
+        knots[i],
+        i - 1,
+        knots[i - 1]
+      );
+    }
     assert!(
       alpha0.is_none_or(|a| a >= T::zero()),
       "alpha0 must satisfy `alpha0.is_none_or(|a| a >= T::zero())`, got alpha0 = {alpha0:?}"

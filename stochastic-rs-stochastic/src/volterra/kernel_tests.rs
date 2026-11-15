@@ -181,9 +181,7 @@ fn sum_of_exponentials_rejects_empty() {
 }
 
 #[test]
-#[should_panic(
-  expected = "nodes must satisfy `nodes.iter().all(|&x| x > T::zero())`, got nodes = [1.0, -0.5]"
-)]
+#[should_panic(expected = "nodes[1] must satisfy `nodes[i] > T::zero()`, got nodes[1] = -0.5")]
 fn sum_of_exponentials_rejects_non_positive_node() {
   let _ = SumOfExponentials::new(
     Array1::from_vec(vec![1.0, -0.5]),

@@ -77,6 +77,7 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -127,18 +128,9 @@ impl<T: FloatExt, S: SeedExt> Lmm<T, S> {
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
-    assert!(
-      tenor.iter().all(|v| v.is_finite()),
-      "tenor must satisfy `tenor.iter().all(|v| v.is_finite())`, got tenor = {tenor:?}"
-    );
-    assert!(
-      l0.iter().all(|v| v.is_finite()),
-      "l0 must satisfy `l0.iter().all(|v| v.is_finite())`, got l0 = {l0:?}"
-    );
-    assert!(
-      sigma.iter().all(|v| v.is_finite()),
-      "sigma must satisfy `sigma.iter().all(|v| v.is_finite())`, got sigma = {sigma:?}"
-    );
+    assert_entries("tenor", "tenor[i].is_finite()", &tenor, |v| v.is_finite());
+    assert_entries("l0", "l0[i].is_finite()", &l0, |v| v.is_finite());
+    assert_entries("sigma", "sigma[i].is_finite()", &sigma, |v| v.is_finite());
     validate_lmm_inputs(&tenor, &l0, &sigma);
     Self {
       backend: Cpu,

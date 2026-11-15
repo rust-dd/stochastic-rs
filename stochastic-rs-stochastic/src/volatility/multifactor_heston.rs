@@ -33,11 +33,13 @@
 //! *Management Science* 55(12), 1914-1932.
 
 use ndarray::Array1;
+use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
 use crate::noise::cgns::Cgns;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -100,26 +102,30 @@ impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHeston<T, K, S> {
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
     assert!(K >= 1, "K must satisfy `K >= 1`, got K = {K:?}");
-    assert!(
-      v0.iter().all(|v| v.is_finite()),
-      "v0 must satisfy `v0.iter().all(|v| v.is_finite())`, got v0 = {v0:?}"
+    assert_entries("v0", "v0[k].is_finite()", &ArrayView1::from(&v0), |v| {
+      v.is_finite()
+    });
+    assert_entries(
+      "kappa",
+      "kappa[k].is_finite()",
+      &ArrayView1::from(&kappa),
+      |v| v.is_finite(),
     );
-    assert!(
-      kappa.iter().all(|v| v.is_finite()),
-      "kappa must satisfy `kappa.iter().all(|v| v.is_finite())`, got kappa = {kappa:?}"
+    assert_entries(
+      "theta",
+      "theta[k].is_finite()",
+      &ArrayView1::from(&theta),
+      |v| v.is_finite(),
     );
-    assert!(
-      theta.iter().all(|v| v.is_finite()),
-      "theta must satisfy `theta.iter().all(|v| v.is_finite())`, got theta = {theta:?}"
+    assert_entries(
+      "sigma",
+      "sigma[k].is_finite()",
+      &ArrayView1::from(&sigma),
+      |v| v.is_finite(),
     );
-    assert!(
-      sigma.iter().all(|v| v.is_finite()),
-      "sigma must satisfy `sigma.iter().all(|v| v.is_finite())`, got sigma = {sigma:?}"
-    );
-    assert!(
-      rho.iter().all(|v| v.is_finite()),
-      "rho must satisfy `rho.iter().all(|v| v.is_finite())`, got rho = {rho:?}"
-    );
+    assert_entries("rho", "rho[k].is_finite()", &ArrayView1::from(&rho), |v| {
+      v.is_finite()
+    });
     for k in 0..K {
       assert!(
         kappa[k] >= T::zero(),

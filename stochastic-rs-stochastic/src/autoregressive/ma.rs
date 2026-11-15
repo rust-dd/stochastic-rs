@@ -15,6 +15,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -53,10 +54,7 @@ impl<T: FloatExt, S: SeedExt> MAq<T, S> {
       sigma.is_finite(),
       "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
     );
-    assert!(
-      theta.iter().all(|v| v.is_finite()),
-      "theta must satisfy `theta.iter().all(|v| v.is_finite())`, got theta = {theta:?}"
-    );
+    assert_entries("theta", "theta[i].is_finite()", &theta, |v| v.is_finite());
     assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
     assert!(
       sigma >= T::zero(),

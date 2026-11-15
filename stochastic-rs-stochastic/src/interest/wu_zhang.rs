@@ -23,6 +23,7 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -71,30 +72,14 @@ impl<T: FloatExt, S: SeedExt> WuZhangD<T, S> {
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      alpha.iter().all(|v| v.is_finite()),
-      "alpha must satisfy `alpha.iter().all(|v| v.is_finite())`, got alpha = {alpha:?}"
-    );
-    assert!(
-      beta.iter().all(|v| v.is_finite()),
-      "beta must satisfy `beta.iter().all(|v| v.is_finite())`, got beta = {beta:?}"
-    );
-    assert!(
-      nu.iter().all(|v| v.is_finite()),
-      "nu must satisfy `nu.iter().all(|v| v.is_finite())`, got nu = {nu:?}"
-    );
-    assert!(
-      lambda.iter().all(|v| v.is_finite()),
-      "lambda must satisfy `lambda.iter().all(|v| v.is_finite())`, got lambda = {lambda:?}"
-    );
-    assert!(
-      x0.iter().all(|v| v.is_finite()),
-      "x0 must satisfy `x0.iter().all(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
-    assert!(
-      v0.iter().all(|v| v.is_finite()),
-      "v0 must satisfy `v0.iter().all(|v| v.is_finite())`, got v0 = {v0:?}"
-    );
+    assert_entries("alpha", "alpha[i].is_finite()", &alpha, |v| v.is_finite());
+    assert_entries("beta", "beta[i].is_finite()", &beta, |v| v.is_finite());
+    assert_entries("nu", "nu[i].is_finite()", &nu, |v| v.is_finite());
+    assert_entries("lambda", "lambda[i].is_finite()", &lambda, |v| {
+      v.is_finite()
+    });
+    assert_entries("x0", "x0[i].is_finite()", &x0, |v| v.is_finite());
+    assert_entries("v0", "v0[i].is_finite()", &v0, |v| v.is_finite());
     assert!(
       alpha.len() == xn,
       "alpha.len() must satisfy `alpha.len() == xn`, got alpha.len() = {:?}",
@@ -125,22 +110,10 @@ impl<T: FloatExt, S: SeedExt> WuZhangD<T, S> {
       "v0.len() must satisfy `v0.len() == xn`, got v0.len() = {:?}",
       v0.len()
     );
-    assert!(
-      alpha.iter().all(|&x| x >= T::zero()),
-      "alpha must satisfy `alpha.iter().all(|&x| x >= T::zero())`, got alpha = {alpha:?}"
-    );
-    assert!(
-      beta.iter().all(|&x| x >= T::zero()),
-      "beta must satisfy `beta.iter().all(|&x| x >= T::zero())`, got beta = {beta:?}"
-    );
-    assert!(
-      nu.iter().all(|&x| x >= T::zero()),
-      "nu must satisfy `nu.iter().all(|&x| x >= T::zero())`, got nu = {nu:?}"
-    );
-    assert!(
-      v0.iter().all(|&x| x >= T::zero()),
-      "v0 must satisfy `v0.iter().all(|&x| x >= T::zero())`, got v0 = {v0:?}"
-    );
+    assert_entries("alpha", "alpha[i] >= T::zero()", &alpha, |x| x >= T::zero());
+    assert_entries("beta", "beta[i] >= T::zero()", &beta, |x| x >= T::zero());
+    assert_entries("nu", "nu[i] >= T::zero()", &nu, |x| x >= T::zero());
+    assert_entries("v0", "v0[i] >= T::zero()", &v0, |x| x >= T::zero());
     Self {
       backend: Cpu,
       alpha,

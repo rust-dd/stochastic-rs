@@ -20,6 +20,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -86,18 +87,9 @@ impl<T: FloatExt, S: SeedExt> Egarch<T, S> {
       omega.is_finite(),
       "omega must satisfy `omega.is_finite()`, got omega = {omega:?}"
     );
-    assert!(
-      alpha.iter().all(|v| v.is_finite()),
-      "alpha must satisfy `alpha.iter().all(|v| v.is_finite())`, got alpha = {alpha:?}"
-    );
-    assert!(
-      gamma.iter().all(|v| v.is_finite()),
-      "gamma must satisfy `gamma.iter().all(|v| v.is_finite())`, got gamma = {gamma:?}"
-    );
-    assert!(
-      beta.iter().all(|v| v.is_finite()),
-      "beta must satisfy `beta.iter().all(|v| v.is_finite())`, got beta = {beta:?}"
-    );
+    assert_entries("alpha", "alpha[i].is_finite()", &alpha, |v| v.is_finite());
+    assert_entries("gamma", "gamma[i].is_finite()", &gamma, |v| v.is_finite());
+    assert_entries("beta", "beta[i].is_finite()", &beta, |v| v.is_finite());
     assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
     assert!(
       alpha.len() == gamma.len(),

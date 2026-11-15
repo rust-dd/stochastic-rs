@@ -24,6 +24,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use crate::device::Cpu;
 use crate::linalg::cholesky_lower;
 use crate::linalg::validate_correlation;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -52,10 +53,7 @@ impl<T: FloatExt, S: SeedExt> Mcgns<T, S> {
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
-    assert!(
-      rho.iter().all(|v| v.is_finite()),
-      "rho must satisfy `rho.iter().all(|v| v.is_finite())`, got rho = {rho:?}"
-    );
+    assert_entries("rho", "rho[(i, j)].is_finite()", &rho, |v| v.is_finite());
     validate_correlation(&rho);
     let chol = cholesky_lower(&rho);
     Self {

@@ -22,6 +22,7 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
+use crate::precondition::assert_entries;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::PathSampler;
@@ -83,14 +84,8 @@ impl<T: FloatExt, S: SeedExt> Adg<T, S> {
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
-    assert!(
-      sigma.iter().all(|v| v.is_finite()),
-      "sigma must satisfy `sigma.iter().all(|v| v.is_finite())`, got sigma = {sigma:?}"
-    );
-    assert!(
-      x0.iter().all(|v| v.is_finite()),
-      "x0 must satisfy `x0.iter().all(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
+    assert_entries("sigma", "sigma[i].is_finite()", &sigma, |v| v.is_finite());
+    assert_entries("x0", "x0[i].is_finite()", &x0, |v| v.is_finite());
     assert!(
       sigma.len() == xn,
       "sigma.len() must satisfy `sigma.len() == xn`, got sigma.len() = {:?}",

@@ -23,6 +23,7 @@
 use ndarray::Array1;
 use stochastic_rs_distributions::special::gamma_p;
 
+use crate::precondition::assert_entries;
 use crate::rough::kernel::RlKernel;
 use crate::traits::FloatExt;
 
@@ -246,14 +247,10 @@ impl<T: FloatExt> SumOfExponentials<T> {
   ///   with no diagnostic at all)
   #[must_use]
   pub fn new(nodes: Array1<T>, weights: Array1<T>) -> Self {
-    assert!(
-      nodes.iter().all(|v| v.is_finite()),
-      "nodes must satisfy `nodes.iter().all(|v| v.is_finite())`, got nodes = {nodes:?}"
-    );
-    assert!(
-      weights.iter().all(|v| v.is_finite()),
-      "weights must satisfy `weights.iter().all(|v| v.is_finite())`, got weights = {weights:?}"
-    );
+    assert_entries("nodes", "nodes[i].is_finite()", &nodes, |v| v.is_finite());
+    assert_entries("weights", "weights[i].is_finite()", &weights, |v| {
+      v.is_finite()
+    });
     assert!(
       nodes.len() == weights.len(),
       "nodes.len() must satisfy `nodes.len() == weights.len()`, got nodes.len() = {:?}, weights.len() = {:?}",
@@ -262,12 +259,9 @@ impl<T: FloatExt> SumOfExponentials<T> {
     );
     assert!(
       !nodes.is_empty(),
-      "nodes must satisfy `!nodes.is_empty()`, got nodes = {nodes:?}"
+      "nodes must satisfy `!nodes.is_empty()`, got nodes = []"
     );
-    assert!(
-      nodes.iter().all(|&x| x > T::zero()),
-      "nodes must satisfy `nodes.iter().all(|&x| x > T::zero())`, got nodes = {nodes:?}"
-    );
+    assert_entries("nodes", "nodes[i] > T::zero()", &nodes, |x| x > T::zero());
     Self { nodes, weights }
   }
 }
