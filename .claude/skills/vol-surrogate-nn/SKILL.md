@@ -24,6 +24,7 @@ exports `STRIKES`, which it hands to the spec with `grid::MATURITIES`.
 volatility/common/
   spec.rs      StochVolModelSpec, TrainConfig, TrainReport, EpochMetrics
   model.rs     StochVolNn            <- the engine; everything goes through it
+  init.rs      seed_weights          <- pub(super); candle-nn's init laws from a seed
   network.rs   FeedForwardNet        <- pub(super); you do not touch this
   scaler.rs    BoundedScaler, StandardScaler   <- pub(super)
   dataset.rs   load_trainset_gzip_npy, rmse_1d
@@ -31,7 +32,7 @@ volatility/common/
   plot.rs      write_surface_fit_plot_html     <- #[cfg(feature = "viz")]
 volatility/grid.rs     MONEYNESS, MATURITIES, LEN (shared grid)
 volatility/heston.rs | one_factor.rs | rbergomi.rs   <- the wrappers
-stochastic-rs-ai/tests/  real_trainsets.rs, saved_model_compat.rs, data/ (fixtures; excluded from the package)
+stochastic-rs-ai/tests/  real_trainsets.rs, saved_model_compat.rs, reproducible_training.rs, data/ (fixtures; excluded from the package)
 ```
 
 `FeedForwardNet` is `pub(super)` and fixed: **3 hidden ELU layers of
@@ -90,7 +91,7 @@ pub const OUTPUT_DIM: usize = grid::LEN;
 pub const DEFAULT_HIDDEN_DIM: usize = 30;
 pub const PARAM_LB: [f32; INPUT_DIM] = [0.0001, -0.95, 0.01, 0.01, 1.0];
 pub const PARAM_UB: [f32; INPUT_DIM] = [0.04, -0.1, 1.0, 0.2, 10.0];
-pub const STRIKES: [f64; grid::MONEYNESS.len()] = grid::MONEYNESS; // Heston: grid::inverse(grid::MONEYNESS)
+pub const STRIKES: [f64; grid::MONEYNESS.len()] = grid::inverse(grid::MONEYNESS); // Bergomi sets: grid::MONEYNESS
 
 pub struct HestonNn {
   inner: StochVolNn,
@@ -281,8 +282,9 @@ tests in `plot.rs`.
 
 - **Do not** `unwrap()` `StochVolModelSpec::new`. It returns
   `anyhow::Result` and bails; propagate it.
-- **Do not** reach for `f64`. The whole crate is `f32` end to end; the
-  loader casts down at the boundary on purpose.
+- **Do not** reach for `f64` in the network or the parameter bounds. They
+  are `f32`; the loader casts down at the boundary on purpose. Only the
+  grid (`strikes`, `maturities`) is `f64`.
 - **Do not** invent spec fields (`param_names`).
 - **Do not** pass a grid to `predict_implied_vol_surface`. It reads
   `spec.strikes` and `spec.maturities`; the caller gives the spot and the

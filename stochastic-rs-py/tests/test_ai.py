@@ -67,4 +67,5 @@ def test_one_seed_gives_one_network():
     first = trained(5)
     assert np.isfinite(first).all()
     assert np.array_equal(first, trained(5))
-    assert not np.array_equal(first, trained(6))
+    second = trained(6)
+    assert np.isfinite(second).all() and not np.array_equal(first, second)

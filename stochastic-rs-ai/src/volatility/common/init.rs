@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use anyhow::anyhow;
+use anyhow::bail;
 use candle_core::Device;
 use candle_core::Tensor;
 use candle_nn::VarMap;
@@ -9,8 +10,6 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::uniform::SimdUniform;
-
-const BIAS_STREAM: u64 = 0x9E37_79B9_7F4A_7C15;
 
 /// candle-nn's `linear` laws from the crate's own streams: weights `N(0, 2/in)`, biases `U(±1/√in)`, in name order.
 pub(super) fn seed_weights(varmap: &VarMap, device: &Device, seed: u64) -> Result<()> {
@@ -31,9 +30,9 @@ pub(super) fn seed_weights(varmap: &VarMap, device: &Device, seed: u64) -> Resul
     .map(|(name, dims)| (name.clone(), dims[1]))
     .collect::<HashMap<String, usize>>();
 
-  let mut normal = SimdNormal::<f32>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
-  let mut uniform =
-    SimdUniform::<f32>::new(-1.0, 1.0).seeded(&Deterministic::new(seed ^ BIAS_STREAM));
+  let source = Deterministic::new(seed);
+  let mut normal = SimdNormal::<f32>::new(0.0, 1.0).seeded(&source);
+  let mut uniform = SimdUniform::<f32>::new(-1.0, 1.0).seeded(&source);
   let mut values = Vec::with_capacity(layout.len());
   for (name, dims) in &layout {
     let count = dims.iter().product::<usize>();
@@ -54,7 +53,7 @@ pub(super) fn seed_weights(varmap: &VarMap, device: &Device, seed: u64) -> Resul
         .map(|_| bound * uniform.sample())
         .collect::<Vec<f32>>()
     } else {
-      return Err(anyhow!("unexpected variable {name}"));
+      bail!("unexpected variable {name}");
     };
     values.push(Tensor::from_vec(draws, dims.clone(), device)?);
   }
@@ -128,7 +127,13 @@ mod tests {
     let bound = 1.0 / 5.0_f32.sqrt();
     assert!(weight.iter().any(|v| v.abs() > bound));
     let bias = read(&seeded(3), "dense_1.bias");
-    assert!(bias.iter().all(|v| v.abs() <= bound));
+    let (lo, hi) = bias
+      .iter()
+      .fold((f32::MAX, f32::MIN), |(lo, hi), v| (lo.min(*v), hi.max(*v)));
+    assert!(
+      lo >= -bound && hi <= bound && hi - lo > bound,
+      "range {lo}..{hi}"
+    );
   }
 
   #[test]

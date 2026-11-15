@@ -66,8 +66,8 @@ impl OneFactorNn {
     self.inner.predict_surfaces(params)
   }
 
-  /// [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface) on the training grid at
-  /// `spot` (strikes [`STRIKES`] times it, ascending), one forward per [`grid::MATURITIES`] entry.
+  /// [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface) at `spot` on the
+  /// training grid: strikes [`STRIKES`] times `spot`, ascending; one forward per maturity.
   #[cfg(feature = "quant")]
   pub fn predict_implied_vol_surface(
     &self,
@@ -85,9 +85,9 @@ impl OneFactorNn {
   }
 
   pub fn load<P: AsRef<Path>>(dir: P, device: &Device) -> Result<Self> {
-    Ok(Self {
-      inner: StochVolNn::load(MODEL_ID, dir, device)?,
-    })
+    let inner = StochVolNn::load(MODEL_ID, dir, device)?;
+    inner.spec().ensure_grid(&STRIKES, &grid::MATURITIES)?;
+    Ok(Self { inner })
   }
 }
 

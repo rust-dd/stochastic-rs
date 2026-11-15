@@ -67,8 +67,8 @@ impl HestonNn {
     self.inner.predict_surfaces(params)
   }
 
-  /// [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface) on the training grid at
-  /// `spot` (strikes [`STRIKES`] times it, ascending), one forward per [`grid::MATURITIES`] entry.
+  /// [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface) at `spot` on the
+  /// training grid: strikes [`STRIKES`] times `spot`, ascending; one forward per maturity.
   #[cfg(feature = "quant")]
   pub fn predict_implied_vol_surface(
     &self,
@@ -86,9 +86,9 @@ impl HestonNn {
   }
 
   pub fn load<P: AsRef<Path>>(dir: P, device: &Device) -> Result<Self> {
-    Ok(Self {
-      inner: StochVolNn::load(MODEL_ID, dir, device)?,
-    })
+    let inner = StochVolNn::load(MODEL_ID, dir, device)?;
+    inner.spec().ensure_grid(&STRIKES, &grid::MATURITIES)?;
+    Ok(Self { inner })
   }
 }
 
@@ -188,6 +188,32 @@ mod tests {
         );
       }
     }
+    Ok(())
+  }
+
+  #[test]
+  fn load_rejects_a_directory_whose_grid_is_not_the_shipped_one() -> Result<()> {
+    let spec = StochVolModelSpec::new(
+      MODEL_ID,
+      8,
+      PARAM_LB.to_vec(),
+      PARAM_UB.to_vec(),
+      grid::MONEYNESS.to_vec(),
+      grid::MATURITIES.to_vec(),
+    )?;
+    let (params, surfaces) = synthetic_surface_dataset(&PARAM_LB, &PARAM_UB, 32, OUTPUT_DIM, 3);
+    let mut nn = StochVolNn::new(spec, &Device::Cpu, 7)?;
+    let cfg = TrainConfig {
+      epochs: 1,
+      ..TrainConfig::default()
+    };
+    nn.train(&params, &surfaces, &cfg)?;
+    let dir =
+      std::env::temp_dir().join(format!("stochastic_rs_heston_grid_{}", std::process::id()));
+    nn.save(&dir)?;
+    let result = HestonNn::load(&dir, &Device::Cpu);
+    let _ = fs::remove_dir_all(&dir);
+    assert!(result.is_err());
     Ok(())
   }
 }

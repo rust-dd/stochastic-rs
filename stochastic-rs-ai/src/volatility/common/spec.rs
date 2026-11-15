@@ -77,15 +77,11 @@ impl StochVolModelSpec {
     }
     let mut sorted = strikes.clone();
     sorted.sort_by(f64::total_cmp);
-    if sorted.windows(2).any(|w| w[0] == w[1]) {
-      bail!("strikes must be distinct");
-    }
+    check_ascending("strikes", &sorted)?;
     if maturities.is_empty() || maturities.iter().any(|t| !t.is_finite() || *t <= 0.0) {
       bail!("maturities must be non-empty, finite and positive");
     }
-    if !maturities.windows(2).all(|w| w[0] < w[1]) {
-      bail!("maturities must be strictly ascending");
-    }
+    check_ascending("maturities", &maturities)?;
     Ok(Self {
       model_id: model_id.into(),
       hidden_dim,
@@ -96,6 +92,17 @@ impl StochVolModelSpec {
     })
   }
 
+  /// `Err` unless the grid is exactly `strikes` and `maturities`: a wrapper's own constants.
+  pub(crate) fn ensure_grid(&self, strikes: &[f64], maturities: &[f64]) -> Result<()> {
+    if self.strikes != strikes || self.maturities != maturities {
+      bail!(
+        "the saved grid differs from the {} surrogate's own",
+        self.model_id
+      );
+    }
+    Ok(())
+  }
+
   pub fn input_dim(&self) -> usize {
     self.param_lb.len()
   }
@@ -103,6 +110,14 @@ impl StochVolModelSpec {
   pub fn output_dim(&self) -> usize {
     self.strikes.len() * self.maturities.len()
   }
+}
+
+/// Finite and strictly ascending: what `ImpliedVolSurface::from_iv_grid` asserts of each axis.
+pub(super) fn check_ascending(what: &str, values: &[f64]) -> Result<()> {
+  if values.iter().any(|v| !v.is_finite()) || !values.windows(2).all(|w| w[0] < w[1]) {
+    bail!("{what} must be finite and strictly ascending");
+  }
+  Ok(())
 }
 
 #[cfg(test)]
