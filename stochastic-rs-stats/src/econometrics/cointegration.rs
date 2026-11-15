@@ -11,41 +11,84 @@
 
 pub mod johansen;
 
-pub use johansen::JohansenResult;
-pub use johansen::Vecm;
+pub use johansen::JohansenTest;
+pub use johansen::VecmFit;
+pub use johansen::fit_vecm;
 pub use johansen::johansen_test;
-pub use johansen::vecm_fit;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 
+use crate::StatsError;
+use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::validate;
 use crate::linalg::lstsq;
 use crate::stationarity::adf::AdfConfig;
 use crate::stationarity::adf::adf_test;
 
-/// Result of an Engle-Granger 2-step test for $y_t = \alpha + \beta x_t + \varepsilon_t$.
-#[derive(Debug, Clone)]
-pub struct EngleGrangerResult {
-  /// Estimated intercept.
+/// Configuration for [`engle_granger_test`].
+#[derive(Debug, Clone, Copy)]
+pub struct EngleGrangerConfig {
+  /// Significance level used to compute `rejects_null`.
   pub alpha: f64,
+}
+
+impl Default for EngleGrangerConfig {
+  fn default() -> Self {
+    Self { alpha: 0.05 }
+  }
+}
+
+/// Engle–Granger 2-step test for $y_t = a + \beta x_t + \varepsilon_t$ (null: no cointegration);
+/// the Phillips–Ouliaris table holds the 1 %, 5 % and 10 % levels.
+#[derive(Debug, Clone)]
+pub struct EngleGrangerTest {
+  /// ADF statistic computed on the residuals.
+  pub statistic: f64,
+  /// No p-value table is shipped; the decision is taken against `critical_values`.
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
+  /// Whether the no-cointegration null is rejected at `alpha`.
+  pub rejects_null: bool,
+  /// Estimated intercept $a$.
+  pub intercept: f64,
   /// Estimated cointegration coefficient.
   pub beta: f64,
   /// Estimated regression residuals.
   pub residuals: Array1<f64>,
-  /// ADF statistic computed on the residuals.
-  pub adf_statistic: f64,
-  /// 1%, 5%, 10% critical values for the residual ADF test (Phillips-Ouliaris,
-  /// finite-sample).
-  pub critical_values: (f64, f64, f64),
-  /// Whether the no-cointegration null is rejected at `alpha = 0.05`.
-  pub reject_no_cointegration: bool,
 }
 
-/// Engle-Granger 2-step cointegration test.
-pub fn engle_granger_test(y: ArrayView1<f64>, x: ArrayView1<f64>) -> EngleGrangerResult {
+impl crate::traits::HypothesisTest for EngleGrangerTest {
+  fn statistic(&self) -> f64 {
+    self.statistic
+  }
+
+  fn null_rejected(&self) -> Option<bool> {
+    Some(self.rejects_null)
+  }
+}
+
+/// Engle–Granger 2-step cointegration test; `Err` below 30 points, on a non-finite one, unequal
+/// lengths, a singular fit or the residual ADF's `Err`, and panics unless `0.01 <= alpha < 1`.
+pub fn engle_granger_test(
+  y: ArrayView1<f64>,
+  x: ArrayView1<f64>,
+  cfg: EngleGrangerConfig,
+) -> Result<EngleGrangerTest, StatsError> {
+  assert_alpha(cfg.alpha);
+  let critical_values = CriticalValues::new([(0.01, -3.96), (0.05, -3.37), (0.10, -3.07)]);
+  let critical = critical_values.value_at(cfg.alpha);
+  if x.len() != y.len() {
+    return Err(StatsError::DimensionMismatch {
+      expected: y.len(),
+      got: x.len(),
+    });
+  }
+  validate(&as_slice_or_copy(y), 30)?;
+  validate(&as_slice_or_copy(x), 30)?;
   let n = y.len();
-  assert_eq!(n, x.len(), "y and x must have equal length");
-  assert!(n >= 30, "need at least 30 observations");
   let mut design = Array2::<f64>::zeros((n, 2));
   for i in 0..n {
     design[[i, 0]] = 1.0;
@@ -53,28 +96,25 @@ pub fn engle_granger_test(y: ArrayView1<f64>, x: ArrayView1<f64>) -> EngleGrange
   }
   let y_owned = y.to_owned();
   let sol = lstsq(&design, &y_owned);
-  let alpha = sol[0];
+  let intercept = sol[0];
   let beta = sol[1];
+  if !(intercept.is_finite() && beta.is_finite()) {
+    return Err(StatsError::Singular("OLS design"));
+  }
   let mut residuals = Array1::<f64>::zeros(n);
   for i in 0..n {
-    residuals[i] = y[i] - alpha - beta * x[i];
+    residuals[i] = y[i] - intercept - beta * x[i];
   }
-  let cfg = AdfConfig::default();
-  let adf = adf_test(residuals.view(), cfg);
-  let crit = phillips_ouliaris_critical_values_two_var();
-  let reject = adf.statistic < crit.1;
-  EngleGrangerResult {
-    alpha,
+  let adf = adf_test(residuals.view(), AdfConfig::default())?;
+  Ok(EngleGrangerTest {
+    statistic: adf.statistic,
+    p_value: None,
+    critical_values: Some(critical_values),
+    rejects_null: adf.statistic < critical,
+    intercept,
     beta,
     residuals,
-    adf_statistic: adf.statistic,
-    critical_values: crit,
-    reject_no_cointegration: reject,
-  }
-}
-
-fn phillips_ouliaris_critical_values_two_var() -> (f64, f64, f64) {
-  (-3.96, -3.37, -3.07)
+  })
 }
 
 #[cfg(test)]
@@ -108,8 +148,8 @@ mod tests {
     for i in 0..500 {
       y[i] = 2.0 + 0.7 * x[i] + eps[i];
     }
-    let res = engle_granger_test(y.view(), x.view());
-    assert!(res.reject_no_cointegration);
+    let res = engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default()).unwrap();
+    assert!(res.rejects_null);
     assert!((res.beta - 0.7).abs() < 0.05);
   }
 
@@ -117,7 +157,19 @@ mod tests {
   fn engle_granger_does_not_reject_independent_walks() {
     let x = random_walk(13, 500, 1.0);
     let y = random_walk(17, 500, 1.0);
-    let res = engle_granger_test(y.view(), x.view());
-    assert!(!res.reject_no_cointegration);
+    let res = engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default()).unwrap();
+    assert!(!res.rejects_null);
+  }
+
+  #[test]
+  fn series_of_unequal_lengths_are_a_dimension_mismatch() {
+    let (y, x) = (random_walk(13, 40, 1.0), random_walk(17, 41, 1.0));
+    assert_eq!(
+      engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default()).unwrap_err(),
+      StatsError::DimensionMismatch {
+        expected: 40,
+        got: 41
+      }
+    );
   }
 }

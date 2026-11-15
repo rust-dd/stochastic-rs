@@ -23,7 +23,7 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 
-use super::gpd_fit::information_inverse;
+use super::gpd::information_inverse;
 use crate::optim::nelder_mead_vec;
 use crate::traits::FloatExt;
 use crate::traits::RealExt;
@@ -109,7 +109,7 @@ fn negative_log_likelihood(z: &[f64], mu: f64, sigma: f64, xi: f64) -> f64 {
 ///
 /// If there are fewer than 10 maxima, any is non-finite, or they are
 /// constant.
-pub fn gev_fit<T: FloatExt>(maxima: ArrayView1<T>) -> GevFit {
+pub fn fit_gev<T: FloatExt>(maxima: ArrayView1<T>) -> GevFit {
   let z: Vec<f64> = maxima
     .iter()
     .map(|x| x.to_f64().unwrap_or(f64::NAN))

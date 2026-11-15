@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 
 #[pyclass(name = "FukasawaHurst", unsendable)]
 pub struct PyFukasawaHurst {
-  inner: crate::hurst::whittle::FukasawaResult,
+  inner: crate::hurst::whittle::FukasawaFit,
 }
 
 #[pymethods]
@@ -42,13 +42,13 @@ impl PyFukasawaHurst {
 
   #[getter]
   fn n_obs(&self) -> usize {
-    self.inner.n_obs
+    self.inner.nobs
   }
 }
 
 #[pyclass(name = "FouEstimate", unsendable)]
 pub struct PyFouEstimate {
-  inner: crate::fou_estimator::FouEstimateResult,
+  inner: crate::fou::FouFit,
 }
 
 #[pymethods]
@@ -62,9 +62,9 @@ impl PyFouEstimate {
     hurst_override: Option<f64>,
   ) -> Self {
     Self {
-      inner: crate::fou_estimator::estimate_fou_v1(
+      inner: crate::fou::fit_fou_filtered_variations(
         path.as_array(),
-        crate::fou_estimator::FilterType::Daubechies,
+        crate::fou::FilterType::Daubechies,
         delta,
         hurst_override,
       ),
@@ -81,7 +81,7 @@ impl PyFouEstimate {
   ) -> Self {
     let n = path.as_array().len();
     Self {
-      inner: crate::fou_estimator::estimate_fou_v2(path.as_array(), delta, n, hurst_override),
+      inner: crate::fou::fit_fou_central_differences(path.as_array(), delta, n, hurst_override),
     }
   }
 
@@ -108,7 +108,7 @@ impl PyFouEstimate {
 
 #[pyclass(name = "HurstResult", unsendable)]
 pub struct PyHurstResult {
-  inner: crate::hurst::HurstResult<f64>,
+  inner: crate::hurst::HurstFit<f64>,
 }
 
 #[pymethods]
@@ -125,7 +125,7 @@ impl PyHurstResult {
 
   #[getter]
   fn n_obs(&self) -> usize {
-    self.inner.n_obs
+    self.inner.nobs
   }
 
   #[getter]
@@ -313,7 +313,7 @@ impl PyWavelet {
 
 #[pyclass(name = "FdResult", unsendable)]
 pub struct PyFdResult {
-  inner: crate::fractal_dim::FdResult<f64>,
+  inner: crate::fractal_dim::FdFit<f64>,
 }
 
 #[pymethods]
@@ -325,7 +325,7 @@ impl PyFdResult {
 
   #[getter]
   fn n_obs(&self) -> usize {
-    self.inner.n_obs
+    self.inner.nobs
   }
 
   #[getter]

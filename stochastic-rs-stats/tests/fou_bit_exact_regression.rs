@@ -11,10 +11,10 @@ use ndarray::array;
 use ndarray::s;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::special::gamma;
-use stochastic_rs_stats::fou_estimator::FilterType;
-use stochastic_rs_stats::fou_estimator::estimate_fou_v1;
-use stochastic_rs_stats::fou_estimator::estimate_fou_v2;
-use stochastic_rs_stats::fou_estimator::estimate_fou_v4;
+use stochastic_rs_stats::fou::FilterType;
+use stochastic_rs_stats::fou::fit_fou_central_differences;
+use stochastic_rs_stats::fou::fit_fou_filtered_variations;
+use stochastic_rs_stats::fou::fit_fou_power_variation;
 use stochastic_rs_stochastic::diffusion::fou::Fou;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
@@ -91,7 +91,7 @@ fn fou_v1_bit_exact_against_struct_era_inline_reference() {
   let theta_den_ref = sigma_ref.powi(2) * gamma(2.0 * hurst_ref + 1.0);
   let theta_ref = (theta_num_ref / theta_den_ref).powf(-1.0 / (2.0 * hurst_ref));
 
-  let res = estimate_fou_v1(path.view(), FilterType::Daubechies, Some(delta), None);
+  let res = fit_fou_filtered_variations(path.view(), FilterType::Daubechies, Some(delta), None);
 
   assert_close(res.hurst, hurst_ref, "v1 hurst");
   assert_close(res.sigma, sigma_ref, "v1 sigma");
@@ -146,7 +146,7 @@ fn fou_v2_bit_exact_against_struct_era_inline_reference() {
   let theta_den_ref = n_f.powi(2) * sigma_ref.powi(2) * hurst_ref * gamma(2.0 * hurst_ref);
   let theta_ref = (theta_num_ref / theta_den_ref).powf(-1.0 / (2.0 * hurst_ref));
 
-  let res = estimate_fou_v2(path.view(), Some(delta_ref), n, None);
+  let res = fit_fou_central_differences(path.view(), Some(delta_ref), n, None);
 
   assert_close(res.hurst, hurst_ref, "v2 hurst");
   assert_close(res.sigma, sigma_ref, "v2 sigma");
@@ -243,7 +243,7 @@ fn fou_v4_bit_exact_against_struct_era_inline_reference() {
   let denom = n_f * sigma_ref.powi(2) * hurst_ref * gamma(2.0 * hurst_ref);
   let theta_ref = (sum_sq / denom).powf(-1.0 / (2.0 * hurst_ref));
 
-  let res = estimate_fou_v4(path.view(), Some(delta_ref), k, p, None, None);
+  let res = fit_fou_power_variation(path.view(), Some(delta_ref), k, p, None, None);
 
   assert_close(res.hurst, hurst_ref, "v4 hurst");
   assert_close(res.sigma, sigma_ref, "v4 sigma");

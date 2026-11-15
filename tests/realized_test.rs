@@ -99,8 +99,8 @@ fn jump_estimators_close_to_rv_under_no_jumps() {
 #[test]
 fn jump_test_p_value_in_unit_interval() {
   let r = iid_returns(5_001, 10_000, 0.005);
-  let test = bns_jump_test(r.view(), 0.05);
-  assert!(test.p_value >= 0.0 && test.p_value <= 1.0);
+  let test = bns_jump_test(r.view(), 0.05).unwrap();
+  assert!(test.p_value.is_some_and(|p| (0.0..=1.0).contains(&p)));
   assert!(test.statistic.is_finite());
 }
 

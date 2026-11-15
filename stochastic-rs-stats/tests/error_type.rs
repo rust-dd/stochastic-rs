@@ -4,10 +4,10 @@ use ndarray::Array1;
 use stochastic_rs_stats::StatsError;
 use stochastic_rs_stats::fractal_dim::FractalDimEstimator;
 use stochastic_rs_stats::fractal_dim::Higuchi;
-use stochastic_rs_stats::heston_nml_cekf::HestonCekfFilterConfig;
-use stochastic_rs_stats::heston_nml_cekf::HestonCekfState;
-use stochastic_rs_stats::heston_nml_cekf::HestonNmleCekfParams;
-use stochastic_rs_stats::heston_nml_cekf::heston_cekf_step;
+use stochastic_rs_stats::heston_nmle_cekf::HestonCekfFilterConfig;
+use stochastic_rs_stats::heston_nmle_cekf::HestonCekfState;
+use stochastic_rs_stats::heston_nmle_cekf::HestonNmleCekfParams;
+use stochastic_rs_stats::heston_nmle_cekf::heston_cekf_step;
 use stochastic_rs_stats::hurst::HurstEstimator;
 use stochastic_rs_stats::hurst::rs::RescaledRange;
 use stochastic_rs_stats::log_realized_variance_qml::log_chi_square_moments;
@@ -19,7 +19,7 @@ fn the_error_is_send_sync_and_displays_the_predicate() {
   assert_send_sync::<StatsError>();
   assert_eq!(
     StatsError::InsufficientData { needed: 32, got: 5 }.to_string(),
-    "needs at least 32 observations, got 5"
+    "needs at least 32, got 5"
   );
   assert_eq!(
     StatsError::InvalidParameter {
@@ -33,6 +33,10 @@ fn the_error_is_send_sync_and_displays_the_predicate() {
   assert_eq!(
     StatsError::Singular("S00").to_string(),
     "S00 has no finite solution"
+  );
+  assert_eq!(
+    StatsError::Numerical { stage: "filter" }.to_string(),
+    "filter produced no usable value"
   );
 }
 

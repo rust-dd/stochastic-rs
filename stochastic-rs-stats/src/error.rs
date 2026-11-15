@@ -1,4 +1,4 @@
-//! One error type for every failure the crate returns; a validated precondition panics instead.
+//! One error type for every failure the crate returns.
 
 use std::fmt;
 
@@ -6,7 +6,7 @@ use std::fmt;
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum StatsError {
-  /// Fewer observations (or series) than the method needs.
+  /// Fewer observations, series or bins than the method needs.
   InsufficientData { needed: usize, got: usize },
   /// Two inputs that must agree in length or shape do not.
   DimensionMismatch { expected: usize, got: usize },
@@ -26,7 +26,7 @@ pub enum StatsError {
   },
   /// A regression or linear system without a finite solution.
   Singular(&'static str),
-  /// An optimiser or filter that produced no finite value at `stage`.
+  /// An optimiser or filter that produced no usable value at `stage`.
   Numerical { stage: &'static str },
 }
 
@@ -34,7 +34,7 @@ impl fmt::Display for StatsError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
       Self::InsufficientData { needed, got } => {
-        write!(f, "needs at least {needed} observations, got {got}")
+        write!(f, "needs at least {needed}, got {got}")
       }
       Self::DimensionMismatch { expected, got } => {
         write!(f, "expected {expected} entries, got {got}")
@@ -61,7 +61,7 @@ impl fmt::Display for StatsError {
         )
       }
       Self::Singular(what) => write!(f, "{what} has no finite solution"),
-      Self::Numerical { stage } => write!(f, "{stage} produced no finite value"),
+      Self::Numerical { stage } => write!(f, "{stage} produced no usable value"),
     }
   }
 }

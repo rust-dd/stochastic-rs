@@ -372,7 +372,9 @@ mod tests {
           |x| dist.cdf(x).unwrap(),
           KolmogorovSmirnovConfig::default(),
         )
+        .unwrap()
         .p_value
+        .unwrap()
       })
       .fold(0.0_f64, f64::max);
     assert!(
@@ -398,7 +400,9 @@ mod tests {
           |x| dist.cdf(x).unwrap(),
           KolmogorovSmirnovConfig::default(),
         )
+        .unwrap()
         .p_value
+        .unwrap()
       })
       .fold(0.0_f64, f64::max);
     assert!(

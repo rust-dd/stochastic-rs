@@ -237,7 +237,7 @@ pub struct GarchFit {
 ///
 /// If `spec.p` is zero, if there are fewer than 20 observations, or if the
 /// returns have no positive finite variance.
-pub fn garch_fit<T: FloatExt>(returns: ArrayView1<T>, spec: GarchSpec) -> GarchFit {
+pub fn fit_garch<T: FloatExt>(returns: ArrayView1<T>, spec: GarchSpec) -> GarchFit {
   spec.validate();
   let r: Vec<f64> = returns
     .iter()

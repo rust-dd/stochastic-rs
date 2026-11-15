@@ -209,7 +209,7 @@ Then register both in `stochastic-rs-py/src/lib.rs`.
 
 - `hurst::whittle::estimate` (`hurst/whittle.rs`) — the Fukasawa
   rough-vol Hurst estimator (L-BFGS-B + Paxson + Eq. 16 corrections),
-  returning `FukasawaResult`; paper-Table 1 validation test. Note the
+  returning `FukasawaFit`; paper-Table 1 validation test. Note the
   path: there is no `fukasawa_hurst.rs`; it lives under `hurst/` and is
   named for the *method*, not the author. `estimate_from_prices` and
   `estimate_from_prices_generic<T>` are the convenience entry points.

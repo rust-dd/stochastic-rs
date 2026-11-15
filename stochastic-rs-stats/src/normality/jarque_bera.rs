@@ -13,10 +13,16 @@
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::gamma_p;
 
+use crate::StatsError;
+use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::validate;
+
 /// Configuration for the Jarque-Bera normality test.
 #[derive(Debug, Clone, Copy)]
 pub struct JarqueBeraConfig {
-  /// Significance level used to compute `reject_normality`.
+  /// Significance level used to compute `rejects_null`.
   pub alpha: f64,
 }
 
@@ -26,51 +32,44 @@ impl Default for JarqueBeraConfig {
   }
 }
 
-/// Result of the Jarque-Bera normality test.
-#[derive(Debug, Clone, Copy)]
-pub struct JarqueBeraResult {
+/// Jarque–Bera test (null: normality), decided by its chi-square(2) p-value.
+#[derive(Debug, Clone)]
+pub struct JarqueBeraTest {
   /// JB test statistic.
   pub statistic: f64,
   /// p-value under chi-square(2) asymptotics.
-  pub p_value: f64,
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
+  /// Whether normality is rejected at `alpha`.
+  pub rejects_null: bool,
   /// Sample skewness.
   pub skewness: f64,
   /// Sample excess kurtosis.
   pub excess_kurtosis: f64,
-  /// Whether normality is rejected at `alpha`.
-  pub reject_normality: bool,
 }
 
-impl crate::traits::HypothesisTest for JarqueBeraResult {
+impl crate::traits::HypothesisTest for JarqueBeraTest {
   fn statistic(&self) -> f64 {
     self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.reject_normality)
+    Some(self.rejects_null)
   }
 }
 
-/// Jarque-Bera test for normality.
-///
-/// # Panics
-/// Panics if the sample has fewer than 8 points or contains non-finite values.
-pub fn jarque_bera_test(sample: ArrayView1<f64>, cfg: JarqueBeraConfig) -> JarqueBeraResult {
-  let sample = sample
-    .as_slice()
-    .expect("jarque_bera_test requires a contiguous ArrayView1");
-  assert!(
-    sample.len() >= 8,
-    "Jarque-Bera requires at least 8 observations"
-  );
-  assert!(
-    sample.iter().all(|x| x.is_finite()),
-    "Jarque-Bera requires finite observations"
-  );
-  assert!(
-    cfg.alpha > 0.0 && cfg.alpha < 1.0,
-    "alpha must be in (0, 1)"
-  );
+/// Jarque–Bera normality test; `Err` below 8 points, on a non-finite or constant sample or on
+/// moments that overflow, and panics unless `0 < alpha < 1`.
+pub fn jarque_bera_test(
+  sample: ArrayView1<f64>,
+  cfg: JarqueBeraConfig,
+) -> Result<JarqueBeraTest, StatsError> {
+  assert_alpha(cfg.alpha);
+  let sample = as_slice_or_copy(sample);
+  validate(&sample, 8)?;
+  if sample.iter().all(|&v| v == sample[0]) {
+    return Err(StatsError::DegenerateData("constant sample"));
+  }
 
   let n = sample.len() as f64;
   let mean = sample.iter().sum::<f64>() / n;
@@ -78,7 +77,7 @@ pub fn jarque_bera_test(sample: ArrayView1<f64>, cfg: JarqueBeraConfig) -> Jarqu
   let mut m2 = 0.0;
   let mut m3 = 0.0;
   let mut m4 = 0.0;
-  for &x in sample {
+  for &x in sample.iter() {
     let d = x - mean;
     let d2 = d * d;
     m2 += d2;
@@ -89,14 +88,10 @@ pub fn jarque_bera_test(sample: ArrayView1<f64>, cfg: JarqueBeraConfig) -> Jarqu
   m3 /= n;
   m4 /= n;
 
-  if m2 <= 0.0 || !m2.is_finite() {
-    return JarqueBeraResult {
-      statistic: f64::INFINITY,
-      p_value: 0.0,
-      skewness: 0.0,
-      excess_kurtosis: f64::INFINITY,
-      reject_normality: true,
-    };
+  if !(m2.is_finite() && m3.is_finite() && m4.is_finite()) {
+    return Err(StatsError::Numerical {
+      stage: "sample moments",
+    });
   }
 
   let skewness = m3 / m2.powf(1.5);
@@ -109,13 +104,14 @@ pub fn jarque_bera_test(sample: ArrayView1<f64>, cfg: JarqueBeraConfig) -> Jarqu
   // explicit and uniform with other CDF use sites.
   let p_value = (1.0 - gamma_p(1.0, 0.5 * statistic)).clamp(0.0, 1.0);
 
-  JarqueBeraResult {
+  Ok(JarqueBeraTest {
     statistic,
-    p_value,
+    p_value: Some(p_value),
+    critical_values: None,
+    rejects_null: p_value < cfg.alpha,
     skewness,
     excess_kurtosis,
-    reject_normality: p_value < cfg.alpha,
-  }
+  })
 }
 
 #[cfg(test)]
@@ -129,6 +125,7 @@ mod tests {
 
   use super::JarqueBeraConfig;
   use super::jarque_bera_test;
+  use crate::StatsError;
 
   /// The sample must come from a `Deterministic` seed, not an `Unseeded` one:
   /// `fill_slice` takes no RNG at all and draws from the distribution's own
@@ -150,7 +147,10 @@ mod tests {
       .into_iter()
       .map(|seed| {
         let x = normal_sample(seed, 5000);
-        jarque_bera_test(ArrayView1::from(&x), JarqueBeraConfig::default()).p_value
+        jarque_bera_test(ArrayView1::from(&x), JarqueBeraConfig::default())
+          .unwrap()
+          .p_value
+          .unwrap()
       })
       .fold(0.0_f64, f64::max);
 
@@ -175,10 +175,30 @@ mod tests {
       *v += if *u < 0.5 { -2.0 } else { 2.0 };
     }
 
-    let res = jarque_bera_test(ArrayView1::from(&x), JarqueBeraConfig::default());
+    let res = jarque_bera_test(ArrayView1::from(&x), JarqueBeraConfig::default()).unwrap();
     assert!(
-      res.reject_normality,
+      res.rejects_null,
       "expected rejection for non-normal sample, got {res:?}"
+    );
+  }
+
+  #[test]
+  fn a_constant_sample_is_degenerate_data() {
+    let x = [0.3; 10];
+    assert_eq!(
+      jarque_bera_test(ArrayView1::from(&x), JarqueBeraConfig::default()).unwrap_err(),
+      StatsError::DegenerateData("constant sample")
+    );
+  }
+
+  #[test]
+  fn overflowing_moments_are_a_numerical_error() {
+    let x = [1e80, -1e80, 1e80, -1e80, 1e80, -1e80, 1e80, -1e80];
+    assert_eq!(
+      jarque_bera_test(ArrayView1::from(&x), JarqueBeraConfig::default()).unwrap_err(),
+      StatsError::Numerical {
+        stage: "sample moments"
+      }
     );
   }
 }

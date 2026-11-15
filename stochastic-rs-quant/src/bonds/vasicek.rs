@@ -9,7 +9,7 @@
 //! - `mu` is the **long-run mean** (level the process reverts to).
 //!
 //! This matches the convention used elsewhere in the workspace
-//! (`stochastic_rs_stats::fou_estimator::FouEstimateResult`,
+//! (`stochastic_rs_stats::fou::FouFit`,
 //! `stochastic_rs_stochastic::diffusion::ou::Ou`,
 //! `stochastic_rs_stochastic::interest::vasicek::Vasicek`).
 use crate::traits::ShortRatePricer;
@@ -43,8 +43,8 @@ impl ShortRatePricer for Vasicek {
 
 impl Vasicek {
   /// Build a `Vasicek` bond pricer from an
-  /// [`stochastic_rs_stats::fou_estimator::FouEstimateResult`] (the output of
-  /// `estimate_fou_v1` / `estimate_fou_v2` / `estimate_fou_v4`).
+  /// [`stochastic_rs_stats::fou::FouFit`] (the output of
+  /// `fit_fou_filtered_variations` / `fit_fou_central_differences` / `fit_fou_power_variation`).
   ///
   /// Field correspondence: `theta = est.theta` (mean-reversion speed),
   /// `mu = est.mu` (long-run level), `sigma = est.sigma`.
@@ -57,7 +57,7 @@ impl Vasicek {
   /// genuine fractional pricing, use the rough-volatility models in
   /// `stochastic_rs_stochastic::interest::fractional_vasicek::FVasicek` or
   /// `stochastic_rs_stochastic::rough::*`.
-  pub fn from_fou_estimate(est: &stochastic_rs_stats::fou_estimator::FouEstimateResult) -> Self {
+  pub fn from_fou_estimate(est: &stochastic_rs_stats::fou::FouFit) -> Self {
     Self {
       theta: est.theta,
       mu: est.mu,
@@ -106,7 +106,7 @@ mod tests {
 
   #[test]
   fn from_fou_estimate_maps_fields_directly() {
-    let est = stochastic_rs_stats::fou_estimator::FouEstimateResult {
+    let est = stochastic_rs_stats::fou::FouFit {
       hurst: 0.5,
       sigma: 0.012,
       mu: 0.035,

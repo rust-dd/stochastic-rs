@@ -7,20 +7,20 @@
 //! ## Estimators
 //!
 //! Free-function estimators that take zero-copy
-//! [`ndarray::ArrayView1<f64>`] paths and return a [`FouEstimateResult`].
+//! [`ndarray::ArrayView1<f64>`] paths and return a [`FouFit`].
 //! The Hurst step in each estimator is delegated to
 //! [`crate::hurst::variations`] (so swap-in via
 //! [`crate::hurst::HurstEstimator`] is possible); this module owns the
 //! `sigma`, `mu`, `theta` recovery formulas that are estimator-specific
 //! to the fOU SDE.
 //!
-//! - [`estimate_fou_v1`] — Daubechies-filter-based fOU estimator
+//! - [`fit_fou_filtered_variations`] — Daubechies-filter-based fOU estimator
 //!   (Coeurjolly variant).  Hurst from
 //!   `crate::hurst::variations::daubechies_h_inner`.
-//! - [`estimate_fou_v2`] — moments-based fOU estimator (no linear
+//! - [`fit_fou_central_differences`] — moments-based fOU estimator (no linear
 //!   filters).  Hurst from
 //!   `crate::hurst::variations::central_diff_h_inner`.
-//! - [`estimate_fou_v4`] — high-frequency `k`-th-order `p`-power-variation
+//! - [`fit_fou_power_variation`] — high-frequency `k`-th-order `p`-power-variation
 //!   estimator (arXiv:1703.09372).  Hurst from
 //!   `crate::hurst::variations::power_variation_h_inner`.
 //!
@@ -50,14 +50,14 @@ use crate::traits::ProcessExt;
 /// Build with [`From<(f64, f64, f64, f64)>`] — the estimator output tuple
 /// is converted positionally as `(hurst, sigma, mu, theta)`.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct FouEstimateResult {
+pub struct FouFit {
   pub hurst: f64,
   pub sigma: f64,
   pub mu: f64,
   pub theta: f64,
 }
 
-impl From<(f64, f64, f64, f64)> for FouEstimateResult {
+impl From<(f64, f64, f64, f64)> for FouFit {
   fn from((hurst, sigma, mu, theta): (f64, f64, f64, f64)) -> Self {
     Self {
       hurst,
@@ -68,13 +68,13 @@ impl From<(f64, f64, f64, f64)> for FouEstimateResult {
   }
 }
 
-impl From<FouEstimateResult> for (f64, f64, f64, f64) {
-  fn from(r: FouEstimateResult) -> Self {
+impl From<FouFit> for (f64, f64, f64, f64) {
+  fn from(r: FouFit) -> Self {
     (r.hurst, r.sigma, r.mu, r.theta)
   }
 }
 
-/// Linear filter selection for [`estimate_fou_v1`].
+/// Linear filter selection for [`fit_fou_filtered_variations`].
 #[derive(PartialEq, Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum FilterType {
@@ -87,12 +87,12 @@ pub enum FilterType {
 /// (a₂ · X)²` with `a` the Daubechies-4 low-pass filter and `a₂` the
 /// zero-interlaced (dilated) kernel; `sigma`, `mu`, `theta` follow
 /// from method-of-moments expressions.
-pub fn estimate_fou_v1(
+pub fn fit_fou_filtered_variations(
   path: ArrayView1<f64>,
   filter_type: FilterType,
   delta: Option<f64>,
   hurst_override: Option<f64>,
-) -> FouEstimateResult {
+) -> FouFit {
   let series_length = path.len();
   let (a, l_filter) = match filter_type {
     FilterType::Daubechies => {
@@ -128,7 +128,7 @@ pub fn estimate_fou_v1(
   let theta_den = sigma.powi(2) * gamma(2.0 * hurst + 1.0);
   let theta = (theta_num / theta_den).powf(-1.0 / (2.0 * hurst));
 
-  FouEstimateResult {
+  FouFit {
     hurst,
     sigma,
     mu,
@@ -141,12 +141,12 @@ pub fn estimate_fou_v1(
 /// `H = ½ log₂(Σ(Δ⁴X)² / Σ(Δ²X)²)` with `Δⁿ` the n-th-order central
 /// finite difference; `sigma` from `(4 - 2^{2H})` scaling; `mu` is the
 /// path mean; `theta` from an ergodic-moment estimator.
-pub fn estimate_fou_v2(
+pub fn fit_fou_central_differences(
   path: ArrayView1<f64>,
   delta: Option<f64>,
   series_length: usize,
   hurst_override: Option<f64>,
-) -> FouEstimateResult {
+) -> FouFit {
   assert_eq!(
     path.len(),
     series_length,
@@ -197,7 +197,7 @@ pub fn estimate_fou_v2(
   let theta_den = n_f.powi(2) * sigma.powi(2) * hurst * gamma(2.0 * hurst);
   let theta = (theta_num / theta_den).powf(-1.0 / (2.0 * hurst));
 
-  FouEstimateResult {
+  FouFit {
     hurst,
     sigma,
     mu,
@@ -257,13 +257,13 @@ impl FouParameterEstimationV3 {
     }
   }
 
-  pub fn estimate_parameters(&mut self) -> FouEstimateResult {
+  pub fn estimate_parameters(&mut self) -> FouFit {
     self.get_path();
     self.hurst_estimator();
     self.sigma_estimator();
     self.mu_estimator();
     self.alpha_estimator();
-    FouEstimateResult::from((
+    FouFit::from((
       self.estimated_hurst.unwrap(),
       self.estimated_sigma.unwrap(),
       self.estimated_mu.unwrap(),
@@ -356,14 +356,14 @@ impl FouParameterEstimationV3 {
 /// `n^{-1+pH} V_{k,p} / (c_{k,p} T) = |sigma|^p`. `theta` is recovered
 /// from the discrete ergodic estimator
 /// `theta = ((1/(n σ² H Γ(2H))) Σ (X − μ)²)^{-1/(2H)}`.
-pub fn estimate_fou_v4(
+pub fn fit_fou_power_variation(
   path: ArrayView1<f64>,
   delta: Option<f64>,
   k: usize,
   p: f64,
   hurst_override: Option<f64>,
   sigma_override: Option<f64>,
-) -> FouEstimateResult {
+) -> FouFit {
   assert!(
     path.len() >= k + 2,
     "estimate_fou_v4: path length ({}) must be at least k + 2 = {}",
@@ -439,7 +439,7 @@ pub fn estimate_fou_v4(
     "estimate_fou_v4: estimated theta must be positive"
   );
 
-  FouEstimateResult {
+  FouFit {
     hurst,
     sigma,
     mu,
@@ -480,7 +480,7 @@ mod tests {
     let n = 1024usize;
     let h_true = 0.7;
     let path = Fou::<f64>::new(h_true, 1.5, 0.0, 0.35, n, Some(0.0), Some(1.0), Unseeded).sample();
-    let res = estimate_fou_v4(
+    let res = fit_fou_power_variation(
       path.view(),
       Some(1.0 / (n - 1) as f64),
       2,
@@ -497,7 +497,7 @@ mod tests {
   fn fou_v4_estimated_hurst_in_range_when_not_fixed() {
     let n = 768usize;
     let path = Fou::<f64>::new(0.65, 1.2, 0.0, 0.25, n, Some(0.0), Some(1.0), Unseeded).sample();
-    let res = estimate_fou_v4(path.view(), Some(1.0 / (n - 1) as f64), 2, 2.0, None, None);
+    let res = fit_fou_power_variation(path.view(), Some(1.0 / (n - 1) as f64), 2, 2.0, None, None);
     assert!((0.0..1.0).contains(&res.hurst));
     assert!(res.sigma > 0.0 && res.theta > 0.0);
   }
@@ -506,7 +506,7 @@ mod tests {
   fn fou_v1_runs_on_fbm_path() {
     let n = 1024usize;
     let path = Fou::<f64>::new(0.7, 1.5, 0.0, 0.35, n, Some(0.0), Some(1.0), Unseeded).sample();
-    let res = estimate_fou_v1(path.view(), FilterType::Daubechies, None, None);
+    let res = fit_fou_filtered_variations(path.view(), FilterType::Daubechies, None, None);
     assert!(res.hurst.is_finite() && res.sigma > 0.0);
   }
 
@@ -514,7 +514,7 @@ mod tests {
   fn fou_v2_runs_on_fbm_path() {
     let n = 1024usize;
     let path = Fou::<f64>::new(0.7, 1.5, 0.0, 0.35, n, Some(0.0), Some(1.0), Unseeded).sample();
-    let res = estimate_fou_v2(path.view(), None, n, None);
+    let res = fit_fou_central_differences(path.view(), None, n, None);
     assert!(res.hurst.is_finite() && res.sigma > 0.0);
   }
 
@@ -523,7 +523,8 @@ mod tests {
     let n = 512usize;
     let path = Fou::<f64>::new(0.6, 1.0, 0.0, 0.2, n, Some(0.0), Some(1.0), Unseeded).sample();
     let h_pinned = 0.42;
-    let res = estimate_fou_v1(path.view(), FilterType::Daubechies, None, Some(h_pinned));
+    let res =
+      fit_fou_filtered_variations(path.view(), FilterType::Daubechies, None, Some(h_pinned));
     assert_eq!(res.hurst, h_pinned);
   }
 
@@ -539,12 +540,12 @@ mod tests {
   #[should_panic(expected = "must be >= 5")]
   fn fou_v2_rejects_short_path() {
     let path = Array1::from_vec(vec![1.0, 2.0, 3.0, 4.0]);
-    let _ = estimate_fou_v2(path.view(), None, path.len(), None);
+    let _ = fit_fou_central_differences(path.view(), None, path.len(), None);
   }
 
   #[test]
   fn fou_estimate_result_round_trips_tuple() {
-    let r: FouEstimateResult = (0.7, 0.3, 0.05, 1.2).into();
+    let r: FouFit = (0.7, 0.3, 0.05, 1.2).into();
     assert_eq!(r.hurst, 0.7);
     assert_eq!(r.sigma, 0.3);
     let t: (f64, f64, f64, f64) = r.into();

@@ -25,65 +25,51 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::gamma_q;
 
+use crate::StatsError;
+use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::validate;
 use crate::traits::FloatExt;
 
-/// Sample autocorrelation function (ACF) up to `max_lag`.
-///
-/// Biased estimator with denominator $c_0$ (statsmodels' `acf(..., fft=False,
-/// adjusted=False)` default), Box-Jenkins §2.1.4:
+/// Biased-denominator sample ACF (statsmodels' default), Box–Jenkins §2.1.4; `Err` on at most
+/// `max_lag` points, a non-finite one or a constant series, and panics unless `max_lag >= 1`.
 /// $$
 /// \hat\rho_k = \frac{\sum_{t=k}^{n-1} (x_t - \bar x)(x_{t-k} - \bar x)}
 /// {\sum_{t=0}^{n-1} (x_t - \bar x)^2}, \quad k = 1, \dots, \text{max\_lag}.
 /// $$
-///
-/// The returned array has length `max_lag`; index `0` is $\hat\rho_1$ (the
-/// trivial $\hat\rho_0 = 1$ is not included).
-///
-/// # Panics
-/// Panics if `x` has fewer than 2 observations, `max_lag == 0`,
-/// `max_lag >= x.len()`, `x` contains a non-finite value, or `x` is
-/// constant (`c_0 = 0`, which would make every `ρ̂_k` an undefined `0/0`).
-pub fn acf<T: FloatExt>(x: ArrayView1<T>, max_lag: usize) -> Array1<T> {
-  let n = x.len();
-  assert!(n >= 2, "acf requires at least 2 observations");
-  assert!(max_lag > 0, "max_lag must be positive");
-  assert!(max_lag < n, "max_lag must be less than the sample size");
+pub fn acf<T: FloatExt>(x: ArrayView1<T>, max_lag: usize) -> Result<Array1<T>, StatsError> {
   assert!(
-    x.iter().all(|v| v.is_finite()),
-    "acf requires finite observations"
+    max_lag >= 1,
+    "max_lag must satisfy `max_lag >= 1`, got max_lag = {max_lag:?}"
   );
+  validate(&as_slice_or_copy(x), max_lag + 1)?;
+  if x.iter().all(|&v| v == x[0]) {
+    return Err(StatsError::DegenerateData("constant series"));
+  }
+  let n = x.len();
 
   let mean = x.iter().copied().sum::<T>() / T::from_usize_(n);
   let centered = x.iter().map(|&v| v - mean).collect::<Vec<_>>();
   let c0 = centered.iter().map(|&d| d * d).sum::<T>();
-  assert!(c0 > T::zero(), "acf requires a non-constant series");
 
   let mut rho = Array1::<T>::zeros(max_lag);
   for k in 1..=max_lag {
     let ck = (k..n).map(|t| centered[t] * centered[t - k]).sum::<T>();
     rho[k - 1] = ck / c0;
   }
-  rho
+  Ok(rho)
 }
 
-/// Partial autocorrelation function (PACF) up to `max_lag`, via the
-/// Durbin-Levinson recursion over the sample [`acf`] (Box-Jenkins §3.2.6):
+/// PACF by the Durbin–Levinson recursion over [`acf`] (Box–Jenkins §3.2.6), index `k − 1` holding
+/// $\phi_{k,k}$; `Err` and panics as [`acf`].
 /// $$
 /// \phi_{k,k} = \frac{\hat\rho_k - \sum_{j=1}^{k-1} \phi_{k-1,j}\hat\rho_{k-j}}
 /// {1 - \sum_{j=1}^{k-1} \phi_{k-1,j}\hat\rho_j}, \qquad
 /// \phi_{k,j} = \phi_{k-1,j} - \phi_{k,k}\,\phi_{k-1,k-j} \quad (j = 1,\dots,k-1).
 /// $$
-///
-/// The returned array has length `max_lag`; index `0` is
-/// $\phi_{1,1} = \hat\rho_1$, index `k-1` is $\phi_{k,k}$.
-///
-/// # Panics
-/// Same as [`acf`] (fewer than 2 observations, `max_lag == 0`,
-/// `max_lag >= x.len()`, a non-finite value, or a constant series) — this
-/// function calls it internally to obtain
-/// $\hat\rho_1,\dots,\hat\rho_{\text{max\_lag}}$.
-pub fn pacf<T: FloatExt>(x: ArrayView1<T>, max_lag: usize) -> Array1<T> {
-  let rho = acf(x, max_lag);
+pub fn pacf<T: FloatExt>(x: ArrayView1<T>, max_lag: usize) -> Result<Array1<T>, StatsError> {
+  let rho = acf(x, max_lag)?;
 
   let mut phi = Array1::<T>::zeros(max_lag);
   phi[0] = rho[0];
@@ -112,63 +98,75 @@ pub fn pacf<T: FloatExt>(x: ArrayView1<T>, max_lag: usize) -> Array1<T> {
     prev[..k].copy_from_slice(&curr[..k]);
   }
 
-  phi
+  Ok(phi)
 }
 
-/// Result of the Ljung-Box portmanteau test for autocorrelation.
+/// Configuration for [`ljung_box`].
 #[derive(Debug, Clone, Copy)]
-pub struct LjungBoxResult {
+pub struct LjungBoxConfig {
+  /// Autocorrelation lags in the statistic.
+  pub lags: usize,
+  /// Parameters fitted to the series before the test: `p + q` for ARMA(p, q) residuals.
+  pub fit_df: usize,
+  /// Significance level used to compute `rejects_null`.
+  pub alpha: f64,
+}
+
+impl Default for LjungBoxConfig {
+  fn default() -> Self {
+    Self {
+      lags: 20,
+      fit_df: 0,
+      alpha: 0.05,
+    }
+  }
+}
+
+/// Ljung–Box portmanteau test (null: no autocorrelation up to `lags`), decided by its p-value.
+#[derive(Debug, Clone)]
+pub struct LjungBoxTest {
   /// Q test statistic.
   pub statistic: f64,
-  /// p-value under the chi-square(`df`) asymptotic null (upper-tail
-  /// survival function).
-  pub p_value: f64,
+  /// p-value under the chi-square(`df`) asymptotic null (upper-tail survival function).
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
+  /// Whether the no-autocorrelation null is rejected at `alpha`.
+  pub rejects_null: bool,
   /// Degrees of freedom, `lags - fit_df`.
   pub df: usize,
   /// Number of autocorrelation lags included in the statistic.
   pub lags: usize,
 }
 
-impl crate::traits::HypothesisTest for LjungBoxResult {
+impl crate::traits::HypothesisTest for LjungBoxTest {
   fn statistic(&self) -> f64 {
     self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    // No `alpha` is threaded through `ljung_box`, so (per the trait's
-    // documented contract) this result is informational only.
-    None
+    Some(self.rejects_null)
   }
 }
 
-/// Ljung-Box portmanteau test for autocorrelation up to lag `lags`.
-///
-/// $$
-/// Q = n(n+2) \sum_{k=1}^{h} \frac{\hat\rho_k^2}{n-k}, \qquad
-/// Q \overset{H_0}{\sim} \chi^2_{h - \text{fit\_df}}
-/// $$
-///
-/// `fit_df` is the number of parameters already fitted to the series (e.g.
-/// $p+q$ for an ARMA(p, q) residual series); pass `0` when testing a raw
-/// series for autocorrelation. The p-value is the upper-tail survival
-/// function of the chi-square distribution, $Q_{\chi^2}(\text{df}/2, Q/2)$,
-/// via the regularised upper incomplete gamma function `gamma_q`.
-///
-/// Reference: Ljung, G. M., & Box, G. E. P. (1978), "On a Measure of Lack of
-/// Fit in Time Series Models", *Biometrika*, 65(2), 297-303.
-///
-/// # Panics
-/// Panics if `lags <= fit_df`. Also panics per [`acf`]'s panics (fewer than
-/// 2 observations, `max_lag == 0`, `max_lag >= x.len()`, a non-finite
-/// value, or a constant series) — called internally with `max_lag = lags`.
-pub fn ljung_box<T: FloatExt>(x: ArrayView1<T>, lags: usize, fit_df: usize) -> LjungBoxResult {
+/// Ljung–Box test of the first `lags` autocorrelations against `χ²(lags − fit_df)`; `Err` as
+/// [`acf`]'s on the series, and panics unless `lags > fit_df` and `0 < alpha < 1`.
+pub fn ljung_box<T: FloatExt>(
+  x: ArrayView1<T>,
+  cfg: LjungBoxConfig,
+) -> Result<LjungBoxTest, StatsError> {
+  let LjungBoxConfig {
+    lags,
+    fit_df,
+    alpha,
+  } = cfg;
   assert!(
     lags > fit_df,
-    "lags must exceed fit_df (lags = {lags}, fit_df = {fit_df})"
+    "lags must satisfy `lags > fit_df`, got lags = {lags:?}, fit_df = {fit_df:?}"
   );
+  assert_alpha(alpha);
 
   let n = x.len();
-  let rho = acf(x, lags);
+  let rho = acf(x, lags)?;
 
   let n_f = n as f64;
   let mut sum = 0.0_f64;
@@ -181,12 +179,14 @@ pub fn ljung_box<T: FloatExt>(x: ArrayView1<T>, lags: usize, fit_df: usize) -> L
   let df = lags - fit_df;
   let p_value = gamma_q(df as f64 / 2.0, statistic / 2.0);
 
-  LjungBoxResult {
+  Ok(LjungBoxTest {
     statistic,
-    p_value,
+    p_value: Some(p_value),
+    critical_values: None,
+    rejects_null: p_value < alpha,
     df,
     lags,
-  }
+  })
 }
 
 #[cfg(test)]
@@ -198,9 +198,18 @@ mod tests {
   use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
+  use super::LjungBoxConfig;
+  use super::StatsError;
   use super::acf;
   use super::ljung_box;
   use super::pacf;
+
+  fn lags_10() -> LjungBoxConfig {
+    LjungBoxConfig {
+      lags: 10,
+      ..LjungBoxConfig::default()
+    }
+  }
 
   /// Self-contained AR(1) generator, mirroring
   /// `stationarity::adf::tests::simulate_ar1` (not imported: that module is
@@ -226,34 +235,47 @@ mod tests {
   #[test]
   fn acf_matches_hand_computation() {
     let x = Array1::<f64>::from(vec![1.0, 2.0, 3.0, 4.0, 5.0]);
-    let rho = acf(x.view(), 3);
+    let rho = acf(x.view(), 3).unwrap();
     assert!((rho[0] - 0.4).abs() < 1e-12, "rho1 = {}", rho[0]);
     assert!((rho[1] - (-0.1)).abs() < 1e-12, "rho2 = {}", rho[1]);
     assert!((rho[2] - (-0.4)).abs() < 1e-12, "rho3 = {}", rho[2]);
   }
 
   #[test]
-  #[should_panic(expected = "acf requires a non-constant series")]
   fn acf_rejects_constant_series() {
     let x = Array1::<f64>::from(vec![5.0; 20]);
-    let _ = acf(x.view(), 3);
+    assert_eq!(
+      acf(x.view(), 3).unwrap_err(),
+      StatsError::DegenerateData("constant series")
+    );
   }
 
   #[test]
-  #[should_panic(expected = "acf requires finite observations")]
   fn acf_rejects_non_finite_series() {
     let mut v = vec![1.0, 2.0, 3.0, 4.0, 5.0];
     v[2] = f64::NAN;
     let x = Array1::<f64>::from(v);
-    let _ = acf(x.view(), 3);
+    assert!(matches!(
+      acf(x.view(), 3).unwrap_err(),
+      StatsError::InvalidObservation { index: 2, .. }
+    ));
+  }
+
+  #[test]
+  fn acf_needs_more_points_than_lags() {
+    let x = Array1::<f64>::from(vec![1.0, 2.0, 3.0]);
+    assert_eq!(
+      acf(x.view(), 3).unwrap_err(),
+      StatsError::InsufficientData { needed: 4, got: 3 }
+    );
   }
 
   /// Durbin-Levinson base case: phi_{1,1} = rho_1 exactly.
   #[test]
   fn pacf_lag1_equals_acf_lag1() {
     let x = Array1::<f64>::from(vec![1.0, 2.0, 3.0, 4.0, 5.0]);
-    let rho = acf(x.view(), 3);
-    let phi = pacf(x.view(), 3);
+    let rho = acf(x.view(), 3).unwrap();
+    let phi = pacf(x.view(), 3).unwrap();
     assert!(
       (phi[0] - rho[0]).abs() < 1e-12,
       "phi[0]={}, rho[0]={}",
@@ -268,7 +290,7 @@ mod tests {
       .into_iter()
       .map(|seed| {
         let x = simulate_ar1(0.7, 20_000, seed);
-        let phi = pacf(ArrayView1::from(&x), 5);
+        let phi = pacf(ArrayView1::from(&x), 5).unwrap();
         let lag1_err = (phi[0] - 0.7).abs();
         let tail_max = phi
           .slice(ndarray::s![1..5])
@@ -292,7 +314,10 @@ mod tests {
         let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
         let mut x = vec![0.0; 2000];
         dist.fill_slice(&mut x);
-        ljung_box(ArrayView1::from(&x), 10, 0).p_value
+        ljung_box(ArrayView1::from(&x), lags_10())
+          .unwrap()
+          .p_value
+          .unwrap()
       })
       .fold(0.0_f64, f64::max);
 
@@ -306,19 +331,26 @@ mod tests {
   fn ljung_box_ar1_rejects() {
     for seed in [2718u64, 999, 42] {
       let x = simulate_ar1(0.5, 2000, seed);
-      let res = ljung_box(ArrayView1::from(&x), 10, 0);
+      let res = ljung_box(ArrayView1::from(&x), lags_10()).unwrap();
       assert!(
-        res.p_value < 1e-6,
-        "seed {seed}: expected p < 1e-6 for AR(1) residual autocorrelation, got {}",
+        res.p_value.unwrap() < 1e-6,
+        "seed {seed}: expected p < 1e-6 for AR(1) residual autocorrelation, got {:?}",
         res.p_value
       );
     }
   }
 
   #[test]
-  #[should_panic(expected = "lags must exceed fit_df")]
+  #[should_panic(expected = "lags must satisfy `lags > fit_df`, got lags = 3, fit_df = 3")]
   fn ljung_box_rejects_bad_df() {
     let x = Array1::<f64>::from(vec![1.0; 20]);
-    let _ = ljung_box(x.view(), 3, 3);
+    let _ = ljung_box(
+      x.view(),
+      LjungBoxConfig {
+        lags: 3,
+        fit_df: 3,
+        alpha: 0.05,
+      },
+    );
   }
 }

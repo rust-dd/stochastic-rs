@@ -53,7 +53,7 @@ use crate::traits::FloatExt;
 
 /// Result of a particle-filter MLE fit of the SV model.
 #[derive(Debug, Clone)]
-pub struct ParticleMleResult {
+pub struct ParticleMleFit {
   /// Long-run log-variance level $\mu$.
   pub mu: f64,
   /// Log-variance persistence $\phi \in (-1, 1)$.
@@ -155,14 +155,14 @@ fn sv_pf_loglik(
 ///
 /// `returns` is the observed return series, `n_particles` the filter size
 /// (500-2000 typical), `seed` the common-random-numbers filter seed.
-pub fn particle_mle_sv<T: FloatExt>(
+pub fn fit_sv_particle_mle<T: FloatExt>(
   returns: ArrayView1<T>,
   n_particles: usize,
   seed: u64,
-) -> ParticleMleResult {
-  let n_obs = returns.len();
+) -> ParticleMleFit {
+  let nobs = returns.len();
   assert!(
-    n_obs >= 10,
+    nobs >= 10,
     "particle_mle_sv requires at least 10 observations"
   );
   assert!(n_particles >= 1, "n_particles must be positive");
@@ -194,7 +194,7 @@ pub fn particle_mle_sv<T: FloatExt>(
   let (p, iters, converged) = nelder_mead(start, 250, neg_ll);
   let (mu, phi, sigma_eta) = unpack(&p);
 
-  ParticleMleResult {
+  ParticleMleFit {
     mu,
     phi,
     sigma_eta,
@@ -237,7 +237,7 @@ mod tests {
   fn particle_mle_recovers_sv_params() {
     let (mu_t, phi_t, sig_t) = (-9.0, 0.9, 0.30);
     let returns = simulate_sv(mu_t, phi_t, sig_t, 1500, 17);
-    let res = particle_mle_sv(returns.view(), 600, 4242);
+    let res = fit_sv_particle_mle(returns.view(), 600, 4242);
     assert!(res.converged, "PF-MLE optimiser must converge");
     assert!(
       (res.mu - mu_t).abs() < 0.7,
@@ -260,6 +260,6 @@ mod tests {
   #[should_panic(expected = "at least 10 observations")]
   fn particle_mle_panics_on_short_series() {
     let s = Array1::from(vec![0.01, -0.02, 0.005]);
-    let _ = particle_mle_sv(s.view(), 100, 1);
+    let _ = fit_sv_particle_mle(s.view(), 100, 1);
   }
 }

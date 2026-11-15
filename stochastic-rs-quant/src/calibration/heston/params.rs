@@ -1,6 +1,6 @@
 use ndarray::Array1;
 use num_complex::Complex64;
-use stochastic_rs_stats::heston_mle::HestonMleResult;
+use stochastic_rs_stats::heston_mle::HestonMleFit;
 
 use super::super::periodic_map;
 
@@ -144,8 +144,8 @@ pub(super) fn feller_sigma_cap(kappa: f64, theta: f64) -> f64 {
   cap
 }
 
-impl From<HestonMleResult> for HestonParams {
-  fn from(mle: HestonMleResult) -> Self {
+impl From<HestonMleFit> for HestonParams {
+  fn from(mle: HestonMleFit) -> Self {
     HestonParams {
       v0: mle.v0,
       kappa: mle.kappa,

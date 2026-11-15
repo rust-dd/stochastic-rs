@@ -21,7 +21,7 @@ use ndarray::array;
 
 use super::HurstDiagnostic;
 use super::HurstEstimator;
-use super::HurstResult;
+use super::HurstFit;
 use crate::StatsError;
 use crate::traits::FloatExt;
 
@@ -63,7 +63,7 @@ impl Variations {
 }
 
 impl<T: FloatExt> HurstEstimator<T> for Variations {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, StatsError> {
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError> {
     let n = x.len();
     match self.kind {
       VariationKind::Daubechies => {
@@ -71,10 +71,10 @@ impl<T: FloatExt> HurstEstimator<T> for Variations {
           return Err(StatsError::InsufficientData { needed: 8, got: n });
         }
         let (h, v1, v2) = daubechies_h_inner::<T>(x)?;
-        Ok(HurstResult {
+        Ok(HurstFit {
           hurst: T::from_f64_fast(h),
           std_err: None,
-          n_obs: n,
+          nobs: n,
           diagnostic: HurstDiagnostic::Variations {
             v_short: T::from_f64_fast(v1),
             v_long: T::from_f64_fast(v2),
@@ -86,10 +86,10 @@ impl<T: FloatExt> HurstEstimator<T> for Variations {
           return Err(StatsError::InsufficientData { needed: 5, got: n });
         }
         let (h, v1, v2) = central_diff_h_inner::<T>(x)?;
-        Ok(HurstResult {
+        Ok(HurstFit {
           hurst: T::from_f64_fast(h),
           std_err: None,
-          n_obs: n,
+          nobs: n,
           diagnostic: HurstDiagnostic::Variations {
             v_short: T::from_f64_fast(v1),
             v_long: T::from_f64_fast(v2),
@@ -119,10 +119,10 @@ impl<T: FloatExt> HurstEstimator<T> for Variations {
           });
         }
         let (h, v1, v2) = power_variation_h_inner::<T>(x, k, p)?;
-        Ok(HurstResult {
+        Ok(HurstFit {
           hurst: T::from_f64_fast(h),
           std_err: None,
-          n_obs: n,
+          nobs: n,
           diagnostic: HurstDiagnostic::Variations {
             v_short: T::from_f64_fast(v1),
             v_long: T::from_f64_fast(v2),
@@ -238,7 +238,7 @@ pub(crate) fn central_diff_h_inner<T: FloatExt>(
 /// `V_{stride=2} / V_{stride=1} → 2^{pH - 1}` (Coeurjolly scaling),
 /// matching the closed-form `H = (1 + log₂(V₂/V₁)) / p`.  The
 /// overlapping [`power_variation`] (used by
-/// [`crate::fou_estimator::estimate_fou_v4`]) does not satisfy this
+/// [`crate::fou::fit_fou_power_variation`]) does not satisfy this
 /// relation and produces biased Hurst estimates.
 pub(crate) fn power_variation_h_inner<T: FloatExt>(
   x: ArrayView1<T>,
@@ -259,7 +259,7 @@ pub(crate) fn power_variation_h_inner<T: FloatExt>(
 
 /// `k`-th order `p`-power variation at the given stride, **overlapping**
 /// windows (step 1).  Used by
-/// [`crate::fou_estimator::estimate_fou_v4`] (its bit-exact regression
+/// [`crate::fou::fit_fou_power_variation`] (its bit-exact regression
 /// test pins this exact formula).  Caller checks length / parameter
 /// validity.
 pub(crate) fn power_variation<T: FloatExt>(

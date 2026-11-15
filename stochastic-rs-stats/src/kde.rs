@@ -36,7 +36,7 @@ impl GaussianKde {
   ///
   /// ```
   /// use ndarray::Array1;
-  /// use stochastic_rs_stats::gaussian_kde::GaussianKde;
+  /// use stochastic_rs_stats::kde::GaussianKde;
   ///
   /// let data = Array1::from(vec![1.0, 2.0, 3.0]);
   /// let kde = GaussianKde::new(data, 0.5);
@@ -100,7 +100,7 @@ impl GaussianKde {
   ///
   /// ```
   /// use ndarray::Array1;
-  /// use stochastic_rs_stats::gaussian_kde::GaussianKde;
+  /// use stochastic_rs_stats::kde::GaussianKde;
   ///
   /// let data = Array1::from(vec![1.0, 2.0, 3.0]);
   /// let kde = GaussianKde::new(data, 0.5);
@@ -130,7 +130,7 @@ impl GaussianKde {
   ///
   /// ```
   /// use ndarray::Array1;
-  /// use stochastic_rs_stats::gaussian_kde::GaussianKde;
+  /// use stochastic_rs_stats::kde::GaussianKde;
   ///
   /// let data = Array1::from(vec![1.0, 2.0, 3.0]);
   /// let kde = GaussianKde::new(data, 0.5);

@@ -198,7 +198,7 @@ pub struct LogRealizedVarianceQmlQuality {
 
 /// Fitted state, causal filter paths, and arithmetic-variance forecasts.
 #[derive(Clone, Debug, PartialEq)]
-pub struct LogRealizedVarianceQmlResult {
+pub struct LogRealizedVarianceQmlFit {
   /// Selected QML parameters.
   pub parameters: LogRealizedVarianceParameters,
   /// Final causal posterior mean of latent log variance.

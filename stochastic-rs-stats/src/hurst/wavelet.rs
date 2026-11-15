@@ -31,7 +31,7 @@ use stochastic_rs_distributions::special::digamma;
 
 use super::HurstDiagnostic;
 use super::HurstEstimator;
-use super::HurstResult;
+use super::HurstFit;
 use super::to_f64_vec;
 use super::weighted_linreg;
 use crate::StatsError;
@@ -94,12 +94,12 @@ impl Wavelet {
 }
 
 impl<T: FloatExt> HurstEstimator<T> for Wavelet {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, StatsError> {
-    let n_obs = x.len();
-    if n_obs < 64 {
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError> {
+    let nobs = x.len();
+    if nobs < 64 {
       return Err(StatsError::InsufficientData {
         needed: 64,
-        got: n_obs,
+        got: nobs,
       });
     }
     if self.j_min < 1 {
@@ -188,10 +188,10 @@ impl<T: FloatExt> HurstEstimator<T> for Wavelet {
       None
     };
 
-    Ok(HurstResult {
+    Ok(HurstFit {
       hurst: T::from_f64_fast(h),
       std_err: std_err.map(T::from_f64_fast),
-      n_obs,
+      nobs,
       diagnostic: HurstDiagnostic::LogLogRegression {
         slope: T::from_f64_fast(slope),
         intercept: T::from_f64_fast(intercept),

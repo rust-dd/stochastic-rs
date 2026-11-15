@@ -22,10 +22,8 @@
 //!
 //! Asymptotic critical values are taken from the canonical tables for
 //! $\pi_0 = 0.15$ (Andrews 1993 Table 1 for Sup-Wald; Andrews-Ploberger
-//! 1994 Tables II and III for Exp-Wald and Avg-Wald). The implementation
-//! requires `pi0 = 0.15` for the embedded critical values; the test
-//! statistic is computed for any `pi0`, but the rejection decision and
-//! p-value bracket use the 0.15 table.
+//! 1994 Tables II and III for Exp-Wald and Avg-Wald). For any other `pi0` or `k > 5` the
+//! statistic is computed, but its p-value bracket, critical values and decision are `None`.
 //!
 //! References:
 //! - Andrews, D.W.K. (1993), "Tests for Parameter Instability and
@@ -42,14 +40,20 @@ use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 
-use super::common::validate_series;
+use crate::StatsError;
+use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::validate;
+use crate::input::validate_rows;
 use crate::linalg::inverse;
 use crate::linalg::solve;
+use crate::traits::RealExt;
 
 /// Which aggregation of the local Wald statistic to report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum ApStatistic {
+pub enum AndrewsPlobergerStatistic {
   /// $\sup_\tau W(\tau)$ — Andrews (1993) Sup-Wald.
   Sup,
   /// $\ln \{ (1/N) \sum_\tau \exp[W(\tau)/2] \}$ — Andrews-Ploberger Exp-Wald.
@@ -60,90 +64,101 @@ pub enum ApStatistic {
 
 /// Configuration for the Andrews / Andrews-Ploberger test.
 #[derive(Debug, Clone, Copy)]
-pub struct ApConfig {
+pub struct AndrewsPlobergerConfig {
   /// Aggregation choice.
-  pub statistic: ApStatistic,
+  pub statistic: AndrewsPlobergerStatistic,
   /// Trim fraction $\pi_0 \in (0, 0.5)$. Tabulated critical values inside
   /// this implementation are for $\pi_0 = 0.15$.
   pub pi0: f64,
-  /// Significance level used to evaluate `null_rejected`.
+  /// Significance level used to evaluate `rejects_null`.
   pub alpha: f64,
 }
 
-impl Default for ApConfig {
+impl Default for AndrewsPlobergerConfig {
   fn default() -> Self {
     Self {
-      statistic: ApStatistic::Sup,
+      statistic: AndrewsPlobergerStatistic::Sup,
       pi0: 0.15,
       alpha: 0.05,
     }
   }
 }
 
-/// Result of the Andrews / Andrews-Ploberger test.
+/// Andrews / Andrews–Ploberger test (null: constant regression parameters); the table holds the
+/// 1 %, 5 % and 10 % levels for `pi0 = 0.15` and `1 <= k <= 5`, and is `None` off it.
 #[derive(Debug, Clone)]
-pub struct ApResult {
-  /// Statistic actually computed (Sup, Exp, or Avg-Wald).
-  pub statistic_kind: ApStatistic,
+pub struct AndrewsPlobergerTest {
   /// Test statistic.
   pub statistic: f64,
-  /// Breakpoint fraction $\tau^* = \arg\max_\tau W(\tau)$ (only meaningful
-  /// for Sup-Wald; otherwise the location of the max along the grid is
-  /// still reported for diagnostic use).
+  /// Upper bound on the p-value: `0.01`, `0.05`, `0.10` or `1.0`, the smallest tabulated level
+  /// whose critical value the statistic reaches.
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
+  /// Whether the parameter-constancy null is rejected at `alpha`; `None` off the table.
+  pub rejects_null: Option<bool>,
+  /// Statistic actually computed (Sup, Exp, or Avg-Wald).
+  pub statistic_kind: AndrewsPlobergerStatistic,
+  /// $\tau^* = \arg\max_\tau W(\tau)$: the break estimate under Sup-Wald, a diagnostic otherwise.
   pub breakpoint_frac: f64,
   /// Local Wald statistic on the trimmed grid `[pi0, 1-pi0]`.
   pub wald_path: Vec<(f64, f64)>,
-  /// Coarse asymptotic p-value bracket: one of `0.01`, `0.05`, `0.10`, or
-  /// `1.0` (no rejection at any tabulated level). Comes from the
-  /// $\pi_0 = 0.15$ critical-value tables; returns `f64::NAN` when `pi0
-  /// != 0.15` or `k` is outside the tabulated range `1..=5`.
-  pub p_value: f64,
-  /// Whether the parameter-constancy null is rejected at `alpha`.
-  pub null_rejected: bool,
 }
 
-impl crate::traits::HypothesisTest for ApResult {
+impl crate::traits::HypothesisTest for AndrewsPlobergerTest {
   fn statistic(&self) -> f64 {
     self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.null_rejected)
+    self.rejects_null
   }
 }
 
-/// Andrews / Andrews-Ploberger structural-break test with unknown
-/// breakpoint.
-///
-/// # Panics
-/// Panics on non-finite inputs, `pi0` outside `(0, 0.5)`, `alpha` outside
-/// `(0, 1)`, or a sample too short to fit OLS on both pieces of the
-/// trimmed grid.
-pub fn andrews_ploberger_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: ApConfig) -> ApResult {
-  let y_slice = y
-    .as_slice()
-    .expect("andrews_ploberger_test requires a contiguous ArrayView1");
-  assert_eq!(y.len(), x.nrows(), "y/x row mismatch");
+/// Andrews / Andrews–Ploberger break test of `y` on `x`; `Err` on too few rows, a non-finite `y` or
+/// `x`, mismatched rows or a NaN Wald path, panics on bad `pi0`, `alpha` or no column.
+pub fn andrews_ploberger_test(
+  y: ArrayView1<f64>,
+  x: ArrayView2<f64>,
+  cfg: AndrewsPlobergerConfig,
+) -> Result<AndrewsPlobergerTest, StatsError> {
   assert!(
     cfg.pi0 > 0.0 && cfg.pi0 < 0.5,
-    "pi0 must be in (0, 0.5), got {}",
+    "pi0 must satisfy `0.0 < pi0 < 0.5`, got pi0 = {:?}",
     cfg.pi0
   );
-  assert!(
-    cfg.alpha > 0.0 && cfg.alpha < 1.0,
-    "alpha must be in (0, 1)"
-  );
-  let t_total = y.len();
+  assert_alpha(cfg.alpha);
   let k = x.ncols();
-  assert!(k >= 1, "design matrix must have at least one regressor");
-  validate_series(y_slice, 3 * k + 4);
-
-  let t1_lo = ((cfg.pi0 * t_total as f64).ceil() as usize).max(k + 1);
-  let t1_hi = (((1.0 - cfg.pi0) * t_total as f64).floor() as usize).min(t_total - k - 1);
   assert!(
-    t1_lo <= t1_hi,
-    "trimmed grid is empty for the given pi0 and sample size"
+    k >= 1,
+    "x.ncols() must satisfy `x.ncols() >= 1`, got x.ncols() = {k:?}"
   );
+  let row = critical_row(cfg.statistic, k, cfg.pi0);
+  let critical_values =
+    row.map(|(c10, c5, c1)| CriticalValues::new([(0.01, c1), (0.05, c5), (0.10, c10)]));
+  let critical = critical_values.as_ref().map(|cv| cv.value_at(cfg.alpha));
+  if x.nrows() != y.len() {
+    return Err(StatsError::DimensionMismatch {
+      expected: y.len(),
+      got: x.nrows(),
+    });
+  }
+  validate(&as_slice_or_copy(y), 3 * k + 4)?;
+  validate_rows(x)?;
+
+  let t_total = y.len();
+  let (t1_lo, t1_hi) = trimmed_grid(t_total, k, cfg.pi0);
+  if t1_lo > t1_hi {
+    let needed = (t_total + 1..)
+      .find(|&t| {
+        let (lo, hi) = trimmed_grid(t, k, cfg.pi0);
+        lo <= hi
+      })
+      .unwrap();
+    return Err(StatsError::InsufficientData {
+      needed,
+      got: t_total,
+    });
+  }
 
   let mut wald_path: Vec<(f64, f64)> = Vec::with_capacity(t1_hi - t1_lo + 1);
   for t1 in t1_lo..=t1_hi {
@@ -152,17 +167,24 @@ pub fn andrews_ploberger_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: ApCon
     wald_path.push((tau, w));
   }
 
-  let (statistic, breakpoint_frac) = aggregate(&wald_path, cfg.statistic);
-  let (p_value, null_rejected) = decide(statistic, cfg.statistic, k, cfg.pi0, cfg.alpha);
+  let (statistic, breakpoint_frac) = aggregate(&wald_path, cfg.statistic)?;
 
-  ApResult {
-    statistic_kind: cfg.statistic,
+  Ok(AndrewsPlobergerTest {
     statistic,
+    p_value: row.map(|row| p_value_bracket(statistic, row)),
+    critical_values,
+    rejects_null: critical.map(|c| statistic >= c),
+    statistic_kind: cfg.statistic,
     breakpoint_frac,
     wald_path,
-    p_value,
-    null_rejected,
-  }
+  })
+}
+
+/// The split indices `[lo, hi]` of the trimmed grid for `t` rows and `k` regressors.
+fn trimmed_grid(t: usize, k: usize, pi0: f64) -> (usize, usize) {
+  let lo = ((pi0 * t as f64).ceil() as usize).max(k + 1);
+  let hi = (((1.0 - pi0) * t as f64).floor() as usize).min(t - k - 1);
+  (lo, hi)
 }
 
 /// Local Wald statistic at split index `t1` (first segment is rows `0..t1`,
@@ -214,44 +236,44 @@ fn segment_fit(
   Some((beta, &xtx_inv * sigma2))
 }
 
-fn aggregate(path: &[(f64, f64)], kind: ApStatistic) -> (f64, f64) {
-  let finite: Vec<(f64, f64)> = path
-    .iter()
-    .copied()
-    .filter(|(_, w)| w.is_finite())
-    .collect();
-  if finite.is_empty() {
-    return (f64::NAN, f64::NAN);
+/// The aggregated statistic and the `τ` of the last maximal `W(τ)`; `Err` on a NaN in the path.
+fn aggregate(
+  path: &[(f64, f64)],
+  kind: AndrewsPlobergerStatistic,
+) -> Result<(f64, f64), StatsError> {
+  let mut max_w = f64::NEG_INFINITY;
+  let mut tau_star = f64::NAN;
+  for &(tau, w) in path {
+    if w >= max_w {
+      tau_star = tau;
+    }
+    max_w = max_w.max_or_nan(w);
   }
-  let &(tau_star, max_w) = finite
-    .iter()
-    .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-    .expect("non-empty by guard above");
-  match kind {
-    ApStatistic::Sup => (max_w, tau_star),
-    ApStatistic::Exp => {
+  if max_w.is_nan() {
+    return Err(StatsError::Numerical { stage: "Wald path" });
+  }
+  let n_grid = path.len() as f64;
+  Ok(match kind {
+    AndrewsPlobergerStatistic::Sup => (max_w, tau_star),
+    AndrewsPlobergerStatistic::Exp => {
       // Subtract the per-tau max for numerical stability of logsumexp:
       // ln{N⁻¹ Σ exp(w/2)} = (max/2) + ln{N⁻¹ Σ exp((w - max)/2)}.
-      let n_grid = finite.len() as f64;
-      let max_over_two = max_w * 0.5;
-      let lse_tail: f64 = finite
+      let lse_tail = path
         .iter()
         .map(|(_, w)| ((w - max_w) * 0.5).exp())
         .sum::<f64>()
         / n_grid;
-      let stat = max_over_two + lse_tail.ln();
-      (stat, tau_star)
+      (max_w * 0.5 + lse_tail.ln(), tau_star)
     }
-    ApStatistic::Avg => {
-      let n_grid = finite.len() as f64;
-      let mean = finite.iter().map(|(_, w)| *w).sum::<f64>() / n_grid;
+    AndrewsPlobergerStatistic::Avg => {
+      let mean = path.iter().map(|(_, w)| *w).sum::<f64>() / n_grid;
       (mean, tau_star)
     }
-  }
+  })
 }
 
 /// Andrews (1993) Table 1 — Sup-Wald critical values for $\pi_0 = 0.15$.
-fn sup_wald_critical(k: usize, alpha: f64) -> Option<(f64, f64, f64)> {
+fn sup_wald_critical(k: usize) -> Option<(f64, f64, f64)> {
   let row = match k {
     1 => (7.17, 8.85, 12.16),
     2 => (9.31, 11.79, 15.46),
@@ -260,11 +282,11 @@ fn sup_wald_critical(k: usize, alpha: f64) -> Option<(f64, f64, f64)> {
     5 => (14.61, 17.61, 22.27),
     _ => return None,
   };
-  Some(select_levels(row, alpha))
+  Some(row)
 }
 
 /// Andrews-Ploberger (1994) Table II — Exp-Wald critical values, $\pi_0 = 0.15$.
-fn exp_wald_critical(k: usize, alpha: f64) -> Option<(f64, f64, f64)> {
+fn exp_wald_critical(k: usize) -> Option<(f64, f64, f64)> {
   let row = match k {
     1 => (1.83, 2.57, 4.13),
     2 => (3.15, 4.07, 5.78),
@@ -273,11 +295,11 @@ fn exp_wald_critical(k: usize, alpha: f64) -> Option<(f64, f64, f64)> {
     5 => (6.54, 7.74, 10.17),
     _ => return None,
   };
-  Some(select_levels(row, alpha))
+  Some(row)
 }
 
 /// Andrews-Ploberger (1994) Table III — Avg-Wald critical values, $\pi_0 = 0.15$.
-fn avg_wald_critical(k: usize, alpha: f64) -> Option<(f64, f64, f64)> {
+fn avg_wald_critical(k: usize) -> Option<(f64, f64, f64)> {
   let row = match k {
     1 => (3.84, 4.69, 6.74),
     2 => (6.13, 7.31, 9.61),
@@ -286,29 +308,23 @@ fn avg_wald_critical(k: usize, alpha: f64) -> Option<(f64, f64, f64)> {
     5 => (12.49, 14.08, 17.10),
     _ => return None,
   };
-  Some(select_levels(row, alpha))
+  Some(row)
 }
 
-fn select_levels(row: (f64, f64, f64), _alpha: f64) -> (f64, f64, f64) {
-  // Returned tuple is always (10%, 5%, 1%); the caller compares against the
-  // appropriate level depending on `alpha`.
-  row
+/// The `(10 %, 5 %, 1 %)` row for `k` regressors; only the `pi0 = 0.15` tables are shipped.
+fn critical_row(kind: AndrewsPlobergerStatistic, k: usize, pi0: f64) -> Option<(f64, f64, f64)> {
+  if (pi0 - 0.15).abs() >= 1e-9 {
+    return None;
+  }
+  match kind {
+    AndrewsPlobergerStatistic::Sup => sup_wald_critical(k),
+    AndrewsPlobergerStatistic::Exp => exp_wald_critical(k),
+    AndrewsPlobergerStatistic::Avg => avg_wald_critical(k),
+  }
 }
 
-fn decide(stat: f64, kind: ApStatistic, k: usize, pi0: f64, alpha: f64) -> (f64, bool) {
-  let table = if (pi0 - 0.15).abs() < 1e-9 {
-    match kind {
-      ApStatistic::Sup => sup_wald_critical(k, alpha),
-      ApStatistic::Exp => exp_wald_critical(k, alpha),
-      ApStatistic::Avg => avg_wald_critical(k, alpha),
-    }
-  } else {
-    None
-  };
-  let Some((c10, c5, c1)) = table else {
-    return (f64::NAN, false);
-  };
-  let p_value = if stat >= c1 {
+fn p_value_bracket(stat: f64, (c10, c5, c1): (f64, f64, f64)) -> f64 {
+  if stat >= c1 {
     0.01
   } else if stat >= c5 {
     0.05
@@ -316,15 +332,7 @@ fn decide(stat: f64, kind: ApStatistic, k: usize, pi0: f64, alpha: f64) -> (f64,
     0.10
   } else {
     1.0
-  };
-  let crit = if alpha <= 0.01 {
-    c1
-  } else if alpha <= 0.05 {
-    c5
-  } else {
-    c10
-  };
-  (p_value, stat >= crit)
+  }
 }
 
 #[cfg(test)]
@@ -369,16 +377,18 @@ mod tests {
     let res = andrews_ploberger_test(
       y.view(),
       x.view(),
-      ApConfig {
-        statistic: ApStatistic::Sup,
+      AndrewsPlobergerConfig {
+        statistic: AndrewsPlobergerStatistic::Sup,
         pi0: 0.15,
         alpha: 0.05,
       },
-    );
+    )
+    .unwrap();
     assert!(
-      !res.null_rejected,
-      "no-break DGP: Sup-Wald should not reject; W = {}, p = {}",
-      res.statistic, res.p_value
+      res.rejects_null == Some(false),
+      "no-break DGP: Sup-Wald should not reject; W = {}, p = {:?}",
+      res.statistic,
+      res.p_value
     );
   }
 
@@ -388,16 +398,18 @@ mod tests {
     let res = andrews_ploberger_test(
       y.view(),
       x.view(),
-      ApConfig {
-        statistic: ApStatistic::Sup,
+      AndrewsPlobergerConfig {
+        statistic: AndrewsPlobergerStatistic::Sup,
         pi0: 0.15,
         alpha: 0.05,
       },
-    );
+    )
+    .unwrap();
     assert!(
-      res.null_rejected,
-      "intercept break at τ=0.5: should reject; W = {}, p = {}",
-      res.statistic, res.p_value
+      res.rejects_null == Some(true),
+      "intercept break at τ=0.5: should reject; W = {}, p = {:?}",
+      res.statistic,
+      res.p_value
     );
     assert!(
       (res.breakpoint_frac - 0.5).abs() < 0.15,
@@ -412,16 +424,18 @@ mod tests {
     let res = andrews_ploberger_test(
       y.view(),
       x.view(),
-      ApConfig {
-        statistic: ApStatistic::Exp,
+      AndrewsPlobergerConfig {
+        statistic: AndrewsPlobergerStatistic::Exp,
         pi0: 0.15,
         alpha: 0.05,
       },
-    );
+    )
+    .unwrap();
     assert!(
-      res.null_rejected,
-      "slope break at τ=0.3: Exp-Wald should reject; W = {}, p = {}",
-      res.statistic, res.p_value
+      res.rejects_null == Some(true),
+      "slope break at τ=0.3: Exp-Wald should reject; W = {}, p = {:?}",
+      res.statistic,
+      res.p_value
     );
   }
 
@@ -431,16 +445,99 @@ mod tests {
     let res = andrews_ploberger_test(
       y.view(),
       x.view(),
-      ApConfig {
-        statistic: ApStatistic::Avg,
+      AndrewsPlobergerConfig {
+        statistic: AndrewsPlobergerStatistic::Avg,
         pi0: 0.15,
         alpha: 0.05,
       },
-    );
+    )
+    .unwrap();
     assert!(
-      res.null_rejected,
-      "intercept break: Avg-Wald should reject; W = {}, p = {}",
-      res.statistic, res.p_value
+      res.rejects_null == Some(true),
+      "intercept break: Avg-Wald should reject; W = {}, p = {:?}",
+      res.statistic,
+      res.p_value
+    );
+  }
+
+  #[test]
+  fn off_its_table_the_test_takes_no_decision() {
+    let (y, x) = simulate(300, (1.0, 2.0), (4.0, 2.0), Some(0.5), 7);
+    let cfg = AndrewsPlobergerConfig {
+      pi0: 0.2,
+      ..AndrewsPlobergerConfig::default()
+    };
+    let res = andrews_ploberger_test(y.view(), x.view(), cfg).unwrap();
+    assert!(res.statistic.is_finite());
+    assert_eq!(res.rejects_null, None);
+    assert_eq!(crate::traits::HypothesisTest::null_rejected(&res), None);
+    assert!(res.p_value.is_none() && res.critical_values.is_none());
+  }
+
+  #[test]
+  fn a_design_with_other_rows_is_a_dimension_mismatch() {
+    let (y, _) = simulate(300, (1.0, 2.0), (1.0, 2.0), None, 42);
+    let (_, x) = simulate(299, (1.0, 2.0), (1.0, 2.0), None, 42);
+    assert_eq!(
+      andrews_ploberger_test(y.view(), x.view(), AndrewsPlobergerConfig::default()).unwrap_err(),
+      StatsError::DimensionMismatch {
+        expected: 300,
+        got: 299
+      }
+    );
+  }
+
+  /// At `pi0 = 0.45` nine rows trim to no split while ten keep one (eight do too: the grid is not
+  /// monotone in the sample size).
+  #[test]
+  fn an_empty_trimmed_grid_is_insufficient_data() {
+    let y = Array1::from_iter((0..9).map(|i| (i as f64 * 0.7).sin()));
+    let x = Array2::<f64>::ones((9, 1));
+    let cfg = AndrewsPlobergerConfig {
+      pi0: 0.45,
+      ..AndrewsPlobergerConfig::default()
+    };
+    assert_eq!(
+      andrews_ploberger_test(y.view(), x.view(), cfg).unwrap_err(),
+      StatsError::InsufficientData { needed: 10, got: 9 }
+    );
+  }
+
+  #[test]
+  fn a_non_finite_design_row_is_an_invalid_observation() {
+    let (y, mut x) = simulate(300, (1.0, 2.0), (1.0, 2.0), None, 42);
+    x[[120, 1]] = f64::INFINITY;
+    assert_eq!(
+      andrews_ploberger_test(y.view(), x.view(), AndrewsPlobergerConfig::default()).unwrap_err(),
+      StatsError::InvalidObservation {
+        index: 120,
+        value: f64::INFINITY,
+        constraint: "finite"
+      }
+    );
+  }
+
+  #[test]
+  fn a_nan_on_the_wald_path_is_a_numerical_error() {
+    let path = [(0.2, 1.0), (0.3, f64::NAN), (0.4, 3.0)];
+    for kind in [
+      AndrewsPlobergerStatistic::Sup,
+      AndrewsPlobergerStatistic::Exp,
+      AndrewsPlobergerStatistic::Avg,
+    ] {
+      assert_eq!(
+        aggregate(&path, kind),
+        Err(StatsError::Numerical { stage: "Wald path" })
+      );
+    }
+  }
+
+  #[test]
+  fn tied_wald_maxima_report_the_last_breakpoint() {
+    let path = [(0.2, 4.0), (0.3, 1.0), (0.4, 4.0)];
+    assert_eq!(
+      aggregate(&path, AndrewsPlobergerStatistic::Sup),
+      Ok((4.0, 0.4))
     );
   }
 
@@ -448,7 +545,7 @@ mod tests {
   fn sup_wald_matches_andrews_1993_critical_for_k_eq_2() {
     // White-box check: confirm the embedded table reproduces Andrews (1993)
     // Table 1 row k = 2.
-    let (c10, c5, c1) = sup_wald_critical(2, 0.05).unwrap();
+    let (c10, c5, c1) = sup_wald_critical(2).unwrap();
     assert!((c10 - 9.31).abs() < 1e-6);
     assert!((c5 - 11.79).abs() < 1e-6);
     assert!((c1 - 15.46).abs() < 1e-6);

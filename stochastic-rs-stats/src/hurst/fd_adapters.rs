@@ -23,8 +23,8 @@
 //! let signal = Fbm::new(hurst, 256, Some(1.0), Deterministic::new(7)).sample();
 //!
 //! let est = Higuchi { kmax: 32 };
-//! let d_result = FractalDimEstimator::estimate(&est, signal.view())?; // → FdResult
-//! let h_result = HurstEstimator::estimate(&est, signal.view())?;      // → HurstResult
+//! let d_result = FractalDimEstimator::estimate(&est, signal.view())?; // → FdFit
+//! let h_result = HurstEstimator::estimate(&est, signal.view())?;      // → HurstFit
 //! assert!((1.0..2.0).contains(&d_result.d));
 //! assert!((0.0..=1.0).contains(&h_result.hurst));
 //! # Ok(())
@@ -35,7 +35,7 @@ use ndarray::ArrayView1;
 
 use super::HurstDiagnostic;
 use super::HurstEstimator;
-use super::HurstResult;
+use super::HurstFit;
 use crate::StatsError;
 use crate::fractal_dim::FractalDimEstimator;
 use crate::fractal_dim::Higuchi;
@@ -43,14 +43,14 @@ use crate::fractal_dim::Variogram;
 use crate::traits::FloatExt;
 
 impl<T: FloatExt> HurstEstimator<T> for Higuchi {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, StatsError> {
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError> {
     let fd_result = FractalDimEstimator::<T>::estimate(self, x)?;
     fd_to_hurst::<T>(fd_result)
   }
 }
 
 impl<T: FloatExt> HurstEstimator<T> for Variogram {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, StatsError> {
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError> {
     let fd_result = FractalDimEstimator::<T>::estimate(self, x)?;
     fd_to_hurst::<T>(fd_result)
   }
@@ -58,18 +58,16 @@ impl<T: FloatExt> HurstEstimator<T> for Variogram {
 
 /// Convert a fractal-dimension result into a Hurst result via
 /// `H = 2 - D`, clamped to `(0, 1)`.
-fn fd_to_hurst<T: FloatExt>(
-  fd: crate::fractal_dim::FdResult<T>,
-) -> Result<HurstResult<T>, StatsError> {
+fn fd_to_hurst<T: FloatExt>(fd: crate::fractal_dim::FdFit<T>) -> Result<HurstFit<T>, StatsError> {
   let d_f64 = fd.d.to_f64().unwrap_or(f64::NAN);
   if !d_f64.is_finite() {
     return Err(StatsError::DegenerateData("constant or zero-variance path"));
   }
   let h = (2.0 - d_f64).clamp(0.0, 1.0);
-  Ok(HurstResult {
+  Ok(HurstFit {
     hurst: T::from_f64_fast(h),
     std_err: None,
-    n_obs: fd.n_obs,
+    nobs: fd.nobs,
     diagnostic: HurstDiagnostic::FractalDim { d: fd.d },
   })
 }

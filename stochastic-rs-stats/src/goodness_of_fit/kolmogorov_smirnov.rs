@@ -28,8 +28,8 @@
 //! finite-sample table; [`ks_critical_value`]'s own tests pin these
 //! constants. No finite-sample correction (e.g. Stephens 1974's
 //! `\sqrt n \to \sqrt n + 0.12 + 0.11/\sqrt n`) is applied, so
-//! [`KolmogorovSmirnovResult::critical_value`] and
-//! [`KolmogorovSmirnovResult::p_value`] stay defined by the *same*
+//! [`KolmogorovSmirnovTest::critical_values`] and
+//! [`KolmogorovSmirnovTest::p_value`] stay defined by the *same*
 //! uncorrected asymptotic formula and therefore always agree on
 //! rejection at the sample sizes this crate's own callers use (tens of
 //! thousands) — mixing a corrected p-value with an uncorrected critical
@@ -71,6 +71,10 @@
 
 use ndarray::ArrayView1;
 
+use crate::StatsError;
+use crate::critical_values::CriticalValues;
+use crate::input::assert_alpha;
+use crate::input::validate;
 use crate::traits::HypothesisTest;
 
 /// Configuration for [`kolmogorov_smirnov_test`].
@@ -86,29 +90,29 @@ impl Default for KolmogorovSmirnovConfig {
   }
 }
 
-/// Result of a one-sample Kolmogorov-Smirnov goodness-of-fit test.
-#[derive(Debug, Clone, Copy)]
-pub struct KolmogorovSmirnovResult {
+/// One-sample Kolmogorov–Smirnov test (null: the given continuous `cdf`), decided by its p-value.
+#[derive(Debug, Clone)]
+pub struct KolmogorovSmirnovTest {
   /// The `D_n` statistic.
   pub statistic: f64,
-  /// `D_{n,\alpha} = c(\alpha)/\sqrt n` — reject when `statistic` exceeds this.
-  pub critical_value: f64,
   /// Asymptotic p-value from the Kolmogorov distribution's survival
   /// function at `\sqrt n \cdot` `statistic` (uncorrected, see module doc).
-  pub p_value: f64,
-  /// Sample size `n`.
-  pub n: usize,
+  pub p_value: Option<f64>,
+  /// `D_{n,\alpha} = c(\alpha)/\sqrt n` at the `alpha` the test was run with.
+  pub critical_values: Option<CriticalValues>,
   /// Whether the null (sample ~ the given `cdf`) is rejected at `alpha`.
-  pub reject: bool,
+  pub rejects_null: bool,
+  /// Sample size `n`.
+  pub nobs: usize,
 }
 
-impl HypothesisTest for KolmogorovSmirnovResult {
+impl HypothesisTest for KolmogorovSmirnovTest {
   fn statistic(&self) -> f64 {
     self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.reject)
+    Some(self.rejects_null)
   }
 }
 
@@ -153,31 +157,16 @@ fn kolmogorov_survival(lambda: f64) -> f64 {
   (2.0 * sum).clamp(0.0, 1.0)
 }
 
-/// One-sample Kolmogorov-Smirnov goodness-of-fit test against a fully
-/// specified continuous `cdf`.
-///
-/// # Panics
-/// Panics if `sample` has fewer than 2 observations, contains
-/// non-finite values, or `cfg.alpha` is not in `(0, 1)`.
+/// One-sample Kolmogorov–Smirnov test against a fully specified continuous `cdf`; `Err` below 2
+/// points or on a non-finite one, and panics unless `0 < alpha < 1`.
 pub fn kolmogorov_smirnov_test(
   sample: ArrayView1<f64>,
   mut cdf: impl FnMut(f64) -> f64,
   cfg: KolmogorovSmirnovConfig,
-) -> KolmogorovSmirnovResult {
-  assert!(
-    sample.len() >= 2,
-    "KS test requires at least 2 observations"
-  );
-  assert!(
-    sample.iter().all(|x| x.is_finite()),
-    "KS test requires finite observations"
-  );
-  assert!(
-    cfg.alpha > 0.0 && cfg.alpha < 1.0,
-    "alpha must be in (0, 1)"
-  );
-
+) -> Result<KolmogorovSmirnovTest, StatsError> {
+  assert_alpha(cfg.alpha);
   let mut sorted = sample.to_vec();
+  validate(&sorted, 2)?;
   sorted.sort_by(f64::total_cmp);
   let n = sorted.len();
   let n_f = n as f64;
@@ -192,13 +181,16 @@ pub fn kolmogorov_smirnov_test(
   }
 
   let p_value = kolmogorov_survival(n_f.sqrt() * d);
-  KolmogorovSmirnovResult {
+  Ok(KolmogorovSmirnovTest {
     statistic: d,
-    critical_value: ks_critical_value(cfg.alpha, n),
-    p_value,
-    n,
-    reject: p_value < cfg.alpha,
-  }
+    p_value: Some(p_value),
+    critical_values: Some(CriticalValues::new([(
+      cfg.alpha,
+      ks_critical_value(cfg.alpha, n),
+    )])),
+    rejects_null: p_value < cfg.alpha,
+    nobs: n,
+  })
 }
 
 #[cfg(test)]
@@ -254,7 +246,9 @@ mod tests {
           |v| dist.cdf(v).unwrap(),
           KolmogorovSmirnovConfig::default(),
         )
+        .unwrap()
         .p_value
+        .unwrap()
       })
       .fold(0.0_f64, f64::max);
     assert!(
@@ -274,8 +268,9 @@ mod tests {
       ArrayView1::from(&x),
       |v| normal.cdf(v).unwrap(),
       KolmogorovSmirnovConfig::default(),
-    );
-    assert!(res.reject, "expected rejection, got {res:?}");
-    assert!(res.statistic > res.critical_value);
+    )
+    .unwrap();
+    assert!(res.rejects_null, "expected rejection, got {res:?}");
+    assert!(res.statistic > res.critical_values.as_ref().unwrap().at(0.05).unwrap());
   }
 }

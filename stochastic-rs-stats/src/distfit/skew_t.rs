@@ -10,7 +10,7 @@ use stochastic_rs_distributions::traits::DistributionExt;
 use super::minimise;
 use super::negative_log_likelihood;
 use super::sample;
-use crate::evt::gpd_fit::information_inverse;
+use crate::evt::gpd::information_inverse;
 use crate::traits::FloatExt;
 
 /// Hansen skew-t maximum-likelihood fit with location and scale.
@@ -62,7 +62,7 @@ fn log_density(x: &[f64], mu: f64, sigma: f64, eta: f64, lambda: f64) -> f64 {
 ///
 /// If there are fewer than 10 observations, any is non-finite, or they are
 /// constant.
-pub fn skew_t_fit<T: FloatExt>(data: ArrayView1<T>) -> SkewTFit {
+pub fn fit_skew_t<T: FloatExt>(data: ArrayView1<T>) -> SkewTFit {
   let (x, mean, sd) = sample(data, 10);
   let objective = |p: &[f64]| log_density(&x, p[0], p[1].exp(), 2.0 + p[2].exp(), p[3].tanh());
   let mut starts = Vec::new();

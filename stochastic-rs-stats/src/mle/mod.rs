@@ -18,7 +18,7 @@ mod fit;
 mod process_impls;
 
 pub use density::DensityApprox;
-pub use fit::MleResult;
+pub use fit::MleFit;
 pub use fit::fit_mle;
 
 /// A one-dimensional stochastic differential equation
@@ -568,11 +568,11 @@ mod tests {
   #[test]
   fn mle_result_display() {
     use ndarray::array;
-    let result = MleResult {
+    let result = MleFit {
       params: array![1.0, 2.0, 0.3],
       param_names: vec!["kappa".into(), "mu".into(), "sigma".into()],
       log_likelihood: -100.0,
-      sample_size: 1000,
+      nobs: 1000,
       aic: 206.0,
       bic: 220.0,
       converged: true,

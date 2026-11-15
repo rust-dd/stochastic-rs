@@ -7,7 +7,7 @@ since: 2.0.0
 status: stable
 ---
 
-The `stochastic-rs-stats` crate ships estimators for common quant-finance workflows. Most take an `ArrayView1<T>` (a price or log-return series) and return a flat `*Result` struct whose field names are estimator-specific (see [Common pattern](#common-pattern)).
+The `stochastic-rs-stats` crate ships estimators for common quant-finance workflows. Most take an `ArrayView1<T>` (a price or log-return series) and return a flat struct: an estimate (`*Fit`) with estimator-specific fields, or a hypothesis test (`*Test`) with the four fields every test shares (see [Common pattern](#common-pattern)).
 
 ## Sub-modules
 
@@ -20,11 +20,11 @@ The `stochastic-rs-stats` crate ships estimators for common quant-finance workfl
 | `econometrics`         | Engle-Granger and Johansen (trace + maximum-eigenvalue) cointegration with VECM estimation, Granger causality, Gaussian-emission HMM with Baum-Welch, CUSUM and PELT changepoint |
 | `filtering`            | Particle filter, UKF, random-walk Metropolis-Hastings                          |
 | `hurst`                | Six native estimators behind one `HurstEstimator` trait: rescaled-range, DFA, GPH, wavelet, Whittle (the Fukasawa, Takabatake & Westphal 2019 adapted quasi-likelihood), variations. Two more implement the same trait by adapting a fractal-dimension estimate (`fractal_dim::{Higuchi, Variogram}`, `H = 2 - D`) — **8** `HurstEstimator` implementors in total. `hurst::whittle` also exposes `Whittle`'s algorithm through one-shot functions (`estimate`, `estimate_from_prices`) — see below |
-| `gaussian_kde`         | Gaussian KDE                                                                   |
+| `kde`                  | Gaussian KDE                                                                   |
 | `tail_index`           | Hill estimator + variants                                                      |
 | `spectral`             | Periodogram and spectrum search                                                |
 | `leverage`             | Leverage-effect estimators                                                     |
-| `fou_estimator`        | fOU MLE with Hurst joint estimation                                            |
+| `fou`                  | fOU MLE with Hurst joint estimation                                            |
 | `garch`                | GARCH / GJR-GARCH / EGARCH Gaussian QMLE with inverse-Hessian and Bollerslev-Wooldridge robust standard errors |
 | `evt`                  | Extreme-value theory: Hill tail index, GPD peaks-over-threshold (MLE and Hosking-Wallis PWM) with VaR / ES, GEV block-maxima MLE with return levels |
 | `distfit`              | Maximum-likelihood fits of the skewed return laws: Johnson SU, Hansen skew-t with location and scale, variance gamma |
@@ -93,7 +93,7 @@ print("threshold on |L(i)|:", test.threshold)
 
 ### Johansen cointegration and VECM
 
-`johansen_test` returns both rank statistics of the concentrated likelihood — $\lambda_{\mathrm{trace}}(r) = -T\sum_{i>r}\log(1-\hat\lambda_i)$ and $\lambda_{\max}(r) = -T\log(1-\hat\lambda_{r+1})$ — with the 5% MacKinnon–Haug–Michelis critical values for an unrestricted constant, and the rank each sequential procedure selects. `vecm_fit` then gives the maximum-likelihood VECM at a chosen rank: $\hat\beta$ (Johansen's normalisation $\hat\beta' S_{11}\hat\beta = I$), $\hat\alpha$, $\hat\Pi = \hat\alpha\hat\beta'$, the short-run $\hat\Gamma_i$, the constant, residuals and their covariance.
+`johansen_test` returns both rank statistics of the concentrated likelihood — $\lambda_{\mathrm{trace}}(r) = -T\sum_{i>r}\log(1-\hat\lambda_i)$ and $\lambda_{\max}(r) = -T\log(1-\hat\lambda_{r+1})$ — with the 5% MacKinnon–Haug–Michelis critical values for an unrestricted constant, and the rank each sequential procedure selects. `fit_vecm` then gives the maximum-likelihood VECM at a chosen rank: $\hat\beta$ (Johansen's normalisation $\hat\beta' S_{11}\hat\beta = I$), $\hat\alpha$, $\hat\Pi = \hat\alpha\hat\beta'$, the short-run $\hat\Gamma_i$, the constant, residuals and their covariance.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -116,7 +116,7 @@ print("gamma_1:", fit.gamma()[0])
 
 ### GARCH-family QMLE
 
-`garch_fit` maximises the Gaussian quasi-likelihood of a GARCH($p$,$q$), GJR-GARCH($p$,$q$) or EGARCH($p$,$q$) recursion with a constant or zero mean, in unconstrained coordinates that keep the fit inside the stationarity region. The result carries the parameters, both the inverse-Hessian and the Bollerslev–Wooldridge robust standard errors (the latter stay valid under non-Gaussian innovations), the conditional-variance path, standardised residuals, log-likelihood, AIC/BIC and persistence. Pre-sample terms follow the backcast convention of the `arch` reference implementation, and the fits match its results.
+`fit_garch` maximises the Gaussian quasi-likelihood of a GARCH($p$,$q$), GJR-GARCH($p$,$q$) or EGARCH($p$,$q$) recursion with a constant or zero mean, in unconstrained coordinates that keep the fit inside the stationarity region. The result carries the parameters, both the inverse-Hessian and the Bollerslev–Wooldridge robust standard errors (the latter stay valid under non-Gaussian innovations), the conditional-variance path, standardised residuals, log-likelihood, AIC/BIC and persistence. Pre-sample terms follow the backcast convention of the `arch` reference implementation, and the fits match its results.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -136,7 +136,7 @@ print("persistence:", fit.persistence, "log-likelihood:", fit.log_likelihood)
 
 ### Extreme-value theory: Hill, peaks-over-threshold and block maxima
 
-`hill_estimator` is Hill's (1975) tail index from the $k$ largest positive observations with its $\hat\xi/\sqrt k$ standard error. `pot_fit` fits a generalised Pareto distribution to the excesses over a threshold by maximum likelihood (`gpd_fit` on its own for pre-computed excesses) and turns it into tail quantiles and expected shortfall with the McNeil–Frey–Embrechts formulas; `mean_excess` is the mean-residual-life plot for choosing the threshold. `block_maxima` and `gev_fit` are the block-maxima route, with `return_level(m)` for the level exceeded once every $m$ blocks. The MLE fitters report inverse-information standard errors, and the fits reproduce `scipy` on identical data.
+`fit_hill` is Hill's (1975) tail index from the $k$ largest positive observations with its $\hat\xi/\sqrt k$ standard error. `fit_pot` fits a generalised Pareto distribution to the excesses over a threshold by maximum likelihood (`fit_gpd` on its own for pre-computed excesses) and turns it into tail quantiles and expected shortfall with the McNeil–Frey–Embrechts formulas; `mean_excess` is the mean-residual-life plot for choosing the threshold. `block_maxima` and `fit_gev` are the block-maxima route, with `return_level(m)` for the level exceeded once every $m$ blocks. The MLE fitters report inverse-information standard errors, and the fits reproduce `scipy` on identical data.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -162,7 +162,7 @@ print("100-block return level:", gev.return_level(100.0))
 
 ### Fitting the skewed return distributions
 
-`distfit` fits the skewed laws of the distributions crate by maximum likelihood with their closed-form densities: `johnson_su_fit` (γ, δ, ξ, λ), `skew_t_fit` (Hansen's standardised skew-t with location μ and scale σ, so η > 2 and |λ| < 1 are kept by construction) and `variance_gamma_fit` (σ, ν, θ, μ through the Bessel-form density). Each returns the estimates, inverse-information standard errors, log-likelihood, AIC and BIC; the estimates match tightly converged `scipy` / `arch` optima on identical data. `evt::gpd_pwm` is the matching closed-form Hosking-Wallis estimator for threshold excesses.
+`distfit` fits the skewed laws of the distributions crate by maximum likelihood with their closed-form densities: `fit_johnson_su` (γ, δ, ξ, λ), `fit_skew_t` (Hansen's standardised skew-t with location μ and scale σ, so η > 2 and |λ| < 1 are kept by construction) and `fit_variance_gamma` (σ, ν, θ, μ through the Bessel-form density). Each returns the estimates, inverse-information standard errors, log-likelihood, AIC and BIC; the estimates match tightly converged `scipy` / `arch` optima on identical data. `evt::fit_gpd_pwm` is the matching closed-form Hosking-Wallis estimator for threshold excesses.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -184,7 +184,7 @@ print("sigma, nu, theta, mu:", vg.sigma, vg.nu, vg.theta, vg.mu)
 
 ### ADF stationarity test
 
-Null hypothesis: unit root (non-stationary). `adf_test` lives in the `stationarity` module and reports the decision directly as `reject_unit_root: bool` at the `alpha` set on `AdfConfig` — there is no `p_value` field, only the test statistic and tabulated critical values.
+Null hypothesis: unit root (non-stationary). `adf_test` lives in the `stationarity` module and reports the decision as `rejects_null` at the `alpha` set on `AdfConfig`; `p_value` is `None` (no p-value table) and `critical_values` holds the 1 %, 5 % and 10 % levels.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -202,7 +202,7 @@ print(f"t-stat={res.statistic:.3f}, reject_unit_root={res.reject_unit_root}")
 
 ### Hurst exponent estimation
 
-The `hurst` module unifies six estimators (rescaled-range, DFA, GPH, wavelet, Whittle, variations) behind one `HurstEstimator` trait — `estimate(x) -> Result<HurstResult, StatsError>` — plus two more (`Higuchi`, `Variogram`) that reach the same trait by adapting a fractal-dimension estimate. The example uses `RescaledRange` (Hurst 1951 + Anis-Lloyd 1976 bias correction), which estimates the Hurst exponent of a signal directly:
+The `hurst` module unifies six estimators (rescaled-range, DFA, GPH, wavelet, Whittle, variations) behind one `HurstEstimator` trait — `estimate(x) -> Result<HurstFit, StatsError>` — plus two more (`Higuchi`, `Variogram`) that reach the same trait by adapting a fractal-dimension estimate. The example uses `RescaledRange` (Hurst 1951 + Anis-Lloyd 1976 bias correction), which estimates the Hurst exponent of a signal directly:
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -219,7 +219,7 @@ print(f"H = {res.hurst:.3f}")
 </Tab>
 </Tabs>
 
-All eight `HurstEstimator` implementors have Python classes (`RescaledRange`, `Dfa`, `Gph`, `Wavelet`, `Whittle`, `Variations`, `Higuchi`, `Variogram` — the last two also via `.estimate_hurst(x)` alongside their native `.estimate(x) -> FdResult` fractal-dimension output).
+All eight `HurstEstimator` implementors have Python classes (`RescaledRange`, `Dfa`, `Gph`, `Wavelet`, `Whittle`, `Variations`, `Higuchi`, `Variogram` — the last two also via `.estimate_hurst(x)` alongside their native `.estimate(x) -> FdFit` fractal-dimension output).
 
 `Whittle` takes a different input from the other five native estimators. It and the `FukasawaHurst` class (Python) / the `estimate`, `estimate_from_prices` functions (Rust, `stats::hurst::whittle`) are the **same** Fukasawa, Takabatake & Westphal (2019) adapted-Whittle quasi-likelihood estimator, reached through the trait or a one-shot constructor. Either way it estimates the roughness of a *latent volatility* process from a realized-variance time series, not the Hurst exponent of a path sampled directly from `Fgn`; fed raw path samples, it returns a number unrelated to the path's exponent. Build its input from intraday prices (`estimate_from_prices`, `FukasawaHurst.from_prices`).
 
@@ -253,24 +253,25 @@ Seven of the eight `HurstEstimator` implementors estimate the same quantity — 
 
 ## Common pattern
 
-Every estimator returns a plain struct, but the **field names are estimator-specific**, not a uniform `point`/`se`/`p_value` triple. For example:
+Every hypothesis test shares `statistic`, `p_value: Option<f64>`, `critical_values: Option<CriticalValues>` and `rejects_null`, and answers through `HypothesisTest`; estimates keep **estimator-specific** fields, not a uniform `point`/`se` pair. For example:
 
 ```rust
 // RescaledRange, Dfa, Gph, Wavelet, Whittle, Variations all return this:
-pub struct HurstResult<T: FloatExt = f64> {
+pub struct HurstFit<T: FloatExt = f64> {
   pub hurst: T,
   pub std_err: Option<T>, // only Gph and Wavelet populate this
-  pub n_obs: usize,
+  pub nobs: usize,
   pub diagnostic: HurstDiagnostic<T>,
 }
 
-// while the stationarity tests (ADF, KPSS, ...) return their own shape:
-pub struct AdfResult {
+// while every test leads with the four shared fields, then its own:
+pub struct AdfTest {
   pub statistic: f64,
+  pub p_value: Option<f64>,                    // None: no p-value table is shipped
+  pub critical_values: Option<CriticalValues>, // the 1 %, 5 % and 10 % levels
+  pub rejects_null: bool,
   pub used_lags: usize,
   pub nobs: usize,
-  pub critical_values: CriticalValues,
-  pub reject_unit_root: bool,
 }
 ```
 

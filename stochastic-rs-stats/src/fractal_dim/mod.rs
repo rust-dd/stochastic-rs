@@ -2,7 +2,7 @@
 //!
 //! Unified [`FractalDimEstimator`] trait plus per-method config struct,
 //! mirroring [`crate::hurst::HurstEstimator`].  Each estimator returns a
-//! [`FdResult`] carrying the point estimate `D`, sample size, and a
+//! [`FdFit`] carrying the point estimate `D`, sample size, and a
 //! method-specific [`FdDiagnostic`] (log-log slope diagnostics for
 //! Higuchi, variogram-ratio diagnostics for variogram).
 //!
@@ -32,23 +32,23 @@ pub use variogram::Variogram;
 ///
 /// Each estimator owns its configuration (kmax, p-norm, …) and exposes
 /// a single [`estimate`] entry point that consumes a contiguous time
-/// series and produces a [`FdResult`].
+/// series and produces a [`FdFit`].
 ///
 /// Concrete impls in this crate: [`Higuchi`], [`Variogram`].
 ///
 /// [`estimate`]: FractalDimEstimator::estimate
 pub trait FractalDimEstimator<T: FloatExt> {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<FdResult<T>, StatsError>;
+  fn estimate(&self, x: ArrayView1<T>) -> Result<FdFit<T>, StatsError>;
 }
 
 /// Point estimate plus method-specific diagnostics for the fractal
 /// dimension `D`.
 #[derive(Clone, Debug)]
-pub struct FdResult<T: FloatExt = f64> {
+pub struct FdFit<T: FloatExt = f64> {
   /// Point estimate of the fractal dimension.
   pub d: T,
   /// Number of observations consumed.
-  pub n_obs: usize,
+  pub nobs: usize,
   /// Method-specific auxiliary information.
   pub diagnostic: FdDiagnostic<T>,
 }

@@ -18,7 +18,7 @@ use crate::optim::more_thuente;
 
 /// Result of maximum likelihood estimation.
 #[derive(Clone, Debug)]
-pub struct MleResult {
+pub struct MleFit {
   /// Estimated parameter vector.
   pub params: Array1<f64>,
   /// Parameter names.
@@ -26,7 +26,7 @@ pub struct MleResult {
   /// Maximised log-likelihood value.
   pub log_likelihood: f64,
   /// Sample size (number of transitions).
-  pub sample_size: usize,
+  pub nobs: usize,
   /// Akaike Information Criterion.
   pub aic: f64,
   /// Bayesian Information Criterion.
@@ -46,7 +46,7 @@ pub struct MleResult {
   pub iterations: usize,
 }
 
-impl fmt::Display for MleResult {
+impl fmt::Display for MleFit {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     writeln!(f, "MLE Result")?;
     writeln!(f, "----------")?;
@@ -56,7 +56,7 @@ impl fmt::Display for MleResult {
     writeln!(f, "  log-lik      = {:.4}", self.log_likelihood)?;
     writeln!(f, "  AIC          = {:.4}", self.aic)?;
     writeln!(f, "  BIC          = {:.4}", self.bic)?;
-    writeln!(f, "  sample size  = {}", self.sample_size)?;
+    writeln!(f, "  sample size  = {}", self.nobs)?;
     writeln!(f, "  converged    = {}", self.converged)?;
     writeln!(f, "  iterations   = {}", self.iterations)?;
     Ok(())
@@ -176,7 +176,7 @@ fn resolve_fit_outcome(
 /// * `param_bounds` - optional custom bounds (defaults to model's `param_bounds()`)
 ///
 /// # Returns
-/// An [`MleResult`] with estimated parameters, log-likelihood, AIC, BIC,
+/// An [`MleFit`] with estimated parameters, log-likelihood, AIC, BIC,
 /// and the `converged` / `iterations` optimiser signals. Always check
 /// `converged` before trusting `params` — a non-converged run returns the
 /// best feasible point found rather than fabricating a successful fit.
@@ -192,7 +192,7 @@ pub fn fit_mle(
   dt: f64,
   density: DensityApprox,
   param_bounds: Option<Vec<(f64, f64)>>,
-) -> MleResult {
+) -> MleFit {
   let bounds = param_bounds.unwrap_or_else(|| model.param_bounds());
   let n_params = model.num_params();
   let n_transitions = sample.len() - 1;
@@ -264,11 +264,11 @@ pub fn fit_mle(
   let aic = 2.0 * k - 2.0 * log_lik;
   let bic = k * n.ln() - 2.0 * log_lik;
 
-  MleResult {
+  MleFit {
     params: Array1::from_vec(clamped),
     param_names: model.param_names().into_iter().map(String::from).collect(),
     log_likelihood: log_lik,
-    sample_size: n_transitions,
+    nobs: n_transitions,
     aic,
     bic,
     converged,

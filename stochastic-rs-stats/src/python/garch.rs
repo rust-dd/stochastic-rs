@@ -46,7 +46,7 @@ impl PyGarchFit {
       };
       let spec = GarchSpec { kind, p, q, mean };
       Ok(Self {
-        inner: crate::garch::garch_fit(returns.as_array(), spec),
+        inner: crate::garch::fit_garch(returns.as_array(), spec),
       })
     })?
   }

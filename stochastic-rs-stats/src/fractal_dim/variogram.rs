@@ -14,7 +14,7 @@ use std::f64::consts::LN_2;
 use ndarray::ArrayView1;
 
 use super::FdDiagnostic;
-use super::FdResult;
+use super::FdFit;
 use super::FractalDimEstimator;
 use crate::StatsError;
 use crate::traits::FloatExt;
@@ -40,8 +40,8 @@ impl Variogram {
 }
 
 impl<T: FloatExt> FractalDimEstimator<T> for Variogram {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<FdResult<T>, StatsError> {
-    let n_obs = x.len();
+  fn estimate(&self, x: ArrayView1<T>) -> Result<FdFit<T>, StatsError> {
+    let nobs = x.len();
     if !(self.p.is_finite() && self.p > 0.0) {
       return Err(StatsError::InvalidParameter {
         name: "p",
@@ -51,9 +51,9 @@ impl<T: FloatExt> FractalDimEstimator<T> for Variogram {
     }
     let p_t = T::from_f64_fast(self.p);
     let (d, v1, v2) = compute_with_diagnostic::<T>(x, p_t)?;
-    Ok(FdResult {
+    Ok(FdFit {
       d: T::from_f64_fast(d),
-      n_obs,
+      nobs,
       diagnostic: FdDiagnostic::VariogramRatio {
         v_short: T::from_f64_fast(v1),
         v_long: T::from_f64_fast(v2),

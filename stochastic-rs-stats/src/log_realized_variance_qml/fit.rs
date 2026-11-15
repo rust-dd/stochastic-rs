@@ -4,7 +4,7 @@ use super::LogRealizedVarianceParameters;
 use super::LogRealizedVarianceQmlBounds;
 use super::LogRealizedVarianceQmlConfig;
 use super::LogRealizedVarianceQmlDiagnostics;
-use super::LogRealizedVarianceQmlResult;
+use super::LogRealizedVarianceQmlFit;
 use super::filter::filter_centered_log_observations;
 use super::math::measurement_moments;
 use super::math::validate_config;
@@ -21,7 +21,7 @@ const OBJECTIVE_PENALTY: f64 = 1e300;
 pub fn fit_log_realized_variance_qml(
   realized_variance: ArrayView1<f64>,
   config: LogRealizedVarianceQmlConfig,
-) -> Result<LogRealizedVarianceQmlResult, StatsError> {
+) -> Result<LogRealizedVarianceQmlFit, StatsError> {
   validate_config(config);
   let realized_variance = realized_variance.to_vec();
   validate_observations(&realized_variance, config.minimum_observations)?;
@@ -120,7 +120,7 @@ fn finish_result(
   bounds: LogRealizedVarianceQmlBounds,
   total_iterations: usize,
   converged_starts: usize,
-) -> Result<LogRealizedVarianceQmlResult, StatsError> {
+) -> Result<LogRealizedVarianceQmlFit, StatsError> {
   let current_index = selected.filtered.filtered_log_variance_path.len() - 1;
   let current_log_variance = selected.filtered.filtered_log_variance_path[current_index];
   let current_covariance = selected.filtered.filtered_state_covariance_path[current_index];
@@ -168,7 +168,7 @@ fn finish_result(
     total_iterations,
     converged: selected.converged,
   };
-  Ok(LogRealizedVarianceQmlResult {
+  Ok(LogRealizedVarianceQmlFit {
     parameters: selected.parameters,
     current_filtered_log_variance: current_log_variance,
     current_filtered_state_covariance: current_covariance,

@@ -26,8 +26,8 @@ pub struct LogRealizedVarianceFilterResult {
   pub log_likelihood: f64,
 }
 
-/// Causal fixed-parameter filter over RV from non-overlapping `block_degrees_of_freedom`-return
-/// blocks; `Err` on empty, non-finite or non-positive RV, panics on invalid parameters or size 0.
+/// Causal Kalman filter over RV of non-overlapping `block_degrees_of_freedom`-return blocks; panics
+/// on bad parameters or size 0, `Err` on empty, non-finite or non-positive RV or filter breakdown.
 pub fn filter_log_realized_variance(
   realized_variance: ArrayView1<f64>,
   block_degrees_of_freedom: usize,

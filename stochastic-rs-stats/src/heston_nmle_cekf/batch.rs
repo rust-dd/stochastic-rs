@@ -10,8 +10,8 @@ use super::filter::HestonCekfCorrection;
 use super::filter::HestonCekfFilterConfig;
 use super::filter::HestonCekfPositiveStatePolicy;
 use super::filter::filter_heston_cekf_batch;
-use crate::heston_mle::HestonMleResult;
-use crate::heston_mle::nmle_heston_with_delta;
+use crate::heston_mle::HestonMleFit;
+use crate::heston_mle::fit_heston_nmle_with_delta;
 
 /// Configuration of the alternating batch estimator (published API).
 #[derive(Clone, Debug)]
@@ -56,8 +56,8 @@ impl Default for HestonNmleCekfConfig {
 
 /// Output of the alternating batch estimator (published API).
 #[derive(Clone, Debug)]
-pub struct HestonNmleCekfResult {
-  pub params: HestonMleResult,
+pub struct HestonNmleCekfFit {
+  pub params: HestonMleFit,
   pub vol_path: Array1<f64>,
   pub cov_path: Array1<f64>,
   pub iterations: usize,
@@ -71,10 +71,10 @@ pub struct HestonNmleCekfResult {
 /// CEKF filtering property and this composition is not the causal online
 /// recursion from Wang et al. After termination, no additional parameter
 /// refresh is performed.
-pub fn nmle_cekf_heston(
+pub fn fit_heston_nmle_cekf(
   prices: ArrayView1<'_, f64>,
   config: HestonNmleCekfConfig,
-) -> HestonNmleCekfResult {
+) -> HestonNmleCekfFit {
   validate_batch_config(prices, &config);
   let mut parameters = config.initial_params.projected_batch();
   let mut converged = false;
@@ -82,7 +82,7 @@ pub fn nmle_cekf_heston(
 
   for iteration in 0..config.max_iters {
     let (variance_path, _) = cekf_pass(prices, parameters, &config);
-    let nmle = nmle_heston_with_delta(prices, variance_path.view(), config.r, config.delta);
+    let nmle = fit_heston_nmle_with_delta(prices, variance_path.view(), config.r, config.delta);
     let updated = HestonNmleCekfParams::from(nmle).projected_batch();
     let blended = blend_params(parameters, updated, config.param_damping).projected_batch();
     let max_difference = (blended.kappa - parameters.kappa)
@@ -100,8 +100,8 @@ pub fn nmle_cekf_heston(
   }
 
   let (variance_path, covariance_path) = cekf_pass(prices, parameters, &config);
-  HestonNmleCekfResult {
-    params: HestonMleResult {
+  HestonNmleCekfFit {
+    params: HestonMleFit {
       v0: variance_path[0].max(0.0),
       kappa: parameters.kappa,
       theta: parameters.theta,

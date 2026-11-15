@@ -15,10 +15,16 @@
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::norm_cdf;
 
+use crate::StatsError;
+use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::validate;
+
 /// Configuration for the Anderson-Darling normality test.
 #[derive(Debug, Clone, Copy)]
 pub struct AndersonDarlingConfig {
-  /// Significance level used to compute `reject_normality`.
+  /// Significance level used to compute `rejects_null`.
   pub alpha: f64,
 }
 
@@ -28,26 +34,27 @@ impl Default for AndersonDarlingConfig {
   }
 }
 
-/// Result of the Anderson-Darling normality test.
-#[derive(Debug, Clone, Copy)]
-pub struct AndersonDarlingResult {
+/// Anderson–Darling test (null: normality), decided by Stephens' p-value approximation.
+#[derive(Debug, Clone)]
+pub struct AndersonDarlingTest {
   /// Raw A^2 statistic.
   pub statistic: f64,
+  /// Approximate p-value for normality (Stephens-style approximation).
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
+  /// Whether normality is rejected at `alpha`.
+  pub rejects_null: bool,
   /// Stephens finite-sample adjusted statistic.
   pub adjusted_statistic: f64,
-  /// Approximate p-value for normality (Stephens-style approximation).
-  pub p_value: f64,
-  /// Whether normality is rejected at `alpha`.
-  pub reject_normality: bool,
 }
 
-impl crate::traits::HypothesisTest for AndersonDarlingResult {
+impl crate::traits::HypothesisTest for AndersonDarlingTest {
   fn statistic(&self) -> f64 {
     self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.reject_normality)
+    Some(self.rejects_null)
   }
 }
 
@@ -79,37 +86,25 @@ fn ad_pvalue_from_adjusted_statistic(a2_star: f64) -> f64 {
   p.clamp(0.0, 1.0)
 }
 
-/// Anderson-Darling test for normality with estimated mean and variance.
-///
-/// # Panics
-/// Panics if the sample has fewer than 8 points or contains non-finite values.
+/// Anderson–Darling normality test with estimated mean and variance; `Err` below 8 points, on a
+/// non-finite or a constant sample, and panics unless `0 < alpha < 1`.
 pub fn anderson_darling_normal_test(
   sample: ArrayView1<f64>,
   cfg: AndersonDarlingConfig,
-) -> AndersonDarlingResult {
-  let sample = sample
-    .as_slice()
-    .expect("anderson_darling_normal_test requires a contiguous ArrayView1");
-  assert!(
-    sample.len() >= 8,
-    "Anderson-Darling requires at least 8 observations"
-  );
-  assert!(
-    sample.iter().all(|x| x.is_finite()),
-    "Anderson-Darling requires finite observations"
-  );
-  assert!(
-    cfg.alpha > 0.0 && cfg.alpha < 1.0,
-    "alpha must be in (0, 1)"
-  );
+) -> Result<AndersonDarlingTest, StatsError> {
+  assert_alpha(cfg.alpha);
+  let sample = as_slice_or_copy(sample);
+  validate(&sample, 8)?;
 
   let mut sorted = sample.to_vec();
   sorted.sort_by(f64::total_cmp);
   let n = sorted.len();
   let n_f = n as f64;
+  if sorted[0] == sorted[n - 1] {
+    return Err(StatsError::DegenerateData("constant sample"));
+  }
 
   let (mean, std) = mean_std(&sorted);
-  assert!(std > 0.0, "Anderson-Darling requires non-constant sample");
 
   let eps = 1e-15;
   let cdf = |x: f64| norm_cdf((x - mean) / std);
@@ -126,12 +121,13 @@ pub fn anderson_darling_normal_test(
   let adjusted_statistic = statistic * (1.0 + 0.75 / n_f + 2.25 / (n_f * n_f));
   let p_value = ad_pvalue_from_adjusted_statistic(adjusted_statistic);
 
-  AndersonDarlingResult {
+  Ok(AndersonDarlingTest {
     statistic,
+    p_value: Some(p_value),
+    critical_values: None,
+    rejects_null: p_value < cfg.alpha,
     adjusted_statistic,
-    p_value,
-    reject_normality: p_value < cfg.alpha,
-  }
+  })
 }
 
 #[cfg(test)]
@@ -145,6 +141,7 @@ mod tests {
 
   use super::AndersonDarlingConfig;
   use super::anderson_darling_normal_test;
+  use crate::StatsError;
 
   #[test]
   fn anderson_darling_accepts_normal_sample() {
@@ -163,7 +160,10 @@ mod tests {
         let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
         let mut x = vec![0.0; 4000];
         dist.fill_slice(&mut x);
-        anderson_darling_normal_test(ArrayView1::from(&x), AndersonDarlingConfig::default()).p_value
+        anderson_darling_normal_test(ArrayView1::from(&x), AndersonDarlingConfig::default())
+          .unwrap()
+          .p_value
+          .unwrap()
       })
       .fold(0.0_f64, f64::max);
 
@@ -179,10 +179,21 @@ mod tests {
     let mut x = vec![0.0; 4000];
     dist.fill_slice(&mut x);
 
-    let res = anderson_darling_normal_test(ArrayView1::from(&x), AndersonDarlingConfig::default());
+    let res =
+      anderson_darling_normal_test(ArrayView1::from(&x), AndersonDarlingConfig::default()).unwrap();
     assert!(
-      res.reject_normality,
+      res.rejects_null,
       "expected rejection for non-normal sample, got {res:?}"
+    );
+  }
+
+  #[test]
+  fn a_constant_sample_is_degenerate_data() {
+    let x = [2.5; 10];
+    assert_eq!(
+      anderson_darling_normal_test(ArrayView1::from(&x), AndersonDarlingConfig::default())
+        .unwrap_err(),
+      StatsError::DegenerateData("constant sample")
     );
   }
 }

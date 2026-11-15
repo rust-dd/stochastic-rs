@@ -39,13 +39,13 @@ use basin::LbfgsState;
 use basin::Lbfgsb;
 
 pub use johnson_su::JohnsonSuFit;
-pub use johnson_su::johnson_su_fit;
+pub use johnson_su::fit_johnson_su;
 use ndarray::ArrayView1;
 
 pub use skew_t::SkewTFit;
-pub use skew_t::skew_t_fit;
+pub use skew_t::fit_skew_t;
 pub use variance_gamma::VarianceGammaFit;
-pub use variance_gamma::variance_gamma_fit;
+pub use variance_gamma::fit_variance_gamma;
 
 use crate::optim::more_thuente;
 use crate::optim::nelder_mead_vec;

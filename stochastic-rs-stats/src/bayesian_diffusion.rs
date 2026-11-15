@@ -34,7 +34,7 @@ use crate::traits::FloatExt;
 
 /// Posterior summary of a Bayesian diffusion calibration.
 #[derive(Debug, Clone)]
-pub struct BayesianDiffusionResult {
+pub struct BayesianDiffusionFit {
   /// Posterior mean of $\kappa$.
   pub kappa_mean: f64,
   /// Posterior mean of $\theta$.
@@ -56,7 +56,7 @@ pub struct BayesianDiffusionResult {
 /// `proposal_scale` is the per-dimension Gaussian step in **log-parameter**
 /// space, ordered $(\ln\kappa, \ln\theta, \ln\sigma)$. Tune it so the
 /// acceptance rate lands in the 0.2-0.5 band.
-pub fn bayesian_diffusion<T: FloatExt>(
+pub fn fit_diffusion_bayesian<T: FloatExt>(
   series: ArrayView1<T>,
   dt: f64,
   kind: DiffusionKind,
@@ -64,10 +64,10 @@ pub fn bayesian_diffusion<T: FloatExt>(
   n_samples: usize,
   burn_in: usize,
   seed: u64,
-) -> BayesianDiffusionResult {
-  let n_obs = series.len();
+) -> BayesianDiffusionFit {
+  let nobs = series.len();
   assert!(
-    n_obs >= 3,
+    nobs >= 3,
     "bayesian_diffusion requires at least 3 observations"
   );
   assert!(dt.is_finite() && dt > 0.0, "dt must be finite and positive");
@@ -119,7 +119,7 @@ pub fn bayesian_diffusion<T: FloatExt>(
     sigmas.push(mh.samples[[r, 2]].exp());
   }
 
-  BayesianDiffusionResult {
+  BayesianDiffusionFit {
     kappa_mean: mean(&kappas),
     theta_mean: mean(&thetas),
     sigma_mean: mean(&sigmas),
@@ -191,7 +191,7 @@ mod tests {
     let mut covered = false;
     for (path_seed, chain_seed) in [(9u64, 42u64), (11, 43), (13, 44)] {
       let path = simulate_ou(kt, tt, st, 0.05, dt, 6000, path_seed);
-      let res = bayesian_diffusion(
+      let res = fit_diffusion_bayesian(
         path.view(),
         dt,
         DiffusionKind::OrnsteinUhlenbeck,
@@ -230,7 +230,7 @@ mod tests {
   #[should_panic(expected = "at least 3 observations")]
   fn bayesian_diffusion_panics_on_short_series() {
     let s = Array1::from(vec![0.05, 0.06]);
-    let _ = bayesian_diffusion(
+    let _ = fit_diffusion_bayesian(
       s.view(),
       1.0 / 252.0,
       DiffusionKind::OrnsteinUhlenbeck,

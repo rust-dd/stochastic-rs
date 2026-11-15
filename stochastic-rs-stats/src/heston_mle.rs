@@ -7,7 +7,7 @@
 use ndarray::ArrayView1;
 
 #[derive(Clone, Debug)]
-pub struct HestonMleResult {
+pub struct HestonMleFit {
   /// Initial variance/volatility level.
   pub v0: f64,
   /// Mean-reversion speed parameter.
@@ -26,12 +26,12 @@ pub struct HestonMleResult {
 /// - Wang et al. (2018), NMLE closed-form estimators
 ///   <https://doi.org/10.1007/s11432-017-9215-8>
 ///   <http://scis.scichina.com/en/2018/042202.pdf>
-pub fn nmle_heston(s: ArrayView1<f64>, v: ArrayView1<f64>, r: f64) -> HestonMleResult {
+pub fn fit_heston_nmle(s: ArrayView1<f64>, v: ArrayView1<f64>, r: f64) -> HestonMleFit {
   assert_eq!(s.len(), v.len(), "s and v must have the same length");
-  let n_obs = v.len();
-  assert!(n_obs >= 2, "nmle_heston requires at least 2 observations");
-  let delta = 1.0 / (n_obs - 1) as f64;
-  nmle_heston_with_delta(s, v, r, delta)
+  let nobs = v.len();
+  assert!(nobs >= 2, "nmle_heston requires at least 2 observations");
+  let delta = 1.0 / (nobs - 1) as f64;
+  fit_heston_nmle_with_delta(s, v, r, delta)
 }
 
 /// NMLE estimator with explicit sampling interval `delta`.
@@ -40,23 +40,23 @@ pub fn nmle_heston(s: ArrayView1<f64>, v: ArrayView1<f64>, r: f64) -> HestonMleR
 /// - Wang et al. (2018), Eq. (19)-(21) and rho moment estimator
 ///   <https://doi.org/10.1007/s11432-017-9215-8>
 ///   <http://scis.scichina.com/en/2018/042202.pdf>
-pub fn nmle_heston_with_delta(
+pub fn fit_heston_nmle_with_delta(
   s: ArrayView1<f64>,
   v: ArrayView1<f64>,
   r: f64,
   delta: f64,
-) -> HestonMleResult {
+) -> HestonMleFit {
   const EPS: f64 = 1e-12;
 
   assert_eq!(s.len(), v.len(), "s and v must have the same length");
-  let n_obs = v.len();
-  assert!(n_obs >= 2, "nmle_heston requires at least 2 observations");
+  let nobs = v.len();
+  assert!(nobs >= 2, "nmle_heston requires at least 2 observations");
   assert!(
     delta.is_finite() && delta > 0.0,
     "delta must be finite and positive"
   );
 
-  let n_f = (n_obs - 1) as f64;
+  let n_f = (nobs - 1) as f64;
 
   // Following Wang et al. (2018), Eq. (19)-(21):
   // P = kappa * theta - sigma^2 / 4, with closed-form estimators from sqrt-variance dynamics.
@@ -65,7 +65,7 @@ pub fn nmle_heston_with_delta(
   let mut sum_sqrt_ratio = 0.0;
   let mut sum_sqrt_prod = 0.0;
 
-  for i in 1..n_obs {
+  for i in 1..nobs {
     let v_prev = v[i - 1].max(EPS);
     let v_curr = v[i].max(EPS);
 
@@ -91,7 +91,7 @@ pub fn nmle_heston_with_delta(
   kappa_hat = kappa_hat.max(EPS);
 
   let mut sum_res2 = 0.0;
-  for i in 1..n_obs {
+  for i in 1..nobs {
     let v_prev = v[i - 1].max(EPS);
     let v_curr = v[i].max(EPS);
     let drift_term = (delta / (2.0 * v_prev.sqrt())) * (p_hat - kappa_hat * v_prev);
@@ -109,7 +109,7 @@ pub fn nmle_heston_with_delta(
   theta_hat = theta_hat.max(EPS);
 
   let mut sum_dw1dw2 = 0.0;
-  for i in 1..n_obs {
+  for i in 1..nobs {
     let v_prev = v[i - 1].max(EPS);
     let v_curr = v[i].max(EPS);
     let s_prev = s[i - 1].max(EPS);
@@ -123,7 +123,7 @@ pub fn nmle_heston_with_delta(
 
   let rho_hat = (sum_dw1dw2 / (n_f * delta)).clamp(-1.0, 1.0);
 
-  HestonMleResult {
+  HestonMleFit {
     v0: v[0].max(0.0),
     kappa: kappa_hat,
     theta: theta_hat,
@@ -138,12 +138,12 @@ pub fn nmle_heston_with_delta(
 /// - Wang et al. (2018), PMLE closed-form estimators
 ///   <https://doi.org/10.1007/s11432-017-9215-8>
 ///   <http://scis.scichina.com/en/2018/042202.pdf>
-pub fn pmle_heston(s: ArrayView1<f64>, v: ArrayView1<f64>, r: f64) -> HestonMleResult {
+pub fn fit_heston_pmle(s: ArrayView1<f64>, v: ArrayView1<f64>, r: f64) -> HestonMleFit {
   assert_eq!(s.len(), v.len(), "s and v must have the same length");
-  let n_obs = v.len();
-  assert!(n_obs >= 2, "pmle_heston requires at least 2 observations");
-  let delta = 1.0 / (n_obs - 1) as f64;
-  pmle_heston_with_delta(s, v, r, delta)
+  let nobs = v.len();
+  assert!(nobs >= 2, "pmle_heston requires at least 2 observations");
+  let delta = 1.0 / (nobs - 1) as f64;
+  fit_heston_pmle_with_delta(s, v, r, delta)
 }
 
 /// PMLE estimator with explicit sampling interval `delta`.
@@ -152,30 +152,30 @@ pub fn pmle_heston(s: ArrayView1<f64>, v: ArrayView1<f64>, r: f64) -> HestonMleR
 /// - Wang et al. (2018), PMLE formulas and rho moment estimator
 ///   <https://doi.org/10.1007/s11432-017-9215-8>
 ///   <http://scis.scichina.com/en/2018/042202.pdf>
-pub fn pmle_heston_with_delta(
+pub fn fit_heston_pmle_with_delta(
   s: ArrayView1<f64>,
   v: ArrayView1<f64>,
   r: f64,
   delta: f64,
-) -> HestonMleResult {
+) -> HestonMleFit {
   const EPS: f64 = 1e-12;
 
   assert_eq!(s.len(), v.len(), "s and v must have the same length");
-  let n_obs = v.len();
-  assert!(n_obs >= 2, "pmle_heston requires at least 2 observations");
+  let nobs = v.len();
+  assert!(nobs >= 2, "pmle_heston requires at least 2 observations");
   assert!(
     delta.is_finite() && delta > 0.0,
     "delta must be finite and positive"
   );
 
-  let n_f = (n_obs - 1) as f64;
+  let n_f = (nobs - 1) as f64;
 
   let mut sum_v_k = 0.0;
   let mut sum_v_prev = 0.0;
   let mut sum_inv_v_prev = 0.0;
   let mut sum_ratio = 0.0;
 
-  for i in 1..n_obs {
+  for i in 1..nobs {
     let v_prev = v[i - 1].max(EPS);
     let v_k = v[i].max(EPS);
     sum_v_k += v_k;
@@ -207,7 +207,7 @@ pub fn pmle_heston_with_delta(
   beta2_hat = beta2_hat.max(EPS);
 
   let mut sum_beta3 = 0.0;
-  for i in 1..n_obs {
+  for i in 1..nobs {
     let v_prev = v[i - 1].max(EPS);
     let v_k = v[i].max(EPS);
     let residual = v_k - v_prev * beta1_hat - beta2_hat * (1.0 - beta1_hat);
@@ -222,7 +222,7 @@ pub fn pmle_heston_with_delta(
   let sigma_hat = sigma2_hat.sqrt();
 
   let mut sum_dw1dw2 = 0.0;
-  for i in 1..n_obs {
+  for i in 1..nobs {
     let v_prev = v[i - 1].max(EPS);
     let v_k = v[i].max(EPS);
     let s_prev = s[i - 1].max(EPS);
@@ -236,7 +236,7 @@ pub fn pmle_heston_with_delta(
 
   let rho_hat = (sum_dw1dw2 / (n_f * delta)).clamp(-1.0, 1.0);
 
-  HestonMleResult {
+  HestonMleFit {
     v0: v[0].max(0.0),
     kappa: kappa_hat,
     theta: theta_hat,
@@ -252,17 +252,17 @@ mod tests {
   use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
-  use super::nmle_heston;
-  use super::nmle_heston_with_delta;
-  use super::pmle_heston;
-  use super::pmle_heston_with_delta;
+  use super::fit_heston_nmle;
+  use super::fit_heston_nmle_with_delta;
+  use super::fit_heston_pmle;
+  use super::fit_heston_pmle_with_delta;
 
   #[test]
   #[should_panic(expected = "s and v must have the same length")]
   fn nmle_heston_panics_on_mismatched_lengths() {
     let s = Array1::from(vec![100.0, 101.0, 102.0]);
     let v = Array1::from(vec![0.04, 0.05]);
-    let _ = nmle_heston(s.view(), v.view(), 0.01);
+    let _ = fit_heston_nmle(s.view(), v.view(), 0.01);
   }
 
   #[test]
@@ -270,7 +270,7 @@ mod tests {
   fn nmle_heston_panics_on_short_series() {
     let s = Array1::from(vec![100.0]);
     let v = Array1::from(vec![0.04]);
-    let _ = nmle_heston(s.view(), v.view(), 0.01);
+    let _ = fit_heston_nmle(s.view(), v.view(), 0.01);
   }
 
   #[test]
@@ -278,7 +278,7 @@ mod tests {
   fn nmle_heston_with_delta_panics_on_non_positive_step() {
     let s = Array1::from(vec![100.0, 101.0]);
     let v = Array1::from(vec![0.04, 0.05]);
-    let _ = nmle_heston_with_delta(s.view(), v.view(), 0.01, 0.0);
+    let _ = fit_heston_nmle_with_delta(s.view(), v.view(), 0.01, 0.0);
   }
 
   #[test]
@@ -286,7 +286,7 @@ mod tests {
   fn pmle_heston_with_delta_panics_on_non_positive_step() {
     let s = Array1::from(vec![100.0, 101.0]);
     let v = Array1::from(vec![0.04, 0.05]);
-    let _ = pmle_heston_with_delta(s.view(), v.view(), 0.01, 0.0);
+    let _ = fit_heston_pmle_with_delta(s.view(), v.view(), 0.01, 0.0);
   }
 
   #[test]
@@ -295,7 +295,7 @@ mod tests {
   /// any() over them — the best-of pattern from `integration-test-writing`
   /// SKILL section 1.2.
   fn nmle_heston_recovers_reasonable_params_from_synthetic_path() {
-    // A daily step over ~16 years. The `nmle_heston` default of delta =
+    // A daily step over ~16 years. The `fit_heston_nmle` default of delta =
     // 1/(n-1) puts the whole path inside one year, where kappa and theta are
     // barely identifiable at all — two of three seeds drove the optimiser to
     // a boundary. Volatility of variance and correlation are estimable
@@ -337,7 +337,7 @@ mod tests {
         s[i] = log_s_next.exp();
       }
 
-      nmle_heston_with_delta(s.view(), v.view(), r, dt)
+      fit_heston_nmle_with_delta(s.view(), v.view(), r, dt)
     };
 
     let fits = [7u64, 19, 41].map(|seed| (seed, run(seed)));
@@ -415,7 +415,7 @@ mod tests {
       s[i] = log_s_next.exp();
     }
 
-    let est = pmle_heston(s.view(), v.view(), r);
+    let est = fit_heston_pmle(s.view(), v.view(), r);
     assert!(est.kappa.is_finite() && est.kappa > 0.0);
     assert!(est.theta.is_finite() && est.theta > 0.0);
     assert!(est.sigma.is_finite() && est.sigma > 0.0);

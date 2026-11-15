@@ -9,14 +9,14 @@
 //! algorithm", *Science China Information Sciences* 61.
 //! DOI: 10.1007/s11432-017-9215-8
 
-use crate::heston_mle::HestonMleResult;
+use crate::heston_mle::HestonMleFit;
 
 mod batch;
 mod filter;
 
 pub use batch::HestonNmleCekfConfig;
-pub use batch::HestonNmleCekfResult;
-pub use batch::nmle_cekf_heston;
+pub use batch::HestonNmleCekfFit;
+pub use batch::fit_heston_nmle_cekf;
 pub use filter::HestonCekfConsistencyBounds;
 pub use filter::HestonCekfCorrection;
 pub use filter::HestonCekfFilterConfig;
@@ -54,8 +54,8 @@ impl Default for HestonNmleCekfParams {
   }
 }
 
-impl From<HestonMleResult> for HestonNmleCekfParams {
-  fn from(value: HestonMleResult) -> Self {
+impl From<HestonMleFit> for HestonNmleCekfParams {
+  fn from(value: HestonMleFit) -> Self {
     Self {
       kappa: value.kappa,
       theta: value.theta,

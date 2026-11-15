@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 
 #[pyclass(name = "HestonMLE", unsendable)]
 pub struct PyHestonMLE {
-  inner: crate::heston_mle::HestonMleResult,
+  inner: crate::heston_mle::HestonMleFit,
 }
 
 #[pymethods]
@@ -12,7 +12,7 @@ impl PyHestonMLE {
   #[staticmethod]
   fn nmle<'py>(s: PyReadonlyArray1<'py, f64>, v: PyReadonlyArray1<'py, f64>, r: f64) -> Self {
     Self {
-      inner: crate::heston_mle::nmle_heston(s.as_array(), v.as_array(), r),
+      inner: crate::heston_mle::fit_heston_nmle(s.as_array(), v.as_array(), r),
     }
   }
 
@@ -20,7 +20,7 @@ impl PyHestonMLE {
   #[staticmethod]
   fn pmle<'py>(s: PyReadonlyArray1<'py, f64>, v: PyReadonlyArray1<'py, f64>, r: f64) -> Self {
     Self {
-      inner: crate::heston_mle::pmle_heston(s.as_array(), v.as_array(), r),
+      inner: crate::heston_mle::fit_heston_pmle(s.as_array(), v.as_array(), r),
     }
   }
 
@@ -52,7 +52,7 @@ impl PyHestonMLE {
 
 #[pyclass(name = "HestonNMLECEKF", unsendable)]
 pub struct PyHestonNMLECEKF {
-  inner: crate::heston_nml_cekf::HestonNmleCekfResult,
+  inner: crate::heston_nmle_cekf::HestonNmleCekfFit,
 }
 
 #[pymethods]
@@ -67,8 +67,8 @@ impl PyHestonNMLECEKF {
     max_iters: usize,
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| {
-      let default_cfg = crate::heston_nml_cekf::HestonNmleCekfConfig::default();
-      let cfg = crate::heston_nml_cekf::HestonNmleCekfConfig {
+      let default_cfg = crate::heston_nmle_cekf::HestonNmleCekfConfig::default();
+      let cfg = crate::heston_nmle_cekf::HestonNmleCekfConfig {
         r,
         delta: delta.unwrap_or(default_cfg.delta),
         max_iters,
@@ -76,7 +76,7 @@ impl PyHestonNMLECEKF {
       };
       let arr = s.as_array();
       Self {
-        inner: crate::heston_nml_cekf::nmle_cekf_heston(arr, cfg),
+        inner: crate::heston_nmle_cekf::fit_heston_nmle_cekf(arr, cfg),
       }
     })
   }

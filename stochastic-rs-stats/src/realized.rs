@@ -54,7 +54,7 @@ pub use bipower::bns_jump_test;
 pub use bipower::medrv;
 pub use bipower::minrv;
 pub use bipower::tripower_quarticity;
-pub use ewma::EwmaVariance;
+pub use ewma::EwmaResult;
 pub use ewma::RISKMETRICS_DAILY_LAMBDA;
 pub use ewma::ewma_variance;
 pub use ewma::riskmetrics_variance;

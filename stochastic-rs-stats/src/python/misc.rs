@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 
 #[pyclass(name = "GaussianKDE", unsendable)]
 pub struct PyGaussianKDE {
-  inner: crate::gaussian_kde::GaussianKde,
+  inner: crate::kde::GaussianKde,
 }
 
 #[pymethods]
@@ -12,7 +12,7 @@ impl PyGaussianKDE {
   #[new]
   fn new<'py>(data: PyReadonlyArray1<'py, f64>, bandwidth: f64) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::gaussian_kde::GaussianKde::new(data.as_array().to_owned(), bandwidth),
+      inner: crate::kde::GaussianKde::new(data.as_array().to_owned(), bandwidth),
     })
   }
 
@@ -20,7 +20,7 @@ impl PyGaussianKDE {
   #[staticmethod]
   fn silverman<'py>(data: PyReadonlyArray1<'py, f64>) -> Self {
     Self {
-      inner: crate::gaussian_kde::GaussianKde::with_silverman_bandwidth(data.as_array().to_owned()),
+      inner: crate::kde::GaussianKde::with_silverman_bandwidth(data.as_array().to_owned()),
     }
   }
 

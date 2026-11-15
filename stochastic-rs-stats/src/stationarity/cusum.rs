@@ -39,8 +39,14 @@ use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 
-use super::common::validate_series;
+use crate::StatsError;
+use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::validate;
+use crate::input::validate_rows;
 use crate::linalg::inverse;
+use crate::traits::RealExt;
 
 /// Choice of CUSUM variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,15 +76,18 @@ impl Default for CusumConfig {
   }
 }
 
-/// Result of the CUSUM / CUSUMQ test.
+/// CUSUM / CUSUMQ test (null: constant regression parameters), decided against `critical_boundary`.
 #[derive(Debug, Clone)]
-pub struct CusumResult {
+pub struct CusumTest {
+  /// Maximum absolute excess of the cumulative path over its boundary —
+  /// positive when the path exits the band, non-positive otherwise.
+  pub statistic: f64,
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
+  /// Whether the null of parameter constancy is rejected at `alpha`.
+  pub rejects_null: bool,
   /// Variant that produced this result.
   pub variant: CusumVariant,
-  /// Maximum absolute excess of the cumulative path over its boundary —
-  /// positive when the path exits the band, non-positive otherwise. The
-  /// natural reporting statistic mirrors the convention in Hansen (1992).
-  pub statistic: f64,
   /// First time index (in the original sample, 1-based) at which the
   /// boundary is crossed, or `None` when the null is not rejected.
   pub breakpoint: Option<usize>,
@@ -88,17 +97,15 @@ pub struct CusumResult {
   pub cusum_path: Vec<f64>,
   /// Two-sided rejection boundary `(lower, upper)` matching `cusum_path`.
   pub critical_boundary: Vec<(f64, f64)>,
-  /// Whether the null of parameter constancy is rejected at `alpha`.
-  pub null_rejected: bool,
 }
 
-impl crate::traits::HypothesisTest for CusumResult {
+impl crate::traits::HypothesisTest for CusumTest {
   fn statistic(&self) -> f64 {
     self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.null_rejected)
+    Some(self.rejects_null)
   }
 }
 
@@ -127,42 +134,42 @@ fn cusumq_critical_coefficient(alpha: f64) -> f64 {
   }
 }
 
-/// Brown-Durbin-Evans (1975) CUSUM / CUSUMQ structural-change test.
-///
-/// `x` is the $T \times k$ design matrix and `y` the $T \times 1$ response.
-/// The initial $k$ observations are consumed to seed the recursive estimator,
-/// producing $T - k$ residuals.
-///
-/// # Panics
-/// Panics on non-finite inputs, when $T \le k + 1$, when the leading
-/// $X_k$ block is singular, or when `alpha` is outside $(0, 1)$.
-pub fn cusum_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: CusumConfig) -> CusumResult {
-  let y_slice = y
-    .as_slice()
-    .expect("cusum_test requires a contiguous ArrayView1");
-  assert_eq!(y.len(), x.nrows(), "y/x row mismatch");
+/// Brown–Durbin–Evans (1975) CUSUM / CUSUMQ test of `y` on `x`; `Err` below `k + 2` points, a
+/// non-finite `y` or `x`, mismatched rows or a singular leading block; panics on bad config.
+pub fn cusum_test(
+  y: ArrayView1<f64>,
+  x: ArrayView2<f64>,
+  cfg: CusumConfig,
+) -> Result<CusumTest, StatsError> {
   let k = x.ncols();
-  assert!(k >= 1, "design matrix must have at least one regressor");
-  validate_series(y_slice, k + 2);
   assert!(
-    cfg.alpha > 0.0 && cfg.alpha < 1.0,
-    "alpha must be in (0, 1)"
+    k >= 1,
+    "x.ncols() must satisfy `x.ncols() >= 1`, got x.ncols() = {k:?}"
   );
+  assert_alpha(cfg.alpha);
+  if x.nrows() != y.len() {
+    return Err(StatsError::DimensionMismatch {
+      expected: y.len(),
+      got: x.nrows(),
+    });
+  }
+  validate(&as_slice_or_copy(y), k + 2)?;
+  validate_rows(x)?;
 
   let t_total = y.len();
-  let w = recursive_residuals(y.view(), x.view());
+  let w = recursive_residuals(y, x)?;
   debug_assert_eq!(w.len(), t_total - k);
 
   let n_tilde_usize = t_total - k;
   let n_tilde = n_tilde_usize as f64;
 
-  match cfg.variant {
+  Ok(match cfg.variant {
     CusumVariant::Cusum => cusum_branch(w, n_tilde, k, cfg.alpha),
     CusumVariant::Cusumq => cusumq_branch(w, n_tilde, k, cfg.alpha),
-  }
+  })
 }
 
-fn cusum_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumResult {
+fn cusum_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumTest {
   let w_mean = w.iter().sum::<f64>() / n_tilde;
   let sigma2 = w.iter().map(|wj| (wj - w_mean).powi(2)).sum::<f64>() / (n_tilde - 1.0).max(1.0);
   let sigma = sigma2.max(0.0).sqrt();
@@ -173,8 +180,8 @@ fn cusum_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumResult 
 
   let mut path = Vec::with_capacity(w.len());
   let mut boundary = Vec::with_capacity(w.len());
+  let mut excesses = Vec::with_capacity(w.len());
   let mut cum = 0.0_f64;
-  let mut max_excess = f64::NEG_INFINITY;
   let mut breakpoint: Option<usize> = None;
 
   for (i, wi) in w.iter().enumerate() {
@@ -183,26 +190,27 @@ fn cusum_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumResult 
     let upper = a0 * sqrt_n + 2.0 * a0 * (i as f64 + 1.0) / sqrt_n;
     boundary.push((-upper, upper));
     let excess = cum.abs() - upper;
-    if excess > max_excess {
-      max_excess = excess;
-    }
+    excesses.push(excess);
     if excess > 0.0 && breakpoint.is_none() {
       breakpoint = Some(k + i + 1);
     }
   }
+  let max_excess = f64::max_or_nan_fold(excesses);
 
-  CusumResult {
-    variant: CusumVariant::Cusum,
+  CusumTest {
     statistic: max_excess,
+    p_value: None,
+    critical_values: None,
+    rejects_null: max_excess > 0.0,
+    variant: CusumVariant::Cusum,
     breakpoint,
     recursive_residuals: w,
     cusum_path: path,
     critical_boundary: boundary,
-    null_rejected: max_excess > 0.0,
   }
 }
 
-fn cusumq_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumResult {
+fn cusumq_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumTest {
   let denom: f64 = w.iter().map(|wj| wj * wj).sum();
   let denom_safe = if denom > 0.0 { denom } else { 1.0 };
   let c_alpha = cusumq_critical_coefficient(alpha);
@@ -210,8 +218,8 @@ fn cusumq_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumResult
 
   let mut path = Vec::with_capacity(w.len());
   let mut boundary = Vec::with_capacity(w.len());
+  let mut excesses = Vec::with_capacity(w.len());
   let mut cum_sq = 0.0_f64;
-  let mut max_excess = f64::NEG_INFINITY;
   let mut breakpoint: Option<usize> = None;
 
   for (i, wi) in w.iter().enumerate() {
@@ -221,36 +229,35 @@ fn cusumq_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumResult
     path.push(s);
     boundary.push((mean - half_band, mean + half_band));
     let excess = (s - mean).abs() - half_band;
-    if excess > max_excess {
-      max_excess = excess;
-    }
+    excesses.push(excess);
     if excess > 0.0 && breakpoint.is_none() {
       breakpoint = Some(k + i + 1);
     }
   }
+  let max_excess = f64::max_or_nan_fold(excesses);
 
-  CusumResult {
-    variant: CusumVariant::Cusumq,
+  CusumTest {
     statistic: max_excess,
+    p_value: None,
+    critical_values: None,
+    rejects_null: max_excess > 0.0,
+    variant: CusumVariant::Cusumq,
     breakpoint,
     recursive_residuals: w,
     cusum_path: path,
     critical_boundary: boundary,
-    null_rejected: max_excess > 0.0,
   }
 }
 
 /// Recursive residuals via incremental OLS with a Sherman-Morrison update
 /// of $(X_t^\top X_t)^{-1}$.
-fn recursive_residuals(y: ArrayView1<f64>, x: ArrayView2<f64>) -> Vec<f64> {
+fn recursive_residuals(y: ArrayView1<f64>, x: ArrayView2<f64>) -> Result<Vec<f64>, StatsError> {
   let t_total = y.len();
   let k = x.ncols();
-  assert!(t_total > k, "need T > k observations");
 
   let x_init = x.slice(ndarray::s![..k, ..]).to_owned();
   let y_init = y.slice(ndarray::s![..k]).to_owned();
-  let mut xtx_inv =
-    inverse(&x_init.t().dot(&x_init)).expect("CUSUM: leading X_k block is singular");
+  let mut xtx_inv = inverse(&x_init.t().dot(&x_init)).ok_or(StatsError::Singular("OLS design"))?;
   let mut xty = x_init.t().dot(&y_init);
 
   let mut w = Vec::with_capacity(t_total - k);
@@ -274,7 +281,7 @@ fn recursive_residuals(y: ArrayView1<f64>, x: ArrayView2<f64>) -> Vec<f64> {
     xty = &xty + &(&xt * y[t]);
   }
 
-  w
+  Ok(w)
 }
 
 #[cfg(test)]
@@ -345,9 +352,10 @@ mod tests {
           variant: CusumVariant::Cusum,
           alpha: 0.01,
         },
-      );
+      )
+      .unwrap();
       assert!(
-        !res.null_rejected,
+        !res.rejects_null,
         "CUSUM should not reject constant DGP at seed {seed}: statistic = {}",
         res.statistic
       );
@@ -366,9 +374,10 @@ mod tests {
         variant: CusumVariant::Cusum,
         alpha: 0.05,
       },
-    );
+    )
+    .unwrap();
     assert!(
-      res.null_rejected,
+      res.rejects_null,
       "CUSUM should reject mean shift: statistic = {}",
       res.statistic
     );
@@ -391,9 +400,10 @@ mod tests {
         variant: CusumVariant::Cusumq,
         alpha: 0.05,
       },
-    );
+    )
+    .unwrap();
     assert!(
-      res.null_rejected,
+      res.rejects_null,
       "CUSUMQ should reject variance shift: statistic = {}",
       res.statistic
     );
@@ -413,13 +423,48 @@ mod tests {
           variant: CusumVariant::Cusumq,
           alpha: 0.01,
         },
-      );
+      )
+      .unwrap();
       assert!(
-        !res.null_rejected,
+        !res.rejects_null,
         "CUSUMQ should not reject constant DGP at seed {seed}: statistic = {}",
         res.statistic
       );
     }
+  }
+
+  #[test]
+  fn a_design_with_other_rows_is_a_dimension_mismatch() {
+    let y = simulate_stationary(100, 5);
+    assert_eq!(
+      cusum_test(y.view(), linear_design(99).view(), CusumConfig::default()).unwrap_err(),
+      StatsError::DimensionMismatch {
+        expected: 100,
+        got: 99
+      }
+    );
+  }
+
+  #[test]
+  fn a_non_finite_design_row_is_an_invalid_observation() {
+    let y = simulate_stationary(100, 5);
+    let mut x = linear_design(100);
+    x[[37, 1]] = f64::INFINITY;
+    assert_eq!(
+      cusum_test(y.view(), x.view(), CusumConfig::default()).unwrap_err(),
+      StatsError::InvalidObservation {
+        index: 37,
+        value: f64::INFINITY,
+        constraint: "finite"
+      }
+    );
+  }
+
+  #[test]
+  fn the_maximum_excess_keeps_a_nan() {
+    let w = vec![0.5, f64::NAN, -0.5, 0.25];
+    assert!(cusum_branch(w.clone(), 4.0, 1, 0.05).statistic.is_nan());
+    assert!(cusumq_branch(w, 4.0, 1, 0.05).statistic.is_nan());
   }
 
   #[test]
@@ -434,7 +479,8 @@ mod tests {
         variant: CusumVariant::Cusum,
         alpha: 0.05,
       },
-    );
+    )
+    .unwrap();
     let w = &res.recursive_residuals;
     let w_mean = w.iter().sum::<f64>() / w.len() as f64;
     let s2_w = w.iter().map(|wj| (wj - w_mean).powi(2)).sum::<f64>() / (w.len() as f64 - 1.0);

@@ -1,11 +1,15 @@
 use ndarray::Array1;
 use ndarray::Array2;
 
+use crate::StatsError;
+use crate::critical_values::CriticalValues;
+use crate::input::validate;
 use crate::linalg::inverse;
 use crate::linalg::solve;
 
+/// Deterministic terms of a unit-root or stationarity regression.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeterministicTerm {
+pub enum Trend {
   None,
   Constant,
   ConstantTrend,
@@ -18,25 +22,6 @@ pub enum LagSelection {
   Aic,
   Bic,
   TStat,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct CriticalValues {
-  pub one_percent: f64,
-  pub five_percent: f64,
-  pub ten_percent: f64,
-}
-
-impl CriticalValues {
-  pub fn value_at(self, alpha: f64) -> f64 {
-    if alpha <= 0.01 {
-      self.one_percent
-    } else if alpha <= 0.05 {
-      self.five_percent
-    } else {
-      self.ten_percent
-    }
-  }
 }
 
 #[derive(Debug, Clone)]
@@ -52,7 +37,6 @@ pub struct OlsResult {
 
 #[derive(Debug, Clone)]
 pub struct AdfFit {
-  pub lag: usize,
   pub statistic: f64,
   pub gamma: f64,
   pub std_err_gamma: f64,
@@ -61,19 +45,19 @@ pub struct AdfFit {
   pub sigma2: f64,
 }
 
-pub fn validate_series(y: &[f64], min_n: usize) {
-  assert!(
-    y.len() >= min_n,
-    "series must have at least {min_n} observations"
-  );
-  assert!(
-    y.iter().all(|v| v.is_finite()),
-    "series must contain only finite values"
-  );
-}
-
 pub fn difference(y: &[f64]) -> Vec<f64> {
   y.windows(2).map(|w| w[1] - w[0]).collect()
+}
+
+/// Shortest series for a levels autoregression of order `lags` plus `trend`'s terms: it keeps
+/// `n − lags` rows, which must outnumber its `lags + terms` regressors.
+pub fn min_sample_size(lags: usize, trend: Trend) -> usize {
+  let terms = match trend {
+    Trend::None => 0,
+    Trend::Constant => 1,
+    Trend::ConstantTrend => 2,
+  };
+  2 * lags + terms + 1
 }
 
 pub fn schwert_max_lags(n: usize) -> usize {
@@ -83,43 +67,24 @@ pub fn schwert_max_lags(n: usize) -> usize {
   (12.0 * (n as f64 / 100.0).powf(0.25)).floor() as usize
 }
 
-pub fn adf_critical_values(det: DeterministicTerm) -> CriticalValues {
-  match det {
-    DeterministicTerm::None => CriticalValues {
-      one_percent: -2.58,
-      five_percent: -1.95,
-      ten_percent: -1.62,
-    },
-    DeterministicTerm::Constant => CriticalValues {
-      one_percent: -3.43,
-      five_percent: -2.86,
-      ten_percent: -2.57,
-    },
-    DeterministicTerm::ConstantTrend => CriticalValues {
-      one_percent: -3.96,
-      five_percent: -3.41,
-      ten_percent: -3.13,
-    },
+pub fn adf_critical_values(trend: Trend) -> CriticalValues {
+  match trend {
+    Trend::None => CriticalValues::new([(0.01, -2.58), (0.05, -1.95), (0.10, -1.62)]),
+    Trend::Constant => CriticalValues::new([(0.01, -3.43), (0.05, -2.86), (0.10, -2.57)]),
+    Trend::ConstantTrend => CriticalValues::new([(0.01, -3.96), (0.05, -3.41), (0.10, -3.13)]),
   }
 }
 
 pub fn dfgls_critical_values(include_trend: bool) -> CriticalValues {
   if include_trend {
-    CriticalValues {
-      one_percent: -3.77,
-      five_percent: -3.19,
-      ten_percent: -2.89,
-    }
+    CriticalValues::new([(0.01, -3.77), (0.05, -3.19), (0.10, -2.89)])
   } else {
-    CriticalValues {
-      one_percent: -2.58,
-      five_percent: -1.95,
-      ten_percent: -1.62,
-    }
+    CriticalValues::new([(0.01, -2.58), (0.05, -1.95), (0.10, -1.62)])
   }
 }
 
-pub fn ols(y: &[f64], x: &[Vec<f64>]) -> OlsResult {
+/// OLS of `y` on the rows of `x`; `Err(Singular)` on a rank-deficient design.
+pub fn ols(y: &[f64], x: &[Vec<f64>]) -> Result<OlsResult, StatsError> {
   assert!(!y.is_empty(), "OLS requires non-empty response");
   assert_eq!(y.len(), x.len(), "OLS y/x row mismatch");
   let n = y.len();
@@ -137,7 +102,7 @@ pub fn ols(y: &[f64], x: &[Vec<f64>]) -> OlsResult {
   let xtx = x_mat.t().dot(&x_mat);
   let xty = x_mat.t().dot(&y_vec);
 
-  let beta_arr = solve(&xtx, &xty).expect("OLS failed: singular design matrix");
+  let beta_arr = solve(&xtx, &xty).ok_or(StatsError::Singular("OLS design"))?;
   let fitted = x_mat.dot(&beta_arr);
   let residuals_arr = &y_vec - &fitted;
 
@@ -146,15 +111,11 @@ pub fn ols(y: &[f64], x: &[Vec<f64>]) -> OlsResult {
   let dof = (n - k) as f64;
   let sigma2 = (sse / dof).max(0.0);
 
-  let mut std_err = vec![0.0; k];
-  if let Some(xtx_inv) = inverse(&xtx) {
-    let cov = &xtx_inv * sigma2;
-    for i in 0..k {
-      std_err[i] = cov[[i, i]].max(0.0).sqrt();
-    }
-  }
+  let xtx_inv = inverse(&xtx).ok_or(StatsError::Singular("OLS design"))?;
+  let cov = &xtx_inv * sigma2;
+  let std_err = (0..k).map(|i| cov[[i, i]].max(0.0).sqrt()).collect();
 
-  OlsResult {
+  Ok(OlsResult {
     beta: beta_arr.to_vec(),
     std_err,
     residuals,
@@ -162,18 +123,17 @@ pub fn ols(y: &[f64], x: &[Vec<f64>]) -> OlsResult {
     sigma2,
     nobs: n,
     k,
-  }
+  })
 }
 
 fn build_adf_design(
   y: &[f64],
   lags: usize,
-  det: DeterministicTerm,
-) -> (Vec<f64>, Vec<Vec<f64>>, usize) {
-  validate_series(y, 3 + lags);
+  trend: Trend,
+) -> Result<(Vec<f64>, Vec<Vec<f64>>, usize), StatsError> {
+  validate(y, 3 + lags)?;
   let dy = difference(y);
   let n_dy = dy.len();
-  assert!(n_dy > lags, "too many lags for sample length");
 
   let mut lhs = Vec::with_capacity(n_dy - lags);
   let mut rhs = Vec::with_capacity(n_dy - lags);
@@ -181,16 +141,16 @@ fn build_adf_design(
   for t in lags..n_dy {
     lhs.push(dy[t]);
 
-    let mut row = Vec::with_capacity(match det {
-      DeterministicTerm::None => 1 + lags,
-      DeterministicTerm::Constant => 2 + lags,
-      DeterministicTerm::ConstantTrend => 3 + lags,
+    let mut row = Vec::with_capacity(match trend {
+      Trend::None => 1 + lags,
+      Trend::Constant => 2 + lags,
+      Trend::ConstantTrend => 3 + lags,
     });
 
-    match det {
-      DeterministicTerm::None => {}
-      DeterministicTerm::Constant => row.push(1.0),
-      DeterministicTerm::ConstantTrend => {
+    match trend {
+      Trend::None => {}
+      Trend::Constant => row.push(1.0),
+      Trend::ConstantTrend => {
         row.push(1.0);
         row.push((t + 1) as f64);
       }
@@ -206,37 +166,33 @@ fn build_adf_design(
     rhs.push(row);
   }
 
-  let gamma_index = match det {
-    DeterministicTerm::None => 0,
-    DeterministicTerm::Constant => 1,
-    DeterministicTerm::ConstantTrend => 2,
+  let gamma_index = match trend {
+    Trend::None => 0,
+    Trend::Constant => 1,
+    Trend::ConstantTrend => 2,
   };
 
-  (lhs, rhs, gamma_index)
+  Ok((lhs, rhs, gamma_index))
 }
 
-/// Augmented Dickey-Fuller regression at a fixed lag order, reporting the
-/// t-statistic of the lagged level.
-///
-/// Returns a NaN `statistic` when the lagged-level standard error is zero:
-/// a singular cross-product matrix, or an exactly fitting regression.
-pub fn fit_adf(y: &[f64], lags: usize, det: DeterministicTerm) -> AdfFit {
-  let (lhs, rhs, gamma_index) = build_adf_design(y, lags, det);
-  let ols_fit = ols(&lhs, &rhs);
+/// The ADF regression at a fixed lag order and the lagged level's t-statistic, NaN for an exactly
+/// fitting regression; `Err` on too short a series or a singular design.
+pub fn fit_adf(y: &[f64], lags: usize, trend: Trend) -> Result<AdfFit, StatsError> {
+  let (lhs, rhs, gamma_index) = build_adf_design(y, lags, trend)?;
+  let ols_fit = ols(&lhs, &rhs)?;
 
   let gamma = ols_fit.beta[gamma_index];
   let se = ols_fit.std_err[gamma_index];
   let statistic = if se > 0.0 { gamma / se } else { f64::NAN };
 
-  AdfFit {
-    lag: lags,
+  Ok(AdfFit {
     statistic,
     gamma,
     std_err_gamma: se,
     nobs: ols_fit.nobs,
     residuals: ols_fit.residuals,
     sigma2: ols_fit.sigma2,
-  }
+  })
 }
 
 pub fn aic_from_sse(sse: f64, nobs: usize, k: usize) -> f64 {
@@ -251,12 +207,12 @@ pub fn bic_from_sse(sse: f64, nobs: usize, k: usize) -> f64 {
 
 pub fn choose_lag_for_adf(
   y: &[f64],
-  det: DeterministicTerm,
+  trend: Trend,
   lag_selection: LagSelection,
   max_lags: usize,
-) -> usize {
+) -> Result<usize, StatsError> {
   if let LagSelection::Fixed(p) = lag_selection {
-    return p;
+    return Ok(p);
   }
 
   let mut best_lag = 0usize;
@@ -265,11 +221,11 @@ pub fn choose_lag_for_adf(
   let mut candidates: Vec<(usize, f64, f64)> = Vec::new();
 
   for lag in 0..=max_lags {
-    let (lhs, rhs, _gamma_idx) = build_adf_design(y, lag, det);
+    let (lhs, rhs, _gamma_idx) = build_adf_design(y, lag, trend)?;
     if rhs.is_empty() {
       continue;
     }
-    let fit = ols(&lhs, &rhs);
+    let fit = ols(&lhs, &rhs)?;
 
     let ic = match lag_selection {
       LagSelection::Aic => aic_from_sse(fit.sse, fit.nobs, fit.k),
@@ -293,27 +249,26 @@ pub fn choose_lag_for_adf(
     candidates.push((lag, ic, t_last));
   }
 
-  match lag_selection {
+  Ok(match lag_selection {
     LagSelection::Aic | LagSelection::Bic => best_lag,
     LagSelection::TStat => {
       let mut ordered = candidates;
       ordered.sort_by_key(|(lag, _, _)| *lag);
-      for (lag, _, t_last) in ordered.into_iter().rev() {
-        if lag == 0 || t_last.abs() >= 1.644_853_626_951_472_2 {
-          return lag;
-        }
-      }
-      0
+      ordered
+        .into_iter()
+        .rev()
+        .find(|&(lag, _, t_last)| lag == 0 || t_last.abs() >= 1.644_853_626_951_472_2)
+        .map_or(0, |(lag, _, _)| lag)
     }
     LagSelection::Fixed(_) => unreachable!(),
-  }
+  })
 }
 
-pub fn newey_west_long_run_variance(u: &[f64], lags: usize) -> f64 {
-  assert!(
-    !u.is_empty(),
-    "Newey-West requires non-empty residual series"
-  );
+/// Bartlett-weighted long-run variance of `u`; `Err` on an empty series.
+pub fn newey_west_long_run_variance(u: &[f64], lags: usize) -> Result<f64, StatsError> {
+  if u.is_empty() {
+    return Err(StatsError::InsufficientData { needed: 1, got: 0 });
+  }
   let n = u.len();
   let n_f = n as f64;
 
@@ -333,15 +288,15 @@ pub fn newey_west_long_run_variance(u: &[f64], lags: usize) -> f64 {
     lr_var += 2.0 * weight * cov;
   }
 
-  if lr_var <= 0.0 || !lr_var.is_finite() {
+  Ok(if lr_var <= 0.0 || !lr_var.is_finite() {
     gamma0.max(1e-12)
   } else {
     lr_var
-  }
+  })
 }
 
-pub fn regress_on_deterministics(y: &[f64], include_trend: bool) -> OlsResult {
-  validate_series(y, if include_trend { 3 } else { 2 });
+pub fn regress_on_deterministics(y: &[f64], include_trend: bool) -> Result<OlsResult, StatsError> {
+  validate(y, if include_trend { 3 } else { 2 })?;
   let n = y.len();
   let mut x = Vec::with_capacity(n);
   for t in 0..n {
@@ -354,9 +309,9 @@ pub fn regress_on_deterministics(y: &[f64], include_trend: bool) -> OlsResult {
   ols(y, &x)
 }
 
-pub fn fit_ar(y: &[f64], lags: usize) -> (Vec<f64>, Vec<f64>, f64) {
+pub fn fit_ar(y: &[f64], lags: usize) -> Result<(Vec<f64>, Vec<f64>, f64), StatsError> {
   assert!(lags > 0, "AR lag order must be at least 1");
-  validate_series(y, lags + 3);
+  validate(y, lags + 3)?;
 
   let n = y.len();
   let nobs = n - lags;
@@ -372,7 +327,7 @@ pub fn fit_ar(y: &[f64], lags: usize) -> (Vec<f64>, Vec<f64>, f64) {
     rhs.push(row);
   }
 
-  let fit = ols(&lhs, &rhs);
+  let fit = ols(&lhs, &rhs)?;
   let sigma = fit.sigma2.max(0.0).sqrt();
-  (fit.beta, fit.residuals, sigma)
+  Ok((fit.beta, fit.residuals, sigma))
 }

@@ -48,8 +48,9 @@
 //!     ArrayView1::from(&sample),
 //!     |x| dist.cdf(x).unwrap(),
 //!     KolmogorovSmirnovConfig::default(),
-//! );
-//! assert!(!res.reject, "KS should not reject a sampler against its own cdf");
+//! )
+//! .expect("20 000 finite draws");
+//! assert!(!res.rejects_null, "KS should not reject a sampler against its own cdf");
 //! ```
 
 pub mod chi_square;

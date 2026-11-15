@@ -5,7 +5,7 @@ use super::HestonNmleCekfConfig;
 use super::HestonNmleCekfParams;
 use super::batch::cekf_pass;
 use super::filter_heston_cekf;
-use super::nmle_cekf_heston;
+use super::fit_heston_nmle_cekf;
 use super::test_support::simulate_heston_prices;
 
 #[test]
@@ -29,7 +29,7 @@ fn batch_estimator_returns_finite_outputs() {
     },
     ..HestonNmleCekfConfig::default()
   };
-  let result = nmle_cekf_heston(prices.view(), config);
+  let result = fit_heston_nmle_cekf(prices.view(), config);
 
   assert_eq!(result.vol_path.len(), observations);
   assert_eq!(result.cov_path.len(), observations);
@@ -65,7 +65,7 @@ fn batch_reported_parameters_reproduce_the_returned_path() {
     initial_v0: 0.07,
     ..HestonNmleCekfConfig::default()
   };
-  let result = nmle_cekf_heston(prices.view(), config.clone());
+  let result = fit_heston_nmle_cekf(prices.view(), config.clone());
   let reported = HestonNmleCekfParams::from(result.params.clone()).projected_batch();
   let (expected_variance, expected_covariance) = cekf_pass(prices.view(), reported, &config);
 
@@ -91,7 +91,7 @@ fn batch_stops_without_a_hidden_parameter_refresh() {
     initial_params: initial,
     ..HestonNmleCekfConfig::default()
   };
-  let result = nmle_cekf_heston(prices.view(), config);
+  let result = fit_heston_nmle_cekf(prices.view(), config);
 
   assert_eq!(result.params.kappa.to_bits(), initial.kappa.to_bits());
   assert_eq!(result.params.theta.to_bits(), initial.theta.to_bits());

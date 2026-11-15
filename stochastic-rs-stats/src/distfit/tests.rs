@@ -46,7 +46,7 @@ fn samples_are_bit_identical_to_the_python_generator() {
 /// log-likelihood (`scipy.stats.johnsonsu.fit` lands within 3e-5 of it).
 #[test]
 fn johnson_su_fit_matches_the_scipy_optimum() {
-  let fit = johnson_su_fit(skewed_sample(0.2).view());
+  let fit = fit_johnson_su(skewed_sample(0.2).view());
   assert!(fit.converged);
   assert_eq!(fit.nobs, 1_500);
   let loglik = -2_207.705_168_550_967_3;
@@ -68,7 +68,7 @@ fn johnson_su_fit_matches_the_scipy_optimum() {
 /// log-likelihood with location and scale.
 #[test]
 fn skew_t_fit_matches_the_arch_optimum() {
-  let fit = skew_t_fit(skewed_sample(0.03).view());
+  let fit = fit_skew_t(skewed_sample(0.03).view());
   assert!(fit.converged);
   let loglik = -1_538.591_372_939_148_2;
   assert!(
@@ -98,7 +98,7 @@ fn skew_t_fit_matches_the_arch_optimum() {
 /// the reference likelihood.
 #[test]
 fn variance_gamma_fit_matches_the_scipy_optimum() {
-  let fit = variance_gamma_fit(skewed_sample(0.2).view());
+  let fit = fit_variance_gamma(skewed_sample(0.2).view());
   assert!(fit.converged);
   let loglik = -2_215.084_505_676_344_6;
   assert!(
@@ -117,11 +117,11 @@ fn variance_gamma_fit_matches_the_scipy_optimum() {
 #[test]
 #[should_panic(expected = "need at least 10 observations")]
 fn rejects_a_short_series() {
-  let _ = johnson_su_fit(Array1::from(vec![1.0_f64, 2.0, 3.0]).view());
+  let _ = fit_johnson_su(Array1::from(vec![1.0_f64, 2.0, 3.0]).view());
 }
 
 #[test]
 #[should_panic(expected = "observations must not be constant")]
 fn rejects_a_constant_series() {
-  let _ = skew_t_fit(Array1::from(vec![1.0_f64; 20]).view());
+  let _ = fit_skew_t(Array1::from(vec![1.0_f64; 20]).view());
 }
