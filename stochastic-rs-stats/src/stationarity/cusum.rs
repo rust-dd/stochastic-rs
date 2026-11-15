@@ -132,8 +132,8 @@ fn cusumq_critical_coefficient(alpha: f64) -> f64 {
   }
 }
 
-/// Brown–Durbin–Evans (1975) CUSUM / CUSUMQ test of `y` on the `T × k` design `x`; `Err` below
-/// `k + 2` points, on a non-finite `y`, mismatched rows or a singular leading block of `x`.
+/// Brown–Durbin–Evans (1975) CUSUM / CUSUMQ test of `y` on the design `x`; `Err` below `k + 2`
+/// points, on a non-finite `y`, mismatched rows or a singular leading block; panics on bad config.
 pub fn cusum_test(
   y: ArrayView1<f64>,
   x: ArrayView2<f64>,

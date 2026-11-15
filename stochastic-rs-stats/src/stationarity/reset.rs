@@ -90,8 +90,8 @@ impl crate::traits::HypothesisTest for ResetTest {
   }
 }
 
-/// Ramsey (1969) RESET of `y` on the `T × k` design `x` (with its own constant column); `Err` below
-/// `k + q + 2` points, on a non-finite `y`, mismatched rows or a singular regression.
+/// Ramsey (1969) RESET of `y` on the design `x` (with its constant column); `Err` below `k + q + 2`
+/// points, a non-finite `y`, mismatched rows or a singular fit; panics on bad `max_power`, `alpha`.
 pub fn reset_test(
   y: ArrayView1<f64>,
   x: ArrayView2<f64>,
