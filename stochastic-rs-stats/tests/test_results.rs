@@ -126,7 +126,10 @@ fn every_test_result_answers_through_the_trait() {
   assert_eq!(ap.statistic(), ap.statistic);
   assert_eq!(ap.null_rejected(), ap.rejects_null);
   assert!(ap.rejects_null.is_some());
-  let reset = reset_test(x.view(), design.view(), ResetConfig::default()).unwrap();
+  // RESET's powers of a fit on the intercept alone would be collinear with it.
+  let trend =
+    Array2::<f64>::from_shape_fn((x.len(), 2), |(t, j)| if j == 0 { 1.0 } else { t as f64 });
+  let reset = reset_test(x.view(), trend.view(), ResetConfig::default()).unwrap();
   agrees(&reset, reset.statistic, reset.rejects_null);
   let ad = anderson_darling_normal_test(x.view(), AndersonDarlingConfig::default()).unwrap();
   agrees(&ad, ad.statistic, ad.rejects_null);

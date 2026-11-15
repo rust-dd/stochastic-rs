@@ -44,6 +44,7 @@ use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
+use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_rows;
 use crate::linalg::inverse;
@@ -114,8 +115,8 @@ impl crate::traits::HypothesisTest for AndrewsPlobergerTest {
   }
 }
 
-/// Andrews / Andrews–Ploberger break test of `y` on `x`; `Err` on too few rows, a non-finite `y` or
-/// `x`, mismatched rows or a NaN Wald path, panics on bad `pi0`, `alpha` or no column.
+/// Andrews / Andrews–Ploberger break test of `y` on `x`; `Err` on too few rows, a non-finite or
+/// constant `y`, a non-finite `x`, mismatched rows or a NaN Wald path; bad config panics.
 pub fn andrews_ploberger_test(
   y: ArrayView1<f64>,
   x: ArrayView2<f64>,
@@ -142,8 +143,10 @@ pub fn andrews_ploberger_test(
       got: x.nrows(),
     });
   }
-  validate(&as_slice_or_copy(y), 3 * k + 4)?;
+  let y_slice = as_slice_or_copy(y);
+  validate(&y_slice, 3 * k + 4)?;
   validate_rows(x)?;
+  reject_constant(&y_slice, "constant series")?;
 
   let t_total = y.len();
   let (t1_lo, t1_hi) = trimmed_grid(t_total, k, cfg.pi0);
@@ -501,6 +504,20 @@ mod tests {
       andrews_ploberger_test(y.view(), x.view(), cfg).unwrap_err(),
       StatsError::InsufficientData { needed: 10, got: 9 }
     );
+  }
+
+  /// Both segments fit a constant `y` exactly, so only an exact check answers alike at every size.
+  #[test]
+  fn a_constant_series_is_degenerate_data() {
+    for n in [64, 400, 500] {
+      let y = Array1::<f64>::from_elem(n, 0.3);
+      let x = Array2::<f64>::ones((n, 1));
+      assert_eq!(
+        andrews_ploberger_test(y.view(), x.view(), AndrewsPlobergerConfig::default()).unwrap_err(),
+        StatsError::DegenerateData("constant series"),
+        "{n} rows"
+      );
+    }
   }
 
   #[test]

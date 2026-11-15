@@ -151,7 +151,7 @@ pub fn leybourne_mccabe_test(
   assert_alpha(cfg.alpha);
   let y = as_slice_or_copy(y);
   let needed = 40
-    .max(cfg.ar_lags + 15)
+    .max(cfg.ar_lags.saturating_add(15))
     .max(min_sample_size(cfg.ar_lags, Trend::None));
   validate(&y, needed)?;
   reject_constant(&y, "constant series")?;
@@ -281,6 +281,22 @@ mod tests {
       leybourne_mccabe_test(ndarray::ArrayView1::from(&x), cfg).unwrap_err(),
       StatsError::InsufficientData {
         needed: 41,
+        got: 40
+      }
+    );
+  }
+
+  #[test]
+  fn an_ar_order_at_usize_max_is_insufficient_data() {
+    let x = simulate_ar1(0.5, 40, 0x1E7B0F);
+    let cfg = LeybourneMcCabeConfig {
+      ar_lags: usize::MAX,
+      ..LeybourneMcCabeConfig::default()
+    };
+    assert_eq!(
+      leybourne_mccabe_test(ndarray::ArrayView1::from(&x), cfg).unwrap_err(),
+      StatsError::InsufficientData {
+        needed: usize::MAX,
         got: 40
       }
     );

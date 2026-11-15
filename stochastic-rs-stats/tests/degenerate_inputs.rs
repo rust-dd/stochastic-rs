@@ -57,6 +57,11 @@ fn design(n: usize) -> Array2<f64> {
   Array2::<f64>::ones((n, 1))
 }
 
+/// An intercept and a trend: RESET's powers of an intercept-only fit are collinear with it.
+fn trend_design(n: usize) -> Array2<f64> {
+  Array2::<f64>::from_shape_fn((n, 2), |(t, j)| if j == 0 { 1.0 } else { t as f64 })
+}
+
 pub fn hypothesis_tests() -> Vec<Entry> {
   vec![
     ("adf", err(|x| adf_test(x, AdfConfig::default())), OLS),
@@ -80,16 +85,16 @@ pub fn hypothesis_tests() -> Vec<Entry> {
     (
       "cusum",
       err(|x| cusum_test(x, design(x.len()).view(), CusumConfig::default())),
-      None,
+      SERIES,
     ),
     (
       "andrews_ploberger",
       err(|x| andrews_ploberger_test(x, design(x.len()).view(), AndrewsPlobergerConfig::default())),
-      None,
+      SERIES,
     ),
     (
       "reset",
-      err(|x| reset_test(x, design(x.len()).view(), ResetConfig::default())),
+      err(|x| reset_test(x, trend_design(x.len()).view(), ResetConfig::default())),
       SERIES,
     ),
     (
