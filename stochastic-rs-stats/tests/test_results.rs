@@ -123,7 +123,9 @@ fn every_test_result_answers_through_the_trait() {
   agrees(&cusum, cusum.statistic, cusum.rejects_null);
   let ap =
     andrews_ploberger_test(x.view(), design.view(), AndrewsPlobergerConfig::default()).unwrap();
-  agrees(&ap, ap.statistic, ap.rejects_null);
+  assert_eq!(ap.statistic(), ap.statistic);
+  assert_eq!(ap.null_rejected(), ap.rejects_null);
+  assert!(ap.rejects_null.is_some());
   let reset = reset_test(x.view(), design.view(), ResetConfig::default()).unwrap();
   agrees(&reset, reset.statistic, reset.rejects_null);
   let ad = anderson_darling_normal_test(x.view(), AndersonDarlingConfig::default()).unwrap();

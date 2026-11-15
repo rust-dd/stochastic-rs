@@ -22,10 +22,8 @@
 //!
 //! Asymptotic critical values are taken from the canonical tables for
 //! $\pi_0 = 0.15$ (Andrews 1993 Table 1 for Sup-Wald; Andrews-Ploberger
-//! 1994 Tables II and III for Exp-Wald and Avg-Wald). The implementation
-//! requires `pi0 = 0.15` for the embedded critical values; the test
-//! statistic is computed for any `pi0`, but the rejection decision and
-//! p-value bracket use the 0.15 table.
+//! 1994 Tables II and III for Exp-Wald and Avg-Wald). For any other `pi0` or `k > 5` the
+//! statistic is computed, but its p-value bracket, critical values and decision are `None`.
 //!
 //! References:
 //! - Andrews, D.W.K. (1993), "Tests for Parameter Instability and
@@ -91,11 +89,12 @@ impl Default for AndrewsPlobergerConfig {
 pub struct AndrewsPlobergerTest {
   /// Test statistic.
   pub statistic: f64,
-  /// Coarse bracket `0.01`, `0.05`, `0.10` or `1.0` (the smallest tabulated level reached).
+  /// Upper bound on the p-value: `0.01`, `0.05`, `0.10` or `1.0`, the smallest tabulated level
+  /// whose critical value the statistic reaches.
   pub p_value: Option<f64>,
   pub critical_values: Option<CriticalValues>,
-  /// Whether the parameter-constancy null is rejected at `alpha`; `false` off the table.
-  pub rejects_null: bool,
+  /// Whether the parameter-constancy null is rejected at `alpha`; `None` off the table.
+  pub rejects_null: Option<bool>,
   /// Statistic actually computed (Sup, Exp, or Avg-Wald).
   pub statistic_kind: AndrewsPlobergerStatistic,
   /// $\tau^* = \arg\max_\tau W(\tau)$: the break estimate under Sup-Wald, a diagnostic otherwise.
@@ -110,7 +109,7 @@ impl crate::traits::HypothesisTest for AndrewsPlobergerTest {
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.rejects_null)
+    self.rejects_null
   }
 }
 
@@ -172,7 +171,7 @@ pub fn andrews_ploberger_test(
     statistic,
     p_value: row.map(|row| p_value_bracket(statistic, row)),
     critical_values,
-    rejects_null: critical.is_some_and(|c| statistic >= c),
+    rejects_null: critical.map(|c| statistic >= c),
     statistic_kind: cfg.statistic,
     breakpoint_frac,
     wald_path,
@@ -384,9 +383,10 @@ mod tests {
     )
     .unwrap();
     assert!(
-      !res.rejects_null,
+      res.rejects_null == Some(false),
       "no-break DGP: Sup-Wald should not reject; W = {}, p = {:?}",
-      res.statistic, res.p_value
+      res.statistic,
+      res.p_value
     );
   }
 
@@ -404,9 +404,10 @@ mod tests {
     )
     .unwrap();
     assert!(
-      res.rejects_null,
+      res.rejects_null == Some(true),
       "intercept break at τ=0.5: should reject; W = {}, p = {:?}",
-      res.statistic, res.p_value
+      res.statistic,
+      res.p_value
     );
     assert!(
       (res.breakpoint_frac - 0.5).abs() < 0.15,
@@ -429,9 +430,10 @@ mod tests {
     )
     .unwrap();
     assert!(
-      res.rejects_null,
+      res.rejects_null == Some(true),
       "slope break at τ=0.3: Exp-Wald should reject; W = {}, p = {:?}",
-      res.statistic, res.p_value
+      res.statistic,
+      res.p_value
     );
   }
 
@@ -449,10 +451,25 @@ mod tests {
     )
     .unwrap();
     assert!(
-      res.rejects_null,
+      res.rejects_null == Some(true),
       "intercept break: Avg-Wald should reject; W = {}, p = {:?}",
-      res.statistic, res.p_value
+      res.statistic,
+      res.p_value
     );
+  }
+
+  #[test]
+  fn off_its_table_the_test_takes_no_decision() {
+    let (y, x) = simulate(300, (1.0, 2.0), (4.0, 2.0), Some(0.5), 7);
+    let cfg = AndrewsPlobergerConfig {
+      pi0: 0.2,
+      ..AndrewsPlobergerConfig::default()
+    };
+    let res = andrews_ploberger_test(y.view(), x.view(), cfg).unwrap();
+    assert!(res.statistic.is_finite());
+    assert_eq!(res.rejects_null, None);
+    assert_eq!(crate::traits::HypothesisTest::null_rejected(&res), None);
+    assert!(res.p_value.is_none() && res.critical_values.is_none());
   }
 
   #[test]
