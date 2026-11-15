@@ -583,4 +583,11 @@ mod tests {
       "kappa·dt = 5e-9 rounds 1 − e^{{-kappa·dt}} to 0 in f32"
     );
   }
+
+  #[test]
+  fn a_zero_long_run_variance_is_the_zero_degree_clock() {
+    let [x, v] = model::<f64>(1.0, 0.0, 65).sample();
+    assert!(x.iter().chain(v.iter()).all(|a| a.is_finite()));
+    assert!(v.iter().all(|a| *a >= 0.0));
+  }
 }
