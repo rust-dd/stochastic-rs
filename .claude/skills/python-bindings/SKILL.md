@@ -33,8 +33,8 @@ distribution's source file**, e.g. `stochastic-rs-distributions/src/normal.rs`:
 
 ```rust
 py_distribution!(PyNormal, SimdNormal,
-  sig: (mean, std_dev, seed=None, dtype=None),
-  params: (mean: f64, std_dev: f64)
+  sig: (mu, sigma, seed=None, dtype=None),
+  params: (mu: f64, sigma: f64)
 );
 ```
 
@@ -49,7 +49,7 @@ What you get:
   serialise on the lock. The `py_process_*!` macros are unchanged.
 - Two inner slots, `inner_f32` / `inner_f64`; the seed is folded into the constructor as
   `.seeded(&Deterministic::new(sd))` (or `&Unseeded`).
-- `__new__(mean, std_dev, seed=None, dtype=None)` — `seed: Option<u64>`,
+- `__new__(mu, sigma, seed=None, dtype=None)` — `seed: Option<u64>`,
   `dtype: Option<&str>` ∈ {"f32", "f64"}, default f64
 - `sample(n)` returning `numpy.ndarray`
 - `sample_par(m, n)` returning `numpy.ndarray` (parallel matrix)

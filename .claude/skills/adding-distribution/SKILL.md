@@ -135,7 +135,9 @@ impl<T: SimdFloatExt> Distribution<T> for SimdFoo<T> {
 A composite law holds its components as stateless values and its
 `State` as their states (`StudentTState { normal, chisq, buf }`); its
 kernel calls the components' `next` / `fill` on those states, so a
-sub-stream keeps its draw order. The slow paths of a ziggurat draw
+sub-stream keeps its draw order. A sub-kernel's scratch slice goes
+through `unsafe { as_uninit_mut(…) }` under a one-line `// SAFETY:`
+naming the fill that writes every element. The slow paths of a ziggurat draw
 through `crate::source::Source`, which serves both a SIMD engine and
 any `rand` rng (`AnyRng`), so the scalar and bulk paths share one
 algorithm.
@@ -276,7 +278,7 @@ reference impl; the device engine recognises `SimdNormal` and `SimdExp`.
 ## 9. Reference impls
 
 - `SimdNormal` (`normal.rs`) — ziggurat; the canonical reference for
-  the stateless shape: `SimdNormal<T>` holds `mean` / `std_dev` only,
+  the stateless shape: `SimdNormal<T>` holds `mu` / `sigma` only,
   its `State<R>` is a `StreamState<T, R, 64>` (the 64-wide buffer lives
   in the stream), and the engine is chosen on `Seeded<SimdNormal<T>, R>`.
 - `SimdExp` (`exp.rs`) — the exponential ziggurat, its state a
