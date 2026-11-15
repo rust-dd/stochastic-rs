@@ -116,7 +116,7 @@ fn a_zero_reversion_black_karasinski_keeps_to_the_host() {
   assert!(build(0.1).device_ready());
 }
 
-/// The kernels' per-step count stops at 64 events, so a Ctrw expecting more than 25 per step samples
+/// The kernels' per-step count stops at 64 events, so a Ctrw expecting over 25 per step samples
 /// on the host, where every event is drawn.
 #[test]
 fn a_dense_ctrw_keeps_to_the_host() {
