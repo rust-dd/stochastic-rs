@@ -153,8 +153,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       ar_coefs: self.ar_coefs.clone(),
       ma_coefs: self.ma_coefs.clone(),
       d: self.d,
-      sigma: self.sigma,
-      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
+      normal: (self.sigma > T::zero())
+        .then(|| SimdNormal::<T>::new(T::zero(), self.sigma).seeded(&self.seed)),
     }
   }
 
@@ -231,20 +231,17 @@ pub struct ArimaSampler<T: FloatExt> {
   ar_coefs: Array1<T>,
   ma_coefs: Array1<T>,
   d: usize,
-  sigma: T,
-  normal: Seeded<SimdNormal<T>>,
+  /// `None` at `sigma = 0`, where every innovation is zero.
+  normal: Option<Seeded<SimdNormal<T>>>,
 }
 
 impl<T: FloatExt> ArimaSampler<T> {
   fn fill_path(&mut self, out: &mut [T]) {
     let n = out.len();
     let mut noise = Array1::<T>::zeros(n);
-    if n > 0 {
-      let slice = noise.as_slice_mut().expect("contiguous");
-      self.normal.fill_slice(slice);
+    if let Some(normal) = self.normal.as_mut().filter(|_| n > 0) {
+      normal.fill_slice(noise.as_slice_mut().expect("contiguous"));
     }
-    let sigma = self.sigma;
-    noise.mapv_inplace(|z| sigma * z);
     let result = arima_filter(&noise, &self.ar_coefs, &self.ma_coefs, self.d);
     out.copy_from_slice(result.as_slice().expect("contiguous"));
   }

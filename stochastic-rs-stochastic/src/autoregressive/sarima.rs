@@ -229,8 +229,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       d: self.d,
       big_d: self.D,
       s: self.s,
-      sigma: self.sigma,
-      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
+      normal: (self.sigma > T::zero())
+        .then(|| SimdNormal::<T>::new(T::zero(), self.sigma).seeded(&self.seed)),
     }
   }
 
@@ -312,20 +312,17 @@ pub struct SarimaSampler<T: FloatExt> {
   d: usize,
   big_d: usize,
   s: usize,
-  sigma: T,
-  normal: Seeded<SimdNormal<T>>,
+  /// `None` at `sigma = 0`, where every innovation is zero.
+  normal: Option<Seeded<SimdNormal<T>>>,
 }
 
 impl<T: FloatExt> SarimaSampler<T> {
   fn fill_path(&mut self, out: &mut [T]) {
     let n = out.len();
     let mut noise = Array1::<T>::zeros(n);
-    if n > 0 {
-      let slice = noise.as_slice_mut().expect("contiguous");
-      self.normal.fill_slice(slice);
+    if let Some(normal) = self.normal.as_mut().filter(|_| n > 0) {
+      normal.fill_slice(noise.as_slice_mut().expect("contiguous"));
     }
-    let sigma = self.sigma;
-    noise.mapv_inplace(|z| sigma * z);
     let integrated = sarima_filter(
       &noise,
       &self.non_seasonal_ar_coefs,

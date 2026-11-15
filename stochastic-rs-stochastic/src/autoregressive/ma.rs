@@ -139,8 +139,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     MAqSampler {
       n: self.n,
       theta: self.theta.clone(),
-      sigma: self.sigma,
-      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
+      normal: (self.sigma > T::zero())
+        .then(|| SimdNormal::<T>::new(T::zero(), self.sigma).seeded(&self.seed)),
     }
   }
 
@@ -215,8 +215,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 pub struct MAqSampler<T: FloatExt> {
   n: usize,
   theta: Array1<T>,
-  sigma: T,
-  normal: Seeded<SimdNormal<T>>,
+  /// `None` at `sigma = 0`, where every innovation is zero.
+  normal: Option<Seeded<SimdNormal<T>>>,
 }
 
 impl<T: FloatExt> MAqSampler<T> {
@@ -225,12 +225,9 @@ impl<T: FloatExt> MAqSampler<T> {
     let q = self.theta.len();
 
     let mut noise = Array1::<T>::zeros(n);
-    if n > 0 {
-      let slice = noise.as_slice_mut().expect("contiguous");
-      self.normal.fill_slice(slice);
+    if let Some(normal) = self.normal.as_mut().filter(|_| n > 0) {
+      normal.fill_slice(noise.as_slice_mut().expect("contiguous"));
     }
-    let sigma = self.sigma;
-    noise.mapv_inplace(|z| sigma * z);
 
     // MA recursion
     for t in 0..n {
