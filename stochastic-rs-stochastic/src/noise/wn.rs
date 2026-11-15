@@ -60,7 +60,7 @@ impl<T: FloatExt, S: SeedExt> Wn<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Wn<T, S, B> {
-  /// `std_dev` as the host and the device read it; a write past `new` that breaks its rule fails here.
+  /// `std_dev` as host and device read it; a write past `new` that breaks its rule fails here.
   fn checked_std_dev(&self) -> T {
     let std_dev = self.std_dev.unwrap_or(T::one());
     assert!(

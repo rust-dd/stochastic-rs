@@ -71,7 +71,7 @@ impl<T: FloatExt, S: SeedExt> MAq<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> MAq<T, S, B> {
-  /// `sigma` as the host and the device read it; a write past `new` that breaks its rule fails here.
+  /// `sigma` as host and device read it; a write past `new` that breaks its rule fails here.
   fn checked_sigma(&self) -> T {
     let sigma = self.sigma;
     assert!(

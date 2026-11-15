@@ -358,8 +358,6 @@ pub struct BlackKarasinskiSampler<'a, T: FloatExt> {
   decay: T,
   /// `(1 − e^{−a·dt})/a`, the weight of the frozen `theta` in the step's mean.
   pull: T,
-  /// Diffusion scale σ, applied as a multiplier at consumption rather than
-  /// baked into the Gaussian source's `sigma`.
   diff_scale: T,
   theta: &'a Fn1D<T>,
   normal: Seeded<SimdNormal<T>>,

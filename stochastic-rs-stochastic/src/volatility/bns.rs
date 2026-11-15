@@ -159,7 +159,7 @@ impl<T: FloatExt, S: SeedExt> Bns<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Bns<T, S, B> {
-  /// `nu` as the host and the device read it; a write past `new` that breaks its rule fails here.
+  /// `nu` as host and device read it; a write past `new` that breaks its rule fails here.
   fn checked_nu(&self) -> T {
     let nu = self.nu;
     assert!(
@@ -537,7 +537,7 @@ mod tests {
       .collect::<Vec<_>>();
     let mean = jumps.iter().sum::<f64>() / 4000.0;
     let var = jumps.iter().map(|z| (z - mean).powi(2)).sum::<f64>() / 3999.0;
-    // Compound Poisson(40) of Exp(1) sizes, κ_k = 40·k!: ±5σ is ±0.71 on the mean, ±9.3 on the variance.
+    // Compound Poisson(40) of Exp(1) sizes, κ_k = 40·k!: ±5σ is ±0.71 (mean) and ±9.3 (variance).
     assert!(
       (mean - 40.0).abs() < 5.0 * (80.0_f64 / 4000.0).sqrt(),
       "E[ΔZ] = ν·λ·Δ·E[Y] = 40, got {mean}"

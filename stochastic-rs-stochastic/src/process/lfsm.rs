@@ -4,7 +4,7 @@
 //! X_t=\int_{\mathbb{R}}\left(\max(t-u,0)^{H-1/\alpha}-\max(-u,0)^{H-1/\alpha}\right)\,dL_u^{\alpha}
 //! $$
 //!
-//! Reference: Stoev, S., Taqqu, M. S. (2004), "Simulation methods for linear fractional stable motion and FARIMA using the Fast Fourier Transform", Fractals 12(1) 95–121, DOI 10.1142/S0218348X04002379.
+//! Reference: Stoev, S., Taqqu, M. S. (2004), "Simulation methods for linear fractional stable motion and FARIMA using the Fast Fourier Transform", Fractals 12, 95–121, DOI 10.1142/S0218348X04002379.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -142,7 +142,6 @@ impl<T: FloatExt, S: SeedExt, B> Lfsm<T, S, B> {
       .collect()
   }
 
-  /// The stable innovation's scale `scale · dt^{1/α}` over one step, in `f64` like the weights.
   fn innovation_scale(&self) -> T {
     let dt = self.dt().to_f64().unwrap();
     T::from_f64_fast(self.scale.to_f64().unwrap() * dt.powf(1.0 / self.alpha.to_f64().unwrap()))

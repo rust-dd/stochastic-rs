@@ -24,6 +24,7 @@
 //! Reference: Ahdida, A. & Alfonsi, A. (2013), *Exact and high-order
 //! discretization schemes for Wishart processes and their affine extensions*,
 //! Ann. Appl. Probab. 23(3), 1025–1073. DOI: 10.1214/12-AAP863
+//!
 //! Reference: Siegel, A. F. (1979), "The noncentral chi-squared distribution with zero degrees of freedom and testing for uniformity", Biometrika 66(2) 381–386, DOI 10.1093/biomet/66.2.381.
 
 use ndarray::Array1;

@@ -193,7 +193,7 @@ mod tests {
     let events = p.sample()[1];
     assert!(
       (events / 4.0e6 - 1.0).abs() < 0.01,
-      "Poisson(4e6) unit jumps, 20 standard deviations wide; got {events}"
+      "Poisson(4e6) unit jumps, a ±20σ band; got {events}"
     );
   }
 }
