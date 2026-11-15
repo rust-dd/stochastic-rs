@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 
 use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 
 use crate::StatsError;
 use crate::traits::FloatExt;
@@ -29,6 +30,21 @@ pub(crate) fn validate<T: FloatExt>(y: &[T], min_n: usize) -> Result<(), StatsEr
       value: value.to_f64().unwrap(),
       constraint: "finite",
     });
+  }
+  Ok(())
+}
+
+/// Every entry of `x` finite, else `InvalidObservation` at the row (the observation `t`) of the
+/// first that is not.
+pub(crate) fn validate_rows<T: FloatExt>(x: ArrayView2<'_, T>) -> Result<(), StatsError> {
+  for (index, row) in x.rows().into_iter().enumerate() {
+    if let Some(value) = row.iter().find(|v| !v.is_finite()) {
+      return Err(StatsError::InvalidObservation {
+        index,
+        value: value.to_f64().unwrap(),
+        constraint: "finite",
+      });
+    }
   }
   Ok(())
 }

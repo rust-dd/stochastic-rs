@@ -48,6 +48,7 @@ use ndarray::ArrayView2;
 use ndarray::s;
 
 use crate::StatsError;
+use crate::input::validate_rows;
 use crate::linalg::inverse;
 use crate::linalg::lstsq;
 use crate::linalg::spd_cholesky_lower;
@@ -152,6 +153,7 @@ fn concentrate(series: ArrayView2<f64>, lags: usize) -> Result<Concentrated, Sta
       got: t,
     });
   }
+  validate_rows(series)?;
   let mut delta = Array2::<f64>::zeros((t - 1, k));
   for j in 0..k {
     for i in 0..(t - 1) {
@@ -269,8 +271,8 @@ fn sequential_rank(statistics: &Array1<f64>, critical: &Array1<f64>) -> usize {
   r
 }
 
-/// Johansen trace and maximum-eigenvalue rank tests of a `(t, k)` series at VAR order `lags`; `Err`
-/// below 2 series or `lags + 3` rows or on a singular `S00`/`S11`, and panics unless `lags >= 1`.
+/// Johansen trace and max-eigenvalue tests of a `(t, k)` series at VAR order `lags`; `Err` below 2
+/// series or `lags + 3` rows, on a non-finite entry or no finite fit; panics if `lags = 0`.
 pub fn johansen_test(series: ArrayView2<f64>, lags: usize) -> Result<JohansenTest, StatsError> {
   let c = concentrate(series, lags)?;
   let k = c.eigenvalues.len();

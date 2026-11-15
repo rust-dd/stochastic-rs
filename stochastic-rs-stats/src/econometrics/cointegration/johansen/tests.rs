@@ -336,3 +336,16 @@ fn rank_zero_drops_the_error_correction_term() {
 fn rejects_a_rank_above_the_dimension() {
   let _ = fit_vecm(lcg_system().view(), 1, 4);
 }
+
+#[test]
+fn a_non_finite_entry_is_an_invalid_observation_at_its_row() {
+  let mut y = lcg_system();
+  y[[5, 2]] = f64::INFINITY;
+  let expected = StatsError::InvalidObservation {
+    index: 5,
+    value: f64::INFINITY,
+    constraint: "finite",
+  };
+  assert_eq!(johansen_test(y.view(), 2).unwrap_err(), expected);
+  assert_eq!(fit_vecm(y.view(), 2, 1).unwrap_err(), expected);
+}

@@ -44,7 +44,9 @@ use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
 use crate::input::validate;
+use crate::input::validate_rows;
 use crate::linalg::inverse;
+use crate::traits::RealExt;
 
 /// Choice of CUSUM variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -132,8 +134,8 @@ fn cusumq_critical_coefficient(alpha: f64) -> f64 {
   }
 }
 
-/// Brown–Durbin–Evans (1975) CUSUM / CUSUMQ test of `y` on the design `x`; `Err` below `k + 2`
-/// points, on a non-finite `y`, mismatched rows or a singular leading block; panics on bad config.
+/// Brown–Durbin–Evans (1975) CUSUM / CUSUMQ test of `y` on `x`; `Err` below `k + 2` points, a
+/// non-finite `y` or `x`, mismatched rows or a singular leading block; panics on bad config.
 pub fn cusum_test(
   y: ArrayView1<f64>,
   x: ArrayView2<f64>,
@@ -152,6 +154,7 @@ pub fn cusum_test(
     });
   }
   validate(&as_slice_or_copy(y), k + 2)?;
+  validate_rows(x)?;
 
   let t_total = y.len();
   let w = recursive_residuals(y, x)?;
@@ -177,8 +180,8 @@ fn cusum_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumTest {
 
   let mut path = Vec::with_capacity(w.len());
   let mut boundary = Vec::with_capacity(w.len());
+  let mut excesses = Vec::with_capacity(w.len());
   let mut cum = 0.0_f64;
-  let mut max_excess = f64::NEG_INFINITY;
   let mut breakpoint: Option<usize> = None;
 
   for (i, wi) in w.iter().enumerate() {
@@ -187,13 +190,12 @@ fn cusum_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumTest {
     let upper = a0 * sqrt_n + 2.0 * a0 * (i as f64 + 1.0) / sqrt_n;
     boundary.push((-upper, upper));
     let excess = cum.abs() - upper;
-    if excess > max_excess {
-      max_excess = excess;
-    }
+    excesses.push(excess);
     if excess > 0.0 && breakpoint.is_none() {
       breakpoint = Some(k + i + 1);
     }
   }
+  let max_excess = f64::max_or_nan_fold(excesses);
 
   CusumTest {
     statistic: max_excess,
@@ -216,8 +218,8 @@ fn cusumq_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumTest {
 
   let mut path = Vec::with_capacity(w.len());
   let mut boundary = Vec::with_capacity(w.len());
+  let mut excesses = Vec::with_capacity(w.len());
   let mut cum_sq = 0.0_f64;
-  let mut max_excess = f64::NEG_INFINITY;
   let mut breakpoint: Option<usize> = None;
 
   for (i, wi) in w.iter().enumerate() {
@@ -227,13 +229,12 @@ fn cusumq_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumTest {
     path.push(s);
     boundary.push((mean - half_band, mean + half_band));
     let excess = (s - mean).abs() - half_band;
-    if excess > max_excess {
-      max_excess = excess;
-    }
+    excesses.push(excess);
     if excess > 0.0 && breakpoint.is_none() {
       breakpoint = Some(k + i + 1);
     }
   }
+  let max_excess = f64::max_or_nan_fold(excesses);
 
   CusumTest {
     statistic: max_excess,
@@ -430,6 +431,28 @@ mod tests {
         res.statistic
       );
     }
+  }
+
+  #[test]
+  fn a_non_finite_design_row_is_an_invalid_observation() {
+    let y = simulate_stationary(100, 5);
+    let mut x = linear_design(100);
+    x[[37, 1]] = f64::INFINITY;
+    assert_eq!(
+      cusum_test(y.view(), x.view(), CusumConfig::default()).unwrap_err(),
+      StatsError::InvalidObservation {
+        index: 37,
+        value: f64::INFINITY,
+        constraint: "finite"
+      }
+    );
+  }
+
+  #[test]
+  fn the_maximum_excess_keeps_a_nan() {
+    let w = vec![0.5, f64::NAN, -0.5, 0.25];
+    assert!(cusum_branch(w.clone(), 4.0, 1, 0.05).statistic.is_nan());
+    assert!(cusumq_branch(w, 4.0, 1, 0.05).statistic.is_nan());
   }
 
   #[test]

@@ -32,6 +32,7 @@ use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
 use crate::input::reject_constant;
 use crate::input::validate;
+use crate::input::validate_rows;
 
 /// $F(d_1, d_2)$ upper tail probability $1 - F(x)$ via the regularised
 /// incomplete beta identity
@@ -92,7 +93,7 @@ impl crate::traits::HypothesisTest for ResetTest {
 }
 
 /// Ramsey (1969) RESET of `y` on `x` (with its constant column); `Err` below `k + q + 2` points, a
-/// non-finite or constant `y`, mismatched rows, a singular or perfect fit; panics on bad config.
+/// non-finite entry, constant `y`, mismatched rows, a singular or perfect fit; panics on bad `cfg`.
 pub fn reset_test(
   y: ArrayView1<f64>,
   x: ArrayView2<f64>,
@@ -115,6 +116,7 @@ pub fn reset_test(
   let q = cfg.max_power - 1;
   let y_slice = as_slice_or_copy(y);
   validate(&y_slice, k + q + 2)?;
+  validate_rows(x)?;
   reject_constant(&y_slice, "constant series")?;
 
   // Restricted OLS: y on x.
@@ -256,6 +258,21 @@ mod tests {
       res.statistic < 1e-6,
       "noiseless linear F should be ~ 0; got {}",
       res.statistic
+    );
+  }
+
+  #[test]
+  fn a_non_finite_design_row_is_an_invalid_observation() {
+    let (x, y) = simulate_linear(100, 3);
+    let mut xm = design_with_intercept(&x);
+    xm[[40, 1]] = f64::INFINITY;
+    assert_eq!(
+      reset_test(y.view(), xm.view(), ResetConfig::default()).unwrap_err(),
+      StatsError::InvalidObservation {
+        index: 40,
+        value: f64::INFINITY,
+        constraint: "finite"
+      }
     );
   }
 

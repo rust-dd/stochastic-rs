@@ -45,6 +45,7 @@ use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
 use crate::input::validate;
+use crate::input::validate_rows;
 use crate::linalg::inverse;
 use crate::linalg::solve;
 use crate::traits::RealExt;
@@ -113,8 +114,8 @@ impl crate::traits::HypothesisTest for AndrewsPlobergerTest {
   }
 }
 
-/// Andrews / Andrews–Ploberger break test of `y` on the design `x`; `Err` on too few rows, a
-/// non-finite `y`, mismatched rows or a NaN Wald path, panics on bad `pi0`, `alpha` or no column.
+/// Andrews / Andrews–Ploberger break test of `y` on `x`; `Err` on too few rows, a non-finite `y` or
+/// `x`, mismatched rows or a NaN Wald path, panics on bad `pi0`, `alpha` or no column.
 pub fn andrews_ploberger_test(
   y: ArrayView1<f64>,
   x: ArrayView2<f64>,
@@ -142,6 +143,7 @@ pub fn andrews_ploberger_test(
     });
   }
   validate(&as_slice_or_copy(y), 3 * k + 4)?;
+  validate_rows(x)?;
 
   let t_total = y.len();
   let (t1_lo, t1_hi) = trimmed_grid(t_total, k, cfg.pi0);
@@ -470,6 +472,20 @@ mod tests {
     assert_eq!(res.rejects_null, None);
     assert_eq!(crate::traits::HypothesisTest::null_rejected(&res), None);
     assert!(res.p_value.is_none() && res.critical_values.is_none());
+  }
+
+  #[test]
+  fn a_non_finite_design_row_is_an_invalid_observation() {
+    let (y, mut x) = simulate(300, (1.0, 2.0), (1.0, 2.0), None, 42);
+    x[[120, 1]] = f64::INFINITY;
+    assert_eq!(
+      andrews_ploberger_test(y.view(), x.view(), AndrewsPlobergerConfig::default()).unwrap_err(),
+      StatsError::InvalidObservation {
+        index: 120,
+        value: f64::INFINITY,
+        constraint: "finite"
+      }
+    );
   }
 
   #[test]
