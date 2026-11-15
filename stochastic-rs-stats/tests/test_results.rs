@@ -61,19 +61,30 @@ fn agrees<T: HypothesisTest>(result: &T, statistic: f64, rejects: bool) {
 }
 
 #[test]
-fn critical_values_take_the_smallest_tabulated_level_at_or_above_alpha() {
+fn critical_values_pick_the_conservative_tabulated_level() {
   let cv = CriticalValues::new([(0.10, -2.57), (0.01, -3.43), (0.05, -2.86)]);
   assert_eq!(cv.entries(), &[(0.01, -3.43), (0.05, -2.86), (0.10, -2.57)]);
   assert_eq!(cv.at(0.05), Some(-2.86));
   assert_eq!(cv.at(0.03), None);
-  assert_eq!(cv.value_at(0.03), -2.86);
+  assert_eq!(cv.value_at(0.01), -3.43);
+  assert_eq!(cv.value_at(0.03), -3.43);
+  assert_eq!(cv.value_at(0.05), -2.86);
+  assert_eq!(cv.value_at(0.07), -2.86);
   assert_eq!(cv.value_at(0.10), -2.57);
 }
 
 #[test]
-#[should_panic(expected = "alpha must satisfy `alpha <= 0.1`")]
-fn a_level_above_the_table_is_a_precondition() {
-  let _ = CriticalValues::new([(0.01, -3.43), (0.05, -2.86), (0.10, -2.57)]).value_at(0.2);
+fn a_level_above_the_table_decides_at_its_largest_level() {
+  let cv = CriticalValues::new([(0.01, -3.43), (0.05, -2.86), (0.10, -2.57)]);
+  assert_eq!(cv.value_at(0.2), -2.57);
+}
+
+#[test]
+#[should_panic(
+  expected = "alpha must satisfy `alpha >= 0.01` (the smallest tabulated level), got alpha = 0.005"
+)]
+fn a_level_below_the_table_is_a_precondition() {
+  let _ = CriticalValues::new([(0.01, -3.43), (0.05, -2.86), (0.10, -2.57)]).value_at(0.005);
 }
 
 #[test]

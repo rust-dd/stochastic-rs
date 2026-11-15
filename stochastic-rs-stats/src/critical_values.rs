@@ -2,7 +2,8 @@
 
 use stochastic_rs_distributions::special::norm_cdf;
 
-/// Critical values at ascending levels; `value_at` takes the smallest tabulated level ≥ `alpha`.
+/// Critical values at ascending levels; `value_at` takes the largest tabulated level ≤ `alpha`,
+/// so no decision runs at a size above `alpha`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CriticalValues {
   entries: Vec<(f64, f64)>,
@@ -46,20 +47,14 @@ impl CriticalValues {
     self.entries.iter().find(|e| e.0 == alpha).map(|e| e.1)
   }
 
-  /// The value at the smallest tabulated level ≥ `alpha`; panics when `alpha` exceeds every
-  /// tabulated level.
+  /// The value at the largest tabulated level ≤ `alpha`; panics when `alpha` is below every level.
   pub fn value_at(&self, alpha: f64) -> f64 {
-    let largest = self.entries.last().map_or(0.0, |e| e.0);
+    let smallest = self.entries[0].0;
     assert!(
-      alpha <= largest,
-      "alpha must satisfy `alpha <= {largest}` (the largest tabulated level), got alpha = {alpha:?}"
+      alpha >= smallest,
+      "alpha must satisfy `alpha >= {smallest}` (the smallest tabulated level), got alpha = {alpha:?}"
     );
-    self
-      .entries
-      .iter()
-      .find(|e| e.0 >= alpha)
-      .map(|e| e.1)
-      .unwrap()
+    self.entries[self.entries.partition_point(|e| e.0 <= alpha) - 1].1
   }
 }
 

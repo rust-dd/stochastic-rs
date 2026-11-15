@@ -87,7 +87,7 @@ impl crate::traits::HypothesisTest for PhillipsPerronTest {
 }
 
 /// Phillips–Perron unit-root test; `Err` below 20 points, on a non-finite one or a singular
-/// regression, and panics unless `0 < alpha < 1` (`<= 0.1` for `Tau`, decided on the ADF table).
+/// regression, and panics unless `0 < alpha < 1` (`>= 0.01` for `Tau`, decided on the ADF table).
 pub fn phillips_perron_test(
   y: ArrayView1<f64>,
   cfg: PhillipsPerronConfig,

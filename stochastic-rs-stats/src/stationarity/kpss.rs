@@ -79,7 +79,7 @@ fn kpss_critical_values(include_trend: bool) -> CriticalValues {
 }
 
 /// KPSS stationarity test; `Err` below 20 points or on a non-finite one, and panics unless
-/// `trend != Trend::None` and `0 < alpha <= 0.1`.
+/// `trend != Trend::None` and `0.01 <= alpha < 1`.
 pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> Result<KpssTest, StatsError> {
   assert!(
     cfg.trend != Trend::None,

@@ -75,7 +75,7 @@ impl crate::traits::HypothesisTest for AdfTest {
 }
 
 /// Augmented Dickey–Fuller test; `Err` below 20 points, on a non-finite one, a fixed lag above
-/// `n − 5` or a singular regression, and panics unless `0 < alpha <= 0.1`.
+/// `n − 5` or a singular regression, and panics unless `0.01 <= alpha < 1`.
 pub fn adf_test(y: ArrayView1<f64>, cfg: AdfConfig) -> Result<AdfTest, StatsError> {
   assert_alpha(cfg.alpha);
   let critical_values = adf_critical_values(cfg.trend);

@@ -71,7 +71,7 @@ impl crate::traits::HypothesisTest for EngleGrangerTest {
 }
 
 /// Engle–Granger 2-step cointegration test; `Err` below 30 points, on a non-finite one, unequal
-/// lengths, a singular fit or the residual ADF's `Err`, and panics unless `0 < alpha <= 0.1`.
+/// lengths, a singular fit or the residual ADF's `Err`, and panics unless `0.01 <= alpha < 1`.
 pub fn engle_granger_test(
   y: ArrayView1<f64>,
   x: ArrayView1<f64>,

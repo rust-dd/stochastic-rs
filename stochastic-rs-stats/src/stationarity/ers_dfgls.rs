@@ -116,7 +116,7 @@ fn gls_detrend(y: &[f64], include_trend: bool) -> Result<Vec<f64>, StatsError> {
 }
 
 /// ERS DF-GLS test; `Err` below 20 points, on a non-finite one, a fixed lag above `n − 5` or a
-/// singular regression, and panics unless `trend != Trend::None` and `0 < alpha <= 0.1`.
+/// singular regression, and panics unless `trend != Trend::None` and `0.01 <= alpha < 1`.
 pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> Result<ErsTest, StatsError> {
   assert!(
     cfg.trend != Trend::None,
