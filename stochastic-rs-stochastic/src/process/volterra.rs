@@ -161,14 +161,14 @@ impl<T: FloatExt, S: SeedExt> Volterra<T, S> {
       }
       VolterraKernelSpec::PowerLaw { gamma } => {
         assert!(
-          gamma > -0.5,
-          "gamma must satisfy `gamma > -0.5`, got gamma = {gamma:?}"
+          gamma.is_finite() && gamma > -0.5,
+          "gamma must satisfy `gamma.is_finite() && gamma > -0.5`, got gamma = {gamma:?}"
         )
       }
       VolterraKernelSpec::Exponential { beta } => {
         assert!(
-          beta > 0.0,
-          "beta must satisfy `beta > 0.0`, got beta = {beta:?}"
+          beta.is_finite() && beta > 0.0,
+          "beta must satisfy `beta.is_finite() && beta > 0.0`, got beta = {beta:?}"
         )
       }
     }

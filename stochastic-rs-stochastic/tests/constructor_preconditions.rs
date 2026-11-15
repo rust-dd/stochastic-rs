@@ -97,10 +97,14 @@ refuses! {
     => Rdts::<f64>::new(2.0, 3.0, 1.0, 64, 8, None, None, Unseeded);
   a_volterra_kernel_validates_its_parameter: "h must satisfy `h > 0.0 && h < 1.0`, got h = 1.5"
     => Volterra::<f64>::new(VolterraKernelSpec::FractionalBM { h: 1.5 }, 64, None, Unseeded);
-  a_power_law_kernel_is_square_integrable: "gamma must satisfy `gamma > -0.5`, got gamma = -0.5"
+  a_power_law_kernel_is_square_integrable: "gamma must satisfy `gamma.is_finite() && gamma > -0.5`, got gamma = -0.5"
     => Volterra::<f64>::new(VolterraKernelSpec::PowerLaw { gamma: -0.5 }, 64, None, Unseeded);
-  an_exponential_kernel_decays: "beta must satisfy `beta > 0.0`, got beta = 0.0"
+  a_power_law_kernel_has_a_finite_exponent: "gamma must satisfy `gamma.is_finite() && gamma > -0.5`, got gamma = inf"
+    => Volterra::<f64>::new(VolterraKernelSpec::PowerLaw { gamma: f64::INFINITY }, 64, None, Unseeded);
+  an_exponential_kernel_decays: "beta must satisfy `beta.is_finite() && beta > 0.0`, got beta = 0.0"
     => Volterra::<f64>::new(VolterraKernelSpec::Exponential { beta: 0.0 }, 64, None, Unseeded);
+  an_exponential_kernel_has_a_finite_rate: "beta must satisfy `beta.is_finite() && beta > 0.0`, got beta = inf"
+    => Volterra::<f64>::new(VolterraKernelSpec::Exponential { beta: f64::INFINITY }, 64, None, Unseeded);
 
   a_discrete_series_refuses_no_observations: "n must satisfy `n >= 1`, got n = 0"
     => ARp::<f64>::new(array![0.5], 1.0, 0, None, Unseeded);
