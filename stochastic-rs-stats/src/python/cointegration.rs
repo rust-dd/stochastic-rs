@@ -1,6 +1,8 @@
 use numpy::PyReadonlyArray1;
 use pyo3::prelude::*;
 
+use super::stats_error;
+
 #[pyclass(name = "EngleGranger", unsendable)]
 pub struct PyEngleGranger {
   inner: crate::econometrics::cointegration::EngleGrangerTest,
@@ -14,13 +16,16 @@ impl PyEngleGranger {
     y: PyReadonlyArray1<'py, f64>,
     x: PyReadonlyArray1<'py, f64>,
   ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::econometrics::cointegration::engle_granger_test(
-        y.as_array(),
-        x.as_array(),
-        crate::econometrics::cointegration::EngleGrangerConfig::default(),
-      ),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::econometrics::cointegration::engle_granger_test(
+          y.as_array(),
+          x.as_array(),
+          crate::econometrics::cointegration::EngleGrangerConfig::default(),
+        )
+        .map_err(stats_error)?,
+      })
+    })?
   }
 
   #[getter]
@@ -71,9 +76,12 @@ impl PyJohansen {
   #[new]
   #[pyo3(signature = (series, lags=1))]
   fn new<'py>(series: numpy::PyReadonlyArray2<'py, f64>, lags: usize) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::econometrics::cointegration::johansen_test(series.as_array(), lags),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::econometrics::cointegration::johansen_test(series.as_array(), lags)
+          .map_err(stats_error)?,
+      })
+    })?
   }
 
   fn eigenvalues<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
@@ -139,9 +147,12 @@ impl PyVecm {
     lags: usize,
     rank: usize,
   ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::econometrics::cointegration::fit_vecm(series.as_array(), lags, rank),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::econometrics::cointegration::fit_vecm(series.as_array(), lags, rank)
+          .map_err(stats_error)?,
+      })
+    })?
   }
 
   /// Cointegrating vectors as columns (`k × rank`), `beta' S11 beta = I`.
@@ -227,14 +238,17 @@ impl PyGranger {
     lags: usize,
     alpha: f64,
   ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::econometrics::granger::granger_causality_test(
-        y.as_array(),
-        x.as_array(),
-        lags,
-        alpha,
-      ),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::econometrics::granger::granger_causality_test(
+          y.as_array(),
+          x.as_array(),
+          lags,
+          alpha,
+        )
+        .map_err(stats_error)?,
+      })
+    })?
   }
 
   #[getter]

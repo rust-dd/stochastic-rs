@@ -48,7 +48,8 @@
 //!     ArrayView1::from(&sample),
 //!     |x| dist.cdf(x).unwrap(),
 //!     KolmogorovSmirnovConfig::default(),
-//! );
+//! )
+//! .expect("20 000 finite draws");
 //! assert!(!res.rejects_null, "KS should not reject a sampler against its own cdf");
 //! ```
 

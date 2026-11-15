@@ -18,8 +18,11 @@ use super::common::adf_critical_values;
 use super::common::choose_lag_for_adf;
 use super::common::fit_adf;
 use super::common::schwert_max_lags;
-use super::common::validate_series;
+use crate::StatsError;
 use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::validate;
 
 /// Configuration for the Augmented Dickey-Fuller unit-root test.
 #[derive(Debug, Clone, Copy)]
@@ -71,49 +74,43 @@ impl crate::traits::HypothesisTest for AdfTest {
   }
 }
 
-/// Augmented Dickey-Fuller unit-root test.
-///
-/// # Panics
-/// Panics on invalid inputs (non-finite series, too-short sample, invalid config).
-pub fn adf_test(y: ArrayView1<f64>, cfg: AdfConfig) -> AdfTest {
-  let y = y
-    .as_slice()
-    .expect("adf_test requires a contiguous ArrayView1");
-  validate_series(y, 20);
-  assert!(
-    cfg.alpha > 0.0 && cfg.alpha < 1.0,
-    "alpha must be in (0, 1)"
-  );
+/// Augmented Dickey–Fuller test; `Err` below 20 points, on a non-finite one, a fixed lag above
+/// `n − 5` or a singular regression, and panics unless `0 < alpha <= 0.1`.
+pub fn adf_test(y: ArrayView1<f64>, cfg: AdfConfig) -> Result<AdfTest, StatsError> {
+  assert_alpha(cfg.alpha);
+  let critical_values = adf_critical_values(cfg.trend);
+  let critical = critical_values.value_at(cfg.alpha);
+  let y = as_slice_or_copy(y);
+  validate(&y, 20)?;
 
-  let max_possible_lag = y.len().saturating_sub(5);
+  let n = y.len();
+  let max_possible_lag = n - 5;
   let max_lags = cfg
     .max_lags
-    .unwrap_or_else(|| schwert_max_lags(y.len()))
+    .unwrap_or_else(|| schwert_max_lags(n))
     .min(max_possible_lag);
 
   let used_lags = match cfg.lag_selection {
-    LagSelection::Fixed(p) => {
-      assert!(
-        p <= max_possible_lag,
-        "fixed lag order too large for sample"
-      );
-      p
+    LagSelection::Fixed(p) if p > max_possible_lag => {
+      return Err(StatsError::InsufficientData {
+        needed: p + 5,
+        got: n,
+      });
     }
-    _ => choose_lag_for_adf(y, cfg.trend, cfg.lag_selection, max_lags),
+    LagSelection::Fixed(p) => p,
+    _ => choose_lag_for_adf(&y, cfg.trend, cfg.lag_selection, max_lags)?,
   };
 
-  let fit = fit_adf(y, used_lags, cfg.trend);
-  let critical_values = adf_critical_values(cfg.trend);
-  let rejects_null = fit.statistic < critical_values.value_at(cfg.alpha);
+  let fit = fit_adf(&y, used_lags, cfg.trend)?;
 
-  AdfTest {
+  Ok(AdfTest {
     statistic: fit.statistic,
     p_value: None,
     critical_values: Some(critical_values),
-    rejects_null,
+    rejects_null: fit.statistic < critical,
     used_lags,
     nobs: fit.nobs,
-  }
+  })
 }
 
 #[cfg(test)]
@@ -161,7 +158,7 @@ mod tests {
       lag_selection: LagSelection::Fixed(4),
       ..AdfConfig::default()
     };
-    let res = adf_test(ndarray::ArrayView1::from(&x), cfg);
+    let res = adf_test(ndarray::ArrayView1::from(&x), cfg).unwrap();
     assert!(
       res.rejects_null,
       "expected unit-root rejection, got {res:?}"
@@ -177,7 +174,7 @@ mod tests {
       alpha: 0.01,
       ..AdfConfig::default()
     };
-    let res = adf_test(ndarray::ArrayView1::from(&x), cfg);
+    let res = adf_test(ndarray::ArrayView1::from(&x), cfg).unwrap();
     assert!(
       !res.rejects_null,
       "expected no rejection for random walk, got {res:?}"

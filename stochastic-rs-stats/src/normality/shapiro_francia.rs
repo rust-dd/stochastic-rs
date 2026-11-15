@@ -16,7 +16,11 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::ndtri;
 
+use crate::StatsError;
 use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::validate;
 
 /// Configuration for the Shapiro-Francia normality test.
 #[derive(Debug, Clone, Copy)]
@@ -95,36 +99,26 @@ fn shapiro_francia_statistic_sorted(sorted: &[f64]) -> f64 {
   (num * num / s2).clamp(0.0, 1.0)
 }
 
-/// Shapiro-Francia normality test using bootstrap p-values.
-///
-/// # Panics
-/// Panics if the sample has fewer than 8 points or contains non-finite values.
+/// Shapiro–Francia normality test with a bootstrap p-value; `Err` below 8 points, on a non-finite
+/// or constant sample, and panics unless `0 < alpha < 1` and `bootstrap_samples >= 1`.
 pub fn shapiro_francia_test(
   sample: ArrayView1<f64>,
   cfg: ShapiroFranciaConfig,
-) -> ShapiroFranciaTest {
-  let sample = sample
-    .as_slice()
-    .expect("shapiro_francia_test requires a contiguous ArrayView1");
+) -> Result<ShapiroFranciaTest, StatsError> {
+  assert_alpha(cfg.alpha);
   assert!(
-    sample.len() >= 8,
-    "Shapiro-Francia requires at least 8 observations"
+    cfg.bootstrap_samples >= 1,
+    "bootstrap_samples must satisfy `bootstrap_samples >= 1`, got bootstrap_samples = {:?}",
+    cfg.bootstrap_samples
   );
-  assert!(
-    sample.iter().all(|x| x.is_finite()),
-    "Shapiro-Francia requires finite observations"
-  );
-  assert!(
-    cfg.alpha > 0.0 && cfg.alpha < 1.0,
-    "alpha must be in (0, 1)"
-  );
-  assert!(
-    cfg.bootstrap_samples > 0,
-    "bootstrap_samples must be positive"
-  );
+  let sample = as_slice_or_copy(sample);
+  validate(&sample, 8)?;
 
   let mut obs = sample.to_vec();
   obs.sort_by(f64::total_cmp);
+  if obs[0] == obs[obs.len() - 1] {
+    return Err(StatsError::DegenerateData("constant sample"));
+  }
   let obs_stat = shapiro_francia_statistic_sorted(&obs);
 
   let n = sample.len();
@@ -144,12 +138,12 @@ pub fn shapiro_francia_test(
 
   let p_value = (left_tail_hits as f64 + 1.0) / (cfg.bootstrap_samples as f64 + 1.0);
 
-  ShapiroFranciaTest {
+  Ok(ShapiroFranciaTest {
     statistic: obs_stat,
     p_value: Some(p_value),
     critical_values: None,
     rejects_null: p_value < cfg.alpha,
-  }
+  })
 }
 
 #[cfg(test)]
@@ -191,6 +185,7 @@ mod tests {
           ..ShapiroFranciaConfig::default()
         };
         shapiro_francia_test(ArrayView1::from(&x), cfg)
+          .unwrap()
           .p_value
           .unwrap()
       })
@@ -213,7 +208,7 @@ mod tests {
       bootstrap_seed: 11,
       ..ShapiroFranciaConfig::default()
     };
-    let res = shapiro_francia_test(ArrayView1::from(&x), cfg);
+    let res = shapiro_francia_test(ArrayView1::from(&x), cfg).unwrap();
     assert!(
       res.rejects_null,
       "expected rejection for non-normal sample, got {res:?}"

@@ -31,6 +31,7 @@ pub fn best_ks_p_value(
         cdf,
         KolmogorovSmirnovConfig::default(),
       )
+      .unwrap()
       .p_value
       .unwrap()
     })
@@ -62,6 +63,7 @@ pub fn best_chi_square_p_value(
       let (edges, expected_prob) = pool_integer_bins(n as u64, k_lo, k_hi, cdf, 5.0);
       let observed = bin_observed(&samples, &edges);
       chi_square_gof_test(&observed, &expected_prob, ChiSquareGofConfig::default())
+        .unwrap()
         .p_value
         .unwrap()
     })

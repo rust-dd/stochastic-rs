@@ -80,10 +80,10 @@ fn bench_bipower(c: &mut Criterion) {
     b.iter(|| std::hint::black_box(medrv(r.view())));
   });
   c.bench_function("bns_jump_test_50k", |b| {
-    b.iter(|| std::hint::black_box(bns_jump_test(r.view(), 0.05)));
+    b.iter(|| std::hint::black_box(bns_jump_test(r.view(), 0.05).unwrap()));
   });
   c.bench_function("lee_mykland_50k_k270", |b| {
-    b.iter(|| std::hint::black_box(lee_mykland_test(r.view(), 270, 0.01)));
+    b.iter(|| std::hint::black_box(lee_mykland_test(r.view(), 270, 0.01).unwrap()));
   });
 }
 

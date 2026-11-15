@@ -28,13 +28,13 @@ fn johansen_rank_then_vecm() {
   }
 
   // Rank tests at VAR order 2: both sequential procedures stop at r = 1.
-  let test = johansen_test(y.view(), 2);
+  let test = johansen_test(y.view(), 2).expect("500 rows of two finite, cointegrated series");
   assert_eq!(test.rank_trace, 1);
   assert_eq!(test.rank_max_eig, 1);
   assert!(test.max_eig_statistics[0] > test.max_eig_critical_5pct[0]);
 
   // The VECM at that rank recovers the relation y2 − 0.7·y1 up to scale.
-  let fit = fit_vecm(y.view(), 2, test.rank_trace);
+  let fit = fit_vecm(y.view(), 2, test.rank_trace).expect("the same series at its tested rank");
   let ratio = fit.beta[[1, 0]] / fit.beta[[0, 0]];
   assert!((ratio + 1.0 / 0.7).abs() < 0.1, "beta ratio {ratio}");
   assert_eq!(fit.gamma.len(), 1);

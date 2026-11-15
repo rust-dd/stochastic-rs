@@ -1,6 +1,8 @@
 use numpy::PyReadonlyArray1;
 use pyo3::prelude::*;
 
+use super::stats_error;
+
 /// ADF/KPSS bindings ship in every wheel (the underlying
 /// `stationarity` module pulls in `ndarray-linalg`).
 #[pyclass(name = "ADFTest", unsendable)]
@@ -55,7 +57,7 @@ impl PyADFTest {
       };
       let view = y.as_array();
       Ok(Self {
-        inner: crate::stationarity::adf::adf_test(view, cfg),
+        inner: crate::stationarity::adf::adf_test(view, cfg).map_err(stats_error)?,
       })
     })?
   }
@@ -124,7 +126,7 @@ impl PyKPSSTest {
       };
       let view = y.as_array();
       Ok(Self {
-        inner: crate::stationarity::kpss::kpss_test(view, cfg),
+        inner: crate::stationarity::kpss::kpss_test(view, cfg).map_err(stats_error)?,
       })
     })?
   }
@@ -191,7 +193,8 @@ impl PyPhillipsPerronTest {
         alpha,
       };
       Ok(Self {
-        inner: crate::stationarity::phillips_perron::phillips_perron_test(y.as_array(), cfg),
+        inner: crate::stationarity::phillips_perron::phillips_perron_test(y.as_array(), cfg)
+          .map_err(stats_error)?,
       })
     })?
   }
@@ -261,7 +264,8 @@ impl PyERSTest {
         alpha,
       };
       Ok(Self {
-        inner: crate::stationarity::ers_dfgls::ers_dfgls_test(y.as_array(), cfg),
+        inner: crate::stationarity::ers_dfgls::ers_dfgls_test(y.as_array(), cfg)
+          .map_err(stats_error)?,
       })
     })?
   }
@@ -324,7 +328,8 @@ impl PyLeybourneMcCabeTest {
         alpha,
       };
       Ok(Self {
-        inner: crate::stationarity::leybourne_mccabe::leybourne_mccabe_test(y.as_array(), cfg),
+        inner: crate::stationarity::leybourne_mccabe::leybourne_mccabe_test(y.as_array(), cfg)
+          .map_err(stats_error)?,
       })
     })?
   }

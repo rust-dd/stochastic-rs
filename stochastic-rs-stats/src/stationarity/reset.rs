@@ -26,8 +26,11 @@ use ndarray::ArrayView2;
 use stochastic_rs_distributions::special::beta_i;
 
 use super::common::ols;
-use super::common::validate_series;
+use crate::StatsError;
 use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::validate;
 
 /// $F(d_1, d_2)$ upper tail probability $1 - F(x)$ via the regularised
 /// incomplete beta identity
@@ -87,33 +90,34 @@ impl crate::traits::HypothesisTest for ResetTest {
   }
 }
 
-/// Ramsey (1969) RESET test.
-///
-/// `x` is the $T \times k$ design matrix (must include a constant column if
-/// the model has an intercept) and `y` is the $T \times 1$ response.
-///
-/// # Panics
-/// Panics on non-finite inputs, `max_power < 2`, $T \le k + (p-1)$, or
-/// `alpha` outside $(0, 1)$.
-pub fn reset_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: ResetConfig) -> ResetTest {
-  let y_slice = y
-    .as_slice()
-    .expect("reset_test requires a contiguous ArrayView1");
-  assert_eq!(y.len(), x.nrows(), "y/x row mismatch");
+/// Ramsey (1969) RESET of `y` on the `T × k` design `x` (with its own constant column); `Err` below
+/// `k + q + 2` points, on a non-finite `y`, mismatched rows or a singular regression.
+pub fn reset_test(
+  y: ArrayView1<f64>,
+  x: ArrayView2<f64>,
+  cfg: ResetConfig,
+) -> Result<ResetTest, StatsError> {
+  assert!(
+    cfg.max_power >= 2,
+    "max_power must satisfy `max_power >= 2`, got max_power = {:?}",
+    cfg.max_power
+  );
+  assert_alpha(cfg.alpha);
+  if x.nrows() != y.len() {
+    return Err(StatsError::DimensionMismatch {
+      expected: y.len(),
+      got: x.nrows(),
+    });
+  }
   let t_total = y.len();
   let k = x.ncols();
-  let q = cfg.max_power.saturating_sub(1);
-  assert!(cfg.max_power >= 2, "RESET requires max_power >= 2");
-  assert!(t_total > k + q, "need T > k + q observations");
-  validate_series(y_slice, k + q + 2);
-  assert!(
-    cfg.alpha > 0.0 && cfg.alpha < 1.0,
-    "alpha must be in (0, 1)"
-  );
+  let q = cfg.max_power - 1;
+  let y_slice = as_slice_or_copy(y);
+  validate(&y_slice, k + q + 2)?;
 
   // Restricted OLS: y on x.
   let x_rows: Vec<Vec<f64>> = (0..t_total).map(|i| x.row(i).to_vec()).collect();
-  let fit_r = ols(y_slice, &x_rows);
+  let fit_r = ols(&y_slice, &x_rows)?;
   let sse_r = fit_r.sse;
   let beta_r = ndarray::Array1::from_vec(fit_r.beta.clone());
 
@@ -131,13 +135,11 @@ pub fn reset_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: ResetConfig) -> R
       row.push(power);
     }
   }
-  let fit_u = ols(y_slice, &x_aug_rows);
+  let fit_u = ols(&y_slice, &x_aug_rows)?;
   let sse_u = fit_u.sse;
 
   let df_num = q;
-  let df_den = t_total
-    .checked_sub(k + q)
-    .expect("RESET denominator d.o.f. underflowed");
+  let df_den = t_total - k - q;
   let num = ((sse_r - sse_u) / df_num as f64).max(0.0);
   let den = sse_u / df_den as f64;
   let f_statistic = if den > 0.0 { num / den } else { f64::INFINITY };
@@ -148,14 +150,14 @@ pub fn reset_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: ResetConfig) -> R
     0.0
   };
 
-  ResetTest {
+  Ok(ResetTest {
     statistic: f_statistic,
     p_value: Some(p_value),
     critical_values: None,
     rejects_null: p_value < cfg.alpha,
     df_num,
     df_den,
-  }
+  })
 }
 
 #[cfg(test)]
@@ -205,7 +207,7 @@ mod tests {
   fn reset_does_not_reject_linear_dgp() {
     let (x, y) = simulate_linear(300, 42);
     let xm = design_with_intercept(&x);
-    let res = reset_test(y.view(), xm.view(), ResetConfig::default());
+    let res = reset_test(y.view(), xm.view(), ResetConfig::default()).unwrap();
     assert!(
       !res.rejects_null,
       "linear DGP: should not reject; F = {}, p = {:?}",
@@ -217,7 +219,7 @@ mod tests {
   fn reset_rejects_quadratic_dgp() {
     let (x, y) = simulate_quadratic(300, 7);
     let xm = design_with_intercept(&x);
-    let res = reset_test(y.view(), xm.view(), ResetConfig::default());
+    let res = reset_test(y.view(), xm.view(), ResetConfig::default()).unwrap();
     assert!(
       res.rejects_null,
       "quadratic DGP: should reject; F = {}, p = {:?}",
@@ -229,7 +231,7 @@ mod tests {
   fn reset_rejects_cubic_dgp() {
     let (x, y) = simulate_cubic(300, 11);
     let xm = design_with_intercept(&x);
-    let res = reset_test(y.view(), xm.view(), ResetConfig::default());
+    let res = reset_test(y.view(), xm.view(), ResetConfig::default()).unwrap();
     assert!(
       res.rejects_null,
       "cubic DGP: should reject; F = {}, p = {:?}",
@@ -244,7 +246,7 @@ mod tests {
     let x: Array1<f64> = Array1::linspace(-1.0, 1.0, 50);
     let y: Array1<f64> = &x * 3.0 + 2.0;
     let xm = design_with_intercept(&x);
-    let res = reset_test(y.view(), xm.view(), ResetConfig::default());
+    let res = reset_test(y.view(), xm.view(), ResetConfig::default()).unwrap();
     assert!(
       res.statistic < 1e-6,
       "noiseless linear F should be ~ 0; got {}",
@@ -263,7 +265,8 @@ mod tests {
         max_power: 4,
         alpha: 0.05,
       },
-    );
+    )
+    .unwrap();
     // p = 4 ⇒ q = 3; k = 2 (intercept + slope); T - k - q = 100 - 2 - 3 = 95.
     assert_eq!(res.df_num, 3, "df_num mismatch");
     assert_eq!(res.df_den, 95, "df_den mismatch");

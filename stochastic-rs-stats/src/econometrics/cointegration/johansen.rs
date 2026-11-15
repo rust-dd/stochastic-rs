@@ -47,6 +47,7 @@ use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::s;
 
+use crate::StatsError;
 use crate::linalg::inverse;
 use crate::linalg::lstsq;
 use crate::linalg::spd_cholesky_lower;
@@ -136,11 +137,21 @@ struct Concentrated {
   n_eff: usize,
 }
 
-fn concentrate(series: ArrayView2<f64>, lags: usize) -> Concentrated {
+fn concentrate(series: ArrayView2<f64>, lags: usize) -> Result<Concentrated, StatsError> {
   let (t, k) = series.dim();
-  assert!(t > lags + 2, "not enough observations for given lag");
-  assert!(k >= 2, "need at least two series");
-  assert!(lags >= 1, "lags must be at least 1");
+  assert!(
+    lags >= 1,
+    "lags must satisfy `lags >= 1`, got lags = {lags:?}"
+  );
+  if k < 2 {
+    return Err(StatsError::InsufficientData { needed: 2, got: k });
+  }
+  if t < lags + 3 {
+    return Err(StatsError::InsufficientData {
+      needed: lags + 3,
+      got: t,
+    });
+  }
   let mut delta = Array2::<f64>::zeros((t - 1, k));
   for j in 0..k {
     for i in 0..(t - 1) {
@@ -172,10 +183,10 @@ fn concentrate(series: ArrayView2<f64>, lags: usize) -> Concentrated {
   let s00 = r0.t().dot(&r0) / n;
   let s11 = r1.t().dot(&r1) / n;
   let s01 = r0.t().dot(&r1) / n;
-  let s00_inv = inverse(&s00).expect("S00 inverse failed");
+  let s00_inv = inverse(&s00).ok_or(StatsError::Singular("S00"))?;
   let m = s01.t().dot(&s00_inv).dot(&s01);
-  let (eigenvalues, eigenvectors) = ordered_eigen(&m, &s11);
-  Concentrated {
+  let (eigenvalues, eigenvectors) = ordered_eigen(&m, &s11)?;
+  Ok(Concentrated {
     z0,
     z1,
     z2,
@@ -183,20 +194,25 @@ fn concentrate(series: ArrayView2<f64>, lags: usize) -> Concentrated {
     eigenvalues,
     eigenvectors,
     n_eff,
-  }
+  })
 }
 
 /// Eigenpairs of $|\lambda S_{11} - M| = 0$ through the Cholesky-whitened
 /// symmetric problem $L^{-1} M L^{-\top} w = \lambda w$ with $S_{11} = LL'$:
 /// eigenvalues descending and clamped to $[0, 1)$, eigenvectors
 /// $V = L^{-\top} W$ so that $V' S_{11} V = I$.
-fn ordered_eigen(m: &Array2<f64>, s11: &Array2<f64>) -> (Array1<f64>, Array2<f64>) {
+fn ordered_eigen(
+  m: &Array2<f64>,
+  s11: &Array2<f64>,
+) -> Result<(Array1<f64>, Array2<f64>), StatsError> {
   let k = s11.nrows();
-  let l = spd_cholesky_lower(s11).expect("S11 is not positive definite");
-  let l_inv = inverse(&l).expect("S11 Cholesky factor inverse failed");
+  let l = spd_cholesky_lower(s11).ok_or(StatsError::Singular("S11"))?;
+  let l_inv = inverse(&l).ok_or(StatsError::Singular("S11"))?;
   let whitened = l_inv.dot(m).dot(&l_inv.t());
   let symmetric = (&whitened + &whitened.t()) / 2.0;
-  let (values, vectors) = symmetric_eigen(&symmetric).expect("Johansen eig failed");
+  let (values, vectors) = symmetric_eigen(&symmetric).ok_or(StatsError::Numerical {
+    stage: "eigen decomposition",
+  })?;
   let mut order: Vec<usize> = (0..k).collect();
   order.sort_by(|&a, &b| values[b].partial_cmp(&values[a]).unwrap());
   let raw = l_inv.t().dot(&vectors);
@@ -206,7 +222,7 @@ fn ordered_eigen(m: &Array2<f64>, s11: &Array2<f64>) -> (Array1<f64>, Array2<f64
     eigenvalues[slot] = values[idx].clamp(0.0, 1.0 - 1e-12);
     eigenvectors.column_mut(slot).assign(&raw.column(idx));
   }
-  (eigenvalues, eigenvectors)
+  Ok((eigenvalues, eigenvectors))
 }
 
 fn residualise(y: &Array2<f64>, x: &Array2<f64>) -> Array2<f64> {
@@ -253,10 +269,10 @@ fn sequential_rank(statistics: &Array1<f64>, critical: &Array1<f64>) -> usize {
   r
 }
 
-/// Johansen trace and maximum-eigenvalue tests for the cointegrating rank
-/// of a `(t, k)` series. `lags` is the VAR order (use `1` if unsure).
-pub fn johansen_test(series: ArrayView2<f64>, lags: usize) -> JohansenTest {
-  let c = concentrate(series, lags);
+/// Johansen trace and maximum-eigenvalue rank tests of a `(t, k)` series at VAR order `lags`; `Err`
+/// below 2 series or `lags + 3` rows or on a singular `S00`/`S11`, and panics unless `lags >= 1`.
+pub fn johansen_test(series: ArrayView2<f64>, lags: usize) -> Result<JohansenTest, StatsError> {
+  let c = concentrate(series, lags)?;
   let k = c.eigenvalues.len();
   let t = c.n_eff as f64;
   let log_terms: Vec<f64> = c.eigenvalues.iter().map(|&l| (1.0 - l).ln()).collect();
@@ -266,7 +282,7 @@ pub fn johansen_test(series: ArrayView2<f64>, lags: usize) -> JohansenTest {
   let max_eig_critical_5pct = critical_values(&MAX_EIG_CRITICAL_5PCT, k);
   let rank_trace = sequential_rank(&trace_statistics, &trace_critical_5pct);
   let rank_max_eig = sequential_rank(&max_eig_statistics, &max_eig_critical_5pct);
-  JohansenTest {
+  Ok(JohansenTest {
     eigenvalues: c.eigenvalues,
     eigenvectors: c.eigenvectors,
     trace_statistics,
@@ -276,15 +292,18 @@ pub fn johansen_test(series: ArrayView2<f64>, lags: usize) -> JohansenTest {
     rank_trace,
     rank_max_eig,
     nobs: c.n_eff,
-  }
+  })
 }
 
-/// Maximum-likelihood VECM estimate of a `(t, k)` series at cointegrating
-/// rank `rank` (`0..=k`; `k` is the unrestricted VAR) with VAR order `lags`.
-pub fn fit_vecm(series: ArrayView2<f64>, lags: usize, rank: usize) -> VecmFit {
-  let c = concentrate(series, lags);
-  let k = c.eigenvalues.len();
-  assert!(rank <= k, "rank must lie in 0..={k}, got {rank}");
+/// ML VECM of a `(t, k)` series at cointegrating rank `rank` (`k`: the unrestricted VAR); `Err` as
+/// [`johansen_test`], and panics unless `lags >= 1` and `rank <= k`.
+pub fn fit_vecm(series: ArrayView2<f64>, lags: usize, rank: usize) -> Result<VecmFit, StatsError> {
+  let k = series.ncols();
+  assert!(
+    rank <= k,
+    "rank must satisfy `rank <= k`, got rank = {rank:?}, k = {k:?}"
+  );
+  let c = concentrate(series, lags)?;
   let beta = c.eigenvectors.slice(s![.., ..rank]).to_owned();
   let alpha = c.s01.dot(&beta);
   let pi = alpha.dot(&beta.t());
@@ -306,7 +325,7 @@ pub fn fit_vecm(series: ArrayView2<f64>, lags: usize, rank: usize) -> VecmFit {
         .to_owned()
     })
     .collect();
-  VecmFit {
+  Ok(VecmFit {
     rank,
     lags,
     beta,
@@ -318,7 +337,7 @@ pub fn fit_vecm(series: ArrayView2<f64>, lags: usize, rank: usize) -> VecmFit {
     sigma,
     eigenvalues: c.eigenvalues,
     nobs: n_eff,
-  }
+  })
 }
 
 #[cfg(test)]

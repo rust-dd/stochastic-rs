@@ -57,11 +57,9 @@ fn bench_cointegration(c: &mut Criterion) {
     .into();
   c.bench_function("engle_granger_1k", |b| {
     b.iter(|| {
-      std::hint::black_box(engle_granger_test(
-        y.view(),
-        x.view(),
-        EngleGrangerConfig::default(),
-      ))
+      std::hint::black_box(
+        engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default()).unwrap(),
+      )
     });
   });
   let mut s = Array2::<f64>::zeros((500, 3));
@@ -71,10 +69,10 @@ fn bench_cointegration(c: &mut Criterion) {
     s[[i, 2]] = random_walk(17, 500, 1.0)[i];
   }
   c.bench_function("johansen_500x3", |b| {
-    b.iter(|| std::hint::black_box(johansen_test(s.view(), 2)));
+    b.iter(|| std::hint::black_box(johansen_test(s.view(), 2).unwrap()));
   });
   c.bench_function("vecm_500x3_rank1", |b| {
-    b.iter(|| std::hint::black_box(fit_vecm(s.view(), 2, 1)));
+    b.iter(|| std::hint::black_box(fit_vecm(s.view(), 2, 1).unwrap()));
   });
 }
 
@@ -82,7 +80,7 @@ fn bench_granger(c: &mut Criterion) {
   let x = iid_normal(21, 2_000);
   let y = iid_normal(23, 2_000);
   c.bench_function("granger_2k_lag4", |b| {
-    b.iter(|| std::hint::black_box(granger_causality_test(y.view(), x.view(), 4, 0.05)));
+    b.iter(|| std::hint::black_box(granger_causality_test(y.view(), x.view(), 4, 0.05).unwrap()));
   });
 }
 

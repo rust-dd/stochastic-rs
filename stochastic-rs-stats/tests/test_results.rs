@@ -85,47 +85,50 @@ fn a_level_outside_the_unit_interval_is_a_precondition() {
 #[test]
 fn every_test_result_answers_through_the_trait() {
   let x = ar1(1, 400, 0.5);
-  let adf = adf_test(x.view(), AdfConfig::default());
+  let adf = adf_test(x.view(), AdfConfig::default()).unwrap();
   agrees(&adf, adf.statistic, adf.rejects_null);
   assert!(adf.p_value.is_none() && adf.critical_values.is_some());
-  let kpss = kpss_test(x.view(), KpssConfig::default());
+  let kpss = kpss_test(x.view(), KpssConfig::default()).unwrap();
   agrees(&kpss, kpss.statistic, kpss.rejects_null);
   assert_eq!(kpss.critical_values.as_ref().unwrap().entries().len(), 4);
-  let ers = ers_dfgls_test(x.view(), ErsConfig::default());
+  let ers = ers_dfgls_test(x.view(), ErsConfig::default()).unwrap();
   agrees(&ers, ers.statistic, ers.rejects_null);
-  let pp = phillips_perron_test(x.view(), PhillipsPerronConfig::default());
+  let pp = phillips_perron_test(x.view(), PhillipsPerronConfig::default()).unwrap();
   assert_eq!(pp.null_rejected(), pp.rejects_null);
-  let lm = leybourne_mccabe_test(x.view(), LeybourneMcCabeConfig::default());
+  let lm = leybourne_mccabe_test(x.view(), LeybourneMcCabeConfig::default()).unwrap();
   agrees(&lm, lm.statistic, lm.rejects_null);
   assert!(lm.p_value.is_some() && lm.critical_values.is_none());
-  let lomk = lo_mackinlay_test(x.view(), LoMacKinlayConfig::default());
+  let lomk = lo_mackinlay_test(x.view(), LoMacKinlayConfig::default()).unwrap();
   agrees(&lomk, lomk.statistic, lomk.rejects_null);
   assert!(lomk.p_value.unwrap() >= 0.0 && lomk.p_value_iid >= 0.0);
   let design = Array2::<f64>::ones((x.len(), 1));
-  let cusum = cusum_test(x.view(), design.view(), CusumConfig::default());
+  let cusum = cusum_test(x.view(), design.view(), CusumConfig::default()).unwrap();
   agrees(&cusum, cusum.statistic, cusum.rejects_null);
-  let ap = andrews_ploberger_test(x.view(), design.view(), AndrewsPlobergerConfig::default());
+  let ap =
+    andrews_ploberger_test(x.view(), design.view(), AndrewsPlobergerConfig::default()).unwrap();
   agrees(&ap, ap.statistic, ap.rejects_null);
-  let reset = reset_test(x.view(), design.view(), ResetConfig::default());
+  let reset = reset_test(x.view(), design.view(), ResetConfig::default()).unwrap();
   agrees(&reset, reset.statistic, reset.rejects_null);
-  let ad = anderson_darling_normal_test(x.view(), AndersonDarlingConfig::default());
+  let ad = anderson_darling_normal_test(x.view(), AndersonDarlingConfig::default()).unwrap();
   agrees(&ad, ad.statistic, ad.rejects_null);
-  let jb = jarque_bera_test(x.view(), JarqueBeraConfig::default());
+  let jb = jarque_bera_test(x.view(), JarqueBeraConfig::default()).unwrap();
   agrees(&jb, jb.statistic, jb.rejects_null);
-  let sf = shapiro_francia_test(x.view(), ShapiroFranciaConfig::default());
+  let sf = shapiro_francia_test(x.view(), ShapiroFranciaConfig::default()).unwrap();
   agrees(&sf, sf.statistic, sf.rejects_null);
   let ks = kolmogorov_smirnov_test(
     x.view(),
     |v| 0.5 * (1.0 + libm_erf(v / 2.0_f64.sqrt())),
     KolmogorovSmirnovConfig::default(),
-  );
+  )
+  .unwrap();
   agrees(&ks, ks.statistic, ks.rejects_null);
   assert_eq!(ks.critical_values.as_ref().unwrap().entries().len(), 1);
   let chi = chi_square_gof_test(
     &[40, 35, 25],
     &[0.4, 0.35, 0.25],
     ChiSquareGofConfig::default(),
-  );
+  )
+  .unwrap();
   agrees(&chi, chi.statistic, chi.rejects_null);
   let lb = ljung_box(
     x.view(),
@@ -134,16 +137,17 @@ fn every_test_result_answers_through_the_trait() {
       fit_df: 0,
       alpha: 0.05,
     },
-  );
+  )
+  .unwrap();
   agrees(&lb, lb.statistic, lb.rejects_null);
   assert_eq!(lb.rejects_null, lb.p_value.unwrap() < 0.05);
   let y = ar1(2, 400, 0.5);
-  let granger = granger_causality_test(y.view(), x.view(), 2, 0.05);
+  let granger = granger_causality_test(y.view(), x.view(), 2, 0.05).unwrap();
   agrees(&granger, granger.statistic, granger.rejects_null);
-  let eg = engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default());
+  let eg = engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default()).unwrap();
   agrees(&eg, eg.statistic, eg.rejects_null);
   assert!(eg.p_value.is_none() && eg.critical_values.as_ref().unwrap().at(0.05).is_some());
-  let bns = bns_jump_test(x.view(), 0.05);
+  let bns = bns_jump_test(x.view(), 0.05).unwrap();
   agrees(&bns, bns.statistic, bns.rejects_null);
   assert!(bns.p_value.is_some());
 }
@@ -159,7 +163,7 @@ fn engle_granger_reports_the_intercept() {
   let mut eps = vec![0.0_f64; 500];
   dist.fill_slice(&mut eps);
   let y = Array1::from_iter((0..500).map(|i| 2.0 + 0.7 * x[i] + eps[i]));
-  let eg = engle_granger_test(y.view(), x.view(), EngleGrangerConfig { alpha: 0.05 });
+  let eg = engle_granger_test(y.view(), x.view(), EngleGrangerConfig { alpha: 0.05 }).unwrap();
   assert!((eg.intercept - 2.0).abs() < 0.1 && (eg.beta - 0.7).abs() < 0.05);
 }
 

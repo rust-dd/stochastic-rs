@@ -31,7 +31,8 @@
 //! let mut sample = vec![0.0; 5_000];
 //! dist.fill_slice(&mut sample);
 //!
-//! let res = jarque_bera_test(ArrayView1::from(&sample), JarqueBeraConfig::default());
+//! let res = jarque_bera_test(ArrayView1::from(&sample), JarqueBeraConfig::default())
+//!     .expect("5 000 finite draws");
 //! assert!(!res.rejects_null, "JB should not reject a true normal sample");
 //! ```
 //!

@@ -77,3 +77,8 @@ pub use stationarity::PyERSTest;
 pub use stationarity::PyKPSSTest;
 pub use stationarity::PyLeybourneMcCabeTest;
 pub use stationarity::PyPhillipsPerronTest;
+
+/// A `StatsError` as the `ValueError` the wrappers raise.
+pub(crate) fn stats_error(e: crate::StatsError) -> pyo3::PyErr {
+  pyo3::exceptions::PyValueError::new_err(e.to_string())
+}

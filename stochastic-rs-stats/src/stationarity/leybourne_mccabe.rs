@@ -8,8 +8,11 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use super::common::Trend;
 use super::common::fit_ar;
 use super::common::regress_on_deterministics;
-use super::common::validate_series;
+use crate::StatsError;
 use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::validate;
 
 /// Configuration for the Leybourne-McCabe stationarity test.
 #[derive(Debug, Clone, Copy)]
@@ -62,12 +65,12 @@ impl crate::traits::HypothesisTest for LeybourneMcCabeTest {
   }
 }
 
-fn detrend_series(y: &[f64], include_trend: bool) -> Vec<f64> {
+fn detrend_series(y: &[f64], include_trend: bool) -> Result<Vec<f64>, StatsError> {
   if include_trend {
-    regress_on_deterministics(y, true).residuals
+    Ok(regress_on_deterministics(y, true)?.residuals)
   } else {
     let mean = y.iter().sum::<f64>() / y.len() as f64;
-    y.iter().map(|v| v - mean).collect()
+    Ok(y.iter().map(|v| v - mean).collect())
   }
 }
 
@@ -92,11 +95,11 @@ fn lm_statistic_with_prewhitening(
   y: &[f64],
   include_trend: bool,
   ar_lags: usize,
-) -> (f64, Vec<f64>, f64) {
-  let y_det = detrend_series(y, include_trend);
-  let (phi, residuals, sigma) = fit_ar(&y_det, ar_lags);
+) -> Result<(f64, Vec<f64>, f64), StatsError> {
+  let y_det = detrend_series(y, include_trend)?;
+  let (phi, residuals, sigma) = fit_ar(&y_det, ar_lags)?;
   let stat = lm_statistic_from_residuals(&residuals);
-  (stat, phi, sigma)
+  Ok((stat, phi, sigma))
 }
 
 fn simulate_ar(phi: &[f64], noise: &mut Seeded<SimdNormal<f64>>, n: usize) -> Vec<f64> {
@@ -122,48 +125,40 @@ fn simulate_ar(phi: &[f64], noise: &mut Seeded<SimdNormal<f64>>, n: usize) -> Ve
   x[burnin..].to_vec()
 }
 
-/// Leybourne-McCabe style stationarity test with AR prewhitening and bootstrap p-value.
-///
-/// # Panics
-/// Panics on invalid inputs (non-finite series, too-short sample, invalid config).
+/// Leybourne–McCabe test with AR prewhitening and a bootstrap p-value; `Err` below 40 (or
+/// `ar_lags + 15`) points, on a non-finite one or a singular AR fit; panics on a bad config.
 pub fn leybourne_mccabe_test(
   y: ArrayView1<f64>,
   cfg: LeybourneMcCabeConfig,
-) -> LeybourneMcCabeTest {
-  let y = y
-    .as_slice()
-    .expect("leybourne_mccabe_test requires a contiguous ArrayView1");
+) -> Result<LeybourneMcCabeTest, StatsError> {
   assert!(
     cfg.trend != Trend::None,
     "trend must satisfy `trend != Trend::None`, got trend = {:?}",
     cfg.trend
   );
-  validate_series(y, 40);
-  assert!(cfg.ar_lags > 0, "ar_lags must be positive");
   assert!(
-    cfg.bootstrap_samples > 0,
-    "bootstrap_samples must be positive"
+    cfg.ar_lags >= 1,
+    "ar_lags must satisfy `ar_lags >= 1`, got ar_lags = {:?}",
+    cfg.ar_lags
   );
   assert!(
-    cfg.alpha > 0.0 && cfg.alpha < 1.0,
-    "alpha must be in (0, 1)"
+    cfg.bootstrap_samples >= 1,
+    "bootstrap_samples must satisfy `bootstrap_samples >= 1`, got bootstrap_samples = {:?}",
+    cfg.bootstrap_samples
   );
-
-  let min_required = cfg.ar_lags + 15;
-  assert!(
-    y.len() >= min_required,
-    "series is too short for the requested AR lag order"
-  );
+  assert_alpha(cfg.alpha);
+  let y = as_slice_or_copy(y);
+  validate(&y, 40.max(cfg.ar_lags + 15))?;
 
   let include_trend = cfg.trend == Trend::ConstantTrend;
-  let (obs_stat, phi, sigma) = lm_statistic_with_prewhitening(y, include_trend, cfg.ar_lags);
+  let (obs_stat, phi, sigma) = lm_statistic_with_prewhitening(&y, include_trend, cfg.ar_lags)?;
 
   let mut noise =
     SimdNormal::<f64>::new(0.0, sigma.max(1e-12)).seeded(&Deterministic::new(cfg.bootstrap_seed));
   let mut exceed = 0usize;
   for _ in 0..cfg.bootstrap_samples {
     let sim = simulate_ar(&phi, &mut noise, y.len());
-    let (sim_stat, _, _) = lm_statistic_with_prewhitening(&sim, include_trend, cfg.ar_lags);
+    let (sim_stat, _, _) = lm_statistic_with_prewhitening(&sim, include_trend, cfg.ar_lags)?;
     if sim_stat >= obs_stat {
       exceed += 1;
     }
@@ -171,13 +166,13 @@ pub fn leybourne_mccabe_test(
 
   let p_value = (exceed as f64 + 1.0) / (cfg.bootstrap_samples as f64 + 1.0);
 
-  LeybourneMcCabeTest {
+  Ok(LeybourneMcCabeTest {
     statistic: obs_stat,
     p_value: Some(p_value),
     critical_values: None,
     rejects_null: p_value < cfg.alpha,
     ar_lags: cfg.ar_lags,
-  }
+  })
 }
 
 #[cfg(test)]
@@ -224,7 +219,7 @@ mod tests {
       bootstrap_seed: 17,
       ..LeybourneMcCabeConfig::default()
     };
-    let res = leybourne_mccabe_test(ndarray::ArrayView1::from(&x), cfg);
+    let res = leybourne_mccabe_test(ndarray::ArrayView1::from(&x), cfg).unwrap();
     assert!(
       !res.rejects_null,
       "expected no rejection for stationary series, got {res:?}"
@@ -247,7 +242,7 @@ mod tests {
       };
       (
         seed,
-        leybourne_mccabe_test(ndarray::ArrayView1::from(&x), cfg),
+        leybourne_mccabe_test(ndarray::ArrayView1::from(&x), cfg).unwrap(),
       )
     });
     let ok = runs.iter().any(|(_, r)| r.rejects_null);

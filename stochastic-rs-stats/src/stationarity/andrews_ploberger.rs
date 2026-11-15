@@ -42,10 +42,14 @@ use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 
-use super::common::validate_series;
+use crate::StatsError;
 use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::validate;
 use crate::linalg::inverse;
 use crate::linalg::solve;
+use crate::traits::RealExt;
 
 /// Which aggregation of the local Wald statistic to report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,42 +114,50 @@ impl crate::traits::HypothesisTest for AndrewsPlobergerTest {
   }
 }
 
-/// Andrews / Andrews-Ploberger structural-break test with unknown
-/// breakpoint.
-///
-/// # Panics
-/// Panics on non-finite inputs, `pi0` outside `(0, 0.5)`, `alpha` outside
-/// `(0, 1)`, or a sample too short to fit OLS on both pieces of the
-/// trimmed grid.
+/// Andrews / Andrews–Ploberger break test of `y` on the design `x`; `Err` on too few rows, a
+/// non-finite `y`, mismatched rows or a NaN Wald path, panics on bad `pi0`, `alpha` or no column.
 pub fn andrews_ploberger_test(
   y: ArrayView1<f64>,
   x: ArrayView2<f64>,
   cfg: AndrewsPlobergerConfig,
-) -> AndrewsPlobergerTest {
-  let y_slice = y
-    .as_slice()
-    .expect("andrews_ploberger_test requires a contiguous ArrayView1");
-  assert_eq!(y.len(), x.nrows(), "y/x row mismatch");
+) -> Result<AndrewsPlobergerTest, StatsError> {
   assert!(
     cfg.pi0 > 0.0 && cfg.pi0 < 0.5,
-    "pi0 must be in (0, 0.5), got {}",
+    "pi0 must satisfy `0.0 < pi0 < 0.5`, got pi0 = {:?}",
     cfg.pi0
   );
-  assert!(
-    cfg.alpha > 0.0 && cfg.alpha < 1.0,
-    "alpha must be in (0, 1)"
-  );
-  let t_total = y.len();
+  assert_alpha(cfg.alpha);
   let k = x.ncols();
-  assert!(k >= 1, "design matrix must have at least one regressor");
-  validate_series(y_slice, 3 * k + 4);
-
-  let t1_lo = ((cfg.pi0 * t_total as f64).ceil() as usize).max(k + 1);
-  let t1_hi = (((1.0 - cfg.pi0) * t_total as f64).floor() as usize).min(t_total - k - 1);
   assert!(
-    t1_lo <= t1_hi,
-    "trimmed grid is empty for the given pi0 and sample size"
+    k >= 1,
+    "x.ncols() must satisfy `x.ncols() >= 1`, got x.ncols() = {k:?}"
   );
+  let row = critical_row(cfg.statistic, k, cfg.pi0);
+  let critical_values =
+    row.map(|(c10, c5, c1)| CriticalValues::new([(0.01, c1), (0.05, c5), (0.10, c10)]));
+  let critical = critical_values.as_ref().map(|cv| cv.value_at(cfg.alpha));
+  if x.nrows() != y.len() {
+    return Err(StatsError::DimensionMismatch {
+      expected: y.len(),
+      got: x.nrows(),
+    });
+  }
+  validate(&as_slice_or_copy(y), 3 * k + 4)?;
+
+  let t_total = y.len();
+  let (t1_lo, t1_hi) = trimmed_grid(t_total, k, cfg.pi0);
+  if t1_lo > t1_hi {
+    let needed = (t_total + 1..)
+      .find(|&t| {
+        let (lo, hi) = trimmed_grid(t, k, cfg.pi0);
+        lo <= hi
+      })
+      .unwrap();
+    return Err(StatsError::InsufficientData {
+      needed,
+      got: t_total,
+    });
+  }
 
   let mut wald_path: Vec<(f64, f64)> = Vec::with_capacity(t1_hi - t1_lo + 1);
   for t1 in t1_lo..=t1_hi {
@@ -154,23 +166,24 @@ pub fn andrews_ploberger_test(
     wald_path.push((tau, w));
   }
 
-  let (statistic, breakpoint_frac) = aggregate(&wald_path, cfg.statistic);
-  let row = critical_row(cfg.statistic, k, cfg.pi0);
-  let critical_values =
-    row.map(|(c10, c5, c1)| CriticalValues::new([(0.01, c1), (0.05, c5), (0.10, c10)]));
-  let rejects_null = critical_values
-    .as_ref()
-    .is_some_and(|cv| statistic >= cv.value_at(cfg.alpha));
+  let (statistic, breakpoint_frac) = aggregate(&wald_path, cfg.statistic)?;
 
-  AndrewsPlobergerTest {
+  Ok(AndrewsPlobergerTest {
     statistic,
     p_value: row.map(|row| p_value_bracket(statistic, row)),
     critical_values,
-    rejects_null,
+    rejects_null: critical.is_some_and(|c| statistic >= c),
     statistic_kind: cfg.statistic,
     breakpoint_frac,
     wald_path,
-  }
+  })
+}
+
+/// The split indices `[lo, hi]` of the trimmed grid for `t` rows and `k` regressors.
+fn trimmed_grid(t: usize, k: usize, pi0: f64) -> (usize, usize) {
+  let lo = ((pi0 * t as f64).ceil() as usize).max(k + 1);
+  let hi = (((1.0 - pi0) * t as f64).floor() as usize).min(t - k - 1);
+  (lo, hi)
 }
 
 /// Local Wald statistic at split index `t1` (first segment is rows `0..t1`,
@@ -222,40 +235,40 @@ fn segment_fit(
   Some((beta, &xtx_inv * sigma2))
 }
 
-fn aggregate(path: &[(f64, f64)], kind: AndrewsPlobergerStatistic) -> (f64, f64) {
-  let finite: Vec<(f64, f64)> = path
-    .iter()
-    .copied()
-    .filter(|(_, w)| w.is_finite())
-    .collect();
-  if finite.is_empty() {
-    return (f64::NAN, f64::NAN);
+/// The aggregated statistic and the `τ` of the last maximal `W(τ)`; `Err` on a NaN in the path.
+fn aggregate(
+  path: &[(f64, f64)],
+  kind: AndrewsPlobergerStatistic,
+) -> Result<(f64, f64), StatsError> {
+  let mut max_w = f64::NEG_INFINITY;
+  let mut tau_star = f64::NAN;
+  for &(tau, w) in path {
+    if w >= max_w {
+      tau_star = tau;
+    }
+    max_w = max_w.max_or_nan(w);
   }
-  let &(tau_star, max_w) = finite
-    .iter()
-    .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-    .expect("non-empty by guard above");
-  match kind {
+  if max_w.is_nan() {
+    return Err(StatsError::Numerical { stage: "Wald path" });
+  }
+  let n_grid = path.len() as f64;
+  Ok(match kind {
     AndrewsPlobergerStatistic::Sup => (max_w, tau_star),
     AndrewsPlobergerStatistic::Exp => {
       // Subtract the per-tau max for numerical stability of logsumexp:
       // ln{N⁻¹ Σ exp(w/2)} = (max/2) + ln{N⁻¹ Σ exp((w - max)/2)}.
-      let n_grid = finite.len() as f64;
-      let max_over_two = max_w * 0.5;
-      let lse_tail: f64 = finite
+      let lse_tail = path
         .iter()
         .map(|(_, w)| ((w - max_w) * 0.5).exp())
         .sum::<f64>()
         / n_grid;
-      let stat = max_over_two + lse_tail.ln();
-      (stat, tau_star)
+      (max_w * 0.5 + lse_tail.ln(), tau_star)
     }
     AndrewsPlobergerStatistic::Avg => {
-      let n_grid = finite.len() as f64;
-      let mean = finite.iter().map(|(_, w)| *w).sum::<f64>() / n_grid;
+      let mean = path.iter().map(|(_, w)| *w).sum::<f64>() / n_grid;
       (mean, tau_star)
     }
-  }
+  })
 }
 
 /// Andrews (1993) Table 1 — Sup-Wald critical values for $\pi_0 = 0.15$.
@@ -368,7 +381,8 @@ mod tests {
         pi0: 0.15,
         alpha: 0.05,
       },
-    );
+    )
+    .unwrap();
     assert!(
       !res.rejects_null,
       "no-break DGP: Sup-Wald should not reject; W = {}, p = {:?}",
@@ -387,7 +401,8 @@ mod tests {
         pi0: 0.15,
         alpha: 0.05,
       },
-    );
+    )
+    .unwrap();
     assert!(
       res.rejects_null,
       "intercept break at τ=0.5: should reject; W = {}, p = {:?}",
@@ -411,7 +426,8 @@ mod tests {
         pi0: 0.15,
         alpha: 0.05,
       },
-    );
+    )
+    .unwrap();
     assert!(
       res.rejects_null,
       "slope break at τ=0.3: Exp-Wald should reject; W = {}, p = {:?}",
@@ -430,11 +446,36 @@ mod tests {
         pi0: 0.15,
         alpha: 0.05,
       },
-    );
+    )
+    .unwrap();
     assert!(
       res.rejects_null,
       "intercept break: Avg-Wald should reject; W = {}, p = {:?}",
       res.statistic, res.p_value
+    );
+  }
+
+  #[test]
+  fn a_nan_on_the_wald_path_is_a_numerical_error() {
+    let path = [(0.2, 1.0), (0.3, f64::NAN), (0.4, 3.0)];
+    for kind in [
+      AndrewsPlobergerStatistic::Sup,
+      AndrewsPlobergerStatistic::Exp,
+      AndrewsPlobergerStatistic::Avg,
+    ] {
+      assert_eq!(
+        aggregate(&path, kind),
+        Err(StatsError::Numerical { stage: "Wald path" })
+      );
+    }
+  }
+
+  #[test]
+  fn tied_wald_maxima_report_the_last_breakpoint() {
+    let path = [(0.2, 4.0), (0.3, 1.0), (0.4, 4.0)];
+    assert_eq!(
+      aggregate(&path, AndrewsPlobergerStatistic::Sup),
+      Ok((4.0, 0.4))
     );
   }
 

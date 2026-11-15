@@ -14,8 +14,11 @@ use super::common::dfgls_critical_values;
 use super::common::fit_adf;
 use super::common::ols;
 use super::common::schwert_max_lags;
-use super::common::validate_series;
+use crate::StatsError;
 use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::validate;
 
 /// Configuration for the Elliott-Rothenberg-Stock DF-GLS test.
 #[derive(Debug, Clone, Copy)]
@@ -67,8 +70,8 @@ impl crate::traits::HypothesisTest for ErsTest {
   }
 }
 
-fn gls_detrend(y: &[f64], include_trend: bool) -> Vec<f64> {
-  validate_series(y, 20);
+fn gls_detrend(y: &[f64], include_trend: bool) -> Result<Vec<f64>, StatsError> {
+  validate(y, 20)?;
   let n = y.len();
   let n_f = n as f64;
 
@@ -97,7 +100,7 @@ fn gls_detrend(y: &[f64], include_trend: bool) -> Vec<f64> {
     delta_z.push(row);
   }
 
-  let fit = ols(&delta_y, &delta_z);
+  let fit = ols(&delta_y, &delta_z)?;
   let beta = fit.beta;
 
   let mut detrended = vec![0.0; n];
@@ -109,59 +112,53 @@ fn gls_detrend(y: &[f64], include_trend: bool) -> Vec<f64> {
       .sum::<f64>();
     detrended[t] = y[t] - trend_val;
   }
-  detrended
+  Ok(detrended)
 }
 
-/// Elliott-Rothenberg-Stock DF-GLS test.
-///
-/// # Panics
-/// Panics on invalid inputs (non-finite series, too-short sample, invalid config).
-pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> ErsTest {
-  let y = y
-    .as_slice()
-    .expect("ers_dfgls_test requires a contiguous ArrayView1");
+/// ERS DF-GLS test; `Err` below 20 points, on a non-finite one, a fixed lag above `n − 5` or a
+/// singular regression, and panics unless `trend != Trend::None` and `0 < alpha <= 0.1`.
+pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> Result<ErsTest, StatsError> {
   assert!(
     cfg.trend != Trend::None,
     "trend must satisfy `trend != Trend::None`, got trend = {:?}",
     cfg.trend
   );
-  validate_series(y, 20);
-  assert!(
-    cfg.alpha > 0.0 && cfg.alpha < 1.0,
-    "alpha must be in (0, 1)"
-  );
-
+  assert_alpha(cfg.alpha);
   let include_trend = cfg.trend == Trend::ConstantTrend;
-  let y_detrended = gls_detrend(y, include_trend);
-  let max_possible_lag = y_detrended.len().saturating_sub(5);
+  let critical_values = dfgls_critical_values(include_trend);
+  let critical = critical_values.value_at(cfg.alpha);
+  let y = as_slice_or_copy(y);
+  validate(&y, 20)?;
+
+  let y_detrended = gls_detrend(&y, include_trend)?;
+  let n = y_detrended.len();
+  let max_possible_lag = n - 5;
   let max_lags = cfg
     .max_lags
-    .unwrap_or_else(|| schwert_max_lags(y_detrended.len()))
+    .unwrap_or_else(|| schwert_max_lags(n))
     .min(max_possible_lag);
 
   let used_lags = match cfg.lag_selection {
-    LagSelection::Fixed(p) => {
-      assert!(
-        p <= max_possible_lag,
-        "fixed lag order too large for sample"
-      );
-      p
+    LagSelection::Fixed(p) if p > max_possible_lag => {
+      return Err(StatsError::InsufficientData {
+        needed: p + 5,
+        got: n,
+      });
     }
-    _ => choose_lag_for_adf(&y_detrended, Trend::None, cfg.lag_selection, max_lags),
+    LagSelection::Fixed(p) => p,
+    _ => choose_lag_for_adf(&y_detrended, Trend::None, cfg.lag_selection, max_lags)?,
   };
 
-  let fit = fit_adf(&y_detrended, used_lags, Trend::None);
-  let critical_values = dfgls_critical_values(include_trend);
-  let rejects_null = fit.statistic < critical_values.value_at(cfg.alpha);
+  let fit = fit_adf(&y_detrended, used_lags, Trend::None)?;
 
-  ErsTest {
+  Ok(ErsTest {
     statistic: fit.statistic,
     p_value: None,
     critical_values: Some(critical_values),
-    rejects_null,
+    rejects_null: fit.statistic < critical,
     used_lags,
     nobs: fit.nobs,
-  }
+  })
 }
 
 #[cfg(test)]
@@ -196,7 +193,7 @@ mod tests {
       lag_selection: LagSelection::Fixed(4),
       ..ErsConfig::default()
     };
-    let res = ers_dfgls_test(ndarray::ArrayView1::from(&x), cfg);
+    let res = ers_dfgls_test(ndarray::ArrayView1::from(&x), cfg).unwrap();
     assert!(res.rejects_null, "expected rejection, got {res:?}");
   }
 }

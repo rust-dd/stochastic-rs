@@ -21,7 +21,8 @@ fn lee_mykland_locates_a_planted_jump() {
   let window = lee_mykland_window(78);
   assert_eq!(window, 141);
 
-  let test = lee_mykland_test(returns.view(), window, 0.01);
+  let test = lee_mykland_test(returns.view(), window, 0.01)
+    .expect("2 000 finite returns, more than one window");
   assert!(test.jump_indices.contains(&1_200));
   // Every flagged return sits beyond the Gumbel threshold on |L(i)|.
   for &i in &test.jump_indices {

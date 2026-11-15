@@ -13,7 +13,11 @@ use ndarray::Array2;
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::beta_i as beta_reg;
 
+use crate::StatsError;
 use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::validate;
 use crate::linalg::lstsq;
 
 /// Granger-causality F-test (null: `x` does not Granger-cause `y`), decided by its p-value.
@@ -42,20 +46,29 @@ impl crate::traits::HypothesisTest for GrangerTest {
   }
 }
 
-/// Granger-causality test of "does X cause Y?" with `lags` autoregressive
-/// terms on each variable.
+/// Granger F-test of "does `x` cause `y`?" with `lags` lags of each; `Err` below `3 lags + 3`
+/// points, on a non-finite one, unequal lengths or a singular fit, panics on bad `lags`, `alpha`.
 pub fn granger_causality_test(
   y: ArrayView1<f64>,
   x: ArrayView1<f64>,
   lags: usize,
   alpha: f64,
-) -> GrangerTest {
-  assert_eq!(y.len(), x.len(), "y and x must have equal length");
-  assert!(lags >= 1, "lags must be at least 1");
-  assert!(alpha > 0.0 && alpha < 1.0, "alpha must lie in (0, 1)");
+) -> Result<GrangerTest, StatsError> {
+  assert!(
+    lags >= 1,
+    "lags must satisfy `lags >= 1`, got lags = {lags:?}"
+  );
+  assert_alpha(alpha);
+  if x.len() != y.len() {
+    return Err(StatsError::DimensionMismatch {
+      expected: y.len(),
+      got: x.len(),
+    });
+  }
+  validate(&as_slice_or_copy(y), 3 * lags + 3)?;
+  validate(&as_slice_or_copy(x), 3 * lags + 3)?;
   let n_total = y.len();
   let n = n_total - lags;
-  assert!(n > 2 * lags + 2, "not enough observations for given lag");
 
   let mut design_unrest = Array2::<f64>::zeros((n, 1 + 2 * lags));
   let mut target = Array1::<f64>::zeros(n);
@@ -74,8 +87,8 @@ pub fn granger_causality_test(
       design_rest[[i, l]] = y[lags + i - l];
     }
   }
-  let rss_unrest = ols_rss(&design_unrest, &target);
-  let rss_rest = ols_rss(&design_rest, &target);
+  let rss_unrest = ols_rss(&design_unrest, &target)?;
+  let rss_rest = ols_rss(&design_rest, &target)?;
   let q = lags as f64;
   let dof = (n as f64) - (1.0 + 2.0 * q);
   let f = ((rss_rest - rss_unrest) / q) / (rss_unrest / dof.max(1.0));
@@ -87,20 +100,25 @@ pub fn granger_causality_test(
   } else {
     1.0
   };
-  GrangerTest {
+  Ok(GrangerTest {
     statistic: f.max(0.0),
     p_value: Some(p_value),
     critical_values: None,
     rejects_null: p_value < alpha,
     lags,
     nobs: n,
-  }
+  })
 }
 
-fn ols_rss(x: &Array2<f64>, y: &Array1<f64>) -> f64 {
+fn ols_rss(x: &Array2<f64>, y: &Array1<f64>) -> Result<f64, StatsError> {
   let beta = lstsq(x, y);
   let yhat = x.dot(&beta);
-  (y - &yhat).iter().map(|v| v * v).sum::<f64>()
+  let rss = (y - &yhat).iter().map(|v| v * v).sum::<f64>();
+  if rss.is_finite() {
+    Ok(rss)
+  } else {
+    Err(StatsError::Singular("OLS design"))
+  }
 }
 
 #[cfg(test)]
@@ -123,7 +141,7 @@ mod tests {
     dist2.fill_slice(&mut y_buf);
     let x = Array1::from(x_buf);
     let y = Array1::from(y_buf);
-    let res = granger_causality_test(y.view(), x.view(), 4, 0.05);
+    let res = granger_causality_test(y.view(), x.view(), 4, 0.05).unwrap();
     assert!(!res.rejects_null);
   }
 
@@ -141,7 +159,7 @@ mod tests {
     }
     let xa = Array1::from(x_buf);
     let ya = Array1::from(y);
-    let res = granger_causality_test(ya.view(), xa.view(), 2, 0.05);
+    let res = granger_causality_test(ya.view(), xa.view(), 2, 0.05).unwrap();
     assert!(res.rejects_null);
   }
 }

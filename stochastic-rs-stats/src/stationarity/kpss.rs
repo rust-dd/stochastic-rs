@@ -19,8 +19,11 @@ use super::common::Trend;
 use super::common::newey_west_long_run_variance;
 use super::common::regress_on_deterministics;
 use super::common::schwert_max_lags;
-use super::common::validate_series;
+use crate::StatsError;
 use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::validate;
 
 /// Configuration for the KPSS stationarity test.
 #[derive(Debug, Clone, Copy)]
@@ -75,27 +78,22 @@ fn kpss_critical_values(include_trend: bool) -> CriticalValues {
   }
 }
 
-/// KPSS stationarity test.
-///
-/// # Panics
-/// Panics on invalid inputs (non-finite series, too-short sample, invalid config).
-pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> KpssTest {
-  let y = y
-    .as_slice()
-    .expect("kpss_test requires a contiguous ArrayView1");
+/// KPSS stationarity test; `Err` below 20 points or on a non-finite one, and panics unless
+/// `trend != Trend::None` and `0 < alpha <= 0.1`.
+pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> Result<KpssTest, StatsError> {
   assert!(
     cfg.trend != Trend::None,
     "trend must satisfy `trend != Trend::None`, got trend = {:?}",
     cfg.trend
   );
-  validate_series(y, 20);
-  assert!(
-    cfg.alpha > 0.0 && cfg.alpha < 1.0,
-    "alpha must be in (0, 1)"
-  );
-
+  assert_alpha(cfg.alpha);
   let include_trend = cfg.trend == Trend::ConstantTrend;
-  let reg = regress_on_deterministics(y, include_trend);
+  let critical_values = kpss_critical_values(include_trend);
+  let critical = critical_values.value_at(cfg.alpha);
+  let y = as_slice_or_copy(y);
+  validate(&y, 20)?;
+
+  let reg = regress_on_deterministics(&y, include_trend)?;
   let resid = reg.residuals;
   let n = resid.len();
   let n_f = n as f64;
@@ -109,19 +107,16 @@ pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> KpssTest {
   eta /= n_f * n_f;
 
   let used_lags = cfg.lags.unwrap_or_else(|| schwert_max_lags(n));
-  let long_run_var = newey_west_long_run_variance(&resid, used_lags).max(1e-12);
+  let long_run_var = newey_west_long_run_variance(&resid, used_lags)?.max(1e-12);
   let statistic = eta / long_run_var;
 
-  let critical_values = kpss_critical_values(include_trend);
-  let rejects_null = statistic > critical_values.value_at(cfg.alpha);
-
-  KpssTest {
+  Ok(KpssTest {
     statistic,
     p_value: None,
     critical_values: Some(critical_values),
-    rejects_null,
+    rejects_null: statistic > critical,
     used_lags,
-  }
+  })
 }
 
 #[cfg(test)]
@@ -167,7 +162,7 @@ mod tests {
       let x = simulate_ar1(0.75, 2000, seed);
       (
         seed,
-        kpss_test(ndarray::ArrayView1::from(&x), KpssConfig::default()),
+        kpss_test(ndarray::ArrayView1::from(&x), KpssConfig::default()).unwrap(),
       )
     });
     let ok = runs.iter().any(|(_, r)| !r.rejects_null);
@@ -182,7 +177,7 @@ mod tests {
   #[test]
   fn kpss_rejects_stationarity_for_random_walk() {
     let x = simulate_random_walk(2000, 0x4B505354);
-    let res = kpss_test(ndarray::ArrayView1::from(&x), KpssConfig::default());
+    let res = kpss_test(ndarray::ArrayView1::from(&x), KpssConfig::default()).unwrap();
     assert!(
       res.rejects_null,
       "expected rejection for random walk, got {res:?}"

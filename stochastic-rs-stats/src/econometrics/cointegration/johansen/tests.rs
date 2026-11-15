@@ -73,7 +73,7 @@ fn assert_matrix_close(got: &Array2<f64>, want: &[[f64; 3]; 3], tol: f64, what: 
 
 #[test]
 fn johansen_returns_eigenvalues_in_unit_interval() {
-  let res = johansen_test(three_walks().view(), 1);
+  let res = johansen_test(three_walks().view(), 1).unwrap();
   for &l in res.eigenvalues.iter() {
     assert!((0.0..1.0).contains(&l));
   }
@@ -85,7 +85,7 @@ fn johansen_returns_eigenvalues_in_unit_interval() {
 /// by construction, with the last two statistics coinciding.
 #[test]
 fn max_eigenvalue_is_the_trace_increment() {
-  let res = johansen_test(three_walks().view(), 2);
+  let res = johansen_test(three_walks().view(), 2).unwrap();
   for r in 0..2 {
     let want = res.trace_statistics[r] - res.trace_statistics[r + 1];
     assert_close(res.max_eig_statistics[r], want, 1e-9, "max-eig increment");
@@ -102,7 +102,7 @@ fn max_eigenvalue_is_the_trace_increment() {
 /// the three-dimensional quantile and $r = 2$ the $\chi^2_1$ one.
 #[test]
 fn critical_values_are_indexed_by_k_minus_r() {
-  let res = johansen_test(three_walks().view(), 1);
+  let res = johansen_test(three_walks().view(), 1).unwrap();
   for (got, want) in res
     .trace_critical_5pct
     .iter()
@@ -124,7 +124,7 @@ fn critical_values_are_indexed_by_k_minus_r() {
 
 #[test]
 fn rank_tests_match_statsmodels_on_the_lcg_system() {
-  let res = johansen_test(lcg_system().view(), 2);
+  let res = johansen_test(lcg_system().view(), 2).unwrap();
   assert_eq!(res.nobs, 148);
   let eig = [
     0.388_165_205_199_946_7,
@@ -177,7 +177,7 @@ fn rank_tests_match_statsmodels_on_the_lcg_system() {
 
 #[test]
 fn vecm_rank_one_matches_statsmodels_on_the_lcg_system() {
-  let fit = fit_vecm(lcg_system().view(), 2, 1);
+  let fit = fit_vecm(lcg_system().view(), 2, 1).unwrap();
   assert_eq!((fit.rank, fit.lags, fit.nobs), (1, 2, 148));
   assert_eq!(fit.beta.dim(), (3, 1));
   assert_eq!(fit.gamma.len(), 1);
@@ -268,7 +268,7 @@ fn vecm_rank_one_matches_statsmodels_on_the_lcg_system() {
 
 #[test]
 fn vecm_without_lagged_differences_matches_statsmodels_at_rank_two() {
-  let fit = fit_vecm(lcg_system().view(), 1, 2);
+  let fit = fit_vecm(lcg_system().view(), 1, 2).unwrap();
   assert_eq!((fit.rank, fit.lags, fit.nobs), (2, 1, 149));
   assert!(fit.gamma.is_empty());
   let pi = [
@@ -316,8 +316,8 @@ fn vecm_without_lagged_differences_matches_statsmodels_at_rank_two() {
 #[test]
 fn full_rank_residuals_are_orthogonal_to_the_regressors() {
   let y = lcg_system();
-  let fit = fit_vecm(y.view(), 2, 3);
-  let c = concentrate(y.view(), 2);
+  let fit = fit_vecm(y.view(), 2, 3).unwrap();
+  let c = concentrate(y.view(), 2).unwrap();
   let against_levels = fit.residuals.t().dot(&c.z1);
   let against_lags = fit.residuals.t().dot(&c.z2);
   assert!(against_levels.iter().all(|v| v.abs() < 1e-8));
@@ -326,13 +326,13 @@ fn full_rank_residuals_are_orthogonal_to_the_regressors() {
 
 #[test]
 fn rank_zero_drops_the_error_correction_term() {
-  let fit = fit_vecm(lcg_system().view(), 2, 0);
+  let fit = fit_vecm(lcg_system().view(), 2, 0).unwrap();
   assert_eq!(fit.beta.dim(), (3, 0));
   assert!(fit.pi.iter().all(|v| *v == 0.0));
 }
 
 #[test]
-#[should_panic(expected = "rank must lie in 0..=3")]
+#[should_panic(expected = "rank must satisfy `rank <= k`, got rank = 4, k = 3")]
 fn rejects_a_rank_above_the_dimension() {
   let _ = fit_vecm(lcg_system().view(), 1, 4);
 }

@@ -34,6 +34,7 @@ fn perturbation_demo_ks_catches_shifted_mean() {
         |x| wrong_reference.cdf(x).unwrap(),
         KolmogorovSmirnovConfig::default(),
       )
+      .unwrap()
       .p_value
       .unwrap()
     })
@@ -68,6 +69,7 @@ fn perturbation_demo_chi_square_catches_mismatched_rate() {
       );
       let observed = bin_observed(&xs, &edges);
       chi_square_gof_test(&observed, &expected_prob, ChiSquareGofConfig::default())
+        .unwrap()
         .p_value
         .unwrap()
     })

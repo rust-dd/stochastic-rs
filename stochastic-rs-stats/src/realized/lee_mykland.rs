@@ -32,6 +32,10 @@
 use ndarray::Array1;
 use ndarray::ArrayView1;
 
+use crate::StatsError;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::validate;
 use crate::traits::FloatExt;
 
 /// $c = \mathbb E|U| = \sqrt{2/\pi}$ for a standard normal $U$: the scale of
@@ -66,31 +70,20 @@ pub struct LeeMyklandTest {
   pub nobs: usize,
 }
 
-/// Lee–Mykland jump test of every return in `returns` at level `alpha`,
-/// with the local volatility taken from the `window` observations before it.
-///
-/// The first `window - 1` statistics and local volatilities are NaN, and so
-/// is any statistic where a zero return meets a zero local volatility.
-///
-/// # Panics
-///
-/// If `window < 3`, if there are fewer than `window` returns, or if `alpha`
-/// is outside `(0, 1)`.
+/// Lee–Mykland test of each return against the bipower volatility of the `window` before it; `Err`
+/// below `window` or on a non-finite return, panics unless `window >= 3` and `0 < alpha < 1`.
 pub fn lee_mykland_test<T: FloatExt>(
   returns: ArrayView1<T>,
   window: usize,
   alpha: f64,
-) -> LeeMyklandTest {
+) -> Result<LeeMyklandTest, StatsError> {
+  assert!(
+    window >= 3,
+    "window must satisfy `window >= 3`, got window = {window:?}"
+  );
+  assert_alpha(alpha);
+  validate(&as_slice_or_copy(returns), window)?;
   let n = returns.len();
-  assert!(window >= 3, "window must be at least 3, got {window}");
-  assert!(
-    n >= window,
-    "need at least window = {window} returns, got {n}"
-  );
-  assert!(
-    alpha > 0.0 && alpha < 1.0,
-    "alpha must lie in (0, 1), got {alpha}"
-  );
 
   let r: Vec<f64> = returns
     .iter()
@@ -119,7 +112,7 @@ pub fn lee_mykland_test<T: FloatExt>(
     .map(|(i, _)| i)
     .collect();
 
-  LeeMyklandTest {
+  Ok(LeeMyklandTest {
     statistics,
     local_volatility,
     jump_indices,
@@ -130,20 +123,15 @@ pub fn lee_mykland_test<T: FloatExt>(
     window,
     alpha,
     nobs: n,
-  }
+  })
 }
 
-/// The paper's window rule (§1.3): the smallest integer above
-/// $\sqrt{252 \times \text{observations per day}}$ — 16 for daily returns,
-/// 141 for 78 five-minute returns a day.
-///
-/// # Panics
-///
-/// If `observations_per_day` is zero.
+/// The paper's window rule (§1.3), the smallest integer above `√(252 · observations_per_day)`, 16
+/// for daily returns; panics unless `observations_per_day >= 1`.
 pub fn lee_mykland_window(observations_per_day: usize) -> usize {
   assert!(
     observations_per_day >= 1,
-    "observations_per_day must be at least 1"
+    "observations_per_day must satisfy `observations_per_day >= 1`, got observations_per_day = {observations_per_day:?}"
   );
   (252.0 * observations_per_day as f64).sqrt().floor() as usize + 1
 }
@@ -181,7 +169,7 @@ mod tests {
   #[test]
   fn statistic_follows_definition_one() {
     let r = array![0.01_f64, -0.02, 0.015, -0.005, 0.03, 0.002];
-    let out = lee_mykland_test(r.view(), 4, 0.01);
+    let out = lee_mykland_test(r.view(), 4, 0.01).unwrap();
     let sigma3 = (0.5_f64 * (0.02 * 0.01 + 0.015 * 0.02)).sqrt();
     let sigma4 = (0.5_f64 * (0.015 * 0.02 + 0.005 * 0.015)).sqrt();
     assert!((out.local_volatility[3] - sigma3).abs() < 1e-15);
@@ -196,7 +184,7 @@ mod tests {
   /// $\beta^* = -\log(-\log 0.99) = 4.6001$.
   #[test]
   fn threshold_follows_lemma_one() {
-    let out = lee_mykland_test(iid_normal(3, 300, 0.01).view(), 16, 0.01);
+    let out = lee_mykland_test(iid_normal(3, 300, 0.01).view(), 16, 0.01).unwrap();
     assert!((out.beta_star - 4.6001).abs() < 1e-4, "{}", out.beta_star);
     let n = 300.0_f64;
     let root = (2.0 * n.ln()).sqrt();
@@ -223,7 +211,7 @@ mod tests {
     let closest = [2718u64, 999, 42]
       .into_iter()
       .map(|seed| {
-        let out = lee_mykland_test(iid_normal(seed, 4_000, 0.01).view(), 270, 0.01);
+        let out = lee_mykland_test(iid_normal(seed, 4_000, 0.01).view(), 270, 0.01).unwrap();
         let vals: Vec<f64> = out
           .statistics
           .iter()
@@ -249,6 +237,7 @@ mod tests {
       .into_iter()
       .map(|seed| {
         lee_mykland_test(iid_normal(seed, 4_000, 0.01).view(), 270, 0.01)
+          .unwrap()
           .jump_indices
           .len()
       })
@@ -264,7 +253,7 @@ mod tests {
     let mut r = iid_normal(17, 2_000, 0.005);
     r[1_000] = 0.10;
     r[1_040] = -0.08;
-    let out = lee_mykland_test(r.view(), 100, 0.01);
+    let out = lee_mykland_test(r.view(), 100, 0.01).unwrap();
     assert!(
       out.jump_indices.contains(&1_000) && out.jump_indices.contains(&1_040),
       "{:?}",
@@ -275,25 +264,29 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "window must be at least 3")]
+  #[should_panic(expected = "window must satisfy `window >= 3`, got window = 2")]
   fn rejects_a_window_below_three() {
     let _ = lee_mykland_test(array![0.01_f64, 0.02, 0.03].view(), 2, 0.01);
   }
 
   #[test]
-  #[should_panic(expected = "need at least window = 5 returns")]
-  fn rejects_a_series_shorter_than_the_window() {
-    let _ = lee_mykland_test(array![0.01_f64, 0.02, 0.03].view(), 5, 0.01);
+  fn a_series_shorter_than_the_window_is_insufficient_data() {
+    assert_eq!(
+      lee_mykland_test(array![0.01_f64, 0.02, 0.03].view(), 5, 0.01).unwrap_err(),
+      StatsError::InsufficientData { needed: 5, got: 3 }
+    );
   }
 
   #[test]
-  #[should_panic(expected = "alpha must lie in (0, 1)")]
+  #[should_panic(expected = "alpha must satisfy `0.0 < alpha < 1.0`, got alpha = 1.0")]
   fn rejects_a_unit_alpha() {
     let _ = lee_mykland_test(array![0.01_f64, 0.02, 0.03, 0.04].view(), 3, 1.0);
   }
 
   #[test]
-  #[should_panic(expected = "observations_per_day must be at least 1")]
+  #[should_panic(
+    expected = "observations_per_day must satisfy `observations_per_day >= 1`, got observations_per_day = 0"
+  )]
   fn window_rule_rejects_zero_frequency() {
     let _ = lee_mykland_window(0);
   }

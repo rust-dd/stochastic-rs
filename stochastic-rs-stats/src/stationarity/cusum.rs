@@ -39,8 +39,11 @@ use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 
-use super::common::validate_series;
+use crate::StatsError;
 use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::validate;
 use crate::linalg::inverse;
 
 /// Choice of CUSUM variant.
@@ -129,39 +132,38 @@ fn cusumq_critical_coefficient(alpha: f64) -> f64 {
   }
 }
 
-/// Brown-Durbin-Evans (1975) CUSUM / CUSUMQ structural-change test.
-///
-/// `x` is the $T \times k$ design matrix and `y` the $T \times 1$ response.
-/// The initial $k$ observations are consumed to seed the recursive estimator,
-/// producing $T - k$ residuals.
-///
-/// # Panics
-/// Panics on non-finite inputs, when $T \le k + 1$, when the leading
-/// $X_k$ block is singular, or when `alpha` is outside $(0, 1)$.
-pub fn cusum_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: CusumConfig) -> CusumTest {
-  let y_slice = y
-    .as_slice()
-    .expect("cusum_test requires a contiguous ArrayView1");
-  assert_eq!(y.len(), x.nrows(), "y/x row mismatch");
+/// Brown–Durbin–Evans (1975) CUSUM / CUSUMQ test of `y` on the `T × k` design `x`; `Err` below
+/// `k + 2` points, on a non-finite `y`, mismatched rows or a singular leading block of `x`.
+pub fn cusum_test(
+  y: ArrayView1<f64>,
+  x: ArrayView2<f64>,
+  cfg: CusumConfig,
+) -> Result<CusumTest, StatsError> {
   let k = x.ncols();
-  assert!(k >= 1, "design matrix must have at least one regressor");
-  validate_series(y_slice, k + 2);
   assert!(
-    cfg.alpha > 0.0 && cfg.alpha < 1.0,
-    "alpha must be in (0, 1)"
+    k >= 1,
+    "x.ncols() must satisfy `x.ncols() >= 1`, got x.ncols() = {k:?}"
   );
+  assert_alpha(cfg.alpha);
+  if x.nrows() != y.len() {
+    return Err(StatsError::DimensionMismatch {
+      expected: y.len(),
+      got: x.nrows(),
+    });
+  }
+  validate(&as_slice_or_copy(y), k + 2)?;
 
   let t_total = y.len();
-  let w = recursive_residuals(y.view(), x.view());
+  let w = recursive_residuals(y, x)?;
   debug_assert_eq!(w.len(), t_total - k);
 
   let n_tilde_usize = t_total - k;
   let n_tilde = n_tilde_usize as f64;
 
-  match cfg.variant {
+  Ok(match cfg.variant {
     CusumVariant::Cusum => cusum_branch(w, n_tilde, k, cfg.alpha),
     CusumVariant::Cusumq => cusumq_branch(w, n_tilde, k, cfg.alpha),
-  }
+  })
 }
 
 fn cusum_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumTest {
@@ -248,15 +250,13 @@ fn cusumq_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumTest {
 
 /// Recursive residuals via incremental OLS with a Sherman-Morrison update
 /// of $(X_t^\top X_t)^{-1}$.
-fn recursive_residuals(y: ArrayView1<f64>, x: ArrayView2<f64>) -> Vec<f64> {
+fn recursive_residuals(y: ArrayView1<f64>, x: ArrayView2<f64>) -> Result<Vec<f64>, StatsError> {
   let t_total = y.len();
   let k = x.ncols();
-  assert!(t_total > k, "need T > k observations");
 
   let x_init = x.slice(ndarray::s![..k, ..]).to_owned();
   let y_init = y.slice(ndarray::s![..k]).to_owned();
-  let mut xtx_inv =
-    inverse(&x_init.t().dot(&x_init)).expect("CUSUM: leading X_k block is singular");
+  let mut xtx_inv = inverse(&x_init.t().dot(&x_init)).ok_or(StatsError::Singular("OLS design"))?;
   let mut xty = x_init.t().dot(&y_init);
 
   let mut w = Vec::with_capacity(t_total - k);
@@ -280,7 +280,7 @@ fn recursive_residuals(y: ArrayView1<f64>, x: ArrayView2<f64>) -> Vec<f64> {
     xty = &xty + &(&xt * y[t]);
   }
 
-  w
+  Ok(w)
 }
 
 #[cfg(test)]
@@ -351,7 +351,8 @@ mod tests {
           variant: CusumVariant::Cusum,
           alpha: 0.01,
         },
-      );
+      )
+      .unwrap();
       assert!(
         !res.rejects_null,
         "CUSUM should not reject constant DGP at seed {seed}: statistic = {}",
@@ -372,7 +373,8 @@ mod tests {
         variant: CusumVariant::Cusum,
         alpha: 0.05,
       },
-    );
+    )
+    .unwrap();
     assert!(
       res.rejects_null,
       "CUSUM should reject mean shift: statistic = {}",
@@ -397,7 +399,8 @@ mod tests {
         variant: CusumVariant::Cusumq,
         alpha: 0.05,
       },
-    );
+    )
+    .unwrap();
     assert!(
       res.rejects_null,
       "CUSUMQ should reject variance shift: statistic = {}",
@@ -419,7 +422,8 @@ mod tests {
           variant: CusumVariant::Cusumq,
           alpha: 0.01,
         },
-      );
+      )
+      .unwrap();
       assert!(
         !res.rejects_null,
         "CUSUMQ should not reject constant DGP at seed {seed}: statistic = {}",
@@ -440,7 +444,8 @@ mod tests {
         variant: CusumVariant::Cusum,
         alpha: 0.05,
       },
-    );
+    )
+    .unwrap();
     let w = &res.recursive_residuals;
     let w_mean = w.iter().sum::<f64>() / w.len() as f64;
     let s2_w = w.iter().map(|wj| (wj - w_mean).powi(2)).sum::<f64>() / (w.len() as f64 - 1.0);

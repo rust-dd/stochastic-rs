@@ -42,11 +42,13 @@
 //! "every bin's expected count `\ge` `min_expected`" by accumulating
 //! adjacent lattice cells until the threshold is met, folding in the two
 //! open-ended tails `(-\infty, k_{lo})` / `(k_{hi}, \infty)` as the
-//! outermost bins; [`chi_square_gof_test`] additionally hard-panics
+//! outermost bins; [`chi_square_gof_test`] additionally answers `Err`
 //! below Cochran's stricter floor of expected count `< 1`, since below
 //! that the approximation is not considered valid at all.
 
+use crate::StatsError;
 use crate::critical_values::CriticalValues;
+use crate::input::assert_alpha;
 use crate::traits::HypothesisTest;
 
 /// Configuration for [`chi_square_gof_test`].
@@ -102,33 +104,25 @@ pub fn chi_square_critical_value(alpha: f64, df: usize) -> f64 {
     .expect("SimdChiSquared has a closed-form quantile")
 }
 
-/// Pearson's chi-square goodness-of-fit statistic for pre-binned counts.
-///
-/// `observed[i]` is the sample count landing in bin `i`; `expected_prob[i]`
-/// is that bin's probability mass under the fully specified null (must
-/// sum to 1 across bins within `1e-6`, and every bin's expected count
-/// `n * expected_prob[i]` — `n` the total observed count — must be at
-/// least 1; see the module doc's "Bin pooling rule").
-///
-/// # Panics
-/// Panics if `observed.len() != expected_prob.len()`, if fewer than 2
-/// bins are given, if `expected_prob` does not sum to ~1, if any bin's
-/// expected count is below 1, or if `cfg.alpha` is not in `(0, 1)`.
+/// Pearson's chi-square test of bin counts against a fully specified null's bin masses; `Err` on
+/// fewer than 2 bins or an expected count below 1, panics unless masses sum to 1, `0 < alpha < 1`.
 pub fn chi_square_gof_test(
   observed: &[u64],
   expected_prob: &[f64],
   cfg: ChiSquareGofConfig,
-) -> ChiSquareGofTest {
+) -> Result<ChiSquareGofTest, StatsError> {
   assert_eq!(
     observed.len(),
     expected_prob.len(),
     "observed/expected_prob length mismatch"
   );
-  assert!(observed.len() >= 2, "chi-square GoF needs at least 2 bins");
-  assert!(
-    cfg.alpha > 0.0 && cfg.alpha < 1.0,
-    "alpha must be in (0, 1)"
-  );
+  assert_alpha(cfg.alpha);
+  if observed.len() < 2 {
+    return Err(StatsError::InsufficientData {
+      needed: 2,
+      got: observed.len(),
+    });
+  }
 
   let n = observed.iter().sum::<u64>();
   let n_f = n as f64;
@@ -141,10 +135,11 @@ pub fn chi_square_gof_test(
   let mut statistic = 0.0_f64;
   for (&o, &p) in observed.iter().zip(expected_prob.iter()) {
     let e = n_f * p;
-    assert!(
-      e >= 1.0,
-      "bin expected count {e} < 1 violates Cochran (1954)'s validity floor; widen the bins"
-    );
+    if e < 1.0 {
+      return Err(StatsError::DegenerateData(
+        "a bin's expected count is below 1",
+      ));
+    }
     let d = o as f64 - e;
     statistic += d * d / e;
   }
@@ -161,13 +156,13 @@ pub fn chi_square_gof_test(
     .quantile(1.0 - cfg.alpha)
     .expect("SimdChiSquared has a closed-form quantile");
 
-  ChiSquareGofTest {
+  Ok(ChiSquareGofTest {
     statistic,
     p_value: Some(p_value),
     critical_values: Some(CriticalValues::new([(cfg.alpha, critical_value)])),
     rejects_null: p_value < cfg.alpha,
     df,
-  }
+  })
 }
 
 /// Pools an integer-lattice pmf's cells over `[k_lo, k_hi]` into bins
@@ -303,6 +298,7 @@ mod tests {
           pool_integer_bins(N as u64, 0, 35, |k| dist.cdf(k.max(0) as f64).unwrap(), 5.0);
         let observed = bin_observed(&samples, &edges);
         chi_square_gof_test(&observed, &expected_prob, ChiSquareGofConfig::default())
+          .unwrap()
           .p_value
           .unwrap()
       })
@@ -328,7 +324,8 @@ mod tests {
       5.0,
     );
     let observed = bin_observed(&samples, &edges);
-    let res = chi_square_gof_test(&observed, &expected_prob, ChiSquareGofConfig::default());
+    let res =
+      chi_square_gof_test(&observed, &expected_prob, ChiSquareGofConfig::default()).unwrap();
     assert!(res.rejects_null, "expected rejection, got {res:?}");
   }
 }

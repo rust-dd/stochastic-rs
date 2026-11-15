@@ -19,7 +19,11 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 
+use crate::StatsError;
 use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::validate;
 use crate::linalg::lstsq;
 use crate::stationarity::adf::AdfConfig;
 use crate::stationarity::adf::adf_test;
@@ -66,20 +70,25 @@ impl crate::traits::HypothesisTest for EngleGrangerTest {
   }
 }
 
-/// Engle-Granger 2-step cointegration test.
+/// Engle–Granger 2-step cointegration test; `Err` below 30 points, on a non-finite one, unequal
+/// lengths, a singular fit or the residual ADF's `Err`, and panics unless `0 < alpha <= 0.1`.
 pub fn engle_granger_test(
   y: ArrayView1<f64>,
   x: ArrayView1<f64>,
   cfg: EngleGrangerConfig,
-) -> EngleGrangerTest {
-  assert!(
-    cfg.alpha > 0.0 && cfg.alpha < 1.0,
-    "alpha must satisfy `0.0 < alpha < 1.0`, got alpha = {:?}",
-    cfg.alpha
-  );
+) -> Result<EngleGrangerTest, StatsError> {
+  assert_alpha(cfg.alpha);
+  let critical_values = CriticalValues::new([(0.01, -3.96), (0.05, -3.37), (0.10, -3.07)]);
+  let critical = critical_values.value_at(cfg.alpha);
+  if x.len() != y.len() {
+    return Err(StatsError::DimensionMismatch {
+      expected: y.len(),
+      got: x.len(),
+    });
+  }
+  validate(&as_slice_or_copy(y), 30)?;
+  validate(&as_slice_or_copy(x), 30)?;
   let n = y.len();
-  assert_eq!(n, x.len(), "y and x must have equal length");
-  assert!(n >= 30, "need at least 30 observations");
   let mut design = Array2::<f64>::zeros((n, 2));
   for i in 0..n {
     design[[i, 0]] = 1.0;
@@ -89,22 +98,23 @@ pub fn engle_granger_test(
   let sol = lstsq(&design, &y_owned);
   let intercept = sol[0];
   let beta = sol[1];
+  if !(intercept.is_finite() && beta.is_finite()) {
+    return Err(StatsError::Singular("OLS design"));
+  }
   let mut residuals = Array1::<f64>::zeros(n);
   for i in 0..n {
     residuals[i] = y[i] - intercept - beta * x[i];
   }
-  let adf = adf_test(residuals.view(), AdfConfig::default());
-  let critical_values = CriticalValues::new([(0.01, -3.96), (0.05, -3.37), (0.10, -3.07)]);
-  let rejects_null = adf.statistic < critical_values.value_at(cfg.alpha);
-  EngleGrangerTest {
+  let adf = adf_test(residuals.view(), AdfConfig::default())?;
+  Ok(EngleGrangerTest {
     statistic: adf.statistic,
     p_value: None,
     critical_values: Some(critical_values),
-    rejects_null,
+    rejects_null: adf.statistic < critical,
     intercept,
     beta,
     residuals,
-  }
+  })
 }
 
 #[cfg(test)]
@@ -138,7 +148,7 @@ mod tests {
     for i in 0..500 {
       y[i] = 2.0 + 0.7 * x[i] + eps[i];
     }
-    let res = engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default());
+    let res = engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default()).unwrap();
     assert!(res.rejects_null);
     assert!((res.beta - 0.7).abs() < 0.05);
   }
@@ -147,7 +157,7 @@ mod tests {
   fn engle_granger_does_not_reject_independent_walks() {
     let x = random_walk(13, 500, 1.0);
     let y = random_walk(17, 500, 1.0);
-    let res = engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default());
+    let res = engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default()).unwrap();
     assert!(!res.rejects_null);
   }
 }

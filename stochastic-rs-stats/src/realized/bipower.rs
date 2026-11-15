@@ -18,8 +18,12 @@
 
 use ndarray::ArrayView1;
 
+use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::critical_values::two_sided_p_value;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::validate;
 use crate::realized::variance::realized_variance;
 use crate::traits::FloatExt;
 
@@ -129,40 +133,38 @@ impl crate::traits::HypothesisTest for BnsJumpTest {
   }
 }
 
-/// Barndorff-Nielsen / Shephard ratio-form jump test
-/// (Huang–Tauchen 2005 finite-sample variant).
-///
-/// Returns `BnsJumpTest::statistic ~ N(0, 1)` under the no-jump null.
-pub fn bns_jump_test<T: FloatExt>(returns: ArrayView1<T>, alpha: f64) -> BnsJumpTest {
-  assert!(alpha > 0.0 && alpha < 1.0, "alpha must lie in (0, 1)");
+/// Barndorff-Nielsen / Shephard jump test, `N(0, 1)` under the no-jump null; `Err` below 3 returns,
+/// on a non-finite one or a zero bipower variation, and panics unless `0 < alpha < 1`.
+pub fn bns_jump_test<T: FloatExt>(
+  returns: ArrayView1<T>,
+  alpha: f64,
+) -> Result<BnsJumpTest, StatsError> {
+  assert_alpha(alpha);
+  validate(&as_slice_or_copy(returns), 3)?;
   let n = returns.len();
   let rv = realized_variance(returns).to_f64().unwrap();
   let bv = bipower_variation(returns).to_f64().unwrap();
   let tpq = tripower_quarticity(returns).to_f64().unwrap();
   let theta = (std::f64::consts::FRAC_PI_2).powi(2) + std::f64::consts::PI - 5.0;
   let nn = n as f64;
-  // The integrated-quarticity scale must come from TPQ alone. Realized
-  // quarticity is not jump-robust, so substituting it (or taking the larger of
-  // the two) inflates the denominator by exactly the jump the statistic is
-  // meant to detect, and the test loses its power against single jumps.
-  let ratio = tpq.max(1e-30) / bv.max(1e-30).powi(2);
+  if !(bv > 0.0 && rv > 0.0 && tpq > 0.0) {
+    return Err(StatsError::DegenerateData("zero bipower variation"));
+  }
+  // TPQ alone scales the quarticity: realized quarticity is not jump-robust and would absorb the
+  // jump under test.
+  let ratio = tpq / (bv * bv);
   let denom = (theta * ratio.max(1.0)).sqrt();
-  let statistic = if bv > 0.0 && rv > 0.0 && denom > 0.0 {
-    nn.sqrt() * (rv.ln() - bv.ln()) / denom
-  } else {
-    0.0
-  };
+  let statistic = nn.sqrt() * (rv.ln() - bv.ln()) / denom;
   let p_value = two_sided_p_value(statistic);
-  let reject_no_jump = p_value < alpha;
-  BnsJumpTest {
+  Ok(BnsJumpTest {
     statistic,
     p_value: Some(p_value),
     critical_values: None,
-    rejects_null: reject_no_jump,
+    rejects_null: p_value < alpha,
     rv,
     bv,
     tpq,
-  }
+  })
 }
 
 fn mu_p<T: FloatExt>(p: f64) -> T {
@@ -221,7 +223,7 @@ mod tests {
   #[test]
   fn jump_test_does_not_reject_pure_diffusion() {
     let r = iid_normal(11, 5_000, 0.01);
-    let test = bns_jump_test(r.view(), 0.05);
+    let test = bns_jump_test(r.view(), 0.05).unwrap();
     assert!(!test.rejects_null);
   }
 
@@ -231,7 +233,7 @@ mod tests {
     for &i in &[1_000usize, 2_500, 4_000] {
       r[i] = 0.3;
     }
-    let test = bns_jump_test(r.view(), 0.05);
+    let test = bns_jump_test(r.view(), 0.05).unwrap();
     assert!(test.rejects_null);
   }
 
@@ -242,7 +244,7 @@ mod tests {
     // quarticity would swamp it and hide the rejection.
     let mut r = iid_normal(17, 256, 0.005);
     r[128] = 0.077;
-    let test = bns_jump_test(r.view(), 0.01);
+    let test = bns_jump_test(r.view(), 0.01).unwrap();
     assert!(
       test.rejects_null,
       "single jump must be detected, statistic was {}",
@@ -261,8 +263,8 @@ mod tests {
     small[128] = 0.02;
     let mut large = base.clone();
     large[128] = 0.10;
-    let z_small = bns_jump_test(small.view(), 0.01).statistic;
-    let z_large = bns_jump_test(large.view(), 0.01).statistic;
+    let z_small = bns_jump_test(small.view(), 0.01).unwrap().statistic;
+    let z_large = bns_jump_test(large.view(), 0.01).unwrap().statistic;
     assert!(
       z_large > z_small,
       "a bigger jump must not weaken the evidence: {z_small} -> {z_large}"
@@ -303,7 +305,7 @@ mod tests {
   fn a_far_tail_statistic_keeps_a_positive_p_value() {
     let mut r = iid_normal(29, 5_000, 0.01);
     r[2_500] = 0.5;
-    let test = bns_jump_test(r.view(), 0.05);
+    let test = bns_jump_test(r.view(), 0.05).unwrap();
     assert!(test.statistic > 8.27, "z = {}", test.statistic);
     assert!(test.p_value.unwrap() > 0.0, "p = {:?}", test.p_value);
     assert_eq!(test.p_value, Some(two_sided_p_value(test.statistic)));

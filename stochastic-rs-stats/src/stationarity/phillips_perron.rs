@@ -20,8 +20,11 @@ use super::common::adf_critical_values;
 use super::common::fit_adf;
 use super::common::newey_west_long_run_variance;
 use super::common::schwert_max_lags;
-use super::common::validate_series;
+use crate::StatsError;
 use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::validate;
 
 /// Phillips-Perron test statistic variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,21 +86,22 @@ impl crate::traits::HypothesisTest for PhillipsPerronTest {
   }
 }
 
-/// Phillips-Perron unit-root test.
-///
-/// # Panics
-/// Panics on invalid inputs (non-finite series, too-short sample, invalid config).
-pub fn phillips_perron_test(y: ArrayView1<f64>, cfg: PhillipsPerronConfig) -> PhillipsPerronTest {
-  let y = y
-    .as_slice()
-    .expect("phillips_perron_test requires a contiguous ArrayView1");
-  validate_series(y, 20);
-  assert!(
-    cfg.alpha > 0.0 && cfg.alpha < 1.0,
-    "alpha must be in (0, 1)"
-  );
+/// Phillips–Perron unit-root test; `Err` below 20 points, on a non-finite one or a singular
+/// regression, and panics unless `0 < alpha < 1` (`<= 0.1` for `Tau`, decided on the ADF table).
+pub fn phillips_perron_test(
+  y: ArrayView1<f64>,
+  cfg: PhillipsPerronConfig,
+) -> Result<PhillipsPerronTest, StatsError> {
+  assert_alpha(cfg.alpha);
+  let critical_values = match cfg.test_type {
+    PpTestType::Tau => Some(adf_critical_values(cfg.trend)),
+    PpTestType::Rho => None,
+  };
+  let critical = critical_values.as_ref().map(|cv| cv.value_at(cfg.alpha));
+  let y = as_slice_or_copy(y);
+  validate(&y, 20)?;
 
-  let fit = fit_adf(y, 0, cfg.trend);
+  let fit = fit_adf(&y, 0, cfg.trend)?;
   let u = fit.residuals;
   let nobs = u.len();
   let n_f = nobs as f64;
@@ -107,7 +111,7 @@ pub fn phillips_perron_test(y: ArrayView1<f64>, cfg: PhillipsPerronConfig) -> Ph
   let gamma0 = s2;
 
   let used_lags = cfg.lags.unwrap_or_else(|| schwert_max_lags(y.len()));
-  let lam2 = newey_west_long_run_variance(&u, used_lags).max(1e-12);
+  let lam2 = newey_west_long_run_variance(&u, used_lags)?.max(1e-12);
   let lam = lam2.sqrt();
 
   // In the ADF parameterization, gamma = rho - 1.
@@ -123,23 +127,14 @@ pub fn phillips_perron_test(y: ArrayView1<f64>, cfg: PhillipsPerronConfig) -> Ph
     }
   };
 
-  let (critical_values, rejects_null) = match cfg.test_type {
-    PpTestType::Tau => {
-      let cvals = adf_critical_values(cfg.trend);
-      let rejects = statistic < cvals.value_at(cfg.alpha);
-      (Some(cvals), Some(rejects))
-    }
-    PpTestType::Rho => (None, None),
-  };
-
-  PhillipsPerronTest {
+  Ok(PhillipsPerronTest {
     statistic,
     p_value: None,
     critical_values,
-    rejects_null,
+    rejects_null: critical.map(|c| statistic < c),
     used_lags,
     test_type: cfg.test_type,
-  }
+  })
 }
 
 #[cfg(test)]
@@ -188,7 +183,7 @@ mod tests {
       lags: Some(12),
       ..PhillipsPerronConfig::default()
     };
-    let res = phillips_perron_test(ndarray::ArrayView1::from(&x), cfg);
+    let res = phillips_perron_test(ndarray::ArrayView1::from(&x), cfg).unwrap();
     assert_eq!(
       res.rejects_null,
       Some(true),
@@ -205,7 +200,7 @@ mod tests {
       lags: Some(12),
       alpha: 0.01,
     };
-    let res = phillips_perron_test(ndarray::ArrayView1::from(&x), cfg);
+    let res = phillips_perron_test(ndarray::ArrayView1::from(&x), cfg).unwrap();
     assert_eq!(
       res.rejects_null,
       Some(false),

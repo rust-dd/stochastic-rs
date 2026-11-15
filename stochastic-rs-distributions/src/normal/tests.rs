@@ -32,6 +32,7 @@ fn best_ks_p_value(
         cdf,
         KolmogorovSmirnovConfig::default(),
       )
+      .unwrap()
       .p_value
       .unwrap()
     })

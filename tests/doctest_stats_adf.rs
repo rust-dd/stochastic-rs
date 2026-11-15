@@ -29,7 +29,8 @@ fn adf_rejects_unit_root_on_a_mean_reverting_series() {
   let result = adf_test(
     ArrayView1::from(series.as_slice().unwrap()),
     AdfConfig::default(),
-  );
+  )
+  .expect("500 finite points of a mean-reverting path");
   assert!(
     result.rejects_null,
     "expected the unit-root null to be rejected"

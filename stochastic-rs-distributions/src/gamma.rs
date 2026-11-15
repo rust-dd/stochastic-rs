@@ -372,6 +372,7 @@ mod tests {
           |x| dist.cdf(x).unwrap(),
           KolmogorovSmirnovConfig::default(),
         )
+        .unwrap()
         .p_value
         .unwrap()
       })
@@ -399,6 +400,7 @@ mod tests {
           |x| dist.cdf(x).unwrap(),
           KolmogorovSmirnovConfig::default(),
         )
+        .unwrap()
         .p_value
         .unwrap()
       })

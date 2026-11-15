@@ -2,6 +2,8 @@ use ndarray::ArrayView1;
 use numpy::PyReadonlyArray1;
 use pyo3::prelude::*;
 
+use super::stats_error;
+
 #[pyclass(name = "RealizedMoments", unsendable)]
 pub struct PyRealizedMoments {
   rv: f64,
@@ -114,9 +116,12 @@ impl PyBNSJumpTest {
   #[new]
   #[pyo3(signature = (returns, alpha=0.05))]
   fn new<'py>(returns: PyReadonlyArray1<'py, f64>, alpha: f64) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::realized::bipower::bns_jump_test(returns.as_array(), alpha),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::realized::bipower::bns_jump_test(returns.as_array(), alpha)
+          .map_err(stats_error)?,
+      })
+    })?
   }
 
   #[getter]
@@ -152,9 +157,12 @@ impl PyLeeMyklandJumpTest {
     window: usize,
     alpha: f64,
   ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::realized::lee_mykland::lee_mykland_test(returns.as_array(), window, alpha),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::realized::lee_mykland::lee_mykland_test(returns.as_array(), window, alpha)
+          .map_err(stats_error)?,
+      })
+    })?
   }
 
   /// The paper's window rule: the smallest integer above

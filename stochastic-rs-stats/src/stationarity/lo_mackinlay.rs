@@ -27,9 +27,12 @@
 
 use ndarray::ArrayView1;
 
-use super::common::validate_series;
+use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::critical_values::two_sided_p_value;
+use crate::input::as_slice_or_copy;
+use crate::input::assert_alpha;
+use crate::input::validate;
 
 /// Configuration for the Lo-MacKinlay variance-ratio test.
 #[derive(Debug, Clone, Copy)]
@@ -85,35 +88,24 @@ impl crate::traits::HypothesisTest for LoMacKinlayTest {
   }
 }
 
-/// Lo-MacKinlay (1988) variance-ratio test.
-///
-/// # Panics
-/// Panics on invalid inputs (non-finite series, too-short sample, $q < 2$, or
-/// $\alpha \notin (0, 1)$).
-pub fn lo_mackinlay_test(series: ArrayView1<f64>, cfg: LoMacKinlayConfig) -> LoMacKinlayTest {
-  let raw = series
-    .as_slice()
-    .expect("lo_mackinlay_test requires a contiguous ArrayView1");
-  assert!(cfg.q >= 2, "q must be >= 2, got {}", cfg.q);
-  assert!(
-    cfg.alpha > 0.0 && cfg.alpha < 1.0,
-    "alpha must be in (0, 1)"
-  );
-
+/// Lo–MacKinlay (1988) variance-ratio test; `Err` below `4 q` returns, on a non-finite input or on
+/// zero-variance increments, and panics unless `q >= 2` and `0 < alpha < 1`.
+pub fn lo_mackinlay_test(
+  series: ArrayView1<f64>,
+  cfg: LoMacKinlayConfig,
+) -> Result<LoMacKinlayTest, StatsError> {
+  assert!(cfg.q >= 2, "q must satisfy `q >= 2`, got q = {:?}", cfg.q);
+  assert_alpha(cfg.alpha);
+  let raw = as_slice_or_copy(series);
   let returns: Vec<f64> = if cfg.input_is_log_prices {
-    validate_series(raw, cfg.q * 4 + 1);
+    validate(&raw, cfg.q * 4 + 1)?;
     (1..raw.len()).map(|i| raw[i] - raw[i - 1]).collect()
   } else {
-    validate_series(raw, cfg.q * 4);
+    validate(&raw, cfg.q * 4)?;
     raw.to_vec()
   };
 
   let nq = returns.len();
-  assert!(
-    nq >= cfg.q + 2,
-    "need at least q+2 = {} returns, got {nq}",
-    cfg.q + 2
-  );
   let nq_f = nq as f64;
   let q = cfg.q;
   let q_f = q as f64;
@@ -128,17 +120,7 @@ pub fn lo_mackinlay_test(series: ArrayView1<f64>, cfg: LoMacKinlayConfig) -> LoM
   }
   var1 /= nq_f - 1.0;
   if var1 <= 0.0 {
-    return LoMacKinlayTest {
-      statistic: 0.0,
-      p_value: Some(1.0),
-      critical_values: None,
-      rejects_null: false,
-      q,
-      variance_ratio: 1.0,
-      z_iid: 0.0,
-      p_value_iid: 1.0,
-      rejects_null_iid: false,
-    };
+    return Err(StatsError::DegenerateData("zero-variance increments"));
   }
 
   // q-period overlapping variance (Lo-Mac eq.7) with the small-sample
@@ -195,7 +177,7 @@ pub fn lo_mackinlay_test(series: ArrayView1<f64>, cfg: LoMacKinlayConfig) -> LoM
   let p_value = two_sided_p_value(z_robust);
   let p_value_iid = two_sided_p_value(z_iid);
 
-  LoMacKinlayTest {
+  Ok(LoMacKinlayTest {
     statistic: z_robust,
     p_value: Some(p_value),
     critical_values: None,
@@ -205,7 +187,7 @@ pub fn lo_mackinlay_test(series: ArrayView1<f64>, cfg: LoMacKinlayConfig) -> LoM
     z_iid,
     p_value_iid,
     rejects_null_iid: p_value_iid < cfg.alpha,
-  }
+  })
 }
 
 #[cfg(test)]
@@ -248,7 +230,8 @@ mod tests {
         alpha: 0.05,
         input_is_log_prices: true,
       },
-    );
+    )
+    .unwrap();
     assert!(
       !res.rejects_null && !res.rejects_null_iid,
       "expected no rejection, got {res:?}"
@@ -271,7 +254,8 @@ mod tests {
         alpha: 0.05,
         input_is_log_prices: true,
       },
-    );
+    )
+    .unwrap();
     assert!(res.rejects_null, "expected robust-Z rejection, got {res:?}");
     assert!(
       res.variance_ratio > 1.05,
@@ -291,7 +275,8 @@ mod tests {
         alpha: 0.05,
         input_is_log_prices: true,
       },
-    );
+    )
+    .unwrap();
     assert!(res.rejects_null, "expected robust-Z rejection, got {res:?}");
     assert!(
       res.variance_ratio < 0.95,
@@ -313,7 +298,8 @@ mod tests {
         alpha: 0.05,
         input_is_log_prices: false,
       },
-    );
+    )
+    .unwrap();
     let res_prices = lo_mackinlay_test(
       ndarray::ArrayView1::from(&prices),
       LoMacKinlayConfig {
@@ -321,7 +307,8 @@ mod tests {
         alpha: 0.05,
         input_is_log_prices: true,
       },
-    );
+    )
+    .unwrap();
     // Both paths should yield the same variance ratio modulo fp tolerance.
     assert!(
       (res_returns.variance_ratio - res_prices.variance_ratio).abs() < 1e-10,
