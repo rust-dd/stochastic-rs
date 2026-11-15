@@ -36,9 +36,12 @@ impl<T: FloatExt, S: SeedExt> AlphaStableSubordinator<T, S> {
   pub fn new(alpha: T, c: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(
       alpha > T::zero() && alpha < T::one(),
-      "alpha must be in (0,1)"
+      "alpha must satisfy `alpha > T::zero() && alpha < T::one()`, got alpha = {alpha:?}"
     );
-    assert!(c > T::zero(), "c must be positive");
+    assert!(
+      c > T::zero(),
+      "c must satisfy `c > T::zero()`, got c = {c:?}"
+    );
     Self {
       backend: Cpu,
       alpha,

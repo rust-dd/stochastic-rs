@@ -44,7 +44,7 @@ pub struct Fgbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> Fgbm<T, S, Cpu> {
   #[must_use]
   pub fn new(hurst: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
 
     Self {
       hurst,
@@ -85,7 +85,7 @@ impl<T: FloatExt, S: SeedExt> Fgbm<T, S, Cpu> {
   /// Replace the number of simulation steps `n`; rebuilds the embedded
   /// `fgn`. Panics if `n < 2`, matching `new()`'s own assertion.
   pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.fgn = Self::fgn_for(self.hurst, n, self.t);
     self

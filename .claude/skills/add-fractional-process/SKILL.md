@@ -56,7 +56,7 @@ pub struct Fou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt, B> Fou<T, S, B> {
     pub fn new(hurst: T, theta: T, mu: T, sigma: T, n: usize,
                x0: Option<T>, t: Option<T>, seed: S) -> Self {   // seed LAST
-        assert!(n >= 2, "n must be at least 2");
+        assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
         Self {
             hurst, theta, mu, sigma, n, x0, t, seed,
             fgn: Fgn::new(hurst, n - 1, t, Unseeded),

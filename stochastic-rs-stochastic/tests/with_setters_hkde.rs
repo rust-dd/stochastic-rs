@@ -117,19 +117,19 @@ hkde_plain_test!(
 );
 
 #[test]
-#[should_panic(expected = "lambda must be >= 0")]
+#[should_panic(expected = "lambda must satisfy `lambda >= T::zero()`, got lambda = -0.1")]
 fn hkde_with_lambda_rejects_negative() {
   let _ = hkde_base().with_lambda(-0.1);
 }
 
 #[test]
-#[should_panic(expected = "eta1 must be > 1")]
+#[should_panic(expected = "eta1 must satisfy `eta1 > T::one()`, got eta1 = 0.5")]
 fn hkde_with_eta1_rejects_out_of_range() {
   let _ = hkde_base().with_eta1(0.5);
 }
 
 #[test]
-#[should_panic(expected = "eta2 must be > 0")]
+#[should_panic(expected = "eta2 must satisfy `eta2 > T::zero()`, got eta2 = 0.0")]
 fn hkde_with_eta2_rejects_out_of_range() {
   let _ = hkde_base().with_eta2(0.0);
 }
@@ -167,7 +167,7 @@ fn hkde_with_rho_rebuilds_cgns_cache() {
 }
 
 #[test]
-#[should_panic(expected = "rho must be in [-1, 1]")]
+#[should_panic(expected = "rho must satisfy `rho >= -T::one() && rho <= T::one()`, got rho = 1.5")]
 fn hkde_with_rho_rejects_out_of_range() {
   let _ = hkde_base().with_rho(1.5);
 }
@@ -206,7 +206,7 @@ fn hkde_with_steps_rebuilds_cgns_cache() {
 }
 
 #[test]
-#[should_panic(expected = "n must be at least 2")]
+#[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
 fn hkde_with_steps_rejects_too_few_steps() {
   let _ = hkde_base().with_steps(1);
 }

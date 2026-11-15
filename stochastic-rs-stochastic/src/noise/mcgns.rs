@@ -415,7 +415,9 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "unit diagonal")]
+  #[should_panic(
+    expected = "rho[(0, 0)] must satisfy `(rho[(i, i)] - T::one()).abs() <= tol`, got rho[(0, 0)] = 2.0"
+  )]
   fn rejects_a_covariance_matrix() {
     let _ = Mcgns::new(array![[2.0_f64, 0.5], [0.5, 1.0]], 8, None, Unseeded);
   }

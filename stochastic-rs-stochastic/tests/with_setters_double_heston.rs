@@ -160,49 +160,53 @@ dh_plain_test!(
 );
 
 #[test]
-#[should_panic(expected = "v1_0 must be non-negative")]
+#[should_panic(
+  expected = "v1_0 must satisfy `v1_0.is_none_or(|v| v >= T::zero())`, got v1_0 = Some(-0.01)"
+)]
 fn double_heston_with_v1_0_rejects_negative() {
   let _ = dh_base().with_v1_0(Some(-0.01));
 }
 
 #[test]
-#[should_panic(expected = "v2_0 must be non-negative")]
+#[should_panic(
+  expected = "v2_0 must satisfy `v2_0.is_none_or(|v| v >= T::zero())`, got v2_0 = Some(-0.01)"
+)]
 fn double_heston_with_v2_0_rejects_negative() {
   let _ = dh_base().with_v2_0(Some(-0.01));
 }
 
 #[test]
-#[should_panic(expected = "kappa1 must be non-negative")]
+#[should_panic(expected = "kappa1 must satisfy `kappa1 >= T::zero()`, got kappa1 = -1.0")]
 fn double_heston_with_kappa1_rejects_negative() {
   let _ = dh_base().with_kappa1(-1.0);
 }
 
 #[test]
-#[should_panic(expected = "theta1 must be non-negative")]
+#[should_panic(expected = "theta1 must satisfy `theta1 >= T::zero()`, got theta1 = -0.01")]
 fn double_heston_with_theta1_rejects_negative() {
   let _ = dh_base().with_theta1(-0.01);
 }
 
 #[test]
-#[should_panic(expected = "sigma1 must be non-negative")]
+#[should_panic(expected = "sigma1 must satisfy `sigma1 >= T::zero()`, got sigma1 = -0.1")]
 fn double_heston_with_sigma1_rejects_negative() {
   let _ = dh_base().with_sigma1(-0.1);
 }
 
 #[test]
-#[should_panic(expected = "kappa2 must be non-negative")]
+#[should_panic(expected = "kappa2 must satisfy `kappa2 >= T::zero()`, got kappa2 = -1.0")]
 fn double_heston_with_kappa2_rejects_negative() {
   let _ = dh_base().with_kappa2(-1.0);
 }
 
 #[test]
-#[should_panic(expected = "theta2 must be non-negative")]
+#[should_panic(expected = "theta2 must satisfy `theta2 >= T::zero()`, got theta2 = -0.01")]
 fn double_heston_with_theta2_rejects_negative() {
   let _ = dh_base().with_theta2(-0.01);
 }
 
 #[test]
-#[should_panic(expected = "sigma2 must be non-negative")]
+#[should_panic(expected = "sigma2 must satisfy `sigma2 >= T::zero()`, got sigma2 = -0.1")]
 fn double_heston_with_sigma2_rejects_negative() {
   let _ = dh_base().with_sigma2(-0.1);
 }

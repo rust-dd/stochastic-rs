@@ -78,19 +78,15 @@ impl<T: FloatExt, S: SeedExt> Adg<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert_eq!(
-      sigma.len(),
-      xn,
-      "sigma length ({}) must match xn ({})",
-      sigma.len(),
-      xn
+    assert!(
+      sigma.len() == xn,
+      "sigma.len() must satisfy `sigma.len() == xn`, got sigma.len() = {:?}",
+      sigma.len()
     );
-    assert_eq!(
-      x0.len(),
-      xn,
-      "x0 length ({}) must match xn ({})",
-      x0.len(),
-      xn
+    assert!(
+      x0.len() == xn,
+      "x0.len() must satisfy `x0.len() == xn`, got x0.len() = {:?}",
+      x0.len()
     );
     Self {
       backend: Cpu,

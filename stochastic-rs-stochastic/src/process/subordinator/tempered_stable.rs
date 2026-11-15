@@ -54,11 +54,20 @@ impl<T: FloatExt, S: SeedExt> TemperedStableSubordinator<T, S> {
   ) -> Self {
     assert!(
       alpha > T::zero() && alpha < T::one(),
-      "alpha must be in (0,1)"
+      "alpha must satisfy `alpha > T::zero() && alpha < T::one()`, got alpha = {alpha:?}"
     );
-    assert!(c > T::zero(), "c must be positive");
-    assert!(mu > T::zero(), "mu must be positive");
-    assert!(epsilon > T::zero(), "epsilon must be positive");
+    assert!(
+      c > T::zero(),
+      "c must satisfy `c > T::zero()`, got c = {c:?}"
+    );
+    assert!(
+      mu > T::zero(),
+      "mu must satisfy `mu > T::zero()`, got mu = {mu:?}"
+    );
+    assert!(
+      epsilon > T::zero(),
+      "epsilon must satisfy `epsilon > T::zero()`, got epsilon = {epsilon:?}"
+    );
     Self {
       backend: Cpu,
       alpha,

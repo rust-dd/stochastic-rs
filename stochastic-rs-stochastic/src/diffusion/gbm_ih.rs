@@ -55,7 +55,11 @@ impl<T: FloatExt, S: SeedExt> GbmIh<T, S> {
     seed: S,
   ) -> Self {
     if let Some(s) = &sigmas {
-      assert_eq!(s.len(), n.saturating_sub(1), "sigmas length must be n - 1");
+      assert!(
+        s.len() == n.saturating_sub(1),
+        "sigmas.len() must satisfy `sigmas.len() == n.saturating_sub(1)`, got sigmas.len() = {:?}, n = {n:?}",
+        s.len()
+      );
     }
 
     Self {

@@ -79,7 +79,7 @@ impl<T: FloatExt, S: SeedExt> Lfsm<T, S> {
     );
     assert!(
       hurst > T::one() / alpha && hurst < T::one(),
-      "Lfsm requires 1/alpha < hurst < 1 for this discretization"
+      "hurst must satisfy `hurst > T::one() / alpha && hurst < T::one()`, got hurst = {hurst:?}, alpha = {alpha:?}"
     );
     Self {
       backend: Cpu,

@@ -70,9 +70,15 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(lambda > T::zero(), "lambda must be positive");
-    assert!(a > T::zero(), "a must be positive");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      lambda > T::zero(),
+      "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      a > T::zero(),
+      "a must satisfy `a > T::zero()`, got a = {a:?}"
+    );
 
     Self {
       hurst,
@@ -103,7 +109,10 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
   /// Replace `lambda`. Panics if `lambda <= 0`, matching `new()`'s own
   /// assertion.
   pub fn with_lambda(mut self, lambda: T) -> Self {
-    assert!(lambda > T::zero(), "lambda must be positive");
+    assert!(
+      lambda > T::zero(),
+      "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
+    );
     self.lambda = lambda;
     self
   }
@@ -116,7 +125,10 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
 
   /// Replace `a`. Panics if `a <= 0`, matching `new()`'s own assertion.
   pub fn with_a(mut self, a: T) -> Self {
-    assert!(a > T::zero(), "a must be positive");
+    assert!(
+      a > T::zero(),
+      "a must satisfy `a > T::zero()`, got a = {a:?}"
+    );
     self.a = a;
     self
   }
@@ -124,7 +136,7 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
   /// Replace the number of simulation steps `n`; rebuilds the embedded
   /// `fgn`. Panics if `n < 2`, matching `new()`'s own assertion.
   pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.fgn = Self::fgn_for(self.hurst, n, self.t);
     self

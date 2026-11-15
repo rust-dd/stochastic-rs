@@ -102,21 +102,35 @@ impl<T: FloatExt, S: SeedExt> HestonSlv<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(kappa >= T::zero(), "kappa must be non-negative");
-    assert!(theta >= T::zero(), "theta must be non-negative");
-    assert!(sigma >= T::zero(), "sigma must be non-negative");
-    assert!(eta >= T::zero(), "eta must be non-negative");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      kappa >= T::zero(),
+      "kappa must satisfy `kappa >= T::zero()`, got kappa = {kappa:?}"
+    );
+    assert!(
+      theta >= T::zero(),
+      "theta must satisfy `theta >= T::zero()`, got theta = {theta:?}"
+    );
+    assert!(
+      sigma >= T::zero(),
+      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      eta >= T::zero(),
+      "eta must satisfy `eta >= T::zero()`, got eta = {eta:?}"
+    );
     assert!(
       (-T::one()..=T::one()).contains(&rho),
-      "rho must be a correlation in [-1, 1]"
+      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
     );
-    if let Some(s0) = s0 {
-      assert!(s0 > T::zero(), "s0 must be positive");
-    }
-    if let Some(v0) = v0 {
-      assert!(v0 >= T::zero(), "v0 must be non-negative");
-    }
+    assert!(
+      s0.is_none_or(|s| s > T::zero()),
+      "s0 must satisfy `s0.is_none_or(|s| s > T::zero())`, got s0 = {s0:?}"
+    );
+    assert!(
+      v0.is_none_or(|v| v >= T::zero()),
+      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+    );
     Self {
       backend: Cpu,
       s0,
@@ -161,39 +175,50 @@ impl<T: FloatExt> Default for HestonSlv<T, Unseeded> {
 impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: Option<T>) -> Self {
-    if let Some(s) = s0 {
-      assert!(s > T::zero(), "s0 must be positive");
-    }
+    assert!(
+      s0.is_none_or(|s| s > T::zero()),
+      "s0 must satisfy `s0.is_none_or(|s| s > T::zero())`, got s0 = {s0:?}"
+    );
     self.s0 = s0;
     self
   }
 
   /// Replace `v0`, all else unchanged.
   pub fn with_v0(mut self, v0: Option<T>) -> Self {
-    if let Some(v) = v0 {
-      assert!(v >= T::zero(), "v0 must be non-negative");
-    }
+    assert!(
+      v0.is_none_or(|v| v >= T::zero()),
+      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+    );
     self.v0 = v0;
     self
   }
 
   /// Replace `kappa`, all else unchanged.
   pub fn with_kappa(mut self, kappa: T) -> Self {
-    assert!(kappa >= T::zero(), "kappa must be non-negative");
+    assert!(
+      kappa >= T::zero(),
+      "kappa must satisfy `kappa >= T::zero()`, got kappa = {kappa:?}"
+    );
     self.kappa = kappa;
     self
   }
 
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: T) -> Self {
-    assert!(theta >= T::zero(), "theta must be non-negative");
+    assert!(
+      theta >= T::zero(),
+      "theta must satisfy `theta >= T::zero()`, got theta = {theta:?}"
+    );
     self.theta = theta;
     self
   }
 
   /// Replace `sigma`, all else unchanged.
   pub fn with_sigma(mut self, sigma: T) -> Self {
-    assert!(sigma >= T::zero(), "sigma must be non-negative");
+    assert!(
+      sigma >= T::zero(),
+      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
     self.sigma = sigma;
     self
   }
@@ -202,7 +227,7 @@ impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
   pub fn with_rho(mut self, rho: T) -> Self {
     assert!(
       (-T::one()..=T::one()).contains(&rho),
-      "rho must be a correlation in [-1, 1]"
+      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
     );
     self.rho = rho;
     self
@@ -216,7 +241,10 @@ impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
 
   /// Replace the mixing fraction `eta`, all else unchanged.
   pub fn with_eta(mut self, eta: T) -> Self {
-    assert!(eta >= T::zero(), "eta must be non-negative");
+    assert!(
+      eta >= T::zero(),
+      "eta must satisfy `eta >= T::zero()`, got eta = {eta:?}"
+    );
     self.eta = eta;
     self
   }
@@ -229,7 +257,7 @@ impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
 
   /// Replace the number of grid points `n`, all else unchanged.
   pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self
   }

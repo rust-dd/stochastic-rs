@@ -40,7 +40,10 @@ pub struct Ig<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> Ig<T, S> {
   pub fn new(gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(gamma > T::zero(), "gamma must be positive");
+    assert!(
+      gamma > T::zero(),
+      "gamma must satisfy `gamma > T::zero()`, got gamma = {gamma:?}"
+    );
     Self {
       backend: Cpu,
       gamma,

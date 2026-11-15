@@ -86,10 +86,19 @@ impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(sigma >= T::zero(), "sigma must be >= 0");
-    assert!(lambda >= T::zero(), "lambda must be >= 0");
-    assert!(omega >= T::zero(), "omega must be >= 0");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      sigma >= T::zero(),
+      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      lambda >= T::zero(),
+      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      omega >= T::zero(),
+      "omega must satisfy `omega >= T::zero()`, got omega = {omega:?}"
+    );
     validate_drift_args(mu, b, r, r_f, "MjdLog");
     Self {
       backend: Cpu,

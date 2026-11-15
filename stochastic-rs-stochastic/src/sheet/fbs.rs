@@ -85,10 +85,8 @@ pub struct Fbs<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
   pub fn new(hurst: T, m: usize, n: usize, r: T, seed: S) -> Self {
-    assert!(
-      m >= 2 && n >= 2,
-      "Fbs: the grid needs at least two points per axis"
-    );
+    assert!(m >= 2, "m must satisfy `m >= 2`, got m = {m:?}");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     let (lam, c2) = Self::embedding(hurst, m, n, r);
     Self {
       backend: Cpu,

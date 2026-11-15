@@ -64,10 +64,23 @@ impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusion<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    let m = vols.len();
-    assert_eq!(q_matrix.nrows(), m, "Q must be M×M");
-    assert_eq!(q_matrix.ncols(), m, "Q must be M×M");
-    assert!(initial_state < m, "initial_state must be < M");
+    assert!(
+      q_matrix.nrows() == vols.len(),
+      "q_matrix.nrows() must satisfy `q_matrix.nrows() == vols.len()`, got q_matrix.nrows() = {:?}, vols.len() = {:?}",
+      q_matrix.nrows(),
+      vols.len()
+    );
+    assert!(
+      q_matrix.ncols() == vols.len(),
+      "q_matrix.ncols() must satisfy `q_matrix.ncols() == vols.len()`, got q_matrix.ncols() = {:?}, vols.len() = {:?}",
+      q_matrix.ncols(),
+      vols.len()
+    );
+    assert!(
+      initial_state < vols.len(),
+      "initial_state must satisfy `initial_state < vols.len()`, got initial_state = {initial_state:?}, vols.len() = {:?}",
+      vols.len()
+    );
 
     Self {
       backend: Cpu,

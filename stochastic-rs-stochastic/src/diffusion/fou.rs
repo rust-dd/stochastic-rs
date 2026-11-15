@@ -80,7 +80,7 @@ impl<T: FloatExt, S: SeedExt> Fou<T, S, Cpu> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
 
     Self {
       hurst,
@@ -128,7 +128,7 @@ impl<T: FloatExt, S: SeedExt> Fou<T, S, Cpu> {
   /// Replace the number of simulation steps `n`; rebuilds the embedded
   /// `fgn`. Panics if `n < 2`, matching `new()`'s own assertion.
   pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.fgn = Self::fgn_for(self.hurst, n, self.t);
     self
@@ -380,7 +380,7 @@ mod tests {
   use crate::traits::ProcessExt;
 
   #[test]
-  #[should_panic(expected = "n must be at least 2")]
+  #[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
   fn fou_requires_at_least_two_points() {
     let _ = Fou::<f64>::new(0.7, 1.0, 0.0, 0.2, 1, Some(0.0), Some(1.0), Unseeded);
   }

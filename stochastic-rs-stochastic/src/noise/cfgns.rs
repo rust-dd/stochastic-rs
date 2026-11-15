@@ -43,11 +43,11 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
   pub fn new(hurst: T, rho: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
       (T::zero()..=T::one()).contains(&hurst),
-      "Hurst parameter must be in (0, 1)"
+      "hurst must satisfy `(T::zero()..=T::one()).contains(&hurst)`, got hurst = {hurst:?}"
     );
     assert!(
       (-T::one()..=T::one()).contains(&rho),
-      "Correlation coefficient must be in [-1, 1]"
+      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
     );
 
     Self {
@@ -70,7 +70,7 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
   pub fn with_hurst(mut self, hurst: T) -> Self {
     assert!(
       (T::zero()..=T::one()).contains(&hurst),
-      "Hurst parameter must be in (0, 1)"
+      "hurst must satisfy `(T::zero()..=T::one()).contains(&hurst)`, got hurst = {hurst:?}"
     );
     self.hurst = hurst;
     self.fgn = Self::fgn_for(hurst, self.n, self.t);
@@ -82,7 +82,7 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
   pub fn with_rho(mut self, rho: T) -> Self {
     assert!(
       (-T::one()..=T::one()).contains(&rho),
-      "Correlation coefficient must be in [-1, 1]"
+      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
     );
     self.rho = rho;
     self

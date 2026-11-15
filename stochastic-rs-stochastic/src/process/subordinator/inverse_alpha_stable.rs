@@ -56,10 +56,16 @@ impl<T: FloatExt, S: SeedExt> InverseAlphaStableSubordinator<T, S> {
   ) -> Self {
     assert!(
       alpha > T::zero() && alpha < T::one(),
-      "alpha must be in (0,1)"
+      "alpha must satisfy `alpha > T::zero() && alpha < T::one()`, got alpha = {alpha:?}"
     );
-    assert!(c > T::zero(), "c must be positive");
-    assert!(u_steps >= 2, "u_steps must be >= 2");
+    assert!(
+      c > T::zero(),
+      "c must satisfy `c > T::zero()`, got c = {c:?}"
+    );
+    assert!(
+      u_steps >= 2,
+      "u_steps must satisfy `u_steps >= 2`, got u_steps = {u_steps:?}"
+    );
     Self {
       backend: Cpu,
       alpha,

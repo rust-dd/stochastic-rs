@@ -91,10 +91,15 @@ impl<T: FloatExt, S: SeedExt> GjrGarch<T, S> {
     n: usize,
     seed: S,
   ) -> Self {
-    assert!(omega > T::zero(), "GjrGarch requires omega > 0");
+    assert!(
+      omega > T::zero(),
+      "omega must satisfy `omega > T::zero()`, got omega = {omega:?}"
+    );
     assert!(
       alpha.len() == gamma.len(),
-      "GjrGarch requires alpha.len() == gamma.len()"
+      "alpha.len() must satisfy `alpha.len() == gamma.len()`, got alpha.len() = {:?}, gamma.len() = {:?}",
+      alpha.len(),
+      gamma.len()
     );
     Self {
       backend: Cpu,

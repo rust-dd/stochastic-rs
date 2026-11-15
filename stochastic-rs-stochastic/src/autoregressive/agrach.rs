@@ -74,10 +74,15 @@ impl<T: FloatExt, S: SeedExt> Agarch<T, S> {
     n: usize,
     seed: S,
   ) -> Self {
-    assert!(omega > T::zero(), "Agarch requires omega > 0");
+    assert!(
+      omega > T::zero(),
+      "omega must satisfy `omega > T::zero()`, got omega = {omega:?}"
+    );
     assert!(
       alpha.len() == delta.len(),
-      "Agarch requires alpha.len() == delta.len()"
+      "alpha.len() must satisfy `alpha.len() == delta.len()`, got alpha.len() = {:?}, delta.len() = {:?}",
+      alpha.len(),
+      delta.len()
     );
     Self {
       backend: Cpu,

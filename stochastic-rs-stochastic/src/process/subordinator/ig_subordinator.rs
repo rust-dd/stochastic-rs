@@ -35,8 +35,14 @@ pub struct IGSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> IGSubordinator<T, S> {
   pub fn new(delta: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(delta > T::zero(), "delta must be positive");
-    assert!(gamma > T::zero(), "gamma must be positive");
+    assert!(
+      delta > T::zero(),
+      "delta must satisfy `delta > T::zero()`, got delta = {delta:?}"
+    );
+    assert!(
+      gamma > T::zero(),
+      "gamma must satisfy `gamma > T::zero()`, got gamma = {gamma:?}"
+    );
     Self {
       backend: Cpu,
       delta,

@@ -55,7 +55,10 @@ pub struct Vg<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// from `self` every call.
 impl<T: FloatExt, S: SeedExt> Vg<T, S> {
   pub fn new(mu: T, sigma: T, nu: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(nu > T::zero(), "nu must be positive");
+    assert!(
+      nu > T::zero(),
+      "nu must satisfy `nu > T::zero()`, got nu = {nu:?}"
+    );
     Self {
       backend: Cpu,
       mu,
@@ -84,7 +87,10 @@ impl<T: FloatExt, S: SeedExt, B> Vg<T, S, B> {
 
   /// Replace `nu`, all else unchanged.
   pub fn with_nu(mut self, nu: T) -> Self {
-    assert!(nu > T::zero(), "nu must be positive");
+    assert!(
+      nu > T::zero(),
+      "nu must satisfy `nu > T::zero()`, got nu = {nu:?}"
+    );
     self.nu = nu;
     self
   }

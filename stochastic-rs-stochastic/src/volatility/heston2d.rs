@@ -125,32 +125,70 @@ fn validate_params<T: FloatExt>(
   n: usize,
   t: Option<T>,
 ) {
-  assert!(n >= 2, "n must be >= 2");
-  if let Some(value) = t {
-    assert!(value.is_finite(), "t must be finite");
-    assert!(value > T::zero(), "t must be positive");
-  }
+  assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+  assert!(
+    t.is_none_or(|t| t > T::zero() && t.is_finite()),
+    "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+  );
   for i in 0..2 {
-    if let Some(value) = x0[i] {
-      assert!(value.is_finite(), "x0[{}] must be finite", i);
-    }
+    assert!(
+      x0[i].is_none_or(|v| v.is_finite()),
+      "x0[{i}] must satisfy `x0[i].is_none_or(|v| v.is_finite())`, got x0[{i}] = {:?}",
+      x0[i]
+    );
     let value = v0[i].expect("both initial variances v0 must be specified");
-    assert!(value.is_finite(), "v0[{}] must be finite", i);
-    assert!(value > T::zero(), "v0[{}] must be positive", i);
-    assert!(mu[i].is_finite(), "mu[{}] must be finite", i);
-    assert!(theta[i].is_finite(), "theta[{}] must be finite", i);
-    assert!(kappa[i].is_finite(), "kappa[{}] must be finite", i);
-    assert!(sigma[i].is_finite(), "sigma[{}] must be finite", i);
-    assert!(kappa[i] >= T::zero(), "kappa[{}] must be non-negative", i);
-    assert!(theta[i] >= T::zero(), "theta[{}] must be non-negative", i);
-    assert!(sigma[i] >= T::zero(), "sigma[{}] must be non-negative", i);
+    assert!(
+      value.is_finite(),
+      "v0[{i}] must satisfy `v0[i].is_finite()`, got v0[{i}] = {value:?}"
+    );
+    assert!(
+      value > T::zero(),
+      "v0[{i}] must satisfy `v0[i] > T::zero()`, got v0[{i}] = {value:?}"
+    );
+    assert!(
+      mu[i].is_finite(),
+      "mu[{i}] must satisfy `mu[i].is_finite()`, got mu[{i}] = {:?}",
+      mu[i]
+    );
+    assert!(
+      theta[i].is_finite(),
+      "theta[{i}] must satisfy `theta[i].is_finite()`, got theta[{i}] = {:?}",
+      theta[i]
+    );
+    assert!(
+      kappa[i].is_finite(),
+      "kappa[{i}] must satisfy `kappa[i].is_finite()`, got kappa[{i}] = {:?}",
+      kappa[i]
+    );
+    assert!(
+      sigma[i].is_finite(),
+      "sigma[{i}] must satisfy `sigma[i].is_finite()`, got sigma[{i}] = {:?}",
+      sigma[i]
+    );
+    assert!(
+      kappa[i] >= T::zero(),
+      "kappa[{i}] must satisfy `kappa[i] >= T::zero()`, got kappa[{i}] = {:?}",
+      kappa[i]
+    );
+    assert!(
+      theta[i] >= T::zero(),
+      "theta[{i}] must satisfy `theta[i] >= T::zero()`, got theta[{i}] = {:?}",
+      theta[i]
+    );
+    assert!(
+      sigma[i] >= T::zero(),
+      "sigma[{i}] must satisfy `sigma[i] >= T::zero()`, got sigma[{i}] = {:?}",
+      sigma[i]
+    );
   }
-  for (idx, r) in rho.iter().enumerate() {
-    assert!(r.is_finite(), "rho[{}] must be finite", idx);
+  for (k, r) in rho.iter().enumerate() {
+    assert!(
+      r.is_finite(),
+      "rho[{k}] must satisfy `rho[k].is_finite()`, got rho[{k}] = {r:?}"
+    );
     assert!(
       *r >= -T::one() && *r <= T::one(),
-      "rho[{}] out of [-1, 1]",
-      idx
+      "rho[{k}] must satisfy `rho[k] >= -T::one() && rho[k] <= T::one()`, got rho[{k}] = {r:?}"
     );
   }
 }

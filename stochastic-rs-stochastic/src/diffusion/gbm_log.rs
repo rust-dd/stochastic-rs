@@ -77,8 +77,11 @@ impl<T: FloatExt, S: SeedExt> GbmLog<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(sigma >= T::zero(), "sigma must be >= 0");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      sigma >= T::zero(),
+      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
     validate_drift_args(mu, b, r, r_f, "GbmLog");
     Self {
       backend: Cpu,

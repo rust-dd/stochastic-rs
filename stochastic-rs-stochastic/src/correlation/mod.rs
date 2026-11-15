@@ -26,21 +26,8 @@ pub use van_emmerich::VanEmmerich;
 
 use crate::traits::FloatExt;
 
-/// Construct a pair of Brownian increments whose instantaneous
-/// correlation follows a pre-computed path (Eq. 43 in Teng et al. 2016).
-///
-/// For *constant* correlation, use [`crate::noise::cgns::Cgns`]
-/// instead — it is faster and generic over `T: FloatExt`.
-///
-/// Given a correlation path ρ₀, ρ₁, …, ρ_{n−1} and two independent
-/// standard-normal increment vectors, produces:
-///
-/// dW₁\[i\] = ρ\[i\]·dW₂\[i\] + √(1−ρ\[i\]²)·dW₃\[i\]
-///
-/// so that Corr(dW₁\[i\], dW₂\[i\]) = ρ\[i\] at each time step.
-///
-/// # Returns
-/// \[dW₁, dW₂\] — both scaled by √dt.
+/// `[dW₁, dW₂]`, each scaled by `√dt`, with `Corr(dW₁[i], dW₂[i]) = rho_path[i]` (Teng et al. 2016,
+/// Eq. 43); panics if an entry lies outside `[-1, 1]`. A constant ρ samples faster through `Cgns`.
 pub fn stochastic_correlated_bm(rho_path: &Array1<f64>, t: Option<f64>) -> [Array1<f64>; 2] {
   let n = rho_path.len();
   if n == 0 {
@@ -56,9 +43,12 @@ pub fn stochastic_correlated_bm(rho_path: &Array1<f64>, t: Option<f64>) -> [Arra
   f64::fill_standard_normal_slice(dw3.as_slice_mut().expect("contiguous"));
 
   let mut dw1 = Array1::zeros(n);
-  for i in 0..n {
-    let r = rho_path[i].clamp(-0.9999, 0.9999);
-    let c = (1.0 - r * r).max(0.0).sqrt();
+  for (i, &r) in rho_path.iter().enumerate() {
+    assert!(
+      (-1.0..=1.0).contains(&r),
+      "rho_path[{i}] must satisfy `(-1.0..=1.0).contains(&rho_path[i])`, got rho_path[{i}] = {r:?}"
+    );
+    let c = (1.0 - r * r).sqrt();
     dw1[i] = (r * dw2[i] + c * dw3[i]) * sqrt_dt;
     dw2[i] *= sqrt_dt;
   }

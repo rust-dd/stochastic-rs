@@ -50,7 +50,10 @@ pub struct Nig<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> Nig<T, S> {
   pub fn new(theta: T, sigma: T, kappa: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(kappa > T::zero(), "kappa must be positive");
+    assert!(
+      kappa > T::zero(),
+      "kappa must satisfy `kappa > T::zero()`, got kappa = {kappa:?}"
+    );
     Self {
       backend: Cpu,
       theta,

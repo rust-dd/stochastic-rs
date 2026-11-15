@@ -55,7 +55,10 @@ impl<T: FloatExt, S: SeedExt> Arima<T, S> {
     n: usize,
     seed: S,
   ) -> Self {
-    assert!(sigma > T::zero(), "Arima requires sigma > 0");
+    assert!(
+      sigma > T::zero(),
+      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
+    );
     Self {
       backend: Cpu,
       ar_coefs,

@@ -83,21 +83,29 @@ pub(crate) fn determinant<T: FloatExt>(a: &Array2<T>) -> T {
 /// Cholesky factorisation that follows.
 pub(crate) fn validate_correlation<T: FloatExt>(rho: &Array2<T>) {
   let m = rho.nrows();
-  assert_eq!(rho.ncols(), m, "correlation matrix must be square");
+  assert!(
+    rho.ncols() == rho.nrows(),
+    "rho.ncols() must satisfy `rho.ncols() == rho.nrows()`, got rho.ncols() = {:?}, rho.nrows() = {m:?}",
+    rho.ncols()
+  );
   let tol = T::from_f64_fast(1e-12);
   for i in 0..m {
     assert!(
       (rho[(i, i)] - T::one()).abs() <= tol,
-      "correlation matrix needs a unit diagonal (entry {i})"
+      "rho[({i}, {i})] must satisfy `(rho[(i, i)] - T::one()).abs() <= tol`, got rho[({i}, {i})] = {:?}",
+      rho[(i, i)]
     );
     for j in 0..i {
       assert!(
         (rho[(i, j)] - rho[(j, i)]).abs() <= tol,
-        "correlation matrix must be symmetric (entry {i},{j})"
+        "rho[({i}, {j})] must satisfy `(rho[(i, j)] - rho[(j, i)]).abs() <= tol`, got rho[({i}, {j})] = {:?}, rho[({j}, {i})] = {:?}",
+        rho[(i, j)],
+        rho[(j, i)]
       );
       assert!(
         rho[(i, j)].abs() <= T::one() + tol,
-        "correlation entries must lie in [-1, 1] (entry {i},{j})"
+        "rho[({i}, {j})] must satisfy `rho[(i, j)].abs() <= T::one() + tol`, got rho[({i}, {j})] = {:?}",
+        rho[(i, j)]
       );
     }
   }
@@ -140,13 +148,17 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "unit diagonal")]
+  #[should_panic(
+    expected = "rho[(0, 0)] must satisfy `(rho[(i, i)] - T::one()).abs() <= tol`, got rho[(0, 0)] = 2.0"
+  )]
   fn validation_rejects_a_covariance_matrix() {
     validate_correlation(&array![[2.0_f64, 0.5], [0.5, 1.0]]);
   }
 
   #[test]
-  #[should_panic(expected = "symmetric")]
+  #[should_panic(
+    expected = "rho[(1, 0)] must satisfy `(rho[(i, j)] - rho[(j, i)]).abs() <= tol`, got rho[(1, 0)] = 0.4, rho[(0, 1)] = 0.5"
+  )]
   fn validation_rejects_an_asymmetric_matrix() {
     validate_correlation(&array![[1.0_f64, 0.5], [0.4, 1.0]]);
   }

@@ -176,7 +176,10 @@ impl<T: FloatExt, S: SeedExt> Volterra<T, S> {
 impl<T: FloatExt> Volterra<T, Unseeded> {
   /// Fractional Brownian motion with Hurst parameter $H$.
   pub fn fbm(h: f64, n: usize, t: Option<T>) -> Self {
-    assert!(h > 0.0 && h < 1.0, "Hurst parameter must be in (0,1)");
+    assert!(
+      h > 0.0 && h < 1.0,
+      "h must satisfy `h > 0.0 && h < 1.0`, got h = {h:?}"
+    );
     Self::new(VolterraKernelSpec::FractionalBM { h }, n, t, Unseeded)
   }
 }

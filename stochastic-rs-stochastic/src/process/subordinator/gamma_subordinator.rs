@@ -34,8 +34,14 @@ pub struct GammaSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> GammaSubordinator<T, S> {
   pub fn new(nu: T, rate: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(nu > T::zero(), "nu must be positive");
-    assert!(rate > T::zero(), "rate must be positive");
+    assert!(
+      nu > T::zero(),
+      "nu must satisfy `nu > T::zero()`, got nu = {nu:?}"
+    );
+    assert!(
+      rate > T::zero(),
+      "rate must satisfy `rate > T::zero()`, got rate = {rate:?}"
+    );
     Self {
       backend: Cpu,
       nu,

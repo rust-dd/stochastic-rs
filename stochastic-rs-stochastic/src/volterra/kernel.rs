@@ -79,7 +79,7 @@ impl<T: FloatExt> ExponentialKernel<T> {
   pub fn new(beta: T, c: T) -> Self {
     assert!(
       beta > T::zero(),
-      "ExponentialKernel requires beta > 0, got {beta:?}"
+      "beta must satisfy `beta > T::zero()`, got beta = {beta:?}"
     );
     Self {
       beta,
@@ -149,7 +149,7 @@ impl<T: FloatExt> GammaKernel<T> {
   pub fn new(hurst: T, lambda: T, degree: usize) -> Self {
     assert!(
       lambda > T::zero(),
-      "GammaKernel requires lambda > 0 (use RlKernel for the undamped case), got {lambda:?}"
+      "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
     );
     let rl = RlKernel::<T>::new(hurst, degree);
     let mut nodes = Array1::<T>::zeros(degree);
@@ -230,18 +230,19 @@ impl<T: FloatExt> SumOfExponentials<T> {
   ///   with no diagnostic at all)
   #[must_use]
   pub fn new(nodes: Array1<T>, weights: Array1<T>) -> Self {
-    assert_eq!(
+    assert!(
+      nodes.len() == weights.len(),
+      "nodes.len() must satisfy `nodes.len() == weights.len()`, got nodes.len() = {:?}, weights.len() = {:?}",
       nodes.len(),
-      weights.len(),
-      "nodes and weights must have the same length"
+      weights.len()
     );
     assert!(
       !nodes.is_empty(),
-      "SumOfExponentials requires at least one term"
+      "nodes must satisfy `!nodes.is_empty()`, got nodes = {nodes:?}"
     );
     assert!(
       nodes.iter().all(|&x| x > T::zero()),
-      "SumOfExponentials requires all nodes to be strictly positive"
+      "nodes must satisfy `nodes.iter().all(|&x| x > T::zero())`, got nodes = {nodes:?}"
     );
     Self { nodes, weights }
   }

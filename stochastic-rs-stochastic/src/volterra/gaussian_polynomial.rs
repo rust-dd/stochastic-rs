@@ -105,10 +105,10 @@ where
   /// - if `coefficients` is empty (a polynomial needs at least a constant term)
   #[must_use]
   pub fn new(kernel: K, coefficients: Array1<T>, n: usize, t: Option<T>, seed: S) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     assert!(
       !coefficients.is_empty(),
-      "coefficients must contain at least a constant term"
+      "coefficients must satisfy `!coefficients.is_empty()`, got coefficients = {coefficients:?}"
     );
     let lift = VolterraLift::new(kernel.clone(), grid_spacing(n, t));
     Self {
@@ -175,7 +175,7 @@ where
   pub fn with_coefficients(mut self, coefficients: Array1<T>) -> Self {
     assert!(
       !coefficients.is_empty(),
-      "coefficients must contain at least a constant term"
+      "coefficients must satisfy `!coefficients.is_empty()`, got coefficients = {coefficients:?}"
     );
     self.coefficients = coefficients;
     self
@@ -187,7 +187,7 @@ where
   /// - if `n < 2`
   #[must_use]
   pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(n, self.t));
     self

@@ -84,7 +84,9 @@ impl<T: FloatExt, S: SeedExt> Egarch<T, S> {
   ) -> Self {
     assert!(
       alpha.len() == gamma.len(),
-      "Egarch requires alpha.len() == gamma.len()"
+      "alpha.len() must satisfy `alpha.len() == gamma.len()`, got alpha.len() = {:?}, gamma.len() = {:?}",
+      alpha.len(),
+      gamma.len()
     );
     Self {
       backend: Cpu,

@@ -49,7 +49,10 @@ pub struct Arch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> Arch<T, S> {
   /// Create a new Arch model.
   pub fn new(omega: T, alpha: Array1<T>, n: usize, seed: S) -> Self {
-    assert!(omega > T::zero(), "Arch requires omega > 0");
+    assert!(
+      omega > T::zero(),
+      "omega must satisfy `omega > T::zero()`, got omega = {omega:?}"
+    );
     Self {
       backend: Cpu,
       omega,

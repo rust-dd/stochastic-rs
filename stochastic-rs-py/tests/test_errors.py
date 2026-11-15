@@ -33,7 +33,7 @@ def test_distribution_constructor_names_the_rejected_argument():
 
 
 def test_hand_written_process_constructor_raises_value_error():
-    with pytest.raises(ValueError, match="one entry per asset"):
+    with pytest.raises(ValueError, match=r"sigma\.len\(\) must satisfy `sigma\.len\(\) == rho\.nrows\(\)`, got sigma\.len\(\) = 1"):
         sr.PyMultiGbm([0.05, 0.03], [0.2], np.eye(2), 16, [100.0, 100.0])
 
 

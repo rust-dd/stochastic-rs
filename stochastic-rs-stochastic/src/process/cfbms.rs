@@ -46,13 +46,13 @@ impl<T: FloatExt, S: SeedExt> Cfbms<T, S> {
   pub fn new(hurst: T, rho: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
       (T::zero()..=T::one()).contains(&hurst),
-      "Hurst parameter must be in (0, 1)"
+      "hurst must satisfy `(T::zero()..=T::one()).contains(&hurst)`, got hurst = {hurst:?}"
     );
     assert!(
       (-T::one()..=T::one()).contains(&rho),
-      "Correlation coefficient must be in [-1, 1]"
+      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
     );
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
 
     Self {
       hurst,
@@ -74,7 +74,7 @@ impl<T: FloatExt, S: SeedExt> Cfbms<T, S> {
   pub fn with_hurst(mut self, hurst: T) -> Self {
     assert!(
       (T::zero()..=T::one()).contains(&hurst),
-      "Hurst parameter must be in (0, 1)"
+      "hurst must satisfy `(T::zero()..=T::one()).contains(&hurst)`, got hurst = {hurst:?}"
     );
     self.hurst = hurst;
     self.fgn = Self::fgn_for(hurst, self.n, self.t);
@@ -86,7 +86,7 @@ impl<T: FloatExt, S: SeedExt> Cfbms<T, S> {
   pub fn with_rho(mut self, rho: T) -> Self {
     assert!(
       (-T::one()..=T::one()).contains(&rho),
-      "Correlation coefficient must be in [-1, 1]"
+      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
     );
     self.rho = rho;
     self
@@ -95,7 +95,7 @@ impl<T: FloatExt, S: SeedExt> Cfbms<T, S> {
   /// Replace the number of simulation steps `n`; rebuilds the embedded
   /// `fgn`. Panics if `n < 2`, matching `new()`'s own assertion.
   pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.fgn = Self::fgn_for(self.hurst, n, self.t);
     self

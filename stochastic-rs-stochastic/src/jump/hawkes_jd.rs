@@ -74,11 +74,17 @@ impl<T: FloatExt, S: SeedExt> HawkesJD<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(beta > T::zero(), "beta must be positive");
-    assert!(alpha >= T::zero(), "alpha must be non-negative");
+    assert!(
+      beta > T::zero(),
+      "beta must satisfy `beta > T::zero()`, got beta = {beta:?}"
+    );
+    assert!(
+      alpha >= T::zero(),
+      "alpha must satisfy `alpha >= T::zero()`, got alpha = {alpha:?}"
+    );
     assert!(
       alpha / beta < T::one(),
-      "stationarity requires alpha/beta < 1"
+      "alpha must satisfy `alpha / beta < T::one()`, got alpha = {alpha:?}, beta = {beta:?}"
     );
     Self {
       backend: Cpu,

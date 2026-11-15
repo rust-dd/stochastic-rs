@@ -111,7 +111,7 @@ impl<T: FloatExt, S: SeedExt> TransformedOU<T, S> {
     // clamp on a device, which is the same path disagreeing with itself.
     assert!(
       rho0 > -T::one() && rho0 < T::one(),
-      "rho0 must lie in (-1, 1)"
+      "rho0 must satisfy `rho0 > -T::one() && rho0 < T::one()`, got rho0 = {rho0:?}"
     );
     Self {
       backend: Cpu,

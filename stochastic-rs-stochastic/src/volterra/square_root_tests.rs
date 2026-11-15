@@ -134,31 +134,31 @@ fn v0_defaults_to_theta() {
 }
 
 #[test]
-#[should_panic(expected = "kappa must be strictly positive")]
+#[should_panic(expected = "kappa must satisfy `kappa > T::zero()`, got kappa = 0.0")]
 fn rejects_a_nonpositive_kappa() {
   let _ = process(1).with_kappa(0.0);
 }
 
 #[test]
-#[should_panic(expected = "nu must be strictly positive")]
+#[should_panic(expected = "nu must satisfy `nu > T::zero()`, got nu = 0.0")]
 fn rejects_a_nonpositive_nu() {
   let _ = process(1).with_nu(0.0);
 }
 
 #[test]
-#[should_panic(expected = "theta must be non-negative")]
+#[should_panic(expected = "theta must satisfy `theta >= T::zero()`, got theta = -1.0")]
 fn rejects_a_negative_theta() {
   let _ = process(1).with_theta(-1.0);
 }
 
 #[test]
-#[should_panic(expected = "v0 must be non-negative")]
+#[should_panic(expected = "v0 must satisfy `v0 >= T::zero()`, got v0 = -1.0")]
 fn rejects_a_negative_v0() {
   let _ = process(1).with_v0(-1.0);
 }
 
 #[test]
-#[should_panic(expected = "n must be at least 2")]
+#[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
 fn rejects_n_below_two() {
   let _ = VolterraSquareRoot::new(
     kernel(),

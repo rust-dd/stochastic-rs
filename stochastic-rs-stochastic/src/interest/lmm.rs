@@ -140,16 +140,15 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
   /// Attach a forward correlation matrix `rho` (`M × M`, symmetric,
   /// positive-definite). Panics if shape is wrong or Cholesky fails.
   pub fn with_correlation(mut self, rho: Array2<T>) -> Self {
-    let m = self.l0.len();
-    assert_eq!(
-      rho.nrows(),
-      m,
-      "correlation rows must equal number of Libors"
+    assert!(
+      rho.nrows() == self.l0.len(),
+      "rho.nrows() must satisfy `rho.nrows() == l0.len()`, got rho.nrows() = {:?}",
+      rho.nrows()
     );
-    assert_eq!(
-      rho.ncols(),
-      m,
-      "correlation cols must equal number of Libors"
+    assert!(
+      rho.ncols() == self.l0.len(),
+      "rho.ncols() must satisfy `rho.ncols() == l0.len()`, got rho.ncols() = {:?}",
+      rho.ncols()
     );
     self.chol = Some(cholesky_lower(&rho));
     self
@@ -166,9 +165,20 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
   /// there, same as indexing a too-short array inside `Lmm::new`'s own
   /// equivalent misuse would.
   pub fn with_tenor(mut self, tenor: Array1<T>) -> Self {
-    assert!(tenor.len() >= 2, "tenor must have at least two dates");
+    assert!(
+      tenor.len() >= 2,
+      "tenor.len() must satisfy `tenor.len() >= 2`, got tenor.len() = {:?}",
+      tenor.len()
+    );
     for i in 0..tenor.len() - 1 {
-      assert!(tenor[i + 1] > tenor[i], "tenor must be strictly increasing");
+      assert!(
+        tenor[i + 1] > tenor[i],
+        "tenor[{}] must satisfy `tenor[i + 1] > tenor[i]`, got tenor[{}] = {:?}, tenor[{i}] = {:?}",
+        i + 1,
+        i + 1,
+        tenor[i + 1],
+        tenor[i]
+      );
     }
     self.tenor = tenor;
     self
@@ -185,8 +195,11 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
   /// `chol` untouched, since its value never depended on `l0`'s contents,
   /// only its length.
   pub fn with_l0(mut self, l0: Array1<T>) -> Self {
-    for &v in l0.iter() {
-      assert!(v > T::zero(), "initial Libor L_n(0) must be positive");
+    for (i, &v) in l0.iter().enumerate() {
+      assert!(
+        v > T::zero(),
+        "l0[{i}] must satisfy `l0[i] > T::zero()`, got l0[{i}] = {v:?}"
+      );
     }
     let shape_changed = l0.len() != self.l0.len();
     self.l0 = l0;
@@ -198,8 +211,11 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
 
   /// Replace `sigma`. Panics if any entry is negative.
   pub fn with_sigma(mut self, sigma: Array1<T>) -> Self {
-    for &v in sigma.iter() {
-      assert!(v >= T::zero(), "volatility σ_n must be non-negative");
+    for (i, &v) in sigma.iter().enumerate() {
+      assert!(
+        v >= T::zero(),
+        "sigma[{i}] must satisfy `sigma[i] >= T::zero()`, got sigma[{i}] = {v:?}"
+      );
     }
     self.sigma = sigma;
     self
@@ -225,15 +241,40 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
 }
 
 fn validate_lmm_inputs<T: FloatExt>(tenor: &Array1<T>, l0: &Array1<T>, sigma: &Array1<T>) {
-  let m_plus_1 = tenor.len();
-  assert!(m_plus_1 >= 2, "tenor must have at least two dates");
-  let m = m_plus_1 - 1;
-  assert_eq!(l0.len(), m, "l0 length must equal tenor.len() - 1");
-  assert_eq!(sigma.len(), m, "sigma length must equal tenor.len() - 1");
-  for i in 0..m {
-    assert!(tenor[i + 1] > tenor[i], "tenor must be strictly increasing");
-    assert!(l0[i] > T::zero(), "initial Libor L_n(0) must be positive");
-    assert!(sigma[i] >= T::zero(), "volatility σ_n must be non-negative");
+  assert!(
+    tenor.len() >= 2,
+    "tenor.len() must satisfy `tenor.len() >= 2`, got tenor.len() = {:?}",
+    tenor.len()
+  );
+  assert!(
+    l0.len() == tenor.len() - 1,
+    "l0.len() must satisfy `l0.len() == tenor.len() - 1`, got l0.len() = {:?}",
+    l0.len()
+  );
+  assert!(
+    sigma.len() == tenor.len() - 1,
+    "sigma.len() must satisfy `sigma.len() == tenor.len() - 1`, got sigma.len() = {:?}",
+    sigma.len()
+  );
+  for i in 0..l0.len() {
+    assert!(
+      tenor[i + 1] > tenor[i],
+      "tenor[{}] must satisfy `tenor[i + 1] > tenor[i]`, got tenor[{}] = {:?}, tenor[{i}] = {:?}",
+      i + 1,
+      i + 1,
+      tenor[i + 1],
+      tenor[i]
+    );
+    assert!(
+      l0[i] > T::zero(),
+      "l0[{i}] must satisfy `l0[i] > T::zero()`, got l0[{i}] = {:?}",
+      l0[i]
+    );
+    assert!(
+      sigma[i] >= T::zero(),
+      "sigma[{i}] must satisfy `sigma[i] >= T::zero()`, got sigma[{i}] = {:?}",
+      sigma[i]
+    );
   }
 }
 

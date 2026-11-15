@@ -66,9 +66,15 @@ impl<T: FloatExt, S: SeedExt> RlBlackScholes<T, S> {
     degree: Option<usize>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(s0 > T::zero(), "s0 must be positive");
-    assert!(sigma >= T::zero(), "sigma must be non-negative");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      s0 > T::zero(),
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
+    );
+    assert!(
+      sigma >= T::zero(),
+      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
     Self {
       backend: Cpu,
       hurst,

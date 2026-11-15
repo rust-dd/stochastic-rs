@@ -74,7 +74,10 @@ impl<T: FloatExt, S: SeedExt> Cheyette<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(kappa > T::zero(), "kappa must be positive");
+    assert!(
+      kappa > T::zero(),
+      "kappa must satisfy `kappa > T::zero()`, got kappa = {kappa:?}"
+    );
     Self {
       backend: Cpu,
       f0: f0.into(),

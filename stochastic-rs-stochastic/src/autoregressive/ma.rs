@@ -49,7 +49,10 @@ pub struct MAq<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> MAq<T, S> {
   /// Create a new MA(q) model with the given parameters.
   pub fn new(theta: Array1<T>, sigma: T, n: usize, seed: S) -> Self {
-    assert!(sigma > T::zero(), "MAq requires sigma > 0");
+    assert!(
+      sigma > T::zero(),
+      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
+    );
     Self {
       backend: Cpu,
       theta,

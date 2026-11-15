@@ -66,63 +66,51 @@ impl<T: FloatExt, S: SeedExt> WuZhangD<T, S> {
     n: usize,
     seed: S,
   ) -> Self {
-    assert_eq!(
-      alpha.len(),
-      xn,
-      "alpha length ({}) must match xn ({})",
-      alpha.len(),
-      xn
+    assert!(
+      alpha.len() == xn,
+      "alpha.len() must satisfy `alpha.len() == xn`, got alpha.len() = {:?}",
+      alpha.len()
     );
-    assert_eq!(
-      beta.len(),
-      xn,
-      "beta length ({}) must match xn ({})",
-      beta.len(),
-      xn
+    assert!(
+      beta.len() == xn,
+      "beta.len() must satisfy `beta.len() == xn`, got beta.len() = {:?}",
+      beta.len()
     );
-    assert_eq!(
-      nu.len(),
-      xn,
-      "nu length ({}) must match xn ({})",
-      nu.len(),
-      xn
+    assert!(
+      nu.len() == xn,
+      "nu.len() must satisfy `nu.len() == xn`, got nu.len() = {:?}",
+      nu.len()
     );
-    assert_eq!(
-      lambda.len(),
-      xn,
-      "lambda length ({}) must match xn ({})",
-      lambda.len(),
-      xn
+    assert!(
+      lambda.len() == xn,
+      "lambda.len() must satisfy `lambda.len() == xn`, got lambda.len() = {:?}",
+      lambda.len()
     );
-    assert_eq!(
-      x0.len(),
-      xn,
-      "x0 length ({}) must match xn ({})",
-      x0.len(),
-      xn
+    assert!(
+      x0.len() == xn,
+      "x0.len() must satisfy `x0.len() == xn`, got x0.len() = {:?}",
+      x0.len()
     );
-    assert_eq!(
-      v0.len(),
-      xn,
-      "v0 length ({}) must match xn ({})",
-      v0.len(),
-      xn
+    assert!(
+      v0.len() == xn,
+      "v0.len() must satisfy `v0.len() == xn`, got v0.len() = {:?}",
+      v0.len()
     );
     assert!(
       alpha.iter().all(|&x| x >= T::zero()),
-      "alpha entries must be non-negative"
+      "alpha must satisfy `alpha.iter().all(|&x| x >= T::zero())`, got alpha = {alpha:?}"
     );
     assert!(
       beta.iter().all(|&x| x >= T::zero()),
-      "beta entries must be non-negative"
+      "beta must satisfy `beta.iter().all(|&x| x >= T::zero())`, got beta = {beta:?}"
     );
     assert!(
       nu.iter().all(|&x| x >= T::zero()),
-      "nu entries must be non-negative"
+      "nu must satisfy `nu.iter().all(|&x| x >= T::zero())`, got nu = {nu:?}"
     );
     assert!(
       v0.iter().all(|&x| x >= T::zero()),
-      "v0 entries must be non-negative"
+      "v0 must satisfy `v0.iter().all(|&x| x >= T::zero())`, got v0 = {v0:?}"
     );
     Self {
       backend: Cpu,

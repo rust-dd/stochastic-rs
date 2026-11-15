@@ -79,7 +79,7 @@ fn fbm_with_steps_rebuilds_fgn_cache() {
 }
 
 #[test]
-#[should_panic(expected = "n must be at least 2")]
+#[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
 fn fbm_with_steps_rejects_too_few() {
   let _ = fbm_base().with_steps(1);
 }

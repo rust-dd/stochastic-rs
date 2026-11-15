@@ -73,7 +73,7 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
   pub fn new(hurst: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
       (T::zero()..=T::one()).contains(&hurst),
-      "Fgn: Hurst parameter must be in [0, 1]"
+      "hurst must satisfy `(T::zero()..=T::one()).contains(&hurst)`, got hurst = {hurst:?}"
     );
 
     let offset = n.next_power_of_two() - n;

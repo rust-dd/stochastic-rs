@@ -97,25 +97,27 @@ plain_test!(
 );
 
 #[test]
-#[should_panic(expected = "kappa must be non-negative")]
+#[should_panic(expected = "kappa must satisfy `kappa >= T::zero()`, got kappa = -1.0")]
 fn heston_with_kappa_rejects_negative() {
   let _ = heston_base().with_kappa(-1.0);
 }
 
 #[test]
-#[should_panic(expected = "theta must be non-negative")]
+#[should_panic(expected = "theta must satisfy `theta >= T::zero()`, got theta = -0.01")]
 fn heston_with_theta_rejects_negative() {
   let _ = heston_base().with_theta(-0.01);
 }
 
 #[test]
-#[should_panic(expected = "sigma must be non-negative")]
+#[should_panic(expected = "sigma must satisfy `sigma >= T::zero()`, got sigma = -0.1")]
 fn heston_with_sigma_rejects_negative() {
   let _ = heston_base().with_sigma(-0.1);
 }
 
 #[test]
-#[should_panic(expected = "v0 must be non-negative")]
+#[should_panic(
+  expected = "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = Some(-0.01)"
+)]
 fn heston_with_v0_rejects_negative() {
   let _ = heston_base().with_v0(Some(-0.01));
 }

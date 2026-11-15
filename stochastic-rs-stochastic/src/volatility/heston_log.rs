@@ -99,17 +99,27 @@ impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
     use_sym: Option<bool>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(kappa >= T::zero(), "kappa must be >= 0");
-    assert!(theta >= T::zero(), "theta must be >= 0");
-    assert!(xi >= T::zero(), "xi must be >= 0");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      kappa >= T::zero(),
+      "kappa must satisfy `kappa >= T::zero()`, got kappa = {kappa:?}"
+    );
+    assert!(
+      theta >= T::zero(),
+      "theta must satisfy `theta >= T::zero()`, got theta = {theta:?}"
+    );
+    assert!(
+      xi >= T::zero(),
+      "xi must satisfy `xi >= T::zero()`, got xi = {xi:?}"
+    );
     assert!(
       rho >= -T::one() && rho <= T::one(),
-      "rho must be in [-1, 1]"
+      "rho must satisfy `rho >= -T::one() && rho <= T::one()`, got rho = {rho:?}"
     );
-    if let Some(v0) = v0 {
-      assert!(v0 >= T::zero(), "v0 must be >= 0");
-    }
+    assert!(
+      v0.is_none_or(|v| v >= T::zero()),
+      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+    );
     validate_drift_args(mu, b, r, r_f, "HestonLog");
 
     Self {
@@ -163,21 +173,30 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
 
   /// Replace `kappa`, all else unchanged.
   pub fn with_kappa(mut self, kappa: T) -> Self {
-    assert!(kappa >= T::zero(), "kappa must be >= 0");
+    assert!(
+      kappa >= T::zero(),
+      "kappa must satisfy `kappa >= T::zero()`, got kappa = {kappa:?}"
+    );
     self.kappa = kappa;
     self
   }
 
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: T) -> Self {
-    assert!(theta >= T::zero(), "theta must be >= 0");
+    assert!(
+      theta >= T::zero(),
+      "theta must satisfy `theta >= T::zero()`, got theta = {theta:?}"
+    );
     self.theta = theta;
     self
   }
 
   /// Replace `xi`, all else unchanged.
   pub fn with_xi(mut self, xi: T) -> Self {
-    assert!(xi >= T::zero(), "xi must be >= 0");
+    assert!(
+      xi >= T::zero(),
+      "xi must satisfy `xi >= T::zero()`, got xi = {xi:?}"
+    );
     self.xi = xi;
     self
   }
@@ -189,7 +208,7 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
   pub fn with_rho(mut self, rho: T) -> Self {
     assert!(
       rho >= -T::one() && rho <= T::one(),
-      "rho must be in [-1, 1]"
+      "rho must satisfy `rho >= -T::one() && rho <= T::one()`, got rho = {rho:?}"
     );
     self.rho = rho;
     self
@@ -203,9 +222,10 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
 
   /// Replace `v0`, all else unchanged.
   pub fn with_v0(mut self, v0: Option<T>) -> Self {
-    if let Some(v) = v0 {
-      assert!(v >= T::zero(), "v0 must be >= 0");
-    }
+    assert!(
+      v0.is_none_or(|v| v >= T::zero()),
+      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+    );
     self.v0 = v0;
     self
   }
@@ -218,7 +238,7 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
 
   /// Replace the number of simulation steps `n`, all else unchanged.
   pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self
   }

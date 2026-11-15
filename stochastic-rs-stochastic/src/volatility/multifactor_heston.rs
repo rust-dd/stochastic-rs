@@ -86,16 +86,32 @@ impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHeston<T, K, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(K >= 1, "K must be ≥ 1");
+    assert!(K >= 1, "K must satisfy `K >= 1`, got K = {K:?}");
     for k in 0..K {
-      assert!(kappa[k] >= T::zero(), "κ_k must be non-negative");
-      assert!(theta[k] >= T::zero(), "θ_k must be non-negative");
-      assert!(sigma[k] >= T::zero(), "σ_k must be non-negative");
-      assert!(v0[k] >= T::zero(), "v0_k must be non-negative");
+      assert!(
+        kappa[k] >= T::zero(),
+        "kappa[{k}] must satisfy `kappa[k] >= T::zero()`, got kappa[{k}] = {:?}",
+        kappa[k]
+      );
+      assert!(
+        theta[k] >= T::zero(),
+        "theta[{k}] must satisfy `theta[k] >= T::zero()`, got theta[{k}] = {:?}",
+        theta[k]
+      );
+      assert!(
+        sigma[k] >= T::zero(),
+        "sigma[{k}] must satisfy `sigma[k] >= T::zero()`, got sigma[{k}] = {:?}",
+        sigma[k]
+      );
+      assert!(
+        v0[k] >= T::zero(),
+        "v0[{k}] must satisfy `v0[k] >= T::zero()`, got v0[{k}] = {:?}",
+        v0[k]
+      );
       let r = rho[k].to_f64().unwrap();
       assert!(
         r.abs() < 1.0,
-        "ρ_k must lie strictly in (-1, 1); got {r} at factor {k}"
+        "rho[{k}] must satisfy `rho[k].abs() < 1.0`, got rho[{k}] = {r:?}"
       );
     }
     let cgns = (0..K)
@@ -538,7 +554,7 @@ mod tests {
 
   /// Rejecting invalid ρ_k.
   #[test]
-  #[should_panic(expected = "ρ_k must lie strictly in (-1, 1)")]
+  #[should_panic(expected = "rho[0] must satisfy `rho[k].abs() < 1.0`, got rho[0] = -1.5")]
   fn rho_out_of_range_panics() {
     let _ = MultifactorHeston::<f64, 2, _>::new(
       Some(100.0),

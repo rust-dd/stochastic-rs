@@ -54,11 +54,23 @@ impl<T: FloatExt, S: SeedExt> FJacobi<T, S, Cpu> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(alpha > T::zero(), "alpha must be positive");
-    assert!(beta > T::zero(), "beta must be positive");
-    assert!(sigma > T::zero(), "sigma must be positive");
-    assert!(alpha < beta, "alpha must be less than beta");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      alpha > T::zero(),
+      "alpha must satisfy `alpha > T::zero()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta > T::zero(),
+      "beta must satisfy `beta > T::zero()`, got beta = {beta:?}"
+    );
+    assert!(
+      sigma > T::zero(),
+      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      alpha < beta,
+      "alpha must satisfy `alpha < beta`, got alpha = {alpha:?}, beta = {beta:?}"
+    );
 
     Self {
       hurst,
@@ -88,8 +100,15 @@ impl<T: FloatExt, S: SeedExt> FJacobi<T, S, Cpu> {
   /// Replace `alpha`. Panics unless `0 < alpha < beta`, matching `new()`'s
   /// own assertions: to move both drift parameters up, raise `beta` first.
   pub fn with_alpha(mut self, alpha: T) -> Self {
-    assert!(alpha > T::zero(), "alpha must be positive");
-    assert!(alpha < self.beta, "alpha must be less than beta");
+    assert!(
+      alpha > T::zero(),
+      "alpha must satisfy `alpha > T::zero()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      alpha < self.beta,
+      "alpha must satisfy `alpha < self.beta`, got alpha = {alpha:?}, self.beta = {:?}",
+      self.beta
+    );
     self.alpha = alpha;
     self
   }
@@ -97,8 +116,15 @@ impl<T: FloatExt, S: SeedExt> FJacobi<T, S, Cpu> {
   /// Replace `beta`. Panics unless `0 < alpha < beta`, matching `new()`'s
   /// own assertions: to move both drift parameters down, lower `alpha` first.
   pub fn with_beta(mut self, beta: T) -> Self {
-    assert!(beta > T::zero(), "beta must be positive");
-    assert!(self.alpha < beta, "alpha must be less than beta");
+    assert!(
+      beta > T::zero(),
+      "beta must satisfy `beta > T::zero()`, got beta = {beta:?}"
+    );
+    assert!(
+      self.alpha < beta,
+      "beta must satisfy `self.alpha < beta`, got beta = {beta:?}, self.alpha = {:?}",
+      self.alpha
+    );
     self.beta = beta;
     self
   }
@@ -106,7 +132,10 @@ impl<T: FloatExt, S: SeedExt> FJacobi<T, S, Cpu> {
   /// Replace `sigma`. Panics if `sigma <= 0`, matching `new()`'s own
   /// assertion.
   pub fn with_sigma(mut self, sigma: T) -> Self {
-    assert!(sigma > T::zero(), "sigma must be positive");
+    assert!(
+      sigma > T::zero(),
+      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
+    );
     self.sigma = sigma;
     self
   }
@@ -114,7 +143,7 @@ impl<T: FloatExt, S: SeedExt> FJacobi<T, S, Cpu> {
   /// Replace the number of simulation steps `n`; rebuilds the embedded
   /// `fgn`. Panics if `n < 2`, matching `new()`'s own assertion.
   pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.fgn = Self::fgn_for(self.hurst, n, self.t);
     self

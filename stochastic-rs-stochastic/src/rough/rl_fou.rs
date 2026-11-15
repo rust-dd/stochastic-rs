@@ -66,7 +66,7 @@ impl<T: FloatExt, S: SeedExt> RlFOU<T, S> {
     degree: Option<usize>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     Self {
       backend: Cpu,
       hurst,

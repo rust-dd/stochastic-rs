@@ -60,15 +60,30 @@ impl<T: FloatExt, S: SeedExt> MultiGbm<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    let k = rho.nrows();
-    assert!(k >= 1, "need at least one asset");
-    assert_eq!(mu.len(), k, "mu must have one entry per asset");
-    assert_eq!(sigma.len(), k, "sigma must have one entry per asset");
-    assert_eq!(x0.len(), k, "x0 must have one entry per asset");
-    assert!(n >= 1, "n must be at least 1");
+    assert!(
+      rho.nrows() >= 1,
+      "rho.nrows() must satisfy `rho.nrows() >= 1`, got rho.nrows() = {:?}",
+      rho.nrows()
+    );
+    assert!(
+      mu.len() == rho.nrows(),
+      "mu.len() must satisfy `mu.len() == rho.nrows()`, got mu.len() = {:?}",
+      mu.len()
+    );
+    assert!(
+      sigma.len() == rho.nrows(),
+      "sigma.len() must satisfy `sigma.len() == rho.nrows()`, got sigma.len() = {:?}",
+      sigma.len()
+    );
+    assert!(
+      x0.len() == rho.nrows(),
+      "x0.len() must satisfy `x0.len() == rho.nrows()`, got x0.len() = {:?}",
+      x0.len()
+    );
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
     assert!(
       sigma.iter().all(|s| *s >= T::zero()),
-      "volatilities must be non-negative"
+      "sigma must satisfy `sigma.iter().all(|s| *s >= T::zero())`, got sigma = {sigma:?}"
     );
     let driver = Mcgns::new(rho.clone(), n.saturating_sub(1), t, seed.clone());
     Self {
@@ -490,7 +505,9 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "sigma must have one entry per asset")]
+  #[should_panic(
+    expected = "sigma.len() must satisfy `sigma.len() == rho.nrows()`, got sigma.len() = 1"
+  )]
   fn rejects_mismatched_parameter_lengths() {
     let _ = MultiGbm::new(
       array![0.0_f64, 0.0],

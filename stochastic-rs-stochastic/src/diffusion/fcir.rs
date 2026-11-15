@@ -74,7 +74,7 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
     use_sym: Option<bool>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     if T::from_usize_(2) * theta * mu < sigma.powi(2) && use_sym != Some(true) {
       log::warn!(
         "Fcir::new: Feller condition violated (2*theta*mu < sigma^2) \
@@ -131,7 +131,7 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
   /// Replace the number of simulation steps `n`; rebuilds the embedded
   /// `fgn`. Panics if `n < 2`, matching `new()`'s own assertion.
   pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.fgn = Self::fgn_for(self.hurst, n, self.t);
     self

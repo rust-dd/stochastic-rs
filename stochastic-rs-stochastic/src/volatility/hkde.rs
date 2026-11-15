@@ -89,14 +89,23 @@ impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
     use_sym: Option<bool>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     assert!(
       rho >= -T::one() && rho <= T::one(),
-      "rho must be in [-1, 1]"
+      "rho must satisfy `rho >= -T::one() && rho <= T::one()`, got rho = {rho:?}"
     );
-    assert!(eta1 > T::one(), "eta1 must be > 1 for finite expectation");
-    assert!(eta2 > T::zero(), "eta2 must be > 0");
-    assert!(lambda >= T::zero(), "lambda must be >= 0");
+    assert!(
+      eta1 > T::one(),
+      "eta1 must satisfy `eta1 > T::one()`, got eta1 = {eta1:?}"
+    );
+    assert!(
+      eta2 > T::zero(),
+      "eta2 must satisfy `eta2 > T::zero()`, got eta2 = {eta2:?}"
+    );
+    assert!(
+      lambda >= T::zero(),
+      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
+    );
 
     Self {
       backend: Cpu,
@@ -151,7 +160,7 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
   pub fn with_rho(mut self, rho: T) -> Self {
     assert!(
       rho >= -T::one() && rho <= T::one(),
-      "rho must be in [-1, 1]"
+      "rho must satisfy `rho >= -T::one() && rho <= T::one()`, got rho = {rho:?}"
     );
     self.rho = rho;
     self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
@@ -166,7 +175,10 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
 
   /// Replace `lambda`, all else unchanged.
   pub fn with_lambda(mut self, lambda: T) -> Self {
-    assert!(lambda >= T::zero(), "lambda must be >= 0");
+    assert!(
+      lambda >= T::zero(),
+      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
+    );
     self.lambda = lambda;
     self
   }
@@ -179,14 +191,20 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
 
   /// Replace `eta1`, all else unchanged.
   pub fn with_eta1(mut self, eta1: T) -> Self {
-    assert!(eta1 > T::one(), "eta1 must be > 1 for finite expectation");
+    assert!(
+      eta1 > T::one(),
+      "eta1 must satisfy `eta1 > T::one()`, got eta1 = {eta1:?}"
+    );
     self.eta1 = eta1;
     self
   }
 
   /// Replace `eta2`, all else unchanged.
   pub fn with_eta2(mut self, eta2: T) -> Self {
-    assert!(eta2 > T::zero(), "eta2 must be > 0");
+    assert!(
+      eta2 > T::zero(),
+      "eta2 must satisfy `eta2 > T::zero()`, got eta2 = {eta2:?}"
+    );
     self.eta2 = eta2;
     self
   }
@@ -207,7 +225,7 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
   /// correlated-Gaussian generator, whose length and step size derive
   /// from `n`.
   pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must be at least 2");
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self

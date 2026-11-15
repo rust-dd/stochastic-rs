@@ -2,7 +2,9 @@ use super::*;
 use crate::traits::ProcessExt;
 
 #[test]
-#[should_panic(expected = "v0 must be non-negative")]
+#[should_panic(
+  expected = "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = Some(-0.1)"
+)]
 fn negative_initial_variance_panics() {
   let _ = Heston::new(
     Some(100.0_f64),

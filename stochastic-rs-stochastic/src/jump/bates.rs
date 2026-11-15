@@ -165,9 +165,10 @@ where
     use_sym: Option<bool>,
     seed: S,
   ) -> Self {
-    if let Some(v0) = v0 {
-      assert!(v0 >= T::zero(), "v0 must be non-negative");
-    }
+    assert!(
+      v0.is_none_or(|v| v >= T::zero()),
+      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+    );
     validate_drift_args(mu, b, r, r_f, "Bates1996");
 
     let cpoisson = CompoundPoisson::new(
@@ -286,9 +287,10 @@ where
 
   /// Replace `v0`, all else unchanged.
   pub fn with_v0(mut self, v0: Option<T>) -> Self {
-    if let Some(v) = v0 {
-      assert!(v >= T::zero(), "v0 must be non-negative");
-    }
+    assert!(
+      v0.is_none_or(|v| v >= T::zero()),
+      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+    );
     self.v0 = v0;
     self
   }

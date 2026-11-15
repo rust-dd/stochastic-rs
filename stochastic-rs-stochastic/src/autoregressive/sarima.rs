@@ -94,8 +94,11 @@ impl<T: FloatExt, S: SeedExt> Sarima<T, S> {
     n: usize,
     seed: S,
   ) -> Self {
-    assert!(sigma > T::zero(), "Sarima requires sigma > 0");
-    assert!(s > 0, "Sarima requires season length s > 0");
+    assert!(
+      sigma > T::zero(),
+      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
+    );
+    assert!(s > 0, "s must satisfy `s > 0`, got s = {s:?}");
     Sarima {
       backend: Cpu,
       non_seasonal_ar_coefs,

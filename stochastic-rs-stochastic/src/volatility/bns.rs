@@ -98,10 +98,22 @@ impl<T: FloatExt, S: SeedExt> Bns<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(sigma2_0 > T::zero(), "σ²₀ must be positive");
-    assert!(lambda > T::zero(), "λ must be positive");
-    assert!(nu > T::zero(), "jump intensity ν must be positive");
-    assert!(jump_shape > T::zero(), "Gamma shape ω must be positive");
+    assert!(
+      sigma2_0 > T::zero(),
+      "sigma2_0 must satisfy `sigma2_0 > T::zero()`, got sigma2_0 = {sigma2_0:?}"
+    );
+    assert!(
+      lambda > T::zero(),
+      "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      nu > T::zero(),
+      "nu must satisfy `nu > T::zero()`, got nu = {nu:?}"
+    );
+    assert!(
+      jump_shape > T::zero(),
+      "jump_shape must satisfy `jump_shape > T::zero()`, got jump_shape = {jump_shape:?}"
+    );
     Self {
       backend: Cpu,
       s0,
@@ -471,7 +483,7 @@ mod tests {
 
   /// Reject zero / negative jump intensity.
   #[test]
-  #[should_panic(expected = "jump intensity")]
+  #[should_panic(expected = "nu must satisfy `nu > T::zero()`, got nu = 0.0")]
   fn bns_zero_intensity_panics() {
     let _ = Bns::<f64>::new(
       Some(100.0),

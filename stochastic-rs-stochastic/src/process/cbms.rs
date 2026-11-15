@@ -35,7 +35,7 @@ impl<T: FloatExt, S: SeedExt> Cbms<T, S> {
   pub fn new(rho: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
       (-T::one()..=T::one()).contains(&rho),
-      "Correlation coefficient must be in [-1, 1]"
+      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
     );
 
     Self {

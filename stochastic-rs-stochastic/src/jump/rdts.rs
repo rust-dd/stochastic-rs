@@ -59,11 +59,17 @@ impl<T: FloatExt, S: SeedExt> Rdts<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(lambda_plus > T::zero(), "lambda_plus must be positive");
-    assert!(lambda_minus > T::zero(), "lambda_minus must be positive");
+    assert!(
+      lambda_plus > T::zero(),
+      "lambda_plus must satisfy `lambda_plus > T::zero()`, got lambda_plus = {lambda_plus:?}"
+    );
+    assert!(
+      lambda_minus > T::zero(),
+      "lambda_minus must satisfy `lambda_minus > T::zero()`, got lambda_minus = {lambda_minus:?}"
+    );
     assert!(
       alpha > T::zero() && alpha < T::from_usize_(2),
-      "alpha must be in (0, 2)"
+      "alpha must satisfy `alpha > T::zero() && alpha < T::from_usize_(2)`, got alpha = {alpha:?}"
     );
 
     Self {

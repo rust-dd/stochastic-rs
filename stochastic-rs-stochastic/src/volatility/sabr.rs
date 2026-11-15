@@ -67,12 +67,16 @@ impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
   ) -> Self {
     assert!(
       beta >= T::zero() && beta <= T::one(),
-      "beta must be in [0, 1] for Sabr"
+      "beta must satisfy `beta >= T::zero() && beta <= T::one()`, got beta = {beta:?}"
     );
-    assert!(nu >= T::zero(), "nu must be non-negative");
-    if let Some(alpha0) = alpha0 {
-      assert!(alpha0 >= T::zero(), "alpha0 must be non-negative");
-    }
+    assert!(
+      nu >= T::zero(),
+      "nu must satisfy `nu >= T::zero()`, got nu = {nu:?}"
+    );
+    assert!(
+      alpha0.is_none_or(|a| a >= T::zero()),
+      "alpha0 must satisfy `alpha0.is_none_or(|a| a >= T::zero())`, got alpha0 = {alpha0:?}"
+    );
 
     Self {
       backend: Cpu,
@@ -92,7 +96,10 @@ impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
 impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
   /// Replace `nu`, all else unchanged.
   pub fn with_nu(mut self, nu: T) -> Self {
-    assert!(nu >= T::zero(), "nu must be non-negative");
+    assert!(
+      nu >= T::zero(),
+      "nu must satisfy `nu >= T::zero()`, got nu = {nu:?}"
+    );
     self.nu = nu;
     self
   }
@@ -101,7 +108,7 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
   pub fn with_beta(mut self, beta: T) -> Self {
     assert!(
       beta >= T::zero() && beta <= T::one(),
-      "beta must be in [0, 1] for Sabr"
+      "beta must satisfy `beta >= T::zero() && beta <= T::one()`, got beta = {beta:?}"
     );
     self.beta = beta;
     self
@@ -124,9 +131,10 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
 
   /// Replace `alpha0`, all else unchanged.
   pub fn with_alpha0(mut self, alpha0: Option<T>) -> Self {
-    if let Some(a) = alpha0 {
-      assert!(a >= T::zero(), "alpha0 must be non-negative");
-    }
+    assert!(
+      alpha0.is_none_or(|a| a >= T::zero()),
+      "alpha0 must satisfy `alpha0.is_none_or(|a| a >= T::zero())`, got alpha0 = {alpha0:?}"
+    );
     self.alpha0 = alpha0;
     self
   }

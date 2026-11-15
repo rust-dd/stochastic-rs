@@ -128,37 +128,39 @@ hlog_plain_test!(
 );
 
 #[test]
-#[should_panic(expected = "kappa must be >= 0")]
+#[should_panic(expected = "kappa must satisfy `kappa >= T::zero()`, got kappa = -1.0")]
 fn heston_log_with_kappa_rejects_negative() {
   let _ = hlog_base().with_kappa(-1.0);
 }
 
 #[test]
-#[should_panic(expected = "theta must be >= 0")]
+#[should_panic(expected = "theta must satisfy `theta >= T::zero()`, got theta = -0.01")]
 fn heston_log_with_theta_rejects_negative() {
   let _ = hlog_base().with_theta(-0.01);
 }
 
 #[test]
-#[should_panic(expected = "xi must be >= 0")]
+#[should_panic(expected = "xi must satisfy `xi >= T::zero()`, got xi = -0.1")]
 fn heston_log_with_xi_rejects_negative() {
   let _ = hlog_base().with_xi(-0.1);
 }
 
 #[test]
-#[should_panic(expected = "rho must be in")]
+#[should_panic(expected = "rho must satisfy `rho >= -T::one() && rho <= T::one()`, got rho = 1.5")]
 fn heston_log_with_rho_rejects_out_of_range() {
   let _ = hlog_base().with_rho(1.5);
 }
 
 #[test]
-#[should_panic(expected = "v0 must be >= 0")]
+#[should_panic(
+  expected = "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = Some(-0.01)"
+)]
 fn heston_log_with_v0_rejects_negative() {
   let _ = hlog_base().with_v0(Some(-0.01));
 }
 
 #[test]
-#[should_panic(expected = "n must be at least 2")]
+#[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
 fn heston_log_with_steps_rejects_too_few_steps() {
   let _ = hlog_base().with_steps(1);
 }

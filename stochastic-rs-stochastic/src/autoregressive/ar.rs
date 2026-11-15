@@ -53,14 +53,16 @@ pub struct ARp<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> ARp<T, S> {
   /// Create a new AR process with given coefficients and noise standard deviation.
   pub fn new(phi: Array1<T>, sigma: T, n: usize, x0: Option<Array1<T>>, seed: S) -> Self {
-    assert!(sigma > T::zero(), "ARp requires sigma > 0");
+    assert!(
+      sigma > T::zero(),
+      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
+    );
     if let Some(init) = &x0 {
       let required = phi.len().min(n);
       assert!(
         init.len() >= required,
-        "ARp requires x0.len() >= min(phi.len(), n) (got {}, need at least {})",
-        init.len(),
-        required
+        "x0.len() must satisfy `x0.len() >= phi.len().min(n)`, got x0.len() = {:?}, phi.len().min(n) = {required:?}",
+        init.len()
       );
     }
     Self {

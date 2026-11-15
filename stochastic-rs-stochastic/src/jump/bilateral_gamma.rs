@@ -63,10 +63,22 @@ impl<T: FloatExt, S: SeedExt> BilateralGamma<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(alpha_p > T::zero(), "alpha_p must be positive");
-    assert!(lambda_p > T::zero(), "lambda_p must be positive");
-    assert!(alpha_m > T::zero(), "alpha_m must be positive");
-    assert!(lambda_m > T::zero(), "lambda_m must be positive");
+    assert!(
+      alpha_p > T::zero(),
+      "alpha_p must satisfy `alpha_p > T::zero()`, got alpha_p = {alpha_p:?}"
+    );
+    assert!(
+      lambda_p > T::zero(),
+      "lambda_p must satisfy `lambda_p > T::zero()`, got lambda_p = {lambda_p:?}"
+    );
+    assert!(
+      alpha_m > T::zero(),
+      "alpha_m must satisfy `alpha_m > T::zero()`, got alpha_m = {alpha_m:?}"
+    );
+    assert!(
+      lambda_m > T::zero(),
+      "lambda_m must satisfy `lambda_m > T::zero()`, got lambda_m = {lambda_m:?}"
+    );
     Self {
       backend: Cpu,
       alpha_p,
@@ -288,10 +300,22 @@ impl<T: FloatExt, S: SeedExt> BilateralGammaMotion<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(alpha_p > T::zero(), "alpha_p must be positive");
-    assert!(lambda_p > T::zero(), "lambda_p must be positive");
-    assert!(alpha_m > T::zero(), "alpha_m must be positive");
-    assert!(lambda_m > T::zero(), "lambda_m must be positive");
+    assert!(
+      alpha_p > T::zero(),
+      "alpha_p must satisfy `alpha_p > T::zero()`, got alpha_p = {alpha_p:?}"
+    );
+    assert!(
+      lambda_p > T::zero(),
+      "lambda_p must satisfy `lambda_p > T::zero()`, got lambda_p = {lambda_p:?}"
+    );
+    assert!(
+      alpha_m > T::zero(),
+      "alpha_m must satisfy `alpha_m > T::zero()`, got alpha_m = {alpha_m:?}"
+    );
+    assert!(
+      lambda_m > T::zero(),
+      "lambda_m must satisfy `lambda_m > T::zero()`, got lambda_m = {lambda_m:?}"
+    );
     Self {
       backend: Cpu,
       sigma,

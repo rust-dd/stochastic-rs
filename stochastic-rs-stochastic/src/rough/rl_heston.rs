@@ -94,13 +94,23 @@ impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
     degree: Option<usize>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-    assert!(kappa >= T::zero(), "kappa must be non-negative");
-    assert!(theta >= T::zero(), "theta must be non-negative");
-    assert!(nu >= T::zero(), "nu must be non-negative");
-    if let Some(v0) = v0 {
-      assert!(v0 >= T::zero(), "v0 must be non-negative");
-    }
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    assert!(
+      kappa >= T::zero(),
+      "kappa must satisfy `kappa >= T::zero()`, got kappa = {kappa:?}"
+    );
+    assert!(
+      theta >= T::zero(),
+      "theta must satisfy `theta >= T::zero()`, got theta = {theta:?}"
+    );
+    assert!(
+      nu >= T::zero(),
+      "nu must satisfy `nu >= T::zero()`, got nu = {nu:?}"
+    );
+    assert!(
+      v0.is_none_or(|v| v >= T::zero()),
+      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+    );
     Self {
       backend: Cpu,
       hurst,
@@ -372,7 +382,7 @@ mod tests {
   use crate::traits::ProcessExt;
 
   #[test]
-  #[should_panic(expected = "n must be at least 2")]
+  #[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
   fn rejects_too_short_grid() {
     let _ = RlHeston::<f64>::new(
       0.3,

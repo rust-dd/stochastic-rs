@@ -101,18 +101,38 @@ impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
     use_sym: Option<bool>,
     seed: S,
   ) -> Self {
-    assert!(kappa1 >= T::zero(), "kappa1 must be non-negative");
-    assert!(theta1 >= T::zero(), "theta1 must be non-negative");
-    assert!(sigma1 >= T::zero(), "sigma1 must be non-negative");
-    assert!(kappa2 >= T::zero(), "kappa2 must be non-negative");
-    assert!(theta2 >= T::zero(), "theta2 must be non-negative");
-    assert!(sigma2 >= T::zero(), "sigma2 must be non-negative");
-    if let Some(v) = v1_0 {
-      assert!(v >= T::zero(), "v1_0 must be non-negative");
-    }
-    if let Some(v) = v2_0 {
-      assert!(v >= T::zero(), "v2_0 must be non-negative");
-    }
+    assert!(
+      kappa1 >= T::zero(),
+      "kappa1 must satisfy `kappa1 >= T::zero()`, got kappa1 = {kappa1:?}"
+    );
+    assert!(
+      theta1 >= T::zero(),
+      "theta1 must satisfy `theta1 >= T::zero()`, got theta1 = {theta1:?}"
+    );
+    assert!(
+      sigma1 >= T::zero(),
+      "sigma1 must satisfy `sigma1 >= T::zero()`, got sigma1 = {sigma1:?}"
+    );
+    assert!(
+      kappa2 >= T::zero(),
+      "kappa2 must satisfy `kappa2 >= T::zero()`, got kappa2 = {kappa2:?}"
+    );
+    assert!(
+      theta2 >= T::zero(),
+      "theta2 must satisfy `theta2 >= T::zero()`, got theta2 = {theta2:?}"
+    );
+    assert!(
+      sigma2 >= T::zero(),
+      "sigma2 must satisfy `sigma2 >= T::zero()`, got sigma2 = {sigma2:?}"
+    );
+    assert!(
+      v1_0.is_none_or(|v| v >= T::zero()),
+      "v1_0 must satisfy `v1_0.is_none_or(|v| v >= T::zero())`, got v1_0 = {v1_0:?}"
+    );
+    assert!(
+      v2_0.is_none_or(|v| v >= T::zero()),
+      "v2_0 must satisfy `v2_0.is_none_or(|v| v >= T::zero())`, got v2_0 = {v2_0:?}"
+    );
 
     Self {
       backend: Cpu,
@@ -147,39 +167,50 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
 
   /// Replace `v1_0`, all else unchanged.
   pub fn with_v1_0(mut self, v1_0: Option<T>) -> Self {
-    if let Some(v) = v1_0 {
-      assert!(v >= T::zero(), "v1_0 must be non-negative");
-    }
+    assert!(
+      v1_0.is_none_or(|v| v >= T::zero()),
+      "v1_0 must satisfy `v1_0.is_none_or(|v| v >= T::zero())`, got v1_0 = {v1_0:?}"
+    );
     self.v1_0 = v1_0;
     self
   }
 
   /// Replace `v2_0`, all else unchanged.
   pub fn with_v2_0(mut self, v2_0: Option<T>) -> Self {
-    if let Some(v) = v2_0 {
-      assert!(v >= T::zero(), "v2_0 must be non-negative");
-    }
+    assert!(
+      v2_0.is_none_or(|v| v >= T::zero()),
+      "v2_0 must satisfy `v2_0.is_none_or(|v| v >= T::zero())`, got v2_0 = {v2_0:?}"
+    );
     self.v2_0 = v2_0;
     self
   }
 
   /// Replace `kappa1`, all else unchanged.
   pub fn with_kappa1(mut self, kappa1: T) -> Self {
-    assert!(kappa1 >= T::zero(), "kappa1 must be non-negative");
+    assert!(
+      kappa1 >= T::zero(),
+      "kappa1 must satisfy `kappa1 >= T::zero()`, got kappa1 = {kappa1:?}"
+    );
     self.kappa1 = kappa1;
     self
   }
 
   /// Replace `theta1`, all else unchanged.
   pub fn with_theta1(mut self, theta1: T) -> Self {
-    assert!(theta1 >= T::zero(), "theta1 must be non-negative");
+    assert!(
+      theta1 >= T::zero(),
+      "theta1 must satisfy `theta1 >= T::zero()`, got theta1 = {theta1:?}"
+    );
     self.theta1 = theta1;
     self
   }
 
   /// Replace `sigma1`, all else unchanged.
   pub fn with_sigma1(mut self, sigma1: T) -> Self {
-    assert!(sigma1 >= T::zero(), "sigma1 must be non-negative");
+    assert!(
+      sigma1 >= T::zero(),
+      "sigma1 must satisfy `sigma1 >= T::zero()`, got sigma1 = {sigma1:?}"
+    );
     self.sigma1 = sigma1;
     self
   }
@@ -195,21 +226,30 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
 
   /// Replace `kappa2`, all else unchanged.
   pub fn with_kappa2(mut self, kappa2: T) -> Self {
-    assert!(kappa2 >= T::zero(), "kappa2 must be non-negative");
+    assert!(
+      kappa2 >= T::zero(),
+      "kappa2 must satisfy `kappa2 >= T::zero()`, got kappa2 = {kappa2:?}"
+    );
     self.kappa2 = kappa2;
     self
   }
 
   /// Replace `theta2`, all else unchanged.
   pub fn with_theta2(mut self, theta2: T) -> Self {
-    assert!(theta2 >= T::zero(), "theta2 must be non-negative");
+    assert!(
+      theta2 >= T::zero(),
+      "theta2 must satisfy `theta2 >= T::zero()`, got theta2 = {theta2:?}"
+    );
     self.theta2 = theta2;
     self
   }
 
   /// Replace `sigma2`, all else unchanged.
   pub fn with_sigma2(mut self, sigma2: T) -> Self {
-    assert!(sigma2 >= T::zero(), "sigma2 must be non-negative");
+    assert!(
+      sigma2 >= T::zero(),
+      "sigma2 must satisfy `sigma2 >= T::zero()`, got sigma2 = {sigma2:?}"
+    );
     self.sigma2 = sigma2;
     self
   }
@@ -502,7 +542,9 @@ mod tests {
   use super::*;
 
   #[test]
-  #[should_panic(expected = "v1_0 must be non-negative")]
+  #[should_panic(
+    expected = "v1_0 must satisfy `v1_0.is_none_or(|v| v >= T::zero())`, got v1_0 = Some(-0.01)"
+  )]
   fn negative_initial_variance_panics() {
     let _ = DoubleHeston::new(
       Some(100.0_f64),

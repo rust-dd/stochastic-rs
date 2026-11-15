@@ -58,9 +58,18 @@ pub struct MultivariateHawkes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> MultivariateHawkes<T, S> {
   pub fn new(mu: Array1<T>, alpha: Array2<T>, beta: Array2<T>, t_max: T, seed: S) -> Self {
-    let d = mu.len();
-    assert_eq!(alpha.shape(), [d, d], "alpha must be (D, D)");
-    assert_eq!(beta.shape(), [d, d], "beta must be (D, D)");
+    assert!(
+      alpha.shape() == [mu.len(), mu.len()],
+      "alpha.shape() must satisfy `alpha.shape() == [mu.len(), mu.len()]`, got alpha.shape() = {:?}, mu.len() = {:?}",
+      alpha.shape(),
+      mu.len()
+    );
+    assert!(
+      beta.shape() == [mu.len(), mu.len()],
+      "beta.shape() must satisfy `beta.shape() == [mu.len(), mu.len()]`, got beta.shape() = {:?}, mu.len() = {:?}",
+      beta.shape(),
+      mu.len()
+    );
     Self {
       backend: Cpu,
       mu,

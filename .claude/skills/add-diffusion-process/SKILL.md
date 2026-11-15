@@ -115,7 +115,7 @@ impl<T: FloatExt, S: SeedExt> Foo<T, S> {
         theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>,
         seed: S,                                    // <- LAST parameter
     ) -> Self {
-        assert!(n >= 2, "n must be at least 2");
+        assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
         Self { theta, mu, sigma, n, x0, t, seed }
     }
 
@@ -355,7 +355,7 @@ mod tests {
 
     /// 4. Constructor validates n >= 2.
     #[test]
-    #[should_panic(expected = "n must be at least 2")]
+    #[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
     fn rejects_n_below_two() {
         let _ = Foo::<f64, _>::new(0.5, 0.0, 0.1, 1, None, None, Unseeded);
     }

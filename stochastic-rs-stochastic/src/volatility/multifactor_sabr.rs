@@ -102,31 +102,46 @@ impl<T: FloatExt, S: SeedExt> MultifactorSabr<T, S> {
     seed: S,
   ) -> Self {
     let buckets = knots.len() + 1;
-    assert_eq!(
-      beta.len(),
-      buckets,
-      "beta must have knots.len() + 1 = {buckets} entries"
+    assert!(
+      beta.len() == knots.len() + 1,
+      "beta.len() must satisfy `beta.len() == knots.len() + 1`, got beta.len() = {:?}",
+      beta.len()
     );
-    assert_eq!(rho.len(), buckets, "rho must have {buckets} entries");
-    assert_eq!(nu.len(), buckets, "nu must have {buckets} entries");
+    assert!(
+      rho.len() == knots.len() + 1,
+      "rho.len() must satisfy `rho.len() == knots.len() + 1`, got rho.len() = {:?}",
+      rho.len()
+    );
+    assert!(
+      nu.len() == knots.len() + 1,
+      "nu.len() must satisfy `nu.len() == knots.len() + 1`, got nu.len() = {:?}",
+      nu.len()
+    );
     for k in 0..buckets {
       assert!(
         beta[k] >= T::zero() && beta[k] <= T::one(),
-        "beta[{k}] must be in [0, 1]"
+        "beta[{k}] must satisfy `beta[k] >= T::zero() && beta[k] <= T::one()`, got beta[{k}] = {:?}",
+        beta[k]
       );
-      assert!(nu[k] >= T::zero(), "nu[{k}] must be non-negative");
+      assert!(
+        nu[k] >= T::zero(),
+        "nu[{k}] must satisfy `nu[k] >= T::zero()`, got nu[{k}] = {:?}",
+        nu[k]
+      );
       let r = rho[k].to_f64().unwrap();
       assert!(
         r.abs() < 1.0,
         "rho[{k}] must satisfy `rho[k].abs() < 1.0`, got rho[{k}] = {r:?}"
       );
     }
-    for w in knots.windows(2) {
-      assert!(w[0] < w[1], "knots must be strictly increasing");
-    }
-    if let Some(alpha0) = alpha0 {
-      assert!(alpha0 >= T::zero(), "alpha0 must be non-negative");
-    }
+    assert!(
+      knots.windows(2).all(|w| w[0] < w[1]),
+      "knots must satisfy `knots.windows(2).all(|w| w[0] < w[1])`, got knots = {knots:?}"
+    );
+    assert!(
+      alpha0.is_none_or(|a| a >= T::zero()),
+      "alpha0 must satisfy `alpha0.is_none_or(|a| a >= T::zero())`, got alpha0 = {alpha0:?}"
+    );
     Self {
       backend: Cpu,
       f0,
@@ -495,7 +510,9 @@ mod tests {
 
   /// Coefficient-vector length mismatch is rejected.
   #[test]
-  #[should_panic(expected = "beta must have")]
+  #[should_panic(
+    expected = "beta.len() must satisfy `beta.len() == knots.len() + 1`, got beta.len() = 1"
+  )]
   fn dynamic_sabr_length_mismatch_panics() {
     let _ = MultifactorSabr::<f64, _>::new(
       Some(1.0),

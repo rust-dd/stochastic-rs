@@ -66,7 +66,10 @@ impl<T: FloatExt, S: SeedExt> FouqueOU2D<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(epsilon > T::zero(), "epsilon must be positive");
+    assert!(
+      epsilon > T::zero(),
+      "epsilon must satisfy `epsilon > T::zero()`, got epsilon = {epsilon:?}"
+    );
 
     Self {
       backend: Cpu,

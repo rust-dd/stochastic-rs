@@ -150,7 +150,9 @@ fn assert_symmetric<T: FloatExt>(x: &Array2<T>, name: &str) {
     for j in 0..i {
       assert!(
         (x[(i, j)] - x[(j, i)]).abs() <= tol,
-        "{name} must be symmetric (entry {i},{j})"
+        "{name}[({i}, {j})] must satisfy `({name}[(i, j)] - {name}[(j, i)]).abs() <= tol`, got {name}[({i}, {j})] = {:?}, {name}[({j}, {i})] = {:?}",
+        x[(i, j)],
+        x[(j, i)]
       );
     }
   }
@@ -260,15 +262,30 @@ impl<T: FloatExt, S: SeedExt> Wishart<T, S> {
     seed: S,
   ) -> Self {
     let d = x0.nrows();
-    assert!(d >= 1, "need at least one dimension");
-    assert_eq!(x0.dim(), (d, d), "x0 must be square");
-    assert_eq!(a.dim(), (d, d), "a must be d × d");
-    assert_eq!(b.dim(), (d, d), "b must be d × d");
+    assert!(
+      x0.nrows() >= 1,
+      "x0.nrows() must satisfy `x0.nrows() >= 1`, got x0.nrows() = {d:?}"
+    );
+    assert!(
+      x0.dim() == (d, d),
+      "x0.dim() must satisfy `x0.dim() == (d, d)`, got x0.dim() = {:?}, d = {d:?}",
+      x0.dim()
+    );
+    assert!(
+      a.dim() == (d, d),
+      "a.dim() must satisfy `a.dim() == (d, d)`, got a.dim() = {:?}, d = {d:?}",
+      a.dim()
+    );
+    assert!(
+      b.dim() == (d, d),
+      "b.dim() must satisfy `b.dim() == (d, d)`, got b.dim() = {:?}, d = {d:?}",
+      b.dim()
+    );
     assert!(
       alpha >= T::from_usize_(d - 1),
-      "alpha must be at least d - 1"
+      "alpha must satisfy `alpha >= T::from_usize_(d - 1)`, got alpha = {alpha:?}, d = {d:?}"
     );
-    assert!(n >= 1, "n must be at least 1");
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
     assert_symmetric(&x0, "x0");
     let _ = extended_cholesky(&x0);
     let dt = t.unwrap_or(T::one()) / T::from_usize_(n.max(2) - 1);

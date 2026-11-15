@@ -62,7 +62,10 @@ pub struct Garch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> Garch<T, S> {
   pub fn new(omega: T, alpha: Array1<T>, beta: Array1<T>, n: usize, seed: S) -> Self {
-    assert!(omega > T::zero(), "Garch requires omega > 0");
+    assert!(
+      omega > T::zero(),
+      "omega must satisfy `omega > T::zero()`, got omega = {omega:?}"
+    );
     Garch {
       backend: Cpu,
       omega,

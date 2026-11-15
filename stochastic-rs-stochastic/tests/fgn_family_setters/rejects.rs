@@ -94,31 +94,31 @@ fn jump_fou_custom() -> JumpFOUCustom<f64, SimdNormal<f64>> {
 }
 
 rejects! {
-  fou_with_steps_rejects_one_point: "n must be at least 2" => fou().with_steps(1);
-  fgbm_with_steps_rejects_one_point: "n must be at least 2" => fgbm().with_steps(1);
-  fcir_with_steps_rejects_one_point: "n must be at least 2" => fcir().with_steps(1);
-  fjacobi_with_steps_rejects_one_point: "n must be at least 2" => fjacobi().with_steps(1);
-  cfbms_with_steps_rejects_one_point: "n must be at least 2" => cfbms().with_steps(1);
-  cfou_with_steps_rejects_one_point: "n must be at least 2" => cfou().with_steps(1);
-  jump_fou_with_steps_rejects_one_point: "n must be at least 2" => jump_fou().with_steps(1);
-  jump_fou_custom_with_steps_rejects_one_point: "n must be at least 2" => jump_fou_custom().with_steps(1);
+  fou_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => fou().with_steps(1);
+  fgbm_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => fgbm().with_steps(1);
+  fcir_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => fcir().with_steps(1);
+  fjacobi_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => fjacobi().with_steps(1);
+  cfbms_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => cfbms().with_steps(1);
+  cfou_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => cfou().with_steps(1);
+  jump_fou_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => jump_fou().with_steps(1);
+  jump_fou_custom_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => jump_fou_custom().with_steps(1);
 
-  fjacobi_with_alpha_rejects_zero: "alpha must be positive" => fjacobi().with_alpha(0.0);
-  fjacobi_with_alpha_rejects_the_value_of_beta: "alpha must be less than beta" => fjacobi().with_alpha(2.0);
-  fjacobi_with_beta_rejects_zero: "beta must be positive" => fjacobi().with_beta(0.0);
-  fjacobi_with_beta_rejects_the_value_of_alpha: "alpha must be less than beta" => fjacobi().with_beta(1.0);
-  fjacobi_with_sigma_rejects_zero: "sigma must be positive" => fjacobi().with_sigma(0.0);
+  fjacobi_with_alpha_rejects_zero: "alpha must satisfy `alpha > T::zero()`, got alpha = 0.0" => fjacobi().with_alpha(0.0);
+  fjacobi_with_alpha_rejects_the_value_of_beta: "alpha must satisfy `alpha < self.beta`, got alpha = 2.0, self.beta = 2.0" => fjacobi().with_alpha(2.0);
+  fjacobi_with_beta_rejects_zero: "beta must satisfy `beta > T::zero()`, got beta = 0.0" => fjacobi().with_beta(0.0);
+  fjacobi_with_beta_rejects_the_value_of_alpha: "beta must satisfy `self.alpha < beta`, got beta = 1.0, self.alpha = 1.0" => fjacobi().with_beta(1.0);
+  fjacobi_with_sigma_rejects_zero: "sigma must satisfy `sigma > T::zero()`, got sigma = 0.0" => fjacobi().with_sigma(0.0);
 
-  cfou_with_lambda_rejects_zero: "lambda must be positive" => cfou().with_lambda(0.0);
-  cfou_with_a_rejects_zero: "a must be positive" => cfou().with_a(0.0);
+  cfou_with_lambda_rejects_zero: "lambda must satisfy `lambda > T::zero()`, got lambda = 0.0" => cfou().with_lambda(0.0);
+  cfou_with_a_rejects_zero: "a must satisfy `a > T::zero()`, got a = 0.0" => cfou().with_a(0.0);
 
-  cfbms_with_hurst_rejects_above_one: "Hurst parameter must be in (0, 1)" => cfbms().with_hurst(1.5);
-  cfbms_with_rho_rejects_above_one: "Correlation coefficient must be in [-1, 1]" => cfbms().with_rho(1.5);
-  cfgns_with_hurst_rejects_below_zero: "Hurst parameter must be in (0, 1)" => cfgns().with_hurst(-0.1);
-  cfgns_with_rho_rejects_below_minus_one: "Correlation coefficient must be in [-1, 1]" => cfgns().with_rho(-1.5);
+  cfbms_with_hurst_rejects_above_one: "hurst must satisfy `(T::zero()..=T::one()).contains(&hurst)`, got hurst = 1.5" => cfbms().with_hurst(1.5);
+  cfbms_with_rho_rejects_above_one: "rho must satisfy `" => cfbms().with_rho(1.5);
+  cfgns_with_hurst_rejects_below_zero: "hurst must satisfy `(T::zero()..=T::one()).contains(&hurst)`, got hurst = -0.1" => cfgns().with_hurst(-0.1);
+  cfgns_with_rho_rejects_below_minus_one: "rho must satisfy `" => cfgns().with_rho(-1.5);
 
-  cir_2f_with_x_rejects_another_n: "x and y Cir factors must use the same n" => cir_2f().with_x(cir(33, 1.0));
-  cir_2f_with_y_rejects_another_n: "x and y Cir factors must use the same n" => cir_2f().with_y(cir(33, 1.0));
-  cir_2f_with_x_rejects_another_horizon: "x and y Cir factors must use the same time horizon" => cir_2f().with_x(cir(32, 2.0));
-  cir_2f_with_y_rejects_another_horizon: "x and y Cir factors must use the same time horizon" => cir_2f().with_y(cir(32, 2.0));
+  cir_2f_with_x_rejects_another_n: "x.n must satisfy `x.n == y.n`, got x.n = 33, y.n = 32" => cir_2f().with_x(cir(33, 1.0));
+  cir_2f_with_y_rejects_another_n: "x.n must satisfy `x.n == y.n`, got x.n = 32, y.n = 33" => cir_2f().with_y(cir(33, 1.0));
+  cir_2f_with_x_rejects_another_horizon: "x.t must satisfy `(x.t - y.t).abs() <= 1e-12`, got x.t = 2.0, y.t = 1.0" => cir_2f().with_x(cir(32, 2.0));
+  cir_2f_with_y_rejects_another_horizon: "x.t must satisfy `(x.t - y.t).abs() <= 1e-12`, got x.t = 1.0, y.t = 2.0" => cir_2f().with_y(cir(32, 2.0));
 }
