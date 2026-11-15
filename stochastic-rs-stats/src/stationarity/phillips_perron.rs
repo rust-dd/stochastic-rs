@@ -24,6 +24,7 @@ use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
+use crate::input::reject_constant;
 use crate::input::validate;
 
 /// Phillips-Perron test statistic variant.
@@ -86,8 +87,8 @@ impl crate::traits::HypothesisTest for PhillipsPerronTest {
   }
 }
 
-/// Phillips–Perron unit-root test; `Err` below 20 points, on a non-finite one or a singular
-/// regression, and panics unless `0 < alpha < 1` (`>= 0.01` for `Tau`, decided on the ADF table).
+/// Phillips–Perron unit-root test; `Err` below 20 points, on a non-finite one, a constant series or
+/// a singular fit; panics unless `0 < alpha < 1` (`>= 0.01` for `Tau`, decided on the ADF table).
 pub fn phillips_perron_test(
   y: ArrayView1<f64>,
   cfg: PhillipsPerronConfig,
@@ -100,6 +101,7 @@ pub fn phillips_perron_test(
   let critical = critical_values.as_ref().map(|cv| cv.value_at(cfg.alpha));
   let y = as_slice_or_copy(y);
   validate(&y, 20)?;
+  reject_constant(&y, "constant series")?;
 
   let fit = fit_adf(&y, 0, cfg.trend)?;
   let u = fit.residuals;
@@ -205,6 +207,15 @@ mod tests {
       res.rejects_null,
       Some(false),
       "expected no rejection, got {res:?}"
+    );
+  }
+
+  #[test]
+  fn a_constant_series_is_degenerate_data() {
+    let x = ndarray::Array1::<f64>::from_elem(64, 0.3);
+    assert_eq!(
+      phillips_perron_test(x.view(), PhillipsPerronConfig::default()).unwrap_err(),
+      crate::StatsError::DegenerateData("constant series")
     );
   }
 }

@@ -23,6 +23,7 @@ use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
+use crate::input::reject_constant;
 use crate::input::validate;
 
 /// Configuration for the KPSS stationarity test.
@@ -78,8 +79,8 @@ fn kpss_critical_values(include_trend: bool) -> CriticalValues {
   }
 }
 
-/// KPSS stationarity test; `Err` below 20 points or on a non-finite one, and panics unless
-/// `trend != Trend::None` and `0.01 <= alpha < 1`.
+/// KPSS stationarity test; `Err` below 20 points, on a non-finite one or a constant series, and
+/// panics unless `trend != Trend::None` and `0.01 <= alpha < 1`.
 pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> Result<KpssTest, StatsError> {
   assert!(
     cfg.trend != Trend::None,
@@ -92,6 +93,7 @@ pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> Result<KpssTest, StatsE
   let critical = critical_values.value_at(cfg.alpha);
   let y = as_slice_or_copy(y);
   validate(&y, 20)?;
+  reject_constant(&y, "constant series")?;
 
   let reg = regress_on_deterministics(&y, include_trend)?;
   let resid = reg.residuals;
@@ -181,6 +183,15 @@ mod tests {
     assert!(
       res.rejects_null,
       "expected rejection for random walk, got {res:?}"
+    );
+  }
+
+  #[test]
+  fn a_constant_series_is_degenerate_data() {
+    let x = ndarray::Array1::<f64>::from_elem(64, 0.3);
+    assert_eq!(
+      kpss_test(x.view(), KpssConfig::default()).unwrap_err(),
+      crate::StatsError::DegenerateData("constant series")
     );
   }
 }

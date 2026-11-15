@@ -17,6 +17,7 @@ use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
+use crate::input::reject_constant;
 use crate::input::validate;
 use crate::linalg::lstsq;
 
@@ -46,8 +47,8 @@ impl crate::traits::HypothesisTest for GrangerTest {
   }
 }
 
-/// Granger F-test of "does `x` cause `y`?" with `lags` lags of each; `Err` below `3 lags + 3`
-/// points, on a non-finite one, unequal lengths or a singular fit, panics on bad `lags`, `alpha`.
+/// Granger F-test of "does `x` cause `y`?" at `lags` lags; `Err` below `3 lags + 3` points, a
+/// non-finite or constant series, unequal lengths, a singular or perfect fit; panics on bad config.
 pub fn granger_causality_test(
   y: ArrayView1<f64>,
   x: ArrayView1<f64>,
@@ -65,8 +66,11 @@ pub fn granger_causality_test(
       got: x.len(),
     });
   }
-  validate(&as_slice_or_copy(y), 3 * lags + 3)?;
-  validate(&as_slice_or_copy(x), 3 * lags + 3)?;
+  let (y_slice, x_slice) = (as_slice_or_copy(y), as_slice_or_copy(x));
+  validate(&y_slice, 3 * lags + 3)?;
+  validate(&x_slice, 3 * lags + 3)?;
+  reject_constant(&y_slice, "constant series")?;
+  reject_constant(&x_slice, "constant series")?;
   let n_total = y.len();
   let n = n_total - lags;
 
@@ -88,6 +92,9 @@ pub fn granger_causality_test(
     }
   }
   let rss_unrest = ols_rss(&design_unrest, &target)?;
+  if rss_unrest == 0.0 {
+    return Err(StatsError::DegenerateData("perfect fit"));
+  }
   let rss_rest = ols_rss(&design_rest, &target)?;
   let q = lags as f64;
   let dof = (n as f64) - (1.0 + 2.0 * q);
@@ -161,5 +168,29 @@ mod tests {
     let ya = Array1::from(y);
     let res = granger_causality_test(ya.view(), xa.view(), 2, 0.05).unwrap();
     assert!(res.rejects_null);
+  }
+
+  #[test]
+  fn a_constant_series_is_degenerate_data() {
+    let constant = Array1::<f64>::from_elem(64, 0.3);
+    let moving = Array1::from_iter((0..64).map(|i| (i as f64 * 0.7).sin()));
+    for (y, x) in [(&constant, &moving), (&moving, &constant)] {
+      assert_eq!(
+        granger_causality_test(y.view(), x.view(), 1, 0.05).unwrap_err(),
+        StatsError::DegenerateData("constant series")
+      );
+    }
+  }
+
+  /// A zero target after the first lag fits exactly through zero arithmetic, on any platform.
+  #[test]
+  fn an_exact_fit_is_degenerate_data() {
+    let mut y = Array1::<f64>::zeros(12);
+    y[0] = 5.0;
+    let x = Array1::from_iter((0..12).map(|i| i as f64));
+    assert_eq!(
+      granger_causality_test(y.view(), x.view(), 1, 0.05).unwrap_err(),
+      StatsError::DegenerateData("perfect fit")
+    );
   }
 }

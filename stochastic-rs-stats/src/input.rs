@@ -33,6 +33,15 @@ pub(crate) fn validate<T: FloatExt>(y: &[T], min_n: usize) -> Result<(), StatsEr
   Ok(())
 }
 
+/// `Err(DegenerateData(what))` when every value equals the first; exact, as a rounded mean lets a
+/// constant series through a variance check.
+pub(crate) fn reject_constant<T: PartialEq>(y: &[T], what: &'static str) -> Result<(), StatsError> {
+  if y.windows(2).all(|w| w[0] == w[1]) {
+    return Err(StatsError::DegenerateData(what));
+  }
+  Ok(())
+}
+
 /// The significance-level precondition every test shares.
 #[track_caller]
 pub(crate) fn assert_alpha(alpha: f64) {

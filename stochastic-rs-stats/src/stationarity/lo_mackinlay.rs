@@ -32,6 +32,7 @@ use crate::critical_values::CriticalValues;
 use crate::critical_values::two_sided_p_value;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
+use crate::input::reject_constant;
 use crate::input::validate;
 
 /// Configuration for the Lo-MacKinlay variance-ratio test.
@@ -104,6 +105,7 @@ pub fn lo_mackinlay_test(
     validate(&raw, cfg.q * 4)?;
     raw.to_vec()
   };
+  reject_constant(&returns, "zero-variance increments")?;
 
   let nq = returns.len();
   let nq_f = nq as f64;
@@ -282,6 +284,19 @@ mod tests {
       res.variance_ratio < 0.95,
       "VR should be < 1 under negative autocorrelation, got {}",
       res.variance_ratio
+    );
+  }
+
+  #[test]
+  fn constant_returns_are_degenerate_data() {
+    let returns = ndarray::Array1::<f64>::from_elem(40, 0.1);
+    let cfg = LoMacKinlayConfig {
+      input_is_log_prices: false,
+      ..LoMacKinlayConfig::default()
+    };
+    assert_eq!(
+      lo_mackinlay_test(returns.view(), cfg).unwrap_err(),
+      crate::StatsError::DegenerateData("zero-variance increments")
     );
   }
 

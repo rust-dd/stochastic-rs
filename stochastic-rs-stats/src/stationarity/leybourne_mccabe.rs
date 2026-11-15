@@ -13,6 +13,7 @@ use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
+use crate::input::reject_constant;
 use crate::input::validate;
 
 /// Configuration for the Leybourne-McCabe stationarity test.
@@ -127,7 +128,7 @@ fn simulate_ar(phi: &[f64], noise: &mut Seeded<SimdNormal<f64>>, n: usize) -> Ve
 }
 
 /// Leybourne–McCabe test with a bootstrap p-value; `Err` below `max(40, p + 15, 2p + 1)` points
-/// (`p = ar_lags`), on a non-finite one or a singular AR fit; panics on a bad config.
+/// (`p = ar_lags`), on a non-finite one, a constant series or a singular fit; panics on bad config.
 pub fn leybourne_mccabe_test(
   y: ArrayView1<f64>,
   cfg: LeybourneMcCabeConfig,
@@ -153,6 +154,7 @@ pub fn leybourne_mccabe_test(
     .max(cfg.ar_lags + 15)
     .max(min_sample_size(cfg.ar_lags, Trend::None));
   validate(&y, needed)?;
+  reject_constant(&y, "constant series")?;
 
   let include_trend = cfg.trend == Trend::ConstantTrend;
   let (obs_stat, phi, sigma) = lm_statistic_with_prewhitening(&y, include_trend, cfg.ar_lags)?;
@@ -257,6 +259,15 @@ mod tests {
       .collect::<Vec<_>>()
       .join("; ");
     assert!(ok, "no seed rejected a random walk — {report}");
+  }
+
+  #[test]
+  fn a_constant_series_is_degenerate_data() {
+    let x = ndarray::Array1::<f64>::from_elem(64, 0.3);
+    assert_eq!(
+      leybourne_mccabe_test(x.view(), LeybourneMcCabeConfig::default()).unwrap_err(),
+      StatsError::DegenerateData("constant series")
+    );
   }
 
   #[test]

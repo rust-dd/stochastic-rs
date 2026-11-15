@@ -30,6 +30,7 @@ use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
+use crate::input::reject_constant;
 use crate::input::validate;
 
 /// $F(d_1, d_2)$ upper tail probability $1 - F(x)$ via the regularised
@@ -90,8 +91,8 @@ impl crate::traits::HypothesisTest for ResetTest {
   }
 }
 
-/// Ramsey (1969) RESET of `y` on the design `x` (with its constant column); `Err` below `k + q + 2`
-/// points, a non-finite `y`, mismatched rows or a singular fit; panics on bad `max_power`, `alpha`.
+/// Ramsey (1969) RESET of `y` on `x` (with its constant column); `Err` below `k + q + 2` points, a
+/// non-finite or constant `y`, mismatched rows, a singular or perfect fit; panics on bad config.
 pub fn reset_test(
   y: ArrayView1<f64>,
   x: ArrayView2<f64>,
@@ -114,6 +115,7 @@ pub fn reset_test(
   let q = cfg.max_power - 1;
   let y_slice = as_slice_or_copy(y);
   validate(&y_slice, k + q + 2)?;
+  reject_constant(&y_slice, "constant series")?;
 
   // Restricted OLS: y on x.
   let x_rows: Vec<Vec<f64>> = (0..t_total).map(|i| x.row(i).to_vec()).collect();
@@ -137,12 +139,15 @@ pub fn reset_test(
   }
   let fit_u = ols(&y_slice, &x_aug_rows)?;
   let sse_u = fit_u.sse;
+  if sse_u == 0.0 {
+    return Err(StatsError::DegenerateData("perfect fit"));
+  }
 
   let df_num = q;
   let df_den = t_total - k - q;
   let num = ((sse_r - sse_u) / df_num as f64).max(0.0);
   let den = sse_u / df_den as f64;
-  let f_statistic = if den > 0.0 { num / den } else { f64::INFINITY };
+  let f_statistic = num / den;
 
   let p_value = if f_statistic.is_finite() {
     f_upper_tail(f_statistic, df_num as f64, df_den as f64)
@@ -251,6 +256,32 @@ mod tests {
       res.statistic < 1e-6,
       "noiseless linear F should be ~ 0; got {}",
       res.statistic
+    );
+  }
+
+  #[test]
+  fn a_constant_series_is_degenerate_data() {
+    let y = Array1::<f64>::from_elem(64, 0.3);
+    let xm = design_with_intercept(&Array1::linspace(-1.0, 1.0, 64));
+    assert_eq!(
+      reset_test(y.view(), xm.view(), ResetConfig::default()).unwrap_err(),
+      StatsError::DegenerateData("constant series")
+    );
+  }
+
+  /// `y = x` on `x ∈ {±1, ±2}` keeps every normal-equation step in exact dyadic arithmetic.
+  #[test]
+  fn an_exact_fit_is_degenerate_data() {
+    let x = Array1::from_iter((0..18).map(|i| match i {
+      16 => 2.0,
+      17 => -2.0,
+      _ if i % 2 == 0 => 1.0,
+      _ => -1.0,
+    }));
+    let xm = x.clone().insert_axis(ndarray::Axis(1));
+    assert_eq!(
+      reset_test(x.view(), xm.view(), ResetConfig::default()).unwrap_err(),
+      StatsError::DegenerateData("perfect fit")
     );
   }
 
