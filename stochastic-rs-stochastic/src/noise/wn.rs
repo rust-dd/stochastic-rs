@@ -59,7 +59,17 @@ impl<T: FloatExt, S: SeedExt> Wn<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Wn<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> Wn<T, S, B> {
+  /// `std_dev` as host and device read it; a write past `new` that breaks its rule fails here.
+  fn checked_std_dev(&self) -> T {
+    let std_dev = self.std_dev.unwrap_or(T::one());
+    assert!(
+      std_dev.is_finite() && std_dev >= T::zero(),
+      "std_dev must satisfy `std_dev.is_finite() && std_dev >= T::zero()`, got std_dev = {std_dev:?}"
+    );
+    std_dev
+  }
+}
 
 /// The Euler engine's view of white noise: every grid point is one draw.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
@@ -68,7 +78,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::Innovation {
       mean: self.mean.unwrap_or(T::zero()),
-      sd: self.std_dev.unwrap_or(T::one()),
+      sd: self.checked_std_dev(),
     }
   }
 
@@ -121,11 +131,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 
   fn sampler(&self) -> WnSampler<T> {
     let mean = self.mean.unwrap_or(T::zero());
-    let std_dev = self.std_dev.unwrap_or(T::one());
+    let std_dev = self.checked_std_dev();
     WnSampler {
       n: self.n,
       mean,
-      normal: (std_dev > T::zero()).then(|| SimdNormal::<T>::new(mean, std_dev).seeded(&self.seed)),
+      normal: (std_dev != T::zero())
+        .then(|| SimdNormal::<T>::new(mean, std_dev).seeded(&self.seed)),
     }
   }
 

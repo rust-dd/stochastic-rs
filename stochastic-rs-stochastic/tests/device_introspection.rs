@@ -14,8 +14,12 @@ use stochastic_rs_stochastic::autoregressive::ar::ARp;
 use stochastic_rs_stochastic::device::Cpu;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::diffusion::wishart::Wishart;
+use stochastic_rs_stochastic::interest::black_karasinski::BlackKarasinski;
 use stochastic_rs_stochastic::interest::vasicek::Vasicek;
 use stochastic_rs_stochastic::noise::fgn::Fgn;
+use stochastic_rs_stochastic::process::subordinator::ctrw::Ctrw;
+use stochastic_rs_stochastic::process::subordinator::ctrw::CtrwJumpLaw;
+use stochastic_rs_stochastic::process::subordinator::ctrw::CtrwWaitingLaw;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 /// A process hands back the handle it holds, and the handle opens.
@@ -81,4 +85,60 @@ fn readiness_is_exactly_the_absence_of_a_reason() {
   let plain = Vasicek::<f64, _>::new(1.5, 0.04, 0.3, 128, None, None, Deterministic::new(7));
   assert_eq!(plain.device_ready(), plain.device_fallback().is_none());
   assert_eq!(plain.device_fallback(), None);
+}
+
+fn flat(_t: f64) -> f64 {
+  0.05
+}
+
+/// A Black–Karasinski reversion of exactly zero is the one value the kernels cannot step, so it
+/// samples on the host; any other `a` reaches them.
+#[test]
+fn a_zero_reversion_black_karasinski_keeps_to_the_host() {
+  let build = |a: f64| {
+    BlackKarasinski::<f64, _>::new(
+      flat as fn(f64) -> f64,
+      a,
+      0.1,
+      64,
+      Some(0.03),
+      Some(1.0),
+      Deterministic::new(11),
+    )
+  };
+  assert!(!build(0.0).device_ready());
+  assert!(
+    build(0.0)
+      .device_fallback()
+      .is_some_and(|why| why.contains("mean-reversion")),
+    "the reason should name the reversion speed"
+  );
+  assert!(build(0.1).device_ready());
+}
+
+/// The kernels' per-step count stops at 64 events, so a Ctrw expecting over 25 per step samples
+/// on the host, where every event is drawn.
+#[test]
+fn a_dense_ctrw_keeps_to_the_host() {
+  let build = |rate: f64, n: usize| {
+    Ctrw::<f64, _>::new(
+      CtrwWaitingLaw::Exponential { rate },
+      CtrwJumpLaw::Normal {
+        mean: 1.0,
+        std: 1e-6,
+      },
+      n,
+      None,
+      Some(1.0),
+      Deterministic::new(2),
+    )
+  };
+  assert!(!build(4.0e6, 2).device_ready());
+  assert!(
+    build(4.0e6, 2)
+      .device_fallback()
+      .is_some_and(|why| why.contains("64")),
+    "the reason should name the kernels' count limit"
+  );
+  assert!(build(2.0, 512).device_ready());
 }

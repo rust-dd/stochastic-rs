@@ -19,6 +19,7 @@
 //! - `rho` is a **loading** on $v_t$ (not a correlation), so it is not restricted to [-1, 1].
 //! - Series indices follow Algorithm 1: **j = 1..J**, with **Γ0 = 0**.
 //!
+//! Reference: Glasserman, P. (2003), *Monte Carlo Methods in Financial Engineering*, Springer, §3.4.1 (the exact CIR step), DOI 10.1007/978-0-387-21617-1.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -179,6 +180,11 @@ impl<T: FloatExt, S: SeedExt> Svcgmy<T, S> {
   }
 }
 
+/// The exact CIR step's scale `c`; `exp_m1` keeps `1 − e^{−κΔ}` off zero in `f32`.
+fn clock_constant<T: FloatExt>(kappa: T, zeta: T, dt: T) -> T {
+  T::from_usize_(2) * kappa / (-(-kappa * dt).exp_m1() * zeta.powi(2))
+}
+
 impl<T: FloatExt, S: SeedExt, B> Svcgmy<T, S, B> {
   /// The horizon, one when omitted.
   fn t_max(&self) -> T {
@@ -212,7 +218,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let two = T::from_usize_(2);
     let ek = (-self.kappa * self.dt()).exp();
-    let c = two * self.kappa / ((T::one() - ek) * self.zeta.powi(2));
+    let c = clock_constant(self.kappa, self.zeta, self.dt());
     let bcoef = -(self.lambda_plus.powf(self.alpha - T::one())
       - self.lambda_minus.powf(self.alpha - T::one()))
       / ((T::one() - self.alpha)
@@ -423,7 +429,7 @@ impl<T: FloatExt, S: SeedExt> SvcgmySampler<T, S> {
 
     // Cir exact-step constants (paper)
     let exp_kdt = (-self.kappa * dt).exp();
-    let c = (f2 * self.kappa) / ((T::one() - exp_kdt) * self.zeta.powi(2));
+    let c = clock_constant(self.kappa, self.zeta, dt);
     let df = T::from_usize_(4) * self.kappa * self.eta / self.zeta.powi(2);
 
     // 1) Simulate v on the grid via noncentral chi-square
@@ -543,3 +549,45 @@ py_process_2x1d!(PySvcgmy, Svcgmy,
   params: (lambda_plus: f64, lambda_minus: f64, alpha: f64, kappa: f64, eta: f64, zeta: f64, rho: f64, n: usize, j: usize, x0: Option<f64>, v0: Option<f64>, t: Option<f64>),
   device
 );
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+
+  fn model<T: FloatExt>(kappa: f64, eta: f64, n: usize) -> Svcgmy<T, Deterministic> {
+    let f = T::from_f64_fast;
+    Svcgmy::new(
+      f(3.0),
+      f(2.0),
+      f(0.7),
+      f(kappa),
+      f(eta),
+      f(0.3),
+      f(-0.3),
+      n,
+      32,
+      None,
+      Some(f(0.04)),
+      Some(T::one()),
+      Deterministic::new(5),
+    )
+  }
+
+  #[test]
+  fn a_small_clock_rate_stays_finite_in_single_precision() {
+    let [x, v] = model::<f32>(1e-3, 0.04, 200_001).sample();
+    assert!(
+      x.iter().chain(v.iter()).all(|a| a.is_finite()),
+      "kappa·dt = 5e-9 rounds 1 − e^{{-kappa·dt}} to 0 in f32"
+    );
+  }
+
+  #[test]
+  fn a_zero_long_run_variance_is_the_zero_degree_clock() {
+    let [x, v] = model::<f64>(1.0, 0.0, 65).sample();
+    assert!(x.iter().chain(v.iter()).all(|a| a.is_finite()));
+    assert!(v.iter().all(|a| *a >= 0.0));
+  }
+}

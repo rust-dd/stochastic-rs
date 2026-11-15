@@ -38,7 +38,7 @@
 //! - Barndorff-Nielsen, O.E., Shephard, N. (2001), "Non-Gaussian
 //!   Ornstein-Uhlenbeck-based models and some of their uses in financial
 //!   economics", *Journal of the Royal Statistical Society* Series B,
-//!   63(2), 167-241.
+//!   63(2), 167-241, DOI 10.1111/1467-9868.00282.
 //! - Arai, T. (2015), "Local risk-minimization for Barndorff-Nielsen and
 //!   Shephard models with volatility risk premium", arXiv:1506.01477.
 //! - Roberts, G.O., Papaspiliopoulos, O., Dellaportas, P. (2004),
@@ -46,14 +46,14 @@
 //!   volatility processes", *JRSS* B 66(2), 369-393.
 
 use ndarray::Array1;
-use rand::Rng;
-use rand::RngExt;
+use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::FloatExt;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::gamma::SimdGamma;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_distributions::poisson::SimdPoisson;
 
 use crate::device::Cpu;
 use crate::traits::PathSampler;
@@ -70,7 +70,7 @@ pub struct Bns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub lambda: T,
   /// Drift $\mu$ (risk-neutral $r - q$ when pricing).
   pub mu: T,
-  /// Jump intensity $\nu > 0$ — expected number of jumps per unit time
+  /// Jump intensity $\nu \ge 0$ — expected number of jumps per unit time
   /// **on the $\lambda$-rescaled clock**.
   pub nu: T,
   /// Gamma shape parameter $\omega > 0$ for the i.i.d. jump sizes.
@@ -136,8 +136,8 @@ impl<T: FloatExt, S: SeedExt> Bns<T, S> {
       "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
     );
     assert!(
-      nu > T::zero(),
-      "nu must satisfy `nu > T::zero()`, got nu = {nu:?}"
+      nu >= T::zero(),
+      "nu must satisfy `nu >= T::zero()`, got nu = {nu:?}"
     );
     assert!(
       jump_shape > T::zero(),
@@ -158,7 +158,17 @@ impl<T: FloatExt, S: SeedExt> Bns<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Bns<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> Bns<T, S, B> {
+  /// `nu` as host and device read it; a write past `new` that breaks its rule fails here.
+  fn checked_nu(&self) -> T {
+    let nu = self.nu;
+    assert!(
+      nu.is_finite() && nu >= T::zero(),
+      "nu must satisfy `nu.is_finite() && nu >= T::zero()`, got nu = {nu:?}"
+    );
+    nu
+  }
+}
 
 /// The Euler engine's view of the Barndorff-Nielsen-Shephard model. The
 /// variance decays exactly over the step, as the host takes it, and the
@@ -192,9 +202,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     self.t.unwrap_or(T::one())
   }
 
-  /// The subordinator's jump rate over one step.
+  /// The subordinator's jump rate per unit time; none at `nu = 0`, where a launch skips the jumps.
   fn jump_intensity(&self) -> Option<T> {
-    Some(self.nu * self.lambda)
+    let nu = self.checked_nu();
+    (nu != T::zero()).then(|| nu * self.lambda)
   }
 
   /// One gamma draw whose shape is the step's own jump count times the shape
@@ -239,6 +250,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   fn sampler(&self) -> BnsSampler<T, S> {
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
     let lam_dt = self.lambda * dt;
+    let jump_rate_per_step = (self.checked_nu() * lam_dt).to_f64().unwrap();
     BnsSampler {
       n: self.n,
       s0: self.s0.unwrap_or(T::one()),
@@ -247,7 +259,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       jump_shape: self.jump_shape,
       dt,
       decay: (-lam_dt).exp(), // e^{-λ·Δt}
-      jump_rate_per_step: (self.nu * lam_dt).to_f64().unwrap(),
+      counts: (jump_rate_per_step != 0.0).then(|| SimdPoisson::new(jump_rate_per_step)),
       seed: self.seed.derive(),
     }
   }
@@ -276,10 +288,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Bns`] sampling state: owns the seed source and the precomputed
-/// decay / jump-rate constants. The Gamma jump, Normal and Poisson generators
-/// are rebuilt per fill in the legacy seed-consumption order, so the first call
-/// reproduces the original stream bit-for-bit.
+/// Reusable [`Bns`] sampling state: the step's constants and its jump-count law, with the gamma,
+/// normal and count streams rebuilt from the seed in one fixed order per fill.
 #[doc(hidden)]
 pub struct BnsSampler<T: FloatExt, S: SeedExt> {
   n: usize,
@@ -289,7 +299,8 @@ pub struct BnsSampler<T: FloatExt, S: SeedExt> {
   jump_shape: T,
   dt: T,
   decay: T,
-  jump_rate_per_step: f64,
+  /// The per-step count `Poisson(ν·λ·Δt)`; `None` at a zero rate, where no step jumps.
+  counts: Option<SimdPoisson<u64>>,
   seed: S,
 }
 
@@ -300,7 +311,6 @@ impl<T: FloatExt, S: SeedExt> BnsSampler<T, S> {
     }
     let dt = self.dt;
     let decay = self.decay;
-    let jump_rate_per_step = self.jump_rate_per_step;
 
     s[0] = self.s0;
     sigma2[0] = self.sigma2_0;
@@ -312,7 +322,7 @@ impl<T: FloatExt, S: SeedExt> BnsSampler<T, S> {
     for i in 1..self.n {
       // 1. Number of jumps in [t_{i-1}, t_i] from the compound-Poisson
       //    subordinator.
-      let n_jumps = rand_poisson(&mut rng, jump_rate_per_step);
+      let n_jumps = self.counts.as_ref().map_or(0, |law| law.sample(&mut rng));
 
       // 2. Sum N Gamma(ω, 1) jump sizes to form ΔZ.
       let mut dz = T::zero();
@@ -356,51 +366,6 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for BnsSampler<T, S> {
       sigma2.as_slice_mut().expect("contiguous"),
     );
     [s, sigma2]
-  }
-}
-
-/// Poisson sampler using Knuth's algorithm for small rates (`λ ≤ 30`) and
-/// the rejection method based on a normal proposal for large rates.
-/// `lambda < 0` returns 0.
-fn rand_poisson<R: Rng + ?Sized>(rng: &mut R, lambda: f64) -> u32 {
-  if lambda <= 0.0 {
-    return 0;
-  }
-  if lambda < 30.0 {
-    // Knuth — exponential of independent uniforms.
-    let l = (-lambda).exp();
-    let mut k = 0_u32;
-    let mut p = 1.0_f64;
-    loop {
-      k += 1;
-      let u: f64 = rng.random_range(0.0..1.0);
-      p *= u;
-      if p <= l {
-        return k - 1;
-      }
-    }
-  } else {
-    // Atkinson 1979 rejection on a Gaussian proposal.
-    let c = 0.767 - 3.36 / lambda;
-    let beta = std::f64::consts::PI / (3.0 * lambda).sqrt();
-    let alpha = beta * lambda;
-    let k = c.ln() - lambda - beta.ln();
-    loop {
-      let u: f64 = rng.random_range(0.0..1.0);
-      let x = (alpha - ((1.0 - u) / u).ln()) / beta;
-      let n = (x + 0.5).floor() as i64;
-      if n < 0 {
-        continue;
-      }
-      let v: f64 = rng.random_range(0.0..1.0);
-      let y = alpha - beta * x;
-      let lhs = y + (v / (1.0 + y.exp()).powi(2)).ln();
-      let rhs = k + (n as f64) * lambda.ln()
-        - stochastic_rs_distributions::special::ln_gamma((n + 1) as f64);
-      if lhs <= rhs {
-        return n as u32;
-      }
-    }
   }
 }
 
@@ -510,20 +475,76 @@ mod tests {
     }
   }
 
-  /// Reject zero / negative jump intensity.
   #[test]
-  #[should_panic(expected = "nu must satisfy `nu > T::zero()`, got nu = 0.0")]
-  fn bns_zero_intensity_panics() {
-    let _ = Bns::<f64>::new(
+  fn a_zero_jump_rate_decays_the_variance_exactly() {
+    let p = Bns::<f64, Deterministic>::new(
+      Some(100.0),
+      0.04,
+      1.5,
+      0.05,
+      0.0,
+      2.0,
+      65,
+      Some(1.0),
+      Deterministic::new(4),
+    );
+    let [_, sigma2] = p.sample();
+    let decay = (-1.5 / 64.0_f64).exp();
+    for i in 1..65 {
+      assert_eq!(
+        sigma2[i],
+        sigma2[i - 1] * decay,
+        "step {i}: no jumps, so the OU decay is the whole step"
+      );
+    }
+  }
+
+  #[test]
+  #[should_panic(expected = "nu must satisfy `nu.is_finite() && nu >= T::zero()`, got nu = NaN")]
+  fn a_nan_nu_written_past_new_is_refused() {
+    let mut p = Bns::<f64>::new(
       Some(100.0),
       0.04,
       1.0,
       0.0,
-      0.0,
       1.0,
-      64,
+      1.0,
+      16,
       Some(1.0),
       Unseeded,
+    );
+    p.nu = f64::NAN;
+    let _ = p.sample();
+  }
+
+  #[test]
+  fn jump_counts_follow_the_crate_poisson_law() {
+    let p = Bns::<f64, Deterministic>::new(
+      Some(100.0),
+      0.04,
+      1.0,
+      0.0,
+      40.0,
+      1.0,
+      2,
+      Some(1.0),
+      Deterministic::new(11),
+    );
+    let jumps = p
+      .sample_par(4000)
+      .iter()
+      .map(|[_, v]| v[1] - v[0] * (-1.0_f64).exp())
+      .collect::<Vec<_>>();
+    let mean = jumps.iter().sum::<f64>() / 4000.0;
+    let var = jumps.iter().map(|z| (z - mean).powi(2)).sum::<f64>() / 3999.0;
+    // Compound Poisson(40) of Exp(1) sizes, κ_k = 40·k!: ±5σ is ±0.71 (mean) and ±9.3 (variance).
+    assert!(
+      (mean - 40.0).abs() < 5.0 * (80.0_f64 / 4000.0).sqrt(),
+      "E[ΔZ] = ν·λ·Δ·E[Y] = 40, got {mean}"
+    );
+    assert!(
+      (var - 80.0).abs() < 5.0 * ((960.0 + 2.0 * 6400.0) / 4000.0_f64).sqrt(),
+      "Var ΔZ = ν·λ·Δ·E[Y²] = 80, got {var}"
     );
   }
 }

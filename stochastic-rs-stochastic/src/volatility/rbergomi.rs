@@ -40,7 +40,7 @@
 //! References: Bayer, C., Friz, P. & Gatheral, J. (2016), *Pricing under
 //! rough volatility*, Quantitative Finance 16(6), 887–904; Bennedsen, M.,
 //! Lunde, A. & Pakkanen, M. S. (2017), *Hybrid scheme for Brownian
-//! semistationary processes*, Finance and Stochastics 21, 931–965.
+//! semistationary processes*, Finance and Stochastics 21, 931–965, DOI 10.1007/s00780-017-0335-5.
 
 use ndarray::Array1;
 #[cfg(feature = "python")]
@@ -425,17 +425,19 @@ impl<T: FloatExt, S: SeedExt> RoughBergomiSampler<T, S> {
   /// with the Brownian increment; earlier intervals use the kernel at the
   /// optimal discretisation points `b_k^*` (Proposition 2.8).
   pub(crate) fn hybrid_weights(hurst: T, dt: T, n: usize) -> (Vec<T>, T, T) {
-    let alpha = hurst - T::from_f64_fast(0.5);
-    let one = T::one();
+    let alpha = hurst.to_f64().unwrap() - 0.5;
+    let dt = dt.to_f64().unwrap();
     let mut kernel = vec![T::zero(); n.max(2)];
     let dt_alpha = dt.powf(alpha);
     for (k, w) in kernel.iter_mut().enumerate().skip(2) {
-      let k_t = T::from_usize_(k);
-      *w = dt_alpha * (k_t.powf(alpha + one) - (k_t - one).powf(alpha + one)) / (alpha + one);
+      let k_t = k as f64;
+      *w = T::from_f64_fast(
+        dt_alpha * (k_t.powf(alpha + 1.0) - (k_t - 1.0).powf(alpha + 1.0)) / (alpha + 1.0),
+      );
     }
-    let on_increment = dt_alpha / (alpha + one);
-    let residual_var = one / (T::from_usize_(2) * alpha + one) - one / (alpha + one).powi(2);
-    let residual_sd = dt.powf(alpha + T::from_f64_fast(0.5)) * residual_var.max(T::zero()).sqrt();
+    let on_increment = T::from_f64_fast(dt_alpha / (alpha + 1.0));
+    let residual_var = 1.0 / (2.0 * alpha + 1.0) - 1.0 / (alpha + 1.0).powi(2);
+    let residual_sd = T::from_f64_fast(dt.powf(alpha + 0.5) * residual_var.max(0.0).sqrt());
     (kernel, on_increment, residual_sd)
   }
 
@@ -672,6 +674,24 @@ mod tests {
       RoughBergomiSampler::<f64, Deterministic>::hybrid_weights(0.5, 0.01, 6);
     assert!(brownian[2..].iter().all(|w| (w - 1.0).abs() < 1e-12));
     assert!((on_inc - 1.0).abs() < 1e-12 && sd.abs() < 1e-9);
+  }
+
+  #[test]
+  fn the_hybrid_weights_keep_their_digits_in_single_precision() {
+    let (w, _, _) = RoughBergomiSampler::<f32, Unseeded>::hybrid_weights(0.1, 1.0 / 4096.0, 4001);
+    let exact = [
+      (2usize, 23.944_391_87_f64),
+      (100, 4.424_006_643),
+      (1000, 1.758_048_573),
+      (4000, 1.009_582_234),
+    ];
+    for (k, e) in exact {
+      assert!(
+        (w[k] as f64 / e - 1.0).abs() < 1e-6,
+        "k = {k}: got {}, exact {e}",
+        w[k]
+      );
+    }
   }
 
   /// `E[v_t] = v_0²` for every `t` (the `½ν²t^{2H}` compensator is exact

@@ -83,13 +83,25 @@ impl<T: FloatExt, S: SeedExt> Arima<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Arima<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> Arima<T, S, B> {
+  /// `sigma` as host and device read it; a write past `new` that breaks its rule fails here.
+  fn checked_sigma(&self) -> T {
+    let sigma = self.sigma;
+    assert!(
+      sigma.is_finite() && sigma >= T::zero(),
+      "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
+    sigma
+  }
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Arima<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    crate::euler::EulerSpec::MovingAverageFilter { sigma: self.sigma }
+    crate::euler::EulerSpec::MovingAverageFilter {
+      sigma: self.checked_sigma(),
+    }
   }
 
   fn initial_value(&self) -> T {
@@ -148,13 +160,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> ArimaSampler<T> {
+    let sigma = self.checked_sigma();
     ArimaSampler {
       n: self.n,
       ar_coefs: self.ar_coefs.clone(),
       ma_coefs: self.ma_coefs.clone(),
       d: self.d,
-      sigma: self.sigma,
-      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
+      normal: (sigma != T::zero())
+        .then(|| SimdNormal::<T>::new(T::zero(), sigma).seeded(&self.seed)),
     }
   }
 
@@ -231,20 +244,17 @@ pub struct ArimaSampler<T: FloatExt> {
   ar_coefs: Array1<T>,
   ma_coefs: Array1<T>,
   d: usize,
-  sigma: T,
-  normal: Seeded<SimdNormal<T>>,
+  /// `None` at `sigma = 0`, where every innovation is zero.
+  normal: Option<Seeded<SimdNormal<T>>>,
 }
 
 impl<T: FloatExt> ArimaSampler<T> {
   fn fill_path(&mut self, out: &mut [T]) {
     let n = out.len();
     let mut noise = Array1::<T>::zeros(n);
-    if n > 0 {
-      let slice = noise.as_slice_mut().expect("contiguous");
-      self.normal.fill_slice(slice);
+    if let Some(normal) = self.normal.as_mut().filter(|_| n > 0) {
+      normal.fill_slice(noise.as_slice_mut().expect("contiguous"));
     }
-    let sigma = self.sigma;
-    noise.mapv_inplace(|z| sigma * z);
     let result = arima_filter(&noise, &self.ar_coefs, &self.ma_coefs, self.d);
     out.copy_from_slice(result.as_slice().expect("contiguous"));
   }

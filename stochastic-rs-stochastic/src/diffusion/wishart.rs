@@ -24,6 +24,8 @@
 //! Reference: Ahdida, A. & Alfonsi, A. (2013), *Exact and high-order
 //! discretization schemes for Wishart processes and their affine extensions*,
 //! Ann. Appl. Probab. 23(3), 1025–1073. DOI: 10.1214/12-AAP863
+//!
+//! Reference: Siegel, A. F. (1979), "The noncentral chi-squared distribution with zero degrees of freedom and testing for uniformity", Biometrika 66(2) 381–386, DOI 10.1093/biomet/66.2.381.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -33,10 +35,8 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
-use stochastic_rs_distributions::gamma::SimdGamma;
 use stochastic_rs_distributions::non_central_chi_squared::SimdNonCentralChiSquared;
 use stochastic_rs_distributions::normal::SimdNormal;
-use stochastic_rs_distributions::poisson::SimdPoisson;
 
 use crate::device::Cpu;
 use crate::linalg::determinant;
@@ -159,10 +159,8 @@ fn assert_symmetric<T: FloatExt>(x: &Array2<T>, name: &str) {
   }
 }
 
-/// Random-variate sources of the coordinate steps: standard normals for the
-/// Gaussian coordinates and, per rank `r`, the noncentral χ² of degree
-/// `α − r`; the degree-zero boundary falls back to its Poisson mixture of
-/// Gammas with an atom at zero.
+/// Random-variate sources of the coordinate steps: standard normals for the Gaussian coordinates
+/// and, per rank `r`, the noncentral χ² of degree `α − r`, the zero degree included.
 struct StepDraws<T: FloatExt, S: SeedExt> {
   alpha: T,
   seed: S,
@@ -184,23 +182,7 @@ impl<T: FloatExt, S: SeedExt> StepDraws<T, S> {
   /// `u`: `Δt · χ'²(α − r, u / Δt)`.
   fn squared_bessel(&mut self, r: usize, u: T, dt: T) -> T {
     let df = self.alpha - T::from_usize_(r);
-    let two = T::from_f64_fast(2.0);
     let ncp = u / dt;
-    if df <= T::zero() {
-      let half = (ncp / two).to_f64().unwrap_or(0.0);
-      let jumps = if half > 0.0 {
-        SimdPoisson::<u64>::new(half).seeded(&self.seed).sample()
-      } else {
-        0
-      };
-      if jumps == 0 {
-        return T::zero();
-      }
-      return dt
-        * SimdGamma::<T>::new(T::from_f64_fast(jumps as f64), two)
-          .seeded(&self.seed)
-          .sample();
-    }
     if self.ncx2[r].is_none() {
       self.ncx2[r] = Some(SimdNonCentralChiSquared::<T>::new(df).seeded(&self.seed));
     }

@@ -4,6 +4,7 @@ use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_distributions::uniform::SimdUniform;
 use stochastic_rs_stochastic::autoregressive::ar::ARp;
 use stochastic_rs_stochastic::autoregressive::arima::Arima;
 use stochastic_rs_stochastic::autoregressive::ma::MAq;
@@ -14,13 +15,19 @@ use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::diffusion::multi_gbm::MultiGbm;
 use stochastic_rs_stochastic::diffusion::ou::Ou;
 use stochastic_rs_stochastic::diffusion::wishart::Wishart;
+use stochastic_rs_stochastic::euler::EulerCoefficients;
+use stochastic_rs_stochastic::euler::EulerSystem;
 use stochastic_rs_stochastic::interest::wu_zhang::WuZhangD;
+use stochastic_rs_stochastic::jump::bates::Bates1996;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGamma;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGammaMotion;
 use stochastic_rs_stochastic::jump::cts::Cts;
 use stochastic_rs_stochastic::jump::ig::Ig;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
 use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
+use stochastic_rs_stochastic::jump::kou::Kou;
+use stochastic_rs_stochastic::jump::levy_diffusion::LevyDiffusion;
+use stochastic_rs_stochastic::jump::merton::Merton;
 use stochastic_rs_stochastic::jump::nig::Nig;
 use stochastic_rs_stochastic::jump::rdts::Rdts;
 use stochastic_rs_stochastic::jump::vg::Vg;
@@ -231,4 +238,176 @@ fn a_zero_deviation_white_noise_is_its_mean() {
   scales_with_sigma(|sd| {
     Wn::<f64, Deterministic>::new(64, None, Some(sd), Deterministic::new(3)).sample()
   });
+}
+
+#[test]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = NaN"
+)]
+fn a_nan_sigma_written_to_a_moving_average_is_refused() {
+  let mut p = MAq::<f64, Deterministic>::new(array![0.4, -0.2], 1.0, 64, Deterministic::new(3));
+  p.sigma = f64::NAN;
+  let _ = p.sample();
+}
+
+#[test]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = -1.0"
+)]
+fn a_negative_sigma_written_to_an_arima_is_refused() {
+  let mut p =
+    Arima::<f64, Deterministic>::new(array![0.5], array![0.3], 1, 1.0, 64, Deterministic::new(3));
+  p.sigma = -1.0;
+  let _ = p.sample();
+}
+
+#[test]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = NaN"
+)]
+fn a_nan_sigma_written_to_a_sarima_is_refused() {
+  let mut p = Sarima::<f64, Deterministic>::new(
+    array![0.5],
+    array![0.3],
+    array![0.2],
+    array![0.1],
+    1,
+    1,
+    4,
+    1.0,
+    64,
+    Deterministic::new(3),
+  );
+  p.sigma = f64::NAN;
+  let _ = p.sample();
+}
+
+#[test]
+#[should_panic(
+  expected = "std_dev must satisfy `std_dev.is_finite() && std_dev >= T::zero()`, got std_dev = -1.0"
+)]
+fn a_negative_deviation_written_to_white_noise_is_refused() {
+  let mut p = Wn::<f64, Deterministic>::new(64, None, Some(1.0), Deterministic::new(3));
+  p.std_dev = Some(-1.0);
+  let _ = p.sample();
+}
+
+/// A size law the kernels do not draw, so only the zero intensity makes these processes device-ready.
+fn jump_sizes() -> SimdUniform<f64> {
+  SimdUniform::new(-0.1, 0.1)
+}
+
+fn is_the_diffusion_alone(finite: bool, ready: bool, intensity: Option<f64>) {
+  assert!(finite, "a zero intensity samples a finite path");
+  assert!(ready, "with no jumps the size law never reaches a kernel");
+  assert_eq!(intensity, None, "a zero intensity launches no jump block");
+}
+
+#[test]
+fn a_zero_intensity_merton_is_its_diffusion() {
+  let p = Merton::new(
+    0.05,
+    0.2,
+    0.0,
+    0.0,
+    jump_sizes(),
+    64,
+    Some(1.0),
+    Some(1.0),
+    Deterministic::new(9),
+  );
+  is_the_diffusion_alone(
+    p.sample().iter().all(|x| x.is_finite()),
+    p.device_ready(),
+    EulerCoefficients::jump_intensity(&p),
+  );
+}
+
+#[test]
+fn a_zero_intensity_kou_is_its_diffusion() {
+  let p = Kou::new(
+    0.05,
+    0.2,
+    0.0,
+    0.0,
+    jump_sizes(),
+    64,
+    Some(1.0),
+    Some(1.0),
+    Deterministic::new(9),
+  );
+  is_the_diffusion_alone(
+    p.sample().iter().all(|x| x.is_finite()),
+    p.device_ready(),
+    EulerCoefficients::jump_intensity(&p),
+  );
+}
+
+#[test]
+fn a_zero_intensity_levy_diffusion_is_its_diffusion() {
+  let p = LevyDiffusion::new(
+    0.05,
+    0.2,
+    0.0,
+    jump_sizes(),
+    64,
+    Some(1.0),
+    Some(1.0),
+    Deterministic::new(9),
+  );
+  is_the_diffusion_alone(
+    p.sample().iter().all(|x| x.is_finite()),
+    p.device_ready(),
+    EulerCoefficients::jump_intensity(&p),
+  );
+}
+
+#[test]
+fn a_zero_intensity_bates_is_its_diffusion() {
+  let p = Bates1996::new(
+    Some(0.05),
+    None,
+    None,
+    None,
+    0.0,
+    0.0,
+    0.04,
+    1.5,
+    0.3,
+    -0.6,
+    jump_sizes(),
+    64,
+    Some(100.0),
+    Some(0.04),
+    Some(1.0),
+    Some(false),
+    Deterministic::new(9),
+  );
+  let [s, v] = p.sample();
+  is_the_diffusion_alone(
+    s.iter().chain(v.iter()).all(|x| x.is_finite()),
+    p.device_ready(),
+    EulerSystem::jump_intensity(&p),
+  );
+}
+
+#[test]
+fn a_zero_intensity_jump_fou_is_its_diffusion() {
+  let p = JumpFou::new(
+    0.65,
+    1.5,
+    0.0,
+    0.2,
+    0.0,
+    jump_sizes(),
+    64,
+    Some(0.0),
+    Some(1.0),
+    Deterministic::new(9),
+  );
+  is_the_diffusion_alone(
+    p.sample().iter().all(|x| x.is_finite()),
+    p.device_ready(),
+    EulerCoefficients::jump_intensity(&p),
+  );
 }

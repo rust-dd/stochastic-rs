@@ -245,6 +245,18 @@ fn moving_average_agrees_with_the_cpu_law() {
   );
 }
 
+/// A `sigma` written past `new` is refused before a launch, with the message the host gives.
+#[test]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = NaN"
+)]
+fn a_nan_sigma_written_past_new_never_reaches_a_launch() {
+  let mut ma =
+    MAq::<f32, _>::new(Array1::from(vec![0.4]), 0.2, 64, Deterministic::new(193)).on::<Device>();
+  ma.sigma = f32::NAN;
+  let _ = ma.sample();
+}
+
 /// An order the engine's state slots do not carry — two autoregressive lags,
 /// two GARCH lags — keeps the process on the host on any backend: the device
 /// build says so through `device_ready()` and is the host build to the bit.

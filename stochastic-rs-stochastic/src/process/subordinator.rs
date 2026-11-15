@@ -176,4 +176,24 @@ mod tests {
     assert_eq!(x.len(), 512);
     assert!(x.iter().all(|v| v.is_finite()));
   }
+
+  #[test]
+  fn ctrw_counts_a_dense_event_stream_in_full() {
+    let p = Ctrw::new(
+      CtrwWaitingLaw::Exponential { rate: 4.0e6_f64 },
+      CtrwJumpLaw::Normal {
+        mean: 1.0,
+        std: 1e-6,
+      },
+      2,
+      None,
+      Some(1.0),
+      Deterministic::new(2),
+    );
+    let events = p.sample()[1];
+    assert!(
+      (events / 4.0e6 - 1.0).abs() < 0.01,
+      "Poisson(4e6) unit jumps, a ±20σ band; got {events}"
+    );
+  }
 }
