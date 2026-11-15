@@ -147,7 +147,7 @@ pub fn bns_jump_test<T: FloatExt>(
   let tpq = tripower_quarticity(returns).to_f64().unwrap();
   let theta = (std::f64::consts::FRAC_PI_2).powi(2) + std::f64::consts::PI - 5.0;
   let nn = n as f64;
-  if !(bv > 0.0 && rv > 0.0 && tpq > 0.0) {
+  if !(bv > 0.0 && rv > 0.0) {
     return Err(StatsError::DegenerateData("zero bipower variation"));
   }
   // TPQ alone scales the quarticity: realized quarticity is not jump-robust and would absorb the
@@ -275,6 +275,14 @@ mod tests {
   fn medrv_zero_when_too_short() {
     let r = array![0.01_f64];
     assert_eq!(medrv(r.view()), 0.0);
+  }
+
+  #[test]
+  fn a_zero_tripower_quarticity_keeps_the_statistic_defined() {
+    let r = Array1::from_iter((0..90).map(|i| [0.01, -0.012, 0.0][i % 3]));
+    let test = bns_jump_test(r.view(), 0.05).unwrap();
+    assert_eq!(test.tpq, 0.0);
+    assert!(test.bv > 0.0 && test.statistic.is_finite(), "{test:?}");
   }
 
   #[test]
