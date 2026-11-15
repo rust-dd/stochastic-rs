@@ -2,14 +2,14 @@
 //! recurrence's exact first term, below it one Bessel ratio against the exact squares.
 
 use super::SimdGig;
+use super::ratio_moment::clock;
+use super::ratio_moment::half_ratio_at;
 use super::ratio_moment::ratio_moment;
 use super::ratio_moment::saddle_route;
 use super::ratio_moment::saddle_scale;
 use crate::SimdFloatExt;
 use crate::special::LARGE_ORDER;
 use crate::special::Scaled;
-use crate::special::k_half_ratio;
-use crate::special::ln_two_over;
 use crate::special::two_sum;
 
 /// `2¹⁰²¹`, an eighth of `2¹⁰²⁴`: the sum is formed at `2⁻³`, where no part or pair overflows.
@@ -113,25 +113,10 @@ fn moment_parts((lambda, root_chi, root_psi): (f64, f64, f64)) -> Scaled {
 }
 
 /// `E X` below order 50 from one ratio, `2g_λ(ω)/ψ` from `λ = −½`, `χ/2g_{−λ−1}(ω)` below, against
-/// the exact squares; the ratio reads `ω` and `ln(2/ω)` as the plain route, its error alone left.
-fn ratio_mean(
-  lambda: f64,
-  (root_chi, root_psi): (f64, f64),
-  (chi, psi): (Scaled, Scaled),
-) -> Scaled {
-  let omega = root_chi * root_psi;
-  // `ln(2/ω)`, which only Temme's sums below `ω = 2` read.
-  let d = if omega < 2.0 {
-    ln_two_over(root_chi, root_psi, omega)
-  } else {
-    0.0
-  };
-  let (upper, order) = if lambda >= -0.5 {
-    (true, lambda)
-  } else {
-    (false, -lambda - 1.0)
-  };
-  let (j, g) = k_half_ratio(order, omega, d);
+/// the exact squares; the ratio is the plain route's own, its error alone left.
+fn ratio_mean(lambda: f64, roots: (f64, f64), (chi, psi): (Scaled, Scaled)) -> Scaled {
+  let (omega, d) = clock(roots);
+  let (upper, j, g) = half_ratio_at(lambda, omega, d);
   let twice = Scaled::new(g).shift(j + 1);
   if upper {
     twice.div(psi)
