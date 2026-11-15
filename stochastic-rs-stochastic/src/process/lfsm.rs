@@ -4,6 +4,7 @@
 //! X_t=\int_{\mathbb{R}}\left(\max(t-u,0)^{H-1/\alpha}-\max(-u,0)^{H-1/\alpha}\right)\,dL_u^{\alpha}
 //! $$
 //!
+//! Reference: Stoev, S., Taqqu, M. S. (2004), "Simulation methods for linear fractional stable motion and FARIMA using the Fast Fourier Transform", Fractals 12(1) 95–121, DOI 10.1142/S0218348X04002379.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -127,6 +128,25 @@ impl<T: FloatExt, S: SeedExt, B> Lfsm<T, S, B> {
   fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1))
   }
+
+  /// The weights `dt^d ((k + 1)^d − k^d)` of lags `0..len`, `d = H − 1/α`, formed in `f64`, where
+  /// the difference of nearly equal powers keeps its digits.
+  fn kernel_weights(&self, len: usize) -> Vec<T> {
+    let d = self.hurst.to_f64().unwrap() - 1.0 / self.alpha.to_f64().unwrap();
+    let kernel_scale = self.dt().to_f64().unwrap().powf(d);
+    (0..len)
+      .map(|k| {
+        let kf = k as f64;
+        T::from_f64_fast(kernel_scale * ((kf + 1.0).powf(d) - kf.powf(d)))
+      })
+      .collect()
+  }
+
+  /// The stable innovation's scale `scale · dt^{1/α}` over one step, in `f64` like the weights.
+  fn innovation_scale(&self) -> T {
+    let dt = self.dt().to_f64().unwrap();
+    T::from_f64_fast(self.scale.to_f64().unwrap() * dt.powf(1.0 / self.alpha.to_f64().unwrap()))
+  }
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
@@ -144,7 +164,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
       inv_alpha: T::one() / self.alpha,
       tail_exp: (T::one() - self.alpha) / self.alpha,
       b: beta_tan.atan() / self.alpha,
-      scale_s: self.scale * self.dt().powf(T::one() / self.alpha) * s,
+      scale_s: self.innovation_scale() * s,
       pi,
       half_pi: pi / two,
     }
@@ -169,17 +189,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   /// The moving-average weights `dt^d ((k + 1)^d − k^d)`, `d = H − 1/α`, one
   /// per lag, exactly as the host tabulates them.
   fn curves(&self) -> Option<Vec<Vec<T>>> {
-    let dt = self.dt();
-    let d = self.hurst - T::one() / self.alpha;
-    let kernel_scale = dt.powf(d);
-    Some(vec![
-      (0..self.n)
-        .map(|k| {
-          let kf = T::from_usize_(k);
-          kernel_scale * ((kf + T::one()).powf(d) - kf.powf(d))
-        })
-        .collect(),
-    ])
+    Some(vec![self.kernel_weights(self.n)])
   }
 
   fn device_seed(&self) -> u64 {
@@ -208,28 +218,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> LfsmSampler<T> {
-    let dt = self.dt();
-    let d = self.hurst - T::one() / self.alpha;
-    let kernel_scale = dt.powf(d);
-    let innovation_scale = self.scale * dt.powf(T::one() / self.alpha);
-
-    let stable = SimdAlphaStable::<T>::new(self.alpha, self.beta, innovation_scale, T::zero())
-      .seeded(&self.seed);
-
-    // Moving-average weights `w_k = dt^d ((k+1)^d - k^d)` are deterministic,
-    // so they are computed once and reused across samples.
-    let weight_len = self.n.saturating_sub(1);
-    let mut weights = Array1::<T>::zeros(weight_len);
-    for k in 0..weight_len {
-      let kf = T::from_usize_(k);
-      weights[k] = kernel_scale * ((kf + T::one()).powf(d) - kf.powf(d));
-    }
-
+    let stable =
+      SimdAlphaStable::<T>::new(self.alpha, self.beta, self.innovation_scale(), T::zero())
+        .seeded(&self.seed);
     LfsmSampler {
       n: self.n,
       x0: self.x0.unwrap_or(T::zero()),
       stable,
-      weights,
+      weights: Array1::from(self.kernel_weights(self.n.saturating_sub(1))),
     }
   }
 
@@ -370,5 +366,24 @@ mod tests {
     let x = p.sample();
     assert_eq!(x.len(), 256);
     assert!(x.iter().all(|v| v.is_finite()));
+  }
+
+  #[test]
+  fn the_kernel_weights_keep_their_digits_in_single_precision() {
+    let p = Lfsm::<f32, Unseeded>::new(1.5, 0.0, 0.7, 1.0, 1025, None, Some(1.0), Unseeded);
+    let w = p.kernel_weights(1001);
+    let exact = [
+      (1usize, 0.018_551_870_37_f64),
+      (50, 5.970_818_98e-4),
+      (500, 6.502_967_821e-5),
+      (1000, 3.329_090_422e-5),
+    ];
+    for (k, e) in exact {
+      assert!(
+        (w[k] as f64 / e - 1.0).abs() < 1e-6,
+        "k = {k}: got {}, exact {e}",
+        w[k]
+      );
+    }
   }
 }

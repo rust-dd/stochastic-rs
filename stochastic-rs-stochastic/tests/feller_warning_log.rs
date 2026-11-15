@@ -96,15 +96,23 @@ fn boundary_violations_warn_through_log_unless_reflected() {
   assert_eq!(records.len(), 7, "{records:?}");
   assert!(records.iter().all(|(level, _)| *level == Level::Warn));
 
-  black_box(BlackKarasinski::<f64>::new(
-    short_rate as fn(f64) -> f64,
-    0.0,
-    0.2,
-    16,
-    None,
-    None,
-    Unseeded,
-  ));
+  let black_karasinski = |a: f64| {
+    black_box(BlackKarasinski::<f64>::new(
+      short_rate as fn(f64) -> f64,
+      a,
+      0.2,
+      16,
+      None,
+      None,
+      Unseeded,
+    ));
+  };
+  black_karasinski(0.0);
+  assert!(
+    drain().is_empty(),
+    "a = 0 is the Brownian limit, not a boundary violation"
+  );
+  black_karasinski(-0.3);
   assert_eq!(drain().len(), 1);
 
   black_box(Cir::<f64>::new(
