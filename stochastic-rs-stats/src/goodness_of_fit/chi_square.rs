@@ -104,17 +104,18 @@ pub fn chi_square_critical_value(alpha: f64, df: usize) -> f64 {
     .expect("SimdChiSquared has a closed-form quantile")
 }
 
-/// Pearson's chi-square test of bin counts against a fully specified null's bin masses; `Err` on
-/// fewer than 2 bins or an expected count below 1, panics unless masses sum to 1, `0 < alpha < 1`.
+/// Pearson's chi-square test of counts against a fully specified null's masses; `Err` below 2 bins
+/// or an expected count below 1; panics unless lengths match, masses sum to 1 and `0 < alpha < 1`.
 pub fn chi_square_gof_test(
   observed: &[u64],
   expected_prob: &[f64],
   cfg: ChiSquareGofConfig,
 ) -> Result<ChiSquareGofTest, StatsError> {
-  assert_eq!(
-    observed.len(),
+  assert!(
+    expected_prob.len() == observed.len(),
+    "expected_prob must satisfy `expected_prob.len() == observed.len()`, got expected_prob.len() = {}, observed.len() = {}",
     expected_prob.len(),
-    "observed/expected_prob length mismatch"
+    observed.len()
   );
   assert_alpha(cfg.alpha);
   if observed.len() < 2 {
@@ -129,7 +130,7 @@ pub fn chi_square_gof_test(
   let prob_sum = expected_prob.iter().sum::<f64>();
   assert!(
     (prob_sum - 1.0).abs() < 1e-6,
-    "expected_prob must sum to 1, got {prob_sum}"
+    "expected_prob must satisfy `(expected_prob.iter().sum() - 1.0).abs() < 1e-6`, got expected_prob.iter().sum() = {prob_sum:?}"
   );
 
   let mut statistic = 0.0_f64;
@@ -307,6 +308,22 @@ mod tests {
       best_p > 0.01,
       "every seed gave p <= 0.01 (best {best_p}); likely a bug, not bad luck"
     );
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "expected_prob must satisfy `expected_prob.len() == observed.len()`, got expected_prob.len() = 2, observed.len() = 3"
+  )]
+  fn unequal_lengths_are_a_precondition() {
+    let _ = chi_square_gof_test(&[1, 2, 3], &[0.5, 0.5], ChiSquareGofConfig::default());
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "expected_prob must satisfy `(expected_prob.iter().sum() - 1.0).abs() < 1e-6`, got expected_prob.iter().sum() = 0.9"
+  )]
+  fn masses_off_one_are_a_precondition() {
+    let _ = chi_square_gof_test(&[10, 20], &[0.4, 0.5], ChiSquareGofConfig::default());
   }
 
   /// Poisson(10) samples tested against Poisson(16)'s bins must reject.
