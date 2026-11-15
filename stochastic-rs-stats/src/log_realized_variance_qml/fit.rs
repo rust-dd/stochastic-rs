@@ -4,33 +4,28 @@ use super::LogRealizedVarianceParameters;
 use super::LogRealizedVarianceQmlBounds;
 use super::LogRealizedVarianceQmlConfig;
 use super::LogRealizedVarianceQmlDiagnostics;
-use super::LogRealizedVarianceQmlError;
 use super::LogRealizedVarianceQmlResult;
 use super::filter::filter_centered_log_observations;
 use super::math::measurement_moments;
 use super::math::validate_config;
 use super::math::validate_observations;
 use super::uncertainty::estimate_parameter_uncertainty;
+use crate::StatsError;
 use crate::optim::nelder_mead;
 
 const START_COUNT: usize = 7;
 const OBJECTIVE_PENALTY: f64 = 1e300;
 
-/// Fits the scalar log-realized-variance state-space model by Gaussian QML.
-///
-/// Inputs must be positive, finite, annualised RV estimates from
-/// non-overlapping blocks with the effective degrees of freedom in `config`.
-/// When no multistart converges, the best valid fit is still returned with
-/// `quality.optimizer_converged == false`; only an entirely invalid
-/// optimization surface is an error.
+/// Gaussian QML fit of the log-RV state space; an unconverged best start is `Ok`, see `quality`.
+/// `Err` on too few, non-finite or non-positive RV or no finite start; an invalid `config` panics.
 pub fn fit_log_realized_variance_qml(
   realized_variance: ArrayView1<f64>,
   config: LogRealizedVarianceQmlConfig,
-) -> Result<LogRealizedVarianceQmlResult, LogRealizedVarianceQmlError> {
-  validate_config(config)?;
+) -> Result<LogRealizedVarianceQmlResult, StatsError> {
+  validate_config(config);
   let realized_variance = realized_variance.to_vec();
   validate_observations(&realized_variance, config.minimum_observations)?;
-  let measurement = measurement_moments(config.block_degrees_of_freedom)?;
+  let measurement = measurement_moments(config.block_degrees_of_freedom);
   let observations = realized_variance
     .iter()
     .map(|value| value.ln() - measurement.log_bias)
@@ -92,7 +87,11 @@ pub fn fit_log_realized_variance_qml(
   }
   let selected = match best.or(best_unconverged) {
     Some(selected) => selected,
-    None => return Err(LogRealizedVarianceQmlError::OptimizationFailed),
+    None => {
+      return Err(StatsError::Numerical {
+        stage: "optimisation",
+      });
+    }
   };
   finish_result(
     selected,
@@ -121,7 +120,7 @@ fn finish_result(
   bounds: LogRealizedVarianceQmlBounds,
   total_iterations: usize,
   converged_starts: usize,
-) -> Result<LogRealizedVarianceQmlResult, LogRealizedVarianceQmlError> {
+) -> Result<LogRealizedVarianceQmlResult, StatsError> {
   let current_index = selected.filtered.filtered_log_variance_path.len() - 1;
   let current_log_variance = selected.filtered.filtered_log_variance_path[current_index];
   let current_covariance = selected.filtered.filtered_state_covariance_path[current_index];
@@ -184,12 +183,11 @@ fn finish_result(
   })
 }
 
-fn lognormal_mean(log_mean: f64, log_variance: f64) -> Result<f64, LogRealizedVarianceQmlError> {
+fn lognormal_mean(log_mean: f64, log_variance: f64) -> Result<f64, StatsError> {
   let value = (log_mean + 0.5 * log_variance).exp();
   if !(value.is_finite() && value > 0.0) {
-    return Err(LogRealizedVarianceQmlError::NumericalFailure {
+    return Err(StatsError::Numerical {
       stage: "arithmetic variance conversion",
-      index: 0,
     });
   }
   Ok(value)

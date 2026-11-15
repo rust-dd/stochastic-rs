@@ -32,9 +32,9 @@ use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::gamma;
 
 use super::HurstDiagnostic;
-use super::HurstError;
 use super::HurstEstimator;
 use super::HurstResult;
+use crate::StatsError;
 use crate::optim::more_thuente;
 use crate::traits::FloatExt;
 
@@ -89,11 +89,11 @@ impl Whittle {
 }
 
 impl<T: FloatExt> HurstEstimator<T> for Whittle {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, HurstError> {
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, StatsError> {
     if x.len() < 30 {
-      return Err(HurstError::TooFewObservations {
+      return Err(StatsError::InsufficientData {
+        needed: 30,
         got: x.len(),
-        required: 30,
       });
     }
     let log_rv: Vec<f64> = x.iter().map(|v| v.to_f64().unwrap_or(f64::NAN)).collect();

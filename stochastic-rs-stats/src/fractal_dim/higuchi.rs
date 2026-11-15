@@ -9,9 +9,9 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 
 use super::FdDiagnostic;
-use super::FdError;
 use super::FdResult;
 use super::FractalDimEstimator;
+use crate::StatsError;
 use crate::traits::FloatExt;
 
 /// Higuchi fractal-dimension estimator.
@@ -35,7 +35,7 @@ impl Higuchi {
 }
 
 impl<T: FloatExt> FractalDimEstimator<T> for Higuchi {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<FdResult<T>, FdError> {
+  fn estimate(&self, x: ArrayView1<T>) -> Result<FdResult<T>, StatsError> {
     let n_obs = x.len();
     let (d, intercept, r_squared, log_scales, log_stats) =
       compute_with_diagnostic::<T>(x, self.kmax)?;
@@ -54,23 +54,17 @@ impl<T: FloatExt> FractalDimEstimator<T> for Higuchi {
   }
 }
 
-/// Compute the Higuchi fractal dimension of `x`.
+/// Higuchi fractal dimension of `x`, the slope of `log L(k)` against `log(1/k)`:
 ///
 /// $$
 /// L_m(k) = \frac{N - 1}{k \cdot n_{max}} \cdot \frac{1}{k}
 ///          \sum_{j=1}^{n_{max}} |X_{m+jk} - X_{m+(j-1)k}|,
 /// \quad
-/// L(k) = \frac{1}{k} \sum_{m=1}^{k} L_m(k),
+/// L(k) = \frac{1}{k} \sum_{m=1}^{k} L_m(k).
 /// $$
 ///
-/// and the dimension is the slope of `log L(k)` against `log(1/k)`.
-///
-/// Returns `Err(FdError::PathTooShort)` for `< 3` points,
-/// `Err(FdError::KmaxTooSmall)` for `kmax < 2`,
-/// `Err(FdError::NotEnoughScales)` when fewer than two valid scales
-/// survive the finiteness filter, and `Err(FdError::RegressionFailed)`
-/// if the underlying linear regression cannot be solved.
-pub fn compute<T: FloatExt>(x: ArrayView1<T>, kmax: usize) -> Result<T, FdError> {
+/// `Err` below 3 points, for `kmax < 2`, on fewer than two finite scales or a singular regression.
+pub fn compute<T: FloatExt>(x: ArrayView1<T>, kmax: usize) -> Result<T, StatsError> {
   let (d, _, _, _, _) = compute_with_diagnostic::<T>(x, kmax)?;
   Ok(T::from_f64_fast(d))
 }
@@ -81,16 +75,20 @@ pub fn compute<T: FloatExt>(x: ArrayView1<T>, kmax: usize) -> Result<T, FdError>
 pub(crate) fn compute_with_diagnostic<T: FloatExt>(
   x: ArrayView1<T>,
   kmax: usize,
-) -> Result<(f64, f64, f64, Vec<f64>, Vec<f64>), FdError> {
+) -> Result<(f64, f64, f64, Vec<f64>, Vec<f64>), StatsError> {
   let n_times = x.len();
   if n_times < 3 {
-    return Err(FdError::PathTooShort {
+    return Err(StatsError::InsufficientData {
+      needed: 3,
       got: n_times,
-      required: 3,
     });
   }
   if kmax < 2 {
-    return Err(FdError::KmaxTooSmall(kmax));
+    return Err(StatsError::InvalidParameter {
+      name: "kmax",
+      value: kmax as f64,
+      constraint: "kmax >= 2",
+    });
   }
 
   let k_upper = kmax.min(n_times - 1);
@@ -134,12 +132,12 @@ pub(crate) fn compute_with_diagnostic<T: FloatExt>(
   }
 
   if used < 2 {
-    return Err(FdError::NotEnoughScales);
+    return Err(StatsError::DegenerateData("fewer than two valid scales"));
   }
   let x_slice = &x_reg.as_slice().unwrap()[..used];
   let y_slice = &y_reg.as_slice().unwrap()[..used];
   let (slope, intercept) =
-    linear_regression(x_slice, y_slice).map_err(|_| FdError::RegressionFailed)?;
+    linear_regression(x_slice, y_slice).map_err(|_| StatsError::Singular("log-log regression"))?;
 
   let log_scales: Vec<f64> = x_slice.to_vec();
   let log_stats: Vec<f64> = y_slice.to_vec();

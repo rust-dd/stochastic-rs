@@ -2,7 +2,6 @@ use ndarray::Array1;
 
 use super::HestonCekfConsistencyBounds;
 use super::HestonCekfCorrection;
-use super::HestonCekfError;
 use super::HestonCekfFilterConfig;
 use super::HestonCekfPositiveStatePolicy;
 use super::HestonCekfState;
@@ -11,6 +10,7 @@ use super::filter_heston_cekf;
 use super::heston_cekf_step;
 use super::test_support::assert_close;
 use super::test_support::simulate_heston_prices;
+use crate::StatsError;
 
 #[test]
 fn fixed_filter_matches_repeated_steps() {
@@ -58,6 +58,7 @@ fn future_prices_cannot_change_a_filtered_prefix() {
 }
 
 #[test]
+#[should_panic(expected = "|sigma| must satisfy `<= max_abs_sigma`")]
 fn consistent_filter_rejects_a_parameter_outside_prior_bounds() {
   let prices = Array1::from_vec(vec![100.0, 100.2]);
   let parameters = HestonNmleCekfParams::default();
@@ -72,13 +73,7 @@ fn consistent_filter_rejects_a_parameter_outside_prior_bounds() {
     ..HestonCekfFilterConfig::default()
   };
 
-  assert!(matches!(
-    filter_heston_cekf(prices.view(), parameters, &config),
-    Err(HestonCekfError::ConsistencyBoundViolated {
-      coefficient: "|sigma|",
-      ..
-    })
-  ));
+  let _ = filter_heston_cekf(prices.view(), parameters, &config);
 }
 
 #[test]
@@ -215,9 +210,8 @@ fn a_filter_floor_hit_is_a_typed_hard_failure() {
 
   assert!(matches!(
     result,
-    Err(HestonCekfError::FilterFloorHit {
-      quantity: "updated variance",
-      ..
+    Err(StatsError::Numerical {
+      stage: "updated variance"
     })
   ));
 }
@@ -294,22 +288,31 @@ fn fixed_filter_aggregates_indexed_projection_diagnostics() {
   );
 }
 
-#[test]
-fn projection_floor_must_be_finite_and_above_the_numerical_floor() {
+fn filter_with_projection_floor(floor: f64) {
   let prices = Array1::from_vec(vec![100.0, 100.1]);
-  for floor in [f64::NAN, 0.0, 1e-12] {
-    let config = HestonCekfFilterConfig {
-      positive_state_policy: HestonCekfPositiveStatePolicy::Project { floor },
-      ..HestonCekfFilterConfig::default()
-    };
-    assert!(matches!(
-      filter_heston_cekf(prices.view(), HestonNmleCekfParams::default(), &config),
-      Err(HestonCekfError::InvalidValue {
-        field: "positive state projection floor",
-        ..
-      })
-    ));
-  }
+  let config = HestonCekfFilterConfig {
+    positive_state_policy: HestonCekfPositiveStatePolicy::Project { floor },
+    ..HestonCekfFilterConfig::default()
+  };
+  let _ = filter_heston_cekf(prices.view(), HestonNmleCekfParams::default(), &config);
+}
+
+#[test]
+#[should_panic(expected = "floor must satisfy `floor > EPS`, got floor = NaN")]
+fn a_nan_projection_floor_panics() {
+  filter_with_projection_floor(f64::NAN);
+}
+
+#[test]
+#[should_panic(expected = "floor must satisfy `floor > EPS`, got floor = 0.0")]
+fn a_zero_projection_floor_panics() {
+  filter_with_projection_floor(0.0);
+}
+
+#[test]
+#[should_panic(expected = "floor must satisfy `floor > EPS`, got floor = 1e-12")]
+fn a_projection_floor_at_the_numerical_floor_panics() {
+  filter_with_projection_floor(1e-12);
 }
 
 #[test]
@@ -332,9 +335,8 @@ fn projection_does_not_mask_an_invalid_predicted_state() {
 
   assert!(matches!(
     heston_cekf_step(previous, 0.0, parameters, &config),
-    Err(HestonCekfError::FilterFloorHit {
-      quantity: "predicted variance",
-      ..
+    Err(StatsError::Numerical {
+      stage: "predicted variance"
     })
   ));
 }
@@ -361,9 +363,8 @@ fn projection_does_not_mask_a_nonfinite_updated_state() {
       },
       &config
     ),
-    Err(HestonCekfError::FilterFloorHit {
-      quantity: "updated variance",
-      value
-    }) if !value.is_finite()
+    Err(StatsError::Numerical {
+      stage: "updated variance"
+    })
   ));
 }

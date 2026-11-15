@@ -26,12 +26,12 @@
 use ndarray::ArrayView1;
 
 use super::HurstDiagnostic;
-use super::HurstError;
 use super::HurstEstimator;
 use super::HurstResult;
 use super::log_spaced_windows;
 use super::to_f64_vec;
 use super::weighted_linreg;
+use crate::StatsError;
 use crate::traits::FloatExt;
 
 /// Detrended fluctuation analysis Hurst estimator.
@@ -79,41 +79,48 @@ impl Dfa {
 }
 
 impl<T: FloatExt> HurstEstimator<T> for Dfa {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, HurstError> {
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, StatsError> {
     let n = x.len();
     if self.order < 1 {
-      return Err(HurstError::InvalidParameter("order", self.order as f64));
+      return Err(StatsError::InvalidParameter {
+        name: "order",
+        value: self.order as f64,
+        constraint: "order >= 1",
+      });
     }
     if !(0.0..1.0).contains(&self.overlap_pct) {
-      return Err(HurstError::InvalidParameter(
-        "overlap_pct",
-        self.overlap_pct,
-      ));
+      return Err(StatsError::InvalidParameter {
+        name: "overlap_pct",
+        value: self.overlap_pct,
+        constraint: "0.0 <= overlap_pct < 1.0",
+      });
     }
     if self.min_window < self.order + 2 {
-      return Err(HurstError::InvalidParameter(
-        "min_window",
-        self.min_window as f64,
-      ));
+      return Err(StatsError::InvalidParameter {
+        name: "min_window",
+        value: self.min_window as f64,
+        constraint: "min_window >= order + 2",
+      });
     }
     let min_required = (self.min_window * 4).max(self.order + 4);
     if n < min_required {
-      return Err(HurstError::TooFewObservations {
+      return Err(StatsError::InsufficientData {
+        needed: min_required,
         got: n,
-        required: min_required,
       });
     }
 
     let max_window = self.max_window.unwrap_or(n / 4).min(n / 2);
     if max_window <= self.min_window {
-      return Err(HurstError::InvalidParameter(
-        "max_window",
-        max_window as f64,
-      ));
+      return Err(StatsError::InvalidParameter {
+        name: "max_window",
+        value: max_window as f64,
+        constraint: "max_window > min_window",
+      });
     }
     let windows = log_spaced_windows(self.min_window, max_window, self.n_windows);
     if windows.len() < 2 {
-      return Err(HurstError::NotEnoughScales);
+      return Err(StatsError::DegenerateData("fewer than two valid scales"));
     }
 
     let xs = to_f64_vec::<T>(x);
@@ -175,13 +182,13 @@ impl<T: FloatExt> HurstEstimator<T> for Dfa {
     }
 
     if log_s.len() < 2 {
-      return Err(HurstError::NotEnoughScales);
+      return Err(StatsError::DegenerateData("fewer than two valid scales"));
     }
 
     let (alpha, intercept, r_squared) =
-      weighted_linreg(&log_s, &log_f, None).ok_or(HurstError::RegressionFailed)?;
+      weighted_linreg(&log_s, &log_f, None).ok_or(StatsError::Singular("log-log regression"))?;
     if !alpha.is_finite() {
-      return Err(HurstError::RegressionFailed);
+      return Err(StatsError::Singular("log-log regression"));
     }
 
     let h = if self.assume_integrated {

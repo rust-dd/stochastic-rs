@@ -32,12 +32,12 @@ use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::ln_gamma;
 
 use super::HurstDiagnostic;
-use super::HurstError;
 use super::HurstEstimator;
 use super::HurstResult;
 use super::log_spaced_windows;
 use super::to_f64_vec;
 use super::weighted_linreg;
+use crate::StatsError;
 use crate::traits::FloatExt;
 
 /// Rescaled-range Hurst estimator.
@@ -79,38 +79,41 @@ impl RescaledRange {
 }
 
 impl<T: FloatExt> HurstEstimator<T> for RescaledRange {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, HurstError> {
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, StatsError> {
     let n = x.len();
     let min_required = self.min_window.max(8) * 2;
     if n < min_required {
-      return Err(HurstError::TooFewObservations {
+      return Err(StatsError::InsufficientData {
+        needed: min_required,
         got: n,
-        required: min_required,
       });
     }
     if self.min_window < 4 {
-      return Err(HurstError::InvalidParameter(
-        "min_window",
-        self.min_window as f64,
-      ));
+      return Err(StatsError::InvalidParameter {
+        name: "min_window",
+        value: self.min_window as f64,
+        constraint: "min_window >= 4",
+      });
     }
     if self.n_windows < 4 {
-      return Err(HurstError::InvalidParameter(
-        "n_windows",
-        self.n_windows as f64,
-      ));
+      return Err(StatsError::InvalidParameter {
+        name: "n_windows",
+        value: self.n_windows as f64,
+        constraint: "n_windows >= 4",
+      });
     }
 
     let max_window = self.max_window.unwrap_or(n / 4).min(n / 2);
     if max_window <= self.min_window {
-      return Err(HurstError::InvalidParameter(
-        "max_window",
-        max_window as f64,
-      ));
+      return Err(StatsError::InvalidParameter {
+        name: "max_window",
+        value: max_window as f64,
+        constraint: "max_window > min_window",
+      });
     }
     let windows = log_spaced_windows(self.min_window, max_window, self.n_windows);
     if windows.len() < 2 {
-      return Err(HurstError::NotEnoughScales);
+      return Err(StatsError::DegenerateData("fewer than two valid scales"));
     }
 
     let xs_raw = to_f64_vec::<T>(x);
@@ -155,13 +158,13 @@ impl<T: FloatExt> HurstEstimator<T> for RescaledRange {
     }
 
     if log_n.len() < 2 {
-      return Err(HurstError::NotEnoughScales);
+      return Err(StatsError::DegenerateData("fewer than two valid scales"));
     }
 
     let (slope, intercept, r_squared) =
-      weighted_linreg(&log_n, &log_rs, None).ok_or(HurstError::RegressionFailed)?;
+      weighted_linreg(&log_n, &log_rs, None).ok_or(StatsError::Singular("log-log regression"))?;
     if !slope.is_finite() {
-      return Err(HurstError::RegressionFailed);
+      return Err(StatsError::Singular("log-log regression"));
     }
 
     Ok(HurstResult {

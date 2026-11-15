@@ -30,11 +30,11 @@ use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::digamma;
 
 use super::HurstDiagnostic;
-use super::HurstError;
 use super::HurstEstimator;
 use super::HurstResult;
 use super::to_f64_vec;
 use super::weighted_linreg;
+use crate::StatsError;
 use crate::traits::FloatExt;
 
 /// Standard Daubechies-4 scaling (low-pass) filter coefficients,
@@ -94,16 +94,20 @@ impl Wavelet {
 }
 
 impl<T: FloatExt> HurstEstimator<T> for Wavelet {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, HurstError> {
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, StatsError> {
     let n_obs = x.len();
     if n_obs < 64 {
-      return Err(HurstError::TooFewObservations {
+      return Err(StatsError::InsufficientData {
+        needed: 64,
         got: n_obs,
-        required: 64,
       });
     }
     if self.j_min < 1 {
-      return Err(HurstError::InvalidParameter("j_min", self.j_min as f64));
+      return Err(StatsError::InvalidParameter {
+        name: "j_min",
+        value: self.j_min as f64,
+        constraint: "j_min >= 1",
+      });
     }
 
     let signal_raw = to_f64_vec::<T>(x);
@@ -114,9 +118,9 @@ impl<T: FloatExt> HurstEstimator<T> for Wavelet {
     };
     let n_series = signal.len();
     if n_series < 32 {
-      return Err(HurstError::TooFewObservations {
+      return Err(StatsError::InsufficientData {
+        needed: 32,
         got: n_series,
-        required: 32,
       });
     }
     let (h_filter, g_filter) = match self.wavelet {
@@ -129,12 +133,12 @@ impl<T: FloatExt> HurstEstimator<T> for Wavelet {
       .unwrap_or(max_levels.saturating_sub(2))
       .min(max_levels);
     if j_cap < self.j_min + 1 {
-      return Err(HurstError::NotEnoughScales);
+      return Err(StatsError::DegenerateData("fewer than two valid scales"));
     }
 
     let levels = pyramidal_dwt(&signal, &h_filter, &g_filter, j_cap);
     if levels.len() < 2 {
-      return Err(HurstError::NotEnoughScales);
+      return Err(StatsError::DegenerateData("fewer than two valid scales"));
     }
 
     let mut log_j = Vec::with_capacity(levels.len());
@@ -165,13 +169,13 @@ impl<T: FloatExt> HurstEstimator<T> for Wavelet {
     }
 
     if log_j.len() < 2 {
-      return Err(HurstError::NotEnoughScales);
+      return Err(StatsError::DegenerateData("fewer than two valid scales"));
     }
 
-    let (slope, intercept, r_squared) =
-      weighted_linreg(&log_j, &log_mu_corr, Some(&weights)).ok_or(HurstError::RegressionFailed)?;
+    let (slope, intercept, r_squared) = weighted_linreg(&log_j, &log_mu_corr, Some(&weights))
+      .ok_or(StatsError::Singular("log-log regression"))?;
     if !slope.is_finite() {
-      return Err(HurstError::RegressionFailed);
+      return Err(StatsError::Singular("log-log regression"));
     }
 
     // After (optional) differencing the series is FGN-like with

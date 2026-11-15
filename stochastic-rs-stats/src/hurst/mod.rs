@@ -96,7 +96,7 @@
 //! Westphal (2019, arXiv:1905.04852) estimate the roughness of a
 //! **latent volatility** process from a realized-variance time series —
 //! not the self-similarity exponent of a series sampled directly from,
-//! say, [`crate::stochastic::noise::fgn::Fgn`]. [`Whittle`] shares
+//! say, [`stochastic_rs_stochastic::noise::fgn::Fgn`]. [`Whittle`] shares
 //! [`HurstResult`]'s type with the other seven, so nothing stops you from
 //! calling `.estimate()` on a raw path — the type system cannot catch
 //! this, only the input construction can. Feeding a directly-sampled path
@@ -121,10 +121,9 @@
 //! | [`crate::fractal_dim::Variogram`] | 3 (same caveat) |
 //! | [`Whittle`] | 30 |
 
-use std::fmt;
-
 use ndarray::ArrayView1;
 
+use crate::StatsError;
 use crate::traits::FloatExt;
 
 pub mod dfa;
@@ -158,7 +157,7 @@ pub use whittle::Whittle;
 ///
 /// [`estimate`]: HurstEstimator::estimate
 pub trait HurstEstimator<T: FloatExt> {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, HurstError>;
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, StatsError>;
 }
 
 /// Point estimate plus method-specific diagnostics for the Hurst
@@ -221,49 +220,6 @@ pub enum HurstDiagnostic<T: FloatExt> {
   /// No diagnostic available.
   None,
 }
-
-/// Errors returned by [`HurstEstimator::estimate`].
-#[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum HurstError {
-  /// Input series is too short for the chosen estimator.
-  TooFewObservations { got: usize, required: usize },
-  /// Input series is constant or has zero variance.
-  DegeneratePath,
-  /// A configuration parameter is outside its admissible range.
-  InvalidParameter(&'static str, f64),
-  /// Log-log regression has fewer than two valid scale points.
-  NotEnoughScales,
-  /// Underlying linear regression failed.
-  RegressionFailed,
-  /// Numerical optimisation failed (Whittle and similar).
-  OptimizationFailed,
-}
-
-impl fmt::Display for HurstError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self {
-      HurstError::TooFewObservations { got, required } => {
-        write!(
-          f,
-          "input has {} points, estimator needs at least {}",
-          got, required
-        )
-      }
-      HurstError::DegeneratePath => write!(f, "path is constant or has zero variance"),
-      HurstError::InvalidParameter(name, value) => {
-        write!(f, "invalid parameter `{}`: {}", name, value)
-      }
-      HurstError::NotEnoughScales => {
-        write!(f, "fewer than two valid scales for log-log regression")
-      }
-      HurstError::RegressionFailed => write!(f, "log-log regression failed"),
-      HurstError::OptimizationFailed => write!(f, "Hurst optimisation failed to converge"),
-    }
-  }
-}
-
-impl std::error::Error for HurstError {}
 
 /// Weighted-least-squares regression `y ~ slope * x + intercept`.
 ///

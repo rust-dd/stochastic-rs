@@ -168,11 +168,6 @@ pub fn block_maxima<T: FloatExt>(data: ArrayView1<T>, block_size: usize) -> Arra
     .map(|v| v.to_f64().unwrap_or(f64::NAN))
     .collect();
   x.chunks_exact(block_size)
-    .map(|block| {
-      block
-        .iter()
-        .copied()
-        .fold(f64::NEG_INFINITY, f64::max_or_nan)
-    })
+    .map(|block| f64::max_or_nan_fold(block.iter().copied()))
     .collect()
 }

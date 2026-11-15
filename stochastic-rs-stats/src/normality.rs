@@ -8,7 +8,7 @@
 //! | [`anderson_darling::anderson_darling_normal_test`] | tail behaviour | Stephens p-value, hard on heavy tails |
 //! | [`shapiro_francia::shapiro_francia_test`] | full shape | bootstrap p-value, slowest but powerful |
 //!
-//! ## Cross-module pairing with [`crate::distributions`]
+//! ## Cross-module pairing with [`stochastic_rs_distributions`]
 //!
 //! The [`stochastic_rs_distributions::normal::SimdNormal`] sampler from the
 //! `distributions` crate is the canonical generator for normal samples; the

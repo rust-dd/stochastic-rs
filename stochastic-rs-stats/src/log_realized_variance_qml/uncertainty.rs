@@ -319,10 +319,13 @@ fn positive_definite_scaled(matrix: [[f64; 3]; 3]) -> bool {
 }
 
 fn infinity_norm(matrix: [[f64; 3]; 3]) -> f64 {
-  matrix
-    .iter()
-    .map(|row| row.iter().map(|value| value.abs()).sum::<f64>())
-    .fold(0.0, f64::max_or_nan)
+  f64::max_or_nan_fold(
+    std::iter::once(0.0).chain(
+      matrix
+        .iter()
+        .map(|row| row.iter().map(|value| value.abs()).sum::<f64>()),
+    ),
+  )
 }
 
 fn normalized_position(value: f64, lower: f64, upper: f64) -> f64 {

@@ -21,7 +21,7 @@
 //! [`kolmogorov_smirnov::kolmogorov_smirnov_test`] directly for
 //! continuous ones.
 //!
-//! ## Cross-module pairing with [`crate::distributions`]
+//! ## Cross-module pairing with [`stochastic_rs_distributions`]
 //!
 //! Both tests are written against an arbitrary `cdf` closure, so the
 //! natural reference is a distribution's own

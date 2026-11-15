@@ -7,17 +7,14 @@
 
 use ndarray::ArrayView1;
 
-use crate::hurst::HurstError;
+use crate::StatsError;
 
 /// Heston leverage ρ (`dW_S·dW_V = ρ dt`) proxied by the Pearson correlation of `r_t` with
 /// `|r_{t+1}| − |r_t|`; errors below 20 usable closes or on a (near-)zero-variance series.
-pub fn estimate_leverage_rho(closes: ArrayView1<f64>) -> Result<f64, HurstError> {
+pub fn estimate_leverage_rho(closes: ArrayView1<f64>) -> Result<f64, StatsError> {
   let n = closes.len();
   if n < 20 {
-    return Err(HurstError::TooFewObservations {
-      got: n,
-      required: 20,
-    });
+    return Err(StatsError::InsufficientData { needed: 20, got: n });
   }
 
   let mut rets = Vec::with_capacity(n - 1);
@@ -28,9 +25,9 @@ pub fn estimate_leverage_rho(closes: ArrayView1<f64>) -> Result<f64, HurstError>
     }
   }
   if rets.len() < 20 {
-    return Err(HurstError::TooFewObservations {
+    return Err(StatsError::InsufficientData {
+      needed: 20,
       got: rets.len(),
-      required: 20,
     });
   }
 
@@ -38,9 +35,9 @@ pub fn estimate_leverage_rho(closes: ArrayView1<f64>) -> Result<f64, HurstError>
   let vol: Vec<f64> = rets.iter().map(|r| r.abs()).collect();
   let pairs = rets.len() - 1;
   if pairs < 10 {
-    return Err(HurstError::TooFewObservations {
+    return Err(StatsError::InsufficientData {
+      needed: 10,
       got: pairs,
-      required: 10,
     });
   }
 
@@ -66,7 +63,7 @@ pub fn estimate_leverage_rho(closes: ArrayView1<f64>) -> Result<f64, HurstError>
 
   let denom = (sum_x2 * sum_y2).sqrt();
   if denom < 1e-15 {
-    return Err(HurstError::DegeneratePath);
+    return Err(StatsError::DegenerateData("constant or zero-variance path"));
   }
   Ok((sum_xy / denom).clamp(-0.99, 0.99))
 }
@@ -82,9 +79,9 @@ mod tests {
     let closes = Array1::from_elem(10, 100.0);
     assert_eq!(
       estimate_leverage_rho(closes.view()),
-      Err(HurstError::TooFewObservations {
-        got: 10,
-        required: 20
+      Err(StatsError::InsufficientData {
+        needed: 20,
+        got: 10
       })
     );
   }
@@ -94,7 +91,7 @@ mod tests {
     let closes = Array1::from_elem(50, 100.0);
     assert_eq!(
       estimate_leverage_rho(closes.view()),
-      Err(HurstError::DegeneratePath)
+      Err(StatsError::DegenerateData("constant or zero-variance path"))
     );
   }
 

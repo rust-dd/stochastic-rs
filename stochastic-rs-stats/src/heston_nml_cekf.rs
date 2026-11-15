@@ -9,9 +9,6 @@
 //! algorithm", *Science China Information Sciences* 61.
 //! DOI: 10.1007/s11432-017-9215-8
 
-use std::error::Error;
-use std::fmt;
-
 use crate::heston_mle::HestonMleResult;
 
 mod batch;
@@ -77,86 +74,6 @@ impl HestonNmleCekfParams {
     self
   }
 }
-
-/// Validation and filtering errors for the CEKF APIs.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum HestonCekfError {
-  TooFewPrices {
-    len: usize,
-  },
-  LengthMismatch {
-    prices: usize,
-    variances: usize,
-  },
-  InvalidValue {
-    field: &'static str,
-    value: f64,
-  },
-  InvalidPrice {
-    index: usize,
-    value: f64,
-  },
-  InvalidVariance {
-    index: usize,
-    value: f64,
-  },
-  NonPositiveSemidefiniteNoise,
-  ConsistencyBoundViolated {
-    coefficient: &'static str,
-    actual: f64,
-    bound: f64,
-  },
-  FilterFloorHit {
-    quantity: &'static str,
-    value: f64,
-  },
-}
-
-impl fmt::Display for HestonCekfError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self {
-      Self::TooFewPrices { len } => write!(f, "at least two prices are required, got {len}"),
-      Self::LengthMismatch { prices, variances } => write!(
-        f,
-        "price and variance lengths must match, got {prices} and {variances}"
-      ),
-      Self::InvalidValue { field, value } => write!(f, "{field} has invalid value {value}"),
-      Self::InvalidPrice { index, value } => {
-        write!(
-          f,
-          "price at index {index} must be finite and positive, got {value}"
-        )
-      }
-      Self::InvalidVariance { index, value } => write!(
-        f,
-        "variance at index {index} must be finite and positive, got {value}"
-      ),
-      Self::NonPositiveSemidefiniteNoise => {
-        write!(
-          f,
-          "the process-noise covariance must be positive semidefinite"
-        )
-      }
-      Self::ConsistencyBoundViolated {
-        coefficient,
-        actual,
-        bound,
-      } => write!(
-        f,
-        "consistent-filter bound for {coefficient} is {bound}, below actual magnitude {actual}"
-      ),
-      Self::FilterFloorHit { quantity, value } => {
-        write!(
-          f,
-          "CEKF {quantity} hit the numerical floor with raw value {value}"
-        )
-      }
-    }
-  }
-}
-
-impl Error for HestonCekfError {}
 
 #[cfg(test)]
 mod batch_tests;

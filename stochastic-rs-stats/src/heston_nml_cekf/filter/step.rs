@@ -7,8 +7,8 @@ use super::HestonCekfState;
 use super::HestonCekfStepDiagnostics;
 use super::HestonCekfStepResult;
 use super::HestonCekfVarianceProjection;
+use crate::StatsError;
 use crate::heston_nml_cekf::EPS;
-use crate::heston_nml_cekf::HestonCekfError;
 use crate::heston_nml_cekf::HestonNmleCekfParams;
 
 #[derive(Clone, Copy)]
@@ -23,7 +23,7 @@ pub(super) fn step_impl(
   parameters: HestonNmleCekfParams,
   config: &HestonCekfFilterConfig,
   floor_policy: FloorPolicy,
-) -> Result<HestonCekfStepResult, HestonCekfError> {
+) -> Result<HestonCekfStepResult, StatsError> {
   let variance = previous.variance.max(EPS);
   let covariance = previous.error_covariance_bound.max(EPS);
   let state_transition = 1.0 - parameters.kappa * config.delta;
@@ -117,7 +117,7 @@ fn constrain_updated_variance(
   raw_variance: f64,
   config: &HestonCekfFilterConfig,
   floor_policy: FloorPolicy,
-) -> Result<(f64, Option<HestonCekfVarianceProjection>), HestonCekfError> {
+) -> Result<(f64, Option<HestonCekfVarianceProjection>), StatsError> {
   if matches!(floor_policy, FloorPolicy::Clamp) {
     return Ok((raw_variance.max(EPS), None));
   }
@@ -128,9 +128,8 @@ fn constrain_updated_variance(
     )),
     HestonCekfPositiveStatePolicy::Project { floor } => {
       if !raw_variance.is_finite() {
-        return Err(HestonCekfError::FilterFloorHit {
-          quantity: "updated variance",
-          value: raw_variance,
+        return Err(StatsError::Numerical {
+          stage: "updated variance",
         });
       }
       if raw_variance >= floor {
@@ -151,12 +150,12 @@ fn apply_floor(
   value: f64,
   quantity: &'static str,
   floor_policy: FloorPolicy,
-) -> Result<f64, HestonCekfError> {
+) -> Result<f64, StatsError> {
   if value.is_finite() && value > EPS {
     return Ok(value);
   }
   match floor_policy {
-    FloorPolicy::Error => Err(HestonCekfError::FilterFloorHit { quantity, value }),
+    FloorPolicy::Error => Err(StatsError::Numerical { stage: quantity }),
     FloorPolicy::Clamp => Ok(value.max(EPS)),
   }
 }
