@@ -128,10 +128,8 @@ impl BermudanLsmPricer {
   }
 }
 
-/// Generate `n_paths` independent Gbm paths on a uniform time grid using
-/// the project's [`GbmLog`] process (log-Euler scheme). Returns an
-/// `(n_paths, n_steps + 1)` matrix where column `0` is the spot and column
-/// `n_steps` the terminal value.
+/// `n_paths` independent [`GbmLog`] paths as an `(n_paths, n_steps + 1)` matrix, the spot in column
+/// `0` and the terminal value in column `n_steps`; panics if `n_steps` is zero.
 pub fn generate_gbm_paths(
   s0: f64,
   r: f64,
@@ -141,6 +139,10 @@ pub fn generate_gbm_paths(
   n_paths: usize,
   n_steps: usize,
 ) -> Array2<f64> {
+  assert!(
+    n_steps >= 1,
+    "n_steps must satisfy `n_steps >= 1`, got n_steps = {n_steps:?}"
+  );
   let b = r - q;
   let process = GbmLog::<f64>::new(
     None,
@@ -248,5 +250,11 @@ mod tests {
     let eu = eu_sum / n_paths as f64 * (-r * t).exp();
     let diff = (berm - eu).abs();
     assert!(diff < 1e-9, "berm={berm}, eu={eu}");
+  }
+
+  #[test]
+  #[should_panic(expected = "n_steps must satisfy `n_steps >= 1`, got n_steps = 0")]
+  fn a_grid_of_no_steps_is_refused() {
+    let _ = generate_gbm_paths(100.0, 0.05, 0.0, 0.2, 1.0, 8, 0);
   }
 }

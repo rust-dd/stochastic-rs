@@ -13,6 +13,7 @@ use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 
 use crate::traits::ModelPricer;
 use crate::traits::ProcessExt;
+use crate::traits::RealExt;
 use crate::traits::VanillaEuropeanCall;
 
 /// Laplace kernel of bandwidth `l`; `l = 0` is the Dirac limit (zero density, right-continuous step
@@ -43,8 +44,54 @@ fn laplace_cdf(x: f64, l: f64) -> f64 {
   0.5 * (1.0 + x.signum() * (1.0 - (-(x.abs()) / l).exp()))
 }
 
+/// A query no path is simulated for: a zero horizon or spot has an exact limit, and a negative or
+/// non-finite spot or horizon or a non-finite rate has no price.
+enum Degenerate {
+  OffDomain,
+  ZeroHorizon,
+  ZeroSpot,
+}
+
+impl Degenerate {
+  fn of(s: f64, r: f64, q: f64, tau: f64) -> Option<Self> {
+    let in_domain = s >= 0.0 && s.is_finite() && tau >= 0.0 && tau.is_finite();
+    if !(in_domain && r.is_finite() && q.is_finite()) {
+      Some(Self::OffDomain)
+    } else if tau == 0.0 {
+      Some(Self::ZeroHorizon)
+    } else if s == 0.0 {
+      Some(Self::ZeroSpot)
+    } else {
+      None
+    }
+  }
+
+  fn call_put(&self, s: f64, k: f64, r: f64, tau: f64) -> (f64, f64) {
+    match self {
+      Self::OffDomain => (f64::NAN, f64::NAN),
+      Self::ZeroHorizon => ((s - k).max_or_nan(0.0), (k - s).max_or_nan(0.0)),
+      Self::ZeroSpot => (0.0, k * (-r * tau).exp()),
+    }
+  }
+
+  /// The spot at `t_eval` and the conditional call there, on each of `m` paths.
+  fn conditional(&self, s: f64, k: f64, m: usize) -> (Array1<f64>, Array1<f64>) {
+    match self {
+      Self::OffDomain => (
+        Array1::from_elem(m, f64::NAN),
+        Array1::from_elem(m, f64::NAN),
+      ),
+      Self::ZeroHorizon => (
+        Array1::from_elem(m, s),
+        Array1::from_elem(m, (s - k).max_or_nan(0.0)),
+      ),
+      Self::ZeroSpot => (Array1::zeros(m), Array1::zeros(m)),
+    }
+  }
+}
+
 /// Malliavin conditional-expectation pricer on [`Gbm`] paths, `C(0) = E[e^{−rt} C(t, S_t)]`; a
-/// `Deterministic` seed makes the price a function of the query. Panics unless `0 < t_eval < tau`.
+/// `Deterministic` seed makes the price a function of the query. Panics for `0 < tau <= t_eval`.
 #[derive(Debug, Clone, Copy)]
 pub struct GbmMalliavinPricer<S: SeedExt = Unseeded> {
   /// Volatility σ
@@ -112,8 +159,8 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
   /// note for why it is the last parameter.
   pub fn new(v: f64, n_paths: usize, n_steps: usize, t_eval: f64, seed: S) -> Self {
     assert!(
-      v >= 0.0,
-      "GbmMalliavinPricer::new: v must be a non-negative volatility (got {v})"
+      v.is_finite() && v >= 0.0,
+      "GbmMalliavinPricer::new: v must be a finite, non-negative volatility (got {v})"
     );
     assert!(
       n_paths >= 1,
@@ -136,9 +183,12 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     }
   }
 
-  /// Call and put price from a single Monte Carlo simulation, using the
-  /// plain (unlocalized) Malliavin conditional estimator.
+  /// Call and put from one simulation of the plain Malliavin estimator; a zero spot or horizon
+  /// prices at its limit, a negative or non-finite spot or horizon or a non-finite rate at NaN.
   pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+    if let Some(limit) = Degenerate::of(s, r, q, tau) {
+      return limit.call_put(s, k, r, tau);
+    }
     let (_s_t, c_t) = self.conditional_call_malliavin(s, k, r, q, tau);
     self.call_put_from_conditional(s, k, r, q, tau, &c_t)
   }
@@ -188,8 +238,11 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     (call_0, put_0)
   }
 
-  /// Call/put prices using the localized Malliavin estimator.
+  /// Call and put from the localized estimator, at [`call_put`](Self::call_put)'s limits.
   pub fn call_put_localized(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+    if let Some(limit) = Degenerate::of(s, r, q, tau) {
+      return limit.call_put(s, k, r, tau);
+    }
     let (_s_t, c_t) = self.conditional_call_malliavin_localized(s, k, r, q, tau);
     self.call_put_from_conditional(s, k, r, q, tau, &c_t)
   }
@@ -255,6 +308,9 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     q: f64,
     tau: f64,
   ) -> (Array1<f64>, Array1<f64>) {
+    if let Some(limit) = Degenerate::of(s, r, q, tau) {
+      return limit.conditional(s, k, self.n_paths);
+    }
     let t_eval = self.t_eval;
     assert!(t_eval > 0.0 && t_eval < tau, "t_eval must be in (0, T)");
 
@@ -350,6 +406,9 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     q: f64,
     tau: f64,
   ) -> (Array1<f64>, Array1<f64>) {
+    if let Some(limit) = Degenerate::of(s, r, q, tau) {
+      return limit.conditional(s, k, self.n_paths);
+    }
     let t_eval = self.t_eval;
     assert!(t_eval > 0.0 && t_eval < tau, "t_eval must be in (0, T)");
 

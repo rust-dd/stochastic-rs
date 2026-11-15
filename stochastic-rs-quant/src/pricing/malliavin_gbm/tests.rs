@@ -376,10 +376,18 @@ mod construction_validation {
   /// it biases the weight and the conditional expectation built on it.
   #[test]
   #[should_panic(
-    expected = "GbmMalliavinPricer::new: v must be a non-negative volatility (got -0.2)"
+    expected = "GbmMalliavinPricer::new: v must be a finite, non-negative volatility (got -0.2)"
   )]
   fn new_rejects_negative_volatility() {
     let _ = GbmMalliavinPricer::new(-0.2, 200, 100, 0.5, Unseeded);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "GbmMalliavinPricer::new: v must be a finite, non-negative volatility (got inf)"
+  )]
+  fn new_rejects_an_infinite_volatility() {
+    let _ = GbmMalliavinPricer::new(f64::INFINITY, 200, 100, 0.5, Unseeded);
   }
 
   #[test]
@@ -410,5 +418,59 @@ mod construction_validation {
   #[should_panic(expected = "GbmMalliavinPricer::new: n_paths must be at least 1 (got 0)")]
   fn the_numeric_guards_still_fire_with_a_pinned_seed() {
     let _ = GbmMalliavinPricer::new(0.2, 0, 100, 0.5, Deterministic::new(SEEDS[0]));
+  }
+}
+
+/// A query no path is simulated for answers its exact limit or NaN on all four accessors.
+mod degenerate_queries {
+  use super::*;
+
+  fn model() -> GbmMalliavinPricer<Deterministic> {
+    GbmMalliavinPricer::new(0.2, 64, 16, 0.5, Deterministic::new(SEEDS[0]))
+  }
+
+  #[test]
+  fn a_zero_spot_prices_at_its_limit() {
+    let p = model();
+    let put = K * (-R * TAU).exp();
+    assert_eq!(p.price_call(0.0, K, R, 0.0, TAU), 0.0);
+    assert_eq!(p.price_put(0.0, K, R, 0.0, TAU), put);
+    assert_eq!(p.call_put_localized(0.0, K, R, 0.0, TAU), (0.0, put));
+    let (s_t, c_t) = p.conditional_call_malliavin(0.0, K, R, 0.0, TAU);
+    assert!(s_t.iter().chain(&c_t).all(|x| *x == 0.0));
+  }
+
+  #[test]
+  fn a_zero_horizon_prices_at_the_intrinsic_value() {
+    let p = model();
+    assert_eq!(p.call_put(110.0, 100.0, R, 0.0, 0.0), (10.0, 0.0));
+    assert_eq!(p.call_put_localized(90.0, 100.0, R, 0.0, 0.0), (0.0, 10.0));
+    let (s_t, c_t) = p.conditional_call_malliavin_localized(110.0, 100.0, R, 0.0, 0.0);
+    assert!(s_t.iter().all(|x| *x == 110.0) && c_t.iter().all(|x| *x == 10.0));
+  }
+
+  #[test]
+  fn an_off_domain_query_is_nan() {
+    let p = model();
+    let queries = [
+      (f64::NAN, R, 0.0, TAU),
+      (-1.0, R, 0.0, TAU),
+      (S, f64::NAN, 0.0, TAU),
+      (S, R, f64::INFINITY, TAU),
+      (S, R, 0.0, -1.0),
+      (S, R, 0.0, f64::NAN),
+    ];
+    for (s, r, q, tau) in queries {
+      let (call, put) = p.call_put(s, K, r, q, tau);
+      let (s_t, c_t) = p.conditional_call_malliavin(s, K, r, q, tau);
+      assert!(
+        call.is_nan() && put.is_nan(),
+        "({s}, {r}, {q}, {tau}): ({call}, {put})"
+      );
+      assert!(
+        s_t.iter().chain(&c_t).all(|x| x.is_nan()),
+        "({s}, {r}, {q}, {tau})"
+      );
+    }
   }
 }

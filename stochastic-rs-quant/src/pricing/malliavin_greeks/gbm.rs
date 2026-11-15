@@ -26,10 +26,14 @@ pub struct GbmMalliavinGreeks {
 }
 
 impl GbmMalliavinGreeks {
-  /// Simulate Gbm paths and return terminal stock prices and terminal Brownian values.
-  ///
-  /// Returns `(S_T, W_T)` each of length `n_paths`.
+  /// Terminal prices and Brownian values `(S_T, W_T)` of `n_paths` Gbm paths; both are NaN, and so
+  /// every Greek, for a spot or horizon that is not finite and positive or a non-finite rate.
   pub fn simulate(&self) -> (Array1<f64>, Array1<f64>) {
+    let query = self.s > 0.0 && self.s.is_finite() && self.tau > 0.0 && self.tau.is_finite();
+    if !(query && self.r.is_finite() && self.q.is_finite()) {
+      let nan = Array1::from_elem(self.n_paths, f64::NAN);
+      return (nan.clone(), nan);
+    }
     let mu = self.r - self.q;
     let dt = self.tau / (self.n_steps - 1) as f64;
 
