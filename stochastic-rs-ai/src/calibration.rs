@@ -104,7 +104,7 @@ pub struct SurrogateCalibrator<'m, M: SurrogateModel> {
 impl<'m, M: SurrogateModel> SurrogateCalibrator<'m, M> {
   /// `market` must have the surrogate's `output_dim` entries and be finite.
   pub fn new(model: &'m M, market: Vec<f64>) -> Result<Self> {
-    let dim = model.nn().spec().output_dim;
+    let dim = model.nn().spec().output_dim();
     if market.len() != dim {
       bail!(
         "market surface has {} entries, the surrogate grid has {dim}",
@@ -142,11 +142,11 @@ impl<'m, M: SurrogateModel> SurrogateCalibrator<'m, M> {
 
   /// Starting point in parameter units; the box centre otherwise.
   pub fn with_initial(mut self, initial: Vec<f64>) -> Result<Self> {
-    if initial.len() != self.model.nn().spec().input_dim {
+    if initial.len() != self.model.nn().spec().input_dim() {
       bail!(
         "{} initial values for {} parameters",
         initial.len(),
-        self.model.nn().spec().input_dim
+        self.model.nn().spec().input_dim()
       );
     }
     self.initial = Some(initial);

@@ -38,17 +38,13 @@ fn predict_a_heston_surface_on_the_training_grid() {
   let nn = HestonNn::load(&dir, &device).unwrap();
   std::fs::remove_dir_all(&dir).unwrap();
 
-  // The surface is flat, maturity-major, on the training grid at zero rates:
-  // scale the relative strikes by the spot and give the forward at every maturity.
+  // The surface is flat, maturity-major, on the grid the model carries: give the spot
+  // and the forward at every maturity (equal to the spot at zero rates).
   let spot = 100.0;
-  let strikes = heston::STRIKES
-    .iter()
-    .map(|k| k * spot)
-    .collect::<Vec<f64>>();
   let forwards = vec![spot; MATURITIES.len()];
   let theta = [0.03_f32, -0.5, 0.3, 0.04, 2.0];
   let surface = nn
-    .predict_implied_vol_surface(&theta, strikes, MATURITIES.to_vec(), forwards)
+    .predict_implied_vol_surface(&theta, spot, &forwards)
     .unwrap();
 
   assert_eq!(surface.ivs.dim(), (MATURITIES.len(), heston::STRIKES.len()));

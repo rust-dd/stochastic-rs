@@ -9,16 +9,17 @@ use stochastic_rs::ai::Device;
 use stochastic_rs::ai::volatility::common::StochVolModelSpec;
 use stochastic_rs::ai::volatility::common::StochVolNn;
 use stochastic_rs::ai::volatility::common::TrainConfig;
+use stochastic_rs::ai::volatility::grid;
 use stochastic_rs::ai::volatility::heston;
 
 fn spec() -> StochVolModelSpec {
   StochVolModelSpec::new(
     heston::MODEL_ID,
-    heston::INPUT_DIM,
-    heston::OUTPUT_DIM,
     heston::DEFAULT_HIDDEN_DIM,
     heston::PARAM_LB.to_vec(),
     heston::PARAM_UB.to_vec(),
+    heston::STRIKES.to_vec(),
+    grid::MATURITIES.to_vec(),
   )
   .unwrap()
 }

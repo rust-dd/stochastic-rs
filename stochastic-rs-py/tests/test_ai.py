@@ -26,6 +26,10 @@ def test_heston_nn_trains_predicts_and_calibrates(tmp_path):
     model = sr.HestonNn()
     lb, ub = np.array(model.param_lb), np.array(model.param_ub)
     assert model.input_dim == 5 and model.output_dim == 88
+    assert len(model.strikes) == 11 and len(model.maturities) == 8
+    assert model.strikes == sorted(model.strikes, reverse=True)
+    assert model.maturities == sorted(model.maturities)
+    assert len(sr.RBergomiNn().strikes) == 11
     rng = np.random.default_rng(3)
     params = lb + rng.uniform(size=(256, 5)) * (ub - lb)
     surfaces = _synthetic(params, lb, ub, 88)

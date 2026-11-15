@@ -37,11 +37,11 @@ impl HestonNn {
   pub fn with_hidden(device: &Device, hidden_dim: usize) -> Result<Self> {
     let spec = StochVolModelSpec::new(
       MODEL_ID,
-      INPUT_DIM,
-      OUTPUT_DIM,
       hidden_dim,
       PARAM_LB.to_vec(),
       PARAM_UB.to_vec(),
+      STRIKES.to_vec(),
+      grid::MATURITIES.to_vec(),
     )?;
     Ok(Self {
       inner: StochVolNn::new(spec, device)?,
@@ -67,19 +67,18 @@ impl HestonNn {
     self.inner.predict_surfaces(params)
   }
 
-  /// [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface) of the prediction
-  /// with ascending strikes; pass [`STRIKES`] times the spot, [`grid::MATURITIES`] and forwards.
+  /// [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface) on the training grid at
+  /// `spot` (strikes [`STRIKES`] times it, ascending), one forward per [`grid::MATURITIES`] entry.
   #[cfg(feature = "quant")]
   pub fn predict_implied_vol_surface(
     &self,
     params: &[f32; INPUT_DIM],
-    strikes: Vec<f64>,
-    maturities: Vec<f64>,
-    forwards: Vec<f64>,
+    spot: f64,
+    forwards: &[f64],
   ) -> Result<stochastic_rs_quant::vol_surface::ImpliedVolSurface> {
     self
       .inner
-      .predict_implied_vol_surface(params, strikes, maturities, forwards)
+      .predict_implied_vol_surface(params, spot, forwards)
   }
 
   pub fn save<P: AsRef<Path>>(&self, dir: P) -> Result<()> {
@@ -177,12 +176,7 @@ mod tests {
     ];
     let flat = model.predict_surface(&sample)?;
     let n_t = grid::MATURITIES.len();
-    let surface = model.predict_implied_vol_surface(
-      &sample,
-      STRIKES.to_vec(),
-      grid::MATURITIES.to_vec(),
-      vec![1.0; n_t],
-    )?;
+    let surface = model.predict_implied_vol_surface(&sample, 1.0, &vec![1.0; n_t])?;
     assert_eq!(surface.ivs.dim(), (n_t, STRIKES.len()));
     assert!(surface.strikes.windows(2).all(|w| w[0] < w[1]));
     for t in 0..n_t {

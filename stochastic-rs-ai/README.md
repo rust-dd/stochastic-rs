@@ -16,16 +16,18 @@ sub-millisecond forward pass.
 - **Surrogates** — Heston, one-factor Bergomi and rough Bergomi implied
   volatility surfaces on one fixed grid of 11 strikes and 8 maturities
   (`volatility::grid`).
-- **`StochVolModelSpec`** — the input/output contract shared by every
-  surrogate.
+- **`StochVolModelSpec`** — the contract shared by every surrogate: the parameter box and the
+  strike-maturity grid.
 - **Training** — gzip-npy training set loading, a candle-backed network with
   its input and output scaling built in, and a train / save / load round trip.
 - **Calibration** — with the `quant` feature, Levenberg–Marquardt on the
   network's exact Jacobian, behind quant's `Calibrator` trait.
 
 With the `quant` feature, `predict_implied_vol_surface` returns quant's `ImpliedVolSurface`:
-pass the model's `STRIKES` times the spot, `volatility::grid::MATURITIES` and one forward per
-maturity, and the strikes come back ascending.
+pass the spot and one forward per maturity, and the strikes come back ascending. The grid travels
+on `StochVolModelSpec` (`strikes` as `K/S0` in the network's column order, `maturities` ascending);
+the shipped Heston set's `strikes` descend from 2 to 2/3 (indexed by `S0/K`), the Bergomi sets'
+ascend from 0.5 to 1.5.
 
 ## Training data
 
