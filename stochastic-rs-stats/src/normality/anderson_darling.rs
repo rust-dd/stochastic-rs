@@ -141,6 +141,7 @@ mod tests {
 
   use super::AndersonDarlingConfig;
   use super::anderson_darling_normal_test;
+  use crate::StatsError;
 
   #[test]
   fn anderson_darling_accepts_normal_sample() {
@@ -183,6 +184,16 @@ mod tests {
     assert!(
       res.rejects_null,
       "expected rejection for non-normal sample, got {res:?}"
+    );
+  }
+
+  #[test]
+  fn a_constant_sample_is_degenerate_data() {
+    let x = [2.5; 10];
+    assert_eq!(
+      anderson_darling_normal_test(ArrayView1::from(&x), AndersonDarlingConfig::default())
+        .unwrap_err(),
+      StatsError::DegenerateData("constant sample")
     );
   }
 }

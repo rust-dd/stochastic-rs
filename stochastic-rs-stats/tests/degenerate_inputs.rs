@@ -1,4 +1,5 @@
-//! Too little, non-finite or constant data is an `Err`, never a panic inside a regression or a sentinel.
+//! Too little or non-finite data is an `Err`, never a panic inside a regression, and every test's
+//! answer to a constant series is pinned.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -40,7 +41,13 @@ use stochastic_rs_stats::stationarity::reset::reset_test;
 
 type Answer = Box<dyn Fn(ArrayView1<f64>) -> Option<StatsError>>;
 
-type Entry = (&'static str, Answer);
+type Entry = (&'static str, Answer, Option<StatsError>);
+
+const OLS: Option<StatsError> = Some(StatsError::Singular("OLS design"));
+
+const SERIES: Option<StatsError> = Some(StatsError::DegenerateData("constant series"));
+
+const SAMPLE: Option<StatsError> = Some(StatsError::DegenerateData("constant sample"));
 
 fn err<T, F: Fn(ArrayView1<f64>) -> Result<T, StatsError> + 'static>(f: F) -> Answer {
   Box::new(move |x| f(x).err())
@@ -52,62 +59,78 @@ fn design(n: usize) -> Array2<f64> {
 
 pub fn hypothesis_tests() -> Vec<Entry> {
   vec![
-    ("adf", err(|x| adf_test(x, AdfConfig::default()))),
-    ("kpss", err(|x| kpss_test(x, KpssConfig::default()))),
-    ("ers", err(|x| ers_dfgls_test(x, ErsConfig::default()))),
+    ("adf", err(|x| adf_test(x, AdfConfig::default())), OLS),
+    ("kpss", err(|x| kpss_test(x, KpssConfig::default())), SERIES),
+    ("ers", err(|x| ers_dfgls_test(x, ErsConfig::default())), OLS),
     (
       "pp",
       err(|x| phillips_perron_test(x, PhillipsPerronConfig::default())),
+      SERIES,
     ),
     (
       "lm",
       err(|x| leybourne_mccabe_test(x, LeybourneMcCabeConfig::default())),
+      SERIES,
     ),
     (
       "lo_mackinlay",
       err(|x| lo_mackinlay_test(x, LoMacKinlayConfig::default())),
+      Some(StatsError::DegenerateData("zero-variance increments")),
     ),
     (
       "cusum",
       err(|x| cusum_test(x, design(x.len()).view(), CusumConfig::default())),
+      None,
     ),
     (
       "andrews_ploberger",
       err(|x| andrews_ploberger_test(x, design(x.len()).view(), AndrewsPlobergerConfig::default())),
+      None,
     ),
     (
       "reset",
       err(|x| reset_test(x, design(x.len()).view(), ResetConfig::default())),
+      SERIES,
     ),
     (
       "anderson_darling",
       err(|x| anderson_darling_normal_test(x, AndersonDarlingConfig::default())),
+      SAMPLE,
     ),
     (
       "jarque_bera",
       err(|x| jarque_bera_test(x, JarqueBeraConfig::default())),
+      SAMPLE,
     ),
     (
       "shapiro_francia",
       err(|x| shapiro_francia_test(x, ShapiroFranciaConfig::default())),
+      SAMPLE,
     ),
     (
       "kolmogorov_smirnov",
       err(|x| {
         kolmogorov_smirnov_test(x, |v| v.clamp(0.0, 1.0), KolmogorovSmirnovConfig::default())
       }),
+      None,
     ),
     (
       "ljung_box",
       err(|x| ljung_box(x, LjungBoxConfig::default())),
+      SERIES,
     ),
     (
       "engle_granger",
       err(|x| engle_granger_test(x, x, EngleGrangerConfig::default())),
+      OLS,
     ),
-    ("granger", err(|x| granger_causality_test(x, x, 1, 0.05))),
-    ("bns", err(|x| bns_jump_test(x, 0.05))),
-    ("lee_mykland", err(|x| lee_mykland_test(x, 16, 0.05))),
+    (
+      "granger",
+      err(|x| granger_causality_test(x, x, 1, 0.05)),
+      SERIES,
+    ),
+    ("bns", err(|x| bns_jump_test(x, 0.05)), None),
+    ("lee_mykland", err(|x| lee_mykland_test(x, 16, 0.05)), None),
   ]
 }
 
@@ -116,7 +139,7 @@ fn check(entries: Vec<Entry>) {
   let mut with_nan = Array1::<f64>::linspace(-1.0, 1.0, 400);
   with_nan[7] = f64::NAN;
   let constant = Array1::<f64>::from_elem(400, 0.3);
-  for (name, f) in entries {
+  for (name, f, on_constant) in entries {
     assert!(
       matches!(f(empty.view()), Some(StatsError::InsufficientData { .. })),
       "{name}: an empty series must be InsufficientData, got {:?}",
@@ -130,15 +153,10 @@ fn check(entries: Vec<Entry>) {
       "{name}: a NaN must be InvalidObservation at its index, got {:?}",
       f(with_nan.view())
     );
-    assert!(
-      matches!(
-        f(constant.view()),
-        Some(
-          StatsError::DegenerateData(_) | StatsError::Singular(_) | StatsError::Numerical { .. }
-        ) | None
-      ),
-      "{name}: a constant series must be DegenerateData, Singular, Numerical or a value, got {:?}",
-      f(constant.view())
+    assert_eq!(
+      f(constant.view()),
+      on_constant,
+      "{name}: the answer to a constant series"
     );
   }
 }

@@ -243,6 +243,7 @@ mod tests {
   use super::chi_square_critical_value;
   use super::chi_square_gof_test;
   use super::pool_integer_bins;
+  use crate::StatsError;
 
   /// Standard textbook table: `chi2_{0.05, df}` for df in {1, 4, 9, 10}.
   /// Values from any standard chi-square table (e.g. NIST/SEMATECH
@@ -307,6 +308,22 @@ mod tests {
     assert!(
       best_p > 0.01,
       "every seed gave p <= 0.01 (best {best_p}); likely a bug, not bad luck"
+    );
+  }
+
+  #[test]
+  fn one_bin_is_insufficient_data() {
+    assert_eq!(
+      chi_square_gof_test(&[10], &[1.0], ChiSquareGofConfig::default()).unwrap_err(),
+      StatsError::InsufficientData { needed: 2, got: 1 }
+    );
+  }
+
+  #[test]
+  fn an_expected_count_below_one_is_degenerate_data() {
+    assert_eq!(
+      chi_square_gof_test(&[3, 1], &[0.9, 0.1], ChiSquareGofConfig::default()).unwrap_err(),
+      StatsError::DegenerateData("a bin's expected count is below 1")
     );
   }
 

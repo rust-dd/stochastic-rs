@@ -434,6 +434,18 @@ mod tests {
   }
 
   #[test]
+  fn a_design_with_other_rows_is_a_dimension_mismatch() {
+    let y = simulate_stationary(100, 5);
+    assert_eq!(
+      cusum_test(y.view(), linear_design(99).view(), CusumConfig::default()).unwrap_err(),
+      StatsError::DimensionMismatch {
+        expected: 100,
+        got: 99
+      }
+    );
+  }
+
+  #[test]
   fn a_non_finite_design_row_is_an_invalid_observation() {
     let y = simulate_stationary(100, 5);
     let mut x = linear_design(100);

@@ -125,6 +125,7 @@ mod tests {
 
   use super::JarqueBeraConfig;
   use super::jarque_bera_test;
+  use crate::StatsError;
 
   /// The sample must come from a `Deterministic` seed, not an `Unseeded` one:
   /// `fill_slice` takes no RNG at all and draws from the distribution's own
@@ -178,6 +179,26 @@ mod tests {
     assert!(
       res.rejects_null,
       "expected rejection for non-normal sample, got {res:?}"
+    );
+  }
+
+  #[test]
+  fn a_constant_sample_is_degenerate_data() {
+    let x = [0.3; 10];
+    assert_eq!(
+      jarque_bera_test(ArrayView1::from(&x), JarqueBeraConfig::default()).unwrap_err(),
+      StatsError::DegenerateData("constant sample")
+    );
+  }
+
+  #[test]
+  fn overflowing_moments_are_a_numerical_error() {
+    let x = [1e80, -1e80, 1e80, -1e80, 1e80, -1e80, 1e80, -1e80];
+    assert_eq!(
+      jarque_bera_test(ArrayView1::from(&x), JarqueBeraConfig::default()).unwrap_err(),
+      StatsError::Numerical {
+        stage: "sample moments"
+      }
     );
   }
 }

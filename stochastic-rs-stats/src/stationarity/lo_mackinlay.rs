@@ -288,6 +288,15 @@ mod tests {
   }
 
   #[test]
+  fn constant_prices_are_degenerate_data() {
+    let prices = ndarray::Array1::<f64>::from_elem(40, 0.3);
+    assert_eq!(
+      lo_mackinlay_test(prices.view(), LoMacKinlayConfig::default()).unwrap_err(),
+      crate::StatsError::DegenerateData("zero-variance increments")
+    );
+  }
+
+  #[test]
   fn constant_returns_are_degenerate_data() {
     let returns = ndarray::Array1::<f64>::from_elem(40, 0.1);
     let cfg = LoMacKinlayConfig {

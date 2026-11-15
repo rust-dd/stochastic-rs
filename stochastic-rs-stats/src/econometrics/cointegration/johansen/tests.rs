@@ -361,3 +361,27 @@ fn a_rank_problem_without_finite_eigenvalues_is_a_numerical_error() {
     }
   );
 }
+
+#[test]
+fn one_series_or_too_few_rows_is_insufficient_data() {
+  let y = lcg_system();
+  assert_eq!(
+    johansen_test(y.slice(s![.., ..1]), 1).unwrap_err(),
+    StatsError::InsufficientData { needed: 2, got: 1 }
+  );
+  assert_eq!(
+    johansen_test(y.slice(s![..4, ..]), 2).unwrap_err(),
+    StatsError::InsufficientData { needed: 5, got: 4 }
+  );
+}
+
+#[test]
+fn collinear_differences_are_a_singular_s00() {
+  let mut y = lcg_system();
+  let first = y.column(0).to_owned();
+  y.column_mut(1).assign(&first);
+  assert_eq!(
+    johansen_test(y.view(), 1).unwrap_err(),
+    StatsError::Singular("S00")
+  );
+}

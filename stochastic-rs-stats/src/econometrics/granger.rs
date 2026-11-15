@@ -171,6 +171,19 @@ mod tests {
   }
 
   #[test]
+  fn series_of_unequal_lengths_are_a_dimension_mismatch() {
+    let y = Array1::from_iter((0..40).map(|i| (i as f64 * 0.7).sin()));
+    let x = Array1::from_iter((0..41).map(|i| (i as f64 * 0.3).cos()));
+    assert_eq!(
+      granger_causality_test(y.view(), x.view(), 1, 0.05).unwrap_err(),
+      StatsError::DimensionMismatch {
+        expected: 40,
+        got: 41
+      }
+    );
+  }
+
+  #[test]
   fn a_constant_series_is_degenerate_data() {
     let constant = Array1::<f64>::from_elem(64, 0.3);
     let moving = Array1::from_iter((0..64).map(|i| (i as f64 * 0.7).sin()));

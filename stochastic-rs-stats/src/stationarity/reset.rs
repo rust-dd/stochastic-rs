@@ -262,6 +262,19 @@ mod tests {
   }
 
   #[test]
+  fn a_design_with_other_rows_is_a_dimension_mismatch() {
+    let (x, y) = simulate_linear(100, 3);
+    let xm = design_with_intercept(&x.slice(ndarray::s![..99]).to_owned());
+    assert_eq!(
+      reset_test(y.view(), xm.view(), ResetConfig::default()).unwrap_err(),
+      StatsError::DimensionMismatch {
+        expected: 100,
+        got: 99
+      }
+    );
+  }
+
+  #[test]
   fn a_non_finite_design_row_is_an_invalid_observation() {
     let (x, y) = simulate_linear(100, 3);
     let mut xm = design_with_intercept(&x);

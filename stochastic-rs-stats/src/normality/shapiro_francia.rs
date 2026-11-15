@@ -157,6 +157,7 @@ mod tests {
 
   use super::ShapiroFranciaConfig;
   use super::shapiro_francia_test;
+  use crate::StatsError;
 
   /// The sample must come from a `Deterministic` seed, not an `Unseeded` one:
   /// `fill_slice` ignores the `Rng` it is handed and draws from the
@@ -212,6 +213,15 @@ mod tests {
     assert!(
       res.rejects_null,
       "expected rejection for non-normal sample, got {res:?}"
+    );
+  }
+
+  #[test]
+  fn a_constant_sample_is_degenerate_data() {
+    let x = [2.5; 10];
+    assert_eq!(
+      shapiro_francia_test(ArrayView1::from(&x), ShapiroFranciaConfig::default()).unwrap_err(),
+      StatsError::DegenerateData("constant sample")
     );
   }
 }

@@ -160,4 +160,16 @@ mod tests {
     let res = engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default()).unwrap();
     assert!(!res.rejects_null);
   }
+
+  #[test]
+  fn series_of_unequal_lengths_are_a_dimension_mismatch() {
+    let (y, x) = (random_walk(13, 40, 1.0), random_walk(17, 41, 1.0));
+    assert_eq!(
+      engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default()).unwrap_err(),
+      StatsError::DimensionMismatch {
+        expected: 40,
+        got: 41
+      }
+    );
+  }
 }

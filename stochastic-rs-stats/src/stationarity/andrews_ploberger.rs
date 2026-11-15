@@ -475,6 +475,35 @@ mod tests {
   }
 
   #[test]
+  fn a_design_with_other_rows_is_a_dimension_mismatch() {
+    let (y, _) = simulate(300, (1.0, 2.0), (1.0, 2.0), None, 42);
+    let (_, x) = simulate(299, (1.0, 2.0), (1.0, 2.0), None, 42);
+    assert_eq!(
+      andrews_ploberger_test(y.view(), x.view(), AndrewsPlobergerConfig::default()).unwrap_err(),
+      StatsError::DimensionMismatch {
+        expected: 300,
+        got: 299
+      }
+    );
+  }
+
+  /// At `pi0 = 0.45` nine rows trim to no split while ten keep one (eight do too: the grid is not
+  /// monotone in the sample size).
+  #[test]
+  fn an_empty_trimmed_grid_is_insufficient_data() {
+    let y = Array1::from_iter((0..9).map(|i| (i as f64 * 0.7).sin()));
+    let x = Array2::<f64>::ones((9, 1));
+    let cfg = AndrewsPlobergerConfig {
+      pi0: 0.45,
+      ..AndrewsPlobergerConfig::default()
+    };
+    assert_eq!(
+      andrews_ploberger_test(y.view(), x.view(), cfg).unwrap_err(),
+      StatsError::InsufficientData { needed: 10, got: 9 }
+    );
+  }
+
+  #[test]
   fn a_non_finite_design_row_is_an_invalid_observation() {
     let (y, mut x) = simulate(300, (1.0, 2.0), (1.0, 2.0), None, 42);
     x[[120, 1]] = f64::INFINITY;

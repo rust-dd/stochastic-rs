@@ -278,6 +278,15 @@ mod tests {
   }
 
   #[test]
+  fn a_zero_bipower_variation_is_degenerate_data() {
+    let r = Array1::from_iter((0..40).map(|i| if i % 2 == 0 { 0.0 } else { 0.01 }));
+    assert_eq!(
+      bns_jump_test(r.view(), 0.05).unwrap_err(),
+      StatsError::DegenerateData("zero bipower variation")
+    );
+  }
+
+  #[test]
   fn a_zero_tripower_quarticity_keeps_the_statistic_defined() {
     let r = Array1::from_iter((0..90).map(|i| [0.01, -0.012, 0.0][i % 3]));
     let test = bns_jump_test(r.view(), 0.05).unwrap();
