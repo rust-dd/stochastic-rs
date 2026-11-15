@@ -415,6 +415,26 @@ fn gamma_p_inv_inverts_the_tail_it_solves() {
   }
 }
 
+/// A shape below `2⁻⁵³` in the upper tail: `ln_gamma(1)`'s noise over `a` read the bound's root
+/// `e^{−γ}` (`Q = 6.4e-48` at `q = 3.9e-157`, root near 246), and the start's `1 − t` cancelled to 0.
+#[test]
+fn gamma_q_inv_at_a_tiny_shape_inverts_the_upper_tail() {
+  for (a, q) in [
+    (1.3e-47, 3.9e-157),
+    (1e-20, 1e-30),
+    (1e-300, 1e-305),
+    (1e-17, 1e-20),
+    (3e-9, 1e-12),
+  ] {
+    let x = gamma_q_inv(a, q, 1.0);
+    let got = gamma_q(a, x);
+    assert!(
+      ((got - q) / q).abs() < 1e-12,
+      "a = {a:e}, q = {q:e}: x = {x:e}, Q = {got:e}"
+    );
+  }
+}
+
 /// At a subnormal shape `bt` lies below the doubles and the scaled path forms it from `ln(a·B(a, b))`: mpmath at 60 and 120 digits (DLMF 8.17.8), a subnormal value its correctly rounded double.
 #[test]
 fn beta_i_at_subnormal_shapes() {

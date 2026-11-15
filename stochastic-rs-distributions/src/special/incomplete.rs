@@ -311,11 +311,18 @@ fn invert(a: f64, p: f64, q: f64, from_q: bool, scale: f64) -> f64 {
   // `P ≤ x^a/Γ(a + 1)` makes `(pΓ(a + 1))^{1/a}` a lower bound of the root, the root itself below
   // `e^{−700}`; it floors Newton below ½ only, where its rounding stays under the conditioning.
   let bound = (a < FLOOR_BINDS).then(|| (p.ln() + ln_gamma(a + 1.0)) / a);
-  if bound.is_some_and(|bound| bound < -700.0) {
+  if bound.is_some_and(|bound| bound < -700.0) && bound_binds(a, p, q, from_q) {
     return bound_root(a, p, scale);
   }
   let floor = bound.filter(|_| !upper).unwrap_or(f64::NEG_INFINITY);
   scale * newton(a, p, q, from_q, upper, floor)
+}
+
+/// The bound from `ln p` at its exact level and `ln Γ(1 + a)` to its relative digits: over a tiny
+/// `a`, `ln_gamma(1)`'s `1e-15` or a `1 − q` rounded to 1 read a root below `e^{−700}` for one past 1.
+fn bound_binds(a: f64, p: f64, q: f64, from_q: bool) -> bool {
+  let ln_p = if from_q { (-q).ln_1p() } else { p.ln() };
+  (ln_p - recip_gamma_1p_m1(a).ln_1p()) / a < -700.0
 }
 
 /// Newton in `ln x` on `ln P` (or `ln Q` if `upper`), above `floor` (a log root); scale-free and
@@ -324,11 +331,13 @@ fn invert(a: f64, p: f64, q: f64, from_q: bool, scale: f64) -> f64 {
 fn newton(a: f64, p: f64, q: f64, from_q: bool, upper: bool, floor: f64) -> f64 {
   let ln_target = if upper { q.ln() } else { p.ln() };
   let mut x = if a <= 1.0 {
-    let t = 1.0 - a * (0.253 + 0.12 * a);
-    let start = if p < t {
-      (p.ln() - t.ln()) / a
+    // Numerical Recipes' `1 − t`, never formed as a difference: `t` rounds to 1 below `a = 2⁻⁵³`.
+    let u = a * (0.253 + 0.12 * a);
+    let start = if q > u {
+      let ln_p = if from_q { (-q).ln_1p() } else { p.ln() };
+      (ln_p - (-u).ln_1p()) / a
     } else {
-      (1.0 - (q / (1.0 - t)).ln()).ln()
+      (1.0 - (q / u).ln()).ln()
     };
     start.max(floor).exp()
   } else {
