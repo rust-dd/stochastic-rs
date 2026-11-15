@@ -31,7 +31,7 @@ fn adf_rejects_unit_root_on_a_mean_reverting_series() {
     AdfConfig::default(),
   );
   assert!(
-    result.reject_unit_root,
+    result.rejects_null,
     "expected the unit-root null to be rejected"
   );
 }

@@ -1,10 +1,10 @@
 use ndarray::Array1;
 use ndarray::Array2;
-use stochastic_rs_stats::heston_mle::nmle_heston;
-use stochastic_rs_stats::heston_mle::nmle_heston_with_delta;
-use stochastic_rs_stats::heston_mle::pmle_heston;
-use stochastic_rs_stats::heston_mle::pmle_heston_with_delta;
-use stochastic_rs_stats::heston_nml_cekf::nmle_cekf_heston;
+use stochastic_rs_stats::heston_mle::fit_heston_nmle;
+use stochastic_rs_stats::heston_mle::fit_heston_nmle_with_delta;
+use stochastic_rs_stats::heston_mle::fit_heston_pmle;
+use stochastic_rs_stats::heston_mle::fit_heston_pmle_with_delta;
+use stochastic_rs_stats::heston_nmle_cekf::fit_heston_nmle_cekf;
 
 use super::calibrator::HestonCalibrator;
 use super::params::HestonJacobianMethod;
@@ -57,9 +57,9 @@ impl HestonCalibrator {
         }
         let p: HestonParams = if self.mle_delta.is_some() {
           let delta = self.inferred_mle_delta(s.len());
-          nmle_heston_with_delta(s.view(), v.view(), r, delta).into()
+          fit_heston_nmle_with_delta(s.view(), v.view(), r, delta).into()
         } else {
-          nmle_heston(s.view(), v.view(), r).into()
+          fit_heston_nmle(s.view(), v.view(), r).into()
         };
         Some(p.projected())
       }
@@ -70,9 +70,9 @@ impl HestonCalibrator {
         }
         let p: HestonParams = if self.mle_delta.is_some() {
           let delta = self.inferred_mle_delta(s.len());
-          pmle_heston_with_delta(s.view(), v.view(), r, delta).into()
+          fit_heston_pmle_with_delta(s.view(), v.view(), r, delta).into()
         } else {
-          pmle_heston(s.view(), v.view(), r).into()
+          fit_heston_pmle(s.view(), v.view(), r).into()
         };
         Some(p.projected())
       }
@@ -91,7 +91,7 @@ impl HestonCalibrator {
         {
           cfg.initial_v0 = v_ts[0];
         }
-        let out = nmle_cekf_heston(s.view(), cfg);
+        let out = fit_heston_nmle_cekf(s.view(), cfg);
         let p: HestonParams = out.params.into();
         Some(p.projected())
       }

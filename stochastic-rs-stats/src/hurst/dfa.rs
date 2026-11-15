@@ -27,7 +27,7 @@ use ndarray::ArrayView1;
 
 use super::HurstDiagnostic;
 use super::HurstEstimator;
-use super::HurstResult;
+use super::HurstFit;
 use super::log_spaced_windows;
 use super::to_f64_vec;
 use super::weighted_linreg;
@@ -79,7 +79,7 @@ impl Dfa {
 }
 
 impl<T: FloatExt> HurstEstimator<T> for Dfa {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, StatsError> {
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError> {
     let n = x.len();
     if self.order < 1 {
       return Err(StatsError::InvalidParameter {
@@ -199,10 +199,10 @@ impl<T: FloatExt> HurstEstimator<T> for Dfa {
       alpha
     };
 
-    Ok(HurstResult {
+    Ok(HurstFit {
       hurst: T::from_f64_fast(h),
       std_err: None,
-      n_obs: n,
+      nobs: n,
       diagnostic: HurstDiagnostic::LogLogRegression {
         slope: T::from_f64_fast(alpha),
         intercept: T::from_f64_fast(intercept),

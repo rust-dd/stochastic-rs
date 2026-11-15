@@ -1,7 +1,7 @@
 //! # Hurst exponent estimators
 //!
 //! Unified [`HurstEstimator`] trait plus per-method config structs.  Each
-//! estimator returns a [`HurstResult`] carrying the point estimate, an
+//! estimator returns a [`HurstFit`] carrying the point estimate, an
 //! optional standard error, sample size, and a method-specific
 //! [`HurstDiagnostic`] (log-log slope, Whittle objective value, …).
 //!
@@ -33,7 +33,7 @@
 //!
 //! let signal = Fbm::new(0.7_f64, 256, Some(1.0), Deterministic::new(7)).sample();
 //! let h = stochastic_rs_stats::fractal_dim::Higuchi { kmax: 32 }
-//!     .estimate(signal.view())  // HurstEstimator::estimate → HurstResult
+//!     .estimate(signal.view())  // HurstEstimator::estimate → HurstFit
 //!     .unwrap()
 //!     .hurst;
 //! assert!((0.0..=1.0).contains(&h));
@@ -97,7 +97,7 @@
 //! **latent volatility** process from a realized-variance time series —
 //! not the self-similarity exponent of a series sampled directly from,
 //! say, [`stochastic_rs_stochastic::noise::fgn::Fgn`]. [`Whittle`] shares
-//! [`HurstResult`]'s type with the other seven, so nothing stops you from
+//! [`HurstFit`]'s type with the other seven, so nothing stops you from
 //! calling `.estimate()` on a raw path — the type system cannot catch
 //! this, only the input construction can. Feeding a directly-sampled path
 //! in does not error; it silently returns a number with no relationship
@@ -142,7 +142,7 @@ pub use variations::VariationKind;
 pub use variations::Variations;
 pub use wavelet::Wavelet;
 pub use wavelet::WaveletKind;
-pub use whittle::FukasawaResult;
+pub use whittle::FukasawaFit;
 pub use whittle::Whittle;
 
 /// Unified Hurst-estimator interface.
@@ -150,27 +150,27 @@ pub use whittle::Whittle;
 /// Each estimator owns its configuration (window bounds, polynomial
 /// order, bandwidth, …) and exposes a single [`estimate`] entry point
 /// that consumes a contiguous time series and produces a
-/// [`HurstResult`].
+/// [`HurstFit`].
 ///
 /// Concrete impls in this crate: [`RescaledRange`], [`Dfa`], [`Gph`],
 /// [`Wavelet`], [`Whittle`], [`Variations`].
 ///
 /// [`estimate`]: HurstEstimator::estimate
 pub trait HurstEstimator<T: FloatExt> {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, StatsError>;
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError>;
 }
 
 /// Point estimate plus method-specific diagnostics for the Hurst
 /// exponent.
 #[derive(Clone, Debug)]
-pub struct HurstResult<T: FloatExt = f64> {
+pub struct HurstFit<T: FloatExt = f64> {
   /// Point estimate of the Hurst exponent.
   pub hurst: T,
   /// Asymptotic standard error when available (currently only [`Gph`]
   /// and [`Wavelet`] populate this; others leave it `None`).
   pub std_err: Option<T>,
   /// Number of observations consumed.
-  pub n_obs: usize,
+  pub nobs: usize,
   /// Method-specific auxiliary information (log-log regression
   /// coefficients, Whittle objective, …).
   pub diagnostic: HurstDiagnostic<T>,
@@ -179,7 +179,7 @@ pub struct HurstResult<T: FloatExt = f64> {
 /// Method-specific auxiliary information returned alongside the Hurst
 /// estimate.
 ///
-/// Carrying these as an enum keeps the [`HurstResult`] struct flat for
+/// Carrying these as an enum keeps the [`HurstFit`] struct flat for
 /// the common `.hurst` access while still letting callers pattern-match
 /// on the variant to recover slope, residuals, or other diagnostics.
 #[derive(Clone, Debug)]

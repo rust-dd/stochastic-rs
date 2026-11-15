@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 /// `stationarity` module pulls in `ndarray-linalg`).
 #[pyclass(name = "ADFTest", unsendable)]
 pub struct PyADFTest {
-  inner: crate::stationarity::adf::AdfResult,
+  inner: crate::stationarity::adf::AdfTest,
 }
 
 #[pymethods]
@@ -77,7 +77,7 @@ impl PyADFTest {
 
   #[getter]
   fn reject_unit_root(&self) -> bool {
-    self.inner.reject_unit_root
+    self.inner.rejects_null
   }
 
   /// Returns `(1%, 5%, 10%)` critical values.
@@ -90,7 +90,7 @@ impl PyADFTest {
 
 #[pyclass(name = "KPSSTest", unsendable)]
 pub struct PyKPSSTest {
-  inner: crate::stationarity::kpss::KpssResult,
+  inner: crate::stationarity::kpss::KpssTest,
 }
 
 #[pymethods]
@@ -137,13 +137,13 @@ impl PyKPSSTest {
 
   #[getter]
   fn reject_stationarity(&self) -> bool {
-    self.inner.reject_stationarity
+    self.inner.rejects_null
   }
 }
 
 #[pyclass(name = "PhillipsPerronTest", unsendable)]
 pub struct PyPhillipsPerronTest {
-  inner: crate::stationarity::phillips_perron::PhillipsPerronResult,
+  inner: crate::stationarity::phillips_perron::PhillipsPerronTest,
 }
 
 #[pymethods]
@@ -204,13 +204,13 @@ impl PyPhillipsPerronTest {
 
   #[getter]
   fn reject_unit_root(&self) -> Option<bool> {
-    self.inner.reject_unit_root
+    self.inner.rejects_null
   }
 }
 
 #[pyclass(name = "ERSTest", unsendable)]
 pub struct PyERSTest {
-  inner: crate::stationarity::ers_dfgls::ErsResult,
+  inner: crate::stationarity::ers_dfgls::ErsTest,
 }
 
 #[pymethods]
@@ -279,13 +279,13 @@ impl PyERSTest {
 
   #[getter]
   fn reject_unit_root(&self) -> bool {
-    self.inner.reject_unit_root
+    self.inner.rejects_null
   }
 }
 
 #[pyclass(name = "LeybourneMcCabeTest", unsendable)]
 pub struct PyLeybourneMcCabeTest {
-  inner: crate::stationarity::leybourne_mccabe::LeybourneMcCabeResult,
+  inner: crate::stationarity::leybourne_mccabe::LeybourneMcCabeTest,
 }
 
 #[pymethods]
@@ -342,6 +342,6 @@ impl PyLeybourneMcCabeTest {
 
   #[getter]
   fn reject_stationarity(&self) -> bool {
-    self.inner.reject_stationarity
+    self.inner.rejects_null
   }
 }

@@ -11,14 +11,14 @@
 //! on the target type): [`Fgn`] and [`Fbm`] are defined in
 //! `stochastic-rs-stochastic`, which `stochastic-rs-stats` depends on (not
 //! the reverse), so Rust's orphan rule forbids an inherent `impl` on them
-//! from a crate that sees [`HurstResult`], and adding a dependency the
+//! from a crate that sees [`HurstFit`], and adding a dependency the
 //! other way would make the workspace's dependency graph circular. The
 //! umbrella crate depends on both, so the bridge lives here instead, as
 //! free functions.
 //!
 //! # Only valid for path-based Hurst estimators
 //!
-//! [`HurstResult`] is the shared return type of every
+//! [`HurstFit`] is the shared return type of every
 //! [`HurstEstimator`](stochastic_rs_stats::hurst::HurstEstimator) impl in
 //! `stochastic-rs-stats`, but the impls do not all estimate the same
 //! quantity:
@@ -38,7 +38,7 @@
 //!   realized-variance series (see its module doc) — a different quantity
 //!   from the self-similarity exponent of a path sampled from [`Fgn`] /
 //!   [`Fbm`]. Its `.hurst` field compiles here (the return type is the
-//!   same `HurstResult<T>`) but does not describe the data that produced
+//!   same `HurstFit<T>`) but does not describe the data that produced
 //!   the path these functions build; feeding it in silently produces an
 //!   unrelated process. This is not a hypothetical: `tests/doctest_stats_hurst.rs`
 //!   already documents the same trap for the estimate-only half of this
@@ -50,7 +50,7 @@
 
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::traits::FloatExt;
-use stochastic_rs_stats::hurst::HurstResult;
+use stochastic_rs_stats::hurst::HurstFit;
 use stochastic_rs_stochastic::device::Cpu;
 use stochastic_rs_stochastic::noise::fgn::Fgn;
 use stochastic_rs_stochastic::process::fbm::Fbm;
@@ -58,7 +58,7 @@ use stochastic_rs_stochastic::process::fbm::Fbm;
 /// Build an [`Fgn`] whose Hurst exponent is a path-based Hurst-estimator
 /// fit. See the module doc for which estimators are valid inputs.
 pub fn fgn_from_hurst_result<T: FloatExt, S: SeedExt>(
-  result: &HurstResult<T>,
+  result: &HurstFit<T>,
   n: usize,
   t: Option<T>,
   seed: S,
@@ -69,7 +69,7 @@ pub fn fgn_from_hurst_result<T: FloatExt, S: SeedExt>(
 /// Build an [`Fbm`] whose Hurst exponent is a path-based Hurst-estimator
 /// fit. See the module doc for which estimators are valid inputs.
 pub fn fbm_from_hurst_result<T: FloatExt, S: SeedExt>(
-  result: &HurstResult<T>,
+  result: &HurstFit<T>,
   n: usize,
   t: Option<T>,
   seed: S,

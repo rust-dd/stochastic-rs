@@ -71,7 +71,7 @@ fit_class!(
   PyJohnsonSuFit,
   "JohnsonSuFit",
   crate::distfit::JohnsonSuFit,
-  crate::distfit::johnson_su_fit,
+  crate::distfit::fit_johnson_su,
   "Johnson SU maximum-likelihood fit; parameters `gamma`, `delta`, `xi`, `lambda_`.",
   [(gamma, gamma), (delta, delta), (xi, xi), (lambda_, lambda)]
 );
@@ -80,7 +80,7 @@ fit_class!(
   PySkewTFit,
   "SkewTFit",
   crate::distfit::SkewTFit,
-  crate::distfit::skew_t_fit,
+  crate::distfit::fit_skew_t,
   "Hansen skew-t maximum-likelihood fit with location and scale; parameters `mu`, `sigma`, `eta`, `lambda_`.",
   [(mu, mu), (sigma, sigma), (eta, eta), (lambda_, lambda)]
 );
@@ -89,14 +89,14 @@ fit_class!(
   PyVarianceGammaFit,
   "VarianceGammaFit",
   crate::distfit::VarianceGammaFit,
-  crate::distfit::variance_gamma_fit,
+  crate::distfit::fit_variance_gamma,
   "Variance-gamma maximum-likelihood fit; parameters `sigma`, `nu`, `theta`, `mu`.",
   [(sigma, sigma), (nu, nu), (theta, theta), (mu, mu)]
 );
 
 #[pyclass(name = "GpdPwm", unsendable)]
 pub struct PyGpdPwm {
-  inner: crate::evt::GpdPwm,
+  inner: crate::evt::GpdPwmFit,
 }
 
 #[pymethods]
@@ -105,7 +105,7 @@ impl PyGpdPwm {
   #[new]
   fn new<'py>(exceedances: PyReadonlyArray1<'py, f64>) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::evt::gpd_pwm(exceedances.as_array()),
+      inner: crate::evt::fit_gpd_pwm(exceedances.as_array()),
     })
   }
 

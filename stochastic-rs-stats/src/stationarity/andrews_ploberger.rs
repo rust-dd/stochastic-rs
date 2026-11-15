@@ -49,7 +49,7 @@ use crate::linalg::solve;
 /// Which aggregation of the local Wald statistic to report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum ApStatistic {
+pub enum AndrewsPlobergerStatistic {
   /// $\sup_\tau W(\tau)$ — Andrews (1993) Sup-Wald.
   Sup,
   /// $\ln \{ (1/N) \sum_\tau \exp[W(\tau)/2] \}$ — Andrews-Ploberger Exp-Wald.
@@ -60,20 +60,20 @@ pub enum ApStatistic {
 
 /// Configuration for the Andrews / Andrews-Ploberger test.
 #[derive(Debug, Clone, Copy)]
-pub struct ApConfig {
+pub struct AndrewsPlobergerConfig {
   /// Aggregation choice.
-  pub statistic: ApStatistic,
+  pub statistic: AndrewsPlobergerStatistic,
   /// Trim fraction $\pi_0 \in (0, 0.5)$. Tabulated critical values inside
   /// this implementation are for $\pi_0 = 0.15$.
   pub pi0: f64,
-  /// Significance level used to evaluate `null_rejected`.
+  /// Significance level used to evaluate `rejects_null`.
   pub alpha: f64,
 }
 
-impl Default for ApConfig {
+impl Default for AndrewsPlobergerConfig {
   fn default() -> Self {
     Self {
-      statistic: ApStatistic::Sup,
+      statistic: AndrewsPlobergerStatistic::Sup,
       pi0: 0.15,
       alpha: 0.05,
     }
@@ -82,9 +82,9 @@ impl Default for ApConfig {
 
 /// Result of the Andrews / Andrews-Ploberger test.
 #[derive(Debug, Clone)]
-pub struct ApResult {
+pub struct AndrewsPlobergerTest {
   /// Statistic actually computed (Sup, Exp, or Avg-Wald).
-  pub statistic_kind: ApStatistic,
+  pub statistic_kind: AndrewsPlobergerStatistic,
   /// Test statistic.
   pub statistic: f64,
   /// Breakpoint fraction $\tau^* = \arg\max_\tau W(\tau)$ (only meaningful
@@ -99,16 +99,16 @@ pub struct ApResult {
   /// != 0.15` or `k` is outside the tabulated range `1..=5`.
   pub p_value: f64,
   /// Whether the parameter-constancy null is rejected at `alpha`.
-  pub null_rejected: bool,
+  pub rejects_null: bool,
 }
 
-impl crate::traits::HypothesisTest for ApResult {
+impl crate::traits::HypothesisTest for AndrewsPlobergerTest {
   fn statistic(&self) -> f64 {
     self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.null_rejected)
+    Some(self.rejects_null)
   }
 }
 
@@ -119,7 +119,11 @@ impl crate::traits::HypothesisTest for ApResult {
 /// Panics on non-finite inputs, `pi0` outside `(0, 0.5)`, `alpha` outside
 /// `(0, 1)`, or a sample too short to fit OLS on both pieces of the
 /// trimmed grid.
-pub fn andrews_ploberger_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: ApConfig) -> ApResult {
+pub fn andrews_ploberger_test(
+  y: ArrayView1<f64>,
+  x: ArrayView2<f64>,
+  cfg: AndrewsPlobergerConfig,
+) -> AndrewsPlobergerTest {
   let y_slice = y
     .as_slice()
     .expect("andrews_ploberger_test requires a contiguous ArrayView1");
@@ -155,13 +159,13 @@ pub fn andrews_ploberger_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: ApCon
   let (statistic, breakpoint_frac) = aggregate(&wald_path, cfg.statistic);
   let (p_value, null_rejected) = decide(statistic, cfg.statistic, k, cfg.pi0, cfg.alpha);
 
-  ApResult {
+  AndrewsPlobergerTest {
     statistic_kind: cfg.statistic,
     statistic,
     breakpoint_frac,
     wald_path,
     p_value,
-    null_rejected,
+    rejects_null: null_rejected,
   }
 }
 
@@ -214,7 +218,7 @@ fn segment_fit(
   Some((beta, &xtx_inv * sigma2))
 }
 
-fn aggregate(path: &[(f64, f64)], kind: ApStatistic) -> (f64, f64) {
+fn aggregate(path: &[(f64, f64)], kind: AndrewsPlobergerStatistic) -> (f64, f64) {
   let finite: Vec<(f64, f64)> = path
     .iter()
     .copied()
@@ -228,8 +232,8 @@ fn aggregate(path: &[(f64, f64)], kind: ApStatistic) -> (f64, f64) {
     .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
     .expect("non-empty by guard above");
   match kind {
-    ApStatistic::Sup => (max_w, tau_star),
-    ApStatistic::Exp => {
+    AndrewsPlobergerStatistic::Sup => (max_w, tau_star),
+    AndrewsPlobergerStatistic::Exp => {
       // Subtract the per-tau max for numerical stability of logsumexp:
       // ln{N⁻¹ Σ exp(w/2)} = (max/2) + ln{N⁻¹ Σ exp((w - max)/2)}.
       let n_grid = finite.len() as f64;
@@ -242,7 +246,7 @@ fn aggregate(path: &[(f64, f64)], kind: ApStatistic) -> (f64, f64) {
       let stat = max_over_two + lse_tail.ln();
       (stat, tau_star)
     }
-    ApStatistic::Avg => {
+    AndrewsPlobergerStatistic::Avg => {
       let n_grid = finite.len() as f64;
       let mean = finite.iter().map(|(_, w)| *w).sum::<f64>() / n_grid;
       (mean, tau_star)
@@ -295,12 +299,18 @@ fn select_levels(row: (f64, f64, f64), _alpha: f64) -> (f64, f64, f64) {
   row
 }
 
-fn decide(stat: f64, kind: ApStatistic, k: usize, pi0: f64, alpha: f64) -> (f64, bool) {
+fn decide(
+  stat: f64,
+  kind: AndrewsPlobergerStatistic,
+  k: usize,
+  pi0: f64,
+  alpha: f64,
+) -> (f64, bool) {
   let table = if (pi0 - 0.15).abs() < 1e-9 {
     match kind {
-      ApStatistic::Sup => sup_wald_critical(k, alpha),
-      ApStatistic::Exp => exp_wald_critical(k, alpha),
-      ApStatistic::Avg => avg_wald_critical(k, alpha),
+      AndrewsPlobergerStatistic::Sup => sup_wald_critical(k, alpha),
+      AndrewsPlobergerStatistic::Exp => exp_wald_critical(k, alpha),
+      AndrewsPlobergerStatistic::Avg => avg_wald_critical(k, alpha),
     }
   } else {
     None
@@ -369,14 +379,14 @@ mod tests {
     let res = andrews_ploberger_test(
       y.view(),
       x.view(),
-      ApConfig {
-        statistic: ApStatistic::Sup,
+      AndrewsPlobergerConfig {
+        statistic: AndrewsPlobergerStatistic::Sup,
         pi0: 0.15,
         alpha: 0.05,
       },
     );
     assert!(
-      !res.null_rejected,
+      !res.rejects_null,
       "no-break DGP: Sup-Wald should not reject; W = {}, p = {}",
       res.statistic, res.p_value
     );
@@ -388,14 +398,14 @@ mod tests {
     let res = andrews_ploberger_test(
       y.view(),
       x.view(),
-      ApConfig {
-        statistic: ApStatistic::Sup,
+      AndrewsPlobergerConfig {
+        statistic: AndrewsPlobergerStatistic::Sup,
         pi0: 0.15,
         alpha: 0.05,
       },
     );
     assert!(
-      res.null_rejected,
+      res.rejects_null,
       "intercept break at τ=0.5: should reject; W = {}, p = {}",
       res.statistic, res.p_value
     );
@@ -412,14 +422,14 @@ mod tests {
     let res = andrews_ploberger_test(
       y.view(),
       x.view(),
-      ApConfig {
-        statistic: ApStatistic::Exp,
+      AndrewsPlobergerConfig {
+        statistic: AndrewsPlobergerStatistic::Exp,
         pi0: 0.15,
         alpha: 0.05,
       },
     );
     assert!(
-      res.null_rejected,
+      res.rejects_null,
       "slope break at τ=0.3: Exp-Wald should reject; W = {}, p = {}",
       res.statistic, res.p_value
     );
@@ -431,14 +441,14 @@ mod tests {
     let res = andrews_ploberger_test(
       y.view(),
       x.view(),
-      ApConfig {
-        statistic: ApStatistic::Avg,
+      AndrewsPlobergerConfig {
+        statistic: AndrewsPlobergerStatistic::Avg,
         pi0: 0.15,
         alpha: 0.05,
       },
     );
     assert!(
-      res.null_rejected,
+      res.rejects_null,
       "intercept break: Avg-Wald should reject; W = {}, p = {}",
       res.statistic, res.p_value
     );

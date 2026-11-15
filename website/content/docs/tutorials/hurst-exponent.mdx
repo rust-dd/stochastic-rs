@@ -42,7 +42,7 @@ One path with $H = 0.7$, four estimates of $H$ from it — two of them with a st
 ## Prerequisites
 
 - Rust: `stochastic-rs`, no features. Python: `pip install stochastic-rs`.
-- The estimators live in `stochastic_rs::stats::hurst` (`Higuchi` and `Variogram` in `stats::fractal_dim`) and share one trait, `HurstEstimator`, whose `estimate(path)` returns a `HurstResult` with the point estimate, an optional standard error and the regression diagnostics.
+- The estimators live in `stochastic_rs::stats::hurst` (`Higuchi` and `Variogram` in `stats::fractal_dim`) and share one trait, `HurstEstimator`, whose `estimate(path)` returns a `HurstFit` with the point estimate, an optional standard error and the regression diagnostics.
 
 ## Step 1 — simulate a path with a known H
 

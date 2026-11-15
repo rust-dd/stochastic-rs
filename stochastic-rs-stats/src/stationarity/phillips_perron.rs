@@ -58,7 +58,7 @@ impl Default for PhillipsPerronConfig {
 
 /// Result of the Phillips-Perron unit-root test.
 #[derive(Debug, Clone, Copy)]
-pub struct PhillipsPerronResult {
+pub struct PhillipsPerronTest {
   /// PP statistic value.
   pub statistic: f64,
   /// Newey-West lag length used.
@@ -68,16 +68,16 @@ pub struct PhillipsPerronResult {
   /// Critical values (available for `Tau` output).
   pub critical_values: Option<CriticalValues>,
   /// Unit-root rejection decision (available for `Tau` output).
-  pub reject_unit_root: Option<bool>,
+  pub rejects_null: Option<bool>,
 }
 
-impl crate::traits::HypothesisTest for PhillipsPerronResult {
+impl crate::traits::HypothesisTest for PhillipsPerronTest {
   fn statistic(&self) -> f64 {
     self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    self.reject_unit_root
+    self.rejects_null
   }
 }
 
@@ -85,7 +85,7 @@ impl crate::traits::HypothesisTest for PhillipsPerronResult {
 ///
 /// # Panics
 /// Panics on invalid inputs (non-finite series, too-short sample, invalid config).
-pub fn phillips_perron_test(y: ArrayView1<f64>, cfg: PhillipsPerronConfig) -> PhillipsPerronResult {
+pub fn phillips_perron_test(y: ArrayView1<f64>, cfg: PhillipsPerronConfig) -> PhillipsPerronTest {
   let y = y
     .as_slice()
     .expect("phillips_perron_test requires a contiguous ArrayView1");
@@ -129,12 +129,12 @@ pub fn phillips_perron_test(y: ArrayView1<f64>, cfg: PhillipsPerronConfig) -> Ph
     PpTestType::Rho => (None, None),
   };
 
-  PhillipsPerronResult {
+  PhillipsPerronTest {
     statistic,
     used_lags,
     test_type: cfg.test_type,
     critical_values,
-    reject_unit_root,
+    rejects_null: reject_unit_root,
   }
 }
 
@@ -186,7 +186,7 @@ mod tests {
     };
     let res = phillips_perron_test(ndarray::ArrayView1::from(&x), cfg);
     assert_eq!(
-      res.reject_unit_root,
+      res.rejects_null,
       Some(true),
       "expected rejection, got {res:?}"
     );
@@ -203,7 +203,7 @@ mod tests {
     };
     let res = phillips_perron_test(ndarray::ArrayView1::from(&x), cfg);
     assert_eq!(
-      res.reject_unit_root,
+      res.rejects_null,
       Some(false),
       "expected no rejection, got {res:?}"
     );

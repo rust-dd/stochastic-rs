@@ -49,7 +49,7 @@
 //!     |x| dist.cdf(x).unwrap(),
 //!     KolmogorovSmirnovConfig::default(),
 //! );
-//! assert!(!res.reject, "KS should not reject a sampler against its own cdf");
+//! assert!(!res.rejects_null, "KS should not reject a sampler against its own cdf");
 //! ```
 
 pub mod chi_square;

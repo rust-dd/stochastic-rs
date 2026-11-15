@@ -72,8 +72,8 @@ The constructor asserts the signs above and the range of `rho`. It does not chec
 | Price vanilla and down-and-out calls by ADI | `quant::pricing::heston_adi::HestonAdiPricer` | `HestonAdiPricer` |
 | Monte Carlo Malliavin Greeks | `quant::pricing::malliavin_greeks::HestonMalliavinGreeks` | — |
 | Calibrate to option prices | `quant::calibration::heston::HestonCalibrator` | `HestonCalibrator` |
-| Estimate from price and variance series | `stats::heston_mle::nmle_heston`, `pmle_heston` | `HestonMLE` |
-| Estimate from prices alone | `stats::heston_nml_cekf::nmle_cekf_heston` | `HestonNMLECEKF` |
+| Estimate from price and variance series | `stats::heston_mle::fit_heston_nmle`, `fit_heston_pmle` | `HestonMLE` |
+| Estimate from prices alone | `stats::heston_nmle_cekf::fit_heston_nmle_cekf` | `HestonNMLECEKF` |
 | Neural surrogate of the implied-vol surface | `ai::volatility::heston::HestonNn` (feature `ai`) | `HestonNn` (source builds with `ai`) |
 
 ## Simulate paths
@@ -170,7 +170,7 @@ Every quote is priced as the calibrator's `option_type` (`"call"` by default); t
 
 ## Estimate from data
 
-`HestonMLE.nmle(s, v, r)` and `HestonMLE.pmle(s, v, r)` estimate the parameters from observed price and variance series with the closed-form estimators of Wang et al. (2018). They take the sampling step as $1/(\text{len} - 1)$, a series spanning one unit of time; in Rust, `nmle_heston_with_delta` and `pmle_heston_with_delta` take the step explicitly. `HestonNMLECEKF(s, r, delta, max_iters)` works from prices alone, alternating a consistent extended Kalman filter for the variance with the NMLE update.
+`HestonMLE.nmle(s, v, r)` and `HestonMLE.pmle(s, v, r)` estimate the parameters from observed price and variance series with the closed-form estimators of Wang et al. (2018). They take the sampling step as $1/(\text{len} - 1)$, a series spanning one unit of time; in Rust, `fit_heston_nmle_with_delta` and `fit_heston_pmle_with_delta` take the step explicitly. `HestonNMLECEKF(s, r, delta, max_iters)` works from prices alone, alternating a consistent extended Kalman filter for the variance with the NMLE update.
 
 ```python
 import stochastic_rs as srs

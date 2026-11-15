@@ -30,7 +30,7 @@ pub struct AdfConfig {
   pub lag_selection: LagSelection,
   /// Maximum lag considered by automatic lag selection.
   pub max_lags: Option<usize>,
-  /// Significance level used to compute `reject_unit_root`.
+  /// Significance level used to compute `rejects_null`.
   pub alpha: f64,
 }
 
@@ -47,7 +47,7 @@ impl Default for AdfConfig {
 
 /// Result of the Augmented Dickey-Fuller test.
 #[derive(Debug, Clone, Copy)]
-pub struct AdfResult {
+pub struct AdfTest {
   /// ADF t-statistic for the lagged level coefficient.
   pub statistic: f64,
   /// Selected lag order.
@@ -57,16 +57,16 @@ pub struct AdfResult {
   /// Critical values at 1%, 5%, 10% levels.
   pub critical_values: CriticalValues,
   /// Whether the null (unit root) is rejected at `alpha`.
-  pub reject_unit_root: bool,
+  pub rejects_null: bool,
 }
 
-impl crate::traits::HypothesisTest for AdfResult {
+impl crate::traits::HypothesisTest for AdfTest {
   fn statistic(&self) -> f64 {
     self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.reject_unit_root)
+    Some(self.rejects_null)
   }
 }
 
@@ -74,7 +74,7 @@ impl crate::traits::HypothesisTest for AdfResult {
 ///
 /// # Panics
 /// Panics on invalid inputs (non-finite series, too-short sample, invalid config).
-pub fn adf_test(y: ArrayView1<f64>, cfg: AdfConfig) -> AdfResult {
+pub fn adf_test(y: ArrayView1<f64>, cfg: AdfConfig) -> AdfTest {
   let y = y
     .as_slice()
     .expect("adf_test requires a contiguous ArrayView1");
@@ -105,12 +105,12 @@ pub fn adf_test(y: ArrayView1<f64>, cfg: AdfConfig) -> AdfResult {
   let critical_values = adf_critical_values(cfg.deterministic);
   let reject_unit_root = fit.statistic < critical_values.value_at(cfg.alpha);
 
-  AdfResult {
+  AdfTest {
     statistic: fit.statistic,
     used_lags,
     nobs: fit.nobs,
     critical_values,
-    reject_unit_root,
+    rejects_null: reject_unit_root,
   }
 }
 
@@ -161,7 +161,7 @@ mod tests {
     };
     let res = adf_test(ndarray::ArrayView1::from(&x), cfg);
     assert!(
-      res.reject_unit_root,
+      res.rejects_null,
       "expected unit-root rejection, got {res:?}"
     );
   }
@@ -177,7 +177,7 @@ mod tests {
     };
     let res = adf_test(ndarray::ArrayView1::from(&x), cfg);
     assert!(
-      !res.reject_unit_root,
+      !res.rejects_null,
       "expected no rejection for random walk, got {res:?}"
     );
   }

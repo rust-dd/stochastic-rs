@@ -22,7 +22,7 @@ use ndarray::ArrayView1;
 
 use super::HurstDiagnostic;
 use super::HurstEstimator;
-use super::HurstResult;
+use super::HurstFit;
 use super::to_f64_vec;
 use super::weighted_linreg;
 use crate::StatsError;
@@ -56,7 +56,7 @@ impl Gph {
 }
 
 impl<T: FloatExt> HurstEstimator<T> for Gph {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, StatsError> {
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError> {
     if !(0.1..1.0).contains(&self.bandwidth_alpha) {
       return Err(StatsError::InvalidParameter {
         name: "bandwidth_alpha",
@@ -64,11 +64,11 @@ impl<T: FloatExt> HurstEstimator<T> for Gph {
         constraint: "0.1 <= bandwidth_alpha < 1.0",
       });
     }
-    let n_obs = x.len();
-    if n_obs < 64 {
+    let nobs = x.len();
+    if nobs < 64 {
       return Err(StatsError::InsufficientData {
         needed: 64,
-        got: n_obs,
+        got: nobs,
       });
     }
 
@@ -130,10 +130,10 @@ impl<T: FloatExt> HurstEstimator<T> for Gph {
     let h = d + 0.5;
     let std_err = PI / (24.0 * m_used as f64).sqrt();
 
-    Ok(HurstResult {
+    Ok(HurstFit {
       hurst: T::from_f64_fast(h),
       std_err: Some(T::from_f64_fast(std_err)),
-      n_obs,
+      nobs,
       diagnostic: HurstDiagnostic::LogLogRegression {
         slope: T::from_f64_fast(slope),
         intercept: T::from_f64_fast(intercept),

@@ -17,9 +17,9 @@ use crate::linalg::lstsq;
 
 /// Result of a Granger-causality F-test.
 #[derive(Debug, Clone)]
-pub struct GrangerResult {
+pub struct GrangerTest {
   /// $F$ statistic.
-  pub f_statistic: f64,
+  pub statistic: f64,
   /// $p$-value under $\mathcal F_{p, T-2p-1}$.
   pub p_value: f64,
   /// Number of lag terms tested.
@@ -28,17 +28,17 @@ pub struct GrangerResult {
   pub nobs: usize,
   /// Whether $H_0$ (no Granger causality) is rejected at the supplied
   /// significance level.
-  pub reject_no_causality: bool,
+  pub rejects_null: bool,
 }
 
 /// Granger-causality test of "does X cause Y?" with `lags` autoregressive
 /// terms on each variable.
-pub fn granger_causality(
+pub fn granger_causality_test(
   y: ArrayView1<f64>,
   x: ArrayView1<f64>,
   lags: usize,
   alpha: f64,
-) -> GrangerResult {
+) -> GrangerTest {
   assert_eq!(y.len(), x.len(), "y and x must have equal length");
   assert!(lags >= 1, "lags must be at least 1");
   assert!(alpha > 0.0 && alpha < 1.0, "alpha must lie in (0, 1)");
@@ -76,12 +76,12 @@ pub fn granger_causality(
   } else {
     1.0
   };
-  GrangerResult {
-    f_statistic: f.max(0.0),
+  GrangerTest {
+    statistic: f.max(0.0),
     p_value,
     lags,
     nobs: n,
-    reject_no_causality: p_value < alpha,
+    rejects_null: p_value < alpha,
   }
 }
 
@@ -111,8 +111,8 @@ mod tests {
     dist2.fill_slice(&mut y_buf);
     let x = Array1::from(x_buf);
     let y = Array1::from(y_buf);
-    let res = granger_causality(y.view(), x.view(), 4, 0.05);
-    assert!(!res.reject_no_causality);
+    let res = granger_causality_test(y.view(), x.view(), 4, 0.05);
+    assert!(!res.rejects_null);
   }
 
   #[test]
@@ -129,7 +129,7 @@ mod tests {
     }
     let xa = Array1::from(x_buf);
     let ya = Array1::from(y);
-    let res = granger_causality(ya.view(), xa.view(), 2, 0.05);
-    assert!(res.reject_no_causality);
+    let res = granger_causality_test(ya.view(), xa.view(), 2, 0.05);
+    assert!(res.rejects_null);
   }
 }

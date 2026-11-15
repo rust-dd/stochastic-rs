@@ -47,7 +47,7 @@ pub struct ResetConfig {
   /// Highest power of $\hat y$ added to the augmented regression. Must be
   /// $\ge 2$. Default `3` ($\hat y^2$ and $\hat y^3$).
   pub max_power: usize,
-  /// Significance level used to compute `reject_correct_specification`.
+  /// Significance level used to compute `rejects_null`.
   pub alpha: f64,
 }
 
@@ -62,9 +62,9 @@ impl Default for ResetConfig {
 
 /// Result of the RESET test.
 #[derive(Debug, Clone, Copy)]
-pub struct ResetResult {
+pub struct ResetTest {
   /// F-statistic for the joint restriction $\gamma_2 = \dots = \gamma_p = 0$.
-  pub f_statistic: f64,
+  pub statistic: f64,
   /// Numerator degrees of freedom $q = p - 1$.
   pub df_num: usize,
   /// Denominator degrees of freedom $T - k - q$.
@@ -72,16 +72,16 @@ pub struct ResetResult {
   /// Asymptotic p-value from the $F(q, T-k-q)$ distribution.
   pub p_value: f64,
   /// Whether the correct-specification null is rejected at `alpha`.
-  pub reject_correct_specification: bool,
+  pub rejects_null: bool,
 }
 
-impl crate::traits::HypothesisTest for ResetResult {
+impl crate::traits::HypothesisTest for ResetTest {
   fn statistic(&self) -> f64 {
-    self.f_statistic
+    self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.reject_correct_specification)
+    Some(self.rejects_null)
   }
 }
 
@@ -93,7 +93,7 @@ impl crate::traits::HypothesisTest for ResetResult {
 /// # Panics
 /// Panics on non-finite inputs, `max_power < 2`, $T \le k + (p-1)$, or
 /// `alpha` outside $(0, 1)$.
-pub fn reset_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: ResetConfig) -> ResetResult {
+pub fn reset_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: ResetConfig) -> ResetTest {
   let y_slice = y
     .as_slice()
     .expect("reset_test requires a contiguous ArrayView1");
@@ -146,12 +146,12 @@ pub fn reset_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: ResetConfig) -> R
     0.0
   };
 
-  ResetResult {
-    f_statistic,
+  ResetTest {
+    statistic: f_statistic,
     df_num,
     df_den,
     p_value,
-    reject_correct_specification: p_value < cfg.alpha,
+    rejects_null: p_value < cfg.alpha,
   }
 }
 
@@ -204,9 +204,9 @@ mod tests {
     let xm = design_with_intercept(&x);
     let res = reset_test(y.view(), xm.view(), ResetConfig::default());
     assert!(
-      !res.reject_correct_specification,
+      !res.rejects_null,
       "linear DGP: should not reject; F = {}, p = {}",
-      res.f_statistic, res.p_value
+      res.statistic, res.p_value
     );
   }
 
@@ -216,9 +216,9 @@ mod tests {
     let xm = design_with_intercept(&x);
     let res = reset_test(y.view(), xm.view(), ResetConfig::default());
     assert!(
-      res.reject_correct_specification,
+      res.rejects_null,
       "quadratic DGP: should reject; F = {}, p = {}",
-      res.f_statistic, res.p_value
+      res.statistic, res.p_value
     );
   }
 
@@ -228,9 +228,9 @@ mod tests {
     let xm = design_with_intercept(&x);
     let res = reset_test(y.view(), xm.view(), ResetConfig::default());
     assert!(
-      res.reject_correct_specification,
+      res.rejects_null,
       "cubic DGP: should reject; F = {}, p = {}",
-      res.f_statistic, res.p_value
+      res.statistic, res.p_value
     );
   }
 
@@ -243,9 +243,9 @@ mod tests {
     let xm = design_with_intercept(&x);
     let res = reset_test(y.view(), xm.view(), ResetConfig::default());
     assert!(
-      res.f_statistic < 1e-6,
+      res.statistic < 1e-6,
       "noiseless linear F should be ~ 0; got {}",
-      res.f_statistic
+      res.statistic
     );
   }
 

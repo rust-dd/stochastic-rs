@@ -53,7 +53,7 @@ pub enum DiffusionKind {
 
 /// QMLE fit of a mean-reverting diffusion.
 #[derive(Debug, Clone)]
-pub struct QmleResult {
+pub struct QmleFit {
   /// Mean-reversion speed $\kappa$.
   pub kappa: f64,
   /// Long-run level $\theta$.
@@ -117,9 +117,13 @@ pub(crate) fn quasi_log_likelihood(
 ///
 /// `series` is the discretely-observed path, `dt` the sampling interval.
 /// Requires at least 3 observations.
-pub fn qmle<T: FloatExt>(series: ArrayView1<T>, dt: f64, kind: DiffusionKind) -> QmleResult {
-  let n_obs = series.len();
-  assert!(n_obs >= 3, "qmle requires at least 3 observations");
+pub fn fit_diffusion_qmle<T: FloatExt>(
+  series: ArrayView1<T>,
+  dt: f64,
+  kind: DiffusionKind,
+) -> QmleFit {
+  let nobs = series.len();
+  assert!(nobs >= 3, "qmle requires at least 3 observations");
   assert!(dt.is_finite() && dt > 0.0, "dt must be finite and positive");
   let x: Vec<f64> = series.iter().map(|v| v.to_f64().unwrap()).collect();
 
@@ -133,7 +137,7 @@ pub fn qmle<T: FloatExt>(series: ArrayView1<T>, dt: f64, kind: DiffusionKind) ->
   let sample_mean = x.iter().sum::<f64>() / x.len() as f64;
   let theta0 = sample_mean.max(1e-8);
   let (mut num, mut den) = (0.0, 0.0);
-  for t in 0..n_obs - 1 {
+  for t in 0..nobs - 1 {
     num += (x[t] - sample_mean) * (x[t + 1] - sample_mean);
     den += (x[t] - sample_mean).powi(2);
   }
@@ -145,12 +149,12 @@ pub fn qmle<T: FloatExt>(series: ArrayView1<T>, dt: f64, kind: DiffusionKind) ->
   let kappa0 = (-ac1.ln() / dt).clamp(1e-3, 50.0);
   // Residual variance → σ² via the family's conditional-variance scale.
   let mut resid_var = 0.0;
-  for t in 0..n_obs - 1 {
+  for t in 0..nobs - 1 {
     let a = (-kappa0 * dt).exp();
     let m = theta0 + (x[t] - theta0) * a;
     resid_var += (x[t + 1] - m).powi(2);
   }
-  resid_var /= (n_obs - 1) as f64;
+  resid_var /= (nobs - 1) as f64;
   let a0 = (-kappa0 * dt).exp();
   let scale = match kind {
     DiffusionKind::OrnsteinUhlenbeck => (1.0 - a0 * a0) / (2.0 * kappa0),
@@ -163,7 +167,7 @@ pub fn qmle<T: FloatExt>(series: ArrayView1<T>, dt: f64, kind: DiffusionKind) ->
   let (p, iters, converged) = nelder_mead([kappa0.ln(), theta0.ln(), sigma0.ln()], 2000, neg_ll);
   let (kappa, theta, sigma) = (p[0].exp(), p[1].exp(), p[2].exp());
 
-  QmleResult {
+  QmleFit {
     kappa,
     theta,
     sigma,
@@ -180,15 +184,15 @@ pub fn qmle<T: FloatExt>(series: ArrayView1<T>, dt: f64, kind: DiffusionKind) ->
 /// AR(1) representation: $X_{t+\Delta} = \theta(1-\beta) + \beta X_t +
 /// \varepsilon_t$ with $\beta = e^{-\kappa\Delta}$ and
 /// $\operatorname{Var}(\varepsilon) = \sigma^2(1-\beta^2)/(2\kappa)$.
-pub fn mle_ou_closed_form<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> QmleResult {
-  let n_obs = series.len();
+pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> QmleFit {
+  let nobs = series.len();
   assert!(
-    n_obs >= 3,
+    nobs >= 3,
     "mle_ou_closed_form requires at least 3 observations"
   );
   assert!(dt.is_finite() && dt > 0.0, "dt must be finite and positive");
   let x: Vec<f64> = series.iter().map(|v| v.to_f64().unwrap()).collect();
-  let m = n_obs - 1;
+  let m = nobs - 1;
   let mf = m as f64;
 
   let sx: f64 = (0..m).map(|t| x[t]).sum();
@@ -220,7 +224,7 @@ pub fn mle_ou_closed_form<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> QmleRe
       -0.5 * ((2.0 * std::f64::consts::PI * var_eps).ln() + (x[t + 1] - pred).powi(2) / var_eps);
   }
 
-  QmleResult {
+  QmleFit {
     kappa,
     theta,
     sigma,
@@ -313,8 +317,8 @@ mod tests {
   #[test]
   fn qmle_ou_matches_closed_form_mle() {
     let path = simulate_ou(1.8, 0.06, 0.12, 0.06, 1.0 / 252.0, 6000, 3);
-    let q = qmle(path.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck);
-    let cf = mle_ou_closed_form(path.view(), 1.0 / 252.0);
+    let q = fit_diffusion_qmle(path.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck);
+    let cf = fit_ou_mle(path.view(), 1.0 / 252.0);
     assert!(
       (q.kappa - cf.kappa).abs() / cf.kappa < 1e-3,
       "QMLE κ={} vs closed-form κ={}",
@@ -353,7 +357,7 @@ mod tests {
       let path = simulate_ou(kt, tt, st, 0.06, 1.0 / 252.0, 8000, seed);
       (
         seed,
-        qmle(path.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck),
+        fit_diffusion_qmle(path.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck),
       )
     });
     let ok = fits.iter().any(|(_, q)| {
@@ -382,7 +386,10 @@ mod tests {
     let (kt, tt, st) = (2.0, 0.04, 0.25);
     let fits = [7u64, 13, 29].map(|seed| {
       let path = simulate_cir(kt, tt, st, 0.04, 1.0 / 252.0, 8000, seed);
-      (seed, qmle(path.view(), 1.0 / 252.0, DiffusionKind::Cir))
+      (
+        seed,
+        fit_diffusion_qmle(path.view(), 1.0 / 252.0, DiffusionKind::Cir),
+      )
     });
     let ok = fits.iter().any(|(_, q)| {
       q.converged
@@ -407,6 +414,6 @@ mod tests {
   #[should_panic(expected = "at least 3 observations")]
   fn qmle_panics_on_short_series() {
     let s = Array1::from(vec![0.05, 0.06]);
-    let _ = qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck);
+    let _ = fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck);
   }
 }

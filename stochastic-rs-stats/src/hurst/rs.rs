@@ -33,7 +33,7 @@ use stochastic_rs_distributions::special::ln_gamma;
 
 use super::HurstDiagnostic;
 use super::HurstEstimator;
-use super::HurstResult;
+use super::HurstFit;
 use super::log_spaced_windows;
 use super::to_f64_vec;
 use super::weighted_linreg;
@@ -79,7 +79,7 @@ impl RescaledRange {
 }
 
 impl<T: FloatExt> HurstEstimator<T> for RescaledRange {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, StatsError> {
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError> {
     let n = x.len();
     let min_required = self.min_window.max(8) * 2;
     if n < min_required {
@@ -167,10 +167,10 @@ impl<T: FloatExt> HurstEstimator<T> for RescaledRange {
       return Err(StatsError::Singular("log-log regression"));
     }
 
-    Ok(HurstResult {
+    Ok(HurstFit {
       hurst: T::from_f64_fast(slope),
       std_err: None,
-      n_obs: n,
+      nobs: n,
       diagnostic: HurstDiagnostic::LogLogRegression {
         slope: T::from_f64_fast(slope),
         intercept: T::from_f64_fast(intercept),

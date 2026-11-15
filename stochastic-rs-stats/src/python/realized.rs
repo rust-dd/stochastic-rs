@@ -131,7 +131,7 @@ impl PyBNSJumpTest {
 
   #[getter]
   fn reject_no_jump(&self) -> bool {
-    self.inner.reject_no_jump
+    self.inner.rejects_null
   }
 }
 
@@ -318,7 +318,7 @@ impl PyPreAveragedVariance {
 
 #[pyclass(name = "EwmaVariance", unsendable)]
 pub struct PyEwmaVariance {
-  inner: crate::realized::ewma::EwmaVariance,
+  inner: crate::realized::ewma::EwmaResult,
 }
 
 #[pymethods]

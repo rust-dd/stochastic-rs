@@ -122,7 +122,7 @@
 //! (`z_robust`, Lo-MacKinlay's `M2`) over the IID one (`z_iid`, `M1`)
 //! whenever volatility clustering is plausible, which for financial
 //! returns is essentially always;
-//! [`lo_mackinlay::LoMacKinlayResult`]'s own [`crate::traits::HypothesisTest`]
+//! [`lo_mackinlay::LoMacKinlayTest`]'s own [`crate::traits::HypothesisTest`]
 //! impl already defaults to the robust statistic for exactly this reason.
 //!
 //! [`reset::reset_test`] is not a time-series test at all: Ramsey (1969)

@@ -22,15 +22,15 @@ pub mod double_exp;
 pub mod econometrics;
 pub mod evt;
 pub mod filtering;
-pub mod fou_estimator;
+pub mod fou;
 pub mod fractal_dim;
 pub mod garch;
-pub mod gaussian_kde;
 pub mod gmm_cir;
 pub mod goodness_of_fit;
 pub mod heston_mle;
-pub mod heston_nml_cekf;
+pub mod heston_nmle_cekf;
 pub mod hurst;
+pub mod kde;
 pub mod leverage;
 pub mod log_realized_variance_qml;
 pub mod mle;
@@ -55,6 +55,6 @@ mod tests {
     use crate::stationarity::cusum::*;
     // Both names must be nameable in one scope.
     fn _a(_x: ChangepointCusumResult) {}
-    fn _b(_x: CusumResult) {}
+    fn _b(_x: CusumTest) {}
   }
 }

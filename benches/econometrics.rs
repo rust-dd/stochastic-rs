@@ -12,10 +12,10 @@ use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stats::econometrics::GaussianHmm;
 use stochastic_rs::stats::econometrics::cusum;
 use stochastic_rs::stats::econometrics::engle_granger_test;
-use stochastic_rs::stats::econometrics::granger_causality;
+use stochastic_rs::stats::econometrics::fit_vecm;
+use stochastic_rs::stats::econometrics::granger_causality_test;
 use stochastic_rs::stats::econometrics::johansen_test;
 use stochastic_rs::stats::econometrics::pelt;
-use stochastic_rs::stats::econometrics::vecm_fit;
 
 fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
   let mut dist = SimdNormal::<f64>::new(0.0, sigma).seeded(&Deterministic::new(seed));
@@ -67,7 +67,7 @@ fn bench_cointegration(c: &mut Criterion) {
     b.iter(|| std::hint::black_box(johansen_test(s.view(), 2)));
   });
   c.bench_function("vecm_500x3_rank1", |b| {
-    b.iter(|| std::hint::black_box(vecm_fit(s.view(), 2, 1)));
+    b.iter(|| std::hint::black_box(fit_vecm(s.view(), 2, 1)));
   });
 }
 
@@ -75,7 +75,7 @@ fn bench_granger(c: &mut Criterion) {
   let x = iid_normal(21, 2_000);
   let y = iid_normal(23, 2_000);
   c.bench_function("granger_2k_lag4", |b| {
-    b.iter(|| std::hint::black_box(granger_causality(y.view(), x.view(), 4, 0.05)));
+    b.iter(|| std::hint::black_box(granger_causality_test(y.view(), x.view(), 4, 0.05)));
   });
 }
 

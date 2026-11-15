@@ -8,8 +8,8 @@ use super::HestonCekfStepDiagnostics;
 use super::HestonCekfStepResult;
 use super::HestonCekfVarianceProjection;
 use crate::StatsError;
-use crate::heston_nml_cekf::EPS;
-use crate::heston_nml_cekf::HestonNmleCekfParams;
+use crate::heston_nmle_cekf::EPS;
+use crate::heston_nmle_cekf::HestonNmleCekfParams;
 
 #[derive(Clone, Copy)]
 pub(super) enum FloorPolicy {

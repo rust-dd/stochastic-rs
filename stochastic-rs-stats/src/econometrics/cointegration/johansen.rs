@@ -69,7 +69,7 @@ const MAX_EIG_CRITICAL_5PCT: [f64; 12] = [
 
 /// Result of the Johansen trace and maximum-eigenvalue rank tests.
 #[derive(Debug, Clone)]
-pub struct JohansenResult {
+pub struct JohansenTest {
   /// Eigenvalues $\hat\lambda_1 \ge \dots \ge \hat\lambda_K$.
   pub eigenvalues: Array1<f64>,
   /// Eigenvectors as columns, column `i` belonging to `eigenvalues[i]`,
@@ -95,7 +95,7 @@ pub struct JohansenResult {
 
 /// Maximum-likelihood VECM estimate at a fixed cointegrating rank.
 #[derive(Debug, Clone)]
-pub struct Vecm {
+pub struct VecmFit {
   /// Cointegrating rank $r$.
   pub rank: usize,
   /// VAR lag order $p$; the model carries $p - 1$ lagged differences.
@@ -255,7 +255,7 @@ fn sequential_rank(statistics: &Array1<f64>, critical: &Array1<f64>) -> usize {
 
 /// Johansen trace and maximum-eigenvalue tests for the cointegrating rank
 /// of a `(t, k)` series. `lags` is the VAR order (use `1` if unsure).
-pub fn johansen_test(series: ArrayView2<f64>, lags: usize) -> JohansenResult {
+pub fn johansen_test(series: ArrayView2<f64>, lags: usize) -> JohansenTest {
   let c = concentrate(series, lags);
   let k = c.eigenvalues.len();
   let t = c.n_eff as f64;
@@ -266,7 +266,7 @@ pub fn johansen_test(series: ArrayView2<f64>, lags: usize) -> JohansenResult {
   let max_eig_critical_5pct = critical_values(&MAX_EIG_CRITICAL_5PCT, k);
   let rank_trace = sequential_rank(&trace_statistics, &trace_critical_5pct);
   let rank_max_eig = sequential_rank(&max_eig_statistics, &max_eig_critical_5pct);
-  JohansenResult {
+  JohansenTest {
     eigenvalues: c.eigenvalues,
     eigenvectors: c.eigenvectors,
     trace_statistics,
@@ -281,7 +281,7 @@ pub fn johansen_test(series: ArrayView2<f64>, lags: usize) -> JohansenResult {
 
 /// Maximum-likelihood VECM estimate of a `(t, k)` series at cointegrating
 /// rank `rank` (`0..=k`; `k` is the unrestricted VAR) with VAR order `lags`.
-pub fn vecm_fit(series: ArrayView2<f64>, lags: usize, rank: usize) -> Vecm {
+pub fn fit_vecm(series: ArrayView2<f64>, lags: usize, rank: usize) -> VecmFit {
   let c = concentrate(series, lags);
   let k = c.eigenvalues.len();
   assert!(rank <= k, "rank must lie in 0..={k}, got {rank}");
@@ -306,7 +306,7 @@ pub fn vecm_fit(series: ArrayView2<f64>, lags: usize, rank: usize) -> Vecm {
         .to_owned()
     })
     .collect();
-  Vecm {
+  VecmFit {
     rank,
     lags,
     beta,

@@ -33,18 +33,18 @@ use stochastic_rs_distributions::special::gamma;
 
 use super::HurstDiagnostic;
 use super::HurstEstimator;
-use super::HurstResult;
+use super::HurstFit;
 use crate::StatsError;
 use crate::optim::more_thuente;
 use crate::traits::FloatExt;
 
 /// Estimation result from the adapted Whittle estimator.
 #[derive(Clone, Debug)]
-pub struct FukasawaResult {
+pub struct FukasawaFit {
   pub hurst: f64,
   pub eta: f64,
   pub neg_log_lik: f64,
-  pub n_obs: usize,
+  pub nobs: usize,
 }
 
 /// Whittle estimator config (intraday bars + day fraction + numerical
@@ -89,7 +89,7 @@ impl Whittle {
 }
 
 impl<T: FloatExt> HurstEstimator<T> for Whittle {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstResult<T>, StatsError> {
+  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError> {
     if x.len() < 30 {
       return Err(StatsError::InsufficientData {
         needed: 30,
@@ -105,10 +105,10 @@ impl<T: FloatExt> HurstEstimator<T> for Whittle {
       self.k_trunc,
       self.j_max,
     );
-    Ok(HurstResult {
+    Ok(HurstFit {
       hurst: T::from_f64_fast(result.hurst),
       std_err: None,
-      n_obs: result.n_obs,
+      nobs: result.nobs,
       diagnostic: HurstDiagnostic::Whittle {
         neg_log_lik: T::from_f64_fast(result.neg_log_lik),
         eta: T::from_f64_fast(result.eta),
@@ -389,7 +389,7 @@ fn run_estimate(
   psi: f64,
   k_trunc: usize,
   j_max: usize,
-) -> FukasawaResult {
+) -> FukasawaFit {
   let n = log_rv.len();
   let y: Vec<f64> = (1..n).map(|i| log_rv[i] - log_rv[i - 1]).collect();
   let ny = y.len();
@@ -437,11 +437,11 @@ fn run_estimate(
     best_v = v_r;
   }
   let eta = best_v / delta.powf(best_h);
-  FukasawaResult {
+  FukasawaFit {
     hurst: best_h,
     eta,
     neg_log_lik: best_nll,
-    n_obs: n,
+    nobs: n,
   }
 }
 
@@ -450,7 +450,7 @@ fn run_estimate(
 /// `m` = intraday observations / day (e.g. 72 for 5-min bars).
 /// `delta` = day fraction in years (e.g. `1/250`).  Uses dense grid +
 /// L-BFGS refinement with Paxson spectral density correction.
-pub fn estimate(log_rv: ArrayView1<f64>, m: usize, delta: f64) -> FukasawaResult {
+pub fn estimate(log_rv: ArrayView1<f64>, m: usize, delta: f64) -> FukasawaFit {
   let log_rv = log_rv
     .as_slice()
     .expect("estimate requires a contiguous ArrayView1");
@@ -465,7 +465,7 @@ pub fn estimate(log_rv: ArrayView1<f64>, m: usize, delta: f64) -> FukasawaResult
 /// Convenience: estimate `H` from daily close prices (`m = 1`,
 /// `δ = 1/250`).  Note the heavy downward bias when `m = 1`
 /// (Fukasawa Table 1 footnote).
-pub fn estimate_from_prices(closes: ArrayView1<f64>) -> FukasawaResult {
+pub fn estimate_from_prices(closes: ArrayView1<f64>) -> FukasawaFit {
   let closes = closes
     .as_slice()
     .expect("estimate_from_prices requires a contiguous ArrayView1");
@@ -480,7 +480,7 @@ pub fn estimate_from_prices(closes: ArrayView1<f64>) -> FukasawaResult {
 }
 
 /// FloatExt generic wrapper.
-pub fn estimate_from_prices_generic<T: FloatExt>(closes: ArrayView1<T>) -> FukasawaResult {
+pub fn estimate_from_prices_generic<T: FloatExt>(closes: ArrayView1<T>) -> FukasawaFit {
   let closes_f64: Vec<f64> = closes.iter().map(|x| x.to_f64().unwrap()).collect();
   estimate_from_prices(ArrayView1::from(&closes_f64))
 }

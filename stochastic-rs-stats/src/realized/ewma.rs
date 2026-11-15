@@ -21,7 +21,7 @@ pub const RISKMETRICS_DAILY_LAMBDA: f64 = 0.94;
 
 /// Result of an EWMA variance pass over a return series.
 #[derive(Debug, Clone)]
-pub struct EwmaVariance {
+pub struct EwmaResult {
   /// Conditional variance series $\hat\sigma_t^2$, same length as the
   /// input; `variance[0] = r_0^2` is the seed.
   pub variance: Array1<f64>,
@@ -39,7 +39,7 @@ pub struct EwmaVariance {
 ///
 /// If `returns` has fewer than 2 observations or `lambda` is outside
 /// `(0, 1)`.
-pub fn ewma_variance<T: FloatExt>(returns: ArrayView1<T>, lambda: f64) -> EwmaVariance {
+pub fn ewma_variance<T: FloatExt>(returns: ArrayView1<T>, lambda: f64) -> EwmaResult {
   let n = returns.len();
   assert!(n >= 2, "EWMA needs at least 2 observations, got {n}");
   assert!(
@@ -57,7 +57,7 @@ pub fn ewma_variance<T: FloatExt>(returns: ArrayView1<T>, lambda: f64) -> EwmaVa
   let last_r = returns[n - 1].to_f64().unwrap_or(f64::NAN);
   let forecast = lambda * variance[n - 1] + (1.0 - lambda) * last_r * last_r;
 
-  EwmaVariance {
+  EwmaResult {
     variance,
     forecast,
     lambda,
@@ -66,7 +66,7 @@ pub fn ewma_variance<T: FloatExt>(returns: ArrayView1<T>, lambda: f64) -> EwmaVa
 }
 
 /// [`ewma_variance`] at the RiskMetrics daily decay $\lambda = 0.94$.
-pub fn riskmetrics_variance<T: FloatExt>(returns: ArrayView1<T>) -> EwmaVariance {
+pub fn riskmetrics_variance<T: FloatExt>(returns: ArrayView1<T>) -> EwmaResult {
   ewma_variance(returns, RISKMETRICS_DAILY_LAMBDA)
 }
 

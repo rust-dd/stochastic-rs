@@ -11,7 +11,7 @@ use stochastic_rs_distributions::variance_gamma::SimdVarianceGamma;
 use super::minimise;
 use super::negative_log_likelihood;
 use super::sample;
-use crate::evt::gpd_fit::information_inverse;
+use crate::evt::gpd::information_inverse;
 use crate::traits::FloatExt;
 
 /// Variance-gamma maximum-likelihood fit.
@@ -61,7 +61,7 @@ fn log_density(x: &[f64], sigma: f64, nu: f64, theta: f64, mu: f64) -> f64 {
 ///
 /// If there are fewer than 10 observations, any is non-finite, or they are
 /// constant.
-pub fn variance_gamma_fit<T: FloatExt>(data: ArrayView1<T>) -> VarianceGammaFit {
+pub fn fit_variance_gamma<T: FloatExt>(data: ArrayView1<T>) -> VarianceGammaFit {
   let (x, mean, sd) = sample(data, 10);
   let objective = |p: &[f64]| log_density(&x, p[0].exp(), p[1].exp(), p[2], p[3]);
   let mut starts = Vec::new();

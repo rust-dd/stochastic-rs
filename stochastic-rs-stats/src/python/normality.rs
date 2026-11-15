@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 
 #[pyclass(name = "JarqueBera", unsendable)]
 pub struct PyJarqueBera {
-  inner: crate::normality::jarque_bera::JarqueBeraResult,
+  inner: crate::normality::jarque_bera::JarqueBeraTest,
 }
 
 #[pymethods]
@@ -41,13 +41,13 @@ impl PyJarqueBera {
 
   #[getter]
   fn reject_normality(&self) -> bool {
-    self.inner.reject_normality
+    self.inner.rejects_null
   }
 }
 
 #[pyclass(name = "AndersonDarling", unsendable)]
 pub struct PyAndersonDarling {
-  inner: crate::normality::anderson_darling::AndersonDarlingResult,
+  inner: crate::normality::anderson_darling::AndersonDarlingTest,
 }
 
 #[pymethods]
@@ -80,13 +80,13 @@ impl PyAndersonDarling {
 
   #[getter]
   fn reject_normality(&self) -> bool {
-    self.inner.reject_normality
+    self.inner.rejects_null
   }
 }
 
 #[pyclass(name = "ShapiroFrancia", unsendable)]
 pub struct PyShapiroFrancia {
-  inner: crate::normality::shapiro_francia::ShapiroFranciaResult,
+  inner: crate::normality::shapiro_francia::ShapiroFranciaTest,
 }
 
 #[pymethods]
@@ -123,6 +123,6 @@ impl PyShapiroFrancia {
 
   #[getter]
   fn reject_normality(&self) -> bool {
-    self.inner.reject_normality
+    self.inner.rejects_null
   }
 }

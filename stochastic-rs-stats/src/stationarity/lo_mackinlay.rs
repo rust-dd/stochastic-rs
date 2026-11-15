@@ -53,7 +53,7 @@ impl Default for LoMacKinlayConfig {
 
 /// Result of the Lo-MacKinlay variance-ratio test.
 #[derive(Debug, Clone, Copy)]
-pub struct LoMacKinlayResult {
+pub struct LoMacKinlayTest {
   /// Aggregation horizon used.
   pub q: usize,
   /// Variance ratio $VR(q)$. Under the random-walk null, $VR(q) \to 1$.
@@ -64,19 +64,19 @@ pub struct LoMacKinlayResult {
   pub z_robust: f64,
   /// Whether the random-walk null is rejected at `alpha` using the
   /// heteroskedasticity-robust statistic.
-  pub reject_random_walk_robust: bool,
+  pub rejects_null: bool,
   /// Whether the random-walk null is rejected at `alpha` using the IID
   /// statistic.
-  pub reject_random_walk_iid: bool,
+  pub rejects_null_iid: bool,
 }
 
-impl crate::traits::HypothesisTest for LoMacKinlayResult {
+impl crate::traits::HypothesisTest for LoMacKinlayTest {
   fn statistic(&self) -> f64 {
     self.z_robust
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.reject_random_walk_robust)
+    Some(self.rejects_null)
   }
 }
 
@@ -106,7 +106,7 @@ fn z_critical(alpha: f64) -> f64 {
 /// # Panics
 /// Panics on invalid inputs (non-finite series, too-short sample, $q < 2$, or
 /// $\alpha \notin (0, 1)$).
-pub fn lo_mackinlay_test(series: ArrayView1<f64>, cfg: LoMacKinlayConfig) -> LoMacKinlayResult {
+pub fn lo_mackinlay_test(series: ArrayView1<f64>, cfg: LoMacKinlayConfig) -> LoMacKinlayTest {
   let raw = series
     .as_slice()
     .expect("lo_mackinlay_test requires a contiguous ArrayView1");
@@ -144,13 +144,13 @@ pub fn lo_mackinlay_test(series: ArrayView1<f64>, cfg: LoMacKinlayConfig) -> LoM
   }
   var1 /= nq_f - 1.0;
   if var1 <= 0.0 {
-    return LoMacKinlayResult {
+    return LoMacKinlayTest {
       q,
       variance_ratio: 1.0,
       z_iid: 0.0,
       z_robust: 0.0,
-      reject_random_walk_robust: false,
-      reject_random_walk_iid: false,
+      rejects_null: false,
+      rejects_null_iid: false,
     };
   }
 
@@ -209,13 +209,13 @@ pub fn lo_mackinlay_test(series: ArrayView1<f64>, cfg: LoMacKinlayConfig) -> LoM
   let reject_random_walk_iid = z_iid.abs() > z_crit;
   let reject_random_walk_robust = z_robust.is_finite() && z_robust.abs() > z_crit;
 
-  LoMacKinlayResult {
+  LoMacKinlayTest {
     q,
     variance_ratio,
     z_iid,
     z_robust,
-    reject_random_walk_robust,
-    reject_random_walk_iid,
+    rejects_null: reject_random_walk_robust,
+    rejects_null_iid: reject_random_walk_iid,
   }
 }
 
@@ -261,7 +261,7 @@ mod tests {
       },
     );
     assert!(
-      !res.reject_random_walk_robust && !res.reject_random_walk_iid,
+      !res.rejects_null && !res.rejects_null_iid,
       "expected no rejection, got {res:?}"
     );
     assert!(
@@ -283,10 +283,7 @@ mod tests {
         input_is_log_prices: true,
       },
     );
-    assert!(
-      res.reject_random_walk_robust,
-      "expected robust-Z rejection, got {res:?}"
-    );
+    assert!(res.rejects_null, "expected robust-Z rejection, got {res:?}");
     assert!(
       res.variance_ratio > 1.05,
       "VR should be > 1 under positive autocorrelation, got {}",
@@ -306,10 +303,7 @@ mod tests {
         input_is_log_prices: true,
       },
     );
-    assert!(
-      res.reject_random_walk_robust,
-      "expected robust-Z rejection, got {res:?}"
-    );
+    assert!(res.rejects_null, "expected robust-Z rejection, got {res:?}");
     assert!(
       res.variance_ratio < 0.95,
       "VR should be < 1 under negative autocorrelation, got {}",

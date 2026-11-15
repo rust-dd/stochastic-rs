@@ -19,7 +19,7 @@ use stochastic_rs_distributions::special::ndtri;
 /// Configuration for the Shapiro-Francia normality test.
 #[derive(Debug, Clone, Copy)]
 pub struct ShapiroFranciaConfig {
-  /// Significance level used to compute `reject_normality`.
+  /// Significance level used to compute `rejects_null`.
   pub alpha: f64,
   /// Number of parametric bootstrap samples used for p-value approximation.
   pub bootstrap_samples: usize,
@@ -39,22 +39,22 @@ impl Default for ShapiroFranciaConfig {
 
 /// Result of the Shapiro-Francia normality test.
 #[derive(Debug, Clone, Copy)]
-pub struct ShapiroFranciaResult {
+pub struct ShapiroFranciaTest {
   /// Shapiro-Francia W statistic.
   pub statistic: f64,
   /// Bootstrap p-value (left tail, small W indicates non-normality).
   pub p_value: f64,
   /// Whether normality is rejected at `alpha`.
-  pub reject_normality: bool,
+  pub rejects_null: bool,
 }
 
-impl crate::traits::HypothesisTest for ShapiroFranciaResult {
+impl crate::traits::HypothesisTest for ShapiroFranciaTest {
   fn statistic(&self) -> f64 {
     self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.reject_normality)
+    Some(self.rejects_null)
   }
 }
 
@@ -99,7 +99,7 @@ fn shapiro_francia_statistic_sorted(sorted: &[f64]) -> f64 {
 pub fn shapiro_francia_test(
   sample: ArrayView1<f64>,
   cfg: ShapiroFranciaConfig,
-) -> ShapiroFranciaResult {
+) -> ShapiroFranciaTest {
   let sample = sample
     .as_slice()
     .expect("shapiro_francia_test requires a contiguous ArrayView1");
@@ -141,10 +141,10 @@ pub fn shapiro_francia_test(
 
   let p_value = (left_tail_hits as f64 + 1.0) / (cfg.bootstrap_samples as f64 + 1.0);
 
-  ShapiroFranciaResult {
+  ShapiroFranciaTest {
     statistic: obs_stat,
     p_value,
-    reject_normality: p_value < cfg.alpha,
+    rejects_null: p_value < cfg.alpha,
   }
 }
 
@@ -209,7 +209,7 @@ mod tests {
     };
     let res = shapiro_francia_test(ArrayView1::from(&x), cfg);
     assert!(
-      res.reject_normality,
+      res.rejects_null,
       "expected rejection for non-normal sample, got {res:?}"
     );
   }

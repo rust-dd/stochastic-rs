@@ -9,7 +9,7 @@ use stochastic_rs_distributions::traits::DistributionExt;
 use super::minimise;
 use super::negative_log_likelihood;
 use super::sample;
-use crate::evt::gpd_fit::information_inverse;
+use crate::evt::gpd::information_inverse;
 use crate::traits::FloatExt;
 
 /// Johnson SU maximum-likelihood fit.
@@ -57,7 +57,7 @@ fn log_density(x: &[f64], gamma: f64, delta: f64, xi: f64, lambda: f64) -> f64 {
 ///
 /// If there are fewer than 10 observations, any is non-finite, or they are
 /// constant.
-pub fn johnson_su_fit<T: FloatExt>(data: ArrayView1<T>) -> JohnsonSuFit {
+pub fn fit_johnson_su<T: FloatExt>(data: ArrayView1<T>) -> JohnsonSuFit {
   let (x, mean, sd) = sample(data, 10);
   let objective = |p: &[f64]| log_density(&x, p[0], p[1].exp(), p[2], p[3].exp());
   let mut starts = Vec::new();

@@ -27,21 +27,21 @@
 //! - McNeil, Frey, Embrechts, *Quantitative Risk Management*, 2nd ed.,
 //!   Princeton University Press (2015), §5.2.
 
-pub mod gev_fit;
-pub mod gpd_fit;
+pub mod gev;
+pub mod gpd;
 pub mod hill;
 #[cfg(test)]
 mod tests;
 
-pub use gev_fit::GevFit;
-pub use gev_fit::block_maxima;
-pub use gev_fit::gev_fit;
-pub use gpd_fit::GpdFit;
-pub use gpd_fit::GpdPwm;
-pub use gpd_fit::PotFit;
-pub use gpd_fit::gpd_fit;
-pub use gpd_fit::gpd_pwm;
-pub use gpd_fit::mean_excess;
-pub use gpd_fit::pot_fit;
-pub use hill::HillResult;
-pub use hill::hill_estimator;
+pub use gev::GevFit;
+pub use gev::block_maxima;
+pub use gev::fit_gev;
+pub use gpd::GpdFit;
+pub use gpd::GpdPwmFit;
+pub use gpd::PotFit;
+pub use gpd::fit_gpd;
+pub use gpd::fit_gpd_pwm;
+pub use gpd::fit_pot;
+pub use gpd::mean_excess;
+pub use hill::HillFit;
+pub use hill::fit_hill;

@@ -18,7 +18,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 /// Configuration for the Anderson-Darling normality test.
 #[derive(Debug, Clone, Copy)]
 pub struct AndersonDarlingConfig {
-  /// Significance level used to compute `reject_normality`.
+  /// Significance level used to compute `rejects_null`.
   pub alpha: f64,
 }
 
@@ -30,7 +30,7 @@ impl Default for AndersonDarlingConfig {
 
 /// Result of the Anderson-Darling normality test.
 #[derive(Debug, Clone, Copy)]
-pub struct AndersonDarlingResult {
+pub struct AndersonDarlingTest {
   /// Raw A^2 statistic.
   pub statistic: f64,
   /// Stephens finite-sample adjusted statistic.
@@ -38,16 +38,16 @@ pub struct AndersonDarlingResult {
   /// Approximate p-value for normality (Stephens-style approximation).
   pub p_value: f64,
   /// Whether normality is rejected at `alpha`.
-  pub reject_normality: bool,
+  pub rejects_null: bool,
 }
 
-impl crate::traits::HypothesisTest for AndersonDarlingResult {
+impl crate::traits::HypothesisTest for AndersonDarlingTest {
   fn statistic(&self) -> f64 {
     self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.reject_normality)
+    Some(self.rejects_null)
   }
 }
 
@@ -86,7 +86,7 @@ fn ad_pvalue_from_adjusted_statistic(a2_star: f64) -> f64 {
 pub fn anderson_darling_normal_test(
   sample: ArrayView1<f64>,
   cfg: AndersonDarlingConfig,
-) -> AndersonDarlingResult {
+) -> AndersonDarlingTest {
   let sample = sample
     .as_slice()
     .expect("anderson_darling_normal_test requires a contiguous ArrayView1");
@@ -126,11 +126,11 @@ pub fn anderson_darling_normal_test(
   let adjusted_statistic = statistic * (1.0 + 0.75 / n_f + 2.25 / (n_f * n_f));
   let p_value = ad_pvalue_from_adjusted_statistic(adjusted_statistic);
 
-  AndersonDarlingResult {
+  AndersonDarlingTest {
     statistic,
     adjusted_statistic,
     p_value,
-    reject_normality: p_value < cfg.alpha,
+    rejects_null: p_value < cfg.alpha,
   }
 }
 
@@ -181,7 +181,7 @@ mod tests {
 
     let res = anderson_darling_normal_test(ArrayView1::from(&x), AndersonDarlingConfig::default());
     assert!(
-      res.reject_normality,
+      res.rejects_null,
       "expected rejection for non-normal sample, got {res:?}"
     );
   }

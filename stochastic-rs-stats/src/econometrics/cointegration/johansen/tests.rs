@@ -177,7 +177,7 @@ fn rank_tests_match_statsmodels_on_the_lcg_system() {
 
 #[test]
 fn vecm_rank_one_matches_statsmodels_on_the_lcg_system() {
-  let fit = vecm_fit(lcg_system().view(), 2, 1);
+  let fit = fit_vecm(lcg_system().view(), 2, 1);
   assert_eq!((fit.rank, fit.lags, fit.nobs), (1, 2, 148));
   assert_eq!(fit.beta.dim(), (3, 1));
   assert_eq!(fit.gamma.len(), 1);
@@ -268,7 +268,7 @@ fn vecm_rank_one_matches_statsmodels_on_the_lcg_system() {
 
 #[test]
 fn vecm_without_lagged_differences_matches_statsmodels_at_rank_two() {
-  let fit = vecm_fit(lcg_system().view(), 1, 2);
+  let fit = fit_vecm(lcg_system().view(), 1, 2);
   assert_eq!((fit.rank, fit.lags, fit.nobs), (2, 1, 149));
   assert!(fit.gamma.is_empty());
   let pi = [
@@ -316,7 +316,7 @@ fn vecm_without_lagged_differences_matches_statsmodels_at_rank_two() {
 #[test]
 fn full_rank_residuals_are_orthogonal_to_the_regressors() {
   let y = lcg_system();
-  let fit = vecm_fit(y.view(), 2, 3);
+  let fit = fit_vecm(y.view(), 2, 3);
   let c = concentrate(y.view(), 2);
   let against_levels = fit.residuals.t().dot(&c.z1);
   let against_lags = fit.residuals.t().dot(&c.z2);
@@ -326,7 +326,7 @@ fn full_rank_residuals_are_orthogonal_to_the_regressors() {
 
 #[test]
 fn rank_zero_drops_the_error_correction_term() {
-  let fit = vecm_fit(lcg_system().view(), 2, 0);
+  let fit = fit_vecm(lcg_system().view(), 2, 0);
   assert_eq!(fit.beta.dim(), (3, 0));
   assert!(fit.pi.iter().all(|v| *v == 0.0));
 }
@@ -334,5 +334,5 @@ fn rank_zero_drops_the_error_correction_term() {
 #[test]
 #[should_panic(expected = "rank must lie in 0..=3")]
 fn rejects_a_rank_above_the_dimension() {
-  let _ = vecm_fit(lcg_system().view(), 1, 4);
+  let _ = fit_vecm(lcg_system().view(), 1, 4);
 }

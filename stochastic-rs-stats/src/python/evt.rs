@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 
 #[pyclass(name = "HillEstimator", unsendable)]
 pub struct PyHillEstimator {
-  inner: crate::evt::HillResult,
+  inner: crate::evt::HillFit,
 }
 
 #[pymethods]
@@ -12,7 +12,7 @@ impl PyHillEstimator {
   #[new]
   fn new<'py>(data: PyReadonlyArray1<'py, f64>, k: usize) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::evt::hill_estimator(data.as_array(), k),
+      inner: crate::evt::fit_hill(data.as_array(), k),
     })
   }
 
@@ -58,7 +58,7 @@ impl PyGpdFit {
   #[new]
   fn new<'py>(exceedances: PyReadonlyArray1<'py, f64>) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::evt::gpd_fit(exceedances.as_array()),
+      inner: crate::evt::fit_gpd(exceedances.as_array()),
     })
   }
 
@@ -125,7 +125,7 @@ impl PyPotFit {
   #[new]
   fn new<'py>(data: PyReadonlyArray1<'py, f64>, threshold: f64) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::evt::pot_fit(data.as_array(), threshold),
+      inner: crate::evt::fit_pot(data.as_array(), threshold),
     })
   }
 
@@ -197,7 +197,7 @@ impl PyGevFit {
   #[new]
   fn new<'py>(maxima: PyReadonlyArray1<'py, f64>) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::evt::gev_fit(maxima.as_array()),
+      inner: crate::evt::fit_gev(maxima.as_array()),
     })
   }
 

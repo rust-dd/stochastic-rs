@@ -5,7 +5,7 @@ use ndarray::Array1;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stats::garch::GarchSpec;
 use stochastic_rs::stats::garch::MeanSpec;
-use stochastic_rs::stats::garch::garch_fit;
+use stochastic_rs::stats::garch::fit_garch;
 use stochastic_rs::stochastic::autoregressive::garch::Garch;
 use stochastic_rs::traits::ProcessExt;
 
@@ -24,7 +24,7 @@ fn garch_qmle_recovers_the_simulated_parameters() {
 
   // The simulator has no drift, so a zero-mean fit is the matching model;
   // `GarchSpec::garch(1, 1)` alone would estimate a constant mean as well.
-  let fit = garch_fit(
+  let fit = fit_garch(
     returns.view(),
     GarchSpec::garch(1, 1).with_mean(MeanSpec::Zero),
   );

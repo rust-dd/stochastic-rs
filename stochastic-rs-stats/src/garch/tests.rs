@@ -69,7 +69,7 @@ fn check_fit(
   robust: &[f64],
 ) -> GarchFit {
   let r = lcg_garch_returns();
-  let fit = garch_fit(r.view(), spec);
+  let fit = fit_garch(r.view(), spec);
   assert_close(fit.backcast, BACKCAST, 1e-12, "backcast");
   assert!(fit.converged, "simplex did not converge");
   assert!(
@@ -384,12 +384,12 @@ fn param_names_follow_the_layout() {
 #[test]
 #[should_panic(expected = "p must be at least 1")]
 fn rejects_zero_arch_order() {
-  let _ = garch_fit(lcg_garch_returns().view(), GarchSpec::garch(0, 1));
+  let _ = fit_garch(lcg_garch_returns().view(), GarchSpec::garch(0, 1));
 }
 
 #[test]
 #[should_panic(expected = "need at least 20 observations")]
 fn rejects_a_short_series() {
   let r = Array1::from(vec![0.01_f64; 10]);
-  let _ = garch_fit(r.view(), GarchSpec::garch(1, 1));
+  let _ = fit_garch(r.view(), GarchSpec::garch(1, 1));
 }

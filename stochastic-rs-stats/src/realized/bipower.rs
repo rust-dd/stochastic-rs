@@ -120,7 +120,7 @@ pub struct BnsJumpTest {
   /// Two-sided p-value under $\mathcal N(0,1)$.
   pub p_value: f64,
   /// Whether the no-jump null is rejected at the given $\alpha$.
-  pub reject_no_jump: bool,
+  pub rejects_null: bool,
 }
 
 /// Barndorff-Nielsen / Shephard ratio-form jump test
@@ -155,7 +155,7 @@ pub fn bns_jump_test<T: FloatExt>(returns: ArrayView1<T>, alpha: f64) -> BnsJump
     tpq,
     statistic,
     p_value,
-    reject_no_jump,
+    rejects_null: reject_no_jump,
   }
 }
 
@@ -216,7 +216,7 @@ mod tests {
   fn jump_test_does_not_reject_pure_diffusion() {
     let r = iid_normal(11, 5_000, 0.01);
     let test = bns_jump_test(r.view(), 0.05);
-    assert!(!test.reject_no_jump);
+    assert!(!test.rejects_null);
   }
 
   #[test]
@@ -226,7 +226,7 @@ mod tests {
       r[i] = 0.3;
     }
     let test = bns_jump_test(r.view(), 0.05);
-    assert!(test.reject_no_jump);
+    assert!(test.rejects_null);
   }
 
   #[test]
@@ -238,7 +238,7 @@ mod tests {
     r[128] = 0.077;
     let test = bns_jump_test(r.view(), 0.01);
     assert!(
-      test.reject_no_jump,
+      test.rejects_null,
       "single jump must be detected, statistic was {}",
       test.statistic
     );

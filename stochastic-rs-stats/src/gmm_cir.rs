@@ -54,7 +54,7 @@ use crate::traits::FloatExt;
 
 /// Result of the two-step GMM fit of the CIR variance process.
 #[derive(Debug, Clone)]
-pub struct GmmCirResult {
+pub struct GmmCirFit {
   /// Mean-reversion speed $\kappa$.
   pub kappa: f64,
   /// Long-run level $\theta$.
@@ -76,9 +76,9 @@ pub struct GmmCirResult {
 ///
 /// `series` is the discretely-observed variance (or short-rate) path and
 /// `dt` the sampling interval $\Delta$. Requires at least 3 observations.
-pub fn gmm_cir<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> GmmCirResult {
-  let n_obs = series.len();
-  assert!(n_obs >= 3, "gmm_cir requires at least 3 observations");
+pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> GmmCirFit {
+  let nobs = series.len();
+  assert!(nobs >= 3, "gmm_cir requires at least 3 observations");
   assert!(dt.is_finite() && dt > 0.0, "dt must be finite and positive");
 
   let x: Vec<f64> = series.iter().map(|v| v.to_f64().unwrap()).collect();
@@ -88,9 +88,9 @@ pub fn gmm_cir<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> GmmCirResult {
   let moments = |kappa: f64, theta: f64, sigma: f64| -> (Vec<[f64; 4]>, [f64; 4]) {
     let a = (-kappa * dt).exp();
     let s2 = sigma * sigma;
-    let mut rows = Vec::with_capacity(n_obs - 1);
+    let mut rows = Vec::with_capacity(nobs - 1);
     let mut mean = [0.0_f64; 4];
-    for t in 0..n_obs - 1 {
+    for t in 0..nobs - 1 {
       let xt = x[t];
       let xnext = x[t + 1];
       let m = theta + (xt - theta) * a;
@@ -104,7 +104,7 @@ pub fn gmm_cir<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> GmmCirResult {
       }
       rows.push(row);
     }
-    let inv_t = 1.0 / (n_obs - 1) as f64;
+    let inv_t = 1.0 / (nobs - 1) as f64;
     for k in 0..4 {
       mean[k] *= inv_t;
     }
@@ -129,7 +129,7 @@ pub fn gmm_cir<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> GmmCirResult {
   let sample_mean = x.iter().sum::<f64>() / x.len() as f64;
   let theta0 = sample_mean.max(1e-8);
   let (mut num, mut den) = (0.0, 0.0);
-  for t in 0..n_obs - 1 {
+  for t in 0..nobs - 1 {
     num += (x[t] - sample_mean) * (x[t + 1] - sample_mean);
     den += (x[t] - sample_mean).powi(2);
   }
@@ -140,12 +140,12 @@ pub fn gmm_cir<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> GmmCirResult {
   };
   let kappa0 = (-ac1.ln() / dt).clamp(1e-3, 50.0);
   let mut resid_var = 0.0;
-  for t in 0..n_obs - 1 {
+  for t in 0..nobs - 1 {
     let a = (-kappa0 * dt).exp();
     let m = theta0 + (x[t] - theta0) * a;
     resid_var += (x[t + 1] - m).powi(2);
   }
-  resid_var /= (n_obs - 1) as f64;
+  resid_var /= (nobs - 1) as f64;
   // var(X_{t+1}|X_t) ≈ X̄ σ²/κ (a-a²) + ... ≈ scale; invert for σ².
   let a0 = (-kappa0 * dt).exp();
   let scale = sample_mean * (a0 - a0 * a0) / kappa0 + theta0 * (1.0 - a0).powi(2) / (2.0 * kappa0);
@@ -194,7 +194,7 @@ pub fn gmm_cir<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> GmmCirResult {
   let j_stat = (rows1.len() as f64) * objective(kappa, theta, sigma, &w2);
   let j_pvalue = 1.0 - chi2_cdf_1dof(j_stat);
 
-  GmmCirResult {
+  GmmCirFit {
     kappa,
     theta,
     sigma,
@@ -342,7 +342,7 @@ mod tests {
     let dt = 1.0 / 252.0;
     let fits = [7u64, 13, 29].map(|seed| {
       let path = simulate_cir_path(kt, tt, st, 0.04, dt, 8000, seed);
-      (seed, gmm_cir(path.view(), dt))
+      (seed, fit_cir_gmm(path.view(), dt))
     });
     let ok = fits.iter().any(|(_, r)| {
       r.converged
@@ -369,7 +369,7 @@ mod tests {
   fn gmm_cir_j_test_does_not_reject_correct_model() {
     let dt = 1.0 / 252.0;
     let path = simulate_cir_path(1.5, 0.05, 0.3, 0.05, dt, 6000, 11);
-    let res = gmm_cir(path.view(), dt);
+    let res = fit_cir_gmm(path.view(), dt);
     assert!(
       res.j_pvalue > 0.01,
       "correctly-specified CIR should not be rejected at 1%, J p-value = {}",
@@ -381,13 +381,13 @@ mod tests {
   #[should_panic(expected = "at least 3 observations")]
   fn gmm_cir_panics_on_short_series() {
     let s = Array1::from(vec![0.04, 0.05]);
-    let _ = gmm_cir(s.view(), 1.0 / 252.0);
+    let _ = fit_cir_gmm(s.view(), 1.0 / 252.0);
   }
 
   #[test]
   #[should_panic(expected = "dt must be finite and positive")]
   fn gmm_cir_panics_on_bad_dt() {
     let s = Array1::from(vec![0.04, 0.05, 0.045, 0.05]);
-    let _ = gmm_cir(s.view(), 0.0);
+    let _ = fit_cir_gmm(s.view(), 0.0);
   }
 }

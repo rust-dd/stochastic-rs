@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 
 #[pyclass(name = "EngleGranger", unsendable)]
 pub struct PyEngleGranger {
-  inner: crate::econometrics::cointegration::EngleGrangerResult,
+  inner: crate::econometrics::cointegration::EngleGrangerTest,
 }
 
 #[pymethods]
@@ -31,7 +31,7 @@ impl PyEngleGranger {
 
   #[getter]
   fn adf_statistic(&self) -> f64 {
-    self.inner.adf_statistic
+    self.inner.statistic
   }
 
   #[getter]
@@ -41,7 +41,7 @@ impl PyEngleGranger {
 
   #[getter]
   fn reject_no_cointegration(&self) -> bool {
-    self.inner.reject_no_cointegration
+    self.inner.rejects_null
   }
 
   fn residuals<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
@@ -52,7 +52,7 @@ impl PyEngleGranger {
 
 #[pyclass(name = "Johansen", unsendable)]
 pub struct PyJohansen {
-  inner: crate::econometrics::cointegration::JohansenResult,
+  inner: crate::econometrics::cointegration::JohansenTest,
 }
 
 #[pymethods]
@@ -116,7 +116,7 @@ impl PyJohansen {
 
 #[pyclass(name = "Vecm", unsendable)]
 pub struct PyVecm {
-  inner: crate::econometrics::cointegration::Vecm,
+  inner: crate::econometrics::cointegration::VecmFit,
 }
 
 #[pymethods]
@@ -131,7 +131,7 @@ impl PyVecm {
     rank: usize,
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::econometrics::cointegration::vecm_fit(series.as_array(), lags, rank),
+      inner: crate::econometrics::cointegration::fit_vecm(series.as_array(), lags, rank),
     })
   }
 
@@ -204,7 +204,7 @@ impl PyVecm {
 
 #[pyclass(name = "Granger", unsendable)]
 pub struct PyGranger {
-  inner: crate::econometrics::granger::GrangerResult,
+  inner: crate::econometrics::granger::GrangerTest,
 }
 
 #[pymethods]
@@ -219,7 +219,7 @@ impl PyGranger {
     alpha: f64,
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::econometrics::granger::granger_causality(
+      inner: crate::econometrics::granger::granger_causality_test(
         y.as_array(),
         x.as_array(),
         lags,
@@ -230,7 +230,7 @@ impl PyGranger {
 
   #[getter]
   fn f_statistic(&self) -> f64 {
-    self.inner.f_statistic
+    self.inner.statistic
   }
 
   #[getter]
@@ -250,6 +250,6 @@ impl PyGranger {
 
   #[getter]
   fn reject_no_causality(&self) -> bool {
-    self.inner.reject_no_causality
+    self.inner.rejects_null
   }
 }

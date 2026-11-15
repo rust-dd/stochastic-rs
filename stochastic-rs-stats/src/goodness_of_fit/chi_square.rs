@@ -63,7 +63,7 @@ impl Default for ChiSquareGofConfig {
 
 /// Result of a Pearson chi-square goodness-of-fit test.
 #[derive(Debug, Clone, Copy)]
-pub struct ChiSquareGofResult {
+pub struct ChiSquareGofTest {
   /// The `\chi^2` statistic.
   pub statistic: f64,
   /// Degrees of freedom, `bins - 1` (Pearson 1900; see module doc).
@@ -73,16 +73,16 @@ pub struct ChiSquareGofResult {
   /// p-value: `P(\chi^2_{df} > statistic)`.
   pub p_value: f64,
   /// Whether the null is rejected at `alpha`.
-  pub reject: bool,
+  pub rejects_null: bool,
 }
 
-impl HypothesisTest for ChiSquareGofResult {
+impl HypothesisTest for ChiSquareGofTest {
   fn statistic(&self) -> f64 {
     self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.reject)
+    Some(self.rejects_null)
   }
 }
 
@@ -117,7 +117,7 @@ pub fn chi_square_gof_test(
   observed: &[u64],
   expected_prob: &[f64],
   cfg: ChiSquareGofConfig,
-) -> ChiSquareGofResult {
+) -> ChiSquareGofTest {
   assert_eq!(
     observed.len(),
     expected_prob.len(),
@@ -160,12 +160,12 @@ pub fn chi_square_gof_test(
     .quantile(1.0 - cfg.alpha)
     .expect("SimdChiSquared has a closed-form quantile");
 
-  ChiSquareGofResult {
+  ChiSquareGofTest {
     statistic,
     df,
     critical_value,
     p_value,
-    reject: p_value < cfg.alpha,
+    rejects_null: p_value < cfg.alpha,
   }
 }
 
@@ -326,6 +326,6 @@ mod tests {
     );
     let observed = bin_observed(&samples, &edges);
     let res = chi_square_gof_test(&observed, &expected_prob, ChiSquareGofConfig::default());
-    assert!(res.reject, "expected rejection, got {res:?}");
+    assert!(res.rejects_null, "expected rejection, got {res:?}");
   }
 }

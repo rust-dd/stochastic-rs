@@ -9,7 +9,7 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 
 use super::FdDiagnostic;
-use super::FdResult;
+use super::FdFit;
 use super::FractalDimEstimator;
 use crate::StatsError;
 use crate::traits::FloatExt;
@@ -35,14 +35,14 @@ impl Higuchi {
 }
 
 impl<T: FloatExt> FractalDimEstimator<T> for Higuchi {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<FdResult<T>, StatsError> {
-    let n_obs = x.len();
+  fn estimate(&self, x: ArrayView1<T>) -> Result<FdFit<T>, StatsError> {
+    let nobs = x.len();
     let (d, intercept, r_squared, log_scales, log_stats) =
       compute_with_diagnostic::<T>(x, self.kmax)?;
-    Ok(FdResult {
+    Ok(FdFit {
       // Higuchi's `D` is the regression slope itself.
       d: T::from_f64_fast(d),
-      n_obs,
+      nobs,
       diagnostic: FdDiagnostic::LogLogRegression {
         slope: T::from_f64_fast(d),
         intercept: T::from_f64_fast(intercept),

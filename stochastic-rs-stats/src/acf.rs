@@ -117,7 +117,7 @@ pub fn pacf<T: FloatExt>(x: ArrayView1<T>, max_lag: usize) -> Array1<T> {
 
 /// Result of the Ljung-Box portmanteau test for autocorrelation.
 #[derive(Debug, Clone, Copy)]
-pub struct LjungBoxResult {
+pub struct LjungBoxTest {
   /// Q test statistic.
   pub statistic: f64,
   /// p-value under the chi-square(`df`) asymptotic null (upper-tail
@@ -129,7 +129,7 @@ pub struct LjungBoxResult {
   pub lags: usize,
 }
 
-impl crate::traits::HypothesisTest for LjungBoxResult {
+impl crate::traits::HypothesisTest for LjungBoxTest {
   fn statistic(&self) -> f64 {
     self.statistic
   }
@@ -161,7 +161,7 @@ impl crate::traits::HypothesisTest for LjungBoxResult {
 /// Panics if `lags <= fit_df`. Also panics per [`acf`]'s panics (fewer than
 /// 2 observations, `max_lag == 0`, `max_lag >= x.len()`, a non-finite
 /// value, or a constant series) — called internally with `max_lag = lags`.
-pub fn ljung_box<T: FloatExt>(x: ArrayView1<T>, lags: usize, fit_df: usize) -> LjungBoxResult {
+pub fn ljung_box<T: FloatExt>(x: ArrayView1<T>, lags: usize, fit_df: usize) -> LjungBoxTest {
   assert!(
     lags > fit_df,
     "lags must exceed fit_df (lags = {lags}, fit_df = {fit_df})"
@@ -181,7 +181,7 @@ pub fn ljung_box<T: FloatExt>(x: ArrayView1<T>, lags: usize, fit_df: usize) -> L
   let df = lags - fit_df;
   let p_value = gamma_q(df as f64 / 2.0, statistic / 2.0);
 
-  LjungBoxResult {
+  LjungBoxTest {
     statistic,
     p_value,
     df,

@@ -59,7 +59,7 @@ pub struct KpssConfig {
   pub trend: KpssTrend,
   /// Newey-West lag length. If `None`, a Schwert-style default is used.
   pub lags: Option<usize>,
-  /// Significance level used to compute `reject_stationarity`.
+  /// Significance level used to compute `rejects_null`.
   pub alpha: f64,
 }
 
@@ -75,7 +75,7 @@ impl Default for KpssConfig {
 
 /// Result of the KPSS stationarity test.
 #[derive(Debug, Clone, Copy)]
-pub struct KpssResult {
+pub struct KpssTest {
   /// KPSS LM statistic.
   pub statistic: f64,
   /// Newey-West lag length used.
@@ -83,16 +83,16 @@ pub struct KpssResult {
   /// Critical values for this trend specification.
   pub critical_values: KpssCriticalValues,
   /// Whether the null (stationarity) is rejected at `alpha`.
-  pub reject_stationarity: bool,
+  pub rejects_null: bool,
 }
 
-impl crate::traits::HypothesisTest for KpssResult {
+impl crate::traits::HypothesisTest for KpssTest {
   fn statistic(&self) -> f64 {
     self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.reject_stationarity)
+    Some(self.rejects_null)
   }
 }
 
@@ -117,7 +117,7 @@ fn kpss_critical_values(trend: KpssTrend) -> KpssCriticalValues {
 ///
 /// # Panics
 /// Panics on invalid inputs (non-finite series, too-short sample, invalid config).
-pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> KpssResult {
+pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> KpssTest {
   let y = y
     .as_slice()
     .expect("kpss_test requires a contiguous ArrayView1");
@@ -148,11 +148,11 @@ pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> KpssResult {
   let critical_values = kpss_critical_values(cfg.trend);
   let reject_stationarity = statistic > critical_values.value_at(cfg.alpha);
 
-  KpssResult {
+  KpssTest {
     statistic,
     used_lags,
     critical_values,
-    reject_stationarity,
+    rejects_null: reject_stationarity,
   }
 }
 
@@ -202,7 +202,7 @@ mod tests {
         kpss_test(ndarray::ArrayView1::from(&x), KpssConfig::default()),
       )
     });
-    let ok = runs.iter().any(|(_, r)| !r.reject_stationarity);
+    let ok = runs.iter().any(|(_, r)| !r.rejects_null);
     let report = runs
       .iter()
       .map(|(s, r)| format!("seed {s:#x}: stat={:.4}", r.statistic))
@@ -216,7 +216,7 @@ mod tests {
     let x = simulate_random_walk(2000, 0x4B505354);
     let res = kpss_test(ndarray::ArrayView1::from(&x), KpssConfig::default());
     assert!(
-      res.reject_stationarity,
+      res.rejects_null,
       "expected rejection for random walk, got {res:?}"
     );
   }

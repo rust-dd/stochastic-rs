@@ -6,8 +6,8 @@ use stochastic_rs::distributions::DistributionSampler;
 use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
+use stochastic_rs::stats::econometrics::fit_vecm;
 use stochastic_rs::stats::econometrics::johansen_test;
-use stochastic_rs::stats::econometrics::vecm_fit;
 
 #[test]
 fn johansen_rank_then_vecm() {
@@ -34,7 +34,7 @@ fn johansen_rank_then_vecm() {
   assert!(test.max_eig_statistics[0] > test.max_eig_critical_5pct[0]);
 
   // The VECM at that rank recovers the relation y2 − 0.7·y1 up to scale.
-  let fit = vecm_fit(y.view(), 2, test.rank_trace);
+  let fit = fit_vecm(y.view(), 2, test.rank_trace);
   let ratio = fit.beta[[1, 0]] / fit.beta[[0, 0]];
   assert!((ratio + 1.0 / 0.7).abs() < 0.1, "beta ratio {ratio}");
   assert_eq!(fit.gamma.len(), 1);

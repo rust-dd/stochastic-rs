@@ -124,7 +124,7 @@ fn negative_log_likelihood(y: &[f64], sigma: f64, xi: f64) -> f64 {
 /// # Panics
 ///
 /// If there are fewer than 10 excesses or any is negative or non-finite.
-pub fn gpd_fit<T: FloatExt>(exceedances: ArrayView1<T>) -> GpdFit {
+pub fn fit_gpd<T: FloatExt>(exceedances: ArrayView1<T>) -> GpdFit {
   let y: Vec<f64> = exceedances
     .iter()
     .map(|x| x.to_f64().unwrap_or(f64::NAN))
@@ -177,7 +177,7 @@ pub fn gpd_fit<T: FloatExt>(exceedances: ArrayView1<T>) -> GpdFit {
 
 /// Probability-weighted-moment estimate of the GPD (Hosking–Wallis 1987).
 #[derive(Debug, Clone)]
-pub struct GpdPwm {
+pub struct GpdPwmFit {
   /// Scale $\hat\sigma$.
   pub sigma: f64,
   /// Shape $\hat\xi$.
@@ -201,7 +201,7 @@ pub struct GpdPwm {
 ///
 /// their $\hat k = a_0/(a_0 - 2a_1) - 2$ in the $k = -\xi$ convention. Cheap,
 /// closed-form and well behaved for $\xi < 1/2$; the usual starting point
-/// or sanity check for [`gpd_fit`].
+/// or sanity check for [`fit_gpd`].
 ///
 /// Reference: Hosking, Wallis, "Parameter and Quantile Estimation for the
 /// Generalized Pareto Distribution", Technometrics, 29(3), 339-349 (1987).
@@ -213,7 +213,7 @@ pub struct GpdPwm {
 /// # Panics
 ///
 /// If there are fewer than 2 excesses or any is negative or non-finite.
-pub fn gpd_pwm<T: FloatExt>(exceedances: ArrayView1<T>) -> GpdPwm {
+pub fn fit_gpd_pwm<T: FloatExt>(exceedances: ArrayView1<T>) -> GpdPwmFit {
   let mut y: Vec<f64> = exceedances
     .iter()
     .map(|x| x.to_f64().unwrap_or(f64::NAN))
@@ -234,7 +234,7 @@ pub fn gpd_pwm<T: FloatExt>(exceedances: ArrayView1<T>) -> GpdPwm {
     .sum::<f64>()
     / nf;
   let denominator = a0 - 2.0 * a1;
-  GpdPwm {
+  GpdPwmFit {
     sigma: 2.0 * a0 * a1 / denominator,
     xi: 2.0 - a0 / denominator,
     a0,
@@ -245,13 +245,13 @@ pub fn gpd_pwm<T: FloatExt>(exceedances: ArrayView1<T>) -> GpdPwm {
 
 /// Peaks-over-threshold fit of `data` (losses) above `threshold`.
 ///
-/// The embedded [`gpd_fit`] contributes a NaN covariance and NaN standard
+/// The embedded [`fit_gpd`] contributes a NaN covariance and NaN standard
 /// errors when its observed-information Hessian at the optimum is singular.
 ///
 /// # Panics
 ///
 /// If fewer than 10 observations exceed the threshold.
-pub fn pot_fit<T: FloatExt>(data: ArrayView1<T>, threshold: f64) -> PotFit {
+pub fn fit_pot<T: FloatExt>(data: ArrayView1<T>, threshold: f64) -> PotFit {
   let exceedances: Vec<f64> = data
     .iter()
     .map(|x| x.to_f64().unwrap_or(f64::NAN))
@@ -263,7 +263,7 @@ pub fn pot_fit<T: FloatExt>(data: ArrayView1<T>, threshold: f64) -> PotFit {
     n_exceedances >= 10,
     "need at least 10 exceedances above the threshold, got {n_exceedances}"
   );
-  let gpd = gpd_fit(Array1::from(exceedances).view());
+  let gpd = fit_gpd(Array1::from(exceedances).view());
   PotFit {
     threshold,
     gpd,

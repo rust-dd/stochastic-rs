@@ -16,7 +16,7 @@ use stochastic_rs_distributions::special::gamma_p;
 /// Configuration for the Jarque-Bera normality test.
 #[derive(Debug, Clone, Copy)]
 pub struct JarqueBeraConfig {
-  /// Significance level used to compute `reject_normality`.
+  /// Significance level used to compute `rejects_null`.
   pub alpha: f64,
 }
 
@@ -28,7 +28,7 @@ impl Default for JarqueBeraConfig {
 
 /// Result of the Jarque-Bera normality test.
 #[derive(Debug, Clone, Copy)]
-pub struct JarqueBeraResult {
+pub struct JarqueBeraTest {
   /// JB test statistic.
   pub statistic: f64,
   /// p-value under chi-square(2) asymptotics.
@@ -38,16 +38,16 @@ pub struct JarqueBeraResult {
   /// Sample excess kurtosis.
   pub excess_kurtosis: f64,
   /// Whether normality is rejected at `alpha`.
-  pub reject_normality: bool,
+  pub rejects_null: bool,
 }
 
-impl crate::traits::HypothesisTest for JarqueBeraResult {
+impl crate::traits::HypothesisTest for JarqueBeraTest {
   fn statistic(&self) -> f64 {
     self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.reject_normality)
+    Some(self.rejects_null)
   }
 }
 
@@ -55,7 +55,7 @@ impl crate::traits::HypothesisTest for JarqueBeraResult {
 ///
 /// # Panics
 /// Panics if the sample has fewer than 8 points or contains non-finite values.
-pub fn jarque_bera_test(sample: ArrayView1<f64>, cfg: JarqueBeraConfig) -> JarqueBeraResult {
+pub fn jarque_bera_test(sample: ArrayView1<f64>, cfg: JarqueBeraConfig) -> JarqueBeraTest {
   let sample = sample
     .as_slice()
     .expect("jarque_bera_test requires a contiguous ArrayView1");
@@ -90,12 +90,12 @@ pub fn jarque_bera_test(sample: ArrayView1<f64>, cfg: JarqueBeraConfig) -> Jarqu
   m4 /= n;
 
   if m2 <= 0.0 || !m2.is_finite() {
-    return JarqueBeraResult {
+    return JarqueBeraTest {
       statistic: f64::INFINITY,
       p_value: 0.0,
       skewness: 0.0,
       excess_kurtosis: f64::INFINITY,
-      reject_normality: true,
+      rejects_null: true,
     };
   }
 
@@ -109,12 +109,12 @@ pub fn jarque_bera_test(sample: ArrayView1<f64>, cfg: JarqueBeraConfig) -> Jarqu
   // explicit and uniform with other CDF use sites.
   let p_value = (1.0 - gamma_p(1.0, 0.5 * statistic)).clamp(0.0, 1.0);
 
-  JarqueBeraResult {
+  JarqueBeraTest {
     statistic,
     p_value,
     skewness,
     excess_kurtosis,
-    reject_normality: p_value < cfg.alpha,
+    rejects_null: p_value < cfg.alpha,
   }
 }
 
@@ -177,7 +177,7 @@ mod tests {
 
     let res = jarque_bera_test(ArrayView1::from(&x), JarqueBeraConfig::default());
     assert!(
-      res.reject_normality,
+      res.rejects_null,
       "expected rejection for non-normal sample, got {res:?}"
     );
   }

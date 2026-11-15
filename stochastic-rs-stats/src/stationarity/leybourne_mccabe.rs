@@ -29,7 +29,7 @@ pub struct LeybourneMcCabeConfig {
   pub bootstrap_samples: usize,
   /// Seed used by bootstrap RNG.
   pub bootstrap_seed: u64,
-  /// Significance level used to compute `reject_stationarity`.
+  /// Significance level used to compute `rejects_null`.
   pub alpha: f64,
 }
 
@@ -47,7 +47,7 @@ impl Default for LeybourneMcCabeConfig {
 
 /// Result of the Leybourne-McCabe stationarity test.
 #[derive(Debug, Clone, Copy)]
-pub struct LeybourneMcCabeResult {
+pub struct LeybourneMcCabeTest {
   /// LM-style stationarity statistic.
   pub statistic: f64,
   /// AR lag order used for prewhitening.
@@ -55,16 +55,16 @@ pub struct LeybourneMcCabeResult {
   /// Bootstrap p-value under stationarity null.
   pub p_value: f64,
   /// Whether stationarity is rejected at `alpha`.
-  pub reject_stationarity: bool,
+  pub rejects_null: bool,
 }
 
-impl crate::traits::HypothesisTest for LeybourneMcCabeResult {
+impl crate::traits::HypothesisTest for LeybourneMcCabeTest {
   fn statistic(&self) -> f64 {
     self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.reject_stationarity)
+    Some(self.rejects_null)
   }
 }
 
@@ -136,7 +136,7 @@ fn simulate_ar(phi: &[f64], noise: &mut Seeded<SimdNormal<f64>>, n: usize) -> Ve
 pub fn leybourne_mccabe_test(
   y: ArrayView1<f64>,
   cfg: LeybourneMcCabeConfig,
-) -> LeybourneMcCabeResult {
+) -> LeybourneMcCabeTest {
   let y = y
     .as_slice()
     .expect("leybourne_mccabe_test requires a contiguous ArrayView1");
@@ -172,11 +172,11 @@ pub fn leybourne_mccabe_test(
 
   let p_value = (exceed as f64 + 1.0) / (cfg.bootstrap_samples as f64 + 1.0);
 
-  LeybourneMcCabeResult {
+  LeybourneMcCabeTest {
     statistic: obs_stat,
     ar_lags: cfg.ar_lags,
     p_value,
-    reject_stationarity: p_value < cfg.alpha,
+    rejects_null: p_value < cfg.alpha,
   }
 }
 
@@ -226,7 +226,7 @@ mod tests {
     };
     let res = leybourne_mccabe_test(ndarray::ArrayView1::from(&x), cfg);
     assert!(
-      !res.reject_stationarity,
+      !res.rejects_null,
       "expected no rejection for stationary series, got {res:?}"
     );
   }
@@ -250,7 +250,7 @@ mod tests {
         leybourne_mccabe_test(ndarray::ArrayView1::from(&x), cfg),
       )
     });
-    let ok = runs.iter().any(|(_, r)| r.reject_stationarity);
+    let ok = runs.iter().any(|(_, r)| r.rejects_null);
     let report = runs
       .iter()
       .map(|(s, r)| format!("seed {s:#x}: p={:.4}", r.p_value))

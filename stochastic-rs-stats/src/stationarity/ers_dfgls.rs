@@ -35,7 +35,7 @@ pub struct ErsConfig {
   pub lag_selection: LagSelection,
   /// Maximum lag considered by automatic lag selection.
   pub max_lags: Option<usize>,
-  /// Significance level used to compute `reject_unit_root`.
+  /// Significance level used to compute `rejects_null`.
   pub alpha: f64,
 }
 
@@ -52,7 +52,7 @@ impl Default for ErsConfig {
 
 /// Result of the Elliott-Rothenberg-Stock DF-GLS test.
 #[derive(Debug, Clone, Copy)]
-pub struct ErsResult {
+pub struct ErsTest {
   /// DF-GLS test statistic.
   pub statistic: f64,
   /// Selected lag order.
@@ -62,16 +62,16 @@ pub struct ErsResult {
   /// Critical values at 1%, 5%, 10% levels.
   pub critical_values: CriticalValues,
   /// Whether the null (unit root) is rejected at `alpha`.
-  pub reject_unit_root: bool,
+  pub rejects_null: bool,
 }
 
-impl crate::traits::HypothesisTest for ErsResult {
+impl crate::traits::HypothesisTest for ErsTest {
   fn statistic(&self) -> f64 {
     self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.reject_unit_root)
+    Some(self.rejects_null)
   }
 }
 
@@ -125,7 +125,7 @@ fn gls_detrend(y: &[f64], trend: ErsTrend) -> Vec<f64> {
 ///
 /// # Panics
 /// Panics on invalid inputs (non-finite series, too-short sample, invalid config).
-pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> ErsResult {
+pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> ErsTest {
   let y = y
     .as_slice()
     .expect("ers_dfgls_test requires a contiguous ArrayView1");
@@ -162,12 +162,12 @@ pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> ErsResult {
   let critical_values = dfgls_critical_values(matches!(cfg.trend, ErsTrend::ConstantTrend));
   let reject_unit_root = fit.statistic < critical_values.value_at(cfg.alpha);
 
-  ErsResult {
+  ErsTest {
     statistic: fit.statistic,
     used_lags,
     nobs: fit.nobs,
     critical_values,
-    reject_unit_root,
+    rejects_null: reject_unit_root,
   }
 }
 
@@ -204,6 +204,6 @@ mod tests {
       ..ErsConfig::default()
     };
     let res = ers_dfgls_test(ndarray::ArrayView1::from(&x), cfg);
-    assert!(res.reject_unit_root, "expected rejection, got {res:?}");
+    assert!(res.rejects_null, "expected rejection, got {res:?}");
   }
 }

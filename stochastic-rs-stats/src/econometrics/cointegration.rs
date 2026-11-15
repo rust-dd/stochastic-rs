@@ -11,10 +11,10 @@
 
 pub mod johansen;
 
-pub use johansen::JohansenResult;
-pub use johansen::Vecm;
+pub use johansen::JohansenTest;
+pub use johansen::VecmFit;
+pub use johansen::fit_vecm;
 pub use johansen::johansen_test;
-pub use johansen::vecm_fit;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
@@ -25,7 +25,7 @@ use crate::stationarity::adf::adf_test;
 
 /// Result of an Engle-Granger 2-step test for $y_t = \alpha + \beta x_t + \varepsilon_t$.
 #[derive(Debug, Clone)]
-pub struct EngleGrangerResult {
+pub struct EngleGrangerTest {
   /// Estimated intercept.
   pub alpha: f64,
   /// Estimated cointegration coefficient.
@@ -33,16 +33,16 @@ pub struct EngleGrangerResult {
   /// Estimated regression residuals.
   pub residuals: Array1<f64>,
   /// ADF statistic computed on the residuals.
-  pub adf_statistic: f64,
+  pub statistic: f64,
   /// 1%, 5%, 10% critical values for the residual ADF test (Phillips-Ouliaris,
   /// finite-sample).
   pub critical_values: (f64, f64, f64),
   /// Whether the no-cointegration null is rejected at `alpha = 0.05`.
-  pub reject_no_cointegration: bool,
+  pub rejects_null: bool,
 }
 
 /// Engle-Granger 2-step cointegration test.
-pub fn engle_granger_test(y: ArrayView1<f64>, x: ArrayView1<f64>) -> EngleGrangerResult {
+pub fn engle_granger_test(y: ArrayView1<f64>, x: ArrayView1<f64>) -> EngleGrangerTest {
   let n = y.len();
   assert_eq!(n, x.len(), "y and x must have equal length");
   assert!(n >= 30, "need at least 30 observations");
@@ -63,13 +63,13 @@ pub fn engle_granger_test(y: ArrayView1<f64>, x: ArrayView1<f64>) -> EngleGrange
   let adf = adf_test(residuals.view(), cfg);
   let crit = phillips_ouliaris_critical_values_two_var();
   let reject = adf.statistic < crit.1;
-  EngleGrangerResult {
+  EngleGrangerTest {
     alpha,
     beta,
     residuals,
-    adf_statistic: adf.statistic,
+    statistic: adf.statistic,
     critical_values: crit,
-    reject_no_cointegration: reject,
+    rejects_null: reject,
   }
 }
 
@@ -109,7 +109,7 @@ mod tests {
       y[i] = 2.0 + 0.7 * x[i] + eps[i];
     }
     let res = engle_granger_test(y.view(), x.view());
-    assert!(res.reject_no_cointegration);
+    assert!(res.rejects_null);
     assert!((res.beta - 0.7).abs() < 0.05);
   }
 
@@ -118,6 +118,6 @@ mod tests {
     let x = random_walk(13, 500, 1.0);
     let y = random_walk(17, 500, 1.0);
     let res = engle_granger_test(y.view(), x.view());
-    assert!(!res.reject_no_cointegration);
+    assert!(!res.rejects_null);
   }
 }

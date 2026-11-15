@@ -9,7 +9,7 @@ use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stats::econometrics::GaussianHmm;
 use stochastic_rs::stats::econometrics::cusum;
 use stochastic_rs::stats::econometrics::engle_granger_test;
-use stochastic_rs::stats::econometrics::granger_causality;
+use stochastic_rs::stats::econometrics::granger_causality_test;
 use stochastic_rs::stats::econometrics::johansen_test;
 use stochastic_rs::stats::econometrics::pelt;
 
@@ -58,7 +58,7 @@ fn engle_granger_full_pipeline() {
     .collect::<Vec<_>>()
     .into();
   let res = engle_granger_test(y.view(), x.view());
-  assert!(res.reject_no_cointegration);
+  assert!(res.rejects_null);
   assert!((res.beta - 1.5).abs() < 0.1);
 }
 
@@ -90,7 +90,7 @@ fn granger_pvalue_in_unit_interval() {
   dist.fill_slice(&mut buf_b);
   let a = Array1::from(buf_a);
   let b = Array1::from(buf_b);
-  let res = granger_causality(a.view(), b.view(), 4, 0.05);
+  let res = granger_causality_test(a.view(), b.view(), 4, 0.05);
   assert!((0.0..=1.0).contains(&res.p_value));
 }
 

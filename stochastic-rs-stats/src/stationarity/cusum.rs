@@ -72,7 +72,7 @@ impl Default for CusumConfig {
 
 /// Result of the CUSUM / CUSUMQ test.
 #[derive(Debug, Clone)]
-pub struct CusumResult {
+pub struct CusumTest {
   /// Variant that produced this result.
   pub variant: CusumVariant,
   /// Maximum absolute excess of the cumulative path over its boundary —
@@ -89,16 +89,16 @@ pub struct CusumResult {
   /// Two-sided rejection boundary `(lower, upper)` matching `cusum_path`.
   pub critical_boundary: Vec<(f64, f64)>,
   /// Whether the null of parameter constancy is rejected at `alpha`.
-  pub null_rejected: bool,
+  pub rejects_null: bool,
 }
 
-impl crate::traits::HypothesisTest for CusumResult {
+impl crate::traits::HypothesisTest for CusumTest {
   fn statistic(&self) -> f64 {
     self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    Some(self.null_rejected)
+    Some(self.rejects_null)
   }
 }
 
@@ -136,7 +136,7 @@ fn cusumq_critical_coefficient(alpha: f64) -> f64 {
 /// # Panics
 /// Panics on non-finite inputs, when $T \le k + 1$, when the leading
 /// $X_k$ block is singular, or when `alpha` is outside $(0, 1)$.
-pub fn cusum_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: CusumConfig) -> CusumResult {
+pub fn cusum_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: CusumConfig) -> CusumTest {
   let y_slice = y
     .as_slice()
     .expect("cusum_test requires a contiguous ArrayView1");
@@ -162,7 +162,7 @@ pub fn cusum_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: CusumConfig) -> C
   }
 }
 
-fn cusum_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumResult {
+fn cusum_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumTest {
   let w_mean = w.iter().sum::<f64>() / n_tilde;
   let sigma2 = w.iter().map(|wj| (wj - w_mean).powi(2)).sum::<f64>() / (n_tilde - 1.0).max(1.0);
   let sigma = sigma2.max(0.0).sqrt();
@@ -191,18 +191,18 @@ fn cusum_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumResult 
     }
   }
 
-  CusumResult {
+  CusumTest {
     variant: CusumVariant::Cusum,
     statistic: max_excess,
     breakpoint,
     recursive_residuals: w,
     cusum_path: path,
     critical_boundary: boundary,
-    null_rejected: max_excess > 0.0,
+    rejects_null: max_excess > 0.0,
   }
 }
 
-fn cusumq_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumResult {
+fn cusumq_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumTest {
   let denom: f64 = w.iter().map(|wj| wj * wj).sum();
   let denom_safe = if denom > 0.0 { denom } else { 1.0 };
   let c_alpha = cusumq_critical_coefficient(alpha);
@@ -229,14 +229,14 @@ fn cusumq_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumResult
     }
   }
 
-  CusumResult {
+  CusumTest {
     variant: CusumVariant::Cusumq,
     statistic: max_excess,
     breakpoint,
     recursive_residuals: w,
     cusum_path: path,
     critical_boundary: boundary,
-    null_rejected: max_excess > 0.0,
+    rejects_null: max_excess > 0.0,
   }
 }
 
@@ -347,7 +347,7 @@ mod tests {
         },
       );
       assert!(
-        !res.null_rejected,
+        !res.rejects_null,
         "CUSUM should not reject constant DGP at seed {seed}: statistic = {}",
         res.statistic
       );
@@ -368,7 +368,7 @@ mod tests {
       },
     );
     assert!(
-      res.null_rejected,
+      res.rejects_null,
       "CUSUM should reject mean shift: statistic = {}",
       res.statistic
     );
@@ -393,7 +393,7 @@ mod tests {
       },
     );
     assert!(
-      res.null_rejected,
+      res.rejects_null,
       "CUSUMQ should reject variance shift: statistic = {}",
       res.statistic
     );
@@ -415,7 +415,7 @@ mod tests {
         },
       );
       assert!(
-        !res.null_rejected,
+        !res.rejects_null,
         "CUSUMQ should not reject constant DGP at seed {seed}: statistic = {}",
         res.statistic
       );

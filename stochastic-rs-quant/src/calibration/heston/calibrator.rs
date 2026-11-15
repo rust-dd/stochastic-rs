@@ -4,7 +4,7 @@ use std::rc::Rc;
 use anyhow::Result;
 use anyhow::bail;
 use ndarray::Array1;
-use stochastic_rs_stats::heston_nml_cekf::HestonNmleCekfConfig;
+use stochastic_rs_stats::heston_nmle_cekf::HestonNmleCekfConfig;
 
 use super::params::HestonJacobianMethod;
 use super::params::HestonMleSeedMethod;

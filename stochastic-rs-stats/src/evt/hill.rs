@@ -23,7 +23,7 @@ use crate::traits::FloatExt;
 
 /// Result of the Hill estimator.
 #[derive(Debug, Clone)]
-pub struct HillResult {
+pub struct HillFit {
   /// Tail index $\hat\xi_k$.
   pub xi: f64,
   /// Tail exponent $\hat\alpha_k = 1/\hat\xi_k$.
@@ -47,7 +47,7 @@ pub struct HillResult {
 /// # Panics
 ///
 /// If `k` is zero or there are fewer than `k + 1` positive observations.
-pub fn hill_estimator<T: FloatExt>(data: ArrayView1<T>, k: usize) -> HillResult {
+pub fn fit_hill<T: FloatExt>(data: ArrayView1<T>, k: usize) -> HillFit {
   assert!(k >= 1, "k must be at least 1");
   let mut positive: Vec<f64> = data
     .iter()
@@ -67,7 +67,7 @@ pub fn hill_estimator<T: FloatExt>(data: ArrayView1<T>, k: usize) -> HillResult 
     .map(|x| x.ln() - log_threshold)
     .sum::<f64>()
     / k as f64;
-  HillResult {
+  HillFit {
     xi,
     alpha: 1.0 / xi,
     std_error: xi / (k as f64).sqrt(),

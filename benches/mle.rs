@@ -10,11 +10,11 @@ use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::pareto::SimdPareto;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stats::evt::block_maxima;
-use stochastic_rs::stats::evt::gev_fit;
-use stochastic_rs::stats::evt::hill_estimator;
-use stochastic_rs::stats::evt::pot_fit;
+use stochastic_rs::stats::evt::fit_gev;
+use stochastic_rs::stats::evt::fit_hill;
+use stochastic_rs::stats::evt::fit_pot;
 use stochastic_rs::stats::garch::GarchSpec;
-use stochastic_rs::stats::garch::garch_fit;
+use stochastic_rs::stats::garch::fit_garch;
 use stochastic_rs::stats::mle::DensityApprox;
 use stochastic_rs::stats::mle::fit_mle;
 use stochastic_rs::stochastic::autoregressive::garch::Garch;
@@ -240,7 +240,7 @@ fn bench_garch_fit(c: &mut Criterion) {
       ("Egarch11", GarchSpec::egarch(1, 1)),
     ] {
       group.bench_function(BenchmarkId::new(name, label), |b| {
-        b.iter(|| black_box(garch_fit(returns.view(), spec)))
+        b.iter(|| black_box(fit_garch(returns.view(), spec)))
       });
     }
   }
@@ -255,14 +255,14 @@ fn bench_evt_fit(c: &mut Criterion) {
   dist.fill_slice(&mut losses);
   let losses = ndarray::Array1::from(losses);
   group.bench_function("hill_20k_k500", |b| {
-    b.iter(|| black_box(hill_estimator(losses.view(), 500)))
+    b.iter(|| black_box(fit_hill(losses.view(), 500)))
   });
   group.bench_function("pot_20k_u3", |b| {
-    b.iter(|| black_box(pot_fit(losses.view(), 3.0)))
+    b.iter(|| black_box(fit_pot(losses.view(), 3.0)))
   });
   let maxima = block_maxima(losses.view(), 100);
   group.bench_function("gev_200_maxima", |b| {
-    b.iter(|| black_box(gev_fit(maxima.view())))
+    b.iter(|| black_box(fit_gev(maxima.view())))
   });
   group.finish();
 }
