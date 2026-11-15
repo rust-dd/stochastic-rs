@@ -92,6 +92,27 @@ fn black_karasinski_stays_positive_and_agrees() {
   );
 }
 
+/// `a = 0` is the one reversion the kernels' mean term cannot take, so the device build samples on
+/// the host and is the Cpu build to the bit.
+#[test]
+fn a_zero_reversion_keeps_black_karasinski_on_the_host() {
+  let bk = |a: f32| {
+    BlackKarasinski::<f32, _>::new(
+      rising(),
+      a,
+      0.2,
+      65,
+      Some(0.03),
+      Some(1.0),
+      Deterministic::new(47),
+    )
+  };
+  assert!(!bk(0.0).device_ready() && !bk(0.0).on::<Device>().device_ready());
+  assert_eq!(bk(0.0).on::<Device>().sample_par(4), bk(0.0).sample_par(4));
+  assert_eq!(bk(0.0).on::<Device>().sample(), bk(0.0).sample());
+  assert!(bk(0.1).on::<Device>().device_ready());
+}
+
 /// The CIR++ shift is added in the report, so the reported path must clear
 /// the shift's own floor even where the square-root state is at zero.
 #[test]

@@ -428,6 +428,10 @@ mod tests {
     0.05
   }
 
+  fn theta_hundred(_t: f32) -> f32 {
+    100.0
+  }
+
   /// ln r is OU: E[ln r_t] = e^{-a t} ln r_0 + (theta/a)(1 - e^{-a t}) when
   /// theta is constant (Black & Karasinski 1991).
   #[test]
@@ -575,6 +579,29 @@ mod tests {
     assert!(
       (std as f64 / exact - 1.0).abs() < 1e-6,
       "got {std}, exact {exact}: the old form was 17 % high"
+    );
+  }
+
+  #[test]
+  fn the_one_minute_mean_term_keeps_its_digits_in_single_precision() {
+    let (a, dt) = (0.01_f32, 1.0_f32 / (252.0 * 390.0));
+    let path = BlackKarasinski::<f32, _>::new(
+      theta_hundred as fn(f32) -> f32,
+      a,
+      0.0,
+      2,
+      Some(0.03),
+      Some(dt),
+      Deterministic::new(1),
+    )
+    .sample();
+    let (a, dt, r0) = (a as f64, dt as f64, 0.03_f32 as f64);
+    // θ·Δ ≈ 1e-3 lifts the mean term above ln r's f32 ulp; (θ/a)(1 − e^{−aΔ}) was 17 % high there.
+    let exact = (r0.ln() * (-a * dt).exp() - 100.0 * (-a * dt).exp_m1() / a).exp();
+    assert!(
+      (path[1] as f64 / exact - 1.0).abs() < 1e-6,
+      "got {}, exact {exact}",
+      path[1]
     );
   }
 

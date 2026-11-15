@@ -530,15 +530,21 @@ mod tests {
       Some(1.0),
       Deterministic::new(11),
     );
-    let jumps: Vec<f64> = p
+    let jumps = p
       .sample_par(4000)
       .iter()
       .map(|[_, v]| v[1] - v[0] * (-1.0_f64).exp())
-      .collect();
+      .collect::<Vec<_>>();
     let mean = jumps.iter().sum::<f64>() / 4000.0;
+    let var = jumps.iter().map(|z| (z - mean).powi(2)).sum::<f64>() / 3999.0;
+    // Compound Poisson(40) of Exp(1) sizes, κ_k = 40·k!: ±5σ is ±0.71 on the mean, ±9.3 on the variance.
     assert!(
-      (mean / 40.0 - 1.0).abs() < 0.1,
-      "E[ΔZ] = ν·λ·Δ·E[Gamma(1, 1)] = 40, got {mean}"
+      (mean - 40.0).abs() < 5.0 * (80.0_f64 / 4000.0).sqrt(),
+      "E[ΔZ] = ν·λ·Δ·E[Y] = 40, got {mean}"
+    );
+    assert!(
+      (var - 80.0).abs() < 5.0 * ((960.0 + 2.0 * 6400.0) / 4000.0_f64).sqrt(),
+      "Var ΔZ = ν·λ·Δ·E[Y²] = 80, got {var}"
     );
   }
 }
