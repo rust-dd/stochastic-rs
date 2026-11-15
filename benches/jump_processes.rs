@@ -12,7 +12,11 @@ use stochastic_rs::stochastic::jump::kou::Kou;
 use stochastic_rs::stochastic::jump::levy_diffusion::LevyDiffusion;
 use stochastic_rs::stochastic::jump::merton::Merton;
 use stochastic_rs::stochastic::jump::mjd_log::MjdLog;
+use stochastic_rs::stochastic::process::subordinator::ctrw::Ctrw;
+use stochastic_rs::stochastic::process::subordinator::ctrw::CtrwJumpLaw;
+use stochastic_rs::stochastic::process::subordinator::ctrw::CtrwWaitingLaw;
 use stochastic_rs::stochastic::volatility::bates_svj::BatesSvj;
+use stochastic_rs::stochastic::volatility::bns::Bns;
 use stochastic_rs::traits::ProcessExt;
 
 const LAMBDA: f64 = 10.0;
@@ -22,6 +26,32 @@ fn bench_jump_processes(c: &mut Criterion) {
   let mut group = c.benchmark_group("JumpProcesses");
   group.measurement_time(Duration::from_secs(3));
   group.warm_up_time(Duration::from_millis(500));
+
+  let bns = Bns::<f64>::new(
+    Some(100.0),
+    0.04,
+    1.0,
+    0.05,
+    2.0,
+    1.0,
+    1024,
+    Some(1.0),
+    Unseeded,
+  );
+  group.bench_function("bns", |b| b.iter(|| black_box(bns.sample())));
+
+  let ctrw = Ctrw::<f64>::new(
+    CtrwWaitingLaw::Exponential { rate: 50.0 },
+    CtrwJumpLaw::Normal {
+      mean: 0.0,
+      std: 0.1,
+    },
+    1024,
+    None,
+    Some(1.0),
+    Unseeded,
+  );
+  group.bench_function("ctrw", |b| b.iter(|| black_box(ctrw.sample())));
 
   for &n in &SIZES {
     let merton = Merton::new(

@@ -346,7 +346,6 @@ impl<T: FloatExt> CtrwSampler<T> {
         sample_positive_stable(*alpha, *log_scale, &mut self.uniform)
       }
     }
-    .max(1e-12)
   }
 
   fn draw_jump(&mut self) -> f64 {
@@ -363,6 +362,8 @@ impl<T: FloatExt> CtrwSampler<T> {
     }
   }
 
+  /// Every event up to each grid time is added, with no cap: a law with very many events per step
+  /// takes that long rather than returning a truncated path.
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -377,14 +378,9 @@ impl<T: FloatExt> CtrwSampler<T> {
 
     for i in 1..out.len() {
       let t_i = i as f64 * self.dt;
-      let mut safety = 0usize;
       while next_event <= t_i {
         x += self.draw_jump();
         next_event += self.draw_wait();
-        safety += 1;
-        if safety > 1_000_000 {
-          break;
-        }
       }
       out[i] = T::from_f64_fast(x);
     }

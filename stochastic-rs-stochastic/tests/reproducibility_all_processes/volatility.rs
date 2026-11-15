@@ -25,6 +25,7 @@ use stochastic_rs_stochastic::volatility::sabr::Sabr;
 use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
 
 use crate::common::J;
+use crate::common::LAMBDA;
 use crate::common::N;
 use crate::common::guard;
 
@@ -64,7 +65,7 @@ guard!(bns, "Bns", |s| Bns::new(
   0.04,
   0.1,
   0.0,
-  1.0,
+  LAMBDA,
   1.0,
   N,
   Some(1.0),
