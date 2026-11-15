@@ -19,30 +19,64 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 
+use crate::critical_values::CriticalValues;
 use crate::linalg::lstsq;
 use crate::stationarity::adf::AdfConfig;
 use crate::stationarity::adf::adf_test;
 
-/// Result of an Engle-Granger 2-step test for $y_t = \alpha + \beta x_t + \varepsilon_t$.
+/// Configuration for [`engle_granger_test`].
+#[derive(Debug, Clone, Copy)]
+pub struct EngleGrangerConfig {
+  /// Significance level used to compute `rejects_null`.
+  pub alpha: f64,
+}
+
+impl Default for EngleGrangerConfig {
+  fn default() -> Self {
+    Self { alpha: 0.05 }
+  }
+}
+
+/// Engle–Granger 2-step test for $y_t = a + \beta x_t + \varepsilon_t$ (null: no cointegration);
+/// the Phillips–Ouliaris table holds the 1 %, 5 % and 10 % levels.
 #[derive(Debug, Clone)]
 pub struct EngleGrangerTest {
-  /// Estimated intercept.
-  pub alpha: f64,
+  /// ADF statistic computed on the residuals.
+  pub statistic: f64,
+  /// No p-value table is shipped; the decision is taken against `critical_values`.
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
+  /// Whether the no-cointegration null is rejected at `alpha`.
+  pub rejects_null: bool,
+  /// Estimated intercept $a$.
+  pub intercept: f64,
   /// Estimated cointegration coefficient.
   pub beta: f64,
   /// Estimated regression residuals.
   pub residuals: Array1<f64>,
-  /// ADF statistic computed on the residuals.
-  pub statistic: f64,
-  /// 1%, 5%, 10% critical values for the residual ADF test (Phillips-Ouliaris,
-  /// finite-sample).
-  pub critical_values: (f64, f64, f64),
-  /// Whether the no-cointegration null is rejected at `alpha = 0.05`.
-  pub rejects_null: bool,
+}
+
+impl crate::traits::HypothesisTest for EngleGrangerTest {
+  fn statistic(&self) -> f64 {
+    self.statistic
+  }
+
+  fn null_rejected(&self) -> Option<bool> {
+    Some(self.rejects_null)
+  }
 }
 
 /// Engle-Granger 2-step cointegration test.
-pub fn engle_granger_test(y: ArrayView1<f64>, x: ArrayView1<f64>) -> EngleGrangerTest {
+pub fn engle_granger_test(
+  y: ArrayView1<f64>,
+  x: ArrayView1<f64>,
+  cfg: EngleGrangerConfig,
+) -> EngleGrangerTest {
+  assert!(
+    cfg.alpha > 0.0 && cfg.alpha < 1.0,
+    "alpha must satisfy `0.0 < alpha < 1.0`, got alpha = {:?}",
+    cfg.alpha
+  );
   let n = y.len();
   assert_eq!(n, x.len(), "y and x must have equal length");
   assert!(n >= 30, "need at least 30 observations");
@@ -53,28 +87,24 @@ pub fn engle_granger_test(y: ArrayView1<f64>, x: ArrayView1<f64>) -> EngleGrange
   }
   let y_owned = y.to_owned();
   let sol = lstsq(&design, &y_owned);
-  let alpha = sol[0];
+  let intercept = sol[0];
   let beta = sol[1];
   let mut residuals = Array1::<f64>::zeros(n);
   for i in 0..n {
-    residuals[i] = y[i] - alpha - beta * x[i];
+    residuals[i] = y[i] - intercept - beta * x[i];
   }
-  let cfg = AdfConfig::default();
-  let adf = adf_test(residuals.view(), cfg);
-  let crit = phillips_ouliaris_critical_values_two_var();
-  let reject = adf.statistic < crit.1;
+  let adf = adf_test(residuals.view(), AdfConfig::default());
+  let critical_values = CriticalValues::new([(0.01, -3.96), (0.05, -3.37), (0.10, -3.07)]);
+  let rejects_null = adf.statistic < critical_values.value_at(cfg.alpha);
   EngleGrangerTest {
-    alpha,
+    statistic: adf.statistic,
+    p_value: None,
+    critical_values: Some(critical_values),
+    rejects_null,
+    intercept,
     beta,
     residuals,
-    statistic: adf.statistic,
-    critical_values: crit,
-    rejects_null: reject,
   }
-}
-
-fn phillips_ouliaris_critical_values_two_var() -> (f64, f64, f64) {
-  (-3.96, -3.37, -3.07)
 }
 
 #[cfg(test)]
@@ -108,7 +138,7 @@ mod tests {
     for i in 0..500 {
       y[i] = 2.0 + 0.7 * x[i] + eps[i];
     }
-    let res = engle_granger_test(y.view(), x.view());
+    let res = engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default());
     assert!(res.rejects_null);
     assert!((res.beta - 0.7).abs() < 0.05);
   }
@@ -117,7 +147,7 @@ mod tests {
   fn engle_granger_does_not_reject_independent_walks() {
     let x = random_walk(13, 500, 1.0);
     let y = random_walk(17, 500, 1.0);
-    let res = engle_granger_test(y.view(), x.view());
+    let res = engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default());
     assert!(!res.rejects_null);
   }
 }

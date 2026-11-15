@@ -373,6 +373,7 @@ mod tests {
           KolmogorovSmirnovConfig::default(),
         )
         .p_value
+        .unwrap()
       })
       .fold(0.0_f64, f64::max);
     assert!(
@@ -399,6 +400,7 @@ mod tests {
           KolmogorovSmirnovConfig::default(),
         )
         .p_value
+        .unwrap()
       })
       .fold(0.0_f64, f64::max);
     assert!(

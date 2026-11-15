@@ -15,13 +15,17 @@ impl PyEngleGranger {
     x: PyReadonlyArray1<'py, f64>,
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::econometrics::cointegration::engle_granger_test(y.as_array(), x.as_array()),
+      inner: crate::econometrics::cointegration::engle_granger_test(
+        y.as_array(),
+        x.as_array(),
+        crate::econometrics::cointegration::EngleGrangerConfig::default(),
+      ),
     })
   }
 
   #[getter]
   fn alpha(&self) -> f64 {
-    self.inner.alpha
+    self.inner.intercept
   }
 
   #[getter]
@@ -36,7 +40,12 @@ impl PyEngleGranger {
 
   #[getter]
   fn critical_values(&self) -> (f64, f64, f64) {
-    self.inner.critical_values
+    let cv = self.inner.critical_values.as_ref().unwrap();
+    (
+      cv.at(0.01).unwrap(),
+      cv.at(0.05).unwrap(),
+      cv.at(0.10).unwrap(),
+    )
   }
 
   #[getter]
@@ -234,7 +243,7 @@ impl PyGranger {
   }
 
   #[getter]
-  fn p_value(&self) -> f64 {
+  fn p_value(&self) -> Option<f64> {
     self.inner.p_value
   }
 

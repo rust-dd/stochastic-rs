@@ -46,6 +46,7 @@ pub use changepoint::ChangepointCusumResult;
 pub use changepoint::PeltResult;
 pub use changepoint::cusum;
 pub use changepoint::pelt;
+pub use cointegration::EngleGrangerConfig;
 pub use cointegration::EngleGrangerTest;
 pub use cointegration::JohansenTest;
 pub use cointegration::VecmFit;

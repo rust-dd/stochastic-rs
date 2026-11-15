@@ -27,6 +27,7 @@ use stochastic_rs_distributions::special::beta_i;
 
 use super::common::ols;
 use super::common::validate_series;
+use crate::critical_values::CriticalValues;
 
 /// $F(d_1, d_2)$ upper tail probability $1 - F(x)$ via the regularised
 /// incomplete beta identity
@@ -60,19 +61,20 @@ impl Default for ResetConfig {
   }
 }
 
-/// Result of the RESET test.
-#[derive(Debug, Clone, Copy)]
+/// Ramsey RESET (null: a correct linear specification), decided by its F p-value.
+#[derive(Debug, Clone)]
 pub struct ResetTest {
   /// F-statistic for the joint restriction $\gamma_2 = \dots = \gamma_p = 0$.
   pub statistic: f64,
+  /// Asymptotic p-value from the $F(q, T-k-q)$ distribution.
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
+  /// Whether the correct-specification null is rejected at `alpha`.
+  pub rejects_null: bool,
   /// Numerator degrees of freedom $q = p - 1$.
   pub df_num: usize,
   /// Denominator degrees of freedom $T - k - q$.
   pub df_den: usize,
-  /// Asymptotic p-value from the $F(q, T-k-q)$ distribution.
-  pub p_value: f64,
-  /// Whether the correct-specification null is rejected at `alpha`.
-  pub rejects_null: bool,
 }
 
 impl crate::traits::HypothesisTest for ResetTest {
@@ -148,10 +150,11 @@ pub fn reset_test(y: ArrayView1<f64>, x: ArrayView2<f64>, cfg: ResetConfig) -> R
 
   ResetTest {
     statistic: f_statistic,
+    p_value: Some(p_value),
+    critical_values: None,
+    rejects_null: p_value < cfg.alpha,
     df_num,
     df_den,
-    p_value,
-    rejects_null: p_value < cfg.alpha,
   }
 }
 
@@ -205,7 +208,7 @@ mod tests {
     let res = reset_test(y.view(), xm.view(), ResetConfig::default());
     assert!(
       !res.rejects_null,
-      "linear DGP: should not reject; F = {}, p = {}",
+      "linear DGP: should not reject; F = {}, p = {:?}",
       res.statistic, res.p_value
     );
   }
@@ -217,7 +220,7 @@ mod tests {
     let res = reset_test(y.view(), xm.view(), ResetConfig::default());
     assert!(
       res.rejects_null,
-      "quadratic DGP: should reject; F = {}, p = {}",
+      "quadratic DGP: should reject; F = {}, p = {:?}",
       res.statistic, res.p_value
     );
   }
@@ -229,7 +232,7 @@ mod tests {
     let res = reset_test(y.view(), xm.view(), ResetConfig::default());
     assert!(
       res.rejects_null,
-      "cubic DGP: should reject; F = {}, p = {}",
+      "cubic DGP: should reject; F = {}, p = {:?}",
       res.statistic, res.p_value
     );
   }

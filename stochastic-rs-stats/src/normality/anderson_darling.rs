@@ -15,6 +15,8 @@
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::norm_cdf;
 
+use crate::critical_values::CriticalValues;
+
 /// Configuration for the Anderson-Darling normality test.
 #[derive(Debug, Clone, Copy)]
 pub struct AndersonDarlingConfig {
@@ -28,17 +30,18 @@ impl Default for AndersonDarlingConfig {
   }
 }
 
-/// Result of the Anderson-Darling normality test.
-#[derive(Debug, Clone, Copy)]
+/// Anderson–Darling test (null: normality), decided by Stephens' p-value approximation.
+#[derive(Debug, Clone)]
 pub struct AndersonDarlingTest {
   /// Raw A^2 statistic.
   pub statistic: f64,
-  /// Stephens finite-sample adjusted statistic.
-  pub adjusted_statistic: f64,
   /// Approximate p-value for normality (Stephens-style approximation).
-  pub p_value: f64,
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
   /// Whether normality is rejected at `alpha`.
   pub rejects_null: bool,
+  /// Stephens finite-sample adjusted statistic.
+  pub adjusted_statistic: f64,
 }
 
 impl crate::traits::HypothesisTest for AndersonDarlingTest {
@@ -128,9 +131,10 @@ pub fn anderson_darling_normal_test(
 
   AndersonDarlingTest {
     statistic,
-    adjusted_statistic,
-    p_value,
+    p_value: Some(p_value),
+    critical_values: None,
     rejects_null: p_value < cfg.alpha,
+    adjusted_statistic,
   }
 }
 
@@ -163,7 +167,9 @@ mod tests {
         let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
         let mut x = vec![0.0; 4000];
         dist.fill_slice(&mut x);
-        anderson_darling_normal_test(ArrayView1::from(&x), AndersonDarlingConfig::default()).p_value
+        anderson_darling_normal_test(ArrayView1::from(&x), AndersonDarlingConfig::default())
+          .p_value
+          .unwrap()
       })
       .fold(0.0_f64, f64::max);
 

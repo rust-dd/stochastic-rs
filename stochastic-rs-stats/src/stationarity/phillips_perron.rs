@@ -15,13 +15,13 @@
 
 use ndarray::ArrayView1;
 
-use super::common::CriticalValues;
-use super::common::DeterministicTerm;
+use super::common::Trend;
 use super::common::adf_critical_values;
 use super::common::fit_adf;
 use super::common::newey_west_long_run_variance;
 use super::common::schwert_max_lags;
 use super::common::validate_series;
+use crate::critical_values::CriticalValues;
 
 /// Phillips-Perron test statistic variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,7 +36,7 @@ pub enum PpTestType {
 #[derive(Debug, Clone, Copy)]
 pub struct PhillipsPerronConfig {
   /// Deterministic terms in the test regression.
-  pub deterministic: DeterministicTerm,
+  pub trend: Trend,
   /// PP statistic type.
   pub test_type: PpTestType,
   /// Newey-West lag length. If `None`, a Schwert-style default is used.
@@ -48,7 +48,7 @@ pub struct PhillipsPerronConfig {
 impl Default for PhillipsPerronConfig {
   fn default() -> Self {
     Self {
-      deterministic: DeterministicTerm::Constant,
+      trend: Trend::Constant,
       test_type: PpTestType::Tau,
       lags: None,
       alpha: 0.05,
@@ -56,19 +56,21 @@ impl Default for PhillipsPerronConfig {
   }
 }
 
-/// Result of the Phillips-Perron unit-root test.
-#[derive(Debug, Clone, Copy)]
+/// Phillips–Perron test (null: a unit root); `Rho` has no shipped table, so it carries no decision.
+#[derive(Debug, Clone)]
 pub struct PhillipsPerronTest {
   /// PP statistic value.
   pub statistic: f64,
+  /// No p-value table is shipped; `Tau` is decided against `critical_values`.
+  pub p_value: Option<f64>,
+  /// The ADF table at the 1 %, 5 % and 10 % levels for `Tau`; `None` for `Rho`.
+  pub critical_values: Option<CriticalValues>,
+  /// Unit-root rejection at `alpha` for `Tau`; `None` for `Rho`.
+  pub rejects_null: Option<bool>,
   /// Newey-West lag length used.
   pub used_lags: usize,
   /// Variant of the PP statistic.
   pub test_type: PpTestType,
-  /// Critical values (available for `Tau` output).
-  pub critical_values: Option<CriticalValues>,
-  /// Unit-root rejection decision (available for `Tau` output).
-  pub rejects_null: Option<bool>,
 }
 
 impl crate::traits::HypothesisTest for PhillipsPerronTest {
@@ -95,7 +97,7 @@ pub fn phillips_perron_test(y: ArrayView1<f64>, cfg: PhillipsPerronConfig) -> Ph
     "alpha must be in (0, 1)"
   );
 
-  let fit = fit_adf(y, 0, cfg.deterministic);
+  let fit = fit_adf(y, 0, cfg.trend);
   let u = fit.residuals;
   let nobs = u.len();
   let n_f = nobs as f64;
@@ -121,20 +123,22 @@ pub fn phillips_perron_test(y: ArrayView1<f64>, cfg: PhillipsPerronConfig) -> Ph
     }
   };
 
-  let (critical_values, reject_unit_root) = match cfg.test_type {
+  let (critical_values, rejects_null) = match cfg.test_type {
     PpTestType::Tau => {
-      let cvals = adf_critical_values(cfg.deterministic);
-      (Some(cvals), Some(statistic < cvals.value_at(cfg.alpha)))
+      let cvals = adf_critical_values(cfg.trend);
+      let rejects = statistic < cvals.value_at(cfg.alpha);
+      (Some(cvals), Some(rejects))
     }
     PpTestType::Rho => (None, None),
   };
 
   PhillipsPerronTest {
     statistic,
+    p_value: None,
+    critical_values,
+    rejects_null,
     used_lags,
     test_type: cfg.test_type,
-    critical_values,
-    rejects_null: reject_unit_root,
   }
 }
 
@@ -147,7 +151,7 @@ mod tests {
   use super::PhillipsPerronConfig;
   use super::PpTestType;
   use super::phillips_perron_test;
-  use crate::stationarity::common::DeterministicTerm;
+  use crate::stationarity::Trend;
 
   fn simulate_ar1(phi: f64, n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
@@ -179,7 +183,7 @@ mod tests {
   fn pp_tau_rejects_stationary_ar1() {
     let x = simulate_ar1(0.75, 2500, 0xA11CE);
     let cfg = PhillipsPerronConfig {
-      deterministic: DeterministicTerm::Constant,
+      trend: Trend::Constant,
       test_type: PpTestType::Tau,
       lags: Some(12),
       ..PhillipsPerronConfig::default()
@@ -196,7 +200,7 @@ mod tests {
   fn pp_tau_random_walk_is_not_rejected_at_one_percent() {
     let x = simulate_random_walk(2500, 0xBADC0DE);
     let cfg = PhillipsPerronConfig {
-      deterministic: DeterministicTerm::Constant,
+      trend: Trend::Constant,
       test_type: PpTestType::Tau,
       lags: Some(12),
       alpha: 0.01,

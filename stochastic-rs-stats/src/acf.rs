@@ -25,6 +25,7 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::gamma_q;
 
+use crate::critical_values::CriticalValues;
 use crate::traits::FloatExt;
 
 /// Sample autocorrelation function (ACF) up to `max_lag`.
@@ -115,14 +116,37 @@ pub fn pacf<T: FloatExt>(x: ArrayView1<T>, max_lag: usize) -> Array1<T> {
   phi
 }
 
-/// Result of the Ljung-Box portmanteau test for autocorrelation.
+/// Configuration for [`ljung_box`].
 #[derive(Debug, Clone, Copy)]
+pub struct LjungBoxConfig {
+  /// Autocorrelation lags in the statistic.
+  pub lags: usize,
+  /// Parameters fitted to the series before the test: `p + q` for ARMA(p, q) residuals.
+  pub fit_df: usize,
+  /// Significance level used to compute `rejects_null`.
+  pub alpha: f64,
+}
+
+impl Default for LjungBoxConfig {
+  fn default() -> Self {
+    Self {
+      lags: 20,
+      fit_df: 0,
+      alpha: 0.05,
+    }
+  }
+}
+
+/// Ljung–Box portmanteau test (null: no autocorrelation up to `lags`), decided by its p-value.
+#[derive(Debug, Clone)]
 pub struct LjungBoxTest {
   /// Q test statistic.
   pub statistic: f64,
-  /// p-value under the chi-square(`df`) asymptotic null (upper-tail
-  /// survival function).
-  pub p_value: f64,
+  /// p-value under the chi-square(`df`) asymptotic null (upper-tail survival function).
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
+  /// Whether the no-autocorrelation null is rejected at `alpha`.
+  pub rejects_null: bool,
   /// Degrees of freedom, `lags - fit_df`.
   pub df: usize,
   /// Number of autocorrelation lags included in the statistic.
@@ -135,36 +159,25 @@ impl crate::traits::HypothesisTest for LjungBoxTest {
   }
 
   fn null_rejected(&self) -> Option<bool> {
-    // No `alpha` is threaded through `ljung_box`, so (per the trait's
-    // documented contract) this result is informational only.
-    None
+    Some(self.rejects_null)
   }
 }
 
-/// Ljung-Box portmanteau test for autocorrelation up to lag `lags`.
-///
-/// $$
-/// Q = n(n+2) \sum_{k=1}^{h} \frac{\hat\rho_k^2}{n-k}, \qquad
-/// Q \overset{H_0}{\sim} \chi^2_{h - \text{fit\_df}}
-/// $$
-///
-/// `fit_df` is the number of parameters already fitted to the series (e.g.
-/// $p+q$ for an ARMA(p, q) residual series); pass `0` when testing a raw
-/// series for autocorrelation. The p-value is the upper-tail survival
-/// function of the chi-square distribution, $Q_{\chi^2}(\text{df}/2, Q/2)$,
-/// via the regularised upper incomplete gamma function `gamma_q`.
-///
-/// Reference: Ljung, G. M., & Box, G. E. P. (1978), "On a Measure of Lack of
-/// Fit in Time Series Models", *Biometrika*, 65(2), 297-303.
-///
-/// # Panics
-/// Panics if `lags <= fit_df`. Also panics per [`acf`]'s panics (fewer than
-/// 2 observations, `max_lag == 0`, `max_lag >= x.len()`, a non-finite
-/// value, or a constant series) — called internally with `max_lag = lags`.
-pub fn ljung_box<T: FloatExt>(x: ArrayView1<T>, lags: usize, fit_df: usize) -> LjungBoxTest {
+/// Ljung–Box test of the first `lags` autocorrelations against `χ²(lags − fit_df)`; panics unless
+/// `lags > fit_df` and `0 < alpha < 1`, and as [`acf`] does on the series.
+pub fn ljung_box<T: FloatExt>(x: ArrayView1<T>, cfg: LjungBoxConfig) -> LjungBoxTest {
+  let LjungBoxConfig {
+    lags,
+    fit_df,
+    alpha,
+  } = cfg;
   assert!(
     lags > fit_df,
     "lags must exceed fit_df (lags = {lags}, fit_df = {fit_df})"
+  );
+  assert!(
+    alpha > 0.0 && alpha < 1.0,
+    "alpha must satisfy `0.0 < alpha < 1.0`, got alpha = {alpha:?}"
   );
 
   let n = x.len();
@@ -183,7 +196,9 @@ pub fn ljung_box<T: FloatExt>(x: ArrayView1<T>, lags: usize, fit_df: usize) -> L
 
   LjungBoxTest {
     statistic,
-    p_value,
+    p_value: Some(p_value),
+    critical_values: None,
+    rejects_null: p_value < alpha,
     df,
     lags,
   }
@@ -198,9 +213,17 @@ mod tests {
   use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
+  use super::LjungBoxConfig;
   use super::acf;
   use super::ljung_box;
   use super::pacf;
+
+  fn lags_10() -> LjungBoxConfig {
+    LjungBoxConfig {
+      lags: 10,
+      ..LjungBoxConfig::default()
+    }
+  }
 
   /// Self-contained AR(1) generator, mirroring
   /// `stationarity::adf::tests::simulate_ar1` (not imported: that module is
@@ -292,7 +315,7 @@ mod tests {
         let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
         let mut x = vec![0.0; 2000];
         dist.fill_slice(&mut x);
-        ljung_box(ArrayView1::from(&x), 10, 0).p_value
+        ljung_box(ArrayView1::from(&x), lags_10()).p_value.unwrap()
       })
       .fold(0.0_f64, f64::max);
 
@@ -306,10 +329,10 @@ mod tests {
   fn ljung_box_ar1_rejects() {
     for seed in [2718u64, 999, 42] {
       let x = simulate_ar1(0.5, 2000, seed);
-      let res = ljung_box(ArrayView1::from(&x), 10, 0);
+      let res = ljung_box(ArrayView1::from(&x), lags_10());
       assert!(
-        res.p_value < 1e-6,
-        "seed {seed}: expected p < 1e-6 for AR(1) residual autocorrelation, got {}",
+        res.p_value.unwrap() < 1e-6,
+        "seed {seed}: expected p < 1e-6 for AR(1) residual autocorrelation, got {:?}",
         res.p_value
       );
     }
@@ -319,6 +342,13 @@ mod tests {
   #[should_panic(expected = "lags must exceed fit_df")]
   fn ljung_box_rejects_bad_df() {
     let x = Array1::<f64>::from(vec![1.0; 20]);
-    let _ = ljung_box(x.view(), 3, 3);
+    let _ = ljung_box(
+      x.view(),
+      LjungBoxConfig {
+        lags: 3,
+        fit_df: 3,
+        alpha: 0.05,
+      },
+    );
   }
 }

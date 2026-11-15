@@ -19,6 +19,7 @@
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::erf;
 
+use crate::critical_values::CriticalValues;
 use crate::realized::variance::realized_variance;
 use crate::traits::FloatExt;
 
@@ -104,23 +105,33 @@ pub fn tripower_quarticity<T: FloatExt>(returns: ArrayView1<T>) -> T {
   T::from_usize_(n) * mu_inv3 * sum
 }
 
-/// Result of the BNS (Huang–Tauchen ratio-form) jump test.
-#[derive(Debug, Clone, Copy)]
+/// BNS jump test in Huang–Tauchen's ratio form (null: no jump), decided by its normal p-value.
+#[derive(Debug, Clone)]
 pub struct BnsJumpTest {
+  /// Standardised log-difference $\sqrt n\,(\ln RV - \ln BV) / \sqrt{\theta\,\max(1, TPQ / BV^2)}$,
+  /// $\theta = (\pi/2)^2 + \pi - 5$.
+  pub statistic: f64,
+  /// Two-sided p-value under $\mathcal N(0,1)$.
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
+  /// Whether the no-jump null is rejected at the given $\alpha$.
+  pub rejects_null: bool,
   /// Realized variance.
   pub rv: f64,
   /// Bipower variation.
   pub bv: f64,
   /// Tripower quarticity (jump-robust estimate of $\int \sigma^4_t dt$).
   pub tpq: f64,
-  /// Standardised log-difference statistic
-  /// $\sqrt n\,(\ln RV - \ln BV) / \sqrt{(\theta - 2)\,TPQ / BV^2}$
-  /// with $\theta = (\pi/2)^2 + \pi - 5$.
-  pub statistic: f64,
-  /// Two-sided p-value under $\mathcal N(0,1)$.
-  pub p_value: f64,
-  /// Whether the no-jump null is rejected at the given $\alpha$.
-  pub rejects_null: bool,
+}
+
+impl crate::traits::HypothesisTest for BnsJumpTest {
+  fn statistic(&self) -> f64 {
+    self.statistic
+  }
+
+  fn null_rejected(&self) -> Option<bool> {
+    Some(self.rejects_null)
+  }
 }
 
 /// Barndorff-Nielsen / Shephard ratio-form jump test
@@ -150,12 +161,13 @@ pub fn bns_jump_test<T: FloatExt>(returns: ArrayView1<T>, alpha: f64) -> BnsJump
   let p_value = 2.0 * (1.0_f64.min(cdf).min(1.0 - cdf));
   let reject_no_jump = p_value < alpha;
   BnsJumpTest {
+    statistic,
+    p_value: Some(p_value),
+    critical_values: None,
+    rejects_null: reject_no_jump,
     rv,
     bv,
     tpq,
-    statistic,
-    p_value,
-    rejects_null: reject_no_jump,
   }
 }
 

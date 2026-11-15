@@ -40,6 +40,7 @@ use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 
 use super::common::validate_series;
+use crate::critical_values::CriticalValues;
 use crate::linalg::inverse;
 
 /// Choice of CUSUM variant.
@@ -70,15 +71,18 @@ impl Default for CusumConfig {
   }
 }
 
-/// Result of the CUSUM / CUSUMQ test.
+/// CUSUM / CUSUMQ test (null: constant regression parameters), decided against `critical_boundary`.
 #[derive(Debug, Clone)]
 pub struct CusumTest {
+  /// Maximum absolute excess of the cumulative path over its boundary —
+  /// positive when the path exits the band, non-positive otherwise.
+  pub statistic: f64,
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
+  /// Whether the null of parameter constancy is rejected at `alpha`.
+  pub rejects_null: bool,
   /// Variant that produced this result.
   pub variant: CusumVariant,
-  /// Maximum absolute excess of the cumulative path over its boundary —
-  /// positive when the path exits the band, non-positive otherwise. The
-  /// natural reporting statistic mirrors the convention in Hansen (1992).
-  pub statistic: f64,
   /// First time index (in the original sample, 1-based) at which the
   /// boundary is crossed, or `None` when the null is not rejected.
   pub breakpoint: Option<usize>,
@@ -88,8 +92,6 @@ pub struct CusumTest {
   pub cusum_path: Vec<f64>,
   /// Two-sided rejection boundary `(lower, upper)` matching `cusum_path`.
   pub critical_boundary: Vec<(f64, f64)>,
-  /// Whether the null of parameter constancy is rejected at `alpha`.
-  pub rejects_null: bool,
 }
 
 impl crate::traits::HypothesisTest for CusumTest {
@@ -192,13 +194,15 @@ fn cusum_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumTest {
   }
 
   CusumTest {
-    variant: CusumVariant::Cusum,
     statistic: max_excess,
+    p_value: None,
+    critical_values: None,
+    rejects_null: max_excess > 0.0,
+    variant: CusumVariant::Cusum,
     breakpoint,
     recursive_residuals: w,
     cusum_path: path,
     critical_boundary: boundary,
-    rejects_null: max_excess > 0.0,
   }
 }
 
@@ -230,13 +234,15 @@ fn cusumq_branch(w: Vec<f64>, n_tilde: f64, k: usize, alpha: f64) -> CusumTest {
   }
 
   CusumTest {
-    variant: CusumVariant::Cusumq,
     statistic: max_excess,
+    p_value: None,
+    critical_values: None,
+    rejects_null: max_excess > 0.0,
+    variant: CusumVariant::Cusumq,
     breakpoint,
     recursive_residuals: w,
     cusum_path: path,
     critical_boundary: boundary,
-    rejects_null: max_excess > 0.0,
   }
 }
 

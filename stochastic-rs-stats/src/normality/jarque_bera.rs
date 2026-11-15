@@ -13,6 +13,8 @@
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::gamma_p;
 
+use crate::critical_values::CriticalValues;
+
 /// Configuration for the Jarque-Bera normality test.
 #[derive(Debug, Clone, Copy)]
 pub struct JarqueBeraConfig {
@@ -26,19 +28,20 @@ impl Default for JarqueBeraConfig {
   }
 }
 
-/// Result of the Jarque-Bera normality test.
-#[derive(Debug, Clone, Copy)]
+/// Jarque–Bera test (null: normality), decided by its chi-square(2) p-value.
+#[derive(Debug, Clone)]
 pub struct JarqueBeraTest {
   /// JB test statistic.
   pub statistic: f64,
   /// p-value under chi-square(2) asymptotics.
-  pub p_value: f64,
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
+  /// Whether normality is rejected at `alpha`.
+  pub rejects_null: bool,
   /// Sample skewness.
   pub skewness: f64,
   /// Sample excess kurtosis.
   pub excess_kurtosis: f64,
-  /// Whether normality is rejected at `alpha`.
-  pub rejects_null: bool,
 }
 
 impl crate::traits::HypothesisTest for JarqueBeraTest {
@@ -92,10 +95,11 @@ pub fn jarque_bera_test(sample: ArrayView1<f64>, cfg: JarqueBeraConfig) -> Jarqu
   if m2 <= 0.0 || !m2.is_finite() {
     return JarqueBeraTest {
       statistic: f64::INFINITY,
-      p_value: 0.0,
+      p_value: Some(0.0),
+      critical_values: None,
+      rejects_null: true,
       skewness: 0.0,
       excess_kurtosis: f64::INFINITY,
-      rejects_null: true,
     };
   }
 
@@ -111,10 +115,11 @@ pub fn jarque_bera_test(sample: ArrayView1<f64>, cfg: JarqueBeraConfig) -> Jarqu
 
   JarqueBeraTest {
     statistic,
-    p_value,
+    p_value: Some(p_value),
+    critical_values: None,
+    rejects_null: p_value < cfg.alpha,
     skewness,
     excess_kurtosis,
-    rejects_null: p_value < cfg.alpha,
   }
 }
 
@@ -150,7 +155,9 @@ mod tests {
       .into_iter()
       .map(|seed| {
         let x = normal_sample(seed, 5000);
-        jarque_bera_test(ArrayView1::from(&x), JarqueBeraConfig::default()).p_value
+        jarque_bera_test(ArrayView1::from(&x), JarqueBeraConfig::default())
+          .p_value
+          .unwrap()
       })
       .fold(0.0_f64, f64::max);
 

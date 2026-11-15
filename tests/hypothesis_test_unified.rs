@@ -10,10 +10,11 @@ fn answers<T: HypothesisTest>(result: &T) -> (f64, Option<bool>) {
 fn a_stats_and_a_copula_result_answer_through_one_trait() {
   let jb = JarqueBeraTest {
     statistic: 7.5,
-    p_value: 0.02,
+    p_value: Some(0.02),
+    critical_values: None,
+    rejects_null: true,
     skewness: 0.4,
     excess_kurtosis: 1.1,
-    rejects_null: true,
   };
   let gof = GofResult {
     statistic: 0.042,

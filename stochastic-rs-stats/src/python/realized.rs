@@ -125,7 +125,7 @@ impl PyBNSJumpTest {
   }
 
   #[getter]
-  fn p_value(&self) -> f64 {
+  fn p_value(&self) -> Option<f64> {
     self.inner.p_value
   }
 

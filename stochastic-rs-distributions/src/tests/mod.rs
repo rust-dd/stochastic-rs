@@ -32,6 +32,7 @@ pub(crate) fn scalar_ks_best_p<D: Distribution<f64>>(d: &D, cdf: impl Fn(f64) ->
         KolmogorovSmirnovConfig::default(),
       )
       .p_value
+      .unwrap()
     })
     .fold(0.0_f64, f64::max)
 }
@@ -52,7 +53,9 @@ pub(crate) fn scalar_chi_square_best_p<T: ToPrimitive, D: Distribution<T>>(
         .map(|_| d.sample(&mut rng).to_i64().expect("draw fits i64"))
         .collect::<Vec<_>>();
       let observed = bin_observed(&xs, &edges);
-      chi_square_gof_test(&observed, &probs, ChiSquareGofConfig::default()).p_value
+      chi_square_gof_test(&observed, &probs, ChiSquareGofConfig::default())
+        .p_value
+        .unwrap()
     })
     .fold(0.0_f64, f64::max)
 }

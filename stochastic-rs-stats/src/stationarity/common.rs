@@ -1,11 +1,13 @@
 use ndarray::Array1;
 use ndarray::Array2;
 
+use crate::critical_values::CriticalValues;
 use crate::linalg::inverse;
 use crate::linalg::solve;
 
+/// Deterministic terms of a unit-root or stationarity regression.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeterministicTerm {
+pub enum Trend {
   None,
   Constant,
   ConstantTrend,
@@ -18,25 +20,6 @@ pub enum LagSelection {
   Aic,
   Bic,
   TStat,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct CriticalValues {
-  pub one_percent: f64,
-  pub five_percent: f64,
-  pub ten_percent: f64,
-}
-
-impl CriticalValues {
-  pub fn value_at(self, alpha: f64) -> f64 {
-    if alpha <= 0.01 {
-      self.one_percent
-    } else if alpha <= 0.05 {
-      self.five_percent
-    } else {
-      self.ten_percent
-    }
-  }
 }
 
 #[derive(Debug, Clone)]
@@ -52,7 +35,6 @@ pub struct OlsResult {
 
 #[derive(Debug, Clone)]
 pub struct AdfFit {
-  pub lag: usize,
   pub statistic: f64,
   pub gamma: f64,
   pub std_err_gamma: f64,
@@ -83,39 +65,19 @@ pub fn schwert_max_lags(n: usize) -> usize {
   (12.0 * (n as f64 / 100.0).powf(0.25)).floor() as usize
 }
 
-pub fn adf_critical_values(det: DeterministicTerm) -> CriticalValues {
-  match det {
-    DeterministicTerm::None => CriticalValues {
-      one_percent: -2.58,
-      five_percent: -1.95,
-      ten_percent: -1.62,
-    },
-    DeterministicTerm::Constant => CriticalValues {
-      one_percent: -3.43,
-      five_percent: -2.86,
-      ten_percent: -2.57,
-    },
-    DeterministicTerm::ConstantTrend => CriticalValues {
-      one_percent: -3.96,
-      five_percent: -3.41,
-      ten_percent: -3.13,
-    },
+pub fn adf_critical_values(trend: Trend) -> CriticalValues {
+  match trend {
+    Trend::None => CriticalValues::new([(0.01, -2.58), (0.05, -1.95), (0.10, -1.62)]),
+    Trend::Constant => CriticalValues::new([(0.01, -3.43), (0.05, -2.86), (0.10, -2.57)]),
+    Trend::ConstantTrend => CriticalValues::new([(0.01, -3.96), (0.05, -3.41), (0.10, -3.13)]),
   }
 }
 
 pub fn dfgls_critical_values(include_trend: bool) -> CriticalValues {
   if include_trend {
-    CriticalValues {
-      one_percent: -3.77,
-      five_percent: -3.19,
-      ten_percent: -2.89,
-    }
+    CriticalValues::new([(0.01, -3.77), (0.05, -3.19), (0.10, -2.89)])
   } else {
-    CriticalValues {
-      one_percent: -2.58,
-      five_percent: -1.95,
-      ten_percent: -1.62,
-    }
+    CriticalValues::new([(0.01, -2.58), (0.05, -1.95), (0.10, -1.62)])
   }
 }
 
@@ -165,11 +127,7 @@ pub fn ols(y: &[f64], x: &[Vec<f64>]) -> OlsResult {
   }
 }
 
-fn build_adf_design(
-  y: &[f64],
-  lags: usize,
-  det: DeterministicTerm,
-) -> (Vec<f64>, Vec<Vec<f64>>, usize) {
+fn build_adf_design(y: &[f64], lags: usize, trend: Trend) -> (Vec<f64>, Vec<Vec<f64>>, usize) {
   validate_series(y, 3 + lags);
   let dy = difference(y);
   let n_dy = dy.len();
@@ -181,16 +139,16 @@ fn build_adf_design(
   for t in lags..n_dy {
     lhs.push(dy[t]);
 
-    let mut row = Vec::with_capacity(match det {
-      DeterministicTerm::None => 1 + lags,
-      DeterministicTerm::Constant => 2 + lags,
-      DeterministicTerm::ConstantTrend => 3 + lags,
+    let mut row = Vec::with_capacity(match trend {
+      Trend::None => 1 + lags,
+      Trend::Constant => 2 + lags,
+      Trend::ConstantTrend => 3 + lags,
     });
 
-    match det {
-      DeterministicTerm::None => {}
-      DeterministicTerm::Constant => row.push(1.0),
-      DeterministicTerm::ConstantTrend => {
+    match trend {
+      Trend::None => {}
+      Trend::Constant => row.push(1.0),
+      Trend::ConstantTrend => {
         row.push(1.0);
         row.push((t + 1) as f64);
       }
@@ -206,10 +164,10 @@ fn build_adf_design(
     rhs.push(row);
   }
 
-  let gamma_index = match det {
-    DeterministicTerm::None => 0,
-    DeterministicTerm::Constant => 1,
-    DeterministicTerm::ConstantTrend => 2,
+  let gamma_index = match trend {
+    Trend::None => 0,
+    Trend::Constant => 1,
+    Trend::ConstantTrend => 2,
   };
 
   (lhs, rhs, gamma_index)
@@ -220,8 +178,8 @@ fn build_adf_design(
 ///
 /// Returns a NaN `statistic` when the lagged-level standard error is zero:
 /// a singular cross-product matrix, or an exactly fitting regression.
-pub fn fit_adf(y: &[f64], lags: usize, det: DeterministicTerm) -> AdfFit {
-  let (lhs, rhs, gamma_index) = build_adf_design(y, lags, det);
+pub fn fit_adf(y: &[f64], lags: usize, trend: Trend) -> AdfFit {
+  let (lhs, rhs, gamma_index) = build_adf_design(y, lags, trend);
   let ols_fit = ols(&lhs, &rhs);
 
   let gamma = ols_fit.beta[gamma_index];
@@ -229,7 +187,6 @@ pub fn fit_adf(y: &[f64], lags: usize, det: DeterministicTerm) -> AdfFit {
   let statistic = if se > 0.0 { gamma / se } else { f64::NAN };
 
   AdfFit {
-    lag: lags,
     statistic,
     gamma,
     std_err_gamma: se,
@@ -251,7 +208,7 @@ pub fn bic_from_sse(sse: f64, nobs: usize, k: usize) -> f64 {
 
 pub fn choose_lag_for_adf(
   y: &[f64],
-  det: DeterministicTerm,
+  trend: Trend,
   lag_selection: LagSelection,
   max_lags: usize,
 ) -> usize {
@@ -265,7 +222,7 @@ pub fn choose_lag_for_adf(
   let mut candidates: Vec<(usize, f64, f64)> = Vec::new();
 
   for lag in 0..=max_lags {
-    let (lhs, rhs, _gamma_idx) = build_adf_design(y, lag, det);
+    let (lhs, rhs, _gamma_idx) = build_adf_design(y, lag, trend);
     if rhs.is_empty() {
       continue;
     }

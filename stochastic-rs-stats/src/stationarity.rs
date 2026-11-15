@@ -58,8 +58,8 @@
 //! OLS-detrended ADF loses against near-unit-root alternatives
 //! (*Econometrica* 64(4), 813-836, DOI: 10.2307/2171846). It is the wrong
 //! choice, though, whenever the series has no deterministic component at
-//! all: [`ers_dfgls::ErsTrend`] offers only `Constant`/`ConstantTrend`,
-//! while [`common::DeterministicTerm`]'s `None` variant lets
+//! all: [`ers_dfgls::ers_dfgls_test`] takes only `Constant`/`ConstantTrend`,
+//! while [`Trend::None`] lets
 //! [`adf::adf_test`] test a zero-mean random walk directly.
 //! [`phillips_perron::phillips_perron_test`] answers the same null with a
 //! nonparametric (Newey-West) correction in place of ADF's lag
@@ -69,7 +69,7 @@
 //! size-distorts under strong negative MA errors (*Journal of Business &
 //! Economic Statistics* 7(2), 147-159, DOI: 10.1080/07350015.1989.10509723)
 //! — precisely the regime ERS-DFGLS was designed to handle better. This
-//! crate's own [`common::schwert_max_lags`] lag-length rule, the default
+//! crate's own `schwert_max_lags` lag-length rule, the default
 //! across ADF, ERS-DFGLS, KPSS and PP alike, is named after that same
 //! paper.
 //!
@@ -119,7 +119,7 @@
 //! Financial Studies* 1(1), 41-66). A series can carry a unit root and
 //! still fail this test — an ARIMA(1,1,0) with a non-zero AR coefficient,
 //! for instance. Prefer the heteroskedasticity-robust statistic
-//! (`z_robust`, Lo-MacKinlay's `M2`) over the IID one (`z_iid`, `M1`)
+//! (`statistic`, Lo-MacKinlay's `M2`) over the IID one (`z_iid`, `M1`)
 //! whenever volatility clustering is plausible, which for financial
 //! returns is essentially always;
 //! [`lo_mackinlay::LoMacKinlayTest`]'s own [`crate::traits::HypothesisTest`]
@@ -133,10 +133,10 @@
 //! "which stationarity test should I run" is the clearest version of the
 //! by-module-name mistake this doc exists to head off.
 
-pub mod common;
+pub(crate) mod common;
 
-pub use common::DeterministicTerm;
 pub use common::LagSelection;
+pub use common::Trend;
 
 pub mod adf;
 pub mod andrews_ploberger;

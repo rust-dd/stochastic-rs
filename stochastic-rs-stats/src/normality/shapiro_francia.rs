@@ -16,6 +16,8 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::ndtri;
 
+use crate::critical_values::CriticalValues;
+
 /// Configuration for the Shapiro-Francia normality test.
 #[derive(Debug, Clone, Copy)]
 pub struct ShapiroFranciaConfig {
@@ -37,13 +39,14 @@ impl Default for ShapiroFranciaConfig {
   }
 }
 
-/// Result of the Shapiro-Francia normality test.
-#[derive(Debug, Clone, Copy)]
+/// Shapiro–Francia test (null: normality), decided by its parametric-bootstrap p-value.
+#[derive(Debug, Clone)]
 pub struct ShapiroFranciaTest {
   /// Shapiro-Francia W statistic.
   pub statistic: f64,
   /// Bootstrap p-value (left tail, small W indicates non-normality).
-  pub p_value: f64,
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
   /// Whether normality is rejected at `alpha`.
   pub rejects_null: bool,
 }
@@ -143,7 +146,8 @@ pub fn shapiro_francia_test(
 
   ShapiroFranciaTest {
     statistic: obs_stat,
-    p_value,
+    p_value: Some(p_value),
+    critical_values: None,
     rejects_null: p_value < cfg.alpha,
   }
 }
@@ -186,7 +190,9 @@ mod tests {
           bootstrap_seed: 7,
           ..ShapiroFranciaConfig::default()
         };
-        shapiro_francia_test(ArrayView1::from(&x), cfg).p_value
+        shapiro_francia_test(ArrayView1::from(&x), cfg)
+          .p_value
+          .unwrap()
       })
       .fold(0.0_f64, f64::max);
 

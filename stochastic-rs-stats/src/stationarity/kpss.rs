@@ -15,48 +15,18 @@
 
 use ndarray::ArrayView1;
 
+use super::common::Trend;
 use super::common::newey_west_long_run_variance;
 use super::common::regress_on_deterministics;
 use super::common::schwert_max_lags;
 use super::common::validate_series;
-
-/// KPSS deterministic specification.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KpssTrend {
-  /// Stationary around a constant mean.
-  Level,
-  /// Trend-stationary around a linear trend.
-  Trend,
-}
-
-/// Upper-tail critical values of the KPSS statistic at the 1 %, 2.5 %, 5 % and 10 % levels.
-#[derive(Debug, Clone, Copy)]
-pub struct KpssCriticalValues {
-  pub one_percent: f64,
-  pub two_point_five_percent: f64,
-  pub five_percent: f64,
-  pub ten_percent: f64,
-}
-
-impl KpssCriticalValues {
-  fn value_at(self, alpha: f64) -> f64 {
-    if alpha <= 0.01 {
-      self.one_percent
-    } else if alpha <= 0.025 {
-      self.two_point_five_percent
-    } else if alpha <= 0.05 {
-      self.five_percent
-    } else {
-      self.ten_percent
-    }
-  }
-}
+use crate::critical_values::CriticalValues;
 
 /// Configuration for the KPSS stationarity test.
 #[derive(Debug, Clone, Copy)]
 pub struct KpssConfig {
-  /// Deterministic component under the null.
-  pub trend: KpssTrend,
+  /// Deterministic component under the null: `Constant` (level) or `ConstantTrend`.
+  pub trend: Trend,
   /// Newey-West lag length. If `None`, a Schwert-style default is used.
   pub lags: Option<usize>,
   /// Significance level used to compute `rejects_null`.
@@ -66,24 +36,25 @@ pub struct KpssConfig {
 impl Default for KpssConfig {
   fn default() -> Self {
     Self {
-      trend: KpssTrend::Level,
+      trend: Trend::Constant,
       lags: None,
       alpha: 0.05,
     }
   }
 }
 
-/// Result of the KPSS stationarity test.
-#[derive(Debug, Clone, Copy)]
+/// KPSS test (null: stationarity); the table holds the upper-tail 1 %, 2.5 %, 5 % and 10 % levels.
+#[derive(Debug, Clone)]
 pub struct KpssTest {
   /// KPSS LM statistic.
   pub statistic: f64,
-  /// Newey-West lag length used.
-  pub used_lags: usize,
-  /// Critical values for this trend specification.
-  pub critical_values: KpssCriticalValues,
+  /// No p-value table is shipped; the decision is taken against `critical_values`.
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
   /// Whether the null (stationarity) is rejected at `alpha`.
   pub rejects_null: bool,
+  /// Newey-West lag length used.
+  pub used_lags: usize,
 }
 
 impl crate::traits::HypothesisTest for KpssTest {
@@ -96,20 +67,11 @@ impl crate::traits::HypothesisTest for KpssTest {
   }
 }
 
-fn kpss_critical_values(trend: KpssTrend) -> KpssCriticalValues {
-  match trend {
-    KpssTrend::Level => KpssCriticalValues {
-      one_percent: 0.739,
-      two_point_five_percent: 0.574,
-      five_percent: 0.463,
-      ten_percent: 0.347,
-    },
-    KpssTrend::Trend => KpssCriticalValues {
-      one_percent: 0.216,
-      two_point_five_percent: 0.176,
-      five_percent: 0.146,
-      ten_percent: 0.119,
-    },
+fn kpss_critical_values(include_trend: bool) -> CriticalValues {
+  if include_trend {
+    CriticalValues::new([(0.01, 0.216), (0.025, 0.176), (0.05, 0.146), (0.10, 0.119)])
+  } else {
+    CriticalValues::new([(0.01, 0.739), (0.025, 0.574), (0.05, 0.463), (0.10, 0.347)])
   }
 }
 
@@ -121,13 +83,18 @@ pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> KpssTest {
   let y = y
     .as_slice()
     .expect("kpss_test requires a contiguous ArrayView1");
+  assert!(
+    cfg.trend != Trend::None,
+    "trend must satisfy `trend != Trend::None`, got trend = {:?}",
+    cfg.trend
+  );
   validate_series(y, 20);
   assert!(
     cfg.alpha > 0.0 && cfg.alpha < 1.0,
     "alpha must be in (0, 1)"
   );
 
-  let include_trend = matches!(cfg.trend, KpssTrend::Trend);
+  let include_trend = cfg.trend == Trend::ConstantTrend;
   let reg = regress_on_deterministics(y, include_trend);
   let resid = reg.residuals;
   let n = resid.len();
@@ -145,14 +112,15 @@ pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> KpssTest {
   let long_run_var = newey_west_long_run_variance(&resid, used_lags).max(1e-12);
   let statistic = eta / long_run_var;
 
-  let critical_values = kpss_critical_values(cfg.trend);
-  let reject_stationarity = statistic > critical_values.value_at(cfg.alpha);
+  let critical_values = kpss_critical_values(include_trend);
+  let rejects_null = statistic > critical_values.value_at(cfg.alpha);
 
   KpssTest {
     statistic,
+    p_value: None,
+    critical_values: Some(critical_values),
+    rejects_null,
     used_lags,
-    critical_values,
-    rejects_null: reject_stationarity,
   }
 }
 

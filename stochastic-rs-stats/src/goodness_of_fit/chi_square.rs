@@ -46,6 +46,7 @@
 //! below Cochran's stricter floor of expected count `< 1`, since below
 //! that the approximation is not considered valid at all.
 
+use crate::critical_values::CriticalValues;
 use crate::traits::HypothesisTest;
 
 /// Configuration for [`chi_square_gof_test`].
@@ -61,19 +62,19 @@ impl Default for ChiSquareGofConfig {
   }
 }
 
-/// Result of a Pearson chi-square goodness-of-fit test.
-#[derive(Debug, Clone, Copy)]
+/// Pearson chi-square goodness-of-fit test (null: the given pmf), decided by its p-value.
+#[derive(Debug, Clone)]
 pub struct ChiSquareGofTest {
   /// The `\chi^2` statistic.
   pub statistic: f64,
-  /// Degrees of freedom, `bins - 1` (Pearson 1900; see module doc).
-  pub df: usize,
-  /// Upper-tail `\chi^2_{df}` critical value at `alpha`.
-  pub critical_value: f64,
   /// p-value: `P(\chi^2_{df} > statistic)`.
-  pub p_value: f64,
+  pub p_value: Option<f64>,
+  /// The upper-tail `\chi^2_{df}` critical value at the `alpha` the test was run with.
+  pub critical_values: Option<CriticalValues>,
   /// Whether the null is rejected at `alpha`.
   pub rejects_null: bool,
+  /// Degrees of freedom, `bins - 1` (Pearson 1900; see module doc).
+  pub df: usize,
 }
 
 impl HypothesisTest for ChiSquareGofTest {
@@ -162,10 +163,10 @@ pub fn chi_square_gof_test(
 
   ChiSquareGofTest {
     statistic,
-    df,
-    critical_value,
-    p_value,
+    p_value: Some(p_value),
+    critical_values: Some(CriticalValues::new([(cfg.alpha, critical_value)])),
     rejects_null: p_value < cfg.alpha,
+    df,
   }
 }
 
@@ -301,7 +302,9 @@ mod tests {
         let (edges, expected_prob) =
           pool_integer_bins(N as u64, 0, 35, |k| dist.cdf(k.max(0) as f64).unwrap(), 5.0);
         let observed = bin_observed(&samples, &edges);
-        chi_square_gof_test(&observed, &expected_prob, ChiSquareGofConfig::default()).p_value
+        chi_square_gof_test(&observed, &expected_prob, ChiSquareGofConfig::default())
+          .p_value
+          .unwrap()
       })
       .fold(0.0_f64, f64::max);
     assert!(

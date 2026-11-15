@@ -13,22 +13,33 @@ use ndarray::Array2;
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::beta_i as beta_reg;
 
+use crate::critical_values::CriticalValues;
 use crate::linalg::lstsq;
 
-/// Result of a Granger-causality F-test.
+/// Granger-causality F-test (null: `x` does not Granger-cause `y`), decided by its p-value.
 #[derive(Debug, Clone)]
 pub struct GrangerTest {
   /// $F$ statistic.
   pub statistic: f64,
   /// $p$-value under $\mathcal F_{p, T-2p-1}$.
-  pub p_value: f64,
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
+  /// Whether $H_0$ (no Granger causality) is rejected at the supplied significance level.
+  pub rejects_null: bool,
   /// Number of lag terms tested.
   pub lags: usize,
   /// Effective sample size (rows of the VAR design).
   pub nobs: usize,
-  /// Whether $H_0$ (no Granger causality) is rejected at the supplied
-  /// significance level.
-  pub rejects_null: bool,
+}
+
+impl crate::traits::HypothesisTest for GrangerTest {
+  fn statistic(&self) -> f64 {
+    self.statistic
+  }
+
+  fn null_rejected(&self) -> Option<bool> {
+    Some(self.rejects_null)
+  }
 }
 
 /// Granger-causality test of "does X cause Y?" with `lags` autoregressive
@@ -78,10 +89,11 @@ pub fn granger_causality_test(
   };
   GrangerTest {
     statistic: f.max(0.0),
-    p_value,
+    p_value: Some(p_value),
+    critical_values: None,
+    rejects_null: p_value < alpha,
     lags,
     nobs: n,
-    rejects_null: p_value < alpha,
   }
 }
 

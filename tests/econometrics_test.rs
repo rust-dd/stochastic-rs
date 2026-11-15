@@ -6,6 +6,7 @@ use stochastic_rs::distributions::DistributionSampler;
 use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
+use stochastic_rs::stats::econometrics::EngleGrangerConfig;
 use stochastic_rs::stats::econometrics::GaussianHmm;
 use stochastic_rs::stats::econometrics::cusum;
 use stochastic_rs::stats::econometrics::engle_granger_test;
@@ -57,7 +58,7 @@ fn engle_granger_full_pipeline() {
     .map(|i| 1.0 + 1.5 * x[i] + eps[i])
     .collect::<Vec<_>>()
     .into();
-  let res = engle_granger_test(y.view(), x.view());
+  let res = engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default());
   assert!(res.rejects_null);
   assert!((res.beta - 1.5).abs() < 0.1);
 }
@@ -91,7 +92,7 @@ fn granger_pvalue_in_unit_interval() {
   let a = Array1::from(buf_a);
   let b = Array1::from(buf_b);
   let res = granger_causality_test(a.view(), b.view(), 4, 0.05);
-  assert!((0.0..=1.0).contains(&res.p_value));
+  assert!(res.p_value.is_some_and(|p| (0.0..=1.0).contains(&p)));
 }
 
 #[test]

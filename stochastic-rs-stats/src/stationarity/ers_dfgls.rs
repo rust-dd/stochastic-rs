@@ -7,30 +7,21 @@
 
 use ndarray::ArrayView1;
 
-use super::common::CriticalValues;
-use super::common::DeterministicTerm;
 use super::common::LagSelection;
+use super::common::Trend;
 use super::common::choose_lag_for_adf;
 use super::common::dfgls_critical_values;
 use super::common::fit_adf;
 use super::common::ols;
 use super::common::schwert_max_lags;
 use super::common::validate_series;
-
-/// Deterministic specification for ERS / DF-GLS.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ErsTrend {
-  /// Constant-only GLS detrending.
-  Constant,
-  /// Constant + linear trend GLS detrending.
-  ConstantTrend,
-}
+use crate::critical_values::CriticalValues;
 
 /// Configuration for the Elliott-Rothenberg-Stock DF-GLS test.
 #[derive(Debug, Clone, Copy)]
 pub struct ErsConfig {
-  /// Trend specification used in GLS detrending.
-  pub trend: ErsTrend,
+  /// GLS detrending: `Constant` or `ConstantTrend`.
+  pub trend: Trend,
   /// Lag-order selection strategy for the ADF-on-detrended stage.
   pub lag_selection: LagSelection,
   /// Maximum lag considered by automatic lag selection.
@@ -42,7 +33,7 @@ pub struct ErsConfig {
 impl Default for ErsConfig {
   fn default() -> Self {
     Self {
-      trend: ErsTrend::Constant,
+      trend: Trend::Constant,
       lag_selection: LagSelection::Aic,
       max_lags: None,
       alpha: 0.05,
@@ -50,19 +41,20 @@ impl Default for ErsConfig {
   }
 }
 
-/// Result of the Elliott-Rothenberg-Stock DF-GLS test.
-#[derive(Debug, Clone, Copy)]
+/// ERS DF-GLS test (null: a unit root); the table holds the 1 %, 5 % and 10 % levels.
+#[derive(Debug, Clone)]
 pub struct ErsTest {
   /// DF-GLS test statistic.
   pub statistic: f64,
+  /// No p-value table is shipped; the decision is taken against `critical_values`.
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
+  /// Whether the null (unit root) is rejected at `alpha`.
+  pub rejects_null: bool,
   /// Selected lag order.
   pub used_lags: usize,
   /// Number of observations used in the terminal regression.
   pub nobs: usize,
-  /// Critical values at 1%, 5%, 10% levels.
-  pub critical_values: CriticalValues,
-  /// Whether the null (unit root) is rejected at `alpha`.
-  pub rejects_null: bool,
 }
 
 impl crate::traits::HypothesisTest for ErsTest {
@@ -75,12 +67,11 @@ impl crate::traits::HypothesisTest for ErsTest {
   }
 }
 
-fn gls_detrend(y: &[f64], trend: ErsTrend) -> Vec<f64> {
+fn gls_detrend(y: &[f64], include_trend: bool) -> Vec<f64> {
   validate_series(y, 20);
   let n = y.len();
   let n_f = n as f64;
 
-  let include_trend = matches!(trend, ErsTrend::ConstantTrend);
   let cbar = if include_trend { -13.5 } else { -7.0 };
   let alpha = 1.0 + cbar / n_f;
 
@@ -129,13 +120,19 @@ pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> ErsTest {
   let y = y
     .as_slice()
     .expect("ers_dfgls_test requires a contiguous ArrayView1");
+  assert!(
+    cfg.trend != Trend::None,
+    "trend must satisfy `trend != Trend::None`, got trend = {:?}",
+    cfg.trend
+  );
   validate_series(y, 20);
   assert!(
     cfg.alpha > 0.0 && cfg.alpha < 1.0,
     "alpha must be in (0, 1)"
   );
 
-  let y_detrended = gls_detrend(y, cfg.trend);
+  let include_trend = cfg.trend == Trend::ConstantTrend;
+  let y_detrended = gls_detrend(y, include_trend);
   let max_possible_lag = y_detrended.len().saturating_sub(5);
   let max_lags = cfg
     .max_lags
@@ -150,24 +147,20 @@ pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> ErsTest {
       );
       p
     }
-    _ => choose_lag_for_adf(
-      &y_detrended,
-      DeterministicTerm::None,
-      cfg.lag_selection,
-      max_lags,
-    ),
+    _ => choose_lag_for_adf(&y_detrended, Trend::None, cfg.lag_selection, max_lags),
   };
 
-  let fit = fit_adf(&y_detrended, used_lags, DeterministicTerm::None);
-  let critical_values = dfgls_critical_values(matches!(cfg.trend, ErsTrend::ConstantTrend));
-  let reject_unit_root = fit.statistic < critical_values.value_at(cfg.alpha);
+  let fit = fit_adf(&y_detrended, used_lags, Trend::None);
+  let critical_values = dfgls_critical_values(include_trend);
+  let rejects_null = fit.statistic < critical_values.value_at(cfg.alpha);
 
   ErsTest {
     statistic: fit.statistic,
+    p_value: None,
+    critical_values: Some(critical_values),
+    rejects_null,
     used_lags,
     nobs: fit.nobs,
-    critical_values,
-    rejects_null: reject_unit_root,
   }
 }
 
@@ -179,8 +172,8 @@ mod tests {
 
   use super::ErsConfig;
   use super::ers_dfgls_test;
-  use crate::stationarity::common::LagSelection;
-  use crate::stationarity::ers_dfgls::ErsTrend;
+  use crate::stationarity::LagSelection;
+  use crate::stationarity::Trend;
 
   fn simulate_ar1(phi: f64, n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
@@ -199,7 +192,7 @@ mod tests {
   fn ers_rejects_stationary_ar1() {
     let x = simulate_ar1(0.8, 2400, 0xE55A11);
     let cfg = ErsConfig {
-      trend: ErsTrend::Constant,
+      trend: Trend::Constant,
       lag_selection: LagSelection::Fixed(4),
       ..ErsConfig::default()
     };

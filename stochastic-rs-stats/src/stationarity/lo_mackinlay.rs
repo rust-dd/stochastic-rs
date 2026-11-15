@@ -28,6 +28,8 @@
 use ndarray::ArrayView1;
 
 use super::common::validate_series;
+use crate::critical_values::CriticalValues;
+use crate::critical_values::two_sided_p_value;
 
 /// Configuration for the Lo-MacKinlay variance-ratio test.
 #[derive(Debug, Clone, Copy)]
@@ -51,28 +53,31 @@ impl Default for LoMacKinlayConfig {
   }
 }
 
-/// Result of the Lo-MacKinlay variance-ratio test.
-#[derive(Debug, Clone, Copy)]
+/// Lo–MacKinlay variance-ratio test (null: a random walk), decided by the two-sided normal p-value.
+#[derive(Debug, Clone)]
 pub struct LoMacKinlayTest {
+  /// Lo-MacKinlay M2 statistic — heteroskedasticity-robust; NaN when $\phi^*(q)$ is zero.
+  pub statistic: f64,
+  /// Two-sided p-value $2\Phi(-|M_2|)$.
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
+  /// Whether the random-walk null is rejected at `alpha` by the robust statistic.
+  pub rejects_null: bool,
   /// Aggregation horizon used.
   pub q: usize,
   /// Variance ratio $VR(q)$. Under the random-walk null, $VR(q) \to 1$.
   pub variance_ratio: f64,
   /// Lo-MacKinlay M1 statistic — IID innovations.
   pub z_iid: f64,
-  /// Lo-MacKinlay M2 statistic — heteroskedasticity-robust.
-  pub z_robust: f64,
-  /// Whether the random-walk null is rejected at `alpha` using the
-  /// heteroskedasticity-robust statistic.
-  pub rejects_null: bool,
-  /// Whether the random-walk null is rejected at `alpha` using the IID
-  /// statistic.
+  /// Two-sided p-value $2\Phi(-|M_1|)$.
+  pub p_value_iid: f64,
+  /// Whether the random-walk null is rejected at `alpha` by the IID statistic.
   pub rejects_null_iid: bool,
 }
 
 impl crate::traits::HypothesisTest for LoMacKinlayTest {
   fn statistic(&self) -> f64 {
-    self.z_robust
+    self.statistic
   }
 
   fn null_rejected(&self) -> Option<bool> {
@@ -80,28 +85,7 @@ impl crate::traits::HypothesisTest for LoMacKinlayTest {
   }
 }
 
-/// Two-sided normal critical value $z_{1-\alpha/2}$ for the small set of
-/// significance levels supported by the result struct. Acton (1973) rational
-/// approximation is the natural cross-check; the constants here are exact to
-/// 8 dp.
-fn z_critical(alpha: f64) -> f64 {
-  if alpha <= 0.005 {
-    2.807_033_768
-  } else if alpha <= 0.01 {
-    2.575_829_304
-  } else if alpha <= 0.025 {
-    2.241_402_728
-  } else if alpha <= 0.05 {
-    1.959_963_985
-  } else {
-    1.644_853_627
-  }
-}
-
 /// Lo-MacKinlay (1988) variance-ratio test.
-///
-/// The robust statistic `z_robust` is NaN when the heteroskedasticity-robust
-/// variance $\phi^*(q)$ comes out zero.
 ///
 /// # Panics
 /// Panics on invalid inputs (non-finite series, too-short sample, $q < 2$, or
@@ -145,11 +129,14 @@ pub fn lo_mackinlay_test(series: ArrayView1<f64>, cfg: LoMacKinlayConfig) -> LoM
   var1 /= nq_f - 1.0;
   if var1 <= 0.0 {
     return LoMacKinlayTest {
+      statistic: 0.0,
+      p_value: Some(1.0),
+      critical_values: None,
+      rejects_null: false,
       q,
       variance_ratio: 1.0,
       z_iid: 0.0,
-      z_robust: 0.0,
-      rejects_null: false,
+      p_value_iid: 1.0,
       rejects_null_iid: false,
     };
   }
@@ -205,17 +192,19 @@ pub fn lo_mackinlay_test(series: ArrayView1<f64>, cfg: LoMacKinlayConfig) -> LoM
     f64::NAN
   };
 
-  let z_crit = z_critical(cfg.alpha);
-  let reject_random_walk_iid = z_iid.abs() > z_crit;
-  let reject_random_walk_robust = z_robust.is_finite() && z_robust.abs() > z_crit;
+  let p_value = two_sided_p_value(z_robust);
+  let p_value_iid = two_sided_p_value(z_iid);
 
   LoMacKinlayTest {
+    statistic: z_robust,
+    p_value: Some(p_value),
+    critical_values: None,
+    rejects_null: p_value < cfg.alpha,
     q,
     variance_ratio,
     z_iid,
-    z_robust,
-    rejects_null: reject_random_walk_robust,
-    rejects_null_iid: reject_random_walk_iid,
+    p_value_iid,
+    rejects_null_iid: p_value_iid < cfg.alpha,
   }
 }
 

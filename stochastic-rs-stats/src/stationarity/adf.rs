@@ -12,20 +12,20 @@
 
 use ndarray::ArrayView1;
 
-use super::common::CriticalValues;
-use super::common::DeterministicTerm;
 use super::common::LagSelection;
+use super::common::Trend;
 use super::common::adf_critical_values;
 use super::common::choose_lag_for_adf;
 use super::common::fit_adf;
 use super::common::schwert_max_lags;
 use super::common::validate_series;
+use crate::critical_values::CriticalValues;
 
 /// Configuration for the Augmented Dickey-Fuller unit-root test.
 #[derive(Debug, Clone, Copy)]
 pub struct AdfConfig {
   /// Deterministic terms included in the test regression.
-  pub deterministic: DeterministicTerm,
+  pub trend: Trend,
   /// Lag-order selection strategy.
   pub lag_selection: LagSelection,
   /// Maximum lag considered by automatic lag selection.
@@ -37,7 +37,7 @@ pub struct AdfConfig {
 impl Default for AdfConfig {
   fn default() -> Self {
     Self {
-      deterministic: DeterministicTerm::Constant,
+      trend: Trend::Constant,
       lag_selection: LagSelection::Aic,
       max_lags: None,
       alpha: 0.05,
@@ -45,19 +45,20 @@ impl Default for AdfConfig {
   }
 }
 
-/// Result of the Augmented Dickey-Fuller test.
-#[derive(Debug, Clone, Copy)]
+/// Augmented Dickey–Fuller test (null: a unit root); the table holds the 1 %, 5 % and 10 % levels.
+#[derive(Debug, Clone)]
 pub struct AdfTest {
   /// ADF t-statistic for the lagged level coefficient.
   pub statistic: f64,
+  /// No p-value table is shipped; the decision is taken against `critical_values`.
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
+  /// Whether the null (unit root) is rejected at `alpha`.
+  pub rejects_null: bool,
   /// Selected lag order.
   pub used_lags: usize,
   /// Number of regression observations used by the fitted model.
   pub nobs: usize,
-  /// Critical values at 1%, 5%, 10% levels.
-  pub critical_values: CriticalValues,
-  /// Whether the null (unit root) is rejected at `alpha`.
-  pub rejects_null: bool,
 }
 
 impl crate::traits::HypothesisTest for AdfTest {
@@ -98,19 +99,20 @@ pub fn adf_test(y: ArrayView1<f64>, cfg: AdfConfig) -> AdfTest {
       );
       p
     }
-    _ => choose_lag_for_adf(y, cfg.deterministic, cfg.lag_selection, max_lags),
+    _ => choose_lag_for_adf(y, cfg.trend, cfg.lag_selection, max_lags),
   };
 
-  let fit = fit_adf(y, used_lags, cfg.deterministic);
-  let critical_values = adf_critical_values(cfg.deterministic);
-  let reject_unit_root = fit.statistic < critical_values.value_at(cfg.alpha);
+  let fit = fit_adf(y, used_lags, cfg.trend);
+  let critical_values = adf_critical_values(cfg.trend);
+  let rejects_null = fit.statistic < critical_values.value_at(cfg.alpha);
 
   AdfTest {
     statistic: fit.statistic,
+    p_value: None,
+    critical_values: Some(critical_values),
+    rejects_null,
     used_lags,
     nobs: fit.nobs,
-    critical_values,
-    rejects_null: reject_unit_root,
   }
 }
 
@@ -122,8 +124,8 @@ mod tests {
 
   use super::AdfConfig;
   use super::adf_test;
-  use crate::stationarity::common::DeterministicTerm;
-  use crate::stationarity::common::LagSelection;
+  use crate::stationarity::LagSelection;
+  use crate::stationarity::Trend;
 
   fn simulate_ar1(phi: f64, n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
@@ -155,7 +157,7 @@ mod tests {
   fn adf_rejects_stationary_ar1() {
     let x = simulate_ar1(0.7, 2400, 0xADF1);
     let cfg = AdfConfig {
-      deterministic: DeterministicTerm::Constant,
+      trend: Trend::Constant,
       lag_selection: LagSelection::Fixed(4),
       ..AdfConfig::default()
     };
@@ -170,7 +172,7 @@ mod tests {
   fn adf_random_walk_is_not_rejected_at_one_percent() {
     let x = simulate_random_walk(2400, 0xADF2);
     let cfg = AdfConfig {
-      deterministic: DeterministicTerm::Constant,
+      trend: Trend::Constant,
       lag_selection: LagSelection::Fixed(4),
       alpha: 0.01,
       ..AdfConfig::default()

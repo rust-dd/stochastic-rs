@@ -7,7 +7,7 @@ since: 2.0.0
 status: stable
 ---
 
-The `stochastic-rs-stats` crate ships estimators for common quant-finance workflows. Most take an `ArrayView1<T>` (a price or log-return series) and return a flat `*Result` struct whose field names are estimator-specific (see [Common pattern](#common-pattern)).
+The `stochastic-rs-stats` crate ships estimators for common quant-finance workflows. Most take an `ArrayView1<T>` (a price or log-return series) and return a flat struct: an estimate (`*Fit`) with estimator-specific fields, or a hypothesis test (`*Test`) with the four fields every test shares (see [Common pattern](#common-pattern)).
 
 ## Sub-modules
 
@@ -184,7 +184,7 @@ print("sigma, nu, theta, mu:", vg.sigma, vg.nu, vg.theta, vg.mu)
 
 ### ADF stationarity test
 
-Null hypothesis: unit root (non-stationary). `adf_test` lives in the `stationarity` module and reports the decision directly as `reject_unit_root: bool` at the `alpha` set on `AdfConfig` — there is no `p_value` field, only the test statistic and tabulated critical values.
+Null hypothesis: unit root (non-stationary). `adf_test` lives in the `stationarity` module and reports the decision as `rejects_null` at the `alpha` set on `AdfConfig`; `p_value` is `None` (no p-value table) and `critical_values` holds the 1 %, 5 % and 10 % levels.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -253,24 +253,25 @@ Seven of the eight `HurstEstimator` implementors estimate the same quantity — 
 
 ## Common pattern
 
-Every estimator returns a plain struct, but the **field names are estimator-specific**, not a uniform `point`/`se`/`p_value` triple. For example:
+Every hypothesis test shares `statistic`, `p_value: Option<f64>`, `critical_values: Option<CriticalValues>` and `rejects_null`, and answers through `HypothesisTest`; estimates keep **estimator-specific** fields, not a uniform `point`/`se` pair. For example:
 
 ```rust
 // RescaledRange, Dfa, Gph, Wavelet, Whittle, Variations all return this:
 pub struct HurstFit<T: FloatExt = f64> {
   pub hurst: T,
   pub std_err: Option<T>, // only Gph and Wavelet populate this
-  pub n_obs: usize,
+  pub nobs: usize,
   pub diagnostic: HurstDiagnostic<T>,
 }
 
-// while the stationarity tests (ADF, KPSS, ...) return their own shape:
+// while every test leads with the four shared fields, then its own:
 pub struct AdfTest {
   pub statistic: f64,
+  pub p_value: Option<f64>,                    // None: no p-value table is shipped
+  pub critical_values: Option<CriticalValues>, // the 1 %, 5 % and 10 % levels
+  pub rejects_null: bool,
   pub used_lags: usize,
   pub nobs: usize,
-  pub critical_values: CriticalValues,
-  pub reject_unit_root: bool,
 }
 ```
 

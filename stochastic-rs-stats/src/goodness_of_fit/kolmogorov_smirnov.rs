@@ -28,7 +28,7 @@
 //! finite-sample table; [`ks_critical_value`]'s own tests pin these
 //! constants. No finite-sample correction (e.g. Stephens 1974's
 //! `\sqrt n \to \sqrt n + 0.12 + 0.11/\sqrt n`) is applied, so
-//! [`KolmogorovSmirnovTest::critical_value`] and
+//! [`KolmogorovSmirnovTest::critical_values`] and
 //! [`KolmogorovSmirnovTest::p_value`] stay defined by the *same*
 //! uncorrected asymptotic formula and therefore always agree on
 //! rejection at the sample sizes this crate's own callers use (tens of
@@ -71,6 +71,7 @@
 
 use ndarray::ArrayView1;
 
+use crate::critical_values::CriticalValues;
 use crate::traits::HypothesisTest;
 
 /// Configuration for [`kolmogorov_smirnov_test`].
@@ -86,20 +87,20 @@ impl Default for KolmogorovSmirnovConfig {
   }
 }
 
-/// Result of a one-sample Kolmogorov-Smirnov goodness-of-fit test.
-#[derive(Debug, Clone, Copy)]
+/// One-sample Kolmogorov–Smirnov test (null: the given continuous `cdf`), decided by its p-value.
+#[derive(Debug, Clone)]
 pub struct KolmogorovSmirnovTest {
   /// The `D_n` statistic.
   pub statistic: f64,
-  /// `D_{n,\alpha} = c(\alpha)/\sqrt n` — reject when `statistic` exceeds this.
-  pub critical_value: f64,
   /// Asymptotic p-value from the Kolmogorov distribution's survival
   /// function at `\sqrt n \cdot` `statistic` (uncorrected, see module doc).
-  pub p_value: f64,
-  /// Sample size `n`.
-  pub n: usize,
+  pub p_value: Option<f64>,
+  /// `D_{n,\alpha} = c(\alpha)/\sqrt n` at the `alpha` the test was run with.
+  pub critical_values: Option<CriticalValues>,
   /// Whether the null (sample ~ the given `cdf`) is rejected at `alpha`.
   pub rejects_null: bool,
+  /// Sample size `n`.
+  pub nobs: usize,
 }
 
 impl HypothesisTest for KolmogorovSmirnovTest {
@@ -194,10 +195,13 @@ pub fn kolmogorov_smirnov_test(
   let p_value = kolmogorov_survival(n_f.sqrt() * d);
   KolmogorovSmirnovTest {
     statistic: d,
-    critical_value: ks_critical_value(cfg.alpha, n),
-    p_value,
-    n,
+    p_value: Some(p_value),
+    critical_values: Some(CriticalValues::new([(
+      cfg.alpha,
+      ks_critical_value(cfg.alpha, n),
+    )])),
     rejects_null: p_value < cfg.alpha,
+    nobs: n,
   }
 }
 
@@ -255,6 +259,7 @@ mod tests {
           KolmogorovSmirnovConfig::default(),
         )
         .p_value
+        .unwrap()
       })
       .fold(0.0_f64, f64::max);
     assert!(
@@ -276,6 +281,6 @@ mod tests {
       KolmogorovSmirnovConfig::default(),
     );
     assert!(res.rejects_null, "expected rejection, got {res:?}");
-    assert!(res.statistic > res.critical_value);
+    assert!(res.statistic > res.critical_values.as_ref().unwrap().at(0.05).unwrap());
   }
 }

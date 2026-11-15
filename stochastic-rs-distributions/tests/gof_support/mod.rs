@@ -32,6 +32,7 @@ pub fn best_ks_p_value(
         KolmogorovSmirnovConfig::default(),
       )
       .p_value
+      .unwrap()
     })
     .fold(0.0_f64, f64::max)
 }
@@ -60,7 +61,9 @@ pub fn best_chi_square_p_value(
       assert_eq!(samples.len(), n, "sample length mismatch for seed {seed}");
       let (edges, expected_prob) = pool_integer_bins(n as u64, k_lo, k_hi, cdf, 5.0);
       let observed = bin_observed(&samples, &edges);
-      chi_square_gof_test(&observed, &expected_prob, ChiSquareGofConfig::default()).p_value
+      chi_square_gof_test(&observed, &expected_prob, ChiSquareGofConfig::default())
+        .p_value
+        .unwrap()
     })
     .fold(0.0_f64, f64::max)
 }

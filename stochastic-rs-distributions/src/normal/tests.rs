@@ -33,6 +33,7 @@ fn best_ks_p_value(
         KolmogorovSmirnovConfig::default(),
       )
       .p_value
+      .unwrap()
     })
     .fold(0.0_f64, f64::max)
 }

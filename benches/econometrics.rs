@@ -9,6 +9,7 @@ use stochastic_rs::distributions::DistributionSampler;
 use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
+use stochastic_rs::stats::econometrics::EngleGrangerConfig;
 use stochastic_rs::stats::econometrics::GaussianHmm;
 use stochastic_rs::stats::econometrics::cusum;
 use stochastic_rs::stats::econometrics::engle_granger_test;
@@ -55,7 +56,13 @@ fn bench_cointegration(c: &mut Criterion) {
     .collect::<Vec<_>>()
     .into();
   c.bench_function("engle_granger_1k", |b| {
-    b.iter(|| std::hint::black_box(engle_granger_test(y.view(), x.view())));
+    b.iter(|| {
+      std::hint::black_box(engle_granger_test(
+        y.view(),
+        x.view(),
+        EngleGrangerConfig::default(),
+      ))
+    });
   });
   let mut s = Array2::<f64>::zeros((500, 3));
   for i in 0..500 {

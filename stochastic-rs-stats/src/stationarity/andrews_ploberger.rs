@@ -43,6 +43,7 @@ use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 
 use super::common::validate_series;
+use crate::critical_values::CriticalValues;
 use crate::linalg::inverse;
 use crate::linalg::solve;
 
@@ -80,26 +81,23 @@ impl Default for AndrewsPlobergerConfig {
   }
 }
 
-/// Result of the Andrews / Andrews-Ploberger test.
+/// Andrews / Andrews–Ploberger test (null: constant regression parameters); the table holds the
+/// 1 %, 5 % and 10 % levels for `pi0 = 0.15` and `1 <= k <= 5`, and is `None` off it.
 #[derive(Debug, Clone)]
 pub struct AndrewsPlobergerTest {
-  /// Statistic actually computed (Sup, Exp, or Avg-Wald).
-  pub statistic_kind: AndrewsPlobergerStatistic,
   /// Test statistic.
   pub statistic: f64,
-  /// Breakpoint fraction $\tau^* = \arg\max_\tau W(\tau)$ (only meaningful
-  /// for Sup-Wald; otherwise the location of the max along the grid is
-  /// still reported for diagnostic use).
+  /// Coarse bracket `0.01`, `0.05`, `0.10` or `1.0` (the smallest tabulated level reached).
+  pub p_value: Option<f64>,
+  pub critical_values: Option<CriticalValues>,
+  /// Whether the parameter-constancy null is rejected at `alpha`; `false` off the table.
+  pub rejects_null: bool,
+  /// Statistic actually computed (Sup, Exp, or Avg-Wald).
+  pub statistic_kind: AndrewsPlobergerStatistic,
+  /// $\tau^* = \arg\max_\tau W(\tau)$: the break estimate under Sup-Wald, a diagnostic otherwise.
   pub breakpoint_frac: f64,
   /// Local Wald statistic on the trimmed grid `[pi0, 1-pi0]`.
   pub wald_path: Vec<(f64, f64)>,
-  /// Coarse asymptotic p-value bracket: one of `0.01`, `0.05`, `0.10`, or
-  /// `1.0` (no rejection at any tabulated level). Comes from the
-  /// $\pi_0 = 0.15$ critical-value tables; returns `f64::NAN` when `pi0
-  /// != 0.15` or `k` is outside the tabulated range `1..=5`.
-  pub p_value: f64,
-  /// Whether the parameter-constancy null is rejected at `alpha`.
-  pub rejects_null: bool,
 }
 
 impl crate::traits::HypothesisTest for AndrewsPlobergerTest {
@@ -157,15 +155,21 @@ pub fn andrews_ploberger_test(
   }
 
   let (statistic, breakpoint_frac) = aggregate(&wald_path, cfg.statistic);
-  let (p_value, null_rejected) = decide(statistic, cfg.statistic, k, cfg.pi0, cfg.alpha);
+  let row = critical_row(cfg.statistic, k, cfg.pi0);
+  let critical_values =
+    row.map(|(c10, c5, c1)| CriticalValues::new([(0.01, c1), (0.05, c5), (0.10, c10)]));
+  let rejects_null = critical_values
+    .as_ref()
+    .is_some_and(|cv| statistic >= cv.value_at(cfg.alpha));
 
   AndrewsPlobergerTest {
-    statistic_kind: cfg.statistic,
     statistic,
+    p_value: row.map(|row| p_value_bracket(statistic, row)),
+    critical_values,
+    rejects_null,
+    statistic_kind: cfg.statistic,
     breakpoint_frac,
     wald_path,
-    p_value,
-    rejects_null: null_rejected,
   }
 }
 
@@ -255,7 +259,7 @@ fn aggregate(path: &[(f64, f64)], kind: AndrewsPlobergerStatistic) -> (f64, f64)
 }
 
 /// Andrews (1993) Table 1 — Sup-Wald critical values for $\pi_0 = 0.15$.
-fn sup_wald_critical(k: usize, alpha: f64) -> Option<(f64, f64, f64)> {
+fn sup_wald_critical(k: usize) -> Option<(f64, f64, f64)> {
   let row = match k {
     1 => (7.17, 8.85, 12.16),
     2 => (9.31, 11.79, 15.46),
@@ -264,11 +268,11 @@ fn sup_wald_critical(k: usize, alpha: f64) -> Option<(f64, f64, f64)> {
     5 => (14.61, 17.61, 22.27),
     _ => return None,
   };
-  Some(select_levels(row, alpha))
+  Some(row)
 }
 
 /// Andrews-Ploberger (1994) Table II — Exp-Wald critical values, $\pi_0 = 0.15$.
-fn exp_wald_critical(k: usize, alpha: f64) -> Option<(f64, f64, f64)> {
+fn exp_wald_critical(k: usize) -> Option<(f64, f64, f64)> {
   let row = match k {
     1 => (1.83, 2.57, 4.13),
     2 => (3.15, 4.07, 5.78),
@@ -277,11 +281,11 @@ fn exp_wald_critical(k: usize, alpha: f64) -> Option<(f64, f64, f64)> {
     5 => (6.54, 7.74, 10.17),
     _ => return None,
   };
-  Some(select_levels(row, alpha))
+  Some(row)
 }
 
 /// Andrews-Ploberger (1994) Table III — Avg-Wald critical values, $\pi_0 = 0.15$.
-fn avg_wald_critical(k: usize, alpha: f64) -> Option<(f64, f64, f64)> {
+fn avg_wald_critical(k: usize) -> Option<(f64, f64, f64)> {
   let row = match k {
     1 => (3.84, 4.69, 6.74),
     2 => (6.13, 7.31, 9.61),
@@ -290,35 +294,23 @@ fn avg_wald_critical(k: usize, alpha: f64) -> Option<(f64, f64, f64)> {
     5 => (12.49, 14.08, 17.10),
     _ => return None,
   };
-  Some(select_levels(row, alpha))
+  Some(row)
 }
 
-fn select_levels(row: (f64, f64, f64), _alpha: f64) -> (f64, f64, f64) {
-  // Returned tuple is always (10%, 5%, 1%); the caller compares against the
-  // appropriate level depending on `alpha`.
-  row
+/// The `(10 %, 5 %, 1 %)` row for `k` regressors; only the `pi0 = 0.15` tables are shipped.
+fn critical_row(kind: AndrewsPlobergerStatistic, k: usize, pi0: f64) -> Option<(f64, f64, f64)> {
+  if (pi0 - 0.15).abs() >= 1e-9 {
+    return None;
+  }
+  match kind {
+    AndrewsPlobergerStatistic::Sup => sup_wald_critical(k),
+    AndrewsPlobergerStatistic::Exp => exp_wald_critical(k),
+    AndrewsPlobergerStatistic::Avg => avg_wald_critical(k),
+  }
 }
 
-fn decide(
-  stat: f64,
-  kind: AndrewsPlobergerStatistic,
-  k: usize,
-  pi0: f64,
-  alpha: f64,
-) -> (f64, bool) {
-  let table = if (pi0 - 0.15).abs() < 1e-9 {
-    match kind {
-      AndrewsPlobergerStatistic::Sup => sup_wald_critical(k, alpha),
-      AndrewsPlobergerStatistic::Exp => exp_wald_critical(k, alpha),
-      AndrewsPlobergerStatistic::Avg => avg_wald_critical(k, alpha),
-    }
-  } else {
-    None
-  };
-  let Some((c10, c5, c1)) = table else {
-    return (f64::NAN, false);
-  };
-  let p_value = if stat >= c1 {
+fn p_value_bracket(stat: f64, (c10, c5, c1): (f64, f64, f64)) -> f64 {
+  if stat >= c1 {
     0.01
   } else if stat >= c5 {
     0.05
@@ -326,15 +318,7 @@ fn decide(
     0.10
   } else {
     1.0
-  };
-  let crit = if alpha <= 0.01 {
-    c1
-  } else if alpha <= 0.05 {
-    c5
-  } else {
-    c10
-  };
-  (p_value, stat >= crit)
+  }
 }
 
 #[cfg(test)]
@@ -387,7 +371,7 @@ mod tests {
     );
     assert!(
       !res.rejects_null,
-      "no-break DGP: Sup-Wald should not reject; W = {}, p = {}",
+      "no-break DGP: Sup-Wald should not reject; W = {}, p = {:?}",
       res.statistic, res.p_value
     );
   }
@@ -406,7 +390,7 @@ mod tests {
     );
     assert!(
       res.rejects_null,
-      "intercept break at τ=0.5: should reject; W = {}, p = {}",
+      "intercept break at τ=0.5: should reject; W = {}, p = {:?}",
       res.statistic, res.p_value
     );
     assert!(
@@ -430,7 +414,7 @@ mod tests {
     );
     assert!(
       res.rejects_null,
-      "slope break at τ=0.3: Exp-Wald should reject; W = {}, p = {}",
+      "slope break at τ=0.3: Exp-Wald should reject; W = {}, p = {:?}",
       res.statistic, res.p_value
     );
   }
@@ -449,7 +433,7 @@ mod tests {
     );
     assert!(
       res.rejects_null,
-      "intercept break: Avg-Wald should reject; W = {}, p = {}",
+      "intercept break: Avg-Wald should reject; W = {}, p = {:?}",
       res.statistic, res.p_value
     );
   }
@@ -458,7 +442,7 @@ mod tests {
   fn sup_wald_matches_andrews_1993_critical_for_k_eq_2() {
     // White-box check: confirm the embedded table reproduces Andrews (1993)
     // Table 1 row k = 2.
-    let (c10, c5, c1) = sup_wald_critical(2, 0.05).unwrap();
+    let (c10, c5, c1) = sup_wald_critical(2).unwrap();
     assert!((c10 - 9.31).abs() < 1e-6);
     assert!((c5 - 11.79).abs() < 1e-6);
     assert!((c1 - 15.46).abs() < 1e-6);
