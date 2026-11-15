@@ -22,6 +22,7 @@ use rand::seq::SliceRandom;
 use stochastic_rs_core::simd_rng::SimdRng;
 
 use super::dataset::train_test_split_indices;
+use super::init::seed_weights;
 use super::metadata::FORMAT_VERSION;
 use super::metadata::parse_f64_vec_field;
 use super::metadata::parse_metadata;
@@ -51,11 +52,13 @@ pub struct StochVolNn {
 }
 
 impl StochVolNn {
-  pub fn new(spec: StochVolModelSpec, device: &Device) -> Result<Self> {
+  /// The initial weights are a function of `(spec, seed)` on every device.
+  pub fn new(spec: StochVolModelSpec, device: &Device, seed: u64) -> Result<Self> {
     let varmap = VarMap::new();
     let vs = VarBuilder::from_varmap(&varmap, DType::F32, device);
     let model = FeedForwardNet::new(vs, spec.input_dim(), spec.hidden_dim, spec.output_dim())?;
     let param_scaler = BoundedScaler::new(spec.param_lb.clone(), spec.param_ub.clone());
+    seed_weights(&varmap, device, seed)?;
     Ok(Self {
       spec,
       device: device.clone(),
@@ -312,7 +315,7 @@ impl StochVolNn {
       bail!("surface scaler metadata width does not match the grid");
     }
 
-    let mut model = Self::new(spec, device)?;
+    let mut model = Self::new(spec, device, 0)?;
     model.output_scaler = Some(StandardScaler { mean, std });
     model
       .varmap
@@ -341,7 +344,7 @@ mod tests {
       vec![0.5, 1.0],
     )?;
     let (params, surfaces) = synthetic_surface_dataset(&lb, &ub, 64, N_T * N_K, 5);
-    let mut nn = StochVolNn::new(spec, &Device::Cpu)?;
+    let mut nn = StochVolNn::new(spec, &Device::Cpu, 5)?;
     let cfg = TrainConfig {
       epochs: 3,
       ..TrainConfig::default()

@@ -15,7 +15,7 @@ fn trained_heston(seed: u64) -> HestonNn {
     heston::OUTPUT_DIM,
     seed,
   );
-  let mut model = HestonNn::new(&Device::Cpu).unwrap();
+  let mut model = HestonNn::new(&Device::Cpu, 7).unwrap();
   let cfg = TrainConfig {
     epochs: 30,
     random_seed: seed,
@@ -165,7 +165,7 @@ fn rbergomi_bridge_round_trips_the_parameter_order() {
     rbergomi::OUTPUT_DIM,
     2,
   );
-  let mut model = RBergomiNn::new(&Device::Cpu).unwrap();
+  let mut model = RBergomiNn::new(&Device::Cpu, 7).unwrap();
   let cfg = TrainConfig {
     epochs: 5,
     ..TrainConfig::default()

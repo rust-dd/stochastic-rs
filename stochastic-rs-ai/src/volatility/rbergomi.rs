@@ -29,11 +29,11 @@ pub struct RBergomiNn {
 }
 
 impl RBergomiNn {
-  pub fn new(device: &Device) -> Result<Self> {
-    Self::with_hidden(device, DEFAULT_HIDDEN_DIM)
+  pub fn new(device: &Device, seed: u64) -> Result<Self> {
+    Self::with_hidden(device, DEFAULT_HIDDEN_DIM, seed)
   }
 
-  pub fn with_hidden(device: &Device, hidden_dim: usize) -> Result<Self> {
+  pub fn with_hidden(device: &Device, hidden_dim: usize, seed: u64) -> Result<Self> {
     let spec = StochVolModelSpec::new(
       MODEL_ID,
       hidden_dim,
@@ -43,7 +43,7 @@ impl RBergomiNn {
       grid::MATURITIES.to_vec(),
     )?;
     Ok(Self {
-      inner: StochVolNn::new(spec, device)?,
+      inner: StochVolNn::new(spec, device, seed)?,
     })
   }
 
@@ -109,7 +109,7 @@ mod tests {
   fn train_save_load_roundtrip() -> Result<()> {
     let device = Device::Cpu;
     let (params, surfaces) = synthetic_surface_dataset(&PARAM_LB, &PARAM_UB, 192, OUTPUT_DIM, 13);
-    let mut model = RBergomiNn::new(&device)?;
+    let mut model = RBergomiNn::new(&device, 7)?;
     let cfg = TrainConfig {
       test_ratio: 0.2,
       batch_size: 32,

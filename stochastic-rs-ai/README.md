@@ -20,6 +20,8 @@ sub-millisecond forward pass.
   strike-maturity grid.
 - **Training** — gzip-npy training set loading, a candle-backed network with
   its input and output scaling built in, and a train / save / load round trip.
+  The initial weights are drawn from a seed (`HestonNn::new(&device, seed)`), so a CPU training is
+  reproducible; on Metal or CUDA the seed fixes the start, not the run.
 - **Calibration** — with the `quant` feature, Levenberg–Marquardt on the
   network's exact Jacobian, behind quant's `Calibrator` trait.
 

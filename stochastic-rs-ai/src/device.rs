@@ -53,7 +53,7 @@ mod tests {
       heston::OUTPUT_DIM,
       4,
     );
-    let mut model = HestonNn::new(&device).unwrap();
+    let mut model = HestonNn::new(&device, 7).unwrap();
     let cfg = TrainConfig {
       epochs: 2,
       ..TrainConfig::default()

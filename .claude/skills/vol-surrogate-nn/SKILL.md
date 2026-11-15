@@ -97,16 +97,16 @@ pub struct HestonNn {
 }
 
 impl HestonNn {
-  pub fn new(device: &Device) -> Result<Self> {
-    Self::with_hidden(device, DEFAULT_HIDDEN_DIM)
+  pub fn new(device: &Device, seed: u64) -> Result<Self> {
+    Self::with_hidden(device, DEFAULT_HIDDEN_DIM, seed)
   }
 
-  pub fn with_hidden(device: &Device, hidden_dim: usize) -> Result<Self> {
+  pub fn with_hidden(device: &Device, hidden_dim: usize, seed: u64) -> Result<Self> {
     let spec = StochVolModelSpec::new(
       MODEL_ID, hidden_dim, PARAM_LB.to_vec(), PARAM_UB.to_vec(),
       STRIKES.to_vec(), grid::MATURITIES.to_vec(),
     )?;
-    Ok(Self { inner: StochVolNn::new(spec, device)? })
+    Ok(Self { inner: StochVolNn::new(spec, device, seed)? })
   }
 
   pub fn train(&mut self, params: &Array2<f32>, surfaces: &Array2<f32>,
@@ -247,7 +247,7 @@ its own `MODEL_ID` at the call site instead of exposing the argument.
 All three existing wrappers carry a test of exactly this name; yours
 must too. The shape (see `heston.rs`'s test module):
 
-1. Build the model on `Device::Cpu` (`HestonNn::new(&device)?`).
+1. Build the model on `Device::Cpu` (`HestonNn::new(&device, 7)?`); two trainings with one seed agree on the CPU.
 2. Generate a small synthetic set with
    `synthetic_surface_dataset(&PARAM_LB, &PARAM_UB, samples, OUTPUT_DIM, seed)`
    — `pub(crate)`, re-exported only under `#[cfg(test)]`, which is

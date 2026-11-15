@@ -22,7 +22,7 @@ fn predict_a_heston_surface_on_the_training_grid() {
     0.2 + 0.1 * params[[i, 0]] + 0.02 * (k as f32 / heston::OUTPUT_DIM as f32)
   });
   let device = Device::Cpu;
-  let mut model = HestonNn::new(&device).unwrap();
+  let mut model = HestonNn::new(&device, 7).unwrap();
   let cfg = TrainConfig {
     epochs: 2,
     ..TrainConfig::default()

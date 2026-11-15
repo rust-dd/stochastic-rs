@@ -53,7 +53,7 @@ fn calibrate_heston_on_a_surrogate() {
       .row_mut(i)
       .assign(&ndarray::Array1::from_vec(synthetic_surface(&theta)));
   }
-  let mut model = HestonNn::new(&Device::Cpu).unwrap();
+  let mut model = HestonNn::new(&Device::Cpu, 7).unwrap();
   let cfg = TrainConfig {
     epochs: 30,
     ..TrainConfig::default()

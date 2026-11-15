@@ -50,3 +50,21 @@ def test_heston_nn_trains_predicts_and_calibrates(tmp_path):
         sr.calibrate_surrogate(model, surface[:10])
     with pytest.raises(ValueError):
         sr.calibrate_surrogate("not a model", surface)
+
+
+def test_one_seed_gives_one_network():
+    lb, ub = np.array(sr.HestonNn().param_lb), np.array(sr.HestonNn().param_ub)
+    rng = np.random.default_rng(5)
+    params = lb + rng.uniform(size=(64, 5)) * (ub - lb)
+    surfaces = _synthetic(params, lb, ub, 88)
+    theta = list(lb + 0.4 * (ub - lb))
+
+    def trained(seed: int) -> np.ndarray:
+        model = sr.HestonNn(seed=seed)
+        model.train(params, surfaces, epochs=3, seed=1)
+        return model.predict_surface(theta)
+
+    first = trained(5)
+    assert np.isfinite(first).all()
+    assert np.array_equal(first, trained(5))
+    assert not np.array_equal(first, trained(6))

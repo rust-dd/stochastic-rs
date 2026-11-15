@@ -53,16 +53,16 @@ macro_rules! py_surrogate {
 
     #[pymethods]
     impl $py_name {
-      /// A fresh network on the best available device (`hidden_dim` widens
-      /// the three hidden layers; the paper's width is 30).
+      /// A fresh network on the best available device; `seed` fixes the initial weights (the split
+      /// and shuffle seed is `train`'s), `hidden_dim` widens the hidden layers (the paper's is 30).
       #[new]
-      #[pyo3(signature = (hidden_dim=None))]
-      fn new(hidden_dim: Option<usize>) -> PyResult<Self> {
+      #[pyo3(signature = (hidden_dim=None, seed=42))]
+      fn new(hidden_dim: Option<usize>, seed: u64) -> PyResult<Self> {
         stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
           let device = crate::device::best_available().map_err(err)?;
           let inner = match hidden_dim {
-            Some(h) => <$inner>::with_hidden(&device, h),
-            None => <$inner>::new(&device),
+            Some(h) => <$inner>::with_hidden(&device, h, seed),
+            None => <$inner>::new(&device, seed),
           }
           .map_err(err)?;
           Ok(Self { inner })

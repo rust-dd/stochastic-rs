@@ -31,7 +31,7 @@ All three surrogates predict an implied-volatility surface on one fixed grid: 11
 
 ## How they work
 
-Each surrogate maps model parameters to the implied-vol surface on the grid above. It is a small MLP (three hidden ELU layers of width 30; `hidden_dim` widens them) trained offline on a pricer-generated dataset. At inference time:
+Each surrogate maps model parameters to the implied-vol surface on the grid above. It is a small MLP (three hidden ELU layers of width 30; `hidden_dim` widens them) trained offline on a pricer-generated dataset. The initial weights come from the crate's own seeded streams (`HestonNn::new(&device, seed)`), so a CPU training is reproducible for a given seed and data. At inference time:
 
 1. Scale the parameters to `[-1, 1]` with the training box (`PARAM_LB` / `PARAM_UB`); values outside the box are not clamped.
 2. Forward-pass through the MLP.
@@ -85,12 +85,12 @@ surface, jacobian = model.predict_surface_with_jacobian(fit["params"])
 
 ## Training on the GPU
 
-candle runs on the CPU by default. The umbrella's `ai-metal` feature (macOS) compiles candle's Metal back-end; for CUDA, enable `candle-core/cuda` in your own manifest (candle's kernels need a CUDA toolkit to build, so the crate cannot carry that feature). `ai::device::best_available()` picks the fastest device at run time — pass it to any surrogate constructor instead of `Device::Cpu`.
+candle runs on the CPU by default. The umbrella's `ai-metal` feature (macOS) compiles candle's Metal back-end; for CUDA, enable `candle-core/cuda` in your own manifest (candle's kernels need a CUDA toolkit to build, so the crate cannot carry that feature). `ai::device::best_available()` picks the fastest device at run time — pass it to any surrogate constructor instead of `Device::Cpu`. GPU reductions are not bitwise deterministic, so on Metal or CUDA the seed fixes the start, not the run.
 
 ```rust
 use stochastic_rs::ai::device::best_available;
 use stochastic_rs::ai::volatility::heston::HestonNn;
 
 let device = best_available()?;               // Cuda / Metal / Cpu
-let mut model = HestonNn::new(&device)?;      // trains and predicts on that device
+let mut model = HestonNn::new(&device, 42)?;  // trains and predicts on that device
 ```
