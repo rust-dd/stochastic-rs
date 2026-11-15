@@ -83,13 +83,25 @@ impl<T: FloatExt, S: SeedExt> Arima<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Arima<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> Arima<T, S, B> {
+  /// `sigma` as the host and the device read it; a write past `new` that breaks its rule fails here.
+  fn checked_sigma(&self) -> T {
+    let sigma = self.sigma;
+    assert!(
+      sigma.is_finite() && sigma >= T::zero(),
+      "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
+    sigma
+  }
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Arima<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    crate::euler::EulerSpec::MovingAverageFilter { sigma: self.sigma }
+    crate::euler::EulerSpec::MovingAverageFilter {
+      sigma: self.checked_sigma(),
+    }
   }
 
   fn initial_value(&self) -> T {
@@ -148,13 +160,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> ArimaSampler<T> {
+    let sigma = self.checked_sigma();
     ArimaSampler {
       n: self.n,
       ar_coefs: self.ar_coefs.clone(),
       ma_coefs: self.ma_coefs.clone(),
       d: self.d,
-      normal: (self.sigma > T::zero())
-        .then(|| SimdNormal::<T>::new(T::zero(), self.sigma).seeded(&self.seed)),
+      normal: (sigma != T::zero())
+        .then(|| SimdNormal::<T>::new(T::zero(), sigma).seeded(&self.seed)),
     }
   }
 

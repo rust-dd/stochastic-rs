@@ -70,7 +70,17 @@ impl<T: FloatExt, S: SeedExt> MAq<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> MAq<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> MAq<T, S, B> {
+  /// `sigma` as the host and the device read it; a write past `new` that breaks its rule fails here.
+  fn checked_sigma(&self) -> T {
+    let sigma = self.sigma;
+    assert!(
+      sigma.is_finite() && sigma >= T::zero(),
+      "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
+    sigma
+  }
+}
 
 /// The Euler engine's view of a moving average. The lagged innovation is the
 /// second state component; higher orders would need one slot per lag.
@@ -84,7 +94,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     );
     crate::euler::EulerSpec::MovingAverage {
       theta: self.theta[0],
-      sigma: self.sigma,
+      sigma: self.checked_sigma(),
     }
   }
 
@@ -136,11 +146,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> MAqSampler<T> {
+    let sigma = self.checked_sigma();
     MAqSampler {
       n: self.n,
       theta: self.theta.clone(),
-      normal: (self.sigma > T::zero())
-        .then(|| SimdNormal::<T>::new(T::zero(), self.sigma).seeded(&self.seed)),
+      normal: (sigma != T::zero())
+        .then(|| SimdNormal::<T>::new(T::zero(), sigma).seeded(&self.seed)),
     }
   }
 

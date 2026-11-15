@@ -145,13 +145,25 @@ impl<T: FloatExt, S: SeedExt> Sarima<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Sarima<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> Sarima<T, S, B> {
+  /// `sigma` as the host and the device read it; a write past `new` that breaks its rule fails here.
+  fn checked_sigma(&self) -> T {
+    let sigma = self.sigma;
+    assert!(
+      sigma.is_finite() && sigma >= T::zero(),
+      "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
+    sigma
+  }
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Sarima<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    crate::euler::EulerSpec::MovingAverageFilter { sigma: self.sigma }
+    crate::euler::EulerSpec::MovingAverageFilter {
+      sigma: self.checked_sigma(),
+    }
   }
 
   fn initial_value(&self) -> T {
@@ -220,6 +232,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> SarimaSampler<T> {
+    let sigma = self.checked_sigma();
     SarimaSampler {
       n: self.n,
       non_seasonal_ar_coefs: self.non_seasonal_ar_coefs.clone(),
@@ -229,8 +242,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       d: self.d,
       big_d: self.D,
       s: self.s,
-      normal: (self.sigma > T::zero())
-        .then(|| SimdNormal::<T>::new(T::zero(), self.sigma).seeded(&self.seed)),
+      normal: (sigma != T::zero())
+        .then(|| SimdNormal::<T>::new(T::zero(), sigma).seeded(&self.seed)),
     }
   }
 

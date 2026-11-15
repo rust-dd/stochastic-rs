@@ -240,6 +240,58 @@ fn a_zero_deviation_white_noise_is_its_mean() {
   });
 }
 
+#[test]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = NaN"
+)]
+fn a_nan_sigma_written_to_a_moving_average_is_refused() {
+  let mut p = MAq::<f64, Deterministic>::new(array![0.4, -0.2], 1.0, 64, Deterministic::new(3));
+  p.sigma = f64::NAN;
+  let _ = p.sample();
+}
+
+#[test]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = -1.0"
+)]
+fn a_negative_sigma_written_to_an_arima_is_refused() {
+  let mut p =
+    Arima::<f64, Deterministic>::new(array![0.5], array![0.3], 1, 1.0, 64, Deterministic::new(3));
+  p.sigma = -1.0;
+  let _ = p.sample();
+}
+
+#[test]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma >= T::zero()`, got sigma = NaN"
+)]
+fn a_nan_sigma_written_to_a_sarima_is_refused() {
+  let mut p = Sarima::<f64, Deterministic>::new(
+    array![0.5],
+    array![0.3],
+    array![0.2],
+    array![0.1],
+    1,
+    1,
+    4,
+    1.0,
+    64,
+    Deterministic::new(3),
+  );
+  p.sigma = f64::NAN;
+  let _ = p.sample();
+}
+
+#[test]
+#[should_panic(
+  expected = "std_dev must satisfy `std_dev.is_finite() && std_dev >= T::zero()`, got std_dev = -1.0"
+)]
+fn a_negative_deviation_written_to_white_noise_is_refused() {
+  let mut p = Wn::<f64, Deterministic>::new(64, None, Some(1.0), Deterministic::new(3));
+  p.std_dev = Some(-1.0);
+  let _ = p.sample();
+}
+
 /// A size law the kernels do not draw, so only the zero intensity makes these processes device-ready.
 fn jump_sizes() -> SimdUniform<f64> {
   SimdUniform::new(-0.1, 0.1)

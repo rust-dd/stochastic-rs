@@ -158,7 +158,17 @@ impl<T: FloatExt, S: SeedExt> Bns<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Bns<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> Bns<T, S, B> {
+  /// `nu` as the host and the device read it; a write past `new` that breaks its rule fails here.
+  fn checked_nu(&self) -> T {
+    let nu = self.nu;
+    assert!(
+      nu.is_finite() && nu >= T::zero(),
+      "nu must satisfy `nu.is_finite() && nu >= T::zero()`, got nu = {nu:?}"
+    );
+    nu
+  }
+}
 
 /// The Euler engine's view of the Barndorff-Nielsen-Shephard model. The
 /// variance decays exactly over the step, as the host takes it, and the
@@ -194,7 +204,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
   /// The subordinator's jump rate per unit time; none at `nu = 0`, where a launch skips the jumps.
   fn jump_intensity(&self) -> Option<T> {
-    (self.nu > T::zero()).then(|| self.nu * self.lambda)
+    let nu = self.checked_nu();
+    (nu != T::zero()).then(|| nu * self.lambda)
   }
 
   /// One gamma draw whose shape is the step's own jump count times the shape
@@ -239,7 +250,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   fn sampler(&self) -> BnsSampler<T, S> {
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
     let lam_dt = self.lambda * dt;
-    let jump_rate_per_step = (self.nu * lam_dt).to_f64().unwrap();
+    let jump_rate_per_step = (self.checked_nu() * lam_dt).to_f64().unwrap();
     BnsSampler {
       n: self.n,
       s0: self.s0.unwrap_or(T::one()),
@@ -288,7 +299,7 @@ pub struct BnsSampler<T: FloatExt, S: SeedExt> {
   jump_shape: T,
   dt: T,
   decay: T,
-  /// The per-step count `Poisson(ν·λ·Δt)`; `None` only at a zero rate, so the law checks any other.
+  /// The per-step count `Poisson(ν·λ·Δt)`; `None` at a zero rate, where no step jumps.
   counts: Option<SimdPoisson<u64>>,
   seed: S,
 }
@@ -489,10 +500,8 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(
-    expected = "lambda must satisfy `lambda > 0.0 && lambda.is_finite()`, got lambda = NaN"
-  )]
-  fn a_nan_jump_rate_reaches_the_count_law_check() {
+  #[should_panic(expected = "nu must satisfy `nu.is_finite() && nu >= T::zero()`, got nu = NaN")]
+  fn a_nan_nu_written_past_new_is_refused() {
     let mut p = Bns::<f64>::new(
       Some(100.0),
       0.04,
