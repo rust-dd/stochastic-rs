@@ -22,6 +22,7 @@ use crate::hurst::variations::daubechies_coeffs;
 use crate::hurst::variations::lfilter_f64;
 use crate::hurst::variations::power_variation;
 use crate::input::as_slice_or_copy;
+use crate::input::mean_in_order;
 use crate::input::reject_constant;
 use crate::input::validate;
 
@@ -103,9 +104,9 @@ pub fn fit_fou_filtered_variations(
   let denominator = const_filter * dt.powf(2.0 * hurst);
   let sigma = positive((numerator / denominator).sqrt(), "sigma from the variation")?;
 
-  let mu = path.mean().unwrap();
+  let mu = mean_in_order(path);
 
-  let mean_square = path.mapv(|x| x * x).mean().unwrap();
+  let mean_square = path.iter().fold(0.0, |acc, &x| acc + x * x) / n as f64;
   let theta_num = 2.0 * mean_square;
   let theta_den = sigma.powi(2) * gamma(2.0 * hurst + 1.0);
   let theta = positive(
@@ -161,10 +162,10 @@ pub fn fit_fou_central_differences(
   let sigma_den = n_f * (4.0 - 2.0_f64.powf(2.0 * hurst)) * dt.powf(2.0 * hurst);
   let sigma = positive((sigma_num / sigma_den).sqrt(), "sigma from the variation")?;
 
-  let mu = path.mean().unwrap();
+  let mu = mean_in_order(path);
 
-  let sum_x_sq: f64 = path.mapv(|x| x * x).sum();
-  let sum_x: f64 = path.sum();
+  let sum_x_sq = path.iter().fold(0.0, |acc, &x| acc + x * x);
+  let sum_x = path.iter().fold(0.0, |acc, &x| acc + x);
   let theta_num = n_f * sum_x_sq - sum_x.powi(2);
   let theta_den = n_f.powi(2) * sigma.powi(2) * hurst * gamma(2.0 * hurst);
   let theta = positive(
@@ -258,7 +259,7 @@ pub fn fit_fou_power_variation(
     }
   };
 
-  let mu = path.mean().unwrap();
+  let mu = mean_in_order(path);
   let n = (path.len() - 1) as f64;
   let sum_sq: f64 = path.slice(s![1..]).iter().map(|x| (x - mu).powi(2)).sum();
   let denom = n * sigma.powi(2) * hurst * gamma(2.0 * hurst);

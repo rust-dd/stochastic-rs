@@ -69,6 +69,12 @@ pub(crate) fn validate_domain<T: FloatExt>(
   }
 }
 
+/// The mean summed in index order: ndarray's `mean()` regroups contiguous memory, so a strided or
+/// reversed view would round apart from its copy.
+pub(crate) fn mean_in_order(x: ArrayView1<'_, f64>) -> f64 {
+  x.iter().fold(0.0, |acc, &v| acc + v) / x.len() as f64
+}
+
 /// Every entry of `x` finite, else `InvalidObservation` at the row (the observation `t`) of the
 /// first that is not.
 pub(crate) fn validate_rows<T: FloatExt>(x: ArrayView2<'_, T>) -> Result<(), StatsError> {

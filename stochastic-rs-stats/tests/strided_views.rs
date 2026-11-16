@@ -2,11 +2,18 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 use ndarray::s;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_stats::StatsError;
+use stochastic_rs_stats::fou::FilterType;
+use stochastic_rs_stats::fou::FouFit;
+use stochastic_rs_stats::fou::fit_fou_central_differences;
+use stochastic_rs_stats::fou::fit_fou_filtered_variations;
+use stochastic_rs_stats::fou::fit_fou_power_variation;
 use stochastic_rs_stats::hurst::Whittle;
 use stochastic_rs_stats::kde::silverman_bandwidth;
 use stochastic_rs_stats::normality::anderson_darling::AndersonDarlingConfig;
@@ -139,5 +146,51 @@ fn silverman_bandwidth_of_a_strided_or_reversed_view_matches_its_copy() {
     (strided_moves, reversed_moves),
     (0, 0),
     "(strided, reversed) bandwidths of 2000 that differ from the copy's"
+  );
+}
+
+#[test]
+fn fou_fits_of_a_strided_or_reversed_view_match_their_copy() {
+  fn bits(fit: Result<FouFit, StatsError>) -> Result<[u64; 4], StatsError> {
+    fit.map(|f| [f.hurst, f.sigma, f.mu, f.theta].map(f64::to_bits))
+  }
+  let fits = |x: ArrayView1<f64>| {
+    [
+      bits(fit_fou_filtered_variations(
+        x,
+        FilterType::Daubechies,
+        None,
+        None,
+      )),
+      bits(fit_fou_central_differences(x, None, None)),
+      bits(fit_fou_power_variation(x, None, 2, 2.0, None, None)),
+    ]
+  };
+  let mut normal = SimdNormal::<f64>::new(0.0, 0.1).seeded(&Deterministic::new(11));
+  let mut moves = [[0usize; 3]; 2];
+  for trial in 0..600 {
+    let n = 9 + trial % 192;
+    let mut steps = vec![0.0; n];
+    normal.fill_slice(&mut steps);
+    let copy = Array1::from_iter(steps.iter().scan(2.0, |level, &z| {
+      *level += z;
+      Some(*level)
+    }));
+    let mut interleaved = Array1::<f64>::zeros(2 * n);
+    interleaved.slice_mut(s![..;2]).assign(&copy);
+    let backwards = Array1::from_iter(copy.iter().rev().copied());
+    let want = fits(copy.view());
+    for (view, row) in [interleaved.slice(s![..;2]), backwards.slice(s![..;-1])]
+      .into_iter()
+      .zip(&mut moves)
+    {
+      for (got, (want, count)) in fits(view).into_iter().zip(want.iter().zip(row)) {
+        *count += usize::from(got != *want);
+      }
+    }
+  }
+  assert_eq!(
+    moves, [[0; 3]; 2],
+    "[strided, reversed] x [filtered, central, power] fits of 600 that differ from the copy's"
   );
 }
