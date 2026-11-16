@@ -107,7 +107,8 @@ pub struct CreditDefaultSwap<T: RealExt> {
 }
 
 impl<T: RealExt> CreditDefaultSwap<T> {
-  /// Build a running-spread CDS using the provided premium schedule.
+  /// Build a running-spread CDS using the provided premium schedule; panics unless
+  /// `0 ≤ recovery_rate < 1`, the schedule has two dates and `effective_date < maturity_date`.
   pub fn new(
     direction: CdsPosition,
     notional: T,
@@ -120,15 +121,16 @@ impl<T: RealExt> CreditDefaultSwap<T> {
   ) -> Self {
     assert!(
       recovery_rate >= T::zero() && recovery_rate < T::one(),
-      "recovery_rate must lie in [0, 1)"
+      "recovery_rate must satisfy `recovery_rate >= T::zero() && recovery_rate < T::one()`, got recovery_rate = {recovery_rate:?}"
     );
     assert!(
       premium_schedule.adjusted_dates.len() >= 2,
-      "premium schedule must contain at least two dates"
+      "premium_schedule must satisfy `premium_schedule.adjusted_dates.len() >= 2`, got premium_schedule.adjusted_dates.len() = {}",
+      premium_schedule.adjusted_dates.len()
     );
     assert!(
       effective_date < maturity_date,
-      "effective_date must precede maturity_date"
+      "effective_date must satisfy `effective_date < maturity_date`, got effective_date = {effective_date}, maturity_date = {maturity_date}"
     );
     Self {
       direction,
@@ -144,7 +146,7 @@ impl<T: RealExt> CreditDefaultSwap<T> {
     }
   }
 
-  /// Build a vanilla running CDS with a quarterly schedule (standard post-2009).
+  /// Build a vanilla running CDS with a quarterly schedule (standard post-2009); panics as `new`.
   pub fn vanilla(
     direction: CdsPosition,
     notional: T,

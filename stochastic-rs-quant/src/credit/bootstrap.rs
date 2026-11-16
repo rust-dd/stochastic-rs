@@ -35,11 +35,11 @@ use crate::traits::RealExt;
 /// A single CDS quote fed into [`bootstrap_hazard`].
 #[derive(Debug, Clone)]
 pub struct CdsQuote {
-  /// Contract maturity.
+  /// Contract maturity, after the bootstrap's effective and valuation dates.
   pub maturity: NaiveDate,
-  /// Par (fair) running spread in decimal form (e.g. 0.01 = 100 bps).
+  /// Finite par (fair) running spread in decimal form (e.g. 0.01 = 100 bps).
   pub spread: f64,
-  /// Recovery rate of this quote; `None` takes `bootstrap_hazard`'s `default_recovery`.
+  /// Recovery rate of this quote in `[0, 1)`; `None` takes `bootstrap_hazard`'s `default_recovery`.
   pub recovery_rate: Option<f64>,
   /// Premium-leg payment frequency (ISDA standard: quarterly).
   pub frequency: Frequency,
@@ -60,8 +60,8 @@ impl CdsQuote {
   }
 }
 
-/// The piecewise-constant hazard curve that reprices each quote at par; `InsufficientData` with no
-/// quote, `InvalidQuote` for one no hazard reprices; panics unless `0 ≤ default_recovery < 1`.
+/// Hazards repricing each quote at par; `InvalidQuote` for a quote off its fields' domains or that
+/// no hazard reprices, `InsufficientData` for none; panics unless `0 ≤ default_recovery < 1`.
 pub fn bootstrap_hazard<T: RealExt>(
   valuation_date: NaiveDate,
   effective_date: NaiveDate,
@@ -82,17 +82,22 @@ pub fn bootstrap_hazard<T: RealExt>(
     });
   }
 
-  let mut sorted = quotes.iter().enumerate().collect::<Vec<_>>();
-  sorted.sort_by_key(|(_, q)| q.maturity);
+  let mut sorted = Vec::with_capacity(quotes.len());
+  for (index, quote) in quotes.iter().enumerate() {
+    let recovery = quote
+      .recovery_rate
+      .map_or(default_recovery, T::from_f64_fast);
+    if let Some(reason) = defect(quote, recovery, effective_date, valuation_date) {
+      return Err(QuantError::InvalidQuote { index, reason });
+    }
+    sorted.push((index, quote, recovery));
+  }
+  sorted.sort_by_key(|&(_, quote, _)| quote.maturity);
 
   let mut times = Vec::<T>::with_capacity(sorted.len());
   let mut hazards = Vec::<T>::with_capacity(sorted.len());
 
-  for (index, quote) in sorted {
-    let recovery = quote
-      .recovery_rate
-      .map(T::from_f64_fast)
-      .unwrap_or(default_recovery);
+  for (index, quote, recovery) in sorted {
     let spread = T::from_f64_fast(quote.spread);
 
     let cds = CreditDefaultSwap::vanilla(
@@ -112,7 +117,7 @@ pub fn bootstrap_hazard<T: RealExt>(
     let anchor_hazards = hazards.clone();
 
     let f = |h: f64| -> f64 {
-      let h_t = T::from_f64_fast(h.max(0.0));
+      let h_t = T::from_f64_fast(h);
       let mut trial_times = anchor_times.clone();
       let mut trial_hazards = anchor_hazards.clone();
       trial_times.push(tau_k);
@@ -157,4 +162,29 @@ pub fn bootstrap_hazard<T: RealExt>(
     &Array1::from(hazards),
     HazardInterpolation::PiecewiseConstantHazard,
   ))
+}
+
+/// Why `quote` cannot be bootstrapped, checked before `CreditDefaultSwap::new` could panic on it.
+fn defect<T: RealExt>(
+  quote: &CdsQuote,
+  recovery: T,
+  effective_date: NaiveDate,
+  valuation_date: NaiveDate,
+) -> Option<String> {
+  let (spread, maturity) = (T::from_f64_fast(quote.spread), quote.maturity);
+  if !spread.is_finite() {
+    Some(format!(
+      "spread must satisfy `spread.is_finite()`, got spread = {spread:?}"
+    ))
+  } else if !(recovery >= T::zero() && recovery < T::one()) {
+    Some(format!(
+      "recovery_rate must satisfy `recovery_rate >= T::zero() && recovery_rate < T::one()`, got recovery_rate = {recovery:?}"
+    ))
+  } else if !(maturity > effective_date && maturity > valuation_date) {
+    Some(format!(
+      "maturity must satisfy `maturity > effective_date && maturity > valuation_date`, got maturity = {maturity}, effective_date = {effective_date}, valuation_date = {valuation_date}"
+    ))
+  } else {
+    None
+  }
 }

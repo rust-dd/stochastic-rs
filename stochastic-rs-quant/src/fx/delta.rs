@@ -12,11 +12,15 @@
 //! Notation: forward $F = S e^{(r_d - r_f)\tau}$, base discount
 //! $D_f = e^{-r_f \tau}$.
 
+use std::f64::consts::FRAC_2_PI;
+
 use stochastic_rs_distributions::brent;
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
+use stochastic_rs_distributions::special::norm_pdf;
 
 use crate::OptionType;
+use crate::traits::RealExt;
 
 /// Which delta an FX quote means: spot or forward, with or without the premium adjustment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,13 +89,8 @@ pub fn delta(
   }
 }
 
-/// Solve for the strike implied by a delta quote.
-///
-/// `target_delta` is signed — for a 25Δ call pass `0.25`, for a 25Δ put
-/// pass `-0.25`. For non-premium-adjusted conventions a closed-form
-/// inverse exists via $\Phi^{-1}$; premium-adjusted conventions require
-/// a 1-D root solve since the delta depends on $K$ through both $d_1$
-/// and the explicit $K/F$ factor.
+/// The strike a signed delta implies (`-0.25`: 25Δ put); for a premium-adjusted call, the one past
+/// the delta's peak. NaN for a delta no strike attains; panics unless sigma, tau, forward > 0.
 pub fn strike_from_delta(
   target_delta: f64,
   forward: f64,
@@ -105,34 +104,23 @@ pub fn strike_from_delta(
     sigma > 0.0 && tau > 0.0 && forward > 0.0,
     "sigma must satisfy `sigma > 0.0 && tau > 0.0 && forward > 0.0`, got sigma = {sigma:?}, tau = {tau:?}, forward = {forward:?}"
   );
-  let sqrt_t = tau.sqrt();
-  let df = (-r_f * tau).exp();
-  let sign = match option_type {
-    OptionType::Call => 1.0,
-    OptionType::Put => -1.0,
+  let df = match convention {
+    FxDeltaConvention::Spot | FxDeltaConvention::SpotPremiumAdjusted => (-r_f * tau).exp(),
+    FxDeltaConvention::Forward | FxDeltaConvention::ForwardPremiumAdjusted => 1.0,
   };
+  let unadjusted = unadjusted_strike(target_delta / df, forward, sigma, tau, option_type);
   match convention {
-    FxDeltaConvention::Spot => {
-      // df·sign·Φ(sign·d1) = target_delta  ⇒  d1 = sign·Φ⁻¹(|target|/df).
-      let phi_arg = (target_delta / df / sign).clamp(1e-12, 1.0 - 1e-12);
-      let d1 = sign * ndtri(phi_arg);
-      forward * (-d1 * sigma * sqrt_t + 0.5 * sigma * sigma * tau).exp()
-    }
-    FxDeltaConvention::Forward => {
-      let phi_arg = (target_delta / sign).clamp(1e-12, 1.0 - 1e-12);
-      let d1 = sign * ndtri(phi_arg);
-      forward * (-d1 * sigma * sqrt_t + 0.5 * sigma * sigma * tau).exp()
-    }
+    FxDeltaConvention::Spot | FxDeltaConvention::Forward => unadjusted,
     FxDeltaConvention::SpotPremiumAdjusted | FxDeltaConvention::ForwardPremiumAdjusted => {
-      premium_adjusted_strike(
-        target_delta,
-        forward,
-        sigma,
-        tau,
-        r_f,
-        option_type,
-        convention,
-      )
+      // A call quote means the root past the delta's peak, below the unadjusted strike; the put
+      // delta is monotonic below F. A negligible `t` leaves the relative `6 macheps K`.
+      // Reiswich & Wystup (2010), "FX Volatility Smile Construction", CPQF Working Paper 20, §1.5.
+      let (lo, hi) = match option_type {
+        OptionType::Call => (peak_strike(forward, sigma * tau.sqrt()), unadjusted),
+        OptionType::Put => (forward * 1e-4, forward),
+      };
+      let gap = |k: f64| delta(k, forward, sigma, tau, r_f, option_type, convention) - target_delta;
+      brent::zero(lo, hi, f64::MIN_POSITIVE, gap).unwrap_or(f64::NAN)
     }
   }
 }
@@ -148,23 +136,33 @@ pub fn atm_strike(forward: f64, sigma: f64, tau: f64, convention: AtmConvention)
   }
 }
 
-fn premium_adjusted_strike(
-  target_delta: f64,
+/// The strike whose forward delta is `forward_delta`; NaN outside the open range the delta spans.
+fn unadjusted_strike(
+  forward_delta: f64,
   forward: f64,
   sigma: f64,
   tau: f64,
-  r_f: f64,
   option_type: OptionType,
-  convention: FxDeltaConvention,
 ) -> f64 {
-  // The call delta rises, then falls to 0: a quote means its larger, OTM strike, sought above F;
-  // the put delta is monotonic below F. A negligible `t` leaves the relative `6 macheps K`.
-  let (lo, hi) = match option_type {
-    OptionType::Call => (forward, forward * 1e4),
-    OptionType::Put => (forward * 1e-4, forward),
+  let sign = match option_type {
+    OptionType::Call => 1.0,
+    OptionType::Put => -1.0,
   };
-  let gap = |k: f64| delta(k, forward, sigma, tau, r_f, option_type, convention) - target_delta;
-  brent::zero(lo, hi, f64::MIN_POSITIVE, gap).unwrap_or(f64::NAN)
+  // sign·Φ(sign·d1) = forward_delta  ⇒  d1 = sign·Φ⁻¹(forward_delta / sign).
+  let p = forward_delta / sign;
+  if !(p > 0.0 && p < 1.0) {
+    return f64::NAN;
+  }
+  let d1 = sign * ndtri(p);
+  forward * (-d1 * sigma * tau.sqrt() + 0.5 * sigma * sigma * tau).exp()
+}
+
+/// Where the premium-adjusted call delta peaks: `d₂` solves `s·Φ(d₂) = φ(d₂)`, `s = σ√τ`.
+fn peak_strike(forward: f64, s: f64) -> f64 {
+  // Mills' ratio puts the root above −s; it lies below the d where 2φ(d) = s, as Φ(d) > ½ there.
+  let hi = (2.0 * (FRAC_2_PI.sqrt() / s).ln()).max_or_nan(0.0).sqrt();
+  let d2 = brent::zero(-s, hi, f64::MIN_POSITIVE, |d| s * norm_cdf(d) - norm_pdf(d));
+  d2.map_or(f64::NAN, |d2| forward * (-s * d2 - 0.5 * s * s).exp())
 }
 
 #[cfg(test)]
@@ -298,7 +296,8 @@ mod tests {
 
   #[test]
   fn a_premium_adjusted_delta_no_strike_reaches_is_nan() {
-    for target in [f64::NAN, 0.6] {
+    // The delta peaks at 0.838660, at 0.9609 F.
+    for target in [f64::NAN, 0.9] {
       let k = strike_from_delta(
         target,
         F,
@@ -309,6 +308,55 @@ mod tests {
         FxDeltaConvention::SpotPremiumAdjusted,
       );
       assert!(k.is_nan(), "target {target} gave strike {k}");
+    }
+  }
+
+  #[test]
+  fn premium_adjusted_strikes_land_on_mpmaths_roots() {
+    // A solver that stops on the delta's residual misses the flat 5Δ call by 9e-12; the 60Δ call's
+    // root past the delta's peak, at 0.9609 F, lies below F.
+    let cases = [
+      (0.05, 0.8, 2.0, OptionType::Call, 10.228_143_116_720_913),
+      (-0.25, 0.8, 2.0, OptionType::Put, 0.575_571_943_028_457),
+      (0.6, SIGMA, TAU, OptionType::Call, 1.073_622_697_637_674_2),
+    ];
+    for (target, sigma, tau, option_type, exact) in cases {
+      let convention = FxDeltaConvention::SpotPremiumAdjusted;
+      let k = strike_from_delta(target, F, sigma, tau, R_F, option_type, convention);
+      assert!((k - exact).abs() <= 2e-15 * exact, "{k} vs {exact}");
+    }
+  }
+
+  #[test]
+  fn a_premium_adjusted_call_takes_the_otm_root_past_a_peak_above_the_forward() {
+    let strike = |target| {
+      let convention = FxDeltaConvention::ForwardPremiumAdjusted;
+      strike_from_delta(target, F, 1.0, 2.0, R_F, OptionType::Call, convention)
+    };
+    // σ√τ = √2: 0.239750 at F, a peak of 0.241938 at 1.2414 F. At mpmath's root of 0.24,
+    // |K Δ′/Δ| = 0.08 turns the delta's few-ulp rounding into up to 1e-14 of the strike.
+    let (k, exact) = (strike(0.24), 1.670_988_634_826_725_8);
+    assert!((k - exact).abs() <= 1e-14 * exact, "{k}");
+    assert!(strike(0.242).is_nan());
+  }
+
+  #[test]
+  fn a_spot_or_forward_delta_outside_its_range_is_nan() {
+    // Forward deltas span (0, 1) and (−1, 0); spot deltas e^{−r_f τ} times those.
+    let cases = [
+      (FxDeltaConvention::Forward, OptionType::Call, 1.0),
+      (FxDeltaConvention::Forward, OptionType::Call, 0.0),
+      (FxDeltaConvention::Forward, OptionType::Call, -0.25),
+      (FxDeltaConvention::Forward, OptionType::Put, -1.2),
+      (FxDeltaConvention::Spot, OptionType::Call, 0.995),
+      (FxDeltaConvention::Spot, OptionType::Put, -0.995),
+    ];
+    for (convention, option_type, target) in cases {
+      let k = strike_from_delta(target, F, SIGMA, TAU, R_F, option_type, convention);
+      assert!(
+        k.is_nan(),
+        "{convention:?} {option_type:?} {target} gave strike {k}"
+      );
     }
   }
 

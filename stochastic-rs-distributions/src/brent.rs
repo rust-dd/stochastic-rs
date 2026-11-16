@@ -119,7 +119,7 @@ mod tests {
   }
 
   #[test]
-  fn the_bound_on_the_inverse_bracket_is_brents_worst_case() {
+  fn evaluation_bound_takes_brents_worst_case_with_an_exact_log2_ceiling() {
     let t = f64::from_bits(1);
     assert_eq!(evaluation_bound(f64::EPSILON, 1.0, t), 105 * 105 - 2);
     assert_eq!(evaluation_bound(0.0, 2.0, 1.0), 2 * 2 - 2);
