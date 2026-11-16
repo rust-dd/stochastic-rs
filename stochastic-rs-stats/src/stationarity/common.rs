@@ -210,7 +210,7 @@ pub fn bic_from_sse(sse: f64, nobs: usize, k: usize) -> f64 {
 }
 
 /// The lag `lag_selection` takes from `0..=max_lags`, every candidate fitted on the rows of
-/// `max_lags` so that their criteria compare; `Err` on a singular fit or a NaN criterion.
+/// `max_lags` so that their criteria compare; `Err` on a singular fit or a NaN criterion or `t`.
 pub fn choose_lag_for_adf(
   y: &[f64],
   trend: Trend,
@@ -234,8 +234,7 @@ pub fn choose_lag_for_adf(
       LagSelection::Aic => criteria.push(aic_from_sse(fit.sse, fit.nobs, fit.k)),
       LagSelection::Bic => criteria.push(bic_from_sse(fit.sse, fit.nobs, fit.k)),
       _ => {
-        let (beta, se) = (fit.beta[columns - 1], fit.std_err[columns - 1]);
-        if lag > 0 && se > 0.0 && (beta / se).abs() >= 1.644_853_626_951_472_2 {
+        if lag > 0 && t_is_significant(fit.beta[columns - 1], fit.std_err[columns - 1])? {
           significant = lag;
         }
       }
@@ -245,6 +244,17 @@ pub fn choose_lag_for_adf(
     return Ok(significant);
   }
   least_criterion(&criteria)
+}
+
+/// Whether `|beta / se|` reaches the 10 % two-sided normal point; `Err` on a NaN `t`.
+fn t_is_significant(beta: f64, se: f64) -> Result<bool, StatsError> {
+  let t = (beta / se).abs();
+  if t.is_nan() {
+    return Err(StatsError::Numerical {
+      stage: "lag selection",
+    });
+  }
+  Ok(se > 0.0 && t >= 1.644_853_626_951_472_2)
 }
 
 /// The index of the smallest criterion, ties to the smaller lag; a NaN leaves the candidates with
@@ -300,19 +310,19 @@ pub fn newey_west_long_run_variance(u: &[f64], lags: usize) -> Result<f64, Stats
   Ok(lr_var)
 }
 
-/// An exact fit leaves residual variances near `ε² ≈ 5e-32` of the series' own; residuals spread
-/// below `1e-12` of the series' keep too few digits above rounding to carry a statistic.
+/// An exact fit leaves a residual mean square near `ε² ≈ 5e-32` of the series' own variance; one
+/// below this fraction is refused, as is a series whose variance an explosive tail dominates.
 const EXACT_FIT: f64 = 1e-24;
 
 /// `y` less its mean: a fit with a constant is the same, and keeps every digit of a variation that
-/// is small against the level, which is why arch's `PhillipsPerron` centres its regression.
+/// is small against the level, as arch's `PhillipsPerron` does; scale `y` first, the sum overflows.
 pub fn centred(y: &[f64]) -> Vec<f64> {
   let mean = y.iter().sum::<f64>() / y.len() as f64;
   y.iter().map(|v| v - mean).collect()
 }
 
-/// `y` times the power of two nearest the inverse of its spread, an exact scaling that leaves a
-/// scale-free statistic as it is and puts the series on the scale of the trend terms beside it.
+/// `y` times the power of two nearest the inverse of its largest magnitude, an exact scaling that
+/// leaves a scale-free statistic as it is and puts it on the scale of the trend terms beside it.
 pub fn unit_scaled(mut y: Vec<f64>) -> Vec<f64> {
   let spread = f64::max_or_nan_fold(y.iter().map(|v| v.abs()));
   let unit = 2f64.powi(-(spread.log2().round() as i32).clamp(-1022, 1022));
@@ -322,8 +332,8 @@ pub fn unit_scaled(mut y: Vec<f64>) -> Vec<f64> {
   y
 }
 
-/// `DegenerateData("zero residual variance")` when `residuals`, of a fit to `y`, vary by less than
-/// `EXACT_FIT` of `y` itself; both are scaled by `y`'s spread, so neither under- or overflows.
+/// `DegenerateData("zero residual variance")` when the mean square of `residuals`, of a fit to `y`,
+/// is below `EXACT_FIT` of `y`'s variance; both are scaled by `y`'s largest deviation, so none overflows.
 pub fn reject_exact_fit(y: &[f64], residuals: &[f64]) -> Result<(), StatsError> {
   let mean = y.iter().sum::<f64>() / y.len() as f64;
   let spread = f64::max_or_nan_fold(y.iter().map(|v| (v - mean).abs()));
@@ -379,6 +389,7 @@ pub fn fit_ar(y: &[f64], lags: usize) -> Result<(Vec<f64>, Vec<f64>, f64), Stats
 mod tests {
   use super::least_criterion;
   use super::newey_west_long_run_variance;
+  use super::t_is_significant;
   use crate::StatsError;
 
   /// Ties go to the smaller lag, an exact fit's `−∞` wins, and a NaN leaves no order to choose by.
@@ -396,6 +407,19 @@ mod tests {
         stage: "lag selection"
       })
     );
+  }
+
+  /// A NaN `t` has no side of the threshold, so the chooser refuses it as it does a NaN criterion.
+  #[test]
+  fn a_nan_t_statistic_is_refused_where_a_finite_one_is_compared() {
+    let refused = Err(StatsError::Numerical {
+      stage: "lag selection",
+    });
+    assert_eq!(t_is_significant(2.0, 1.0), Ok(true));
+    assert_eq!(t_is_significant(-1.0, 1.0), Ok(false));
+    assert_eq!(t_is_significant(1.0, f64::NAN), refused);
+    assert_eq!(t_is_significant(f64::NAN, 1.0), refused);
+    assert_eq!(t_is_significant(0.0, 0.0), refused);
   }
 
   /// The residuals of an exact fit are all zero, so they carry no long-run variance.

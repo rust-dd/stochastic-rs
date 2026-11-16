@@ -168,32 +168,83 @@ fn leybourne_mccabe_keeps_its_statistic_and_p_value_under_rescaling() {
   }
 }
 
+/// KPSS is homogeneous in the series and scales it by a power of two, so no scale is out of range.
 #[test]
-fn kpss_answers_a_long_run_variance_that_overflows_with_numerical() {
-  let y = series(7).mapv(|v| v * 1e200);
-  assert_eq!(
-    kpss_test(y.view(), KpssConfig::default()).unwrap_err(),
-    StatsError::Numerical {
-      stage: "long-run variance"
-    }
-  );
+fn kpss_keeps_its_statistic_from_1e_minus_300_to_1e300() {
+  let scales = [
+    1e-300, 1e-200, 1e-162, 1e-160, 1e-156, 1e-150, 1e150, 1e154, 1e200, 1e300,
+  ];
+  for trend in [Trend::Constant, Trend::ConstantTrend] {
+    let cfg = KpssConfig {
+      trend,
+      ..KpssConfig::default()
+    };
+    assert_rescaled(
+      &format!("KPSS {trend:?}"),
+      |y| kpss_test(y.view(), cfg).unwrap().statistic,
+      &scales,
+    );
+  }
 }
 
-/// At these scales the squared partial sums overflow `η` while the long-run variance stays finite.
+/// A mean of a series this large overflows unless the series is scaled first.
 #[test]
-fn kpss_answers_a_statistic_that_overflows_with_numerical() {
+fn a_finite_series_near_the_largest_double_is_centred_after_it_is_scaled() {
+  let scale = 1e306;
   for trend in [Trend::Constant, Trend::ConstantTrend] {
-    for c in [1e153, 1e154] {
-      let cfg = KpssConfig {
-        trend,
-        ..KpssConfig::default()
-      };
-      assert_eq!(
-        kpss_test(series(7).mapv(|v| v * c).view(), cfg).unwrap_err(),
-        StatsError::Numerical { stage: "statistic" },
-        "{trend:?}, c = {c:e}"
+    let pp = PhillipsPerronConfig {
+      trend,
+      ..PhillipsPerronConfig::default()
+    };
+    let kpss = KpssConfig {
+      trend,
+      ..KpssConfig::default()
+    };
+    let shifted = |f: &dyn Fn(&Array1<f64>) -> f64| {
+      let unit = f(&series(7).mapv(|v| v + 5.0));
+      let big = f(&series(7).mapv(|v| (v + 5.0) * scale));
+      assert!(
+        (big - unit).abs() <= 1e-9 * unit.abs(),
+        "{trend:?}: {big} at 1e306 against {unit}"
       );
+    };
+    shifted(&|y| phillips_perron_test(y.view(), pp).unwrap().statistic);
+    shifted(&|y| kpss_test(y.view(), kpss).unwrap().statistic);
+  }
+}
+
+/// A lagged level that is a constant, or a line, leaves no design whatever the last point is.
+#[test]
+fn a_flat_or_linear_lagged_level_is_degenerate_data_whatever_the_last_point() {
+  let flat_then = |level: f64, n: usize, last: f64| {
+    Array1::from_iter((0..n).map(|t| if t + 1 == n { last } else { level }))
+  };
+  let line_then = Array1::from_iter((0..400).map(|t| {
+    if t == 399 {
+      -2.0
+    } else {
+      3.0 + 0.37 * t as f64
     }
+  }));
+  let pp = |trend| PhillipsPerronConfig {
+    trend,
+    ..PhillipsPerronConfig::default()
+  };
+  let zero = StatsError::DegenerateData("zero residual variance");
+  for (what, y, trend) in [
+    (
+      "399 × 0.1 then 0.3",
+      flat_then(0.1, 400, 0.3),
+      Trend::Constant,
+    ),
+    ("3 + 0.37 t then −2", line_then, Trend::ConstantTrend),
+    ("29 × 5 then 7", flat_then(5.0, 30, 7.0), Trend::Constant),
+  ] {
+    assert_eq!(
+      phillips_perron_test(y.view(), pp(trend)).unwrap_err(),
+      zero,
+      "{what}, {trend:?}"
+    );
   }
 }
 

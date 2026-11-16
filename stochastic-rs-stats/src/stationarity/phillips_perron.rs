@@ -112,11 +112,13 @@ pub fn phillips_perron_test(
   reject_constant(&y, "constant series")?;
   let y = unit_scaled(match cfg.trend {
     Trend::None => y.into_owned(),
-    Trend::Constant | Trend::ConstantTrend => centred(&y),
+    Trend::Constant | Trend::ConstantTrend => centred(&unit_scaled(y.into_owned())),
   });
-  // A line makes the lagged level a combination of the trend terms, which leaves no design to fit.
-  if cfg.trend == Trend::ConstantTrend {
-    reject_exact_fit(&y, &regress_on_deterministics(&y, true)?.residuals)?;
+  // A lagged level that is a constant, or a line under a trend, leaves the regression no design.
+  if cfg.trend != Trend::None {
+    let lagged = &y[..y.len() - 1];
+    let on_terms = regress_on_deterministics(lagged, cfg.trend == Trend::ConstantTrend)?;
+    reject_exact_fit(&y, &on_terms.residuals)?;
   }
 
   let fit = fit_adf(&y, 0, cfg.trend)?;

@@ -158,7 +158,7 @@ impl GaussianHmm {
   }
 
   /// Forward log-likelihood, summed in log space; `0.0` for an empty series and NaN on a non-finite
-  /// observation; panics as [`Self::new`] does on a struct literal.
+  /// observation or an overflowing log density; panics as [`Self::new`] does on a struct literal.
   pub fn log_likelihood(&self, observations: ArrayView1<f64>) -> f64 {
     self.assert_parameters();
     if observations.is_empty() {
