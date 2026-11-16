@@ -180,8 +180,11 @@ pub fn fit_diffusion_qmle<T: FloatExt>(
   })
 }
 
-/// Closed-form OU / Vasicek MLE through the AR(1) $X_{t+\Delta} = \theta(1-\beta) + \beta X_t +
-/// \varepsilon_t$, $\beta = e^{-\kappa\Delta}$; `Err` and panics as [`fit_diffusion_qmle`].
+/// Closed-form OU / Vasicek MLE through the AR(1) below, $\beta = e^{-\kappa\Delta}$; `Err` and
+/// panics as [`fit_diffusion_qmle`], with the constant check on the regressor `x[..n - 1]`.
+/// $$
+/// X_{t+\Delta} = \theta(1-\beta) + \beta X_t + \varepsilon_t
+/// $$
 pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit, StatsError> {
   assert_dt(dt);
   let x = series

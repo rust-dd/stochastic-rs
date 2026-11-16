@@ -55,8 +55,8 @@ pub struct BayesianDiffusionFit {
   pub acceptance_rate: f64,
 }
 
-/// Metropolis posterior of `(ln κ, ln θ, ln σ)`, steps `proposal_scale`; `Err` and panics as
-/// [`crate::qmle::fit_diffusion_qmle`], `Err` at a non-finite start, panics if `n_samples = 0`.
+/// Metropolis posterior of `(ln κ, ln θ, ln σ)` from the prior means, `Err` if it is not finite
+/// there; `Err` and panics as [`crate::qmle::fit_diffusion_qmle`], and panics if `n_samples = 0`.
 pub fn fit_diffusion_bayesian<T: FloatExt>(
   series: ArrayView1<T>,
   dt: f64,

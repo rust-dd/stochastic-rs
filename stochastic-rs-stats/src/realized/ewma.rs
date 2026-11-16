@@ -67,7 +67,7 @@ pub fn ewma_variance<T: FloatExt>(
   })
 }
 
-/// [`ewma_variance`] at the RiskMetrics daily decay $\lambda = 0.94$; `Err` as its.
+/// [`ewma_variance`] at the RiskMetrics daily decay $\lambda = 0.94$; `Err` as [`ewma_variance`].
 pub fn riskmetrics_variance<T: FloatExt>(returns: ArrayView1<T>) -> Result<EwmaResult, StatsError> {
   ewma_variance(returns, RISKMETRICS_DAILY_LAMBDA)
 }

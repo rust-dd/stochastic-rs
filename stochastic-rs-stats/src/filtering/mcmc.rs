@@ -36,8 +36,8 @@ pub struct MhResult {
   pub log_targets: Array1<f64>,
 }
 
-/// `n_samples` random-walk Metropolis draws after `burn_in` of `log_target`, which may be `-∞` off
-/// its support, with steps `proposal_scale`; `Err` at a non-finite start, panics on bad config.
+/// `n_samples` random-walk Metropolis draws after `burn_in` of `log_target` (`-∞` off its support),
+/// steps `proposal_scale`; `Err` unless `log_target(initial)` is finite, panics on bad config.
 pub fn random_walk_metropolis<F>(
   initial: ArrayView1<f64>,
   log_target: F,
