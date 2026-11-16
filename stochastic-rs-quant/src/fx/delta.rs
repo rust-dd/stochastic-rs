@@ -73,13 +73,14 @@ pub fn delta(
   let d1 = ((forward / strike).ln() + 0.5 * sigma * sigma * tau) / (sigma * sqrt_t);
   let d2 = d1 - sigma * sqrt_t;
   let df = (-r_f * tau).exp();
+  // A put's −Φ(−d) keeps its digits in the tail, where Φ(d) − 1 cancels.
   let phi_d1 = match option_type {
     OptionType::Call => norm_cdf(d1),
-    OptionType::Put => norm_cdf(d1) - 1.0,
+    OptionType::Put => -norm_cdf(-d1),
   };
   let phi_d2 = match option_type {
     OptionType::Call => norm_cdf(d2),
-    OptionType::Put => norm_cdf(d2) - 1.0,
+    OptionType::Put => -norm_cdf(-d2),
   };
   match convention {
     FxDeltaConvention::Spot => df * phi_d1,
@@ -331,6 +332,39 @@ mod tests {
   }
 
   #[test]
+  fn a_put_delta_in_its_tail_keeps_its_digits() {
+    // mpmath's 5e-12 deltas, where Φ(d) − 1 kept 3e-6 of them; d ≈ 6.8 rounds them by 2εd² ≈ 1e-14.
+    let cases = [
+      (FxDeltaConvention::Spot, -5.331_976_556_076_078e-12),
+      (FxDeltaConvention::Forward, -5.385_563_811_353_51e-12),
+      (
+        FxDeltaConvention::SpotPremiumAdjusted,
+        -5.385_807_032_679_407_4e-12,
+      ),
+      (
+        FxDeltaConvention::ForwardPremiumAdjusted,
+        -5.439_935_293_240_923e-12,
+      ),
+    ];
+    for (convention, exact) in cases {
+      let d = delta(0.682, F, SIGMA, TAU, R_F, OptionType::Put, convention);
+      assert!(
+        (d - exact).abs() <= 3e-14 * exact.abs(),
+        "{convention:?}: {d} vs {exact}"
+      );
+    }
+  }
+
+  #[test]
+  fn a_put_strike_for_a_delta_of_1e_12_lands_on_mpmaths_root() {
+    // Φ(d₂) − 1 resolved this strike to 4e-7; now Brent's 4εK and 1e-14 / |KΔ′/Δ| (101) bound it.
+    let convention = FxDeltaConvention::SpotPremiumAdjusted;
+    let k = strike_from_delta(-1e-12, F, SIGMA, TAU, R_F, OptionType::Put, convention);
+    let exact = 0.670_588_058_877_767;
+    assert!((k - exact).abs() <= 6e-16 * exact, "{k}");
+  }
+
+  #[test]
   fn a_premium_adjusted_put_past_the_old_bracket_lands_on_mpmaths_root() {
     // Above F, past |Δ| = e^{−r_f τ} where no unadjusted strike exists, and below 1e-4 F.
     let (spot, fwd) = (
@@ -338,10 +372,10 @@ mod tests {
       FxDeltaConvention::ForwardPremiumAdjusted,
     );
     let cases = [
-      (spot, -0.5, 0.05, 2.0, 0.05, 1.106_878_827_973_364_6),
+      (spot, -0.5, 0.05, 2.0, 0.05, 1.106_878_827_973_364_8),
       (fwd, -0.6, SIGMA, TAU, R_F, 1.115_399_232_640_695_6),
-      (spot, -0.95, 0.05, 2.0, 0.05, 1.226_156_765_759_724_3),
-      (fwd, -1.2, SIGMA, TAU, R_F, 1.325_057_580_390_09),
+      (spot, -0.95, 0.05, 2.0, 0.05, 1.226_156_765_759_724_5),
+      (fwd, -1.2, SIGMA, TAU, R_F, 1.325_057_580_390_090_1),
       (fwd, -1e-5, 2.0, 4.0, R_F, 3.846_795_694_774_183e-5),
     ];
     for (convention, target, sigma, tau, r_f, exact) in cases {
