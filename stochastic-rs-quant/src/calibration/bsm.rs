@@ -83,6 +83,7 @@ pub struct BsmCalibrator {
   pub start: BsmParams,
   pub options: CalibrationOptions,
   history: Vec<CalibrationHistory<BsmParams>>,
+  pending: Option<CalibrationHistory<BsmParams>>,
 }
 
 impl BsmCalibrator {
@@ -97,6 +98,7 @@ impl BsmCalibrator {
       start: BsmParams { sigma: 0.2 },
       options: CalibrationOptions::default(),
       history: Vec::new(),
+      pending: None,
     }
   }
 
@@ -132,8 +134,12 @@ impl crate::traits::Calibrator for BsmCalibrator {
     validate_quotes(&self.quotes)?;
     let start = initial.unwrap_or(self.start);
     check_finite_start(&[("sigma", start.sigma)])?;
-    let mut problem = self.clone();
-    problem.start = start.projected();
+    let problem = Self {
+      start: start.projected(),
+      history: Vec::new(),
+      pending: None,
+      ..self.clone()
+    };
     let (mut fitted, report) = minimize(
       problem,
       LmOptions {
@@ -211,8 +217,9 @@ impl LeastSquaresProblem for BsmCalibrator {
         .collect::<Vec<_>>();
       let loss =
         CalibrationLossScore::compute_selected(&market, &prices, self.options.loss_metrics);
-      let entry = CalibrationHistory::new(self.history.len(), params, residuals.clone(), loss);
-      self.history.push(entry);
+      // A trail reads market − model, the negation of this fit's residual.
+      let entry = CalibrationHistory::new(self.history.len(), params, -&residuals, loss);
+      self.pending = Some(entry);
     }
     Some(residuals)
   }
@@ -235,6 +242,10 @@ impl LeastSquaresProblem for BsmCalibrator {
     }
 
     Some(J)
+  }
+
+  fn accept(&mut self) {
+    self.history.extend(self.pending.take());
   }
 }
 

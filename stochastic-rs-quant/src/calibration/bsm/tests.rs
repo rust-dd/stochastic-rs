@@ -78,22 +78,92 @@ fn the_dividend_yield_sets_the_carry() {
   );
 }
 
+/// Each entry is an accepted step, so the vega-weighted objective falls along the trail to the fit.
 #[test]
-fn calls_and_puts_fit_together_and_the_trail_is_recorded() {
+fn calls_and_puts_fit_together_and_the_trail_records_market_minus_model_over_vega() {
   let cells = [
     (90.0, 0.5, OptionType::Put),
     (100.0, 0.5, OptionType::Call),
     (110.0, 1.0, OptionType::Call),
     (95.0, 1.0, OptionType::Put),
   ];
-  let fit = BsmCalibrator::new(100.0, 0.03, 0.0, quotes(TRUE_SIGMA, 0.0, &cells))
+  let quotes = quotes(TRUE_SIGMA, 0.0, &cells);
+  let fit = BsmCalibrator::new(100.0, 0.03, 0.0, quotes.clone())
     .with_options(CalibrationOptions::default().with_record_history(true))
     .calibrate(None)
     .unwrap();
   assert!((fit.params.sigma - TRUE_SIGMA).abs() < 1e-10);
   assert_eq!(fit.history[0].iteration, 0);
-  assert_eq!(fit.history[0].params, BsmParams { sigma: 0.2 });
-  assert!(fit.history.len() > 1);
+  assert_eq!(
+    fit.history.last().map(|entry| entry.params),
+    Some(fit.params)
+  );
+  let objective = |entry: &CalibrationHistory<BsmParams>| entry.residuals.dot(&entry.residuals);
+  assert!(
+    fit
+      .history
+      .windows(2)
+      .all(|pair| objective(&pair[1]) < objective(&pair[0]))
+  );
+  for entry in &fit.history {
+    let model = BsmPricer::new(entry.params.sigma, BsmCoc::Merton1973);
+    for (quote, residual) in quotes.iter().zip(&entry.residuals) {
+      let (k, tau) = (quote.strike, quote.tau);
+      let gap = quote.price - model.price_option(100.0, k, 0.03, 0.0, tau, quote.option_type);
+      let scaled = residual * model.vega(100.0, k, 0.03, 0.0, tau);
+      assert!((scaled - gap).abs() < 1e-12, "{scaled} against {gap}");
+    }
+  }
+}
+
+#[test]
+fn a_trail_filled_through_the_hidden_problem_is_not_inherited() {
+  let calibrator =
+    synthetic(0.2).with_options(CalibrationOptions::default().with_record_history(true));
+  let clean = calibrator.calibrate(None).unwrap();
+  let mut used = calibrator.clone();
+  for _ in 0..2 {
+    LeastSquaresProblem::residuals(&mut used);
+    LeastSquaresProblem::accept(&mut used);
+  }
+  let fit = used.calibrate(None).unwrap();
+  assert_eq!(fit.history.len(), clean.history.len());
+  assert!(
+    fit
+      .history
+      .iter()
+      .zip(&clean.history)
+      .all(|(a, b)| a.params == b.params)
+  );
+}
+
+/// basin counts a rejected trial as an iteration and stops a capped fit before its next trial, so
+/// a capped fit whose every step is accepted has one entry per iteration.
+#[test]
+fn the_trail_has_one_entry_per_iteration() {
+  let strikes = [80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0];
+  let calibrator = BsmCalibrator::new(
+    100.0,
+    0.03,
+    0.0,
+    quotes(0.2, 0.0, &strikes.map(|k| (k, 1.0, OptionType::Call))),
+  );
+  for (start, cap) in [(0.1, 3), (0.5, 2), (0.35, 1)] {
+    let options = CalibrationOptions::default()
+      .with_record_history(true)
+      .with_max_iterations(cap);
+    let fit = calibrator
+      .clone()
+      .with_options(options)
+      .calibrate(Some(BsmParams { sigma: start }))
+      .unwrap();
+    assert_eq!(fit.message.as_deref(), Some("evaluation budget exhausted"));
+    assert_eq!(
+      (fit.history.len(), fit.iterations),
+      (cap, Some(cap)),
+      "start {start}"
+    );
+  }
 }
 
 /// The box on the write path, and the number it prevents: a negative `sigma` prices a finite,

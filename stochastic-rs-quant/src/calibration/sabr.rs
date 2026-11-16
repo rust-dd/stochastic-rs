@@ -157,6 +157,7 @@ impl crate::traits::Calibrator for SabrCalibrator {
       params: start.unwrap_or(DEFAULT_START).projected(),
       regularization: self.options.regularization_for(3)?.map(optimiser_order),
       history: Vec::new(),
+      pending: None,
     };
     let (problem, report) = minimize(
       problem,
@@ -194,6 +195,7 @@ struct SabrProblem<'a> {
   params: SabrParams,
   regularization: Option<Regularization>,
   history: Vec<CalibrationHistory<SabrParams>>,
+  pending: Option<CalibrationHistory<SabrParams>>,
 }
 
 impl SabrProblem<'_> {
@@ -273,7 +275,7 @@ impl LeastSquaresProblem for SabrProblem<'_> {
     if options.record_history {
       let loss = CalibrationLossScore::compute_selected(&self.market, &model, options.loss_metrics);
       let entry = CalibrationHistory::new(self.history.len(), self.params, residuals.clone(), loss);
-      self.history.push(entry);
+      self.pending = Some(entry);
     }
     let p = self.params;
     match &self.regularization {
@@ -290,6 +292,10 @@ impl LeastSquaresProblem for SabrProblem<'_> {
       Some(reg) if reg.is_active() => Some(reg.augment_jacobian(jacobian, reg.jacobian_rows())),
       _ => Some(jacobian),
     }
+  }
+
+  fn accept(&mut self) {
+    self.history.extend(self.pending.take());
   }
 }
 

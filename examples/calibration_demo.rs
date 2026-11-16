@@ -138,7 +138,7 @@ fn heston_demo() {
     p.v0, p.kappa, p.theta, p.sigma, p.rho
   );
   println!(
-    "  RMSE = {:.4e}, converged = {}, {} residual evaluations recorded",
+    "  RMSE = {:.4e}, converged = {}, {} accepted iterates recorded",
     res.rmse(),
     res.converged(),
     res.history().len()

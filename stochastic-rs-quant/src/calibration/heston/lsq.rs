@@ -38,9 +38,8 @@ impl LeastSquaresProblem for HestonCalibrator {
         &c_model.to_vec(),
         self.options.loss_metrics,
       );
-      let iteration = self.history.len();
-      self.history.push(CalibrationHistory::new(
-        iteration,
+      self.pending = Some(CalibrationHistory::new(
+        self.history.len(),
         params_eff,
         weighted_residuals.clone(),
         loss,
@@ -110,6 +109,10 @@ impl LeastSquaresProblem for HestonCalibrator {
       }
       None => jacobian,
     })
+  }
+
+  fn accept(&mut self) {
+    self.history.extend(self.pending.take());
   }
 }
 

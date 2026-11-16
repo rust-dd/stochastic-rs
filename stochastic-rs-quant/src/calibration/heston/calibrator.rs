@@ -51,6 +51,7 @@ pub struct HestonCalibrator {
   pub mle_seed: Option<HestonMleSeed>,
   /// The trail of the clone that runs the fit, moved into its result.
   pub(super) history: Vec<CalibrationHistory<HestonParams>>,
+  pub(super) pending: Option<CalibrationHistory<HestonParams>>,
   /// Weight of the row on σ's overshoot past the Feller cap; set only inside a projected fit.
   pub(super) feller_row_weight: Option<f64>,
 }
@@ -71,6 +72,7 @@ impl HestonCalibrator {
       feller_projection: false,
       mle_seed: None,
       history: Vec::new(),
+      pending: None,
       feller_row_weight: None,
     }
   }
@@ -190,8 +192,12 @@ impl crate::traits::Calibrator for HestonCalibrator {
     if let Some(reason) = start.violation() {
       return Err(QuantError::invalid("start", reason));
     }
-    let mut problem = self.clone();
-    problem.start = Some(start);
+    let mut problem = Self {
+      start: Some(start),
+      history: Vec::new(),
+      pending: None,
+      ..self.clone()
+    };
     if problem.feller_projection {
       problem.feller_row_weight = Some(problem.feller_row_weight_at_start());
     }

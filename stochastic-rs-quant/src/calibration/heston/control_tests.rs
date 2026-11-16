@@ -8,8 +8,10 @@ use super::*;
 use crate::OptionQuote;
 use crate::OptionType;
 use crate::QuantError;
+use crate::calibration::CalibrationHistory;
 use crate::calibration::CalibrationOptions;
 use crate::calibration::Regularization;
+use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::pricing::fourier::HestonFourier;
 use crate::pricing::heston::HestonParams;
 use crate::traits::Calibrator;
@@ -84,6 +86,61 @@ fn a_start_outside_the_heston_domain_is_an_error_before_the_fit() {
     field.calibrate(None),
     Err(QuantError::InvalidInput { what: "start", .. })
   ));
+}
+
+/// Each entry is an accepted step, so the weighted objective falls along the trail to the fit.
+#[test]
+fn the_trail_records_weighted_market_minus_model() {
+  let calibrator = calibrator()
+    .with_start(HestonParams {
+      v0: 0.06,
+      kappa: 2.0,
+      theta: 0.05,
+      sigma: 0.4,
+      rho: -0.3,
+    })
+    .with_residual_weights(vec![1.0, 2.0, 1.0, 0.5, 1.0, 3.0])
+    .with_options(CalibrationOptions::default().with_record_history(true));
+  let fit = calibrator.calibrate(None).unwrap();
+  assert_eq!(
+    fit.history.last().map(|entry| entry.params),
+    Some(fit.params)
+  );
+  let objective = |entry: &CalibrationHistory<HestonParams>| entry.residuals.dot(&entry.residuals);
+  assert!(
+    fit.history.len() > 1
+      && fit
+        .history
+        .windows(2)
+        .all(|pair| objective(&pair[1]) < objective(&pair[0]))
+  );
+  let weights = calibrator.residual_weights.as_ref().unwrap();
+  for entry in &fit.history {
+    let model = calibrator.compute_model_prices_for(&entry.params);
+    for (i, quote) in calibrator.quotes.iter().enumerate() {
+      let gap = (quote.price - model[i]) * weights[i];
+      let residual = entry.residuals[i];
+      assert!((residual - gap).abs() < 1e-12, "{residual} against {gap}");
+    }
+  }
+}
+
+#[test]
+fn a_trail_filled_through_the_hidden_problem_is_not_inherited() {
+  let calibrator =
+    calibrator().with_options(CalibrationOptions::default().with_record_history(true));
+  let clean = calibrator.calibrate(None).unwrap();
+  let mut used = calibrator.clone();
+  for _ in 0..2 {
+    LeastSquaresProblem::residuals(&mut used);
+    LeastSquaresProblem::accept(&mut used);
+  }
+  let fit = used.calibrate(None).unwrap();
+  assert_eq!(fit.history.len(), clean.history.len());
+  assert_eq!(
+    fit.history.first().map(|entry| entry.params),
+    clean.history.first().map(|entry| entry.params)
+  );
 }
 
 #[test]

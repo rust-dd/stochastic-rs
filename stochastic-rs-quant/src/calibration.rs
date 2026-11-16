@@ -391,6 +391,19 @@ mod optimizer_tests {
   }
 
   #[test]
+  fn a_nelder_mead_trail_records_market_minus_model() {
+    let options = super::CalibrationOptions::default().with_record_history(true);
+    let simplex = vec![vec![2.0], vec![3.0]];
+    let fit = super::nelder_mead_fit(Sphere, simplex, &options, 400, |x| {
+      (x[0], vec![1.0], vec![1.0 + x[0]])
+    });
+    assert!(fit.history.len() > 1);
+    for entry in &fit.history {
+      assert_eq!(entry.residuals[0], 1.0 - (1.0 + entry.params));
+    }
+  }
+
+  #[test]
   fn iteration_limit_is_not_reported_as_convergence() {
     let simplex = vec![vec![2.0], vec![3.0]];
 
