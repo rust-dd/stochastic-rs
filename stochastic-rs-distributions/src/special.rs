@@ -14,6 +14,7 @@ mod k_ratio;
 mod quotient;
 mod saddle;
 mod scaled;
+mod trigamma;
 mod twofold;
 
 pub use bessel::bessel_i0;
@@ -103,6 +104,7 @@ pub(crate) use scaled::Scaled;
 pub(crate) use scaled::exp_parts;
 pub(crate) use scaled::ln_parts;
 pub(crate) use scaled::two_sum_far;
+pub use trigamma::trigamma;
 pub(crate) use twofold::add_parts;
 pub(crate) use twofold::mul_parts;
 pub(crate) use twofold::sub_parts;

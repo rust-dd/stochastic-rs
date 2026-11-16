@@ -10,6 +10,25 @@ fn five_return_block_has_known_log_chi_square_moments() {
   assert!((moments.log_variance - 0.490_357_756_100_234_9).abs() < 1e-13);
 }
 
+/// Within 2 ulp of mpmath's correctly rounded `ψ(m/2) − ln(m/2)` at 50 digits, at the block sizes
+/// where the difference does not cancel.
+#[test]
+fn small_block_log_bias_holds_two_ulp_of_mpmath() {
+  for (m, want) in [
+    (1, -1.2703628454614782),
+    (2, -0.5772156649015329),
+    (3, -0.3689751341295879),
+    (4, -0.27036284546147815),
+    (5, -0.2131340912289119),
+  ] {
+    let got = log_chi_square_moments(m).log_bias;
+    assert!(
+      got.to_bits().abs_diff(f64::to_bits(want)) <= 2,
+      "log_bias({m}) = {got}, want {want}"
+    );
+  }
+}
+
 #[test]
 fn observation_validation_is_typed_and_fail_closed() {
   let config = LogRealizedVarianceQmlConfig {

@@ -126,6 +126,35 @@ fn digamma_keeps_its_accuracy_next_to_the_poles() {
   }
 }
 
+/// Within 2 ulp of mpmath's correctly rounded value at 50 digits, through the recurrence, the
+/// series and the reflection.
+#[test]
+fn trigamma_holds_two_ulp_of_mpmath() {
+  for (x, want) in [
+    (0.5, 4.934802200544679),
+    (1.0, 1.6449340668482264),
+    (1.5, 0.9348022005446793),
+    (2.5, 0.49035775610023486),
+    (6.0, 0.18132295573711533),
+    (11.5, 0.09084666127454623),
+    (12.5, 0.08328522460157837),
+    (100.0, 0.010050166663333571),
+    (1e-3, 1000001.6425331958),
+    (-0.5, 8.934802200544679),
+    (-2.5, 9.539246644989124),
+    (1e6, 1.0000005000001667e-6),
+  ] {
+    let got = trigamma(x);
+    assert!(
+      got.to_bits().abs_diff(f64::to_bits(want)) <= 2,
+      "trigamma({x}) = {got}, want {want}"
+    );
+  }
+  for pole in [0.0, -0.0, -1.0, -7.0] {
+    assert!(trigamma(pole).is_nan(), "trigamma({pole}) must be NaN");
+  }
+}
+
 #[test]
 fn erf_known_values() {
   assert!(close(erf(0.0), 0.0, 1e-9));
