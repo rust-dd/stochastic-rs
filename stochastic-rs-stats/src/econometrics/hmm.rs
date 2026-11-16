@@ -109,14 +109,14 @@ impl GaussianHmm {
     if observations.is_empty() {
       return 0.0;
     }
-    let (_, scaling) = self.forward(observations);
+    let (_, scaling) = self.forward(&self.emissions(observations));
     scaling.iter().map(|s| s.ln()).sum()
   }
 
   /// Filtered $P(s_t = k \mid y_{1:t})$, one row per observation and none for an empty series;
   /// unlike a [`Self::viterbi`] state, no row moves with later data, so it suits decisions at `t`.
   pub fn filtered_state_probs(&self, observations: ArrayView1<f64>) -> Array2<f64> {
-    self.forward(observations).0
+    self.forward(&self.emissions(observations)).0
   }
 
   /// Advance a filtered state distribution by one observation.
@@ -203,16 +203,22 @@ impl GaussianHmm {
     path
   }
 
-  fn forward(&self, observations: ArrayView1<f64>) -> (Array2<f64>, Array1<f64>) {
-    let n = observations.len();
+  fn emissions(&self, observations: ArrayView1<f64>) -> Array2<f64> {
     let k = self.n_states();
+    Array2::from_shape_fn((observations.len(), k), |(t, s)| {
+      gauss_pdf(observations[t], self.means[s], self.stds[s])
+    })
+  }
+
+  fn forward(&self, emissions: &Array2<f64>) -> (Array2<f64>, Array1<f64>) {
+    let (n, k) = emissions.dim();
     let mut alpha = Array2::<f64>::zeros((n, k));
     let mut scaling = Array1::<f64>::zeros(n);
     if n == 0 {
       return (alpha, scaling);
     }
     for s in 0..k {
-      alpha[[0, s]] = self.initial[s] * gauss_pdf(observations[0], self.means[s], self.stds[s]);
+      alpha[[0, s]] = self.initial[s] * emissions[[0, s]];
     }
     let c0: f64 = alpha.row(0).iter().sum::<f64>().max(1e-300);
     scaling[0] = c0;
@@ -225,7 +231,7 @@ impl GaussianHmm {
         for i in 0..k {
           acc += alpha[[t - 1, i]] * self.transitions[[i, j]];
         }
-        alpha[[t, j]] = acc * gauss_pdf(observations[t], self.means[j], self.stds[j]);
+        alpha[[t, j]] = acc * emissions[[t, j]];
       }
       let ct: f64 = alpha.row(t).iter().sum::<f64>().max(1e-300);
       scaling[t] = ct;
@@ -236,9 +242,8 @@ impl GaussianHmm {
     (alpha, scaling)
   }
 
-  fn backward(&self, observations: ArrayView1<f64>, scaling: &Array1<f64>) -> Array2<f64> {
-    let n = observations.len();
-    let k = self.n_states();
+  fn backward(&self, emissions: &Array2<f64>, scaling: &Array1<f64>) -> Array2<f64> {
+    let (n, k) = emissions.dim();
     let mut beta = Array2::<f64>::zeros((n, k));
     for s in 0..k {
       beta[[n - 1, s]] = 1.0 / scaling[n - 1];
@@ -247,9 +252,7 @@ impl GaussianHmm {
       for i in 0..k {
         let mut acc = 0.0;
         for j in 0..k {
-          acc += self.transitions[[i, j]]
-            * gauss_pdf(observations[t + 1], self.means[j], self.stds[j])
-            * beta[[t + 1, j]];
+          acc += self.transitions[[i, j]] * emissions[[t + 1, j]] * beta[[t + 1, j]];
         }
         beta[[t, i]] = acc / scaling[t];
       }
@@ -282,8 +285,9 @@ impl GaussianHmm {
     let mut iter_done = 0;
     for it in 0..max_iter {
       iter_done = it + 1;
-      let (alpha, scaling) = self.forward(observations);
-      let beta = self.backward(observations, &scaling);
+      let emissions = self.emissions(observations);
+      let (alpha, scaling) = self.forward(&emissions);
+      let beta = self.backward(&emissions, &scaling);
       let ll: f64 = scaling.iter().map(|s| s.ln()).sum();
       let mut gamma = Array2::<f64>::zeros((n, k));
       for t in 0..n {
@@ -299,15 +303,13 @@ impl GaussianHmm {
         }
       }
       let mut xi_sum = Array2::<f64>::zeros((k, k));
+      let mut tmp = Array2::<f64>::zeros((k, k));
       for t in 0..(n - 1) {
         let mut z = 0.0;
-        let mut tmp = Array2::<f64>::zeros((k, k));
         for i in 0..k {
           for j in 0..k {
-            tmp[[i, j]] = alpha[[t, i]]
-              * self.transitions[[i, j]]
-              * gauss_pdf(observations[t + 1], self.means[j], self.stds[j])
-              * beta[[t + 1, j]];
+            tmp[[i, j]] =
+              alpha[[t, i]] * self.transitions[[i, j]] * emissions[[t + 1, j]] * beta[[t + 1, j]];
             z += tmp[[i, j]];
           }
         }
