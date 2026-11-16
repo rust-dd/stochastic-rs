@@ -11,6 +11,7 @@
 //! Reference: Fukasawa, M., Takabatake, T. & Westphal, R. (2019), "Is Volatility Rough?", arXiv:1905.04852.
 
 use std::convert::Infallible;
+use std::f64::consts::PI;
 
 use basin::BoxConstraints;
 use basin::CostFunction;
@@ -66,28 +67,52 @@ impl Default for Whittle {
 }
 
 impl Whittle {
+  /// `m` intraday observations a day of `delta` years; panics unless `m >= 1` and `delta` is finite
+  /// and positive.
   #[must_use]
   pub fn new(m: usize, delta: f64) -> Self {
-    Self {
+    let whittle = Self {
       m,
       delta,
       ..Self::default()
-    }
+    };
+    whittle.assert_config();
+    whittle
   }
 
-  /// The Fukasawa–Takabatake–Westphal fit to log realized variance; `Err` below 30 points or on a
-  /// non-finite one.
+  /// The Fukasawa–Takabatake–Westphal fit to log realized variance; `Err` below 30 points, on a
+  /// non-finite one or objective; panics unless `m >= 1`, `delta > 0` is finite and `0 < psi < π`.
   pub fn fit(&self, log_rv: ArrayView1<f64>) -> Result<FukasawaFit, StatsError> {
+    self.assert_config();
     let log_rv = as_slice_or_copy(log_rv);
     validate(&log_rv, 30)?;
-    Ok(run_estimate(
+    run_estimate(
       &log_rv,
       self.m,
       self.delta,
       self.psi,
       self.k_trunc,
       self.j_max,
-    ))
+    )
+  }
+
+  /// [`Whittle::new`]'s checks and `psi`'s, which `fit` repeats for a struct literal.
+  #[track_caller]
+  pub(crate) fn assert_config(&self) {
+    let Self { m, delta, psi, .. } = *self;
+    assert!(m >= 1, "m must satisfy `m >= 1`, got m = {m:?}");
+    assert!(
+      delta.is_finite(),
+      "delta must satisfy `delta.is_finite()`, got delta = {delta:?}"
+    );
+    assert!(
+      delta > 0.0,
+      "delta must satisfy `delta > 0.0`, got delta = {delta:?}"
+    );
+    assert!(
+      psi > 0.0 && psi < PI,
+      "psi must satisfy `0.0 < psi < {PI:?}`, got psi = {psi:?}"
+    );
   }
 }
 
@@ -343,7 +368,7 @@ fn run_estimate(
   psi: f64,
   k_trunc: usize,
   j_max: usize,
-) -> FukasawaFit {
+) -> Result<FukasawaFit, StatsError> {
   let n = log_rv.len();
   let y: Vec<f64> = (1..n).map(|i| log_rv[i] - log_rv[i - 1]).collect();
   let ny = y.len();
@@ -390,13 +415,18 @@ fn run_estimate(
     best_h = h_r;
     best_v = v_r;
   }
+  if !best_nll.is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "whittle objective",
+    });
+  }
   let eta = best_v / delta.powf(best_h);
-  FukasawaFit {
+  Ok(FukasawaFit {
     hurst: best_h,
     eta,
     neg_log_lik: best_nll,
     nobs: n,
-  }
+  })
 }
 
 #[cfg(test)]

@@ -127,3 +127,84 @@ fn fit_reports_the_fukasawa_estimate_and_rejects_short_or_non_finite_data() {
     "{fit:?}"
   );
 }
+
+fn panic_text(f: impl FnOnce() + std::panic::UnwindSafe) -> String {
+  let payload =
+    std::panic::catch_unwind(f).expect_err("the call accepted an invalid configuration");
+  payload
+    .downcast_ref::<String>()
+    .cloned()
+    .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
+    .expect("a text panic payload")
+}
+
+#[test]
+fn the_configuration_panics_in_the_predicate_form() {
+  let log_rv = Array1::<f64>::linspace(-1.0, 1.0, 40);
+  let psi = |psi| Whittle {
+    psi,
+    ..Whittle::new(72, 1.0 / 250.0)
+  };
+  let psi_range = "psi must satisfy `0.0 < psi < 3.141592653589793`, got psi =";
+  let cases = [
+    (
+      Whittle {
+        m: 0,
+        ..Whittle::default()
+      },
+      "m must satisfy `m >= 1`, got m = 0".to_string(),
+    ),
+    (
+      Whittle {
+        delta: f64::NAN,
+        ..Whittle::default()
+      },
+      "delta must satisfy `delta.is_finite()`, got delta = NaN".to_string(),
+    ),
+    (
+      Whittle {
+        delta: 0.0,
+        ..Whittle::default()
+      },
+      "delta must satisfy `delta > 0.0`, got delta = 0.0".to_string(),
+    ),
+    (psi(0.0), format!("{psi_range} 0.0")),
+    (
+      psi(std::f64::consts::PI),
+      format!("{psi_range} 3.141592653589793"),
+    ),
+    (psi(f64::NAN), format!("{psi_range} NaN")),
+  ];
+  for (whittle, message) in cases {
+    let log_rv = log_rv.clone();
+    let text = panic_text(move || {
+      let _ = whittle.fit(log_rv.view());
+    });
+    assert_eq!(text, message);
+  }
+  assert_eq!(
+    panic_text(|| {
+      let _ = Whittle::new(0, 1.0 / 250.0);
+    }),
+    "m must satisfy `m >= 1`, got m = 0"
+  );
+  assert_eq!(
+    panic_text(|| {
+      let _ = Whittle::new(72, -1.0);
+    }),
+    "delta must satisfy `delta > 0.0`, got delta = -1.0"
+  );
+}
+
+#[test]
+fn a_non_finite_objective_is_a_numerical_error() {
+  let log_rv = Array1::from_iter((0..40).map(|i| if i % 2 == 0 { 1e308 } else { -1e308 }));
+  assert_eq!(
+    Whittle::new(72, 1.0 / 250.0)
+      .fit(log_rv.view())
+      .unwrap_err(),
+    StatsError::Numerical {
+      stage: "whittle objective"
+    }
+  );
+}
