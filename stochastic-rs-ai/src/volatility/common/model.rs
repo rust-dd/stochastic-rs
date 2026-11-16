@@ -226,12 +226,7 @@ impl StochVolNn {
     if forwards.iter().any(|f| !(f.is_finite() && *f > 0.0)) {
       bail!("forwards must be finite and positive");
     }
-    let mut order = (0..n_k).collect::<Vec<usize>>();
-    order.sort_by(|&a, &b| self.spec.strikes[a].total_cmp(&self.spec.strikes[b]));
-    let strikes = order
-      .iter()
-      .map(|&k| self.spec.strikes[k] * spot)
-      .collect::<Vec<f64>>();
+    let (strikes, order) = self.spec.ascending_strikes(spot);
     check_ascending("scaled strikes", &strikes)?;
     check_ascending("maturities", &self.spec.maturities)?;
     let pred = self.predict_surface(params)?;

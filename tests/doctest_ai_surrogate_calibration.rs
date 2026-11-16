@@ -6,12 +6,15 @@ use ndarray::Array2;
 use stochastic_rs::ai::Device;
 use stochastic_rs::ai::calibration::HestonSurrogateCalibrator;
 use stochastic_rs::ai::volatility::common::TrainConfig;
+use stochastic_rs::ai::volatility::grid::MATURITIES;
 use stochastic_rs::ai::volatility::heston::HestonNn;
 use stochastic_rs::ai::volatility::heston::INPUT_DIM;
 use stochastic_rs::ai::volatility::heston::OUTPUT_DIM;
 use stochastic_rs::ai::volatility::heston::PARAM_LB;
 use stochastic_rs::ai::volatility::heston::PARAM_UB;
+use stochastic_rs::ai::volatility::heston::STRIKES;
 use stochastic_rs::quant::calibration::heston::HestonParams;
+use stochastic_rs::quant::vol_surface::ImpliedVolSurface;
 use stochastic_rs::traits::CalibrationResult;
 use stochastic_rs::traits::Calibrator;
 use stochastic_rs::traits::ModelPricer;
@@ -60,12 +63,17 @@ fn calibrate_heston_on_a_surrogate() {
   };
   model.train(&params, &surfaces, &cfg).unwrap();
 
-  // 2. Calibrate to a market surface: LM on the network's exact Jacobian.
-  let market: Vec<f64> = synthetic_surface(&[0.02, -0.6, 0.4, 0.05, 3.0])
-    .iter()
-    .map(|&v| v as f64)
-    .collect();
-  let calibrator = HestonSurrogateCalibrator::new(&model, market).unwrap();
+  // 2. Calibrate to a market surface on the grid at spot 100, strikes ascending (the generator
+  //    writes the network's Heston columns, which descend): LM on the exact network Jacobian.
+  let flat = synthetic_surface(&[0.02, -0.6, 0.4, 0.05, 3.0]);
+  let n_k = STRIKES.len();
+  let ivs = Array2::from_shape_fn((MATURITIES.len(), n_k), |(t, k)| {
+    f64::from(flat[t * n_k + n_k - 1 - k])
+  });
+  let strikes = STRIKES.iter().rev().map(|k| k * 100.0).collect();
+  let forwards = vec![100.0; MATURITIES.len()];
+  let market = ImpliedVolSurface::from_iv_grid(strikes, MATURITIES.to_vec(), forwards, ivs);
+  let calibrator = HestonSurrogateCalibrator::from_surface(&model, &market, 100.0).unwrap();
   let result = calibrator.calibrate(None).unwrap();
   assert!(result.converged(), "{}", result.message().unwrap_or(""));
   assert!(result.fit.in_bounds);

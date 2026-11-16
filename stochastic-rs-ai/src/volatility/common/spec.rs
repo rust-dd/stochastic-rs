@@ -1,5 +1,7 @@
 use anyhow::Result;
 use anyhow::bail;
+#[cfg(feature = "quant")]
+use ndarray::ArrayView2;
 
 #[derive(Clone, Debug)]
 pub struct TrainConfig {
@@ -116,6 +118,69 @@ impl StochVolModelSpec {
       }
     }
     Ok(())
+  }
+
+  /// The strikes times `spot`, ascending, and the network column each one sits in: ascending cell
+  /// `(t, k)` is flat entry `t · n_k + order[k]`.
+  #[cfg(feature = "quant")]
+  pub(crate) fn ascending_strikes(&self, spot: f64) -> (Vec<f64>, Vec<usize>) {
+    let mut order = (0..self.strikes.len()).collect::<Vec<usize>>();
+    order.sort_by(|&a, &b| self.strikes[a].total_cmp(&self.strikes[b]));
+    let strikes = order.iter().map(|&k| self.strikes[k] * spot).collect();
+    (strikes, order)
+  }
+
+  /// `ivs` over the ascending `strikes` × `maturities`, in the network's flat order once both axes
+  /// are this grid at `spot`.
+  #[cfg(feature = "quant")]
+  pub(crate) fn network_order(
+    &self,
+    strikes: &[f64],
+    maturities: &[f64],
+    ivs: ArrayView2<'_, f64>,
+    spot: f64,
+  ) -> Result<Vec<f64>> {
+    if !(spot.is_finite() && spot > 0.0) {
+      bail!("spot must be finite and positive, got {spot:?}");
+    }
+    let (grid_strikes, order) = self.ascending_strikes(spot);
+    for (axis, got, want) in [
+      ("strikes", strikes, &grid_strikes[..]),
+      ("maturities", maturities, &self.maturities[..]),
+    ] {
+      if got.len() != want.len() {
+        bail!(
+          "surface {axis} has {} entries, the {} grid has {}",
+          got.len(),
+          self.model_id,
+          want.len()
+        );
+      }
+      if let Some(i) = (0..want.len()).find(|&i| {
+        let within = (got[i] - want[i]).abs() <= 1e-12 * want[i].abs();
+        !within
+      }) {
+        bail!(
+          "surface {axis}[{i}] is {:?}, the {} grid's is {:?}",
+          got[i],
+          self.model_id,
+          want[i]
+        );
+      }
+    }
+    let n_k = order.len();
+    if ivs.dim() != (maturities.len(), n_k) {
+      bail!(
+        "the surface grid is {:?}, its axes give ({}, {n_k})",
+        ivs.dim(),
+        maturities.len()
+      );
+    }
+    let mut market = vec![0.0; ivs.len()];
+    for ((t, k), &iv) in ivs.indexed_iter() {
+      market[t * n_k + order[k]] = iv;
+    }
+    Ok(market)
   }
 
   pub fn input_dim(&self) -> usize {

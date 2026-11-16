@@ -29,7 +29,9 @@ With the `quant` feature, `predict_implied_vol_surface` returns quant's `Implied
 pass the spot and one forward per maturity, and the strikes come back ascending. The grid travels
 on `StochVolModelSpec` (`strikes` as `K/S0` in the network's column order, `maturities` ascending);
 the shipped Heston set's `strikes` descend from 2 to 2/3 (indexed by `S0/K`), the Bergomi sets'
-ascend from 0.5 to 1.5.
+ascend from 0.5 to 1.5. The calibrators take such a surface back through
+`from_surface(&model, &surface, spot)`, which checks both axes against the grid and puts the
+columns in the network's order; `new(&model, market)` takes the flat vector already in that order.
 
 ## Training data
 
