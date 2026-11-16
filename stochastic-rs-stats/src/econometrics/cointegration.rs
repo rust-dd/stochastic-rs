@@ -26,6 +26,7 @@ use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
 use crate::input::reject_constant;
 use crate::input::validate_view;
+use crate::stationarity::Trend;
 use crate::stationarity::adf::AdfConfig;
 use crate::stationarity::adf::adf_test;
 use crate::stationarity::common::reject_exact_fit;
@@ -114,7 +115,13 @@ pub fn engle_granger_test(
     residuals[i] = y[i] - intercept - beta * x[i];
   }
   reject_exact_fit(y.as_slice().unwrap(), residuals.as_slice().unwrap())?;
-  let adf = adf_test(residuals.view(), AdfConfig::default())?;
+  // The residuals' ADF has no terms, as statsmodels' `coint` and arch's `engle_granger` run it,
+  // and as MacKinnon's (2010) and Phillips & Ouliaris's (1990) critical values assume.
+  let cfg = AdfConfig {
+    trend: Trend::None,
+    ..AdfConfig::default()
+  };
+  let adf = adf_test(residuals.view(), cfg)?;
   Ok(EngleGrangerTest {
     statistic: adf.statistic,
     p_value: None,
