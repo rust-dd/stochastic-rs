@@ -68,18 +68,20 @@ fn kpss_keeps_its_statistic_under_rescaling() {
 }
 
 #[test]
-fn phillips_perron_tau_keeps_its_statistic_under_rescaling() {
+fn phillips_perron_keeps_its_statistics_under_rescaling() {
   for trend in [Trend::None, Trend::Constant, Trend::ConstantTrend] {
-    let cfg = PhillipsPerronConfig {
-      trend,
-      test_type: PpTestType::Tau,
-      ..PhillipsPerronConfig::default()
-    };
-    assert_rescaled(
-      &format!("PP tau {trend:?}"),
-      |y| phillips_perron_test(y.view(), cfg).unwrap().statistic,
-      &SCALES,
-    );
+    for test_type in [PpTestType::Tau, PpTestType::Rho] {
+      let cfg = PhillipsPerronConfig {
+        trend,
+        test_type,
+        ..PhillipsPerronConfig::default()
+      };
+      assert_rescaled(
+        &format!("PP {test_type:?} {trend:?}"),
+        |y| phillips_perron_test(y.view(), cfg).unwrap().statistic,
+        &[1e-5, 1e-6, 1e-7, 1e4],
+      );
+    }
   }
 }
 
