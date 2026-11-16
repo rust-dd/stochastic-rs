@@ -217,29 +217,48 @@ fn the_initial_values_are_the_first_points() {
 }
 
 #[test]
-fn the_variance_derivative_rides_on_the_sampled_path() {
-  let make = || {
-    Heston::<f64, Euler, Deterministic>::new(
-      100.0,
-      0.04,
-      2.0,
-      0.04,
-      0.3,
-      -0.7,
-      0.05,
-      17,
-      Some(1.0),
-      HestonPow::Sqrt,
-      VarianceBoundary::Floor,
-      Deterministic::new(9),
-    )
-  };
-  let Malliavin {
-    paths, derivative, ..
-  } = make().malliavin();
-  assert_eq!(paths, make().sample());
-  assert_eq!(derivative.len(), 17);
-  assert!(derivative.iter().all(|d| d.is_finite() && *d > 0.0));
+fn the_variance_derivative_sums_its_rate_backward_along_the_sampled_variance() {
+  let (kappa, theta, dt) = (2.0_f64, 0.04, 1.0 / 16.0);
+  for (pow, sigma) in [(HestonPow::Sqrt, 0.3_f64), (HestonPow::ThreeHalves, 2.0)] {
+    let make = || {
+      Heston::<f64, Euler, Deterministic>::new(
+        100.0,
+        0.04,
+        kappa,
+        theta,
+        sigma,
+        -0.7,
+        0.05,
+        17,
+        Some(1.0),
+        pow,
+        VarianceBoundary::Floor,
+        Deterministic::new(9),
+      )
+    };
+    let Malliavin {
+      paths, derivative, ..
+    } = make().malliavin();
+    assert_eq!(paths, make().sample());
+    let v = &paths[1];
+    let (p, rate): (f64, &dyn Fn(f64) -> f64) = match pow {
+      HestonPow::Sqrt => (0.5, &|x| {
+        -kappa / 2.0 - (kappa * theta / 2.0 - sigma * sigma / 8.0) / x
+      }),
+      HestonPow::ThreeHalves => (1.5, &|x| {
+        kappa / 2.0 - 3.0 * kappa * theta / (2.0 * x) - 3.0 * sigma * sigma * x / 8.0
+      }),
+    };
+    for i in 0..17 {
+      let tail = (i..16).map(|k| rate(v[k]) * dt).sum::<f64>();
+      let expected = sigma * v[16].powf(p) * tail.exp();
+      assert!(
+        (derivative[i] - expected).abs() <= 1e-12 * expected,
+        "{pow:?}, t_{i}: {} against {expected}",
+        derivative[i]
+      );
+    }
+  }
 }
 
 /// A generic re-tag type-checks only if `qe` keeps the handle it was given.
