@@ -189,11 +189,11 @@ fn apply_window_in_place(data: &mut [f64], window: WindowFunction) -> f64 {
     *x *= w;
     sum_w2 += w * w;
   }
-  sum_w2.max(1e-12)
+  sum_w2
 }
 
-/// FFT periodogram of `signal`; `Err` below 4 points or on a non-finite one, and panics unless
-/// `sampling_rate` is finite and positive and a given `nfft >= signal.len()`.
+/// FFT periodogram of `signal`; `Err` below 4 points, on a non-finite one or an overflowing
+/// spectrum; panics unless `sampling_rate > 0` is finite and a given `nfft >= signal.len()`.
 pub fn periodogram_fft(
   signal: ArrayView1<f64>,
   cfg: PeriodogramConfig,
@@ -234,7 +234,7 @@ pub fn periodogram_fft(
   let mut frequencies = Vec::with_capacity(bins);
   let mut spectrum = Vec::with_capacity(bins);
 
-  let base_scale = (n as f64 * sum_w2).max(1e-12);
+  let base_scale = n as f64 * sum_w2;
   for k in 0..bins {
     let mut p = fft_out[k].norm_sqr() / base_scale;
 
@@ -246,8 +246,13 @@ pub fn periodogram_fft(
       p /= cfg.sampling_rate;
     }
 
+    if !p.is_finite() {
+      return Err(StatsError::Numerical {
+        stage: "periodogram",
+      });
+    }
     frequencies.push(k as f64 * resolution_hz);
-    spectrum.push(p.max(0.0));
+    spectrum.push(p);
   }
 
   Ok(PeriodogramResult {
@@ -374,9 +379,11 @@ mod tests {
   use super::SpectrumScaling;
   use super::SpectrumSearchConfig;
   use super::WindowFunction;
+  use super::apply_window_in_place;
   use super::dominant_frequency_fft;
   use super::fft_spectrum_search;
   use super::periodogram_fft;
+  use crate::StatsError;
 
   fn sine_wave(freq_hz: f64, sampling_rate: f64, n: usize, amplitude: f64, phase: f64) -> Vec<f64> {
     (0..n)
@@ -549,6 +556,32 @@ mod tests {
       has_eleven_year_peak,
       "expected a peak near 11 years, got peaks={peaks:?}"
     );
+  }
+
+  /// These finite points overflow their mean and NaN the taper: an `Err`, not a zero spectrum.
+  #[test]
+  fn a_spectrum_that_overflows_is_a_numerical_error() {
+    let x = [1e308, 1e308, 1e308, 5e307];
+    assert_eq!(
+      periodogram_fft(ArrayView1::from(&x), PeriodogramConfig::default()).unwrap_err(),
+      StatsError::Numerical {
+        stage: "periodogram"
+      }
+    );
+  }
+
+  /// The four-point minimum leaves every taper positive energy, so the scale needs no floor.
+  #[test]
+  fn every_window_keeps_positive_energy_at_the_minimum_length() {
+    for window in [
+      WindowFunction::Rectangular,
+      WindowFunction::Hann,
+      WindowFunction::Hamming,
+      WindowFunction::Blackman,
+    ] {
+      let energy = apply_window_in_place(&mut [1.0; 4], window);
+      assert!(energy > 0.79, "{window:?}: {energy}");
+    }
   }
 
   #[test]
