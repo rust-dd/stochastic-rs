@@ -31,11 +31,12 @@ pub struct UkfState {
   pub covariance: Array2<f64>,
 }
 
-/// Sigma-point parameters of [`unscented_kalman_step`], as in Wan & van der Merwe (2000); all
-/// finite, `alpha > 0` and `n + kappa > 0` (`n` the state dimension), so no weight divides by zero.
+/// Sigma-point parameters of [`unscented_kalman_step`] (Wan & van der Merwe 2000); all finite,
+/// `alpha > 0`, `n + kappa > 0` (`n` the state dimension) and `n + lambda` finite and positive.
 #[derive(Debug, Clone, Copy)]
 pub struct UkfTuning {
-  /// Spread of the sigma points around the mean.
+  /// Spread of the sigma points; `lambda = alpha^2 (n + kappa) - n` cancels `n + lambda` to 0
+  /// below about 1e-8 and overflows it above about 1e154.
   pub alpha: f64,
   /// Prior knowledge of the state's distribution; 2 is optimal for a Gaussian.
   pub beta: f64,
@@ -72,8 +73,8 @@ where
   let n = prior.mean.len();
   assert_eq!(prior.covariance.dim(), (n, n));
   assert_eq!(process_cov.dim(), (n, n));
-  assert_tuning(tuning, n);
   let lambda = alpha * alpha * (n as f64 + kappa) - n as f64;
+  assert_tuning(tuning, n, lambda);
   let scale = (n as f64 + lambda).sqrt();
 
   let chol =
@@ -202,7 +203,7 @@ where
 
 #[track_caller]
 #[inline(never)]
-fn assert_tuning(tuning: UkfTuning, n: usize) {
+fn assert_tuning(tuning: UkfTuning, n: usize, lambda: f64) {
   let UkfTuning { alpha, beta, kappa } = tuning;
   assert!(
     alpha.is_finite(),
@@ -224,6 +225,11 @@ fn assert_tuning(tuning: UkfTuning, n: usize) {
   assert!(
     spread > 0.0,
     "n + tuning.kappa must satisfy `n + tuning.kappa > 0.0`, got n + tuning.kappa = {spread:?}, n = {n}"
+  );
+  let total = n as f64 + lambda;
+  assert!(
+    total.is_finite() && total > 0.0,
+    "n + lambda must satisfy `(n + lambda).is_finite() && n + lambda > 0.0`, got n + lambda = {total:?}, lambda = {lambda:?}, n = {n}"
   );
 }
 
@@ -368,6 +374,20 @@ mod tests {
           ..default
         },
         "n + tuning.kappa must satisfy `n + tuning.kappa > 0.0`, got n + tuning.kappa = 0.0, n = 2",
+      ),
+      (
+        UkfTuning {
+          alpha: 1e-9,
+          ..default
+        },
+        "n + lambda must satisfy `(n + lambda).is_finite() && n + lambda > 0.0`, got n + lambda = 0.0, lambda = -2.0, n = 2",
+      ),
+      (
+        UkfTuning {
+          alpha: 1e155,
+          ..default
+        },
+        "n + lambda must satisfy `(n + lambda).is_finite() && n + lambda > 0.0`, got n + lambda = inf, lambda = inf, n = 2",
       ),
     ];
     for (tuning, message) in cases {
