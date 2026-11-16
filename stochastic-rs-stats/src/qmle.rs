@@ -212,10 +212,10 @@ pub(crate) fn check_start(kappa0: f64, theta0: f64, sigma0: f64) -> Result<(), S
   }
 }
 
-/// Closed-form OU / Vasicek MLE through the AR(1) below, $\beta = e^{-\kappa\Delta}$; `Err` and
-/// panics as [`fit_diffusion_qmle`], with the constant check on the regressor `x[..n - 1]`.
+/// Closed-form OU / Vasicek MLE through the AR(1) below; `Err` below 4 points, on a non-finite one,
+/// a constant `x[..n - 1]`, a slope outside `(0, 1)` or zero residuals; panics unless `0 < dt < ∞`.
 /// $$
-/// X_{t+\Delta} = \theta(1-\beta) + \beta X_t + \varepsilon_t
+/// X_{t+\Delta} = \theta(1-\beta) + \beta X_t + \varepsilon_t,\qquad \beta = e^{-\kappa\Delta}
 /// $$
 pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit, StatsError> {
   assert_dt(dt);
@@ -223,7 +223,8 @@ pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit
     .iter()
     .map(|v| v.to_f64().unwrap())
     .collect::<Vec<f64>>();
-  validate(&x, 3)?;
+  // Two coefficients fit two transitions exactly, leaving the residual variance nothing to read.
+  validate(&x, 4)?;
   let nobs = x.len();
   // The regressor is the path without its last point; its spread is the slope's denominator.
   reject_constant(&x[..nobs - 1], "constant series")?;
@@ -236,7 +237,20 @@ pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit
   let sxy: f64 = (0..m).map(|t| x[t] * x[t + 1]).sum();
 
   let denom = mf * sxx - sx * sx;
-  let beta = ((mf * sxy - sx * sy) / denom).clamp(1e-6, 0.999_999);
+  let beta = (mf * sxy - sx * sy) / denom;
+  if !beta.is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "ar(1) slope",
+    });
+  }
+  if beta >= 1.0 {
+    return Err(StatsError::DegenerateData("series without mean reversion"));
+  }
+  if beta <= 0.0 {
+    return Err(StatsError::DegenerateData(
+      "series without positive autocorrelation",
+    ));
+  }
   let alpha = (sy - beta * sx) / mf;
   let theta = alpha / (1.0 - beta);
   let kappa = -beta.ln() / dt;
@@ -248,7 +262,13 @@ pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit
   }
   resid_var /= mf;
   let sigma2 = resid_var * 2.0 * kappa / (1.0 - beta * beta);
-  let sigma = sigma2.max(1e-12).sqrt();
+  if !sigma2.is_finite() {
+    return Err(StatsError::Numerical { stage: "sigma" });
+  }
+  if sigma2 == 0.0 {
+    return Err(StatsError::DegenerateData("zero residual variance"));
+  }
+  let sigma = sigma2.sqrt();
 
   // Gaussian log-likelihood at the closed-form estimate.
   let var_eps = sigma * sigma * (1.0 - beta * beta) / (2.0 * kappa);
@@ -507,6 +527,51 @@ mod tests {
         stage: "quasi-log-likelihood"
       }
     );
+  }
+
+  /// Three points are two transitions, which the two AR(1) coefficients fit exactly.
+  #[test]
+  fn ou_mle_needs_four_points() {
+    assert_eq!(
+      fit_ou_mle(Array1::from(vec![0.05, 0.06, 0.04]).view(), 1.0 / 252.0).unwrap_err(),
+      StatsError::InsufficientData { needed: 4, got: 3 }
+    );
+    assert!(fit_ou_mle(Array1::from(vec![1.0, 0.8, 0.7, 0.5]).view(), 1.0 / 252.0).is_ok());
+  }
+
+  #[test]
+  fn an_ar1_slope_outside_the_unit_interval_is_degenerate_data() {
+    let explosive = Array1::from_iter((0..12).map(|t| 1.1_f64.powi(t) + 0.01 * (t as f64).sin()));
+    assert_eq!(
+      fit_ou_mle(explosive.view(), 1.0 / 252.0).unwrap_err(),
+      StatsError::DegenerateData("series without mean reversion")
+    );
+    let alternating =
+      Array1::from_iter((0..12).map(|t| if t % 2 == 0 { 1.0 } else { -1.0 } + 0.01 * t as f64));
+    assert_eq!(
+      fit_ou_mle(alternating.view(), 1.0 / 252.0).unwrap_err(),
+      StatsError::DegenerateData("series without positive autocorrelation")
+    );
+  }
+
+  /// `X_{t+1} = 0.5 X_t + 1` exactly: the slope is in range and every residual is zero.
+  #[test]
+  fn an_exact_ar1_path_has_zero_residual_variance() {
+    let x = Array1::from(vec![0.0, 1.0, 1.5, 1.75, 1.875, 1.9375, 1.96875]);
+    assert_eq!(
+      fit_ou_mle(x.view(), 1.0 / 252.0).unwrap_err(),
+      StatsError::DegenerateData("zero residual variance")
+    );
+  }
+
+  /// At `κΔ = 5e-7` the slope lies in `(1 − 1e-6, 1)`, and `κ̂` is read off it, not off a bound.
+  #[test]
+  fn ou_mle_reads_kappa_off_a_slope_near_one() {
+    let dt = 1e-6;
+    let mut x = simulate_ou(0.5, 0.0, 1e-3, 1000.0, dt, 1000, 5);
+    x[0] = 1000.0;
+    let fit = fit_ou_mle(x.view(), dt).unwrap();
+    assert!(fit.kappa < 0.99, "kappa = {}", fit.kappa);
   }
 
   #[test]
