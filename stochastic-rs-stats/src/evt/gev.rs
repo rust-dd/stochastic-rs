@@ -64,12 +64,11 @@ pub struct GevFit {
 }
 
 impl GevFit {
-  /// Return level $z_m$ for a return `period` of $m$ blocks; panics unless `period > 1.0`.
+  /// Return level $z_m$ for a return `period` of $m$ blocks; NaN unless `period > 1`.
   pub fn return_level(&self, period: f64) -> f64 {
-    assert!(
-      period > 1.0,
-      "period must satisfy `period > 1.0`, got period = {period:?}"
-    );
+    if period.is_nan() || period <= 1.0 {
+      return f64::NAN;
+    }
     let yp = -(1.0 - 1.0 / period).ln();
     if self.xi.abs() < 1e-12 {
       self.mu - self.sigma * yp.ln()

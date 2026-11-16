@@ -258,7 +258,7 @@ pub fn estimators_a() -> Vec<Entry> {
     (
       "fit_gpd_pwm",
       err(|x| fit_gpd_pwm(x.mapv(f64::abs).view())),
-      None,
+      EXCESSES,
     ),
     ("fit_pot", err(|x| fit_pot(x, 0.0)), EXCESSES),
     (

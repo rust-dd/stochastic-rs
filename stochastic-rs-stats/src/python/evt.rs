@@ -137,12 +137,12 @@ impl PyPotFit {
     })?
   }
 
-  /// Tail quantile (Value-at-Risk) at level `p`.
+  /// Tail quantile (Value-at-Risk) at level `p`; NaN unless `0 < p < 1`.
   fn quantile(&self, p: f64) -> f64 {
     self.inner.quantile(p)
   }
 
-  /// Expected shortfall at level `p`.
+  /// Expected shortfall at level `p`; NaN unless `0 < p < 1`.
   fn expected_shortfall(&self, p: f64) -> f64 {
     self.inner.expected_shortfall(p)
   }
@@ -211,7 +211,7 @@ impl PyGevFit {
     })?
   }
 
-  /// Return level exceeded once every `period` blocks on average.
+  /// Return level exceeded once every `period` blocks on average; NaN unless `period > 1`.
   fn return_level(&self, period: f64) -> f64 {
     self.inner.return_level(period)
   }
@@ -285,8 +285,8 @@ pub fn block_maxima<'py>(
   crate::evt::block_maxima(data.as_array(), block_size).into_pyarray(py)
 }
 
-/// Mean excess over each threshold (the mean-residual-life plot); NaN
-/// where nothing exceeds the threshold.
+/// Mean excess over each threshold (the mean-residual-life plot); NaN where nothing exceeds the
+/// threshold, and at every threshold when `data` holds a NaN.
 #[pyfunction]
 pub fn mean_excess<'py>(
   py: Python<'py>,

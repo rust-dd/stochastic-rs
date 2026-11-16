@@ -199,6 +199,14 @@ fn mean_excess_is_the_mean_residual_life() {
   assert!(e[2].is_nan());
 }
 
+/// A NaN loss lies on no side of a threshold, so no mean excess is known.
+#[test]
+fn a_nan_observation_makes_every_mean_excess_nan() {
+  let x = array![1.0_f64, f64::NAN, 3.0, 4.0];
+  let e = mean_excess(x.view(), array![0.0, 2.0, 10.0].view());
+  assert!(e.iter().all(|v| v.is_nan()), "{e:?}");
+}
+
 #[test]
 #[should_panic(expected = "k must satisfy `k >= 1`, got k = 0")]
 fn hill_rejects_zero_k() {
@@ -263,10 +271,33 @@ fn block_maxima_rejects_zero_block() {
 }
 
 #[test]
-#[should_panic(expected = "period must satisfy `period > 1.0`, got period = 1.0")]
-fn return_level_rejects_a_unit_period() {
+fn a_return_period_of_at_most_one_block_gives_nan() {
   let fit = fit_gev(gev_sample().view()).unwrap();
-  let _ = fit.return_level(1.0);
+  for period in [1.0, 0.5, -2.0, f64::NAN] {
+    assert!(fit.return_level(period).is_nan(), "period {period}");
+  }
+}
+
+/// The level check comes first, so the `ξ ≥ 1` branch answers `+∞` only inside `(0, 1)`.
+#[test]
+fn a_level_outside_the_unit_interval_gives_nan() {
+  let pot = fit_pot(gpd_sample().view(), 0.0).unwrap();
+  let heavy = PotFit {
+    gpd: GpdFit {
+      xi: 1.5,
+      ..pot.gpd.clone()
+    },
+    ..pot.clone()
+  };
+  for p in [0.0, 1.0, -0.5, 1.5, f64::NAN] {
+    assert!(pot.quantile(p).is_nan(), "quantile at {p}");
+    assert!(pot.expected_shortfall(p).is_nan(), "ES at {p}");
+    assert!(
+      heavy.expected_shortfall(p).is_nan(),
+      "ES at {p} for xi >= 1"
+    );
+  }
+  assert_eq!(heavy.expected_shortfall(0.99), f64::INFINITY);
 }
 
 /// Hosking–Wallis PWM on the reference GPD sample: the closed-form
@@ -285,10 +316,13 @@ fn gpd_pwm_matches_the_hosking_wallis_formulas() {
 }
 
 #[test]
-fn gpd_pwm_estimates_are_nan_for_a_constant_sample() {
+fn gpd_pwm_rejects_a_constant_sample() {
   for c in [0.0, 0.3] {
-    let est = fit_gpd_pwm(Array1::<f64>::from_elem(400, c).view()).unwrap();
-    assert!(est.xi.is_nan() && est.sigma.is_nan(), "{c}: {est:?}");
+    assert_eq!(
+      fit_gpd_pwm(Array1::<f64>::from_elem(400, c).view()).unwrap_err(),
+      StatsError::DegenerateData("constant excesses"),
+      "{c}"
+    );
   }
 }
 

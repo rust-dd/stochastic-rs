@@ -78,12 +78,11 @@ pub struct PotFit {
 
 impl PotFit {
   /// Tail quantile $\widehat{\mathrm{VaR}}_p$ (McNeil–Frey–Embrechts eq. 5.18), meaningful for
-  /// $p > 1 - n_u/n$; panics unless `0 < p < 1`.
+  /// $p > 1 - n_u/n$; NaN unless `0 < p < 1`.
   pub fn quantile(&self, p: f64) -> f64 {
-    assert!(
-      p > 0.0 && p < 1.0,
-      "p must satisfy `0.0 < p < 1.0`, got p = {p:?}"
-    );
+    if !(p > 0.0 && p < 1.0) {
+      return f64::NAN;
+    }
     let ratio = (1.0 - p) / self.exceedance_rate;
     let (sigma, xi) = (self.gpd.sigma, self.gpd.xi);
     if xi.abs() < 1e-12 {
@@ -93,8 +92,11 @@ impl PotFit {
     }
   }
 
-  /// $\widehat{\mathrm{ES}}_p$ (eq. 5.20); `+∞` when $\hat\xi \ge 1$.
+  /// $\widehat{\mathrm{ES}}_p$ (eq. 5.20); `+∞` when $\hat\xi \ge 1$; NaN unless `0 < p < 1`.
   pub fn expected_shortfall(&self, p: f64) -> f64 {
+    if !(p > 0.0 && p < 1.0) {
+      return f64::NAN;
+    }
     let xi = self.gpd.xi;
     if xi >= 1.0 {
       return f64::INFINITY;
@@ -189,7 +191,7 @@ pub struct GpdPwmFit {
 }
 
 /// Hosking–Wallis probability-weighted-moment GPD estimates over the order statistics `x(i)`; `Err`
-/// below 2 or on a negative or non-finite excess, NaN estimates for a constant sample.
+/// below 2, on a negative or non-finite excess or a constant sample.
 /// $$
 /// a_0 = \bar x,\qquad a_1 = \frac1n\sum_{i=1}^{n}\frac{n - i}{n - 1}\,x_{(i)},\qquad
 /// \hat\xi = 2 - \frac{a_0}{a_0 - 2a_1},\qquad \hat\sigma = \frac{2a_0a_1}{a_0 - 2a_1}
@@ -201,6 +203,7 @@ pub fn fit_gpd_pwm<T: FloatExt>(exceedances: ArrayView1<T>) -> Result<GpdPwmFit,
     .map(|x| x.to_f64().unwrap_or(f64::NAN))
     .collect::<Vec<f64>>();
   validate_domain(&y, 2, "finite and >= 0", |v| v >= 0.0)?;
+  reject_constant(&y, "constant excesses")?;
   let n = y.len();
   y.sort_by(f64::total_cmp);
   let nf = n as f64;
@@ -211,16 +214,10 @@ pub fn fit_gpd_pwm<T: FloatExt>(exceedances: ArrayView1<T>) -> Result<GpdPwmFit,
     .map(|(i, v)| v * (nf - (i + 1) as f64) / (nf - 1.0))
     .sum::<f64>()
     / nf;
-  // `a0 = 2 a1` exactly for a constant sample, which the rounded sums need not reproduce.
-  let (sigma, xi) = if y[0] == y[n - 1] {
-    (f64::NAN, f64::NAN)
-  } else {
-    let denominator = a0 - 2.0 * a1;
-    (2.0 * a0 * a1 / denominator, 2.0 - a0 / denominator)
-  };
+  let denominator = a0 - 2.0 * a1;
   Ok(GpdPwmFit {
-    sigma,
-    xi,
+    sigma: 2.0 * a0 * a1 / denominator,
+    xi: 2.0 - a0 / denominator,
     a0,
     a1,
     nobs: n,
@@ -261,14 +258,16 @@ pub fn fit_pot<T: FloatExt>(data: ArrayView1<T>, threshold: f64) -> Result<PotFi
   })
 }
 
-/// Mean excess $e(u) = \mathbb E[X - u \mid X > u]$ at each threshold —
-/// the mean-residual-life plot used to pick a threshold; NaN where nothing
-/// exceeds $u$.
+/// Mean excess $e(u) = \mathbb E[X - u \mid X > u]$ at each threshold, the mean-residual-life plot
+/// that picks one; NaN where nothing exceeds $u$, and at every $u$ when `data` holds a NaN.
 pub fn mean_excess<T: FloatExt>(data: ArrayView1<T>, thresholds: ArrayView1<f64>) -> Array1<f64> {
   let x: Vec<f64> = data
     .iter()
     .map(|v| v.to_f64().unwrap_or(f64::NAN))
     .collect();
+  if x.iter().any(|v| v.is_nan()) {
+    return Array1::from_elem(thresholds.len(), f64::NAN);
+  }
   thresholds
     .iter()
     .map(|&u| {
