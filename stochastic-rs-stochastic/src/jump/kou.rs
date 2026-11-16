@@ -20,6 +20,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::params::Horizon;
 use crate::process::cpoisson::CompoundPoisson;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
@@ -75,31 +76,8 @@ where
   pub x0: Option<T>,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Compound-Poisson jump driver generating the double-exponential
-  /// log-jump sizes. Fully seed-reproducible: [`new`](Self::new) builds it
-  /// internally from `seed` (`seed.clone().derive()` — a hash-mixed child,
-  /// decorrelated from but a deterministic function of the same `seed` the
-  /// diffusion component consults directly — the same shape
-  /// [`Merton`](crate::jump::merton::Merton)'s field of the same name
-  /// uses), and `sampler()` derives a fresh, chunk-local basis off
-  /// `self.cpoisson.seed` for every chunk, mirroring the diffusion
-  /// component's own per-chunk `self.seed`-derived basis.
-  ///
-  /// `sampler()` reads only `cpoisson.distribution` (the jump-size law)
-  /// and `self.lambda` — **not** `cpoisson.poisson.lambda` — from this
-  /// field on the sampling path; `cpoisson.poisson.{n,t_max,seed}` are
-  /// inert there (`grid_increments` never consults them). That inertness
-  /// is scoped to *this type's own* sampling, though: `cpoisson` is a
-  /// `CompoundPoisson` in its own right, and calling `.sample()` on it
-  /// directly (bypassing `Kou` entirely) drives it through
-  /// `Poisson::sample_impl`, which *does* branch on `.n`/`.t_max` (fixed
-  /// count vs. horizon mode) and *does* consult `.seed` — genuinely live
-  /// there. Left `pub` for both reasons: a caller can inspect or directly
-  /// `.sample()` the embedded compound-Poisson process as its own
-  /// standalone `ProcessExt`, and can replace it wholesale via direct
-  /// field assignment (which does not update `self.lambda` — assign that
-  /// separately to match, since this type has no `with_cpoisson`-style
-  /// setter to do it automatically).
+  /// The jump driver, seeded from `seed.derive()`; sampling reads its law and seed but takes the
+  /// rate from `lambda`, which a direct write of this field does not update.
   pub cpoisson: CompoundPoisson<T, D, S>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`). Consulted
   /// directly by the diffusion component; `cpoisson`'s own seed (set at
@@ -160,7 +138,7 @@ where
     );
     let cpoisson = CompoundPoisson::new(
       jump_dist,
-      Poisson::new(lambda, Some(n), t, Unseeded),
+      Poisson::new(lambda, Horizon::Events(n), Unseeded),
       seed.clone().derive(),
     );
     Self {

@@ -28,37 +28,18 @@ use stochastic_rs_distributions::poisson::SimdPoisson;
 
 use crate::device::Cpu;
 use crate::noise::cgns::Cgns;
+use crate::params::Drift;
 use crate::params::VarianceBoundary;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[inline]
-fn validate_drift_args<T: FloatExt>(
-  mu: Option<T>,
-  b: Option<T>,
-  r: Option<T>,
-  r_f: Option<T>,
-  type_name: &'static str,
-) {
-  let has_r_pair = r.is_some() && r_f.is_some();
-  if !(has_r_pair || b.is_some() || mu.is_some()) {
-    panic!("{type_name}: one of (r and r_f), b, or mu must be provided");
-  }
-}
-
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `BatesSvj::new(..).with_lambda(0.8).with_rho(-0.4)`.
 #[derive(Clone)]
 pub struct BatesSvj<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Drift rate of the asset price
-  pub mu: Option<T>,
-  /// Cost-of-carry rate
-  pub b: Option<T>,
-  /// Domestic risk-free interest rate
-  pub r: Option<T>,
-  /// Foreign risk-free interest rate
-  pub r_f: Option<T>,
+  /// The asset's drift before the jump compensator: `μ`, a cost of carry, or `r − r_f`.
+  pub drift: Drift<T>,
   /// Jump intensity (Poisson arrival rate)
   pub lambda: T,
   /// Mean of the jump log-size Z ~ N(nu, omega^2)
@@ -93,10 +74,7 @@ pub struct BatesSvj<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> BatesSvj<T, S> {
   pub fn new(
-    mu: Option<T>,
-    b: Option<T>,
-    r: Option<T>,
-    r_f: Option<T>,
+    drift: Drift<T>,
     lambda: T,
     nu: T,
     omega: T,
@@ -111,22 +89,7 @@ impl<T: FloatExt, S: SeedExt> BatesSvj<T, S> {
     boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
-    assert!(
-      mu.is_none_or(|v| v.is_finite()),
-      "mu must satisfy `mu.is_none_or(|v| v.is_finite())`, got mu = {mu:?}"
-    );
-    assert!(
-      b.is_none_or(|v| v.is_finite()),
-      "b must satisfy `b.is_none_or(|v| v.is_finite())`, got b = {b:?}"
-    );
-    assert!(
-      r.is_none_or(|v| v.is_finite()),
-      "r must satisfy `r.is_none_or(|v| v.is_finite())`, got r = {r:?}"
-    );
-    assert!(
-      r_f.is_none_or(|v| v.is_finite()),
-      "r_f must satisfy `r_f.is_none_or(|v| v.is_finite())`, got r_f = {r_f:?}"
-    );
+    drift.assert_finite();
     assert!(
       lambda.is_finite(),
       "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
@@ -180,14 +143,10 @@ impl<T: FloatExt, S: SeedExt> BatesSvj<T, S> {
       lambda >= T::zero(),
       "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
     );
-    validate_drift_args(mu, b, r, r_f, "BatesSvj");
 
     Self {
       backend: Cpu,
-      mu,
-      b,
-      r,
-      r_f,
+      drift,
       lambda,
       nu,
       omega,
@@ -207,31 +166,10 @@ impl<T: FloatExt, S: SeedExt> BatesSvj<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> BatesSvj<T, S, B> {
-  /// Replace `mu`; re-validates that a drift specification still exists.
-  pub fn with_mu(mut self, mu: Option<T>) -> Self {
-    self.mu = mu;
-    validate_drift_args(self.mu, self.b, self.r, self.r_f, "BatesSvj");
-    self
-  }
-
-  /// Replace `b`; re-validates that a drift specification still exists.
-  pub fn with_b(mut self, b: Option<T>) -> Self {
-    self.b = b;
-    validate_drift_args(self.mu, self.b, self.r, self.r_f, "BatesSvj");
-    self
-  }
-
-  /// Replace `r`; re-validates that a drift specification still exists.
-  pub fn with_r(mut self, r: Option<T>) -> Self {
-    self.r = r;
-    validate_drift_args(self.mu, self.b, self.r, self.r_f, "BatesSvj");
-    self
-  }
-
-  /// Replace `r_f`; re-validates that a drift specification still exists.
-  pub fn with_r_f(mut self, r_f: Option<T>) -> Self {
-    self.r_f = r_f;
-    validate_drift_args(self.mu, self.b, self.r, self.r_f, "BatesSvj");
+  /// Replace `drift`, all else unchanged; panics on a non-finite rate.
+  pub fn with_drift(mut self, drift: Drift<T>) -> Self {
+    drift.assert_finite();
+    self.drift = drift;
     self
   }
 
@@ -340,16 +278,6 @@ impl<T: FloatExt, S: SeedExt, B> BatesSvj<T, S, B> {
   fn kappa_j(&self) -> T {
     (self.nu + T::from_f64_fast(0.5) * self.omega * self.omega).exp() - T::one()
   }
-
-  #[inline]
-  fn drift(&self) -> T {
-    match (self.mu, self.b, self.r, self.r_f) {
-      (_, _, Some(r), Some(r_f)) => r - r_f,
-      (_, Some(b), _, _) => b,
-      (Some(mu), _, _, _) => mu,
-      _ => unreachable!("validate_drift_args ensures at least one of (r+r_f), b, mu is set"),
-    }
-  }
 }
 
 /// The Euler engine's view of the Bates model. The jump compensator is
@@ -360,7 +288,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   for BatesSvj<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    let drift_c = self.drift() - self.lambda * self.kappa_j();
+    let drift_c = self.drift.rate() - self.lambda * self.kappa_j();
     match self.boundary {
       VarianceBoundary::Floor => crate::euler::EulerSpec::BatesJump {
         drift_c,
@@ -425,7 +353,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] BatesSvj<T, S> { mu, b, r, r_f, lambda, nu, omega, alpha, beta, sigma, rho, n, s0, v0, t, boundary, seed, cgns } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] BatesSvj<T, S> { drift, lambda, nu, omega, alpha, beta, sigma, rho, n, s0, v0, t, boundary, seed, cgns } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for BatesSvj<T, S, B>
@@ -456,7 +384,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       alpha: self.alpha,
       beta: self.beta,
       sigma: self.sigma,
-      drift: self.drift(),
+      drift: self.drift.rate(),
       kappa_j: self.kappa_j(),
       dt: self.cgns.dt(),
       boundary: self.boundary,

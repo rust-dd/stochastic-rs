@@ -30,6 +30,7 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::jump::bates::Bates1996;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
+use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
@@ -45,10 +46,7 @@ const LAMBDA: f64 = 50.0;
 /// task's own RED-phase measurement used (see the task report).
 fn bates_with_jumps(seed: u64) -> Bates1996<f64, SimdNormal<f64>, Deterministic> {
   Bates1996::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+    Drift::Mu(0.05),
     LAMBDA,
     0.0,
     0.04,
@@ -67,10 +65,7 @@ fn bates_with_jumps(seed: u64) -> Bates1996<f64, SimdNormal<f64>, Deterministic>
 
 fn bates_lambda(lambda: f64, seed: u64) -> Bates1996<f64, SimdNormal<f64>, Deterministic> {
   Bates1996::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+    Drift::Mu(0.05),
     lambda,
     0.0,
     0.04,

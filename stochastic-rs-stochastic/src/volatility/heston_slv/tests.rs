@@ -3,6 +3,7 @@ use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
+use crate::params::Drift;
 use crate::params::VarianceBoundary;
 use crate::traits::Grid2D;
 use crate::volatility::heston_log::HestonLog;
@@ -42,10 +43,7 @@ fn unit_leverage_under_full_mixing_is_heston_log_path_for_path() {
   )
   .sample();
   let [s_log, v_log] = HestonLog::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+    Drift::Mu(0.05),
     2.0,
     0.04,
     0.3,

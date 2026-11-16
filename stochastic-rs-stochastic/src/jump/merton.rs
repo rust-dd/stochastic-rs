@@ -36,6 +36,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::params::Horizon;
 use crate::process::cpoisson::CompoundPoisson;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
@@ -73,30 +74,8 @@ where
   pub x0: Option<T>,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Compound-Poisson jump driver generating the log-normal jump sizes.
-  /// Fully seed-reproducible: [`new`](Self::new) builds it internally from
-  /// `seed` (`seed.clone().derive()` — a hash-mixed child, decorrelated
-  /// from but a deterministic function of the same `seed` the diffusion
-  /// component consults directly), and `sampler()` derives a fresh,
-  /// chunk-local basis off `self.cpoisson.seed` for every chunk, mirroring
-  /// the diffusion component's own per-chunk `self.seed`-derived basis.
-  ///
-  /// `sampler()` reads only `cpoisson.distribution` (the jump-size law)
-  /// and `self.lambda` — **not** `cpoisson.poisson.lambda` — from this
-  /// field on the sampling path; `cpoisson.poisson.{n,t_max,seed}` are
-  /// inert there (`grid_increments` never consults them). That inertness
-  /// is scoped to *this type's own* sampling, though: `cpoisson` is a
-  /// `CompoundPoisson` in its own right, and calling `.sample()` on it
-  /// directly (bypassing `Merton` entirely) drives it through
-  /// `Poisson::sample_impl`, which *does* branch on `.n`/`.t_max` (fixed
-  /// count vs. horizon mode) and *does* consult `.seed` — genuinely live
-  /// there. Left `pub` for both reasons: a caller can inspect or directly
-  /// `.sample()` the embedded compound-Poisson process as its own
-  /// standalone `ProcessExt`, and can replace it wholesale via
-  /// [`with_cpoisson`](Self::with_cpoisson) (which keeps `self.lambda` in
-  /// sync with the replacement — see that method's doc) or direct field
-  /// assignment (which does not; assign through `with_cpoisson` unless
-  /// you separately update `self.lambda` to match).
+  /// The jump driver, seeded from `seed.derive()`; sampling reads its law and seed but takes the
+  /// rate from `lambda`, so replace it through [`with_cpoisson`](Self::with_cpoisson).
   pub cpoisson: CompoundPoisson<T, D, S>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`). Consulted
   /// directly by the diffusion component; `cpoisson`'s own seed (set at
@@ -161,7 +140,7 @@ where
     );
     let cpoisson = CompoundPoisson::new(
       jump_dist,
-      Poisson::new(lambda, Some(n), t, Unseeded),
+      Poisson::new(lambda, Horizon::Events(n), Unseeded),
       seed.clone().derive(),
     );
     Self {
@@ -220,39 +199,24 @@ where
     self
   }
 
-  /// Replace the compound-Poisson jump driver wholesale, adopting its
-  /// intensity as the new `self.lambda` — `sampler()` reads `self.lambda`,
-  /// not `cpoisson.poisson.lambda`, for the jump-arrival rate (see
-  /// `cpoisson`'s field doc), so without this adoption the incoming
-  /// driver's own intensity would be silently ignored and the *old*
-  /// `self.lambda` would keep driving jumps while only the distribution
-  /// changed. `cpoisson.poisson.{n,t_max}` are left exactly as the caller
-  /// supplied them (not normalized to `self.{n,t}`) since, unlike
-  /// `lambda`, they carry no live weight on this type's sampling path
-  /// either way.
+  /// Replace the jump driver and adopt its intensity as `lambda`, the rate the sampler reads; its
+  /// horizon is kept as given, since sampling never reads it.
   pub fn with_cpoisson(mut self, cpoisson: CompoundPoisson<T, D, S>) -> Self {
     self.lambda = cpoisson.poisson.lambda;
     self.cpoisson = cpoisson;
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged; also
-  /// re-syncs `cpoisson.poisson.n` (see `resync_cpoisson_poisson`) — dead
-  /// on this type's own sampling path, but kept from silently going stale
-  /// for a caller inspecting `cpoisson` directly.
+  /// Replace `n`; the jump driver's event count follows it, though sampling never reads that.
   pub fn with_steps(mut self, n: usize) -> Self {
     self.n = n;
     self.resync_cpoisson_poisson();
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged; also re-syncs
-  /// `cpoisson.poisson.t_max` (see `resync_cpoisson_poisson`) — dead on
-  /// this type's own sampling path, but kept from silently going stale for
-  /// a caller inspecting `cpoisson` directly.
+  /// Replace `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     self.t = t;
-    self.resync_cpoisson_poisson();
     self
   }
 
@@ -267,16 +231,10 @@ where
     self
   }
 
-  /// Rebuilds `cpoisson.poisson` from `self.{lambda, n, t}` so a caller
-  /// reading `cpoisson.poisson` directly never sees it disagree with the
-  /// outer struct's own record of the same three values — most load-
-  /// bearing for `lambda`, which `sampler()` actually reads off `self`
-  /// (not off this mirror) for the jump-arrival rate, but applied
-  /// uniformly to `n`/`t_max` too even though those two are inert on the
-  /// sampling path either way (see `cpoisson`'s field doc). Called from
-  /// every setter that changes `lambda`, `n`, or `t`.
+  /// Rebuilds the `cpoisson.poisson` mirror from `lambda` and `n`, which sampling reads off `self`;
+  /// every setter that changes either calls it.
   fn resync_cpoisson_poisson(&mut self) {
-    self.cpoisson.poisson = Poisson::new(self.lambda, Some(self.n), self.t, Unseeded);
+    self.cpoisson.poisson = Poisson::new(self.lambda, Horizon::Events(self.n), Unseeded);
   }
 }
 

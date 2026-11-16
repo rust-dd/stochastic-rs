@@ -17,6 +17,7 @@ use stochastic_rs_stochastic::interest::duffie_kan::DuffieKan;
 use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
 use stochastic_rs_stochastic::interest::hull_white_2f::HullWhite2F;
 use stochastic_rs_stochastic::jump::bates::Bates1996;
+use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::cbms::Cbms;
 use stochastic_rs_stochastic::traits::ProcessExt;
@@ -252,10 +253,7 @@ fn two_scale_ornstein_uhlenbeck_agrees_with_the_cpu_law() {
 fn log_heston_agrees_with_the_cpu_law() {
   let build = || {
     HestonLog::<f32, _>::new(
-      Some(0.0),
-      None,
-      None,
-      None,
+      Drift::Mu(0.0),
       2.0,
       0.04,
       0.3,
@@ -520,10 +518,7 @@ fn two_asset_heston_agrees_with_the_cpu_law() {
 fn bates_agrees_with_the_cpu_law() {
   let build = || {
     BatesSvj::<f32, _>::new(
-      Some(0.02),
-      None,
-      None,
-      None,
+      Drift::Mu(0.02),
       3.0,
       -0.05,
       0.1,
@@ -1087,10 +1082,7 @@ fn bates_1996_agrees_with_the_cpu_law() {
   for boundary in [VarianceBoundary::Floor, VarianceBoundary::Reflect] {
     let build = || {
       Bates1996::<f32, _, _>::new(
-        Some(0.02),
-        None,
-        None,
-        None,
+        Drift::Mu(0.02),
         3.0,
         -0.02,
         0.08,
@@ -1161,10 +1153,7 @@ fn bates_1996_reflection_moves_the_boundary() {
   {
     let build = || {
       Bates1996::<f32, _, _>::new(
-        Some(0.02),
-        None,
-        None,
-        None,
+        Drift::Mu(0.02),
         0.0,
         0.0,
         0.005,
@@ -1206,10 +1195,7 @@ fn bates_1996_reflection_moves_the_boundary() {
 fn bates_1996_compounds_several_jumps_a_step() {
   let build = || {
     Bates1996::<f32, _, _>::new(
-      Some(0.02),
-      None,
-      None,
-      None,
+      Drift::Mu(0.02),
       30.0,
       0.2,
       0.08,

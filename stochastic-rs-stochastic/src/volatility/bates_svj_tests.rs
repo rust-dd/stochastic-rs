@@ -3,10 +3,7 @@ use super::*;
 #[test]
 fn variance_stays_non_negative() {
   let p = BatesSvj::new(
-    Some(0.05_f64),
-    None,
-    None,
-    None,
+    Drift::Mu(0.05_f64),
     0.5,
     -0.1,
     0.2,
@@ -28,10 +25,7 @@ fn variance_stays_non_negative() {
 #[test]
 fn price_stays_positive() {
   let p = BatesSvj::new(
-    Some(0.05_f64),
-    None,
-    None,
-    None,
+    Drift::Mu(0.05_f64),
     0.5,
     -0.1,
     0.2,
@@ -51,73 +45,34 @@ fn price_stays_positive() {
 }
 
 #[test]
-fn drift_prefers_r_minus_rf() {
-  let p = BatesSvj::new(
-    Some(0.9_f64),
-    Some(0.7),
-    Some(0.4),
-    Some(0.1),
-    0.5,
-    0.0,
-    0.1,
-    0.04,
-    1.5,
-    0.3,
-    -0.5,
-    8,
-    Some(1.0),
-    Some(0.04),
-    Some(1.0),
-    VarianceBoundary::Floor,
-    Unseeded,
-  );
-  assert!((p.drift() - 0.3).abs() < 1e-12);
-}
-
-#[test]
-fn drift_uses_b_if_rates_missing() {
-  let p = BatesSvj::new(
-    Some(0.9_f64),
-    Some(0.7),
-    None,
-    None,
-    0.5,
-    0.0,
-    0.1,
-    0.04,
-    1.5,
-    0.3,
-    -0.5,
-    8,
-    Some(1.0),
-    Some(0.04),
-    Some(1.0),
-    VarianceBoundary::Floor,
-    Unseeded,
-  );
-  assert!((p.drift() - 0.7).abs() < 1e-12);
-}
-
-#[test]
-fn drift_falls_back_to_mu() {
-  let p = BatesSvj::new(
-    Some(0.9_f64),
-    None,
-    None,
-    None,
-    0.5,
-    0.0,
-    0.1,
-    0.04,
-    1.5,
-    0.3,
-    -0.5,
-    8,
-    Some(1.0),
-    Some(0.04),
-    Some(1.0),
-    VarianceBoundary::Floor,
-    Unseeded,
-  );
-  assert!((p.drift() - 0.9).abs() < 1e-12);
+fn every_drift_form_reaches_the_spot_drift_net_of_the_compensator() {
+  use crate::euler::EulerSpec;
+  use crate::euler::EulerSystem;
+  let forms = [
+    (Drift::Mu(0.75), 0.75),
+    (Drift::CostOfCarry(0.5), 0.5),
+    (Drift::Rates { r: 0.75, r_f: 0.5 }, 0.25),
+  ];
+  for (drift, rate) in forms {
+    let p = BatesSvj::new(
+      drift,
+      0.5,
+      0.0,
+      0.0,
+      0.04,
+      1.5,
+      0.3,
+      -0.5,
+      8,
+      Some(1.0),
+      Some(0.04),
+      Some(1.0),
+      VarianceBoundary::Floor,
+      Unseeded,
+    );
+    let EulerSpec::BatesJump { drift_c, .. } = EulerSystem::<f64, 2>::euler_spec(&p) else {
+      panic!("a floored BatesSvj steps through the BatesJump family");
+    };
+    assert_eq!(drift_c, rate, "a zero jump size has a zero compensator");
+  }
 }

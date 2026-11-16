@@ -3,6 +3,7 @@ use ndarray::Array2;
 use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::uniform::SimdUniform;
 use stochastic_rs_stochastic::autoregressive::ar::ARp;
@@ -35,9 +36,15 @@ use stochastic_rs_stochastic::noise::cfgns::Cfgns;
 use stochastic_rs_stochastic::noise::fgn::Fgn;
 use stochastic_rs_stochastic::noise::gn::Gn;
 use stochastic_rs_stochastic::noise::wn::Wn;
+use stochastic_rs_stochastic::params::Drift;
+use stochastic_rs_stochastic::params::Horizon;
 use stochastic_rs_stochastic::params::VarianceBoundary;
+use stochastic_rs_stochastic::process::ccustom::CompoundCustom;
+use stochastic_rs_stochastic::process::customjt::CustomJt;
+use stochastic_rs_stochastic::process::hawkes::Hawkes;
 use stochastic_rs_stochastic::process::lfsm::Lfsm;
 use stochastic_rs_stochastic::process::multivariate_hawkes::MultivariateHawkes;
+use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::GammaSubordinator;
 use stochastic_rs_stochastic::process::volterra::Volterra;
 use stochastic_rs_stochastic::process::volterra::VolterraKernelSpec;
@@ -129,7 +136,7 @@ refuses! {
   a_rate_model_refuses_a_nan_entry: "alpha[0] must satisfy `alpha[i].is_finite()`, got alpha[0] = NaN"
     => WuZhangD::<f64>::new(array![f64::NAN], array![0.1], array![0.1], array![0.1], array![0.1], array![0.1], 1, None, 64, Unseeded);
   an_excitation_matrix_names_its_nan_entry: "alpha[(1, 0)] must satisfy `alpha[(i, j)].is_finite()`, got alpha[(1, 0)] = NaN"
-    => MultivariateHawkes::<f64>::new(array![1.0, 1.0], array![[0.1, 0.1], [f64::NAN, 0.1]], array![[1.0, 1.0], [1.0, 1.0]], 1.0, Unseeded);
+    => MultivariateHawkes::<f64>::new(array![1.0, 1.0], array![[0.1, 0.1], [f64::NAN, 0.1]], array![[1.0, 1.0], [1.0, 1.0]], Horizon::Until(1.0), Unseeded);
   a_fractional_jump_process_refuses_a_nan_volatility: "sigma must satisfy `sigma.is_finite()`, got sigma = NaN"
     => JumpFou::<f64, SimdNormal<f64>>::new(0.7, 1.0, 0.0, f64::NAN, 2.0, SimdNormal::new(0.0, 0.1), 64, None, None, Unseeded);
   a_custom_jump_process_refuses_a_nan_level: "mu must satisfy `mu.is_finite()`, got mu = NaN"
@@ -165,6 +172,33 @@ refuses! {
     => Lfsm::<f64>::new(1.5, 0.0, 0.75, 1.0, 1, Some(0.0), Some(1.0), Unseeded);
   a_volterra_process_refuses_one_point: "n must satisfy `n >= 2`, got n = 1"
     => Volterra::<f64>::new(VolterraKernelSpec::Exponential { beta: 1.0 }, 1, Some(1.0), Unseeded);
+
+  a_counting_process_refuses_a_zero_horizon: "t_max must satisfy `t_max > T::zero() && t_max.is_finite()`, got t_max = 0.0"
+    => Poisson::<f64>::new(2.0, Horizon::Until(0.0), Unseeded);
+  a_self_exciting_process_refuses_a_negative_horizon: "t_max must satisfy `t_max > T::zero() && t_max.is_finite()`, got t_max = -1.0"
+    => Hawkes::<f64>::new(0.5, 0.3, 1.0, Horizon::Until(-1.0), Unseeded);
+  a_renewal_process_refuses_an_infinite_horizon: "t_max must satisfy `t_max > T::zero() && t_max.is_finite()`, got t_max = inf"
+    => CustomJt::<f64, _>::new(Horizon::Until(f64::INFINITY), SimdExp::new(1.0), Unseeded);
+  a_compound_renewal_process_refuses_a_nan_horizon: "t_max must satisfy `t_max > T::zero() && t_max.is_finite()`, got t_max = NaN"
+    => CompoundCustom::<f64, _, _>::new(Horizon::Until(f64::NAN), SimdNormal::new(0.0, 1.0), SimdExp::new(1.0), CustomJt::new(Horizon::Events(8), SimdExp::new(1.0), Unseeded), Unseeded);
+  a_multivariate_hawkes_refuses_a_zero_horizon: "t_max must satisfy `t_max > T::zero() && t_max.is_finite()`, got t_max = 0.0"
+    => MultivariateHawkes::<f64>::new(array![1.0], array![[0.1]], array![[1.0]], Horizon::Until(0.0), Unseeded);
+  hawkes_refuses_a_zero_baseline_at_construction: "mu must satisfy `mu > T::zero()`, got mu = 0.0"
+    => Hawkes::<f64>::new(0.0, 0.3, 1.0, Horizon::Events(8), Unseeded);
+  hawkes_refuses_a_negative_excitation_at_construction: "alpha must satisfy `alpha >= T::zero()`, got alpha = -0.1"
+    => Hawkes::<f64>::new(0.5, -0.1, 1.0, Horizon::Events(8), Unseeded);
+  hawkes_refuses_a_zero_decay_at_construction: "beta must satisfy `beta > T::zero()`, got beta = 0.0"
+    => Hawkes::<f64>::new(0.5, 0.3, 0.0, Horizon::Events(8), Unseeded);
+  hawkes_refuses_a_supercritical_branching_ratio_at_construction: "alpha must satisfy `alpha < beta`, got alpha = 2.0, beta = 1.0"
+    => Hawkes::<f64>::new(0.5, 2.0, 1.0, Horizon::Events(8), Unseeded);
+  the_hawkes_horizon_setter_checks_its_time: "t_max must satisfy `t_max > T::zero() && t_max.is_finite()`, got t_max = 0.0"
+    => Hawkes::<f64>::new(0.5, 0.3, 1.0, Horizon::Events(8), Unseeded).with_horizon(Horizon::Until(0.0));
+  the_renewal_horizon_setter_checks_its_time: "t_max must satisfy `t_max > T::zero() && t_max.is_finite()`, got t_max = -2.0"
+    => CustomJt::<f64, _>::new(Horizon::Events(8), SimdExp::new(1.0), Unseeded).with_horizon(Horizon::Until(-2.0));
+  the_compound_renewal_horizon_setter_checks_its_time: "t_max must satisfy `t_max > T::zero() && t_max.is_finite()`, got t_max = inf"
+    => CompoundCustom::<f64, _, _>::new(Horizon::Events(8), SimdNormal::new(0.0, 1.0), SimdExp::new(1.0), CustomJt::new(Horizon::Events(8), SimdExp::new(1.0), Unseeded), Unseeded).with_horizon(Horizon::Until(f64::INFINITY));
+  the_multivariate_hawkes_horizon_setter_checks_its_time: "t_max must satisfy `t_max > T::zero() && t_max.is_finite()`, got t_max = NaN"
+    => MultivariateHawkes::<f64>::new(array![1.0], array![[0.1]], array![[1.0]], Horizon::Events(8), Unseeded).with_horizon(Horizon::Until(f64::NAN));
 }
 
 fn scales_with_sigma(path: impl Fn(f64) -> Array1<f64>) {
@@ -366,10 +400,7 @@ fn a_zero_intensity_levy_diffusion_is_its_diffusion() {
 #[test]
 fn a_zero_intensity_bates_is_its_diffusion() {
   let p = Bates1996::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+    Drift::Mu(0.05),
     0.0,
     0.0,
     0.04,

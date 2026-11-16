@@ -12,6 +12,7 @@ use stochastic_rs::stochastic::jump::kou::Kou;
 use stochastic_rs::stochastic::jump::levy_diffusion::LevyDiffusion;
 use stochastic_rs::stochastic::jump::merton::Merton;
 use stochastic_rs::stochastic::jump::mjd_log::MjdLog;
+use stochastic_rs::stochastic::params::Drift;
 use stochastic_rs::stochastic::params::VarianceBoundary;
 use stochastic_rs::stochastic::process::subordinator::ctrw::Ctrw;
 use stochastic_rs::stochastic::process::subordinator::ctrw::CtrwJumpLaw;
@@ -115,10 +116,7 @@ fn bench_jump_processes(c: &mut Criterion) {
     });
 
     let mjd = MjdLog::new(
-      Some(0.05),
-      None,
-      None,
-      None,
+      Drift::Mu(0.05),
       0.2,
       LAMBDA,
       0.0,
@@ -133,10 +131,7 @@ fn bench_jump_processes(c: &mut Criterion) {
     });
 
     let bates = BatesSvj::new(
-      Some(0.05),
-      None,
-      None,
-      None,
+      Drift::Mu(0.05),
       LAMBDA,
       -0.1,
       0.2,

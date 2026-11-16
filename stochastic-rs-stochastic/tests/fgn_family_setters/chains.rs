@@ -9,6 +9,7 @@ use stochastic_rs_stochastic::diffusion::fou::Fou;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
 use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
+use stochastic_rs_stochastic::params::Horizon;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::cfbms::Cfbms;
 use stochastic_rs_stochastic::process::fbm::Fbm;
@@ -324,18 +325,20 @@ fn jump_fou_setters_keep_the_jump_driver_in_step() {
     seed(1),
   );
   assert_eq!(p.cpoisson().poisson.lambda, 2.0);
-  assert_eq!(p.cpoisson().poisson.n, Some(16));
-  assert_eq!(p.cpoisson().poisson.t_max, Some(1.0));
+  assert_eq!(p.cpoisson().poisson.horizon, Horizon::Events(16));
 
   let p = p.with_lambda(3.0);
   assert_eq!(p.lambda(), 3.0);
   assert_eq!(p.cpoisson().poisson.lambda, 3.0);
 
   let p = p.with_steps(64);
-  assert_eq!(p.cpoisson().poisson.n, Some(64));
+  assert_eq!(p.cpoisson().poisson.horizon, Horizon::Events(64));
 
   let p = p.with_horizon(Some(2.0));
-  assert_eq!(p.cpoisson().poisson.t_max, Some(2.0));
+  assert_eq!(
+    (p.t(), p.cpoisson().poisson.horizon),
+    (Some(2.0), Horizon::Events(64))
+  );
 
   let p = p.with_seed(seed(7));
   assert_eq!(p.cpoisson().seed.current(), seed(7).derive().current());

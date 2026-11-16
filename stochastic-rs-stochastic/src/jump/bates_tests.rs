@@ -1,20 +1,14 @@
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::*;
+use crate::euler::EulerSpec;
+use crate::euler::EulerSystem;
 
-fn make_bates(
-  mu: Option<f64>,
-  b: Option<f64>,
-  r: Option<f64>,
-  r_f: Option<f64>,
-) -> Bates1996<f64, SimdNormal<f64>> {
+fn make_bates(drift: Drift<f64>) -> Bates1996<f64, SimdNormal<f64>> {
   Bates1996::new(
-    mu,
-    b,
-    r,
-    r_f,
+    drift,
     1.0,
-    0.0,
+    0.25,
     0.0,
     0.0,
     0.0,
@@ -30,19 +24,18 @@ fn make_bates(
 }
 
 #[test]
-fn effective_drift_prefers_r_minus_rf_when_present() {
-  let p = make_bates(Some(0.9), Some(0.7), Some(0.4), Some(0.1));
-  assert!((p.effective_drift() - 0.3).abs() < 1e-12);
-}
-
-#[test]
-fn effective_drift_uses_b_if_rates_missing() {
-  let p = make_bates(Some(0.9), Some(0.7), None, None);
-  assert!((p.effective_drift() - 0.7).abs() < 1e-12);
-}
-
-#[test]
-fn effective_drift_falls_back_to_mu() {
-  let p = make_bates(Some(0.9), None, None, None);
-  assert!((p.effective_drift() - 0.9).abs() < 1e-12);
+fn every_drift_form_reaches_the_spot_drift_net_of_the_compensator() {
+  let forms = [
+    (Drift::Mu(0.75), 0.75),
+    (Drift::CostOfCarry(0.5), 0.5),
+    (Drift::Rates { r: 0.75, r_f: 0.5 }, 0.25),
+  ];
+  for (drift, rate) in forms {
+    let EulerSpec::Bates1996 { drift_c, .. } =
+      EulerSystem::<f64, 2>::euler_spec(&make_bates(drift))
+    else {
+      panic!("a floored Bates1996 steps through the Bates1996 family");
+    };
+    assert_eq!(drift_c, rate - 0.25);
+  }
 }

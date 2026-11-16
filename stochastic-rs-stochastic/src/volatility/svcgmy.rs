@@ -32,6 +32,7 @@ use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::device::Cpu;
+use crate::params::Horizon;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -459,7 +460,7 @@ impl<T: FloatExt, S: SeedExt> SvcgmySampler<T, S> {
     // distinct path-to-path: `self.seed` is this sampler's own already chunk-decorrelated
     // basis (see `sampler()`), so ticking it once more per fill stays safely confined to
     // this chunk's own sequence.
-    let P = Poisson::new(T::one(), Some(size), None, self.seed.derive()).sample();
+    let P = Poisson::new(T::one(), Horizon::Events(size), self.seed.derive()).sample();
 
     // c(τ_j) = C * v_{k-1} where (k-1)dt < τ_j <= k dt
     let mut c_tau = Array1::<T>::zeros(size);

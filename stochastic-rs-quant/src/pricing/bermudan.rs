@@ -18,6 +18,7 @@ use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
+use stochastic_rs_stochastic::params::Drift;
 
 use crate::mc::McEstimate;
 use crate::pricing::mc_stats::std_err_from_sums;
@@ -145,10 +146,7 @@ pub fn generate_gbm_paths(
   );
   let b = r - q;
   let process = GbmLog::<f64>::new(
-    None,
-    Some(b),
-    None,
-    None,
+    Drift::CostOfCarry(b),
     sigma,
     n_steps + 1,
     Some(s0),

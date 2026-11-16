@@ -7,6 +7,9 @@ mod backend;
 mod dispatch;
 
 #[macro_use]
+mod process_methods;
+
+#[macro_use]
 mod process_1d;
 
 #[macro_use]

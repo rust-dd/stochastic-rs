@@ -2,6 +2,8 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
 use stochastic_rs_stochastic::jump::mjd_log::MjdLog;
+use stochastic_rs_stochastic::params::Drift;
+use stochastic_rs_stochastic::params::Horizon;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PoissonSubordinator;
@@ -28,7 +30,7 @@ fn pin(label: &str, got: &Array1<f64>, golden: [u64; 8]) {
 }
 
 fn poisson_horizon() -> Poisson<f64, Deterministic> {
-  Poisson::new(2.0 * LAMBDA, None, Some(1.0), Deterministic::new(SEED))
+  Poisson::new(2.0 * LAMBDA, Horizon::Until(1.0), Deterministic::new(SEED))
 }
 
 fn poisson_subordinator() -> PoissonSubordinator<f64, Deterministic> {
@@ -100,10 +102,7 @@ fn poisson_horizon_second_sample_is_pinned() {
 #[test]
 fn mjd_log_is_pinned() {
   let path = MjdLog::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+    Drift::Mu(0.05),
     0.2,
     LAMBDA,
     0.0,
@@ -133,10 +132,7 @@ fn mjd_log_is_pinned() {
 #[test]
 fn bates_svj_is_pinned() {
   let [s, _] = BatesSvj::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+    Drift::Mu(0.05),
     LAMBDA,
     -0.1,
     0.2,

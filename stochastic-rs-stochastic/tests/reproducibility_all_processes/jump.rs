@@ -27,6 +27,7 @@ use stochastic_rs_stochastic::jump::mjd_log::MjdLog;
 use stochastic_rs_stochastic::jump::nig::Nig;
 use stochastic_rs_stochastic::jump::rdts::Rdts;
 use stochastic_rs_stochastic::jump::vg::Vg;
+use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use crate::common::J;
@@ -35,10 +36,7 @@ use crate::common::N;
 use crate::common::guard;
 
 guard!(bates1996, "Bates1996", |s| Bates1996::new(
-  Some(0.05),
-  None,
-  None,
-  None,
+  Drift::Mu(0.05),
   LAMBDA,
   0.0,
   0.04,
@@ -179,10 +177,7 @@ guard!(merton, "Merton", |s| Merton::new(
 ));
 
 guard!(mjd_log, "MjdLog", |s| MjdLog::new(
-  Some(0.05),
-  None,
-  None,
-  None,
+  Drift::Mu(0.05),
   0.2,
   1.0,
   0.0,

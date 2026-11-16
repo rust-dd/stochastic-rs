@@ -20,6 +20,7 @@ use stochastic_rs_distributions::poisson::SimdPoisson;
 
 use super::poisson::Poisson;
 use crate::device::Cpu;
+use crate::params::Horizon;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -259,10 +260,10 @@ where
   }
 
   fn grid_points(&self) -> usize {
-    self
-      .poisson
-      .n
-      .expect("the Euler engine describes CompoundPoisson's count mode; horizon mode has no grid")
+    let Horizon::Events(n) = self.poisson.horizon else {
+      panic!("the Euler engine describes CompoundPoisson's count mode; horizon mode has no grid");
+    };
+    n
   }
 
   /// One step is one arrival, so the grid has no horizon of its own; the
@@ -376,7 +377,7 @@ where
   /// What a device runs here: a fixed number of arrivals — the
   /// horizon mode has no grid — and sizes under a law the kernels draw.
   fn device_fallback(&self) -> Option<&'static str> {
-    (!(self.poisson.n.is_some() && self.device_jump_sizes().is_some()))
+    (!(matches!(self.poisson.horizon, Horizon::Events(_)) && self.device_jump_sizes().is_some()))
       .then_some("the horizon mode's missing grid, or a size law the kernels do not draw")
   }
 }
@@ -459,7 +460,7 @@ mod tests {
   fn grid_increments_zero_for_zero_intensity() {
     let cp = CompoundPoisson::new(
       ConstJump(1.0f64),
-      Poisson::new(0.0, Some(16), Some(1.0), Unseeded),
+      Poisson::new(0.0, Horizon::Events(16), Unseeded),
       Unseeded,
     );
     let inc = cp.sample_grid_increments(16, 1.0 / 15.0);
@@ -471,7 +472,7 @@ mod tests {
   fn grid_increments_start_at_zero() {
     let cp = CompoundPoisson::new(
       ConstJump(1.0f64),
-      Poisson::new(2.0, Some(16), Some(1.0), Unseeded),
+      Poisson::new(2.0, Horizon::Events(16), Unseeded),
       Unseeded,
     );
     let inc = cp.sample_grid_increments(16, 1.0 / 15.0);
@@ -507,24 +508,31 @@ impl PyCompoundPoisson {
     t_max: Option<f64>,
     dtype: Option<&str>,
   ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| match dtype.unwrap_or("f64") {
-      "f32" => Self {
-        inner_f32: Some(CompoundPoisson::new(
-          crate::traits::CallableDist::new(distribution),
-          Poisson::new(lambda_ as f32, n, t_max.map(|v| v as f32), Unseeded),
-          Unseeded,
-        )),
-        inner_f64: None,
-      },
-      _ => Self {
-        inner_f32: None,
-        inner_f64: Some(CompoundPoisson::new(
-          crate::traits::CallableDist::new(distribution),
-          Poisson::new(lambda_, n, t_max, Unseeded),
-          Unseeded,
-        )),
-      },
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> pyo3::PyResult<Self> {
+      let horizon = crate::python_params::horizon_from_kwargs(n, t_max)?;
+      Ok(match dtype.unwrap_or("f64") {
+        "f32" => Self {
+          inner_f32: Some(CompoundPoisson::new(
+            crate::traits::CallableDist::new(distribution),
+            Poisson::new(
+              lambda_ as f32,
+              crate::python_params::horizon_f32(horizon),
+              Unseeded,
+            ),
+            Unseeded,
+          )),
+          inner_f64: None,
+        },
+        _ => Self {
+          inner_f32: None,
+          inner_f64: Some(CompoundPoisson::new(
+            crate::traits::CallableDist::new(distribution),
+            Poisson::new(lambda_, horizon, Unseeded),
+            Unseeded,
+          )),
+        },
+      })
+    })?
   }
 
   fn sample<'py>(

@@ -10,6 +10,7 @@
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
+use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 use super::common::holds;
@@ -66,10 +67,7 @@ fn gbm_terminal_moments_match_the_lognormal_law() {
 fn gbm_log_is_exactly_lognormal() {
   let (mu, sigma, s0, t) = (0.03, 0.35, 50.0, 2.0);
   let paths = GbmLog::<f64, _>::new(
-    Some(mu),
-    None,
-    None,
-    None,
+    Drift::Mu(mu),
     sigma,
     STEPS + 1,
     Some(s0),

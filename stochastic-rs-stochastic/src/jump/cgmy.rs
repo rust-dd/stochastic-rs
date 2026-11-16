@@ -40,6 +40,7 @@ use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::params::Horizon;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -378,7 +379,7 @@ impl<T: FloatExt, S: SeedExt> CgmySampler<T, S> {
     let E = Array1::from_shape_fn(size, |_| self.exp.sample());
 
     // P_j = Γ_j (PPP/Gamma arrival times), P[0]=0, P[1]=Γ_1, ...
-    let P = Poisson::new(T::one(), Some(size), None, self.seed.derive()).sample();
+    let P = Poisson::new(T::one(), Horizon::Events(size), self.seed.derive()).sample();
 
     // τ_j ~ Unif(0,T)
     let mut tau_raw = Array1::<T>::zeros(size);

@@ -16,6 +16,7 @@ use stochastic_rs_distributions::exp::SimdExp;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::params::Horizon;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -24,10 +25,8 @@ use crate::traits::ProcessExt;
 pub struct Poisson<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Jump intensity (expected arrivals per unit time).
   pub lambda: T,
-  /// Optional fixed number of sampled events.
-  pub n: Option<usize>,
-  /// Optional terminal time for horizon-based sampling.
-  pub t_max: Option<T>,
+  /// `Events(n)`: `n` points, the origin and `n − 1` arrival times; `Until(t)`: the arrivals before `t`.
+  pub horizon: Horizon<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -35,33 +34,21 @@ pub struct Poisson<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-#[inline]
-fn validate_n_or_tmax<T: FloatExt>(n: Option<usize>, t_max: Option<T>, type_name: &'static str) {
-  if n.is_none() && t_max.is_none() {
-    panic!("{type_name}: n or t_max must be provided");
-  }
-}
-
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `Poisson::default().with_lambda(4.0)`. No persisted cache:
 /// `sampler()` builds its exponential inter-arrival source fresh from
 /// `self` every call.
 impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
-  pub fn new(lambda: T, n: Option<usize>, t_max: Option<T>, seed: S) -> Self {
+  pub fn new(lambda: T, horizon: Horizon<T>, seed: S) -> Self {
     assert!(
       lambda.is_finite(),
       "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
     );
-    assert!(
-      t_max.is_none_or(|v| v.is_finite()),
-      "t_max must satisfy `t_max.is_none_or(|v| v.is_finite())`, got t_max = {t_max:?}"
-    );
-    validate_n_or_tmax(n, t_max, "Poisson");
+    horizon.assert_valid();
     Poisson {
       backend: Cpu,
       lambda,
-      n,
-      t_max,
+      horizon,
       seed,
     }
   }
@@ -74,20 +61,10 @@ impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
     self
   }
 
-  /// Replace the fixed event count `n`; re-validates that at least one of
-  /// `n`/the horizon is still provided, matching `new()`'s own check.
-  pub fn with_steps(mut self, n: Option<usize>) -> Self {
-    validate_n_or_tmax(n, self.t_max, "Poisson");
-    self.n = n;
-    self
-  }
-
-  /// Replace the terminal-time horizon `t_max`; re-validates that at least
-  /// one of the horizon/`n` is still provided, matching `new()`'s own
-  /// check.
-  pub fn with_horizon(mut self, t_max: Option<T>) -> Self {
-    validate_n_or_tmax(self.n, t_max, "Poisson");
-    self.t_max = t_max;
+  /// Replace `horizon`, all else unchanged; panics on an `Until` that is not positive and finite.
+  pub fn with_horizon(mut self, horizon: Horizon<T>) -> Self {
+    horizon.assert_valid();
+    self.horizon = horizon;
     self
   }
 
@@ -98,11 +75,10 @@ impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
   }
 }
 
-/// λ=2.0 — a textbook Poisson parameterization. t_max=1, n=252 — one
-/// trading year of daily steps (this crate's `Default` convention).
+/// λ = 2 over 252 points, the crate's trading-year default.
 impl<T: FloatExt> Default for Poisson<T, Unseeded> {
   fn default() -> Self {
-    Self::new(T::from_f64_fast(2.0), Some(252), Some(T::one()), Unseeded)
+    Self::new(T::from_f64_fast(2.0), Horizon::Events(252), Unseeded)
   }
 }
 
@@ -123,27 +99,16 @@ impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
     let distr = SimdExp::<T>::new(self.lambda).seeded(seed);
     // A draw no engine reads; skipping it would move every stream seeded after this one.
     seed.next_seed();
-    let mode = if let Some(n) = self.n {
-      PoissonMode::Count { n }
-    } else if let Some(t_max) = self.t_max {
-      PoissonMode::Horizon {
-        t_max,
-        lambda: self.lambda,
-      }
-    } else {
-      unreachable!("validate_n_or_tmax ensures at least one of n, t_max is set")
-    };
-    PoissonSampler { distr, mode }
+    PoissonSampler {
+      distr,
+      horizon: self.horizon,
+      lambda: self.lambda,
+    }
   }
 }
 
-/// The Euler engine's view of the **count mode** only: the running sum of
-/// exponential inter-arrival times is a bounded forward recursion, which is
-/// what a kernel can step. Horizon mode is not — its output length is the
-/// number of events in `(0, t_max)`, not a grid — so [`ProcessExt`] keeps
-/// that mode on the host and only reaches the engine when `n` is set.
-/// Calling the engine directly with a horizon-mode process is a declaration
-/// error and says so.
+/// The Euler engine's view of an [`Events`](Horizon::Events) horizon, a running sum of exponential
+/// waits; an [`Until`](Horizon::Until) path's length is random, so it never reaches a kernel.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Poisson<T, S, B>
 {
@@ -158,9 +123,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn grid_points(&self) -> usize {
-    self
-      .n
-      .expect("the Euler engine describes Poisson's count mode; horizon mode has no grid")
+    let Horizon::Events(n) = self.horizon else {
+      panic!("the Euler engine describes Poisson's count mode; horizon mode has no grid");
+    };
+    n
   }
 
   /// The step is a sum of inter-arrival times and reads no `dt`, so the
@@ -184,7 +150,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Poisson<T, S> { lambda, n, t_max, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] Poisson<T, S> { lambda, horizon, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for Poisson<T, S, B>
@@ -207,7 +173,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   /// process's own sampler whatever the backend: its output length is the
   /// event count, which no fixed grid expresses.
   fn sample(&self) -> Array1<T> {
-    if self.n.is_some() {
+    if self.device_ready() {
       self.backend.euler_sample(self)
     } else {
       let out = self.sampler().sample();
@@ -217,7 +183,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
-    if self.n.is_some() {
+    if self.device_ready() {
       self.backend.euler_paths_map(self, m, f)
     } else {
       crate::traits::process::sample_map_chunked(self, m, f)
@@ -229,7 +195,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     m: usize,
     f: impl Fn(ndarray::ArrayView1<T>) -> R + Sync,
   ) -> Vec<R> {
-    if self.n.is_some() {
+    if self.device_ready() {
       self.backend.euler_paths_map_view(self, m, f)
     } else {
       crate::traits::process::sample_map_chunked(self, m, |path| f(path.view()))
@@ -237,7 +203,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 
   fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
-    if self.n.is_some() {
+    if self.device_ready() {
       self.backend.euler_paths(self, m)
     } else {
       crate::traits::process::sample_par_chunked(self, m)
@@ -245,7 +211,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 
   fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
-    if self.n.is_some() {
+    if self.device_ready() {
       self.backend.try_sample(self)
     } else {
       Ok(<Self as ProcessExt<T>>::sample(self))
@@ -253,19 +219,18 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 
   fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
-    if self.n.is_some() {
+    if self.device_ready() {
       self.backend.try_euler_paths(self, m)
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
-}
 
-/// Sampling regime selected at construction: a fixed event count or a
-/// time horizon (variable-length output).
-enum PoissonMode<T: FloatExt> {
-  Count { n: usize },
-  Horizon { t_max: T, lambda: T },
+  /// What a device runs here: an `Events` horizon; an `Until` path's length is random.
+  fn device_fallback(&self) -> Option<&'static str> {
+    matches!(self.horizon, Horizon::Until(_))
+      .then_some("the horizon mode, whose own length is random and has no grid")
+  }
 }
 
 /// Reusable [`Poisson`] sampling state: the owned exponential inter-arrival
@@ -273,7 +238,8 @@ enum PoissonMode<T: FloatExt> {
 #[doc(hidden)]
 pub struct PoissonSampler<T: FloatExt> {
   distr: Seeded<SimdExp<T>>,
-  mode: PoissonMode<T>,
+  horizon: Horizon<T>,
+  lambda: T,
 }
 
 impl<T: FloatExt> PoissonSampler<T> {
@@ -331,29 +297,45 @@ impl<T: FloatExt> PathSampler<T> for PoissonSampler<T> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
-    match self.mode {
-      PoissonMode::Count { .. } => {
+    match self.horizon {
+      Horizon::Events(_) => {
         let slice = out
           .as_slice_mut()
           .expect("Poisson output must be contiguous");
         self.fill_count(slice);
       }
-      PoissonMode::Horizon { t_max, lambda } => {
-        *out = self.sample_horizon(t_max, lambda);
+      Horizon::Until(t_max) => {
+        *out = self.sample_horizon(t_max, self.lambda);
       }
     }
   }
 
   fn sample(&mut self) -> Array1<T> {
-    match self.mode {
-      PoissonMode::Count { n } => array1_from_fill(n, |out| self.fill_count(out)),
-      PoissonMode::Horizon { t_max, lambda } => self.sample_horizon(t_max, lambda),
+    match self.horizon {
+      Horizon::Events(n) => array1_from_fill(n, |out| self.fill_count(out)),
+      Horizon::Until(t_max) => self.sample_horizon(t_max, self.lambda),
     }
   }
 }
 
-py_process_1d!(PyPoisson, Poisson,
-  sig: (lambda_, n=None, t_max=None, seed=None, dtype=None),
-  params: (lambda_: f64, n: Option<usize>, t_max: Option<f64>),
-  device
-);
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn an_event_horizon_and_a_time_horizon_are_two_regimes() {
+    let seed = Deterministic::new(2);
+    let by_count =
+      Poisson::<f64, Deterministic>::new(3.0, Horizon::Events(10), seed.clone()).sample();
+    let by_time = Poisson::<f64, Deterministic>::new(3.0, Horizon::Until(2.0), seed).sample();
+    assert_eq!(by_count.len(), 10);
+    assert!(by_time.iter().all(|t| *t <= 2.0));
+  }
+}
+
+#[cfg(feature = "python")]
+mod python;
+
+#[cfg(feature = "python")]
+#[doc(hidden)]
+pub use python::PyPoisson;

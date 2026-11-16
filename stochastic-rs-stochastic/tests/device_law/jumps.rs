@@ -12,6 +12,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::jump::kou::Kou;
 use stochastic_rs_stochastic::jump::levy_diffusion::LevyDiffusion;
 use stochastic_rs_stochastic::jump::merton::Merton;
+use stochastic_rs_stochastic::params::Horizon;
 use stochastic_rs_stochastic::process::ccustom::CompoundCustom;
 use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs_stochastic::process::customjt::CustomJt;
@@ -189,7 +190,7 @@ fn compound_poisson_events_agree_with_the_cpu_law() {
   let build = || {
     CompoundPoisson::<f32, _, _>::new(
       SimdNormal::<f32>::new(0.5, 0.2),
-      Poisson::new(4.0, Some(EVENTS), None, Unseeded),
+      Poisson::new(4.0, Horizon::Events(EVENTS), Unseeded),
       Deterministic::new(17),
     )
   };
@@ -230,8 +231,7 @@ fn custom_jump_times_agree_with_the_cpu_law() {
   const EVENTS: usize = 50;
   let build = || {
     CustomJt::<f32, _, _>::new(
-      Some(EVENTS),
-      None,
+      Horizon::Events(EVENTS),
       SimdExp::<f32>::new(2.0),
       Deterministic::new(23),
     )
@@ -264,11 +264,10 @@ fn compound_custom_agrees_with_the_cpu_law() {
   const EVENTS: usize = 50;
   let build = || {
     CompoundCustom::<f32, _, _, _>::new(
-      Some(EVENTS),
-      None,
+      Horizon::Events(EVENTS),
       SimdNormal::<f32>::new(1.0, 0.3),
       SimdExp::<f32>::new(2.0),
-      CustomJt::new(Some(EVENTS), None, SimdExp::<f32>::new(2.0), Unseeded),
+      CustomJt::new(Horizon::Events(EVENTS), SimdExp::<f32>::new(2.0), Unseeded),
       Deterministic::new(29),
     )
   };

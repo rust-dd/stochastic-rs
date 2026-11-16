@@ -20,6 +20,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::customjt::CustomJt;
 use crate::device::Cpu;
+use crate::params::Horizon;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -30,11 +31,9 @@ where
   D1: Distribution<T> + Send + Sync,
   D2: Distribution<T> + Send + Sync,
 {
-  /// Optional fixed number of generated events.
-  pub n: Option<usize>,
-  /// Optional horizon for time-based generation.
-  /// Used when `n` is `None`.
-  pub t_max: Option<T>,
+  /// `Events(n)` sizes the jump rows at `n` points; under `Until` they follow `customjt`, which
+  /// draws the times either way.
+  pub horizon: Horizon<T>,
   /// Distribution of jump magnitudes.
   pub jumps_distribution: D1,
   /// Distribution of jump waiting times / event times.
@@ -55,25 +54,16 @@ where
   D2: Distribution<T> + Send + Sync,
 {
   pub fn new(
-    n: Option<usize>,
-    t_max: Option<T>,
+    horizon: Horizon<T>,
     jumps_distribution: D1,
     jump_times_distribution: D2,
     customjt: CustomJt<T, D2>,
     seed: S,
   ) -> Self {
-    assert!(
-      t_max.is_none_or(|v| v.is_finite()),
-      "t_max must satisfy `t_max.is_none_or(|v| v.is_finite())`, got t_max = {t_max:?}"
-    );
-    if n.is_none() && t_max.is_none() {
-      panic!("CompoundCustom: n or t_max must be provided");
-    }
-
+    horizon.assert_valid();
     Self {
       backend: Cpu,
-      n,
-      t_max,
+      horizon,
       jumps_distribution,
       jump_times_distribution,
       customjt,
@@ -88,6 +78,12 @@ where
   D1: Distribution<T> + Send + Sync,
   D2: Distribution<T> + Send + Sync,
 {
+  /// Replace `horizon`, all else unchanged; panics on an `Until` that is not positive and finite.
+  pub fn with_horizon(mut self, horizon: Horizon<T>) -> Self {
+    horizon.assert_valid();
+    self.horizon = horizon;
+    self
+  }
 }
 
 impl<T, D1, D2, S: SeedExt, B> CompoundCustom<T, D1, D2, S, B>
@@ -137,9 +133,10 @@ where
   }
 
   fn grid_points(&self) -> usize {
-    self
-      .n
-      .expect("the Euler engine describes CompoundCustom's count mode; horizon mode has no grid")
+    let Horizon::Events(n) = self.horizon else {
+      panic!("the Euler engine describes CompoundCustom's count mode; horizon mode has no grid");
+    };
+    n
   }
 
   fn horizon(&self) -> T {
@@ -167,7 +164,7 @@ where
   }
 }
 
-backend_switch!([T, D1, D2, S: SeedExt] CompoundCustom<T, D1, D2, S> { n, t_max, jumps_distribution, jump_times_distribution, customjt, seed } via euler where  T: FloatExt,  D1: Distribution<T> + Send + Sync,  D2: Distribution<T> + Send + Sync);
+backend_switch!([T, D1, D2, S: SeedExt] CompoundCustom<T, D1, D2, S> { horizon, jumps_distribution, jump_times_distribution, customjt, seed } via euler where  T: FloatExt,  D1: Distribution<T> + Send + Sync,  D2: Distribution<T> + Send + Sync);
 
 impl<T, D1, D2, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for CompoundCustom<T, D1, D2, S, B>
@@ -197,7 +194,7 @@ where
   /// relative to each other rather than one raw stride apart.
   fn sampler(&self) -> CompoundCustomSampler<'_, T, D1, D2, S> {
     CompoundCustomSampler {
-      n: self.n,
+      horizon: self.horizon,
       jumps_distribution: &self.jumps_distribution,
       customjt: &self.customjt,
       seed: self.seed.derive(),
@@ -256,8 +253,8 @@ where
   /// draw. Anything else samples on the host.
   fn device_fallback(&self) -> Option<&'static str> {
     let ready = {
-      self.n.is_some()
-        && self.customjt.n == self.n
+      matches!(self.horizon, Horizon::Events(_))
+        && self.customjt.horizon == self.horizon
         && self.device_intensity().is_some()
         && self.device_jump_sizes().is_some()
     };
@@ -278,7 +275,7 @@ where
   D1: Distribution<T> + Send + Sync,
   D2: Distribution<T> + Send + Sync,
 {
-  n: Option<usize>,
+  horizon: Horizon<T>,
   jumps_distribution: &'a D1,
   customjt: &'a CustomJt<T, D2>,
   seed: S,
@@ -292,7 +289,11 @@ where
 {
   fn sample_inner(&mut self) -> [Array1<T>; 3] {
     let p = self.customjt.sample_impl(&self.seed);
-    let mut jumps = Array1::<T>::zeros(self.n.unwrap_or(p.len()));
+    let len = match self.horizon {
+      Horizon::Events(n) => n,
+      Horizon::Until(_) => p.len(),
+    };
+    let mut jumps = Array1::<T>::zeros(len);
     let mut rng = self.seed.rng();
     for i in 1..p.len() {
       jumps[i] = self.jumps_distribution.sample(&mut rng);
@@ -352,52 +353,54 @@ impl PyCompoundCustom {
     t_max: Option<f64>,
     dtype: Option<&str>,
   ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| match dtype.unwrap_or("f64") {
-      "f32" => {
-        let (jt_dist, customjt_dist) = pyo3::Python::attach(|py| {
-          let a = jump_times_distribution.clone_ref(py);
-          let b = jump_times_distribution;
-          (
-            crate::traits::CallableDist::<f32>::new(a),
-            crate::traits::CallableDist::<f32>::new(b),
-          )
-        });
-        let customjt = CustomJt::new(n, t_max.map(|v| v as f32), customjt_dist, Unseeded);
-        Self {
-          inner_f32: Some(CompoundCustom::new(
-            n,
-            t_max.map(|v| v as f32),
-            crate::traits::CallableDist::new(jumps_distribution),
-            jt_dist,
-            customjt,
-            Unseeded,
-          )),
-          inner_f64: None,
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> pyo3::PyResult<Self> {
+      let horizon = crate::python_params::horizon_from_kwargs(n, t_max)?;
+      Ok(match dtype.unwrap_or("f64") {
+        "f32" => {
+          let (jt_dist, customjt_dist) = pyo3::Python::attach(|py| {
+            let a = jump_times_distribution.clone_ref(py);
+            let b = jump_times_distribution;
+            (
+              crate::traits::CallableDist::<f32>::new(a),
+              crate::traits::CallableDist::<f32>::new(b),
+            )
+          });
+          let horizon = crate::python_params::horizon_f32(horizon);
+          let customjt = CustomJt::new(horizon, customjt_dist, Unseeded);
+          Self {
+            inner_f32: Some(CompoundCustom::new(
+              horizon,
+              crate::traits::CallableDist::new(jumps_distribution),
+              jt_dist,
+              customjt,
+              Unseeded,
+            )),
+            inner_f64: None,
+          }
         }
-      }
-      _ => {
-        let (jt_dist, customjt_dist) = pyo3::Python::attach(|py| {
-          let a = jump_times_distribution.clone_ref(py);
-          let b = jump_times_distribution;
-          (
-            crate::traits::CallableDist::<f64>::new(a),
-            crate::traits::CallableDist::<f64>::new(b),
-          )
-        });
-        let customjt = CustomJt::new(n, t_max, customjt_dist, Unseeded);
-        Self {
-          inner_f32: None,
-          inner_f64: Some(CompoundCustom::new(
-            n,
-            t_max,
-            crate::traits::CallableDist::new(jumps_distribution),
-            jt_dist,
-            customjt,
-            Unseeded,
-          )),
+        _ => {
+          let (jt_dist, customjt_dist) = pyo3::Python::attach(|py| {
+            let a = jump_times_distribution.clone_ref(py);
+            let b = jump_times_distribution;
+            (
+              crate::traits::CallableDist::<f64>::new(a),
+              crate::traits::CallableDist::<f64>::new(b),
+            )
+          });
+          let customjt = CustomJt::new(horizon, customjt_dist, Unseeded);
+          Self {
+            inner_f32: None,
+            inner_f64: Some(CompoundCustom::new(
+              horizon,
+              crate::traits::CallableDist::new(jumps_distribution),
+              jt_dist,
+              customjt,
+              Unseeded,
+            )),
+          }
         }
-      }
-    })
+      })
+    })?
   }
 
   fn sample<'py>(

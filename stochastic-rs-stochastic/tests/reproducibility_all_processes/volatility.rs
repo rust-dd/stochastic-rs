@@ -5,6 +5,7 @@
 //! `deterministic_parallelism_bates_rough_heston.rs`, the guard builds it
 //! then sets the public field directly before sampling.
 
+use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::Expr;
 use stochastic_rs_stochastic::volatility::HestonPow;
@@ -31,10 +32,7 @@ use crate::common::N;
 use crate::common::guard;
 
 guard!(bates_svj, "BatesSvj", |s| BatesSvj::new(
-  Some(0.05),
-  None,
-  None,
-  None,
+  Drift::Mu(0.05),
   0.5,
   -0.1,
   0.2,
@@ -145,10 +143,7 @@ guard!(heston2d, "Heston2D", |s| Heston2D::new(
 ));
 
 guard!(heston_log, "HestonLog", |s| HestonLog::new(
-  Some(0.05),
-  None,
-  None,
-  None,
+  Drift::Mu(0.05),
   1.5,
   0.04,
   0.3,

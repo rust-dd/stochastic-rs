@@ -1,26 +1,5 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `Merton`
-//! (`jump/merton.rs`). No persisted cache: `sampler()` builds its Gaussian
-//! diffusion source fresh from `self.{alpha,sigma,lambda,theta,n,t,seed}`
-//! on every call, threading the outer seed correctly. Since the zero-
-//! exception-reproducibility wave's Task 1, `cpoisson`'s own seed is no
-//! longer pinned to `Unseeded` either — `new()` builds it from the same
-//! `seed: S` the caller passes in — so a nonzero-intensity jump component
-//! is now just as reproducible as the diffusion; the round-trip tests below
-//! keep a nonzero-intensity jump distribution throughout (no more need for
-//! a `lambda = 0` degenerate case to get bit-exact comparisons). Unlike
-//! `Bates1996`'s `[S, v]` pair there is no separate jump-free sub-array
-//! here — `Merton`'s single output path mixes the jump term in at every
-//! index — so these bit-exact comparisons genuinely exercise both halves at
-//! once.
-//!
-//! `merton_with_cpoisson_changes_sampled_intensity` and
-//! `merton_with_lambda_syncs_cpoisson_and_changes_sampled_path` (plus the
-//! `cpoisson.poisson.{n,t_max}` assertions folded into the steps/horizon
-//! tests below) guard the single-source-of-truth invariant Task 1's own
-//! review caught broken: `sampler()` reads `self.lambda`, not
-//! `cpoisson.poisson.lambda`, so `with_cpoisson` originally left a swapped-
-//! in driver's own intensity silently ignored. See `Merton::cpoisson`'s and
-//! `Merton::with_cpoisson`'s field/method docs.
+//! `Merton`'s setters round-trip and match a fresh `new(..)` bit for bit, jumps included; the
+//! sampler reads `self.lambda`, so the `cpoisson` setters must keep the two in step.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -28,6 +7,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::jump::merton::Merton;
+use stochastic_rs_stochastic::params::Horizon;
 use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::traits::ProcessExt;
@@ -106,7 +86,7 @@ plain_test!(merton_with_x0_round_trip, with_x0, x0, Some(1.0));
 fn merton_with_cpoisson_round_trip() {
   let wide = CompoundPoisson::new(
     SimdNormal::new(0.0, 5.0),
-    Poisson::new(4.0, Some(64), Some(1.0), Unseeded),
+    Poisson::new(4.0, Horizon::Events(64), Unseeded),
     Unseeded,
   );
   let base = merton_base();
@@ -155,7 +135,7 @@ fn merton_with_cpoisson_changes_sampled_intensity() {
 
   let swapped_driver = CompoundPoisson::new(
     SimdNormal::new(0.0, 0.1),
-    Poisson::new(swapped_lambda, Some(64), Some(1.0), Unseeded),
+    Poisson::new(swapped_lambda, Horizon::Events(64), Unseeded),
     Deterministic::new(seed),
   );
   let got = with_lambda(base_lambda).with_cpoisson(swapped_driver);
@@ -214,9 +194,9 @@ fn merton_with_steps_matches_fresh_construction() {
   assert_eq!(got.n, 128);
   assert_eq!(fields(&got), fields(&expected));
   assert_eq!(
-    got.cpoisson.poisson.n,
-    Some(128),
-    "with_steps must resync cpoisson.poisson.n (dead on the sampling path, but must not go stale)"
+    got.cpoisson.poisson.horizon,
+    Horizon::Events(128),
+    "with_steps must resync the driver's event count (dead on the sampling path, but must not go stale)"
   );
 
   // Bit-exact against a fresh construction, jumps included: `cpoisson`'s
@@ -249,9 +229,9 @@ fn merton_with_horizon_matches_fresh_construction() {
   assert_eq!(got.t, Some(2.0));
   assert_eq!(fields(&got), fields(&expected));
   assert_eq!(
-    got.cpoisson.poisson.t_max,
-    Some(2.0),
-    "with_horizon must resync cpoisson.poisson.t_max (dead on the sampling path, but must not go stale)"
+    got.cpoisson.poisson.horizon,
+    Horizon::Events(64),
+    "the driver counts the grid's events whatever its horizon"
   );
 
   let want = Merton::new(

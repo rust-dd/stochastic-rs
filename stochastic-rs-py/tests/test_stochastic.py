@@ -320,3 +320,53 @@ def test_the_boundary_kwarg_selects_the_variance_step():
     for build in (variance, lambda b: sr.PyCir(1.5, 0.04, 0.3, 64, boundary=b)):
         with pytest.raises(ValueError):
             build("symmetric")
+
+
+def test_a_log_price_model_takes_exactly_one_drift():
+    def gbm_log(**drift):
+        return sr.PyGbmLog(sigma=0.2, n=64, s0=1.0, t=1.0, seed=4, **drift).sample()
+
+    assert np.array_equal(gbm_log(mu=0.5), gbm_log(b=0.5))
+    assert np.array_equal(gbm_log(mu=0.5), gbm_log(r=0.75, r_f=0.25))
+    assert not np.array_equal(gbm_log(mu=0.5), gbm_log(mu=0.25))
+    builds = [
+        lambda **d: sr.PyGbmLog(sigma=0.2, n=64, s0=1.0, **d),
+        lambda **d: sr.PyHestonLog(kappa=1.5, theta=0.04, xi=0.3, rho=-0.7, n=64, s0=1.0, **d),
+        lambda **d: sr.PyMjdLog(sigma=0.2, lambda_=0.5, nu=-0.1, omega=0.15, n=64, s0=1.0, **d),
+        lambda **d: sr.PyBates(0.5, 0.0, 0.08, 2.0, 0.3, -0.5, lambda: 0.1, 64, s0=1.0, **d),
+        lambda **d: sr.PyBatesSvj(0.5, 0.0, 0.1, 0.08, 2.0, 0.3, -0.7, 64, s0=1.0, **d),
+    ]
+    for build in builds:
+        build(mu=0.05)
+        for bad in ({}, {"mu": 0.05, "b": 0.01}, {"r": 0.05}, {"mu": 0.05, "r": 0.05, "r_f": 0.0}):
+            with pytest.raises(ValueError, match="exactly one drift"):
+                build(**bad)
+
+
+def test_an_event_process_takes_exactly_one_of_n_and_t_max():
+    builds = [
+        lambda **h: sr.PyPoisson(2.0, **h),
+        lambda **h: sr.PyHawkes(0.5, 0.3, 1.0, **h),
+        lambda **h: sr.PyCustomJt(lambda: 0.1, **h),
+        lambda **h: sr.PyCompoundCustom(lambda: 0.1, lambda: 0.1, **h),
+        lambda **h: sr.PyCompoundPoisson(lambda: 0.1, 2.0, **h),
+    ]
+    for build in builds:
+        build(n=10)
+        build(t_max=1.0)
+        for bad in ({}, {"n": 10, "t_max": 1.0}):
+            with pytest.raises(ValueError, match="exactly one of n and t_max"):
+                build(**bad)
+    assert len(sr.PyPoisson(3.0, n=10, seed=2).sample()) == 10
+    assert np.all(sr.PyPoisson(3.0, t_max=2.0, seed=2).sample() <= 2.0)
+    assert sr.PyPoisson(3.0, n=10).device_ready() and sr.PyHawkes(0.5, 0.3, 1.0, n=10).device_ready()
+    assert not sr.PyPoisson(3.0, t_max=2.0).device_ready()
+    assert sr.PyHawkes(0.5, 0.3, 1.0, t_max=2.0).device_fallback() is not None
+
+
+def test_ho_lee_takes_exactly_one_of_theta_and_f_t():
+    sr.PyHoLee(0.01, 64, theta=0.02)
+    sr.PyHoLee(0.01, 64, f_T=lambda t: 0.03)
+    for bad in ({}, {"theta": 0.02, "f_T": lambda t: 0.03}):
+        with pytest.raises(ValueError, match="exactly one drift"):
+            sr.PyHoLee(0.01, 64, **bad)

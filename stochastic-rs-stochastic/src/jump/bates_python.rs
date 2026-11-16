@@ -42,7 +42,8 @@ impl PyBates {
     dtype: Option<&str>,
   ) -> pyo3::PyResult<Self> {
     let boundary = crate::python_params::boundary(boundary);
-    stochastic_rs_distributions::python::value_error_on_panic(|| {
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> pyo3::PyResult<Self> {
+      let drift = crate::python_params::drift_from_kwargs(mu, b, r, r_f)?;
       let mut s = Self {
         inner_f32: None,
         inner_f64: None,
@@ -51,14 +52,12 @@ impl PyBates {
       };
       match dtype.unwrap_or("f64") {
         "f32" => {
+          let drift = crate::python_params::drift_f32(drift);
           let jump_dist = crate::traits::CallableDist::new(distribution);
           match seed {
             Some(sd) => {
               s.seeded_f32 = Some(Bates1996::new(
-                mu.map(|v| v as f32),
-                b.map(|v| v as f32),
-                r.map(|v| v as f32),
-                r_f.map(|v| v as f32),
+                drift,
                 lambda_ as f32,
                 k as f32,
                 alpha as f32,
@@ -76,10 +75,7 @@ impl PyBates {
             }
             None => {
               s.inner_f32 = Some(Bates1996::new(
-                mu.map(|v| v as f32),
-                b.map(|v| v as f32),
-                r.map(|v| v as f32),
-                r_f.map(|v| v as f32),
+                drift,
                 lambda_ as f32,
                 k as f32,
                 alpha as f32,
@@ -102,10 +98,7 @@ impl PyBates {
           match seed {
             Some(sd) => {
               s.seeded_f64 = Some(Bates1996::new(
-                mu,
-                b,
-                r,
-                r_f,
+                drift,
                 lambda_,
                 k,
                 alpha,
@@ -123,15 +116,15 @@ impl PyBates {
             }
             None => {
               s.inner_f64 = Some(Bates1996::new(
-                mu, b, r, r_f, lambda_, k, alpha, beta, sigma, rho, jump_dist, n, s0, v0, t,
-                boundary, Unseeded,
+                drift, lambda_, k, alpha, beta, sigma, rho, jump_dist, n, s0, v0, t, boundary,
+                Unseeded,
               ));
             }
           }
         }
       }
-      s
-    })
+      Ok(s)
+    })?
   }
 
   fn sample<'py>(

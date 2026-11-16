@@ -10,6 +10,8 @@ use stochastic_rs::stochastic::diffusion::ou::Ou;
 use stochastic_rs::stochastic::jump::bates::Bates1996;
 use stochastic_rs::stochastic::jump::merton::Merton;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
+use stochastic_rs::stochastic::params::Drift;
+use stochastic_rs::stochastic::params::Horizon;
 use stochastic_rs::stochastic::params::VarianceBoundary;
 use stochastic_rs::stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs::stochastic::process::poisson::Poisson;
@@ -209,7 +211,7 @@ fn golden_fou_stream() {
 fn golden_compound_poisson_streams() {
   let cpoisson = CompoundPoisson::<f64, _, _>::new(
     SimdNormal::new(0.0, 0.1),
-    Poisson::<f64, _>::new(0.5, Some(N), Some(1.0), Unseeded),
+    Poisson::<f64, _>::new(0.5, Horizon::Events(N), Unseeded),
     Deterministic::new(44),
   );
   let [times, cum, jumps] = cpoisson.sample();
@@ -289,10 +291,7 @@ fn golden_merton_streams() {
 #[test]
 fn golden_bates_streams() {
   let bates = Bates1996::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+    Drift::Mu(0.05),
     3.0,
     0.0,
     0.04,
@@ -339,10 +338,7 @@ fn golden_bates_streams() {
   // same everything else) diverges on the price path, which is only
   // possible if the golden above actually depends on the jump term.
   let zero_lambda = Bates1996::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+    Drift::Mu(0.05),
     0.0,
     0.0,
     0.04,

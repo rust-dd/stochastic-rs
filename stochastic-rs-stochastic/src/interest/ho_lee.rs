@@ -15,21 +15,15 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::params::HoLeeDrift;
 use crate::traits::FloatExt;
-use crate::traits::Fn1D;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[allow(non_snake_case)]
 #[derive(Clone)]
 pub struct HoLee<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Observed forward-rate curve f(0,T), used to derive the
-  /// time-dependent drift `∂f/∂T(0,t) + σ²t` when supplied — mutually
-  /// exclusive with the constant-drift alternative `theta`.
-  pub f_T: Option<Fn1D<T>>,
-  /// Constant drift rate θ(t) ≡ θ (module header's θ(t), taken constant
-  /// here), used when `f_T` is not supplied.
-  pub theta: Option<T>,
+  /// The module header's θ(t): a constant, or read off the forward curve.
+  pub drift: HoLeeDrift<T>,
   /// Diffusion scale σ multiplying `dW_t`.
   pub sigma: T,
   /// Number of points sampled along the Ho-Lee path.
@@ -44,18 +38,13 @@ pub struct HoLee<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> HoLee<T, S> {
-  pub fn new(
-    f_T: Option<Fn1D<T>>,
-    theta: Option<T>,
-    sigma: T,
-    n: usize,
-    t: Option<T>,
-    seed: S,
-  ) -> Self {
-    assert!(
-      theta.is_none_or(|v| v.is_finite()),
-      "theta must satisfy `theta.is_none_or(|v| v.is_finite())`, got theta = {theta:?}"
-    );
+  pub fn new(drift: HoLeeDrift<T>, sigma: T, n: usize, t: Option<T>, seed: S) -> Self {
+    if let HoLeeDrift::Constant(theta) = drift {
+      assert!(
+        theta.is_finite(),
+        "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
+      );
+    }
     assert!(
       sigma.is_finite(),
       "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
@@ -65,15 +54,10 @@ impl<T: FloatExt, S: SeedExt> HoLee<T, S> {
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
-    assert!(
-      theta.is_some() || f_T.is_some(),
-      "theta or f_T must be provided"
-    );
 
     Self {
       backend: Cpu,
-      f_T,
-      theta,
+      drift,
       sigma,
       n,
       t,
@@ -114,14 +98,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
       (0..self.n)
         .map(|i| {
           let t = T::from_usize_(i) * dt;
-          match self.f_T.as_ref() {
-            Some(f) => {
+          match &self.drift {
+            HoLeeDrift::ForwardCurve(f) => {
               let eps = dt.max(T::from_f64_fast(1e-8));
               let t_minus = (t - eps).max(T::zero());
               let t_plus = t + eps;
               (f.call(t_plus) - f.call(t_minus)) / (t_plus - t_minus) + sigma_sq * t
             }
-            None => self.theta.expect("HoLee carries a drift"),
+            HoLeeDrift::Constant(theta) => *theta,
           }
         })
         .collect(),
@@ -139,7 +123,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] HoLee<T, S> { f_T, theta, sigma, n, t, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] HoLee<T, S> { drift, sigma, n, t, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for HoLee<T, S, B>
@@ -161,8 +145,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       dt,
       sigma: self.sigma,
       diff_scale: self.sigma,
-      f_T: self.f_T.as_ref(),
-      theta: self.theta,
+      drift: &self.drift,
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
@@ -208,8 +191,7 @@ pub struct HoLeeSampler<'a, T: FloatExt> {
   dt: T,
   sigma: T,
   diff_scale: T,
-  f_T: Option<&'a Fn1D<T>>,
-  theta: Option<T>,
+  drift: &'a HoLeeDrift<T>,
   normal: Seeded<SimdNormal<T>>,
 }
 
@@ -232,14 +214,15 @@ impl<T: FloatExt> HoLeeSampler<'_, T> {
     for (k, z) in tail.iter_mut().enumerate() {
       let i = k + 1;
       let t = T::from_usize_(i) * dt;
-      let drift = if let Some(f) = self.f_T {
-        let eps = dt.max(T::from_f64_fast(1e-8));
-        let t_minus = (t - eps).max(T::zero());
-        let t_plus = t + eps;
-        let df_dt = (f.call(t_plus) - f.call(t_minus)) / (t_plus - t_minus);
-        df_dt + self.sigma.powf(T::from_usize_(2)) * t
-      } else {
-        self.theta.unwrap()
+      let drift = match self.drift {
+        HoLeeDrift::ForwardCurve(f) => {
+          let eps = dt.max(T::from_f64_fast(1e-8));
+          let t_minus = (t - eps).max(T::zero());
+          let t_plus = t + eps;
+          let df_dt = (f.call(t_plus) - f.call(t_minus)) / (t_plus - t_minus);
+          df_dt + self.sigma.powf(T::from_usize_(2)) * t
+        }
+        HoLeeDrift::Constant(theta) => *theta,
       };
 
       let next = prev + drift * dt + diff_scale * *z;
@@ -268,6 +251,7 @@ impl<T: FloatExt> PathSampler<T> for HoLeeSampler<'_, T> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::traits::Fn1D;
   use crate::traits::ProcessExt;
 
   fn f_curve(t: f64) -> f64 {
@@ -277,8 +261,7 @@ mod tests {
   #[test]
   fn uses_forward_curve_derivative_when_provided() {
     let p = HoLee::new(
-      Some(Fn1D::Native(f_curve as fn(f64) -> f64)),
-      None,
+      HoLeeDrift::ForwardCurve(Fn1D::Native(f_curve as fn(f64) -> f64)),
       0.0_f64,
       3,
       Some(1.0),
@@ -316,13 +299,13 @@ impl PyHoLee {
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> pyo3::PyResult<Self> {
       let device = crate::python_device::Device::parse(device, "f64")?;
+      let drift = crate::python_params::ho_lee_drift_from_kwargs(theta, f_T)?;
       Ok(match seed {
         Some(s) => Self {
           device,
           inner: None,
           seeded: Some(HoLee::new(
-            f_T.map(Fn1D::Py),
-            theta,
+            drift,
             sigma,
             n,
             t,
@@ -331,7 +314,7 @@ impl PyHoLee {
         },
         None => Self {
           device,
-          inner: Some(HoLee::new(f_T.map(Fn1D::Py), theta, sigma, n, t, Unseeded)),
+          inner: Some(HoLee::new(drift, sigma, n, t, Unseeded)),
           seeded: None,
         },
       })

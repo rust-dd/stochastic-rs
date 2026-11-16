@@ -9,6 +9,8 @@ use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
 use stochastic_rs_stochastic::jump::kou::Kou;
 use stochastic_rs_stochastic::jump::levy_diffusion::LevyDiffusion;
 use stochastic_rs_stochastic::jump::merton::Merton;
+use stochastic_rs_stochastic::params::Drift;
+use stochastic_rs_stochastic::params::Horizon;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::ccustom::CompoundCustom;
 use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
@@ -125,10 +127,7 @@ fn stateless_simd_laws_reach_the_kernels_of_every_law_taking_process() {
   reaches_the_kernels(
     "Bates1996",
     Bates1996::new(
-      Some(0.05),
-      None,
-      None,
-      None,
+      Drift::Mu(0.05),
       LAMBDA,
       0.0,
       0.04,
@@ -149,23 +148,22 @@ fn stateless_simd_laws_reach_the_kernels_of_every_law_taking_process() {
     "CompoundPoisson",
     CompoundPoisson::new(
       normal(),
-      Poisson::new(LAMBDA, Some(N), Some(1.0), Unseeded),
+      Poisson::new(LAMBDA, Horizon::Events(N), Unseeded),
       Unseeded,
     )
     .device_fallback(),
   );
   reaches_the_kernels(
     "CustomJt",
-    CustomJt::new(Some(N), None, exp(), Unseeded).device_fallback(),
+    CustomJt::new(Horizon::Events(N), exp(), Unseeded).device_fallback(),
   );
   reaches_the_kernels(
     "CompoundCustom",
     CompoundCustom::new(
-      Some(N),
-      None,
+      Horizon::Events(N),
       normal(),
       exp(),
-      CustomJt::new(Some(N), None, exp(), Unseeded),
+      CustomJt::new(Horizon::Events(N), exp(), Unseeded),
       Unseeded,
     )
     .device_fallback(),
@@ -255,10 +253,7 @@ fn a_law_the_kernels_do_not_draw_stays_on_the_host() {
   stays_on_the_host(
     "Bates1996",
     Bates1996::new(
-      Some(0.05),
-      None,
-      None,
-      None,
+      Drift::Mu(0.05),
       LAMBDA,
       0.0,
       0.04,
@@ -279,23 +274,22 @@ fn a_law_the_kernels_do_not_draw_stays_on_the_host() {
     "CompoundPoisson",
     CompoundPoisson::new(
       Const(0.1),
-      Poisson::new(LAMBDA, Some(N), Some(1.0), Unseeded),
+      Poisson::new(LAMBDA, Horizon::Events(N), Unseeded),
       Unseeded,
     )
     .device_fallback(),
   );
   stays_on_the_host(
     "CustomJt",
-    CustomJt::new(Some(N), None, Const(0.05), Unseeded).device_fallback(),
+    CustomJt::new(Horizon::Events(N), Const(0.05), Unseeded).device_fallback(),
   );
   stays_on_the_host(
     "CompoundCustom",
     CompoundCustom::new(
-      Some(N),
-      None,
+      Horizon::Events(N),
       Const(0.1),
       exp(),
-      CustomJt::new(Some(N), None, exp(), Unseeded),
+      CustomJt::new(Horizon::Events(N), exp(), Unseeded),
       Unseeded,
     )
     .device_fallback(),

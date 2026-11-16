@@ -8,6 +8,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use super::JumpFou;
 use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
+use crate::params::Horizon;
 use crate::process::cpoisson::CompoundPoisson;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
@@ -70,7 +71,7 @@ where
       x0,
       t,
       lambda,
-      cpoisson: Self::jump_driver(jump_dist, lambda, n, t, &seed),
+      cpoisson: Self::jump_driver(jump_dist, lambda, n, &seed),
       fgn: Self::fgn_for(hurst, n, t),
       seed,
     }
@@ -81,32 +82,19 @@ where
     Fgn::new(hurst, n - 1, t, Unseeded)
   }
 
-  /// `jump_dist` arriving at rate `lambda` on the `n`-point grid over `[0, t]`, seeded with a child
-  /// of `seed`; shared by `new()` and the `with_*` setters so they cannot drift.
-  fn jump_driver(
-    jump_dist: D,
-    lambda: T,
-    n: usize,
-    t: Option<T>,
-    seed: &S,
-  ) -> CompoundPoisson<T, D, S> {
+  /// `jump_dist` arriving at rate `lambda` over `n` events, seeded with a child of `seed`; shared
+  /// by `new()` and the `with_*` setters so they cannot drift.
+  fn jump_driver(jump_dist: D, lambda: T, n: usize, seed: &S) -> CompoundPoisson<T, D, S> {
     CompoundPoisson::new(
       jump_dist,
-      Poisson::new(lambda, Some(n), t, Unseeded),
+      Poisson::new(lambda, Horizon::Events(n), Unseeded),
       seed.clone().derive(),
     )
   }
 
-  /// Rebuilds `cpoisson` from `lambda`, `n`, `t` and `seed`, keeping its
-  /// jump-size law.
+  /// Rebuilds `cpoisson` from `lambda`, `n` and `seed`, keeping its jump-size law.
   fn rebuild_cpoisson(mut self) -> Self {
-    self.cpoisson = Self::jump_driver(
-      self.cpoisson.distribution,
-      self.lambda,
-      self.n,
-      self.t,
-      &self.seed,
-    );
+    self.cpoisson = Self::jump_driver(self.cpoisson.distribution, self.lambda, self.n, &self.seed);
     self
   }
 
@@ -143,7 +131,7 @@ where
 
   /// Replace the jump-size distribution; rebuilds `cpoisson` around it.
   pub fn with_jump_dist(mut self, jump_dist: D) -> Self {
-    self.cpoisson = Self::jump_driver(jump_dist, self.lambda, self.n, self.t, &self.seed);
+    self.cpoisson = Self::jump_driver(jump_dist, self.lambda, self.n, &self.seed);
     self
   }
 

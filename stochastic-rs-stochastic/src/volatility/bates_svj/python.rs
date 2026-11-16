@@ -39,6 +39,7 @@ impl PyBatesSvj {
     let boundary = crate::python_params::boundary(boundary);
     stochastic_rs_distributions::python::value_error_on_panic(|| -> pyo3::PyResult<Self> {
       let device = crate::python_device::Device::parse(device, dtype.unwrap_or("f64"))?;
+      let drift = crate::python_params::drift_from_kwargs(mu, b, r, r_f)?;
       let mut s = Self {
         inner_f32: None,
         inner_f64: None,
@@ -49,10 +50,7 @@ impl PyBatesSvj {
       match (seed, dtype.unwrap_or("f64")) {
         (Some(sd), "f32") => {
           s.seeded_f32 = Some(BatesSvj::new(
-            mu.map(|v| v as f32),
-            b.map(|v| v as f32),
-            r.map(|v| v as f32),
-            r_f.map(|v| v as f32),
+            crate::python_params::drift_f32(drift),
             lambda_ as f32,
             nu as f32,
             omega as f32,
@@ -70,10 +68,7 @@ impl PyBatesSvj {
         }
         (Some(sd), _) => {
           s.seeded_f64 = Some(BatesSvj::new(
-            mu,
-            b,
-            r,
-            r_f,
+            drift,
             lambda_,
             nu,
             omega,
@@ -91,10 +86,7 @@ impl PyBatesSvj {
         }
         (None, "f32") => {
           s.inner_f32 = Some(BatesSvj::new(
-            mu.map(|v| v as f32),
-            b.map(|v| v as f32),
-            r.map(|v| v as f32),
-            r_f.map(|v| v as f32),
+            crate::python_params::drift_f32(drift),
             lambda_ as f32,
             nu as f32,
             omega as f32,
@@ -112,8 +104,7 @@ impl PyBatesSvj {
         }
         (None, _) => {
           s.inner_f64 = Some(BatesSvj::new(
-            mu, b, r, r_f, lambda_, nu, omega, alpha, beta, sigma, rho, n, s0, v0, t, boundary,
-            Unseeded,
+            drift, lambda_, nu, omega, alpha, beta, sigma, rho, n, s0, v0, t, boundary, Unseeded,
           ));
         }
       }

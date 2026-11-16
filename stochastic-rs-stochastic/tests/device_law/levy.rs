@@ -14,6 +14,7 @@ use stochastic_rs_stochastic::jump::hawkes_jd::HawkesJD;
 use stochastic_rs_stochastic::jump::ig::Ig;
 use stochastic_rs_stochastic::jump::nig::Nig;
 use stochastic_rs_stochastic::jump::vg::Vg;
+use stochastic_rs_stochastic::params::Horizon;
 use stochastic_rs_stochastic::process::hawkes::Hawkes;
 use stochastic_rs_stochastic::process::multivariate_hawkes::MultivariateHawkes;
 use stochastic_rs_stochastic::process::poisson::Poisson;
@@ -380,7 +381,7 @@ fn tempered_stable_subordinator_agrees_with_the_cpu_law() {
 /// host whatever the backend, which the last assertion pins.
 #[test]
 fn poisson_arrivals_agree_with_the_cpu_law() {
-  let build = || Poisson::<f32, _>::new(4.0, Some(N), None, Deterministic::new(71));
+  let build = || Poisson::<f32, _>::new(4.0, Horizon::Events(N), Deterministic::new(71));
   let device = build().on::<Device>().sample_par(M);
   let host = build().sample_par(M);
   assert_eq!(device.len(), M);
@@ -405,7 +406,7 @@ fn poisson_arrivals_agree_with_the_cpu_law() {
     0.08,
     "Poisson arrival spread",
   );
-  let horizon = Poisson::<f32, _>::new(4.0, None, Some(1.0), Deterministic::new(71))
+  let horizon = Poisson::<f32, _>::new(4.0, Horizon::Until(1.0), Deterministic::new(71))
     .on::<Device>()
     .sample();
   assert_eq!(horizon[0], 0.0, "horizon mode still starts at the origin");
@@ -419,7 +420,15 @@ fn poisson_arrivals_agree_with_the_cpu_law() {
 #[test]
 fn hawkes_agrees_with_the_cpu_law() {
   const EVENTS: usize = 64;
-  let build = || Hawkes::<f32, _>::new(1.0, 0.5, 1.5, Some(EVENTS), None, Deterministic::new(157));
+  let build = || {
+    Hawkes::<f32, _>::new(
+      1.0,
+      0.5,
+      1.5,
+      Horizon::Events(EVENTS),
+      Deterministic::new(157),
+    )
+  };
   const PATHS: usize = 3 * M;
   let device = build().on::<Device>().sample_par(PATHS);
   let host = build().sample_par(PATHS);
@@ -486,7 +495,8 @@ fn hawkes_agrees_with_the_cpu_law() {
 /// samples on the host and is the host build to the bit.
 #[test]
 fn hawkes_horizon_mode_keeps_the_process_on_the_host() {
-  let build = || Hawkes::<f32, _>::new(1.0, 0.5, 1.5, None, Some(10.0), Deterministic::new(163));
+  let build =
+    || Hawkes::<f32, _>::new(1.0, 0.5, 1.5, Horizon::Until(10.0), Deterministic::new(163));
   assert_eq!(build().on::<Device>().sample_par(8), build().sample_par(8));
 }
 
@@ -616,10 +626,9 @@ fn bivariate_hawkes_agrees_with_the_cpu_law() {
       array![1.0_f32, 0.7],
       array![[0.3_f32, 0.2], [0.1, 0.4]],
       array![[1.5_f32, 1.5], [2.0, 2.0]],
-      5.0,
+      Horizon::Events(EVENTS),
       Deterministic::new(163),
     )
-    .with_count(EVENTS)
   };
   const PATHS: usize = 3 * M;
   let device = build().on::<Device>().sample_par(PATHS);
@@ -695,10 +704,9 @@ fn per_pair_decays_a_third_component_or_a_horizon_keep_the_multivariate_hawkes_o
       array![1.0_f32, 0.7],
       array![[0.3_f32, 0.2], [0.1, 0.4]],
       array![[1.5_f32, 2.0], [2.0, 1.5]],
-      5.0,
+      Horizon::Events(16),
       Deterministic::new(167),
     )
-    .with_count(16)
   };
   assert_eq!(pairs().on::<Device>().sample_par(4), pairs().sample_par(4));
   let three = || {
@@ -706,10 +714,9 @@ fn per_pair_decays_a_third_component_or_a_horizon_keep_the_multivariate_hawkes_o
       array![1.0_f32, 0.7, 0.5],
       array![[0.3_f32, 0.1, 0.1], [0.1, 0.3, 0.1], [0.1, 0.1, 0.3]],
       array![[2.0_f32; 3], [2.0; 3], [2.0; 3]],
-      5.0,
+      Horizon::Events(16),
       Deterministic::new(173),
     )
-    .with_count(16)
   };
   assert_eq!(three().on::<Device>().sample_par(4), three().sample_par(4));
   let horizon = || {
@@ -717,7 +724,7 @@ fn per_pair_decays_a_third_component_or_a_horizon_keep_the_multivariate_hawkes_o
       array![1.0_f32, 0.7],
       array![[0.3_f32, 0.2], [0.1, 0.4]],
       array![[1.5_f32, 1.5], [2.0, 2.0]],
-      3.0,
+      Horizon::Until(3.0),
       Deterministic::new(179),
     )
   };
