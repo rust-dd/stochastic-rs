@@ -90,6 +90,12 @@ pub fn dfgls_critical_values(include_trend: bool) -> CriticalValues {
 /// OLS of `y` on the rows of `x`; `Err(Singular)` on a rank-deficient design, and a NaN standard
 /// error where an overflow or rounding leaves its variance NaN or negative.
 pub fn ols(y: &[f64], x: &[Vec<f64>]) -> Result<OlsResult, StatsError> {
+  ols_absorbing(y, x, 0)
+}
+
+/// [`ols`] of `y` and `x` that `absorbed` terms were partialled out of: its fit is the full
+/// regression's, whose degrees of freedom and `k` count them.
+fn ols_absorbing(y: &[f64], x: &[Vec<f64>], absorbed: usize) -> Result<OlsResult, StatsError> {
   assert!(!y.is_empty(), "OLS requires non-empty response");
   assert_eq!(y.len(), x.len(), "OLS y/x row mismatch");
   let n = y.len();
@@ -99,7 +105,7 @@ pub fn ols(y: &[f64], x: &[Vec<f64>]) -> Result<OlsResult, StatsError> {
     x.iter().all(|row| row.len() == k),
     "OLS design matrix must be rectangular"
   );
-  assert!(n > k, "OLS requires nobs > number of regressors");
+  assert!(n > k + absorbed, "OLS requires nobs > number of regressors");
 
   let x_mat = Array2::from_shape_fn((n, k), |(i, j)| x[i][j]);
   let y_vec = Array1::from_vec(y.to_vec());
@@ -113,7 +119,7 @@ pub fn ols(y: &[f64], x: &[Vec<f64>]) -> Result<OlsResult, StatsError> {
 
   let residuals: Vec<f64> = residuals_arr.to_vec();
   let sse = residuals.iter().map(|u| u * u).sum::<f64>();
-  let dof = (n - k) as f64;
+  let dof = (n - k - absorbed) as f64;
   let sigma2 = sse / dof;
 
   let xtx_inv = inverse(xtx.view()).ok_or(StatsError::Singular("OLS design"))?;
@@ -127,73 +133,86 @@ pub fn ols(y: &[f64], x: &[Vec<f64>]) -> Result<OlsResult, StatsError> {
     sse,
     sigma2,
     nobs: n,
-    k,
+    k: k + absorbed,
   })
 }
 
-/// The regressand, the regressor rows and the column of `y_{t-1}` in them.
+/// The regressand, the rows (the lagged level first) and how many terms are partialled out of both.
 type AdfDesign = (Vec<f64>, Vec<Vec<f64>>, usize);
 
+/// `v` less its fit on a constant and `centred_trend`, twice: the second pass takes off rounding of
+/// the first, which a level far above the variation makes as large as the variation itself.
+fn partial_out_terms(v: &mut [f64], centred_trend: &[f64]) {
+  let tt = centred_trend.iter().map(|t| t * t).sum::<f64>();
+  for _ in 0..2 {
+    let mean = v.iter().sum::<f64>() / v.len() as f64;
+    v.iter_mut().for_each(|x| *x -= mean);
+    if !centred_trend.is_empty() {
+      let slope = v.iter().zip(centred_trend).map(|(x, t)| x * t).sum::<f64>() / tt;
+      v.iter_mut()
+        .zip(centred_trend)
+        .for_each(|(x, t)| *x -= slope * t);
+    }
+  }
+}
+
+/// Frisch–Waugh–Lovell (Lovell 1963, DOI: 10.1080/01621459.1963.10480682): partialling the terms
+/// out keeps the fit, and keeps a level they nearly fit out of normal equations that square κ.
 fn build_adf_design(y: &[f64], lags: usize, trend: Trend) -> Result<AdfDesign, StatsError> {
   validate(y, 3 + lags)?;
-  // A lagged level that is a constant, or a line under a trend, leaves the regression no design.
-  if trend != Trend::None {
-    let level = &y[lags..y.len() - 1];
-    let on_terms = regress_on_deterministics(level, trend == Trend::ConstantTrend)?;
-    reject_exact_fit(y, &on_terms.residuals)?;
-  }
   let dy = difference(y);
   let n_dy = dy.len();
-
-  let mut lhs = Vec::with_capacity(n_dy - lags);
-  let mut rhs = Vec::with_capacity(n_dy - lags);
-
-  for t in lags..n_dy {
-    lhs.push(dy[t]);
-
-    let mut row = Vec::with_capacity(match trend {
-      Trend::None => 1 + lags,
-      Trend::Constant => 2 + lags,
-      Trend::ConstantTrend => 3 + lags,
-    });
-
-    match trend {
-      Trend::None => {}
-      Trend::Constant => row.push(1.0),
-      Trend::ConstantTrend => {
-        row.push(1.0);
-        row.push((t + 1) as f64);
-      }
-    }
-
-    // y_{t-1} term in ADF regression, with dy-index t corresponding to original time t+1.
-    row.push(y[t]);
-
-    for i in 1..=lags {
-      row.push(dy[t - i]);
-    }
-
-    rhs.push(row);
-  }
-
-  let gamma_index = match trend {
+  let terms = match trend {
     Trend::None => 0,
     Trend::Constant => 1,
     Trend::ConstantTrend => 2,
   };
+  // Row t carries the trend value t + 1, whose mean over the rows is exactly a half-integer.
+  let centred_trend = match trend {
+    Trend::ConstantTrend => {
+      let centre = (lags + 1 + n_dy) as f64 / 2.0;
+      (lags..n_dy).map(|t| (t + 1) as f64 - centre).collect()
+    }
+    _ => Vec::new(),
+  };
+  let partialled = |column: &[f64]| {
+    let mut column = column.to_vec();
+    if trend != Trend::None {
+      partial_out_terms(&mut column, &centred_trend);
+    }
+    column
+  };
 
-  Ok((lhs, rhs, gamma_index))
+  let lhs = partialled(&dy[lags..]);
+  let level = partialled(&y[lags..n_dy]);
+  // A lagged level that is a constant, or a line under a trend, leaves the regression no design.
+  if trend != Trend::None {
+    reject_exact_fit(y, &level)?;
+  }
+  let differences = (1..=lags)
+    .map(|i| partialled(&dy[lags - i..n_dy - i]))
+    .collect::<Vec<_>>();
+  let rhs = (0..n_dy - lags)
+    .map(|r| {
+      let mut row = Vec::with_capacity(1 + lags);
+      row.push(level[r]);
+      row.extend(differences.iter().map(|column| column[r]));
+      row
+    })
+    .collect();
+
+  Ok((lhs, rhs, terms))
 }
 
 /// The ADF regression at a fixed lag order and the lagged level's t-statistic; `Err` on too short a
 /// series, a singular design or a standard error of no use, or as `reject_exact_fit` of `source`.
 pub fn fit_adf(y: &[f64], lags: usize, trend: Trend, source: &[f64]) -> Result<AdfFit, StatsError> {
-  let (lhs, rhs, gamma_index) = build_adf_design(y, lags, trend)?;
-  let ols_fit = ols(&lhs, &rhs)?;
+  let (lhs, rhs, terms) = build_adf_design(y, lags, trend)?;
+  let ols_fit = ols_absorbing(&lhs, &rhs, terms)?;
   reject_exact_fit(source, &ols_fit.residuals)?;
 
-  let gamma = ols_fit.beta[gamma_index];
-  let se = ols_fit.std_err[gamma_index];
+  let gamma = ols_fit.beta[0];
+  let se = ols_fit.std_err[0];
   if !(se.is_finite() && se > 0.0) {
     return Err(StatsError::Numerical {
       stage: "standard error",
@@ -232,16 +251,16 @@ pub fn choose_lag_for_adf(
   if let LagSelection::Fixed(p) = lag_selection {
     return Ok(p);
   }
-  let (lhs, rhs, gamma_index) = build_adf_design(y, max_lags, trend)?;
+  let (lhs, rhs, terms) = build_adf_design(y, max_lags, trend)?;
   let mut criteria = Vec::with_capacity(max_lags + 1);
   let mut significant = 0;
   for lag in 0..=max_lags {
-    let columns = gamma_index + 1 + lag;
+    let columns = 1 + lag;
     let rows = rhs
       .iter()
       .map(|row| row[..columns].to_vec())
       .collect::<Vec<_>>();
-    let fit = ols(&lhs, &rows)?;
+    let fit = ols_absorbing(&lhs, &rows, terms)?;
     match lag_selection {
       LagSelection::Aic => criteria.push(aic_from_sse(fit.sse, fit.nobs, fit.k)),
       LagSelection::Bic => criteria.push(bic_from_sse(fit.sse, fit.nobs, fit.k)),

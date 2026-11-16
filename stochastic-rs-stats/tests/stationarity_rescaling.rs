@@ -333,5 +333,22 @@ fn a_level_far_above_the_variation_keeps_the_statistic() {
       (at_level - less_level).abs() <= 1e-12 * less_level.abs(),
       "KPSS {trend:?}: {at_level} at 1e8 against {less_level}"
     );
+    for lag_selection in [LagSelection::Aic, LagSelection::Fixed(2)] {
+      let cfg = AdfConfig {
+        trend,
+        lag_selection,
+        ..AdfConfig::default()
+      };
+      let (at_level, less_level) = (
+        adf_test(y.view(), cfg).map(|r| r.statistic),
+        adf_test(w.view(), cfg).unwrap().statistic,
+      );
+      assert!(
+        at_level
+          .as_ref()
+          .is_ok_and(|s| (s - less_level).abs() <= 1e-12 * less_level.abs()),
+        "ADF {trend:?} {lag_selection:?}: {at_level:?} at 1e8 against {less_level}"
+      );
+    }
   }
 }
