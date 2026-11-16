@@ -147,11 +147,9 @@ fn concentrate(series: ArrayView2<f64>, lags: usize) -> Result<Concentrated, Sta
   if k < 2 {
     return Err(StatsError::InsufficientData { needed: 2, got: k });
   }
-  if t < lags + 3 {
-    return Err(StatsError::InsufficientData {
-      needed: lags + 3,
-      got: t,
-    });
+  let needed = lags.saturating_add(3);
+  if t < needed {
+    return Err(StatsError::InsufficientData { needed, got: t });
   }
   validate_rows(series)?;
   let mut delta = Array2::<f64>::zeros((t - 1, k));

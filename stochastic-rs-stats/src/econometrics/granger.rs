@@ -67,8 +67,9 @@ pub fn granger_causality_test(
     });
   }
   let (y_slice, x_slice) = (as_slice_or_copy(y), as_slice_or_copy(x));
-  validate(&y_slice, 3 * lags + 3)?;
-  validate(&x_slice, 3 * lags + 3)?;
+  let needed = lags.saturating_mul(3).saturating_add(3);
+  validate(&y_slice, needed)?;
+  validate(&x_slice, needed)?;
   reject_constant(&y_slice, "constant series")?;
   reject_constant(&x_slice, "constant series")?;
   let n_total = y.len();
@@ -193,6 +194,19 @@ mod tests {
         StatsError::DegenerateData("constant series")
       );
     }
+  }
+
+  #[test]
+  fn a_lag_bound_of_usize_max_is_insufficient_data() {
+    let y = Array1::from_iter((0..40).map(|i| (i as f64 * 0.7).sin()));
+    let x = Array1::from_iter((0..40).map(|i| (i as f64 * 0.3).cos()));
+    assert_eq!(
+      granger_causality_test(y.view(), x.view(), usize::MAX, 0.05).unwrap_err(),
+      StatsError::InsufficientData {
+        needed: usize::MAX,
+        got: 40
+      }
+    );
   }
 
   /// A zero target after the first lag fits exactly through zero arithmetic, on any platform.

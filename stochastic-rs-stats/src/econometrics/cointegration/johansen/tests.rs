@@ -376,6 +376,17 @@ fn one_series_or_too_few_rows_is_insufficient_data() {
 }
 
 #[test]
+fn a_lag_bound_of_usize_max_is_insufficient_data() {
+  let y = lcg_system();
+  let expected = StatsError::InsufficientData {
+    needed: usize::MAX,
+    got: y.nrows(),
+  };
+  assert_eq!(johansen_test(y.view(), usize::MAX).unwrap_err(), expected);
+  assert_eq!(fit_vecm(y.view(), usize::MAX, 1).unwrap_err(), expected);
+}
+
+#[test]
 fn collinear_differences_are_a_singular_s00() {
   let mut y = lcg_system();
   let first = y.column(0).to_owned();
