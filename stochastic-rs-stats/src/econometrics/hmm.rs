@@ -26,7 +26,7 @@ use crate::traits::RealExt;
 
 mod log_space;
 
-/// `τ = e^{−336}`: with each `a_ij` and positive `π_j` at least `τ`, so is each predicted mass;
+/// `τ = e^{−336}`: with each `a_ij ≥ τ`, so is each predicted mass past the log-space first step;
 /// underflow costs `≤ e^{−708}/τ` of a row a step, grown `≤ 1/τ` backward: `e^{−708}/τ² ≈ 2.3e-16`.
 const SCALED_PASS_MIN_PROBABILITY: f64 = 1.1941367950549688e-146;
 
@@ -54,8 +54,8 @@ pub struct GaussianHmm {
   pub stds: Array1<f64>,
 }
 
-/// A forward pass: the filtered rows, each step's densities scaled by the largest one the step can
-/// reach, the sums `c̃_t` of those scaled rows and the log-likelihood `Σ_t (shift_t + ln c̃_t)`.
+/// A forward pass: the filtered rows, each step's densities scaled by their largest, the sums `c̃_t`
+/// that normalise the rows and the log-likelihood `Σ_t (shift_t + ln c̃_t)`.
 struct Forward {
   alpha: Array2<f64>,
   emissions: Array2<f64>,
@@ -252,27 +252,19 @@ impl GaussianHmm {
     path
   }
 
-  /// Each step's densities scaled by the largest of them, the shifts `ln` of those largest, and the
-  /// states that hold them: the scale every pass reads, laid out before the recursion.
-  fn scaled_emissions(
-    &self,
-    observations: ArrayView1<f64>,
-  ) -> (Array2<f64>, Array1<f64>, Vec<usize>) {
+  /// Each step's densities scaled by the largest of them, and the shifts `ln` of those largest: the
+  /// scale every pass reads, laid out before the recursion.
+  fn scaled_emissions(&self, observations: ArrayView1<f64>) -> (Array2<f64>, Array1<f64>) {
     let n = observations.len();
     let k = self.n_states();
     let ln_stds = self.stds.mapv(f64::ln);
     let mut emissions = Array2::<f64>::zeros((n, k));
     let mut shifts = Array1::<f64>::zeros(n);
-    let mut largest = vec![0usize; n];
     for t in 0..n {
       let mut shift = f64::NEG_INFINITY;
       for s in 0..k {
         let ln_density = log_gauss_pdf(observations[t], self.means[s], self.stds[s], ln_stds[s]);
         emissions[[t, s]] = ln_density;
-        if ln_density > shift {
-          shift = ln_density;
-          largest[t] = s;
-        }
         shift = shift.max_or_nan(ln_density);
       }
       shifts[t] = shift;
@@ -280,7 +272,7 @@ impl GaussianHmm {
         emissions[[t, s]] = (emissions[[t, s]] - shift).exp();
       }
     }
-    (emissions, shifts, largest)
+    (emissions, shifts)
   }
 
   /// Rescales `scaled` to the densities of the states `predicted` reaches over the largest of them,
@@ -311,31 +303,52 @@ impl GaussianHmm {
   }
 
   fn in_log_space(&self) -> bool {
-    let tau = SCALED_PASS_MIN_PROBABILITY;
-    self.transitions.iter().any(|&a| a < tau) || self.initial.iter().any(|&p| p > 0.0 && p < tau)
+    self
+      .transitions
+      .iter()
+      .any(|&a| a < SCALED_PASS_MIN_PROBABILITY)
+  }
+
+  /// `α̂_0` from `ln π_j + ln b_j(y_0)` less their largest, which keeps a `π_j` whose product with a
+  /// scaled density would underflow; returns that largest plus `ln c̃_0`.
+  fn first_step(&self, observation: f64, mut alpha: ArrayViewMut1<f64>, scaling: &mut f64) -> f64 {
+    let k = alpha.len();
+    let mut shift = f64::NEG_INFINITY;
+    for j in 0..k {
+      let ln_density = log_gauss_pdf(observation, self.means[j], self.stds[j], self.stds[j].ln());
+      alpha[j] = self.initial[j].ln() + ln_density;
+      shift = shift.max_or_nan(alpha[j]);
+    }
+    let mut sum = 0.0;
+    for j in 0..k {
+      alpha[j] = (alpha[j] - shift).exp();
+      sum += alpha[j];
+    }
+    for j in 0..k {
+      alpha[j] /= sum;
+    }
+    *scaling = sum;
+    shift + sum.ln()
   }
 
   fn forward(&self, observations: ArrayView1<f64>) -> Forward {
     let n = observations.len();
     let k = self.n_states();
-    let (mut emissions, mut shifts, largest) = self.scaled_emissions(observations);
+    let (emissions, shifts) = self.scaled_emissions(observations);
     let mut alpha = Array2::<f64>::zeros((n, k));
     let mut scaling = Array1::<f64>::zeros(n);
-    let mut predicted = self.initial.clone();
+    let mut predicted = Array1::<f64>::zeros(k);
     let mut log_likelihood = 0.0;
-    for t in 0..n {
-      if t > 0 {
-        for j in 0..k {
-          let mut acc = 0.0;
-          for i in 0..k {
-            acc += alpha[[t - 1, i]] * self.transitions[[i, j]];
-          }
-          predicted[j] = acc;
+    if n > 0 {
+      log_likelihood = self.first_step(observations[0], alpha.row_mut(0), &mut scaling[0]);
+    }
+    for t in 1..n {
+      for j in 0..k {
+        let mut acc = 0.0;
+        for i in 0..k {
+          acc += alpha[[t - 1, i]] * self.transitions[[i, j]];
         }
-      }
-      // A zero probability can put the step's largest density out of reach, and its scale with it.
-      if predicted[largest[t]] == 0.0 {
-        shifts[t] = self.rescale(observations[t], predicted.view(), emissions.row_mut(t));
+        predicted[j] = acc;
       }
       let mut sum = 0.0;
       for j in 0..k {

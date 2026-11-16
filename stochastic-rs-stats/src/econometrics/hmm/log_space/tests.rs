@@ -171,6 +171,28 @@ fn the_backward_pass_past_the_double_range_is_exact() {
   assert_close(hmm.means[1], mean, 1e-12, "the mean of state 1");
 }
 
+/// The first point favours state 1 by 800 nats, so state 0 starts at `e^{−109}` of state 1, and
+/// only state 0 explains the rest: a tiny or zero `π_1` alone keeps the scaled pass.
+#[test]
+fn a_tiny_or_zero_initial_probability_keeps_the_scaled_pass_exact() {
+  let y = Array1::from_iter((0..21).map(|t| if t == 0 { 40.0 } else { 0.1 * (t as f64).sin() }));
+  for initial in [array![1.0 - 1e-300, 1e-300], array![1.0, 0.0]] {
+    let hmm = GaussianHmm::new(
+      initial,
+      array![[0.999, 0.001], [1e-100, 1.0 - 1e-100]],
+      array![0.0, 40.0],
+      array![1.0, 1.0],
+    );
+    let exact = exact_passes(&hmm, y.as_slice().unwrap()).2;
+    let what = format!("initial {:?}", hmm.initial.to_vec());
+    assert_close(hmm.forward(y.view()).log_likelihood, exact, 1e-12, &what);
+    assert!(!hmm.in_log_space(), "{what}");
+    assert_close(hmm.log_likelihood(y.view()), exact, 1e-12, &what);
+    let fit = hmm.clone().baum_welch(y.view(), 1, 0.0).unwrap();
+    assert_close(fit.log_likelihood, exact, 1e-12, &what);
+  }
+}
+
 /// With the absorbing transition at `2τ` both models keep the scaled pass, which then matches the
 /// exact passes, and the passes on logarithms, within 1e-11 relative.
 #[test]
