@@ -5,6 +5,7 @@ use super::HestonModel;
 use super::invalid_input;
 use super::variance_vega::effective_initial_variance_bump;
 use crate::QuantError;
+use crate::pricing::heston::HestonParams;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct SimulatedPath {
@@ -86,56 +87,42 @@ pub(super) fn simulate_path(
   })
 }
 
-pub(super) fn validate_model(model: HestonModel) -> Result<(), QuantError> {
-  if !model.s.is_finite() || model.s <= 0.0 {
-    return Err(invalid_input(format!(
-      "spot must be finite and positive, got {}",
-      model.s
-    )));
-  }
-  if !model.params.v0.is_finite() || model.params.v0 <= 0.0 {
-    return Err(invalid_input(format!(
-      "initial_variance must be finite and positive, got {}",
-      model.params.v0
-    )));
-  }
-  if !model.params.theta.is_finite() || model.params.theta < 0.0 {
-    return Err(invalid_input(format!(
-      "theta must be finite and non-negative, got {}",
-      model.params.theta
-    )));
-  }
-  if !model.params.kappa.is_finite() || model.params.kappa < 0.0 {
-    return Err(invalid_input(format!(
-      "kappa must be finite and non-negative, got {}",
-      model.params.kappa
-    )));
-  }
-  if !model.params.sigma.is_finite() || model.params.sigma < 0.0 {
-    return Err(invalid_input(format!(
-      "vol_of_vol must be finite and non-negative, got {}",
-      model.params.sigma
-    )));
-  }
-  if !model.params.rho.is_finite() || model.params.rho.abs() >= 1.0 {
-    return Err(invalid_input(format!(
-      "the orthogonal Malliavin estimator requires abs(rho) < 1, got rho = {}",
-      model.params.rho
-    )));
-  }
-  if !model.risk_free_rate.is_finite() || !model.dividend_yield.is_finite() {
-    return Err(invalid_input(format!(
-      "rates must be finite, got r = {}, q = {}",
-      model.risk_free_rate, model.dividend_yield
-    )));
-  }
-  if !model.tau.is_finite() || model.tau <= 0.0 {
-    return Err(invalid_input(format!(
-      "maturity must be finite and positive, got tau = {}",
-      model.tau
-    )));
-  }
-  Ok(())
+pub(super) fn assert_model(model: HestonModel) {
+  let HestonModel {
+    s,
+    params,
+    risk_free_rate,
+    dividend_yield,
+    tau,
+  } = model;
+  assert!(
+    s.is_finite() && s > 0.0,
+    "s must satisfy `s.is_finite() && s > 0.0`, got s = {s:?}"
+  );
+  let HestonParams { v0, kappa, rho, .. } = params.checked();
+  assert!(v0 > 0.0, "v0 must satisfy `v0 > 0.0`, got v0 = {v0:?}");
+  assert!(
+    kappa >= 0.0,
+    "kappa must satisfy `kappa >= 0.0`, got kappa = {kappa:?}"
+  );
+  assert!(
+    rho.abs() < 1.0,
+    "rho must satisfy `rho.abs() < 1.0`, got rho = {rho:?}"
+  );
+  assert!(
+    risk_free_rate.is_finite(),
+    "risk_free_rate must satisfy `risk_free_rate.is_finite()`, got risk_free_rate = \
+     {risk_free_rate:?}"
+  );
+  assert!(
+    dividend_yield.is_finite(),
+    "dividend_yield must satisfy `dividend_yield.is_finite()`, got dividend_yield = \
+     {dividend_yield:?}"
+  );
+  assert!(
+    tau.is_finite() && tau > 0.0,
+    "tau must satisfy `tau.is_finite() && tau > 0.0`, got tau = {tau:?}"
+  );
 }
 
 pub(super) fn validate_config(

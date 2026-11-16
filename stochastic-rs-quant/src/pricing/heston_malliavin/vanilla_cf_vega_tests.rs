@@ -5,7 +5,6 @@ use super::VanillaLeg;
 use super::VanillaPortfolio;
 use super::heston_vanilla_portfolio_cf_initial_variance_vega;
 use crate::OptionType;
-use crate::QuantError;
 use crate::pricing::heston::HestonParams;
 
 fn high_vol_of_vol_non_feller_model() -> HestonModel {
@@ -89,7 +88,8 @@ fn cf_helper_respects_signed_vanilla_portfolios() {
 }
 
 #[test]
-fn cf_helper_rejects_zero_vol_of_vol_instead_of_dividing_by_zero() {
+#[should_panic(expected = "sigma must satisfy `sigma.is_finite() && sigma > 0.0`, got sigma = 0.0")]
+fn cf_helper_panics_on_a_zero_vol_of_vol() {
   let base = high_vol_of_vol_non_feller_model();
   let model = HestonModel {
     params: HestonParams {
@@ -98,18 +98,10 @@ fn cf_helper_rejects_zero_vol_of_vol_instead_of_dividing_by_zero() {
     },
     ..base
   };
-  let error = heston_vanilla_portfolio_cf_initial_variance_vega(
+  let _ = heston_vanilla_portfolio_cf_initial_variance_vega(
     model,
     &VanillaPortfolio::call(455.0),
     HestonVanillaCfVegaConfig::default(),
-  )
-  .unwrap_err();
-  assert_eq!(
-    error,
-    QuantError::InvalidInput {
-      what: "Heston Malliavin input",
-      reason: "Heston CF vega requires positive vol_of_vol, got 0".to_string(),
-    }
   );
 }
 

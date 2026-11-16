@@ -4,7 +4,7 @@ use super::HestonModel;
 use super::VanillaLeg;
 use super::VanillaPortfolio;
 use super::invalid_input;
-use super::simulation::validate_model;
+use super::simulation::assert_model;
 use super::variance_vega::effective_initial_variance_bump;
 use crate::OptionType;
 use crate::QuantError;
@@ -64,24 +64,14 @@ pub struct HestonVanillaCfVegaEstimate {
   pub bump_stable: bool,
 }
 
-/// Computes a deterministic Heston CF `v0` derivative for a vanilla portfolio.
-///
-/// This helper is limited to linear portfolios of European calls and puts. Its
-/// primary value differentiates the characteristic-function integral
-/// analytically. The retained centered finite differences are compatibility
-/// diagnostics and do not determine whether the analytic value is available.
+/// Analytic Heston CF `∂price/∂v0` of a linear call/put portfolio, the centred differences beside
+/// it diagnostics only; panics on a `model` outside [`HestonModel`]'s domain.
 pub fn heston_vanilla_portfolio_cf_initial_variance_vega(
   model: HestonModel,
   portfolio: &VanillaPortfolio,
   config: HestonVanillaCfVegaConfig,
 ) -> Result<HestonVanillaCfVegaEstimate, QuantError> {
-  validate_model(model)?;
-  if model.params.sigma <= 0.0 {
-    return Err(invalid_input(format!(
-      "Heston CF vega requires positive vol_of_vol, got {}",
-      model.params.sigma
-    )));
-  }
+  assert_model(model);
   let tolerance = config.maximum_relative_bump_difference;
   if !tolerance.is_finite() || tolerance < 0.0 {
     return Err(invalid_input(format!(

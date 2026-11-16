@@ -6,9 +6,9 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::TerminalPayoff;
 use super::non_finite_payoff;
+use super::simulation::assert_model;
 use super::simulation::simulate_path;
 use super::simulation::validate_config;
-use super::simulation::validate_model;
 use super::statistics::OnlineCovariance;
 use super::statistics::OnlineScalar;
 use super::variance_vega::DEFAULT_MINIMUM_RELATIVE_BUMP;
@@ -20,7 +20,8 @@ use crate::pricing::heston::HestonParams;
 
 pub(super) const OBSERVABLES: usize = 4;
 
-/// Risk-neutral Heston model at a spot and the contract's horizon.
+/// Risk-neutral Heston model at spot `s` to horizon `tau`; estimators panic unless all are finite,
+/// `s, tau, v0 > 0`, `κ ≥ 0`, `|ρ| < 1` and `params` passes [`HestonParams::new`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HestonModel {
   /// Initial underlying price.
@@ -155,9 +156,10 @@ pub struct HestonMalliavinEstimator {
 }
 
 impl HestonMalliavinEstimator {
-  /// Creates an estimator after validating model and simulation inputs.
+  /// Panics on a `model` outside [`HestonModel`]'s domain; `InvalidInput` for a bad `config`, or
+  /// one that leaves `rho` too little orthogonal variance.
   pub fn new(model: HestonModel, config: HestonMalliavinConfig) -> Result<Self, QuantError> {
-    validate_model(model)?;
+    assert_model(model);
     validate_config(model, config)?;
     Ok(Self { model, config })
   }

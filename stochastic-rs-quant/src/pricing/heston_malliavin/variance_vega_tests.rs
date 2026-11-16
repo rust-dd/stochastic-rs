@@ -146,7 +146,7 @@ fn deterministic_variance_limit_matches_analytic_bsm_v0_vega() {
       v0: 0.04,
       kappa: 1.5,
       theta: 0.04,
-      sigma: 0.0,
+      sigma: 1e-300,
       rho: 0.35,
     },
     risk_free_rate: 0.03,

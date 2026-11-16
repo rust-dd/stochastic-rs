@@ -10,6 +10,7 @@ use crate::pricing::bsm::BsmPricer;
 use crate::pricing::heston::HestonParams;
 use crate::traits::ModelPricer;
 
+/// `sigma = 1e-300` moves no variance step off `v0`: the `sigma = 0` paths, bit for bit.
 fn bsm_limit_model(rho: f64) -> HestonModel {
   HestonModel {
     s: 100.0,
@@ -17,7 +18,7 @@ fn bsm_limit_model(rho: f64) -> HestonModel {
       v0: 0.04,
       kappa: 0.0,
       theta: 0.04,
-      sigma: 0.0,
+      sigma: 1e-300,
       rho,
     },
     risk_free_rate: 0.03,
@@ -70,7 +71,7 @@ fn assert_close(left: f64, right: f64, tolerance: f64) {
 }
 
 #[test]
-fn correlated_zero_vol_of_vol_matches_bsm_price_and_malliavin_greeks() {
+fn correlated_vanishing_vol_of_vol_matches_bsm_price_and_malliavin_greeks() {
   let model = bsm_limit_model(-0.6);
   let strike = 105.0;
   let estimator = HestonMalliavinEstimator::new(model, config(300_000, 8, 71)).unwrap();
@@ -247,4 +248,76 @@ fn near_unit_correlation_is_rejected_before_simulation() {
     ),
     "{error}"
   );
+}
+
+/// Each broken model parameter panics in `new`, naming it; `config` problems stay `Err`.
+#[test]
+fn a_broken_model_parameter_panics_in_new() {
+  let good = HestonModel {
+    s: 100.0,
+    params: HestonParams {
+      v0: 0.04,
+      kappa: 1.5,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    },
+    risk_free_rate: 0.03,
+    dividend_yield: 0.01,
+    tau: 0.5,
+  };
+  let cases: [(fn(&mut HestonModel), &str); 10] = [
+    (
+      |m| m.s = -1.0,
+      "s must satisfy `s.is_finite() && s > 0.0`, got s = -1.0",
+    ),
+    (
+      |m| m.params.v0 = 0.0,
+      "v0 must satisfy `v0 > 0.0`, got v0 = 0.0",
+    ),
+    (
+      |m| m.params.v0 = f64::NAN,
+      "v0 must satisfy `v0.is_finite() && v0 >= 0.0`, got v0 = NaN",
+    ),
+    (
+      |m| m.params.kappa = -1.0,
+      "kappa must satisfy `kappa >= 0.0`, got kappa = -1.0",
+    ),
+    (
+      |m| m.params.theta = -0.04,
+      "theta must satisfy `theta.is_finite() && theta >= 0.0`, got theta = -0.04",
+    ),
+    (
+      |m| m.params.sigma = 0.0,
+      "sigma must satisfy `sigma.is_finite() && sigma > 0.0`, got sigma = 0.0",
+    ),
+    (
+      |m| m.params.rho = 1.0,
+      "rho must satisfy `rho.abs() < 1.0`, got rho = 1.0",
+    ),
+    (
+      |m| m.risk_free_rate = f64::NAN,
+      "risk_free_rate must satisfy `risk_free_rate.is_finite()`, got risk_free_rate = NaN",
+    ),
+    (
+      |m| m.dividend_yield = f64::INFINITY,
+      "dividend_yield must satisfy `dividend_yield.is_finite()`, got dividend_yield = inf",
+    ),
+    (
+      |m| m.tau = 0.0,
+      "tau must satisfy `tau.is_finite() && tau > 0.0`, got tau = 0.0",
+    ),
+  ];
+  for (breaks, expected) in cases {
+    let mut model = good;
+    breaks(&mut model);
+    let payload =
+      std::panic::catch_unwind(|| HestonMalliavinEstimator::new(model, config(2_000, 8, 9)))
+        .expect_err(expected);
+    let message = payload
+      .downcast_ref::<String>()
+      .map(String::as_str)
+      .unwrap_or_default();
+    assert_eq!(message, expected);
+  }
 }
