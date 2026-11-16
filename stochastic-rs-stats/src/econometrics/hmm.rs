@@ -76,8 +76,10 @@ impl GaussianHmm {
     hmm
   }
 
-  /// [`Self::new`]'s checks, which every entry point repeats for a struct literal.
+  /// [`Self::new`]'s checks, which every entry point repeats for a struct literal; out of line, so
+  /// they do not reshape the callers' loops.
   #[track_caller]
+  #[inline(never)]
   fn assert_parameters(&self) {
     let Self {
       initial,
@@ -179,17 +181,14 @@ impl GaussianHmm {
       }
       predicted[j] = acc;
     }
-    let ln_stds = self.stds.mapv(f64::ln);
-    let mut scaled = Array1::<f64>::zeros(k);
     let mut next = Array1::<f64>::zeros(k);
-    self.update(
-      observation,
-      predicted.view(),
-      ln_stds.view(),
-      scaled.view_mut(),
-      next.view_mut(),
-    );
-    next
+    self.rescale(observation, predicted.view(), next.view_mut());
+    let mut sum = 0.0;
+    for j in 0..k {
+      next[j] *= predicted[j];
+      sum += next[j];
+    }
+    next / sum
   }
 
   /// Viterbi most-likely state sequence, a zero probability scoring `ln 0 = −∞`; empty for an empty
@@ -241,48 +240,69 @@ impl GaussianHmm {
     path
   }
 
-  /// One filtering step from the predicted distribution: each density it reaches, scaled by the
-  /// largest, into `scaled`, the normalised filtered row into `filtered`; returns `(c̃, shift)`.
-  fn update(
+  /// Each step's densities scaled by the largest of them, the shifts `ln` of those largest, and the
+  /// states that hold them: the scale every pass reads, laid out before the recursion.
+  fn scaled_emissions(
+    &self,
+    observations: ArrayView1<f64>,
+  ) -> (Array2<f64>, Array1<f64>, Vec<usize>) {
+    let n = observations.len();
+    let k = self.n_states();
+    let ln_stds = self.stds.mapv(f64::ln);
+    let mut emissions = Array2::<f64>::zeros((n, k));
+    let mut shifts = Array1::<f64>::zeros(n);
+    let mut largest = vec![0usize; n];
+    for t in 0..n {
+      let mut shift = f64::NEG_INFINITY;
+      for s in 0..k {
+        let ln_density = log_gauss_pdf(observations[t], self.means[s], self.stds[s], ln_stds[s]);
+        emissions[[t, s]] = ln_density;
+        if ln_density > shift {
+          shift = ln_density;
+          largest[t] = s;
+        }
+        shift = shift.max_or_nan(ln_density);
+      }
+      shifts[t] = shift;
+      for s in 0..k {
+        emissions[[t, s]] = (emissions[[t, s]] - shift).exp();
+      }
+    }
+    (emissions, shifts, largest)
+  }
+
+  /// Rescales `scaled` to the densities of the states `predicted` reaches over the largest of them,
+  /// the others zero, and returns that largest log density.
+  fn rescale(
     &self,
     observation: f64,
     predicted: ArrayView1<f64>,
-    ln_stds: ArrayView1<f64>,
     mut scaled: ArrayViewMut1<f64>,
-    mut filtered: ArrayViewMut1<f64>,
-  ) -> (f64, f64) {
+  ) -> f64 {
     let k = predicted.len();
     let mut shift = f64::NEG_INFINITY;
     for j in 0..k {
+      let ln_density = log_gauss_pdf(observation, self.means[j], self.stds[j], self.stds[j].ln());
+      scaled[j] = ln_density;
       if predicted[j] > 0.0 {
-        let ln_density = log_gauss_pdf(observation, self.means[j], self.stds[j], ln_stds[j]);
-        scaled[j] = ln_density;
         shift = shift.max_or_nan(ln_density);
       }
     }
-    let mut sum = 0.0;
     for j in 0..k {
-      let density = if predicted[j] > 0.0 {
+      scaled[j] = if predicted[j] > 0.0 {
         (scaled[j] - shift).exp()
       } else {
         0.0
       };
-      scaled[j] = density;
-      filtered[j] = predicted[j] * density;
-      sum += filtered[j];
     }
-    for j in 0..k {
-      filtered[j] /= sum;
-    }
-    (sum, shift)
+    shift
   }
 
   fn forward(&self, observations: ArrayView1<f64>) -> Forward {
     let n = observations.len();
     let k = self.n_states();
-    let ln_stds = self.stds.mapv(f64::ln);
+    let (mut emissions, mut shifts, largest) = self.scaled_emissions(observations);
     let mut alpha = Array2::<f64>::zeros((n, k));
-    let mut emissions = Array2::<f64>::zeros((n, k));
     let mut scaling = Array1::<f64>::zeros(n);
     let mut predicted = self.initial.clone();
     let mut log_likelihood = 0.0;
@@ -296,15 +316,20 @@ impl GaussianHmm {
           predicted[j] = acc;
         }
       }
-      let (sum, shift) = self.update(
-        observations[t],
-        predicted.view(),
-        ln_stds.view(),
-        emissions.row_mut(t),
-        alpha.row_mut(t),
-      );
+      // A zero probability can put the step's largest density out of reach, and its scale with it.
+      if predicted[largest[t]] == 0.0 {
+        shifts[t] = self.rescale(observations[t], predicted.view(), emissions.row_mut(t));
+      }
+      let mut sum = 0.0;
+      for j in 0..k {
+        alpha[[t, j]] = predicted[j] * emissions[[t, j]];
+        sum += alpha[[t, j]];
+      }
+      for j in 0..k {
+        alpha[[t, j]] /= sum;
+      }
       scaling[t] = sum;
-      log_likelihood += shift + sum.ln();
+      log_likelihood += shifts[t] + sum.ln();
     }
     Forward {
       alpha,
@@ -380,17 +405,15 @@ impl GaussianHmm {
       }
       let beta = self.backward(&emissions, &scaling);
       let mut gamma = Array2::<f64>::zeros((n, k));
+      // One check after both loops: an early return inside them slows the fit by about 10 %.
+      let mut smoothed = true;
       for t in 0..n {
         let mut z = 0.0;
         for s in 0..k {
           gamma[[t, s]] = alpha[[t, s]] * beta[[t, s]];
           z += gamma[[t, s]];
         }
-        if !(z > 0.0 && z.is_finite()) {
-          return Err(StatsError::Numerical {
-            stage: "backward pass",
-          });
-        }
+        smoothed &= z > 0.0 && z.is_finite();
         for s in 0..k {
           gamma[[t, s]] /= z;
         }
@@ -406,16 +429,17 @@ impl GaussianHmm {
             z += tmp[[i, j]];
           }
         }
-        if !(z > 0.0 && z.is_finite()) {
-          return Err(StatsError::Numerical {
-            stage: "backward pass",
-          });
-        }
+        smoothed &= z > 0.0 && z.is_finite();
         for i in 0..k {
           for j in 0..k {
             xi_sum[[i, j]] += tmp[[i, j]] / z;
           }
         }
+      }
+      if !smoothed {
+        return Err(StatsError::Numerical {
+          stage: "backward pass",
+        });
       }
       let totals: Array1<f64> = (0..k)
         .map(|s| (0..n).map(|t| gamma[[t, s]]).sum::<f64>())
