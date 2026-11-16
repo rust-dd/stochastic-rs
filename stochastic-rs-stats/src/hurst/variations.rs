@@ -7,7 +7,7 @@
 //! \text{each ratio}\to2^{pH}\ (p=2\text{ for the filters})
 //! $$
 //!
-//! Reference: Coeurjolly, J.-F. (2001), "Estimating the parameters of a fractional Brownian motion by discrete variations of its sample paths", Statistical Inference for Stochastic Processes 4(2), 199–227, DOI 10.1023/A:1017507306245.
+//! Reference: Achard, S. & Coeurjolly, J.-F. (2010), "Discrete variations of the fractional Brownian motion in the presence of outliers and an additive noise", Statistics Surveys 4, 117–147, DOI 10.1214/09-SS059, §2.2 (restating Coeurjolly 2001); Coeurjolly's `dvfBm` R package.
 //!
 //! Reference: Brouste, A. & Iacus, S. M. (2013), "Parameter estimation for the discretely observed fractional Ornstein–Uhlenbeck process and the Yuima R package", Computational Statistics 28(4), 1529–1547, DOI 10.1007/s00180-012-0365-6, arXiv:1112.3777.
 //!
@@ -32,7 +32,7 @@ pub enum VariationKind {
   /// The second difference at lags 1 and 2, Brouste & Iacus's plain sums with `a = (1, −2, 1)`.
   CentralDiff,
   /// The `k`-th difference's `p`-power variations at lags 1 and 2 at every position, each over its
-  /// count (Coeurjolly 2001), as [`crate::fou::fit_fou_power_variation`] reads `H`.
+  /// count (Achard & Coeurjolly 2010), as [`crate::fou::fit_fou_power_variation`] reads `H`.
   PowerVariation { k: usize, p: f64 },
 }
 
@@ -65,8 +65,8 @@ impl<T: FloatExt> HurstEstimator<T> for Variations {
     let n = x.len();
     match self.kind {
       VariationKind::Daubechies => {
-        if n < 8 {
-          return Err(StatsError::InsufficientData { needed: 8, got: n });
+        if n < 7 {
+          return Err(StatsError::InsufficientData { needed: 7, got: n });
         }
         let (h, v1, v2) = daubechies_h_inner::<T>(x)?;
         Ok(HurstFit {
@@ -320,6 +320,17 @@ mod tests {
         "k = {k}, p = {p}"
       );
     }
+  }
+
+  #[test]
+  fn daubechies_needs_seven_points() {
+    let path = |n: usize| ndarray::Array1::from_iter((0..n).map(|i| (2.0 * i as f64).sin()));
+    let kind = Variations::new(VariationKind::Daubechies);
+    assert_eq!(
+      HurstEstimator::<f64>::estimate(&kind, path(6).view()).unwrap_err(),
+      StatsError::InsufficientData { needed: 7, got: 6 }
+    );
+    assert!(HurstEstimator::<f64>::estimate(&kind, path(7).view()).is_ok());
   }
 
   #[test]

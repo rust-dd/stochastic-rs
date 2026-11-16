@@ -1,5 +1,6 @@
 //! fOU estimates `(H, σ, θ)` by method: two as Brouste & Iacus print them (plain sums over full
-//! windows of `N + 1` points), the power variation as Coeurjolly and Hu, Nualart & Zhou do.
+//! windows of `N + 1` points), the power variation as Coeurjolly and Hu, Nualart & Zhou do; `θ`
+//! reads their zero-level moment about the fitted mean `μ̂`, as the crate's `Fou` carries a level.
 //!
 //! $$
 //! V_{\mathbf a}=\sum_{i=0}^{N-K}\Bigl(\sum_{k=0}^{K}a_kX_{i+k}\Bigr)^2,\qquad
@@ -66,8 +67,8 @@ pub enum FilterType {
   Daubechies,
 }
 
-/// Brouste & Iacus's estimator as printed, filter `a`; `Err` below 7 points (6 with an override),
-/// on bad or flat data or no usable `H ∈ (0, 1)`, `σ`, `θ`; panics on a bad `delta` or override.
+/// Brouste & Iacus's `H`, `σ` as printed, `θ` about `μ̂`, filter `a`; `Err` below 7 points (6 with
+/// an override), on bad or flat data or no usable `H ∈ (0, 1)`, `σ`, `θ`; panics on a bad argument.
 pub fn fit_fou_filtered_variations(
   path: ArrayView1<f64>,
   filter_type: FilterType,
@@ -117,8 +118,8 @@ pub fn fit_fou_filtered_variations(
   })
 }
 
-/// Brouste & Iacus's estimator as printed, with the second difference; `Err` below five points, on
-/// bad or flat data or no usable `H ∈ (0, 1)`, `σ`, `θ`; panics on a bad `delta` or override.
+/// Brouste & Iacus's `H`, `σ` as printed, `θ` about `μ̂`, second difference; `Err` below five
+/// points, on bad or flat data or no usable `H ∈ (0, 1)`, `σ`, `θ`; panics on a bad argument.
 pub fn fit_fou_central_differences(
   path: ArrayView1<f64>,
   delta: Option<f64>,
@@ -167,9 +168,10 @@ pub fn fit_fou_central_differences(
   })
 }
 
-/// Hu–Nualart–Zhou `σ` and `θ` at Coeurjolly's `H`; `Err` below `2k + 1` points (`k + 2` with an
-/// override), on bad or flat data or no usable `H ∈ (0, 1)`, `σ`, `θ`; panics on a bad argument.
-/// Reference: Coeurjolly (2001), Statistical Inference for Stochastic Processes 4, 199–227, for `H` from variations normalised by their counts; Hu, Nualart & Zhou (2019), arXiv:1703.09372, (4.2) and (5.22).
+/// Hu–Nualart–Zhou (4.2) `σ`, (5.22) `θ` about `μ̂`, at Coeurjolly's `H`; `Err` below `2k + 1`
+/// points (`k + 2` with an override), on bad or flat data or no usable `H`, `σ`, `θ`; panics on bad
+/// input.
+/// Reference: Achard, S. & Coeurjolly, J.-F. (2010), "Discrete variations of the fractional Brownian motion in the presence of outliers and an additive noise", Statistics Surveys 4, 117–147, DOI 10.1214/09-SS059, §2.2 (restating Coeurjolly 2001); Coeurjolly's `dvfBm` R package, for `H` from variations normalised by their counts; Hu, Nualart & Zhou (2019), arXiv:1703.09372, (4.2) and (5.22).
 ///
 /// $$
 /// V_{k,p}(s)=\sum_{i=0}^{n-ks}\Bigl|\sum_{j=0}^{k}(-1)^{k-j}\tbinom kj X_{i+js}\Bigr|^p,\qquad

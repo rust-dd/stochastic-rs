@@ -68,7 +68,7 @@
 //!   [`Wavelet`]'s `Daubechies4` filter has 2 vanishing moments, so it is
 //!   blind to a linear trend but not a quadratic one; [`Dfa`] with a
 //!   higher `order` handles trends [`Wavelet`] cannot.
-//! - [`Variations`] (Coeurjolly 2001; Brouste & Iacus 2013, arXiv:1112.3777)
+//! - [`Variations`] (Achard & Coeurjolly 2010; Brouste & Iacus 2013, arXiv:1112.3777)
 //!   is the one derived for a discretely-observed **fractional
 //!   Ornstein-Uhlenbeck**-type process rather than pure fBM/fGN
 //!   self-similarity — reach for it, specifically
@@ -103,7 +103,7 @@
 //! | [`Dfa`] | `4 (min_window + 1)` → 36 (`max(4 min_window, order + 4)` with `max_window`) |
 //! | [`Gph`] | 64 |
 //! | [`Wavelet`] | `max(64, 2^(j_min + 3) + 1)` → 64 |
-//! | [`Variations`] | 5 (`CentralDiff`, the default) to 8 (`Daubechies`), or `2k + 1` for `PowerVariation { k, .. }` |
+//! | [`Variations`] | 5 (`CentralDiff`, the default) to 7 (`Daubechies`), or `2k + 1` for `PowerVariation { k, .. }` |
 //! | [`crate::fractal_dim::Higuchi`] | 3 (but see the `kmax` caveat above — the hard floor is far below what a meaningful log-log regression needs) |
 //! | [`crate::fractal_dim::Variogram`] | 3 (same caveat) |
 
