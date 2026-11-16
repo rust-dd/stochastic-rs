@@ -87,8 +87,6 @@ fn build_surface_from_model_heston() {
     theta: 0.04,
     sigma: 0.3,
     rho: -0.7,
-    r: 0.05,
-    q: 0.0,
   };
   let strikes: Vec<f64> = (85..=115).step_by(5).map(|k| k as f64).collect();
   let maturities = vec![0.25, 0.5, 1.0];
@@ -118,8 +116,6 @@ fn build_surface_from_calibration_heston_multi_maturity() {
     theta: 0.04,
     sigma: 0.3,
     rho: -0.7,
-    r: 0.05,
-    q: 0.0,
   };
   let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
   let taus = [0.25, 0.5, 1.0];
@@ -193,8 +189,6 @@ fn build_surface_from_calibration_svj_multi_maturity() {
     lambda: 0.5,
     mu_j: -0.1,
     sigma_j: 0.15,
-    r: 0.05,
-    q: 0.0,
   };
   let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
   let taus = [0.5, 1.0];
@@ -253,8 +247,6 @@ fn build_surface_from_calibration_levy_vg() {
     sigma: 0.12,
     theta: -0.14,
     nu: 0.2,
-    r: 0.05,
-    q: 0.0,
   };
   let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
 
@@ -327,8 +319,6 @@ fn to_model_trait_works_with_pipeline() {
     theta: 0.04,
     sigma: 0.3,
     rho: -0.7,
-    r: 0.05,
-    q: 0.0,
   };
   // Use HestonParams (implements ToModel) via the trait
   let params = crate::calibration::heston::HestonParams {
@@ -338,7 +328,7 @@ fn to_model_trait_works_with_pipeline() {
     sigma: 0.3,
     rho: -0.7,
   };
-  let pricer = ToModel::to_model(&params, 0.05, 0.0);
+  let pricer = ToModel::to_model(&params);
 
   let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
   let maturities = vec![0.25, 0.5, 1.0];

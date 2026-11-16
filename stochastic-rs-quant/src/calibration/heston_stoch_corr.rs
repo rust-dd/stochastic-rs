@@ -90,8 +90,8 @@ impl From<HscmCalibrationResult> for crate::pricing::heston_stoch_corr::HestonSt
 
 impl crate::traits::ToModel for HscmCalibrationResult {
   type Model = crate::pricing::heston_stoch_corr::HestonStochCorrPricer;
-  fn to_model(&self, _r: f64, _q: f64) -> Self::Model {
-    HscmCalibrationResult::to_model(self)
+  fn to_model(&self) -> Self::Model {
+    crate::pricing::heston_stoch_corr::HestonStochCorrPricer::from(self.clone())
   }
 }
 
@@ -121,12 +121,6 @@ impl crate::traits::CalibrationResult for HscmCalibrationResult {
 }
 
 impl HscmCalibrationResult {
-  /// Convert to an [`HestonStochCorrPricer`] for
-  /// pricing / vol surface generation.
-  pub fn to_model(&self) -> crate::pricing::heston_stoch_corr::HestonStochCorrPricer {
-    crate::pricing::heston_stoch_corr::HestonStochCorrPricer::from(self.clone())
-  }
-
   pub fn to_vec(&self) -> Vec<f64> {
     vec![
       self.kappa_v,

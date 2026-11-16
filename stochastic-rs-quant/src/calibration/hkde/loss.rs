@@ -31,8 +31,6 @@ impl HkdeCalibrator {
       theta: p.theta,
       sigma_v: p.sigma_v,
       rho: p.rho,
-      r: self.r,
-      q: self.q.unwrap_or(0.0),
       lam: p.lambda,
       p_up: p.p_up,
       eta1: p.eta1,

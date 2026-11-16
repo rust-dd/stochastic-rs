@@ -16,15 +16,13 @@ fn heston_call_two_ways() {
   let parity = s * (-q * tau).exp() - k * (-r * tau).exp();
   assert!((call - put - parity).abs() < 1e-8);
 
-  // The Fourier model carries r and q for its characteristic function: pass the same values.
+  // The Fourier model holds no rates: the query's r and q carry and discount its price.
   let fourier = HestonFourier {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
     sigma: 0.3,
     rho: -0.7,
-    r,
-    q,
   };
   assert!((fourier.price_call(s, k, r, q, tau) - call).abs() < 1e-4);
 

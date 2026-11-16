@@ -310,9 +310,7 @@ impl PyHestonSlvCalibrationResult {
   #[pyo3(signature = (n_paths=100_000, steps_per_year=200, seed=42))]
   fn to_model(&self, n_paths: usize, steps_per_year: usize, seed: u64) -> PyHestonSlvPricer {
     PyHestonSlvPricer {
-      inner: self
-        .inner
-        .to_model(self.inner.r, self.inner.q)
+      inner: crate::traits::ToModel::to_model(&self.inner)
         .with_paths(n_paths)
         .with_steps_per_year(steps_per_year)
         .with_seed(seed),

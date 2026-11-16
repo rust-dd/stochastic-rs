@@ -169,7 +169,7 @@ pub fn build_surface_from_calibration<C: ToModel>(
 where
   C::Model: ModelSurface,
 {
-  let model = calibration.to_model(r, q);
+  let model = calibration.to_model();
   build_surface_from_model(&model, s, r, q, strikes, maturities)
 }
 

@@ -61,25 +61,8 @@ pub struct SabrCapletCalibrationResult {
 }
 
 impl SabrCapletCalibrationResult {
-  /// A [`SabrPricer`](crate::pricing::sabr::SabrPricer) in shifted coordinates when `shift != 0`: shift `s` and `k` yourself
-  /// (an unshifted non-positive one prices as NaN) or use [`Self::to_shifted_volatility`], which shifts internally.
-  /// Panics when `beta` lies outside [0, 1].
-  pub fn to_model(&self) -> crate::pricing::sabr::SabrPricer {
-    crate::pricing::sabr::SabrPricer::new(SabrParams {
-      alpha: self.alpha,
-      beta: self.beta,
-      rho: self.rho,
-      nu: self.nu,
-    })
-  }
-
-  /// Convert to a
-  /// [`ShiftedSabrVolatility`](crate::instruments::option::ShiftedSabrVolatility)
-  /// that applies `self.shift` to forward and strike on every
-  /// `implied_volatility` call, so callers never shift by hand. This is the
-  /// shift-safe counterpart to [`Self::to_model`], and the recommended
-  /// conversion whenever the calibrator used
-  /// [`SabrCapletCalibrator::with_shift`].
+  /// The [`ShiftedSabrVolatility`](crate::instruments::option::ShiftedSabrVolatility) of the fit:
+  /// it applies `shift` to forward and strike, so a `with_shift` calibration needs no hand shift.
   pub fn to_shifted_volatility(&self) -> crate::instruments::option::ShiftedSabrVolatility<f64> {
     crate::instruments::option::ShiftedSabrVolatility::new(
       self.alpha, self.beta, self.rho, self.nu, self.shift,
@@ -89,8 +72,15 @@ impl SabrCapletCalibrationResult {
 
 impl crate::traits::ToModel for SabrCapletCalibrationResult {
   type Model = crate::pricing::sabr::SabrPricer;
-  fn to_model(&self, _r: f64, _q: f64) -> Self::Model {
-    SabrCapletCalibrationResult::to_model(self)
+  /// Unshifted: with `shift != 0` shift `s` and `k` yourself (non-positive ones price NaN) or use
+  /// [`Self::to_shifted_volatility`]; panics when `beta` lies outside [0, 1].
+  fn to_model(&self) -> Self::Model {
+    crate::pricing::sabr::SabrPricer::new(SabrParams {
+      alpha: self.alpha,
+      beta: self.beta,
+      rho: self.rho,
+      nu: self.nu,
+    })
   }
 }
 

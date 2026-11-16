@@ -127,7 +127,7 @@ pricer = srs.HestonPricer(s=100.0, v0=0.04, k=100.0, r=0.03, kappa=2.0, theta=0.
 call, put = pricer.call_put()
 print(f"{call:.4f} {put:.4f}")                                     # 8.5996 6.6391
 
-fourier = srs.HestonFourier(v0=0.04, kappa=2.0, theta=0.04, sigma=0.3, rho=-0.7, r=0.03, q=0.01)
+fourier = srs.HestonFourier(v0=0.04, kappa=2.0, theta=0.04, sigma=0.3, rho=-0.7)
 print(f"{fourier.price_call(100.0, 100.0, 0.03, 0.01, 1.0):.4f}")  # 8.5996
 
 adi = srs.HestonAdiPricer(s=100.0, v0=0.04, k=100.0, r=0.03, kappa=2.0, theta=0.04,
@@ -166,7 +166,7 @@ print(f"v0={v0:.4f} kappa={kappa:.3f} theta={theta:.4f} sigma={sigma:.3f} rho={r
 </Tab>
 </Tabs>
 
-Every quote is priced as the calibrator's `option_type` (`"call"` by default); the slices' `is_call` flags are not read. The result converts to a `HestonFourier` pricer through `to_model(r, q)`.
+Every quote is priced as the calibrator's `option_type` (`"call"` by default); the slices' `is_call` flags are not read. The result converts to a `HestonFourier` pricer through `to_model()`.
 
 ## Estimate from data
 
@@ -193,7 +193,7 @@ A year of data pins down $\sigma$ and $\rho$; the mean reversion is identified b
 - **Euler scheme.** The price takes an Euler step on $S$ itself, $S_{i} = S_{i-1}(1 + \mu\Delta t + \sqrt{v^+_{i-1}}\,\Delta W^S)$, and the variance steps from $v^+ = \max(v, 0)$ and is truncated at zero (or reflected under `VarianceBoundary::Reflect`). `HestonLog` steps $\ln S$ instead, so its price stays positive; its drift is one `Drift` (`Mu`, `CostOfCarry` or `Rates { r, r_f }`, read as $r - r_f$), in Python exactly one of `mu=`, `b=` or the pair `r=`, `r_f=`, and its vol-of-vol argument is named `xi`.
 - **QE scheme.** `.qe()` is Andersen's (2008) quadratic-exponential step with $\psi_c = 1.5$ and the central discretisation $\gamma_1 = \gamma_2 = \tfrac12$ of the integrated variance, on the log-price. It needs `HestonPow::Sqrt`, $\kappa > 0$, $\sigma > 0$ and $S_0 > 0$, which `.qe()` asserts. In Python, `PyHeston(..., scheme="qe")` selects it.
 - **Argument order.** The Rust constructors differ: `HestonPricer::new(v0, rho, kappa, theta, sigma, lambda)`, `HestonAdiPricer::new(v0, kappa, theta, sigma, rho)` and `Heston::new(s0, v0, kappa, theta, sigma, rho, mu, …)`. `lambda` is the market price of volatility risk; `None` is 0.
-- **`HestonFourier` holds `r` and `q`** for the drift of its characteristic function, while `price_call(s, k, r, q, tau)` discounts with its arguments: pass the same rates to both.
+- **`HestonFourier` holds no rates.** Its characteristic function is drift-free; `price_call(s, k, r, q, tau)` takes the carry and the discounting from its arguments.
 - **Deep out of the money.** `HestonPricer`'s price is not floored at zero: at short maturities far out of the money its quadrature can land a few $10^{-5}$ below zero. The Gil-Pelaez pricer behind `HestonFourier::price_call` floors at zero.
 - **Precision.** The processes are generic over `f32` and `f64` (`Heston::<f32>`); the pricers, calibrators and estimators work in `f64`.
 

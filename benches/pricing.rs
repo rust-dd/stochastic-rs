@@ -54,9 +54,10 @@ fn heston_pricer(c: &mut Criterion) {
   group.bench_function("implied_vol_9", |b| {
     let prices = STRIKES.map(|k| model.price_call(S, k, R, Q, 1.0));
     b.iter(|| {
-      STRIKES
+      let model = black_box(&model);
+      black_box(&STRIKES)
         .iter()
-        .zip(prices)
+        .zip(black_box(prices))
         .map(|(&k, p)| model.implied_volatility(p, S, k, R, Q, 1.0, OptionType::Call))
         .sum::<f64>()
     })
@@ -75,8 +76,6 @@ fn fourier(c: &mut Criterion) {
     theta: 0.04,
     sigma: 0.3,
     rho: -0.7,
-    r: R,
-    q: Q,
   };
   group.bench_function("gil_pelaez_9", |b| {
     b.iter(|| {
@@ -96,7 +95,7 @@ fn fourier(c: &mut Criterion) {
   });
   group.bench_function("carr_madan_surface", |b| {
     let pricer = CarrMadanPricer::default();
-    b.iter(|| black_box(pricer.price_call_surface(&heston, S, R, 1.0)))
+    b.iter(|| black_box(pricer.price_call_surface(&heston, S, R, Q, 1.0)))
   });
   group.bench_function("cos_9", |b| {
     let cos = CosEngine::default();
@@ -107,7 +106,9 @@ fn fourier(c: &mut Criterion) {
         .sum::<f64>()
     })
   });
-  group.bench_function("cumulants", |b| b.iter(|| black_box(heston.cumulants(1.0))));
+  group.bench_function("cumulants", |b| {
+    b.iter(|| black_box(&heston).cumulants(black_box(1.0)))
+  });
   group.finish();
 
   let mut group = c.benchmark_group("pricing/fourier_levy");
@@ -120,8 +121,6 @@ fn fourier(c: &mut Criterion) {
     p_up: 0.4,
     eta1: 10.0,
     eta2: 5.0,
-    r: R,
-    q: Q,
   };
   group.bench_function("kou_gil_pelaez_9", |b| {
     b.iter(|| {
@@ -171,9 +170,10 @@ fn bsm_and_sabr(c: &mut Criterion) {
   let sabr = SabrPricer::new(params);
   group.bench_function("hagan_vol_9", |b| {
     b.iter(|| {
-      STRIKES
+      let params = black_box(&params);
+      black_box(&STRIKES)
         .iter()
-        .map(|&k| hagan_implied_vol(k, S, 1.0, &params))
+        .map(|&k| hagan_implied_vol(k, S, 1.0, params))
         .sum::<f64>()
     })
   });

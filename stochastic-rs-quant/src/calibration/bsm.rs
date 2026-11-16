@@ -36,22 +36,10 @@ pub struct BsmCalibrationResult {
   pub converged: bool,
 }
 
-impl BsmCalibrationResult {
-  /// Convert to a [`BsmFourier`](crate::pricing::fourier::BsmFourier) model for pricing
-  /// / vol surface generation.
-  pub fn to_model(&self, r: f64, q: f64) -> crate::pricing::fourier::BsmFourier {
-    crate::pricing::fourier::BsmFourier {
-      sigma: self.v,
-      r,
-      q,
-    }
-  }
-}
-
 impl crate::traits::ToModel for BsmCalibrationResult {
   type Model = crate::pricing::fourier::BsmFourier;
-  fn to_model(&self, r: f64, q: f64) -> Self::Model {
-    BsmCalibrationResult::to_model(self, r, q)
+  fn to_model(&self) -> Self::Model {
+    crate::pricing::fourier::BsmFourier { sigma: self.v }
   }
 }
 

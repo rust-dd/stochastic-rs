@@ -32,10 +32,6 @@ pub struct HkdeFourier {
   pub sigma_v: f64,
   /// Correlation.
   pub rho: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Dividend yield.
-  pub q: f64,
   /// Jump intensity (Poisson rate).
   pub lam: f64,
   /// Probability of upward jump.
@@ -75,17 +71,12 @@ impl FourierModelExt for HkdeFourier {
 
     let drift_correction = -self.lam * k_bar;
 
-    (c_heston
-      + d_heston * self.v0
-      + i * xi * (self.r - self.q + drift_correction) * t
-      + jump_cf * t)
-      .exp()
+    (c_heston + d_heston * self.v0 + i * xi * drift_correction * t + jump_cf * t).exp()
   }
 
   fn cumulants(&self, t: f64) -> Cumulants {
     let ekt = (-self.kappa * t).exp();
-    let c1_h = (self.r - self.q) * t + (1.0 - ekt) * (self.theta - self.v0) / (2.0 * self.kappa)
-      - 0.5 * self.theta * t;
+    let c1_h = (1.0 - ekt) * (self.theta - self.v0) / (2.0 * self.kappa) - 0.5 * self.theta * t;
     let c2_h = self.sigma_v.powi(2) * t * self.theta / (2.0 * self.kappa);
 
     let c1_j = self.lam * t * (self.p_up / self.eta1 - (1.0 - self.p_up) / self.eta2);
@@ -125,8 +116,6 @@ pub struct BatesFourier {
   pub lambda: f64,
   pub mu_j: f64,
   pub sigma_j: f64,
-  pub r: f64,
-  pub q: f64,
 }
 
 impl FourierModelExt for BatesFourier {
@@ -152,17 +141,12 @@ impl FourierModelExt for BatesFourier {
       * ((i * self.mu_j * xi - 0.5 * self.sigma_j * self.sigma_j * xi * xi).exp() - 1.0);
     let drift_correction = -self.lambda * k_bar;
 
-    (c_heston
-      + d_heston * self.v0
-      + i * xi * (self.r - self.q + drift_correction) * t
-      + jump_cf * t)
-      .exp()
+    (c_heston + d_heston * self.v0 + i * xi * drift_correction * t + jump_cf * t).exp()
   }
 
   fn cumulants(&self, t: f64) -> Cumulants {
     let ekt = (-self.kappa * t).exp();
-    let c1_h = (self.r - self.q) * t + (1.0 - ekt) * (self.theta - self.v0) / (2.0 * self.kappa)
-      - 0.5 * self.theta * t;
+    let c1_h = (1.0 - ekt) * (self.theta - self.v0) / (2.0 * self.kappa) - 0.5 * self.theta * t;
     let c2_h = self.sigma_v.powi(2) * t * self.theta / (2.0 * self.kappa);
     let c1_j = self.lambda * self.mu_j * t;
     let c2_j = self.lambda * (self.mu_j.powi(2) + self.sigma_j.powi(2)) * t;

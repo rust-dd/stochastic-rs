@@ -1,4 +1,3 @@
-use super::calibrator::RATE_MATCH_TOL;
 use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::calibration::heston::HestonCalibrationResult;
@@ -18,11 +17,8 @@ pub struct HestonSlvFit {
   pub leverage: LeverageSurface,
 }
 
-/// Calibration result for the Heston SLV model.
-///
-/// The leverage is anchored to `(r, q)` — the cloud it was read off moved
-/// under the drift $r - q$ — so the result records the pair and
-/// [`to_model`](Self::to_model) builds the pricer at it.
+/// Calibration result for the Heston SLV model; the leverage is anchored to the `(r, q)` its cloud
+/// moved under, so [`ToModel::to_model`](crate::traits::ToModel::to_model) builds the pricer there.
 #[derive(Clone, Debug)]
 pub struct HestonSlvCalibrationResult {
   /// The parameters and the leverage surface.
@@ -55,27 +51,6 @@ impl HestonSlvCalibrationResult {
   pub fn leverage(&self) -> &LeverageSurface {
     &self.fit.leverage
   }
-
-  /// The Monte Carlo pricer of the calibrated model, anchored to the
-  /// calibration rates.
-  ///
-  /// # Panics
-  ///
-  /// When `(r, q)` is not the pair the leverage was calibrated at: the
-  /// pricer would reject every query at those rates anyway, and a surface
-  /// re-anchored to rates it was not fitted under would silently stop
-  /// reproducing the market. Recalibrate at the new rates instead.
-  pub fn to_model(&self, r: f64, q: f64) -> HestonSlvPricer {
-    assert!(
-      (r - self.r).abs() <= RATE_MATCH_TOL && (q - self.q).abs() <= RATE_MATCH_TOL,
-      "HestonSlvCalibrationResult::to_model: the leverage surface was calibrated at r={}, q={} \
-       but a pricer at r={r}, q={q} was asked for; L(S,t) is rate-dependent, so recalibrate at the \
-       new rates",
-      self.r,
-      self.q
-    );
-    HestonSlvPricer::new(self.fit.params, self.fit.leverage.clone(), self.r, self.q)
-  }
 }
 
 impl crate::traits::CalibrationResult for HestonSlvCalibrationResult {
@@ -105,7 +80,8 @@ impl crate::traits::CalibrationResult for HestonSlvCalibrationResult {
 impl crate::traits::ToModel for HestonSlvCalibrationResult {
   type Model = HestonSlvPricer;
 
-  fn to_model(&self, r: f64, q: f64) -> Self::Model {
-    HestonSlvCalibrationResult::to_model(self, r, q)
+  /// The Monte Carlo pricer of the calibrated model, at the calibration rates.
+  fn to_model(&self) -> Self::Model {
+    HestonSlvPricer::new(self.fit.params, self.fit.leverage.clone(), self.r, self.q)
   }
 }

@@ -11,18 +11,10 @@ pub struct RBergomiCalibrationResult {
   pub converged: bool,
 }
 
-impl RBergomiCalibrationResult {
-  /// Convert to an [`RBergomiPricer`](crate::pricing::rbergomi::RBergomiPricer) for
-  /// pricing / vol surface generation.
-  pub fn to_model(&self) -> crate::pricing::rbergomi::RBergomiPricer {
-    crate::pricing::rbergomi::RBergomiPricer::new(self.calibrated_params.clone())
-  }
-}
-
 impl crate::traits::ToModel for RBergomiCalibrationResult {
   type Model = crate::pricing::rbergomi::RBergomiPricer;
-  fn to_model(&self, _r: f64, _q: f64) -> Self::Model {
-    RBergomiCalibrationResult::to_model(self)
+  fn to_model(&self) -> Self::Model {
+    crate::pricing::rbergomi::RBergomiPricer::new(self.calibrated_params.clone())
   }
 }
 

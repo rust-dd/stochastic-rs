@@ -22,10 +22,6 @@ use crate::pricing::slv::calibrate_leverage_fokker_planck;
 use crate::traits::Calibrator;
 use crate::traits::RealExt;
 
-/// Largest deviation between a requested rate and the calibration rate that
-/// still counts as the same rate — the pricer's own match tolerance.
-pub(super) const RATE_MATCH_TOL: f64 = 1e-12;
-
 /// How the leverage surface is read off the local volatility: the
 /// Guyon–Henry-Labordère particle cloud, or the finite-volume solution of
 /// the forward Kolmogorov equation after Wyns & Du Toit. Both reproduce the

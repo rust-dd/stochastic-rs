@@ -15,8 +15,6 @@ pub struct VarianceGammaFourier {
   pub sigma: f64,
   pub theta: f64,
   pub nu: f64,
-  pub r: f64,
-  pub q: f64,
 }
 
 impl FourierModelExt for VarianceGammaFourier {
@@ -27,12 +25,12 @@ impl FourierModelExt for VarianceGammaFourier {
     let inner = Complex64::new(1.0, 0.0) - i * self.theta * self.nu * xi
       + Complex64::new(0.5 * self.sigma.powi(2) * self.nu, 0.0) * xi * xi;
     let psi = -inner.ln() / self.nu;
-    (i * xi * ((self.r - self.q + omega) * t) + psi * t).exp()
+    (i * xi * (omega * t) + psi * t).exp()
   }
 
   fn cumulants(&self, t: f64) -> Cumulants {
     Cumulants {
-      c1: (self.r - self.q + self.theta) * t,
+      c1: self.theta * t,
       c2: (self.sigma.powi(2) + self.nu * self.theta.powi(2)) * t,
       c4: Some(
         3.0
@@ -52,8 +50,6 @@ pub struct CgmyFourier {
   pub g: f64,
   pub m: f64,
   pub y: f64,
-  pub r: f64,
-  pub q: f64,
 }
 
 impl FourierModelExt for CgmyFourier {
@@ -72,7 +68,7 @@ impl FourierModelExt for CgmyFourier {
       * ((self.m - 1.0).powf(self.y) - self.m.powf(self.y) + (self.g + 1.0).powf(self.y)
         - self.g.powf(self.y));
 
-    (i * xi * (self.r - self.q + omega) * t + psi * t).exp()
+    (i * xi * omega * t + psi * t).exp()
   }
 
   fn cumulants(&self, t: f64) -> Cumulants {
@@ -103,15 +99,13 @@ pub struct MertonJdFourier {
   pub lambda: f64,
   pub mu_j: f64,
   pub sigma_j: f64,
-  pub r: f64,
-  pub q: f64,
 }
 
 impl FourierModelExt for MertonJdFourier {
   fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
     let i = Complex64::i();
     let m = (self.mu_j + 0.5 * self.sigma_j.powi(2)).exp() - 1.0;
-    let omega = self.r - self.q - 0.5 * self.sigma.powi(2) - self.lambda * m;
+    let omega = -0.5 * self.sigma.powi(2) - self.lambda * m;
     let diffusion = Complex64::new(-0.5 * self.sigma.powi(2), 0.0) * xi * xi;
     let jump_exp =
       (i * self.mu_j * xi - Complex64::new(0.5 * self.sigma_j.powi(2), 0.0) * xi * xi).exp();
@@ -121,7 +115,7 @@ impl FourierModelExt for MertonJdFourier {
 
   fn cumulants(&self, t: f64) -> Cumulants {
     Cumulants {
-      c1: (self.r - self.q - 0.5 * self.sigma.powi(2)) * t + self.lambda * self.mu_j * t,
+      c1: -0.5 * self.sigma.powi(2) * t + self.lambda * self.mu_j * t,
       c2: (self.sigma.powi(2) + self.lambda * (self.mu_j.powi(2) + self.sigma_j.powi(2))) * t,
       c4: Some(
         self.lambda
@@ -142,8 +136,6 @@ pub struct KouFourier {
   pub p_up: f64,
   pub eta1: f64,
   pub eta2: f64,
-  pub r: f64,
-  pub q: f64,
 }
 
 impl FourierModelExt for KouFourier {
@@ -157,7 +149,7 @@ impl FourierModelExt for KouFourier {
     let up0 = p * self.eta1 / (self.eta1 - 1.0);
     let dn0 = (1.0 - p) * self.eta2 / (self.eta2 + 1.0);
     let m = self.lambda * (up0 + dn0 - 1.0);
-    let omega = self.r - self.q - 0.5 * self.sigma.powi(2) - m;
+    let omega = -0.5 * self.sigma.powi(2) - m;
 
     let diffusion = Complex64::new(-0.5 * self.sigma.powi(2), 0.0) * xi * xi;
     (i * xi * omega * t + (diffusion + jump) * t).exp()
@@ -168,7 +160,7 @@ impl FourierModelExt for KouFourier {
     let c1_jump = self.lambda * (p / self.eta1 - (1.0 - p) / self.eta2);
     let c2_jump = self.lambda * (2.0 * p / self.eta1.powi(2) + 2.0 * (1.0 - p) / self.eta2.powi(2));
     Cumulants {
-      c1: (self.r - self.q - 0.5 * self.sigma.powi(2)) * t + c1_jump * t,
+      c1: -0.5 * self.sigma.powi(2) * t + c1_jump * t,
       c2: (self.sigma.powi(2) + c2_jump) * t,
       c4: Some(
         24.0
@@ -207,10 +199,6 @@ pub struct NigFourier {
   pub beta: f64,
   /// Scale ($\delta > 0$).
   pub delta: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Dividend yield.
-  pub q: f64,
 }
 
 impl FourierModelExt for NigFourier {
@@ -228,7 +216,7 @@ impl FourierModelExt for NigFourier {
 
     let omega = -delta * (base - (a2 - (beta + 1.0).powi(2)).sqrt());
 
-    (i * xi * (self.r - self.q + omega) * t + psi * t).exp()
+    (i * xi * omega * t + psi * t).exp()
   }
 
   fn cumulants(&self, t: f64) -> Cumulants {
@@ -239,7 +227,7 @@ impl FourierModelExt for NigFourier {
     let b2 = beta * beta;
     let denom = (a2 - b2).sqrt();
     let denom3 = denom.powi(3);
-    let c1 = (self.r - self.q) * t + delta * beta / denom * t;
+    let c1 = delta * beta / denom * t;
     let c2 = delta * a2 / denom3 * t;
     let c4 = 3.0 * delta * a2 * (a2 + 4.0 * b2) / (a2 - b2).powf(3.5) * t;
     Cumulants {
@@ -264,8 +252,6 @@ mod tests {
         lambda,
         mu_j,
         sigma_j,
-        r: 0.03,
-        q: 0.0,
       };
       model.cumulants(t).c4.unwrap()
     };
@@ -276,8 +262,6 @@ mod tests {
         p_up,
         eta1,
         eta2,
-        r: 0.03,
-        q: 0.0,
       };
       model.cumulants(t).c4.unwrap()
     };

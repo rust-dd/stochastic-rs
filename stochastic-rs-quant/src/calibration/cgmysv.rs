@@ -40,11 +40,9 @@ pub struct CgmysvCalibrationResult {
 
 impl crate::traits::ToModel for CgmysvCalibrationResult {
   type Model = CgmysvModel;
-  fn to_model(&self, r: f64, q: f64) -> Self::Model {
+  fn to_model(&self) -> Self::Model {
     CgmysvModel {
       params: self.params.clone(),
-      r,
-      q,
     }
   }
 }
@@ -141,8 +139,6 @@ fn project(p: &mut [f64]) {
 fn fourier_call_price(params: &CgmysvParams, s: f64, k: f64, r: f64, q: f64, t: f64) -> f64 {
   let model = CgmysvModel {
     params: params.clone(),
-    r,
-    q,
   };
   LewisPricer::price_call(&model, s, k, r, q, t)
 }

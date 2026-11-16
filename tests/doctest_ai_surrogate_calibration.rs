@@ -74,7 +74,7 @@ fn calibrate_heston_on_a_surrogate() {
   assert!(fitted.kappa > 0.0 && fitted.rho < 0.0);
 
   // 3. The result is a pricer: price a vanilla off the calibrated parameters.
-  let pricer = result.to_model(0.01, 0.0);
+  let pricer = result.to_model();
   let call = pricer.price_call(100.0, 100.0, 0.01, 0.0, 1.0);
   assert!(call > 0.0 && call < 100.0);
 }

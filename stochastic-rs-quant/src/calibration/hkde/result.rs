@@ -22,8 +22,18 @@ pub struct HkdeCalibrationResult {
 
 impl crate::traits::ToModel for HkdeCalibrationResult {
   type Model = HkdeFourier;
-  fn to_model(&self, r: f64, q: f64) -> Self::Model {
-    HkdeCalibrationResult::to_model(self, r, q)
+  fn to_model(&self) -> Self::Model {
+    HkdeFourier {
+      v0: self.v0,
+      kappa: self.kappa,
+      theta: self.theta,
+      sigma_v: self.sigma_v,
+      rho: self.rho,
+      lam: self.lambda,
+      p_up: self.p_up,
+      eta1: self.eta1,
+      eta2: self.eta2,
+    }
   }
 }
 
@@ -53,24 +63,5 @@ impl crate::traits::CalibrationResult for HkdeCalibrationResult {
 
   fn loss_score(&self) -> Option<&CalibrationLossScore> {
     Some(&self.loss)
-  }
-}
-
-impl HkdeCalibrationResult {
-  /// Convert to a [`HkdeFourier`] model for pricing / vol-surface generation.
-  pub fn to_model(&self, r: f64, q: f64) -> HkdeFourier {
-    HkdeFourier {
-      v0: self.v0,
-      kappa: self.kappa,
-      theta: self.theta,
-      sigma_v: self.sigma_v,
-      rho: self.rho,
-      r,
-      q,
-      lam: self.lambda,
-      p_up: self.p_up,
-      eta1: self.eta1,
-      eta2: self.eta2,
-    }
   }
 }

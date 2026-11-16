@@ -232,9 +232,18 @@ def test_empirical_cvar_rejects_an_empty_sample():
 
 
 def test_implied_vol_surface_rejects_an_unsorted_strike_grid():
-    model = sr.HestonFourier(v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.6, r=0.01, q=0.0)
+    model = sr.HestonFourier(v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.6)
     with pytest.raises(ValueError, match="strikes must satisfy"):
         sr.ImpliedVolSurface.from_heston(model, 100.0, 0.01, 0.0, [110.0, 100.0], [1.0])
+
+
+def test_carr_madan_pricer_takes_the_carry_from_the_query():
+    model = sr.HestonFourier(v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.7)
+    pricer = sr.CarrMadanPricer()
+    for k in (90.0, 100.0, 110.0):
+        assert pricer.strike_in_grid_heston(model, 100.0, k, 0.05, 0.02, 1.0)
+        fft = pricer.price_heston_call(model, 100.0, k, 0.05, 0.02, 1.0)
+        assert abs(fft - model.price_call(100.0, k, 0.05, 0.02, 1.0)) < 5e-3
 
 
 def test_heston_slv_calibrates_a_heston_surface_and_prices():
@@ -244,7 +253,7 @@ def test_heston_slv_calibrates_a_heston_surface_and_prices():
     v0, kappa, theta, sigma, rho = 0.04, 2.0, 0.05, 0.4, -0.6
     strikes = np.linspace(70.0, 140.0, 36)
     maturities = [0.25, 0.5, 0.75, 1.0]
-    model = sr.HestonFourier(v0=v0, kappa=kappa, theta=theta, sigma=sigma, rho=rho, r=r, q=q)
+    model = sr.HestonFourier(v0=v0, kappa=kappa, theta=theta, sigma=sigma, rho=rho)
     calls = np.array([[model.price_call(s, k, r, q, t) for k in strikes] for t in maturities])
     calibrator = sr.HestonSlvCalibrator(
         s, r, q, list(strikes), maturities, calls, eta=0.7,
@@ -301,7 +310,7 @@ HESTON_MATURITIES = (0.25, 0.5, 1.0, 2.0, 3.0)
 
 
 def _heston_surface(params, s0=100.0, r=0.02, q=0.0):
-    model = sr.HestonFourier(*params, r, q)
+    model = sr.HestonFourier(*params)
     return [
         sr.MarketSlice(
             HESTON_STRIKES,

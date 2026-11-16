@@ -342,8 +342,6 @@ mod tests {
   fn table4_lewis_call() {
     let model = CgmysvModel {
       params: paper_params(),
-      r: 0.01213,
-      q: 0.01884,
     };
     let call = LewisPricer::price_call(&model, 2488.11, 2500.0, 0.01213, 0.01884, 28.0 / 365.0);
     println!("Table 4 — European call (K=2500, T=28d)");
@@ -434,22 +432,19 @@ mod tests {
     assert!(am.mean > 0.0, "American put positive: {am}");
   }
 
-  /// φ(0) = 1, φ(-i) = exp((r-q)T).
+  /// φ(0) = 1 and, the chf being drift-free, φ(-i) = E[e^X] = 1.
   #[test]
   fn chf_sanity() {
     let model = CgmysvModel {
       params: paper_params(),
-      r: 0.01213,
-      q: 0.01884,
     };
     let tau = 28.0 / 365.0;
     let phi0 = model.chf(tau, num_complex::Complex64::new(0.0, 0.0));
     let phi_ni = model.chf(tau, num_complex::Complex64::new(0.0, -1.0));
-    let expected = ((0.01213 - 0.01884) * tau).exp();
     println!("ChF sanity");
     println!("  φ(0)  = {:.10} (expected 1.0)", phi0.norm());
-    println!("  φ(-i) = {:.10} (expected {expected:.10})", phi_ni.re);
+    println!("  φ(-i) = {:.10} (expected 1.0)", phi_ni.re);
     assert!((phi0.norm() - 1.0).abs() < 1e-10, "φ(0) = {phi0}");
-    assert!((phi_ni.re - expected).abs() < 1e-8, "φ(-i) = {}", phi_ni.re);
+    assert!((phi_ni.re - 1.0).abs() < 1e-8, "φ(-i) = {}", phi_ni.re);
   }
 }

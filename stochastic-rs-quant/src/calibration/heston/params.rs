@@ -67,26 +67,16 @@ pub struct HestonParams {
   pub rho: f64,
 }
 
-impl HestonParams {
-  /// Convert to a [`HestonFourier`](crate::pricing::fourier::HestonFourier) model for
-  /// pricing / vol surface generation.
-  pub fn to_model(&self, r: f64, q: f64) -> crate::pricing::fourier::HestonFourier {
+impl crate::traits::ToModel for HestonParams {
+  type Model = crate::pricing::fourier::HestonFourier;
+  fn to_model(&self) -> Self::Model {
     crate::pricing::fourier::HestonFourier {
       v0: self.v0,
       kappa: self.kappa,
       theta: self.theta,
       sigma: self.sigma,
       rho: self.rho,
-      r,
-      q,
     }
-  }
-}
-
-impl crate::traits::ToModel for HestonParams {
-  type Model = crate::pricing::fourier::HestonFourier;
-  fn to_model(&self, r: f64, q: f64) -> Self::Model {
-    HestonParams::to_model(self, r, q)
   }
 }
 

@@ -3,6 +3,7 @@ use super::*;
 use crate::LossMetric;
 use crate::OptionType;
 use crate::traits::Calibrator;
+use crate::traits::ToModel;
 
 // Reference Heston (v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.7)
 // S=100, r=0.05, q=0, T=1.0. A double Heston with v1_0+v2_0 = 0.04 and
@@ -130,9 +131,7 @@ fn double_heston_params_to_model() {
     sigma2: 0.15,
     rho2: -0.3,
   };
-  let model = p.to_model(0.03, 0.01);
+  let model = p.to_model();
   assert_eq!(model.v1_0, 0.02);
   assert_eq!(model.kappa2, 0.5);
-  assert_eq!(model.r, 0.03);
-  assert_eq!(model.q, 0.01);
 }
