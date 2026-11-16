@@ -179,8 +179,5 @@ fn device_seed_follows_the_seed_source() {
 /// deterministic in its seed; the device kernels share one integer hash for
 /// their uniforms, so two device back-ends agree seed for seed up to the
 /// `f32` libm rounding of Box–Muller.
-#[cfg(any(
-  all(feature = "metal", target_os = "macos", target_arch = "aarch64"),
-  feature = "cuda"
-))]
+#[cfg(device_backend)]
 mod devices;

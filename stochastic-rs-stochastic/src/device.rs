@@ -27,12 +27,12 @@ use crate::buffer::array1_from_fill;
 use crate::noise::fgn::Fgn;
 use crate::sheet::fbs::Fbs;
 use crate::traits::FloatExt;
-#[cfg(all(feature = "accelerate", target_os = "macos"))]
+#[cfg(accelerate_backend)]
 use crate::traits::process::chunk_count;
-#[cfg(all(feature = "accelerate", target_os = "macos"))]
+#[cfg(accelerate_backend)]
 use crate::traits::process::chunk_lens;
 
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 pub(crate) mod metal;
 
 /// CPU backend — the default `B` for every process.
@@ -94,7 +94,7 @@ impl Cuda {
 ///
 /// Each thread that samples on the device keeps its own command queue, kernel library
 /// and reusable buffers until the thread exits.
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Metal {
@@ -105,7 +105,7 @@ pub struct Metal {
   pub batch_budget: usize,
 }
 
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 impl Default for Metal {
   /// Ordinal `0` with [`DEFAULT_BATCH_BUDGET_BYTES`]; [`Metal::from_env`] is the one that reads the environment.
   fn default() -> Self {
@@ -116,7 +116,7 @@ impl Default for Metal {
   }
 }
 
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 impl Metal {
   /// The device at `ordinal` with the default batch budget.
   pub fn new(ordinal: usize) -> Self {
@@ -145,7 +145,7 @@ impl Metal {
 }
 
 /// Apple vDSP / AMX (FFI system framework, macOS).
-#[cfg(all(feature = "accelerate", target_os = "macos"))]
+#[cfg(accelerate_backend)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Accelerate;
 
@@ -238,14 +238,7 @@ impl DeviceInfo {
   }
 }
 
-#[cfg_attr(
-  not(any(
-    feature = "cuda",
-    all(feature = "metal", target_os = "macos", target_arch = "aarch64"),
-    feature = "python"
-  )),
-  allow(dead_code)
-)]
+#[cfg_attr(not(any(device_backend, feature = "python")), allow(dead_code))]
 /// `STOCHASTIC_RS_DEVICE` as an ordinal: unset is `0`, anything but a non-negative integer is refused.
 pub(crate) fn device_from_env(value: Option<&str>) -> Result<usize, DeviceError> {
   let Some(raw) = value else {
@@ -258,14 +251,7 @@ pub(crate) fn device_from_env(value: Option<&str>) -> Result<usize, DeviceError>
   })
 }
 
-#[cfg_attr(
-  not(any(
-    feature = "cuda",
-    all(feature = "metal", target_os = "macos", target_arch = "aarch64"),
-    feature = "python"
-  )),
-  allow(dead_code)
-)]
+#[cfg_attr(not(any(device_backend, feature = "python")), allow(dead_code))]
 pub(crate) fn env_ordinal() -> Result<usize, DeviceError> {
   device_from_env(env_text("STOCHASTIC_RS_DEVICE")?.as_deref())
 }
@@ -273,14 +259,7 @@ pub(crate) fn env_ordinal() -> Result<usize, DeviceError> {
 /// Default cap on the path data one device launch materialises: 1 GiB.
 pub const DEFAULT_BATCH_BUDGET_BYTES: usize = 1 << 30;
 
-#[cfg_attr(
-  not(any(
-    feature = "cuda",
-    all(feature = "metal", target_os = "macos", target_arch = "aarch64"),
-    feature = "python"
-  )),
-  allow(dead_code)
-)]
+#[cfg_attr(not(any(device_backend, feature = "python")), allow(dead_code))]
 /// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` as a budget: unset is the default, anything but a positive integer is refused.
 pub(crate) fn budget_from_env(value: Option<&str>) -> Result<usize, DeviceError> {
   let Some(raw) = value else {
@@ -294,26 +273,12 @@ pub(crate) fn budget_from_env(value: Option<&str>) -> Result<usize, DeviceError>
   }
 }
 
-#[cfg_attr(
-  not(any(
-    feature = "cuda",
-    all(feature = "metal", target_os = "macos", target_arch = "aarch64"),
-    feature = "python"
-  )),
-  allow(dead_code)
-)]
+#[cfg_attr(not(any(device_backend, feature = "python")), allow(dead_code))]
 pub(crate) fn env_budget() -> Result<usize, DeviceError> {
   budget_from_env(env_text("STOCHASTIC_RS_DEVICE_BATCH_BYTES")?.as_deref())
 }
 
-#[cfg_attr(
-  not(any(
-    feature = "cuda",
-    all(feature = "metal", target_os = "macos", target_arch = "aarch64"),
-    feature = "python"
-  )),
-  allow(dead_code)
-)]
+#[cfg_attr(not(any(device_backend, feature = "python")), allow(dead_code))]
 /// `name`'s value, `None` when unset; a value that is not unicode is a `Config` error, never read as unset.
 fn env_text(name: &str) -> Result<Option<String>, DeviceError> {
   match std::env::var(name) {
@@ -358,13 +323,7 @@ pub(crate) fn over_chunks(
 
 /// Caps a planner's rows so no chunk wraps a kernel index; the floor of one lets an oversized row
 /// reach its launch, whose [`launch_len`] check refuses it rather than wrap.
-#[cfg_attr(
-  not(any(
-    feature = "cuda",
-    all(feature = "metal", target_os = "macos", target_arch = "aarch64")
-  )),
-  allow(dead_code)
-)]
+#[cfg_attr(not(device_backend), allow(dead_code))]
 pub(crate) fn rows_within_index_limit(rows: usize, elements_per_row: usize, limit: usize) -> usize {
   let per_row = elements_per_row.max(1);
   rows.min(limit / per_row).max(1)
@@ -372,13 +331,7 @@ pub(crate) fn rows_within_index_limit(rows: usize, elements_per_row: usize, limi
 
 /// `len` as the integer type a kernel takes it in, or the launch's error when
 /// it does not fit — never the wrapped value an `as` cast would hand over.
-#[cfg_attr(
-  not(any(
-    feature = "cuda",
-    all(feature = "metal", target_os = "macos", target_arch = "aarch64")
-  )),
-  allow(dead_code)
-)]
+#[cfg_attr(not(device_backend), allow(dead_code))]
 pub(crate) fn launch_len<I: TryFrom<usize>>(len: usize, what: &str) -> Result<I, DeviceError> {
   I::try_from(len)
     .map_err(|_| DeviceError::Launch(format!("{what}: {len} exceeds the kernel index range")))
@@ -387,24 +340,12 @@ pub(crate) fn launch_len<I: TryFrom<usize>>(len: usize, what: &str) -> Result<I,
 /// How many per-size device states (FFT plans, buffers) a back-end keeps.
 /// Only the native CUDA and Metal fGN samplers cache per-size state, so a
 /// build without them has no caller.
-#[cfg_attr(
-  not(any(
-    feature = "cuda",
-    all(feature = "metal", target_os = "macos", target_arch = "aarch64")
-  )),
-  allow(dead_code)
-)]
+#[cfg_attr(not(device_backend), allow(dead_code))]
 pub(crate) const CACHE_SLOTS: usize = 4;
 
 /// The cached state matching `matches`, moved to the most-recent slot, or a
 /// freshly built one after evicting the least-recent when the cache is full.
-#[cfg_attr(
-  not(any(
-    feature = "cuda",
-    all(feature = "metal", target_os = "macos", target_arch = "aarch64")
-  )),
-  allow(dead_code)
-)]
+#[cfg_attr(not(device_backend), allow(dead_code))]
 pub(crate) fn lru_slot<C, E>(
   cache: &mut Vec<C>,
   matches: impl Fn(&C) -> bool,
@@ -453,10 +394,10 @@ impl sealed::Sealed for Cpu {}
 #[cfg(feature = "cuda")]
 impl sealed::Sealed for Cuda {}
 
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 impl sealed::Sealed for Metal {}
 
-#[cfg(all(feature = "accelerate", target_os = "macos"))]
+#[cfg(accelerate_backend)]
 impl sealed::Sealed for Accelerate {}
 
 impl Backend for Cpu {
@@ -472,14 +413,14 @@ impl Backend for Cuda {
   }
 }
 
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 impl Backend for Metal {
   fn probe(&self) -> Result<DeviceInfo, DeviceError> {
     metal::probe(self.ordinal)
   }
 }
 
-#[cfg(all(feature = "accelerate", target_os = "macos"))]
+#[cfg(accelerate_backend)]
 impl Backend for Accelerate {
   fn probe(&self) -> Result<DeviceInfo, DeviceError> {
     Ok(DeviceInfo::host("Accelerate", "host CPU (Apple vDSP)"))
@@ -492,7 +433,7 @@ pub trait HostBackend: Backend {}
 
 impl HostBackend for Cpu {}
 
-#[cfg(all(feature = "accelerate", target_os = "macos"))]
+#[cfg(accelerate_backend)]
 impl HostBackend for Accelerate {}
 
 /// The fGN sampling capability of a [`Backend`]: circulant-embedding
@@ -756,7 +697,7 @@ macro_rules! gpu_backend {
 gpu_backend!(feature = "cuda", Cuda => sample_cuda_impl, f32, f64);
 
 /// Owned rows copy directly from shared Metal storage; map callbacks borrow it.
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 impl FgnBackend<f32> for Metal {
   fn try_generate<S: SeedExt, S2: SeedExt>(
     &self,
@@ -806,7 +747,7 @@ impl FgnBackend<f32> for Metal {
 /// task per chunk instead of one task per path), which does not change
 /// wall-clock throughput once `chunk_count(m)` meets or exceeds the core
 /// count (see `MAX_CHUNKS`'s doc).
-#[cfg(all(feature = "accelerate", target_os = "macos"))]
+#[cfg(accelerate_backend)]
 impl<T: FloatExt> FgnBackend<T> for Accelerate {
   fn try_generate<S: SeedExt, S2: SeedExt>(
     &self,
@@ -951,7 +892,7 @@ macro_rules! host_sheet_backend {
 }
 
 host_sheet_backend!(Cpu);
-#[cfg(all(feature = "accelerate", target_os = "macos"))]
+#[cfg(accelerate_backend)]
 host_sheet_backend!(Accelerate);
 
 /// Generates a [`SheetBackend`] impl for a GPU marker whose `$sampler` returns
@@ -988,7 +929,7 @@ macro_rules! gpu_sheet_backend {
 }
 
 gpu_sheet_backend!(feature = "cuda", Cuda => sample_cuda_sheets, f32, f64);
-gpu_sheet_backend!(all(feature = "metal", target_os = "macos", target_arch = "aarch64"), Metal => sample_metal_sheets, f32);
+gpu_sheet_backend!(metal_backend, Metal => sample_metal_sheets, f32);
 
 #[cfg(test)]
 mod tests {

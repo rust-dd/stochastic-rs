@@ -91,7 +91,7 @@ fn cir_stays_nonnegative<T: FloatExt, B: EulerBackend<T> + Default>(label: &str)
   assert!(paths.iter().all(|&x| x >= 0.0), "{label}");
 }
 
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 #[test]
 fn metal_native_chunks_are_bit_identical_to_one_launch() {
   use crate::device::Metal;
@@ -118,7 +118,7 @@ fn metal_native_chunks_are_bit_identical_to_one_launch() {
 /// launch has to advance itself, and a two-stream launch has to advance it
 /// by `streams` rows a path. Both are places a batch can silently repeat or
 /// overlap its own noise, which no statistic of a single batch reveals.
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 #[test]
 fn metal_fractional_chunks_are_bit_identical_to_one_launch() {
   use stochastic_rs_core::simd_rng::Deterministic;
@@ -240,7 +240,7 @@ fn cuda_fractional_chunks_are_bit_identical_to_one_launch() {
 
 /// Metal indexes in `uint`, so no launch passes that range: a plane of values, or the `2n`-point
 /// fGN rows that bind a correlated pair before its planes do. Rows that already fit are kept.
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 #[test]
 fn metal_index_rows_stop_at_the_uint_range() {
   use crate::device::Metal;
@@ -262,7 +262,7 @@ fn metal_index_rows_stop_at_the_uint_range() {
   assert_eq!(rows, limit / (fgn.streams * 2 * fgn.n));
 }
 
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 #[test]
 fn metal_rejects_wrapped_path_offsets_before_opening_a_device() {
   use crate::device::{DeviceError, Metal};
@@ -301,7 +301,7 @@ fn cuda_index_rows_bound_paths_and_the_fgn_buffer() {
 }
 
 /// A refused Metal allocation is the out-of-memory error the batch loops halve on.
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 #[test]
 fn metal_refused_allocation_is_out_of_memory() {
   use crate::device::metal::{context, device_error};
@@ -316,7 +316,7 @@ fn metal_refused_allocation_is_out_of_memory() {
   assert_eq!(granted.len(), 16);
 }
 
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 #[test]
 fn metal_native_matrix_matches_the_rows_and_chunks() {
   use crate::device::Metal;
@@ -335,7 +335,7 @@ fn metal_native_matrix_matches_the_rows_and_chunks() {
   assert_eq!(chunked, matrix);
 }
 
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 #[test]
 fn metal_native_probe_and_try_sample_par() {
   let info = crate::device::Metal::default()
@@ -351,7 +351,7 @@ fn metal_native_probe_and_try_sample_par() {
   assert_eq!(paths.len(), 5);
 }
 
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 #[test]
 fn metal_native_backend_matches_the_moments() {
   gbm_moments_hold::<f32, crate::device::Metal>("Metal");

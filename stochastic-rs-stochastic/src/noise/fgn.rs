@@ -4,12 +4,12 @@
 //! \operatorname{Cov}(\Delta B_i^H,\Delta B_j^H)=\tfrac12\left(|k+1|^{2H}-2|k|^{2H}+|k-1|^{2H}\right),\ k=i-j
 //! $$
 //!
-#[cfg(all(feature = "accelerate", target_os = "macos"))]
+#[cfg(accelerate_backend)]
 mod accelerate;
 mod core;
 #[cfg(feature = "cuda")]
 pub(crate) mod cuda;
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 pub(crate) mod metal;
 #[cfg(feature = "python")]
 mod python;

@@ -39,7 +39,7 @@
 //! particular run happens to trigger vDSP's own hardware-level
 //! nondeterminism.
 
-#[cfg(all(feature = "accelerate", target_os = "macos"))]
+#[cfg(accelerate_backend)]
 mod accelerate_reproducibility {
   use std::sync::Arc;
   use std::sync::atomic::AtomicBool;

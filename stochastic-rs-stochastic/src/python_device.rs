@@ -118,7 +118,7 @@ impl Device {
     let (compiled, what, feature) = match self {
       Device::Cpu => (true, "", ""),
       Device::Accelerate => (
-        cfg!(all(feature = "accelerate", target_os = "macos")),
+        cfg!(accelerate_backend),
         "Accelerate back-end",
         "the accelerate feature on macOS",
       ),
@@ -128,11 +128,7 @@ impl Device {
         "the cuda feature",
       ),
       Device::Metal(..) => (
-        cfg!(all(
-          feature = "metal",
-          target_os = "macos",
-          target_arch = "aarch64"
-        )),
+        cfg!(metal_backend),
         "native Metal runtime",
         "the metal feature on Apple Silicon macOS",
       ),
@@ -165,11 +161,11 @@ impl Device {
   pub fn probe(self) -> PyResult<DeviceInfo> {
     let info = match self {
       Device::Cpu => Cpu.probe(),
-      #[cfg(all(feature = "accelerate", target_os = "macos"))]
+      #[cfg(accelerate_backend)]
       Device::Accelerate => crate::device::Accelerate.probe(),
       #[cfg(feature = "cuda")]
       Device::Cuda(o, _) => crate::device::Cuda::new(o).probe(),
-      #[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+      #[cfg(metal_backend)]
       Device::Metal(o, _) => crate::device::Metal::new(o).probe(),
       #[allow(unreachable_patterns)]
       _ => unreachable!("check_compiled rejects the devices this build lacks"),

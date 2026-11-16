@@ -124,7 +124,7 @@ pub struct NoCompoundPoissonToSwap;
 /// let gbm = Gbm::<f64, _>::new(0.05, 0.2, 16, 1.0, None, Unseeded);
 /// let _ = gbm.on::<Metal>().sample();
 /// ```
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 pub struct MetalRefusesDoublePrecision;
 
 /// The Python class macros are internal to the crate.

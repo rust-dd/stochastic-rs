@@ -25,7 +25,7 @@ use stochastic_rs_distributions::uniform::SimdUniform;
 use super::*;
 use crate::traits::PathSampler;
 
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 mod migration;
 
 /// Points per probe path. Long enough for a wrong step to diverge visibly,
@@ -2285,18 +2285,12 @@ fn every_family_has_a_probe() {
 /// The kernels the native back-ends run are generated, so what this checks is
 /// that each generated body compiles into a launchable kernel and produces a
 /// path that stays in the reals.
-#[cfg(any(
-  all(feature = "metal", target_os = "macos", target_arch = "aarch64"),
-  feature = "cuda"
-))]
+#[cfg(device_backend)]
 #[test]
 fn every_family_runs_on_the_device() {
   #[cfg(feature = "cuda")]
   type Device = crate::device::Cuda;
-  #[cfg(all(
-    all(feature = "metal", target_os = "macos", target_arch = "aarch64"),
-    not(feature = "cuda")
-  ))]
+  #[cfg(all(metal_backend, not(feature = "cuda")))]
   type Device = crate::device::Metal;
 
   for probe in every_family() {

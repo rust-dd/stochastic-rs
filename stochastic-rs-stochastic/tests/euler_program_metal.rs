@@ -1,6 +1,6 @@
 //! Metal coefficient program results observed through the first Volterra step.
 
-#![cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#![cfg(metal_backend)]
 
 use std::fs::OpenOptions;
 use std::io::Write;

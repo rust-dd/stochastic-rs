@@ -13,10 +13,7 @@ use stochastic_rs_stochastic::volatility::heston2d::Heston2DPaths;
 /// otherwise; the whole binary is gated on one of the two being present.
 #[cfg(feature = "cuda")]
 pub(crate) type Device = stochastic_rs_stochastic::device::Cuda;
-#[cfg(all(
-  all(feature = "metal", target_os = "macos", target_arch = "aarch64"),
-  not(feature = "cuda")
-))]
+#[cfg(all(metal_backend, not(feature = "cuda")))]
 pub(crate) type Device = stochastic_rs_stochastic::device::Metal;
 
 /// Paths per comparison. Large enough that a terminal mean is stable to the

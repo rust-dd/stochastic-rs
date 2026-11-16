@@ -156,7 +156,7 @@ fn a_setter_is_defined_for_every_backend() {
   assert_eq!((c.sigma, c.n), (0.3, 128));
 }
 
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[cfg(metal_backend)]
 #[test]
 fn a_device_backed_process_takes_its_setters() {
   use stochastic_rs_stochastic::device::Metal;
