@@ -44,7 +44,8 @@ impl<T: FloatExt> Drift<T> {
   }
 }
 
-/// What ends an event-driven path: a fixed number of events or a time horizon.
+/// What ends an event-driven path: `Events(n)`, the origin and the `n` arrivals after it (so
+/// `Events(0)` is the origin alone), or `Until(t)`, a time horizon.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum Horizon<T> {
@@ -111,3 +112,68 @@ pub struct DriftIsOneArgument;
 /// ```
 #[cfg(doctest)]
 pub struct HorizonIsOneArgument;
+
+#[cfg(test)]
+mod tests {
+  use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_core::simd_rng::Unseeded;
+  use stochastic_rs_distributions::exp::SimdExp;
+  use stochastic_rs_distributions::normal::SimdNormal;
+
+  use super::Horizon;
+  use crate::euler::EulerCoefficients;
+  use crate::euler::EulerSystem;
+  use crate::process::ccustom::CompoundCustom;
+  use crate::process::cpoisson::CompoundPoisson;
+  use crate::process::customjt::CustomJt;
+  use crate::process::hawkes::Hawkes;
+  use crate::process::multivariate_hawkes::MultivariateHawkes;
+  use crate::process::poisson::Poisson;
+  use crate::traits::ProcessExt;
+
+  fn rows_and_grids(n: usize) -> (Vec<usize>, Vec<usize>) {
+    let horizon = Horizon::Events(n);
+    let seed = || Deterministic::new(7);
+    let poisson = Poisson::new(2.0, horizon, seed());
+    let hawkes = Hawkes::new(0.5, 0.3, 1.0, horizon, seed());
+    let customjt = CustomJt::new(horizon, SimdExp::new(2.0), seed());
+    let ccustom = CompoundCustom::new(
+      horizon,
+      SimdNormal::new(0.0, 0.1),
+      SimdExp::new(2.0),
+      CustomJt::new(horizon, SimdExp::new(2.0), Unseeded),
+      seed(),
+    );
+    let cpoisson = CompoundPoisson::new(
+      SimdNormal::new(0.0, 0.1),
+      Poisson::new(2.0, horizon, Unseeded),
+      seed(),
+    );
+    let one_component =
+      MultivariateHawkes::new(array![0.5], array![[0.3]], array![[1.0]], horizon, seed());
+    let mut rows = vec![
+      poisson.sample().len(),
+      hawkes.sample().len(),
+      customjt.sample().len(),
+    ];
+    rows.extend(ccustom.sample().iter().map(|row| row.len()));
+    rows.extend(cpoisson.sample().iter().map(|row| row.len()));
+    rows.push(one_component.sample()[0].len());
+    let grids = vec![
+      EulerCoefficients::grid_points(&poisson),
+      EulerCoefficients::grid_points(&hawkes),
+      EulerCoefficients::grid_points(&customjt),
+      EulerSystem::<f64, 3>::grid_points(&ccustom),
+      EulerSystem::<f64, 3>::grid_points(&cpoisson),
+    ];
+    (rows, grids)
+  }
+
+  #[test]
+  fn events_n_is_the_origin_and_n_arrivals_in_every_event_process() {
+    let got = [0, 10].map(rows_and_grids);
+    let want = [0, 10].map(|n| (vec![n + 1; 10], vec![n + 1; 5]));
+    assert_eq!(got, want);
+  }
+}

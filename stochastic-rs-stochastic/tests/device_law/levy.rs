@@ -381,7 +381,7 @@ fn tempered_stable_subordinator_agrees_with_the_cpu_law() {
 /// host whatever the backend, which the last assertion pins.
 #[test]
 fn poisson_arrivals_agree_with_the_cpu_law() {
-  let build = || Poisson::<f32, _>::new(4.0, Horizon::Events(N), Deterministic::new(71));
+  let build = || Poisson::<f32, _>::new(4.0, Horizon::Events(N - 1), Deterministic::new(71));
   let device = build().on::<Device>().sample_par(M);
   let host = build().sample_par(M);
   assert_eq!(device.len(), M);
@@ -433,7 +433,7 @@ fn hawkes_agrees_with_the_cpu_law() {
   let device = build().on::<Device>().sample_par(PATHS);
   let host = build().sample_par(PATHS);
   assert_eq!(device.len(), PATHS);
-  assert!(device.iter().all(|p| p.len() == EVENTS));
+  assert!(device.iter().all(|p| p.len() == EVENTS + 1));
   assert!(
     device.iter().all(|p| p[0] == 0.0),
     "a path did not start at zero"
@@ -455,7 +455,7 @@ fn hawkes_agrees_with_the_cpu_law() {
       .map(|p| p.windows(2).into_iter().filter(|w| w[1] == w[0]).count())
       .sum::<usize>()
   };
-  let (pairs, stuck) = (PATHS * (EVENTS - 1), ties(&device));
+  let (pairs, stuck) = (PATHS * EVENTS, ties(&device));
   assert!(
     stuck * 10_000 < pairs,
     "{stuck} of {pairs} device waits rounded to zero, host had {}",

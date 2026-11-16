@@ -211,7 +211,7 @@ fn golden_fou_stream() {
 fn golden_compound_poisson_streams() {
   let cpoisson = CompoundPoisson::<f64, _, _>::new(
     SimdNormal::new(0.0, 0.1),
-    Poisson::<f64, _>::new(0.5, Horizon::Events(N), Unseeded),
+    Poisson::<f64, _>::new(0.5, Horizon::Events(N - 1), Unseeded),
     Deterministic::new(44),
   );
   let [times, cum, jumps] = cpoisson.sample();

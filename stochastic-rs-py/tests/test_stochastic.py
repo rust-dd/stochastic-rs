@@ -352,12 +352,13 @@ def test_an_event_process_takes_exactly_one_of_n_and_t_max():
         lambda **h: sr.PyCompoundPoisson(lambda: 0.1, 2.0, **h),
     ]
     for build in builds:
-        build(n=10)
+        out = build(n=10).sample()
+        assert {len(row) for row in (out if isinstance(out, tuple) else (out,))} == {11}
         build(t_max=1.0)
         for bad in ({}, {"n": 10, "t_max": 1.0}):
             with pytest.raises(ValueError, match="exactly one of n and t_max"):
                 build(**bad)
-    assert len(sr.PyPoisson(3.0, n=10, seed=2).sample()) == 10
+    assert len(sr.PyPoisson(3.0, n=10, seed=2).sample()) == 11
     assert np.all(sr.PyPoisson(3.0, t_max=2.0, seed=2).sample() <= 2.0)
     assert sr.PyPoisson(3.0, n=10).device_ready() and sr.PyHawkes(0.5, 0.3, 1.0, n=10).device_ready()
     assert not sr.PyPoisson(3.0, t_max=2.0).device_ready()

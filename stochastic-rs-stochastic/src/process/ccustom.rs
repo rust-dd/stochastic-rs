@@ -31,8 +31,8 @@ where
   D1: Distribution<T> + Send + Sync,
   D2: Distribution<T> + Send + Sync,
 {
-  /// `Events(n)` sizes the jump rows at `n` points; under `Until` they follow `customjt`, which
-  /// draws the times either way.
+  /// `Events(n)`: rows of the origin and the `n` jumps after it; under `Until` they follow
+  /// `customjt`, which draws the times either way.
   pub horizon: Horizon<T>,
   /// Distribution of jump magnitudes.
   pub jumps_distribution: D1,
@@ -136,7 +136,7 @@ where
     let Horizon::Events(n) = self.horizon else {
       panic!("the Euler engine describes CompoundCustom's count mode; horizon mode has no grid");
     };
-    n
+    n + 1
   }
 
   fn horizon(&self) -> T {
@@ -290,7 +290,7 @@ where
   fn sample_inner(&mut self) -> [Array1<T>; 3] {
     let p = self.customjt.sample_impl(&self.seed);
     let len = match self.horizon {
-      Horizon::Events(n) => n,
+      Horizon::Events(n) => n + 1,
       Horizon::Until(_) => p.len(),
     };
     let mut jumps = Array1::<T>::zeros(len);

@@ -344,7 +344,7 @@ impl<T: FloatExt, S: SeedExt> RdtsSampler<T, S> {
     let mut U = Array1::<T>::zeros(size);
     self.uniform.fill_slice(U.as_slice_mut().unwrap());
     let E = Array1::from_shape_fn(size, |_| self.exp.sample());
-    let P = Poisson::new(T::one(), Horizon::Events(size), self.seed.derive()).sample();
+    let P = Poisson::new(T::one(), Horizon::Events(J), self.seed.derive()).sample();
     let mut tau_raw = Array1::<T>::zeros(size);
     self.uniform.fill_slice(tau_raw.as_slice_mut().unwrap());
     let tau = tau_raw * t_max;

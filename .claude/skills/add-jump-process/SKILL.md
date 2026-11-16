@@ -82,8 +82,8 @@ Three constructor facts:
 - **`CompoundPoisson::new(distribution, poisson, seed)`** takes exactly
   three arguments in that order — the jump-size distribution, a
   fully-built `Poisson<T>`, and the seed source. `Poisson::new(lambda,
-  horizon, seed)` takes a `Horizon`: `Events(n)` points or every arrival
-  before `Until(t_max)`.
+  horizon, seed)` takes a `Horizon`: the origin and `n` arrivals after it
+  for `Events(n)`, or every arrival before `Until(t_max)`.
 
 ### `lambda` lives in two places — keep them synced
 

@@ -25,7 +25,7 @@ use crate::traits::ProcessExt;
 pub struct Poisson<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Jump intensity (expected arrivals per unit time).
   pub lambda: T,
-  /// `Events(n)`: `n` points, the origin and `n − 1` arrival times; `Until(t)`: the arrivals before `t`.
+  /// `Events(n)`: the origin and the `n` arrivals after it; `Until(t)`: the arrivals before `t`.
   pub horizon: Horizon<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
@@ -78,7 +78,7 @@ impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
 /// λ = 2 over 252 points, the crate's trading-year default.
 impl<T: FloatExt> Default for Poisson<T, Unseeded> {
   fn default() -> Self {
-    Self::new(T::from_f64_fast(2.0), Horizon::Events(252), Unseeded)
+    Self::new(T::from_f64_fast(2.0), Horizon::Events(251), Unseeded)
   }
 }
 
@@ -126,7 +126,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     let Horizon::Events(n) = self.horizon else {
       panic!("the Euler engine describes Poisson's count mode; horizon mode has no grid");
     };
-    n
+    n + 1
   }
 
   /// The step is a sum of inter-arrival times and reads no `dt`, so the
@@ -243,8 +243,7 @@ pub struct PoissonSampler<T: FloatExt> {
 }
 
 impl<T: FloatExt> PoissonSampler<T> {
-  /// Count-mode fill: `out[0] = 0`, then the running sum of `n - 1`
-  /// exponential inter-arrival times.
+  /// Count-mode fill: the origin, then the running sum of one exponential wait per remaining slot.
   fn fill_count(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -312,7 +311,7 @@ impl<T: FloatExt> PathSampler<T> for PoissonSampler<T> {
 
   fn sample(&mut self) -> Array1<T> {
     match self.horizon {
-      Horizon::Events(n) => array1_from_fill(n, |out| self.fill_count(out)),
+      Horizon::Events(n) => array1_from_fill(n + 1, |out| self.fill_count(out)),
       Horizon::Until(t_max) => self.sample_horizon(t_max, self.lambda),
     }
   }
@@ -328,7 +327,7 @@ mod tests {
     let by_count =
       Poisson::<f64, Deterministic>::new(3.0, Horizon::Events(10), seed.clone()).sample();
     let by_time = Poisson::<f64, Deterministic>::new(3.0, Horizon::Until(2.0), seed).sample();
-    assert_eq!(by_count.len(), 10);
+    assert_eq!(by_count.len(), 11);
     assert!(by_time.iter().all(|t| *t <= 2.0));
   }
 }

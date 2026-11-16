@@ -32,7 +32,7 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// `Events(n)`: `n` points, the origin and `n − 1` arrivals; `Until(t)`: the arrivals through the
+  /// `Events(n)`: the origin and the `n` arrivals after it; `Until(t)`: the arrivals through the
   /// first one past `t`.
   pub horizon: Horizon<T>,
   /// Distribution used for generated increments / inter-arrival draws.
@@ -131,8 +131,8 @@ impl PyCustomJt {
     })
   }
 
-  /// `m` paths as an `(m, n)` array. The GIL is released while they are generated; the Python
-  /// law runs on rayon workers, one call at a time.
+  /// `m` paths as an `(m, n + 1)` array. The GIL is released while they are generated; the
+  /// Python law runs on rayon workers, one call at a time.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,
@@ -232,7 +232,7 @@ where
     let Horizon::Events(n) = self.horizon else {
       panic!("the Euler engine describes CustomJt's count mode; horizon mode has no grid");
     };
-    n
+    n + 1
   }
 
   fn horizon(&self) -> T {
@@ -359,7 +359,7 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Count-mode fill: `out[0] = 0`, then the running sum of `n - 1` draws.
+  /// Count-mode fill: the origin, then the running sum of one draw per remaining slot.
   fn fill_count(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -415,7 +415,7 @@ where
 
   fn sample(&mut self) -> Array1<T> {
     match self.horizon {
-      Horizon::Events(n) => array1_from_fill(n, |out| self.fill_count(out)),
+      Horizon::Events(n) => array1_from_fill(n + 1, |out| self.fill_count(out)),
       Horizon::Until(t_max) => self.sample_horizon(t_max),
     }
   }

@@ -34,7 +34,7 @@ pub struct Hawkes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub alpha: T,
   /// Exponential decay rate of excitation.
   pub beta: T,
-  /// `Events(n)`: `n` event times, the origin included; `Until(t)`: the events before `t`.
+  /// `Events(n)`: the origin and the `n` event times after it; `Until(t)`: the events before `t`.
   pub horizon: Horizon<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
@@ -124,7 +124,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     let Horizon::Events(n) = self.horizon else {
       panic!("the Euler engine describes Hawkes's count mode; horizon mode has no grid");
     };
-    n
+    n + 1
   }
 
   /// One step is one event, so the grid has no horizon of its own; the waits
@@ -282,13 +282,9 @@ impl<T: FloatExt> HawkesSampler<T> {
     let mut s = T::zero();
     let mut t = T::zero();
 
-    let mut events = Vec::with_capacity(n);
+    let mut events = Vec::with_capacity(n + 1);
     events.push(T::zero());
-    if n <= 1 {
-      return Array1::from(events);
-    }
-
-    while events.len() < n {
+    while events.len() <= n {
       let lambda_bar = mu + s;
       // Exp(λ̄) via inverse transform: −ln(U) / λ̄, U ∈ (0,1]
       let u = T::one() - T::sample_uniform_simd(&mut self.rng);
@@ -383,7 +379,7 @@ mod tests {
   fn hawkes_n_mode() {
     let h = Hawkes::new(0.5, 0.3, 1.0, Horizon::Events(50), Deterministic::new(42));
     let events = h.sample();
-    assert_eq!(events.len(), 50);
+    assert_eq!(events.len(), 51);
     // Arrival times must be non-decreasing
     for i in 1..events.len() {
       assert!(events[i] >= events[i - 1]);

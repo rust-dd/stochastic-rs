@@ -58,10 +58,10 @@ guard!(cbms, "Cbms", |s| Cbms::new(0.3, N, Some(1.0), s));
 
 guard!(compound_custom, "CompoundCustom", |s| {
   CompoundCustom::new(
-    Horizon::Events(N),
+    Horizon::Events(N - 1),
     SimdNormal::new(0.0, 0.1),
     SimdExp::new(2.0),
-    CustomJt::new(Horizon::Events(N), SimdExp::new(2.0), Unseeded),
+    CustomJt::new(Horizon::Events(N - 1), SimdExp::new(2.0), Unseeded),
     s,
   )
 });
@@ -71,13 +71,13 @@ guard!(cfbms, "Cfbms", |s| Cfbms::new(0.7, 0.3, N, Some(1.0), s));
 guard!(compound_poisson, "CompoundPoisson", |s| {
   CompoundPoisson::new(
     SimdNormal::new(0.0, 0.1),
-    Poisson::new(LAMBDA, Horizon::Events(N), Unseeded),
+    Poisson::new(LAMBDA, Horizon::Events(N - 1), Unseeded),
     s,
   )
 });
 
 guard!(custom_jt, "CustomJt", |s| CustomJt::new(
-  Horizon::Events(N),
+  Horizon::Events(N - 1),
   SimdExp::new(2.0),
   s
 ));
@@ -88,7 +88,7 @@ guard!(hawkes, "Hawkes", |s| Hawkes::new(
   0.5,
   0.3,
   1.0,
-  Horizon::Events(N),
+  Horizon::Events(N - 1),
   s
 ));
 
@@ -115,7 +115,7 @@ guard!(multivariate_hawkes, "MultivariateHawkes", |s| {
 
 guard!(poisson, "Poisson", |s| Poisson::new(
   2.0,
-  Horizon::Events(N),
+  Horizon::Events(N - 1),
   s
 ));
 

@@ -263,7 +263,7 @@ where
     let Horizon::Events(n) = self.poisson.horizon else {
       panic!("the Euler engine describes CompoundPoisson's count mode; horizon mode has no grid");
     };
-    n
+    n + 1
   }
 
   /// One step is one arrival, so the grid has no horizon of its own; the

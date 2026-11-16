@@ -200,7 +200,7 @@ fn compound_poisson_events_agree_with_the_cpu_law() {
   assert!(
     device
       .iter()
-      .all(|p| p.iter().all(|row| row.len() == EVENTS))
+      .all(|p| p.iter().all(|row| row.len() == EVENTS + 1))
   );
   nondecreasing(&device, "compound Poisson");
   accumulates(&device, "compound Poisson");
@@ -238,7 +238,7 @@ fn custom_jump_times_agree_with_the_cpu_law() {
   };
   let device = build().on::<Device>().sample_par(M);
   let host = build().sample_par(M);
-  assert!(device.iter().all(|p| p.len() == EVENTS));
+  assert!(device.iter().all(|p| p.len() == EVENTS + 1));
   assert!(
     device
       .iter()

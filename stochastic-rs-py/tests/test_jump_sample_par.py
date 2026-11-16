@@ -25,7 +25,7 @@ _CASES = {
     "jump_fou": f"sr.PyJumpFou(hurst=0.7, theta=1.0, mu=0.0, sigma=0.2, distribution=law(), lambda_=5.0, n={_N}, x0=0.0, t=1.0, seed=1)",
     "jump_fou_custom": f"sr.PyJumpFOUCustom(hurst=0.7, theta=1.0, mu=0.0, sigma=0.2, jump_times=lambda: 0.2, jump_sizes=law(), n={_N}, x0=0.0, t=1.0)",
     "bates": f"sr.PyBates(lambda_=5.0, k=0.0, alpha=0.08, beta=2.0, sigma=0.3, rho=-0.5, distribution=law(), n={_N}, mu=0.05, s0=1.0, v0=0.04, t=1.0, seed=1)",
-    "customjt": f"sr.PyCustomJt(distribution=lambda: 0.1, n={_N})",
+    "customjt": f"sr.PyCustomJt(distribution=lambda: 0.1, n={_N - 1})",
 }
 
 _WORKER = """

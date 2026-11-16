@@ -53,7 +53,7 @@ fn poisson_with_horizon_round_trip_in_both_regimes() {
       .with_horizon(Horizon::Events(64))
       .sample()
       .len(),
-    64
+    65
   );
 }
 
