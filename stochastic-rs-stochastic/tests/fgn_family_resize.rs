@@ -11,6 +11,7 @@ use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
 use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
 use stochastic_rs_stochastic::noise::fgn::Fgn;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::cfbms::Cfbms;
 use stochastic_rs_stochastic::process::fbm::Fbm;
 
@@ -62,7 +63,7 @@ fn fcir_resizes_through_with_steps() {
     10,
     Some(0.04),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     seed(),
   )
   .with_steps(1000);

@@ -56,7 +56,7 @@ with $p = \tfrac12$ for the Heston model. `HestonPow::ThreeHalves` sets $p = \tf
 | $\mu$ | `mu` | Drift of the price; use $r - q$ for risk-neutral paths |
 | $p$ | `pow` | `HestonPow::Sqrt` ($p = \tfrac12$) or `HestonPow::ThreeHalves` ($p = \tfrac32$); Python `pow="sqrt"` or `"3/2"` |
 | | `n`, `t` | Grid points including $t = 0$, and the horizon (default 1); the step is $t/(n-1)$ |
-| | `use_sym` | `Some(true)` reflects the variance, $\lvert v \rvert$, instead of truncating it at 0 |
+| | `boundary` | `VarianceBoundary::Reflect` reflects the variance, $\lvert v \rvert$, instead of truncating it at 0 (`Floor`, the default); Python `boundary="reflect"` |
 | | `seed` | `Unseeded` or `Deterministic::new(seed)`; Python `seed=` |
 
 The constructor asserts the signs above and the range of `rho`. It does not check the Feller condition $2\kappa\theta \ge \sigma^2$: both variance schemes keep the simulated variance non-negative whether it holds or not.
@@ -190,12 +190,12 @@ A year of data pins down $\sigma$ and $\rho$; the mean reversion is identified b
 
 ## Notes
 
-- **Euler scheme.** The price takes an Euler step on $S$ itself, $S_{i} = S_{i-1}(1 + \mu\Delta t + \sqrt{v^+_{i-1}}\,\Delta W^S)$, and the variance steps from $v^+ = \max(v, 0)$ and is truncated at zero (or reflected with `use_sym`). `HestonLog` steps $\ln S$ instead, so its price stays positive; its drift comes from the pair `r`, `r_f` (as $r - r_f$), else `b` (cost of carry), else `mu`, one of which is required, and its vol-of-vol argument is named `xi`.
+- **Euler scheme.** The price takes an Euler step on $S$ itself, $S_{i} = S_{i-1}(1 + \mu\Delta t + \sqrt{v^+_{i-1}}\,\Delta W^S)$, and the variance steps from $v^+ = \max(v, 0)$ and is truncated at zero (or reflected under `VarianceBoundary::Reflect`). `HestonLog` steps $\ln S$ instead, so its price stays positive; its drift comes from the pair `r`, `r_f` (as $r - r_f$), else `b` (cost of carry), else `mu`, one of which is required, and its vol-of-vol argument is named `xi`.
 - **QE scheme.** `.qe()` is Andersen's (2008) quadratic-exponential step with $\psi_c = 1.5$ and the central discretisation $\gamma_1 = \gamma_2 = \tfrac12$ of the integrated variance, on the log-price. It needs `HestonPow::Sqrt`, $\kappa > 0$, $\sigma > 0$ and $S_0 > 0$, which `.qe()` asserts. In Python, `PyHeston(..., scheme="qe")` selects it.
 - **Argument order.** The Rust constructors differ: `HestonPricer::new(v0, rho, kappa, theta, sigma, lambda)`, `HestonAdiPricer::new(v0, kappa, theta, sigma, rho)` and `Heston::new(s0, v0, kappa, theta, sigma, rho, mu, …)`. `lambda` is the market price of volatility risk; `None` is 0.
 - **`HestonFourier` holds `r` and `q`** for the drift of its characteristic function, while `price_call(s, k, r, q, tau)` discounts with its arguments: pass the same rates to both.
 - **Deep out of the money.** `HestonPricer`'s price is not floored at zero: at short maturities far out of the money its quadrature can land a few $10^{-5}$ below zero. The Gil-Pelaez pricer behind `HestonFourier::price_call` floors at zero.
-- **Precision.** The processes are generic over `f32` and `f64` (`Heston::<f32, _>`); the pricers, calibrators and estimators work in `f64`.
+- **Precision.** The processes are generic over `f32` and `f64` (`Heston::<f32>`); the pricers, calibrators and estimators work in `f64`.
 
 ## FAQ
 

@@ -9,6 +9,7 @@ use stochastic_rs_stochastic::diffusion::fou::Fou;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
 use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::cfbms::Cfbms;
 use stochastic_rs_stochastic::process::fbm::Fbm;
 
@@ -96,7 +97,7 @@ fn fcir_setters_match_fresh_construction() {
     16,
     Some(0.09),
     Some(2.0),
-    Some(true),
+    VarianceBoundary::Reflect,
     seed(1),
   )
   .with_hurst(0.7)
@@ -106,7 +107,7 @@ fn fcir_setters_match_fresh_construction() {
   .with_steps(64)
   .with_x0(Some(0.04))
   .with_horizon(Some(1.0))
-  .with_use_sym(Some(false))
+  .with_boundary(VarianceBoundary::Floor)
   .with_seed(seed(7));
   let fresh = Fcir::<f64, _>::new(
     0.7,
@@ -116,7 +117,7 @@ fn fcir_setters_match_fresh_construction() {
     64,
     Some(0.04),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     seed(7),
   );
 
@@ -130,8 +131,8 @@ fn fcir_setters_match_fresh_construction() {
     (0.7, 1.0, 0.04, 0.1)
   );
   assert_eq!(
-    (chained.n(), chained.x0(), chained.t(), chained.use_sym()),
-    (64, Some(0.04), Some(1.0), Some(false))
+    (chained.n(), chained.x0(), chained.t(), chained.boundary()),
+    (64, Some(0.04), Some(1.0), VarianceBoundary::Floor)
   );
   assert_eq!(chained.seed().current(), 7);
   assert_eq!(chained.sample(), fresh.sample());

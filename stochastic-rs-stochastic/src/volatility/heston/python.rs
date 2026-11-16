@@ -6,8 +6,8 @@ use super::*;
 pub struct PyHeston {
   inner_f32: Option<Heston<f32>>,
   inner_f64: Option<Heston<f64>>,
-  seeded_f32: Option<Heston<f32, crate::python_device::SharedSeed>>,
-  seeded_f64: Option<Heston<f64, crate::python_device::SharedSeed>>,
+  seeded_f32: Option<Heston<f32, Euler, crate::python_device::SharedSeed>>,
+  seeded_f64: Option<Heston<f64, Euler, crate::python_device::SharedSeed>>,
   /// The device the class samples on, chosen at construction.
   device: crate::python_device::Device,
   qe: Option<PyHestonQe>,
@@ -15,10 +15,10 @@ pub struct PyHeston {
 
 /// The [`AndersenQe`] twins of [`PyHeston`]'s slots, named for the dispatch macros.
 struct PyHestonQe {
-  inner_f32: Option<Heston<f32, Unseeded, AndersenQe>>,
-  inner_f64: Option<Heston<f64, Unseeded, AndersenQe>>,
-  seeded_f32: Option<Heston<f32, crate::python_device::SharedSeed, AndersenQe>>,
-  seeded_f64: Option<Heston<f64, crate::python_device::SharedSeed, AndersenQe>>,
+  inner_f32: Option<Heston<f32, AndersenQe>>,
+  inner_f64: Option<Heston<f64, AndersenQe>>,
+  seeded_f32: Option<Heston<f32, AndersenQe, crate::python_device::SharedSeed>>,
+  seeded_f64: Option<Heston<f64, AndersenQe, crate::python_device::SharedSeed>>,
   device: crate::python_device::Device,
 }
 
@@ -34,7 +34,7 @@ macro_rules! py_heston_dispatch {
 #[pyo3::prelude::pymethods]
 impl PyHeston {
   #[new]
-  #[pyo3(signature = (kappa, theta, sigma, rho, mu, n, s0=None, v0=None, t=None, pow=None, use_sym=None, seed=None, dtype=None, device=None, scheme="euler"))]
+  #[pyo3(signature = (kappa, theta, sigma, rho, mu, n, s0=None, v0=None, t=None, pow=None, boundary=None, seed=None, dtype=None, device=None, scheme="euler"))]
   fn new(
     kappa: f64,
     theta: f64,
@@ -46,7 +46,7 @@ impl PyHeston {
     v0: Option<f64>,
     t: Option<f64>,
     pow: Option<&str>,
-    use_sym: Option<bool>,
+    boundary: Option<crate::python_params::PyVarianceBoundary>,
     seed: Option<u64>,
     dtype: Option<&str>,
     device: Option<&str>,
@@ -54,6 +54,7 @@ impl PyHeston {
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> pyo3::PyResult<Self> {
       let device = crate::python_device::Device::parse(device, dtype.unwrap_or("f64"))?;
+      let boundary = crate::python_params::boundary(boundary);
       let hp = match pow.unwrap_or("sqrt").to_ascii_lowercase().as_str() {
         "sqrt" => HestonPow::Sqrt,
         "three_halves" | "3/2" => HestonPow::ThreeHalves,
@@ -93,7 +94,7 @@ impl PyHeston {
             n,
             t.map(|v| v as f32),
             hp,
-            use_sym,
+            boundary,
             crate::python_device::SharedSeed::new(sd),
           ));
         }
@@ -109,7 +110,7 @@ impl PyHeston {
             n,
             t,
             hp,
-            use_sym,
+            boundary,
             crate::python_device::SharedSeed::new(sd),
           ));
         }
@@ -125,13 +126,13 @@ impl PyHeston {
             n,
             t.map(|v| v as f32),
             hp,
-            use_sym,
+            boundary,
             Unseeded,
           ));
         }
         (None, _) => {
           s.inner_f64 = Some(Heston::new(
-            s0, v0, kappa, theta, sigma, rho, mu, n, t, hp, use_sym, Unseeded,
+            s0, v0, kappa, theta, sigma, rho, mu, n, t, hp, boundary, Unseeded,
           ));
         }
       }

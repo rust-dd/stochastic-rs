@@ -5,6 +5,7 @@
 //! `deterministic_parallelism_bates_rough_heston.rs`, the guard builds it
 //! then sets the public field directly before sampling.
 
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::Expr;
 use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::bates_svj::BatesSvj;
@@ -45,7 +46,7 @@ guard!(bates_svj, "BatesSvj", |s| BatesSvj::new(
   Some(100.0),
   Some(0.04),
   Some(1.0),
-  Some(false),
+  VarianceBoundary::Floor,
   s
 ));
 
@@ -87,7 +88,7 @@ guard!(double_heston, "DoubleHeston", |s| DoubleHeston::new(
   0.05,
   N,
   Some(1.0),
-  Some(true),
+  VarianceBoundary::Reflect,
   s
 ));
 
@@ -125,7 +126,7 @@ guard!(heston, "Heston", |s| Heston::new(
   N,
   Some(1.0),
   HestonPow::Sqrt,
-  Some(false),
+  VarianceBoundary::Floor,
   s
 ));
 
@@ -139,7 +140,7 @@ guard!(heston2d, "Heston2D", |s| Heston2D::new(
   [0.5, -0.5, 0.0, 0.0, -0.5, 0.5],
   N,
   Some(1.0),
-  Some(false),
+  VarianceBoundary::Floor,
   s
 ));
 
@@ -156,7 +157,7 @@ guard!(heston_log, "HestonLog", |s| HestonLog::new(
   Some(100.0),
   Some(0.04),
   Some(1.0),
-  Some(false),
+  VarianceBoundary::Floor,
   s
 ));
 
@@ -189,7 +190,7 @@ guard!(hkde, "Hkde", |s| Hkde::new(
   N,
   Some(100.0),
   Some(1.0),
-  Some(false),
+  VarianceBoundary::Floor,
   s
 ));
 

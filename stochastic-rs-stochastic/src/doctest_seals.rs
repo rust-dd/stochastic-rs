@@ -17,7 +17,7 @@ pub struct BackendIsSealed;
 /// use stochastic_rs_stochastic::volatility::heston::{Heston, HestonScheme};
 /// struct Mine;
 /// impl HestonScheme for Mine {
-///   fn simulate<T: FloatExt, S: SeedExt, B>(_model: &Heston<T, S, Self, B>, _seed: &S) -> [Array1<T>; 2] {
+///   fn simulate<T: FloatExt, S: SeedExt, B>(_model: &Heston<T, Self, S, B>, _seed: &S) -> [Array1<T>; 2] {
 ///     unimplemented!()
 ///   }
 /// }

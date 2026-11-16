@@ -76,6 +76,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::jump::bates::Bates1996;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::traits::ProcessExt;
@@ -101,7 +102,7 @@ fn bates_base_seeded<S: SeedExt>(seed: S) -> Bates1996<f64, SimdNormal<f64>, S> 
     Some(100.0),
     Some(0.04),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     seed,
   )
 }
@@ -130,7 +131,7 @@ struct BatesFields {
   s0: Option<f64>,
   v0: Option<f64>,
   t: Option<f64>,
-  use_sym: Option<bool>,
+  boundary: VarianceBoundary,
 }
 
 fn bates_fields<S: SeedExt>(x: &Bates1996<f64, SimdNormal<f64>, S>) -> BatesFields {
@@ -149,7 +150,7 @@ fn bates_fields<S: SeedExt>(x: &Bates1996<f64, SimdNormal<f64>, S>) -> BatesFiel
     s0: x.s0,
     v0: x.v0,
     t: x.t,
-    use_sym: x.use_sym,
+    boundary: x.boundary,
   }
 }
 
@@ -179,10 +180,10 @@ bates_plain_test!(bates_with_sigma_round_trip, with_sigma, sigma, 0.35);
 bates_plain_test!(bates_with_s0_round_trip, with_s0, s0, Some(120.0));
 bates_plain_test!(bates_with_v0_round_trip, with_v0, v0, Some(0.06));
 bates_plain_test!(
-  bates_with_use_sym_round_trip,
-  with_use_sym,
-  use_sym,
-  Some(true)
+  bates_with_boundary_round_trip,
+  with_boundary,
+  boundary,
+  VarianceBoundary::Reflect
 );
 
 #[test]
@@ -234,7 +235,7 @@ fn bates_with_cpoisson_round_trip_and_reaches_sampler() {
   assert_eq!(got.s0, base.s0);
   assert_eq!(got.v0, base.v0);
   assert_eq!(got.t, base.t);
-  assert_eq!(got.use_sym, base.use_sym);
+  assert_eq!(got.boundary, base.boundary);
   assert!(finite2(&got.sample()));
 
   // Proof the new driver actually replaced the old one, and that its
@@ -285,7 +286,7 @@ fn bates_with_cpoisson_changes_sampled_intensity() {
       Some(100.0),
       Some(0.04),
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Deterministic::new(seed),
     )
   };
@@ -346,7 +347,7 @@ fn bates_with_lambda_syncs_cpoisson_and_changes_sampled_path() {
       Some(100.0),
       Some(0.04),
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Deterministic::new(3),
     )
   };
@@ -373,7 +374,7 @@ fn bates_with_lambda_syncs_cpoisson_and_changes_sampled_path() {
     Some(100.0),
     Some(0.04),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(3),
   )
   .sample();
@@ -469,7 +470,7 @@ fn degenerate_bates<S: SeedExt>(t: Option<f64>, seed: S) -> Bates1996<f64, SimdN
     Some(100.0),
     Some(0.0), // v0 = 0
     t,
-    Some(false),
+    VarianceBoundary::Floor,
     seed,
   )
 }

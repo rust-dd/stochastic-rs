@@ -2,6 +2,7 @@ use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 
@@ -68,7 +69,7 @@ impl HestonMalliavinGreeks {
       self.n_steps,
       Some(self.tau),
       HestonPow::Sqrt,
-      Some(false),
+      VarianceBoundary::Floor,
       Unseeded,
     );
 
@@ -137,7 +138,7 @@ impl HestonMalliavinGreeks {
       self.n_steps,
       Some(self.tau),
       HestonPow::Sqrt,
-      Some(false),
+      VarianceBoundary::Floor,
       Unseeded,
     );
 
@@ -194,7 +195,7 @@ impl HestonMalliavinGreeks {
       self.n_steps,
       Some(self.tau),
       HestonPow::Sqrt,
-      Some(false),
+      VarianceBoundary::Floor,
       Unseeded,
     );
 
@@ -253,7 +254,7 @@ impl HestonMalliavinGreeks {
       self.n_steps,
       Some(self.tau),
       HestonPow::Sqrt,
-      Some(false),
+      VarianceBoundary::Floor,
       Unseeded,
     );
 
@@ -318,7 +319,7 @@ impl HestonMalliavinGreeks {
         self.n_steps,
         Some(self.tau),
         HestonPow::Sqrt,
-        Some(false),
+        VarianceBoundary::Floor,
         Deterministic::new(seed),
       );
       let heston_dn = Heston::new(
@@ -332,7 +333,7 @@ impl HestonMalliavinGreeks {
         self.n_steps,
         Some(self.tau),
         HestonPow::Sqrt,
-        Some(false),
+        VarianceBoundary::Floor,
         Deterministic::new(seed),
       );
 
@@ -370,7 +371,7 @@ impl HestonMalliavinGreeks {
       self.n_steps,
       Some(self.tau),
       HestonPow::Sqrt,
-      Some(false),
+      VarianceBoundary::Floor,
       Unseeded,
     );
 

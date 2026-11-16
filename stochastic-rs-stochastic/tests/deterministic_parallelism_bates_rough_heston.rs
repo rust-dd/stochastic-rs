@@ -28,6 +28,7 @@ use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::jump::bates::Bates1996;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::fheston::RoughHeston;
 
@@ -57,7 +58,7 @@ fn bates(seed: u64) -> Bates1996<f64, SimdNormal<f64>, Deterministic> {
     Some(100.0),
     Some(0.04),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(seed),
   )
 }

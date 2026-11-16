@@ -24,7 +24,7 @@ fn make_bates(
     Some(1.0),
     Some(0.0),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Unseeded,
   )
 }

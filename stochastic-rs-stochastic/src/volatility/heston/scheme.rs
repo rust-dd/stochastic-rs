@@ -10,6 +10,7 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::Heston;
+use crate::params::VarianceBoundary;
 use crate::traits::FloatExt;
 use crate::volatility::HestonPow;
 
@@ -36,15 +37,15 @@ pub trait HestonScheme: sealed::Sealed + Send + Sync + 'static {
   /// chunk's sampler owns a distinct basis instead of every chunk racing on
   /// the same live `model.seed` inside the parallel region.
   fn simulate<T: FloatExt, S: SeedExt, B>(
-    model: &Heston<T, S, Self, B>,
+    model: &Heston<T, Self, S, B>,
     seed: &S,
   ) -> [Array1<T>; 2]
   where
     Self: Sized;
 }
 
-/// Full-truncation (or reflection, when `use_sym`) Euler–Maruyama — the
-/// original Heston discretisation. Default scheme; behaviour is unchanged.
+/// Full-truncation Euler–Maruyama, or reflection under [`VarianceBoundary::Reflect`]: the original
+/// Heston discretisation and the default scheme.
 #[derive(Clone, Copy)]
 pub struct Euler;
 
@@ -61,7 +62,7 @@ pub struct AndersenQe;
 
 impl HestonScheme for Euler {
   fn simulate<T: FloatExt, S: SeedExt, B>(
-    model: &Heston<T, S, Euler, B>,
+    model: &Heston<T, Euler, S, B>,
     seed: &S,
   ) -> [Array1<T>; 2] {
     let dt = model.cgns.dt();
@@ -85,9 +86,9 @@ impl HestonScheme for Euler {
           })
           * cgn2[i - 1];
 
-      v[i] = match model.use_sym.unwrap_or(false) {
-        true => (v[i - 1] + dv).abs(),
-        false => (v[i - 1] + dv).max(T::zero()),
+      v[i] = match model.boundary {
+        VarianceBoundary::Floor => (v[i - 1] + dv).max(T::zero()),
+        VarianceBoundary::Reflect => (v[i - 1] + dv).abs(),
       }
     }
 
@@ -95,6 +96,7 @@ impl HestonScheme for Euler {
   }
 }
 
+/// The step keeps the variance non-negative by construction, so it does not read `boundary`.
 impl HestonScheme for AndersenQe {
   /// Andersen (2008) QE step. Per step: one variance draw — quadratic branch
   /// `V = a(b+Z_V)²` (eq. 23/27/28) when `ψ ≤ ψ_c`, else exponential
@@ -102,7 +104,7 @@ impl HestonScheme for AndersenQe {
   /// Correlation is handled analytically through the `K` constants, so no
   /// correlated Brownian pair is needed (unlike [`Euler`]).
   fn simulate<T: FloatExt, S: SeedExt, B>(
-    model: &Heston<T, S, AndersenQe, B>,
+    model: &Heston<T, AndersenQe, S, B>,
     seed: &S,
   ) -> [Array1<T>; 2] {
     model.assert_qe_parameters();

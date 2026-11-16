@@ -14,6 +14,7 @@ use stochastic_rs_stochastic::interest::cir_pp::CirPlusPlus;
 use stochastic_rs_stochastic::interest::hjm::Hjm;
 use stochastic_rs_stochastic::interest::ho_lee::HoLee;
 use stochastic_rs_stochastic::interest::hull_white::HullWhite;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 use super::common::Device;
@@ -126,7 +127,7 @@ fn cir_plus_plus_agrees_with_the_cpu_law() {
       N,
       Some(0.04),
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Deterministic::new(53),
     )
   };
@@ -182,7 +183,7 @@ fn two_factor_cir_agrees_with_the_cpu_law() {
         N,
         Some(0.03),
         Some(1.0),
-        None,
+        VarianceBoundary::Floor,
         Deterministic::new(2),
       ),
       Cir::new(
@@ -192,7 +193,7 @@ fn two_factor_cir_agrees_with_the_cpu_law() {
         N,
         Some(0.01),
         Some(1.0),
-        None,
+        VarianceBoundary::Floor,
         Deterministic::new(3),
       ),
       rising(),

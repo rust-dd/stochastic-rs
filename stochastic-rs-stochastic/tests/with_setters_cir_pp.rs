@@ -8,6 +8,7 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::interest::cir_pp::CirPlusPlus;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 fn phi0(_t: f64) -> f64 {
@@ -26,7 +27,7 @@ struct PpFields {
   n: usize,
   x0: Option<f64>,
   t: Option<f64>,
-  use_sym: Option<bool>,
+  boundary: VarianceBoundary,
 }
 
 fn fields(x: &CirPlusPlus<f64>) -> PpFields {
@@ -37,7 +38,7 @@ fn fields(x: &CirPlusPlus<f64>) -> PpFields {
     n: x.n,
     x0: x.x0,
     t: x.t,
-    use_sym: x.use_sym,
+    boundary: x.boundary,
   }
 }
 
@@ -66,10 +67,10 @@ plain_test!(pp_with_theta_round_trip, with_theta, theta, 0.05);
 plain_test!(pp_with_sigma_round_trip, with_sigma, sigma, 0.3);
 plain_test!(pp_with_x0_round_trip, with_x0, x0, Some(0.05));
 plain_test!(
-  pp_with_use_sym_round_trip,
-  with_use_sym,
-  use_sym,
-  Some(true)
+  pp_with_boundary_round_trip,
+  with_boundary,
+  boundary,
+  VarianceBoundary::Reflect
 );
 plain_test!(pp_with_steps_round_trip, with_steps, n, 64usize);
 plain_test!(pp_with_horizon_round_trip, with_horizon, t, Some(2.0));
@@ -92,7 +93,7 @@ fn pp_with_seed_matches_fresh_construction() {
     64,
     Some(0.04),
     Some(1.0),
-    None,
+    VarianceBoundary::Floor,
     Deterministic::new(13),
   )
   .sample();
@@ -104,7 +105,7 @@ fn pp_with_seed_matches_fresh_construction() {
     64,
     Some(0.04),
     Some(1.0),
-    None,
+    VarianceBoundary::Floor,
     Deterministic::new(1),
   )
   .with_seed(Deterministic::new(13))

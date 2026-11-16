@@ -25,6 +25,7 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
+use crate::params::VarianceBoundary;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -73,8 +74,8 @@ pub struct HestonLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub v0: Option<T>,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Use symmetric (abs) instead of truncation (max(0)) for variance
-  pub use_sym: Option<bool>,
+  /// Treatment of a negative square-root state after a step; the Feller condition is not required.
+  pub boundary: VarianceBoundary,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -96,7 +97,7 @@ impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
     s0: Option<T>,
     v0: Option<T>,
     t: Option<T>,
-    use_sym: Option<bool>,
+    boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
     assert!(
@@ -180,7 +181,7 @@ impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
       s0,
       v0,
       t,
-      use_sym,
+      boundary,
       seed,
     }
   }
@@ -274,9 +275,9 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
     self
   }
 
-  /// Replace `use_sym`, all else unchanged.
-  pub fn with_use_sym(mut self, use_sym: Option<bool>) -> Self {
-    self.use_sym = use_sym;
+  /// Replace `boundary`, all else unchanged.
+  pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
+    self.boundary = boundary;
     self
   }
 
@@ -320,22 +321,21 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   for HestonLog<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    if self.use_sym.unwrap_or(false) {
-      crate::euler::EulerSpec::LogHestonReflected {
+    match self.boundary {
+      VarianceBoundary::Floor => crate::euler::EulerSpec::LogHeston {
         drift: self.drift(),
         kappa: self.kappa,
         theta: self.theta,
         xi: self.xi,
         rho: self.rho,
-      }
-    } else {
-      crate::euler::EulerSpec::LogHeston {
+      },
+      VarianceBoundary::Reflect => crate::euler::EulerSpec::LogHestonReflected {
         drift: self.drift(),
         kappa: self.kappa,
         theta: self.theta,
         xi: self.xi,
         rho: self.rho,
-      }
+      },
     }
   }
 
@@ -367,7 +367,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] HestonLog<T, S> { mu, b, r, r_f, kappa, theta, xi, rho, n, s0, v0, t, use_sym, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] HestonLog<T, S> { mu, b, r, r_f, kappa, theta, xi, rho, n, s0, v0, t, boundary, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for HestonLog<T, S, B>
@@ -400,7 +400,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       xi: self.xi,
       rho: self.rho,
       dt,
-      use_sym: self.use_sym.unwrap_or(false),
+      boundary: self.boundary,
       n1: SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(&self.seed),
       n2: SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(&self.seed),
     }
@@ -444,7 +444,7 @@ pub struct HestonLogSampler<T: FloatExt> {
   xi: T,
   rho: T,
   dt: T,
-  use_sym: bool,
+  boundary: VarianceBoundary,
   n1: Seeded<SimdNormal<T>>,
   n2: Seeded<SimdNormal<T>>,
 }
@@ -480,10 +480,9 @@ impl<T: FloatExt> HestonLogSampler<T> {
     let half = T::from_f64_fast(0.5);
 
     for i in 1..self.n {
-      let v_prev = if self.use_sym {
-        v[i - 1].abs()
-      } else {
-        v[i - 1].max(T::zero())
+      let v_prev = match self.boundary {
+        VarianceBoundary::Floor => v[i - 1].max(T::zero()),
+        VarianceBoundary::Reflect => v[i - 1].abs(),
       };
 
       let sqrt_v = v_prev.sqrt();
@@ -492,10 +491,9 @@ impl<T: FloatExt> HestonLogSampler<T> {
       s[i] = s[i - 1] * log_inc.exp();
 
       let dv = self.kappa * (self.theta - v_prev) * dt + self.xi * sqrt_v * dwv[i - 1];
-      v[i] = if self.use_sym {
-        (v_prev + dv).abs()
-      } else {
-        (v_prev + dv).max(T::zero())
+      v[i] = match self.boundary {
+        VarianceBoundary::Floor => (v_prev + dv).max(T::zero()),
+        VarianceBoundary::Reflect => (v_prev + dv).abs(),
       };
     }
   }
@@ -546,7 +544,7 @@ mod tests {
       Some(100.0),
       Some(0.04),
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Unseeded,
     );
     let [s, _v] = p.sample();
@@ -568,7 +566,7 @@ mod tests {
       Some(100.0),
       Some(0.04),
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Unseeded,
     );
     let [_s, v] = p.sample();
@@ -577,7 +575,7 @@ mod tests {
 }
 
 py_process_2x1d!(PyHestonLog, HestonLog,
-  sig: (mu=None, b=None, r=None, r_f=None, *, kappa, theta, xi, rho, n, s0=None, v0=None, t=None, use_sym=None, seed=None, dtype=None),
-  params: (mu: Option<f64>, b: Option<f64>, r: Option<f64>, r_f: Option<f64>, kappa: f64, theta: f64, xi: f64, rho: f64, n: usize, s0: Option<f64>, v0: Option<f64>, t: Option<f64>, use_sym: Option<bool>),
+  sig: (mu=None, b=None, r=None, r_f=None, *, kappa, theta, xi, rho, n, s0=None, v0=None, t=None, boundary=None, seed=None, dtype=None),
+  params: (mu: Option<f64>, b: Option<f64>, r: Option<f64>, r_f: Option<f64>, kappa: f64, theta: f64, xi: f64, rho: f64, n: usize, s0: Option<f64>, v0: Option<f64>, t: Option<f64>, boundary: Option<crate::python_params::PyVarianceBoundary> => crate::python_params::boundary),
   device
 );

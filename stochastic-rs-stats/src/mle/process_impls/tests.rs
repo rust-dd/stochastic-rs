@@ -4,6 +4,7 @@ use stochastic_rs_stochastic::diffusion::cev::Cev;
 use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::diffusion::ou::Ou;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use crate::mle::DensityApprox;
 use crate::mle::fit_mle;
@@ -78,7 +79,7 @@ fn cir_process_ext_with_mle() {
     5001,
     Some(0.04),
     Some(20.0),
-    None,
+    VarianceBoundary::Floor,
     Deterministic::new(55),
   );
   let path = cir.sample();
@@ -92,7 +93,7 @@ fn cir_process_ext_with_mle() {
     100,
     Some(0.04),
     Some(1.0),
-    None,
+    VarianceBoundary::Floor,
     Deterministic::new(0),
   );
   let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Euler, None).unwrap();
@@ -194,7 +195,7 @@ fn cir_exact_density_matches_mpmath_at_a_daily_step() {
     100,
     Some(0.04),
     Some(1.0),
-    None,
+    VarianceBoundary::Floor,
     Deterministic::new(0),
   );
   let density = DensityApprox::Exact.density(&cir, 0.04, 0.0405, 0.0, 0.004);
@@ -214,7 +215,7 @@ fn cir_exact_mle_recovers_daily_parameters() {
     5001,
     Some(0.04),
     Some(20.0),
-    None,
+    VarianceBoundary::Floor,
     Deterministic::new(55),
   );
   let path = cir.sample();
@@ -226,7 +227,7 @@ fn cir_exact_mle_recovers_daily_parameters() {
     100,
     Some(0.04),
     Some(1.0),
-    None,
+    VarianceBoundary::Floor,
     Deterministic::new(0),
   );
   let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Exact, None).unwrap();

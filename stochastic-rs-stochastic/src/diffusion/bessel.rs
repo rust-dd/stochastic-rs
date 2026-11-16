@@ -32,6 +32,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::params::VarianceBoundary;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -57,9 +58,8 @@ pub struct SquaredBessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub x0: Option<T>,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Enables reflect-about-zero variant when true; floors at zero
-  /// otherwise (matching [`Cir::use_sym`](crate::diffusion::cir::Cir::use_sym)).
-  pub use_sym: Option<bool>,
+  /// Treatment of a negative square-root state after a step; the Feller condition is not required.
+  pub boundary: VarianceBoundary,
   /// Seed strategy (compile-time: [`Unseeded`] or
   /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
@@ -72,20 +72,14 @@ pub struct SquaredBessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// `SquaredBessel::default().with_delta(4.0)`. No persisted cache:
 /// `sampler()` builds its Gaussian source fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
-  /// Create a new SquaredBessel process.
-  ///
-  /// δ ≥ 2 keeps the continuous-time process strictly positive once started
-  /// away from 0 — the direct analogue of [`Cir::new`](crate::diffusion::cir::Cir::new)'s
-  /// Feller condition. Parameters violating it are accepted rather than
-  /// rejected: the discretized step floors at zero by default, or reflects
-  /// about zero when [`use_sym`](Self::use_sym) is `true`. A violation not paired with
-  /// `use_sym = Some(true)` emits a `log::warn!` and never panics (matching `Cir::new`).
+  /// δ < 2, the analogue of a sub-Feller [`Cir`](crate::diffusion::cir::Cir), is accepted; under
+  /// [`VarianceBoundary::Floor`] it emits a `log::warn!`, never a panic.
   pub fn new(
     delta: T,
     n: usize,
     x0: Option<T>,
     t: Option<T>,
-    use_sym: Option<bool>,
+    boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
     assert!(
@@ -101,12 +95,12 @@ impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
-    if delta < T::from_usize_(2) && use_sym != Some(true) {
+    if delta < T::from_usize_(2) && boundary != VarianceBoundary::Reflect {
       log::warn!(
         "SquaredBessel::new: dimension below the strict-positivity \
-         threshold (delta < 2) without use_sym = Some(true); the path floors \
+         threshold (delta < 2) under VarianceBoundary::Floor; the path floors \
          at zero on every boundary hit instead of reflecting — pass \
-         use_sym = Some(true) for the standard sub-boundary mitigation"
+         VarianceBoundary::Reflect for the standard sub-boundary mitigation"
       );
     }
 
@@ -116,7 +110,7 @@ impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
       n,
       x0,
       t,
-      use_sym,
+      boundary,
       seed,
     }
   }
@@ -135,9 +129,9 @@ impl<T: FloatExt, S: SeedExt, B> SquaredBessel<T, S, B> {
     self
   }
 
-  /// Replace `use_sym`, all else unchanged.
-  pub fn with_use_sym(mut self, use_sym: Option<bool>) -> Self {
-    self.use_sym = use_sym;
+  /// Replace `boundary`, all else unchanged.
+  pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
+    self.boundary = boundary;
     self
   }
 
@@ -172,7 +166,7 @@ impl<T: FloatExt> Default for SquaredBessel<T, Unseeded> {
       252,
       Some(T::one()),
       Some(T::one()),
-      None,
+      VarianceBoundary::Floor,
       Unseeded,
     )
   }
@@ -186,16 +180,15 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let two = T::from_usize_(2);
-    if self.use_sym.unwrap_or(false) {
-      crate::euler::EulerSpec::SquaredBesselStateReflected {
+    match self.boundary {
+      VarianceBoundary::Floor => crate::euler::EulerSpec::SquaredBesselState {
         delta: self.delta,
         two,
-      }
-    } else {
-      crate::euler::EulerSpec::SquaredBesselState {
+      },
+      VarianceBoundary::Reflect => crate::euler::EulerSpec::SquaredBesselStateReflected {
         delta: self.delta,
         two,
-      }
+      },
     }
   }
 
@@ -222,7 +215,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] SquaredBessel<T, S> { delta, n, x0, t, use_sym, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] SquaredBessel<T, S> { delta, n, x0, t, boundary, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for SquaredBessel<T, S, B>
@@ -247,7 +240,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       dt,
       delta: self.delta,
       diff_scale: T::from_usize_(2),
-      use_sym: self.use_sym.unwrap_or(false),
+      boundary: self.boundary,
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
@@ -293,7 +286,7 @@ pub struct SquaredBesselSampler<T: FloatExt> {
   dt: T,
   delta: T,
   diff_scale: T,
-  use_sym: bool,
+  boundary: VarianceBoundary,
   normal: Seeded<SimdNormal<T>>,
 }
 
@@ -311,9 +304,9 @@ impl<T: FloatExt> SquaredBesselSampler<T> {
     let mut prev = self.x0;
     for z in tail.iter_mut() {
       let dbesq = self.delta * self.dt + self.diff_scale * prev.abs().sqrt() * *z;
-      let next = match self.use_sym {
-        true => (prev + dbesq).abs(),
-        false => (prev + dbesq).max(T::zero()),
+      let next = match self.boundary {
+        VarianceBoundary::Floor => (prev + dbesq).max(T::zero()),
+        VarianceBoundary::Reflect => (prev + dbesq).abs(),
       };
       *z = next;
       prev = next;
@@ -340,8 +333,8 @@ impl<T: FloatExt> PathSampler<T> for SquaredBesselSampler<T> {
 }
 
 py_process_1d!(PySquaredBessel, SquaredBessel,
-  sig: (delta, n, x0=None, t=None, use_sym=None, seed=None, dtype=None),
-  params: (delta: f64, n: usize, x0: Option<f64>, t: Option<f64>, use_sym: Option<bool>),
+  sig: (delta, n, x0=None, t=None, boundary=None, seed=None, dtype=None),
+  params: (delta: f64, n: usize, x0: Option<f64>, t: Option<f64>, boundary: Option<crate::python_params::PyVarianceBoundary> => crate::python_params::boundary),
   device
 );
 
@@ -385,9 +378,8 @@ pub struct Bessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub x0: Option<T>,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Enables reflect-about-zero variant when true; floors at zero
-  /// otherwise (see [`SquaredBessel::use_sym`]).
-  pub use_sym: Option<bool>,
+  /// Treatment of a negative square-root state after a step; the Feller condition is not required.
+  pub boundary: VarianceBoundary,
   /// Seed strategy (compile-time: [`Unseeded`] or
   /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
@@ -402,14 +394,13 @@ pub struct Bessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> Bessel<T, S> {
   /// Create a new Bessel process.
   ///
-  /// Same δ ≥ 2 strict-positivity threshold and the same `log::warn!`
-  /// (never a panic) as [`SquaredBessel::new`] — see there for the full rationale.
+  /// The δ < 2 `log::warn!` of [`SquaredBessel::new`], under [`VarianceBoundary::Floor`].
   pub fn new(
     delta: T,
     n: usize,
     x0: Option<T>,
     t: Option<T>,
-    use_sym: Option<bool>,
+    boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
     assert!(
@@ -425,12 +416,12 @@ impl<T: FloatExt, S: SeedExt> Bessel<T, S> {
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
-    if delta < T::from_usize_(2) && use_sym != Some(true) {
+    if delta < T::from_usize_(2) && boundary != VarianceBoundary::Reflect {
       log::warn!(
         "Bessel::new: dimension below the strict-positivity \
-         threshold (delta < 2) without use_sym = Some(true); the path floors \
+         threshold (delta < 2) under VarianceBoundary::Floor; the path floors \
          at zero on every boundary hit instead of reflecting — pass \
-         use_sym = Some(true) for the standard sub-boundary mitigation"
+         VarianceBoundary::Reflect for the standard sub-boundary mitigation"
       );
     }
 
@@ -440,7 +431,7 @@ impl<T: FloatExt, S: SeedExt> Bessel<T, S> {
       n,
       x0,
       t,
-      use_sym,
+      boundary,
       seed,
     }
   }
@@ -459,9 +450,9 @@ impl<T: FloatExt, S: SeedExt, B> Bessel<T, S, B> {
     self
   }
 
-  /// Replace `use_sym`, all else unchanged.
-  pub fn with_use_sym(mut self, use_sym: Option<bool>) -> Self {
-    self.use_sym = use_sym;
+  /// Replace `boundary`, all else unchanged.
+  pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
+    self.boundary = boundary;
     self
   }
 
@@ -496,7 +487,7 @@ impl<T: FloatExt> Default for Bessel<T, Unseeded> {
       252,
       Some(T::one()),
       Some(T::one()),
-      None,
+      VarianceBoundary::Floor,
       Unseeded,
     )
   }
@@ -511,16 +502,15 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let two = T::from_usize_(2);
-    if self.use_sym.unwrap_or(false) {
-      crate::euler::EulerSpec::BesselFromSquaredReflected {
+    match self.boundary {
+      VarianceBoundary::Floor => crate::euler::EulerSpec::BesselFromSquared {
         delta: self.delta,
         two,
-      }
-    } else {
-      crate::euler::EulerSpec::BesselFromSquared {
+      },
+      VarianceBoundary::Reflect => crate::euler::EulerSpec::BesselFromSquaredReflected {
         delta: self.delta,
         two,
-      }
+      },
     }
   }
 
@@ -548,7 +538,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Bessel<T, S> { delta, n, x0, t, use_sym, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] Bessel<T, S> { delta, n, x0, t, boundary, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for Bessel<T, S, B>
@@ -572,7 +562,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       dt,
       delta: self.delta,
       diff_scale: T::from_usize_(2),
-      use_sym: self.use_sym.unwrap_or(false),
+      boundary: self.boundary,
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
@@ -620,7 +610,7 @@ pub struct BesselSampler<T: FloatExt> {
   dt: T,
   delta: T,
   diff_scale: T,
-  use_sym: bool,
+  boundary: VarianceBoundary,
   normal: Seeded<SimdNormal<T>>,
 }
 
@@ -641,9 +631,9 @@ impl<T: FloatExt> BesselSampler<T> {
     let mut prev_sq = self.x0 * self.x0;
     for z in tail.iter_mut() {
       let dbesq = self.delta * self.dt + self.diff_scale * prev_sq.abs().sqrt() * *z;
-      let next_sq = match self.use_sym {
-        true => (prev_sq + dbesq).abs(),
-        false => (prev_sq + dbesq).max(T::zero()),
+      let next_sq = match self.boundary {
+        VarianceBoundary::Floor => (prev_sq + dbesq).max(T::zero()),
+        VarianceBoundary::Reflect => (prev_sq + dbesq).abs(),
       };
       *z = next_sq.sqrt();
       prev_sq = next_sq;
@@ -670,8 +660,8 @@ impl<T: FloatExt> PathSampler<T> for BesselSampler<T> {
 }
 
 py_process_1d!(PyBessel, Bessel,
-  sig: (delta, n, x0=None, t=None, use_sym=None, seed=None, dtype=None),
-  params: (delta: f64, n: usize, x0: Option<f64>, t: Option<f64>, use_sym: Option<bool>),
+  sig: (delta, n, x0=None, t=None, boundary=None, seed=None, dtype=None),
+  params: (delta: f64, n: usize, x0: Option<f64>, t: Option<f64>, boundary: Option<crate::python_params::PyVarianceBoundary> => crate::python_params::boundary),
   device
 );
 

@@ -257,6 +257,7 @@ pub fn fit_mle(
 mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_stochastic::diffusion::cir::Cir;
+  use stochastic_rs_stochastic::params::VarianceBoundary;
 
   use super::*;
 
@@ -309,7 +310,16 @@ mod tests {
   #[test]
   fn bounded_mle_cost_rejects_negative_sigma_mirror_minimum() {
     let sample = Array1::from_vec(vec![0.1, 0.2, 0.15]);
-    let mut model = Cir::new(1.0, 0.1, 3.0, 3, None, None, None, Deterministic::new(0));
+    let mut model = Cir::new(
+      1.0,
+      0.1,
+      3.0,
+      3,
+      None,
+      None,
+      VarianceBoundary::Floor,
+      Deterministic::new(0),
+    );
     let problem = MleProblem {
       model: Mutex::new(&mut model),
       sample: sample.view(),
@@ -329,7 +339,16 @@ mod tests {
   #[test]
   fn bounded_mle_gradient_uses_the_feasible_boundary() {
     let sample = Array1::from_vec(vec![0.1, 0.2, 0.15]);
-    let mut model = Cir::new(1.0, 0.1, 3.0, 3, None, None, None, Deterministic::new(0));
+    let mut model = Cir::new(
+      1.0,
+      0.1,
+      3.0,
+      3,
+      None,
+      None,
+      VarianceBoundary::Floor,
+      Deterministic::new(0),
+    );
     let problem = MleProblem {
       model: Mutex::new(&mut model),
       sample: sample.view(),

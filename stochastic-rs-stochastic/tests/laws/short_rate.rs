@@ -18,6 +18,7 @@ use stochastic_rs_stochastic::interest::black_karasinski::BlackKarasinski;
 use stochastic_rs_stochastic::interest::ho_lee::HoLee;
 use stochastic_rs_stochastic::interest::hull_white::HullWhite;
 use stochastic_rs_stochastic::interest::vasicek::Vasicek;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 use super::common::N;
@@ -298,7 +299,7 @@ fn cir_stationary_moments_match_the_gamma_law() {
     N,
     Some(mu),
     Some(HORIZON),
-    None,
+    VarianceBoundary::Floor,
     Deterministic::new(347),
   )
   .sample_par(PATHS);

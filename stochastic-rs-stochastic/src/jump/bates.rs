@@ -20,6 +20,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
 use crate::noise::cgns::Cgns;
+use crate::params::VarianceBoundary;
 use crate::process::cpoisson::CompoundPoisson;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
@@ -90,9 +91,8 @@ where
   pub v0: Option<T>,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Reflect (true) instead of floor-at-zero (false/None) negative
-  /// variance proposals.
-  pub use_sym: Option<bool>,
+  /// Treatment of a negative square-root state after a step; the Feller condition is not required.
+  pub boundary: VarianceBoundary,
   /// Correlated-Gaussian generator driving the price/variance diffusion.
   /// Constructed once (and rebuilt by `with_rho`/`with_steps`/`with_horizon`)
   /// with a `Cgns<T>` (`S = Unseeded`) that itself is never consulted — the
@@ -162,7 +162,7 @@ where
     s0: Option<T>,
     v0: Option<T>,
     t: Option<T>,
-    use_sym: Option<bool>,
+    boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
     assert!(
@@ -246,7 +246,7 @@ where
       s0,
       v0,
       t,
-      use_sym,
+      boundary,
       cgns: Cgns::new(rho, n - 1, t, Unseeded),
       cpoisson,
       seed,
@@ -348,9 +348,9 @@ where
     self
   }
 
-  /// Replace `use_sym`, all else unchanged.
-  pub fn with_use_sym(mut self, use_sym: Option<bool>) -> Self {
-    self.use_sym = use_sym;
+  /// Replace `boundary`, all else unchanged.
+  pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
+    self.boundary = boundary;
     self
   }
 
@@ -459,22 +459,21 @@ where
   /// keeps whichever treatment of the boundary the process was built with.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let drift_c = self.effective_drift() - self.lambda * self.k;
-    if self.use_sym.unwrap_or(false) {
-      crate::euler::EulerSpec::Bates1996Reflected {
+    match self.boundary {
+      VarianceBoundary::Floor => crate::euler::EulerSpec::Bates1996 {
         drift_c,
         alpha: self.alpha,
         beta: self.beta,
         sigma: self.sigma,
         rho: self.rho,
-      }
-    } else {
-      crate::euler::EulerSpec::Bates1996 {
+      },
+      VarianceBoundary::Reflect => crate::euler::EulerSpec::Bates1996Reflected {
         drift_c,
         alpha: self.alpha,
         beta: self.beta,
         sigma: self.sigma,
         rho: self.rho,
-      }
+      },
     }
   }
 
@@ -529,7 +528,7 @@ where
   }
 }
 
-backend_switch!([T, D, S: SeedExt] Bates1996<T, D, S> { mu, b, r, r_f, lambda, k, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, cgns, cpoisson, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
+backend_switch!([T, D, S: SeedExt] Bates1996<T, D, S> { mu, b, r, r_f, lambda, k, alpha, beta, sigma, rho, n, s0, v0, t, boundary, cgns, cpoisson, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
 
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for Bates1996<T, D, S, B>
@@ -574,7 +573,7 @@ where
       beta: self.beta,
       sigma: self.sigma,
       drift: self.effective_drift(),
-      use_sym: self.use_sym.unwrap_or(false),
+      boundary: self.boundary,
       dt: self.cgns.dt(),
       cgns: self.cgns,
       jump_distribution: &self.cpoisson.distribution,
@@ -657,7 +656,7 @@ where
   beta: T,
   sigma: T,
   drift: T,
-  use_sym: bool,
+  boundary: VarianceBoundary,
   dt: T,
   cgns: Cgns<T>,
   jump_distribution: &'a D,
@@ -696,9 +695,9 @@ where
 
       let dv = (self.alpha - self.beta * v_prev) * dt + self.sigma * v_prev.sqrt() * cgn2[i - 1];
 
-      v[i] = match self.use_sym {
-        true => (v[i - 1] + dv).abs(),
-        false => (v[i - 1] + dv).max(T::zero()),
+      v[i] = match self.boundary {
+        VarianceBoundary::Floor => (v[i - 1] + dv).max(T::zero()),
+        VarianceBoundary::Reflect => (v[i - 1] + dv).abs(),
       }
     }
   }

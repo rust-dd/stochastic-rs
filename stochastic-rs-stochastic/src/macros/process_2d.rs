@@ -3,7 +3,7 @@
 macro_rules! py_process_2d {
   ($py_name:ident, $inner:ident,
     sig: ($($sig:tt)*),
-    params: ($($param:ident : $pty:ty),* $(,)?)
+    params: ($($param:ident : $pty:ty $(=> $map:path)?),* $(,)?)
   ) => {
     #[doc(hidden)]
     #[pyo3::prelude::pyclass]
@@ -22,10 +22,10 @@ macro_rules! py_process_2d {
         stochastic_rs_distributions::python::value_error_on_panic(|| {
           let mut s = Self { inner_f32: None, inner_f64: None, seeded_f32: None, seeded_f64: None };
           match (seed, dtype.unwrap_or("f64")) {
-            (Some(sd), "f32") => { s.seeded_f32 = Some($inner::new($(stochastic_rs_core::python::IntoF32::into_f32($param),)* stochastic_rs_core::simd_rng::Deterministic::new(sd))); },
-            (Some(sd), _) => { s.seeded_f64 = Some($inner::new($(stochastic_rs_core::python::IntoF64::into_f64($param),)* stochastic_rs_core::simd_rng::Deterministic::new(sd))); },
-            (None, "f32") => { s.inner_f32 = Some($inner::new($(stochastic_rs_core::python::IntoF32::into_f32($param),)* stochastic_rs_core::simd_rng::Unseeded)); },
-            (None, _) => { s.inner_f64 = Some($inner::new($(stochastic_rs_core::python::IntoF64::into_f64($param),)* stochastic_rs_core::simd_rng::Unseeded)); },
+            (Some(sd), "f32") => { s.seeded_f32 = Some($inner::new($($crate::py_arg!(f32, $param $(, $map)?),)* stochastic_rs_core::simd_rng::Deterministic::new(sd))); },
+            (Some(sd), _) => { s.seeded_f64 = Some($inner::new($($crate::py_arg!(f64, $param $(, $map)?),)* stochastic_rs_core::simd_rng::Deterministic::new(sd))); },
+            (None, "f32") => { s.inner_f32 = Some($inner::new($($crate::py_arg!(f32, $param $(, $map)?),)* stochastic_rs_core::simd_rng::Unseeded)); },
+            (None, _) => { s.inner_f64 = Some($inner::new($($crate::py_arg!(f64, $param $(, $map)?),)* stochastic_rs_core::simd_rng::Unseeded)); },
           }
           s
         })
@@ -81,7 +81,7 @@ macro_rules! py_process_2d {
 
   ($py_name:ident, $inner:ident,
     sig: ($($sig:tt)*),
-    params: ($($param:ident : $pty:ty),* $(,)?),
+    params: ($($param:ident : $pty:ty $(=> $map:path)?),* $(,)?),
     device
   ) => {
     #[doc(hidden)]
@@ -103,10 +103,10 @@ macro_rules! py_process_2d {
         stochastic_rs_distributions::python::value_error_on_panic(|| {
           let mut s = Self { inner_f32: None, inner_f64: None, seeded_f32: None, seeded_f64: None, device };
           match (seed, dtype.unwrap_or("f64")) {
-            (Some(sd), "f32") => { s.seeded_f32 = Some($inner::new($(stochastic_rs_core::python::IntoF32::into_f32($param),)* $crate::python_device::SharedSeed::new(sd))); },
-            (Some(sd), _) => { s.seeded_f64 = Some($inner::new($(stochastic_rs_core::python::IntoF64::into_f64($param),)* $crate::python_device::SharedSeed::new(sd))); },
-            (None, "f32") => { s.inner_f32 = Some($inner::new($(stochastic_rs_core::python::IntoF32::into_f32($param),)* stochastic_rs_core::simd_rng::Unseeded)); },
-            (None, _) => { s.inner_f64 = Some($inner::new($(stochastic_rs_core::python::IntoF64::into_f64($param),)* stochastic_rs_core::simd_rng::Unseeded)); },
+            (Some(sd), "f32") => { s.seeded_f32 = Some($inner::new($($crate::py_arg!(f32, $param $(, $map)?),)* $crate::python_device::SharedSeed::new(sd))); },
+            (Some(sd), _) => { s.seeded_f64 = Some($inner::new($($crate::py_arg!(f64, $param $(, $map)?),)* $crate::python_device::SharedSeed::new(sd))); },
+            (None, "f32") => { s.inner_f32 = Some($inner::new($($crate::py_arg!(f32, $param $(, $map)?),)* stochastic_rs_core::simd_rng::Unseeded)); },
+            (None, _) => { s.inner_f64 = Some($inner::new($($crate::py_arg!(f64, $param $(, $map)?),)* stochastic_rs_core::simd_rng::Unseeded)); },
           }
           s
         })

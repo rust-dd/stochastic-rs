@@ -20,6 +20,7 @@ use stochastic_rs::stats::mle::fit_mle;
 use stochastic_rs::stochastic::autoregressive::garch::Garch;
 use stochastic_rs::stochastic::diffusion::cir::Cir;
 use stochastic_rs::stochastic::diffusion::ou::Ou;
+use stochastic_rs::stochastic::params::VarianceBoundary;
 use stochastic_rs::traits::ProcessExt;
 
 fn bench_density_eval(c: &mut Criterion) {
@@ -33,7 +34,7 @@ fn bench_density_eval(c: &mut Criterion) {
     100,
     Some(0.4),
     Some(1.0),
-    None,
+    VarianceBoundary::Floor,
     Deterministic::new(0),
   );
   let ou = Ou::new(
@@ -177,7 +178,7 @@ fn bench_mle_fit(c: &mut Criterion) {
       n + 1,
       Some(0.4),
       Some(10.0),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(42),
     );
     let cir_path = cir.sample();
@@ -192,7 +193,7 @@ fn bench_mle_fit(c: &mut Criterion) {
           100,
           Some(0.4),
           Some(1.0),
-          None,
+          VarianceBoundary::Floor,
           Deterministic::new(0),
         );
         black_box(

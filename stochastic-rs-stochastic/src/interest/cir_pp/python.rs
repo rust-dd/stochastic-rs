@@ -12,7 +12,7 @@ pub struct PyCirPlusPlus {
 #[pyo3::prelude::pymethods]
 impl PyCirPlusPlus {
   #[new]
-  #[pyo3(signature = (kappa, theta, sigma, phi, n, x0=None, t=None, use_sym=None, seed=None, device=None))]
+  #[pyo3(signature = (kappa, theta, sigma, phi, n, x0=None, t=None, boundary=None, seed=None, device=None))]
   fn new(
     kappa: f64,
     theta: f64,
@@ -21,10 +21,11 @@ impl PyCirPlusPlus {
     n: usize,
     x0: Option<f64>,
     t: Option<f64>,
-    use_sym: Option<bool>,
+    boundary: Option<crate::python_params::PyVarianceBoundary>,
     seed: Option<u64>,
     device: Option<&str>,
   ) -> pyo3::PyResult<Self> {
+    let boundary = crate::python_params::boundary(boundary);
     stochastic_rs_distributions::python::value_error_on_panic(|| -> pyo3::PyResult<Self> {
       let device = crate::python_device::Device::parse(device, "f64")?;
       Ok(match seed {
@@ -39,7 +40,7 @@ impl PyCirPlusPlus {
             n,
             x0,
             t,
-            use_sym,
+            boundary,
             crate::python_device::SharedSeed::new(s),
           )),
         },
@@ -53,7 +54,7 @@ impl PyCirPlusPlus {
             n,
             x0,
             t,
-            use_sym,
+            boundary,
             Unseeded,
           )),
           seeded: None,

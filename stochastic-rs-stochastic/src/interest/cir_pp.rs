@@ -4,35 +4,10 @@
 //! r_t=x_t+\varphi(t),\qquad dx_t=\kappa(\theta-x_t)\,dt+\sigma\sqrt{x_t}\,dW_t
 //! $$
 //!
-//! Shift-extended CIR short-rate model (Brigo & Mercurio, *Interest Rate
-//! Models — Theory and Practice*, 2nd ed., 2006, §3.9,
-//! DOI: 10.1007/978-3-540-34604-3): the CIR factor
-//! `x_t` carries all of the stochastic dynamics, and the deterministic
-//! shift `phi(t)` is fitted separately so that `r_t` matches today's
-//! observed term structure exactly — the same shift-extension idea
-//! [`Cir2F`](crate::interest::cir_2f::Cir2F) already applies to a
-//! two-factor sum `x_t + y_t`.
+//! `kappa` is the speed and `theta` the level, where [`Cir`] names them `theta` and `mu`.
+//! At `phi ≡ 0` it samples [`Cir`]'s paths bit for bit.
 //!
-//! **Naming note.** Unlike [`Cir`], whose Rust field `theta` names the
-//! mean-reversion *speed* (κ) and `mu` the long-run *level* (θ) — the
-//! workspace's own θ=speed/μ=level convention, see the
-//! [glossary](crate::glossary) — `CirPlusPlus` follows the CIR
-//! literature's own κ/θ notation directly: [`kappa`](CirPlusPlus::kappa) is
-//! the speed and [`theta`](CirPlusPlus::theta) is the long-run level. This is a
-//! deliberate departure from `Cir`'s field names, not an inconsistency to
-//! "fix": the shift-extension literature that motivates this type (Brigo
-//! & Mercurio) itself writes the factor's SDE as `dx_t = κ(θ-x_t)dt +
-//! ...`. See the glossary's θ (theta) table for this meaning alongside
-//! [`BlackKarasinski::theta`](crate::interest::black_karasinski::BlackKarasinski::theta)'s
-//! unrelated additive-drift-function meaning.
-//!
-//! Reuses [`Cir`]'s own sampler rather than re-deriving the discretization:
-//! [`sampler`](ProcessExt::sampler) builds a plain [`Cir`] from this
-//! struct's own `kappa`/`theta`/`sigma`/`n`/`x0`/`t`/`use_sym`/`seed`
-//! fields (cloning the seed source — cheap and side-effect-free, see
-//! [`SeedExt`]'s `Clone` supertrait) and keeps its real [`CirSampler`], so
-//! at `phi ≡ 0` the two processes consume the same Gaussian stream through
-//! the same step formula and agree bit-for-bit.
+//! Brigo, Mercurio (2006), Interest Rate Models, 2nd ed., §3.9, DOI 10.1007/978-3-540-34604-3.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -42,6 +17,7 @@ use super::cir::Cir;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::diffusion::cir::CirSampler;
+use crate::params::VarianceBoundary;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::PathSampler;
@@ -74,9 +50,8 @@ pub struct CirPlusPlus<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub x0: Option<T>,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Enables the symmetric/truncated update variant for the underlying
-  /// CIR factor when true (see [`Cir::use_sym`]).
-  pub use_sym: Option<bool>,
+  /// Treatment of a negative square-root state after a step; the Feller condition is not required.
+  pub boundary: VarianceBoundary,
   /// Seed strategy (compile-time: [`Unseeded`] or
   /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
@@ -99,12 +74,8 @@ fn default_phi<T: FloatExt>(_t: T) -> T {
 /// `sampler()` builds a transient `Cir` (and its sampler) fresh from
 /// `self`'s own fields every call.
 impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
-  /// Create a new CirPlusPlus process.
-  ///
-  /// The Feller condition and its sub-Feller mitigation apply to the
-  /// underlying CIR factor `x_t` exactly as in [`Cir::new`]: a violation
-  /// not paired with `use_sym = Some(true)` emits a `log::warn!` and
-  /// never panics.
+  /// [`Cir::new`]'s Feller contract on the factor `x_t`: a violation under
+  /// [`VarianceBoundary::Floor`] emits a `log::warn!`, never a panic.
   pub fn new(
     kappa: T,
     theta: T,
@@ -113,7 +84,7 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
     n: usize,
     x0: Option<T>,
     t: Option<T>,
-    use_sym: Option<bool>,
+    boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
     assert!(
@@ -137,12 +108,12 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
-    if T::from_usize_(2) * kappa * theta < sigma.powi(2) && use_sym != Some(true) {
+    if T::from_usize_(2) * kappa * theta < sigma.powi(2) && boundary != VarianceBoundary::Reflect {
       log::warn!(
         "CirPlusPlus::new: Feller condition violated (2*kappa*theta < sigma^2) \
-         without use_sym = Some(true); the underlying CIR factor floors at zero on every \
-         boundary hit instead of reflecting — pass use_sym = Some(true) for the standard \
-         sub-Feller mitigation"
+         under VarianceBoundary::Floor; the underlying CIR factor floors at zero on every \
+         boundary hit instead of reflecting — pass VarianceBoundary::Reflect for the \
+         standard sub-Feller mitigation"
       );
     }
 
@@ -155,7 +126,7 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
       n,
       x0,
       t,
-      use_sym,
+      boundary,
       seed,
     }
   }
@@ -192,9 +163,9 @@ impl<T: FloatExt, S: SeedExt, B> CirPlusPlus<T, S, B> {
     self
   }
 
-  /// Replace `use_sym`, all else unchanged.
-  pub fn with_use_sym(mut self, use_sym: Option<bool>) -> Self {
-    self.use_sym = use_sym;
+  /// Replace `boundary`, all else unchanged.
+  pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
+    self.boundary = boundary;
     self
   }
 
@@ -242,7 +213,7 @@ impl<T: FloatExt> Default for CirPlusPlus<T, Unseeded> {
       252,
       Some(T::from_f64_fast(0.04)),
       Some(T::one()),
-      None,
+      VarianceBoundary::Floor,
       Unseeded,
     )
   }
@@ -255,18 +226,17 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   for CirPlusPlus<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    if self.use_sym.unwrap_or(false) {
-      crate::euler::EulerSpec::ShiftedSquareRootMirrored {
+    match self.boundary {
+      VarianceBoundary::Floor => crate::euler::EulerSpec::ShiftedSquareRoot {
         theta: self.kappa,
         mu: self.theta,
         sigma: self.sigma,
-      }
-    } else {
-      crate::euler::EulerSpec::ShiftedSquareRoot {
+      },
+      VarianceBoundary::Reflect => crate::euler::EulerSpec::ShiftedSquareRootMirrored {
         theta: self.kappa,
         mu: self.theta,
         sigma: self.sigma,
-      }
+      },
     }
   }
 
@@ -303,7 +273,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] CirPlusPlus<T, S> { kappa, theta, sigma, phi, n, x0, t, use_sym, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] CirPlusPlus<T, S> { kappa, theta, sigma, phi, n, x0, t, boundary, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for CirPlusPlus<T, S, B>
@@ -357,7 +327,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       n: self.n,
       x0: self.x0,
       t: self.t,
-      use_sym: self.use_sym,
+      boundary: self.boundary,
       seed: self.seed.clone(),
       backend: Cpu,
     };
@@ -480,7 +450,7 @@ mod tests {
       n,
       Some(x0),
       Some(t),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(seed),
     );
     let cir_pp = CirPlusPlus::<f64, _>::new(
@@ -491,7 +461,7 @@ mod tests {
       n,
       Some(x0),
       Some(t),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(seed),
     );
 
@@ -522,7 +492,7 @@ mod tests {
       n,
       Some(x0),
       Some(t),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(seed),
     );
     let cir_pp = CirPlusPlus::<f64, _>::new(
@@ -533,7 +503,7 @@ mod tests {
       n,
       Some(x0),
       Some(t),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(seed),
     );
 
@@ -545,10 +515,9 @@ mod tests {
     }
   }
 
-  /// Sub-Feller parameters must be accepted (not panic) with `use_sym =
-  /// Some(true)`, exactly like `Cir::new`'s own precedent.
+  /// Sub-Feller parameters build and sample under reflection, as for `Cir::new`.
   #[test]
-  fn cir_pp_accepts_sub_feller_with_use_sym() {
+  fn cir_pp_accepts_sub_feller_under_reflection() {
     let cir_pp = CirPlusPlus::<f64, _>::new(
       0.5,
       0.1,
@@ -557,7 +526,7 @@ mod tests {
       256,
       Some(0.1),
       Some(1.0),
-      Some(true),
+      VarianceBoundary::Reflect,
       Deterministic::new(7),
     );
     let path = cir_pp.sample();
@@ -576,7 +545,7 @@ mod tests {
       100,
       Some(0.03),
       Some(1.0),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(42),
     )
     .sample();
@@ -588,7 +557,7 @@ mod tests {
       100,
       Some(0.03),
       Some(1.0),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(42),
     )
     .sample();

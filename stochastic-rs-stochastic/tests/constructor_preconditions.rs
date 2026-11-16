@@ -35,6 +35,7 @@ use stochastic_rs_stochastic::noise::cfgns::Cfgns;
 use stochastic_rs_stochastic::noise::fgn::Fgn;
 use stochastic_rs_stochastic::noise::gn::Gn;
 use stochastic_rs_stochastic::noise::wn::Wn;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::lfsm::Lfsm;
 use stochastic_rs_stochastic::process::multivariate_hawkes::MultivariateHawkes;
 use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::GammaSubordinator;
@@ -142,7 +143,7 @@ refuses! {
   a_fractional_sheet_refuses_a_nan_hurst: "hurst must satisfy `hurst.is_finite()`, got hurst = NaN"
     => Fbs::<f64>::new(f64::NAN, 16, 16, 1.0, Unseeded);
   a_volatility_model_refuses_a_nan_correlation: "rho must satisfy `rho.is_finite()`, got rho = NaN"
-    => Heston::<f64>::new(Some(100.0), Some(0.04), 1.5, 0.04, 0.3, f64::NAN, 0.05, 64, None, HestonPow::Sqrt, None, Unseeded);
+    => Heston::<f64>::new(Some(100.0), Some(0.04), 1.5, 0.04, 0.3, f64::NAN, 0.05, 64, None, HestonPow::Sqrt, VarianceBoundary::Floor, Unseeded);
   a_volterra_kernel_refuses_a_nan_weight: "c must satisfy `c.is_finite()`, got c = NaN"
     => ExponentialKernel::<f64>::new(1.0, f64::NAN);
   a_volterra_volatility_refuses_a_nan_level: "theta must satisfy `theta.is_finite()`, got theta = NaN"
@@ -380,7 +381,7 @@ fn a_zero_intensity_bates_is_its_diffusion() {
     Some(100.0),
     Some(0.04),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(9),
   );
   let [s, v] = p.sample();

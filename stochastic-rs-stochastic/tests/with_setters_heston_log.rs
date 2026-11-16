@@ -20,6 +20,7 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::heston_log::HestonLog;
 
@@ -41,7 +42,7 @@ fn hlog_base_seeded<S: SeedExt>(seed: S) -> HestonLog<f64, S> {
     Some(100.0),
     Some(0.04),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     seed,
   )
 }
@@ -64,7 +65,7 @@ struct HlogFields {
   s0: Option<f64>,
   v0: Option<f64>,
   t: Option<f64>,
-  use_sym: Option<bool>,
+  boundary: VarianceBoundary,
 }
 
 fn hlog_fields<S: SeedExt>(x: &HestonLog<f64, S>) -> HlogFields {
@@ -81,7 +82,7 @@ fn hlog_fields<S: SeedExt>(x: &HestonLog<f64, S>) -> HlogFields {
     s0: x.s0,
     v0: x.v0,
     t: x.t,
-    use_sym: x.use_sym,
+    boundary: x.boundary,
   }
 }
 
@@ -114,10 +115,10 @@ hlog_plain_test!(heston_log_with_rho_round_trip, with_rho, rho, -0.4);
 hlog_plain_test!(heston_log_with_s0_round_trip, with_s0, s0, Some(120.0));
 hlog_plain_test!(heston_log_with_v0_round_trip, with_v0, v0, Some(0.06));
 hlog_plain_test!(
-  heston_log_with_use_sym_round_trip,
-  with_use_sym,
-  use_sym,
-  Some(true)
+  heston_log_with_boundary_round_trip,
+  with_boundary,
+  boundary,
+  VarianceBoundary::Reflect
 );
 hlog_plain_test!(heston_log_with_steps_round_trip, with_steps, n, 64usize);
 hlog_plain_test!(

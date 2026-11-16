@@ -24,6 +24,7 @@ use super::cir::Cir;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::diffusion::cir::CirSampler;
+use crate::params::VarianceBoundary;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::PathSampler;
@@ -38,7 +39,9 @@ use crate::traits::ProcessExt;
 /// use stochastic_rs_core::simd_rng::Unseeded;
 /// use stochastic_rs_stochastic::diffusion::cir::Cir;
 /// use stochastic_rs_stochastic::interest::cir_2f::Cir2F;
-/// let factor = |n| Cir::new(1.0_f64, 0.04, 0.2, n, Some(0.04), Some(1.0), Some(false), Unseeded);
+/// use stochastic_rs_stochastic::params::VarianceBoundary;
+/// let floor = VarianceBoundary::Floor;
+/// let factor = |n| Cir::new(1.0_f64, 0.04, 0.2, n, Some(0.04), Some(1.0), floor, Unseeded);
 /// let mut p = Cir2F::new(factor(10), factor(10), (|t: f64| t) as fn(f64) -> f64, Unseeded);
 /// p.x.n = 1000;
 /// ```
@@ -53,18 +56,8 @@ pub struct Cir2F<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Cir2F<T, S> {
-  /// `x` and `y` are taken pre-built (rather than absorbing their
-  /// constructor parameters, the way `Merton`/`Kou`/`LevyDiffusion` absorbed
-  /// `CompoundPoisson`'s) because each factor's own parameter set — κ, θ,
-  /// σ, `x0`, `use_sym` — is independently meaningful and worth keeping
-  /// addressable as a standalone [`Cir`], unlike a jump driver that is pure
-  /// plumbing; flattening both factors' fields into one constructor would
-  /// roughly double `Cir::new`'s own arity for no benefit. What `new` does
-  /// take over is seeding: `x.seed` and `y.seed` are overwritten with two
-  /// independent children derived from `seed` (`derive()`, never `clone()`,
-  /// so the factors run mutually uncorrelated streams — see
-  /// [`x`](Self::x) and [`y`](Self::y)), so the outer `seed` is the only
-  /// seed that matters.
+  /// Takes the factors pre-built, each a standalone [`Cir`], and replaces their seeds with two
+  /// children derived from `seed`, so it alone drives the path; panics unless they share a grid.
   pub fn new(mut x: Cir<T, S>, mut y: Cir<T, S>, phi: impl Into<Fn1D<T>>, seed: S) -> Self {
     Self::assert_same_grid(&x, &y);
     Self::seed_factors(&mut x, &mut y, &seed);
@@ -166,12 +159,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   for Cir2F<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    let flag = |sym: Option<bool>| {
-      if sym.unwrap_or(false) {
-        T::one()
-      } else {
-        T::zero()
-      }
+    let flag = |boundary| match boundary {
+      VarianceBoundary::Floor => T::zero(),
+      VarianceBoundary::Reflect => T::one(),
     };
     crate::euler::EulerSpec::TwoFactorSquareRoot {
       theta1: self.x.theta,
@@ -180,8 +170,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
       theta2: self.y.theta,
       mu2: self.y.mu,
       sigma2: self.y.sigma,
-      sym1: flag(self.x.use_sym),
-      sym2: flag(self.y.use_sym),
+      sym1: flag(self.x.boundary),
+      sym2: flag(self.y.boundary),
     }
   }
 
@@ -338,8 +328,9 @@ mod tests {
 
   #[test]
   fn default_time_horizon_is_one() {
-    let x = Cir::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), None, Some(false), Unseeded);
-    let y = Cir::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), None, Some(false), Unseeded);
+    let floor = VarianceBoundary::Floor;
+    let x = Cir::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), None, floor, Unseeded);
+    let y = Cir::new(0.0_f64, 0.0, 0.0, 3, Some(0.0), None, floor, Unseeded);
     let model = Cir2F::new(x, y, phi_fn as fn(f64) -> f64, Unseeded);
 
     let out = model.sample();
@@ -358,7 +349,7 @@ mod tests {
       3,
       Some(0.0),
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Unseeded,
     );
     let y = Cir::new(
@@ -368,7 +359,7 @@ mod tests {
       4,
       Some(0.0),
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Unseeded,
     );
     let _ = Cir2F::new(x, y, phi_fn as fn(f64) -> f64, Unseeded);
@@ -383,7 +374,7 @@ mod tests {
         32,
         Some(0.03),
         Some(1.0),
-        Some(false),
+        VarianceBoundary::Floor,
         Deterministic::new(seed_x),
       ),
       Cir::new(
@@ -393,7 +384,7 @@ mod tests {
         32,
         Some(0.02),
         Some(1.0),
-        Some(false),
+        VarianceBoundary::Floor,
         Deterministic::new(seed_y),
       ),
     )
@@ -439,7 +430,7 @@ mod tests {
         64,
         Some(0.05),
         Some(1.0),
-        Some(false),
+        VarianceBoundary::Floor,
         Deterministic::new(0),
       )
     };

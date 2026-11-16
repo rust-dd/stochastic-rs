@@ -25,6 +25,7 @@ use stochastic_rs_distributions::poisson::SimdPoisson;
 
 use crate::device::Cpu;
 use crate::noise::cgns::Cgns;
+use crate::params::VarianceBoundary;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -60,8 +61,8 @@ pub struct Hkde<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub s0: Option<T>,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Use symmetric (abs) for variance positivity.
-  pub use_sym: Option<bool>,
+  /// Treatment of a negative square-root state after a step; the Feller condition is not required.
+  pub boundary: VarianceBoundary,
   /// Seed strategy.
   pub seed: S,
   cgns: Cgns<T>,
@@ -86,7 +87,7 @@ impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
     n: usize,
     s0: Option<T>,
     t: Option<T>,
-    use_sym: Option<bool>,
+    boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
     assert!(
@@ -170,7 +171,7 @@ impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
       n,
       s0,
       t,
-      use_sym,
+      boundary,
       seed,
       cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
@@ -263,9 +264,9 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
     self
   }
 
-  /// Replace `use_sym`, all else unchanged.
-  pub fn with_use_sym(mut self, use_sym: Option<bool>) -> Self {
-    self.use_sym = use_sym;
+  /// Replace `boundary`, all else unchanged.
+  pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
+    self.boundary = boundary;
     self
   }
 
@@ -313,22 +314,21 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let drift_c = self.mu - self.lambda * self.k_bar();
-    if self.use_sym.unwrap_or(false) {
-      crate::euler::EulerSpec::KouJumpHestonReflected {
+    match self.boundary {
+      VarianceBoundary::Floor => crate::euler::EulerSpec::KouJumpHeston {
         drift_c,
         kappa: self.kappa,
         theta: self.theta,
         sigma_v: self.sigma_v,
         rho: self.rho,
-      }
-    } else {
-      crate::euler::EulerSpec::KouJumpHeston {
+      },
+      VarianceBoundary::Reflect => crate::euler::EulerSpec::KouJumpHestonReflected {
         drift_c,
         kappa: self.kappa,
         theta: self.theta,
         sigma_v: self.sigma_v,
         rho: self.rho,
-      }
+      },
     }
   }
 
@@ -378,7 +378,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Hkde<T, S> { mu, kappa, theta, sigma_v, rho, v0, lambda, p_up, eta1, eta2, n, s0, t, use_sym, seed, cgns } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] Hkde<T, S> { mu, kappa, theta, sigma_v, rho, v0, lambda, p_up, eta1, eta2, n, s0, t, boundary, seed, cgns } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for Hkde<T, S, B>
@@ -411,7 +411,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       s0: self.s0.unwrap_or(T::one()),
       k_bar: self.k_bar(),
       dt: self.cgns.dt(),
-      use_sym: self.use_sym.unwrap_or(false),
+      boundary: self.boundary,
       cgns: self.cgns,
       seed: self.seed.derive(),
     }
@@ -460,7 +460,7 @@ pub struct HkdeSampler<T: FloatExt, S: SeedExt> {
   s0: T,
   k_bar: T,
   dt: T,
-  use_sym: bool,
+  boundary: VarianceBoundary,
   cgns: Cgns<T>,
   seed: S,
 }
@@ -511,9 +511,9 @@ impl<T: FloatExt, S: SeedExt> HkdeSampler<T, S> {
     };
 
     for i in 1..self.n {
-      let v_prev = match self.use_sym {
-        true => v[i - 1].abs(),
-        false => v[i - 1].max(T::zero()),
+      let v_prev = match self.boundary {
+        VarianceBoundary::Floor => v[i - 1].max(T::zero()),
+        VarianceBoundary::Reflect => v[i - 1].abs(),
       };
       let sqrt_v = v_prev.sqrt();
 
@@ -534,9 +534,9 @@ impl<T: FloatExt, S: SeedExt> HkdeSampler<T, S> {
 
       // Variance dynamics (Heston)
       let dv = self.kappa * (self.theta - v_prev) * dt + self.sigma_v * sqrt_v * cgn2[i - 1];
-      v[i] = match self.use_sym {
-        true => (v_prev + dv).abs(),
-        false => (v_prev + dv).max(T::zero()),
+      v[i] = match self.boundary {
+        VarianceBoundary::Floor => (v_prev + dv).max(T::zero()),
+        VarianceBoundary::Reflect => (v_prev + dv).abs(),
       };
     }
   }
@@ -587,7 +587,7 @@ mod tests {
       256,
       Some(100.0),
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Unseeded,
     )
   }
@@ -622,7 +622,7 @@ mod tests {
       1000,
       Some(100.0),
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Deterministic::new(42),
     );
     let [s, _v] = p.sample();
@@ -650,7 +650,7 @@ mod tests {
       100,
       Some(100.0),
       Some(1.0),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(123),
     );
     let p2 = Hkde::new(
@@ -667,7 +667,7 @@ mod tests {
       100,
       Some(100.0),
       Some(1.0),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(123),
     );
     let [s1, v1] = p1.sample();

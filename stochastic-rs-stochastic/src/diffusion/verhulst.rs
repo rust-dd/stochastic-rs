@@ -38,8 +38,8 @@ pub struct Verhulst<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub x0: Option<T>,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// If true, clamp the state into [0, K] each step
-  pub clamp: Option<bool>,
+  /// Clamp the state into `[0, K]` after each step.
+  pub clamp: bool,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -55,7 +55,7 @@ impl<T: FloatExt, S: SeedExt> Verhulst<T, S> {
     n: usize,
     x0: Option<T>,
     t: Option<T>,
-    clamp: Option<bool>,
+    clamp: bool,
     seed: S,
   ) -> Self {
     assert!(
@@ -102,7 +102,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   for Verhulst<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    if self.clamp.unwrap_or(true) {
+    if self.clamp {
       crate::euler::EulerSpec::VerhulstClamped {
         r: self.r,
         k: self.k,
@@ -166,7 +166,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       r: self.r,
       k: self.k,
       diff_scale: self.sigma,
-      clamp: self.clamp.unwrap_or(true),
+      clamp: self.clamp,
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
@@ -263,6 +263,6 @@ impl<T: FloatExt> PathSampler<T> for VerhulstSampler<T> {
 
 py_process_1d!(PyVerhulst, Verhulst,
   sig: (r, k, sigma, n, x0=None, t=None, clamp=None, seed=None, dtype=None),
-  params: (r: f64, k: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, clamp: Option<bool>),
+  params: (r: f64, k: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, clamp: Option<bool> => crate::python_params::clamp),
   device
 );

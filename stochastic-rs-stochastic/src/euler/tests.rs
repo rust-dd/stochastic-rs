@@ -5,6 +5,7 @@ use super::*;
 use crate::diffusion::cir::Cir;
 use crate::diffusion::gbm::Gbm;
 use crate::diffusion::ou::Ou;
+use crate::params::VarianceBoundary;
 
 /// `on::<Cpu>()` is the identity on a process's output, and the `Cpu`
 /// backend's `euler_paths` is the process's own `sample_par` — bit for bit.
@@ -52,7 +53,7 @@ fn cpu_backend_is_the_process_sampler() {
       33,
       Some(0.09),
       Some(1.0),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(7),
     )
   };
@@ -91,11 +92,11 @@ fn switching_the_backend_keeps_the_parameters() {
     10,
     Some(0.09),
     Some(2.0),
-    Some(true),
+    VarianceBoundary::Reflect,
     Unseeded,
   )
   .on::<Cpu>();
-  assert_eq!(cir.use_sym, Some(true));
+  assert_eq!(cir.boundary, VarianceBoundary::Reflect);
   assert_eq!(cir.euler_spec().encode().0, 2);
   assert_eq!(
     (cir.initial_value(), cir.grid_points(), cir.horizon()),
@@ -137,7 +138,7 @@ fn try_sample_par_matches_sample_par_on_the_cpu() {
       64,
       Some(0.09),
       Some(1.0),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(9),
     )
   };

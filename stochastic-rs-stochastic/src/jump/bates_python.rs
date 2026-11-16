@@ -20,7 +20,7 @@ pub struct PyBates {
 #[pyo3::prelude::pymethods]
 impl PyBates {
   #[new]
-  #[pyo3(signature = (lambda_, k, alpha, beta, sigma, rho, distribution, n, mu=None, b=None, r=None, r_f=None, s0=None, v0=None, t=None, use_sym=None, seed=None, dtype=None))]
+  #[pyo3(signature = (lambda_, k, alpha, beta, sigma, rho, distribution, n, mu=None, b=None, r=None, r_f=None, s0=None, v0=None, t=None, boundary=None, seed=None, dtype=None))]
   fn new(
     lambda_: f64,
     k: f64,
@@ -37,10 +37,11 @@ impl PyBates {
     s0: Option<f64>,
     v0: Option<f64>,
     t: Option<f64>,
-    use_sym: Option<bool>,
+    boundary: Option<crate::python_params::PyVarianceBoundary>,
     seed: Option<u64>,
     dtype: Option<&str>,
   ) -> pyo3::PyResult<Self> {
+    let boundary = crate::python_params::boundary(boundary);
     stochastic_rs_distributions::python::value_error_on_panic(|| {
       let mut s = Self {
         inner_f32: None,
@@ -69,7 +70,7 @@ impl PyBates {
                 s0.map(|v| v as f32),
                 v0.map(|v| v as f32),
                 t.map(|v| v as f32),
-                use_sym,
+                boundary,
                 Deterministic::new(sd),
               ));
             }
@@ -90,7 +91,7 @@ impl PyBates {
                 s0.map(|v| v as f32),
                 v0.map(|v| v as f32),
                 t.map(|v| v as f32),
-                use_sym,
+                boundary,
                 Unseeded,
               ));
             }
@@ -116,14 +117,14 @@ impl PyBates {
                 s0,
                 v0,
                 t,
-                use_sym,
+                boundary,
                 Deterministic::new(sd),
               ));
             }
             None => {
               s.inner_f64 = Some(Bates1996::new(
                 mu, b, r, r_f, lambda_, k, alpha, beta, sigma, rho, jump_dist, n, s0, v0, t,
-                use_sym, Unseeded,
+                boundary, Unseeded,
               ));
             }
           }

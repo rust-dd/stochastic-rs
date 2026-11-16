@@ -27,6 +27,7 @@ use stochastic_rs_stochastic::jump::mjd_log::MjdLog;
 use stochastic_rs_stochastic::jump::nig::Nig;
 use stochastic_rs_stochastic::jump::rdts::Rdts;
 use stochastic_rs_stochastic::jump::vg::Vg;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use crate::common::J;
 use crate::common::LAMBDA;
@@ -49,7 +50,7 @@ guard!(bates1996, "Bates1996", |s| Bates1996::new(
   Some(100.0),
   Some(0.04),
   Some(1.0),
-  Some(false),
+  VarianceBoundary::Floor,
   s
 ));
 

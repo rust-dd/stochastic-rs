@@ -15,8 +15,10 @@
 use stochastic_rs::prelude::*;
 use stochastic_rs::quant::vol_surface::svi::SviRawParams;
 use stochastic_rs::simd_rng::Deterministic;
+use stochastic_rs::stochastic::params::VarianceBoundary;
 use stochastic_rs::stochastic::process::fbm::Fbm;
 use stochastic_rs::stochastic::volatility::HestonPow;
+use stochastic_rs::stochastic::volatility::heston::Euler;
 use stochastic_rs::stochastic::volatility::heston::Heston;
 
 /// A path thinned to `k` points and rounded, so the SVG stays small.
@@ -29,7 +31,7 @@ fn thin(path: &[f64], k: usize, digits: i32) -> Vec<f64> {
 }
 
 fn main() {
-  let heston = Heston::<f64, _>::new(
+  let heston = Heston::<f64, Euler, _>::new(
     Some(100.0),
     Some(0.04),
     2.0,
@@ -40,7 +42,7 @@ fn main() {
     512,
     Some(1.0),
     HestonPow::Sqrt,
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(21),
   );
   // A quantile band from four thousand paths, and a few sample paths over

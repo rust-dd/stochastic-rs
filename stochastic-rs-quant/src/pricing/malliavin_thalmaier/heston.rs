@@ -9,6 +9,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_stochastic::volatility::heston::Euler;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 
 use crate::traits::FloatExt;
@@ -270,7 +271,7 @@ impl<T: FloatExt> MultiHestonPaths<T> {
   /// The upstream `Heston` Euler sampler uses an arithmetic price update, so
   /// paths built by this adapter are not eligible for the exact conditional
   /// weights in [`Self::try_malliavin_weights`].
-  pub fn from_hestons<S: SeedExt>(hestons: &[Heston<T, S>]) -> Self {
+  pub fn from_hestons<S: SeedExt>(hestons: &[Heston<T, Euler, S>]) -> Self {
     let d = hestons.len();
     assert!(d > 0, "need at least one Heston instance");
     let n = hestons[0].n;

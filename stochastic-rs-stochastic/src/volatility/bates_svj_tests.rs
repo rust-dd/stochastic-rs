@@ -18,7 +18,7 @@ fn variance_stays_non_negative() {
     Some(100.0),
     Some(0.04),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Unseeded,
   );
   let [_s, v] = p.sample();
@@ -43,7 +43,7 @@ fn price_stays_positive() {
     Some(100.0),
     Some(0.04),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Unseeded,
   );
   let [s, _v] = p.sample();
@@ -68,7 +68,7 @@ fn drift_prefers_r_minus_rf() {
     Some(1.0),
     Some(0.04),
     Some(1.0),
-    None,
+    VarianceBoundary::Floor,
     Unseeded,
   );
   assert!((p.drift() - 0.3).abs() < 1e-12);
@@ -92,7 +92,7 @@ fn drift_uses_b_if_rates_missing() {
     Some(1.0),
     Some(0.04),
     Some(1.0),
-    None,
+    VarianceBoundary::Floor,
     Unseeded,
   );
   assert!((p.drift() - 0.7).abs() < 1e-12);
@@ -116,7 +116,7 @@ fn drift_falls_back_to_mu() {
     Some(1.0),
     Some(0.04),
     Some(1.0),
-    None,
+    VarianceBoundary::Floor,
     Unseeded,
   );
   assert!((p.drift() - 0.9).abs() < 1e-12);

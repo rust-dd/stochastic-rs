@@ -20,6 +20,7 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::bates_svj::BatesSvj;
 
@@ -44,7 +45,7 @@ fn bsvj_base_seeded<S: SeedExt>(seed: S) -> BatesSvj<f64, S> {
     Some(100.0),
     Some(0.04),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     seed,
   )
 }
@@ -73,7 +74,7 @@ struct BsvjFields {
   s0: Option<f64>,
   v0: Option<f64>,
   t: Option<f64>,
-  use_sym: Option<bool>,
+  boundary: VarianceBoundary,
 }
 
 fn bsvj_fields<S: SeedExt>(x: &BatesSvj<f64, S>) -> BsvjFields {
@@ -93,7 +94,7 @@ fn bsvj_fields<S: SeedExt>(x: &BatesSvj<f64, S>) -> BsvjFields {
     s0: x.s0,
     v0: x.v0,
     t: x.t,
-    use_sym: x.use_sym,
+    boundary: x.boundary,
   }
 }
 
@@ -124,10 +125,10 @@ bsvj_plain_test!(bates_svj_with_sigma_round_trip, with_sigma, sigma, 0.35);
 bsvj_plain_test!(bates_svj_with_s0_round_trip, with_s0, s0, Some(120.0));
 bsvj_plain_test!(bates_svj_with_v0_round_trip, with_v0, v0, Some(0.06));
 bsvj_plain_test!(
-  bates_svj_with_use_sym_round_trip,
-  with_use_sym,
-  use_sym,
-  Some(true)
+  bates_svj_with_boundary_round_trip,
+  with_boundary,
+  boundary,
+  VarianceBoundary::Reflect
 );
 
 #[test]
@@ -175,7 +176,7 @@ fn bates_svj_with_rho_rebuilds_cgns_cache() {
     Some(100.0),
     Some(0.04),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(7),
   )
   .sample();
@@ -216,7 +217,7 @@ fn bates_svj_with_steps_rebuilds_cgns_cache() {
     Some(100.0),
     Some(0.04),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(9),
   )
   .sample();
@@ -256,7 +257,7 @@ fn bates_svj_with_horizon_rebuilds_cgns_cache() {
     Some(100.0),
     Some(0.04),
     Some(2.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(11),
   )
   .sample();

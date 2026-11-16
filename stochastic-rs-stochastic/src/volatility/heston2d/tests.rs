@@ -52,7 +52,7 @@ impl ValidInputs {
       self.rho,
       16,
       self.t,
-      Some(false),
+      VarianceBoundary::Floor,
       Deterministic::new(17),
     )
   }
@@ -70,7 +70,7 @@ fn shapes_match_n() {
     rho_default(),
     512,
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(1),
   );
   let [x1, v1, x2, v2] = h.sample();
@@ -95,7 +95,7 @@ fn seeded_is_deterministic() {
       rho_default(),
       128,
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Deterministic::new(42),
     )
   };
@@ -122,7 +122,7 @@ fn cross_correlation_matches_rho() {
     rho,
     20_000,
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(7),
   );
   let [x1, _, x2, _] = h.sample();
@@ -160,7 +160,7 @@ fn rejects_non_psd_correlation() {
     bad,
     16,
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(3),
   );
 }
@@ -295,12 +295,10 @@ fn rejects_non_finite_correlation() {
   let _ = inputs.build();
 }
 
-/// Reference: FSDA `Heston2D.m` case with `2*kappa*theta - sigma^2 < 0` for
-/// asset 0. `Cir`/`Fcir`-style contract: sub-Feller parameters are accepted
-/// (not rejected) as long as the Euler variance step stays finite —
-/// `use_sym = Some(true)` is the documented mitigation.
+/// FSDA `Heston2D.m`'s sub-Feller asset 0, `2·kappa·theta < sigma²`: accepted, as by `Cir`, and the
+/// reflected variance stays finite and non-negative.
 #[test]
-fn accepts_matlab_feller_violation_with_use_sym() {
+fn accepts_matlab_feller_violation_under_reflection() {
   let model = Heston2D::<f64, _>::new(
     [Some(0.0), Some(0.0)],
     [Some(0.4), Some(0.4)],
@@ -311,7 +309,7 @@ fn accepts_matlab_feller_violation_with_use_sym() {
     rho_default(),
     16,
     Some(1.0),
-    Some(true),
+    VarianceBoundary::Reflect,
     Deterministic::new(5),
   );
   let [x1, v1, x2, v2] = model.sample();
@@ -321,11 +319,9 @@ fn accepts_matlab_feller_violation_with_use_sym() {
   assert!(v2.iter().all(|x| *x >= 0.0));
 }
 
-/// The default (floor-at-zero) scheme must also accept the same
-/// sub-Feller parameters without panicking — only the diagnostic warning
-/// differs, mirroring the equivalent `Cir` / `Fcir` tests.
+/// The floored step accepts the same parameters; only the diagnostic warning differs.
 #[test]
-fn accepts_matlab_feller_violation_without_use_sym() {
+fn accepts_matlab_feller_violation_under_the_floor() {
   let model = Heston2D::<f64, _>::new(
     [Some(0.0), Some(0.0)],
     [Some(0.4), Some(0.4)],
@@ -336,7 +332,7 @@ fn accepts_matlab_feller_violation_without_use_sym() {
     rho_default(),
     16,
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(5),
   );
   let [x1, v1, x2, v2] = model.sample();
@@ -360,7 +356,7 @@ fn rejects_zero_initial_variance_like_matlab() {
     rho_default(),
     16,
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(11),
   );
 }
