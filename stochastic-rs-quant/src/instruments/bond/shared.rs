@@ -1,6 +1,5 @@
 use chrono::NaiveDate;
-use roots::SimpleConvergency;
-use roots::find_root_brent;
+use stochastic_rs_distributions::brent;
 
 use super::types::BondAnalytics;
 use super::types::BondPrice;
@@ -156,17 +155,10 @@ pub(crate) fn yield_to_maturity_from_dirty_price_for_leg<T: RealExt>(
   if f_high.abs() < 1e-12 {
     return T::from_f64_fast(high);
   }
-  if f_low * f_high > 0.0 {
-    return T::nan();
-  }
 
-  let mut convergency = SimpleConvergency {
-    eps: 1e-12,
-    max_iter: 100,
-  };
-  match find_root_brent(low, high, f, &mut convergency) {
-    Ok(root) => T::from_f64_fast(root),
-    Err(_) => T::nan(),
+  match brent::zero(low, high, 1e-12, f) {
+    Some(root) => T::from_f64_fast(root),
+    None => T::nan(),
   }
 }
 
@@ -360,7 +352,7 @@ pub(crate) fn solve_constant_spread_for_leg<T: RealExt>(
   let mut f_low = f(low);
   let mut f_high = f(high);
   let mut expand = 0;
-  while f_low * f_high > 0.0 && expand < 40 {
+  while ((f_low > 0.0 && f_high > 0.0) || (f_low < 0.0 && f_high < 0.0)) && expand < 40 {
     if f_low < 0.0 {
       low = low * 2.0 - 0.01;
       f_low = f(low);
@@ -371,17 +363,9 @@ pub(crate) fn solve_constant_spread_for_leg<T: RealExt>(
     expand += 1;
   }
 
-  if f_low * f_high > 0.0 {
-    return T::nan();
-  }
-
-  let mut convergency = SimpleConvergency {
-    eps: 1e-12,
-    max_iter: 100,
-  };
-  match find_root_brent(low, high, f, &mut convergency) {
-    Ok(root) => T::from_f64_fast(root),
-    Err(_) => T::nan(),
+  match brent::zero(low, high, 1e-12, f) {
+    Some(root) => T::from_f64_fast(root),
+    None => T::nan(),
   }
 }
 

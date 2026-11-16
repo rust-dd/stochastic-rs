@@ -221,7 +221,8 @@ fn bootstrap_hazard_reprices_quotes_at_par() {
     recovery,
     &discount,
     DayCountConvention::Actual365Fixed,
-  );
+  )
+  .unwrap();
 
   for quote in &quotes {
     let cds = CreditDefaultSwap::vanilla(
@@ -241,7 +242,7 @@ fn bootstrap_hazard_reprices_quotes_at_par() {
       &survival,
     );
     assert!(
-      (v.fair_spread - quote.spread).abs() < 1e-6,
+      (v.fair_spread - quote.spread).abs() < 1e-10,
       "bootstrap fair {} vs quote {} at {:?}",
       v.fair_spread,
       quote.spread,

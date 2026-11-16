@@ -108,7 +108,8 @@ fn bench_bootstrap(c: &mut Criterion) {
         0.4,
         &discount,
         DayCountConvention::Actual365Fixed,
-      );
+      )
+      .unwrap();
       std::hint::black_box(curve.survival_probability(5.0))
     });
   });

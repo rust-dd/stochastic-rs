@@ -12,6 +12,7 @@
 //! Notation: forward $F = S e^{(r_d - r_f)\tau}$, base discount
 //! $D_f = e^{-r_f \tau}$.
 
+use stochastic_rs_distributions::brent;
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 
@@ -123,7 +124,7 @@ pub fn strike_from_delta(
       forward * (-d1 * sigma * sqrt_t + 0.5 * sigma * sigma * tau).exp()
     }
     FxDeltaConvention::SpotPremiumAdjusted | FxDeltaConvention::ForwardPremiumAdjusted => {
-      brent_strike(
+      premium_adjusted_strike(
         target_delta,
         forward,
         sigma,
@@ -147,7 +148,7 @@ pub fn atm_strike(forward: f64, sigma: f64, tau: f64, convention: AtmConvention)
   }
 }
 
-fn brent_strike(
+fn premium_adjusted_strike(
   target_delta: f64,
   forward: f64,
   sigma: f64,
@@ -156,35 +157,14 @@ fn brent_strike(
   option_type: OptionType,
   convention: FxDeltaConvention,
 ) -> f64 {
-  // Premium-adjusted call delta is non-monotonic in K — peaks then falls
-  // back toward 0. The market convention selects the **larger** strike
-  // root (the OTM side), so bracket the side where K is on the OTM tail.
-  // Premium-adjusted put delta is monotonic on K < F.
-  let (mut lo, mut hi) = match option_type {
+  // The call delta rises, then falls to 0: a quote means its larger, OTM strike, sought above F;
+  // the put delta is monotonic below F. A negligible `t` leaves the relative `6 macheps K`.
+  let (lo, hi) = match option_type {
     OptionType::Call => (forward, forward * 1e4),
     OptionType::Put => (forward * 1e-4, forward),
   };
-  let mut f_lo = delta(lo, forward, sigma, tau, r_f, option_type, convention) - target_delta;
-  let mut f_hi = delta(hi, forward, sigma, tau, r_f, option_type, convention) - target_delta;
-  if f_lo * f_hi > 0.0 {
-    return f64::NAN;
-  }
-  for _ in 0..200 {
-    let mid = 0.5 * (lo + hi);
-    let f_mid = delta(mid, forward, sigma, tau, r_f, option_type, convention) - target_delta;
-    if f_mid.abs() < 1e-12 || (hi - lo) / mid < 1e-12 {
-      return mid;
-    }
-    if f_lo * f_mid < 0.0 {
-      hi = mid;
-      f_hi = f_mid;
-    } else {
-      lo = mid;
-      f_lo = f_mid;
-    }
-    let _ = f_hi;
-  }
-  0.5 * (lo + hi)
+  let gap = |k: f64| delta(k, forward, sigma, tau, r_f, option_type, convention) - target_delta;
+  brent::zero(lo, hi, f64::MIN_POSITIVE, gap).unwrap_or(f64::NAN)
 }
 
 #[cfg(test)]
@@ -314,6 +294,22 @@ mod tests {
       FxDeltaConvention::SpotPremiumAdjusted,
     );
     assert!((d - 0.25).abs() < 5e-7, "round-trip Δ={d}");
+  }
+
+  #[test]
+  fn a_premium_adjusted_delta_no_strike_reaches_is_nan() {
+    for target in [f64::NAN, 0.6] {
+      let k = strike_from_delta(
+        target,
+        F,
+        SIGMA,
+        TAU,
+        R_F,
+        OptionType::Call,
+        FxDeltaConvention::SpotPremiumAdjusted,
+      );
+      assert!(k.is_nan(), "target {target} gave strike {k}");
+    }
   }
 
   #[test]
