@@ -181,7 +181,7 @@ print(pricer.implied_volatility(call, "call"))   # 20.0: the normal vol round-tr
 
 ### Swaption calibration of the tree short-rate models
 
-Black–Karasinski and G2++ have no closed-form European swaption price, so `BlackKarasinskiSwaptionCalibrator` and `G2ppSwaptionCalibrator` reprice the quote grid on the crate's trinomial trees: each quote becomes a one-exercise swaption snapped to the tree levels and priced on a tree rebuilt per parameter trial, against the same Black-76 at-the-money-forward market price the Hull–White calibrator uses, with Nelder–Mead on the squared price residuals. Both results implement `ToShortRateModel`, so a calibrated `(a, σ)` or `(a, b, σ, η, ρ)` drops straight into the lattice instruments (Brigo & Mercurio §3.5, §4.2, Ch. 13).
+Black–Karasinski and G2++ have no closed-form European swaption price, so `BlackKarasinskiSwaptionCalibrator` and `G2ppSwaptionCalibrator` reprice the quote grid on the crate's trinomial trees: each quote becomes a one-exercise swaption snapped to the tree levels and priced on a tree rebuilt per parameter trial, against the same Black-76 at-the-money-forward market price the Hull–White calibrator uses, with Nelder–Mead on the squared price residuals. The tree inputs the fit prices on (Black–Karasinski's initial and long-run rates, the G2++ shift φ) ride in the parameters, so both fits implement `ToShortRateModel` and a calibrated `(a, σ)` or `(a, b, σ, η, ρ)` drops straight into the lattice instruments (Brigo & Mercurio §3.5, §4.2, Ch. 13).
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -205,7 +205,7 @@ print(g2.calibrate())                                    # (a, b, sigma, eta, rh
 </Tab>
 </Tabs>
 
-For these three swaption calibrators and `SabrCapletCalibrator`, `converged` means the sample standard deviation of the simplex objective values fell below `sd_tolerance`; reaching `max_iters` or meeting nonfinite simplex costs returns `false` with the best parameters found. Check both `converged` and `rmse` before using a fit. The SABR caplet Python tuple is `(alpha, beta, nu, rho, rmse, converged)`.
+For these three swaption calibrators and `SabrCapletCalibrator`, `converged` means the sample standard deviation of the simplex objective values fell below the tolerance (`CalibrationOptions::tolerance`, 1e-10 by default; the caplet's `sd_tolerance`); reaching the iteration cap or meeting nonfinite simplex costs returns `false` with the best parameters found. Check both `converged` and `rmse` before using a fit. The SABR caplet Python tuple is `(alpha, beta, nu, rho, rmse, converged)`.
 
 ### eSSVI slices with arbitrage-free interpolation
 

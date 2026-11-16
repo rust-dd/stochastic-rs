@@ -271,8 +271,14 @@ impl SabrCapletCalibrator {
       vec![a0, nu0, (rho0 + 0.2).clamp(-0.99, 0.99)],
     ];
 
-    let (best, converged, _) =
-      run_nelder_mead(problem.clone(), simplex, self.max_iters, self.sd_tolerance);
+    let run = run_nelder_mead(
+      problem.clone(),
+      simplex,
+      self.max_iters,
+      self.sd_tolerance,
+      false,
+    );
+    let (best, converged) = (run.best, run.converged);
 
     let alpha = best[0].abs().max(1e-8);
     let nu = best[1].abs().max(1e-8);

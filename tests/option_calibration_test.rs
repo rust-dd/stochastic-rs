@@ -47,6 +47,7 @@ fn cms_caplet_produces_finite_positive_price() {
 
 #[test]
 fn hw_calibration_recovers_self_consistent_params() {
+  use stochastic_rs::quant::calibration::HullWhiteParams;
   use stochastic_rs::quant::calibration::HullWhiteSwaptionCalibrator;
   use stochastic_rs::quant::calibration::SwaptionQuote;
   use stochastic_rs::traits::Calibrator;
@@ -99,27 +100,25 @@ fn hw_calibration_recovers_self_consistent_params() {
     });
   }
 
-  let calibrator = HullWhiteSwaptionCalibrator {
-    quotes: &quotes,
-    curve: &curve,
-    notional: 1.0,
+  let start = HullWhiteParams {
+    mean_reversion: 0.03,
+    sigma: 0.008,
     initial_rate: 0.03,
     theta: 0.03,
-    initial_guess: Some((0.03, 0.008)),
-    max_iters: 400,
-    sd_tolerance: 1e-10,
-    regularization: None,
   };
-  let result = calibrator.calibrate(None).unwrap();
+  let fit = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, start)
+    .calibrate(None)
+    .unwrap()
+    .params;
   assert!(
-    (result.mean_reversion - target_a).abs() < 0.02,
+    (fit.mean_reversion - target_a).abs() < 0.02,
     "a recovery: got {}, target {target_a}",
-    result.mean_reversion
+    fit.mean_reversion
   );
   assert!(
-    (result.sigma - target_sigma).abs() < 0.005,
+    (fit.sigma - target_sigma).abs() < 0.005,
     "sigma recovery: got {}, target {target_sigma}",
-    result.sigma
+    fit.sigma
   );
 }
 

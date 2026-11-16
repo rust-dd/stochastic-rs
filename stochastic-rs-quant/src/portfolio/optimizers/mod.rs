@@ -25,7 +25,7 @@ pub(super) fn run_nelder_mead<P>(
 where
   P: CostFunction<Param = Vec<f64>, Output = f64, Error = Infallible>,
 {
-  crate::calibration::run_nelder_mead(problem, simplex, max_iters, sd_tolerance).0
+  crate::calibration::run_nelder_mead(problem, simplex, max_iters, sd_tolerance, false).best
 }
 
 pub use cvar::empirical_cvar;

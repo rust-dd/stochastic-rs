@@ -155,3 +155,76 @@ fn the_calibration_core_types_have_the_unified_shape() {
     Err(QuantError::InvalidQuote { index: 2, .. })
   ));
 }
+
+#[test]
+fn the_tree_calibrators_carry_their_fixed_inputs_in_params() {
+  use stochastic_rs_quant::calibration::CalibrationOptions;
+  use stochastic_rs_quant::calibration::hw_swaption::HullWhiteParams;
+  use stochastic_rs_quant::calibration::hw_swaption::HullWhiteSwaptionCalibrator;
+  use stochastic_rs_quant::calibration::hw_swaption::SwaptionQuote;
+  use stochastic_rs_quant::calibration::tree_swaption::BlackKarasinskiParams;
+  use stochastic_rs_quant::calibration::tree_swaption::BlackKarasinskiSwaptionCalibrator;
+  use stochastic_rs_quant::calibration::tree_swaption::G2ppSwaptionCalibrator;
+  use stochastic_rs_quant::curves::DiscountCurve;
+  use stochastic_rs_quant::curves::InterpolationMethod;
+  use stochastic_rs_quant::instruments::option::types::SwaptionDirection;
+  use stochastic_rs_quant::traits::CalibrationResult;
+  use stochastic_rs_quant::traits::ToShortRateModel;
+  fn assert_send_sync<T: Send + Sync>() {}
+  assert_send_sync::<HullWhiteSwaptionCalibrator<'static>>();
+  assert_send_sync::<BlackKarasinskiSwaptionCalibrator<'static>>();
+  assert_send_sync::<G2ppSwaptionCalibrator<'static>>();
+  let curve = DiscountCurve::from_zero_rates(
+    &Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]),
+    &Array1::from_vec(vec![0.03; 4]),
+    InterpolationMethod::LogLinearOnDiscountFactors,
+  );
+  let quotes =
+    [(1.0, 2.0, 0.22), (2.0, 2.0, 0.20)].map(|(expiry, tenor, black_vol)| SwaptionQuote {
+      expiry,
+      tenor,
+      black_vol,
+      fixed_accrual: 0.5,
+      direction: SwaptionDirection::Payer,
+      weight: None,
+    });
+  let start = HullWhiteParams {
+    mean_reversion: 0.05,
+    sigma: 0.01,
+    initial_rate: 0.03,
+    theta: 0.03,
+  };
+  let fit = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, start)
+    .calibrate(None)
+    .unwrap();
+  assert!(fit.max_error.is_some() && fit.iterations.is_some() && fit.rmse().is_finite());
+  let model = fit.to_short_rate_model();
+  assert_eq!(model.initial_rate, 0.03);
+  assert_eq!(model.sigma, fit.params.sigma);
+  let other = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, start)
+    .calibrate(Some(HullWhiteParams {
+      initial_rate: 0.02,
+      ..start
+    }))
+    .unwrap();
+  assert_eq!(
+    other.params.initial_rate, 0.02,
+    "a guess replaces the tree inputs too"
+  );
+  let bk = BlackKarasinskiSwaptionCalibrator::new(
+    &quotes,
+    &curve,
+    1.0,
+    8,
+    BlackKarasinskiParams {
+      mean_reversion: 0.1,
+      sigma: 0.2,
+      initial_rate: 0.03,
+      long_run_rate: 0.03,
+    },
+  )
+  .with_options(CalibrationOptions::default().with_max_iterations(200))
+  .calibrate(None)
+  .unwrap();
+  assert_eq!(bk.to_short_rate_model().theta_log, 0.03_f64.ln());
+}

@@ -5,6 +5,7 @@ use stochastic_rs_distributions::RealExt;
 
 use crate::CalibrationLossScore;
 use crate::LossMetric;
+use crate::QuantError;
 use crate::calibration::Regularization;
 use crate::traits::CalibrationResult;
 
@@ -185,10 +186,13 @@ impl Default for CalibrationOptions {
 }
 
 impl CalibrationOptions {
-  /// Panics unless `n > 0`.
-  pub fn with_max_iterations(mut self, n: usize) -> Self {
-    assert!(n > 0, "n must satisfy `n > 0`, got n = {n:?}");
-    self.max_iterations = Some(n);
+  /// Panics unless `max_iterations > 0`.
+  pub fn with_max_iterations(mut self, max_iterations: usize) -> Self {
+    assert!(
+      max_iterations > 0,
+      "max_iterations must satisfy `max_iterations > 0`, got max_iterations = {max_iterations:?}"
+    );
+    self.max_iterations = Some(max_iterations);
     self
   }
 
@@ -225,6 +229,21 @@ impl CalibrationOptions {
   pub fn with_regularization(mut self, regularization: Regularization) -> Self {
     self.regularization = Some(regularization);
     self
+  }
+
+  /// `DimensionMismatch` unless the regularization pulls the calibrator's `dimension` parameters.
+  pub(crate) fn regularization_for(
+    &self,
+    dimension: usize,
+  ) -> Result<Option<Regularization>, QuantError> {
+    match &self.regularization {
+      Some(reg) if reg.dimension() != dimension => Err(QuantError::DimensionMismatch {
+        what: "regularization anchors",
+        expected: dimension,
+        got: reg.dimension(),
+      }),
+      reg => Ok(reg.clone()),
+    }
   }
 }
 
@@ -272,7 +291,9 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "n must satisfy `n > 0`, got n = 0")]
+  #[should_panic(
+    expected = "max_iterations must satisfy `max_iterations > 0`, got max_iterations = 0"
+  )]
   fn a_zero_iteration_cap_panics() {
     let _ = CalibrationOptions::default().with_max_iterations(0);
   }

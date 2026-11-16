@@ -2,6 +2,8 @@
 //! Backs the tree swaption calibration example on the quant catalog page.
 
 use ndarray::Array1;
+use stochastic_rs::quant::LossMetric;
+use stochastic_rs::quant::calibration::CalibrationOptions;
 use stochastic_rs::quant::calibration::hw_swaption::SwaptionQuote;
 use stochastic_rs::quant::calibration::tree_swaption::BlackKarasinskiParams;
 use stochastic_rs::quant::calibration::tree_swaption::BlackKarasinskiSwaptionCalibrator;
@@ -30,21 +32,23 @@ fn black_karasinski_fits_a_small_swaption_grid() {
   let quotes = [quote(1.0, 2.0, 0.22), quote(2.0, 2.0, 0.20)];
 
   // (a, σ) of the log-rate, repriced on the Black–Karasinski tree at 8 levels per year.
-  let calibrator =
-    BlackKarasinskiSwaptionCalibrator::new(&quotes, &curve, 1.0, 0.03, 0.03, 8).with_max_iters(200);
   let start = BlackKarasinskiParams {
     mean_reversion: 0.1,
     sigma: 0.2,
+    initial_rate: 0.03,
+    long_run_rate: 0.03,
   };
-  let result = calibrator.calibrate(Some(start)).unwrap();
-  let scale = result.market_prices.iter().sum::<f64>() / 2.0;
+  let fit = BlackKarasinskiSwaptionCalibrator::new(&quotes, &curve, 1.0, 8, start)
+    .with_options(CalibrationOptions::default().with_max_iterations(200))
+    .calibrate(None)
+    .unwrap();
+  let mape = fit.loss.get(LossMetric::Mape);
   assert!(
-    result.rmse / scale < 0.05,
-    "relative rmse {}",
-    result.rmse / scale
+    mape < 5.0,
+    "mean absolute error {mape} % of the market price"
   );
 
   // The result plugs straight into the lattice pipeline through `ToShortRateModel`.
-  let model = result.to_short_rate_model();
-  assert_eq!(model.sigma, result.sigma);
+  let model = fit.to_short_rate_model();
+  assert_eq!(model.sigma, fit.params.sigma);
 }

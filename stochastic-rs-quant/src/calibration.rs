@@ -12,9 +12,14 @@ use basin::CostFunction;
 use basin::Executor;
 use basin::NelderMead;
 use basin::SimplexState;
+use basin::State;
+use basin::StepOutcome;
 use basin::TerminationReason;
 use gauss_quad::GaussLegendre;
+use ndarray::Array1;
 use stochastic_rs_distributions::RealExt;
+
+use crate::CalibrationLossScore;
 
 /// Preserves the existing sample-standard-deviation stopping rule for simplex fits.
 pub(crate) struct SimplexStandardDeviation {
@@ -55,13 +60,22 @@ fn sample_standard_deviation(values: &[f64]) -> Option<f64> {
   sd.is_finite().then_some(sd)
 }
 
-/// The best vertex, whether the simplex spread fell below `sd_tolerance`, and the iterations run.
+pub(crate) struct SimplexRun {
+  pub(crate) best: Vec<f64>,
+  /// The simplex spread fell below its tolerance.
+  pub(crate) converged: bool,
+  pub(crate) iterations: u64,
+  /// The best vertex at the start and after each iteration; empty unless recorded.
+  pub(crate) trail: Vec<Vec<f64>>,
+}
+
 pub(crate) fn run_nelder_mead<P>(
   problem: P,
   simplex: Vec<Vec<f64>>,
   max_iters: u64,
   sd_tolerance: f64,
-) -> (Vec<f64>, bool, u64)
+  record: bool,
+) -> SimplexRun
 where
   P: CostFunction<Param = Vec<f64>, Output = f64, Error = Infallible>,
 {
@@ -69,21 +83,80 @@ where
     simplex.len() >= 2,
     "simplex must contain at least two vertices"
   );
-  let fallback = simplex[0].clone();
   let Some(criterion) = SimplexStandardDeviation::new(sd_tolerance) else {
-    return (fallback, false, 0);
+    let best = simplex[0].clone();
+    let trail = if record {
+      vec![best.clone()]
+    } else {
+      Vec::new()
+    };
+    return SimplexRun {
+      best,
+      converged: false,
+      iterations: 0,
+      trail,
+    };
   };
   let state = BasicSimplexState::from_simplex(simplex);
-  let result = Executor::new(problem, NelderMead::new(), state)
+  let mut stepper = Executor::new(problem, NelderMead::new(), state)
     .max_iter(max_iters)
     .stop_when(move |state| criterion.check(state))
-    .run()
+    .into_stepper()
     .expect("calibration objective is infallible");
-  (
-    result.best_param().clone(),
-    result.reason == TerminationReason::SimplexTolerance,
-    result.iter(),
-  )
+  let mut trail = Vec::new();
+  let reason = loop {
+    if record {
+      trail.push(stepper.state().best_param().clone());
+    }
+    if let StepOutcome::Stopped(reason) =
+      stepper.step().expect("calibration objective is infallible")
+    {
+      break reason;
+    }
+  };
+  let state = stepper.state();
+  SimplexRun {
+    best: state.best_param().clone(),
+    converged: reason == TerminationReason::SimplexTolerance,
+    iterations: state.iter(),
+    trail,
+  }
+}
+
+/// A Nelder–Mead fit as a [`Calibrated`]; `price` maps a vertex to its parameters and its model
+/// and market prices, for the best vertex and, when history is recorded, each one in the trail.
+pub(crate) fn nelder_mead_fit<C, P>(
+  cost: C,
+  simplex: Vec<Vec<f64>>,
+  options: &CalibrationOptions,
+  default_max_iterations: usize,
+  price: impl Fn(&[f64]) -> (P, Vec<f64>, Vec<f64>),
+) -> Calibrated<P>
+where
+  C: CostFunction<Param = Vec<f64>, Output = f64, Error = Infallible>,
+{
+  let run = run_nelder_mead(
+    cost,
+    simplex,
+    options.max_iterations.unwrap_or(default_max_iterations) as u64,
+    options.tolerance.unwrap_or(1e-10),
+    options.record_history,
+  );
+  let history = run
+    .trail
+    .iter()
+    .enumerate()
+    .map(|(iteration, vertex)| {
+      let (params, model, market) = price(vertex);
+      let residuals = Array1::from_iter(market.iter().zip(&model).map(|(q, m)| q - m));
+      let loss = CalibrationLossScore::compute_selected(&market, &model, options.loss_metrics);
+      CalibrationHistory::new(iteration, params, residuals, loss)
+    })
+    .collect();
+  let (params, model, market) = price(&run.best);
+  Calibrated::repriced(params, &market, &model, options.loss_metrics, run.converged)
+    .with_iterations(run.iterations as usize)
+    .with_history(history)
 }
 
 pub mod bsm;
@@ -130,7 +203,6 @@ pub use heston_stoch_corr::calibrate_hscm;
 pub use hkde::HkdeCalibrationResult;
 pub use hkde::HkdeCalibrator;
 pub use hkde::HkdeParams;
-pub use hw_swaption::HullWhiteCalibrationResult;
 pub use hw_swaption::HullWhiteParams;
 pub use hw_swaption::HullWhiteSwaptionCalibrator;
 pub use hw_swaption::SwaptionQuote;
@@ -148,10 +220,8 @@ pub use sabr_caplet::SabrCapletParams;
 pub use svj::SvjCalibrationResult;
 pub use svj::SvjCalibrator;
 pub use svj::SvjParams;
-pub use tree_swaption::BlackKarasinskiCalibrationResult;
 pub use tree_swaption::BlackKarasinskiParams;
 pub use tree_swaption::BlackKarasinskiSwaptionCalibrator;
-pub use tree_swaption::G2ppCalibrationResult;
 pub use tree_swaption::G2ppParams;
 pub use tree_swaption::G2ppSwaptionCalibrator;
 
@@ -295,7 +365,7 @@ mod optimizer_tests {
   #[test]
   #[should_panic(expected = "simplex must contain at least two vertices")]
   fn empty_simplex_has_an_explicit_precondition() {
-    run_nelder_mead(Sphere, vec![], 100, 1e-10);
+    run_nelder_mead(Sphere, vec![], 100, 1e-10, false);
   }
 
   #[test]
@@ -303,10 +373,10 @@ mod optimizer_tests {
     let initial = vec![2.0];
     for tolerance in [-1.0, f64::NAN, f64::INFINITY] {
       let simplex = vec![initial.clone(), vec![3.0]];
-      let (best, converged, iterations) = run_nelder_mead(Sphere, simplex, 100, tolerance);
-      assert_eq!(best, initial);
-      assert!(!converged);
-      assert_eq!(iterations, 0);
+      let run = run_nelder_mead(Sphere, simplex, 100, tolerance, true);
+      assert_eq!(run.best, initial);
+      assert!(!run.converged);
+      assert_eq!((run.iterations, run.trail), (0, vec![initial.clone()]));
     }
   }
 
@@ -314,21 +384,24 @@ mod optimizer_tests {
   fn a_converged_run_reports_the_iterations_it_took() {
     let simplex = vec![vec![2.0], vec![3.0]];
 
-    let (best, converged, iterations) = run_nelder_mead(Sphere, simplex.clone(), 400, 1e-10);
-    let (_, _, capped) = run_nelder_mead(Sphere, simplex, iterations - 1, 1e-10);
+    let run = run_nelder_mead(Sphere, simplex.clone(), 400, 1e-10, true);
+    let capped = run_nelder_mead(Sphere, simplex, run.iterations - 1, 1e-10, false);
 
-    assert!(converged && best[0].abs() < 1e-4 && iterations > 1);
-    assert_eq!(capped, iterations - 1);
+    assert!(run.converged && run.best[0].abs() < 1e-4 && run.iterations > 1);
+    assert_eq!(capped.iterations, run.iterations - 1);
+    assert!(capped.trail.is_empty());
+    assert_eq!(run.trail.len() as u64, run.iterations + 1);
+    assert_eq!(run.trail.last(), Some(&run.best));
   }
 
   #[test]
   fn iteration_limit_is_not_reported_as_convergence() {
     let simplex = vec![vec![2.0], vec![3.0]];
 
-    let (_, converged, iterations) = run_nelder_mead(Sphere, simplex, 0, 1e-10);
+    let run = run_nelder_mead(Sphere, simplex, 0, 1e-10, false);
 
-    assert!(!converged);
-    assert_eq!(iterations, 0);
+    assert!(!run.converged);
+    assert_eq!(run.iterations, 0);
   }
 
   #[test]
