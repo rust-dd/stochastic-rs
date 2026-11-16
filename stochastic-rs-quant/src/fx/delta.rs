@@ -112,14 +112,14 @@ pub fn strike_from_delta(
   match convention {
     FxDeltaConvention::Spot | FxDeltaConvention::Forward => unadjusted,
     FxDeltaConvention::SpotPremiumAdjusted | FxDeltaConvention::ForwardPremiumAdjusted => {
-      // A call quote means the root past the delta's peak, below the unadjusted strike; the put
-      // delta is monotonic below F. A negligible `t` leaves the relative `6 macheps K`.
+      // A call quote means the root past the delta's peak, a put's the root of a monotonic delta;
+      // either lies at or below the unadjusted strike. A negligible `t` leaves `6 macheps K`.
       // Reiswich & Wystup (2010), "FX Volatility Smile Construction", CPQF Working Paper 20, §1.5.
+      let gap = |k: f64| delta(k, forward, sigma, tau, r_f, option_type, convention) - target_delta;
       let (lo, hi) = match option_type {
         OptionType::Call => (peak_strike(forward, sigma * tau.sqrt()), unadjusted),
-        OptionType::Put => (forward * 1e-4, forward),
+        OptionType::Put => put_bracket(gap, forward, -target_delta / df, unadjusted),
       };
-      let gap = |k: f64| delta(k, forward, sigma, tau, r_f, option_type, convention) - target_delta;
       brent::zero(lo, hi, f64::MIN_POSITIVE, gap).unwrap_or(f64::NAN)
     }
   }
@@ -155,6 +155,26 @@ fn unadjusted_strike(
   }
   let d1 = sign * ndtri(p);
   forward * (-d1 * sigma * tau.sqrt() + 0.5 * sigma * sigma * tau).exp()
+}
+
+/// `[1e-4 F, F]` widened to the put root at |Δ| = df·size: Φ(−d₂) ≤ 1 puts it above `size·F`,
+/// and past `F`, where Φ(−d₂) > ½, below `2·size·F`; NaN ends unless `size` is finite and positive.
+fn put_bracket(gap: impl Fn(f64) -> f64, forward: f64, size: f64, unadjusted: f64) -> (f64, f64) {
+  if !(size > 0.0 && size.is_finite()) {
+    return (f64::NAN, f64::NAN);
+  }
+  let (lo, hi) = (forward * 1e-4, forward);
+  let lo = if gap(lo) < 0.0 { size * forward } else { lo };
+  let hi = if gap(hi) > 0.0 {
+    if unadjusted.is_finite() {
+      unadjusted
+    } else {
+      (2.0 * size * forward).max_or_nan(forward)
+    }
+  } else {
+    hi
+  };
+  (lo, hi)
 }
 
 /// Where the premium-adjusted call delta peaks: `d₂` solves `s·Φ(d₂) = φ(d₂)`, `s = σ√τ`.
@@ -296,18 +316,40 @@ mod tests {
 
   #[test]
   fn a_premium_adjusted_delta_no_strike_reaches_is_nan() {
-    // The delta peaks at 0.838660, at 0.9609 F.
-    for target in [f64::NAN, 0.9] {
-      let k = strike_from_delta(
-        target,
-        F,
-        SIGMA,
-        TAU,
-        R_F,
-        OptionType::Call,
-        FxDeltaConvention::SpotPremiumAdjusted,
+    // The call delta peaks at 0.838660, at 0.9609 F; a put delta spans (−∞, 0).
+    let cases = [
+      (OptionType::Call, f64::NAN),
+      (OptionType::Call, 0.9),
+      (OptionType::Put, 0.0),
+      (OptionType::Put, 0.25),
+    ];
+    for (option_type, target) in cases {
+      let convention = FxDeltaConvention::SpotPremiumAdjusted;
+      let k = strike_from_delta(target, F, SIGMA, TAU, R_F, option_type, convention);
+      assert!(k.is_nan(), "{option_type:?} {target} gave strike {k}");
+    }
+  }
+
+  #[test]
+  fn a_premium_adjusted_put_past_the_old_bracket_lands_on_mpmaths_root() {
+    // Above F, past |Δ| = e^{−r_f τ} where no unadjusted strike exists, and below 1e-4 F.
+    let (spot, fwd) = (
+      FxDeltaConvention::SpotPremiumAdjusted,
+      FxDeltaConvention::ForwardPremiumAdjusted,
+    );
+    let cases = [
+      (spot, -0.5, 0.05, 2.0, 0.05, 1.106_878_827_973_364_6),
+      (fwd, -0.6, SIGMA, TAU, R_F, 1.115_399_232_640_695_6),
+      (spot, -0.95, 0.05, 2.0, 0.05, 1.226_156_765_759_724_3),
+      (fwd, -1.2, SIGMA, TAU, R_F, 1.325_057_580_390_09),
+      (fwd, -1e-5, 2.0, 4.0, R_F, 3.846_795_694_774_183e-5),
+    ];
+    for (convention, target, sigma, tau, r_f, exact) in cases {
+      let k = strike_from_delta(target, F, sigma, tau, r_f, OptionType::Put, convention);
+      assert!(
+        (k - exact).abs() <= 2e-15 * exact,
+        "{convention:?} {target}: {k} vs {exact}"
       );
-      assert!(k.is_nan(), "target {target} gave strike {k}");
     }
   }
 
