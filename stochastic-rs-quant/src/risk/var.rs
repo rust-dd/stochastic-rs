@@ -147,10 +147,24 @@ fn empirical_var<T: RealExt>(
   what: &'static str,
 ) -> Result<T, QuantError> {
   assert_confidence(confidence);
-  validate_samples(samples, what, 1)?;
+  let sorted = sorted_losses(samples, orientation, what)?;
+  Ok(sample_quantile(&sorted, confidence))
+}
+
+/// The losses sorted by [`ascending`], which puts NaN last and ±∞ at the ends, so the samples are
+/// scanned for a non-finite one only when an end is not finite.
+pub(crate) fn sorted_losses<T: RealExt>(
+  samples: ArrayView1<T>,
+  orientation: PnlOrLoss,
+  what: &'static str,
+) -> Result<Vec<T>, QuantError> {
   let mut sorted = losses_from_samples(samples, orientation).to_vec();
   sorted.sort_by(ascending);
-  Ok(sample_quantile(&sorted, confidence))
+  let finite = |end: Option<&T>| end.is_some_and(|v| v.is_finite());
+  if !(finite(sorted.first()) && finite(sorted.last())) {
+    validate_samples(samples, what, 1)?;
+  }
+  Ok(sorted)
 }
 
 /// `InsufficientData` below `needed` samples, `InvalidInput` naming the first non-finite one.

@@ -21,13 +21,11 @@ use stochastic_rs_distributions::special::norm_pdf;
 
 use super::var::PnlOrLoss;
 use super::var::VarMethod;
-use super::var::ascending;
 use super::var::assert_confidence;
 use super::var::gaussian_var;
 use super::var::loss_moments;
-use super::var::losses_from_samples;
 use super::var::sample_quantile;
-use super::var::validate_samples;
+use super::var::sorted_losses;
 use crate::QuantError;
 use crate::traits::RealExt;
 
@@ -110,9 +108,7 @@ fn tail_es<T: RealExt>(
   what: &'static str,
 ) -> Result<T, QuantError> {
   assert_confidence(confidence);
-  validate_samples(samples, what, 1)?;
-  let mut sorted = losses_from_samples(samples, orientation).to_vec();
-  sorted.sort_by(ascending);
+  let sorted = sorted_losses(samples, orientation, what)?;
   let n = sorted.len();
   let var = sample_quantile(&sorted, confidence);
   let confidence_f64 = confidence.to_f64().unwrap_or(0.0);
