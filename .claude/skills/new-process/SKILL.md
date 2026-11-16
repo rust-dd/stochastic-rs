@@ -82,11 +82,9 @@ Then the backend switch from `src/macros.rs`. `backend_switch!` generates `on::<
 | Arm | Bound | Storage | Use when | Uses (snapshot) |
 |---|---|---|---|---|
 | `via euler` | `EulerBackend<T>` | `backend: B` | the process declares a family | 119 |
-| `via host` | `HostBackend` | `backend: B` | host only (see last section) | 0 |
 | `via sheet` | `SheetBackend<T>` | `backend: B` | a two-dimensional field through the sheet pipeline (`Fbs`) | 1 |
 | `via fgn euler` | `FgnBackend<T> + EulerBackend<T>` | `fgn: Fgn<_, _, B>` | fractional **and** on the engine | 10 |
 | `via phantom` | `FgnBackend<T>` | `backend: B` | backend carried, not an engine process | 2 |
-| `via fgn` | `FgnBackend<T>` | `fgn: Fgn<_, _, B>` | fractional, not on the engine | 0 |
 
 Verify by diffing the brace list against the struct's `pub` fields. Never count arms
 with a one-line grep — a wrapped `backend_switch!` call is invisible to it.
@@ -521,9 +519,8 @@ how `Svcgmy`'s exact CIR step and `Wishart`'s squared Bessel draws run; **more t
 state slots or 4 noise components** (`Lmm` / `MultiGbm` / `Mcgns` above four, `Wishart`
 above `d = 2`).
 
-Before declaring a process host-only — the current list is whatever
-`grep -rln "via host" stochastic-rs-stochastic/src --include='*.rs'` returns, and it
-shrinks as the engine grows (empty today) — check the nine documented ways round the cap:
+Before declaring a process host-only — none is today, and `backend_switch!` keeps
+no host-only form — check the nine documented ways round the cap:
 
 1. **A launch view with a runtime cap** — pad a runtime `k` into the fixed
    four-slot family and fall back to the host above it (`MultiGbmLaunch`), or
@@ -558,7 +555,7 @@ shrinks as the engine grows (empty today) — check the nine documented ways rou
    uniform — so no `erf` enters the vocabulary.
 8. **A pipeline of its own** — a process whose sample is a transform rather
    than a recursion gets a capability trait beside `FgnBackend`
-   (`SheetBackend<T>` in `device.rs`), a `via sheet` switch arm, and one
+   (`SheetBackend<T>` in `device/sheet_backend.rs`), a `via sheet` switch arm, and one
    pipeline file per backend under its module (`sheet/fbs/{metal,cuda}.rs`)
    reusing the fGN pipeline's FFT stages, hash and bit reversal. The host
    devices route through the process's own sampler, so a fallback is

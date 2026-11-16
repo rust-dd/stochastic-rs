@@ -166,3 +166,31 @@ fn a_device_backed_process_takes_its_setters() {
     .with_points(128);
   assert_eq!((c.sigma, c.n), (0.3, 128));
 }
+
+/// One macro writes both device handles: the same constructors, the same one-byte budget floor.
+#[cfg(device_backend)]
+macro_rules! handle_surface {
+  ($test:ident, $handle:ident) => {
+    #[test]
+    fn $test() {
+      use stochastic_rs_stochastic::device::{DEFAULT_BATCH_BUDGET_BYTES, DeviceError, $handle};
+      let h = $handle::new(0).with_batch_budget(1 << 20);
+      assert_eq!((h.ordinal, h.batch_budget), (0, 1 << 20));
+      assert_eq!($handle::default().batch_budget, DEFAULT_BATCH_BUDGET_BYTES);
+      assert_eq!($handle::new(1).with_batch_budget(0).batch_budget, 1);
+      let _: &dyn Fn() -> Result<$handle, DeviceError> = &$handle::from_env;
+    }
+  };
+}
+
+#[cfg(metal_backend)]
+handle_surface!(
+  the_metal_handle_has_the_same_surface_as_the_cuda_handle,
+  Metal
+);
+
+#[cfg(feature = "cuda")]
+handle_surface!(
+  the_cuda_handle_has_the_same_surface_as_the_metal_handle,
+  Cuda
+);

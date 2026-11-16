@@ -42,14 +42,14 @@ const MAX_CHUNKS: usize = 64;
 /// exactly the defect this module fixes.
 ///
 /// `pub(crate)` rather than private: the `accelerate` feature's `Backend`
-/// impl (`device.rs`) reuses it verbatim for `Fgn`/`Fbm`'s own `sample_par`
+/// impl (`device/fgn_backend.rs`) reuses it verbatim for `Fgn`/`Fbm`'s own `sample_par`
 /// overrides on that backend, which bypass this trait to reach the batched
 /// backend path but must split `m` the same data-derived way to get the
 /// same thread-count-independence guarantee. The default `Cpu` backend
 /// does not reuse it — measurement showed grouping several paths per
 /// `MAX_CHUNKS`-capped chunk regressed wall time roughly 2× at `m = 1000`
 /// there, because each path's own FFT call is itself a nested rayon
-/// parallel region (see `device.rs`'s `Cpu::generate_batch` doc), so `Cpu`
+/// parallel region (see `device/fgn_backend.rs`'s `Cpu::generate_batch` doc), so `Cpu`
 /// instead derives one basis per **path**, uncapped.
 pub(crate) fn chunk_count(m: usize) -> usize {
   m.min(MAX_CHUNKS)

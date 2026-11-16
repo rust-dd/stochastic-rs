@@ -210,7 +210,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   /// over the caller's own seed strategy rather than `self.seed` — this is
   /// what lets [`FgnBackend::generate_batch`](crate::device::FgnBackend::generate_batch)
   /// drive the CPU-equivalent chunked, thread-count-independent path (see
-  /// `device.rs`'s `Accelerate` impl) instead of racing every chunk on the
+  /// `device/fgn_backend.rs`'s `Accelerate` impl) instead of racing every chunk on the
   /// same `self.seed` atomic inside the parallel region.
   pub(crate) fn sample_accelerate_impl<S2: SeedExt>(
     &self,
