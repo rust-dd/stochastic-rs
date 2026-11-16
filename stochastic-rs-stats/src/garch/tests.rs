@@ -408,6 +408,18 @@ fn rejects_constant_returns() {
   );
 }
 
+/// Returns of magnitude 1e-170 are not constant, but every squared deviation underflows to zero.
+#[test]
+fn an_underflowing_backcast_is_a_numerical_error() {
+  let r = Array1::from_iter((0..40).map(|t| if t % 2 == 0 { 1e-170 } else { -1e-170 }));
+  assert_eq!(
+    fit_garch(r.view(), GarchSpec::garch(1, 1)).unwrap_err(),
+    StatsError::Numerical {
+      stage: "backcast variance"
+    }
+  );
+}
+
 /// Returns of magnitude 1e155 have a finite spread whose square overflows.
 #[test]
 fn an_overflowing_backcast_is_a_numerical_error() {
