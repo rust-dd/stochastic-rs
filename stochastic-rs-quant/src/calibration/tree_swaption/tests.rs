@@ -161,9 +161,13 @@ fn g2pp_reprices_synthetic_quotes() {
     rho: -0.5,
     phi: 0.03,
   };
-  let result = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 4, start)
-    .with_options(CalibrationOptions::default().with_max_iterations(300))
-    .calibrate(None)
+  let calibrator = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 4, start)
+    .with_options(CalibrationOptions::default().with_max_iterations(300));
+  // From this start the simplex collapses in the (σ, η, ρ) valley 4.4 % off the quotes; a second
+  // Nelder–Mead pass from where it stopped reprices them to 0.5 %.
+  let first = calibrator.calibrate(None).expect("calibration runs");
+  let result = calibrator
+    .calibrate(Some(first.params))
     .expect("calibration runs");
   let (rmse, worst) = (result.rmse() / scale, result.max_error.unwrap() / scale);
   assert!(

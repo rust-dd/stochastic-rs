@@ -91,8 +91,8 @@ impl<T: RealExt> TwoFactorShortRateModel<T> for G2ppTreeModel<T> {
   }
 }
 
-/// G2++ two-factor tree: Gaussian OU factor trees coupled per step by a corner correction that
-/// keeps both marginals and matches ρ only until a corner clamps at 0 (at most |ρ| = 1/3).
+/// G2++ two-factor tree: OU factor trees coupled per step by Brigo–Mercurio's `ρ/36` pattern, which
+/// keeps both marginals and realises ρ, scaled down where a drifting branch leaves too little mass.
 #[derive(Debug, Clone)]
 pub struct G2ppTree<T: RealExt> {
   /// Underlying model.
@@ -184,5 +184,67 @@ impl<T: RealExt> G2ppTree<T> {
     }
 
     values[[0, 0]]
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use ndarray::Axis;
+
+  use super::*;
+
+  /// `Corr(x_T, y_T)` of the tree: the root's unit mass carried forward through the joint tables.
+  fn terminal_correlation(a: f64, b: f64, rho: f64, t: f64, steps: usize) -> f64 {
+    let tree = G2ppTree::new(
+      G2ppTreeModel::new(0.0, 0.0, 0.0, a, b, 1.0, 1.0, rho),
+      t,
+      steps,
+    );
+    let mut mass = Array2::from_elem((1, 1), 1.0);
+    for level in 0..steps {
+      let mut next = Array2::zeros((2 * level + 3, 2 * level + 3));
+      for ((ix, iy), &m) in mass.indexed_iter() {
+        let (bx, by) = (
+          tree.x_tree.branches[level][ix],
+          tree.y_tree.branches[level][iy],
+        );
+        let joint = correlated_joint_probabilities(bx, by, rho);
+        for (u, row) in joint.iter().enumerate() {
+          for (v, p) in row.iter().enumerate() {
+            next[[bx.center_index + u - 1, by.center_index + v - 1]] += m * p;
+          }
+        }
+      }
+      mass = next;
+    }
+    let (x, y) = (&tree.x_tree.states[steps], &tree.y_tree.states[steps]);
+    let (px, py) = (mass.sum_axis(Axis(1)), mass.sum_axis(Axis(0)));
+    let (mx, my) = (px.dot(x), py.dot(y));
+    let (dx, dy) = (x - mx, y - my);
+    let cov = dx.dot(&mass.dot(&dy));
+    cov / (px.dot(&(&dx * &dx)) * py.dot(&(&dy * &dy))).sqrt()
+  }
+
+  /// Auer (2009)'s `Corr_{x,y}(t)` of the two OU factors: within 0.05 and converging where `a ≠ b`.
+  #[test]
+  fn the_terminal_factor_correlation_converges_to_auers() {
+    for (a, b, rho, t, auer) in [
+      (0.5, 0.05, -0.7, 3.0, -0.655_250_231_639_761_1),
+      (0.05, 0.05, -0.9, 1.0, -0.9),
+      (0.5, 0.05, -0.7, 1.0, -0.694_215_295_961_855_3),
+    ] {
+      let coarse = terminal_correlation(a, b, rho, t, 30);
+      let fine = terminal_correlation(a, b, rho, t, 120);
+      assert!(
+        (fine - auer).abs() < 0.05,
+        "a {a} b {b} t {t}: {fine} vs {auer}"
+      );
+      if a != b {
+        assert!(
+          (fine - auer).abs() < (coarse - auer).abs(),
+          "{coarse} -> {fine} vs {auer}"
+        );
+      }
+    }
   }
 }

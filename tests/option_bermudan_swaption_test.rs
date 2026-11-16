@@ -178,6 +178,36 @@ fn g2pp_bermudan_matches_hw_when_second_factor_vanishes() {
   );
 }
 
+/// The 10-year Bermudan payer of `benches/option.rs` on its 60-step G2++ tree.
+fn bench_g2pp_bermudan(rho: f64) -> f64 {
+  let (horizon, steps) = (10.0_f64, 60_usize);
+  let dt = horizon / steps as f64;
+  let model = G2ppTreeModel::new(0.0_f64, 0.0, 0.04, 0.1, 0.5, 0.01, 0.005, rho);
+  let tree = G2ppTree::new(model, horizon, steps);
+  let coupon_levels = (6..=steps).step_by(6).collect::<Vec<_>>();
+  let accrual_factors = vec![dt * 6.0; coupon_levels.len()];
+  let coupon_schedule = TreeCouponSchedule::new(coupon_levels.clone(), accrual_factors);
+  let swpn = BermudanSwaption::new(
+    SwaptionDirection::Payer,
+    0.045,
+    1_000_000.0_f64,
+    ExerciseSchedule::new(coupon_levels),
+    coupon_schedule,
+  );
+  swpn.price_on_g2pp(&tree)
+}
+
+/// Pinned at the bench's ρ = −0.3; past |ρ| = 1/3 the price keeps falling with ρ, as the short
+/// rate's variance does.
+#[test]
+fn the_bench_g2pp_bermudan_is_pinned_and_keeps_falling_with_rho_past_a_third() {
+  let price = bench_g2pp_bermudan(-0.3);
+  let pinned = 6_640.288_119_153_042;
+  assert!((price - pinned).abs() < 1e-12 * pinned, "{price}");
+  let (lower, lowest) = (bench_g2pp_bermudan(-0.7), bench_g2pp_bermudan(-0.95));
+  assert!(lowest < lower && lower < price, "{lowest} {lower} {price}");
+}
+
 #[test]
 fn calendar_bermudan_matches_manual_levels() {
   let valuation = d(2024, 1, 15);
