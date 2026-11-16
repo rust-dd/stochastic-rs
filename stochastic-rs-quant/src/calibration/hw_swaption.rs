@@ -45,8 +45,8 @@ pub struct SwaptionQuote {
   pub weight: Option<f64>,
 }
 
-/// `InsufficientData` for no quote; `InvalidQuote` for a non-finite or non-positive expiry, tenor or
-/// accrual, a non-finite or negative volatility or weight, or a negative forward swap rate on `curve`.
+/// `InsufficientData` for no quote; `InvalidQuote` for an expiry, tenor or accrual not finite and
+/// `> 0`, a vol or weight not finite and `≥ 0`, or a negative forward swap rate on `curve`.
 pub(crate) fn validate_swaption_quotes(
   quotes: &[SwaptionQuote],
   curve: &DiscountCurve<f64>,
@@ -87,7 +87,7 @@ pub(crate) fn validate_swaption_quotes(
   Ok(())
 }
 
-/// The forward swap rate of a quote on the schedule both swaption pricers build; its sign is theirs.
+/// A quote's forward swap rate on the schedule both swaption pricers build; its sign is theirs.
 fn fair_rate(quote: &SwaptionQuote, curve: &DiscountCurve<f64>) -> f64 {
   let n_payments = ((quote.tenor * (1.0 / quote.fixed_accrual).round()).round() as usize).max(1);
   let accrual = quote.tenor / n_payments as f64;

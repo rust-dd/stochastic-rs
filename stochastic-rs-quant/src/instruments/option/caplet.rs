@@ -69,7 +69,7 @@ pub fn black_forward_floorlet<T: RealExt>(forward: T, strike: T, tau: T, sigma: 
   T::from_f64_fast(k * norm_cdf(-d2) - f * norm_cdf(-d1))
 }
 
-/// Bachelier caplet forward value at any sign of `F` and `K`; intrinsic at `τ` or `σ` ≤ 0; NaN for a
+/// Bachelier caplet forward value, any sign of `F` and `K`; intrinsic at `τ` or `σ` ≤ 0; NaN for a
 /// NaN rate or time and, while live, a NaN `σ`.
 pub fn bachelier_forward_caplet<T: RealExt>(forward: T, strike: T, tau: T, sigma: T) -> T {
   let f = forward.to_f64().unwrap_or(0.0);
