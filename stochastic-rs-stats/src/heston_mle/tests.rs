@@ -1,13 +1,134 @@
 use ndarray::Array1;
+use ndarray::ArrayView1;
+use ndarray::s;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use super::HestonMleFit;
 use super::fit_heston_nmle;
 use super::fit_heston_nmle_with_delta;
 use super::fit_heston_pmle;
 use super::fit_heston_pmle_with_delta;
 use crate::StatsError;
+
+type Fit = fn(ArrayView1<f64>, ArrayView1<f64>) -> Result<HestonMleFit, StatsError>;
+
+fn fits() -> [Fit; 4] {
+  [
+    |s, v| fit_heston_nmle(s, v, 0.01),
+    |s, v| fit_heston_nmle_with_delta(s, v, 0.01, 1.0 / 252.0),
+    |s, v| fit_heston_pmle(s, v, 0.01),
+    |s, v| fit_heston_pmle_with_delta(s, v, 0.01, 1.0 / 252.0),
+  ]
+}
+
+fn wiggly_prices(n: usize) -> Array1<f64> {
+  Array1::from_iter((0..n).map(|t| 100.0 + (t as f64 * 0.9).sin()))
+}
+
+/// Two drift coefficients fit three points exactly, and the closed forms divide by `V` and `ln S`.
+#[test]
+fn every_fit_needs_four_positive_points() {
+  let s = wiggly_prices(5);
+  let v = Array1::from(vec![0.04, 0.05, 0.045, 0.042, 0.047]);
+  let mut zero_variance = v.clone();
+  zero_variance[2] = 0.0;
+  let mut negative_price = s.clone();
+  negative_price[3] = -1.0;
+  for fit in fits() {
+    assert_eq!(
+      fit(s.slice(s![..3]), v.slice(s![..3])).unwrap_err(),
+      StatsError::InsufficientData { needed: 4, got: 3 }
+    );
+    assert_eq!(
+      fit(s.view(), zero_variance.view()).unwrap_err(),
+      StatsError::InvalidObservation {
+        index: 2,
+        value: 0.0,
+        constraint: "finite and > 0"
+      }
+    );
+    assert_eq!(
+      fit(negative_price.view(), v.view()).unwrap_err(),
+      StatsError::InvalidObservation {
+        index: 3,
+        value: -1.0,
+        constraint: "finite and > 0"
+      }
+    );
+  }
+}
+
+/// Both closed forms regress on the lagged variances `V_0..V_{n-1}`, equal here.
+#[test]
+fn a_constant_lagged_variance_is_degenerate_data() {
+  let v = Array1::from(vec![0.04, 0.04, 0.04, 0.04, 0.05]);
+  for fit in fits() {
+    assert_eq!(
+      fit(wiggly_prices(5).view(), v.view()).unwrap_err(),
+      StatsError::DegenerateData("constant variance series")
+    );
+  }
+}
+
+#[test]
+fn a_variance_path_without_mean_reversion_is_degenerate_data() {
+  let v = Array1::from_iter(
+    (0..40).map(|t| 0.02 * 1.03_f64.powi(t) * (1.0 + 0.02 * (t as f64 * 1.3).sin())),
+  );
+  for fit in fits() {
+    assert_eq!(
+      fit(wiggly_prices(40).view(), v.view()).unwrap_err(),
+      StatsError::DegenerateData("variance series without mean reversion")
+    );
+  }
+}
+
+/// A path decaying toward `-0.01` fits a mean reversion to a long-run variance below zero.
+#[test]
+fn a_non_positive_long_run_variance_is_degenerate_data() {
+  let v = Array1::from_iter(
+    (0..16).map(|t| 0.06 * 0.9_f64.powi(t) - 0.01 + 0.0002 * (t as f64 * 1.7).sin()),
+  );
+  for fit in fits() {
+    assert_eq!(
+      fit(wiggly_prices(16).view(), v.view()).unwrap_err(),
+      StatsError::DegenerateData("non-positive long-run variance")
+    );
+  }
+}
+
+/// At `κδ = 5e-7` the PMLE's `β̂₁` is in `(1 − 1e-6, 1)`, and `κ̂` is read off it, not off a bound.
+#[test]
+fn pmle_reads_kappa_off_a_persistence_near_one() {
+  let (n, delta) = (1000, 1e-6);
+  let a = (-0.5_f64 * delta).exp();
+  let mut noise = SimdNormal::<f64>::new(0.0, 1e-7).seeded(&Deterministic::new(3));
+  let mut v = Array1::<f64>::zeros(n);
+  v[0] = 100.0;
+  for t in 1..n {
+    v[t] = 0.04 + (v[t - 1] - 0.04) * a + noise.sample();
+  }
+  let s = Array1::from_elem(n, 100.0);
+  let fit = fit_heston_pmle_with_delta(s.view(), v.view(), 0.0, delta).unwrap();
+  assert!(fit.kappa < 0.99, "kappa = {}", fit.kappa);
+}
+
+/// A variance path on its own drift leaves residuals at rounding level, and `σ̂` is read off them.
+#[test]
+fn nmle_reads_a_rounding_level_sigma_off_its_residuals() {
+  let (n, delta, kappa, theta) = (64, 1.0 / 252.0, 2.0, 0.04);
+  let mut root = vec![0.25_f64; n];
+  for k in 1..n {
+    let lagged = root[k - 1] * root[k - 1];
+    root[k] = root[k - 1] + delta / (2.0 * root[k - 1]) * (kappa * theta - kappa * lagged);
+  }
+  let v = Array1::from_iter(root.iter().map(|r| r * r));
+  let s = Array1::from_elem(n, 100.0);
+  let fit = fit_heston_nmle_with_delta(s.view(), v.view(), 0.0, delta).unwrap();
+  assert!(fit.sigma < 1e-6, "sigma = {}", fit.sigma);
+}
 
 #[test]
 fn nmle_heston_rejects_mismatched_lengths() {
@@ -28,7 +149,7 @@ fn nmle_heston_rejects_a_short_series() {
   let v = Array1::from(vec![0.04]);
   assert_eq!(
     fit_heston_nmle(s.view(), v.view(), 0.01).unwrap_err(),
-    StatsError::InsufficientData { needed: 2, got: 1 }
+    StatsError::InsufficientData { needed: 4, got: 1 }
   );
 }
 
@@ -42,7 +163,7 @@ fn a_non_finite_or_constant_series_is_an_err() {
       StatsError::InvalidObservation {
         index: 1,
         value: f64::INFINITY,
-        constraint: "finite"
+        constraint: "finite and > 0"
       }
     );
     assert_eq!(

@@ -30,6 +30,17 @@ pub(crate) fn validate_view<T: FloatExt>(
   validate(&as_slice_or_copy(x), min_n)
 }
 
+/// [`validate_domain`] on a view, out of line as [`validate_view`].
+#[inline(never)]
+pub(crate) fn validate_view_domain<T: FloatExt>(
+  x: ArrayView1<'_, T>,
+  min_n: usize,
+  constraint: &'static str,
+  domain: impl Fn(T) -> bool,
+) -> Result<(), StatsError> {
+  validate_domain(&as_slice_or_copy(x), min_n, constraint, domain)
+}
+
 /// As [`validate`], each observation also inside `domain`; `constraint` names both conditions.
 pub(crate) fn validate_domain<T: FloatExt>(
   y: &[T],
