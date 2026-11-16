@@ -231,8 +231,8 @@ pub struct GarchFit {
   pub nobs: usize,
 }
 
-/// Gaussian QMLE of `spec` on `returns`; `Err` below 20 observations, on a non-finite one or zero
-/// variance, and panics unless `spec.p >= 1`. A singular Hessian gives NaN standard errors.
+/// Gaussian QMLE of `spec` on `returns` (NaN standard errors at a singular Hessian); `Err` below 20
+/// returns, on a non-finite one or a zero or overflowing variance, and panics unless `spec.p >= 1`.
 pub fn fit_garch<T: FloatExt>(
   returns: ArrayView1<T>,
   spec: GarchSpec,
@@ -247,8 +247,13 @@ pub fn fit_garch<T: FloatExt>(
   let n = r.len();
   let mean = r.iter().sum::<f64>() / n as f64;
   let backcast = r.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>() / n as f64;
-  if !(backcast > 0.0 && backcast.is_finite()) {
+  if backcast == 0.0 {
     return Err(StatsError::DegenerateData("zero-variance returns"));
+  }
+  if !backcast.is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "backcast variance",
+    });
   }
 
   let problem = Problem {

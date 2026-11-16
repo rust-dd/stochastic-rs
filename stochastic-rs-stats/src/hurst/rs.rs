@@ -81,20 +81,6 @@ impl RescaledRange {
 impl<T: FloatExt> HurstEstimator<T> for RescaledRange {
   fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError> {
     let n = x.len();
-    // The largest window, `max_window` or else `n / 4`, is capped at `n / 2` and must exceed
-    // `min_window`.
-    let per_window = if self.max_window.is_some() { 2 } else { 4 };
-    let min_required = self
-      .min_window
-      .saturating_add(1)
-      .saturating_mul(per_window)
-      .max(self.min_window.max(8).saturating_mul(2));
-    if n < min_required {
-      return Err(StatsError::InsufficientData {
-        needed: min_required,
-        got: n,
-      });
-    }
     if self.min_window < 4 {
       return Err(StatsError::InvalidParameter {
         name: "min_window",
@@ -109,7 +95,20 @@ impl<T: FloatExt> HurstEstimator<T> for RescaledRange {
         constraint: "n_windows >= 4",
       });
     }
-
+    // The largest window, `max_window` or else `n / 4`, is capped at `n / 2` and must exceed
+    // `min_window`.
+    let per_window = if self.max_window.is_some() { 2 } else { 4 };
+    let min_required = self
+      .min_window
+      .saturating_add(1)
+      .saturating_mul(per_window)
+      .max(self.min_window.max(8).saturating_mul(2));
+    if n < min_required {
+      return Err(StatsError::InsufficientData {
+        needed: min_required,
+        got: n,
+      });
+    }
     if let Some(max_window) = self.max_window
       && max_window <= self.min_window
     {
@@ -351,6 +350,35 @@ mod tests {
       HurstEstimator::<f64>::estimate(&at_min, long.view()),
       Err(StatsError::InvalidParameter {
         name: "max_window",
+        ..
+      })
+    ));
+  }
+
+  /// A bad window configuration is reported as such whatever the length, as in DFA.
+  #[test]
+  fn the_configuration_is_checked_before_the_length() {
+    let short = Array1::<f64>::linspace(0.0, 1.0, 10);
+    let narrow = RescaledRange {
+      min_window: 2,
+      ..RescaledRange::default()
+    };
+    assert_eq!(
+      HurstEstimator::<f64>::estimate(&narrow, short.view()).unwrap_err(),
+      StatsError::InvalidParameter {
+        name: "min_window",
+        value: 2.0,
+        constraint: "min_window >= 4"
+      }
+    );
+    let sparse = RescaledRange {
+      n_windows: 2,
+      ..RescaledRange::default()
+    };
+    assert!(matches!(
+      HurstEstimator::<f64>::estimate(&sparse, short.view()),
+      Err(StatsError::InvalidParameter {
+        name: "n_windows",
         ..
       })
     ));
