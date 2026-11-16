@@ -100,7 +100,6 @@ impl HestonCalibrator {
     self.weighted_residuals(&self.compute_model_prices_for(params))
   }
 
-  /// `(price − model) · weight` per quote.
   pub(super) fn weighted_residuals(&self, model: &Array1<f64>) -> Array1<f64> {
     Array1::from_iter(
       self

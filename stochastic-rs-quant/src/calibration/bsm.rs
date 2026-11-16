@@ -4,6 +4,8 @@
 //! C=S_0e^{(b-r)T}N(d_1)-Ke^{-rT}N(d_2),\quad d_{1,2}=\frac{\ln(S_0/K)+(b\pm\tfrac12\sigma^2)T}{\sigma\sqrt T}
 //! $$
 //!
+//! Merton (1973), Bell J. Econ. Manag. Sci. 4(1), 141–183, DOI 10.2307/3003143.
+
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_distributions::RealExt;
@@ -16,7 +18,6 @@ use crate::calibration::Calibrated;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::CalibrationOptions;
 use crate::calibration::least_squares::LeastSquaresProblem;
-use crate::calibration::least_squares::LmOptions;
 use crate::calibration::least_squares::minimize;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::check_finite_start;
@@ -141,15 +142,7 @@ impl crate::traits::Calibrator for BsmCalibrator {
       pending: None,
       ..self.clone()
     };
-    let (mut fitted, report) = minimize(
-      problem,
-      LmOptions {
-        tolerance: self.options.tolerance,
-        patience: self.options.patience,
-        pivoted_qr: false,
-        max_iterations: self.options.max_iterations,
-      },
-    );
+    let (mut fitted, report) = minimize(problem, self.options.lm(false));
     let params = fitted.effective_params();
     let pricer = BsmPricer::new(params.sigma, BsmCoc::Merton1973);
     let market = self

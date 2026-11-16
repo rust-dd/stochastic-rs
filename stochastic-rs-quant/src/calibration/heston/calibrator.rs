@@ -9,7 +9,6 @@ use crate::QuantError;
 use crate::calibration::Calibrated;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::CalibrationOptions;
-use crate::calibration::least_squares::LmOptions;
 use crate::calibration::least_squares::minimize;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::validate_quotes;
@@ -33,6 +32,7 @@ pub struct HestonMleSeed {
 
 /// Heston fit to vanilla quotes by Levenberg–Marquardt in logistic coordinates, with Cui et al.'s
 /// analytic Jacobian by default.
+/// Heston (1993), Rev. Financ. Stud. 6(2), 327–343, DOI 10.1093/rfs/6.2.327.
 /// Levenberg (1944), DOI 10.1090/qam/10666; Marquardt (1963), DOI 10.1137/0111030.
 #[derive(Clone, Debug)]
 pub struct HestonCalibrator {
@@ -217,15 +217,7 @@ impl crate::traits::Calibrator for HestonCalibrator {
     if problem.feller_projection {
       problem.feller_row_weight = Some(problem.feller_row_weight_at_start());
     }
-    let (mut fitted, report) = minimize(
-      problem,
-      LmOptions {
-        tolerance: self.options.tolerance,
-        patience: self.options.patience,
-        pivoted_qr: true,
-        max_iterations: self.options.max_iterations,
-      },
-    );
+    let (mut fitted, report) = minimize(problem, self.options.lm(true));
     let params = fitted.effective_params();
     let model = fitted.compute_model_prices_for(&params).to_vec();
     let market = self

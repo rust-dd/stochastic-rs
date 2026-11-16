@@ -7,6 +7,7 @@ use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::QuantError;
 use crate::calibration::Regularization;
+use crate::calibration::least_squares::LmOptions;
 use crate::traits::CalibrationResult;
 
 /// What every calibrator returns: the parameters, the fit, and the trail when history was recorded.
@@ -238,6 +239,15 @@ impl CalibrationOptions {
   pub fn with_regularization(mut self, regularization: Regularization) -> Self {
     self.regularization = Some(regularization);
     self
+  }
+
+  pub(crate) fn lm(&self, pivoted_qr: bool) -> LmOptions {
+    LmOptions {
+      tolerance: self.tolerance,
+      patience: self.patience,
+      pivoted_qr,
+      max_iterations: self.max_iterations,
+    }
   }
 
   /// `DimensionMismatch` unless the regularization pulls the calibrator's `dimension` parameters.

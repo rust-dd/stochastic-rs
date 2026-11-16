@@ -85,7 +85,7 @@ impl LmReport {
   }
 
   /// The fit as a `Calibrated`: loss and worst error of `model` against `market`, and this stop.
-  pub fn calibrated<P>(
+  pub(crate) fn calibrated<P>(
     &self,
     params: P,
     market: &[f64],

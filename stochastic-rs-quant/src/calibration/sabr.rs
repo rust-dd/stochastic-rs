@@ -18,7 +18,6 @@ use crate::calibration::CalibrationHistory;
 use crate::calibration::CalibrationOptions;
 use crate::calibration::Regularization;
 use crate::calibration::least_squares::LeastSquaresProblem;
-use crate::calibration::least_squares::LmOptions;
 use crate::calibration::least_squares::minimize;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::validate_quotes;
@@ -159,15 +158,7 @@ impl crate::traits::Calibrator for SabrCalibrator {
       history: Vec::new(),
       pending: None,
     };
-    let (problem, report) = minimize(
-      problem,
-      LmOptions {
-        tolerance: self.options.tolerance,
-        patience: self.options.patience,
-        pivoted_qr: false,
-        max_iterations: self.options.max_iterations,
-      },
-    );
+    let (problem, report) = minimize(problem, self.options.lm(false));
     let model = problem.model_prices(&problem.params);
     Ok(report.calibrated(
       problem.params,
