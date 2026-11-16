@@ -8,17 +8,17 @@ description: How to add a jump-diffusion / Lévy / compound-Poisson process to s
 A jump process in `stochastic-rs-stochastic` is parameterised by a
 **generic** jump-size distribution `D: rand::distr::Distribution<T> +
 Send + Sync`, keeping the jump kernel orthogonal from the diffusion.
-Compound-Poisson arrivals are handled by
-`crate::process::cpoisson::CompoundPoisson`, which the new process
-composes as a field.
+Its jumps are a private `crate::process::cpoisson::JumpDriver<D, S>`:
+the law and the seed the arrivals derive from, at the process's own
+`lambda`. It holds no `Poisson`, so a zero rate draws zero increments.
 
 Read `add-diffusion-process` first: a jump process is a diffusion
-process that additionally owns a `CompoundPoisson` field. The
+process that additionally owns a `JumpDriver` field. The
 `ProcessExt` contract, the `sampler()` / `PathSampler` split, and the
 `seed`-last constructor convention are identical and are documented
 there, not repeated here.
 
-## 1. The pattern: composition of `CompoundPoisson<T, D, S>`
+## 1. The pattern: a private `JumpDriver<D, S>`
 
 ```rust
 // stochastic-rs-stochastic/src/jump/merton.rs (reference)
@@ -29,9 +29,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
-use crate::params::Horizon;
-use crate::process::cpoisson::CompoundPoisson;
-use crate::process::poisson::Poisson;
+use crate::process::cpoisson::JumpDriver;
 use crate::traits::FloatExt;
 
 #[derive(Clone)]
@@ -42,12 +40,12 @@ where
 {
   pub alpha: T,          // log-price drift μ
   pub sigma: T,          // Brownian diffusion scale
-  pub lambda: T,         // jump intensity λ — the single source of truth
+  pub lambda: T,         // jump intensity λ — the one rate
   pub theta: T,          // jump-size compensator κ, NOT a mean-reversion level
   pub n: usize,
   pub x0: Option<T>,
   pub t: Option<T>,
-  pub cpoisson: CompoundPoisson<T, D, S>,
+  jumps: JumpDriver<D, S>,
   pub seed: S,
 }
 
@@ -62,12 +60,9 @@ where
     n: usize, x0: Option<T>, t: Option<T>,
     seed: S,                                   // <- seed is LAST
   ) -> Self {
-    let cpoisson = CompoundPoisson::new(
-      jump_dist,
-      Poisson::new(lambda, Horizon::Events(n), Unseeded),
-      seed.clone().derive(),                   // hash-mixed child of the same seed
-    );
-    Self { alpha, sigma, lambda, theta, n, x0, t, cpoisson, seed }
+    // asserts: every float finite, `lambda >= T::zero()`, `n >= 2`, ...
+    let jumps = JumpDriver::new(jump_dist, &seed); // the arrivals' seed: a child of `seed`
+    Self { alpha, sigma, lambda, theta, n, x0, t, jumps, seed }
   }
 }
 ```
@@ -77,31 +72,26 @@ Three constructor facts:
 - **`seed: S` is the last parameter**, and the caller supplies the jump
   *distribution* and *intensity* directly. There is no `seeded(...)`
   constructor — that shape is pre-3.0 and gone.
-- **The jump driver is built internally** from `seed.clone().derive()`.
-  Do not ask the caller to thread a third, independent seed.
-- **`CompoundPoisson::new(distribution, poisson, seed)`** takes exactly
-  three arguments in that order — the jump-size distribution, a
-  fully-built `Poisson<T>`, and the seed source. `Poisson::new(lambda,
-  horizon, seed)` takes a `Horizon`: the origin and `n` arrivals after it
-  for `Events(n)`, or every arrival before `Until(t_max)`.
+- **The jump driver is built internally** by `JumpDriver::new(law, &seed)`,
+  which takes `seed.clone().derive()`. Do not ask the caller to thread a
+  third, independent seed.
+- **`lambda >= 0`.** A zero rate is the diffusion alone: `grid_increments`
+  draws nothing where `lambda·dt` is zero.
 
-### `lambda` lives in two places — keep them synced
+### One rate, one law
 
-`sampler()` reads `self.lambda` directly for the arrival rate, **not**
-`self.cpoisson.poisson.lambda`. The latter is a cosmetic mirror on the
-sampling path but is genuinely live if a caller `.sample()`s the
-embedded `CompoundPoisson` standalone. `Merton` keeps them in sync
-through `with_lambda` / `with_cpoisson`; a direct `merton.lambda = x`
-field assignment is **not** intercepted and desyncs them. If you add
-`with_*` setters that can change the intensity, mirror
-`resync_cpoisson_poisson`.
+`lambda` is the only rate: the sampler and the engine's `jump_intensity()`
+both read it, and nothing mirrors it. The setters are `with_lambda(λ)`
+(asserting what `new` asserts), `with_jump_law(law)` (keeping the jump
+seed) and `with_seed(seed)` (re-deriving the jump seed as `new` does);
+`jump_law()` reads the law back.
 
 ## 2. The sample step
 
 You implement `ProcessExt::sampler()`, returning a `PathSampler`. The
 sampler owns its diffusion noise source and an owned, chunk-local jump
-seed; it must **never** borrow `&self.cpoisson` wholesale, or every
-chunk races on the same shared atomic during the parallel region.
+seed; it must **never** borrow the driver's seed, or every chunk races
+on the same shared atomic during the parallel region.
 
 ```rust
 impl<T, D, S: SeedExt> crate::traits::Sealed for Merton<T, D, S> where T: FloatExt, D: Distribution<T> + Send + Sync {}
@@ -129,9 +119,9 @@ where T: FloatExt, D: Distribution<T> + Send + Sync
       x0: self.x0.unwrap_or(T::zero()),
       dt,
       drift_dt,
-      jump_distribution: &self.cpoisson.distribution,   // borrow: read-only params
+      jump_distribution: &self.jumps.law,   // borrow: read-only params
       lambda: self.lambda,
-      jump_seed: self.cpoisson.seed.derive(),           // own: chunk-local basis
+      jump_seed: self.jumps.seed.derive(), // own: chunk-local basis
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
@@ -287,8 +277,8 @@ crate-wide guard and a new process must appear in it. See
 - **Do not** invent `seed.advance(...)`, `seed.into_rng()` or a
   `seeded(...)` constructor. `SeedExt`'s full surface is `rng()`,
   `derive()`, `rng_ext::<R>()`, `reseed(s)`, `next_seed()`.
-- **Do not** borrow `&self.cpoisson` into the sampler. Borrow the
-  read-only `distribution`, but **own** a `.seed.derive()`.
+- **Do not** borrow `&self.jumps.seed` into the sampler. Borrow the
+  read-only `law`, but **own** a `.seed.derive()`.
 - **Do not** recompute the compensator inside the per-step loop. Fold
   it into `drift_dt` in `sampler()`.
 - **Do not** forget the compensator entirely. Risk-neutral drift must
@@ -302,12 +292,14 @@ crate-wide guard and a new process must appear in it. See
   `D`, deliberately no `Default`. Read its type doc for why.
 - `Bates` (`jump/bates.rs`) — Heston + generic jumps; `D` is the law of
   the relative jump `Y − 1`, and `LogNormalJump` is Bates (1996)'s own,
-  with its compensator as `mean()`. The `cpoisson: CompoundPoisson<T, D, S>`
-  widening and its `cgns` caching quirk are documented on the type.
+  with its compensator as `mean()`; `with_jump_law` keeps `k`, so set it
+  to the new law's mean.
 - `FbatesSvj` (`volatility/fbates_svj.rs`) — the non-generic fractional
   SVJ variant; it composes path (1) of `add-fractional-process`.
-- `LevyDiffusion` (`jump/levy_diffusion.rs`), `JumpFouCustom`
-  (`jump/jump_fou_custom.rs`) — the other two generic-`D` jump slots.
+- `LevyDiffusion` (`jump/levy_diffusion.rs`) and `JumpFou`
+  (`jump/jump_fou.rs`) — the other drivers of the same shape;
+  `JumpFouCustom` (`jump/jump_fou_custom.rs`) takes two laws, the waiting
+  times `DT` and the sizes `DS`, and draws its own arrivals.
 
 ## Related SKILLs
 

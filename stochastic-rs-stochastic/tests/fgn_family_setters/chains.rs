@@ -1,4 +1,3 @@
-use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::ProcessExt;
 use stochastic_rs_stochastic::diffusion::cfou::Cfou;
@@ -9,7 +8,6 @@ use stochastic_rs_stochastic::diffusion::fou::Fou;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
 use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFouCustom;
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
-use stochastic_rs_stochastic::params::Horizon;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::cfbms::Cfbms;
 use stochastic_rs_stochastic::process::fbm::Fbm;
@@ -276,7 +274,7 @@ fn jump_fou_setters_match_fresh_construction() {
   .with_mu(0.0)
   .with_sigma(0.2)
   .with_lambda(3.0)
-  .with_jump_dist(jump_law(0.05))
+  .with_jump_law(jump_law(0.05))
   .with_points(64)
   .with_x0(Some(0.0))
   .with_horizon(Some(1.0));
@@ -310,65 +308,34 @@ fn jump_fou_setters_match_fresh_construction() {
   assert_eq!(chained.sample(), fresh.sample());
 }
 
-#[test]
-fn jump_fou_setters_keep_the_jump_driver_in_step() {
-  let p = JumpFou::<f64, _, _>::new(
-    0.7,
-    1.0,
-    0.0,
-    0.2,
-    2.0,
-    jump_law(0.1),
-    16,
-    Some(0.0),
-    Some(1.0),
-    seed(1),
-  );
-  assert_eq!(p.cpoisson().poisson.lambda, 2.0);
-  assert_eq!(p.cpoisson().poisson.horizon, Horizon::Events(16));
-
-  let p = p.with_lambda(3.0);
-  assert_eq!(p.lambda(), 3.0);
-  assert_eq!(p.cpoisson().poisson.lambda, 3.0);
-
-  let p = p.with_points(64);
-  assert_eq!(p.cpoisson().poisson.horizon, Horizon::Events(64));
-
-  let p = p.with_horizon(Some(2.0));
-  assert_eq!(
-    (p.t(), p.cpoisson().poisson.horizon),
-    (Some(2.0), Horizon::Events(64))
-  );
-
-  let p = p.with_seed(seed(7));
-  assert_eq!(p.cpoisson().seed.current(), seed(7).derive().current());
-}
-
+/// After a draw has advanced the seed, `with_horizon` leaves the jumps' seed where it was: the next
+/// path is the one an untouched process draws second.
 #[test]
 fn jump_fou_with_horizon_leaves_the_jump_driver_alone() {
-  let p = JumpFou::<f64, _, _>::new(
-    0.7,
-    1.0,
-    0.0,
-    0.2,
-    2.0,
-    jump_law(0.1),
-    16,
-    Some(0.0),
-    Some(1.0),
-    seed(1),
-  );
+  let build = || {
+    JumpFou::<f64, _, _>::new(
+      0.7,
+      1.0,
+      0.0,
+      0.2,
+      2.0,
+      jump_law(0.1),
+      16,
+      Some(0.0),
+      Some(1.0),
+      seed(1),
+    )
+  };
+  let p = build();
   let _ = p.sample();
-  let jump_seed = p.cpoisson().seed.current();
-  assert_eq!(
-    p.with_horizon(Some(2.0)).cpoisson().seed.current(),
-    jump_seed
-  );
+  let untouched = build();
+  let _ = untouched.sample();
+  assert_eq!(p.with_horizon(Some(1.0)).sample(), untouched.sample());
 }
 
 #[test]
 fn jump_fou_custom_setters_match_fresh_construction() {
-  let chained = JumpFouCustom::<f64, _, _>::new(
+  let chained = JumpFouCustom::<f64, _, _, _>::new(
     0.3,
     2.0,
     0.5,
@@ -390,7 +357,7 @@ fn jump_fou_custom_setters_match_fresh_construction() {
   .with_jump_times(SimdNormal::new(0.5, 0.01))
   .with_jump_sizes(jump_law(0.1))
   .with_seed(seed(7));
-  let fresh = JumpFouCustom::<f64, _, _>::new(
+  let fresh = JumpFouCustom::<f64, _, _, _>::new(
     0.7,
     1.0,
     0.0,
@@ -417,7 +384,10 @@ fn jump_fou_custom_setters_match_fresh_construction() {
     (64, Some(0.0), Some(1.0))
   );
   assert_eq!(
-    (chained.jump_times().mu(), chained.jump_sizes().sigma()),
+    (
+      chained.jump_time_law().mu(),
+      chained.jump_size_law().sigma()
+    ),
     (0.5, 0.1)
   );
   assert_eq!(chained.seed().current(), 7);

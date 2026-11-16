@@ -19,6 +19,7 @@ use ndarray::Array1;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_stochastic::euler::EulerCoefficients;
 use stochastic_rs_stochastic::jump::kou::Kou;
 use stochastic_rs_stochastic::jump::levy_diffusion::LevyDiffusion;
 use stochastic_rs_stochastic::jump::merton::Merton;
@@ -226,25 +227,18 @@ fn levy_diffusion_sample_par_paths_are_distinct() {
   );
 }
 
-/// Guards the single-source-of-truth invariant a Task 1 review caught
-/// broken on `Merton` (`with_cpoisson` silently dropping the driver's
-/// lambda — see `with_setters_merton.rs`'s dedicated regression tests):
-/// `self.lambda` and the otherwise-cosmetic mirror `cpoisson.poisson.lambda`
-/// must agree right out of `new()`, for all three types, including
-/// `LevyDiffusion`, which gained its own top-level `lambda` field as part
-/// of that same fix (previously `self.lambda` did not exist on
-/// `LevyDiffusion` at all).
+/// The host and the engine read one rate.
 #[test]
 fn jump_family_lambda_is_single_sourced_at_construction() {
   let m = merton_with_jumps(SEED);
   assert_eq!(m.lambda, LAMBDA);
-  assert_eq!(m.cpoisson.poisson.lambda, LAMBDA);
+  assert_eq!(EulerCoefficients::jump_intensity(&m), Some(LAMBDA));
 
   let k = kou_with_jumps(SEED);
   assert_eq!(k.lambda, LAMBDA);
-  assert_eq!(k.cpoisson.poisson.lambda, LAMBDA);
+  assert_eq!(EulerCoefficients::jump_intensity(&k), Some(LAMBDA));
 
   let l = levy_diffusion_with_jumps(SEED);
   assert_eq!(l.lambda, LAMBDA);
-  assert_eq!(l.cpoisson.poisson.lambda, LAMBDA);
+  assert_eq!(EulerCoefficients::jump_intensity(&l), Some(LAMBDA));
 }

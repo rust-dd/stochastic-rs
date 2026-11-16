@@ -25,7 +25,7 @@ macro_rules! py_process_methods {
       /// configuration decides, so `device=` does not change the answer.
       fn device_fallback(&self) -> Option<&'static str> {
         use $crate::traits::ProcessExt;
-        $crate::py_dispatch!(self, |inner| inner.device_fallback())
+        py_dispatch!(self, |inner| inner.device_fallback())
       }
 
       /// Whether this configuration runs on a device kernel: no
@@ -39,7 +39,7 @@ macro_rules! py_process_methods {
           use numpy::IntoPyArray;
           use pyo3::IntoPyObjectExt;
           use $crate::traits::ProcessExt;
-          $crate::$dispatch!(self, |inner| py_process_methods!(@one $shape, py, inner.sample()))
+          $dispatch!(self, |inner| py_process_methods!(@one $shape, py, inner.sample()))
         })
       }
 
@@ -49,7 +49,7 @@ macro_rules! py_process_methods {
           use numpy::IntoPyArray;
           use pyo3::IntoPyObjectExt;
           use $crate::traits::ProcessExt;
-          $crate::$dispatch!(self, |inner| {
+          $dispatch!(self, |inner| {
             py_process_methods!(@many $shape, py, m, inner.sample_par(m))
           })
         })

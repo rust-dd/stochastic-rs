@@ -169,15 +169,15 @@ refuses! {
     => Cts::<f64>::new(2.0, 3.0, 1.0, 64, 8, None, None, Unseeded);
   the_rapidly_decreasing_drift_has_a_pole_at_alpha_one: "alpha must satisfy `alpha != T::one()`, got alpha = 1.0"
     => Rdts::<f64>::new(2.0, 3.0, 1.0, 64, 8, None, None, Unseeded);
-  a_volterra_kernel_validates_its_parameter: "h must satisfy `h > 0.0 && h < 1.0`, got h = 1.5"
+  a_volterra_kernel_validates_its_parameter: "h must satisfy `h > T::zero() && h < T::one()`, got h = 1.5"
     => Volterra::<f64>::new(VolterraKernelSpec::FractionalBM { h: 1.5 }, 64, None, Unseeded);
-  a_power_law_kernel_is_square_integrable: "gamma must satisfy `gamma.is_finite() && gamma > -0.5`, got gamma = -0.5"
+  a_power_law_kernel_is_square_integrable: "gamma must satisfy `gamma.is_finite() && gamma > T::from_f64_fast(-0.5)`, got gamma = -0.5"
     => Volterra::<f64>::new(VolterraKernelSpec::PowerLaw { gamma: -0.5 }, 64, None, Unseeded);
-  a_power_law_kernel_has_a_finite_exponent: "gamma must satisfy `gamma.is_finite() && gamma > -0.5`, got gamma = inf"
+  a_power_law_kernel_has_a_finite_exponent: "gamma must satisfy `gamma.is_finite() && gamma > T::from_f64_fast(-0.5)`, got gamma = inf"
     => Volterra::<f64>::new(VolterraKernelSpec::PowerLaw { gamma: f64::INFINITY }, 64, None, Unseeded);
-  an_exponential_kernel_decays: "beta must satisfy `beta.is_finite() && beta > 0.0`, got beta = 0.0"
+  an_exponential_kernel_decays: "beta must satisfy `beta.is_finite() && beta > T::zero()`, got beta = 0.0"
     => Volterra::<f64>::new(VolterraKernelSpec::Exponential { beta: 0.0 }, 64, None, Unseeded);
-  an_exponential_kernel_has_a_finite_rate: "beta must satisfy `beta.is_finite() && beta > 0.0`, got beta = inf"
+  an_exponential_kernel_has_a_finite_rate: "beta must satisfy `beta.is_finite() && beta > T::zero()`, got beta = inf"
     => Volterra::<f64>::new(VolterraKernelSpec::Exponential { beta: f64::INFINITY }, 64, None, Unseeded);
 
   a_discrete_series_refuses_no_observations: "n must satisfy `n >= 1`, got n = 0"
@@ -199,7 +199,7 @@ refuses! {
   a_fractional_jump_process_refuses_a_nan_volatility: "sigma must satisfy `sigma.is_finite()`, got sigma = NaN"
     => JumpFou::<f64, SimdNormal<f64>>::new(0.7, 1.0, 0.0, f64::NAN, 2.0, SimdNormal::new(0.0, 0.1), 64, None, None, Unseeded);
   a_custom_jump_process_refuses_a_nan_level: "mu must satisfy `mu.is_finite()`, got mu = NaN"
-    => JumpFouCustom::<f64, SimdNormal<f64>>::new(0.7, 1.0, f64::NAN, 0.2, 64, None, None, SimdNormal::new(0.5, 0.01), SimdNormal::new(0.0, 0.1), Unseeded);
+    => JumpFouCustom::<f64, SimdNormal<f64>, SimdNormal<f64>>::new(0.7, 1.0, f64::NAN, 0.2, 64, None, None, SimdNormal::new(0.5, 0.01), SimdNormal::new(0.0, 0.1), Unseeded);
   a_fractional_noise_refuses_a_nan_horizon: "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = Some(NaN)"
     => Fgn::<f64>::new(0.7, 64, Some(f64::NAN), Unseeded);
   a_subordinator_refuses_a_nan_rate: "rate must satisfy `rate.is_finite()`, got rate = NaN"
@@ -284,6 +284,26 @@ refuses! {
     => Bates::<f64>::new(Drift::Mu(0.05), -0.5, 0.05, 0.04, 1.5, 0.3, -0.6, SimdNormal::new(0.0, 0.1), 64, 100.0, 0.04, None, VarianceBoundary::Floor, Unseeded);
   the_bates_intensity_setter_checks_its_value: "lambda must satisfy `lambda >= T::zero()`, got lambda = -0.5"
     => Bates::<f64>::new(Drift::Mu(0.05), 0.5, 0.05, 0.04, 1.5, 0.3, -0.6, SimdNormal::new(0.0, 0.1), 64, 100.0, 0.04, None, VarianceBoundary::Floor, Unseeded).with_lambda(-0.5);
+  a_merton_model_refuses_a_negative_intensity: "lambda must satisfy `lambda >= T::zero()`, got lambda = -0.5"
+    => Merton::<f64, SimdNormal<f64>>::new(0.05, 0.2, -0.5, 0.0, SimdNormal::new(0.0, 0.1), 64, None, None, Unseeded);
+  the_merton_intensity_setter_checks_its_value: "lambda must satisfy `lambda >= T::zero()`, got lambda = -0.5"
+    => Merton::<f64, SimdNormal<f64>>::default().with_lambda(-0.5);
+  a_kou_model_refuses_a_negative_intensity: "lambda must satisfy `lambda >= T::zero()`, got lambda = -0.5"
+    => Kou::<f64, SimdNormal<f64>>::new(0.05, 0.2, -0.5, 0.0, SimdNormal::new(0.0, 0.1), 64, None, None, Unseeded);
+  a_levy_diffusion_refuses_a_negative_intensity: "lambda must satisfy `lambda >= T::zero()`, got lambda = -0.5"
+    => LevyDiffusion::<f64, SimdNormal<f64>>::new(0.05, 0.2, -0.5, SimdNormal::new(0.0, 0.1), 64, None, None, Unseeded);
+  a_fractional_jump_process_refuses_a_negative_intensity: "lambda must satisfy `lambda >= T::zero()`, got lambda = -0.5"
+    => JumpFou::<f64, SimdNormal<f64>>::new(0.7, 1.0, 0.0, 0.2, -0.5, SimdNormal::new(0.0, 0.1), 64, None, None, Unseeded);
+  the_fractional_jump_intensity_setter_checks_its_value: "lambda must satisfy `lambda >= T::zero()`, got lambda = -0.5"
+    => JumpFou::<f64, SimdNormal<f64>>::new(0.7, 1.0, 0.0, 0.2, 2.0, SimdNormal::new(0.0, 0.1), 64, None, None, Unseeded).with_lambda(-0.5);
+  a_counting_process_refuses_a_negative_rate: "lambda must satisfy `lambda >= T::zero()`, got lambda = -1.0"
+    => Poisson::<f64>::new(-1.0, Horizon::Until(1.0), Unseeded);
+  a_counting_process_at_a_zero_rate_refuses_an_arrival: "horizon must satisfy `lambda > T::zero() || !matches!(horizon, Horizon::Events(1..))`, got horizon = Events(3), lambda = 0.0"
+    => Poisson::<f64>::new(0.0, Horizon::Events(3), Unseeded);
+  the_counting_rate_setter_checks_the_horizon: "horizon must satisfy `lambda > T::zero() || !matches!(horizon, Horizon::Events(1..))`, got horizon = Events(251), lambda = 0.0"
+    => Poisson::<f64>::default().with_lambda(0.0);
+  the_counting_horizon_setter_checks_the_rate: "horizon must satisfy `lambda > T::zero() || !matches!(horizon, Horizon::Events(1..))`, got horizon = Events(2), lambda = 0.0"
+    => Poisson::<f64>::new(0.0, Horizon::Until(1.0), Unseeded).with_horizon(Horizon::Events(2));
   a_lognormal_jump_refuses_a_negative_deviation: "omega must satisfy `omega >= T::zero()`, got omega = -0.1"
     => LogNormalJump::<f64>::new(-0.05, -0.1);
   a_garch_without_a_finite_unconditional_variance_is_refused: "alpha must satisfy `1 - alpha.sum() - beta.sum() > 0`, got alpha = [0.5], beta = [0.5]"
@@ -370,7 +390,7 @@ refuses! {
   a_hull_white_setter_refuses_a_nan_speed: "alpha must satisfy `alpha.is_finite()`, got alpha = NaN"
     => HullWhite::<f64>::default().with_alpha(f64::NAN);
   a_custom_jump_fou_setter_refuses_a_nan_level: "mu must satisfy `mu.is_finite()`, got mu = NaN"
-    => JumpFouCustom::<f64, SimdNormal<f64>>::new(0.7, 1.0, 0.0, 0.2, 16, None, None, SimdNormal::new(0.5, 0.01), SimdNormal::new(0.0, 0.1), Unseeded).with_mu(f64::NAN);
+    => JumpFouCustom::<f64, SimdNormal<f64>, SimdNormal<f64>>::new(0.7, 1.0, 0.0, 0.2, 16, None, None, SimdNormal::new(0.5, 0.01), SimdNormal::new(0.0, 0.1), Unseeded).with_mu(f64::NAN);
   a_jump_fou_setter_refuses_a_nan_speed: "theta must satisfy `theta.is_finite()`, got theta = NaN"
     => JumpFou::<f64, SimdNormal<f64>>::new(0.7, 1.0, 0.0, 0.2, 2.0, SimdNormal::new(0.0, 0.1), 16, None, None, Unseeded).with_theta(f64::NAN);
   a_libor_market_setter_refuses_a_nan_forward: "l0[1] must satisfy `l0[i].is_finite()`, got l0[1] = NaN"

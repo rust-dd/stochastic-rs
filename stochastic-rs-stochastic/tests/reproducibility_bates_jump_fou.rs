@@ -4,6 +4,8 @@ use ndarray::Array1;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_stochastic::euler::EulerCoefficients;
+use stochastic_rs_stochastic::euler::EulerSystem;
 use stochastic_rs_stochastic::jump::bates::Bates;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
 use stochastic_rs_stochastic::params::Drift;
@@ -235,17 +237,14 @@ fn jump_fou_sample_par_paths_are_distinct() {
   );
 }
 
-/// Guards the single-source-of-truth invariant established at construction
-/// for both types (see `Bates::lambda`'s and `JumpFou::lambda`'s field
-/// docs): `self.lambda` and the otherwise-cosmetic mirror
-/// `cpoisson.poisson.lambda` must agree right out of `new()`.
+/// The host and the engine read one rate.
 #[test]
 fn lambda_is_single_sourced_at_construction() {
   let b = bates_with_jumps(SEED);
   assert_eq!(b.lambda, LAMBDA);
-  assert_eq!(b.cpoisson.poisson.lambda, LAMBDA);
+  assert_eq!(EulerSystem::jump_intensity(&b), Some(LAMBDA));
 
   let j = jump_fou_with_jumps(SEED);
   assert_eq!(j.lambda(), LAMBDA);
-  assert_eq!(j.cpoisson().poisson.lambda, LAMBDA);
+  assert_eq!(EulerCoefficients::jump_intensity(&j), Some(LAMBDA));
 }

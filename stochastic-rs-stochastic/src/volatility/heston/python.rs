@@ -25,8 +25,8 @@ struct PyHestonQe {
 macro_rules! py_heston_dispatch {
   ($dispatch:ident, $self:expr, |$p:ident| $body:expr) => {
     match &$self.qe {
-      Some(qe) => $crate::$dispatch!(qe, |$p| $body),
-      None => $crate::$dispatch!($self, |$p| $body),
+      Some(qe) => $dispatch!(qe, |$p| $body),
+      None => $dispatch!($self, |$p| $body),
     }
   };
 }

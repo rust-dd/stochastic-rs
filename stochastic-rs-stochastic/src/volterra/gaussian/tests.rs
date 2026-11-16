@@ -92,3 +92,23 @@ fn power_law_kernel_uses_reference_fallback() {
   assert_eq!(path.len(), 64);
   assert!(path.iter().all(|v| v.is_finite()));
 }
+
+#[test]
+fn a_single_precision_fbm_takes_its_hurst_in_its_own_scalar() {
+  let path = Volterra::<f32>::fbm(0.3f32, 64, None).sample();
+  assert_eq!((path.len(), path[0]), (64, 0.0));
+  assert!(path.iter().all(|x| x.is_finite()));
+}
+
+/// The reference branch's kernel by lag, from an `f32` Hurst exponent, is the `f64` one rounded.
+#[test]
+fn the_single_precision_reference_kernel_is_the_double_one() {
+  use crate::euler::EulerCoefficients;
+  let narrow = Volterra::<f32>::fbm(0.7f32, 64, None).curves().unwrap();
+  let wide = Volterra::<f64>::fbm(f64::from(0.7f32), 64, None)
+    .curves()
+    .unwrap();
+  for (a, b) in narrow[0].iter().zip(&wide[0]) {
+    assert!(((f64::from(*a) - b) / b).abs() < 1e-6, "{a} vs {b}");
+  }
+}

@@ -1,7 +1,8 @@
-use stochastic_rs_stochastic::K;
-use stochastic_rs_stochastic::S0;
-
 use super::*;
+
+const S0: f64 = 100.0;
+
+const K: f64 = 100.0;
 
 fn atm_pricer(style: OptionStyle, r#type: OptionType, method: FiniteDifferenceMethod) -> f64 {
   FiniteDifferencePricer::new(0.1, 10000, 250, style, method).price(S0, K, 0.05, 0.0, 1.0, r#type)

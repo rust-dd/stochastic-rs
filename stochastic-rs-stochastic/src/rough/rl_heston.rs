@@ -4,22 +4,13 @@
 //! \begin{aligned} dS_t &= \mu S_t\,dt + \sqrt{V_t}\,S_t\,dW^s_t,\qquad d\langle W^s, W^v\rangle_t = \rho\,dt \\ V_t &= V_0 + \frac{1}{\Gamma(H+1/2)}\int_0^t (t-s)^{H-1/2} \kappa(\theta - V_s)\,ds + \frac{1}{\Gamma(H+1/2)}\int_0^t (t-s)^{H-1/2} \nu\sqrt{V_s}\,dW^v_s \end{aligned}
 //! $$
 //!
-//! The variance process is a Volterra-Cir with Riemann–Liouville kernel
-//! (El Euch–Rosenbaum 2019), simulated via the Bilokon–Wong modified fast
-//! algorithm — a single Markov-lift with $f(V)=\kappa(\theta-V)$ and
-//! $g(V)=\nu\sqrt{V^+}$ — while the asset price is integrated with a
-//! standard Euler step driven by $W^s$ correlated to $W^v$.
+//! The variance, a Riemann–Liouville Volterra–CIR, steps by one Markov lift with drift
+//! $\kappa(\theta-V)$ and diffusion $\nu\sqrt{V^+}$; the price steps by Euler on $W^s$.
 //!
-//! The underlying kernel + Markov-lift is built once at struct construction
-//! and reused across every [`sample`](crate::traits::ProcessExt::sample) /
-//! [`sample_batch`](RlHeston::sample_batch) call.
-//!
-//! Reference: Bilokon & Wong (2026) §5.5; El Euch O., Rosenbaum M. *The
-//! characteristic function of rough Heston models*, Math. Finance 29 (2019),
-//! 3–38.
+//! Reference: Bilokon & Wong (2026) §5.5.
+//! Reference: El Euch & Rosenbaum (2019), Math. Finance 29, 3–38.
 
 use ndarray::Array1;
-use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -164,49 +155,6 @@ impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
       cgns: Cgns::new(rho, n - 1, t, Unseeded),
       markov: build_markov(hurst, n, t, degree),
     }
-  }
-}
-
-impl<T: FloatExt, S: SeedExt, B> RlHeston<T, S, B> {
-  /// Generate $m$ independent rough Heston paths.
-  /// Returns `[spot_paths, variance_paths]` where each is an $(m, n)$ array.
-  pub fn sample_batch(&self, m: usize) -> [Array2<T>; 2] {
-    let n_minus_1 = self.n - 1;
-
-    let mut dw_s = Array2::<T>::zeros((m, n_minus_1));
-    let mut dw_v = Array2::<T>::zeros((m, n_minus_1));
-    for p in 0..m {
-      let [s_row, v_row] = self.cgns.sample_impl(&self.seed.derive());
-      dw_s.row_mut(p).assign(&s_row);
-      dw_v.row_mut(p).assign(&v_row);
-    }
-
-    let kappa = self.kappa;
-    let theta = self.theta;
-    let nu = self.nu;
-    let v0 = self.v0.max(T::zero());
-    let variance = self.markov.simulate_batch(
-      v0,
-      |vv| kappa * (theta - vv.max(T::zero())),
-      |vv| nu * vv.max(T::zero()).sqrt(),
-      dw_v.view(),
-    );
-
-    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
-    let s0 = self.s0;
-    let mut spots = Array2::<T>::zeros((m, self.n));
-    for p in 0..m {
-      spots[[p, 0]] = s0;
-      for i in 1..self.n {
-        let v_prev = variance[[p, i - 1]].max(T::zero());
-        spots[[p, i]] = spots[[p, i - 1]]
-          + self.mu * spots[[p, i - 1]] * dt
-          + spots[[p, i - 1]] * v_prev.sqrt() * dw_s[[p, i - 1]];
-      }
-    }
-
-    let variance_clipped = variance.map(|v| (*v).max(T::zero()));
-    [spots, variance_clipped]
   }
 }
 
@@ -453,7 +401,7 @@ mod tests {
   }
 
   #[test]
-  fn batch_shape_and_nonneg_variance() {
+  fn paths_have_the_grid_length_and_a_non_negative_variance() {
     let p = RlHeston::new(
       0.12_f64,
       100.0,
@@ -468,11 +416,13 @@ mod tests {
       Some(25),
       Deterministic::new(17),
     );
-    let [spots, variances] = p.sample_batch(13);
-    assert_eq!(spots.dim(), (13, 64));
-    assert_eq!(variances.dim(), (13, 64));
-    assert!(variances.iter().all(|x| *x >= 0.0));
-    assert!(spots.iter().all(|x| x.is_finite()));
+    let paths = p.sample_par(13);
+    assert_eq!(paths.len(), 13);
+    for [spot, variance] in &paths {
+      assert_eq!((spot.len(), variance.len()), (64, 64));
+      assert!(variance.iter().all(|x| *x >= 0.0));
+      assert!(spot.iter().all(|x| x.is_finite()));
+    }
   }
 
   #[test]

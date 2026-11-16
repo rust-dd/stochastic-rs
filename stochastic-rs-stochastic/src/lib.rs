@@ -56,12 +56,3 @@ pub mod sde;
 pub mod sheet;
 pub mod volatility;
 pub mod volterra;
-
-/// Default number of time steps
-pub const N: usize = 1000;
-/// Default initial value
-pub const X0: f64 = 0.5;
-/// Default spot price for financial models
-pub const S0: f64 = 100.0;
-/// Default strike price
-pub const K: f64 = 100.0;

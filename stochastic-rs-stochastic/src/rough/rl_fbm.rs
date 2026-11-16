@@ -4,26 +4,12 @@
 //! W^H_t = \frac{1}{\Gamma(H+1/2)}\int_0^t (t-s)^{H-1/2}\,dW_s,\qquad H\in(0, 1/2)
 //! $$
 //!
-//! Direct (non-cumulative) path generation via the Bilokon–Wong modified fast
-//! algorithm: the power-law kernel is replaced by a sum of $N' \approx \log n$
-//! exponentials, and the whole path is built as the superposition of
-//! independent Ou-like Markov factors driven by the same Brownian motion.
-//!
-//! The [`MarkovLift`] stepper (with the kernel quadrature) is built once per
-//! struct in [`RlFbm::new`] (whichever seed strategy `S` is chosen) and
-//! reused across every [`sample`](crate::traits::ProcessExt::sample) and
-//! [`sample_batch`](RlFbm::sample_batch) call — repeated sampling does not
-//! re-run Golub–Welsch or recompute per-$\delta t$ factors.
-//!
-//! Not to be confused with Mandelbrot–Van Ness fBM: the two share the
-//! covariance structure asymptotically, but RL-fBM has non-stationary
-//! increments near $t = 0$. For classical stationary fGn / MVN-fBM use
-//! [`Fgn`](crate::noise::fgn::Fgn).
+//! The kernel as a sum of $N' \approx \log n$ exponentials, stepped by a [`MarkovLift`] built
+//! once in `new`; unlike Mandelbrot–Van Ness fBm, its increments are not stationary near $t = 0$.
 //!
 //! Reference: Bilokon & Wong (2026), doi:10.1017/jpr.2025.10071.
 
 use ndarray::Array1;
-use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -99,51 +85,6 @@ impl<T: FloatExt, S: SeedExt> RlFbm<T, S> {
   /// kernel quadrature instead of reconstructing it.
   pub(crate) fn markov(&self) -> &MarkovLift<T> {
     &self.markov
-  }
-}
-
-impl<T: FloatExt, S: SeedExt, B> RlFbm<T, S, B> {
-  /// Generate $m$ independent RL-fBM paths as an $(m, n)$ array. The
-  /// underlying Markov-lift runs path-parallel SIMD (cache-tiled), matching
-  /// the Python `RoughHestonFast` batching pattern — single-threaded.
-  pub fn sample_batch(&self, m: usize) -> Array2<T> {
-    self.sample_batch_impl(&self.seed.derive(), m)
-  }
-
-  /// Multi-core version of [`RlFbm::sample_batch`] — rayon parallelises the
-  /// outer tile loop so batch-SIMD and core scheduling compound.
-  pub fn sample_batch_par(&self, m: usize) -> Array2<T> {
-    self.sample_batch_par_impl(&self.seed.derive(), m)
-  }
-
-  pub(crate) fn sample_batch_impl<S2: SeedExt>(&self, seed: &S2, m: usize) -> Array2<T> {
-    let dw = self.build_dw_matrix(seed, m);
-    self
-      .markov
-      .simulate_batch(T::zero(), |_| T::zero(), |_| T::one(), dw.view())
-  }
-
-  pub(crate) fn sample_batch_par_impl<S2: SeedExt>(&self, seed: &S2, m: usize) -> Array2<T> {
-    let dw = self.build_dw_matrix(seed, m);
-    self
-      .markov
-      .simulate_batch_par(T::zero(), |_| T::zero(), |_| T::one(), dw.view())
-  }
-
-  fn build_dw_matrix<S2: SeedExt>(&self, seed: &S2, m: usize) -> Array2<T> {
-    let n_minus_1 = self.n - 1;
-    let mut dw = Array2::<T>::zeros((m, n_minus_1));
-    for p in 0..m {
-      let gn = Gn::<T, S2> {
-        backend: Cpu,
-        n: n_minus_1,
-        t: self.t,
-        seed: seed.derive(),
-      };
-      let sample = gn.sample();
-      dw.row_mut(p).assign(&sample);
-    }
-    dw
   }
 }
 
@@ -326,14 +267,14 @@ mod tests {
   }
 
   #[test]
-  fn batch_shape_and_first_column_is_zero() {
+  fn paths_have_the_grid_length_and_start_at_zero() {
     let p = RlFbm::new(0.2_f64, 64, Some(1.0), Some(25), Deterministic::new(11));
-    let paths = p.sample_batch(17);
-    assert_eq!(paths.dim(), (17, 64));
-    for row in 0..17 {
-      assert_eq!(paths[[row, 0]], 0.0);
+    let paths = p.sample_par(17);
+    assert_eq!(paths.len(), 17);
+    for path in &paths {
+      assert_eq!((path.len(), path[0]), (64, 0.0));
+      assert!(path.iter().all(|v| v.is_finite()));
     }
-    assert!(paths.iter().all(|v| v.is_finite()));
   }
 
   #[test]

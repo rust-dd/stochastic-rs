@@ -90,10 +90,7 @@ fn bench_rl_heston(c: &mut Criterion) {
   group.finish();
 }
 
-/// Compares three ways of generating m paths:
-/// - sample()×m: m sequential single-path calls
-/// - sample_par(m): rayon-parallel (thread-per-path)
-/// - sample_batch(m): path-parallel SIMD (new, matches Python RoughHestonFast)
+/// `m` paths from `m` sequential `sample()` calls against one `sample_par(m)`.
 fn bench_rl_fbm_throughput(c: &mut Criterion) {
   use criterion::Throughput;
   let mut group = c.benchmark_group("RL_fBM_throughput");
@@ -115,16 +112,6 @@ fn bench_rl_fbm_throughput(c: &mut Criterion) {
     group.bench_with_input(BenchmarkId::new("sample_par", m), &m, |b, &m| {
       let p = RlFbm::new(hurst, n, Some(1.0), None, Unseeded);
       b.iter(|| black_box(p.sample_par(m)));
-    });
-
-    group.bench_with_input(BenchmarkId::new("sample_batch", m), &m, |b, &m| {
-      let p = RlFbm::new(hurst, n, Some(1.0), None, Unseeded);
-      b.iter(|| black_box(p.sample_batch(m)));
-    });
-
-    group.bench_with_input(BenchmarkId::new("sample_batch_par", m), &m, |b, &m| {
-      let p = RlFbm::new(hurst, n, Some(1.0), None, Unseeded);
-      b.iter(|| black_box(p.sample_batch_par(m)));
     });
   }
 
@@ -155,24 +142,6 @@ fn bench_rl_heston_throughput(c: &mut Criterion) {
         Unseeded,
       );
       b.iter(|| black_box(p.sample_par(m)));
-    });
-
-    group.bench_with_input(BenchmarkId::new("sample_batch", m), &m, |b, &m| {
-      let p = RlHeston::new(
-        0.12_f64,
-        100.0,
-        0.04,
-        0.1,
-        0.3156,
-        0.0331,
-        -0.681,
-        0.0,
-        n,
-        Some(1.0),
-        None,
-        Unseeded,
-      );
-      b.iter(|| black_box(p.sample_batch(m)));
     });
   }
 

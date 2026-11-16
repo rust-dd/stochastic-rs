@@ -65,7 +65,7 @@ impl PyVolterra {
       use pyo3::IntoPyObjectExt;
 
       use crate::traits::ProcessExt;
-      crate::py_dispatch_f64!(self, |inner| inner
+      py_dispatch_f64!(self, |inner| inner
         .sample()
         .into_pyarray(py)
         .into_py_any(py)
@@ -84,7 +84,7 @@ impl PyVolterra {
       use pyo3::IntoPyObjectExt;
 
       use crate::traits::ProcessExt;
-      crate::py_dispatch_f64!(self, |inner| {
+      py_dispatch_f64!(self, |inner| {
         let paths = inner.sample_par(m);
         let n = paths[0].len();
         let mut result = Array2::zeros((m, n));

@@ -25,7 +25,7 @@ use stochastic_rs_stochastic::traits::ProcessExt;
 const SEED: u64 = 42;
 const N: usize = 128;
 
-fn jump_fou_custom(seed: u64) -> JumpFouCustom<f64, SimdExp<f64>, Deterministic> {
+fn jump_fou_custom(seed: u64) -> JumpFouCustom<f64, SimdExp<f64>, SimdExp<f64>, Deterministic> {
   JumpFouCustom::new(
     0.65,
     1.5,

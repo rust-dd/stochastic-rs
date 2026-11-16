@@ -416,7 +416,7 @@ impl PyCheyette {
     stochastic_rs_distributions::python::runtime_error_on_panic(|| {
       use numpy::IntoPyArray;
       use pyo3::IntoPyObjectExt;
-      crate::py_dispatch_f64!(self, |inner| {
+      py_dispatch_f64!(self, |inner| {
         let [x, y] = inner.sample();
         (
           x.into_pyarray(py).into_py_any(py).unwrap(),
@@ -437,7 +437,7 @@ impl PyCheyette {
     stochastic_rs_distributions::python::runtime_error_on_panic(|| {
       use numpy::IntoPyArray;
       use pyo3::IntoPyObjectExt;
-      crate::py_dispatch_f64!(self, |inner| {
+      py_dispatch_f64!(self, |inner| {
         // The callbacks re-attach to the interpreter from the worker threads, so
         // the GIL must be released here or the parallel sampler deadlocks.
         let samples = py.detach(|| inner.sample_par(m));
@@ -457,11 +457,11 @@ impl PyCheyette {
 
   /// Short rate `f0(t) + x`.
   fn short_rate(&self, t: f64, x: f64) -> f64 {
-    crate::py_dispatch_f64!(self, |inner| inner.short_rate(t, x))
+    py_dispatch_f64!(self, |inner| inner.short_rate(t, x))
   }
 
   /// Zero-coupon bond `P_t(T)` at state `(x, y)`.
   fn zero_bond(&self, t: f64, maturity: f64, x: f64, y: f64) -> f64 {
-    crate::py_dispatch_f64!(self, |inner| inner.zero_bond(t, maturity, x, y))
+    py_dispatch_f64!(self, |inner| inner.zero_bond(t, maturity, x, y))
   }
 }

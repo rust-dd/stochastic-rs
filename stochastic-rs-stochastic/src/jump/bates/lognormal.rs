@@ -61,27 +61,27 @@ impl<T: FloatExt> LogNormalJump<T> {
     (law as &dyn Any).downcast_ref()
   }
 
-  /// Each step's `ΣZ_j` over a `Poisson(lambda·dt)` count `k`, one `N(k·nu, k·omega²)` draw as the
-  /// kernels draw it; the first entry is zero.
+  /// Each step's `ΣZ_j` over a `Poisson(lambda·dt)` count `n`, one `N(n·nu, n·omega²)` draw as the
+  /// kernels draw it, on a grid of `points`; the first entry is zero.
   pub(crate) fn grid_log_jumps<S: SeedExt>(
     &self,
     lambda: T,
     seed: &S,
-    n: usize,
+    points: usize,
     dt: T,
   ) -> Array1<T> {
-    let mut sums = Array1::<T>::zeros(n);
+    let mut sums = Array1::<T>::zeros(points);
     let lambda_dt = (lambda * dt).to_f64().unwrap();
-    if n <= 1 || lambda_dt <= 0.0 {
+    if points <= 1 || lambda_dt <= 0.0 {
       return sums;
     }
     let mut count = SimdPoisson::<u32>::new(lambda_dt).seeded(seed);
     let mut rng = seed.rng();
     for sum in sums.iter_mut().skip(1) {
-      let k = count.sample();
-      if k > 0 {
-        let k = T::from_usize_(k as usize);
-        *sum = self.nu * k + self.omega * k.sqrt() * self.standard.sample(&mut rng);
+      let n = count.sample();
+      if n > 0 {
+        let n = T::from_usize_(n as usize);
+        *sum = self.nu * n + self.omega * n.sqrt() * self.standard.sample(&mut rng);
       }
     }
     sums

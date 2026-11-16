@@ -15,9 +15,9 @@ use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::distributions::qmc::HaltonSeq;
 use stochastic_rs::distributions::qmc::SobolSeq;
 use stochastic_rs::distributions::special::norm_cdf;
+use stochastic_rs::quant::pricing::BermudanLsmPricer;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stochastic::mc;
-use stochastic_rs::stochastic::mc::lsm::Lsm;
 use stochastic_rs::stochastic::mc::mlmc::Mlmc;
 use stochastic_rs::traits::FloatExt;
 
@@ -530,8 +530,10 @@ fn lsm_vs_longstaff_schwartz_table1() {
 
   for &(s0, fd_benchmark) in &cases {
     let paths = generate_gbm_paths(n_paths, n_steps, s0, r, sigma, tau);
-    let lsm = Lsm::new(r, tau, n_basis);
-    let am_price = lsm.price(&paths, payoff_put);
+    let exercise = (1..=n_steps).collect::<Vec<_>>();
+    let am_price = BermudanLsmPricer::new(r, tau, n_basis)
+      .price(&paths, &exercise, payoff_put)
+      .mean;
     let eu_price = bs_put(s0, k, r, sigma, tau);
 
     let err = (am_price - fd_benchmark).abs();
@@ -571,8 +573,10 @@ fn lsm_vs_ls2001_high_vol() {
 
   for &(s0, fd_benchmark) in &cases {
     let paths = generate_gbm_paths(n_paths, n_steps, s0, r, sigma, tau);
-    let lsm = Lsm::new(r, tau, n_basis);
-    let am_price = lsm.price(&paths, payoff_put);
+    let exercise = (1..=n_steps).collect::<Vec<_>>();
+    let am_price = BermudanLsmPricer::new(r, tau, n_basis)
+      .price(&paths, &exercise, payoff_put)
+      .mean;
     let eu_price = bs_put(s0, k, r, sigma, tau);
 
     let err = (am_price - fd_benchmark).abs();

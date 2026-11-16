@@ -365,6 +365,15 @@ def test_an_event_process_takes_exactly_one_of_n_and_t_max():
     assert sr.PyHawkes(0.5, 0.3, 1.0, t_max=2.0).device_fallback() is not None
 
 
+def test_a_zero_rate_counts_no_arrival():
+    assert list(sr.PyPoisson(0.0, t_max=2.0, seed=2).sample()) == [0.0]
+    assert list(sr.PyPoisson(0.0, n=0, seed=2).sample()) == [0.0]
+    with pytest.raises(ValueError, match=r"Events\(1\.\.\)"):
+        sr.PyPoisson(0.0, n=3)
+    with pytest.raises(ValueError, match="lambda >= T::zero"):
+        sr.PyPoisson(-1.0, t_max=2.0)
+
+
 def test_ho_lee_takes_exactly_one_of_theta_and_forward_curve():
     sr.PyHoLee(0.01, 64, theta=0.02)
     sr.PyHoLee(0.01, 64, forward_curve=lambda t: 0.03)

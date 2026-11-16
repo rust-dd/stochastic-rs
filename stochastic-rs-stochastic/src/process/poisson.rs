@@ -6,7 +6,6 @@
 //!
 
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
@@ -27,7 +26,7 @@ pub struct Poisson<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub lambda: T,
   /// `Events(n)`: the origin and the `n` arrivals after it; `Until(t)`: the arrivals before `t`.
   pub horizon: Horizon<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -39,12 +38,19 @@ pub struct Poisson<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// `sampler()` builds its exponential inter-arrival source fresh from
 /// `self` every call.
 impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
+  /// Arrivals at rate `lambda ≥ 0` up to `horizon`; panics on `Events(n ≥ 1)` at `lambda = 0`,
+  /// whose n-th arrival never comes.
   pub fn new(lambda: T, horizon: Horizon<T>, seed: S) -> Self {
     assert!(
       lambda.is_finite(),
       "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
     );
+    assert!(
+      lambda >= T::zero(),
+      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
+    );
     horizon.assert_valid();
+    assert_arrivals_come(lambda, horizon);
     Poisson {
       backend: Cpu,
       lambda,
@@ -55,19 +61,26 @@ impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
-  /// Replace `lambda`, all else unchanged.
+  /// Replace `lambda`, all else unchanged; panics on a zero rate under an `Events(n ≥ 1)` horizon.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     assert!(
       lambda.is_finite(),
       "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
     );
+    assert!(
+      lambda >= T::zero(),
+      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
+    );
+    assert_arrivals_come(lambda, self.horizon);
     self.lambda = lambda;
     self
   }
 
-  /// Replace `horizon`, all else unchanged; panics on an `Until` that is not positive and finite.
+  /// Replace `horizon`, all else unchanged; panics on an `Until` that is not positive and finite,
+  /// and on `Events(n ≥ 1)` at a zero rate.
   pub fn with_horizon(mut self, horizon: Horizon<T>) -> Self {
     horizon.assert_valid();
+    assert_arrivals_come(self.lambda, horizon);
     self.horizon = horizon;
     self
   }
@@ -79,6 +92,15 @@ impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
   }
 }
 
+/// Panics on `Events(n ≥ 1)` at `lambda = 0`: the n-th arrival never comes.
+#[track_caller]
+fn assert_arrivals_come<T: FloatExt>(lambda: T, horizon: Horizon<T>) {
+  assert!(
+    lambda > T::zero() || !matches!(horizon, Horizon::Events(1..)),
+    "horizon must satisfy `lambda > T::zero() || !matches!(horizon, Horizon::Events(1..))`, got horizon = {horizon:?}, lambda = {lambda:?}"
+  );
+}
+
 /// λ = 2 over 252 points, the crate's trading-year default.
 impl<T: FloatExt> Default for Poisson<T, Unseeded> {
   fn default() -> Self {
@@ -87,20 +109,33 @@ impl<T: FloatExt> Default for Poisson<T, Unseeded> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
-  /// Sample with an explicit seed, used by callers like CompoundPoisson.
-  pub fn sample_with_seed(&self, seed: u64) -> Array1<T> {
-    self.sample_impl(&Deterministic::new(seed))
-  }
-
   /// One-shot sample from any seed source. Retained for callers such as
   /// [`crate::process::cpoisson`] that need the arrival times directly.
   pub(crate) fn sample_impl<S2: SeedExt>(&self, seed: &S2) -> Array1<T> {
     self.sampler_impl(seed).sample()
   }
 
+  /// Checked in `new` and again where a sampler runs, since the fields stay public.
+  #[track_caller]
+  fn assert_rate(&self) {
+    let lambda = self.lambda;
+    assert!(
+      lambda >= T::zero(),
+      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
+    );
+    assert_arrivals_come(lambda, self.horizon);
+  }
+
   /// Build the reusable sampling state from any seed source.
   pub(crate) fn sampler_impl<S2: SeedExt>(&self, seed: &S2) -> PoissonSampler<T> {
-    let distr = SimdExp::<T>::new(self.lambda).seeded(seed);
+    self.assert_rate();
+    // A zero rate takes the draw a stream would, so the streams seeded after it stay put.
+    let distr = if self.lambda > T::zero() {
+      Some(SimdExp::<T>::new(self.lambda).seeded(seed))
+    } else {
+      seed.next_seed();
+      None
+    };
     // A draw no engine reads; skipping it would move every stream seeded after this one.
     seed.next_seed();
     PoissonSampler {
@@ -117,6 +152,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   for Poisson<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    self.assert_rate();
     crate::euler::EulerSpec::PoissonArrivals {
       lambda: self.lambda,
     }
@@ -237,11 +273,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Poisson`] sampling state: the owned exponential inter-arrival
-/// source and the precomputed sampling regime.
+/// Reusable [`Poisson`] sampling state: the owned exponential inter-arrival source, none at a zero
+/// rate, and the sampling regime.
 #[doc(hidden)]
 pub struct PoissonSampler<T: FloatExt> {
-  distr: Seeded<SimdExp<T>>,
+  distr: Option<Seeded<SimdExp<T>>>,
   horizon: Horizon<T>,
   lambda: T,
 }
@@ -257,7 +293,11 @@ impl<T: FloatExt> PoissonSampler<T> {
       return;
     }
     let tail = &mut out[1..];
-    self.distr.fill_slice(tail);
+    self
+      .distr
+      .as_mut()
+      .expect("an `Events` horizon at a zero rate is refused before sampling")
+      .fill_slice(tail);
     let mut acc = T::zero();
     for x in tail.iter_mut() {
       acc += *x;
@@ -279,13 +319,13 @@ impl<T: FloatExt> PoissonSampler<T> {
     };
     let mut poisson = Vec::with_capacity(cap);
     poisson.push(T::zero());
-    if t_max <= T::zero() {
+    let Some(distr) = self.distr.as_mut().filter(|_| t_max > T::zero()) else {
       return Array1::from(poisson);
-    }
+    };
 
     let mut t = T::zero();
     while t < t_max {
-      t += self.distr.sample();
+      t += distr.sample();
       if t < t_max {
         poisson.push(t);
       }
@@ -323,6 +363,8 @@ impl<T: FloatExt> PathSampler<T> for PoissonSampler<T> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   #[test]
@@ -333,6 +375,24 @@ mod tests {
     let by_time = Poisson::<f64, Deterministic>::new(3.0, Horizon::Until(2.0), seed).sample();
     assert_eq!(by_count.len(), 11);
     assert!(by_time.iter().all(|t| *t <= 2.0));
+  }
+
+  #[test]
+  fn a_zero_rate_is_the_origin_alone() {
+    let origin = |horizon| Poisson::new(0.0, horizon, Deterministic::new(2)).sample();
+    assert_eq!(origin(Horizon::Until(2.0)), Array1::from(vec![0.0]));
+    assert_eq!(origin(Horizon::Events(0)), Array1::from(vec![0.0]));
+  }
+
+  /// A zero rate takes the seed draws any rate takes, so the streams seeded after it stay put.
+  #[test]
+  fn a_zero_rate_advances_the_seed_as_a_positive_one_does() {
+    let advanced = |lambda| {
+      let p = Poisson::new(lambda, Horizon::Until(1.0), Deterministic::new(5));
+      let _ = p.sample();
+      p.seed.current()
+    };
+    assert_eq!(advanced(0.0), advanced(3.0));
   }
 }
 

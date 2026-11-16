@@ -72,13 +72,8 @@ impl<T: FloatExt, S: SeedExt> Cfbms<T, S> {
       n,
       t,
       seed,
-      fgn: Self::fgn_for(hurst, n, t),
+      fgn: Fgn::for_grid(hurst, n, t),
     }
-  }
-
-  /// Shared by `new()` and the `with_*` setters so they cannot drift.
-  fn fgn_for(hurst: T, n: usize, t: Option<T>) -> Fgn<T, Unseeded, Cpu> {
-    Fgn::new(hurst, n - 1, t, Unseeded)
   }
 
   /// Replace `hurst`; panics unless `0 ≤ hurst ≤ 1`.
@@ -93,7 +88,7 @@ impl<T: FloatExt, S: SeedExt> Cfbms<T, S> {
       "hurst must satisfy `(T::zero()..=T::one()).contains(&hurst)`, got hurst = {hurst:?}"
     );
     self.hurst = hurst;
-    self.fgn = Self::fgn_for(hurst, self.n, self.t);
+    self.fgn = Fgn::for_grid(hurst, self.n, self.t);
     self
   }
 
@@ -102,7 +97,7 @@ impl<T: FloatExt, S: SeedExt> Cfbms<T, S> {
   pub fn with_points(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
-    self.fgn = Self::fgn_for(self.hurst, n, self.t);
+    self.fgn = Fgn::for_grid(self.hurst, n, self.t);
     self
   }
 
@@ -113,7 +108,7 @@ impl<T: FloatExt, S: SeedExt> Cfbms<T, S> {
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
     self.t = t;
-    self.fgn = Self::fgn_for(self.hurst, self.n, t);
+    self.fgn = Fgn::for_grid(self.hurst, self.n, t);
     self
   }
 }

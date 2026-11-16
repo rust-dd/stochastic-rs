@@ -79,7 +79,7 @@ fn jump_fou() -> JumpFou<f64, SimdNormal<f64>> {
   )
 }
 
-fn jump_fou_custom() -> JumpFouCustom<f64, SimdNormal<f64>> {
+fn jump_fou_custom() -> JumpFouCustom<f64, SimdNormal<f64>, SimdNormal<f64>> {
   JumpFouCustom::new(
     0.7,
     1.0,
