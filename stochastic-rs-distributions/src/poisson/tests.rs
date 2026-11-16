@@ -328,3 +328,41 @@ fn the_gate_takes_the_shortcut_only_where_it_measured_faster() {
     assert_eq!(zero_first, lambda <= 0.01, "λ = {lambda}");
   }
 }
+
+/// `ZeroFirst`'s fill, buffered and scalar streams against the plain table's; the stream fixture's
+/// rates never reach this arm.
+#[test]
+fn zero_first_draws_the_plain_tables_streams() {
+  for lambda in [2.0 / 1023.0, 0.005, 0.01] {
+    let law = SimdPoisson::<u64>::new(lambda);
+    assert!(matches!(law.sampler, Sampler::ZeroFirst(_)), "λ = {lambda}");
+    let twin = SimdPoisson {
+      sampler: Sampler::Table(SimdPoisson::<u64>::build_cdf(lambda)),
+      ..law.clone()
+    };
+    for s in [1, 2, 3] {
+      let seeded = |d: &SimdPoisson<u64>| d.clone().seeded(&Deterministic::new(s));
+      assert_eq!(
+        seeded(&law).sample_n(4096),
+        seeded(&twin).sample_n(4096),
+        "λ = {lambda}, s = {s}: sample_n"
+      );
+      let (mut a, mut b) = (seeded(&law), seeded(&twin));
+      for i in 0..100 {
+        assert_eq!(
+          a.sample(),
+          b.sample(),
+          "λ = {lambda}, s = {s}: sample() {i}"
+        );
+      }
+      let (mut ra, mut rb) = (SimdRng::from_seed(s), SimdRng::from_seed(s));
+      for i in 0..4096 {
+        assert_eq!(
+          law.sample(&mut ra),
+          twin.sample(&mut rb),
+          "λ = {lambda}, s = {s}: Distribution::sample {i}"
+        );
+      }
+    }
+  }
+}
