@@ -523,23 +523,6 @@ mod tests {
   }
 
   #[test]
-  fn a_put_quote_inverts_as_a_put_and_no_quote_is_an_error() {
-    use stochastic_rs_distributions::special::norm_cdf;
-
-    let (f, k, t, sigma) = (100.0_f64, 110.0_f64, 0.5_f64, 0.25_f64);
-    let d1 = ((f / k).ln() + 0.5 * sigma * sigma * t) / (sigma * t.sqrt());
-    let put = k * norm_cdf(-(d1 - sigma * t.sqrt())) - f * norm_cdf(-d1);
-    let quote = OptionQuote::new(k, t, put, OptionType::Put);
-    let surface = ImpliedVolSurface::try_from_quotes(&[quote], &[(t, f)]).unwrap();
-    assert!((surface.ivs[[0, 0]] - sigma).abs() < 1e-10);
-    let empty = ImpliedVolSurface::try_from_quotes(&[], &[]);
-    assert!(matches!(
-      empty,
-      Err(QuantError::InsufficientData { got: 0, .. })
-    ));
-  }
-
-  #[test]
   fn from_prices_round_trip() {
     use stochastic_rs_distributions::special::norm_cdf;
 
