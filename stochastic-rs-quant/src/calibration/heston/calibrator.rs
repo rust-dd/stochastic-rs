@@ -148,8 +148,8 @@ impl HestonCalibrator {
   }
 }
 
-/// `weights` over their plain root mean square, so ordinary weights scale as they always have, and
-/// over the same quantity factored through the largest weight where the squares leave `f64`.
+/// `weights` over their root mean square, summed plainly; where the squares leave `f64`, the same
+/// quantity is factored through the largest weight, which rounds differently.
 fn unit_root_mean_square(weights: Array1<f64>) -> Array1<f64> {
   let n = weights.len() as f64;
   let rms = (weights.iter().map(|w| w * w).sum::<f64>() / n).sqrt();
