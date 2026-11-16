@@ -30,6 +30,7 @@
 use ndarray::Array1;
 use ndarray::Array2;
 
+use crate::QuantError;
 use crate::traits::RealExt;
 
 /// Discrete-time rating transition matrix with an absorbing default state.
@@ -93,17 +94,18 @@ impl<T: RealExt> TransitionMatrix<T> {
   }
 
   /// Validate that the matrix is row-stochastic to within `tol`.
-  pub fn check_row_stochastic(&self, tol: T) -> Result<(), String> {
+  pub fn check_row_stochastic(&self, tol: T) -> Result<(), QuantError> {
+    let invalid = |reason| QuantError::invalid("transition matrix", reason);
     for (i, row) in self.matrix.rows().into_iter().enumerate() {
       let mut s = T::zero();
       for &v in row.iter() {
         if v < T::zero() && v.abs() > tol {
-          return Err(format!("row {i} contains negative entry {v:?}"));
+          return Err(invalid(format!("row {i} contains negative entry {v:?}")));
         }
         s += v;
       }
       if (s - T::one()).abs() > tol {
-        return Err(format!("row {i} sums to {s:?}, expected 1"));
+        return Err(invalid(format!("row {i} sums to {s:?}, expected 1")));
       }
     }
     Ok(())
@@ -238,22 +240,23 @@ impl<T: RealExt> GeneratorMatrix<T> {
   /// Validate that the matrix satisfies generator-matrix conditions to within
   /// `tol`: non-negative off-diagonal entries, non-positive diagonal, zero row
   /// sums.
-  pub fn check_generator(&self, tol: T) -> Result<(), String> {
+  pub fn check_generator(&self, tol: T) -> Result<(), QuantError> {
+    let invalid = |reason| QuantError::invalid("generator matrix", reason);
     let n = self.states();
     for i in 0..n {
       let mut s = T::zero();
       for j in 0..n {
         let v = self.matrix[[i, j]];
         if i != j && v < -tol {
-          return Err(format!("off-diagonal ({i},{j}) negative: {v:?}"));
+          return Err(invalid(format!("off-diagonal ({i},{j}) negative: {v:?}")));
         }
         if i == j && v > tol {
-          return Err(format!("diagonal ({i},{i}) positive: {v:?}"));
+          return Err(invalid(format!("diagonal ({i},{i}) positive: {v:?}")));
         }
         s += v;
       }
       if s.abs() > tol {
-        return Err(format!("row {i} sum {s:?} not zero"));
+        return Err(invalid(format!("row {i} sum {s:?} not zero")));
       }
     }
     Ok(())

@@ -1,7 +1,8 @@
 //! Initial-variance finite-difference controls and reliability diagnostics.
 
 use super::EstimateWithError;
-use super::HestonMalliavinError;
+use super::invalid_input;
+use crate::QuantError;
 
 pub(super) const DEFAULT_MINIMUM_RELATIVE_BUMP: f64 = 0.03;
 const STABILITY_STANDARD_ERRORS: f64 = 3.0;
@@ -52,22 +53,23 @@ pub(super) fn effective_initial_variance_bump(
   initial_variance: f64,
   requested_bump: f64,
   minimum_relative_bump: f64,
-) -> Result<f64, HestonMalliavinError> {
+) -> Result<f64, QuantError> {
   if !requested_bump.is_finite() || requested_bump <= 0.0 {
-    return Err(HestonMalliavinError::InvalidInput(
-      "initial_variance_bump must be finite and positive",
-    ));
+    return Err(invalid_input(format!(
+      "initial_variance_bump must be finite and positive, got {requested_bump}"
+    )));
   }
   if !minimum_relative_bump.is_finite() || !(0.0..1.0).contains(&minimum_relative_bump) {
-    return Err(HestonMalliavinError::InvalidInput(
-      "minimum_relative_initial_variance_bump must lie in [0, 1)",
-    ));
+    return Err(invalid_input(format!(
+      "minimum_relative_initial_variance_bump must lie in [0, 1), got {minimum_relative_bump}"
+    )));
   }
   let effective = requested_bump.max(minimum_relative_bump * initial_variance);
   if effective >= initial_variance {
-    return Err(HestonMalliavinError::InvalidInput(
-      "effective initial-variance bump must be smaller than initial_variance",
-    ));
+    return Err(invalid_input(format!(
+      "effective initial-variance bump must be smaller than initial_variance = \
+       {initial_variance}, got {effective}"
+    )));
   }
   Ok(effective)
 }

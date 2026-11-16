@@ -25,9 +25,8 @@ transparent to users.
 
 The umbrella re-exports `ndarray`, `num_complex`, `num_traits`, `rand` and
 `chrono` (as `stochastic_rs::ndarray` and so on) because callers build and pass
-their types; use these paths or depend on the same versions. `anyhow`
-(calibration and SLV errors) also appears in public signatures. A
-semver-incompatible release of any of these six crates (for a 0.x crate, a
+their types; use these paths or depend on the same versions. A
+semver-incompatible release of any of these five crates (for a 0.x crate, a
 minor bump such as ndarray 0.17 → 0.18) is a major release of `stochastic-rs`.
 The `wide` vectors behind the SIMD kernels are an implementation detail: the
 trait items that name them are hidden and outside the stability promise.
@@ -75,7 +74,7 @@ older summary.
 - `ModelPricer` — `price_call(s, k, r, q, tau)` / `price_put` (put-call parity default) / `price_option`; the struct holds model parameters and the query travels as arguments, which is what makes vectorized pricing across a strike/maturity grid possible. It replaced the bundled-market-data `PricerExt` (`calculate_call_put()` / `calculate_price()` / `implied_volatility()`), retired once its last implementor moved off it
 - `ToModel` / `ToShortRateModel` — bridge a `Calibrator`'s output to a concrete pricer via associated type: `ToModel::Model: ModelPricer` for spot/strike models, `ToShortRateModel::Model` (no `ModelPricer` bound) for the short-rate models (Hull-White, Black-Karasinski, G2++); `to_short_rate_model(&self)` takes no arguments because the result stores the curve-side inputs (`initial_rate`, HW's `theta`, BK's `long_run_rate`) its calibrator was given
 - `FourierModelExt` — `chf(t, xi)` (characteristic function) + `cumulants(t)`; blanket-implements `ModelPricer` via Gil-Pelaez quadrature. `ModelSurface` (`vol_surface(s, r, q, strikes, maturities)`) blanket-implements over `VanillaEuropeanCall`, **not** over `ModelPricer` — its Black inversion is only meaningful for a European vanilla call, and the marker carries a `vanilla_call_forward` hook so a model whose carry is not `r - q` states its own forward rather than having one assumed; `Cumulants.c4` is `Option<f64>` (`None` for the Heston family and Bates)
-- `Calibrator` / `CalibrationResult` — `Calibrator::calibrate(initial) -> Result<Output, Error>`, `type Params: Clone`; `type Error: Debug + Display + Send + Sync + 'static`, which all **18** in-tree calibrators meet with `anyhow::Error`. `CalibrationResult` requires `rmse()`/`converged()`/`params()` and defaults `loss_score()`, `iterations()`, `message()` and `max_error()` to `None`
+- `Calibrator` / `CalibrationResult` — `Calibrator::calibrate(initial) -> Result<Output, Error>`, `type Params: Clone`; `type Error: Debug + Display + Send + Sync + 'static`, which the quant calibrators meet with `QuantError` and the ai surrogates with `anyhow::Error`. `CalibrationResult` requires `rmse()`/`converged()`/`params()` and defaults `loss_score()`, `iterations()`, `message()` and `max_error()` to `None`
 - `Instrument` / `InstrumentExt` / `PricingEngine` / `PricingResult` — QuantLib-style decoupling (`AnalyticBsEngine`, `AnalyticHestonEngine`)
 - `Greeks` struct — first- + second-order Greeks (delta/gamma/vega/theta/rho/vanna/charm/volga/veta); the return type of the **5** identical inherent `greeks(s, k, r, q, tau, option_type)` aggregators (`BsmPricer`, `HestonPricer`, `Merton1976Pricer`, `CashOrNothingPricer`, `AssetOrNothingPricer`)
 - `GreeksExt` — no-argument Greeks for the **2** query-bundled Monte Carlo Malliavin estimators only (`GbmMalliavinGreeks`, `HestonMalliavinGreeks`), whose `greeks()` override shares one simulation across the accessors. Not the crate's Greeks interface and not in the prelude — a pricer's Greeks are the inherent method above; `GreeksExt`'s accessors return `Option<f64>`

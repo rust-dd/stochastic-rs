@@ -4,6 +4,7 @@ use super::HestonModel;
 use super::TerminalPayoff;
 use super::VanillaPortfolio;
 use crate::OptionType;
+use crate::QuantError;
 use crate::pricing::bsm::BsmCoc;
 use crate::pricing::bsm::BsmPricer;
 use crate::traits::ModelPricer;
@@ -233,10 +234,12 @@ fn near_unit_correlation_is_rejected_before_simulation() {
   let model = bsm_limit_model(0.999_999);
   let error = HestonMalliavinEstimator::new(model, config(2_000, 8, 9)).unwrap_err();
 
-  assert_eq!(
-    error,
-    super::HestonMalliavinError::InvalidInput(
-      "rho leaves too little orthogonal variance for a stable Malliavin score"
-    )
+  assert!(
+    matches!(
+      &error,
+      QuantError::InvalidInput { what: "Heston Malliavin input", reason }
+        if reason.starts_with("rho leaves too little orthogonal variance")
+    ),
+    "{error}"
   );
 }

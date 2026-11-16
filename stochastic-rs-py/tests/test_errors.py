@@ -42,6 +42,21 @@ def test_hand_written_pricer_constructor_raises_value_error():
         sr.CarrMadanPricer(n=12)
 
 
+def test_quant_data_error_raises_value_error_with_its_display():
+    calibrator = sr.HestonSlvCalibrator(
+        100.0, 0.02, 0.0, [90.0, float("nan"), 110.0], [0.5, 1.0], np.full((2, 3), 5.0)
+    )
+    want = r"invalid strikes: strike 1 must be finite and positive, got NaN$"
+    with pytest.raises(ValueError, match=want):
+        calibrator.calibrate()
+
+
+def test_factors_data_error_raises_value_error_with_its_display():
+    want = r"observations in a PCA decomposition: needs at least 2, got 1$"
+    with pytest.raises(ValueError, match=want):
+        sr.PCA(np.zeros((1, 3)))
+
+
 def _clayton_pseudo_observations():
     c = sr.Clayton(tau=0.5)
     c.compute_theta()

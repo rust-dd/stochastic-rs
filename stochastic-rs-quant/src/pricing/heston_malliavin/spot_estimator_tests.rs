@@ -6,6 +6,7 @@ use super::HestonMalliavinEstimator;
 use super::HestonMalliavinSpotProvenance;
 use super::HestonModel;
 use super::VanillaPortfolio;
+use crate::QuantError;
 
 fn model() -> HestonModel {
   HestonModel {
@@ -94,5 +95,14 @@ fn spot_entry_point_preserves_payoff_validation() {
     .estimate_spot_greeks(&|_| f64::NAN)
     .unwrap_err();
 
-  assert_eq!(error, super::HestonMalliavinError::NonFinitePayoff);
+  assert!(
+    matches!(
+      &error,
+      QuantError::Numerical {
+        what: "the terminal payoff",
+        ..
+      }
+    ),
+    "{error}"
+  );
 }

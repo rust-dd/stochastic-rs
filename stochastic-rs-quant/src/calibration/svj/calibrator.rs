@@ -8,6 +8,7 @@ use super::SvjParams;
 use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::OptionType;
+use crate::QuantError;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::least_squares::LmOptions;
 use crate::calibration::least_squares::minimize;
@@ -53,7 +54,7 @@ impl crate::traits::Calibrator for SvjCalibrator {
   type InitialGuess = SvjParams;
   type Params = SvjParams;
   type Output = SvjCalibrationResult;
-  type Error = anyhow::Error;
+  type Error = QuantError;
 
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     Ok(self.solve(initial))

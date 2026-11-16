@@ -16,6 +16,7 @@ use num_complex::Complex;
 
 use super::coefficients::fourier_coefficients_dx;
 use super::coefficients::fourier_coefficients_dx_uniform;
+use crate::QuantError;
 use crate::traits::RealExt;
 
 mod helpers;
@@ -78,8 +79,7 @@ impl<T: RealExt> FmVol<T> {
   /// Panics when input or default-frequency validation fails. Use
   /// [`Self::try_new`] to receive the validation error.
   pub fn new(prices: &[T], times: &[T], period: T) -> Self {
-    Self::try_new(prices, times, period)
-      .expect("FmVol::new precondition violated — call try_new to handle this gracefully")
+    Self::try_new(prices, times, period).unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::new`].
@@ -87,7 +87,7 @@ impl<T: RealExt> FmVol<T> {
   /// Prices and times must be finite, times must be strictly increasing and
   /// span `period`, and the default frequency windows must lie below the
   /// discrete Nyquist storage bound.
-  pub fn try_new(prices: &[T], times: &[T], period: T) -> anyhow::Result<Self> {
+  pub fn try_new(prices: &[T], times: &[T], period: T) -> Result<Self, QuantError> {
     let (n, mesh, origin) = validation::validate_irregular_inputs(prices, times, period)?;
     let big_n = n / 2;
     let max_freq = validation::default_max_frequency(n, big_n, mesh)?;
@@ -111,13 +111,11 @@ impl<T: RealExt> FmVol<T> {
   /// Panics when input or default-frequency validation fails. Use
   /// [`Self::try_new_uniform`] to receive the validation error.
   pub fn new_uniform(prices: &[T], period: T) -> Self {
-    Self::try_new_uniform(prices, period).expect(
-      "FmVol::new_uniform precondition violated — call try_new_uniform to handle this gracefully",
-    )
+    Self::try_new_uniform(prices, period).unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::new_uniform`].
-  pub fn try_new_uniform(prices: &[T], period: T) -> anyhow::Result<Self> {
+  pub fn try_new_uniform(prices: &[T], period: T) -> Result<Self, QuantError> {
     let n = validation::validate_uniform_inputs(prices, period)?;
     let mesh = period / T::from_usize_(n);
     let big_n = n / 2;
@@ -144,9 +142,7 @@ impl<T: RealExt> FmVol<T> {
   /// Panics when input or frequency validation fails. Use
   /// [`Self::try_with_freq`] to receive the validation error.
   pub fn with_freq(prices: &[T], times: &[T], period: T, n_freq: usize, max_freq: usize) -> Self {
-    Self::try_with_freq(prices, times, period, n_freq, max_freq).expect(
-      "FmVol::with_freq precondition violated — call try_with_freq to handle this gracefully",
-    )
+    Self::try_with_freq(prices, times, period, n_freq, max_freq).unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::with_freq`].
@@ -156,7 +152,7 @@ impl<T: RealExt> FmVol<T> {
     period: T,
     n_freq: usize,
     max_freq: usize,
-  ) -> anyhow::Result<Self> {
+  ) -> Result<Self, QuantError> {
     let (n, mesh, origin) = validation::validate_irregular_inputs(prices, times, period)?;
     validation::validate_frequency_bounds(n, n_freq, max_freq)?;
     let dx = fourier_coefficients_dx(prices, times, period, max_freq);

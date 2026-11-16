@@ -3378,7 +3378,6 @@ dependencies = [
 name = "stochastic-rs"
 version = "3.0.0-rc.4"
 dependencies = [
- "anyhow",
  "chrono",
  "criterion",
  "log",
@@ -3489,7 +3488,6 @@ dependencies = [
 name = "stochastic-rs-quant"
 version = "3.0.0-rc.4"
 dependencies = [
- "anyhow",
  "basin",
  "chrono",
  "faer",

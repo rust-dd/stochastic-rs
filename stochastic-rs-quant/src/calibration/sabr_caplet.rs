@@ -23,6 +23,7 @@ use std::convert::Infallible;
 
 use basin::CostFunction;
 
+use crate::QuantError;
 use crate::calibration::run_nelder_mead;
 use crate::pricing::sabr::SabrParams;
 use crate::pricing::sabr::hagan_implied_vol;
@@ -120,7 +121,7 @@ impl crate::traits::Calibrator for SabrCapletCalibrator {
   type InitialGuess = (f64, f64, f64);
   type Params = SabrCapletParams;
   type Output = SabrCapletCalibrationResult;
-  type Error = anyhow::Error;
+  type Error = QuantError;
 
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
@@ -210,23 +211,29 @@ impl SabrCapletCalibrator {
 
   /// `Err` naming the first value `shift` leaves non-positive — the forward or a strike — where the Hagan expansion would feed NaN
   /// residuals to the Nelder–Mead fit.
-  fn validate_shift(&self) -> Result<(), anyhow::Error> {
+  fn validate_shift(&self) -> Result<(), QuantError> {
     let shift = self.shift;
     let forward = self.forward;
     let shifted_forward = self.shifted_forward();
     if !shifted_forward.is_finite() || shifted_forward <= 0.0 {
-      anyhow::bail!(
-        "SabrCapletCalibrator: shift {shift} does not make forward {forward} positive \
-         (forward + shift = {shifted_forward} <= 0); use a larger shift"
-      );
+      return Err(QuantError::invalid(
+        "shifted forward",
+        format!(
+          "shift {shift} does not make forward {forward} positive (forward + shift = \
+           {shifted_forward} <= 0); use a larger shift"
+        ),
+      ));
     }
     for (i, &k) in self.strikes.iter().enumerate() {
       let shifted_k = k + shift;
       if !shifted_k.is_finite() || shifted_k <= 0.0 {
-        anyhow::bail!(
-          "SabrCapletCalibrator: shift {shift} does not make strike[{i}] {k} positive \
-           (strike + shift = {shifted_k} <= 0); use a larger shift"
-        );
+        return Err(QuantError::InvalidQuote {
+          index: i,
+          reason: format!(
+            "shift {shift} does not make strike {k} positive (strike + shift = {shifted_k} <= 0); \
+             use a larger shift"
+          ),
+        });
       }
     }
     Ok(())

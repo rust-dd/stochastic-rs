@@ -4,6 +4,9 @@
 //! f_{\mathbb Q}(K)=e^{rT}\frac{\partial^2 C(K,T)}{\partial K^2}
 //! $$
 //!
+
+use crate::QuantError;
+
 #[derive(Clone, Debug)]
 pub struct BreedenLitzenberger {
   /// Strikes (strictly increasing)
@@ -83,19 +86,26 @@ impl BreedenLitzenberger {
   pub fn density_from_custom_derivatives(&self) -> Vec<f64> {
     self
       .try_density_from_custom_derivatives()
-      .expect("density_from_custom_derivatives requires d2c_dk2 populated")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Falliable variant of [`Self::density_from_custom_derivatives`].
   /// Returns an error if `d2c_dk2` is `None` or its length does not match `strikes`.
-  pub fn try_density_from_custom_derivatives(&self) -> anyhow::Result<Vec<f64>> {
+  pub fn try_density_from_custom_derivatives(&self) -> Result<Vec<f64>, QuantError> {
     let d2c = self
       .d2c_dk2
       .as_ref()
-      .ok_or_else(|| anyhow::anyhow!("d2c_dk2 must be provided for custom derivatives"))?;
+      .ok_or_else(|| QuantError::MissingInput {
+        what: "d2c_dk2",
+        detail: "the custom-derivative density reads it".to_string(),
+      })?;
     let n = self.strikes.len();
     if d2c.len() != n {
-      anyhow::bail!("d2c_dk2 length {} must equal strikes.len()={n}", d2c.len());
+      return Err(QuantError::DimensionMismatch {
+        what: "d2c_dk2, one per strike",
+        expected: n,
+        got: d2c.len(),
+      });
     }
 
     Ok(d2c.iter().map(|d| (self.r * self.tau).exp() * d).collect())

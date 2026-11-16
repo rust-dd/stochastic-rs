@@ -2,6 +2,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use super::curves::PyDiscountCurve;
+use crate::QuantError;
 use crate::calibration::hw_swaption::HullWhiteSwaptionCalibrator;
 use crate::calibration::hw_swaption::SwaptionQuote;
 use crate::calibration::tree_swaption::BlackKarasinskiSwaptionCalibrator;
@@ -37,7 +38,7 @@ fn parse_quotes(quotes: Vec<(f64, f64, f64, f64, String)>) -> PyResult<Vec<Swapt
     .collect()
 }
 
-fn as_value_error(e: anyhow::Error) -> PyErr {
+fn as_value_error(e: QuantError) -> PyErr {
   PyValueError::new_err(e.to_string())
 }
 

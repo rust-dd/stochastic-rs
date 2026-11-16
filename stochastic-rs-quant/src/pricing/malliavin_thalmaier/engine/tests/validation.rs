@@ -2,13 +2,14 @@ use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
 
 use super::*;
+use crate::QuantError;
 
 #[test]
 fn constructor_rejects_invalid_regularization() {
   for h in [0.0, -0.01, f64::NAN, f64::INFINITY] {
     let error = MtGreeks::try_new(constant_volatility_params(), h, 8).unwrap_err();
     assert!(
-      error.to_string().contains("h must be finite and positive"),
+      matches!(error, QuantError::InvalidInput { what: "h", .. }),
       "h={h}: unexpected error: {error}"
     );
   }
@@ -17,9 +18,9 @@ fn constructor_rejects_invalid_regularization() {
 #[test]
 fn constructor_rejects_zero_paths() {
   let error = MtGreeks::try_new(constant_volatility_params(), 0.01, 0).unwrap_err();
-  assert!(
-    error.to_string().contains("n_paths must be positive"),
-    "unexpected error: {error}"
+  assert_eq!(
+    error.to_string(),
+    "invalid n_paths: must be positive, got 0"
   );
 }
 

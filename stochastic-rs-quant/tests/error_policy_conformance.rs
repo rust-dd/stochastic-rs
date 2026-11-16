@@ -3,15 +3,20 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs_quant::QuantError;
 use stochastic_rs_quant::curves::Compounding;
 use stochastic_rs_quant::curves::DiscountCurve;
 use stochastic_rs_quant::curves::InterpolationMethod;
 use stochastic_rs_quant::inflation::InflationCurve;
 use stochastic_rs_quant::inflation::ZeroCouponInflationCurve;
+use stochastic_rs_quant::portfolio::momentum::WeightScheme;
 use stochastic_rs_quant::portfolio::optimizers::empirical_cvar;
+use stochastic_rs_quant::portfolio::types::OptimizerMethod;
 use stochastic_rs_quant::pricing::sabr::SabrParams;
 use stochastic_rs_quant::pricing::sabr::hagan_implied_vol;
+use stochastic_rs_quant::risk::xva::ExposureProfile;
 use stochastic_rs_quant::vol_surface::implied::ImpliedVolSurface;
+use stochastic_rs_quant::vol_surface::implied::OptionQuote;
 
 fn flat_curve() -> DiscountCurve<f64> {
   DiscountCurve::from_zero_rates(
@@ -82,4 +87,86 @@ fn an_unsorted_maturity_grid_is_rejected() {
 fn a_price_grid_shares_the_ascending_axes_check() {
   let prices = Array2::from_elem((1, 2), 5.0);
   let _ = ImpliedVolSurface::from_prices(vec![110.0, 90.0], vec![1.0], vec![100.0], &prices, true);
+}
+
+#[test]
+fn quant_errors_are_one_type_with_a_readable_display() {
+  fn assert_send_sync<T: Send + Sync + std::error::Error + Clone>() {}
+  assert_send_sync::<QuantError>();
+  let e = QuantError::InvalidQuote {
+    index: 3,
+    reason: "strike is NaN".to_string(),
+  };
+  assert_eq!(e.to_string(), "quote 3 cannot be used: strike is NaN");
+  let e = QuantError::InsufficientData {
+    what: "prices for the optimal cutting frequency",
+    needed: 8,
+    got: 5,
+  };
+  assert_eq!(
+    e.to_string(),
+    "prices for the optimal cutting frequency: needs at least 8, got 5"
+  );
+}
+
+#[test]
+fn an_unknown_method_string_is_invalid_input_listing_the_accepted_ones() {
+  let e = "nope".parse::<OptimizerMethod>().unwrap_err();
+  assert!(matches!(
+    e,
+    QuantError::InvalidInput {
+      what: "optimizer method",
+      ..
+    }
+  ));
+  assert!(e.to_string().contains("'nope'") && e.to_string().contains("black-litterman"));
+  let e = "nope".parse::<WeightScheme>().unwrap_err();
+  assert!(matches!(
+    e,
+    QuantError::InvalidInput {
+      what: "weight scheme",
+      ..
+    }
+  ));
+  assert!(e.to_string().contains("score-weighted"));
+}
+
+#[test]
+#[should_panic(expected = "MtM columns, one per exposure date: expected 3, got 2")]
+fn a_panicking_twin_panics_with_the_display_of_its_error() {
+  ExposureProfile::from_mtm(&Array2::zeros((2, 2)), vec![0.5, 1.0, 1.5], 0.95);
+}
+
+#[test]
+fn a_nan_quote_is_an_error_not_a_panic() {
+  let quotes = [
+    OptionQuote {
+      strike: 100.0,
+      tau: 1.0,
+      price: 8.0,
+      is_call: true,
+    },
+    OptionQuote {
+      strike: f64::NAN,
+      tau: 1.0,
+      price: 8.0,
+      is_call: true,
+    },
+  ];
+  let err = ImpliedVolSurface::try_from_quotes(&quotes, &[(1.0, 102.0)]).unwrap_err();
+  assert!(
+    matches!(err, QuantError::InvalidQuote { index: 1, .. }),
+    "{err}"
+  );
+  let missing = ImpliedVolSurface::try_from_quotes(&quotes[..1], &[(0.5, 101.0)]).unwrap_err();
+  assert!(
+    matches!(
+      missing,
+      QuantError::MissingInput {
+        what: "forward",
+        ..
+      }
+    ),
+    "{missing}"
+  );
 }

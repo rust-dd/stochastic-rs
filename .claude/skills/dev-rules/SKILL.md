@@ -213,9 +213,10 @@ Library code reports through the `log` facade (`log::warn!`, `log::trace!`), nev
   same preconditions.
 - **A data-dependent failure → `Result`**: a calibration that produces no result, an estimate on
   too little or degenerate data, a device that cannot be opened. Non-convergence is `Ok` with
-  `converged() == false`, never `Err`. quant and ai return `anyhow::Error`, copulas `CopulaError`,
-  the devices `DeviceError`; `Calibrator::Error: Debug + Display + Send + Sync + 'static`. The risk
-  estimators (`empirical_cvar`, `historical_var`) still panic on an empty sample; whether short or
+  `converged() == false`, never `Err`. quant returns `QuantError`, ai `anyhow::Error`, copulas
+  `CopulaError`, the devices `DeviceError`;
+  `Calibrator::Error: Debug + Display + Send + Sync + 'static`. The risk estimators
+  (`empirical_cvar`, `historical_var`) still panic on an empty sample; whether short or
   degenerate data there becomes a `Result` is one pending decision for all of them.
 - **A numerical evaluation outside its domain or an inversion with no root → documented `NaN`**:
   a yield at `tau <= 0`, an implied volatility with no root, a Bessel K at `x <= 0`, a pricing

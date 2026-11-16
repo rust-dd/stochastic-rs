@@ -25,6 +25,7 @@ use basin::CostFunction;
 use super::hw_swaption::CurveSnapshot;
 use super::hw_swaption::SwaptionQuote;
 use super::hw_swaption::serialize_curve;
+use crate::QuantError;
 use crate::calibration::Regularization;
 use crate::calibration::run_nelder_mead;
 use crate::curves::DiscountCurve;
@@ -267,7 +268,7 @@ impl<'a> crate::traits::Calibrator for BlackKarasinskiSwaptionCalibrator<'a> {
   type InitialGuess = (f64, f64);
   type Params = BlackKarasinskiParams;
   type Output = BlackKarasinskiCalibrationResult;
-  type Error = anyhow::Error;
+  type Error = QuantError;
 
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
@@ -488,7 +489,7 @@ impl<'a> crate::traits::Calibrator for G2ppSwaptionCalibrator<'a> {
   type InitialGuess = [f64; 5];
   type Params = G2ppParams;
   type Output = G2ppCalibrationResult;
-  type Error = anyhow::Error;
+  type Error = QuantError;
 
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();

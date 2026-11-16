@@ -3,6 +3,8 @@
 //! Inputs and outputs used by signal generators, weighting schemes and
 //! the rank/optimizer-based portfolio engine.
 
+use crate::error::QuantError;
+
 /// Generic model output contract for momentum and portfolio construction.
 pub trait ModelEstimate {
   /// Asset identifier.
@@ -98,30 +100,17 @@ pub enum WeightScheme {
   ScoreWeighted,
 }
 
-/// Error returned by [`WeightScheme::from_str`](WeightScheme) for unrecognized inputs.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct UnknownWeightScheme(pub String);
-
-impl std::fmt::Display for UnknownWeightScheme {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(
-      f,
-      "unknown weight scheme '{}'. Valid: equal, score-weighted",
-      self.0
-    )
-  }
-}
-
-impl std::error::Error for UnknownWeightScheme {}
-
 impl std::str::FromStr for WeightScheme {
-  type Err = UnknownWeightScheme;
+  type Err = QuantError;
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     match s.to_lowercase().as_str() {
       "equal" | "eq" => Ok(Self::Equal),
       "score" | "score-weighted" | "scoreweighted" => Ok(Self::ScoreWeighted),
-      _ => Err(UnknownWeightScheme(s.to_string())),
+      _ => Err(QuantError::invalid(
+        "weight scheme",
+        format!("'{s}', expected one of equal, score-weighted"),
+      )),
     }
   }
 }

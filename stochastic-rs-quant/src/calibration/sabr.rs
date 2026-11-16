@@ -34,6 +34,7 @@ use ndarray::Array2;
 use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::OptionType;
+use crate::QuantError;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::Regularization;
 use crate::calibration::least_squares::LeastSquaresProblem;
@@ -107,7 +108,7 @@ impl crate::traits::Calibrator for SabrCalibrator {
   type InitialGuess = SabrParams;
   type Params = SabrParams;
   type Output = SabrCalibrationResult;
-  type Error = anyhow::Error;
+  type Error = QuantError;
 
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
@@ -248,15 +249,21 @@ impl SabrCalibrator {
 impl SabrCalibrator {
   /// `Err` naming the first spot or strike that is not finite and positive, where the Hagan expansion would feed NaN residuals to the
   /// Levenberg–Marquardt fit; `!x.is_finite() || x <= 0.0` so a NaN, which fails every comparison, is rejected too.
-  fn validate_market_data(&self) -> Result<(), anyhow::Error> {
+  fn validate_market_data(&self) -> Result<(), QuantError> {
     for (i, &s) in self.s.iter().enumerate() {
       if !s.is_finite() || s <= 0.0 {
-        anyhow::bail!("SabrCalibrator: s[{i}] must be strictly positive (got {s})");
+        return Err(QuantError::InvalidQuote {
+          index: i,
+          reason: format!("spot s[{i}] must be finite and positive, got {s}"),
+        });
       }
     }
     for (i, &k) in self.k.iter().enumerate() {
       if !k.is_finite() || k <= 0.0 {
-        anyhow::bail!("SabrCalibrator: k[{i}] must be strictly positive (got {k})");
+        return Err(QuantError::InvalidQuote {
+          index: i,
+          reason: format!("strike k[{i}] must be finite and positive, got {k}"),
+        });
       }
     }
     Ok(())

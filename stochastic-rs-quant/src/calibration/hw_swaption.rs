@@ -15,6 +15,7 @@ use std::convert::Infallible;
 
 use basin::CostFunction;
 
+use crate::QuantError;
 use crate::calibration::Regularization;
 use crate::calibration::run_nelder_mead;
 use crate::curves::DiscountCurve;
@@ -104,7 +105,7 @@ impl<'a> crate::traits::Calibrator for HullWhiteSwaptionCalibrator<'a> {
   type InitialGuess = (f64, f64);
   type Params = HullWhiteParams;
   type Output = HullWhiteCalibrationResult;
-  type Error = anyhow::Error;
+  type Error = QuantError;
 
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();

@@ -31,20 +31,8 @@ pub trait ToShortRateModel {
   fn to_short_rate_model(&self) -> Self::Model;
 }
 
-/// Common interface for calibrators across the quant library.
-///
-/// Each calibrator declares an [`InitialGuess`](Calibrator::InitialGuess) type
-/// (use `()` if no initial guess is supported) and an [`Output`](Calibrator::Output)
-/// type that implements [`CalibrationResult`]. The trait gives a single entry
-/// point — `calibrate(initial)` — that returns either rich diagnostic
-/// information (loss / convergence) on success or an
-/// [`Error`](Calibrator::Error) when the optimiser fails before producing a
-/// usable result.
-///
-/// Implementations are encouraged to use [`anyhow::Error`] for the
-/// [`Error`](Calibrator::Error) type; that is the convention in this crate
-/// and lets callers chain `?` propagation with other quant library
-/// operations.
+/// One entry point per calibrator, `calibrate(initial)`: a data-dependent failure is `Err`, and a
+/// fit that ran but did not converge is `Ok` with [`CalibrationResult::converged`] false.
 pub trait Calibrator {
   /// Optional initial-guess type.
   type InitialGuess;
@@ -55,7 +43,7 @@ pub trait Calibrator {
   /// Calibration output. Must implement [`CalibrationResult`] and produce
   /// the same [`Params`](Self::Params).
   type Output: CalibrationResult<Params = Self::Params>;
-  /// Error returned when calibration cannot produce a result; `anyhow::Error` satisfies the bound.
+  /// Why calibration produced no result; every quant calibrator uses [`crate::QuantError`].
   type Error: std::fmt::Debug + std::fmt::Display + Send + Sync + 'static;
 
   /// Run calibration. Pass `None` to let the calibrator infer an initial guess.

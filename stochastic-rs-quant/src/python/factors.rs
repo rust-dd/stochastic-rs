@@ -32,8 +32,9 @@ impl PyPca {
   #[new]
   #[pyo3(signature = (returns, k=0))]
   fn new<'py>(returns: numpy::PyReadonlyArray2<'py, f64>, k: usize) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::factors::pca::pca_decompose(returns.as_array(), k),
+    Ok(Self {
+      inner: crate::factors::pca::try_pca_decompose(returns.as_array(), k)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?,
     })
   }
 
@@ -80,8 +81,9 @@ impl PyFamaMacBeth {
     returns: numpy::PyReadonlyArray2<'py, f64>,
     factors: numpy::PyReadonlyArray2<'py, f64>,
   ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::factors::fama_macbeth::fama_macbeth(returns.as_array(), factors.as_array()),
+    Ok(Self {
+      inner: crate::factors::fama_macbeth::try_fama_macbeth(returns.as_array(), factors.as_array())
+        .map_err(|e| PyValueError::new_err(e.to_string()))?,
     })
   }
 
@@ -123,8 +125,9 @@ impl PyPairsStrategy {
     entry_z: f64,
     exit_z: f64,
   ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::factors::pairs::pairs_signals(y.as_array(), x.as_array(), entry_z, exit_z),
+    Ok(Self {
+      inner: crate::factors::pairs::try_pairs_signals(y.as_array(), x.as_array(), entry_z, exit_z)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?,
     })
   }
 

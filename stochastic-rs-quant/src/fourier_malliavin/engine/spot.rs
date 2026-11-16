@@ -5,6 +5,8 @@ use num_complex::Complex;
 
 use super::FmVol;
 use super::helpers::fejer_inversion;
+use super::validation::window_overflow;
+use crate::QuantError;
 use crate::fourier_malliavin::coefficients::convolution_coefficients;
 use crate::traits::RealExt;
 
@@ -13,11 +15,15 @@ impl<T: RealExt> FmVol<T> {
   pub fn spot_variance(&self, tau: &[T], m_freq: Option<usize>) -> Array1<T> {
     self
       .try_spot_variance(tau, m_freq)
-      .expect("invalid spot variance window or evaluation time")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::spot_variance`].
-  pub fn try_spot_variance(&self, tau: &[T], m_freq: Option<usize>) -> anyhow::Result<Array1<T>> {
+  pub fn try_spot_variance(
+    &self,
+    tau: &[T],
+    m_freq: Option<usize>,
+  ) -> Result<Array1<T>, QuantError> {
     let big_m = self.resolve_m(m_freq);
     self.validate_tau(tau)?;
     self.validate_m_window(big_m)?;
@@ -45,7 +51,7 @@ impl<T: RealExt> FmVol<T> {
   pub fn spot_variance_fe(&self, tau: &[T], m_freq: Option<usize>) -> Array1<T> {
     self
       .try_spot_variance_fe(tau, m_freq)
-      .expect("invalid FE spot variance window or evaluation time")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::spot_variance_fe`].
@@ -53,10 +59,13 @@ impl<T: RealExt> FmVol<T> {
     &self,
     tau: &[T],
     m_freq: Option<usize>,
-  ) -> anyhow::Result<Array1<T>> {
+  ) -> Result<Array1<T>, QuantError> {
     let big_m = m_freq.unwrap_or((self.n_freq as f64).sqrt() as usize);
     if big_m < 2 {
-      anyhow::bail!("FE kernel requires M >= 2, got {big_m}");
+      return Err(QuantError::invalid(
+        "M",
+        format!("must be at least 2 for the Fejér kernel, got {big_m}"),
+      ));
     }
     self.validate_tau(tau)?;
     self.validate_m_window(big_m)?;
@@ -74,7 +83,7 @@ impl<T: RealExt> FmVol<T> {
   pub fn spot_covariance(&self, other: &Self, tau: &[T], m_freq: Option<usize>) -> Array1<T> {
     self
       .try_spot_covariance(other, tau, m_freq)
-      .expect("invalid spot covariance configuration")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::spot_covariance`].
@@ -83,17 +92,17 @@ impl<T: RealExt> FmVol<T> {
     other: &Self,
     tau: &[T],
     m_freq: Option<usize>,
-  ) -> anyhow::Result<Array1<T>> {
+  ) -> Result<Array1<T>, QuantError> {
     self.validate_compatible_period(other)?;
     self.validate_tau(tau)?;
     let big_n = self.n_freq.min(other.n_freq);
     let big_m = m_freq.unwrap_or((big_n as f64).sqrt() as usize);
     if big_m == 0 {
-      anyhow::bail!("M must be positive");
+      return Err(QuantError::invalid("M", "must be positive, got 0"));
     }
     let required = big_n
       .checked_add(big_m)
-      .ok_or_else(|| anyhow::anyhow!("N + M overflows usize"))?;
+      .ok_or_else(|| window_overflow("N + M"))?;
     self.validate_stored_frequency(required)?;
     other.validate_stored_frequency(big_n)?;
     let c_c = convolution_coefficients(&other.dx, &self.dx, self.period, big_n, big_m);
@@ -115,7 +124,7 @@ impl<T: RealExt> FmVol<T> {
   ) -> Array1<T> {
     self
       .try_spot_leverage(tau, m_freq, l_freq)
-      .expect("invalid spot leverage window or evaluation time")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::spot_leverage`].
@@ -124,7 +133,7 @@ impl<T: RealExt> FmVol<T> {
     tau: &[T],
     m_freq: Option<usize>,
     l_freq: Option<usize>,
-  ) -> anyhow::Result<Array1<T>> {
+  ) -> Result<Array1<T>, QuantError> {
     let big_m = self.resolve_m(m_freq);
     let big_l = l_freq.unwrap_or((self.n_freq as f64).powf(0.25) as usize);
     self.validate_tau(tau)?;
@@ -166,7 +175,7 @@ impl<T: RealExt> FmVol<T> {
   pub fn spot_volvol(&self, tau: &[T], m_freq: Option<usize>, l_freq: Option<usize>) -> Array1<T> {
     self
       .try_spot_volvol(tau, m_freq, l_freq)
-      .expect("invalid spot volatility-of-volatility window or evaluation time")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::spot_volvol`].
@@ -175,7 +184,7 @@ impl<T: RealExt> FmVol<T> {
     tau: &[T],
     m_freq: Option<usize>,
     l_freq: Option<usize>,
-  ) -> anyhow::Result<Array1<T>> {
+  ) -> Result<Array1<T>, QuantError> {
     let big_m = self.resolve_m_volvol(m_freq);
     let big_l = l_freq.unwrap_or((self.n_freq as f64).powf(0.2) as usize);
     self.validate_tau(tau)?;
@@ -233,7 +242,7 @@ impl<T: RealExt> FmVol<T> {
   ) -> Array1<T> {
     self
       .try_spot_volvol_bias_corrected(tau, m_freq, l_freq)
-      .expect("invalid bias-corrected spot volatility-of-volatility window or evaluation time")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::spot_volvol_bias_corrected`].
@@ -242,11 +251,14 @@ impl<T: RealExt> FmVol<T> {
     tau: &[T],
     m_freq: Option<usize>,
     l_freq: Option<usize>,
-  ) -> anyhow::Result<Array1<T>> {
+  ) -> Result<Array1<T>, QuantError> {
     let big_m = self.resolve_m_volvol_bc(m_freq);
     let big_l = self.resolve_l_volvol_bc(l_freq, big_m);
     if big_l > big_m.saturating_mul(2) {
-      anyhow::bail!("equation (11) requires L <= 2M");
+      return Err(QuantError::invalid(
+        "L",
+        format!("equation (11) requires L <= 2M, got L = {big_l}, M = {big_m}"),
+      ));
     }
     self.validate_tau(tau)?;
     self.validate_ml_window(big_m, big_l)?;
@@ -269,7 +281,7 @@ impl<T: RealExt> FmVol<T> {
   ) -> Array1<T> {
     self
       .try_spot_quarticity(tau, m_freq, l_freq)
-      .expect("invalid spot quarticity window or evaluation time")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::spot_quarticity`].
@@ -278,7 +290,7 @@ impl<T: RealExt> FmVol<T> {
     tau: &[T],
     m_freq: Option<usize>,
     l_freq: Option<usize>,
-  ) -> anyhow::Result<Array1<T>> {
+  ) -> Result<Array1<T>, QuantError> {
     let big_m = self.resolve_m(m_freq);
     let big_l = l_freq.unwrap_or(((self.n_freq as f64).sqrt()).sqrt() as usize);
     self.validate_tau(tau)?;

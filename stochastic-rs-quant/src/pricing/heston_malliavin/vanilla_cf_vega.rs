@@ -1,11 +1,13 @@
 //! Deterministic characteristic-function variance Greek for vanilla portfolios.
 
-use super::HestonMalliavinError;
 use super::HestonModel;
+use super::VanillaLeg;
 use super::VanillaPortfolio;
+use super::invalid_input;
 use super::simulation::validate_model;
 use super::variance_vega::effective_initial_variance_bump;
 use crate::OptionType;
+use crate::QuantError;
 use crate::pricing::heston::HestonPricer;
 
 /// Bump controls for deterministic Heston characteristic-function vega.
@@ -71,19 +73,19 @@ pub fn heston_vanilla_portfolio_cf_initial_variance_vega(
   model: HestonModel,
   portfolio: &VanillaPortfolio,
   config: HestonVanillaCfVegaConfig,
-) -> Result<HestonVanillaCfVegaEstimate, HestonMalliavinError> {
+) -> Result<HestonVanillaCfVegaEstimate, QuantError> {
   validate_model(model)?;
   if model.vol_of_vol <= 0.0 {
-    return Err(HestonMalliavinError::InvalidInput(
-      "Heston CF vega requires positive vol_of_vol",
-    ));
+    return Err(invalid_input(format!(
+      "Heston CF vega requires positive vol_of_vol, got {}",
+      model.vol_of_vol
+    )));
   }
-  if !config.maximum_relative_bump_difference.is_finite()
-    || config.maximum_relative_bump_difference < 0.0
-  {
-    return Err(HestonMalliavinError::InvalidInput(
-      "maximum_relative_bump_difference must be finite and non-negative",
-    ));
+  let tolerance = config.maximum_relative_bump_difference;
+  if !tolerance.is_finite() || tolerance < 0.0 {
+    return Err(invalid_input(format!(
+      "maximum_relative_bump_difference must be finite and non-negative, got {tolerance}"
+    )));
   }
   let effective_bump = effective_initial_variance_bump(
     model.initial_variance,
@@ -117,14 +119,10 @@ pub fn heston_vanilla_portfolio_cf_initial_variance_vega(
 fn portfolio_initial_variance_vega(
   model: HestonModel,
   portfolio: &VanillaPortfolio,
-) -> Result<f64, HestonMalliavinError> {
+) -> Result<f64, QuantError> {
   let mut value = 0.0;
-  for leg in portfolio.legs() {
-    if !leg.strike.is_finite() || leg.strike <= 0.0 || !leg.quantity.is_finite() {
-      return Err(HestonMalliavinError::InvalidInput(
-        "vanilla legs require positive strikes and finite quantities",
-      ));
-    }
+  for (index, leg) in portfolio.legs().iter().enumerate() {
+    check_leg(index, leg)?;
     let (pricer, s, k, r, q, tau) = pricer(model, leg.strike, model.initial_variance);
     let (call, put) = pricer.call_put_initial_variance_vega(s, k, r, q, tau);
     let leg_value = match leg.kind {
@@ -136,7 +134,10 @@ fn portfolio_initial_variance_vega(
   if value.is_finite() {
     Ok(value)
   } else {
-    Err(HestonMalliavinError::NonFiniteSimulation)
+    Err(QuantError::Numerical {
+      what: "the characteristic-function vega",
+      reason: format!("the portfolio vega is {value}"),
+    })
   }
 }
 
@@ -144,14 +145,17 @@ fn centered_derivative(
   model: HestonModel,
   portfolio: &VanillaPortfolio,
   bump: f64,
-) -> Result<f64, HestonMalliavinError> {
+) -> Result<f64, QuantError> {
   let up = portfolio_price(model, portfolio, model.initial_variance + bump)?;
   let down = portfolio_price(model, portfolio, model.initial_variance - bump)?;
   let derivative = (up - down) / (2.0 * bump);
   if derivative.is_finite() {
     Ok(derivative)
   } else {
-    Err(HestonMalliavinError::NonFiniteSimulation)
+    Err(QuantError::Numerical {
+      what: "the finite-difference vega",
+      reason: format!("the centered derivative at bump {bump} is {derivative}"),
+    })
   }
 }
 
@@ -159,14 +163,10 @@ fn portfolio_price(
   model: HestonModel,
   portfolio: &VanillaPortfolio,
   initial_variance: f64,
-) -> Result<f64, HestonMalliavinError> {
+) -> Result<f64, QuantError> {
   let mut price = 0.0;
-  for leg in portfolio.legs() {
-    if !leg.strike.is_finite() || leg.strike <= 0.0 || !leg.quantity.is_finite() {
-      return Err(HestonMalliavinError::InvalidInput(
-        "vanilla legs require positive strikes and finite quantities",
-      ));
-    }
+  for (index, leg) in portfolio.legs().iter().enumerate() {
+    check_leg(index, leg)?;
     let (pricer, s, k, r, q, tau) = pricer(model, leg.strike, initial_variance);
     let (call, put) = pricer.call_put(s, k, r, q, tau);
     let leg_price = match leg.kind {
@@ -178,8 +178,22 @@ fn portfolio_price(
   if price.is_finite() {
     Ok(price)
   } else {
-    Err(HestonMalliavinError::NonFiniteSimulation)
+    Err(QuantError::Numerical {
+      what: "the portfolio price",
+      reason: format!("it is {price} at initial variance {initial_variance}"),
+    })
   }
+}
+
+fn check_leg(index: usize, leg: &VanillaLeg) -> Result<(), QuantError> {
+  if !leg.strike.is_finite() || leg.strike <= 0.0 || !leg.quantity.is_finite() {
+    return Err(invalid_input(format!(
+      "vanilla leg {index} needs a finite positive strike and a finite quantity, got strike {}, \
+       quantity {}",
+      leg.strike, leg.quantity
+    )));
+  }
+  Ok(())
 }
 
 /// The Heston model at `initial_variance`, paired with the

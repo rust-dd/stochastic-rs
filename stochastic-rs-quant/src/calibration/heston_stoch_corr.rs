@@ -10,6 +10,7 @@
 //! - Teng, Ehrhardt & Günther (2016)
 //! - Tanaś, R. — <https://github.com/tanasr/HestonStochCorr>
 
+use crate::QuantError;
 use crate::pricing::heston_stoch_corr::HestonStochCorrPricer;
 
 /// Parameter bounds for HSCM calibration (matches Python repo).
@@ -210,7 +211,7 @@ impl crate::traits::Calibrator for HscmCalibrator {
   type InitialGuess = [f64; 9];
   type Params = HscmParams;
   type Output = HscmCalibrationResult;
-  type Error = anyhow::Error;
+  type Error = QuantError;
 
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     // A mild-skew, short-tenor SPX-style start; a caller with a better prior passes `Some(..)`.

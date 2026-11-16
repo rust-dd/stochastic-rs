@@ -24,7 +24,6 @@ pub use types::ModelEstimate;
 pub use types::MomentumBuildConfig;
 pub use types::MomentumPortfolio;
 pub use types::MomentumScore;
-pub use types::UnknownWeightScheme;
 pub use types::WeightScheme;
 
 #[cfg(test)]

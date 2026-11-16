@@ -10,6 +10,8 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
 
+use crate::QuantError;
+
 fn sample_mean(xs: &[f64]) -> f64 {
   if xs.is_empty() {
     0.0
@@ -99,23 +101,27 @@ pub fn align_return_series_by_index(
   all_returns: &[Vec<f64>],
   start_indices: &[usize],
   length: usize,
-) -> anyhow::Result<Array2<f64>> {
+) -> Result<Array2<f64>, QuantError> {
   let n_assets = all_returns.len();
   if start_indices.len() != n_assets {
-    anyhow::bail!(
-      "start_indices.len()={} must equal all_returns.len()={n_assets}",
-      start_indices.len()
-    );
+    return Err(QuantError::DimensionMismatch {
+      what: "start_indices, one per asset",
+      expected: n_assets,
+      got: start_indices.len(),
+    });
   }
   let mut out = Array2::<f64>::zeros((n_assets, length));
   for (i, r) in all_returns.iter().enumerate() {
     let start = start_indices[i];
     let end = start + length;
     if end > r.len() {
-      anyhow::bail!(
-        "asset {i}: window [{start}, {end}) exceeds series length {}",
-        r.len()
-      );
+      return Err(QuantError::invalid(
+        "return window",
+        format!(
+          "asset {i}: [{start}, {end}) exceeds the series length {}",
+          r.len()
+        ),
+      ));
     }
     for (j, &v) in r[start..end].iter().enumerate() {
       out[(i, j)] = v;

@@ -10,6 +10,7 @@ use super::result::DoubleHestonCalibrationResult;
 use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::OptionType;
+use crate::QuantError;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::LmOptions;
@@ -192,7 +193,7 @@ impl crate::traits::Calibrator for DoubleHestonCalibrator {
   type InitialGuess = DoubleHestonParams;
   type Params = DoubleHestonParams;
   type Output = DoubleHestonCalibrationResult;
-  type Error = anyhow::Error;
+  type Error = QuantError;
 
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     Ok(self.solve(initial))

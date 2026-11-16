@@ -1,8 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use anyhow::Result;
-use anyhow::bail;
 use ndarray::Array1;
 use stochastic_rs_stats::heston_nmle_cekf::HestonNmleCekfConfig;
 
@@ -13,6 +11,7 @@ use super::result::HestonCalibrationResult;
 use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::OptionType;
+use crate::QuantError;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::Regularization;
 use crate::calibration::least_squares::LmOptions;
@@ -236,26 +235,35 @@ impl HestonCalibrator {
   ///
   /// Inverse Black-Scholes vega weights make the least-squares objective a
   /// first-order approximation to implied-volatility error.
-  pub fn set_residual_weights(&mut self, weights: impl Into<Array1<f64>>) -> Result<()> {
+  pub fn set_residual_weights(
+    &mut self,
+    weights: impl Into<Array1<f64>>,
+  ) -> Result<(), QuantError> {
     let mut weights = weights.into();
     if weights.len() != self.c_market.len() {
-      bail!(
-        "Heston residual weight count {} does not match quote count {}",
-        weights.len(),
-        self.c_market.len()
-      );
+      return Err(QuantError::DimensionMismatch {
+        what: "Heston residual weights, one per quote",
+        expected: self.c_market.len(),
+        got: weights.len(),
+      });
     }
     if weights.is_empty()
       || weights
         .iter()
         .any(|weight| !weight.is_finite() || *weight <= 0.0)
     {
-      bail!("Heston residual weights must be finite and positive");
+      return Err(QuantError::invalid(
+        "Heston residual weights",
+        "every weight must be finite and positive",
+      ));
     }
     let root_mean_square =
       (weights.iter().map(|weight| weight * weight).sum::<f64>() / weights.len() as f64).sqrt();
     if !root_mean_square.is_finite() || root_mean_square <= 0.0 {
-      bail!("Heston residual weight normalization is invalid");
+      return Err(QuantError::Numerical {
+        what: "Heston residual weights",
+        reason: format!("the root-mean-square normalizer is {root_mean_square}"),
+      });
     }
     weights /= root_mean_square;
     self.residual_weights = weights;
@@ -278,18 +286,24 @@ impl HestonCalibrator {
   }
 
   /// Set a positive common LM convergence tolerance.
-  pub fn set_optimizer_tolerance(&mut self, tolerance: Option<f64>) -> Result<()> {
-    if tolerance.is_some_and(|value| !value.is_finite() || value <= 0.0) {
-      bail!("Heston optimizer tolerance must be finite and positive");
+  pub fn set_optimizer_tolerance(&mut self, tolerance: Option<f64>) -> Result<(), QuantError> {
+    if let Some(value) = tolerance.filter(|value| !value.is_finite() || *value <= 0.0) {
+      return Err(QuantError::invalid(
+        "Heston optimizer tolerance",
+        format!("must be finite and positive, got {value}"),
+      ));
     }
     self.optimizer_tolerance = tolerance;
     Ok(())
   }
 
   /// Set the LM evaluation-budget multiplier.
-  pub fn set_optimizer_patience(&mut self, patience: usize) -> Result<()> {
+  pub fn set_optimizer_patience(&mut self, patience: usize) -> Result<(), QuantError> {
     if patience == 0 {
-      bail!("Heston optimizer patience must be positive");
+      return Err(QuantError::invalid(
+        "Heston optimizer patience",
+        "must be positive, got 0",
+      ));
     }
     self.optimizer_patience = patience;
     Ok(())
@@ -317,7 +331,7 @@ impl crate::traits::Calibrator for HestonCalibrator {
   type InitialGuess = HestonParams;
   type Params = HestonParams;
   type Output = HestonCalibrationResult;
-  type Error = anyhow::Error;
+  type Error = QuantError;
 
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();

@@ -1,5 +1,6 @@
 use super::greeks::MtGreeks;
 use super::payoff::MtPayoff;
+use crate::QuantError;
 use crate::traits::FloatExt;
 
 impl<T: FloatExt> MtGreeks<T> {
@@ -10,7 +11,7 @@ impl<T: FloatExt> MtGreeks<T> {
   pub fn cross_gamma(&self, payoff: &MtPayoff<T>, asset_a: usize, asset_b: usize) -> T {
     self
       .try_cross_gamma(payoff, asset_a, asset_b)
-      .expect("cross-Gamma inputs are unsupported; use try_cross_gamma")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible common-random-numbers cross-Gamma.
@@ -19,7 +20,7 @@ impl<T: FloatExt> MtGreeks<T> {
     payoff: &MtPayoff<T>,
     asset_a: usize,
     asset_b: usize,
-  ) -> anyhow::Result<T> {
+  ) -> Result<T, QuantError> {
     self.try_cross_gamma_with_seed(
       payoff,
       asset_a,
@@ -38,7 +39,7 @@ impl<T: FloatExt> MtGreeks<T> {
   ) -> T {
     self
       .try_cross_gamma_with_seed(payoff, asset_a, asset_b, seed)
-      .expect("cross-Gamma inputs are unsupported; use try_cross_gamma_with_seed")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible deterministic cross-Gamma using common random numbers.
@@ -48,18 +49,23 @@ impl<T: FloatExt> MtGreeks<T> {
     asset_a: usize,
     asset_b: usize,
     seed: u64,
-  ) -> anyhow::Result<T> {
+  ) -> Result<T, QuantError> {
     let dimension = self.params.n_assets();
-    if asset_a >= dimension {
-      anyhow::bail!("asset_a={asset_a} is out of bounds for n_assets={dimension}");
-    }
-    if asset_b >= dimension {
-      anyhow::bail!("asset_b={asset_b} is out of bounds for n_assets={dimension}");
+    for (what, asset) in [("asset_a", asset_a), ("asset_b", asset_b)] {
+      if asset >= dimension {
+        return Err(QuantError::invalid(
+          what,
+          format!("must be below n_assets = {dimension}, got {asset}"),
+        ));
+      }
     }
     let spot = self.params.assets[asset_b].s;
     let bump = spot * T::from_f64_fast(0.01);
     if bump <= T::zero() {
-      anyhow::bail!("asset_b spot is too small for a representable central-difference bump");
+      return Err(QuantError::Numerical {
+        what: "the cross-Gamma spot bump",
+        reason: format!("1% of asset_b's spot {spot:?} is not a representable positive bump"),
+      });
     }
     let mut up = self.params.clone();
     up.assets[asset_b].s += bump;

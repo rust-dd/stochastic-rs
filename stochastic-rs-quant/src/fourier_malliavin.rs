@@ -48,6 +48,8 @@
 
 use ndarray::Array1;
 
+use crate::QuantError;
+
 pub mod coefficients;
 pub mod engine;
 
@@ -130,36 +132,59 @@ pub fn default_cutting_freq_fe(n: usize) -> (usize, usize) {
 ///
 /// `OptimalCuttingResult { n_opt, noise_variance, mse_curve }`.
 pub fn optimal_cutting_frequency(prices: &[f64], times: &[f64]) -> OptimalCuttingResult {
-  try_optimal_cutting_frequency(prices, times)
-    .expect("invalid input for optimal cutting-frequency estimation")
+  try_optimal_cutting_frequency(prices, times).unwrap_or_else(|e| panic!("{e}"))
 }
 
 /// Fallible variant of [`optimal_cutting_frequency`].
 pub fn try_optimal_cutting_frequency(
   prices: &[f64],
   times: &[f64],
-) -> anyhow::Result<OptimalCuttingResult> {
+) -> Result<OptimalCuttingResult, QuantError> {
   if prices.len() != times.len() {
-    anyhow::bail!("prices and times must have the same length");
+    return Err(QuantError::DimensionMismatch {
+      what: "times, one per price",
+      expected: prices.len(),
+      got: times.len(),
+    });
   }
   let n_obs = prices.len();
   if n_obs < 8 {
-    anyhow::bail!("at least 8 observations are required");
+    return Err(QuantError::InsufficientData {
+      what: "prices for the optimal cutting frequency",
+      needed: 8,
+      got: n_obs,
+    });
   }
-  if prices.iter().any(|price| !price.is_finite()) {
-    anyhow::bail!("all prices must be finite");
+  if let Some((i, price)) = prices.iter().enumerate().find(|(_, p)| !p.is_finite()) {
+    return Err(QuantError::invalid(
+      "prices",
+      format!("price {i} must be finite, got {price}"),
+    ));
   }
-  if times.iter().any(|time| !time.is_finite()) {
-    anyhow::bail!("all times must be finite");
+  if let Some((i, time)) = times.iter().enumerate().find(|(_, t)| !t.is_finite()) {
+    return Err(QuantError::invalid(
+      "times",
+      format!("time {i} must be finite, got {time}"),
+    ));
   }
-  if times.windows(2).any(|pair| pair[1] <= pair[0]) {
-    anyhow::bail!("times must be strictly increasing");
+  if let Some(i) = times.windows(2).position(|pair| pair[1] <= pair[0]) {
+    return Err(QuantError::invalid(
+      "times",
+      format!(
+        "must be strictly increasing, got time {i} = {} before {}",
+        times[i],
+        times[i + 1]
+      ),
+    ));
   }
   let n = n_obs - 1;
 
   let period = times[n_obs - 1] - times[0];
   if !period.is_finite() || period <= 0.0 {
-    anyhow::bail!("time period must be positive and finite");
+    return Err(QuantError::invalid(
+      "times",
+      format!("must span a positive, finite period, got {period}"),
+    ));
   }
 
   let increments = Array1::from_vec((0..n).map(|i| prices[i + 1] - prices[i]).collect());

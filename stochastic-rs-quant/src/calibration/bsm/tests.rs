@@ -110,8 +110,7 @@ fn calibrator_trait_returns_result() {
     OptionType::Call,
   );
 
-  let result: Result<BsmCalibrationResult, anyhow::Error> =
-    Calibrator::calibrate(&calibrator, None);
+  let result: Result<BsmCalibrationResult, QuantError> = Calibrator::calibrate(&calibrator, None);
   let result = result.expect("trait calibrate must succeed");
   let params = CalibrationResult::params(&result);
   assert!(

@@ -2,6 +2,7 @@ use ndarray::Array1;
 
 use super::greeks::MtGreeks;
 use super::payoff::MtPayoff;
+use crate::QuantError;
 use crate::traits::FloatExt;
 
 impl<T: FloatExt> MtGreeks<T> {
@@ -13,7 +14,7 @@ impl<T: FloatExt> MtGreeks<T> {
   pub fn delta(&self, payoff: &MtPayoff<T>, asset: usize) -> T {
     self
       .try_delta(payoff, asset)
-      .expect("M-T Delta inputs are unsupported; use try_delta for a recoverable error")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible Delta estimator for the conditional Malliavin-weight scope.
@@ -23,7 +24,7 @@ impl<T: FloatExt> MtGreeks<T> {
   /// with both `xi != 0` and `rho != 0` returns an error because its variance
   /// shock is correlated with the price noise and needs the full Skorohod
   /// derivative of the variance path.
-  pub fn try_delta(&self, payoff: &MtPayoff<T>, asset: usize) -> anyhow::Result<T> {
+  pub fn try_delta(&self, payoff: &MtPayoff<T>, asset: usize) -> Result<T, QuantError> {
     self.validate_delta_request(payoff, Some(asset))?;
     self.try_delta_from_sampler(payoff, asset, || self.params.sample())
   }
@@ -35,7 +36,7 @@ impl<T: FloatExt> MtGreeks<T> {
   pub fn delta_with_seed(&self, payoff: &MtPayoff<T>, asset: usize, seed: u64) -> T {
     self
       .try_delta_with_seed(payoff, asset, seed)
-      .expect("M-T Delta inputs are unsupported; use try_delta_with_seed")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible deterministic variant of [`Self::try_delta`].
@@ -44,7 +45,7 @@ impl<T: FloatExt> MtGreeks<T> {
     payoff: &MtPayoff<T>,
     asset: usize,
     seed: u64,
-  ) -> anyhow::Result<T> {
+  ) -> Result<T, QuantError> {
     self.validate_delta_request(payoff, Some(asset))?;
     let mut seed_state = seed;
     self.try_delta_from_sampler(payoff, asset, || {
@@ -59,7 +60,7 @@ impl<T: FloatExt> MtGreeks<T> {
     payoff: &MtPayoff<T>,
     asset: usize,
     mut sample: F,
-  ) -> anyhow::Result<T>
+  ) -> Result<T, QuantError>
   where
     F: FnMut() -> super::super::heston::MultiHestonPaths<T>,
   {
@@ -106,12 +107,12 @@ impl<T: FloatExt> MtGreeks<T> {
   pub fn all_deltas(&self, payoff: &MtPayoff<T>) -> Vec<T> {
     self
       .try_all_deltas(payoff)
-      .expect("M-T Delta inputs are unsupported; use try_all_deltas")
+      .unwrap_or_else(|e| panic!("{e}"))
       .to_vec()
   }
 
   /// Fallible single-pass estimator of every Delta.
-  pub fn try_all_deltas(&self, payoff: &MtPayoff<T>) -> anyhow::Result<Array1<T>> {
+  pub fn try_all_deltas(&self, payoff: &MtPayoff<T>) -> Result<Array1<T>, QuantError> {
     self.validate_delta_request(payoff, None)?;
     self.try_all_deltas_from_sampler(payoff, || self.params.sample())
   }
@@ -123,7 +124,7 @@ impl<T: FloatExt> MtGreeks<T> {
   pub fn all_deltas_with_seed(&self, payoff: &MtPayoff<T>, seed: u64) -> Vec<T> {
     self
       .try_all_deltas_with_seed(payoff, seed)
-      .expect("M-T Delta inputs are unsupported; use try_all_deltas_with_seed")
+      .unwrap_or_else(|e| panic!("{e}"))
       .to_vec()
   }
 
@@ -132,7 +133,7 @@ impl<T: FloatExt> MtGreeks<T> {
     &self,
     payoff: &MtPayoff<T>,
     seed: u64,
-  ) -> anyhow::Result<Array1<T>> {
+  ) -> Result<Array1<T>, QuantError> {
     self.validate_delta_request(payoff, None)?;
     let mut seed_state = seed;
     self.try_all_deltas_from_sampler(payoff, || {
@@ -146,7 +147,7 @@ impl<T: FloatExt> MtGreeks<T> {
     &self,
     payoff: &MtPayoff<T>,
     mut sample: F,
-  ) -> anyhow::Result<Array1<T>>
+  ) -> Result<Array1<T>, QuantError>
   where
     F: FnMut() -> super::super::heston::MultiHestonPaths<T>,
   {
@@ -192,77 +193,104 @@ impl<T: FloatExt> MtGreeks<T> {
     &self,
     payoff: &MtPayoff<T>,
     requested_asset: Option<usize>,
-  ) -> anyhow::Result<()> {
+  ) -> Result<(), QuantError> {
     self.params.validate()?;
     self.params.validate_conditional_malliavin_weights()?;
     let d = self.params.n_assets();
     if d < 2 {
-      anyhow::bail!("Malliavin-Thalmaier Delta requires at least two assets, got {d}");
+      return Err(QuantError::invalid(
+        "asset parameters",
+        format!("the Malliavin-Thalmaier Delta needs at least two assets, got {d}"),
+      ));
     }
     if self.n_paths == 0 {
-      anyhow::bail!("n_paths must be positive");
+      return Err(QuantError::invalid("n_paths", "must be positive, got 0"));
     }
     if !self.h.is_finite() || self.h <= T::zero() {
-      anyhow::bail!(
-        "regularization h must be finite and positive, got {:?}",
-        self.h
-      );
+      return Err(QuantError::invalid(
+        "regularization h",
+        format!("must be finite and positive, got {:?}", self.h),
+      ));
     }
     if !self.params.tau.is_finite() || self.params.tau <= T::zero() {
-      anyhow::bail!(
-        "maturity tau must be finite and positive, got {:?}",
-        self.params.tau
-      );
+      return Err(QuantError::invalid(
+        "tau",
+        format!("must be finite and positive, got {:?}", self.params.tau),
+      ));
     }
     if let Some(asset) = requested_asset
       && asset >= d
     {
-      anyhow::bail!("Delta asset={asset} is out of bounds for n_assets={d}");
+      return Err(QuantError::invalid(
+        "Delta asset",
+        format!("must be below n_assets = {d}, got {asset}"),
+      ));
     }
     for (asset, params) in self.params.assets.iter().enumerate() {
       if !params.s.is_finite() || params.s <= T::zero() {
-        anyhow::bail!("initial spot for asset {asset} must be finite and positive");
+        return Err(QuantError::invalid(
+          "asset parameters",
+          format!(
+            "assets[{asset}].s must be finite and positive, got {:?}",
+            params.s
+          ),
+        ));
       }
     }
+    let finite_strike = |strike: &T| {
+      if strike.is_finite() {
+        Ok(())
+      } else {
+        Err(QuantError::invalid(
+          "payoff strike",
+          format!("must be finite, got {strike:?}"),
+        ))
+      }
+    };
     match payoff {
       MtPayoff::Call { asset, strike } | MtPayoff::Put { asset, strike } => {
         if *asset >= d {
-          anyhow::bail!("payoff asset={asset} is out of bounds for n_assets={d}");
+          return Err(QuantError::invalid(
+            "payoff asset",
+            format!("must be below n_assets = {d}, got {asset}"),
+          ));
         }
-        if !strike.is_finite() {
-          anyhow::bail!("payoff strike must be finite");
-        }
+        finite_strike(strike)?;
       }
       MtPayoff::DigitalPut2D { strikes } => {
         if d != 2 {
-          anyhow::bail!("DigitalPut2D requires exactly two assets, got {d}");
+          return Err(QuantError::invalid(
+            "payoff",
+            format!("DigitalPut2D needs exactly two assets, got {d}"),
+          ));
         }
         if strikes
           .iter()
           .any(|strike| !strike.is_finite() || *strike <= T::zero())
         {
-          anyhow::bail!("DigitalPut2D strikes must be finite and positive");
+          return Err(QuantError::invalid(
+            "payoff strikes",
+            format!("DigitalPut2D strikes must be finite and positive, got {strikes:?}"),
+          ));
         }
       }
       MtPayoff::BasketCall { weights, strike } => {
         if weights.len() != d {
-          anyhow::bail!(
-            "basket weights length {} does not match n_assets={d}",
-            weights.len()
-          );
+          return Err(QuantError::DimensionMismatch {
+            what: "basket weights, one per asset",
+            expected: d,
+            got: weights.len(),
+          });
         }
-        if weights.iter().any(|weight| !weight.is_finite()) {
-          anyhow::bail!("all basket weights must be finite");
+        if let Some((i, weight)) = weights.iter().enumerate().find(|(_, w)| !w.is_finite()) {
+          return Err(QuantError::invalid(
+            "basket weights",
+            format!("weight {i} must be finite, got {weight:?}"),
+          ));
         }
-        if !strike.is_finite() {
-          anyhow::bail!("payoff strike must be finite");
-        }
+        finite_strike(strike)?;
       }
-      MtPayoff::WorstOfPut { strike } => {
-        if !strike.is_finite() {
-          anyhow::bail!("payoff strike must be finite");
-        }
-      }
+      MtPayoff::WorstOfPut { strike } => finite_strike(strike)?,
     }
     Ok(())
   }

@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 
+use crate::QuantError;
 use crate::vol_surface::implied::OptionQuote;
 
 /// How [`PriceHistory::returns`] differences successive adjusted closes.
@@ -146,10 +147,10 @@ impl OptionChain {
 /// connector supplied by the caller.
 pub trait MarketDataProvider {
   /// Historical OHLCV between `start` and `end` (Unix epoch seconds).
-  fn price_history(&self, symbol: &str, start: f64, end: f64) -> anyhow::Result<PriceHistory>;
+  fn price_history(&self, symbol: &str, start: f64, end: f64) -> Result<PriceHistory, QuantError>;
 
   /// Current option-chain snapshot for `symbol`.
-  fn option_chain(&self, symbol: &str) -> anyhow::Result<OptionChain>;
+  fn option_chain(&self, symbol: &str) -> Result<OptionChain, QuantError>;
 }
 
 /// In-memory provider backed by fixtures, for offline reproducible tests
@@ -179,11 +180,14 @@ impl MockProvider {
 }
 
 impl MarketDataProvider for MockProvider {
-  fn price_history(&self, symbol: &str, start: f64, end: f64) -> anyhow::Result<PriceHistory> {
+  fn price_history(&self, symbol: &str, start: f64, end: f64) -> Result<PriceHistory, QuantError> {
     let full = self
       .histories
       .get(symbol)
-      .ok_or_else(|| anyhow::anyhow!("MockProvider: no price history fixture for '{symbol}'"))?;
+      .ok_or_else(|| QuantError::MarketData {
+        symbol: symbol.to_string(),
+        reason: "MockProvider has no price history fixture".to_string(),
+      })?;
     // Filter to the requested window so the mock behaves like a real
     // ranged query.
     let mut out = PriceHistory {
@@ -211,12 +215,15 @@ impl MarketDataProvider for MockProvider {
     Ok(out)
   }
 
-  fn option_chain(&self, symbol: &str) -> anyhow::Result<OptionChain> {
+  fn option_chain(&self, symbol: &str) -> Result<OptionChain, QuantError> {
     self
       .chains
       .get(symbol)
       .cloned()
-      .ok_or_else(|| anyhow::anyhow!("MockProvider: no option-chain fixture for '{symbol}'"))
+      .ok_or_else(|| QuantError::MarketData {
+        symbol: symbol.to_string(),
+        reason: "MockProvider has no option-chain fixture".to_string(),
+      })
   }
 }
 

@@ -24,6 +24,7 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 
+use crate::QuantError;
 use crate::linalg::lstsq;
 
 /// Side of an open pairs position.
@@ -67,50 +68,45 @@ pub struct PairsStrategy {
   pub spread_std: f64,
 }
 
-/// Compute pairs-trading signals.
-///
-/// `entry_z`: enter when `|z| ≥ entry_z`. `exit_z`: close when `|z| ≤ exit_z`.
-/// Otherwise the previous signal persists. `entry_z` must exceed `exit_z`.
-///
-/// Panics if the hedge-ratio OLS is rank-deficient (constant input series).
-/// Use [`try_pairs_signals`] for a falliable variant returning
-/// [`crate::factors::FactorsError`].
+/// Pairs signals: enter at `|z| ≥ entry_z`, close at `|z| ≤ exit_z`, otherwise hold; panics where
+/// [`try_pairs_signals`] errs.
 pub fn pairs_signals(
   y: ArrayView1<f64>,
   x: ArrayView1<f64>,
   entry_z: f64,
   exit_z: f64,
 ) -> PairsStrategy {
-  try_pairs_signals(y, x, entry_z, exit_z)
-    .expect("pairs_signals: hedge-ratio OLS failed; use try_pairs_signals for falliable variant")
+  try_pairs_signals(y, x, entry_z, exit_z).unwrap_or_else(|e| panic!("{e}"))
 }
 
-/// Falliable variant of [`pairs_signals`]. Returns
-/// [`crate::factors::FactorsError::OlsFailed`] when the hedge-ratio OLS is
-/// rank-deficient (e.g. one of the inputs is a constant series).
+/// [`pairs_signals`] with `DimensionMismatch` for series of unequal length, `InvalidInput` unless
+/// `entry_z > exit_z`, and `InsufficientData` below three observations.
 pub fn try_pairs_signals(
   y: ArrayView1<f64>,
   x: ArrayView1<f64>,
   entry_z: f64,
   exit_z: f64,
-) -> Result<PairsStrategy, crate::factors::FactorsError> {
+) -> Result<PairsStrategy, QuantError> {
   if y.len() != x.len() {
-    return Err(crate::factors::FactorsError::Numerical(format!(
-      "y.len()={} must equal x.len()={}",
-      y.len(),
-      x.len()
-    )));
+    return Err(QuantError::DimensionMismatch {
+      what: "x, one per y observation",
+      expected: y.len(),
+      got: x.len(),
+    });
   }
   if entry_z <= exit_z {
-    return Err(crate::factors::FactorsError::Numerical(format!(
-      "entry_z={entry_z} must exceed exit_z={exit_z}"
-    )));
+    return Err(QuantError::invalid(
+      "entry_z",
+      format!("must exceed exit_z = {exit_z}, got {entry_z}"),
+    ));
   }
   let n = y.len();
   if n < 3 {
-    return Err(crate::factors::FactorsError::Numerical(format!(
-      "need at least three observations, got {n}"
-    )));
+    return Err(QuantError::InsufficientData {
+      what: "observations for pairs signals",
+      needed: 3,
+      got: n,
+    });
   }
   let mut design = Array2::<f64>::zeros((n, 2));
   for i in 0..n {
