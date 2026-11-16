@@ -299,7 +299,7 @@ mod tests {
 
   #[test]
   fn rs_single_regime_matches_bsm() {
-    use super::super::fourier::BSMFourier;
+    use super::super::fourier::BsmFourier;
     use super::super::fourier::LewisPricer;
 
     let sigma = 0.2;
@@ -314,7 +314,7 @@ mod tests {
       initial_state: 0,
     };
 
-    let bsm_model = BSMFourier { sigma, r, q };
+    let bsm_model = BsmFourier { sigma, r, q };
 
     let rs_price = LewisPricer::price_call(&rs_model, 100.0, 100.0, r, q, 1.0);
     let bsm_price = LewisPricer::price_call(&bsm_model, 100.0, 100.0, r, q, 1.0);

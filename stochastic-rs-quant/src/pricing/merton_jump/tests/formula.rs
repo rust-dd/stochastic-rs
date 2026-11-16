@@ -31,10 +31,10 @@ use super::*;
 /// depend on, against a Black-Scholes value of 4.58.
 #[test]
 fn merton_gamma_zero_is_black_scholes() {
-  let bs = BSMPricer::new(0.2, BSMCoc::Bsm1973);
+  let bs = BsmPricer::new(0.2, BsmCoc::Bsm1973);
   let (want_c, want_p) = bs.call_put(S, K, R, Q, TAU);
   for &lambda in &[0.1, 0.5, 2.0, 10.0] {
-    let m = Merton1976Pricer::new(0.2, lambda, 0.0, 60, BSMCoc::Bsm1973);
+    let m = Merton1976Pricer::new(0.2, lambda, 0.0, 60, BsmCoc::Bsm1973);
     let (call, put) = m.call_put(S, K, R, Q, TAU);
     assert!(
       (call - want_c).abs() < 1e-12,
@@ -72,7 +72,7 @@ fn merton_term_vol_at_zero_jumps_is_the_diffusive_volatility() {
 #[test]
 fn merton_conditional_variance_averages_to_the_total() {
   for &(lambda, gamma) in &[(0.5, 0.4), (0.5, 0.3), (2.0, 0.6), (0.25, 0.8)] {
-    let m = Merton1976Pricer::new(0.2, lambda, gamma, 40, BSMCoc::Bsm1973);
+    let m = Merton1976Pricer::new(0.2, lambda, gamma, 40, BsmCoc::Bsm1973);
     let mean_var = (0..m.m)
       .map(|n| m.poisson_weight(n, TAU) * m.term_vol(n, TAU).powi(2) * TAU)
       .sum::<f64>();
@@ -97,11 +97,11 @@ fn merton_conditional_variance_averages_to_the_total() {
 /// magnitude before it fails on the rate.
 #[test]
 fn merton_dense_small_jumps_tend_to_black_scholes() {
-  let bs = BSMPricer::new(0.2, BSMCoc::Bsm1973)
+  let bs = BsmPricer::new(0.2, BsmCoc::Bsm1973)
     .call_put(S, K, R, Q, TAU)
     .0;
   let gap = |lambda: f64, m: usize| {
-    (Merton1976Pricer::new(0.2, lambda, 0.4, m, BSMCoc::Bsm1973)
+    (Merton1976Pricer::new(0.2, lambda, 0.4, m, BsmCoc::Bsm1973)
       .call_put(S, K, R, Q, TAU)
       .0
       - bs)
@@ -120,7 +120,7 @@ fn merton_dense_small_jumps_tend_to_black_scholes() {
 /// Guide to Option Pricing Formulas* (jump-diffusion section, §6.9.1 in the
 /// 2nd edition), reproduced at his own parameterisation — his `υ` is this
 /// pricer's total volatility `v`, his `γ` its jump-variance share `gamma`,
-/// and his terms carry at `b = r`, which is [`BSMCoc::Bsm1973`].
+/// and his terms carry at `b = r`, which is [`BsmCoc::Bsm1973`].
 ///
 /// This is the one pin in the crate whose expected value comes from
 /// published literature rather than from an internal identity or a
@@ -134,11 +134,11 @@ fn merton_dense_small_jumps_tend_to_black_scholes() {
 /// tighter.
 #[test]
 fn merton_matches_haugs_published_examples() {
-  let first = Merton1976Pricer::new(0.25, 3.0, 0.40, 50, BSMCoc::Bsm1973);
+  let first = Merton1976Pricer::new(0.25, 3.0, 0.40, 50, BsmCoc::Bsm1973);
   let got = first.price_call(45.0, 55.0, 0.10, 0.0, 0.25);
   assert!((got - 0.2417).abs() < 1e-4, "Haug 0.2417, got {got}");
 
-  let second = Merton1976Pricer::new(0.25, 1.0, 0.25, 50, BSMCoc::Bsm1973);
+  let second = Merton1976Pricer::new(0.25, 1.0, 0.25, 50, BsmCoc::Bsm1973);
   let got = second.price_call(100.0, 80.0, 0.08, 0.0, 0.25);
   assert!((got - 21.735476).abs() < 1e-6, "Haug 21.735476, got {got}");
 }
@@ -147,7 +147,7 @@ fn merton_matches_haugs_published_examples() {
 /// shares no code with the pricer: the Poisson weight is accumulated
 /// independently, `σ_n` is rebuilt from the public `v`/`lambda`/`gamma`
 /// fields, and each term is a hand-written Black-Scholes call rather than
-/// a `BSMPricer` call.
+/// a `BsmPricer` call.
 #[test]
 fn merton_matches_a_hand_written_haug_series() {
   use stochastic_rs_distributions::special::norm_cdf;

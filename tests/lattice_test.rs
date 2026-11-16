@@ -11,8 +11,8 @@ use stochastic_rs::quant::lattice::G2ppTree;
 use stochastic_rs::quant::lattice::G2ppTreeModel;
 use stochastic_rs::quant::lattice::HullWhiteTree;
 use stochastic_rs::quant::lattice::HullWhiteTreeModel;
-use stochastic_rs::quant::pricing::BSMCoc;
-use stochastic_rs::quant::pricing::BSMPricer;
+use stochastic_rs::quant::pricing::BsmCoc;
+use stochastic_rs::quant::pricing::BsmPricer;
 use stochastic_rs::traits::ModelPricer;
 
 fn approx(a: f64, b: f64, tol: f64) {
@@ -47,7 +47,7 @@ fn crr_binomial_tree_matches_black_scholes_call() {
   );
   let lattice_price = tree.backward_induct(terminal, |_level, _node, _state| (-r * dt).exp());
 
-  let bsm = BSMPricer::new(sigma, BSMCoc::Merton1973).price_call(s0, k, r, 0.0, tau);
+  let bsm = BsmPricer::new(sigma, BsmCoc::Merton1973).price_call(s0, k, r, 0.0, tau);
 
   approx(lattice_price, bsm, 2e-2);
 }

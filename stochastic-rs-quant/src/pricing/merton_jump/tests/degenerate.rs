@@ -35,25 +35,25 @@ const FUT_TAU: f64 = 0.5;
 
 /// Zero total volatility: no diffusion and no jump size, so every term of
 /// the series is degenerate.
-fn frozen(coc: BSMCoc) -> Merton1976Pricer {
+fn frozen(coc: BsmCoc) -> Merton1976Pricer {
   Merton1976Pricer::new(0.0, 0.5, 0.4, 20, coc)
 }
 
 /// The headline: an at-the-money futures option priced `NaN`.
 ///
 /// The second assertion is what makes this a test of the interception
-/// rather than of arithmetic — the `BSMPricer` the term is built from does
+/// rather than of arithmetic — the `BsmPricer` the term is built from does
 /// return `NaN` at exactly this query, so without the branch the sum is
 /// `NaN` too.
 #[test]
 fn zero_total_volatility_at_the_forward_is_the_limit() {
-  for coc in [BSMCoc::Black1976, BSMCoc::Asay1982] {
+  for coc in [BsmCoc::Black1976, BsmCoc::Asay1982] {
     let m = frozen(coc);
     let (call, put) = m.call_put(S, S, R, Q, FUT_TAU);
     assert_eq!(call, 0.0, "{coc:?} call");
     assert_eq!(put, 0.0, "{coc:?} put");
 
-    let raw = BSMPricer::new(0.0, coc).call_put(S, S, R, Q, FUT_TAU);
+    let raw = BsmPricer::new(0.0, coc).call_put(S, S, R, Q, FUT_TAU);
     assert!(
       raw.0.is_nan() && raw.1.is_nan(),
       "{coc:?}: the underlying zero-vol term must be NaN, else this pins nothing: {raw:?}"
@@ -71,7 +71,7 @@ fn zero_total_volatility_at_the_forward_is_the_limit() {
 /// isolation but not this.
 #[test]
 fn the_filled_in_value_is_what_its_neighbours_tend_to() {
-  let m = frozen(BSMCoc::Black1976);
+  let m = frozen(BsmCoc::Black1976);
   let eps = 1e-6;
   let at = m.price_call(S, S, R, Q, FUT_TAU);
   let below = m.price_call(S, S - eps, R, Q, FUT_TAU);
@@ -97,7 +97,7 @@ fn the_filled_in_value_is_what_its_neighbours_tend_to() {
 /// and it is not the branch's doing.
 #[test]
 fn zero_total_volatility_away_from_the_forward_is_discounted_intrinsic() {
-  let m = frozen(BSMCoc::Black1976);
+  let m = frozen(BsmCoc::Black1976);
   let disc = (-R * FUT_TAU).exp();
   for &k in &[90.0, 110.0] {
     let (call, put) = m.call_put(S, k, R, Q, FUT_TAU);
@@ -117,10 +117,10 @@ fn zero_total_volatility_away_from_the_forward_is_discounted_intrinsic() {
 /// the identical `0/0` once `r = 0` moves its forward onto the strike.
 #[test]
 fn carrying_conventions_hit_the_same_hole_at_their_own_forward() {
-  let m = frozen(BSMCoc::Bsm1973);
+  let m = frozen(BsmCoc::Bsm1973);
   assert_eq!(m.price_call(S, S, 0.0, Q, FUT_TAU), 0.0);
   assert!(
-    BSMPricer::new(0.0, BSMCoc::Bsm1973)
+    BsmPricer::new(0.0, BsmCoc::Bsm1973)
       .call_put(S, S, 0.0, Q, FUT_TAU)
       .0
       .is_nan(),
@@ -133,16 +133,16 @@ fn carrying_conventions_hit_the_same_hole_at_their_own_forward() {
 /// the money. A limit taken on only one leg would break this.
 #[test]
 fn parity_holds_at_the_filled_in_point() {
-  let m = frozen(BSMCoc::Black1976);
+  let m = frozen(BsmCoc::Black1976);
   let (call, put) = m.call_put(S, S, R, Q, FUT_TAU);
   assert!((call - put).abs() < TOL, "call {call} vs put {put}");
 }
 
-/// With `σ_0 = d > 0` no term is degenerate, so `term_call_put` returns exactly `BSMPricer`'s value
+/// With `σ_0 = d > 0` no term is degenerate, so `term_call_put` returns exactly `BsmPricer`'s value
 /// for every `n`, at an at-the-money futures option as well.
 #[test]
 fn an_ordinary_configuration_never_reaches_the_branch() {
-  let m = Merton1976Pricer::new(0.2, 0.5, 0.4, 10, BSMCoc::Black1976);
+  let m = Merton1976Pricer::new(0.2, 0.5, 0.4, 10, BsmCoc::Black1976);
   for n in 0..m.m {
     let sigma = m.term_vol(n, FUT_TAU);
     assert!(sigma > 0.0, "term {n} volatility {sigma} is not positive");
@@ -169,7 +169,7 @@ fn the_pure_jump_corner_is_zero_for_every_intensity() {
     (0.2, 0.5),
     (0.25, 2.0),
   ] {
-    let m = Merton1976Pricer::new(v, lambda, 1.0, 20, BSMCoc::Bsm1973);
+    let m = Merton1976Pricer::new(v, lambda, 1.0, 20, BsmCoc::Bsm1973);
     assert_eq!(m.diffusive_std(), 0.0, "v={v} lambda={lambda}");
     let call = m.price_call(S, K, R, Q, TAU);
     assert!(call.is_finite(), "v={v} lambda={lambda} priced {call}");
@@ -178,7 +178,7 @@ fn the_pure_jump_corner_is_zero_for_every_intensity() {
   for i in 1..=400 {
     let lambda = f64::from(i) * 0.025;
     for &v in &[0.05, 0.2, 0.35, 1.0] {
-      let m = Merton1976Pricer::new(v, lambda, 1.0, 20, BSMCoc::Bsm1973);
+      let m = Merton1976Pricer::new(v, lambda, 1.0, 20, BsmCoc::Bsm1973);
       assert_eq!(m.diffusive_std(), 0.0, "v={v} lambda={lambda}");
     }
   }
@@ -196,7 +196,7 @@ fn the_pure_jump_corner_is_zero_for_every_intensity() {
 #[test]
 fn an_inadmissible_gamma_still_announces_itself() {
   for &(lambda, gamma) in &[(0.5, -0.25), (-0.5, 0.4), (0.5, 1.5)] {
-    let m = Merton1976Pricer::new(0.2, lambda, gamma, 20, BSMCoc::Bsm1973);
+    let m = Merton1976Pricer::new(0.2, lambda, gamma, 20, BsmCoc::Bsm1973);
     assert!(
       m.diffusive_std().is_nan(),
       "lambda={lambda} gamma={gamma} diffusive_std {}",
@@ -218,7 +218,7 @@ fn an_inadmissible_gamma_still_announces_itself() {
 /// and are asserted against those rather than against `0`.
 #[test]
 fn a_degenerate_term_away_from_the_forward_is_its_saturated_limit() {
-  let m = frozen(BSMCoc::Black1976);
+  let m = frozen(BsmCoc::Black1976);
   let carry = (-R * FUT_TAU).exp();
   for &k in &[90.0_f64, 110.0] {
     let in_the_money = if k < S { 1.0 } else { 0.0 };
@@ -234,7 +234,7 @@ fn a_degenerate_term_away_from_the_forward_is_its_saturated_limit() {
     // And it is a limit, not a poison check: the underlying BSM term is
     // genuinely `NaN` here, so without it the whole sum would be.
     assert!(
-      BSMPricer::new(0.0, BSMCoc::Black1976)
+      BsmPricer::new(0.0, BsmCoc::Black1976)
         .gamma(S, k, R, Q, FUT_TAU)
         .is_nan(),
       "K={k}: the zero-vol term's gamma must be NaN, else this pins nothing"
@@ -251,7 +251,7 @@ fn a_degenerate_term_away_from_the_forward_is_its_saturated_limit() {
 /// `v > 0` with gaps closing linearly in σ; `theta`, a price difference, tends to `0`.
 #[test]
 fn the_forward_point_greeks_of_a_degenerate_term_are_their_limits() {
-  let m = frozen(BSMCoc::Black1976);
+  let m = frozen(BsmCoc::Black1976);
   // Black1976 carries at b = 0, so the forward is S itself and the carry
   // factor coincides with the discount factor.
   let disc = (-R * FUT_TAU).exp();
@@ -295,7 +295,7 @@ fn the_forward_point_greeks_of_a_degenerate_term_are_their_limits() {
   // that never reach the degenerate branch.
   let mut prev_pole = f64::NAN;
   for (i, &v) in [1e-3_f64, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8].iter().enumerate() {
-    let near = Merton1976Pricer::new(v, 0.5, 0.4, 20, BSMCoc::Black1976);
+    let near = Merton1976Pricer::new(v, 0.5, 0.4, 20, BsmCoc::Black1976);
     let delta = near.delta(S, S, R, Q, FUT_TAU, OT);
     let rho = near.rho(S, S, R, Q, FUT_TAU, OT);
     let gamma = near.gamma(S, S, R, Q, FUT_TAU);
@@ -340,7 +340,7 @@ fn the_forward_point_greeks_of_a_degenerate_term_are_their_limits() {
 /// with a constant `σ_0·Γ` residue.
 #[test]
 fn one_degenerate_term_at_the_forward_moves_an_otherwise_ordinary_model() {
-  let m = Merton1976Pricer::new(0.2, 0.5, 1.0, 20, BSMCoc::Black1976);
+  let m = Merton1976Pricer::new(0.2, 0.5, 1.0, 20, BsmCoc::Black1976);
   assert_eq!(
     Merton1976Pricer::term_regime(&m.term_bsm(0, FUT_TAU), S, S, R, Q, FUT_TAU),
     TermRegime::AtTheForward,
@@ -364,7 +364,7 @@ fn one_degenerate_term_at_the_forward_moves_an_otherwise_ordinary_model() {
 
   // The limit of the non-degenerate family that approaches this model.
   let approaching = |one_minus_gamma: f64| {
-    Merton1976Pricer::new(0.2, 0.5, 1.0 - one_minus_gamma, 20, BSMCoc::Black1976)
+    Merton1976Pricer::new(0.2, 0.5, 1.0 - one_minus_gamma, 20, BsmCoc::Black1976)
   };
   let near = approaching(1e-12);
   assert!(
@@ -412,8 +412,8 @@ fn one_degenerate_term_at_the_forward_moves_an_otherwise_ordinary_model() {
 /// copies of that expression could drift; this is what stops them being two.
 #[test]
 fn the_greeks_price_a_degenerate_term_exactly_as_the_price_does() {
-  let corner = Merton1976Pricer::new(0.2, 0.5, 1.0, 20, BSMCoc::Black1976);
-  for m in [frozen(BSMCoc::Black1976), corner] {
+  let corner = Merton1976Pricer::new(0.2, 0.5, 1.0, 20, BsmCoc::Black1976);
+  for m in [frozen(BsmCoc::Black1976), corner] {
     for &k in &[S, 90.0, 110.0] {
       let (call, put) = m.call_put(S, k, R, Q, FUT_TAU);
       assert_eq!(
@@ -433,20 +433,20 @@ fn the_greeks_price_a_degenerate_term_exactly_as_the_price_does() {
 /// The one place the per-Greek limits stop, and why they stop there.
 ///
 /// At `λ == 0` `greek_series` hands the single surviving term to
-/// `BSMPricer` directly, and the six bump-based Greeks skip the series
+/// `BsmPricer` directly, and the six bump-based Greeks skip the series
 /// altogether for the same reason. A model that is *both* frozen and
 /// jump-free therefore splits: `delta`, `gamma`, `rho` and the price go
 /// through this crate's own code and get their limits, while the other six
-/// get `BSMPricer`'s undefended `NaN`.
+/// get `BsmPricer`'s undefended `NaN`.
 ///
-/// That asymmetry belongs to `BSMPricer`, not to this pricer — the same
+/// That asymmetry belongs to `BsmPricer`, not to this pricer — the same
 /// query prices `NaN` on a bare one, which
 /// `zero_total_volatility_at_the_forward_is_the_limit` already asserts.
-/// Pinned rather than fixed: fixing it means giving `BSMPricer` a forward
+/// Pinned rather than fixed: fixing it means giving `BsmPricer` a forward
 /// limit of its own, which would move every model built on it.
 #[test]
 fn a_frozen_no_jump_model_inherits_black_scholess_own_gaps() {
-  let m = Merton1976Pricer::new(0.0, 0.0, 0.4, 20, BSMCoc::Black1976);
+  let m = Merton1976Pricer::new(0.0, 0.0, 0.4, 20, BsmCoc::Black1976);
   let disc = (-R * FUT_TAU).exp();
   assert_eq!(m.price_call(S, S, R, Q, FUT_TAU), 0.0, "price");
   let delta = m.delta(S, S, R, Q, FUT_TAU, OT);
@@ -462,6 +462,6 @@ fn a_frozen_no_jump_model_inherits_black_scholess_own_gaps() {
     ("volga", m.volga(S, S, R, Q, FUT_TAU)),
     ("veta", m.veta(S, S, R, Q, FUT_TAU)),
   ] {
-    assert!(v.is_nan(), "{name} must still be BSMPricer's NaN, got {v}");
+    assert!(v.is_nan(), "{name} must still be BsmPricer's NaN, got {v}");
   }
 }

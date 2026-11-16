@@ -1,10 +1,10 @@
-use super::SVJParams;
+use super::SvjParams;
 use super::loss::bates_call_price;
 use crate::pricing::heston::HestonPricer;
 
 #[test]
 fn zero_jump_svj_matches_heston_at_short_maturity() {
-  let params = SVJParams {
+  let params = SvjParams {
     v0: 0.04,
     kappa: 1.5,
     theta: 0.04,

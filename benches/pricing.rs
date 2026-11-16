@@ -9,8 +9,8 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use stochastic_rs::quant::OptionType;
 use stochastic_rs::quant::instruments::option::caplet::black_forward_caplet;
-use stochastic_rs::quant::pricing::bsm::BSMCoc;
-use stochastic_rs::quant::pricing::bsm::BSMPricer;
+use stochastic_rs::quant::pricing::bsm::BsmCoc;
+use stochastic_rs::quant::pricing::bsm::BsmPricer;
 use stochastic_rs::quant::pricing::fourier::CarrMadanPricer;
 use stochastic_rs::quant::pricing::fourier::CosEngine;
 use stochastic_rs::quant::pricing::fourier::FourierModelExt;
@@ -138,7 +138,7 @@ fn bsm_and_sabr(c: &mut Criterion) {
   group
     .sample_size(50)
     .measurement_time(Duration::from_secs(4));
-  let bsm = BSMPricer::new(0.2, BSMCoc::Merton1973);
+  let bsm = BsmPricer::new(0.2, BsmCoc::Merton1973);
   group.bench_function("call_put_9", |b| {
     b.iter(|| {
       STRIKES

@@ -1,7 +1,7 @@
 use ndarray::Array1;
 use stochastic_rs::prelude::OptionType;
-use stochastic_rs::quant::calibration::bsm::BSMCalibrator;
-use stochastic_rs::quant::calibration::bsm::BSMParams;
+use stochastic_rs::quant::calibration::bsm::BsmCalibrator;
+use stochastic_rs::quant::calibration::bsm::BsmParams;
 use stochastic_rs::quant::calibration::heston::HestonCalibrator;
 use stochastic_rs::quant::calibration::heston::HestonJacobianMethod;
 use stochastic_rs::quant::calibration::heston::HestonParams;
@@ -10,8 +10,8 @@ use stochastic_rs::quant::calibration::levy::LevyModelType;
 use stochastic_rs::quant::calibration::levy::MarketSlice;
 use stochastic_rs::quant::calibration::sabr::SabrCalibrator;
 use stochastic_rs::quant::calibration::sabr::SabrParams;
-use stochastic_rs::quant::pricing::bsm::BSMCoc;
-use stochastic_rs::quant::pricing::bsm::BSMPricer;
+use stochastic_rs::quant::pricing::bsm::BsmCoc;
+use stochastic_rs::quant::pricing::bsm::BsmPricer;
 use stochastic_rs::quant::pricing::heston::HestonPricer;
 use stochastic_rs::quant::pricing::sabr::SabrPricer;
 use stochastic_rs::quant::vol_surface::ssvi::SsviParams;
@@ -48,12 +48,12 @@ pub fn cases() -> Vec<Case> {
   let spot = Array1::from_elem(strikes.len(), 100.0);
   let mut cases = Vec::new();
   for (name, start) in [("bsm/low_start", 0.1), ("bsm/high_start", 0.5)] {
-    let model = BSMPricer::new(0.2, BSMCoc::Bsm1973);
+    let model = BsmPricer::new(0.2, BsmCoc::Bsm1973);
     let prices = strikes.mapv(|k| model.price_call(100.0, k, 0.03, 0.0, 1.0));
     cases.push(calibration(
       name,
-      BSMCalibrator::new(
-        BSMParams { v: start },
+      BsmCalibrator::new(
+        BsmParams { v: start },
         prices,
         spot.clone(),
         strikes.clone(),
@@ -138,7 +138,7 @@ pub fn cases() -> Vec<Case> {
     ),
     (
       "levy/merton",
-      LevyModelType::MertonJD,
+      LevyModelType::MertonJd,
       [
         24.537096, 20.322713, 16.420092, 12.915553, 9.877019, 7.340385, 5.303578, 3.729825,
         2.557790,

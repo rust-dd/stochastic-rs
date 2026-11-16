@@ -10,7 +10,7 @@ one applies depends on whether the type carries its own market data. The
 `GreeksExt` trait in `stochastic-rs-quant::traits` serves the two types
 that do. **Five** pricers instead expose query-taking inherent
 accessors plus a `greeks(s, k, r, q, tau, option_type)` aggregate —
-`BSMPricer`, `HestonPricer`, `Merton1976Pricer`, `CashOrNothingPricer`,
+`BsmPricer`, `HestonPricer`, `Merton1976Pricer`, `CashOrNothingPricer`,
 `AssetOrNothingPricer`. Most `ModelPricer`s expose **no** Greeks at all
 (`GapPricer` and `SuperSharePricer`, both in `pricing/digital.rs`,
 are the in-tree examples); implementing `ModelPricer` does not oblige
@@ -87,7 +87,7 @@ market data**, and since 3.0 most pricers do not:
   `GreeksExt`:
 
 ```rust
-impl BSMPricer {
+impl BsmPricer {
     pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, ot: OptionType) -> f64 { ... }
     pub fn gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 { ... }
 
@@ -223,7 +223,7 @@ against. It exposes query-taking inherent methods, and every Greek it does
 not implement is simply absent rather than defaulting to anything:
 
 ```rust
-impl BSMPricer {
+impl BsmPricer {
     pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, ot: OptionType) -> f64 {
         let (d1, _) = self.d1_d2(s, k, r, q, tau);
         match ot {
@@ -264,7 +264,7 @@ the intent. **Never fill an unimplemented Greek with `0.0`**: a zero is a
 legitimate value for several Greeks, so a consumer cannot tell it from
 "not exposed", which is the whole reason the members default to `NaN`.
 
-Reference: `BSMPricer` in `pricing/bsm/greeks.rs`.
+Reference: `BsmPricer` in `pricing/bsm/greeks.rs`.
 
 ## 6. Bump-size conventions
 

@@ -23,12 +23,12 @@ fn constructors_reject_every_underlying_coefficient_precondition() {
   let mut non_finite_prices = valid_prices.clone();
   non_finite_prices[4] = f64::INFINITY;
 
-  assert!(FMVol::try_new(&[0.0], &[0.0], 1.0).is_err());
-  assert!(FMVol::try_new(&[0.0, 1.0], &[0.0], 1.0).is_err());
-  assert!(FMVol::try_new_uniform(valid_prices.as_slice().unwrap(), 0.0).is_err());
-  assert!(FMVol::try_new_uniform(valid_prices.as_slice().unwrap(), f64::NAN).is_err());
+  assert!(FmVol::try_new(&[0.0], &[0.0], 1.0).is_err());
+  assert!(FmVol::try_new(&[0.0, 1.0], &[0.0], 1.0).is_err());
+  assert!(FmVol::try_new_uniform(valid_prices.as_slice().unwrap(), 0.0).is_err());
+  assert!(FmVol::try_new_uniform(valid_prices.as_slice().unwrap(), f64::NAN).is_err());
   assert!(
-    FMVol::try_new(
+    FmVol::try_new(
       non_finite_prices.as_slice().unwrap(),
       valid_times.as_slice().unwrap(),
       1.0,
@@ -36,7 +36,7 @@ fn constructors_reject_every_underlying_coefficient_precondition() {
     .is_err()
   );
   assert!(
-    FMVol::try_new(
+    FmVol::try_new(
       valid_prices.as_slice().unwrap(),
       non_finite_times.as_slice().unwrap(),
       1.0,
@@ -44,7 +44,7 @@ fn constructors_reject_every_underlying_coefficient_precondition() {
     .is_err()
   );
   assert!(
-    FMVol::try_new(
+    FmVol::try_new(
       valid_prices.as_slice().unwrap(),
       duplicate_times.as_slice().unwrap(),
       1.0,
@@ -52,7 +52,7 @@ fn constructors_reject_every_underlying_coefficient_precondition() {
     .is_err()
   );
   assert!(
-    FMVol::try_new(
+    FmVol::try_new(
       valid_prices.as_slice().unwrap(),
       short_span.as_slice().unwrap(),
       1.0,
@@ -67,7 +67,7 @@ fn short_f32_period_uses_relative_span_tolerance() {
   let mismatched_times = array![0.0_f32, 2.0e-7, 7.0e-7, 1.0e-6];
 
   assert!(
-    FMVol::try_with_freq(
+    FmVol::try_with_freq(
       prices.as_slice().unwrap(),
       mismatched_times.as_slice().unwrap(),
       1.0e-9,
@@ -83,12 +83,12 @@ fn small_default_constructor_returns_error_instead_of_panicking() {
   for n in 2..=4 {
     let prices = prices(n);
     let times = Array1::linspace(0.0, 1.0, n + 1);
-    assert!(FMVol::try_new(prices.as_slice().unwrap(), times.as_slice().unwrap(), 1.0,).is_err());
+    assert!(FmVol::try_new(prices.as_slice().unwrap(), times.as_slice().unwrap(), 1.0,).is_err());
   }
 
   let prices = prices(5);
   let times = Array1::linspace(0.0, 1.0, 6);
-  assert!(FMVol::try_new(prices.as_slice().unwrap(), times.as_slice().unwrap(), 1.0,).is_ok());
+  assert!(FmVol::try_new(prices.as_slice().unwrap(), times.as_slice().unwrap(), 1.0,).is_ok());
 }
 
 #[test]
@@ -98,15 +98,15 @@ fn custom_frequency_constructor_checks_positive_and_storage_bounds() {
   let prices = prices.as_slice().unwrap();
   let times = times.as_slice().unwrap();
 
-  assert!(FMVol::try_with_freq(prices, times, 1.0, 0, 4).is_err());
-  assert!(FMVol::try_with_freq(prices, times, 1.0, 4, 3).is_err());
-  assert!(FMVol::try_with_freq(prices, times, 1.0, 4, 8).is_err());
-  assert!(FMVol::try_with_freq(prices, times, 1.0, 3, 7).is_ok());
+  assert!(FmVol::try_with_freq(prices, times, 1.0, 0, 4).is_err());
+  assert!(FmVol::try_with_freq(prices, times, 1.0, 4, 3).is_err());
+  assert!(FmVol::try_with_freq(prices, times, 1.0, 4, 8).is_err());
+  assert!(FmVol::try_with_freq(prices, times, 1.0, 3, 7).is_ok());
 }
 
 #[test]
 fn irregular_mesh_drives_the_rate_efficient_default_and_constant() {
-  let engine = FMVol {
+  let engine = FmVol {
     dx: Array1::<Complex<f64>>::zeros(121),
     period: 1.0,
     n: 100,
@@ -129,7 +129,7 @@ fn covariance_requires_matching_period_and_origin() {
   let unit_times = Array1::linspace(0.0, 1.0, 17);
   let long_times = Array1::linspace(0.0, 2.0, 17);
   let shifted_times = Array1::linspace(1.0, 2.0, 17);
-  let unit = FMVol::try_with_freq(
+  let unit = FmVol::try_with_freq(
     prices.as_slice().unwrap(),
     unit_times.as_slice().unwrap(),
     1.0,
@@ -137,7 +137,7 @@ fn covariance_requires_matching_period_and_origin() {
     7,
   )
   .unwrap();
-  let long = FMVol::try_with_freq(
+  let long = FmVol::try_with_freq(
     prices.as_slice().unwrap(),
     long_times.as_slice().unwrap(),
     2.0,
@@ -145,7 +145,7 @@ fn covariance_requires_matching_period_and_origin() {
     7,
   )
   .unwrap();
-  let shifted = FMVol::try_with_freq(
+  let shifted = FmVol::try_with_freq(
     prices.as_slice().unwrap(),
     shifted_times.as_slice().unwrap(),
     1.0,
@@ -163,7 +163,7 @@ fn covariance_requires_matching_period_and_origin() {
 fn spot_covariance_accepts_minimal_asymmetric_coefficient_storage() {
   let prices = prices(16);
   let times = Array1::linspace(0.0, 1.0, 17);
-  let smoothed = FMVol::try_with_freq(
+  let smoothed = FmVol::try_with_freq(
     prices.as_slice().unwrap(),
     times.as_slice().unwrap(),
     1.0,
@@ -171,7 +171,7 @@ fn spot_covariance_accepts_minimal_asymmetric_coefficient_storage() {
     5,
   )
   .unwrap();
-  let primary_only = FMVol::try_with_freq(
+  let primary_only = FmVol::try_with_freq(
     prices.as_slice().unwrap(),
     times.as_slice().unwrap(),
     1.0,
@@ -191,7 +191,7 @@ fn spot_covariance_accepts_minimal_asymmetric_coefficient_storage() {
 fn all_custom_window_families_return_errors_before_indexing() {
   let prices = prices(16);
   let times = Array1::linspace(0.0, 1.0, 17);
-  let engine = FMVol::try_with_freq(
+  let engine = FmVol::try_with_freq(
     prices.as_slice().unwrap(),
     times.as_slice().unwrap(),
     1.0,

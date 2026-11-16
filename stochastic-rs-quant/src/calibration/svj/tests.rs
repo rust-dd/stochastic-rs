@@ -1,5 +1,5 @@
-use super::SVJCalibrator;
-use super::SVJParams;
+use super::SvjCalibrator;
+use super::SvjParams;
 use super::loss::bates_call_price;
 use crate::LossMetric;
 use crate::OptionType;
@@ -12,7 +12,7 @@ const STRIKES: [f64; 9] = [80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 1
 
 #[test]
 fn bates_pricer_matches_heston_reference() {
-  let p = SVJParams {
+  let p = SvjParams {
     v0: 0.04,
     kappa: 1.5,
     theta: 0.04,
@@ -35,8 +35,8 @@ fn bates_pricer_matches_heston_reference() {
 #[test]
 fn svj_calibrate_recovers_heston_prices() {
   let n = STRIKES.len();
-  let calibrator = SVJCalibrator::new(
-    Some(SVJParams {
+  let calibrator = SvjCalibrator::new(
+    Some(SvjParams {
       v0: 0.06,
       kappa: 2.0,
       theta: 0.06,
@@ -74,7 +74,7 @@ fn svj_calibrate_recovers_heston_prices() {
 /// branch-cut discontinuity at T = 5y, ρ = -0.9; the Trap form does not.
 #[test]
 fn svj_bates_little_trap_long_maturity_high_rho() {
-  let p = SVJParams {
+  let p = SvjParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
@@ -110,8 +110,8 @@ fn test_svj_calibrate() {
   let tau = 0.5;
   let option_type = OptionType::Call;
 
-  let calibrator = SVJCalibrator::new(
-    Some(SVJParams {
+  let calibrator = SvjCalibrator::new(
+    Some(SvjParams {
       v0: 0.04,
       kappa: 1.5,
       theta: 0.04,

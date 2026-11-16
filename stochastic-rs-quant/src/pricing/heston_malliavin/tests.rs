@@ -4,8 +4,8 @@ use super::HestonModel;
 use super::TerminalPayoff;
 use super::VanillaPortfolio;
 use crate::OptionType;
-use crate::pricing::bsm::BSMCoc;
-use crate::pricing::bsm::BSMPricer;
+use crate::pricing::bsm::BsmCoc;
+use crate::pricing::bsm::BsmPricer;
 use crate::traits::ModelPricer;
 
 fn bsm_limit_model(rho: f64) -> HestonModel {
@@ -37,9 +37,9 @@ fn config(paths: usize, steps: usize, seed: u64) -> HestonMalliavinConfig {
 
 /// The Black-Scholes model at the Heston model's `v0` as a flat
 /// volatility, plus the `(s, k, r, q, tau)` query point it is compared at.
-fn bsm(model: HestonModel, strike: f64) -> (BSMPricer, (f64, f64, f64, f64, f64)) {
+fn bsm(model: HestonModel, strike: f64) -> (BsmPricer, (f64, f64, f64, f64, f64)) {
   (
-    BSMPricer::new(model.initial_variance.sqrt(), BSMCoc::Merton1973),
+    BsmPricer::new(model.initial_variance.sqrt(), BsmCoc::Merton1973),
     (
       model.s,
       strike,

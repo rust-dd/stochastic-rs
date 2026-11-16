@@ -136,11 +136,11 @@ fn bs2002_symmetric_at_zero_rate() {
 #[test]
 fn bs2002_exceeds_european_value() {
   // American option value should always be >= European value
-  use stochastic_rs::quant::pricing::bsm::BSMCoc;
-  use stochastic_rs::quant::pricing::bsm::BSMPricer;
+  use stochastic_rs::quant::pricing::bsm::BsmCoc;
+  use stochastic_rs::quant::pricing::bsm::BsmPricer;
 
   let am_price = BjerksundStensland2002Pricer::new(0.30).price_put(100.0, 100.0, 0.08, 0.04, 1.0);
-  let eu_price = BSMPricer::new(0.30, BSMCoc::Merton1973).price_put(100.0, 100.0, 0.08, 0.04, 1.0);
+  let eu_price = BsmPricer::new(0.30, BsmCoc::Merton1973).price_put(100.0, 100.0, 0.08, 0.04, 1.0);
   assert!(
     am_price >= eu_price - 0.001,
     "American put ({am_price}) must be >= European put ({eu_price})"

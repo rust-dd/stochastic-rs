@@ -18,7 +18,7 @@
 //!
 //! The characteristic function factorises as
 //! $\phi_{\mathrm{Hkde}}(\xi,t) = \phi_{\mathrm{Hes}}(\xi,t)\,\phi_{\mathrm{Kou}}(\xi,t)$
-//! and is provided by [`HKDEFourier`](crate::pricing::fourier::HKDEFourier).
+//! and is provided by [`HkdeFourier`](crate::pricing::fourier::HkdeFourier).
 //!
 //! The nine-dimensional parameter vector $\theta=(v_0,\kappa,\theta,\sigma_v,\rho,
 //! \lambda,p,\eta_1,\eta_2)$ is calibrated against a set of market quotes by
@@ -56,11 +56,11 @@ mod loss;
 mod params;
 mod result;
 
-pub use calibrator::HKDECalibrator;
+pub use calibrator::HkdeCalibrator;
 pub use loss::paper_table1;
 pub use loss::paper_table2;
-pub use params::HKDEParams;
-pub use result::HKDECalibrationResult;
+pub use params::HkdeParams;
+pub use result::HkdeCalibrationResult;
 
 #[cfg(test)]
 mod tests;

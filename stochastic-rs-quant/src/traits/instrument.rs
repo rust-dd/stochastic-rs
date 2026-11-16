@@ -15,11 +15,11 @@
 //! ```
 //! use stochastic_rs_quant::OptionType;
 //! use stochastic_rs_quant::instruments::equity::EuropeanOption;
-//! use stochastic_rs_quant::pricing::engines::{AnalyticBSEngine, AnalyticHestonEngine, HestonStaticParams};
+//! use stochastic_rs_quant::pricing::engines::{AnalyticBsEngine, AnalyticHestonEngine, HestonStaticParams};
 //! use stochastic_rs_quant::traits::{PricingEngine, PricingResult};
 //!
 //! let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
-//! let bs  = AnalyticBSEngine::with_constants(100.0, 0.20, 0.05, 0.0);
+//! let bs  = AnalyticBsEngine::with_constants(100.0, 0.20, 0.05, 0.0);
 //! let r   = bs.calculate(&opt);
 //! if let Some(g) = r.greeks() {
 //!     println!("NPV = {}, Δ = {}", r.npv(), g.delta);
@@ -56,7 +56,7 @@ pub trait Instrument {
 ///
 /// `PricingEngine<I>` is generic in the instrument type to support
 /// engine families that price several payoffs from the same trait
-/// implementation (e.g. an `AnalyticBSEngine` impl for both
+/// implementation (e.g. an `AnalyticBsEngine` impl for both
 /// `EuropeanOption` and `DigitalOption`).
 pub trait PricingEngine<I: ?Sized> {
   /// Output container — must report at least an NPV.

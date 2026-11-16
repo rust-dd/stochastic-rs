@@ -83,11 +83,11 @@ use stochastic_rs_quant::calibration::levy::LevyModel;
 use stochastic_rs_quant::instruments::DigitalOption;
 use stochastic_rs_quant::instruments::EuropeanOption;
 use stochastic_rs_quant::lattice::equity::CrrModel;
-use stochastic_rs_quant::pricing::AnalyticBSEngine;
+use stochastic_rs_quant::pricing::AnalyticBsEngine;
 use stochastic_rs_quant::pricing::AnalyticHestonEngine;
 use stochastic_rs_quant::pricing::AssetOrNothingPricer;
-use stochastic_rs_quant::pricing::BSMPricer;
 use stochastic_rs_quant::pricing::BjerksundStensland2002Pricer;
+use stochastic_rs_quant::pricing::BsmPricer;
 use stochastic_rs_quant::pricing::CashOrNothingPricer;
 use stochastic_rs_quant::pricing::GapPricer;
 use stochastic_rs_quant::pricing::HestonPricer;
@@ -206,7 +206,7 @@ assert_model_pricer!(
   AssetOrNothingPricer,
   BachelierPricer,
   BjerksundStensland2002Pricer,
-  BSMPricer,
+  BsmPricer,
   CashOrNothingPricer,
   CrrModel<f64>,
   FiniteDifferencePricer,
@@ -240,7 +240,7 @@ assert_model_pricer!(
 //
 // `FiniteDifferencePricer` is the one member whose answer is per-instance: it
 // holds its exercise style in a field, so it carries the trait and reports
-// `NaN` from `vanilla_call_forward` at `OptionStyle::American`. `BSMPricer` and
+// `NaN` from `vanilla_call_forward` at `OptionStyle::American`. `BsmPricer` and
 // `Merton1976Pricer` are the two whose *forward* is per-instance, at `b(r, q)`
 // rather than the default `r - q`.
 // `HestonAdiPricer` is per-instance like `FiniteDifferencePricer`: a vanilla
@@ -251,7 +251,7 @@ assert_model_pricer!(
 // normal-to-lognormal volatility conversion, strike by strike.
 assert_vanilla_european_call!(
   BachelierPricer,
-  BSMPricer,
+  BsmPricer,
   CrrModel<f64>,
   FiniteDifferencePricer,
   GbmMalliavinPricer,
@@ -312,11 +312,11 @@ const _: () = assert!(<VanillaProbe<HestonPricer>>::IS_VANILLA_EUROPEAN_CALL);
 // updates, and one engine can serve several instrument types.
 //
 // One entry per `(engine, instrument)` impl, not per engine: the audit diffs
-// pairs, so `AnalyticBSEngine`'s second instrument is checked rather than
+// pairs, so `AnalyticBsEngine`'s second instrument is checked rather than
 // mentioned in a comment, which is how it was handled before.
 assert_pricing_engine!(
-  (AnalyticBSEngine, DigitalOption),
-  (AnalyticBSEngine, EuropeanOption),
+  (AnalyticBsEngine, DigitalOption),
+  (AnalyticBsEngine, EuropeanOption),
   (AnalyticHestonEngine, EuropeanOption),
 );
 
@@ -360,7 +360,7 @@ const NO_TRAIT_BY_DESIGN: &[(&str, &str)] = &[
   ("GilPelaezPricer", FOURIER_ENGINE),
   ("KirkSpreadPricer", MULTI_ASSET),
   ("LewisPricer", FOURIER_ENGINE),
-  ("MCBarrierPricer", PATH_DEPENDENT),
+  ("McBarrierPricer", PATH_DEPENDENT),
   ("MargrabePricer", MULTI_ASSET),
   ("McBasketPricer", MULTI_ASSET),
   ("McCliquetPricer", PATH_DEPENDENT),

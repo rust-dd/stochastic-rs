@@ -1,10 +1,10 @@
-use super::params::HKDEParams;
+use super::params::HkdeParams;
 use crate::CalibrationLossScore;
-use crate::pricing::fourier::HKDEFourier;
+use crate::pricing::fourier::HkdeFourier;
 
 /// Calibration result for the Hkde model.
 #[derive(Clone, Debug)]
-pub struct HKDECalibrationResult {
+pub struct HkdeCalibrationResult {
   pub v0: f64,
   pub kappa: f64,
   pub theta: f64,
@@ -20,15 +20,15 @@ pub struct HKDECalibrationResult {
   pub converged: bool,
 }
 
-impl crate::traits::ToModel for HKDECalibrationResult {
-  type Model = HKDEFourier;
+impl crate::traits::ToModel for HkdeCalibrationResult {
+  type Model = HkdeFourier;
   fn to_model(&self, r: f64, q: f64) -> Self::Model {
-    HKDECalibrationResult::to_model(self, r, q)
+    HkdeCalibrationResult::to_model(self, r, q)
   }
 }
 
-impl crate::traits::CalibrationResult for HKDECalibrationResult {
-  type Params = HKDEParams;
+impl crate::traits::CalibrationResult for HkdeCalibrationResult {
+  type Params = HkdeParams;
   fn rmse(&self) -> f64 {
     self.loss.get(crate::LossMetric::Rmse)
   }
@@ -38,7 +38,7 @@ impl crate::traits::CalibrationResult for HKDECalibrationResult {
   }
 
   fn params(&self) -> Self::Params {
-    HKDEParams {
+    HkdeParams {
       v0: self.v0,
       kappa: self.kappa,
       theta: self.theta,
@@ -56,10 +56,10 @@ impl crate::traits::CalibrationResult for HKDECalibrationResult {
   }
 }
 
-impl HKDECalibrationResult {
-  /// Convert to a [`HKDEFourier`] model for pricing / vol-surface generation.
-  pub fn to_model(&self, r: f64, q: f64) -> HKDEFourier {
-    HKDEFourier {
+impl HkdeCalibrationResult {
+  /// Convert to a [`HkdeFourier`] model for pricing / vol-surface generation.
+  pub fn to_model(&self, r: f64, q: f64) -> HkdeFourier {
+    HkdeFourier {
       v0: self.v0,
       kappa: self.kappa,
       theta: self.theta,

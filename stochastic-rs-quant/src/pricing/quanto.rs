@@ -95,8 +95,8 @@ impl ModelPricer for QuantoPricer {
 mod tests {
   use super::*;
   use crate::OptionType;
-  use crate::pricing::bsm::BSMCoc;
-  use crate::pricing::bsm::BSMPricer;
+  use crate::pricing::bsm::BsmCoc;
+  use crate::pricing::bsm::BsmPricer;
 
   /// Haug (2007) §2.13.4 example inputs: `S = 100, K = 105, E_p = 1.5,
   /// τ = 0.5, r = 0.08, r_f = 0.05, q = 0.04, σ_S = 0.2, σ_E = 0.12, ρ = 0.3`.
@@ -144,7 +144,7 @@ mod tests {
   fn zero_correlation_and_equal_rates_reduce_to_the_scaled_merton_price() {
     let (s, k, r, q, tau) = Q;
     let quanto = QuantoPricer::new(0.2, 0.12, 0.0, r, 1.5);
-    let merton = BSMPricer::new(0.2, BSMCoc::Merton1973);
+    let merton = BsmPricer::new(0.2, BsmCoc::Merton1973);
     let (qc, qp) = quanto.call_put(s, k, r, q, tau);
     let (mc, mp) = merton.call_put(s, k, r, q, tau);
     assert!((qc - 1.5 * mc).abs() < 1e-12 && (qp - 1.5 * mp).abs() < 1e-12);

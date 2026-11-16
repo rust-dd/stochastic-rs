@@ -1,8 +1,8 @@
 // docs: quant#quanto-option-fixed-exchange-rate-foreign-equity
 //! Backs the quanto example on the quant catalog page.
 
-use stochastic_rs::quant::pricing::bsm::BSMCoc;
-use stochastic_rs::quant::pricing::bsm::BSMPricer;
+use stochastic_rs::quant::pricing::bsm::BsmCoc;
+use stochastic_rs::quant::pricing::bsm::BsmPricer;
 use stochastic_rs::quant::pricing::quanto::QuantoPricer;
 use stochastic_rs::traits::ModelPricer;
 
@@ -23,7 +23,7 @@ fn quanto_price_forward_and_merton_reduction() {
 
   // Without correlation and with equal rates it is E_p times Merton (1973).
   let plain = QuantoPricer::new(0.2, 0.12, 0.0, r, 1.5);
-  let merton = BSMPricer::new(0.2, BSMCoc::Merton1973);
+  let merton = BsmPricer::new(0.2, BsmCoc::Merton1973);
   assert!(
     (plain.price_call(s, k, r, q, tau) - 1.5 * merton.price_call(s, k, r, q, tau)).abs() < 1e-12
   );

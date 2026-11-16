@@ -13,48 +13,48 @@ const TOL: f64 = 1e-12;
 #[test]
 fn bsm_price() {
   let (s, k, r, q, tau) = Q;
-  let model = BSMPricer::new(0.2, BSMCoc::Bsm1973);
+  let model = BsmPricer::new(0.2, BsmCoc::Bsm1973);
   let (call, put) = model.call_put(s, k, r, q, tau);
   assert!(call > 0.0 && put > 0.0);
   assert_eq!(call, model.price_call(s, k, r, q, tau));
   assert_eq!(put, model.price_put(s, k, r, q, tau));
 }
 
-/// Every `BSMCoc` variant reproduces its golden through [`ModelPricer`]; `(r, q)` stands in for
+/// Every `BsmCoc` variant reproduces its golden through [`ModelPricer`]; `(r, q)` stands in for
 /// `(r_d, r_f)` under `GarmanKohlhagen1983`, which is why its golden equals `Merton1973`'s.
 #[test]
 fn bsm_model_pricer_matches_pre_refactor_goldens() {
   let (s, k, r, q, tau) = Q;
   let cases = [
     (
-      BSMCoc::Bsm1973,
+      BsmCoc::Bsm1973,
       8.113_484_530_210_712,
       9.248_898_390_896_997,
     ),
     (
-      BSMCoc::Merton1973,
+      BsmCoc::Merton1973,
       7.356_284_457_997_674,
       9.980_504_358_377_694,
     ),
     (
-      BSMCoc::Black1976,
+      BsmCoc::Black1976,
       6.317_127_602_016_328,
       11.133_099_690_620_426,
     ),
     (
-      BSMCoc::Asay1982,
+      BsmCoc::Asay1982,
       6.317_127_602_016_328,
       11.133_099_690_620_426,
     ),
     (
-      BSMCoc::GarmanKohlhagen1983,
+      BsmCoc::GarmanKohlhagen1983,
       7.356_284_457_997_674,
       9.980_504_358_377_694,
     ),
   ];
 
   for (coc, want_call, want_put) in cases {
-    let model = BSMPricer::new(V, coc);
+    let model = BsmPricer::new(V, coc);
     let call = model.price_call(s, k, r, q, tau);
     let put = model.price_put(s, k, r, q, tau);
     assert!((call - want_call).abs() < TOL, "{coc:?} call: {call}");
@@ -80,8 +80,8 @@ fn bsm_model_pricer_matches_pre_refactor_goldens() {
 #[test]
 fn bsm_asay_currently_equals_black76() {
   let (s, k, r, q, tau) = Q;
-  let black = BSMPricer::new(V, BSMCoc::Black1976);
-  let asay = BSMPricer::new(V, BSMCoc::Asay1982);
+  let black = BsmPricer::new(V, BsmCoc::Black1976);
+  let asay = BsmPricer::new(V, BsmCoc::Asay1982);
   assert_eq!(
     black.call_put(s, k, r, q, tau),
     asay.call_put(s, k, r, q, tau)
@@ -91,15 +91,15 @@ fn bsm_asay_currently_equals_black76() {
 /// [`ModelPricer::price_put`]'s default is vanilla parity
 /// (`C - S e^{-q tau} + K e^{-r tau}`), which assumes `b = r - q`. It is
 /// therefore correct for `Merton1973` / `GarmanKohlhagen1983` and wrong for
-/// the other three — the reason `BSMPricer` overrides it. This test is the
+/// the other three — the reason `BsmPricer` overrides it. This test is the
 /// evidence for that override.
 #[test]
 fn bsm_price_put_overrides_vanilla_parity() {
   let (s, k, r, q, tau) = Q;
   let vanilla = |call: f64| call - s * (-q * tau).exp() + k * (-r * tau).exp();
 
-  for coc in [BSMCoc::Merton1973, BSMCoc::GarmanKohlhagen1983] {
-    let model = BSMPricer::new(V, coc);
+  for coc in [BsmCoc::Merton1973, BsmCoc::GarmanKohlhagen1983] {
+    let model = BsmPricer::new(V, coc);
     let (call, put) = model.call_put(s, k, r, q, tau);
     assert!(
       (put - vanilla(call)).abs() < 1e-12,
@@ -107,8 +107,8 @@ fn bsm_price_put_overrides_vanilla_parity() {
     );
   }
 
-  for coc in [BSMCoc::Bsm1973, BSMCoc::Black1976, BSMCoc::Asay1982] {
-    let model = BSMPricer::new(V, coc);
+  for coc in [BsmCoc::Bsm1973, BsmCoc::Black1976, BsmCoc::Asay1982] {
+    let model = BsmPricer::new(V, coc);
     let (call, put) = model.call_put(s, k, r, q, tau);
     assert!(
       (put - vanilla(call)).abs() > 1e-3,
@@ -127,7 +127,7 @@ fn bsm_price_put_overrides_vanilla_parity() {
 #[test]
 fn bsm_implied_volatility() {
   let (s, k, r, q, tau) = Q;
-  let model = BSMPricer::new(0.2, BSMCoc::Bsm1973);
+  let model = BsmPricer::new(0.2, BsmCoc::Bsm1973);
   let call = model.price_call(s, k, r, q, tau);
   let iv = model.implied_volatility(call, s, k, r, q, tau, OptionType::Call);
   assert!(
@@ -141,7 +141,7 @@ fn bsm_iv_round_trip_across_strikes_and_maturities() {
   for &tau in &[0.25_f64, 1.0, 2.0] {
     for &k in &[90.0_f64, 100.0, 110.0] {
       for &sigma in &[0.1_f64, 0.2, 0.4] {
-        let model = BSMPricer::new(sigma, BSMCoc::Bsm1973);
+        let model = BsmPricer::new(sigma, BsmCoc::Bsm1973);
         let call = model.price_call(100.0, k, 0.03, 0.0, tau);
         let iv = model.implied_volatility(call, 100.0, k, 0.03, 0.0, tau, OptionType::Call);
         assert!(
@@ -155,7 +155,7 @@ fn bsm_iv_round_trip_across_strikes_and_maturities() {
 
 /// The date pair moved off the pricer: the caller resolves `(eval, expiry)`
 /// to `tau` through [`DayCountConvention`](crate::calendar::DayCountConvention)
-/// and passes it. Same numbers as when `BSMPricer` did it internally
+/// and passes it. Same numbers as when `BsmPricer` did it internally
 /// through `TimeExt`.
 #[test]
 fn bsm_dates_match_tau_pricing() {
@@ -167,7 +167,7 @@ fn bsm_dates_match_tau_pricing() {
   let expiration = NaiveDate::from_ymd_opt(2027, 1, 2).unwrap();
   let tau = DayCountConvention::Actual365Fixed.year_fraction::<f64>(eval, expiration);
 
-  let model = BSMPricer::new(0.2, BSMCoc::Bsm1973);
+  let model = BsmPricer::new(0.2, BsmCoc::Bsm1973);
   let (c_dates, p_dates) = model.call_put(100.0, 100.0, 0.05, 0.0, tau);
   let (c_tau, p_tau) = model.call_put(100.0, 100.0, 0.05, 0.0, 1.0);
   // 2026-01-02 → 2027-01-02 is 365 days and 2026 is not a leap year, so
@@ -185,7 +185,7 @@ fn bsm_dates_match_tau_pricing() {
 #[test]
 fn bsm_greeks_second_order_are_finite() {
   let (s, k, r, tau) = (100.0, 100.0, 0.05, 1.0);
-  let model = BSMPricer::new(0.2, BSMCoc::Bsm1973);
+  let model = BsmPricer::new(0.2, BsmCoc::Bsm1973);
   let vanna = model.vanna(s, k, r, 0.0, tau);
   let charm = model.charm(s, k, r, 0.0, tau, OptionType::Call);
   let volga = model.vomma(s, k, r, 0.0, tau);
@@ -205,7 +205,7 @@ fn bsm_greeks_second_order_are_finite() {
 #[test]
 fn bsm_greeks_match_pre_refactor_goldens() {
   let (s, k, r, q, tau) = Q;
-  let m = BSMPricer::new(V, BSMCoc::Merton1973);
+  let m = BsmPricer::new(V, BsmCoc::Merton1973);
   let call = OptionType::Call;
   let put = OptionType::Put;
   let cases = [
@@ -277,7 +277,7 @@ fn bsm_greeks_match_pre_refactor_goldens() {
 
 #[test]
 fn bsm_iv_round_trip_with_dividend_yield() {
-  let model = BSMPricer::new(0.25, BSMCoc::Merton1973);
+  let model = BsmPricer::new(0.25, BsmCoc::Merton1973);
   let call = model.price_call(100.0, 105.0, 0.04, 0.02, 1.0);
   let iv = model.implied_volatility(call, 100.0, 105.0, 0.04, 0.02, 1.0, OptionType::Call);
   assert!(
@@ -307,7 +307,7 @@ fn bsm_dcc_pricing_diverges_from_default() {
     "Act/360 leap-year fraction"
   );
 
-  let model = BSMPricer::new(0.2, BSMCoc::Bsm1973);
+  let model = BsmPricer::new(0.2, BsmCoc::Bsm1973);
   let p_default = model.price_call(100.0, 100.0, 0.05, 0.0, tau_default);
   let p_act360 = model.price_call(100.0, 100.0, 0.05, 0.0, tau_act360);
   assert!(
@@ -321,7 +321,7 @@ fn bsm_dcc_pricing_diverges_from_default() {
 /// without rebuilding itself per point.
 #[test]
 fn bsm_one_model_prices_a_grid() {
-  let model = BSMPricer::new(0.2, BSMCoc::Merton1973);
+  let model = BsmPricer::new(0.2, BsmCoc::Merton1973);
   let strikes = [90.0, 100.0, 110.0];
   let maturities = [0.25, 1.0, 2.0];
   for &tau in &maturities {
@@ -335,17 +335,17 @@ fn bsm_one_model_prices_a_grid() {
   }
 }
 
-/// [`BSMPricer::greeks`] renames two members on the way into the
+/// [`BsmPricer::greeks`] renames two members on the way into the
 /// [`Greeks`](crate::traits::Greeks) aggregate — `volga` is `vomma` and
 /// `veta` is `dvega_dtime`. Swapping those two lines in the aggregate is a
 /// silent, plausible-looking error, so every member is pinned against its
-/// accessor here. This is the mapping's only test; `AnalyticBSEngine` and
+/// accessor here. This is the mapping's only test; `AnalyticBsEngine` and
 /// the `mc_greeks_demo` example both route through `greeks()` rather than
 /// repeating it.
 #[test]
 fn bsm_greeks_aggregate_matches_accessors() {
   let (s, k, r, q, tau) = Q;
-  let m = BSMPricer::new(V, BSMCoc::Merton1973);
+  let m = BsmPricer::new(V, BsmCoc::Merton1973);
   for ot in [OptionType::Call, OptionType::Put] {
     let g = m.greeks(s, k, r, q, tau, ot);
     assert_eq!(g.delta, m.delta(s, k, r, q, tau, ot), "delta");

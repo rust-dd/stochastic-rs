@@ -1,6 +1,6 @@
 //! Input and frequency-window validation for the Fourier-Malliavin engine.
 
-use super::FMVol;
+use super::FmVol;
 use super::helpers::default_bias_corrected_m;
 use crate::traits::RealExt;
 
@@ -119,7 +119,7 @@ fn validate_period<T: RealExt>(period: T) -> anyhow::Result<()> {
   Ok(())
 }
 
-impl<T: RealExt> FMVol<T> {
+impl<T: RealExt> FmVol<T> {
   pub(super) fn validate_stored_frequency(&self, required: usize) -> anyhow::Result<()> {
     if required > self.max_freq {
       anyhow::bail!(

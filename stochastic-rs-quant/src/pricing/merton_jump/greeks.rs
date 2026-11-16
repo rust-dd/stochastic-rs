@@ -56,7 +56,7 @@
 //! spread admits — it is linear in $S$, so a second $S$-derivative kills
 //! it too — and has never taken one. The four that do take one each leave
 //! a surviving spread term, whose form depends on which
-//! [`BSMCoc`](crate::pricing::bsm::BSMCoc) supplies $b$.
+//! [`BsmCoc`](crate::pricing::bsm::BsmCoc) supplies $b$.
 //!
 
 use stochastic_rs_distributions::special::norm_pdf;
@@ -64,7 +64,7 @@ use stochastic_rs_distributions::special::norm_pdf;
 use super::Merton1976Pricer;
 use super::TermRegime;
 use crate::OptionType;
-use crate::pricing::bsm::BSMPricer;
+use crate::pricing::bsm::BsmPricer;
 use crate::traits::Greeks;
 
 impl Merton1976Pricer {
@@ -74,7 +74,7 @@ impl Merton1976Pricer {
     s.abs() * 1e-4
   }
 
-  fn volatility_series(&self, tau: f64, f: impl Fn(&BSMPricer, f64) -> f64) -> f64 {
+  fn volatility_series(&self, tau: f64, f: impl Fn(&BsmPricer, f64) -> f64) -> f64 {
     let unit_volatility = Self { v: 1.0, ..*self };
     (0..self.m)
       .map(|n| {
@@ -89,7 +89,7 @@ impl Merton1976Pricer {
 
   /// Poisson-weighted spot and rate Greeks. Each caller supplies its own
   /// zero-volatility limit; the no-jump case uses the base Black-Scholes model.
-  fn greek_series(&self, tau: f64, greek: impl Fn(&BSMPricer) -> f64) -> f64 {
+  fn greek_series(&self, tau: f64, greek: impl Fn(&BsmPricer) -> f64) -> f64 {
     if self.lambda <= 0.0 {
       return greek(&self.base_bsm());
     }
@@ -207,7 +207,7 @@ impl Merton1976Pricer {
   /// Theta — $\partial V/\partial t$ (calendar convention).
   ///
   /// On the `λ > 0` path, returns `NaN` for a `tau` that is non-finite or not
-  /// larger than `H_TAU`; the `λ ≤ 0` path delegates to [`BSMPricer`] and
+  /// larger than `H_TAU`; the `λ ≤ 0` path delegates to [`BsmPricer`] and
   /// inherits its behaviour instead.
   pub fn theta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
     if self.lambda <= 0.0 {
@@ -249,7 +249,7 @@ impl Merton1976Pricer {
   /// Charm — $\partial^2 V/\partial S\partial t$ (delta decay).
   ///
   /// On the `λ > 0` path, returns `NaN` for a `tau` that is non-finite or not
-  /// larger than `H_TAU`; the `λ ≤ 0` path delegates to [`BSMPricer`] and
+  /// larger than `H_TAU`; the `λ ≤ 0` path delegates to [`BsmPricer`] and
   /// inherits its behaviour instead.
   pub fn charm(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
     if self.lambda <= 0.0 {
@@ -299,7 +299,7 @@ impl Merton1976Pricer {
   /// each leave a surviving spread term and keep theirs.
   ///
   /// On the `λ > 0` path, returns `NaN` for a `tau` that is non-finite or not
-  /// larger than `H_TAU`; the `λ ≤ 0` path delegates to [`BSMPricer`] and
+  /// larger than `H_TAU`; the `λ ≤ 0` path delegates to [`BsmPricer`] and
   /// inherits its behaviour instead.
   pub fn veta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     if self.lambda <= 0.0 {

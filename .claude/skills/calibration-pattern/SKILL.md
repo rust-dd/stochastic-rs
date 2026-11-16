@@ -9,7 +9,7 @@ A "calibrator" in `stochastic-rs-quant` consumes market option data (or
 implied-vol slices) plus an initial guess and returns either the fitted
 parameters + a converged-status flag, or a typed error. Twelve
 calibrators currently follow this pattern (post rc.1's three new ones:
-`HscmCalibrator`, `CgmysvCalibrator`, `HKDECalibrator`); thirteen
+`HscmCalibrator`, `CgmysvCalibrator`, `HkdeCalibrator`); thirteen
 `ToModel` impls bridge the calibrator output back to a `ModelPricer`.
 
 This SKILL codifies the pattern so adding a calibrator #13 is a
@@ -194,7 +194,7 @@ attribution below is easy to get backwards.
   LmOptions { .. })`, which runs basin's trust-region LM (pivoted QR or
   Cholesky) and reports convergence plus the evaluation count. Quotes and
   parameter vectors are `ndarray` types; `nalgebra` is not a dependency.
-  Used by `BSMCalibrator` (`calibration/bsm.rs`),
+  Used by `BsmCalibrator` (`calibration/bsm.rs`),
   `SabrCalibrator` (`calibration/sabr.rs`), `CgmysvCalibrator`
   (`calibration/cgmysv.rs`), `HestonCalibrator`
   (`calibration/heston/{calibrator,lsq}.rs`), `HkdeCalibrator`
@@ -375,7 +375,7 @@ Note the file shapes: `bsm`, `heston`, `rbergomi`, `hkde`, `levy`,
 are single files. There is no `calibration/heston.rs` or
 `calibration/rbergomi.rs`.
 
-- `BSMCalibrator` (`calibration/bsm.rs`) — the simplest full example.
+- `BsmCalibrator` (`calibration/bsm.rs`) — the simplest full example.
   It is **not** closed-form: it implements the crate's
   `LeastSquaresProblem` and is driven by `least_squares::minimize`.
 - `HestonCalibrator` (`calibration/heston/calibrator.rs`, with the

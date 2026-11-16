@@ -4,8 +4,8 @@
 use ndarray::Array1;
 use stochastic_rs::prelude::*;
 use stochastic_rs::quant::OptionType;
-use stochastic_rs::quant::calibration::bsm::BSMCalibrator;
-use stochastic_rs::quant::calibration::bsm::BSMParams;
+use stochastic_rs::quant::calibration::bsm::BsmCalibrator;
+use stochastic_rs::quant::calibration::bsm::BsmParams;
 use stochastic_rs::quant::calibration::heston::HestonCalibrator;
 use stochastic_rs::quant::calibration::heston::HestonParams;
 use stochastic_rs::quant::calibration::levy::MarketSlice;
@@ -30,7 +30,7 @@ fn bsm_demo() {
   let strikes = vec![80.0_f64, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0];
 
   // Synthesise call prices from the closed-form chf via Gil-Pelaez.
-  let model_true = stochastic_rs::quant::pricing::fourier::BSMFourier {
+  let model_true = stochastic_rs::quant::pricing::fourier::BsmFourier {
     sigma: sigma_true,
     r,
     q,
@@ -40,8 +40,8 @@ fn bsm_demo() {
     .map(|&k| model_true.price_call(s0, k, r, q, tau))
     .collect();
 
-  let calibrator = BSMCalibrator::new(
-    BSMParams { v: 0.30 },
+  let calibrator = BsmCalibrator::new(
+    BsmParams { v: 0.30 },
     Array1::from_vec(market.clone()),
     Array1::from_vec(vec![s0; strikes.len()]),
     Array1::from_vec(strikes.clone()),

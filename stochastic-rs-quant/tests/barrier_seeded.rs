@@ -1,11 +1,11 @@
 use stochastic_rs_quant::OptionType;
 use stochastic_rs_quant::pricing::barrier::BarrierType;
-use stochastic_rs_quant::pricing::barrier::MCBarrierPricer;
+use stochastic_rs_quant::pricing::barrier::McBarrierPricer;
 
 const PIN: f64 = 3.7606676940909685;
 
 fn price(seed: u64) -> f64 {
-  MCBarrierPricer {
+  McBarrierPricer {
     n_paths: 4_000,
     n_steps: 32,
   }

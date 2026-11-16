@@ -28,9 +28,9 @@ mod loss;
 mod params;
 mod result;
 
-pub use calibrator::SVJCalibrator;
-pub use params::SVJParams;
-pub use result::SVJCalibrationResult;
+pub use calibrator::SvjCalibrator;
+pub use params::SvjParams;
+pub use result::SvjCalibrationResult;
 
 #[cfg(test)]
 mod quadrature_tests;

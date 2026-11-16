@@ -9,11 +9,11 @@
 //!   calibration                     pricing                        vol_surface
 //!
 //!   HestonCalibrator ─┐
-//!   SVJCalibrator ────┤
+//!   SvjCalibrator ────┤
 //!   LevyCalibrator ───┤ .to_model()   ModelPricer (trait)    .vol_surface()
 //!   SabrCalibrator ───┼─────────────► HestonFourier    ─┐
 //!   HscmCalibrator ───┤               BatesFourier      │
-//!   BSMCalibrator ────┘               VarianceGammaF..  ├──────► ImpliedVolSurface
+//!   BsmCalibrator ────┘               VarianceGammaF..  ├──────► ImpliedVolSurface
 //!                                     SabrPricer        │            │
 //!                                     HestonStochCorr.. │        .fit_svi_slices()
 //!                                     ...              ─┘        .fit_ssvi()
@@ -87,7 +87,7 @@
 //! ```
 //! use stochastic_rs_quant::OptionType;
 //! use stochastic_rs_quant::calibration::levy::MarketSlice;
-//! use stochastic_rs_quant::calibration::{SVJCalibrator, SVJParams};
+//! use stochastic_rs_quant::calibration::{SvjCalibrator, SvjParams};
 //! use stochastic_rs_quant::pricing::fourier::BatesFourier;
 //! use stochastic_rs_quant::traits::{Calibrator, ModelPricer};
 //! use stochastic_rs_quant::vol_surface::build_surface_from_calibration;
@@ -95,7 +95,7 @@
 //! let s0 = 100.0;
 //! let r = 0.03;
 //! let q = 0.0;
-//! let true_params = SVJParams {
+//! let true_params = SvjParams {
 //!     v0: 0.04, kappa: 1.5, theta: 0.04, sigma_v: 0.3, rho: -0.6,
 //!     lambda: 0.3, mu_j: -0.05, sigma_j: 0.15,
 //! };
@@ -115,11 +115,11 @@
 //!
 //! // A reasonable initial guess keeps the optimiser fast; `None` here would
 //! // fall back to a generic default and cost many more iterations.
-//! let initial = SVJParams {
+//! let initial = SvjParams {
 //!     v0: 0.05, kappa: 2.0, theta: 0.05, sigma_v: 0.4, rho: -0.4,
 //!     lambda: 0.2, mu_j: -0.02, sigma_j: 0.1,
 //! };
-//! let cal = SVJCalibrator::from_slices(Some(initial), &slices, s0, r, Some(q),
+//! let cal = SvjCalibrator::from_slices(Some(initial), &slices, s0, r, Some(q),
 //!     OptionType::Call, false);
 //! let result = cal.calibrate(None).unwrap();
 //! let surface = build_surface_from_calibration(&result, s0, r, q, &strikes, &maturities);
@@ -226,8 +226,8 @@
 //! ```
 //! use ndarray::Array1;
 //! use stochastic_rs_quant::OptionType;
-//! use stochastic_rs_quant::calibration::{BSMCalibrator, BSMParams};
-//! use stochastic_rs_quant::pricing::bsm::{BSMCoc, BSMPricer};
+//! use stochastic_rs_quant::calibration::{BsmCalibrator, BsmParams};
+//! use stochastic_rs_quant::pricing::bsm::{BsmCoc, BsmPricer};
 //! use stochastic_rs_quant::traits::{Calibrator, ModelPricer};
 //! use stochastic_rs_quant::vol_surface::build_surface_from_calibration;
 //!
@@ -235,9 +235,9 @@
 //! let k = 100.0;
 //! let r = 0.05;
 //! let true_sigma = 0.2;
-//! let call = BSMPricer::new(true_sigma, BSMCoc::Bsm1973).price_call(s, k, r, 0.0, 1.0);
+//! let call = BsmPricer::new(true_sigma, BsmCoc::Bsm1973).price_call(s, k, r, 0.0, 1.0);
 //!
-//! let cal = BSMCalibrator::new(BSMParams { v: 0.2 }, Array1::from_vec(vec![call]),
+//! let cal = BsmCalibrator::new(BsmParams { v: 0.2 }, Array1::from_vec(vec![call]),
 //!     Array1::from_vec(vec![s]), Array1::from_vec(vec![k]), r, None, None, None, 1.0,
 //!     OptionType::Call);
 //! let result = cal.calibrate(None).unwrap();

@@ -47,7 +47,7 @@ impl FourierModelExt for VarianceGammaFourier {
 
 /// Cgmy model for Fourier pricing.
 #[derive(Debug, Clone)]
-pub struct CGMYFourier {
+pub struct CgmyFourier {
   pub c: f64,
   pub g: f64,
   pub m: f64,
@@ -56,7 +56,7 @@ pub struct CGMYFourier {
   pub q: f64,
 }
 
-impl FourierModelExt for CGMYFourier {
+impl FourierModelExt for CgmyFourier {
   fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
     let i = Complex64::i();
     let gamma_neg_y_val = gamma_neg_y(self.y);
@@ -98,7 +98,7 @@ impl FourierModelExt for CGMYFourier {
 
 /// Merton jump-diffusion model for Fourier pricing.
 #[derive(Debug, Clone)]
-pub struct MertonJDFourier {
+pub struct MertonJdFourier {
   pub sigma: f64,
   pub lambda: f64,
   pub mu_j: f64,
@@ -107,7 +107,7 @@ pub struct MertonJDFourier {
   pub q: f64,
 }
 
-impl FourierModelExt for MertonJDFourier {
+impl FourierModelExt for MertonJdFourier {
   fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
     let i = Complex64::i();
     let m = (self.mu_j + 0.5 * self.sigma_j.powi(2)).exp() - 1.0;
@@ -259,7 +259,7 @@ mod tests {
   #[test]
   fn merton_and_kou_fourth_cumulants_are_the_jump_moments() {
     let merton = |sigma, lambda, mu_j, sigma_j, t| {
-      let model = MertonJDFourier {
+      let model = MertonJdFourier {
         sigma,
         lambda,
         mu_j,

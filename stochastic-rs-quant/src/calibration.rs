@@ -202,9 +202,9 @@ mod optimizer_tests {
   }
 }
 
-pub use bsm::BSMCalibrationResult;
-pub use bsm::BSMCalibrator;
-pub use bsm::BSMParams;
+pub use bsm::BsmCalibrationResult;
+pub use bsm::BsmCalibrator;
+pub use bsm::BsmParams;
 pub use cgmysv::CgmysvCalibrationResult;
 pub use cgmysv::CgmysvCalibrator;
 pub use double_heston::DoubleHestonCalibrationResult;
@@ -217,9 +217,9 @@ pub use heston_stoch_corr::HscmCalibrationResult;
 pub use heston_stoch_corr::HscmParams;
 pub use heston_stoch_corr::MarketOption;
 pub use heston_stoch_corr::calibrate_hscm;
-pub use hkde::HKDECalibrationResult;
-pub use hkde::HKDECalibrator;
-pub use hkde::HKDEParams;
+pub use hkde::HkdeCalibrationResult;
+pub use hkde::HkdeCalibrator;
+pub use hkde::HkdeParams;
 pub use hw_swaption::HullWhiteCalibrationResult;
 pub use hw_swaption::HullWhiteParams;
 pub use hw_swaption::HullWhiteSwaptionCalibrator;
@@ -236,9 +236,9 @@ pub use sabr::SabrParams;
 pub use sabr_caplet::SabrCapletCalibrationResult;
 pub use sabr_caplet::SabrCapletCalibrator;
 pub use sabr_caplet::SabrCapletParams;
-pub use svj::SVJCalibrationResult;
-pub use svj::SVJCalibrator;
-pub use svj::SVJParams;
+pub use svj::SvjCalibrationResult;
+pub use svj::SvjCalibrator;
+pub use svj::SvjParams;
 pub use tree_swaption::BlackKarasinskiCalibrationResult;
 pub use tree_swaption::BlackKarasinskiParams;
 pub use tree_swaption::BlackKarasinskiSwaptionCalibrator;

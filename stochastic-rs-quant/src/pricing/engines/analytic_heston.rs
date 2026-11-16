@@ -131,7 +131,7 @@ impl AnalyticHestonEngine {
 
   /// Current value of a market handle, or [`f64::NAN`] when the handle is
   /// unlinked — the same missing-data answer as
-  /// [`AnalyticBSEngine::read_quote`](crate::pricing::engines::AnalyticBSEngine)
+  /// [`AnalyticBsEngine::read_quote`](crate::pricing::engines::AnalyticBsEngine)
   /// and as [`TimeExt::tau_or_from_dates`] gives for a missing maturity.
   /// Reading an unset handle as `0.0` priced at a spot or rate the caller
   /// never supplied.
@@ -217,8 +217,8 @@ impl AnalyticHestonEngine {
       let h_t = tau * self.bump;
       let p_t_dn = self.price_at(None, None, Some(tau - h_t), opt);
       // Calendar convention θ = ∂P/∂t, matching `GreeksExt::theta`'s own
-      // doc and every other in-tree Greeks impl (`BSMPricer`,
-      // `Merton1976Pricer`, `HestonPricer`, `AnalyticBSEngine`). Since
+      // doc and every other in-tree Greeks impl (`BsmPricer`,
+      // `Merton1976Pricer`, `HestonPricer`, `AnalyticBsEngine`). Since
       // τ = T-t, ∂P/∂t = -∂P/∂τ ≈ -(p0 - p_t_dn)/h_t = (p_t_dn - p0)/h_t.
       (p_t_dn - p0) / h_t
     } else {
@@ -249,7 +249,7 @@ impl PricingEngine<EuropeanOption> for AnalyticHestonEngine {
 mod tests {
   use super::*;
   use crate::OptionType;
-  use crate::pricing::engines::AnalyticBSEngine;
+  use crate::pricing::engines::AnalyticBsEngine;
   use crate::traits::PricingResult;
 
   #[test]
@@ -272,7 +272,7 @@ mod tests {
     let v0 = 0.04;
     let params = HestonStaticParams::new(v0, 1.0, v0, 1e-4, 0.0);
     let heston = AnalyticHestonEngine::with_constants(100.0, 0.05, 0.0, params);
-    let bs = AnalyticBSEngine::with_constants(100.0, v0.sqrt(), 0.05, 0.0);
+    let bs = AnalyticBsEngine::with_constants(100.0, v0.sqrt(), 0.05, 0.0);
     let p_h = heston.calculate(&opt).npv();
     let p_b = bs.calculate(&opt).npv();
     assert!((p_h - p_b).abs() < 0.05, "heston={p_h}, bs={p_b}");

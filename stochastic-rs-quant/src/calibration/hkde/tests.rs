@@ -1,7 +1,7 @@
 use super::*;
 use crate::LossMetric;
 use crate::OptionType;
-use crate::pricing::fourier::HKDEFourier;
+use crate::pricing::fourier::HkdeFourier;
 use crate::traits::ModelPricer;
 
 /// Analytical reference Heston prices at
@@ -12,8 +12,8 @@ const HESTON_REF: [f64; 9] = [
 ];
 const STRIKES: [f64; 9] = [80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0];
 
-fn ref_hkde_params() -> HKDEParams {
-  HKDEParams {
+fn ref_hkde_params() -> HkdeParams {
+  HkdeParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
@@ -52,8 +52,8 @@ fn hkde_projection_enforces_feller() {
 #[test]
 fn hkde_calibrate_recovers_heston_prices() {
   let n = STRIKES.len();
-  let calibrator = HKDECalibrator::new(
-    Some(HKDEParams {
+  let calibrator = HkdeCalibrator::new(
+    Some(HkdeParams {
       v0: 0.05,
       kappa: 1.8,
       theta: 0.05,
@@ -85,7 +85,7 @@ fn hkde_calibrate_recovers_heston_prices() {
 #[test]
 fn hkde_calibrate_self_consistency() {
   let truth = ref_hkde_params();
-  let model = HKDEFourier {
+  let model = HkdeFourier {
     v0: truth.v0,
     kappa: truth.kappa,
     theta: truth.theta,
@@ -108,7 +108,7 @@ fn hkde_calibrate_self_consistency() {
     .map(|&k| model.price_call(s_val, k, r, q, tau).max(0.0))
     .collect();
 
-  let initial = HKDEParams {
+  let initial = HkdeParams {
     v0: 0.05,
     kappa: 1.5,
     theta: 0.05,
@@ -120,7 +120,7 @@ fn hkde_calibrate_self_consistency() {
     eta2: 6.0,
   };
 
-  let calibrator = HKDECalibrator::new(
+  let calibrator = HkdeCalibrator::new(
     Some(initial),
     market.into(),
     vec![s_val; STRIKES.len()].into(),
@@ -147,7 +147,7 @@ fn hkde_calibrate_from_slices_multi_maturity() {
   let r = 0.02;
   let q = 0.0;
   let s0 = 100.0;
-  let make_model = || HKDEFourier {
+  let make_model = || HkdeFourier {
     v0: truth.v0,
     kappa: truth.kappa,
     theta: truth.theta,
@@ -178,8 +178,8 @@ fn hkde_calibrate_from_slices_multi_maturity() {
 
   let slices = vec![make_slice(0.25), make_slice(0.5), make_slice(1.0)];
 
-  let calibrator = HKDECalibrator::from_slices(
-    Some(HKDEParams {
+  let calibrator = HkdeCalibrator::from_slices(
+    Some(HkdeParams {
       v0: 0.05,
       kappa: 1.8,
       theta: 0.05,
@@ -242,7 +242,7 @@ fn paper_table1_shop_self_consistency() {
   let tau = 0.5;
   let strikes = [80.0_f64, 90.0, 100.0, 110.0, 120.0];
 
-  let model = HKDEFourier {
+  let model = HkdeFourier {
     v0: truth.v0,
     kappa: truth.kappa,
     theta: truth.theta,
@@ -260,7 +260,7 @@ fn paper_table1_shop_self_consistency() {
     .map(|&k| model.price_call(s0, k, r, q, tau).max(0.0))
     .collect();
 
-  let initial = HKDEParams {
+  let initial = HkdeParams {
     v0: 0.12,
     kappa: 0.3,
     theta: 0.6,
@@ -272,7 +272,7 @@ fn paper_table1_shop_self_consistency() {
     eta2: 1.0,
   };
 
-  let calibrator = HKDECalibrator::new(
+  let calibrator = HkdeCalibrator::new(
     Some(initial),
     market.clone().into(),
     vec![s0; strikes.len()].into(),
@@ -289,8 +289,8 @@ fn paper_table1_shop_self_consistency() {
     "SHOP self-consistency RMSE={:.6}",
     result.loss.get(LossMetric::Rmse)
   );
-  let refined = HKDECalibrator::new(
-    Some(HKDEParams {
+  let refined = HkdeCalibrator::new(
+    Some(HkdeParams {
       v0: result.v0,
       kappa: result.kappa,
       theta: result.theta,

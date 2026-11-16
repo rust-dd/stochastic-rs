@@ -104,7 +104,7 @@ fn cash_delta_matches_fd() {
 }
 
 /// The aggregate is the only place the exposed Greeks are mapped into
-/// [`Greeks`]'s nine members, so it gets the same guard `BSMPricer`'s does:
+/// [`Greeks`]'s nine members, so it gets the same guard `BsmPricer`'s does:
 /// every member either equals its accessor or is `NaN`, and the `NaN`s are
 /// the ones the pricer genuinely does not expose (which is what the removed
 /// `GreeksExt` defaults produced). A hand-written struct literal at a call
@@ -265,7 +265,7 @@ mod construction_validation {
   }
 
   /// The inverse of the rule above, and the reason the guard spells out
-  /// `sigma.is_nan() || sigma >= 0.0`. `AnalyticBSEngine` builds
+  /// `sigma.is_nan() || sigma >= 0.0`. `AnalyticBsEngine` builds
   /// these two pricers from the volatility it reads off a market handle,
   /// and an unlinked handle reads as `NaN` by design — missing data, case 2
   /// of the convention, which has to reach the caller as a `NaN` NPV

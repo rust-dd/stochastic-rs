@@ -176,9 +176,9 @@ fn chi_psi(kf: f64, a: f64, bma: f64, c: f64, d: f64) -> (f64, f64) {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::pricing::bsm::BSMCoc;
-  use crate::pricing::bsm::BSMPricer;
-  use crate::pricing::fourier::BSMFourier;
+  use crate::pricing::bsm::BsmCoc;
+  use crate::pricing::bsm::BsmPricer;
+  use crate::pricing::fourier::BsmFourier;
   use crate::pricing::fourier::GilPelaezPricer;
   use crate::pricing::fourier::HestonFourier;
   use crate::pricing::fourier::KouFourier;
@@ -188,12 +188,12 @@ mod tests {
   /// Fang & Oosterlee (2008) §5.1: COS at `N = 256, L = 10` reproduces the closed-form BSM call.
   #[test]
   fn cos_bsm_matches_analytic() {
-    let model = BSMFourier {
+    let model = BsmFourier {
       sigma: 0.25,
       r: 0.05,
       q: 0.0,
     };
-    let expected = BSMPricer::new(0.25, BSMCoc::Bsm1973).price_call(100.0, 110.0, 0.05, 0.0, 1.0);
+    let expected = BsmPricer::new(0.25, BsmCoc::Bsm1973).price_call(100.0, 110.0, 0.05, 0.0, 1.0);
     let price = CosEngine::default().price(&model, 100.0, 110.0, 0.05, 0.0, 1.0, OptionType::Call);
     assert!(
       (price - expected).abs() < 1e-10,
@@ -254,7 +254,7 @@ mod tests {
 
   #[test]
   fn cos_put_call_parity() {
-    let model = BSMFourier {
+    let model = BsmFourier {
       sigma: 0.2,
       r: 0.05,
       q: 0.03,
@@ -271,12 +271,12 @@ mod tests {
 
   #[test]
   fn cos_converges_in_n() {
-    let model = BSMFourier {
+    let model = BsmFourier {
       sigma: 0.25,
       r: 0.05,
       q: 0.0,
     };
-    let expected = BSMPricer::new(0.25, BSMCoc::Bsm1973).price_call(100.0, 110.0, 0.05, 0.0, 1.0);
+    let expected = BsmPricer::new(0.25, BsmCoc::Bsm1973).price_call(100.0, 110.0, 0.05, 0.0, 1.0);
     let err_small =
       (CosEngine::new(64, 10.0).price(&model, 100.0, 110.0, 0.05, 0.0, 1.0, OptionType::Call)
         - expected)
@@ -297,7 +297,7 @@ mod tests {
   /// in `super::super::tests` for the same convention elsewhere in this module).
   #[test]
   fn cos_invalid_cumulants_gives_nan() {
-    let model = BSMFourier {
+    let model = BsmFourier {
       sigma: 0.25,
       r: 0.05,
       q: 0.0,

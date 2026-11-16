@@ -2,8 +2,8 @@ use implied_vol::DefaultSpecialFn;
 use implied_vol::ImpliedBlackVolatility;
 
 use crate::OptionType;
-use crate::pricing::bsm::BSMCoc;
-use crate::pricing::bsm::BSMPricer;
+use crate::pricing::bsm::BsmCoc;
+use crate::pricing::bsm::BsmPricer;
 use crate::pricing::sabr::hagan::forward_fx;
 use crate::pricing::sabr::hagan::fx_delta_from_forward;
 use crate::pricing::sabr::hagan::hagan_implied_vol;
@@ -142,7 +142,7 @@ impl SabrPricer {
     if !sigma.is_finite() || sigma <= 0.0 {
       return (f64::NAN, f64::NAN);
     }
-    BSMPricer::new(sigma, BSMCoc::Merton1973).call_put(s, k, r, q, tau)
+    BsmPricer::new(sigma, BsmCoc::Merton1973).call_put(s, k, r, q, tau)
   }
 
   /// Black volatility implied by `price` at one query point.

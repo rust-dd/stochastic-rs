@@ -49,7 +49,7 @@ fn mjd_pricer_matches_reference() {
   // Verify our internal Fourier pricer reproduces reference MJD prices
   let params = [0.15, 1.0, -0.05, 0.1]; // sigma, lambda, mu_j, sigma_j
   for (i, &k) in STRIKES.iter().enumerate() {
-    let price = fourier_call_price(LevyModelType::MertonJD, &params, 100.0, k, 0.05, 0.0, 1.0);
+    let price = fourier_call_price(LevyModelType::MertonJd, &params, 100.0, k, 0.05, 0.0, 1.0);
     assert!(
       (price - MJD_REF[i]).abs() < 0.05,
       "MJD K={k}: got {price:.6}, expected {:.6}",
@@ -88,7 +88,7 @@ fn mjd_calibrate_recovers_reference_prices() {
     tau: 1.0,
   };
 
-  let calibrator = LevyCalibrator::new(LevyModelType::MertonJD, 100.0, 0.05, 0.0, vec![market]);
+  let calibrator = LevyCalibrator::new(LevyModelType::MertonJd, 100.0, 0.05, 0.0, vec![market]);
 
   let result = calibrator.calibrate(None).unwrap();
   assert!(
@@ -162,7 +162,7 @@ fn test_levy_merton_calibrate() {
     tau: 0.5,
   };
 
-  let calibrator = LevyCalibrator::new(LevyModelType::MertonJD, 100.0, 0.03, 0.01, vec![market]);
+  let calibrator = LevyCalibrator::new(LevyModelType::MertonJd, 100.0, 0.03, 0.01, vec![market]);
 
   let result = calibrator.calibrate(None).unwrap();
   println!(

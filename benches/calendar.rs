@@ -18,7 +18,7 @@ fn bench_day_count(c: &mut Criterion) {
     b.iter(|| DayCountConvention::Actual360.year_fraction::<f64>(d1, d2))
   });
   group.bench_function("act_act_isda", |b| {
-    b.iter(|| DayCountConvention::ActualActualISDA.year_fraction::<f64>(d1, d2))
+    b.iter(|| DayCountConvention::ActualActualIsda.year_fraction::<f64>(d1, d2))
   });
   group.bench_function("30_360", |b| {
     b.iter(|| DayCountConvention::Thirty360.year_fraction::<f64>(d1, d2))

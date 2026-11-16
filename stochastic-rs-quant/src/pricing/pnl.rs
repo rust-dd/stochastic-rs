@@ -5,7 +5,7 @@
 //! $$
 //!
 #[derive(Clone, Debug)]
-pub struct GreekPnL {
+pub struct GreekPnl {
   /// `∂V/∂S`, the coefficient of `ΔS`.
   pub delta: f64,
   /// `∂²V/∂S²`, the coefficient of `½ΔS²`.
@@ -16,7 +16,7 @@ pub struct GreekPnL {
   pub theta: f64,
 }
 
-impl GreekPnL {
+impl GreekPnl {
   pub fn new(delta: f64, gamma: f64, vega: f64, theta: f64) -> Self {
     Self {
       delta,

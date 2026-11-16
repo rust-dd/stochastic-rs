@@ -6,7 +6,7 @@
 //! - Mancino & Recchioni (2015).
 //! - Toscano, Livieri, Mancino & Marmi (2022), arXiv:2112.14529v3.
 //!
-//! The raw estimators retain the FMVol MATLAB conventions. The bias-corrected
+//! The raw estimators retain the FmVol MATLAB conventions. The bias-corrected
 //! volatility-of-volatility estimators implement equations (4), (11), and
 //! (51) of Toscano et al., including the coefficient-level quarticity
 //! correction and the normalization for an arbitrary observation period.
@@ -39,12 +39,12 @@ mod validation_tests;
 ///
 /// # Example
 /// ```
-/// use stochastic_rs_quant::fourier_malliavin::FMVol;
+/// use stochastic_rs_quant::fourier_malliavin::FmVol;
 ///
 /// let n = 200;
 /// let times: Vec<f64> = (0..n).map(|i| i as f64 / (n - 1) as f64).collect();
 /// let log_prices: Vec<f64> = times.iter().map(|&t| (10.0 * t).sin() * 0.01).collect();
-/// let engine = FMVol::new(&log_prices, &times, 1.0);
+/// let engine = FmVol::new(&log_prices, &times, 1.0);
 ///
 /// let iv = engine.integrated_variance();
 /// let tau = [0.25, 0.5, 0.75];
@@ -52,7 +52,7 @@ mod validation_tests;
 /// assert!(iv.is_finite());
 /// assert_eq!(spot.len(), 3);
 /// ```
-pub struct FMVol<T: RealExt> {
+pub struct FmVol<T: RealExt> {
   /// Precomputed Fourier coefficients of price increments.
   pub(super) dx: Array1<Complex<T>>,
   /// Time period *T*.
@@ -69,7 +69,7 @@ pub struct FMVol<T: RealExt> {
   pub(super) max_freq: usize,
 }
 
-impl<T: RealExt> FMVol<T> {
+impl<T: RealExt> FmVol<T> {
   /// Build an engine from irregularly spaced observations.
   ///
   /// Sets `N = floor(n/2)` and pre-computes every frequency needed by the
@@ -79,7 +79,7 @@ impl<T: RealExt> FMVol<T> {
   /// [`Self::try_new`] to receive the validation error.
   pub fn new(prices: &[T], times: &[T], period: T) -> Self {
     Self::try_new(prices, times, period)
-      .expect("FMVol::new precondition violated — call try_new to handle this gracefully")
+      .expect("FmVol::new precondition violated — call try_new to handle this gracefully")
   }
 
   /// Fallible variant of [`Self::new`].
@@ -112,7 +112,7 @@ impl<T: RealExt> FMVol<T> {
   /// [`Self::try_new_uniform`] to receive the validation error.
   pub fn new_uniform(prices: &[T], period: T) -> Self {
     Self::try_new_uniform(prices, period).expect(
-      "FMVol::new_uniform precondition violated — call try_new_uniform to handle this gracefully",
+      "FmVol::new_uniform precondition violated — call try_new_uniform to handle this gracefully",
     )
   }
 
@@ -145,7 +145,7 @@ impl<T: RealExt> FMVol<T> {
   /// [`Self::try_with_freq`] to receive the validation error.
   pub fn with_freq(prices: &[T], times: &[T], period: T, n_freq: usize, max_freq: usize) -> Self {
     Self::try_with_freq(prices, times, period, n_freq, max_freq).expect(
-      "FMVol::with_freq precondition violated — call try_with_freq to handle this gracefully",
+      "FmVol::with_freq precondition violated — call try_with_freq to handle this gracefully",
     )
   }
 

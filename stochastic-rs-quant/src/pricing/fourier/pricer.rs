@@ -355,7 +355,7 @@ impl LewisPricer {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::pricing::fourier::BSMFourier;
+  use crate::pricing::fourier::BsmFourier;
   use crate::pricing::fourier::Cumulants;
 
   /// A characteristic function that overflows to `NaN`, standing in for a
@@ -377,8 +377,8 @@ mod tests {
     }
   }
 
-  fn bsm() -> BSMFourier {
-    BSMFourier {
+  fn bsm() -> BsmFourier {
+    BsmFourier {
       sigma: 0.15,
       r: 0.05,
       q: 0.0,
@@ -481,7 +481,7 @@ mod tests {
     expected = "l_factor must satisfy `l_factor.is_finite() && l_factor > 0.0`, got l_factor = 0.0"
   )]
   fn cumulant_sizing_rejects_a_non_positive_l_factor() {
-    let model = BSMFourier {
+    let model = BsmFourier {
       sigma: 0.2,
       r: 0.05,
       q: 0.0,
@@ -492,7 +492,7 @@ mod tests {
   #[test]
   #[should_panic(expected = "cumulants.c2 must satisfy `c2.is_finite() && c2 > 0.0`, got c2 = 0.0")]
   fn cumulant_sizing_rejects_a_vanishing_second_cumulant() {
-    let model = BSMFourier {
+    let model = BsmFourier {
       sigma: 0.2,
       r: 0.05,
       q: 0.0,

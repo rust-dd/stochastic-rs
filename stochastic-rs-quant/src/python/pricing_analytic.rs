@@ -8,8 +8,8 @@ use crate::traits::ModelPricer;
 /// no-argument methods are defined at. Python's constructor signature is
 /// unchanged.
 #[pyclass(name = "BSMPricer", unsendable)]
-pub struct PyBSMPricer {
-  inner: crate::pricing::bsm::BSMPricer,
+pub struct PyBsmPricer {
+  inner: crate::pricing::bsm::BsmPricer,
   s: f64,
   k: f64,
   r: f64,
@@ -19,7 +19,7 @@ pub struct PyBSMPricer {
 }
 
 #[pymethods]
-impl PyBSMPricer {
+impl PyBsmPricer {
   #[new]
   #[pyo3(signature = (s, v, k, r, tau, option_type="call", q=None))]
   fn new(
@@ -33,7 +33,7 @@ impl PyBSMPricer {
   ) -> PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
       let ot = parse_option_type(option_type)?;
-      let inner = crate::pricing::bsm::BSMPricer::new(v, crate::pricing::bsm::BSMCoc::default());
+      let inner = crate::pricing::bsm::BsmPricer::new(v, crate::pricing::bsm::BsmCoc::default());
       Ok(Self {
         inner,
         s,
@@ -220,7 +220,7 @@ impl PySabrPricer {
 /// signature is unchanged.
 ///
 /// `q` remains a no-op here, exactly as before: this class hardcodes
-/// `BSMCoc::Bsm1973`, whose cost of carry is `r` and never reads the
+/// `BsmCoc::Bsm1973`, whose cost of carry is `r` and never reads the
 /// dividend yield.
 #[pyclass(name = "Merton1976Pricer", unsendable)]
 pub struct PyMerton1976Pricer {
@@ -257,7 +257,7 @@ impl PyMerton1976Pricer {
         lambda_,
         gamma,
         m,
-        crate::pricing::bsm::BSMCoc::Bsm1973,
+        crate::pricing::bsm::BsmCoc::Bsm1973,
       );
       Ok(Self {
         inner,

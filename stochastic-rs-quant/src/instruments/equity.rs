@@ -7,11 +7,11 @@
 //! ```
 //! use stochastic_rs_quant::OptionType;
 //! use stochastic_rs_quant::instruments::equity::EuropeanOption;
-//! use stochastic_rs_quant::pricing::engines::AnalyticBSEngine;
+//! use stochastic_rs_quant::pricing::engines::AnalyticBsEngine;
 //! use stochastic_rs_quant::traits::{PricingEngine, PricingResult};
 //!
 //! let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 0.5);
-//! let engine = AnalyticBSEngine::with_constants(100.0, 0.20, 0.05, 0.0);
+//! let engine = AnalyticBsEngine::with_constants(100.0, 0.20, 0.05, 0.0);
 //! let r = engine.calculate(&opt);
 //! assert!(r.npv() > 0.0);
 //! ```
@@ -92,7 +92,7 @@ impl TimeExt for EuropeanOption {
 ///
 /// Maturity may be specified either in years (`tau`) or as a calendar date
 /// pair (`eval`/`expiry`), exactly as on [`EuropeanOption`] — the two share
-/// [`AnalyticBSEngine`](crate::pricing::engines::AnalyticBSEngine) and had
+/// [`AnalyticBsEngine`](crate::pricing::engines::AnalyticBsEngine) and had
 /// to be told apart by which constructor built them until
 /// [`TimeExt`] arrived here.
 #[derive(Debug, Clone, Copy, PartialEq)]

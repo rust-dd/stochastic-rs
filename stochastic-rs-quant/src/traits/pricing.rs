@@ -112,7 +112,7 @@ pub trait ModelPricer {
   ///
   /// **Override this** unless the model's carry factor is literally
   /// $e^{-q\tau}$ and its exercise is European — the default silently
-  /// returns a plausible wrong number otherwise. See `BSMPricer`
+  /// returns a plausible wrong number otherwise. See `BsmPricer`
   /// (cost-of-carry conventions) and `BjerksundStensland2002Pricer`
   /// (American early exercise) for the two failure modes.
   ///
@@ -179,8 +179,8 @@ pub trait VanillaEuropeanCall: ModelPricer {
   ///
   /// The default $S e^{(r-q)\tau}$ is correct whenever the model's cost of
   /// carry is $b = r - q$. **Override it** when the carry is anything else:
-  /// [`BSMPricer`](crate::pricing::bsm::BSMPricer) under
-  /// [`BSMCoc::Black1976`](crate::pricing::bsm::BSMCoc::Black1976) carries at
+  /// [`BsmPricer`](crate::pricing::bsm::BsmPricer) under
+  /// [`BsmCoc::Black1976`](crate::pricing::bsm::BsmCoc::Black1976) carries at
   /// $b = 0$, so its forward is $S$. The surface inverts against this value,
   /// and inverting a *correct* price at the wrong forward fabricates a smile
   /// out of a flat-volatility model — every price is in the no-arbitrage
@@ -217,7 +217,7 @@ pub trait VanillaEuropeanCall: ModelPricer {
 /// **The analytic pricers deliberately do not implement it, and cannot.**
 /// Five of them aggregate through an inherent
 /// `greeks(&self, s, k, r, q, tau, option_type) -> Greeks` —
-/// [`BSMPricer`](crate::pricing::bsm::BSMPricer),
+/// [`BsmPricer`](crate::pricing::bsm::BsmPricer),
 /// [`HestonPricer`](crate::pricing::heston::HestonPricer),
 /// [`Merton1976Pricer`](crate::pricing::merton_jump::Merton1976Pricer),
 /// [`CashOrNothingPricer`](crate::pricing::digital::CashOrNothingPricer) and

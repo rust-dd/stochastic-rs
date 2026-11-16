@@ -4,10 +4,10 @@ use ndarray::Array1;
 use ndarray::Array2;
 use num_complex::Complex64;
 
-use super::SVJParams;
+use super::SvjParams;
 use super::calibrator::KAPPA_MIN;
 use super::calibrator::SIGMA_V_MIN;
-use super::calibrator::SVJCalibrator;
+use super::calibrator::SvjCalibrator;
 use super::calibrator::THETA_MIN;
 use super::params::P_MU_J;
 use super::params::P_SIGMA_J;
@@ -34,7 +34,7 @@ use crate::calibration::least_squares::LeastSquaresProblem;
 /// The Heston diffusion part uses the Albrecher-Mayer-Schoutens-Tistaert (2007)
 /// "Little Heston Trap" form (`g̃ = 1/g_original`, `exp(-d·τ)`) so the
 /// log-argument stays on the principal branch at long τ / high `|ρ|`.
-pub(super) fn bates_cf(p: &SVJParams, s: f64, r: f64, q: f64, tau: f64, u: Complex64) -> Complex64 {
+pub(super) fn bates_cf(p: &SvjParams, s: f64, r: f64, q: f64, tau: f64, u: Complex64) -> Complex64 {
   let i = Complex64::i();
   let iu = i * u;
   let rq = r - q;
@@ -63,7 +63,7 @@ pub(super) fn bates_cf(p: &SVJParams, s: f64, r: f64, q: f64, tau: f64, u: Compl
 
 /// Price a European call option under the Bates/SVJ model using a
 /// convergence-controlled Gauss-Legendre quadrature.
-pub(super) fn bates_call_price(p: &SVJParams, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+pub(super) fn bates_call_price(p: &SvjParams, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
   let Some([integral]) = integrate_gl_to_convergence(
     |u_real| {
       let xi = Complex64::new(u_real, 0.0);
@@ -89,8 +89,8 @@ pub(super) fn bates_call_price(p: &SVJParams, s: f64, k: f64, r: f64, q: f64, ta
   }
 }
 
-impl SVJCalibrator {
-  pub(super) fn compute_model_prices_for(&self, p: &SVJParams) -> Array1<f64> {
+impl SvjCalibrator {
+  pub(super) fn compute_model_prices_for(&self, p: &SvjParams) -> Array1<f64> {
     let n = self.c_market.len();
     let mut c_model = Array1::zeros(n);
     let q_val = self.q.unwrap_or(0.0);
@@ -110,12 +110,12 @@ impl SVJCalibrator {
     c_model
   }
 
-  fn residuals_for(&self, p: &SVJParams) -> Array1<f64> {
+  fn residuals_for(&self, p: &SvjParams) -> Array1<f64> {
     self.c_market.clone() - self.compute_model_prices_for(p)
   }
 
   /// Central finite-difference Jacobian.
-  fn numeric_jacobian(&self, params: &SVJParams) -> Array2<f64> {
+  fn numeric_jacobian(&self, params: &SvjParams) -> Array2<f64> {
     let n = self.c_market.len();
     let p = 8usize;
 
@@ -187,9 +187,9 @@ impl SVJCalibrator {
   }
 }
 
-impl LeastSquaresProblem for SVJCalibrator {
+impl LeastSquaresProblem for SvjCalibrator {
   fn set_params(&mut self, params: &Array1<f64>) {
-    let p = SVJParams::from(params.clone()).projected();
+    let p = SvjParams::from(params.clone()).projected();
     self.params = Some(p);
   }
 

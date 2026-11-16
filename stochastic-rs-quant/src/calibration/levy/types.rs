@@ -12,7 +12,7 @@ pub enum LevyModelType {
   /// Cgmy: $\psi(\xi)=C\,\Gamma(-Y)\bigl[(M-i\xi)^Y-M^Y+(G+i\xi)^Y-G^Y\bigr]$
   Cgmy,
   /// Merton Jump-Diffusion: $\psi(\xi)=-\tfrac12\sigma^2\xi^2+\lambda\bigl(e^{i\mu_J\xi-\frac12\sigma_J^2\xi^2}-1\bigr)$
-  MertonJD,
+  MertonJd,
   /// Kou Double-Exponential: $\psi(\xi)=-\tfrac12\sigma^2\xi^2+\lambda\bigl(\frac{p\eta_1}{\eta_1-i\xi}+\frac{(1-p)\eta_2}{\eta_2+i\xi}-1\bigr)$
   Kou,
 }
@@ -90,8 +90,8 @@ pub struct LevyCalibrationResult {
 pub enum LevyModel {
   VarianceGamma(crate::pricing::fourier::VarianceGammaFourier),
   Nig(crate::pricing::fourier::NigFourier),
-  Cgmy(crate::pricing::fourier::CGMYFourier),
-  MertonJd(crate::pricing::fourier::MertonJDFourier),
+  Cgmy(crate::pricing::fourier::CgmyFourier),
+  MertonJd(crate::pricing::fourier::MertonJdFourier),
   Kou(crate::pricing::fourier::KouFourier),
 }
 
@@ -172,7 +172,7 @@ impl LevyCalibrationResult {
         r,
         q,
       }),
-      LevyModelType::Cgmy => LevyModel::Cgmy(CGMYFourier {
+      LevyModelType::Cgmy => LevyModel::Cgmy(CgmyFourier {
         c: p[0],
         g: p[1],
         m: p[2],
@@ -180,7 +180,7 @@ impl LevyCalibrationResult {
         r,
         q,
       }),
-      LevyModelType::MertonJD => LevyModel::MertonJd(MertonJDFourier {
+      LevyModelType::MertonJd => LevyModel::MertonJd(MertonJdFourier {
         sigma: p[0],
         lambda: p[1],
         mu_j: p[2],

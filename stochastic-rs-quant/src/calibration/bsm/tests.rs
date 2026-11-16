@@ -24,8 +24,8 @@ fn test_calibrate() {
   let tau = 1.0;
   let option_type = OptionType::Call;
 
-  let calibrator = BSMCalibrator::new(
-    BSMParams { v: 0.2 },
+  let calibrator = BsmCalibrator::new(
+    BsmParams { v: 0.2 },
     c_market.into(),
     s.into(),
     k.into(),
@@ -54,7 +54,7 @@ fn test_calibrate_from_slices_recovers_constant_sigma() {
   let make_slice = |tau: f64| -> MarketSlice {
     let prices: Vec<f64> = strikes
       .iter()
-      .map(|&k| BSMPricer::new(true_sigma, BSMCoc::Bsm1973).price_call(s, k, r, 0.0, tau))
+      .map(|&k| BsmPricer::new(true_sigma, BsmCoc::Bsm1973).price_call(s, k, r, 0.0, tau))
       .collect();
     MarketSlice {
       strikes: strikes.clone(),
@@ -66,8 +66,8 @@ fn test_calibrate_from_slices_recovers_constant_sigma() {
 
   let slices = vec![make_slice(0.10), make_slice(0.30), make_slice(0.75)];
 
-  let calibrator = BSMCalibrator::from_slices(
-    BSMParams { v: 0.4 }, // intentionally far from the truth
+  let calibrator = BsmCalibrator::from_slices(
+    BsmParams { v: 0.4 }, // intentionally far from the truth
     &slices,
     s,
     r,
@@ -95,10 +95,10 @@ fn calibrator_trait_returns_result() {
   let s = 100.0_f64;
   let k = 100.0_f64;
   let true_sigma = 0.20_f64;
-  let call = BSMPricer::new(true_sigma, BSMCoc::Bsm1973).price_call(s, k, 0.03, 0.0, 0.5);
+  let call = BsmPricer::new(true_sigma, BsmCoc::Bsm1973).price_call(s, k, 0.03, 0.0, 0.5);
 
-  let calibrator = BSMCalibrator::new(
-    BSMParams { v: 0.4 },
+  let calibrator = BsmCalibrator::new(
+    BsmParams { v: 0.4 },
     Array1::from_vec(vec![call]),
     Array1::from_vec(vec![s]),
     Array1::from_vec(vec![k]),
@@ -110,7 +110,7 @@ fn calibrator_trait_returns_result() {
     OptionType::Call,
   );
 
-  let result: Result<BSMCalibrationResult, anyhow::Error> =
+  let result: Result<BsmCalibrationResult, anyhow::Error> =
     Calibrator::calibrate(&calibrator, None);
   let result = result.expect("trait calibrate must succeed");
   let params = CalibrationResult::params(&result);
@@ -123,15 +123,15 @@ fn calibrator_trait_returns_result() {
 }
 
 /// Quotes generated from `true_sigma`, so the only right answer is known.
-fn synthetic(initial: f64) -> BSMCalibrator {
+fn synthetic(initial: f64) -> BsmCalibrator {
   let (s, r, tau) = (100.0_f64, 0.03_f64, 0.5_f64);
   let strikes = [90.0, 95.0, 100.0, 105.0, 110.0];
   let prices: Vec<f64> = strikes
     .iter()
-    .map(|&k| BSMPricer::new(TRUE_SIGMA, BSMCoc::Bsm1973).price_call(s, k, r, 0.0, tau))
+    .map(|&k| BsmPricer::new(TRUE_SIGMA, BsmCoc::Bsm1973).price_call(s, k, r, 0.0, tau))
     .collect();
-  BSMCalibrator::new(
-    BSMParams { v: initial },
+  BsmCalibrator::new(
+    BsmParams { v: initial },
     Array1::from_vec(prices),
     Array1::from_vec(vec![s; strikes.len()]),
     Array1::from_vec(strikes.to_vec()),
@@ -156,7 +156,7 @@ fn sigma_is_reflected_not_clamped() {
   LeastSquaresProblem::set_params(&mut cal, &Array1::from_vec(vec![-0.3]));
   assert_eq!(cal.params.v, 0.3, "a negative step must reflect, not clamp");
 
-  let bsm = |v: f64| BSMPricer::new(v, BSMCoc::Bsm1973).price_call(100.0, 100.0, 0.03, 0.0, 0.5);
+  let bsm = |v: f64| BsmPricer::new(v, BsmCoc::Bsm1973).price_call(100.0, 100.0, 0.03, 0.0, 0.5);
   assert!(
     bsm(-0.3).is_finite() && (bsm(0.3) - bsm(-0.3)).abs() > 1.0,
     "an unprojected -0.3 prices {} against {} at +0.3",
@@ -167,7 +167,7 @@ fn sigma_is_reflected_not_clamped() {
   LeastSquaresProblem::set_params(&mut cal, &Array1::from_vec(vec![f64::NAN]));
   assert_eq!(cal.params.v, V_MIN, "a projection onto a set must be total");
 
-  cal.set_initial_guess(BSMParams { v: -0.4 });
+  cal.set_initial_guess(BsmParams { v: -0.4 });
   assert_eq!(
     cal.params.v, 0.4,
     "the starting point is stored inside the box"
@@ -176,7 +176,7 @@ fn sigma_is_reflected_not_clamped() {
 
 /// The read path, which `set_params` does not cover: the optimiser prices
 /// the starting point before it has any step to hand back, so a `pub
-/// params` written directly reaches [`BSMPricer::new`] unprojected.
+/// params` written directly reaches [`BsmPricer::new`] unprojected.
 #[test]
 fn the_optimisers_first_evaluation_is_already_inside_the_box() {
   assert_eq!(
@@ -194,7 +194,7 @@ fn a_negative_starting_point_still_recovers_sigma() {
     (
       "initial guess",
       synthetic(0.2)
-        .calibrate(Some(BSMParams { v: -0.4 }))
+        .calibrate(Some(BsmParams { v: -0.4 }))
         .unwrap(),
     ),
     ("pub params field", synthetic(-0.4).calibrate(None).unwrap()),

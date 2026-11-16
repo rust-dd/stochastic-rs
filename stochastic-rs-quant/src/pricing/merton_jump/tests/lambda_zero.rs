@@ -19,7 +19,7 @@ use super::*;
 /// parameterise at all.
 #[test]
 fn merton_price_lambda_zero_equals_bs() {
-  let bs = BSMPricer::new(0.2, BSMCoc::Bsm1973);
+  let bs = BsmPricer::new(0.2, BsmCoc::Bsm1973);
   let want = bs.call_put(S, K, R, Q, TAU);
   for &gamma in &[0.0, 0.4, 1.0] {
     let m = merton(0.0, gamma, 20);
@@ -36,7 +36,7 @@ fn merton_price_lambda_zero_equals_bs() {
 #[test]
 fn merton_price_and_greeks_agree_at_lambda_zero() {
   let m = merton(0.0, 0.4, 20);
-  let bs = BSMPricer::new(m.v, m.b);
+  let bs = BsmPricer::new(m.v, m.b);
   assert_eq!(
     m.price_call(S, K, R, Q, TAU),
     bs.price_call(S, K, R, Q, TAU)
@@ -77,7 +77,7 @@ fn the_lambda_zero_limit_is_discontinuous_in_gamma() {
   let approaching = |gamma: f64, lambda: f64| merton(lambda, gamma, 40).price_call(S, K, R, Q, TAU);
 
   let diffusive_only =
-    BSMPricer::new(0.2 * (1.0 - 0.4_f64).sqrt(), BSMCoc::Bsm1973).price_call(S, K, R, Q, TAU);
+    BsmPricer::new(0.2 * (1.0 - 0.4_f64).sqrt(), BsmCoc::Bsm1973).price_call(S, K, R, Q, TAU);
   assert!(
     (approaching(0.4, 1e-8) - diffusive_only).abs() < 1e-5,
     "limit {} should be Black-Scholes at v*sqrt(1-gamma) = {diffusive_only}",

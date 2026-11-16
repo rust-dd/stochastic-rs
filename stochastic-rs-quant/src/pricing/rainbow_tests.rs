@@ -66,8 +66,8 @@ fn stulz_one_model_prices_a_maturity_grid() {
 /// Stulz: $C_{\min} + C_{\max} = C_1 + C_2$ (vanilla call sum).
 #[test]
 fn stulz_min_max_decomposition() {
-  use crate::pricing::bsm::BSMCoc;
-  use crate::pricing::bsm::BSMPricer;
+  use crate::pricing::bsm::BsmCoc;
+  use crate::pricing::bsm::BsmPricer;
   use crate::traits::ModelPricer;
 
   let s1 = 100.0;
@@ -84,8 +84,8 @@ fn stulz_min_max_decomposition() {
     StulzRainbowPricer::new(RainbowPayoff::CallOnMin, v1, v2, rho).price(s1, s2, k, r, q1, q2, tau);
   let cmax =
     StulzRainbowPricer::new(RainbowPayoff::CallOnMax, v1, v2, rho).price(s1, s2, k, r, q1, q2, tau);
-  let c1 = BSMPricer::new(v1, BSMCoc::Merton1973).price_call(s1, k, r, q1, tau);
-  let c2 = BSMPricer::new(v2, BSMCoc::Merton1973).price_call(s2, k, r, q2, tau);
+  let c1 = BsmPricer::new(v1, BsmCoc::Merton1973).price_call(s1, k, r, q1, tau);
+  let c2 = BsmPricer::new(v2, BsmCoc::Merton1973).price_call(s2, k, r, q2, tau);
   let lhs = cmin + cmax;
   let rhs = c1 + c2;
   assert!((lhs - rhs).abs() < 0.01, "lhs={lhs}, rhs={rhs}");
@@ -117,8 +117,8 @@ fn stulz_min_matches_mc() {
 /// asset path in the money).
 #[test]
 fn call_on_max_dominates_vanilla() {
-  use crate::pricing::bsm::BSMCoc;
-  use crate::pricing::bsm::BSMPricer;
+  use crate::pricing::bsm::BsmCoc;
+  use crate::pricing::bsm::BsmPricer;
   use crate::traits::ModelPricer;
 
   let s1 = 100.0;
@@ -128,7 +128,7 @@ fn call_on_max_dominates_vanilla() {
   let rho = 0.0;
   let cmax = StulzRainbowPricer::new(RainbowPayoff::CallOnMax, v1, v2, rho)
     .price(s1, s2, 100.0, 0.05, 0.0, 0.0, 1.0);
-  let c1 = BSMPricer::new(v1, BSMCoc::Merton1973).price_call(s1, 100.0, 0.05, 0.0, 1.0);
+  let c1 = BsmPricer::new(v1, BsmCoc::Merton1973).price_call(s1, 100.0, 0.05, 0.0, 1.0);
   assert!(cmax > c1, "cmax={cmax} should be > c1={c1}");
 }
 

@@ -27,13 +27,13 @@ pub enum DayCountConvention {
   /// 30E/360 ISDA: identical to 30E/360 except day-31 is rolled to 30 *only*
   /// for non-EOM dates and February EOM is preserved (the late-2006 ISDA
   /// 30/360 ISDA variant).
-  Thirty360EuropeanISDA,
+  Thirty360EuropeanIsda,
   /// Actual/Actual ISDA: splits the period at year boundaries and weights each
   /// segment by the actual length of its year (365 or 366).
-  ActualActualISDA,
+  ActualActualIsda,
   /// Actual/Actual AFB (French): the denominator is 366 if Feb-29 is in the
   /// interval and 365 otherwise. AFB Master Agreement (1999).
-  ActualActualAFB,
+  ActualActualAfb,
   /// Business/252 (Brazilian convention): business days between the dates
   /// divided by 252. Numerator counts only weekdays — holiday calendars are
   /// applied at a higher level when available; pure weekday counting here.
@@ -47,7 +47,7 @@ pub enum DayCountConvention {
   /// Act/365L (Actual/365 Leap): denominator is 366 when the period
   /// contains a February 29 (in any year it traverses), otherwise 365.
   /// Standard sterling money-market convention; ISDA 2006 §4.16(i).
-  /// Distinct from `ActualActualISDA` (which splits the period at the
+  /// Distinct from `ActualActualIsda` (which splits the period at the
   /// year boundary) and from `NoLeap365` (which adjusts the numerator).
   Actual365Leap,
   /// Act/Act ICMA (= Act/Act ISMA): coupon-period-aware day count. The
@@ -66,9 +66,9 @@ impl std::fmt::Display for DayCountConvention {
       Self::Actual365Fixed => write!(f, "ACT/365F"),
       Self::Thirty360 => write!(f, "30/360"),
       Self::Thirty360European => write!(f, "30E/360"),
-      Self::Thirty360EuropeanISDA => write!(f, "30E/360 ISDA"),
-      Self::ActualActualISDA => write!(f, "ACT/ACT ISDA"),
-      Self::ActualActualAFB => write!(f, "ACT/ACT AFB"),
+      Self::Thirty360EuropeanIsda => write!(f, "30E/360 ISDA"),
+      Self::ActualActualIsda => write!(f, "ACT/ACT ISDA"),
+      Self::ActualActualAfb => write!(f, "ACT/ACT AFB"),
       Self::Business252 => write!(f, "BUS/252"),
       Self::Actual364 => write!(f, "ACT/364"),
       Self::NoLeap365 => write!(f, "NL/365"),
@@ -98,12 +98,12 @@ impl DayCountConvention {
         let num = self.day_count(d1, d2) as f64;
         T::from_f64_fast(num / 360.0)
       }
-      Self::Thirty360EuropeanISDA => {
+      Self::Thirty360EuropeanIsda => {
         let num = self.day_count(d1, d2) as f64;
         T::from_f64_fast(num / 360.0)
       }
-      Self::ActualActualISDA => T::from_f64_fast(actual_actual_isda(d1, d2)),
-      Self::ActualActualAFB => T::from_f64_fast(actual_actual_afb(d1, d2)),
+      Self::ActualActualIsda => T::from_f64_fast(actual_actual_isda(d1, d2)),
+      Self::ActualActualAfb => T::from_f64_fast(actual_actual_afb(d1, d2)),
       Self::Business252 => {
         let bus = business_day_count_weekdays(d1, d2) as f64;
         T::from_f64_fast(bus / 252.0)
@@ -174,14 +174,14 @@ impl DayCountConvention {
     match self {
       Self::Actual360
       | Self::Actual365Fixed
-      | Self::ActualActualISDA
-      | Self::ActualActualAFB
+      | Self::ActualActualIsda
+      | Self::ActualActualAfb
       | Self::Actual364
       | Self::Actual365Leap
       | Self::ActualActualIcma => (d2 - d1).num_days(),
       Self::Thirty360 => thirty360_usa(d1, d2),
       Self::Thirty360European => thirty360_european(d1, d2),
-      Self::Thirty360EuropeanISDA => thirty360_european_isda(d1, d2),
+      Self::Thirty360EuropeanIsda => thirty360_european_isda(d1, d2),
       Self::Business252 => business_day_count_weekdays(d1, d2),
       Self::NoLeap365 => no_leap_day_count(d1, d2),
     }

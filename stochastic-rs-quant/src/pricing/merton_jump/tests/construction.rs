@@ -30,13 +30,13 @@ fn new_rejects_an_empty_series() {
 #[test]
 #[should_panic(expected = "Merton1976Pricer::new: v must be a non-negative volatility (got -0.2)")]
 fn new_rejects_negative_volatility() {
-  let _ = Merton1976Pricer::new(-0.2, 0.5, 0.4, 10, BSMCoc::Bsm1973);
+  let _ = Merton1976Pricer::new(-0.2, 0.5, 0.4, 10, BsmCoc::Bsm1973);
 }
 
 #[test]
 #[should_panic(expected = "Merton1976Pricer::new: v must be a non-negative volatility (got NaN)")]
 fn new_rejects_nan_volatility() {
-  let _ = Merton1976Pricer::new(f64::NAN, 0.5, 0.4, 10, BSMCoc::Bsm1973);
+  let _ = Merton1976Pricer::new(f64::NAN, 0.5, 0.4, 10, BsmCoc::Bsm1973);
 }
 
 /// The supported states the guards must not swallow: the `λ = 0`
@@ -47,7 +47,7 @@ fn the_supported_degenerate_states_stay_constructible() {
   assert_eq!(merton(0.0, 0.4, 20).lambda, 0.0);
   assert_eq!(merton(0.5, 0.4, 1).m, 1);
   assert_eq!(
-    Merton1976Pricer::new(0.0, 0.5, 0.4, 10, BSMCoc::Bsm1973).v,
+    Merton1976Pricer::new(0.0, 0.5, 0.4, 10, BsmCoc::Bsm1973).v,
     0.0
   );
 }

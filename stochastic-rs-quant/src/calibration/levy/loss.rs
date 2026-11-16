@@ -48,7 +48,7 @@ pub(super) fn levy_char_exponent(
       let g_y = Complex64::new(g.powf(y), 0.0);
       c * gamma_neg_y * (m_shift - m_y + g_shift - g_y)
     }
-    LevyModelType::MertonJD => {
+    LevyModelType::MertonJd => {
       let sigma = params[0];
       let lambda = params[1];
       let mu_j = params[2];
@@ -164,7 +164,7 @@ pub(super) fn param_count(model_type: LevyModelType) -> usize {
     LevyModelType::VarianceGamma => 3,
     LevyModelType::Nig => 3,
     LevyModelType::Cgmy => 4,
-    LevyModelType::MertonJD => 4,
+    LevyModelType::MertonJd => 4,
     LevyModelType::Kou => 5,
   }
 }
@@ -180,7 +180,7 @@ pub(super) fn param_bounds(model_type: LevyModelType) -> Vec<(f64, f64)> {
     LevyModelType::Cgmy => {
       vec![(0.001, 10.0), (0.01, 50.0), (0.01, 50.0), (-1.0, 1.999)]
     }
-    LevyModelType::MertonJD => {
+    LevyModelType::MertonJd => {
       vec![(0.01, 2.0), (0.01, 20.0), (-1.0, 1.0), (0.01, 2.0)]
     }
     LevyModelType::Kou => {
@@ -200,7 +200,7 @@ pub(super) fn default_params(model_type: LevyModelType) -> Vec<f64> {
     LevyModelType::VarianceGamma => vec![0.2, -0.1, 0.5],
     LevyModelType::Nig => vec![15.0, -5.0, 0.5],
     LevyModelType::Cgmy => vec![1.0, 10.0, 15.0, 0.5],
-    LevyModelType::MertonJD => vec![0.15, 1.0, -0.05, 0.1],
+    LevyModelType::MertonJd => vec![0.15, 1.0, -0.05, 0.1],
     LevyModelType::Kou => vec![0.15, 3.0, 0.5, 10.0, 10.0],
   }
 }

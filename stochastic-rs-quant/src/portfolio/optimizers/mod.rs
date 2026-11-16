@@ -94,7 +94,7 @@ pub fn optimize_with_method(
         optimize_markowitz(mu, cov, target_return, risk_free, config.lambda)
       }
     }
-    OptimizerMethod::MeanCVaR => {
+    OptimizerMethod::MeanCvar => {
       if let Some(rets) = aligned_returns {
         if allow_short {
           optimize_mean_cvar_long_short(mu, rets, target_return, risk_free, cvar_alpha, config)

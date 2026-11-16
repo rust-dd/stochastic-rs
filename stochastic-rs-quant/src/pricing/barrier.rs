@@ -262,14 +262,14 @@ impl DoubleBarrierPricer {
 
 /// Monte Carlo barrier option pricer using Gbm path simulation.
 #[derive(Debug, Clone)]
-pub struct MCBarrierPricer {
+pub struct McBarrierPricer {
   /// Number of Monte Carlo paths.
   pub n_paths: usize,
   /// Number of time steps per path.
   pub n_steps: usize,
 }
 
-impl MCBarrierPricer {
+impl McBarrierPricer {
   /// Price a barrier option via Monte Carlo with parallel path generation.
   ///
   /// The base seed comes from a fresh [`Unseeded`] draw, so repeated calls

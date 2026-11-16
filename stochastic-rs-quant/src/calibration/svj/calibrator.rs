@@ -3,8 +3,8 @@ use std::rc::Rc;
 
 use ndarray::Array1;
 
-use super::SVJCalibrationResult;
-use super::SVJParams;
+use super::SvjCalibrationResult;
+use super::SvjParams;
 use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::OptionType;
@@ -25,9 +25,9 @@ pub(super) const SIGMA_V_MIN: f64 = 1e-8;
 /// - Marquardt (1963), <https://doi.org/10.1137/0111030>
 /// - Bates (1996), <https://doi.org/10.1093/rfs/9.1.69>
 #[derive(Clone)]
-pub struct SVJCalibrator {
+pub struct SvjCalibrator {
   /// Params to calibrate.
-  pub params: Option<SVJParams>,
+  pub params: Option<SvjParams>,
   /// Option prices from the market (flattened across all maturities).
   pub c_market: Array1<f64>,
   /// Underlying spot per quote.
@@ -46,13 +46,13 @@ pub struct SVJCalibrator {
   pub record_history: bool,
   /// Which loss metrics to compute when recording history.
   pub loss_metrics: &'static [LossMetric],
-  pub(super) calibration_history: Rc<RefCell<Vec<CalibrationHistory<SVJParams>>>>,
+  pub(super) calibration_history: Rc<RefCell<Vec<CalibrationHistory<SvjParams>>>>,
 }
 
-impl crate::traits::Calibrator for SVJCalibrator {
-  type InitialGuess = SVJParams;
-  type Params = SVJParams;
-  type Output = SVJCalibrationResult;
+impl crate::traits::Calibrator for SvjCalibrator {
+  type InitialGuess = SvjParams;
+  type Params = SvjParams;
+  type Output = SvjCalibrationResult;
   type Error = anyhow::Error;
 
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
@@ -60,10 +60,10 @@ impl crate::traits::Calibrator for SVJCalibrator {
   }
 }
 
-impl SVJCalibrator {
+impl SvjCalibrator {
   /// Create a calibrator for quotes that share one maturity `tau`.
   pub fn new(
-    params: Option<SVJParams>,
+    params: Option<SvjParams>,
     c_market: Array1<f64>,
     s: Array1<f64>,
     k: Array1<f64>,
@@ -98,7 +98,7 @@ impl SVJCalibrator {
 
   /// Create a calibrator from multiple maturity slices for joint surface calibration.
   pub fn from_slices(
-    params: Option<SVJParams>,
+    params: Option<SvjParams>,
     slices: &[crate::calibration::levy::MarketSlice],
     s: f64,
     r: f64,
@@ -135,7 +135,7 @@ impl SVJCalibrator {
     }
   }
 
-  fn solve(&self, initial_params: Option<SVJParams>) -> SVJCalibrationResult {
+  fn solve(&self, initial_params: Option<SvjParams>) -> SvjCalibrationResult {
     let mut problem = self.clone();
     if let Some(p) = initial_params {
       problem.params = Some(p.projected());
@@ -152,7 +152,7 @@ impl SVJCalibrator {
       result.loss_metrics,
     );
 
-    SVJCalibrationResult {
+    SvjCalibrationResult {
       v0: p.v0,
       kappa: p.kappa,
       theta: p.theta,
@@ -166,7 +166,7 @@ impl SVJCalibrator {
     }
   }
 
-  pub fn set_initial_guess(&mut self, params: SVJParams) {
+  pub fn set_initial_guess(&mut self, params: SvjParams) {
     self.params = Some(params.projected());
   }
 
@@ -174,12 +174,12 @@ impl SVJCalibrator {
     self.record_history = record;
   }
 
-  pub fn history(&self) -> Vec<CalibrationHistory<SVJParams>> {
+  pub fn history(&self) -> Vec<CalibrationHistory<SvjParams>> {
     self.calibration_history.borrow().clone()
   }
 
-  fn fallback_params() -> SVJParams {
-    SVJParams {
+  fn fallback_params() -> SvjParams {
+    SvjParams {
       v0: 0.04,
       kappa: 1.5,
       theta: 0.04,
@@ -198,7 +198,7 @@ impl SVJCalibrator {
     }
   }
 
-  pub(super) fn effective_params(&self) -> SVJParams {
+  pub(super) fn effective_params(&self) -> SvjParams {
     if let Some(p) = &self.params {
       return (*p).projected();
     }

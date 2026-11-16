@@ -130,13 +130,13 @@ fn sabr_price_put_matches_parity_but_is_the_closed_form() {
 /// `SabrPricer`, so it cannot go stale with the type.
 #[test]
 fn sabr_price_call_is_hagan_vol_through_black_scholes() {
-  use crate::pricing::bsm::BSMCoc;
-  use crate::pricing::bsm::BSMPricer;
+  use crate::pricing::bsm::BsmCoc;
+  use crate::pricing::bsm::BsmPricer;
 
   let m = golden_model();
   let fwd = S * ((R - Q) * TAU).exp();
   let sigma = hagan_implied_vol(K, fwd, TAU, m.alpha, m.beta, m.nu, m.rho);
-  let want = BSMPricer::new(sigma, BSMCoc::Merton1973).price_call(S, K, R, Q, TAU);
+  let want = BsmPricer::new(sigma, BsmCoc::Merton1973).price_call(S, K, R, Q, TAU);
   assert_eq!(m.price_call(S, K, R, Q, TAU), want);
 }
 

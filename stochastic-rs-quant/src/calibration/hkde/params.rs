@@ -29,7 +29,7 @@ pub(super) const P_ETA2: (f64, f64) = (0.1, 50.0);
 /// Hkde model parameters — Heston stochastic volatility augmented by a
 /// Kou double-exponential jump component.
 #[derive(Clone, Copy, Debug)]
-pub struct HKDEParams {
+pub struct HkdeParams {
   /// Initial variance $v_0$.
   pub v0: f64,
   /// Mean-reversion speed $\kappa$.
@@ -50,7 +50,7 @@ pub struct HKDEParams {
   pub eta2: f64,
 }
 
-impl HKDEParams {
+impl HkdeParams {
   /// Project the parameter vector onto the admissible set.
   ///
   /// The projection enforces the box bounds, the Feller condition
@@ -87,17 +87,17 @@ impl HKDEParams {
   }
 }
 
-impl From<HKDEParams> for Array1<f64> {
-  fn from(p: HKDEParams) -> Self {
+impl From<HkdeParams> for Array1<f64> {
+  fn from(p: HkdeParams) -> Self {
     Array1::from_vec(vec![
       p.v0, p.kappa, p.theta, p.sigma_v, p.rho, p.lambda, p.p_up, p.eta1, p.eta2,
     ])
   }
 }
 
-impl From<Array1<f64>> for HKDEParams {
+impl From<Array1<f64>> for HkdeParams {
   fn from(v: Array1<f64>) -> Self {
-    HKDEParams {
+    HkdeParams {
       v0: v[0],
       kappa: v[1],
       theta: v[2],

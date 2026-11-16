@@ -25,12 +25,12 @@ impl PyMarketSlice {
 }
 
 #[pyclass(name = "BSMCalibrator", unsendable)]
-pub struct PyBSMCalibrator {
-  inner: crate::calibration::bsm::BSMCalibrator,
+pub struct PyBsmCalibrator {
+  inner: crate::calibration::bsm::BsmCalibrator,
 }
 
 #[pymethods]
-impl PyBSMCalibrator {
+impl PyBsmCalibrator {
   #[new]
   #[pyo3(signature = (slices, s, r, option_type="call", q=None, sigma_init=0.2))]
   fn new(
@@ -45,9 +45,9 @@ impl PyBSMCalibrator {
       let ot = parse_option_type(option_type)?;
       let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
         slices.into_iter().map(|s| s.inner).collect();
-      let params = crate::calibration::bsm::BSMParams { v: sigma_init };
+      let params = crate::calibration::bsm::BsmParams { v: sigma_init };
       Ok(Self {
-        inner: crate::calibration::bsm::BSMCalibrator::from_slices(
+        inner: crate::calibration::bsm::BsmCalibrator::from_slices(
           params,
           &inner_slices,
           s,
