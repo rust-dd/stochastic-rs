@@ -13,18 +13,18 @@ use stochastic_rs_stochastic::{
 };
 
 #[test]
-fn zero_step_samples_preserve_the_requested_row_count() {
+fn one_point_samples_preserve_the_requested_row_count() {
   for budget in [8, usize::MAX] {
-    let process = Fgn::new(0.7_f32, 0, Some(1.0), Deterministic::new(37))
+    let process = Fgn::new(0.7_f32, 1, Some(1.0), Deterministic::new(37))
       .with_backend(Metal::default().with_batch_budget(budget));
     let expected_seed = process.seed().clone();
-    assert!(process.try_sample().unwrap().is_empty());
+    assert_eq!(process.try_sample().unwrap().len(), 1);
     expected_seed.next_seed();
     assert_eq!(process.seed().current(), expected_seed.current());
     for count in [0, 1, 5] {
       let rows = process.try_sample_par(count).unwrap();
       assert_eq!(rows.len(), count);
-      assert!(rows.iter().all(|row| row.is_empty()));
+      assert!(rows.iter().all(|row| row.len() == 1));
       expected_seed.next_seed();
       assert_eq!(process.seed().current(), expected_seed.current());
 
@@ -33,7 +33,7 @@ fn zero_step_samples_preserve_the_requested_row_count() {
         calls.fetch_add(1, Ordering::Relaxed);
         row.len()
       });
-      assert_eq!(lengths, vec![0; count]);
+      assert_eq!(lengths, vec![1; count]);
       assert_eq!(calls.load(Ordering::Relaxed), count);
       expected_seed.next_seed();
       assert_eq!(process.seed().current(), expected_seed.current());
@@ -43,14 +43,14 @@ fn zero_step_samples_preserve_the_requested_row_count() {
         calls.fetch_add(1, Ordering::Relaxed);
         row.len()
       });
-      assert_eq!(lengths, vec![0; count]);
+      assert_eq!(lengths, vec![1; count]);
       assert_eq!(calls.load(Ordering::Relaxed), count);
       expected_seed.next_seed();
       assert_eq!(process.seed().current(), expected_seed.current());
     }
   }
   let unavailable =
-    Fgn::new(0.7_f32, 0, Some(1.0), Deterministic::new(37)).with_backend(Metal::new(usize::MAX));
+    Fgn::new(0.7_f32, 1, Some(1.0), Deterministic::new(37)).with_backend(Metal::new(usize::MAX));
   let expected_seed = unavailable.seed().clone();
   assert!(matches!(
     unavailable.try_sample(),
