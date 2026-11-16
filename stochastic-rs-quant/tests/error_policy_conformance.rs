@@ -144,12 +144,12 @@ fn a_nan_quote_is_an_error_not_a_panic() {
     OptionQuote::new(100.0, 1.0, 8.0, OptionType::Call),
     OptionQuote::new(f64::NAN, 1.0, 8.0, OptionType::Call),
   ];
-  let err = ImpliedVolSurface::try_from_quotes(&quotes, &[(1.0, 102.0)]).unwrap_err();
+  let err = ImpliedVolSurface::try_from_quotes(&quotes, &[(1.0, 102.0)], 0.0).unwrap_err();
   assert!(
     matches!(err, QuantError::InvalidQuote { index: 1, .. }),
     "{err}"
   );
-  let missing = ImpliedVolSurface::try_from_quotes(&quotes[..1], &[(0.5, 101.0)]).unwrap_err();
+  let missing = ImpliedVolSurface::try_from_quotes(&quotes[..1], &[(0.5, 101.0)], 0.0).unwrap_err();
   assert!(
     matches!(
       missing,
@@ -163,18 +163,19 @@ fn a_nan_quote_is_an_error_not_a_panic() {
 }
 
 #[test]
-fn no_quote_is_an_error_and_a_put_quote_inverts_as_a_put() {
-  use stochastic_rs_quant::distributions::special::norm_cdf;
-
-  let empty = ImpliedVolSurface::try_from_quotes(&[], &[]);
+fn no_quote_is_an_insufficient_data_error() {
+  let empty = ImpliedVolSurface::try_from_quotes(&[], &[], 0.0);
   assert!(matches!(
     empty,
     Err(QuantError::InsufficientData { got: 0, .. })
   ));
-  let (f, k, t, sigma) = (100.0_f64, 110.0_f64, 0.5_f64, 0.25_f64);
-  let d1 = ((f / k).ln() + 0.5 * sigma * sigma * t) / (sigma * t.sqrt());
-  let put = k * norm_cdf(-(d1 - sigma * t.sqrt())) - f * norm_cdf(-d1);
-  let quote = OptionQuote::new(k, t, put, OptionType::Put);
-  let surface = ImpliedVolSurface::try_from_quotes(&[quote], &[(t, f)]).unwrap();
-  assert!((surface.ivs[[0, 0]] - sigma).abs() < 1e-10);
+  let nan_rate = ImpliedVolSurface::try_from_quotes(
+    &[OptionQuote::new(100.0, 1.0, 8.0, OptionType::Call)],
+    &[(1.0, 102.0)],
+    f64::NAN,
+  );
+  assert!(matches!(
+    nan_rate,
+    Err(QuantError::InvalidInput { what: "r", .. })
+  ));
 }

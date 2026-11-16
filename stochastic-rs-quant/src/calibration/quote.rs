@@ -12,7 +12,7 @@ pub struct OptionQuote {
   pub strike: f64,
   /// Years to maturity.
   pub tau: f64,
-  /// Market price; the implied-vol surface inverts it as an undiscounted Black-76 price.
+  /// Present market price (discounted).
   pub price: f64,
   pub option_type: OptionType,
 }

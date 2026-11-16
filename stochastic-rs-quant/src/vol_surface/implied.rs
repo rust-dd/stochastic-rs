@@ -185,13 +185,20 @@ impl ImpliedVolSurface {
     Self::from_iv_grid(strikes, maturities, forwards, ivs)
   }
 
-  /// A surface from quotes grouped by maturity, then strike; a cell with no quote or root is NaN;
-  /// `InsufficientData` for no quote, `InvalidQuote` for a bad one, `MissingInput` for a forward.
+  /// A surface from present-value quotes, inverted as `price · e^{rτ}` Black-76 prices; a cell with
+  /// no quote or root is NaN; `InsufficientData`, `InvalidQuote`, `MissingInput`, `InvalidInput`.
   pub fn try_from_quotes(
     quotes: &[OptionQuote],
     forwards: &[(f64, f64)],
+    r: f64,
   ) -> Result<Self, QuantError> {
     validate_quotes(quotes)?;
+    if !r.is_finite() {
+      return Err(QuantError::InvalidInput {
+        what: "r",
+        reason: format!("must be finite, got {r}"),
+      });
+    }
 
     let mut tau_set: Vec<f64> = quotes.iter().map(|q| q.tau).collect();
     tau_set.sort_by(f64::total_cmp);
@@ -230,7 +237,7 @@ impl ImpliedVolSurface {
         .iter()
         .position(|k| (k - q.strike).abs() < 1e-12)
         .unwrap();
-      prices[[j, i]] = q.price;
+      prices[[j, i]] = q.price * (r * q.tau).exp();
       is_call_grid[j * nk + i] = q.option_type == OptionType::Call;
     }
 
@@ -295,7 +302,7 @@ impl ImpliedVolSurface {
         reason: "the option chain yielded no usable quotes".to_string(),
       });
     }
-    Self::try_from_quotes(&quotes, &forwards)
+    Self::try_from_quotes(&quotes, &forwards, r)
   }
 
   /// Extract a single smile slice (implied vols for one maturity).
@@ -455,10 +462,8 @@ mod tests {
 
   use super::*;
 
-  /// `from_provider` against a `MockProvider` whose option chain carries
-  /// undiscounted-Black call prices: the recovered implied vols must match
-  /// the σ those prices were generated from. Exercises the full Tier 3
-  /// provider → surface wiring offline.
+  /// `from_provider` against a mock chain of present-value mids, the OTM put at K = 90: the
+  /// recovered vols must equal the σ that priced them.
   #[test]
   fn from_provider_recovers_surface_from_mock_chain() {
     use stochastic_rs_distributions::special::norm_cdf;
@@ -479,7 +484,13 @@ mod tests {
       for &k in &strikes {
         let d1 = ((f / k).ln() + 0.5 * sigma * sigma * t) / (sigma * t.sqrt());
         let d2 = d1 - sigma * t.sqrt();
-        let price = f * norm_cdf(d1) - k * norm_cdf(d2); // undiscounted Black
+        let is_call = k > 90.0;
+        let undiscounted = if is_call {
+          f * norm_cdf(d1) - k * norm_cdf(d2)
+        } else {
+          k * norm_cdf(-d2) - f * norm_cdf(-d1)
+        };
+        let price = (-r * t).exp() * undiscounted;
         quotes.push(ChainQuote {
           strike: k,
           tau: t,
@@ -487,7 +498,7 @@ mod tests {
           bid: price,
           ask: price,
           implied_vol: sigma,
-          is_call: true,
+          is_call,
         });
       }
     }
@@ -503,7 +514,7 @@ mod tests {
       for i in 0..strikes.len() {
         let iv = surface.ivs[[j, i]];
         assert!(
-          (iv - sigma).abs() < 1e-4,
+          (iv - sigma).abs() < 1e-10,
           "recovered iv={iv} vs σ={sigma} at T={}, K={}",
           taus[j],
           strikes[i]
