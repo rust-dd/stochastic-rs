@@ -298,8 +298,8 @@ impl PyBatesSvj {
     })?
   }
 
-  /// Why this configuration samples on the host: no kernel draws the lognormal jump of a positive
-  /// `lambda_`.
+  /// Why this configuration cannot run on a device kernel, or `None` when it can; the
+  /// configuration decides, so `device=` does not change the answer.
   fn device_fallback(&self) -> Option<&'static str> {
     use crate::traits::ProcessExt;
     crate::py_dispatch!(self, |inner| inner.device_fallback())

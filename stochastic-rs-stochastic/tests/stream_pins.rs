@@ -1,6 +1,8 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
+use stochastic_rs_stochastic::jump::bates::Bates;
+use stochastic_rs_stochastic::jump::bates::LogNormalJump;
 use stochastic_rs_stochastic::jump::mjd_log::MjdLog;
 use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::Horizon;
@@ -124,6 +126,42 @@ fn mjd_log_is_pinned() {
       4635851941351680734,
       4635437851904418731,
       4635525806424921260,
+    ],
+  );
+}
+
+#[test]
+fn bates_with_its_lognormal_law_is_pinned() {
+  let law = LogNormalJump::new(-0.1, 0.2);
+  let [s, _] = Bates::new(
+    Drift::Mu(0.05),
+    LAMBDA,
+    law.mean(),
+    0.04,
+    1.5,
+    0.3,
+    -0.6,
+    law,
+    N,
+    100.0,
+    0.04,
+    Some(1.0),
+    VarianceBoundary::Floor,
+    Deterministic::new(SEED),
+  )
+  .sample();
+  pin(
+    "Bates with LogNormalJump",
+    &s,
+    [
+      4636737291354636288,
+      4637504339693668260,
+      4637307410864647608,
+      4636557497319183707,
+      4636544960057487365,
+      4639683856358927314,
+      4640333040064116016,
+      4638945190020721184,
     ],
   );
 }

@@ -30,8 +30,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// The Bates (1996) model for any law `D` of the relative jump `Y − 1`, `SimdNormal` by default;
-/// [`LogNormalJump`] is the paper's lognormal one.
+/// The Bates (1996) model for any law `D` of the relative jump `Y − 1`, `SimdNormal` by default.
+/// The paper's [`LogNormalJump`], exact in log space, steps `ln S` so `S > 0`; others step `S`.
 #[derive(Clone)]
 pub struct Bates<T, D = SimdNormal<T>, S: SeedExt = Unseeded, B = Cpu>
 where
@@ -40,7 +40,7 @@ where
 {
   /// The asset's drift before the `λk` compensator: `μ`, a cost of carry, or `r − r_f`.
   pub drift: Drift<T>,
-  /// Jump (Poisson) intensity λ — arrival rate of the log-price jumps.
+  /// Jump (Poisson) intensity λ — arrival rate of the relative jumps.
   /// Single source of truth: `sampler()` reads this field directly (not
   /// `cpoisson.poisson.lambda`) for both the jump-arrival rate and the
   /// drift's `-lambda*k` compensator term. Every setter that can change it
@@ -349,6 +349,11 @@ where
   fn resync_cpoisson_poisson(&mut self) {
     self.cpoisson.poisson = Poisson::new(self.lambda, Horizon::Events(self.n), Unseeded);
   }
+
+  /// The drift net of the `λk` compensator, one expression for the host step and the device launch.
+  fn drift_c(&self) -> T {
+    self.drift.rate() - self.lambda * self.k
+  }
 }
 
 impl<T, D, S: SeedExt, B> Bates<T, D, S, B>
@@ -356,11 +361,22 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync + Any,
 {
+  /// The lognormal law when `D` is it, the one law that takes the log-price step.
+  fn log_jumps(&self) -> Option<&LogNormalJump<T>> {
+    LogNormalJump::of(&self.cpoisson.distribution)
+  }
+
   /// The jump-size law as the Euler engine's kernels draw it, `None` for a
   /// distribution they do not carry.
   fn device_jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
-    crate::process::cpoisson::device_jump_sizes(&self.cpoisson.distribution)
-      .and_then(crate::euler::JumpSizes::product)
+    match self.log_jumps() {
+      Some(law) => Some(crate::euler::JumpSizes::Normal {
+        mean: law.nu(),
+        sd: law.omega(),
+      }),
+      None => crate::process::cpoisson::device_jump_sizes(&self.cpoisson.distribution)
+        .and_then(crate::euler::JumpSizes::product),
+    }
   }
 }
 
@@ -370,24 +386,40 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync + Any,
 {
-  /// The spot's drift arrives compensated by `lambda k`, and the variance
+  /// The lognormal law launches the log-price families, any other law the price ones; the variance
   /// keeps whichever treatment of the boundary the process was built with.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    let drift_c = self.drift.rate() - self.lambda * self.k;
-    match self.boundary {
-      VarianceBoundary::Floor => crate::euler::EulerSpec::Bates1996 {
+    use crate::euler::EulerSpec;
+    let (drift_c, alpha, beta, sigma, rho) =
+      (self.drift_c(), self.alpha, self.beta, self.sigma, self.rho);
+    match (self.log_jumps().is_some(), self.boundary) {
+      (true, VarianceBoundary::Floor) => EulerSpec::BatesJump {
         drift_c,
-        alpha: self.alpha,
-        beta: self.beta,
-        sigma: self.sigma,
-        rho: self.rho,
+        alpha,
+        beta,
+        sigma,
+        rho,
       },
-      VarianceBoundary::Reflect => crate::euler::EulerSpec::Bates1996Reflected {
+      (true, VarianceBoundary::Reflect) => EulerSpec::BatesJumpReflected {
         drift_c,
-        alpha: self.alpha,
-        beta: self.beta,
-        sigma: self.sigma,
-        rho: self.rho,
+        alpha,
+        beta,
+        sigma,
+        rho,
+      },
+      (false, VarianceBoundary::Floor) => EulerSpec::Bates1996 {
+        drift_c,
+        alpha,
+        beta,
+        sigma,
+        rho,
+      },
+      (false, VarianceBoundary::Reflect) => EulerSpec::Bates1996Reflected {
+        drift_c,
+        alpha,
+        beta,
+        sigma,
+        rho,
       },
     }
   }
@@ -477,15 +509,15 @@ where
       s0: self.s0,
       v0: self.v0.max(T::zero()),
       lambda: self.lambda,
-      k: self.k,
       alpha: self.alpha,
       beta: self.beta,
       sigma: self.sigma,
-      drift: self.drift.rate(),
+      drift_c: self.drift_c(),
       boundary: self.boundary,
       dt: self.cgns.dt(),
       cgns: self.cgns,
       jump_distribution: &self.cpoisson.distribution,
+      log_jumps: self.log_jumps(),
       jump_seed: self.cpoisson.seed.derive(),
       seed: self.seed.derive(),
     }
@@ -544,14 +576,6 @@ where
   }
 }
 
-/// The normal-log-jump Bates model is [`Bates`] with a [`LogNormalJump`] law.
-///
-/// ```compile_fail,E0432
-/// use stochastic_rs_stochastic::volatility::bates_svj::BatesSvj;
-/// ```
-#[cfg(doctest)]
-pub struct BatesSvjIsBatesWithALogNormalJump;
-
 /// Reusable [`Bates`] sampling state: the correlated-Gaussian generator, the borrowed jump law and
 /// two derived seeds, one for the diffusion and one for the jump arrivals.
 #[doc(hidden)]
@@ -564,15 +588,15 @@ where
   s0: T,
   v0: T,
   lambda: T,
-  k: T,
   alpha: T,
   beta: T,
   sigma: T,
-  drift: T,
+  drift_c: T,
   boundary: VarianceBoundary,
   dt: T,
   cgns: Cgns<T>,
   jump_distribution: &'a D,
+  log_jumps: Option<&'a LogNormalJump<T>>,
   jump_seed: S,
   seed: S,
 }
@@ -588,23 +612,34 @@ where
     }
     let dt = self.dt;
     let [cgn1, cgn2] = &self.cgns.sample_impl(&self.seed);
-    let jump_increments = crate::process::cpoisson::grid_relative_increments(
-      self.jump_distribution,
-      self.lambda,
-      &self.jump_seed,
-      self.n,
-      dt,
-    );
+    let jumps = match self.log_jumps {
+      Some(law) => law.grid_log_jumps(self.lambda, &self.jump_seed, self.n, dt),
+      None => crate::process::cpoisson::grid_relative_increments(
+        self.jump_distribution,
+        self.lambda,
+        &self.jump_seed,
+        self.n,
+        dt,
+      ),
+    };
 
     s[0] = self.s0;
     v[0] = self.v0;
 
     for i in 1..self.n {
       let v_prev = v[i - 1].max(T::zero());
-      s[i] = s[i - 1]
-        + (self.drift - self.lambda * self.k) * s[i - 1] * dt
-        + s[i - 1] * v_prev.sqrt() * cgn1[i - 1]
-        + s[i - 1] * jump_increments[i];
+      s[i] = match self.log_jumps {
+        Some(_) => {
+          let half_v = T::from_f64_fast(0.5) * v_prev;
+          s[i - 1] * ((self.drift_c - half_v) * dt + v_prev.sqrt() * cgn1[i - 1] + jumps[i]).exp()
+        }
+        None => {
+          s[i - 1]
+            + self.drift_c * s[i - 1] * dt
+            + s[i - 1] * v_prev.sqrt() * cgn1[i - 1]
+            + s[i - 1] * jumps[i]
+        }
+      };
 
       let dv = (self.alpha - self.beta * v_prev) * dt + self.sigma * v_prev.sqrt() * cgn2[i - 1];
 

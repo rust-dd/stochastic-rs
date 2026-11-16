@@ -765,14 +765,6 @@ fn cholesky_lower<T: FloatExt>(rho: &Array2<T>) -> Array2<T> {
   l
 }
 
-/// The LIBOR market model is [`Lmm`]; there is no uncoupled `Bgm`.
-///
-/// ```compile_fail,E0432
-/// use stochastic_rs_stochastic::interest::bgm::Bgm;
-/// ```
-#[cfg(doctest)]
-pub struct BgmIsLmm;
-
 #[cfg(test)]
 mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;

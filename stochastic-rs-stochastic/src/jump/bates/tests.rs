@@ -5,6 +5,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use super::*;
 use crate::euler::EulerSpec;
 use crate::euler::EulerSystem;
+use crate::euler::JumpSizes;
 
 fn make_bates(drift: Drift<f64>) -> Bates<f64> {
   Bates::new(
@@ -97,4 +98,71 @@ fn compensated_by_its_mean_the_lognormal_jump_leaves_the_price_a_martingale() {
     (mean - 100.0).abs() < 5.0 * se,
     "E[S_T] {mean} against S_0 = 100 (se {se})"
   );
+}
+
+#[test]
+fn the_lognormal_law_keeps_the_price_positive_where_a_price_step_crosses_zero() {
+  let law = LogNormalJump::new(-1.0_f64, 0.5);
+  let quarterly = Bates::new(
+    Drift::Mu(0.05),
+    1.0,
+    law.mean(),
+    0.5,
+    2.0,
+    0.5,
+    -0.7,
+    law,
+    5,
+    100.0,
+    0.25,
+    Some(1.0),
+    VarianceBoundary::Floor,
+    Deterministic::new(11),
+  );
+  let crossed = quarterly
+    .sample_par(20_000)
+    .iter()
+    .filter(|[s, _]| s.iter().any(|&x| x <= 0.0))
+    .count();
+  assert_eq!(
+    crossed, 0,
+    "{crossed} of 20000 paths reached a non-positive price"
+  );
+}
+
+#[test]
+fn the_lognormal_law_launches_the_log_price_families_with_the_process_compensator() {
+  let law = LogNormalJump::new(-0.1_f64, 0.2);
+  for boundary in [VarianceBoundary::Floor, VarianceBoundary::Reflect] {
+    let bates = Bates::new(
+      Drift::Mu(0.05),
+      5.0,
+      0.3,
+      0.04,
+      1.5,
+      0.3,
+      -0.6,
+      law,
+      24,
+      100.0,
+      0.04,
+      Some(1.0),
+      boundary,
+      Unseeded,
+    );
+    let drift_c = match (EulerSystem::<f64, 2>::euler_spec(&bates), boundary) {
+      (EulerSpec::BatesJump { drift_c, .. }, VarianceBoundary::Floor)
+      | (EulerSpec::BatesJumpReflected { drift_c, .. }, VarianceBoundary::Reflect) => drift_c,
+      (spec, _) => panic!("{boundary:?} launched {spec:?}"),
+    };
+    assert_eq!(drift_c, 0.05 - 5.0 * 0.3);
+    assert_eq!(
+      EulerSystem::<f64, 2>::jump_sizes(&bates),
+      Some(JumpSizes::Normal {
+        mean: -0.1,
+        sd: 0.2
+      })
+    );
+    assert_eq!(bates.device_fallback(), None);
+  }
 }

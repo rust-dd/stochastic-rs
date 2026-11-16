@@ -396,7 +396,26 @@ def test_the_bates_svj_jump_is_lognormal_and_compensated_by_its_mean():
 
     terminal = bates_svj(-0.1, 0.2).sample_par(20_000)[0][:, -1]
     assert abs(terminal.mean() - 100.0) < 5.0 * terminal.std(ddof=1) / math.sqrt(terminal.size)
-    assert np.all(bates_svj(-0.5, 0.5, lambda_=50.0).sample_par(64)[0] > 0.0)
+    quarterly = sr.PyBatesSvj(1.0, -1.0, 0.5, 0.5, 2.0, 0.5, -0.7, 5, mu=0.05, s0=100.0, v0=0.25,
+                              t=1.0, seed=11)
+    assert np.all(quarterly.sample_par(20_000)[0] > 0.0)
+
+
+def test_the_bates_svj_takes_its_jumps_to_a_device():
+    def bates_svj(**device):
+        return sr.PyBatesSvj(3.0, -0.05, 0.1, 0.08, 2.0, 0.3, -0.7, 64, mu=0.02, s0=100.0, v0=0.04,
+                             t=1.0, seed=7, dtype="f32", **device)
+
+    assert bates_svj().device_ready() and bates_svj().device_fallback() is None
+    host = bates_svj().sample_par(256)[0]
+    for device in ("cuda", "metal"):
+        try:
+            on_device = bates_svj(device=device)
+        except (ValueError, RuntimeError):
+            continue
+        spots = on_device.sample_par(256)[0]
+        assert spots.shape == host.shape and np.all(spots > 0.0)
+        assert not np.array_equal(spots, host)
 
 
 def test_the_inverse_gaussian_process_is_the_unit_subordinator():

@@ -1,6 +1,5 @@
-//! Device laws of the processes whose jump sizes come from a user-supplied
-//! distribution: the engine recognises the normal and exponential laws at
-//! runtime and draws them in the kernel, and keeps anything else on the host.
+//! Device laws of the processes whose jump sizes come from a user-supplied law, which the engine
+//! recognises at runtime and draws in the kernel; any other law keeps the process on the host.
 
 use ndarray::Array1;
 use rand::Rng;
@@ -9,10 +8,14 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_stochastic::jump::bates::Bates;
+use stochastic_rs_stochastic::jump::bates::LogNormalJump;
 use stochastic_rs_stochastic::jump::kou::Kou;
 use stochastic_rs_stochastic::jump::levy_diffusion::LevyDiffusion;
 use stochastic_rs_stochastic::jump::merton::Merton;
+use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::Horizon;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::ccustom::CompoundCustom;
 use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs_stochastic::process::customjt::CustomJt;
@@ -26,6 +29,8 @@ use super::common::Device;
 use super::common::M;
 use super::common::agrees;
 use super::common::all_finite;
+use super::common::means_agree;
+use super::common::spreads_agree;
 use super::common::terminal_mean;
 use super::common::terminal_std;
 
@@ -182,6 +187,64 @@ fn levy_diffusion_agrees_with_the_cpu_law() {
     0.06,
     "Lévy diffusion terminal spread",
   );
+}
+
+/// `Bates` under its lognormal law steps the log-price on the `BatesJump` families: a device spot
+/// stays positive and both components keep the host's law under either boundary.
+#[test]
+fn bates_with_its_lognormal_law_agrees_with_the_cpu_law() {
+  for boundary in [VarianceBoundary::Floor, VarianceBoundary::Reflect] {
+    let build = || {
+      let law = LogNormalJump::<f32>::new(-0.05, 0.1);
+      Bates::<f32, _, _>::new(
+        Drift::Mu(0.02),
+        3.0,
+        law.mean(),
+        0.08,
+        2.0,
+        0.3,
+        -0.7,
+        law,
+        N,
+        100.0,
+        0.04,
+        Some(1.0),
+        boundary,
+        Deterministic::new(97),
+      )
+    };
+    assert_eq!(
+      build().on::<Device>().device_fallback(),
+      None,
+      "{boundary:?}"
+    );
+    const PATHS: usize = 3 * M;
+    let device = build().on::<Device>().sample_par(PATHS);
+    let host = build().sample_par(PATHS);
+    assert!(
+      device
+        .iter()
+        .all(|[s, v]| s.iter().all(|&x| x > 0.0) && v.iter().all(|&x| x >= 0.0)),
+      "a device spot or variance left its domain ({boundary:?})"
+    );
+    let row =
+      |paths: &[[Array1<f32>; 2]], c: usize| paths.iter().map(|p| p[c].clone()).collect::<Vec<_>>();
+    means_agree(
+      &row(&host, 0),
+      &row(&device, 0),
+      "Bates lognormal terminal spot",
+    );
+    spreads_agree(
+      &row(&host, 0),
+      &row(&device, 0),
+      "Bates lognormal spot spread",
+    );
+    means_agree(
+      &row(&host, 1),
+      &row(&device, 1),
+      "Bates lognormal terminal variance",
+    );
+  }
 }
 
 #[test]

@@ -1,6 +1,12 @@
+use std::any::Any;
+
+use ndarray::Array1;
 use rand::Rng;
 use rand::distr::Distribution;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_distributions::poisson::SimdPoisson;
 
 use crate::traits::FloatExt;
 
@@ -48,6 +54,37 @@ impl<T: FloatExt> LogNormalJump<T> {
   /// `E[e^Z − 1] = e^{nu + omega²/2} − 1`.
   pub fn mean(&self) -> T {
     (self.nu + T::from_f64_fast(0.5) * self.omega * self.omega).exp_m1()
+  }
+
+  /// `law` when it is this law, recognised by type as the device recognises the laws it draws.
+  pub(crate) fn of<D: Any>(law: &D) -> Option<&Self> {
+    (law as &dyn Any).downcast_ref()
+  }
+
+  /// Each step's `ΣZ_j` over a `Poisson(lambda·dt)` count `k`, one `N(k·nu, k·omega²)` draw as the
+  /// kernels draw it; the first entry is zero.
+  pub(crate) fn grid_log_jumps<S: SeedExt>(
+    &self,
+    lambda: T,
+    seed: &S,
+    n: usize,
+    dt: T,
+  ) -> Array1<T> {
+    let mut sums = Array1::<T>::zeros(n);
+    let lambda_dt = (lambda * dt).to_f64().unwrap();
+    if n <= 1 || lambda_dt <= 0.0 {
+      return sums;
+    }
+    let mut count = SimdPoisson::<u32>::new(lambda_dt).seeded(seed);
+    let mut rng = seed.rng();
+    for sum in sums.iter_mut().skip(1) {
+      let k = count.sample();
+      if k > 0 {
+        let k = T::from_usize_(k as usize);
+        *sum = self.nu * k + self.omega * k.sqrt() * self.standard.sample(&mut rng);
+      }
+    }
+    sums
   }
 }
 
