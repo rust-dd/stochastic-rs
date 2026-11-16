@@ -85,12 +85,15 @@ pub(super) fn parameter_boundary_flags(
   }
 }
 
+/// The observed information and the score outer product, in that order.
+type Derivatives = ([[f64; 3]; 3], [[f64; 3]; 3]);
+
 fn numerical_derivatives(
   observations: &[f64],
   measurement_variance: f64,
   parameters: LogRealizedVarianceParameters,
   bounds: LogRealizedVarianceQmlBounds,
-) -> Option<([[f64; 3]; 3], [[f64; 3]; 3])> {
+) -> Option<Derivatives> {
   let point = [parameters.mu, parameters.phi, parameters.q];
   let lower = [bounds.min_mu, bounds.min_phi, bounds.min_q];
   let upper = [bounds.max_mu, bounds.max_phi, bounds.max_q];

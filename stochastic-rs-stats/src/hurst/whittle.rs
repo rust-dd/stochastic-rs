@@ -232,34 +232,6 @@ pub fn whittle_objective(
   }
 }
 
-fn whittle_objective_full(
-  pgram: &[f64],
-  gamma_buf: &[f64],
-  h: f64,
-  v: f64,
-  m: usize,
-  n: usize,
-  psi: f64,
-  k_trunc: usize,
-  j_max: usize,
-) -> f64 {
-  if h <= 0.0 || h >= 1.0 || v <= 0.0 {
-    return f64::INFINITY;
-  }
-  let base = whittle_objective(pgram, h, v, m, n, psi, k_trunc);
-  if !base.is_finite() {
-    return f64::INFINITY;
-  }
-  let a1 = correction_a1(psi, h, v, m);
-  let a2 = correction_a2(gamma_buf, psi, h, v, j_max);
-  let result = base + a1 + a2;
-  if result.is_finite() {
-    result
-  } else {
-    f64::INFINITY
-  }
-}
-
 #[derive(Clone)]
 struct WhittleProblem {
   pgram: Vec<f64>,
@@ -285,17 +257,25 @@ impl WhittleProblem {
   fn eval(&self, params: &[f64]) -> f64 {
     // The spectral parameterization remains restricted during line searches.
     let params = self.clamp(params);
-    whittle_objective_full(
-      &self.pgram,
-      &self.gamma,
-      params[0],
-      params[1],
-      self.m,
-      self.n,
-      self.psi,
-      self.k_trunc,
-      self.j_max,
-    )
+    self.objective(params[0], params[1])
+  }
+
+  fn objective(&self, h: f64, v: f64) -> f64 {
+    if h <= 0.0 || h >= 1.0 || v <= 0.0 {
+      return f64::INFINITY;
+    }
+    let base = whittle_objective(&self.pgram, h, v, self.m, self.n, self.psi, self.k_trunc);
+    if !base.is_finite() {
+      return f64::INFINITY;
+    }
+    let a1 = correction_a1(self.psi, h, v, self.m);
+    let a2 = correction_a2(&self.gamma, self.psi, h, v, self.j_max);
+    let result = base + a1 + a2;
+    if result.is_finite() {
+      result
+    } else {
+      f64::INFINITY
+    }
   }
 }
 

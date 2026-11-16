@@ -57,12 +57,14 @@ impl<T: FloatExt> FractalDimEstimator<T> for Higuchi {
   }
 }
 
+type LogLogFit = (f64, f64, f64, Vec<f64>, Vec<f64>);
+
 /// The log-log fit `(d, intercept, r_squared, log_scales, log_stats)`, `d` its slope; `Err` below
 /// 3 points, for `kmax < 2`, on fewer than two finite scales or a singular regression.
 fn compute_with_diagnostic<T: FloatExt>(
   x: ArrayView1<T>,
   kmax: usize,
-) -> Result<(f64, f64, f64, Vec<f64>, Vec<f64>), StatsError> {
+) -> Result<LogLogFit, StatsError> {
   let n_times = x.len();
   if n_times < 3 {
     return Err(StatsError::InsufficientData {

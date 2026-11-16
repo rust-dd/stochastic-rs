@@ -109,8 +109,8 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
       rows.push(row);
     }
     let inv_t = 1.0 / (nobs - 1) as f64;
-    for k in 0..4 {
-      mean[k] *= inv_t;
+    for entry in &mut mean {
+      *entry *= inv_t;
     }
     (rows, mean)
   };
@@ -157,8 +157,8 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
 
   let identity = {
     let mut w = [[0.0; 4]; 4];
-    for i in 0..4 {
-      w[i][i] = 1.0;
+    for (i, row) in w.iter_mut().enumerate() {
+      row[i] = 1.0;
     }
     w
   };
@@ -180,12 +180,12 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
     }
   }
   let inv_t = 1.0 / rows1.len() as f64;
-  for i in 0..4 {
-    for j in 0..4 {
-      s_hat[i][j] *= inv_t;
+  for (i, row) in s_hat.iter_mut().enumerate() {
+    for entry in row.iter_mut() {
+      *entry *= inv_t;
     }
     // Ridge regularisation guards against a near-singular Ŝ on short series.
-    s_hat[i][i] += 1e-10;
+    row[i] += 1e-10;
   }
   let w2 = invert4(&s_hat).unwrap_or(identity);
 
@@ -214,8 +214,8 @@ fn invert4(m: &[[f64; 4]; 4]) -> Option<[[f64; 4]; 4]> {
   let mut a = *m;
   let mut inv = {
     let mut e = [[0.0; 4]; 4];
-    for i in 0..4 {
-      e[i][i] = 1.0;
+    for (i, row) in e.iter_mut().enumerate() {
+      row[i] = 1.0;
     }
     e
   };

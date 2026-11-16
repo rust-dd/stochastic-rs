@@ -233,7 +233,7 @@ fn detrend_rss(segment: &[f64], order: usize) -> Option<f64> {
   // Build normal equations A·c = b where A_{jk} = Σ t^{j+k}, b_j = Σ y · t^j.
   let mut a = vec![0.0_f64; m * m];
   let mut b = vec![0.0_f64; m];
-  for i in 0..n {
+  for (i, &y) in segment.iter().enumerate() {
     let t = i as f64;
     let mut pow_jk = 1.0_f64;
     let mut pow_row = vec![0.0_f64; 2 * m - 1];
@@ -245,7 +245,7 @@ fn detrend_rss(segment: &[f64], order: usize) -> Option<f64> {
       for k in 0..m {
         a[j * m + k] += pow_row[j + k];
       }
-      b[j] += segment[i] * pow_row[j];
+      b[j] += y * pow_row[j];
     }
   }
   let coeffs = solve_symmetric(&mut a, &mut b, m)?;

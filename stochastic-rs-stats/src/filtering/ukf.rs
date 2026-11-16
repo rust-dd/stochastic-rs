@@ -31,8 +31,29 @@ pub struct UkfState {
   pub covariance: Array2<f64>,
 }
 
-/// One UKF predict-update of `prior`, tuned by `(alpha, beta, kappa)` such as `(1e-3, 2, 0)`; `Err`
-/// on a non-PD prior or a singular innovation covariance, and panics on mismatched shapes.
+/// Sigma-point parameters of [`unscented_kalman_step`], as in Wan & van der Merwe (2000).
+#[derive(Debug, Clone, Copy)]
+pub struct UkfTuning {
+  /// Spread of the sigma points around the mean.
+  pub alpha: f64,
+  /// Prior knowledge of the state's distribution; 2 is optimal for a Gaussian.
+  pub beta: f64,
+  /// Secondary scaling of the sigma points.
+  pub kappa: f64,
+}
+
+impl Default for UkfTuning {
+  fn default() -> Self {
+    Self {
+      alpha: 1e-3,
+      beta: 2.0,
+      kappa: 0.0,
+    }
+  }
+}
+
+/// One UKF predict-update of `prior` with sigma points set by `tuning`; `Err` on a non-PD prior or
+/// a singular innovation covariance, and panics on mismatched shapes.
 pub fn unscented_kalman_step<F, H>(
   prior: &UkfState,
   transition: F,
@@ -40,14 +61,13 @@ pub fn unscented_kalman_step<F, H>(
   process_cov: ArrayView2<f64>,
   measurement_cov: ArrayView2<f64>,
   observation: ArrayView1<f64>,
-  alpha: f64,
-  beta: f64,
-  kappa: f64,
+  tuning: UkfTuning,
 ) -> Result<UkfState, StatsError>
 where
   F: Fn(ArrayView1<f64>) -> Array1<f64>,
   H: Fn(ArrayView1<f64>) -> Array1<f64>,
 {
+  let UkfTuning { alpha, beta, kappa } = tuning;
   let n = prior.mean.len();
   assert_eq!(prior.covariance.dim(), (n, n));
   assert_eq!(process_cov.dim(), (n, n));
@@ -222,9 +242,7 @@ mod tests {
         q.view(),
         r.view(),
         y.view(),
-        0.001,
-        2.0,
-        0.0,
+        UkfTuning::default(),
       )
       .unwrap();
       errs += (state.mean[0] - x_true[t]).abs();
@@ -252,9 +270,7 @@ mod tests {
         q.view(),
         r.view(),
         y.view(),
-        0.001,
-        2.0,
-        0.0,
+        UkfTuning::default(),
       )
       .unwrap();
       assert!(state.mean.iter().all(|v| v.is_finite()));
@@ -279,9 +295,7 @@ mod tests {
       q.view(),
       r.view(),
       y.view(),
-      1e-3,
-      2.0,
-      0.0,
+      UkfTuning::default(),
     )
     .unwrap_err();
     assert_eq!(err, StatsError::Singular("prior covariance"));
@@ -305,9 +319,7 @@ mod tests {
       q.view(),
       r.view(),
       y.view(),
-      1e-3,
-      2.0,
-      0.0,
+      UkfTuning::default(),
     )
     .unwrap_err();
     assert_eq!(err, StatsError::Singular("innovation covariance"));

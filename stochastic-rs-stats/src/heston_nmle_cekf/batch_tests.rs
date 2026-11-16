@@ -328,10 +328,12 @@ fn the_batch_clamp_answers_a_non_finite_step_with_a_numerical_error() {
   }
 }
 
+type ConfigEdit = fn(&mut HestonNmleCekfConfig);
+
 #[test]
 fn the_batch_configuration_panics_in_the_predicate_form() {
   let (prices, _) = simulate_heston_prices(16, 1.0 / 252.0, 61);
-  let cases: [(fn(&mut HestonNmleCekfConfig), &str); 12] = [
+  let cases: [(ConfigEdit, &str); 12] = [
     (
       |c| c.r = f64::NAN,
       "r must satisfy `r.is_finite()`, got r = NaN",

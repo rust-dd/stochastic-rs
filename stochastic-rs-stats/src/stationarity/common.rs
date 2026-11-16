@@ -126,11 +126,10 @@ pub fn ols(y: &[f64], x: &[Vec<f64>]) -> Result<OlsResult, StatsError> {
   })
 }
 
-fn build_adf_design(
-  y: &[f64],
-  lags: usize,
-  trend: Trend,
-) -> Result<(Vec<f64>, Vec<Vec<f64>>, usize), StatsError> {
+/// The regressand, the regressor rows and the column of `y_{t-1}` in them.
+type AdfDesign = (Vec<f64>, Vec<Vec<f64>>, usize);
+
+fn build_adf_design(y: &[f64], lags: usize, trend: Trend) -> Result<AdfDesign, StatsError> {
   validate(y, 3 + lags)?;
   let dy = difference(y);
   let n_dy = dy.len();

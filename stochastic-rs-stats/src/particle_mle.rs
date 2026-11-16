@@ -126,13 +126,13 @@ fn sv_pf_loglik(
     let u0 = f64::sample_uniform_simd(&mut resample_rng) / n as f64;
     let mut cumulative = 0.0;
     let mut idx = 0usize;
-    for k in 0..n {
+    for (k, slot) in resampled.iter_mut().enumerate() {
       let point = u0 + k as f64 / n as f64;
       while idx + 1 < n && cumulative + (log_obs[idx] - max_lo).exp() / total_w < point {
         cumulative += (log_obs[idx] - max_lo).exp() / total_w;
         idx += 1;
       }
-      resampled[k] = h[idx];
+      *slot = h[idx];
     }
     std::mem::swap(&mut h, &mut resampled);
 

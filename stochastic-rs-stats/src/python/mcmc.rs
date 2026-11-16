@@ -3,6 +3,13 @@ use pyo3::prelude::*;
 
 use super::stats_error;
 
+/// The samples, their log targets and the acceptance rate.
+type Chain<'py> = (
+  pyo3::Bound<'py, numpy::PyArray2<f64>>,
+  pyo3::Bound<'py, numpy::PyArray1<f64>>,
+  f64,
+);
+
 /// Random-walk Metropolis-Hastings with a Python-callable log target.
 ///
 /// `log_target` is a Python function `numpy.ndarray -> float` that may return
@@ -20,11 +27,7 @@ pub fn random_walk_metropolis<'py>(
   n_samples: usize,
   burn_in: usize,
   seed: u64,
-) -> PyResult<(
-  pyo3::Bound<'py, numpy::PyArray2<f64>>,
-  pyo3::Bound<'py, numpy::PyArray1<f64>>,
-  f64,
-)> {
+) -> PyResult<Chain<'py>> {
   use ndarray::ArrayView1;
   use numpy::IntoPyArray;
   let init_arr = initial.as_array().to_owned();
