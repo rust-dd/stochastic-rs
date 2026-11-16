@@ -413,3 +413,59 @@ fn the_jump_and_two_factor_calibrators_share_the_shape() {
     assert!(gap.abs() < 5e-2, "tau {tau}: {gap}");
   }
 }
+
+#[test]
+fn the_levy_and_cgmysv_calibrators_take_quotes_and_params() {
+  use stochastic_rs_quant::calibration::cgmysv::CgmysvCalibrator;
+  use stochastic_rs_quant::calibration::levy::LevyCalibrator;
+  use stochastic_rs_quant::calibration::levy::LevyModelType;
+  use stochastic_rs_quant::calibration::levy::LevyParams;
+  use stochastic_rs_quant::pricing::fourier::MertonJdFourier;
+  fn assert_send_sync<T: Send + Sync>() {}
+  assert_send_sync::<LevyCalibrator>();
+  assert_send_sync::<CgmysvCalibrator>();
+  let truth = MertonJdFourier {
+    sigma: 0.15,
+    lambda: 0.4,
+    mu_j: -0.1,
+    sigma_j: 0.2,
+  };
+  let quotes: Vec<OptionQuote> = [0.5, 1.0]
+    .into_iter()
+    .flat_map(|tau| (0..7).map(move |i| (85.0 + 5.0 * i as f64, tau)))
+    .map(|(k, tau)| {
+      let price = truth.price_call(100.0, k, 0.02, 0.0, tau);
+      OptionQuote::new(k, tau, price, OptionType::Call)
+    })
+    .collect();
+  let fit = LevyCalibrator::new(LevyModelType::MertonJd, 100.0, 0.02, 0.0, quotes.clone())
+    .with_start(LevyParams {
+      values: vec![0.2, 0.3, -0.05, 0.15],
+      model_type: LevyModelType::MertonJd,
+    })
+    .calibrate(None)
+    .unwrap();
+  assert!(
+    fit.rmse() < 1e-2 && fit.iterations.is_some(),
+    "rmse {}",
+    fit.rmse()
+  );
+  let gap = fit.to_model().price_call(100.0, 100.0, 0.02, 0.0, 1.0)
+    - truth.price_call(100.0, 100.0, 0.02, 0.0, 1.0);
+  assert!(gap.abs() < 5e-2, "{gap}");
+  let wrong = std::panic::catch_unwind(|| {
+    LevyCalibrator::new(LevyModelType::Kou, 100.0, 0.02, 0.0, Vec::new()).with_start(LevyParams {
+      values: vec![0.2],
+      model_type: LevyModelType::Kou,
+    })
+  });
+  assert!(
+    wrong.is_err(),
+    "a start with the wrong length is a programmer error"
+  );
+  let cg = CgmysvCalibrator::new(100.0, 0.02, 0.0, quotes)
+    .with_options(CalibrationOptions::default().with_max_iterations(5))
+    .calibrate(None)
+    .unwrap();
+  assert!(cg.rmse().is_finite() && cg.iterations.is_some_and(|n| n <= 5));
+}

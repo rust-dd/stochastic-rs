@@ -2,7 +2,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use super::calibration_basic::PyMarketSlice;
-use super::calibration_basic::market_slices;
+use super::calibration_basic::quotes;
 use super::calibration_basic::quotes_as;
 use super::parse_option_type;
 
@@ -132,25 +132,26 @@ impl PyLevyCalibrator {
           )));
         }
       };
-      let inner_slices = market_slices(slices);
       Ok(Self {
-        inner: crate::calibration::levy::LevyCalibrator::new(mt, s, r, q, inner_slices),
+        inner: crate::calibration::levy::LevyCalibrator::new(mt, s, r, q, quotes(slices)),
       })
     })?
   }
 
   /// Returns `(params_vec, converged, loss_rmse, iterations)`.
   fn calibrate(&self) -> PyResult<(Vec<f64>, bool, f64, usize)> {
+    use crate::traits::CalibrationResult;
     use crate::traits::Calibrator;
-    let res = self
+    let fit = self
       .inner
       .calibrate(None)
       .map_err(|e| PyValueError::new_err(format!("Lévy calibration failed: {e}")))?;
+    let iterations = fit.iterations.unwrap_or_default();
     Ok((
-      res.params,
-      res.converged,
-      res.loss.get(crate::LossMetric::Rmse),
-      res.iterations,
+      fit.params.values.clone(),
+      fit.converged,
+      fit.rmse(),
+      iterations,
     ))
   }
 }
@@ -294,19 +295,21 @@ impl PyCgmysvCalibrator {
   /// via Lewis Fourier pricing + Levenberg-Marquardt.
   #[new]
   fn new(slices: Vec<PyMarketSlice>, s: f64, r: f64, q: f64) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| {
-      let inner_slices = market_slices(slices);
-      Self {
-        inner: crate::calibration::cgmysv::CgmysvCalibrator::new(s, r, q, inner_slices),
-      }
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
+      inner: crate::calibration::cgmysv::CgmysvCalibrator::new(s, r, q, quotes(slices)),
     })
   }
 
   /// Returns `(alpha, lambda_plus, lambda_minus, kappa, eta, zeta, rho, v0, converged, loss_rmse, iterations)`.
   #[allow(clippy::type_complexity)]
   fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, f64, f64, f64, bool, f64, usize)> {
-    let res = self.inner.calibrate(None);
-    let p = &res.params;
+    use crate::traits::CalibrationResult;
+    use crate::traits::Calibrator;
+    let fit = self
+      .inner
+      .calibrate(None)
+      .map_err(|e| PyValueError::new_err(format!("CGMYSV calibration failed: {e}")))?;
+    let p = &fit.params;
     Ok((
       p.alpha,
       p.lambda_plus,
@@ -316,9 +319,9 @@ impl PyCgmysvCalibrator {
       p.zeta,
       p.rho,
       p.v0,
-      res.converged,
-      res.loss.get(crate::LossMetric::Rmse),
-      res.iterations,
+      fit.converged,
+      fit.rmse(),
+      fit.iterations.unwrap_or_default(),
     ))
   }
 }

@@ -103,6 +103,7 @@ fn the_trail_opens_at_the_start_and_records_market_minus_model() {
     .with_options(CalibrationOptions::default().with_record_history(true))
     .calibrate(None)
     .unwrap();
+  assert!(fit.history.len() > 1, "{} entries", fit.history.len());
   assert_eq!(fit.history[0].params, START.projected());
   assert_eq!(
     fit.history.last().map(|entry| entry.params),

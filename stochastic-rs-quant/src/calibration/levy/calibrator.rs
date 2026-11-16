@@ -1,6 +1,3 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use ndarray::Array1;
 use ndarray::Array2;
 
@@ -10,164 +7,173 @@ use super::loss::fourier_option_price;
 use super::loss::param_bounds;
 use super::loss::param_count;
 use super::loss::project_params;
-use super::types::LevyCalibrationResult;
 use super::types::LevyModelType;
-use super::types::MarketSlice;
+use super::types::LevyParams;
 use crate::CalibrationLossScore;
-use crate::LossMetric;
+use crate::OptionQuote;
+use crate::QuantError;
+use crate::calibration::Calibrated;
 use crate::calibration::CalibrationHistory;
+use crate::calibration::CalibrationOptions;
 use crate::calibration::least_squares::LeastSquaresProblem;
-use crate::calibration::least_squares::LmOptions;
 use crate::calibration::least_squares::minimize;
+use crate::calibration::quote::assert_spot_and_rates;
+use crate::calibration::quote::validate_quotes;
 
-/// Lévy model calibrator via Fourier pricing + Levenberg-Marquardt.
-///
-/// Source:
-/// - Levenberg (1944), <https://doi.org/10.1090/qam/10666>
-/// - Marquardt (1963), <https://doi.org/10.1137/0111030>
-#[derive(Clone)]
+/// Lévy-model fit to vanilla quotes by Levenberg–Marquardt on a central-difference Jacobian.
+/// Levenberg (1944), DOI 10.1090/qam/10666; Marquardt (1963), DOI 10.1137/0111030.
+#[derive(Clone, Debug)]
 pub struct LevyCalibrator {
-  /// Lévy model to calibrate.
   pub model_type: LevyModelType,
-  /// Spot price.
   pub s: f64,
-  /// Risk-free rate.
   pub r: f64,
-  /// Dividend yield.
   pub q: f64,
-  /// Market data slices (one per maturity).
-  pub market_data: Vec<MarketSlice>,
-  /// If true, record per-iteration calibration history.
-  pub record_history: bool,
-  /// Internal: current parameter vector (set by LM).
-  pub(super) params: Vec<f64>,
-  /// Internal: flattened market prices for the residual vector.
-  pub(super) flat_prices: Vec<f64>,
-  /// Internal: flattened strikes.
-  flat_strikes: Vec<f64>,
-  /// Internal: flattened maturities.
-  flat_t: Vec<f64>,
-  /// Internal: flattened is_call flags.
-  flat_is_call: Vec<bool>,
-  /// Which loss metrics to compute when recording history.
-  pub loss_metrics: &'static [LossMetric],
-  /// History of iterations.
-  calibration_history: Rc<RefCell<Vec<CalibrationHistory<Vec<f64>>>>>,
+  pub quotes: Vec<OptionQuote>,
+  /// `None` starts from the model's default parameters.
+  pub start: Option<LevyParams>,
+  pub options: CalibrationOptions,
 }
 
 impl LevyCalibrator {
-  pub fn new(
-    model_type: LevyModelType,
-    s: f64,
-    r: f64,
-    q: f64,
-    market_data: Vec<MarketSlice>,
-  ) -> Self {
-    let (flat_prices, flat_strikes, flat_t, flat_is_call) = Self::flatten(&market_data);
-    let params = default_params(model_type);
-
+  /// Panics unless `s` is finite and positive and `r`, `q` finite; `calibrate` checks the quotes.
+  pub fn new(model_type: LevyModelType, s: f64, r: f64, q: f64, quotes: Vec<OptionQuote>) -> Self {
+    assert_spot_and_rates(s, r, q);
     Self {
       model_type,
       s,
       r,
       q,
-      market_data,
-      record_history: false,
-      params,
-      flat_prices,
-      flat_strikes,
-      flat_t,
-      flat_is_call,
-      loss_metrics: &LossMetric::ALL,
-      calibration_history: Rc::new(RefCell::new(Vec::new())),
+      quotes,
+      start: None,
+      options: CalibrationOptions::default(),
     }
   }
 
-  fn flatten(market_data: &[MarketSlice]) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<bool>) {
-    let mut prices = Vec::new();
-    let mut strikes = Vec::new();
-    let mut ts = Vec::new();
-    let mut is_call = Vec::new();
-    for slice in market_data {
-      for i in 0..slice.strikes.len() {
-        prices.push(slice.prices[i]);
-        strikes.push(slice.strikes[i]);
-        ts.push(slice.tau);
-        is_call.push(slice.is_call[i]);
-      }
+  /// Panics unless `start.model_type == self.model_type`, `start.values.len()` is the model's
+  /// parameter count and every value is finite; the fit starts from the values clamped to bounds.
+  pub fn with_start(mut self, start: LevyParams) -> Self {
+    if let Some(reason) = start_violation(self.model_type, &start) {
+      panic!("{reason}");
     }
-    (prices, strikes, ts, is_call)
+    self.start = Some(start);
+    self
   }
 
-  pub fn set_record_history(&mut self, record: bool) {
-    self.record_history = record;
+  pub fn with_options(mut self, options: CalibrationOptions) -> Self {
+    self.options = options;
+    self
   }
+}
 
-  pub fn history(&self) -> Vec<CalibrationHistory<Vec<f64>>> {
-    self.calibration_history.borrow().clone()
+/// The first way `start` does not fit `model_type`, in a constructor panic's words.
+fn start_violation(model_type: LevyModelType, start: &LevyParams) -> Option<String> {
+  let count = param_count(model_type);
+  if start.model_type != model_type {
+    Some(format!(
+      "start.model_type must satisfy `start.model_type == {model_type:?}`, got start.model_type = {:?}",
+      start.model_type
+    ))
+  } else if start.values.len() != count {
+    Some(format!(
+      "start.values must satisfy `start.values.len() == {count}`, got start.values.len() = {}",
+      start.values.len()
+    ))
+  } else {
+    let (i, value) = start
+      .values
+      .iter()
+      .enumerate()
+      .find(|(_, v)| !v.is_finite())?;
+    Some(format!(
+      "start.values[{i}] must satisfy `start.values[{i}].is_finite()`, got start.values[{i}] = {value:?}"
+    ))
   }
+}
 
-  pub(super) fn solve(&self, initial_params: Option<Vec<f64>>) -> LevyCalibrationResult {
-    let mut problem = self.clone();
-    if let Some(p) = initial_params {
-      assert_eq!(
-        p.len(),
-        param_count(self.model_type),
-        "initial_params length must match model parameter count"
-      );
-      problem.params = p;
+impl crate::traits::Calibrator for LevyCalibrator {
+  type Params = LevyParams;
+  type Output = Calibrated<LevyParams>;
+  type Error = QuantError;
+
+  /// A start replaces `self.start`; `InvalidInput` unless the one used is of this model, of its
+  /// parameter count and finite.
+  fn calibrate(&self, initial: Option<LevyParams>) -> Result<Calibrated<LevyParams>, QuantError> {
+    validate_quotes(&self.quotes)?;
+    let start = initial.or_else(|| self.start.clone());
+    if let Some(reason) = start
+      .as_ref()
+      .and_then(|start| start_violation(self.model_type, start))
+    {
+      return Err(QuantError::invalid("start", reason));
     }
-    project_params(problem.model_type, &mut problem.params);
-
-    let (result, report) = minimize(
-      problem,
-      LmOptions {
-        pivoted_qr: false,
-        ..LmOptions::default()
-      },
-    );
-
-    let final_params = result.params.clone();
-    let c_model = result.compute_model_prices();
-    let loss =
-      CalibrationLossScore::compute_selected(&result.flat_prices, &c_model, result.loss_metrics);
-
-    LevyCalibrationResult {
-      params: final_params,
+    let mut values = start.map_or_else(|| default_params(self.model_type), |start| start.values);
+    project_params(self.model_type, &mut values);
+    let problem = LevyProblem {
+      calibrator: self,
+      params: values,
+      history: Vec::new(),
+      pending: None,
+    };
+    let (fitted, report) = minimize(problem, self.options.lm(false));
+    let model = fitted.compute_model_prices();
+    let market = self
+      .quotes
+      .iter()
+      .map(|quote| quote.price)
+      .collect::<Vec<_>>();
+    let params = LevyParams {
+      values: fitted.params,
       model_type: self.model_type,
-      loss,
-      converged: report.converged,
-      iterations: report.evaluations,
-    }
+    };
+    Ok(report.calibrated(
+      params,
+      &market,
+      &model,
+      self.options.loss_metrics,
+      fitted.history,
+    ))
+  }
+}
+
+/// One fit: the current point and the trail of its accepted iterates.
+struct LevyProblem<'a> {
+  calibrator: &'a LevyCalibrator,
+  params: Vec<f64>,
+  history: Vec<CalibrationHistory<LevyParams>>,
+  pending: Option<CalibrationHistory<LevyParams>>,
+}
+
+impl LevyProblem<'_> {
+  fn price(&self, params: &[f64], quote: &OptionQuote) -> f64 {
+    let LevyCalibrator {
+      model_type,
+      s,
+      r,
+      q,
+      ..
+    } = *self.calibrator;
+    let (k, tau) = (quote.strike, quote.tau);
+    fourier_option_price(model_type, params, s, k, r, q, tau, quote.option_type)
   }
 
   fn compute_model_prices(&self) -> Vec<f64> {
-    (0..self.flat_prices.len())
-      .map(|i| {
-        fourier_option_price(
-          self.model_type,
-          &self.params,
-          self.s,
-          self.flat_strikes[i],
-          self.r,
-          self.q,
-          self.flat_t[i],
-          self.flat_is_call[i],
-        )
-      })
+    let quotes = self.calibrator.quotes.iter();
+    quotes
+      .map(|quote| self.price(&self.params, quote))
       .collect()
   }
 
   fn effective_params(&self) -> Vec<f64> {
     let mut p = self.params.clone();
-    project_params(self.model_type, &mut p);
+    project_params(self.calibrator.model_type, &mut p);
     p
   }
 
   fn numeric_jacobian(&self) -> Array2<f64> {
-    let n = self.flat_prices.len();
-    let m = param_count(self.model_type);
-    let bounds = param_bounds(self.model_type);
+    let model_type = self.calibrator.model_type;
+    let n = self.calibrator.quotes.len();
+    let m = param_count(model_type);
+    let bounds = param_bounds(model_type);
     let mut j_mat = Array2::zeros((n, m));
     let base = self.effective_params();
 
@@ -179,36 +185,18 @@ impl LevyCalibrator {
       let mut p_minus = base.clone();
       p_plus[col] = (x + h).clamp(bounds[col].0, bounds[col].1);
       p_minus[col] = (x - h).clamp(bounds[col].0, bounds[col].1);
-      project_params(self.model_type, &mut p_plus);
-      project_params(self.model_type, &mut p_minus);
+      project_params(model_type, &mut p_plus);
+      project_params(model_type, &mut p_minus);
 
       let actual_h = p_plus[col] - p_minus[col];
       if actual_h.abs() < EPS {
         continue;
       }
 
-      for i in 0..n {
-        let f_plus = fourier_option_price(
-          self.model_type,
-          &p_plus,
-          self.s,
-          self.flat_strikes[i],
-          self.r,
-          self.q,
-          self.flat_t[i],
-          self.flat_is_call[i],
-        );
-        let f_minus = fourier_option_price(
-          self.model_type,
-          &p_minus,
-          self.s,
-          self.flat_strikes[i],
-          self.r,
-          self.q,
-          self.flat_t[i],
-          self.flat_is_call[i],
-        );
-        // residual = market - model, so d(residual)/dparam = -d(model)/dparam
+      for (i, quote) in self.calibrator.quotes.iter().enumerate() {
+        let f_plus = self.price(&p_plus, quote);
+        let f_minus = self.price(&p_minus, quote);
+        // The residual is market − model, so its derivative is −∂model.
         j_mat[(i, col)] = -(f_plus - f_minus) / actual_h;
       }
     }
@@ -217,10 +205,10 @@ impl LevyCalibrator {
   }
 }
 
-impl LeastSquaresProblem for LevyCalibrator {
+impl LeastSquaresProblem for LevyProblem<'_> {
   fn set_params(&mut self, params: &Array1<f64>) {
     let mut p: Vec<f64> = params.to_vec();
-    project_params(self.model_type, &mut p);
+    project_params(self.calibrator.model_type, &mut p);
     self.params = p;
   }
 
@@ -230,37 +218,32 @@ impl LeastSquaresProblem for LevyCalibrator {
 
   fn residuals(&mut self) -> Option<Array1<f64>> {
     let c_model = self.compute_model_prices();
-    let n = self.flat_prices.len();
-
-    if self.record_history {
-      let loss =
-        CalibrationLossScore::compute_selected(&self.flat_prices, &c_model, self.loss_metrics);
-      let residuals = Array1::from_iter(
-        self
-          .flat_prices
-          .iter()
-          .zip(c_model.iter())
-          .map(|(m, d)| m - d),
-      );
-      let mut history = self.calibration_history.borrow_mut();
-      let iteration = history.len();
-      history.push(CalibrationHistory::new(
-        iteration,
-        self.params.clone(),
-        residuals,
-        loss,
-      ));
+    let quotes = self.calibrator.quotes.iter().zip(&c_model);
+    let residuals = Array1::from_iter(quotes.map(|(quote, model)| quote.price - model));
+    let options = &self.calibrator.options;
+    if options.record_history {
+      let market = self
+        .calibrator
+        .quotes
+        .iter()
+        .map(|quote| quote.price)
+        .collect::<Vec<_>>();
+      let loss = CalibrationLossScore::compute_selected(&market, &c_model, options.loss_metrics);
+      let params = LevyParams {
+        values: self.params.clone(),
+        model_type: self.calibrator.model_type,
+      };
+      let entry = CalibrationHistory::new(self.history.len(), params, residuals.clone(), loss);
+      self.pending = Some(entry);
     }
-
-    let mut residuals = Array1::zeros(n);
-    for i in 0..n {
-      residuals[i] = self.flat_prices[i] - c_model[i];
-    }
-
     Some(residuals)
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
     Some(self.numeric_jacobian())
+  }
+
+  fn accept(&mut self) {
+    self.history.extend(self.pending.take());
   }
 }

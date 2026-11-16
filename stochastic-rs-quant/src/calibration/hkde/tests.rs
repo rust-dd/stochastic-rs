@@ -178,6 +178,7 @@ fn the_trail_records_weighted_market_minus_model() {
         .with_max_iterations(6),
     );
   let fit = calibrator.calibrate(None).unwrap();
+  assert!(fit.history.len() > 1, "{} entries", fit.history.len());
   assert_eq!(fit.history[0].params, START.projected());
   assert_eq!(
     fit.history.last().map(|entry| entry.params),

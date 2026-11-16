@@ -204,9 +204,10 @@ fn build_surface_from_calibration_svj_multi_maturity() {
 
 #[test]
 fn build_surface_from_calibration_levy_vg() {
+  use crate::OptionQuote;
+  use crate::OptionType;
   use crate::calibration::levy::LevyCalibrator;
   use crate::calibration::levy::LevyModelType;
-  use crate::calibration::levy::MarketSlice;
   use crate::pricing::fourier::VarianceGammaFourier;
   use crate::traits::ModelPricer;
 
@@ -215,25 +216,17 @@ fn build_surface_from_calibration_levy_vg() {
     theta: -0.14,
     nu: 0.2,
   };
-  let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
-
-  let slices: Vec<MarketSlice> = [0.5, 1.0]
-    .iter()
-    .map(|&tau| {
-      let prices: Vec<f64> = strikes
-        .iter()
-        .map(|&k| true_model.price_call(100.0, k, 0.05, 0.0, tau))
-        .collect();
-      MarketSlice {
-        strikes: strikes.clone(),
-        prices,
-        is_call: vec![true; strikes.len()],
-        tau,
-      }
+  let strikes = [90.0, 95.0, 100.0, 105.0, 110.0];
+  let quotes = [0.5, 1.0]
+    .into_iter()
+    .flat_map(|tau| strikes.map(|k| (k, tau)))
+    .map(|(k, tau)| {
+      let price = true_model.price_call(100.0, k, 0.05, 0.0, tau);
+      OptionQuote::new(k, tau, price, OptionType::Call)
     })
     .collect();
 
-  let cal = LevyCalibrator::new(LevyModelType::VarianceGamma, 100.0, 0.05, 0.0, slices);
+  let cal = LevyCalibrator::new(LevyModelType::VarianceGamma, 100.0, 0.05, 0.0, quotes);
   let result = cal.calibrate(None).unwrap();
 
   let surface = build_surface_from_calibration(

@@ -113,17 +113,14 @@
 //! ### Lévy models (Vg, Nig, Cgmy, Merton, Kou)
 //!
 //! ```
-//! use stochastic_rs_quant::calibration::{LevyCalibrator, LevyModelType, MarketSlice};
+//! use stochastic_rs_quant::{OptionQuote, OptionType};
+//! use stochastic_rs_quant::calibration::{LevyCalibrator, LevyModelType};
 //! use stochastic_rs_quant::traits::Calibrator;
 //! use stochastic_rs_quant::vol_surface::build_surface_from_calibration;
 //!
-//! let slice = MarketSlice {
-//!     strikes: vec![90.0, 95.0, 100.0, 105.0, 110.0],
-//!     prices: vec![12.5, 9.0, 6.2, 4.0, 2.3],
-//!     is_call: vec![true; 5],
-//!     tau: 0.5,
-//! };
-//! let cal = LevyCalibrator::new(LevyModelType::VarianceGamma, 100.0, 0.03, 0.01, vec![slice]);
+//! let quotes = [(90.0, 12.5), (95.0, 9.0), (100.0, 6.2), (105.0, 4.0), (110.0, 2.3)]
+//!     .map(|(k, price)| OptionQuote::new(k, 0.5, price, OptionType::Call));
+//! let cal = LevyCalibrator::new(LevyModelType::VarianceGamma, 100.0, 0.03, 0.01, quotes.to_vec());
 //! let result = cal.calibrate(None).unwrap();
 //! let surface = build_surface_from_calibration(&result, 100.0, 0.03, 0.01,
 //!     &[90., 95., 100., 105., 110.], &[0.5]);
