@@ -72,6 +72,17 @@ pub(crate) fn validate_quotes(quotes: &[OptionQuote]) -> Result<(), QuantError> 
     .try_for_each(|(index, quote)| quote.validate(index))
 }
 
+/// `InvalidInput { what: "start" }` for the first field that is not finite.
+pub(crate) fn check_finite_start(fields: &[(&str, f64)]) -> Result<(), QuantError> {
+  match fields.iter().find(|(_, value)| !value.is_finite()) {
+    Some((name, value)) => Err(QuantError::invalid(
+      "start",
+      format!("{name} must satisfy `{name}.is_finite()`, got {name} = {value:?}"),
+    )),
+    None => Ok(()),
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

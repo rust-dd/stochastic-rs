@@ -137,3 +137,60 @@ fn g2pp_reprices_synthetic_quotes() {
   assert_eq!(model.rho, result.params.rho);
   assert!(result.params.rho.abs() < 1.0);
 }
+
+/// The weights shape the objective only; `rmse()` and `max_error` are price errors as quoted.
+#[test]
+fn the_tree_calibrators_report_unweighted_errors() {
+  let curve = flat_curve();
+  let mut quotes = grid(&[(1.0, 2.0), (2.0, 2.0), (1.0, 3.0)]);
+  for (quote, (weight, vol)) in quotes
+    .iter_mut()
+    .zip([(4.0, 0.22), (0.25, 0.2), (1.0, 0.21)])
+  {
+    quote.weight = Some(weight);
+    quote.black_vol = vol;
+  }
+  let plain: Vec<_> = quotes
+    .iter()
+    .map(|quote| SwaptionQuote {
+      weight: None,
+      ..quote.clone()
+    })
+    .collect();
+  let options = CalibrationOptions::default().with_max_iterations(60);
+  let unweighted = |market: &[f64], model: &[f64]| {
+    let worst = market.iter().zip(model).map(|(m, q)| (m - q).abs());
+    (crate::loss::rmse(market, model), worst.fold(0.0, f64::max))
+  };
+
+  let bk_start = BlackKarasinskiParams {
+    mean_reversion: 0.1,
+    sigma: 0.2,
+    initial_rate: 0.03,
+    long_run_rate: 0.03,
+  };
+  let bk = BlackKarasinskiSwaptionCalibrator::new(&quotes, &curve, 1.0, 8, bk_start)
+    .with_options(options.clone());
+  let fit = bk.calibrate(None).unwrap();
+  let (market, model) = BlackKarasinskiSwaptionCalibrator::new(&plain, &curve, 1.0, 8, bk_start)
+    .cost(&bk_start, None)
+    .price_series(fit.params.mean_reversion, fit.params.sigma);
+  let (rmse, worst) = unweighted(&market, &model);
+  assert_eq!((fit.rmse(), fit.max_error), (rmse, Some(worst)));
+
+  let g2_start = G2ppParams {
+    mean_reversion_x: 0.4,
+    mean_reversion_y: 0.08,
+    sigma_x: 0.012,
+    sigma_y: 0.005,
+    rho: -0.5,
+    phi: 0.03,
+  };
+  let g2 = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 4, g2_start).with_options(options);
+  let fit = g2.calibrate(None).unwrap();
+  let (market, model) = G2ppSwaptionCalibrator::new(&plain, &curve, 1.0, 4, g2_start)
+    .cost(0.03, None)
+    .price_series(&fit.params);
+  let (rmse, worst) = unweighted(&market, &model);
+  assert_eq!((fit.rmse(), fit.max_error), (rmse, Some(worst)));
+}

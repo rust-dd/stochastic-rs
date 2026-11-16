@@ -20,6 +20,7 @@ use crate::calibration::Calibrated;
 use crate::calibration::CalibrationOptions;
 use crate::calibration::Regularization;
 use crate::calibration::nelder_mead_fit;
+use crate::calibration::quote::check_finite_start;
 use crate::curves::DiscountCurve;
 use crate::instruments::option::caplet::black_forward_caplet;
 use crate::instruments::option::jamshidian::price_jamshidian_hull_white;
@@ -76,15 +77,16 @@ pub(crate) fn validate_swaption_quotes(quotes: &[SwaptionQuote]) -> Result<(), Q
   Ok(())
 }
 
-/// `InvalidInput { what: "start" }` for the first field that is not finite.
-pub(crate) fn check_finite_start(fields: &[(&str, f64)]) -> Result<(), QuantError> {
-  match fields.iter().find(|(_, value)| !value.is_finite()) {
-    Some((name, value)) => Err(QuantError::invalid(
-      "start",
-      format!("{name} must satisfy `{name}.is_finite()`, got {name} = {value:?}"),
-    )),
-    None => Ok(()),
-  }
+/// `Σ (wᵢ·modelᵢ − wᵢ·marketᵢ)²`: the swaption objective, while `rmse()` stays on the raw prices.
+pub(crate) fn weighted_sse(quotes: &[SwaptionQuote], market: &[f64], model: &[f64]) -> f64 {
+  quotes
+    .iter()
+    .zip(market.iter().zip(model))
+    .map(|(quote, (q, m))| {
+      let w = quote.weight.unwrap_or(1.0);
+      (w * m - w * q).powi(2)
+    })
+    .sum()
 }
 
 /// Hull–White parameters; the tree inputs only shape the model `to_short_rate_model` returns.
@@ -256,9 +258,8 @@ impl HullWhiteCost {
         &curve,
       );
 
-      let w = quote.weight.unwrap_or(1.0);
-      model_prices.push(w * model_price);
-      market_prices.push(w * market_price);
+      model_prices.push(model_price);
+      market_prices.push(market_price);
     }
     (market_prices, model_prices)
   }
@@ -273,11 +274,7 @@ impl CostFunction for HullWhiteCost {
     let a = x[0].abs().max(1e-6);
     let sigma = x[1].abs().max(1e-6);
     let (market_prices, model_prices) = self.price_series(a, sigma);
-    let loss: f64 = model_prices
-      .iter()
-      .zip(market_prices.iter())
-      .map(|(m, q)| (m - q).powi(2))
-      .sum();
+    let loss = weighted_sse(&self.quotes, &market_prices, &model_prices);
     let penalty = self
       .regularization
       .as_ref()
@@ -408,6 +405,33 @@ mod tests {
       (recorded.iterations.unwrap(), recorded.params)
     );
     assert_eq!(last.loss.get(crate::LossMetric::Rmse), recorded.rmse());
+  }
+
+  #[test]
+  fn rmse_and_max_error_are_unweighted_price_errors() {
+    let (curve, mut quotes) = (curve(), quotes());
+    quotes[0].weight = Some(4.0);
+    quotes[1].weight = Some(0.25);
+    let fit = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, START)
+      .calibrate(None)
+      .unwrap();
+    let unweighted: Vec<_> = quotes
+      .iter()
+      .map(|quote| SwaptionQuote {
+        weight: None,
+        ..quote.clone()
+      })
+      .collect();
+    let cost = HullWhiteCost {
+      quotes: unweighted,
+      curve_points: serialize_curve(&curve),
+      notional: 1.0,
+      regularization: None,
+    };
+    let (market, model) = cost.price_series(fit.params.mean_reversion, fit.params.sigma);
+    assert_eq!(fit.rmse(), crate::loss::rmse(&market, &model));
+    let worst = market.iter().zip(&model).map(|(m, q)| (m - q).abs());
+    assert_eq!(fit.max_error, Some(worst.fold(0.0, f64::max)));
   }
 
   #[test]
