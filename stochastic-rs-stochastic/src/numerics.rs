@@ -1,14 +1,6 @@
 //! # Numerical utilities
 //!
-//! Curated namespace re-exporting the numerical-utility types used across
-//! stochastic process simulation: Itô calculus helpers, abstract Gaussian
-//! spaces, low-discrepancy sequences, Multi-Level Monte Carlo,
-//! Longstaff-Schwartz, and Riemann-Liouville kernel / Markov-lift primitives.
-//!
-//! These items stay at their defining paths ([`crate::ito`], [`crate::isonormal`], [`crate::mc`],
-//! [`crate::rough`], and `stochastic_rs_distributions::qmc` for the sequences); this module groups them.
-//!
-//! # Example
+//! The Itô, isonormal, Monte Carlo and low-discrepancy helpers, each also at its defining path.
 //!
 //! ```
 //! use stochastic_rs_stochastic::numerics::{HaltonSeq, Mlmc, SobolSeq};
@@ -41,7 +33,5 @@ pub use crate::mc::brownian_bridge_qmc::BrownianBridgeQmc;
 pub use crate::mc::lsm::Lsm;
 pub use crate::mc::mlmc::Mlmc;
 pub use crate::mc::mlmc::MlmcResult;
-pub use crate::rough::kernel::RlKernel;
-pub use crate::rough::markov_lift::MarkovLift;
 pub use stochastic_rs_distributions::qmc::HaltonSeq;
 pub use stochastic_rs_distributions::qmc::SobolSeq;

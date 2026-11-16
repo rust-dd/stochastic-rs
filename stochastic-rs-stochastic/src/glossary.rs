@@ -32,7 +32,7 @@
 //! | Carrying-capacity **level** of a logistic-growth diffusion (θ in `κ(θ−X)X`), paired with a speed field named `kappa` rather than `theta` — the same naming inversion as the row above, for an unrelated (density-dependent, not CIR-linear) drift shape | [`FellerLogistic`](crate::diffusion::feller::FellerLogistic) (`theta`) |
 //! | Long-run **variance level** (θ in the model's own SDE) | [`Heston`](crate::volatility::heston::Heston), [`RlHeston`](crate::rough::RlHeston), and the wider Heston family (`theta`) |
 //! | Time-dependent additive drift **target function** θ(t), fitted to the initial term structure | [`HullWhite`](crate::interest::hull_white::HullWhite), [`HullWhite2F`](crate::interest::hull_white_2f::HullWhite2F), [`BlackKarasinski`](crate::interest::black_karasinski::BlackKarasinski) (`theta: Fn1D<T>`); the same role is played by [`Adg`](crate::interest::adg::Adg)'s `k` field, which is named differently |
-//! | Jump-size **compensator** (κ/E\[Y−1\] in the model's own SDE), subtracted from the drift, scaled by `lambda` | [`Merton`](crate::jump::merton::Merton), [`Kou`](crate::jump::kou::Kou) (`theta`); the same role is played by [`Bates1996`](crate::jump::bates::Bates1996)'s `k` field |
+//! | Jump-size **compensator** (κ/E\[Y−1\] in the model's own SDE), subtracted from the drift, scaled by `lambda` | [`Merton`](crate::jump::merton::Merton), [`Kou`](crate::jump::kou::Kou) (`theta`); the same role is played by [`Bates`](crate::jump::bates::Bates)'s `k` field |
 //! | Skewness-in-subordinated-time (β in the model's own SDE) — **not** mean reversion; NIG has none | [`Nig`](crate::jump::nig::Nig) (`theta`) |
 //!
 //! `Ckls`'s `theta1..theta4` are a separate, non-colliding convention: the
@@ -47,7 +47,7 @@
 //! | Mean-reversion speed | [`HullWhite`](crate::interest::hull_white::HullWhite) (`alpha`) |
 //! | Lévy tail/stability index Y ∈ (0, 2) | [`Cgmy`](crate::jump::cgmy::Cgmy), [`Cts`](crate::jump::cts::Cts), [`Rdts`](crate::jump::rdts::Rdts), `KoBoL` (`alpha`) |
 //! | Drift rate μ (despite the name) | [`Merton`](crate::jump::merton::Merton), [`Kou`](crate::jump::kou::Kou) (`alpha`) |
-//! | Linear-drift **intercept** (κθ combined) in a reparametrized `drift = alpha − beta·X` form | [`Bates1996`](crate::jump::bates::Bates1996)'s variance factor, [`FJacobi`](crate::diffusion::fjacobi::FJacobi), [`Jacobi`](crate::diffusion::jacobi::Jacobi) (`alpha`) |
+//! | Linear-drift **intercept** (κθ combined) in a reparametrized `drift = alpha − beta·X` form | [`Bates`](crate::jump::bates::Bates)'s variance factor, [`FJacobi`](crate::diffusion::fjacobi::FJacobi), [`Jacobi`](crate::diffusion::jacobi::Jacobi) (`alpha`) |
 //! | Constant (zeroth-order) term of a polynomial drift | [`Quadratic`](crate::diffusion::quadratic::Quadratic) (`alpha`) |
 //! | Self-excitation jump magnitude added to the intensity on each event | [`Hawkes`](crate::process::hawkes::Hawkes), [`MultivariateHawkes`](crate::process::multivariate_hawkes::MultivariateHawkes), [`HawkesJD`](crate::jump::hawkes_jd::HawkesJD) (`alpha`) |
 //! | Affine diffusion-loading coefficient (multiplies a state variable inside a shared volatility loading) | [`DuffieKanJumpExp`](crate::interest::duffie_kan_jump_exp::DuffieKanJumpExp) (`alpha`) |
@@ -78,7 +78,7 @@
 //! kernel-generic engines taking an arbitrary $(t,x)\mapsto T$ callable, not
 //! a fixed named model with a literature-pinned Greek letter for that slot,
 //! so the fields are spelled out in English (`drift`, `diffusion`) instead;
-//! [`MarkovLift`](crate::rough::markov_lift::MarkovLift), the same engine's
+//! [`MarkovLift`](crate::rough::MarkovLift), the same engine's
 //! $(x)$-only-coefficient, `RlKernel`-specialised predecessor, took the same
 //! approach with its `f`/`g` closure parameters.
 //!
@@ -88,7 +88,7 @@
 //! |---|---|
 //! | Vol-of-vol (diffusion scale of a stochastic-volatility state) | [`Sabr`](crate::volatility::sabr::Sabr), [`MultifactorSabr`](crate::volatility::multifactor_sabr::MultifactorSabr), [`RlFOU`](crate::rough::RlFOU), [`RlHeston`](crate::rough::RlHeston), [`Bergomi`](crate::volatility::bergomi::Bergomi), [`RoughBergomi`](crate::volatility::rbergomi::RoughBergomi), [`RoughHeston`](crate::volatility::fheston::RoughHeston) (`nu`) |
 //! | Variance rate of a gamma time-change (kurtosis/tail-thickness control) — not a volatility at all | [`Vg`](crate::jump::vg::Vg) (`nu`) |
-//! | Mean of a log-jump-size distribution (a **location**, not a scale) | [`MjdLog`](crate::jump::mjd_log::MjdLog), [`BatesSvj`](crate::volatility::bates_svj::BatesSvj), [`FBatesSvj`](crate::volatility::fbates_svj::FBatesSvj) (`nu`) |
+//! | Mean of a log-jump-size distribution (a **location**, not a scale) | [`MjdLog`](crate::jump::mjd_log::MjdLog), [`LogNormalJump`](crate::jump::bates::LogNormalJump), [`FBatesSvj`](crate::volatility::fbates_svj::FBatesSvj) (`nu`) |
 //! | Jump (Poisson) intensity — an arrival rate, despite the letter this glossary's λ table otherwise reserves for that role | [`Bns`](crate::volatility::bns::Bns) (`nu`) |
 //!
 //! ## ξ (xi)
@@ -102,7 +102,7 @@
 //! | Role | Models (field) |
 //! |---|---|
 //! | CEV exponent (elasticity of the state's own volatility) | [`Sabr`](crate::volatility::sabr::Sabr), [`MultifactorSabr`](crate::volatility::multifactor_sabr::MultifactorSabr) (`beta`) |
-//! | Linear-drift **slope** (mean-reversion speed κ), paired with `alpha`'s intercept role | [`Bates1996`](crate::jump::bates::Bates1996)'s variance factor, [`FJacobi`](crate::diffusion::fjacobi::FJacobi), [`Jacobi`](crate::diffusion::jacobi::Jacobi) (`beta`) |
+//! | Linear-drift **slope** (mean-reversion speed κ), paired with `alpha`'s intercept role | [`Bates`](crate::jump::bates::Bates)'s variance factor, [`FJacobi`](crate::diffusion::fjacobi::FJacobi), [`Jacobi`](crate::diffusion::jacobi::Jacobi) (`beta`) |
 //! | Linear coefficient of a polynomial drift | [`Quadratic`](crate::diffusion::quadratic::Quadratic) (`beta`) |
 //! | Excitation-kernel decay rate (how fast a jump's influence fades) | [`Hawkes`](crate::process::hawkes::Hawkes), [`MultivariateHawkes`](crate::process::multivariate_hawkes::MultivariateHawkes) (`beta`) |
 //! | Displacement / shift applied to the driven state before GBM-style dynamics act on it (`S_t + beta`) | [`DisplacedDiffusion`](crate::diffusion::displaced_diffusion::DisplacedDiffusion) (`beta`) |
@@ -130,7 +130,7 @@
 //!
 //! | Role | Models (field) |
 //! |---|---|
-//! | Jump (Poisson) intensity — arrival rate | [`Merton`](crate::jump::merton::Merton), [`Kou`](crate::jump::kou::Kou), [`Bates1996`](crate::jump::bates::Bates1996), [`MjdLog`](crate::jump::mjd_log::MjdLog), [`JumpFou`](crate::jump::jump_fou::JumpFou), [`LevyDiffusion`](crate::jump::levy_diffusion::LevyDiffusion) (`lambda`) |
+//! | Jump (Poisson) intensity — arrival rate | [`Merton`](crate::jump::merton::Merton), [`Kou`](crate::jump::kou::Kou), [`Bates`](crate::jump::bates::Bates), [`MjdLog`](crate::jump::mjd_log::MjdLog), [`JumpFou`](crate::jump::jump_fou::JumpFou), [`LevyDiffusion`](crate::jump::levy_diffusion::LevyDiffusion) (`lambda`) |
 //! | Lévy-density tempering rate (`lambda_plus`/`lambda_minus`, i.e. G/M) — an exponential decay rate of the jump-size density, not an arrival rate | [`Cgmy`](crate::jump::cgmy::Cgmy), [`Cts`](crate::jump::cts::Cts), [`Rdts`](crate::jump::rdts::Rdts), `KoBoL`, [`BilateralGamma`](crate::jump::bilateral_gamma::BilateralGamma) (`lambda_plus`/`lambda_minus` or `lambda_p`/`lambda_m`) |
 //!
 //! In the Hawkes family, `lambda_t` is the modeled self-exciting intensity
@@ -142,14 +142,14 @@
 //! | Role | Models (field) |
 //! |---|---|
 //! | Mean-reversion speed | [`Cir`](crate::diffusion::cir::Cir) (as `theta`), [`CirPlusPlus`](crate::interest::cir_pp::CirPlusPlus), [`FellerLogistic`](crate::diffusion::feller::FellerLogistic), [`ThreeHalf`](crate::diffusion::three_half::ThreeHalf), [`Pearson`](crate::diffusion::pearson::Pearson) (`kappa`) |
-//! | Jump-size compensator (E\[Y−1\]-like term), unrelated to speed | [`Bates1996`](crate::jump::bates::Bates1996) (`k`) |
+//! | Jump-size compensator (E\[Y−1\]-like term), unrelated to speed | [`Bates`](crate::jump::bates::Bates) (`k`) |
 //! | Variance rate of an inverse-Gaussian subordinator (dispersion control, akin to `nu` in [`Vg`](crate::jump::vg::Vg)) — **not** a mean-reversion speed, despite the letter; NIG has no mean reversion | [`Nig`](crate::jump::nig::Nig) (`kappa`) |
 //!
 //! ## ρ (rho)
 //!
 //! | Role | Models (field) |
 //! |---|---|
-//! | Instantaneous correlation between two driving Brownian motions (an input constant) | [`Heston`](crate::volatility::heston::Heston), [`Sabr`](crate::volatility::sabr::Sabr), [`Bates1996`](crate::jump::bates::Bates1996), [`HullWhite2F`](crate::interest::hull_white_2f::HullWhite2F), [`DuffieKanJumpExp`](crate::interest::duffie_kan_jump_exp::DuffieKanJumpExp) (`rho`) |
+//! | Instantaneous correlation between two driving Brownian motions (an input constant) | [`Heston`](crate::volatility::heston::Heston), [`Sabr`](crate::volatility::sabr::Sabr), [`Bates`](crate::jump::bates::Bates), [`HullWhite2F`](crate::interest::hull_white_2f::HullWhite2F), [`DuffieKanJumpExp`](crate::interest::duffie_kan_jump_exp::DuffieKanJumpExp) (`rho`) |
 //! | The modeled correlation **process** itself (an output, not an input) | [`TransformedOU`](crate::correlation::TransformedOU), [`VanEmmerich`](crate::correlation::VanEmmerich), [`TengSCP`](crate::correlation::TengSCP) (implicit; their `rho0` is the level it starts from / reverts to) |
 //!
 //! ## φ (phi)
@@ -165,7 +165,7 @@
 //! | Field | Initial value of |
 //! |---|---|
 //! | `x0` | The generic primary state variable — used across most non-financially-typed processes; [`Gbm`](crate::diffusion::gbm::Gbm) is the financially-typed exception, spelling its asset-price initial value `x0` rather than `s0` |
-//! | `s0` | Spot / asset price ([`Heston`](crate::volatility::heston::Heston), [`Bates1996`](crate::jump::bates::Bates1996)) |
+//! | `s0` | Spot / asset price ([`Heston`](crate::volatility::heston::Heston), [`Bates`](crate::jump::bates::Bates)) |
 //! | `v0` | Variance / volatility state ([`Heston`](crate::volatility::heston::Heston), [`Bergomi`](crate::volatility::bergomi::Bergomi)) |
 //! | `f0` | Forward rate/price, for models built around a forward rather than a spot ([`Sabr`](crate::volatility::sabr::Sabr), [`MultifactorSabr`](crate::volatility::multifactor_sabr::MultifactorSabr)) |
 //! | `alpha0` | Volatility state, specifically in [`Sabr`](crate::volatility::sabr::Sabr) / [`MultifactorSabr`](crate::volatility::multifactor_sabr::MultifactorSabr) — named for the module's own α_t, not `v0`, after the Task 3 rename that resolved the `v0`-really-means-α₀ contradiction |

@@ -1,6 +1,6 @@
 //! `volatility/` slice of the exhaustive reproducibility guard — see
 //! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 132-type list, and shared methodology notes.
+//! derivation of the 130-type list, and shared methodology notes.
 //! `RoughHeston::new` does not accept `rho` — matching this crate's own
 //! `deterministic_parallelism_bates_rough_heston.rs`, the guard builds it
 //! then sets the public field directly before sampling.
@@ -9,7 +9,6 @@ use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::Expr;
 use stochastic_rs_stochastic::volatility::HestonPow;
-use stochastic_rs_stochastic::volatility::bates_svj::BatesSvj;
 use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
 use stochastic_rs_stochastic::volatility::bns::Bns;
 use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
@@ -30,23 +29,6 @@ use crate::common::J;
 use crate::common::LAMBDA;
 use crate::common::N;
 use crate::common::guard;
-
-guard!(bates_svj, "BatesSvj", |s| BatesSvj::new(
-  Drift::Mu(0.05),
-  0.5,
-  -0.1,
-  0.2,
-  0.04,
-  1.5,
-  0.3,
-  -0.6,
-  N,
-  100.0,
-  0.04,
-  Some(1.0),
-  VarianceBoundary::Floor,
-  s
-));
 
 guard!(bergomi, "Bergomi", |s| Bergomi::new(
   0.4,

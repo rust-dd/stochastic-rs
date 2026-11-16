@@ -14,7 +14,7 @@
 //! audit found cross-implementation comparisons to be its highest-yield test
 //! class, and a fast $O(nN')$ path with no independent oracle is exactly how
 //! a subtle exponential-sum-fit or Markov-state-recursion bug would survive
-//! undetected. It also backs [`Volterra`](crate::process::volterra::Volterra)'s
+//! undetected. It also backs [`Volterra`](crate::volterra::Volterra)'s
 //! fallback for kernels [`VolterraLift`](super::lift::VolterraLift) cannot
 //! represent (e.g. Hurst $H \ge 1/2$, where [`RlKernel`](crate::rough::kernel::RlKernel)
 //! does not apply) — so it is load-bearing production code, not test-only.

@@ -9,7 +9,6 @@ use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PoissonSubordinator;
 use stochastic_rs_stochastic::traits::PathSampler;
 use stochastic_rs_stochastic::traits::ProcessExt;
-use stochastic_rs_stochastic::volatility::bates_svj::BatesSvj;
 use stochastic_rs_stochastic::volatility::fbates_svj::FBatesSvj;
 use stochastic_rs_stochastic::volatility::hkde::Hkde;
 
@@ -125,41 +124,6 @@ fn mjd_log_is_pinned() {
       4635851941351680734,
       4635437851904418731,
       4635525806424921260,
-    ],
-  );
-}
-
-#[test]
-fn bates_svj_is_pinned() {
-  let [s, _] = BatesSvj::new(
-    Drift::Mu(0.05),
-    LAMBDA,
-    -0.1,
-    0.2,
-    0.04,
-    1.5,
-    0.3,
-    -0.6,
-    N,
-    100.0,
-    0.04,
-    Some(1.0),
-    VarianceBoundary::Floor,
-    Deterministic::new(SEED),
-  )
-  .sample();
-  pin(
-    "BatesSvj",
-    &s,
-    [
-      4636737291354636288,
-      4637504339693668260,
-      4636306926157148593,
-      4636825074432907165,
-      4634842882100959005,
-      4634841034470317663,
-      4635450031313721238,
-      4636081128162138464,
     ],
   );
 }

@@ -69,7 +69,3 @@ impl<T: FloatExt> MarkovLift<T> {
       .simulate_batch_par(x0, |_t, x| f(x), |_t, x| g(x), dw)
   }
 }
-
-/// Path block size for [`MarkovLift::simulate_batch`]. Re-exported from
-/// [`VolterraLift`]'s own tiling constant, which now owns the definition.
-pub use crate::volterra::lift::BATCH_TILE;

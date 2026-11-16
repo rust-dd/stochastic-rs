@@ -188,7 +188,7 @@ where
 /// explicitly over `lambda`/`distribution`/`seed` instead of reading them off
 /// `&self` — the multiplicative-jump counterpart of [`grid_increments`]
 /// above, for the same reason: a caller such as
-/// [`Bates1996`](crate::jump::bates::Bates1996)'s `sampler()` must drive this
+/// [`Bates`](crate::jump::bates::Bates)'s `sampler()` must drive this
 /// computation from its own single-source-of-truth `self.lambda` and a
 /// pre-derived, chunk-local seed rather than `self.poisson.lambda`/a shared
 /// `&self.cpoisson`. Behavior-identical to, and the sole body of,

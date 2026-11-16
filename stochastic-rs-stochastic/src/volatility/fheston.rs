@@ -264,20 +264,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler, matching
-  /// `Cgns`'s and `Bates1996`'s own `sampler()` shape. **Correction to an
-  /// earlier verdict:** this was once documented as a full exception —
-  /// "correlated-Gaussian source ignores `self.seed` entirely" — on the
-  /// grounds that `cgns` was built fresh with the literal `Unseeded` and
-  /// consumed via a bare `.sample()`. That reasoning was wrong: `Cgns::
-  /// sample_impl<S2: SeedExt>(&self, seed: &S2)` is generic over an external
-  /// seed, exactly like every sibling `cgns`-holding type
-  /// (`DuffieKan`/`BatesSvj`/`DoubleHeston`/`Hkde`) already uses — the bare
-  /// `.sample()` was a plain bug, not a structural limitation. Fixed the
-  /// same way `Bates1996`'s identical bug was fixed. Unlike `Bates1996`,
-  /// `RoughHeston` has no jump component, so this fix makes the type
-  /// **fully** seed-reproducible, not merely partially — it carries no
-  /// exception at all now.
+  /// Derives `self.seed` into the sampler, which drives `cgns` through `sample_impl`, so every
+  /// draw of the path follows the seed.
   fn sampler(&self) -> RoughHestonSampler<T, S> {
     let n_steps = self.n.saturating_sub(1);
     let dt = if n_steps > 0 {
@@ -285,9 +273,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     } else {
       T::zero()
     };
-    // `cgns`'s own seed stays the dead `Unseeded` default — the sampler
-    // drives it via `sample_impl(&self.seed)` below instead, exactly like
-    // `Bates1996`'s private `cgns` field.
+    // `cgns` keeps its unread `Unseeded` seed: the sampler drives it through
+    // `sample_impl(&self.seed)`, as `Bates` drives its own.
     RoughHestonSampler {
       n: self.n,
       hurst: self.hurst,

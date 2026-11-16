@@ -1,4 +1,4 @@
-//! `Bates1996`'s setters round-trip their fields; the `cgns` setters are checked by resizing past
+//! `Bates`'s setters round-trip their fields; the `cgns` setters are checked by resizing past
 //! the old buffer and by a jump-free degenerate recurrence that makes `dt` observable.
 
 use ndarray::Array1;
@@ -6,7 +6,7 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
-use stochastic_rs_stochastic::jump::bates::Bates1996;
+use stochastic_rs_stochastic::jump::bates::Bates;
 use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::Horizon;
 use stochastic_rs_stochastic::params::VarianceBoundary;
@@ -18,8 +18,8 @@ fn finite2(out: &[Array1<f64>; 2]) -> bool {
   out.iter().all(|a| a.iter().all(|v| v.is_finite()))
 }
 
-fn bates_base_seeded<S: SeedExt>(seed: S) -> Bates1996<f64, SimdNormal<f64>, S> {
-  Bates1996::new(
+fn bates_base_seeded<S: SeedExt>(seed: S) -> Bates<f64, SimdNormal<f64>, S> {
+  Bates::new(
     Drift::Mu(0.05),
     0.5,
     0.05,
@@ -37,7 +37,7 @@ fn bates_base_seeded<S: SeedExt>(seed: S) -> Bates1996<f64, SimdNormal<f64>, S> 
   )
 }
 
-fn bates_base() -> Bates1996<f64, SimdNormal<f64>> {
+fn bates_base() -> Bates<f64, SimdNormal<f64>> {
   bates_base_seeded(Unseeded)
 }
 
@@ -61,7 +61,7 @@ struct BatesFields {
   boundary: VarianceBoundary,
 }
 
-fn bates_fields<S: SeedExt>(x: &Bates1996<f64, SimdNormal<f64>, S>) -> BatesFields {
+fn bates_fields<S: SeedExt>(x: &Bates<f64, SimdNormal<f64>, S>) -> BatesFields {
   BatesFields {
     drift: x.drift,
     lambda: x.lambda,
@@ -125,7 +125,7 @@ fn bates_with_drift_rejects_a_non_finite_rate() {
 }
 
 /// `with_cpoisson` adopts the incoming driver's `lambda` into `self.lambda`
-/// (see `Bates1996::with_cpoisson`'s own doc) — all *other* fields are
+/// (see `Bates::with_cpoisson`'s own doc) — all *other* fields are
 /// untouched, but `lambda` deliberately is not, so this checks the fields
 /// individually rather than via the shared `BatesFields` mirror (which would
 /// wrongly expect `lambda` unchanged too) — the same shape
@@ -162,7 +162,7 @@ fn bates_with_cpoisson_round_trip_and_reaches_sampler() {
   assert_eq!(got.cpoisson.poisson.lambda, 4.0);
 }
 
-/// Regression test for the `Bates1996` instance of the bug a Task 1 review
+/// Regression test for the `Bates` instance of the bug a Task 1 review
 /// caught on `Merton` and the zero-exception-reproducibility wave's Task 2
 /// controller addendum confirmed live here too: since `sampler()` reads
 /// `self.lambda` (not `cpoisson.poisson.lambda`) for the jump-arrival rate
@@ -186,7 +186,7 @@ fn bates_with_cpoisson_changes_sampled_intensity() {
   let swapped_lambda = 0.0;
 
   let with_lambda = |lambda: f64| {
-    Bates1996::new(
+    Bates::new(
       Drift::Mu(0.05),
       lambda,
       0.0,
@@ -231,7 +231,7 @@ fn bates_with_cpoisson_changes_sampled_intensity() {
 
 /// `with_lambda` must change the *actually sampled* jump intensity — the
 /// live bug the zero-exception-reproducibility wave's Task 2 controller
-/// addendum measured on `Bates1996` specifically: pre-fix, `with_lambda(80)`
+/// addendum measured on `Bates` specifically: pre-fix, `with_lambda(80)`
 /// left `cpoisson.poisson.lambda` unchanged (still `0` on a `lambda = 0`
 /// base), so the sampled price path matched a fresh `lambda = 0`
 /// construction, not `lambda = 80`. `sampler()` now reads `self.lambda`
@@ -244,7 +244,7 @@ fn bates_with_cpoisson_changes_sampled_intensity() {
 fn bates_with_lambda_syncs_cpoisson_and_changes_sampled_path() {
   let new_lambda = 80.0;
   let base = || {
-    Bates1996::new(
+    Bates::new(
       Drift::Mu(0.05),
       0.0,
       0.0,
@@ -268,7 +268,7 @@ fn bates_with_lambda_syncs_cpoisson_and_changes_sampled_path() {
     "with_lambda must resync cpoisson.poisson.lambda, not just self.lambda"
   );
 
-  let want = Bates1996::new(
+  let want = Bates::new(
     Drift::Mu(0.05),
     new_lambda,
     0.0,
@@ -299,7 +299,7 @@ fn bates_with_rho_round_trip() {
   // sample_impl`), i.e. exclusively through the very noise an RNG-
   // independent setup has to eliminate, which removes rho's only avenue to
   // matter too. This is a limitation of the *technique*, not of
-  // `Bates1996` itself (see the module doc: the type is now fully
+  // `Bates` itself (see the module doc: the type is now fully
   // seed-reproducible): a `Deterministic`-seeded comparison of the sampled
   // variance path directly would also isolate rho's effect, but was not
   // retrofitted here to keep this task's setter-round-trip scope unchanged.
@@ -335,7 +335,7 @@ fn bates_with_horizon_round_trip() {
   assert!(finite2(&got.sample()));
 }
 
-/// Degenerate `Bates1996` whose `[S, v]` path is an *exact, RNG-independent*
+/// Degenerate `Bates` whose `[S, v]` path is an *exact, RNG-independent*
 /// closed form, sidestepping noise entirely (rather than switching to a
 /// `Deterministic` seed and comparing sampled values — also possible since
 /// the diffusion fix described in the module doc, but not the technique
@@ -348,15 +348,15 @@ fn bates_with_horizon_round_trip() {
 /// `cgn2`'s actual (non-reproducible) values, so `v[i] = 0` for every `i` by
 /// induction. That zeroes price's diffusion term
 /// `s[i-1]*v_prev.sqrt()*cgn1[i-1]` too, regardless of `cgn1`. Setting the
-/// jump intensity (both `Bates1996.lambda` and the `cpoisson`'s own
+/// jump intensity (both `Bates.lambda` and the `cpoisson`'s own
 /// `Poisson::lambda`) to `0` makes `CompoundPoisson::
 /// sample_grid_relative_increments` short-circuit
 /// (`if lambda_dt <= 0.0 { return increments; }`) to an all-zero array with
 /// *no RNG draw at all* — confirmed by reading that function before relying
 /// on it here. What remains is `s[i] = s[i-1]*(1 + drift*dt)`, computed
 /// identically regardless of `Unseeded`'s actual entropy.
-fn degenerate_bates<S: SeedExt>(t: Option<f64>, seed: S) -> Bates1996<f64, SimdNormal<f64>, S> {
-  Bates1996::new(
+fn degenerate_bates<S: SeedExt>(t: Option<f64>, seed: S) -> Bates<f64, SimdNormal<f64>, S> {
+  Bates::new(
     Drift::Mu(0.05),
     0.0, // lambda: disables the drift's jump compensation term AND the jump arrivals themselves (single source of truth) — no jumps, ever
     0.0,
@@ -411,7 +411,7 @@ fn bates_with_seed_round_trip() {
   // only proves the write disturbed nothing else; see
   // `bates_with_seed_matches_fresh_construction` for the bit-exact
   // reproducibility proof, now possible since `with_seed` re-derives
-  // `cpoisson.seed` too (see `Bates1996::with_seed`'s own doc).
+  // `cpoisson.seed` too (see `Bates::with_seed`'s own doc).
   // (`with_seed` only ever replaces the *value* of a seed already of type
   // `S`, not its type, so the receiver must already be `Deterministic`-
   // seeded — matching every other type's `with_seed` in this wave.)
@@ -421,7 +421,7 @@ fn bates_with_seed_round_trip() {
 }
 
 /// `with_seed` re-derives `cpoisson`'s own seed from the new value exactly
-/// as `new()` does (see `Bates1996::with_seed`'s doc), so — unlike before
+/// as `new()` does (see `Bates::with_seed`'s doc), so — unlike before
 /// `cpoisson` was widened to `CompoundPoisson<T, D, S>` — the result now
 /// matches a fresh construction with the new seed on *both* halves of the
 /// output, not just the variance path.

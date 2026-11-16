@@ -37,7 +37,7 @@ const COVERED: &[&str] = &[
   "Gompertz",
   "HoLee",
   "HullWhite",
-  "Ig",
+  "IGSubordinator",
   "Jacobi",
   "Logistic",
   "MAq",

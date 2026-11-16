@@ -21,14 +21,14 @@ use stochastic_rs_stochastic::noise::cfgns::Cfgns;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::cfbms::Cfbms;
 use stochastic_rs_stochastic::process::fbm::Fbm;
-use stochastic_rs_stochastic::process::volterra::Volterra;
-use stochastic_rs_stochastic::process::volterra::VolterraKernelSpec;
 use stochastic_rs_stochastic::rough::kernel::RlKernel;
 use stochastic_rs_stochastic::rough::rl_bs::RlBlackScholes;
 use stochastic_rs_stochastic::rough::rl_fbm::RlFBm;
 use stochastic_rs_stochastic::rough::rl_fou::RlFOU;
 use stochastic_rs_stochastic::rough::rl_heston::RlHeston;
 use stochastic_rs_stochastic::traits::ProcessExt;
+use stochastic_rs_stochastic::volterra::Volterra;
+use stochastic_rs_stochastic::volterra::VolterraKernelSpec;
 use stochastic_rs_stochastic::volterra::gaussian_polynomial::GaussianPolynomialVolatility;
 use stochastic_rs_stochastic::volterra::square_root::VolterraSquareRoot;
 

@@ -2,7 +2,7 @@
 //! `fgn: Fgn<T, Unseeded, B>` field's own `.sampler()` used to build the
 //! diffusion's Gaussian source, which reads `fgn`'s own dead `Unseeded`
 //! field rather than the outer `self.seed` — the same bug class as
-//! `Bates1996`/`RoughHeston`'s `cgns` bug (see
+//! `Bates`/`RoughHeston`'s `cgns` bug (see
 //! `deterministic_parallelism_bates_rough_heston.rs`), on a private field
 //! rather than a `cgns` one. Because the field is private, this was fixable
 //! non-breakingly (unlike `Merton`'s public `cpoisson`, which cannot be

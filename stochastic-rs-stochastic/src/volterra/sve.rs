@@ -59,7 +59,7 @@ use crate::volterra::lift::VolterraLift;
 /// [`GammaKernel`](super::kernel::GammaKernel), [`SumOfExponentials`](super::kernel::SumOfExponentials),
 /// [`RlKernel`](crate::rough::kernel::RlKernel)) plus any externally fitted
 /// one supplied through [`SumOfExponentials`](super::kernel::SumOfExponentials).
-/// [`rough::MarkovLift`](crate::rough::markov_lift::MarkovLift) is the
+/// [`rough::MarkovLift`](crate::rough::MarkovLift) is the
 /// historical, `RlKernel`-specialised, $(x)$-only-coefficient special case
 /// of the same machinery.
 ///
@@ -425,7 +425,7 @@ where
 /// source. Cloning `drift`/`diffusion` here (rather than borrowing, as
 /// [`HullWhiteSampler`](crate::interest::hull_white::HullWhiteSampler) does
 /// for its own [`Fn1D`](crate::traits::Fn1D)) keeps this type lifetime-free,
-/// which is what lets [`Volterra`](crate::process::volterra::Volterra)
+/// which is what lets [`Volterra`](crate::volterra::Volterra)
 /// embed it directly when delegating to this engine.
 #[doc(hidden)]
 pub struct VolterraSdeSampler<T: FloatExt, K, S: SeedExt>

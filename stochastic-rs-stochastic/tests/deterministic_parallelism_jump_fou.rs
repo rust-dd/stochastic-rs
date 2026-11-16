@@ -18,7 +18,7 @@
 //! (`CompoundPoisson<T, D>` -> `CompoundPoisson<T, D, S>`, `new()` absorbing
 //! the jump-size distribution and a new top-level `lambda: T` field) Task 1
 //! applied to `Merton`/`Kou`/`LevyDiffusion` and Task 2 also applied to
-//! `Bates1996`. `JumpFou` is now **fully** seed-reproducible — this was the
+//! `Bates`. `JumpFou` is now **fully** seed-reproducible — this was the
 //! crate's last exception of any kind.
 //!
 //! The tests below still separate a zero-intensity diffusion check from a
@@ -31,7 +31,7 @@
 //! function), independent of whether the jump half is also fixed. The
 //! dedicated full-reproducibility battery (bit-identity at nonzero lambda,
 //! thread-count independence at m=64/256, distinctness at m=256) lives in
-//! `reproducibility_bates_jump_fou.rs`, alongside `Bates1996`'s.
+//! `reproducibility_bates_jump_fou.rs`, alongside `Bates`'s.
 
 use ndarray::Array1;
 use rayon::ThreadPoolBuilder;

@@ -1,6 +1,4 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `RoughBergomi`
-//! (`volatility/rbergomi.rs`). Cache: private `cgns: Cgns<T>` keyed on
-//! `(rho, n, t)`, same shape as the previous wave's `BatesSvj`/`Hkde`/etc.
+//! The `with_*` setters of `RoughBergomi`, whose private `cgns` cache is keyed on `(rho, n, t)`.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;

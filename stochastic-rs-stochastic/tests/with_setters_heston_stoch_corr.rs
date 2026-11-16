@@ -1,5 +1,5 @@
 //! TDD tests for A1-c Task 2: `with_*` builder setters on `HestonStochCorr`
-//! (correlation module). Split from `Bates1996`'s own tests (now
+//! (correlation module). Split from `Bates`'s own tests (now
 //! `with_setters_bates.rs`) to keep the combined file under the project's
 //! 600-line cap, the same way Task 2 of the zero-exception-reproducibility
 //! wave split `src/jump/bates.rs` into

@@ -59,7 +59,7 @@ use crate::traits::ProcessExt;
 /// halves were hard-wired away from it. That was correct about the values at
 /// the time, but not about what was fixable: `fgn` needed only a private,
 /// non-breaking rewire (done first); `cpoisson` needed the same breaking
-/// widening `Merton`/`Kou`/`LevyDiffusion`/`Bates1996` needed, applied here
+/// widening `Merton`/`Kou`/`LevyDiffusion`/`Bates` needed, applied here
 /// last.)
 ///
 /// Fields are private: the fGN and jump drivers derive from `hurst`, `lambda`, `n`, `t` and `seed`,

@@ -16,13 +16,12 @@ use stochastic_rs_stochastic::diffusion::wishart::Wishart;
 use stochastic_rs_stochastic::interest::duffie_kan::DuffieKan;
 use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
 use stochastic_rs_stochastic::interest::hull_white_2f::HullWhite2F;
-use stochastic_rs_stochastic::jump::bates::Bates1996;
+use stochastic_rs_stochastic::jump::bates::Bates;
 use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::cbms::Cbms;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::HestonPow;
-use stochastic_rs_stochastic::volatility::bates_svj::BatesSvj;
 use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
 use stochastic_rs_stochastic::volatility::bns::Bns;
 use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
@@ -509,53 +508,6 @@ fn two_asset_heston_agrees_with_the_cpu_law() {
       &format!("two-asset Heston terminal {what}"),
     );
   }
-}
-
-/// A Heston variance under a jumping log-price: the device draws its own
-/// Poisson count and aggregates the jump sizes, so both the variance's law
-/// and the jump-compensated spot must agree.
-#[test]
-fn bates_agrees_with_the_cpu_law() {
-  let build = || {
-    BatesSvj::<f32, _>::new(
-      Drift::Mu(0.02),
-      3.0,
-      -0.05,
-      0.1,
-      0.08,
-      2.0,
-      0.3,
-      -0.7,
-      253,
-      100.0,
-      0.04,
-      Some(1.0),
-      VarianceBoundary::Floor,
-      Deterministic::new(97),
-    )
-  };
-  let device = build().on::<Device>().sample_par(M);
-  assert!(
-    device.iter().all(|p| p[1].iter().all(|&v| v >= 0.0)),
-    "the truncated variance went negative"
-  );
-  assert!(
-    device.iter().all(|p| p[0].iter().all(|&v| v > 0.0)),
-    "the log-price form let the spot reach zero"
-  );
-  let host = build().sample_par(M);
-  agrees(
-    terminal_mean(&host, 0),
-    terminal_mean(&device, 0),
-    0.04,
-    "Bates terminal spot",
-  );
-  agrees(
-    terminal_mean(&host, 1),
-    terminal_mean(&device, 1),
-    0.08,
-    "Bates terminal variance",
-  );
 }
 
 /// The quadratic-exponential scheme draws its variance from a moment-matched
@@ -1081,7 +1033,7 @@ fn regime_switching_wider_than_four_regimes_still_samples() {
 fn bates_1996_agrees_with_the_cpu_law() {
   for boundary in [VarianceBoundary::Floor, VarianceBoundary::Reflect] {
     let build = || {
-      Bates1996::<f32, _, _>::new(
+      Bates::<f32, _, _>::new(
         Drift::Mu(0.02),
         3.0,
         -0.02,
@@ -1152,7 +1104,7 @@ fn bates_1996_reflection_moves_the_boundary() {
     .enumerate()
   {
     let build = || {
-      Bates1996::<f32, _, _>::new(
+      Bates::<f32, _, _>::new(
         Drift::Mu(0.02),
         0.0,
         0.0,
@@ -1194,7 +1146,7 @@ fn bates_1996_reflection_moves_the_boundary() {
 #[test]
 fn bates_1996_compounds_several_jumps_a_step() {
   let build = || {
-    Bates1996::<f32, _, _>::new(
+    Bates::<f32, _, _>::new(
       Drift::Mu(0.02),
       30.0,
       0.2,

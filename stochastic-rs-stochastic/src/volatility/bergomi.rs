@@ -29,7 +29,7 @@
 //! genuine rough Bergomi (Volterra integral driver, `H < ½`) see
 //! [`crate::volatility::rbergomi::RoughBergomi`] (hybrid-scheme Volterra
 //! simulation — see its module doc) or build a simulator on top of
-//! [`crate::rough::MarkovLift`] or [`crate::process::volterra::Volterra`].
+//! [`crate::rough::MarkovLift`] or [`crate::volterra::Volterra`].
 //!
 //! Reference: Bergomi, "Smile Dynamics II", Risk 18(10), 67-73 (2005);
 //! Bergomi, "Stochastic Volatility Modeling" (2016) §7.

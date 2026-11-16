@@ -385,3 +385,19 @@ def test_the_rough_heston_spot_drift_and_correlation_are_checked_at_construction
                        ({"rho": 1.5}, "rho must satisfy")):
         with pytest.raises(ValueError, match=match):
             sr.PyRoughHeston(0.1, 0.04, 1.0, 0.3, 64, 0.2, **bad)
+
+
+def test_the_bates_svj_jump_is_lognormal_and_compensated_by_its_mean():
+    def bates_svj(nu, omega, lambda_=5.0):
+        return sr.PyBatesSvj(lambda_, nu, omega, 0.0, 0.0, 0.0, 0.0, 33, mu=0.0, s0=100.0, v0=0.0,
+                             t=1.0, seed=5)
+
+    terminal = bates_svj(-0.1, 0.2).sample_par(20_000)[0][:, -1]
+    assert abs(terminal.mean() - 100.0) < 5.0 * terminal.std(ddof=1) / math.sqrt(terminal.size)
+    assert np.all(bates_svj(-0.5, 0.5, lambda_=50.0).sample_par(64)[0] > 0.0)
+
+
+def test_the_inverse_gaussian_process_is_the_unit_subordinator():
+    assert not hasattr(sr, "PyIg")
+    path = sr.PyIGSubordinator(2.0, 1.0, 65, seed=3).sample()
+    assert path.shape == (65,) and path[0] == 0.0 and np.all(np.diff(path) > 0.0)

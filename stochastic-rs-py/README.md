@@ -6,9 +6,9 @@
 # stochastic-rs for Python
 
 **Quantitative finance for Python, powered by Rust.** stochastic-rs is an
-open-source quantitative-finance library: it simulates 132 stochastic
+open-source quantitative-finance library: it simulates 130 stochastic
 processes, prices and calibrates option models, builds volatility surfaces
-and estimates model parameters from data. The Python module has 306
+and estimates model parameters from data. The Python module has 305
 entries, takes and returns NumPy arrays, and ships prebuilt wheels for
 Linux, macOS and Windows — the same code the
 [Rust crate](https://crates.io/crates/stochastic-rs) runs.

@@ -220,8 +220,46 @@ impl<T: FloatExt> PathSampler<T> for IGSubordinatorSampler<T> {
   }
 }
 
+/// The inverse-Gaussian process of mean `γt` and shape `(γt)²` is this subordinator at `gamma = 1`.
+///
+/// ```compile_fail,E0432
+/// use stochastic_rs_stochastic::jump::ig::Ig;
+/// ```
+#[cfg(doctest)]
+pub struct IgIsTheUnitSubordinator;
+
 py_process_1d!(PyIGSubordinator, IGSubordinator,
   sig: (delta, gamma_, n, x0=None, t=None, seed=None, dtype=None),
   params: (delta: f64, gamma_: f64, n: usize, x0: Option<f64>, t: Option<f64>),
   device
 );
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+
+  /// The first eight points `Ig::new(2.0, 65, None, None, Deterministic::new(3))` sampled.
+  const IG_GAMMA_TWO: [u64; 8] = [
+    0,
+    4587770068631316187,
+    4588072030184553316,
+    4588144219662092651,
+    4588253019380183630,
+    4590203735888847721,
+    4590223691370515422,
+    4590258516375784657,
+  ];
+
+  #[test]
+  fn delta_gamma_with_unit_gamma_is_the_inverse_gaussian_process_bit_for_bit() {
+    let path = IGSubordinator::new(2.0_f64, 1.0, 65, None, None, Deterministic::new(3)).sample();
+    let bits = path
+      .iter()
+      .take(8)
+      .map(|x| x.to_bits())
+      .collect::<Vec<u64>>();
+    assert_eq!(bits, IG_GAMMA_TWO);
+  }
+}

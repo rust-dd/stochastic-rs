@@ -131,13 +131,13 @@ Where the fractional kernel `K(t)` admits an exponential-sum
 approximation `K(t) ≈ Σ w_l exp(-x_l t)`, the Markovian lift collapses
 the O(n²) Volterra integral to O(n × N') where `N'` is the number of
 exponential terms. The stepper lives in
-`stochastic-rs-stochastic/src/rough/markov_lift/` (a **directory** —
-`mod.rs`, `stepper.rs`, `simd.rs`, `tests.rs`), and its surface is
-small:
+`stochastic-rs-stochastic/src/rough/markov_lift/` (a private **directory** —
+`mod.rs`, `stepper.rs`, `tests.rs`), reached as `rough::MarkovLift`, and its
+surface is small:
 
 ```rust
+use crate::rough::MarkovLift;
 use crate::rough::kernel::RlKernel;
-use crate::rough::markov_lift::MarkovLift;
 
 impl<T: FloatExt> MarkovLift<T> {
     pub fn new(kernel: RlKernel<T>, dt: T) -> Self;

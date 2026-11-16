@@ -11,7 +11,6 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGamma;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGammaMotion;
 use stochastic_rs_stochastic::jump::hawkes_jd::HawkesJD;
-use stochastic_rs_stochastic::jump::ig::Ig;
 use stochastic_rs_stochastic::jump::nig::Nig;
 use stochastic_rs_stochastic::jump::vg::Vg;
 use stochastic_rs_stochastic::params::Horizon;
@@ -69,20 +68,6 @@ fn inverse_gaussian_subordinator_agrees_with_the_cpu_law() {
     terminal_mean(&device),
     0.05,
     "IG subordinator terminal mean",
-  );
-}
-
-/// The inverse-Gaussian process itself, under the same draw.
-#[test]
-fn inverse_gaussian_agrees_with_the_cpu_law() {
-  let build = || Ig::<f32, _>::new(1.0, N, Some(0.0), Some(1.0), Deterministic::new(109));
-  let device = build().on::<Device>().sample_par(M);
-  within(&device, 0.0, f32::INFINITY, "inverse Gaussian");
-  agrees(
-    terminal_mean(&build().sample_par(M)),
-    terminal_mean(&device),
-    0.05,
-    "inverse Gaussian terminal mean",
   );
 }
 

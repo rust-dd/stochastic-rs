@@ -104,12 +104,12 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::interest::wu_zhang::PyWuZhangD;
   // Stochastic — jump
   use stochastic_rs_stochastic::jump::bates::PyBates;
+  use stochastic_rs_stochastic::jump::bates::PyBatesSvj;
   use stochastic_rs_stochastic::jump::bilateral_gamma::PyBilateralGamma;
   use stochastic_rs_stochastic::jump::bilateral_gamma::PyBilateralGammaMotion;
   use stochastic_rs_stochastic::jump::cgmy::PyCgmy;
   use stochastic_rs_stochastic::jump::cts::PyCts;
   use stochastic_rs_stochastic::jump::hawkes_jd::PyHawkesJD;
-  use stochastic_rs_stochastic::jump::ig::PyIg;
   use stochastic_rs_stochastic::jump::jump_fou::PyJumpFou;
   use stochastic_rs_stochastic::jump::jump_fou_custom::PyJumpFOUCustom;
   use stochastic_rs_stochastic::jump::kobol::PyKoBoL;
@@ -147,11 +147,10 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::process::subordinator::inverse_alpha_stable::PyInverseAlphaStableSubordinator;
   use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PyPoissonSubordinator;
   use stochastic_rs_stochastic::process::subordinator::tempered_stable::PyTemperedStableSubordinator;
-  use stochastic_rs_stochastic::process::volterra::PyVolterra;
+  use stochastic_rs_stochastic::volterra::PyVolterra;
   // Stochastic — sheet
   use stochastic_rs_stochastic::sheet::fbs::PyFbs;
   // Stochastic — volatility
-  use stochastic_rs_stochastic::volatility::bates_svj::PyBatesSvj;
   use stochastic_rs_stochastic::volatility::bergomi::PyBergomi;
   use stochastic_rs_stochastic::volatility::fheston::PyRoughHeston;
   use stochastic_rs_stochastic::volatility::heston::PyHeston;
@@ -207,7 +206,6 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyVerhulst>()?;
   m.add_class::<PyCgmy>()?;
   m.add_class::<PyCts>()?;
-  m.add_class::<PyIg>()?;
   m.add_class::<PyNig>()?;
   m.add_class::<PyRdts>()?;
   m.add_class::<PyVg>()?;

@@ -23,7 +23,7 @@
 //!   DOI: 10.1111/mafi.12173 — defines the Volterra `v_t` above.
 //! - Bates D. S. (1996), DOI: 10.1093/rfs/9.1.69, and Merton R. C.
 //!   (1976), DOI: 10.1016/0304-405X(76)90022-2, for the jump component
-//!   (see [`BatesSvj`](crate::volatility::bates_svj::BatesSvj)).
+//!   (see [`Bates`](crate::jump::bates::Bates)).
 //!
 //! `fill_paths` below approximates the exact fractional-kernel Volterra
 //! convolution with a single OU-type carrier factor `zt` plus a direct

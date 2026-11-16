@@ -1,13 +1,13 @@
 ---
 title: Stochastic processes
 seo_title: Stochastic processes in Rust and Python
-description: 132 stochastic processes — diffusion, jump, volatility, interest-rate, fractional / rough, and noise. Catalog organised by mathematical family.
+description: 130 stochastic processes — diffusion, jump, volatility, interest-rate, fractional / rough, and noise. Catalog organised by mathematical family.
 category: process
 since: 2.0.0
 status: stable
 ---
 
-The `stochastic-rs-stochastic` crate ships **132 processes** in eleven families (below). Every process implements [`ProcessExt<T>`](/docs/concepts/process-ext): `sample()` returns one path, `sample_map(m, f)` maps over `m` paths in parallel, and `sample_par(m)` returns `Vec<Output>` (one `ndarray::Array1<T>` per path for single-factor models).
+The `stochastic-rs-stochastic` crate ships **130 processes** in eleven families (below). Every process implements [`ProcessExt<T>`](/docs/concepts/process-ext): `sample()` returns one path, `sample_map(m, f)` maps over `m` paths in parallel, and `sample_par(m)` returns `Vec<Output>` (one `ndarray::Array1<T>` per path for single-factor models).
 
 ## Families
 
@@ -36,7 +36,7 @@ Each row lists representative examples; [docs.rs](https://docs.rs/stochastic-rs-
 | Stochastic volatility | `Heston` (Euler / QE schemes), `Sabr`, `Bergomi` | `DoubleHeston`, `MultifactorHeston`, `HestonStochCorr`, `HestonSlv` |
 | Rough volatility | `RoughBergomi` (hybrid scheme), `RoughHeston`, `RlHeston` (Markov lift) | the `volterra` module for a general kernel |
 | Long memory / fractional noise | `Fgn` → `Fbm`, `Fou`, `Fcir`, `Fgbm` | all driven by the fGN FFT pipeline, on the host or a device |
-| Jumps | `Merton`, `Kou`, `Bates1996`, `CompoundPoisson`, `Hawkes` | `LevyDiffusion` with any `Distribution` for the jump size |
+| Jumps | `Merton`, `Kou`, `Bates`, `CompoundPoisson`, `Hawkes` | `LevyDiffusion` with any `Distribution` for the jump size |
 | Several correlated assets | `Mcgns` (driver) → `MultiGbm`, `Wishart` (covariance) | `Cfgns` for correlated fractional noise |
 | A rates curve, not a rate | `Hjm`, `Lmm`, `Bgm`, `Adg` | `G2pp`-style two-factor: `HullWhite2F`, `Cir2F` |
 | Time-series style | `ARp`, `Arima`, `Garch` / `Egarch` / `GjrGarch`, `Sarima` | the stats crate fits them |
@@ -282,7 +282,7 @@ Backends: `Cpu` (default), `Cuda` (`cuda`), `Metal` (`metal`), `Accelerate` (`ac
 
 ## Euler engine
 
-The sampling backend is a **type parameter of every process** (`Name<T, S, B = Cpu>`, switched with `.on::<B>()`), and the Euler engine is the device capability behind 130 of the 132: `gbm.on::<Metal>().sample_par(m)` samples through `ProcessExt` as usual. On `Cpu` (and `Accelerate`) that is the process's own sampler — GBM keeps its exact log-normal scheme, OU and CIR their SIMD steppers. The GPU back-ends run one device thread per path with the whole Euler–Maruyama recursion in the kernel and counter-hashed Box–Muller normals (`sample_par` is one launch for all `m` paths):
+The sampling backend is a **type parameter of every process** (`Name<T, S, B = Cpu>`, switched with `.on::<B>()`), and the Euler engine is the device capability behind 128 of the 130: `gbm.on::<Metal>().sample_par(m)` samples through `ProcessExt` as usual. On `Cpu` (and `Accelerate`) that is the process's own sampler — GBM keeps its exact log-normal scheme, OU and CIR their SIMD steppers. The GPU back-ends run one device thread per path with the whole Euler–Maruyama recursion in the kernel and counter-hashed Box–Muller normals (`sample_par` is one launch for all `m` paths):
 
 | Backend | Feature | Device | Precision |
 |---|---|---|---|

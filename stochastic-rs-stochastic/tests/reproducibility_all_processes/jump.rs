@@ -1,7 +1,7 @@
 //! `jump/` slice of the exhaustive reproducibility guard — see
 //! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 132-type list, and shared methodology notes.
-//! `Bates1996`, `JumpFou`, `Kou`, `LevyDiffusion` and `Merton` are five of
+//! derivation of the 130-type list, and shared methodology notes.
+//! `Bates`, `JumpFou`, `Kou`, `LevyDiffusion` and `Merton` are five of
 //! the eight distribution-taking types named there, driven at `LAMBDA = 50`
 //! so a jump-component reproducibility bug cannot hide behind a
 //! diffusion-only comparison; `JumpFOUCustom` is the sixth (its jump
@@ -10,13 +10,12 @@
 
 use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::normal::SimdNormal;
-use stochastic_rs_stochastic::jump::bates::Bates1996;
+use stochastic_rs_stochastic::jump::bates::Bates;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGamma;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGammaMotion;
 use stochastic_rs_stochastic::jump::cgmy::Cgmy;
 use stochastic_rs_stochastic::jump::cts::Cts;
 use stochastic_rs_stochastic::jump::hawkes_jd::HawkesJD;
-use stochastic_rs_stochastic::jump::ig::Ig;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
 use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
 use stochastic_rs_stochastic::jump::kobol::KoBoL;
@@ -35,7 +34,7 @@ use crate::common::LAMBDA;
 use crate::common::N;
 use crate::common::guard;
 
-guard!(bates1996, "Bates1996", |s| Bates1996::new(
+guard!(bates, "Bates", |s| Bates::new(
   Drift::Mu(0.05),
   LAMBDA,
   0.0,
@@ -96,8 +95,6 @@ guard!(hawkes_jd, "HawkesJD", |s| HawkesJD::new(
   Some(1.0),
   s
 ));
-
-guard!(ig, "Ig", |s| Ig::new(1.0, N, Some(0.0), Some(1.0), s));
 
 guard!(jump_fou, "JumpFou", |s| JumpFou::new(
   0.65,

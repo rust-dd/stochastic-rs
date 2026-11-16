@@ -187,7 +187,7 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// generic over an *external* seed all along, so a bare `.sample()`
 /// bypassing it was a bug, not a limitation; a `pub cpoisson:
 /// CompoundPoisson<T, D>` field structurally pinned to `Unseeded` — present
-/// on `Merton`, `Kou`, `LevyDiffusion`, `Bates1996` and `JumpFou` — turned
+/// on `Merton`, `Kou`, `LevyDiffusion`, `Bates` and `JumpFou` — turned
 /// out to need a genuine breaking constructor change, made by the
 /// zero-exception-reproducibility wave's Tasks 1 and 2). That history is
 /// deliberately not repeated here — a corrected verdict restated as a live

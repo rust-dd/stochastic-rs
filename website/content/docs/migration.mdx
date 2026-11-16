@@ -7,7 +7,7 @@ v3 updates the sampling and pricing APIs without renaming crates. The changes be
 
 ## Every process carries its sampling backend as a type parameter
 
-`Gbm<T, S>` became `Gbm<T, S, B = Cpu>` on all 132 processes. Thanks to the default, existing constructors and type names keep working; struct literals and generic bounds change.
+`Gbm<T, S>` became `Gbm<T, S, B = Cpu>` on all 130 processes. Thanks to the default, existing constructors and type names keep working; struct literals and generic bounds change.
 
 - **Struct literals** name the handle: `backend: Cpu` where 2.x had `backend: std::marker::PhantomData` (or build through the constructor).
 - **Generic code** over a process spells the third parameter: `fn f<T, S, B: HostBackend>(p: &Gbm<T, S, B>)`. `HostBackend`, `FgnBackend`, `SheetBackend` and `EulerBackend` are the capability traits a bound can name; see [GPU support](/docs/concepts/gpu-support) for which process accepts which.

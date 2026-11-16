@@ -17,6 +17,7 @@ use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
 use crate::noise::cgns::Cgns;
@@ -29,9 +30,10 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `Bates1996::new(..).with_lambda(0.8).with_rho(-0.4)`.
-pub struct Bates1996<T, D, S: SeedExt = Unseeded, B = Cpu>
+/// The Bates (1996) model for any law `D` of the relative jump `Y − 1`, `SimdNormal` by default;
+/// [`LogNormalJump`] is the paper's lognormal one.
+#[derive(Clone)]
+pub struct Bates<T, D = SimdNormal<T>, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -46,9 +48,8 @@ where
   /// synced to match — see those methods' docs and
   /// `resync_cpoisson_poisson`.
   pub lambda: T,
-  /// Jump-size compensator κ (E[Y−1]-like term, matching the module
-  /// header's own λκ_J), subtracted from the drift scaled by `lambda`.
-  /// Unrelated to mean-reversion speed despite the letter k.
+  /// The compensator `E[Y − 1]` of the jump law, subtracted from the drift times `lambda`; only
+  /// that value keeps the price a martingale ([`LogNormalJump::mean`] for the lognormal law).
   pub k: T,
   /// Variance-drift intercept (κθ combined) in the reparametrized variance
   /// recursion `dv = (alpha − beta·v)dt + ...`, equivalent to `κ(θ−v)`
@@ -88,7 +89,7 @@ where
   pub backend: B,
 }
 
-impl<T, D, S: SeedExt> Bates1996<T, D, S>
+impl<T, D, S: SeedExt> Bates<T, D, S>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -118,6 +119,10 @@ where
     assert!(
       lambda.is_finite(),
       "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      lambda >= T::zero(),
+      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
     );
     assert!(
       k.is_finite(),
@@ -184,7 +189,7 @@ where
   }
 }
 
-impl<T, D, S: SeedExt, B> Bates1996<T, D, S, B>
+impl<T, D, S: SeedExt, B> Bates<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -206,6 +211,10 @@ where
     assert!(
       lambda.is_finite(),
       "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      lambda >= T::zero(),
+      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
     );
     self.lambda = lambda;
     self.resync_cpoisson_poisson();
@@ -342,7 +351,7 @@ where
   }
 }
 
-impl<T, D, S: SeedExt, B> Bates1996<T, D, S, B>
+impl<T, D, S: SeedExt, B> Bates<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync + Any,
@@ -356,7 +365,7 @@ where
 }
 
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
-  for Bates1996<T, D, S, B>
+  for Bates<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync + Any,
@@ -413,7 +422,7 @@ where
       return None;
     }
     Some(self.device_jump_sizes().expect(
-      "Bates1996: the jump-size distribution is not a law the Euler engine compounds multiplicatively on a device; \
+      "Bates: the jump-size distribution is not a law the Euler engine compounds multiplicatively on a device; \
        sample through `ProcessExt`, which keeps it on the host",
     ))
   }
@@ -429,17 +438,16 @@ where
   }
 }
 
-backend_switch!([T, D, S: SeedExt] Bates1996<T, D, S> { drift, lambda, k, alpha, beta, sigma, rho, n, s0, v0, t, boundary, cgns, cpoisson, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
+backend_switch!([T, D, S: SeedExt] Bates<T, D, S> { drift, lambda, k, alpha, beta, sigma, rho, n, s0, v0, t, boundary, cgns, cpoisson, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
 
-impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for Bates1996<T, D, S, B>
+impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed for Bates<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync + Any,
 {
 }
 
-impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Bates1996<T, D, S, B>
+impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Bates<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync + Any,
@@ -536,12 +544,16 @@ where
   }
 }
 
-/// Reusable [`Bates1996`] sampling state: owns the correlated-Gaussian
-/// generator and an owned, already-derived seed to drive it, borrows the
-/// jump-size distribution, and owns a separate, already-derived seed to
-/// drive the jump arrivals — mirroring
-/// [`MertonSampler`](crate::jump::merton::MertonSampler)'s shape — so a
-/// Monte-Carlo loop reuses both output buffers.
+/// The normal-log-jump Bates model is [`Bates`] with a [`LogNormalJump`] law.
+///
+/// ```compile_fail,E0432
+/// use stochastic_rs_stochastic::volatility::bates_svj::BatesSvj;
+/// ```
+#[cfg(doctest)]
+pub struct BatesSvjIsBatesWithALogNormalJump;
+
+/// Reusable [`Bates`] sampling state: the correlated-Gaussian generator, the borrowed jump law and
+/// two derived seeds, one for the diffusion and one for the jump arrivals.
 #[doc(hidden)]
 pub struct BatesSampler<'a, T, D, S: SeedExt>
 where
@@ -637,17 +649,20 @@ where
   }
 }
 
-// Both submodules split out to keep this file under the project's 600-line
-// cap (this type now carries a full set of `with_*` builder setters on top
-// of the model itself, plus the Python bindings). Same pattern as
-// `volatility/bates_svj.rs` uses for its own test split.
-#[cfg(test)]
-#[path = "bates_tests.rs"]
-mod tests;
+mod lognormal;
+
+pub use lognormal::LogNormalJump;
 
 #[cfg(feature = "python")]
-#[path = "bates_python.rs"]
 mod python;
+
 #[cfg(feature = "python")]
 #[doc(hidden)]
 pub use python::PyBates;
+
+#[cfg(feature = "python")]
+#[doc(hidden)]
+pub use python::PyBatesSvj;
+
+#[cfg(test)]
+mod tests;

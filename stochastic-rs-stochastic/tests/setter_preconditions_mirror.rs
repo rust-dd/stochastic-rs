@@ -74,7 +74,7 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     "the argument is a built law, not a `new` parameter",
   ),
   (
-    "Bates1996",
+    "Bates",
     "with_cpoisson",
     "the argument is a built law, not a `new` parameter",
   ),

@@ -10,7 +10,7 @@
 //! the invariant stated on that method), the kernel value $K(\delta t)$
 //! ([`VolterraKernel::evaluate`]), and its integral from the origin
 //! $\int_0^{\delta t} K(u)\,du$ ([`VolterraKernel::integral_from_zero`]).
-//! [`MarkovLift`](crate::rough::markov_lift::MarkovLift) is the special
+//! [`MarkovLift`](crate::rough::MarkovLift) is the special
 //! case $K(t) = t^{H-1/2}/\Gamma(H+1/2)$
 //! ([`RlKernel`](crate::rough::kernel::RlKernel)), now kept only as a thin
 //! backward-compatible wrapper around [`VolterraLift<T,
