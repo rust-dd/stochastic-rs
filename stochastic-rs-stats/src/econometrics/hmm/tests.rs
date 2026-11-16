@@ -237,3 +237,28 @@ fn baum_welch_rejects_short_or_constant_observations() {
     StatsError::DegenerateData("constant series")
   );
 }
+
+/// State 0's density underflows at `1e155`, whose squared deviation then enters its variance as
+/// `0 · ∞`; the NaN is an `Err` that leaves the model as it was, never Rabiner's floor.
+#[test]
+fn a_non_finite_emission_variance_is_a_numerical_error() {
+  let mut hmm = GaussianHmm::new(
+    array![0.5, 0.5],
+    array![[0.9, 0.1], [0.1, 0.9]],
+    array![0.0, 0.0],
+    array![1.0, 1e155],
+  );
+  let before = hmm.clone();
+  let mut observations = Array1::from_iter((0..40).map(|t| 0.3 * (t as f64 * 0.7).sin()));
+  observations[20] = 1e155;
+  assert_eq!(
+    hmm.baum_welch(observations.view(), 5, 1e-8).unwrap_err(),
+    StatsError::Numerical {
+      stage: "emission variance"
+    }
+  );
+  assert_eq!(hmm.initial, before.initial);
+  assert_eq!(hmm.transitions, before.transitions);
+  assert_eq!(hmm.means, before.means);
+  assert_eq!(hmm.stds, before.stds);
+}

@@ -261,7 +261,7 @@ impl GaussianHmm {
   }
 
   /// Baum-Welch EM for at most `max_iter` iterations, until the log-likelihood gains under `tol`;
-  /// `Err` for zero states, below 2 observations, on a non-finite one or a constant series.
+  /// `Err` on zero states, < 2 or non-finite points, a constant series or a non-finite variance.
   pub fn baum_welch(
     &mut self,
     observations: ArrayView1<f64>,
@@ -321,6 +321,28 @@ impl GaussianHmm {
           }
         }
       }
+      let totals: Array1<f64> = (0..k)
+        .map(|s| (0..n).map(|t| gamma[[t, s]]).sum::<f64>())
+        .collect::<Vec<_>>()
+        .into();
+      let mut emission = Vec::with_capacity(k);
+      for s in 0..k {
+        if totals[s] > 1e-12 {
+          let mu = (0..n).map(|t| gamma[[t, s]] * observations[t]).sum::<f64>() / totals[s];
+          let var = (0..n)
+            .map(|t| gamma[[t, s]] * (observations[t] - mu).powi(2))
+            .sum::<f64>()
+            / totals[s];
+          if !var.is_finite() {
+            return Err(StatsError::Numerical {
+              stage: "emission variance",
+            });
+          }
+          emission.push(Some((mu, var)));
+        } else {
+          emission.push(None);
+        }
+      }
       for s in 0..k {
         self.initial[s] = gamma[[0, s]];
       }
@@ -335,18 +357,10 @@ impl GaussianHmm {
           }
         }
       }
-      let totals: Array1<f64> = (0..k)
-        .map(|s| (0..n).map(|t| gamma[[t, s]]).sum::<f64>())
-        .collect::<Vec<_>>()
-        .into();
-      for s in 0..k {
-        if totals[s] > 1e-12 {
-          let mu = (0..n).map(|t| gamma[[t, s]] * observations[t]).sum::<f64>() / totals[s];
-          let var = (0..n)
-            .map(|t| gamma[[t, s]] * (observations[t] - mu).powi(2))
-            .sum::<f64>()
-            / totals[s];
+      for (s, update) in emission.into_iter().enumerate() {
+        if let Some((mu, var)) = update {
           self.means[s] = mu;
+          // Rabiner (1989), §V.D, eq. (113b): a reestimated variance is held at a floor δ.
           self.stds[s] = var.max(1e-8).sqrt();
         }
       }
