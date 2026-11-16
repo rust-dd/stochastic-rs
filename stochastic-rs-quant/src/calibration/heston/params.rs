@@ -62,7 +62,7 @@ impl crate::traits::ToModel for HestonParams {
 }
 
 impl HestonParams {
-  /// Project parameters into finite positive calibration ranges.
+  /// Project parameters into the calibration ranges; a NaN stays NaN.
   ///
   /// The Feller condition is deliberately not imposed here. It is sufficient
   /// for strict positivity of the CIR variance process, but it is not required

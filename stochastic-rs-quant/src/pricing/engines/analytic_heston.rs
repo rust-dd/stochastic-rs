@@ -83,7 +83,9 @@ impl AnalyticHestonEngine {
       v0: v0_override.unwrap_or(self.params.v0),
       ..self.params
     });
-    model.lambda = self.lambda;
+    if let Some(lambda) = self.lambda {
+      model = model.with_vol_risk_premium(lambda);
+    }
     let s = s_override.unwrap_or_else(|| Self::read_quote(&self.s));
     let r = Self::read_quote(&self.r);
     let q = Self::read_quote(&self.dividend_yield);
@@ -179,16 +181,18 @@ mod tests {
   use crate::pricing::engines::AnalyticBsEngine;
   use crate::traits::PricingResult;
 
+  const P: HestonParams = HestonParams {
+    v0: 0.04,
+    kappa: 1.5,
+    theta: 0.04,
+    sigma: 0.3,
+    rho: -0.7,
+  };
+
   #[test]
   fn heston_call_atm_positive() {
     let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
-    let params = HestonParams {
-      v0: 0.04,
-      kappa: 1.5,
-      theta: 0.04,
-      sigma: 0.3,
-      rho: -0.7,
-    };
+    let params = P;
     let engine = AnalyticHestonEngine::with_constants(100.0, 0.05, 0.0, params);
     let r = engine.calculate(&opt);
     assert!(r.npv() > 0.0);
@@ -222,13 +226,7 @@ mod tests {
   #[test]
   fn every_unlinked_handle_poisons_npv_and_greeks() {
     let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
-    let params = HestonParams {
-      v0: 0.04,
-      kappa: 1.5,
-      theta: 0.04,
-      sigma: 0.3,
-      rho: -0.7,
-    };
+    let params = P;
     let linked = |v: f64| Handle::new(Arc::new(SimpleQuote::new(v)));
     let quotes = [100.0, 0.05, 0.0];
 
@@ -250,13 +248,7 @@ mod tests {
   fn heston_put_call_parity() {
     let call = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
     let put = EuropeanOption::new_tau(100.0, OptionType::Put, 1.0);
-    let params = HestonParams {
-      v0: 0.04,
-      kappa: 1.5,
-      theta: 0.04,
-      sigma: 0.3,
-      rho: -0.7,
-    };
+    let params = P;
     let engine = AnalyticHestonEngine::with_constants(100.0, 0.05, 0.02, params);
     let c = engine.calculate(&call).npv();
     let p = engine.calculate(&put).npv();
@@ -268,31 +260,21 @@ mod tests {
   /// variances and `|ρ| = 1` still construct.
   #[test]
   fn new_checks_a_literal_as_heston_params_new_does() {
-    let good = HestonParams {
-      v0: 0.04,
-      kappa: 1.5,
-      theta: 0.04,
-      sigma: 0.3,
-      rho: -0.7,
-    };
     let cases = [
       (
-        HestonParams { v0: -0.01, ..good },
+        HestonParams { v0: -0.01, ..P },
         "v0 must satisfy `v0.is_finite() && v0 >= 0.0`, got v0 = -0.01",
       ),
       (
-        HestonParams {
-          theta: -0.04,
-          ..good
-        },
+        HestonParams { theta: -0.04, ..P },
         "theta must satisfy `theta.is_finite() && theta >= 0.0`, got theta = -0.04",
       ),
       (
-        HestonParams { sigma: 0.0, ..good },
+        HestonParams { sigma: 0.0, ..P },
         "sigma must satisfy `sigma.is_finite() && sigma > 0.0`, got sigma = 0.0",
       ),
       (
-        HestonParams { rho: -1.5, ..good },
+        HestonParams { rho: -1.5, ..P },
         "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = -1.5",
       ),
     ];

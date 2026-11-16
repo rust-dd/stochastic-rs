@@ -266,7 +266,7 @@ fn a_broken_model_parameter_panics_in_new() {
     dividend_yield: 0.01,
     tau: 0.5,
   };
-  let cases: [(fn(&mut HestonModel), &str); 10] = [
+  let cases: [(fn(&mut HestonModel), &str); 11] = [
     (
       |m| m.s = -1.0,
       "s must satisfy `s.is_finite() && s > 0.0`, got s = -1.0",
@@ -277,7 +277,11 @@ fn a_broken_model_parameter_panics_in_new() {
     ),
     (
       |m| m.params.v0 = f64::NAN,
-      "v0 must satisfy `v0.is_finite() && v0 >= 0.0`, got v0 = NaN",
+      "v0 must satisfy `v0 > 0.0`, got v0 = NaN",
+    ),
+    (
+      |m| m.params.v0 = -0.01,
+      "v0 must satisfy `v0 > 0.0`, got v0 = -0.01",
     ),
     (
       |m| m.params.kappa = -1.0,

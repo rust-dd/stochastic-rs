@@ -20,32 +20,50 @@ impl HestonParams {
   /// Panics unless every value is finite, `v0, θ ≥ 0`, `σ > 0` and `ρ ∈ [−1, 1]`; a `κ ≤ 0` is a
   /// non-stationary but well-defined affine model, and Feller's `2κθ ≥ σ²` is not imposed.
   pub fn new(v0: f64, kappa: f64, theta: f64, sigma: f64, rho: f64) -> Self {
-    assert!(
-      v0.is_finite() && v0 >= 0.0,
-      "v0 must satisfy `v0.is_finite() && v0 >= 0.0`, got v0 = {v0:?}"
-    );
-    assert!(
-      kappa.is_finite(),
-      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
-    );
-    assert!(
-      theta.is_finite() && theta >= 0.0,
-      "theta must satisfy `theta.is_finite() && theta >= 0.0`, got theta = {theta:?}"
-    );
-    assert!(
-      sigma.is_finite() && sigma > 0.0,
-      "sigma must satisfy `sigma.is_finite() && sigma > 0.0`, got sigma = {sigma:?}"
-    );
-    assert!(
-      (-1.0..=1.0).contains(&rho),
-      "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = {rho:?}"
-    );
-    Self {
+    let params = Self {
       v0,
       kappa,
       theta,
       sigma,
       rho,
+    };
+    if let Some(reason) = params.violation() {
+      panic!("{reason}");
+    }
+    params
+  }
+
+  /// The first of `new`'s checks these values fail, in its panic's words; `None` if all pass.
+  pub fn violation(&self) -> Option<String> {
+    let Self {
+      v0,
+      kappa,
+      theta,
+      sigma,
+      rho,
+    } = *self;
+    if !(v0.is_finite() && v0 >= 0.0) {
+      Some(format!(
+        "v0 must satisfy `v0.is_finite() && v0 >= 0.0`, got v0 = {v0:?}"
+      ))
+    } else if !kappa.is_finite() {
+      Some(format!(
+        "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
+      ))
+    } else if !(theta.is_finite() && theta >= 0.0) {
+      Some(format!(
+        "theta must satisfy `theta.is_finite() && theta >= 0.0`, got theta = {theta:?}"
+      ))
+    } else if !(sigma.is_finite() && sigma > 0.0) {
+      Some(format!(
+        "sigma must satisfy `sigma.is_finite() && sigma > 0.0`, got sigma = {sigma:?}"
+      ))
+    } else if !(-1.0..=1.0).contains(&rho) {
+      Some(format!(
+        "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = {rho:?}"
+      ))
+    } else {
+      None
     }
   }
 

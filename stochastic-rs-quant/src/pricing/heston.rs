@@ -37,9 +37,9 @@ pub use params::HestonParams;
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct HestonPricer {
-  pub params: HestonParams,
-  /// Heston's market price of volatility risk `λ`; `None` is `λ = 0`.
-  pub lambda: Option<f64>,
+  params: HestonParams,
+  /// Heston's market price of volatility risk `λ`.
+  lambda: f64,
 }
 
 impl HestonPricer {
@@ -47,17 +47,17 @@ impl HestonPricer {
   pub fn new(params: HestonParams) -> Self {
     Self {
       params: params.checked(),
-      lambda: None,
+      lambda: 0.0,
     }
   }
 
-  /// Sets Heston's `λ`; panics unless `lambda` is finite.
+  /// Sets Heston's `λ` (default `0`); panics unless `lambda` is finite.
   pub fn with_vol_risk_premium(mut self, lambda: f64) -> Self {
     assert!(
       lambda.is_finite(),
       "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
     );
-    self.lambda = Some(lambda);
+    self.lambda = lambda;
     self
   }
 
@@ -161,8 +161,8 @@ impl HestonPricer {
 
   pub(self) fn b(&self, j: u8) -> f64 {
     match j {
-      1 => self.params.kappa + self.lambda.unwrap_or(0.0) - self.params.rho * self.params.sigma,
-      2 => self.params.kappa + self.lambda.unwrap_or(0.0),
+      1 => self.params.kappa + self.lambda - self.params.rho * self.params.sigma,
+      2 => self.params.kappa + self.lambda,
       _ => unreachable!("Heston P_j index must be 1 or 2"),
     }
   }

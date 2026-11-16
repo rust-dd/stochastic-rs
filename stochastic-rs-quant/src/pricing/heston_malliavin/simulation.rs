@@ -99,8 +99,12 @@ pub(super) fn assert_model(model: HestonModel) {
     s.is_finite() && s > 0.0,
     "s must satisfy `s.is_finite() && s > 0.0`, got s = {s:?}"
   );
-  let HestonParams { v0, kappa, rho, .. } = params.checked();
-  assert!(v0 > 0.0, "v0 must satisfy `v0 > 0.0`, got v0 = {v0:?}");
+  assert!(
+    params.v0 > 0.0,
+    "v0 must satisfy `v0 > 0.0`, got v0 = {:?}",
+    params.v0
+  );
+  let HestonParams { kappa, rho, .. } = params.checked();
   assert!(
     kappa >= 0.0,
     "kappa must satisfy `kappa >= 0.0`, got kappa = {kappa:?}"

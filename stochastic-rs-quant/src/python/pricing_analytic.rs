@@ -136,16 +136,14 @@ impl PyHestonPricer {
     lambda_: Option<f64>,
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| {
-      let mut inner = crate::pricing::heston::HestonPricer::new(HestonParams {
+      let inner = crate::pricing::heston::HestonPricer::new(HestonParams {
         v0,
         kappa,
         theta,
         sigma,
         rho,
-      });
-      if let Some(lambda) = lambda_ {
-        inner = inner.with_vol_risk_premium(lambda);
-      }
+      })
+      .with_vol_risk_premium(lambda_.unwrap_or(0.0));
       Self {
         inner,
         s,

@@ -26,18 +26,12 @@
 //! convention](crate::traits::ModelPricer#how-pricing-fails).
 //! `vega`/`vanna`/`volga`/`veta` divide through the `σ = √v0` chain rule
 //! above, which is undefined at `v0 == 0`; each guards that case explicitly
-//! and returns `NaN` rather than a wrong finite number. A *negative* `v0` is
-//! a different thing — invalid input, case 1 — and panics. That panic is now
-//! the second line of defence: [`HestonPricer::new`] rejects a negative
-//! variance at construction, and this guard covers what the constructor
-//! cannot, since the fields are `pub` and a struct literal or a later
-//! assignment reaches them directly. The two messages are deliberately
-//! distinct so a test anchored on one cannot be satisfied by the other.
+//! and returns `NaN` rather than a wrong finite number.
 //! `theta`/`charm`/`veta` carry a second, independent guard on `tau`,
 //! returning `NaN` when it is non-finite or not safely larger than the
 //! central-difference step `H_TAU` — see
 //! `heston_greeks_nan_at_degenerate_inputs` for both `NaN` guards exercised
-//! directly and the `negative_v0_panics` module for the panic.
+//! directly.
 
 use super::HestonPricer;
 use crate::OptionType;
@@ -56,29 +50,9 @@ impl HestonPricer {
     self.params.v0.abs().max(0.01) * 1e-4
   }
 
-  /// Whether the `σ = √v0` chain rule the volatility-space Greeks share is
-  /// defined at this `v0`. Returns `false` at `v0 == 0`, where
-  /// `dσ/dv0 = 1/(2√v0)` is undefined and the caller must return `NaN`.
-  ///
-  /// The two degenerate cases are *not* the same kind of problem and the
-  /// crate's [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails) separates
-  /// them: `v0 == 0` is an admissible Heston state whose volatility-space
-  /// derivative happens not to exist, while a negative variance is invalid
-  /// input with no model behind it at all.
-  ///
-  /// A negative `v0` cannot arrive through [`HestonPricer::new`] any more —
-  /// it is rejected there. This guard exists for the `pub` field written
-  /// directly, and says so in its own words rather than the constructor's.
-  ///
-  /// # Panics
-  /// - if `v0` is negative (or `NaN`), naming the offending value
+  /// Whether `σ = √v0` has a derivative here; `v0 == 0` has none, so the volatility-space Greeks
+  /// return `NaN`.
   fn vol_chain_rule_is_defined(&self) -> bool {
-    assert!(
-      self.params.v0 >= 0.0,
-      "v0 must be non-negative (got {})",
-      self.params.v0
-    );
     self.params.v0 > 0.0
   }
 
@@ -121,10 +95,6 @@ impl HestonPricer {
   ///
   /// Returns `NaN` at `v0 == 0`, where the $\sigma=\sqrt{v_0}$ chain rule is
   /// undefined.
-  ///
-  /// # Panics
-  /// - if `v0` is negative — invalid input, distinct from the admissible
-  ///   `v0 == 0` above
   pub fn vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     if !self.vol_chain_rule_is_defined() {
       return f64::NAN;
@@ -159,10 +129,6 @@ impl HestonPricer {
   ///
   /// Returns `NaN` at `v0 == 0`, where the $\sigma=\sqrt{v_0}$ chain rule is
   /// undefined.
-  ///
-  /// # Panics
-  /// - if `v0` is negative — invalid input, distinct from the admissible
-  ///   `v0 == 0` above
   pub fn vanna(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     if !self.vol_chain_rule_is_defined() {
       return f64::NAN;
@@ -195,10 +161,6 @@ impl HestonPricer {
   ///
   /// Returns `NaN` at `v0 == 0`, where the $\sigma=\sqrt{v_0}$ chain rule is
   /// undefined.
-  ///
-  /// # Panics
-  /// - if `v0` is negative — invalid input, distinct from the admissible
-  ///   `v0 == 0` above
   pub fn volga(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     if !self.vol_chain_rule_is_defined() {
       return f64::NAN;
@@ -219,10 +181,6 @@ impl HestonPricer {
   /// [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt::tau_or_from_dates)
   /// when the instrument carries neither an explicit τ nor a date pair, so it
   /// propagates as `NaN` rather than panicking.
-  ///
-  /// # Panics
-  /// - if `v0` is negative — invalid input, distinct from the admissible
-  ///   `v0 == 0` above
   pub fn veta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     if !self.vol_chain_rule_is_defined() {
       return f64::NAN;

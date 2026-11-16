@@ -279,63 +279,6 @@ fn heston_greeks_nan_at_degenerate_inputs() {
   );
 }
 
-/// Each volatility-space Greek panics on a negative `v0`; the struct is built as a literal to reach
-/// the accessor guard behind [`HestonPricer::new`], whose message differs.
-mod negative_v0_panics {
-  use super::*;
-
-  fn negative_v0() -> HestonPricer {
-    HestonPricer {
-      params: HestonParams { v0: -0.01, ..P },
-      lambda: None,
-    }
-  }
-
-  #[test]
-  #[should_panic(expected = "v0 must be non-negative (got -0.01)")]
-  fn vega_rejects_negative_v0() {
-    negative_v0().vega(100.0, 100.0, 0.05, 0.0, 1.0);
-  }
-
-  #[test]
-  #[should_panic(expected = "v0 must be non-negative (got -0.01)")]
-  fn vanna_rejects_negative_v0() {
-    negative_v0().vanna(100.0, 100.0, 0.05, 0.0, 1.0);
-  }
-
-  #[test]
-  #[should_panic(expected = "v0 must be non-negative (got -0.01)")]
-  fn volga_rejects_negative_v0() {
-    negative_v0().volga(100.0, 100.0, 0.05, 0.0, 1.0);
-  }
-
-  #[test]
-  #[should_panic(expected = "v0 must be non-negative (got -0.01)")]
-  fn veta_rejects_negative_v0() {
-    negative_v0().veta(100.0, 100.0, 0.05, 0.0, 1.0);
-  }
-
-  /// The `v0` guard runs before the `tau` guard, so a negative `v0` panics
-  /// even at a `tau` that would independently have returned `NaN`. Without
-  /// this, a caller could mask invalid input behind a degenerate maturity.
-  #[test]
-  #[should_panic(expected = "v0 must be non-negative (got -0.01)")]
-  fn veta_rejects_negative_v0_before_degenerate_tau() {
-    negative_v0().veta(100.0, 100.0, 0.05, 0.0, 0.0);
-  }
-
-  /// Greeks that do not route through the `σ = √v0` chain rule keep working
-  /// at a negative `v0` exactly as before — the split must not widen into a
-  /// blanket model-parameter check.
-  #[test]
-  fn delta_and_rho_are_unaffected_by_the_guard() {
-    let m = negative_v0();
-    let ot = OptionType::Call;
-    assert!(m.delta(100.0, 100.0, 0.05, 0.0, 1.0, ot).is_finite());
-    assert!(m.rho(100.0, 100.0, 0.05, 0.0, 1.0, ot).is_finite());
-  }
-}
-
 /// `HestonPricer::new` rejects invalid parameters but admits `v0 == 0`, `theta == 0`, `|rho| == 1`
 /// and a violated Feller condition.
 mod construction_validation {
@@ -400,6 +343,51 @@ mod construction_validation {
     );
   }
 
+  #[test]
+  fn new_reads_back_exactly_the_parameters_it_took() {
+    let p = HestonParams::new(0.0123, -0.7, 0.0456, 0.789, 0.25);
+    let m = HestonPricer::new(p);
+    assert_eq!(m.params(), p);
+    assert_eq!(m.with_vol_risk_premium(0.5).params(), p);
+  }
+
+  /// A zero λ and the default are one model.
+  #[test]
+  fn vol_risk_premium_zero_is_the_default() {
+    let (s, k, r, q, tau) = (100.0, 105.0, 0.05, 0.02, 0.75);
+    assert_eq!(
+      HestonPricer::new(P)
+        .with_vol_risk_premium(0.0)
+        .price_call(s, k, r, q, tau),
+      HestonPricer::new(P).price_call(s, k, r, q, tau)
+    );
+  }
+
+  /// `violation` is `new`'s first failing check in its panic's words, and a NaN is a violation.
+  #[test]
+  fn violation_names_the_first_failing_parameter() {
+    assert_eq!(P.violation(), None);
+    let nan_rho = HestonParams { rho: f64::NAN, ..P };
+    assert_eq!(
+      nan_rho.violation().as_deref(),
+      Some("rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = NaN")
+    );
+    let two = HestonParams {
+      v0: -0.01,
+      sigma: 0.0,
+      ..P
+    };
+    assert!(two.violation().unwrap().starts_with("v0 must satisfy"));
+    assert!(
+      HestonParams {
+        kappa: f64::INFINITY,
+        ..P
+      }
+      .violation()
+      .is_some()
+    );
+  }
+
   /// Feller stays a warning condition: `2κθ = 0.04` against `σ² = 2.25`
   /// violates it, and the model must still construct and price.
   #[test]
@@ -424,12 +412,8 @@ mod construction_validation {
 
 const TOL: f64 = 1e-12;
 
-/// Captured from `PricerExt::calculate_call_put()`, `implied_volatility`,
-/// `calculate_call_put_initial_variance_vega` and the `GreeksExt`
-/// aggregate **before** the `ModelPricer` reshape, at
-/// `(s, k, r, q, tau) = (100, 105, 0.05, 0.02, 0.75)` and
-/// `(v0, rho, kappa, theta, sigma, lambda) = (0.04, -0.7, 2, 0.04, 0.3,
-/// None)`. The reshape is an API change only, so none of these move.
+/// Goldens at `(s, k, r, q, τ) = (100, 105, 0.05, 0.02, 0.75)` and
+/// `HestonParams::new(0.04, 2.0, 0.04, 0.3, -0.7)`.
 #[test]
 fn heston_model_pricer_matches_pre_refactor_goldens() {
   let m = HestonPricer::new(HestonParams::new(0.04, 2.0, 0.04, 0.3, -0.7));

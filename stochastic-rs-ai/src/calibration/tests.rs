@@ -140,6 +140,36 @@ fn heston_bridge_maps_the_parameter_order_and_builds_the_pricer() {
   assert_eq!(result.to_model().params(), result.params);
 }
 
+/// A fit past the training box's floor answers `Err` naming the parameter, where its `to_model`
+/// would panic.
+#[test]
+fn a_heston_fit_outside_the_domain_is_an_err_naming_the_parameter() {
+  let fit = |v: Vec<f64>| SurrogateCalibrationResult {
+    params: v,
+    rmse: 0.0,
+    max_error: 0.0,
+    converged: true,
+    in_bounds: false,
+    evaluations: 1,
+    message: String::new(),
+  };
+  let ok = fitted_heston_params(&fit(vec![0.02, -0.6, 0.4, 0.05, 3.0])).unwrap();
+  assert_eq!(ok.kappa, 3.0);
+  for (v, name) in [
+    (vec![-0.001, -0.6, 0.4, 0.05, 3.0], "v0"),
+    (vec![0.02, -1.2, 0.4, 0.05, 3.0], "rho"),
+    (vec![0.02, -0.6, -0.1, 0.05, 3.0], "sigma"),
+    (vec![0.02, -0.6, 0.4, -0.01, 3.0], "theta"),
+    (vec![0.02, -0.6, 0.4, 0.05, f64::NAN], "kappa"),
+  ] {
+    let err = fitted_heston_params(&fit(v)).unwrap_err().to_string();
+    assert!(
+      err.contains(&format!("{name} must satisfy")),
+      "{name}: {err}"
+    );
+  }
+}
+
 /// The rough Bergomi bridge maps `[ξ₀, η, ρ, H]` onto a flat-ξ₀
 /// `RBergomiParams`, both ways.
 #[test]
