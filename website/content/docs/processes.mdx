@@ -318,7 +318,7 @@ gpu = srs.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7, dtype="f32", device="me
 
 ```rust
 use stochastic_rs::ndarray::{array, Array1, Array2};
-use stochastic_rs::simd_rng::SimdRng;
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stochastic::sde::{NoiseModel, Sde, SdeMethod};
 
 // dS = mu S dt + sigma S dW
@@ -329,8 +329,7 @@ let sde = Sde::new(
   NoiseModel::Gaussian,
   None,
 );
-let mut rng = SimdRng::from_seed(42);
-let paths = sde.solve(&array![100.0], 0.0, 1.0, 0.001, 100, SdeMethod::Milstein, &mut rng); // [100, 1001, 1]
+let paths = sde.solve(&array![100.0], 0.0, 1.0, 0.001, 100, SdeMethod::Milstein, &Deterministic::new(42)); // [100, 1001, 1]
 ```
 
 ## Volterra (stochastic Volterra equations)

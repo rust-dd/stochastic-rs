@@ -153,7 +153,7 @@
 //!
 //! ```rust
 //! use ndarray::{array, Array1, Array2};
-//! use stochastic_rs_core::simd_rng::SimdRng;
+//! use stochastic_rs_core::simd_rng::Deterministic;
 //! use stochastic_rs_stochastic::sde::{Sde, SdeMethod, NoiseModel};
 //!
 //! // Geometric Brownian Motion: dS = mu*S*dt + sigma*S*dW
@@ -170,8 +170,7 @@
 //! );
 //!
 //! let x0 = array![100.0_f64];
-//! let mut rng = SimdRng::from_seed(42);
-//! let paths = sde.solve(&x0, 0.0, 1.0, 0.001, 100, SdeMethod::Milstein, &mut rng);
+//! let paths = sde.solve(&x0, 0.0, 1.0, 0.001, 100, SdeMethod::Milstein, &Deterministic::new(42));
 //! // paths.shape() == [100, 1001, 1]
 //! ```
 
@@ -185,9 +184,10 @@ use ndarray::Array2;
 use ndarray::Array3;
 use ndarray::ArrayView1;
 use ndarray::s;
-use rand::Rng;
-use rand::distr::Distribution;
-use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::noise::fgn::Fgn;
@@ -281,26 +281,9 @@ where
   F: Fn(&Array1<T>, T) -> Array1<T>,
   G: Fn(&Array1<T>, T) -> Array2<T>,
 {
-  /// Solves the SDE and returns simulated paths.
-  ///
-  /// # Arguments
-  ///
-  /// * `x0` - Initial state $X_0 \in \mathbb{R}^d$
-  /// * `t0` - Start time
-  /// * `t1` - End time
-  /// * `dt` - Time step size $\Delta t$
-  /// * `n_paths` - Number of independent sample paths to simulate
-  /// * `method` - Numerical discretization scheme to use
-  /// * `rng` - Random number generator. Every Gaussian increment is drawn
-  ///   from it, and under [`NoiseModel::Fractional`] it seeds the fGN
-  ///   embedding of each dimension — so a seeded generator (the workspace's
-  ///   `SimdRng::from_seed`) makes the whole solve reproducible.
-  ///
-  /// # Returns
-  ///
-  /// [`Array3<T>`] with shape `[n_paths, steps + 1, dim]` containing all simulated paths.
-  /// Index `[p, 0, :]` contains the initial condition for path `p`.
-  pub fn solve(
+  /// `n_paths` paths `[n_paths, steps + 1, dim]` from `x0` at index 0; every Gaussian increment, or
+  /// each dimension's fGN seed under [`NoiseModel::Fractional`], is drawn from `seed`.
+  pub fn solve<S: SeedExt>(
     &self,
     x0: &Array1<T>,
     t0: T,
@@ -308,35 +291,30 @@ where
     dt: T,
     n_paths: usize,
     method: SdeMethod,
-    rng: &mut impl Rng,
+    seed: &S,
   ) -> Array3<T>
   where
     B: Default,
   {
     match self.noise {
-      NoiseModel::Gaussian => match method {
-        SdeMethod::Euler => self.solve_euler_gauss(x0, t0, t1, dt, n_paths, rng),
-        SdeMethod::Milstein => self.solve_milstein_gauss(x0, t0, t1, dt, n_paths, rng),
-        SdeMethod::SRK2 => self.solve_srk2_gauss(x0, t0, t1, dt, n_paths, rng),
-        SdeMethod::SRK4 => self.solve_srk4_gauss(x0, t0, t1, dt, n_paths, rng),
-      },
+      NoiseModel::Gaussian => {
+        let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(seed);
+        match method {
+          SdeMethod::Euler => self.solve_euler_gauss(x0, t0, t1, dt, n_paths, &mut normal),
+          SdeMethod::Milstein => self.solve_milstein_gauss(x0, t0, t1, dt, n_paths, &mut normal),
+          SdeMethod::SRK2 => self.solve_srk2_gauss(x0, t0, t1, dt, n_paths, &mut normal),
+          SdeMethod::SRK4 => self.solve_srk4_gauss(x0, t0, t1, dt, n_paths, &mut normal),
+        }
+      }
       NoiseModel::Fractional => {
         let steps = ((t1 - t0) / dt).ceil().to_usize().unwrap();
         let dim = x0.len();
         let mut incs = Array3::zeros((n_paths, steps, dim));
 
         if let Some(h) = &self.hursts {
-          let fgns: Vec<Fgn<T, Deterministic, B>> = (0..dim)
-            .map(|d| {
-              Fgn::new(
-                h[d],
-                steps,
-                Some(t1 - t0),
-                Deterministic::new(rng.next_u64()),
-              )
-              .on::<B>()
-            })
-            .collect();
+          let fgns = (0..dim)
+            .map(|d| Fgn::new(h[d], steps, Some(t1 - t0), seed.derive()).on::<B>())
+            .collect::<Vec<_>>();
 
           for p in 0..n_paths {
             for (d, fgn) in fgns.iter().enumerate().take(dim) {
@@ -357,11 +335,15 @@ where
   }
 
   /// Fills `out` with i.i.d. $\mathcal{N}(0, \Delta t)$ Brownian increments, one per dimension.
-  /// The draw goes through `SimdNormal`'s scalar `Distribution` impl, which draws from the *caller's* generator.
-  pub(super) fn fill_gauss_increment(&self, out: &mut [T], sqrt_dt: T, rng: &mut impl Rng) {
-    let standard = SimdNormal::new(T::zero(), T::one());
+  pub(super) fn fill_gauss_increment(
+    &self,
+    out: &mut [T],
+    sqrt_dt: T,
+    normal: &mut Seeded<SimdNormal<T>>,
+  ) {
+    normal.fill_slice(out);
     for x in out.iter_mut() {
-      *x = standard.sample(rng) * sqrt_dt;
+      *x = *x * sqrt_dt;
     }
   }
 

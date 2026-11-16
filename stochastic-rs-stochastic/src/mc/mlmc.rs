@@ -159,6 +159,11 @@ fn level_variances<T: FloatExt>(levels: &[Welford]) -> Vec<T> {
 mod tests {
   use std::cell::RefCell;
 
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
+  use stochastic_rs_distributions::normal::SimdNormal;
+
   use super::*;
 
   /// Level `l` alternates `base_l ± δ_l` with `δ_l² = ¼·2⁻ˡ` (only level 0 on `base0`), so its
@@ -242,6 +247,7 @@ mod tests {
     let tau = 1.0;
 
     let mlmc = Mlmc::new(1.0, 2, 8, 500);
+    let normal = RefCell::new(SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(8)));
 
     let sampler = |level: usize, n: usize| -> Array1<f64> {
       let m_fine = 2usize.pow(level as u32 + 1);
@@ -251,7 +257,7 @@ mod tests {
       let mut out = Array1::<f64>::zeros(n);
 
       for i in 0..n {
-        let z = f64::normal_array(m_fine, 0.0, 1.0);
+        let z = normal.borrow_mut().sample_n(m_fine);
 
         // Fine path (Euler)
         let mut s_f = s0;

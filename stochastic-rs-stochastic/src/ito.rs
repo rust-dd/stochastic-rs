@@ -14,26 +14,23 @@
 //! [`crate::sde::Sde`] (`<T: FloatExt>`) or any of the strongly-typed
 //! [`crate::traits::ProcessExt`] processes.
 use ndarray::Array1;
-use rand::distr::Distribution;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
-/// A structure defining the drift and diffusion functions of the SDE.
-/// Optionally, a jump term can be added (e.g., for jump-diffusion models).
-///
-/// * `drift(t, x) -> f64`: The drift function \(\mu(t, x)\).
-/// * `diffusion(t, x) -> f64`: The diffusion function \(\sigma(t, x)\).
-/// * `jump_term(t, x, dt) -> f64`: A user-provided jump function. If provided, it
-///   should return the jump increment for the process within the time step `dt`.
+/// The SDE's `drift(t, x)` and `diffusion(t, x)`, and an optional `jump_term(t, x, dt)`, the jump
+/// increment over a step of `dt`.
 pub struct DiffusionProcessFn {
-  pub drift: Box<dyn Fn(f64, f64) -> f64>,
-  pub diffusion: Box<dyn Fn(f64, f64) -> f64>,
-  pub jump_term: Option<Box<dyn Fn(f64, f64, f64) -> f64>>,
+  pub drift: Box<dyn Fn(f64, f64) -> f64 + Send + Sync>,
+  pub diffusion: Box<dyn Fn(f64, f64) -> f64 + Send + Sync>,
+  pub jump_term: Option<Box<dyn Fn(f64, f64, f64) -> f64 + Send + Sync>>,
 }
 
 /// A 2D function \(\, f(t, x) \), used for Ito's lemma transformations.
 /// * `eval(t, x) -> f64`: Evaluate the function at the point \((t, x)\).
 pub struct Function2D {
-  pub eval: Box<dyn Fn(f64, f64) -> f64>,
+  pub eval: Box<dyn Fn(f64, f64) -> f64 + Send + Sync>,
 }
 
 /// A simple result structure holding the drift and diffusion terms from the Ito transformation.
@@ -141,39 +138,21 @@ impl ItoCalculator {
     }
   }
 
-  /// Simulates a path for the SDE given by:
-  /// \[
-  ///   dX_t = \mu(t, X_t) \, dt + \sigma(t, X_t) \, dW_t + \text{(optional jump)}.
-  /// \]
-  ///
-  /// This uses a simple Euler–Maruyama scheme, optionally adding jump increments.
-  ///
-  /// # Arguments
-  /// * `x0` - The initial value \(X_{t_0}\).
-  /// * `t0` - The starting time.
-  /// * `t1` - The final time.
-  /// * `dt` - The time step for the numerical simulation.
-  /// * `rng` - The generator every Brownian increment is drawn from. Any
-  ///   `rand::Rng` works; the workspace default is `SimdRng`, seeded via
-  ///   `SimdRng::from_seed` when the path must be reproducible.
-  ///
-  /// # Returns
-  /// An `ndarray::Array1` of `(time, value)` tuples representing the simulated path.
-  pub fn simulate(
+  /// An Euler–Maruyama path of `dX = μ dt + σ dW`, plus the jump term, from `x0` at `t0` to `t1` as
+  /// `(t, x)` pairs; the Brownian increments are drawn from `seed`.
+  pub fn simulate<S: SeedExt>(
     &self,
     x0: f64,
     t0: f64,
     t1: f64,
     dt: f64,
-    rng: &mut impl rand::Rng,
+    seed: &S,
   ) -> Array1<(f64, f64)> {
     let steps = ((t1 - t0) / dt).ceil().max(0.0) as usize;
     let sqrt_dt = dt.sqrt();
-    let standard = SimdNormal::new(0.0_f64, 1.0);
-    let mut normals = vec![0.0; steps];
-    for z in normals.iter_mut() {
-      *z = standard.sample(rng);
-    }
+    let normals = SimdNormal::<f64>::new(0.0, 1.0)
+      .seeded(seed)
+      .sample_n(steps);
 
     let mut t = t0;
     let mut x = x0;
@@ -181,7 +160,7 @@ impl ItoCalculator {
     path.push((t, x));
 
     // Loop over the precomputed Gaussian increments.
-    for z in normals {
+    for &z in normals.iter() {
       let mu = (self.process.drift)(t, x);
       let sigma = (self.process.diffusion)(t, x);
       // Brownian increment ~ Normal(0, dt).
@@ -201,5 +180,43 @@ impl ItoCalculator {
     }
 
     Array1::from(path)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_core::simd_rng::Unseeded;
+
+  use super::*;
+
+  fn ou_squared() -> ItoCalculator {
+    ItoCalculator::new(
+      DiffusionProcessFn {
+        drift: Box::new(|_, x| -x),
+        diffusion: Box::new(|_, _| 0.3),
+        jump_term: None,
+      },
+      Function2D {
+        eval: Box::new(|_, x| x * x),
+      },
+      1e-4,
+    )
+  }
+
+  #[test]
+  fn a_seeded_path_is_a_function_of_the_seed() {
+    let ito = ou_squared();
+    let path = |seed: &Deterministic| ito.simulate(1.0, 0.0, 1.0, 0.01, seed);
+    assert_eq!(path(&Deterministic::new(42)), path(&Deterministic::new(42)));
+    assert_ne!(path(&Deterministic::new(42)), path(&Deterministic::new(43)));
+    let fresh = || ito.simulate(1.0, 0.0, 1.0, 0.01, &Unseeded);
+    assert_ne!(fresh(), fresh());
+  }
+
+  #[test]
+  fn the_calculator_crosses_threads() {
+    fn send_sync<T: Send + Sync>() {}
+    send_sync::<ItoCalculator>();
   }
 }

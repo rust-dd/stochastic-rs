@@ -11,30 +11,39 @@
 //! DOI: 10.1007/978-0-387-21617-1
 
 use ndarray::Array1;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::McEstimate;
 use super::estimate_from_samples;
 use crate::traits::FloatExt;
 
-/// Importance sampling MC estimate with Gaussian mean-shift.
-///
-/// Shifts the sampling distribution from `N(0, I)` to `N(θ, I)`.
-/// Useful for rare-event simulation (e.g., deep out-of-the-money options).
-///
-/// The `payoff` closure receives the shifted samples `Z + θ`.
-pub fn estimate<T, F>(n_paths: usize, dim: usize, payoff: F, shift: &Array1<T>) -> McEstimate<T>
+/// `E[payoff(Z)]` for `Z ~ N(0, I)`, from `seed`'s normals moved by `shift` and reweighted by
+/// `dP/dQ`; `payoff` receives the moved draw; panics unless `shift.len() == dim`.
+pub fn estimate<T, F, S>(
+  n_paths: usize,
+  dim: usize,
+  payoff: F,
+  shift: &Array1<T>,
+  seed: &S,
+) -> McEstimate<T>
 where
   T: FloatExt,
   F: Fn(&Array1<T>) -> T,
+  S: SeedExt,
 {
   assert_eq!(shift.len(), dim, "shift dimension must match dim");
 
   let two = T::from_f64_fast(2.0);
   let shift_norm_sq: T = shift.iter().map(|&s| s * s).sum();
 
+  let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(seed);
+  let mut z = Array1::<T>::zeros(dim);
   estimate_from_samples((0..n_paths).map(|_| {
-    let z_std = T::normal_array(dim, T::zero(), T::one());
-    let z = &z_std + shift;
+    normal.fill_slice(z.as_slice_mut().expect("contiguous"));
+    z += shift;
     let dot: T = z.iter().zip(shift.iter()).map(|(&zi, &si)| zi * si).sum();
     let log_weight = -dot + shift_norm_sq / two;
     let weight = log_weight.exp();
@@ -44,6 +53,8 @@ where
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   /// Zero shift should recover plain MC for E[max(Z,0)] = 1/√(2π).
@@ -54,7 +65,7 @@ mod tests {
     let payoff = |z: &Array1<f64>| z[0].max(0.0);
     let shift = Array1::zeros(dim);
 
-    let is = estimate(n, dim, payoff, &shift);
+    let is = estimate(n, dim, payoff, &shift, &Deterministic::new(4));
     let expected = 1.0 / (2.0 * std::f64::consts::PI).sqrt();
 
     assert!(
@@ -72,7 +83,7 @@ mod tests {
     let payoff = |z: &Array1<f64>| z[0].max(0.0);
     let shift = Array1::from_vec(vec![1.0]);
 
-    let is = estimate(n, dim, payoff, &shift);
+    let is = estimate(n, dim, payoff, &shift, &Deterministic::new(5));
     let expected = 1.0 / (2.0 * std::f64::consts::PI).sqrt();
 
     assert!(

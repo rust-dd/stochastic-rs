@@ -38,6 +38,9 @@ const PTRS_MIN_LAMBDA: f64 = 1000.0;
 /// From this count on Stirling's series holds `stirlerr(k)` within `5e-18`; below it `ln pₖ` is `k ln λ − λ − ln k!`.
 const STIRLING_FROM: f64 = 15.0;
 
+/// From this `P(N = 0)` on a zero count skips the search; below it the branch mispredicts too much.
+const ZERO_FIRST_FROM: f64 = 0.99;
+
 /// `ln pₖ` as `−stirlerr(k) − bd0(k, λ) − ½ ln 2πk` from `STIRLING_FROM` on, which keeps the digits `k ln λ − λ − ln k!` cancels at large λ.
 fn ln_pmf(k: f64, lambda: f64, ln_lambda: f64) -> f64 {
   if k < STIRLING_FROM {
@@ -136,6 +139,15 @@ fn table_index(table: &[f64], u: f64) -> u64 {
   table.partition_point(|&c| c < u) as u64
 }
 
+#[inline]
+fn zero_first_index(table: &[f64], u: f64) -> u64 {
+  if u <= table[0] {
+    0
+  } else {
+    table_index(table, u)
+  }
+}
+
 /// Visits the table's entries `P(N ≤ k)` from `k = 0`, in log space as `exp(−λ)` underflows at λ ≳ 745, until `visit` answers `true` or the table ends; returns that `k`.
 #[inline]
 fn walk(lambda: f64, mut visit: impl FnMut(f64) -> bool) -> f64 {
@@ -174,6 +186,7 @@ pub(crate) fn count_once<G: Rng + ?Sized>(lambda: f64, rng: &mut G) -> f64 {
 #[derive(Clone, Debug, PartialEq)]
 enum Sampler {
   Table(Box<[f64]>),
+  ZeroFirst(Box<[f64]>),
   Ptrs(Ptrs),
 }
 
@@ -202,10 +215,15 @@ impl<T: PrimInt> SimdPoisson<T> {
       lambda > 0.0 && lambda.is_finite(),
       "lambda must satisfy `lambda > 0.0 && lambda.is_finite()`, got lambda = {lambda:?}"
     );
-    let sampler = if lambda < PTRS_MIN_LAMBDA {
-      Sampler::Table(Self::build_cdf(lambda))
-    } else {
+    let sampler = if lambda >= PTRS_MIN_LAMBDA {
       Sampler::Ptrs(Ptrs::new(lambda))
+    } else {
+      let table = Self::build_cdf(lambda);
+      if table[0] >= ZERO_FIRST_FROM {
+        Sampler::ZeroFirst(table)
+      } else {
+        Sampler::Table(table)
+      }
     };
     Self {
       lambda,
@@ -239,6 +257,14 @@ impl<T: PrimInt> SimdPoisson<T> {
           x.write(Self::count(table_index(table, uniform53(rng.next_u64()))));
         }
       }
+      Sampler::ZeroFirst(table) => {
+        for x in out.iter_mut() {
+          x.write(Self::count(zero_first_index(
+            table,
+            uniform53(rng.next_u64()),
+          )));
+        }
+      }
       Sampler::Ptrs(ptrs) => {
         for x in out.iter_mut() {
           x.write(Self::count(ptrs.draw(|| uniform53(rng.next_u64())) as u64));
@@ -250,6 +276,7 @@ impl<T: PrimInt> SimdPoisson<T> {
   pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
     match &self.sampler {
       Sampler::Table(table) => Self::count(table_index(table, uniform53(rng.next_u64()))),
+      Sampler::ZeroFirst(table) => Self::count(zero_first_index(table, uniform53(rng.next_u64()))),
       Sampler::Ptrs(ptrs) => Self::count(ptrs.draw_with(rng) as u64),
     }
   }

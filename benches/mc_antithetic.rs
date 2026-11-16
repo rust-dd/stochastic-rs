@@ -9,6 +9,7 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::measurement::WallTime;
 use ndarray::Array1;
+use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::mc::antithetic;
 
 const PATHS: usize = 50_000;
@@ -34,10 +35,10 @@ where
   F: Fn(&Array1<f64>) -> f64 + Sync + Copy,
 {
   group.bench_function(BenchmarkId::new("estimate", name), |b| {
-    b.iter(|| black_box(antithetic::estimate(PATHS, dim, payoff)));
+    b.iter(|| black_box(antithetic::estimate(PATHS, dim, payoff, &Unseeded)));
   });
   group.bench_function(BenchmarkId::new("estimate_par", name), |b| {
-    b.iter(|| black_box(antithetic::estimate_par(PATHS, dim, payoff)));
+    b.iter(|| black_box(antithetic::estimate_par(PATHS, dim, payoff, &Unseeded)));
   });
 }
 

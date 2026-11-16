@@ -9,49 +9,57 @@
 //! DOI: 10.1007/978-0-387-21617-1
 
 use ndarray::Array1;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::McEstimate;
 use super::estimate_from_samples;
-use super::par_welford;
+use super::welford::par_welford_seeded;
 use crate::traits::FloatExt;
 
-/// Antithetic variates MC estimate (sequential).
-///
-/// Generates `n_paths` pairs `(Z, −Z)` of `dim`-dimensional standard normals
-/// and returns the averaged payoff.
-pub fn estimate<T, F>(n_paths: usize, dim: usize, payoff: F) -> McEstimate<T>
+/// The mean of `(payoff(Z) + payoff(−Z)) / 2` over `n_paths` draws of a `dim`-dimensional standard
+/// normal `Z` from `seed`.
+pub fn estimate<T, F, S>(n_paths: usize, dim: usize, payoff: F, seed: &S) -> McEstimate<T>
 where
   T: FloatExt,
   F: Fn(&Array1<T>) -> T,
+  S: SeedExt,
 {
   let two = T::from_f64_fast(2.0);
+  let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(seed);
+  let mut z = Array1::<T>::zeros(dim);
   estimate_from_samples((0..n_paths).map(|_| {
-    let z = T::normal_array(dim, T::zero(), T::one());
-    let neg_z = z.mapv(|v| -v);
-    (payoff(&z) + payoff(&neg_z)) / two
+    normal.fill_slice(z.as_slice_mut().expect("contiguous"));
+    let up = payoff(&z);
+    z.mapv_inplace(|v| -v);
+    (up + payoff(&z)) / two
   }))
 }
 
-/// Antithetic variates MC estimate (parallel via rayon).
-///
-/// Chunked by `n_paths` alone, one [`Welford`](super::Welford) per chunk on the pool, merged in
-/// chunk order: no per-path storage, and bits that do not depend on the thread count.
-pub fn estimate_par<T, F>(n_paths: usize, dim: usize, payoff: F) -> McEstimate<T>
+/// [`estimate`] on the pool, one stream per chunk of `n_paths` forked from `seed`: the same bits
+/// under any pool size.
+pub fn estimate_par<T, F, S>(n_paths: usize, dim: usize, payoff: F, seed: &S) -> McEstimate<T>
 where
   T: FloatExt,
   F: Fn(&Array1<T>) -> T + Sync,
+  S: SeedExt,
 {
   let two = T::from_f64_fast(2.0);
-  let acc = par_welford(n_paths, |_| {
-    let z = T::normal_array(dim, T::zero(), T::one());
-    let neg_z = z.mapv(|v| -v);
-    (payoff(&z) + payoff(&neg_z)) / two
+  let acc = par_welford_seeded(n_paths, seed, |_, normal| {
+    let mut z = normal.sample_n(dim);
+    let up = payoff(&z);
+    z.mapv_inplace(|v: T| -v);
+    (up + payoff(&z)) / two
   });
   McEstimate::from(&acc)
 }
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   /// Antithetic should give the correct mean for E[max(Z,0)] = 1/√(2π)
@@ -62,11 +70,11 @@ mod tests {
     let dim = 1;
     let payoff = |z: &Array1<f64>| z[0].max(0.0);
 
-    let av = estimate(n, dim, payoff);
+    let av = estimate(n, dim, payoff, &Deterministic::new(1));
 
     // Plain MC for comparison
-    let plain_se =
-      estimate_from_samples((0..n).map(|_| payoff(&f64::normal_array(dim, 0.0, 1.0)))).std_err;
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(2));
+    let plain_se = estimate_from_samples((0..n).map(|_| payoff(&normal.sample_n(dim)))).std_err;
 
     let expected = 1.0 / (2.0 * std::f64::consts::PI).sqrt();
     assert!(
@@ -86,7 +94,12 @@ mod tests {
   #[test]
   fn antithetic_par_matches_the_analytic_moments() {
     let n = 200_000;
-    let est = estimate_par(n, 1, |z: &Array1<f64>| z[0].max(0.0));
+    let est = estimate_par(
+      n,
+      1,
+      |z: &Array1<f64>| z[0].max(0.0),
+      &Deterministic::new(5),
+    );
     let mean = 1.0 / (2.0 * std::f64::consts::PI).sqrt();
     let std_err = ((1.0 - 2.0 / std::f64::consts::PI) / 4.0 / n as f64).sqrt();
     assert!(
@@ -100,5 +113,30 @@ mod tests {
       est.std_err
     );
     assert_eq!(est.n_samples, n);
+  }
+
+  #[test]
+  fn the_estimate_is_a_function_of_the_seed() {
+    let payoff = |z: &Array1<f64>| z[0].max(0.0);
+    let a = estimate(10_000, 1, payoff, &Deterministic::new(7));
+    let b = estimate(10_000, 1, payoff, &Deterministic::new(7));
+    let c = estimate(10_000, 1, payoff, &Deterministic::new(8));
+    assert_eq!(a.mean, b.mean);
+    assert_ne!(a.mean, c.mean);
+  }
+
+  #[test]
+  fn the_parallel_estimate_does_not_depend_on_the_pool() {
+    let payoff = |z: &Array1<f64>| z[0].max(0.0);
+    let run = |threads: usize| {
+      rayon::ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .build()
+        .unwrap()
+        .install(|| estimate_par(50_000, 1, payoff, &Deterministic::new(3)))
+    };
+    let (one, four) = (run(1), run(4));
+    assert_eq!(one.mean.to_bits(), four.mean.to_bits());
+    assert_eq!(one.std_err.to_bits(), four.std_err.to_bits());
   }
 }

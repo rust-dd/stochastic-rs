@@ -60,7 +60,7 @@ fn a_correlated_fgn_pair_names_the_predicate_it_broke() {
   expected = "rho_path[1] must satisfy `(-1.0..=1.0).contains(&rho_path[i])`, got rho_path[1] = 1.2"
 )]
 fn correlated_brownian_motions_refuse_a_correlation_outside_the_unit_interval() {
-  let _ = stochastic_correlated_bm(&array![0.2, 1.2, 0.1], None);
+  let _ = stochastic_correlated_bm(&array![0.2, 1.2, 0.1], None, &Unseeded);
 }
 
 #[test]
@@ -68,7 +68,7 @@ fn correlated_brownian_motions_refuse_a_correlation_outside_the_unit_interval() 
   expected = "rho_path[0] must satisfy `(-1.0..=1.0).contains(&rho_path[i])`, got rho_path[0] = NaN"
 )]
 fn correlated_brownian_motions_refuse_a_nan_correlation() {
-  let _ = stochastic_correlated_bm(&array![f64::NAN, 0.1], None);
+  let _ = stochastic_correlated_bm(&array![f64::NAN, 0.1], None, &Unseeded);
 }
 
 macro_rules! refuses {

@@ -1,7 +1,8 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::array;
-use stochastic_rs_core::simd_rng::SimdRng;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::NoiseModel;
 use super::Sde;
@@ -34,8 +35,15 @@ fn euler_gbm_recovers_analytical_mean() {
   let s0 = array![100.0_f64];
   let t = 1.0_f64;
   let dt = 1e-3_f64;
-  let mut rng = SimdRng::from_seed(0x5DE_F00D);
-  let paths = sde.solve(&s0, 0.0, t, dt, 4_000, SdeMethod::Euler, &mut rng);
+  let paths = sde.solve(
+    &s0,
+    0.0,
+    t,
+    dt,
+    4_000,
+    SdeMethod::Euler,
+    &Deterministic::new(0x5DE_F00D),
+  );
 
   let analytic = 100.0_f64 * (0.05_f64 * t).exp();
   let m = final_mean(&paths);
@@ -49,8 +57,15 @@ fn milstein_gbm_recovers_analytical_mean() {
   let s0 = array![100.0_f64];
   let t = 1.0_f64;
   let dt = 1e-3_f64;
-  let mut rng = SimdRng::from_seed(0xC0FFEE);
-  let paths = sde.solve(&s0, 0.0, t, dt, 4_000, SdeMethod::Milstein, &mut rng);
+  let paths = sde.solve(
+    &s0,
+    0.0,
+    t,
+    dt,
+    4_000,
+    SdeMethod::Milstein,
+    &Deterministic::new(0xC0FFEE),
+  );
 
   let analytic = 100.0_f64 * (0.05_f64 * t).exp();
   let m = final_mean(&paths);
@@ -62,9 +77,9 @@ fn milstein_gbm_recovers_analytical_mean() {
 fn srk2_and_srk4_produce_finite_paths() {
   let sde = gbm_sde();
   let s0 = array![100.0_f64];
-  let mut rng = SimdRng::from_seed(0xBADCAFE);
+  let seed = Deterministic::new(0xBADCAFE);
   for method in [SdeMethod::SRK2, SdeMethod::SRK4] {
-    let paths = sde.solve(&s0, 0.0, 0.5, 1e-3, 200, method, &mut rng);
+    let paths = sde.solve(&s0, 0.0, 0.5, 1e-3, 200, method, &seed);
     assert!(paths.iter().all(|v| v.is_finite()));
     for p in 0..paths.shape()[0] {
       assert!((paths[[p, 0, 0]] - 100.0).abs() < 1e-12);
@@ -87,8 +102,15 @@ fn pure_drift_decay_tracks_exponential() {
   let s0 = array![1.0_f64];
   let t = 1.0_f64;
   let dt = 1e-3_f64;
-  let mut rng = SimdRng::from_seed(0xDEC0DE);
-  let paths = sde.solve(&s0, 0.0, t, dt, 1, SdeMethod::Euler, &mut rng);
+  let paths = sde.solve(
+    &s0,
+    0.0,
+    t,
+    dt,
+    1,
+    SdeMethod::Euler,
+    &Deterministic::new(0xDEC0DE),
+  );
 
   let last = paths.shape()[1] - 1;
   let computed = paths[[0, last, 0]];
@@ -104,9 +126,54 @@ fn pure_drift_decay_tracks_exponential() {
 fn initial_condition_preserved() {
   let sde = gbm_sde();
   let s0 = array![100.0_f64];
-  let mut rng = SimdRng::from_seed(7);
-  let paths = sde.solve(&s0, 0.0, 0.1, 1e-3, 5, SdeMethod::Euler, &mut rng);
+  let paths = sde.solve(
+    &s0,
+    0.0,
+    0.1,
+    1e-3,
+    5,
+    SdeMethod::Euler,
+    &Deterministic::new(7),
+  );
   for p in 0..5 {
     assert_eq!(paths[[p, 0, 0]], 100.0);
   }
+}
+
+#[test]
+fn a_seeded_solve_is_a_function_of_the_seed() {
+  let sde = gbm_sde();
+  let s0 = array![100.0_f64];
+  let solve = |seed: &Deterministic| sde.solve(&s0, 0.0, 0.5, 1e-2, 8, SdeMethod::Euler, seed);
+  assert_eq!(
+    solve(&Deterministic::new(42)),
+    solve(&Deterministic::new(42))
+  );
+  assert_ne!(
+    solve(&Deterministic::new(42)),
+    solve(&Deterministic::new(43))
+  );
+  let fresh = || sde.solve(&s0, 0.0, 0.5, 1e-2, 8, SdeMethod::Euler, &Unseeded);
+  assert_ne!(fresh(), fresh());
+}
+
+#[test]
+fn a_seeded_fractional_solve_is_a_function_of_the_seed() {
+  let sde = Sde::new(
+    |x: &Array1<f64>, _t: f64| array![-x[0]],
+    |_x: &Array1<f64>, _t: f64| Array2::from_elem((1, 1), 0.3),
+    NoiseModel::Fractional,
+    Some(array![0.7]),
+  );
+  let s0 = array![1.0_f64];
+  let solve =
+    |seed: &Deterministic| sde.solve(&s0, 0.0, 1.0, 1.0 / 64.0, 4, SdeMethod::Euler, seed);
+  assert_eq!(
+    solve(&Deterministic::new(42)),
+    solve(&Deterministic::new(42))
+  );
+  assert_ne!(
+    solve(&Deterministic::new(42)),
+    solve(&Deterministic::new(43))
+  );
 }

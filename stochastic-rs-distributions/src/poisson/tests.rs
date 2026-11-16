@@ -2,10 +2,13 @@ use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SimdRng;
 
+use super::Sampler;
 use super::SimdPoisson;
 use super::count_once;
 use super::table_index;
 use super::walk_count;
+use super::zero_first_index;
+use crate::source::uniform53;
 use crate::tests::scalar_chi_square_best_p;
 use crate::traits::DistributionExt;
 use crate::traits::DistributionSampler;
@@ -279,5 +282,87 @@ fn scalar_sample_matches_cdf() {
     let d = SimdPoisson::<u64>::new(lambda);
     let best = scalar_chi_square_best_p(&d, window, |k| d.cdf(k as f64).unwrap());
     assert!(best > 0.01, "Poisson({lambda}): best p = {best}");
+  }
+}
+
+const GATE_RATES: [f64; 12] = [
+  2.0 / 1023.0,
+  0.005,
+  0.01,
+  0.02,
+  0.035,
+  0.05,
+  0.1,
+  0.3,
+  0.7,
+  1.5,
+  2.5,
+  4.0,
+];
+
+#[test]
+fn zero_first_is_the_table_inversion() {
+  for lambda in GATE_RATES {
+    let table = SimdPoisson::<u64>::build_cdf(lambda);
+    let p0 = table[0];
+    let edges = [p0.next_down(), p0, p0.next_up(), 0.0, uniform53(1 << 11)];
+    let sweep = (0..1u32 << 16).map(|i| f64::from(i) / f64::from(1u32 << 16));
+    for u in edges.into_iter().chain(sweep) {
+      assert_eq!(
+        zero_first_index(&table, u),
+        table_index(&table, u),
+        "λ = {lambda}, u = {u}"
+      );
+    }
+  }
+}
+
+/// Measured: from λ = 0.02 on the branch made the bulk fill slower than the plain search.
+#[test]
+fn the_gate_takes_the_shortcut_only_where_it_measured_faster() {
+  for lambda in GATE_RATES {
+    let zero_first = matches!(
+      SimdPoisson::<u64>::new(lambda).sampler,
+      Sampler::ZeroFirst(_)
+    );
+    assert_eq!(zero_first, lambda <= 0.01, "λ = {lambda}");
+  }
+}
+
+/// `ZeroFirst`'s fill, buffered and scalar streams against the plain table's; the stream fixture's
+/// rates never reach this arm.
+#[test]
+fn zero_first_draws_the_plain_tables_streams() {
+  for lambda in [2.0 / 1023.0, 0.005, 0.01] {
+    let law = SimdPoisson::<u64>::new(lambda);
+    assert!(matches!(law.sampler, Sampler::ZeroFirst(_)), "λ = {lambda}");
+    let twin = SimdPoisson {
+      sampler: Sampler::Table(SimdPoisson::<u64>::build_cdf(lambda)),
+      ..law.clone()
+    };
+    for s in [1, 2, 3] {
+      let seeded = |d: &SimdPoisson<u64>| d.clone().seeded(&Deterministic::new(s));
+      assert_eq!(
+        seeded(&law).sample_n(4096),
+        seeded(&twin).sample_n(4096),
+        "λ = {lambda}, s = {s}: sample_n"
+      );
+      let (mut a, mut b) = (seeded(&law), seeded(&twin));
+      for i in 0..100 {
+        assert_eq!(
+          a.sample(),
+          b.sample(),
+          "λ = {lambda}, s = {s}: sample() {i}"
+        );
+      }
+      let (mut ra, mut rb) = (SimdRng::from_seed(s), SimdRng::from_seed(s));
+      for i in 0..4096 {
+        assert_eq!(
+          law.sample(&mut ra),
+          twin.sample(&mut rb),
+          "λ = {lambda}, s = {s}: Distribution::sample {i}"
+        );
+      }
+    }
   }
 }
