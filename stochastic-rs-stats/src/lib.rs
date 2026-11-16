@@ -20,7 +20,6 @@ pub mod bayesian_diffusion;
 pub mod cir;
 pub mod critical_values;
 pub mod distfit;
-pub mod double_exp;
 pub mod econometrics;
 pub mod evt;
 pub mod filtering;
