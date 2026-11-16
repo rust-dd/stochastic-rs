@@ -78,14 +78,9 @@ where
   where
     Self: 's;
 
+  /// The diffusion draws from a child of `self.seed`, `fgn` lending only its FFT plan; the jumps
+  /// from a generator taken from `self.seed` after it.
   fn sampler(&self) -> JumpFouCustomSampler<'_, T, DT, DS, B> {
-    // Owns a Gaussian source derived from `self.seed` (not `fgn.sampler()`,
-    // which would build it from `fgn`'s own permanently-`Unseeded` field —
-    // see the type doc) and an owned jump RNG also derived from `self.seed`,
-    // and borrows `fgn` (for its `Arc`-shared FFT plan/eigenvalues only) and
-    // the user-supplied inter-arrival / jump-size distributions. The two
-    // owned sources are independent derives off the same counter, so they
-    // stay mutually uncorrelated; both advance on reuse.
     JumpFouCustomSampler {
       n: self.n,
       theta: self.theta,

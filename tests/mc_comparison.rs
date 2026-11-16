@@ -1,11 +1,5 @@
-//! Comparison tests for the `stochastic::mc` module.
-//!
-//! Validates each Monte Carlo method against analytical or published reference
-//! values. Run with:
-//!
-//! ```bash
-//! cargo test --release mc_comparison -- --nocapture --test-threads=1
-//! ```
+//! The `stochastic::mc` estimators, the QMC sequences and quant's `BermudanLsmPricer` against
+//! analytical or published values.
 
 use ndarray::Array1;
 use ndarray::Array2;

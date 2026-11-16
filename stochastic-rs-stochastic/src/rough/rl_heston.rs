@@ -7,8 +7,7 @@
 //! The variance, a Riemann–Liouville Volterra–CIR, steps by one Markov lift with drift
 //! $\kappa(\theta-V)$ and diffusion $\nu\sqrt{V^+}$; the price steps by Euler on $W^s$.
 //!
-//! Reference: Bilokon & Wong (2026) §5.5.
-//! Reference: El Euch & Rosenbaum (2019), Math. Finance 29, 3–38.
+//! Reference: Bilokon & Wong (2026) §5.5; El Euch & Rosenbaum (2019), Math. Finance 29, 3–38.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

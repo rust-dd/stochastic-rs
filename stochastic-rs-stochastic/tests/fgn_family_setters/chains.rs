@@ -333,6 +333,35 @@ fn jump_fou_with_horizon_leaves_the_jump_driver_alone() {
   assert_eq!(p.with_horizon(Some(1.0)).sample(), untouched.sample());
 }
 
+/// `with_lambda`, `with_points` and `with_jump_law` after a draw keep the jumps' seed as well; at
+/// λ = 50 a path with no jump, which would hide a moved seed, has probability e⁻⁵⁰.
+#[test]
+fn jump_fou_setters_after_a_draw_keep_the_jump_seed() {
+  let build = || {
+    JumpFou::<f64, _, _>::new(
+      0.7,
+      1.0,
+      0.0,
+      0.2,
+      50.0,
+      jump_law(0.1),
+      16,
+      Some(0.0),
+      Some(1.0),
+      seed(1),
+    )
+  };
+  let drawn = || {
+    let p = build();
+    let _ = p.sample();
+    p
+  };
+  let second = drawn().sample();
+  assert_eq!(drawn().with_lambda(50.0).sample(), second);
+  assert_eq!(drawn().with_points(16).sample(), second);
+  assert_eq!(drawn().with_jump_law(jump_law(0.1)).sample(), second);
+}
+
 #[test]
 fn jump_fou_custom_setters_match_fresh_construction() {
   let chained = JumpFouCustom::<f64, _, _, _>::new(
@@ -354,8 +383,8 @@ fn jump_fou_custom_setters_match_fresh_construction() {
   .with_points(64)
   .with_x0(Some(0.0))
   .with_horizon(Some(1.0))
-  .with_jump_times(SimdNormal::new(0.5, 0.01))
-  .with_jump_sizes(jump_law(0.1))
+  .with_jump_time_law(SimdNormal::new(0.5, 0.01))
+  .with_jump_size_law(jump_law(0.1))
   .with_seed(seed(7));
   let fresh = JumpFouCustom::<f64, _, _, _>::new(
     0.7,
