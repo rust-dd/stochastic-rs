@@ -194,7 +194,7 @@ fn build_adf_design(y: &[f64], lags: usize, trend: Trend) -> Result<AdfDesign, S
     Trend::Constant => 1,
     Trend::ConstantTrend => 2,
   };
-  // Row t carries the trend value t + 1, whose mean over the rows is exactly a half-integer.
+  // Row t carries the trend value t + 1, whose mean over the rows is exactly a multiple of ½.
   let centred_trend = match trend {
     Trend::ConstantTrend => {
       let centre = (lags + 1 + n_dy) as f64 / 2.0;
@@ -408,8 +408,8 @@ pub fn prepared(y: ArrayView1<f64>, min_n: usize) -> Result<Vec<f64>, StatsError
   Ok(unit_scaled(y.into_owned()))
 }
 
-/// `DegenerateData("zero residual variance")` when `residuals` from `y`'s data keep a mean square
-/// at most `EXACT_FIT` of `y`'s variance, both over `y`'s largest deviation so no square overflows.
+/// `DegenerateData("zero residual variance")` when `residuals` keep at most `EXACT_FIT` of the mean
+/// square of `y`'s deviations, each over the largest so none overflows; `y` must not be constant.
 pub fn reject_exact_fit(y: &[f64], residuals: &[f64]) -> Result<(), StatsError> {
   let mean = y.iter().sum::<f64>() / y.len() as f64;
   let spread = f64::max_or_nan_fold(y.iter().map(|v| (v - mean).abs()));

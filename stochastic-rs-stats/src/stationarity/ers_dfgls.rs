@@ -26,8 +26,8 @@ use crate::input::validate;
 pub struct ErsConfig {
   /// GLS detrending: `Constant` or `ConstantTrend`.
   pub trend: Trend,
-  /// The lag, chosen on the GLS-detrended series; arch's `DFGLS` uses the OLS-detrended one, after
-  /// Perron P. & Qu Z. (2007), Economics Letters 94(1), 12–19, DOI: 10.1016/j.econlet.2006.06.009.
+  /// How the lag is chosen: on the GLS-detrended series; arch's `DFGLS` takes the OLS-detrended one
+  /// after Perron & Qu (2007), Economics Letters 94(1), 12–19, DOI: 10.1016/j.econlet.2006.06.009.
   pub lag_selection: LagSelection,
   /// Maximum lag considered by automatic lag selection.
   pub max_lags: Option<usize>,
