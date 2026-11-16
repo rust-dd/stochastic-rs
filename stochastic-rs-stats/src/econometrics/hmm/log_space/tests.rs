@@ -109,7 +109,7 @@ fn an_absorbing_state_keeps_the_exact_likelihood_past_an_outlier() {
 }
 
 /// No outlier: state 1's exact filtered log-probability falls to −776.7 by t = 599 and ends near 0;
-/// `−6255.35394742743` is the review's numpy pass on this series.
+/// `−6255.35394742743` is a numpy exact pass on the crate's seed-5 series.
 #[test]
 fn an_absorbing_state_keeps_the_exact_likelihood_on_ordinary_data() {
   let (hmm, y) = absorbing_on_ordinary_data(0.0);
