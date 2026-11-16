@@ -6,6 +6,19 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::*;
 
+fn gauss_pdf(x: f64, mean: f64, std: f64) -> f64 {
+  let z = (x - mean) / std;
+  (-0.5 * z * z).exp() / (std * (2.0 * std::f64::consts::PI).sqrt())
+}
+
+fn panic_message(f: impl FnOnce()) -> String {
+  let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).expect_err("no panic");
+  payload
+    .downcast_ref::<String>()
+    .cloned()
+    .unwrap_or_default()
+}
+
 #[test]
 fn viterbi_recovers_two_state_path() {
   let init = array![0.5, 0.5];
@@ -105,8 +118,9 @@ fn filter_step_matches_the_batch_forward_pass() {
   }
 }
 
+/// Both densities underflow at 1e9, but in log space state 1 explains it better by 2e11 nats.
 #[test]
-fn filter_step_survives_an_implausible_observation() {
+fn filter_step_weighs_an_implausible_observation_by_its_densities() {
   let init = array![0.5, 0.5];
   let trans = array![[0.9, 0.1], [0.2, 0.8]];
   let means = array![-1.0, 1.0];
@@ -115,8 +129,118 @@ fn filter_step_survives_an_implausible_observation() {
 
   let next = hmm.filter_step(hmm.initial.view(), 1e9);
 
-  assert!((next.sum() - 1.0).abs() < 1e-9, "must stay a distribution");
-  assert!(next.iter().all(|p| p.is_finite()), "must not emit NaN");
+  assert_eq!(next, array![0.0, 1.0]);
+}
+
+/// At 20 both densities underflow; the log-space pass keeps the likelihood summed over 32 paths.
+#[test]
+fn an_observation_far_from_every_state_keeps_the_exact_likelihood() {
+  let hmm = GaussianHmm::new(
+    array![0.5, 0.5],
+    array![[0.95, 0.05], [0.05, 0.95]],
+    array![-1.0, 1.0],
+    array![0.3, 0.3],
+  );
+  let y = array![-1.0, -0.9, 20.0, 1.0, 0.9];
+  let ln_density = |x: f64, s: usize| {
+    let z = (x - hmm.means[s]) / hmm.stds[s];
+    -0.5 * z * z - hmm.stds[s].ln() - 0.5 * (2.0 * std::f64::consts::PI).ln()
+  };
+  let paths = (0..1usize << y.len())
+    .map(|code| {
+      let state = |t: usize| (code >> t) & 1;
+      (1..y.len()).fold(
+        hmm.initial[state(0)].ln() + ln_density(y[0], state(0)),
+        |lp, t| lp + hmm.transitions[[state(t - 1), state(t)]].ln() + ln_density(y[t], state(t)),
+      )
+    })
+    .collect::<Vec<_>>();
+  let max = paths.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+  let exact = max + paths.iter().map(|lp| (lp - max).exp()).sum::<f64>().ln();
+  let ll = hmm.log_likelihood(y.view());
+  assert!(
+    (ll - exact).abs() <= 1e-9 * exact.abs(),
+    "{ll} against {exact}"
+  );
+  for row in hmm.filtered_state_probs(y.view()).rows() {
+    assert!((row.sum() - 1.0).abs() < 1e-12, "{row}");
+  }
+}
+
+/// State 0 cannot leave itself: the observation at 100 favours state 1 by 950 nats, which a
+/// transition cost of `ln 1e-300` would let it buy.
+#[test]
+fn viterbi_never_takes_a_zero_probability_transition() {
+  let hmm = GaussianHmm::new(
+    array![1.0, 0.0],
+    array![[1.0, 0.0], [0.5, 0.5]],
+    array![0.0, 10.0],
+    array![1.0, 1.0],
+  );
+  assert_eq!(
+    hmm.viterbi(array![0.0, 0.0, 100.0, 0.0].view()),
+    array![0, 0, 0, 0]
+  );
+}
+
+/// State 0 absorbs, and the outlier at −69 leaves state 1 a filtered weight near `e^{−740}`, which
+/// the points after it need: dividing by it overflows the backward pass.
+#[test]
+fn a_backward_pass_that_overflows_is_a_numerical_error() {
+  let mut hmm = GaussianHmm::new(
+    array![0.5, 0.5],
+    array![[1.0, 0.0], [1e-10, 1.0 - 1e-10]],
+    array![0.0, 10.0],
+    array![1.0, 1.0],
+  );
+  let before = hmm.clone();
+  let mut observations = Array1::from_iter((0..61).map(|t| 10.0 + 0.1 * (t as f64 * 1.3).sin()));
+  observations[30] = -69.0;
+  assert_eq!(
+    hmm.baum_welch(observations.view(), 3, 1e-8).unwrap_err(),
+    StatsError::Numerical {
+      stage: "backward pass"
+    }
+  );
+  assert_eq!(hmm.initial, before.initial);
+  assert_eq!(hmm.transitions, before.transitions);
+  assert_eq!(hmm.means, before.means);
+  assert_eq!(hmm.stds, before.stds);
+}
+
+/// A third state 39 standard deviations from every point keeps only a subnormal posterior mass,
+/// and its reestimated transition row still sums to 1.
+#[test]
+fn a_state_with_a_subnormal_mass_keeps_a_stochastic_row() {
+  let mut hmm = GaussianHmm::new(
+    array![0.4, 0.4, 0.2],
+    array![[0.8, 0.1, 0.1], [0.1, 0.8, 0.1], [0.3, 0.3, 0.4]],
+    array![-0.5, 0.5, 39.0],
+    array![1.0, 1.0, 1.0],
+  );
+  let observations = Array1::from_iter((0..200).map(|t| 0.9 * (t as f64 * 0.37).sin()));
+  hmm.baum_welch(observations.view(), 1, 1e-12).unwrap();
+  for row in hmm.transitions.rows() {
+    assert!((row.sum() - 1.0).abs() <= 4.0 * f64::EPSILON, "{row}");
+  }
+}
+
+/// At 1e300 every state's squared z-score overflows, so no density is left to scale by.
+#[test]
+fn a_log_likelihood_that_is_not_finite_is_a_numerical_error() {
+  let mut hmm = two_state(0.5, 0.1, 0.5, 1.0);
+  let before = hmm.clone();
+  let mut observations = Array1::from_iter((0..40).map(|t| 0.3 * (t as f64 * 0.7).sin()));
+  observations[20] = 1e300;
+  assert_eq!(
+    hmm.baum_welch(observations.view(), 5, 1e-8).unwrap_err(),
+    StatsError::Numerical {
+      stage: "forward pass"
+    }
+  );
+  assert_eq!(hmm.initial, before.initial);
+  assert_eq!(hmm.transitions, before.transitions);
+  assert!(hmm.log_likelihood(observations.view()).is_nan());
 }
 
 #[test]
@@ -171,6 +295,70 @@ fn a_nan_initial_probability_panics() {
 #[should_panic(expected = "transitions must satisfy `transitions.iter().all(|p| p.is_finite())`")]
 fn an_infinite_transition_panics() {
   let _ = two_state(0.5, f64::INFINITY, 0.5, 1.0);
+}
+
+#[test]
+#[should_panic(expected = "initial must satisfy `initial.iter().all(|&p| p >= 0.0)`")]
+fn a_negative_initial_probability_panics() {
+  let _ = two_state(-0.5, 0.1, 0.5, 1.0);
+}
+
+#[test]
+#[should_panic(
+  expected = "initial must satisfy `(initial.sum() - 1.0).abs() < 1e-6`, got initial.sum() = 1.2"
+)]
+fn an_initial_distribution_that_does_not_sum_to_one_panics() {
+  let _ = two_state(0.7, 0.1, 0.5, 1.0);
+}
+
+#[test]
+#[should_panic(expected = "transitions must satisfy `transitions.iter().all(|&p| p >= 0.0)`")]
+fn a_negative_transition_probability_panics() {
+  let _ = GaussianHmm::new(
+    array![0.5, 0.5],
+    array![[1.25, -0.25], [0.1, 0.9]],
+    array![-0.5, 0.5],
+    array![1.0, 1.0],
+  );
+}
+
+#[test]
+#[should_panic(expected = "for every row, got transitions.row(1).sum() = 1.1")]
+fn a_transition_row_that_does_not_sum_to_one_panics() {
+  let _ = two_state(0.5, 0.2, 0.5, 1.0);
+}
+
+/// The fields are public, so every entry point repeats the checks of `new`.
+#[test]
+fn every_entry_point_checks_a_struct_literal() {
+  let hmm = GaussianHmm {
+    initial: array![0.5, 0.5],
+    transitions: array![[0.9, 0.1], [0.2, 0.9]],
+    means: array![-0.5, 0.5],
+    stds: array![1.0, 1.0],
+  };
+  let y = array![0.1, 0.4, -0.2];
+  let want = "got transitions.row(1).sum() = 1.1";
+  let messages = [
+    panic_message(|| {
+      hmm.log_likelihood(y.view());
+    }),
+    panic_message(|| {
+      hmm.filtered_state_probs(y.view());
+    }),
+    panic_message(|| {
+      hmm.filter_step(hmm.initial.view(), 0.1);
+    }),
+    panic_message(|| {
+      hmm.viterbi(y.view());
+    }),
+    panic_message(|| {
+      let _ = hmm.clone().baum_welch(y.view(), 5, 1e-6);
+    }),
+  ];
+  for message in messages {
+    assert!(message.contains(want), "{message}");
+  }
 }
 
 #[test]
