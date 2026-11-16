@@ -30,7 +30,7 @@ export const FACTS = {
   /** `impl Calibrator for` in stochastic-rs-quant. */
   calibrators: 15,
   /** `public/python-parity.json` count minus the four `ai`-feature registrations. */
-  pythonEntries: 306,
+  pythonEntries: 307,
   /** `#[test]` functions across the workspace, rounded down. */
   testsFloor: 3000,
 } as const;

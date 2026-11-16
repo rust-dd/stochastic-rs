@@ -29,7 +29,7 @@ For less compile time and fewer dependencies, depend only on the sub-crates you 
 ```toml
 [dependencies]
 stochastic-rs-distributions = "3.0.0-rc.4"   # SIMD distribution sampling
-stochastic-rs-stochastic = "3.0.0-rc.4"   # 132 process types
+stochastic-rs-stochastic = "3.0.0-rc.4"   # 133 process types
 stochastic-rs-copulas = "3.0.0-rc.4"   # bivariate / multivariate copulas
 stochastic-rs-stats = "3.0.0-rc.4"   # estimators
 stochastic-rs-quant = "3.0.0-rc.4"   # pricing / calibration / vol surface
@@ -97,7 +97,7 @@ RUSTFLAGS="-C target-cpu=x86-64-v3" cargo build --release
 
 ## GPU support
 
-Every process can sample on a GPU through `cuda` (NVIDIA) or `metal` (Apple GPUs); `accelerate` routes the fGN FFT through Apple's vDSP on the CPU. See [GPU support](/docs/concepts/gpu-support) for what runs where.
+Every process but `HestonHullWhite2F` can sample on a GPU through `cuda` (NVIDIA) or `metal` (Apple GPUs); `accelerate` routes the fGN FFT through Apple's vDSP on the CPU. See [GPU support](/docs/concepts/gpu-support) for what runs where.
 
 ### The `.on::<B>()` selector
 
