@@ -53,6 +53,16 @@ def test_bsm_short_maturity_near_intrinsic():
     assert 0.0 < price < 2.0
 
 
+def test_bsm_pricer_prices_with_its_dividend_yield():
+    # Merton (1973) evaluated at 50 digits with mpmath; QuantLib's analytic engine agrees.
+    merton_call = 10.197535275462173
+    pricer = sr.BSMPricer(s=100.0, v=0.25, k=100.0, r=0.03, tau=1.0, q=0.02)
+    call, put = pricer.call_put()
+    assert abs(pricer.price() - merton_call) < 1e-10
+    assert abs(pricer.implied_volatility(merton_call, "call") - 0.25) < 1e-10
+    assert abs(call - put - (100.0 * math.exp(-0.02) - 100.0 * math.exp(-0.03))) < 1e-10
+
+
 def test_quanto_pricer_matches_the_reiner_formula():
     kwargs = dict(s=100.0, v=0.2, k=105.0, r=0.08, tau=0.5, r_f=0.05, v_fx=0.12, rho=0.3, fixed_rate=1.5, q=0.04)
     pricer = sr.QuantoPricer(**kwargs)

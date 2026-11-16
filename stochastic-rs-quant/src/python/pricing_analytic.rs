@@ -34,7 +34,7 @@ impl PyBsmPricer {
   ) -> PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
       let ot = parse_option_type(option_type)?;
-      let inner = crate::pricing::bsm::BsmPricer::new(v, crate::pricing::bsm::BsmCoc::default());
+      let inner = crate::pricing::bsm::BsmPricer::new(v, crate::pricing::bsm::BsmCoc::Merton1973);
       Ok(Self {
         inner,
         s,
