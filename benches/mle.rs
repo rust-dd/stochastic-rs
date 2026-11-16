@@ -150,13 +150,7 @@ fn bench_mle_fit(c: &mut Criterion) {
           Some(1.0),
           Deterministic::new(0),
         );
-        black_box(fit_mle(
-          &mut ou_fit,
-          path.view(),
-          dt,
-          DensityApprox::Euler,
-          None,
-        ))
+        black_box(fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Euler, None).unwrap())
       })
     });
 
@@ -171,13 +165,7 @@ fn bench_mle_fit(c: &mut Criterion) {
           Some(1.0),
           Deterministic::new(0),
         );
-        black_box(fit_mle(
-          &mut ou_fit,
-          path.view(),
-          dt,
-          DensityApprox::Kessler,
-          None,
-        ))
+        black_box(fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Kessler, None).unwrap())
       })
     });
 
@@ -207,13 +195,16 @@ fn bench_mle_fit(c: &mut Criterion) {
           None,
           Deterministic::new(0),
         );
-        black_box(fit_mle(
-          &mut cir_fit,
-          cir_path.view(),
-          cir_dt,
-          DensityApprox::Kessler,
-          None,
-        ))
+        black_box(
+          fit_mle(
+            &mut cir_fit,
+            cir_path.view(),
+            cir_dt,
+            DensityApprox::Kessler,
+            None,
+          )
+          .unwrap(),
+        )
       })
     });
   }

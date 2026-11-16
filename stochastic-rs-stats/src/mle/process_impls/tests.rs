@@ -24,7 +24,7 @@ fn gbm_process_ext_with_mle() {
 
   let dt = 10.0 / 2500.0;
   let mut gbm_fit = Gbm::new(0.0, 0.5, 100, Some(100.0), Some(1.0), Deterministic::new(0));
-  let result = fit_mle(&mut gbm_fit, path.view(), dt, DensityApprox::Euler, None);
+  let result = fit_mle(&mut gbm_fit, path.view(), dt, DensityApprox::Euler, None).unwrap();
   assert!(
     (result.params[1] - 0.2).abs() < 0.15,
     "sigma estimate too far: {} vs 0.2",
@@ -56,7 +56,7 @@ fn ou_process_ext_with_mle() {
     Some(1.0),
     Deterministic::new(0),
   );
-  let result = fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Exact, None);
+  let result = fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Exact, None).unwrap();
   assert!(
     (result.params[1] - 1.0).abs() < 0.5,
     "mu estimate too far: {} vs 1.0",
@@ -95,7 +95,7 @@ fn cir_process_ext_with_mle() {
     None,
     Deterministic::new(0),
   );
-  let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Euler, None);
+  let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Euler, None).unwrap();
   assert!(
     (result.params[1] - 0.04).abs() < 0.03,
     "mu estimate too far: {} vs 0.04",
@@ -126,7 +126,7 @@ fn ou_sample_then_mle_roundtrip() {
     Some(1.0),
     Deterministic::new(0),
   );
-  let result = fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Exact, None);
+  let result = fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Exact, None).unwrap();
 
   assert!(
     (result.params[0] - 3.0).abs() < 2.0,
@@ -169,7 +169,7 @@ fn cev_process_ext_with_mle() {
     Some(1.0),
     Deterministic::new(0),
   );
-  let result = fit_mle(&mut cev_fit, path.view(), dt, DensityApprox::Euler, None);
+  let result = fit_mle(&mut cev_fit, path.view(), dt, DensityApprox::Euler, None).unwrap();
 
   assert!(
     (result.params[1] - 0.3).abs() < 0.2,
@@ -229,7 +229,7 @@ fn cir_exact_mle_recovers_daily_parameters() {
     None,
     Deterministic::new(0),
   );
-  let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Exact, None);
+  let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Exact, None).unwrap();
   assert!(
     (result.params[1] - 0.04).abs() < 0.01,
     "mu estimate: {} vs 0.04",

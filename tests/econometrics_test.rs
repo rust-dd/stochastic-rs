@@ -28,7 +28,7 @@ fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
 #[test]
 fn cusum_finite_outputs_for_arbitrary_series() {
   let s = random_walk(101, 1_000, 1.0);
-  let res = cusum(s.view(), 0.5, 6.0);
+  let res = cusum(s.view(), 0.5, 6.0).unwrap();
   assert!(res.upper.iter().all(|v| v.is_finite()));
   assert!(res.lower.iter().all(|v| v.is_finite()));
 }
@@ -43,8 +43,8 @@ fn pelt_segment_count_increases_with_lower_penalty() {
       _ => -3.0,
     };
   }
-  let cheap = pelt(s.view(), 1.0, 5);
-  let expensive = pelt(s.view(), 1_000.0, 5);
+  let cheap = pelt(s.view(), 1.0, 5).unwrap();
+  let expensive = pelt(s.view(), 1_000.0, 5).unwrap();
   assert!(cheap.changepoints.len() >= expensive.changepoints.len());
 }
 
@@ -110,7 +110,7 @@ fn hmm_log_likelihood_finite_after_fit() {
     Array1::from(vec![-1.0, 1.0]),
     Array1::from(vec![1.0, 1.0]),
   );
-  let fit = hmm.baum_welch(obs.view(), 50, 1e-6);
+  let fit = hmm.baum_welch(obs.view(), 50, 1e-6).unwrap();
   assert!(fit.log_likelihood.is_finite());
   let path = hmm.viterbi(obs.view());
   assert_eq!(path.len(), 400);

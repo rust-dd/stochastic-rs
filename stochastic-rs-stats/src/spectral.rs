@@ -8,6 +8,10 @@ use ndrustfft::FftHandler;
 use ndrustfft::ndfft;
 use num_complex::Complex64;
 
+use crate::StatsError;
+use crate::input::as_slice_or_copy;
+use crate::input::validate;
+
 /// Detrending strategy used before spectral estimation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -188,26 +192,19 @@ fn apply_window_in_place(data: &mut [f64], window: WindowFunction) -> f64 {
   sum_w2.max(1e-12)
 }
 
-/// Compute periodogram using FFT.
-///
-/// # Panics
-/// Panics on invalid configuration, non-finite signal values, or too short signal.
-pub fn periodogram_fft(signal: ArrayView1<f64>, cfg: PeriodogramConfig) -> PeriodogramResult {
-  let signal = signal
-    .as_slice()
-    .expect("periodogram_fft requires a contiguous ArrayView1");
+/// FFT periodogram of `signal`; `Err` below 4 points or on a non-finite one, and panics unless
+/// `sampling_rate` is finite and positive.
+pub fn periodogram_fft(
+  signal: ArrayView1<f64>,
+  cfg: PeriodogramConfig,
+) -> Result<PeriodogramResult, StatsError> {
   assert!(
-    signal.len() >= 4,
-    "signal must contain at least 4 observations"
+    cfg.sampling_rate.is_finite() && cfg.sampling_rate > 0.0,
+    "sampling_rate must satisfy `sampling_rate.is_finite() && sampling_rate > 0.0`, got sampling_rate = {:?}",
+    cfg.sampling_rate
   );
-  assert!(
-    signal.iter().all(|v| v.is_finite()),
-    "signal must contain only finite values"
-  );
-  assert!(
-    cfg.sampling_rate > 0.0 && cfg.sampling_rate.is_finite(),
-    "sampling_rate must be positive and finite"
-  );
+  let signal = as_slice_or_copy(signal);
+  validate(&signal, 4)?;
 
   let n = signal.len();
   let mut nfft = cfg.nfft.unwrap_or_else(|| n.next_power_of_two());
@@ -250,31 +247,31 @@ pub fn periodogram_fft(signal: ArrayView1<f64>, cfg: PeriodogramConfig) -> Perio
     spectrum.push(p.max(0.0));
   }
 
-  PeriodogramResult {
+  Ok(PeriodogramResult {
     frequencies,
     spectrum,
     resolution_hz,
     nfft,
     sample_size: n,
-  }
+  })
 }
 
-/// FFT-based spectrum peak search over the periodogram.
-///
-/// Returns up to `top_k` peaks sorted by descending power.
-///
-/// # Panics
-/// Panics on invalid configuration.
+/// Up to `top_k` periodogram peaks by descending power; `Err` as [`periodogram_fft`], and panics
+/// as it or unless `top_k >= 1`.
 pub fn fft_spectrum_search(
   signal: ArrayView1<f64>,
   cfg: SpectrumSearchConfig,
-) -> Vec<SpectrumPeak> {
-  assert!(cfg.top_k > 0, "top_k must be positive");
+) -> Result<Vec<SpectrumPeak>, StatsError> {
+  assert!(
+    cfg.top_k >= 1,
+    "top_k must satisfy `top_k >= 1`, got top_k = {:?}",
+    cfg.top_k
+  );
 
-  let pg = periodogram_fft(signal, cfg.periodogram);
+  let pg = periodogram_fft(signal, cfg.periodogram)?;
   let n = pg.spectrum.len();
   if n == 0 {
-    return Vec::new();
+    return Ok(Vec::new());
   }
 
   let min_f = cfg.min_frequency_hz.unwrap_or(0.0);
@@ -317,14 +314,14 @@ pub fn fft_spectrum_search(
       .max_by(|a, b| a.1.1.total_cmp(b.1.1))
       .map(|(i, (f, p))| (i, *f, *p))
     {
-      return vec![SpectrumPeak {
+      return Ok(vec![SpectrumPeak {
         index: i,
         frequency_hz: f,
         period_s: if f > 0.0 { Some(1.0 / f) } else { None },
         power: p,
-      }];
+      }]);
     }
-    return Vec::new();
+    return Ok(Vec::new());
   }
 
   candidates.sort_by(|a, b| b.2.total_cmp(&a.2));
@@ -348,16 +345,17 @@ pub fn fft_spectrum_search(
     }
   }
 
-  peaks
+  Ok(peaks)
 }
 
-/// Convenience function returning the strongest frequency peak.
+/// The strongest periodogram peak, `None` when the search band holds none; `Err` and panics as
+/// [`periodogram_fft`].
 pub fn dominant_frequency_fft(
   signal: ArrayView1<f64>,
   mut cfg: SpectrumSearchConfig,
-) -> Option<SpectrumPeak> {
+) -> Result<Option<SpectrumPeak>, StatsError> {
   cfg.top_k = 1;
-  fft_spectrum_search(signal, cfg).into_iter().next()
+  Ok(fft_spectrum_search(signal, cfg)?.into_iter().next())
 }
 
 #[cfg(test)]
@@ -401,7 +399,7 @@ mod tests {
       onesided: true,
       scaling: SpectrumScaling::Power,
     };
-    let pg = periodogram_fft(ArrayView1::from(&x), cfg);
+    let pg = periodogram_fft(ArrayView1::from(&x), cfg).unwrap();
 
     let (idx, _) = pg
       .spectrum
@@ -448,7 +446,7 @@ mod tests {
       exclude_dc: true,
     };
 
-    let peaks = fft_spectrum_search(ArrayView1::from(&x), cfg);
+    let peaks = fft_spectrum_search(ArrayView1::from(&x), cfg).unwrap();
     assert_eq!(peaks.len(), 2, "expected 2 peaks, got {peaks:?}");
 
     let mut freqs = peaks.iter().map(|p| p.frequency_hz).collect::<Vec<_>>();
@@ -490,8 +488,9 @@ mod tests {
       exclude_dc: false,
     };
 
-    let peak =
-      dominant_frequency_fft(ArrayView1::from(&x), cfg).expect("expected at least one peak");
+    let peak = dominant_frequency_fft(ArrayView1::from(&x), cfg)
+      .unwrap()
+      .expect("expected at least one peak");
     assert!(peak.frequency_hz.is_finite());
     assert!(peak.power.is_finite() && peak.power >= 0.0);
     assert!((0.0..=fs / 2.0).contains(&peak.frequency_hz));
@@ -532,7 +531,7 @@ mod tests {
       exclude_dc: true,
     };
 
-    let peaks = fft_spectrum_search(ArrayView1::from(&signal), cfg);
+    let peaks = fft_spectrum_search(ArrayView1::from(&signal), cfg).unwrap();
     assert!(
       !peaks.is_empty(),
       "no spectral peaks found on sunspot series"

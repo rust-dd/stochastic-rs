@@ -17,6 +17,11 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 
+use crate::StatsError;
+use crate::input::as_slice_or_copy;
+use crate::input::reject_constant;
+use crate::input::validate;
+
 /// Result of a Baum-Welch training pass.
 #[derive(Debug, Clone)]
 pub struct HmmFit {
@@ -42,7 +47,7 @@ pub struct GaussianHmm {
 }
 
 impl GaussianHmm {
-  /// Construct a new HMM with shapes validated.
+  /// A `K`-state HMM; panics unless `K >= 1`, the shapes agree and every std is positive.
   pub fn new(
     initial: Array1<f64>,
     transitions: Array2<f64>,
@@ -50,10 +55,29 @@ impl GaussianHmm {
     stds: Array1<f64>,
   ) -> Self {
     let k = initial.len();
-    assert_eq!(transitions.dim(), (k, k), "transitions must be K x K");
-    assert_eq!(means.len(), k, "means length must equal K");
-    assert_eq!(stds.len(), k, "stds length must equal K");
-    assert!(stds.iter().all(|&s| s > 0.0), "stds must be positive");
+    assert!(
+      k >= 1,
+      "initial.len() must satisfy `initial.len() >= 1`, got initial.len() = {k:?}"
+    );
+    assert!(
+      transitions.dim() == (k, k),
+      "transitions must satisfy `transitions.dim() == (k, k)`, got transitions.dim() = {:?}, k = {k}",
+      transitions.dim()
+    );
+    assert!(
+      means.len() == k,
+      "means must satisfy `means.len() == k`, got means.len() = {}, k = {k}",
+      means.len()
+    );
+    assert!(
+      stds.len() == k,
+      "stds must satisfy `stds.len() == k`, got stds.len() = {}, k = {k}",
+      stds.len()
+    );
+    assert!(
+      stds.iter().all(|&s| s > 0.0),
+      "stds must satisfy `stds.iter().all(|&s| s > 0.0)`, got stds = {stds:?}"
+    );
     Self {
       initial,
       transitions,
@@ -216,15 +240,19 @@ impl GaussianHmm {
     beta
   }
 
-  /// Baum-Welch EM training. `max_iter` iterations, stopped early when the
-  /// log-likelihood improves by less than `tol`.
-  pub fn baum_welch(&mut self, observations: ArrayView1<f64>, max_iter: usize, tol: f64) -> HmmFit {
+  /// Baum-Welch EM for at most `max_iter` iterations, until the log-likelihood gains under `tol`;
+  /// `Err` below 2 observations, on a non-finite one or a constant series.
+  pub fn baum_welch(
+    &mut self,
+    observations: ArrayView1<f64>,
+    max_iter: usize,
+    tol: f64,
+  ) -> Result<HmmFit, StatsError> {
+    let y = as_slice_or_copy(observations);
+    validate(&y, 2)?;
+    reject_constant(&y, "constant series")?;
     let n = observations.len();
     let k = self.n_states();
-    assert!(
-      n >= 2 && k >= 1,
-      "need at least two observations and one state"
-    );
     let mut prev_ll = f64::NEG_INFINITY;
     let mut converged = false;
     let mut iter_done = 0;
@@ -303,11 +331,11 @@ impl GaussianHmm {
       }
       prev_ll = ll;
     }
-    HmmFit {
+    Ok(HmmFit {
       iterations: iter_done,
       log_likelihood: prev_ll,
       converged,
-    }
+    })
   }
 }
 
@@ -463,8 +491,41 @@ mod tests {
     let stds = array![1.0, 1.0];
     let mut hmm = GaussianHmm::new(init, trans, means, stds);
     let ll0 = hmm.log_likelihood(observations.view());
-    let fit = hmm.baum_welch(observations.view(), 100, 1e-6);
+    let fit = hmm.baum_welch(observations.view(), 100, 1e-6).unwrap();
     assert!(fit.log_likelihood >= ll0 - 1e-6);
     assert!(hmm.stds.iter().all(|&s| s > 0.0));
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "initial.len() must satisfy `initial.len() >= 1`, got initial.len() = 0"
+  )]
+  fn an_hmm_without_states_panics() {
+    let _ = GaussianHmm::new(
+      Array1::zeros(0),
+      Array2::zeros((0, 0)),
+      Array1::zeros(0),
+      Array1::zeros(0),
+    );
+  }
+
+  #[test]
+  fn baum_welch_rejects_short_or_constant_observations() {
+    let mut hmm = GaussianHmm::new(
+      array![0.5, 0.5],
+      array![[0.9, 0.1], [0.1, 0.9]],
+      array![-0.5, 0.5],
+      array![1.0, 1.0],
+    );
+    assert_eq!(
+      hmm.baum_welch(array![0.3].view(), 5, 1e-6).unwrap_err(),
+      StatsError::InsufficientData { needed: 2, got: 1 }
+    );
+    assert_eq!(
+      hmm
+        .baum_welch(Array1::from_elem(50, 0.3).view(), 5, 1e-6)
+        .unwrap_err(),
+      StatsError::DegenerateData("constant series")
+    );
   }
 }

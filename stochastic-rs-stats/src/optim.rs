@@ -83,7 +83,7 @@ pub(crate) fn nelder_mead_vec<F: Fn(&[f64]) -> f64>(
   while iters < max_iter {
     iters += 1;
     let mut order: Vec<usize> = (0..=n).collect();
-    order.sort_by(|&a, &b| fvals[a].partial_cmp(&fvals[b]).unwrap());
+    order.sort_by(|&a, &b| nan_last(fvals[a], fvals[b]));
     let best = order[0];
     let worst = order[n];
     let second_worst = order[n - 1];
@@ -132,12 +132,9 @@ pub(crate) fn nelder_mead_vec<F: Fn(&[f64]) -> f64>(
       }
     }
   }
-  let mut best = 0;
-  for i in 1..=n {
-    if fvals[i] < fvals[best] {
-      best = i;
-    }
-  }
+  let best = (0..=n)
+    .min_by(|&a, &b| nan_last(fvals[a], fvals[b]))
+    .expect("a simplex has n + 1 vertices");
   (simplex[best].clone(), iters, false)
 }
 
@@ -171,6 +168,22 @@ mod tests {
         nan_last(nan, f64::NEG_INFINITY),
         std::cmp::Ordering::Greater
       );
+    }
+  }
+
+  /// A NaN vertex ranks worst, so the simplex reflects away from it instead of shrinking onto it.
+  #[test]
+  fn the_simplex_leaves_a_nan_vertex() {
+    for nan in [f64::NAN, -f64::NAN] {
+      let objective = |p: &[f64]| {
+        if p[0] < 0.05 {
+          nan
+        } else {
+          (p[0] - 1.0).powi(2)
+        }
+      };
+      let (argmin, _, converged) = nelder_mead_vec(&[0.0], 500, objective);
+      assert!(converged && objective(&argmin) < 0.02, "{nan}: {argmin:?}");
     }
   }
 }

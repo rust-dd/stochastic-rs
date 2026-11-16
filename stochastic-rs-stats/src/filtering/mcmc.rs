@@ -20,6 +20,7 @@ use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::StatsError;
 use crate::traits::SimdFloatExt;
 
 /// Result of a Metropolis-Hastings run.
@@ -35,14 +36,8 @@ pub struct MhResult {
   pub log_targets: Array1<f64>,
 }
 
-/// Random-walk Metropolis-Hastings sampler.
-///
-/// `log_target`: $\log \pi(\theta)$ (up to a constant). May return
-/// `f64::NEG_INFINITY` to encode hard constraints.
-///
-/// `proposal_scale`: per-dimension Gaussian step standard deviations.
-///
-/// Returns a chain of `n_samples` post-burn-in draws.
+/// `n_samples` random-walk Metropolis draws after `burn_in` of `log_target`, which may be `-∞` off
+/// its support, with steps `proposal_scale`; `Err` at a non-finite start, panics on bad config.
 pub fn random_walk_metropolis<F>(
   initial: ArrayView1<f64>,
   log_target: F,
@@ -50,15 +45,15 @@ pub fn random_walk_metropolis<F>(
   n_samples: usize,
   burn_in: usize,
   seed: u64,
-) -> MhResult
+) -> Result<MhResult, StatsError>
 where
   F: Fn(ArrayView1<f64>) -> f64,
 {
   let dim = initial.len();
-  assert_eq!(
-    proposal_scale.len(),
-    dim,
-    "proposal_scale must match initial dim"
+  assert!(
+    proposal_scale.len() == dim,
+    "proposal_scale must satisfy `proposal_scale.len() == initial.len()`, got proposal_scale.len() = {}, initial.len() = {dim}",
+    proposal_scale.len()
   );
   assert!(
     n_samples >= 1,
@@ -69,10 +64,11 @@ where
     SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed.wrapping_add(1)));
   let mut current = initial.to_owned();
   let mut current_logp = log_target(current.view());
-  assert!(
-    current_logp.is_finite(),
-    "log_target must be finite at the initial point"
-  );
+  if !current_logp.is_finite() {
+    return Err(StatsError::DegenerateData(
+      "log target is not finite at the initial point",
+    ));
+  }
 
   let mut burn_buf = Array2::<f64>::zeros((burn_in, dim));
   let mut samples = Array2::<f64>::zeros((n_samples, dim));
@@ -110,12 +106,12 @@ where
     }
   }
 
-  MhResult {
+  Ok(MhResult {
     samples,
     burn_in_samples: burn_buf,
     acceptance_rate: accepted as f64 / n_samples as f64,
     log_targets,
-  }
+  })
 }
 
 #[cfg(test)]
@@ -129,7 +125,8 @@ mod tests {
     let init = Array1::from(vec![0.0_f64]);
     let log_target = |x: ArrayView1<f64>| -0.5 * x[0] * x[0];
     let scale = Array1::from(vec![2.0_f64]);
-    let res = random_walk_metropolis(init.view(), log_target, scale.view(), 20_000, 2_000, 17);
+    let res =
+      random_walk_metropolis(init.view(), log_target, scale.view(), 20_000, 2_000, 17).unwrap();
     let mean = res.samples.column(0).iter().sum::<f64>() / 20_000.0;
     let var = res
       .samples
@@ -154,7 +151,25 @@ mod tests {
       }
     };
     let scale = Array1::from(vec![0.3_f64]);
-    let res = random_walk_metropolis(init.view(), log_target, scale.view(), 5_000, 500, 31);
+    let res =
+      random_walk_metropolis(init.view(), log_target, scale.view(), 5_000, 500, 31).unwrap();
     assert!(res.samples.column(0).iter().all(|&v| v >= 0.0));
+  }
+
+  #[test]
+  fn a_non_finite_initial_log_target_is_degenerate_data() {
+    let init = Array1::from(vec![-1.0_f64]);
+    let log_target = |x: ArrayView1<f64>| {
+      if x[0] >= 0.0 {
+        -x[0]
+      } else {
+        f64::NEG_INFINITY
+      }
+    };
+    let scale = Array1::from(vec![0.3_f64]);
+    assert_eq!(
+      random_walk_metropolis(init.view(), log_target, scale.view(), 100, 10, 31).unwrap_err(),
+      StatsError::DegenerateData("log target is not finite at the initial point")
+    );
   }
 }

@@ -14,6 +14,9 @@ use parking_lot::Mutex;
 
 use super::DiffusionModel;
 use super::density::DensityApprox;
+use crate::StatsError;
+use crate::input::as_slice_or_copy;
+use crate::input::validate;
 use crate::optim::more_thuente;
 
 /// Result of maximum likelihood estimation.
@@ -158,54 +161,28 @@ fn resolve_fit_outcome(
   (best_param, converged, iterations as usize)
 }
 
-/// Fit a 1-D SDE model by Maximum Likelihood Estimation.
-///
-/// The function minimises the negative log-likelihood
-///
+/// L-BFGS-B MLE of `model`, left at the estimate, within its bounds on a path sampled every `dt`;
+/// `Err` below 2 or on non-finite points, panics unless one bound per parameter. Check `converged`.
 /// $$
 /// -\sum_{i=1}^{N} \ln p(X_{t_i}\mid X_{t_{i-1}};\theta,\Delta t)
 /// $$
-///
-/// using Basin's L-BFGS-B solver with a numerical gradient and box constraints.
-///
-/// # Arguments
-/// * `model`        - the SDE model (parameters will be set to the MLE values on return)
-/// * `sample`       - observed sample path (length N+1)
-/// * `dt`           - sampling interval
-/// * `density`      - transition density approximation method
-/// * `param_bounds` - optional custom bounds (defaults to model's `param_bounds()`)
-///
-/// # Returns
-/// An [`MleFit`] with estimated parameters, log-likelihood, AIC, BIC,
-/// and the `converged` / `iterations` optimiser signals. Always check
-/// `converged` before trusting `params` — a non-converged run returns the
-/// best feasible point found rather than fabricating a successful fit.
-///
-/// # References
-/// - Nocedal, J. (1980). *Mathematics of Computation*, 35(151), 773-782.
-///   <https://doi.org/10.1090/S0025-5718-1980-0572855-7>
-/// - Liu, D.C. & Nocedal, J. (1989). *Mathematical Programming*, 45, 503-528.
-///   <https://doi.org/10.1007/BF01589116>
+/// Reference: Liu, Nocedal (1989), Mathematical Programming 45, 503-528. DOI: 10.1007/BF01589116
 pub fn fit_mle(
   model: &mut dyn DiffusionModel,
   sample: ArrayView1<f64>,
   dt: f64,
   density: DensityApprox,
   param_bounds: Option<Vec<(f64, f64)>>,
-) -> MleFit {
+) -> Result<MleFit, StatsError> {
   let bounds = param_bounds.unwrap_or_else(|| model.param_bounds());
   let n_params = model.num_params();
-  let n_transitions = sample.len() - 1;
-
   assert!(
-    sample.len() >= 2,
-    "sample must contain at least 2 observations"
+    bounds.len() == n_params,
+    "bounds must satisfy `bounds.len() == model.num_params()`, got bounds.len() = {}, model.num_params() = {n_params}",
+    bounds.len()
   );
-  assert_eq!(
-    bounds.len(),
-    n_params,
-    "bounds length must match number of parameters"
-  );
+  validate(&as_slice_or_copy(sample), 2)?;
+  let n_transitions = sample.len() - 1;
 
   let x0 = model.params();
 
@@ -264,7 +241,7 @@ pub fn fit_mle(
   let aic = 2.0 * k - 2.0 * log_lik;
   let bic = k * n.ln() - 2.0 * log_lik;
 
-  MleFit {
+  Ok(MleFit {
     params: Array1::from_vec(clamped),
     param_names: model.param_names().into_iter().map(String::from).collect(),
     log_likelihood: log_lik,
@@ -273,7 +250,7 @@ pub fn fit_mle(
     bic,
     converged,
     iterations,
-  }
+  })
 }
 
 #[cfg(test)]
@@ -321,7 +298,7 @@ mod tests {
 
     let sample = ndarray::array![0.0, 1.0, 0.0];
     let mut model = BrownianDrift { mu: 0.0 };
-    let result = fit_mle(&mut model, sample.view(), 1.0, DensityApprox::Euler, None);
+    let result = fit_mle(&mut model, sample.view(), 1.0, DensityApprox::Euler, None).unwrap();
 
     assert!(result.converged, "The initial drift is already the MLE");
     assert_eq!(result.iterations, 0);

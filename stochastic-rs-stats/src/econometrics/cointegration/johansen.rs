@@ -219,7 +219,7 @@ fn ordered_eigen(
       stage: "eigen decomposition",
     })?;
   let mut order: Vec<usize> = (0..k).collect();
-  order.sort_by(|&a, &b| values[b].partial_cmp(&values[a]).unwrap());
+  order.sort_by(|&a, &b| values[b].total_cmp(&values[a]));
   let raw = l_inv.t().dot(&vectors);
   let mut eigenvalues = Array1::<f64>::zeros(k);
   let mut eigenvectors = Array2::<f64>::zeros((k, k));

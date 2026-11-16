@@ -1,6 +1,8 @@
 use numpy::PyReadonlyArray1;
 use pyo3::prelude::*;
 
+use super::stats_error;
+
 /// Random-walk Metropolis-Hastings with a Python-callable log target.
 ///
 /// `log_target` is a Python function `numpy.ndarray -> float` that may return
@@ -37,14 +39,17 @@ pub fn random_walk_metropolis<'py>(
       Err(_) => f64::NEG_INFINITY,
     }
   };
-  let res = crate::filtering::mcmc::random_walk_metropolis(
-    init_arr.view(),
-    target_fn,
-    scale_arr.view(),
-    n_samples,
-    burn_in,
-    seed,
-  );
+  let res = stochastic_rs_distributions::python::value_error_on_panic(|| {
+    crate::filtering::mcmc::random_walk_metropolis(
+      init_arr.view(),
+      target_fn,
+      scale_arr.view(),
+      n_samples,
+      burn_in,
+      seed,
+    )
+  })?
+  .map_err(stats_error)?;
   Ok((
     res.samples.into_pyarray(py),
     res.log_targets.into_pyarray(py),

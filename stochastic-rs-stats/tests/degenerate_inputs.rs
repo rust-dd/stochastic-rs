@@ -4,19 +4,24 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
+use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stats::StatsError;
 use stochastic_rs_stats::acf::LjungBoxConfig;
 use stochastic_rs_stats::acf::acf;
 use stochastic_rs_stats::acf::ljung_box;
 use stochastic_rs_stats::acf::pacf;
+use stochastic_rs_stats::bayesian_diffusion::fit_diffusion_bayesian;
 use stochastic_rs_stats::distfit::fit_johnson_su;
 use stochastic_rs_stats::distfit::fit_skew_t;
 use stochastic_rs_stats::distfit::fit_variance_gamma;
+use stochastic_rs_stats::econometrics::changepoint::cusum;
+use stochastic_rs_stats::econometrics::changepoint::pelt;
 use stochastic_rs_stats::econometrics::cointegration::EngleGrangerConfig;
 use stochastic_rs_stats::econometrics::cointegration::engle_granger_test;
 use stochastic_rs_stats::econometrics::cointegration::fit_vecm;
 use stochastic_rs_stats::econometrics::cointegration::johansen_test;
 use stochastic_rs_stats::econometrics::granger::granger_causality_test;
+use stochastic_rs_stats::econometrics::hmm::GaussianHmm;
 use stochastic_rs_stats::evt::fit_gev;
 use stochastic_rs_stats::evt::fit_gpd;
 use stochastic_rs_stats::evt::fit_gpd_pwm;
@@ -24,16 +29,29 @@ use stochastic_rs_stats::evt::fit_hill;
 use stochastic_rs_stats::evt::fit_pot;
 use stochastic_rs_stats::garch::GarchSpec;
 use stochastic_rs_stats::garch::fit_garch;
+use stochastic_rs_stats::gmm_cir::fit_cir_gmm;
 use stochastic_rs_stats::goodness_of_fit::chi_square::ChiSquareGofConfig;
 use stochastic_rs_stats::goodness_of_fit::chi_square::chi_square_gof_test;
 use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::KolmogorovSmirnovConfig;
 use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::kolmogorov_smirnov_test;
+use stochastic_rs_stats::heston_mle::fit_heston_nmle;
+use stochastic_rs_stats::heston_mle::fit_heston_nmle_with_delta;
+use stochastic_rs_stats::heston_mle::fit_heston_pmle;
+use stochastic_rs_stats::heston_mle::fit_heston_pmle_with_delta;
+use stochastic_rs_stats::heston_nmle_cekf::HestonNmleCekfConfig;
+use stochastic_rs_stats::heston_nmle_cekf::fit_heston_nmle_cekf;
+use stochastic_rs_stats::mle::DensityApprox;
+use stochastic_rs_stats::mle::fit_mle;
 use stochastic_rs_stats::normality::anderson_darling::AndersonDarlingConfig;
 use stochastic_rs_stats::normality::anderson_darling::anderson_darling_normal_test;
 use stochastic_rs_stats::normality::jarque_bera::JarqueBeraConfig;
 use stochastic_rs_stats::normality::jarque_bera::jarque_bera_test;
 use stochastic_rs_stats::normality::shapiro_francia::ShapiroFranciaConfig;
 use stochastic_rs_stats::normality::shapiro_francia::shapiro_francia_test;
+use stochastic_rs_stats::particle_mle::fit_sv_particle_mle;
+use stochastic_rs_stats::qmle::DiffusionKind;
+use stochastic_rs_stats::qmle::fit_diffusion_qmle;
+use stochastic_rs_stats::qmle::fit_ou_mle;
 use stochastic_rs_stats::realized::HarRv;
 use stochastic_rs_stats::realized::KernelType;
 use stochastic_rs_stats::realized::bipower::bns_jump_test;
@@ -55,6 +73,11 @@ use stochastic_rs_stats::realized::realized_volatility;
 use stochastic_rs_stats::realized::riskmetrics_variance;
 use stochastic_rs_stats::realized::tripower_quarticity;
 use stochastic_rs_stats::realized::two_scale_rv;
+use stochastic_rs_stats::spectral::PeriodogramConfig;
+use stochastic_rs_stats::spectral::SpectrumSearchConfig;
+use stochastic_rs_stats::spectral::dominant_frequency_fft;
+use stochastic_rs_stats::spectral::fft_spectrum_search;
+use stochastic_rs_stats::spectral::periodogram_fft;
 use stochastic_rs_stats::stationarity::adf::AdfConfig;
 use stochastic_rs_stats::stationarity::adf::adf_test;
 use stochastic_rs_stats::stationarity::andrews_ploberger::AndrewsPlobergerConfig;
@@ -73,6 +96,7 @@ use stochastic_rs_stats::stationarity::phillips_perron::PhillipsPerronConfig;
 use stochastic_rs_stats::stationarity::phillips_perron::phillips_perron_test;
 use stochastic_rs_stats::stationarity::reset::ResetConfig;
 use stochastic_rs_stats::stationarity::reset::reset_test;
+use stochastic_rs_stochastic::diffusion::ou::Ou;
 
 type Answer = Box<dyn Fn(ArrayView1<f64>) -> Option<StatsError>>;
 
@@ -87,6 +111,10 @@ const SAMPLE: Option<StatsError> = Some(StatsError::DegenerateData("constant sam
 const EXCESSES: Option<StatsError> = Some(StatsError::DegenerateData("constant excesses"));
 
 const JOHANSEN: Option<StatsError> = Some(StatsError::Singular("S00"));
+
+const VARIANCE: Option<StatsError> = Some(StatsError::DegenerateData("constant variance series"));
+
+const DT: f64 = 1.0 / 252.0;
 
 fn err<T, F: Fn(ArrayView1<f64>) -> Result<T, StatsError> + 'static>(f: F) -> Answer {
   Box::new(move |x| f(x).err())
@@ -106,6 +134,23 @@ fn pair(x: ArrayView1<f64>) -> Array2<f64> {
   Array2::<f64>::from_shape_fn(
     (x.len(), 2),
     |(t, j)| if j == 0 { x[t] } else { x[t] * x[t] },
+  )
+}
+
+fn prices(x: ArrayView1<f64>) -> Array1<f64> {
+  x.mapv(|v| v + 100.0)
+}
+
+fn variances(x: ArrayView1<f64>) -> Array1<f64> {
+  x.mapv(|v| v.abs() + 0.01)
+}
+
+fn two_state_hmm() -> GaussianHmm {
+  GaussianHmm::new(
+    ndarray::array![0.5, 0.5],
+    ndarray::array![[0.9, 0.1], [0.1, 0.9]],
+    ndarray::array![-0.5, 0.5],
+    ndarray::array![1.0, 1.0],
   )
 }
 
@@ -269,6 +314,113 @@ fn check(entries: Vec<Entry>) {
       "{name}: the answer to a constant series"
     );
   }
+}
+
+pub fn estimators_b() -> Vec<Entry> {
+  let ou = DiffusionKind::OrnsteinUhlenbeck;
+  vec![
+    (
+      "fit_diffusion_qmle",
+      err(move |x| fit_diffusion_qmle(x, DT, ou)),
+      SERIES,
+    ),
+    ("fit_ou_mle", err(|x| fit_ou_mle(x, DT)), SERIES),
+    (
+      "fit_cir_gmm",
+      err(|x| fit_cir_gmm(variances(x).view(), DT)),
+      SERIES,
+    ),
+    (
+      "fit_diffusion_bayesian",
+      err(move |x| fit_diffusion_bayesian(x, DT, ou, [0.1; 3], 50, 10, 1)),
+      SERIES,
+    ),
+    (
+      "fit_heston_nmle",
+      err(|x| fit_heston_nmle(prices(x).view(), variances(x).view(), 0.0)),
+      VARIANCE,
+    ),
+    (
+      "fit_heston_nmle_with_delta",
+      err(|x| fit_heston_nmle_with_delta(prices(x).view(), variances(x).view(), 0.0, DT)),
+      VARIANCE,
+    ),
+    (
+      "fit_heston_pmle",
+      err(|x| fit_heston_pmle(prices(x).view(), variances(x).view(), 0.0)),
+      VARIANCE,
+    ),
+    (
+      "fit_heston_pmle_with_delta",
+      err(|x| fit_heston_pmle_with_delta(prices(x).view(), variances(x).view(), 0.0, DT)),
+      VARIANCE,
+    ),
+    (
+      "fit_heston_nmle_cekf",
+      err(|x| {
+        let cfg = HestonNmleCekfConfig {
+          max_iters: 2,
+          ..HestonNmleCekfConfig::default()
+        };
+        fit_heston_nmle_cekf(prices(x).view(), cfg)
+      }),
+      None,
+    ),
+    (
+      "fit_sv_particle_mle",
+      err(|x| fit_sv_particle_mle(x, 50, 7)),
+      SERIES,
+    ),
+    (
+      "fit_mle",
+      err(|x| {
+        let mut ou = Ou::new(
+          1.0,
+          0.5,
+          0.5,
+          100,
+          Some(1.0),
+          Some(1.0),
+          Deterministic::new(0),
+        );
+        fit_mle(&mut ou, x, DT, DensityApprox::Euler, None)
+      }),
+      None,
+    ),
+    (
+      "periodogram",
+      err(|x| periodogram_fft(x, PeriodogramConfig::default())),
+      None,
+    ),
+    (
+      "fft_spectrum_search",
+      err(|x| fft_spectrum_search(x, SpectrumSearchConfig::default())),
+      None,
+    ),
+    (
+      "dominant_frequency_fft",
+      err(|x| dominant_frequency_fft(x, SpectrumSearchConfig::default())),
+      None,
+    ),
+    (
+      "baum_welch",
+      err(|x| two_state_hmm().baum_welch(x, 5, 1e-6)),
+      SERIES,
+    ),
+    ("cusum_chart", err(|x| cusum(x, 0.5, 4.0)), SERIES),
+    ("pelt", err(|x| pelt(x, 10.0, 2)), None),
+  ]
+}
+
+#[test]
+fn estimators_b_answer_err_on_degenerate_input() {
+  check(estimators_b());
+}
+
+#[test]
+#[should_panic(expected = "min_size must satisfy `min_size >= 1`")]
+fn pelt_rejects_a_zero_segment_size() {
+  let _ = pelt(Array1::<f64>::linspace(0.0, 1.0, 50).view(), 10.0, 0);
 }
 
 #[test]

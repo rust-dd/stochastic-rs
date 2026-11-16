@@ -9,6 +9,8 @@ use stochastic_rs_stats::normality::jarque_bera::JarqueBeraConfig;
 use stochastic_rs_stats::normality::jarque_bera::jarque_bera_test;
 use stochastic_rs_stats::normality::shapiro_francia::ShapiroFranciaConfig;
 use stochastic_rs_stats::normality::shapiro_francia::shapiro_francia_test;
+use stochastic_rs_stats::spectral::PeriodogramConfig;
+use stochastic_rs_stats::spectral::periodogram_fft;
 use stochastic_rs_stats::stationarity::adf::AdfConfig;
 use stochastic_rs_stats::stationarity::adf::adf_test;
 use stochastic_rs_stats::stationarity::andrews_ploberger::AndrewsPlobergerConfig;
@@ -93,4 +95,11 @@ fn strided_views_match_their_contiguous_copies() {
     x,
     ShapiroFranciaConfig::default()
   ));
+  let a = periodogram_fft(strided, PeriodogramConfig::default())
+    .unwrap()
+    .spectrum;
+  let b = periodogram_fft(contiguous.view(), PeriodogramConfig::default())
+    .unwrap()
+    .spectrum;
+  assert_eq!(a, b);
 }

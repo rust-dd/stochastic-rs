@@ -40,7 +40,8 @@ fn metropolis_chain_concentrates_around_mode_of_skewed_target() {
     -0.5 * ((x[0] - m) / 0.5).powi(2)
   };
   let scale = Array1::from(vec![0.7_f64]);
-  let res = random_walk_metropolis(init.view(), log_target, scale.view(), 10_000, 1_000, 23);
+  let res =
+    random_walk_metropolis(init.view(), log_target, scale.view(), 10_000, 1_000, 23).unwrap();
   let mean = res.samples.column(0).iter().sum::<f64>() / 10_000.0;
   assert!((mean - 2.5).abs() < 0.1);
 }
@@ -67,7 +68,8 @@ fn ukf_remains_finite_under_long_run() {
       0.001,
       2.0,
       0.0,
-    );
+    )
+    .unwrap();
     assert!(state.mean.iter().all(|v| v.is_finite()));
     assert!(state.covariance.iter().all(|v| v.is_finite()));
   }

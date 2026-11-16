@@ -153,7 +153,7 @@ mod tests {
     let dt = 10.0 / 2500.0;
 
     let mut gbm_fit = Gbm::new(0.0, 0.5, 100, Some(100.0), Some(1.0), Deterministic::new(0));
-    let result = fit_mle(&mut gbm_fit, path.view(), dt, DensityApprox::Euler, None);
+    let result = fit_mle(&mut gbm_fit, path.view(), dt, DensityApprox::Euler, None).unwrap();
 
     assert!(
       (result.params[1] - 0.2).abs() < 0.15,
@@ -185,7 +185,7 @@ mod tests {
       Some(1.0),
       Deterministic::new(0),
     );
-    let result = fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Euler, None);
+    let result = fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Euler, None).unwrap();
 
     assert!(
       (result.params[1] - 1.0).abs() < 0.5,
@@ -225,7 +225,7 @@ mod tests {
       Some(1.0),
       Deterministic::new(0),
     );
-    let result = fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Exact, None);
+    let result = fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Exact, None).unwrap();
 
     assert!(
       (result.params[1] - 1.0).abs() < 0.5,
@@ -264,7 +264,7 @@ mod tests {
       None,
       Deterministic::new(0),
     );
-    let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Euler, None);
+    let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Euler, None).unwrap();
 
     assert!(
       (result.params[1] - 0.04).abs() < 0.03,
@@ -303,7 +303,8 @@ mod tests {
       dt,
       DensityApprox::ShojiOzaki,
       None,
-    );
+    )
+    .unwrap();
 
     assert!(
       (result.params[1] - 1.0).abs() < 0.5,
@@ -340,7 +341,7 @@ mod tests {
       Some(1.0),
       Deterministic::new(0),
     );
-    let result = fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Kessler, None);
+    let result = fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Kessler, None).unwrap();
 
     assert!(
       (result.params[2] - 0.3).abs() < 0.15,
@@ -492,7 +493,7 @@ mod tests {
       None,
       Deterministic::new(0),
     );
-    let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Kessler, None);
+    let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Kessler, None).unwrap();
 
     assert!(
       (result.params[0] - 3.0).abs() < 3.0,
@@ -547,7 +548,7 @@ mod tests {
         Some(1.0),
         Deterministic::new(0),
       );
-      let result = fit_mle(&mut ou_fit, path.view(), dt, *dens, None);
+      let result = fit_mle(&mut ou_fit, path.view(), dt, *dens, None).unwrap();
       results.push((*name, result));
     }
 
