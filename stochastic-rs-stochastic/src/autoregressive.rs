@@ -14,6 +14,7 @@ pub mod garch;
 pub mod ma;
 pub mod sarima;
 pub mod tgarch;
+mod threshold;
 
 #[cfg(test)]
 mod tests {

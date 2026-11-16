@@ -33,6 +33,7 @@ use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::autoregressive::threshold::variance_denominator;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::precondition::assert_entries;
@@ -110,7 +111,7 @@ impl<T: FloatExt, S: SeedExt> GjrGarch<T, S> {
       alpha.len(),
       gamma.len()
     );
-    variance_denominator(&alpha, &gamma, &beta);
+    variance_denominator(&alpha, &gamma, &beta, "gamma");
     Self {
       backend: Cpu,
       omega,
@@ -124,24 +125,6 @@ impl<T: FloatExt, S: SeedExt> GjrGarch<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> GjrGarch<T, S, B> {}
-
-/// `1 − Σα − Σγ/2 − Σβ`, the unconditional variance's denominator; panics unless positive, so `new`
-/// and the samplers, which a field written after `new` reaches, share one check.
-#[track_caller]
-fn variance_denominator<T: FloatExt>(alpha: &Array1<T>, gamma: &Array1<T>, beta: &Array1<T>) -> T {
-  let sum_alpha: T = alpha.iter().cloned().sum();
-  let sum_gamma_half = gamma.iter().cloned().sum::<T>() * T::from_f64_fast(0.5);
-  let sum_beta: T = beta.iter().cloned().sum();
-  let denom = T::one() - sum_alpha - sum_gamma_half - sum_beta;
-  assert!(
-    denom > T::zero(),
-    "alpha must satisfy `1 - alpha.sum() - 0.5 * gamma.sum() - beta.sum() > 0`, got alpha = {:?}, gamma = {:?}, beta = {:?}",
-    alpha.to_vec(),
-    gamma.to_vec(),
-    beta.to_vec()
-  );
-  denom
-}
 
 /// The Euler engine's view of GJR-GARCH(1,1).
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
@@ -168,7 +151,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   /// first point: the state it starts from is the seed variance and the
   /// not-yet-warm marker, not a value the path reports.
   fn initial_state(&self) -> [T; 4] {
-    let denom = variance_denominator(&self.alpha, &self.gamma, &self.beta);
+    let denom = variance_denominator(&self.alpha, &self.gamma, &self.beta, "gamma");
     [T::zero(), self.omega / denom, T::zero(), T::zero()]
   }
 
@@ -324,7 +307,7 @@ impl<T: FloatExt> GjrGarchSampler<T> {
     let mut sigma2 = Array1::<T>::zeros(n);
     let var_floor = T::from_f64_fast(1e-12);
 
-    let denom = variance_denominator(&self.alpha, &self.gamma, &self.beta);
+    let denom = variance_denominator(&self.alpha, &self.gamma, &self.beta, "gamma");
 
     for t in 0..n {
       if t == 0 {
