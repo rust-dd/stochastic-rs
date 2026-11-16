@@ -37,10 +37,8 @@ use super::weighted_linreg;
 use crate::StatsError;
 use crate::traits::FloatExt;
 
-/// Standard Daubechies-4 scaling (low-pass) filter coefficients,
-/// normalised so that `Σ hₖ = √2` and `Σ h²ₖ = 1`.  Distinct from
-/// [`super::variations::daubechies_coeffs`] (Coeurjolly variant,
-/// different normalisation and sign pattern).
+/// The Daubechies-4 scaling (low-pass) filter, `Σ hₖ = √2` and `Σ h²ₖ = 1`; not Brouste & Iacus's
+/// high-pass [`super::variations::daubechies_coeffs`].
 fn daubechies4_scaling() -> Vec<f64> {
   vec![
     0.482_962_913_144_534_1,

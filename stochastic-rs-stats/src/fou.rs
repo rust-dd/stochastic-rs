@@ -11,15 +11,13 @@
 //!
 //! Reference: Hu, Y., Nualart, D. & Zhou, H. (2019), "Parameter estimation for fractional Ornstein–Uhlenbeck processes of general Hurst parameter", Statistical Inference for Stochastic Processes 22(1), 111–142, DOI 10.1007/s11203-017-9168-2, arXiv:1703.09372.
 
-use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::s;
 use stochastic_rs_distributions::special::gamma;
 
 use crate::StatsError;
-use crate::hurst::variations::a2_coefficients;
 use crate::hurst::variations::daubechies_coeffs;
-use crate::hurst::variations::lfilter_f64;
+use crate::hurst::variations::filtered_variation;
 use crate::hurst::variations::power_variation;
 use crate::input::as_slice_or_copy;
 use crate::input::mean_in_order;
@@ -62,7 +60,7 @@ pub enum FilterType {
   Daubechies,
 }
 
-/// Brouste–Iacus fit with filter `a`; `Err` on fewer than its length + 2 points, on non-finite or
+/// Brouste–Iacus fit over full windows; `Err` below 7 points (6 with `hurst_override`), on bad or
 /// flat data or no usable `H ∈ (0, 1)`, `σ`, `θ`; panics on a bad `delta` or override.
 pub fn fit_fou_filtered_variations(
   path: ArrayView1<f64>,
@@ -75,22 +73,20 @@ pub fn fit_fou_filtered_variations(
     FilterType::Daubechies => daubechies_coeffs(),
   };
   let l_filter = a.len();
-  checked(path, l_filter + 2)?;
+  let min_n = match hurst_override {
+    Some(_) => l_filter + 2,
+    None => 2 * l_filter - 1,
+  };
+  checked(path, min_n)?;
   let n = path.len();
 
-  let v1_path = lfilter_f64::<f64>(&a, &Array1::from_vec(vec![1.0]), path);
-  let v1_sum: f64 = v1_path.mapv(|x| x * x).sum();
+  let v1_sum = filtered_variation(path, &a, 1);
   if v1_sum == 0.0 {
     return Err(StatsError::DegenerateData("zero filtered variation"));
   }
   let hurst = match hurst_override {
     Some(hurst) => hurst,
-    None => {
-      let a_2 = a2_coefficients(&a);
-      let v2_path = lfilter_f64::<f64>(&a_2, &Array1::from_vec(vec![1.0]), path);
-      let v2_sum: f64 = v2_path.mapv(|x| x * x).sum();
-      hurst_from_ratio(0.5 * (v2_sum / v1_sum).log2())?
-    }
+    None => hurst_from_ratio(0.5 * (filtered_variation(path, &a, 2) / v1_sum).log2())?,
   };
   let dt = delta.unwrap_or(1.0 / n as f64);
 
@@ -342,6 +338,7 @@ fn rho_k_h_zero(k: usize, h: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
+  use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_stochastic::diffusion::fou::Fou;
 
@@ -429,7 +426,7 @@ mod tests {
     let short = Array1::<f64>::linspace(0.0, 1.0, 5);
     assert_eq!(
       fit_fou_filtered_variations(short.view(), FilterType::Daubechies, None, None).unwrap_err(),
-      StatsError::InsufficientData { needed: 6, got: 5 }
+      StatsError::InsufficientData { needed: 7, got: 5 }
     );
     let mut path = fou_path(0.6, 1.0, 0.2, 64, 6);
     path[7] = f64::NAN;

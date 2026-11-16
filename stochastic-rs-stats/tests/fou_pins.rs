@@ -1,4 +1,5 @@
-//! The three fOU estimators against an inline transcription of their formulas on seeded paths.
+//! The three fOU estimators on seeded paths: inline transcriptions of their sources' formulas, and
+//! the scalings and invariances those formulas imply.
 
 use std::f64::consts::SQRT_2;
 
@@ -25,52 +26,45 @@ fn assert_close(actual: f64, expected: f64, label: &str) {
   );
 }
 
-#[test]
-fn fou_v1_bit_exact_against_struct_era_inline_reference() {
-  let n = 512usize;
-  let path = Fou::<f64, _>::new(
+fn v1_pin_path() -> Array1<f64> {
+  Fou::<f64, _>::new(
     0.6,
     1.0,
     0.0,
     0.2,
-    n,
+    512,
     Some(0.0),
     Some(1.0),
     Deterministic::new(0xF0_E5_71_AA),
   )
-  .sample();
-  let delta = 1.0 / n as f64;
+  .sample()
+}
 
-  let a = array![
-    0.482962913144534 / SQRT_2,
-    -0.836516303737808 / SQRT_2,
-    0.224143868042013 / SQRT_2,
-    0.12940952255126 / SQRT_2,
+#[test]
+fn fou_v1_bit_exact_against_its_inline_reference() {
+  let path = v1_pin_path();
+  let delta = 1.0 / path.len() as f64;
+
+  let a = [
+    0.4829629131445341 / SQRT_2,
+    -0.8365163037378077 / SQRT_2,
+    0.2241438680420134 / SQRT_2,
+    0.1294095225512603 / SQRT_2,
   ];
   let l_filter = a.len();
-  let mut a_2 = Array1::<f64>::zeros(a.len() * 2);
-  for (i, &val) in a.iter().enumerate() {
-    a_2[i * 2 + 1] = val;
-  }
-  let lfilt = |b: &Array1<f64>, x: &Array1<f64>| -> Array1<f64> {
-    let nx = x.len();
-    let mut y = Array1::<f64>::zeros(nx);
-    for i in 0..nx {
-      let mut acc = 0.0;
-      for j in 0..b.len() {
-        if i >= j {
-          acc += b[j] * x[i - j];
-        }
+  let variation = |dilation: usize| {
+    let mut v = 0.0;
+    for i in 0..path.len() - (l_filter - 1) * dilation {
+      let mut d = 0.0;
+      for (k, &ak) in a.iter().enumerate() {
+        d += ak * path[i + k * dilation];
       }
-      y[i] = acc;
+      v += d * d;
     }
-    y
+    v
   };
-  let v1_path_ref = lfilt(&a, &path);
-  let v1_sum_ref: f64 = v1_path_ref.mapv(|x| x * x).sum();
-  let v2_path_ref = lfilt(&a_2, &path);
-  let v2_sum_ref: f64 = v2_path_ref.mapv(|x| x * x).sum();
-  let hurst_ref = 0.5 * (v2_sum_ref / v1_sum_ref).log2();
+  let v1_sum_ref = variation(1);
+  let hurst_ref = 0.5 * (variation(2) / v1_sum_ref).log2();
 
   let mut const_filter = 0.0;
   for i in 0..l_filter {
@@ -82,8 +76,8 @@ fn fou_v1_bit_exact_against_struct_era_inline_reference() {
   let denominator_ref = const_filter * delta.powf(2.0 * hurst_ref);
   let sigma_ref = (numerator_ref / denominator_ref).sqrt();
 
-  let mu_ref = path.mean().unwrap();
-  let mean_square_ref = path.mapv(|x| x * x).mean().unwrap();
+  let mu_ref = path.iter().fold(0.0, |acc, &x| acc + x) / path.len() as f64;
+  let mean_square_ref = path.iter().fold(0.0, |acc, &x| acc + x * x) / path.len() as f64;
   let theta_num_ref = 2.0 * mean_square_ref;
   let theta_den_ref = sigma_ref.powi(2) * gamma(2.0 * hurst_ref + 1.0);
   let theta_ref = (theta_num_ref / theta_den_ref).powf(-1.0 / (2.0 * hurst_ref));
@@ -265,6 +259,31 @@ fn a_short_path_is_insufficient_data() {
     StatsError::InsufficientData { needed: 5, got: 4 }
   );
   assert!(fit_fou_power_variation(four.view(), None, 2, 2.0, Some(0.5), None).is_ok());
+  let six = array![0.0, 1.0, -0.5, 0.7, 0.2, -0.3];
+  let daubechies =
+    |hurst| fit_fou_filtered_variations(six.view(), FilterType::Daubechies, None, hurst);
+  assert_eq!(
+    daubechies(None).unwrap_err(),
+    StatsError::InsufficientData { needed: 7, got: 6 }
+  );
+  assert!(daubechies(Some(0.5)).is_ok());
+}
+
+#[test]
+fn a_level_shift_leaves_the_filtered_variation_estimates_alone() {
+  let path = v1_pin_path();
+  let fit = |x: &Array1<f64>| {
+    fit_fou_filtered_variations(x.view(), FilterType::Daubechies, None, None).unwrap()
+  };
+  let (level, shifted) = (fit(&path), fit(&(&path + 5.0)));
+  assert!(
+    (shifted.hurst - level.hurst).abs() < 1e-9,
+    "{level:?} {shifted:?}"
+  );
+  assert!(
+    (shifted.sigma / level.sigma - 1.0).abs() < 1e-9,
+    "{level:?} {shifted:?}"
+  );
 }
 
 #[test]

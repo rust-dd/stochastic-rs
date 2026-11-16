@@ -14,9 +14,7 @@
 
 use std::f64::consts::SQRT_2;
 
-use ndarray::Array1;
 use ndarray::ArrayView1;
-use ndarray::array;
 
 use super::HurstDiagnostic;
 use super::HurstEstimator;
@@ -28,7 +26,7 @@ use crate::traits::FloatExt;
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum VariationKind {
-  /// Daubechies-4 low-pass / dilated kernel (Coeurjolly variant).
+  /// Brouste & Iacus's order-2 Daubechies filter and its dilation, plain sums over full windows.
   Daubechies,
   /// Second / fourth-order central difference moments ratio.
   CentralDiff,
@@ -132,53 +130,33 @@ impl<T: FloatExt> HurstEstimator<T> for Variations {
   }
 }
 
-/// Daubechies-4 wavelet coefficients used by both the Hurst variations
-/// estimator and the multi-scale [`super::wavelet::Wavelet`] estimator.
-#[inline]
-pub(crate) fn daubechies_coeffs() -> Array1<f64> {
-  array![
-    0.482962913144534 / SQRT_2,
-    -0.836516303737808 / SQRT_2,
-    0.224143868042013 / SQRT_2,
-    0.12940952255126 / SQRT_2,
+/// Brouste & Iacus's order-2 Daubechies filter, their Remark 1's digits.
+pub(crate) fn daubechies_coeffs() -> [f64; 4] {
+  [
+    0.4829629131445341 / SQRT_2,
+    -0.8365163037378077 / SQRT_2,
+    0.2241438680420134 / SQRT_2,
+    0.1294095225512603 / SQRT_2,
   ]
 }
 
-/// Insert a zero between every coefficient (filter dilation `a_2`).
-#[inline]
-pub(crate) fn a2_coefficients(a: &Array1<f64>) -> Array1<f64> {
-  let mut a_2 = Array1::<f64>::zeros(a.len() * 2);
-  for (i, &val) in a.iter().enumerate() {
-    a_2[i * 2 + 1] = val;
-  }
-  a_2
-}
-
-/// Direct-form-II IIR filter `lfilter` (subset of
-/// `scipy.signal.lfilter`): `y[i] = Σⱼ b[j] x[i-j] - Σⱼ≥1 a[j] y[i-j]`
-/// with zero initial conditions.  `x` is read as `f64`.
-pub(crate) fn lfilter_f64<T: FloatExt>(
-  b: &Array1<f64>,
-  a: &Array1<f64>,
-  x: ArrayView1<T>,
-) -> Array1<f64> {
+/// Brouste & Iacus's `V_{N,a} = Σᵢ (Σₖ aₖ X_{i+k})²` over full windows, with the filter dilated
+/// `dilation` times (`a²` at 2); a plain sum.
+pub(crate) fn filtered_variation<T: FloatExt>(x: ArrayView1<T>, a: &[f64], dilation: usize) -> f64 {
+  let span = (a.len() - 1) * dilation;
   let n = x.len();
-  let mut y = Array1::<f64>::zeros(n);
-  for i in 0..n {
-    let mut acc = 0.0;
-    for j in 0..b.len() {
-      if i >= j {
-        acc += b[j] * x[i - j].to_f64().unwrap_or(0.0);
-      }
-    }
-    for j in 1..a.len() {
-      if i >= j {
-        acc -= a[j] * y[i - j];
-      }
-    }
-    y[i] = acc;
+  if n <= span {
+    return 0.0;
   }
-  y
+  let mut v = 0.0;
+  for i in 0..(n - span) {
+    let mut d = 0.0;
+    for (k, &ak) in a.iter().enumerate() {
+      d += ak * x[i + k * dilation].to_f64().unwrap_or(0.0);
+    }
+    v += d * d;
+  }
+  v
 }
 
 /// Daubechies-filter based H estimator returning `(H, V_short, V_long)`.
@@ -186,11 +164,8 @@ pub(crate) fn daubechies_h_inner<T: FloatExt>(
   x: ArrayView1<T>,
 ) -> Result<(f64, f64, f64), StatsError> {
   let a = daubechies_coeffs();
-  let a_2 = a2_coefficients(&a);
-  let v1 = lfilter_f64::<T>(&a, &array![1.0], x).mapv(|y| y * y).sum();
-  let v2 = lfilter_f64::<T>(&a_2, &array![1.0], x)
-    .mapv(|y| y * y)
-    .sum();
+  let v1 = filtered_variation(x, &a, 1);
+  let v2 = filtered_variation(x, &a, 2);
   if !(v1 > 0.0 && v2 > 0.0 && v1.is_finite() && v2.is_finite()) {
     return Err(StatsError::DegenerateData("constant or zero-variance path"));
   }
@@ -324,6 +299,7 @@ pub(crate) fn binomial(n: usize, k: usize) -> f64 {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_core::simd_rng::Unseeded;
   use stochastic_rs_stochastic::process::fbm::Fbm;
 
@@ -349,6 +325,18 @@ mod tests {
     assert!(
       (h_est - h).abs() < 0.05,
       "central diff H={h_est:.3}, expected {h:.3}"
+    );
+  }
+
+  #[test]
+  fn a_level_shift_leaves_the_daubechies_estimate_alone() {
+    let path = Fbm::new(0.3, 1024, Some(1.0), Deterministic::new(3)).sample();
+    let daubechies = Variations::new(VariationKind::Daubechies);
+    let level = HurstEstimator::<f64>::estimate(&daubechies, path.view()).unwrap();
+    let shifted = HurstEstimator::<f64>::estimate(&daubechies, (&path + 5.0).view()).unwrap();
+    assert!(
+      (shifted.hurst - level.hurst).abs() < 1e-9,
+      "{level:?} {shifted:?}"
     );
   }
 
