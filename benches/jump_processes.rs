@@ -29,17 +29,7 @@ fn bench_jump_processes(c: &mut Criterion) {
   group.measurement_time(Duration::from_secs(3));
   group.warm_up_time(Duration::from_millis(500));
 
-  let bns = Bns::<f64>::new(
-    Some(100.0),
-    0.04,
-    1.0,
-    0.05,
-    2.0,
-    1.0,
-    1024,
-    Some(1.0),
-    Unseeded,
-  );
+  let bns = Bns::<f64>::new(100.0, 0.04, 1.0, 0.05, 2.0, 1.0, 1024, Some(1.0), Unseeded);
   group.bench_function("bns", |b| b.iter(|| black_box(bns.sample())));
 
   let ctrw = Ctrw::<f64>::new(
@@ -122,7 +112,7 @@ fn bench_jump_processes(c: &mut Criterion) {
       0.0,
       0.1,
       n,
-      Some(100.0),
+      100.0,
       Some(1.0),
       Unseeded,
     );
@@ -140,8 +130,8 @@ fn bench_jump_processes(c: &mut Criterion) {
       0.3,
       -0.6,
       n,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       Some(1.0),
       VarianceBoundary::Floor,
       Unseeded,

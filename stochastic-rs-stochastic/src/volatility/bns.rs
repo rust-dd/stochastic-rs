@@ -62,8 +62,8 @@ use crate::traits::ProcessExt;
 /// BNS-Gamma stochastic volatility model. See module documentation for
 /// the SDE form and the discretisation.
 pub struct Bns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Initial stock price.
-  pub s0: Option<T>,
+  /// Initial spot.
+  pub s0: T,
   /// Initial variance $\sigma^2_0 > 0$.
   pub sigma2_0: T,
   /// Mean-reversion rate $\lambda > 0$.
@@ -77,7 +77,7 @@ pub struct Bns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub jump_shape: T,
   /// Number of time steps.
   pub n: usize,
-  /// Time to maturity.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy.
   pub seed: S,
@@ -88,7 +88,7 @@ pub struct Bns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> Bns<T, S> {
   pub fn new(
-    s0: Option<T>,
+    s0: T,
     sigma2_0: T,
     lambda: T,
     mu: T,
@@ -99,8 +99,8 @@ impl<T: FloatExt, S: SeedExt> Bns<T, S> {
     seed: S,
   ) -> Self {
     assert!(
-      s0.is_none_or(|v| v.is_finite()),
-      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
     );
     assert!(
       sigma2_0.is_finite(),
@@ -186,12 +186,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn initial_state(&self) -> [T; 4] {
-    [
-      self.s0.unwrap_or(T::one()),
-      self.sigma2_0,
-      T::zero(),
-      T::zero(),
-    ]
+    [self.s0, self.sigma2_0, T::zero(), T::zero()]
   }
 
   fn grid_points(&self) -> usize {
@@ -253,7 +248,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     let jump_rate_per_step = (self.checked_nu() * lam_dt).to_f64().unwrap();
     BnsSampler {
       n: self.n,
-      s0: self.s0.unwrap_or(T::one()),
+      s0: self.s0,
       sigma2_0: self.sigma2_0,
       mu: self.mu,
       jump_shape: self.jump_shape,
@@ -378,17 +373,7 @@ mod tests {
   /// Variance path stays strictly positive.
   #[test]
   fn bns_variance_non_negative() {
-    let p = Bns::<f64>::new(
-      Some(100.0),
-      0.04,
-      2.0,
-      0.0,
-      5.0,
-      2.0,
-      512,
-      Some(1.0),
-      Unseeded,
-    );
+    let p = Bns::<f64>::new(100.0, 0.04, 2.0, 0.0, 5.0, 2.0, 512, Some(1.0), Unseeded);
     let [_s, v] = p.sample();
     assert!(v.iter().all(|x| *x >= 0.0));
     assert!(v.iter().any(|x| *x > 0.0));
@@ -397,17 +382,7 @@ mod tests {
   /// Stock stays strictly positive (log-Euler structure).
   #[test]
   fn bns_stock_strictly_positive() {
-    let p = Bns::<f64>::new(
-      Some(100.0),
-      0.04,
-      1.5,
-      0.05,
-      3.0,
-      2.0,
-      256,
-      Some(1.0),
-      Unseeded,
-    );
+    let p = Bns::<f64>::new(100.0, 0.04, 1.5, 0.05, 3.0, 2.0, 256, Some(1.0), Unseeded);
     let [s, _v] = p.sample();
     assert!(s.iter().all(|x| *x > 0.0));
   }
@@ -429,7 +404,7 @@ mod tests {
     let mean: f64 = (0..paths)
       .map(|i| {
         let p = Bns::<f64, Deterministic>::new(
-          Some(100.0),
+          100.0,
           omega * nu,
           1.0,
           0.0,
@@ -456,7 +431,7 @@ mod tests {
   fn bns_seeded_is_deterministic() {
     let mk = || {
       Bns::<f64, Deterministic>::new(
-        Some(100.0),
+        100.0,
         0.04,
         2.0,
         0.0,
@@ -478,7 +453,7 @@ mod tests {
   #[test]
   fn a_zero_jump_rate_decays_the_variance_exactly() {
     let p = Bns::<f64, Deterministic>::new(
-      Some(100.0),
+      100.0,
       0.04,
       1.5,
       0.05,
@@ -502,17 +477,7 @@ mod tests {
   #[test]
   #[should_panic(expected = "nu must satisfy `nu.is_finite() && nu >= T::zero()`, got nu = NaN")]
   fn a_nan_nu_written_past_new_is_refused() {
-    let mut p = Bns::<f64>::new(
-      Some(100.0),
-      0.04,
-      1.0,
-      0.0,
-      1.0,
-      1.0,
-      16,
-      Some(1.0),
-      Unseeded,
-    );
+    let mut p = Bns::<f64>::new(100.0, 0.04, 1.0, 0.0, 1.0, 1.0, 16, Some(1.0), Unseeded);
     p.nu = f64::NAN;
     let _ = p.sample();
   }
@@ -520,7 +485,7 @@ mod tests {
   #[test]
   fn jump_counts_follow_the_crate_poisson_law() {
     let p = Bns::<f64, Deterministic>::new(
-      Some(100.0),
+      100.0,
       0.04,
       1.0,
       0.0,

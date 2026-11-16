@@ -25,12 +25,10 @@ pub use scheme::HestonScheme;
 
 #[derive(Clone)]
 pub struct Heston<T: FloatExt, Sch: HestonScheme = Euler, S: SeedExt = Unseeded, B = Cpu> {
-  /// Initial stock price
-  pub s0: Option<T>,
-  /// Initial variance v₀ — a variance, not a volatility: `dv_t` above is
-  /// the process this seeds, and `sqrt(v_t)` (not `v_t` itself) is the
-  /// instantaneous volatility fed to `dS_t`.
-  pub v0: Option<T>,
+  /// Initial spot.
+  pub s0: T,
+  /// Initial variance, not a volatility: `sqrt(v_t)` is what `dS_t` reads.
+  pub v0: T,
   /// Mean reversion rate
   pub kappa: T,
   /// Long-run variance level (θ in the module header's `dv_t` equation) —
@@ -44,7 +42,7 @@ pub struct Heston<T: FloatExt, Sch: HestonScheme = Euler, S: SeedExt = Unseeded,
   pub mu: T,
   /// Number of time steps
   pub n: usize,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Power of the variance
   /// If 0.5 then it is the original Heston model
@@ -66,8 +64,8 @@ pub struct Heston<T: FloatExt, Sch: HestonScheme = Euler, S: SeedExt = Unseeded,
 
 impl<T: FloatExt, S: SeedExt> Heston<T, Euler, S> {
   pub fn new(
-    s0: Option<T>,
-    v0: Option<T>,
+    s0: T,
+    v0: T,
     kappa: T,
     theta: T,
     sigma: T,
@@ -80,12 +78,12 @@ impl<T: FloatExt, S: SeedExt> Heston<T, Euler, S> {
     seed: S,
   ) -> Self {
     assert!(
-      s0.is_none_or(|v| v.is_finite()),
-      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
     );
     assert!(
-      v0.is_none_or(|v| v.is_finite()),
-      "v0 must satisfy `v0.is_none_or(|v| v.is_finite())`, got v0 = {v0:?}"
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
     );
     assert!(
       kappa.is_finite(),
@@ -125,8 +123,8 @@ impl<T: FloatExt, S: SeedExt> Heston<T, Euler, S> {
       "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
     );
     assert!(
-      v0.is_none_or(|v| v >= T::zero()),
-      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+      v0 >= T::zero(),
+      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
     );
 
     Self {
@@ -156,8 +154,8 @@ impl<T: FloatExt, S: SeedExt> Heston<T, Euler, S> {
 impl<T: FloatExt> Default for Heston<T, Euler, Unseeded> {
   fn default() -> Self {
     Self::new(
-      Some(T::from_f64_fast(100.0)),
-      Some(T::from_f64_fast(0.04)),
+      T::from_f64_fast(100.0),
+      T::from_f64_fast(0.04),
       T::from_f64_fast(2.0),
       T::from_f64_fast(0.04),
       T::from_f64_fast(0.3),
@@ -181,16 +179,16 @@ impl<T: FloatExt> Default for Heston<T, Euler, Unseeded> {
 /// `Heston::default().qe().with_kappa(3.0)`.
 impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
   /// Replace `s0`, all else unchanged.
-  pub fn with_s0(mut self, s0: Option<T>) -> Self {
+  pub fn with_s0(mut self, s0: T) -> Self {
     self.s0 = s0;
     self
   }
 
   /// Replace `v0`, all else unchanged.
-  pub fn with_v0(mut self, v0: Option<T>) -> Self {
+  pub fn with_v0(mut self, v0: T) -> Self {
     assert!(
-      v0.is_none_or(|v| v >= T::zero()),
-      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+      v0 >= T::zero(),
+      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
     );
     self.v0 = v0;
     self
@@ -293,18 +291,17 @@ impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
       "sigma must satisfy `sigma > T::zero()`, got sigma = {:?}",
       self.sigma
     );
-    if let Some(s0) = self.s0 {
-      assert!(
-        s0 > T::zero(),
-        "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
-      );
-    }
+    assert!(
+      self.s0 > T::zero(),
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {:?}",
+      self.s0
+    );
   }
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Heston<T, Euler, S, B> {
   /// Re-tag the model with the [`AndersenQe`] variance scheme at no runtime cost; panics unless
-  /// `pow` is `HestonPow::Sqrt` and `kappa`, `sigma` and a given `s0` are positive.
+  /// `pow` is `HestonPow::Sqrt` and `kappa`, `sigma` and `s0` are positive.
   pub fn qe(self) -> Heston<T, AndersenQe, S, B> {
     self.assert_qe_parameters();
     Heston {
@@ -358,12 +355,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn initial_state(&self) -> [T; 4] {
-    [
-      self.s0.unwrap_or(T::zero()),
-      self.v0.unwrap_or(T::zero()).max(T::zero()),
-      T::zero(),
-      T::zero(),
-    ]
+    [self.s0, self.v0.max(T::zero()), T::zero(), T::zero()]
   }
 
   fn grid_points(&self) -> usize {
@@ -484,13 +476,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   /// report exponentiates it back.
   fn initial_state(&self) -> [T; 4] {
     self.assert_qe_parameters();
-    let s0 = self.s0.unwrap_or(T::one());
-    [
-      s0.ln(),
-      self.v0.unwrap_or(T::zero()).max(T::zero()),
-      T::zero(),
-      T::zero(),
-    ]
+    [self.s0.ln(), self.v0.max(T::zero()), T::zero(), T::zero()]
   }
 
   fn grid_points(&self) -> usize {

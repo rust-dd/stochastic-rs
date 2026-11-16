@@ -45,8 +45,8 @@ guard!(bates1996, "Bates1996", |s| Bates1996::new(
   -0.6,
   SimdNormal::new(0.0, 0.05),
   N,
-  Some(100.0),
-  Some(0.04),
+  100.0,
+  0.04,
   Some(1.0),
   VarianceBoundary::Floor,
   s
@@ -183,7 +183,7 @@ guard!(mjd_log, "MjdLog", |s| MjdLog::new(
   0.0,
   0.1,
   N,
-  Some(100.0),
+  100.0,
   Some(1.0),
   s
 ));

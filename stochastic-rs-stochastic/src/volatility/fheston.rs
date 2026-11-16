@@ -39,8 +39,8 @@ use crate::traits::ProcessExt;
 pub struct RoughHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
-  /// Initial variance/volatility level.
-  pub v0: Option<T>,
+  /// Initial volatility; the variance starts at `v0²`.
+  pub v0: T,
   /// Long-run variance level θ the Markovian lifting factor `yt` reverts
   /// toward (θ in the module header).
   pub theta: T,
@@ -57,16 +57,16 @@ pub struct RoughHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Calibration coefficient scaling the memory (Volterra-integral)
   /// correction term in the same approximation; `None` defaults to 1.
   pub c2: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Number of points sampled along the rough-Heston path.
   pub n: usize,
-  /// Drift of the log-price process (default 0).
-  pub mu: Option<T>,
-  /// Initial price level (default 1).
-  pub s0: Option<T>,
-  /// Correlation between price and vol innovations (default 0 = independent).
-  pub rho: Option<T>,
+  /// Drift of the log-price.
+  pub mu: T,
+  /// Initial spot.
+  pub s0: T,
+  /// Correlation of the price and volatility innovations.
+  pub rho: T,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -75,9 +75,10 @@ pub struct RoughHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> RoughHeston<T, S> {
+  /// Starts the spot at 1 with zero drift and correlation; set `s0`, `mu` and `rho` on the result.
   pub fn new(
     hurst: T,
-    v0: Option<T>,
+    v0: T,
     theta: T,
     kappa: T,
     nu: T,
@@ -92,8 +93,8 @@ impl<T: FloatExt, S: SeedExt> RoughHeston<T, S> {
       "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
     );
     assert!(
-      v0.is_none_or(|v| v.is_finite()),
-      "v0 must satisfy `v0.is_none_or(|v| v.is_finite())`, got v0 = {v0:?}"
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
     );
     assert!(
       theta.is_finite(),
@@ -131,9 +132,9 @@ impl<T: FloatExt, S: SeedExt> RoughHeston<T, S> {
       c2,
       t,
       n,
-      mu: None,
-      s0: None,
-      rho: None,
+      mu: T::zero(),
+      s0: T::one(),
+      rho: T::zero(),
       seed,
     }
   }
@@ -170,22 +171,22 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   /// reciprocal of `Γ(H - 1/2)` the memory term is divided by.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::RoughHestonMemory {
-      mu: self.mu.unwrap_or(T::zero()),
+      mu: self.mu,
       theta: self.theta,
       ek: (-self.kappa * self.dt()).exp(),
       nu: self.nu,
       c1: self.c1.unwrap_or(T::one()),
       c2: self.c2.unwrap_or(T::one()),
       inv_g: T::from_f64_fast(1.0 / gamma(self.hurst.to_f64().unwrap() - 0.5)),
-      rho: self.rho.unwrap_or(T::zero()),
+      rho: self.rho,
     }
   }
 
   /// Spot, variance, and the two factors behind it: `y` starts at the
   /// variance and `z` at zero, as on the host.
   fn initial_state(&self) -> [T; 4] {
-    let v0_sq = self.v0.unwrap_or(T::one()).powi(2);
-    [self.s0.unwrap_or(T::one()), v0_sq, v0_sq, T::zero()]
+    let v0_sq = self.v0.powi(2);
+    [self.s0, v0_sq, v0_sq, T::zero()]
   }
 
   fn grid_points(&self) -> usize {
@@ -255,7 +256,6 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     // `cgns`'s own seed stays the dead `Unseeded` default — the sampler
     // drives it via `sample_impl(&self.seed)` below instead, exactly like
     // `Bates1996`'s private `cgns` field.
-    let rho = self.rho.unwrap_or(T::zero());
     RoughHestonSampler {
       n: self.n,
       hurst: self.hurst,
@@ -264,12 +264,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       nu: self.nu,
       c1: self.c1.unwrap_or(T::one()),
       c2: self.c2.unwrap_or(T::one()),
-      mu: self.mu.unwrap_or(T::zero()),
-      s0: self.s0.unwrap_or(T::one()),
-      v0_sq: self.v0.unwrap_or(T::one()).powi(2),
+      mu: self.mu,
+      s0: self.s0,
+      v0_sq: self.v0.powi(2),
       dt,
       g: gamma(self.hurst.to_f64().unwrap() - 0.5),
-      cgns: Cgns::new(rho, n_steps, self.t, Unseeded),
+      cgns: Cgns::new(self.rho, n_steps, self.t, Unseeded),
       seed: self.seed.derive(),
     }
   }
@@ -439,20 +439,20 @@ pub struct PyRoughHeston {
 #[pyo3::prelude::pymethods]
 impl PyRoughHeston {
   #[new]
-  #[pyo3(signature = (hurst, theta, kappa, nu, n, v0=None, c1=None, c2=None, t=None, mu=None, s0=None, rho=None, seed=None, dtype=None))]
+  #[pyo3(signature = (hurst, theta, kappa, nu, n, v0, c1=None, c2=None, t=None, mu=0.0, s0=1.0, rho=0.0, seed=None, dtype=None))]
   fn new(
     hurst: f64,
     theta: f64,
     kappa: f64,
     nu: f64,
     n: usize,
-    v0: Option<f64>,
+    v0: f64,
     c1: Option<f64>,
     c2: Option<f64>,
     t: Option<f64>,
-    mu: Option<f64>,
-    s0: Option<f64>,
-    rho: Option<f64>,
+    mu: f64,
+    s0: f64,
+    rho: f64,
     seed: Option<u64>,
     dtype: Option<&str>,
   ) -> pyo3::PyResult<Self> {
@@ -467,7 +467,7 @@ impl PyRoughHeston {
         (Some(sd), "f32") => {
           let mut m = RoughHeston::new(
             hurst as f32,
-            v0.map(|v| v as f32),
+            v0 as f32,
             theta as f32,
             kappa as f32,
             nu as f32,
@@ -477,9 +477,9 @@ impl PyRoughHeston {
             n,
             Deterministic::new(sd),
           );
-          m.mu = mu.map(|v| v as f32);
-          m.s0 = s0.map(|v| v as f32);
-          m.rho = rho.map(|v| v as f32);
+          m.mu = mu as f32;
+          m.s0 = s0 as f32;
+          m.rho = rho as f32;
           obj.seeded_f32 = Some(m);
         }
         (Some(sd), _) => {
@@ -503,7 +503,7 @@ impl PyRoughHeston {
         (None, "f32") => {
           let mut m = RoughHeston::new(
             hurst as f32,
-            v0.map(|v| v as f32),
+            v0 as f32,
             theta as f32,
             kappa as f32,
             nu as f32,
@@ -513,9 +513,9 @@ impl PyRoughHeston {
             n,
             Unseeded,
           );
-          m.mu = mu.map(|v| v as f32);
-          m.s0 = s0.map(|v| v as f32);
-          m.rho = rho.map(|v| v as f32);
+          m.mu = mu as f32;
+          m.s0 = s0 as f32;
+          m.rho = rho as f32;
           obj.inner_f32 = Some(m);
         }
         (None, _) => {

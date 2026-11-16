@@ -57,9 +57,9 @@ pub struct Hkde<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub eta2: T,
   /// Number of time steps.
   pub n: usize,
-  /// Initial stock price.
-  pub s0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Initial spot.
+  pub s0: T,
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Treatment of a negative square-root state after a step; the Feller condition is not required.
   pub boundary: VarianceBoundary,
@@ -85,7 +85,7 @@ impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
     eta1: T,
     eta2: T,
     n: usize,
-    s0: Option<T>,
+    s0: T,
     t: Option<T>,
     boundary: VarianceBoundary,
     seed: S,
@@ -131,8 +131,8 @@ impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
       "eta2 must satisfy `eta2.is_finite()`, got eta2 = {eta2:?}"
     );
     assert!(
-      s0.is_none_or(|v| v.is_finite()),
-      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
     );
     assert!(
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
@@ -154,6 +154,14 @@ impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
     assert!(
       lambda >= T::zero(),
       "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      s0 > T::zero(),
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
+    );
+    assert!(
+      v0 >= T::zero(),
+      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
     );
 
     Self {
@@ -218,6 +226,10 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
 
   /// Replace `v0`, all else unchanged.
   pub fn with_v0(mut self, v0: T) -> Self {
+    assert!(
+      v0 >= T::zero(),
+      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
+    );
     self.v0 = v0;
     self
   }
@@ -259,7 +271,11 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
   }
 
   /// Replace `s0`, all else unchanged.
-  pub fn with_s0(mut self, s0: Option<T>) -> Self {
+  pub fn with_s0(mut self, s0: T) -> Self {
+    assert!(
+      s0 > T::zero(),
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
+    );
     self.s0 = s0;
     self
   }
@@ -333,12 +349,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn initial_state(&self) -> [T; 4] {
-    [
-      self.s0.unwrap_or(T::one()),
-      self.v0.max(T::zero()),
-      T::zero(),
-      T::zero(),
-    ]
+    [self.s0, self.v0.max(T::zero()), T::zero(), T::zero()]
   }
 
   fn grid_points(&self) -> usize {
@@ -408,7 +419,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       p_up: self.p_up,
       eta1: self.eta1,
       eta2: self.eta2,
-      s0: self.s0.unwrap_or(T::one()),
+      s0: self.s0,
       k_bar: self.k_bar(),
       dt: self.cgns.dt(),
       boundary: self.boundary,
@@ -497,7 +508,11 @@ impl<T: FloatExt, S: SeedExt> HkdeSampler<T, S> {
     let dt = self.dt;
     let [cgn1, cgn2] = &self.cgns.sample_impl(&self.seed);
 
-    assert!(self.s0 > T::zero(), "s0 must be > 0");
+    assert!(
+      self.s0 > T::zero(),
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {:?}",
+      self.s0
+    );
     s[0] = self.s0;
     v[0] = self.v0.max(T::zero());
 
@@ -585,7 +600,7 @@ mod tests {
       5.0,
       5.0,
       256,
-      Some(100.0),
+      100.0,
       Some(1.0),
       VarianceBoundary::Floor,
       Unseeded,
@@ -620,7 +635,7 @@ mod tests {
       5.0,
       5.0,
       1000,
-      Some(100.0),
+      100.0,
       Some(1.0),
       VarianceBoundary::Floor,
       Deterministic::new(42),
@@ -648,7 +663,7 @@ mod tests {
       5.0,
       5.0,
       100,
-      Some(100.0),
+      100.0,
       Some(1.0),
       VarianceBoundary::Floor,
       Deterministic::new(123),
@@ -665,7 +680,7 @@ mod tests {
       5.0,
       5.0,
       100,
-      Some(100.0),
+      100.0,
       Some(1.0),
       VarianceBoundary::Floor,
       Deterministic::new(123),

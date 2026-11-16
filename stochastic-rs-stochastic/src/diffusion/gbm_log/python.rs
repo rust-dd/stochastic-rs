@@ -16,7 +16,7 @@ pub struct PyGbmLog {
 
 py_process_methods!(PyGbmLog, array1, py_device_dispatch, {
   #[new]
-  #[pyo3(signature = (mu=None, b=None, r=None, r_f=None, *, sigma, n, s0=None, t=None, seed=None, dtype=None, device=None))]
+  #[pyo3(signature = (mu=None, b=None, r=None, r_f=None, *, sigma, n, s0, t=None, seed=None, dtype=None, device=None))]
   fn new(
     mu: Option<f64>,
     b: Option<f64>,
@@ -24,7 +24,7 @@ py_process_methods!(PyGbmLog, array1, py_device_dispatch, {
     r_f: Option<f64>,
     sigma: f64,
     n: usize,
-    s0: Option<f64>,
+    s0: f64,
     t: Option<f64>,
     seed: Option<u64>,
     dtype: Option<&str>,
@@ -33,7 +33,7 @@ py_process_methods!(PyGbmLog, array1, py_device_dispatch, {
     let device = Device::parse(device, dtype.unwrap_or("f64"))?;
     stochastic_rs_distributions::python::value_error_on_panic(|| -> pyo3::PyResult<Self> {
       let drift = drift_from_kwargs(mu, b, r, r_f)?;
-      let (s0_f32, t_f32) = (s0.map(|v| v as f32), t.map(|v| v as f32));
+      let (s0_f32, t_f32) = (s0 as f32, t.map(|v| v as f32));
       let mut s = Self {
         inner_f32: None,
         inner_f64: None,

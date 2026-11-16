@@ -43,9 +43,9 @@ pub struct RegimeSwitchingDiffusion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu>
   pub initial_state: usize,
   /// Number of points sampled along the regime-switching path.
   pub n: usize,
-  /// Initial stock price.
-  pub s0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Initial spot.
+  pub s0: T,
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -61,7 +61,7 @@ impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusion<T, S> {
     vols: Array1<T>,
     initial_state: usize,
     n: usize,
-    s0: Option<T>,
+    s0: T,
     t: Option<T>,
     seed: S,
   ) -> Self {
@@ -71,8 +71,8 @@ impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusion<T, S> {
     );
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     assert!(
-      s0.is_none_or(|v| v.is_finite()),
-      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
     );
     assert!(
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
@@ -259,7 +259,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
   fn initial_state(&self) -> [T; 4] {
     [
-      self.s0.unwrap_or(T::one()),
+      self.s0,
       T::from_usize_(self.initial_state),
       T::zero(),
       T::zero(),
@@ -329,7 +329,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       vols: self.vols.clone(),
       initial_state: self.initial_state,
       n: self.n,
-      s0: self.s0.unwrap_or(T::one()),
+      s0: self.s0,
       t: self.t,
       seed: self.seed.derive(),
     }
@@ -513,7 +513,7 @@ mod tests {
       array![0.15, 0.25, 0.35],
       0,
       1000,
-      Some(100.0),
+      100.0,
       Some(1.0),
       Unseeded,
     );
@@ -529,7 +529,7 @@ mod tests {
       array![0.15, 0.25, 0.35],
       0,
       1000,
-      Some(100.0),
+      100.0,
       Some(1.0),
       Unseeded,
     );
@@ -548,7 +548,7 @@ mod tests {
       array![0.2],
       0,
       1000,
-      Some(100.0),
+      100.0,
       Some(1.0),
       Deterministic::new(42),
     );
@@ -565,7 +565,7 @@ mod tests {
       array![0.15, 0.25, 0.35],
       0,
       100,
-      Some(100.0),
+      100.0,
       Some(1.0),
       Deterministic::new(42),
     );
@@ -575,7 +575,7 @@ mod tests {
       array![0.15, 0.25, 0.35],
       0,
       100,
-      Some(100.0),
+      100.0,
       Some(1.0),
       Deterministic::new(42),
     );
@@ -609,7 +609,7 @@ mod tests {
       array![0.15, 0.25, 0.35],
       0,
       10,
-      Some(100.0),
+      100.0,
       Some(1.0),
       Unseeded,
     );

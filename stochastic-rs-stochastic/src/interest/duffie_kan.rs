@@ -62,10 +62,10 @@ pub struct DuffieKan<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Initial short rate r₀.
   pub r0: Option<T>,
-  /// Initial value X₀ of the auxiliary factor.
+  /// Initial value; `None` starts at zero.
+  /// Of the auxiliary factor; the short rate starts at `r0`.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] shared by both factors (defaults to 1 when
-  /// omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,

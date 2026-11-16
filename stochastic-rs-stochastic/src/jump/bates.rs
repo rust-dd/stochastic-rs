@@ -64,11 +64,11 @@ where
   pub rho: T,
   /// Number of points sampled along the Bates path.
   pub n: usize,
-  /// Initial asset price S₀.
-  pub s0: Option<T>,
-  /// Initial variance level v₀.
-  pub v0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Initial spot.
+  pub s0: T,
+  /// Initial variance.
+  pub v0: T,
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Treatment of a negative square-root state after a step; the Feller condition is not required.
   pub boundary: VarianceBoundary,
@@ -112,8 +112,8 @@ where
     rho: T,
     jump_dist: D,
     n: usize,
-    s0: Option<T>,
-    v0: Option<T>,
+    s0: T,
+    v0: T,
     t: Option<T>,
     boundary: VarianceBoundary,
     seed: S,
@@ -145,20 +145,20 @@ where
     );
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     assert!(
-      s0.is_none_or(|v| v.is_finite()),
-      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
     );
     assert!(
-      v0.is_none_or(|v| v.is_finite()),
-      "v0 must satisfy `v0.is_none_or(|v| v.is_finite())`, got v0 = {v0:?}"
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
     );
     assert!(
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
     assert!(
-      v0.is_none_or(|v| v >= T::zero()),
-      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+      v0 >= T::zero(),
+      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
     );
 
     let cpoisson = CompoundPoisson::new(
@@ -246,16 +246,16 @@ where
   }
 
   /// Replace `s0`, all else unchanged.
-  pub fn with_s0(mut self, s0: Option<T>) -> Self {
+  pub fn with_s0(mut self, s0: T) -> Self {
     self.s0 = s0;
     self
   }
 
   /// Replace `v0`, all else unchanged.
-  pub fn with_v0(mut self, v0: Option<T>) -> Self {
+  pub fn with_v0(mut self, v0: T) -> Self {
     assert!(
-      v0.is_none_or(|v| v >= T::zero()),
-      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+      v0 >= T::zero(),
+      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
     );
     self.v0 = v0;
     self
@@ -351,12 +351,7 @@ where
   }
 
   fn initial_state(&self) -> [T; 4] {
-    [
-      self.s0.unwrap_or(T::zero()),
-      self.v0.unwrap_or(T::zero()).max(T::zero()),
-      T::zero(),
-      T::zero(),
-    ]
+    [self.s0, self.v0.max(T::zero()), T::zero(), T::zero()]
   }
 
   fn grid_points(&self) -> usize {
@@ -438,8 +433,8 @@ where
   fn sampler(&self) -> BatesSampler<'_, T, D, S> {
     BatesSampler {
       n: self.n,
-      s0: self.s0.unwrap_or(T::zero()),
-      v0: self.v0.unwrap_or(T::zero()).max(T::zero()),
+      s0: self.s0,
+      v0: self.v0.max(T::zero()),
       lambda: self.lambda,
       k: self.k,
       alpha: self.alpha,

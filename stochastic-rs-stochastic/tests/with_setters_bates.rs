@@ -98,8 +98,8 @@ fn bates_base_seeded<S: SeedExt>(seed: S) -> Bates1996<f64, SimdNormal<f64>, S> 
     -0.7,
     SimdNormal::new(0.0, 1.0),
     256,
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     Some(1.0),
     VarianceBoundary::Floor,
     seed,
@@ -124,8 +124,8 @@ struct BatesFields {
   sigma: f64,
   rho: f64,
   n: usize,
-  s0: Option<f64>,
-  v0: Option<f64>,
+  s0: f64,
+  v0: f64,
   t: Option<f64>,
   boundary: VarianceBoundary,
 }
@@ -172,8 +172,8 @@ bates_plain_test!(bates_with_k_round_trip, with_k, k, 0.08);
 bates_plain_test!(bates_with_alpha_round_trip, with_alpha, alpha, 0.06);
 bates_plain_test!(bates_with_beta_round_trip, with_beta, beta, 2.0);
 bates_plain_test!(bates_with_sigma_round_trip, with_sigma, sigma, 0.35);
-bates_plain_test!(bates_with_s0_round_trip, with_s0, s0, Some(120.0));
-bates_plain_test!(bates_with_v0_round_trip, with_v0, v0, Some(0.06));
+bates_plain_test!(bates_with_s0_round_trip, with_s0, s0, 120.0);
+bates_plain_test!(bates_with_v0_round_trip, with_v0, v0, 0.06);
 bates_plain_test!(
   bates_with_boundary_round_trip,
   with_boundary,
@@ -182,11 +182,9 @@ bates_plain_test!(
 );
 
 #[test]
-#[should_panic(
-  expected = "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = Some(-0.1)"
-)]
+#[should_panic(expected = "v0 must satisfy `v0 >= T::zero()`, got v0 = -0.1")]
 fn bates_with_v0_rejects_negative() {
-  let _ = bates_base().with_v0(Some(-0.1));
+  let _ = bates_base().with_v0(-0.1);
 }
 
 #[test]
@@ -267,8 +265,8 @@ fn bates_with_cpoisson_changes_sampled_intensity() {
       -0.7,
       SimdNormal::new(0.0, 1.0),
       256,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       Some(1.0),
       VarianceBoundary::Floor,
       Deterministic::new(seed),
@@ -325,8 +323,8 @@ fn bates_with_lambda_syncs_cpoisson_and_changes_sampled_path() {
       -0.7,
       SimdNormal::new(0.0, 1.0),
       256,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       Some(1.0),
       VarianceBoundary::Floor,
       Deterministic::new(3),
@@ -349,8 +347,8 @@ fn bates_with_lambda_syncs_cpoisson_and_changes_sampled_path() {
     -0.7,
     SimdNormal::new(0.0, 1.0),
     256,
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     Some(1.0),
     VarianceBoundary::Floor,
     Deterministic::new(3),
@@ -442,8 +440,8 @@ fn degenerate_bates<S: SeedExt>(t: Option<f64>, seed: S) -> Bates1996<f64, SimdN
     0.0, // rho: irrelevant here, the noise it would scale is already zero
     SimdNormal::new(0.0, 1.0),
     257,
-    Some(100.0),
-    Some(0.0), // v0 = 0
+    100.0,
+    0.0, // v0 = 0
     t,
     VarianceBoundary::Floor,
     seed,

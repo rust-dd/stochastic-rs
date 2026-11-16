@@ -34,9 +34,9 @@ pub struct Cev<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub gamma: T,
   /// Number of points sampled along the CEV path.
   pub n: usize,
-  /// Initial value S₀ of the CEV path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,

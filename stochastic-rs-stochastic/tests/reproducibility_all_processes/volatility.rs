@@ -41,8 +41,8 @@ guard!(bates_svj, "BatesSvj", |s| BatesSvj::new(
   0.3,
   -0.6,
   N,
-  Some(100.0),
-  Some(0.04),
+  100.0,
+  0.04,
   Some(1.0),
   VarianceBoundary::Floor,
   s
@@ -50,8 +50,8 @@ guard!(bates_svj, "BatesSvj", |s| BatesSvj::new(
 
 guard!(bergomi, "Bergomi", |s| Bergomi::new(
   0.4,
-  Some(0.2),
-  Some(100.0),
+  0.2,
+  100.0,
   0.01,
   -0.6,
   N,
@@ -60,7 +60,7 @@ guard!(bergomi, "Bergomi", |s| Bergomi::new(
 ));
 
 guard!(bns, "Bns", |s| Bns::new(
-  Some(100.0),
+  100.0,
   0.04,
   0.1,
   0.0,
@@ -72,9 +72,9 @@ guard!(bns, "Bns", |s| Bns::new(
 ));
 
 guard!(double_heston, "DoubleHeston", |s| DoubleHeston::new(
-  Some(100.0),
-  Some(0.02),
-  Some(0.02),
+  100.0,
+  0.02,
+  0.02,
   3.0,
   0.02,
   0.4,
@@ -108,14 +108,14 @@ guard!(f_bates_svj, "FBatesSvj", |s| FBatesSvj::new(
 ));
 
 guard!(rough_heston, "RoughHeston", |s| {
-  let mut m = RoughHeston::new(0.1, Some(0.04), 0.04, 1.5, 0.3, None, None, Some(1.0), N, s);
-  m.rho = Some(-0.6);
+  let mut m = RoughHeston::new(0.1, 0.04, 0.04, 1.5, 0.3, None, None, Some(1.0), N, s);
+  m.rho = -0.6;
   m
 });
 
 guard!(heston, "Heston", |s| Heston::new(
-  Some(100.0),
-  Some(0.04),
+  100.0,
+  0.04,
   2.0,
   0.04,
   0.3,
@@ -129,8 +129,8 @@ guard!(heston, "Heston", |s| Heston::new(
 ));
 
 guard!(heston2d, "Heston2D", |s| Heston2D::new(
-  [Some(0.0), Some(0.0)],
-  [Some(0.4), Some(0.4)],
+  [0.0, 0.0],
+  [0.4, 0.4],
   [0.0, 0.0],
   [0.4, 0.4],
   [2.0, 2.0],
@@ -149,16 +149,16 @@ guard!(heston_log, "HestonLog", |s| HestonLog::new(
   0.3,
   -0.7,
   N,
-  Some(100.0),
-  Some(0.04),
+  100.0,
+  0.04,
   Some(1.0),
   VarianceBoundary::Floor,
   s
 ));
 
 guard!(heston_slv, "HestonSlv", |s| HestonSlv::new(
-  Some(100.0),
-  Some(0.04),
+  100.0,
+  0.04,
   2.0,
   0.04,
   0.3,
@@ -183,7 +183,7 @@ guard!(hkde, "Hkde", |s| Hkde::new(
   5.0,
   5.0,
   N,
-  Some(100.0),
+  100.0,
   Some(1.0),
   VarianceBoundary::Floor,
   s
@@ -191,7 +191,7 @@ guard!(hkde, "Hkde", |s| Hkde::new(
 
 guard!(multifactor_heston, "MultifactorHeston", |s| {
   MultifactorHeston::new(
-    Some(100.0),
+    100.0,
     [0.04, 0.04],
     [1.5, 1.5],
     [0.04, 0.04],
@@ -221,8 +221,8 @@ guard!(multifactor_sabr, "MultifactorSabr", |s| {
 guard!(rough_bergomi, "RoughBergomi", |s| RoughBergomi::new(
   0.1,
   0.4,
-  Some(0.2),
-  Some(100.0),
+  0.2,
+  100.0,
   0.01,
   -0.6,
   N,
@@ -252,7 +252,7 @@ guard!(svcgmy, "Svcgmy", |s| Svcgmy::new(
   N,
   J,
   Some(0.0),
-  Some(0.04),
+  0.04,
   Some(1.0),
   s
 ));

@@ -12,8 +12,8 @@ const N: usize = 64;
 
 fn slv<S: SeedExt>(eta: f64, leverage: impl Into<Fn2D<f64>>, seed: S) -> HestonSlv<f64, S> {
   HestonSlv::new(
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     2.0,
     0.04,
     0.3,
@@ -49,8 +49,8 @@ fn unit_leverage_under_full_mixing_is_heston_log_path_for_path() {
     0.3,
     -0.7,
     N,
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     Some(1.0),
     VarianceBoundary::Floor,
     Deterministic::new(42),
@@ -136,10 +136,7 @@ fn the_default_is_the_heston_default_under_unit_leverage() {
     (p.kappa, p.theta, p.sigma, p.rho, p.mu, p.eta),
     (2.0, 0.04, 0.3, -0.7, 0.05, 1.0)
   );
-  assert_eq!(
-    (p.n, p.t, p.s0, p.v0),
-    (252, Some(1.0), Some(100.0), Some(0.04))
-  );
+  assert_eq!((p.n, p.t, p.s0, p.v0), (252, Some(1.0), 100.0, 0.04));
   assert!(p.device_ready(), "the default leverage is an expression");
   assert_eq!(p.leverage.call(0.3, 120.0), 1.0);
   let [s, v] = p.sample();
@@ -151,8 +148,8 @@ fn the_default_is_the_heston_default_under_unit_leverage() {
 #[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
 fn rejects_n_below_two() {
   let _ = HestonSlv::<f64, _>::new(
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     2.0,
     0.04,
     0.3,

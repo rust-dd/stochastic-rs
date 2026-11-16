@@ -43,7 +43,7 @@ pub struct WuZhangD<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub v0: Array1<T>,
   /// Number of (rate, vol) pairs.
   pub xn: usize,
-  /// Total time horizon.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Number of time steps in the simulation.
   pub n: usize,

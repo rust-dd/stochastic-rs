@@ -65,9 +65,9 @@ pub struct DisplacedDiffusion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub beta: T,
   /// Number of points sampled along the displaced-diffusion path.
   pub n: usize,
-  /// Initial value S₀ of the displaced-diffusion path.
-  pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Initial value S₀.
+  pub x0: T,
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or
   /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
@@ -81,7 +81,7 @@ pub struct DisplacedDiffusion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// `DisplacedDiffusion::default().with_beta(10.0)`. No persisted cache:
 /// `sampler()` builds its Gaussian source fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> DisplacedDiffusion<T, S> {
-  pub fn new(mu: T, sigma: T, beta: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
+  pub fn new(mu: T, sigma: T, beta: T, n: usize, x0: T, t: Option<T>, seed: S) -> Self {
     assert!(
       mu.is_finite(),
       "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
@@ -96,8 +96,8 @@ impl<T: FloatExt, S: SeedExt> DisplacedDiffusion<T, S> {
     );
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+      x0.is_finite(),
+      "x0 must satisfy `x0.is_finite()`, got x0 = {x0:?}"
     );
     assert!(
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
@@ -136,7 +136,7 @@ impl<T: FloatExt, S: SeedExt, B> DisplacedDiffusion<T, S, B> {
   }
 
   /// Replace `x0`, all else unchanged.
-  pub fn with_x0(mut self, x0: Option<T>) -> Self {
+  pub fn with_x0(mut self, x0: T) -> Self {
     self.x0 = x0;
     self
   }
@@ -176,7 +176,7 @@ impl<T: FloatExt> Default for DisplacedDiffusion<T, Unseeded> {
       T::from_f64_fast(0.2),
       T::from_f64_fast(30.0),
       252,
-      Some(T::from_f64_fast(100.0)),
+      T::from_f64_fast(100.0),
       Some(T::one()),
       Unseeded,
     )
@@ -198,7 +198,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn initial_value(&self) -> T {
-    self.x0.unwrap_or(T::zero()) + self.beta
+    self.x0 + self.beta
   }
 
   fn grid_points(&self) -> usize {
@@ -243,7 +243,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
     DisplacedDiffusionSampler {
       n: self.n,
-      x0: self.x0.unwrap_or(T::one()),
+      x0: self.x0,
       beta: self.beta,
       drift_scale: self.mu * dt,
       diff_scale: self.sigma,
@@ -339,8 +339,8 @@ impl<T: FloatExt> PathSampler<T> for DisplacedDiffusionSampler<T> {
 }
 
 py_process_1d!(PyDisplacedDiffusion, DisplacedDiffusion,
-  sig: (mu, sigma, beta, n, x0=None, t=None, seed=None, dtype=None),
-  params: (mu: f64, sigma: f64, beta: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  sig: (mu, sigma, beta, n, x0, t=None, seed=None, dtype=None),
+  params: (mu: f64, sigma: f64, beta: f64, n: usize, x0: f64, t: Option<f64>),
   device
 );
 
@@ -362,16 +362,9 @@ mod tests {
     let t = 2.0;
     let seed = 2718u64;
 
-    let gbm = Gbm::<f64, _>::new(mu, sigma, n, Some(x0), Some(t), Deterministic::new(seed));
-    let dd = DisplacedDiffusion::<f64, _>::new(
-      mu,
-      sigma,
-      0.0,
-      n,
-      Some(x0),
-      Some(t),
-      Deterministic::new(seed),
-    );
+    let gbm = Gbm::<f64, _>::new(mu, sigma, n, x0, Some(t), Deterministic::new(seed));
+    let dd =
+      DisplacedDiffusion::<f64, _>::new(mu, sigma, 0.0, n, x0, Some(t), Deterministic::new(seed));
 
     let gbm_path = gbm.sample();
     let dd_path = dd.sample();
@@ -402,7 +395,7 @@ mod tests {
           sigma,
           beta,
           n,
-          Some(x0),
+          x0,
           Some(t),
           Deterministic::new(seed),
         );
@@ -425,26 +418,12 @@ mod tests {
   /// Same seed twice must be bit-identical.
   #[test]
   fn displaced_diffusion_is_deterministic() {
-    let dd1 = DisplacedDiffusion::<f64, _>::new(
-      0.05,
-      0.2,
-      0.1,
-      50,
-      Some(1.0),
-      Some(1.0),
-      Deterministic::new(42),
-    )
-    .sample();
-    let dd2 = DisplacedDiffusion::<f64, _>::new(
-      0.05,
-      0.2,
-      0.1,
-      50,
-      Some(1.0),
-      Some(1.0),
-      Deterministic::new(42),
-    )
-    .sample();
+    let dd1 =
+      DisplacedDiffusion::<f64, _>::new(0.05, 0.2, 0.1, 50, 1.0, Some(1.0), Deterministic::new(42))
+        .sample();
+    let dd2 =
+      DisplacedDiffusion::<f64, _>::new(0.05, 0.2, 0.1, 50, 1.0, Some(1.0), Deterministic::new(42))
+        .sample();
     assert_eq!(dd1, dd2);
   }
 }

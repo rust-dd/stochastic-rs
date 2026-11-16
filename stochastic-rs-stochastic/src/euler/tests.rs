@@ -13,16 +13,7 @@ use crate::params::VarianceBoundary;
 fn cpu_backend_is_the_process_sampler() {
   // `Deterministic` advances as it samples, so every comparison starts from a
   // freshly constructed process with the same seed.
-  let gbm = || {
-    Gbm::new(
-      0.05,
-      0.2,
-      64,
-      Some(100.0),
-      Some(1.0),
-      Deterministic::new(42),
-    )
-  };
+  let gbm = || Gbm::new(0.05, 0.2, 64, 100.0, Some(1.0), Deterministic::new(42));
   let plain = gbm().sample_par(16);
   let switched = gbm().on::<Cpu>().sample_par(16);
   let through_trait = Cpu.euler_paths(&gbm(), 16);
@@ -80,10 +71,10 @@ fn launch_scalars_refuse_a_wrapped_index() {
 
 #[test]
 fn switching_the_backend_keeps_the_parameters() {
-  let gbm = Gbm::new(0.05, 0.2, 64, Some(100.0), Some(2.0), Unseeded).on::<Cpu>();
+  let gbm = Gbm::new(0.05, 0.2, 64, 100.0, Some(2.0), Unseeded).on::<Cpu>();
   assert_eq!(
     (gbm.mu, gbm.sigma, gbm.n, gbm.x0, gbm.t),
-    (0.05, 0.2, 64, Some(100.0), Some(2.0))
+    (0.05, 0.2, 64, 100.0, Some(2.0))
   );
   let cir = Cir::new(
     1.5,
@@ -116,7 +107,7 @@ fn switching_the_backend_keeps_the_parameters() {
 
 #[test]
 fn try_sample_par_matches_sample_par_on_the_cpu() {
-  let gbm = || Gbm::new(0.05, 0.2, 64, Some(100.0), Some(1.0), Deterministic::new(9));
+  let gbm = || Gbm::new(0.05, 0.2, 64, 100.0, Some(1.0), Deterministic::new(9));
   assert_eq!(gbm().try_sample_par(8).expect("cpu"), gbm().sample_par(8));
   let ou = || {
     Ou::new(
@@ -149,7 +140,7 @@ fn try_sample_par_matches_sample_par_on_the_cpu() {
 
 #[test]
 fn host_map_and_chunk_calls_match_the_process_sampler() {
-  let gbm = || Gbm::new(0.05, 0.2, 32, Some(100.0), Some(1.0), Deterministic::new(4));
+  let gbm = || Gbm::new(0.05, 0.2, 32, 100.0, Some(1.0), Deterministic::new(4));
   let direct: Vec<f64> = gbm().sample_map(6, |p| p[31]);
   let through: Vec<f64> = Cpu.try_euler_paths_map(&gbm(), 6, |p| p[31]).expect("cpu");
   assert_eq!(direct, through);
@@ -162,7 +153,7 @@ fn host_map_and_chunk_calls_match_the_process_sampler() {
 
 #[test]
 fn matrix_form_matches_the_rows() {
-  let gbm = || Gbm::new(0.05, 0.2, 32, Some(100.0), Some(1.0), Deterministic::new(6));
+  let gbm = || Gbm::new(0.05, 0.2, 32, 100.0, Some(1.0), Deterministic::new(6));
   let rows = gbm().sample_par(5);
   let matrix = gbm().try_sample_matrix(5).expect("cpu");
   assert_eq!(matrix.dim(), (5, 32));
@@ -173,14 +164,14 @@ fn matrix_form_matches_the_rows() {
 
 #[test]
 fn device_seed_follows_the_seed_source() {
-  let a = Gbm::new(0.05, 0.2, 8, None, None, Deterministic::new(3));
-  let b = Gbm::new(0.05, 0.2, 8, None, None, Deterministic::new(3));
+  let a = Gbm::new(0.05, 0.2, 8, 1.0, None, Deterministic::new(3));
+  let b = Gbm::new(0.05, 0.2, 8, 1.0, None, Deterministic::new(3));
   assert_eq!(a.device_seed(), b.device_seed());
   assert_ne!(
     a.device_seed(),
-    Gbm::new(0.05, 0.2, 8, None, None, Deterministic::new(4)).device_seed()
+    Gbm::new(0.05, 0.2, 8, 1.0, None, Deterministic::new(4)).device_seed()
   );
-  let u = Gbm::new(0.05, 0.2, 8, None, None, Unseeded);
+  let u = Gbm::new(0.05, 0.2, 8, 1.0, None, Unseeded);
   assert_ne!(u.device_seed(), u.device_seed());
 }
 

@@ -558,8 +558,8 @@ fn rl_heston_agrees_with_the_cpu_law() {
   let build = || {
     RlHeston::<f32, _>::new(
       0.3,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       2.0,
       0.04,
       0.3,
@@ -801,7 +801,7 @@ fn volterra_square_root_agrees_with_the_cpu_law() {
       0.04,
       0.3,
       N,
-      Some(0.04),
+      0.04,
       Some(1.0),
       Deterministic::new(43),
     )

@@ -8,14 +8,7 @@ use stochastic_rs_core::simd_rng::Deterministic;
 
 #[test]
 fn euler_engine_prices_a_forward() {
-  let gbm = Gbm::new(
-    0.05,
-    0.2,
-    253,
-    Some(100.0),
-    Some(1.0),
-    Deterministic::new(7),
-  );
+  let gbm = Gbm::new(0.05, 0.2, 253, 100.0, Some(1.0), Deterministic::new(7));
   // The backend is a type parameter of the process: `Cpu` (the default) is the
   // process's own SIMD sampler; `.on::<Metal>()` or `.on::<Cuda>()` (with the
   // matching feature) run the Euler kernel on the device through the very

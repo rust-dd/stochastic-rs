@@ -36,10 +36,10 @@ use crate::traits::ProcessExt;
 pub struct RlHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent $H \in (0, 1/2)$ of the variance kernel.
   pub hurst: T,
-  /// Initial spot $S_0$.
-  pub s0: Option<T>,
-  /// Initial variance $V_0$.
-  pub v0: Option<T>,
+  /// Initial spot.
+  pub s0: T,
+  /// Initial variance.
+  pub v0: T,
   /// Variance mean-reversion speed $\kappa$.
   pub kappa: T,
   /// Long-run variance $\theta$.
@@ -52,7 +52,7 @@ pub struct RlHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub mu: T,
   /// Number of simulation points.
   pub n: usize,
-  /// Simulation horizon.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Quadrature degree passed through to the kernel.
   pub degree: Option<usize>,
@@ -82,8 +82,8 @@ impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     hurst: T,
-    s0: Option<T>,
-    v0: Option<T>,
+    s0: T,
+    v0: T,
     kappa: T,
     theta: T,
     nu: T,
@@ -99,12 +99,12 @@ impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
       "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
     );
     assert!(
-      s0.is_none_or(|v| v.is_finite()),
-      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
     );
     assert!(
-      v0.is_none_or(|v| v.is_finite()),
-      "v0 must satisfy `v0.is_none_or(|v| v.is_finite())`, got v0 = {v0:?}"
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
     );
     assert!(
       kappa.is_finite(),
@@ -144,8 +144,8 @@ impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
       "nu must satisfy `nu >= T::zero()`, got nu = {nu:?}"
     );
     assert!(
-      v0.is_none_or(|v| v >= T::zero()),
-      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+      v0 >= T::zero(),
+      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
     );
     Self {
       backend: Cpu,
@@ -184,7 +184,7 @@ impl<T: FloatExt, S: SeedExt, B> RlHeston<T, S, B> {
     let kappa = self.kappa;
     let theta = self.theta;
     let nu = self.nu;
-    let v0 = self.v0.unwrap_or(T::zero()).max(T::zero());
+    let v0 = self.v0.max(T::zero());
     let variance = self.markov.simulate_batch(
       v0,
       |vv| kappa * (theta - vv.max(T::zero())),
@@ -193,7 +193,7 @@ impl<T: FloatExt, S: SeedExt, B> RlHeston<T, S, B> {
     );
 
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
-    let s0 = self.s0.unwrap_or(T::zero());
+    let s0 = self.s0;
     let mut spots = Array2::<T>::zeros((m, self.n));
     for p in 0..m {
       spots[[p, 0]] = s0;
@@ -228,12 +228,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn initial_state(&self) -> [T; 4] {
-    [
-      self.s0.unwrap_or(T::zero()),
-      self.v0.unwrap_or(T::zero()).max(T::zero()),
-      T::zero(),
-      T::zero(),
-    ]
+    [self.s0, self.v0.max(T::zero()), T::zero(), T::zero()]
   }
 
   fn grid_points(&self) -> usize {
@@ -260,7 +255,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
       drift_scale: lift.one_minus_e_over_x.as_slice().expect("contiguous"),
       drift_boundary: lift.drift_boundary,
       diffusion_boundary: lift.diffusion_boundary,
-      x0: self.v0.unwrap_or(T::zero()).max(T::zero()),
+      x0: self.v0.max(T::zero()),
     })
   }
 
@@ -297,8 +292,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   fn sampler(&self) -> RlHestonSampler<'_, T, S> {
     RlHestonSampler {
       n: self.n,
-      s0: self.s0.unwrap_or(T::zero()),
-      v0: self.v0.unwrap_or(T::zero()).max(T::zero()),
+      s0: self.s0,
+      v0: self.v0.max(T::zero()),
       kappa: self.kappa,
       theta: self.theta,
       nu: self.nu,
@@ -422,8 +417,8 @@ mod tests {
   fn rejects_too_short_grid() {
     let _ = RlHeston::<f64>::new(
       0.3,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       1.0,
       0.04,
       0.5,
@@ -440,8 +435,8 @@ mod tests {
   fn variance_stays_non_negative() {
     let p = RlHeston::new(
       0.12_f64,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       0.1,
       0.3156,
       0.0331,
@@ -461,8 +456,8 @@ mod tests {
   fn batch_shape_and_nonneg_variance() {
     let p = RlHeston::new(
       0.12_f64,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       0.1,
       0.3156,
       0.0331,
@@ -484,8 +479,8 @@ mod tests {
   fn heston_limit_h_half_asymptotic_variance_is_finite() {
     let p = RlHeston::new(
       0.49_f64,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       1.0,
       0.04,
       0.3,
@@ -511,8 +506,8 @@ mod tests {
   fn rl_heston_nu_drives_variance_dispersion() {
     let small = RlHeston::new(
       0.12_f64,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       0.5,
       0.04,
       0.05,
@@ -525,8 +520,8 @@ mod tests {
     );
     let large = RlHeston::new(
       0.12_f64,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       0.5,
       0.04,
       0.5,

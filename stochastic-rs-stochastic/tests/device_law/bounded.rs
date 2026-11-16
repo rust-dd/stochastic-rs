@@ -288,7 +288,7 @@ fn displaced_diffusion_agrees_with_the_cpu_law() {
       0.2,
       20.0,
       253,
-      Some(100.0),
+      100.0,
       Some(1.0),
       Deterministic::new(3),
     )

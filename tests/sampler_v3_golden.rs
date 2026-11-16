@@ -47,7 +47,7 @@ fn assert_close(actual: &ndarray::Array1<f64>, golden_bits: &[u64]) {
 
 #[test]
 fn golden_gbm_stream() {
-  let gbm = Gbm::<f64, _>::new(0.05, 0.2, N, Some(1.0), Some(1.0), Deterministic::new(42));
+  let gbm = Gbm::<f64, _>::new(0.05, 0.2, N, 1.0, Some(1.0), Deterministic::new(42));
   assert_close(
     &gbm.sample(),
     &[
@@ -92,8 +92,8 @@ fn golden_ou_stream() {
 #[test]
 fn golden_heston_streams() {
   let heston = Heston::<f64, Euler, _>::new(
-    Some(1.0),
-    Some(0.04),
+    1.0,
+    0.04,
     2.0,
     0.04,
     0.3,
@@ -300,8 +300,8 @@ fn golden_bates_streams() {
     -0.6,
     SimdNormal::new(0.0, 0.1),
     N,
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     Some(1.0),
     VarianceBoundary::Floor,
     Deterministic::new(42),
@@ -347,8 +347,8 @@ fn golden_bates_streams() {
     -0.6,
     SimdNormal::new(0.0, 0.1),
     N,
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     Some(1.0),
     VarianceBoundary::Floor,
     Deterministic::new(42),
@@ -385,8 +385,8 @@ fn sampler_first_path_matches_sample() {
   // The first `sampler().sample()` reproduces `sample()` bit-for-bit because
   // both derive the Gaussian source identically from the same seed. This is a
   // same-machine comparison, so it stays exact and portable.
-  let a = Gbm::<f64, _>::new(0.05, 0.2, 32, Some(1.0), Some(1.0), Deterministic::new(7));
-  let b = Gbm::<f64, _>::new(0.05, 0.2, 32, Some(1.0), Some(1.0), Deterministic::new(7));
+  let a = Gbm::<f64, _>::new(0.05, 0.2, 32, 1.0, Some(1.0), Deterministic::new(7));
+  let b = Gbm::<f64, _>::new(0.05, 0.2, 32, 1.0, Some(1.0), Deterministic::new(7));
   assert_eq!(bits(&a.sample()), bits(&b.sampler().sample()));
 
   let f1 = Fgn::new(0.6f64, 32, Some(1.0), Deterministic::new(7));
@@ -397,7 +397,7 @@ fn sampler_first_path_matches_sample() {
 #[test]
 fn sampler_continues_stream() {
   // Reusing a sampler yields a fresh, independent path on each call.
-  let gbm = Gbm::<f64, _>::new(0.05, 0.2, 32, Some(1.0), Some(1.0), Deterministic::new(7));
+  let gbm = Gbm::<f64, _>::new(0.05, 0.2, 32, 1.0, Some(1.0), Deterministic::new(7));
   let mut s = gbm.sampler();
   let p1 = s.sample();
   let mut p2 = p1.clone();
@@ -409,7 +409,7 @@ fn sampler_continues_stream() {
 fn sample_map_matches_terminal_expectation() {
   // The buffer-reusing parallel fold must still produce the right law:
   // E[S_T] = exp(mu * T) = exp(0.05) for this GBM.
-  let gbm = Gbm::<f64, _>::new(0.05, 0.2, 64, Some(1.0), Some(1.0), Unseeded);
+  let gbm = Gbm::<f64, _>::new(0.05, 0.2, 64, 1.0, Some(1.0), Unseeded);
   let m = 20_000;
   let terminals = gbm.sample_map(m, |p| *p.last().unwrap());
   assert_eq!(terminals.len(), m);
@@ -420,7 +420,7 @@ fn sample_map_matches_terminal_expectation() {
 #[test]
 fn sample_par_returns_distinct_paths() {
   // `sample_par` yields the requested count, each an independent realisation.
-  let gbm = Gbm::<f64, _>::new(0.05, 0.2, 64, Some(1.0), Some(1.0), Unseeded);
+  let gbm = Gbm::<f64, _>::new(0.05, 0.2, 64, 1.0, Some(1.0), Unseeded);
   let paths = gbm.sample_par(64);
   assert_eq!(paths.len(), 64);
   assert!(paths.windows(2).all(|w| w[0] != w[1]));

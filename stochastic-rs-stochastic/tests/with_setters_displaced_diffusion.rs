@@ -14,7 +14,7 @@ struct DdFields {
   sigma: f64,
   beta: f64,
   n: usize,
-  x0: Option<f64>,
+  x0: f64,
   t: Option<f64>,
 }
 
@@ -52,7 +52,7 @@ macro_rules! plain_test {
 plain_test!(dd_with_mu_round_trip, with_mu, mu, 0.06);
 plain_test!(dd_with_sigma_round_trip, with_sigma, sigma, 0.3);
 plain_test!(dd_with_beta_round_trip, with_beta, beta, 10.0);
-plain_test!(dd_with_x0_round_trip, with_x0, x0, Some(50.0));
+plain_test!(dd_with_x0_round_trip, with_x0, x0, 50.0);
 plain_test!(dd_with_steps_round_trip, with_steps, n, 64usize);
 plain_test!(dd_with_horizon_round_trip, with_horizon, t, Some(2.0));
 
@@ -63,21 +63,13 @@ fn dd_with_seed_matches_fresh_construction() {
     0.2,
     30.0,
     64,
-    Some(100.0),
+    100.0,
     Some(1.0),
     Deterministic::new(13),
   )
   .sample();
-  let got = DisplacedDiffusion::new(
-    0.05,
-    0.2,
-    30.0,
-    64,
-    Some(100.0),
-    Some(1.0),
-    Deterministic::new(1),
-  )
-  .with_seed(Deterministic::new(13))
-  .sample();
+  let got = DisplacedDiffusion::new(0.05, 0.2, 30.0, 64, 100.0, Some(1.0), Deterministic::new(1))
+    .with_seed(Deterministic::new(13))
+    .sample();
   assert_eq!(want, got);
 }

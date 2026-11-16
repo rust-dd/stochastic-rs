@@ -45,10 +45,10 @@ pub struct CirPlusPlus<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub phi: Fn1D<T>,
   /// Number of points sampled along the path.
   pub n: usize,
-  /// Initial value `x_0` of the CIR factor — not `r_0` directly; the
-  /// observed short rate at `t=0` is `x_0 + phi(0)`.
+  /// Initial value; `None` starts at zero.
+  /// Of the CIR factor, so the short rate starts at `x0 + phi(0)`.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Treatment of a negative square-root state after a step; the Feller condition is not required.
   pub boundary: VarianceBoundary,

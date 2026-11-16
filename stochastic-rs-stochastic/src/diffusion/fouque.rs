@@ -40,12 +40,12 @@ pub struct FouqueOU2D<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub alpha: T,
   /// Number of points sampled along each of the `X`/`Y` paths.
   pub n: usize,
-  /// Initial value X₀ of the slow factor.
+  /// Initial value; `None` starts at zero.
+  /// Of the slow factor; the fast one starts at `y0`.
   pub x0: Option<T>,
   /// Initial value Y₀ of the fast factor.
   pub y0: Option<T>,
-  /// Simulation horizon [0, t] shared by both factors (defaults to 1 when
-  /// omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,

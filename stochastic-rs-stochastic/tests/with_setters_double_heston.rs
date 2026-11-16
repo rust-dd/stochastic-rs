@@ -1,17 +1,5 @@
-//! TDD tests for A1-c Task 2: `with_*` builder setters on `DoubleHeston`
-//! (`volatility/double_heston.rs`). Split out of a combined
-//! `with_setters_volatility.rs` to stay under the project's 600-line file
-//! cap (per-type split, alongside `with_setters_bates_svj.rs`,
-//! `with_setters_heston_log.rs`, `with_setters_hkde.rs`, and
-//! `with_setters_fbates_svj.rs`).
-//!
-//! `DoubleHeston` caches two correlated-Gaussian generators, `cgns1`
-//! (keyed on `(rho1, n, t)`) and `cgns2` (keyed on `(rho2, n, t)`);
-//! `with_rho1`/`with_rho2` rebuild their own cache only, `with_steps`/
-//! `with_horizon` rebuild both (both depend on `n`/`t`). Every single-field
-//! `assert!` in `new()` (`kappa1/theta1/sigma1/kappa2/theta2/sigma2 >= 0`,
-//! `v1_0/v2_0 >= 0` when `Some`) gets both a round-trip test and a
-//! dedicated `#[should_panic]` rejection test.
+//! `DoubleHeston`'s setters: `with_rho1`/`with_rho2` rebuild their own noise cache, `with_steps`
+//! and `with_horizon` both, and every single-field assertion of `new()` has a rejection test.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -27,9 +15,9 @@ fn finite3(out: &[Array1<f64>; 3]) -> bool {
 
 fn dh_base_seeded<S: SeedExt>(seed: S) -> DoubleHeston<f64, S> {
   DoubleHeston::new(
-    Some(100.0),
-    Some(0.02),
-    Some(0.02),
+    100.0,
+    0.02,
+    0.02,
     3.0,
     0.02,
     0.4,
@@ -52,9 +40,9 @@ fn dh_base() -> DoubleHeston<f64> {
 
 #[derive(Debug, PartialEq)]
 struct DhFields {
-  s0: Option<f64>,
-  v1_0: Option<f64>,
-  v2_0: Option<f64>,
+  s0: f64,
+  v1_0: f64,
+  v2_0: f64,
   kappa1: f64,
   theta1: f64,
   sigma1: f64,
@@ -103,19 +91,9 @@ macro_rules! dh_plain_test {
   };
 }
 
-dh_plain_test!(double_heston_with_s0_round_trip, with_s0, s0, Some(90.0));
-dh_plain_test!(
-  double_heston_with_v1_0_round_trip,
-  with_v1_0,
-  v1_0,
-  Some(0.03)
-);
-dh_plain_test!(
-  double_heston_with_v2_0_round_trip,
-  with_v2_0,
-  v2_0,
-  Some(0.01)
-);
+dh_plain_test!(double_heston_with_s0_round_trip, with_s0, s0, 90.0);
+dh_plain_test!(double_heston_with_v1_0_round_trip, with_v1_0, v1_0, 0.03);
+dh_plain_test!(double_heston_with_v2_0_round_trip, with_v2_0, v2_0, 0.01);
 dh_plain_test!(
   double_heston_with_kappa1_round_trip,
   with_kappa1,
@@ -161,19 +139,15 @@ dh_plain_test!(
 );
 
 #[test]
-#[should_panic(
-  expected = "v1_0 must satisfy `v1_0.is_none_or(|v| v >= T::zero())`, got v1_0 = Some(-0.01)"
-)]
+#[should_panic(expected = "v1_0 must satisfy `v1_0 >= T::zero()`, got v1_0 = -0.01")]
 fn double_heston_with_v1_0_rejects_negative() {
-  let _ = dh_base().with_v1_0(Some(-0.01));
+  let _ = dh_base().with_v1_0(-0.01);
 }
 
 #[test]
-#[should_panic(
-  expected = "v2_0 must satisfy `v2_0.is_none_or(|v| v >= T::zero())`, got v2_0 = Some(-0.01)"
-)]
+#[should_panic(expected = "v2_0 must satisfy `v2_0 >= T::zero()`, got v2_0 = -0.01")]
 fn double_heston_with_v2_0_rejects_negative() {
-  let _ = dh_base().with_v2_0(Some(-0.01));
+  let _ = dh_base().with_v2_0(-0.01);
 }
 
 #[test]
@@ -221,9 +195,9 @@ fn double_heston_with_rho1_rebuilds_cgns1_cache() {
   assert_eq!(dh_fields(&got), dh_fields(&expected));
 
   let want = DoubleHeston::new(
-    Some(100.0),
-    Some(0.02),
-    Some(0.02),
+    100.0,
+    0.02,
+    0.02,
     3.0,
     0.02,
     0.4,
@@ -254,9 +228,9 @@ fn double_heston_with_rho2_rebuilds_cgns2_cache() {
   assert_eq!(dh_fields(&got), dh_fields(&expected));
 
   let want = DoubleHeston::new(
-    Some(100.0),
-    Some(0.02),
-    Some(0.02),
+    100.0,
+    0.02,
+    0.02,
     3.0,
     0.02,
     0.4,
@@ -288,9 +262,9 @@ fn double_heston_with_steps_rebuilds_both_cgns_caches() {
   assert!(finite3(&got.sample()));
 
   let want = DoubleHeston::new(
-    Some(100.0),
-    Some(0.02),
-    Some(0.02),
+    100.0,
+    0.02,
+    0.02,
     3.0,
     0.02,
     0.4,
@@ -321,9 +295,9 @@ fn double_heston_with_horizon_rebuilds_both_cgns_caches() {
   assert_eq!(dh_fields(&got), dh_fields(&expected));
 
   let want = DoubleHeston::new(
-    Some(100.0),
-    Some(0.02),
-    Some(0.02),
+    100.0,
+    0.02,
+    0.02,
     3.0,
     0.02,
     0.4,

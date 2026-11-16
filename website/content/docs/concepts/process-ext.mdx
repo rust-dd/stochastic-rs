@@ -114,14 +114,14 @@ use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::gbm::Gbm;
 
 // auto-seeded
-let p = Gbm::<f64, _>::new(0.05, 0.2, 1_000, Some(100.0), Some(1.0), Unseeded);
+let p = Gbm::<f64, _>::new(0.05, 0.2, 1_000, 100.0, Some(1.0), Unseeded);
 
 // reproducible
 let p = Gbm::<f64, _>::new(
   0.05,
   0.2,
   1_000,
-  Some(100.0),
+  100.0,
   Some(1.0),
   Deterministic::new(42),
 );

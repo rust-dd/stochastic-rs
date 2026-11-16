@@ -17,7 +17,7 @@ pub struct PyHestonLog {
 
 py_process_methods!(PyHestonLog, pair, py_device_dispatch, {
   #[new]
-  #[pyo3(signature = (mu=None, b=None, r=None, r_f=None, *, kappa, theta, xi, rho, n, s0=None, v0=None, t=None, boundary=None, seed=None, dtype=None, device=None))]
+  #[pyo3(signature = (mu=None, b=None, r=None, r_f=None, *, kappa, theta, xi, rho, n, s0, v0, t=None, boundary=None, seed=None, dtype=None, device=None))]
   fn new(
     mu: Option<f64>,
     b: Option<f64>,
@@ -28,8 +28,8 @@ py_process_methods!(PyHestonLog, pair, py_device_dispatch, {
     xi: f64,
     rho: f64,
     n: usize,
-    s0: Option<f64>,
-    v0: Option<f64>,
+    s0: f64,
+    v0: f64,
     t: Option<f64>,
     boundary: Option<PyVarianceBoundary>,
     seed: Option<u64>,
@@ -56,8 +56,8 @@ py_process_methods!(PyHestonLog, pair, py_device_dispatch, {
             xi as f32,
             rho as f32,
             n,
-            s0.map(|v| v as f32),
-            v0.map(|v| v as f32),
+            s0 as f32,
+            v0 as f32,
             t.map(|v| v as f32),
             boundary,
             SharedSeed::new(sd),
@@ -86,8 +86,8 @@ py_process_methods!(PyHestonLog, pair, py_device_dispatch, {
             xi as f32,
             rho as f32,
             n,
-            s0.map(|v| v as f32),
-            v0.map(|v| v as f32),
+            s0 as f32,
+            v0 as f32,
             t.map(|v| v as f32),
             boundary,
             Unseeded,

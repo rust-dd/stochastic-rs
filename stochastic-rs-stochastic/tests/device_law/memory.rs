@@ -62,7 +62,7 @@ fn rough_heston_agrees_with_the_cpu_law() {
   let build = || {
     RoughHeston::<f32, _>::new(
       0.3,
-      Some(0.2),
+      0.2,
       0.04,
       2.0,
       0.3,
@@ -163,8 +163,8 @@ fn rough_bergomi_agrees_with_the_cpu_law() {
     RoughBergomi::<f32, _>::new(
       0.1,
       1.5,
-      Some(0.2),
-      Some(100.0),
+      0.2,
+      100.0,
       0.02,
       -0.7,
       N,

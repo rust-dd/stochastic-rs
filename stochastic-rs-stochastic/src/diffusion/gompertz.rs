@@ -34,9 +34,10 @@ pub struct Gompertz<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Number of points sampled along the Gompertz path.
   pub n: usize,
-  /// Initial population/level X₀ (floored at 1e-12 to keep `ln X_t` finite).
+  /// Initial value; `None` starts at zero.
+  /// Floored at 1e-12, which keeps `ln X_t` finite.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,

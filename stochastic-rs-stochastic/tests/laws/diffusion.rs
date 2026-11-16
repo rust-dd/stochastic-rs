@@ -28,15 +28,8 @@ const STEPS: usize = 256;
 #[test]
 fn gbm_terminal_moments_match_the_lognormal_law() {
   let (mu, sigma, s0, t) = (0.05, 0.2, 100.0, 1.0);
-  let paths = Gbm::<f64, _>::new(
-    mu,
-    sigma,
-    STEPS + 1,
-    Some(s0),
-    Some(t),
-    Deterministic::new(21),
-  )
-  .sample_par(PATHS);
+  let paths =
+    Gbm::<f64, _>::new(mu, sigma, STEPS + 1, s0, Some(t), Deterministic::new(21)).sample_par(PATHS);
   let ends = terminals(&paths);
   let dt = t / STEPS as f64;
   let m = STEPS as i32;
@@ -70,7 +63,7 @@ fn gbm_log_is_exactly_lognormal() {
     Drift::Mu(mu),
     sigma,
     STEPS + 1,
-    Some(s0),
+    s0,
     Some(t),
     Deterministic::new(22),
   )

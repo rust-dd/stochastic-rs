@@ -53,10 +53,9 @@ pub struct HullWhite2F<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// `-u_{t-1}` in u's own drift) — not a diffusion term despite the
   /// field's former doc; `sigma1`/`sigma2` are the diffusion terms.
   pub b: T,
-  /// Initial short rate r₀ (returned as `x[0]`).
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] shared by both factors (defaults to 1 when
-  /// omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Number of points sampled along each of the `r`/`u` paths.
   pub n: usize,

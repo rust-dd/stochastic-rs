@@ -124,7 +124,7 @@ guard!(ckls, "Ckls", |s| Ckls::new(
 ));
 
 guard!(displaced_diffusion, "DisplacedDiffusion", |s| {
-  DisplacedDiffusion::new(0.05, 0.2, 0.3, N, Some(100.0), Some(1.0), s)
+  DisplacedDiffusion::new(0.05, 0.2, 0.3, N, 100.0, Some(1.0), s)
 });
 
 guard!(fcir, "Fcir", |s| Fcir::new(
@@ -204,14 +204,7 @@ guard!(fouque_ou2d, "FouqueOU2D", |s| FouqueOU2D::new(
   s
 ));
 
-guard!(gbm, "Gbm", |s| Gbm::new(
-  0.05,
-  0.2,
-  N,
-  Some(100.0),
-  Some(1.0),
-  s
-));
+guard!(gbm, "Gbm", |s| Gbm::new(0.05, 0.2, N, 100.0, Some(1.0), s));
 
 guard!(gbm_ih, "GbmIh", |s| GbmIh::new(
   0.05,
@@ -227,7 +220,7 @@ guard!(gbm_log, "GbmLog", |s| GbmLog::new(
   Drift::Mu(0.05),
   0.2,
   N,
-  Some(100.0),
+  100.0,
   Some(1.0),
   s
 ));
@@ -379,7 +372,7 @@ guard!(regime_switching, "RegimeSwitchingDiffusion", |s| {
     Array1::from(vec![0.2, 0.3]),
     0,
     N,
-    Some(100.0),
+    100.0,
     Some(1.0),
     s,
   )

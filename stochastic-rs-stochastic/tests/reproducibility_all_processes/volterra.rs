@@ -39,7 +39,7 @@ guard!(volterra_square_root, "VolterraSquareRoot", |s| {
     0.02,
     0.5,
     N,
-    Some(0.02),
+    0.02,
     Some(1.0),
     s,
   )

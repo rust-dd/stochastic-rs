@@ -49,9 +49,9 @@ pub struct HawkesJD<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma_j: T,
   /// Number of time steps.
   pub n: usize,
-  /// Initial log-price $X_0$.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Time horizon $T$.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,

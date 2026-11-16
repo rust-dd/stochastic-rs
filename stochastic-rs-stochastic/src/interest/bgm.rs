@@ -93,7 +93,7 @@ pub struct Bgm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub x0: Array1<T>,
   /// Number of independent rate paths to simulate (one per matrix row).
   pub xn: usize,
-  /// Total time horizon.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Number of time steps in the simulation.
   pub n: usize,

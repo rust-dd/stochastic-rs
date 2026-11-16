@@ -22,9 +22,9 @@ pub struct IGSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub gamma: T,
   /// Number of grid points.
   pub n: usize,
-  /// Initial level.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Horizon.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,

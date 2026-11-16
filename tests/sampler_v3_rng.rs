@@ -19,7 +19,7 @@ fn key(p: &Array1<f64>) -> Vec<u64> {
 }
 
 fn gbm<S: stochastic_rs::simd_rng::SeedExt>(n: usize, seed: S) -> Gbm<f64, S> {
-  Gbm::<f64, _>::new(0.05, 0.2, n, Some(1.0), Some(1.0), seed)
+  Gbm::<f64, _>::new(0.05, 0.2, n, 1.0, Some(1.0), seed)
 }
 
 #[test]
@@ -116,8 +116,8 @@ fn seed_not_stuck_across_block_boundary() {
 fn multistate_sample_par_paths_distinct() {
   // The same guarantees on a 2-state model (Heston): distinct asset paths.
   let h = Heston::<f64>::new(
-    Some(1.0),
-    Some(0.04),
+    1.0,
+    0.04,
     2.0,
     0.04,
     0.3,

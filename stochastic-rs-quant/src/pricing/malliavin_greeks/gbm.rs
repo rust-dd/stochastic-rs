@@ -41,7 +41,7 @@ impl GbmMalliavinGreeks {
       mu,
       self.sigma,
       self.n_steps,
-      Some(self.s),
+      self.s,
       Some(self.tau),
       Unseeded,
     );

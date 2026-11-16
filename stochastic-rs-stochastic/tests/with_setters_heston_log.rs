@@ -22,8 +22,8 @@ fn hlog_base_seeded<S: SeedExt>(seed: S) -> HestonLog<f64, S> {
     0.3,
     -0.7,
     256,
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     Some(1.0),
     VarianceBoundary::Floor,
     seed,
@@ -42,8 +42,8 @@ struct HlogFields {
   xi: f64,
   rho: f64,
   n: usize,
-  s0: Option<f64>,
-  v0: Option<f64>,
+  s0: f64,
+  v0: f64,
   t: Option<f64>,
   boundary: VarianceBoundary,
 }
@@ -87,8 +87,8 @@ hlog_plain_test!(heston_log_with_kappa_round_trip, with_kappa, kappa, 2.0);
 hlog_plain_test!(heston_log_with_theta_round_trip, with_theta, theta, 0.05);
 hlog_plain_test!(heston_log_with_xi_round_trip, with_xi, xi, 0.4);
 hlog_plain_test!(heston_log_with_rho_round_trip, with_rho, rho, -0.4);
-hlog_plain_test!(heston_log_with_s0_round_trip, with_s0, s0, Some(120.0));
-hlog_plain_test!(heston_log_with_v0_round_trip, with_v0, v0, Some(0.06));
+hlog_plain_test!(heston_log_with_s0_round_trip, with_s0, s0, 120.0);
+hlog_plain_test!(heston_log_with_v0_round_trip, with_v0, v0, 0.06);
 hlog_plain_test!(
   heston_log_with_boundary_round_trip,
   with_boundary,
@@ -128,11 +128,9 @@ fn heston_log_with_rho_rejects_out_of_range() {
 }
 
 #[test]
-#[should_panic(
-  expected = "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = Some(-0.01)"
-)]
+#[should_panic(expected = "v0 must satisfy `v0 >= T::zero()`, got v0 = -0.01")]
 fn heston_log_with_v0_rejects_negative() {
-  let _ = hlog_base().with_v0(Some(-0.01));
+  let _ = hlog_base().with_v0(-0.01);
 }
 
 #[test]

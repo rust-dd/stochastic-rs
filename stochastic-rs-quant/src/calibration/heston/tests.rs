@@ -131,8 +131,8 @@ fn test_heston_calibrate_with_mle_seed() {
   let mu = 0.0;
 
   let process = HestonProcess::new(
-    Some(s0),
-    Some(v0),
+    s0,
+    v0,
     true_params.kappa,
     true_params.theta,
     true_params.sigma,
@@ -202,8 +202,8 @@ fn test_heston_calibrate_with_pmle_seed() {
   let mu = 0.0;
 
   let process = HestonProcess::new(
-    Some(s0),
-    Some(v0),
+    s0,
+    v0,
     true_params.kappa,
     true_params.theta,
     true_params.sigma,
@@ -274,8 +274,8 @@ fn test_heston_calibrate_with_nmle_cekf_seed() {
   let mu = 0.0;
 
   let process = HestonProcess::new(
-    Some(s0),
-    Some(v0),
+    s0,
+    v0,
     true_params.kappa,
     true_params.theta,
     true_params.sigma,

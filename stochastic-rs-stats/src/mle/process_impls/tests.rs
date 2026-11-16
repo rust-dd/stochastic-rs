@@ -12,19 +12,12 @@ use crate::traits::ProcessExt;
 
 #[test]
 fn gbm_process_ext_with_mle() {
-  let gbm = Gbm::new(
-    0.05,
-    0.2,
-    2501,
-    Some(100.0),
-    Some(10.0),
-    Deterministic::new(42),
-  );
+  let gbm = Gbm::new(0.05, 0.2, 2501, 100.0, Some(10.0), Deterministic::new(42));
   let path = gbm.sample();
   assert_eq!(path.len(), 2501);
 
   let dt = 10.0 / 2500.0;
-  let mut gbm_fit = Gbm::new(0.0, 0.5, 100, Some(100.0), Some(1.0), Deterministic::new(0));
+  let mut gbm_fit = Gbm::new(0.0, 0.5, 100, 100.0, Some(1.0), Deterministic::new(0));
   let result = fit_mle(&mut gbm_fit, path.view(), dt, DensityApprox::Euler, None).unwrap();
   assert!(
     (result.params[1] - 0.2).abs() < 0.15,

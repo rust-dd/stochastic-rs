@@ -47,8 +47,8 @@ use crate::traits::ProcessExt;
 /// Multifactor Heston model with `K` independent variance factors driving
 /// a single stock. See module docs for the SDE form and reference.
 pub struct MultifactorHeston<T: FloatExt, const K: usize, S: SeedExt = Unseeded, B = Cpu> {
-  /// Initial stock price.
-  pub s0: Option<T>,
+  /// Initial spot.
+  pub s0: T,
   /// Initial variance per factor.
   pub v0: [T; K],
   /// Mean-reversion rate per factor.
@@ -63,7 +63,7 @@ pub struct MultifactorHeston<T: FloatExt, const K: usize, S: SeedExt = Unseeded,
   pub mu: T,
   /// Number of time steps.
   pub n: usize,
-  /// Time to maturity.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed source.
   pub seed: S,
@@ -77,7 +77,7 @@ pub struct MultifactorHeston<T: FloatExt, const K: usize, S: SeedExt = Unseeded,
 
 impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHeston<T, K, S> {
   pub fn new(
-    s0: Option<T>,
+    s0: T,
     v0: [T; K],
     kappa: [T; K],
     theta: [T; K],
@@ -89,8 +89,8 @@ impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHeston<T, K, S> {
     seed: S,
   ) -> Self {
     assert!(
-      s0.is_none_or(|v| v.is_finite()),
-      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
     );
     assert!(
       mu.is_finite(),
@@ -269,7 +269,7 @@ impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>>
         T::zero()
       }
     };
-    [p.s0.unwrap_or(T::zero()), v0(0), v0(1), T::zero()]
+    [p.s0, v0(0), v0(1), T::zero()]
   }
 
   fn grid_points(&self) -> usize {
@@ -329,7 +329,7 @@ impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>> 
   fn sampler(&self) -> MultifactorHestonSampler<T, K, S> {
     MultifactorHestonSampler {
       n: self.n,
-      s0: self.s0.unwrap_or(T::zero()),
+      s0: self.s0,
       v0: std::array::from_fn(|k| self.v0[k].max(T::zero())),
       kappa: self.kappa,
       theta: self.theta,
@@ -518,7 +518,7 @@ mod tests {
   #[test]
   fn two_factor_paths_non_negative() {
     let p = MultifactorHeston::<f64, 2, _>::new(
-      Some(100.0),
+      100.0,
       [0.04, 0.04],
       [1.5, 0.5],
       [0.04, 0.04],
@@ -544,7 +544,7 @@ mod tests {
   fn two_factor_long_run_variance_to_theta() {
     let theta = [0.04, 0.10];
     let p = MultifactorHeston::<f64, 2, _>::new(
-      Some(100.0),
+      100.0,
       [0.04, 0.10],
       [3.0, 3.0],
       theta,
@@ -574,7 +574,7 @@ mod tests {
   #[test]
   fn three_factor_paths_finite() {
     let p = MultifactorHeston::<f64, 3, _>::new(
-      Some(100.0),
+      100.0,
       [0.02, 0.04, 0.06],
       [2.0, 1.0, 0.5],
       [0.02, 0.04, 0.06],
@@ -596,7 +596,7 @@ mod tests {
   #[should_panic(expected = "rho[0] must satisfy `rho[k].abs() < 1.0`, got rho[0] = -1.5")]
   fn rho_out_of_range_panics() {
     let _ = MultifactorHeston::<f64, 2, _>::new(
-      Some(100.0),
+      100.0,
       [0.04, 0.04],
       [1.0, 1.0],
       [0.04, 0.04],

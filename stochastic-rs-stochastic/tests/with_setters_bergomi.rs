@@ -10,7 +10,7 @@ use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
 
 fn bergomi_base_seeded<S: SeedExt>(seed: S) -> Bergomi<f64, S> {
-  Bergomi::new(0.4, Some(0.2), Some(100.0), 0.01, -0.6, 64, Some(1.0), seed)
+  Bergomi::new(0.4, 0.2, 100.0, 0.01, -0.6, 64, Some(1.0), seed)
 }
 
 fn bergomi_base() -> Bergomi<f64> {
@@ -20,8 +20,8 @@ fn bergomi_base() -> Bergomi<f64> {
 #[derive(Debug, PartialEq)]
 struct BergomiFields {
   nu: f64,
-  v0: Option<f64>,
-  s0: Option<f64>,
+  v0: f64,
+  s0: f64,
   r: f64,
   rho: f64,
   n: usize,
@@ -59,8 +59,8 @@ macro_rules! plain_test {
 }
 
 plain_test!(bergomi_with_nu_round_trip, with_nu, nu, 0.6);
-plain_test!(bergomi_with_v0_round_trip, with_v0, v0, Some(0.3));
-plain_test!(bergomi_with_s0_round_trip, with_s0, s0, Some(90.0));
+plain_test!(bergomi_with_v0_round_trip, with_v0, v0, 0.3);
+plain_test!(bergomi_with_s0_round_trip, with_s0, s0, 90.0);
 plain_test!(bergomi_with_r_round_trip, with_r, r, 0.02);
 
 #[test]
@@ -73,8 +73,8 @@ fn bergomi_with_rho_rebuilds_cgns_cache() {
 
   let want = Bergomi::new(
     0.4,
-    Some(0.2),
-    Some(100.0),
+    0.2,
+    100.0,
     0.01,
     -0.2,
     64,
@@ -99,8 +99,8 @@ fn bergomi_with_steps_rebuilds_cgns_cache() {
 
   let want = Bergomi::new(
     0.4,
-    Some(0.2),
-    Some(100.0),
+    0.2,
+    100.0,
     0.01,
     -0.6,
     128,
@@ -124,8 +124,8 @@ fn bergomi_with_horizon_rebuilds_cgns_cache() {
 
   let want = Bergomi::new(
     0.4,
-    Some(0.2),
-    Some(100.0),
+    0.2,
+    100.0,
     0.01,
     -0.6,
     64,

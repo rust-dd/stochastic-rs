@@ -44,9 +44,9 @@ pub struct Lfsm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub scale: T,
   /// Number of grid points along the path.
   pub n: usize,
-  /// Initial process value.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Total simulated time horizon (defaults to `1` if `None`).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,

@@ -17,8 +17,8 @@ pub(super) fn heston_paths() -> (Array1<f64>, Array1<f64>, Array1<f64>) {
   let n = 23401_usize;
   let horizon = 1.0_f64;
   let heston = Heston::new(
-    Some(100.0),
-    Some(0.4),
+    100.0,
+    0.4,
     2.0,
     0.4,
     HESTON_SIGMA_V,
@@ -61,8 +61,8 @@ pub(super) fn heston2d_paths() -> (
   let n = 23401_usize;
   let horizon = 1.0_f64;
   let heston = Heston2D::<f64, _>::new(
-    [Some(0.0_f64), Some(0.0_f64)],
-    [Some(0.4_f64), Some(0.4_f64)],
+    [0.0_f64, 0.0_f64],
+    [0.4_f64, 0.4_f64],
     [0.0, 0.0],
     [0.4, 0.4],
     [2.0, 2.0],

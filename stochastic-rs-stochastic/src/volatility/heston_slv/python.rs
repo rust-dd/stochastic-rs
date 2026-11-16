@@ -111,7 +111,7 @@ impl PyHestonSlv {
   /// `LeverageSurface` a `HestonSlvCalibrator` returns. `eta` is the mixing
   /// fraction the vol-of-vol is scaled by.
   #[new]
-  #[pyo3(signature = (kappa, theta, sigma, rho, mu, eta, leverage, n, s0=None, v0=None, t=None, seed=None))]
+  #[pyo3(signature = (kappa, theta, sigma, rho, mu, eta, leverage, n, s0, v0, t=None, seed=None))]
   fn new(
     kappa: f64,
     theta: f64,
@@ -121,8 +121,8 @@ impl PyHestonSlv {
     eta: f64,
     leverage: &Bound<'_, PyAny>,
     n: usize,
-    s0: Option<f64>,
-    v0: Option<f64>,
+    s0: f64,
+    v0: f64,
     t: Option<f64>,
     seed: Option<u64>,
   ) -> PyResult<Self> {
@@ -147,9 +147,7 @@ impl PyHestonSlv {
       if !mu.is_finite() {
         return Err(PyValueError::new_err("mu must be finite"));
       }
-      if s0.is_some_and(|s| !(s.is_finite() && s > 0.0))
-        || v0.is_some_and(|v| !(v.is_finite() && v >= 0.0))
-      {
+      if !(s0.is_finite() && s0 > 0.0) || !(v0.is_finite() && v0 >= 0.0) {
         return Err(PyValueError::new_err(
           "s0 must be finite and positive, v0 finite and non-negative",
         ));

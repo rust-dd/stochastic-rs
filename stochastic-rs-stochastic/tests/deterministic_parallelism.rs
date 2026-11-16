@@ -57,14 +57,7 @@ use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
 const SEED: u64 = 42;
 
 fn gbm(seed: u64) -> Gbm<f64, Deterministic> {
-  Gbm::<f64, _>::new(
-    0.05,
-    0.2,
-    32,
-    Some(1.0),
-    Some(1.0),
-    Deterministic::new(seed),
-  )
+  Gbm::<f64, _>::new(0.05, 0.2, 32, 1.0, Some(1.0), Deterministic::new(seed))
 }
 
 /// `Heston` is "lazy": pre-fix, `sampler()` did nothing and `Sch::simulate`
@@ -73,8 +66,8 @@ fn gbm(seed: u64) -> Gbm<f64, Deterministic> {
 /// fix a process that never advances anything at construction.
 fn heston(seed: u64) -> Heston<f64, Euler, Deterministic> {
   Heston::new(
-    Some(1.0),
-    Some(0.04),
+    1.0,
+    0.04,
     2.0,
     0.04,
     0.3,
@@ -139,7 +132,7 @@ fn svcgmy(seed: u64) -> Svcgmy<f64, Deterministic> {
     32,
     8,
     Some(0.0),
-    Some(0.04),
+    0.04,
     Some(1.0),
     Deterministic::new(seed),
   )

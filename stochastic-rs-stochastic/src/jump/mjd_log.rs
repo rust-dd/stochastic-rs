@@ -41,9 +41,9 @@ pub struct MjdLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub omega: T,
   /// Number of discrete time steps
   pub n: usize,
-  /// Initial asset price (must be > 0)
-  pub s0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Initial spot.
+  pub s0: T,
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
@@ -60,7 +60,7 @@ impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
     nu: T,
     omega: T,
     n: usize,
-    s0: Option<T>,
+    s0: T,
     t: Option<T>,
     seed: S,
   ) -> Self {
@@ -82,8 +82,8 @@ impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
       "omega must satisfy `omega.is_finite()`, got omega = {omega:?}"
     );
     assert!(
-      s0.is_none_or(|v| v.is_finite()),
-      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
     );
     assert!(
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
@@ -101,6 +101,10 @@ impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
     assert!(
       omega >= T::zero(),
       "omega must satisfy `omega >= T::zero()`, got omega = {omega:?}"
+    );
+    assert!(
+      s0 > T::zero(),
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
     );
     Self {
       backend: Cpu,
@@ -157,7 +161,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn initial_value(&self) -> T {
-    self.s0.unwrap_or(T::one())
+    self.s0
   }
 
   fn grid_points(&self) -> usize {
@@ -239,7 +243,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       sigma: self.sigma,
       nu: self.nu,
       omega: self.omega,
-      s0: self.s0.unwrap_or(T::one()),
+      s0: self.s0,
       drift_ln,
       pois,
       normal,
@@ -300,8 +304,12 @@ impl<T: FloatExt> MjdLogSampler<T> {
       return;
     }
 
+    assert!(
+      self.s0 > T::zero(),
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {:?}",
+      self.s0
+    );
     let s0 = self.s0;
-    assert!(s0 > T::zero(), "s0 must be > 0 for log simulation");
     out[0] = s0;
     if out.len() == 1 {
       return;
@@ -367,7 +375,7 @@ mod tests {
       -0.1,
       0.15,
       256,
-      Some(100.0),
+      100.0,
       Some(1.0),
       Unseeded,
     );

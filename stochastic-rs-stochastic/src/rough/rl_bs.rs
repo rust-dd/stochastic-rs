@@ -42,7 +42,7 @@ pub struct RlBlackScholes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Number of simulation points.
   pub n: usize,
-  /// Simulation horizon.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Quadrature degree.
   pub degree: Option<usize>,

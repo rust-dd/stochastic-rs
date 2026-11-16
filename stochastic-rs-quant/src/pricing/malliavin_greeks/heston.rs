@@ -59,8 +59,8 @@ impl HestonMalliavinGreeks {
     let dt = self.tau / (self.n_steps - 1) as f64;
 
     let heston = Heston::new(
-      Some(self.s),
-      Some(self.v0),
+      self.s,
+      self.v0,
       self.kappa,
       self.theta,
       self.xi,
@@ -128,8 +128,8 @@ impl HestonMalliavinGreeks {
     let m = self.n_paths as f64;
 
     let heston = Heston::new(
-      Some(self.s),
-      Some(self.v0),
+      self.s,
+      self.v0,
       self.kappa,
       self.theta,
       self.xi,
@@ -185,8 +185,8 @@ impl HestonMalliavinGreeks {
     let m = self.n_paths as f64;
 
     let heston = Heston::new(
-      Some(self.s),
-      Some(self.v0),
+      self.s,
+      self.v0,
       self.kappa,
       self.theta,
       self.xi,
@@ -244,8 +244,8 @@ impl HestonMalliavinGreeks {
     let m = self.n_paths as f64;
 
     let heston = Heston::new(
-      Some(self.s),
-      Some(self.v0),
+      self.s,
+      self.v0,
       self.kappa,
       self.theta,
       self.xi,
@@ -309,8 +309,8 @@ impl HestonMalliavinGreeks {
       let seed = 0xCAFE_u64.wrapping_add(i as u64);
 
       let heston_up = Heston::new(
-        Some(self.s),
-        Some(self.v0 + dv),
+        self.s,
+        self.v0 + dv,
         self.kappa,
         self.theta,
         self.xi,
@@ -323,8 +323,8 @@ impl HestonMalliavinGreeks {
         Deterministic::new(seed),
       );
       let heston_dn = Heston::new(
-        Some(self.s),
-        Some((self.v0 - dv).max(1e-6)),
+        self.s,
+        (self.v0 - dv).max(1e-6),
         self.kappa,
         self.theta,
         self.xi,
@@ -361,8 +361,8 @@ impl HestonMalliavinGreeks {
     let m = self.n_paths as f64;
 
     let heston = Heston::new(
-      Some(self.s),
-      Some(self.v0),
+      self.s,
+      self.v0,
       self.kappa,
       self.theta,
       self.xi,

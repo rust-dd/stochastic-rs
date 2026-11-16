@@ -57,11 +57,10 @@ use crate::traits::ProcessExt;
 /// `HestonSlv::default().with_eta(0.5).with_leverage(surface)`.
 #[derive(Clone)]
 pub struct HestonSlv<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Initial spot, `> 0` (defaults to 1).
-  pub s0: Option<T>,
-  /// Initial variance v₀ — a variance, not a volatility (defaults to
-  /// `theta`).
-  pub v0: Option<T>,
+  /// Initial spot.
+  pub s0: T,
+  /// Initial variance.
+  pub v0: T,
   /// Mean-reversion speed κ of the variance.
   pub kappa: T,
   /// Long-run variance θ.
@@ -78,7 +77,7 @@ pub struct HestonSlv<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub leverage: Fn2D<T>,
   /// Number of grid points including `t = 0`.
   pub n: usize,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
@@ -89,8 +88,8 @@ pub struct HestonSlv<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> HestonSlv<T, S> {
   pub fn new(
-    s0: Option<T>,
-    v0: Option<T>,
+    s0: T,
+    v0: T,
     kappa: T,
     theta: T,
     sigma: T,
@@ -103,12 +102,12 @@ impl<T: FloatExt, S: SeedExt> HestonSlv<T, S> {
     seed: S,
   ) -> Self {
     assert!(
-      s0.is_none_or(|v| v.is_finite()),
-      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
     );
     assert!(
-      v0.is_none_or(|v| v.is_finite()),
-      "v0 must satisfy `v0.is_none_or(|v| v.is_finite())`, got v0 = {v0:?}"
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
     );
     assert!(
       kappa.is_finite(),
@@ -160,12 +159,12 @@ impl<T: FloatExt, S: SeedExt> HestonSlv<T, S> {
       "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
     );
     assert!(
-      s0.is_none_or(|s| s > T::zero()),
-      "s0 must satisfy `s0.is_none_or(|s| s > T::zero())`, got s0 = {s0:?}"
+      s0 > T::zero(),
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
     );
     assert!(
-      v0.is_none_or(|v| v >= T::zero()),
-      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+      v0 >= T::zero(),
+      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
     );
     Self {
       backend: Cpu,
@@ -192,8 +191,8 @@ impl<T: FloatExt, S: SeedExt> HestonSlv<T, S> {
 impl<T: FloatExt> Default for HestonSlv<T, Unseeded> {
   fn default() -> Self {
     Self::new(
-      Some(T::from_f64_fast(100.0)),
-      Some(T::from_f64_fast(0.04)),
+      T::from_f64_fast(100.0),
+      T::from_f64_fast(0.04),
       T::from_f64_fast(2.0),
       T::from_f64_fast(0.04),
       T::from_f64_fast(0.3),
@@ -210,20 +209,20 @@ impl<T: FloatExt> Default for HestonSlv<T, Unseeded> {
 
 impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
   /// Replace `s0`, all else unchanged.
-  pub fn with_s0(mut self, s0: Option<T>) -> Self {
+  pub fn with_s0(mut self, s0: T) -> Self {
     assert!(
-      s0.is_none_or(|s| s > T::zero()),
-      "s0 must satisfy `s0.is_none_or(|s| s > T::zero())`, got s0 = {s0:?}"
+      s0 > T::zero(),
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
     );
     self.s0 = s0;
     self
   }
 
   /// Replace `v0`, all else unchanged.
-  pub fn with_v0(mut self, v0: Option<T>) -> Self {
+  pub fn with_v0(mut self, v0: T) -> Self {
     assert!(
-      v0.is_none_or(|v| v >= T::zero()),
-      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+      v0 >= T::zero(),
+      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
     );
     self.v0 = v0;
     self
@@ -355,12 +354,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn initial_state(&self) -> [T; 4] {
-    [
-      self.s0.unwrap_or(T::one()),
-      self.v0.unwrap_or(self.theta).max(T::zero()),
-      T::zero(),
-      T::zero(),
-    ]
+    [self.s0, self.v0.max(T::zero()), T::zero(), T::zero()]
   }
 
   fn grid_points(&self) -> usize {
@@ -424,8 +418,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     let sqrt_dt = dt.sqrt();
     HestonSlvSampler {
       n: self.n,
-      s0: self.s0.unwrap_or(T::one()),
-      v0: self.v0.unwrap_or(self.theta).max(T::zero()),
+      s0: self.s0,
+      v0: self.v0.max(T::zero()),
       mu: self.mu,
       kappa: self.kappa,
       theta: self.theta,

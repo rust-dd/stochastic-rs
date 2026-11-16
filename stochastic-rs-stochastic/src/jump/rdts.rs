@@ -37,9 +37,9 @@ pub struct Rdts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Jumps
   pub j: usize,
-  /// Initial value
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Total time horizon
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,

@@ -90,12 +90,9 @@ where
   pub nu: T,
   /// Number of points sampled along the path.
   pub n: usize,
-  /// Initial variance $V_0 \ge 0$ (defaults to $\theta$ when omitted, the
-  /// stationary choice, rather than to zero — starting a square-root process
-  /// exactly at its absorbing-looking boundary is almost never what a caller
-  /// means).
-  pub v0: Option<T>,
-  /// Simulation horizon $[0, t]$ (defaults to $1$ when omitted).
+  /// Initial variance $V_0 \ge 0$.
+  pub v0: T,
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
@@ -136,21 +133,9 @@ impl<T: FloatExt, K, S: SeedExt> VolterraSquareRoot<T, K, S>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
-  /// # Panics
-  /// - if `n < 2`
-  /// - if `kappa`, `nu` are not strictly positive, or `theta` is negative
-  /// - if `v0` is given and negative
+  /// Panics if `n < 2`, if `kappa` or `nu` is not positive, or if `theta` or `v0` is negative.
   #[must_use]
-  pub fn new(
-    kernel: K,
-    kappa: T,
-    theta: T,
-    nu: T,
-    n: usize,
-    v0: Option<T>,
-    t: Option<T>,
-    seed: S,
-  ) -> Self {
+  pub fn new(kernel: K, kappa: T, theta: T, nu: T, n: usize, v0: T, t: Option<T>, seed: S) -> Self {
     assert!(
       kappa.is_finite(),
       "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
@@ -164,8 +149,8 @@ where
       "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
     );
     assert!(
-      v0.is_none_or(|v| v.is_finite()),
-      "v0 must satisfy `v0.is_none_or(|v| v.is_finite())`, got v0 = {v0:?}"
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
     );
     assert!(
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
@@ -185,8 +170,8 @@ where
       "theta must satisfy `theta >= T::zero()`, got theta = {theta:?}"
     );
     assert!(
-      v0.is_none_or(|v| v >= T::zero()),
-      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+      v0 >= T::zero(),
+      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
     );
     let lift = VolterraLift::new(kernel.clone(), grid_spacing(n, t));
     Self {
@@ -262,7 +247,7 @@ where
       v0 >= T::zero(),
       "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
     );
-    self.v0 = Some(v0);
+    self.v0 = v0;
     self
   }
 
@@ -296,7 +281,7 @@ where
   }
 
   fn initial_value(&self) -> T {
-    self.v0.unwrap_or(self.theta)
+    self.v0
   }
 
   fn grid_points(&self) -> usize {
@@ -316,7 +301,7 @@ where
       drift_scale: self.lift.one_minus_e_over_x.as_slice().expect("contiguous"),
       drift_boundary: self.lift.drift_boundary,
       diffusion_boundary: self.lift.diffusion_boundary,
-      x0: self.v0.unwrap_or(self.theta),
+      x0: self.v0,
     })
   }
 
@@ -354,7 +339,7 @@ where
   fn sampler(&self) -> VolterraSquareRootSampler<T, K, S> {
     VolterraSquareRootSampler {
       n: self.n,
-      v0: self.v0.unwrap_or(self.theta),
+      v0: self.v0,
       kappa: self.kappa,
       theta: self.theta,
       nu: self.nu,

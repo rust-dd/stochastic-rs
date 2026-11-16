@@ -2935,7 +2935,7 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> EulerCoefficients<T> for Gbm<T
   }
 
   fn initial_value(&self) -> T {
-    self.x0.unwrap_or(T::one())
+    self.x0
   }
 
   fn grid_points(&self) -> usize {
@@ -3062,7 +3062,7 @@ mod tests;
 /// use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 /// use stochastic_rs_stochastic::traits::ProcessExt;
 ///
-/// let gbm = Gbm::<f64, _>::new(0.05, 0.2, 16, None, None, Unseeded);
+/// let gbm = Gbm::<f64, _>::new(0.05, 0.2, 16, 1.0, None, Unseeded);
 /// let _ = gbm.on::<Metal>().sample();
 /// ```
 #[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]

@@ -41,12 +41,12 @@ use crate::traits::ProcessExt;
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `DoubleHeston::new(..).with_kappa1(2.5).with_rho2(-0.4)`.
 pub struct DoubleHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Initial stock price.
-  pub s0: Option<T>,
+  /// Initial spot.
+  pub s0: T,
   /// Initial variance of factor 1.
-  pub v1_0: Option<T>,
+  pub v1_0: T,
   /// Initial variance of factor 2.
-  pub v2_0: Option<T>,
+  pub v2_0: T,
   /// Mean-reversion speed of factor 1.
   pub kappa1: T,
   /// Long-run variance of factor 1.
@@ -67,7 +67,7 @@ pub struct DoubleHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub mu: T,
   /// Number of time steps.
   pub n: usize,
-  /// Time to maturity.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Treatment of a negative square-root state after a step; the Feller condition is not required.
   pub boundary: VarianceBoundary,
@@ -85,9 +85,9 @@ pub struct DoubleHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    s0: Option<T>,
-    v1_0: Option<T>,
-    v2_0: Option<T>,
+    s0: T,
+    v1_0: T,
+    v2_0: T,
     kappa1: T,
     theta1: T,
     sigma1: T,
@@ -103,16 +103,16 @@ impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
     seed: S,
   ) -> Self {
     assert!(
-      s0.is_none_or(|v| v.is_finite()),
-      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
     );
     assert!(
-      v1_0.is_none_or(|v| v.is_finite()),
-      "v1_0 must satisfy `v1_0.is_none_or(|v| v.is_finite())`, got v1_0 = {v1_0:?}"
+      v1_0.is_finite(),
+      "v1_0 must satisfy `v1_0.is_finite()`, got v1_0 = {v1_0:?}"
     );
     assert!(
-      v2_0.is_none_or(|v| v.is_finite()),
-      "v2_0 must satisfy `v2_0.is_none_or(|v| v.is_finite())`, got v2_0 = {v2_0:?}"
+      v2_0.is_finite(),
+      "v2_0 must satisfy `v2_0.is_finite()`, got v2_0 = {v2_0:?}"
     );
     assert!(
       kappa1.is_finite(),
@@ -180,12 +180,12 @@ impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
       "sigma2 must satisfy `sigma2 >= T::zero()`, got sigma2 = {sigma2:?}"
     );
     assert!(
-      v1_0.is_none_or(|v| v >= T::zero()),
-      "v1_0 must satisfy `v1_0.is_none_or(|v| v >= T::zero())`, got v1_0 = {v1_0:?}"
+      v1_0 >= T::zero(),
+      "v1_0 must satisfy `v1_0 >= T::zero()`, got v1_0 = {v1_0:?}"
     );
     assert!(
-      v2_0.is_none_or(|v| v >= T::zero()),
-      "v2_0 must satisfy `v2_0.is_none_or(|v| v >= T::zero())`, got v2_0 = {v2_0:?}"
+      v2_0 >= T::zero(),
+      "v2_0 must satisfy `v2_0 >= T::zero()`, got v2_0 = {v2_0:?}"
     );
 
     Self {
@@ -214,26 +214,26 @@ impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
 
 impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   /// Replace `s0`, all else unchanged.
-  pub fn with_s0(mut self, s0: Option<T>) -> Self {
+  pub fn with_s0(mut self, s0: T) -> Self {
     self.s0 = s0;
     self
   }
 
   /// Replace `v1_0`, all else unchanged.
-  pub fn with_v1_0(mut self, v1_0: Option<T>) -> Self {
+  pub fn with_v1_0(mut self, v1_0: T) -> Self {
     assert!(
-      v1_0.is_none_or(|v| v >= T::zero()),
-      "v1_0 must satisfy `v1_0.is_none_or(|v| v >= T::zero())`, got v1_0 = {v1_0:?}"
+      v1_0 >= T::zero(),
+      "v1_0 must satisfy `v1_0 >= T::zero()`, got v1_0 = {v1_0:?}"
     );
     self.v1_0 = v1_0;
     self
   }
 
   /// Replace `v2_0`, all else unchanged.
-  pub fn with_v2_0(mut self, v2_0: Option<T>) -> Self {
+  pub fn with_v2_0(mut self, v2_0: T) -> Self {
     assert!(
-      v2_0.is_none_or(|v| v >= T::zero()),
-      "v2_0 must satisfy `v2_0.is_none_or(|v| v >= T::zero())`, got v2_0 = {v2_0:?}"
+      v2_0 >= T::zero(),
+      "v2_0 must satisfy `v2_0 >= T::zero()`, got v2_0 = {v2_0:?}"
     );
     self.v2_0 = v2_0;
     self
@@ -390,9 +390,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
   fn initial_state(&self) -> [T; 4] {
     [
-      self.s0.unwrap_or(T::zero()),
-      self.v1_0.unwrap_or(T::zero()).max(T::zero()),
-      self.v2_0.unwrap_or(T::zero()).max(T::zero()),
+      self.s0,
+      self.v1_0.max(T::zero()),
+      self.v2_0.max(T::zero()),
       T::zero(),
     ]
   }
@@ -446,9 +446,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   fn sampler(&self) -> DoubleHestonSampler<T, S> {
     DoubleHestonSampler {
       n: self.n,
-      s0: self.s0.unwrap_or(T::zero()),
-      v1_0: self.v1_0.unwrap_or(T::zero()).max(T::zero()),
-      v2_0: self.v2_0.unwrap_or(T::zero()).max(T::zero()),
+      s0: self.s0,
+      v1_0: self.v1_0.max(T::zero()),
+      v2_0: self.v2_0.max(T::zero()),
       kappa1: self.kappa1,
       theta1: self.theta1,
       sigma1: self.sigma1,
@@ -587,14 +587,12 @@ mod tests {
   use super::*;
 
   #[test]
-  #[should_panic(
-    expected = "v1_0 must satisfy `v1_0.is_none_or(|v| v >= T::zero())`, got v1_0 = Some(-0.01)"
-  )]
+  #[should_panic(expected = "v1_0 must satisfy `v1_0 >= T::zero()`, got v1_0 = -0.01")]
   fn negative_initial_variance_panics() {
     let _ = DoubleHeston::new(
-      Some(100.0_f64),
-      Some(-0.01),
-      Some(0.02),
+      100.0_f64,
+      -0.01,
+      0.02,
       1.0,
       0.04,
       0.3,
@@ -614,9 +612,9 @@ mod tests {
   #[test]
   fn variance_paths_stay_non_negative() {
     let p = DoubleHeston::new(
-      Some(100.0_f64),
-      Some(0.02),
-      Some(0.02),
+      100.0_f64,
+      0.02,
+      0.02,
       3.0,
       0.02,
       0.4,
@@ -639,9 +637,9 @@ mod tests {
   #[test]
   fn stock_path_is_finite() {
     let p = DoubleHeston::new(
-      Some(100.0_f64),
-      Some(0.02),
-      Some(0.02),
+      100.0_f64,
+      0.02,
+      0.02,
       3.0,
       0.02,
       0.4,

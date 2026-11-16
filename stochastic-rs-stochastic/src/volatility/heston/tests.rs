@@ -4,13 +4,11 @@ use super::*;
 use crate::traits::ProcessExt;
 
 #[test]
-#[should_panic(
-  expected = "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = Some(-0.1)"
-)]
+#[should_panic(expected = "v0 must satisfy `v0 >= T::zero()`, got v0 = -0.1")]
 fn negative_initial_variance_panics() {
   let _ = Heston::new(
-    Some(100.0_f64),
-    Some(-0.1),
+    100.0_f64,
+    -0.1,
     1.0,
     0.04,
     0.3,
@@ -27,8 +25,8 @@ fn negative_initial_variance_panics() {
 #[test]
 fn variance_path_stays_non_negative() {
   let p = Heston::new(
-    Some(100.0_f64),
-    Some(0.04),
+    100.0_f64,
+    0.04,
     1.5,
     0.04,
     0.5,
@@ -55,8 +53,8 @@ fn qe_variance_mean_and_asset_martingale() {
   let (s0, v0, kappa, theta, sigma, rho, mu) = (100.0_f64, 0.04, 2.0, 0.04, 0.5, -0.7, 0.0);
   let (n, t, m) = (64usize, 1.0_f64, 30_000usize);
   let model = Heston::new(
-    Some(s0),
-    Some(v0),
+    s0,
+    v0,
     kappa,
     theta,
     sigma,
@@ -106,8 +104,8 @@ fn qe_variance_mean_and_asset_martingale() {
 )]
 fn qe_rejects_three_halves() {
   let _ = Heston::new(
-    Some(100.0_f64),
-    Some(0.04),
+    100.0_f64,
+    0.04,
     2.0,
     0.04,
     0.5,
@@ -125,8 +123,8 @@ fn qe_rejects_three_halves() {
 
 fn qe_switch(kappa: f64, sigma: f64, s0: f64) -> Heston<f64, AndersenQe> {
   Heston::new(
-    Some(s0),
-    Some(0.04),
+    s0,
+    0.04,
     kappa,
     0.04,
     sigma,
@@ -169,8 +167,8 @@ fn qe_rechecks_its_parameters_where_the_scheme_runs() {
 fn the_boundary_selects_the_step() {
   let make = |b| {
     Heston::<f64, Euler, Deterministic>::new(
-      Some(100.0),
-      Some(0.0),
+      100.0,
+      0.0,
       2.0,
       0.04,
       2.0,
@@ -191,6 +189,31 @@ fn the_boundary_selects_the_step() {
   let split = split.expect("v0 = 0 under a vol-of-vol of 2 crosses zero, where the two steps part");
   assert_eq!(floor[split], 0.0);
   assert!(reflect[split] > 0.0);
+}
+
+#[test]
+fn the_initial_values_are_the_first_points() {
+  let h = Heston::<f64, Euler, Deterministic>::new(
+    123.0,
+    0.07,
+    2.0,
+    0.04,
+    0.5,
+    -0.7,
+    0.03,
+    65,
+    Some(1.0),
+    HestonPow::Sqrt,
+    VarianceBoundary::Floor,
+    Deterministic::new(1),
+  );
+  let [s, v] = h.sample();
+  assert_eq!((s[0], v[0]), (123.0, 0.07));
+  let [s, v] = Heston::<f64>::default().sample();
+  assert_eq!(
+    (s[0], v[0]),
+    (Heston::<f64>::default().s0, Heston::<f64>::default().v0)
+  );
 }
 
 /// A generic re-tag type-checks only if `qe` keeps the handle it was given.

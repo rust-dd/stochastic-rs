@@ -21,7 +21,7 @@ pub struct Cbms<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub rho: T,
   /// Number of discrete time points in each path.
   pub n: usize,
-  /// Simulation horizon [0, t] for both paths (defaults to `1` if `None`).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,

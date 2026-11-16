@@ -149,7 +149,7 @@ pub fn generate_gbm_paths(
     Drift::CostOfCarry(b),
     sigma,
     n_steps + 1,
-    Some(s0),
+    s0,
     Some(t),
     Unseeded,
   );

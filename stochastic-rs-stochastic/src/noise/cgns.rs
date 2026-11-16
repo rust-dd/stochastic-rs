@@ -23,8 +23,7 @@ pub struct Cgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub rho: T,
   /// Number of points sampled along each correlated-Gaussian stream.
   pub n: usize,
-  /// Simulation horizon [0, t] for both streams (defaults to 1 when
-  /// omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,

@@ -28,7 +28,7 @@ fn gbm<T: FloatExt>(seed: u64) -> Gbm<T, Deterministic> {
     T::from_f64_fast(0.05),
     T::from_f64_fast(0.2),
     253,
-    Some(T::from_f64_fast(100.0)),
+    T::from_f64_fast(100.0),
     Some(T::one()),
     Deterministic::new(seed),
   )
