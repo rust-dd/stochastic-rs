@@ -9,6 +9,9 @@ use super::filter::HestonCekfConsistencyBounds;
 use super::filter::HestonCekfCorrection;
 use super::filter::HestonCekfFilterConfig;
 use super::filter::HestonCekfPositiveStatePolicy;
+use super::filter::assert_finite;
+use super::filter::assert_nonnegative;
+use super::filter::assert_positive;
 use super::filter::filter_heston_cekf_batch;
 use super::filter::validate_prices;
 use crate::StatsError;
@@ -168,29 +171,27 @@ fn blend_params(
 }
 
 fn validate_batch_config(config: &HestonNmleCekfConfig) {
+  assert_finite("r", config.r);
+  assert_positive("delta", config.delta);
   assert!(
-    config.delta.is_finite() && config.delta > 0.0,
-    "delta must be finite and positive"
+    config.max_iters > 0,
+    "max_iters must satisfy `max_iters > 0`, got max_iters = {:?}",
+    config.max_iters
   );
-  assert!(config.max_iters > 0, "max_iters must be positive");
+  assert_positive("tol", config.tol);
+  assert_finite("param_damping", config.param_damping);
+  assert_positive("initial_v0", config.initial_v0);
+  assert_positive("initial_p0", config.initial_p0);
+  assert_finite("initial_params.kappa", config.initial_params.kappa);
+  assert_finite("initial_params.theta", config.initial_params.theta);
+  assert_finite("initial_params.sigma", config.initial_params.sigma);
+  assert_finite("initial_params.rho", config.initial_params.rho);
+  assert_nonnegative("q11", config.q11);
+  assert_finite("q12", config.q12);
+  assert_nonnegative("q22", config.q22);
+  let noise_determinant = config.q11 * config.q22 - config.q12 * config.q12;
   assert!(
-    config.tol.is_finite() && config.tol > 0.0,
-    "tol must be positive"
-  );
-  assert!(
-    config.initial_v0.is_finite() && config.initial_v0 > 0.0,
-    "initial_v0 must be positive"
-  );
-  assert!(
-    config.initial_p0.is_finite() && config.initial_p0 > 0.0,
-    "initial_p0 must be positive"
-  );
-  assert!(
-    config.q11 >= 0.0 && config.q22 >= 0.0,
-    "q11 and q22 must be non-negative"
-  );
-  assert!(
-    config.q11 * config.q22 - config.q12 * config.q12 >= -EPS,
-    "noise covariance must be positive semidefinite"
+    noise_determinant >= -EPS,
+    "q11 * q22 - q12 * q12 must satisfy `>= -EPS`, got q11 * q22 - q12 * q12 = {noise_determinant:?}"
   );
 }

@@ -151,7 +151,8 @@ pub fn filter_heston_cekf(
   filter_impl(prices, parameters, config, initial, FloorPolicy::Error)
 }
 
-/// The batch's pass over prices its caller validated; `FloorPolicy::Clamp` keeps every step `Ok`.
+/// The batch's pass over prices its caller validated: `FloorPolicy::Clamp` lifts a finite value to
+/// `EPS` where `Error` would fail, and a NaN or an infinity is `Err` under both.
 pub(crate) fn filter_heston_cekf_batch(
   prices: ArrayView1<'_, f64>,
   parameters: HestonNmleCekfParams,
@@ -294,7 +295,7 @@ fn validate_state(value: f64) -> Result<(), StatsError> {
 }
 
 #[track_caller]
-fn assert_finite(name: &str, value: f64) {
+pub(super) fn assert_finite(name: &str, value: f64) {
   assert!(
     value.is_finite(),
     "{name} must satisfy `{name}.is_finite()`, got {name} = {value:?}"
@@ -302,7 +303,7 @@ fn assert_finite(name: &str, value: f64) {
 }
 
 #[track_caller]
-fn assert_positive(name: &str, value: f64) {
+pub(super) fn assert_positive(name: &str, value: f64) {
   assert_finite(name, value);
   assert!(
     value > 0.0,
@@ -311,7 +312,7 @@ fn assert_positive(name: &str, value: f64) {
 }
 
 #[track_caller]
-fn assert_nonnegative(name: &str, value: f64) {
+pub(super) fn assert_nonnegative(name: &str, value: f64) {
   assert_finite(name, value);
   assert!(
     value >= 0.0,
