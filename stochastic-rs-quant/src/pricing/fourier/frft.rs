@@ -358,7 +358,7 @@ mod tests {
     );
   }
 
-  /// A NaN query argument prices NaN; the rate-dependent grid used to make it panic.
+  /// A NaN query argument prices NaN: the grid reads `r` and `q`, so a NaN misses the bracket.
   #[test]
   fn frft_nan_query_argument_prices_nan() {
     let model = BsmFourier { sigma: 0.15 };
