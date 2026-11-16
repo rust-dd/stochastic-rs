@@ -192,6 +192,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// with the linear `√(1−ρ²)` coefficient and clamps to (−1, 1) in place; the
 /// owned source advances each call for independent paths.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct VanEmmerichSampler<T: FloatExt> {
   n: usize,
   kappa: T,

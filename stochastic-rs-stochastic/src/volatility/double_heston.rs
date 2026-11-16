@@ -40,6 +40,7 @@ use crate::traits::ProcessExt;
 ///
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `DoubleHeston::new(..).with_kappa1(2.5).with_rho2(-0.4)`.
+#[derive(Debug, Clone)]
 pub struct DoubleHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Initial spot.
   pub s0: T,
@@ -562,6 +563,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// generators and the seed source so a Monte-Carlo loop reuses all three
 /// output buffers.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct DoubleHestonSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   s0: T,

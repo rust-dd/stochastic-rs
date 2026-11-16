@@ -49,6 +49,7 @@ use crate::traits::ProcessExt;
 /// let mut p = JumpFou::new(0.7, 1.0, 0.0, 0.2, 2.0, law, 10, None, None, Unseeded);
 /// p.n = 1000;
 /// ```
+#[derive(Debug, Clone)]
 pub struct JumpFou<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
@@ -175,6 +176,7 @@ where
 /// Gaussian source and a separately-derived jump seed, so a Monte-Carlo loop
 /// pays the fGn `SimdNormal` setup once and reuses the FFT plan.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct JumpFouSampler<'a, T, D, S: SeedExt, B>
 where
   T: FloatExt,

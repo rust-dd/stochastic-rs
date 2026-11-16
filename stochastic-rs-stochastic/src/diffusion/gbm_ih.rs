@@ -22,7 +22,7 @@ use crate::traits::ProcessExt;
 
 /// Inhomogeneous Gbm with time-dependent volatility
 /// dX_t = mu X_t dt + sigma(t) X_t dW_t
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct GbmIh<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant proportional drift rate μ — no mean reversion (only the
   /// diffusion coefficient is time-inhomogeneous in this model).
@@ -205,6 +205,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 
 /// Reusable [`GbmIh`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct GbmIhSampler<T: FloatExt> {
   n: usize,
   x0: T,

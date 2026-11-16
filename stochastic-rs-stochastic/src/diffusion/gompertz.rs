@@ -21,7 +21,7 @@ use crate::traits::ProcessExt;
 
 /// Gompertz diffusion
 /// dX_t = (a - b ln X_t) X_t dt + sigma X_t dW_t
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Gompertz<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Growth-rate coefficient a in the drift `X_t(a - b·ln X_t)dt` — together
   /// with `b`, sets the asymptotic level `exp(a/b)`.
@@ -185,6 +185,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 
 /// Reusable [`Gompertz`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct GompertzSampler<T: FloatExt> {
   n: usize,
   x0: T,

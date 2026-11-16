@@ -28,7 +28,7 @@ use crate::traits::ProcessExt;
 ///
 /// `X_i = X_{i-1} + sum_{k=0}^{i-1} w_k * xi_{i-1-k}`,
 /// where `w_k = dt^d * ((k+1)^d - k^d)` and `d = H - 1/alpha`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Lfsm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Stability index of the Levy-stable driver (`0 < alpha <= 2`).
   /// Smaller values produce heavier tails and larger jumps.
@@ -296,6 +296,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Lfsm`] sampling state: the owned alpha-stable innovation source
 /// and the precomputed fractional moving-average weights.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct LfsmSampler<T: FloatExt> {
   n: usize,
   x0: T,

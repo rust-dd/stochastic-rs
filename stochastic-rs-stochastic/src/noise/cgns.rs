@@ -16,7 +16,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Cgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Instantaneous correlation ρ between the two output Gaussian streams.
   pub rho: T,
@@ -197,6 +197,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// that old equivalence. Every subsequent call was already independent
 /// under the previous scheme and remains so here.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CgnsSampler<T: FloatExt, S: SeedExt> {
   cgns: Cgns<T, S>,
 }

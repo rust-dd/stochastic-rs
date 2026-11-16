@@ -55,7 +55,7 @@ use crate::traits::ProcessExt;
 
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `HestonSlv::default().with_eta(0.5).with_leverage(surface)`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct HestonSlv<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Initial spot.
   pub s0: T,
@@ -526,6 +526,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// variance shock) and the precomputed step size, so a Monte Carlo loop pays
 /// the setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct HestonSlvSampler<'a, T: FloatExt> {
   n: usize,
   s0: T,

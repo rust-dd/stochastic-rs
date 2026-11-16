@@ -26,7 +26,7 @@ use crate::traits::ProcessExt;
 ///
 /// dX_t = kappa (theta - X_t) dt + epsilon dW_t
 /// dY_t = (1/epsilon) (alpha - Y_t) dt + (1/sqrt(epsilon)) dZ_t
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct FouqueOu2D<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed of the slow factor `X_t`.
   pub kappa: T,
@@ -224,6 +224,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// loop reuses both output buffers. The two Gaussian streams are rebuilt per
 /// call from the derived seed, exactly as the legacy `sample` body did.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct FouqueOu2DSampler<T: FloatExt, S: SeedExt> {
   kappa: T,
   theta: T,

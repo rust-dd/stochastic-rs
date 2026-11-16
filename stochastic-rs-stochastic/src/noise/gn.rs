@@ -19,7 +19,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Gn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Increments drawn, with no leading zero; `dt = t / n`.
   pub n: usize,
@@ -184,6 +184,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Gn`] sampling state: the owned Gaussian source. Each path is `n`
 /// i.i.d. `N(0, dt)` increments (no leading zero, unlike [`Bm`]).
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct GnSampler<T: FloatExt> {
   n: usize,
   normal: Seeded<SimdNormal<T>>,

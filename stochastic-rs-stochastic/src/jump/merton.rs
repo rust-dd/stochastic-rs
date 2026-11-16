@@ -41,7 +41,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Merton<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
@@ -445,6 +445,7 @@ where
 /// Reusable [`Merton`] sampling state: the Gaussian diffusion source and the borrowed jump law, so
 /// a Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct MertonSampler<'a, T, D, S: SeedExt>
 where
   T: FloatExt,

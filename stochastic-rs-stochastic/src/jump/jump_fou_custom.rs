@@ -37,6 +37,7 @@ use crate::traits::ProcessExt;
 /// let mut p = JumpFouCustom::new(0.7, 1.0, 0.0, 0.2, 10, None, None, times, sizes, Unseeded);
 /// p.n = 1000;
 /// ```
+#[derive(Debug, Clone)]
 pub struct JumpFouCustom<T, DT, DS, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
@@ -166,6 +167,7 @@ where
 /// distributions, and owns the Gaussian source and jump RNG, so a
 /// Monte-Carlo loop pays the fGn `SimdNormal` setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct JumpFouCustomSampler<'a, T, DT, DS, B>
 where
   T: FloatExt,

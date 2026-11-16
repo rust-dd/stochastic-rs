@@ -345,6 +345,7 @@ impl Program {
   }
 }
 
+#[derive(Debug)]
 #[non_exhaustive]
 pub enum Fn1D<T: FloatExt> {
   Native(fn(T) -> T),
@@ -388,6 +389,7 @@ impl<T: FloatExt> From<fn(T) -> T> for Fn1D<T> {
   }
 }
 
+#[derive(Debug)]
 #[non_exhaustive]
 pub enum Fn2D<T: FloatExt> {
   Native(fn(T, T) -> T),

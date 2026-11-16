@@ -26,7 +26,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Fractional Ornstein–Uhlenbeck driven by RL-fBM noise.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct RlFou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent of the driving fBM.
   pub hurst: T,
@@ -225,6 +225,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Ou drift in place; the owned `Gn` stream advances each call for independent
 /// paths.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct RlFouSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   x0: T,

@@ -42,7 +42,7 @@ use crate::traits::ProcessExt;
 
 /// A Brownian path pinned at `X_0 = x0` and `X_T = xt`: each interior point is drawn from its
 /// exact conditional law given the previous one, so the grid adds no bias, and the last is `xt`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BrownianBridge<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Diffusion scale σ multiplying `dW_s` in the bridge SDE.
   pub sigma: T,
@@ -282,6 +282,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`BrownianBridge`] sampling state. The source draws raw `N(0, dt)` and `sigma` scales
 /// it at use: `SimdNormal` refuses a zero scale, and a zero-volatility bridge is valid.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct BrownianBridgeSampler<T: FloatExt> {
   n: usize,
   x0: T,

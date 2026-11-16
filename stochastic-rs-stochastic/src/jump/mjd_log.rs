@@ -27,7 +27,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct MjdLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// The price's drift: `μ`, a cost of carry, or the rate pair.
   pub drift: Drift<T>,
@@ -284,6 +284,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`MjdLog`] sampling state: owns the Poisson driver and both Gaussian sources (diffusion and jump-size),
 /// so a Monte-Carlo loop pays their setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct MjdLogSampler<T: FloatExt> {
   n: usize,
   sigma: T,

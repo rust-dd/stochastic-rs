@@ -31,7 +31,7 @@ use crate::traits::ProcessExt;
 ///
 /// Combines Gbm diffusion with self-exciting Hawkes jump arrivals
 /// and log-normal jump sizes.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct HawkesJd<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift $\mu$.
   pub mu: T,
@@ -268,6 +268,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// jump-size sources so a Monte-Carlo loop pays their setup once. The
 /// self-exciting intensity is reset per path inside `fill_path`.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct HawkesJdSampler<T: FloatExt> {
   n: usize,
   mu: T,

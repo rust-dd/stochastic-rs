@@ -45,7 +45,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Bergomi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Vol-of-vol ν scaling the log-variance driver's dispersion.
   pub nu: T,
@@ -319,6 +319,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// and the seed source so a Monte-Carlo loop reuses both output buffers and the
 /// noise setup.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct BergomiSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   nu: T,

@@ -30,7 +30,7 @@ use crate::traits::ProcessExt;
 
 /// The Bates (1996) model for any law `D` of the relative jump `Y − 1`, `SimdNormal` by default.
 /// The paper's [`LogNormalJump`], exact in log space, steps `ln S` so `S > 0`; others step `S`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Bates<T, D = SimdNormal<T>, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
@@ -531,6 +531,7 @@ where
 /// Reusable [`Bates`] sampling state: the correlated-Gaussian generator, the borrowed jump law and
 /// two derived seeds, one for the diffusion and one for the jump arrivals.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct BatesSampler<'a, T, D, S: SeedExt>
 where
   T: FloatExt,

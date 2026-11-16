@@ -23,7 +23,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Riemann–Liouville fractional Brownian motion, Hurst $H \in (0, 1/2)$.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct RlFbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent.
   pub hurst: T,
@@ -205,6 +205,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// precomputation. Each `fill_path` advances the owned `Gn` stream, so
 /// successive calls yield independent paths.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct RlFbmSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   gn: Gn<T, S>,

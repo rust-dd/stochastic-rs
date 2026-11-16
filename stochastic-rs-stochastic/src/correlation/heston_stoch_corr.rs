@@ -442,6 +442,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// are rebuilt per call from the (derived) seed, exactly as the legacy `sample`
 /// body did.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct HestonStochCorrSampler<T: FloatExt, S: SeedExt> {
   r: T,
   s0: T,

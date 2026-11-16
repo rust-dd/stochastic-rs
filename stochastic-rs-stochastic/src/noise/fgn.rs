@@ -129,6 +129,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
 /// eigenvalues) and owns the Gaussian source so a Monte-Carlo loop pays the
 /// `SimdNormal` setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct FgnSampler<'a, T: FloatExt, S: SeedExt, B> {
   fgn: &'a Fgn<T, S, B>,
   normal: Seeded<SimdNormal<T>>,

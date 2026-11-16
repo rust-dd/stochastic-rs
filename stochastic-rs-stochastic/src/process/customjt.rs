@@ -27,6 +27,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Debug, Clone)]
 pub struct CustomJt<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
@@ -344,6 +345,7 @@ where
 /// Reusable [`CustomJt`] sampling state: an owned RNG plus a borrow of the
 /// process's increment distribution (shared, `Sync`), and the sampling regime.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CustomJtSampler<'a, T, D>
 where
   T: FloatExt,

@@ -275,6 +275,7 @@ impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> ProcessExt<T> for Fbs<T, S, B>
 /// is the noise transform alone. The matrix draw and the two normals of the
 /// linear correction come from the derived seed in that order.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct FbsSampler<T: FloatExt, S: SeedExt> {
   lam: Arc<Array2<T>>,
   c2: T,

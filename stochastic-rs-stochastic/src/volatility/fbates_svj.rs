@@ -51,6 +51,7 @@ use crate::traits::ProcessExt;
 
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `FbatesSvj::new(..).with_hurst(0.15).with_rho(-0.4)`.
+#[derive(Debug, Clone)]
 pub struct FbatesSvj<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness (H ∈ (0, 0.5) for rough).
   pub hurst: T,
@@ -499,6 +500,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// fill in the legacy seed-consumption order, so the first call reproduces the
 /// original stream bit-for-bit.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct FbatesSvjSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   hurst: T,

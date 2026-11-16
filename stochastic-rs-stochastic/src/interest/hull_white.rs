@@ -24,7 +24,7 @@ use crate::traits::Fn1D;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct HullWhite<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Time-dependent drift target function θ(t), fitted to the initial
   /// term structure — added directly into the drift alongside `-alpha*r`.
@@ -286,6 +286,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// time-dependent drift `θ(t)` and owns the Gaussian source so a Monte-Carlo
 /// loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct HullWhiteSampler<'a, T: FloatExt> {
   n: usize,
   x0: T,

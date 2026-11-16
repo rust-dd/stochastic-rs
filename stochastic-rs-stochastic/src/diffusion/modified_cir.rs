@@ -30,7 +30,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct ModifiedCir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed κ pulling `X_t` toward 0 — this model has no
   /// separate long-run-level field; it always reverts to 0.
@@ -181,6 +181,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`ModifiedCir`] sampling state: precomputed Euler step and the
 /// owned Gaussian source.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct ModifiedCirSampler<T: FloatExt> {
   n: usize,
   x0: T,

@@ -25,7 +25,7 @@ use crate::traits::ProcessExt;
 
 /// Rdts process (Rapidly Decreasing Tempered Stable process)
 /// <https://sci-hub.se/https://doi.org/10.1016/j.jbankfin.2010.01.015>
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Rdts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Positive jump rate lambda_plus (corresponds to G)
   pub lambda_plus: T, // G
@@ -309,6 +309,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// hard-wired to fresh randomness. The jump sizes and ordering are rebuilt
 /// per path inside `fill_path`.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct RdtsSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   j: usize,

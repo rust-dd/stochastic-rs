@@ -26,7 +26,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Gbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant proportional drift rate μ. GBM has no mean reversion — `mu`
   /// is not a long-run level; it is the constant rate at which `S_t`
@@ -253,6 +253,7 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> ProcessExt<T> for Gbm<T, S, B>
 /// Reusable [`Gbm`] sampling state: precomputed Euler scales and the owned
 /// Gaussian source, so a Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct GbmSampler<T: FloatExt> {
   n: usize,
   x0: T,

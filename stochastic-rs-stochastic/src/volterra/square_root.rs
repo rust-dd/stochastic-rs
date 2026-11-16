@@ -76,6 +76,7 @@ use crate::volterra::kernel::VolterraKernel;
 use crate::volterra::lift::VolterraLift;
 
 /// Volterra square-root process with a nonnegativity-preserving scheme.
+#[derive(Debug)]
 pub struct VolterraSquareRoot<T: FloatExt, K, S: SeedExt = Unseeded, B = Cpu>
 where
   K: VolterraKernel<T> + Send + Sync,
@@ -407,6 +408,7 @@ where
 
 /// Reusable [`VolterraSquareRoot`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct VolterraSquareRootSampler<T: FloatExt, K, S: SeedExt>
 where
   K: VolterraKernel<T> + Send + Sync,

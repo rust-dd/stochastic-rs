@@ -56,7 +56,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent `H ∈ (0, ½]` of the Volterra fractional Brownian
   /// driver, simulated with the hybrid scheme (see the module doc); `H = ½`
@@ -410,6 +410,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// generator, the hybrid-scheme kernel weights and the seed source so a
 /// Monte-Carlo loop reuses both output buffers and the noise setup.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct RoughBergomiSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   hurst: T,

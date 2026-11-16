@@ -28,6 +28,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Debug, Clone)]
 pub struct WuZhang<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean reversion level for each dimension's volatility.
   pub alpha: Array1<T>,
@@ -193,6 +194,7 @@ fn fill_wu_zhang_pair<T: FloatExt, S: SeedExt>(
 /// started at its own levels. It borrows rather than owns, so the seed it
 /// advances is the process's own.
 #[doc(hidden)]
+#[derive(Debug, Clone)]
 pub struct WuZhangPair<'a, T: FloatExt, S: SeedExt, B>(&'a WuZhang<T, S, B>, usize);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
@@ -220,6 +222,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 
 /// [`WuZhangPair`]'s sampler: one pair's recursion from a seed derived once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct WuZhangPairSampler<'a, T: FloatExt, S: SeedExt, B> {
   model: &'a WuZhang<T, S, B>,
   pair: usize,
@@ -401,6 +404,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// the initial curves and the seed source so a Monte-Carlo loop reuses the
 /// output matrix.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct WuZhangSampler<T: FloatExt, S: SeedExt> {
   alpha: Array1<T>,
   beta: Array1<T>,

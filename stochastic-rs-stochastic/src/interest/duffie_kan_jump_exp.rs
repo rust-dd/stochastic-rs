@@ -27,7 +27,7 @@ use crate::traits::ProcessExt;
 ///
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `DuffieKanJumpExp::new(..).with_rho(-0.5).with_lambda(0.8)`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct DuffieKanJumpExp<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Diffusion-loading coefficient on `r_t`, shared between both factors'
   /// diffusion scaling (multiplies `r` inside `alpha*r + beta*x + gamma`,
@@ -540,6 +540,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// driver are rebuilt per call from the owned seed, reproducing the legacy
 /// stream on the first call and continuing it on subsequent ones.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct DuffieKanJumpExpSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   r0: T,

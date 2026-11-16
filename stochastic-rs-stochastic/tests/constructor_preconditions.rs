@@ -8,6 +8,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::uniform::SimdUniform;
 use stochastic_rs_stochastic::autoregressive::agarch::Agarch;
 use stochastic_rs_stochastic::autoregressive::ar::Ar;
+use stochastic_rs_stochastic::autoregressive::ar::ArSampler;
 use stochastic_rs_stochastic::autoregressive::arima::Arima;
 use stochastic_rs_stochastic::autoregressive::garch::Garch;
 use stochastic_rs_stochastic::autoregressive::gjr_garch::GjrGarch;
@@ -15,6 +16,7 @@ use stochastic_rs_stochastic::autoregressive::ma::Ma;
 use stochastic_rs_stochastic::autoregressive::sarima::Sarima;
 use stochastic_rs_stochastic::correlation::VanEmmerich;
 use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
+use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorrSampler;
 use stochastic_rs_stochastic::correlation::stochastic_correlated_bm;
 use stochastic_rs_stochastic::diffusion::bessel::Bessel;
 use stochastic_rs_stochastic::diffusion::bessel::SquaredBessel;
@@ -30,16 +32,26 @@ use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
 use stochastic_rs_stochastic::diffusion::multi_gbm::MultiGbm;
 use stochastic_rs_stochastic::diffusion::ou::Ou;
+use stochastic_rs_stochastic::diffusion::regime_switching::RegimeSwitchingDiffusion;
 use stochastic_rs_stochastic::diffusion::wishart::Wishart;
 use stochastic_rs_stochastic::euler::EulerCoefficients;
 use stochastic_rs_stochastic::euler::EulerSystem;
+use stochastic_rs_stochastic::euler::LiftSpec;
+use stochastic_rs_stochastic::interest::adg::Adg;
 use stochastic_rs_stochastic::interest::black_karasinski::BlackKarasinski;
+use stochastic_rs_stochastic::interest::cir_2f::Cir2F;
 use stochastic_rs_stochastic::interest::cir_pp::CirPlusPlus;
 use stochastic_rs_stochastic::interest::duffie_kan::DuffieKan;
 use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
+use stochastic_rs_stochastic::interest::hjm::Hjm;
 use stochastic_rs_stochastic::interest::hull_white::HullWhite;
 use stochastic_rs_stochastic::interest::lmm::Lmm;
 use stochastic_rs_stochastic::interest::wu_zhang::WuZhang;
+use stochastic_rs_stochastic::isonormal::IsoNormal;
+use stochastic_rs_stochastic::ito::DiffusionProcessFn;
+use stochastic_rs_stochastic::ito::Function2D;
+use stochastic_rs_stochastic::ito::ItoCalculator;
+use stochastic_rs_stochastic::ito::ItoResult;
 use stochastic_rs_stochastic::jump::bates::Bates;
 use stochastic_rs_stochastic::jump::bates::LogNormalJump;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGamma;
@@ -55,6 +67,7 @@ use stochastic_rs_stochastic::jump::nig::Nig;
 use stochastic_rs_stochastic::jump::rdts::Rdts;
 use stochastic_rs_stochastic::jump::vg::Vg;
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
+use stochastic_rs_stochastic::noise::cgns::Cgns;
 use stochastic_rs_stochastic::noise::fgn::Fgn;
 use stochastic_rs_stochastic::noise::gn::Gn;
 use stochastic_rs_stochastic::noise::wn::Wn;
@@ -80,16 +93,22 @@ use stochastic_rs_stochastic::sde::NoiseModel;
 use stochastic_rs_stochastic::sde::Sde;
 use stochastic_rs_stochastic::sde::SdeMethod;
 use stochastic_rs_stochastic::sheet::fbs::Fbs;
+use stochastic_rs_stochastic::sheet::fbs::FbsSampler;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
+use stochastic_rs_stochastic::volatility::bns::Bns;
 use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
 use stochastic_rs_stochastic::volatility::fbates_svj::FbatesSvj;
 use stochastic_rs_stochastic::volatility::fheston::Fheston;
+use stochastic_rs_stochastic::volatility::heston::AndersenQe;
+use stochastic_rs_stochastic::volatility::heston::Euler;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 use stochastic_rs_stochastic::volatility::heston_log::HestonLog;
 use stochastic_rs_stochastic::volatility::heston_slv::HestonSlv;
+use stochastic_rs_stochastic::volatility::heston2d::Heston2D;
 use stochastic_rs_stochastic::volatility::hkde::Hkde;
+use stochastic_rs_stochastic::volatility::multifactor_heston::MultifactorHeston;
 use stochastic_rs_stochastic::volatility::multifactor_sabr::MultifactorSabr;
 use stochastic_rs_stochastic::volatility::rough_bergomi::RoughBergomi;
 use stochastic_rs_stochastic::volatility::sabr::Sabr;
@@ -658,4 +677,57 @@ fn a_zero_intensity_jump_fou_is_its_diffusion() {
     p.device_ready(),
     EulerCoefficients::jump_intensity(&p),
   );
+}
+
+fn is_debug_and_clone<T: core::fmt::Debug + Clone>() {}
+
+fn is_debug<T: core::fmt::Debug>() {}
+
+#[test]
+fn every_process_is_debug_and_clone() {
+  is_debug_and_clone::<Adg<f64>>();
+  is_debug_and_clone::<Bates<f64, SimdNormal<f64>>>();
+  is_debug_and_clone::<Bns<f64>>();
+  is_debug_and_clone::<Cir2F<f64>>();
+  is_debug_and_clone::<CompoundCustom<f64, SimdNormal<f64>, SimdExp<f64>>>();
+  is_debug_and_clone::<Ctrw<f64>>();
+  is_debug_and_clone::<CustomJt<f64, SimdExp<f64>>>();
+  is_debug_and_clone::<DoubleHeston<f64>>();
+  is_debug_and_clone::<FbatesSvj<f64>>();
+  is_debug_and_clone::<Fheston<f64>>();
+  is_debug_and_clone::<GaussianPolynomialVolatility<f64, ExponentialKernel<f64>>>();
+  is_debug_and_clone::<Heston2D<f64>>();
+  is_debug_and_clone::<Hjm<f64>>();
+  is_debug_and_clone::<Hkde<f64>>();
+  is_debug_and_clone::<JumpFou<f64, SimdNormal<f64>>>();
+  is_debug_and_clone::<JumpFouCustom<f64, SimdExp<f64>, SimdNormal<f64>>>();
+  is_debug_and_clone::<LevyDiffusion<f64, SimdNormal<f64>>>();
+  is_debug_and_clone::<Lmm<f64>>();
+  is_debug_and_clone::<MultifactorHeston<f64, 2>>();
+  is_debug_and_clone::<MultifactorSabr<f64>>();
+  is_debug_and_clone::<MultivariateHawkes<f64>>();
+  is_debug_and_clone::<RegimeSwitchingDiffusion<f64>>();
+  is_debug_and_clone::<Volterra<f64>>();
+  is_debug_and_clone::<VolterraSde<f64, ExponentialKernel<f64>>>();
+  is_debug_and_clone::<VolterraSquareRoot<f64, ExponentialKernel<f64>>>();
+  is_debug_and_clone::<WuZhang<f64>>();
+}
+
+#[test]
+fn the_other_public_types_are_debug() {
+  is_debug::<AndersenQe>();
+  is_debug::<ArSampler<f64>>();
+  is_debug::<Cgns<f64>>();
+  is_debug::<CtrwJumpLaw<f64>>();
+  is_debug::<CtrwWaitingLaw<f64>>();
+  is_debug::<DiffusionProcessFn>();
+  is_debug::<Euler>();
+  is_debug::<FbsSampler<f64, Unseeded>>();
+  is_debug::<Function2D>();
+  is_debug::<HestonStochCorrSampler<f64, Unseeded>>();
+  is_debug::<IsoNormal<fn(usize, usize) -> f64>>();
+  is_debug::<ItoCalculator>();
+  is_debug::<ItoResult>();
+  is_debug::<LiftSpec<'static, f64>>();
+  is_debug::<RlFbm<f64>>();
 }

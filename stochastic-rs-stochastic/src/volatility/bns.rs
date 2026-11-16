@@ -61,6 +61,7 @@ use crate::traits::ProcessExt;
 
 /// BNS-Gamma stochastic volatility model. See module documentation for
 /// the SDE form and the discretisation.
+#[derive(Debug, Clone)]
 pub struct Bns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Initial spot.
   pub s0: T,
@@ -286,6 +287,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Bns`] sampling state: the step's constants and its jump-count law, with the gamma,
 /// normal and count streams rebuilt from the seed in one fixed order per fill.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct BnsSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   s0: T,

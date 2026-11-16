@@ -58,7 +58,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Kobol<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Overall scale D > 0
   pub d: T,
@@ -391,6 +391,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// hard-wired to fresh randomness. The jump sizes and ordering are rebuilt
 /// per path inside `fill_path`.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct KobolSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   j: usize,

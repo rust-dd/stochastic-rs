@@ -19,7 +19,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Pearson<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed κ.
   pub kappa: T,
@@ -208,6 +208,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Pearson`] sampling state: precomputed Euler step and the owned
 /// Gaussian source.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct PearsonSampler<T: FloatExt> {
   n: usize,
   x0: T,

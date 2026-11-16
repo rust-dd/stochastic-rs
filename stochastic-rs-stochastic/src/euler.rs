@@ -120,6 +120,7 @@ pub const LIFT_SLOTS: usize = 176;
 /// the frame keeps the `2 · degree` lift states per path and hands the family
 /// the lifted value as `lv` each step.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct LiftSpec<'a, T> {
   /// `exp(-x_l dt)` per node.
   pub decay: &'a [T],
@@ -184,6 +185,7 @@ pub const PROGRAM_SLOTS: usize = 2 + 4 * Program::MAX_OPS;
 /// volatility of a Cheyette model, the drift and diffusion of a Volterra
 /// equation.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct ProgramSpec<'a> {
   /// The first program, read as `pv`.
   pub first: &'a Program,
@@ -2014,6 +2016,7 @@ pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
 /// are fractional: the precomputed circulant eigenvalues and the grid they
 /// were built for.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct FgnSpec<'a, T> {
   /// Square roots of the circulant embedding's eigenvalues.
   pub sqrt_eigenvalues: &'a [T],

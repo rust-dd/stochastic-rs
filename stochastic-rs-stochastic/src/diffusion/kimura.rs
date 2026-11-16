@@ -21,7 +21,7 @@ use crate::traits::ProcessExt;
 
 /// Kimura / Wright–Fisher diffusion
 /// dX_t = a X_t (1 - X_t) dt + sigma sqrt(X_t (1 - X_t)) dW_t
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Kimura<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift-rate coefficient a (Wright–Fisher selection/growth rate) in
   /// `aX_t(1-X_t)dt`.
@@ -169,6 +169,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 
 /// Reusable [`Kimura`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct KimuraSampler<T: FloatExt> {
   n: usize,
   x0: T,

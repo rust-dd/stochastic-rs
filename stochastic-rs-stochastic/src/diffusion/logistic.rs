@@ -19,7 +19,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Logistic<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Inverse carrying-capacity a (equilibrium level is 1/a) in the drift
   /// `X_t(1-aX_t)`.
@@ -170,6 +170,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 
 /// Reusable [`Logistic`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct LogisticSampler<T: FloatExt> {
   n: usize,
   x0: T,

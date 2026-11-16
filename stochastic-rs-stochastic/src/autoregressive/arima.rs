@@ -239,6 +239,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Arima`] sampling state: owns the Gaussian innovation source and
 /// the ARMA coefficients so a Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct ArimaSampler<T: FloatExt> {
   n: usize,
   ar_coefs: Array1<T>,

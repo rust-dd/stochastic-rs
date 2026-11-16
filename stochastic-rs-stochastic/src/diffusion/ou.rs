@@ -43,7 +43,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Ou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed (θ in the SDE `dX = θ(μ − X) dt + σ dW`). Controls
   /// how fast `X` is pulled back toward [`mu`](Self::mu). The same quantity
@@ -245,6 +245,7 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> ProcessExt<T> for Ou<T, S, B> 
 /// [`Vasicek`](crate::interest::vasicek::Vasicek)'s sampler, which is an
 /// alias for this type — the mean-reverting recursion is written once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct OuSampler<T: FloatExt> {
   n: usize,
   x0: T,

@@ -46,6 +46,7 @@ use crate::traits::ProcessExt;
 
 /// Multifactor Heston model with `K` independent variance factors driving
 /// a single stock. See module docs for the SDE form and reference.
+#[derive(Debug, Clone)]
 pub struct MultifactorHeston<T: FloatExt, const K: usize, S: SeedExt = Unseeded, B = Cpu> {
   /// Initial spot.
   pub s0: T,
@@ -199,6 +200,7 @@ const DEVICE_FACTORS: usize = 2;
 /// spot. It borrows rather than owns, so the seed it advances is the process's
 /// own.
 #[doc(hidden)]
+#[derive(Debug, Clone)]
 pub struct MultifactorHestonLaunch<'a, T: FloatExt, const K: usize, S: SeedExt, B>(
   &'a MultifactorHeston<T, K, S, B>,
 );
@@ -227,6 +229,7 @@ impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>> 
 /// [`MultifactorHestonLaunch`]'s sampler: the model's own sampler, its spot
 /// and factors lifted into the three slots.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct MultifactorHestonLaunchSampler<T: FloatExt, const K: usize, S: SeedExt> {
   inner: MultifactorHestonSampler<T, K, S>,
 }
@@ -437,6 +440,7 @@ impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>> 
 /// directly off the owned `seed` in factor order, so the first call
 /// reproduces the original stream bit-for-bit.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct MultifactorHestonSampler<T: FloatExt, const K: usize, S: SeedExt> {
   n: usize,
   s0: T,

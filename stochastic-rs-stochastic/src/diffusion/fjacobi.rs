@@ -29,7 +29,7 @@ use crate::traits::ProcessExt;
 /// let mut p = Fjacobi::<f64>::new(0.7, 1.0, 2.0, 0.2, 10, None, None, Unseeded);
 /// p.n = 1000;
 /// ```
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Fjacobi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   hurst: T,
   alpha: T,
@@ -321,6 +321,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
 /// Euler discretisation of `dX = (alpha - beta X) dt + sigma sqrt(X(1 - X))
 /// dB^H`, clamped into `[0, 1]`.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct FjacobiSampler<'a, T: FloatExt, S: SeedExt, B> {
   fjacobi: &'a Fjacobi<T, S, B>,
   seed: S,

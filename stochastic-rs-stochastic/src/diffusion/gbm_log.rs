@@ -22,7 +22,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct GbmLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// The price's drift: `μ`, a cost of carry, or the rate pair.
   pub drift: Drift<T>,
@@ -192,6 +192,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`GbmLog`] sampling state: precomputed log-drift and the owned
 /// Gaussian source.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct GbmLogSampler<T: FloatExt> {
   n: usize,
   s0: T,

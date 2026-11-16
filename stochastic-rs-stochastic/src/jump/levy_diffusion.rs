@@ -25,6 +25,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Debug, Clone)]
 pub struct LevyDiffusion<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
@@ -321,6 +322,7 @@ where
 /// Reusable [`LevyDiffusion`] sampling state: the Gaussian diffusion source and the borrowed jump
 /// law, so a Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct LevyDiffusionSampler<'a, T, D, S: SeedExt>
 where
   T: FloatExt,

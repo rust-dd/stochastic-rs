@@ -44,7 +44,7 @@ use crate::traits::ProcessExt;
 /// hand out Merton-with-Gaussian-jumps under the `Kou` name. Construct with
 /// your own `D: Distribution<T> + Send + Sync` implementing the true
 /// double-exponential law instead (see [`Kou::new`]).
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Kou<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
@@ -358,6 +358,7 @@ where
 /// Reusable [`Kou`] sampling state: the Gaussian diffusion source and the borrowed jump law, so a
 /// Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct KouSampler<'a, T, D, S: SeedExt>
 where
   T: FloatExt,

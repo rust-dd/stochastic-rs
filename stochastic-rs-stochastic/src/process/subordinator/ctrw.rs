@@ -19,6 +19,7 @@ use crate::traits::ProcessExt;
 
 /// Waiting-time distribution for Ctrw.
 #[non_exhaustive]
+#[derive(Debug, Clone)]
 pub enum CtrwWaitingLaw<T: FloatExt> {
   Exponential { rate: T },
   Gamma { shape: T, rate: T },
@@ -28,6 +29,7 @@ pub enum CtrwWaitingLaw<T: FloatExt> {
 
 /// Jump-size distribution for Ctrw.
 #[non_exhaustive]
+#[derive(Debug, Clone)]
 pub enum CtrwJumpLaw<T: FloatExt> {
   Normal { mean: T, std: T },
   SymmetricStable { alpha: T, scale: T },
@@ -90,6 +92,7 @@ fn assert_positive<T: FloatExt>(name: &str, value: T) {
 }
 
 /// Continuous-time random walk sampled on a fixed output grid.
+#[derive(Debug, Clone)]
 pub struct Ctrw<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Inter-arrival-time (waiting-time) distribution between jumps.
   pub waiting: CtrwWaitingLaw<T>,
@@ -143,6 +146,7 @@ impl<T: FloatExt, S: SeedExt> Ctrw<T, S> {
 
 impl<T: FloatExt, S: SeedExt, B> Ctrw<T, S, B> {}
 
+#[derive(Debug)]
 enum WaitingSampler<T: FloatExt> {
   Exp(Seeded<SimdExp<T>>),
   Gamma(Seeded<SimdGamma<T>>),
@@ -150,6 +154,7 @@ enum WaitingSampler<T: FloatExt> {
   PosStable { alpha: f64, log_scale: f64 },
 }
 
+#[derive(Debug)]
 enum JumpSampler<T: FloatExt> {
   Normal(Seeded<SimdNormal<T>>),
   Stable(Seeded<SimdAlphaStable<T>>),
@@ -360,6 +365,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// distribution drivers plus the shared uniform source (used for positive-
 /// stable waiting times and Rademacher jumps).
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CtrwSampler<T: FloatExt> {
   n: usize,
   x0: T,

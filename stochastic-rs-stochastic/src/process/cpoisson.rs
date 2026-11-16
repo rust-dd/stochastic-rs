@@ -25,7 +25,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct CompoundPoisson<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
@@ -115,7 +115,7 @@ pub(crate) fn device_arrival_rate<T: FloatExt, D: Any>(distribution: &D) -> Opti
 
 /// The jumps of a jump-diffusion: their size law and the seed their arrivals derive from, at the
 /// process's own `lambda`; it holds no `Poisson`, so a zero rate draws zero increments.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct JumpDriver<D, S> {
   pub(crate) law: D,
   pub(crate) seed: S,
@@ -416,6 +416,7 @@ where
 /// length is event-count-dependent, so the three buffers are reallocated each
 /// call; the seed advances exactly as the legacy `sample` body did.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CompoundPoissonSampler<'a, T, D, S: SeedExt>
 where
   T: FloatExt,

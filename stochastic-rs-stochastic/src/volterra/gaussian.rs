@@ -107,6 +107,7 @@ impl<T: FloatExt> PreparedVolterraKernel<T> {
 /// Which engine a constructed [`Volterra`] drives its sampling through,
 /// decided once from [`VolterraKernelSpec`] at construction time — see the
 /// module doc for which kernels take which branch.
+#[derive(Clone, Debug)]
 enum VolterraEngine<T: FloatExt> {
   /// $H \in (0, 1/2)$: an [`RlKernel`], driving
   /// [`VolterraSde`](crate::volterra::volterra_sde::VolterraSde) at $O(nN')$.
@@ -117,6 +118,7 @@ enum VolterraEngine<T: FloatExt> {
 }
 
 /// Generic Volterra process with configurable kernel.
+#[derive(Debug, Clone)]
 pub struct Volterra<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Kernel specification.
   pub kernel: VolterraKernelSpec<T>,
@@ -408,6 +410,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   clippy::large_enum_variant,
   reason = "a stream holds its 64-wide buffer inline; boxing it would allocate per sampler build"
 )]
+#[derive(Debug)]
 pub enum VolterraSampler<T: FloatExt, S: SeedExt> {
   Lift(VolterraSdeSampler<T, RlKernel<T>, S>),
   Reference(ReferenceVolterraSampler<T>),
@@ -443,6 +446,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for VolterraSampler<T, S> {
 /// [`reference_path`] — see [`fill_path`](Self::fill_path) for how the
 /// pre-lift driving-randomness draw is preserved exactly.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct ReferenceVolterraSampler<T: FloatExt> {
   kernel: PreparedVolterraKernel<T>,
   n: usize,

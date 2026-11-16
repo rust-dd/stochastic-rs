@@ -28,7 +28,7 @@ use crate::traits::ProcessExt;
 /// let mut p = Cfgns::<f64>::new(0.7, 0.3, 10, None, Unseeded);
 /// p.n = 1000;
 /// ```
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Cfgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   hurst: T,
   rho: T,
@@ -246,6 +246,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
 /// (one paired fGN pass per call) and owns a seed derived once at
 /// construction.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CfgnsSampler<'a, T: FloatExt, S: SeedExt, B> {
   cfgns: &'a Cfgns<T, S, B>,
   seed: S,

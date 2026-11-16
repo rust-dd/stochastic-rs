@@ -48,7 +48,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Fvasicek<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
@@ -240,6 +240,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`Fvasicek`] sampling state: owns the wrapped [`Fou`]'s sampler
 /// (borrowed FFT plan, owned per-chunk seed), built once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct FvasicekSampler<'a, T: FloatExt, S: SeedExt> {
   fou: FouSampler<'a, T, S, Cpu>,
 }

@@ -262,6 +262,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// (`dX = κ(μ − tanh X)dt + σ dW`) and outputs `ρ = tanh(X)` in place; the owned
 /// source advances each call for independent paths.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct TengScpSampler<T: FloatExt> {
   n: usize,
   kappa: T,

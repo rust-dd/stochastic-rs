@@ -25,6 +25,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Debug, Clone)]
 pub struct CompoundCustom<T, D1, D2, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
@@ -276,6 +277,7 @@ where
 /// is event-count-dependent, so the three buffers are reallocated each call; the
 /// seed advances exactly as the legacy `sample` body did.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CompoundCustomSampler<'a, T, D1, D2, S: SeedExt>
 where
   T: FloatExt,

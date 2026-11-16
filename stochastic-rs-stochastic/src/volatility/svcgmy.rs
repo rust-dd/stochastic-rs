@@ -42,7 +42,7 @@ use crate::traits::ProcessExt;
 ///
 /// Reference: Kim Y. S. (2021), DOI: 10.3390/jrfm14020077 (see the
 /// module docs for the full citation).
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Svcgmy<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Positive tempering parameter λ+ > 0
   pub lambda_plus: T,
@@ -387,6 +387,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// seed-consumption order, so the first call reproduces the original stream
 /// bit-for-bit.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct SvcgmySampler<T: FloatExt, S: SeedExt> {
   lambda_plus: T,
   lambda_minus: T,

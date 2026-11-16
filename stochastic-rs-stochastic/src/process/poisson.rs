@@ -20,7 +20,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Poisson<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Jump intensity (expected arrivals per unit time).
   pub lambda: T,
@@ -259,6 +259,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Poisson`] sampling state: the owned exponential inter-arrival source, none at a zero
 /// rate, and the sampling regime.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct PoissonSampler<T: FloatExt> {
   distr: Option<Seeded<SimdExp<T>>>,
   horizon: Horizon<T>,

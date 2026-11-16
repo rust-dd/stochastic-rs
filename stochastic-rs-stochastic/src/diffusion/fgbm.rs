@@ -29,7 +29,7 @@ use crate::traits::ProcessExt;
 /// let mut p = Fgbm::<f64>::new(0.7, 0.05, 0.2, 10, None, None, Unseeded);
 /// p.n = 1000;
 /// ```
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Fgbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   hurst: T,
   mu: T,
@@ -248,6 +248,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
 /// and owns a seed derived once at construction. The path is an Euler
 /// discretisation of `dS = mu S dt + sigma S dB^H` started at `x0`.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct FgbmSampler<'a, T: FloatExt, S: SeedExt, B> {
   fgbm: &'a Fgbm<T, S, B>,
   seed: S,

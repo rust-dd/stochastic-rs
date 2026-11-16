@@ -68,6 +68,7 @@ use crate::volterra::lift::VolterraLift;
 /// decay rate, an `RlKernel` needs a Hurst exponent and quadrature degree,
 /// …) — the same reason [`CompoundPoisson`](crate::process::cpoisson::CompoundPoisson)`<T,
 /// D, S>` has no `Default` for its own extra generic `D`.
+#[derive(Debug)]
 pub struct VolterraSde<T: FloatExt, K, S: SeedExt = Unseeded, B = Cpu>
 where
   K: VolterraKernel<T> + Send + Sync,
@@ -428,6 +429,7 @@ where
 /// which is what lets [`Volterra`](crate::volterra::Volterra)
 /// embed it directly when delegating to this engine.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct VolterraSdeSampler<T: FloatExt, K, S: SeedExt>
 where
   K: VolterraKernel<T> + Send + Sync,

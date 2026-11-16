@@ -34,7 +34,7 @@ use crate::traits::Fn1D;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct HullWhite2F<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Time-dependent drift target $\theta(t)$, fitted to the initial term
   /// structure — the additive role `HullWhite::theta` plays for the
@@ -249,6 +249,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// time-dependent drift `theta(t)` and owns the correlated-Gaussian generator
 /// plus the seed source so a Monte-Carlo loop reuses both output buffers.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct HullWhite2FSampler<'a, T: FloatExt, S: SeedExt> {
   n: usize,
   x0: T,

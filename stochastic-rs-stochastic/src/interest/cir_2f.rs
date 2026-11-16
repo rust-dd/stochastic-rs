@@ -45,6 +45,7 @@ use crate::traits::ProcessExt;
 /// let mut p = Cir2F::new(factor(10), factor(10), (|t: f64| t) as fn(f64) -> f64, Unseeded);
 /// p.x.n = 1000;
 /// ```
+#[derive(Debug, Clone)]
 pub struct Cir2F<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   x: Cir<T, S>,
   y: Cir<T, S>,
@@ -279,6 +280,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// the precomputed deterministic `φ(t)` curve, so each call resamples both
 /// factors and sums `x + y + φ`.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct Cir2FSampler<T: FloatExt> {
   n: usize,
   x: CirSampler<T>,

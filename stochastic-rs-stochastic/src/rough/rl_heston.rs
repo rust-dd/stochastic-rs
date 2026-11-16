@@ -22,7 +22,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Rough Heston model with Volterra-Cir variance and correlated Gbm asset.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct RlHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent $H \in (0, 1/2)$ of the variance kernel.
   pub hurst: T,
@@ -280,6 +280,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// and the seed source, and borrows the prebuilt Markov-lift so a Monte-Carlo
 /// loop reuses both output buffers without rebuilding the kernel.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct RlHestonSampler<'a, T: FloatExt, S: SeedExt> {
   n: usize,
   s0: T,

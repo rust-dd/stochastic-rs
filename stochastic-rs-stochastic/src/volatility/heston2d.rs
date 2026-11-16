@@ -36,6 +36,7 @@ use crate::traits::ProcessExt;
 
 /// Two correlated Heston SDEs under a 4×4 correlation of `(Z_1, Z_2, W_1, W_2)`, given as MATLAB's
 /// six-element `rho`; sampling gives the [`Heston2DPaths`] of the two log-prices and variances.
+#[derive(Debug, Clone)]
 pub struct Heston2D<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Initial log-prices `[x_1(0), x_2(0)]`.
   pub x0: [T; 2],
@@ -409,6 +410,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// streams plus the precomputed Cholesky factor and step size so a Monte-Carlo
 /// loop reuses all four output buffers and the RNG setup.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct Heston2DSampler<T: FloatExt> {
   n: usize,
   x0: [T; 2],

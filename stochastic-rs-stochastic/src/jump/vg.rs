@@ -20,7 +20,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Vg<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift-in-subordinated-time θ (matches the module header's own θ,
   /// multiplying the gamma-subordinator increment `G_t`) — a skewness
@@ -295,6 +295,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Vg`] sampling state: owns the gamma subordinator and the
 /// Gaussian source so a Monte-Carlo loop pays their setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct VgSampler<T: FloatExt> {
   n: usize,
   mu: T,

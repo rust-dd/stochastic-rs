@@ -19,7 +19,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Bm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
@@ -172,6 +172,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Bm`] sampling state: the owned Gaussian increment source. The
 /// path is `B_0 = 0` followed by the running sum of the increments.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct BmSampler<T: FloatExt> {
   n: usize,
   normal: Seeded<SimdNormal<T>>,

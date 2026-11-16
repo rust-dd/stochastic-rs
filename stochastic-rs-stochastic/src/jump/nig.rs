@@ -20,7 +20,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Nig<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Skewness-in-subordinated-time β (matches the module header's own β,
   /// multiplying the IG-subordinator increment `I_t`). NIG is a pure Lévy
@@ -207,6 +207,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Nig`] sampling state: owns the inverse-Gaussian subordinator and
 /// the Gaussian source so a Monte-Carlo loop pays their setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct NigSampler<T: FloatExt> {
   n: usize,
   theta: T,

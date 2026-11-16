@@ -48,7 +48,7 @@ use crate::traits::ProcessExt;
 /// See the module doc for the exact closed-form identity and the exact
 /// bit-for-bit relationship to [`Gbm`](crate::diffusion::gbm::Gbm) at
 /// `beta = 0`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct DisplacedDiffusion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant proportional drift rate μ of the shifted variable `S_t +
   /// beta` (same "no mean reversion" role as
@@ -301,6 +301,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// and the owned Gaussian source (mirrors
 /// [`GbmSampler`](crate::diffusion::gbm::GbmSampler), plus the `beta` shift).
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct DisplacedDiffusionSampler<T: FloatExt> {
   n: usize,
   x0: T,

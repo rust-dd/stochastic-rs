@@ -19,7 +19,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct LinearSde<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift intercept a in `(a + bX_t)dt`.
   pub a: T,
@@ -178,6 +178,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 
 /// Reusable [`LinearSde`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct LinearSdeSampler<T: FloatExt> {
   n: usize,
   x0: T,

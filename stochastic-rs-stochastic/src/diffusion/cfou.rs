@@ -43,7 +43,7 @@ use crate::traits::ProcessExt;
 /// let mut p = Cfou::<f64>::new(0.7, 1.0, 0.5, 0.2, 10, None, None, None, Unseeded);
 /// p.n = 1000;
 /// ```
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Cfou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   hurst: T,
   lambda: T,
@@ -277,6 +277,7 @@ impl<T: FloatExt, S: SeedExt, B> Cfou<T, S, B> {
 /// returns. It borrows rather than owns, so the seed it advances is the
 /// process's own.
 #[doc(hidden)]
+#[derive(Debug, Clone)]
 pub struct CfouParts<'a, T: FloatExt, S: SeedExt, B>(&'a Cfou<T, S, B>);
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
@@ -305,6 +306,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
 /// [`CfouParts`]'s sampler: the process's own complex sampler, split into the
 /// two real rows as each path comes off it.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CfouPartsSampler<'a, T: FloatExt, S: SeedExt, B>(CfouSampler<'a, T, S, B>);
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed
@@ -484,6 +486,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
 ///
 /// Reference: Alazemi, Alsenafi, Chen, Zhou (2024), arXiv:2406.18004.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CfouSampler<'a, T: FloatExt, S: SeedExt, B> {
   cfou: &'a Cfou<T, S, B>,
   seed: S,

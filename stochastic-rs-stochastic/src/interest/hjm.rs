@@ -25,6 +25,7 @@ use crate::traits::ProcessExt;
 ///
 /// This implementation treats `r`, `p`, and `f` as user-driven SDE components and
 /// does not enforce the no-arbitrage Hjm drift restriction between `alpha` and `sigma`.
+#[derive(Debug, Clone)]
 pub struct Hjm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Time-dependent coefficient a(t) in the short rate's drift term
   /// `a(t)·dt`.
@@ -279,6 +280,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// once at construction. Each SDE component's Gaussian increments are
 /// generated inside the step body from that owned seed.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct HjmSampler<'a, T: FloatExt, S: SeedExt, B> {
   hjm: &'a Hjm<T, S, B>,
   seed: S,

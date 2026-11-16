@@ -13,7 +13,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Alpha-stable subordinator with Laplace exponent `phi(lambda) = c * lambda^alpha`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct AlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Stability index in `(0, 1)`.
   pub alpha: T,
@@ -187,6 +187,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// scale travels as its logarithm because `(c·dt)^{1/α}` underflows to zero
 /// on its own for `α` below about 0.011 on a fine grid.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct AlphaStableSubordinatorSampler<T: FloatExt> {
   n: usize,
   x0: T,

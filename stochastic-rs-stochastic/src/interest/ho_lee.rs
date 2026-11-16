@@ -20,7 +20,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct HoLee<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// The module header's θ(t): a constant, or read off the forward curve.
   pub drift: HoLeeDrift<T>,
@@ -186,6 +186,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// forward-curve function and owns the Gaussian source so a Monte-Carlo loop
 /// pays the `SimdNormal` setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct HoLeeSampler<'a, T: FloatExt> {
   n: usize,
   dt: T,

@@ -26,7 +26,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Sabr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Vol-of-vol $\nu$: diffusion coefficient of the volatility state
   /// $\alpha_t$ (see module docs for the SDE).
@@ -342,6 +342,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Sabr`] sampling state: owns the correlated-Gaussian generator
 /// and the seed source so a Monte-Carlo loop reuses both output buffers.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct SabrSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   f0: T,

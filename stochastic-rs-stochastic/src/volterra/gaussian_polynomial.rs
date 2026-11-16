@@ -54,6 +54,7 @@ use crate::volterra::kernel::VolterraKernel;
 use crate::volterra::lift::VolterraLift;
 
 /// Volatility as a polynomial of a Gaussian Volterra process.
+#[derive(Debug)]
 pub struct GaussianPolynomialVolatility<T: FloatExt, K, S: SeedExt = Unseeded, B = Cpu>
 where
   K: VolterraKernel<T> + Send + Sync,
@@ -396,6 +397,7 @@ where
 
 /// Reusable [`GaussianPolynomialVolatility`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct GaussianPolynomialVolatilitySampler<T: FloatExt, K, S: SeedExt>
 where
   K: VolterraKernel<T> + Send + Sync,

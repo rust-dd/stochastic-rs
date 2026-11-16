@@ -23,7 +23,7 @@ use crate::traits::ProcessExt;
 
 /// Inverse alpha-stable subordinator:
 /// `E_alpha(t) = inf { u >= 0 : D_alpha(u) > t }`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct InverseAlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Stability index in `(0, 1)`.
   pub alpha: T,
@@ -249,6 +249,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`InverseAlphaStableSubordinator`] sampling state: the owned
 /// uniform source driving the direct stable path plus the f64 process scalars.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct InverseAlphaStableSubordinatorSampler<T: FloatExt> {
   n: usize,
   alpha: f64,

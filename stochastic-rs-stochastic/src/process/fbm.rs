@@ -33,7 +33,7 @@ use crate::traits::ProcessExt;
 /// let mut p = Fbm::<f64>::new(0.7, 10, None, Unseeded);
 /// p.n = 1000;
 /// ```
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Fbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   hurst: T,
   n: usize,
@@ -222,6 +222,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
 /// loop pays the `SimdNormal` setup once. The path is the cumulative sum of an
 /// fGn increment vector, with `B_0^H = 0`.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct FbmSampler<'a, T: FloatExt, S: SeedExt, B> {
   fbm: &'a Fbm<T, S, B>,
   normal: Seeded<SimdNormal<T>>,

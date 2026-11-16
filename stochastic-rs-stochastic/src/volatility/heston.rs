@@ -24,7 +24,7 @@ pub use scheme::AndersenQe;
 pub use scheme::Euler;
 pub use scheme::HestonScheme;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Heston<T: FloatExt, Sch: HestonScheme = Euler, S: SeedExt = Unseeded, B = Cpu> {
   /// Initial spot.
   pub s0: T,
@@ -574,6 +574,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// beyond that seed, so each call re-dispatches to `Sch::simulate`; there is
 /// nothing else reusable to hoist across calls.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct HestonSampler<'a, T: FloatExt, Sch: HestonScheme, S: SeedExt, B> {
   model: &'a Heston<T, Sch, S, B>,
   seed: S,
