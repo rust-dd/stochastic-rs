@@ -46,7 +46,6 @@ plotly = { workspace = true, optional = true }
 pyo3 = { workspace = true, optional = true }
 quadrature = { workspace = true }
 rayon = { workspace = true }
-roots = { workspace = true }
 slsqp = { workspace = true }
 stochastic-rs-copulas = { workspace = true }
 stochastic-rs-core = { workspace = true }

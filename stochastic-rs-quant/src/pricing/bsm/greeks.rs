@@ -47,7 +47,7 @@ impl BsmPricer {
     if option_type == OptionType::Call {
       exp_bt * norm_cdf(d1)
     } else {
-      exp_bt * (norm_cdf(d1) - 1.0)
+      -exp_bt * norm_cdf(-d1)
     }
   }
 

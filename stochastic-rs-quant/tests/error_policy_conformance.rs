@@ -1,11 +1,18 @@
 //! The error policy at its edge cases: NaN for an evaluation outside its domain, a named panic for a
 //! broken precondition, never a plausible sentinel.
 
+use chrono::NaiveDate;
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_quant::OptionQuote;
 use stochastic_rs_quant::OptionType;
 use stochastic_rs_quant::QuantError;
+use stochastic_rs_quant::calendar::DayCountConvention;
+use stochastic_rs_quant::calendar::Frequency;
+use stochastic_rs_quant::credit::CdsPosition;
+use stochastic_rs_quant::credit::CdsQuote;
+use stochastic_rs_quant::credit::CreditDefaultSwap;
+use stochastic_rs_quant::credit::bootstrap_hazard;
 use stochastic_rs_quant::curves::Compounding;
 use stochastic_rs_quant::curves::DiscountCurve;
 use stochastic_rs_quant::curves::InterpolationMethod;
@@ -178,4 +185,104 @@ fn no_quote_is_an_insufficient_data_error() {
     nan_rate,
     Err(QuantError::InvalidInput { what: "r", .. })
   ));
+}
+
+fn date(y: i32, m: u32, day: u32) -> NaiveDate {
+  NaiveDate::from_ymd_opt(y, m, day).unwrap()
+}
+
+#[test]
+fn a_cds_quote_outside_its_domain_is_an_invalid_quote_at_its_index_not_a_panic() {
+  let (now, year_ago) = (date(2026, 6, 20), date(2025, 6, 20));
+  let one_year = |spread, recovery_rate| CdsQuote {
+    recovery_rate,
+    ..CdsQuote::isda(date(2027, 6, 20), spread)
+  };
+  let at = |maturity| CdsQuote::isda(maturity, 0.01);
+  let cases = [
+    (now, one_year(f64::NAN, None), "spread = NaN"),
+    (now, one_year(0.01, Some(f64::NAN)), "recovery_rate = NaN"),
+    (now, one_year(0.01, Some(1.0)), "recovery_rate = 1.0"),
+    (now, one_year(0.01, Some(-0.2)), "recovery_rate = -0.2"),
+    (now, at(now), "maturity = 2026-06-20"),
+    (now, at(year_ago), "maturity = 2025-06-20"),
+    (year_ago, at(date(2026, 1, 20)), "maturity = 2026-01-20"),
+  ];
+  for (effective, bad, got) in cases {
+    let quotes = [CdsQuote::isda(date(2031, 6, 20), 0.01), bad];
+    let dcc = DayCountConvention::Actual365Fixed;
+    let err = bootstrap_hazard(now, effective, &quotes, 0.4, &flat_curve(), dcc).unwrap_err();
+    assert!(
+      matches!(&err, QuantError::InvalidQuote { index: 1, reason } if reason.contains(&format!("got {got}"))),
+      "{err}"
+    );
+  }
+}
+
+#[test]
+fn a_recovery_that_rounds_to_one_in_the_curves_float_is_an_invalid_quote() {
+  let curve = DiscountCurve::<f32>::from_zero_rates(
+    &Array1::from_vec(vec![0.5, 1.0, 5.0]),
+    &Array1::from_vec(vec![0.03; 3]),
+    InterpolationMethod::LogLinearOnDiscountFactors,
+  );
+  // Below 1 as an f64, 1.0 as the f32 the contract holds.
+  let quotes = [CdsQuote {
+    recovery_rate: Some(0.999_999_99),
+    ..CdsQuote::isda(date(2031, 6, 20), 0.01)
+  }];
+  let (valuation, dcc) = (date(2026, 6, 20), DayCountConvention::Actual365Fixed);
+  let err = bootstrap_hazard(valuation, valuation, &quotes, 0.4_f32, &curve, dcc).unwrap_err();
+  assert!(
+    matches!(&err, QuantError::InvalidQuote { index: 0, reason } if reason.ends_with("got recovery_rate = 1.0")),
+    "{err}"
+  );
+}
+
+#[test]
+#[should_panic(
+  expected = "default_recovery must satisfy `default_recovery >= T::zero() && default_recovery < T::one()`, got default_recovery = 1.0"
+)]
+fn a_default_recovery_of_one_is_a_precondition() {
+  let quotes = [CdsQuote::isda(date(2031, 6, 20), 0.01)];
+  let (valuation, dcc) = (date(2026, 6, 20), DayCountConvention::Actual365Fixed);
+  let _ = bootstrap_hazard(valuation, valuation, &quotes, 1.0, &flat_curve(), dcc);
+}
+
+fn vanilla_cds(recovery: f64, effective: NaiveDate, maturity: NaiveDate) -> CreditDefaultSwap<f64> {
+  let (frequency, dcc) = (Frequency::Quarterly, DayCountConvention::Actual360);
+  CreditDefaultSwap::vanilla(
+    CdsPosition::Buyer,
+    1.0,
+    0.01,
+    recovery,
+    effective,
+    maturity,
+    frequency,
+    dcc,
+  )
+}
+
+#[test]
+#[should_panic(
+  expected = "recovery_rate must satisfy `recovery_rate >= T::zero() && recovery_rate < T::one()`, got recovery_rate = 1.0"
+)]
+fn a_cds_recovery_of_one_is_a_precondition() {
+  vanilla_cds(1.0, date(2026, 6, 20), date(2031, 6, 20));
+}
+
+#[test]
+#[should_panic(
+  expected = "premium_schedule must satisfy `premium_schedule.adjusted_dates.len() >= 2`, got premium_schedule.adjusted_dates.len() = 1"
+)]
+fn a_cds_without_a_premium_period_is_a_precondition() {
+  vanilla_cds(0.4, date(2026, 6, 20), date(2026, 6, 20));
+}
+
+#[test]
+#[should_panic(
+  expected = "effective_date must satisfy `effective_date < maturity_date`, got effective_date = 2031-06-20, maturity_date = 2026-06-20"
+)]
+fn a_cds_maturing_before_it_starts_is_a_precondition() {
+  vanilla_cds(0.4, date(2031, 6, 20), date(2026, 6, 20));
 }
