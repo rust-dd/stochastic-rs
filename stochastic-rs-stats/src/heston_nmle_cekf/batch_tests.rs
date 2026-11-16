@@ -370,7 +370,7 @@ fn the_batch_configuration_panics_in_the_predicate_form() {
     ),
     (
       |c| c.q12 = 2.0,
-      "q11 * q22 - q12 * q12 must satisfy `>= -EPS`, got q11 * q22 - q12 * q12 = -3.0",
+      "q11 * q22 - q12 * q12 must satisfy `q11 * q22 - q12 * q12 >= -1e-12`, got q11 * q22 - q12 * q12 = -3.0",
     ),
     (
       |c| c.correction = prior_bounds(1.0, 1.0, -1.0),
@@ -378,7 +378,7 @@ fn the_batch_configuration_panics_in_the_predicate_form() {
     ),
     (
       |c| c.correction = prior_bounds(1.0, 1e-6, 1e-6),
-      "|kappa * theta| must satisfy `<= max_abs_kappa_theta`, got |kappa * theta| = 0.06, max_abs_kappa_theta = 1e-6",
+      "|kappa * theta| must satisfy `|kappa * theta| <= max_abs_kappa_theta + 1e-12`, got |kappa * theta| = 0.06, max_abs_kappa_theta = 1e-6",
     ),
   ];
   for (edit, message) in cases {

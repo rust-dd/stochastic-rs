@@ -10,6 +10,7 @@ use super::filter::HestonCekfCorrection;
 use super::filter::HestonCekfFilterConfig;
 use super::filter::HestonCekfPositiveStatePolicy;
 use super::filter::assert_finite;
+use super::filter::assert_noise;
 use super::filter::assert_nonnegative;
 use super::filter::assert_positive;
 use super::filter::filter_heston_cekf_batch;
@@ -221,14 +222,7 @@ fn validate_batch_config(config: &HestonNmleCekfConfig) {
   assert_finite("initial_params.theta", config.initial_params.theta);
   assert_finite("initial_params.sigma", config.initial_params.sigma);
   assert_finite("initial_params.rho", config.initial_params.rho);
-  assert_nonnegative("q11", config.q11);
-  assert_finite("q12", config.q12);
-  assert_nonnegative("q22", config.q22);
-  let noise_determinant = config.q11 * config.q22 - config.q12 * config.q12;
-  assert!(
-    noise_determinant >= -EPS,
-    "q11 * q22 - q12 * q12 must satisfy `>= -EPS`, got q11 * q22 - q12 * q12 = {noise_determinant:?}"
-  );
+  assert_noise(config.q11, config.q12, config.q22);
   if let HestonNmleCekfCorrection::PriorBounds(bounds) = config.correction {
     assert_nonnegative("max_abs_state_transition", bounds.max_abs_state_transition);
     assert_nonnegative("max_abs_kappa_theta", bounds.max_abs_kappa_theta);

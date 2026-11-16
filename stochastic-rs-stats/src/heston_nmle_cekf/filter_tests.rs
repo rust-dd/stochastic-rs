@@ -58,7 +58,9 @@ fn future_prices_cannot_change_a_filtered_prefix() {
 }
 
 #[test]
-#[should_panic(expected = "|sigma| must satisfy `<= max_abs_sigma`")]
+#[should_panic(
+  expected = "|sigma| must satisfy `|sigma| <= max_abs_sigma + 1e-12`, got |sigma| = "
+)]
 fn consistent_filter_rejects_a_parameter_outside_prior_bounds() {
   let prices = Array1::from_vec(vec![100.0, 100.2]);
   let parameters = HestonNmleCekfParams::default();
@@ -313,6 +315,19 @@ fn a_zero_projection_floor_panics() {
 #[should_panic(expected = "floor must satisfy `floor > EPS`, got floor = 1e-12")]
 fn a_projection_floor_at_the_numerical_floor_panics() {
   filter_with_projection_floor(1e-12);
+}
+
+#[test]
+#[should_panic(
+  expected = "q11 * q22 - q12 * q12 must satisfy `q11 * q22 - q12 * q12 >= -1e-12`, got q11 * q22 - q12 * q12 = -3.0"
+)]
+fn an_indefinite_noise_covariance_panics_in_the_predicate_form() {
+  let prices = Array1::from_vec(vec![100.0, 100.1]);
+  let config = HestonCekfFilterConfig {
+    q12: 2.0,
+    ..HestonCekfFilterConfig::default()
+  };
+  let _ = filter_heston_cekf(prices.view(), HestonNmleCekfParams::default(), &config);
 }
 
 #[test]

@@ -173,14 +173,7 @@ pub(crate) fn validate_filter_config(config: &HestonCekfFilterConfig) {
     "initial_error_covariance_bound",
     config.initial_error_covariance_bound,
   );
-  assert_nonnegative("q11", config.q11);
-  assert_finite("q12", config.q12);
-  assert_nonnegative("q22", config.q22);
-  let noise_determinant = config.q11 * config.q22 - config.q12 * config.q12;
-  assert!(
-    noise_determinant >= -EPS,
-    "q11 * q22 - q12 * q12 must satisfy `>= -EPS`, got q11 * q22 - q12 * q12 = {noise_determinant:?}"
-  );
+  assert_noise(config.q11, config.q12, config.q22);
   if let HestonCekfCorrection::Consistent { bounds } = config.correction {
     assert_nonnegative("max_abs_state_transition", bounds.max_abs_state_transition);
     assert_nonnegative("max_abs_kappa_theta", bounds.max_abs_kappa_theta);
@@ -321,9 +314,21 @@ pub(super) fn assert_nonnegative(name: &str, value: f64) {
 }
 
 #[track_caller]
+pub(super) fn assert_noise(q11: f64, q12: f64, q22: f64) {
+  assert_nonnegative("q11", q11);
+  assert_finite("q12", q12);
+  assert_nonnegative("q22", q22);
+  let determinant = q11 * q22 - q12 * q12;
+  assert!(
+    determinant >= -EPS,
+    "q11 * q22 - q12 * q12 must satisfy `q11 * q22 - q12 * q12 >= -{EPS:?}`, got q11 * q22 - q12 * q12 = {determinant:?}"
+  );
+}
+
+#[track_caller]
 fn assert_bound(coefficient: &str, actual: f64, bound_name: &str, bound: f64) {
   assert!(
     actual <= bound + EPS,
-    "{coefficient} must satisfy `<= {bound_name}`, got {coefficient} = {actual:?}, {bound_name} = {bound:?}"
+    "{coefficient} must satisfy `{coefficient} <= {bound_name} + {EPS:?}`, got {coefficient} = {actual:?}, {bound_name} = {bound:?}"
   );
 }
