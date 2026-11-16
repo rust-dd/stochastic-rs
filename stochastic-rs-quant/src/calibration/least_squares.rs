@@ -32,10 +32,13 @@ pub trait LeastSquaresProblem {
 
   fn params(&self) -> Array1<f64>;
 
-  /// `&mut self` so a problem can record its history without interior mutability.
+  /// `&mut self` so a problem can keep the evaluation that [`accept`](Self::accept) records.
   fn residuals(&mut self) -> Option<Array1<f64>>;
 
   fn jacobian(&self) -> Option<Array2<f64>>;
+
+  /// The optimiser accepted the point of the last `residuals` call; a recorded trail keeps it.
+  fn accept(&mut self) {}
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -64,7 +67,7 @@ pub struct LmReport {
   pub converged: bool,
   /// Residual evaluations, the budget's unit.
   pub evaluations: usize,
-  /// Accepted stepper iterations, the cap's unit.
+  /// Stepper iterations, one that rejects its trial included: the cap's unit.
   pub iterations: usize,
   pub reason: TerminationReason,
 }
@@ -82,7 +85,7 @@ impl LmReport {
   }
 
   /// The fit as a `Calibrated`: loss and worst error of `model` against `market`, and this stop.
-  pub fn calibrated<P>(
+  pub(crate) fn calibrated<P>(
     &self,
     params: P,
     market: &[f64],
@@ -227,10 +230,15 @@ where
   {
     Err(()) => TerminationReason::SolverFailed,
     Ok(mut stepper) => loop {
+      let cost = stepper.state().best_cost();
       match stepper.step() {
         Err(()) => break TerminationReason::SolverFailed,
         Ok(outcome) => {
-          best.clone_from(stepper.state().best_param());
+          // basin's LM moves its iterate only to a trial that lowers the cost.
+          if stepper.state().best_cost() < cost {
+            best.clone_from(stepper.state().best_param());
+            objective.model.borrow_mut().accept();
+          }
           iterations = stepper.state().iter() as usize;
           if let StepOutcome::Stopped(reason) = outcome {
             break reason;
@@ -252,6 +260,7 @@ mod tests {
     fail_at: Option<usize>,
     reject_outside_domain: bool,
     nonfinite_trials: Cell<usize>,
+    accepted: Vec<Array1<f64>>,
   }
 
   impl Rosenbrock {
@@ -262,7 +271,12 @@ mod tests {
         fail_at: None,
         reject_outside_domain: false,
         nonfinite_trials: Cell::new(0),
+        accepted: Vec::new(),
       }
+    }
+
+    fn cost(x: &Array1<f64>) -> f64 {
+      50.0 * (x[1] - x[0].powi(2)).powi(2) + 0.5 * (1.0 - x[0]).powi(2)
     }
   }
 
@@ -292,6 +306,35 @@ mod tests {
 
     fn jacobian(&self) -> Option<Array2<f64>> {
       Array2::from_shape_vec((2, 2), vec![-20.0 * self.x[0], 10.0, -1.0, 0.0]).ok()
+    }
+
+    fn accept(&mut self) {
+      self.accepted.push(self.x.clone());
+    }
+  }
+
+  #[test]
+  fn only_a_trial_that_lowers_the_cost_is_accepted() {
+    for pivoted_qr in [false, true] {
+      let mut problem = Rosenbrock::new();
+      problem.reject_outside_domain = true;
+      let (problem, report) = minimize(
+        problem,
+        LmOptions {
+          pivoted_qr,
+          ..LmOptions::default()
+        },
+      );
+      let accepted = &problem.accepted;
+      assert!(problem.nonfinite_trials.get() > 0 && accepted.iter().all(|x| x[1] >= -2.0));
+      assert!(accepted.len() < report.evaluations - 1);
+      assert!(Rosenbrock::cost(&accepted[0]) < Rosenbrock::cost(&Rosenbrock::new().x));
+      assert!(
+        accepted
+          .windows(2)
+          .all(|pair| Rosenbrock::cost(&pair[1]) < Rosenbrock::cost(&pair[0]))
+      );
+      assert_eq!(accepted.last(), Some(&problem.x));
     }
   }
 

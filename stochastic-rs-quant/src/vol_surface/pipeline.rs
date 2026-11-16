@@ -133,17 +133,11 @@ pub fn build_surface_from_model<M: ModelSurface + ?Sized>(
   build_surface_from_iv(&iv_surface)
 }
 
-/// Build a complete volatility surface directly from a calibration result.
-///
-/// Accepts any [`ToModel`] whose model is a European vanilla call pricer —
-/// every calibration result in the crate. [`ToModel`] itself stays bounded at
-/// [`ModelPricer`](crate::traits::ModelPricer) so a calibrator may still
-/// produce a model with no surface to build; the `where` clause is what asks
-/// for one here.
+/// The volatility surface of a calibration result whose model is a European vanilla call pricer;
+/// [`ToModel`] alone also admits a model with no surface, hence the `where` clause.
 ///
 /// ```
-/// use ndarray::Array1;
-/// use stochastic_rs_quant::OptionType;
+/// use stochastic_rs_quant::{OptionQuote, OptionType};
 /// use stochastic_rs_quant::calibration::{BsmCalibrator, BsmParams};
 /// use stochastic_rs_quant::pricing::bsm::{BsmCoc, BsmPricer};
 /// use stochastic_rs_quant::traits::{Calibrator, ModelPricer};
@@ -151,9 +145,8 @@ pub fn build_surface_from_model<M: ModelSurface + ?Sized>(
 ///
 /// let (s, k, r, tau) = (100.0, 100.0, 0.05, 1.0);
 /// let call = BsmPricer::new(0.2, BsmCoc::Bsm1973).price_call(s, k, r, 0.0, tau);
-/// let calibrator = BsmCalibrator::new(BsmParams { v: 0.3 }, Array1::from_vec(vec![call]),
-///     Array1::from_vec(vec![s]), Array1::from_vec(vec![k]), r, None, None, None, tau,
-///     OptionType::Call);
+/// let quotes = vec![OptionQuote::new(k, tau, call, OptionType::Call)];
+/// let calibrator = BsmCalibrator::new(s, r, 0.0, quotes).with_start(BsmParams { sigma: 0.3 });
 /// let result = calibrator.calibrate(None).unwrap();
 /// let surface = build_surface_from_calibration(&result, s, r, 0.0, &[k], &[tau]);
 /// assert_eq!(surface.iv_surface.ivs.dim(), (1, 1));

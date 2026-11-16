@@ -43,7 +43,8 @@ fn a_recorded_fit_recovers_the_smile_and_its_trail_is_per_call() {
     rho: -0.4,
     nu: 0.6,
   };
-  let calibrator = SabrCalibrator::new(100.0, 0.02, 0.01, smile(truth, 0.02, 0.01, 0.5))
+  let quotes = smile(truth, 0.02, 0.01, 0.5);
+  let calibrator = SabrCalibrator::new(100.0, 0.02, 0.01, quotes.clone())
     .with_start(SabrParams {
       alpha: 0.15,
       beta: 1.0,
@@ -57,7 +58,24 @@ fn a_recorded_fit_recovers_the_smile_and_its_trail_is_per_call() {
   assert_eq!(fit.message(), Some("converged"));
   assert!(fit.iterations.is_some() && fit.max_error.unwrap() < 1e-5);
   assert!(!fit.history.is_empty() && fit.history[0].iteration == 0);
-  assert_eq!(fit.history[0].params.alpha, 0.15);
+  assert_eq!(
+    fit.history.last().map(|entry| entry.params),
+    Some(fit.params)
+  );
+  let objective = |entry: &CalibrationHistory<SabrParams>| entry.residuals.dot(&entry.residuals);
+  assert!(
+    fit
+      .history
+      .windows(2)
+      .all(|pair| objective(&pair[1]) < objective(&pair[0]))
+  );
+  for entry in &fit.history {
+    let model = SabrPricer::new(entry.params);
+    for (quote, residual) in quotes.iter().zip(&entry.residuals) {
+      let gap = quote.price - model.price_call(100.0, quote.strike, 0.02, 0.01, quote.tau);
+      assert!((residual - gap).abs() < 1e-12, "{residual} against {gap}");
+    }
+  }
   let again = calibrator.calibrate(None).unwrap();
   assert_eq!(again.history.len(), fit.history.len());
   assert_eq!(again.params, fit.params);

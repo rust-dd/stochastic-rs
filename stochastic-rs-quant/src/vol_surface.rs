@@ -46,9 +46,8 @@
 //! ### Heston (multi-maturity joint calibration)
 //!
 //! ```
-//! use stochastic_rs_quant::OptionType;
+//! use stochastic_rs_quant::{OptionQuote, OptionType};
 //! use stochastic_rs_quant::calibration::heston::HestonCalibrator;
-//! use stochastic_rs_quant::calibration::levy::MarketSlice;
 //! use stochastic_rs_quant::pricing::fourier::HestonFourier;
 //! use stochastic_rs_quant::pricing::heston::HestonParams;
 //! use stochastic_rs_quant::traits::{Calibrator, ModelPricer};
@@ -63,18 +62,14 @@
 //! let model_true = HestonFourier::new(true_params);
 //! let strikes = [90., 100., 110.];
 //! let maturities = [0.25, 0.5, 1.0];
-//! let slices: Vec<MarketSlice> = maturities.iter().map(|&tau| MarketSlice {
-//!     strikes: strikes.to_vec(),
-//!     prices: strikes.iter().map(|&k| model_true.price_call(s0, k, r, q, tau)).collect(),
-//!     is_call: vec![true; strikes.len()],
-//!     tau,
-//! }).collect();
+//! let quotes = maturities.iter().flat_map(|&tau| strikes.map(|k| (k, tau)))
+//!     .map(|(k, tau)| OptionQuote::new(k, tau, model_true.price_call(s0, k, r, q, tau), OptionType::Call))
+//!     .collect();
 //!
-//! // A reasonable initial guess keeps the optimiser fast; `None` here would
-//! // fall back to a generic default and cost many more iterations.
+//! // A reasonable initial guess keeps the optimiser fast; without one the fit
+//! // starts from a generic default and costs many more iterations.
 //! let initial = HestonParams { v0: 0.05, kappa: 2.5, theta: 0.06, sigma: 0.5, rho: -0.3 };
-//! let cal = HestonCalibrator::from_slices(Some(initial), &slices, s0, r, Some(q),
-//!     OptionType::Call, false);
+//! let cal = HestonCalibrator::new(s0, r, q, quotes).with_start(initial);
 //! let params = cal.calibrate(None).unwrap();
 //! let surface = build_surface_from_calibration(&params, s0, r, q, &strikes, &maturities);
 //! assert_eq!(surface.is_arbitrage_free(), Some(true));
@@ -219,9 +214,8 @@
 //! ### BSM (implied vol extraction)
 //!
 //! ```
-//! use ndarray::Array1;
-//! use stochastic_rs_quant::OptionType;
-//! use stochastic_rs_quant::calibration::{BsmCalibrator, BsmParams};
+//! use stochastic_rs_quant::{OptionQuote, OptionType};
+//! use stochastic_rs_quant::calibration::BsmCalibrator;
 //! use stochastic_rs_quant::pricing::bsm::{BsmCoc, BsmPricer};
 //! use stochastic_rs_quant::traits::{Calibrator, ModelPricer};
 //! use stochastic_rs_quant::vol_surface::build_surface_from_calibration;
@@ -232,10 +226,8 @@
 //! let true_sigma = 0.2;
 //! let call = BsmPricer::new(true_sigma, BsmCoc::Bsm1973).price_call(s, k, r, 0.0, 1.0);
 //!
-//! let cal = BsmCalibrator::new(BsmParams { v: 0.2 }, Array1::from_vec(vec![call]),
-//!     Array1::from_vec(vec![s]), Array1::from_vec(vec![k]), r, None, None, None, 1.0,
-//!     OptionType::Call);
-//! let result = cal.calibrate(None).unwrap();
+//! let quotes = vec![OptionQuote::new(k, 1.0, call, OptionType::Call)];
+//! let result = BsmCalibrator::new(s, r, 0.0, quotes).calibrate(None).unwrap();
 //! // BSM gives flat vol — useful as a baseline, not a surface model.
 //! let surface = build_surface_from_calibration(&result, s, r, 0.0,
 //!     &[90., 95., 100., 105., 110.], &[1.0]);

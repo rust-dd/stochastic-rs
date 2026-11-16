@@ -1,4 +1,5 @@
 use super::HestonCalibrator;
+use crate::OptionQuote;
 use crate::OptionType;
 use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
@@ -11,19 +12,12 @@ fn converged_call(params: &HestonParams, k: f64, tau: f64) -> f64 {
 
 fn calibrator(params: &HestonParams, k: f64, tau: f64) -> HestonCalibrator {
   HestonCalibrator::new(
-    Some(*params),
-    vec![0.0].into(),
-    vec![100.0].into(),
-    vec![k].into(),
+    100.0,
     0.05,
-    Some(0.0),
-    tau,
-    OptionType::Call,
-    None,
-    None,
-    None,
-    false,
+    0.0,
+    vec![OptionQuote::new(k, tau, 0.0, OptionType::Call)],
   )
+  .with_start(*params)
 }
 
 /// The Cui price integral must use the same converged tail as the standalone

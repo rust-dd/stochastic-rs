@@ -1,6 +1,7 @@
 use super::HestonCalibrator;
 use super::HestonJacobianMethod;
 use crate::LossMetric;
+use crate::OptionQuote;
 use crate::OptionType;
 use crate::pricing::heston::HestonParams;
 use crate::traits::Calibrator;
@@ -80,38 +81,17 @@ fn feller_projection_lowers_sigma_alone_past_a_square_root_that_rounds_up() {
 #[test]
 fn exact_non_feller_surface_is_representable_by_the_calibrator() {
   let true_params = non_feller_params();
-  let spot = 100.0;
-  let strikes = vec![80.0, 90.0, 100.0, 110.0, 120.0];
-  let seed = HestonCalibrator::new(
-    Some(true_params),
-    vec![1.0; strikes.len()].into(),
-    vec![spot; strikes.len()].into(),
-    strikes.clone().into(),
-    0.02,
-    Some(0.01),
-    0.5,
-    OptionType::Call,
-    None,
-    None,
-    None,
-    false,
-  );
-  let market = seed.compute_model_prices_for_numeric(&true_params);
-  let mut calibrator = HestonCalibrator::new(
-    Some(true_params),
-    market,
-    vec![spot; strikes.len()].into(),
-    strikes.into(),
-    0.02,
-    Some(0.01),
-    0.5,
-    OptionType::Call,
-    None,
-    None,
-    None,
-    false,
-  );
-  calibrator.set_jacobian_method(HestonJacobianMethod::NumericFiniteDiff);
+  let strikes = [80.0, 90.0, 100.0, 110.0, 120.0];
+  let quote = |k: f64, price: f64| OptionQuote::new(k, 0.5, price, OptionType::Call);
+  let pricer = HestonCalibrator::new(100.0, 0.02, 0.01, strikes.map(|k| quote(k, 1.0)).to_vec());
+  let market = pricer.compute_model_prices_for_numeric(&true_params);
+  let quotes = strikes
+    .iter()
+    .zip(&market)
+    .map(|(&k, &price)| quote(k, price));
+  let calibrator = HestonCalibrator::new(100.0, 0.02, 0.01, quotes.collect())
+    .with_start(true_params)
+    .with_jacobian_method(HestonJacobianMethod::NumericFiniteDiff);
 
   let result = calibrator.calibrate(None).unwrap();
 

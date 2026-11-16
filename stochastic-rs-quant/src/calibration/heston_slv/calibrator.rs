@@ -5,11 +5,11 @@ use stochastic_rs_distributions::traits::Grid2D;
 use super::result::HestonSlvCalibrationResult;
 use super::result::HestonSlvFit;
 use crate::CalibrationLossScore;
+use crate::OptionQuote;
 use crate::OptionType;
 use crate::QuantError;
-use crate::calibration::heston::HestonCalibrationResult;
+use crate::calibration::Calibrated;
 use crate::calibration::heston::HestonCalibrator;
-use crate::calibration::levy::MarketSlice;
 use crate::error::check_grid_shape;
 use crate::pricing::dupire::Dupire;
 use crate::pricing::heston::HestonParams;
@@ -165,18 +165,13 @@ impl HestonSlvCalibrator {
     self
   }
 
-  /// The input grid as one [`MarketSlice`] per maturity, all calls — what
-  /// the Heston fit consumes.
-  pub fn market_slices(&self) -> Vec<MarketSlice> {
+  /// The call grid as quotes, maturity by maturity: the Heston fit's input.
+  fn quotes(&self) -> Vec<OptionQuote> {
     self
-      .maturities
-      .iter()
-      .enumerate()
-      .map(|(j, &tau)| MarketSlice {
-        strikes: self.strikes.clone(),
-        prices: self.calls.row(j).to_vec(),
-        is_call: vec![true; self.strikes.len()],
-        tau,
+      .calls
+      .indexed_iter()
+      .map(|((j, i), &call)| {
+        OptionQuote::new(self.strikes[i], self.maturities[j], call, OptionType::Call)
       })
       .collect()
   }
@@ -295,21 +290,12 @@ impl HestonSlvCalibrator {
   fn heston(
     &self,
     initial: Option<HestonParams>,
-  ) -> Result<(HestonParams, Option<HestonCalibrationResult>), QuantError> {
+  ) -> Result<(HestonParams, Option<Calibrated<HestonParams>>), QuantError> {
     if let Some(pinned) = self.heston_params {
       return Ok((pinned, None));
     }
-    let slices = self.market_slices();
-    let calibrator = HestonCalibrator::from_slices(
-      initial.or(self.heston_initial_guess),
-      &slices,
-      self.s,
-      self.r,
-      Some(self.q),
-      OptionType::Call,
-      false,
-    );
-    let fit = calibrator.calibrate(None)?;
+    let fit = HestonCalibrator::new(self.s, self.r, self.q, self.quotes())
+      .calibrate(initial.or(self.heston_initial_guess))?;
     Ok((fit.params, Some(fit)))
   }
 

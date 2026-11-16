@@ -377,3 +377,47 @@ fn bsm_greeks_aggregate_matches_accessors() {
     );
   }
 }
+
+/// The Python `BSMPricer` and the BSM calibrator price at Merton's carry `r − q`; at `q = 0` that
+/// is `r − 0.0 == r`, so every method reads the bits `Bsm1973` reads.
+#[test]
+fn merton_at_a_zero_yield_is_bsm_1973_bit_for_bit() {
+  let methods = |m: &BsmPricer, (s, k, r, tau): (f64, f64, f64, f64), ot: OptionType| {
+    let price = m.price_option(s, k, r, 0.0, tau, ot);
+    let (call, put) = m.call_put(s, k, r, 0.0, tau);
+    [
+      price,
+      call,
+      put,
+      m.delta(s, k, r, 0.0, tau, ot),
+      m.gamma(s, k, r, 0.0, tau),
+      m.vega(s, k, r, 0.0, tau),
+      m.theta(s, k, r, 0.0, tau, ot),
+      m.rho(s, k, r, 0.0, tau, ot),
+      m.vanna(s, k, r, 0.0, tau),
+      m.charm(s, k, r, 0.0, tau, ot),
+      m.vomma(s, k, r, 0.0, tau),
+      m.implied_volatility(price, s, k, r, 0.0, tau, ot),
+    ]
+    .map(f64::to_bits)
+  };
+  for v in [0.05, 0.25, 0.8] {
+    let (bsm, merton) = (
+      BsmPricer::new(v, BsmCoc::Bsm1973),
+      BsmPricer::new(v, BsmCoc::Merton1973),
+    );
+    for query in [
+      (100.0, 100.0, 0.03, 1.0),
+      (80.0, 140.0, -0.01, 0.02),
+      (125.0, 70.0, 0.0, 5.0),
+    ] {
+      for ot in [OptionType::Call, OptionType::Put] {
+        assert_eq!(
+          methods(&bsm, query, ot),
+          methods(&merton, query, ot),
+          "{v} {query:?}"
+        );
+      }
+    }
+  }
+}

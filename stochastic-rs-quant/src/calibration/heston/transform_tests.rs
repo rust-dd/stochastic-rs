@@ -12,6 +12,7 @@ use super::transform::apply_chain_rule;
 use super::transform::canonicalize;
 use super::transform::from_optimizer_coordinates;
 use super::transform::to_optimizer_coordinates;
+use crate::OptionQuote;
 use crate::OptionType;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::pricing::heston::HestonParams;
@@ -32,33 +33,19 @@ fn synthetic_calibrator(
   initial: HestonParams,
   method: HestonJacobianMethod,
 ) -> HestonCalibrator {
-  let strikes_per_maturity = [80.0, 90.0, 100.0, 110.0, 120.0];
-  let maturities = [0.25, 0.75, 1.25];
-  let mut strikes = Vec::new();
-  let mut flat_t = Vec::new();
-  for maturity in maturities {
-    strikes.extend(strikes_per_maturity);
-    flat_t.extend(vec![maturity; strikes_per_maturity.len()]);
+  let mut quotes = [0.25, 0.75, 1.25]
+    .into_iter()
+    .flat_map(|tau| [80.0, 90.0, 100.0, 110.0, 120.0].map(|k| (k, tau)))
+    .map(|(k, tau)| OptionQuote::new(k, tau, 0.0, OptionType::Call))
+    .collect::<Vec<_>>();
+  let market = HestonCalibrator::new(100.0, 0.02, 0.01, quotes.clone())
+    .compute_model_prices_for_numeric(truth);
+  for (quote, price) in quotes.iter_mut().zip(market) {
+    quote.price = price;
   }
-  let observations = strikes.len();
-  let mut calibrator = HestonCalibrator::new(
-    Some(initial),
-    Array1::zeros(observations),
-    Array1::from_elem(observations, 100.0),
-    Array1::from_vec(strikes),
-    0.02,
-    Some(0.01),
-    maturities[0],
-    OptionType::Call,
-    None,
-    None,
-    None,
-    false,
-  );
-  calibrator.flat_t = flat_t;
-  calibrator.c_market = calibrator.compute_model_prices_for_numeric(truth);
-  calibrator.set_jacobian_method(method);
-  calibrator
+  HestonCalibrator::new(100.0, 0.02, 0.01, quotes)
+    .with_start(initial)
+    .with_jacobian_method(method)
 }
 
 fn assert_jacobians_close(left: &Array2<f64>, right: &Array2<f64>) {
@@ -152,7 +139,7 @@ fn analytic_jacobian_includes_the_optimizer_chain_rule() {
 fn analytic_jacobian_differentiates_through_an_active_feller_cap() {
   let params = non_feller_params();
   let mut calibrator = synthetic_calibrator(&params, params, HestonJacobianMethod::CuiAnalytic);
-  calibrator.set_feller_projection(true);
+  calibrator.feller_projection = true;
   calibrator.set_params(&to_optimizer_coordinates(&params));
   let analytic = calibrator.jacobian().unwrap();
   let numeric = calibrator.numeric_optimizer_jacobian(&calibrator.free_params());
@@ -164,7 +151,7 @@ fn analytic_jacobian_differentiates_through_an_active_feller_cap() {
 fn feller_overshoot_row_differentiates_like_its_finite_difference() {
   let params = non_feller_params();
   let mut calibrator = synthetic_calibrator(&params, params, HestonJacobianMethod::CuiAnalytic);
-  calibrator.set_feller_projection(true);
+  calibrator.feller_projection = true;
   calibrator.feller_row_weight = Some(2.0);
   let coordinates = to_optimizer_coordinates(&params);
   calibrator.set_params(&coordinates);

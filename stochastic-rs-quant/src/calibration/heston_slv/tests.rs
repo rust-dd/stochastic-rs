@@ -4,6 +4,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 
 use super::calibrator::clean_local_vol;
 use super::*;
+use crate::QuantError;
 use crate::pricing::fourier::HestonFourier;
 use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
@@ -390,6 +391,24 @@ fn bad_inputs_are_errors() {
   assert!(
     err.to_string().contains("no admissible cell"),
     "a flat call slice has no admissible Dupire cell, got: {err}"
+  );
+}
+
+#[test]
+fn a_heston_start_outside_its_domain_is_an_error() {
+  let strikes = Array1::linspace(80.0, 120.0, 9).to_vec();
+  let maturities = vec![0.25, 0.5];
+  let calls = heston_surface(&strikes, &maturities);
+  let err = HestonSlvCalibrator::new(S, R, Q, strikes, maturities, calls)
+    .with_heston_initial_guess(HestonParams {
+      rho: f64::NAN,
+      ..heston()
+    })
+    .calibrate(None)
+    .unwrap_err();
+  assert!(
+    matches!(&err, QuantError::InvalidInput { what: "start", .. }),
+    "{err}"
   );
 }
 

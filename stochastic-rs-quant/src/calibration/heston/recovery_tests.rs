@@ -1,12 +1,13 @@
 use ndarray::s;
 
-use super::HestonCalibrationResult;
 use super::HestonCalibrator;
 use super::HestonJacobianMethod;
 use super::transform::to_optimizer_coordinates;
+use crate::OptionQuote;
 use crate::OptionType;
+use crate::calibration::Calibrated;
+use crate::calibration::CalibrationOptions;
 use crate::calibration::least_squares::LeastSquaresProblem;
-use crate::calibration::levy::MarketSlice;
 use crate::pricing::fourier::HestonFourier;
 use crate::pricing::heston::HestonParams;
 use crate::traits::CalibrationResult;
@@ -71,41 +72,27 @@ const INNER_START: HestonParams = HestonParams {
 
 const STARTS: [Option<HestonParams>; 3] = [None, Some(NEAR_START), Some(INNER_START)];
 
-fn surface(truth: &HestonParams) -> Vec<MarketSlice> {
+fn surface(truth: &HestonParams) -> Vec<OptionQuote> {
   let model = HestonFourier::new(*truth);
   MATURITIES
     .iter()
-    .map(|&t| MarketSlice {
-      strikes: STRIKES.to_vec(),
-      prices: STRIKES
-        .iter()
-        .map(|&k| model.price_call(SPOT, k, RATE, DIVIDEND, t))
-        .collect(),
-      is_call: vec![true; STRIKES.len()],
-      tau: t,
+    .flat_map(|&t| STRIKES.iter().map(move |&k| (k, t)))
+    .map(|(k, t)| {
+      let price = model.price_call(SPOT, k, RATE, DIVIDEND, t);
+      OptionQuote::new(k, t, price, OptionType::Call)
     })
     .collect()
 }
 
 fn calibrator(truth: &HestonParams, jacobian_method: HestonJacobianMethod) -> HestonCalibrator {
-  let mut calibrator = HestonCalibrator::from_slices(
-    None,
-    &surface(truth),
-    SPOT,
-    RATE,
-    Some(DIVIDEND),
-    OptionType::Call,
-    false,
-  );
-  calibrator.set_jacobian_method(jacobian_method);
-  calibrator
+  HestonCalibrator::new(SPOT, RATE, DIVIDEND, surface(truth)).with_jacobian_method(jacobian_method)
 }
 
 fn assert_recovers(
   calibrator: &HestonCalibrator,
   truth: &HestonParams,
   start: Option<HestonParams>,
-) -> HestonCalibrationResult {
+) -> Calibrated<HestonParams> {
   let result = calibrator.calibrate(start).unwrap();
   let fit = &result.params;
   let errors = [
@@ -149,14 +136,14 @@ fn finite_difference_jacobian_recovers_a_surface_on_each_side_of_the_feller_boun
 #[test]
 fn reported_rmse_is_the_price_error_of_the_fitted_pricer() {
   let truth = &CASES[2];
-  let mut calibrator = calibrator(truth, HestonJacobianMethod::CuiAnalytic);
-  calibrator.set_feller_projection(true);
+  let calibrator =
+    calibrator(truth, HestonJacobianMethod::CuiAnalytic).with_feller_projection(true);
   let result = calibrator.calibrate(Some(*truth)).unwrap();
   let mut objective = calibrator.clone();
   objective.feller_row_weight = Some(1.0);
   objective.set_params(&to_optimizer_coordinates(&result.params));
   let residuals = objective.residuals().unwrap();
-  let quotes = objective.c_market.len();
+  let quotes = objective.quotes.len();
   assert_eq!(residuals.len(), quotes + 1);
   let prices = residuals.slice(s![..quotes]);
   let price_rmse = (prices.dot(&prices) / quotes as f64).sqrt();
@@ -177,9 +164,10 @@ fn stop_reason_accompanies_converged() {
     "{:?}",
     result.message()
   );
-  let mut starved = calibrator(&CASES[1], HestonJacobianMethod::CuiAnalytic);
-  starved.set_optimizer_patience(1).unwrap();
-  let result = starved.calibrate(None).unwrap();
+  let result = calibrator(&CASES[1], HestonJacobianMethod::CuiAnalytic)
+    .with_options(CalibrationOptions::default().with_patience(1))
+    .calibrate(None)
+    .unwrap();
   assert!(
     !result.converged && result.message() == Some("evaluation budget exhausted"),
     "{:?}",
@@ -190,13 +178,14 @@ fn stop_reason_accompanies_converged() {
 #[test]
 fn feller_projection_fits_a_below_feller_surface_on_the_boundary_from_any_start() {
   let fit_from = |start: Option<HestonParams>| {
-    let mut calibrator = calibrator(&CASES[0], HestonJacobianMethod::CuiAnalytic);
-    calibrator.set_feller_projection(true);
-    calibrator.set_record_history(true);
-    let result = calibrator.calibrate(start).unwrap();
+    let result = calibrator(&CASES[0], HestonJacobianMethod::CuiAnalytic)
+      .with_feller_projection(true)
+      .with_options(CalibrationOptions::default().with_record_history(true))
+      .calibrate(start)
+      .unwrap();
     assert!(
-      calibrator
-        .history()
+      result
+        .history
         .iter()
         .all(|step| step.params.satisfies_feller_condition())
     );
@@ -223,8 +212,8 @@ fn feller_projection_fits_a_below_feller_surface_on_the_boundary_from_any_start(
 #[test]
 fn feller_projection_recovers_a_surface_just_inside_the_boundary_from_every_start() {
   for start in STARTS {
-    let mut calibrator = calibrator(&CASES[2], HestonJacobianMethod::CuiAnalytic);
-    calibrator.set_feller_projection(true);
+    let calibrator =
+      calibrator(&CASES[2], HestonJacobianMethod::CuiAnalytic).with_feller_projection(true);
     let result = assert_recovers(&calibrator, &CASES[2], start);
     assert!(result.rmse() < 1e-6, "rmse {:e}", result.rmse());
   }
@@ -237,8 +226,8 @@ fn residual_weights_leave_an_exact_fit_in_place() {
     .flat_map(|_| STRIKES.iter().map(|k| 1.0 + (k / SPOT - 1.0).abs()))
     .collect::<Vec<_>>();
   for truth in &CASES {
-    let mut calibrator = calibrator(truth, HestonJacobianMethod::CuiAnalytic);
-    calibrator.set_residual_weights(weights.clone()).unwrap();
+    let calibrator =
+      calibrator(truth, HestonJacobianMethod::CuiAnalytic).with_residual_weights(weights.clone());
     assert_recovers(&calibrator, truth, None);
   }
 }

@@ -182,7 +182,6 @@ pub mod tree_swaption;
 #[cfg(test)]
 mod quadrature_tests;
 
-pub use bsm::BsmCalibrationResult;
 pub use bsm::BsmCalibrator;
 pub use bsm::BsmParams;
 pub use calibrated::Calibrated;
@@ -193,8 +192,8 @@ pub use cgmysv::CgmysvCalibrator;
 pub use double_heston::DoubleHestonCalibrationResult;
 pub use double_heston::DoubleHestonCalibrator;
 pub use double_heston::DoubleHestonParams;
-pub use heston::HestonCalibrationResult;
 pub use heston::HestonCalibrator;
+pub use heston::HestonMleSeed;
 pub use heston_stoch_corr::HscmCalibrationResult;
 pub use heston_stoch_corr::HscmParams;
 pub use heston_stoch_corr::MarketOption;
@@ -389,6 +388,19 @@ mod optimizer_tests {
     assert!(capped.trail.is_empty());
     assert_eq!(run.trail.len() as u64, run.iterations + 1);
     assert_eq!(run.trail.last(), Some(&run.best));
+  }
+
+  #[test]
+  fn a_nelder_mead_trail_records_market_minus_model() {
+    let options = super::CalibrationOptions::default().with_record_history(true);
+    let simplex = vec![vec![2.0], vec![3.0]];
+    let fit = super::nelder_mead_fit(Sphere, simplex, &options, 400, |x| {
+      (x[0], vec![1.0], vec![1.0 + x[0]])
+    });
+    assert!(fit.history.len() > 1);
+    for entry in &fit.history {
+      assert_eq!(entry.residuals[0], 1.0 - (1.0 + entry.params));
+    }
   }
 
   #[test]

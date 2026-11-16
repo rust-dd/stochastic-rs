@@ -45,7 +45,7 @@ impl HestonCalibrator {
     }
     let dlog = d.ln() + (params.kappa - d) * (0.5 * tau) - log_arg.ln();
 
-    let rq = self.r - self.q.unwrap_or(0.0);
+    let rq = self.r - self.q;
     let exponent = iu * (s.ln() + rq * tau)
       - tau * params.kappa * params.theta * params.rho * iu / params.sigma
       - params.v0 * a
@@ -231,7 +231,7 @@ impl HestonCalibrator {
     )?;
 
     let disc_r = (-self.r * tau).exp();
-    let disc_q = (-self.q.unwrap_or(0.0) * tau).exp();
+    let disc_q = (-self.q * tau).exp();
     let call = 0.5 * (s * disc_q - k * disc_r) + disc_r * FRAC_1_PI * integrals[0];
     let mut grad = [0.0_f64; 5];
     for j in 0..5 {
@@ -254,20 +254,18 @@ impl HestonCalibrator {
     &self,
     params: &HestonParams,
   ) -> Option<(Array1<f64>, Array2<f64>)> {
-    let n = self.c_market.len();
+    let n = self.quotes.len();
     let mut c_model = Array1::zeros(n);
     let mut j_residual = Array2::zeros((n, 5));
 
-    for idx in 0..n {
-      let s = self.s[idx];
-      let k = self.k[idx];
-      let tau_idx = self.flat_t[idx];
+    for (idx, quote) in self.quotes.iter().enumerate() {
+      let (s, k, tau_idx) = (self.s, quote.strike, quote.tau);
       let (call_raw, grad_call) = self.cui_price_and_grad_for_quote(params, s, k, tau_idx)?;
       let disc_r = (-self.r * tau_idx).exp();
-      let disc_q = (-self.q.unwrap_or(0.0) * tau_idx).exp();
+      let disc_q = (-self.q * tau_idx).exp();
       let put_raw = call_raw - s * disc_q + k * disc_r;
 
-      let (model_raw, grad_model) = match self.option_type {
+      let (model_raw, grad_model) = match quote.option_type {
         OptionType::Call => (call_raw, grad_call),
         OptionType::Put => (put_raw, grad_call),
       };
@@ -275,7 +273,7 @@ impl HestonCalibrator {
       if model_raw > 0.0 {
         c_model[idx] = model_raw;
         for col in 0..5 {
-          j_residual[(idx, col)] = -self.residual_weights[idx] * grad_model[col];
+          j_residual[(idx, col)] = -self.weight(idx) * grad_model[col];
         }
       } else {
         c_model[idx] = 0.0;

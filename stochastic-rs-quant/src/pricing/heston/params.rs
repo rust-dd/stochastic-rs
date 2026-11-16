@@ -34,6 +34,7 @@ impl HestonParams {
   }
 
   /// The first of `new`'s checks these values fail, in its panic's words; `None` if all pass.
+  #[doc(hidden)]
   pub fn violation(&self) -> Option<String> {
     let Self {
       v0,

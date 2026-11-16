@@ -53,6 +53,16 @@ def test_bsm_short_maturity_near_intrinsic():
     assert 0.0 < price < 2.0
 
 
+def test_bsm_pricer_prices_with_its_dividend_yield():
+    # Merton (1973) evaluated at 50 digits with mpmath; QuantLib's analytic engine agrees.
+    merton_call = 10.197535275462173
+    pricer = sr.BSMPricer(s=100.0, v=0.25, k=100.0, r=0.03, tau=1.0, q=0.02)
+    call, put = pricer.call_put()
+    assert abs(pricer.price() - merton_call) < 1e-10
+    assert abs(pricer.implied_volatility(merton_call, "call") - 0.25) < 1e-10
+    assert abs(call - put - (100.0 * math.exp(-0.02) - 100.0 * math.exp(-0.03))) < 1e-10
+
+
 def test_quanto_pricer_matches_the_reiner_formula():
     kwargs = dict(s=100.0, v=0.2, k=105.0, r=0.08, tau=0.5, r_f=0.05, v_fx=0.12, rho=0.3, fixed_rate=1.5, q=0.04)
     pricer = sr.QuantoPricer(**kwargs)
@@ -378,3 +388,20 @@ def test_heston_calibrator_options_reach_the_rust_calibrator():
     for bad in ({"jacobian_method": "newton"}, {"residual_weights": [1.0]}):
         with pytest.raises(ValueError):
             sr.HestonCalibrator(slices, 100.0, 0.02, "call", 0.0, **bad)
+
+
+def _merton_call(s, k, r, q, sigma, tau):
+    cdf = lambda x: 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))  # noqa: E731
+    d1 = (math.log(s / k) + (r - q + 0.5 * sigma * sigma) * tau) / (sigma * math.sqrt(tau))
+    d2 = d1 - sigma * math.sqrt(tau)
+    return s * math.exp(-q * tau) * cdf(d1) - k * math.exp(-r * tau) * cdf(d2)
+
+
+def test_bsm_calibrator_prices_with_its_dividend_yield_and_a_ragged_slice_is_an_error():
+    strikes, tau = [90.0, 100.0, 110.0], 1.0
+    prices = [_merton_call(100.0, k, 0.03, 0.02, 0.25, tau) for k in strikes]
+    slices = [sr.MarketSlice(strikes, prices, [True] * 3, tau)]
+    sigma, converged, rmse = sr.BSMCalibrator(slices, 100.0, 0.03, q=0.02).calibrate()
+    assert converged and abs(sigma - 0.25) < 1e-8 and rmse < 1e-8
+    with pytest.raises(ValueError, match="equal length"):
+        sr.MarketSlice(strikes, prices[:2], [True] * 3, tau)

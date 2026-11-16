@@ -14,7 +14,7 @@ use crate::pricing::heston::HestonParams;
 
 impl LeastSquaresProblem for HestonCalibrator {
   fn set_params(&mut self, params: &Array1<f64>) {
-    self.params = Some(from_optimizer_coordinates(params));
+    self.start = Some(from_optimizer_coordinates(params));
   }
 
   fn params(&self) -> Array1<f64> {
@@ -25,25 +25,28 @@ impl LeastSquaresProblem for HestonCalibrator {
     let free = self.free_params();
     let params_eff = self.feller_projected(free);
     let c_model = self.compute_model_prices_for(&params_eff);
-    let weighted_residuals = (&self.c_market - &c_model) * &self.residual_weights;
+    let weighted_residuals = self.weighted_residuals(&c_model);
 
-    if self.record_history {
+    if self.options.record_history {
+      let market = self
+        .quotes
+        .iter()
+        .map(|quote| quote.price)
+        .collect::<Vec<_>>();
       let loss = CalibrationLossScore::compute_selected(
-        self.c_market.as_standard_layout().as_slice().unwrap(),
-        c_model.as_slice().unwrap(),
-        self.loss_metrics,
+        &market,
+        &c_model.to_vec(),
+        self.options.loss_metrics,
       );
-      let mut history = self.calibration_history.borrow_mut();
-      let iteration = history.len();
-      history.push(CalibrationHistory::new(
-        iteration,
+      self.pending = Some(CalibrationHistory::new(
+        self.history.len(),
         params_eff,
         weighted_residuals.clone(),
         loss,
       ));
     }
 
-    let residuals = match &self.regularization {
+    let residuals = match &self.options.regularization {
       Some(reg) if reg.is_active() => {
         reg.augment_residuals(weighted_residuals, &physical(&params_eff))
       }
@@ -83,7 +86,7 @@ impl LeastSquaresProblem for HestonCalibrator {
         }
       }
     };
-    let jacobian = match &self.regularization {
+    let jacobian = match &self.options.regularization {
       // The penalty rows are diagonal in the physical parameters; the same
       // chain rule as the price rows maps them into the optimiser coordinates.
       Some(reg) if reg.is_active() => {
@@ -106,6 +109,10 @@ impl LeastSquaresProblem for HestonCalibrator {
       }
       None => jacobian,
     })
+  }
+
+  fn accept(&mut self) {
+    self.history.extend(self.pending.take());
   }
 }
 
