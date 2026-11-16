@@ -15,6 +15,7 @@ mod batch;
 mod filter;
 
 pub use batch::HestonNmleCekfConfig;
+pub use batch::HestonNmleCekfCorrection;
 pub use batch::HestonNmleCekfFit;
 pub use batch::fit_heston_nmle_cekf;
 pub use filter::HestonCekfConsistencyBounds;

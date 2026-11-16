@@ -50,10 +50,12 @@ where
   F: Fn(ArrayView1<f64>) -> f64,
 {
   let dim = initial.len();
+  // The message formats `initial.len()`, not `dim`: a borrowed `dim` slows the sampling loop.
   assert!(
     proposal_scale.len() == dim,
-    "proposal_scale must satisfy `proposal_scale.len() == initial.len()`, got proposal_scale.len() = {}, initial.len() = {dim}",
-    proposal_scale.len()
+    "proposal_scale must satisfy `proposal_scale.len() == initial.len()`, got proposal_scale.len() = {}, initial.len() = {}",
+    proposal_scale.len(),
+    initial.len()
   );
   assert!(
     n_samples >= 1,
@@ -171,5 +173,15 @@ mod tests {
       random_walk_metropolis(init.view(), log_target, scale.view(), 100, 10, 31).unwrap_err(),
       StatsError::DegenerateData("log target is not finite at the initial point")
     );
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "proposal_scale must satisfy `proposal_scale.len() == initial.len()`, got proposal_scale.len() = 2, initial.len() = 1"
+  )]
+  fn a_proposal_scale_of_another_length_panics() {
+    let init = Array1::from(vec![0.0_f64]);
+    let scale = Array1::from(vec![1.0_f64, 1.0]);
+    let _ = random_walk_metropolis(init.view(), |x| -x[0] * x[0], scale.view(), 10, 0, 1);
   }
 }

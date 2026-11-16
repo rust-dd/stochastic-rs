@@ -21,9 +21,8 @@ use ndarray::ArrayView1;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::critical_values::two_sided_p_value;
-use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
-use crate::input::validate;
+use crate::input::validate_view;
 use crate::realized::variance::realized_variance;
 use crate::traits::FloatExt;
 
@@ -137,7 +136,7 @@ pub fn bns_jump_test<T: FloatExt>(
   alpha: f64,
 ) -> Result<BnsJumpTest, StatsError> {
   assert_alpha(alpha);
-  validate(&as_slice_or_copy(returns), 3)?;
+  validate_view(returns, 3)?;
   let n = returns.len();
   let rv = realized_variance(returns).to_f64().unwrap();
   let bv = bipower_variation(returns).to_f64().unwrap();

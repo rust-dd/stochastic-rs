@@ -12,8 +12,8 @@ Every new module must be **scalable** (trait-based extensibility), **integrated*
 Determine the correct top-level module first. Do NOT create a new top-level module without explicit approval.
 
 Code lives in **sub-crates**, not in the umbrella. The umbrella's own
-`src/` holds exactly three files — `lib.rs`, `traits.rs`, `bridges.rs`
-— and `lib.rs` merely re-exports each sub-crate under a short alias
+`src/` holds exactly two files — `lib.rs` and `traits.rs` — and
+`lib.rs` merely re-exports each sub-crate under a short alias
 (`pub use stochastic_rs_stochastic as stochastic;`). There is no
 `src/stochastic.rs`, `src/quant.rs`, `src/stats.rs`,
 `src/distributions.rs` or `src/copulas.rs`; that was the pre-split

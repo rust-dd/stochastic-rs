@@ -33,9 +33,8 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 
 use crate::StatsError;
-use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
-use crate::input::validate;
+use crate::input::validate_view;
 use crate::traits::FloatExt;
 
 /// $c = \mathbb E|U| = \sqrt{2/\pi}$ for a standard normal $U$: the scale of
@@ -82,7 +81,7 @@ pub fn lee_mykland_test<T: FloatExt>(
     "window must satisfy `window >= 3`, got window = {window:?}"
   );
   assert_alpha(alpha);
-  validate(&as_slice_or_copy(returns), window)?;
+  validate_view(returns, window)?;
   let n = returns.len();
 
   let r: Vec<f64> = returns

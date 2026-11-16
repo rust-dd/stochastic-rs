@@ -56,7 +56,7 @@ print(f"call={call:.4f}, put={put:.4f}")
 
 ## 3. Estimate Hurst from a fractional-Brownian path
 
-The rescaled-range estimator (Hurst 1951, with the Anis-Lloyd 1976 bias correction) estimates the Hurst exponent of a sampled path. It is one of eight implementors of the `HurstEstimator` trait. Do not use `Whittle` for this: it estimates the roughness of latent volatility from a realized-variance series, not the Hurst exponent of a path (see [the statistics page](/docs/stats#hurst-exponent-estimation)).
+The rescaled-range estimator (Hurst 1951, with the Anis-Lloyd 1976 bias correction) estimates the Hurst exponent of a sampled path. It is one of seven implementors of the `HurstEstimator` trait. Do not use `Whittle::fit` for this: it estimates the roughness of latent volatility from a realized-variance series, not the Hurst exponent of a path (see [the statistics page](/docs/stats#hurst-exponent-estimation)).
 
 ### Rust
 

@@ -3,7 +3,7 @@
 //! Unified [`HurstEstimator`] trait plus per-method config structs.  Each
 //! estimator returns a [`HurstFit`] carrying the point estimate, an
 //! optional standard error, sample size, and a method-specific
-//! [`HurstDiagnostic`] (log-log slope, Whittle objective value, …).
+//! [`HurstDiagnostic`] (log-log slope, variation ratio, …).
 //!
 //! Available estimators (in this crate):
 //!
@@ -13,7 +13,6 @@
 //! | [`dfa::Dfa`]                            | Peng et al. (1994) detrended fluctuation analysis    |
 //! | [`gph::Gph`]                            | Geweke-Porter-Hudak (1983) log-periodogram           |
 //! | [`wavelet::Wavelet`]                    | Veitch-Abry (1999) DWT + WLS regression              |
-//! | [`whittle::Whittle`]                    | Fukasawa et al. (2019) adapted Whittle for rough vol |
 //! | [`variations::Variations`]              | Daubechies / central-diff / `k`-th p-power variation |
 //! | [`crate::fractal_dim::Higuchi`]         | Higuchi (1988) FD adapter, `H = 2 - D`               |
 //! | [`crate::fractal_dim::Variogram`]       | Variogram FD adapter (Constantine-Hall 1994)         |
@@ -41,10 +40,10 @@
 //!
 //! ## Choosing an estimator
 //!
-//! Seven of the eight estimate the same thing — the self-similarity
-//! exponent of the series handed to `.estimate()` — by different routes;
-//! [`Whittle`] estimates something else entirely. Read the estimand before
-//! the estimator name.
+//! All seven estimate the same thing — the self-similarity exponent of
+//! the series handed to `.estimate()` — by different routes;
+//! [`Whittle::fit`] estimates something else entirely. Read the estimand
+//! before the estimator name.
 //!
 //! **Path self-similarity** ([`RescaledRange`], [`Dfa`], [`Gph`],
 //! [`Wavelet`], [`Variations`]): all five fit a log-log (or
@@ -69,7 +68,7 @@
 //!   [`Wavelet`]'s `Daubechies4` filter has 2 vanishing moments, so it is
 //!   blind to a linear trend but not a quadratic one; [`Dfa`] with a
 //!   higher `order` handles trends [`Wavelet`] cannot.
-//! - [`Variations`] (Coeurjolly 2001; Brouste & Iacus, arXiv:1703.09372)
+//! - [`Variations`] (Coeurjolly 2001; Brouste & Iacus 2013, arXiv:1112.3777)
 //!   is the one derived for a discretely-observed **fractional
 //!   Ornstein-Uhlenbeck**-type process rather than pure fBM/fGN
 //!   self-similarity — reach for it, specifically
@@ -87,20 +86,13 @@
 //! identity `H = 2 - D`. [`fd_adapters`] reports `H = 2 - D` unclamped, so a noisy fit
 //! that pushes `D` outside `[1, 2]` shows as an `H` outside `[0, 1]`.
 //!
-//! **A different quantity entirely** ([`Whittle`]): Fukasawa, Takabatake &
-//! Westphal (2019, arXiv:1905.04852) estimate the roughness of a
-//! **latent volatility** process from a realized-variance time series —
-//! not the self-similarity exponent of a series sampled directly from,
-//! say, [`stochastic_rs_stochastic::noise::fgn::Fgn`]. [`Whittle`] shares
-//! [`HurstFit`]'s type with the other seven, so nothing stops you from
-//! calling `.estimate()` on a raw path — the type system cannot catch
-//! this, only the input construction can. Feeding a directly-sampled path
-//! in does not error; it silently returns a number with no relationship
-//! to that path's true exponent (see `whittle`'s own
-//! `raw_path_recovers_nonsense_h_from_whittle` test for a concrete
-//! before/after). Build the input the way `whittle`'s `simulate_log_rv`
-//! test helper does: log realized variance aggregated from intraday
-//! returns, not a bare sampled path.
+//! **A different quantity entirely** ([`Whittle::fit`]): Fukasawa,
+//! Takabatake & Westphal (2019, arXiv:1905.04852) estimate the roughness of
+//! a **latent volatility** process from log realized variance aggregated
+//! from intraday returns — not the self-similarity exponent of a series
+//! sampled directly from, say, [`stochastic_rs_stochastic::noise::fgn::Fgn`]
+//! — so [`Whittle`] is not a [`HurstEstimator`] and returns a
+//! [`FukasawaFit`].
 //!
 //! **Data requirements** — hard validation floor, all generic over
 //! `T: `[`crate::traits::FloatExt`] (`f32` or `f64`):
@@ -114,9 +106,12 @@
 //! | [`Variations`] | 5 (`CentralDiff`, the default) to 8 (`Daubechies`), or `k+3` for `PowerVariation { k, .. }` |
 //! | [`crate::fractal_dim::Higuchi`] | 3 (but see the `kmax` caveat above — the hard floor is far below what a meaningful log-log regression needs) |
 //! | [`crate::fractal_dim::Variogram`] | 3 (same caveat) |
-//! | [`Whittle`] | 30 |
 
 use ndarray::ArrayView1;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_stochastic::device::Cpu;
+use stochastic_rs_stochastic::noise::fgn::Fgn;
+use stochastic_rs_stochastic::process::fbm::Fbm;
 
 use crate::StatsError;
 use crate::traits::FloatExt;
@@ -139,17 +134,8 @@ pub use wavelet::WaveletKind;
 pub use whittle::FukasawaFit;
 pub use whittle::Whittle;
 
-/// Unified Hurst-estimator interface.
-///
-/// Each estimator owns its configuration (window bounds, polynomial
-/// order, bandwidth, …) and exposes a single [`estimate`] entry point
-/// that consumes a contiguous time series and produces a
-/// [`HurstFit`].
-///
-/// Concrete impls in this crate: [`RescaledRange`], [`Dfa`], [`Gph`],
-/// [`Wavelet`], [`Whittle`], [`Variations`].
-///
-/// [`estimate`]: HurstEstimator::estimate
+/// The self-similarity exponent of the series itself: [`RescaledRange`], [`Dfa`], [`Gph`],
+/// [`Wavelet`], [`Variations`], and `H = 2 − D` from [`crate::fractal_dim`]'s two estimators.
 pub trait HurstEstimator<T: FloatExt> {
   fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError>;
 }
@@ -166,8 +152,22 @@ pub struct HurstFit<T: FloatExt = f64> {
   /// Number of observations consumed.
   pub nobs: usize,
   /// Method-specific auxiliary information (log-log regression
-  /// coefficients, Whittle objective, …).
+  /// coefficients, variation ratio, …).
   pub diagnostic: HurstDiagnostic<T>,
+}
+
+impl<T: FloatExt> HurstFit<T> {
+  /// Fractional Gaussian noise at this `hurst`; chain `.with_backend(handle)` for a device. Panics
+  /// where `Fgn::new` does, so on a `hurst` outside `[0, 1]`, which an unclamped `2 − D` can give.
+  pub fn to_fgn<S: SeedExt>(&self, n: usize, t: Option<T>, seed: S) -> Fgn<T, S, Cpu> {
+    Fgn::new(self.hurst, n, t, seed)
+  }
+
+  /// Fractional Brownian motion at this `hurst`; chain `.with_backend(handle)` for a device. Panics
+  /// where `Fbm::new` does, so on a `hurst` outside `[0, 1]`, which an unclamped `2 − D` can give.
+  pub fn to_fbm<S: SeedExt>(&self, n: usize, t: Option<T>, seed: S) -> Fbm<T, S, Cpu> {
+    Fbm::new(self.hurst, n, t, seed)
+  }
 }
 
 /// Method-specific auxiliary information returned alongside the Hurst
@@ -191,13 +191,6 @@ pub enum HurstDiagnostic<T: FloatExt> {
     log_scales: Vec<T>,
     /// Log-statistics matched 1:1 with `log_scales`.
     log_stats: Vec<T>,
-  },
-  /// Whittle quasi-likelihood diagnostics (Fukasawa).
-  Whittle {
-    /// Final negative-log-likelihood value.
-    neg_log_lik: T,
-    /// Recovered `η = ν · δ⁻ᴴ` scale parameter.
-    eta: T,
   },
   /// k-th order p-power variation ratio diagnostics.
   Variations {

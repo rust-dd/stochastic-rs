@@ -1,3 +1,6 @@
+use stochastic_rs_distributions::special::digamma;
+use stochastic_rs_distributions::special::trigamma;
+
 use super::LogChiSquareMoments;
 use super::LogRealizedVarianceParameters;
 use super::LogRealizedVarianceQmlBounds;
@@ -126,37 +129,4 @@ fn assert_block_size(block_degrees_of_freedom: usize) {
     block_degrees_of_freedom > 0,
     "block_degrees_of_freedom must satisfy `block_degrees_of_freedom > 0`, got block_degrees_of_freedom = {block_degrees_of_freedom:?}"
   );
-}
-
-fn digamma(mut x: f64) -> f64 {
-  let mut value = 0.0;
-  while x < 12.0 {
-    value -= 1.0 / x;
-    x += 1.0;
-  }
-  let inverse = 1.0 / x;
-  let inverse_squared = inverse * inverse;
-  value + x.ln() - 0.5 * inverse - inverse_squared / 12.0 + inverse_squared.powi(2) / 120.0
-    - inverse_squared.powi(3) / 252.0
-    + inverse_squared.powi(4) / 240.0
-    - inverse_squared.powi(5) / 132.0
-    + 691.0 * inverse_squared.powi(6) / 32_760.0
-    - inverse_squared.powi(7) / 12.0
-}
-
-fn trigamma(mut x: f64) -> f64 {
-  let mut value = 0.0;
-  while x < 12.0 {
-    value += 1.0 / (x * x);
-    x += 1.0;
-  }
-  let inverse = 1.0 / x;
-  let inverse_squared = inverse * inverse;
-  value + inverse + inverse_squared / 2.0 + inverse_squared * inverse / 6.0
-    - inverse_squared.powi(2) * inverse / 30.0
-    + inverse_squared.powi(3) * inverse / 42.0
-    - inverse_squared.powi(4) * inverse / 30.0
-    + 5.0 * inverse_squared.powi(5) * inverse / 66.0
-    - 691.0 * inverse_squared.powi(6) * inverse / 2_730.0
-    + 7.0 * inverse_squared.powi(7) * inverse / 6.0
 }

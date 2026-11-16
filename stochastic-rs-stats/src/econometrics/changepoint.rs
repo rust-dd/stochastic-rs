@@ -21,6 +21,7 @@ use crate::StatsError;
 use crate::input::as_slice_or_copy;
 use crate::input::reject_constant;
 use crate::input::validate;
+use crate::input::validate_view;
 use crate::traits::FloatExt;
 
 /// Result of a CUSUM control-chart pass.
@@ -107,7 +108,7 @@ pub fn pelt<T: FloatExt>(
     min_size >= 1,
     "min_size must satisfy `min_size >= 1`, got min_size = {min_size:?}"
   );
-  validate(&as_slice_or_copy(series), 1)?;
+  validate_view(series, 1)?;
   let n = series.len();
   let mut prefix = vec![0.0_f64; n + 1];
   let mut prefix_sq = vec![0.0_f64; n + 1];

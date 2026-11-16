@@ -20,6 +20,7 @@ use crate::StatsError;
 use crate::input::as_slice_or_copy;
 use crate::input::reject_constant;
 use crate::input::validate;
+use crate::input::validate_view;
 use crate::linalg::lstsq;
 use crate::traits::FloatExt;
 
@@ -90,7 +91,7 @@ impl HarRv {
   /// One-step-ahead forecast from the latest daily RVs; `Err` below [`MONTHLY_LAGS`] observations
   /// or on a non-finite one.
   pub fn forecast<T: FloatExt>(&self, recent_daily_rv: ArrayView1<T>) -> Result<f64, StatsError> {
-    validate(&as_slice_or_copy(recent_daily_rv), MONTHLY_LAGS)?;
+    validate_view(recent_daily_rv, MONTHLY_LAGS)?;
     let n = recent_daily_rv.len();
     let last = recent_daily_rv[n - 1].to_f64().unwrap();
     let weekly = avg_last(recent_daily_rv, WEEKLY_LAGS);

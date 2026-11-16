@@ -15,8 +15,7 @@ use parking_lot::Mutex;
 use super::DiffusionModel;
 use super::density::DensityApprox;
 use crate::StatsError;
-use crate::input::as_slice_or_copy;
-use crate::input::validate;
+use crate::input::validate_view;
 use crate::optim::more_thuente;
 
 /// Result of maximum likelihood estimation.
@@ -181,7 +180,7 @@ pub fn fit_mle(
     "bounds must satisfy `bounds.len() == model.num_params()`, got bounds.len() = {}, model.num_params() = {n_params}",
     bounds.len()
   );
-  validate(&as_slice_or_copy(sample), 2)?;
+  validate_view(sample, 2)?;
   let n_transitions = sample.len() - 1;
 
   let x0 = model.params();

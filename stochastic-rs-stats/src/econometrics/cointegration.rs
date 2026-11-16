@@ -21,9 +21,8 @@ use ndarray::ArrayView1;
 
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
-use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
-use crate::input::validate;
+use crate::input::validate_view;
 use crate::linalg::lstsq;
 use crate::stationarity::adf::AdfConfig;
 use crate::stationarity::adf::adf_test;
@@ -86,8 +85,8 @@ pub fn engle_granger_test(
       got: x.len(),
     });
   }
-  validate(&as_slice_or_copy(y), 30)?;
-  validate(&as_slice_or_copy(x), 30)?;
+  validate_view(y, 30)?;
+  validate_view(x, 30)?;
   let n = y.len();
   let mut design = Array2::<f64>::zeros((n, 2));
   for i in 0..n {

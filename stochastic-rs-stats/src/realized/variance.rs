@@ -59,19 +59,23 @@ pub fn realized_semivariance<T: FloatExt>(returns: ArrayView1<T>, threshold: T) 
   if returns.is_empty() {
     return (T::nan(), T::nan());
   }
-  let mut down = T::zero();
-  let mut up = T::zero();
-  for &r in returns.iter() {
-    let r2 = r * r;
-    if r < threshold {
-      down += r2;
-    } else if r > threshold {
-      up += r2;
-    } else if r.is_nan() {
-      return (T::nan(), T::nan());
-    }
+  // A masked addend keeps the order and vectorises; adding +0.0 is exact, as no sum is ever -0.0.
+  let (down, up, nan) =
+    returns
+      .iter()
+      .fold((T::zero(), T::zero(), false), |(down, up, nan), &r| {
+        let r2 = r * r;
+        (
+          down + if r < threshold { r2 } else { T::zero() },
+          up + if r > threshold { r2 } else { T::zero() },
+          nan | r.is_nan(),
+        )
+      });
+  if nan {
+    (T::nan(), T::nan())
+  } else {
+    (down, up)
   }
-  (down, up)
 }
 
 /// Realized skewness $RSK = \sqrt n \sum_i r_i^3 / RV^{3/2}$ (Amaya et al. 2015); NaN below two
@@ -172,6 +176,27 @@ mod tests {
       1e-15
     ));
     assert!(approx(rs_plus, 0.01_f64.powi(2) + 0.03_f64.powi(2), 1e-15));
+  }
+
+  #[test]
+  fn semivariance_sums_bit_for_bit_like_the_branching_loop() {
+    let mut r = (0..997)
+      .map(|i| ((i as f64 * 0.618_033_988_749_895).fract() - 0.5) * 0.03)
+      .collect::<Vec<_>>();
+    r.extend([-0.0, 0.0, 0.01, -0.02, 1e-310, -1e-310]);
+    let r = Array1::from(r);
+    for threshold in [0.0, -0.0, 0.01, -0.02] {
+      let (mut down, mut up) = (0.0_f64, 0.0_f64);
+      for &x in r.iter() {
+        if x < threshold {
+          down += x * x;
+        } else if x > threshold {
+          up += x * x;
+        }
+      }
+      let (d, u) = realized_semivariance(r.view(), threshold);
+      assert_eq!((d.to_bits(), u.to_bits()), (down.to_bits(), up.to_bits()));
+    }
   }
 
   #[test]

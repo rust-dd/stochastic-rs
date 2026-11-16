@@ -19,10 +19,10 @@ The `stochastic-rs-stats` crate ships estimators for common quant-finance workfl
 | `stationarity`         | 9 `HypothesisTest` implementors: ADF, KPSS, Phillips-Perron, Leybourne-McCabe and ERS DF-GLS test unit-root/stationarity; Andrews-Ploberger and CUSUM test regression-parameter stability; Lo-MacKinlay tests the random-walk hypothesis; RESET tests linear functional form. See [Choosing a stationarity test](#choosing-a-stationarity-test). |
 | `econometrics`         | Engle-Granger and Johansen (trace + maximum-eigenvalue) cointegration with VECM estimation, Granger causality, Gaussian-emission HMM with Baum-Welch, CUSUM and PELT changepoint |
 | `filtering`            | Particle filter, UKF, random-walk Metropolis-Hastings                          |
-| `hurst`                | Six native estimators behind one `HurstEstimator` trait: rescaled-range, DFA, GPH, wavelet, Whittle (the Fukasawa, Takabatake & Westphal 2019 adapted quasi-likelihood), variations. Two more implement the same trait by adapting a fractal-dimension estimate (`fractal_dim::{Higuchi, Variogram}`, `H = 2 - D`) — **8** `HurstEstimator` implementors in total. `hurst::whittle` also exposes `Whittle`'s algorithm through one-shot functions (`estimate`, `estimate_from_prices`) — see below |
+| `hurst`                | Five native estimators behind one `HurstEstimator` trait: rescaled-range, DFA, GPH, wavelet, variations. Two more implement the same trait by adapting a fractal-dimension estimate (`fractal_dim::{Higuchi, Variogram}`, `H = 2 - D`) — **7** `HurstEstimator` implementors in total. `hurst::whittle::Whittle::fit` estimates a different quantity (the roughness of latent volatility from log realized variance, Fukasawa, Takabatake & Westphal 2019) and is not a `HurstEstimator` — see below |
 | `kde`                  | Gaussian KDE                                                                   |
 | `spectral`             | Periodogram and spectrum search                                                |
-| `fou`                  | fOU MLE with Hurst joint estimation                                            |
+| `fou`                  | fOU estimators by method: filtered variations and central differences (Brouste & Iacus 2013), power variation (Hu, Nualart & Zhou 2019) |
 | `garch`                | GARCH / GJR-GARCH / EGARCH Gaussian QMLE with inverse-Hessian and Bollerslev-Wooldridge robust standard errors |
 | `evt`                  | Extreme-value theory: Hill tail index, GPD peaks-over-threshold (MLE and Hosking-Wallis PWM) with VaR / ES, GEV block-maxima MLE with return levels |
 | `distfit`              | Maximum-likelihood fits of the skewed return laws: Johnson SU, Hansen skew-t with location and scale, variance gamma |
@@ -200,7 +200,7 @@ print(f"t-stat={res.statistic:.3f}, reject_unit_root={res.reject_unit_root}")
 
 ### Hurst exponent estimation
 
-The `hurst` module unifies six estimators (rescaled-range, DFA, GPH, wavelet, Whittle, variations) behind one `HurstEstimator` trait — `estimate(x) -> Result<HurstFit, StatsError>` — plus two more (`Higuchi`, `Variogram`) that reach the same trait by adapting a fractal-dimension estimate. The example uses `RescaledRange` (Hurst 1951 + Anis-Lloyd 1976 bias correction), which estimates the Hurst exponent of a signal directly:
+The `hurst` module unifies five estimators (rescaled-range, DFA, GPH, wavelet, variations) behind one `HurstEstimator` trait — `estimate(x) -> Result<HurstFit, StatsError>` — plus two more (`Higuchi`, `Variogram`) that reach the same trait by adapting a fractal-dimension estimate. The example uses `RescaledRange` (Hurst 1951 + Anis-Lloyd 1976 bias correction), which estimates the Hurst exponent of a signal directly:
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -217,9 +217,9 @@ print(f"H = {res.hurst:.3f}")
 </Tab>
 </Tabs>
 
-All eight `HurstEstimator` implementors have Python classes (`RescaledRange`, `Dfa`, `Gph`, `Wavelet`, `Whittle`, `Variations`, `Higuchi`, `Variogram` — the last two also via `.estimate_hurst(x)` alongside their native `.estimate(x) -> FdFit` fractal-dimension output).
+All seven `HurstEstimator` implementors have Python classes (`RescaledRange`, `Dfa`, `Gph`, `Wavelet`, `Variations`, `Higuchi`, `Variogram` — the last two also via `.estimate_hurst(x)` alongside their native `.estimate(x) -> FdFit` fractal-dimension output).
 
-`Whittle` takes a different input from the other five native estimators. It and the `FukasawaHurst` class (Python) / the `estimate`, `estimate_from_prices` functions (Rust, `stats::hurst::whittle`) are the **same** Fukasawa, Takabatake & Westphal (2019) adapted-Whittle quasi-likelihood estimator, reached through the trait or a one-shot constructor. Either way it estimates the roughness of a *latent volatility* process from a realized-variance time series, not the Hurst exponent of a path sampled directly from `Fgn`; fed raw path samples, it returns a number unrelated to the path's exponent. Build its input from intraday prices (`estimate_from_prices`, `FukasawaHurst.from_prices`).
+`hurst::whittle::Whittle::fit` is the Fukasawa, Takabatake & Westphal (2019) adapted-Whittle quasi-likelihood, and it is not a `HurstEstimator`: it estimates the roughness of a *latent volatility* process from log realized variance, not the Hurst exponent of a path sampled directly from `Fgn`; fed raw path samples, it returns a number unrelated to the path's exponent. Build its input from intraday returns. In Python, `Whittle(...).estimate(log_rv)` returns a `FukasawaHurst`, as `FukasawaHurst.from_log_rv(log_rv, m, delta)` does.
 
 ## Choosing a stationarity test
 
@@ -237,7 +237,7 @@ Run ADF and KPSS together: their null hypotheses are opposite, so agreement is r
 
 ## Choosing a Hurst estimator
 
-Seven of the eight `HurstEstimator` implementors estimate the same quantity — the self-similarity exponent of the series handed to `.estimate()` — by different routes; the eighth, `Whittle`, estimates something else (see above). The `hurst` module's rustdoc has the full comparison, with the literature behind each method and data-size requirements:
+All seven `HurstEstimator` implementors estimate the same quantity — the self-similarity exponent of the series handed to `.estimate()` — by different routes; `Whittle::fit` estimates something else (see above). The `hurst` module's rustdoc has the full comparison, with the literature behind each method and data-size requirements:
 
 | Need | Reach for |
 |---|---|
@@ -245,7 +245,7 @@ Seven of the eight `HurstEstimator` implementors estimate the same quantity — 
 | A confidence interval, not just a point estimate | `gph::Gph` or `wavelet::Wavelet` — the only two that report a closed-form standard error |
 | The series is believed to be a rough, mean-reverting (fractional-OU-like) process rather than pure fBM/fGN | `variations::Variations` with `VariationKind::PowerVariation` |
 | You already think in terms of fractal dimension `D` | `fractal_dim::Higuchi` / `fractal_dim::Variogram` via the `H = 2 - D` adapter, which reports `2 - D` unclamped; `FractalDimEstimator` gives `D` itself |
-| Roughness of *latent volatility* from a realized-variance series (rough-vol calibration) | `hurst::whittle::Whittle` — and only that input |
+| Roughness of *latent volatility* from a realized-variance series (rough-vol calibration) | `hurst::whittle::Whittle::fit` — and only that input |
 
 `rs::RescaledRange` is the classic statistic (Hurst 1951) but the least reliable of the group in finite samples, as the paper behind its bias correction documents.
 
@@ -254,7 +254,7 @@ Seven of the eight `HurstEstimator` implementors estimate the same quantity — 
 Every hypothesis test shares `statistic`, `p_value: Option<f64>`, `critical_values: Option<CriticalValues>` and `rejects_null`, and answers through `HypothesisTest`; estimates keep **estimator-specific** fields, not a uniform `point`/`se` pair. For example:
 
 ```rust
-// RescaledRange, Dfa, Gph, Wavelet, Whittle, Variations all return this:
+// RescaledRange, Dfa, Gph, Wavelet, Variations all return this:
 pub struct HurstFit<T: FloatExt = f64> {
   pub hurst: T,
   pub std_err: Option<T>, // only Gph and Wavelet populate this
