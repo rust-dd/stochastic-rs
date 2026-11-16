@@ -13,8 +13,8 @@ use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::stochastic::params::Drift;
 use stochastic_rs::stochastic::params::Horizon;
 use stochastic_rs::stochastic::params::VarianceBoundary;
+use stochastic_rs::stochastic::process::CompoundPaths;
 use stochastic_rs::stochastic::process::cpoisson::CompoundPoisson;
-use stochastic_rs::stochastic::process::cpoisson::CompoundPoissonPaths;
 use stochastic_rs::stochastic::process::poisson::Poisson;
 use stochastic_rs::stochastic::traits::PathSampler;
 use stochastic_rs::stochastic::volatility::HestonPow;
@@ -215,7 +215,7 @@ fn golden_compound_poisson_streams() {
     Poisson::<f64, _>::new(0.5, Horizon::Events(N - 1), Unseeded),
     Deterministic::new(44),
   );
-  let CompoundPoissonPaths {
+  let CompoundPaths {
     arrivals: times,
     cumulative: cum,
     jumps,

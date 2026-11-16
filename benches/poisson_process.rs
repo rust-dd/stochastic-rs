@@ -9,10 +9,9 @@ use rand_distr::Exp;
 use rand_distr::Normal;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::params::Horizon;
+use stochastic_rs::stochastic::process::CompoundPaths;
 use stochastic_rs::stochastic::process::ccustom::CompoundCustom;
-use stochastic_rs::stochastic::process::ccustom::CompoundCustomPaths;
 use stochastic_rs::stochastic::process::cpoisson::CompoundPoisson;
-use stochastic_rs::stochastic::process::cpoisson::CompoundPoissonPaths;
 use stochastic_rs::stochastic::process::customjt::CustomJt;
 use stochastic_rs::stochastic::process::poisson::Poisson;
 use stochastic_rs::traits::ProcessExt;
@@ -80,7 +79,7 @@ fn bench_poisson_process(c: &mut Criterion) {
       &n,
       |b, &_n| {
         b.iter(|| {
-          let CompoundPoissonPaths {
+          let CompoundPaths {
             arrivals: p,
             jumps: j,
             ..
@@ -102,7 +101,7 @@ fn bench_poisson_process(c: &mut Criterion) {
       &n,
       |b, &_n| {
         b.iter(|| {
-          let CompoundCustomPaths {
+          let CompoundPaths {
             arrivals: p,
             jumps: j,
             ..

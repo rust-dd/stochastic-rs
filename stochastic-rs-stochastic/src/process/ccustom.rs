@@ -18,6 +18,7 @@ use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use super::CompoundPaths;
 use super::customjt::CustomJt;
 use crate::device::Cpu;
 use crate::params::Horizon;
@@ -42,25 +43,6 @@ where
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
-}
-
-/// Arrival times, the running sum of the jumps and the jump sizes.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub struct CompoundCustomPaths<T> {
-  pub arrivals: Array1<T>,
-  pub cumulative: Array1<T>,
-  pub jumps: Array1<T>,
-}
-
-impl<T> From<[Array1<T>; 3]> for CompoundCustomPaths<T> {
-  fn from([arrivals, cumulative, jumps]: [Array1<T>; 3]) -> Self {
-    Self {
-      arrivals,
-      cumulative,
-      jumps,
-    }
-  }
 }
 
 impl<T, D1, D2, S: SeedExt> CompoundCustom<T, D1, D2, S>
@@ -161,7 +143,7 @@ where
     crate::euler::draw_seed(&self.seed)
   }
 
-  fn host_sample(&self) -> CompoundCustomPaths<T> {
+  fn host_sample(&self) -> CompoundPaths<T> {
     let _ = <Self as crate::euler::EulerSystem<T, 3>>::grid_points(self);
     let out = <Self as ProcessExt<T>>::sampler(self).sample();
     <Self as ProcessExt<T>>::advance_chunk_seed(self);
@@ -187,7 +169,7 @@ where
   D1: Distribution<T> + Send + Sync + Any,
   D2: Distribution<T> + Send + Sync + Any,
 {
-  type Output = CompoundCustomPaths<T>;
+  type Output = CompoundPaths<T>;
   type Sampler<'s>
     = CompoundCustomSampler<'s, T, D1, D2, S>
   where
@@ -209,7 +191,7 @@ where
   /// inter-arrivals are exponential and the jump-size law is one the device
   /// kernels draw; anything else keeps the process on the host,
   /// chunked exactly as [`ProcessExt`] chunks.
-  fn sample(&self) -> CompoundCustomPaths<T> {
+  fn sample(&self) -> CompoundPaths<T> {
     if self.device_ready() {
       crate::euler::EulerBackend::system_sample(&self.backend, self)
     } else {
@@ -219,11 +201,7 @@ where
     }
   }
 
-  fn sample_map<R: Send>(
-    &self,
-    m: usize,
-    f: impl Fn(&CompoundCustomPaths<T>) -> R + Sync,
-  ) -> Vec<R> {
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&CompoundPaths<T>) -> R + Sync) -> Vec<R> {
     if self.device_ready() {
       crate::euler::EulerBackend::system_paths_map(&self.backend, self, m, f)
     } else {
@@ -231,7 +209,7 @@ where
     }
   }
 
-  fn sample_par(&self, m: usize) -> Vec<CompoundCustomPaths<T>> {
+  fn sample_par(&self, m: usize) -> Vec<CompoundPaths<T>> {
     if self.device_ready() {
       crate::euler::EulerBackend::system_paths(&self.backend, self, m)
     } else {
@@ -239,7 +217,7 @@ where
     }
   }
 
-  fn try_sample(&self) -> Result<CompoundCustomPaths<T>, crate::device::DeviceError> {
+  fn try_sample(&self) -> Result<CompoundPaths<T>, crate::device::DeviceError> {
     if self.device_ready() {
       crate::euler::EulerBackend::try_system_sample(&self.backend, self)
     } else {
@@ -247,10 +225,7 @@ where
     }
   }
 
-  fn try_sample_par(
-    &self,
-    m: usize,
-  ) -> Result<Vec<CompoundCustomPaths<T>>, crate::device::DeviceError> {
+  fn try_sample_par(&self, m: usize) -> Result<Vec<CompoundPaths<T>>, crate::device::DeviceError> {
     if self.device_ready() {
       crate::euler::EulerBackend::try_system_paths(&self.backend, self, m)
     } else {
@@ -295,7 +270,7 @@ where
   D1: Distribution<T> + Send + Sync,
   D2: Distribution<T> + Send + Sync,
 {
-  fn sample_inner(&mut self) -> CompoundCustomPaths<T> {
+  fn sample_inner(&mut self) -> CompoundPaths<T> {
     let p = self.customjt.sample_impl(&self.seed);
     let mut jumps = Array1::<T>::zeros(p.len());
     let mut rng = self.seed.rng();
@@ -306,7 +281,7 @@ where
     let mut cum_jupms = jumps.clone();
     cum_jupms.accumulate_axis_inplace(Axis(0), |&prev, curr| *curr += prev);
 
-    CompoundCustomPaths {
+    CompoundPaths {
       arrivals: p,
       cumulative: cum_jupms,
       jumps,
@@ -328,13 +303,13 @@ where
   D1: Distribution<T> + Send + Sync,
   D2: Distribution<T> + Send + Sync,
 {
-  type Output = CompoundCustomPaths<T>;
+  type Output = CompoundPaths<T>;
 
-  fn sample_into(&mut self, out: &mut CompoundCustomPaths<T>) {
+  fn sample_into(&mut self, out: &mut CompoundPaths<T>) {
     *out = self.sample_inner();
   }
 
-  fn sample(&mut self) -> CompoundCustomPaths<T> {
+  fn sample(&mut self) -> CompoundPaths<T> {
     self.sample_inner()
   }
 }
@@ -398,43 +373,13 @@ impl PyCompoundCustom {
     })?
   }
 
-  fn sample<'py>(
-    &self,
-    py: pyo3::Python<'py>,
-  ) -> pyo3::PyResult<(
-    pyo3::Py<pyo3::PyAny>,
-    pyo3::Py<pyo3::PyAny>,
-    pyo3::Py<pyo3::PyAny>,
-  )> {
+  fn sample(&self, py: pyo3::Python<'_>) -> pyo3::PyResult<super::PyTriple> {
     stochastic_rs_distributions::python::runtime_error_on_panic(|| {
-      use numpy::IntoPyArray;
-      use pyo3::IntoPyObjectExt;
-
       use crate::traits::ProcessExt;
       if let Some(ref inner) = self.inner_f64 {
-        let CompoundCustomPaths {
-          arrivals,
-          cumulative,
-          jumps,
-          ..
-        } = inner.sample();
-        (
-          arrivals.into_pyarray(py).into_py_any(py).unwrap(),
-          cumulative.into_pyarray(py).into_py_any(py).unwrap(),
-          jumps.into_pyarray(py).into_py_any(py).unwrap(),
-        )
+        inner.sample().into_py_tuple(py)
       } else if let Some(ref inner) = self.inner_f32 {
-        let CompoundCustomPaths {
-          arrivals,
-          cumulative,
-          jumps,
-          ..
-        } = inner.sample();
-        (
-          arrivals.into_pyarray(py).into_py_any(py).unwrap(),
-          cumulative.into_pyarray(py).into_py_any(py).unwrap(),
-          jumps.into_pyarray(py).into_py_any(py).unwrap(),
-        )
+        inner.sample().into_py_tuple(py)
       } else {
         unreachable!()
       }
@@ -452,7 +397,7 @@ mod tests {
 
   #[test]
   fn the_output_names_its_slots() {
-    let CompoundCustomPaths {
+    let CompoundPaths {
       arrivals,
       cumulative,
       jumps,
@@ -474,7 +419,7 @@ mod tests {
       Deterministic::new(3),
     )
     .with_horizon(Horizon::Events(4));
-    let CompoundCustomPaths {
+    let CompoundPaths {
       arrivals,
       cumulative,
       jumps,

@@ -174,7 +174,7 @@ Notes on the jump-increment call:
   multiplicatively — use it for a relative-return jump term).
 - There is **no** `sample_increments` and **no** `sample_arrival_times`.
   Arrival times come from driving `CompoundPoisson` itself: its
-  `ProcessExt::Output` is `CompoundPoissonPaths { arrivals, cumulative, jumps }`.
+  `ProcessExt::Output` is `process::CompoundPaths { arrivals, cumulative, jumps }`.
 - The jump array is indexed `jump_increments[i]`, not `[i - 1]` — index
   0 is the (zero) increment at the path's initial point.
 

@@ -12,7 +12,6 @@ use stochastic_rs_stochastic::interest::black_karasinski::BlackKarasinski;
 use stochastic_rs_stochastic::interest::cir_2f::Cir2F;
 use stochastic_rs_stochastic::interest::cir_pp::CirPlusPlus;
 use stochastic_rs_stochastic::interest::hjm::Hjm;
-use stochastic_rs_stochastic::interest::hjm::HjmPaths;
 use stochastic_rs_stochastic::interest::ho_lee::HoLee;
 use stochastic_rs_stochastic::interest::hull_white::HullWhite;
 use stochastic_rs_stochastic::params::HoLeeDrift;
@@ -23,6 +22,7 @@ use super::common::Device;
 use super::common::M;
 use super::common::agrees;
 use super::common::all_finite;
+use super::common::slots;
 use super::common::terminal_mean;
 use super::common::within;
 
@@ -294,12 +294,6 @@ fn hjm_agrees_with_the_cpu_law() {
       Some(1.0),
       Deterministic::new(97),
     )
-  };
-  let slots = |paths: Vec<HjmPaths<f32>>| {
-    paths
-      .into_iter()
-      .map(|p| [p.r, p.p, p.f])
-      .collect::<Vec<_>>()
   };
   let device = slots(build().on::<Device>().sample_par(M));
   let host = slots(build().sample_par(M));

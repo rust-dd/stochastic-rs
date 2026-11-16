@@ -10,7 +10,6 @@ use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::traits::Fn1D;
 use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
-use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorrPaths;
 use stochastic_rs_stochastic::diffusion::fouque::FouqueOu2D;
 use stochastic_rs_stochastic::diffusion::regime_switching::RegimeSwitchingDiffusion;
 use stochastic_rs_stochastic::diffusion::wishart::Wishart;
@@ -26,12 +25,10 @@ use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
 use stochastic_rs_stochastic::volatility::bns::Bns;
 use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
-use stochastic_rs_stochastic::volatility::double_heston::DoubleHestonPaths;
 use stochastic_rs_stochastic::volatility::heston::Euler;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 use stochastic_rs_stochastic::volatility::heston_log::HestonLog;
 use stochastic_rs_stochastic::volatility::heston2d::Heston2D;
-use stochastic_rs_stochastic::volatility::heston2d::Heston2DPaths;
 use stochastic_rs_stochastic::volatility::hkde::Hkde;
 use stochastic_rs_stochastic::volatility::multifactor_heston::MultifactorHeston;
 use stochastic_rs_stochastic::volatility::multifactor_heston::MultifactorHestonPaths;
@@ -41,6 +38,7 @@ use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
 
 use super::common::Device;
 use super::common::agrees;
+use super::common::slots;
 
 /// Fewer paths than the scalar cases use: a system draw carries two paths.
 const M: usize = 3_000;
@@ -313,12 +311,6 @@ fn double_heston_agrees_with_the_cpu_law() {
       Deterministic::new(31),
     )
   };
-  let slots = |paths: Vec<DoubleHestonPaths<f32>>| {
-    paths
-      .into_iter()
-      .map(|p| [p.s, p.v1, p.v2])
-      .collect::<Vec<_>>()
-  };
   let device = slots(build().on::<Device>().sample_par(M));
   assert!(
     device
@@ -362,12 +354,6 @@ fn stochastic_correlation_heston_agrees_with_the_cpu_law() {
       Some(1.0),
       Deterministic::new(37),
     )
-  };
-  let slots = |paths: Vec<HestonStochCorrPaths<f32>>| {
-    paths
-      .into_iter()
-      .map(|p| [p.s, p.v, p.rho])
-      .collect::<Vec<_>>()
   };
   let device = slots(build().on::<Device>().sample_par(M));
   assert!(
@@ -502,12 +488,6 @@ fn two_asset_heston_agrees_with_the_cpu_law() {
       VarianceBoundary::Floor,
       Deterministic::new(83),
     )
-  };
-  let slots = |paths: Vec<Heston2DPaths<f32>>| {
-    paths
-      .into_iter()
-      .map(|p| [p.x1, p.v1, p.x2, p.v2])
-      .collect::<Vec<_>>()
   };
   let device = slots(build().on::<Device>().sample_par(M));
   assert!(

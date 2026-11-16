@@ -18,6 +18,7 @@ use stochastic_rs_stochastic::correlation::VanEmmerich;
 use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
 use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorrSampler;
 use stochastic_rs_stochastic::correlation::stochastic_correlated_bm;
+use stochastic_rs_stochastic::device::Cpu;
 use stochastic_rs_stochastic::diffusion::bessel::Bessel;
 use stochastic_rs_stochastic::diffusion::bessel::SquaredBessel;
 use stochastic_rs_stochastic::diffusion::cev::Cev;
@@ -34,6 +35,7 @@ use stochastic_rs_stochastic::diffusion::multi_gbm::MultiGbm;
 use stochastic_rs_stochastic::diffusion::ou::Ou;
 use stochastic_rs_stochastic::diffusion::regime_switching::RegimeSwitchingDiffusion;
 use stochastic_rs_stochastic::diffusion::wishart::Wishart;
+use stochastic_rs_stochastic::euler::EulerBackend;
 use stochastic_rs_stochastic::euler::EulerCoefficients;
 use stochastic_rs_stochastic::euler::EulerSystem;
 use stochastic_rs_stochastic::euler::LiftSpec;
@@ -257,8 +259,8 @@ refuses! {
     => Hawkes::<f64>::new(0.5, 0.3, 1.0, Horizon::Until(-1.0), Unseeded);
   a_renewal_process_refuses_an_infinite_horizon: "t_max must satisfy `t_max > T::zero() && t_max.is_finite()`, got t_max = inf"
     => CustomJt::<f64, _>::new(Horizon::Until(f64::INFINITY), SimdExp::new(1.0), Unseeded);
-  a_compound_renewal_process_refuses_a_nan_horizon: "t_max must satisfy `t_max > T::zero() && t_max.is_finite()`, got t_max = NaN"
-    => CompoundCustom::<f64, _, _>::new(SimdNormal::new(0.0, 1.0), CustomJt::new(Horizon::Until(f64::NAN), SimdExp::new(1.0), Unseeded), Unseeded);
+  a_renewal_process_refuses_a_nan_horizon: "t_max must satisfy `t_max > T::zero() && t_max.is_finite()`, got t_max = NaN"
+    => CustomJt::<f64, _>::new(Horizon::Until(f64::NAN), SimdExp::new(1.0), Unseeded);
   a_multivariate_hawkes_refuses_a_zero_horizon: "t_max must satisfy `t_max > T::zero() && t_max.is_finite()`, got t_max = 0.0"
     => MultivariateHawkes::<f64>::new(array![1.0], array![[0.1]], array![[1.0]], Horizon::Until(0.0), Unseeded);
   hawkes_refuses_a_zero_baseline_at_construction: "mu must satisfy `mu > T::zero()`, got mu = 0.0"
@@ -683,38 +685,45 @@ fn is_debug_and_clone<T: core::fmt::Debug + Clone>() {}
 
 fn is_debug<T: core::fmt::Debug>() {}
 
+/// Generic over the backend, so a `Debug` or `Clone` written for `Cpu` alone fails to compile.
+fn every_process_is_debug_and_clone_on<B: EulerBackend<f64> + core::fmt::Debug>() {
+  is_debug_and_clone::<Adg<f64, Unseeded, B>>();
+  is_debug_and_clone::<Bates<f64, SimdNormal<f64>, Unseeded, B>>();
+  is_debug_and_clone::<Bns<f64, Unseeded, B>>();
+  is_debug_and_clone::<Cir2F<f64, Unseeded, B>>();
+  is_debug_and_clone::<CompoundCustom<f64, SimdNormal<f64>, SimdExp<f64>, Unseeded, B>>();
+  is_debug_and_clone::<Ctrw<f64, Unseeded, B>>();
+  is_debug_and_clone::<CustomJt<f64, SimdExp<f64>, Unseeded, B>>();
+  is_debug_and_clone::<DoubleHeston<f64, Unseeded, B>>();
+  is_debug_and_clone::<FbatesSvj<f64, Unseeded, B>>();
+  is_debug_and_clone::<Fheston<f64, Unseeded, B>>();
+  is_debug_and_clone::<GaussianPolynomialVolatility<f64, ExponentialKernel<f64>, Unseeded, B>>();
+  is_debug_and_clone::<Heston2D<f64, Unseeded, B>>();
+  is_debug_and_clone::<Hjm<f64, Unseeded, B>>();
+  is_debug_and_clone::<Hkde<f64, Unseeded, B>>();
+  is_debug_and_clone::<JumpFou<f64, SimdNormal<f64>, Unseeded, B>>();
+  is_debug_and_clone::<JumpFouCustom<f64, SimdExp<f64>, SimdNormal<f64>, Unseeded, B>>();
+  is_debug_and_clone::<LevyDiffusion<f64, SimdNormal<f64>, Unseeded, B>>();
+  is_debug_and_clone::<Lmm<f64, Unseeded, B>>();
+  is_debug_and_clone::<MultifactorHeston<f64, 2, Unseeded, B>>();
+  is_debug_and_clone::<MultifactorSabr<f64, Unseeded, B>>();
+  is_debug_and_clone::<MultivariateHawkes<f64, Unseeded, B>>();
+  is_debug_and_clone::<RegimeSwitchingDiffusion<f64, Unseeded, B>>();
+  is_debug_and_clone::<Volterra<f64, Unseeded, B>>();
+  is_debug_and_clone::<VolterraSde<f64, ExponentialKernel<f64>, Unseeded, B>>();
+  is_debug_and_clone::<VolterraSquareRoot<f64, ExponentialKernel<f64>, Unseeded, B>>();
+  is_debug_and_clone::<WuZhang<f64, Unseeded, B>>();
+}
+
 #[test]
 fn every_process_is_debug_and_clone() {
-  is_debug_and_clone::<Adg<f64>>();
-  is_debug_and_clone::<Bates<f64, SimdNormal<f64>>>();
-  is_debug_and_clone::<Bns<f64>>();
-  is_debug_and_clone::<Cir2F<f64>>();
-  is_debug_and_clone::<CompoundCustom<f64, SimdNormal<f64>, SimdExp<f64>>>();
-  is_debug_and_clone::<Ctrw<f64>>();
-  is_debug_and_clone::<CustomJt<f64, SimdExp<f64>>>();
-  is_debug_and_clone::<DoubleHeston<f64>>();
-  is_debug_and_clone::<FbatesSvj<f64>>();
-  is_debug_and_clone::<Fheston<f64>>();
-  is_debug_and_clone::<GaussianPolynomialVolatility<f64, ExponentialKernel<f64>>>();
-  is_debug_and_clone::<Heston2D<f64>>();
-  is_debug_and_clone::<Hjm<f64>>();
-  is_debug_and_clone::<Hkde<f64>>();
-  is_debug_and_clone::<JumpFou<f64, SimdNormal<f64>>>();
-  is_debug_and_clone::<JumpFouCustom<f64, SimdExp<f64>, SimdNormal<f64>>>();
-  is_debug_and_clone::<LevyDiffusion<f64, SimdNormal<f64>>>();
-  is_debug_and_clone::<Lmm<f64>>();
-  is_debug_and_clone::<MultifactorHeston<f64, 2>>();
-  is_debug_and_clone::<MultifactorSabr<f64>>();
-  is_debug_and_clone::<MultivariateHawkes<f64>>();
-  is_debug_and_clone::<RegimeSwitchingDiffusion<f64>>();
-  is_debug_and_clone::<Volterra<f64>>();
-  is_debug_and_clone::<VolterraSde<f64, ExponentialKernel<f64>>>();
-  is_debug_and_clone::<VolterraSquareRoot<f64, ExponentialKernel<f64>>>();
-  is_debug_and_clone::<WuZhang<f64>>();
+  every_process_is_debug_and_clone_on::<Cpu>();
 }
 
 #[test]
 fn the_other_public_types_are_debug() {
+  type DriftFn = fn(&Array1<f64>, f64) -> Array1<f64>;
+  type DiffusionFn = fn(&Array1<f64>, f64) -> Array2<f64>;
   is_debug::<AndersenQe>();
   is_debug::<ArSampler<f64>>();
   is_debug::<Cgns<f64>>();
@@ -729,5 +738,7 @@ fn the_other_public_types_are_debug() {
   is_debug::<ItoCalculator>();
   is_debug::<ItoResult>();
   is_debug::<LiftSpec<'static, f64>>();
+  is_debug::<NoiseModel>();
   is_debug::<RlFbm<f64>>();
+  is_debug::<Sde<f64, DriftFn, DiffusionFn>>();
 }
