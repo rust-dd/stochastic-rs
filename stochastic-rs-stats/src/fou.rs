@@ -21,7 +21,6 @@ use crate::hurst::variations::a2_coefficients;
 use crate::hurst::variations::daubechies_coeffs;
 use crate::hurst::variations::lfilter_f64;
 use crate::hurst::variations::power_variation;
-use crate::hurst::variations::power_variation_nonoverlap;
 use crate::input::as_slice_or_copy;
 use crate::input::reject_constant;
 use crate::input::validate;
@@ -181,11 +180,16 @@ pub fn fit_fou_central_differences(
   })
 }
 
-/// Hu–Nualart–Zhou fit, `H` from disjoint-window variations; `Err` below `k + 2` points, on
-/// non-finite or flat data or no usable `H ∈ (0, 1)`, `σ`, `θ`; panics on a bad argument.
+/// Hu–Nualart–Zhou fit; `Err` below `k + 2` points, on non-finite or flat data or no usable
+/// `H ∈ (0, 1)`, `σ`, `θ`; panics on a bad argument.
+/// Reference: Brouste & Iacus (2013), arXiv:1112.3777, §3.1, and Coeurjolly (2001), Statistical Inference for Stochastic Processes 4, 199–227, for `H`.
 ///
 /// $$
-/// \hat H=\frac{1+\log_2\bigl(\tilde V_{k,p}(2)/\tilde V_{k,p}(1)\bigr)}{p},\qquad
+/// V_{k,p}(s)=\sum_{i=0}^{n-ks}\Bigl|\sum_{j=0}^{k}(-1)^{k-j}\tbinom kj X_{i+js}\Bigr|^p,\qquad
+/// \hat H=\frac1p\log_2\frac{V_{k,p}(2)/(n+1-2k)}{V_{k,p}(1)/(n+1-k)}
+/// $$
+///
+/// $$
 /// |\hat\sigma|^p=\frac{n^{p\hat H-1}\,V_{k,p}(1)}{c_{k,p}\,T},\qquad
 /// \hat\theta=\Bigl(\frac{\sum_i(X_i-\bar X)^2}{n\,\hat\sigma^2\hat H\,\Gamma(2\hat H)}\Bigr)^{-1/(2\hat H)}
 /// $$
@@ -216,31 +220,32 @@ pub fn fit_fou_power_variation(
   }
   checked(path, k + 2)?;
 
-  let dt = delta.unwrap_or(1.0 / (path.len() - 1) as f64);
+  let n_points = path.len();
+  let dt = delta.unwrap_or(1.0 / (n_points - 1) as f64);
+  let v1 = power_variation::<f64>(path, k, p, 1);
 
   let hurst = match hurst_override {
     Some(hurst) => hurst,
     None => {
-      let v1 = power_variation_nonoverlap::<f64>(path, k, p, 1);
-      let v2 = power_variation_nonoverlap::<f64>(path, k, p, 2);
+      let v2 = power_variation::<f64>(path, k, p, 2);
       if v1 == 0.0 || v2 == 0.0 {
         return Err(StatsError::DegenerateData("zero power variation"));
       }
-      hurst_from_ratio((1.0 + (v2 / v1).log2()) / p)?
+      let mean_ratio = (v2 / (n_points - 2 * k) as f64) / (v1 / (n_points - k) as f64);
+      hurst_from_ratio(mean_ratio.log2() / p)?
     }
   };
 
   let sigma = match sigma_override {
     Some(sigma) => sigma,
     None => {
-      let n = (path.len() - 1) as f64;
+      let n = (n_points - 1) as f64;
       let t_horizon = n * dt;
-      let v = power_variation::<f64>(path, k, p, 1);
-      if v == 0.0 {
+      if v1 == 0.0 {
         return Err(StatsError::DegenerateData("zero power variation"));
       }
       let c_kp = c_k_p(k, p, hurst)?;
-      let scaled = n.powf(-1.0 + p * hurst) * v;
+      let scaled = n.powf(-1.0 + p * hurst) * v1;
       let sigma_abs_p = positive(
         scaled / (c_kp * t_horizon),
         "sigma from the power variation",

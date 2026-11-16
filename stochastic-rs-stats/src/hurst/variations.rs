@@ -6,12 +6,11 @@
 //! `1` and `2` satisfies `V(2) / V(1) ≈ 2^{pH}` (up to the order-
 //! specific factor), so `H` follows from a single log-ratio.
 //!
-//! References:
-//! - Coeurjolly (2001) — *Estimating the parameters of a fractional
-//!   Brownian motion by discrete variations of its sample paths*,
-//!   Statistical Inference for Stochastic Processes 4(2), 199–227.
-//! - Brouste & Iacus (2013) — *Parameter estimation for the discretely
-//!   observed fractional Ornstein-Uhlenbeck process*, arXiv:1703.09372.
+//! Reference: Coeurjolly, J.-F. (2001), "Estimating the parameters of a fractional Brownian motion by discrete variations of its sample paths", Statistical Inference for Stochastic Processes 4(2), 199–227, DOI 10.1023/A:1017507306245.
+//!
+//! Reference: Brouste, A. & Iacus, S. M. (2013), "Parameter estimation for the discretely observed fractional Ornstein–Uhlenbeck process and the Yuima R package", Computational Statistics 28(4), 1529–1547, DOI 10.1007/s00180-012-0365-6, arXiv:1112.3777.
+//!
+//! Reference: Istas, J. & Lang, G. (1997), "Quadratic variations and estimation of the local Hölder index of a Gaussian process", Annales de l'Institut Henri Poincaré (B) Probability and Statistics 33(4), 407–436, DOI 10.1016/S0246-0203(97)80099-4.
 
 use std::f64::consts::SQRT_2;
 
@@ -33,8 +32,8 @@ pub enum VariationKind {
   Daubechies,
   /// Second / fourth-order central difference moments ratio.
   CentralDiff,
-  /// `k`-th order `p`-power variation at strides 1 and 2
-  /// (arXiv:1703.09372).
+  /// `k`-th order `p`-power variations at lags 1 and 2, the lag-2 one over every other window; the
+  /// lag ratio is Istas & Lang (1997) and Coeurjolly (2001).
   PowerVariation { k: usize, p: f64 },
 }
 
@@ -231,22 +230,15 @@ pub(crate) fn central_diff_h_inner<T: FloatExt>(
   Ok((h, sum2, sum1))
 }
 
-/// `k`-th order `p`-power variation Hurst estimator
-/// (arXiv:1703.09372).  Returns `(H, V_short, V_long)`.
-///
-/// Uses the non-overlapping (subsample-by-stride) variant so that
-/// `V_{stride=2} / V_{stride=1} → 2^{pH - 1}` (Coeurjolly scaling),
-/// matching the closed-form `H = (1 + log₂(V₂/V₁)) / p`.  The
-/// overlapping [`power_variation`] (used by
-/// [`crate::fou::fit_fou_power_variation`]) does not satisfy this
-/// relation and produces biased Hurst estimates.
+/// `H = (1 + log₂(Ṽ(2)/Ṽ(1)))/p` with `Ṽ(s)` the lag-`s` variation over every `s`-th window, whose
+/// halved count makes the ratio `2^{pH − 1}`; returns `(H, V_short, V_long)`.
 pub(crate) fn power_variation_h_inner<T: FloatExt>(
   x: ArrayView1<T>,
   k: usize,
   p: f64,
 ) -> Result<(f64, f64, f64), StatsError> {
-  let v1 = power_variation_nonoverlap::<T>(x, k, p, 1);
-  let v2 = power_variation_nonoverlap::<T>(x, k, p, 2);
+  let v1 = power_variation_subsampled::<T>(x, k, p, 1);
+  let v2 = power_variation_subsampled::<T>(x, k, p, 2);
   if !(v1 > 0.0 && v2 > 0.0 && v1.is_finite() && v2.is_finite()) {
     return Err(StatsError::DegenerateData("constant or zero-variance path"));
   }
@@ -257,11 +249,8 @@ pub(crate) fn power_variation_h_inner<T: FloatExt>(
   Ok((h, v1, v2))
 }
 
-/// `k`-th order `p`-power variation at the given stride, **overlapping**
-/// windows (step 1).  Used by
-/// [`crate::fou::fit_fou_power_variation`] (its bit-exact regression
-/// test pins this exact formula).  Caller checks length / parameter
-/// validity.
+/// `k`-th order `p`-power variation at lag `stride`, summed over every position; the caller checks
+/// that a window fits.
 pub(crate) fn power_variation<T: FloatExt>(
   x: ArrayView1<T>,
   k: usize,
@@ -285,11 +274,8 @@ pub(crate) fn power_variation<T: FloatExt>(
   v
 }
 
-/// `k`-th order `p`-power variation at the given stride,
-/// **non-overlapping** (windows step by `stride`).  This is the
-/// Coeurjolly / Brouste-Iacus variant and gives the unbiased
-/// Hurst estimate via the `(1 + log₂(V₂/V₁)) / p` formula.
-pub(crate) fn power_variation_nonoverlap<T: FloatExt>(
+/// [`power_variation`] over every `stride`-th window only; the windows still overlap for `k ≥ 2`.
+fn power_variation_subsampled<T: FloatExt>(
   x: ArrayView1<T>,
   k: usize,
   p: f64,
