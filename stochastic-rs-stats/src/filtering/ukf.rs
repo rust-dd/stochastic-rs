@@ -31,7 +31,8 @@ pub struct UkfState {
   pub covariance: Array2<f64>,
 }
 
-/// Sigma-point parameters of [`unscented_kalman_step`], as in Wan & van der Merwe (2000).
+/// Sigma-point parameters of [`unscented_kalman_step`], as in Wan & van der Merwe (2000); all
+/// finite, `alpha > 0` and `n + kappa > 0` (`n` the state dimension), so no weight divides by zero.
 #[derive(Debug, Clone, Copy)]
 pub struct UkfTuning {
   /// Spread of the sigma points around the mean.
@@ -53,7 +54,7 @@ impl Default for UkfTuning {
 }
 
 /// One UKF predict-update of `prior` with sigma points set by `tuning`; `Err` on a non-PD prior or
-/// a singular innovation covariance, and panics on mismatched shapes.
+/// a singular innovation covariance, and panics on mismatched shapes or a `tuning` out of range.
 pub fn unscented_kalman_step<F, H>(
   prior: &UkfState,
   transition: F,
@@ -71,6 +72,7 @@ where
   let n = prior.mean.len();
   assert_eq!(prior.covariance.dim(), (n, n));
   assert_eq!(process_cov.dim(), (n, n));
+  assert_tuning(tuning, n);
   let lambda = alpha * alpha * (n as f64 + kappa) - n as f64;
   let scale = (n as f64 + lambda).sqrt();
 
@@ -198,6 +200,33 @@ where
   })
 }
 
+#[track_caller]
+#[inline(never)]
+fn assert_tuning(tuning: UkfTuning, n: usize) {
+  let UkfTuning { alpha, beta, kappa } = tuning;
+  assert!(
+    alpha.is_finite(),
+    "tuning.alpha must satisfy `tuning.alpha.is_finite()`, got tuning.alpha = {alpha:?}"
+  );
+  assert!(
+    alpha > 0.0,
+    "tuning.alpha must satisfy `tuning.alpha > 0.0`, got tuning.alpha = {alpha:?}"
+  );
+  assert!(
+    beta.is_finite(),
+    "tuning.beta must satisfy `tuning.beta.is_finite()`, got tuning.beta = {beta:?}"
+  );
+  assert!(
+    kappa.is_finite(),
+    "tuning.kappa must satisfy `tuning.kappa.is_finite()`, got tuning.kappa = {kappa:?}"
+  );
+  let spread = n as f64 + kappa;
+  assert!(
+    spread > 0.0,
+    "n + tuning.kappa must satisfy `n + tuning.kappa > 0.0`, got n + tuning.kappa = {spread:?}, n = {n}"
+  );
+}
+
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
@@ -299,6 +328,76 @@ mod tests {
     )
     .unwrap_err();
     assert_eq!(err, StatsError::Singular("prior covariance"));
+  }
+
+  #[test]
+  fn a_tuning_outside_its_range_panics_in_the_predicate_form() {
+    let default = UkfTuning::default();
+    let cases = [
+      (
+        UkfTuning {
+          alpha: f64::NAN,
+          ..default
+        },
+        "tuning.alpha must satisfy `tuning.alpha.is_finite()`, got tuning.alpha = NaN",
+      ),
+      (
+        UkfTuning {
+          alpha: 0.0,
+          ..default
+        },
+        "tuning.alpha must satisfy `tuning.alpha > 0.0`, got tuning.alpha = 0.0",
+      ),
+      (
+        UkfTuning {
+          beta: f64::INFINITY,
+          ..default
+        },
+        "tuning.beta must satisfy `tuning.beta.is_finite()`, got tuning.beta = inf",
+      ),
+      (
+        UkfTuning {
+          kappa: f64::NAN,
+          ..default
+        },
+        "tuning.kappa must satisfy `tuning.kappa.is_finite()`, got tuning.kappa = NaN",
+      ),
+      (
+        UkfTuning {
+          kappa: -2.0,
+          ..default
+        },
+        "n + tuning.kappa must satisfy `n + tuning.kappa > 0.0`, got n + tuning.kappa = 0.0, n = 2",
+      ),
+    ];
+    for (tuning, message) in cases {
+      let payload = std::panic::catch_unwind(|| {
+        let prior = UkfState {
+          mean: Array1::from(vec![0.0_f64, 0.0]),
+          covariance: Array2::<f64>::eye(2),
+        };
+        let identity = |x: ArrayView1<f64>| x.to_owned();
+        let first = |x: ArrayView1<f64>| Array1::from(vec![x[0]]);
+        let (q, r) = (Array2::<f64>::eye(2), Array2::<f64>::eye(1));
+        let y = Array1::from(vec![0.5_f64]);
+        let _ = unscented_kalman_step(
+          &prior,
+          identity,
+          first,
+          q.view(),
+          r.view(),
+          y.view(),
+          tuning,
+        );
+      })
+      .expect_err("the step accepted an invalid tuning");
+      let text = payload
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
+        .expect("a text panic payload");
+      assert_eq!(text, message);
+    }
   }
 
   #[test]
