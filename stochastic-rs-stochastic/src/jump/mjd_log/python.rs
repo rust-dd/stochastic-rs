@@ -16,7 +16,7 @@ pub struct PyMjdLog {
 
 py_process_methods!(PyMjdLog, array1, py_device_dispatch, {
   #[new]
-  #[pyo3(signature = (mu=None, b=None, r=None, r_f=None, *, sigma, lambda_, nu, omega, n, s0=None, t=None, seed=None, dtype=None, device=None))]
+  #[pyo3(signature = (mu=None, b=None, r=None, r_f=None, *, sigma, lambda_, nu, omega, n, s0, t=None, seed=None, dtype=None, device=None))]
   fn new(
     mu: Option<f64>,
     b: Option<f64>,
@@ -27,7 +27,7 @@ py_process_methods!(PyMjdLog, array1, py_device_dispatch, {
     nu: f64,
     omega: f64,
     n: usize,
-    s0: Option<f64>,
+    s0: f64,
     t: Option<f64>,
     seed: Option<u64>,
     dtype: Option<&str>,
@@ -52,7 +52,7 @@ py_process_methods!(PyMjdLog, array1, py_device_dispatch, {
             nu as f32,
             omega as f32,
             n,
-            s0.map(|v| v as f32),
+            s0 as f32,
             t.map(|v| v as f32),
             SharedSeed::new(sd),
           ));
@@ -78,7 +78,7 @@ py_process_methods!(PyMjdLog, array1, py_device_dispatch, {
             nu as f32,
             omega as f32,
             n,
-            s0.map(|v| v as f32),
+            s0 as f32,
             t.map(|v| v as f32),
             Unseeded,
           ));

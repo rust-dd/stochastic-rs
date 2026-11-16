@@ -76,7 +76,7 @@ pub struct FBatesSvj<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub omega: T,
   /// Number of points sampled along the fractional-Bates path.
   pub n: usize,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy.
   pub seed: S,

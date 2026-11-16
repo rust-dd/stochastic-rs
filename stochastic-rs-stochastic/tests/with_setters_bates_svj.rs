@@ -25,8 +25,8 @@ fn bsvj_base_seeded<S: SeedExt>(seed: S) -> BatesSvj<f64, S> {
     0.3,
     -0.7,
     256,
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     Some(1.0),
     VarianceBoundary::Floor,
     seed,
@@ -51,8 +51,8 @@ struct BsvjFields {
   sigma: f64,
   rho: f64,
   n: usize,
-  s0: Option<f64>,
-  v0: Option<f64>,
+  s0: f64,
+  v0: f64,
   t: Option<f64>,
   boundary: VarianceBoundary,
 }
@@ -101,8 +101,8 @@ bsvj_plain_test!(bates_svj_with_omega_round_trip, with_omega, omega, 0.25);
 bsvj_plain_test!(bates_svj_with_alpha_round_trip, with_alpha, alpha, 0.06);
 bsvj_plain_test!(bates_svj_with_beta_round_trip, with_beta, beta, 2.0);
 bsvj_plain_test!(bates_svj_with_sigma_round_trip, with_sigma, sigma, 0.35);
-bsvj_plain_test!(bates_svj_with_s0_round_trip, with_s0, s0, Some(120.0));
-bsvj_plain_test!(bates_svj_with_v0_round_trip, with_v0, v0, Some(0.06));
+bsvj_plain_test!(bates_svj_with_s0_round_trip, with_s0, s0, 120.0);
+bsvj_plain_test!(bates_svj_with_v0_round_trip, with_v0, v0, 0.06);
 bsvj_plain_test!(
   bates_svj_with_boundary_round_trip,
   with_boundary,
@@ -148,8 +148,8 @@ fn bates_svj_with_rho_rebuilds_cgns_cache() {
     0.3,
     -0.4,
     256,
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     Some(1.0),
     VarianceBoundary::Floor,
     Deterministic::new(7),
@@ -186,8 +186,8 @@ fn bates_svj_with_steps_rebuilds_cgns_cache() {
     0.3,
     -0.7,
     64,
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     Some(1.0),
     VarianceBoundary::Floor,
     Deterministic::new(9),
@@ -223,8 +223,8 @@ fn bates_svj_with_horizon_rebuilds_cgns_cache() {
     0.3,
     -0.7,
     256,
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     Some(2.0),
     VarianceBoundary::Floor,
     Deterministic::new(11),

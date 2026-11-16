@@ -47,11 +47,11 @@ pub struct HestonLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub rho: T,
   /// Number of discrete time steps
   pub n: usize,
-  /// Initial asset price (must be > 0)
-  pub s0: Option<T>,
-  /// Initial variance level
-  pub v0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Initial spot.
+  pub s0: T,
+  /// Initial variance.
+  pub v0: T,
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Treatment of a negative square-root state after a step; the Feller condition is not required.
   pub boundary: VarianceBoundary,
@@ -70,8 +70,8 @@ impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
     xi: T,
     rho: T,
     n: usize,
-    s0: Option<T>,
-    v0: Option<T>,
+    s0: T,
+    v0: T,
     t: Option<T>,
     boundary: VarianceBoundary,
     seed: S,
@@ -94,12 +94,12 @@ impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
       "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
     );
     assert!(
-      s0.is_none_or(|v| v.is_finite()),
-      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
     );
     assert!(
-      v0.is_none_or(|v| v.is_finite()),
-      "v0 must satisfy `v0.is_none_or(|v| v.is_finite())`, got v0 = {v0:?}"
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
     );
     assert!(
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
@@ -123,8 +123,12 @@ impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
       "rho must satisfy `rho >= -T::one() && rho <= T::one()`, got rho = {rho:?}"
     );
     assert!(
-      v0.is_none_or(|v| v >= T::zero()),
-      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+      v0 >= T::zero(),
+      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
+    );
+    assert!(
+      s0 > T::zero(),
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
     );
 
     Self {
@@ -196,16 +200,20 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
   }
 
   /// Replace `s0`, all else unchanged.
-  pub fn with_s0(mut self, s0: Option<T>) -> Self {
+  pub fn with_s0(mut self, s0: T) -> Self {
+    assert!(
+      s0 > T::zero(),
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
+    );
     self.s0 = s0;
     self
   }
 
   /// Replace `v0`, all else unchanged.
-  pub fn with_v0(mut self, v0: Option<T>) -> Self {
+  pub fn with_v0(mut self, v0: T) -> Self {
     assert!(
-      v0.is_none_or(|v| v >= T::zero()),
-      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+      v0 >= T::zero(),
+      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
     );
     self.v0 = v0;
     self
@@ -263,12 +271,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn initial_state(&self) -> [T; 4] {
-    [
-      self.s0.unwrap_or(T::one()),
-      self.v0.unwrap_or(self.theta).max(T::zero()),
-      T::zero(),
-      T::zero(),
-    ]
+    [self.s0, self.v0.max(T::zero()), T::zero(), T::zero()]
   }
 
   fn grid_points(&self) -> usize {
@@ -315,8 +318,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     let sqrt_dt = dt.sqrt();
     HestonLogSampler {
       n: self.n,
-      s0: self.s0.unwrap_or(T::one()),
-      v0: self.v0.unwrap_or(self.theta).max(T::zero()),
+      s0: self.s0,
+      v0: self.v0.max(T::zero()),
       drift: self.drift.rate(),
       kappa: self.kappa,
       theta: self.theta,
@@ -379,7 +382,8 @@ impl<T: FloatExt> HestonLogSampler<T> {
     }
     assert!(
       self.s0 > T::zero(),
-      "s0 must be > 0 for log-price simulation"
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {:?}",
+      self.s0
     );
     s[0] = self.s0;
     v[0] = self.v0;
@@ -461,8 +465,8 @@ mod tests {
       0.3,
       -0.7,
       256,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       Some(1.0),
       VarianceBoundary::Floor,
       Unseeded,
@@ -480,8 +484,8 @@ mod tests {
       0.5,
       -0.7,
       256,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       Some(1.0),
       VarianceBoundary::Floor,
       Unseeded,

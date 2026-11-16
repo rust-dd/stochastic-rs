@@ -35,7 +35,7 @@ pub struct Mcgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub rho: Array2<T>,
   /// Number of increments sampled along each stream.
   pub n: usize,
-  /// Simulation horizon [0, t] (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,

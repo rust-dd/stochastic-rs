@@ -13,6 +13,7 @@ use stochastic_rs_stochastic::autoregressive::sarima::Sarima;
 use stochastic_rs_stochastic::correlation::VanEmmerich;
 use stochastic_rs_stochastic::correlation::stochastic_correlated_bm;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
+use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
 use stochastic_rs_stochastic::diffusion::multi_gbm::MultiGbm;
 use stochastic_rs_stochastic::diffusion::ou::Ou;
 use stochastic_rs_stochastic::diffusion::wishart::Wishart;
@@ -29,6 +30,7 @@ use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
 use stochastic_rs_stochastic::jump::kou::Kou;
 use stochastic_rs_stochastic::jump::levy_diffusion::LevyDiffusion;
 use stochastic_rs_stochastic::jump::merton::Merton;
+use stochastic_rs_stochastic::jump::mjd_log::MjdLog;
 use stochastic_rs_stochastic::jump::nig::Nig;
 use stochastic_rs_stochastic::jump::rdts::Rdts;
 use stochastic_rs_stochastic::jump::vg::Vg;
@@ -52,7 +54,10 @@ use stochastic_rs_stochastic::rough::rl_fbm::RlFBm;
 use stochastic_rs_stochastic::sheet::fbs::Fbs;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::HestonPow;
+use stochastic_rs_stochastic::volatility::bates_svj::BatesSvj;
 use stochastic_rs_stochastic::volatility::heston::Heston;
+use stochastic_rs_stochastic::volatility::heston_log::HestonLog;
+use stochastic_rs_stochastic::volatility::hkde::Hkde;
 use stochastic_rs_stochastic::volatility::multifactor_sabr::MultifactorSabr;
 use stochastic_rs_stochastic::volterra::ExponentialKernel;
 use stochastic_rs_stochastic::volterra::VolterraSquareRoot;
@@ -99,13 +104,13 @@ refuses! {
   a_noise_of_no_increments_is_refused: "n must satisfy `n >= 1`, got n = 0"
     => Gn::<f64>::new(0, None, Unseeded);
   a_zero_horizon_is_refused: "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = Some(0.0)"
-    => Gbm::<f64>::new(0.05, 0.2, 64, None, Some(0.0), Unseeded);
+    => Gbm::<f64>::new(0.05, 0.2, 64, 1.0, Some(0.0), Unseeded);
   a_negative_horizon_is_refused: "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = Some(-1.0)"
     => Ou::<f64>::new(1.0, 0.0, 0.2, 64, None, Some(-1.0), Unseeded);
   gbm_refuses_a_negative_volatility: "sigma must satisfy `sigma >= T::zero()`, got sigma = -0.2"
-    => Gbm::<f64>::new(0.05, -0.2, 64, None, None, Unseeded);
-  gbm_refuses_a_non_positive_start: "x0 must satisfy `x0.is_none_or(|x0| x0 > T::zero())`, got x0 = Some(0.0)"
-    => Gbm::<f64>::new(0.05, 0.2, 64, Some(0.0), None, Unseeded);
+    => Gbm::<f64>::new(0.05, -0.2, 64, 1.0, None, Unseeded);
+  gbm_refuses_a_non_positive_start: "x0 must satisfy `x0 > T::zero()`, got x0 = 0.0"
+    => Gbm::<f64>::new(0.05, 0.2, 64, 0.0, None, Unseeded);
   the_tempered_stable_constant_has_a_pole_at_alpha_one: "alpha must satisfy `alpha != T::one()`, got alpha = 1.0"
     => Cts::<f64>::new(2.0, 3.0, 1.0, 64, 8, None, None, Unseeded);
   the_rapidly_decreasing_drift_has_a_pole_at_alpha_one: "alpha must satisfy `alpha != T::one()`, got alpha = 1.0"
@@ -150,11 +155,11 @@ refuses! {
   a_fractional_sheet_refuses_a_nan_hurst: "hurst must satisfy `hurst.is_finite()`, got hurst = NaN"
     => Fbs::<f64>::new(f64::NAN, 16, 16, 1.0, Unseeded);
   a_volatility_model_refuses_a_nan_correlation: "rho must satisfy `rho.is_finite()`, got rho = NaN"
-    => Heston::<f64>::new(Some(100.0), Some(0.04), 1.5, 0.04, 0.3, f64::NAN, 0.05, 64, None, HestonPow::Sqrt, VarianceBoundary::Floor, Unseeded);
+    => Heston::<f64>::new(100.0, 0.04, 1.5, 0.04, 0.3, f64::NAN, 0.05, 64, None, HestonPow::Sqrt, VarianceBoundary::Floor, Unseeded);
   a_volterra_kernel_refuses_a_nan_weight: "c must satisfy `c.is_finite()`, got c = NaN"
     => ExponentialKernel::<f64>::new(1.0, f64::NAN);
   a_volterra_volatility_refuses_a_nan_level: "theta must satisfy `theta.is_finite()`, got theta = NaN"
-    => VolterraSquareRoot::<f64, _>::new(ExponentialKernel::new(1.0, 1.0), 1.0, f64::NAN, 0.3, 64, None, None, Unseeded);
+    => VolterraSquareRoot::<f64, _>::new(ExponentialKernel::new(1.0, 1.0), 1.0, f64::NAN, 0.3, 64, 0.04, None, Unseeded);
 
   an_inverse_gaussian_process_refuses_one_point: "n must satisfy `n >= 2`, got n = 1"
     => Ig::<f64>::new(1.0, 1, Some(3.5), Some(1.0), Unseeded);
@@ -199,6 +204,31 @@ refuses! {
     => CompoundCustom::<f64, _, _>::new(Horizon::Events(8), SimdNormal::new(0.0, 1.0), SimdExp::new(1.0), CustomJt::new(Horizon::Events(8), SimdExp::new(1.0), Unseeded), Unseeded).with_horizon(Horizon::Until(f64::INFINITY));
   the_multivariate_hawkes_horizon_setter_checks_its_time: "t_max must satisfy `t_max > T::zero() && t_max.is_finite()`, got t_max = NaN"
     => MultivariateHawkes::<f64>::new(array![1.0], array![[0.1]], array![[1.0]], Horizon::Events(8), Unseeded).with_horizon(Horizon::Until(f64::NAN));
+
+  a_log_price_model_refuses_a_zero_spot: "s0 must satisfy `s0 > T::zero()`, got s0 = 0.0"
+    => GbmLog::<f64>::new(Drift::Mu(0.05), 0.2, 64, 0.0, None, Unseeded);
+  a_log_heston_refuses_a_negative_spot: "s0 must satisfy `s0 > T::zero()`, got s0 = -1.0"
+    => HestonLog::<f64>::new(Drift::Mu(0.05), 1.5, 0.04, 0.3, -0.7, 64, -1.0, 0.04, None, VarianceBoundary::Floor, Unseeded);
+  a_log_bates_refuses_a_zero_spot: "s0 must satisfy `s0 > T::zero()`, got s0 = 0.0"
+    => BatesSvj::<f64>::new(Drift::Mu(0.05), 0.5, -0.1, 0.2, 0.04, 1.5, 0.3, -0.6, 64, 0.0, 0.04, None, VarianceBoundary::Floor, Unseeded);
+  a_log_jump_diffusion_refuses_a_zero_spot: "s0 must satisfy `s0 > T::zero()`, got s0 = 0.0"
+    => MjdLog::<f64>::new(Drift::Mu(0.05), 0.2, 1.0, 0.0, 0.1, 64, 0.0, None, Unseeded);
+  a_double_exponential_heston_refuses_a_zero_spot: "s0 must satisfy `s0 > T::zero()`, got s0 = 0.0"
+    => Hkde::<f64>::new(0.05, 1.5, 0.04, 0.3, -0.7, 0.04, 0.5, 0.4, 5.0, 5.0, 64, 0.0, None, VarianceBoundary::Floor, Unseeded);
+  the_log_heston_spot_setter_checks_its_value: "s0 must satisfy `s0 > T::zero()`, got s0 = 0.0"
+    => HestonLog::<f64>::new(Drift::Mu(0.05), 1.5, 0.04, 0.3, -0.7, 64, 100.0, 0.04, None, VarianceBoundary::Floor, Unseeded).with_s0(0.0);
+  the_log_bates_spot_setter_checks_its_value: "s0 must satisfy `s0 > T::zero()`, got s0 = 0.0"
+    => BatesSvj::<f64>::new(Drift::Mu(0.05), 0.5, -0.1, 0.2, 0.04, 1.5, 0.3, -0.6, 64, 100.0, 0.04, None, VarianceBoundary::Floor, Unseeded).with_s0(0.0);
+  the_double_exponential_heston_spot_setter_checks_its_value: "s0 must satisfy `s0 > T::zero()`, got s0 = 0.0"
+    => Hkde::<f64>::new(0.05, 1.5, 0.04, 0.3, -0.7, 0.04, 0.5, 0.4, 5.0, 5.0, 64, 100.0, None, VarianceBoundary::Floor, Unseeded).with_s0(0.0);
+  a_log_bates_refuses_a_negative_initial_variance: "v0 must satisfy `v0 >= T::zero()`, got v0 = -0.01"
+    => BatesSvj::<f64>::new(Drift::Mu(0.05), 0.5, -0.1, 0.2, 0.04, 1.5, 0.3, -0.6, 64, 100.0, -0.01, None, VarianceBoundary::Floor, Unseeded);
+  a_double_exponential_heston_refuses_a_negative_initial_variance: "v0 must satisfy `v0 >= T::zero()`, got v0 = -0.01"
+    => Hkde::<f64>::new(0.05, 1.5, 0.04, 0.3, -0.7, -0.01, 0.5, 0.4, 5.0, 5.0, 64, 100.0, None, VarianceBoundary::Floor, Unseeded);
+  the_log_bates_variance_setter_checks_its_value: "v0 must satisfy `v0 >= T::zero()`, got v0 = -0.01"
+    => BatesSvj::<f64>::new(Drift::Mu(0.05), 0.5, -0.1, 0.2, 0.04, 1.5, 0.3, -0.6, 64, 100.0, 0.04, None, VarianceBoundary::Floor, Unseeded).with_v0(-0.01);
+  the_double_exponential_heston_variance_setter_checks_its_value: "v0 must satisfy `v0 >= T::zero()`, got v0 = -0.01"
+    => Hkde::<f64>::new(0.05, 1.5, 0.04, 0.3, -0.7, 0.04, 0.5, 0.4, 5.0, 5.0, 64, 100.0, None, VarianceBoundary::Floor, Unseeded).with_v0(-0.01);
 }
 
 fn scales_with_sigma(path: impl Fn(f64) -> Array1<f64>) {
@@ -409,8 +439,8 @@ fn a_zero_intensity_bates_is_its_diffusion() {
     -0.6,
     jump_sizes(),
     64,
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     Some(1.0),
     VarianceBoundary::Floor,
     Deterministic::new(9),

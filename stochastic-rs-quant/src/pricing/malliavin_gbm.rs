@@ -262,14 +262,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     let mu = r - q;
 
     // Construct a Gbm process with Euler discretization on [0, T].
-    let gbm = Gbm::new(
-      mu,
-      self.v,
-      self.n_steps,
-      Some(s),
-      Some(tau),
-      self.seed.clone(),
-    );
+    let gbm = Gbm::new(mu, self.v, self.n_steps, s, Some(tau), self.seed.clone());
 
     let m = self.n_paths;
     let n = self.n_steps;

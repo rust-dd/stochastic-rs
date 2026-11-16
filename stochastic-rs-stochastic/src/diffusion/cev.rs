@@ -15,6 +15,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::malliavin::Malliavin;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -34,9 +35,9 @@ pub struct Cev<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub gamma: T,
   /// Number of points sampled along the CEV path.
   pub n: usize,
-  /// Initial value S₀ of the CEV path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
@@ -206,6 +207,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       diff_scale: self.sigma,
       gamma: self.gamma,
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
+      dw: Vec::new(),
     }
   }
 
@@ -251,10 +253,19 @@ pub struct CevSampler<T: FloatExt> {
   diff_scale: T,
   gamma: T,
   normal: Seeded<SimdNormal<T>>,
+  dw: Vec<T>,
 }
 
 impl<T: FloatExt> CevSampler<T> {
   fn fill_path(&mut self, out: &mut [T]) {
+    let mut dw = std::mem::take(&mut self.dw);
+    dw.resize(out.len().saturating_sub(1), T::zero());
+    self.fill_path_with(out, &mut dw);
+    self.dw = dw;
+  }
+
+  /// Steps `out` from the `√dt`-scaled increments it first draws into `dw`, one per step.
+  pub(crate) fn fill_path_with(&mut self, out: &mut [T], dw: &mut [T]) {
     if out.is_empty() {
       return;
     }
@@ -262,29 +273,13 @@ impl<T: FloatExt> CevSampler<T> {
     if out.len() == 1 {
       return;
     }
-    let tail = &mut out[1..];
-    self.normal.fill_slice(tail);
+    let dw = &mut dw[..out.len() - 1];
+    self.normal.fill_slice(dw);
     let mut prev = self.x0;
-    for z in tail.iter_mut() {
-      // `prev.abs()` before the fractional power, matching every sibling
-      // `sigma * |X|^p`-shaped diffusion in this module
-      // ([`Ckls`](crate::diffusion::ckls::Ckls),
-      // [`ThreeHalf`](crate::diffusion::three_half::ThreeHalf),
-      // [`FellerRoot`](crate::diffusion::feller_root::FellerRoot)): Euler
-      // discretization of `dS = mu*S*dt + sigma*S^gamma*dW` routinely pushes
-      // `S` below zero for one step even at valid, realistic parameters
-      // (`gamma < 1` is this field's own documented "usual equity-market
-      // calibration"), and `f64::powf` of a negative base at a non-integer
-      // exponent is `NaN` — which would then poison every subsequent step
-      // through `prev`. Taking the elasticity off `|S|` instead keeps the
-      // path finite through a boundary crossing rather than NaN-poisoning
-      // it; it does not floor `S` itself at zero (unlike the CIR/Bessel
-      // family), matching how the sibling files above handle the same
-      // shape.
-      let next =
-        prev + self.mu * prev * self.dt + self.diff_scale * prev.abs().powf(self.gamma) * *z;
-      *z = next;
-      prev = next;
+    for (next, z) in out[1..].iter_mut().zip(dw.iter()) {
+      // `|prev|`, as `gamma`'s doc says: a step can cross zero, and a negative base is NaN here.
+      *next = prev + self.mu * prev * self.dt + self.diff_scale * prev.abs().powf(self.gamma) * *z;
+      prev = *next;
     }
   }
 }
@@ -306,52 +301,32 @@ impl<T: FloatExt> PathSampler<T> for CevSampler<T> {
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Cev<T, S, B> {
-  /// Calculate the Malliavin derivative of the Cev process
-  ///
-  /// The Malliavin derivative of the Cev process is given by
-  /// D_r S_t = \sigma S_t^{\gamma} * 1_{[0, r]}(r) exp(\int_0^r (\mu - \frac{\gamma^2 \sigma^2 S_u^{2\gamma - 2}}{2}) du + \int_0^r \gamma \sigma S_u^{\gamma - 1} dW_u)
-  ///
-  /// The Malliavin derivative of the Cev process shows the sensitivity of the stock price with respect to the Wiener process.
-  pub fn malliavin(&self) -> [Array1<T>; 2] {
-    let dt = if self.n > 1 {
-      self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
-    } else {
-      T::zero()
-    };
-    let mut gn = Array1::<T>::zeros(self.n.saturating_sub(1));
-    if let Some(gn_slice) = gn.as_slice_mut() {
-      let sqrt_dt = dt.sqrt();
-      let mut normal = SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(&self.seed);
-      normal.fill_slice(gn_slice);
-    }
-    let cev = self.sample();
-
-    let mut det_term = Array1::zeros(self.n);
-    let mut stochastic_term = Array1::zeros(self.n);
-    let mut m = Array1::zeros(self.n);
-
-    for i in 0..self.n {
-      // `cev[i].abs()` before every fractional power, for the same reason
-      // as `fill_path`'s own `.abs()`: `sample()` no longer produces NaN
-      // through a zero-crossing, but the realized path can still contain a
-      // negative point, and raising that to a non-integer power here would
-      // reintroduce the same `NaN` this method's own output should not have.
-      det_term[i] = (self.mu
-        - (self.gamma.powi(2)
-          * self.sigma.powi(2)
-          * cev[i]
-            .abs()
-            .powf(T::from_usize_(2) * self.gamma - T::from_usize_(2))
-          / T::from_usize_(2)))
-        * dt;
-      if i > 0 {
-        stochastic_term[i] =
-          self.sigma * self.gamma * cev[i].abs().powf(self.gamma - T::one()) * gn[i - 1];
+  /// A host-sampled path and Nualart's `D_{t_i} X_T`, `σ′ = γσ sgn(X)|X|^{γ−1}`, summed backward
+  /// over the increments that drove the path; undefined at an exact zero for γ < 1:
+  /// $$
+  /// D_{t_i} X_T = \sigma |X_{t_i}|^{\gamma} \exp\Bigl(\sum_{k=i}^{n-2} \bigl(\mu - \tfrac12 \gamma^2 \sigma^2 |X_{t_k}|^{2\gamma - 2}\bigr) \Delta t + \gamma \sigma \operatorname{sgn}(X_{t_k}) |X_{t_k}|^{\gamma - 1} \Delta W_k\Bigr)
+  /// $$
+  pub fn malliavin(&self) -> Malliavin<T, Array1<T>> {
+    let mut paths = Array1::<T>::zeros(self.n);
+    let mut dw = vec![T::zero(); self.n.saturating_sub(1)];
+    self
+      .sampler()
+      .fill_path_with(paths.as_slice_mut().expect("contiguous"), &mut dw);
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1));
+    let (half, two) = (T::from_f64_fast(0.5), T::from_usize_(2));
+    let mut derivative = Array1::<T>::zeros(self.n);
+    let mut tail = T::zero();
+    for i in (0..self.n).rev() {
+      let x = paths[i].abs();
+      if i + 1 < self.n {
+        tail += (self.mu
+          - half * (self.gamma * self.sigma).powi(2) * x.powf(two * self.gamma - two))
+          * dt
+          + self.gamma * self.sigma * x.powf(self.gamma - T::one()) * paths[i].signum() * dw[i];
       }
-      m[i] = self.sigma * cev[i].abs().powf(self.gamma) * (det_term[i] + stochastic_term[i]).exp();
+      derivative[i] = self.sigma * x.powf(self.gamma) * tail.exp();
     }
-
-    [cev, m]
+    Malliavin { paths, derivative }
   }
 }
 
@@ -366,6 +341,46 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
+
+  #[test]
+  fn the_derivative_is_driven_by_the_increments_of_the_path_it_returns() {
+    for x0 in [1.0_f64, -1.0] {
+      let build = || {
+        Cev::<f64, _>::new(
+          0.05,
+          0.3,
+          0.7,
+          65,
+          Some(x0),
+          Some(1.0),
+          Deterministic::new(7),
+        )
+      };
+      let Malliavin {
+        paths, derivative, ..
+      } = build().malliavin();
+      assert_eq!(paths, build().sample());
+      let mut path = vec![0.0_f64; 65];
+      let mut dw = vec![0.0; 64];
+      build().sampler().fill_path_with(&mut path, &mut dw);
+      assert_eq!(paths.as_slice().unwrap(), path.as_slice());
+      let (mu, sigma, gamma, dt) = (0.05_f64, 0.3_f64, 0.7_f64, 1.0 / 64.0);
+      let mut tail = 0.0;
+      for i in (0..65).rev() {
+        let x = path[i].abs();
+        if i < 64 {
+          tail += (mu - 0.5 * (gamma * sigma).powi(2) * x.powf(2.0 * gamma - 2.0)) * dt
+            + gamma * sigma * x.powf(gamma - 1.0) * path[i].signum() * dw[i];
+        }
+        let expected = sigma * x.powf(gamma) * tail.exp();
+        assert_eq!(
+          derivative[i].to_bits(),
+          expected.to_bits(),
+          "x0 = {x0}, t_{i}"
+        );
+      }
+    }
+  }
 
   /// Regression: at these valid, realistic parameters (`gamma < 1`, this
   /// file's own "usual equity-market calibration"), Euler discretization
@@ -407,7 +422,11 @@ mod tests {
       Some(1.0),
       Deterministic::new(2718),
     );
-    let [path, m] = cev.malliavin();
+    let Malliavin {
+      paths: path,
+      derivative: m,
+      ..
+    } = cev.malliavin();
     assert!(
       path.iter().all(|x| x.is_finite()),
       "path went non-finite: {path:?}"

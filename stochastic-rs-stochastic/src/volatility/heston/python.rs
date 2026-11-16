@@ -34,7 +34,7 @@ macro_rules! py_heston_dispatch {
 #[pyo3::prelude::pymethods]
 impl PyHeston {
   #[new]
-  #[pyo3(signature = (kappa, theta, sigma, rho, mu, n, s0=None, v0=None, t=None, pow=None, boundary=None, seed=None, dtype=None, device=None, scheme="euler"))]
+  #[pyo3(signature = (kappa, theta, sigma, rho, mu, n, s0, v0, t=None, pow=None, boundary=None, seed=None, dtype=None, device=None, scheme="euler"))]
   fn new(
     kappa: f64,
     theta: f64,
@@ -42,8 +42,8 @@ impl PyHeston {
     rho: f64,
     mu: f64,
     n: usize,
-    s0: Option<f64>,
-    v0: Option<f64>,
+    s0: f64,
+    v0: f64,
     t: Option<f64>,
     pow: Option<&str>,
     boundary: Option<crate::python_params::PyVarianceBoundary>,
@@ -84,8 +84,8 @@ impl PyHeston {
       match (seed, dtype.unwrap_or("f64")) {
         (Some(sd), "f32") => {
           s.seeded_f32 = Some(Heston::new(
-            s0.map(|v| v as f32),
-            v0.map(|v| v as f32),
+            s0 as f32,
+            v0 as f32,
             kappa as f32,
             theta as f32,
             sigma as f32,
@@ -116,8 +116,8 @@ impl PyHeston {
         }
         (None, "f32") => {
           s.inner_f32 = Some(Heston::new(
-            s0.map(|v| v as f32),
-            v0.map(|v| v as f32),
+            s0 as f32,
+            v0 as f32,
             kappa as f32,
             theta as f32,
             sigma as f32,

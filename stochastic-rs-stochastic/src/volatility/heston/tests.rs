@@ -4,13 +4,11 @@ use super::*;
 use crate::traits::ProcessExt;
 
 #[test]
-#[should_panic(
-  expected = "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = Some(-0.1)"
-)]
+#[should_panic(expected = "v0 must satisfy `v0 >= T::zero()`, got v0 = -0.1")]
 fn negative_initial_variance_panics() {
   let _ = Heston::new(
-    Some(100.0_f64),
-    Some(-0.1),
+    100.0_f64,
+    -0.1,
     1.0,
     0.04,
     0.3,
@@ -27,8 +25,8 @@ fn negative_initial_variance_panics() {
 #[test]
 fn variance_path_stays_non_negative() {
   let p = Heston::new(
-    Some(100.0_f64),
-    Some(0.04),
+    100.0_f64,
+    0.04,
     1.5,
     0.04,
     0.5,
@@ -55,8 +53,8 @@ fn qe_variance_mean_and_asset_martingale() {
   let (s0, v0, kappa, theta, sigma, rho, mu) = (100.0_f64, 0.04, 2.0, 0.04, 0.5, -0.7, 0.0);
   let (n, t, m) = (64usize, 1.0_f64, 30_000usize);
   let model = Heston::new(
-    Some(s0),
-    Some(v0),
+    s0,
+    v0,
     kappa,
     theta,
     sigma,
@@ -106,8 +104,8 @@ fn qe_variance_mean_and_asset_martingale() {
 )]
 fn qe_rejects_three_halves() {
   let _ = Heston::new(
-    Some(100.0_f64),
-    Some(0.04),
+    100.0_f64,
+    0.04,
     2.0,
     0.04,
     0.5,
@@ -125,8 +123,8 @@ fn qe_rejects_three_halves() {
 
 fn qe_switch(kappa: f64, sigma: f64, s0: f64) -> Heston<f64, AndersenQe> {
   Heston::new(
-    Some(s0),
-    Some(0.04),
+    s0,
+    0.04,
     kappa,
     0.04,
     sigma,
@@ -169,8 +167,8 @@ fn qe_rechecks_its_parameters_where_the_scheme_runs() {
 fn the_boundary_selects_the_step() {
   let make = |b| {
     Heston::<f64, Euler, Deterministic>::new(
-      Some(100.0),
-      Some(0.0),
+      100.0,
+      0.0,
       2.0,
       0.04,
       2.0,
@@ -191,6 +189,76 @@ fn the_boundary_selects_the_step() {
   let split = split.expect("v0 = 0 under a vol-of-vol of 2 crosses zero, where the two steps part");
   assert_eq!(floor[split], 0.0);
   assert!(reflect[split] > 0.0);
+}
+
+#[test]
+fn the_initial_values_are_the_first_points() {
+  let h = Heston::<f64, Euler, Deterministic>::new(
+    123.0,
+    0.07,
+    2.0,
+    0.04,
+    0.5,
+    -0.7,
+    0.03,
+    65,
+    Some(1.0),
+    HestonPow::Sqrt,
+    VarianceBoundary::Floor,
+    Deterministic::new(1),
+  );
+  let [s, v] = h.sample();
+  assert_eq!((s[0], v[0]), (123.0, 0.07));
+  let [s, v] = Heston::<f64>::default().sample();
+  assert_eq!(
+    (s[0], v[0]),
+    (Heston::<f64>::default().s0, Heston::<f64>::default().v0)
+  );
+}
+
+#[test]
+fn the_variance_derivative_sums_its_rate_backward_along_the_sampled_variance() {
+  let (kappa, theta, dt) = (2.0_f64, 0.04, 1.0 / 16.0);
+  for (pow, sigma) in [(HestonPow::Sqrt, 0.3_f64), (HestonPow::ThreeHalves, 2.0)] {
+    let make = || {
+      Heston::<f64, Euler, Deterministic>::new(
+        100.0,
+        0.04,
+        kappa,
+        theta,
+        sigma,
+        -0.7,
+        0.05,
+        17,
+        Some(1.0),
+        pow,
+        VarianceBoundary::Floor,
+        Deterministic::new(9),
+      )
+    };
+    let Malliavin {
+      paths, derivative, ..
+    } = make().malliavin();
+    assert_eq!(paths, make().sample());
+    let v = &paths[1];
+    let (p, rate): (f64, &dyn Fn(f64) -> f64) = match pow {
+      HestonPow::Sqrt => (0.5, &|x| {
+        -kappa / 2.0 - (kappa * theta / 2.0 - sigma * sigma / 8.0) / x
+      }),
+      HestonPow::ThreeHalves => (1.5, &|x| {
+        kappa / 2.0 - 3.0 * kappa * theta / (2.0 * x) - 3.0 * sigma * sigma * x / 8.0
+      }),
+    };
+    for i in 0..17 {
+      let tail = (i..16).map(|k| rate(v[k]) * dt).sum::<f64>();
+      let expected = sigma * v[16].powf(p) * tail.exp();
+      assert!(
+        (derivative[i] - expected).abs() <= 1e-12 * expected,
+        "{pow:?}, t_{i}: {} against {expected}",
+        derivative[i]
+      );
+    }
+  }
 }
 
 /// A generic re-tag type-checks only if `qe` keeps the handle it was given.

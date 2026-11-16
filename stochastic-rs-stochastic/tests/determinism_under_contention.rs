@@ -118,7 +118,7 @@ fn the_fractional_noise_reproduces_its_seed_under_contention() {
 /// one moves too, the cause is in the chunking rather than in the pipeline.
 #[test]
 fn a_plain_diffusion_reproduces_its_seed_under_contention() {
-  let build = || Gbm::<f32, _>::new(0.05, 0.2, N, Some(100.0), Some(1.0), Deterministic::new(3));
+  let build = || Gbm::<f32, _>::new(0.05, 0.2, N, 100.0, Some(1.0), Deterministic::new(3));
   let reference = build().sample_par(M);
   holds("GBM", move || build().sample_par(M), reference);
 }

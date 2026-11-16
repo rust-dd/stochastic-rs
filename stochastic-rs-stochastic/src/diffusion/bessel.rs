@@ -54,9 +54,9 @@ pub struct SquaredBessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub delta: T,
   /// Number of points sampled along the BESQ path.
   pub n: usize,
-  /// Initial value X₀ of the BESQ path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Treatment of a negative square-root state after a step; the Feller condition is not required.
   pub boundary: VarianceBoundary,
@@ -374,9 +374,9 @@ pub struct Bessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub delta: T,
   /// Number of points sampled along the BES path.
   pub n: usize,
-  /// Initial value X₀ of the BES path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Treatment of a negative square-root state after a step; the Feller condition is not required.
   pub boundary: VarianceBoundary,

@@ -86,7 +86,7 @@ pub struct TransformedOU<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub transform: Transformation,
   /// Number of points sampled along the correlation path.
   pub n: usize,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,

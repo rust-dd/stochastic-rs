@@ -71,8 +71,8 @@ fn bench_rl_heston(c: &mut Criterion) {
     group.bench_with_input(BenchmarkId::new("H=0.12", n), &n, |b, &n| {
       let p = RlHeston::new(
         0.12_f64,
-        Some(100.0),
-        Some(0.04),
+        100.0,
+        0.04,
         0.1,
         0.3156,
         0.0331,
@@ -142,8 +142,8 @@ fn bench_rl_heston_throughput(c: &mut Criterion) {
     group.bench_with_input(BenchmarkId::new("sample_par", m), &m, |b, &m| {
       let p = RlHeston::new(
         0.12_f64,
-        Some(100.0),
-        Some(0.04),
+        100.0,
+        0.04,
         0.1,
         0.3156,
         0.0331,
@@ -160,8 +160,8 @@ fn bench_rl_heston_throughput(c: &mut Criterion) {
     group.bench_with_input(BenchmarkId::new("sample_batch", m), &m, |b, &m| {
       let p = RlHeston::new(
         0.12_f64,
-        Some(100.0),
-        Some(0.04),
+        100.0,
+        0.04,
         0.1,
         0.3156,
         0.0331,

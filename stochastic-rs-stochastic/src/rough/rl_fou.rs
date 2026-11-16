@@ -39,9 +39,9 @@ pub struct RlFOU<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub nu: T,
   /// Number of simulation points.
   pub n: usize,
-  /// Initial value $X_0$.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon $T$.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Quadrature degree passed through to the underlying [`RlFBm`].
   pub degree: Option<usize>,

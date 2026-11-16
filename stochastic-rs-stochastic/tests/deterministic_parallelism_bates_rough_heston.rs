@@ -53,8 +53,8 @@ fn bates(seed: u64) -> Bates1996<f64, SimdNormal<f64>, Deterministic> {
     -0.6,
     SimdNormal::new(0.0, 0.05),
     N,
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     Some(1.0),
     VarianceBoundary::Floor,
     Deterministic::new(seed),
@@ -64,7 +64,7 @@ fn bates(seed: u64) -> Bates1996<f64, SimdNormal<f64>, Deterministic> {
 fn rough_heston(seed: u64) -> RoughHeston<f64, Deterministic> {
   let mut m = RoughHeston::new(
     0.1,
-    Some(0.04),
+    0.04,
     0.04,
     1.5,
     0.3,
@@ -74,7 +74,7 @@ fn rough_heston(seed: u64) -> RoughHeston<f64, Deterministic> {
     N,
     Deterministic::new(seed),
   );
-  m.rho = Some(-0.6);
+  m.rho = -0.6;
   m
 }
 

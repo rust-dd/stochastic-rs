@@ -49,11 +49,10 @@ use crate::traits::ProcessExt;
 pub struct Bergomi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Vol-of-vol ν scaling the log-variance driver's dispersion.
   pub nu: T,
-  /// Initial variance level v₀ (variance, not volatility — squared inside
-  /// the sampler to seed `v(t_0) = v_0²`).
-  pub v0: Option<T>,
-  /// Initial asset price S₀.
-  pub s0: Option<T>,
+  /// Initial volatility; the variance starts at `v0²`.
+  pub v0: T,
+  /// Initial spot.
+  pub s0: T,
   /// Constant proportional drift rate of the asset (a GBM-style drift, not
   /// a correlation — that role belongs to `rho`).
   pub r: T,
@@ -62,7 +61,7 @@ pub struct Bergomi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub rho: T,
   /// Number of points sampled along the Bergomi path.
   pub n: usize,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
@@ -75,27 +74,18 @@ pub struct Bergomi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `Bergomi::default().with_nu(0.6).with_rho(-0.2)`.
 impl<T: FloatExt, S: SeedExt> Bergomi<T, S> {
-  pub fn new(
-    nu: T,
-    v0: Option<T>,
-    s0: Option<T>,
-    r: T,
-    rho: T,
-    n: usize,
-    t: Option<T>,
-    seed: S,
-  ) -> Self {
+  pub fn new(nu: T, v0: T, s0: T, r: T, rho: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
       nu.is_finite(),
       "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
     );
     assert!(
-      v0.is_none_or(|v| v.is_finite()),
-      "v0 must satisfy `v0.is_none_or(|v| v.is_finite())`, got v0 = {v0:?}"
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
     );
     assert!(
-      s0.is_none_or(|v| v.is_finite()),
-      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
     );
     assert!(
       r.is_finite(),
@@ -133,13 +123,13 @@ impl<T: FloatExt, S: SeedExt, B> Bergomi<T, S, B> {
   }
 
   /// Replace `v0`, all else unchanged.
-  pub fn with_v0(mut self, v0: Option<T>) -> Self {
+  pub fn with_v0(mut self, v0: T) -> Self {
     self.v0 = v0;
     self
   }
 
   /// Replace `s0`, all else unchanged.
-  pub fn with_s0(mut self, s0: Option<T>) -> Self {
+  pub fn with_s0(mut self, s0: T) -> Self {
     self.s0 = s0;
     self
   }
@@ -190,8 +180,8 @@ impl<T: FloatExt> Default for Bergomi<T, Unseeded> {
   fn default() -> Self {
     Self::new(
       T::from_f64_fast(0.4),
-      Some(T::from_f64_fast(0.2)),
-      Some(T::from_f64_fast(100.0)),
+      T::from_f64_fast(0.2),
+      T::from_f64_fast(100.0),
       T::from_f64_fast(0.01),
       T::from_f64_fast(-0.6),
       252,
@@ -213,18 +203,13 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
       r: self.r,
       nu: self.nu,
       half_nu_sq: T::from_f64_fast(0.5) * self.nu * self.nu,
-      v0_sq: self.v0.unwrap_or(T::one()) * self.v0.unwrap_or(T::one()),
+      v0_sq: self.v0 * self.v0,
       rho: self.rho,
     }
   }
 
   fn initial_state(&self) -> [T; 4] {
-    [
-      self.s0.unwrap_or(T::from_usize_(100)),
-      self.v0.unwrap_or(T::one()) * self.v0.unwrap_or(T::one()),
-      T::zero(),
-      T::zero(),
-    ]
+    [self.s0, self.v0 * self.v0, T::zero(), T::zero()]
   }
 
   fn grid_points(&self) -> usize {
@@ -274,8 +259,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     BergomiSampler {
       n: self.n,
       nu: self.nu,
-      v0_sq: self.v0.unwrap_or(T::one()).powi(2),
-      s0: self.s0.unwrap_or(T::from_usize_(100)),
+      v0_sq: self.v0.powi(2),
+      s0: self.s0,
       r: self.r,
       dt: self.cgns.dt(),
       cgns: self.cgns,
@@ -384,14 +369,14 @@ pub struct PyBergomi {
 #[pyo3::prelude::pymethods]
 impl PyBergomi {
   #[new]
-  #[pyo3(signature = (nu, r, rho, n, v0=None, s0=None, t=None, seed=None, dtype=None, device=None))]
+  #[pyo3(signature = (nu, r, rho, n, v0, s0, t=None, seed=None, dtype=None, device=None))]
   fn new(
     nu: f64,
     r: f64,
     rho: f64,
     n: usize,
-    v0: Option<f64>,
-    s0: Option<f64>,
+    v0: f64,
+    s0: f64,
     t: Option<f64>,
     seed: Option<u64>,
     dtype: Option<&str>,
@@ -410,8 +395,8 @@ impl PyBergomi {
         (Some(sd), "f32") => {
           s.seeded_f32 = Some(Bergomi::new(
             nu as f32,
-            v0.map(|v| v as f32),
-            s0.map(|v| v as f32),
+            v0 as f32,
+            s0 as f32,
             r as f32,
             rho as f32,
             n,
@@ -434,8 +419,8 @@ impl PyBergomi {
         (None, "f32") => {
           s.inner_f32 = Some(Bergomi::new(
             nu as f32,
-            v0.map(|v| v as f32),
-            s0.map(|v| v as f32),
+            v0 as f32,
+            s0 as f32,
             r as f32,
             rho as f32,
             n,

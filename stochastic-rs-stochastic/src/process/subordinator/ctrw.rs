@@ -43,10 +43,9 @@ pub struct Ctrw<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Number of points sampled along the fixed output grid (the CTRW's own
   /// jump times are continuous and generally fall between grid points).
   pub n: usize,
-  /// Initial value X₀ of the CTRW path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] the output grid spans (defaults to 1 when
-  /// omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,

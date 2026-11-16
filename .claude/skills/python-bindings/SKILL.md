@@ -96,8 +96,8 @@ Invoke at the **bottom of the process's source file**, e.g.
 
 ```rust
 py_process_1d!(PyGbm, Gbm,
-  sig: (mu, sigma, n, x0=None, t=None, seed=None, dtype=None),
-  params: (mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  sig: (mu, sigma, n, x0, t=None, seed=None, dtype=None),
+  params: (mu: f64, sigma: f64, n: usize, x0: f64, t: Option<f64>)
 );
 ```
 

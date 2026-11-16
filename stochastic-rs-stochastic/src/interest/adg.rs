@@ -55,8 +55,7 @@ pub struct Adg<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub xn: usize,
   /// Initial values `X_i(0)` for each latent factor, length `xn`.
   pub x0: Array1<T>,
-  /// Simulation horizon [0, t] shared by all `xn` latent-factor paths
-  /// (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,

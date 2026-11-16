@@ -113,6 +113,18 @@ pub struct DriftIsOneArgument;
 #[cfg(doctest)]
 pub struct HorizonIsOneArgument;
 
+/// A process's initial spot and variance are values, not options.
+///
+/// ```compile_fail,E0308
+/// use stochastic_rs_stochastic::params::VarianceBoundary;
+/// use stochastic_rs_stochastic::simd_rng::Unseeded;
+/// use stochastic_rs_stochastic::volatility::HestonPow;
+/// use stochastic_rs_stochastic::volatility::heston::Heston;
+/// let h = Heston::<f64>::new(Some(100.0), Some(0.04), 2.0, 0.04, 0.5, -0.7, 0.03, 64, None, HestonPow::Sqrt, VarianceBoundary::Floor, Unseeded);
+/// ```
+#[cfg(doctest)]
+pub struct InitialValuesArePlain;
+
 #[cfg(test)]
 mod tests {
   use ndarray::array;

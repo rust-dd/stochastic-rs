@@ -7,7 +7,7 @@ use stochastic_rs::traits::ProcessExt;
 
 #[test]
 fn sample_sample_map_and_sample_par() {
-  let gbm = Gbm::<f64, _>::new(0.05, 0.2, 64, Some(1.0), Some(1.0), Unseeded);
+  let gbm = Gbm::<f64, _>::new(0.05, 0.2, 64, 1.0, Some(1.0), Unseeded);
 
   // one path
   let path = gbm.sample();

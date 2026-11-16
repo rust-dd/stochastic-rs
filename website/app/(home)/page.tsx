@@ -90,7 +90,7 @@ const THREAD: { title: string; body: string; code: string }[] = [
     title: 'Sample a batch',
     body: 'Every process is built the same way — parameters, grid, horizon, seed — and every one gives you a single path, a parallel batch, and a mapped form over it.',
     code: `let gbm = Gbm::<f32, _>::new(
-  0.05, 0.2, 1_024, Some(100.0), Some(1.0), Deterministic::new(7),
+  0.05, 0.2, 1_024, 100.0, Some(1.0), Deterministic::new(7),
 );
 let paths = gbm.sample_par(1_000);`,
   },

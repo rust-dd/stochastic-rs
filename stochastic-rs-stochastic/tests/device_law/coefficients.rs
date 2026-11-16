@@ -164,8 +164,8 @@ fn affine_leverage(_t: f32, s: f32) -> f32 {
 fn heston_slv_with_an_expression_leverage_agrees_with_the_cpu_law() {
   let build = || {
     HestonSlv::<f32, _>::new(
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       2.0,
       0.04,
       0.5,
@@ -235,8 +235,8 @@ fn closure_coefficients_keep_cheyette_and_the_volterra_sde_on_the_host() {
   assert_eq!(volterra().on::<Device>().sample(), volterra().sample());
   let slv = || {
     HestonSlv::<f32, _>::new(
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       2.0,
       0.04,
       0.3,

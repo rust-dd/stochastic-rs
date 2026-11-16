@@ -34,9 +34,9 @@ pub struct Verhulst<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Number of points sampled along the Verhulst path.
   pub n: usize,
-  /// Initial value X₀ of the Verhulst path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Clamp the state into `[0, K]` after each step.
   pub clamp: bool,

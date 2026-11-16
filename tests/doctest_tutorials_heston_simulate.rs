@@ -11,15 +11,15 @@ use stochastic_rs::traits::ProcessExt;
 #[test]
 fn heston_paths_under_euler_and_qe() {
   let euler = Heston::<f64, Euler, _>::new(
-    Some(100.0), // s0
-    Some(0.04),  // v0, a variance
-    2.0,         // kappa
-    0.04,        // theta
-    0.3,         // sigma, the volatility of variance
-    -0.7,        // rho
-    0.03,        // mu
-    252,         // n grid points, t = 0 included
-    Some(1.0),   // t
+    100.0,     // s0
+    0.04,      // v0, a variance
+    2.0,       // kappa
+    0.04,      // theta
+    0.3,       // sigma, the volatility of variance
+    -0.7,      // rho
+    0.03,      // mu
+    252,       // n grid points, t = 0 included
+    Some(1.0), // t
     HestonPow::Sqrt,
     VarianceBoundary::Floor, // max(v, 0) on the variance; Reflect takes |v|
     Deterministic::new(42),

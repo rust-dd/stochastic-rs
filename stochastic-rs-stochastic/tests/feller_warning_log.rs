@@ -75,17 +75,8 @@ fn boundary_violations_warn_through_log_unless_reflected() {
     ));
     black_box(Bessel::<f64>::new(1.0, 16, None, None, boundary, Unseeded));
     black_box(Heston2D::<f64>::new(
-      [Some(100.0); 2],
-      [Some(0.04); 2],
-      [0.05; 2],
-      [0.04; 2],
-      [0.5; 2],
-      [1.0; 2],
-      [0.0; 6],
-      16,
-      None,
-      boundary,
-      Unseeded,
+      [100.0; 2], [0.04; 2], [0.05; 2], [0.04; 2], [0.5; 2], [1.0; 2], [0.0; 6], 16, None,
+      boundary, Unseeded,
     ));
   };
 

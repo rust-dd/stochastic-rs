@@ -71,8 +71,8 @@ impl HestonScheme for Euler {
     let mut s = Array1::<T>::zeros(model.n);
     let mut v = Array1::<T>::zeros(model.n);
 
-    s[0] = model.s0.unwrap_or(T::zero());
-    v[0] = model.v0.unwrap_or(T::zero()).max(T::zero());
+    s[0] = model.s0;
+    v[0] = model.v0.max(T::zero());
 
     for i in 1..model.n {
       let v_prev = v[i - 1].max(T::zero());
@@ -133,8 +133,8 @@ impl HestonScheme for AndersenQe {
     let k2 = half * dt * (krho_eps - half) + rho / eps;
     let k34 = half * dt * (one - rho * rho);
 
-    let s0 = model.s0.unwrap_or(T::one());
-    let v0 = model.v0.unwrap_or(T::zero()).max(T::zero());
+    let s0 = model.s0;
+    let v0 = model.v0.max(T::zero());
 
     let mut s = Array1::<T>::zeros(n);
     let mut v = Array1::<T>::zeros(n);

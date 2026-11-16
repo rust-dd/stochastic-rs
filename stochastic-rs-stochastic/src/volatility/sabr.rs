@@ -20,6 +20,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
+use crate::malliavin::Malliavin;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -42,7 +43,7 @@ pub struct Sabr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub f0: Option<T>,
   /// Initial volatility level $\alpha_0$.
   pub alpha0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
@@ -378,11 +379,8 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for SabrSampler<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Sabr<T, S, B> {
-  /// Calculate the Malliavin derivative of the Sabr model
-  ///
-  /// The Malliavin derivative of the volaility process in the Sabr model is given by:
-  /// D_r \sigma_t = \nu \sigma_t 1_{[0, T]}(r)
-  pub fn malliavin_of_vol(&self) -> [Array1<T>; 3] {
+  /// The path and `D_{t_i} α_T = ν α_T` at every grid point, since the volatility is lognormal.
+  pub fn malliavin(&self) -> Malliavin<T, [Array1<T>; 2]> {
     let [f, v] = self.sample();
 
     let mut malliavin = Array1::<T>::zeros(self.n);
@@ -391,7 +389,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Sabr<T, S, B> {
       malliavin[i] = self.nu * *v.last().unwrap();
     }
 
-    [f, v, malliavin]
+    Malliavin {
+      paths: [f, v],
+      derivative: malliavin,
+    }
   }
 }
 
@@ -406,8 +407,33 @@ py_process_2x1d!(PySabr, Sabr,
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
   use crate::traits::ProcessExt;
+
+  #[test]
+  fn the_volatility_derivative_is_nu_times_the_terminal_volatility() {
+    let make = || {
+      Sabr::<f64, _>::new(
+        0.4,
+        0.7,
+        -0.3,
+        17,
+        Some(1.0),
+        Some(0.3),
+        Some(1.0),
+        Deterministic::new(11),
+      )
+    };
+    let Malliavin {
+      paths: [f, v],
+      derivative,
+      ..
+    } = make().malliavin();
+    assert_eq!([f, v.clone()], make().sample());
+    assert!(derivative.iter().all(|d| *d == 0.4 * v[16]));
+  }
 
   #[test]
   fn volatility_stays_non_negative() {
@@ -431,8 +457,6 @@ mod tests {
   /// vol-of-vol must actually drive the volatility path's dispersion.
   #[test]
   fn sabr_nu_drives_volatility_dispersion() {
-    use stochastic_rs_core::simd_rng::Deterministic;
-
     let make = |nu: f64| {
       Sabr::new(
         nu,

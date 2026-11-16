@@ -70,7 +70,7 @@ pub struct BlackKarasinski<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// subsequent path point is `exp(...)` and so is positive unconditionally
   /// regardless of `r0`.
   pub r0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or
   /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).

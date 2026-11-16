@@ -57,7 +57,7 @@ impl CgmysvPricer {
       n,
       self.n_jumps,
       Some(p.rho * p.v0),
-      Some(p.v0),
+      p.v0,
       Some(tau),
       Unseeded,
     );

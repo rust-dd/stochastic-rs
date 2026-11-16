@@ -76,9 +76,9 @@ pub struct KoBoL<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Truncation terms (J)
   pub j: usize,
-  /// Initial value
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Total horizon T
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,

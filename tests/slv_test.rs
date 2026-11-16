@@ -274,8 +274,8 @@ fn the_process_paths_and_the_pricer_agree_on_a_vanilla() {
 
   let n = 51;
   let process = HestonSlv::<f64, _>::new(
-    Some(s0),
-    Some(params.v0),
+    s0,
+    params.v0,
     params.kappa,
     params.theta,
     params.sigma,

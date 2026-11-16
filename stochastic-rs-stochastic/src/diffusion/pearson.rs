@@ -34,9 +34,9 @@ pub struct Pearson<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub c: T,
   /// Number of points sampled along the Pearson-diffusion path.
   pub n: usize,
-  /// Initial value X₀ of the Pearson-diffusion path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,

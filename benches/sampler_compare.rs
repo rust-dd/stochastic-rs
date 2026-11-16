@@ -13,7 +13,7 @@ use stochastic_rs::stochastic::diffusion::gbm::Gbm;
 use stochastic_rs::traits::ProcessExt;
 
 fn gbm(n: usize) -> Gbm<f64, Unseeded> {
-  Gbm::<f64, _>::new(0.05, 0.2, n, Some(1.0), Some(1.0), Unseeded)
+  Gbm::<f64, _>::new(0.05, 0.2, n, 1.0, Some(1.0), Unseeded)
 }
 
 fn bench_compare(c: &mut Criterion) {

@@ -43,7 +43,7 @@ pub struct RlFBm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub hurst: T,
   /// Number of points sampled along the RL-fBM path.
   pub n: usize,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Quadrature degree $N'$ (defaults to [`RlKernel::default_degree`] of `n`).
   pub degree: Option<usize>,

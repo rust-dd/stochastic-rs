@@ -70,9 +70,9 @@ where
   pub theta: T,
   /// Number of points sampled along the Merton path.
   pub n: usize,
-  /// Initial value X₀ of the Merton path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// The jump driver, seeded from `seed.derive()`; sampling reads its law and seed but takes the
   /// rate from `lambda`, so replace it through [`with_cpoisson`](Self::with_cpoisson).

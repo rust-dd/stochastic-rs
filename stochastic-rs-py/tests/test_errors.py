@@ -1,9 +1,5 @@
-"""A Rust panic reaches Python as an exception `except Exception` catches.
-
-PyO3 raises an uncaught panic as `pyo3_runtime.PanicException`, a
-`BaseException`. The bindings report a constructor's panic, an assertion on an
-argument, as `ValueError`, and a sampling call's panic as `RuntimeError`.
-"""
+"""Constructors, setters and calls report a rejected argument, input or state as `ValueError`,
+which `except Exception` catches; PyO3's `PanicException` is a `BaseException` it would miss."""
 
 import numpy as np
 import pytest
@@ -12,13 +8,12 @@ import stochastic_rs as sr
 
 def test_process_constructor_raises_value_error():
     with pytest.raises(ValueError, match="exactly one drift"):
-        sr.PyGbmLog(sigma=0.2, n=16)
+        sr.PyGbmLog(sigma=0.2, n=16, s0=1.0)
 
 
-def test_process_sampling_raises_runtime_error():
-    gbm = sr.PyGbmLog(mu=0.05, sigma=0.2, n=16, s0=-1.0)
-    with pytest.raises(RuntimeError, match="s0 must be > 0"):
-        gbm.sample()
+def test_a_non_positive_spot_is_refused_at_construction():
+    with pytest.raises(ValueError, match=r"s0 must satisfy `s0 > T::zero\(\)`, got s0 = -1\.0"):
+        sr.PyGbmLog(mu=0.05, sigma=0.2, n=16, s0=-1.0)
 
 
 def test_distribution_constructor_raises_value_error():

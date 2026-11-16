@@ -59,8 +59,8 @@ fn terminal_mean(paths: &[[Array1<f32>; 2]], component: usize) -> f64 {
 fn heston_agrees_with_the_cpu_law() {
   let build = || {
     Heston::<f32, Euler, _>::new(
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       2.0,
       0.04,
       0.3,
@@ -106,8 +106,8 @@ fn heston_agrees_with_the_cpu_law() {
 fn reflected_heston_agrees_with_the_cpu_law() {
   let build = || {
     Heston::<f32, Euler, _>::new(
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       2.0,
       0.04,
       0.3,
@@ -177,8 +177,8 @@ fn bergomi_agrees_with_the_cpu_law() {
   let build = || {
     Bergomi::<f32, _>::new(
       0.5,
-      Some(0.2),
-      Some(100.0),
+      0.2,
+      100.0,
       0.02,
       -0.6,
       253,
@@ -259,8 +259,8 @@ fn log_heston_agrees_with_the_cpu_law() {
       0.3,
       -0.7,
       253,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       Some(1.0),
       VarianceBoundary::Floor,
       Deterministic::new(29),
@@ -292,9 +292,9 @@ fn log_heston_agrees_with_the_cpu_law() {
 fn double_heston_agrees_with_the_cpu_law() {
   let build = || {
     DoubleHeston::<f32, _>::new(
-      Some(100.0),
-      Some(0.04),
-      Some(0.02),
+      100.0,
+      0.04,
+      0.02,
       2.0,
       0.04,
       0.3,
@@ -475,8 +475,8 @@ fn duffie_kan_agrees_with_the_cpu_law() {
 fn two_asset_heston_agrees_with_the_cpu_law() {
   let build = || {
     Heston2D::<f32, _>::new(
-      [Some(4.6), Some(4.6)],
-      [Some(0.04), Some(0.03)],
+      [4.6, 4.6],
+      [0.04, 0.03],
       [0.0, 0.0],
       [0.04, 0.03],
       [2.0, 1.5],
@@ -527,8 +527,8 @@ fn bates_agrees_with_the_cpu_law() {
       0.3,
       -0.7,
       253,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       Some(1.0),
       VarianceBoundary::Floor,
       Deterministic::new(97),
@@ -565,8 +565,8 @@ fn bates_agrees_with_the_cpu_law() {
 fn andersen_qe_heston_agrees_with_the_cpu_law() {
   let build = || {
     Heston::<f32, Euler, _>::new(
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       2.0,
       0.04,
       0.3,
@@ -622,7 +622,7 @@ fn kou_jump_heston_agrees_with_the_cpu_law() {
       25.0,
       20.0,
       253,
-      Some(100.0),
+      100.0,
       Some(1.0),
       VarianceBoundary::Floor,
       Deterministic::new(131),
@@ -707,7 +707,7 @@ fn jump_duffie_kan_agrees_with_the_cpu_law() {
 fn barndorff_nielsen_shephard_agrees_with_the_cpu_law() {
   let build = || {
     Bns::<f32, _>::new(
-      Some(100.0),
+      100.0,
       0.04,
       2.0,
       0.02,
@@ -831,7 +831,7 @@ fn dynamic_sabr_agrees_with_the_cpu_law() {
 fn multifactor_heston_agrees_with_the_cpu_law() {
   let build = || {
     MultifactorHeston::<f32, 2, _>::new(
-      Some(100.0),
+      100.0,
       [0.04, 0.02],
       [2.0, 1.0],
       [0.04, 0.03],
@@ -924,7 +924,7 @@ fn multifactor_heston_agrees_with_the_cpu_law() {
 #[test]
 fn multifactor_heston_other_factor_counts_still_sample() {
   let one = MultifactorHeston::<f32, 1, _>::new(
-    Some(100.0),
+    100.0,
     [0.04],
     [2.0],
     [0.04],
@@ -943,7 +943,7 @@ fn multifactor_heston_other_factor_counts_still_sample() {
       .all(|(s, v)| s.len() == 64 && v[0].len() == 64 && s.iter().all(|x| x.is_finite()))
   );
   let three = MultifactorHeston::<f32, 3, _>::new(
-    Some(100.0),
+    100.0,
     [0.04, 0.02, 0.01],
     [2.0, 1.0, 0.5],
     [0.04, 0.03, 0.02],
@@ -976,7 +976,7 @@ fn regime_switching_agrees_with_the_cpu_law() {
       array![0.1, 0.25, 0.4],
       0,
       253,
-      Some(100.0),
+      100.0,
       Some(1.0),
       Deterministic::new(79),
     )
@@ -1060,7 +1060,7 @@ fn regime_switching_wider_than_four_regimes_still_samples() {
     array![0.1, 0.15, 0.2, 0.25, 0.3],
     2,
     64,
-    Some(50.0),
+    50.0,
     Some(1.0),
     Deterministic::new(83),
   )
@@ -1091,8 +1091,8 @@ fn bates_1996_agrees_with_the_cpu_law() {
         -0.7,
         SimdNormal::<f32>::new(-0.02, 0.05),
         253,
-        Some(100.0),
-        Some(0.04),
+        100.0,
+        0.04,
         Some(1.0),
         boundary,
         Deterministic::new(97),
@@ -1162,8 +1162,8 @@ fn bates_1996_reflection_moves_the_boundary() {
         -0.5,
         SimdNormal::<f32>::new(-0.02, 0.05),
         253,
-        Some(100.0),
-        Some(0.04),
+        100.0,
+        0.04,
         Some(1.0),
         boundary,
         Deterministic::new(101),
@@ -1204,8 +1204,8 @@ fn bates_1996_compounds_several_jumps_a_step() {
       -0.5,
       SimdExp::<f32>::new(5.0),
       26,
-      Some(100.0),
-      Some(0.04),
+      100.0,
+      0.04,
       Some(1.0),
       VarianceBoundary::Floor,
       Deterministic::new(103),
@@ -1249,7 +1249,7 @@ fn stochastic_volatility_cgmy_agrees_with_the_cpu_law() {
       253,
       256,
       Some(0.0),
-      Some(0.04),
+      0.04,
       Some(1.0),
       Deterministic::new(233),
     )
@@ -1334,7 +1334,7 @@ fn a_thin_variance_keeps_the_stochastic_volatility_cgmy_on_the_host() {
       64,
       64,
       Some(0.0),
-      Some(0.04),
+      0.04,
       Some(1.0),
       Deterministic::new(239),
     )

@@ -32,8 +32,8 @@ fn thin(path: &[f64], k: usize, digits: i32) -> Vec<f64> {
 
 fn main() {
   let heston = Heston::<f64, Euler, _>::new(
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     2.0,
     0.04,
     0.3,

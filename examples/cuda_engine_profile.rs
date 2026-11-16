@@ -96,8 +96,7 @@ fn main() {
   for (m, n) in [(10_000usize, 1_024usize), (50_000, 1_024), (10_000, 4_096)] {
     let cells = (m * n) as f64;
 
-    let build32 =
-      || Gbm::<f32, _>::new(0.05, 0.2, n, Some(100.0), Some(1.0), Deterministic::new(7));
+    let build32 = || Gbm::<f32, _>::new(0.05, 0.2, n, 100.0, Some(1.0), Deterministic::new(7));
     let _ = build32().on::<Cuda>().sample_par(8);
     let host = best(5, || {
       build32().on::<Cpu>().sample_map_view(m, |p| p[p.len() - 1])
@@ -120,8 +119,7 @@ fn main() {
     // NVIDIA has native double precision, so the engine renders a `double`
     // kernel too — the ratio between the two says how much of the card's
     // f64 rate this workload actually uses.
-    let build64 =
-      || Gbm::<f64, _>::new(0.05, 0.2, n, Some(100.0), Some(1.0), Deterministic::new(7));
+    let build64 = || Gbm::<f64, _>::new(0.05, 0.2, n, 100.0, Some(1.0), Deterministic::new(7));
     let _ = build64().on::<Cuda>().sample_par(8);
     let host = best(5, || {
       build64().on::<Cpu>().sample_map_view(m, |p| p[p.len() - 1])

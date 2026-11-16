@@ -10,17 +10,7 @@ use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::rbergomi::RoughBergomi;
 
 fn rb_base_seeded<S: SeedExt>(seed: S) -> RoughBergomi<f64, S> {
-  RoughBergomi::new(
-    0.1,
-    0.4,
-    Some(0.2),
-    Some(100.0),
-    0.01,
-    -0.6,
-    64,
-    Some(1.0),
-    seed,
-  )
+  RoughBergomi::new(0.1, 0.4, 0.2, 100.0, 0.01, -0.6, 64, Some(1.0), seed)
 }
 
 fn rb_base() -> RoughBergomi<f64> {
@@ -31,8 +21,8 @@ fn rb_base() -> RoughBergomi<f64> {
 struct RbFields {
   hurst: f64,
   nu: f64,
-  v0: Option<f64>,
-  s0: Option<f64>,
+  v0: f64,
+  s0: f64,
   r: f64,
   rho: f64,
   n: usize,
@@ -72,8 +62,8 @@ macro_rules! plain_test {
 
 plain_test!(rb_with_hurst_round_trip, with_hurst, hurst, 0.3);
 plain_test!(rb_with_nu_round_trip, with_nu, nu, 0.6);
-plain_test!(rb_with_v0_round_trip, with_v0, v0, Some(0.3));
-plain_test!(rb_with_s0_round_trip, with_s0, s0, Some(90.0));
+plain_test!(rb_with_v0_round_trip, with_v0, v0, 0.3);
+plain_test!(rb_with_s0_round_trip, with_s0, s0, 90.0);
 plain_test!(rb_with_r_round_trip, with_r, r, 0.02);
 
 #[test]
@@ -87,8 +77,8 @@ fn rb_with_rho_rebuilds_cgns_cache() {
   let want = RoughBergomi::new(
     0.1,
     0.4,
-    Some(0.2),
-    Some(100.0),
+    0.2,
+    100.0,
     0.01,
     -0.2,
     64,
@@ -114,8 +104,8 @@ fn rb_with_steps_rebuilds_cgns_cache() {
   let want = RoughBergomi::new(
     0.1,
     0.4,
-    Some(0.2),
-    Some(100.0),
+    0.2,
+    100.0,
     0.01,
     -0.6,
     128,
@@ -140,8 +130,8 @@ fn rb_with_horizon_rebuilds_cgns_cache() {
   let want = RoughBergomi::new(
     0.1,
     0.4,
-    Some(0.2),
-    Some(100.0),
+    0.2,
+    100.0,
     0.01,
     -0.6,
     64,

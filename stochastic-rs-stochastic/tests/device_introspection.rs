@@ -25,7 +25,7 @@ use stochastic_rs_stochastic::traits::ProcessExt;
 /// A process hands back the handle it holds, and the handle opens.
 #[test]
 fn a_process_reports_the_backend_it_holds() {
-  let gbm = Gbm::<f64, _>::new(0.05, 0.2, 256, Some(100.0), None, Deterministic::new(1));
+  let gbm = Gbm::<f64, _>::new(0.05, 0.2, 256, 100.0, None, Deterministic::new(1));
   assert_eq!(*gbm.backend(), Cpu);
   let info = gbm.probe().expect("the CPU device always opens");
   assert_eq!(info.backend, "Cpu");

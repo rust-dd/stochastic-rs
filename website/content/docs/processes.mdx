@@ -236,14 +236,14 @@ use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::gbm::Gbm;
 
 // auto-seeded
-let p = Gbm::<f64, _>::new(0.05, 0.2, 1_000, Some(100.0), Some(1.0), Unseeded);
+let p = Gbm::<f64, _>::new(0.05, 0.2, 1_000, 100.0, Some(1.0), Unseeded);
 
 // reproducible
 let p = Gbm::<f64, _>::new(
   0.05,
   0.2,
   1_000,
-  Some(100.0),
+  100.0,
   Some(1.0),
   Deterministic::new(42),
 );
@@ -300,7 +300,7 @@ The device seed is drawn from the process's own seed source (the same `Determini
 import numpy as np
 import stochastic_rs as srs
 
-# PyGbm(mu, sigma, n, x0=None, t=None, seed=None, dtype=None, device=None)
+# PyGbm(mu, sigma, n, x0, t=None, seed=None, dtype=None, device=None)
 paths = srs.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7).sample_par(20_000)
 print(paths.shape, paths[:, -1].mean())   # (20000, 253), ≈ 100·e^{0.05}
 ou = srs.PyOu(2.0, 1.0, 0.5, 501, x0=1.0, t=2.0).sample_par(10_000)

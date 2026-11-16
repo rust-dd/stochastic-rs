@@ -45,7 +45,7 @@ macro_rules! env_contract {
       (3, DEFAULT_BATCH_BUDGET_BYTES),
       "{name}::new(3) read the environment"
     );
-    let gbm = Gbm::<$t, _>::new(0.05, 0.2, 16, Some(1.0), None, Deterministic::new(1));
+    let gbm = Gbm::<$t, _>::new(0.05, 0.2, 16, 1.0, None, Deterministic::new(1));
     assert_eq!(
       gbm.on::<$handle>().backend(),
       &$handle::default(),

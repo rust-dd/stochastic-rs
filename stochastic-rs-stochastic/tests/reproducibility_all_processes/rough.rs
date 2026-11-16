@@ -30,8 +30,8 @@ guard!(rl_fou, "RlFOU", |s| RlFOU::new(
 
 guard!(rl_heston, "RlHeston", |s| RlHeston::new(
   0.1,
-  Some(100.0),
-  Some(0.04),
+  100.0,
+  0.04,
   1.5,
   0.04,
   0.3,

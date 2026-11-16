@@ -39,7 +39,7 @@ pub struct MultiGbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Initial levels $S^{(i)}_0$, one per asset.
   pub x0: Array1<T>,
-  /// Simulation horizon [0, t] (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,

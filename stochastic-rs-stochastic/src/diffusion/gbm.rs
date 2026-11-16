@@ -20,6 +20,7 @@ use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::device::DeviceError;
 use crate::euler::EulerBackend;
+use crate::malliavin::Malliavin;
 use crate::traits::DistributionExt;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -35,9 +36,9 @@ pub struct Gbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Number of points sampled along the GBM path.
   pub n: usize,
-  /// Initial value S₀ of the GBM path.
-  pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Initial value S₀; positive, since a multiplicative process at zero stays there.
+  pub x0: T,
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Cached parameters of the terminal log-normal: ln S_T ∼ N(`ln_mu`, `ln_sigma`).
   ln_mu: f64,
@@ -53,13 +54,8 @@ pub struct Gbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// from the four public fields they derive from — shared by `new()` and by
 /// every `with_*` setter that touches `mu`/`sigma`/`x0`/`t`, so the two can
 /// never drift apart.
-fn terminal_lognormal_cache<T: FloatExt>(
-  mu: T,
-  sigma: T,
-  x0: Option<T>,
-  t: Option<T>,
-) -> (f64, f64) {
-  let x0_f64 = x0.unwrap_or(T::one()).to_f64().unwrap();
+fn terminal_lognormal_cache<T: FloatExt>(mu: T, sigma: T, x0: T, t: Option<T>) -> (f64, f64) {
+  let x0_f64 = x0.to_f64().unwrap();
   let mu_f64 = mu.to_f64().unwrap();
   let sigma_f64 = sigma.to_f64().unwrap();
   let t_f64 = t.unwrap_or(T::one()).to_f64().unwrap();
@@ -72,7 +68,7 @@ fn terminal_lognormal_cache<T: FloatExt>(
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `Gbm::default().with_mu(0.08).with_sigma(0.35)`.
 impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
-  pub fn new(mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
+  pub fn new(mu: T, sigma: T, n: usize, x0: T, t: Option<T>, seed: S) -> Self {
     assert!(
       mu.is_finite(),
       "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
@@ -83,8 +79,8 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
     );
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+      x0.is_finite(),
+      "x0 must satisfy `x0.is_finite()`, got x0 = {x0:?}"
     );
     assert!(
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
@@ -95,8 +91,8 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
       "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
     );
     assert!(
-      x0.is_none_or(|x0| x0 > T::zero()),
-      "x0 must satisfy `x0.is_none_or(|x0| x0 > T::zero())`, got x0 = {x0:?}"
+      x0 > T::zero(),
+      "x0 must satisfy `x0 > T::zero()`, got x0 = {x0:?}"
     );
     let (ln_mu, ln_sigma) = terminal_lognormal_cache(mu, sigma, x0, t);
 
@@ -130,7 +126,7 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
   }
 
   /// Replace `x0`; rebuilds the cached terminal-log-normal parameters.
-  pub fn with_x0(mut self, x0: Option<T>) -> Self {
+  pub fn with_x0(mut self, x0: T) -> Self {
     self.x0 = x0;
     (self.ln_mu, self.ln_sigma) = terminal_lognormal_cache(self.mu, self.sigma, x0, self.t);
     self
@@ -166,7 +162,7 @@ impl<T: FloatExt> Default for Gbm<T, Unseeded> {
       T::from_f64_fast(0.05),
       T::from_f64_fast(0.2),
       252,
-      Some(T::from_f64_fast(100.0)),
+      T::from_f64_fast(100.0),
       Some(T::one()),
       Unseeded,
     )
@@ -192,7 +188,7 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> ProcessExt<T> for Gbm<T, S, B>
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
     GbmSampler {
       n: self.n,
-      x0: self.x0.unwrap_or(T::one()),
+      x0: self.x0,
       drift_scale: self.mu * dt,
       diff_scale: self.sigma,
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
@@ -244,8 +240,6 @@ impl<T: FloatExt> GbmSampler<T> {
     if out.is_empty() {
       return;
     }
-    // Default x0 = 1: a GBM started at 0 is absorbed at 0, so the marginal
-    // convention of the type uses 1 (matches the constructor's `ln_mu`).
     out[0] = self.x0;
     if out.len() == 1 {
       return;
@@ -286,23 +280,11 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
     }
   }
 
-  /// Malliavin derivative of the Gbm process
-  ///
-  /// The Malliavin derivative of the Gbm process is given by
-  /// `D_r S_t = \sigma S_t \mathbf{1}_{0 \le r \le t}`.
-  ///
-  /// The Malliavin derivate of the Gbm shows the sensitivity of the stock price with respect to the Wiener process.
-  pub fn malliavin(&self) -> [Array1<T>; 2] {
-    let gbm = self.sample();
-    let mut m = Array1::zeros(self.n);
-
-    // reverse due the option pricing
-    let s_t = *gbm.last().unwrap();
-    for i in 0..self.n {
-      m[i] = self.sigma * s_t;
-    }
-
-    [gbm, m]
+  /// The path and `D_{t_i} S_T = σ S_T`, the same at every grid point.
+  pub fn malliavin(&self) -> Malliavin<T, Array1<T>> {
+    let paths = self.sample();
+    let derivative = Array1::from_elem(self.n, self.sigma * paths[paths.len() - 1]);
+    Malliavin { paths, derivative }
   }
 }
 
@@ -372,12 +354,24 @@ impl<T: FloatExt, S: SeedExt> DistributionExt for Gbm<T, S> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
+
+  #[test]
+  fn the_malliavin_derivative_is_sigma_times_the_terminal_value() {
+    let gbm = || Gbm::<f64, _>::new(0.05, 0.2, 17, 100.0, Some(1.0), Deterministic::new(3));
+    let Malliavin {
+      paths, derivative, ..
+    } = gbm().malliavin();
+    assert_eq!(paths, gbm().sample());
+    assert!(derivative.iter().all(|d| *d == 0.2 * paths[16]));
+  }
 
   /// The lognormal terminal law: ten closed forms, and `None` for its cf and mgf, which have none.
   #[test]
   fn the_terminal_law_answers_exactly_its_closed_forms() {
-    let gbm = Gbm::new(0.05_f64, 0.2, 10, Some(100.0), Some(1.0), Unseeded);
+    let gbm = Gbm::new(0.05_f64, 0.2, 10, 100.0, Some(1.0), Unseeded);
     assert!(gbm.characteristic_function(0.4).is_none());
     assert!(gbm.moment_generating_function(0.4).is_none());
     assert!(gbm.moment_generating_function(0.0).is_none());
@@ -390,7 +384,7 @@ mod tests {
 
   #[test]
   fn a_degenerate_terminal_law_has_no_closed_forms() {
-    let gbm = Gbm::new(0.05_f64, 0.0, 10, Some(100.0), Some(1.0), Unseeded);
+    let gbm = Gbm::new(0.05_f64, 0.0, 10, 100.0, Some(1.0), Unseeded);
     assert!(gbm.pdf(100.0).is_none());
     assert!(gbm.cdf(100.0).is_none());
     assert!(gbm.quantile(0.5).is_none());
@@ -406,8 +400,16 @@ mod tests {
   }
 
   #[test]
+  fn the_path_starts_at_x0() {
+    assert_eq!(
+      Gbm::<f64>::new(0.05, 0.2, 64, 100.0, None, Unseeded).sample()[0],
+      100.0
+    );
+  }
+
+  #[test]
   fn valid_terminal_distribution_is_positive_and_finite() {
-    let gbm = Gbm::new(0.05_f64, 0.2, 10, Some(100.0), Some(1.0), Unseeded);
+    let gbm = Gbm::new(0.05_f64, 0.2, 10, 100.0, Some(1.0), Unseeded);
 
     assert!(gbm.pdf(100.0).unwrap().is_finite());
     assert!(gbm.pdf(100.0).unwrap() > 0.0);
@@ -418,7 +420,7 @@ mod tests {
 }
 
 py_process_1d!(PyGbm, Gbm,
-  sig: (mu, sigma, n, x0=None, t=None, seed=None, dtype=None),
-  params: (mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  sig: (mu, sigma, n, x0, t=None, seed=None, dtype=None),
+  params: (mu: f64, sigma: f64, n: usize, x0: f64, t: Option<f64>),
   device
 );

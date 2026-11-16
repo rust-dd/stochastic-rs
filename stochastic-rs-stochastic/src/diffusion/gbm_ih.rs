@@ -31,9 +31,9 @@ pub struct GbmIh<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Number of points sampled along the inhomogeneous-GBM path.
   pub n: usize,
-  /// Initial value S₀ of the inhomogeneous-GBM path.
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Optional per-step volatilities (length must be n-1)
   pub sigmas: Option<Array1<T>>,

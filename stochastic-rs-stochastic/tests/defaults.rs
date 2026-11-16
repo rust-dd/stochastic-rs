@@ -125,7 +125,7 @@ fn theta05(_t: f64) -> f64 {
 /// not short-circuited to an all-zero, RNG-free array.
 #[test]
 fn clone_preserves_deterministic_path() {
-  let a = Gbm::<f64, _>::new(0.05, 0.2, N, Some(100.0), Some(1.0), Deterministic::new(42));
+  let a = Gbm::<f64, _>::new(0.05, 0.2, N, 100.0, Some(1.0), Deterministic::new(42));
   let b = a.clone();
   assert_eq!(bits(&a.sample()), bits(&b.sample()));
 
@@ -274,21 +274,14 @@ fn clone_preserves_deterministic_path() {
   let b = a.clone();
   assert_eq!(bits(&a.sample()), bits(&b.sample()));
 
-  let a = DisplacedDiffusion::<f64, _>::new(
-    0.05,
-    0.2,
-    30.0,
-    N,
-    Some(100.0),
-    Some(1.0),
-    Deterministic::new(42),
-  );
+  let a =
+    DisplacedDiffusion::<f64, _>::new(0.05, 0.2, 30.0, N, 100.0, Some(1.0), Deterministic::new(42));
   let b = a.clone();
   assert_eq!(bits(&a.sample()), bits(&b.sample()));
 
   let a = Heston::<f64, Euler, _>::new(
-    Some(100.0),
-    Some(0.04),
+    100.0,
+    0.04,
     2.0,
     0.04,
     0.3,
@@ -324,8 +317,8 @@ fn clone_preserves_deterministic_path() {
 
   let a = Bergomi::<f64, _>::new(
     0.4,
-    Some(0.2),
-    Some(100.0),
+    0.2,
+    100.0,
     0.01,
     -0.6,
     N,
@@ -341,8 +334,8 @@ fn clone_preserves_deterministic_path() {
   let a = RoughBergomi::<f64, _>::new(
     0.1,
     0.4,
-    Some(0.2),
-    Some(100.0),
+    0.2,
+    100.0,
     0.01,
     -0.6,
     N,

@@ -14,7 +14,7 @@ pub struct PyBatesSvj {
 #[pyo3::prelude::pymethods]
 impl PyBatesSvj {
   #[new]
-  #[pyo3(signature = (lambda_, nu, omega, alpha, beta, sigma, rho, n, mu=None, b=None, r=None, r_f=None, s0=None, v0=None, t=None, boundary=None, seed=None, dtype=None, device=None))]
+  #[pyo3(signature = (lambda_, nu, omega, alpha, beta, sigma, rho, n, mu=None, b=None, r=None, r_f=None, *, s0, v0, t=None, boundary=None, seed=None, dtype=None, device=None))]
   fn new(
     lambda_: f64,
     nu: f64,
@@ -28,8 +28,8 @@ impl PyBatesSvj {
     b: Option<f64>,
     r: Option<f64>,
     r_f: Option<f64>,
-    s0: Option<f64>,
-    v0: Option<f64>,
+    s0: f64,
+    v0: f64,
     t: Option<f64>,
     boundary: Option<crate::python_params::PyVarianceBoundary>,
     seed: Option<u64>,
@@ -59,8 +59,8 @@ impl PyBatesSvj {
             sigma as f32,
             rho as f32,
             n,
-            s0.map(|v| v as f32),
-            v0.map(|v| v as f32),
+            s0 as f32,
+            v0 as f32,
             t.map(|v| v as f32),
             boundary,
             crate::python_device::SharedSeed::new(sd),
@@ -95,8 +95,8 @@ impl PyBatesSvj {
             sigma as f32,
             rho as f32,
             n,
-            s0.map(|v| v as f32),
-            v0.map(|v| v as f32),
+            s0 as f32,
+            v0 as f32,
             t.map(|v| v as f32),
             boundary,
             Unseeded,

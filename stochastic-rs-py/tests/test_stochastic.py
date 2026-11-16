@@ -133,7 +133,7 @@ def test_device_names_are_honoured_or_reported():
     # A device name is either served by a compiled back-end or refused with a
     # rebuild hint; never silently redirected to the CPU.
     with pytest.raises(ValueError):
-        sr.PyGbm(0.05, 0.2, 10, seed=7, device="tpu")
+        sr.PyGbm(0.05, 0.2, 10, x0=1.0, seed=7, device="tpu")
     for device in ("cuda", "metal"):
         try:
             gbm = sr.PyGbm(0.05, 0.2, 64, x0=100.0, t=1.0, seed=7, dtype="f32", device=device)
@@ -174,10 +174,10 @@ def test_device_argument_on_the_process_classes():
     assert np.array_equal(base.sample_par(4), same.sample_par(4))
     assert np.array_equal(sr.PyFgn(0.7, 64, seed=3).sample_par(2), sr.PyFgn(0.7, 64, seed=3, device="cpu").sample_par(2))
     with pytest.raises(ValueError):
-        sr.PyGbm(0.05, 0.2, 64, seed=7, device="tpu")
+        sr.PyGbm(0.05, 0.2, 64, x0=1.0, seed=7, device="tpu")
     # float64 on a single-precision device is refused whatever the build carries
     with pytest.raises(ValueError):
-        sr.PyGbm(0.05, 0.2, 64, seed=7, device="metal")
+        sr.PyGbm(0.05, 0.2, 64, x0=1.0, seed=7, device="metal")
     with pytest.raises(ValueError):
         sr.PyFbm(0.7, 64, seed=7, device="metal")
     for device in ("cuda", "metal", "accelerate"):
@@ -224,7 +224,7 @@ def test_heston_slv_samples_under_a_callable_and_a_grid_leverage():
 
 
 def test_heston_slv_rejects_bad_inputs_with_python_errors():
-    kwargs = dict(kappa=2.0, theta=0.04, sigma=0.3, rho=-0.7, mu=0.05, eta=0.6, n=65)
+    kwargs = dict(kappa=2.0, theta=0.04, sigma=0.3, rho=-0.7, mu=0.05, eta=0.6, n=65, s0=100.0, v0=0.04)
     unit = lambda t, s: 1.0
     for bad in (
         {"kappa": math.nan},
@@ -254,7 +254,7 @@ def test_heston_slv_callback_failures_are_runtime_errors(operation):
     def broken(t, s):
         raise RuntimeError("leverage callback failed")
 
-    process = sr.PyHestonSlv(2.0, 0.04, 0.3, -0.7, 0.05, 0.6, broken, 5, seed=7)
+    process = sr.PyHestonSlv(2.0, 0.04, 0.3, -0.7, 0.05, 0.6, broken, 5, 1.0, 0.04, seed=7)
     with pytest.raises(RuntimeError, match="leverage callback failed"):
         if operation == "leverage":
             process.leverage(0.0, 100.0)
@@ -331,10 +331,10 @@ def test_a_log_price_model_takes_exactly_one_drift():
     assert not np.array_equal(gbm_log(mu=0.5), gbm_log(mu=0.25))
     builds = [
         lambda **d: sr.PyGbmLog(sigma=0.2, n=64, s0=1.0, **d),
-        lambda **d: sr.PyHestonLog(kappa=1.5, theta=0.04, xi=0.3, rho=-0.7, n=64, s0=1.0, **d),
+        lambda **d: sr.PyHestonLog(kappa=1.5, theta=0.04, xi=0.3, rho=-0.7, n=64, s0=1.0, v0=0.04, **d),
         lambda **d: sr.PyMjdLog(sigma=0.2, lambda_=0.5, nu=-0.1, omega=0.15, n=64, s0=1.0, **d),
-        lambda **d: sr.PyBates(0.5, 0.0, 0.08, 2.0, 0.3, -0.5, lambda: 0.1, 64, s0=1.0, **d),
-        lambda **d: sr.PyBatesSvj(0.5, 0.0, 0.1, 0.08, 2.0, 0.3, -0.7, 64, s0=1.0, **d),
+        lambda **d: sr.PyBates(0.5, 0.0, 0.08, 2.0, 0.3, -0.5, lambda: 0.1, 64, s0=1.0, v0=0.0, **d),
+        lambda **d: sr.PyBatesSvj(0.5, 0.0, 0.1, 0.08, 2.0, 0.3, -0.7, 64, s0=1.0, v0=0.0, **d),
     ]
     for build in builds:
         build(mu=0.05)

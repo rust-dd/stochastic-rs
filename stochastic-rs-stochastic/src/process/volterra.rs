@@ -128,7 +128,7 @@ pub struct Volterra<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub kernel: VolterraKernelSpec,
   /// Number of grid points.
   pub n: usize,
-  /// Time horizon $T$.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,

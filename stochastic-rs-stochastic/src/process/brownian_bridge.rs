@@ -40,30 +40,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Brownian bridge: a Brownian path pinned at both ends.
-///
-/// `dX_s = ((xt - X_s) / (T - s)) * ds + sigma * dW_s`, with `X_0 = x0` and
-/// `X_T = xt` exactly. See the module doc for the equivalent closed-form
-/// representation and the discretization's final-step guard (below): the
-/// Euler recursion is run only up to the second-to-last grid point, and the
-/// last point is assigned `xt` directly rather than through one more
-/// (noisy) step.
-///
-/// Exact per-step construction (Glasserman §3.1, cited in the module doc):
-/// because the bridge is Markov and Gaussian, drawing each interior point
-/// from its own exact conditional law given the previous point and the
-/// pinned endpoint reproduces the exact discretized-path law at any grid
-/// resolution — zero discretization bias, unlike a naive Euler step. The
-/// Euler mean step happens to already be exact here (the drift is linear
-/// in `X_s`); only Euler's *variance* step would be biased, and sharply so
-/// near the terminal boundary — a plain Euler scheme's per-step variance
-/// is off by ~0.75% at the midpoint but ~65% one grid step before the end,
-/// at `n = 201`. Each drawn increment is instead scaled by
-/// `sqrt((T - s_{k+1}) / (T - s_k))` so the per-step variance matches the
-/// exact conditional law directly; that scaling is theoretically zero at
-/// the true final step, which is why the explicit final-step guard below
-/// (assigning `xt` directly) exists only for bit-exactness, not to patch
-/// over a bias.
+/// A Brownian path pinned at `X_0 = x0` and `X_T = xt`: each interior point is drawn from its
+/// exact conditional law given the previous one, so the grid adds no bias, and the last is `xt`.
 #[derive(Clone)]
 pub struct BrownianBridge<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Diffusion scale σ multiplying `dW_s` in the bridge SDE.
@@ -74,13 +52,13 @@ pub struct BrownianBridge<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// (matching how every other single-path process in this crate degrades at
   /// `n = 1`), not a claim that `x0` is somehow more correct than `xt` here.
   pub n: usize,
-  /// Pinned starting value X₀ (defaults to 0 when omitted).
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
   /// Pinned terminal value X_T (defaults to 0, pairing with `x0`'s own
   /// default of 0 so the "standard bridge" cited in the module doc's
   /// closed-form moments is the default parametrization).
   pub xt: Option<T>,
-  /// Simulation horizon [0, T] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or
   /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
@@ -288,18 +266,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`BrownianBridge`] sampling state: precomputed step size and
-/// the owned Gaussian source. The source draws raw `N(0, dt)`; `fill_path`
-/// scales each draw by the exact per-step variance ratio (see the struct
-/// doc) and by `sigma` at consumption, mirroring
-/// [`crate::diffusion::bessel::Bessel`] / [`crate::diffusion::gbm::Gbm`] /
-/// [`crate::diffusion::ou::Ou`] / [`crate::diffusion::cir::Cir`] rather than
-/// baking the model's own scale into `std_dev` — the latter would make
-/// `SimdNormal::new`'s `assert!(std_dev > 0)` panic outright for `sigma =
-/// 0.0` (a legitimate, degenerate-but-valid input: a zero-vol bridge is just
-/// the deterministic linear interpolation), which this crate's house
-/// convention never does for an in-range parameter (warn-but-accept at
-/// worst, as `Cir`/`Bessel` do at their own boundaries — never panic).
+/// Reusable [`BrownianBridge`] sampling state. The source draws raw `N(0, dt)` and `sigma` scales
+/// it at use: `SimdNormal` refuses a zero scale, and a zero-volatility bridge is valid.
 #[doc(hidden)]
 pub struct BrownianBridgeSampler<T: FloatExt> {
   n: usize,
@@ -321,9 +289,7 @@ impl<T: FloatExt> BrownianBridgeSampler<T> {
       return;
     }
     let last = out.len() - 1;
-    // Run the SDE recursion on the interior points only (`out[1..last]`);
-    // the final point is guarded below rather than produced by one more
-    // step of it.
+    // Interior points only: the last one is pinned below, not stepped.
     let interior = &mut out[1..last];
     self.normal.fill_slice(interior);
 
@@ -332,21 +298,15 @@ impl<T: FloatExt> BrownianBridgeSampler<T> {
       let s = T::from_usize_(k) * self.dt;
       let s_next = s + self.dt;
       let drift = (self.xt - prev) / (self.t - s) * self.dt;
-      // Exact per-step variance ratio (T - s_next)/(T - s) (Glasserman
-      // §3.1's sequential bridge construction): scales the raw N(0, dt)
-      // draw so this step's variance matches the exact conditional law
-      // instead of Euler's own sigma^2*dt, which is badly biased near the
-      // terminal boundary (see the struct doc).
+      // The exact conditional variance ratio of Glasserman §3.1; Euler's sigma²·dt is biased near
+      // `T`, by about 65% one step before the end at n = 201.
       let var_ratio = (self.t - s_next) / (self.t - s);
       let next = prev + drift + self.sigma * var_ratio.sqrt() * *z;
       *z = next;
       prev = next;
     }
-    // Final-step guard: as s -> T the drift's own 1/(T-s) term diverges,
-    // which is exactly what pins the continuous-time path to `xt` in the
-    // limit — but the discretized recursion above would still add one more,
-    // finite diffusion kick `sigma * dW` at s = T - dt, so it never lands on
-    // `xt` exactly. Assign the pinned endpoint directly instead.
+    // One more step would add a finite kick at `T - dt` and miss `xt`, which the continuous
+    // path reaches through its diverging drift.
     out[last] = self.xt;
   }
 }
@@ -502,10 +462,8 @@ mod tests {
     );
   }
 
-  /// `sigma = 0.0` must not panic (regression: `SimdNormal::new` requires
-  /// `std_dev > 0`, so the diffusion scale must never be baked into it) and
-  /// must collapse to the exact deterministic interpolation
-  /// `x0 + (xt - x0) * s / T` at every grid point, endpoints included.
+  /// A zero volatility is the line `x0 + (xt - x0) s / T`, endpoints included, without the
+  /// zero scale ever reaching `SimdNormal`.
   #[test]
   fn brownian_bridge_zero_volatility_is_exact_interpolation() {
     let x0 = 0.5_f64;

@@ -62,11 +62,11 @@ pub struct Svcgmy<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Truncation level J (number of series terms)
   pub j: usize,
-  /// Initial value (interpreted as L0)
+  /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
-  /// Initial variance v0
-  pub v0: Option<T>,
-  /// Time horizon T
+  /// Initial variance.
+  pub v0: T,
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
@@ -87,7 +87,7 @@ impl<T: FloatExt, S: SeedExt> Svcgmy<T, S> {
     n: usize,
     j: usize,
     x0: Option<T>,
-    v0: Option<T>,
+    v0: T,
     t: Option<T>,
     seed: S,
   ) -> Self {
@@ -124,8 +124,8 @@ impl<T: FloatExt, S: SeedExt> Svcgmy<T, S> {
       "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
     );
     assert!(
-      v0.is_none_or(|v| v.is_finite()),
-      "v0 must satisfy `v0.is_none_or(|v| v.is_finite())`, got v0 = {v0:?}"
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
     );
     assert!(
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
@@ -158,8 +158,8 @@ impl<T: FloatExt, S: SeedExt> Svcgmy<T, S> {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
 
     assert!(
-      v0.is_none_or(|v| v >= T::zero()),
-      "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
+      v0 >= T::zero(),
+      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
     );
 
     Self {
@@ -239,10 +239,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   /// The jump part starts at `x0 − ρ v0`, so the reported log-price starts
   /// at `x0`; the variance at `v0`.
   fn initial_state(&self) -> [T; 4] {
-    let v0 = self.v0.unwrap_or(T::zero());
     [
-      self.x0.unwrap_or(T::zero()) - self.rho * v0,
-      v0,
+      self.x0.unwrap_or(T::zero()) - self.rho * self.v0,
+      self.v0,
       T::zero(),
       T::zero(),
     ]
@@ -321,7 +320,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       n: self.n,
       j: self.j,
       x0: self.x0.unwrap_or(T::zero()),
-      v0: self.v0.unwrap_or(T::zero()),
+      v0: self.v0,
       t: self.t,
       seed: self.seed.derive(),
     }
@@ -546,8 +545,8 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for SvcgmySampler<T, S> {
 }
 
 py_process_2x1d!(PySvcgmy, Svcgmy,
-  sig: (lambda_plus, lambda_minus, alpha, kappa, eta, zeta, rho, n, j, x0=None, v0=None, t=None, seed=None, dtype=None),
-  params: (lambda_plus: f64, lambda_minus: f64, alpha: f64, kappa: f64, eta: f64, zeta: f64, rho: f64, n: usize, j: usize, x0: Option<f64>, v0: Option<f64>, t: Option<f64>),
+  sig: (lambda_plus, lambda_minus, alpha, kappa, eta, zeta, rho, n, j, x0=None, *, v0, t=None, seed=None, dtype=None),
+  params: (lambda_plus: f64, lambda_minus: f64, alpha: f64, kappa: f64, eta: f64, zeta: f64, rho: f64, n: usize, j: usize, x0: Option<f64>, v0: f64, t: Option<f64>),
   device
 );
 
@@ -570,7 +569,7 @@ mod tests {
       n,
       32,
       None,
-      Some(f(0.04)),
+      f(0.04),
       Some(T::one()),
       Deterministic::new(5),
     )

@@ -64,11 +64,10 @@ pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub hurst: T,
   /// Vol-of-vol ν scaling the log-variance driver's dispersion.
   pub nu: T,
-  /// Initial variance level v₀ (variance, not volatility — squared inside
-  /// the sampler to seed `v(t_0) = v_0²`).
-  pub v0: Option<T>,
-  /// Initial asset price S₀.
-  pub s0: Option<T>,
+  /// Initial volatility; the variance starts at `v0²`.
+  pub v0: T,
+  /// Initial spot.
+  pub s0: T,
   /// Constant proportional drift rate of the asset (a GBM-style drift, not
   /// a correlation — that role belongs to `rho`).
   pub r: T,
@@ -77,7 +76,7 @@ pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub rho: T,
   /// Number of points sampled along the rBergomi path.
   pub n: usize,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
@@ -90,17 +89,7 @@ pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `RoughBergomi::default().with_hurst(0.3).with_rho(-0.2)`.
 impl<T: FloatExt, S: SeedExt> RoughBergomi<T, S> {
-  pub fn new(
-    hurst: T,
-    nu: T,
-    v0: Option<T>,
-    s0: Option<T>,
-    r: T,
-    rho: T,
-    n: usize,
-    t: Option<T>,
-    seed: S,
-  ) -> Self {
+  pub fn new(hurst: T, nu: T, v0: T, s0: T, r: T, rho: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
       hurst.is_finite(),
       "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
@@ -110,12 +99,12 @@ impl<T: FloatExt, S: SeedExt> RoughBergomi<T, S> {
       "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
     );
     assert!(
-      v0.is_none_or(|v| v.is_finite()),
-      "v0 must satisfy `v0.is_none_or(|v| v.is_finite())`, got v0 = {v0:?}"
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
     );
     assert!(
-      s0.is_none_or(|v| v.is_finite()),
-      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
     );
     assert!(
       r.is_finite(),
@@ -160,13 +149,13 @@ impl<T: FloatExt, S: SeedExt, B> RoughBergomi<T, S, B> {
   }
 
   /// Replace `v0`, all else unchanged.
-  pub fn with_v0(mut self, v0: Option<T>) -> Self {
+  pub fn with_v0(mut self, v0: T) -> Self {
     self.v0 = v0;
     self
   }
 
   /// Replace `s0`, all else unchanged.
-  pub fn with_s0(mut self, s0: Option<T>) -> Self {
+  pub fn with_s0(mut self, s0: T) -> Self {
     self.s0 = s0;
     self
   }
@@ -218,8 +207,8 @@ impl<T: FloatExt> Default for RoughBergomi<T, Unseeded> {
     Self::new(
       T::from_f64_fast(0.1),
       T::from_f64_fast(0.4),
-      Some(T::from_f64_fast(0.2)),
-      Some(T::from_f64_fast(100.0)),
+      T::from_f64_fast(0.2),
+      T::from_f64_fast(100.0),
       T::from_f64_fast(0.01),
       T::from_f64_fast(-0.6),
       252,
@@ -240,19 +229,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     crate::euler::EulerSpec::RoughBergomiMemory {
       r: self.r,
       a: self.nu * (T::from_usize_(2) * self.hurst).sqrt(),
-      v0sq: self.v0.unwrap_or(T::one()).powi(2),
+      v0sq: self.v0.powi(2),
       residual_sd,
       rho: self.rho,
     }
   }
 
   fn initial_state(&self) -> [T; 4] {
-    [
-      self.s0.unwrap_or(T::from_usize_(100)),
-      self.v0.unwrap_or(T::one()).powi(2),
-      T::zero(),
-      T::zero(),
-    ]
+    [self.s0, self.v0.powi(2), T::zero(), T::zero()]
   }
 
   fn grid_points(&self) -> usize {
@@ -330,8 +314,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       n: self.n,
       hurst: self.hurst,
       nu: self.nu,
-      v0_sq: self.v0.unwrap_or(T::one()).powi(2),
-      s0: self.s0.unwrap_or(T::from_usize_(100)),
+      v0_sq: self.v0.powi(2),
+      s0: self.s0,
       r: self.r,
       dt,
       kernel,
@@ -516,15 +500,15 @@ pub struct PyRoughBergomi {
 #[pyo3::prelude::pymethods]
 impl PyRoughBergomi {
   #[new]
-  #[pyo3(signature = (hurst, nu, r, rho, n, v0=None, s0=None, t=None, seed=None, dtype=None))]
+  #[pyo3(signature = (hurst, nu, r, rho, n, v0, s0, t=None, seed=None, dtype=None))]
   fn new(
     hurst: f64,
     nu: f64,
     r: f64,
     rho: f64,
     n: usize,
-    v0: Option<f64>,
-    s0: Option<f64>,
+    v0: f64,
+    s0: f64,
     t: Option<f64>,
     seed: Option<u64>,
     dtype: Option<&str>,
@@ -541,8 +525,8 @@ impl PyRoughBergomi {
           s.seeded_f32 = Some(RoughBergomi::new(
             hurst as f32,
             nu as f32,
-            v0.map(|v| v as f32),
-            s0.map(|v| v as f32),
+            v0 as f32,
+            s0 as f32,
             r as f32,
             rho as f32,
             n,
@@ -567,8 +551,8 @@ impl PyRoughBergomi {
           s.inner_f32 = Some(RoughBergomi::new(
             hurst as f32,
             nu as f32,
-            v0.map(|v| v as f32),
-            s0.map(|v| v as f32),
+            v0 as f32,
+            s0 as f32,
             r as f32,
             rho as f32,
             n,
@@ -642,8 +626,8 @@ mod tests {
     RoughBergomi::new(
       hurst,
       0.4,
-      Some(0.2),
-      Some(100.0),
+      0.2,
+      100.0,
       0.0,
       -0.6,
       n,

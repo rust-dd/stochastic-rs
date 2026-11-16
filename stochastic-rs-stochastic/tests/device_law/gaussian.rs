@@ -89,7 +89,7 @@ fn log_gbm_agrees_with_the_cpu_law() {
       Drift::Mu(0.05),
       0.2,
       253,
-      Some(100.0),
+      100.0,
       Some(1.0),
       Deterministic::new(7),
     )
@@ -370,7 +370,7 @@ fn merton_jump_diffusion_agrees_with_the_cpu_law() {
       -0.05,
       0.1,
       253,
-      Some(100.0),
+      100.0,
       Some(1.0),
       Deterministic::new(89),
     )
@@ -443,30 +443,11 @@ fn transformed_ou_agrees_with_the_cpu_law() {
 #[test]
 fn the_two_map_forms_agree() {
   map_forms_agree(
-    || {
-      Gbm::<f32, _>::new(
-        0.05,
-        0.2,
-        253,
-        Some(100.0),
-        Some(1.0),
-        Deterministic::new(3),
-      )
-      .on::<Device>()
-    },
+    || Gbm::<f32, _>::new(0.05, 0.2, 253, 100.0, Some(1.0), Deterministic::new(3)).on::<Device>(),
     "GBM on the device",
   );
   map_forms_agree(
-    || {
-      Gbm::<f32, _>::new(
-        0.05,
-        0.2,
-        253,
-        Some(100.0),
-        Some(1.0),
-        Deterministic::new(3),
-      )
-    },
+    || Gbm::<f32, _>::new(0.05, 0.2, 253, 100.0, Some(1.0), Deterministic::new(3)),
     "GBM on the host",
   );
   map_forms_agree(

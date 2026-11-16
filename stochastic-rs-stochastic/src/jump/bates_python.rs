@@ -20,7 +20,7 @@ pub struct PyBates {
 #[pyo3::prelude::pymethods]
 impl PyBates {
   #[new]
-  #[pyo3(signature = (lambda_, k, alpha, beta, sigma, rho, distribution, n, mu=None, b=None, r=None, r_f=None, s0=None, v0=None, t=None, boundary=None, seed=None, dtype=None))]
+  #[pyo3(signature = (lambda_, k, alpha, beta, sigma, rho, distribution, n, mu=None, b=None, r=None, r_f=None, *, s0, v0, t=None, boundary=None, seed=None, dtype=None))]
   fn new(
     lambda_: f64,
     k: f64,
@@ -34,8 +34,8 @@ impl PyBates {
     b: Option<f64>,
     r: Option<f64>,
     r_f: Option<f64>,
-    s0: Option<f64>,
-    v0: Option<f64>,
+    s0: f64,
+    v0: f64,
     t: Option<f64>,
     boundary: Option<crate::python_params::PyVarianceBoundary>,
     seed: Option<u64>,
@@ -66,8 +66,8 @@ impl PyBates {
                 rho as f32,
                 jump_dist,
                 n,
-                s0.map(|v| v as f32),
-                v0.map(|v| v as f32),
+                s0 as f32,
+                v0 as f32,
                 t.map(|v| v as f32),
                 boundary,
                 Deterministic::new(sd),
@@ -84,8 +84,8 @@ impl PyBates {
                 rho as f32,
                 jump_dist,
                 n,
-                s0.map(|v| v as f32),
-                v0.map(|v| v as f32),
+                s0 as f32,
+                v0 as f32,
                 t.map(|v| v as f32),
                 boundary,
                 Unseeded,

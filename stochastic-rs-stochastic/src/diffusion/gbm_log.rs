@@ -30,9 +30,9 @@ pub struct GbmLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Number of points sampled along the log-Euler GBM path.
   pub n: usize,
-  /// Initial asset price (must be > 0)
-  pub s0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  /// Initial spot.
+  pub s0: T,
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
@@ -42,15 +42,15 @@ pub struct GbmLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> GbmLog<T, S> {
-  pub fn new(drift: Drift<T>, sigma: T, n: usize, s0: Option<T>, t: Option<T>, seed: S) -> Self {
+  pub fn new(drift: Drift<T>, sigma: T, n: usize, s0: T, t: Option<T>, seed: S) -> Self {
     drift.assert_finite();
     assert!(
       sigma.is_finite(),
       "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
     );
     assert!(
-      s0.is_none_or(|v| v.is_finite()),
-      "s0 must satisfy `s0.is_none_or(|v| v.is_finite())`, got s0 = {s0:?}"
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
     );
     assert!(
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
@@ -60,6 +60,10 @@ impl<T: FloatExt, S: SeedExt> GbmLog<T, S> {
     assert!(
       sigma >= T::zero(),
       "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      s0 > T::zero(),
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
     );
     Self {
       backend: Cpu,
@@ -105,7 +109,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn initial_value(&self) -> T {
-    self.s0.unwrap_or(T::one())
+    self.s0
   }
 
   fn grid_points(&self) -> usize {
@@ -148,7 +152,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     let drift_ln = (drift - half * self.sigma * self.sigma) * dt;
     GbmLogSampler {
       n: self.n,
-      s0: self.s0.unwrap_or(T::one()),
+      s0: self.s0,
       sigma: self.sigma,
       drift_ln,
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
@@ -203,7 +207,11 @@ impl<T: FloatExt> GbmLogSampler<T> {
     if out.is_empty() {
       return;
     }
-    assert!(self.s0 > T::zero(), "s0 must be > 0 for log simulation");
+    assert!(
+      self.s0 > T::zero(),
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {:?}",
+      self.s0
+    );
     out[0] = self.s0;
     if out.len() == 1 {
       return;
@@ -247,8 +255,8 @@ mod tests {
   #[test]
   fn the_three_drift_forms_agree_on_the_rate() {
     let rate = |d: Drift<f64>| {
-      GbmLog::<f64, Deterministic>::new(d, 0.2, 64, Some(1.0), Some(1.0), Deterministic::new(1))
-        .sample()[63]
+      GbmLog::<f64, Deterministic>::new(d, 0.2, 64, 1.0, Some(1.0), Deterministic::new(1)).sample()
+        [63]
     };
     assert_eq!(rate(Drift::Mu(0.5)), rate(Drift::CostOfCarry(0.5)));
     assert_eq!(
@@ -260,14 +268,7 @@ mod tests {
 
   #[test]
   fn price_stays_positive() {
-    let p = GbmLog::new(
-      Drift::Mu(0.05_f64),
-      0.2,
-      1000,
-      Some(100.0),
-      Some(1.0),
-      Unseeded,
-    );
+    let p = GbmLog::new(Drift::Mu(0.05_f64), 0.2, 1000, 100.0, Some(1.0), Unseeded);
     let s = p.sample();
     assert!(s.iter().all(|x| *x > 0.0));
   }

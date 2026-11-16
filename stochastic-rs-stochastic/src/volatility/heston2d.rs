@@ -43,10 +43,9 @@ use crate::traits::ProcessExt;
 /// instantaneous variance.
 pub struct Heston2D<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Initial log-prices `[x_1(0), x_2(0)]`.
-  pub x0: [Option<T>; 2],
-  /// Initial variances `[v_1(0), v_2(0)]`; both entries must be present,
-  /// finite and strictly positive, matching the MATLAB source contract.
-  pub v0: [Option<T>; 2],
+  pub x0: [T; 2],
+  /// Initial variances `[v_1(0), v_2(0)]`, strictly positive as in the MATLAB source.
+  pub v0: [T; 2],
   /// Drifts `[μ_1, μ_2]` of the log-price processes.
   pub mu: [T; 2],
   /// Long-run variances `[θ_1, θ_2]`.
@@ -61,7 +60,7 @@ pub struct Heston2D<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub rho: [T; 6],
   /// Number of points (so `n - 1` time steps).
   pub n: usize,
-  /// Positive finite time horizon (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Treatment of a negative square-root state after a step; the Feller condition is not required.
   pub boundary: VarianceBoundary,
@@ -116,8 +115,8 @@ fn cholesky_4x4<T: FloatExt>(rho: [T; 6]) -> [T; 10] {
 /// [`Heston2D::new`] checks separately (accepted, not rejected — see its
 /// doc comment).
 fn validate_params<T: FloatExt>(
-  x0: &[Option<T>; 2],
-  v0: &[Option<T>; 2],
+  x0: &[T; 2],
+  v0: &[T; 2],
   mu: &[T; 2],
   theta: &[T; 2],
   kappa: &[T; 2],
@@ -133,11 +132,11 @@ fn validate_params<T: FloatExt>(
   );
   for i in 0..2 {
     assert!(
-      x0[i].is_none_or(|v| v.is_finite()),
-      "x0[{i}] must satisfy `x0[i].is_none_or(|v| v.is_finite())`, got x0[{i}] = {:?}",
+      x0[i].is_finite(),
+      "x0[{i}] must satisfy `x0[i].is_finite()`, got x0[{i}] = {:?}",
       x0[i]
     );
-    let value = v0[i].expect("both initial variances v0 must be specified");
+    let value = v0[i];
     assert!(
       value.is_finite(),
       "v0[{i}] must satisfy `v0[i].is_finite()`, got v0[{i}] = {value:?}"
@@ -222,8 +221,8 @@ fn warn_on_feller_violation<T: FloatExt>(
 impl<T: FloatExt, S: SeedExt> Heston2D<T, S> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    x0: [Option<T>; 2],
-    v0: [Option<T>; 2],
+    x0: [T; 2],
+    v0: [T; 2],
     mu: [T; 2],
     theta: [T; 2],
     kappa: [T; 2],
@@ -310,12 +309,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn initial_state(&self) -> [T; 4] {
-    [
-      self.x0[0].unwrap_or(T::zero()),
-      self.v0[0].expect("validated initial variance must be present"),
-      self.x0[1].unwrap_or(T::zero()),
-      self.v0[1].expect("validated initial variance must be present"),
-    ]
+    [self.x0[0], self.v0[0], self.x0[1], self.v0[1]]
   }
 
   fn grid_points(&self) -> usize {
@@ -365,14 +359,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       std::array::from_fn(|_| SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(&self.seed.derive()));
     Heston2DSampler {
       n: self.n,
-      x0: [
-        self.x0[0].unwrap_or(T::zero()),
-        self.x0[1].unwrap_or(T::zero()),
-      ],
-      v0: [
-        self.v0[0].expect("validated initial variance must be present"),
-        self.v0[1].expect("validated initial variance must be present"),
-      ],
+      x0: self.x0,
+      v0: self.v0,
       mu: self.mu,
       theta: self.theta,
       kappa: self.kappa,

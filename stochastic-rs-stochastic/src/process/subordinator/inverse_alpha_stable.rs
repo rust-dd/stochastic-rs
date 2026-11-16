@@ -31,7 +31,7 @@ pub struct InverseAlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B 
   pub c: T,
   /// Number of target time-grid points.
   pub n: usize,
-  /// Horizon for target time-grid.
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Internal grid size for the direct process `D_alpha(u)`.
   pub u_steps: usize,

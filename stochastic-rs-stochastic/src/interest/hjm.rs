@@ -68,8 +68,7 @@ pub struct Hjm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub p0: Option<T>,
   /// Initial forward-rate level.
   pub f0: Option<T>,
-  /// Horizon shared by the short-rate, bond-price and forward-rate paths
-  /// (defaults to 1 when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,

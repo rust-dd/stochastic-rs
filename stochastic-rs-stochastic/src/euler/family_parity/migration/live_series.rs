@@ -14,7 +14,7 @@ fn process(terms: usize) -> crate::volatility::svcgmy::Svcgmy<f32, Deterministic
     N,
     terms,
     Some(0.0),
-    Some(0.25),
+    0.25,
     Some(1.0),
     Deterministic::new(11),
   )

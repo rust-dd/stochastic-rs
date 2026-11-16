@@ -72,8 +72,7 @@ pub struct HestonStochCorr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
   /// Number of points sampled along each of the `[S, v, ρ]` paths.
   pub n: usize,
-  /// Simulation horizon [0, t] shared by all three paths (defaults to 1
-  /// when omitted).
+  /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
   /// Seed strategy.
   pub seed: S,

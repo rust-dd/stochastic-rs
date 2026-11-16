@@ -23,7 +23,8 @@ use crate::traits::ProcessExt;
 pub struct Gn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Number of `N(0, dt)` increments sampled (no leading zero).
   pub n: usize,
-  /// Simulation horizon `[0, t]` the `n` increments span (1 when omitted); sets `dt = t / max(n, 1)`.
+  /// Horizon of the path; `None` is a unit horizon.
+  /// The `n` increments span it, so `dt = t / n`.
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,

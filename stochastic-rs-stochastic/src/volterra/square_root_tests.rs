@@ -26,7 +26,7 @@ fn process(seed: u64) -> VolterraSquareRoot<f64, RlKernel<f64>, Deterministic> {
     THETA,
     NU,
     N,
-    Some(THETA),
+    THETA,
     Some(1.0),
     Deterministic::new(seed),
   )
@@ -116,21 +116,19 @@ fn different_seeds_give_different_paths() {
   assert_ne!(a, b);
 }
 
-/// `v0` defaults to `theta`, the stationary level — not to zero, which would
-/// start the process on its boundary.
 #[test]
-fn v0_defaults_to_theta() {
+fn the_path_starts_at_v0() {
   let p = VolterraSquareRoot::new(
     kernel(),
     KAPPA,
     THETA,
     NU,
     N,
-    None,
+    0.07,
     Some(1.0),
     Deterministic::new(1),
   );
-  assert_eq!(p.sample()[0], THETA);
+  assert_eq!(p.sample()[0], 0.07);
 }
 
 #[test]
@@ -166,7 +164,7 @@ fn rejects_n_below_two() {
     THETA,
     NU,
     1,
-    None,
+    THETA,
     None,
     Deterministic::new(1),
   );
