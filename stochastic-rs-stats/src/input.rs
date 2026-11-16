@@ -21,6 +21,15 @@ pub(crate) fn validate<T: FloatExt>(y: &[T], min_n: usize) -> Result<(), StatsEr
   validate_domain(y, min_n, "finite", |_| true)
 }
 
+/// [`validate`] on a view, out of line so the pass does not take registers from the caller's loops.
+#[inline(never)]
+pub(crate) fn validate_view<T: FloatExt>(
+  x: ArrayView1<'_, T>,
+  min_n: usize,
+) -> Result<(), StatsError> {
+  validate(&as_slice_or_copy(x), min_n)
+}
+
 /// As [`validate`], each observation also inside `domain`; `constraint` names both conditions.
 pub(crate) fn validate_domain<T: FloatExt>(
   y: &[T],
