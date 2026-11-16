@@ -62,7 +62,10 @@ impl Default for LmOptions {
 #[derive(Clone, Copy, Debug)]
 pub struct LmReport {
   pub converged: bool,
+  /// Residual evaluations, the budget's unit.
   pub evaluations: usize,
+  /// Accepted stepper iterations, the cap's unit.
+  pub iterations: usize,
   pub reason: TerminationReason,
 }
 
@@ -88,7 +91,7 @@ impl LmReport {
     history: Vec<CalibrationHistory<P>>,
   ) -> Calibrated<P> {
     Calibrated::repriced(params, market, model, metrics, self.converged)
-      .with_iterations(self.evaluations)
+      .with_iterations(self.iterations)
       .with_message(self.message())
       .with_history(history)
   }
@@ -168,6 +171,7 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
       LmReport {
         converged: false,
         evaluations: 0,
+        iterations: 0,
         reason: TerminationReason::SolverFailed,
       },
     );
@@ -178,7 +182,7 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
     .with_gradient_orthogonality_tolerance(gradient_tolerance)
     .with_relative_model_reduction_tolerance(tolerance)
     .with_relative_trust_radius_tolerance(tolerance);
-  let (best, reason) = if options.pivoted_qr {
+  let (best, reason, iterations) = if options.pivoted_qr {
     run(
       &objective,
       solver.with_pivoted_qr(),
@@ -197,6 +201,7 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
     LmReport {
       converged: reason == TerminationReason::SolverConverged,
       evaluations: objective.evaluations.get(),
+      iterations,
       reason,
     },
   )
@@ -208,12 +213,13 @@ fn run<'a, P, So>(
   initial: Array1<f64>,
   budget: usize,
   max_iter: usize,
-) -> (Array1<f64>, TerminationReason)
+) -> (Array1<f64>, TerminationReason, usize)
 where
   P: LeastSquaresProblem,
   So: Solver<&'a Objective<P>, NllsState<Array1<f64>>, Error = ()>,
 {
   let mut best = initial.clone();
+  let mut iterations = 0;
   let reason = match Executor::new(objective, solver, NllsState::new(initial))
     .max_iter(max_iter as u64)
     .max_cost_evals(budget as u64)
@@ -225,6 +231,7 @@ where
         Err(()) => break TerminationReason::SolverFailed,
         Ok(outcome) => {
           best.clone_from(stepper.state().best_param());
+          iterations = stepper.state().iter() as usize;
           if let StepOutcome::Stopped(reason) = outcome {
             break reason;
           }
@@ -232,7 +239,7 @@ where
       }
     },
   };
-  (best, reason)
+  (best, reason, iterations)
 }
 
 #[cfg(test)]
@@ -317,7 +324,7 @@ mod tests {
       vec![],
     );
     assert!(fit.converged() && fit.history().is_empty());
-    assert_eq!(fit.iterations(), Some(report.evaluations));
+    assert_eq!(fit.iterations(), Some(report.iterations));
     assert_eq!(fit.message(), Some("converged"));
     assert_eq!(fit.max_error(), Some(0.5));
     assert_eq!(fit.rmse(), 0.125_f64.sqrt());
@@ -352,6 +359,9 @@ mod tests {
     assert_eq!(report.reason, TerminationReason::MaxIter);
     assert!(report.evaluations < free_report.evaluations);
     assert!(distance_to_optimum(&capped.x) > distance_to_optimum(&free.x));
+    let fit = report.calibrated(capped.x.to_vec(), &[1.0], &[1.0], &LossMetric::ALL, vec![]);
+    assert!(fit.iterations.unwrap() <= 2, "{:?}", fit.iterations);
+    assert!(fit.iterations.unwrap() < report.evaluations);
   }
 
   #[test]

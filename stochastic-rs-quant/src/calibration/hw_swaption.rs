@@ -186,13 +186,13 @@ impl crate::traits::Calibrator for HullWhiteSwaptionCalibrator<'_> {
       400,
       |x| {
         let (mean_reversion, sigma) = (x[0].abs(), x[1].abs());
-        let (model, market) = problem.price_series(mean_reversion, sigma);
+        let (market, model) = problem.price_series(mean_reversion, sigma);
         let params = HullWhiteParams {
           mean_reversion,
           sigma,
           ..start
         };
-        (params, model, market)
+        (params, market, model)
       },
     ))
   }
@@ -260,7 +260,7 @@ impl HullWhiteCost {
       model_prices.push(w * model_price);
       market_prices.push(w * market_price);
     }
-    (model_prices, market_prices)
+    (market_prices, model_prices)
   }
 }
 
@@ -272,7 +272,7 @@ impl CostFunction for HullWhiteCost {
   fn cost(&self, x: &Self::Param) -> Result<f64, Self::Error> {
     let a = x[0].abs().max(1e-6);
     let sigma = x[1].abs().max(1e-6);
-    let (model_prices, market_prices) = self.price_series(a, sigma);
+    let (market_prices, model_prices) = self.price_series(a, sigma);
     let loss: f64 = model_prices
       .iter()
       .zip(market_prices.iter())

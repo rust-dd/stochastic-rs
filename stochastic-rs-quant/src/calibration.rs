@@ -147,13 +147,13 @@ where
     .iter()
     .enumerate()
     .map(|(iteration, vertex)| {
-      let (params, model, market) = price(vertex);
+      let (params, market, model) = price(vertex);
       let residuals = Array1::from_iter(market.iter().zip(&model).map(|(q, m)| q - m));
       let loss = CalibrationLossScore::compute_selected(&market, &model, options.loss_metrics);
       CalibrationHistory::new(iteration, params, residuals, loss)
     })
     .collect();
-  let (params, model, market) = price(&run.best);
+  let (params, market, model) = price(&run.best);
   Calibrated::repriced(params, &market, &model, options.loss_metrics, run.converged)
     .with_iterations(run.iterations as usize)
     .with_history(history)

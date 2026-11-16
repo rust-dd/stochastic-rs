@@ -46,7 +46,15 @@ impl<P> Calibrated<P> {
     metrics: &[LossMetric],
     converged: bool,
   ) -> Self {
-    let loss = CalibrationLossScore::compute_selected(market, model, metrics);
+    let loss = if metrics.contains(&LossMetric::Rmse) {
+      CalibrationLossScore::compute_selected(market, model, metrics)
+    } else {
+      let with_rmse: Vec<LossMetric> = [LossMetric::Rmse]
+        .into_iter()
+        .chain(metrics.iter().copied())
+        .collect();
+      CalibrationLossScore::compute_selected(market, model, &with_rmse)
+    };
     let max_error = f64::max_or_nan_fold(market.iter().zip(model).map(|(m, q)| (m - q).abs()));
     Self::new(params, loss, converged).with_max_error(max_error)
   }
@@ -166,7 +174,7 @@ pub struct CalibrationOptions {
   pub patience: usize,
   /// Record the optimiser's iterates into `Calibrated::history`.
   pub record_history: bool,
-  /// Metrics computed for the result and each history entry; every `LossMetric` by default.
+  /// Metrics computed for the result and each history entry, every one by default; `rmse()` always has Rmse.
   pub loss_metrics: &'static [LossMetric],
   /// Tikhonov pull in the calibrator's natural parameter order.
   pub regularization: Option<Regularization>,
@@ -262,7 +270,11 @@ mod tests {
     );
     assert_eq!(fit.max_error, Some(2.0));
     assert_eq!(fit.loss.try_get(LossMetric::Mae), Some(2.5 / 3.0));
-    assert_eq!(fit.loss.try_get(LossMetric::Rmse), None);
+    assert_eq!(
+      fit.loss.try_get(LossMetric::Rmse),
+      Some((4.25_f64 / 3.0).sqrt())
+    );
+    assert_eq!(fit.rmse(), (4.25_f64 / 3.0).sqrt());
     let nan = Calibrated::repriced((), &[1.0, 2.0], &[f64::NAN, 2.0], &[], true);
     assert!(nan.max_error.unwrap().is_nan());
   }

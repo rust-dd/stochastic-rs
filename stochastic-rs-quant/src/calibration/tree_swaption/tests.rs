@@ -58,7 +58,7 @@ fn black_karasinski_recovers_synthetic_parameters() {
     long_run_rate: 0.03,
   };
   let truth = BlackKarasinskiSwaptionCalibrator::new(&quotes, &curve, 1.0, 8, start);
-  let (model_prices, _) = truth.cost(&start, None).price_series(0.15, 0.25);
+  let (_, model_prices) = truth.cost(&start, None).price_series(0.15, 0.25);
   for (quote, price) in quotes.iter_mut().zip(model_prices) {
     quote.black_vol = atm_black_vol(price, quote, &curve);
     assert!(quote.black_vol.is_finite() && quote.black_vol > 0.0);
@@ -109,7 +109,7 @@ fn g2pp_reprices_synthetic_quotes() {
     phi: 0.03,
   };
   let truth = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 4, true_params);
-  let (model_prices, _) = truth.cost(0.03, None).price_series(&true_params);
+  let (_, model_prices) = truth.cost(0.03, None).price_series(&true_params);
   let scale = model_prices.iter().sum::<f64>() / model_prices.len() as f64;
   for (quote, price) in quotes.iter_mut().zip(model_prices) {
     quote.black_vol = atm_black_vol(price, quote, &curve);

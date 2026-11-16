@@ -241,13 +241,13 @@ impl crate::traits::Calibrator for BlackKarasinskiSwaptionCalibrator<'_> {
       400,
       |x| {
         let (mean_reversion, sigma) = (x[0].abs().max(1e-6), x[1].abs().max(1e-6));
-        let (model, market) = problem.price_series(mean_reversion, sigma);
+        let (market, model) = problem.price_series(mean_reversion, sigma);
         let params = BlackKarasinskiParams {
           mean_reversion,
           sigma,
           ..start
         };
-        (params, model, market)
+        (params, market, model)
       },
     ))
   }
@@ -279,7 +279,7 @@ impl BlackKarasinskiCost {
       model_prices.push(w * swaption.price_on_tree(&tree.tree, &tree.model));
       market_prices.push(w * market.market_price);
     }
-    (model_prices, market_prices)
+    (market_prices, model_prices)
   }
 }
 
@@ -290,7 +290,7 @@ impl CostFunction for BlackKarasinskiCost {
 
   fn cost(&self, x: &Self::Param) -> Result<f64, Self::Error> {
     let (a, sigma) = (x[0].abs().max(1e-6), x[1].abs().max(1e-6));
-    let (model, market) = self.price_series(a, sigma);
+    let (market, model) = self.price_series(a, sigma);
     let penalty = self
       .regularization
       .as_ref()
@@ -436,8 +436,8 @@ impl crate::traits::Calibrator for G2ppSwaptionCalibrator<'_> {
       400,
       |x| {
         let params = problem.params(x);
-        let (model, market) = problem.price_series(&params);
-        (params, model, market)
+        let (market, model) = problem.price_series(&params);
+        (params, market, model)
       },
     ))
   }
@@ -490,7 +490,7 @@ impl G2ppCost {
       model_prices.push(w * swaption.price_on_g2pp(&tree));
       market_prices.push(w * market.market_price);
     }
-    (model_prices, market_prices)
+    (market_prices, model_prices)
   }
 }
 
@@ -501,7 +501,7 @@ impl CostFunction for G2ppCost {
 
   fn cost(&self, x: &Self::Param) -> Result<f64, Self::Error> {
     let p = self.params(x);
-    let (model, market) = self.price_series(&p);
+    let (market, model) = self.price_series(&p);
     let penalty = self.regularization.as_ref().map_or(0.0, |reg| {
       reg.penalty(&[
         p.mean_reversion_x,
