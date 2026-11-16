@@ -372,8 +372,8 @@ pub fn unit_scaled(mut y: Vec<f64>) -> Vec<f64> {
   y
 }
 
-/// `DegenerateData("zero residual variance")` when the mean square of `residuals`, of a fit to `y`,
-/// is below `EXACT_FIT` of `y`'s variance; both are scaled by `y`'s largest deviation, so none overflows.
+/// `DegenerateData("zero residual variance")` when `residuals` from `y`'s data keep a mean square
+/// at most `EXACT_FIT` of `y`'s variance, both over `y`'s largest deviation so no square overflows.
 pub fn reject_exact_fit(y: &[f64], residuals: &[f64]) -> Result<(), StatsError> {
   let mean = y.iter().sum::<f64>() / y.len() as f64;
   let spread = f64::max_or_nan_fold(y.iter().map(|v| (v - mean).abs()));
