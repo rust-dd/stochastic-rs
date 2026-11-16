@@ -26,13 +26,11 @@ use ndarray::ArrayView2;
 use stochastic_rs_distributions::special::beta_i;
 
 use super::common::ols;
+use super::common::prepared;
 use super::common::reject_exact_fit;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
-use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
-use crate::input::reject_constant;
-use crate::input::validate;
 use crate::input::validate_rows;
 
 /// $F(d_1, d_2)$ upper tail probability $1 - F(x)$ via the regularised
@@ -115,10 +113,9 @@ pub fn reset_test(
   let t_total = y.len();
   let k = x.ncols();
   let q = cfg.max_power - 1;
-  let y_slice = as_slice_or_copy(y);
-  validate(&y_slice, k + q + 2)?;
+  // `y` at a power of two, which `F` does not see, keeps the powers of `ŷ` in range.
+  let y_slice = prepared(y, k + q + 2)?;
   validate_rows(x)?;
-  reject_constant(&y_slice, "constant series")?;
 
   // Restricted OLS: y on x.
   let x_rows: Vec<Vec<f64>> = (0..t_total).map(|i| x.row(i).to_vec()).collect();
@@ -146,15 +143,15 @@ pub fn reset_test(
 
   let df_num = q;
   let df_den = t_total - k - q;
-  let num = ((sse_r - sse_u) / df_num as f64).max(0.0);
-  let den = sse_u / df_den as f64;
-  let f_statistic = num / den;
-
-  let p_value = if f_statistic.is_finite() {
-    f_upper_tail(f_statistic, df_num as f64, df_den as f64)
-  } else {
-    0.0
-  };
+  let f_statistic = ((sse_r - sse_u) / df_num as f64) / (sse_u / df_den as f64);
+  if !f_statistic.is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "F statistic",
+    });
+  }
+  // The restricted fit nests in the augmented one, so a negative `F` is the subtraction's rounding.
+  let f_statistic = f_statistic.max(0.0);
+  let p_value = f_upper_tail(f_statistic, df_num as f64, df_den as f64);
 
   Ok(ResetTest {
     statistic: f_statistic,
@@ -245,18 +242,44 @@ mod tests {
     );
   }
 
-  /// A line, exact or with noise far below `1e-12` of it, leaves both fits rounding at any scale.
+  const SCALES: [f64; 9] = [1e-300, 1e-200, 1e-160, 1e-6, 1.0, 1e6, 1e160, 1e200, 1e300];
+
+  /// A line, exact or with noise far below `1e-12` of it, leaves both fits rounding at every scale
+  /// of `y`, and with `x` scaled alike from `1e-6` to `1e6`.
   #[test]
   fn a_line_fitted_to_rounding_is_degenerate_data_at_every_scale() {
     let x: Array1<f64> = Array1::linspace(-1.0, 1.0, 50);
     let (_, noise) = normal_pair(50, 1e-15, 5);
+    let scales = SCALES
+      .map(|c| (c, 1.0))
+      .into_iter()
+      .chain([(1e-6, 1e-6), (1e6, 1e6)]);
     for y in [&x * 3.0 + 2.0, &x * 3.0 + 2.0 + &noise] {
-      for c in [1e-6, 1.0, 1e6] {
-        let xm = design_with_intercept(&x.mapv(|v| v * c));
+      for (cy, cx) in scales.clone() {
+        let xm = design_with_intercept(&x.mapv(|v| v * cx));
         assert_eq!(
-          reset_test(y.mapv(|v| v * c).view(), xm.view(), ResetConfig::default()).unwrap_err(),
+          reset_test(y.mapv(|v| v * cy).view(), xm.view(), ResetConfig::default()).unwrap_err(),
           StatsError::DegenerateData("zero residual variance"),
-          "c = {c:e}"
+          "y × {cy:e}, x × {cx:e}"
+        );
+      }
+    }
+  }
+
+  /// `F` does not see the scale of `y`, which its powers of `ŷ` would under- or overflow unscaled.
+  #[test]
+  fn the_statistic_keeps_its_value_at_every_scale_of_y() {
+    for (x, y) in [simulate_linear(300, 42), simulate_quadratic(300, 7)] {
+      let xm = design_with_intercept(&x);
+      let unit = reset_test(y.view(), xm.view(), ResetConfig::default())
+        .unwrap()
+        .statistic;
+      for c in SCALES {
+        let got = reset_test(y.mapv(|v| v * c).view(), xm.view(), ResetConfig::default())
+          .map(|r| r.statistic);
+        assert!(
+          got.as_ref().is_ok_and(|f| (f - unit).abs() <= 1e-12 * unit),
+          "y × {c:e}: {got:?} against {unit}"
         );
       }
     }
