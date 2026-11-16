@@ -24,6 +24,12 @@ use crate::input::reject_constant;
 use crate::input::validate;
 use crate::traits::RealExt;
 
+mod log_space;
+
+/// `τ = e^{−336}`: with each `a_ij` and positive `π_j` at least `τ`, so is each predicted mass;
+/// underflow costs `≤ e^{−708}/τ` of a row a step, grown `≤ 1/τ` backward: `e^{−708}/τ² ≈ 2.3e-16`.
+const SCALED_PASS_MIN_PROBABILITY: f64 = 1.1941367950549688e-146;
+
 /// Result of a Baum-Welch training pass.
 #[derive(Debug, Clone)]
 pub struct HmmFit {
@@ -157,6 +163,9 @@ impl GaussianHmm {
     if observations.is_empty() {
       return 0.0;
     }
+    if self.in_log_space() {
+      return self.log_forward(observations).log_likelihood;
+    }
     self.forward(observations).log_likelihood
   }
 
@@ -164,11 +173,14 @@ impl GaussianHmm {
   /// [`Self::viterbi`]'s states); NaN rows from a NaN, and panics as [`Self::new`] on a literal.
   pub fn filtered_state_probs(&self, observations: ArrayView1<f64>) -> Array2<f64> {
     self.assert_parameters();
+    if self.in_log_space() {
+      return self.log_forward(observations).log_alpha.mapv(f64::exp);
+    }
     self.forward(observations).alpha
   }
 
-  /// The filtered distribution one observation after `prev` ([`Self::initial`] to start), `O(K²)`;
-  /// NaN from a NaN input, and panics as [`Self::new`] does or unless `prev.len() == K`.
+  /// Filters `observation` from a linear `prev`, as given: a zero transition never refills a weight
+  /// that underflows. NaN on a NaN or a massless `prev`; panics as `new` and on `prev.len() != K`.
   pub fn filter_step(&self, prev: ArrayView1<f64>, observation: f64) -> Array1<f64> {
     self.assert_parameters();
     let k = self.n_states();
@@ -298,6 +310,11 @@ impl GaussianHmm {
     shift
   }
 
+  fn in_log_space(&self) -> bool {
+    let tau = SCALED_PASS_MIN_PROBABILITY;
+    self.transitions.iter().any(|&a| a < tau) || self.initial.iter().any(|&p| p > 0.0 && p < tau)
+  }
+
   fn forward(&self, observations: ArrayView1<f64>) -> Forward {
     let n = observations.len();
     let k = self.n_states();
@@ -357,6 +374,48 @@ impl GaussianHmm {
     beta
   }
 
+  /// Rabiner's `γ_t` and `Σ_t ξ_t` from the scaled passes, and the log-likelihood.
+  fn expectations(&self, observations: ArrayView1<f64>) -> (Array2<f64>, Array2<f64>, f64) {
+    let n = observations.len();
+    let k = self.n_states();
+    let Forward {
+      alpha,
+      emissions,
+      scaling,
+      log_likelihood,
+    } = self.forward(observations);
+    let beta = self.backward(&emissions, &scaling);
+    let mut gamma = Array2::<f64>::zeros((n, k));
+    for t in 0..n {
+      let mut z = 0.0;
+      for s in 0..k {
+        gamma[[t, s]] = alpha[[t, s]] * beta[[t, s]];
+        z += gamma[[t, s]];
+      }
+      for s in 0..k {
+        gamma[[t, s]] /= z;
+      }
+    }
+    let mut xi_sum = Array2::<f64>::zeros((k, k));
+    let mut tmp = Array2::<f64>::zeros((k, k));
+    for t in 0..(n - 1) {
+      let mut z = 0.0;
+      for i in 0..k {
+        for j in 0..k {
+          tmp[[i, j]] =
+            alpha[[t, i]] * self.transitions[[i, j]] * emissions[[t + 1, j]] * beta[[t + 1, j]];
+          z += tmp[[i, j]];
+        }
+      }
+      for i in 0..k {
+        for j in 0..k {
+          xi_sum[[i, j]] += tmp[[i, j]] / z;
+        }
+      }
+    }
+    (gamma, xi_sum, log_likelihood)
+  }
+
   /// Baum–Welch EM, up to `max_iter` steps, until the gain is below `tol`; panics as `new`; `Err`,
   /// the last full update kept, on 0 states, < 2, non-finite or constant points, or under/overflow.
   pub fn baum_welch(
@@ -392,53 +451,14 @@ impl GaussianHmm {
     let mut iter_done = 0;
     for it in 0..max_iter {
       iter_done = it + 1;
-      let Forward {
-        alpha,
-        emissions,
-        scaling,
-        log_likelihood: ll,
-      } = self.forward(observations);
+      let (gamma, xi_sum, ll) = if self.in_log_space() {
+        self.log_expectations(observations)
+      } else {
+        self.expectations(observations)
+      };
       if !ll.is_finite() {
         return Err(StatsError::Numerical {
           stage: "forward pass",
-        });
-      }
-      let beta = self.backward(&emissions, &scaling);
-      let mut gamma = Array2::<f64>::zeros((n, k));
-      // One check after both loops: an early return inside them slows the fit by about 10 %.
-      let mut smoothed = true;
-      for t in 0..n {
-        let mut z = 0.0;
-        for s in 0..k {
-          gamma[[t, s]] = alpha[[t, s]] * beta[[t, s]];
-          z += gamma[[t, s]];
-        }
-        smoothed &= z > 0.0 && z.is_finite();
-        for s in 0..k {
-          gamma[[t, s]] /= z;
-        }
-      }
-      let mut xi_sum = Array2::<f64>::zeros((k, k));
-      let mut tmp = Array2::<f64>::zeros((k, k));
-      for t in 0..(n - 1) {
-        let mut z = 0.0;
-        for i in 0..k {
-          for j in 0..k {
-            tmp[[i, j]] =
-              alpha[[t, i]] * self.transitions[[i, j]] * emissions[[t + 1, j]] * beta[[t + 1, j]];
-            z += tmp[[i, j]];
-          }
-        }
-        smoothed &= z > 0.0 && z.is_finite();
-        for i in 0..k {
-          for j in 0..k {
-            xi_sum[[i, j]] += tmp[[i, j]] / z;
-          }
-        }
-      }
-      if !smoothed {
-        return Err(StatsError::Numerical {
-          stage: "backward pass",
         });
       }
       let totals: Array1<f64> = (0..k)

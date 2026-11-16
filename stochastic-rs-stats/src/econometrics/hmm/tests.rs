@@ -183,31 +183,6 @@ fn viterbi_never_takes_a_zero_probability_transition() {
   );
 }
 
-/// State 0 absorbs, and the outlier at −69 leaves state 1 a filtered weight near `e^{−740}`, which
-/// the points after it need: dividing by it overflows the backward pass.
-#[test]
-fn a_backward_pass_that_overflows_is_a_numerical_error() {
-  let mut hmm = GaussianHmm::new(
-    array![0.5, 0.5],
-    array![[1.0, 0.0], [1e-10, 1.0 - 1e-10]],
-    array![0.0, 10.0],
-    array![1.0, 1.0],
-  );
-  let before = hmm.clone();
-  let mut observations = Array1::from_iter((0..61).map(|t| 10.0 + 0.1 * (t as f64 * 1.3).sin()));
-  observations[30] = -69.0;
-  assert_eq!(
-    hmm.baum_welch(observations.view(), 3, 1e-8).unwrap_err(),
-    StatsError::Numerical {
-      stage: "backward pass"
-    }
-  );
-  assert_eq!(hmm.initial, before.initial);
-  assert_eq!(hmm.transitions, before.transitions);
-  assert_eq!(hmm.means, before.means);
-  assert_eq!(hmm.stds, before.stds);
-}
-
 /// A third state 39 standard deviations from every point keeps only a subnormal posterior mass,
 /// and its reestimated transition row still sums to 1.
 #[test]
