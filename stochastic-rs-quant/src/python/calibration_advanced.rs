@@ -5,12 +5,12 @@ use super::calibration_basic::PyMarketSlice;
 use super::parse_option_type;
 
 #[pyclass(name = "SVJCalibrator", unsendable)]
-pub struct PySVJCalibrator {
-  inner: crate::calibration::svj::SVJCalibrator,
+pub struct PySvjCalibrator {
+  inner: crate::calibration::svj::SvjCalibrator,
 }
 
 #[pymethods]
-impl PySVJCalibrator {
+impl PySvjCalibrator {
   /// Bates / SVJ joint multi-maturity calibration (Heston + Merton jumps).
   #[new]
   #[pyo3(signature = (slices, s, r, option_type="call", q=None))]
@@ -26,7 +26,7 @@ impl PySVJCalibrator {
       let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
         slices.into_iter().map(|s| s.inner).collect();
       Ok(Self {
-        inner: crate::calibration::svj::SVJCalibrator::from_slices(
+        inner: crate::calibration::svj::SvjCalibrator::from_slices(
           None,
           &inner_slices,
           s,
@@ -137,7 +137,7 @@ impl PyLevyCalibrator {
         "vg" | "variance_gamma" => LevyModelType::VarianceGamma,
         "nig" => LevyModelType::Nig,
         "cgmy" => LevyModelType::Cgmy,
-        "merton_jd" | "merton" | "mjd" => LevyModelType::MertonJD,
+        "merton_jd" | "merton" | "mjd" => LevyModelType::MertonJd,
         "kou" => LevyModelType::Kou,
         o => {
           return Err(PyValueError::new_err(format!(
@@ -170,12 +170,12 @@ impl PyLevyCalibrator {
 }
 
 #[pyclass(name = "HKDECalibrator", unsendable)]
-pub struct PyHKDECalibrator {
-  inner: crate::calibration::hkde::HKDECalibrator,
+pub struct PyHkdeCalibrator {
+  inner: crate::calibration::hkde::HkdeCalibrator,
 }
 
 #[pymethods]
-impl PyHKDECalibrator {
+impl PyHkdeCalibrator {
   /// Heston + Kou double-exponential jump joint calibration over multiple maturities.
   #[new]
   #[pyo3(signature = (slices, s, r, option_type="call", q=None))]
@@ -191,7 +191,7 @@ impl PyHKDECalibrator {
       let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
         slices.into_iter().map(|s| s.inner).collect();
       Ok(Self {
-        inner: crate::calibration::hkde::HKDECalibrator::from_slices(
+        inner: crate::calibration::hkde::HkdeCalibrator::from_slices(
           None,
           &inner_slices,
           s,

@@ -144,14 +144,14 @@ pub fn build_surface_from_model<M: ModelSurface + ?Sized>(
 /// ```
 /// use ndarray::Array1;
 /// use stochastic_rs_quant::OptionType;
-/// use stochastic_rs_quant::calibration::{BSMCalibrator, BSMParams};
-/// use stochastic_rs_quant::pricing::bsm::{BSMCoc, BSMPricer};
+/// use stochastic_rs_quant::calibration::{BsmCalibrator, BsmParams};
+/// use stochastic_rs_quant::pricing::bsm::{BsmCoc, BsmPricer};
 /// use stochastic_rs_quant::traits::{Calibrator, ModelPricer};
 /// use stochastic_rs_quant::vol_surface::build_surface_from_calibration;
 ///
 /// let (s, k, r, tau) = (100.0, 100.0, 0.05, 1.0);
-/// let call = BSMPricer::new(0.2, BSMCoc::Bsm1973).price_call(s, k, r, 0.0, tau);
-/// let calibrator = BSMCalibrator::new(BSMParams { v: 0.3 }, Array1::from_vec(vec![call]),
+/// let call = BsmPricer::new(0.2, BsmCoc::Bsm1973).price_call(s, k, r, 0.0, tau);
+/// let calibrator = BsmCalibrator::new(BsmParams { v: 0.3 }, Array1::from_vec(vec![call]),
 ///     Array1::from_vec(vec![s]), Array1::from_vec(vec![k]), r, None, None, None, tau,
 ///     OptionType::Call);
 /// let result = calibrator.calibrate(None).unwrap();

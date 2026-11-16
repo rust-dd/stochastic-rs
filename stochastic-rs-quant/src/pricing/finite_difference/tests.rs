@@ -135,9 +135,9 @@ const V: f64 = 0.25;
 
 #[test]
 fn european_schemes_match_black_scholes() {
-  use crate::pricing::bsm::BSMCoc;
-  use crate::pricing::bsm::BSMPricer;
-  let bs = BSMPricer::new(V, BSMCoc::Merton1973);
+  use crate::pricing::bsm::BsmCoc;
+  use crate::pricing::bsm::BsmPricer;
+  let bs = BsmPricer::new(V, BsmCoc::Merton1973);
   for method in [
     FiniteDifferenceMethod::Explicit,
     FiniteDifferenceMethod::Implicit,
@@ -208,9 +208,9 @@ fn fd_dividend_yield_drives_the_price() {
     "a large dividend yield must cut the call materially: {with_div} vs {no_div}"
   );
 
-  use crate::pricing::bsm::BSMCoc;
-  use crate::pricing::bsm::BSMPricer;
-  let bs = BSMPricer::new(V, BSMCoc::Merton1973).price_call(S, KK, R, 0.08, TAU);
+  use crate::pricing::bsm::BsmCoc;
+  use crate::pricing::bsm::BsmPricer;
+  let bs = BsmPricer::new(V, BsmCoc::Merton1973).price_call(S, KK, R, 0.08, TAU);
   assert!(
     (with_div - bs).abs() < 0.1,
     "European FD with q must track Black-Scholes with the same q: {with_div} vs {bs}"

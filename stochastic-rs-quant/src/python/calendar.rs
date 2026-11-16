@@ -27,10 +27,10 @@ fn parse_day_count(name: &str) -> PyResult<DayCountConvention> {
     "Thirty360" | "30/360" => Ok(DayCountConvention::Thirty360),
     "Thirty360E" | "Thirty360European" | "30E/360" => Ok(DayCountConvention::Thirty360European),
     "Thirty360EIsda" | "Thirty360EuropeanISDA" | "30E/360 ISDA" => {
-      Ok(DayCountConvention::Thirty360EuropeanISDA)
+      Ok(DayCountConvention::Thirty360EuropeanIsda)
     }
-    "ActActIsda" | "ActualActualISDA" | "ACT/ACT ISDA" => Ok(DayCountConvention::ActualActualISDA),
-    "ActActAfb" | "ActualActualAFB" | "ACT/ACT AFB" => Ok(DayCountConvention::ActualActualAFB),
+    "ActActIsda" | "ActualActualISDA" | "ACT/ACT ISDA" => Ok(DayCountConvention::ActualActualIsda),
+    "ActActAfb" | "ActualActualAFB" | "ACT/ACT AFB" => Ok(DayCountConvention::ActualActualAfb),
     "ActActIcma" | "ActualActualICMA" | "ACT/ACT ICMA" | "ActualActualISMA" => {
       Ok(DayCountConvention::ActualActualIcma)
     }

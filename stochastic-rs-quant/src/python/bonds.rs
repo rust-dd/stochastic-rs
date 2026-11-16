@@ -34,14 +34,14 @@ impl PyVasicekBond {
 /// Calibrators that follow Brigo's symbols (e.g. `kappa`, `theta`) need to
 /// rename `kappa` → `theta` and `theta` → `mu` when constructing a `CIRBond`.
 #[pyclass(name = "CIRBond", unsendable)]
-pub struct PyCIRBond {
+pub struct PyCirBond {
   inner: crate::bonds::cir::Cir,
   r_t: f64,
   tau: f64,
 }
 
 #[pymethods]
-impl PyCIRBond {
+impl PyCirBond {
   /// Construct CIR ZCB pricer. `theta` is the mean-reversion speed; `mu`
   /// is the long-run mean. See struct doc for the naming convention.
   #[new]

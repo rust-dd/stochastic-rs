@@ -149,6 +149,7 @@ fn implied_vol_solve(atm_forward_value: f64, forward: f64, _strike: f64, tau: f6
 #[test]
 fn sabr_caplet_calibration_recovers_self_consistent_params() {
   use stochastic_rs::quant::calibration::SabrCapletCalibrator;
+  use stochastic_rs::quant::pricing::sabr::SabrParams;
   use stochastic_rs::quant::pricing::sabr::hagan_implied_vol;
   use stochastic_rs::traits::Calibrator;
 
@@ -158,21 +159,17 @@ fn sabr_caplet_calibration_recovers_self_consistent_params() {
   let target_rho = -0.25;
   let forward = 0.04_f64;
   let expiry = 2.0_f64;
+  let target = SabrParams {
+    alpha: target_alpha,
+    beta: target_beta,
+    rho: target_rho,
+    nu: target_nu,
+  };
 
   let strikes: Vec<f64> = (0..=10).map(|i| 0.02 + 0.004 * i as f64).collect();
   let market_vols: Vec<f64> = strikes
     .iter()
-    .map(|&k| {
-      hagan_implied_vol(
-        k,
-        forward,
-        expiry,
-        target_alpha,
-        target_beta,
-        target_nu,
-        target_rho,
-      )
-    })
+    .map(|&k| hagan_implied_vol(k, forward, expiry, &target))
     .collect();
 
   let cal = SabrCapletCalibrator {
@@ -251,6 +248,7 @@ fn sabr_caplet_calibration_rejects_insufficient_shift() {
 #[test]
 fn sabr_caplet_calibration_recovers_self_consistent_params_negative_forward() {
   use stochastic_rs::quant::calibration::SabrCapletCalibrator;
+  use stochastic_rs::quant::pricing::sabr::SabrParams;
   use stochastic_rs::quant::pricing::sabr::hagan_implied_vol;
   use stochastic_rs::traits::Calibrator;
 
@@ -267,20 +265,16 @@ fn sabr_caplet_calibration_recovers_self_consistent_params_negative_forward() {
   // smile stays in Hagan's well-behaved regime (log-moneyness < 1 in
   // magnitude across the whole strike grid).
   let target_alpha = 0.38 * shifted_forward.powf(1.0 - target_beta);
+  let target = SabrParams {
+    alpha: target_alpha,
+    beta: target_beta,
+    rho: target_rho,
+    nu: target_nu,
+  };
 
   let market_vols: Vec<f64> = strikes
     .iter()
-    .map(|&k| {
-      hagan_implied_vol(
-        k + shift,
-        shifted_forward,
-        expiry,
-        target_alpha,
-        target_beta,
-        target_nu,
-        target_rho,
-      )
-    })
+    .map(|&k| hagan_implied_vol(k + shift, shifted_forward, expiry, &target))
     .collect();
 
   let cal = SabrCapletCalibrator {

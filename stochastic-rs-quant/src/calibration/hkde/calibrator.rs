@@ -4,8 +4,8 @@ use std::rc::Rc;
 use ndarray::Array1;
 
 use super::loss::compute_sqrt_weights;
-use super::params::HKDEParams;
-use super::result::HKDECalibrationResult;
+use super::params::HkdeParams;
+use super::result::HkdeCalibrationResult;
 use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::OptionType;
@@ -20,9 +20,9 @@ use crate::calibration::least_squares::minimize;
 /// - Marquardt (1963), <https://doi.org/10.1137/0111030>
 /// - Agazzotti et al. (2025), arXiv: 2502.13824
 #[derive(Clone)]
-pub struct HKDECalibrator {
+pub struct HkdeCalibrator {
   /// Current parameter iterate. `None` triggers the fallback initial guess.
-  pub params: Option<HKDEParams>,
+  pub params: Option<HkdeParams>,
   /// Market option prices (flattened across all maturities).
   pub c_market: Array1<f64>,
   /// Underlying spot per quote.
@@ -45,14 +45,14 @@ pub struct HKDECalibrator {
   pub record_history: bool,
   /// Which loss metrics to compute when recording history.
   pub loss_metrics: &'static [LossMetric],
-  pub(super) calibration_history: Rc<RefCell<Vec<CalibrationHistory<HKDEParams>>>>,
+  pub(super) calibration_history: Rc<RefCell<Vec<CalibrationHistory<HkdeParams>>>>,
 }
 
-impl HKDECalibrator {
+impl HkdeCalibrator {
   /// Create a calibrator for a single maturity slice.
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    params: Option<HKDEParams>,
+    params: Option<HkdeParams>,
     c_market: Array1<f64>,
     s: Array1<f64>,
     k: Array1<f64>,
@@ -101,7 +101,7 @@ impl HKDECalibrator {
   /// Create a calibrator from multiple maturity slices for joint surface
   /// calibration. Mirrors the API of the Heston / SVJ / BSM calibrators.
   pub fn from_slices(
-    params: Option<HKDEParams>,
+    params: Option<HkdeParams>,
     slices: &[super::super::levy::MarketSlice],
     s: f64,
     r: f64,
@@ -152,7 +152,7 @@ impl HKDECalibrator {
 
   /// Run the calibration. If `initial_params` is `Some`, it overrides the
   /// calibrator's current initial guess.
-  pub fn calibrate(&self, initial_params: Option<HKDEParams>) -> HKDECalibrationResult {
+  pub fn calibrate(&self, initial_params: Option<HkdeParams>) -> HkdeCalibrationResult {
     let mut problem = self.clone();
     if let Some(p) = initial_params {
       problem.params = Some(p.projected());
@@ -168,7 +168,7 @@ impl HKDECalibrator {
       result.loss_metrics,
     );
 
-    HKDECalibrationResult {
+    HkdeCalibrationResult {
       v0: p.v0,
       kappa: p.kappa,
       theta: p.theta,
@@ -183,7 +183,7 @@ impl HKDECalibrator {
     }
   }
 
-  pub fn set_initial_guess(&mut self, params: HKDEParams) {
+  pub fn set_initial_guess(&mut self, params: HkdeParams) {
     self.params = Some(params.projected());
   }
 
@@ -191,12 +191,12 @@ impl HKDECalibrator {
     self.record_history = record;
   }
 
-  pub fn history(&self) -> Vec<CalibrationHistory<HKDEParams>> {
+  pub fn history(&self) -> Vec<CalibrationHistory<HkdeParams>> {
     self.calibration_history.borrow().clone()
   }
 
-  pub(super) fn fallback_params() -> HKDEParams {
-    HKDEParams {
+  pub(super) fn fallback_params() -> HkdeParams {
+    HkdeParams {
       v0: 0.04,
       kappa: 1.5,
       theta: 0.04,
@@ -216,7 +216,7 @@ impl HKDECalibrator {
     }
   }
 
-  pub(super) fn effective_params(&self) -> HKDEParams {
+  pub(super) fn effective_params(&self) -> HkdeParams {
     if let Some(p) = &self.params {
       return (*p).projected();
     }
@@ -224,13 +224,13 @@ impl HKDECalibrator {
   }
 }
 
-impl crate::traits::Calibrator for HKDECalibrator {
-  type InitialGuess = HKDEParams;
-  type Params = HKDEParams;
-  type Output = HKDECalibrationResult;
+impl crate::traits::Calibrator for HkdeCalibrator {
+  type InitialGuess = HkdeParams;
+  type Params = HkdeParams;
+  type Output = HkdeCalibrationResult;
   type Error = anyhow::Error;
 
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
-    Ok(HKDECalibrator::calibrate(self, initial))
+    Ok(HkdeCalibrator::calibrate(self, initial))
   }
 }

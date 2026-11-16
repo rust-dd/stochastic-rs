@@ -11,7 +11,7 @@
 /// Instruments, and only instruments:
 /// [`EuropeanOption`](crate::instruments::equity::EuropeanOption) and
 /// [`DigitalOption`](crate::instruments::equity::DigitalOption). Both are
-/// read by [`AnalyticBSEngine`](crate::pricing::engines::AnalyticBSEngine),
+/// read by [`AnalyticBsEngine`](crate::pricing::engines::AnalyticBsEngine),
 /// the European one also by
 /// [`AnalyticHestonEngine`](crate::pricing::engines::AnalyticHestonEngine).
 ///

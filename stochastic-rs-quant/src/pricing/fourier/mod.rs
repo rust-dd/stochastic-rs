@@ -21,17 +21,17 @@ mod hybrid;
 mod levy;
 mod pricer;
 
-pub use bsm::BSMFourier;
+pub use bsm::BsmFourier;
 pub use cos::CosEngine;
 pub use frft::FrftCarrMadanPricer;
 pub use frft::frft;
 pub use heston::DoubleHestonFourier;
 pub use heston::HestonFourier;
 pub use hybrid::BatesFourier;
-pub use hybrid::HKDEFourier;
-pub use levy::CGMYFourier;
+pub use hybrid::HkdeFourier;
+pub use levy::CgmyFourier;
 pub use levy::KouFourier;
-pub use levy::MertonJDFourier;
+pub use levy::MertonJdFourier;
 pub use levy::NigFourier;
 pub use levy::VarianceGammaFourier;
 pub use pricer::CarrMadanPricer;
@@ -146,7 +146,7 @@ mod tests {
 
   #[test]
   fn carr_madan_bsm_reference() {
-    let model = BSMFourier {
+    let model = BsmFourier {
       sigma: 0.15,
       r: 0.05,
       q: 0.01,
@@ -164,7 +164,7 @@ mod tests {
   /// a silent zero.
   #[test]
   fn carr_madan_out_of_grid_returns_nan_not_zero() {
-    let model = BSMFourier {
+    let model = BsmFourier {
       sigma: 0.15,
       r: 0.05,
       q: 0.0,
@@ -196,7 +196,7 @@ mod tests {
 
   #[test]
   fn lewis_bsm_reference() {
-    let model = BSMFourier {
+    let model = BsmFourier {
       sigma: 0.15,
       r: 0.05,
       q: 0.01,
@@ -211,7 +211,7 @@ mod tests {
 
   #[test]
   fn gil_pelaez_bsm_reference() {
-    let model = BSMFourier {
+    let model = BsmFourier {
       sigma: 0.15,
       r: 0.05,
       q: 0.01,
@@ -244,7 +244,7 @@ mod tests {
 
   #[test]
   fn carr_madan_cgmy_reference() {
-    let model = CGMYFourier {
+    let model = CgmyFourier {
       c: 0.02,
       g: 5.0,
       m: 15.0,
@@ -263,7 +263,7 @@ mod tests {
 
   #[test]
   fn carr_madan_merton_reference() {
-    let model = MertonJDFourier {
+    let model = MertonJdFourier {
       sigma: 0.12,
       lambda: 0.4,
       mu_j: -0.12,
@@ -458,7 +458,7 @@ mod tests {
       r: 0.05,
       q: 0.0,
     };
-    let hkde = HKDEFourier {
+    let hkde = HkdeFourier {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
@@ -482,7 +482,7 @@ mod tests {
 
   #[test]
   fn hkde_prices_positive() {
-    let model = HKDEFourier {
+    let model = HkdeFourier {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
@@ -505,7 +505,7 @@ mod tests {
 
   #[test]
   fn hkde_call_decreases_with_strike() {
-    let model = HKDEFourier {
+    let model = HkdeFourier {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
@@ -530,7 +530,7 @@ mod tests {
 
   #[test]
   fn hkde_lewis_vs_carr_madan() {
-    let model = HKDEFourier {
+    let model = HkdeFourier {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
@@ -598,11 +598,11 @@ mod tests {
     );
   }
 
-  /// Same long-maturity / high-|ρ| stress for `HKDEFourier::chf` — the Heston
+  /// Same long-maturity / high-|ρ| stress for `HkdeFourier::chf` — the Heston
   /// diffusion part must stay on the principal log-branch under the Kou jump CF.
   #[test]
   fn hkde_fourier_little_trap_long_maturity_high_rho() {
-    let model = HKDEFourier {
+    let model = HkdeFourier {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
@@ -618,7 +618,7 @@ mod tests {
     let call = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.0, 5.0);
     assert!(
       call.is_finite() && call > 0.0 && call < 100.0,
-      "HKDEFourier Trap form: finite positive bounded call required at T=5y, ρ=-0.9, got {call}"
+      "HkdeFourier Trap form: finite positive bounded call required at T=5y, ρ=-0.9, got {call}"
     );
   }
 
@@ -649,7 +649,7 @@ mod tests {
   #[test]
   #[should_panic(expected = "s must satisfy `s.is_finite() && s > 0.0`")]
   fn cumulant_sizing_rejects_a_non_positive_spot_instead_of_a_default_grid() {
-    let model = crate::pricing::fourier::BSMFourier {
+    let model = crate::pricing::fourier::BsmFourier {
       sigma: 0.2,
       r: 0.05,
       q: 0.0,

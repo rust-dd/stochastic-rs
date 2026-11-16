@@ -17,7 +17,7 @@ use super::objective::basin_hopping_opt;
 use super::types::SabrSmileCalibrator;
 use super::types::SabrSmileQuotes;
 use super::types::SabrSmileResult;
-use crate::calibration::sabr::SabrParams;
+use crate::pricing::sabr::SabrParams;
 use crate::pricing::sabr::alpha_from_atm_vol;
 use crate::pricing::sabr::forward_fx;
 use crate::pricing::sabr::fx_delta_from_forward;
@@ -106,8 +106,8 @@ impl SabrSmileCalibrator {
       params: SabrParams {
         alpha,
         beta: self.beta,
-        nu,
         rho,
+        nu,
       },
       objective: f_best,
       success: f_best.is_finite() && f_best < self.success_tol,
@@ -131,17 +131,7 @@ impl SabrSmileCalibrator {
     let fwd = forward_fx(self.s, tau, self.r_d, self.r_f);
     let ys: Vec<f64> = xs
       .iter()
-      .map(|&k| {
-        hagan_implied_vol(
-          k,
-          fwd,
-          tau,
-          res.params.alpha,
-          res.params.beta,
-          res.params.nu,
-          res.params.rho,
-        )
-      })
+      .map(|&k| hagan_implied_vol(k, fwd, tau, &res.params))
       .collect();
 
     let trace = Scatter::new(xs, ys)
@@ -204,15 +194,7 @@ impl SabrSmileCalibrator {
         let ys: Vec<f64> = xs
           .iter()
           .map(|&k| {
-            let v = hagan_implied_vol(
-              k,
-              fwd,
-              q.tau,
-              res.params.alpha,
-              res.params.beta,
-              res.params.nu,
-              res.params.rho,
-            );
+            let v = hagan_implied_vol(k, fwd, q.tau, &res.params);
             if v > 0.0 && v < vol_cap { v } else { f64::NAN }
           })
           .collect();
@@ -233,17 +215,7 @@ impl SabrSmileCalibrator {
         ];
         let marker_vols: Vec<f64> = strikes
           .iter()
-          .map(|&k| {
-            hagan_implied_vol(
-              k,
-              fwd,
-              q.tau,
-              res.params.alpha,
-              res.params.beta,
-              res.params.nu,
-              res.params.rho,
-            )
-          })
+          .map(|&k| hagan_implied_vol(k, fwd, q.tau, &res.params))
           .collect();
         let marker = Scatter::new(strikes, marker_vols)
           .mode(Mode::Markers)
@@ -283,15 +255,7 @@ pub fn strike_for_delta(
   let mut a = s * 0.1;
   let mut b = s * 10.0;
   let fa = |k: f64| -> f64 {
-    let sig = hagan_implied_vol(
-      k,
-      fwd,
-      tau,
-      params.alpha,
-      params.beta,
-      params.nu,
-      params.rho,
-    );
+    let sig = hagan_implied_vol(k, fwd, tau, &params);
     let d = fx_delta_from_forward(k, fwd, sig, tau, r_f, phi);
     (d - target_delta).powi(2)
   };

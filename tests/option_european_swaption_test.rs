@@ -232,7 +232,7 @@ fn sabr_swaption_produces_positive_price() {
     strike,
     expiry,
     swap,
-    SabrVolatility::new(0.3, 0.5, 0.4, -0.2),
+    SabrVolatility::new(0.3, 0.5, -0.2, 0.4),
   );
   let npv = swpn.npv(
     valuation,
@@ -246,8 +246,8 @@ fn sabr_swaption_produces_positive_price() {
 
 #[test]
 fn shifted_sabr_matches_plain_sabr_at_zero_shift() {
-  let plain = SabrVolatility::new(0.3_f64, 0.5, 0.4, -0.2);
-  let shifted = ShiftedSabrVolatility::new(0.3_f64, 0.5, 0.4, -0.2, 0.0);
+  let plain = SabrVolatility::new(0.3_f64, 0.5, -0.2, 0.4);
+  let shifted = ShiftedSabrVolatility::new(0.3_f64, 0.5, -0.2, 0.4, 0.0);
   use stochastic_rs::quant::instruments::VolatilityModel;
   let v_plain = plain.implied_volatility(0.04, 0.045, 1.5);
   let v_shift = shifted.implied_volatility(0.04, 0.045, 1.5);
@@ -256,7 +256,7 @@ fn shifted_sabr_matches_plain_sabr_at_zero_shift() {
 
 #[test]
 fn shifted_sabr_handles_zero_rate() {
-  let shifted = ShiftedSabrVolatility::new(0.25_f64, 0.5, 0.4, -0.3, 0.03);
+  let shifted = ShiftedSabrVolatility::new(0.25_f64, 0.5, -0.3, 0.4, 0.03);
   use stochastic_rs::quant::instruments::VolatilityModel;
   let v = shifted.implied_volatility(0.001, 0.0, 2.0);
   assert!(

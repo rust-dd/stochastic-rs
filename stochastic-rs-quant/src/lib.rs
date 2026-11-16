@@ -82,6 +82,8 @@
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::needless_range_loop)]
 
+#[cfg(doctest)]
+mod doctest_names;
 mod linalg;
 
 pub mod traits;

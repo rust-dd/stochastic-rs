@@ -8,7 +8,7 @@
 //! volatility-of-volatility and quarticity from observed price paths
 //! using the Fourier-Malliavin method of Malliavin & Mancino.
 //!
-//! The primary API is the [`FMVol`](crate::fourier_malliavin::engine::FMVol) engine
+//! The primary API is the [`FmVol`](crate::fourier_malliavin::engine::FmVol) engine
 //! struct which pre-computes
 //! the Fourier coefficients of price increments once and exposes all
 //! estimators as cheap method calls.
@@ -16,12 +16,12 @@
 //! # Example
 //! ```
 //! use ndarray::Array1;
-//! use stochastic_rs_quant::fourier_malliavin::FMVol;
+//! use stochastic_rs_quant::fourier_malliavin::FmVol;
 //!
 //! let n = 200;
 //! let times: Vec<f64> = (0..n).map(|i| i as f64 / (n - 1) as f64).collect();
 //! let log_prices: Vec<f64> = times.iter().map(|&t| (10.0 * t).sin() * 0.01).collect();
-//! let engine = FMVol::new(&log_prices, &times, 1.0_f64);
+//! let engine = FmVol::new(&log_prices, &times, 1.0_f64);
 //!
 //! // Integrated quantities
 //! let iv = engine.integrated_variance();
@@ -38,7 +38,7 @@
 //! # References
 //!
 //! - Sanfelici, S. & Toscano, G. (2024). *The Fourier-Malliavin Volatility
-//!   (FMVol) MATLAB® library*. arXiv preprint [arXiv:2402.00172](https://arxiv.org/abs/2402.00172).
+//!   (FmVol) MATLAB® library*. arXiv preprint [arXiv:2402.00172](https://arxiv.org/abs/2402.00172).
 //! - Malliavin, P. & Mancino, M. E. (2002). Fourier series method for
 //!   measurement of multivariate volatilities. *Finance and Stochastics*, 6(1), 49–61.
 //! - Malliavin, P. & Mancino, M. E. (2009). A Fourier transform method for
@@ -56,7 +56,7 @@ mod optimal_cutting_tests;
 
 pub use coefficients::convolution_coefficients;
 pub use coefficients::fourier_coefficients_dx;
-pub use engine::FMVol;
+pub use engine::FmVol;
 
 /// Default cutting frequencies for variance/covariance: N = floor(n/2), M = floor(N^0.5).
 pub fn default_cutting_freq_vol(n: usize) -> (usize, usize) {
@@ -94,7 +94,7 @@ pub fn default_cutting_freq_noisy(n: usize) -> (usize, usize, usize) {
 /// `N = floor((n − 1) / 2)`, `M = floor(√n · log(n))`.
 ///
 /// The FE convention uses a wider Fejér window than the FM convention
-/// (`M ≈ √N`) — pair this with [`FMVol::spot_variance_fe`] for parity with
+/// (`M ≈ √N`) — pair this with [`FmVol::spot_variance_fe`] for parity with
 /// the MATLAB output.
 pub fn default_cutting_freq_fe(n: usize) -> (usize, usize) {
   let big_n = (n - 1) / 2;

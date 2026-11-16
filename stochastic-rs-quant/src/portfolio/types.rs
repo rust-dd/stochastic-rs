@@ -13,13 +13,13 @@ pub enum OptimizerMethod {
   /// Mean-variance optimization in long-only simplex.
   Markowitz,
   /// Mean-CVaR optimization using empirical tail loss.
-  MeanCVaR,
+  MeanCvar,
   /// Weights proportional to inverse asset volatility.
   InverseVol,
   /// Equalized marginal risk contributions.
   RiskParity,
   /// Hierarchical Risk Parity (Lopez de Prado).
-  HRP,
+  Hrp,
   /// Black-Litterman posterior expected returns with Markowitz solve.
   BlackLitterman,
 }
@@ -47,10 +47,10 @@ impl std::str::FromStr for OptimizerMethod {
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     match s.to_lowercase().as_str() {
       "markowitz" | "mv" | "mean-variance" | "meanvariance" => Ok(Self::Markowitz),
-      "cvar" | "mean-cvar" | "meancvar" => Ok(Self::MeanCVaR),
+      "cvar" | "mean-cvar" | "meancvar" => Ok(Self::MeanCvar),
       "inv-vol" | "inverse-vol" | "invvol" => Ok(Self::InverseVol),
       "risk-parity" | "riskparity" => Ok(Self::RiskParity),
-      "hrp" => Ok(Self::HRP),
+      "hrp" => Ok(Self::Hrp),
       "bl" | "black-litterman" | "blacklitterman" => Ok(Self::BlackLitterman),
       _ => Err(UnknownOptimizerMethod(s.to_string())),
     }

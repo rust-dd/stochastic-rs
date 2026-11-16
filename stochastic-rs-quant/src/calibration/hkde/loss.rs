@@ -3,10 +3,10 @@ use std::f64::consts::PI;
 use ndarray::Array1;
 use ndarray::Array2;
 
-use super::calibrator::HKDECalibrator;
+use super::calibrator::HkdeCalibrator;
 use super::params::ETA1_MIN;
 use super::params::ETA2_MIN;
-use super::params::HKDEParams;
+use super::params::HkdeParams;
 use super::params::KAPPA_MIN;
 use super::params::P_P_UP;
 use super::params::RHO_BOUND;
@@ -16,16 +16,16 @@ use crate::CalibrationLossScore;
 use crate::OptionType;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::least_squares::LeastSquaresProblem;
-use crate::pricing::bsm::BSMCoc;
-use crate::pricing::bsm::BSMPricer;
-use crate::pricing::fourier::HKDEFourier;
+use crate::pricing::bsm::BsmCoc;
+use crate::pricing::bsm::BsmPricer;
+use crate::pricing::fourier::HkdeFourier;
 use crate::traits::ModelPricer;
 
 const EPS: f64 = 1e-8;
 
-impl HKDECalibrator {
-  pub(super) fn build_model(&self, p: &HKDEParams) -> HKDEFourier {
-    HKDEFourier {
+impl HkdeCalibrator {
+  pub(super) fn build_model(&self, p: &HkdeParams) -> HkdeFourier {
+    HkdeFourier {
       v0: p.v0,
       kappa: p.kappa,
       theta: p.theta,
@@ -40,7 +40,7 @@ impl HKDECalibrator {
     }
   }
 
-  pub(super) fn compute_model_prices_for(&self, p: &HKDEParams) -> Array1<f64> {
+  pub(super) fn compute_model_prices_for(&self, p: &HkdeParams) -> Array1<f64> {
     let n = self.c_market.len();
     let model = self.build_model(p);
     let r = self.r;
@@ -61,7 +61,7 @@ impl HKDECalibrator {
     c_model
   }
 
-  pub(super) fn weighted_residuals_for(&self, p: &HKDEParams) -> Array1<f64> {
+  pub(super) fn weighted_residuals_for(&self, p: &HkdeParams) -> Array1<f64> {
     let c_model = self.compute_model_prices_for(p);
     let n = self.c_market.len();
     let mut r = Array1::zeros(n);
@@ -72,7 +72,7 @@ impl HKDECalibrator {
   }
 
   /// Central finite-difference Jacobian of the weighted residuals.
-  pub(super) fn numeric_jacobian(&self, params: &HKDEParams) -> Array2<f64> {
+  pub(super) fn numeric_jacobian(&self, params: &HkdeParams) -> Array2<f64> {
     let n = self.c_market.len();
     let p_dim = 9usize;
     let base_vec: Array1<f64> = (*params).into();
@@ -138,9 +138,9 @@ impl HKDECalibrator {
   }
 }
 
-impl LeastSquaresProblem for HKDECalibrator {
+impl LeastSquaresProblem for HkdeCalibrator {
   fn set_params(&mut self, params: &Array1<f64>) {
-    let p = HKDEParams::from(params.clone()).projected();
+    let p = HkdeParams::from(params.clone()).projected();
     self.params = Some(p);
   }
 
@@ -242,7 +242,7 @@ fn market_weight(
 
   // `implied_volatility` inverts a price for a vol, so the model's own `v`
   // is unused — only the cost-of-carry convention matters.
-  let sigma_mkt = BSMPricer::new(0.2, BSMCoc::Bsm1973).implied_volatility(
+  let sigma_mkt = BsmPricer::new(0.2, BsmCoc::Bsm1973).implied_volatility(
     market_price,
     s,
     k,
@@ -273,16 +273,16 @@ fn market_weight(
 /// can check their own implementations against the published results.
 ///
 /// Note: several of these sets do not satisfy the Feller condition and lie
-/// outside the default box used by [`HKDEParams::project_in_place`] — the
+/// outside the default box used by [`HkdeParams::project_in_place`] — the
 /// paper does not enforce those constraints. When feeding them through the
 /// projection the calibrator will adjust them to the admissible set.
 pub mod paper_table1 {
-  use super::HKDEParams;
+  use super::HkdeParams;
 
   /// AMZN, 2024-02-20 (Agazzotti et al. 2025, Table 1). Feller violated
   /// ($2\kappa\theta \approx 0.707 < \sigma_v^2 \approx 1.608$) and
   /// $\lambda$, $\sigma_v$ sit outside the default projection box.
-  pub const AMZN: HKDEParams = HKDEParams {
+  pub const AMZN: HkdeParams = HkdeParams {
     v0: 0.023,
     kappa: 5.275,
     theta: 0.067,
@@ -296,7 +296,7 @@ pub mod paper_table1 {
 
   /// NFLX, 2024-02-20 (Agazzotti et al. 2025, Table 1). Feller violated,
   /// several parameters exceed the default projection box.
-  pub const NFLX: HKDEParams = HKDEParams {
+  pub const NFLX: HkdeParams = HkdeParams {
     v0: 0.001,
     kappa: 13.355,
     theta: 0.091,
@@ -311,7 +311,7 @@ pub mod paper_table1 {
   /// SHOP, 2024-02-20 (Agazzotti et al. 2025, Table 1). Fully admissible:
   /// Feller holds ($2\kappa\theta \approx 0.278 \ge \sigma_v^2 \approx 0.038$)
   /// and every parameter lies inside the default projection box.
-  pub const SHOP: HKDEParams = HKDEParams {
+  pub const SHOP: HkdeParams = HkdeParams {
     v0: 0.176,
     kappa: 0.191,
     theta: 0.728,
@@ -325,7 +325,7 @@ pub mod paper_table1 {
 
   /// SPOT, 2024-02-20 (Agazzotti et al. 2025, Table 1). Feller violated,
   /// $\lambda$ and $\eta_2$ lie outside the default projection box.
-  pub const SPOT: HKDEParams = HKDEParams {
+  pub const SPOT: HkdeParams = HkdeParams {
     v0: 0.064,
     kappa: 6.796,
     theta: 0.163,

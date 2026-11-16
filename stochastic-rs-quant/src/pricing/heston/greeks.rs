@@ -14,7 +14,7 @@
 //!
 //! `theta`/`charm`/`veta` use the calendar `-∂/∂τ` convention mandated by
 //! [`GreeksExt::theta`](crate::traits::GreeksExt::theta)'s own doc
-//! (`∂V/∂t`) and matching [`BSMPricer`](crate::pricing::bsm::BSMPricer)'s /
+//! (`∂V/∂t`) and matching [`BsmPricer`](crate::pricing::bsm::BsmPricer)'s /
 //! `Merton1976Pricer`'s Greeks — the negative of the raw `+∂P/∂τ` that
 //! [`AnalyticHestonEngine::finite_diff_greeks`](crate::pricing::engines::AnalyticHestonEngine)
 //! computes (that engine predates these and was never updated to match; see

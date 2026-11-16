@@ -10,7 +10,12 @@ use crate::traits::Calibrator;
 fn calibrator(regularization: Option<Regularization>) -> SabrCalibrator {
   let (s, r, tau) = (100.0, 0.01, 1.0);
   let strikes = [80.0, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0];
-  let pricer = SabrPricer::new(0.2, 1.0, 0.6, -0.3);
+  let pricer = SabrPricer::new(SabrParams {
+    alpha: 0.2,
+    beta: 1.0,
+    rho: -0.3,
+    nu: 0.6,
+  });
   let prices: Vec<f64> = strikes
     .iter()
     .map(|&k| pricer.call_put(s, k, r, 0.0, tau).0)
@@ -19,8 +24,8 @@ fn calibrator(regularization: Option<Regularization>) -> SabrCalibrator {
     Some(SabrParams {
       alpha: 0.25,
       beta: 1.0,
-      nu: 0.8,
       rho: 0.0,
+      nu: 0.8,
     }),
     Array1::from_vec(prices),
     Array1::from_elem(strikes.len(), s),

@@ -4,16 +4,16 @@ use pyo3::prelude::*;
 use crate::traits::ModelPricer;
 
 #[pyclass(name = "BSMFourier", unsendable)]
-pub struct PyBSMFourier {
-  pub inner: crate::pricing::fourier::BSMFourier,
+pub struct PyBsmFourier {
+  pub inner: crate::pricing::fourier::BsmFourier,
 }
 
 #[pymethods]
-impl PyBSMFourier {
+impl PyBsmFourier {
   #[new]
   fn new(sigma: f64, r: f64, q: f64) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::fourier::BSMFourier { sigma, r, q },
+      inner: crate::pricing::fourier::BsmFourier { sigma, r, q },
     })
   }
 
@@ -83,16 +83,16 @@ impl PyVarianceGammaFourier {
 }
 
 #[pyclass(name = "CGMYFourier", unsendable)]
-pub struct PyCGMYFourier {
-  pub inner: crate::pricing::fourier::CGMYFourier,
+pub struct PyCgmyFourier {
+  pub inner: crate::pricing::fourier::CgmyFourier,
 }
 
 #[pymethods]
-impl PyCGMYFourier {
+impl PyCgmyFourier {
   #[new]
   fn new(c: f64, g: f64, m: f64, y: f64, r: f64, q: f64) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::fourier::CGMYFourier { c, g, m, y, r, q },
+      inner: crate::pricing::fourier::CgmyFourier { c, g, m, y, r, q },
     })
   }
 
@@ -102,16 +102,16 @@ impl PyCGMYFourier {
 }
 
 #[pyclass(name = "MertonJDFourier", unsendable)]
-pub struct PyMertonJDFourier {
-  pub inner: crate::pricing::fourier::MertonJDFourier,
+pub struct PyMertonJdFourier {
+  pub inner: crate::pricing::fourier::MertonJdFourier,
 }
 
 #[pymethods]
-impl PyMertonJDFourier {
+impl PyMertonJdFourier {
   #[new]
   fn new(sigma: f64, lambda: f64, mu_j: f64, sigma_j: f64, r: f64, q: f64) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::fourier::MertonJDFourier {
+      inner: crate::pricing::fourier::MertonJdFourier {
         sigma,
         lambda,
         mu_j,
@@ -337,12 +337,12 @@ impl PyDoubleHestonFourier {
 }
 
 #[pyclass(name = "HKDEFourier", unsendable)]
-pub struct PyHKDEFourier {
-  pub inner: crate::pricing::fourier::HKDEFourier,
+pub struct PyHkdeFourier {
+  pub inner: crate::pricing::fourier::HkdeFourier,
 }
 
 #[pymethods]
-impl PyHKDEFourier {
+impl PyHkdeFourier {
   #[new]
   fn new(
     v0: f64,
@@ -358,7 +358,7 @@ impl PyHKDEFourier {
     eta2: f64,
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::fourier::HKDEFourier {
+      inner: crate::pricing::fourier::HkdeFourier {
         v0,
         kappa,
         theta,

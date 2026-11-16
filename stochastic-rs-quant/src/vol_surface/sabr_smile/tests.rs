@@ -182,11 +182,11 @@ fn test_sabr_smile_calibrate() {
 
 #[test]
 fn a_strike_for_an_uncomputable_delta_is_nan_not_a_bracket_edge() {
-  let params = crate::calibration::sabr::SabrParams {
+  let params = crate::pricing::sabr::SabrParams {
     alpha: 0.2,
     beta: 1.0,
-    nu: 0.5,
     rho: -0.3,
+    nu: 0.5,
   };
   assert!(strike_for_delta(100.0, 0.02, 0.01, -1.0, params, 0.25, 1.0).is_nan());
   assert!(strike_for_delta(100.0, 0.02, 0.01, 1.0, params, 0.25, 1.0).is_finite());

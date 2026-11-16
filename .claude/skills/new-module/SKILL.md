@@ -22,7 +22,7 @@ layout.
 | Domain | Public path | Crate you edit | Registration file | Examples |
 |---|---|---|---|---|
 | Stochastic processes (diffusion, jump, volatility, noise, interest, autoregressive) | `stochastic_rs::stochastic::…` | `stochastic-rs-stochastic/src/` | that crate's `src/lib.rs` | Gbm, Heston, Cir, Fbm |
-| Quantitative finance (pricing, bonds, calibration, calendar, FX, portfolio, strategies, vol_surface) | `stochastic_rs::quant::…` | `stochastic-rs-quant/src/` | that crate's `src/lib.rs` | BSMPricer, schedule builder, FX forward |
+| Quantitative finance (pricing, bonds, calibration, calendar, FX, portfolio, strategies, vol_surface) | `stochastic_rs::quant::…` | `stochastic-rs-quant/src/` | that crate's `src/lib.rs` | BsmPricer, schedule builder, FX forward |
 | Statistical estimators & tests (MLE, KDE, stationarity, normality, spectral) | `stochastic_rs::stats::…` | `stochastic-rs-stats/src/` | that crate's `src/lib.rs` | Gaussian KDE, ADF test, Hurst estimators |
 | Probability distributions | `stochastic_rs::distributions::…` | `stochastic-rs-distributions/src/` | that crate's `src/lib.rs` | SimdNormal, SimdAlphaStable |
 | Copula models | `stochastic_rs::copulas::…` | `stochastic-rs-copulas/src/` | that crate's `src/lib.rs` | Clayton, GaussianCopula, TCopula |

@@ -3,10 +3,10 @@
 use ndarray::Array1;
 use num_complex::Complex;
 
-use super::FMVol;
+use super::FmVol;
 use crate::traits::RealExt;
 
-impl<T: RealExt> FMVol<T> {
+impl<T: RealExt> FmVol<T> {
   /// Integrated variance.
   ///
   /// $$\widehat{IV}=\frac{T^2}{2N+1}\sum_{|k|\le N}c_k(dx)\,c_{-k}(dx)$$

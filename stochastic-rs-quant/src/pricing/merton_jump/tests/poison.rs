@@ -79,7 +79,7 @@ fn an_inadmissible_gamma_announces_itself_in_the_greeks_too() {
 /// come back finite, so this is the boundary and not the whole regime.
 #[test]
 fn an_overflowing_poisson_weight_is_not_a_degenerate_term() {
-  let m = Merton1976Pricer::new(0.2, 1.0e9, 0.4, 50, BSMCoc::Bsm1973);
+  let m = Merton1976Pricer::new(0.2, 1.0e9, 0.4, 50, BsmCoc::Bsm1973);
   assert!(m.price_call(S, K, R, Q, TAU).is_nan(), "price");
   let got = m.greeks(S, K, R, Q, TAU, OT).as_array();
   for (greek, v) in Greeks::COMPONENT_NAMES.iter().zip(got) {
@@ -87,7 +87,7 @@ fn an_overflowing_poisson_weight_is_not_a_degenerate_term() {
   }
   // The neighbouring finite regime still prices, so the narrowing did not
   // simply poison every large intensity.
-  let tame = Merton1976Pricer::new(0.2, 1.0e3, 0.4, 50, BSMCoc::Bsm1973);
+  let tame = Merton1976Pricer::new(0.2, 1.0e3, 0.4, 50, BsmCoc::Bsm1973);
   assert!(tame.price_call(S, K, R, Q, TAU).is_finite());
   assert!(tame.delta(S, K, R, Q, TAU, OT).is_finite());
 }
@@ -112,7 +112,7 @@ fn an_overflowing_poisson_weight_is_not_a_degenerate_term() {
 /// confident `0.0`.
 #[test]
 fn a_poisoned_query_poisons_a_degenerate_models_greeks_too() {
-  let m = Merton1976Pricer::new(0.0, 0.5, 0.4, 20, BSMCoc::Black1976);
+  let m = Merton1976Pricer::new(0.0, 0.5, 0.4, 20, BsmCoc::Black1976);
   // Black1976 carries at b = 0, so S is the forward and the degenerate
   // terms are all at the singular strike.
   let cases: [(&str, f64, f64, f64, f64, f64); 9] = [

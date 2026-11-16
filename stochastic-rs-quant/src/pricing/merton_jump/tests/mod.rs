@@ -1,6 +1,6 @@
 use super::*;
 use crate::OptionType;
-use crate::pricing::bsm::BSMPricer;
+use crate::pricing::bsm::BsmPricer;
 use crate::traits::Greeks;
 
 mod construction;
@@ -21,11 +21,11 @@ const TAU: f64 = 0.5;
 const OT: OptionType = OptionType::Call;
 
 fn merton(lambda: f64, gamma: f64, m: usize) -> Merton1976Pricer {
-  Merton1976Pricer::new(0.2, lambda, gamma, m, BSMCoc::Bsm1973)
+  Merton1976Pricer::new(0.2, lambda, gamma, m, BsmCoc::Bsm1973)
 }
 
 fn merton_at(v: f64, lambda: f64, gamma: f64, m: usize) -> Merton1976Pricer {
-  Merton1976Pricer::new(v, lambda, gamma, m, BSMCoc::Bsm1973)
+  Merton1976Pricer::new(v, lambda, gamma, m, BsmCoc::Bsm1973)
 }
 
 fn bumped_price(m: &Merton1976Pricer, ds: f64, dv: f64, dtau: f64) -> f64 {
@@ -40,7 +40,7 @@ fn bumped_price(m: &Merton1976Pricer, ds: f64, dv: f64, dtau: f64) -> f64 {
 #[test]
 fn merton_greeks_lambda_zero_equals_bs() {
   let m = merton(0.0, 0.4, 20);
-  let bs = BSMPricer::new(m.v, m.b);
+  let bs = BsmPricer::new(m.v, m.b);
 
   let cases = [
     (
@@ -84,8 +84,8 @@ fn merton_greeks_lambda_zero_equals_bs() {
 ///
 /// `gamma` is checked at a looser `1e-3` (not `1e-4`): its BSM closed form
 /// (`norm_pdf(d1)/(S·v·√τ)`) and a central second-difference of
-/// `BSMPricer::call_put` already disagree by several `1e-4`
-/// *at a single, non-Merton `BSMPricer` in isolation* — confirmed by
+/// `BsmPricer::call_put` already disagree by several `1e-4`
+/// *at a single, non-Merton `BsmPricer` in isolation* — confirmed by
 /// checking one term on its own — and the gap does not keep shrinking as
 /// the bump size shrinks over several orders of magnitude the way a
 /// normal `O(h²)` truncation error would. Second-derivative finite
@@ -215,7 +215,7 @@ fn merton_greeks_theta_charm_veta_nan_near_expiry() {
   );
 }
 
-/// Under [`BSMCoc::GarmanKohlhagen1983`] the query `(r, r − r_d + r_f)` carries at `r_d − r_f` and
+/// Under [`BsmCoc::GarmanKohlhagen1983`] the query `(r, r − r_d + r_f)` carries at `r_d − r_f` and
 /// discounts at `r`, checked at `r ≠ r_d` against a hand-written closed form.
 #[test]
 fn merton_gk_carries_at_rd_minus_rf_and_discounts_at_r() {
@@ -225,7 +225,7 @@ fn merton_gk_carries_at_rd_minus_rf_and_discounts_at_r() {
   let (r, r_d, r_f) = (0.06_f64, 0.05_f64, 0.02_f64);
   // The query that reproduces discount `r` and carry `r_d - r_f`.
   let q = r - r_d + r_f;
-  let m = Merton1976Pricer::new(v, 0.0, 0.4, 20, BSMCoc::GarmanKohlhagen1983);
+  let m = Merton1976Pricer::new(v, 0.0, 0.4, 20, BsmCoc::GarmanKohlhagen1983);
 
   let b = r_d - r_f;
   let sqrt_tau = tau.sqrt();

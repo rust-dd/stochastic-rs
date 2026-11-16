@@ -249,6 +249,10 @@ harness = false
 name = "copulas"
 harness = false
 
+[[bench]]
+name = "pricing"
+harness = false
+
 [[example]]
 name = "cuda_engine_profile"
 required-features = ["cuda"]

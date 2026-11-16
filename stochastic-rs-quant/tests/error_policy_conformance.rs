@@ -9,6 +9,7 @@ use stochastic_rs_quant::curves::InterpolationMethod;
 use stochastic_rs_quant::inflation::InflationCurve;
 use stochastic_rs_quant::inflation::ZeroCouponInflationCurve;
 use stochastic_rs_quant::portfolio::optimizers::empirical_cvar;
+use stochastic_rs_quant::pricing::sabr::SabrParams;
 use stochastic_rs_quant::pricing::sabr::hagan_implied_vol;
 use stochastic_rs_quant::vol_surface::implied::ImpliedVolSurface;
 
@@ -41,12 +42,18 @@ fn a_breakeven_rate_at_a_non_positive_maturity_is_nan() {
 
 #[test]
 fn a_query_outside_the_domain_is_nan_not_a_panic() {
-  assert!(hagan_implied_vol(-1.0, 100.0, 1.0, 0.2, 0.5, 0.3, -0.2).is_nan());
-  assert!(hagan_implied_vol(100.0, 0.0, 1.0, 0.2, 0.5, 0.3, -0.2).is_nan());
-  assert!(hagan_implied_vol(100.0, 100.0, 1.0, 0.2, 0.5, 0.3, -0.2).is_finite());
-  assert!(hagan_implied_vol(100.0, 100.0, -1.0, 0.2, 0.5, 0.3, -0.2).is_nan());
-  assert!(hagan_implied_vol(100.0, 100.0, f64::INFINITY, 0.2, 0.5, 0.3, -0.2).is_nan());
-  assert!(hagan_implied_vol(100.0, 100.0, 0.0, 0.2, 0.5, 0.3, -0.2).is_finite());
+  let p = SabrParams {
+    alpha: 0.2,
+    beta: 0.5,
+    rho: -0.2,
+    nu: 0.3,
+  };
+  assert!(hagan_implied_vol(-1.0, 100.0, 1.0, &p).is_nan());
+  assert!(hagan_implied_vol(100.0, 0.0, 1.0, &p).is_nan());
+  assert!(hagan_implied_vol(100.0, 100.0, 1.0, &p).is_finite());
+  assert!(hagan_implied_vol(100.0, 100.0, -1.0, &p).is_nan());
+  assert!(hagan_implied_vol(100.0, 100.0, f64::INFINITY, &p).is_nan());
+  assert!(hagan_implied_vol(100.0, 100.0, 0.0, &p).is_finite());
 }
 
 #[test]

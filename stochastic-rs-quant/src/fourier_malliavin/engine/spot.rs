@@ -3,12 +3,12 @@
 use ndarray::Array1;
 use num_complex::Complex;
 
-use super::FMVol;
+use super::FmVol;
 use super::helpers::fejer_inversion;
 use crate::fourier_malliavin::coefficients::convolution_coefficients;
 use crate::traits::RealExt;
 
-impl<T: RealExt> FMVol<T> {
+impl<T: RealExt> FmVol<T> {
   /// Spot variance at evaluation times `tau`.
   pub fn spot_variance(&self, tau: &[T], m_freq: Option<usize>) -> Array1<T> {
     self
@@ -38,7 +38,7 @@ impl<T: RealExt> FMVol<T> {
   /// Matches the MATLAB FSDA `FE_spot_vol` / `FE_spot_vol_FFT` output
   /// element-for-element. Use [`super::super::default_cutting_freq_fe`] for the
   /// FE-style `(N, M)` defaults and pair with
-  /// [`FMVol::with_freq`] so that `max_freq ≥ N + M`.
+  /// [`FmVol::with_freq`] so that `max_freq ≥ N + M`.
   ///
   /// Panics if the window is invalid. Use [`Self::try_spot_variance_fe`] to
   /// handle invalid input without panicking.

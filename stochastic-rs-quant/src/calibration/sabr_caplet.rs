@@ -24,22 +24,14 @@ use std::convert::Infallible;
 use basin::CostFunction;
 
 use crate::calibration::run_nelder_mead;
+use crate::pricing::sabr::SabrParams;
 use crate::pricing::sabr::hagan_implied_vol;
 
-/// Calibrated parameter set for a Sabr caplet smile.
-///
-/// Parallels [`crate::calibration::SabrParams`] but is dedicated to the
-/// caplet calibrator so the two pipelines can evolve independently.
+/// The caplet smile's Hagan parameters and the displacement they were calibrated under.
 #[derive(Debug, Clone, Copy)]
 pub struct SabrCapletParams {
-  pub alpha: f64,
-  pub beta: f64,
-  pub nu: f64,
-  pub rho: f64,
-  /// Displacement the smile was calibrated under; see the module
-  /// documentation. `0.0` unless the calibrator used
-  /// [`SabrCapletCalibrator::with_shift`]. `alpha`/`nu`/`rho` above are
-  /// expressed in *shifted* coordinates whenever this is nonzero.
+  pub sabr: SabrParams,
+  /// Displacement of forward and strikes; `sabr` is in shifted coordinates when it is nonzero.
   pub shift: f64,
 }
 
@@ -70,13 +62,14 @@ pub struct SabrCapletCalibrationResult {
 impl SabrCapletCalibrationResult {
   /// A [`SabrPricer`](crate::pricing::sabr::SabrPricer) in shifted coordinates when `shift != 0`: shift `s` and `k` yourself
   /// (an unshifted non-positive one prices as NaN) or use [`Self::to_shifted_volatility`], which shifts internally.
+  /// Panics when `beta` lies outside [0, 1].
   pub fn to_model(&self) -> crate::pricing::sabr::SabrPricer {
-    crate::pricing::sabr::SabrPricer {
+    crate::pricing::sabr::SabrPricer::new(SabrParams {
       alpha: self.alpha,
       beta: self.beta,
-      nu: self.nu,
       rho: self.rho,
-    }
+      nu: self.nu,
+    })
   }
 
   /// Convert to a
@@ -88,7 +81,7 @@ impl SabrCapletCalibrationResult {
   /// [`SabrCapletCalibrator::with_shift`].
   pub fn to_shifted_volatility(&self) -> crate::instruments::option::ShiftedSabrVolatility<f64> {
     crate::instruments::option::ShiftedSabrVolatility::new(
-      self.alpha, self.beta, self.nu, self.rho, self.shift,
+      self.alpha, self.beta, self.rho, self.nu, self.shift,
     )
   }
 }
@@ -112,10 +105,12 @@ impl crate::traits::CalibrationResult for SabrCapletCalibrationResult {
 
   fn params(&self) -> Self::Params {
     SabrCapletParams {
-      alpha: self.alpha,
-      beta: self.beta,
-      nu: self.nu,
-      rho: self.rho,
+      sabr: SabrParams {
+        alpha: self.alpha,
+        beta: self.beta,
+        rho: self.rho,
+        nu: self.nu,
+      },
       shift: self.shift,
     }
   }
@@ -288,20 +283,18 @@ impl SabrCapletCalibrator {
     let rho = best[2].clamp(-0.9999, 0.9999);
 
     let shifted_forward = self.shifted_forward();
+    let params = SabrParams {
+      alpha,
+      beta: self.beta,
+      rho,
+      nu,
+    };
     let residuals: Vec<f64> = self
       .strikes
       .iter()
       .zip(self.market_vols.iter())
       .map(|(&k, &v_mkt)| {
-        let v_model = hagan_implied_vol(
-          k + self.shift,
-          shifted_forward,
-          self.expiry,
-          alpha,
-          self.beta,
-          nu,
-          rho,
-        );
+        let v_model = hagan_implied_vol(k + self.shift, shifted_forward, self.expiry, &params);
         v_model - v_mkt
       })
       .collect();
@@ -346,6 +339,12 @@ impl CostFunction for SabrCapletCost {
     let nu = x[1].abs().max(1e-8);
     let rho = x[2].clamp(-0.9999, 0.9999);
     let shifted_forward = self.forward + self.shift;
+    let params = SabrParams {
+      alpha,
+      beta: self.beta,
+      rho,
+      nu,
+    };
     let mut sse = 0.0;
     for ((&k, &v_mkt), &w) in self
       .strikes
@@ -353,15 +352,7 @@ impl CostFunction for SabrCapletCost {
       .zip(self.market_vols.iter())
       .zip(self.weights.iter())
     {
-      let v_model = hagan_implied_vol(
-        k + self.shift,
-        shifted_forward,
-        self.expiry,
-        alpha,
-        self.beta,
-        nu,
-        rho,
-      );
+      let v_model = hagan_implied_vol(k + self.shift, shifted_forward, self.expiry, &params);
       let diff = v_model - v_mkt;
       sse += w * diff * diff;
     }

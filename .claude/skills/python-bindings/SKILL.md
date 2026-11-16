@@ -119,14 +119,14 @@ behind `#[cfg(feature = "python")]` (whole file). Pattern:
 
 ```rust
 #[pyclass(name = "BSMPricer", unsendable)]
-pub struct PyBSMPricer {
-  inner: crate::pricing::bsm::BSMPricer,
+pub struct PyBsmPricer {
+  inner: crate::pricing::bsm::BsmPricer,
 }
 
 #[pymethods]
-impl PyBSMPricer {
+impl PyBsmPricer {
   #[new]
-  // Since 3.0 the Rust pricer holds MODEL parameters only — `BSMPricer`
+  // Since 3.0 the Rust pricer holds MODEL parameters only — `BsmPricer`
   // is `{ v, b }`. Spot, strike, rates and maturity are query arguments.
   #[pyo3(signature = (sigma,))]
   fn new(sigma: f64) -> PyResult<Self> {
@@ -134,7 +134,7 @@ impl PyBSMPricer {
       return Err(PyValueError::new_err("sigma must be > 0"));
     }
     Ok(Self {
-      inner: crate::pricing::bsm::BSMPricer::new(sigma, BSMCoc::Merton1973),
+      inner: crate::pricing::bsm::BsmPricer::new(sigma, BsmCoc::Merton1973),
     })
   }
 
@@ -192,12 +192,12 @@ Every wrapped type **must** be registered explicitly. The cdylib's
 #[pymodule]
 fn stochastic_rs(_py: Python, m: &PyModule) -> PyResult<()> {
   // 1. Imports — alphabetised within each producer crate's section.
-  use stochastic_rs_quant::python::PyBSMPricer;
+  use stochastic_rs_quant::python::PyBsmPricer;
   use stochastic_rs_quant::python::PyNigFourier;     // new in rc.2
   // ...
 
   // 2. Registration — group by domain (pricer, calibrator, vol_surface, ...).
-  m.add_class::<PyBSMPricer>()?;
+  m.add_class::<PyBsmPricer>()?;
   m.add_class::<PyNigFourier>()?;
   // ...
 
@@ -225,8 +225,7 @@ pip install maturin pytest numpy
 maturin develop --release
 
 # Smoke test:
-python -c "from stochastic_rs import PyBSMPricer; \
-  p = PyBSMPricer(100, 100, 0.05, 0.0, 0.2, 1.0); print(p.price())"
+python -c "import stochastic_rs as sr; print(sr.BSMPricer(100.0, 0.2, 100.0, 0.05, 1.0).price())"
 ```
 
 `pyproject.toml` has `[tool.maturin] manifest-path = ".../Cargo.toml"`

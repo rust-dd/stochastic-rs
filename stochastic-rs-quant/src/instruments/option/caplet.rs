@@ -148,7 +148,7 @@ mod tests {
 
   #[test]
   fn a_sabr_vol_outside_its_domain_prices_a_live_caplet_as_nan() {
-    let sabr = SabrVolatility::new(0.035_f64, 0.5, 0.4, -0.2);
+    let sabr = SabrVolatility::new(0.035_f64, 0.5, -0.2, 0.4);
     let cap = |forward: f64, tau: f64| {
       caplet_price(
         forward,

@@ -18,7 +18,7 @@ use stochastic_rs::quant::market::Quote;
 use stochastic_rs::quant::market::SimpleQuote;
 use stochastic_rs::quant::microstructure::AlmgrenChrissParams;
 use stochastic_rs::quant::microstructure::ExecutionDirection;
-use stochastic_rs::quant::pricing::AnalyticBSEngine;
+use stochastic_rs::quant::pricing::AnalyticBsEngine;
 use stochastic_rs::quant::pricing::AnalyticHestonEngine;
 use stochastic_rs::quant::pricing::HestonStaticParams;
 use stochastic_rs::quant::pricing::VarianceSwapPricer;
@@ -51,7 +51,7 @@ fn main() {
   println!("  rate   = {:.4}", rate_q.value());
   println!("  div    = {:.4}\n", div_q.value());
 
-  let bs_engine = AnalyticBSEngine::new(spot.clone(), vol.clone(), rate.clone(), div.clone());
+  let bs_engine = AnalyticBsEngine::new(spot.clone(), vol.clone(), rate.clone(), div.clone());
 
   let heston_params = HestonStaticParams::new(0.04, 1.5, 0.04, 0.30, -0.7);
   let heston_engine =

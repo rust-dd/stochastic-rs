@@ -1,12 +1,12 @@
 use ndarray::Array1;
 use ndarray::s;
 use stochastic_rs_quant::OptionType;
-use stochastic_rs_quant::calibration::bsm::BSMCalibrator;
-use stochastic_rs_quant::calibration::bsm::BSMParams;
-use stochastic_rs_quant::calibration::hkde::HKDECalibrator;
+use stochastic_rs_quant::calibration::bsm::BsmCalibrator;
+use stochastic_rs_quant::calibration::bsm::BsmParams;
+use stochastic_rs_quant::calibration::hkde::HkdeCalibrator;
 use stochastic_rs_quant::calibration::least_squares::LeastSquaresProblem;
-use stochastic_rs_quant::pricing::bsm::BSMCoc;
-use stochastic_rs_quant::pricing::bsm::BSMPricer;
+use stochastic_rs_quant::pricing::bsm::BsmCoc;
+use stochastic_rs_quant::pricing::bsm::BsmPricer;
 use stochastic_rs_quant::traits::Calibrator;
 use stochastic_rs_quant::traits::ModelPricer;
 
@@ -22,15 +22,15 @@ fn reversed(values: impl IntoIterator<Item = f64>) -> Array1<f64> {
 #[test]
 fn bsm_calibration_accepts_strided_quotes() {
   let strikes = strided([90.0, 100.0, 110.0]);
-  let pricer = BSMPricer::new(0.25, BSMCoc::Bsm1973);
+  let pricer = BsmPricer::new(0.25, BsmCoc::Bsm1973);
   let market = strided(
     strikes
       .iter()
       .map(|&k| pricer.price_call(100.0, k, 0.03, 0.0, 1.0)),
   );
   assert!(market.as_slice().is_none());
-  let model = BSMCalibrator::new(
-    BSMParams { v: 0.3 },
+  let model = BsmCalibrator::new(
+    BsmParams { v: 0.3 },
     market,
     strided([100.0; 3]),
     strikes,
@@ -47,7 +47,7 @@ fn bsm_calibration_accepts_strided_quotes() {
 
 #[test]
 fn bsm_calibration_preserves_reversed_quote_order() {
-  let pricer = BSMPricer::new(0.25, BSMCoc::Bsm1973);
+  let pricer = BsmPricer::new(0.25, BsmCoc::Bsm1973);
   let strikes = Array1::from_vec(vec![90.0, 100.0, 110.0]);
   let market = reversed(
     strikes
@@ -55,8 +55,8 @@ fn bsm_calibration_preserves_reversed_quote_order() {
       .map(|&k| pricer.price_call(100.0, k, 0.03, 0.0, 1.0)),
   );
   assert!(market.as_slice().is_none());
-  let model = BSMCalibrator::new(
-    BSMParams { v: 0.3 },
+  let model = BsmCalibrator::new(
+    BsmParams { v: 0.3 },
     market,
     Array1::from_elem(3, 100.0),
     strikes,
@@ -74,7 +74,7 @@ fn bsm_calibration_preserves_reversed_quote_order() {
 
 #[test]
 fn hkde_weights_accept_strided_quotes() {
-  let model = HKDECalibrator::new(
+  let model = HkdeCalibrator::new(
     None,
     strided([15.0, 9.0, 4.0]),
     strided([100.0; 3]),
@@ -91,7 +91,7 @@ fn hkde_weights_accept_strided_quotes() {
 
 #[test]
 fn hkde_weights_preserve_reversed_quote_order() {
-  let contiguous = HKDECalibrator::new(
+  let contiguous = HkdeCalibrator::new(
     None,
     Array1::from_vec(vec![15.0, 9.0, 4.0]),
     Array1::from_elem(3, 100.0),
@@ -102,7 +102,7 @@ fn hkde_weights_preserve_reversed_quote_order() {
     OptionType::Call,
     true,
   );
-  let reversed = HKDECalibrator::new(
+  let reversed = HkdeCalibrator::new(
     None,
     reversed([15.0, 9.0, 4.0]),
     reversed([100.0; 3]),

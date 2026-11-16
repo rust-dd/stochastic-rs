@@ -5,15 +5,21 @@ use ndarray::Array1;
 use stochastic_rs::quant::OptionType;
 use stochastic_rs::quant::calibration::Regularization;
 use stochastic_rs::quant::calibration::SabrCalibrator;
+use stochastic_rs::quant::pricing::sabr::SabrParams;
 use stochastic_rs::quant::pricing::sabr::SabrPricer;
 use stochastic_rs::traits::Calibrator;
 
 #[test]
 fn a_tikhonov_anchor_pulls_the_sabr_fit() {
-  // Synthetic smile from SABR (α = 0.2, β = 1, ν = 0.6, ρ = −0.3), one year, seven strikes.
+  // Synthetic smile from SABR (α = 0.2, β = 1, ρ = −0.3, ν = 0.6), one year, seven strikes.
   let (s, r, tau) = (100.0, 0.01, 1.0);
   let strikes = vec![80.0, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0];
-  let pricer = SabrPricer::new(0.2, 1.0, 0.6, -0.3);
+  let pricer = SabrPricer::new(SabrParams {
+    alpha: 0.2,
+    beta: 1.0,
+    rho: -0.3,
+    nu: 0.6,
+  });
   let prices: Vec<f64> = strikes
     .iter()
     .map(|&k| pricer.call_put(s, k, r, 0.0, tau).0)

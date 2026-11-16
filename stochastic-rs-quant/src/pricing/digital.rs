@@ -71,7 +71,7 @@ impl CashOrNothingPricer {
   /// A `NaN` `sigma` is deliberately **accepted**, unlike on
   /// [`HestonPricer::new`](crate::pricing::HestonPricer) where it is
   /// rejected. The difference is where the value comes from:
-  /// `AnalyticBSEngine` builds these pricers with the volatility it reads
+  /// `AnalyticBsEngine` builds these pricers with the volatility it reads
   /// off a market [`Handle`](crate::market::Handle), and an unlinked handle
   /// reads as `NaN` *by design* — the crate's missing-data answer, the same
   /// one [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) gives. That
@@ -198,7 +198,7 @@ impl AssetOrNothingPricer {
   /// A `NaN` `sigma` is deliberately **accepted**, unlike on
   /// [`HestonPricer::new`](crate::pricing::HestonPricer) where it is
   /// rejected. The difference is where the value comes from:
-  /// `AnalyticBSEngine` builds these pricers with the volatility it reads
+  /// `AnalyticBsEngine` builds these pricers with the volatility it reads
   /// off a market [`Handle`](crate::market::Handle), and an unlinked handle
   /// reads as `NaN` *by design* — the crate's missing-data answer, the same
   /// one [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) gives. That
@@ -314,7 +314,7 @@ impl GapPricer {
   /// A `NaN` `sigma` is deliberately **accepted**, unlike on
   /// [`HestonPricer::new`](crate::pricing::HestonPricer) where it is
   /// rejected. The difference is where the value comes from:
-  /// `AnalyticBSEngine` builds these pricers with the volatility it reads
+  /// `AnalyticBsEngine` builds these pricers with the volatility it reads
   /// off a market [`Handle`](crate::market::Handle), and an unlinked handle
   /// reads as `NaN` *by design* — the crate's missing-data answer, the same
   /// one [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) gives. That
@@ -403,7 +403,7 @@ impl SuperSharePricer {
   /// A `NaN` `sigma` is deliberately **accepted**, unlike on
   /// [`HestonPricer::new`](crate::pricing::HestonPricer) where it is
   /// rejected. The difference is where the value comes from:
-  /// `AnalyticBSEngine` builds these pricers with the volatility it reads
+  /// `AnalyticBsEngine` builds these pricers with the volatility it reads
   /// off a market [`Handle`](crate::market::Handle), and an unlinked handle
   /// reads as `NaN` *by design* — the crate's missing-data answer, the same
   /// one [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) gives. That

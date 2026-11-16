@@ -1,18 +1,15 @@
 use stochastic_rs_distributions::special::norm_cdf;
 
-use crate::pricing::bsm::BSMCoc;
-use crate::pricing::bsm::BSMPricer;
+use crate::pricing::bsm::BsmCoc;
+use crate::pricing::bsm::BsmPricer;
+use crate::pricing::sabr::SabrParams;
 
 /// Forward FX F = S * exp((r_d - r_f) T)
 pub fn forward_fx(s: f64, tau: f64, r_d: f64, r_f: f64) -> f64 {
   s * ((r_d - r_f) * tau).exp()
 }
 
-/// Hagan et al. (2002) Sabr implied-vol approximation for general β.
-///
-/// Implements Eq. A.69a from:
-/// P. S. Hagan, D. Kumar, A. S. Lesniewski, D. E. Woodward,
-/// *Managing Smile Risk*, Wilmott Magazine, pp. 84–108, 2002.
+/// Hagan et al. (2002), "Managing Smile Risk", Wilmott Magazine, 84–108, eq. A.69a (general β).
 ///
 /// $$
 /// \sigma(K)\approx
@@ -24,21 +21,22 @@ pub fn forward_fx(s: f64, tau: f64, r_d: f64, r_f: f64) -> f64 {
 /// +\tfrac{(2-3\rho^2)\nu^2}{24}\Bigr)\tau\Bigr]
 /// $$
 ///
-/// Panics if `alpha <= 0` or `rho` is not strictly inside $(-1, 1)$ (the $x(z)$ denominator carries $1-\rho$); a non-positive
-/// `k` or `f`, or a negative or non-finite `tau` (`tau = 0` is the leading-order limit), is outside the domain and returns NaN.
-pub fn hagan_implied_vol(
-  k: f64,
-  f: f64,
-  tau: f64,
-  alpha: f64,
-  beta: f64,
-  nu: f64,
-  rho: f64,
-) -> f64 {
-  assert!(alpha > 0.0, "alpha must be strictly positive (got {alpha})");
+/// NaN for `k ≤ 0`, `f ≤ 0` or a negative or non-finite `tau` (`tau = 0` is the leading order);
+/// panics unless `alpha` is finite and positive and `rho ∈ (−1, 1)` (`x(z)` divides by `1 − ρ`).
+pub fn hagan_implied_vol(k: f64, f: f64, tau: f64, params: &SabrParams) -> f64 {
+  let SabrParams {
+    alpha,
+    beta,
+    rho,
+    nu,
+  } = *params;
+  assert!(
+    alpha.is_finite() && alpha > 0.0,
+    "alpha must satisfy `alpha.is_finite() && alpha > 0.0`, got alpha = {alpha:?}"
+  );
   assert!(
     rho > -1.0 && rho < 1.0,
-    "rho must lie strictly inside (-1, 1) (got {rho})"
+    "rho must satisfy `rho > -1.0 && rho < 1.0`, got rho = {rho:?}"
   );
   if !(k > 0.0 && f > 0.0 && tau.is_finite() && tau >= 0.0) {
     return f64::NAN;
@@ -65,12 +63,6 @@ pub fn hagan_implied_vol(
   } else {
     alpha * (1.0 + (a + b + c) * tau) / (d * (1.0 + v + w))
   }
-}
-
-/// Convenience wrapper: Hagan (2002) with β = 1.
-#[inline]
-pub fn hagan_implied_vol_beta1(k: f64, f: f64, tau: f64, alpha: f64, nu: f64, rho: f64) -> f64 {
-  hagan_implied_vol(k, f, tau, alpha, 1.0, nu, rho)
 }
 
 /// Compute Sabr α from an ATM lognormal vol by solving the Hagan (2002) ATM
@@ -144,11 +136,11 @@ pub fn alpha_from_atm_vol(v_atm: f64, f: f64, tau: f64, beta: f64, rho: f64, nu:
   x.max(1e-8)
 }
 
-/// Black-Scholes(-Garman-Kohlhagen) price for FX under GK using BSMPricer.
+/// Black-Scholes(-Garman-Kohlhagen) price for FX under GK using BsmPricer.
 pub fn bs_price_fx(s: f64, k: f64, r_d: f64, r_f: f64, tau: f64, sigma: f64) -> (f64, f64) {
   // Garman-Kohlhagen puts the foreign rate in the model's dividend slot,
   // so the query's `(r, q)` pair is `(r_d, r_f)`.
-  BSMPricer::new(sigma, BSMCoc::GarmanKohlhagen1983).call_put(s, k, r_d, r_f, tau)
+  BsmPricer::new(sigma, BsmCoc::GarmanKohlhagen1983).call_put(s, k, r_d, r_f, tau)
 }
 
 /// Delta on forward with premium included
@@ -158,35 +150,16 @@ pub fn fx_delta_from_forward(k: f64, f: f64, sigma: f64, tau: f64, r_f: f64, phi
   phi * (-r_f * tau).exp() * (k / f) * nd2
 }
 
-/// Model price computed by plugging Hagan approx vol (β = 1) into BS(GK)
+/// Garman–Kohlhagen `(call, put)` at the Hagan vol of `params` against the forward of `s`.
 pub fn model_price_hagan(
   s: f64,
   k: f64,
   r_d: f64,
   r_f: f64,
   tau: f64,
-  alpha: f64,
-  nu: f64,
-  rho: f64,
+  params: &SabrParams,
 ) -> (f64, f64) {
   let fwd = forward_fx(s, tau, r_d, r_f);
-  let sigma = hagan_implied_vol_beta1(k, fwd, tau, alpha, nu, rho);
-  bs_price_fx(s, k, r_d, r_f, tau, sigma)
-}
-
-/// Model price computed by plugging the general-β Hagan vol into BS(GK)
-pub fn model_price_hagan_general(
-  s: f64,
-  k: f64,
-  r_d: f64,
-  r_f: f64,
-  tau: f64,
-  alpha: f64,
-  beta: f64,
-  nu: f64,
-  rho: f64,
-) -> (f64, f64) {
-  let fwd = forward_fx(s, tau, r_d, r_f);
-  let sigma = hagan_implied_vol(k, fwd, tau, alpha, beta, nu, rho);
+  let sigma = hagan_implied_vol(k, fwd, tau, params);
   bs_price_fx(s, k, r_d, r_f, tau, sigma)
 }

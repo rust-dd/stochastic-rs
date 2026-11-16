@@ -21,7 +21,7 @@ use super::FourierModelExt;
 /// Source:
 /// - Kirkby, J.L. (PROJ\_Option\_Pricing\_Matlab)
 #[derive(Debug, Clone)]
-pub struct HKDEFourier {
+pub struct HkdeFourier {
   /// Initial variance.
   pub v0: f64,
   /// Mean-reversion speed.
@@ -46,7 +46,7 @@ pub struct HKDEFourier {
   pub eta2: f64,
 }
 
-impl FourierModelExt for HKDEFourier {
+impl FourierModelExt for HkdeFourier {
   /// Heston diffusion uses the Albrecher-Mayer-Schoutens-Tistaert (2007)
   /// "Little Heston Trap" form (`g̃ = 1/g_original`, `exp(-d·t)`); the Kou jump
   /// CF is added linearly on top. Required for principal-branch stability at

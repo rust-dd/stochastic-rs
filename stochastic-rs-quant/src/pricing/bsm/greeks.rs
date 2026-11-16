@@ -1,20 +1,20 @@
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
 
-use super::pricer::BSMPricer;
+use super::pricer::BsmPricer;
 use crate::OptionType;
 use crate::traits::Greeks;
 
 /// Closed-form Greeks, evaluated at the same `(s, k, r, q, tau)` query
-/// [`BSMPricer`]'s pricing methods take. Only the Greeks whose value
+/// [`BsmPricer`]'s pricing methods take. Only the Greeks whose value
 /// actually differs between a call and a put take `option_type`.
 ///
 /// These are inherent methods and not a
 /// [`GreeksExt`](crate::traits::GreeksExt) impl: that trait's accessors
 /// take no arguments, so only a type that already carries a query can
 /// implement it. The query-carrying types built on this model
-/// (`AnalyticBSEngine`, `Merton1976Pricer`) implement it and delegate here.
-impl BSMPricer {
+/// (`AnalyticBsEngine`, `Merton1976Pricer`) implement it and delegate here.
+impl BsmPricer {
   /// Every Greek at one query point; the one place `Greeks::volga` maps to [`vomma`](Self::vomma)
   /// and `Greeks::veta` to [`dvega_dtime`](Self::dvega_dtime).
   pub fn greeks(

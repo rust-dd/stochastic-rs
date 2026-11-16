@@ -59,7 +59,7 @@ fn thirty360_european() {
 #[test]
 fn act_act_isda_same_year() {
   // 2024 is a leap year (366 days)
-  let yf: f64 = DayCountConvention::ActualActualISDA.year_fraction(d(2024, 1, 1), d(2024, 7, 1));
+  let yf: f64 = DayCountConvention::ActualActualIsda.year_fraction(d(2024, 1, 1), d(2024, 7, 1));
   // 182 days in 2024 (leap) = 182/366
   assert!((yf - 182.0 / 366.0).abs() < 1e-12);
 }
@@ -70,14 +70,14 @@ fn act_act_isda_cross_year() {
   // 2023-11-01 to 2024-05-01
   // 2023 portion: Nov 1 to Jan 1 = 61 days / 365
   // 2024 portion: Jan 1 to May 1 = 121 days / 366
-  let yf: f64 = DayCountConvention::ActualActualISDA.year_fraction(d(2023, 11, 1), d(2024, 5, 1));
+  let yf: f64 = DayCountConvention::ActualActualIsda.year_fraction(d(2023, 11, 1), d(2024, 5, 1));
   let expected = 61.0 / 365.0 + 121.0 / 366.0;
   assert!((yf - expected).abs() < 1e-12);
 }
 
 #[test]
 fn act_act_isda_two_full_years() {
-  let yf: f64 = DayCountConvention::ActualActualISDA.year_fraction(d(2023, 1, 1), d(2025, 1, 1));
+  let yf: f64 = DayCountConvention::ActualActualIsda.year_fraction(d(2023, 1, 1), d(2025, 1, 1));
   // 2023: 365 days / 365 = 1.0, 2024: 366 days / 366 = 1.0
   assert!((yf - 2.0).abs() < 1e-12);
 }
@@ -411,7 +411,7 @@ fn time_ext_tau_with_dcc() {
 
   let tau_365: f64 = pricer.tau_or_from_dates();
   let tau_360: f64 = pricer.tau_with_dcc(DayCountConvention::Actual360);
-  let tau_act: f64 = pricer.tau_with_dcc(DayCountConvention::ActualActualISDA);
+  let tau_act: f64 = pricer.tau_with_dcc(DayCountConvention::ActualActualIsda);
 
   // 182 days: ACT/365 = 182/365 ≈ 0.4986
   assert!((tau_365 - 182.0 / 365.0).abs() < 1e-10);
@@ -481,7 +481,7 @@ fn time_ext_dcc_override_switches_tau_or_from_dates() {
 fn display_impls() {
   assert_eq!(format!("{}", DayCountConvention::Actual360), "ACT/360");
   assert_eq!(
-    format!("{}", DayCountConvention::ActualActualISDA),
+    format!("{}", DayCountConvention::ActualActualIsda),
     "ACT/ACT ISDA"
   );
   assert_eq!(
@@ -528,7 +528,7 @@ fn time_ext_explicit_tau_wins_over_dates_and_dcc() {
     "explicit tau must win over the date pair and the dcc override"
   );
   assert!(
-    (pricer.tau_with_dcc(DayCountConvention::ActualActualISDA) - 0.5).abs() < 1e-12,
+    (pricer.tau_with_dcc(DayCountConvention::ActualActualIsda) - 0.5).abs() < 1e-12,
     "explicit tau must win over an explicitly requested dcc too"
   );
   // The same mock without `tau` does use the dates, so the assertion above

@@ -278,7 +278,7 @@ impl FrftCarrMadanPricer {
 mod tests {
   use num_complex::Complex64;
 
-  use super::super::bsm::BSMFourier;
+  use super::super::bsm::BsmFourier;
   use super::super::heston::HestonFourier;
   use super::super::pricer::GilPelaezPricer;
   use super::*;
@@ -315,7 +315,7 @@ mod tests {
   /// hit it far tighter than the 0-centred standard pricer.
   #[test]
   fn frft_carr_madan_bsm_reference() {
-    let model = BSMFourier {
+    let model = BsmFourier {
       sigma: 0.15,
       r: 0.05,
       q: 0.01,
@@ -360,7 +360,7 @@ mod tests {
   /// Out-of-grid strikes return NaN, not a silent zero.
   #[test]
   fn frft_out_of_grid_returns_nan() {
-    let model = BSMFourier {
+    let model = BsmFourier {
       sigma: 0.15,
       r: 0.05,
       q: 0.0,
@@ -375,7 +375,7 @@ mod tests {
     expected = "l_factor must satisfy `l_factor.is_finite() && l_factor > 0.0`, got l_factor = NaN"
   )]
   fn cumulant_sizing_rejects_a_non_finite_l_factor() {
-    let model = BSMFourier {
+    let model = BsmFourier {
       sigma: 0.2,
       r: 0.05,
       q: 0.0,
@@ -386,7 +386,7 @@ mod tests {
   #[test]
   #[should_panic(expected = "cumulants.c2 must satisfy `c2.is_finite() && c2 > 0.0`, got c2 = 0.0")]
   fn cumulant_sizing_rejects_a_vanishing_second_cumulant() {
-    let model = BSMFourier {
+    let model = BsmFourier {
       sigma: 0.2,
       r: 0.05,
       q: 0.0,

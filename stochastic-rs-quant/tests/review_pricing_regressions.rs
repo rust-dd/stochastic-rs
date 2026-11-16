@@ -1,6 +1,6 @@
 use stochastic_rs_quant::OptionStyle;
-use stochastic_rs_quant::pricing::bsm::BSMCoc;
-use stochastic_rs_quant::pricing::bsm::BSMPricer;
+use stochastic_rs_quant::pricing::bsm::BsmCoc;
+use stochastic_rs_quant::pricing::bsm::BsmPricer;
 use stochastic_rs_quant::pricing::finite_difference::FiniteDifferenceMethod;
 use stochastic_rs_quant::pricing::finite_difference::FiniteDifferencePricer;
 use stochastic_rs_quant::pricing::variance_swap::VarianceSwapPricer;
@@ -8,7 +8,7 @@ use stochastic_rs_quant::traits::ModelPricer;
 
 #[test]
 fn finite_difference_discounts_deep_in_the_money_puts() {
-  let expected = BSMPricer::new(0.2, BSMCoc::Merton1973).price_put(1.0, 100.0, 0.1, 0.0, 1.0);
+  let expected = BsmPricer::new(0.2, BsmCoc::Merton1973).price_put(1.0, 100.0, 0.1, 0.0, 1.0);
   for method in [
     FiniteDifferenceMethod::Implicit,
     FiniteDifferenceMethod::CrankNicolson,

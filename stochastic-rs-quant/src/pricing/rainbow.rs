@@ -205,14 +205,14 @@ impl StulzRainbowPricer {
   }
 
   fn call_on_max(&self, s1: f64, s2: f64, k: f64, r: f64, q1: f64, q2: f64, tau: f64) -> f64 {
-    use crate::pricing::bsm::BSMCoc;
-    use crate::pricing::bsm::BSMPricer;
+    use crate::pricing::bsm::BsmCoc;
+    use crate::pricing::bsm::BsmPricer;
     use crate::traits::ModelPricer;
 
     // Stulz identity: max(max(S1,S2) - K, 0) = call(S1, K) + call(S2, K)
     // - call_on_min(S1, S2, K)
-    let c1 = BSMPricer::new(self.sigma1, BSMCoc::Merton1973).price_call(s1, k, r, q1, tau);
-    let c2 = BSMPricer::new(self.sigma2, BSMCoc::Merton1973).price_call(s2, k, r, q2, tau);
+    let c1 = BsmPricer::new(self.sigma1, BsmCoc::Merton1973).price_call(s1, k, r, q1, tau);
+    let c2 = BsmPricer::new(self.sigma2, BsmCoc::Merton1973).price_call(s2, k, r, q2, tau);
     c1 + c2 - self.call_on_min(s1, s2, k, r, q1, q2, tau)
   }
 

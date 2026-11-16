@@ -486,17 +486,17 @@ impl PyMcEstimate {
 }
 
 #[pyclass(name = "MCBarrierPricer", unsendable)]
-pub struct PyMCBarrierPricer {
-  inner: crate::pricing::barrier::MCBarrierPricer,
+pub struct PyMcBarrierPricer {
+  inner: crate::pricing::barrier::McBarrierPricer,
 }
 
 #[pymethods]
-impl PyMCBarrierPricer {
+impl PyMcBarrierPricer {
   #[new]
   #[pyo3(signature = (n_paths=10000, n_steps=252))]
   fn new(n_paths: usize, n_steps: usize) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::barrier::MCBarrierPricer { n_paths, n_steps },
+      inner: crate::pricing::barrier::McBarrierPricer { n_paths, n_steps },
     })
   }
 

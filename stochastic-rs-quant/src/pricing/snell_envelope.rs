@@ -235,13 +235,13 @@ fn payoff(option_type: OptionType, s: f64, k: f64) -> f64 {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::pricing::bsm::BSMCoc;
-  use crate::pricing::bsm::BSMPricer;
+  use crate::pricing::bsm::BsmCoc;
+  use crate::pricing::bsm::BsmPricer;
 
   #[test]
   fn american_put_is_at_least_european_put() {
     let amer = SnellEnvelopePricer::new(0.2, 800).price_put(100.0, 100.0, 0.03, 0.01, 1.0);
-    let euro = BSMPricer::new(0.2, BSMCoc::Merton1973).price_put(100.0, 100.0, 0.03, 0.01, 1.0);
+    let euro = BsmPricer::new(0.2, BsmCoc::Merton1973).price_put(100.0, 100.0, 0.03, 0.01, 1.0);
 
     assert!(amer + 1e-10 >= euro);
   }
@@ -249,7 +249,7 @@ mod tests {
   #[test]
   fn american_call_matches_european_without_dividend() {
     let amer = SnellEnvelopePricer::new(0.2, 1200).price_call(100.0, 100.0, 0.05, 0.0, 1.0);
-    let euro = BSMPricer::new(0.2, BSMCoc::Merton1973).price_call(100.0, 100.0, 0.05, 0.0, 1.0);
+    let euro = BsmPricer::new(0.2, BsmCoc::Merton1973).price_call(100.0, 100.0, 0.05, 0.0, 1.0);
 
     assert!((amer - euro).abs() < 5e-2);
   }
@@ -279,7 +279,7 @@ mod tests {
   #[test]
   fn american_call_can_exceed_european_with_dividend() {
     let amer = SnellEnvelopePricer::new(0.25, 1000).price_call(100.0, 90.0, 0.03, 0.08, 1.0);
-    let euro = BSMPricer::new(0.25, BSMCoc::Merton1973).price_call(100.0, 90.0, 0.03, 0.08, 1.0);
+    let euro = BsmPricer::new(0.25, BsmCoc::Merton1973).price_call(100.0, 90.0, 0.03, 0.08, 1.0);
 
     assert!(amer + 1e-10 >= euro);
   }

@@ -34,7 +34,7 @@ The `stochastic-rs-quant` crate covers pricing, calibration, vol surface constru
 
 | You have | Reach for | Why |
 |---|---|---|
-| A European vanilla, one flat volatility | `BSMPricer` (`BachelierPricer` for rates / negative underlyings) | closed form, all Greeks to third order |
+| A European vanilla, one flat volatility | `BsmPricer` (`BachelierPricer` for rates / negative underlyings) | closed form, all Greeks to third order |
 | A stochastic-volatility model and a strike–maturity grid | `HestonPricer` (semi-closed form) → `ModelSurface` | one model instance prices the whole grid |
 | A down-and-out barrier under Heston | `HestonAdiPricer` | ADI finite differences, Rannacher-damped |
 | An American vanilla under Black–Scholes | `BjerksundStensland2002Pricer` (analytic approximation), `FiniteDifferencePricer` or `CrrModel` (exact to the grid), `BermudanLsmPricer` for path-dependent early exercise | speed vs. grid-exactness |
@@ -48,7 +48,7 @@ The `stochastic-rs-quant` crate covers pricing, calibration, vol surface constru
 
 | Market data | Calibrator | Fit |
 |---|---|---|
-| Equity / FX vanilla surface | `HestonCalibrator` (Levenberg–Marquardt on the Cui Jacobian, NMLE / PMLE / CEKF seeds), `DoubleHestonCalibrator`, `SVJCalibrator`, `LevyCalibrator`, `CgmysvCalibrator`, `HKDECalibrator`, `HscmCalibrator` | least squares on prices or implied vols |
+| Equity / FX vanilla surface | `HestonCalibrator` (Levenberg–Marquardt on the Cui Jacobian, NMLE / PMLE / CEKF seeds), `DoubleHestonCalibrator`, `SvjCalibrator`, `LevyCalibrator`, `CgmysvCalibrator`, `HkdeCalibrator`, `HscmCalibrator` | least squares on prices or implied vols |
 | One smile at one expiry | `SabrCalibrator` (equity / FX), `SabrCapletCalibrator` (shifted, rates), `SabrSmileCalibrator` (FX quotes: ATM, risk reversal, butterfly) | Hagan expansion |
 | A whole surface, arbitrage-free | `calibrate_essvi` (eSSVI slices) | butterfly and calendar bounds enforced |
 | Swaption grid | `HullWhiteSwaptionCalibrator` (Jamshidian), `G2ppSwaptionCalibrator`, `BlackKarasinskiSwaptionCalibrator` (trinomial tree repricing) | Basin Nelder–Mead on the tree |

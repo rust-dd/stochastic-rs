@@ -16,8 +16,8 @@
 //! either. That is the same specialisation Haug prints, and the reason this
 //! model carries no mean-jump-size parameter.
 //!
-use super::bsm::BSMCoc;
-use super::bsm::BSMPricer;
+use super::bsm::BsmCoc;
+use super::bsm::BsmPricer;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
@@ -34,7 +34,7 @@ mod greeks;
 ///
 /// The query's `(r, q)` pair is **`(discount rate, carry offset)`**, not
 /// necessarily `(risk-free rate, dividend yield)`: this pricer discounts at
-/// `r` and carries at [`BSMPricer::b(r, q)`](BSMPricer::b), whose value
+/// `r` and carries at [`BsmPricer::b(r, q)`](BsmPricer::b), whose value
 /// depends on `self.b`. To reproduce a discount `r₀` with a carry `b₀` —
 /// Garman-Kohlhagen's `b₀ = r_d − r_f`, say — pass
 /// `(r, q) = (r₀, r₀ − b₀)`, which is an identity rather than an
@@ -42,11 +42,11 @@ mod greeks;
 /// `merton_gk_carries_at_rd_minus_rf_and_discounts_at_r`.
 ///
 /// ```
-/// use stochastic_rs_quant::pricing::bsm::BSMCoc;
+/// use stochastic_rs_quant::pricing::bsm::BsmCoc;
 /// use stochastic_rs_quant::pricing::merton_jump::Merton1976Pricer;
 /// use stochastic_rs_quant::traits::ModelPricer;
 ///
-/// let model = Merton1976Pricer::new(0.2, 0.5, 0.4, 10, BSMCoc::Bsm1973);
+/// let model = Merton1976Pricer::new(0.2, 0.5, 0.4, 10, BsmCoc::Bsm1973);
 /// let atm = model.price_call(100.0, 100.0, 0.05, 0.0, 0.5);
 /// let otm = model.price_call(100.0, 120.0, 0.05, 0.0, 0.5);
 /// assert!(atm > otm);
@@ -62,7 +62,7 @@ pub struct Merton1976Pricer {
   /// Iteration limit
   pub m: usize,
   /// Cost of carry
-  pub b: BSMCoc,
+  pub b: BsmCoc,
 }
 
 /// Where one Poisson term's query sits, which is what decides whether its
@@ -101,7 +101,7 @@ impl Merton1976Pricer {
   /// Panics if `v` is negative or `NaN`, or if the series length `m` is zero.
   /// `lambda` and `gamma` are not validated. At zero intensity the model
   /// reduces to Black-Scholes with volatility `v`.
-  pub fn new(v: f64, lambda: f64, gamma: f64, m: usize, b: BSMCoc) -> Self {
+  pub fn new(v: f64, lambda: f64, gamma: f64, m: usize, b: BsmCoc) -> Self {
     assert!(
       v >= 0.0,
       "Merton1976Pricer::new: v must be a non-negative volatility (got {v})"
@@ -223,15 +223,15 @@ impl Merton1976Pricer {
     (-lt).exp() * ratio
   }
 
-  /// `BSMPricer` at this pricer's cost-of-carry convention and total
+  /// `BsmPricer` at this pricer's cost-of-carry convention and total
   /// volatility `self.v` (the no-jump / Black-Scholes limit);
   /// [`term_bsm`](Self::term_bsm) swaps in the per-term volatility.
-  fn base_bsm(&self) -> BSMPricer {
-    BSMPricer::new(self.v, self.b)
+  fn base_bsm(&self) -> BsmPricer {
+    BsmPricer::new(self.v, self.b)
   }
 
-  fn term_bsm(&self, n: usize, tau: f64) -> BSMPricer {
-    BSMPricer::new(self.term_vol(n, tau), self.b)
+  fn term_bsm(&self, n: usize, tau: f64) -> BsmPricer {
+    BsmPricer::new(self.term_vol(n, tau), self.b)
   }
 
   /// Classify one Poisson term's query — see [`TermRegime`].
@@ -249,7 +249,7 @@ impl Merton1976Pricer {
   /// The `NaN`/`Saturated` split needs no third arm: at `σ_n = 0` the
   /// leading `1/(σ√τ)` is `+∞`, so `d₁` is `±∞` for any non-zero numerator
   /// and `NaN` for a zero one, and cannot come out finite.
-  fn term_regime(term: &BSMPricer, s: f64, k: f64, r: f64, q: f64, tau: f64) -> TermRegime {
+  fn term_regime(term: &BsmPricer, s: f64, k: f64, r: f64, q: f64, tau: f64) -> TermRegime {
     if term.v != 0.0 || !(tau.is_finite() && tau > 0.0 && s > 0.0 && k > 0.0) {
       return TermRegime::Ordinary;
     }
@@ -294,10 +294,10 @@ impl Merton1976Pricer {
   /// convention](crate::traits::ModelPricer#how-pricing-fails).
   ///
   /// Only the $0/0$ point is intercepted; every other term keeps the value
-  /// [`BSMPricer::call_put`] already produced, degenerate or not.
+  /// [`BsmPricer::call_put`] already produced, degenerate or not.
   ///
   /// Which strike is singular is set by the cost of carry, not by the
-  /// volatility: [`BSMCoc::Black1976`] and [`BSMCoc::Asay1982`] have
+  /// volatility: [`BsmCoc::Black1976`] and [`BsmCoc::Asay1982`] have
   /// $b = 0$, putting the forward at $S$, so a degenerate configuration
   /// loses its at-the-money point — the most-quoted one on a futures-option
   /// surface. The three carrying conventions put it at $Se^{b\tau}$, a
@@ -308,7 +308,7 @@ impl Merton1976Pricer {
   /// function rather than through a second copy of the same limit; the
   /// price and the Greeks' idea of the price then cannot come apart, which
   /// `the_greeks_price_a_degenerate_term_exactly_as_the_price_does` pins.
-  fn term_call_put(term: &BSMPricer, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+  fn term_call_put(term: &BsmPricer, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
     if Self::term_regime(term, s, k, r, q, tau) == TermRegime::AtTheForward {
       let half_carry = 0.5 * s * ((term.b(r, q) - r) * tau).exp();
       let half_disc = 0.5 * k * (-r * tau).exp();
@@ -324,25 +324,25 @@ impl ModelPricer for Merton1976Pricer {
   }
 
   /// Overrides the trait's vanilla-parity default for the same reason
-  /// [`BSMPricer::price_put`] does, inherited term by term: each element of
+  /// [`BsmPricer::price_put`] does, inherited term by term: each element of
   /// the Poisson series carries at $e^{(b-r)\tau}$, which equals the
   /// default's $e^{-q\tau}$ only when $b = r - q$ — false for
-  /// [`BSMCoc::Bsm1973`] at `q != 0` and for [`BSMCoc::Black1976`] /
-  /// [`BSMCoc::Asay1982`]. See `merton_price_put_overrides_vanilla_parity`.
+  /// [`BsmCoc::Bsm1973`] at `q != 0` and for [`BsmCoc::Black1976`] /
+  /// [`BsmCoc::Asay1982`]. See `merton_price_put_overrides_vanilla_parity`.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.call_put(s, k, r, q, tau).1
   }
 }
 
 /// European vanilla call — every term of the Poisson series is one, priced
-/// through [`BSMPricer`], so this inherits that type's carry question along
+/// through [`BsmPricer`], so this inherits that type's carry question along
 /// with its answer.
 impl VanillaEuropeanCall for Merton1976Pricer {
-  /// $Se^{b\tau}$ at the [`BSMCoc`] convention
+  /// $Se^{b\tau}$ at the [`BsmCoc`] convention
   /// held in `self.b`, delegated to
-  /// [`BSMPricer::vanilla_call_forward`] for the same reason
+  /// [`BsmPricer::vanilla_call_forward`] for the same reason
   /// [`price_put`](ModelPricer::price_put) delegates: the series carries term
-  /// by term at whatever the underlying `BSMPricer` carries at, so the two
+  /// by term at whatever the underlying `BsmPricer` carries at, so the two
   /// must not be able to disagree.
   fn vanilla_call_forward(&self, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.base_bsm().vanilla_call_forward(s, r, q, tau)

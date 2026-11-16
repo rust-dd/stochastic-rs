@@ -180,7 +180,7 @@ fn build_surface_from_calibration_heston_multi_maturity() {
 fn build_surface_from_calibration_svj_multi_maturity() {
   use crate::OptionType;
   use crate::calibration::levy::MarketSlice;
-  use crate::calibration::svj::SVJCalibrator;
+  use crate::calibration::svj::SvjCalibrator;
   use crate::pricing::fourier::BatesFourier;
   use crate::traits::ModelPricer;
 
@@ -215,7 +215,7 @@ fn build_surface_from_calibration_svj_multi_maturity() {
     })
     .collect();
 
-  let cal = SVJCalibrator::from_slices(
+  let cal = SvjCalibrator::from_slices(
     None,
     &slices,
     100.0,
@@ -293,14 +293,15 @@ fn build_surface_from_calibration_levy_vg() {
 
 #[test]
 fn build_surface_from_model_sabr() {
+  use crate::pricing::sabr::SabrParams;
   use crate::pricing::sabr::SabrPricer;
 
-  let model = SabrPricer {
+  let model = SabrPricer::new(SabrParams {
     alpha: 0.2,
     beta: 1.0,
-    nu: 0.4,
     rho: -0.3,
-  };
+    nu: 0.4,
+  });
   let result = build_surface_from_model(
     &model,
     100.0,

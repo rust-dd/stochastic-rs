@@ -22,12 +22,12 @@ pub fn sample_covariance<'py>(
 }
 
 #[pyclass(name = "PCA", unsendable)]
-pub struct PyPCA {
+pub struct PyPca {
   inner: crate::factors::pca::PcaResult,
 }
 
 #[pymethods]
-impl PyPCA {
+impl PyPca {
   /// PCA on a `(T, N)` returns matrix; `k=0` keeps all factors.
   #[new]
   #[pyo3(signature = (returns, k=0))]

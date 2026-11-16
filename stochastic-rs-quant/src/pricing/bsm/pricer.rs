@@ -8,7 +8,7 @@ use crate::traits::VanillaEuropeanCall;
 
 #[derive(Default, Debug, Clone, Copy)]
 #[non_exhaustive]
-pub enum BSMCoc {
+pub enum BsmCoc {
   /// Black-Scholes-Merton 1973 (stock option)
   /// Cost of carry = risk-free rate
   #[default]
@@ -36,24 +36,24 @@ pub enum BSMCoc {
 /// prices a whole strike/maturity grid.
 ///
 /// ```
-/// use stochastic_rs_quant::pricing::bsm::{BSMCoc, BSMPricer};
+/// use stochastic_rs_quant::pricing::bsm::{BsmCoc, BsmPricer};
 /// use stochastic_rs_quant::traits::ModelPricer;
 ///
-/// let model = BSMPricer::new(0.2, BSMCoc::Merton1973);
+/// let model = BsmPricer::new(0.2, BsmCoc::Merton1973);
 /// let atm = model.price_call(100.0, 100.0, 0.05, 0.0, 1.0);
 /// let otm = model.price_call(100.0, 120.0, 0.05, 0.0, 1.0);
 /// assert!(atm > otm);
 /// ```
 #[derive(Debug, Clone, Copy)]
-pub struct BSMPricer {
+pub struct BsmPricer {
   /// Volatility
   pub v: f64,
   /// Cost-of-carry convention
-  pub b: BSMCoc,
+  pub b: BsmCoc,
 }
 
-impl BSMPricer {
-  pub const fn new(v: f64, b: BSMCoc) -> Self {
+impl BsmPricer {
+  pub const fn new(v: f64, b: BsmCoc) -> Self {
     Self { v, b }
   }
 
@@ -61,20 +61,20 @@ impl BSMPricer {
   ///
   /// The query's `(r, q)` pair carries both roles the pre-query struct
   /// spread across four rate fields: under
-  /// [`BSMCoc::GarmanKohlhagen1983`] they are the *domestic* and *foreign*
+  /// [`BsmCoc::GarmanKohlhagen1983`] they are the *domestic* and *foreign*
   /// rates, so $b = r_d - r_f$ is Garman-Kohlhagen's conventional
   /// Black-Scholes embedding (foreign rate in the dividend slot) rather
   /// than an approximation of it.
   ///
-  /// [`BSMCoc::Asay1982`] returns the same `0.0` as
-  /// [`BSMCoc::Black1976`] and discounts at the same `exp(-r * tau)`;
+  /// [`BsmCoc::Asay1982`] returns the same `0.0` as
+  /// [`BsmCoc::Black1976`] and discounts at the same `exp(-r * tau)`;
   /// margined-futures' zero discounting is *not* modelled here and never
   /// was.
   pub fn b(&self, r: f64, q: f64) -> f64 {
     match self.b {
-      BSMCoc::Bsm1973 => r,
-      BSMCoc::Merton1973 | BSMCoc::GarmanKohlhagen1983 => r - q,
-      BSMCoc::Black1976 | BSMCoc::Asay1982 => 0.0,
+      BsmCoc::Bsm1973 => r,
+      BsmCoc::Merton1973 | BsmCoc::GarmanKohlhagen1983 => r - q,
+      BsmCoc::Black1976 | BsmCoc::Asay1982 => 0.0,
     }
   }
 
@@ -138,7 +138,7 @@ impl BSMPricer {
   }
 }
 
-impl ModelPricer for BSMPricer {
+impl ModelPricer for BsmPricer {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.call_put(s, k, r, q, tau).0
   }
@@ -146,9 +146,9 @@ impl ModelPricer for BSMPricer {
   /// Overrides the trait's vanilla-parity default, which assumes the carry
   /// factor is $e^{-q\tau}$. Here it is $e^{(b-r)\tau}$, so parity reads
   /// $C-P=Se^{(b-r)\tau}-Ke^{-r\tau}$ and the two agree only when
-  /// $b=r-q$ — true for [`BSMCoc::Merton1973`] and
-  /// [`BSMCoc::GarmanKohlhagen1983`], false for [`BSMCoc::Bsm1973`] at
-  /// `q != 0` and for [`BSMCoc::Black1976`] / [`BSMCoc::Asay1982`] at
+  /// $b=r-q$ — true for [`BsmCoc::Merton1973`] and
+  /// [`BsmCoc::GarmanKohlhagen1983`], false for [`BsmCoc::Bsm1973`] at
+  /// `q != 0` and for [`BsmCoc::Black1976`] / [`BsmCoc::Asay1982`] at
   /// `q != r`. See `bsm_price_put_overrides_vanilla_parity`.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.call_put(s, k, r, q, tau).1
@@ -157,24 +157,24 @@ impl ModelPricer for BSMPricer {
 
 /// European vanilla call — but **not** always on $Se^{(r-q)\tau}$, which is
 /// why this overrides the default forward.
-impl VanillaEuropeanCall for BSMPricer {
+impl VanillaEuropeanCall for BsmPricer {
   /// $Se^{b\tau}$ at this pricer's own cost of carry, which is
-  /// [`b(r, q)`](BSMPricer::b) and equals $r - q$ for only two of the five
-  /// [`BSMCoc`] conventions.
+  /// [`b(r, q)`](BsmPricer::b) and equals $r - q$ for only two of the five
+  /// [`BsmCoc`] conventions.
   ///
   /// The default $Se^{(r-q)\tau}$ would be the *futures price grown at the
-  /// risk-free rate* under [`BSMCoc::Black1976`] / [`BSMCoc::Asay1982`],
-  /// where $b = 0$ and the forward is just $S$; under [`BSMCoc::Bsm1973`] at
+  /// risk-free rate* under [`BsmCoc::Black1976`] / [`BsmCoc::Asay1982`],
+  /// where $b = 0$ and the forward is just $S$; under [`BsmCoc::Bsm1973`] at
   /// `q != 0` it would discount a dividend the price never paid. Both leave
   /// every price inside the no-arbitrage band, so the surface inverts them
   /// into a full smile — see
   /// `futures_carry_surface_recovers_the_models_flat_vol` and
   /// `dividend_ignoring_carry_surface_recovers_the_models_flat_vol`, both of
-  /// which fail against the default. [`BSMCoc::Merton1973`] and
-  /// [`BSMCoc::GarmanKohlhagen1983`] have $b = r - q$ and so land on the
+  /// which fail against the default. [`BsmCoc::Merton1973`] and
+  /// [`BsmCoc::GarmanKohlhagen1983`] have $b = r - q$ and so land on the
   /// default's exact expression, bit for bit.
   ///
-  /// [`BSMCoc`]: crate::pricing::bsm::BSMCoc
+  /// [`BsmCoc`]: crate::pricing::bsm::BsmCoc
   fn vanilla_call_forward(&self, s: f64, r: f64, q: f64, tau: f64) -> f64 {
     s * (self.b(r, q) * tau).exp()
   }

@@ -1,7 +1,7 @@
 //! Closed-form Black-Scholes engine for [`EuropeanOption`] /
 //! [`DigitalOption`].
 //!
-//! Wraps [`BSMPricer`] / [`CashOrNothingPricer`] / [`AssetOrNothingPricer`]
+//! Wraps [`BsmPricer`] / [`CashOrNothingPricer`] / [`AssetOrNothingPricer`]
 //! behind reactive market handles so the engine re-prices automatically
 //! after a market update.
 
@@ -14,8 +14,8 @@ use crate::market::Handle;
 use crate::market::Quote;
 use crate::market::SimpleQuote;
 use crate::pricing::AssetOrNothingPricer;
-use crate::pricing::BSMCoc;
-use crate::pricing::BSMPricer;
+use crate::pricing::BsmCoc;
+use crate::pricing::BsmPricer;
 use crate::pricing::CashOrNothingPricer;
 use crate::traits::ModelPricer;
 use crate::traits::PricingEngine;
@@ -28,16 +28,16 @@ use crate::traits::TimeExt;
 /// yield quotes — relinking any handle takes effect on the next
 /// [`calculate`](Self::calculate) call.
 #[derive(Clone)]
-pub struct AnalyticBSEngine {
+pub struct AnalyticBsEngine {
   pub s: Handle<SimpleQuote<f64>>,
   pub volatility: Handle<SimpleQuote<f64>>,
   pub r: Handle<SimpleQuote<f64>>,
   pub dividend_yield: Handle<SimpleQuote<f64>>,
-  pub coc: BSMCoc,
+  pub coc: BsmCoc,
 }
 
-impl AnalyticBSEngine {
-  /// Build from explicit handles. Defaults to `BSMCoc::Merton1973` (equity
+impl AnalyticBsEngine {
+  /// Build from explicit handles. Defaults to `BsmCoc::Merton1973` (equity
   /// with continuous dividend yield).
   pub fn new(
     s: Handle<SimpleQuote<f64>>,
@@ -50,7 +50,7 @@ impl AnalyticBSEngine {
       volatility,
       r,
       dividend_yield,
-      coc: BSMCoc::Merton1973,
+      coc: BsmCoc::Merton1973,
     }
   }
 
@@ -65,9 +65,9 @@ impl AnalyticBSEngine {
     )
   }
 
-  /// Overrides the cost-of-carry convention; [`BSMCoc::GarmanKohlhagen1983`] takes the engine's
+  /// Overrides the cost-of-carry convention; [`BsmCoc::GarmanKohlhagen1983`] takes the engine's
   /// rate and dividend-yield handles as the domestic and foreign rates.
-  pub fn with_coc(mut self, coc: BSMCoc) -> Self {
+  pub fn with_coc(mut self, coc: BsmCoc) -> Self {
     self.coc = coc;
     self
   }
@@ -87,12 +87,12 @@ impl AnalyticBSEngine {
     handle.current().map(|q| q.value()).unwrap_or(f64::NAN)
   }
 
-  /// The [`BSMPricer`] model the current handles describe, paired with the
+  /// The [`BsmPricer`] model the current handles describe, paired with the
   /// `(s, k, r, q, tau)` query point `opt` asks for. The instrument owns
   /// the maturity, so τ is resolved through its own
   /// [`TimeExt`](crate::traits::TimeExt) rather than by the model.
-  fn model_and_query(&self, opt: &EuropeanOption) -> (BSMPricer, (f64, f64, f64, f64, f64)) {
-    let model = BSMPricer::new(Self::read_quote(&self.volatility), self.coc);
+  fn model_and_query(&self, opt: &EuropeanOption) -> (BsmPricer, (f64, f64, f64, f64, f64)) {
+    let model = BsmPricer::new(Self::read_quote(&self.volatility), self.coc);
     let query = (
       Self::read_quote(&self.s),
       opt.strike,
@@ -116,7 +116,7 @@ impl AnalyticBSEngine {
   }
 }
 
-impl PricingEngine<EuropeanOption> for AnalyticBSEngine {
+impl PricingEngine<EuropeanOption> for AnalyticBsEngine {
   type Result = StandardResult;
 
   /// The NPV and every Greek are [`f64::NAN`] when any market handle is
@@ -131,7 +131,7 @@ impl PricingEngine<EuropeanOption> for AnalyticBSEngine {
   }
 }
 
-impl PricingEngine<DigitalOption> for AnalyticBSEngine {
+impl PricingEngine<DigitalOption> for AnalyticBsEngine {
   type Result = StandardResult;
 
   /// NPV only, at `b = r − q` whatever [`coc`](Self::coc) says; NaN when the maturity does not
@@ -162,7 +162,7 @@ mod tests {
   #[test]
   fn european_call_atm_round_trip() {
     let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
-    let engine = AnalyticBSEngine::with_constants(100.0, 0.20, 0.05, 0.0);
+    let engine = AnalyticBsEngine::with_constants(100.0, 0.20, 0.05, 0.0);
     let r = engine.calculate(&opt);
     assert!(r.npv() > 0.0);
     let g = r.greeks().unwrap();
@@ -175,7 +175,7 @@ mod tests {
   fn european_put_call_parity_via_engine() {
     let call = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
     let put = EuropeanOption::new_tau(100.0, OptionType::Put, 1.0);
-    let engine = AnalyticBSEngine::with_constants(100.0, 0.20, 0.05, 0.02);
+    let engine = AnalyticBsEngine::with_constants(100.0, 0.20, 0.05, 0.02);
     let c = engine.calculate(&call).npv();
     let p = engine.calculate(&put).npv();
     let parity = 100.0 * (-0.02_f64).exp() - 100.0 * (-0.05_f64).exp();
@@ -185,7 +185,7 @@ mod tests {
   #[test]
   fn instrument_ext_npv_shortcut() {
     let opt = EuropeanOption::new_tau(110.0, OptionType::Call, 0.5);
-    let engine = AnalyticBSEngine::with_constants(100.0, 0.25, 0.04, 0.0);
+    let engine = AnalyticBsEngine::with_constants(100.0, 0.25, 0.04, 0.0);
     let direct = engine.calculate(&opt).npv();
     let via_ext = opt.npv(&engine);
     assert!((direct - via_ext).abs() < 1e-15);
@@ -196,7 +196,7 @@ mod tests {
     let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
     let vol_quote = Arc::new(SimpleQuote::new(0.20));
     let vol_handle = Handle::new(vol_quote.clone());
-    let engine = AnalyticBSEngine::new(
+    let engine = AnalyticBsEngine::new(
       Handle::new(Arc::new(SimpleQuote::new(100.0))),
       vol_handle,
       Handle::new(Arc::new(SimpleQuote::new(0.05))),
@@ -211,7 +211,7 @@ mod tests {
     );
   }
 
-  /// The engine's Greeks are exactly [`BSMPricer::greeks`] at the handles'
+  /// The engine's Greeks are exactly [`BsmPricer::greeks`] at the handles'
   /// current values and the instrument's own τ — all nine members, not just
   /// the three whose sign `european_call_atm_round_trip` checks. Guards the
   /// engine's wiring (quote reads, τ resolution, option type) rather than
@@ -219,9 +219,9 @@ mod tests {
   #[test]
   fn engine_greeks_match_the_model_aggregate() {
     let opt = EuropeanOption::new_tau(105.0, OptionType::Put, 0.75);
-    let engine = AnalyticBSEngine::with_constants(100.0, 0.25, 0.05, 0.02);
+    let engine = AnalyticBsEngine::with_constants(100.0, 0.25, 0.05, 0.02);
     let got = engine.calculate(&opt).greeks().unwrap();
-    let want = BSMPricer::new(0.25, BSMCoc::Merton1973).greeks(
+    let want = BsmPricer::new(0.25, BsmCoc::Merton1973).greeks(
       100.0,
       105.0,
       0.05,
@@ -241,7 +241,7 @@ mod tests {
     let expiry = chrono::NaiveDate::from_ymd_opt(2027, 1, 2).unwrap();
     let dated = EuropeanOption::new_dates(100.0, OptionType::Call, eval, expiry);
     let by_tau = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
-    let engine = AnalyticBSEngine::with_constants(100.0, 0.20, 0.05, 0.0);
+    let engine = AnalyticBsEngine::with_constants(100.0, 0.20, 0.05, 0.0);
     let a = engine.calculate(&dated).npv();
     let b = engine.calculate(&by_tau).npv();
     assert!((a - b).abs() < 1e-12, "dated={a}, tau=1.0 gives {b}");
@@ -251,7 +251,7 @@ mod tests {
   #[test]
   fn an_unlinked_handle_reports_like_an_unset_maturity() {
     let put = EuropeanOption::new_tau(100.0, OptionType::Put, 1.0);
-    let no_spot = AnalyticBSEngine::new(
+    let no_spot = AnalyticBsEngine::new(
       Handle::empty(),
       Handle::new(Arc::new(SimpleQuote::new(0.20))),
       Handle::new(Arc::new(SimpleQuote::new(0.05))),
@@ -261,7 +261,7 @@ mod tests {
     assert!(npv.is_nan(), "unlinked spot must not price, got {npv}");
 
     let no_tau = EuropeanOption { tau: None, ..put };
-    let full = AnalyticBSEngine::with_constants(100.0, 0.20, 0.05, 0.0);
+    let full = AnalyticBsEngine::with_constants(100.0, 0.20, 0.05, 0.0);
     assert!(
       full.calculate(&no_tau).npv().is_nan(),
       "unset maturity must not price either"
@@ -288,7 +288,7 @@ mod tests {
       ];
       h[missing] = Handle::empty();
       let [s, vol, r, q] = h;
-      let engine = AnalyticBSEngine::new(s, vol, r, q);
+      let engine = AnalyticBsEngine::new(s, vol, r, q);
 
       let res = engine.calculate(&call);
       assert!(
@@ -308,7 +308,7 @@ mod tests {
   #[test]
   fn digital_cash_or_nothing() {
     let opt = DigitalOption::cash_or_nothing(100.0, OptionType::Call, 1.0, 1.0);
-    let engine = AnalyticBSEngine::with_constants(100.0, 0.20, 0.05, 0.0);
+    let engine = AnalyticBsEngine::with_constants(100.0, 0.20, 0.05, 0.0);
     let r = engine.calculate(&opt);
     assert!(r.npv() > 0.0 && r.npv() < 1.0);
   }
@@ -322,7 +322,7 @@ mod tests {
   /// formulas, which `digital_tests.rs` pins.
   #[test]
   fn digital_npv_matches_the_model_at_the_same_query() {
-    let engine = AnalyticBSEngine::with_constants(100.0, 0.25, 0.05, 0.02);
+    let engine = AnalyticBsEngine::with_constants(100.0, 0.25, 0.05, 0.02);
     let query = (100.0, 105.0, 0.05, 0.02, 0.75);
     let (s, k, r, q, tau) = query;
 
@@ -352,7 +352,7 @@ mod tests {
     let eval = chrono::NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
     let expiry = chrono::NaiveDate::from_ymd_opt(2024, 7, 1).unwrap();
     let tau = 182.0 / 365.0;
-    let engine = AnalyticBSEngine::with_constants(100.0, 0.25, 0.05, 0.02);
+    let engine = AnalyticBsEngine::with_constants(100.0, 0.25, 0.05, 0.02);
 
     for ot in [OptionType::Call, OptionType::Put] {
       let dated = DigitalOption::cash_or_nothing_dates(105.0, ot, 10.0, eval, expiry);
@@ -384,7 +384,7 @@ mod tests {
   /// `tau` and no date pair is still `NaN`, not a zero maturity.
   #[test]
   fn a_digital_with_neither_tau_nor_dates_still_does_not_price() {
-    let engine = AnalyticBSEngine::with_constants(100.0, 0.25, 0.05, 0.02);
+    let engine = AnalyticBsEngine::with_constants(100.0, 0.25, 0.05, 0.02);
     let opt = DigitalOption {
       tau: None,
       ..DigitalOption::cash_or_nothing(105.0, OptionType::Call, 10.0, 0.5)

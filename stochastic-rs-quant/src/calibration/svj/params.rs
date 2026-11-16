@@ -18,7 +18,7 @@ pub(super) const P_SIGMA_J: (f64, f64) = (0.001, 1.0);
 
 /// SVJ / Bates model parameters.
 #[derive(Clone, Copy, Debug)]
-pub struct SVJParams {
+pub struct SvjParams {
   /// Initial variance $v_0$.
   pub v0: f64,
   /// Mean-reversion speed $\kappa$.
@@ -37,7 +37,7 @@ pub struct SVJParams {
   pub sigma_j: f64,
 }
 
-impl SVJParams {
+impl SvjParams {
   /// Project parameters to satisfy admissibility constraints (box + Feller condition).
   pub fn project_in_place(&mut self) {
     use crate::calibration::periodic_map;
@@ -72,17 +72,17 @@ impl SVJParams {
   }
 }
 
-impl From<SVJParams> for Array1<f64> {
-  fn from(p: SVJParams) -> Self {
+impl From<SvjParams> for Array1<f64> {
+  fn from(p: SvjParams) -> Self {
     Array1::from_vec(vec![
       p.v0, p.kappa, p.theta, p.sigma_v, p.rho, p.lambda, p.mu_j, p.sigma_j,
     ])
   }
 }
 
-impl From<Array1<f64>> for SVJParams {
+impl From<Array1<f64>> for SvjParams {
   fn from(v: Array1<f64>) -> Self {
-    SVJParams {
+    SvjParams {
       v0: v[0],
       kappa: v[1],
       theta: v[2],

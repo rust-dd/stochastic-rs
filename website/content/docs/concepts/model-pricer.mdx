@@ -30,7 +30,7 @@ pub trait ModelPricer {
 
 ## Model, then query
 
-The struct holds **model parameters only** — `BSMPricer` holds a volatility and a cost-of-carry convention, `HestonPricer` holds $(v_0,\kappa,\theta,\sigma,\rho)$. The contract (spot, strike, rate, dividend yield, maturity) is not baked in; every price query passes its own `(s, k, r, q, tau)`. One model instance therefore prices a whole strike/maturity grid — vol-surface construction, calibration — with no `&dyn` and no `Box<dyn>`.
+The struct holds **model parameters only** — `BsmPricer` holds a volatility and a cost-of-carry convention, `HestonPricer` holds $(v_0,\kappa,\theta,\sigma,\rho)$. The contract (spot, strike, rate, dividend yield, maturity) is not baked in; every price query passes its own `(s, k, r, q, tau)`. One model instance therefore prices a whole strike/maturity grid — vol-surface construction, calibration — with no `&dyn` and no `Box<dyn>`.
 
 Many implementors also expose an inherent `call_put(s, k, r, q, tau) -> (f64, f64)` returning both legs from one evaluation.
 
@@ -38,7 +38,7 @@ Many implementors also expose an inherent `call_put(s, k, r, q, tau) -> (f64, f6
 
 The default `price_put` recomposes the put from the call by **European** put-call parity with a carry factor of exactly $e^{-q\tau}$. Two kinds of pricer must override it, or the default misprices silently:
 
-- **Non-standard cost of carry** — `BSMPricer`, `AsianPricer` and `Merton1976Pricer` carry at $e^{(b-r)\tau}$, which equals $e^{-q\tau}$ only when $b = r - q$.
+- **Non-standard cost of carry** — `BsmPricer`, `AsianPricer` and `Merton1976Pricer` carry at $e^{(b-r)\tau}$, which equals $e^{-q\tau}$ only when $b = r - q$.
 - **American exercise** — `BjerksundStensland2002Pricer`, `SnellEnvelopePricer` and `FiniteDifferencePricer` price a put with an early-exercise premium the call does not carry, so European parity is the wrong model.
 
 `ModelPricer` fixes the *query* shape, not the exercise right; exercise style is the implementor's choice.
@@ -68,7 +68,7 @@ The path-dependent family (barriers, lookbacks, cliquets, autocallables, Bermuda
 
 ## Greeks
 
-A pricer's Greeks follow the same model/query split as its prices: **inherent methods** taking the query. `BSMPricer`, `HestonPricer`, `Merton1976Pricer`, `CashOrNothingPricer` and `AssetOrNothingPricer` each expose `greeks(s, k, r, q, tau, option_type) -> Greeks`, one signature across all five, alongside per-Greek accessors of the same shape. `Greeks` is a plain `f64` struct of nine named fields (`delta`, `gamma`, `vega`, `theta`, `rho`, `vanna`, `charm`, `volga`, `veta`), NaN where the pricer exposes nothing.
+A pricer's Greeks follow the same model/query split as its prices: **inherent methods** taking the query. `BsmPricer`, `HestonPricer`, `Merton1976Pricer`, `CashOrNothingPricer` and `AssetOrNothingPricer` each expose `greeks(s, k, r, q, tau, option_type) -> Greeks`, one signature across all five, alongside per-Greek accessors of the same shape. `Greeks` is a plain `f64` struct of nine named fields (`delta`, `gamma`, `vega`, `theta`, `rho`, `vanna`, `charm`, `volga`, `veta`), NaN where the pricer exposes nothing.
 
 `GreeksExt` is not that interface. Its accessors take `&self` and nothing else and return `Option<f64>`, so only an estimator that owns its query can implement it: the Monte Carlo Malliavin pair `GbmMalliavinGreeks` and `HestonMalliavinGreeks`, whose `greeks()` runs one simulation so the estimates share their paths. Import it from `stochastic_rs::traits::GreeksExt`; it is not in the prelude.
 

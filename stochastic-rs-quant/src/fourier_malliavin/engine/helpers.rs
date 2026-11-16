@@ -3,7 +3,7 @@
 use ndarray::Array1;
 use num_complex::Complex;
 
-use super::FMVol;
+use super::FmVol;
 use crate::fourier_malliavin::coefficients::convolution_coefficients;
 use crate::traits::RealExt;
 
@@ -20,7 +20,7 @@ pub(super) fn default_bias_corrected_m<T: RealExt>(mesh: T) -> usize {
   scaled.floor().to_usize().unwrap_or(usize::MAX).max(1)
 }
 
-impl<T: RealExt> FMVol<T> {
+impl<T: RealExt> FmVol<T> {
   /// Default smoothing window for spot-volatility / spot-leverage / spot-quarticity:
   /// `m ≈ √N`. This is the canonical Malliavin-Mancino choice (Malliavin & Mancino
   /// 2009, eq. 4.5 / Mancino-Recchioni 2015 §3): the bias from a finite Cesàro

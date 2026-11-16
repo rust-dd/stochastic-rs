@@ -9,7 +9,7 @@ use num_complex::Complex;
 
 use super::*;
 
-fn fixture(period: f64) -> FMVol<f64> {
+fn fixture(period: f64) -> FmVol<f64> {
   let n = 32usize;
   let prices = (0..=n)
     .map(|index| {
@@ -18,7 +18,7 @@ fn fixture(period: f64) -> FMVol<f64> {
     })
     .collect::<Array1<_>>();
   let times = Array1::linspace(0.0, period, n + 1);
-  FMVol::try_with_freq(
+  FmVol::try_with_freq(
     prices.as_slice().unwrap(),
     times.as_slice().unwrap(),
     period,
@@ -28,7 +28,7 @@ fn fixture(period: f64) -> FMVol<f64> {
   .unwrap()
 }
 
-fn equation_11(engine: &FMVol<f64>, big_m: usize, big_l: usize) -> Array1<Complex<f64>> {
+fn equation_11(engine: &FmVol<f64>, big_m: usize, big_l: usize) -> Array1<Complex<f64>> {
   let mm = big_m + big_l;
   let c_v = engine.vol_coeffs(mm);
   let k_const = engine.compute_bias_correction_constant(big_m);

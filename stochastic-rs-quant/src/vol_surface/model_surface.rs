@@ -11,7 +11,7 @@
 //! bound that says the inversion applies. See that trait for what widening
 //! this bound silently produces.
 //!
-//! All [`FourierModelExt`] models (Heston, Bates, Vg, Nig, Cgmy, MertonJD,
+//! All [`FourierModelExt`] models (Heston, Bates, Vg, Nig, Cgmy, MertonJd,
 //! Kou, Hkde) get both traits via blanket impls in `fourier/mod.rs`.
 //! Non-Fourier models ([`SabrPricer`](crate::pricing::sabr::SabrPricer),
 //! [`HestonStochCorrPricer`](crate::pricing::heston_stoch_corr::HestonStochCorrPricer))
@@ -46,10 +46,10 @@ use crate::traits::VanillaEuropeanCall;
 /// the bound and not a typo:
 ///
 /// ```
-/// use stochastic_rs_quant::pricing::fourier::BSMFourier;
+/// use stochastic_rs_quant::pricing::fourier::BsmFourier;
 /// use stochastic_rs_quant::vol_surface::ModelSurface;
 ///
-/// let model = BSMFourier { sigma: 0.35, r: 0.05, q: 0.0 };
+/// let model = BsmFourier { sigma: 0.35, r: 0.05, q: 0.0 };
 /// let surface = model.vol_surface(100.0, 0.05, 0.0, &[100.0], &[1.0]);
 /// assert!((surface.ivs[[0, 0]] - 0.35).abs() < 1e-6);
 /// ```
@@ -176,8 +176,8 @@ pub fn fourier_model_surface_fft_with(
 mod tests {
   use super::*;
   use crate::OptionStyle;
-  use crate::pricing::bsm::BSMCoc;
-  use crate::pricing::bsm::BSMPricer;
+  use crate::pricing::bsm::BsmCoc;
+  use crate::pricing::bsm::BsmPricer;
   use crate::pricing::finite_difference::FiniteDifferenceMethod;
   use crate::pricing::finite_difference::FiniteDifferencePricer;
   use crate::pricing::fourier::BatesFourier;
@@ -185,6 +185,7 @@ mod tests {
   use crate::pricing::fourier::HestonFourier;
   use crate::pricing::fourier::VarianceGammaFourier;
   use crate::pricing::heston_stoch_corr::HestonStochCorrPricer;
+  use crate::pricing::sabr::SabrParams;
   use crate::pricing::sabr::SabrPricer;
 
   const GRID_K: [f64; 5] = [90.0, 95.0, 100.0, 105.0, 110.0];
@@ -256,12 +257,12 @@ mod tests {
 
   #[test]
   fn sabr_via_model_surface() {
-    let model = SabrPricer {
+    let model = SabrPricer::new(SabrParams {
       alpha: 0.2,
       beta: 1.0,
-      nu: 0.4,
       rho: -0.3,
-    };
+      nu: 0.4,
+    });
 
     let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
     let maturities = vec![0.25, 0.5, 1.0];
@@ -453,12 +454,12 @@ mod tests {
       r: 0.05,
       q: 0.0,
     };
-    let sabr = SabrPricer {
+    let sabr = SabrPricer::new(SabrParams {
       alpha: 0.2,
       beta: 1.0,
-      nu: 0.4,
       rho: -0.3,
-    };
+      nu: 0.4,
+    });
 
     for &(s, r, q) in &[
       (100.0, 0.05, 0.0),
@@ -472,9 +473,9 @@ mod tests {
         assert_eq!(sabr.vanilla_call_forward(s, r, q, t), expected);
         // The two cost-of-carry conventions with `b = r - q` must land on
         // the same expression rather than merely near it.
-        for coc in [BSMCoc::Merton1973, BSMCoc::GarmanKohlhagen1983] {
+        for coc in [BsmCoc::Merton1973, BsmCoc::GarmanKohlhagen1983] {
           assert_eq!(
-            BSMPricer::new(0.2, coc).vanilla_call_forward(s, r, q, t),
+            BsmPricer::new(0.2, coc).vanilla_call_forward(s, r, q, t),
             expected
           );
         }
@@ -483,16 +484,16 @@ mod tests {
   }
 
   /// A flat-volatility model must invert to a flat surface. Under
-  /// [`BSMCoc::Black1976`] the carry is `b = 0`, so the forward is `s` — and
+  /// [`BsmCoc::Black1976`] the carry is `b = 0`, so the forward is `s` — and
   /// against the default `s * exp((r - q) * tau)` these same *correct* prices
   /// invert to a smile running 0.080 to 0.150 across this grid, every point
   /// finite and none of them 0.20. That is what
-  /// [`BSMPricer::vanilla_call_forward`] exists to prevent, and deleting the
+  /// [`BsmPricer::vanilla_call_forward`] exists to prevent, and deleting the
   /// override fails this test rather than degrading it.
   #[test]
   fn futures_carry_surface_recovers_the_models_flat_vol() {
-    for coc in [BSMCoc::Black1976, BSMCoc::Asay1982] {
-      let model = BSMPricer::new(0.20, coc);
+    for coc in [BsmCoc::Black1976, BsmCoc::Asay1982] {
+      let model = BsmPricer::new(0.20, coc);
       let surface = model.vol_surface(100.0, 0.05, 0.0, &GRID_K, &GRID_T);
 
       for (j, &t) in GRID_T.iter().enumerate() {
@@ -509,13 +510,13 @@ mod tests {
   }
 
   /// The same failure with the dividend yield rather than the carry
-  /// convention: [`BSMCoc::Bsm1973`] carries at `b = r` and ignores `q`, so a
+  /// convention: [`BsmCoc::Bsm1973`] carries at `b = r` and ignores `q`, so a
   /// surface asked for at `q = 0.03` must still invert flat. Against the
   /// default forward it produces a 0.274-to-0.233 skew out of a model that
   /// has none.
   #[test]
   fn dividend_ignoring_carry_surface_recovers_the_models_flat_vol() {
-    let model = BSMPricer::new(0.20, BSMCoc::Bsm1973);
+    let model = BsmPricer::new(0.20, BsmCoc::Bsm1973);
     let surface = model.vol_surface(100.0, 0.05, 0.03, &GRID_K, &GRID_T);
 
     for (j, &t) in GRID_T.iter().enumerate() {

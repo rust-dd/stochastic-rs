@@ -1,10 +1,10 @@
-use super::SVJParams;
+use super::SvjParams;
 use crate::CalibrationLossScore;
 use crate::LossMetric;
 
 /// Calibration result for the SVJ (Bates) model.
 #[derive(Clone, Debug)]
-pub struct SVJCalibrationResult {
+pub struct SvjCalibrationResult {
   /// Initial variance.
   pub v0: f64,
   /// Mean-reversion speed.
@@ -27,14 +27,14 @@ pub struct SVJCalibrationResult {
   pub converged: bool,
 }
 
-impl crate::traits::ToModel for SVJCalibrationResult {
+impl crate::traits::ToModel for SvjCalibrationResult {
   type Model = crate::pricing::fourier::BatesFourier;
   fn to_model(&self, r: f64, q: f64) -> Self::Model {
-    SVJCalibrationResult::to_model(self, r, q)
+    SvjCalibrationResult::to_model(self, r, q)
   }
 }
 
-impl SVJCalibrationResult {
+impl SvjCalibrationResult {
   /// Convert to a [`BatesFourier`](crate::pricing::fourier::BatesFourier) model for
   /// pricing / vol surface generation.
   pub fn to_model(&self, r: f64, q: f64) -> crate::pricing::fourier::BatesFourier {
@@ -53,8 +53,8 @@ impl SVJCalibrationResult {
   }
 }
 
-impl crate::traits::CalibrationResult for SVJCalibrationResult {
-  type Params = SVJParams;
+impl crate::traits::CalibrationResult for SvjCalibrationResult {
+  type Params = SvjParams;
   fn rmse(&self) -> f64 {
     self.loss.get(LossMetric::Rmse)
   }
@@ -64,7 +64,7 @@ impl crate::traits::CalibrationResult for SVJCalibrationResult {
   }
 
   fn params(&self) -> Self::Params {
-    SVJParams {
+    SvjParams {
       v0: self.v0,
       kappa: self.kappa,
       theta: self.theta,

@@ -216,8 +216,8 @@ mod tests {
   /// max(call, put) ≈ at-the-money put or call.
   #[test]
   fn simple_chooser_bounded_by_straddle() {
-    use crate::pricing::bsm::BSMCoc;
-    use crate::pricing::bsm::BSMPricer;
+    use crate::pricing::bsm::BsmCoc;
+    use crate::pricing::bsm::BsmPricer;
 
     let s = 100.0;
     let k = 100.0;
@@ -236,7 +236,7 @@ mod tests {
     };
     let chooser_price = chooser.price();
 
-    let call = BSMPricer::new(sigma, BSMCoc::Bsm1973).call_put(s, k, r, 0.0, tau);
+    let call = BsmPricer::new(sigma, BsmCoc::Bsm1973).call_put(s, k, r, 0.0, tau);
 
     // Chooser must be bounded between max(call,put) and call+put.
     assert!(chooser_price > call.0.max(call.1));
