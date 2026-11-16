@@ -39,6 +39,7 @@ use ndarray::ArrayView1;
 use crate::StatsError;
 use crate::input::reject_constant;
 use crate::input::validate;
+use crate::input::validate_domain;
 use crate::optim::nelder_mead;
 use crate::traits::FloatExt;
 
@@ -92,11 +93,11 @@ pub(crate) fn conditional_moments(
       x * (s2 / kappa) * (a - a * a) + theta * (s2 / (2.0 * kappa)) * (1.0 - a) * (1.0 - a)
     }
   };
-  (mean, var.max(1e-300))
+  (mean, var)
 }
 
-/// Gaussian quasi-log-likelihood of a path `x` observed every `dt` at $(\kappa, \theta, \sigma)$,
-/// shared by [`fit_diffusion_qmle`] and the sampler in [`crate::bayesian_diffusion`].
+/// Gaussian quasi-log-likelihood of `x` every `dt` at $(\kappa, \theta, \sigma)$; NaN where
+/// a conditional variance is not positive, a point the simplex and the Metropolis sampler reject.
 pub(crate) fn quasi_log_likelihood(
   x: &[f64],
   dt: f64,
@@ -114,20 +115,15 @@ pub(crate) fn quasi_log_likelihood(
   ll
 }
 
-/// Gaussian QMLE of a mean-reverting diffusion sampled every `dt`; `Err` below 3 observations, on
-/// a non-finite one or a constant path, and panics unless `dt` is finite and positive.
+/// Gaussian QMLE of a mean-reverting diffusion every `dt`; `Err` below 3 points, on one non-finite
+/// or (CIR) negative, a constant path or a non-finite start or optimum; panics unless `0 < dt < ∞`.
 pub fn fit_diffusion_qmle<T: FloatExt>(
   series: ArrayView1<T>,
   dt: f64,
   kind: DiffusionKind,
 ) -> Result<QmleFit, StatsError> {
   assert_dt(dt);
-  let x = series
-    .iter()
-    .map(|v| v.to_f64().unwrap())
-    .collect::<Vec<f64>>();
-  validate(&x, 3)?;
-  reject_constant(&x, "constant series")?;
+  let x = diffusion_path(series, kind)?;
   let nobs = x.len();
 
   // Negative quasi-log-likelihood (minimised). Parameters carried in
@@ -165,19 +161,55 @@ pub fn fit_diffusion_qmle<T: FloatExt>(
       sample_mean * (a0 - a0 * a0) / kappa0 + theta0 * (1.0 - a0).powi(2) / (2.0 * kappa0)
     }
   };
-  let sigma0 = (resid_var / scale.max(1e-12)).sqrt().clamp(1e-3, 10.0);
+  let sigma0 = (resid_var / scale).sqrt().clamp(1e-3, 10.0);
+  check_start(kappa0, theta0, sigma0)?;
 
   let (p, iters, converged) = nelder_mead([kappa0.ln(), theta0.ln(), sigma0.ln()], 2000, neg_ll);
   let (kappa, theta, sigma) = (p[0].exp(), p[1].exp(), p[2].exp());
+  let log_likelihood = -neg_ll(&p);
+  if !log_likelihood.is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "quasi-log-likelihood",
+    });
+  }
 
   Ok(QmleFit {
     kappa,
     theta,
     sigma,
-    log_likelihood: -neg_ll(&p),
+    log_likelihood,
     iterations: iters,
     converged,
   })
+}
+
+/// The path as `f64`: 3 or more finite points, not all equal and, for CIR, whose conditional
+/// variance turns negative below zero, none negative.
+pub(crate) fn diffusion_path<T: FloatExt>(
+  series: ArrayView1<T>,
+  kind: DiffusionKind,
+) -> Result<Vec<f64>, StatsError> {
+  let x = series
+    .iter()
+    .map(|v| v.to_f64().unwrap())
+    .collect::<Vec<f64>>();
+  match kind {
+    DiffusionKind::OrnsteinUhlenbeck => validate(&x, 3)?,
+    DiffusionKind::Cir => validate_domain(&x, 3, "finite and >= 0", |v| v >= 0.0)?,
+  }
+  reject_constant(&x, "constant series")?;
+  Ok(x)
+}
+
+/// The AR(1) start of the simplex, `Err` when the data overflow it.
+pub(crate) fn check_start(kappa0: f64, theta0: f64, sigma0: f64) -> Result<(), StatsError> {
+  if kappa0.is_finite() && theta0.is_finite() && sigma0.is_finite() {
+    Ok(())
+  } else {
+    Err(StatsError::Numerical {
+      stage: "starting point",
+    })
+  }
 }
 
 /// Closed-form OU / Vasicek MLE through the AR(1) below, $\beta = e^{-\kappa\Delta}$; `Err` and
@@ -428,6 +460,52 @@ mod tests {
     assert_eq!(
       fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).unwrap_err(),
       StatsError::InsufficientData { needed: 3, got: 2 }
+    );
+  }
+
+  /// At `κ = 0` the OU variance is `0 / 0`, so the log-likelihood is NaN rather than a number.
+  #[test]
+  fn a_conditional_variance_outside_the_model_gives_a_nan_log_likelihood() {
+    let x = [0.05, 0.06, 0.04];
+    let ou = DiffusionKind::OrnsteinUhlenbeck;
+    assert!(quasi_log_likelihood(&x, 1.0 / 252.0, ou, 0.0, 0.05, 0.1).is_nan());
+    assert!(quasi_log_likelihood(&x, 1.0 / 252.0, ou, 1.0, 0.05, 0.1).is_finite());
+  }
+
+  #[test]
+  fn a_negative_cir_observation_is_invalid() {
+    let s = Array1::from(vec![0.04, 0.05, 0.045, -0.01, 0.04, 0.05]);
+    assert_eq!(
+      fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::Cir).unwrap_err(),
+      StatsError::InvalidObservation {
+        index: 3,
+        value: -0.01,
+        constraint: "finite and >= 0"
+      }
+    );
+  }
+
+  /// The sample mean of these finite points overflows, so the regression start is not finite.
+  #[test]
+  fn an_overflowing_start_is_a_numerical_error() {
+    let s = Array1::from(vec![1e308, 1.5e308, 1e308, 0.5e308, 1.2e308]);
+    assert_eq!(
+      fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).unwrap_err(),
+      StatsError::Numerical {
+        stage: "starting point"
+      }
+    );
+  }
+
+  /// The start is finite, but its residuals near 1.5e154 square to `∞`: no finite likelihood.
+  #[test]
+  fn a_non_finite_optimum_is_a_numerical_error() {
+    let s = Array1::from(vec![8e153, -8e153, 8e153]);
+    assert_eq!(
+      fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).unwrap_err(),
+      StatsError::Numerical {
+        stage: "quasi-log-likelihood"
+      }
     );
   }
 
