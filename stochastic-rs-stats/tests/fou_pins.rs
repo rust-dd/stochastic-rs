@@ -223,7 +223,7 @@ fn fou_v4_bit_exact_against_its_inline_reference() {
   let rho0 = rho_zero_ref(k, hurst_ref);
   let normal_abs_p = 2.0_f64.powf(p / 2.0) * gamma((p + 1.0) / 2.0) / gamma(0.5);
   let c_kp = normal_abs_p * rho0.powf(p / 2.0);
-  let scaled = n_f.powf(-1.0 + p * hurst_ref) * v1;
+  let scaled = (1.0 / delta_ref).powf(-1.0 + p * hurst_ref) * v1;
   let sigma_abs_p = scaled / (c_kp * t_horizon);
   let sigma_ref = sigma_abs_p.powf(1.0 / p);
 
@@ -265,6 +265,34 @@ fn a_short_path_is_insufficient_data() {
     StatsError::InsufficientData { needed: 5, got: 4 }
   );
   assert!(fit_fou_power_variation(four.view(), None, 2, 2.0, Some(0.5), None).is_ok());
+}
+
+#[test]
+fn fou_v4_sigma_reads_the_sampling_rate_at_any_horizon() {
+  let (h, n) = (0.65, 2048usize);
+  let path = Fou::<f64, _>::new(
+    h,
+    1.2,
+    0.0,
+    0.25,
+    n,
+    Some(0.0),
+    Some(10.0),
+    Deterministic::new(0x5EED),
+  )
+  .sample();
+  let dt = 10.0 / (n - 1) as f64;
+  let fit = |delta: f64| {
+    fit_fou_power_variation(path.view(), Some(delta), 2, 2.0, Some(h), None)
+      .unwrap()
+      .sigma
+  };
+  assert_close(
+    fit(4.0 * dt),
+    4.0_f64.powf(-h) * fit(dt),
+    "sigma at four times the step",
+  );
+  assert!((fit(dt) / 0.25 - 1.0).abs() < 0.1, "sigma = {}", fit(dt));
 }
 
 #[test]

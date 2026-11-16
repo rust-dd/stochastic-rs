@@ -191,7 +191,7 @@ pub fn fit_fou_central_differences(
 /// $$
 ///
 /// $$
-/// |\hat\sigma|^p=\frac{n^{p\hat H-1}\,V_{k,p}(1)}{c_{k,p}\,T},\qquad
+/// |\hat\sigma|^p=\frac{\Delta^{1-p\hat H}\,V_{k,p}(1)}{c_{k,p}\,T},\quad T=n\Delta,\qquad
 /// \hat\theta=\Bigl(\frac{\sum_i(X_i-\bar X)^2}{n\,\hat\sigma^2\hat H\,\Gamma(2\hat H)}\Bigr)^{-1/(2\hat H)}
 /// $$
 pub fn fit_fou_power_variation(
@@ -245,12 +245,13 @@ pub fn fit_fou_power_variation(
     Some(sigma) => sigma,
     None => {
       let n = (n_points - 1) as f64;
+      let rate = delta.map_or(n, |dt| 1.0 / dt);
       let t_horizon = n * dt;
       if v1 == 0.0 {
         return Err(StatsError::DegenerateData("zero power variation"));
       }
       let c_kp = c_k_p(k, p, hurst)?;
-      let scaled = n.powf(-1.0 + p * hurst) * v1;
+      let scaled = rate.powf(-1.0 + p * hurst) * v1;
       let sigma_abs_p = positive(
         scaled / (c_kp * t_horizon),
         "sigma from the power variation",
