@@ -2062,18 +2062,9 @@ pub trait EulerKernel<T: FloatExt>: Backend {
     m: usize,
     seed: u64,
   ) -> Result<Array3<T>, DeviceError> {
+    check_path_index(m)?;
     let n = process.grid_points();
-    // A launch writes one plane per component the *family* reports, which
-    // `check_arity` allows to exceed the `D` the process reads back out — the
-    // Bergomi family reports four where its process takes two. Both the
-    // budget and the assembled array follow the launch, not `D`, or the
-    // chunks do not fit the array they are assigned into.
-    let spec = process.euler_spec();
-    let (code, _) = spec.encode();
-    let planes = families::Family::from_code(code)
-      .expect("a declared family")
-      .components();
-    let rows = launch_rows(self, n * planes, spec, n, process.fgn_spec());
+    let (planes, rows) = system_rows(self, process);
     if m <= rows {
       return self.euler_system_kernel(process, 0, m, seed);
     }
@@ -2096,6 +2087,7 @@ pub trait EulerKernel<T: FloatExt>: Backend {
     m: usize,
     seed: u64,
   ) -> Result<Array2<T>, DeviceError> {
+    check_path_index(m)?;
     let n = process.grid_points();
     let rows = launch_rows(self, n, process.euler_spec(), n, process.fgn_spec());
     if m <= rows {
@@ -2124,6 +2116,35 @@ fn launch_rows<T: FloatExt, K: EulerKernel<T>>(
 ) -> usize {
   let rows = crate::device::chunk_rows(kernel.batch_budget(), per_path, std::mem::size_of::<T>());
   kernel.index_rows(rows, spec, steps, fgn)
+}
+
+/// The planes a system launch writes and the paths one launch may hold: every plane the family
+/// steps counts, which may exceed the `D` the process reads back (Bergomi steps four for two).
+fn system_rows<T: FloatExt, K: EulerKernel<T>, const D: usize, P: EulerSystem<T, D>>(
+  kernel: &K,
+  process: &P,
+) -> (usize, usize) {
+  let n = process.grid_points();
+  let spec = process.euler_spec();
+  let (code, _) = spec.encode();
+  let planes = families::Family::from_code(code)
+    .expect("a declared family")
+    .components();
+  (
+    planes,
+    launch_rows(kernel, n * planes, spec, n, process.fgn_spec()),
+  )
+}
+
+/// `m` paths, or the launch's error before anything is allocated: past `u32::MAX` the kernels'
+/// `unsigned int` path index cannot reach them all, whatever the chunks.
+pub(crate) fn check_path_index(m: usize) -> Result<(), DeviceError> {
+  if m > u32::MAX as usize {
+    return Err(DeviceError::Launch(format!(
+      "{m} paths exceed the kernels' 32-bit path index"
+    )));
+  }
+  Ok(())
 }
 
 /// The body's `steps`, `paths`, `first_path` as `unsigned int`s, or the launch's error; `first + m`
@@ -2699,6 +2720,7 @@ macro_rules! kernel_euler_backend {
       f: impl Fn(&Array1<$scalar>) -> R + Sync,
     ) -> Result<Vec<R>, DeviceError> {
       use rayon::prelude::*;
+      check_path_index(m)?;
       let seed = process.device_seed();
       let steps = process.grid_points();
       let rows = launch_rows(self, steps, process.euler_spec(), steps, process.fgn_spec());
@@ -2762,6 +2784,7 @@ macro_rules! kernel_euler_backend {
       f: impl Fn(ArrayView1<$scalar>) -> R + Sync,
     ) -> Result<Vec<R>, DeviceError> {
       use rayon::prelude::*;
+      check_path_index(m)?;
       let seed = process.device_seed();
       let steps = process.grid_points();
       let rows = launch_rows(self, steps, process.euler_spec(), steps, process.fgn_spec());
@@ -2840,9 +2863,9 @@ macro_rules! kernel_euler_backend {
       f: impl Fn(&P::Output) -> R + Sync,
     ) -> Result<Vec<R>, DeviceError> {
       use rayon::prelude::*;
+      check_path_index(m)?;
       let seed = process.device_seed();
-      let steps = process.grid_points();
-      let rows = launch_rows(self, steps * D, process.euler_spec(), steps, process.fgn_spec());
+      let (_, rows) = system_rows(self, process);
       let mut out = Vec::with_capacity(m);
       // `over_chunks`, so a chunk too large for the device is retried at half
       // the size rather than failing the batch.

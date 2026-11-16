@@ -719,6 +719,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
     m: usize,
     seed: u64,
   ) -> Result<Array2<T>> {
+    super::check_path_index(m)?;
     let n = process.grid_points();
     let rows = super::launch_rows(self, n, process.euler_spec(), n, process.fgn_spec());
     if m <= rows {
@@ -794,6 +795,12 @@ fn device_paths<T: FloatExt, O>(
   finish: impl FnOnce(&[T], usize) -> O,
 ) -> Result<O> {
   {
+    let (family, params) = spec.encode();
+    let arity = super::families::Family::from_code(family).expect("a declared family");
+    let (components, noises) = (arity.components() as u32, arity.noises() as u32);
+    if n == 0 || m == 0 {
+      return Ok(finish(&[], components as usize));
+    }
     let (curve, n_curves) = crate::euler::flatten_curves(curves, n);
     let (program_t, program_n) = crate::euler::encode_programs::<T>(program.as_ref());
     let program64: Vec<f64> = program_t
@@ -812,12 +819,10 @@ fn device_paths<T: FloatExt, O>(
       lift_fb.to_f64().unwrap_or(0.0),
       lift_x0.to_f64().unwrap_or(0.0),
     );
-    let (family, params) = spec.encode();
     let hist_slot = crate::euler::history_slot(family, n);
     let series_n = crate::euler::series_terms(family, n, series);
     let series_live = crate::euler::series_live(family);
     let (table_n, table_u0) = crate::euler::table_terms(family, table);
-    let arity = super::families::Family::from_code(family).expect("a declared family");
     let use_jumps = u32::from(jump_lambda.is_some());
     let lambda64 = jump_lambda.map_or(0.0, |v| v.to_f64().unwrap_or(0.0));
     let (jump_law, ja, jb, jc) = sizes.map_or((0, 0.0, 0.0, 0.0), |s| {
@@ -836,10 +841,6 @@ fn device_paths<T: FloatExt, O>(
         let f = |v: T| v.to_f64().unwrap_or(0.0);
         (law, f(s1), f(c1), f(p1), f(s2), f(c2), f(p2))
       });
-    let (components, noises) = (arity.components() as u32, arity.noises() as u32);
-    if n == 0 || m == 0 {
-      return Ok(finish(&[], components as usize));
-    }
     let dt = dt.to_f64().unwrap_or(0.0);
     let seed32 = (seed ^ (seed >> 32)) as u32;
     let p64: [f64; crate::euler::PARAM_SLOTS] =

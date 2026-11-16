@@ -406,3 +406,140 @@ fn cuda_backend_matches_the_moments() {
     }
   }
 }
+
+/// `refuse`'s answer, which must come at once: under a one-path budget an unrefused batch would
+/// run four billion launches, so it runs on a thread of its own and times out.
+fn promptly<R: Send + 'static>(refuse: impl FnOnce() -> R + Send + 'static) -> R {
+  let (tx, rx) = std::sync::mpsc::channel();
+  std::thread::spawn(move || tx.send(refuse()));
+  rx.recv_timeout(std::time::Duration::from_secs(60))
+    .expect("the batch is refused before its first launch")
+}
+
+/// Every batch entry refuses more paths than the kernels' 32-bit path index reaches, before it
+/// allocates or launches; `sample_par` panics with the same message.
+fn unindexable_batches_are_refused<K>(device: K)
+where
+  K: EulerKernel<f32> + EulerBackend<f32> + 'static,
+{
+  use std::panic::{AssertUnwindSafe, catch_unwind};
+
+  use crate::device::DeviceError;
+  use crate::volatility::bergomi::Bergomi;
+
+  let m = u32::MAX as usize + 1;
+  let gbm = Gbm::<f32, _>::new(0.05, 0.2, 2, 100.0, Some(1.0), Deterministic::new(1))
+    .with_backend(device.clone());
+  let bergomi = Bergomi::<f32, _>::new(
+    0.5,
+    0.04,
+    100.0,
+    0.0,
+    -0.7,
+    64,
+    Some(1.0),
+    Deterministic::new(2),
+  )
+  .with_backend(device.clone());
+  let refusals: [Result<(), DeviceError>; 5] = [
+    promptly({
+      let p = gbm.clone();
+      move || p.try_sample_par(m).map(drop)
+    }),
+    promptly({
+      let (p, d) = (gbm.clone(), device.clone());
+      move || d.try_euler_paths_map(&p, m, |path| path[0]).map(drop)
+    }),
+    promptly({
+      let (p, d) = (gbm.clone(), device.clone());
+      move || d.try_euler_paths_map_view(&p, m, |path| path[0]).map(drop)
+    }),
+    promptly({
+      let p = bergomi.clone();
+      move || p.try_sample_par(m).map(drop)
+    }),
+    promptly({
+      let (p, d) = (bergomi, device);
+      move || d.try_system_paths_map(&p, m, |paths| paths[0][0]).map(drop)
+    }),
+  ];
+  for refusal in refusals {
+    assert!(
+      matches!(&refusal, Err(DeviceError::Launch(why)) if why.contains("32-bit path index")),
+      "{refusal:?}"
+    );
+  }
+  let panic = promptly(move || catch_unwind(AssertUnwindSafe(move || drop(gbm.sample_par(m)))))
+    .expect_err("sample_par panics");
+  let message = panic.downcast_ref::<String>().expect("a formatted panic");
+  assert!(message.contains("32-bit path index"), "{message}");
+}
+
+#[cfg(metal_backend)]
+#[test]
+fn metal_refuses_more_paths_than_the_kernels_index() {
+  unindexable_batches_are_refused(crate::device::Metal::default().with_batch_budget(8));
+}
+
+#[cfg(feature = "cuda")]
+#[test]
+fn cuda_refuses_more_paths_than_the_kernels_index() {
+  unindexable_batches_are_refused(crate::device::Cuda::default().with_batch_budget(8));
+}
+
+/// An empty launch answers before the host encodes its family: a history grid past the kernels'
+/// cap never reaches the check that would refuse it.
+fn an_empty_launch_answers_first<K: EulerKernel<f32>>(device: K) {
+  use crate::autoregressive::arima::Arima;
+
+  let n = HISTORY_SLOTS + 1;
+  let arima = Arima::<f32, _>::new(
+    ndarray::array![0.5],
+    ndarray::array![0.2],
+    0,
+    1.0,
+    n,
+    Unseeded,
+  );
+  let paths = device
+    .euler_kernel(&arima, 0, 0, 1)
+    .expect("an empty launch");
+  assert_eq!(paths.dim(), (0, n));
+}
+
+#[cfg(metal_backend)]
+#[test]
+fn metal_empty_launch_answers_first() {
+  an_empty_launch_answers_first(crate::device::Metal::default());
+}
+
+#[cfg(feature = "cuda")]
+#[test]
+fn cuda_empty_launch_answers_first() {
+  an_empty_launch_answers_first(crate::device::Cuda::default());
+}
+
+/// A system launch budgets every plane its family steps: Bergomi steps four for the two it returns.
+fn system_rows_count_every_plane<K: EulerKernel<f32>>(device: K) {
+  use crate::volatility::bergomi::Bergomi;
+
+  let p = Bergomi::<f32, _>::new(0.5, 0.04, 100.0, 0.0, -0.7, 64, Some(1.0), Unseeded);
+  let (planes, rows) = system_rows(&device, &p);
+  assert_eq!(planes, 4);
+  assert_eq!(
+    rows,
+    crate::device::chunk_rows(device.batch_budget(), 4 * 64, 4)
+  );
+}
+
+#[cfg(metal_backend)]
+#[test]
+fn metal_system_rows_count_every_plane() {
+  system_rows_count_every_plane(crate::device::Metal::default().with_batch_budget(1 << 20));
+}
+
+#[cfg(feature = "cuda")]
+#[test]
+fn cuda_system_rows_count_every_plane() {
+  system_rows_count_every_plane(crate::device::Cuda::default().with_batch_budget(1 << 20));
+}
