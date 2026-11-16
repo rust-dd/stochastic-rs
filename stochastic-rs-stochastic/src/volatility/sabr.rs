@@ -379,7 +379,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for SabrSampler<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Sabr<T, S, B> {
-  /// The path and `D_{t_i} σ_T = ν σ_T` at every grid point, since the volatility is lognormal.
+  /// The path and `D_{t_i} α_T = ν α_T` at every grid point, since the volatility is lognormal.
   pub fn malliavin(&self) -> Malliavin<T, [Array1<T>; 2]> {
     let [f, v] = self.sample();
 

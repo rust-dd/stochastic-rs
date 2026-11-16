@@ -1,9 +1,5 @@
-"""A Rust panic reaches Python as an exception `except Exception` catches.
-
-PyO3 raises an uncaught panic as `pyo3_runtime.PanicException`, a
-`BaseException`. The bindings report a constructor's panic, an assertion on an
-argument, as `ValueError`, and a sampling call's panic as `RuntimeError`.
-"""
+"""Constructors, setters and calls report a rejected argument, input or state as `ValueError`,
+which `except Exception` catches; PyO3's `PanicException` is a `BaseException` it would miss."""
 
 import numpy as np
 import pytest
