@@ -47,7 +47,7 @@ pub use crate::volatility::heston::Euler;
 pub const ROWS: usize = 5;
 
 #[derive(Clone)]
-pub struct HestonHullWhite2F<T: FloatExt, S: SeedExt = Unseeded, Sch: HybridScheme = Euler, B = Cpu>
+pub struct HestonHullWhite2F<T: FloatExt, Sch: HybridScheme = Euler, S: SeedExt = Unseeded, B = Cpu>
 {
   /// Mean-reversion speed κ of the variance.
   pub kappa: T,
@@ -121,7 +121,7 @@ fn assert_positive<T: FloatExt>(name: &str, x: T) {
   );
 }
 
-impl<T: FloatExt, S: SeedExt> HestonHullWhite2F<T, S> {
+impl<T: FloatExt, S: SeedExt> HestonHullWhite2F<T, Euler, S> {
   /// Panics if a parameter is not finite, `kappa`, `theta`, `sigma`, `sigma1`, `sigma2` or `v0` is
   /// negative, `s0` or `t` is not positive, `n < 2`, or `rho` is not a `4 × 4` positive-definite correlation matrix.
   pub fn new(
@@ -192,7 +192,7 @@ fn flat_drift_target<T: FloatExt>(_t: T) -> T {
 
 /// Grzelak, Oosterlee and van Weeren (2011), experiment 4.2: κ = 0.8, θ = 0.2, σ = 0.2, a = 1.1,
 /// σ₁ = 0.01, b = 0.8, σ₂ = 0.015, ρ_xv = −0.3, ρ_xr = 0.35, ρ_xu = 0.08, ρ_ru = −0.4, S₀ = 1, r₀ = 0.03.
-impl<T: FloatExt> Default for HestonHullWhite2F<T, Unseeded, Euler> {
+impl<T: FloatExt> Default for HestonHullWhite2F<T, Euler, Unseeded> {
   fn default() -> Self {
     let f = T::from_f64_fast;
     let rho = ndarray::array![
@@ -222,7 +222,7 @@ impl<T: FloatExt> Default for HestonHullWhite2F<T, Unseeded, Euler> {
 }
 
 /// Every field has a matching `with_*` setter, checked as `new` checks it, chaining after [`qe`](Self::qe) too.
-impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B> HestonHullWhite2F<T, S, Sch, B> {
+impl<T: FloatExt, Sch: HybridScheme, S: SeedExt, B> HestonHullWhite2F<T, Sch, S, B> {
   pub fn with_kappa(mut self, kappa: T) -> Self {
     assert_non_negative("kappa", kappa);
     self.kappa = kappa;
@@ -340,10 +340,10 @@ impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B> HestonHullWhite2F<T, S, Sch,
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> HestonHullWhite2F<T, S, Euler, B> {
+impl<T: FloatExt, S: SeedExt, B> HestonHullWhite2F<T, Euler, S, B> {
   /// Re-tags the model with the [`AndersenQe`] variance step; panics unless `kappa`, `theta` and
   /// `sigma` are positive and the rate-variance correlations `rho[(1, 2)]`, `rho[(1, 3)]` are zero.
-  pub fn qe(self) -> HestonHullWhite2F<T, S, AndersenQe, B> {
+  pub fn qe(self) -> HestonHullWhite2F<T, AndersenQe, S, B> {
     let model = HestonHullWhite2F {
       kappa: self.kappa,
       theta: self.theta,
@@ -369,24 +369,24 @@ impl<T: FloatExt, S: SeedExt, B> HestonHullWhite2F<T, S, Euler, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt, Sch: HybridScheme] HestonHullWhite2F<T, S, Sch> { kappa, theta, sigma, theta_r, a, sigma1, sigma2, b, rho, n, s0, v0, r0, t, seed, chol, _scheme } via host);
+backend_switch!([T: FloatExt, Sch: HybridScheme, S: SeedExt] HestonHullWhite2F<T, Sch, S> { kappa, theta, sigma, theta_r, a, sigma1, sigma2, b, rho, n, s0, v0, r0, t, seed, chol, _scheme } via host);
 
 impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: crate::device::HostBackend>
-  crate::traits::Sealed for HestonHullWhite2F<T, S, Sch, B>
+  crate::traits::Sealed for HestonHullWhite2F<T, Sch, S, B>
 {
 }
 
 impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: crate::device::HostBackend> ProcessExt<T>
-  for HestonHullWhite2F<T, S, Sch, B>
+  for HestonHullWhite2F<T, Sch, S, B>
 {
   type Output = Array2<T>;
   type Sampler<'s>
-    = HestonHullWhite2FSampler<'s, T, S, Sch, B>
+    = HestonHullWhite2FSampler<'s, T, Sch, S, B>
   where
     Self: 's;
 
   /// Derives (not clones) `self.seed`, so every chunk of `sample_par` owns a hash-mixed basis.
-  fn sampler(&self) -> HestonHullWhite2FSampler<'_, T, S, Sch, B> {
+  fn sampler(&self) -> HestonHullWhite2FSampler<'_, T, Sch, S, B> {
     HestonHullWhite2FSampler {
       model: self,
       seed: self.seed.derive(),
@@ -402,18 +402,18 @@ impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: crate::device::HostBackend> 
 /// Reusable [`HestonHullWhite2F`] sampler: borrows the model for `theta_r` and owns a seed derived
 /// once, which the scheme's streams advance on every path of the chunk.
 #[doc(hidden)]
-pub struct HestonHullWhite2FSampler<'a, T: FloatExt, S: SeedExt, Sch: HybridScheme, B> {
-  model: &'a HestonHullWhite2F<T, S, Sch, B>,
+pub struct HestonHullWhite2FSampler<'a, T: FloatExt, Sch: HybridScheme, S: SeedExt, B> {
+  model: &'a HestonHullWhite2F<T, Sch, S, B>,
   seed: S,
 }
 
 impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: Send + Sync> crate::traits::Sealed
-  for HestonHullWhite2FSampler<'_, T, S, Sch, B>
+  for HestonHullWhite2FSampler<'_, T, Sch, S, B>
 {
 }
 
 impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B: Send + Sync> PathSampler<T>
-  for HestonHullWhite2FSampler<'_, T, S, Sch, B>
+  for HestonHullWhite2FSampler<'_, T, Sch, S, B>
 {
   type Output = Array2<T>;
 

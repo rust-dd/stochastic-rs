@@ -132,7 +132,7 @@ fn put_prices(terminal: &[(f64, f64)], strikes: &[f64]) -> Vec<(f64, f64)> {
 /// Test 1. `κ = 1.5`, `θ = v₀ = 0.04`, `σ = 0.3`, `ρ_xv = −0.7`, a constant 3 percent rate, `T = 2` on 100
 /// steps a year: with `σ₁ = σ₂ = 0` and `θ_r = a r₀` the short rate never moves and the model is Heston.
 fn pure_heston<Sch: HybridScheme>(
-  model: HestonHullWhite2F<f64, Deterministic, Sch>,
+  model: HestonHullWhite2F<f64, Sch, Deterministic>,
   rho_xv: f64,
   what: &str,
 ) {
@@ -193,7 +193,7 @@ fn zero_rate_volatility_prices_the_heston_closed_form() {
 
 /// Test 2. `∫₀ᵀ r` at 1, 5 and 10 years on 100 steps a year: its mean is `FLAT_RATE · T`, its variance
 /// the closed form, and `E exp(−∫r)` the bond price `exp(−FLAT_RATE · T + ½ Var ∫r)`.
-fn rate_leg<Sch: HybridScheme>(model: HestonHullWhite2F<f64, Deterministic, Sch>, what: &str) {
+fn rate_leg<Sch: HybridScheme>(model: HestonHullWhite2F<f64, Sch, Deterministic>, what: &str) {
   const MATURITIES: [(f64, usize); 3] = [(1.0, 100), (5.0, 500), (10.0, 1000)];
   let integrals = model.sample_map(PATHS, |path| MATURITIES.map(|(_, i)| path[(4, i)]));
   for (m, &(tau, _)) in MATURITIES.iter().enumerate() {
@@ -264,7 +264,7 @@ fn integrated_rate_has_the_closed_form_moments_and_bond_price() {
 /// `θT + Var ∫r + 2 √θ Cov(W^x_T, ∫r)` and bond price `P(0, T)`, here written as Black-Scholes at the
 /// rate `−log P(0, T)/T`.
 fn frozen_variance<Sch: HybridScheme>(
-  model: HestonHullWhite2F<f64, Deterministic, Sch>,
+  model: HestonHullWhite2F<f64, Sch, Deterministic>,
   what: &str,
 ) {
   const STRIKES: [f64; 3] = [0.8, 1.0, 1.3];

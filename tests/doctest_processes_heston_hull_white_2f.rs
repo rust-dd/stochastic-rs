@@ -20,7 +20,7 @@ fn heston_hull_white_2f_sample() {
     [0.35, 0.0, 1.0, -0.4],
     [0.08, 0.0, -0.4, 1.0],
   ];
-  let hybrid = HestonHullWhite2F::<f64, _>::new(
+  let hybrid = HestonHullWhite2F::<f64, _, _>::new(
     0.8, // kappa
     0.2, // theta
     0.2, // sigma

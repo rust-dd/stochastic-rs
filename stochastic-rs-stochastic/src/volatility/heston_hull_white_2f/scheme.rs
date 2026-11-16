@@ -34,14 +34,14 @@ pub trait HybridScheme: sealed::Sealed + Send + Sync + 'static {
 
   /// Fills `out` (`5 × n`) with one path, drawing from `seed`, the calling sampler's own derived basis.
   fn simulate_into<T: FloatExt, S: SeedExt, B>(
-    model: &HestonHullWhite2F<T, S, Self, B>,
+    model: &HestonHullWhite2F<T, Self, S, B>,
     seed: &S,
     out: &mut Array2<T>,
   ) where
     Self: Sized;
 }
 
-impl<T: FloatExt, S: SeedExt, Sch: HybridScheme, B> HestonHullWhite2F<T, S, Sch, B> {
+impl<T: FloatExt, Sch: HybridScheme, S: SeedExt, B> HestonHullWhite2F<T, Sch, S, B> {
   /// One Euler step of the rate leg, `theta_r` read at the step's end as `HullWhite2F` reads it.
   fn rate_step(&self, i: usize, r: T, u: T, dw_r: T, dw_u: T) -> (T, T) {
     let dt = self.dt();
@@ -72,7 +72,7 @@ impl HybridScheme for Euler {
   }
 
   fn simulate_into<T: FloatExt, S: SeedExt, B>(
-    model: &HestonHullWhite2F<T, S, Euler, B>,
+    model: &HestonHullWhite2F<T, Euler, S, B>,
     seed: &S,
     out: &mut Array2<T>,
   ) {
@@ -129,7 +129,7 @@ impl HybridScheme for AndersenQe {
   /// Andersen (2008) QE variance step, then eq. 33 for the log spot with the rate's trapezoidal
   /// sum in place of the constant drift and the orthogonal shock correlated with the rate shocks.
   fn simulate_into<T: FloatExt, S: SeedExt, B>(
-    model: &HestonHullWhite2F<T, S, AndersenQe, B>,
+    model: &HestonHullWhite2F<T, AndersenQe, S, B>,
     seed: &S,
     out: &mut Array2<T>,
   ) {

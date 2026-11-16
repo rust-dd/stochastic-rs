@@ -20,7 +20,7 @@ fn rho_paper() -> Array2<f64> {
   ]
 }
 
-fn paper(n: usize, seed: u64) -> HestonHullWhite2F<f64, Deterministic> {
+fn paper(n: usize, seed: u64) -> HestonHullWhite2F<f64, Euler, Deterministic> {
   HestonHullWhite2F::new(
     0.8,
     0.2,
@@ -128,7 +128,7 @@ fn integrated_rate_row_is_the_trapezoidal_sum_of_the_rate_row() {
 /// `E[S_T exp(-∫r)] = S_0` through the standard error across paths; Euler holds it exactly per step,
 /// QE up to the asset step's own small bias (Andersen 2008 §4.3), covered by the band at this vol-of-vol.
 fn discounted_spot_holds<Sch: HybridScheme>(
-  model: &HestonHullWhite2F<f64, Deterministic, Sch>,
+  model: &HestonHullWhite2F<f64, Sch, Deterministic>,
   what: &str,
 ) {
   let n = model.n;
@@ -238,7 +238,9 @@ fn rejects_an_indefinite_correlation_matrix() {
 }
 
 #[test]
-#[should_panic(expected = "unit diagonal")]
+#[should_panic(
+  expected = "rho[(0, 0)] must satisfy `(rho[(i, i)] - T::one()).abs() <= tol`, got rho[(0, 0)] = 2.0"
+)]
 fn rejects_a_covariance_matrix() {
   let _ = paper(8, 0).with_rho(Array2::<f64>::eye(4) * 2.0);
 }

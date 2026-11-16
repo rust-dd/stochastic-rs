@@ -21,6 +21,7 @@ use stochastic_rs::stochastic::jump::cgmy::Cgmy;
 use stochastic_rs::stochastic::jump::cts::Cts;
 use stochastic_rs::stochastic::noise::gn::Gn;
 use stochastic_rs::stochastic::process::bm::Bm;
+use stochastic_rs::stochastic::volatility::heston_hull_white_2f::Euler;
 use stochastic_rs::stochastic::volatility::heston_hull_white_2f::HestonHullWhite2F;
 use stochastic_rs::traits::ProcessExt;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -178,7 +179,7 @@ fn bench_process_generation(c: &mut Criterion) {
 }
 
 /// The paper's experiment 4.2 parameters (the type's `Default`) under a pinned seed.
-fn seeded_heston_hull_white_2f() -> HestonHullWhite2F<f64, Deterministic> {
+fn seeded_heston_hull_white_2f() -> HestonHullWhite2F<f64, Euler, Deterministic> {
   let d = HestonHullWhite2F::<f64>::default();
   HestonHullWhite2F::new(
     d.kappa,

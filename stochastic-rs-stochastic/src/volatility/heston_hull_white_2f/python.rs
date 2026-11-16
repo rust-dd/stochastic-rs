@@ -7,17 +7,17 @@ use super::*;
 pub struct PyHestonHullWhite2F {
   inner_f32: Option<HestonHullWhite2F<f32>>,
   inner_f64: Option<HestonHullWhite2F<f64>>,
-  seeded_f32: Option<HestonHullWhite2F<f32, crate::python_device::SharedSeed>>,
-  seeded_f64: Option<HestonHullWhite2F<f64, crate::python_device::SharedSeed>>,
+  seeded_f32: Option<HestonHullWhite2F<f32, Euler, crate::python_device::SharedSeed>>,
+  seeded_f64: Option<HestonHullWhite2F<f64, Euler, crate::python_device::SharedSeed>>,
   qe: Option<PyHestonHullWhite2FQe>,
 }
 
 /// The [`AndersenQe`] twins of [`PyHestonHullWhite2F`]'s slots, named for the dispatch macro.
 struct PyHestonHullWhite2FQe {
-  inner_f32: Option<HestonHullWhite2F<f32, Unseeded, AndersenQe>>,
-  inner_f64: Option<HestonHullWhite2F<f64, Unseeded, AndersenQe>>,
-  seeded_f32: Option<HestonHullWhite2F<f32, crate::python_device::SharedSeed, AndersenQe>>,
-  seeded_f64: Option<HestonHullWhite2F<f64, crate::python_device::SharedSeed, AndersenQe>>,
+  inner_f32: Option<HestonHullWhite2F<f32, AndersenQe>>,
+  inner_f64: Option<HestonHullWhite2F<f64, AndersenQe>>,
+  seeded_f32: Option<HestonHullWhite2F<f32, AndersenQe, crate::python_device::SharedSeed>>,
+  seeded_f64: Option<HestonHullWhite2F<f64, AndersenQe, crate::python_device::SharedSeed>>,
 }
 
 macro_rules! py_hybrid_dispatch {
@@ -33,7 +33,7 @@ fn build<T: FloatExt, S: SeedExt>(
   args: &Args,
   theta_r: pyo3::Py<pyo3::PyAny>,
   seed: S,
-) -> HestonHullWhite2F<T, S> {
+) -> HestonHullWhite2F<T, Euler, S> {
   let f = |x: f64| T::from_f64_fast(x);
   HestonHullWhite2F::new(
     f(args.kappa),
