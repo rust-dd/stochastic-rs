@@ -88,7 +88,8 @@ fn a_start_outside_the_heston_domain_is_an_error_before_the_fit() {
   ));
 }
 
-/// Each entry is an accepted step, so the weighted objective falls along the trail to the fit.
+/// The trail opens at the start and each later entry is an accepted step, so the weighted
+/// objective falls along it to the fit.
 #[test]
 fn the_trail_records_weighted_market_minus_model() {
   let calibrator = calibrator()
@@ -102,6 +103,7 @@ fn the_trail_records_weighted_market_minus_model() {
     .with_residual_weights(vec![1.0, 2.0, 1.0, 0.5, 1.0, 3.0])
     .with_options(CalibrationOptions::default().with_record_history(true));
   let fit = calibrator.calibrate(None).unwrap();
+  assert_eq!(fit.history[0].params, calibrator.effective_params());
   assert_eq!(
     fit.history.last().map(|entry| entry.params),
     Some(fit.params)

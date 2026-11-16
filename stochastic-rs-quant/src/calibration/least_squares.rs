@@ -37,7 +37,8 @@ pub trait LeastSquaresProblem {
 
   fn jacobian(&self) -> Option<Array2<f64>>;
 
-  /// The optimiser accepted the point of the last `residuals` call; a recorded trail keeps it.
+  /// The point of the last `residuals` call is the start or a step the optimiser accepted; a
+  /// recorded trail keeps it.
   fn accept(&mut self) {}
 }
 
@@ -229,23 +230,27 @@ where
     .into_stepper()
   {
     Err(()) => TerminationReason::SolverFailed,
-    Ok(mut stepper) => loop {
-      let cost = stepper.state().best_cost();
-      match stepper.step() {
-        Err(()) => break TerminationReason::SolverFailed,
-        Ok(outcome) => {
-          // basin's LM moves its iterate only to a trial that lowers the cost.
-          if stepper.state().best_cost() < cost {
-            best.clone_from(stepper.state().best_param());
-            objective.model.borrow_mut().accept();
-          }
-          iterations = stepper.state().iter() as usize;
-          if let StepOutcome::Stopped(reason) = outcome {
-            break reason;
+    Ok(mut stepper) => {
+      // `into_stepper` evaluated the start last, so the trail opens with it.
+      objective.model.borrow_mut().accept();
+      loop {
+        let cost = stepper.state().best_cost();
+        match stepper.step() {
+          Err(()) => break TerminationReason::SolverFailed,
+          Ok(outcome) => {
+            // basin's LM moves its iterate only to a trial that lowers the cost.
+            if stepper.state().best_cost() < cost {
+              best.clone_from(stepper.state().best_param());
+              objective.model.borrow_mut().accept();
+            }
+            iterations = stepper.state().iter() as usize;
+            if let StepOutcome::Stopped(reason) = outcome {
+              break reason;
+            }
           }
         }
       }
-    },
+    }
   };
   (best, reason, iterations)
 }
@@ -314,7 +319,7 @@ mod tests {
   }
 
   #[test]
-  fn only_a_trial_that_lowers_the_cost_is_accepted() {
+  fn the_start_and_each_trial_that_lowers_the_cost_are_accepted() {
     for pivoted_qr in [false, true] {
       let mut problem = Rosenbrock::new();
       problem.reject_outside_domain = true;
@@ -326,9 +331,9 @@ mod tests {
         },
       );
       let accepted = &problem.accepted;
+      assert_eq!(accepted[0], Rosenbrock::new().x);
       assert!(problem.nonfinite_trials.get() > 0 && accepted.iter().all(|x| x[1] >= -2.0));
-      assert!(accepted.len() < report.evaluations - 1);
-      assert!(Rosenbrock::cost(&accepted[0]) < Rosenbrock::cost(&Rosenbrock::new().x));
+      assert!(accepted.len() < report.evaluations);
       assert!(
         accepted
           .windows(2)

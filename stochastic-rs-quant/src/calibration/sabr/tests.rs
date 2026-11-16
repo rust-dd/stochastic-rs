@@ -2,6 +2,7 @@ use super::*;
 use crate::OptionType;
 use crate::traits::CalibrationResult;
 use crate::traits::Calibrator;
+use crate::traits::ModelPricer;
 
 fn smile(truth: SabrParams, r: f64, q: f64, tau: f64) -> Vec<OptionQuote> {
   [80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0]
@@ -57,7 +58,7 @@ fn a_recorded_fit_recovers_the_smile_and_its_trail_is_per_call() {
   assert!((fit.params.nu - 0.6).abs() < 1e-3 && (fit.params.rho + 0.4).abs() < 1e-3);
   assert_eq!(fit.message(), Some("converged"));
   assert!(fit.iterations.is_some() && fit.max_error.unwrap() < 1e-5);
-  assert!(!fit.history.is_empty() && fit.history[0].iteration == 0);
+  assert!(fit.history[0].iteration == 0 && fit.history[0].params.alpha == 0.15);
   assert_eq!(
     fit.history.last().map(|entry| entry.params),
     Some(fit.params)

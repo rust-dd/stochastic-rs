@@ -78,7 +78,8 @@ fn the_dividend_yield_sets_the_carry() {
   );
 }
 
-/// Each entry is an accepted step, so the vega-weighted objective falls along the trail to the fit.
+/// The trail opens at the start and each later entry is an accepted step, so the vega-weighted
+/// objective falls along it to the fit.
 #[test]
 fn calls_and_puts_fit_together_and_the_trail_records_market_minus_model_over_vega() {
   let cells = [
@@ -94,6 +95,7 @@ fn calls_and_puts_fit_together_and_the_trail_records_market_minus_model_over_veg
     .unwrap();
   assert!((fit.params.sigma - TRUE_SIGMA).abs() < 1e-10);
   assert_eq!(fit.history[0].iteration, 0);
+  assert_eq!(fit.history[0].params, BsmParams { sigma: 0.2 });
   assert_eq!(
     fit.history.last().map(|entry| entry.params),
     Some(fit.params)
@@ -138,9 +140,9 @@ fn a_trail_filled_through_the_hidden_problem_is_not_inherited() {
 }
 
 /// basin counts a rejected trial as an iteration and stops a capped fit before its next trial, so
-/// a capped fit whose every step is accepted has one entry per iteration.
+/// a capped fit whose every step is accepted has the start and one entry per iteration.
 #[test]
-fn the_trail_has_one_entry_per_iteration() {
+fn the_trail_has_the_start_and_one_entry_per_iteration() {
   let strikes = [80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0];
   let calibrator = BsmCalibrator::new(
     100.0,
@@ -160,9 +162,10 @@ fn the_trail_has_one_entry_per_iteration() {
     assert_eq!(fit.message.as_deref(), Some("evaluation budget exhausted"));
     assert_eq!(
       (fit.history.len(), fit.iterations),
-      (cap, Some(cap)),
+      (cap + 1, Some(cap)),
       "start {start}"
     );
+    assert_eq!(fit.history[0].params, BsmParams { sigma: start });
   }
 }
 

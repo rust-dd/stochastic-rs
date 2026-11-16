@@ -30,9 +30,7 @@ pub struct HestonMleSeed {
   pub nmle_cekf: Option<HestonNmleCekfConfig>,
 }
 
-/// Heston fit to vanilla quotes by Levenberg–Marquardt in logistic coordinates, with Cui et al.'s
-/// analytic Jacobian by default.
-/// Heston (1993), Rev. Financ. Stud. 6(2), 327–343, DOI 10.1093/rfs/6.2.327.
+/// Heston fit to vanilla quotes by Levenberg–Marquardt, Cui et al.'s analytic Jacobian by default.
 /// Levenberg (1944), DOI 10.1090/qam/10666; Marquardt (1963), DOI 10.1137/0111030.
 #[derive(Clone, Debug)]
 pub struct HestonCalibrator {
@@ -101,7 +99,7 @@ impl HestonCalibrator {
       "weights must satisfy `weights.len() == quotes.len()`, got weights.len() = {} for {quotes} quotes",
       weights.len()
     );
-    check_residual_weights(&weights, quotes).unwrap_or_else(|e| panic!("{e}"));
+    check_residual_weights(&weights).unwrap_or_else(|e| panic!("{e}"));
     self.residual_weights = Some(unit_root_mean_square(weights));
     self
   }
@@ -161,16 +159,8 @@ fn unit_root_mean_square(weights: Array1<f64>) -> Array1<f64> {
   weights / (largest * scaled)
 }
 
-/// `DimensionMismatch` unless there is one weight per quote, `InvalidInput` for the first weight
-/// that is not finite and positive.
-fn check_residual_weights(weights: &Array1<f64>, quotes: usize) -> Result<(), QuantError> {
-  if weights.len() != quotes {
-    return Err(QuantError::DimensionMismatch {
-      what: "residual weights, one per quote",
-      expected: quotes,
-      got: weights.len(),
-    });
-  }
+/// `InvalidInput` for the first weight that is not finite and positive.
+fn check_residual_weights(weights: &Array1<f64>) -> Result<(), QuantError> {
   match weights
     .iter()
     .enumerate()
@@ -199,7 +189,14 @@ impl crate::traits::Calibrator for HestonCalibrator {
     validate_quotes(&self.quotes)?;
     self.options.regularization_for(5)?;
     if let Some(weights) = &self.residual_weights {
-      check_residual_weights(weights, self.quotes.len())?;
+      if weights.len() != self.quotes.len() {
+        return Err(QuantError::DimensionMismatch {
+          what: "residual weights, one per quote",
+          expected: self.quotes.len(),
+          got: weights.len(),
+        });
+      }
+      check_residual_weights(weights)?;
     }
     let start = match initial.or(self.start) {
       Some(start) => start,
