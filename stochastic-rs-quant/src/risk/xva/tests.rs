@@ -159,7 +159,7 @@ fn hull_white_swap_exposure_is_shaped_like_a_swap() {
 }
 
 #[test]
-#[should_panic(expected = "one MtM column per exposure date")]
+#[should_panic(expected = "MtM columns, one per exposure date")]
 fn rejects_mismatched_dates() {
   let _ = ExposureProfile::from_mtm(&Array2::<f64>::zeros((3, 2)), vec![1.0, 2.0, 3.0], 0.95);
 }

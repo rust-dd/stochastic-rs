@@ -1,5 +1,6 @@
 use super::calibrator::LevyCalibrator;
 use crate::CalibrationLossScore;
+use crate::QuantError;
 
 /// Supported Lévy model types for calibration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -145,7 +146,7 @@ impl crate::traits::Calibrator for LevyCalibrator {
   type InitialGuess = Vec<f64>;
   type Params = LevyParams;
   type Output = LevyCalibrationResult;
-  type Error = anyhow::Error;
+  type Error = QuantError;
 
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     Ok(self.solve(initial))

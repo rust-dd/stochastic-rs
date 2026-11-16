@@ -9,6 +9,8 @@ use ndarray::ArrayView1;
 use rayon::prelude::*;
 
 use crate::OptionType;
+use crate::QuantError;
+use crate::error::check_grid_shape;
 use crate::mc::McEstimate;
 use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::FloatExt;
@@ -110,24 +112,30 @@ impl McBasketPricer {
     q: ArrayView1<'_, f64>,
     tau: f64,
     option_type: OptionType,
-  ) -> anyhow::Result<McEstimate<f64>> {
+  ) -> Result<McEstimate<f64>, QuantError> {
     let n_assets = s.len();
-    if self.rho.shape() != [n_assets, n_assets] {
-      anyhow::bail!(
-        "rho shape {:?} does not match n_assets={n_assets}",
-        self.rho.shape()
-      );
-    }
-    if self.weights.len() != n_assets || self.sigma.len() != n_assets || q.len() != n_assets {
-      anyhow::bail!(
-        "weights/sigma/q lengths must match n_assets={n_assets} (got {}/{}/{})",
-        self.weights.len(),
-        self.sigma.len(),
-        q.len()
-      );
+    check_grid_shape(
+      ["rho rows, one per asset", "rho columns, one per asset"],
+      self.rho.dim(),
+      (n_assets, n_assets),
+    )?;
+    for (what, got) in [
+      ("weights, one per asset", self.weights.len()),
+      ("sigma, one per asset", self.sigma.len()),
+      ("q, one per asset", q.len()),
+    ] {
+      if got != n_assets {
+        return Err(QuantError::DimensionMismatch {
+          what,
+          expected: n_assets,
+          got,
+        });
+      }
     }
     if !crate::linalg::is_spd_t(&self.rho) {
-      anyhow::bail!("correlation matrix is not positive definite");
+      return Err(QuantError::NotPositiveDefinite {
+        what: "the correlation matrix rho",
+      });
     }
     Ok(self.price_option(s, k, r, q, tau, option_type))
   }

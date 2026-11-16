@@ -8,9 +8,8 @@
 //! total mass `Σ ω_i ω'_j P_{i,j}` is constant in time up to the mixed flux
 //! at the two corners on `v = v_max`, where the density is negligible.
 
-use anyhow::Result;
-
 use super::mesh::Mesh;
+use crate::QuantError;
 
 mod implicit;
 
@@ -398,7 +397,7 @@ pub(super) fn step(
   w: &[f64],
   out: &mut [f64],
   b: &mut StepBuffers,
-) -> Result<()> {
+) -> Result<(), QuantError> {
   if damping {
     return b.implicit.solve(mesh, along_v, next, dt, w, out);
   }

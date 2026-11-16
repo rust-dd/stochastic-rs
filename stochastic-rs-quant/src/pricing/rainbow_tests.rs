@@ -1,6 +1,7 @@
 use ndarray::array;
 
 use super::*;
+use crate::QuantError;
 
 /// Cross-arch tolerance: these goldens come from `biv_norm` and
 /// `norm_cdf`, whose last bit is a hostage to FMA contraction and libm
@@ -191,9 +192,13 @@ fn mc_rainbow_try_price_reports_a_query_dimension_mismatch() {
   let err = model
     .try_price(s.view(), 100.0, 0.05, q.view(), 1.0)
     .expect_err("a three-asset query against a two-asset model is not priceable");
-  assert!(
-    err.to_string().contains("does not match n_assets=3"),
-    "{err}"
+  assert_eq!(
+    err,
+    QuantError::DimensionMismatch {
+      what: "rho rows, one per asset",
+      expected: 3,
+      got: 2,
+    }
   );
 }
 
@@ -213,7 +218,10 @@ fn mc_rainbow_try_price_reports_a_non_spd_correlation() {
   let err = model
     .try_price(s.view(), 100.0, 0.05, q.view(), 1.0)
     .expect_err("rho = 2 is not a correlation");
-  assert!(err.to_string().contains("not positive definite"), "{err}");
+  assert_eq!(
+    err.to_string(),
+    "the correlation matrix rho is not positive definite"
+  );
 }
 
 /// `StulzRainbowPricer::new` rejects a parameter that is not a

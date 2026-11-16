@@ -1,9 +1,6 @@
 //! Fully implicit Euler start-up for Wyns & Du Toit (2016), §3,
 //! arXiv:1611.02961. Sparse LU solves all three spatial operators together.
 
-use anyhow::Context;
-use anyhow::Result;
-use anyhow::ensure;
 use faer::Mat;
 use faer::linalg::solvers::Solve;
 use faer::sparse::SparseColMat;
@@ -14,6 +11,7 @@ use faer::sparse::linalg::solvers::SymbolicLu;
 use super::Direction;
 use super::Level;
 use super::Mesh;
+use crate::QuantError;
 
 #[derive(Default)]
 pub(super) struct ImplicitEuler {
@@ -31,7 +29,7 @@ impl ImplicitEuler {
     dt: f64,
     p: &[f64],
     out: &mut [f64],
-  ) -> Result<()> {
+  ) -> Result<(), QuantError> {
     let (m1, m2) = (mesh.m1(), mesh.m2());
     let n = mesh.len();
     let mut entries = Vec::with_capacity(21 * n);
@@ -67,32 +65,37 @@ impl ImplicitEuler {
         }
       }
     }
-    ensure!(
-      entries.iter().all(|entry| entry.val.is_finite()),
-      "non-finite coefficients in the Fokker–Planck implicit step"
-    );
+    if !entries.iter().all(|entry| entry.val.is_finite()) {
+      return Err(step_failure("its coefficients are not finite".to_string()));
+    }
     let matrix = SparseColMat::<usize, f64>::try_new_from_triplets(n, n, &entries)
-      .context("assembling the Fokker–Planck implicit step")?;
+      .map_err(|e| step_failure(format!("assembling the matrix failed: {e}")))?;
     let symbolic = match &self.symbolic {
       Some(symbolic) => symbolic.clone(),
       None => {
         let symbolic = SymbolicLu::try_new(matrix.symbolic())
-          .context("analysing the Fokker–Planck implicit step")?;
+          .map_err(|e| step_failure(format!("the symbolic analysis failed: {e}")))?;
         self.symbolic = Some(symbolic.clone());
         symbolic
       }
     };
     let lu = Lu::try_new_with_symbolic(symbolic, matrix.as_ref())
-      .context("factorising the Fokker–Planck implicit step")?;
+      .map_err(|e| step_failure(format!("the LU factorisation failed: {e}")))?;
     let mut rhs = Mat::from_fn(n, 1, |i, _| p[i]);
     lu.solve_in_place(&mut rhs);
     for (i, value) in out.iter_mut().enumerate() {
       *value = rhs[(i, 0)];
     }
-    ensure!(
-      out.iter().all(|value| value.is_finite()),
-      "non-finite density after the Fokker–Planck implicit step"
-    );
+    if !out.iter().all(|value| value.is_finite()) {
+      return Err(step_failure("the density came out non-finite".to_string()));
+    }
     Ok(())
+  }
+}
+
+fn step_failure(reason: String) -> QuantError {
+  QuantError::Numerical {
+    what: "the Fokker–Planck implicit step",
+    reason,
   }
 }

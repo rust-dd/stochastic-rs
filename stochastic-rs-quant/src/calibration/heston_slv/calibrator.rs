@@ -1,5 +1,3 @@
-use anyhow::Result;
-use anyhow::bail;
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_distributions::traits::Grid2D;
@@ -8,10 +6,12 @@ use super::result::HestonSlvCalibrationResult;
 use super::result::HestonSlvFit;
 use crate::CalibrationLossScore;
 use crate::OptionType;
+use crate::QuantError;
 use crate::calibration::heston::HestonCalibrationResult;
 use crate::calibration::heston::HestonCalibrator;
 use crate::calibration::heston::HestonParams;
 use crate::calibration::levy::MarketSlice;
+use crate::error::check_grid_shape;
 use crate::pricing::dupire::Dupire;
 use crate::pricing::slv::FokkerPlanckMethod;
 use crate::pricing::slv::HestonSlvParams;
@@ -185,70 +185,112 @@ impl HestonSlvCalibrator {
       .collect()
   }
 
-  fn validate(&self) -> Result<()> {
+  fn validate(&self) -> Result<(), QuantError> {
     let (nt, nk) = (self.maturities.len(), self.strikes.len());
     if nk < 3 {
-      bail!("at least three strikes are needed for the Dupire stencil, got {nk}");
+      return Err(QuantError::InsufficientData {
+        what: "the Dupire strike stencil",
+        needed: 3,
+        got: nk,
+      });
     }
     if nt == 0 {
-      bail!("at least one maturity is needed");
+      return Err(QuantError::InsufficientData {
+        what: "the maturity grid",
+        needed: 1,
+        got: 0,
+      });
     }
     if self.local_vol.is_none() && nt < 2 {
-      bail!(
-        "the Dupire time derivative needs at least two maturities; add one or supply the local \
-         volatility with `with_local_vol`"
-      );
+      return Err(QuantError::InsufficientData {
+        what: "the Dupire time derivative without `with_local_vol`",
+        needed: 2,
+        got: nt,
+      });
     }
     if !(self.s.is_finite() && self.s > 0.0) {
-      bail!("the spot must be finite and positive, got {}", self.s);
+      return Err(QuantError::invalid(
+        "spot",
+        format!("must be finite and positive, got {}", self.s),
+      ));
     }
     if !(self.r.is_finite() && self.q.is_finite()) {
-      bail!(
-        "the rates must be finite, got r = {}, q = {}",
-        self.r,
-        self.q
-      );
+      return Err(QuantError::invalid(
+        "rates",
+        format!("must be finite, got r = {}, q = {}", self.r, self.q),
+      ));
     }
     if !(self.eta.is_finite() && (0.0..=1.0).contains(&self.eta)) {
-      bail!(
-        "the mixing fraction eta must lie in [0, 1], got {}",
-        self.eta
-      );
+      return Err(QuantError::invalid(
+        "mixing fraction eta",
+        format!("must lie in [0, 1], got {}", self.eta),
+      ));
     }
-    if self.strikes.iter().any(|k| !(k.is_finite() && *k > 0.0)) {
-      bail!("strikes must be finite and positive");
+    if let Some((i, k)) = first_where(&self.strikes, |k| !(k.is_finite() && k > 0.0)) {
+      return Err(QuantError::invalid(
+        "strikes",
+        format!("strike {i} must be finite and positive, got {k}"),
+      ));
     }
-    if self.strikes.windows(2).any(|w| w[0] >= w[1]) {
-      bail!("strikes must be strictly ascending");
+    if let Some(i) = self.strikes.windows(2).position(|w| w[0] >= w[1]) {
+      return Err(QuantError::invalid(
+        "strikes",
+        format!(
+          "must be strictly ascending, got strike {i} = {} before {}",
+          self.strikes[i],
+          self.strikes[i + 1]
+        ),
+      ));
     }
-    if self.maturities.iter().any(|t| !(t.is_finite() && *t > 0.0)) {
-      bail!("maturities must be finite and positive");
+    if let Some((j, t)) = first_where(&self.maturities, |t| !(t.is_finite() && t > 0.0)) {
+      return Err(QuantError::invalid(
+        "maturities",
+        format!("maturity {j} must be finite and positive, got {t}"),
+      ));
     }
-    if self.maturities.windows(2).any(|w| w[0] >= w[1]) {
-      bail!("maturities must be strictly ascending");
+    if let Some(j) = self.maturities.windows(2).position(|w| w[0] >= w[1]) {
+      return Err(QuantError::invalid(
+        "maturities",
+        format!(
+          "must be strictly ascending, got maturity {j} = {} before {}",
+          self.maturities[j],
+          self.maturities[j + 1]
+        ),
+      ));
     }
-    if self.calls.dim() != (nt, nk) {
-      bail!(
-        "calls must have shape (maturities, strikes) = ({nt}, {nk}), got {:?}",
-        self.calls.dim()
-      );
-    }
-    if self.calls.iter().any(|c| !(c.is_finite() && *c >= 0.0)) {
-      bail!("call prices must be finite and non-negative");
-    }
-    if let Some(lv) = &self.local_vol
-      && lv.dim() != (nt, nk)
+    check_grid_shape(
+      [
+        "call rows, one per maturity",
+        "call columns, one per strike",
+      ],
+      self.calls.dim(),
+      (nt, nk),
+    )?;
+    if let Some(((j, i), c)) = self
+      .calls
+      .indexed_iter()
+      .find(|(_, c)| !(c.is_finite() && **c >= 0.0))
     {
-      bail!(
-        "the local volatility must have shape (maturities, strikes) = ({nt}, {nk}), got {:?}",
-        lv.dim()
-      );
+      return Err(QuantError::invalid(
+        "call prices",
+        format!("calls[[{j}, {i}]] must be finite and non-negative, got {c}"),
+      ));
+    }
+    if let Some(lv) = &self.local_vol {
+      check_grid_shape(
+        [
+          "local-volatility rows, one per maturity",
+          "local-volatility columns, one per strike",
+        ],
+        lv.dim(),
+        (nt, nk),
+      )?;
     }
     if !(self.dupire_eps.is_finite() && self.dupire_eps > 0.0) {
-      bail!(
-        "dupire_eps must be finite and positive, got {}",
-        self.dupire_eps
-      );
+      return Err(QuantError::invalid(
+        "dupire_eps",
+        format!("must be finite and positive, got {}", self.dupire_eps),
+      ));
     }
     Ok(())
   }
@@ -257,7 +299,7 @@ impl HestonSlvCalibrator {
   fn heston(
     &self,
     initial: Option<HestonParams>,
-  ) -> Result<(HestonParams, Option<HestonCalibrationResult>)> {
+  ) -> Result<(HestonParams, Option<HestonCalibrationResult>), QuantError> {
     if let Some(pinned) = &self.heston_params {
       return Ok((pinned.clone(), None));
     }
@@ -276,7 +318,7 @@ impl HestonSlvCalibrator {
   }
 
   /// The local volatility as the `(t, K)` grid the particle method reads.
-  fn local_vol_grid(&self) -> Result<Grid2D<f64>> {
+  fn local_vol_grid(&self) -> Result<Grid2D<f64>, QuantError> {
     let raw = match &self.local_vol {
       Some(lv) => lv.clone(),
       None => Dupire::builder(
@@ -308,7 +350,7 @@ impl HestonSlvCalibrator {
     &self,
     params: &HestonSlvParams,
     local_vol: &Grid2D<f64>,
-  ) -> Result<(LeverageSurface, Vec<f64>)> {
+  ) -> Result<(LeverageSurface, Vec<f64>), QuantError> {
     let mut model = Vec::with_capacity(self.maturities.len() * self.strikes.len());
     match &self.method {
       LeverageMethod::Particle(method) => {
@@ -356,18 +398,24 @@ impl HestonSlvCalibrator {
 /// of their row, an interior hole is interpolated linearly in strike between
 /// the admissible cells around it. A row with no admissible cell at all is
 /// an error — there is no local volatility to calibrate to at that maturity.
-pub(super) fn clean_local_vol(mut surface: Array2<f64>, maturities: &[f64]) -> Result<Array2<f64>> {
+pub(super) fn clean_local_vol(
+  mut surface: Array2<f64>,
+  maturities: &[f64],
+) -> Result<Array2<f64>, QuantError> {
   let (nt, nk) = surface.dim();
   for j in 0..nt {
     let finite = (0..nk)
       .filter(|&i| surface[[j, i]].is_finite())
       .collect::<Vec<_>>();
     let (Some(&first), Some(&last)) = (finite.first(), finite.last()) else {
-      bail!(
-        "the local volatility has no admissible cell at maturity {}: the call slice is not \
-         locally arbitrage-free",
-        maturities[j]
-      );
+      return Err(QuantError::invalid(
+        "call slice",
+        format!(
+          "the local volatility has no admissible cell at maturity {} (the slice is not locally \
+           arbitrage-free)",
+          maturities[j]
+        ),
+      ));
     };
     for i in 0..first {
       surface[[j, i]] = surface[[j, first]];
@@ -386,13 +434,17 @@ pub(super) fn clean_local_vol(mut surface: Array2<f64>, maturities: &[f64]) -> R
   Ok(surface)
 }
 
+fn first_where(values: &[f64], bad: impl Fn(f64) -> bool) -> Option<(usize, f64)> {
+  values.iter().copied().enumerate().find(|&(_, v)| bad(v))
+}
+
 impl Calibrator for HestonSlvCalibrator {
   /// The starting point of the Heston fit; ignored when the parameters are
   /// pinned with [`with_heston_params`](HestonSlvCalibrator::with_heston_params).
   type InitialGuess = HestonParams;
   type Params = HestonSlvFit;
   type Output = HestonSlvCalibrationResult;
-  type Error = anyhow::Error;
+  type Error = QuantError;
 
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     self.validate()?;

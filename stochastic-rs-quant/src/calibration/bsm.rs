@@ -10,6 +10,7 @@ use ndarray::Array2;
 use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::OptionType;
+use crate::QuantError;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::LmOptions;
 use crate::calibration::least_squares::minimize;
@@ -77,7 +78,7 @@ impl crate::traits::Calibrator for BsmCalibrator {
   type InitialGuess = BsmParams;
   type Params = BsmParams;
   type Output = BsmCalibrationResult;
-  type Error = anyhow::Error;
+  type Error = QuantError;
 
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();

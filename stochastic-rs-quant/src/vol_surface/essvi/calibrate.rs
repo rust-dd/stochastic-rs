@@ -1,4 +1,5 @@
 use super::*;
+use crate::QuantError;
 
 /// Golden-section minimisation of a unimodal function on `[lo, hi]`.
 fn golden_section(f: &dyn Fn(f64) -> f64, mut lo: f64, mut hi: f64, iters: usize) -> f64 {
@@ -172,17 +173,41 @@ pub fn calibrate_essvi<T: RealExt>(slices: &[SsviSlice<T>], maturities: &[T]) ->
 pub fn try_calibrate_essvi<T: RealExt>(
   slices: &[SsviSlice<T>],
   maturities: &[T],
-) -> anyhow::Result<EssviSurface<T>> {
-  anyhow::ensure!(slices.len() == maturities.len(), "one maturity per slice");
-  anyhow::ensure!(
-    !slices.is_empty(),
-    "eSSVI calibration needs at least one slice"
-  );
-  anyhow::ensure!(
-    maturities.iter().all(|t| t.is_finite() && *t > T::zero())
-      && maturities.windows(2).all(|w| w[0] < w[1]),
-    "maturities must be finite, positive and increasing"
-  );
+) -> Result<EssviSurface<T>, QuantError> {
+  if slices.len() != maturities.len() {
+    return Err(QuantError::DimensionMismatch {
+      what: "maturities, one per slice",
+      expected: slices.len(),
+      got: maturities.len(),
+    });
+  }
+  if slices.is_empty() {
+    return Err(QuantError::InsufficientData {
+      what: "an eSSVI surface (slices)",
+      needed: 1,
+      got: 0,
+    });
+  }
+  if let Some((j, t)) = maturities
+    .iter()
+    .enumerate()
+    .find(|(_, t)| !(t.is_finite() && **t > T::zero()))
+  {
+    return Err(QuantError::invalid(
+      "maturities",
+      format!("maturity {j} must be finite and positive, got {t:?}"),
+    ));
+  }
+  if let Some(j) = maturities.windows(2).position(|w| w[0] >= w[1]) {
+    return Err(QuantError::invalid(
+      "maturities",
+      format!(
+        "must be strictly increasing, got maturity {j} = {:?} before {:?}",
+        maturities[j],
+        maturities[j + 1]
+      ),
+    ));
+  }
   let mut out = Vec::<EssviSlice<f64>>::with_capacity(slices.len());
   for (index, (slice, &maturity)) in slices.iter().zip(maturities).enumerate() {
     let ks = slice
@@ -195,14 +220,29 @@ pub fn try_calibrate_essvi<T: RealExt>(
       .iter()
       .map(|w| w.to_f64().unwrap_or(f64::NAN))
       .collect::<Vec<_>>();
-    anyhow::ensure!(
-      ks.len() >= 2 && ks.len() == ws.len(),
-      "slice {index} needs at least two paired quotes"
-    );
-    anyhow::ensure!(
-      ks.iter().all(|k| k.is_finite()) && ws.iter().all(|w| w.is_finite() && *w > 0.0),
-      "slice {index} quotes must be finite with positive total variance"
-    );
+    if ks.len() < 2 || ks.len() != ws.len() {
+      return Err(QuantError::invalid(
+        "eSSVI slice",
+        format!(
+          "slice {index} needs at least two paired quotes, got {} log-moneyness and {} total \
+           variance values",
+          ks.len(),
+          ws.len()
+        ),
+      ));
+    }
+    if let Some(i) =
+      (0..ks.len()).find(|&i| !(ks[i].is_finite() && ws[i].is_finite() && ws[i] > 0.0))
+    {
+      return Err(QuantError::invalid(
+        "eSSVI slice",
+        format!(
+          "slice {index}, quote {i}: needs a finite log-moneyness and a finite positive total \
+           variance, got k = {}, w = {}",
+          ks[i], ws[i]
+        ),
+      ));
+    }
     let anchor = (0..ks.len())
       .min_by(|&i, &j| {
         ks[i]
@@ -219,7 +259,10 @@ pub fn try_calibrate_essvi<T: RealExt>(
     };
     let previous = out.last();
     let calibrated = calibrate_slice(&anchored, previous, maturity.to_f64().unwrap_or(f64::NAN))
-      .ok_or_else(|| anyhow::anyhow!("slice {index} has no admissible anchored eSSVI fit"))?;
+      .ok_or_else(|| QuantError::Optimizer {
+        what: "eSSVI calibration",
+        reason: format!("slice {index} has no admissible anchored eSSVI fit"),
+      })?;
     out.push(calibrated);
   }
   Ok(EssviSurface::new(

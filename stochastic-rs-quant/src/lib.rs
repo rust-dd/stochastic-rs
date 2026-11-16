@@ -84,6 +84,7 @@
 
 #[cfg(doctest)]
 mod doctest_names;
+mod error;
 mod linalg;
 
 pub mod traits;
@@ -194,6 +195,7 @@ pub mod fourier_malliavin;
 
 mod types;
 
+pub use error::QuantError;
 pub use types::CalibrationLossScore;
 pub use types::LossMetric;
 pub use types::Moneyness;

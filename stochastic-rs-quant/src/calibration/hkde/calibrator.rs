@@ -9,6 +9,7 @@ use super::result::HkdeCalibrationResult;
 use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::OptionType;
+use crate::QuantError;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::least_squares::LmOptions;
 use crate::calibration::least_squares::minimize;
@@ -228,7 +229,7 @@ impl crate::traits::Calibrator for HkdeCalibrator {
   type InitialGuess = HkdeParams;
   type Params = HkdeParams;
   type Output = HkdeCalibrationResult;
-  type Error = anyhow::Error;
+  type Error = QuantError;
 
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     Ok(HkdeCalibrator::calibrate(self, initial))

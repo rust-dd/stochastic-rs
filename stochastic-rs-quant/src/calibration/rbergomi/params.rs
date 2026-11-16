@@ -3,6 +3,7 @@ use super::H_MAX;
 use super::H_MIN;
 use super::RHO_BOUND;
 use super::XI0_MIN;
+use crate::QuantError;
 
 #[derive(Clone, Debug)]
 #[non_exhaustive]
@@ -122,34 +123,49 @@ impl RBergomiXi0 {
     }
   }
 
-  pub(super) fn validate(&self) -> Result<(), String> {
+  pub(super) fn validate(&self) -> Result<(), QuantError> {
     match self {
       Self::Constant(level) => {
         if !level.is_finite() || *level <= 0.0 {
-          return Err("RBergomiXi0::Constant must be finite and positive".to_string());
+          return Err(QuantError::invalid(
+            "RBergomiXi0::Constant",
+            format!("must be finite and positive, got {level}"),
+          ));
         }
       }
       Self::PiecewiseConstant { maturities, values } => {
+        const WHAT: &str = "RBergomiXi0::PiecewiseConstant";
         if maturities.len() < 2 {
-          return Err(
-            "RBergomiXi0::PiecewiseConstant requires at least two maturity pillars".to_string(),
-          );
+          return Err(QuantError::invalid(
+            WHAT,
+            format!(
+              "requires at least two maturity pillars, got {}",
+              maturities.len()
+            ),
+          ));
         }
         if values.len() + 1 != maturities.len() {
-          return Err(
-            "RBergomiXi0::PiecewiseConstant requires values.len() + 1 == maturities.len()"
-              .to_string(),
-          );
+          return Err(QuantError::DimensionMismatch {
+            what: "RBergomiXi0::PiecewiseConstant values, one per maturity interval",
+            expected: maturities.len() - 1,
+            got: values.len(),
+          });
         }
         if !maturities.windows(2).all(|w| w[0] < w[1]) {
-          return Err(
-            "RBergomiXi0::PiecewiseConstant maturities must be strictly increasing".to_string(),
-          );
+          return Err(QuantError::invalid(
+            WHAT,
+            format!("maturities must be strictly increasing, got {maturities:?}"),
+          ));
         }
-        if values.iter().any(|v| !v.is_finite() || *v <= 0.0) {
-          return Err(
-            "RBergomiXi0::PiecewiseConstant values must be finite and positive".to_string(),
-          );
+        if let Some((i, v)) = values
+          .iter()
+          .enumerate()
+          .find(|(_, v)| !v.is_finite() || **v <= 0.0)
+        {
+          return Err(QuantError::invalid(
+            WHAT,
+            format!("value {i} must be finite and positive, got {v}"),
+          ));
         }
       }
       Self::NelsonSiegel {
@@ -159,10 +175,19 @@ impl RBergomiXi0 {
         tau,
       } => {
         if !beta0.is_finite() || !beta1.is_finite() || !beta2.is_finite() || !tau.is_finite() {
-          return Err("RBergomiXi0::NelsonSiegel parameters must be finite".to_string());
+          return Err(QuantError::invalid(
+            "RBergomiXi0::NelsonSiegel",
+            format!(
+              "parameters must be finite, got beta0 = {beta0}, beta1 = {beta1}, beta2 = {beta2}, \
+               tau = {tau}"
+            ),
+          ));
         }
         if *tau <= 0.0 {
-          return Err("RBergomiXi0::NelsonSiegel tau must be positive".to_string());
+          return Err(QuantError::invalid(
+            "RBergomiXi0::NelsonSiegel",
+            format!("tau must be positive, got {tau}"),
+          ));
         }
       }
     }
@@ -238,15 +263,24 @@ impl RBergomiParams {
     self.xi0.assign_from_flattened(values, &mut offset);
   }
 
-  pub(super) fn validate(&self) -> Result<(), String> {
+  pub(super) fn validate(&self) -> Result<(), QuantError> {
     if !self.hurst.is_finite() || self.hurst <= 0.0 || self.hurst >= 0.5 {
-      return Err("RBergomiParams.hurst must be finite and in (0, 0.5)".to_string());
+      return Err(QuantError::invalid(
+        "RBergomiParams.hurst",
+        format!("must be finite and in (0, 0.5), got {}", self.hurst),
+      ));
     }
     if !self.rho.is_finite() || self.rho.abs() > 1.0 {
-      return Err("RBergomiParams.rho must be finite and in [-1, 1]".to_string());
+      return Err(QuantError::invalid(
+        "RBergomiParams.rho",
+        format!("must be finite and in [-1, 1], got {}", self.rho),
+      ));
     }
     if !self.eta.is_finite() || self.eta <= 0.0 {
-      return Err("RBergomiParams.eta must be finite and positive".to_string());
+      return Err(QuantError::invalid(
+        "RBergomiParams.eta",
+        format!("must be finite and positive, got {}", self.eta),
+      ));
     }
     self.xi0.validate()
   }
@@ -261,15 +295,32 @@ pub struct RBergomiMarketSlice {
 }
 
 impl RBergomiMarketSlice {
-  pub(super) fn validate(&self) -> Result<(), String> {
+  pub(super) fn validate(&self, index: usize) -> Result<(), QuantError> {
     if !self.tau.is_finite() || self.tau <= 0.0 {
-      return Err("RBergomiMarketSlice.tau must be finite and positive".to_string());
+      return Err(QuantError::invalid(
+        "RBergomiMarketSlice.tau",
+        format!(
+          "slice {index}: must be finite and positive, got {}",
+          self.tau
+        ),
+      ));
     }
     if self.terminal_samples.is_empty() {
-      return Err("RBergomiMarketSlice.terminal_samples cannot be empty".to_string());
+      return Err(QuantError::invalid(
+        "RBergomiMarketSlice.terminal_samples",
+        format!("slice {index}: cannot be empty"),
+      ));
     }
-    if self.terminal_samples.iter().any(|x| !x.is_finite()) {
-      return Err("RBergomiMarketSlice.terminal_samples must be finite".to_string());
+    if let Some((m, x)) = self
+      .terminal_samples
+      .iter()
+      .enumerate()
+      .find(|(_, x)| !x.is_finite())
+    {
+      return Err(QuantError::invalid(
+        "RBergomiMarketSlice.terminal_samples",
+        format!("slice {index}: sample {m} must be finite, got {x}"),
+      ));
     }
     Ok(())
   }

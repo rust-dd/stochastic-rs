@@ -56,8 +56,6 @@
 //! correlation*, Int. J. Numer. Anal. Model. 7(2), 303–320 (the meshes and
 //! the ADI schemes).
 
-use anyhow::Result;
-use anyhow::bail;
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_distributions::traits::Fn2D;
@@ -74,6 +72,7 @@ use super::calibration::CONDITIONAL_VARIANCE_FLOOR;
 use super::calibration::clamp_leverage;
 use super::calibration::time_grid;
 use super::calibration::validate;
+use crate::QuantError;
 
 mod mesh;
 mod solver;
@@ -178,30 +177,48 @@ impl FokkerPlanckMethod {
     self
   }
 
-  fn validate(&self, params: &HestonSlvParams) -> Result<()> {
-    if self.log_spot_nodes < 3 || self.variance_nodes < 3 {
-      bail!("the Fokker–Planck mesh needs at least three nodes per axis");
+  fn validate(&self, params: &HestonSlvParams) -> Result<(), QuantError> {
+    let (nx, nv) = (self.log_spot_nodes, self.variance_nodes);
+    if nx < 3 || nv < 3 {
+      return Err(QuantError::invalid(
+        "Fokker–Planck mesh",
+        format!("needs at least three nodes per axis, got {nx} log-spot and {nv} variance nodes"),
+      ));
     }
-    if self.steps_per_year == 0 || self.inner_iterations == 0 {
-      bail!("steps_per_year and inner_iterations must be positive");
+    let (steps, inner) = (self.steps_per_year, self.inner_iterations);
+    if steps == 0 || inner == 0 {
+      return Err(QuantError::invalid(
+        "steps_per_year and inner_iterations",
+        format!("must be positive, got {steps} and {inner}"),
+      ));
     }
     if !(self.theta.is_finite() && self.theta > 0.0) {
-      bail!("theta must be finite and positive, got {}", self.theta);
+      return Err(QuantError::invalid(
+        "theta",
+        format!("must be finite and positive, got {}", self.theta),
+      ));
     }
-    if !(self.x_stretch.is_finite() && self.x_stretch > 0.0)
-      || !(self.v_stretch.is_finite() && self.v_stretch > 0.0)
-    {
-      bail!("the mesh stretches must be finite and positive");
+    let (x_stretch, v_stretch) = (self.x_stretch, self.v_stretch);
+    if !(x_stretch.is_finite() && x_stretch > 0.0) || !(v_stretch.is_finite() && v_stretch > 0.0) {
+      return Err(QuantError::invalid(
+        "mesh stretches",
+        format!(
+          "must be finite and positive, got x_stretch = {x_stretch}, v_stretch = {v_stretch}"
+        ),
+      ));
     }
-    if self
-      .x_half_width
-      .is_some_and(|w| !(w.is_finite() && w > 0.0))
-    {
-      bail!("x_half_width must be finite and positive");
+    if let Some(w) = self.x_half_width.filter(|w| !(w.is_finite() && *w > 0.0)) {
+      return Err(QuantError::invalid(
+        "x_half_width",
+        format!("must be finite and positive, got {w}"),
+      ));
     }
     let v_scale = params.v0.max(params.theta);
-    if self.v_max.is_some_and(|v| !(v.is_finite() && v > v_scale)) {
-      bail!("v_max must be finite and above both v0 and theta");
+    if let Some(v) = self.v_max.filter(|v| !(v.is_finite() && *v > v_scale)) {
+      return Err(QuantError::invalid(
+        "v_max",
+        format!("must be finite and above both v0 and theta ({v_scale}), got {v}"),
+      ));
     }
     Ok(())
   }
@@ -306,7 +323,7 @@ pub fn calibrate_leverage_fokker_planck(
   local_vol: &Grid2D<f64>,
   snapshot_maturities: &[f64],
   method: &FokkerPlanckMethod,
-) -> Result<FokkerPlanckCalibration> {
+) -> Result<FokkerPlanckCalibration, QuantError> {
   validate(params, s0, r, q, local_vol, snapshot_maturities)?;
   method.validate(params)?;
   let mesh = method.mesh(params, s0);
@@ -370,7 +387,7 @@ pub fn heston_slv_density(
   leverage: &Fn2D<f64>,
   snapshot_maturities: &[f64],
   method: &FokkerPlanckMethod,
-) -> Result<FokkerPlanckDensity> {
+) -> Result<FokkerPlanckDensity, QuantError> {
   let unit = Grid2D::new(
     Array1::from_vec(vec![0.0]),
     Array1::from_vec(vec![1.0]),
@@ -406,7 +423,7 @@ fn march(
   method: &FokkerPlanckMethod,
   first_row: Vec<f64>,
   mut source: Source<'_>,
-) -> Result<(Vec<(f64, Vec<f64>)>, FokkerPlanckDensity)> {
+) -> Result<(Vec<(f64, Vec<f64>)>, FokkerPlanckDensity), QuantError> {
   let (rho, xi, kappa, theta) = (params.rho, params.sigma_mixed(), params.kappa, params.theta);
   let attainable = 2.0 * kappa * theta < xi * xi;
   let along_v = Direction::along_v(mesh, kappa, theta, xi);

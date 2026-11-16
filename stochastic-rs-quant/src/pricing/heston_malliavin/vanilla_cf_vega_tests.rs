@@ -1,4 +1,3 @@
-use super::HestonMalliavinError;
 use super::HestonModel;
 use super::HestonVanillaCfVegaConfig;
 use super::HestonVanillaCfVegaMethod;
@@ -6,6 +5,7 @@ use super::VanillaLeg;
 use super::VanillaPortfolio;
 use super::heston_vanilla_portfolio_cf_initial_variance_vega;
 use crate::OptionType;
+use crate::QuantError;
 
 fn high_vol_of_vol_non_feller_model() -> HestonModel {
   HestonModel {
@@ -99,7 +99,10 @@ fn cf_helper_rejects_zero_vol_of_vol_instead_of_dividing_by_zero() {
   .unwrap_err();
   assert_eq!(
     error,
-    HestonMalliavinError::InvalidInput("Heston CF vega requires positive vol_of_vol")
+    QuantError::InvalidInput {
+      what: "Heston Malliavin input",
+      reason: "Heston CF vega requires positive vol_of_vol, got 0".to_string(),
+    }
   );
 }
 

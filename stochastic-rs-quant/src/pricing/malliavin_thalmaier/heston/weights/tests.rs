@@ -1,6 +1,7 @@
 use ndarray::array;
 
 use super::*;
+use crate::QuantError;
 
 #[test]
 fn product_rule_adds_the_off_diagonal_weight_correction() {
@@ -105,6 +106,8 @@ fn paths_with_stochastic_leverage_reject_conditional_weights() {
     )
     .unwrap_err();
 
+  assert!(matches!(covariance_error, QuantError::Unsupported { .. }));
   assert!(covariance_error.to_string().contains("stochastic leverage"));
+  assert!(matches!(error, QuantError::Unsupported { .. }));
   assert!(error.to_string().contains("price-noise independence"));
 }

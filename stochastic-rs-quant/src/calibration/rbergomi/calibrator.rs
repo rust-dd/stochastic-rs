@@ -8,6 +8,7 @@ use super::params::RBergomiMarketSlice;
 use super::params::RBergomiParams;
 use super::result::RBergomiCalibrationResult;
 use super::simulation::simulate_rbergomi_terminal_samples;
+use crate::QuantError;
 
 #[derive(Clone)]
 pub struct RBergomiCalibrator {
@@ -40,50 +41,47 @@ impl RBergomiCalibrator {
     mut market_slices: Vec<RBergomiMarketSlice>,
     config: RBergomiCalibrationConfig,
     record_history: bool,
-  ) -> anyhow::Result<Self> {
+  ) -> Result<Self, QuantError> {
     if !(s.is_finite() && s > 0.0) {
-      anyhow::bail!("s must be finite and positive, got {s}");
+      return Err(QuantError::invalid(
+        "s",
+        format!("must be finite and positive, got {s}"),
+      ));
     }
     if !r.is_finite() {
-      anyhow::bail!("r must be finite, got {r}");
+      return Err(QuantError::invalid("r", format!("must be finite, got {r}")));
     }
-    if config.paths == 0 {
-      anyhow::bail!("config.paths must be > 0");
-    }
-    if config.steps_per_year == 0 {
-      anyhow::bail!("config.steps_per_year must be > 0");
-    }
-    if config.msoe_terms == 0 {
-      anyhow::bail!("config.msoe_terms must be > 0");
-    }
-    if config.max_iters == 0 {
-      anyhow::bail!("config.max_iters must be > 0");
+    for (what, count) in [
+      ("config.paths", config.paths),
+      ("config.steps_per_year", config.steps_per_year),
+      ("config.msoe_terms", config.msoe_terms),
+      ("config.max_iters", config.max_iters),
+    ] {
+      if count == 0 {
+        return Err(QuantError::invalid(what, "must be > 0, got 0"));
+      }
     }
     if !(config.learning_rate.is_finite() && config.learning_rate > 0.0) {
-      anyhow::bail!(
-        "config.learning_rate must be finite and > 0, got {}",
-        config.learning_rate
-      );
+      return Err(QuantError::invalid(
+        "config.learning_rate",
+        format!("must be finite and > 0, got {}", config.learning_rate),
+      ));
     }
     if !(config.finite_diff_eps.is_finite() && config.finite_diff_eps > 0.0) {
-      anyhow::bail!(
-        "config.finite_diff_eps must be finite and > 0, got {}",
-        config.finite_diff_eps
-      );
+      return Err(QuantError::invalid(
+        "config.finite_diff_eps",
+        format!("must be finite and > 0, got {}", config.finite_diff_eps),
+      ));
     }
     if !(config.improvement_tol.is_finite() && config.improvement_tol >= 0.0) {
-      anyhow::bail!(
-        "config.improvement_tol must be finite and >= 0, got {}",
-        config.improvement_tol
-      );
+      return Err(QuantError::invalid(
+        "config.improvement_tol",
+        format!("must be finite and >= 0, got {}", config.improvement_tol),
+      ));
     }
-    params
-      .validate()
-      .map_err(|e| anyhow::anyhow!("invalid initial rBergomi params: {e}"))?;
-    for (idx, slice) in market_slices.iter().enumerate() {
-      slice
-        .validate()
-        .map_err(|e| anyhow::anyhow!("invalid market slice at index {idx}: {e}"))?;
+    params.validate()?;
+    for (index, slice) in market_slices.iter().enumerate() {
+      slice.validate(index)?;
     }
     market_slices.sort_by(|a, b| a.tau.total_cmp(&b.tau));
 
@@ -111,9 +109,9 @@ impl RBergomiCalibrator {
 
   /// Falliable variant of [`Self::with_dividend_yield`]. Returns an error
   /// when `q` is non-finite (NaN / ±∞).
-  pub fn try_with_dividend_yield(mut self, q: f64) -> anyhow::Result<Self> {
+  pub fn try_with_dividend_yield(mut self, q: f64) -> Result<Self, QuantError> {
     if !q.is_finite() {
-      anyhow::bail!("q must be finite, got {q}");
+      return Err(QuantError::invalid("q", format!("must be finite, got {q}")));
     }
     self.q = q;
     Ok(self)
@@ -354,7 +352,7 @@ impl crate::traits::Calibrator for RBergomiCalibrator {
   type InitialGuess = RBergomiParams;
   type Params = RBergomiParams;
   type Output = RBergomiCalibrationResult;
-  type Error = anyhow::Error;
+  type Error = QuantError;
 
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();

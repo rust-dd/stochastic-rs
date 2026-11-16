@@ -25,6 +25,7 @@ pub mod irs;
 
 use ndarray::Array2;
 
+use crate::QuantError;
 use crate::credit::survival_curve::SurvivalCurve;
 use crate::curves::DiscountCurve;
 use crate::traits::RealExt;
@@ -55,26 +56,64 @@ impl ExposureProfile {
   }
 
   /// Reduces finite mark-to-market values to an exposure profile.
-  pub fn try_from_mtm(mtm: &Array2<f64>, times: Vec<f64>, quantile: f64) -> anyhow::Result<Self> {
-    anyhow::ensure!(
-      mtm.ncols() == times.len(),
-      "one MtM column per exposure date"
-    );
-    anyhow::ensure!(mtm.nrows() > 0, "the MtM matrix needs at least one path");
-    anyhow::ensure!(
-      (0.0..=1.0).contains(&quantile),
-      "quantile must lie in [0, 1]"
-    );
-    anyhow::ensure!(
-      !times.is_empty()
-        && times.iter().all(|t| t.is_finite() && *t > 0.0)
-        && times.windows(2).all(|w| w[0] < w[1]),
-      "exposure dates must be finite, positive and increasing"
-    );
-    anyhow::ensure!(
-      mtm.iter().all(|v| v.is_finite()),
-      "MtM values must be finite"
-    );
+  pub fn try_from_mtm(
+    mtm: &Array2<f64>,
+    times: Vec<f64>,
+    quantile: f64,
+  ) -> Result<Self, QuantError> {
+    if mtm.ncols() != times.len() {
+      return Err(QuantError::DimensionMismatch {
+        what: "MtM columns, one per exposure date",
+        expected: times.len(),
+        got: mtm.ncols(),
+      });
+    }
+    if mtm.nrows() == 0 {
+      return Err(QuantError::InsufficientData {
+        what: "the exposure profile (MtM paths)",
+        needed: 1,
+        got: 0,
+      });
+    }
+    if !(0.0..=1.0).contains(&quantile) {
+      return Err(QuantError::invalid(
+        "quantile",
+        format!("must lie in [0, 1], got {quantile}"),
+      ));
+    }
+    if times.is_empty() {
+      return Err(QuantError::InsufficientData {
+        what: "the exposure profile (dates)",
+        needed: 1,
+        got: 0,
+      });
+    }
+    if let Some((i, t)) = times
+      .iter()
+      .enumerate()
+      .find(|(_, t)| !(t.is_finite() && **t > 0.0))
+    {
+      return Err(QuantError::invalid(
+        "exposure dates",
+        format!("date {i} must be finite and positive, got {t}"),
+      ));
+    }
+    if let Some(i) = times.windows(2).position(|w| w[0] >= w[1]) {
+      return Err(QuantError::invalid(
+        "exposure dates",
+        format!(
+          "must be strictly increasing, got date {i} = {} before {}",
+          times[i],
+          times[i + 1]
+        ),
+      ));
+    }
+    if let Some(((path, date), v)) = mtm.indexed_iter().find(|(_, v)| !v.is_finite()) {
+      return Err(QuantError::invalid(
+        "MtM matrix",
+        format!("MtM values must be finite, got {v} at path {path}, date {date}"),
+      ));
+    }
     let paths = mtm.nrows() as f64;
     let mut epe = Vec::with_capacity(times.len());
     let mut ene = Vec::with_capacity(times.len());

@@ -1,5 +1,6 @@
 use super::super::heston::MultiHestonParams;
 use super::payoff::MtPayoff;
+use crate::QuantError;
 use crate::traits::FloatExt;
 
 /// Malliavin–Thalmaier Greeks engine for the supported conditional model.
@@ -46,13 +47,16 @@ impl<T: FloatExt> MtGreeks<T> {
   }
 
   /// Fallible constructor with model and numerical-parameter validation.
-  pub fn try_new(params: MultiHestonParams<T>, h: T, n_paths: usize) -> anyhow::Result<Self> {
+  pub fn try_new(params: MultiHestonParams<T>, h: T, n_paths: usize) -> Result<Self, QuantError> {
     params.validate()?;
     if !num_traits::Float::is_finite(h) || h <= T::zero() {
-      anyhow::bail!("h must be finite and positive");
+      return Err(QuantError::invalid(
+        "h",
+        format!("must be finite and positive, got {h:?}"),
+      ));
     }
     if n_paths == 0 {
-      anyhow::bail!("n_paths must be positive");
+      return Err(QuantError::invalid("n_paths", "must be positive, got 0"));
     }
     Ok(Self { params, h, n_paths })
   }

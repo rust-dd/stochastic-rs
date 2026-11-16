@@ -11,6 +11,7 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
 
+use crate::QuantError;
 use crate::linalg::svd_thin;
 use crate::traits::RealExt;
 
@@ -41,18 +42,25 @@ pub fn pca_decompose<T: RealExt>(returns: ArrayView2<T>, k: usize) -> PcaResult 
     .expect("pca_decompose: SVD failed; use try_pca_decompose for falliable variant")
 }
 
-/// Falliable variant of [`pca_decompose`]. Returns
-/// [`crate::factors::FactorsError::SvdFailed`] when the underlying SVD does
-/// not converge (typical cause: rank-deficient or non-finite input).
+/// [`pca_decompose`] with `InsufficientData` below two observations, `InvalidInput` without an
+/// asset, and `Numerical` when the SVD does not converge (rank-deficient or non-finite input).
 pub fn try_pca_decompose<T: RealExt>(
   returns: ArrayView2<T>,
   k: usize,
-) -> Result<PcaResult, crate::factors::FactorsError> {
+) -> Result<PcaResult, QuantError> {
   let (t, p) = returns.dim();
-  if t < 2 || p < 1 {
-    return Err(crate::factors::FactorsError::Numerical(format!(
-      "need at least two observations and one asset; got ({t}, {p})"
-    )));
+  if t < 2 {
+    return Err(QuantError::InsufficientData {
+      what: "a PCA decomposition",
+      needed: 2,
+      got: t,
+    });
+  }
+  if p < 1 {
+    return Err(QuantError::invalid(
+      "returns",
+      "need at least one asset column, got none",
+    ));
   }
   let mut means = Array1::<f64>::zeros(p);
   let mut centred = Array2::<f64>::zeros((t, p));
@@ -71,8 +79,10 @@ pub fn try_pca_decompose<T: RealExt>(
       centred[[i, j]] = returns[[i, j]].to_f64().unwrap_or_default() - m;
     }
   }
-  let (u, sigma, vt) = svd_thin(&centred)
-    .ok_or_else(|| crate::factors::FactorsError::SvdFailed("SVD did not converge".into()))?;
+  let (u, sigma, vt) = svd_thin(&centred).ok_or_else(|| QuantError::Numerical {
+    what: "svd",
+    reason: "the decomposition of the centred returns did not converge".to_string(),
+  })?;
   let v = vt.t().to_owned();
   let r = sigma.len();
   let kk = if k == 0 { r } else { k.min(r) };

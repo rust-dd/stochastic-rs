@@ -3,6 +3,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs_quant::QuantError;
 use stochastic_rs_quant::curves::Compounding;
 use stochastic_rs_quant::curves::DiscountCurve;
 use stochastic_rs_quant::curves::InterpolationMethod;
@@ -12,6 +13,7 @@ use stochastic_rs_quant::portfolio::optimizers::empirical_cvar;
 use stochastic_rs_quant::pricing::sabr::SabrParams;
 use stochastic_rs_quant::pricing::sabr::hagan_implied_vol;
 use stochastic_rs_quant::vol_surface::implied::ImpliedVolSurface;
+use stochastic_rs_quant::vol_surface::implied::OptionQuote;
 
 fn flat_curve() -> DiscountCurve<f64> {
   DiscountCurve::from_zero_rates(
@@ -82,4 +84,58 @@ fn an_unsorted_maturity_grid_is_rejected() {
 fn a_price_grid_shares_the_ascending_axes_check() {
   let prices = Array2::from_elem((1, 2), 5.0);
   let _ = ImpliedVolSurface::from_prices(vec![110.0, 90.0], vec![1.0], vec![100.0], &prices, true);
+}
+
+#[test]
+fn quant_errors_are_one_type_with_a_readable_display() {
+  fn assert_send_sync<T: Send + Sync + std::error::Error + Clone>() {}
+  assert_send_sync::<QuantError>();
+  let e = QuantError::InvalidQuote {
+    index: 3,
+    reason: "strike is NaN".to_string(),
+  };
+  assert_eq!(e.to_string(), "quote 3 cannot be used: strike is NaN");
+  let e = QuantError::InsufficientData {
+    what: "optimal cutting frequency",
+    needed: 8,
+    got: 5,
+  };
+  assert_eq!(
+    e.to_string(),
+    "optimal cutting frequency needs 8 observations, got 5"
+  );
+}
+
+#[test]
+fn a_nan_quote_is_an_error_not_a_panic() {
+  let quotes = [
+    OptionQuote {
+      strike: 100.0,
+      tau: 1.0,
+      price: 8.0,
+      is_call: true,
+    },
+    OptionQuote {
+      strike: f64::NAN,
+      tau: 1.0,
+      price: 8.0,
+      is_call: true,
+    },
+  ];
+  let err = ImpliedVolSurface::try_from_quotes(&quotes, &[(1.0, 102.0)]).unwrap_err();
+  assert!(
+    matches!(err, QuantError::InvalidQuote { index: 1, .. }),
+    "{err}"
+  );
+  let missing = ImpliedVolSurface::try_from_quotes(&quotes[..1], &[(0.5, 101.0)]).unwrap_err();
+  assert!(
+    matches!(
+      missing,
+      QuantError::MissingInput {
+        what: "forward",
+        ..
+      }
+    ),
+    "{missing}"
+  );
 }

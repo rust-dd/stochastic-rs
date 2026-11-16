@@ -29,7 +29,6 @@ python = [
 viz = ["dep:plotly"]
 
 [dependencies]
-anyhow = { workspace = true }
 basin = { workspace = true, features = ["ndarray_v0_17"] }
 chrono = { workspace = true }
 faer = { workspace = true }

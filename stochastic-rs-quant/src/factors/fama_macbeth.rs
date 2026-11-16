@@ -15,6 +15,7 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
 
+use crate::QuantError;
 use crate::linalg::lstsq;
 
 /// Result of a Fama-MacBeth two-pass regression.
@@ -33,35 +34,34 @@ pub struct FamaMacBethResult {
   pub betas: Array2<f64>,
 }
 
-/// Run a Fama-MacBeth regression. `returns[t, i]` is asset `i`'s return at
-/// time `t`; `factors[t, k]` is factor `k`'s realisation at time `t`.
-///
-/// Panics if either OLS pass is rank-deficient. Use [`try_fama_macbeth`] for
-/// a falliable variant returning [`crate::factors::FactorsError`].
+/// Fama-MacBeth risk premia from `returns[t, i]` (asset `i`) and `factors[t, k]` (factor `k`) at
+/// time `t`; panics where [`try_fama_macbeth`] errs.
 pub fn fama_macbeth(returns: ArrayView2<f64>, factors: ArrayView2<f64>) -> FamaMacBethResult {
   try_fama_macbeth(returns, factors)
     .expect("fama_macbeth: OLS pass failed; use try_fama_macbeth for falliable variant")
 }
 
-/// Falliable variant of [`fama_macbeth`]. Returns
-/// [`crate::factors::FactorsError::OlsFailed`] when either the first-pass
-/// time-series OLS or the second-pass cross-sectional OLS is rank-deficient.
+/// [`fama_macbeth`] with `DimensionMismatch` when `returns` and `factors` differ in rows and
+/// `InsufficientData` below `k + 2` observations.
 pub fn try_fama_macbeth(
   returns: ArrayView2<f64>,
   factors: ArrayView2<f64>,
-) -> Result<FamaMacBethResult, crate::factors::FactorsError> {
+) -> Result<FamaMacBethResult, QuantError> {
   let (t, n) = returns.dim();
   let (tt, k) = factors.dim();
   if t != tt {
-    return Err(crate::factors::FactorsError::Numerical(format!(
-      "returns rows ({t}) must equal factors rows ({tt})"
-    )));
+    return Err(QuantError::DimensionMismatch {
+      what: "factor rows, one per return row",
+      expected: t,
+      got: tt,
+    });
   }
   if t < k + 2 {
-    return Err(crate::factors::FactorsError::Numerical(format!(
-      "need at least k+2 = {} observations, got {t}",
-      k + 2
-    )));
+    return Err(QuantError::InsufficientData {
+      what: "a Fama-MacBeth regression",
+      needed: k + 2,
+      got: t,
+    });
   }
   let mut design_ts = Array2::<f64>::zeros((t, k + 1));
   for r in 0..t {

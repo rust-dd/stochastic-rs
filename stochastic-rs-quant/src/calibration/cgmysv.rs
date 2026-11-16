@@ -21,6 +21,7 @@ use super::CalibrationHistory;
 pub use super::levy::MarketSlice;
 use crate::CalibrationLossScore;
 use crate::LossMetric;
+use crate::QuantError;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::LmOptions;
 use crate::calibration::least_squares::minimize;
@@ -71,7 +72,7 @@ impl crate::traits::Calibrator for CgmysvCalibrator {
   type InitialGuess = Vec<f64>;
   type Params = crate::pricing::cgmysv::CgmysvParams;
   type Output = CgmysvCalibrationResult;
-  type Error = anyhow::Error;
+  type Error = QuantError;
 
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     Ok(CgmysvCalibrator::calibrate(self, initial))

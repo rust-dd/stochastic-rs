@@ -1,5 +1,6 @@
 use ndarray::Array1;
 use stochastic_rs::prelude::OptionType;
+use stochastic_rs::quant::QuantError;
 use stochastic_rs::quant::calibration::bsm::BsmCalibrator;
 use stochastic_rs::quant::calibration::bsm::BsmParams;
 use stochastic_rs::quant::calibration::heston::HestonCalibrator;
@@ -31,7 +32,7 @@ pub struct Case {
 
 fn calibration<C>(name: &'static str, calibrator: C, max_rmse: f64) -> Case
 where
-  C: Calibrator<Error = anyhow::Error> + 'static,
+  C: Calibrator<Error = QuantError> + 'static,
 {
   Case {
     name,

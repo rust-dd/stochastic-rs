@@ -4,6 +4,7 @@ use ndarray::Array1;
 use num_complex::Complex;
 
 use super::FmVol;
+use crate::QuantError;
 use crate::traits::RealExt;
 
 impl<T: RealExt> FmVol<T> {
@@ -33,7 +34,7 @@ impl<T: RealExt> FmVol<T> {
   }
 
   /// Fallible variant of [`Self::integrated_covariance`].
-  pub fn try_integrated_covariance(&self, other: &Self) -> anyhow::Result<T> {
+  pub fn try_integrated_covariance(&self, other: &Self) -> Result<T, QuantError> {
     self.validate_compatible_period(other)?;
     let big_n = self.n_freq.min(other.n_freq);
     let big_n_plus_1 = T::from_usize_(big_n + 1);
@@ -59,7 +60,7 @@ impl<T: RealExt> FmVol<T> {
   }
 
   /// Fallible variant of [`Self::integrated_leverage`].
-  pub fn try_integrated_leverage(&self, m_freq: Option<usize>) -> anyhow::Result<T> {
+  pub fn try_integrated_leverage(&self, m_freq: Option<usize>) -> Result<T, QuantError> {
     let big_m = self.resolve_m(m_freq);
     self.validate_m_window(big_m)?;
     let const_ = self.const_();
@@ -90,7 +91,7 @@ impl<T: RealExt> FmVol<T> {
   }
 
   /// Fallible variant of [`Self::integrated_volvol`].
-  pub fn try_integrated_volvol(&self, m_freq: Option<usize>) -> anyhow::Result<T> {
+  pub fn try_integrated_volvol(&self, m_freq: Option<usize>) -> Result<T, QuantError> {
     let big_m = self.resolve_m_volvol(m_freq);
     self.validate_m_window(big_m)?;
     let const_ = self.const_();
@@ -128,7 +129,10 @@ impl<T: RealExt> FmVol<T> {
   }
 
   /// Fallible variant of [`Self::integrated_volvol_bias_corrected`].
-  pub fn try_integrated_volvol_bias_corrected(&self, m_freq: Option<usize>) -> anyhow::Result<T> {
+  pub fn try_integrated_volvol_bias_corrected(
+    &self,
+    m_freq: Option<usize>,
+  ) -> Result<T, QuantError> {
     let big_m = self.resolve_m_volvol_bc(m_freq);
     self.validate_m_window(big_m)?;
     let coefficient = self.bias_corrected_volvol_coefficients(big_m, 0)[0];
@@ -144,7 +148,7 @@ impl<T: RealExt> FmVol<T> {
   }
 
   /// Fallible variant of [`Self::integrated_quarticity`].
-  pub fn try_integrated_quarticity(&self, m_freq: Option<usize>) -> anyhow::Result<T> {
+  pub fn try_integrated_quarticity(&self, m_freq: Option<usize>) -> Result<T, QuantError> {
     let big_m = self.resolve_m(m_freq);
     self.validate_m_window(big_m)?;
     let c_v = self.vol_coeffs(big_m);

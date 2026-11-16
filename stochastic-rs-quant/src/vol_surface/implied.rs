@@ -15,44 +15,7 @@ use implied_vol::DefaultSpecialFn;
 use implied_vol::ImpliedBlackVolatility;
 use ndarray::Array2;
 
-/// Error returned by the falliable [`ImpliedVolSurface`] constructors.
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub enum ImpliedSurfaceError {
-  /// A quote's maturity has no matching forward in the supplied
-  /// `forwards` slice. Add a `(tau, forward)` entry to `forwards` for
-  /// every distinct quote maturity.
-  MissingForward { tau: f64 },
-  /// `flat_ivs.len()` did not equal `N_T * N_K`.
-  FlatLengthMismatch {
-    got: usize,
-    nt: usize,
-    nk: usize,
-    expected: usize,
-  },
-}
-
-impl std::fmt::Display for ImpliedSurfaceError {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Self::MissingForward { tau } => write!(
-        f,
-        "missing forward for tau={tau}; supply (tau, forward) for every distinct quote maturity"
-      ),
-      Self::FlatLengthMismatch {
-        got,
-        nt,
-        nk,
-        expected,
-      } => write!(
-        f,
-        "flat_ivs length {got} must equal N_T * N_K = {nt} * {nk} = {expected}"
-      ),
-    }
-  }
-}
-
-impl std::error::Error for ImpliedSurfaceError {}
+use crate::QuantError;
 
 /// Market data for a single option quote.
 #[derive(Clone, Debug)]
@@ -232,35 +195,40 @@ impl ImpliedVolSurface {
     Self::from_iv_grid(strikes, maturities, forwards, ivs)
   }
 
-  /// Build from a flat list of [`OptionQuote`]s.
-  ///
-  /// Quotes are sorted and grouped by maturity, then by strike.
-  /// Forward prices are required for each unique maturity.
-  ///
-  /// Panics on missing forwards. Use [`Self::try_from_quotes`] for a
-  /// falliable variant returning [`ImpliedSurfaceError`].
-  #[must_use]
-  pub fn from_quotes(quotes: &[OptionQuote], forwards: &[(f64, f64)]) -> Self {
-    Self::try_from_quotes(quotes, forwards)
-      .expect("from_quotes: forwards missing — use try_from_quotes for the Result variant")
-  }
-
-  /// Falliable variant of [`Self::from_quotes`] returning
-  /// [`ImpliedSurfaceError::MissingForward`] when a quote's maturity
-  /// has no matching forward in `forwards`.
-  ///
-  /// A cell with no quote at that maturity and strike, or whose price does not
-  /// invert to a positive finite Black volatility, is left NaN.
+  /// A surface from quotes grouped by maturity, then strike; a cell with no quote or root is NaN;
+  /// `InvalidQuote` for a strike, tau or price out of domain; `MissingInput` for a missing forward.
   pub fn try_from_quotes(
     quotes: &[OptionQuote],
     forwards: &[(f64, f64)],
-  ) -> Result<Self, ImpliedSurfaceError> {
+  ) -> Result<Self, QuantError> {
+    for (index, q) in quotes.iter().enumerate() {
+      let reason = if !(q.strike.is_finite() && q.strike > 0.0) {
+        format!(
+          "strike must satisfy `strike.is_finite() && strike > 0.0`, got {}",
+          q.strike
+        )
+      } else if !(q.tau.is_finite() && q.tau > 0.0) {
+        format!(
+          "tau must satisfy `tau.is_finite() && tau > 0.0`, got {}",
+          q.tau
+        )
+      } else if !(q.price.is_finite() && q.price >= 0.0) {
+        format!(
+          "price must satisfy `price.is_finite() && price >= 0.0`, got {}",
+          q.price
+        )
+      } else {
+        continue;
+      };
+      return Err(QuantError::InvalidQuote { index, reason });
+    }
+
     let mut tau_set: Vec<f64> = quotes.iter().map(|q| q.tau).collect();
-    tau_set.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    tau_set.sort_by(f64::total_cmp);
     tau_set.dedup_by(|a, b| (*a - *b).abs() < 1e-12);
 
     let mut strike_set: Vec<f64> = quotes.iter().map(|q| q.strike).collect();
-    strike_set.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    strike_set.sort_by(f64::total_cmp);
     strike_set.dedup_by(|a, b| (*a - *b).abs() < 1e-12);
 
     let fwd_map: std::collections::HashMap<u64, f64> =
@@ -276,7 +244,10 @@ impl ImpliedVolSurface {
         fwd_map
           .get(&t.to_bits())
           .copied()
-          .ok_or(ImpliedSurfaceError::MissingForward { tau: *t })
+          .ok_or_else(|| QuantError::MissingInput {
+            what: "forward",
+            detail: format!("tau = {t}"),
+          })
       })
       .collect::<Result<_, _>>()?;
 
@@ -345,14 +316,16 @@ impl ImpliedVolSurface {
     symbol: &str,
     r: f64,
     q: f64,
-  ) -> anyhow::Result<Self> {
+  ) -> Result<Self, QuantError> {
     let chain = provider.option_chain(symbol)?;
     let (quotes, forwards) = chain.to_surface_inputs(r, q);
     if quotes.is_empty() {
-      anyhow::bail!("from_provider: option chain for '{symbol}' yielded no usable quotes");
+      return Err(QuantError::MarketData {
+        symbol: symbol.to_string(),
+        reason: "the option chain yielded no usable quotes".to_string(),
+      });
     }
     Self::try_from_quotes(&quotes, &forwards)
-      .map_err(|e| anyhow::anyhow!("from_provider: surface build failed: {e}"))
   }
 
   /// Extract a single smile slice (implied vols for one maturity).

@@ -85,15 +85,15 @@ fn sabr_calibrate_rejects_nonpositive_or_nan_spot_and_strike() {
   for bad_s in [0.0, -50.0, f64::NAN] {
     let err = calibrator(bad_s, 100.0).calibrate(None).unwrap_err();
     assert!(
-      err.to_string().contains("s[0]"),
-      "s = {bad_s}: unexpected message {err}"
+      matches!(&err, QuantError::InvalidQuote { index: 0, reason } if reason.contains("s[0]")),
+      "s = {bad_s}: unexpected error {err}"
     );
   }
   for bad_k in [0.0, -10.0, f64::NAN] {
     let err = calibrator(100.0, bad_k).calibrate(None).unwrap_err();
     assert!(
-      err.to_string().contains("k[0]"),
-      "k = {bad_k}: unexpected message {err}"
+      matches!(&err, QuantError::InvalidQuote { index: 0, reason } if reason.contains("k[0]")),
+      "k = {bad_k}: unexpected error {err}"
     );
   }
 }

@@ -1,10 +1,10 @@
 use super::HestonInitialVarianceVegaStability;
 use super::HestonMalliavinConfig;
-use super::HestonMalliavinError;
 use super::HestonMalliavinEstimator;
 use super::HestonModel;
 use super::VanillaPortfolio;
 use crate::OptionType;
+use crate::QuantError;
 use crate::pricing::bsm::BsmCoc;
 use crate::pricing::bsm::BsmPricer;
 use crate::traits::ModelPricer;
@@ -81,12 +81,17 @@ fn relative_floor_fixes_an_under_sampled_negative_vega() {
     legacy.initial_variance_vega_diagnostics.stability,
     HestonInitialVarianceVegaStability::SamplingUnresolved
   );
-  assert_eq!(
-    HestonMalliavinEstimator::new(model, legacy_config)
-      .unwrap()
-      .estimate_requiring_stable_initial_variance_vega(&payoff)
-      .unwrap_err(),
-    HestonMalliavinError::UnstableInitialVarianceVega
+  let error = HestonMalliavinEstimator::new(model, legacy_config)
+    .unwrap()
+    .estimate_requiring_stable_initial_variance_vega(&payoff)
+    .unwrap_err();
+  assert!(
+    matches!(
+      &error,
+      QuantError::Numerical { what: "the initial-variance vega", reason }
+        if reason.ends_with("SamplingUnresolved")
+    ),
+    "{error}"
   );
   HestonMalliavinEstimator::new(model, robust_config)
     .unwrap()
