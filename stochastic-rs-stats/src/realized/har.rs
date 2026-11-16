@@ -43,7 +43,7 @@ pub struct HarFit {
   pub rss: f64,
   /// Sample size used by the regression.
   pub nobs: usize,
-  /// Coefficient of determination on the training window.
+  /// Coefficient of determination on the training window; NaN for a constant target (`0/0`).
   pub r_squared: f64,
 }
 
@@ -56,11 +56,11 @@ pub struct HarRv {
 }
 
 impl HarRv {
-  /// HAR-RV by least squares on a daily realized-variance history; `Err` below `MONTHLY_LAGS + 2`
-  /// observations, on a non-finite one or a constant series, whose lags are collinear.
+  /// HAR-RV by least squares on a daily realized-variance history; `Err` below `MONTHLY_LAGS + 6`
+  /// observations (more rows than the four regressors), on a non-finite one or a constant series.
   pub fn fit<T: FloatExt>(daily_rv: ArrayView1<T>) -> Result<Self, StatsError> {
     let rv = as_slice_or_copy(daily_rv);
-    validate(&rv, MONTHLY_LAGS + 2)?;
+    validate(&rv, MONTHLY_LAGS + 6)?;
     reject_constant(&rv, "constant series")?;
     let (x, y) = build_design_matrix(daily_rv);
     let beta = ols(&x, &y);
@@ -68,7 +68,12 @@ impl HarRv {
     let rss: f64 = resid.iter().map(|v| v * v).sum();
     let mean_y = y.iter().sum::<f64>() / y.len() as f64;
     let tss: f64 = y.iter().map(|v| (v - mean_y).powi(2)).sum();
-    let r_squared = if tss > 0.0 { 1.0 - rss / tss } else { 0.0 };
+    // Exact: a rounded mean can leave a constant target a positive `tss`.
+    let r_squared = if y.iter().all(|&v| v == y[0]) {
+      f64::NAN
+    } else {
+      1.0 - rss / tss
+    };
     Ok(Self {
       fit: HarFit {
         intercept: beta[0],
@@ -206,16 +211,18 @@ mod tests {
     assert!((f - expected).abs() < 1e-12);
   }
 
+  /// The regression rows must outnumber the four regressors.
   #[test]
   fn too_short_histories_are_insufficient_data() {
-    let rv = Array1::<f64>::linspace(0.01, 0.02, MONTHLY_LAGS + 1);
+    let rv = Array1::from_iter((0..MONTHLY_LAGS + 6).map(|t| 1.0 + 0.5 * (t as f64 * 0.7).sin()));
     assert_eq!(
-      HarRv::fit(rv.view()).unwrap_err(),
+      HarRv::fit(rv.slice(ndarray::s![..MONTHLY_LAGS + 5])).unwrap_err(),
       StatsError::InsufficientData {
-        needed: MONTHLY_LAGS + 2,
-        got: MONTHLY_LAGS + 1
+        needed: 28,
+        got: 27
       }
     );
+    assert_eq!(HarRv::fit(rv.view()).unwrap().fit.nobs, 5);
     let model = HarRv::fit(simulate_har_path(200, 0.0001, 0.4, 0.3, 0.2, 29).view()).unwrap();
     assert_eq!(
       model.forecast(rv.slice(ndarray::s![..5])).unwrap_err(),
@@ -224,5 +231,14 @@ mod tests {
         got: 5
       }
     );
+  }
+
+  /// `1 − RSS/TSS` is `0/0` when every target equals the first.
+  #[test]
+  fn r_squared_is_nan_for_a_constant_target() {
+    let mut rv =
+      Array1::from_iter((0..MONTHLY_LAGS + 8).map(|t| 1.0 + 0.5 * (t as f64 * 0.7).sin()));
+    rv.slice_mut(ndarray::s![MONTHLY_LAGS + 1..]).fill(0.75);
+    assert!(HarRv::fit(rv.view()).unwrap().fit.r_squared.is_nan());
   }
 }
