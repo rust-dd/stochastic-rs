@@ -52,10 +52,14 @@ pub fn two_scale_rv<T: FloatExt>(prices: ArrayView1<T>, k: usize) -> T {
   }
 }
 
-/// Multi-scale realized variance (Zhang 2006) over scales `1..=M`, `M = max(scales, 2)`, with the
-/// weights of the module doc; NaN below `M + 2` prices.
+/// Multi-scale realized variance (Zhang 2006) over scales `1..=scales` with the weights of the
+/// module doc; NaN below `scales + 2` prices, and panics unless `scales >= 2`.
 pub fn multi_scale_rv<T: FloatExt>(prices: ArrayView1<T>, scales: usize) -> T {
-  let m = scales.max(2);
+  assert!(
+    scales >= 2,
+    "scales must satisfy `scales >= 2`, got scales = {scales:?}"
+  );
+  let m = scales;
   if prices.len() < m.saturating_add(2) {
     return T::nan();
   }
@@ -150,5 +154,11 @@ mod tests {
     let rv: f64 = dy.iter().map(|v| v * v).sum();
     let msrv = multi_scale_rv(y.view(), 12);
     assert!((msrv - iv).abs() < (rv - iv).abs());
+  }
+
+  #[test]
+  #[should_panic(expected = "scales must satisfy `scales >= 2`, got scales = 1")]
+  fn a_single_scale_panics() {
+    let _ = multi_scale_rv(Array1::<f64>::linspace(1.0, 2.0, 50).view(), 1);
   }
 }

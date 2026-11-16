@@ -193,7 +193,7 @@ fn apply_window_in_place(data: &mut [f64], window: WindowFunction) -> f64 {
 }
 
 /// FFT periodogram of `signal`; `Err` below 4 points or on a non-finite one, and panics unless
-/// `sampling_rate` is finite and positive.
+/// `sampling_rate` is finite and positive and a given `nfft >= signal.len()`.
 pub fn periodogram_fft(
   signal: ArrayView1<f64>,
   cfg: PeriodogramConfig,
@@ -203,14 +203,17 @@ pub fn periodogram_fft(
     "sampling_rate must satisfy `sampling_rate.is_finite() && sampling_rate > 0.0`, got sampling_rate = {:?}",
     cfg.sampling_rate
   );
+  let n = signal.len();
+  if let Some(nfft) = cfg.nfft {
+    assert!(
+      nfft >= n,
+      "nfft must satisfy `nfft >= signal.len()`, got nfft = {nfft:?}, signal.len() = {n:?}"
+    );
+  }
   let signal = as_slice_or_copy(signal);
   validate(&signal, 4)?;
 
-  let n = signal.len();
-  let mut nfft = cfg.nfft.unwrap_or_else(|| n.next_power_of_two());
-  if nfft < n {
-    nfft = n;
-  }
+  let nfft = cfg.nfft.unwrap_or_else(|| n.next_power_of_two());
 
   let mut x = signal.to_vec();
   detrend_in_place(&mut x, cfg.detrend);
@@ -546,5 +549,17 @@ mod tests {
       has_eleven_year_peak,
       "expected a peak near 11 years, got peaks={peaks:?}"
     );
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "nfft must satisfy `nfft >= signal.len()`, got nfft = 8, signal.len() = 10"
+  )]
+  fn an_fft_shorter_than_the_signal_panics() {
+    let cfg = PeriodogramConfig {
+      nfft: Some(8),
+      ..PeriodogramConfig::default()
+    };
+    let _ = periodogram_fft(ndarray::Array1::<f64>::linspace(0.0, 1.0, 10).view(), cfg);
   }
 }
