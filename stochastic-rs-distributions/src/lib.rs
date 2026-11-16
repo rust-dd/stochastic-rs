@@ -10,6 +10,8 @@
 #[macro_use]
 mod macros;
 
+#[doc(hidden)]
+pub mod brent;
 #[cfg(doctest)]
 mod doctest_seals;
 mod float_impls;

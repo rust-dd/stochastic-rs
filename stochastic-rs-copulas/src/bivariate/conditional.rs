@@ -9,11 +9,11 @@ use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::Zip;
 use stochastic_rs_distributions::RealExt;
+use stochastic_rs_distributions::brent;
 use stochastic_rs_distributions::special::expm1_over;
 
 use crate::bivariate::BivariateFamily;
 use crate::error::CopulaError;
-use crate::optim::zero;
 
 /// Brent's absolute tolerance `t` for the numerical inverse on `[0, 1]`: the least positive `f64`, as his `zero` needs
 /// `t > 0`, so a root keeps its relative precision down to the subnormals.
@@ -298,17 +298,17 @@ pub(crate) fn numerical_quantile(y: f64, v: f64, ln_h: &impl Fn(f64, f64) -> f64
   let root = if y == 0.0 || ln_h(0.0) >= y.ln() {
     Some(0.0)
   } else if y > 0.5 {
-    zero(0.0, 1.0, ABSOLUTE_TOLERANCE, |u| {
+    brent::zero(0.0, 1.0, ABSOLUTE_TOLERANCE, |u| {
       (1.0 - y) + ln_h(u).exp_m1()
     })
   } else if y >= f64::MIN_POSITIVE {
-    zero(0.0, 1.0, ABSOLUTE_TOLERANCE, |u| ln_h(u).exp() - y)
+    brent::zero(0.0, 1.0, ABSOLUTE_TOLERANCE, |u| ln_h(u).exp() - y)
   } else {
     let (ln_y, least) = (y.ln(), f64::from_bits(1));
     if ln_h(least) >= ln_y {
       Some(0.0)
     } else {
-      zero(least.ln(), 0.0, ABSOLUTE_TOLERANCE, |t| {
+      brent::zero(least.ln(), 0.0, ABSOLUTE_TOLERANCE, |t| {
         ln_h(t.exp()) - ln_y
       })
       .map(f64::exp)

@@ -183,8 +183,8 @@ that diverged on positive correlations. The mandate:
 1. **Closed-form first.** Clayton: `θ = 2τ/(1-τ)`. Gumbel:
    `θ = 1/(1-τ)`. Cite the textbook formula in a doc comment.
 
-2. **Brent's method second**, when no closed form exists: the crate's
-   `crate::optim::zero`, Brent's own procedure (1973, §6). `Frank`'s
+2. **Brent's method second**, when no closed form exists:
+   `stochastic_rs_distributions::brent::zero`, Brent's own procedure (1973, §6). `Frank`'s
    shipped implementation is the pattern to copy:
 
    ```rust

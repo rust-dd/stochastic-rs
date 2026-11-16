@@ -12,6 +12,7 @@ use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::RealExt;
 use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::brent;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::bivariate::BivariateFamily;
@@ -23,7 +24,6 @@ use crate::bivariate::conditional::check_unit;
 use crate::bivariate::conditional::inside;
 use crate::correlation::kendall_tau_b;
 use crate::error::CopulaError;
-use crate::optim::zero;
 
 /// Upper- and lower-tail dependence $\lambda_L = \lim_{u\to0^+} C(u,u)/u$ and
 /// $\lambda_U = \lim_{u\to1^-} (1 - 2u + C(u,u))/(1 - u)$; every [`BivariateExt`] impl in this crate is `f64`-based.
@@ -247,7 +247,7 @@ pub(crate) fn invert_tau(
   hi: f64,
   t: f64,
 ) -> Result<f64, CopulaError> {
-  zero(lo, hi, t, residual).ok_or_else(|| {
+  brent::zero(lo, hi, t, residual).ok_or_else(|| {
     CopulaError::Numerical(format!("theta from tau has no root on [{lo:?}, {hi:?}]"))
   })
 }
@@ -320,7 +320,7 @@ fn numerical_inverse<C: BivariateExt + ?Sized>(
       continue;
     }
 
-    let root = zero(lo, 1.0, ABSOLUTE_TOLERANCE, &gap);
+    let root = brent::zero(lo, 1.0, ABSOLUTE_TOLERANCE, &gap);
     if let Some(e) = inner_err.borrow_mut().take() {
       return Err(e);
     }
