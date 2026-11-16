@@ -78,7 +78,8 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
     Fgn::new(hurst, n, t, Unseeded)
   }
 
-  /// Replace `hurst`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  /// Replace `hurst`; panics unless `0 ≤ hurst ≤ 1`.
+  /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     assert!(
       hurst.is_finite(),

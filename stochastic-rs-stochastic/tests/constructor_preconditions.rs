@@ -77,6 +77,9 @@ use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::GammaSu
 use stochastic_rs_stochastic::process::volterra::Volterra;
 use stochastic_rs_stochastic::process::volterra::VolterraKernelSpec;
 use stochastic_rs_stochastic::rough::rl_fbm::RlFBm;
+use stochastic_rs_stochastic::sde::NoiseModel;
+use stochastic_rs_stochastic::sde::Sde;
+use stochastic_rs_stochastic::sde::SdeMethod;
 use stochastic_rs_stochastic::sheet::fbs::Fbs;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::HestonPow;
@@ -119,6 +122,16 @@ fn correlated_brownian_motions_refuse_a_nan_correlation() {
   let _ = stochastic_correlated_bm(&array![f64::NAN, 0.1], None, &Unseeded);
 }
 
+fn solve_over(t0: f64, t1: f64, steps: usize) -> ndarray::Array3<f64> {
+  Sde::new(
+    |_: &Array1<f64>, _: f64| array![0.0],
+    |_: &Array1<f64>, _: f64| Array2::<f64>::zeros((1, 1)),
+    NoiseModel::Gaussian,
+    None,
+  )
+  .solve(&array![0.0], t0, t1, steps, 1, SdeMethod::Euler, &Unseeded)
+}
+
 macro_rules! refuses {
   ($($name:ident: $message:literal => $built:expr;)*) => {
     $(
@@ -132,6 +145,12 @@ macro_rules! refuses {
 }
 
 refuses! {
+  an_sde_refuses_a_reversed_interval: "t1 must satisfy `t1 > t0 && (t1 - t0).is_finite()`, got t0 = 1.0, t1 = 0.0"
+    => solve_over(1.0, 0.0, 8);
+  an_sde_refuses_a_nan_bound: "t1 must satisfy `t1 > t0 && (t1 - t0).is_finite()`, got t0 = 0.0, t1 = NaN"
+    => solve_over(0.0, f64::NAN, 8);
+  an_sde_refuses_no_steps: "steps must satisfy `steps >= 1`, got steps = 0"
+    => solve_over(0.0, 1.0, 0);
   a_nan_parameter_is_refused_at_construction: "sigma must satisfy `sigma.is_finite()`, got sigma = NaN"
     => Ou::<f64>::new(1.0, 0.0, f64::NAN, 64, None, None, Unseeded);
   a_grid_of_one_point_is_refused: "n must satisfy `n >= 2`, got n = 1"

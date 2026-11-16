@@ -58,7 +58,7 @@ pub struct Svcgmy<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub zeta: T,
   /// Loading parameter ρ
   pub rho: T,
-  /// Number of time steps (M+1 points including t=0)
+  /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
   /// Truncation level J (number of series terms)
   pub j: usize,

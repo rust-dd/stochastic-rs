@@ -138,7 +138,8 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
     self
   }
 
-  /// Replace `n`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  /// Replace `n`; panics if `n < 2`.
+  /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_points(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;

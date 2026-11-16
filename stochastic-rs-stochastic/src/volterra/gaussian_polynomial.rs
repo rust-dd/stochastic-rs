@@ -101,7 +101,8 @@ impl<T: FloatExt, K, S: SeedExt> GaussianPolynomialVolatility<T, K, S>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
-  /// Panics if `n < 2`, if `t` or a coefficient is not finite, or if `coefficients` is empty.
+  /// Panics if `n < 2`, if `t` is not positive and finite, or if `coefficients` is empty
+  /// or holds a non-finite entry.
   #[must_use]
   pub fn new(kernel: K, coefficients: Array1<T>, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
@@ -155,7 +156,8 @@ impl<T: FloatExt, K, S: SeedExt, B> GaussianPolynomialVolatility<T, K, S, B>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
-  /// Replace the polynomial, all else unchanged; panics if `coefficients` is empty.
+  /// Replace the polynomial, all else unchanged; panics if `coefficients` is empty or holds a
+  /// non-finite entry.
   #[must_use]
   pub fn with_coefficients(mut self, coefficients: Array1<T>) -> Self {
     assert_entries(

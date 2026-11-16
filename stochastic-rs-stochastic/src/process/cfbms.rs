@@ -81,7 +81,8 @@ impl<T: FloatExt, S: SeedExt> Cfbms<T, S> {
     Fgn::new(hurst, n - 1, t, Unseeded)
   }
 
-  /// Replace `hurst`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  /// Replace `hurst`; panics unless `0 ≤ hurst ≤ 1`.
+  /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     assert!(
       hurst.is_finite(),
@@ -96,7 +97,8 @@ impl<T: FloatExt, S: SeedExt> Cfbms<T, S> {
     self
   }
 
-  /// Replace `n`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  /// Replace `n`; panics if `n < 2`.
+  /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_points(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;

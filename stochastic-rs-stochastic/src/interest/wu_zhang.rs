@@ -45,7 +45,7 @@ pub struct WuZhangD<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub xn: usize,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Number of time steps in the simulation.
+  /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,

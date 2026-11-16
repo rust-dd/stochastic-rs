@@ -48,7 +48,7 @@ pub struct Adg<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Time-dependent quadratic loading c(t) on the squared latent factor
   /// in the observation equation (the "quadratic" in quadratic-Gaussian).
   pub c: Fn1D<T>,
-  /// Number of time steps per latent-factor path.
+  /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
   /// Number of independent latent factors (rows of the output matrix);
   /// each evolves as its own `dX_i = (k(t) − θ(t)X_i)dt + σ_i dW_i`.

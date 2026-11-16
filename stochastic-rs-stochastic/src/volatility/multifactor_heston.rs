@@ -61,7 +61,7 @@ pub struct MultifactorHeston<T: FloatExt, const K: usize, S: SeedExt = Unseeded,
   pub rho: [T; K],
   /// Drift of the stock (risk-neutral $r - q$ when pricing).
   pub mu: T,
-  /// Number of time steps.
+  /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,

@@ -281,8 +281,8 @@ where
   F: Fn(&Array1<T>, T) -> Array1<T>,
   G: Fn(&Array1<T>, T) -> Array2<T>,
 {
-  /// `[n_paths, steps + 1, dim]` paths from `x0` at `t0` to `t1`, `dt = (t1 − t0) / steps`; the
-  /// Gaussian increments, or every fGN seed under [`NoiseModel::Fractional`], come from `seed`.
+  /// `[n_paths, steps + 1, dim]` paths from `x0` at `t0` to `t1`, `dt = (t1 − t0) / steps`, drawn
+  /// from `seed`; panics unless `t0 < t1` with a finite span and `steps ≥ 1`.
   pub fn solve<S: SeedExt>(
     &self,
     x0: &Array1<T>,
@@ -299,6 +299,10 @@ where
     assert!(
       steps >= 1,
       "steps must satisfy `steps >= 1`, got steps = {steps:?}"
+    );
+    assert!(
+      t1 > t0 && (t1 - t0).is_finite(),
+      "t1 must satisfy `t1 > t0 && (t1 - t0).is_finite()`, got t0 = {t0:?}, t1 = {t1:?}"
     );
     let dt = (t1 - t0) / T::from_usize_(steps);
     match self.noise {

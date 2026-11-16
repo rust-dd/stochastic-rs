@@ -75,7 +75,7 @@ pub struct Bns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub nu: T,
   /// Gamma shape parameter $\omega > 0$ for the i.i.d. jump sizes.
   pub jump_shape: T,
-  /// Number of time steps.
+  /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,

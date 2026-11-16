@@ -59,8 +59,7 @@ pub struct Hjm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Time-dependent forward-rate volatility function σ(t,T) (matches the
   /// module header's own σ(t,T)).
   pub sigma: Fn2D<T>,
-  /// Number of time steps shared by all three output components
-  /// (`r`, `p`, `f`).
+  /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
   /// Initial short-rate / interest-rate level.
   pub r0: Option<T>,
