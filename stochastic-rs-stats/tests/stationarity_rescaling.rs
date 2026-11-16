@@ -137,7 +137,7 @@ fn phillips_perron_keeps_its_statistics_under_rescaling() {
       assert_rescaled(
         &format!("PP {test_type:?} {trend:?}"),
         |y| phillips_perron_test(y.view(), cfg).unwrap().statistic,
-        &[1e-5, 1e-6, 1e-7, 1e4],
+        &[1e-300, 1e-150, 1e-7, 1e-6, 1e-5, 1e4, 1e7, 1e150, 1e300],
       );
     }
   }

@@ -311,6 +311,17 @@ pub fn centred(y: &[f64]) -> Vec<f64> {
   y.iter().map(|v| v - mean).collect()
 }
 
+/// `y` times the power of two nearest the inverse of its spread, an exact scaling that leaves a
+/// scale-free statistic as it is and puts the series on the scale of the trend terms beside it.
+pub fn unit_scaled(mut y: Vec<f64>) -> Vec<f64> {
+  let spread = f64::max_or_nan_fold(y.iter().map(|v| v.abs()));
+  let unit = 2f64.powi(-(spread.log2().round() as i32).clamp(-1022, 1022));
+  for v in &mut y {
+    *v *= unit;
+  }
+  y
+}
+
 /// `DegenerateData("zero residual variance")` when `residuals`, of a fit to `y`, vary by less than
 /// `EXACT_FIT` of `y` itself; both are scaled by `y`'s spread, so neither under- or overflows.
 pub fn reject_exact_fit(y: &[f64], residuals: &[f64]) -> Result<(), StatsError> {

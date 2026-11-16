@@ -17,8 +17,6 @@
 //!   Covariance Matrix*, Econometrica 55(3), 703–708,
 //!   DOI: 10.2307/1913610.
 
-use std::borrow::Cow;
-
 use ndarray::ArrayView1;
 
 use super::common::Trend;
@@ -29,6 +27,7 @@ use super::common::newey_west_long_run_variance;
 use super::common::regress_on_deterministics;
 use super::common::reject_exact_fit;
 use super::common::schwert_max_lags;
+use super::common::unit_scaled;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
@@ -111,10 +110,10 @@ pub fn phillips_perron_test(
   let y = as_slice_or_copy(y);
   validate(&y, 20)?;
   reject_constant(&y, "constant series")?;
-  let y = match cfg.trend {
-    Trend::None => y,
-    Trend::Constant | Trend::ConstantTrend => Cow::Owned(centred(&y)),
-  };
+  let y = unit_scaled(match cfg.trend {
+    Trend::None => y.into_owned(),
+    Trend::Constant | Trend::ConstantTrend => centred(&y),
+  });
   // A line makes the lagged level a combination of the trend terms, which leaves no design to fit.
   if cfg.trend == Trend::ConstantTrend {
     reject_exact_fit(&y, &regress_on_deterministics(&y, true)?.residuals)?;
