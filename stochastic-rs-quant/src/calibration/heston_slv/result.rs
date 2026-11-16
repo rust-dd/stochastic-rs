@@ -1,6 +1,7 @@
 use crate::CalibrationLossScore;
 use crate::LossMetric;
-use crate::calibration::heston::HestonCalibrationResult;
+use crate::calibration::Calibrated;
+use crate::pricing::heston::HestonParams;
 use crate::pricing::slv::HestonSlvParams;
 use crate::pricing::slv::HestonSlvPricer;
 use crate::pricing::slv::LeverageSurface;
@@ -25,7 +26,7 @@ pub struct HestonSlvCalibrationResult {
   pub fit: HestonSlvFit,
   /// The Heston fit that supplied the parameters, `None` when they were
   /// pinned on the calibrator.
-  pub heston: Option<HestonCalibrationResult>,
+  pub heston: Option<Calibrated<HestonParams>>,
   /// Repricing of the input calls by the calibration cloud, every metric of
   /// [`LossMetric::ALL`].
   pub loss: CalibrationLossScore,

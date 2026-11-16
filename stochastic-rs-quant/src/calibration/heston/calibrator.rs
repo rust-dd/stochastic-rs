@@ -1,343 +1,216 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use ndarray::Array1;
 use stochastic_rs_stats::heston_nmle_cekf::HestonNmleCekfConfig;
 
 use super::params::HestonJacobianMethod;
 use super::params::HestonMleSeedMethod;
-use super::result::HestonCalibrationResult;
-use crate::CalibrationLossScore;
-use crate::LossMetric;
-use crate::OptionType;
+use crate::OptionQuote;
 use crate::QuantError;
+use crate::calibration::Calibrated;
 use crate::calibration::CalibrationHistory;
-use crate::calibration::Regularization;
+use crate::calibration::CalibrationOptions;
 use crate::calibration::least_squares::LmOptions;
 use crate::calibration::least_squares::minimize;
+use crate::calibration::quote::assert_spot_and_rates;
+use crate::calibration::quote::validate_quotes;
 use crate::pricing::heston::HestonParams;
 
-#[derive(Clone)]
-/// Heston least-squares calibrator using Levenberg-Marquardt iterations.
-///
-/// Source:
-/// - Levenberg (1944), <https://doi.org/10.1090/qam/10666>
-/// - Marquardt (1963), <https://doi.org/10.1137/0111030>
-/// - Heston model (1993), <https://doi.org/10.1093/rfs/6.2.327>
-pub struct HestonCalibrator {
-  /// Params to calibrate (v0, kappa, theta, sigma, rho).
-  /// If None, an initial guess will be inferred using heston_mle (requires mle_* fields).
-  pub params: Option<HestonParams>,
-  /// Option prices from the market (flattened across all maturities).
-  pub c_market: Array1<f64>,
-  /// Underlying spot per quote (allows small variations per strike/maturity bucket).
+/// Spot and variance series whose NMLE, PMLE or NMLE-CEKF fit starts the calibration.
+/// Wang et al. (2018), Sci. China Inf. Sci. 61, 042202, DOI 10.1007/s11432-017-9215-8.
+#[derive(Clone, Debug, Default)]
+pub struct HestonMleSeed {
   pub s: Array1<f64>,
-  /// Strikes per quote (flattened).
-  pub k: Array1<f64>,
-  /// Risk-free rate.
+  /// NMLE-CEKF filters its own variance and reads only a positive first value as `v0`.
+  pub v: Array1<f64>,
+  /// Drift of `s`; `None` reads the calibrator's `r`.
+  pub r: Option<f64>,
+  pub method: HestonMleSeedMethod,
+  /// Sampling step; `None` is `1 / (n − 1)`, one unit of time over the series.
+  pub delta: Option<f64>,
+  /// NMLE-CEKF settings, whose `r` and `delta` are the seed's; `None` is the default.
+  pub nmle_cekf: Option<HestonNmleCekfConfig>,
+}
+
+/// Heston fit to vanilla quotes by Levenberg–Marquardt in logistic coordinates, with Cui et al.'s
+/// analytic Jacobian by default.
+/// Levenberg (1944), DOI 10.1090/qam/10666; Marquardt (1963), DOI 10.1137/0111030.
+#[derive(Clone, Debug)]
+pub struct HestonCalibrator {
+  pub s: f64,
   pub r: f64,
-  /// Dividend yield.
-  pub q: Option<f64>,
-  /// Time to maturity per quote (flattened). Supports multi-maturity joint calibration.
-  pub flat_t: Vec<f64>,
-  /// Option type of the quotes.
-  pub option_type: OptionType,
-  /// Positive row weights applied to price residuals and their Jacobian.
-  pub residual_weights: Array1<f64>,
-  /// Optional Tikhonov pull of `(v0, κ, θ, σ, ρ)` toward an anchor; `None`
-  /// keeps the unregularised path.
-  pub regularization: Option<Regularization>,
-  /// Optional: time series for MLE-based initial guess
-  pub mle_s: Option<Array1<f64>>,
-  pub mle_v: Option<Array1<f64>>,
-  pub mle_r: Option<f64>,
-  /// Seed method for the MLE-based initial guess.
-  pub mle_seed_method: HestonMleSeedMethod,
-  /// Optional explicit sampling step used by MLE seed estimators.
-  pub mle_delta: Option<f64>,
-  /// Optional config for NMLE-CEKF seed when `mle_seed_method = NmleCekf`.
-  pub nmle_cekf_config: Option<HestonNmleCekfConfig>,
-  /// If true, record per-iteration calibration history.
-  pub record_history: bool,
-  /// Which loss metrics to compute when recording history.
-  pub loss_metrics: &'static [LossMetric],
-  /// Jacobian/method choice for calibration.
+  pub q: f64,
+  pub quotes: Vec<OptionQuote>,
+  /// `None`: the MLE seed when `mle_seed` is set, else the fallback (0.04, 1.5, 0.04, 0.5, −0.5).
+  pub start: Option<HestonParams>,
+  /// Levenberg–Marquardt knobs; `regularization` pulls `(v0, κ, θ, σ, ρ)`.
+  pub options: CalibrationOptions,
+  /// Positive per-quote weights, normalised to unit root mean square; `None` is unit weights.
+  pub residual_weights: Option<Array1<f64>>,
   pub jacobian_method: HestonJacobianMethod,
-  /// Lower σ of the guess and of every iterate to Feller's bound `σ² ≤ 2κθ` (off by default).
+  /// Lower σ of the start and of every iterate to Feller's bound `σ² ≤ 2κθ` (off by default).
   pub feller_projection: bool,
-  /// Optional common LM tolerance for research workloads.
-  pub optimizer_tolerance: Option<f64>,
-  /// Maximum residual-evaluation budget per fitted parameter, as defined by LM.
-  pub optimizer_patience: usize,
-  /// History of iterations (residuals, params, loss metrics).
-  pub(super) calibration_history: Rc<RefCell<Vec<CalibrationHistory<HestonParams>>>>,
+  pub mle_seed: Option<HestonMleSeed>,
+  /// The trail of the clone that runs the fit, moved into its result.
+  pub(super) history: Vec<CalibrationHistory<HestonParams>>,
   /// Weight of the row on σ's overshoot past the Feller cap; set only inside a projected fit.
   pub(super) feller_row_weight: Option<f64>,
 }
 
 impl HestonCalibrator {
-  /// Create a calibrator for quotes that share one maturity `tau`.
-  pub fn new(
-    params: Option<HestonParams>,
-    c_market: Array1<f64>,
-    s: Array1<f64>,
-    k: Array1<f64>,
-    r: f64,
-    q: Option<f64>,
-    tau: f64,
-    option_type: OptionType,
-    mle_s: Option<Array1<f64>>,
-    mle_v: Option<Array1<f64>>,
-    mle_r: Option<f64>,
-    record_history: bool,
-  ) -> Self {
-    let n = c_market.len();
-    assert_eq!(n, s.len(), "c_market and s must have the same length");
-    assert_eq!(n, k.len(), "c_market and k must have the same length");
-    assert!(
-      tau.is_finite() && tau > 0.0,
-      "tau must be a finite positive value"
-    );
-
+  /// Panics unless `s` is finite and positive and `r`, `q` finite; `calibrate` checks the quotes.
+  pub fn new(s: f64, r: f64, q: f64, quotes: Vec<OptionQuote>) -> Self {
+    assert_spot_and_rates(s, r, q);
     Self {
-      params,
-      c_market,
       s,
-      k,
       r,
       q,
-      flat_t: vec![tau; n],
-      option_type,
-      residual_weights: Array1::from_elem(n, 1.0),
-      regularization: None,
-      mle_s,
-      mle_v,
-      mle_r,
-      mle_seed_method: HestonMleSeedMethod::default(),
-      mle_delta: None,
-      nmle_cekf_config: None,
-      record_history,
-      loss_metrics: &LossMetric::ALL,
+      quotes,
+      start: None,
+      options: CalibrationOptions::default(),
+      residual_weights: None,
       jacobian_method: HestonJacobianMethod::default(),
       feller_projection: false,
-      optimizer_tolerance: None,
-      optimizer_patience: 100,
-      calibration_history: Rc::new(RefCell::new(Vec::new())),
+      mle_seed: None,
+      history: Vec::new(),
       feller_row_weight: None,
     }
   }
 
-  /// Create a calibrator from multiple maturity slices for joint surface calibration.
-  pub fn from_slices(
-    params: Option<HestonParams>,
-    slices: &[super::super::levy::MarketSlice],
-    s: f64,
-    r: f64,
-    q: Option<f64>,
-    option_type: OptionType,
-    record_history: bool,
-  ) -> Self {
-    let mut flat_prices = Vec::new();
-    let mut flat_strikes = Vec::new();
-    let mut flat_t = Vec::new();
-    let mut flat_s = Vec::new();
+  /// Panics unless `start` passes [`HestonParams::new`]; the fit starts from its projection onto
+  /// the calibration box.
+  pub fn with_start(mut self, start: HestonParams) -> Self {
+    self.start = Some(start.checked());
+    self
+  }
 
-    for slice in slices {
-      for i in 0..slice.strikes.len() {
-        flat_prices.push(slice.prices[i]);
-        flat_strikes.push(slice.strikes[i]);
-        flat_t.push(slice.tau);
-        flat_s.push(s);
-      }
+  pub fn with_options(mut self, options: CalibrationOptions) -> Self {
+    self.options = options;
+    self
+  }
+
+  /// Panics unless `weights.len() == quotes.len()` and every weight is finite and positive.
+  pub fn with_residual_weights(mut self, weights: impl Into<Array1<f64>>) -> Self {
+    let weights = weights.into();
+    check_residual_weights(&weights, self.quotes.len()).unwrap_or_else(|e| panic!("{e}"));
+    let rms = (weights.iter().map(|w| w * w).sum::<f64>() / weights.len() as f64).sqrt();
+    assert!(
+      rms.is_finite() && rms > 0.0,
+      "the weights' root mean square must satisfy `rms.is_finite() && rms > 0.0`, got rms = {rms:?}"
+    );
+    self.residual_weights = Some(weights / rms);
+    self
+  }
+
+  pub fn with_jacobian_method(mut self, method: HestonJacobianMethod) -> Self {
+    self.jacobian_method = method;
+    self
+  }
+
+  /// Every iterate passes [`HestonParams::satisfies_feller_condition`]: a residual on σ's
+  /// overshoot past √(2κθ) brings it back, and a violating surface is fitted on the boundary.
+  pub fn with_feller_projection(mut self, enabled: bool) -> Self {
+    self.feller_projection = enabled;
+    self
+  }
+
+  /// Panics unless `seed.r` and `seed.delta`, where given, are finite and `delta` positive.
+  pub fn with_mle_seed(mut self, seed: HestonMleSeed) -> Self {
+    if let Some(r) = seed.r {
+      assert!(
+        r.is_finite(),
+        "seed.r must satisfy `seed.r.is_finite()`, got seed.r = {r:?}"
+      );
     }
-    let quote_count = flat_prices.len();
+    if let Some(delta) = seed.delta {
+      assert!(
+        delta.is_finite() && delta > 0.0,
+        "seed.delta must satisfy `seed.delta.is_finite() && seed.delta > 0.0`, got seed.delta = {delta:?}"
+      );
+    }
+    self.mle_seed = Some(seed);
+    self
+  }
 
-    Self {
-      params,
-      c_market: Array1::from_vec(flat_prices),
-      s: Array1::from_vec(flat_s),
-      k: Array1::from_vec(flat_strikes),
-      r,
-      q,
-      flat_t,
-      option_type,
-      residual_weights: Array1::from_elem(quote_count, 1.0),
-      regularization: None,
-      mle_s: None,
-      mle_v: None,
-      mle_r: None,
-      mle_seed_method: HestonMleSeedMethod::default(),
-      mle_delta: None,
-      nmle_cekf_config: None,
-      record_history,
-      loss_metrics: &LossMetric::ALL,
-      jacobian_method: HestonJacobianMethod::default(),
-      feller_projection: false,
-      optimizer_tolerance: None,
-      optimizer_patience: 100,
-      calibration_history: Rc::new(RefCell::new(Vec::new())),
-      feller_row_weight: None,
+  /// The seed's fit, projected, or the fallback without a seed; `InvalidInput` when the seed fails.
+  fn seeded_start(&self) -> Result<HestonParams, QuantError> {
+    match &self.mle_seed {
+      Some(seed) => seed
+        .fit(self.r)
+        .map(HestonParams::projected)
+        .map_err(|e| QuantError::invalid("heston mle seed", e.to_string())),
+      None => Ok(Self::fallback_params()),
     }
   }
 }
 
-impl HestonCalibrator {
-  pub(super) fn solve(&self) -> HestonCalibrationResult {
-    let mut problem = self.clone();
-    problem.ensure_initial_guess();
-    if problem.feller_projection {
-      problem.feller_row_weight = Some(problem.feller_row_weight_at_start());
-    }
-
-    let (result, report) = minimize(
-      problem,
-      LmOptions {
-        tolerance: self.optimizer_tolerance,
-        patience: self.optimizer_patience,
-        pivoted_qr: true,
-        ..LmOptions::default()
-      },
-    );
-    let converged = report.converged;
-    let params = result.effective_params();
-
-    let c_model = result.compute_model_prices_for(&params);
-    let loss = CalibrationLossScore::compute_selected(
-      result.c_market.as_standard_layout().as_slice().unwrap(),
-      c_model.as_slice().unwrap(),
-      result.loss_metrics,
-    );
-
-    HestonCalibrationResult {
-      params,
-      loss,
-      converged,
-      message: report.message(),
-    }
+/// `DimensionMismatch` unless there is one weight per quote, `InvalidInput` for the first weight
+/// that is not finite and positive.
+fn check_residual_weights(weights: &Array1<f64>, quotes: usize) -> Result<(), QuantError> {
+  if weights.len() != quotes {
+    return Err(QuantError::DimensionMismatch {
+      what: "residual weights, one per quote",
+      expected: quotes,
+      got: weights.len(),
+    });
   }
-
-  /// Adds a Tikhonov pull toward `regularization.anchor` in the natural
-  /// order `(v0, κ, θ, σ, ρ)`.
-  pub fn with_regularization(mut self, regularization: Regularization) -> Self {
-    assert_eq!(
-      regularization.dimension(),
-      5,
-      "Heston regularisation needs five anchors"
-    );
-    self.regularization = Some(regularization);
-    self
-  }
-
-  pub fn set_initial_guess(&mut self, params: HestonParams) {
-    self.params = Some(params.projected());
-  }
-
-  /// Set positive residual weights, normalized to unit root-mean-square.
-  ///
-  /// Inverse Black-Scholes vega weights make the least-squares objective a
-  /// first-order approximation to implied-volatility error.
-  pub fn set_residual_weights(
-    &mut self,
-    weights: impl Into<Array1<f64>>,
-  ) -> Result<(), QuantError> {
-    let mut weights = weights.into();
-    if weights.len() != self.c_market.len() {
-      return Err(QuantError::DimensionMismatch {
-        what: "Heston residual weights, one per quote",
-        expected: self.c_market.len(),
-        got: weights.len(),
-      });
-    }
-    if weights.is_empty()
-      || weights
-        .iter()
-        .any(|weight| !weight.is_finite() || *weight <= 0.0)
-    {
-      return Err(QuantError::invalid(
-        "Heston residual weights",
-        "every weight must be finite and positive",
-      ));
-    }
-    let root_mean_square =
-      (weights.iter().map(|weight| weight * weight).sum::<f64>() / weights.len() as f64).sqrt();
-    if !root_mean_square.is_finite() || root_mean_square <= 0.0 {
-      return Err(QuantError::Numerical {
-        what: "Heston residual weights",
-        reason: format!("the root-mean-square normalizer is {root_mean_square}"),
-      });
-    }
-    weights /= root_mean_square;
-    self.residual_weights = weights;
-    Ok(())
-  }
-
-  /// Enable or disable recording of per-iteration calibration history.
-  pub fn set_record_history(&mut self, record: bool) {
-    self.record_history = record;
-  }
-
-  pub fn set_jacobian_method(&mut self, method: HestonJacobianMethod) {
-    self.jacobian_method = method;
-  }
-
-  /// Project the guess and every iterate onto `σ² ≤ 2κθ`, so the fit passes [`HestonParams::satisfies_feller_condition`];
-  /// a residual on σ's overshoot past the cap brings an iterate back inside; a violating surface is fitted on the boundary.
-  pub fn set_feller_projection(&mut self, enabled: bool) {
-    self.feller_projection = enabled;
-  }
-
-  /// Set a positive common LM convergence tolerance.
-  pub fn set_optimizer_tolerance(&mut self, tolerance: Option<f64>) -> Result<(), QuantError> {
-    if let Some(value) = tolerance.filter(|value| !value.is_finite() || *value <= 0.0) {
-      return Err(QuantError::invalid(
-        "Heston optimizer tolerance",
-        format!("must be finite and positive, got {value}"),
-      ));
-    }
-    self.optimizer_tolerance = tolerance;
-    Ok(())
-  }
-
-  /// Set the LM evaluation-budget multiplier.
-  pub fn set_optimizer_patience(&mut self, patience: usize) -> Result<(), QuantError> {
-    if patience == 0 {
-      return Err(QuantError::invalid(
-        "Heston optimizer patience",
-        "must be positive, got 0",
-      ));
-    }
-    self.optimizer_patience = patience;
-    Ok(())
-  }
-
-  pub fn set_mle_seed_method(&mut self, method: HestonMleSeedMethod) {
-    self.mle_seed_method = method;
-  }
-
-  pub fn set_mle_delta(&mut self, delta: Option<f64>) {
-    self.mle_delta = delta;
-  }
-
-  pub fn set_nmle_cekf_config(&mut self, cfg: HestonNmleCekfConfig) {
-    self.nmle_cekf_config = Some(cfg);
-  }
-
-  /// Retrieve the collected calibration history.
-  pub fn history(&self) -> Vec<CalibrationHistory<HestonParams>> {
-    self.calibration_history.borrow().clone()
+  match weights
+    .iter()
+    .enumerate()
+    .find(|(_, w)| !(w.is_finite() && **w > 0.0))
+  {
+    Some((i, weight)) => Err(QuantError::invalid(
+      "residual weights",
+      format!(
+        "weight {i} must satisfy `weight.is_finite() && weight > 0.0`, got weight = {weight:?}"
+      ),
+    )),
+    None => Ok(()),
   }
 }
 
 impl crate::traits::Calibrator for HestonCalibrator {
   type Params = HestonParams;
-  type Output = HestonCalibrationResult;
+  type Output = Calibrated<HestonParams>;
   type Error = QuantError;
 
-  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
-    let mut this = self.clone();
-    if let Some(p) = initial {
-      this.set_initial_guess(p);
+  /// A start replaces `self.start`; `InvalidInput` unless the one used passes `HestonParams::new`.
+  fn calibrate(
+    &self,
+    initial: Option<HestonParams>,
+  ) -> Result<Calibrated<HestonParams>, QuantError> {
+    validate_quotes(&self.quotes)?;
+    self.options.regularization_for(5)?;
+    if let Some(weights) = &self.residual_weights {
+      check_residual_weights(weights, self.quotes.len())?;
     }
-    Ok(this.solve())
+    let start = match initial.or(self.start) {
+      Some(start) => start,
+      None => self.seeded_start()?,
+    };
+    if let Some(reason) = start.violation() {
+      return Err(QuantError::invalid("start", reason));
+    }
+    let mut problem = self.clone();
+    problem.start = Some(start);
+    if problem.feller_projection {
+      problem.feller_row_weight = Some(problem.feller_row_weight_at_start());
+    }
+    let (mut fitted, report) = minimize(
+      problem,
+      LmOptions {
+        tolerance: self.options.tolerance,
+        patience: self.options.patience,
+        pivoted_qr: true,
+        max_iterations: self.options.max_iterations,
+      },
+    );
+    let params = fitted.effective_params();
+    let model = fitted.compute_model_prices_for(&params).to_vec();
+    let market = self
+      .quotes
+      .iter()
+      .map(|quote| quote.price)
+      .collect::<Vec<_>>();
+    let history = std::mem::take(&mut fitted.history);
+    Ok(report.calibrated(params, &market, &model, self.options.loss_metrics, history))
   }
 }

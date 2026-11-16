@@ -9,13 +9,25 @@ mod cui_impl;
 mod lsq;
 mod numeric_impl;
 mod params;
-mod result;
 mod transform;
 
 pub use calibrator::HestonCalibrator;
+pub use calibrator::HestonMleSeed;
 pub use params::HestonJacobianMethod;
 pub use params::HestonMleSeedMethod;
-pub use result::HestonCalibrationResult;
+
+use crate::calibration::Calibrated;
+use crate::pricing::fourier::HestonFourier;
+use crate::pricing::heston::HestonParams;
+use crate::traits::ToModel;
+
+impl ToModel for Calibrated<HestonParams> {
+  type Model = HestonFourier;
+
+  fn to_model(&self) -> HestonFourier {
+    HestonFourier::new(self.params)
+  }
+}
 
 #[cfg(test)]
 mod control_tests;

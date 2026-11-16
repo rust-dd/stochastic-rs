@@ -1,5 +1,6 @@
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs_stats::StatsError;
 use stochastic_rs_stats::heston_mle::fit_heston_nmle;
 use stochastic_rs_stats::heston_mle::fit_heston_nmle_with_delta;
 use stochastic_rs_stats::heston_mle::fit_heston_pmle;
@@ -7,6 +8,7 @@ use stochastic_rs_stats::heston_mle::fit_heston_pmle_with_delta;
 use stochastic_rs_stats::heston_nmle_cekf::fit_heston_nmle_cekf;
 
 use super::calibrator::HestonCalibrator;
+use super::calibrator::HestonMleSeed;
 use super::params::HestonJacobianMethod;
 use super::params::HestonMleSeedMethod;
 use super::transform::canonicalize;
@@ -32,96 +34,13 @@ impl HestonCalibrator {
     .projected()
   }
 
-  pub(super) fn inferred_mle_delta(&self, n_obs: usize) -> f64 {
-    if let Some(dt) = self.mle_delta
-      && dt.is_finite()
-      && dt > 0.0
-    {
-      return dt;
-    }
-    1.0 / n_obs.saturating_sub(1).max(1) as f64
-  }
-
-  /// Build an initial parameter guess from historical series via NMLE/PMLE/NMLE-CEKF.
-  ///
-  /// Source:
-  /// - Wang et al. (2018)
-  ///   https://doi.org/10.1007/s11432-017-9215-8
-  ///   http://scis.scichina.com/en/2018/042202.pdf
-  pub(super) fn infer_initial_guess_from_series(&self) -> Option<HestonParams> {
-    match self.mle_seed_method {
-      HestonMleSeedMethod::Nmle => {
-        let (s, v, r) = (self.mle_s.clone()?, self.mle_v.clone()?, self.mle_r?);
-        if s.len() < 2 || v.len() < 2 || s.len() != v.len() {
-          return None;
-        }
-        let p: HestonParams = if self.mle_delta.is_some() {
-          let delta = self.inferred_mle_delta(s.len());
-          fit_heston_nmle_with_delta(s.view(), v.view(), r, delta)
-            .ok()?
-            .into()
-        } else {
-          fit_heston_nmle(s.view(), v.view(), r).ok()?.into()
-        };
-        Some(p.projected())
-      }
-      HestonMleSeedMethod::Pmle => {
-        let (s, v, r) = (self.mle_s.clone()?, self.mle_v.clone()?, self.mle_r?);
-        if s.len() < 2 || v.len() < 2 || s.len() != v.len() {
-          return None;
-        }
-        let p: HestonParams = if self.mle_delta.is_some() {
-          let delta = self.inferred_mle_delta(s.len());
-          fit_heston_pmle_with_delta(s.view(), v.view(), r, delta)
-            .ok()?
-            .into()
-        } else {
-          fit_heston_pmle(s.view(), v.view(), r).ok()?.into()
-        };
-        Some(p.projected())
-      }
-      HestonMleSeedMethod::NmleCekf => {
-        let (s, r) = (self.mle_s.clone()?, self.mle_r?);
-        if s.len() < 2 {
-          return None;
-        }
-        let mut cfg = self.nmle_cekf_config.clone().unwrap_or_default();
-        cfg.r = r;
-        cfg.delta = self.inferred_mle_delta(s.len());
-        if let Some(v_ts) = self.mle_v.as_ref()
-          && !v_ts.is_empty()
-          && v_ts[0].is_finite()
-          && v_ts[0] > 0.0
-        {
-          cfg.initial_v0 = v_ts[0];
-        }
-        let out = fit_heston_nmle_cekf(s.view(), cfg).ok()?;
-        let p: HestonParams = out.params.into();
-        Some(p.projected())
-      }
-    }
-  }
-
-  pub(super) fn ensure_initial_guess(&mut self) {
-    if self.params.is_none() {
-      self.params = Some(
-        self
-          .infer_initial_guess_from_series()
-          .unwrap_or_else(Self::fallback_params),
-      );
-    }
-  }
-
   /// The canonical point the optimiser's coordinates stand for, before the Feller projection.
   pub(super) fn free_params(&self) -> HestonParams {
-    let projected = if let Some(p) = &self.params {
-      (*p).projected()
-    } else {
-      self
-        .infer_initial_guess_from_series()
-        .unwrap_or_else(Self::fallback_params)
-    };
-    canonicalize(&projected)
+    canonicalize(
+      &self
+        .start
+        .map_or_else(Self::fallback_params, HestonParams::projected),
+    )
   }
 
   /// The point every residual is evaluated at; projected last, so no rounding of the coordinates undoes Feller.
@@ -152,19 +71,13 @@ impl HestonCalibrator {
   }
 
   pub(super) fn compute_model_prices_for_numeric(&self, params: &HestonParams) -> Array1<f64> {
-    let mut c_model = Array1::zeros(self.c_market.len());
+    let mut c_model = Array1::zeros(self.quotes.len());
 
-    for (idx, _) in self.c_market.iter().enumerate() {
+    for (idx, quote) in self.quotes.iter().enumerate() {
       let pricer = HestonPricer::new(*params);
-      let (call, put) = pricer.call_put(
-        self.s[idx],
-        self.k[idx],
-        self.r,
-        self.q.unwrap_or(0.0),
-        self.flat_t[idx],
-      );
+      let (call, put) = pricer.call_put(self.s, quote.strike, self.r, self.q, quote.tau);
 
-      match self.option_type {
+      match quote.option_type {
         OptionType::Call => c_model[idx] = call.max(0.0),
         OptionType::Put => c_model[idx] = put.max(0.0),
       }
@@ -183,7 +96,23 @@ impl HestonCalibrator {
   }
 
   pub(super) fn residuals_for(&self, params: &HestonParams) -> Array1<f64> {
-    (&self.c_market - &self.compute_model_prices_for(params)) * &self.residual_weights
+    self.weighted_residuals(&self.compute_model_prices_for(params))
+  }
+
+  /// `(price − model) · weight` per quote.
+  pub(super) fn weighted_residuals(&self, model: &Array1<f64>) -> Array1<f64> {
+    Array1::from_iter(
+      self
+        .quotes
+        .iter()
+        .zip(model)
+        .enumerate()
+        .map(|(idx, (quote, model))| (quote.price - model) * self.weight(idx)),
+    )
+  }
+
+  pub(super) fn weight(&self, idx: usize) -> f64 {
+    self.residual_weights.as_ref().map_or(1.0, |w| w[idx])
   }
 
   /// Numerically approximate the residual Jacobian with respect to physical parameters.
@@ -203,7 +132,7 @@ impl HestonCalibrator {
     params: &HestonParams,
     optimizer_denominator: bool,
   ) -> Array2<f64> {
-    let n = self.c_market.len();
+    let n = self.quotes.len();
     let p = 5usize;
     let coordinates = to_optimizer_coordinates(params);
     let mut J = Array2::zeros((n, p));
@@ -241,5 +170,31 @@ impl HestonCalibrator {
     }
 
     J
+  }
+}
+
+impl HestonMleSeed {
+  /// The estimator's fit to the series, at `r` or the calibrator's `rate` when it is `None`.
+  pub(super) fn fit(&self, rate: f64) -> Result<HestonParams, StatsError> {
+    let (s, v, r) = (self.s.view(), self.v.view(), self.r.unwrap_or(rate));
+    let fit = match (self.method, self.delta) {
+      (HestonMleSeedMethod::Nmle, None) => fit_heston_nmle(s, v, r)?,
+      (HestonMleSeedMethod::Nmle, Some(delta)) => fit_heston_nmle_with_delta(s, v, r, delta)?,
+      (HestonMleSeedMethod::Pmle, None) => fit_heston_pmle(s, v, r)?,
+      (HestonMleSeedMethod::Pmle, Some(delta)) => fit_heston_pmle_with_delta(s, v, r, delta)?,
+      (HestonMleSeedMethod::NmleCekf, delta) => {
+        let mut config = self.nmle_cekf.clone().unwrap_or_default();
+        config.r = r;
+        config.delta = delta.unwrap_or(1.0 / self.s.len().saturating_sub(1).max(1) as f64);
+        if let Some(&v0) = self.v.first()
+          && v0.is_finite()
+          && v0 > 0.0
+        {
+          config.initial_v0 = v0;
+        }
+        fit_heston_nmle_cekf(s, config)?.params
+      }
+    };
+    Ok(fit.into())
   }
 }

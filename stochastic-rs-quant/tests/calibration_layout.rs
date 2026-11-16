@@ -1,14 +1,21 @@
 use ndarray::Array1;
 use ndarray::s;
+use stochastic_rs_quant::OptionQuote;
 use stochastic_rs_quant::OptionType;
+use stochastic_rs_quant::QuantError;
+use stochastic_rs_quant::calibration::CalibrationOptions;
 use stochastic_rs_quant::calibration::bsm::BsmCalibrator;
-use stochastic_rs_quant::calibration::bsm::BsmParams;
+use stochastic_rs_quant::calibration::heston::HestonCalibrator;
 use stochastic_rs_quant::calibration::hkde::HkdeCalibrator;
 use stochastic_rs_quant::calibration::least_squares::LeastSquaresProblem;
 use stochastic_rs_quant::pricing::bsm::BsmCoc;
 use stochastic_rs_quant::pricing::bsm::BsmPricer;
+use stochastic_rs_quant::pricing::fourier::HestonFourier;
+use stochastic_rs_quant::pricing::heston::HestonParams;
+use stochastic_rs_quant::traits::CalibrationResult;
 use stochastic_rs_quant::traits::Calibrator;
 use stochastic_rs_quant::traits::ModelPricer;
+use stochastic_rs_quant::traits::ToModel;
 
 fn strided(values: impl IntoIterator<Item = f64>) -> Array1<f64> {
   Array1::from_iter(values.into_iter().flat_map(|v| [v, f64::NAN])).slice_move(s![..;2])
@@ -20,56 +27,26 @@ fn reversed(values: impl IntoIterator<Item = f64>) -> Array1<f64> {
 }
 
 #[test]
-fn bsm_calibration_accepts_strided_quotes() {
-  let strikes = strided([90.0, 100.0, 110.0]);
-  let pricer = BsmPricer::new(0.25, BsmCoc::Bsm1973);
-  let market = strided(
-    strikes
-      .iter()
-      .map(|&k| pricer.price_call(100.0, k, 0.03, 0.0, 1.0)),
+fn a_reversed_quote_list_gives_the_same_bsm_fit() {
+  let pricer = BsmPricer::new(0.25, BsmCoc::Merton1973);
+  let quotes = [90.0, 100.0, 110.0].map(|k| {
+    let price = pricer.price_call(100.0, k, 0.03, 0.0, 1.0);
+    OptionQuote::new(k, 1.0, price, OptionType::Call)
+  });
+  let fit = |quotes: Vec<OptionQuote>| {
+    BsmCalibrator::new(100.0, 0.03, 0.0, quotes)
+      .calibrate(None)
+      .unwrap()
+  };
+  let forward = fit(quotes.to_vec());
+  let reversed = fit(quotes.iter().rev().copied().collect());
+  assert!((forward.params.sigma - 0.25).abs() < 1e-6 && forward.rmse() < 1e-6);
+  assert!(
+    (reversed.params.sigma - forward.params.sigma).abs() < 1e-12,
+    "{} against {}",
+    reversed.params.sigma,
+    forward.params.sigma
   );
-  assert!(market.as_slice().is_none());
-  let model = BsmCalibrator::new(
-    BsmParams { v: 0.3 },
-    market,
-    strided([100.0; 3]),
-    strikes,
-    0.03,
-    None,
-    None,
-    None,
-    1.0,
-    OptionType::Call,
-  );
-  let result = model.calibrate(None).unwrap();
-  assert!((result.v - 0.25).abs() < 1e-6);
-}
-
-#[test]
-fn bsm_calibration_preserves_reversed_quote_order() {
-  let pricer = BsmPricer::new(0.25, BsmCoc::Bsm1973);
-  let strikes = Array1::from_vec(vec![90.0, 100.0, 110.0]);
-  let market = reversed(
-    strikes
-      .iter()
-      .map(|&k| pricer.price_call(100.0, k, 0.03, 0.0, 1.0)),
-  );
-  assert!(market.as_slice().is_none());
-  let model = BsmCalibrator::new(
-    BsmParams { v: 0.3 },
-    market,
-    Array1::from_elem(3, 100.0),
-    strikes,
-    0.03,
-    None,
-    None,
-    None,
-    1.0,
-    OptionType::Call,
-  );
-  let result = model.calibrate(None).unwrap();
-  assert!((result.v - 0.25).abs() < 1e-6);
-  assert!(result.loss.get(stochastic_rs_quant::LossMetric::Rmse) < 1e-6);
 }
 
 #[test]
@@ -357,4 +334,87 @@ fn the_smile_plots_go_where_they_are_told() {
   );
   let nowhere = dir.join("no such directory").join("smile.html");
   assert!(SabrSmileCalibrator::plot_many(nowhere, 1.1, 0.02, 0.01, 1.0, &cases, &fits).is_err());
+}
+
+fn heston_quotes(truth: HestonParams, s: f64, r: f64, q: f64) -> Vec<OptionQuote> {
+  let model = HestonFourier::new(truth);
+  [0.25, 0.5, 1.0]
+    .into_iter()
+    .flat_map(|tau| (0..9).map(move |i| (80.0 + 5.0 * i as f64, tau)))
+    .map(|(k, tau)| OptionQuote::new(k, tau, model.price_call(s, k, r, q, tau), OptionType::Call))
+    .collect()
+}
+
+#[test]
+fn heston_recovers_its_parameters_on_the_unified_shape() {
+  let truth = HestonParams {
+    v0: 0.05,
+    kappa: 1.8,
+    theta: 0.06,
+    sigma: 0.5,
+    rho: -0.6,
+  };
+  let calibrator = HestonCalibrator::new(100.0, 0.02, 0.0, heston_quotes(truth, 100.0, 0.02, 0.0))
+    .with_options(CalibrationOptions::default().with_record_history(true));
+  let fit = calibrator.calibrate(None).unwrap();
+  assert!(fit.converged && fit.rmse() < 1e-3, "rmse {}", fit.rmse());
+  assert!((fit.params.v0 - 0.05).abs() < 1e-3 && (fit.params.rho + 0.6).abs() < 1e-2);
+  assert!(fit.iterations.is_some() && fit.max_error.unwrap() < 1e-2 && !fit.history.is_empty());
+  assert_eq!(fit.history[0].iteration, 0);
+  assert!(
+    calibrator.calibrate(None).unwrap().history.len() == fit.history.len(),
+    "the trail is per call, not accumulated"
+  );
+  let model = fit.to_model();
+  let truth_price = HestonFourier::new(truth).price_call(100.0, 100.0, 0.02, 0.0, 0.5);
+  assert!((model.price_call(100.0, 100.0, 0.02, 0.0, 0.5) - truth_price).abs() < 2e-2);
+}
+
+#[test]
+fn calibrators_are_send_sync_and_a_shared_calibrator_replays() {
+  fn assert_send_sync<T: Send + Sync>() {}
+  assert_send_sync::<BsmCalibrator>();
+  assert_send_sync::<HestonCalibrator>();
+  let truth = HestonParams {
+    v0: 0.05,
+    kappa: 1.8,
+    theta: 0.06,
+    sigma: 0.5,
+    rho: -0.6,
+  };
+  let calibrator = HestonCalibrator::new(100.0, 0.02, 0.0, heston_quotes(truth, 100.0, 0.02, 0.0));
+  let (a, b) = std::thread::scope(|s| {
+    let a = s.spawn(|| calibrator.calibrate(None).unwrap().params);
+    let b = s.spawn(|| calibrator.calibrate(None).unwrap().params);
+    (a.join().unwrap(), b.join().unwrap())
+  });
+  assert_eq!(a, b);
+}
+
+#[test]
+fn a_bad_quote_is_an_error_and_a_bad_spot_a_panic() {
+  let truth = HestonParams {
+    v0: 0.04,
+    kappa: 1.5,
+    theta: 0.04,
+    sigma: 0.3,
+    rho: -0.7,
+  };
+  let mut quotes = heston_quotes(truth, 100.0, 0.02, 0.0);
+  quotes[4].price = f64::NAN;
+  let err = HestonCalibrator::new(100.0, 0.02, 0.0, quotes)
+    .calibrate(None)
+    .unwrap_err();
+  assert!(
+    matches!(err, QuantError::InvalidQuote { index: 4, .. }),
+    "{err}"
+  );
+  let err = BsmCalibrator::new(100.0, 0.02, 0.0, Vec::new())
+    .calibrate(None)
+    .unwrap_err();
+  assert!(
+    matches!(err, QuantError::InsufficientData { got: 0, .. }),
+    "{err}"
+  );
+  assert!(std::panic::catch_unwind(|| BsmCalibrator::new(-1.0, 0.02, 0.0, Vec::new())).is_err());
 }

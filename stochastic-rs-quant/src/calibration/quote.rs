@@ -72,6 +72,23 @@ pub(crate) fn validate_quotes(quotes: &[OptionQuote]) -> Result<(), QuantError> 
     .try_for_each(|(index, quote)| quote.validate(index))
 }
 
+/// The quote calibrators' constructor precondition, panicking at the caller.
+#[track_caller]
+pub(crate) fn assert_spot_and_rates(s: f64, r: f64, q: f64) {
+  assert!(
+    s.is_finite() && s > 0.0,
+    "s must satisfy `s.is_finite() && s > 0.0`, got s = {s:?}"
+  );
+  assert!(
+    r.is_finite(),
+    "r must satisfy `r.is_finite()`, got r = {r:?}"
+  );
+  assert!(
+    q.is_finite(),
+    "q must satisfy `q.is_finite()`, got q = {q:?}"
+  );
+}
+
 /// `InvalidInput { what: "start" }` for the first field that is not finite.
 pub(crate) fn check_finite_start(fields: &[(&str, f64)]) -> Result<(), QuantError> {
   match fields.iter().find(|(_, value)| !value.is_finite()) {

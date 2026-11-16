@@ -1,6 +1,6 @@
-use ndarray::Array1;
-
+use crate::OptionQuote;
 use crate::OptionType;
+use crate::calibration::CalibrationOptions;
 use crate::calibration::Regularization;
 use crate::calibration::heston::HestonCalibrator;
 use crate::calibration::least_squares::LeastSquaresProblem;
@@ -20,32 +20,26 @@ fn calibrator(regularization: Option<Regularization>) -> HestonCalibrator {
   let (s, r, tau) = (100.0, 0.02, 0.5);
   let strikes = [80.0, 90.0, 100.0, 110.0, 120.0];
   let pricer = HestonPricer::new(TRUTH);
-  let prices: Vec<f64> = strikes
+  let quotes = strikes
     .iter()
-    .map(|&k| pricer.call_put(s, k, r, 0.0, tau).0)
+    .map(|&k| {
+      let price = pricer.call_put(s, k, r, 0.0, tau).0;
+      OptionQuote::new(k, tau, price, OptionType::Call)
+    })
     .collect();
-  let mut calibrator = HestonCalibrator::new(
-    Some(HestonParams {
+  let options = CalibrationOptions {
+    regularization,
+    ..CalibrationOptions::default()
+  };
+  HestonCalibrator::new(s, r, 0.0, quotes)
+    .with_start(HestonParams {
       v0: 0.05,
       kappa: 1.0,
       theta: 0.05,
       sigma: 0.6,
       rho: -0.3,
-    }),
-    Array1::from_vec(prices),
-    Array1::from_elem(strikes.len(), s),
-    Array1::from_vec(strikes.to_vec()),
-    r,
-    None,
-    tau,
-    OptionType::Call,
-    None,
-    None,
-    None,
-    false,
-  );
-  calibrator.regularization = regularization;
-  calibrator
+    })
+    .with_options(options)
 }
 
 /// A pull on κ alone, heavy against the price residuals, pins κ at the
@@ -83,7 +77,7 @@ fn augmented_jacobian_has_the_penalty_rows() {
   let reg = Regularization::new(vec![0.0; 5], vec![0.0, 4.0, 0.0, 0.0, 0.0]);
   let mut problem = calibrator(Some(reg));
   let jacobian = problem.jacobian().expect("jacobian");
-  let n = problem.c_market.len();
+  let n = problem.quotes.len();
   assert_eq!(jacobian.nrows(), n + 5);
   for col in 0..5 {
     for row in 0..5 {

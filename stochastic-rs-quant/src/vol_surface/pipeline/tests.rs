@@ -103,9 +103,9 @@ fn build_surface_from_model_heston() {
 
 #[test]
 fn build_surface_from_calibration_heston_multi_maturity() {
+  use crate::OptionQuote;
   use crate::OptionType;
   use crate::calibration::heston::HestonCalibrator;
-  use crate::calibration::levy::MarketSlice;
   use crate::pricing::fourier::HestonFourier;
   use crate::pricing::heston::HestonParams;
   use crate::traits::ModelPricer;
@@ -118,40 +118,22 @@ fn build_surface_from_calibration_heston_multi_maturity() {
     sigma: 0.3,
     rho: -0.7,
   });
-  let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
-  let taus = [0.25, 0.5, 1.0];
-
-  let slices: Vec<MarketSlice> = taus
-    .iter()
-    .map(|&tau| {
-      let prices: Vec<f64> = strikes
-        .iter()
-        .map(|&k| true_model.price_call(100.0, k, 0.05, 0.0, tau))
-        .collect();
-      MarketSlice {
-        strikes: strikes.clone(),
-        prices,
-        is_call: vec![true; strikes.len()],
-        tau,
-      }
+  let quotes = [0.25, 0.5, 1.0]
+    .into_iter()
+    .flat_map(|tau| [90.0, 95.0, 100.0, 105.0, 110.0].map(|k| (k, tau)))
+    .map(|(k, tau)| {
+      let price = true_model.price_call(100.0, k, 0.05, 0.0, tau);
+      OptionQuote::new(k, tau, price, OptionType::Call)
     })
     .collect();
 
-  let cal = HestonCalibrator::from_slices(
-    Some(HestonParams {
-      v0: 0.06,
-      kappa: 1.5,
-      theta: 0.06,
-      sigma: 0.4,
-      rho: -0.5,
-    }),
-    &slices,
-    100.0,
-    0.05,
-    Some(0.0),
-    OptionType::Call,
-    false,
-  );
+  let cal = HestonCalibrator::new(100.0, 0.05, 0.0, quotes).with_start(HestonParams {
+    v0: 0.06,
+    kappa: 1.5,
+    theta: 0.06,
+    sigma: 0.4,
+    rho: -0.5,
+  });
   let calibration = cal.calibrate(None).unwrap();
 
   let result = build_surface_from_calibration(

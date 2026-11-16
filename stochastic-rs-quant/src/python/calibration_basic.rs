@@ -2,26 +2,67 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use super::parse_option_type;
+use crate::OptionQuote;
+use crate::OptionType;
+use crate::calibration::levy::MarketSlice;
 
 #[pyclass(name = "MarketSlice", from_py_object, unsendable)]
 #[derive(Clone)]
 pub struct PyMarketSlice {
-  pub inner: crate::calibration::levy::MarketSlice,
+  pub inner: Vec<OptionQuote>,
 }
 
 #[pymethods]
 impl PyMarketSlice {
   #[new]
   fn new(strikes: Vec<f64>, prices: Vec<f64>, is_call: Vec<bool>, t: f64) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::calibration::levy::MarketSlice {
-        strikes,
-        prices,
-        is_call,
-        tau: t,
-      },
-    })
+    if strikes.len() != prices.len() || strikes.len() != is_call.len() {
+      return Err(PyValueError::new_err(format!(
+        "strikes, prices and is_call must have equal length, got {}, {} and {}",
+        strikes.len(),
+        prices.len(),
+        is_call.len()
+      )));
+    }
+    let side = |call: bool| {
+      if call {
+        OptionType::Call
+      } else {
+        OptionType::Put
+      }
+    };
+    let inner = strikes
+      .into_iter()
+      .zip(prices)
+      .zip(is_call)
+      .map(|((k, price), call)| OptionQuote::new(k, t, price, side(call)))
+      .collect();
+    Ok(Self { inner })
   }
+}
+
+/// Every slice's quotes in slice order, priced as `option_type`, the class's own argument.
+pub(super) fn quotes_as(slices: Vec<PyMarketSlice>, option_type: OptionType) -> Vec<OptionQuote> {
+  let quotes = slices.into_iter().flat_map(|slice| slice.inner);
+  quotes
+    .map(|quote| OptionQuote {
+      option_type,
+      ..quote
+    })
+    .collect()
+}
+
+/// One single-quote `MarketSlice` per quote, for the calibrators that flatten slices themselves.
+pub(super) fn market_slices(slices: Vec<PyMarketSlice>) -> Vec<MarketSlice> {
+  let quotes = slices.into_iter().flat_map(|slice| slice.inner);
+  quotes
+    .map(|quote| MarketSlice {
+      strikes: vec![quote.strike],
+      prices: vec![quote.price],
+      is_call: vec![quote.option_type == OptionType::Call],
+      tau: quote.tau,
+    })
+    .collect()
 }
 
 #[pyclass(name = "BSMCalibrator", unsendable)]
@@ -42,33 +83,24 @@ impl PyBsmCalibrator {
     sigma_init: f64,
   ) -> PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
-      let ot = parse_option_type(option_type)?;
-      let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
-        slices.into_iter().map(|s| s.inner).collect();
-      let params = crate::calibration::bsm::BsmParams { v: sigma_init };
+      let quotes = quotes_as(slices, parse_option_type(option_type)?);
+      let start = crate::calibration::bsm::BsmParams { sigma: sigma_init };
       Ok(Self {
-        inner: crate::calibration::bsm::BsmCalibrator::from_slices(
-          params,
-          &inner_slices,
-          s,
-          r,
-          None,
-          None,
-          q,
-          ot,
-        ),
+        inner: crate::calibration::bsm::BsmCalibrator::new(s, r, q.unwrap_or(0.0), quotes)
+          .with_start(start),
       })
     })?
   }
 
   /// Run calibration. Returns `(sigma, converged, loss_rmse)`.
   fn calibrate(&self) -> PyResult<(f64, bool, f64)> {
+    use crate::traits::CalibrationResult;
     use crate::traits::Calibrator;
-    let res = self
+    let fit = self
       .inner
       .calibrate(None)
       .map_err(|e| PyValueError::new_err(format!("BSM calibration failed: {e}")))?;
-    Ok((res.v, res.converged, res.loss.get(crate::LossMetric::Rmse)))
+    Ok((fit.params.sigma, fit.converged, fit.rmse()))
   }
 }
 
@@ -95,28 +127,20 @@ impl PyHestonCalibrator {
     feller_projection: bool,
   ) -> PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
-      let ot = parse_option_type(option_type)?;
-      let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
-        slices.into_iter().map(|s| s.inner).collect();
-      let mut inner = crate::calibration::heston::HestonCalibrator::from_slices(
-        None,
-        &inner_slices,
-        s,
-        r,
-        q,
-        ot,
-        false,
-      );
+      let quotes = quotes_as(slices, parse_option_type(option_type)?);
+      let mut options = crate::calibration::CalibrationOptions::default();
       if let Some((anchor, weights)) = regularization {
-        inner.regularization = Some(crate::calibration::Regularization::new(anchor, weights));
+        options =
+          options.with_regularization(crate::calibration::Regularization::new(anchor, weights));
       }
-      inner.set_jacobian_method(parse_heston_jacobian_method(jacobian_method)?);
+      let mut inner =
+        crate::calibration::heston::HestonCalibrator::new(s, r, q.unwrap_or(0.0), quotes)
+          .with_options(options)
+          .with_jacobian_method(parse_heston_jacobian_method(jacobian_method)?)
+          .with_feller_projection(feller_projection);
       if let Some(weights) = residual_weights {
-        inner
-          .set_residual_weights(weights)
-          .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        inner = inner.with_residual_weights(weights);
       }
-      inner.set_feller_projection(feller_projection);
       Ok(Self { inner })
     })?
   }
@@ -147,7 +171,7 @@ impl PyHestonCalibrator {
       .calibrate(initial_guess)
       .map_err(|e| PyValueError::new_err(format!("Heston calibration failed: {e}")))?;
     let p = &res.params;
-    let rmse = res.loss.get(crate::LossMetric::Rmse);
+    let rmse = res.rmse();
     if full_output {
       (
         p.v0,

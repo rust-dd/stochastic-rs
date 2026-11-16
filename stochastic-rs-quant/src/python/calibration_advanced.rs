@@ -2,6 +2,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use super::calibration_basic::PyMarketSlice;
+use super::calibration_basic::market_slices;
 use super::parse_option_type;
 
 #[pyclass(name = "SVJCalibrator", unsendable)]
@@ -23,8 +24,7 @@ impl PySvjCalibrator {
   ) -> PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
       let ot = parse_option_type(option_type)?;
-      let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
-        slices.into_iter().map(|s| s.inner).collect();
+      let inner_slices = market_slices(slices);
       Ok(Self {
         inner: crate::calibration::svj::SvjCalibrator::from_slices(
           None,
@@ -79,8 +79,7 @@ impl PyDoubleHestonCalibrator {
   ) -> PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
       let ot = parse_option_type(option_type)?;
-      let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
-        slices.into_iter().map(|s| s.inner).collect();
+      let inner_slices = market_slices(slices);
       Ok(Self {
         inner: crate::calibration::double_heston::DoubleHestonCalibrator::from_slices(
           None,
@@ -146,8 +145,7 @@ impl PyLevyCalibrator {
           )));
         }
       };
-      let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
-        slices.into_iter().map(|s| s.inner).collect();
+      let inner_slices = market_slices(slices);
       Ok(Self {
         inner: crate::calibration::levy::LevyCalibrator::new(mt, s, r, q, inner_slices),
       })
@@ -189,8 +187,7 @@ impl PyHkdeCalibrator {
   ) -> PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
       let ot = parse_option_type(option_type)?;
-      let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
-        slices.into_iter().map(|s| s.inner).collect();
+      let inner_slices = market_slices(slices);
       Ok(Self {
         inner: crate::calibration::hkde::HkdeCalibrator::from_slices(
           None,
@@ -314,8 +311,7 @@ impl PyCgmysvCalibrator {
   #[new]
   fn new(slices: Vec<PyMarketSlice>, s: f64, r: f64, q: f64) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| {
-      let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
-        slices.into_iter().map(|s| s.inner).collect();
+      let inner_slices = market_slices(slices);
       Self {
         inner: crate::calibration::cgmysv::CgmysvCalibrator::new(s, r, q, inner_slices),
       }

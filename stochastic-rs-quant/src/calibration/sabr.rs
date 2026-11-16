@@ -20,6 +20,7 @@ use crate::calibration::Regularization;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::LmOptions;
 use crate::calibration::least_squares::minimize;
+use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::validate_quotes;
 use crate::pricing::sabr::SabrParams;
 use crate::pricing::sabr::SabrPricer;
@@ -110,18 +111,7 @@ pub struct SabrCalibrator {
 impl SabrCalibrator {
   /// Panics unless `s` is finite and positive and `r`, `q` finite; `calibrate` checks the quotes.
   pub fn new(s: f64, r: f64, q: f64, quotes: Vec<OptionQuote>) -> Self {
-    assert!(
-      s.is_finite() && s > 0.0,
-      "s must satisfy `s.is_finite() && s > 0.0`, got s = {s:?}"
-    );
-    assert!(
-      r.is_finite(),
-      "r must satisfy `r.is_finite()`, got r = {r:?}"
-    );
-    assert!(
-      q.is_finite(),
-      "q must satisfy `q.is_finite()`, got q = {q:?}"
-    );
+    assert_spot_and_rates(s, r, q);
     Self {
       s,
       r,
