@@ -61,14 +61,13 @@ pub use loss::paper_table2;
 pub use params::HkdeParams;
 
 use crate::calibration::Calibrated;
-use crate::pricing::fourier::HkdeFourier;
 use crate::traits::ToModel;
 
 impl ToModel for Calibrated<HkdeParams> {
-  type Model = HkdeFourier;
+  type Model = crate::pricing::fourier::HkdeFourier;
 
-  fn to_model(&self) -> HkdeFourier {
-    HkdeFourier::new(self.params)
+  fn to_model(&self) -> Self::Model {
+    crate::pricing::fourier::HkdeFourier::new(self.params)
   }
 }
 
