@@ -87,7 +87,8 @@ impl HestonCalibrator {
     self
   }
 
-  /// Panics unless `weights.len() == quotes.len()` and every weight is finite and positive.
+  /// Panics unless `weights.len() == quotes.len()` and every weight is finite and positive, with a
+  /// root mean square that neither overflows nor underflows.
   pub fn with_residual_weights(mut self, weights: impl Into<Array1<f64>>) -> Self {
     let weights = weights.into();
     check_residual_weights(&weights, self.quotes.len()).unwrap_or_else(|e| panic!("{e}"));
@@ -105,8 +106,8 @@ impl HestonCalibrator {
     self
   }
 
-  /// Every iterate passes [`HestonParams::satisfies_feller_condition`]: a residual on σ's
-  /// overshoot past √(2κθ) brings it back, and a violating surface is fitted on the boundary.
+  /// With `true` every iterate passes [`HestonParams::satisfies_feller_condition`]: a residual on
+  /// σ's overshoot past √(2κθ) brings it back, and a violating surface is fitted on the boundary.
   pub fn with_feller_projection(mut self, enabled: bool) -> Self {
     self.feller_projection = enabled;
     self
