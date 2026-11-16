@@ -180,8 +180,8 @@ pub fn fit_fou_central_differences(
   })
 }
 
-/// Hu–Nualart–Zhou fit; `Err` below `k + 2` points, on non-finite or flat data or no usable
-/// `H ∈ (0, 1)`, `σ`, `θ`; panics on a bad argument.
+/// Hu–Nualart–Zhou fit; `Err` below `2k + 1` points (`k + 2` with `hurst_override`), on non-finite
+/// or flat data or no usable `H ∈ (0, 1)`, `σ`, `θ`; panics on a bad argument.
 /// Reference: Brouste & Iacus (2013), arXiv:1112.3777, §3.1, and Coeurjolly (2001), Statistical Inference for Stochastic Processes 4, 199–227, for `H`.
 ///
 /// $$
@@ -218,7 +218,11 @@ pub fn fit_fou_power_variation(
       "sigma_override must satisfy `sigma_override > 0.0`, got sigma_override = {sigma:?}"
     );
   }
-  checked(path, k + 2)?;
+  let min_n = match hurst_override {
+    Some(_) => k.saturating_add(2),
+    None => k.saturating_mul(2).saturating_add(1),
+  };
+  checked(path, min_n)?;
 
   let n_points = path.len();
   let dt = delta.unwrap_or(1.0 / (n_points - 1) as f64);

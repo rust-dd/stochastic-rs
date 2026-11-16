@@ -253,8 +253,18 @@ fn a_short_path_is_insufficient_data() {
   ));
   assert!(matches!(
     fit_fou_power_variation(short.view(), None, 2, 2.0, None, None),
-    Err(StatsError::InsufficientData { needed: 4, got: 3 })
+    Err(StatsError::InsufficientData { needed: 5, got: 3 })
   ));
+  assert_eq!(
+    fit_fou_power_variation(short.view(), None, 2, 2.0, Some(0.5), None).unwrap_err(),
+    StatsError::InsufficientData { needed: 4, got: 3 }
+  );
+  let four = array![0.0, 1.0, -0.5, 0.7];
+  assert_eq!(
+    fit_fou_power_variation(four.view(), None, 2, 2.0, None, None).unwrap_err(),
+    StatsError::InsufficientData { needed: 5, got: 4 }
+  );
+  assert!(fit_fou_power_variation(four.view(), None, 2, 2.0, Some(0.5), None).is_ok());
 }
 
 #[test]
