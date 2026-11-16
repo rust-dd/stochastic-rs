@@ -76,10 +76,10 @@ fn lmm_fields<S: SeedExt>(x: &Lmm<f64, S>) -> LmmFields<'_> {
 }
 
 #[test]
-fn lmm_with_steps_round_trip() {
+fn lmm_with_points_round_trip() {
   let mut expected = lmm_base();
   expected.n = 200;
-  let got = lmm_base().with_steps(200);
+  let got = lmm_base().with_points(200);
   assert_eq!(got.n, 200);
   assert_eq!(lmm_fields(&got), lmm_fields(&expected));
   let path = got.sample();

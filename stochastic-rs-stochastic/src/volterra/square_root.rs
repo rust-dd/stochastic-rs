@@ -202,6 +202,10 @@ where
   #[must_use]
   pub fn with_kappa(mut self, kappa: T) -> Self {
     assert!(
+      kappa.is_finite(),
+      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
+    );
+    assert!(
       kappa > T::zero(),
       "kappa must satisfy `kappa > T::zero()`, got kappa = {kappa:?}"
     );
@@ -212,6 +216,10 @@ where
   /// Replace `theta`, all else unchanged.
   #[must_use]
   pub fn with_theta(mut self, theta: T) -> Self {
+    assert!(
+      theta.is_finite(),
+      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
+    );
     assert!(
       theta >= T::zero(),
       "theta must satisfy `theta >= T::zero()`, got theta = {theta:?}"
@@ -224,6 +232,10 @@ where
   #[must_use]
   pub fn with_nu(mut self, nu: T) -> Self {
     assert!(
+      nu.is_finite(),
+      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
+    );
+    assert!(
       nu > T::zero(),
       "nu must satisfy `nu > T::zero()`, got nu = {nu:?}"
     );
@@ -231,9 +243,9 @@ where
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
+  /// Replace `n`, the grid points along the path, all else unchanged.
   #[must_use]
-  pub fn with_steps(mut self, n: usize) -> Self {
+  pub fn with_points(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(n, self.t));
@@ -244,6 +256,10 @@ where
   #[must_use]
   pub fn with_v0(mut self, v0: T) -> Self {
     assert!(
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
+    );
+    assert!(
       v0 >= T::zero(),
       "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
     );
@@ -251,11 +267,15 @@ where
     self
   }
 
-  /// Replace the horizon, all else unchanged.
+  /// Replace `t`, all else unchanged.
   #[must_use]
-  pub fn with_horizon(mut self, t: T) -> Self {
-    self.t = Some(t);
-    self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(self.n, Some(t)));
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    self.t = t;
+    self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(self.n, t));
     self
   }
 

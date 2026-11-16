@@ -128,9 +128,7 @@ impl<T: FloatExt, S: SeedExt, B> MjdLog<T, S, B> {
     self.drift = drift;
     self
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> MjdLog<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)

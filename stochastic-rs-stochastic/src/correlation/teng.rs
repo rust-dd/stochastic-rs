@@ -98,8 +98,6 @@ impl<T: FloatExt, S: SeedExt> TengSCP<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> TengSCP<T, S, B> {}
-
 impl<T: FloatExt, S: SeedExt, B> TengSCP<T, S, B> {
   /// Reparametrised coefficients (Eq. 21):
   /// κ* = κ + σ², μ* = κμ/(κ+σ²), σ* = σ.

@@ -23,7 +23,7 @@ fn fou_cache_setters_match_fresh_construction() {
   let want = make(0.7, 64, Some(1.0)).sample();
 
   assert_eq!(make(0.3, 64, Some(1.0)).with_hurst(0.7).sample(), want);
-  assert_eq!(make(0.7, 16, Some(1.0)).with_steps(64).sample(), want);
+  assert_eq!(make(0.7, 16, Some(1.0)).with_points(64).sample(), want);
   assert_eq!(
     make(0.7, 64, Some(2.0)).with_horizon(Some(1.0)).sample(),
     want
@@ -36,7 +36,7 @@ fn fgbm_cache_setters_match_fresh_construction() {
   let want = make(0.7, 64, Some(1.0)).sample();
 
   assert_eq!(make(0.3, 64, Some(1.0)).with_hurst(0.7).sample(), want);
-  assert_eq!(make(0.7, 16, Some(1.0)).with_steps(64).sample(), want);
+  assert_eq!(make(0.7, 16, Some(1.0)).with_points(64).sample(), want);
   assert_eq!(
     make(0.7, 64, Some(2.0)).with_horizon(Some(1.0)).sample(),
     want
@@ -61,7 +61,7 @@ fn fcir_cache_setters_match_fresh_construction() {
   let want = make(0.7, 64, Some(1.0)).sample();
 
   assert_eq!(make(0.3, 64, Some(1.0)).with_hurst(0.7).sample(), want);
-  assert_eq!(make(0.7, 16, Some(1.0)).with_steps(64).sample(), want);
+  assert_eq!(make(0.7, 16, Some(1.0)).with_points(64).sample(), want);
   assert_eq!(
     make(0.7, 64, Some(2.0)).with_horizon(Some(1.0)).sample(),
     want
@@ -74,7 +74,7 @@ fn fjacobi_cache_setters_match_fresh_construction() {
   let want = make(0.7, 64, Some(1.0)).sample();
 
   assert_eq!(make(0.3, 64, Some(1.0)).with_hurst(0.7).sample(), want);
-  assert_eq!(make(0.7, 16, Some(1.0)).with_steps(64).sample(), want);
+  assert_eq!(make(0.7, 16, Some(1.0)).with_points(64).sample(), want);
   assert_eq!(
     make(0.7, 64, Some(2.0)).with_horizon(Some(1.0)).sample(),
     want
@@ -87,7 +87,7 @@ fn cfbms_cache_setters_match_fresh_construction() {
   let want = make(0.7, 64, Some(1.0)).sample();
 
   assert_eq!(make(0.3, 64, Some(1.0)).with_hurst(0.7).sample(), want);
-  assert_eq!(make(0.7, 16, Some(1.0)).with_steps(64).sample(), want);
+  assert_eq!(make(0.7, 16, Some(1.0)).with_points(64).sample(), want);
   assert_eq!(
     make(0.7, 64, Some(2.0)).with_horizon(Some(1.0)).sample(),
     want
@@ -100,7 +100,7 @@ fn cfgns_cache_setters_match_fresh_construction() {
   let want = make(0.7, 64, Some(1.0)).sample();
 
   assert_eq!(make(0.3, 64, Some(1.0)).with_hurst(0.7).sample(), want);
-  assert_eq!(make(0.7, 16, Some(1.0)).with_steps(64).sample(), want);
+  assert_eq!(make(0.7, 16, Some(1.0)).with_increments(64).sample(), want);
   assert_eq!(
     make(0.7, 64, Some(2.0)).with_horizon(Some(1.0)).sample(),
     want
@@ -114,7 +114,7 @@ fn cfou_cache_setters_match_fresh_construction() {
   let want = make(0.7, 64, Some(1.0)).sample();
 
   assert_eq!(make(0.3, 64, Some(1.0)).with_hurst(0.7).sample(), want);
-  assert_eq!(make(0.7, 16, Some(1.0)).with_steps(64).sample(), want);
+  assert_eq!(make(0.7, 16, Some(1.0)).with_points(64).sample(), want);
   assert_eq!(
     make(0.7, 64, Some(2.0)).with_horizon(Some(1.0)).sample(),
     want
@@ -140,7 +140,7 @@ fn jump_fou_cache_setters_match_fresh_construction() {
   let want = make(0.7, 64, Some(1.0), 7).sample();
 
   assert_eq!(make(0.3, 64, Some(1.0), 7).with_hurst(0.7).sample(), want);
-  assert_eq!(make(0.7, 16, Some(1.0), 7).with_steps(64).sample(), want);
+  assert_eq!(make(0.7, 16, Some(1.0), 7).with_points(64).sample(), want);
   assert_eq!(
     make(0.7, 64, Some(2.0), 7).with_horizon(Some(1.0)).sample(),
     want
@@ -170,7 +170,7 @@ fn jump_fou_custom_cache_setters_match_fresh_construction() {
   let want = make(0.7, 64, Some(1.0)).sample();
 
   assert_eq!(make(0.3, 64, Some(1.0)).with_hurst(0.7).sample(), want);
-  assert_eq!(make(0.7, 16, Some(1.0)).with_steps(64).sample(), want);
+  assert_eq!(make(0.7, 16, Some(1.0)).with_points(64).sample(), want);
   assert_eq!(
     make(0.7, 64, Some(2.0)).with_horizon(Some(1.0)).sample(),
     want

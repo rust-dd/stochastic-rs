@@ -114,8 +114,6 @@ impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusion<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> RegimeSwitchingDiffusion<T, S, B> {}
-
 impl<T: FloatExt, S: SeedExt, B> RegimeSwitchingDiffusion<T, S, B> {
   /// One-step CTMC transition-probability matrix `exp(Q · dt)` for a step of
   /// size `dt`, computed via scaling-and-squaring of the generator `Q`.

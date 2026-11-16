@@ -111,10 +111,10 @@ fn sabr_with_rho_rebuilds_cgns_cache() {
 }
 
 #[test]
-fn sabr_with_steps_rebuilds_cgns_cache() {
+fn sabr_with_points_rebuilds_cgns_cache() {
   let mut expected = sabr_base();
   expected.n = 128;
-  let got = sabr_base().with_steps(128);
+  let got = sabr_base().with_points(128);
   assert_eq!(got.n, 128);
   assert_eq!(fields(&got), fields(&expected));
   assert!(finite2(&got.sample()));
@@ -131,7 +131,7 @@ fn sabr_with_steps_rebuilds_cgns_cache() {
   )
   .sample();
   let got_seeded = sabr_base_seeded(Deterministic::new(9))
-    .with_steps(128)
+    .with_points(128)
     .sample();
   assert_eq!(want, got_seeded);
 }

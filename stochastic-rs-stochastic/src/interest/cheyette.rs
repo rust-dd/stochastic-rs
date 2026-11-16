@@ -142,9 +142,7 @@ impl<T: FloatExt, S: SeedExt, B> Cheyette<T, S, B> {
     let g = self.g(t, maturity);
     self.initial_discount(t, maturity) * (-g * x - T::from_f64_fast(0.5) * g * g * y).exp()
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> Cheyette<T, S, B> {
   /// The time the step starting at each grid point sees, `(i − 1) Δt` at
   /// point `i`: the launch's first curve, which is the `t` the local
   /// volatility is evaluated at, exactly as the host evaluates it at the left

@@ -187,16 +187,16 @@ fn merton_with_lambda_syncs_cpoisson_and_changes_sampled_path() {
 }
 
 #[test]
-fn merton_with_steps_matches_fresh_construction() {
+fn merton_with_points_matches_fresh_construction() {
   let mut expected = merton_base_seeded(Unseeded);
   expected.n = 128;
-  let got = merton_base_seeded(Unseeded).with_steps(128);
+  let got = merton_base_seeded(Unseeded).with_points(128);
   assert_eq!(got.n, 128);
   assert_eq!(fields(&got), fields(&expected));
   assert_eq!(
     got.cpoisson.poisson.horizon,
     Horizon::Events(128),
-    "with_steps must resync the driver's event count (dead on the sampling path, but must not go stale)"
+    "with_points must resync the driver's event count (dead on the sampling path, but must not go stale)"
   );
 
   // Bit-exact against a fresh construction, jumps included: `cpoisson`'s
@@ -216,7 +216,7 @@ fn merton_with_steps_matches_fresh_construction() {
   )
   .sample();
   let got_seeded = merton_base_seeded(Deterministic::new(9))
-    .with_steps(128)
+    .with_points(128)
     .sample();
   assert_eq!(want, got_seeded);
 }

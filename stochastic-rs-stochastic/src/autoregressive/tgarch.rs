@@ -33,6 +33,7 @@ use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::autoregressive::threshold::variance_denominator;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::precondition::assert_entries;
@@ -110,6 +111,7 @@ impl<T: FloatExt, S: SeedExt> GjrGarch<T, S> {
       alpha.len(),
       gamma.len()
     );
+    variance_denominator(&alpha, &gamma, &beta, "gamma");
     Self {
       backend: Cpu,
       omega,
@@ -149,8 +151,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   /// first point: the state it starts from is the seed variance and the
   /// not-yet-warm marker, not a value the path reports.
   fn initial_state(&self) -> [T; 4] {
-    let half = T::from_f64_fast(0.5);
-    let denom = T::one() - self.alpha[0] - half * self.gamma[0] - self.beta[0];
+    let denom = variance_denominator(&self.alpha, &self.gamma, &self.beta, "gamma");
     [T::zero(), self.omega / denom, T::zero(), T::zero()]
   }
 
@@ -306,15 +307,7 @@ impl<T: FloatExt> GjrGarchSampler<T> {
     let mut sigma2 = Array1::<T>::zeros(n);
     let var_floor = T::from_f64_fast(1e-12);
 
-    // Sum up alpha + 0.5 gamma + beta for unconditional variance approximation
-    let sum_alpha = self.alpha.iter().cloned().sum();
-    let sum_gamma_half = self.gamma.iter().cloned().sum::<T>() * T::from_f64_fast(0.5);
-    let sum_beta = self.beta.iter().cloned().sum();
-    let denom = T::one() - sum_alpha - sum_gamma_half - sum_beta;
-    assert!(
-      denom > T::zero(),
-      "GjrGarch requires sum(alpha) + 0.5*sum(gamma) + sum(beta) < 1 for finite unconditional variance"
-    );
+    let denom = variance_denominator(&self.alpha, &self.gamma, &self.beta, "gamma");
 
     for t in 0..n {
       if t == 0 {

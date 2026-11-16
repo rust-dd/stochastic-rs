@@ -55,19 +55,7 @@ pub struct Fgn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub(crate) backend: B,
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `Fgn::default().with_hurst(0.3)`.
-///
-/// **Cache note**: `sqrt_eigenvalues`/`fft_handler` (the Davies-Harte
-/// circulant-embedding FFT plan and eigenvalues) are an expensive, pure
-/// function of `hurst` and the *requested* length (`out_len`, not
-/// `padded_n`) and `t`. Rather than hand-duplicating `new()`'s ~60-line
-/// FFT setup (and risking it drifting out of sync), the three setters
-/// that feed the cache call `Self::new(..)` again wholesale, reusing
-/// `out_len` (not `padded_n`, which is already power-of-two padded) as the
-/// constructor's own `n` argument. `with_seed` is the one exception:
-/// neither cached array depends on the seed, so it stays a plain field
-/// write.
+/// Rebuilds the embedding, so it is defined on the `Cpu` type; move to a device with `on` afterwards.
 impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
   #[must_use]
   pub fn new(hurst: T, n: usize, t: Option<T>, seed: S) -> Self {
@@ -152,9 +140,8 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
     Self::new(hurst, self.out_len, self.t, self.seed)
   }
 
-  /// Replace the (requested, pre-padding) number of simulation steps;
-  /// rebuilds the FFT/eigenvalue cache.
-  pub fn with_steps(self, n: usize) -> Self {
+  /// Replace `n`, the increments before padding; rebuilds the FFT/eigenvalue cache.
+  pub fn with_increments(self, n: usize) -> Self {
     Self::new(self.hurst, n, self.t, self.seed)
   }
 
@@ -163,7 +150,9 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
   pub fn with_horizon(self, t: Option<T>) -> Self {
     Self::new(self.hurst, self.out_len, t, self.seed)
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   /// Replace the seed strategy's value, all else unchanged. Neither cached
   /// array depends on the seed, so this is a plain field write.
   pub fn with_seed(mut self, seed: S) -> Self {
@@ -172,9 +161,7 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
   }
 }
 
-/// H=0.7 — this crate's own long-memory-example convention (used
-/// throughout the fractional-process `Default` impls). t=1, n=252 — one
-/// trading year of daily steps (this crate's `Default` convention).
+/// H=0.7, the crate's long-memory example; t=1, 252 increments, a trading year of daily returns.
 impl<T: FloatExt> Default for Fgn<T, Unseeded, Cpu> {
   fn default() -> Self {
     Self::new(T::from_f64_fast(0.7), 252, Some(T::one()), Unseeded)
@@ -187,7 +174,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     self.hurst
   }
 
-  /// Number of increments per path, as passed to `new()` (the FFT pads it internally).
+  /// Increments the sample returns; the embedding pads to the next power of two internally.
   pub fn n(&self) -> usize {
     self.out_len
   }

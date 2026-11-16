@@ -23,12 +23,11 @@ where
     &self,
     x0: &Array1<T>,
     t0: T,
-    t1: T,
+    steps: usize,
     dt: T,
     n_paths: usize,
     normal: &mut Seeded<SimdNormal<T>>,
   ) -> Array3<T> {
-    let steps = ((t1 - t0) / dt).ceil().to_usize().unwrap();
     let dim = x0.len();
     let sqrt_dt = dt.sqrt();
     let mut out = Array3::zeros((n_paths, steps + 1, dim));
@@ -60,12 +59,11 @@ where
     &self,
     x0: &Array1<T>,
     t0: T,
-    t1: T,
+    steps: usize,
     dt: T,
     n_paths: usize,
     normal: &mut Seeded<SimdNormal<T>>,
   ) -> Array3<T> {
-    let steps = ((t1 - t0) / dt).ceil().to_usize().unwrap();
     let dim = x0.len();
     let sqrt_dt = dt.sqrt();
     let mut out = Array3::zeros((n_paths, steps + 1, dim));
@@ -102,12 +100,11 @@ where
     &self,
     x0: &Array1<T>,
     t0: T,
-    t1: T,
+    steps: usize,
     dt: T,
     n_paths: usize,
     normal: &mut Seeded<SimdNormal<T>>,
   ) -> Array3<T> {
-    let steps = ((t1 - t0) / dt).ceil().to_usize().unwrap();
     let dim = x0.len();
     let sqrt_dt = dt.sqrt();
     let half = T::from_f64_fast(0.5);
@@ -154,12 +151,11 @@ where
     &self,
     x0: &Array1<T>,
     t0: T,
-    t1: T,
+    steps: usize,
     dt: T,
     n_paths: usize,
     normal: &mut Seeded<SimdNormal<T>>,
   ) -> Array3<T> {
-    let steps = ((t1 - t0) / dt).ceil().to_usize().unwrap();
     let dim = x0.len();
     let sqrt_dt = dt.sqrt();
     let half = T::from_f64_fast(0.5);

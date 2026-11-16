@@ -102,12 +102,9 @@ fn zero_horizon_and_invalid_inputs_are_explicit() {
   assert!(law(2.0, 0.04, -0.4).stationary_pdf(0.05).is_nan());
   assert!(law(0.0, 0.04, 0.4).stationary_pdf(0.05).is_nan());
   assert!(cir.stationary_pdf(f64::NAN).is_nan());
-  assert!(
-    law(2.0, 0.04, 0.4)
-      .with_sigma(f64::NAN)
-      .stationary_pdf(0.05)
-      .is_nan()
-  );
+  let mut written = law(2.0, 0.04, 0.4);
+  written.sigma = f64::NAN;
+  assert!(written.stationary_pdf(0.05).is_nan());
 }
 
 #[test]

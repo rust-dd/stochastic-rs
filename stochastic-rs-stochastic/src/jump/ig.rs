@@ -68,8 +68,6 @@ impl<T: FloatExt, S: SeedExt> Ig<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Ig<T, S, B> {}
-
 impl<T: FloatExt, S: SeedExt, B> Ig<T, S, B> {
   #[inline]
   fn dt(&self) -> T {

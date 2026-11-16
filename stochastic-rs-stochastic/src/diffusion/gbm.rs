@@ -108,11 +108,17 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
       backend: Cpu,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> Gbm<T, S, B> {
   /// Replace `mu`; rebuilds the cached terminal-log-normal parameters
   /// (`ln_mu`/`ln_sigma`, read by [`DistributionExt`]'s moment methods) so
   /// they stay consistent with the new `mu`.
   pub fn with_mu(mut self, mu: T) -> Self {
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
     self.mu = mu;
     (self.ln_mu, self.ln_sigma) = terminal_lognormal_cache(mu, self.sigma, self.x0, self.t);
     self
@@ -120,6 +126,14 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
 
   /// Replace `sigma`; rebuilds the cached terminal-log-normal parameters.
   pub fn with_sigma(mut self, sigma: T) -> Self {
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      sigma >= T::zero(),
+      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
+    );
     self.sigma = sigma;
     (self.ln_mu, self.ln_sigma) = terminal_lognormal_cache(self.mu, sigma, self.x0, self.t);
     self
@@ -127,14 +141,22 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
 
   /// Replace `x0`; rebuilds the cached terminal-log-normal parameters.
   pub fn with_x0(mut self, x0: T) -> Self {
+    assert!(
+      x0.is_finite(),
+      "x0 must satisfy `x0.is_finite()`, got x0 = {x0:?}"
+    );
+    assert!(
+      x0 > T::zero(),
+      "x0 must satisfy `x0 > T::zero()`, got x0 = {x0:?}"
+    );
     self.x0 = x0;
     (self.ln_mu, self.ln_sigma) = terminal_lognormal_cache(self.mu, self.sigma, x0, self.t);
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged. Does
-  /// not touch the terminal-log-normal cache, which does not depend on `n`.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; the terminal log-normal cache does not read it.
+  pub fn with_points(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self
   }
@@ -142,6 +164,10 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
   /// Replace the simulation horizon `t`; rebuilds the cached
   /// terminal-log-normal parameters.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     (self.ln_mu, self.ln_sigma) = terminal_lognormal_cache(self.mu, self.sigma, self.x0, t);
     self
@@ -154,8 +180,8 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
   }
 }
 
-/// μ=0.05, σ=0.2, x₀=100, t=1, n=252 — one trading year of daily steps on a
-/// textbook equity (matches this file's own tests).
+/// μ=0.05, σ=0.2, x₀=100, t=1, a textbook equity (this file's tests); 252 points, a trading year of
+/// daily closes.
 impl<T: FloatExt> Default for Gbm<T, Unseeded> {
   fn default() -> Self {
     Self::new(

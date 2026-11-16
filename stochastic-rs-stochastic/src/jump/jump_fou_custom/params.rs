@@ -73,50 +73,80 @@ where
     Fgn::new(hurst, n - 1, t, Unseeded)
   }
 
-  /// Replace `hurst`; rebuilds the embedded `fgn`.
+  /// Replace `hurst`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_hurst(mut self, hurst: T) -> Self {
+    assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
     self.hurst = hurst;
     self.fgn = Self::fgn_for(hurst, self.n, self.t);
     self
   }
 
-  /// Replace `theta`, all else unchanged.
-  pub fn with_theta(mut self, theta: T) -> Self {
-    self.theta = theta;
-    self
-  }
-
-  /// Replace `mu`, all else unchanged.
-  pub fn with_mu(mut self, mu: T) -> Self {
-    self.mu = mu;
-    self
-  }
-
-  /// Replace `sigma`, all else unchanged.
-  pub fn with_sigma(mut self, sigma: T) -> Self {
-    self.sigma = sigma;
-    self
-  }
-
-  /// Replace the number of simulation steps `n`; rebuilds the embedded
-  /// `fgn`. Panics if `n < 2`, matching `new()`'s own assertion.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`; panics if `n < 2`.
+  /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  pub fn with_points(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.fgn = Self::fgn_for(self.hurst, n, self.t);
     self
   }
 
-  /// Replace `x0`, all else unchanged.
-  pub fn with_x0(mut self, x0: Option<T>) -> Self {
-    self.x0 = x0;
+  /// Replace `t`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    self.t = t;
+    self.fgn = Self::fgn_for(self.hurst, self.n, t);
+    self
+  }
+}
+
+impl<T, D, S: SeedExt, B> JumpFOUCustom<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+  /// Replace `theta`, all else unchanged.
+  pub fn with_theta(mut self, theta: T) -> Self {
+    assert!(
+      theta.is_finite(),
+      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
+    );
+    self.theta = theta;
     self
   }
 
-  /// Replace the simulation horizon `t`; rebuilds the embedded `fgn`.
-  pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    self.t = t;
-    self.fgn = Self::fgn_for(self.hurst, self.n, t);
+  /// Replace `mu`, all else unchanged.
+  pub fn with_mu(mut self, mu: T) -> Self {
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    self.mu = mu;
+    self
+  }
+
+  /// Replace `sigma`, all else unchanged.
+  pub fn with_sigma(mut self, sigma: T) -> Self {
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    self.sigma = sigma;
+    self
+  }
+
+  /// Replace `x0`, all else unchanged.
+  pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
+    self.x0 = x0;
     self
   }
 
@@ -138,13 +168,7 @@ where
     self.seed = seed;
     self
   }
-}
 
-impl<T, D, S: SeedExt, B> JumpFOUCustom<T, D, S, B>
-where
-  T: FloatExt,
-  D: Distribution<T> + Send + Sync,
-{
   /// Hurst exponent H of the driving fractional Gaussian noise; H = 0.5 recovers an OU process
   /// with jumps.
   pub fn hurst(&self) -> T {

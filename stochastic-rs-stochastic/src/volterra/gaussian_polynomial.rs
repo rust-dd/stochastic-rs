@@ -101,9 +101,8 @@ impl<T: FloatExt, K, S: SeedExt> GaussianPolynomialVolatility<T, K, S>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
-  /// # Panics
-  /// - if `n < 2`
-  /// - if `coefficients` is empty (a polynomial needs at least a constant term)
+  /// Panics if `n < 2`, if `t` is not positive and finite, or if `coefficients` is empty
+  /// or holds a non-finite entry.
   #[must_use]
   pub fn new(kernel: K, coefficients: Array1<T>, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
@@ -133,31 +132,10 @@ where
     }
   }
 
-  /// The quintic parameterisation of arXiv:2212.10917.
-  ///
-  /// The model's polynomial is **sparse**, not a general quintic: the paper
-  /// fixes the quadratic and quartic terms at zero, so
+  /// The sparse quintic of arXiv:2212.10917, degrees 2 and 4 at zero; panics as [`new`](Self::new),
+  /// which takes a dense polynomial, a model the paper's results do not cover.
   ///
   /// $$ p(x) = \alpha_0 + \alpha_1 x + \alpha_3 x^3 + \alpha_5 x^5 . $$
-  ///
-  /// This constructor therefore takes those four coefficients and fills
-  /// degrees 2 and 4 with zero, rather than accepting six free values —
-  /// passing a dense six-coefficient polynomial would produce a strictly
-  /// larger family than the one the citation names. (The paper's "six
-  /// parameters" are $\{\rho, H, \alpha_0, \alpha_1, \alpha_3, \alpha_5\}$,
-  /// counting the correlation and Hurst exponent, neither of which lives on
-  /// this type — see the scope note in the module docs.)
-  ///
-  /// The calibrated instance in the paper's Figure 1 is
-  /// $(\alpha_0, \alpha_1, \alpha_3, \alpha_5) = (0.5907, 1, 0.2893, 0.0549)$
-  /// at $\rho = -0.6843$, $H = -0.0358$.
-  ///
-  /// Use [`new`](Self::new) directly for an unrestricted degree-five
-  /// polynomial; it is a different model and this crate does not claim the
-  /// paper's results for it.
-  ///
-  /// # Panics
-  /// - under the same conditions as [`new`](Self::new)
   #[must_use]
   pub fn quintic(
     kernel: K,
@@ -178,12 +156,16 @@ impl<T: FloatExt, K, S: SeedExt, B> GaussianPolynomialVolatility<T, K, S, B>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
-  /// Replace the polynomial, all else unchanged.
-  ///
-  /// # Panics
-  /// - if `coefficients` is empty
+  /// Replace the polynomial, all else unchanged; panics if `coefficients` is empty or holds a
+  /// non-finite entry.
   #[must_use]
   pub fn with_coefficients(mut self, coefficients: Array1<T>) -> Self {
+    assert_entries(
+      "coefficients",
+      "coefficients[i].is_finite()",
+      &coefficients,
+      |v| v.is_finite(),
+    );
     assert!(
       !coefficients.is_empty(),
       "coefficients must satisfy `!coefficients.is_empty()`, got coefficients = []"
@@ -192,23 +174,24 @@ where
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  ///
-  /// # Panics
-  /// - if `n < 2`
+  /// Replace `n`, the grid points along the path, all else unchanged; panics if `n < 2`.
   #[must_use]
-  pub fn with_steps(mut self, n: usize) -> Self {
+  pub fn with_points(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(n, self.t));
     self
   }
 
-  /// Replace the horizon, all else unchanged.
+  /// Replace `t`, all else unchanged.
   #[must_use]
-  pub fn with_horizon(mut self, t: T) -> Self {
-    self.t = Some(t);
-    self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(self.n, Some(t)));
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
+    self.t = t;
+    self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(self.n, t));
     self
   }
 

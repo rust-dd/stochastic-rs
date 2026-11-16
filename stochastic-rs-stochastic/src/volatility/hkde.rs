@@ -55,7 +55,7 @@ pub struct Hkde<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub eta1: T,
   /// Downward jump rate parameter (eta2 > 0).
   pub eta2: T,
-  /// Number of time steps.
+  /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
   /// Initial spot.
   pub s0: T,
@@ -189,24 +189,40 @@ impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
 impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
   /// Replace `mu`, all else unchanged.
   pub fn with_mu(mut self, mu: T) -> Self {
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
     self.mu = mu;
     self
   }
 
   /// Replace `kappa`, all else unchanged.
   pub fn with_kappa(mut self, kappa: T) -> Self {
+    assert!(
+      kappa.is_finite(),
+      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
+    );
     self.kappa = kappa;
     self
   }
 
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: T) -> Self {
+    assert!(
+      theta.is_finite(),
+      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
+    );
     self.theta = theta;
     self
   }
 
   /// Replace `sigma_v`, all else unchanged.
   pub fn with_sigma_v(mut self, sigma_v: T) -> Self {
+    assert!(
+      sigma_v.is_finite(),
+      "sigma_v must satisfy `sigma_v.is_finite()`, got sigma_v = {sigma_v:?}"
+    );
     self.sigma_v = sigma_v;
     self
   }
@@ -215,6 +231,10 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
   /// (`cgns`) so the new correlation actually reaches the sampler instead
   /// of a stale one computed from the old `rho`.
   pub fn with_rho(mut self, rho: T) -> Self {
+    assert!(
+      rho.is_finite(),
+      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
+    );
     assert!(
       rho >= -T::one() && rho <= T::one(),
       "rho must satisfy `rho >= -T::one() && rho <= T::one()`, got rho = {rho:?}"
@@ -227,6 +247,10 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
   /// Replace `v0`, all else unchanged.
   pub fn with_v0(mut self, v0: T) -> Self {
     assert!(
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
+    );
+    assert!(
       v0 >= T::zero(),
       "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
     );
@@ -237,6 +261,10 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
   /// Replace `lambda`, all else unchanged.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(
       lambda >= T::zero(),
       "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
     );
@@ -246,12 +274,20 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
 
   /// Replace `p_up`, all else unchanged.
   pub fn with_p_up(mut self, p_up: T) -> Self {
+    assert!(
+      p_up.is_finite(),
+      "p_up must satisfy `p_up.is_finite()`, got p_up = {p_up:?}"
+    );
     self.p_up = p_up;
     self
   }
 
   /// Replace `eta1`, all else unchanged.
   pub fn with_eta1(mut self, eta1: T) -> Self {
+    assert!(
+      eta1.is_finite(),
+      "eta1 must satisfy `eta1.is_finite()`, got eta1 = {eta1:?}"
+    );
     assert!(
       eta1 > T::one(),
       "eta1 must satisfy `eta1 > T::one()`, got eta1 = {eta1:?}"
@@ -263,6 +299,10 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
   /// Replace `eta2`, all else unchanged.
   pub fn with_eta2(mut self, eta2: T) -> Self {
     assert!(
+      eta2.is_finite(),
+      "eta2 must satisfy `eta2.is_finite()`, got eta2 = {eta2:?}"
+    );
+    assert!(
       eta2 > T::zero(),
       "eta2 must satisfy `eta2 > T::zero()`, got eta2 = {eta2:?}"
     );
@@ -272,6 +312,10 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
 
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: T) -> Self {
+    assert!(
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
+    );
     assert!(
       s0 > T::zero(),
       "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
@@ -286,10 +330,9 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
     self
   }
 
-  /// Replace the number of simulation steps `n`; rebuilds the cached
-  /// correlated-Gaussian generator, whose length and step size derive
-  /// from `n`.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
+  /// generator, whose length and step size derive from `n`.
+  pub fn with_points(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
@@ -299,6 +342,10 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
   /// Replace the simulation horizon `t`; rebuilds the cached
   /// correlated-Gaussian generator's step size, which derives from `t`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
     self
@@ -309,9 +356,7 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
     self.seed = seed;
     self
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
   /// Kou double-exponential jump compensator: E[e^J - 1]
   #[inline]
   fn k_bar(&self) -> T {

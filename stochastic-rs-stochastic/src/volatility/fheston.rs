@@ -75,7 +75,7 @@ pub struct RoughHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> RoughHeston<T, S> {
-  /// Starts the spot at 1 with zero drift and correlation; set `s0`, `mu` and `rho` on the result.
+  /// Starts at spot 1 with zero drift and correlation, which `with_s0`, `with_mu`, `with_rho` set.
   pub fn new(
     hurst: T,
     v0: T,
@@ -140,9 +140,41 @@ impl<T: FloatExt, S: SeedExt> RoughHeston<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> RoughHeston<T, S, B> {}
-
 impl<T: FloatExt, S: SeedExt, B> RoughHeston<T, S, B> {
+  /// Replace `s0`, all else unchanged; the price steps multiplicatively, so it starts positive.
+  pub fn with_s0(mut self, s0: T) -> Self {
+    assert!(
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
+    );
+    assert!(
+      s0 > T::zero(),
+      "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
+    );
+    self.s0 = s0;
+    self
+  }
+
+  /// Replace `mu`, all else unchanged.
+  pub fn with_mu(mut self, mu: T) -> Self {
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    self.mu = mu;
+    self
+  }
+
+  /// Replace `rho`, all else unchanged.
+  pub fn with_rho(mut self, rho: T) -> Self {
+    assert!(
+      (-T::one()..=T::one()).contains(&rho),
+      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
+    );
+    self.rho = rho;
+    self
+  }
+
   /// The grid spacing, zero for a single point.
   fn dt(&self) -> T {
     if self.n > 1 {
@@ -465,7 +497,7 @@ impl PyRoughHeston {
       };
       match (seed, dtype.unwrap_or("f64")) {
         (Some(sd), "f32") => {
-          let mut m = RoughHeston::new(
+          let m = RoughHeston::new(
             hurst as f32,
             v0 as f32,
             theta as f32,
@@ -477,13 +509,11 @@ impl PyRoughHeston {
             n,
             Deterministic::new(sd),
           );
-          m.mu = mu as f32;
-          m.s0 = s0 as f32;
-          m.rho = rho as f32;
+          let m = m.with_mu(mu as f32).with_s0(s0 as f32).with_rho(rho as f32);
           obj.seeded_f32 = Some(m);
         }
         (Some(sd), _) => {
-          let mut m = RoughHeston::new(
+          let m = RoughHeston::new(
             hurst,
             v0,
             theta,
@@ -495,13 +525,11 @@ impl PyRoughHeston {
             n,
             Deterministic::new(sd),
           );
-          m.mu = mu;
-          m.s0 = s0;
-          m.rho = rho;
+          let m = m.with_mu(mu).with_s0(s0).with_rho(rho);
           obj.seeded_f64 = Some(m);
         }
         (None, "f32") => {
-          let mut m = RoughHeston::new(
+          let m = RoughHeston::new(
             hurst as f32,
             v0 as f32,
             theta as f32,
@@ -513,16 +541,12 @@ impl PyRoughHeston {
             n,
             Unseeded,
           );
-          m.mu = mu as f32;
-          m.s0 = s0 as f32;
-          m.rho = rho as f32;
+          let m = m.with_mu(mu as f32).with_s0(s0 as f32).with_rho(rho as f32);
           obj.inner_f32 = Some(m);
         }
         (None, _) => {
-          let mut m = RoughHeston::new(hurst, v0, theta, kappa, nu, c1, c2, t, n, Unseeded);
-          m.mu = mu;
-          m.s0 = s0;
-          m.rho = rho;
+          let m = RoughHeston::new(hurst, v0, theta, kappa, nu, c1, c2, t, n, Unseeded);
+          let m = m.with_mu(mu).with_s0(s0).with_rho(rho);
           obj.inner_f64 = Some(m);
         }
       }

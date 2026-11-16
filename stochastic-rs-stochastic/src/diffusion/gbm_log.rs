@@ -84,9 +84,7 @@ impl<T: FloatExt, S: SeedExt, B> GbmLog<T, S, B> {
     self.drift = drift;
     self
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> GbmLog<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)

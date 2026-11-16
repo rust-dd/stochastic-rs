@@ -184,10 +184,8 @@ impl<T: FloatExt, S: SeedExt> HestonSlv<T, S> {
   }
 }
 
-/// s₀=100, v₀=0.04, κ=2.0, θ=0.04, σ=0.3, ρ=-0.7, μ=0.05 — the crate's
-/// Heston parameterization — under full mixing `η = 1` and unit leverage
-/// written as an expression, so the default is the Heston model and runs on
-/// a device. t=1, n=252 — one trading year of daily steps.
+/// The crate's Heston (s₀=100, v₀=0.04, κ=2, θ=0.04, σ=0.3, ρ=-0.7, μ=0.05) at `η = 1` with a unit
+/// leverage expression, so it runs on a device; t=1, 252 points, a trading year of daily closes.
 impl<T: FloatExt> Default for HestonSlv<T, Unseeded> {
   fn default() -> Self {
     Self::new(
@@ -211,6 +209,10 @@ impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: T) -> Self {
     assert!(
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
+    );
+    assert!(
       s0 > T::zero(),
       "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
     );
@@ -220,6 +222,10 @@ impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
 
   /// Replace `v0`, all else unchanged.
   pub fn with_v0(mut self, v0: T) -> Self {
+    assert!(
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
+    );
     assert!(
       v0 >= T::zero(),
       "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
@@ -231,6 +237,10 @@ impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
   /// Replace `kappa`, all else unchanged.
   pub fn with_kappa(mut self, kappa: T) -> Self {
     assert!(
+      kappa.is_finite(),
+      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
+    );
+    assert!(
       kappa >= T::zero(),
       "kappa must satisfy `kappa >= T::zero()`, got kappa = {kappa:?}"
     );
@@ -240,6 +250,10 @@ impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
 
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: T) -> Self {
+    assert!(
+      theta.is_finite(),
+      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
+    );
     assert!(
       theta >= T::zero(),
       "theta must satisfy `theta >= T::zero()`, got theta = {theta:?}"
@@ -251,6 +265,10 @@ impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
   /// Replace `sigma`, all else unchanged.
   pub fn with_sigma(mut self, sigma: T) -> Self {
     assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
       sigma >= T::zero(),
       "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
     );
@@ -261,6 +279,10 @@ impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
   /// Replace `rho`, all else unchanged.
   pub fn with_rho(mut self, rho: T) -> Self {
     assert!(
+      rho.is_finite(),
+      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
+    );
+    assert!(
       (-T::one()..=T::one()).contains(&rho),
       "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
     );
@@ -270,12 +292,20 @@ impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
 
   /// Replace `mu`, all else unchanged.
   pub fn with_mu(mut self, mu: T) -> Self {
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
     self.mu = mu;
     self
   }
 
   /// Replace the mixing fraction `eta`, all else unchanged.
   pub fn with_eta(mut self, eta: T) -> Self {
+    assert!(
+      eta.is_finite(),
+      "eta must satisfy `eta.is_finite()`, got eta = {eta:?}"
+    );
     assert!(
       eta >= T::zero(),
       "eta must satisfy `eta >= T::zero()`, got eta = {eta:?}"
@@ -291,7 +321,7 @@ impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
   }
 
   /// Replace the number of grid points `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  pub fn with_points(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self
@@ -299,6 +329,10 @@ impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self
   }

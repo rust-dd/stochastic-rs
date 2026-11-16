@@ -83,7 +83,7 @@ bes_plain_test!(
   boundary,
   VarianceBoundary::Reflect
 );
-bes_plain_test!(bessel_with_steps_round_trip, with_steps, n, 64usize);
+bes_plain_test!(bessel_with_points_round_trip, with_points, n, 64usize);
 bes_plain_test!(bessel_with_horizon_round_trip, with_horizon, t, Some(2.0));
 
 #[test]
@@ -118,7 +118,7 @@ besq_plain_test!(
   boundary,
   VarianceBoundary::Reflect
 );
-besq_plain_test!(besq_with_steps_round_trip, with_steps, n, 64usize);
+besq_plain_test!(besq_with_points_round_trip, with_points, n, 64usize);
 besq_plain_test!(besq_with_horizon_round_trip, with_horizon, t, Some(2.0));
 
 #[test]

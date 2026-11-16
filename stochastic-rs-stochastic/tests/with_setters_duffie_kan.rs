@@ -1,19 +1,5 @@
-//! TDD tests for A1-c Task 2: `with_*` builder setters on `DuffieKan`
-//! (`interest/duffie_kan.rs`), the two-factor continuous (no-jump)
-//! Duffie-Kan model. Split out of a combined `with_setters_interest.rs` to
-//! stay under the project's 600-line file cap (per-type split, alongside
-//! `with_setters_duffie_kan_jump_exp.rs` and `with_setters_lmm.rs`).
-//!
-//! Pattern per setter: build `expected` by mutating the public field
-//! directly on a fresh baseline (valid since every field here is `pub`),
-//! build `got` via the baseline plus exactly one `.with_*` call, and assert
-//! they agree on every comparable field. `DuffieKan` caches a
-//! correlated-Gaussian generator (`cgns`) keyed on `(rho, n, t)`; for
-//! `with_rho`/`with_steps`/`with_horizon`, a second test asserts sampling
-//! matches a *fresh* equivalent `new(...)` call bit-for-bit — the only way
-//! the cache could disagree is if the setter forgot to rebuild it.
-//! `DuffieKan::new` has no `assert!`s of its own, so no setter here needs a
-//! rejection test.
+//! `DuffieKan`'s setters agree with a direct field write; `with_rho`, `with_points` and
+//! `with_horizon` also sample bit for bit like a fresh `new`, so the `cgns` cache is rebuilt.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -164,10 +150,10 @@ fn duffie_kan_with_rho_rebuilds_cgns_cache() {
 }
 
 #[test]
-fn duffie_kan_with_steps_rebuilds_cgns_cache() {
+fn duffie_kan_with_points_rebuilds_cgns_cache() {
   let mut expected = dk_base();
   expected.n = 128;
-  let got = dk_base().with_steps(128);
+  let got = dk_base().with_points(128);
   assert_eq!(got.n, 128);
   assert_eq!(dk_fields(&got), dk_fields(&expected));
   assert!(finite2(&got.sample()));
@@ -193,11 +179,11 @@ fn duffie_kan_with_steps_rebuilds_cgns_cache() {
   )
   .sample();
   let got_seeded = dk_base_seeded(Deterministic::new(9))
-    .with_steps(128)
+    .with_points(128)
     .sample();
   assert_eq!(
     want, got_seeded,
-    "with_steps must resize the cgns cache (dt, buffer length), not just n"
+    "with_points must resize the cgns cache (dt, buffer length), not just n"
   );
 }
 

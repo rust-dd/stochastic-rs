@@ -121,8 +121,6 @@ impl<T: FloatExt, S: SeedExt> Lfsm<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Lfsm<T, S, B> {}
-
 impl<T: FloatExt, S: SeedExt, B> Lfsm<T, S, B> {
   #[inline]
   fn dt(&self) -> T {

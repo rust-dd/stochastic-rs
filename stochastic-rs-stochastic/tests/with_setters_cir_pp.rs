@@ -72,7 +72,7 @@ plain_test!(
   boundary,
   VarianceBoundary::Reflect
 );
-plain_test!(pp_with_steps_round_trip, with_steps, n, 64usize);
+plain_test!(pp_with_points_round_trip, with_points, n, 64usize);
 plain_test!(pp_with_horizon_round_trip, with_horizon, t, Some(2.0));
 
 #[test]

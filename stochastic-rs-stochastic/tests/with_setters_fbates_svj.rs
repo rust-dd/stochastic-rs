@@ -104,7 +104,7 @@ fbsvj_plain_test!(fbates_svj_with_rho_round_trip, with_rho, rho, -0.4);
 fbsvj_plain_test!(fbates_svj_with_lambda_round_trip, with_lambda, lambda, 0.8);
 fbsvj_plain_test!(fbates_svj_with_nu_round_trip, with_nu, nu, -0.02);
 fbsvj_plain_test!(fbates_svj_with_omega_round_trip, with_omega, omega, 0.15);
-fbsvj_plain_test!(fbates_svj_with_steps_round_trip, with_steps, n, 64usize);
+fbsvj_plain_test!(fbates_svj_with_points_round_trip, with_points, n, 64usize);
 fbsvj_plain_test!(
   fbates_svj_with_horizon_round_trip,
   with_horizon,

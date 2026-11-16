@@ -371,3 +371,17 @@ def test_ho_lee_takes_exactly_one_of_theta_and_f_t():
     for bad in ({}, {"theta": 0.02, "f_T": lambda t: 0.03}):
         with pytest.raises(ValueError, match="exactly one drift"):
             sr.PyHoLee(0.01, 64, **bad)
+
+
+def test_the_fractional_sheet_names_its_grid_rows_and_cols():
+    sheet = sr.PyFbs(0.7, rows=9, cols=5, r=1.0, seed=3).sample()
+    assert sheet.shape == (9, 5)
+    with pytest.raises(TypeError):
+        sr.PyFbs(0.7, m=9, n=5, r=1.0)
+
+
+def test_the_rough_heston_spot_drift_and_correlation_are_checked_at_construction():
+    for bad, match in (({"s0": 0.0}, "s0 must satisfy"), ({"mu": math.nan}, "mu must satisfy"),
+                       ({"rho": 1.5}, "rho must satisfy")):
+        with pytest.raises(ValueError, match=match):
+            sr.PyRoughHeston(0.1, 0.04, 1.0, 0.3, 64, 0.2, **bad)

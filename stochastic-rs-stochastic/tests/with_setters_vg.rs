@@ -53,7 +53,7 @@ plain_test!(vg_with_mu_round_trip, with_mu, mu, 0.05);
 plain_test!(vg_with_sigma_round_trip, with_sigma, sigma, 0.3);
 plain_test!(vg_with_nu_round_trip, with_nu, nu, 0.25);
 plain_test!(vg_with_x0_round_trip, with_x0, x0, Some(1.0));
-plain_test!(vg_with_steps_round_trip, with_steps, n, 64usize);
+plain_test!(vg_with_points_round_trip, with_points, n, 64usize);
 plain_test!(vg_with_horizon_round_trip, with_horizon, t, Some(2.0));
 
 #[test]

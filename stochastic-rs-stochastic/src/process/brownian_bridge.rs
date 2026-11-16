@@ -46,11 +46,7 @@ use crate::traits::ProcessExt;
 pub struct BrownianBridge<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Diffusion scale σ multiplying `dW_s` in the bridge SDE.
   pub sigma: T,
-  /// Number of points sampled along the path. Both endpoints are
-  /// represented as distinct points only when `n >= 2`; `n = 1` collapses to
-  /// the single value `x0`, not `xt` — an arbitrary but documented tie-break
-  /// (matching how every other single-path process in this crate degrades at
-  /// `n = 1`), not a claim that `x0` is somehow more correct than `xt` here.
+  /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
   /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
@@ -106,30 +102,47 @@ impl<T: FloatExt, S: SeedExt> BrownianBridge<T, S> {
 impl<T: FloatExt, S: SeedExt, B> BrownianBridge<T, S, B> {
   /// Replace `sigma`, all else unchanged.
   pub fn with_sigma(mut self, sigma: T) -> Self {
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
     self.sigma = sigma;
     self
   }
 
   /// Replace the pinned starting value `x0`, all else unchanged.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
     self.x0 = x0;
     self
   }
 
   /// Replace the pinned terminal value `xt`, all else unchanged.
   pub fn with_xt(mut self, xt: Option<T>) -> Self {
+    assert!(
+      xt.is_none_or(|v| v.is_finite()),
+      "xt must satisfy `xt.is_none_or(|v| v.is_finite())`, got xt = {xt:?}"
+    );
     self.xt = xt;
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path, all else unchanged.
+  pub fn with_points(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self
   }

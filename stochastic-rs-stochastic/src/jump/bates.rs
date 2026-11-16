@@ -72,12 +72,8 @@ where
   pub t: Option<T>,
   /// Treatment of a negative square-root state after a step; the Feller condition is not required.
   pub boundary: VarianceBoundary,
-  /// Correlated-Gaussian generator driving the price/variance diffusion.
-  /// Constructed once (and rebuilt by `with_rho`/`with_steps`/`with_horizon`)
-  /// with a `Cgns<T>` (`S = Unseeded`) that itself is never consulted — the
-  /// sampler drives it via `cgns.sample_impl(&self.seed)` instead, so this
-  /// field's own dead `Unseeded` is irrelevant to reproducibility. Private,
-  /// so this indirection is an implementation detail.
+  /// Correlated-Gaussian generator of the price/variance diffusion; the sampler drives it through
+  /// `cgns.sample_impl(&self.seed)`, so its own `Unseeded` seed is never read.
   cgns: Cgns<T>,
   /// The jump driver, seeded from `seed.derive()`; sampling reads its law and seed but takes the
   /// rate from `lambda`, so replace it through [`with_cpoisson`](Self::with_cpoisson).
@@ -207,6 +203,10 @@ where
   /// mirror `cpoisson.poisson.lambda` (see `resync_cpoisson_poisson`) so a
   /// caller inspecting it does not see a stale value.
   pub fn with_lambda(mut self, lambda: T) -> Self {
+    assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
     self.lambda = lambda;
     self.resync_cpoisson_poisson();
     self
@@ -214,24 +214,40 @@ where
 
   /// Replace `k`, all else unchanged.
   pub fn with_k(mut self, k: T) -> Self {
+    assert!(
+      k.is_finite(),
+      "k must satisfy `k.is_finite()`, got k = {k:?}"
+    );
     self.k = k;
     self
   }
 
   /// Replace `alpha`, all else unchanged.
   pub fn with_alpha(mut self, alpha: T) -> Self {
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
     self.alpha = alpha;
     self
   }
 
   /// Replace `beta`, all else unchanged.
   pub fn with_beta(mut self, beta: T) -> Self {
+    assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
     self.beta = beta;
     self
   }
 
   /// Replace `sigma`, all else unchanged.
   pub fn with_sigma(mut self, sigma: T) -> Self {
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
     self.sigma = sigma;
     self
   }
@@ -240,6 +256,10 @@ where
   /// (`cgns`) so the new correlation actually reaches the sampler instead
   /// of a stale one computed from the old `rho`.
   pub fn with_rho(mut self, rho: T) -> Self {
+    assert!(
+      rho.is_finite(),
+      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
+    );
     self.rho = rho;
     self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
     self
@@ -247,12 +267,20 @@ where
 
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: T) -> Self {
+    assert!(
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
+    );
     self.s0 = s0;
     self
   }
 
   /// Replace `v0`, all else unchanged.
   pub fn with_v0(mut self, v0: T) -> Self {
+    assert!(
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
+    );
     assert!(
       v0 >= T::zero(),
       "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
@@ -277,7 +305,8 @@ where
 
   /// Replace `n`; rebuilds the correlated-Gaussian generator, and the jump driver's event count
   /// follows, though sampling never reads that.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  pub fn with_points(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self.resync_cpoisson_poisson();
@@ -286,6 +315,10 @@ where
 
   /// Replace `t`; rebuilds the correlated-Gaussian generator, whose step follows `t`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
     self

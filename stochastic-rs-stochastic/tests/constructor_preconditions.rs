@@ -6,12 +6,26 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::uniform::SimdUniform;
+use stochastic_rs_stochastic::autoregressive::agrach::Agarch;
 use stochastic_rs_stochastic::autoregressive::ar::ARp;
 use stochastic_rs_stochastic::autoregressive::arima::Arima;
+use stochastic_rs_stochastic::autoregressive::garch::Garch;
 use stochastic_rs_stochastic::autoregressive::ma::MAq;
 use stochastic_rs_stochastic::autoregressive::sarima::Sarima;
+use stochastic_rs_stochastic::autoregressive::tgarch::GjrGarch;
 use stochastic_rs_stochastic::correlation::VanEmmerich;
+use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
 use stochastic_rs_stochastic::correlation::stochastic_correlated_bm;
+use stochastic_rs_stochastic::diffusion::bessel::Bessel;
+use stochastic_rs_stochastic::diffusion::bessel::SquaredBessel;
+use stochastic_rs_stochastic::diffusion::cev::Cev;
+use stochastic_rs_stochastic::diffusion::cfou::Cfou;
+use stochastic_rs_stochastic::diffusion::cir::Cir;
+use stochastic_rs_stochastic::diffusion::displaced_diffusion::DisplacedDiffusion;
+use stochastic_rs_stochastic::diffusion::fcir::Fcir;
+use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
+use stochastic_rs_stochastic::diffusion::fjacobi::FJacobi;
+use stochastic_rs_stochastic::diffusion::fou::Fou;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
 use stochastic_rs_stochastic::diffusion::multi_gbm::MultiGbm;
@@ -19,6 +33,12 @@ use stochastic_rs_stochastic::diffusion::ou::Ou;
 use stochastic_rs_stochastic::diffusion::wishart::Wishart;
 use stochastic_rs_stochastic::euler::EulerCoefficients;
 use stochastic_rs_stochastic::euler::EulerSystem;
+use stochastic_rs_stochastic::interest::black_karasinski::BlackKarasinski;
+use stochastic_rs_stochastic::interest::cir_pp::CirPlusPlus;
+use stochastic_rs_stochastic::interest::duffie_kan::DuffieKan;
+use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
+use stochastic_rs_stochastic::interest::hull_white::HullWhite;
+use stochastic_rs_stochastic::interest::lmm::Lmm;
 use stochastic_rs_stochastic::interest::wu_zhang::WuZhangD;
 use stochastic_rs_stochastic::jump::bates::Bates1996;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGamma;
@@ -41,25 +61,43 @@ use stochastic_rs_stochastic::noise::wn::Wn;
 use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::Horizon;
 use stochastic_rs_stochastic::params::VarianceBoundary;
+use stochastic_rs_stochastic::process::bm::Bm;
+use stochastic_rs_stochastic::process::brownian_bridge::BrownianBridge;
 use stochastic_rs_stochastic::process::ccustom::CompoundCustom;
+use stochastic_rs_stochastic::process::cfbms::Cfbms;
 use stochastic_rs_stochastic::process::customjt::CustomJt;
 use stochastic_rs_stochastic::process::hawkes::Hawkes;
 use stochastic_rs_stochastic::process::lfsm::Lfsm;
 use stochastic_rs_stochastic::process::multivariate_hawkes::MultivariateHawkes;
 use stochastic_rs_stochastic::process::poisson::Poisson;
+use stochastic_rs_stochastic::process::subordinator::ctrw::Ctrw;
+use stochastic_rs_stochastic::process::subordinator::ctrw::CtrwJumpLaw;
+use stochastic_rs_stochastic::process::subordinator::ctrw::CtrwWaitingLaw;
 use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::GammaSubordinator;
 use stochastic_rs_stochastic::process::volterra::Volterra;
 use stochastic_rs_stochastic::process::volterra::VolterraKernelSpec;
 use stochastic_rs_stochastic::rough::rl_fbm::RlFBm;
+use stochastic_rs_stochastic::sde::NoiseModel;
+use stochastic_rs_stochastic::sde::Sde;
+use stochastic_rs_stochastic::sde::SdeMethod;
 use stochastic_rs_stochastic::sheet::fbs::Fbs;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::bates_svj::BatesSvj;
+use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
+use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
+use stochastic_rs_stochastic::volatility::fbates_svj::FBatesSvj;
+use stochastic_rs_stochastic::volatility::fheston::RoughHeston;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 use stochastic_rs_stochastic::volatility::heston_log::HestonLog;
+use stochastic_rs_stochastic::volatility::heston_slv::HestonSlv;
 use stochastic_rs_stochastic::volatility::hkde::Hkde;
 use stochastic_rs_stochastic::volatility::multifactor_sabr::MultifactorSabr;
+use stochastic_rs_stochastic::volatility::rbergomi::RoughBergomi;
+use stochastic_rs_stochastic::volatility::sabr::Sabr;
 use stochastic_rs_stochastic::volterra::ExponentialKernel;
+use stochastic_rs_stochastic::volterra::GaussianPolynomialVolatility;
+use stochastic_rs_stochastic::volterra::VolterraSde;
 use stochastic_rs_stochastic::volterra::VolterraSquareRoot;
 
 #[test]
@@ -84,6 +122,16 @@ fn correlated_brownian_motions_refuse_a_nan_correlation() {
   let _ = stochastic_correlated_bm(&array![f64::NAN, 0.1], None, &Unseeded);
 }
 
+fn solve_over(t0: f64, t1: f64, steps: usize) -> ndarray::Array3<f64> {
+  Sde::new(
+    |_: &Array1<f64>, _: f64| array![0.0],
+    |_: &Array1<f64>, _: f64| Array2::<f64>::zeros((1, 1)),
+    NoiseModel::Gaussian,
+    None,
+  )
+  .solve(&array![0.0], t0, t1, steps, 1, SdeMethod::Euler, &Unseeded)
+}
+
 macro_rules! refuses {
   ($($name:ident: $message:literal => $built:expr;)*) => {
     $(
@@ -97,6 +145,12 @@ macro_rules! refuses {
 }
 
 refuses! {
+  an_sde_refuses_a_reversed_interval: "t1 must satisfy `t1 > t0 && (t1 - t0).is_finite()`, got t0 = 1.0, t1 = 0.0"
+    => solve_over(1.0, 0.0, 8);
+  an_sde_refuses_a_nan_bound: "t1 must satisfy `t1 > t0 && (t1 - t0).is_finite()`, got t0 = 0.0, t1 = NaN"
+    => solve_over(0.0, f64::NAN, 8);
+  an_sde_refuses_no_steps: "steps must satisfy `steps >= 1`, got steps = 0"
+    => solve_over(0.0, 1.0, 0);
   a_nan_parameter_is_refused_at_construction: "sigma must satisfy `sigma.is_finite()`, got sigma = NaN"
     => Ou::<f64>::new(1.0, 0.0, f64::NAN, 64, None, None, Unseeded);
   a_grid_of_one_point_is_refused: "n must satisfy `n >= 2`, got n = 1"
@@ -229,6 +283,116 @@ refuses! {
     => BatesSvj::<f64>::new(Drift::Mu(0.05), 0.5, -0.1, 0.2, 0.04, 1.5, 0.3, -0.6, 64, 100.0, 0.04, None, VarianceBoundary::Floor, Unseeded).with_v0(-0.01);
   the_double_exponential_heston_variance_setter_checks_its_value: "v0 must satisfy `v0 >= T::zero()`, got v0 = -0.01"
     => Hkde::<f64>::new(0.05, 1.5, 0.04, 0.3, -0.7, 0.04, 0.5, 0.4, 5.0, 5.0, 64, 100.0, None, VarianceBoundary::Floor, Unseeded).with_v0(-0.01);
+
+  a_garch_without_a_finite_unconditional_variance_is_refused: "alpha must satisfy `1 - alpha.sum() - beta.sum() > 0`, got alpha = [0.5], beta = [0.5]"
+    => Garch::<f64>::new(0.1, array![0.5], array![0.5], 64, Unseeded);
+  an_asymmetric_garch_without_a_finite_unconditional_variance_is_refused: "alpha must satisfy `1 - alpha.sum() - 0.5 * delta.sum() - beta.sum() > 0`, got alpha = [0.3], delta = [0.4], beta = [0.5]"
+    => Agarch::<f64>::new(0.1, array![0.3], array![0.4], array![0.5], 64, Unseeded);
+  a_threshold_garch_without_a_finite_unconditional_variance_is_refused: "alpha must satisfy `1 - alpha.sum() - 0.5 * gamma.sum() - beta.sum() > 0`, got alpha = [0.3], gamma = [0.4], beta = [0.5]"
+    => GjrGarch::<f64>::new(0.1, array![0.3], array![0.4], array![0.5], 64, Unseeded);
+  a_random_walk_refuses_a_zero_waiting_rate: "rate must satisfy `rate > T::zero() && rate.is_finite()`, got rate = 0.0"
+    => Ctrw::<f64>::new(CtrwWaitingLaw::Exponential { rate: 0.0 }, CtrwJumpLaw::Normal { mean: 0.0, std: 1.0 }, 64, None, None, Unseeded);
+  a_random_walk_refuses_a_stable_jump_index_above_two: "alpha must satisfy `alpha > T::zero() && alpha <= T::from_usize_(2)`, got alpha = 2.5"
+    => Ctrw::<f64>::new(CtrwWaitingLaw::Exponential { rate: 1.0 }, CtrwJumpLaw::SymmetricStable { alpha: 2.5, scale: 1.0 }, 64, None, None, Unseeded);
+
+  a_heston_grid_setter_refuses_no_points: "n must satisfy `n >= 2`, got n = 0"
+    => Heston::<f64>::default().with_points(0);
+  a_sabr_grid_setter_refuses_no_points: "n must satisfy `n >= 2`, got n = 0"
+    => Sabr::<f64>::default().with_points(0);
+  a_bates_grid_setter_refuses_no_points: "n must satisfy `n >= 2`, got n = 0"
+    => Bates1996::<f64, _>::new(Drift::Mu(0.05), 0.5, 0.05, 0.04, 1.5, 0.3, -0.7, SimdNormal::new(0.0, 1.0), 64, 100.0, 0.04, Some(1.0), VarianceBoundary::Floor, Unseeded).with_points(0);
+  a_bergomi_grid_setter_refuses_no_points: "n must satisfy `n >= 2`, got n = 0"
+    => Bergomi::<f64>::default().with_points(0);
+  a_rough_bergomi_grid_setter_refuses_no_points: "n must satisfy `n >= 2`, got n = 0"
+    => RoughBergomi::<f64>::default().with_points(0);
+  a_double_heston_grid_setter_refuses_no_points: "n must satisfy `n >= 2`, got n = 0"
+    => DoubleHeston::<f64>::new(100.0, 0.02, 0.02, 3.0, 0.02, 0.4, -0.6, 0.5, 0.02, 0.2, -0.3, 0.05, 64, Some(1.0), VarianceBoundary::Reflect, Unseeded).with_points(0);
+  a_duffie_kan_grid_setter_refuses_no_points: "n must satisfy `n >= 2`, got n = 0"
+    => DuffieKan::<f64>::new(0.5, 0.04, 0.5, -0.3, 0.01, 0.0, 0.0, 0.01, 0.0, 0.5, 0.0, 0.005, 64, Some(0.05), Some(0.05), Some(1.0), Unseeded).with_points(0);
+  a_jump_duffie_kan_grid_setter_refuses_no_points: "n must satisfy `n >= 2`, got n = 0"
+    => DuffieKanJumpExp::<f64>::new(0.5, 0.04, 0.5, -0.3, 0.01, 0.0, 0.0, 0.01, 0.0, 0.5, 0.0, 0.005, 0.5, 0.01, 64, Some(0.05), Some(0.05), Some(1.0), Unseeded).with_points(0);
+  a_grid_setter_refuses_one_point: "n must satisfy `n >= 2`, got n = 1"
+    => Ou::<f64>::default().with_points(1);
+  a_noise_setter_refuses_no_increments: "n must satisfy `n >= 1`, got n = 0"
+    => Gn::<f64>::default().with_increments(0);
+  a_horizon_setter_refuses_a_zero_horizon: "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = Some(0.0)"
+    => Bm::<f64>::default().with_horizon(Some(0.0));
+  a_float_setter_refuses_nan: "sigma must satisfy `sigma.is_finite()`, got sigma = NaN"
+    => Cir::<f64>::default().with_sigma(f64::NAN);
+  an_optional_setter_refuses_nan: "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = Some(NaN)"
+    => Ou::<f64>::default().with_x0(Some(f64::NAN));
+  the_gbm_start_setter_checks_positivity: "x0 must satisfy `x0 > T::zero()`, got x0 = 0.0"
+    => Gbm::<f64>::default().with_x0(0.0);
+  the_log_heston_spot_setter_checks_finiteness: "s0 must satisfy `s0.is_finite()`, got s0 = inf"
+    => HestonLog::<f64>::new(Drift::Mu(0.05), 1.5, 0.04, 0.3, -0.7, 64, 100.0, 0.04, None, VarianceBoundary::Floor, Unseeded).with_s0(f64::INFINITY);
+  the_log_bates_variance_setter_checks_finiteness: "v0 must satisfy `v0.is_finite()`, got v0 = inf"
+    => BatesSvj::<f64>::new(Drift::Mu(0.05), 0.5, -0.1, 0.2, 0.04, 1.5, 0.3, -0.6, 64, 100.0, 0.04, None, VarianceBoundary::Floor, Unseeded).with_v0(f64::INFINITY);
+  the_double_exponential_heston_spot_setter_checks_finiteness: "s0 must satisfy `s0.is_finite()`, got s0 = inf"
+    => Hkde::<f64>::new(0.05, 1.5, 0.04, 0.3, -0.7, 0.04, 0.5, 0.4, 5.0, 5.0, 64, 100.0, None, VarianceBoundary::Floor, Unseeded).with_s0(f64::INFINITY);
+  a_bessel_setter_refuses_a_nan_dimension: "delta must satisfy `delta.is_finite()`, got delta = NaN"
+    => Bessel::<f64>::default().with_delta(f64::NAN);
+  a_squared_bessel_setter_refuses_a_nan_start: "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = Some(NaN)"
+    => SquaredBessel::<f64>::default().with_x0(Some(f64::NAN));
+  a_black_karasinski_setter_refuses_a_nan_rate: "r0 must satisfy `r0.is_none_or(|v| v.is_finite())`, got r0 = Some(NaN)"
+    => BlackKarasinski::<f64>::default().with_r0(Some(f64::NAN));
+  a_bridge_setter_refuses_a_nan_end: "xt must satisfy `xt.is_none_or(|v| v.is_finite())`, got xt = Some(NaN)"
+    => BrownianBridge::<f64>::default().with_xt(Some(f64::NAN));
+  a_cev_setter_refuses_a_nan_elasticity: "gamma must satisfy `gamma.is_finite()`, got gamma = NaN"
+    => Cev::<f64>::default().with_gamma(f64::NAN);
+  a_correlated_fbm_setter_refuses_a_nan_correlation: "rho must satisfy `rho.is_finite()`, got rho = NaN"
+    => Cfbms::<f64>::new(0.7, 0.3, 16, None, Unseeded).with_rho(f64::NAN);
+  a_correlated_fgn_setter_refuses_a_nan_correlation: "rho must satisfy `rho.is_finite()`, got rho = NaN"
+    => Cfgns::<f64>::new(0.7, 0.3, 16, None, Unseeded).with_rho(f64::NAN);
+  a_correlated_fou_setter_refuses_a_nan_frequency: "omega must satisfy `omega.is_finite()`, got omega = NaN"
+    => Cfou::<f64>::new(0.7, 1.0, 0.5, 0.2, 16, None, None, None, Unseeded).with_omega(f64::NAN);
+  a_cir_pp_setter_refuses_a_nan_speed: "kappa must satisfy `kappa.is_finite()`, got kappa = NaN"
+    => CirPlusPlus::<f64>::default().with_kappa(f64::NAN);
+  a_displaced_diffusion_setter_refuses_a_nan_shift: "beta must satisfy `beta.is_finite()`, got beta = NaN"
+    => DisplacedDiffusion::<f64>::default().with_beta(f64::NAN);
+  a_fractional_bates_setter_refuses_a_nan_vol_of_vol: "xi must satisfy `xi.is_finite()`, got xi = NaN"
+    => FBatesSvj::<f64>::new(0.1, 0.05, 100.0, 0.04, 0.04, 2.0, 0.3, -0.7, 0.5, -0.01, 0.1, 64, Some(1.0), Unseeded).with_xi(f64::NAN);
+  a_fractional_jacobi_setter_refuses_a_nan_start: "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = Some(NaN)"
+    => FJacobi::<f64>::new(0.7, 1.0, 2.0, 0.2, 16, None, None, Unseeded).with_x0(Some(f64::NAN));
+  a_fractional_cir_setter_refuses_a_nan_speed: "theta must satisfy `theta.is_finite()`, got theta = NaN"
+    => Fcir::<f64>::new(0.7, 1.0, 0.04, 0.1, 16, None, None, VarianceBoundary::Floor, Unseeded).with_theta(f64::NAN);
+  a_fractional_gbm_setter_refuses_a_nan_drift: "mu must satisfy `mu.is_finite()`, got mu = NaN"
+    => Fgbm::<f64>::new(0.7, 0.05, 0.2, 16, None, None, Unseeded).with_mu(f64::NAN);
+  a_fractional_ou_setter_refuses_a_nan_volatility: "sigma must satisfy `sigma.is_finite()`, got sigma = NaN"
+    => Fou::<f64>::new(0.7, 1.0, 0.0, 0.2, 16, None, None, Unseeded).with_sigma(f64::NAN);
+  a_polynomial_volatility_setter_refuses_a_nan_coefficient: "coefficients[0] must satisfy `coefficients[i].is_finite()`, got coefficients[0] = NaN"
+    => GaussianPolynomialVolatility::new(ExponentialKernel::<f64>::new(1.5, 1.0), array![0.1], 64, None, Unseeded).with_coefficients(array![f64::NAN]);
+  a_local_stochastic_volatility_setter_refuses_an_infinite_mixing: "eta must satisfy `eta.is_finite()`, got eta = inf"
+    => HestonSlv::<f64>::default().with_eta(f64::INFINITY);
+  a_stochastic_correlation_setter_refuses_a_nan_start: "rho0 must satisfy `rho0.is_finite()`, got rho0 = NaN"
+    => HestonStochCorr::<f64>::new(0.0, 100.0, 0.02, 2.1, 0.03, 0.2, -0.4, 3.4, -0.6, 0.1, 0.4, 64, Some(1.0), Unseeded).with_rho0(f64::NAN);
+  a_hull_white_setter_refuses_a_nan_speed: "alpha must satisfy `alpha.is_finite()`, got alpha = NaN"
+    => HullWhite::<f64>::default().with_alpha(f64::NAN);
+  a_custom_jump_fou_setter_refuses_a_nan_level: "mu must satisfy `mu.is_finite()`, got mu = NaN"
+    => JumpFOUCustom::<f64, SimdNormal<f64>>::new(0.7, 1.0, 0.0, 0.2, 16, None, None, SimdNormal::new(0.5, 0.01), SimdNormal::new(0.0, 0.1), Unseeded).with_mu(f64::NAN);
+  a_jump_fou_setter_refuses_a_nan_speed: "theta must satisfy `theta.is_finite()`, got theta = NaN"
+    => JumpFou::<f64, SimdNormal<f64>>::new(0.7, 1.0, 0.0, 0.2, 2.0, SimdNormal::new(0.0, 0.1), 16, None, None, Unseeded).with_theta(f64::NAN);
+  a_libor_market_setter_refuses_a_nan_forward: "l0[1] must satisfy `l0[i].is_finite()`, got l0[1] = NaN"
+    => Lmm::<f64>::new(array![0.0, 0.5, 1.0, 1.5, 2.0], array![0.03, 0.035, 0.04, 0.045], array![0.2, 0.2, 0.2, 0.2], 64, Some(2.0), Unseeded).with_l0(array![0.03, f64::NAN, 0.04, 0.045]);
+  a_merton_setter_refuses_a_nan_drift: "alpha must satisfy `alpha.is_finite()`, got alpha = NaN"
+    => Merton::<f64, SimdNormal<f64>>::default().with_alpha(f64::NAN);
+  a_counting_setter_refuses_a_nan_intensity: "lambda must satisfy `lambda.is_finite()`, got lambda = NaN"
+    => Poisson::<f64>::default().with_lambda(f64::NAN);
+  a_variance_gamma_setter_refuses_a_nan_variance_rate: "nu must satisfy `nu.is_finite()`, got nu = NaN"
+    => Vg::<f64>::default().with_nu(f64::NAN);
+  a_volterra_setter_refuses_a_nan_start: "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = Some(NaN)"
+    => VolterraSde::new(ExponentialKernel::<f64>::new(1.0, 1.0), zero as fn(f64, f64) -> f64, zero as fn(f64, f64) -> f64, 64, None, None, Unseeded).with_x0(Some(f64::NAN));
+  a_volterra_variance_setter_refuses_an_infinite_speed: "kappa must satisfy `kappa.is_finite()`, got kappa = inf"
+    => VolterraSquareRoot::<f64, _>::new(ExponentialKernel::new(1.0, 1.0), 1.0, 0.04, 0.3, 64, 0.04, None, Unseeded).with_kappa(f64::INFINITY);
+  the_rough_heston_spot_setter_checks_positivity: "s0 must satisfy `s0 > T::zero()`, got s0 = 0.0"
+    => RoughHeston::<f64>::new(0.1, 0.2, 0.04, 1.0, 0.3, None, None, None, 64, Unseeded).with_s0(0.0);
+  the_rough_heston_drift_setter_checks_finiteness: "mu must satisfy `mu.is_finite()`, got mu = NaN"
+    => RoughHeston::<f64>::new(0.1, 0.2, 0.04, 1.0, 0.3, None, None, None, 64, Unseeded).with_mu(f64::NAN);
+  the_rough_heston_correlation_setter_checks_the_unit_interval: "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = 1.5"
+    => RoughHeston::<f64>::new(0.1, 0.2, 0.04, 1.0, 0.3, None, None, None, 64, Unseeded).with_rho(1.5);
+}
+
+fn zero(_t: f64, _x: f64) -> f64 {
+  0.0
 }
 
 fn scales_with_sigma(path: impl Fn(f64) -> Array1<f64>) {

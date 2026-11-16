@@ -108,30 +108,47 @@ impl<T: FloatExt, S: SeedExt, B> HullWhite<T, S, B> {
 
   /// Replace `alpha`, all else unchanged.
   pub fn with_alpha(mut self, alpha: T) -> Self {
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
     self.alpha = alpha;
     self
   }
 
   /// Replace `sigma`, all else unchanged.
   pub fn with_sigma(mut self, sigma: T) -> Self {
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
     self.sigma = sigma;
     self
   }
 
   /// Replace `x0`, all else unchanged.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
     self.x0 = x0;
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path, all else unchanged.
+  pub fn with_points(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self
   }
@@ -143,9 +160,8 @@ impl<T: FloatExt, S: SeedExt, B> HullWhite<T, S, B> {
   }
 }
 
-/// θ(t)≡0.04 (this file's own `const_theta` test fixture), α=0.4, σ=0.02,
-/// r₀=0.02 — a textbook Hull-White parameterization. t=1, n=252 — one
-/// trading year of daily steps (this crate's `Default` convention).
+/// θ(t)≡0.04, α=0.4, σ=0.02, r₀=0.02, a textbook Hull-White (this file's `const_theta` fixture);
+/// t=1, 252 points, a trading year of daily closes.
 impl<T: FloatExt> Default for HullWhite<T, Unseeded> {
   fn default() -> Self {
     Self::new(

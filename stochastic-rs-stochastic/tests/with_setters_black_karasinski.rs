@@ -59,7 +59,7 @@ macro_rules! plain_test {
 plain_test!(bk_with_a_round_trip, with_a, a, 0.6);
 plain_test!(bk_with_sigma_round_trip, with_sigma, sigma, 0.15);
 plain_test!(bk_with_r0_round_trip, with_r0, r0, Some(0.04));
-plain_test!(bk_with_steps_round_trip, with_steps, n, 64usize);
+plain_test!(bk_with_points_round_trip, with_points, n, 64usize);
 plain_test!(bk_with_horizon_round_trip, with_horizon, t, Some(2.0));
 
 #[test]

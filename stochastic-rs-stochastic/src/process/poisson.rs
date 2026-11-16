@@ -57,6 +57,10 @@ impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
 impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
   /// Replace `lambda`, all else unchanged.
   pub fn with_lambda(mut self, lambda: T) -> Self {
+    assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
     self.lambda = lambda;
     self
   }

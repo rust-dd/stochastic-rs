@@ -54,7 +54,7 @@ pub struct BatesSvj<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Correlation between asset and variance Brownian motions
   pub rho: T,
-  /// Number of discrete time steps in the simulation grid
+  /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
   /// Initial spot.
   pub s0: T,
@@ -184,6 +184,10 @@ impl<T: FloatExt, S: SeedExt, B> BatesSvj<T, S, B> {
   /// Replace `lambda`, all else unchanged.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(
       lambda >= T::zero(),
       "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
     );
@@ -193,12 +197,20 @@ impl<T: FloatExt, S: SeedExt, B> BatesSvj<T, S, B> {
 
   /// Replace `nu`, all else unchanged.
   pub fn with_nu(mut self, nu: T) -> Self {
+    assert!(
+      nu.is_finite(),
+      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
+    );
     self.nu = nu;
     self
   }
 
   /// Replace `omega`, all else unchanged.
   pub fn with_omega(mut self, omega: T) -> Self {
+    assert!(
+      omega.is_finite(),
+      "omega must satisfy `omega.is_finite()`, got omega = {omega:?}"
+    );
     assert!(
       omega >= T::zero(),
       "omega must satisfy `omega >= T::zero()`, got omega = {omega:?}"
@@ -209,18 +221,30 @@ impl<T: FloatExt, S: SeedExt, B> BatesSvj<T, S, B> {
 
   /// Replace `alpha`, all else unchanged.
   pub fn with_alpha(mut self, alpha: T) -> Self {
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
     self.alpha = alpha;
     self
   }
 
   /// Replace `beta`, all else unchanged.
   pub fn with_beta(mut self, beta: T) -> Self {
+    assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
     self.beta = beta;
     self
   }
 
   /// Replace `sigma`, all else unchanged.
   pub fn with_sigma(mut self, sigma: T) -> Self {
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
     self.sigma = sigma;
     self
   }
@@ -229,6 +253,10 @@ impl<T: FloatExt, S: SeedExt, B> BatesSvj<T, S, B> {
   /// (`cgns`) so the new correlation actually reaches the sampler instead
   /// of a stale one computed from the old `rho`.
   pub fn with_rho(mut self, rho: T) -> Self {
+    assert!(
+      rho.is_finite(),
+      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
+    );
     assert!(
       rho >= -T::one() && rho <= T::one(),
       "rho must satisfy `rho >= -T::one() && rho <= T::one()`, got rho = {rho:?}"
@@ -241,6 +269,10 @@ impl<T: FloatExt, S: SeedExt, B> BatesSvj<T, S, B> {
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: T) -> Self {
     assert!(
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
+    );
+    assert!(
       s0 > T::zero(),
       "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
     );
@@ -250,6 +282,10 @@ impl<T: FloatExt, S: SeedExt, B> BatesSvj<T, S, B> {
 
   /// Replace `v0`, all else unchanged.
   pub fn with_v0(mut self, v0: T) -> Self {
+    assert!(
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
+    );
     assert!(
       v0 >= T::zero(),
       "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
@@ -264,10 +300,9 @@ impl<T: FloatExt, S: SeedExt, B> BatesSvj<T, S, B> {
     self
   }
 
-  /// Replace the number of simulation steps `n`; rebuilds the cached
-  /// correlated-Gaussian generator, whose length and step size derive
-  /// from `n`.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
+  /// generator, whose length and step size derive from `n`.
+  pub fn with_points(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
@@ -277,6 +312,10 @@ impl<T: FloatExt, S: SeedExt, B> BatesSvj<T, S, B> {
   /// Replace the simulation horizon `t`; rebuilds the cached
   /// correlated-Gaussian generator's step size, which derives from `t`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
     self
@@ -287,9 +326,7 @@ impl<T: FloatExt, S: SeedExt, B> BatesSvj<T, S, B> {
     self.seed = seed;
     self
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> BatesSvj<T, S, B> {
   #[inline]
   fn kappa_j(&self) -> T {
     (self.nu + T::from_f64_fast(0.5) * self.omega * self.omega).exp() - T::one()

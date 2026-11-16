@@ -78,9 +78,13 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
     Fgn::new(hurst, n, t, Unseeded)
   }
 
-  /// Replace `hurst`; rebuilds the embedded `fgn`. Panics if `hurst` is
-  /// outside `[0, 1]`, matching `new()`'s own assertion.
+  /// Replace `hurst`; panics unless `0 ≤ hurst ≤ 1`.
+  /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_hurst(mut self, hurst: T) -> Self {
+    assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
     assert!(
       (T::zero()..=T::one()).contains(&hurst),
       "hurst must satisfy `(T::zero()..=T::one()).contains(&hurst)`, got hurst = {hurst:?}"
@@ -90,28 +94,39 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
     self
   }
 
-  /// Replace `rho`. Panics if `rho` is outside `[-1, 1]`, matching `new()`'s
-  /// own assertion.
-  pub fn with_rho(mut self, rho: T) -> Self {
-    assert!(
-      (-T::one()..=T::one()).contains(&rho),
-      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
-    );
-    self.rho = rho;
-    self
-  }
-
-  /// Replace the number of points `n`; rebuilds the embedded `fgn`.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  pub fn with_increments(mut self, n: usize) -> Self {
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
     self.n = n;
     self.fgn = Self::fgn_for(self.hurst, n, self.t);
     self
   }
 
-  /// Replace the simulation horizon `t`; rebuilds the embedded `fgn`.
+  /// Replace `t`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self.fgn = Self::fgn_for(self.hurst, self.n, t);
+    self
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B> Cfgns<T, S, B> {
+  /// Replace `rho`. Panics if `rho` is outside `[-1, 1]`, matching `new()`'s
+  /// own assertion.
+  pub fn with_rho(mut self, rho: T) -> Self {
+    assert!(
+      rho.is_finite(),
+      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
+    );
+    assert!(
+      (-T::one()..=T::one()).contains(&rho),
+      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
+    );
+    self.rho = rho;
     self
   }
 
@@ -121,9 +136,7 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
     self.seed = seed;
     self
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> Cfgns<T, S, B> {
   /// Hurst exponent controlling roughness and long-memory.
   pub fn hurst(&self) -> T {
     self.hurst

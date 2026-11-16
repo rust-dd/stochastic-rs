@@ -142,8 +142,8 @@ hsc_plain_test!(
 );
 hsc_plain_test!(heston_stoch_corr_with_rho2_round_trip, with_rho2, rho2, 0.5);
 hsc_plain_test!(
-  heston_stoch_corr_with_steps_round_trip,
-  with_steps,
+  heston_stoch_corr_with_points_round_trip,
+  with_points,
   n,
   200usize
 );

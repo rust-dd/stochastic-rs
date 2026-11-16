@@ -151,10 +151,10 @@ fn heston_with_rho_rebuilds_cgns_cache() {
 }
 
 #[test]
-fn heston_with_steps_rebuilds_cgns_cache() {
+fn heston_with_points_rebuilds_cgns_cache() {
   let mut expected = heston_base();
   expected.n = 128;
-  let got = heston_base().with_steps(128);
+  let got = heston_base().with_points(128);
   assert_eq!(got.n, 128);
   assert_eq!(fields(&got), fields(&expected));
   assert!(finite2(&got.sample()));
@@ -175,7 +175,7 @@ fn heston_with_steps_rebuilds_cgns_cache() {
   )
   .sample();
   let got_seeded = heston_base_seeded(Deterministic::new(9))
-    .with_steps(128)
+    .with_points(128)
     .sample();
   assert_eq!(want, got_seeded);
 }

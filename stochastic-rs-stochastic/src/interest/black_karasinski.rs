@@ -144,30 +144,47 @@ impl<T: FloatExt, S: SeedExt, B> BlackKarasinski<T, S, B> {
 
   /// Replace `a`, all else unchanged.
   pub fn with_a(mut self, a: T) -> Self {
+    assert!(
+      a.is_finite(),
+      "a must satisfy `a.is_finite()`, got a = {a:?}"
+    );
     self.a = a;
     self
   }
 
   /// Replace `sigma`, all else unchanged.
   pub fn with_sigma(mut self, sigma: T) -> Self {
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
     self.sigma = sigma;
     self
   }
 
   /// Replace `r0`, all else unchanged.
   pub fn with_r0(mut self, r0: Option<T>) -> Self {
+    assert!(
+      r0.is_none_or(|v| v.is_finite()),
+      "r0 must satisfy `r0.is_none_or(|v| v.is_finite())`, got r0 = {r0:?}"
+    );
     self.r0 = r0;
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path, all else unchanged.
+  pub fn with_points(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self
   }
@@ -179,12 +196,8 @@ impl<T: FloatExt, S: SeedExt, B> BlackKarasinski<T, S, B> {
   }
 }
 
-/// θ(t)≡0.05 (this file's own `theta_const` test fixture), a=0.8, σ=0.1,
-/// r₀=0.03, t=1 — matches
-/// `black_karasinski_log_mean_matches_ou`/`black_karasinski_is_deterministic`
-/// below (both use these values at t=1; their own `n` varies across this
-/// file's tests and is not itself a fixture value). n=252 — one trading
-/// year of daily steps (this crate's `Default` convention).
+/// θ(t)≡0.05, a=0.8, σ=0.1, r₀=0.03, t=1, the values this file's tests use; 252 points, a trading
+/// year of daily closes.
 impl<T: FloatExt> Default for BlackKarasinski<T, Unseeded> {
   fn default() -> Self {
     Self::new(

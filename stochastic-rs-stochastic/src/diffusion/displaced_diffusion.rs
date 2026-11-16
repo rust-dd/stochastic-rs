@@ -119,36 +119,57 @@ impl<T: FloatExt, S: SeedExt> DisplacedDiffusion<T, S> {
 impl<T: FloatExt, S: SeedExt, B> DisplacedDiffusion<T, S, B> {
   /// Replace `mu`, all else unchanged.
   pub fn with_mu(mut self, mu: T) -> Self {
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
     self.mu = mu;
     self
   }
 
   /// Replace `sigma`, all else unchanged.
   pub fn with_sigma(mut self, sigma: T) -> Self {
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
     self.sigma = sigma;
     self
   }
 
   /// Replace `beta`, all else unchanged.
   pub fn with_beta(mut self, beta: T) -> Self {
+    assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
     self.beta = beta;
     self
   }
 
   /// Replace `x0`, all else unchanged.
   pub fn with_x0(mut self, x0: T) -> Self {
+    assert!(
+      x0.is_finite(),
+      "x0 must satisfy `x0.is_finite()`, got x0 = {x0:?}"
+    );
     self.x0 = x0;
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path, all else unchanged.
+  pub fn with_points(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self
   }
@@ -160,15 +181,8 @@ impl<T: FloatExt, S: SeedExt, B> DisplacedDiffusion<T, S, B> {
   }
 }
 
-/// μ=0.05, σ=0.2, β=30, x₀=100, t=1 — μ/σ/x₀/t match
-/// [`Gbm`](crate::diffusion::gbm::Gbm)'s own `Default` (β=0 degenerates
-/// this type exactly to `Gbm`, see the module doc), and β=30 matches this
-/// file's own `displaced_diffusion_mean_matches_closed_form` test fixture
-/// (which itself runs at n=200, not the n=252 below), showcasing the
-/// type's distinguishing shift feature rather than the degenerate case.
-/// n=252 — one trading year of daily steps, consistent with
-/// [`Gbm`](crate::diffusion::gbm::Gbm)'s own `Default` n (this crate's
-/// shared convention, not itself drawn from either fixture above).
+/// [`Gbm`](crate::diffusion::gbm::Gbm)'s `Default` (μ=0.05, σ=0.2, x₀=100, t=1) shifted by β=30,
+/// the closed-form mean test's shift; 252 points, a trading year of daily closes.
 impl<T: FloatExt> Default for DisplacedDiffusion<T, Unseeded> {
   fn default() -> Self {
     Self::new(

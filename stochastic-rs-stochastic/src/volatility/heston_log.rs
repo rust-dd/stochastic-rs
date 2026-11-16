@@ -45,7 +45,7 @@ pub struct HestonLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub xi: T,
   /// Correlation between asset and variance Brownian motions
   pub rho: T,
-  /// Number of discrete time steps
+  /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
   /// Initial spot.
   pub s0: T,
@@ -159,6 +159,10 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
   /// Replace `kappa`, all else unchanged.
   pub fn with_kappa(mut self, kappa: T) -> Self {
     assert!(
+      kappa.is_finite(),
+      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
+    );
+    assert!(
       kappa >= T::zero(),
       "kappa must satisfy `kappa >= T::zero()`, got kappa = {kappa:?}"
     );
@@ -169,6 +173,10 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: T) -> Self {
     assert!(
+      theta.is_finite(),
+      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
+    );
+    assert!(
       theta >= T::zero(),
       "theta must satisfy `theta >= T::zero()`, got theta = {theta:?}"
     );
@@ -178,6 +186,10 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
 
   /// Replace `xi`, all else unchanged.
   pub fn with_xi(mut self, xi: T) -> Self {
+    assert!(
+      xi.is_finite(),
+      "xi must satisfy `xi.is_finite()`, got xi = {xi:?}"
+    );
     assert!(
       xi >= T::zero(),
       "xi must satisfy `xi >= T::zero()`, got xi = {xi:?}"
@@ -192,6 +204,10 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
   /// field write.
   pub fn with_rho(mut self, rho: T) -> Self {
     assert!(
+      rho.is_finite(),
+      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
+    );
+    assert!(
       rho >= -T::one() && rho <= T::one(),
       "rho must satisfy `rho >= -T::one() && rho <= T::one()`, got rho = {rho:?}"
     );
@@ -202,6 +218,10 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: T) -> Self {
     assert!(
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
+    );
+    assert!(
       s0 > T::zero(),
       "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
     );
@@ -211,6 +231,10 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
 
   /// Replace `v0`, all else unchanged.
   pub fn with_v0(mut self, v0: T) -> Self {
+    assert!(
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
+    );
     assert!(
       v0 >= T::zero(),
       "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
@@ -225,8 +249,8 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path, all else unchanged.
+  pub fn with_points(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self
@@ -234,6 +258,10 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self
   }

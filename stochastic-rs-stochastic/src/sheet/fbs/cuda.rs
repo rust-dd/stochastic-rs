@@ -445,7 +445,7 @@ impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
     sheets: usize,
     device: &crate::device::Cuda,
   ) -> Result<Vec<Array2<T>>> {
-    let (m, n) = (self.m, self.n);
+    let (m, n) = (self.rows, self.cols);
     let cells = self.cells();
     let seed = self.seed.next_seed();
     // A sheet is `cells` complex values of work buffer, which the kernels

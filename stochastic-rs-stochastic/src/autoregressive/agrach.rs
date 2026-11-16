@@ -14,6 +14,7 @@ use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::autoregressive::threshold::variance_denominator;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::precondition::assert_entries;
@@ -93,6 +94,7 @@ impl<T: FloatExt, S: SeedExt> Agarch<T, S> {
       alpha.len(),
       delta.len()
     );
+    variance_denominator(&alpha, &delta, &beta, "delta");
     Self {
       backend: Cpu,
       omega,
@@ -133,8 +135,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   /// first point: the state it starts from is the seed variance and the
   /// not-yet-warm marker, not a value the path reports.
   fn initial_state(&self) -> [T; 4] {
-    let half = T::from_f64_fast(0.5);
-    let denom = T::one() - self.alpha[0] - half * self.delta[0] - self.beta[0];
+    let denom = variance_denominator(&self.alpha, &self.delta, &self.beta, "delta");
     [T::zero(), self.omega / denom, T::zero(), T::zero()]
   }
 
@@ -289,15 +290,7 @@ impl<T: FloatExt> AgarchSampler<T> {
     let mut sigma2 = Array1::<T>::zeros(n);
     let var_floor = T::from_f64_fast(1e-12);
 
-    // Summation for unconditional variance init
-    let sum_alpha = self.alpha.iter().cloned().sum();
-    let sum_delta_half = self.delta.iter().cloned().sum::<T>() * T::from_f64_fast(0.5);
-    let sum_beta = self.beta.iter().cloned().sum();
-    let denom = T::one() - sum_alpha - sum_delta_half - sum_beta;
-    assert!(
-      denom > T::zero(),
-      "Agarch requires sum(alpha) + 0.5*sum(delta) + sum(beta) < 1 for finite unconditional variance"
-    );
+    let denom = variance_denominator(&self.alpha, &self.delta, &self.beta, "delta");
 
     for t in 0..n {
       if t == 0 {
