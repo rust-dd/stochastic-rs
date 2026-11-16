@@ -18,7 +18,7 @@ use stochastic_rs_stats::stationarity::ers_dfgls::ers_dfgls_test;
 use stochastic_rs_stats::stationarity::leybourne_mccabe::LeybourneMcCabeConfig;
 use stochastic_rs_stats::stationarity::leybourne_mccabe::leybourne_mccabe_test;
 
-const SCALES: [f64; 3] = [1e-6, 1.0, 1e6];
+const SCALES: [f64; 7] = [1e-300, 1e-150, 1e-6, 1.0, 1e6, 1e150, 1e290];
 
 const EXACT: StatsError = StatsError::DegenerateData("zero residual variance");
 
@@ -32,13 +32,14 @@ fn normals(seed: u64, n: usize) -> Vec<f64> {
   z
 }
 
-/// Lines at levels 0 and `1e5`, `t²`, `1.5^t` and `2^t`, each its own ADF regression to rounding.
+/// Lines at levels 0 and 50, `t²`, `1.5^t` and `2^t`, each its own ADF regression to rounding at
+/// any scale; a line far above its spread is not, its rescaled rounding near the rule's `1e-12`.
 fn exact_series() -> [(&'static str, Array1<f64>); 5] {
   [
     ("line 0..99", Array1::from_iter((0..100).map(|t| t as f64))),
     (
-      "1e5 + 0.37 t",
-      Array1::from_iter((0..100).map(|t| 1e5 + 0.37 * t as f64)),
+      "50 + 0.25 t",
+      Array1::from_iter((0..100).map(|t| 50.0 + 0.25 * t as f64)),
     ),
     ("t²", Array1::from_iter((0..100).map(|t| (t * t) as f64))),
     ("1.5^t", Array1::from_iter((0..80).map(|t| 1.5f64.powi(t)))),
