@@ -261,7 +261,8 @@ impl GaussianHmm {
   }
 
   /// Baum-Welch EM for at most `max_iter` iterations, until the log-likelihood gains under `tol`;
-  /// `Err` on zero states, < 2 or non-finite points, a constant series or a non-finite variance.
+  /// `Err` on zero states, < 2 or non-finite points, a constant series or a non-finite variance;
+  /// an `Err` leaves the model at its last complete update.
   pub fn baum_welch(
     &mut self,
     observations: ArrayView1<f64>,

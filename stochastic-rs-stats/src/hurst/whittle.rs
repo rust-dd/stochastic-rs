@@ -123,7 +123,7 @@ fn c_h(h: f64) -> f64 {
 }
 
 /// Approximate spectral density of the observation process (eq. 14).
-pub fn spectral_density(lambda: f64, h: f64, v: f64, m: usize, _n: usize, k_trunc: usize) -> f64 {
+fn spectral_density(lambda: f64, h: f64, v: f64, m: usize, k_trunc: usize) -> f64 {
   let pi = std::f64::consts::PI;
   let ch = c_h(h);
   let alpha = 1.0 + 2.0 * h;
@@ -226,7 +226,7 @@ fn correction_a2(gamma_buf: &[f64], psi: f64, h: f64, v: f64, j_max: usize) -> f
   sum / (2.0 * pi)
 }
 
-pub fn whittle_objective(
+fn whittle_objective(
   pgram: &[f64],
   h: f64,
   v: f64,
@@ -244,7 +244,7 @@ pub fn whittle_objective(
     if lam < psi {
       continue;
     }
-    let g = spectral_density(lam, h, v, m, n, k_trunc);
+    let g = spectral_density(lam, h, v, m, k_trunc);
     if g > 1e-20 {
       sum += g.ln() + pgram[j - 1] / g;
       count += 1;

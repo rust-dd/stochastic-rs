@@ -102,7 +102,8 @@ fn rough_vs_smooth_distinguished() {
   );
 }
 
-/// `fit` is the estimator's one entry; the `HurstEstimator` trait is for path self-similarity, not latent volatility.
+/// `fit` is the estimator's one entry; the `HurstEstimator` trait is for path self-similarity,
+/// not latent volatility.
 #[test]
 fn fit_reports_the_fukasawa_estimate_and_rejects_short_or_non_finite_data() {
   let whittle = Whittle::new(72, 1.0 / 250.0);

@@ -52,7 +52,7 @@ fn theta_ref(path: &Array1<f64>, mu: f64, hurst: f64, sigma: f64) -> f64 {
 }
 
 #[test]
-fn fou_v1_bit_exact_against_its_inline_reference() {
+fn fou_v1_hurst_sigma_and_mu_are_bit_exact_and_theta_within_4_eps() {
   let path = v1_pin_path();
   let big_n = (path.len() - 1) as f64;
   let delta = 1.0 / big_n;
@@ -90,9 +90,9 @@ fn fou_v1_bit_exact_against_its_inline_reference() {
   let fit =
     |delta| fit_fou_filtered_variations(path.view(), FilterType::Daubechies, delta, None).unwrap();
   let res = fit(Some(delta));
-  assert_close(res.hurst, hurst_ref, "v1 hurst");
-  assert_close(res.sigma, sigma_ref, "v1 sigma");
-  assert_close(res.mu, mu_ref, "v1 mu");
+  assert_eq!(res.hurst, hurst_ref, "v1 hurst");
+  assert_eq!(res.sigma, sigma_ref, "v1 sigma");
+  assert_eq!(res.mu, mu_ref, "v1 mu");
   assert_close(
     res.theta,
     theta_ref(&path, mu_ref, hurst_ref, sigma_ref),
@@ -102,7 +102,7 @@ fn fou_v1_bit_exact_against_its_inline_reference() {
 }
 
 #[test]
-fn fou_v2_bit_exact_against_its_inline_reference() {
+fn fou_v2_agrees_with_its_inline_reference_within_4_eps() {
   let path = v1_pin_path();
   let n = path.len();
   let big_n = (n - 1) as f64;
@@ -140,7 +140,7 @@ fn fou_v2_bit_exact_against_its_inline_reference() {
 }
 
 #[test]
-fn fou_v4_bit_exact_against_its_inline_reference() {
+fn fou_v4_agrees_with_its_inline_reference_within_4_eps() {
   let n = 512usize;
   let k = 2usize;
   let p = 2.0_f64;
