@@ -6,10 +6,10 @@
 //!
 //! ## Models
 //!
-//! - [`TransformedOU`]: ρ_t = f(X_t) where dX = κ(μ−X)dt + σ dW
+//! - [`TransformedOu`]: ρ_t = f(X_t) where dX = κ(μ−X)dt + σ dW
 //!   (Section 2.1; supports [`Transformation::Tanh`] and [`Transformation::Arctan`])
 //! - [`VanEmmerich`]: dρ = κ(μ−ρ)dt + σ√(1−ρ²) dW  (Eq. 15)
-//! - [`TengSCP`]: Modified Ou in X-space, ρ = tanh(X)  (Eq. 19/20)
+//! - [`TengScp`]: Modified Ou in X-space, ρ = tanh(X)  (Eq. 19/20)
 //!
 
 pub mod heston_stoch_corr;
@@ -23,9 +23,9 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
-pub use teng::TengSCP;
+pub use teng::TengScp;
 pub use transformed_ou::Transformation;
-pub use transformed_ou::TransformedOU;
+pub use transformed_ou::TransformedOu;
 pub use van_emmerich::VanEmmerich;
 
 /// `[dW₁, dW₂]`, each scaled by `√dt`, with `Corr(dW₁[i], dW₂[i]) = rho_path[i]` (Teng et al. 2016,

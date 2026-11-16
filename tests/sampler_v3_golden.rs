@@ -7,7 +7,7 @@ use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::fou::Fou;
 use stochastic_rs::stochastic::diffusion::gbm::Gbm;
 use stochastic_rs::stochastic::diffusion::ou::Ou;
-use stochastic_rs::stochastic::jump::bates::Bates1996;
+use stochastic_rs::stochastic::jump::bates::Bates;
 use stochastic_rs::stochastic::jump::merton::Merton;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::stochastic::params::Drift;
@@ -286,11 +286,11 @@ fn golden_merton_streams() {
   );
 }
 
-/// `Bates1996`'s multiplicative jump term and `[s, v]` output; `k = 0` zeroes the `−λk`
+/// `Bates`'s multiplicative jump term and `[s, v]` output; `k = 0` zeroes the `−λk`
 /// compensator, so the `lambda = 0` counterfactual below isolates the jump term.
 #[test]
 fn golden_bates_streams() {
-  let bates = Bates1996::new(
+  let bates = Bates::new(
     Drift::Mu(0.05),
     3.0,
     0.0,
@@ -337,7 +337,7 @@ fn golden_bates_streams() {
   // Not a diffusion-only pin: a lambda=0 counterfactual (same seed, same k,
   // same everything else) diverges on the price path, which is only
   // possible if the golden above actually depends on the jump term.
-  let zero_lambda = Bates1996::new(
+  let zero_lambda = Bates::new(
     Drift::Mu(0.05),
     0.0,
     0.0,

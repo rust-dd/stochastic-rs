@@ -55,7 +55,7 @@ impl Vasicek {
   /// silently uses the drift / scale / level estimates with the standard-noise
   /// pricer — accurate only as a Markov first-order approximation. For
   /// genuine fractional pricing, use the rough-volatility models in
-  /// `stochastic_rs_stochastic::interest::fractional_vasicek::FVasicek` or
+  /// `stochastic_rs_stochastic::interest::fvasicek::Fvasicek` or
   /// `stochastic_rs_stochastic::rough::*`.
   pub fn from_fou_estimate(est: &stochastic_rs_stats::fou::FouFit) -> Self {
     Self {

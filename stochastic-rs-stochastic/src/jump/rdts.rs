@@ -216,7 +216,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     // scale `C` and drift `b_t` are precomputed here.
     let t_max = self.t_max();
     let dt = self.dt();
-    let C = self.tempering_constant();
+    let c = self.tempering_constant();
     let b_t = self.drift_rate();
 
     RdtsSampler {
@@ -228,7 +228,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       x0: self.x0.unwrap_or(T::zero()),
       t_max,
       dt,
-      c: C,
+      c,
       b_t,
       uniform: SimdUniform::<T>::new(T::zero(), T::one()).seeded(&self.seed),
       exp: SimdExp::<T>::new(T::one()).seeded(&self.seed),
@@ -333,16 +333,16 @@ impl<T: FloatExt, S: SeedExt> RdtsSampler<T, S> {
 
     let t_max = self.t_max;
     let dt = self.dt;
-    let C = self.c;
+    let c = self.c;
     let b_t = self.b_t;
 
-    let J = self.j;
-    let size = J + 1; // index 0 is reserved (Γ0=0)
+    let n_terms = self.j;
+    let size = n_terms + 1; // index 0 is reserved (Γ0=0)
 
-    let mut U = Array1::<T>::zeros(size);
-    self.uniform.fill_slice(U.as_slice_mut().unwrap());
-    let E = Array1::from_shape_fn(size, |_| self.exp.sample());
-    let P = Poisson::new(T::one(), Horizon::Events(J), self.seed.derive()).sample();
+    let mut u = Array1::<T>::zeros(size);
+    self.uniform.fill_slice(u.as_slice_mut().unwrap());
+    let e = Array1::from_shape_fn(size, |_| self.exp.sample());
+    let arrivals = Poisson::new(T::one(), Horizon::Events(n_terms), self.seed.derive()).sample();
     let mut tau_raw = Array1::<T>::zeros(size);
     self.uniform.fill_slice(tau_raw.as_slice_mut().unwrap());
     let tau = tau_raw * t_max;
@@ -356,13 +356,13 @@ impl<T: FloatExt, S: SeedExt> RdtsSampler<T, S> {
         -self.lambda_minus
       };
 
-      let divisor = T::from_usize_(2) * C * t_max;
-      let numerator = self.alpha * P[j];
+      let divisor = T::from_usize_(2) * c * t_max;
+      let numerator = self.alpha * arrivals[j];
       let term1 = (numerator / divisor).powf(-T::one() / self.alpha);
 
       // Rdts: term2 = 0.5 * sqrt(E_j) * U_j^{1/alpha} / |V_j|
       let term2 =
-        T::from_f64_fast(0.5) * E[j].powf(T::from_f64_fast(0.5)) * U[j].powf(T::one() / self.alpha)
+        T::from_f64_fast(0.5) * e[j].powf(T::from_f64_fast(0.5)) * u[j].powf(T::one() / self.alpha)
           / v_j.abs();
 
       jump_size[j] = term1.min(term2) * (v_j / v_j.abs());

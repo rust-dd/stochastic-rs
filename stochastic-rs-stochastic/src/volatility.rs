@@ -9,7 +9,6 @@
 //! jump-augmented variants (Bates, HKDE), and rough/fractional lifts.
 //! Each module's own header states its concrete SDE pair.
 //!
-pub mod bates_svj;
 pub mod bergomi;
 pub mod bns;
 pub mod double_heston;
@@ -22,7 +21,7 @@ pub mod heston_slv;
 pub mod hkde;
 pub mod multifactor_heston;
 pub mod multifactor_sabr;
-pub mod rbergomi;
+pub mod rough_bergomi;
 pub mod sabr;
 pub mod svcgmy;
 

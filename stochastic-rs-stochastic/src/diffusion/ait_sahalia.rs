@@ -37,7 +37,7 @@ pub struct AitSahalia<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub a2: T,
   /// Constant term b₀ inside the square-rooted diffusion bracket
   /// `√(b_0 + b_1 X_t + b_2 X_t^{b_3})` (unlike
-  /// [`NonLinearSDE`](super::nonlinear_sde::NonLinearSDE), this bracket
+  /// [`NonlinearSde`](super::nonlinear_sde::NonlinearSde), this bracket
   /// **is** square-rooted before scaling `dW_t`).
   pub b0: T,
   /// Linear term b₁ inside the square-rooted diffusion bracket.

@@ -1,17 +1,17 @@
 //! `autoregressive/` slice of the exhaustive reproducibility guard — see
 //! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 132-type list, and shared methodology notes.
+//! derivation of the 129-type list, and shared methodology notes.
 
 use ndarray::Array1;
-use stochastic_rs_stochastic::autoregressive::agrach::Agarch;
-use stochastic_rs_stochastic::autoregressive::ar::ARp;
+use stochastic_rs_stochastic::autoregressive::agarch::Agarch;
+use stochastic_rs_stochastic::autoregressive::ar::Ar;
 use stochastic_rs_stochastic::autoregressive::arch::Arch;
 use stochastic_rs_stochastic::autoregressive::arima::Arima;
 use stochastic_rs_stochastic::autoregressive::egarch::Egarch;
 use stochastic_rs_stochastic::autoregressive::garch::Garch;
-use stochastic_rs_stochastic::autoregressive::ma::MAq;
+use stochastic_rs_stochastic::autoregressive::gjr_garch::GjrGarch;
+use stochastic_rs_stochastic::autoregressive::ma::Ma;
 use stochastic_rs_stochastic::autoregressive::sarima::Sarima;
-use stochastic_rs_stochastic::autoregressive::tgarch::GjrGarch;
 
 use crate::common::N;
 use crate::common::guard;
@@ -25,7 +25,7 @@ guard!(agarch, "Agarch", |s| Agarch::new(
   s
 ));
 
-guard!(arp, "ARp", |s| ARp::new(
+guard!(ar, "Ar", |s| Ar::new(
   Array1::from(vec![0.5, -0.2]),
   0.1,
   N,
@@ -66,7 +66,7 @@ guard!(garch, "Garch", |s| Garch::new(
   s
 ));
 
-guard!(maq, "MAq", |s| MAq::new(
+guard!(ma, "Ma", |s| Ma::new(
   Array1::from(vec![0.4, 0.2]),
   0.1,
   N,

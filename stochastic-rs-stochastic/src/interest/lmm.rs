@@ -9,10 +9,7 @@
 //!
 //! Forward-LIBOR market model (BGM/Jamshidian/Brace-Gatarek-Musiela) with
 //! cross-forward drift coupling under the **spot-LIBOR measure**
-//! `B^*(t)` of Glasserman (2003) §3.7. This is the proper LIBOR Market Model
-//! that the [`crate::interest::bgm::Bgm`] type **does not** implement
-//! (`Bgm` is a parallel array of uncoupled Euler-stepped martingales — see
-//! its module doc).
+//! `B^*(t)` of Glasserman (2003) §3.7.
 //!
 //! Numerical scheme: **log-Euler with frozen-at-step drift** (Glasserman
 //! 2003 §3.7.1; Joshi 2003). Each step approximates

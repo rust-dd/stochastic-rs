@@ -1,16 +1,16 @@
-//! [`JumpFOUCustom`]'s construction, getters and `with_*` setters, which keep the cached fGN driver
+//! [`JumpFouCustom`]'s construction, getters and `with_*` setters, which keep the cached fGN driver
 //! in step with the parameters it derives from.
 
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
-use super::JumpFOUCustom;
+use super::JumpFouCustom;
 use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 
-impl<T, D, S: SeedExt> JumpFOUCustom<T, D, S, Cpu>
+impl<T, D, S: SeedExt> JumpFouCustom<T, D, S, Cpu>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -105,7 +105,7 @@ where
   }
 }
 
-impl<T, D, S: SeedExt, B> JumpFOUCustom<T, D, S, B>
+impl<T, D, S: SeedExt, B> JumpFouCustom<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,

@@ -20,7 +20,7 @@
 //! `U_j` and `τ_j/T` uniforms, `V_j ∈ {λ₊, −λ₋}` with probability one half
 //! each. The arrival bound divides by the total mass of the Lévy measure over
 //! the horizon, `(C + C) T = 2CT`, as Rosiński's theorem does through
-//! `H(Γ_j / T, V_j)` — the constant `Cgmy`, `KoBoL` and `Rdts` carry too.
+//! `H(Γ_j / T, V_j)` — the constant `Cgmy`, `Kobol` and `Rdts` carry too.
 //!
 //! References: Rosiński, J. (2007), *Tempering stable processes*, Stoch.
 //! Proc. Appl. 117(6), 677–707; Kim, Y. S., Rachev, S. T., Bianchi, M. L. &
@@ -243,7 +243,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     // scale `C` and drift `b_t` are precomputed here.
     let t_max = self.t_max();
     let dt = self.dt();
-    let C = self.tempering_constant();
+    let c = self.tempering_constant();
     let b_t = self.drift_rate();
 
     CtsSampler {
@@ -255,7 +255,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       x0: self.x0.unwrap_or(T::zero()),
       t_max,
       dt,
-      c: C,
+      c,
       b_t,
       uniform: SimdUniform::<T>::new(T::zero(), T::one()).seeded(&self.seed),
       exp: SimdExp::<T>::new(T::one()).seeded(&self.seed),
@@ -360,16 +360,16 @@ impl<T: FloatExt, S: SeedExt> CtsSampler<T, S> {
 
     let t_max = self.t_max;
     let dt = self.dt;
-    let C = self.c;
+    let c = self.c;
     let b_t = self.b_t;
 
-    let J = self.j;
-    let size = J + 1; // index 0 is reserved (Γ0=0)
+    let n_terms = self.j;
+    let size = n_terms + 1; // index 0 is reserved (Γ0=0)
 
-    let mut U = Array1::<T>::zeros(size);
-    self.uniform.fill_slice(U.as_slice_mut().unwrap());
-    let E = Array1::from_shape_fn(size, |_| self.exp.sample());
-    let P = Poisson::new(T::one(), Horizon::Events(J), self.seed.derive()).sample();
+    let mut u = Array1::<T>::zeros(size);
+    self.uniform.fill_slice(u.as_slice_mut().unwrap());
+    let e = Array1::from_shape_fn(size, |_| self.exp.sample());
+    let arrivals = Poisson::new(T::one(), Horizon::Events(n_terms), self.seed.derive()).sample();
     let mut tau_raw = Array1::<T>::zeros(size);
     self.uniform.fill_slice(tau_raw.as_slice_mut().unwrap());
     let tau = tau_raw * t_max;
@@ -385,10 +385,10 @@ impl<T: FloatExt, S: SeedExt> CtsSampler<T, S> {
 
       // The arrival bound over the total mass of the measure on [0, T]: both
       // sides carry `C`, so `2 C T` (Rosiński 2007, Thm 5.1).
-      let divisor = T::from_usize_(2) * C * t_max;
-      let numerator = self.alpha * P[j];
+      let divisor = T::from_usize_(2) * c * t_max;
+      let numerator = self.alpha * arrivals[j];
       let term1 = (numerator / divisor).powf(-T::one() / self.alpha);
-      let term2 = E[j] * U[j].powf(T::one() / self.alpha) / v_j.abs();
+      let term2 = e[j] * u[j].powf(T::one() / self.alpha) / v_j.abs();
       jump_size[j] = term1.min(term2) * (v_j / v_j.abs());
     }
 

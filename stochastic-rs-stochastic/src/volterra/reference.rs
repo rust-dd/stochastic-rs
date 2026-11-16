@@ -9,12 +9,12 @@
 //! typically a [`VolterraKernel::evaluate`](super::kernel::VolterraKernel::evaluate)
 //! call, never the exponential-sum fit) at every $(i,j)$ pair, at $O(n^2)$
 //! cost. This is deliberately **not** scaffolding: it is the permanent
-//! cross-implementation oracle for [`VolterraSde`](super::sve::VolterraSde) /
+//! cross-implementation oracle for [`VolterraSde`](super::volterra_sde::VolterraSde) /
 //! [`VolterraLift`](super::lift::VolterraLift) — this crate's own validation
 //! audit found cross-implementation comparisons to be its highest-yield test
 //! class, and a fast $O(nN')$ path with no independent oracle is exactly how
 //! a subtle exponential-sum-fit or Markov-state-recursion bug would survive
-//! undetected. It also backs [`Volterra`](crate::process::volterra::Volterra)'s
+//! undetected. It also backs [`Volterra`](crate::volterra::Volterra)'s
 //! fallback for kernels [`VolterraLift`](super::lift::VolterraLift) cannot
 //! represent (e.g. Hurst $H \ge 1/2$, where [`RlKernel`](crate::rough::kernel::RlKernel)
 //! does not apply) — so it is load-bearing production code, not test-only.

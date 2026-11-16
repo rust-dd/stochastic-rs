@@ -198,10 +198,7 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
     self
   }
 
-  /// Replace `rho`, all else unchanged. `HestonLog` has no persisted
-  /// correlated-noise cache (`sampler()` builds its Gaussian streams fresh
-  /// from `rho` on every call), so unlike `BatesSvj`/`Hkde` this is a plain
-  /// field write.
+  /// Replace `rho`; a field write, since `sampler()` builds its correlated noise from `rho`.
   pub fn with_rho(mut self, rho: T) -> Self {
     assert!(
       rho.is_finite(),

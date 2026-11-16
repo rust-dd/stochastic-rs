@@ -9,7 +9,7 @@
 //! *Markovian structure of the Volterra Heston model*, arXiv:1803.00477), and
 //! the rough Heston model when $K$ is the Riemann–Liouville kernel.
 //!
-//! ## Why this type exists rather than a plain [`VolterraSde`](super::sve::VolterraSde)
+//! ## Why this type exists rather than a plain [`VolterraSde`](super::volterra_sde::VolterraSde)
 //!
 //! Two reasons. First, `VolterraSde`'s coefficients are
 //! [`Fn2D`](crate::traits::Fn2D)`::Native`, a bare `fn` pointer, so it cannot

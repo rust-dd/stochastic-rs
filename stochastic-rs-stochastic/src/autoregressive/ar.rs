@@ -20,6 +20,14 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+/// A type name spells an acronym as one word: the AR(p) process is [`Ar`].
+///
+/// ```compile_fail,E0432
+/// use stochastic_rs_stochastic::autoregressive::ar::ARp;
+/// ```
+#[cfg(doctest)]
+pub struct AcronymsAreOneWord;
+
 /// Implements an AR(p) model:
 ///
 /// \[
@@ -35,7 +43,7 @@ use crate::traits::ProcessExt;
 /// - `m`: Optional batch size (for parallel sampling).
 /// - `x0`: Optional array of initial values. If provided, should have length at least `phi.len()`.
 #[derive(Debug, Clone)]
-pub struct ARp<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+pub struct Ar<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// AR coefficients
   pub phi: Array1<T>,
   /// Noise std dev
@@ -51,7 +59,7 @@ pub struct ARp<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> ARp<T, S> {
+impl<T: FloatExt, S: SeedExt> Ar<T, S> {
   /// Create a new AR process with given coefficients and noise standard deviation.
   pub fn new(phi: Array1<T>, sigma: T, n: usize, x0: Option<Array1<T>>, seed: S) -> Self {
     assert!(
@@ -86,17 +94,17 @@ impl<T: FloatExt, S: SeedExt> ARp<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> ARp<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> Ar<T, S, B> {}
 
 /// The Euler engine's view of an autoregression. Higher orders read back more
 /// than one lag, which the engine's four state slots do not bound.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for ARp<T, S, B>
+  for Ar<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     assert!(
       self.phi.len() == 1,
-      "ARp: a launch carries order one; sample through `ProcessExt`, which keeps a higher order on the host"
+      "Ar: a launch carries order one; sample through `ProcessExt`, which keeps a higher order on the host"
     );
     crate::euler::EulerSpec::Autoregressive {
       phi: self.phi[0],
@@ -144,22 +152,22 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] ARp<T, S> { phi, sigma, n, x0, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] Ar<T, S> { phi, sigma, n, x0, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for ARp<T, S, B>
+  for Ar<T, S, B>
 {
 }
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for ARp<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Ar<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
-    = ARpSampler<T>
+    = ArSampler<T>
   where
     Self: 's;
 
-  fn sampler(&self) -> ARpSampler<T> {
-    ARpSampler {
+  fn sampler(&self) -> ArSampler<T> {
+    ArSampler {
       n: self.n,
       phi: self.phi.clone(),
       x0: self.x0.clone(),
@@ -233,10 +241,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`ARp`] sampling state: owns the Gaussian innovation source and the
+/// Reusable [`Ar`] sampling state: owns the Gaussian innovation source and the
 /// model coefficients so a Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
-pub struct ARpSampler<T: FloatExt> {
+pub struct ArSampler<T: FloatExt> {
   n: usize,
   phi: Array1<T>,
   x0: Option<Array1<T>>,
@@ -244,7 +252,7 @@ pub struct ARpSampler<T: FloatExt> {
   normal: Seeded<SimdNormal<T>>,
 }
 
-impl<T: FloatExt> ARpSampler<T> {
+impl<T: FloatExt> ArSampler<T> {
   fn fill_path(&mut self, out: &mut [T]) {
     let n = out.len();
     let p = self.phi.len();
@@ -278,13 +286,13 @@ impl<T: FloatExt> ARpSampler<T> {
   }
 }
 
-impl<T: FloatExt> crate::traits::Sealed for ARpSampler<T> {}
+impl<T: FloatExt> crate::traits::Sealed for ArSampler<T> {}
 
-impl<T: FloatExt> PathSampler<T> for ARpSampler<T> {
+impl<T: FloatExt> PathSampler<T> for ArSampler<T> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
-    let slice = out.as_slice_mut().expect("ARp output must be contiguous");
+    let slice = out.as_slice_mut().expect("Ar output must be contiguous");
     self.fill_path(slice);
   }
 
@@ -294,7 +302,7 @@ impl<T: FloatExt> PathSampler<T> for ARpSampler<T> {
   }
 }
 
-py_process_1d!(PyARp, ARp,
+py_process_1d!(PyARp, Ar,
   sig: (phi, sigma, n, x0=None, seed=None, dtype=None),
   params: (phi: Vec<f64>, sigma: f64, n: usize, x0: Option<Vec<f64>>),
   device

@@ -44,13 +44,13 @@ use crate::traits::ProcessExt;
 /// ```compile_fail,E0616
 /// use stochastic_rs_core::simd_rng::Unseeded;
 /// use stochastic_rs_distributions::normal::SimdNormal;
-/// use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
+/// use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFouCustom;
 /// let times = SimdNormal::<f64>::new(0.5, 0.01);
 /// let sizes = SimdNormal::<f64>::new(0.0, 0.1);
-/// let mut p = JumpFOUCustom::new(0.7, 1.0, 0.0, 0.2, 10, None, None, times, sizes, Unseeded);
+/// let mut p = JumpFouCustom::new(0.7, 1.0, 0.0, 0.2, 10, None, None, times, sizes, Unseeded);
 /// p.n = 1000;
 /// ```
-pub struct JumpFOUCustom<T, D, S: SeedExt = Unseeded, B = Cpu>
+pub struct JumpFouCustom<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -69,7 +69,7 @@ where
 }
 
 impl<T, D, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for JumpFOUCustom<T, D, S, B>
+  for JumpFouCustom<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync + Any,
@@ -77,18 +77,18 @@ where
 }
 
 impl<T, D, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
-  for JumpFOUCustom<T, D, S, B>
+  for JumpFouCustom<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync + Any,
 {
   type Output = Array1<T>;
   type Sampler<'s>
-    = JumpFOUCustomSampler<'s, T, D, B>
+    = JumpFouCustomSampler<'s, T, D, B>
   where
     Self: 's;
 
-  fn sampler(&self) -> JumpFOUCustomSampler<'_, T, D, B> {
+  fn sampler(&self) -> JumpFouCustomSampler<'_, T, D, B> {
     // Owns a Gaussian source derived from `self.seed` (not `fgn.sampler()`,
     // which would build it from `fgn`'s own permanently-`Unseeded` field —
     // see the type doc) and an owned jump RNG also derived from `self.seed`,
@@ -96,7 +96,7 @@ where
     // the user-supplied inter-arrival / jump-size distributions. The two
     // owned sources are independent derives off the same counter, so they
     // stay mutually uncorrelated; both advance on reuse.
-    JumpFOUCustomSampler {
+    JumpFouCustomSampler {
       n: self.n,
       theta: self.theta,
       mu: self.mu,
@@ -176,12 +176,12 @@ where
   }
 }
 
-/// Reusable [`JumpFOUCustom`] sampling state: borrows `fgn` for its
+/// Reusable [`JumpFouCustom`] sampling state: borrows `fgn` for its
 /// `Arc`-shared FFT plan/eigenvalues and the inter-arrival / jump-size
 /// distributions, and owns the Gaussian source and jump RNG, so a
 /// Monte-Carlo loop pays the fGn `SimdNormal` setup once.
 #[doc(hidden)]
-pub struct JumpFOUCustomSampler<'a, T, D, B>
+pub struct JumpFouCustomSampler<'a, T, D, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -200,7 +200,7 @@ where
   rng: SimdRng,
 }
 
-impl<T, D, B> JumpFOUCustomSampler<'_, T, D, B>
+impl<T, D, B> JumpFouCustomSampler<'_, T, D, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -226,7 +226,7 @@ where
     let mut next_jump_time = self.jump_times.sample(&mut self.rng);
     assert!(
       next_jump_time > T::zero(),
-      "JumpFOUCustom: jump_times closure must return strictly positive inter-arrival times \
+      "JumpFouCustom: jump_times closure must return strictly positive inter-arrival times \
        (this is a runtime contract on the user-supplied distribution; if the distribution \
        can return ≤0 values, wrap it in `.max(eps)` or use a strictly-positive distribution)"
     );
@@ -239,7 +239,7 @@ where
         let delta = self.jump_times.sample(&mut self.rng);
         assert!(
           delta > T::zero(),
-          "JumpFOUCustom: jump_times closure must return strictly positive inter-arrival times"
+          "JumpFouCustom: jump_times closure must return strictly positive inter-arrival times"
         );
         next_jump_time += delta;
       }
@@ -252,7 +252,7 @@ where
   }
 }
 
-impl<T, D, B> crate::traits::Sealed for JumpFOUCustomSampler<'_, T, D, B>
+impl<T, D, B> crate::traits::Sealed for JumpFouCustomSampler<'_, T, D, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -260,7 +260,7 @@ where
 {
 }
 
-impl<T, D, B> PathSampler<T> for JumpFOUCustomSampler<'_, T, D, B>
+impl<T, D, B> PathSampler<T> for JumpFouCustomSampler<'_, T, D, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -272,7 +272,7 @@ where
     self.fill_path(
       out
         .as_slice_mut()
-        .expect("JumpFOUCustom output must be contiguous"),
+        .expect("JumpFouCustom output must be contiguous"),
     );
   }
 
@@ -282,7 +282,7 @@ where
   }
 }
 
-impl<T, D, S: SeedExt, B> JumpFOUCustom<T, D, S, B>
+impl<T, D, S: SeedExt, B> JumpFouCustom<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync + Any,
@@ -301,7 +301,7 @@ where
 }
 
 impl<T, D, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
-  crate::euler::EulerCoefficients<T> for JumpFOUCustom<T, D, S, B>
+  crate::euler::EulerCoefficients<T> for JumpFouCustom<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync + Any,
@@ -340,7 +340,7 @@ where
   /// that guard.
   fn jump_intensity(&self) -> Option<T> {
     Some(self.device_intensity().expect(
-      "JumpFOUCustom: the inter-arrival distribution is not exponential, which is the only \
+      "JumpFouCustom: the inter-arrival distribution is not exponential, which is the only \
        arrival law the Euler engine draws on a device; sample through `ProcessExt`, which keeps \
        it on the host",
     ))
@@ -348,7 +348,7 @@ where
 
   fn jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
     Some(self.device_jump_sizes().expect(
-      "JumpFOUCustom: the jump-size distribution is not a law the Euler engine draws on a \
+      "JumpFouCustom: the jump-size distribution is not a law the Euler engine draws on a \
        device; sample through `ProcessExt`, which keeps it on the host",
     ))
   }
@@ -364,7 +364,7 @@ where
   }
 }
 
-backend_switch!([T, D, S: SeedExt] JumpFOUCustom<T, D, S> { hurst, theta, mu, sigma, n, x0, t, jump_times, jump_sizes, seed } via fgn euler
+backend_switch!([T, D, S: SeedExt] JumpFouCustom<T, D, S> { hurst, theta, mu, sigma, n, x0, t, jump_times, jump_sizes, seed } via fgn euler
   where T: FloatExt, D: Distribution<T> + Send + Sync);
 
 #[cfg(test)]
@@ -385,7 +385,7 @@ mod tests {
 
   #[test]
   fn allows_multiple_jumps_in_single_dt() {
-    let p = JumpFOUCustom::new(
+    let p = JumpFouCustom::new(
       0.7_f64,
       0.0,
       0.0,
@@ -409,8 +409,8 @@ mod tests {
 #[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyJumpFOUCustom {
-  inner_f32: Option<JumpFOUCustom<f32, crate::traits::CallableDist<f32>>>,
-  inner_f64: Option<JumpFOUCustom<f64, crate::traits::CallableDist<f64>>>,
+  inner_f32: Option<JumpFouCustom<f32, crate::traits::CallableDist<f32>>>,
+  inner_f64: Option<JumpFouCustom<f64, crate::traits::CallableDist<f64>>>,
 }
 
 #[cfg(feature = "python")]
@@ -432,7 +432,7 @@ impl PyJumpFOUCustom {
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| match dtype.unwrap_or("f64") {
       "f32" => Self {
-        inner_f32: Some(JumpFOUCustom::new(
+        inner_f32: Some(JumpFouCustom::new(
           hurst as f32,
           theta as f32,
           mu as f32,
@@ -448,7 +448,7 @@ impl PyJumpFOUCustom {
       },
       _ => Self {
         inner_f32: None,
-        inner_f64: Some(JumpFOUCustom::new(
+        inner_f64: Some(JumpFouCustom::new(
           hurst,
           theta,
           mu,

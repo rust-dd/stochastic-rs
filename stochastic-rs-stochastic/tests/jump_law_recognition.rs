@@ -3,9 +3,9 @@ use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::normal::SimdNormal;
-use stochastic_rs_stochastic::jump::bates::Bates1996;
+use stochastic_rs_stochastic::jump::bates::Bates;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
-use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
+use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFouCustom;
 use stochastic_rs_stochastic::jump::kou::Kou;
 use stochastic_rs_stochastic::jump::levy_diffusion::LevyDiffusion;
 use stochastic_rs_stochastic::jump::merton::Merton;
@@ -109,8 +109,8 @@ fn stateless_simd_laws_reach_the_kernels_of_every_law_taking_process() {
     .device_fallback(),
   );
   reaches_the_kernels(
-    "JumpFOUCustom",
-    JumpFOUCustom::new(
+    "JumpFouCustom",
+    JumpFouCustom::new(
       0.65,
       1.5,
       0.0,
@@ -125,8 +125,8 @@ fn stateless_simd_laws_reach_the_kernels_of_every_law_taking_process() {
     .device_fallback(),
   );
   reaches_the_kernels(
-    "Bates1996",
-    Bates1996::new(
+    "Bates",
+    Bates::new(
       Drift::Mu(0.05),
       LAMBDA,
       0.0,
@@ -235,8 +235,8 @@ fn a_law_the_kernels_do_not_draw_stays_on_the_host() {
     .device_fallback(),
   );
   stays_on_the_host(
-    "JumpFOUCustom",
-    JumpFOUCustom::new(
+    "JumpFouCustom",
+    JumpFouCustom::new(
       0.65,
       1.5,
       0.0,
@@ -251,8 +251,8 @@ fn a_law_the_kernels_do_not_draw_stays_on_the_host() {
     .device_fallback(),
   );
   stays_on_the_host(
-    "Bates1996",
-    Bates1996::new(
+    "Bates",
+    Bates::new(
       Drift::Mu(0.05),
       LAMBDA,
       0.0,

@@ -28,7 +28,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-pub struct WuZhangD<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+pub struct WuZhang<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean reversion level for each dimension's volatility.
   pub alpha: Array1<T>,
   /// Mean reversion speed for each dimension's volatility.
@@ -54,7 +54,7 @@ pub struct WuZhangD<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> WuZhangD<T, S> {
+impl<T: FloatExt, S: SeedExt> WuZhang<T, S> {
   pub fn new(
     alpha: Array1<T>,
     beta: Array1<T>,
@@ -130,7 +130,7 @@ impl<T: FloatExt, S: SeedExt> WuZhangD<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> WuZhangD<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B> WuZhang<T, S, B> {
   /// The grid spacing: `n - 1` increments over the horizon, zero when the
   /// grid has no increment to take.
   fn dt(&self) -> T {
@@ -187,13 +187,13 @@ fn fill_wu_zhang_pair<T: FloatExt, S: SeedExt>(
 }
 
 /// One forward-rate / variance pair of the model, stepped on its own.
-/// `WuZhangD` reports every pair as two rows of one matrix — the rates first,
+/// `WuZhang` reports every pair as two rows of one matrix — the rates first,
 /// then the variances — and the engine speaks in `[Array1<T>; 2]`, so this
 /// view is what carries a launch: pair `i` under its own four scalars,
 /// started at its own levels. It borrows rather than owns, so the seed it
 /// advances is the process's own.
 #[doc(hidden)]
-pub struct WuZhangPair<'a, T: FloatExt, S: SeedExt, B>(&'a WuZhangD<T, S, B>, usize);
+pub struct WuZhangPair<'a, T: FloatExt, S: SeedExt, B>(&'a WuZhang<T, S, B>, usize);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for WuZhangPair<'_, T, S, B>
@@ -221,7 +221,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// [`WuZhangPair`]'s sampler: one pair's recursion from a seed derived once.
 #[doc(hidden)]
 pub struct WuZhangPairSampler<'a, T: FloatExt, S: SeedExt, B> {
-  model: &'a WuZhangD<T, S, B>,
+  model: &'a WuZhang<T, S, B>,
   pair: usize,
   seed: S,
 }
@@ -306,19 +306,17 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] WuZhangD<T, S> { alpha, beta, nu, lambda, x0, v0, xn, t, n, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] WuZhang<T, S> { alpha, beta, nu, lambda, x0, v0, xn, t, n, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for WuZhangD<T, S, B>
+  for WuZhang<T, S, B>
 {
 }
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
-  for WuZhangD<T, S, B>
-{
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for WuZhang<T, S, B> {
   type Output = Array2<T>;
   type Sampler<'s>
-    = WuZhangDSampler<T, S>
+    = WuZhangSampler<T, S>
   where
     Self: 's;
 
@@ -326,8 +324,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
   /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
   /// relative to each other rather than one raw stride apart.
-  fn sampler(&self) -> WuZhangDSampler<T, S> {
-    WuZhangDSampler {
+  fn sampler(&self) -> WuZhangSampler<T, S> {
+    WuZhangSampler {
       alpha: self.alpha.clone(),
       beta: self.beta.clone(),
       nu: self.nu.clone(),
@@ -399,11 +397,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`WuZhangD`] sampling state: owns the per-pair parameter vectors,
+/// Reusable [`WuZhang`] sampling state: owns the per-pair parameter vectors,
 /// the initial curves and the seed source so a Monte-Carlo loop reuses the
 /// output matrix.
 #[doc(hidden)]
-pub struct WuZhangDSampler<T: FloatExt, S: SeedExt> {
+pub struct WuZhangSampler<T: FloatExt, S: SeedExt> {
   alpha: Array1<T>,
   beta: Array1<T>,
   nu: Array1<T>,
@@ -416,7 +414,7 @@ pub struct WuZhangDSampler<T: FloatExt, S: SeedExt> {
   seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt> WuZhangDSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> WuZhangSampler<T, S> {
   fn fill_matrix(&mut self, fv: &mut Array2<T>) {
     let dt = if self.n > 1 {
       self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
@@ -447,9 +445,9 @@ impl<T: FloatExt, S: SeedExt> WuZhangDSampler<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for WuZhangDSampler<T, S> {}
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for WuZhangSampler<T, S> {}
 
-impl<T: FloatExt, S: SeedExt> PathSampler<T> for WuZhangDSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for WuZhangSampler<T, S> {
   type Output = Array2<T>;
 
   fn sample_into(&mut self, out: &mut Array2<T>) {
@@ -467,10 +465,10 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for WuZhangDSampler<T, S> {
 #[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyWuZhangD {
-  inner_f32: Option<WuZhangD<f32>>,
-  inner_f64: Option<WuZhangD<f64>>,
-  seeded_f32: Option<WuZhangD<f32, crate::simd_rng::Deterministic>>,
-  seeded_f64: Option<WuZhangD<f64, crate::simd_rng::Deterministic>>,
+  inner_f32: Option<WuZhang<f32>>,
+  inner_f64: Option<WuZhang<f64>>,
+  seeded_f32: Option<WuZhang<f32, crate::simd_rng::Deterministic>>,
+  seeded_f64: Option<WuZhang<f64, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
@@ -499,7 +497,7 @@ impl PyWuZhangD {
           Self {
             inner_f32: None,
             inner_f64: None,
-            seeded_f32: Some(WuZhangD::new(
+            seeded_f32: Some(WuZhang::new(
               to_f32_arr(alpha),
               to_f32_arr(beta),
               to_f32_arr(nu),
@@ -520,7 +518,7 @@ impl PyWuZhangD {
             inner_f32: None,
             inner_f64: None,
             seeded_f32: None,
-            seeded_f64: Some(WuZhangD::new(
+            seeded_f64: Some(WuZhang::new(
               to_arr(alpha),
               to_arr(beta),
               to_arr(nu),
@@ -538,7 +536,7 @@ impl PyWuZhangD {
           let to_f32_arr =
             |v: Vec<f64>| ndarray::Array1::from_vec(v.iter().map(|&x| x as f32).collect());
           Self {
-            inner_f32: Some(WuZhangD::new(
+            inner_f32: Some(WuZhang::new(
               to_f32_arr(alpha),
               to_f32_arr(beta),
               to_f32_arr(nu),
@@ -559,7 +557,7 @@ impl PyWuZhangD {
           let to_arr = |v: Vec<f64>| ndarray::Array1::from_vec(v);
           Self {
             inner_f32: None,
-            inner_f64: Some(WuZhangD::new(
+            inner_f64: Some(WuZhang::new(
               to_arr(alpha),
               to_arr(beta),
               to_arr(nu),

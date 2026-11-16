@@ -49,7 +49,7 @@ pub trait VolterraKernel<T: FloatExt>: Clone {
   fn evaluate(&self, t: T) -> T;
   /// Drift boundary weight $\int_0^{\delta t} K(u)\,du$, in closed form
   /// where available. This is what generalises
-  /// [`MarkovLift`](crate::rough::markov_lift::MarkovLift)'s
+  /// [`MarkovLift`](crate::rough::MarkovLift)'s
   /// $\delta t^{H+1/2} / \Gamma(H+3/2)$.
   fn integral_from_zero(&self, dt: T) -> T;
 }

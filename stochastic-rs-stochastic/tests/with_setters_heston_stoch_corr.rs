@@ -1,14 +1,4 @@
-//! TDD tests for A1-c Task 2: `with_*` builder setters on `HestonStochCorr`
-//! (correlation module). Split from `Bates1996`'s own tests (now
-//! `with_setters_bates.rs`) to keep the combined file under the project's
-//! 600-line cap, the same way Task 2 of the zero-exception-reproducibility
-//! wave split `src/jump/bates.rs` into
-//! `bates.rs`/`bates_tests.rs`/`bates_python.rs`.
-//!
-//! Same pattern as the other `with_setters_*.rs` files. `HestonStochCorr`
-//! has no private cache at all: all three Gaussian streams are rebuilt
-//! fresh inside `sampler()` from `self.{n,t,seed}` on every call, so every
-//! setter test below is a plain field-level round trip.
+//! The `with_*` setters of `HestonStochCorr`, which keeps no cache, so each is a field round trip.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;

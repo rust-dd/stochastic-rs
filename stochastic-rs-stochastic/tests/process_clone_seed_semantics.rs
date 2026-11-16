@@ -25,7 +25,7 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::diffusion::ou::Ou;
 use stochastic_rs_stochastic::noise::gn::Gn;
-use stochastic_rs_stochastic::rough::rl_fbm::RlFBm;
+use stochastic_rs_stochastic::rough::rl_fbm::RlFbm;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 const SEED: u64 = 42;
@@ -46,8 +46,8 @@ fn gn(seed: u64) -> Gn<f64, Deterministic> {
   Gn::new(32, Some(1.0), Deterministic::new(seed))
 }
 
-fn rl_fbm(seed: u64) -> RlFBm<f64, Deterministic> {
-  RlFBm::new(0.25, 64, Some(1.0), None, Deterministic::new(seed))
+fn rl_fbm(seed: u64) -> RlFbm<f64, Deterministic> {
+  RlFbm::new(0.25, 64, Some(1.0), None, Deterministic::new(seed))
 }
 
 fn bits(path: &Array1<f64>) -> Vec<u64> {
@@ -73,7 +73,7 @@ fn gn_clone_replays_identical_path() {
 }
 
 /// Same guarantee on a non-`Copy` process carrying an internal precomputed
-/// cache (`RlFBm`'s `MarkovLift`) alongside the seed field.
+/// cache (`RlFbm`'s `MarkovLift`) alongside the seed field.
 #[test]
 fn rl_fbm_clone_replays_identical_path() {
   let a = rl_fbm(SEED);

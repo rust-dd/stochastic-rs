@@ -4,16 +4,16 @@
 //! X_t = f(X_{t-1}, X_{t-2}, \ldots, \varepsilon_t, \varepsilon_{t-1}, \ldots)
 //! $$
 //!
-pub mod agrach;
+pub mod agarch;
 pub mod ar;
 pub mod arch;
 pub mod arima;
 pub mod drr_garch;
 pub mod egarch;
 pub mod garch;
+pub mod gjr_garch;
 pub mod ma;
 pub mod sarima;
-pub mod tgarch;
 mod threshold;
 
 #[cfg(test)]
@@ -21,18 +21,18 @@ mod tests {
   use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Unseeded;
 
-  use super::agrach::Agarch;
-  use super::ar::ARp;
+  use super::agarch::Agarch;
+  use super::ar::Ar;
   use super::egarch::Egarch;
   use super::garch::Garch;
+  use super::gjr_garch::GjrGarch;
   use super::sarima::Sarima;
-  use super::tgarch::GjrGarch;
   use crate::traits::ProcessExt;
 
   #[test]
   fn ar_rejects_short_initial_state() {
     let result = std::panic::catch_unwind(|| {
-      let _ = ARp::<f64>::new(
+      let _ = Ar::<f64>::new(
         Array1::from_vec(vec![0.4, -0.1]),
         0.1,
         16,

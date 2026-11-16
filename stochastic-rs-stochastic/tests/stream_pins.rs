@@ -1,6 +1,8 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
+use stochastic_rs_stochastic::jump::bates::Bates;
+use stochastic_rs_stochastic::jump::bates::LogNormalJump;
 use stochastic_rs_stochastic::jump::mjd_log::MjdLog;
 use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::Horizon;
@@ -9,8 +11,7 @@ use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PoissonSubordinator;
 use stochastic_rs_stochastic::traits::PathSampler;
 use stochastic_rs_stochastic::traits::ProcessExt;
-use stochastic_rs_stochastic::volatility::bates_svj::BatesSvj;
-use stochastic_rs_stochastic::volatility::fbates_svj::FBatesSvj;
+use stochastic_rs_stochastic::volatility::fbates_svj::FbatesSvj;
 use stochastic_rs_stochastic::volatility::hkde::Hkde;
 
 const N: usize = 24;
@@ -130,16 +131,17 @@ fn mjd_log_is_pinned() {
 }
 
 #[test]
-fn bates_svj_is_pinned() {
-  let [s, _] = BatesSvj::new(
+fn bates_with_its_lognormal_law_is_pinned() {
+  let law = LogNormalJump::new(-0.1, 0.2);
+  let [s, _] = Bates::new(
     Drift::Mu(0.05),
     LAMBDA,
-    -0.1,
-    0.2,
+    law.mean(),
     0.04,
     1.5,
     0.3,
     -0.6,
+    law,
     N,
     100.0,
     0.04,
@@ -149,24 +151,24 @@ fn bates_svj_is_pinned() {
   )
   .sample();
   pin(
-    "BatesSvj",
+    "Bates with LogNormalJump",
     &s,
     [
       4636737291354636288,
       4637504339693668260,
-      4636306926157148593,
-      4636825074432907165,
-      4634842882100959005,
-      4634841034470317663,
-      4635450031313721238,
-      4636081128162138464,
+      4637307410864647608,
+      4636557497319183707,
+      4636544960057487365,
+      4639683856358927314,
+      4640333040064116016,
+      4638945190020721184,
     ],
   );
 }
 
 #[test]
 fn f_bates_svj_is_pinned() {
-  let [s, _] = FBatesSvj::new(
+  let [s, _] = FbatesSvj::new(
     0.1,
     0.05,
     100.0,
@@ -184,7 +186,7 @@ fn f_bates_svj_is_pinned() {
   )
   .sample();
   pin(
-    "FBatesSvj",
+    "FbatesSvj",
     &s,
     [
       4636737291354636288,

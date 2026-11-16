@@ -21,7 +21,7 @@ pub use ctrw::Ctrw;
 pub use ctrw::CtrwJumpLaw;
 pub use ctrw::CtrwWaitingLaw;
 pub use gamma_subordinator::GammaSubordinator;
-pub use ig_subordinator::IGSubordinator;
+pub use ig_subordinator::IgSubordinator;
 pub use inverse_alpha_stable::InverseAlphaStableSubordinator;
 pub use poisson_subordinator::PoissonSubordinator;
 use stochastic_rs_distributions::Seeded;
@@ -71,7 +71,7 @@ mod tests {
   use super::CtrwJumpLaw;
   use super::CtrwWaitingLaw;
   use super::GammaSubordinator;
-  use super::IGSubordinator;
+  use super::IgSubordinator;
   use super::InverseAlphaStableSubordinator;
   use super::PoissonSubordinator;
   use super::TemperedStableSubordinator;
@@ -146,7 +146,7 @@ mod tests {
 
   #[test]
   fn ig_subordinator_is_non_decreasing() {
-    let p = IGSubordinator::new(1.5_f64, 2.0, 256, Some(0.0), Some(1.0), Unseeded);
+    let p = IgSubordinator::new(1.5_f64, 2.0, 256, Some(0.0), Some(1.0), Unseeded);
     let x = p.sample();
     assert!(x.windows(2).into_iter().all(|w| w[1] >= w[0]));
   }

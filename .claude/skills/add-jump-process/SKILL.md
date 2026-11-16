@@ -300,13 +300,13 @@ crate-wide guard and a new process must appear in it. See
   `D = SimdNormal<T>`; full `with_*` setter set. The template.
 - `Kou` (`jump/kou.rs`) — same sampler recursion as Merton, different
   `D`, deliberately no `Default`. Read its type doc for why.
-- `Bates1996` (`jump/bates.rs`) — Heston + generic jumps; the
-  `cpoisson: CompoundPoisson<T, D, S>` widening and its `cgns` caching
-  quirk are documented on the type.
-- `BatesSvj` / `FBatesSvj` (`volatility/bates_svj.rs`,
-  `volatility/fbates_svj.rs`) — non-generic SVJ variants; `FBatesSvj`
-  composes path (1) of `add-fractional-process`.
-- `LevyDiffusion` (`jump/levy_diffusion.rs`), `JumpFOUCustom`
+- `Bates` (`jump/bates.rs`) — Heston + generic jumps; `D` is the law of
+  the relative jump `Y − 1`, and `LogNormalJump` is Bates (1996)'s own,
+  with its compensator as `mean()`. The `cpoisson: CompoundPoisson<T, D, S>`
+  widening and its `cgns` caching quirk are documented on the type.
+- `FbatesSvj` (`volatility/fbates_svj.rs`) — the non-generic fractional
+  SVJ variant; it composes path (1) of `add-fractional-process`.
+- `LevyDiffusion` (`jump/levy_diffusion.rs`), `JumpFouCustom`
   (`jump/jump_fou_custom.rs`) — the other two generic-`D` jump slots.
 
 ## Related SKILLs

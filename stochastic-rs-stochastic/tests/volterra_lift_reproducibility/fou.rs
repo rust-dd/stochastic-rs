@@ -1,4 +1,4 @@
-//! Pinned `f64::to_bits()` reference data for `RlFOU`, captured on the
+//! Pinned `f64::to_bits()` reference data for `RlFou`, captured on the
 //! pre-generalisation tree (commit `1faaa99`) — see
 //! `../volterra_lift_reproducibility.rs` for the full rationale and the
 //! tolerance this data is compared under. Hoisted out of that file purely to

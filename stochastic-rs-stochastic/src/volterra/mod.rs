@@ -30,13 +30,13 @@
 //! that module for the `impl` block), so [`VolterraLift`] — the
 //! Markov-lift-style stepper built on top of this trait — drives both the
 //! fractional and the exponential-family kernels through one interface.
-//! [`crate::rough::markov_lift::MarkovLift`] is `VolterraLift<T,
-//! RlKernel<T>>` kept as a thin, backward-compatible wrapper.
+//! [`crate::rough::MarkovLift`] wraps `VolterraLift<T,
+//! RlKernel<T>>` for coefficients of the state alone.
 //!
 //! [`VolterraSde`] promotes [`VolterraLift`] to a first-class
 //! [`ProcessExt`](crate::traits::ProcessExt): general $b$/$\sigma$
 //! coefficients over any [`VolterraKernel`], not just the $(x)$-only,
-//! zero-drift special cases [`MarkovLift`](crate::rough::markov_lift::MarkovLift)'s
+//! zero-drift special cases [`MarkovLift`](crate::rough::MarkovLift)'s
 //! own callers use. [`reference::reference_path`] is its permanent $O(n^2)$
 //! cross-implementation oracle — see that module's docs for why it is kept,
 //! not scaffolding.
@@ -67,15 +67,21 @@
 //! [`fit::fit_l1`] targets.
 
 pub mod fit;
+mod gaussian;
 pub mod gaussian_polynomial;
 pub mod kernel;
 pub mod lift;
 pub mod reference;
 pub mod square_root;
-pub mod sve;
+pub mod volterra_sde;
 
 pub use fit::fit_l1;
 pub use fit::l1_error;
+#[cfg(feature = "python")]
+#[doc(hidden)]
+pub use gaussian::PyVolterra;
+pub use gaussian::Volterra;
+pub use gaussian::VolterraKernelSpec;
 pub use gaussian_polynomial::GaussianPolynomialVolatility;
 pub use kernel::ExponentialKernel;
 pub use kernel::GammaKernel;
@@ -84,4 +90,4 @@ pub use kernel::VolterraKernel;
 pub use lift::VolterraLift;
 pub use reference::reference_path;
 pub use square_root::VolterraSquareRoot;
-pub use sve::VolterraSde;
+pub use volterra_sde::VolterraSde;

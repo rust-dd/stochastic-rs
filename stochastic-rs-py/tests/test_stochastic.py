@@ -365,12 +365,14 @@ def test_an_event_process_takes_exactly_one_of_n_and_t_max():
     assert sr.PyHawkes(0.5, 0.3, 1.0, t_max=2.0).device_fallback() is not None
 
 
-def test_ho_lee_takes_exactly_one_of_theta_and_f_t():
+def test_ho_lee_takes_exactly_one_of_theta_and_forward_curve():
     sr.PyHoLee(0.01, 64, theta=0.02)
-    sr.PyHoLee(0.01, 64, f_T=lambda t: 0.03)
-    for bad in ({}, {"theta": 0.02, "f_T": lambda t: 0.03}):
-        with pytest.raises(ValueError, match="exactly one drift"):
+    sr.PyHoLee(0.01, 64, forward_curve=lambda t: 0.03)
+    for bad in ({}, {"theta": 0.02, "forward_curve": lambda t: 0.03}):
+        with pytest.raises(ValueError, match="exactly one drift: theta or forward_curve"):
             sr.PyHoLee(0.01, 64, **bad)
+    with pytest.raises(TypeError):
+        sr.PyHoLee(0.01, 64, f_T=lambda t: 0.03)
 
 
 def test_the_fractional_sheet_names_its_grid_rows_and_cols():
@@ -385,3 +387,47 @@ def test_the_rough_heston_spot_drift_and_correlation_are_checked_at_construction
                        ({"rho": 1.5}, "rho must satisfy")):
         with pytest.raises(ValueError, match=match):
             sr.PyRoughHeston(0.1, 0.04, 1.0, 0.3, 64, 0.2, **bad)
+
+
+def test_the_bates_svj_jump_is_lognormal_and_compensated_by_its_mean():
+    def bates_svj(nu, omega, lambda_=5.0):
+        return sr.PyBatesSvj(lambda_, nu, omega, 0.0, 0.0, 0.0, 0.0, 33, mu=0.0, s0=100.0, v0=0.0,
+                             t=1.0, seed=5)
+
+    terminal = bates_svj(-0.1, 0.2).sample_par(20_000)[0][:, -1]
+    assert abs(terminal.mean() - 100.0) < 5.0 * terminal.std(ddof=1) / math.sqrt(terminal.size)
+    quarterly = sr.PyBatesSvj(1.0, -1.0, 0.5, 0.5, 2.0, 0.5, -0.7, 5, mu=0.05, s0=100.0, v0=0.25,
+                              t=1.0, seed=11)
+    assert np.all(quarterly.sample_par(20_000)[0] > 0.0)
+
+
+def test_the_bates_svj_takes_its_jumps_to_a_device():
+    def bates_svj(**device):
+        return sr.PyBatesSvj(3.0, -0.05, 0.1, 0.08, 2.0, 0.3, -0.7, 64, mu=0.02, s0=100.0, v0=0.04,
+                             t=1.0, seed=7, dtype="f32", **device)
+
+    assert bates_svj().device_ready() and bates_svj().device_fallback() is None
+    host = bates_svj().sample_par(256)[0]
+    for device in ("cuda", "metal"):
+        try:
+            on_device = bates_svj(device=device)
+        except (ValueError, RuntimeError):
+            continue
+        spots = on_device.sample_par(256)[0]
+        assert spots.shape == host.shape and np.all(spots > 0.0)
+        assert not np.array_equal(spots, host)
+
+
+def test_the_inverse_gaussian_process_is_the_unit_subordinator():
+    assert not hasattr(sr, "PyIg")
+    path = sr.PyIGSubordinator(2.0, 1.0, 65, seed=3).sample()
+    assert path.shape == (65,) and path[0] == 0.0 and np.all(np.diff(path) > 0.0)
+
+
+def test_white_noise_takes_its_location_as_mu_and_its_scale_as_sigma():
+    flat = sr.PyWn(64, mu=0.5, sigma=0.0, seed=1).sample()
+    assert np.all(flat == 0.5)
+    assert np.array_equal(sr.PyWn(64, sigma=2.0, seed=1).sample(), 2.0 * sr.PyWn(64, seed=1).sample())
+    for old in ({"std_dev": 1.0}, {"mean": 0.5}):
+        with pytest.raises(TypeError):
+            sr.PyWn(64, **old)

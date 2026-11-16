@@ -34,7 +34,7 @@ use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
 use stochastic_rs_stochastic::volatility::heston::Euler;
 use stochastic_rs_stochastic::volatility::heston::Heston;
-use stochastic_rs_stochastic::volatility::rbergomi::RoughBergomi;
+use stochastic_rs_stochastic::volatility::rough_bergomi::RoughBergomi;
 use stochastic_rs_stochastic::volatility::sabr::Sabr;
 
 const N: usize = 252;

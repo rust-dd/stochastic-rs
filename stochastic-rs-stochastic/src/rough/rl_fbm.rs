@@ -10,9 +10,9 @@
 //! independent Ou-like Markov factors driven by the same Brownian motion.
 //!
 //! The [`MarkovLift`] stepper (with the kernel quadrature) is built once per
-//! struct in [`RlFBm::new`] (whichever seed strategy `S` is chosen) and
+//! struct in [`RlFbm::new`] (whichever seed strategy `S` is chosen) and
 //! reused across every [`sample`](crate::traits::ProcessExt::sample) and
-//! [`sample_batch`](RlFBm::sample_batch) call — repeated sampling does not
+//! [`sample_batch`](RlFbm::sample_batch) call — repeated sampling does not
 //! re-run Golub–Welsch or recompute per-$\delta t$ factors.
 //!
 //! Not to be confused with Mandelbrot–Van Ness fBM: the two share the
@@ -38,7 +38,7 @@ use crate::traits::ProcessExt;
 
 /// Riemann–Liouville fractional Brownian motion, Hurst $H \in (0, 1/2)$.
 #[derive(Clone)]
-pub struct RlFBm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+pub struct RlFbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent.
   pub hurst: T,
   /// Number of points sampled along the RL-fBM path.
@@ -67,7 +67,7 @@ fn build_markov<T: FloatExt>(
   MarkovLift::new(kernel, dt)
 }
 
-impl<T: FloatExt, S: SeedExt> RlFBm<T, S> {
+impl<T: FloatExt, S: SeedExt> RlFbm<T, S> {
   /// Build an RL-fBM generator for Hurst $H$ on an $n$-point grid. The
   /// underlying [`MarkovLift`] is constructed once here and reused by every
   /// sampling call.
@@ -95,14 +95,14 @@ impl<T: FloatExt, S: SeedExt> RlFBm<T, S> {
   }
 
   /// Borrow the precomputed [`MarkovLift`] stepper, so sibling processes
-  /// (`RlFOU`, `RlBlackScholes`) building their own samplers can clone the
+  /// (`RlFou`, `RlBlackScholes`) building their own samplers can clone the
   /// kernel quadrature instead of reconstructing it.
   pub(crate) fn markov(&self) -> &MarkovLift<T> {
     &self.markov
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> RlFBm<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B> RlFbm<T, S, B> {
   /// Generate $m$ independent RL-fBM paths as an $(m, n)$ array. The
   /// underlying Markov-lift runs path-parallel SIMD (cache-tiled), matching
   /// the Python `RoughHestonFast` batching pattern — single-threaded.
@@ -110,7 +110,7 @@ impl<T: FloatExt, S: SeedExt, B> RlFBm<T, S, B> {
     self.sample_batch_impl(&self.seed.derive(), m)
   }
 
-  /// Multi-core version of [`RlFBm::sample_batch`] — rayon parallelises the
+  /// Multi-core version of [`RlFbm::sample_batch`] — rayon parallelises the
   /// outer tile loop so batch-SIMD and core scheduling compound.
   pub fn sample_batch_par(&self, m: usize) -> Array2<T> {
     self.sample_batch_par_impl(&self.seed.derive(), m)
@@ -153,7 +153,7 @@ impl<T: FloatExt, S: SeedExt, B> RlFBm<T, S, B> {
 /// the Riemann-Liouville one with no drift, unit diffusion and the step's own
 /// shock as the driver, so the lifted value is the path.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for RlFBm<T, S, B>
+  for RlFbm<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::RiemannLiouville
@@ -194,17 +194,17 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] RlFBm<T, S> { hurst, n, t, degree, seed, markov } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] RlFbm<T, S> { hurst, n, t, degree, seed, markov } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for RlFBm<T, S, B>
+  for RlFbm<T, S, B>
 {
 }
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for RlFBm<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for RlFbm<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
-    = RlFBmSampler<T, S>
+    = RlFbmSampler<T, S>
   where
     Self: 's;
 
@@ -212,9 +212,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
   /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
   /// relative to each other rather than one raw stride apart — matching
-  /// `RlFOU`/`RlBlackScholes`, which already build their inner `Gn` this way.
-  fn sampler(&self) -> RlFBmSampler<T, S> {
-    RlFBmSampler {
+  /// `RlFou`/`RlBlackScholes`, which already build their inner `Gn` this way.
+  fn sampler(&self) -> RlFbmSampler<T, S> {
+    RlFbmSampler {
       n: self.n,
       gn: Gn::<T, S> {
         backend: Cpu,
@@ -258,19 +258,19 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`RlFBm`] sampling state: owns the cloned [`MarkovLift`] stepper
+/// Reusable [`RlFbm`] sampling state: owns the cloned [`MarkovLift`] stepper
 /// (with its kernel quadrature) and the Gaussian-increment source, so a
 /// Monte-Carlo loop re-runs neither Golub–Welsch nor the per-$\delta t$ factor
 /// precomputation. Each `fill_path` advances the owned `Gn` stream, so
 /// successive calls yield independent paths.
 #[doc(hidden)]
-pub struct RlFBmSampler<T: FloatExt, S: SeedExt> {
+pub struct RlFbmSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   gn: Gn<T, S>,
   markov: MarkovLift<T>,
 }
 
-impl<T: FloatExt, S: SeedExt> RlFBmSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> RlFbmSampler<T, S> {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -286,13 +286,13 @@ impl<T: FloatExt, S: SeedExt> RlFBmSampler<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for RlFBmSampler<T, S> {}
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for RlFbmSampler<T, S> {}
 
-impl<T: FloatExt, S: SeedExt> PathSampler<T> for RlFBmSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for RlFbmSampler<T, S> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
-    let slice = out.as_slice_mut().expect("RlFBm output must be contiguous");
+    let slice = out.as_slice_mut().expect("RlFbm output must be contiguous");
     self.fill_path(slice);
   }
 
@@ -307,18 +307,18 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_core::simd_rng::Unseeded;
 
-  use super::RlFBm;
+  use super::RlFbm;
   use crate::traits::ProcessExt;
 
   #[test]
   #[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
   fn rejects_too_short_grid() {
-    let _ = RlFBm::<f64>::new(0.3, 1, Some(1.0), None, Unseeded);
+    let _ = RlFbm::<f64>::new(0.3, 1, Some(1.0), None, Unseeded);
   }
 
   #[test]
   fn starts_at_zero_and_is_finite() {
-    let p = RlFBm::new(0.25_f64, 256, Some(1.0), None, Deterministic::new(42));
+    let p = RlFbm::new(0.25_f64, 256, Some(1.0), None, Deterministic::new(42));
     let path = p.sample();
     assert_eq!(path.len(), 256);
     assert_eq!(path[0], 0.0);
@@ -327,7 +327,7 @@ mod tests {
 
   #[test]
   fn batch_shape_and_first_column_is_zero() {
-    let p = RlFBm::new(0.2_f64, 64, Some(1.0), Some(25), Deterministic::new(11));
+    let p = RlFbm::new(0.2_f64, 64, Some(1.0), Some(25), Deterministic::new(11));
     let paths = p.sample_batch(17);
     assert_eq!(paths.dim(), (17, 64));
     for row in 0..17 {
@@ -346,7 +346,7 @@ mod tests {
 
     let mut endpoints: Vec<f64> = Vec::with_capacity(samples);
     for k in 0..samples {
-      let p = RlFBm::new(
+      let p = RlFbm::new(
         hurst,
         n,
         Some(t),

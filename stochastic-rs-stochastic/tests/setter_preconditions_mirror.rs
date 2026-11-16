@@ -9,17 +9,17 @@ use std::path::Path;
 /// (type, setter, why) pairs the mirror rule does not cover.
 const ALLOWED: &[(&str, &str, &str)] = &[
   (
-    "RoughHeston",
+    "Fheston",
     "with_s0",
     "hand-written: `new` takes no `s0` of its own",
   ),
   (
-    "RoughHeston",
+    "Fheston",
     "with_mu",
     "hand-written: `new` takes no `mu` of its own",
   ),
   (
-    "RoughHeston",
+    "Fheston",
     "with_rho",
     "hand-written: `new` takes no `rho` of its own",
   ),
@@ -74,7 +74,7 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     "the argument is a built law, not a `new` parameter",
   ),
   (
-    "Bates1996",
+    "Bates",
     "with_cpoisson",
     "the argument is a built law, not a `new` parameter",
   ),

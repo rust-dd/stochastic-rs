@@ -1,28 +1,18 @@
-//! TDD tests for A1-c Task 2: `with_*` builder setters on `FBatesSvj`
-//! (`volatility/fbates_svj.rs`), the fractional (rough-variance) Bates SVJ
-//! process. Split out of a combined `with_setters_volatility.rs` to stay
-//! under the project's 600-line file cap (per-type split, alongside
-//! `with_setters_bates_svj.rs`, `with_setters_double_heston.rs`,
-//! `with_setters_heston_log.rs`, and `with_setters_hkde.rs`).
-//!
-//! `FBatesSvj` has no persisted cache: `cgns` is rebuilt fresh inside
-//! `sampler()` from `self.{rho,n,t}` on every call, and `new()` has no
-//! `assert!`s of its own, so every setter here is a plain field write and
-//! no rejection tests are needed.
+//! The `with_*` setters of `FbatesSvj`, which keeps no cache: `sampler()` builds its `cgns`.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::traits::ProcessExt;
-use stochastic_rs_stochastic::volatility::fbates_svj::FBatesSvj;
+use stochastic_rs_stochastic::volatility::fbates_svj::FbatesSvj;
 
 fn finite2(out: &[Array1<f64>; 2]) -> bool {
   out.iter().all(|a| a.iter().all(|v| v.is_finite()))
 }
 
-fn fbsvj_base_seeded<S: SeedExt>(seed: S) -> FBatesSvj<f64, S> {
-  FBatesSvj::new(
+fn fbsvj_base_seeded<S: SeedExt>(seed: S) -> FbatesSvj<f64, S> {
+  FbatesSvj::new(
     0.1,
     0.05,
     100.0,
@@ -40,7 +30,7 @@ fn fbsvj_base_seeded<S: SeedExt>(seed: S) -> FBatesSvj<f64, S> {
   )
 }
 
-fn fbsvj_base() -> FBatesSvj<f64> {
+fn fbsvj_base() -> FbatesSvj<f64> {
   fbsvj_base_seeded(Unseeded)
 }
 
@@ -61,7 +51,7 @@ struct FbsvjFields {
   t: Option<f64>,
 }
 
-fn fbsvj_fields<S: SeedExt>(x: &FBatesSvj<f64, S>) -> FbsvjFields {
+fn fbsvj_fields<S: SeedExt>(x: &FbatesSvj<f64, S>) -> FbsvjFields {
   FbsvjFields {
     hurst: x.hurst,
     mu: x.mu,

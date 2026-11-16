@@ -2,7 +2,7 @@
 //! processes.
 //!
 //! Pins every value in [`RlBlackScholes::sample`]/`sample_batch`,
-//! [`RlFBm::sample`]/`sample_batch`, [`RlFOU::sample`]/`sample_batch`, and
+//! [`RlFbm::sample`]/`sample_batch`, [`RlFou::sample`]/`sample_batch`, and
 //! [`RlHeston::sample`]/`sample_batch` (spot *and* variance), built with
 //! [`Deterministic::new(42)`](Deterministic::new) and the same parameters
 //! `tests/reproducibility_all_processes/rough.rs` uses, against the
@@ -77,8 +77,8 @@ use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::rough::rl_bs::RlBlackScholes;
-use stochastic_rs_stochastic::rough::rl_fbm::RlFBm;
-use stochastic_rs_stochastic::rough::rl_fou::RlFOU;
+use stochastic_rs_stochastic::rough::rl_fbm::RlFbm;
+use stochastic_rs_stochastic::rough::rl_fou::RlFou;
 use stochastic_rs_stochastic::rough::rl_heston::RlHeston;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
@@ -161,10 +161,10 @@ fn rl_black_scholes_reproducible() {
 
 #[test]
 fn rl_fbm_reproducible() {
-  let fbm = RlFBm::new(0.1, N, Some(1.0), None, Deterministic::new(42));
-  assert_close("RlFBm::sample", &fbm.sample(), &FBM_SAMPLE);
+  let fbm = RlFbm::new(0.1, N, Some(1.0), None, Deterministic::new(42));
+  assert_close("RlFbm::sample", &fbm.sample(), &FBM_SAMPLE);
   assert_close_2d(
-    "RlFBm::sample_batch",
+    "RlFbm::sample_batch",
     &fbm.sample_batch(M),
     &FBM_SAMPLE_BATCH,
   );
@@ -172,7 +172,7 @@ fn rl_fbm_reproducible() {
 
 #[test]
 fn rl_fou_reproducible() {
-  let fou = RlFOU::new(
+  let fou = RlFou::new(
     0.1,
     1.0,
     0.0,
@@ -183,9 +183,9 @@ fn rl_fou_reproducible() {
     None,
     Deterministic::new(42),
   );
-  assert_close("RlFOU::sample", &fou.sample(), &FOU_SAMPLE);
+  assert_close("RlFou::sample", &fou.sample(), &FOU_SAMPLE);
   assert_close_2d(
-    "RlFOU::sample_batch",
+    "RlFou::sample_batch",
     &fou.sample_batch(M),
     &FOU_SAMPLE_BATCH,
   );

@@ -8,6 +8,8 @@ use criterion::criterion_main;
 use stochastic_rs::distributions::exp::SimdExp;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Unseeded;
+use stochastic_rs::stochastic::jump::bates::Bates;
+use stochastic_rs::stochastic::jump::bates::LogNormalJump;
 use stochastic_rs::stochastic::jump::kou::Kou;
 use stochastic_rs::stochastic::jump::levy_diffusion::LevyDiffusion;
 use stochastic_rs::stochastic::jump::merton::Merton;
@@ -17,7 +19,6 @@ use stochastic_rs::stochastic::params::VarianceBoundary;
 use stochastic_rs::stochastic::process::subordinator::ctrw::Ctrw;
 use stochastic_rs::stochastic::process::subordinator::ctrw::CtrwJumpLaw;
 use stochastic_rs::stochastic::process::subordinator::ctrw::CtrwWaitingLaw;
-use stochastic_rs::stochastic::volatility::bates_svj::BatesSvj;
 use stochastic_rs::stochastic::volatility::bns::Bns;
 use stochastic_rs::traits::ProcessExt;
 
@@ -120,15 +121,16 @@ fn bench_jump_processes(c: &mut Criterion) {
       b.iter(|| black_box(mjd.sample()))
     });
 
-    let bates = BatesSvj::new(
+    let law = LogNormalJump::new(-0.1, 0.2);
+    let bates = Bates::new(
       Drift::Mu(0.05),
       LAMBDA,
-      -0.1,
-      0.2,
+      law.mean(),
       0.04,
       1.5,
       0.3,
       -0.6,
+      law,
       n,
       100.0,
       0.04,

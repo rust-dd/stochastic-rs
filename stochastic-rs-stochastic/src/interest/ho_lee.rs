@@ -287,11 +287,11 @@ pub struct PyHoLee {
 #[pyo3::prelude::pymethods]
 impl PyHoLee {
   #[new]
-  #[pyo3(signature = (sigma, n, f_T=None, theta=None, t=None, seed=None, device=None))]
+  #[pyo3(signature = (sigma, n, forward_curve=None, theta=None, t=None, seed=None, device=None))]
   fn new(
     sigma: f64,
     n: usize,
-    f_T: Option<pyo3::Py<pyo3::PyAny>>,
+    forward_curve: Option<pyo3::Py<pyo3::PyAny>>,
     theta: Option<f64>,
     t: Option<f64>,
     seed: Option<u64>,
@@ -299,7 +299,7 @@ impl PyHoLee {
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> pyo3::PyResult<Self> {
       let device = crate::python_device::Device::parse(device, "f64")?;
-      let drift = crate::python_params::ho_lee_drift_from_kwargs(theta, f_T)?;
+      let drift = crate::python_params::ho_lee_drift_from_kwargs(theta, forward_curve)?;
       Ok(match seed {
         Some(s) => Self {
           device,

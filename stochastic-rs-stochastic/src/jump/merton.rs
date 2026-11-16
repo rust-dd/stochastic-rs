@@ -90,7 +90,7 @@ where
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `Merton::default().with_alpha(0.06)`. No persisted cache:
 /// `sampler()` builds its Gaussian diffusion source fresh from `self`
-/// every call, correctly threading `self.seed` (unlike `Bates1996`'s
+/// every call, correctly threading `self.seed` (unlike `Bates`'s
 /// documented `cgns` quirk — see that type's own doc).
 impl<T, D, S: SeedExt> Merton<T, D, S>
 where

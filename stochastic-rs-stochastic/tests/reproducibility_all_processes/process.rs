@@ -1,6 +1,6 @@
 //! `process/` slice of the exhaustive reproducibility guard — see
 //! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 132-type list, and shared methodology notes.
+//! derivation of the 129-type list, and shared methodology notes.
 //! `CompoundPoisson` and `CustomJt` are two of the eight named
 //! distribution-taking types; `CompoundCustom` is the ninth,
 //! unnamed-by-the-usual-count case mentioned there — it takes two
@@ -32,12 +32,10 @@ use stochastic_rs_stochastic::process::subordinator::ctrw::Ctrw;
 use stochastic_rs_stochastic::process::subordinator::ctrw::CtrwJumpLaw;
 use stochastic_rs_stochastic::process::subordinator::ctrw::CtrwWaitingLaw;
 use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::GammaSubordinator;
-use stochastic_rs_stochastic::process::subordinator::ig_subordinator::IGSubordinator;
+use stochastic_rs_stochastic::process::subordinator::ig_subordinator::IgSubordinator;
 use stochastic_rs_stochastic::process::subordinator::inverse_alpha_stable::InverseAlphaStableSubordinator;
 use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PoissonSubordinator;
 use stochastic_rs_stochastic::process::subordinator::tempered_stable::TemperedStableSubordinator;
-use stochastic_rs_stochastic::process::volterra::Volterra;
-use stochastic_rs_stochastic::process::volterra::VolterraKernelSpec;
 
 use crate::common::LAMBDA;
 use crate::common::N;
@@ -139,7 +137,7 @@ guard!(gamma_subordinator, "GammaSubordinator", |s| {
   GammaSubordinator::new(1.0, 1.0, N, Some(0.0), Some(1.0), s)
 });
 
-guard!(ig_subordinator, "IGSubordinator", |s| IGSubordinator::new(
+guard!(ig_subordinator, "IgSubordinator", |s| IgSubordinator::new(
   1.0,
   1.0,
   N,
@@ -172,10 +170,3 @@ guard!(
   "TemperedStableSubordinator",
   |s| TemperedStableSubordinator::new(0.5, 5.0, 0.3, 0.5, N, Some(0.0), Some(1.0), s)
 );
-
-guard!(volterra, "Volterra", |s| Volterra::new(
-  VolterraKernelSpec::FractionalBM { h: 0.7 },
-  N,
-  Some(1.0),
-  s
-));

@@ -45,7 +45,7 @@ use crate::traits::ProcessExt;
 ///   own seed — `sampler()` builds a plain [`SimdNormal`] from
 ///   `self.seed.derive()` and borrows `fgn` only for its `Arc`-shared FFT
 ///   plan and eigenvalues, the same pattern
-///   [`JumpFOUCustom`](crate::jump::jump_fou_custom::JumpFOUCustom) and
+///   [`JumpFouCustom`](crate::jump::jump_fou_custom::JumpFouCustom) and
 ///   [`Fbm`](crate::process::fbm::Fbm) use for their own embedded,
 ///   permanently-`Unseeded` `fgn`. (This was fixable non-breakingly because
 ///   the field is private — rewiring how it's used carries no signature
@@ -59,7 +59,7 @@ use crate::traits::ProcessExt;
 /// halves were hard-wired away from it. That was correct about the values at
 /// the time, but not about what was fixable: `fgn` needed only a private,
 /// non-breaking rewire (done first); `cpoisson` needed the same breaking
-/// widening `Merton`/`Kou`/`LevyDiffusion`/`Bates1996` needed, applied here
+/// widening `Merton`/`Kou`/`LevyDiffusion`/`Bates` needed, applied here
 /// last.)
 ///
 /// Fields are private: the fGN and jump drivers derive from `hurst`, `lambda`, `n`, `t` and `seed`,

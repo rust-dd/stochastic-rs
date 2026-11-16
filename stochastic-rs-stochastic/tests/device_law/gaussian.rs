@@ -4,7 +4,7 @@
 
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::correlation::transformed_ou::Transformation;
-use stochastic_rs_stochastic::correlation::transformed_ou::TransformedOU;
+use stochastic_rs_stochastic::correlation::transformed_ou::TransformedOu;
 use stochastic_rs_stochastic::diffusion::ait_sahalia::AitSahalia;
 use stochastic_rs_stochastic::diffusion::cev::Cev;
 use stochastic_rs_stochastic::diffusion::ckls::Ckls;
@@ -13,12 +13,12 @@ use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
 use stochastic_rs_stochastic::diffusion::hyperbolic::Hyperbolic;
 use stochastic_rs_stochastic::diffusion::hyperbolic2::Hyperbolic2;
-use stochastic_rs_stochastic::diffusion::linear_sde::LinearSDE;
+use stochastic_rs_stochastic::diffusion::linear_sde::LinearSde;
 use stochastic_rs_stochastic::diffusion::logistic::Logistic;
-use stochastic_rs_stochastic::diffusion::modified_cir::ModifiedCIR;
-use stochastic_rs_stochastic::diffusion::nonlinear_sde::NonLinearSDE;
+use stochastic_rs_stochastic::diffusion::modified_cir::ModifiedCir;
+use stochastic_rs_stochastic::diffusion::nonlinear_sde::NonlinearSde;
 use stochastic_rs_stochastic::diffusion::quadratic::Quadratic;
-use stochastic_rs_stochastic::diffusion::radial_ou::RadialOU;
+use stochastic_rs_stochastic::diffusion::radial_ou::RadialOu;
 use stochastic_rs_stochastic::diffusion::three_half::ThreeHalf;
 use stochastic_rs_stochastic::interest::vasicek::Vasicek;
 use stochastic_rs_stochastic::jump::mjd_log::MjdLog;
@@ -144,7 +144,7 @@ fn three_half_agrees_with_the_cpu_law() {
 #[test]
 fn radial_ou_agrees_with_the_cpu_law() {
   let build =
-    || RadialOU::<f32, _>::new(1.0, 0.3, 253, Some(1.0), Some(1.0), Deterministic::new(7));
+    || RadialOu::<f32, _>::new(1.0, 0.3, 253, Some(1.0), Some(1.0), Deterministic::new(7));
   let device = build().on::<Device>().sample_par(M);
   all_finite(&device, "radial OU");
   agrees(
@@ -181,7 +181,7 @@ fn vasicek_agrees_with_the_cpu_law() {
 #[test]
 fn linear_sde_agrees_with_the_cpu_law() {
   let build = || {
-    LinearSDE::<f32, _>::new(
+    LinearSde::<f32, _>::new(
       0.02,
       0.3,
       0.2,
@@ -245,7 +245,7 @@ fn hyperbolic_agrees_with_the_cpu_law() {
 #[test]
 fn modified_cir_agrees_with_the_cpu_law() {
   let build =
-    || ModifiedCIR::<f32, _>::new(1.0, 0.2, 253, Some(0.5), Some(1.0), Deterministic::new(9));
+    || ModifiedCir::<f32, _>::new(1.0, 0.2, 253, Some(0.5), Some(1.0), Deterministic::new(9));
   let device = build().on::<Device>().sample_par(M);
   all_finite(&device, "modified CIR");
   agrees(
@@ -317,7 +317,7 @@ fn ait_sahalia_agrees_with_the_cpu_law() {
 #[test]
 fn nonlinear_sde_agrees_with_the_cpu_law() {
   let build = || {
-    NonLinearSDE::<f32, _>::new(
+    NonlinearSde::<f32, _>::new(
       0.0001,
       0.15,
       -3.0,
@@ -397,7 +397,7 @@ fn merton_jump_diffusion_agrees_with_the_cpu_law() {
 fn transformed_ou_agrees_with_the_cpu_law() {
   for transform in [Transformation::Tanh, Transformation::Arctan] {
     let build = || {
-      TransformedOU::<f32, _>::new(
+      TransformedOu::<f32, _>::new(
         2.0,
         0.3,
         0.5,

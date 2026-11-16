@@ -7,7 +7,7 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::jump::cgmy::Cgmy;
 use stochastic_rs_stochastic::jump::cts::Cts;
-use stochastic_rs_stochastic::jump::kobol::KoBoL;
+use stochastic_rs_stochastic::jump::kobol::Kobol;
 use stochastic_rs_stochastic::jump::rdts::Rdts;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
@@ -114,7 +114,7 @@ fn classical_tempered_stable_agrees_with_the_cpu_law() {
 #[test]
 fn kobol_agrees_with_the_cpu_law() {
   let build = || {
-    KoBoL::<f32, _>::new(
+    Kobol::<f32, _>::new(
       1.0,
       2.0,
       1.0,
@@ -131,7 +131,7 @@ fn kobol_agrees_with_the_cpu_law() {
   const PATHS: usize = 3 * M;
   let device = build().on::<Device>().sample_par(PATHS);
   let host = build().sample_par(PATHS);
-  law_agrees(&host, &device, 0.0, "KoBoL");
+  law_agrees(&host, &device, 0.0, "Kobol");
 }
 
 #[test]

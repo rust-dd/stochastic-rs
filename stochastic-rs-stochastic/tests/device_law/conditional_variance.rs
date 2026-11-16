@@ -6,13 +6,13 @@
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_stochastic::autoregressive::agrach::Agarch;
-use stochastic_rs_stochastic::autoregressive::ar::ARp;
+use stochastic_rs_stochastic::autoregressive::agarch::Agarch;
+use stochastic_rs_stochastic::autoregressive::ar::Ar;
 use stochastic_rs_stochastic::autoregressive::arch::Arch;
 use stochastic_rs_stochastic::autoregressive::egarch::Egarch;
 use stochastic_rs_stochastic::autoregressive::garch::Garch;
-use stochastic_rs_stochastic::autoregressive::ma::MAq;
-use stochastic_rs_stochastic::autoregressive::tgarch::GjrGarch;
+use stochastic_rs_stochastic::autoregressive::gjr_garch::GjrGarch;
+use stochastic_rs_stochastic::autoregressive::ma::Ma;
 use stochastic_rs_stochastic::noise::cgns::Cgns;
 use stochastic_rs_stochastic::noise::gn::Gn;
 use stochastic_rs_stochastic::noise::wn::Wn;
@@ -203,7 +203,7 @@ fn correlated_gaussian_noise_agrees_with_the_cpu_law() {
 #[test]
 fn autoregression_agrees_with_the_cpu_law() {
   let build = || {
-    ARp::<f32, _>::new(
+    Ar::<f32, _>::new(
       Array1::from(vec![0.6]),
       0.2,
       N,
@@ -228,7 +228,7 @@ fn autoregression_agrees_with_the_cpu_law() {
 /// the terminal variance is `σ²(1 + θ²)`.
 #[test]
 fn moving_average_agrees_with_the_cpu_law() {
-  let build = || MAq::<f32, _>::new(Array1::from(vec![0.4]), 0.2, N, Deterministic::new(193));
+  let build = || Ma::<f32, _>::new(Array1::from(vec![0.4]), 0.2, N, Deterministic::new(193));
   let device = build().on::<Device>().sample_par(M);
   all_finite(&device, "moving average");
   agrees(
@@ -252,7 +252,7 @@ fn moving_average_agrees_with_the_cpu_law() {
 )]
 fn a_nan_sigma_written_past_new_never_reaches_a_launch() {
   let mut ma =
-    MAq::<f32, _>::new(Array1::from(vec![0.4]), 0.2, 64, Deterministic::new(193)).on::<Device>();
+    Ma::<f32, _>::new(Array1::from(vec![0.4]), 0.2, 64, Deterministic::new(193)).on::<Device>();
   ma.sigma = f32::NAN;
   let _ = ma.sample();
 }
@@ -263,7 +263,7 @@ fn a_nan_sigma_written_past_new_never_reaches_a_launch() {
 #[test]
 fn a_higher_order_keeps_the_lag_models_on_the_host() {
   let ar = || {
-    ARp::<f32, _>::new(
+    Ar::<f32, _>::new(
       Array1::from(vec![0.5, 0.2]),
       0.2,
       64,

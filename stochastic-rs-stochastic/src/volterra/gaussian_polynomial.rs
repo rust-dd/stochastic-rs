@@ -20,7 +20,7 @@
 //! ## Why this is cheap to have here
 //!
 //! Setting $b\equiv 0$ and $\sigma\equiv 1$ in
-//! [`VolterraSde`](super::sve::VolterraSde) already produces the Gaussian
+//! [`VolterraSde`](super::volterra_sde::VolterraSde) already produces the Gaussian
 //! Volterra process $X$, and the lift makes it $O(n N')$ rather than
 //! $O(n^2)$. Everything this type adds on top is a polynomial evaluated
 //! pointwise, so the whole family costs one Horner loop over an existing

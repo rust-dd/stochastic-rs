@@ -4,8 +4,8 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_stochastic::diffusion::ait_sahalia::AitSahalia;
 use stochastic_rs_stochastic::diffusion::hyperbolic::Hyperbolic;
 use stochastic_rs_stochastic::diffusion::hyperbolic2::Hyperbolic2;
-use stochastic_rs_stochastic::diffusion::linear_sde::LinearSDE;
-use stochastic_rs_stochastic::diffusion::nonlinear_sde::NonLinearSDE;
+use stochastic_rs_stochastic::diffusion::linear_sde::LinearSde;
+use stochastic_rs_stochastic::diffusion::nonlinear_sde::NonlinearSde;
 use stochastic_rs_stochastic::diffusion::pearson::Pearson;
 use stochastic_rs_stochastic::diffusion::quadratic::Quadratic;
 
@@ -157,7 +157,7 @@ impl<S: SeedExt> DiffusionModel for Hyperbolic2<f64, S> {
   }
 }
 
-impl<S: SeedExt> DiffusionModel for LinearSDE<f64, S> {
+impl<S: SeedExt> DiffusionModel for LinearSde<f64, S> {
   fn num_params(&self) -> usize {
     3
   }
@@ -189,7 +189,7 @@ impl<S: SeedExt> DiffusionModel for LinearSDE<f64, S> {
   }
 }
 
-impl<S: SeedExt> DiffusionModel for NonLinearSDE<f64, S> {
+impl<S: SeedExt> DiffusionModel for NonlinearSde<f64, S> {
   fn num_params(&self) -> usize {
     8
   }

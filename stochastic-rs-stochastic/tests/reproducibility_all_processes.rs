@@ -26,7 +26,7 @@
 //!
 //! **How this list was derived and how to extend it.** `grep -rn
 //! "ProcessExt<T> for\|ProcessExt<T," stochastic-rs-stochastic/src
-//! --include='*.rs'` finds 132 concrete implementations outside
+//! --include='*.rs'` finds 129 concrete implementations outside
 //! `src/traits/` (the file `traits/process.rs` contributes only blanket
 //! impls of *marker* traits keyed off a `P: ProcessExt<...>` bound —
 //! `OneDimensional`, `MultiDimensional`, `TwoDimensional`, `CurveOutput`,
@@ -37,32 +37,32 @@
 //! one physical line — a long generic-bound list belongs in a trailing
 //! `where` clause, not inline, or the grep undercounts (as
 //! `VolterraSde`'s own impl did until its bounds were moved to `where`).
-//! Per directory: diffusion 36, process 20, jump 17, volatility 16,
-//! interest 16, autoregressive 9, noise 6, rough 4, correlation 4, sheet 1,
-//! volterra 3 — 132 total, split below into one submodule per directory
+//! Per directory: diffusion 36, process 19, jump 16, volatility 15,
+//! interest 15, autoregressive 9, noise 6, rough 4, correlation 4, sheet 1,
+//! volterra 4 — 129 total, split below into one submodule per directory
 //! purely to keep every file under this crate's line-count limit (`common`
 //! holds the shared `check`/`guard!`/`ReproBits` machinery all eleven
 //! submodules use; they and this file together compile into one
 //! `reproducibility_all_processes` test binary, so `cargo test` runs and
-//! reports all 132 checks as before). **When a new process type is added,
+//! reports all 129 checks as before). **When a new process type is added,
 //! add one `guard!` line for it** in the submodule matching its source
 //! directory — a type with no line anywhere in this tree is a type this
 //! guard is not proving anything about.
 //!
 //! Sixteen types cannot be built from scalars alone: ten are generic over a
-//! compile-time backend `B` (`JumpFOUCustom`, `JumpFou`, `FJacobi`, `Fou`,
+//! compile-time backend `B` (`JumpFouCustom`, `JumpFou`, `Fjacobi`, `Fou`,
 //! `Fgbm`, `Fcir`, `Cfou`, `Cfgns`, `Fgn`, `Fbm` — instantiated here on the
 //! default `Cpu` backend only, since GPU backends deliberately ignore the
 //! seed and are not part of this guarantee), and eight take a jump-size
 //! distribution `D`, passed as `SimdNormal`/`SimdExp` per the crate's
-//! convention (`Bates1996`, `JumpFou`, `Kou`, `LevyDiffusion`, `Merton`,
-//! `CompoundPoisson`, `JumpFOUCustom`, `CustomJt`). `JumpFou` and
-//! `JumpFOUCustom` fall in both buckets, so the union is `10 + 8 - 2 = 16`
+//! convention (`Bates`, `JumpFou`, `Kou`, `LevyDiffusion`, `Merton`,
+//! `CompoundPoisson`, `JumpFouCustom`, `CustomJt`). `JumpFou` and
+//! `JumpFouCustom` fall in both buckets, so the union is `10 + 8 - 2 = 16`
 //! distinct types, matching the sixteen above. These sixteen get the same
 //! one-closure-per-type treatment as everything else, just with a longer
 //! argument list. `process::ccustom::CompoundCustom` takes *two* such
 //! distributions plus a nested `CustomJt` (`D1`/`D2`, not one `D` reused
-//! twice the way `JumpFOUCustom` reuses `SimdExp`) — a ninth,
+//! twice the way `JumpFouCustom` reuses `SimdExp`) — a ninth,
 //! structurally distinct distribution-shaped case beyond the eight usually
 //! named, sitting outside this count entirely; it is covered in
 //! `process.rs` alongside the rest. `n` is kept small throughout (this

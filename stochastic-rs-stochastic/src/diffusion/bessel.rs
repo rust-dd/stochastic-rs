@@ -685,10 +685,6 @@ py_process_1d!(PyBessel, Bessel,
   device
 );
 
-// Split out to keep this file under the project's 600-line cap (both
-// `SquaredBessel` and `Bessel` now carry full `with_*` builder setter
-// surfaces on top of the models themselves). Same pattern as
-// `volatility/bates_svj.rs`/`jump/bates.rs` from the previous wave.
 #[cfg(test)]
 #[path = "bessel_tests.rs"]
 mod tests;

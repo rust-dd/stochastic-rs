@@ -11,7 +11,7 @@ use stochastic_rs_stochastic::interest::cheyette::Cheyette;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::heston_slv::HestonSlv;
 use stochastic_rs_stochastic::volterra::kernel::ExponentialKernel;
-use stochastic_rs_stochastic::volterra::sve::VolterraSde;
+use stochastic_rs_stochastic::volterra::volterra_sde::VolterraSde;
 
 use super::common::Device;
 use super::common::M;

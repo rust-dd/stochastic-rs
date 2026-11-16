@@ -32,7 +32,7 @@ use crate::traits::ProcessExt;
 /// Combines Gbm diffusion with self-exciting Hawkes jump arrivals
 /// and log-normal jump sizes.
 #[derive(Clone)]
-pub struct HawkesJD<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+pub struct HawkesJd<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift $\mu$.
   pub mu: T,
   /// Diffusion volatility $\sigma$.
@@ -60,7 +60,7 @@ pub struct HawkesJD<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> HawkesJD<T, S> {
+impl<T: FloatExt, S: SeedExt> HawkesJd<T, S> {
   pub fn new(
     mu: T,
     sigma: T,
@@ -140,13 +140,13 @@ impl<T: FloatExt, S: SeedExt> HawkesJD<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> HawkesJD<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> HawkesJd<T, S, B> {}
 
 /// The Euler engine's view of the Hawkes jump diffusion. The intensity is a
 /// state component the family excites and mean-reverts, so the whole
 /// self-exciting loop runs in the kernel; the process reports the path alone.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for HawkesJD<T, S, B>
+  for HawkesJd<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let two = T::from_usize_(2);
@@ -194,29 +194,29 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] HawkesJD<T, S> { mu, sigma, mu_lambda, alpha, beta, mu_j, sigma_j, n, x0, t, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] HawkesJd<T, S> { mu, sigma, mu_lambda, alpha, beta, mu_j, sigma_j, n, x0, t, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for HawkesJD<T, S, B>
+  for HawkesJd<T, S, B>
 {
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
-  for HawkesJD<T, S, B>
+  for HawkesJd<T, S, B>
 {
   type Output = Array1<T>;
   type Sampler<'s>
-    = HawkesJDSampler<T>
+    = HawkesJdSampler<T>
   where
     Self: 's;
 
-  fn sampler(&self) -> HawkesJDSampler<T> {
+  fn sampler(&self) -> HawkesJdSampler<T> {
     // Diffusion-noise, uniform thinning and jump-size sources are derived from
     // `self.seed` in the same order as the legacy `sample()`, so the first
     // fill matches bit-for-bit; all owned sources advance on reuse.
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(self.n - 1);
-    HawkesJDSampler {
+    HawkesJdSampler {
       n: self.n,
       mu: self.mu,
       sigma: self.sigma,
@@ -264,11 +264,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`HawkesJD`] sampling state: owns the diffusion, thinning and
+/// Reusable [`HawkesJd`] sampling state: owns the diffusion, thinning and
 /// jump-size sources so a Monte-Carlo loop pays their setup once. The
 /// self-exciting intensity is reset per path inside `fill_path`.
 #[doc(hidden)]
-pub struct HawkesJDSampler<T: FloatExt> {
+pub struct HawkesJdSampler<T: FloatExt> {
   n: usize,
   mu: T,
   sigma: T,
@@ -283,7 +283,7 @@ pub struct HawkesJDSampler<T: FloatExt> {
   jump_normal: Seeded<SimdNormal<T>>,
 }
 
-impl<T: FloatExt> HawkesJDSampler<T> {
+impl<T: FloatExt> HawkesJdSampler<T> {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -322,16 +322,16 @@ impl<T: FloatExt> HawkesJDSampler<T> {
   }
 }
 
-impl<T: FloatExt> crate::traits::Sealed for HawkesJDSampler<T> {}
+impl<T: FloatExt> crate::traits::Sealed for HawkesJdSampler<T> {}
 
-impl<T: FloatExt> PathSampler<T> for HawkesJDSampler<T> {
+impl<T: FloatExt> PathSampler<T> for HawkesJdSampler<T> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
     self.fill_path(
       out
         .as_slice_mut()
-        .expect("HawkesJD output must be contiguous"),
+        .expect("HawkesJd output must be contiguous"),
     );
   }
 
@@ -341,7 +341,7 @@ impl<T: FloatExt> PathSampler<T> for HawkesJDSampler<T> {
   }
 }
 
-py_process_1d!(PyHawkesJD, HawkesJD,
+py_process_1d!(PyHawkesJD, HawkesJd,
   sig: (mu, sigma, mu_lambda, alpha, beta, mu_j, sigma_j, n, x0=None, t=None, seed=None, dtype=None),
   params: (mu: f64, sigma: f64, mu_lambda: f64, alpha: f64, beta: f64, mu_j: f64, sigma_j: f64, n: usize, x0: Option<f64>, t: Option<f64>),
   device
@@ -355,7 +355,7 @@ mod tests {
 
   #[test]
   fn hawkes_jd_runs() {
-    let hjd = HawkesJD::new(
+    let hjd = HawkesJd::new(
       0.05,
       0.2,
       3.0,
@@ -376,7 +376,7 @@ mod tests {
   #[test]
   fn hawkes_jd_clustering() {
     // Hawkes with high excitation should produce clustered jumps
-    let hjd = HawkesJD::new(
+    let hjd = HawkesJd::new(
       0.05,
       0.2,
       5.0,
@@ -402,7 +402,7 @@ mod tests {
     // first path. (Same instance, repeated `.sample()` calls advance the seed
     // state and produce different paths — desired for Monte Carlo reuse.)
     let mk = || {
-      HawkesJD::new(
+      HawkesJd::new(
         0.05,
         0.2,
         3.0,

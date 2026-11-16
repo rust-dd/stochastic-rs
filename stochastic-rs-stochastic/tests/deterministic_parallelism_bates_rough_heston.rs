@@ -1,4 +1,4 @@
-//! Reproducibility tests for `Bates1996` and `RoughHeston`, whose earlier
+//! Reproducibility tests for `Bates` and `Fheston`, whose earlier
 //! "cannot be fixed this way" verdict (documented in
 //! `stochastic-rs-stochastic/src/traits/process.rs`) was
 //! wrong: both built a correlated-Gaussian generator (`Cgns`) with the
@@ -8,14 +8,14 @@
 //! sibling `cgns`-holding type in this crate drives it. Both `sampler()`s
 //! now do that.
 //!
-//! `RoughHeston` has no jump component, so this made it **fully**
-//! seed-reproducible. `Bates1996`'s jump component (`cpoisson: CompoundPoisson<T,
+//! `Fheston` has no jump component, so this made it **fully**
+//! seed-reproducible. `Bates`'s jump component (`cpoisson: CompoundPoisson<T,
 //! D>` structurally pinned to `Unseeded`, the same shape as
 //! `Merton`/`Kou`/`LevyDiffusion`'s field of the same name) remained broken
 //! independently of the `cgns` fix — closed by the
 //! zero-exception-reproducibility wave's Task 2, which widened the field to
 //! `CompoundPoisson<T, D, S>` and had `new()` absorb its construction (see
-//! `traits/process.rs`). `Bates1996` is now **fully** seed-reproducible too — this
+//! `traits/process.rs`). `Bates` is now **fully** seed-reproducible too — this
 //! file's variance-path-only tests below predate that fix and are kept
 //! (still valid: the variance path never depended on jumps), plus one
 //! full-output test proving the price path is reproducible now too. The
@@ -27,23 +27,23 @@ use ndarray::Array1;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::normal::SimdNormal;
-use stochastic_rs_stochastic::jump::bates::Bates1996;
+use stochastic_rs_stochastic::jump::bates::Bates;
 use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
-use stochastic_rs_stochastic::volatility::fheston::RoughHeston;
+use stochastic_rs_stochastic::volatility::fheston::Fheston;
 
 const SEED: u64 = 42;
 const N: usize = 128;
 
 /// High jump intensity (mean ~50 jumps over the unit horizon at this grid,
-/// via the single top-level `lambda` — see `Bates1996::lambda`'s doc for why
+/// via the single top-level `lambda` — see `Bates::lambda`'s doc for why
 /// this is now the one value that reaches both the drift compensator and
 /// the actual jump arrivals): makes `bates_price_path_is_seed_reproducible`
 /// a real exercise of the jump component, not an unlucky all-zero-draw
 /// coincidence.
-fn bates(seed: u64) -> Bates1996<f64, SimdNormal<f64>, Deterministic> {
-  Bates1996::new(
+fn bates(seed: u64) -> Bates<f64, SimdNormal<f64>, Deterministic> {
+  Bates::new(
     Drift::Mu(0.05),
     50.0,
     0.0,
@@ -61,8 +61,8 @@ fn bates(seed: u64) -> Bates1996<f64, SimdNormal<f64>, Deterministic> {
   )
 }
 
-fn rough_heston(seed: u64) -> RoughHeston<f64, Deterministic> {
-  let mut m = RoughHeston::new(
+fn rough_heston(seed: u64) -> Fheston<f64, Deterministic> {
+  let mut m = Fheston::new(
     0.1,
     0.04,
     0.04,
@@ -93,7 +93,7 @@ fn pool(num_threads: usize) -> rayon::ThreadPool {
     .expect("failed to build rayon thread pool")
 }
 
-/// The fixed half: two identically-`Deterministic`-seeded `Bates1996`
+/// The fixed half: two identically-`Deterministic`-seeded `Bates`
 /// objects must now agree on the variance path (driven solely by `cgns`).
 #[test]
 fn bates_variance_path_is_seed_reproducible() {
@@ -102,7 +102,7 @@ fn bates_variance_path_is_seed_reproducible() {
   assert_eq!(
     bits_1d(&va),
     bits_1d(&vb),
-    "Bates1996 variance path diverged for two identically-seeded objects"
+    "Bates variance path diverged for two identically-seeded objects"
   );
 }
 
@@ -125,15 +125,15 @@ fn bates_variance_path_sample_par_is_thread_count_independent() {
   assert_eq!(r1.len(), m);
   assert_eq!(
     r1, r3,
-    "Bates1996 variance path sample_par diverged between 1 and 3 threads"
+    "Bates variance path sample_par diverged between 1 and 3 threads"
   );
   assert_eq!(
     r1, r8,
-    "Bates1996 variance path sample_par diverged between 1 and 8 threads"
+    "Bates variance path sample_par diverged between 1 and 8 threads"
   );
 }
 
-/// Same guarantee beyond `MAX_CHUNKS = 64`: `Bates1996` goes through
+/// Same guarantee beyond `MAX_CHUNKS = 64`: `Bates` goes through
 /// `ProcessExt::sample_par`'s default (not an override, unlike `Fgn`/`Fbm`),
 /// so at `m = 256` several paths genuinely share one chunk's derived basis —
 /// the regime `m = 64` above cannot reach.
@@ -154,7 +154,7 @@ fn bates_variance_path_sample_par_is_thread_count_independent_beyond_max_chunks(
   assert_eq!(r1.len(), m);
   assert_eq!(
     r1, r8,
-    "Bates1996 variance path sample_par diverged between 1 and 8 threads at m=256"
+    "Bates variance path sample_par diverged between 1 and 8 threads at m=256"
   );
 }
 
@@ -174,11 +174,11 @@ fn bates_price_path_is_seed_reproducible() {
   assert_eq!(
     bits_1d(&sa),
     bits_1d(&sb),
-    "Bates1996 price path diverged for two identically-seeded objects"
+    "Bates price path diverged for two identically-seeded objects"
   );
 }
 
-/// `RoughHeston` has no jump component, so the `cgns` fix makes it fully
+/// `Fheston` has no jump component, so the `cgns` fix makes it fully
 /// reproducible: two identically-seeded objects must agree completely.
 #[test]
 fn rough_heston_sample_is_seed_reproducible() {
@@ -187,7 +187,7 @@ fn rough_heston_sample_is_seed_reproducible() {
   assert_eq!(
     bits_2d(&a),
     bits_2d(&b),
-    "two identically-seeded RoughHeston objects diverged"
+    "two identically-seeded Fheston objects diverged"
   );
 }
 
@@ -209,15 +209,15 @@ fn rough_heston_sample_par_is_thread_count_independent() {
   assert_eq!(r1.len(), m);
   assert_eq!(
     r1, r3,
-    "RoughHeston sample_par diverged between 1 and 3 threads"
+    "Fheston sample_par diverged between 1 and 3 threads"
   );
   assert_eq!(
     r1, r8,
-    "RoughHeston sample_par diverged between 1 and 8 threads"
+    "Fheston sample_par diverged between 1 and 8 threads"
   );
 }
 
-/// Same guarantee beyond `MAX_CHUNKS = 64` (see the `Bates1996` variant
+/// Same guarantee beyond `MAX_CHUNKS = 64` (see the `Bates` variant
 /// above for why this regime matters).
 #[test]
 fn rough_heston_sample_par_is_thread_count_independent_beyond_max_chunks() {
@@ -236,7 +236,7 @@ fn rough_heston_sample_par_is_thread_count_independent_beyond_max_chunks() {
   assert_eq!(r1.len(), m);
   assert_eq!(
     r1, r8,
-    "RoughHeston sample_par diverged between 1 and 8 threads at m=256"
+    "Fheston sample_par diverged between 1 and 8 threads at m=256"
   );
 }
 
@@ -249,9 +249,5 @@ fn rough_heston_sample_par_paths_are_distinct() {
     .iter()
     .map(bits_2d)
     .collect::<std::collections::HashSet<_>>();
-  assert_eq!(
-    keys.len(),
-    m,
-    "RoughHeston sample_par produced duplicate paths"
-  );
+  assert_eq!(keys.len(), m, "Fheston sample_par produced duplicate paths");
 }

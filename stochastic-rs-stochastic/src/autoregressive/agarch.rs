@@ -44,7 +44,7 @@ use crate::traits::ProcessExt;
 /// - `m`:     Optional batch size (unused by default).
 ///
 /// # Notes
-/// - This is essentially a [`GjrGarch`](crate::autoregressive::tgarch::GjrGarch)-like
+/// - This is essentially a [`GjrGarch`](crate::autoregressive::gjr_garch::GjrGarch)-like
 ///   structure but with different naming (`delta`).
 /// - Stationarity constraints typically require \(\sum \alpha_i + \tfrac{1}{2}\sum \delta_i + \sum \beta_j < 1\).
 #[derive(Debug, Clone)]

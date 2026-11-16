@@ -12,9 +12,9 @@ use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::ndarray::array;
 use stochastic_rs::simd_rng::Unseeded;
-use stochastic_rs::stochastic::autoregressive::ar::ARp;
+use stochastic_rs::stochastic::autoregressive::ar::Ar;
 use stochastic_rs::stochastic::autoregressive::arima::Arima;
-use stochastic_rs::stochastic::autoregressive::ma::MAq;
+use stochastic_rs::stochastic::autoregressive::ma::Ma;
 use stochastic_rs::stochastic::diffusion::ou::Ou;
 use stochastic_rs::stochastic::jump::cgmy::Cgmy;
 use stochastic_rs::stochastic::jump::cts::Cts;
@@ -137,12 +137,12 @@ fn bench_process_generation(c: &mut Criterion) {
   }
 
   group.bench_function("process/Ar.sample", |b| {
-    let ar = ARp::<f64, _>::new(array![0.5, -0.2], 1.0, 4096, None, Unseeded);
+    let ar = Ar::<f64, _>::new(array![0.5, -0.2], 1.0, 4096, None, Unseeded);
     b.iter(|| black_box(ar.sample()));
   });
 
-  group.bench_function("process/MAq.sample", |b| {
-    let ma = MAq::<f64, _>::new(array![0.4, -0.2], 1.0, 4096, Unseeded);
+  group.bench_function("process/Ma.sample", |b| {
+    let ma = Ma::<f64, _>::new(array![0.4, -0.2], 1.0, 4096, Unseeded);
     b.iter(|| black_box(ma.sample()));
   });
 

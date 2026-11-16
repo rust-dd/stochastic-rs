@@ -1,29 +1,29 @@
 ---
 title: Stochastic processes
 seo_title: Stochastic processes in Rust and Python
-description: 132 stochastic processes — diffusion, jump, volatility, interest-rate, fractional / rough, and noise. Catalog organised by mathematical family.
+description: 129 stochastic processes — diffusion, jump, volatility, interest-rate, fractional / rough, and noise. Catalog organised by mathematical family.
 category: process
 since: 2.0.0
 status: stable
 ---
 
-The `stochastic-rs-stochastic` crate ships **132 processes** in eleven families (below). Every process implements [`ProcessExt<T>`](/docs/concepts/process-ext): `sample()` returns one path, `sample_map(m, f)` maps over `m` paths in parallel, and `sample_par(m)` returns `Vec<Output>` (one `ndarray::Array1<T>` per path for single-factor models).
+The `stochastic-rs-stochastic` crate ships **129 processes** in eleven families (below). Every process implements [`ProcessExt<T>`](/docs/concepts/process-ext): `sample()` returns one path, `sample_map(m, f)` maps over `m` paths in parallel, and `sample_par(m)` returns `Vec<Output>` (one `ndarray::Array1<T>` per path for single-factor models).
 
 ## Families
 
 | Family                        | Count | Examples                                                        |
 |--------------------------------|-------|-----------------------------------------------------------------|
 | **Diffusion**                  | 36    | OU, GBM (log + standard + correlated multi-asset), CIR, CEV, CKLS, Aït-Sahalia, Pearson, Jacobi, regime-switching, Fouque, Wishart (matrix-valued CIR) |
-| **Core building blocks**       | 20    | Brownian motion (+ bridge, correlated, correlated-fractional), fBM, Poisson (+ compound, custom jump sizes), Hawkes (+ multivariate), subordinators (α-stable, gamma, inverse-Gaussian, tempered-stable, Poisson, CTRW), linear fractional stable motion, naive (direct-convolution) Volterra |
-| **Jump**                       | 17    | Merton, Kou, CGMY, NIG, VG, bilateral gamma, KoBoL, RDTS, CTS, Bates, Lévy diffusion |
-| **Volatility**                 | 16    | Heston (+ log, 2D, multifactor, stochastic-local), SABR (+ multifactor), Bergomi, rough Bergomi, rough Heston, double-Heston, BNS, HKDE, Bates SVJ (+ fractional), SVCGMY |
-| **Interest rate**               | 16    | Vasicek (+ fractional), CIR++, CIR 2-factor, ADG (affine/quadratic-Gaussian multi-factor), Hull-White (1F + 2F), Black-Karasinski, Ho-Lee, HJM, LMM, BGM, Wu-Zhang, Duffie-Kan (+ jump), Cheyette (quasi-Gaussian, local volatility) |
+| **Core building blocks**       | 19    | Brownian motion (+ bridge, correlated, correlated-fractional), fBM, Poisson (+ compound, custom jump sizes), Hawkes (+ multivariate), subordinators (α-stable, gamma, inverse-Gaussian, tempered-stable, Poisson, CTRW), linear fractional stable motion |
+| **Jump**                       | 16    | Merton, Kou, CGMY, NIG, VG, bilateral gamma, KoBoL, RDTS, CTS, Bates, Lévy diffusion |
+| **Volatility**                 | 15    | Heston (+ log, 2D, multifactor, stochastic-local), SABR (+ multifactor), Bergomi, rough Bergomi, fractional Heston, double-Heston, BNS, HKDE, fractional Bates SVJ, SVCGMY |
+| **Interest rate**               | 15    | Vasicek (+ fractional), CIR++, CIR 2-factor, ADG (affine/quadratic-Gaussian multi-factor), Hull-White (1F + 2F), Black-Karasinski, Ho-Lee, HJM, LMM, Wu-Zhang, Duffie-Kan (+ jump), Cheyette (quasi-Gaussian, local volatility) |
 | **Autoregressive / GARCH**     | 9     | AR(p), MA(q), ARIMA, SARIMA, ARCH, GARCH, EGARCH, GJR-GARCH, AGARCH |
 | **Noise**                       | 6     | Fractional Gaussian noise, Gaussian noise, white noise, correlated FGN / GN, k-dimensional correlated increments from a correlation matrix |
 | **Rough (Riemann–Liouville lift)** | 4  | RL Black-Scholes, RL fBM, RL Heston, RL fOU |
 | **Stochastic correlation**      | 4     | Van Emmerich / Jacobi-type, Teng-modified OU, general transformed-OU, Heston with stochastic correlation |
 | **Sheet**                       | 1     | Fractional Brownian sheet (`Fbs`) |
-| **Volterra**                    | 3     | See the Volterra section below |
+| **Volterra**                    | 4     | See the Volterra section below |
 
 Each row lists representative examples; [docs.rs](https://docs.rs/stochastic-rs-stochastic) has the full list.
 
@@ -34,12 +34,12 @@ Each row lists representative examples; [docs.rs](https://docs.rs/stochastic-rs-
 | A price path with constant volatility | `Gbm` (exact log-normal steps) | `GbmLog` for the log-price, `Cev` for a local-vol elasticity |
 | Mean reversion | `Ou` (Gaussian), `Cir` (positive, square-root), `Vasicek` / `HullWhite` for rates | `CirPlusPlus` to fit a term structure, `Cheyette` for a quasi-Gaussian HJM |
 | Stochastic volatility | `Heston` (Euler / QE schemes), `Sabr`, `Bergomi` | `DoubleHeston`, `MultifactorHeston`, `HestonStochCorr`, `HestonSlv` |
-| Rough volatility | `RoughBergomi` (hybrid scheme), `RoughHeston`, `RlHeston` (Markov lift) | the `volterra` module for a general kernel |
+| Rough volatility | `RoughBergomi` (hybrid scheme), `Fheston`, `RlHeston` (Markov lift) | the `volterra` module for a general kernel |
 | Long memory / fractional noise | `Fgn` → `Fbm`, `Fou`, `Fcir`, `Fgbm` | all driven by the fGN FFT pipeline, on the host or a device |
-| Jumps | `Merton`, `Kou`, `Bates1996`, `CompoundPoisson`, `Hawkes` | `LevyDiffusion` with any `Distribution` for the jump size |
+| Jumps | `Merton`, `Kou`, `Bates`, `CompoundPoisson`, `Hawkes` | `LevyDiffusion` with any `Distribution` for the jump size |
 | Several correlated assets | `Mcgns` (driver) → `MultiGbm`, `Wishart` (covariance) | `Cfgns` for correlated fractional noise |
-| A rates curve, not a rate | `Hjm`, `Lmm`, `Bgm`, `Adg` | `G2pp`-style two-factor: `HullWhite2F`, `Cir2F` |
-| Time-series style | `ARp`, `Arima`, `Garch` / `Egarch` / `GjrGarch`, `Sarima` | the stats crate fits them |
+| A rates curve, not a rate | `Hjm`, `Lmm`, `Adg` | `G2pp`-style two-factor: `HullWhite2F`, `Cir2F` |
+| Time-series style | `Ar`, `Arima`, `Garch` / `Egarch` / `GjrGarch`, `Sarima` | the stats crate fits them |
 
 ## Examples
 
@@ -282,7 +282,7 @@ Backends: `Cpu` (default), `Cuda` (`cuda`), `Metal` (`metal`), `Accelerate` (`ac
 
 ## Euler engine
 
-The sampling backend is a **type parameter of every process** (`Name<T, S, B = Cpu>`, switched with `.on::<B>()`), and the Euler engine is the device capability behind 130 of the 132: `gbm.on::<Metal>().sample_par(m)` samples through `ProcessExt` as usual. On `Cpu` (and `Accelerate`) that is the process's own sampler — GBM keeps its exact log-normal scheme, OU and CIR their SIMD steppers. The GPU back-ends run one device thread per path with the whole Euler–Maruyama recursion in the kernel and counter-hashed Box–Muller normals (`sample_par` is one launch for all `m` paths):
+The sampling backend is a **type parameter of every process** (`Name<T, S, B = Cpu>`, switched with `.on::<B>()`), and the Euler engine is the device capability behind 127 of the 129: `gbm.on::<Metal>().sample_par(m)` samples through `ProcessExt` as usual. On `Cpu` (and `Accelerate`) that is the process's own sampler — GBM keeps its exact log-normal scheme, OU and CIR their SIMD steppers. The GPU back-ends run one device thread per path with the whole Euler–Maruyama recursion in the kernel and counter-hashed Box–Muller normals (`sample_par` is one launch for all `m` paths):
 
 | Backend | Feature | Device | Precision |
 |---|---|---|---|
@@ -341,5 +341,6 @@ Solved by Markovian lift at `O(n N')` rather than the naive `O(n^2)` convolution
 | `VolterraSde` | The general equation `X_t = X_0 + ∫ K(t-s) b(s,X_s) ds + ∫ K(t-s) σ(s,X_s) dW_s` |
 | `VolterraSquareRoot` | The Volterra Heston variance leg, nonnegative by construction |
 | `GaussianPolynomialVolatility` | Volatility as a polynomial of a Gaussian Volterra process, incl. the quintic parameterisation |
+| `Volterra` | The Gaussian process `∫ K(t,s) dW_s` under an fBM, power-law or exponential kernel, by Markov lift for an fBM with `H < 1/2` and by the direct convolution otherwise |
 
 Kernels implementing `VolterraKernel`: `RlKernel` (Riemann–Liouville), `ExponentialKernel` (exact at one mode), `GammaKernel`, `SumOfExponentials`.

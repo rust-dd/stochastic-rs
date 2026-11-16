@@ -1,4 +1,5 @@
-//! `compile_fail` checks: the sealed traits reject a downstream implementation.
+//! `compile_fail` checks: the sealed traits reject a downstream implementation, and a removed path
+//! stays removed.
 
 /// ```compile_fail,E0277
 /// use stochastic_rs_stochastic::device::{Backend, DeviceError, DeviceInfo};
@@ -48,3 +49,17 @@ pub struct PathSamplerIsSealed;
 /// }
 /// ```
 pub struct ProcessExtIsSealed;
+
+/// The normal-log-jump Bates model is `jump::bates::Bates` with a `LogNormalJump` law.
+///
+/// ```compile_fail,E0432
+/// use stochastic_rs_stochastic::volatility::bates_svj::BatesSvj;
+/// ```
+pub struct BatesSvjIsBatesWithALogNormalJump;
+
+/// The LIBOR market model is `interest::lmm::Lmm`; there is no uncoupled `Bgm`.
+///
+/// ```compile_fail,E0432
+/// use stochastic_rs_stochastic::interest::bgm::Bgm;
+/// ```
+pub struct BgmIsLmm;

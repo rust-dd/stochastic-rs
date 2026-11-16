@@ -17,11 +17,11 @@ use ndarray::Array1;
 use num_complex::Complex64;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGamma;
-use stochastic_rs_stochastic::jump::ig::Ig;
 use stochastic_rs_stochastic::jump::nig::Nig;
 use stochastic_rs_stochastic::jump::vg::Vg;
 use stochastic_rs_stochastic::process::subordinator::alpha_stable::AlphaStableSubordinator;
 use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::GammaSubordinator;
+use stochastic_rs_stochastic::process::subordinator::ig_subordinator::IgSubordinator;
 use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PoissonSubordinator;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
@@ -122,15 +122,14 @@ fn bilateral_gamma_matches_the_kuchler_tappe_transform() {
   }
 }
 
-/// The inverse-Gaussian subordinator, through the transform that suits a
-/// positive law: `E[e^{−uX_t}] = exp(γt(1 − √(1 + 2u)))`, the
-/// inverse-Gaussian moment generating function at `IG(γt, (γt)²)`
-/// (Chhikara & Folks 1989, §2.2, the shape this crate's `Ig` fixes).
+/// `E[e^{−uX_t}] = exp(δt(1 − √(1 + 2u)))`, the Laplace transform of `IG(δt, (δt)²)`, the law at
+/// `gamma = 1` (Chhikara & Folks 1989, §2.2).
 #[test]
 fn inverse_gaussian_subordinator_matches_its_laplace_transform() {
-  let gamma = 1.4;
-  let paths = Ig::<f64, _>::new(
-    gamma,
+  let delta = 1.4;
+  let paths = IgSubordinator::<f64, _>::new(
+    delta,
+    1.0,
     STEPS,
     None,
     Some(unit_horizon()),
@@ -146,7 +145,7 @@ fn inverse_gaussian_subordinator_matches_its_laplace_transform() {
     transform_holds(
       &sample,
       |x| (-u * x).exp(),
-      (gamma * (1.0 - (1.0 + 2.0 * u).sqrt())).exp(),
+      (delta * (1.0 - (1.0 + 2.0 * u).sqrt())).exp(),
       &format!("inverse Gaussian subordinator at u = {u}"),
     );
   }
@@ -277,8 +276,9 @@ fn every_levy_path_stays_in_the_reals() {
       .sample(),
     ),
     (
-      "Ig",
-      Ig::<f64, _>::new(1.0, 1_024, Some(2.0), None, Deterministic::new(7)).sample(),
+      "IgSubordinator",
+      IgSubordinator::<f64, _>::new(1.0, 1.0, 1_024, Some(2.0), None, Deterministic::new(7))
+        .sample(),
     ),
     (
       "GammaSubordinator",

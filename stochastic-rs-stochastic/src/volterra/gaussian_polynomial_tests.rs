@@ -3,7 +3,7 @@ use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
 use crate::volterra::kernel::ExponentialKernel;
-use crate::volterra::sve::VolterraSde;
+use crate::volterra::volterra_sde::VolterraSde;
 
 const N: usize = 512;
 

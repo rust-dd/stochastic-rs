@@ -3,13 +3,13 @@
 //! interval the family promises alongside the terminal statistic.
 
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_stochastic::correlation::teng::TengSCP;
+use stochastic_rs_stochastic::correlation::teng::TengScp;
 use stochastic_rs_stochastic::correlation::van_emmerich::VanEmmerich;
 use stochastic_rs_stochastic::diffusion::bessel::Bessel;
 use stochastic_rs_stochastic::diffusion::bessel::SquaredBessel;
 use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::diffusion::displaced_diffusion::DisplacedDiffusion;
-use stochastic_rs_stochastic::diffusion::feller::FellerLogistic;
+use stochastic_rs_stochastic::diffusion::feller_logistic::FellerLogistic;
 use stochastic_rs_stochastic::diffusion::feller_root::FellerRoot;
 use stochastic_rs_stochastic::diffusion::gompertz::Gompertz;
 use stochastic_rs_stochastic::diffusion::jacobi::Jacobi;
@@ -308,7 +308,7 @@ fn displaced_diffusion_agrees_with_the_cpu_law() {
 /// state wanders.
 #[test]
 fn teng_correlation_stays_in_range() {
-  let build = || TengSCP::<f32, _>::new(1.0, 0.3, 0.4, 0.2, 253, Some(1.0), Deterministic::new(3));
+  let build = || TengScp::<f32, _>::new(1.0, 0.3, 0.4, 0.2, 253, Some(1.0), Deterministic::new(3));
   let device = build().on::<Device>().sample_par(M);
   within(&device, -1.0, 1.0, "Teng correlation");
   agrees(

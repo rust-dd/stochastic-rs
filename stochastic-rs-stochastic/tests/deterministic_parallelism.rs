@@ -32,13 +32,13 @@
 //! process's directly.
 //!
 //! A third review found a distinct bug class neither the `seed.clone()` grep
-//! nor a `sampler()`-body sweep can see: `Cgmy`, `KoBoL`, `Cts`, `Rdts` and
+//! nor a `sampler()`-body sweep can see: `Cgmy`, `Kobol`, `Cts`, `Rdts` and
 //! `Svcgmy` each hard-wire `Unseeded` on a `Poisson` built *inside*
 //! `fill_path`/`fill_paths` (an arrival-time series reused as Γ_j), so that
 //! one component of the path was never reachable from `self.seed` at all —
 //! not a chunking defect, a plain missed wire. `cgmy_sample_is_deterministic`
 //! / `svcgmy_sample_is_deterministic` below cover the two the review asked
-//! for by name; `KoBoL`/`Cts`/`Rdts` got the identical one-line fix without
+//! for by name; `Kobol`/`Cts`/`Rdts` got the identical one-line fix without
 //! their own dedicated tests here (see the source for the shared pattern).
 
 use ndarray::Array1;

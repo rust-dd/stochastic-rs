@@ -81,10 +81,7 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// finance models). This matches the convention used across the workspace and
 /// the audit document; do **not** rely on it implicitly for interest-rate or
 /// volatility models where the horizon meaningfully drives parameter scaling
-/// (Vasicek, CIR, HJM, Heston, Bergomi). For those, set `t` explicitly. Note
-/// that [`crate::interest::bgm::Bgm`] despite its name is **not** a coupled
-/// LMM/BGM (see its module doc); it is a parallel array of independent
-/// Euler-stepped multiplicative martingales.
+/// (Vasicek, CIR, HJM, Heston, Bergomi). For those, set `t` explicitly.
 ///
 /// ## Backend selection
 ///
@@ -187,7 +184,7 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// generic over an *external* seed all along, so a bare `.sample()`
 /// bypassing it was a bug, not a limitation; a `pub cpoisson:
 /// CompoundPoisson<T, D>` field structurally pinned to `Unseeded` — present
-/// on `Merton`, `Kou`, `LevyDiffusion`, `Bates1996` and `JumpFou` — turned
+/// on `Merton`, `Kou`, `LevyDiffusion`, `Bates` and `JumpFou` — turned
 /// out to need a genuine breaking constructor change, made by the
 /// zero-exception-reproducibility wave's Tasks 1 and 2). That history is
 /// deliberately not repeated here — a corrected verdict restated as a live
@@ -529,14 +526,8 @@ pub trait TwoDimensional<T: FloatExt>: MultiDimensional<T, 2> {}
 
 impl<T: FloatExt, P> TwoDimensional<T> for P where P: MultiDimensional<T, 2> {}
 
-/// Marker for processes whose [`ProcessExt::sample`] returns an `Array2<T>`
-/// matrix — a discretised curve or sheet rather than a single path.
-///
-/// Auto-implemented for any `P: ProcessExt<T, Output = Array2<T>>`. Used by
-/// interest-rate term-structure models (`Hjm`-with-tenors, `WuZhangD`),
-/// stochastic-sheet processes (`Fbs`), and the parallel-rate primitive
-/// `Bgm` (which despite its name is not a coupled BGM/LMM — see its module
-/// doc).
+/// Marker for processes whose [`ProcessExt::sample`] returns an `Array2<T>`, a discretised curve or
+/// sheet: `Hjm` with tenors, `WuZhang`, `Fbs`.
 pub trait CurveOutput<T: FloatExt>: ProcessExt<T, Output = Array2<T>> {}
 
 impl<T: FloatExt, P> CurveOutput<T> for P where P: ProcessExt<T, Output = Array2<T>> {}

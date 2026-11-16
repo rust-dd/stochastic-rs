@@ -33,7 +33,7 @@ use crate::traits::ProcessExt;
 /// - `n`: Length of time series.
 /// - `m`: Optional batch size.
 #[derive(Debug, Clone)]
-pub struct MAq<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+pub struct Ma<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// MA coefficients
   pub theta: Array1<T>,
   /// Noise std dev
@@ -47,7 +47,7 @@ pub struct MAq<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> MAq<T, S> {
+impl<T: FloatExt, S: SeedExt> Ma<T, S> {
   /// Create a new MA(q) model with the given parameters.
   pub fn new(theta: Array1<T>, sigma: T, n: usize, seed: S) -> Self {
     assert!(
@@ -70,7 +70,7 @@ impl<T: FloatExt, S: SeedExt> MAq<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> MAq<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B> Ma<T, S, B> {
   /// `sigma` as host and device read it; a write past `new` that breaks its rule fails here.
   fn checked_sigma(&self) -> T {
     let sigma = self.sigma;
@@ -85,12 +85,12 @@ impl<T: FloatExt, S: SeedExt, B> MAq<T, S, B> {
 /// The Euler engine's view of a moving average. The lagged innovation is the
 /// second state component; higher orders would need one slot per lag.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for MAq<T, S, B>
+  for Ma<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     assert!(
       self.theta.len() == 1,
-      "MAq: a launch carries order one; sample through `ProcessExt`, which keeps a higher order on the host"
+      "Ma: a launch carries order one; sample through `ProcessExt`, which keeps a higher order on the host"
     );
     crate::euler::EulerSpec::MovingAverage {
       theta: self.theta[0],
@@ -131,23 +131,23 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] MAq<T, S> { theta, sigma, n, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] Ma<T, S> { theta, sigma, n, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for MAq<T, S, B>
+  for Ma<T, S, B>
 {
 }
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for MAq<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Ma<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
-    = MAqSampler<T>
+    = MaSampler<T>
   where
     Self: 's;
 
-  fn sampler(&self) -> MAqSampler<T> {
+  fn sampler(&self) -> MaSampler<T> {
     let sigma = self.checked_sigma();
-    MAqSampler {
+    MaSampler {
       n: self.n,
       theta: self.theta.clone(),
       normal: (sigma != T::zero())
@@ -220,17 +220,17 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`MAq`] sampling state: owns the Gaussian innovation source and the
+/// Reusable [`Ma`] sampling state: owns the Gaussian innovation source and the
 /// MA coefficients so a Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
-pub struct MAqSampler<T: FloatExt> {
+pub struct MaSampler<T: FloatExt> {
   n: usize,
   theta: Array1<T>,
   /// `None` at `sigma = 0`, where every innovation is zero.
   normal: Option<Seeded<SimdNormal<T>>>,
 }
 
-impl<T: FloatExt> MAqSampler<T> {
+impl<T: FloatExt> MaSampler<T> {
   fn fill_path(&mut self, out: &mut [T]) {
     let n = out.len();
     let q = self.theta.len();
@@ -255,13 +255,13 @@ impl<T: FloatExt> MAqSampler<T> {
   }
 }
 
-impl<T: FloatExt> crate::traits::Sealed for MAqSampler<T> {}
+impl<T: FloatExt> crate::traits::Sealed for MaSampler<T> {}
 
-impl<T: FloatExt> PathSampler<T> for MAqSampler<T> {
+impl<T: FloatExt> PathSampler<T> for MaSampler<T> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
-    let slice = out.as_slice_mut().expect("MAq output must be contiguous");
+    let slice = out.as_slice_mut().expect("Ma output must be contiguous");
     self.fill_path(slice);
   }
 
@@ -271,7 +271,7 @@ impl<T: FloatExt> PathSampler<T> for MAqSampler<T> {
   }
 }
 
-py_process_1d!(PyMAq, MAq,
+py_process_1d!(PyMAq, Ma,
   sig: (theta, sigma, n, seed=None, dtype=None),
   params: (theta: Vec<f64>, sigma: f64, n: usize),
   device

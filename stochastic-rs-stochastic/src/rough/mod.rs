@@ -26,7 +26,7 @@
 //! - Abi Jaber E., El Euch O. *Multi-factor approximation of rough volatility models*,
 //!   arXiv:1801.10359 (2018).
 pub mod kernel;
-pub mod markov_lift;
+mod markov_lift;
 pub mod rl_bs;
 pub mod rl_fbm;
 pub mod rl_fou;
@@ -35,6 +35,18 @@ pub mod rl_heston;
 pub use kernel::RlKernel;
 pub use markov_lift::MarkovLift;
 pub use rl_bs::RlBlackScholes;
-pub use rl_fbm::RlFBm;
-pub use rl_fou::RlFOU;
+pub use rl_fbm::RlFbm;
+pub use rl_fou::RlFou;
 pub use rl_heston::RlHeston;
+
+/// [`MarkovLift`] has one path, `rough::MarkovLift`.
+///
+/// ```compile_fail,E0603
+/// use stochastic_rs_stochastic::rough::markov_lift::MarkovLift;
+/// ```
+///
+/// ```compile_fail,E0432
+/// use stochastic_rs_stochastic::numerics::MarkovLift;
+/// ```
+#[cfg(doctest)]
+pub struct MarkovLiftHasOnePath;

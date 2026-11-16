@@ -26,7 +26,7 @@ use crate::traits::ProcessExt;
 pub struct VanEmmerich<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed κ of the correlation process itself (ρ_t is
   /// the state being simulated directly, unlike
-  /// [`TransformedOU`](crate::correlation::TransformedOU)'s X-space
+  /// [`TransformedOu`](crate::correlation::TransformedOu)'s X-space
   /// indirection).
   pub kappa: T,
   /// Long-run correlation level μ ∈ (−1, 1) that ρ_t reverts toward.

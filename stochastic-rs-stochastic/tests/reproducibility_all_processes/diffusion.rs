@@ -1,6 +1,6 @@
 //! `diffusion/` slice of the exhaustive reproducibility guard — see
 //! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 132-type list, and shared methodology notes.
+//! derivation of the 129-type list, and shared methodology notes.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -13,12 +13,12 @@ use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::diffusion::ckls::Ckls;
 use stochastic_rs_stochastic::diffusion::displaced_diffusion::DisplacedDiffusion;
 use stochastic_rs_stochastic::diffusion::fcir::Fcir;
-use stochastic_rs_stochastic::diffusion::feller::FellerLogistic;
+use stochastic_rs_stochastic::diffusion::feller_logistic::FellerLogistic;
 use stochastic_rs_stochastic::diffusion::feller_root::FellerRoot;
 use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
-use stochastic_rs_stochastic::diffusion::fjacobi::FJacobi;
+use stochastic_rs_stochastic::diffusion::fjacobi::Fjacobi;
 use stochastic_rs_stochastic::diffusion::fou::Fou;
-use stochastic_rs_stochastic::diffusion::fouque::FouqueOU2D;
+use stochastic_rs_stochastic::diffusion::fouque::FouqueOu2D;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::diffusion::gbm_ih::GbmIh;
 use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
@@ -27,15 +27,15 @@ use stochastic_rs_stochastic::diffusion::hyperbolic::Hyperbolic;
 use stochastic_rs_stochastic::diffusion::hyperbolic2::Hyperbolic2;
 use stochastic_rs_stochastic::diffusion::jacobi::Jacobi;
 use stochastic_rs_stochastic::diffusion::kimura::Kimura;
-use stochastic_rs_stochastic::diffusion::linear_sde::LinearSDE;
+use stochastic_rs_stochastic::diffusion::linear_sde::LinearSde;
 use stochastic_rs_stochastic::diffusion::logistic::Logistic;
-use stochastic_rs_stochastic::diffusion::modified_cir::ModifiedCIR;
+use stochastic_rs_stochastic::diffusion::modified_cir::ModifiedCir;
 use stochastic_rs_stochastic::diffusion::multi_gbm::MultiGbm;
-use stochastic_rs_stochastic::diffusion::nonlinear_sde::NonLinearSDE;
+use stochastic_rs_stochastic::diffusion::nonlinear_sde::NonlinearSde;
 use stochastic_rs_stochastic::diffusion::ou::Ou;
 use stochastic_rs_stochastic::diffusion::pearson::Pearson;
 use stochastic_rs_stochastic::diffusion::quadratic::Quadratic;
-use stochastic_rs_stochastic::diffusion::radial_ou::RadialOU;
+use stochastic_rs_stochastic::diffusion::radial_ou::RadialOu;
 use stochastic_rs_stochastic::diffusion::regime_switching::RegimeSwitchingDiffusion;
 use stochastic_rs_stochastic::diffusion::three_half::ThreeHalf;
 use stochastic_rs_stochastic::diffusion::verhulst::Verhulst;
@@ -170,7 +170,7 @@ guard!(fgbm, "Fgbm", |s| Fgbm::new(
   s
 ));
 
-guard!(fjacobi, "FJacobi", |s| FJacobi::new(
+guard!(fjacobi, "Fjacobi", |s| Fjacobi::new(
   0.7,
   0.5,
   1.5,
@@ -192,7 +192,7 @@ guard!(fou, "Fou", |s| Fou::new(
   s
 ));
 
-guard!(fouque_ou2d, "FouqueOU2D", |s| FouqueOU2D::new(
+guard!(fouque_ou2d, "FouqueOu2D", |s| FouqueOu2D::new(
   1.0,
   0.0,
   0.1,
@@ -280,7 +280,7 @@ guard!(kimura, "Kimura", |s| Kimura::new(
   s
 ));
 
-guard!(linear_sde, "LinearSDE", |s| LinearSDE::new(
+guard!(linear_sde, "LinearSde", |s| LinearSde::new(
   0.1,
   0.0,
   0.2,
@@ -299,7 +299,7 @@ guard!(logistic, "Logistic", |s| Logistic::new(
   s
 ));
 
-guard!(modified_cir, "ModifiedCIR", |s| ModifiedCIR::new(
+guard!(modified_cir, "ModifiedCir", |s| ModifiedCir::new(
   1.0,
   0.2,
   N,
@@ -308,7 +308,7 @@ guard!(modified_cir, "ModifiedCIR", |s| ModifiedCIR::new(
   s
 ));
 
-guard!(nonlinear_sde, "NonLinearSDE", |s| NonLinearSDE::new(
+guard!(nonlinear_sde, "NonlinearSde", |s| NonlinearSde::new(
   0.01,
   0.02,
   -0.1,
@@ -356,7 +356,7 @@ guard!(quadratic, "Quadratic", |s| Quadratic::new(
   s
 ));
 
-guard!(radial_ou, "RadialOU", |s| RadialOU::new(
+guard!(radial_ou, "RadialOu", |s| RadialOu::new(
   1.0,
   0.2,
   N,

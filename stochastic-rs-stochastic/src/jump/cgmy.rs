@@ -364,20 +364,20 @@ impl<T: FloatExt, S: SeedExt> CgmySampler<T, S> {
 
     let t_max = self.t_max;
     let dt = self.dt;
-    let C = self.c;
+    let c = self.c;
     let b_t = self.b_t;
 
-    let J = self.j;
-    let size = J + 1; // index 0 reserved (Γ0=0)
+    let n_terms = self.j;
+    let size = n_terms + 1; // index 0 reserved (Γ0=0)
 
     // U_j ~ Unif(0,1)
-    let mut U = Array1::<T>::zeros(size);
-    self.uniform.fill_slice(U.as_slice_mut().unwrap());
+    let mut u = Array1::<T>::zeros(size);
+    self.uniform.fill_slice(u.as_slice_mut().unwrap());
     // E_j ~ Exp(1)
-    let E = Array1::from_shape_fn(size, |_| self.exp.sample());
+    let e = Array1::from_shape_fn(size, |_| self.exp.sample());
 
     // P_j = Γ_j (PPP/Gamma arrival times), P[0]=0, P[1]=Γ_1, ...
-    let P = Poisson::new(T::one(), Horizon::Events(J), self.seed.derive()).sample();
+    let arrivals = Poisson::new(T::one(), Horizon::Events(n_terms), self.seed.derive()).sample();
 
     // τ_j ~ Unif(0,T)
     let mut tau_raw = Array1::<T>::zeros(size);
@@ -394,11 +394,11 @@ impl<T: FloatExt, S: SeedExt> CgmySampler<T, S> {
         -self.lambda_minus
       };
 
-      let divisor = T::from_usize_(2) * C * t_max; // <-- 2C appears here
-      let numerator = self.alpha * P[j];
+      let divisor = T::from_usize_(2) * c * t_max; // <-- 2C appears here
+      let numerator = self.alpha * arrivals[j];
 
       let term1 = (numerator / divisor).powf(-T::one() / self.alpha);
-      let term2 = E[j] * U[j].powf(T::one() / self.alpha) / v_j.abs();
+      let term2 = e[j] * u[j].powf(T::one() / self.alpha) / v_j.abs();
 
       jump_size[j] = term1.min(term2) * (v_j / v_j.abs());
     }

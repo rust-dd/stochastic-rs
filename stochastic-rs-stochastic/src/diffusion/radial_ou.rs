@@ -1,4 +1,4 @@
-//! # RadialOU
+//! # RadialOu
 //!
 //! $$
 //! dX_t=\left(\frac{\kappa}{X_t}-X_t\right)dt+\sigma\,dW_t
@@ -27,7 +27,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Clone)]
-pub struct RadialOU<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+pub struct RadialOu<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Radial restoring-force coefficient κ in the drift `κ/X_t − X_t`,
   /// which repels `X` away from 0 while an ordinary OU-style `-X_t` term
   /// still pulls it back at large `|X|`.
@@ -47,7 +47,7 @@ pub struct RadialOU<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> RadialOU<T, S> {
+impl<T: FloatExt, S: SeedExt> RadialOu<T, S> {
   pub fn new(kappa: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(
       kappa.is_finite(),
@@ -78,11 +78,11 @@ impl<T: FloatExt, S: SeedExt> RadialOU<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> RadialOU<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> RadialOu<T, S, B> {}
 
 /// The Euler engine's view of the radial OU process.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for RadialOU<T, S, B>
+  for RadialOu<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::RadialOrnsteinUhlenbeck {
@@ -114,15 +114,15 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] RadialOU<T, S> { kappa, sigma, n, x0, t, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] RadialOu<T, S> { kappa, sigma, n, x0, t, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for RadialOU<T, S, B>
+  for RadialOu<T, S, B>
 {
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
-  for RadialOU<T, S, B>
+  for RadialOu<T, S, B>
 {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -175,7 +175,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`RadialOU`] sampling state: precomputed Euler step and the owned
+/// Reusable [`RadialOu`] sampling state: precomputed Euler step and the owned
 /// Gaussian source.
 #[doc(hidden)]
 pub struct RadialOuSampler<T: FloatExt> {
@@ -220,7 +220,7 @@ impl<T: FloatExt> PathSampler<T> for RadialOuSampler<T> {
   fn sample_into(&mut self, out: &mut Array1<T>) {
     let slice = out
       .as_slice_mut()
-      .expect("RadialOU output must be contiguous");
+      .expect("RadialOu output must be contiguous");
     self.fill_path(slice);
   }
 
@@ -230,7 +230,7 @@ impl<T: FloatExt> PathSampler<T> for RadialOuSampler<T> {
   }
 }
 
-py_process_1d!(PyRadialOU, RadialOU,
+py_process_1d!(PyRadialOU, RadialOu,
   sig: (kappa, sigma, n, x0=None, t=None, seed=None, dtype=None),
   params: (kappa: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>),
   device

@@ -11,7 +11,7 @@ use stochastic_rs_distributions::traits::Expr;
 use stochastic_rs_stochastic::device::Metal;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volterra::kernel::ExponentialKernel;
-use stochastic_rs_stochastic::volterra::sve::VolterraSde;
+use stochastic_rs_stochastic::volterra::volterra_sde::VolterraSde;
 
 enum Observation {
   Finite,

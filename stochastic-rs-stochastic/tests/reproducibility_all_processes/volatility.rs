@@ -1,7 +1,7 @@
 //! `volatility/` slice of the exhaustive reproducibility guard — see
 //! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 132-type list, and shared methodology notes.
-//! `RoughHeston::new` does not accept `rho` — matching this crate's own
+//! derivation of the 129-type list, and shared methodology notes.
+//! `Fheston::new` does not accept `rho` — matching this crate's own
 //! `deterministic_parallelism_bates_rough_heston.rs`, the guard builds it
 //! then sets the public field directly before sampling.
 
@@ -9,12 +9,11 @@ use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::Expr;
 use stochastic_rs_stochastic::volatility::HestonPow;
-use stochastic_rs_stochastic::volatility::bates_svj::BatesSvj;
 use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
 use stochastic_rs_stochastic::volatility::bns::Bns;
 use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
-use stochastic_rs_stochastic::volatility::fbates_svj::FBatesSvj;
-use stochastic_rs_stochastic::volatility::fheston::RoughHeston;
+use stochastic_rs_stochastic::volatility::fbates_svj::FbatesSvj;
+use stochastic_rs_stochastic::volatility::fheston::Fheston;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 use stochastic_rs_stochastic::volatility::heston_log::HestonLog;
 use stochastic_rs_stochastic::volatility::heston_slv::HestonSlv;
@@ -22,7 +21,7 @@ use stochastic_rs_stochastic::volatility::heston2d::Heston2D;
 use stochastic_rs_stochastic::volatility::hkde::Hkde;
 use stochastic_rs_stochastic::volatility::multifactor_heston::MultifactorHeston;
 use stochastic_rs_stochastic::volatility::multifactor_sabr::MultifactorSabr;
-use stochastic_rs_stochastic::volatility::rbergomi::RoughBergomi;
+use stochastic_rs_stochastic::volatility::rough_bergomi::RoughBergomi;
 use stochastic_rs_stochastic::volatility::sabr::Sabr;
 use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
 
@@ -30,23 +29,6 @@ use crate::common::J;
 use crate::common::LAMBDA;
 use crate::common::N;
 use crate::common::guard;
-
-guard!(bates_svj, "BatesSvj", |s| BatesSvj::new(
-  Drift::Mu(0.05),
-  0.5,
-  -0.1,
-  0.2,
-  0.04,
-  1.5,
-  0.3,
-  -0.6,
-  N,
-  100.0,
-  0.04,
-  Some(1.0),
-  VarianceBoundary::Floor,
-  s
-));
 
 guard!(bergomi, "Bergomi", |s| Bergomi::new(
   0.4,
@@ -90,7 +72,7 @@ guard!(double_heston, "DoubleHeston", |s| DoubleHeston::new(
   s
 ));
 
-guard!(f_bates_svj, "FBatesSvj", |s| FBatesSvj::new(
+guard!(f_bates_svj, "FbatesSvj", |s| FbatesSvj::new(
   0.1,
   0.05,
   100.0,
@@ -107,8 +89,8 @@ guard!(f_bates_svj, "FBatesSvj", |s| FBatesSvj::new(
   s
 ));
 
-guard!(rough_heston, "RoughHeston", |s| {
-  let mut m = RoughHeston::new(0.1, 0.04, 0.04, 1.5, 0.3, None, None, Some(1.0), N, s);
+guard!(fheston, "Fheston", |s| {
+  let mut m = Fheston::new(0.1, 0.04, 0.04, 1.5, 0.3, None, None, Some(1.0), N, s);
   m.rho = -0.6;
   m
 });

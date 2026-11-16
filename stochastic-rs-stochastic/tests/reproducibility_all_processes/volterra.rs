@@ -1,10 +1,12 @@
 //! `volterra/` slice of the exhaustive reproducibility guard — see
 //! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 132-type list, and shared methodology notes.
+//! derivation of the 129-type list, and shared methodology notes.
 
 use stochastic_rs_stochastic::rough::kernel::RlKernel;
 use stochastic_rs_stochastic::volterra::ExponentialKernel;
 use stochastic_rs_stochastic::volterra::GaussianPolynomialVolatility;
+use stochastic_rs_stochastic::volterra::Volterra;
+use stochastic_rs_stochastic::volterra::VolterraKernelSpec;
 use stochastic_rs_stochastic::volterra::VolterraSde;
 use stochastic_rs_stochastic::volterra::VolterraSquareRoot;
 
@@ -62,3 +64,10 @@ guard!(
     s
   )
 );
+
+guard!(volterra, "Volterra", |s| Volterra::new(
+  VolterraKernelSpec::FractionalBM { h: 0.7 },
+  N,
+  Some(1.0),
+  s
+));

@@ -25,5 +25,4 @@ mod stepper;
 #[cfg(test)]
 mod tests;
 
-pub use stepper::BATCH_TILE;
 pub use stepper::MarkovLift;
