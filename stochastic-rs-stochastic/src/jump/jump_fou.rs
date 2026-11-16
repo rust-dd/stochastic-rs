@@ -33,37 +33,13 @@ use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::device::FgnBackend;
 use crate::noise::fgn::Fgn;
-use crate::process::cpoisson::CompoundPoisson;
+use crate::process::cpoisson::JumpDriver;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Fully seed-reproducible: no exception to [`ProcessExt`]'s reproducibility
-/// guarantee. Both halves consult `self.seed`, independently:
-///
-/// - The private `fgn: Fgn<T, Unseeded, B>` field is never consulted for its
-///   own seed — `sampler()` builds a plain [`SimdNormal`] from
-///   `self.seed.derive()` and borrows `fgn` only for its `Arc`-shared FFT
-///   plan and eigenvalues, the same pattern
-///   [`JumpFouCustom`](crate::jump::jump_fou_custom::JumpFouCustom) and
-///   [`Fbm`](crate::process::fbm::Fbm) use for their own embedded,
-///   permanently-`Unseeded` `fgn`. (This was fixable non-breakingly because
-///   the field is private — rewiring how it's used carries no signature
-///   change.)
-/// - `cpoisson` is built internally by [`new`](Self::new) from `seed`,
-///   exactly like [`Merton`](crate::jump::merton::Merton)'s field of the
-///   same name — see [`cpoisson`](Self::cpoisson).
-///
-/// (This type was previously documented as a *full* exception — "no
-/// randomness derives from `self.seed` at all" — on the grounds that both
-/// halves were hard-wired away from it. That was correct about the values at
-/// the time, but not about what was fixable: `fgn` needed only a private,
-/// non-breaking rewire (done first); `cpoisson` needed the same breaking
-/// widening `Merton`/`Kou`/`LevyDiffusion`/`Bates` needed, applied here
-/// last.)
-///
-/// Fields are private: the fGN and jump drivers derive from `hurst`, `lambda`, `n`, `t` and `seed`,
-/// so parameters are read through getters and changed through the rebuilding `with_*` setters.
+/// Fields are private: the fGN cache derives from `hurst`, `n` and `t`, so parameters are read
+/// through getters and changed through the `with_*` setters, which rebuild it when they must.
 ///
 /// ```compile_fail,E0616
 /// use stochastic_rs_core::simd_rng::Unseeded;
@@ -86,7 +62,7 @@ where
   x0: Option<T>,
   t: Option<T>,
   lambda: T,
-  cpoisson: CompoundPoisson<T, D, S>,
+  jumps: JumpDriver<D, S>,
   fgn: Fgn<T, Unseeded, B>,
   seed: S,
 }
@@ -111,14 +87,8 @@ where
   where
     Self: 's;
 
-  /// Owns a Gaussian source derived from `self.seed` (not `fgn.sampler()`,
-  /// which would build it from `fgn`'s own permanently-`Unseeded` field —
-  /// see the type doc) and borrows `fgn` (for its `Arc`-shared FFT
-  /// plan/eigenvalues only). Also owns a separate, independently-derived
-  /// jump seed and borrows only the jump-size distribution — never a
-  /// borrowed `&self.cpoisson` shared across chunks, which would let
-  /// concurrent chunks race on the same shared atomic during the parallel
-  /// region (see `ProcessExt`'s trait-level reproducibility requirement).
+  /// The diffusion draws from a child of `self.seed`, `fgn` lending only its FFT plan; the jumps
+  /// from a chunk-local child of their own seed, which concurrent chunks would race on.
   fn sampler(&self) -> JumpFouSampler<'_, T, D, S, B> {
     JumpFouSampler {
       n: self.n,
@@ -129,9 +99,9 @@ where
       dt: self.fgn.dt(),
       fgn: &self.fgn,
       normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed.derive()),
-      jump_distribution: &self.cpoisson.distribution,
+      jump_distribution: &self.jumps.law,
       lambda: self.lambda,
-      jump_seed: self.cpoisson.seed.derive(),
+      jump_seed: self.jumps.seed.derive(),
     }
   }
 
@@ -296,7 +266,7 @@ where
   /// The jump-size law as the Euler engine's kernels draw it, `None` for a
   /// distribution they do not carry.
   fn device_jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
-    crate::process::cpoisson::device_jump_sizes(&self.cpoisson.distribution)
+    crate::process::cpoisson::device_jump_sizes(&self.jumps.law)
   }
 }
 
@@ -364,7 +334,7 @@ where
   }
 }
 
-backend_switch!([T, D, S: SeedExt] JumpFou<T, D, S> { hurst, theta, mu, sigma, n, x0, t, lambda, cpoisson, seed } via fgn euler
+backend_switch!([T, D, S: SeedExt] JumpFou<T, D, S> { hurst, theta, mu, sigma, n, x0, t, lambda, jumps, seed } via fgn euler
   where T: FloatExt, D: Distribution<T> + Send + Sync);
 
 #[cfg(feature = "python")]

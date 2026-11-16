@@ -21,11 +21,13 @@ use ndarray::Array1;
 #[doc(hidden)]
 pub use python::PyFgn;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
 use crate::device::DeviceError;
 use crate::device::FgnBackend;
 use crate::traits::FloatExt;
@@ -42,6 +44,13 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   /// For Monte-Carlo inner loops this ~halves wall time per path.
   pub fn sample_pair(&self) -> (Array1<T>, Array1<T>) {
     self.sample_pair_cpu()
+  }
+}
+
+impl<T: FloatExt> Fgn<T, Unseeded, Cpu> {
+  /// The fGN of a grid of `n` points: its `n − 1` increments.
+  pub(crate) fn for_grid(hurst: T, n: usize, t: Option<T>) -> Self {
+    Self::new(hurst, n - 1, t, Unseeded)
   }
 }
 
@@ -138,5 +147,15 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FgnSampler<'_
   fn sample(&mut self) -> Array1<T> {
     let out_len = self.fgn.n();
     array1_from_fill(out_len, |out| self.fgn.fill_cpu(&mut self.normal, out))
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::Fgn;
+
+  #[test]
+  fn a_grid_of_n_points_has_n_minus_one_increments() {
+    assert_eq!(Fgn::<f64>::for_grid(0.7, 65, None).n(), 64);
   }
 }

@@ -72,10 +72,7 @@ pub struct ExponentialKernel<T: FloatExt> {
 }
 
 impl<T: FloatExt> ExponentialKernel<T> {
-  /// Construct $K(t) = c\,e^{-\beta t}$.
-  ///
-  /// # Panics
-  /// - if $\beta \le 0$
+  /// $K(t) = c\,e^{-\beta t}$; panics unless both are finite and $\beta > 0$.
   #[must_use]
   pub fn new(beta: T, c: T) -> Self {
     assert!(
@@ -141,19 +138,8 @@ pub struct GammaKernel<T: FloatExt> {
 }
 
 impl<T: FloatExt> GammaKernel<T> {
-  /// Construct the tempered kernel for Hurst $H$, tempering rate $\lambda$,
-  /// using $N'$ Laguerre nodes (see [`RlKernel::new`]).
-  ///
-  /// `degree` is **not** defaulted or capped here: it funnels straight
-  /// into [`RlKernel::new`]'s own quadrature, so
-  /// [`RlKernel::MAX_STABLE_DEGREE`] applies to it transitively — a
-  /// `degree` past that ceiling panics there, not silently.
-  ///
-  /// # Panics
-  /// - if $H \notin (0, 1/2)$, `degree == 0`, or `degree` exceeds
-  ///   [`RlKernel::MAX_STABLE_DEGREE`] (all raised inside the
-  ///   [`RlKernel::new`] call below)
-  /// - if $\lambda \le 0$ (checked ahead of that call)
+  /// The kernel for Hurst $H$ tempered at rate $\lambda$, on [`RlKernel::new`]'s nodes; panics
+  /// unless $\lambda > 0$ is finite, and where [`RlKernel::new`] panics.
   #[must_use]
   pub fn new(hurst: T, lambda: T, degree: usize) -> Self {
     assert!(
@@ -235,16 +221,8 @@ pub struct SumOfExponentials<T: FloatExt> {
 }
 
 impl<T: FloatExt> SumOfExponentials<T> {
-  /// This is the trust boundary for externally calibrated `nodes`/`weights`
-  /// — nothing here checks that the caller's fit is *good*, only that it is
-  /// well-formed enough not to fail silently.
-  ///
-  /// # Panics
-  /// - if `nodes` and `weights` have different lengths, or either is empty
-  /// - if any node is not strictly positive (a zero node makes
-  ///   `integral_from_zero`'s `(1-e^0)/x_l` divide `0.0/0.0` to `NaN` with
-  ///   no panic; a negative node yields a growing, non-decaying "kernel"
-  ///   with no diagnostic at all)
+  /// The trust boundary for calibrated nodes and weights: panics unless all are finite, the two are
+  /// equally long and not empty, and every node is positive, so the kernel decays.
   #[must_use]
   pub fn new(nodes: Array1<T>, weights: Array1<T>) -> Self {
     assert_entries("nodes", "nodes[i].is_finite()", &nodes, |v| v.is_finite());

@@ -103,6 +103,16 @@ pub struct NoSeedBypassingSampler;
 /// ```
 pub struct NoRoughBatchSampler;
 
+/// A jump-diffusion's rate is `with_lambda`'s and its law `with_jump_law`'s; no driver to swap.
+///
+/// ```compile_fail,E0599
+/// use stochastic_rs_distributions::normal::SimdNormal;
+/// use stochastic_rs_stochastic::jump::merton::Merton;
+/// let m = Merton::<f64, SimdNormal<f64>>::default();
+/// let _ = m.with_cpoisson(todo!());
+/// ```
+pub struct NoCompoundPoissonToSwap;
+
 /// A single-precision device refuses an `f64` process at compile time.
 ///
 /// ```compile_fail,E0277

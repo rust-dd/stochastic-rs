@@ -49,8 +49,8 @@ crate's `src/lib.rs`.
 `new(..)` takes the fields positionally, ending with `seed: S`, and asserts each precondition
 in dev-rules §14's form: every float finite (an `Option<T>` `None` or finite), `t` `None` or
 positive, and `n >= 2` on a grid (`n >= 1` on a noise or a discrete-time series). Every field
-gets a `with_*(mut self, ..) -> Self`; one changing a value mirrored elsewhere re-syncs it
-(`Merton::resync_cpoisson_poisson`). `Default` is `n = 252`, `t = 1`.
+gets a `with_*(mut self, ..) -> Self`; one changing a value a cache derives from rebuilds the
+cache (`Fbm::with_hurst`). `Default` is `n = 252`, `t = 1`.
 
 The sampler is a separate `#[doc(hidden)] pub struct FooSampler<..>` holding all
 per-call mutable state and implementing `PathSampler<T>` (`src/traits/sampler.rs`):
@@ -66,9 +66,9 @@ on `ProcessExt` in `src/traits/process.rs` before writing `sampler()`.** Its rul
 never `&self.seed` read lazily per path (`chunked_samplers` calls `sampler()` once per
 chunk, sequentially, before any chunk reaches rayon, and only `derive()` hash-mixes
 those bases apart); a sampler may `.derive()` again on its *own* basis for sub-streams;
-**never construct `Unseeded` inside a sampler** — a sub-process built there (`Cgns`,
-`CompoundPoisson`) is driven from an owned already-derived seed
-(`Cgns::sample_impl(&self.seed)`, a captured `self.cpoisson.seed.derive()`); override
+**never construct `Unseeded` inside a sampler** — a sub-process built there (`Cgns`, a
+jump driver) is driven from an owned already-derived seed
+(`Cgns::sample_impl(&self.seed)`, a captured `self.jumps.seed.derive()`); override
 `advance_chunk_seed` only when the chunk's clone feeds a *persistent* engine
 (`CirPlusPlus`).
 

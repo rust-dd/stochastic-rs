@@ -94,17 +94,26 @@ pub(crate) fn device_arrival_rate<T: FloatExt, D: Any>(distribution: &D) -> Opti
     .map(|exp| exp.lambda())
 }
 
-/// Core of [`CompoundPoisson::sample_grid_increments`], parameterized
-/// explicitly over `lambda`/`distribution`/`seed` instead of reading them
-/// off `&self`. Exists so a caller that must supply a fresh, chunk-local
-/// seed rather than a shared `self.seed` — e.g. a jump-diffusion
-/// `sampler()` that pre-derives one basis per chunk to stay reproducible
-/// under `sample_par` without racing other chunks on a shared atomic (see
-/// [`Merton`](crate::jump::merton::Merton), [`Kou`](crate::jump::kou::Kou),
-/// [`LevyDiffusion`](crate::jump::levy_diffusion::LevyDiffusion)) — can
-/// drive the identical computation without owning a whole
-/// [`CompoundPoisson`]. Behavior-identical to, and the sole body of,
-/// [`CompoundPoisson::sample_grid_increments`].
+/// The jumps of a jump-diffusion: their size law and the seed their arrivals derive from, at the
+/// process's own `lambda`; it holds no `Poisson`, so a zero rate draws zero increments.
+#[derive(Clone)]
+pub(crate) struct JumpDriver<D, S> {
+  pub(crate) law: D,
+  pub(crate) seed: S,
+}
+
+impl<D, S: SeedExt> JumpDriver<D, S> {
+  /// `law`, its arrivals seeded from a child of `seed`.
+  pub(crate) fn new(law: D, seed: &S) -> Self {
+    Self {
+      law,
+      seed: seed.clone().derive(),
+    }
+  }
+}
+
+/// `n` grid increments, the first zero: per step, the sum of a `Poisson(lambda·dt)` count of
+/// `distribution`'s draws; no draw at all where `lambda·dt` is zero.
 pub(crate) fn grid_increments<T, D, S>(
   distribution: &D,
   lambda: T,
@@ -184,15 +193,8 @@ where
   factor - T::one()
 }
 
-/// Core of [`CompoundPoisson::sample_grid_relative_increments`], parameterized
-/// explicitly over `lambda`/`distribution`/`seed` instead of reading them off
-/// `&self` — the multiplicative-jump counterpart of [`grid_increments`]
-/// above, for the same reason: a caller such as
-/// [`Bates`](crate::jump::bates::Bates)'s `sampler()` must drive this
-/// computation from its own single-source-of-truth `self.lambda` and a
-/// pre-derived, chunk-local seed rather than `self.poisson.lambda`/a shared
-/// `&self.cpoisson`. Behavior-identical to, and the sole body of,
-/// [`CompoundPoisson::sample_grid_relative_increments`].
+/// [`grid_increments`] for relative jumps `Y`: per step `∏(1 + Y_k) − 1` over its count, the
+/// sizes drawn from a stream one seed draw past the counts'.
 pub(crate) fn grid_relative_increments<T, D, S>(
   distribution: &D,
   lambda: T,
@@ -461,12 +463,23 @@ mod tests {
   fn grid_increments_zero_for_zero_intensity() {
     let cp = CompoundPoisson::new(
       ConstJump(1.0f64),
-      Poisson::new(0.0, Horizon::Events(16), Unseeded),
+      Poisson::new(0.0, Horizon::Until(1.0), Unseeded),
       Unseeded,
     );
     let inc = cp.sample_grid_increments(16, 1.0 / 15.0);
     assert_eq!(inc.len(), 16);
     assert!(inc.iter().all(|&x| x == 0.0));
+  }
+
+  #[test]
+  fn a_zero_rate_compounds_nothing_before_its_horizon() {
+    let cp = CompoundPoisson::new(
+      ConstJump(1.0f64),
+      Poisson::new(0.0, Horizon::Until(1.0), Unseeded),
+      Unseeded,
+    );
+    let origin = Array1::from(vec![0.0]);
+    assert_eq!(cp.sample(), [origin.clone(), origin.clone(), origin]);
   }
 
   #[test]

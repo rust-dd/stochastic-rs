@@ -69,16 +69,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     "`new` checks the three arrays jointly in `validate_lmm_inputs`",
   ),
   (
-    "Merton",
-    "with_cpoisson",
-    "the argument is a built law, not a `new` parameter",
-  ),
-  (
-    "Bates",
-    "with_cpoisson",
-    "the argument is a built law, not a `new` parameter",
-  ),
-  (
     "Cuda",
     "with_batch_budget",
     "a device budget, no `new` parameter",

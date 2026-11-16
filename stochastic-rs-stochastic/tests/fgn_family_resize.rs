@@ -136,7 +136,7 @@ fn jump_fou_resizes_through_with_points() {
 fn jump_fou_custom_resizes_through_with_points() {
   let times = SimdNormal::<f64>::new(0.5, 0.01);
   let sizes = SimdNormal::<f64>::new(0.0, 0.1);
-  let p = JumpFouCustom::<f64, _, _>::new(
+  let p = JumpFouCustom::<f64, _, _, _>::new(
     0.7,
     1.0,
     0.0,

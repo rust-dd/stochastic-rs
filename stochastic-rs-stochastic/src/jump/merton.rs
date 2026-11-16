@@ -36,9 +36,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::params::Horizon;
-use crate::process::cpoisson::CompoundPoisson;
-use crate::process::poisson::Poisson;
+use crate::process::cpoisson::JumpDriver;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -54,14 +52,7 @@ where
   pub alpha: T,
   /// Diffusion scale σ of the continuous (Brownian) component.
   pub sigma: T,
-  /// Jump (Poisson) intensity λ — arrival rate of the log-normal jumps.
-  /// Single source of truth: `sampler()` reads this field directly (not
-  /// `cpoisson.poisson.lambda`) for the jump-arrival rate. Every setter
-  /// that can change it (`with_lambda`, `with_cpoisson`) keeps
-  /// `cpoisson.poisson.lambda` synced to match — see those methods' docs
-  /// and `resync_cpoisson_poisson`. That syncing only happens through the
-  /// setters: a direct `pub` field assignment (`merton.lambda = x`) is not
-  /// intercepted and will desync it from `cpoisson.poisson.lambda`.
+  /// Jump (Poisson) intensity λ, the one rate the sampler and the engine read.
   pub lambda: T,
   /// Jump-size compensator κ (E\[Y−1\]-like term, matching the module
   /// header's own λκ), subtracted from the drift scaled by `lambda` —
@@ -74,13 +65,8 @@ where
   pub x0: Option<T>,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// The jump driver, seeded from `seed.derive()`; sampling reads its law and seed but takes the
-  /// rate from `lambda`, so replace it through [`with_cpoisson`](Self::with_cpoisson).
-  pub cpoisson: CompoundPoisson<T, D, S>,
-  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`). Consulted
-  /// directly by the diffusion component; `cpoisson`'s own seed (set at
-  /// construction from this same value — see `cpoisson`'s doc above) drives
-  /// the jump component.
+  jumps: JumpDriver<D, S>,
+  /// The diffusion's seed; the jumps draw from a child of it taken at construction.
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -97,11 +83,7 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Builds the compound-Poisson jump driver internally from `jump_dist`
-  /// and `lambda`, seeded from `seed` (see `cpoisson`'s field doc) — the
-  /// caller supplies the jump-size distribution and intensity directly
-  /// instead of pre-building a `Poisson`/`CompoundPoisson` pair and
-  /// threading a third, independent seed through it by hand.
+  /// Jumps of law `jump_dist` arriving at rate `lambda`, their seed a child of `seed`.
   pub fn new(
     alpha: T,
     sigma: T,
@@ -126,6 +108,10 @@ where
       "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
     );
     assert!(
+      lambda >= T::zero(),
+      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
+    );
+    assert!(
       theta.is_finite(),
       "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
     );
@@ -138,11 +124,6 @@ where
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
-    let cpoisson = CompoundPoisson::new(
-      jump_dist,
-      Poisson::new(lambda, Horizon::Events(n), Unseeded),
-      seed.clone().derive(),
-    );
     Self {
       backend: Cpu,
       alpha,
@@ -152,7 +133,7 @@ where
       n,
       x0,
       t,
-      cpoisson,
+      jumps: JumpDriver::new(jump_dist, &seed),
       seed,
     }
   }
@@ -183,20 +164,29 @@ where
     self
   }
 
-  /// Replace `lambda`, all else unchanged. `sampler()` reads `self.lambda`
-  /// directly for the jump-arrival intensity (see `cpoisson`'s field doc),
-  /// so this alone already changes the sampled jump rate; it also
-  /// re-syncs the otherwise-cosmetic mirror `cpoisson.poisson.lambda` (see
-  /// `resync_cpoisson_poisson`) so a caller inspecting it does not see a
-  /// stale value.
+  /// Replace `lambda`, all else unchanged.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     assert!(
       lambda.is_finite(),
       "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
     );
+    assert!(
+      lambda >= T::zero(),
+      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
+    );
     self.lambda = lambda;
-    self.resync_cpoisson_poisson();
     self
+  }
+
+  /// Replace the jump-size law, all else unchanged.
+  pub fn with_jump_law(mut self, law: D) -> Self {
+    self.jumps.law = law;
+    self
+  }
+
+  /// The jump-size law.
+  pub fn jump_law(&self) -> &D {
+    &self.jumps.law
   }
 
   /// Replace `theta`, all else unchanged.
@@ -219,19 +209,10 @@ where
     self
   }
 
-  /// Replace the jump driver and adopt its intensity as `lambda`, the rate the sampler reads; its
-  /// horizon is kept as given, since sampling never reads it.
-  pub fn with_cpoisson(mut self, cpoisson: CompoundPoisson<T, D, S>) -> Self {
-    self.lambda = cpoisson.poisson.lambda;
-    self.cpoisson = cpoisson;
-    self
-  }
-
-  /// Replace `n`; the jump driver's event count follows it, though sampling never reads that.
+  /// Replace `n`, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
-    self.resync_cpoisson_poisson();
     self
   }
 
@@ -245,21 +226,11 @@ where
     self
   }
 
-  /// Replace the seed strategy's value, all else unchanged — including
-  /// re-deriving `cpoisson`'s own seed from the new value exactly as
-  /// [`new`](Self::new) does (`cpoisson`'s distribution and lambda are
-  /// untouched), so the result matches a fresh construction with this
-  /// seed rather than leaving the jump component keyed to the old one.
+  /// Replace the seed, re-deriving the jumps' seed from it as `new` does.
   pub fn with_seed(mut self, seed: S) -> Self {
-    self.cpoisson.seed = seed.clone().derive();
+    self.jumps.seed = seed.clone().derive();
     self.seed = seed;
     self
-  }
-
-  /// Rebuilds the `cpoisson.poisson` mirror from `lambda` and `n`, which sampling reads off `self`;
-  /// every setter that changes either calls it.
-  fn resync_cpoisson_poisson(&mut self) {
-    self.cpoisson.poisson = Poisson::new(self.lambda, Horizon::Events(self.n), Unseeded);
   }
 }
 
@@ -308,7 +279,7 @@ where
   /// The jump-size law as the Euler engine's kernels draw it, `None` for a
   /// distribution they do not carry.
   fn device_jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
-    crate::process::cpoisson::device_jump_sizes(&self.cpoisson.distribution)
+    crate::process::cpoisson::device_jump_sizes(&self.jumps.law)
   }
 }
 
@@ -371,7 +342,7 @@ where
   }
 }
 
-backend_switch!([T, D, S: SeedExt] Merton<T, D, S> { alpha, sigma, lambda, theta, n, x0, t, cpoisson, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
+backend_switch!([T, D, S: SeedExt] Merton<T, D, S> { alpha, sigma, lambda, theta, n, x0, t, jumps, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
 
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for Merton<T, D, S, B>
@@ -393,16 +364,7 @@ where
     Self: 's;
 
   fn sampler(&self) -> MertonSampler<'_, T, D, S> {
-    // The diffusion source is owned and derived from `self.seed`. The jump
-    // driver's distribution/lambda are borrowed straight off `self.cpoisson`
-    // (read-only parameters, safe to share across chunks), but its seed is
-    // captured as an owned, chunk-local `self.cpoisson.seed.derive()` —
-    // never a borrowed `&self.cpoisson`, which would let every chunk's
-    // sampler race on the same shared atomic during the parallel region
-    // (see `ProcessExt`'s "Reproducibility requirement on implementors").
-    // Each path within one chunk still re-derives its own jump sub-stream
-    // from that owned basis exactly as the legacy `sample()` did from the
-    // old (always-`Unseeded`) field, so only the seed *source* changed.
+    // A chunk-local child of the jumps' seed: concurrent chunks would race on the shared one.
     let dt = self.dt();
     let drift_dt = self.drift_dt();
     MertonSampler {
@@ -411,9 +373,9 @@ where
       x0: self.x0.unwrap_or(T::zero()),
       dt,
       drift_dt,
-      jump_distribution: &self.cpoisson.distribution,
+      jump_distribution: &self.jumps.law,
       lambda: self.lambda,
-      jump_seed: self.cpoisson.seed.derive(),
+      jump_seed: self.jumps.seed.derive(),
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
@@ -483,9 +445,8 @@ where
   }
 }
 
-/// Reusable [`Merton`] sampling state: owns the Gaussian diffusion source and
-/// borrows the compound-Poisson jump driver, so a Monte-Carlo loop pays the
-/// `SimdNormal` setup once.
+/// Reusable [`Merton`] sampling state: the Gaussian diffusion source and the borrowed jump law, so
+/// a Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
 pub struct MertonSampler<'a, T, D, S: SeedExt>
 where
@@ -692,5 +653,45 @@ impl PyMerton {
         result.into_pyarray(py).into_py_any(py).unwrap()
       })
     })
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+  use crate::euler::EulerCoefficients;
+
+  fn merton(lambda: f64, law: SimdNormal<f64>) -> Merton<f64, SimdNormal<f64>, Deterministic> {
+    Merton::new(
+      0.03,
+      0.2,
+      lambda,
+      0.0,
+      law,
+      64,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(3),
+    )
+  }
+
+  #[test]
+  fn with_lambda_is_the_intensity_the_sampler_and_the_engine_read() {
+    let law = SimdNormal::new(0.0, 0.1);
+    let faster = merton(1.0, law).with_lambda(2.0);
+    assert_eq!(EulerCoefficients::jump_intensity(&faster), Some(2.0));
+    let path = faster.sample();
+    assert_eq!(path, merton(2.0, law).sample());
+    assert_ne!(path, merton(1.0, law).sample());
+  }
+
+  #[test]
+  fn with_jump_law_replaces_the_law_and_keeps_the_seed() {
+    let wide = SimdNormal::new(0.0, 0.5);
+    let got = merton(1.0, SimdNormal::new(0.0, 0.1)).with_jump_law(wide);
+    assert_eq!(got.jump_law().sigma(), 0.5);
+    assert_eq!(got.sample(), merton(1.0, wide).sample());
   }
 }

@@ -154,7 +154,7 @@ fn jump_fou_cache_setters_match_fresh_construction() {
 #[test]
 fn jump_fou_custom_cache_setters_match_fresh_construction() {
   let make = |hurst, n, t| {
-    JumpFouCustom::<f64, _, _>::new(
+    JumpFouCustom::<f64, _, _, _>::new(
       hurst,
       1.0,
       0.0,

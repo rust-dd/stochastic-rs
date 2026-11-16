@@ -59,12 +59,8 @@ impl<T: FloatExt> RlKernel<T> {
     ((n.max(2) as f64).ln() as usize) + 20
   }
 
-  /// Construct the kernel approximation for Hurst $H$ using $N'$ Laguerre nodes.
-  ///
-  /// # Panics
-  /// - if $H \notin (0, 1/2)$ (the Laguerre parameter $\alpha = -(H+1/2)$ must satisfy $\alpha > -1$)
-  /// - if `degree == 0`
-  /// - if `degree` exceeds [`Self::MAX_STABLE_DEGREE`]
+  /// The kernel for Hurst $H$ on `degree` Laguerre nodes; panics unless $H \in (0, 1/2)$ and
+  /// `1 ≤ degree ≤` [`Self::MAX_STABLE_DEGREE`].
   #[must_use]
   pub fn new(hurst: T, degree: usize) -> Self {
     assert!(

@@ -46,39 +46,35 @@ use crate::volterra::reference::reference_path;
 use crate::volterra::volterra_sde::VolterraSde;
 use crate::volterra::volterra_sde::VolterraSdeSampler;
 
-/// Volterra kernel specification.
-///
-/// Renamed from `VolterraKernel` (breaking) to free that
-/// name for [`crate::volterra::VolterraKernel`], the exponential-sum trait
-/// [`VolterraSde`] is built on. This enum stays the small, closed set of
-/// kernel *shapes* [`Volterra`] accepts, not a trait implementor —
-/// [`RlKernel`] (built internally when $H<1/2$) is what actually implements
-/// that trait for the [`FractionalBM`](Self::FractionalBM) case.
+/// The kernel shapes [`Volterra`] takes, each parameter in the process's scalar; a shape, not a
+/// [`VolterraKernel`](crate::volterra::VolterraKernel), which [`RlKernel`] is for $H < 1/2$.
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
-pub enum VolterraKernelSpec {
+pub enum VolterraKernelSpec<T> {
   /// Fractional Brownian motion: $K(t,s) = (t-s)^{H-1/2}/\Gamma(H+1/2)$
-  FractionalBM { h: f64 },
+  FractionalBM { h: T },
   /// Power-law: $K(t,s) = (t-s)^\gamma$ for $\gamma > -1/2$
-  PowerLaw { gamma: f64 },
+  PowerLaw { gamma: T },
   /// Exponential: $K(t,s) = e^{-\beta(t-s)}$
-  Exponential { beta: f64 },
+  Exponential { beta: T },
 }
 
-impl VolterraKernelSpec {
-  /// Precomputes this kernel's parameter-derived terms once, ahead of the
-  /// $O(n^2)$ convolution in [`ReferenceVolterraSampler::fill_path`].
-  fn prepare<T: FloatExt>(&self) -> PreparedVolterraKernel<T> {
-    match self {
-      VolterraKernelSpec::FractionalBM { h } => PreparedVolterraKernel::FractionalBM {
-        exp: T::from_f64_fast(*h - 0.5),
-        gamma_val: T::from_f64_fast(stochastic_rs_distributions::special::gamma(*h + 0.5)),
-      },
+impl<T: FloatExt> VolterraKernelSpec<T> {
+  /// The kernel's parameter terms, evaluated once in `f64` ahead of the $O(n^2)$ convolution.
+  fn prepare(&self) -> PreparedVolterraKernel<T> {
+    match *self {
+      VolterraKernelSpec::FractionalBM { h } => {
+        let h = h.to_f64().unwrap();
+        PreparedVolterraKernel::FractionalBM {
+          exp: T::from_f64_fast(h - 0.5),
+          gamma_val: T::from_f64_fast(stochastic_rs_distributions::special::gamma(h + 0.5)),
+        }
+      }
       VolterraKernelSpec::PowerLaw { gamma } => PreparedVolterraKernel::PowerLaw {
-        gamma: T::from_f64_fast(*gamma),
+        gamma: T::from_f64_fast(gamma.to_f64().unwrap()),
       },
       VolterraKernelSpec::Exponential { beta } => PreparedVolterraKernel::Exponential {
-        beta: T::from_f64_fast(*beta),
+        beta: T::from_f64_fast(beta.to_f64().unwrap()),
       },
     }
   }
@@ -123,7 +119,7 @@ enum VolterraEngine<T: FloatExt> {
 /// Generic Volterra process with configurable kernel.
 pub struct Volterra<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Kernel specification.
-  pub kernel: VolterraKernelSpec,
+  pub kernel: VolterraKernelSpec<T>,
   /// Number of grid points.
   pub n: usize,
   /// Horizon of the path; `None` is a unit horizon.
@@ -144,7 +140,7 @@ impl<T: FloatExt, S: SeedExt> Volterra<T, S> {
   /// the Markov lift or the direct convolution, see the module doc for
   /// which kernels take which branch) is prepared once here, reused by
   /// every subsequent [`sampler`](ProcessExt::sampler) call.
-  pub fn new(kernel: VolterraKernelSpec, n: usize, t: Option<T>, seed: S) -> Self {
+  pub fn new(kernel: VolterraKernelSpec<T>, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     assert!(
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
@@ -153,29 +149,29 @@ impl<T: FloatExt, S: SeedExt> Volterra<T, S> {
     match kernel {
       VolterraKernelSpec::FractionalBM { h } => {
         assert!(
-          h > 0.0 && h < 1.0,
-          "h must satisfy `h > 0.0 && h < 1.0`, got h = {h:?}"
+          h > T::zero() && h < T::one(),
+          "h must satisfy `h > T::zero() && h < T::one()`, got h = {h:?}"
         )
       }
       VolterraKernelSpec::PowerLaw { gamma } => {
         assert!(
-          gamma.is_finite() && gamma > -0.5,
-          "gamma must satisfy `gamma.is_finite() && gamma > -0.5`, got gamma = {gamma:?}"
+          gamma.is_finite() && gamma > T::from_f64_fast(-0.5),
+          "gamma must satisfy `gamma.is_finite() && gamma > T::from_f64_fast(-0.5)`, got gamma = {gamma:?}"
         )
       }
       VolterraKernelSpec::Exponential { beta } => {
         assert!(
-          beta.is_finite() && beta > 0.0,
-          "beta must satisfy `beta.is_finite() && beta > 0.0`, got beta = {beta:?}"
+          beta.is_finite() && beta > T::zero(),
+          "beta must satisfy `beta.is_finite() && beta > T::zero()`, got beta = {beta:?}"
         )
       }
     }
     let engine = match kernel {
-      VolterraKernelSpec::FractionalBM { h } if h > 0.0 && h < 0.5 => {
+      VolterraKernelSpec::FractionalBM { h } if h < T::from_f64_fast(0.5) => {
         let degree = RlKernel::<T>::default_degree(n);
-        VolterraEngine::Lift(RlKernel::<T>::new(T::from_f64_fast(h), degree))
+        VolterraEngine::Lift(RlKernel::<T>::new(h, degree))
       }
-      _ => VolterraEngine::Reference(kernel.prepare::<T>()),
+      _ => VolterraEngine::Reference(kernel.prepare()),
     };
     let lift = match &engine {
       VolterraEngine::Lift(rl) if n > 1 => Some(crate::rough::MarkovLift::new(
@@ -198,7 +194,7 @@ impl<T: FloatExt, S: SeedExt> Volterra<T, S> {
 
 impl<T: FloatExt> Volterra<T, Unseeded> {
   /// Fractional Brownian motion with Hurst parameter $H$.
-  pub fn fbm(h: f64, n: usize, t: Option<T>) -> Self {
+  pub fn fbm(h: T, n: usize, t: Option<T>) -> Self {
     Self::new(VolterraKernelSpec::FractionalBM { h }, n, t, Unseeded)
   }
 }

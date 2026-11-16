@@ -761,7 +761,7 @@ fn jump_fou_agrees_with_the_cpu_law() {
 #[test]
 fn jump_fou_custom_with_exponential_laws_agrees_with_the_cpu_law() {
   let build = || {
-    JumpFouCustom::<f32, _, _>::new(
+    JumpFouCustom::<f32, _, _, _>::new(
       0.7,
       2.0,
       1.0,

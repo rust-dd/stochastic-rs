@@ -3,17 +3,17 @@
 
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::JumpFouCustom;
 use crate::device::Cpu;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 
-impl<T, D, S: SeedExt> JumpFouCustom<T, D, S, Cpu>
+impl<T, DT, DS, S: SeedExt> JumpFouCustom<T, DT, DS, S, Cpu>
 where
   T: FloatExt,
-  D: Distribution<T> + Send + Sync,
+  DT: Distribution<T> + Send + Sync,
+  DS: Distribution<T> + Send + Sync,
 {
   pub fn new(
     hurst: T,
@@ -23,8 +23,8 @@ where
     n: usize,
     x0: Option<T>,
     t: Option<T>,
-    jump_times: D,
-    jump_sizes: D,
+    jump_times: DT,
+    jump_sizes: DS,
     seed: S,
   ) -> Self {
     assert!(
@@ -63,14 +63,9 @@ where
       t,
       jump_times,
       jump_sizes,
-      fgn: Self::fgn_for(hurst, n, t),
+      fgn: Fgn::for_grid(hurst, n, t),
       seed,
     }
-  }
-
-  /// Shared by `new()` and the `with_*` setters so they cannot drift.
-  fn fgn_for(hurst: T, n: usize, t: Option<T>) -> Fgn<T, Unseeded, Cpu> {
-    Fgn::new(hurst, n - 1, t, Unseeded)
   }
 
   /// Replace `hurst`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
@@ -80,7 +75,7 @@ where
       "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
     );
     self.hurst = hurst;
-    self.fgn = Self::fgn_for(hurst, self.n, self.t);
+    self.fgn = Fgn::for_grid(hurst, self.n, self.t);
     self
   }
 
@@ -89,7 +84,7 @@ where
   pub fn with_points(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
-    self.fgn = Self::fgn_for(self.hurst, n, self.t);
+    self.fgn = Fgn::for_grid(self.hurst, n, self.t);
     self
   }
 
@@ -100,15 +95,16 @@ where
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
     self.t = t;
-    self.fgn = Self::fgn_for(self.hurst, self.n, t);
+    self.fgn = Fgn::for_grid(self.hurst, self.n, t);
     self
   }
 }
 
-impl<T, D, S: SeedExt, B> JumpFouCustom<T, D, S, B>
+impl<T, DT, DS, S: SeedExt, B> JumpFouCustom<T, DT, DS, S, B>
 where
   T: FloatExt,
-  D: Distribution<T> + Send + Sync,
+  DT: Distribution<T> + Send + Sync,
+  DS: Distribution<T> + Send + Sync,
 {
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: T) -> Self {
@@ -150,14 +146,14 @@ where
     self
   }
 
-  /// Replace the inter-arrival-time distribution, all else unchanged.
-  pub fn with_jump_times(mut self, jump_times: D) -> Self {
+  /// Replace the inter-arrival law, all else unchanged.
+  pub fn with_jump_times(mut self, jump_times: DT) -> Self {
     self.jump_times = jump_times;
     self
   }
 
-  /// Replace the jump-size distribution, all else unchanged.
-  pub fn with_jump_sizes(mut self, jump_sizes: D) -> Self {
+  /// Replace the jump-size law, all else unchanged.
+  pub fn with_jump_sizes(mut self, jump_sizes: DS) -> Self {
     self.jump_sizes = jump_sizes;
     self
   }
@@ -208,15 +204,13 @@ where
     self.t
   }
 
-  /// User-supplied inter-arrival-time distribution for jumps (must sample
-  /// strictly positive values).
-  pub fn jump_times(&self) -> &D {
+  /// The law of the times between jumps, which must be positive.
+  pub fn jump_time_law(&self) -> &DT {
     &self.jump_times
   }
 
-  /// User-supplied jump-size distribution added directly to the path at
-  /// each jump.
-  pub fn jump_sizes(&self) -> &D {
+  /// The law of the jump sizes, each added to the path as it arrives.
+  pub fn jump_size_law(&self) -> &DS {
     &self.jump_sizes
   }
 
