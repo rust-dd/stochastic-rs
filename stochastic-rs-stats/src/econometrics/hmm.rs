@@ -376,8 +376,6 @@ impl GaussianHmm {
 
   /// Rabiner's `γ_t` and `Σ_t ξ_t` from the scaled passes, and the log-likelihood.
   fn expectations(&self, observations: ArrayView1<f64>) -> (Array2<f64>, Array2<f64>, f64) {
-    let n = observations.len();
-    let k = self.n_states();
     let Forward {
       alpha,
       emissions,
@@ -385,34 +383,11 @@ impl GaussianHmm {
       log_likelihood,
     } = self.forward(observations);
     let beta = self.backward(&emissions, &scaling);
-    let mut gamma = Array2::<f64>::zeros((n, k));
-    for t in 0..n {
-      let mut z = 0.0;
-      for s in 0..k {
-        gamma[[t, s]] = alpha[[t, s]] * beta[[t, s]];
-        z += gamma[[t, s]];
-      }
-      for s in 0..k {
-        gamma[[t, s]] /= z;
-      }
-    }
-    let mut xi_sum = Array2::<f64>::zeros((k, k));
-    let mut tmp = Array2::<f64>::zeros((k, k));
-    for t in 0..(n - 1) {
-      let mut z = 0.0;
-      for i in 0..k {
-        for j in 0..k {
-          tmp[[i, j]] =
-            alpha[[t, i]] * self.transitions[[i, j]] * emissions[[t + 1, j]] * beta[[t + 1, j]];
-          z += tmp[[i, j]];
-        }
-      }
-      for i in 0..k {
-        for j in 0..k {
-          xi_sum[[i, j]] += tmp[[i, j]] / z;
-        }
-      }
-    }
+    let (gamma, xi_sum) = normalised_expectations(
+      alpha.dim(),
+      |t, s| alpha[[t, s]] * beta[[t, s]],
+      |t, i, j| alpha[[t, i]] * self.transitions[[i, j]] * emissions[[t + 1, j]] * beta[[t + 1, j]],
+    );
     (gamma, xi_sum, log_likelihood)
   }
 
@@ -515,6 +490,43 @@ impl GaussianHmm {
       converged,
     })
   }
+}
+
+/// Rabiner's `γ_t` and `Σ_t ξ_t` from terms that each step scales by one factor, which normalising
+/// that step's terms to sum to 1 removes.
+fn normalised_expectations(
+  (n, k): (usize, usize),
+  gamma_term: impl Fn(usize, usize) -> f64,
+  xi_term: impl Fn(usize, usize, usize) -> f64,
+) -> (Array2<f64>, Array2<f64>) {
+  let mut gamma = Array2::<f64>::zeros((n, k));
+  for t in 0..n {
+    let mut z = 0.0;
+    for s in 0..k {
+      gamma[[t, s]] = gamma_term(t, s);
+      z += gamma[[t, s]];
+    }
+    for s in 0..k {
+      gamma[[t, s]] /= z;
+    }
+  }
+  let mut xi_sum = Array2::<f64>::zeros((k, k));
+  let mut xi = Array2::<f64>::zeros((k, k));
+  for t in 0..(n - 1) {
+    let mut z = 0.0;
+    for i in 0..k {
+      for j in 0..k {
+        xi[[i, j]] = xi_term(t, i, j);
+        z += xi[[i, j]];
+      }
+    }
+    for i in 0..k {
+      for j in 0..k {
+        xi_sum[[i, j]] += xi[[i, j]] / z;
+      }
+    }
+  }
+  (gamma, xi_sum)
 }
 
 /// `ln N(x; mean, std²)`, with `ln_std = std.ln()` taken once per state.

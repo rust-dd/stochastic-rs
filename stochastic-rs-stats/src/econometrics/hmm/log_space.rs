@@ -10,6 +10,7 @@ use ndarray::ArrayView1;
 
 use super::GaussianHmm;
 use super::log_gauss_pdf;
+use super::normalised_expectations;
 use crate::traits::RealExt;
 
 /// Rows of `ln α̂_t`, the log densities `ln b_t(j)`, the step scalings `ln ĉ_t` and their sum.
@@ -92,38 +93,18 @@ impl GaussianHmm {
         log_beta[[t, i]] = log_sum_exp(&terms) - log_scaling[t + 1];
       }
     }
-    let mut gamma = Array2::<f64>::zeros((n, k));
-    for t in 0..n {
-      let mut z = 0.0;
-      for s in 0..k {
-        gamma[[t, s]] = (log_alpha[[t, s]] + log_beta[[t, s]]).exp();
-        z += gamma[[t, s]];
-      }
-      for s in 0..k {
-        gamma[[t, s]] /= z;
-      }
-    }
-    let mut xi_sum = Array2::<f64>::zeros((k, k));
-    let mut xi = Array2::<f64>::zeros((k, k));
-    for t in 0..(n - 1) {
-      let mut z = 0.0;
-      for i in 0..k {
-        for j in 0..k {
-          xi[[i, j]] = (log_alpha[[t, i]]
-            + ln_transitions[[i, j]]
-            + log_emissions[[t + 1, j]]
-            + log_beta[[t + 1, j]]
-            - log_scaling[t + 1])
-            .exp();
-          z += xi[[i, j]];
-        }
-      }
-      for i in 0..k {
-        for j in 0..k {
-          xi_sum[[i, j]] += xi[[i, j]] / z;
-        }
-      }
-    }
+    let (gamma, xi_sum) = normalised_expectations(
+      (n, k),
+      |t, s| (log_alpha[[t, s]] + log_beta[[t, s]]).exp(),
+      |t, i, j| {
+        (log_alpha[[t, i]]
+          + ln_transitions[[i, j]]
+          + log_emissions[[t + 1, j]]
+          + log_beta[[t + 1, j]]
+          - log_scaling[t + 1])
+          .exp()
+      },
+    );
     (gamma, xi_sum, log_likelihood)
   }
 }
