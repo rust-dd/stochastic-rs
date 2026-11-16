@@ -6,6 +6,8 @@
 //!
 //! Shared enums and result containers for portfolio optimization.
 
+use crate::error::QuantError;
+
 /// Supported portfolio optimization methods.
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
@@ -24,25 +26,8 @@ pub enum OptimizerMethod {
   BlackLitterman,
 }
 
-/// Error returned by [`OptimizerMethod::from_str`](OptimizerMethod) for unrecognized inputs.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct UnknownOptimizerMethod(pub String);
-
-impl std::fmt::Display for UnknownOptimizerMethod {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(
-      f,
-      "unknown optimizer method '{}'. Valid: markowitz, mean-cvar, inverse-vol, \
-       risk-parity, hrp, black-litterman",
-      self.0
-    )
-  }
-}
-
-impl std::error::Error for UnknownOptimizerMethod {}
-
 impl std::str::FromStr for OptimizerMethod {
-  type Err = UnknownOptimizerMethod;
+  type Err = QuantError;
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     match s.to_lowercase().as_str() {
@@ -52,7 +37,12 @@ impl std::str::FromStr for OptimizerMethod {
       "risk-parity" | "riskparity" => Ok(Self::RiskParity),
       "hrp" => Ok(Self::Hrp),
       "bl" | "black-litterman" | "blacklitterman" => Ok(Self::BlackLitterman),
-      _ => Err(UnknownOptimizerMethod(s.to_string())),
+      _ => Err(QuantError::invalid(
+        "optimizer method",
+        format!(
+          "'{s}', expected one of markowitz, mean-cvar, inverse-vol, risk-parity, hrp, black-litterman"
+        ),
+      )),
     }
   }
 }
