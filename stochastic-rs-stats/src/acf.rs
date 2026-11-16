@@ -27,9 +27,8 @@ use stochastic_rs_distributions::special::gamma_q;
 
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
-use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
-use crate::input::validate;
+use crate::input::validate_view;
 use crate::traits::FloatExt;
 
 /// Biased-denominator sample ACF (statsmodels' default), Box–Jenkins §2.1.4; `Err` on at most
@@ -43,7 +42,7 @@ pub fn acf<T: FloatExt>(x: ArrayView1<T>, max_lag: usize) -> Result<Array1<T>, S
     max_lag >= 1,
     "max_lag must satisfy `max_lag >= 1`, got max_lag = {max_lag:?}"
   );
-  validate(&as_slice_or_copy(x), max_lag.saturating_add(1))?;
+  validate_view(x, max_lag.saturating_add(1))?;
   if x.iter().all(|&v| v == x[0]) {
     return Err(StatsError::DegenerateData("constant series"));
   }

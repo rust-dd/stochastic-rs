@@ -15,6 +15,7 @@ use ndarray::ArrayView1;
 use crate::StatsError;
 use crate::input::as_slice_or_copy;
 use crate::input::validate;
+use crate::input::validate_view;
 
 /// Gaussian KDE over a copy of the sample.
 #[derive(Debug, Clone)]
@@ -42,7 +43,7 @@ impl GaussianKde {
       bandwidth > 0.0,
       "bandwidth must satisfy `bandwidth > 0.0`, got bandwidth = {bandwidth:?}"
     );
-    validate(&as_slice_or_copy(data), 1)?;
+    validate_view(data, 1)?;
     Ok(Self {
       data: data.to_owned(),
       bandwidth,

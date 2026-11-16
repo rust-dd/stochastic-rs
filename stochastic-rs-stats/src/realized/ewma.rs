@@ -15,8 +15,7 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 
 use crate::StatsError;
-use crate::input::as_slice_or_copy;
-use crate::input::validate;
+use crate::input::validate_view;
 use crate::traits::FloatExt;
 
 /// RiskMetrics' recommended daily decay factor.
@@ -46,7 +45,7 @@ pub fn ewma_variance<T: FloatExt>(
     lambda > 0.0 && lambda < 1.0,
     "lambda must satisfy `0.0 < lambda < 1.0`, got lambda = {lambda:?}"
   );
-  validate(&as_slice_or_copy(returns), 2)?;
+  validate_view(returns, 2)?;
   let n = returns.len();
 
   let mut variance = Array1::<f64>::zeros(n);

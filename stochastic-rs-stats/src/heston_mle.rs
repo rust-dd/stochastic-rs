@@ -10,6 +10,7 @@ use crate::StatsError;
 use crate::input::as_slice_or_copy;
 use crate::input::reject_constant;
 use crate::input::validate;
+use crate::input::validate_view;
 
 #[derive(Clone, Debug)]
 pub struct HestonMleFit {
@@ -244,7 +245,7 @@ fn validate_series(s: ArrayView1<f64>, v: ArrayView1<f64>) -> Result<(), StatsEr
       got: v.len(),
     });
   }
-  validate(&as_slice_or_copy(s), 2)?;
+  validate_view(s, 2)?;
   let v = as_slice_or_copy(v);
   validate(&v, 2)?;
   reject_constant(&v, "constant variance series")
