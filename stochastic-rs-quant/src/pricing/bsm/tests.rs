@@ -277,7 +277,7 @@ fn bsm_greeks_match_pre_refactor_goldens() {
 
 #[test]
 fn a_deep_out_of_the_money_put_delta_keeps_its_digits() {
-  // mpmath's 4e-14 delta, where Φ(d₁) − 1 kept 1e-3 of it; d₁ = 7.47 rounds it by 2εd₁² ≈ 1.2e-14.
+  // mpmath's 4e-14 delta, which Φ(d₁) − 1 would cancel; d₁ = 7.47 rounds it by 2εd₁² ≈ 1.2e-14.
   let m = BsmPricer::new(0.1, BsmCoc::Merton1973);
   let delta = m.delta(100.0, 60.0, 0.05, 0.02, 0.5, OptionType::Put);
   let exact = -3.920_292_531_945_109_5e-14;

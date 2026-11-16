@@ -37,9 +37,8 @@ fn grid(pairs: &[(f64, f64)]) -> Vec<SwaptionQuote> {
 /// F (2Φ(σ√T/2) − 1)`.
 fn atm_black_vol(price: f64, quote: &SwaptionQuote, curve: &DiscountCurve<f64>) -> f64 {
   let market = market_swaption(quote, curve, 1.0);
-  let payments = (quote.tenor / market.accrual).round() as usize;
-  let annuity: f64 = (1..=payments)
-    .map(|k| curve.discount_factor(quote.expiry + market.accrual * k as f64) * market.accrual)
+  let annuity: f64 = (market.coupon_times.iter())
+    .map(|&t| curve.discount_factor(t) * market.accrual)
     .sum();
   let ratio = price / (annuity * market.fair_rate);
   2.0 * ndtri((ratio + 1.0) / 2.0) / quote.expiry.sqrt()
@@ -94,6 +93,44 @@ fn black_karasinski_bridge_keeps_the_two_rates_apart() {
   assert_eq!(model.theta_log, 0.05_f64.ln());
 }
 
+/// The forward turns negative past three years, so the 2y × 3y swap rate is about −3 %: Black-76
+/// prices no such quote, and neither tree fit starts.
+#[test]
+fn a_quote_whose_swap_rate_is_negative_has_no_black_price_and_is_refused() {
+  let curve = DiscountCurve::from_zero_rates(
+    &Array1::from_vec(vec![1.0, 3.0, 5.0]),
+    &Array1::from_vec(vec![0.02, 0.02, -0.01]),
+    InterpolationMethod::LogLinearOnDiscountFactors,
+  );
+  let mut quotes = grid(&[(1.0, 2.0), (2.0, 3.0)]);
+  for quote in &mut quotes {
+    quote.black_vol = 0.2;
+  }
+  let bk_start = BlackKarasinskiParams {
+    mean_reversion: 0.1,
+    sigma: 0.2,
+    initial_rate: 0.03,
+    long_run_rate: 0.03,
+  };
+  let g2_start = G2ppParams {
+    mean_reversion_x: 0.4,
+    mean_reversion_y: 0.08,
+    sigma_x: 0.012,
+    sigma_y: 0.005,
+    rho: -0.5,
+    phi: 0.03,
+  };
+  let bk =
+    BlackKarasinskiSwaptionCalibrator::new(&quotes, &curve, 1.0, 8, bk_start).calibrate(None);
+  let g2 = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 4, g2_start).calibrate(None);
+  for err in [bk.unwrap_err(), g2.unwrap_err()] {
+    assert!(
+      matches!(&err, QuantError::InvalidQuote { index: 1, reason } if reason.contains("fair_rate")),
+      "{err}"
+    );
+  }
+}
+
 /// Five G2++ parameters from four quotes are not identifiable one by one,
 /// so the check is on the repricing error and the trait plumbing.
 #[test]
@@ -123,9 +160,13 @@ fn g2pp_reprices_synthetic_quotes() {
     rho: -0.5,
     phi: 0.03,
   };
-  let result = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 4, start)
-    .with_options(CalibrationOptions::default().with_max_iterations(300))
-    .calibrate(None)
+  let calibrator = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 4, start)
+    .with_options(CalibrationOptions::default().with_max_iterations(300));
+  // From this start the simplex collapses in the (σ, η, ρ) valley 4.4 % off the quotes; a second
+  // Nelder–Mead pass from where it stopped reprices them to 0.5 %.
+  let first = calibrator.calibrate(None).expect("calibration runs");
+  let result = calibrator
+    .calibrate(Some(first.params))
     .expect("calibration runs");
   let (rmse, worst) = (result.rmse() / scale, result.max_error.unwrap() / scale);
   assert!(

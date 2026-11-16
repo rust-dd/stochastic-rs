@@ -23,7 +23,9 @@ use std::convert::Infallible;
 use basin::CostFunction;
 
 use super::hw_swaption::CurveSnapshot;
+use super::hw_swaption::MarketSwaption;
 use super::hw_swaption::SwaptionQuote;
+use super::hw_swaption::market_swaption;
 use super::hw_swaption::serialize_curve;
 use super::hw_swaption::validate_swaption_quotes;
 use super::hw_swaption::weighted_sse;
@@ -35,7 +37,6 @@ use crate::calibration::nelder_mead_fit;
 use crate::calibration::quote::check_finite_start;
 use crate::curves::DiscountCurve;
 use crate::instruments::option::bermudan::BermudanSwaption;
-use crate::instruments::option::caplet::black_forward_caplet;
 use crate::instruments::option::types::ExerciseSchedule;
 use crate::instruments::option::types::TreeCouponSchedule;
 use crate::lattice::short_rate::BlackKarasinskiTree;
@@ -43,44 +44,6 @@ use crate::lattice::short_rate::BlackKarasinskiTreeModel;
 use crate::lattice::short_rate::G2ppTree;
 use crate::lattice::short_rate::G2ppTreeModel;
 use crate::traits::ToShortRateModel;
-
-/// Market side of one quote: the forward swap and its Black-76 price.
-#[derive(Debug, Clone)]
-struct MarketSwaption {
-  fair_rate: f64,
-  coupon_times: Vec<f64>,
-  accrual: f64,
-  market_price: f64,
-}
-
-fn market_swaption(
-  quote: &SwaptionQuote,
-  curve: &DiscountCurve<f64>,
-  notional: f64,
-) -> MarketSwaption {
-  let payments_per_year = (1.0 / quote.fixed_accrual).round();
-  let n_payments = ((quote.tenor * payments_per_year).round() as usize).max(1);
-  let accrual = quote.tenor / n_payments as f64;
-  let coupon_times: Vec<f64> = (1..=n_payments)
-    .map(|k| quote.expiry + accrual * k as f64)
-    .collect();
-  let annuity: f64 = coupon_times
-    .iter()
-    .map(|&t| curve.discount_factor(t) * accrual)
-    .sum::<f64>()
-    * notional;
-  let p_exp = curve.discount_factor(quote.expiry);
-  let p_end = curve.discount_factor(*coupon_times.last().expect("non-empty"));
-  let fair_rate = (p_exp - p_end) / (annuity / notional).max(1e-14);
-  let market_price =
-    annuity * black_forward_caplet(fair_rate, fair_rate, quote.expiry, quote.black_vol);
-  MarketSwaption {
-    fair_rate,
-    coupon_times,
-    accrual,
-    market_price,
-  }
-}
 
 /// Tree horizon, step count and the one-exercise swaption snapped to it.
 fn tree_swaption(
@@ -231,7 +194,7 @@ impl crate::traits::Calibrator for BlackKarasinskiSwaptionCalibrator<'_> {
   fn calibrate(&self, initial: Option<BlackKarasinskiParams>) -> Result<Self::Output, QuantError> {
     let start = initial.unwrap_or(self.start);
     start.check()?;
-    validate_swaption_quotes(self.quotes)?;
+    validate_swaption_quotes(self.quotes, self.curve)?;
     let problem = self.cost(&start, self.options.regularization_for(2)?);
     let (a0, s0) = (start.mean_reversion, start.sigma);
     let simplex = vec![vec![a0, s0], vec![a0 * 1.5, s0], vec![a0, s0 * 1.5]];
@@ -403,7 +366,7 @@ impl crate::traits::Calibrator for G2ppSwaptionCalibrator<'_> {
   fn calibrate(&self, initial: Option<G2ppParams>) -> Result<Self::Output, QuantError> {
     let start = initial.unwrap_or(self.start);
     check_finite_start(&start.fields())?;
-    validate_swaption_quotes(self.quotes)?;
+    validate_swaption_quotes(self.quotes, self.curve)?;
     let problem = self.cost(start.phi, self.options.regularization_for(5)?);
     let x0 = [
       start.mean_reversion_x,

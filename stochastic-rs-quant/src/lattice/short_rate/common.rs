@@ -142,19 +142,16 @@ fn sanitize_probabilities<T: RealExt>(down: &mut T, middle: &mut T, up: &mut T) 
   }
 }
 
-/// λ = ρ/12: four corner shifts of λ add 4λ·d_X·d_Y to the covariance, and d = σ√(3 dt) makes that
-/// ρσ_Xσ_Y dt. Both marginals are kept, so it is exact on any branch while no corner clamps at 0.
-pub(crate) const SYMMETRIC_BRANCH_CORNER_DENOM: f64 = 12.0;
-
-/// G2++ joint probabilities: marginal product plus ρ/12 on the four corners; marginals hold and the
-/// covariance is ρ/3 until a corner clamps at 0: |ρ| > 1/3 at `p_u = p_d = 1/6`, less off-centre.
+/// G2++ joint probabilities `Π⁰ + s̄·(|ρ|/36)·M`, Brigo–Mercurio's `M` +5 on the corners ρ favours,
+/// −1 on the other two, −4 on the edges, +8 at the centre; `s̄ ≤ 1`, the largest keeping `Π ≥ 0`.
+/// Auer (2009), Proc. World Congress on Engineering II, 1388–1389: Brigo–Mercurio's pattern, BM′.
 pub(crate) fn correlated_joint_probabilities<T: RealExt>(
   x_branch: TrinomialBranch<T>,
   y_branch: TrinomialBranch<T>,
   rho: T,
 ) -> [[T; 3]; 3] {
-  let px = x_branch.probabilities();
-  let py = y_branch.probabilities();
+  let px = non_negative(x_branch.probabilities());
+  let py = non_negative(y_branch.probabilities());
   let mut joint = [[T::zero(); 3]; 3];
   for i in 0..3 {
     for j in 0..3 {
@@ -162,46 +159,159 @@ pub(crate) fn correlated_joint_probabilities<T: RealExt>(
     }
   }
 
-  let mut lambda = rho / T::from_f64_fast(SYMMETRIC_BRANCH_CORNER_DENOM);
-  if lambda > T::zero() {
-    let max_positive = joint[0][2].min(joint[2][0]);
-    lambda = lambda.min(max_positive);
-  } else if lambda < T::zero() {
-    let max_negative = joint[0][0].min(joint[2][2]);
-    lambda = lambda.max(-max_negative);
-  }
-
-  joint[0][0] += lambda;
-  joint[2][2] += lambda;
-  joint[0][2] -= lambda;
-  joint[2][0] -= lambda;
-
-  let mut sum = T::zero();
-  for row in &joint {
-    for value in row {
-      sum += *value;
-    }
-  }
-  if sum > T::zero() {
-    for row in &mut joint {
-      for value in row {
-        *value = (*value).max(T::zero());
+  let (corner, edge, centre) = (
+    T::from_f64_fast(5.0),
+    T::from_f64_fast(-4.0),
+    T::from_f64_fast(8.0),
+  );
+  let (same, opposite) = if rho > T::zero() {
+    (corner, -T::one())
+  } else {
+    (-T::one(), corner)
+  };
+  let pattern = [
+    [same, edge, opposite],
+    [edge, centre, edge],
+    [opposite, edge, same],
+  ];
+  let scale = rho.abs() / T::from_f64_fast(36.0);
+  let mut s_bar = T::one();
+  for i in 0..3 {
+    for j in 0..3 {
+      let delta = pattern[i][j] * scale;
+      if delta < T::zero() && joint[i][j] + delta < T::zero() {
+        s_bar = s_bar.min_or_nan(joint[i][j] / -delta);
       }
     }
-    let mut normalized_sum = T::zero();
-    for row in &joint {
-      for value in row {
-        normalized_sum += *value;
+  }
+  // Rows and columns of `M` sum to zero, so the marginals hold; the floor only meets a −0 or the
+  // binding cell's last-ulp negative.
+  for i in 0..3 {
+    for j in 0..3 {
+      joint[i][j] = (joint[i][j] + s_bar * pattern[i][j] * scale).max_or_nan(T::zero());
+    }
+  }
+  joint
+}
+
+/// A branch whose spacing exceeds 2σ√Δt, or whose mean leaves the grid, has a negative probability;
+/// its non-negative part, renormalised, is contained here until the builder is fixed.
+fn non_negative<T: RealExt>(p: [T; 3]) -> [T; 3] {
+  if p.iter().all(|&q| q >= T::zero()) {
+    return p;
+  }
+  let clipped = p.map(|q| q.max_or_nan(T::zero()));
+  let total = clipped[0] + clipped[1] + clipped[2];
+  clipped.map(|q| q / total)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn symmetric() -> TrinomialBranch<f64> {
+    TrinomialBranch {
+      center_index: 1,
+      down_probability: 1.0 / 6.0,
+      middle_probability: 2.0 / 3.0,
+      up_probability: 1.0 / 6.0,
+    }
+  }
+
+  /// One-step correlation of the moves `−1, 0, +1` on both axes, about their means.
+  fn realised_correlation(joint: &[[f64; 3]; 3]) -> f64 {
+    let moves = [-1.0, 0.0, 1.0];
+    let (mut mx, mut my) = (0.0, 0.0);
+    for i in 0..3 {
+      for j in 0..3 {
+        mx += joint[i][j] * moves[i];
+        my += joint[i][j] * moves[j];
       }
     }
-    if normalized_sum > T::zero() {
-      for row in &mut joint {
-        for value in row {
-          *value = *value / normalized_sum;
+    let (mut cov, mut vx, mut vy) = (0.0, 0.0, 0.0);
+    for i in 0..3 {
+      for j in 0..3 {
+        let (dx, dy) = (moves[i] - mx, moves[j] - my);
+        cov += joint[i][j] * dx * dy;
+        vx += joint[i][j] * dx * dx;
+        vy += joint[i][j] * dy * dy;
+      }
+    }
+    cov / (vx * vy).sqrt()
+  }
+
+  #[test]
+  fn the_symmetric_branch_realises_rho_exactly_up_to_one() {
+    for rho in [-1.0, -0.9, -0.7, -1.0 / 3.0, 0.0, 0.5, 0.95, 1.0] {
+      let joint = correlated_joint_probabilities(symmetric(), symmetric(), rho);
+      let realised = realised_correlation(&joint);
+      assert!(
+        (realised - rho).abs() < 1e-14,
+        "rho {rho}: realised {realised}"
+      );
+      let (mut rows, mut cols) = ([0.0; 3], [0.0; 3]);
+      for i in 0..3 {
+        for j in 0..3 {
+          assert!(
+            joint[i][j] >= 0.0,
+            "rho {rho}: cell ({i}, {j}) = {}",
+            joint[i][j]
+          );
+          rows[i] += joint[i][j];
+          cols[j] += joint[i][j];
         }
       }
+      let marginal = symmetric().probabilities();
+      for k in 0..3 {
+        assert!((rows[k] - marginal[k]).abs() < 1e-15 && (cols[k] - marginal[k]).abs() < 1e-15);
+      }
     }
   }
 
-  joint
+  #[test]
+  fn a_drift_shifted_branch_scales_the_pattern_instead_of_dropping_it() {
+    // Auer's s̄ = 35/36 on the branch (1/4, 7/12, 1/6) at rho = −0.9 realises −7√177/118 exactly.
+    let shifted = TrinomialBranch {
+      center_index: 1,
+      down_probability: 0.25,
+      middle_probability: 7.0 / 12.0,
+      up_probability: 1.0 / 6.0,
+    };
+    let joint = correlated_joint_probabilities(shifted, symmetric(), -0.9);
+    let min_cell = f64::min_or_nan_fold(joint.iter().flatten().copied());
+    assert!(
+      (0.0..1e-15).contains(&min_cell),
+      "the binding cell is zero: {min_cell}"
+    );
+    let realised = realised_correlation(&joint);
+    assert!(
+      (realised + 7.0 * 177.0_f64.sqrt() / 118.0).abs() < 1e-14,
+      "{realised}"
+    );
+  }
+
+  #[test]
+  fn a_branch_with_a_negative_probability_enters_by_its_non_negative_part() {
+    // An off-centre node of a factor whose vol is under the grid floor: (3/8, 3/4, −1/8).
+    let off_grid = TrinomialBranch {
+      center_index: 1,
+      down_probability: 0.375,
+      middle_probability: 0.75,
+      up_probability: -0.125,
+    };
+    for rho in [0.0, -0.9, 0.9] {
+      let joint = correlated_joint_probabilities(symmetric(), off_grid, rho);
+      let cells = joint.iter().flatten().copied();
+      assert!(
+        f64::min_or_nan_fold(cells.clone()) >= 0.0,
+        "rho {rho}: {joint:?}"
+      );
+      assert!(
+        (cells.sum::<f64>() - 1.0).abs() < 1e-15,
+        "rho {rho}: {joint:?}"
+      );
+      let up = joint[0][2] + joint[1][2] + joint[2][2];
+      assert!(up.abs() < 1e-15, "rho {rho}: the clipped move keeps {up}");
+    }
+  }
 }

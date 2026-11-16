@@ -32,14 +32,17 @@ fn intrinsic(moneyness: f64, t: f64, v: f64) -> f64 {
   }
 }
 
-/// Black-76 caplet undiscounted forward value $F\Phi(d_1)-K\Phi(d_2)$; the intrinsic value where the formula is undefined (a
-/// non-positive forward, strike, time or vol), NaN for a NaN rate or time, or a NaN vol on a live option.
+/// Black-76 caplet forward value `FΦ(d₁) − KΦ(d₂)`, intrinsic at `F`, `K`, `τ` or `σ` ≤ 0; NaN for
+/// a NaN rate or time and, while live, a NaN `σ` or `F, K < 0`: shift them or use Bachelier there.
 pub fn black_forward_caplet<T: RealExt>(forward: T, strike: T, tau: T, sigma: T) -> T {
   let f = forward.to_f64().unwrap_or(0.0);
   let k = strike.to_f64().unwrap_or(0.0);
   let t = tau.to_f64().unwrap_or(0.0);
   let v = sigma.to_f64().unwrap_or(0.0);
   if f <= 0.0 || k <= 0.0 || t <= 0.0 || v <= 0.0 {
+    if f < 0.0 && k < 0.0 && t > 0.0 && v > 0.0 {
+      return T::nan();
+    }
     return T::from_f64_fast(intrinsic(f - k, t, v));
   }
   let sqrt_t = t.sqrt();
@@ -48,13 +51,16 @@ pub fn black_forward_caplet<T: RealExt>(forward: T, strike: T, tau: T, sigma: T)
   T::from_f64_fast(f * norm_cdf(d1) - k * norm_cdf(d2))
 }
 
-/// Black-76 floorlet undiscounted forward value $K\Phi(-d_2)-F\Phi(-d_1)$, with [`black_forward_caplet`]'s fallback.
+/// Black-76 floorlet forward value `KΦ(−d₂) − FΦ(−d₁)`, with [`black_forward_caplet`]'s edge cases.
 pub fn black_forward_floorlet<T: RealExt>(forward: T, strike: T, tau: T, sigma: T) -> T {
   let f = forward.to_f64().unwrap_or(0.0);
   let k = strike.to_f64().unwrap_or(0.0);
   let t = tau.to_f64().unwrap_or(0.0);
   let v = sigma.to_f64().unwrap_or(0.0);
   if f <= 0.0 || k <= 0.0 || t <= 0.0 || v <= 0.0 {
+    if f < 0.0 && k < 0.0 && t > 0.0 && v > 0.0 {
+      return T::nan();
+    }
     return T::from_f64_fast(intrinsic(k - f, t, v));
   }
   let sqrt_t = t.sqrt();
@@ -63,7 +69,8 @@ pub fn black_forward_floorlet<T: RealExt>(forward: T, strike: T, tau: T, sigma: 
   T::from_f64_fast(k * norm_cdf(-d2) - f * norm_cdf(-d1))
 }
 
-/// Bachelier caplet undiscounted forward value; intrinsic at a non-positive time or vol, with the Black helpers' NaN rule.
+/// Bachelier caplet forward value, any sign of `F` and `K`; intrinsic at `τ` or `σ` ≤ 0; NaN for a
+/// NaN rate or time and, while live, a NaN `σ`.
 pub fn bachelier_forward_caplet<T: RealExt>(forward: T, strike: T, tau: T, sigma: T) -> T {
   let f = forward.to_f64().unwrap_or(0.0);
   let k = strike.to_f64().unwrap_or(0.0);
@@ -196,5 +203,67 @@ mod tests {
     let call = bachelier_forward_caplet(f, f, tau, sigma);
     let expected = sigma * tau.sqrt() / (2.0 * std::f64::consts::PI).sqrt();
     assert!((call - expected).abs() < 1e-12);
+  }
+
+  /// Black (1976) against mpmath's 50-digit lognormal expectation, the exact limits, and the one
+  /// undefined case: a live option on a negative forward and a negative strike.
+  #[test]
+  fn black_76_matches_the_reference_keeps_its_limits_and_is_nan_on_two_negative_rates() {
+    for ((f, k, t, v), (caplet, floorlet)) in [
+      (
+        (0.04_f64, 0.035, 1.5, 0.25),
+        (0.007_485_867_418_647_512, 0.002_485_867_418_647_512),
+      ),
+      (
+        (0.03, 0.02, 1.0, 0.2),
+        (0.010_038_495_064_659_41, 0.000_038_495_064_659_410_43),
+      ),
+      (
+        (0.02, 0.045, 0.5, 0.4),
+        (0.000_005_101_911_912_307_895, 0.025_005_101_911_912_308),
+      ),
+    ] {
+      assert!(
+        (black_forward_caplet(f, k, t, v) - caplet).abs() < 1e-15,
+        "caplet {f} {k}"
+      );
+      assert!(
+        (black_forward_floorlet(f, k, t, v) - floorlet).abs() < 1e-15,
+        "floorlet {f} {k}"
+      );
+    }
+    assert_eq!(
+      black_forward_caplet(0.03, -0.01, 1.0, 0.2),
+      0.04,
+      "k <= 0 < f: the payoff is linear"
+    );
+    assert_eq!(black_forward_floorlet(0.03, -0.01, 1.0, 0.2), 0.0);
+    assert_eq!(
+      black_forward_caplet(0.0, 0.02, 1.0, 0.2),
+      0.0,
+      "f = 0 is absorbed"
+    );
+    assert_eq!(black_forward_floorlet(0.0, 0.02, 1.0, 0.2), 0.02);
+    assert_eq!(
+      black_forward_caplet(-0.01, 0.02, 1.0, 0.2),
+      0.0,
+      "f < 0 < k under the sign-preserving reading"
+    );
+    assert_eq!(black_forward_floorlet(-0.01, 0.02, 1.0, 0.2), 0.03);
+    assert_eq!(
+      black_forward_caplet(-0.01, -0.02, 0.0, 0.2),
+      0.01,
+      "expired: intrinsic whatever the signs"
+    );
+    assert_eq!(
+      black_forward_caplet(-0.01, -0.02, 1.0, 0.0),
+      0.01,
+      "zero vol: intrinsic"
+    );
+    assert!(
+      black_forward_caplet(-0.01_f64, -0.02, 1.0, 0.2).is_nan(),
+      "a live option on two negative rates has no Black-76 value"
+    );
+    assert!(black_forward_floorlet(-0.01_f64, -0.02, 1.0, 0.2).is_nan());
   }
 }
