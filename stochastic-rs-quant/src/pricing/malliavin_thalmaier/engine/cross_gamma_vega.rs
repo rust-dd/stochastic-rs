@@ -11,7 +11,7 @@ impl<T: FloatExt> MtGreeks<T> {
   pub fn cross_gamma(&self, payoff: &MtPayoff<T>, asset_a: usize, asset_b: usize) -> T {
     self
       .try_cross_gamma(payoff, asset_a, asset_b)
-      .expect("cross-Gamma inputs are unsupported; use try_cross_gamma")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible common-random-numbers cross-Gamma.
@@ -39,7 +39,7 @@ impl<T: FloatExt> MtGreeks<T> {
   ) -> T {
     self
       .try_cross_gamma_with_seed(payoff, asset_a, asset_b, seed)
-      .expect("cross-Gamma inputs are unsupported; use try_cross_gamma_with_seed")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible deterministic cross-Gamma using common random numbers.

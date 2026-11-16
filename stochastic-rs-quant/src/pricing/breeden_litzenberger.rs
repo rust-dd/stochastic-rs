@@ -86,7 +86,7 @@ impl BreedenLitzenberger {
   pub fn density_from_custom_derivatives(&self) -> Vec<f64> {
     self
       .try_density_from_custom_derivatives()
-      .expect("density_from_custom_derivatives requires d2c_dk2 populated")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Falliable variant of [`Self::density_from_custom_derivatives`].

@@ -15,7 +15,7 @@ impl<T: RealExt> FmVol<T> {
   pub fn spot_variance(&self, tau: &[T], m_freq: Option<usize>) -> Array1<T> {
     self
       .try_spot_variance(tau, m_freq)
-      .expect("invalid spot variance window or evaluation time")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::spot_variance`].
@@ -51,7 +51,7 @@ impl<T: RealExt> FmVol<T> {
   pub fn spot_variance_fe(&self, tau: &[T], m_freq: Option<usize>) -> Array1<T> {
     self
       .try_spot_variance_fe(tau, m_freq)
-      .expect("invalid FE spot variance window or evaluation time")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::spot_variance_fe`].
@@ -83,7 +83,7 @@ impl<T: RealExt> FmVol<T> {
   pub fn spot_covariance(&self, other: &Self, tau: &[T], m_freq: Option<usize>) -> Array1<T> {
     self
       .try_spot_covariance(other, tau, m_freq)
-      .expect("invalid spot covariance configuration")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::spot_covariance`].
@@ -124,7 +124,7 @@ impl<T: RealExt> FmVol<T> {
   ) -> Array1<T> {
     self
       .try_spot_leverage(tau, m_freq, l_freq)
-      .expect("invalid spot leverage window or evaluation time")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::spot_leverage`].
@@ -175,7 +175,7 @@ impl<T: RealExt> FmVol<T> {
   pub fn spot_volvol(&self, tau: &[T], m_freq: Option<usize>, l_freq: Option<usize>) -> Array1<T> {
     self
       .try_spot_volvol(tau, m_freq, l_freq)
-      .expect("invalid spot volatility-of-volatility window or evaluation time")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::spot_volvol`].
@@ -242,7 +242,7 @@ impl<T: RealExt> FmVol<T> {
   ) -> Array1<T> {
     self
       .try_spot_volvol_bias_corrected(tau, m_freq, l_freq)
-      .expect("invalid bias-corrected spot volatility-of-volatility window or evaluation time")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::spot_volvol_bias_corrected`].
@@ -281,7 +281,7 @@ impl<T: RealExt> FmVol<T> {
   ) -> Array1<T> {
     self
       .try_spot_quarticity(tau, m_freq, l_freq)
-      .expect("invalid spot quarticity window or evaluation time")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::spot_quarticity`].

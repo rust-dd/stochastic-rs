@@ -165,7 +165,7 @@ fn calibrate_slice(
 /// Panics for invalid quotes or an infeasible fit. Use [`try_calibrate_essvi`]
 /// to handle these failures explicitly.
 pub fn calibrate_essvi<T: RealExt>(slices: &[SsviSlice<T>], maturities: &[T]) -> EssviSurface<T> {
-  try_calibrate_essvi(slices, maturities).expect("eSSVI calibration failed")
+  try_calibrate_essvi(slices, maturities).unwrap_or_else(|e| panic!("{e}"))
 }
 
 /// Calibrates an admissible eSSVI surface, returning an error for invalid quotes
@@ -183,7 +183,7 @@ pub fn try_calibrate_essvi<T: RealExt>(
   }
   if slices.is_empty() {
     return Err(QuantError::InsufficientData {
-      what: "an eSSVI surface (slices)",
+      what: "slices in an eSSVI surface",
       needed: 1,
       got: 0,
     });

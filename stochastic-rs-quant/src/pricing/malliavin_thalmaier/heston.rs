@@ -99,8 +99,8 @@ impl<T: FloatExt> MultiHestonParams<T> {
         "cross_corr rows, one per asset",
         "cross_corr columns, one per asset",
       ],
-      self.cross_corr.dim(),
       (d, d),
+      self.cross_corr.dim(),
     )?;
     let one = T::one();
     let neg_one = -one;

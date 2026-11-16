@@ -9,9 +9,12 @@ use stochastic_rs_quant::curves::DiscountCurve;
 use stochastic_rs_quant::curves::InterpolationMethod;
 use stochastic_rs_quant::inflation::InflationCurve;
 use stochastic_rs_quant::inflation::ZeroCouponInflationCurve;
+use stochastic_rs_quant::portfolio::momentum::WeightScheme;
 use stochastic_rs_quant::portfolio::optimizers::empirical_cvar;
+use stochastic_rs_quant::portfolio::types::OptimizerMethod;
 use stochastic_rs_quant::pricing::sabr::SabrParams;
 use stochastic_rs_quant::pricing::sabr::hagan_implied_vol;
+use stochastic_rs_quant::risk::xva::ExposureProfile;
 use stochastic_rs_quant::vol_surface::implied::ImpliedVolSurface;
 use stochastic_rs_quant::vol_surface::implied::OptionQuote;
 
@@ -96,14 +99,42 @@ fn quant_errors_are_one_type_with_a_readable_display() {
   };
   assert_eq!(e.to_string(), "quote 3 cannot be used: strike is NaN");
   let e = QuantError::InsufficientData {
-    what: "optimal cutting frequency",
+    what: "prices for the optimal cutting frequency",
     needed: 8,
     got: 5,
   };
   assert_eq!(
     e.to_string(),
-    "optimal cutting frequency needs 8 observations, got 5"
+    "prices for the optimal cutting frequency: needs at least 8, got 5"
   );
+}
+
+#[test]
+fn an_unknown_method_string_is_invalid_input_listing_the_accepted_ones() {
+  let e = "nope".parse::<OptimizerMethod>().unwrap_err();
+  assert!(matches!(
+    e,
+    QuantError::InvalidInput {
+      what: "optimizer method",
+      ..
+    }
+  ));
+  assert!(e.to_string().contains("'nope'") && e.to_string().contains("black-litterman"));
+  let e = "nope".parse::<WeightScheme>().unwrap_err();
+  assert!(matches!(
+    e,
+    QuantError::InvalidInput {
+      what: "weight scheme",
+      ..
+    }
+  ));
+  assert!(e.to_string().contains("score-weighted"));
+}
+
+#[test]
+#[should_panic(expected = "MtM columns, one per exposure date: expected 3, got 2")]
+fn a_panicking_twin_panics_with_the_display_of_its_error() {
+  ExposureProfile::from_mtm(&Array2::zeros((2, 2)), vec![0.5, 1.0, 1.5], 0.95);
 }
 
 #[test]

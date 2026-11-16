@@ -76,8 +76,7 @@ pub fn pairs_signals(
   entry_z: f64,
   exit_z: f64,
 ) -> PairsStrategy {
-  try_pairs_signals(y, x, entry_z, exit_z)
-    .expect("pairs_signals: hedge-ratio OLS failed; use try_pairs_signals for falliable variant")
+  try_pairs_signals(y, x, entry_z, exit_z).unwrap_or_else(|e| panic!("{e}"))
 }
 
 /// [`pairs_signals`] with `DimensionMismatch` for series of unequal length, `InvalidInput` unless
@@ -104,7 +103,7 @@ pub fn try_pairs_signals(
   let n = y.len();
   if n < 3 {
     return Err(QuantError::InsufficientData {
-      what: "pairs signals",
+      what: "observations for pairs signals",
       needed: 3,
       got: n,
     });

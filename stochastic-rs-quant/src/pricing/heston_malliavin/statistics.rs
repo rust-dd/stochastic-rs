@@ -28,7 +28,7 @@ impl OnlineScalar {
   pub(super) fn finish(self) -> Result<EstimateWithError, QuantError> {
     if self.count < 2 {
       return Err(QuantError::InsufficientData {
-        what: "a Monte Carlo standard error",
+        what: "samples for a Monte Carlo standard error",
         needed: 2,
         got: self.count,
       });
@@ -96,7 +96,7 @@ impl<const N: usize> OnlineCovariance<N> {
   pub(super) fn finish(self) -> Result<CovarianceSummary<N>, QuantError> {
     if self.count < 2 {
       return Err(QuantError::InsufficientData {
-        what: "a Monte Carlo covariance",
+        what: "samples for a Monte Carlo covariance",
         needed: 2,
         got: self.count,
       });

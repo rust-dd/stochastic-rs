@@ -346,7 +346,7 @@ pub(super) fn validate(
   }
   if snapshot_maturities.is_empty() {
     return Err(QuantError::InsufficientData {
-      what: "the snapshot maturity list",
+      what: "maturities in the snapshot list",
       needed: 1,
       got: 0,
     });

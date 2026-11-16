@@ -132,8 +132,7 @@ pub fn default_cutting_freq_fe(n: usize) -> (usize, usize) {
 ///
 /// `OptimalCuttingResult { n_opt, noise_variance, mse_curve }`.
 pub fn optimal_cutting_frequency(prices: &[f64], times: &[f64]) -> OptimalCuttingResult {
-  try_optimal_cutting_frequency(prices, times)
-    .expect("invalid input for optimal cutting-frequency estimation")
+  try_optimal_cutting_frequency(prices, times).unwrap_or_else(|e| panic!("{e}"))
 }
 
 /// Fallible variant of [`optimal_cutting_frequency`].
@@ -151,7 +150,7 @@ pub fn try_optimal_cutting_frequency(
   let n_obs = prices.len();
   if n_obs < 8 {
     return Err(QuantError::InsufficientData {
-      what: "optimal cutting frequency",
+      what: "prices for the optimal cutting frequency",
       needed: 8,
       got: n_obs,
     });

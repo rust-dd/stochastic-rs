@@ -64,12 +64,12 @@ impl QuantError {
 
 pub(crate) fn check_grid_shape(
   axes: [&'static str; 2],
-  got: (usize, usize),
   expected: (usize, usize),
+  got: (usize, usize),
 ) -> Result<(), QuantError> {
-  for (what, (got, expected)) in axes
+  for (what, (expected, got)) in axes
     .into_iter()
-    .zip([(got.0, expected.0), (got.1, expected.1)])
+    .zip([(expected.0, got.0), (expected.1, got.1)])
   {
     if got != expected {
       return Err(QuantError::DimensionMismatch {
@@ -93,8 +93,7 @@ impl fmt::Display for QuantError {
         got,
       } => write!(f, "{what}: expected {expected}, got {got}"),
       Self::InsufficientData { what, needed, got } => {
-        let plural = if *needed == 1 { "" } else { "s" };
-        write!(f, "{what} needs {needed} observation{plural}, got {got}")
+        write!(f, "{what}: needs at least {needed}, got {got}")
       }
       Self::MissingInput { what, detail } => write!(f, "missing {what}: {detail}"),
       Self::NotPositiveDefinite { what } => write!(f, "{what} is not positive definite"),

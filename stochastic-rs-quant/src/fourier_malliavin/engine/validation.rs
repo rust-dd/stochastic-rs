@@ -65,7 +65,7 @@ pub(super) fn validate_uniform_inputs<T: RealExt>(
 fn validate_prices<T: RealExt>(prices: &[T]) -> Result<(), QuantError> {
   if prices.len() < 2 {
     return Err(QuantError::InsufficientData {
-      what: "the Fourier-Malliavin engine",
+      what: "prices for the Fourier-Malliavin engine",
       needed: 2,
       got: prices.len(),
     });
@@ -134,9 +134,9 @@ pub(super) fn default_max_frequency<T: RealExt>(
     .ok_or_else(|| window_overflow("default N + M + L"))?;
   if max_freq >= n {
     return Err(QuantError::InsufficientData {
-      what: "the default frequency windows (`try_with_freq` takes explicit ones)",
-      needed: max_freq + 1,
-      got: n,
+      what: "prices for the default frequency windows",
+      needed: max_freq + 2,
+      got: n + 1,
     });
   }
   Ok(max_freq)

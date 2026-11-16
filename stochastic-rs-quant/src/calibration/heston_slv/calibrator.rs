@@ -189,21 +189,21 @@ impl HestonSlvCalibrator {
     let (nt, nk) = (self.maturities.len(), self.strikes.len());
     if nk < 3 {
       return Err(QuantError::InsufficientData {
-        what: "the Dupire strike stencil",
+        what: "strikes in the Dupire stencil",
         needed: 3,
         got: nk,
       });
     }
     if nt == 0 {
       return Err(QuantError::InsufficientData {
-        what: "the maturity grid",
+        what: "maturities in the grid",
         needed: 1,
         got: 0,
       });
     }
     if self.local_vol.is_none() && nt < 2 {
       return Err(QuantError::InsufficientData {
-        what: "the Dupire time derivative without `with_local_vol`",
+        what: "maturities for the Dupire time derivative without `with_local_vol`",
         needed: 2,
         got: nt,
       });
@@ -263,8 +263,8 @@ impl HestonSlvCalibrator {
         "call rows, one per maturity",
         "call columns, one per strike",
       ],
-      self.calls.dim(),
       (nt, nk),
+      self.calls.dim(),
     )?;
     if let Some(((j, i), c)) = self
       .calls
@@ -282,8 +282,8 @@ impl HestonSlvCalibrator {
           "local-volatility rows, one per maturity",
           "local-volatility columns, one per strike",
         ],
-        lv.dim(),
         (nt, nk),
+        lv.dim(),
       )?;
     }
     if !(self.dupire_eps.is_finite() && self.dupire_eps > 0.0) {

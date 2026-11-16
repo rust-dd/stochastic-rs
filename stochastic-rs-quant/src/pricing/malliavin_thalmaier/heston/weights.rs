@@ -127,8 +127,8 @@ impl<T: FloatExt> MultiHestonPaths<T> {
         "gamma_inv rows, one per asset",
         "gamma_inv columns, one per asset",
       ],
-      gamma_inv.dim(),
       (d, d),
+      gamma_inv.dim(),
     )?;
     if spots.len() != d {
       return Err(QuantError::DimensionMismatch {
@@ -208,7 +208,7 @@ impl<T: FloatExt> MultiHestonPaths<T> {
         tau,
         &Array1::from_iter(spots.iter().copied()),
       )
-      .expect("invalid conditional Malliavin weight inputs; use try_malliavin_weights")
+      .unwrap_or_else(|e| panic!("{e}"))
       .to_vec()
   }
 
@@ -216,7 +216,7 @@ impl<T: FloatExt> MultiHestonPaths<T> {
   pub fn gamma_inv(&self, cross_corr: &Array2<T>, tau: T) -> Array2<T> {
     self
       .try_gamma_inv(cross_corr, tau)
-      .expect("Malliavin covariance matrix is singular; use try_gamma_inv")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible inverse of the Malliavin covariance matrix.
@@ -238,8 +238,8 @@ impl<T: FloatExt> MultiHestonPaths<T> {
         "cross_corr rows, one per asset",
         "cross_corr columns, one per asset",
       ],
-      cross_corr.dim(),
       (self.n_assets, self.n_assets),
+      cross_corr.dim(),
     )?;
     check_tau(tau)?;
     crate::linalg::inverse_t(&self.malliavin_cov(cross_corr, tau)).ok_or_else(|| {
@@ -253,7 +253,7 @@ impl<T: FloatExt> MultiHestonPaths<T> {
   fn check_path_layout(&self) -> Result<(), QuantError> {
     if self.n_steps < 2 {
       return Err(QuantError::InsufficientData {
-        what: "a Malliavin path (time points)",
+        what: "time points in a Malliavin path",
         needed: 2,
         got: self.n_steps,
       });
@@ -264,16 +264,16 @@ impl<T: FloatExt> MultiHestonPaths<T> {
         "price rows, one per asset",
         "price columns, one per time point",
       ],
-      self.prices.dim(),
       shape,
+      self.prices.dim(),
     )?;
     check_grid_shape(
       [
         "variance rows, one per asset",
         "variance columns, one per time point",
       ],
-      self.vols.dim(),
       shape,
+      self.vols.dim(),
     )
   }
 }

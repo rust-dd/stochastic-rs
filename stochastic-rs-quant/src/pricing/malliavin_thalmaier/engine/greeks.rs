@@ -43,7 +43,7 @@ impl<T: FloatExt> MtGreeks<T> {
   /// Construct an M-T engine for the given model, regularization level and
   /// Monte Carlo path count.
   pub fn new(params: MultiHestonParams<T>, h: T, n_paths: usize) -> Self {
-    Self::try_new(params, h, n_paths).expect("invalid Malliavin–Thalmaier engine parameters")
+    Self::try_new(params, h, n_paths).unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible constructor with model and numerical-parameter validation.

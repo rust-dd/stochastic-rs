@@ -116,8 +116,8 @@ impl McBasketPricer {
     let n_assets = s.len();
     check_grid_shape(
       ["rho rows, one per asset", "rho columns, one per asset"],
-      self.rho.dim(),
       (n_assets, n_assets),
+      self.rho.dim(),
     )?;
     for (what, got) in [
       ("weights, one per asset", self.weights.len()),

@@ -30,7 +30,7 @@ impl<T: RealExt> FmVol<T> {
   pub fn integrated_covariance(&self, other: &Self) -> T {
     self
       .try_integrated_covariance(other)
-      .expect("invalid integrated covariance configuration")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::integrated_covariance`].
@@ -56,7 +56,7 @@ impl<T: RealExt> FmVol<T> {
   pub fn integrated_leverage(&self, m_freq: Option<usize>) -> T {
     self
       .try_integrated_leverage(m_freq)
-      .expect("invalid integrated leverage window")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::integrated_leverage`].
@@ -87,7 +87,7 @@ impl<T: RealExt> FmVol<T> {
   pub fn integrated_volvol(&self, m_freq: Option<usize>) -> T {
     self
       .try_integrated_volvol(m_freq)
-      .expect("invalid integrated volatility-of-volatility window")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::integrated_volvol`].
@@ -125,7 +125,7 @@ impl<T: RealExt> FmVol<T> {
   pub fn integrated_volvol_bias_corrected(&self, m_freq: Option<usize>) -> T {
     self
       .try_integrated_volvol_bias_corrected(m_freq)
-      .expect("invalid bias-corrected integrated volatility-of-volatility window")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::integrated_volvol_bias_corrected`].
@@ -144,7 +144,7 @@ impl<T: RealExt> FmVol<T> {
   pub fn integrated_quarticity(&self, m_freq: Option<usize>) -> T {
     self
       .try_integrated_quarticity(m_freq)
-      .expect("invalid integrated quarticity window")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible variant of [`Self::integrated_quarticity`].

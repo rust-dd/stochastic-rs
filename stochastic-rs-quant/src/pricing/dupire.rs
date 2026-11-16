@@ -243,7 +243,7 @@ impl Dupire {
   pub fn local_vol_surface_from_custom_derivatives(&self) -> Array2<f64> {
     self
       .try_local_vol_surface_from_custom_derivatives()
-      .expect("local_vol_surface_from_custom_derivatives requires dc_dk/d2c_dk2/dc_dt populated")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Falliable variant of [`Self::local_vol_surface_from_custom_derivatives`].
@@ -369,7 +369,7 @@ impl Dupire {
   pub fn local_vol_slice_from_custom_derivatives(&self, j: usize) -> Vec<f64> {
     self
       .try_local_vol_slice_from_custom_derivatives(j)
-      .expect("local_vol_slice_from_custom_derivatives requires dc_dk/d2c_dk2/dc_dt populated")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Falliable variant of [`Self::local_vol_slice_from_custom_derivatives`].
@@ -429,24 +429,24 @@ impl Dupire {
         "dc_dk rows, one per maturity",
         "dc_dk columns, one per strike",
       ],
-      dc_dk.dim(),
       shape,
+      dc_dk.dim(),
     )?;
     check_grid_shape(
       [
         "d2c_dk2 rows, one per maturity",
         "d2c_dk2 columns, one per strike",
       ],
-      d2c_dk2.dim(),
       shape,
+      d2c_dk2.dim(),
     )?;
     check_grid_shape(
       [
         "dc_dt rows, one per maturity",
         "dc_dt columns, one per strike",
       ],
-      dc_dt.dim(),
       shape,
+      dc_dt.dim(),
     )?;
     Ok((dc_dk, d2c_dk2, dc_dt))
   }

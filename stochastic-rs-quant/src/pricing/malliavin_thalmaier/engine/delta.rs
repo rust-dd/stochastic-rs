@@ -14,7 +14,7 @@ impl<T: FloatExt> MtGreeks<T> {
   pub fn delta(&self, payoff: &MtPayoff<T>, asset: usize) -> T {
     self
       .try_delta(payoff, asset)
-      .expect("M-T Delta inputs are unsupported; use try_delta for a recoverable error")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible Delta estimator for the conditional Malliavin-weight scope.
@@ -36,7 +36,7 @@ impl<T: FloatExt> MtGreeks<T> {
   pub fn delta_with_seed(&self, payoff: &MtPayoff<T>, asset: usize, seed: u64) -> T {
     self
       .try_delta_with_seed(payoff, asset, seed)
-      .expect("M-T Delta inputs are unsupported; use try_delta_with_seed")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Fallible deterministic variant of [`Self::try_delta`].
@@ -107,7 +107,7 @@ impl<T: FloatExt> MtGreeks<T> {
   pub fn all_deltas(&self, payoff: &MtPayoff<T>) -> Vec<T> {
     self
       .try_all_deltas(payoff)
-      .expect("M-T Delta inputs are unsupported; use try_all_deltas")
+      .unwrap_or_else(|e| panic!("{e}"))
       .to_vec()
   }
 
@@ -124,7 +124,7 @@ impl<T: FloatExt> MtGreeks<T> {
   pub fn all_deltas_with_seed(&self, payoff: &MtPayoff<T>, seed: u64) -> Vec<T> {
     self
       .try_all_deltas_with_seed(payoff, seed)
-      .expect("M-T Delta inputs are unsupported; use try_all_deltas_with_seed")
+      .unwrap_or_else(|e| panic!("{e}"))
       .to_vec()
   }
 

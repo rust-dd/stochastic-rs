@@ -37,8 +37,7 @@ pub struct FamaMacBethResult {
 /// Fama-MacBeth risk premia from `returns[t, i]` (asset `i`) and `factors[t, k]` (factor `k`) at
 /// time `t`; panics where [`try_fama_macbeth`] errs.
 pub fn fama_macbeth(returns: ArrayView2<f64>, factors: ArrayView2<f64>) -> FamaMacBethResult {
-  try_fama_macbeth(returns, factors)
-    .expect("fama_macbeth: OLS pass failed; use try_fama_macbeth for falliable variant")
+  try_fama_macbeth(returns, factors).unwrap_or_else(|e| panic!("{e}"))
 }
 
 /// [`fama_macbeth`] with `DimensionMismatch` when `returns` and `factors` differ in rows and
@@ -58,7 +57,7 @@ pub fn try_fama_macbeth(
   }
   if t < k + 2 {
     return Err(QuantError::InsufficientData {
-      what: "a Fama-MacBeth regression",
+      what: "observations in a Fama-MacBeth regression",
       needed: k + 2,
       got: t,
     });

@@ -51,6 +51,12 @@ def test_quant_data_error_raises_value_error_with_its_display():
         calibrator.calibrate()
 
 
+def test_factors_data_error_raises_value_error_with_its_display():
+    want = r"observations in a PCA decomposition: needs at least 2, got 1$"
+    with pytest.raises(ValueError, match=want):
+        sr.PCA(np.zeros((1, 3)))
+
+
 def _clayton_pseudo_observations():
     c = sr.Clayton(tau=0.5)
     c.compute_theta()

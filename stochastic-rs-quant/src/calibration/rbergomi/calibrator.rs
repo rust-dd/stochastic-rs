@@ -104,7 +104,7 @@ impl RBergomiCalibrator {
   pub fn with_dividend_yield(self, q: f64) -> Self {
     self
       .try_with_dividend_yield(q)
-      .expect("q must be finite — call try_with_dividend_yield to handle this gracefully")
+      .unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Falliable variant of [`Self::with_dividend_yield`]. Returns an error

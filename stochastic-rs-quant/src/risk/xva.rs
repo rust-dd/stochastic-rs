@@ -52,7 +52,7 @@ impl ExposureProfile {
   /// Panics on invalid dimensions, dates, quantiles or non-finite MtM values.
   /// Use [`Self::try_from_mtm`] to handle invalid input without panicking.
   pub fn from_mtm(mtm: &Array2<f64>, times: Vec<f64>, quantile: f64) -> Self {
-    Self::try_from_mtm(mtm, times, quantile).expect("invalid exposure data")
+    Self::try_from_mtm(mtm, times, quantile).unwrap_or_else(|e| panic!("{e}"))
   }
 
   /// Reduces finite mark-to-market values to an exposure profile.
@@ -70,7 +70,7 @@ impl ExposureProfile {
     }
     if mtm.nrows() == 0 {
       return Err(QuantError::InsufficientData {
-        what: "the exposure profile (MtM paths)",
+        what: "MtM paths in the exposure profile",
         needed: 1,
         got: 0,
       });
@@ -83,7 +83,7 @@ impl ExposureProfile {
     }
     if times.is_empty() {
       return Err(QuantError::InsufficientData {
-        what: "the exposure profile (dates)",
+        what: "dates in the exposure profile",
         needed: 1,
         got: 0,
       });

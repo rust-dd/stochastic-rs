@@ -32,14 +32,9 @@ pub struct PcaResult {
   pub means: Array1<f64>,
 }
 
-/// PCA decomposition retaining the top `k` factors. If `k == 0` retains
-/// every factor.
-///
-/// Panics if the underlying SVD fails (rank-deficient input, non-finite
-/// values). Use [`try_pca_decompose`] for a falliable variant.
+/// PCA retaining the top `k` factors (`k == 0` keeps all); panics where [`try_pca_decompose`] errs.
 pub fn pca_decompose<T: RealExt>(returns: ArrayView2<T>, k: usize) -> PcaResult {
-  try_pca_decompose(returns, k)
-    .expect("pca_decompose: SVD failed; use try_pca_decompose for falliable variant")
+  try_pca_decompose(returns, k).unwrap_or_else(|e| panic!("{e}"))
 }
 
 /// [`pca_decompose`] with `InsufficientData` below two observations, `InvalidInput` without an
@@ -51,7 +46,7 @@ pub fn try_pca_decompose<T: RealExt>(
   let (t, p) = returns.dim();
   if t < 2 {
     return Err(QuantError::InsufficientData {
-      what: "a PCA decomposition",
+      what: "observations in a PCA decomposition",
       needed: 2,
       got: t,
     });
