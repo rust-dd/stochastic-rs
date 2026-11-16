@@ -154,8 +154,8 @@ fn observation_log_densities(h: &[f64], yt: f64, ln_2pi: f64, log_obs: &mut [f64
   f64::max_or_nan_fold(log_obs.iter().copied())
 }
 
-/// SV fit by particle-filter MLE, 500-2000 `n_particles` (0 panics), a common-random-numbers
-/// `seed`; `Err` below 10 returns, on a non-finite or constant one or a mean square of 0 or ∞.
+/// SV particle-filter MLE, 500-2000 `n_particles` (0 panics), a common-random-numbers `seed`;
+/// `Err` below 10 returns, on a non-finite or constant one or a non-finite start likelihood.
 pub fn fit_sv_particle_mle<T: FloatExt>(
   returns: ArrayView1<T>,
   n_particles: usize,
@@ -179,11 +179,6 @@ pub fn fit_sv_particle_mle<T: FloatExt>(
   // Initial guess: μ from log of sample variance, φ persistent, σ_η modest.
   let sample_var = y.iter().map(|v| v * v).sum::<f64>() / y.len() as f64;
   let mu0 = sample_var.ln();
-  if !mu0.is_finite() {
-    return Err(StatsError::Numerical {
-      stage: "starting point",
-    });
-  }
   let phi0 = 0.9_f64;
   let sigma0 = 0.3_f64;
   let start = [mu0, phi0.atanh(), sigma0.ln()];
@@ -195,6 +190,12 @@ pub fn fit_sv_particle_mle<T: FloatExt>(
     }
     -sv_pf_loglik(&y, mu, phi, sigma_eta, n_particles, seed)
   };
+  // A subnormal mean square has a finite log, yet `e^{−h}` then overflows at every particle.
+  if !neg_ll(&start).is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "starting point",
+    });
+  }
 
   // The PF likelihood is a Monte-Carlo estimate with small
   // resampling-induced kinks, so the simplex never reaches the analytic
@@ -300,6 +301,21 @@ mod tests {
   fn a_mean_square_that_underflows_or_overflows_is_a_numerical_error() {
     let returns = simulate_sv(-9.0, 0.9, 0.3, 50, 3);
     for c in [1e-170, 1e160] {
+      assert_eq!(
+        fit_sv_particle_mle(returns.mapv(|r| r * c).view(), 32, 11).unwrap_err(),
+        StatsError::Numerical {
+          stage: "starting point"
+        },
+        "c = {c:e}"
+      );
+    }
+  }
+
+  /// A subnormal mean square has a finite log, but `e^{−h}` then overflows at every particle.
+  #[test]
+  fn a_start_without_a_finite_likelihood_is_a_numerical_error() {
+    let returns = simulate_sv(-9.0, 0.9, 0.3, 50, 3);
+    for c in [1e-154, 1e-158] {
       assert_eq!(
         fit_sv_particle_mle(returns.mapv(|r| r * c).view(), 32, 11).unwrap_err(),
         StatsError::Numerical {
