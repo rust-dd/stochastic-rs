@@ -113,8 +113,8 @@ pub fn strike_from_delta(
   match convention {
     FxDeltaConvention::Spot | FxDeltaConvention::Forward => unadjusted,
     FxDeltaConvention::SpotPremiumAdjusted | FxDeltaConvention::ForwardPremiumAdjusted => {
-      // A call quote means the root past the delta's peak, a put's the root of a monotonic delta;
-      // either lies at or below the unadjusted strike. A negligible `t` leaves `6 macheps K`.
+      // A call quote means the root past the delta's peak, a put's the root of a monotonic delta,
+      // both at or below the unadjusted strike. A negligible `t` leaves Brent's `6 macheps K`.
       // Reiswich & Wystup (2010), "FX Volatility Smile Construction", CPQF Working Paper 20, §1.5.
       let gap = |k: f64| delta(k, forward, sigma, tau, r_f, option_type, convention) - target_delta;
       let (lo, hi) = match option_type {
@@ -333,7 +333,7 @@ mod tests {
 
   #[test]
   fn a_put_delta_in_its_tail_keeps_its_digits() {
-    // mpmath's 5e-12 deltas, where Φ(d) − 1 kept 3e-6 of them; d ≈ 6.8 rounds them by 2εd² ≈ 1e-14.
+    // mpmath's 5e-12 deltas, which Φ(d) − 1 would cancel; d ≈ 6.8 rounds them by 2εd² ≈ 1e-14.
     let cases = [
       (FxDeltaConvention::Spot, -5.331_976_556_076_078e-12),
       (FxDeltaConvention::Forward, -5.385_563_811_353_51e-12),
@@ -357,7 +357,8 @@ mod tests {
 
   #[test]
   fn a_put_strike_for_a_delta_of_1e_12_lands_on_mpmaths_root() {
-    // Φ(d₂) − 1 resolved this strike to 4e-7; now Brent's 4εK and 1e-14 / |KΔ′/Δ| (101) bound it.
+    // Off mpmath's root by Brent's stop width, 4 macheps K, plus 1e-14 / |KΔ′/Δ| (101) at most;
+    // a cancelling Φ(d₂) − 1 would miss it by 4e-7.
     let convention = FxDeltaConvention::SpotPremiumAdjusted;
     let k = strike_from_delta(-1e-12, F, SIGMA, TAU, R_F, OptionType::Put, convention);
     let exact = 0.670_588_058_877_767;
@@ -389,17 +390,20 @@ mod tests {
 
   #[test]
   fn premium_adjusted_strikes_land_on_mpmaths_roots() {
-    // A solver that stops on the delta's residual misses the flat 5Δ call by 9e-12; the 60Δ call's
-    // root past the delta's peak, at 0.9609 F, lies below F.
+    use crate::OptionType::Call;
+    use crate::OptionType::Put;
+
+    // The flat 5Δ call: a residual-stopping solver misses it by 9e-12, a libm ulp moves it 1.8e-15;
+    // the 60Δ call's root past the delta's peak, at 0.9609 F, lies below F.
     let cases = [
-      (0.05, 0.8, 2.0, OptionType::Call, 10.228_143_116_720_913),
-      (-0.25, 0.8, 2.0, OptionType::Put, 0.575_571_943_028_457),
-      (0.6, SIGMA, TAU, OptionType::Call, 1.073_622_697_637_674_2),
+      (0.05, 0.8, 2.0, Call, 10.228_143_116_720_913, 4e-15),
+      (-0.25, 0.8, 2.0, Put, 0.575_571_943_028_457, 2e-15),
+      (0.6, SIGMA, TAU, Call, 1.073_622_697_637_674_2, 2e-15),
     ];
-    for (target, sigma, tau, option_type, exact) in cases {
+    for (target, sigma, tau, option_type, exact, tolerance) in cases {
       let convention = FxDeltaConvention::SpotPremiumAdjusted;
       let k = strike_from_delta(target, F, sigma, tau, R_F, option_type, convention);
-      assert!((k - exact).abs() <= 2e-15 * exact, "{k} vs {exact}");
+      assert!((k - exact).abs() <= tolerance * exact, "{k} vs {exact}");
     }
   }
 

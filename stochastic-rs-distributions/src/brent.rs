@@ -6,8 +6,8 @@
 /// `f64::EPSILON`.
 pub const MACHEPS: f64 = f64::EPSILON / 2.0;
 
-/// A zero of `f` in `[a, b]` within `6 macheps |x| + 2t` (`t > 0`), given `f(a)` and `f(b)` of
-/// opposite signs; `None` without a sign change (a NaN end included) or past Brent's bound.
+/// A zero of `f` in `[a, b]` within Brent's `6 macheps |x| + 2t` (`t > 0`), at a stop width of
+/// `4 macheps |x| + 2t`; `None` for ends of one sign or a NaN end, or past his evaluation bound.
 pub fn zero(a: f64, b: f64, t: f64, mut f: impl FnMut(f64) -> f64) -> Option<f64> {
   let (mut a, mut b) = (a, b);
   let (mut fa, mut fb) = (f(a), f(b));
