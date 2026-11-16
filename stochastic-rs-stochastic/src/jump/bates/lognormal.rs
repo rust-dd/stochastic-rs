@@ -1,9 +1,10 @@
 use std::any::Any;
 
-use ndarray::Array1;
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRng;
+use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
@@ -61,30 +62,43 @@ impl<T: FloatExt> LogNormalJump<T> {
     (law as &dyn Any).downcast_ref()
   }
 
-  /// Each step's `ΣZ_j` over a `Poisson(lambda·dt)` count `n`, one `N(n·nu, n·omega²)` draw as the
-  /// kernels draw it, on a grid of `points`; the first entry is zero.
-  pub(crate) fn grid_log_jumps<S: SeedExt>(
+  /// The jump sums of one path on a grid of `points`, the counts' stream seeded from `seed` before
+  /// the sizes'; none is seeded on a single point or at a zero rate.
+  pub(crate) fn jump_sums<S: SeedExt>(
     &self,
     lambda: T,
     seed: &S,
     points: usize,
     dt: T,
-  ) -> Array1<T> {
-    let mut sums = Array1::<T>::zeros(points);
+  ) -> LogJumpSums<'_, T> {
     let lambda_dt = (lambda * dt).to_f64().unwrap();
-    if points <= 1 || lambda_dt <= 0.0 {
-      return sums;
+    let draws = if points <= 1 || lambda_dt <= 0.0 {
+      None
+    } else {
+      Some((SimdPoisson::<u32>::new(lambda_dt).seeded(seed), seed.rng()))
+    };
+    LogJumpSums { law: self, draws }
+  }
+}
+
+/// Each step's `ΣZ_j` over a `Poisson(lambda·dt)` count `n`, one `N(n·nu, n·omega²)` draw as the
+/// kernels draw it, taken as the path steps so no per-path buffer holds them.
+pub(crate) struct LogJumpSums<'a, T> {
+  law: &'a LogNormalJump<T>,
+  draws: Option<(Seeded<SimdPoisson<u32>>, SimdRng)>,
+}
+
+impl<T: FloatExt> LogJumpSums<'_, T> {
+  pub(crate) fn next_sum(&mut self) -> T {
+    let Some((count, rng)) = &mut self.draws else {
+      return T::zero();
+    };
+    let n = count.sample();
+    if n == 0 {
+      return T::zero();
     }
-    let mut count = SimdPoisson::<u32>::new(lambda_dt).seeded(seed);
-    let mut rng = seed.rng();
-    for sum in sums.iter_mut().skip(1) {
-      let n = count.sample();
-      if n > 0 {
-        let n = T::from_usize_(n as usize);
-        *sum = self.nu * n + self.omega * n.sqrt() * self.standard.sample(&mut rng);
-      }
-    }
-    sums
+    let n = T::from_usize_(n as usize);
+    self.law.nu * n + self.law.omega * n.sqrt() * self.law.standard.sample(rng)
   }
 }
 
