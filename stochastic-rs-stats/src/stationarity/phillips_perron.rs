@@ -7,7 +7,12 @@
 //! References:
 //! - Phillips P. C. B. & Perron P. (1988) — *Testing for a Unit Root in
 //!   Time Series Regression*, Biometrika 75(2), 335–346,
-//!   DOI: 10.1093/biomet/75.2.335.
+//!   DOI: 10.1093/biomet/75.2.335; the origin of both statistics.
+//! - StataCorp (2025) — *Stata Time-Series Reference Manual*,
+//!   `[TS] pperron`, Methods and formulas; the finite-sample `Z_ρ` and
+//!   `Z_τ` computed here.
+//! - Hamilton J. D. (1994) — *Time Series Analysis*, Princeton University
+//!   Press, ch. 17, DOI: 10.2307/j.ctv14jx6sm, which Stata cites for them.
 //! - Newey W. K. & West K. D. (1987) — *A Simple, Positive
 //!   Semi-Definite, Heteroskedasticity and Autocorrelation Consistent
 //!   Covariance Matrix*, Econometrica 55(3), 703–708,
@@ -87,8 +92,8 @@ impl crate::traits::HypothesisTest for PhillipsPerronTest {
   }
 }
 
-/// Phillips–Perron unit-root test; `Err` below 20 points, on a non-finite one, a constant series or
-/// a singular fit; panics unless `0 < alpha < 1` (`>= 0.01` for `Tau`, decided on the ADF table).
+/// Phillips–Perron test; `Err` below 20 points, on a non-finite one, a constant series, a singular
+/// fit or a zero or non-finite variance; panics unless `0 < alpha < 1` (`>= 0.01` for `Tau`).
 pub fn phillips_perron_test(
   y: ArrayView1<f64>,
   cfg: PhillipsPerronConfig,
@@ -105,27 +110,30 @@ pub fn phillips_perron_test(
 
   let fit = fit_adf(&y, 0, cfg.trend)?;
   let u = fit.residuals;
-  let nobs = u.len();
-  let n_f = nobs as f64;
-
-  let s2 = u.iter().map(|v| v * v).sum::<f64>() / n_f;
-  let s = s2.max(1e-12).sqrt();
-  let gamma0 = s2;
+  let n_f = u.len() as f64;
+  let gamma0 = u.iter().map(|v| v * v).sum::<f64>() / n_f;
 
   let used_lags = cfg.lags.unwrap_or_else(|| schwert_max_lags(y.len()));
-  let lam2 = newey_west_long_run_variance(&u, used_lags)?.max(1e-12);
+  let lam2 = newey_west_long_run_variance(&u, used_lags)?;
   let lam = lam2.sqrt();
+  let se = fit.std_err_gamma;
+  if !se.is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "standard error",
+    });
+  }
+  if se <= 0.0 {
+    return Err(StatsError::DegenerateData("zero standard error"));
+  }
 
-  // In the ADF parameterization, gamma = rho - 1.
-  let rho = 1.0 + fit.gamma;
-
+  // Phillips & Perron (1988) as Stata's `pperron` prints them: `s2` has the regression's `n − k`
+  // degrees of freedom, and the ADF regression's `gamma` is `ρ̂ − 1`.
+  let s2 = fit.sigma2;
   let statistic = match cfg.test_type {
-    PpTestType::Rho => {
-      n_f * (rho - 1.0) - 0.5 * ((n_f * n_f * fit.sigma2 / s2.max(1e-12)) * (lam2 - s2))
-    }
+    PpTestType::Rho => n_f * fit.gamma - 0.5 * (n_f * n_f * se * se / s2) * (lam2 - gamma0),
     PpTestType::Tau => {
-      let se = fit.std_err_gamma.max(1e-12);
-      (gamma0 / lam2).sqrt() * ((rho - 1.0) / se) - 0.5 * ((lam2 - s2) / lam) * (n_f * se / s)
+      (gamma0 / lam2).sqrt() * (fit.gamma / se)
+        - 0.5 * ((lam2 - gamma0) / lam) * (n_f * se / s2.sqrt())
     }
   };
 
@@ -142,6 +150,7 @@ pub fn phillips_perron_test(
 #[cfg(test)]
 mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
   use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
@@ -208,6 +217,84 @@ mod tests {
       Some(false),
       "expected no rejection, got {res:?}"
     );
+  }
+
+  /// arch 9.0.0's `PhillipsPerron(y, lags=6, trend, test_type)`, whose statistics are Stata's.
+  #[test]
+  fn the_statistics_match_arch() {
+    let normals = |n: usize, seed: u64| {
+      let mut e = vec![0.0; n];
+      SimdNormal::<f64>::new(0.0, 1.0)
+        .seeded(&Deterministic::new(seed))
+        .fill_slice(&mut e);
+      e
+    };
+    let mut x = 0.0;
+    let ar = normals(200, 21)
+      .into_iter()
+      .map(|e| {
+        x = 0.6 * x + e;
+        x
+      })
+      .collect::<Vec<_>>();
+    let (mut level, mut step) = (0.0, 0.0);
+    let walk = normals(250, 22)
+      .into_iter()
+      .map(|e| {
+        step = e + 0.5 * step;
+        level += step;
+        level
+      })
+      .collect::<Vec<_>>();
+    let cases = [
+      (&ar, Trend::None, PpTestType::Tau, -7.0868928000863605),
+      (&ar, Trend::None, PpTestType::Rho, -80.46433636486303),
+      (&ar, Trend::Constant, PpTestType::Tau, -7.1339841826824655),
+      (&ar, Trend::Constant, PpTestType::Rho, -81.62660721468625),
+      (
+        &ar,
+        Trend::ConstantTrend,
+        PpTestType::Tau,
+        -7.171622630513965,
+      ),
+      (
+        &ar,
+        Trend::ConstantTrend,
+        PpTestType::Rho,
+        -82.24578562649376,
+      ),
+      (&walk, Trend::None, PpTestType::Tau, 1.4679944742856357),
+      (&walk, Trend::None, PpTestType::Rho, 2.6726474640935187),
+      (&walk, Trend::Constant, PpTestType::Tau, 0.32981219666128614),
+      (&walk, Trend::Constant, PpTestType::Rho, 0.9543235554751717),
+      (
+        &walk,
+        Trend::ConstantTrend,
+        PpTestType::Tau,
+        -0.3490891885094801,
+      ),
+      (
+        &walk,
+        Trend::ConstantTrend,
+        PpTestType::Rho,
+        -1.1256717679899748,
+      ),
+    ];
+    for (y, trend, test_type, arch) in cases {
+      let cfg = PhillipsPerronConfig {
+        trend,
+        test_type,
+        lags: Some(6),
+        alpha: 0.05,
+      };
+      let got = phillips_perron_test(ndarray::ArrayView1::from(y), cfg)
+        .unwrap()
+        .statistic;
+      assert!(
+        (got - arch).abs() <= 1e-10 * arch.abs(),
+        "{trend:?} {test_type:?}: {got} against arch's {arch}"
+      );
+    }
   }
 
   #[test]

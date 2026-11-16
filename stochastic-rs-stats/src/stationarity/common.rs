@@ -83,7 +83,8 @@ pub fn dfgls_critical_values(include_trend: bool) -> CriticalValues {
   }
 }
 
-/// OLS of `y` on the rows of `x`; `Err(Singular)` on a rank-deficient design.
+/// OLS of `y` on the rows of `x`; `Err(Singular)` on a rank-deficient design, and a NaN standard
+/// error where an overflow or rounding leaves its variance NaN or negative.
 pub fn ols(y: &[f64], x: &[Vec<f64>]) -> Result<OlsResult, StatsError> {
   assert!(!y.is_empty(), "OLS requires non-empty response");
   assert_eq!(y.len(), x.len(), "OLS y/x row mismatch");
@@ -109,11 +110,11 @@ pub fn ols(y: &[f64], x: &[Vec<f64>]) -> Result<OlsResult, StatsError> {
   let residuals: Vec<f64> = residuals_arr.to_vec();
   let sse = residuals.iter().map(|u| u * u).sum::<f64>();
   let dof = (n - k) as f64;
-  let sigma2 = (sse / dof).max(0.0);
+  let sigma2 = sse / dof;
 
   let xtx_inv = inverse(xtx.view()).ok_or(StatsError::Singular("OLS design"))?;
   let cov = &xtx_inv * sigma2;
-  let std_err = (0..k).map(|i| cov[[i, i]].max(0.0).sqrt()).collect();
+  let std_err = (0..k).map(|i| cov[[i, i]].sqrt()).collect();
 
   Ok(OlsResult {
     beta: beta_arr.to_vec(),
@@ -263,7 +264,8 @@ pub fn choose_lag_for_adf(
   })
 }
 
-/// Bartlett-weighted long-run variance of `u`; `Err` on an empty series.
+/// Bartlett-weighted long-run variance of `u`, `>= 0` in exact arithmetic; `Err` on an empty
+/// series, `DegenerateData` when it is not positive and `Numerical` when it is not finite.
 pub fn newey_west_long_run_variance(u: &[f64], lags: usize) -> Result<f64, StatsError> {
   if u.is_empty() {
     return Err(StatsError::InsufficientData { needed: 1, got: 0 });
@@ -287,11 +289,15 @@ pub fn newey_west_long_run_variance(u: &[f64], lags: usize) -> Result<f64, Stats
     lr_var += 2.0 * weight * cov;
   }
 
-  Ok(if lr_var <= 0.0 || !lr_var.is_finite() {
-    gamma0.max(1e-12)
-  } else {
-    lr_var
-  })
+  if !lr_var.is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "long-run variance",
+    });
+  }
+  if lr_var <= 0.0 {
+    return Err(StatsError::DegenerateData("zero long-run variance"));
+  }
+  Ok(lr_var)
 }
 
 pub fn regress_on_deterministics(y: &[f64], include_trend: bool) -> Result<OlsResult, StatsError> {
@@ -327,6 +333,21 @@ pub fn fit_ar(y: &[f64], lags: usize) -> Result<(Vec<f64>, Vec<f64>, f64), Stats
   }
 
   let fit = ols(&lhs, &rhs)?;
-  let sigma = fit.sigma2.max(0.0).sqrt();
+  let sigma = fit.sigma2.sqrt();
   Ok((fit.beta, fit.residuals, sigma))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::newey_west_long_run_variance;
+  use crate::StatsError;
+
+  /// The residuals of an exact fit are all zero, so they carry no long-run variance.
+  #[test]
+  fn zero_residuals_have_no_long_run_variance() {
+    assert_eq!(
+      newey_west_long_run_variance(&[0.0; 30], 4).unwrap_err(),
+      StatsError::DegenerateData("zero long-run variance")
+    );
+  }
 }

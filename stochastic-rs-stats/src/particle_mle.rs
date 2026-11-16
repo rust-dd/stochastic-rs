@@ -98,7 +98,7 @@ fn sv_pf_loglik(
   let n = n_particles;
   let ln_n = (n as f64).ln();
   let ln_2pi = (2.0 * std::f64::consts::PI).ln();
-  let stat_sd = (sigma_eta * sigma_eta / (1.0 - phi * phi).max(1e-6)).sqrt();
+  let stat_sd = (sigma_eta * sigma_eta / (1.0 - phi * phi)).sqrt();
 
   // Propagation normals (buffer-amortised) + resampling uniforms, both
   // deterministic for common random numbers.
@@ -154,8 +154,8 @@ fn observation_log_densities(h: &[f64], yt: f64, ln_2pi: f64, log_obs: &mut [f64
   f64::max_or_nan_fold(log_obs.iter().copied())
 }
 
-/// SV model by particle-filter MLE, `n_particles` (500-2000) and a common-random-numbers `seed`;
-/// `Err` below 10 returns, on a non-finite or constant one, and panics unless `n_particles >= 1`.
+/// SV particle-filter MLE, 500-2000 `n_particles` (0 panics), a common-random-numbers `seed`;
+/// `Err` below 10 returns, on a non-finite or constant one or a non-finite start likelihood.
 pub fn fit_sv_particle_mle<T: FloatExt>(
   returns: ArrayView1<T>,
   n_particles: usize,
@@ -178,7 +178,7 @@ pub fn fit_sv_particle_mle<T: FloatExt>(
 
   // Initial guess: μ from log of sample variance, φ persistent, σ_η modest.
   let sample_var = y.iter().map(|v| v * v).sum::<f64>() / y.len() as f64;
-  let mu0 = sample_var.max(1e-12).ln();
+  let mu0 = sample_var.ln();
   let phi0 = 0.9_f64;
   let sigma0 = 0.3_f64;
   let start = [mu0, phi0.atanh(), sigma0.ln()];
@@ -190,6 +190,12 @@ pub fn fit_sv_particle_mle<T: FloatExt>(
     }
     -sv_pf_loglik(&y, mu, phi, sigma_eta, n_particles, seed)
   };
+  // A subnormal mean square has a finite log, yet `e^{−h}` then overflows at every particle.
+  if !neg_ll(&start).is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "starting point",
+    });
+  }
 
   // The PF likelihood is a Monte-Carlo estimate with small
   // resampling-induced kinks, so the simplex never reaches the analytic
@@ -268,6 +274,65 @@ mod tests {
     assert_eq!(max.to_bits(), log_obs[1].to_bits());
     let max = observation_log_densities(&[0.0, f64::NAN, -1.0], 0.1, ln_2pi, &mut log_obs);
     assert!(max.is_nan(), "a NaN particle was dropped: {max}");
+  }
+
+  /// `μ` is a log-variance: returns scaled by `c` shift it by `2 ln c` and leave `φ` and `σ_η`.
+  #[test]
+  fn rescaled_returns_shift_mu_by_twice_the_log_scale() {
+    let returns = simulate_sv(-9.0, 0.9, 0.3, 120, 3);
+    let unit = fit_sv_particle_mle(returns.view(), 64, 11).unwrap();
+    let c = 1e-7_f64;
+    let scaled = fit_sv_particle_mle(returns.mapv(|r| r * c).view(), 64, 11).unwrap();
+    assert!(
+      (scaled.mu - 2.0 * c.ln() - unit.mu).abs() < 1e-6,
+      "{scaled:?} against {unit:?}"
+    );
+    assert!(
+      (scaled.phi - unit.phi).abs() < 1e-6,
+      "{scaled:?} against {unit:?}"
+    );
+    assert!(
+      (scaled.sigma_eta - unit.sigma_eta).abs() < 1e-6,
+      "{scaled:?} against {unit:?}"
+    );
+  }
+
+  #[test]
+  fn a_mean_square_that_underflows_or_overflows_is_a_numerical_error() {
+    let returns = simulate_sv(-9.0, 0.9, 0.3, 50, 3);
+    for c in [1e-170, 1e160] {
+      assert_eq!(
+        fit_sv_particle_mle(returns.mapv(|r| r * c).view(), 32, 11).unwrap_err(),
+        StatsError::Numerical {
+          stage: "starting point"
+        },
+        "c = {c:e}"
+      );
+    }
+  }
+
+  /// A subnormal mean square has a finite log, but `e^{−h}` then overflows at every particle.
+  #[test]
+  fn a_start_without_a_finite_likelihood_is_a_numerical_error() {
+    let returns = simulate_sv(-9.0, 0.9, 0.3, 50, 3);
+    for c in [1e-154, 1e-158] {
+      assert_eq!(
+        fit_sv_particle_mle(returns.mapv(|r| r * c).view(), 32, 11).unwrap_err(),
+        StatsError::Numerical {
+          stage: "starting point"
+        },
+        "c = {c:e}"
+      );
+    }
+  }
+
+  /// The stationary start `N(μ, σ_η²/(1 − φ²))` does not exist at `|φ| >= 1`.
+  #[test]
+  fn the_likelihood_is_nan_without_a_stationary_law() {
+    let returns = simulate_sv(-9.0, 0.9, 0.3, 20, 3);
+    for phi in [1.0, 1.5] {
+      assert!(sv_pf_loglik(returns.as_slice().unwrap(), -9.0, phi, 0.3, 16, 11).is_nan());
+    }
   }
 
   #[test]
