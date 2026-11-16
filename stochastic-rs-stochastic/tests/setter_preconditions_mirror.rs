@@ -111,9 +111,9 @@ fn mask(src: &str) -> Vec<u8> {
       i = j;
     } else if s[i..].starts_with(b"/*") {
       let j = src[i + 2..].find("*/").map_or(n, |p| i + 2 + p + 2);
-      for k in i..j {
-        if out[k] != b'\n' {
-          out[k] = b' ';
+      for c in &mut out[i..j] {
+        if *c != b'\n' {
+          *c = b' ';
         }
       }
       i = j;
