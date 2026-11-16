@@ -22,7 +22,12 @@ const SCALES: [f64; 7] = [1e-300, 1e-150, 1e-6, 1.0, 1e6, 1e150, 1e290];
 
 const EXACT: StatsError = StatsError::DegenerateData("zero residual variance");
 
-const RULES: [LagSelection; 3] = [LagSelection::Aic, LagSelection::Bic, LagSelection::TStat];
+/// The three rules at `max_lags = 4`, then every fixed lag to 6.
+fn rules() -> impl Iterator<Item = LagSelection> {
+  [LagSelection::Aic, LagSelection::Bic, LagSelection::TStat]
+    .into_iter()
+    .chain((0..=6).map(LagSelection::Fixed))
+}
 
 fn normals(seed: u64, n: usize) -> Vec<f64> {
   let mut z = vec![0.0; n];
@@ -32,19 +37,41 @@ fn normals(seed: u64, n: usize) -> Vec<f64> {
   z
 }
 
-/// Lines at levels 0 and 50, `t²`, `1.5^t` and `2^t`, each its own ADF regression to rounding at
-/// any scale; a line far above its spread is not, its rescaled rounding near the rule's `1e-12`.
-fn exact_series() -> [(&'static str, Array1<f64>); 5] {
+/// Lines at levels 0 and 50, `t²`, `1.5^t` and `2^t`, each with the first fixed lag that fits it to
+/// rounding in ADF with no terms, a constant and a trend, then in ERS with a constant and a trend.
+fn exact_series() -> [(&'static str, Array1<f64>, [usize; 5]); 5] {
   [
-    ("line 0..99", Array1::from_iter((0..100).map(|t| t as f64))),
+    (
+      "line 0..99",
+      Array1::from_iter((0..100).map(|t| t as f64)),
+      [1, 0, 0, 1, 0],
+    ),
     (
       "50 + 0.25 t",
       Array1::from_iter((0..100).map(|t| 50.0 + 0.25 * t as f64)),
+      [1, 0, 0, 1, 0],
     ),
-    ("t²", Array1::from_iter((0..100).map(|t| (t * t) as f64))),
-    ("1.5^t", Array1::from_iter((0..80).map(|t| 1.5f64.powi(t)))),
-    ("2^t", Array1::from_iter((0..60).map(|t| 2f64.powi(t)))),
+    (
+      "t²",
+      Array1::from_iter((0..100).map(|t| (t * t) as f64)),
+      [2, 1, 0, 2, 2],
+    ),
+    (
+      "1.5^t",
+      Array1::from_iter((0..80).map(|t| 1.5f64.powi(t))),
+      [0, 0, 0, 1, 2],
+    ),
+    (
+      "2^t",
+      Array1::from_iter((0..60).map(|t| 2f64.powi(t))),
+      [0, 0, 0, 1, 2],
+    ),
   ]
+}
+
+/// Whether `lag_selection` fits a lag at or past `first`, the series' first exact lag for the test.
+fn reaches(lag_selection: LagSelection, first: usize) -> bool {
+  !matches!(lag_selection, LagSelection::Fixed(p) if p < first)
 }
 
 /// Refused as an exact fit or the singular design a collinear lag leaves, whose `t` the t rule
@@ -63,11 +90,16 @@ fn refused<T>(got: &Result<T, StatsError>, lag_selection: LagSelection) -> bool 
 
 #[test]
 fn adf_and_df_gls_refuse_an_exact_fit_at_every_scale() {
-  for (what, y) in exact_series() {
+  for (what, y, first) in exact_series() {
     for c in SCALES {
       let y = y.mapv(|v| v * c);
-      for lag_selection in RULES {
-        for trend in [Trend::None, Trend::Constant, Trend::ConstantTrend] {
+      for lag_selection in rules() {
+        let adf = [Trend::None, Trend::Constant, Trend::ConstantTrend];
+        for (trend, _) in adf
+          .into_iter()
+          .zip(first)
+          .filter(|(_, f)| reaches(lag_selection, *f))
+        {
           let cfg = AdfConfig {
             trend,
             lag_selection,
@@ -80,7 +112,12 @@ fn adf_and_df_gls_refuse_an_exact_fit_at_every_scale() {
             "ADF {trend:?} {lag_selection:?}, {what}, c = {c:e}: {got:?}"
           );
         }
-        for trend in [Trend::Constant, Trend::ConstantTrend] {
+        let ers = [Trend::Constant, Trend::ConstantTrend];
+        for (trend, _) in ers
+          .into_iter()
+          .zip(&first[3..])
+          .filter(|(_, f)| reaches(lag_selection, **f))
+        {
           let cfg = ErsConfig {
             trend,
             lag_selection,
@@ -140,6 +177,27 @@ fn leybourne_mccabe_refuses_an_exact_ar_fit_at_every_scale() {
     for c in SCALES {
       let got = leybourne_mccabe_test(y.mapv(|v| v * c).view(), cfg).map(|r| r.statistic);
       assert_eq!(got, Err(EXACT), "{what}, c = {c:e}");
+    }
+  }
+}
+
+/// `t²` less its mean or its line is an exact AR(3), whose lagged levels are collinear to rounding.
+#[test]
+fn leybourne_mccabe_refuses_an_exact_ar_fit_of_order_three_at_every_scale() {
+  let y = Array1::from_iter((0..100).map(|t| (t * t) as f64));
+  for trend in [Trend::Constant, Trend::ConstantTrend] {
+    let cfg = LeybourneMcCabeConfig {
+      trend,
+      ar_lags: 3,
+      bootstrap_samples: 19,
+      ..LeybourneMcCabeConfig::default()
+    };
+    for c in SCALES {
+      let got = leybourne_mccabe_test(y.mapv(|v| v * c).view(), cfg).map(|r| r.statistic);
+      assert!(
+        refused(&got, LagSelection::Aic),
+        "{trend:?}, c = {c:e}: {got:?}"
+      );
     }
   }
 }

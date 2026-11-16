@@ -262,6 +262,29 @@ mod tests {
     }
   }
 
+  /// Fitted values far above their spread leave their powers collinear with the design to rounding.
+  #[test]
+  fn an_exact_line_far_above_its_spread_is_refused() {
+    let (x, _) = normal_pair(50, 0.0, 7);
+    for level in [10.0, 1e2, 1e3] {
+      let x = x.mapv(|v| v + level);
+      let y = &x * 3.0 + 2.0;
+      let got = reset_test(
+        y.view(),
+        design_with_intercept(&x).view(),
+        ResetConfig::default(),
+      );
+      let refused = [
+        StatsError::DegenerateData("zero residual variance"),
+        StatsError::Singular("OLS design"),
+      ];
+      assert!(
+        got.as_ref().is_err_and(|e| refused.contains(e)),
+        "level {level}: {got:?}"
+      );
+    }
+  }
+
   #[test]
   fn a_design_with_other_rows_is_a_dimension_mismatch() {
     let (x, y) = simulate_linear(100, 3);

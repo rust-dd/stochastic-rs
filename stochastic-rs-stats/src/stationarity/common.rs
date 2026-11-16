@@ -87,10 +87,30 @@ pub fn dfgls_critical_values(include_trend: bool) -> CriticalValues {
   }
 }
 
-/// OLS of `y` on the rows of `x`; `Err(Singular)` on a rank-deficient design, and a NaN standard
-/// error where an overflow or rounding leaves its variance NaN or negative.
+/// OLS of `y` on the rows of `x`; `Err(Singular)` on a design singular or past `MAX_CONDITION`, and
+/// a NaN standard error where an overflow or rounding leaves its variance NaN or negative.
 pub fn ols(y: &[f64], x: &[Vec<f64>]) -> Result<OlsResult, StatsError> {
   ols_absorbing(y, x, 0)
+}
+
+/// Past this condition number of the equilibrated normal equations, a solve's residuals carry
+/// rounding of about `ε √κ` of the series, too near the exact-fit rule's `1e-12` to decide on.
+const MAX_CONDITION: f64 = 1e6;
+
+/// `‖A‖₁ ‖A⁻¹‖₁` of `A = D X'X D` with `D = diag((X'X)_jj^{-1/2})`, which no column's scale moves.
+fn equilibrated_condition(xtx: &Array2<f64>, xtx_inv: &Array2<f64>) -> f64 {
+  let k = xtx.nrows();
+  let s = xtx.diag().mapv(f64::sqrt);
+  let a = Array2::from_shape_fn((k, k), |(i, j)| xtx[[i, j]] / (s[i] * s[j]));
+  let a_inv = Array2::from_shape_fn((k, k), |(i, j)| xtx_inv[[i, j]] * (s[i] * s[j]));
+  let norm = |m: &Array2<f64>| {
+    f64::max_or_nan_fold(
+      m.columns()
+        .into_iter()
+        .map(|c| c.iter().map(|v| v.abs()).sum::<f64>()),
+    )
+  };
+  norm(&a) * norm(&a_inv)
 }
 
 /// [`ols`] of `y` and `x` that `absorbed` terms were partialled out of: its fit is the full
@@ -123,6 +143,10 @@ fn ols_absorbing(y: &[f64], x: &[Vec<f64>], absorbed: usize) -> Result<OlsResult
   let sigma2 = sse / dof;
 
   let xtx_inv = inverse(xtx.view()).ok_or(StatsError::Singular("OLS design"))?;
+  let condition = equilibrated_condition(&xtx, &xtx_inv);
+  if condition.is_nan() || condition > MAX_CONDITION {
+    return Err(StatsError::Singular("OLS design"));
+  }
   let cov = &xtx_inv * sigma2;
   let std_err = (0..k).map(|i| cov[[i, i]].sqrt()).collect();
 
