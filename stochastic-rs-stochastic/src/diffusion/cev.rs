@@ -301,10 +301,10 @@ impl<T: FloatExt> PathSampler<T> for CevSampler<T> {
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Cev<T, S, B> {
-  /// A host-sampled path and Nualart's `D_{t_i} X_T`, `σ′ = γσ|X|^{γ−1}`, summed backward over
-  /// the increments that drove the path:
+  /// A host-sampled path and Nualart's `D_{t_i} X_T`, `σ′ = γσ sgn(X)|X|^{γ−1}`, summed backward
+  /// over the increments that drove the path; undefined at an exact zero for γ < 1:
   /// $$
-  /// D_{t_i} X_T = \sigma |X_{t_i}|^{\gamma} \exp\Bigl(\sum_{k=i}^{n-2} \bigl(\mu - \tfrac12 \gamma^2 \sigma^2 |X_{t_k}|^{2\gamma - 2}\bigr) \Delta t + \gamma \sigma |X_{t_k}|^{\gamma - 1} \Delta W_k\Bigr)
+  /// D_{t_i} X_T = \sigma |X_{t_i}|^{\gamma} \exp\Bigl(\sum_{k=i}^{n-2} \bigl(\mu - \tfrac12 \gamma^2 \sigma^2 |X_{t_k}|^{2\gamma - 2}\bigr) \Delta t + \gamma \sigma \operatorname{sgn}(X_{t_k}) |X_{t_k}|^{\gamma - 1} \Delta W_k\Bigr)
   /// $$
   pub fn malliavin(&self) -> Malliavin<T, Array1<T>> {
     let mut paths = Array1::<T>::zeros(self.n);
@@ -322,7 +322,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Cev<T, S, B> {
         tail += (self.mu
           - half * (self.gamma * self.sigma).powi(2) * x.powf(two * self.gamma - two))
           * dt
-          + self.gamma * self.sigma * x.powf(self.gamma - T::one()) * dw[i];
+          + self.gamma * self.sigma * x.powf(self.gamma - T::one()) * paths[i].signum() * dw[i];
       }
       derivative[i] = self.sigma * x.powf(self.gamma) * tail.exp();
     }
@@ -344,34 +344,41 @@ mod tests {
 
   #[test]
   fn the_derivative_is_driven_by_the_increments_of_the_path_it_returns() {
-    let build = || {
-      Cev::<f64, _>::new(
-        0.05,
-        0.3,
-        0.7,
-        65,
-        Some(1.0),
-        Some(1.0),
-        Deterministic::new(7),
-      )
-    };
-    let Malliavin {
-      paths, derivative, ..
-    } = build().malliavin();
-    let mut path = vec![0.0_f64; 65];
-    let mut dw = vec![0.0; 64];
-    build().sampler().fill_path_with(&mut path, &mut dw);
-    assert_eq!(paths.as_slice().unwrap(), path.as_slice());
-    let (mu, sigma, gamma, dt) = (0.05_f64, 0.3_f64, 0.7_f64, 1.0 / 64.0);
-    let mut tail = 0.0;
-    for i in (0..65).rev() {
-      let x = path[i].abs();
-      if i < 64 {
-        tail += (mu - 0.5 * (gamma * sigma).powi(2) * x.powf(2.0 * gamma - 2.0)) * dt
-          + gamma * sigma * x.powf(gamma - 1.0) * dw[i];
+    for x0 in [1.0_f64, -1.0] {
+      let build = || {
+        Cev::<f64, _>::new(
+          0.05,
+          0.3,
+          0.7,
+          65,
+          Some(x0),
+          Some(1.0),
+          Deterministic::new(7),
+        )
+      };
+      let Malliavin {
+        paths, derivative, ..
+      } = build().malliavin();
+      assert_eq!(paths, build().sample());
+      let mut path = vec![0.0_f64; 65];
+      let mut dw = vec![0.0; 64];
+      build().sampler().fill_path_with(&mut path, &mut dw);
+      assert_eq!(paths.as_slice().unwrap(), path.as_slice());
+      let (mu, sigma, gamma, dt) = (0.05_f64, 0.3_f64, 0.7_f64, 1.0 / 64.0);
+      let mut tail = 0.0;
+      for i in (0..65).rev() {
+        let x = path[i].abs();
+        if i < 64 {
+          tail += (mu - 0.5 * (gamma * sigma).powi(2) * x.powf(2.0 * gamma - 2.0)) * dt
+            + gamma * sigma * x.powf(gamma - 1.0) * path[i].signum() * dw[i];
+        }
+        let expected = sigma * x.powf(gamma) * tail.exp();
+        assert_eq!(
+          derivative[i].to_bits(),
+          expected.to_bits(),
+          "x0 = {x0}, t_{i}"
+        );
       }
-      let expected = sigma * x.powf(gamma) * tail.exp();
-      assert_eq!(derivative[i].to_bits(), expected.to_bits(), "t_{i}");
     }
   }
 
