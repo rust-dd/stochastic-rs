@@ -3,9 +3,12 @@ use pyo3::prelude::*;
 
 use super::curves::PyDiscountCurve;
 use crate::QuantError;
+use crate::calibration::hw_swaption::HullWhiteParams;
 use crate::calibration::hw_swaption::HullWhiteSwaptionCalibrator;
 use crate::calibration::hw_swaption::SwaptionQuote;
+use crate::calibration::tree_swaption::BlackKarasinskiParams;
 use crate::calibration::tree_swaption::BlackKarasinskiSwaptionCalibrator;
+use crate::calibration::tree_swaption::G2ppParams;
 use crate::calibration::tree_swaption::G2ppSwaptionCalibrator;
 use crate::curves::DiscountCurve;
 use crate::instruments::option::types::SwaptionDirection;
@@ -91,7 +94,12 @@ impl PyHullWhiteSwaptionCalibrator {
       self.theta,
     );
     let r = calibrator
-      .calibrate(initial_guess)
+      .calibrate(
+        initial_guess.map(|(mean_reversion, sigma)| HullWhiteParams {
+          mean_reversion,
+          sigma,
+        }),
+      )
       .map_err(as_value_error)?;
     Ok((r.mean_reversion, r.sigma, r.rmse, r.converged))
   }
@@ -155,7 +163,12 @@ impl PyBlackKarasinskiSwaptionCalibrator {
     )
     .with_max_iters(self.max_iters);
     let r = calibrator
-      .calibrate(initial_guess)
+      .calibrate(
+        initial_guess.map(|(mean_reversion, sigma)| BlackKarasinskiParams {
+          mean_reversion,
+          sigma,
+        }),
+      )
       .map_err(as_value_error)?;
     Ok((r.mean_reversion, r.sigma, r.rmse, r.converged))
   }
@@ -218,7 +231,13 @@ impl PyG2ppSwaptionCalibrator {
     )
     .with_max_iters(self.max_iters);
     let r = calibrator
-      .calibrate(initial_guess)
+      .calibrate(initial_guess.map(|[a, b, sigma, eta, rho]| G2ppParams {
+        mean_reversion_x: a,
+        mean_reversion_y: b,
+        sigma_x: sigma,
+        sigma_y: eta,
+        rho,
+      }))
       .map_err(as_value_error)?;
     let p = &r.params;
     Ok((

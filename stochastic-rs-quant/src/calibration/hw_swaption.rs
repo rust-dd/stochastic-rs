@@ -102,15 +102,14 @@ impl crate::traits::CalibrationResult for HullWhiteCalibrationResult {
 }
 
 impl<'a> crate::traits::Calibrator for HullWhiteSwaptionCalibrator<'a> {
-  type InitialGuess = (f64, f64);
   type Params = HullWhiteParams;
   type Output = HullWhiteCalibrationResult;
   type Error = QuantError;
 
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
+  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
     if let Some(guess) = initial {
-      this.initial_guess = Some(guess);
+      this.initial_guess = Some((guess.mean_reversion, guess.sigma));
     }
     Ok(this.solve())
   }
@@ -182,7 +181,7 @@ impl<'a> HullWhiteSwaptionCalibrator<'a> {
     let (a0, s0) = self.initial_guess.unwrap_or((0.05, 0.01));
     let simplex = vec![vec![a0, s0], vec![a0 * 1.5, s0], vec![a0, s0 * 1.5]];
 
-    let (best, converged) =
+    let (best, converged, _) =
       run_nelder_mead(problem.clone(), simplex, self.max_iters, self.sd_tolerance);
 
     let a_hat = best[0].abs();
@@ -337,6 +336,7 @@ pub(crate) fn serialize_curve(curve: &DiscountCurve<f64>) -> CurveSnapshot {
 mod regularization_tests {
   use ndarray::Array1;
 
+  use super::HullWhiteParams;
   use super::HullWhiteSwaptionCalibrator;
   use super::SwaptionQuote;
   use crate::calibration::Regularization;
@@ -370,11 +370,17 @@ mod regularization_tests {
     );
     let quotes = quotes();
     let plain = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, 0.03, 0.03)
-      .calibrate(Some((0.1, 0.01)))
+      .calibrate(Some(HullWhiteParams {
+        mean_reversion: 0.1,
+        sigma: 0.01,
+      }))
       .expect("calibration runs");
     let pulled = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, 0.03, 0.03)
       .with_regularization(Regularization::new(vec![0.3, 0.01], vec![1e6, 0.0]))
-      .calibrate(Some((0.1, 0.01)))
+      .calibrate(Some(HullWhiteParams {
+        mean_reversion: 0.1,
+        sigma: 0.01,
+      }))
       .expect("calibration runs");
     assert!(
       (pulled.mean_reversion - 0.3).abs() < 1e-2,
@@ -393,7 +399,10 @@ mod regularization_tests {
     );
     let quotes = quotes();
     let result = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, 0.03, 0.002)
-      .calibrate(Some((0.1, 0.01)))
+      .calibrate(Some(HullWhiteParams {
+        mean_reversion: 0.1,
+        sigma: 0.01,
+      }))
       .expect("calibration runs");
     let model = crate::traits::ToShortRateModel::to_short_rate_model(&result);
     assert_eq!((model.initial_rate, model.theta), (0.03, 0.002));

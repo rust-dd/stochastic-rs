@@ -195,6 +195,7 @@ impl HestonCalibrator {
         tolerance: self.optimizer_tolerance,
         patience: self.optimizer_patience,
         pivoted_qr: true,
+        ..LmOptions::default()
       },
     );
     let converged = report.converged;
@@ -328,12 +329,11 @@ impl HestonCalibrator {
 }
 
 impl crate::traits::Calibrator for HestonCalibrator {
-  type InitialGuess = HestonParams;
   type Params = HestonParams;
   type Output = HestonCalibrationResult;
   type Error = QuantError;
 
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
+  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
     if let Some(p) = initial {
       this.set_initial_guess(p);

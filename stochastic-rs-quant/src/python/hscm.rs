@@ -1,7 +1,33 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
+use crate::calibration::HscmParams;
 use crate::traits::ModelPricer;
+
+fn hscm_start(guess: [f64; 9]) -> HscmParams {
+  let [
+    kappa_v,
+    theta_v,
+    sigma_v,
+    v0,
+    kappa_r,
+    mu_r,
+    sigma_r,
+    rho0,
+    rho2,
+  ] = guess;
+  HscmParams {
+    kappa_v,
+    theta_v,
+    sigma_v,
+    v0,
+    kappa_r,
+    mu_r,
+    sigma_r,
+    rho0,
+    rho2,
+  }
+}
 
 /// Heston-stochastic-correlation model wrapper. Implements the Carr-Madan
 /// pricer through `ModelPricer`. 9 parameters: `(v0, kappa_v, theta_v,
@@ -139,7 +165,7 @@ impl PyHscmCalibrator {
     use crate::traits::Calibrator;
     let res = self
       .inner
-      .calibrate(initial_guess)
+      .calibrate(initial_guess.map(hscm_start))
       .map_err(|e| PyValueError::new_err(format!("HSCM calibration failed: {e}")))?;
     Ok((
       res.kappa_v,
@@ -163,7 +189,7 @@ impl PyHscmCalibrator {
     use crate::traits::ToModel;
     let res = self
       .inner
-      .calibrate(initial_guess)
+      .calibrate(initial_guess.map(hscm_start))
       .map_err(|e| PyValueError::new_err(format!("HSCM calibration failed: {e}")))?;
     Ok(PyHscmModel {
       inner: res.to_model(),

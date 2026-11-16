@@ -3,8 +3,9 @@
 
 use std::collections::HashMap;
 
+use crate::OptionQuote;
+use crate::OptionType;
 use crate::QuantError;
-use crate::vol_surface::implied::OptionQuote;
 
 /// How [`PriceHistory::returns`] differences successive adjusted closes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -123,12 +124,12 @@ impl OptionChain {
       if price <= 0.0 || price.is_nan() || !cq.tau.is_finite() || cq.tau <= 0.0 {
         continue;
       }
-      quotes.push(OptionQuote {
-        strike: cq.strike,
-        tau: cq.tau,
-        price,
-        is_call: cq.is_call,
-      });
+      let option_type = if cq.is_call {
+        OptionType::Call
+      } else {
+        OptionType::Put
+      };
+      quotes.push(OptionQuote::new(cq.strike, cq.tau, price, option_type));
       if !taus.iter().any(|&t| (t - cq.tau).abs() < 1e-12) {
         taus.push(cq.tau);
       }

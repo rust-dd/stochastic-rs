@@ -15,20 +15,10 @@ use implied_vol::DefaultSpecialFn;
 use implied_vol::ImpliedBlackVolatility;
 use ndarray::Array2;
 
+use crate::OptionQuote;
+use crate::OptionType;
 use crate::QuantError;
-
-/// Market data for a single option quote.
-#[derive(Clone, Debug)]
-pub struct OptionQuote {
-  /// Strike price
-  pub strike: f64,
-  /// Time to maturity in years.
-  pub tau: f64,
-  /// Market price of the option
-  pub price: f64,
-  /// `true` for call, `false` for put
-  pub is_call: bool,
-}
+use crate::calibration::quote::validate_quotes;
 
 /// Implied volatility surface built from market data.
 #[derive(Clone, Debug)]
@@ -196,32 +186,12 @@ impl ImpliedVolSurface {
   }
 
   /// A surface from quotes grouped by maturity, then strike; a cell with no quote or root is NaN;
-  /// `InvalidQuote` for a strike, tau or price out of domain; `MissingInput` for a missing forward.
+  /// `InsufficientData` for no quote, `InvalidQuote` for a bad one, `MissingInput` for a forward.
   pub fn try_from_quotes(
     quotes: &[OptionQuote],
     forwards: &[(f64, f64)],
   ) -> Result<Self, QuantError> {
-    for (index, q) in quotes.iter().enumerate() {
-      let reason = if !(q.strike.is_finite() && q.strike > 0.0) {
-        format!(
-          "strike must satisfy `strike.is_finite() && strike > 0.0`, got {}",
-          q.strike
-        )
-      } else if !(q.tau.is_finite() && q.tau > 0.0) {
-        format!(
-          "tau must satisfy `tau.is_finite() && tau > 0.0`, got {}",
-          q.tau
-        )
-      } else if !(q.price.is_finite() && q.price >= 0.0) {
-        format!(
-          "price must satisfy `price.is_finite() && price >= 0.0`, got {}",
-          q.price
-        )
-      } else {
-        continue;
-      };
-      return Err(QuantError::InvalidQuote { index, reason });
-    }
+    validate_quotes(quotes)?;
 
     let mut tau_set: Vec<f64> = quotes.iter().map(|q| q.tau).collect();
     tau_set.sort_by(f64::total_cmp);
@@ -261,7 +231,7 @@ impl ImpliedVolSurface {
         .position(|k| (k - q.strike).abs() < 1e-12)
         .unwrap();
       prices[[j, i]] = q.price;
-      is_call_grid[j * nk + i] = q.is_call;
+      is_call_grid[j * nk + i] = q.option_type == OptionType::Call;
     }
 
     let mut ivs = Array2::<f64>::from_elem((nt, nk), f64::NAN);
@@ -550,6 +520,23 @@ mod tests {
     let mp = MockProvider::new();
     let res = ImpliedVolSurface::from_provider(&mp, "NOPE", 0.05, 0.0);
     assert!(res.is_err());
+  }
+
+  #[test]
+  fn a_put_quote_inverts_as_a_put_and_no_quote_is_an_error() {
+    use stochastic_rs_distributions::special::norm_cdf;
+
+    let (f, k, t, sigma) = (100.0_f64, 110.0_f64, 0.5_f64, 0.25_f64);
+    let d1 = ((f / k).ln() + 0.5 * sigma * sigma * t) / (sigma * t.sqrt());
+    let put = k * norm_cdf(-(d1 - sigma * t.sqrt())) - f * norm_cdf(-d1);
+    let quote = OptionQuote::new(k, t, put, OptionType::Put);
+    let surface = ImpliedVolSurface::try_from_quotes(&[quote], &[(t, f)]).unwrap();
+    assert!((surface.ivs[[0, 0]] - sigma).abs() < 1e-10);
+    let empty = ImpliedVolSurface::try_from_quotes(&[], &[]);
+    assert!(matches!(
+      empty,
+      Err(QuantError::InsufficientData { got: 0, .. })
+    ));
   }
 
   #[test]

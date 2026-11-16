@@ -349,12 +349,11 @@ impl RBergomiCalibrator {
 }
 
 impl crate::traits::Calibrator for RBergomiCalibrator {
-  type InitialGuess = RBergomiParams;
   type Params = RBergomiParams;
   type Output = RBergomiCalibrationResult;
   type Error = QuantError;
 
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
+  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
     if let Some(p) = initial {
       this.params = p;

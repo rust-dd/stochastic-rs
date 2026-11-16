@@ -63,12 +63,11 @@ impl crate::traits::CalibrationResult for BsmCalibrationResult {
 }
 
 impl crate::traits::Calibrator for BsmCalibrator {
-  type InitialGuess = BsmParams;
   type Params = BsmParams;
   type Output = BsmCalibrationResult;
   type Error = QuantError;
 
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
+  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
     if let Some(p) = initial {
       this.set_initial_guess(p);
@@ -315,7 +314,7 @@ impl LeastSquaresProblem for BsmCalibrator {
     self.effective_params().into()
   }
 
-  fn residuals(&self) -> Option<Array1<f64>> {
+  fn residuals(&mut self) -> Option<Array1<f64>> {
     let mut residuals = Array1::zeros(self.c_market.len());
     let model = BsmPricer::new(self.effective_params().v, BsmCoc::Bsm1973);
 

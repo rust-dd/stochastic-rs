@@ -11,7 +11,6 @@ use super::transform::to_optimizer_coordinates;
 use crate::CalibrationLossScore;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::least_squares::LeastSquaresProblem;
-use crate::pricing::heston::HestonPricer;
 
 impl LeastSquaresProblem for HestonCalibrator {
   fn set_params(&mut self, params: &Array1<f64>) {
@@ -22,48 +21,26 @@ impl LeastSquaresProblem for HestonCalibrator {
     to_optimizer_coordinates(&self.effective_params())
   }
 
-  fn residuals(&self) -> Option<Array1<f64>> {
+  fn residuals(&mut self) -> Option<Array1<f64>> {
     let free = self.free_params();
     let params_eff = self.feller_projected(free.clone());
     let c_model = self.compute_model_prices_for(&params_eff);
     let weighted_residuals = (&self.c_market - &c_model) * &self.residual_weights;
 
     if self.record_history {
-      self
-        .calibration_history
-        .borrow_mut()
-        .push(CalibrationHistory {
-          residuals: weighted_residuals.clone(),
-          call_put: self
-            .c_market
-            .iter()
-            .enumerate()
-            .map(|(i, _)| {
-              let pricer = HestonPricer::new(
-                params_eff.v0,
-                params_eff.rho,
-                params_eff.kappa,
-                params_eff.theta,
-                params_eff.sigma,
-                Some(0.0),
-              );
-              pricer.call_put(
-                self.s[i],
-                self.k[i],
-                self.r,
-                self.q.unwrap_or(0.0),
-                self.flat_t[i],
-              )
-            })
-            .collect::<Vec<(f64, f64)>>()
-            .into(),
-          params: params_eff.clone(),
-          loss_scores: CalibrationLossScore::compute_selected(
-            self.c_market.as_standard_layout().as_slice().unwrap(),
-            c_model.as_slice().unwrap(),
-            self.loss_metrics,
-          ),
-        });
+      let loss = CalibrationLossScore::compute_selected(
+        self.c_market.as_standard_layout().as_slice().unwrap(),
+        c_model.as_slice().unwrap(),
+        self.loss_metrics,
+      );
+      let mut history = self.calibration_history.borrow_mut();
+      let iteration = history.len();
+      history.push(CalibrationHistory::new(
+        iteration,
+        params_eff.clone(),
+        weighted_residuals.clone(),
+        loss,
+      ));
     }
 
     let residuals = match &self.regularization {

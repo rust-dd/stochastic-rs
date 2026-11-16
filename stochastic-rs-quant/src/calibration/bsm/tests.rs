@@ -179,8 +179,8 @@ fn sigma_is_reflected_not_clamped() {
 #[test]
 fn the_optimisers_first_evaluation_is_already_inside_the_box() {
   assert_eq!(
-    LeastSquaresProblem::residuals(&synthetic(-0.4)),
-    LeastSquaresProblem::residuals(&synthetic(0.4)),
+    LeastSquaresProblem::residuals(&mut synthetic(-0.4)),
+    LeastSquaresProblem::residuals(&mut synthetic(0.4)),
     "the first residual evaluation must not see the raw sign"
   );
 }

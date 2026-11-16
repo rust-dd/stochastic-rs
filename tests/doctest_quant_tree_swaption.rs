@@ -3,6 +3,7 @@
 
 use ndarray::Array1;
 use stochastic_rs::quant::calibration::hw_swaption::SwaptionQuote;
+use stochastic_rs::quant::calibration::tree_swaption::BlackKarasinskiParams;
 use stochastic_rs::quant::calibration::tree_swaption::BlackKarasinskiSwaptionCalibrator;
 use stochastic_rs::quant::curves::DiscountCurve;
 use stochastic_rs::quant::curves::InterpolationMethod;
@@ -31,7 +32,11 @@ fn black_karasinski_fits_a_small_swaption_grid() {
   // (a, σ) of the log-rate, repriced on the Black–Karasinski tree at 8 levels per year.
   let calibrator =
     BlackKarasinskiSwaptionCalibrator::new(&quotes, &curve, 1.0, 0.03, 0.03, 8).with_max_iters(200);
-  let result = calibrator.calibrate(Some((0.1, 0.2))).unwrap();
+  let start = BlackKarasinskiParams {
+    mean_reversion: 0.1,
+    sigma: 0.2,
+  };
+  let result = calibrator.calibrate(Some(start)).unwrap();
   let scale = result.market_prices.iter().sum::<f64>() / 2.0;
   assert!(
     result.rmse / scale < 0.05,

@@ -195,6 +195,7 @@ pub mod fourier_malliavin;
 
 mod types;
 
+pub use calibration::quote::OptionQuote;
 pub use error::QuantError;
 pub use types::CalibrationLossScore;
 pub use types::LossMetric;

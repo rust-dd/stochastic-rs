@@ -88,7 +88,7 @@ fn zero_weights_match_the_unregularised_calibration() {
 #[test]
 fn augmented_jacobian_has_the_penalty_rows() {
   let reg = Regularization::new(vec![0.0; 5], vec![0.0, 4.0, 0.0, 0.0, 0.0]);
-  let problem = calibrator(Some(reg));
+  let mut problem = calibrator(Some(reg));
   let jacobian = problem.jacobian().expect("jacobian");
   let n = problem.c_market.len();
   assert_eq!(jacobian.nrows(), n + 5);

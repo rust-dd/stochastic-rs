@@ -435,16 +435,22 @@ fn first_where(values: &[f64], bad: impl Fn(f64) -> bool) -> Option<(usize, f64)
 }
 
 impl Calibrator for HestonSlvCalibrator {
-  /// The starting point of the Heston fit; ignored when the parameters are
-  /// pinned with [`with_heston_params`](HestonSlvCalibrator::with_heston_params).
-  type InitialGuess = HestonParams;
   type Params = HestonSlvFit;
   type Output = HestonSlvCalibrationResult;
   type Error = QuantError;
 
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
+  /// The Heston fit starts from `initial`'s Heston parameters (its leverage and `eta` unread);
+  /// parameters pinned by [`with_heston_params`](HestonSlvCalibrator::with_heston_params) skip it.
+  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
     self.validate()?;
-    let (heston, heston_fit) = self.heston(initial)?;
+    let start = initial.map(|fit| HestonParams {
+      v0: fit.params.v0,
+      kappa: fit.params.kappa,
+      theta: fit.params.theta,
+      sigma: fit.params.sigma,
+      rho: fit.params.rho,
+    });
+    let (heston, heston_fit) = self.heston(start)?;
     let params = HestonSlvParams {
       kappa: heston.kappa,
       theta: heston.theta,

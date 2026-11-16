@@ -247,7 +247,7 @@ impl<'a> BlackKarasinskiSwaptionCalibrator<'a> {
     let problem = self.cost();
     let (a0, s0) = self.initial_guess.unwrap_or((0.1, 0.2));
     let simplex = vec![vec![a0, s0], vec![a0 * 1.5, s0], vec![a0, s0 * 1.5]];
-    let (best, converged) =
+    let (best, converged, _) =
       run_nelder_mead(problem.clone(), simplex, self.max_iters, self.sd_tolerance);
     let (a, sigma) = (best[0].abs().max(1e-6), best[1].abs().max(1e-6));
     let (model_prices, market_prices) = problem.price_series(a, sigma);
@@ -265,15 +265,14 @@ impl<'a> BlackKarasinskiSwaptionCalibrator<'a> {
 }
 
 impl<'a> crate::traits::Calibrator for BlackKarasinskiSwaptionCalibrator<'a> {
-  type InitialGuess = (f64, f64);
   type Params = BlackKarasinskiParams;
   type Output = BlackKarasinskiCalibrationResult;
   type Error = QuantError;
 
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
+  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
     if let Some(guess) = initial {
-      this.initial_guess = Some(guess);
+      this.initial_guess = Some((guess.mean_reversion, guess.sigma));
     }
     Ok(this.solve())
   }
@@ -470,7 +469,7 @@ impl<'a> G2ppSwaptionCalibrator<'a> {
       };
       simplex.push(v);
     }
-    let (best, converged) =
+    let (best, converged, _) =
       run_nelder_mead(problem.clone(), simplex, self.max_iters, self.sd_tolerance);
     let params = G2ppCost::params(&best);
     let (model_prices, market_prices) = problem.price_series(&params);
@@ -486,15 +485,20 @@ impl<'a> G2ppSwaptionCalibrator<'a> {
 }
 
 impl<'a> crate::traits::Calibrator for G2ppSwaptionCalibrator<'a> {
-  type InitialGuess = [f64; 5];
   type Params = G2ppParams;
   type Output = G2ppCalibrationResult;
   type Error = QuantError;
 
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
+  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
     if let Some(guess) = initial {
-      this.initial_guess = Some(guess);
+      this.initial_guess = Some([
+        guess.mean_reversion_x,
+        guess.mean_reversion_y,
+        guess.sigma_x,
+        guess.sigma_y,
+        guess.rho,
+      ]);
     }
     Ok(this.solve())
   }

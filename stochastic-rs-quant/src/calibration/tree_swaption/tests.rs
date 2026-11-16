@@ -58,7 +58,10 @@ fn black_karasinski_recovers_synthetic_parameters() {
   }
   let calibrator = BlackKarasinskiSwaptionCalibrator::new(&quotes, &curve, 1.0, 0.03, 0.03, 8);
   let result = calibrator
-    .calibrate(Some((0.05, 0.1)))
+    .calibrate(Some(BlackKarasinskiParams {
+      mean_reversion: 0.05,
+      sigma: 0.1,
+    }))
     .expect("calibration runs");
   assert!(result.converged);
   assert!(result.rmse < 1e-7, "rmse {}", result.rmse);
@@ -113,7 +116,13 @@ fn g2pp_reprices_synthetic_quotes() {
   }
   let calibrator = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 0.03, 4).with_max_iters(300);
   let result = calibrator
-    .calibrate(Some([0.4, 0.08, 0.012, 0.005, -0.5]))
+    .calibrate(Some(G2ppParams {
+      mean_reversion_x: 0.4,
+      mean_reversion_y: 0.08,
+      sigma_x: 0.012,
+      sigma_y: 0.005,
+      rho: -0.5,
+    }))
     .expect("calibration runs");
   let scale = result.market_prices.iter().sum::<f64>() / result.market_prices.len() as f64;
   assert!(

@@ -197,38 +197,24 @@ impl LeastSquaresProblem for SvjCalibrator {
     self.effective_params().into()
   }
 
-  fn residuals(&self) -> Option<Array1<f64>> {
+  fn residuals(&mut self) -> Option<Array1<f64>> {
     let params_eff = self.effective_params();
     let c_model = self.compute_model_prices_for(&params_eff);
 
     if self.record_history {
-      let q_val = self.q.unwrap_or(0.0);
-      self
-        .calibration_history
-        .borrow_mut()
-        .push(CalibrationHistory {
-          residuals: self.c_market.clone() - c_model.clone(),
-          call_put: self
-            .c_market
-            .iter()
-            .enumerate()
-            .map(|(idx, _)| {
-              let tau = self.flat_t[idx];
-              let call =
-                bates_call_price(&params_eff, self.s[idx], self.k[idx], self.r, q_val, tau);
-              let put =
-                call - self.s[idx] * (-q_val * tau).exp() + self.k[idx] * (-self.r * tau).exp();
-              (call.max(0.0), put.max(0.0))
-            })
-            .collect::<Vec<(f64, f64)>>()
-            .into(),
-          params: params_eff,
-          loss_scores: CalibrationLossScore::compute_selected(
-            self.c_market.as_standard_layout().as_slice().unwrap(),
-            c_model.as_slice().unwrap(),
-            self.loss_metrics,
-          ),
-        });
+      let loss = CalibrationLossScore::compute_selected(
+        self.c_market.as_standard_layout().as_slice().unwrap(),
+        c_model.as_slice().unwrap(),
+        self.loss_metrics,
+      );
+      let mut history = self.calibration_history.borrow_mut();
+      let iteration = history.len();
+      history.push(CalibrationHistory::new(
+        iteration,
+        params_eff,
+        self.c_market.clone() - c_model.clone(),
+        loss,
+      ));
     }
 
     Some(self.c_market.clone() - c_model)

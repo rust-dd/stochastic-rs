@@ -97,12 +97,11 @@ impl crate::traits::CalibrationResult for SabrCalibrationResult {
 }
 
 impl crate::traits::Calibrator for SabrCalibrator {
-  type InitialGuess = SabrParams;
   type Params = SabrParams;
   type Output = SabrCalibrationResult;
   type Error = QuantError;
 
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
+  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
     if let Some(p) = initial {
       this.params = Some(p.projected());
@@ -414,38 +413,23 @@ impl LeastSquaresProblem for SabrCalibrator {
     self.effective_params().as_lm_vec()
   }
 
-  fn residuals(&self) -> Option<Array1<f64>> {
+  fn residuals(&mut self) -> Option<Array1<f64>> {
     let p = self.effective_params();
     let c_model = self.compute_model_prices_for(&p);
     if self.record_history {
-      self
-        .calibration_history
-        .borrow_mut()
-        .push(CalibrationHistory {
-          residuals: self.c_market.clone() - c_model.clone(),
-          call_put: self
-            .c_market
-            .iter()
-            .enumerate()
-            .map(|(i, _)| {
-              let pr = SabrPricer::new(p);
-              pr.call_put(
-                self.s[i],
-                self.k[i],
-                self.r,
-                self.q.unwrap_or(0.0),
-                self.tau,
-              )
-            })
-            .collect::<Vec<(f64, f64)>>()
-            .into(),
-          params: p,
-          loss_scores: CalibrationLossScore::compute_selected(
-            self.c_market.as_standard_layout().as_slice().unwrap(),
-            c_model.as_slice().unwrap(),
-            self.loss_metrics,
-          ),
-        });
+      let loss = CalibrationLossScore::compute_selected(
+        self.c_market.as_standard_layout().as_slice().unwrap(),
+        c_model.as_slice().unwrap(),
+        self.loss_metrics,
+      );
+      let mut history = self.calibration_history.borrow_mut();
+      let iteration = history.len();
+      history.push(CalibrationHistory::new(
+        iteration,
+        p,
+        self.c_market.clone() - c_model.clone(),
+        loss,
+      ));
     }
     let residuals = self.c_market.clone() - c_model;
     match &self.regularization {

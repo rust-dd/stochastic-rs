@@ -3,6 +3,8 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs_quant::OptionQuote;
+use stochastic_rs_quant::OptionType;
 use stochastic_rs_quant::QuantError;
 use stochastic_rs_quant::curves::Compounding;
 use stochastic_rs_quant::curves::DiscountCurve;
@@ -16,7 +18,6 @@ use stochastic_rs_quant::pricing::sabr::SabrParams;
 use stochastic_rs_quant::pricing::sabr::hagan_implied_vol;
 use stochastic_rs_quant::risk::xva::ExposureProfile;
 use stochastic_rs_quant::vol_surface::implied::ImpliedVolSurface;
-use stochastic_rs_quant::vol_surface::implied::OptionQuote;
 
 fn flat_curve() -> DiscountCurve<f64> {
   DiscountCurve::from_zero_rates(
@@ -140,18 +141,8 @@ fn a_panicking_twin_panics_with_the_display_of_its_error() {
 #[test]
 fn a_nan_quote_is_an_error_not_a_panic() {
   let quotes = [
-    OptionQuote {
-      strike: 100.0,
-      tau: 1.0,
-      price: 8.0,
-      is_call: true,
-    },
-    OptionQuote {
-      strike: f64::NAN,
-      tau: 1.0,
-      price: 8.0,
-      is_call: true,
-    },
+    OptionQuote::new(100.0, 1.0, 8.0, OptionType::Call),
+    OptionQuote::new(f64::NAN, 1.0, 8.0, OptionType::Call),
   ];
   let err = ImpliedVolSurface::try_from_quotes(&quotes, &[(1.0, 102.0)]).unwrap_err();
   assert!(
