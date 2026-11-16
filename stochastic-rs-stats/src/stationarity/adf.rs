@@ -9,6 +9,10 @@
 //!   Autoregressive-Moving Average Models of Unknown Order*, Biometrika
 //!   71(3), 599–607, DOI: 10.1093/biomet/71.3.599 — the lagged-difference
 //!   augmentation this file's `p`-lag regression implements.
+//! - Ng S. & Perron P. (2005) — *A Note on the Selection of Time Series
+//!   Models*, Oxford Bulletin of Economics and Statistics 67(1), 115–134,
+//!   DOI: 10.1111/j.1468-0084.2005.00113.x — every candidate lag scored on
+//!   one common sample, as statsmodels' `adfuller` and arch's `ADF` do.
 
 use ndarray::ArrayView1;
 

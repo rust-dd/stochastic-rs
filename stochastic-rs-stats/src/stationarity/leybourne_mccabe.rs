@@ -6,6 +6,7 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::common::Trend;
+use super::common::centred;
 use super::common::fit_ar;
 use super::common::min_sample_size;
 use super::common::regress_on_deterministics;
@@ -71,8 +72,7 @@ fn detrend_series(y: &[f64], include_trend: bool) -> Result<Vec<f64>, StatsError
   if include_trend {
     Ok(regress_on_deterministics(y, true)?.residuals)
   } else {
-    let mean = y.iter().sum::<f64>() / y.len() as f64;
-    Ok(y.iter().map(|v| v - mean).collect())
+    Ok(centred(y))
   }
 }
 

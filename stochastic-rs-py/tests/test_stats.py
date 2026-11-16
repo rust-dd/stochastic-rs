@@ -105,6 +105,22 @@ def test_garch_fit_recovers_persistence_below_one():
     assert fit.kind == "garch" and fit.mean == "zero"
 
 
+def test_hmm_viterbi_raises_on_a_non_finite_observation():
+    hmm = sr.GaussianHmm(
+        np.array([0.5, 0.5]),
+        np.array([[0.9, 0.1], [0.1, 0.9]]),
+        np.array([-0.5, 0.5]),
+        np.array([1.0, 1.0]),
+    )
+    assert list(hmm.viterbi(np.array([-1.0, -0.9, 1.0, 1.1]))) == [1, 1, 1, 1]
+    try:
+        hmm.viterbi(np.array([-1.0, -0.9, np.nan, 1.1]))
+    except ValueError as err:
+        assert str(err) == "observation 2 = NaN must satisfy `finite`"
+    else:
+        raise AssertionError("expected a ValueError")
+
+
 def test_garch_fit_rejects_unknown_kind():
     r = np.random.default_rng(8).standard_normal(300)
     try:

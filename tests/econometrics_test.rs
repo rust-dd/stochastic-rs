@@ -112,6 +112,6 @@ fn hmm_log_likelihood_finite_after_fit() {
   );
   let fit = hmm.baum_welch(obs.view(), 50, 1e-6).unwrap();
   assert!(fit.log_likelihood.is_finite());
-  let path = hmm.viterbi(obs.view());
+  let path = hmm.viterbi(obs.view()).unwrap();
   assert_eq!(path.len(), 400);
 }

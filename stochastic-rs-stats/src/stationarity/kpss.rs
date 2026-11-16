@@ -16,9 +16,12 @@
 use ndarray::ArrayView1;
 
 use super::common::Trend;
+use super::common::centred;
 use super::common::newey_west_long_run_variance;
 use super::common::regress_on_deterministics;
+use super::common::reject_exact_fit;
 use super::common::schwert_max_lags;
+use super::common::unit_scaled;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
@@ -79,8 +82,8 @@ fn kpss_critical_values(include_trend: bool) -> CriticalValues {
   }
 }
 
-/// KPSS test; `Err` below 20 points, on non-finite or constant data, a zero or non-finite long-run
-/// variance or an overflowing statistic; panics unless `trend != Trend::None`, `0.01 <= alpha < 1`.
+/// KPSS test at any scale; `Err` below 20 points, on non-finite, constant or exactly fitted data or
+/// a zero long-run variance; panics unless `trend != Trend::None` and `0.01 <= alpha < 1`.
 pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> Result<KpssTest, StatsError> {
   assert!(
     cfg.trend != Trend::None,
@@ -95,8 +98,9 @@ pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> Result<KpssTest, StatsE
   validate(&y, 20)?;
   reject_constant(&y, "constant series")?;
 
-  let reg = regress_on_deterministics(&y, include_trend)?;
-  let resid = reg.residuals;
+  let y = unit_scaled(y.into_owned());
+  let resid = regress_on_deterministics(&centred(&y), include_trend)?.residuals;
+  reject_exact_fit(&y, &resid)?;
   let n = resid.len();
   let n_f = n as f64;
 
@@ -111,9 +115,6 @@ pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> Result<KpssTest, StatsE
   let used_lags = cfg.lags.unwrap_or_else(|| schwert_max_lags(n));
   let long_run_var = newey_west_long_run_variance(&resid, used_lags)?;
   let statistic = eta / long_run_var;
-  if !statistic.is_finite() {
-    return Err(StatsError::Numerical { stage: "statistic" });
-  }
 
   Ok(KpssTest {
     statistic,

@@ -6,6 +6,7 @@ use stochastic_rs_distributions::linalg::solve;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::validate;
+use crate::traits::RealExt;
 
 /// Deterministic terms of a unit-root or stationarity regression.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,6 +16,9 @@ pub enum Trend {
   ConstantTrend,
 }
 
+/// The lag of the ADF and DF-GLS regressions: fixed, or by AIC, BIC or the largest lag whose
+/// `|t| ≥ 1.645`, every candidate up to `max_lags` fitted on the rows of `max_lags`.
+/// Reference: Ng & Perron (2005), DOI: 10.1111/j.1468-0084.2005.00113.x
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum LagSelection {
@@ -205,6 +209,8 @@ pub fn bic_from_sse(sse: f64, nobs: usize, k: usize) -> f64 {
   n * (sse / n).ln() + (k as f64) * n.ln()
 }
 
+/// The lag `lag_selection` takes from `0..=max_lags`, every candidate fitted on the rows of
+/// `max_lags` so that their criteria compare; `Err` on a singular fit or a NaN criterion or `t`.
 pub fn choose_lag_for_adf(
   y: &[f64],
   trend: Trend,
@@ -214,54 +220,58 @@ pub fn choose_lag_for_adf(
   if let LagSelection::Fixed(p) = lag_selection {
     return Ok(p);
   }
-
-  let mut best_lag = 0usize;
-  let mut best_score = f64::INFINITY;
-
-  let mut candidates: Vec<(usize, f64, f64)> = Vec::new();
-
+  let (lhs, rhs, gamma_index) = build_adf_design(y, max_lags, trend)?;
+  let mut criteria = Vec::with_capacity(max_lags + 1);
+  let mut significant = 0;
   for lag in 0..=max_lags {
-    let (lhs, rhs, _gamma_idx) = build_adf_design(y, lag, trend)?;
-    if rhs.is_empty() {
-      continue;
+    let columns = gamma_index + 1 + lag;
+    let rows = rhs
+      .iter()
+      .map(|row| row[..columns].to_vec())
+      .collect::<Vec<_>>();
+    let fit = ols(&lhs, &rows)?;
+    match lag_selection {
+      LagSelection::Aic => criteria.push(aic_from_sse(fit.sse, fit.nobs, fit.k)),
+      LagSelection::Bic => criteria.push(bic_from_sse(fit.sse, fit.nobs, fit.k)),
+      _ => {
+        if lag > 0 && t_is_significant(fit.beta[columns - 1], fit.std_err[columns - 1])? {
+          significant = lag;
+        }
+      }
     }
-    let fit = ols(&lhs, &rhs)?;
-
-    let ic = match lag_selection {
-      LagSelection::Aic => aic_from_sse(fit.sse, fit.nobs, fit.k),
-      LagSelection::Bic => bic_from_sse(fit.sse, fit.nobs, fit.k),
-      LagSelection::Fixed(_) | LagSelection::TStat => 0.0,
-    };
-
-    let t_last = if lag > 0 {
-      let idx = fit.k - 1;
-      let se = fit.std_err[idx];
-      if se > 0.0 { fit.beta[idx] / se } else { 0.0 }
-    } else {
-      0.0
-    };
-
-    if matches!(lag_selection, LagSelection::Aic | LagSelection::Bic) && ic < best_score {
-      best_score = ic;
-      best_lag = lag;
-    }
-
-    candidates.push((lag, ic, t_last));
   }
+  if lag_selection == LagSelection::TStat {
+    return Ok(significant);
+  }
+  least_criterion(&criteria)
+}
 
-  Ok(match lag_selection {
-    LagSelection::Aic | LagSelection::Bic => best_lag,
-    LagSelection::TStat => {
-      let mut ordered = candidates;
-      ordered.sort_by_key(|(lag, _, _)| *lag);
-      ordered
-        .into_iter()
-        .rev()
-        .find(|&(lag, _, t_last)| lag == 0 || t_last.abs() >= 1.644_853_626_951_472_2)
-        .map_or(0, |(lag, _, _)| lag)
+/// Whether `|beta / se|` reaches the 10 % two-sided normal point; `Err` on a NaN `t`.
+fn t_is_significant(beta: f64, se: f64) -> Result<bool, StatsError> {
+  let t = (beta / se).abs();
+  if t.is_nan() {
+    return Err(StatsError::Numerical {
+      stage: "lag selection",
+    });
+  }
+  Ok(se > 0.0 && t >= 1.644_853_626_951_472_2)
+}
+
+/// The index of the smallest criterion, ties to the smaller lag; a NaN leaves the candidates with
+/// no order.
+fn least_criterion(criteria: &[f64]) -> Result<usize, StatsError> {
+  if criteria.iter().any(|c| c.is_nan()) {
+    return Err(StatsError::Numerical {
+      stage: "lag selection",
+    });
+  }
+  let mut best = 0;
+  for (lag, &criterion) in criteria.iter().enumerate() {
+    if criterion < criteria[best] {
+      best = lag;
     }
-    LagSelection::Fixed(_) => unreachable!(),
-  })
+  }
+  Ok(best)
 }
 
 /// Bartlett-weighted long-run variance of `u`, `>= 0` in exact arithmetic; `Err` on an empty
@@ -298,6 +308,44 @@ pub fn newey_west_long_run_variance(u: &[f64], lags: usize) -> Result<f64, Stats
     return Err(StatsError::DegenerateData("zero long-run variance"));
   }
   Ok(lr_var)
+}
+
+/// An exact fit leaves a residual mean square near `ε² ≈ 5e-32` of the series' own variance; one
+/// below this fraction is refused, as is a series whose variance an explosive tail dominates.
+const EXACT_FIT: f64 = 1e-24;
+
+/// `y` less its mean: a fit with a constant is the same, and keeps every digit of a variation that
+/// is small against the level, as arch's `PhillipsPerron` does; scale `y` first, the sum overflows.
+pub fn centred(y: &[f64]) -> Vec<f64> {
+  let mean = y.iter().sum::<f64>() / y.len() as f64;
+  y.iter().map(|v| v - mean).collect()
+}
+
+/// `y` times the power of two nearest the inverse of its largest magnitude, an exact scaling that
+/// leaves a scale-free statistic as it is and puts it on the scale of the trend terms beside it.
+pub fn unit_scaled(mut y: Vec<f64>) -> Vec<f64> {
+  let spread = f64::max_or_nan_fold(y.iter().map(|v| v.abs()));
+  let unit = 2f64.powi(-(spread.log2().round() as i32).clamp(-1022, 1022));
+  for v in &mut y {
+    *v *= unit;
+  }
+  y
+}
+
+/// `DegenerateData("zero residual variance")` when the mean square of `residuals`, of a fit to `y`,
+/// is below `EXACT_FIT` of `y`'s variance; both are scaled by `y`'s largest deviation, so none overflows.
+pub fn reject_exact_fit(y: &[f64], residuals: &[f64]) -> Result<(), StatsError> {
+  let mean = y.iter().sum::<f64>() / y.len() as f64;
+  let spread = f64::max_or_nan_fold(y.iter().map(|v| (v - mean).abs()));
+  let mean_square = |values: &mut dyn Iterator<Item = f64>, n: usize| {
+    values.map(|v| (v / spread) * (v / spread)).sum::<f64>() / n as f64
+  };
+  let own = mean_square(&mut y.iter().map(|v| v - mean), y.len());
+  let left = mean_square(&mut residuals.iter().copied(), residuals.len());
+  if left <= EXACT_FIT * own {
+    return Err(StatsError::DegenerateData("zero residual variance"));
+  }
+  Ok(())
 }
 
 pub fn regress_on_deterministics(y: &[f64], include_trend: bool) -> Result<OlsResult, StatsError> {
@@ -339,8 +387,40 @@ pub fn fit_ar(y: &[f64], lags: usize) -> Result<(Vec<f64>, Vec<f64>, f64), Stats
 
 #[cfg(test)]
 mod tests {
+  use super::least_criterion;
   use super::newey_west_long_run_variance;
+  use super::t_is_significant;
   use crate::StatsError;
+
+  /// Ties go to the smaller lag, an exact fit's `−∞` wins, and a NaN leaves no order to choose by.
+  #[test]
+  fn the_least_criterion_takes_the_smaller_lag_and_refuses_nan() {
+    assert_eq!(least_criterion(&[3.0, 1.0, 1.0, 2.0]), Ok(1));
+    assert_eq!(
+      least_criterion(&[f64::INFINITY, 2.0, f64::NEG_INFINITY, f64::NEG_INFINITY]),
+      Ok(2)
+    );
+    assert_eq!(least_criterion(&[f64::INFINITY, f64::INFINITY]), Ok(0));
+    assert_eq!(
+      least_criterion(&[1.0, f64::NAN, 0.5]),
+      Err(StatsError::Numerical {
+        stage: "lag selection"
+      })
+    );
+  }
+
+  /// A NaN `t` has no side of the threshold, so the chooser refuses it as it does a NaN criterion.
+  #[test]
+  fn a_nan_t_statistic_is_refused_where_a_finite_one_is_compared() {
+    let refused = Err(StatsError::Numerical {
+      stage: "lag selection",
+    });
+    assert_eq!(t_is_significant(2.0, 1.0), Ok(true));
+    assert_eq!(t_is_significant(-1.0, 1.0), Ok(false));
+    assert_eq!(t_is_significant(1.0, f64::NAN), refused);
+    assert_eq!(t_is_significant(f64::NAN, 1.0), refused);
+    assert_eq!(t_is_significant(0.0, 0.0), refused);
+  }
 
   /// The residuals of an exact fit are all zero, so they carry no long-run variance.
   #[test]
