@@ -39,3 +39,11 @@ stochastic-rs-distributions = { workspace = true }
 
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 metal-oxide = { workspace = true, optional = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "euler_metal"
+harness = false
+required-features = ["metal"]
