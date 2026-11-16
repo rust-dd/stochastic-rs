@@ -321,3 +321,52 @@ fn pmle_heston_returns_finite_params_from_synthetic_path() {
   assert!(est.sigma.is_finite() && est.sigma > 0.0);
   assert!(est.rho.is_finite() && est.rho.abs() <= 1.0);
 }
+
+#[test]
+fn a_non_finite_r_panics_in_the_predicate_form() {
+  let s = wiggly_prices(5);
+  let v = Array1::from(vec![0.04, 0.05, 0.045, 0.042, 0.047]);
+  let fits: [Fit; 4] = [
+    |s, v| fit_heston_nmle(s, v, f64::NAN),
+    |s, v| fit_heston_nmle_with_delta(s, v, f64::NAN, 1.0 / 252.0),
+    |s, v| fit_heston_pmle(s, v, f64::NAN),
+    |s, v| fit_heston_pmle_with_delta(s, v, f64::NAN, 1.0 / 252.0),
+  ];
+  for fit in fits {
+    let payload = std::panic::catch_unwind(|| {
+      let _ = fit(s.view(), v.view());
+    })
+    .expect_err("the fit accepted a NaN r");
+    let text = payload
+      .downcast_ref::<String>()
+      .cloned()
+      .expect("a text payload");
+    assert_eq!(text, "r must satisfy `r.is_finite()`, got r = NaN");
+  }
+}
+
+/// `κ̂` and `θ̂ / c` do not depend on the units of the variance.
+#[test]
+fn every_fit_is_invariant_to_the_units_of_the_variance() {
+  let (n, dt) = (400, 1.0 / 252.0);
+  let mut noise = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(11));
+  let mut v = Array1::<f64>::zeros(n);
+  v[0] = 0.04;
+  for t in 1..n {
+    let step = 30.0 * (0.04 - v[t - 1]) * dt + 0.6 * (v[t - 1] * dt).sqrt() * noise.sample();
+    v[t] = (v[t - 1] + step).abs();
+  }
+  let s =
+    Array1::from_iter((0..n).map(|t| 100.0 + 2.0 * (t as f64 * 0.37).sin() + 0.01 * t as f64));
+  for fit in fits() {
+    let base = fit(s.view(), v.view()).unwrap();
+    for c in [1e12, 1e14] {
+      let scaled = fit(s.view(), (&v * c).view()).unwrap();
+      assert!((scaled.kappa / base.kappa - 1.0).abs() < 1e-9, "c = {c}");
+      assert!(
+        (scaled.theta / c / base.theta - 1.0).abs() < 1e-9,
+        "c = {c}"
+      );
+    }
+  }
+}

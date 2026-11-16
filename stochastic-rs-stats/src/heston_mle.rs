@@ -27,25 +27,28 @@ pub struct HestonMleFit {
 }
 
 /// Wang et al. (2018) closed-form Heston NMLE from `(S_t, V_t)` over unit time; `Err` on unequal
-/// lengths, < 4 points, one not finite and `> 0`, constant lagged `V` or an estimate that is not.
+/// lengths, < 4 points, constant lagged `V` or a datum or estimate not finite and `> 0`; panics on
+/// a non-finite `r`.
 /// Reference: Wang et al. (2018), Sci. China Inf. Sci. 61, 042202. DOI: 10.1007/s11432-017-9215-8
 pub fn fit_heston_nmle(
   s: ArrayView1<f64>,
   v: ArrayView1<f64>,
   r: f64,
 ) -> Result<HestonMleFit, StatsError> {
+  assert_r(r);
   validate_series(s, v)?;
   nmle(s, v, r, 1.0 / (v.len() - 1) as f64)
 }
 
 /// [`fit_heston_nmle`] at sampling interval `delta` (Wang et al. eq. 19-21 and the rho moment
-/// estimator); `Err` as it, and panics unless `delta` is finite and positive.
+/// estimator); `Err` as it, and panics unless `r` is finite and `delta` finite and positive.
 pub fn fit_heston_nmle_with_delta(
   s: ArrayView1<f64>,
   v: ArrayView1<f64>,
   r: f64,
   delta: f64,
 ) -> Result<HestonMleFit, StatsError> {
+  assert_r(r);
   assert_delta(delta);
   validate_series(s, v)?;
   nmle(s, v, r, delta)
@@ -79,7 +82,7 @@ fn nmle(
 
   let denom_inner = n_f - (sum_v_prev * sum_inv_v_prev) / n_f;
   let denom_p = 0.5 * delta * denom_inner;
-  if denom_p.abs() <= DENOMINATOR {
+  if (sum_v_prev * sum_inv_v_prev / (n_f * n_f) - 1.0).abs() <= DENOMINATOR {
     return Err(StatsError::Numerical {
       stage: "drift coefficient",
     });
@@ -116,24 +119,26 @@ fn nmle(
 }
 
 /// Wang et al. (2018) closed-form PMLE of Heston from `(S_t, V_t)` over one unit of time; `Err` as
-/// [`fit_heston_nmle`].
+/// [`fit_heston_nmle`], and panics on a non-finite `r`.
 pub fn fit_heston_pmle(
   s: ArrayView1<f64>,
   v: ArrayView1<f64>,
   r: f64,
 ) -> Result<HestonMleFit, StatsError> {
+  assert_r(r);
   validate_series(s, v)?;
   pmle(s, v, r, 1.0 / (v.len() - 1) as f64)
 }
 
 /// [`fit_heston_pmle`] at sampling interval `delta` (Wang et al.'s PMLE and the rho moment
-/// estimator); `Err` as it, and panics unless `delta` is finite and positive.
+/// estimator); `Err` as it, and panics unless `r` is finite and `delta` finite and positive.
 pub fn fit_heston_pmle_with_delta(
   s: ArrayView1<f64>,
   v: ArrayView1<f64>,
   r: f64,
   delta: f64,
 ) -> Result<HestonMleFit, StatsError> {
+  assert_r(r);
   assert_delta(delta);
   validate_series(s, v)?;
   pmle(s, v, r, delta)
@@ -186,11 +191,7 @@ fn pmle(
     ));
   }
 
-  let beta2_den = (1.0 - beta1_hat) * mean_inv_v_prev;
-  if beta2_den.abs() <= DENOMINATOR {
-    return Err(StatsError::Numerical { stage: "theta" });
-  }
-  let beta2_hat = (mean_ratio - beta1_hat) / beta2_den;
+  let beta2_hat = (mean_ratio - beta1_hat) / ((1.0 - beta1_hat) * mean_inv_v_prev);
   estimate(beta2_hat, "theta", NON_POSITIVE_LEVEL)?;
 
   let mut sum_beta3 = 0.0;
@@ -219,7 +220,7 @@ fn pmle(
   })
 }
 
-/// Below this, the NMLE's and PMLE's denominators are rounding on a near-constant lagged path.
+/// Below this, the dimensionless `mean(V) mean(1/V) - 1` is rounding on a near-constant path.
 const DENOMINATOR: f64 = 1e-12;
 
 const NO_MEAN_REVERSION: &str = "variance series without mean reversion";
@@ -282,6 +283,14 @@ fn validate_series(s: ArrayView1<f64>, v: ArrayView1<f64>) -> Result<(), StatsEr
   let v = as_slice_or_copy(v);
   validate_domain(&v, 4, "finite and > 0", |x| x > 0.0)?;
   reject_constant(&v[..v.len() - 1], "constant variance series")
+}
+
+#[track_caller]
+fn assert_r(r: f64) {
+  assert!(
+    r.is_finite(),
+    "r must satisfy `r.is_finite()`, got r = {r:?}"
+  );
 }
 
 #[track_caller]
