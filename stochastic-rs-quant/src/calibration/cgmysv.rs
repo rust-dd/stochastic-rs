@@ -67,13 +67,24 @@ impl crate::traits::CalibrationResult for CgmysvCalibrationResult {
 }
 
 impl crate::traits::Calibrator for CgmysvCalibrator {
-  type InitialGuess = Vec<f64>;
   type Params = crate::pricing::cgmysv::CgmysvParams;
   type Output = CgmysvCalibrationResult;
   type Error = QuantError;
 
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
-    Ok(CgmysvCalibrator::calibrate(self, initial))
+  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
+    let start = initial.map(|p| {
+      vec![
+        p.alpha,
+        p.lambda_plus,
+        p.lambda_minus,
+        p.kappa,
+        p.eta,
+        p.zeta,
+        p.rho,
+        p.v0,
+      ]
+    });
+    Ok(CgmysvCalibrator::calibrate(self, start))
   }
 }
 
@@ -267,7 +278,7 @@ impl LeastSquaresProblem for CgmysvCalibrator {
     )
   }
 
-  fn residuals(&self) -> Option<Array1<f64>> {
+  fn residuals(&mut self) -> Option<Array1<f64>> {
     let model_prices = self.compute_model_prices();
     let n = self.flat_prices.len();
     let residuals: Vec<f64> = (0..n)
@@ -275,19 +286,16 @@ impl LeastSquaresProblem for CgmysvCalibrator {
       .collect();
 
     if self.record_history {
-      let r_vec = Array1::from_vec(residuals.clone());
-      let call_put = Array1::from_vec(vec![(0.0, 0.0); n]);
       let loss =
         CalibrationLossScore::compute_selected(&self.flat_prices, &model_prices, self.loss_metrics);
-      self
-        .calibration_history
-        .borrow_mut()
-        .push(CalibrationHistory {
-          residuals: r_vec,
-          call_put,
-          params: self.params.clone(),
-          loss_scores: loss,
-        });
+      let mut history = self.calibration_history.borrow_mut();
+      let iteration = history.len();
+      history.push(CalibrationHistory::new(
+        iteration,
+        self.params.clone(),
+        Array1::from_vec(residuals.clone()),
+        loss,
+      ));
     }
 
     Some(Array1::from_vec(residuals))

@@ -8,6 +8,8 @@ use crate::calibration::heston::HestonParams;
 use crate::pricing::fourier::HestonFourier;
 use crate::pricing::heston::HestonPricer;
 use crate::pricing::slv::FokkerPlanckMethod;
+use crate::pricing::slv::HestonSlvParams;
+use crate::pricing::slv::LeverageSurface;
 use crate::pricing::slv::ParticleMethod;
 use crate::traits::CalibrationResult;
 use crate::traits::Calibrator;
@@ -298,12 +300,20 @@ fn the_heston_fit_runs_when_the_parameters_are_not_pinned() {
   let strikes = Array1::linspace(80.0, 120.0, 9).to_vec();
   let maturities = vec![0.25, 0.5, 1.0];
   let calls = heston_surface(&strikes, &maturities);
-  let guess = HestonParams {
-    v0: 0.05,
-    kappa: 1.5,
-    theta: 0.04,
-    sigma: 0.5,
-    rho: -0.5,
+  let guess = HestonSlvFit {
+    params: HestonSlvParams {
+      kappa: 1.5,
+      theta: 0.04,
+      sigma: 0.5,
+      rho: -0.5,
+      v0: 0.05,
+      eta: 1.0,
+    },
+    leverage: LeverageSurface::new(
+      Array1::from_vec(vec![S]),
+      Array1::from_vec(vec![1.0]),
+      Array2::ones((1, 1)),
+    ),
   };
   let result = HestonSlvCalibrator::new(S, R, Q, strikes, maturities, calls)
     .with_particle_method(method().with_particles(2_000))

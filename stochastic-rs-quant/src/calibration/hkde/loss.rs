@@ -146,45 +146,24 @@ impl LeastSquaresProblem for HkdeCalibrator {
     self.effective_params().into()
   }
 
-  fn residuals(&self) -> Option<Array1<f64>> {
+  fn residuals(&mut self) -> Option<Array1<f64>> {
     let params_eff = self.effective_params();
     let c_model = self.compute_model_prices_for(&params_eff);
 
     if self.record_history {
-      let call_put: Vec<(f64, f64)> = (0..self.c_market.len())
-        .map(|idx| {
-          let tau = self.flat_t[idx];
-          let s_i = self.s[idx];
-          let k_i = self.k[idx];
-          let disc_r = (-self.r * tau).exp();
-          let disc_q = (-self.q.unwrap_or(0.0) * tau).exp();
-          let (call, put) = match self.option_type {
-            OptionType::Call => {
-              let call = c_model[idx];
-              (call, (call - s_i * disc_q + k_i * disc_r).max(0.0))
-            }
-            OptionType::Put => {
-              let put = c_model[idx];
-              ((put + s_i * disc_q - k_i * disc_r).max(0.0), put)
-            }
-          };
-          (call, put)
-        })
-        .collect();
-
-      self
-        .calibration_history
-        .borrow_mut()
-        .push(CalibrationHistory {
-          residuals: self.c_market.clone() - c_model.clone(),
-          call_put: call_put.into(),
-          params: params_eff,
-          loss_scores: CalibrationLossScore::compute_selected(
-            self.c_market.as_standard_layout().as_slice().unwrap(),
-            c_model.as_slice().unwrap(),
-            self.loss_metrics,
-          ),
-        });
+      let loss = CalibrationLossScore::compute_selected(
+        self.c_market.as_standard_layout().as_slice().unwrap(),
+        c_model.as_slice().unwrap(),
+        self.loss_metrics,
+      );
+      let mut history = self.calibration_history.borrow_mut();
+      let iteration = history.len();
+      history.push(CalibrationHistory::new(
+        iteration,
+        params_eff,
+        self.c_market.clone() - c_model.clone(),
+        loss,
+      ));
     }
 
     let n = self.c_market.len();

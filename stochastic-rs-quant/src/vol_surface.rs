@@ -285,7 +285,6 @@ pub use essvi::EssviSlice;
 pub use essvi::EssviSurface;
 pub use essvi::calibrate_essvi;
 pub use implied::ImpliedVolSurface;
-pub use implied::OptionQuote;
 pub use implied::SmileSlice;
 pub use model_surface::ModelSurface;
 pub use model_surface::fourier_model_surface_fft;

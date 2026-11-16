@@ -226,12 +226,11 @@ impl HkdeCalibrator {
 }
 
 impl crate::traits::Calibrator for HkdeCalibrator {
-  type InitialGuess = HkdeParams;
   type Params = HkdeParams;
   type Output = HkdeCalibrationResult;
   type Error = QuantError;
 
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
+  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
     Ok(HkdeCalibrator::calibrate(self, initial))
   }
 }

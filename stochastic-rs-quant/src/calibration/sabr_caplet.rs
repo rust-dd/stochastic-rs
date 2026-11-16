@@ -108,15 +108,14 @@ impl crate::traits::CalibrationResult for SabrCapletCalibrationResult {
 }
 
 impl crate::traits::Calibrator for SabrCapletCalibrator {
-  type InitialGuess = (f64, f64, f64);
   type Params = SabrCapletParams;
   type Output = SabrCapletCalibrationResult;
   type Error = QuantError;
 
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
+  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
     let mut this = self.clone();
     if let Some(g) = initial {
-      this.initial_guess = Some(g);
+      this.initial_guess = Some((g.sabr.alpha, g.sabr.nu, g.sabr.rho));
     }
     this.validate_shift()?;
     Ok(this.solve())
@@ -272,8 +271,14 @@ impl SabrCapletCalibrator {
       vec![a0, nu0, (rho0 + 0.2).clamp(-0.99, 0.99)],
     ];
 
-    let (best, converged) =
-      run_nelder_mead(problem.clone(), simplex, self.max_iters, self.sd_tolerance);
+    let run = run_nelder_mead(
+      problem.clone(),
+      simplex,
+      self.max_iters,
+      self.sd_tolerance,
+      false,
+    );
+    let (best, converged) = (run.best, run.converged);
 
     let alpha = best[0].abs().max(1e-8);
     let nu = best[1].abs().max(1e-8);

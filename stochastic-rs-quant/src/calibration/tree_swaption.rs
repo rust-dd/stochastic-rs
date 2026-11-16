@@ -24,10 +24,14 @@ use basin::CostFunction;
 
 use super::hw_swaption::CurveSnapshot;
 use super::hw_swaption::SwaptionQuote;
+use super::hw_swaption::check_finite_start;
 use super::hw_swaption::serialize_curve;
+use super::hw_swaption::validate_swaption_quotes;
 use crate::QuantError;
+use crate::calibration::Calibrated;
+use crate::calibration::CalibrationOptions;
 use crate::calibration::Regularization;
-use crate::calibration::run_nelder_mead;
+use crate::calibration::nelder_mead_fit;
 use crate::curves::DiscountCurve;
 use crate::instruments::option::bermudan::BermudanSwaption;
 use crate::instruments::option::caplet::black_forward_caplet;
@@ -37,6 +41,7 @@ use crate::lattice::short_rate::BlackKarasinskiTree;
 use crate::lattice::short_rate::BlackKarasinskiTreeModel;
 use crate::lattice::short_rate::G2ppTree;
 use crate::lattice::short_rate::G2ppTreeModel;
+use crate::traits::ToShortRateModel;
 
 /// Market side of one quote: the forward swap and its Black-76 price.
 #[derive(Debug, Clone)]
@@ -105,177 +110,146 @@ fn tree_swaption(
   )
 }
 
-fn rmse(model: &[f64], market: &[f64]) -> f64 {
-  let n = model.len().max(1) as f64;
-  (model
-    .iter()
-    .zip(market)
-    .map(|(m, q)| (m - q).powi(2))
-    .sum::<f64>()
-    / n)
-    .sqrt()
+fn assert_tree_inputs(notional: f64, steps_per_year: usize) {
+  assert!(
+    notional.is_finite() && notional > 0.0,
+    "notional must satisfy `notional.is_finite() && notional > 0.0`, got notional = {notional:?}"
+  );
+  assert!(
+    steps_per_year > 0,
+    "steps_per_year must satisfy `steps_per_year > 0`, got steps_per_year = {steps_per_year:?}"
+  );
 }
 
-/// Calibrated Black–Karasinski parameters.
-#[derive(Debug, Clone, PartialEq)]
+/// Black–Karasinski parameters; the two rates shape the tree the fit prices on and stay fixed.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BlackKarasinskiParams {
   /// Mean reversion of the log-rate.
   pub mean_reversion: f64,
   /// Volatility of the log-rate.
   pub sigma: f64,
-}
-
-/// Black–Karasinski swaption calibration result.
-#[derive(Debug, Clone)]
-pub struct BlackKarasinskiCalibrationResult {
-  pub mean_reversion: f64,
-  pub sigma: f64,
-  /// Root-mean-square price error on the quote grid.
-  pub rmse: f64,
-  /// True when Nelder–Mead reported convergence.
-  pub converged: bool,
-  pub model_prices: Vec<f64>,
-  pub market_prices: Vec<f64>,
-  /// Time-0 short rate the tree model starts from; not calibrated.
+  /// Time-0 short rate of the tree model; fixed during the fit.
   pub initial_rate: f64,
-  /// Long-run level the log-rate reverts to, in rate units; not calibrated.
+  /// Long-run level the log-rate reverts to, in rate units; fixed during the fit.
   pub long_run_rate: f64,
 }
 
-impl crate::traits::ToShortRateModel for BlackKarasinskiCalibrationResult {
-  type Model = BlackKarasinskiTreeModel<f64>;
-
-  fn to_short_rate_model(&self) -> Self::Model {
-    BlackKarasinskiTreeModel::new(
-      self.initial_rate,
-      self.mean_reversion,
-      self.long_run_rate,
-      self.sigma,
-    )
-  }
-}
-
-impl crate::traits::CalibrationResult for BlackKarasinskiCalibrationResult {
-  type Params = BlackKarasinskiParams;
-  fn rmse(&self) -> f64 {
-    self.rmse
-  }
-
-  fn converged(&self) -> bool {
-    self.converged
-  }
-
-  fn params(&self) -> Self::Params {
-    BlackKarasinskiParams {
-      mean_reversion: self.mean_reversion,
-      sigma: self.sigma,
+impl BlackKarasinskiParams {
+  /// `InvalidInput { what: "start" }` unless every field is finite and both rates positive.
+  fn check(&self) -> Result<(), QuantError> {
+    let rates = [
+      ("initial_rate", self.initial_rate),
+      ("long_run_rate", self.long_run_rate),
+    ];
+    check_finite_start(&[
+      ("mean_reversion", self.mean_reversion),
+      ("sigma", self.sigma),
+    ])?;
+    check_finite_start(&rates)?;
+    match rates.into_iter().find(|&(_, rate)| rate <= 0.0) {
+      Some((name, rate)) => Err(QuantError::invalid(
+        "start",
+        format!("{name} must satisfy `{name} > 0.0`, got {name} = {rate:?}"),
+      )),
+      None => Ok(()),
     }
   }
 }
 
-/// Black–Karasinski calibrator: `(a, σ)` of `d ln r = a (ln θ − ln r) dt + σ dW`
-/// against a swaption grid, with the initial and long-run rates given.
+impl ToShortRateModel for Calibrated<BlackKarasinskiParams> {
+  type Model = BlackKarasinskiTreeModel<f64>;
+
+  fn to_short_rate_model(&self) -> Self::Model {
+    let p = &self.params;
+    BlackKarasinskiTreeModel::new(p.initial_rate, p.mean_reversion, p.long_run_rate, p.sigma)
+  }
+}
+
+/// Black–Karasinski `(a, σ)` of `d ln r = a (ln θ − ln r) dt + σ dW` against a swaption grid.
 #[derive(Debug, Clone)]
 pub struct BlackKarasinskiSwaptionCalibrator<'a> {
   pub quotes: &'a [SwaptionQuote],
   pub curve: &'a DiscountCurve<f64>,
   pub notional: f64,
-  pub initial_rate: f64,
-  pub long_run_rate: f64,
   /// Tree levels per year.
   pub steps_per_year: usize,
-  pub initial_guess: Option<(f64, f64)>,
-  pub max_iters: u64,
-  pub sd_tolerance: f64,
-  /// Optional Tikhonov pull of `(a, σ)` toward an anchor.
-  pub regularization: Option<Regularization>,
+  pub start: BlackKarasinskiParams,
+  /// Nelder–Mead: `max_iterations` (default 400), `tolerance` its spread; pull `(a, σ)`.
+  pub options: CalibrationOptions,
 }
 
 impl<'a> BlackKarasinskiSwaptionCalibrator<'a> {
+  /// Panics unless `notional > 0`, `steps_per_year > 0`, and the start is finite, its rates > 0.
   pub fn new(
     quotes: &'a [SwaptionQuote],
     curve: &'a DiscountCurve<f64>,
     notional: f64,
-    initial_rate: f64,
-    long_run_rate: f64,
     steps_per_year: usize,
+    start: BlackKarasinskiParams,
   ) -> Self {
+    assert_tree_inputs(notional, steps_per_year);
+    start.check().unwrap_or_else(|e| panic!("{e}"));
     Self {
       quotes,
       curve,
       notional,
-      initial_rate,
-      long_run_rate,
       steps_per_year,
-      initial_guess: None,
-      max_iters: 400,
-      sd_tolerance: 1e-10,
-      regularization: None,
+      start,
+      options: CalibrationOptions::default(),
     }
   }
 
-  /// Overrides the Nelder–Mead iteration cap.
-  pub fn with_max_iters(mut self, max_iters: u64) -> Self {
-    self.max_iters = max_iters;
+  pub fn with_options(mut self, options: CalibrationOptions) -> Self {
+    self.options = options;
     self
   }
 
-  /// Adds a Tikhonov pull toward `regularization.anchor` in the order `(a, σ)`.
-  pub fn with_regularization(mut self, regularization: Regularization) -> Self {
-    assert_eq!(
-      regularization.dimension(),
-      2,
-      "Black-Karasinski regularisation needs two anchors"
-    );
-    self.regularization = Some(regularization);
-    self
-  }
-
-  fn cost(&self) -> BlackKarasinskiCost {
+  fn cost(
+    &self,
+    start: &BlackKarasinskiParams,
+    regularization: Option<Regularization>,
+  ) -> BlackKarasinskiCost {
     BlackKarasinskiCost {
       quotes: self.quotes.to_vec(),
       curve_points: serialize_curve(self.curve),
       notional: self.notional,
-      initial_rate: self.initial_rate,
-      long_run_rate: self.long_run_rate,
+      initial_rate: start.initial_rate,
+      long_run_rate: start.long_run_rate,
       steps_per_year: self.steps_per_year,
-      regularization: self.regularization.clone(),
-    }
-  }
-
-  fn solve(&self) -> BlackKarasinskiCalibrationResult {
-    let problem = self.cost();
-    let (a0, s0) = self.initial_guess.unwrap_or((0.1, 0.2));
-    let simplex = vec![vec![a0, s0], vec![a0 * 1.5, s0], vec![a0, s0 * 1.5]];
-    let (best, converged) =
-      run_nelder_mead(problem.clone(), simplex, self.max_iters, self.sd_tolerance);
-    let (a, sigma) = (best[0].abs().max(1e-6), best[1].abs().max(1e-6));
-    let (model_prices, market_prices) = problem.price_series(a, sigma);
-    BlackKarasinskiCalibrationResult {
-      mean_reversion: a,
-      sigma,
-      rmse: rmse(&model_prices, &market_prices),
-      converged,
-      model_prices,
-      market_prices,
-      initial_rate: self.initial_rate,
-      long_run_rate: self.long_run_rate,
+      regularization,
     }
   }
 }
 
-impl<'a> crate::traits::Calibrator for BlackKarasinskiSwaptionCalibrator<'a> {
-  type InitialGuess = (f64, f64);
+impl crate::traits::Calibrator for BlackKarasinskiSwaptionCalibrator<'_> {
   type Params = BlackKarasinskiParams;
-  type Output = BlackKarasinskiCalibrationResult;
+  type Output = Calibrated<BlackKarasinskiParams>;
   type Error = QuantError;
 
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
-    let mut this = self.clone();
-    if let Some(guess) = initial {
-      this.initial_guess = Some(guess);
-    }
-    Ok(this.solve())
+  /// A start replaces `self.start` whole, the two rates included.
+  fn calibrate(&self, initial: Option<BlackKarasinskiParams>) -> Result<Self::Output, QuantError> {
+    let start = initial.unwrap_or(self.start);
+    start.check()?;
+    validate_swaption_quotes(self.quotes)?;
+    let problem = self.cost(&start, self.options.regularization_for(2)?);
+    let (a0, s0) = (start.mean_reversion, start.sigma);
+    let simplex = vec![vec![a0, s0], vec![a0 * 1.5, s0], vec![a0, s0 * 1.5]];
+    Ok(nelder_mead_fit(
+      problem.clone(),
+      simplex,
+      &self.options,
+      400,
+      |x| {
+        let (mean_reversion, sigma) = (x[0].abs().max(1e-6), x[1].abs().max(1e-6));
+        let (market, model) = problem.price_series(mean_reversion, sigma);
+        let params = BlackKarasinskiParams {
+          mean_reversion,
+          sigma,
+          ..start
+        };
+        (params, market, model)
+      },
+    ))
   }
 }
 
@@ -305,7 +279,7 @@ impl BlackKarasinskiCost {
       model_prices.push(w * swaption.price_on_tree(&tree.tree, &tree.model));
       market_prices.push(w * market.market_price);
     }
-    (model_prices, market_prices)
+    (market_prices, model_prices)
   }
 }
 
@@ -316,7 +290,7 @@ impl CostFunction for BlackKarasinskiCost {
 
   fn cost(&self, x: &Self::Param) -> Result<f64, Self::Error> {
     let (a, sigma) = (x[0].abs().max(1e-6), x[1].abs().max(1e-6));
-    let (model, market) = self.price_series(a, sigma);
+    let (market, model) = self.price_series(a, sigma);
     let penalty = self
       .regularization
       .as_ref()
@@ -332,61 +306,46 @@ impl CostFunction for BlackKarasinskiCost {
   }
 }
 
-/// Calibrated G2++ parameters `(a, b, σ, η, ρ)`.
-#[derive(Debug, Clone, PartialEq)]
+/// G2++ `(a, b, σ, η, ρ)` and the shift `phi` the fit prices on and keeps fixed.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct G2ppParams {
   pub mean_reversion_x: f64,
   pub mean_reversion_y: f64,
   pub sigma_x: f64,
   pub sigma_y: f64,
   pub rho: f64,
+  /// Constant shift φ with both factors started at zero; fixed during the fit.
+  pub phi: f64,
 }
 
-/// G2++ swaption calibration result.
-#[derive(Debug, Clone)]
-pub struct G2ppCalibrationResult {
-  pub params: G2ppParams,
-  /// Root-mean-square price error on the quote grid.
-  pub rmse: f64,
-  /// True when Nelder–Mead reported convergence.
-  pub converged: bool,
-  pub model_prices: Vec<f64>,
-  pub market_prices: Vec<f64>,
-  /// Constant shift φ of the tree model; an input of the calibrator.
-  pub initial_rate: f64,
+impl G2ppParams {
+  fn fields(&self) -> [(&'static str, f64); 6] {
+    [
+      ("mean_reversion_x", self.mean_reversion_x),
+      ("mean_reversion_y", self.mean_reversion_y),
+      ("sigma_x", self.sigma_x),
+      ("sigma_y", self.sigma_y),
+      ("rho", self.rho),
+      ("phi", self.phi),
+    ]
+  }
 }
 
-impl crate::traits::ToShortRateModel for G2ppCalibrationResult {
+impl ToShortRateModel for Calibrated<G2ppParams> {
   type Model = G2ppTreeModel<f64>;
 
-  /// Both factors start at zero; the constant shift is the stored `initial_rate`, so `r = x + y + φ`.
   fn to_short_rate_model(&self) -> Self::Model {
     let p = &self.params;
     G2ppTreeModel::new(
       0.0,
       0.0,
-      self.initial_rate,
+      p.phi,
       p.mean_reversion_x,
       p.mean_reversion_y,
       p.sigma_x,
       p.sigma_y,
       p.rho,
     )
-  }
-}
-
-impl crate::traits::CalibrationResult for G2ppCalibrationResult {
-  type Params = G2ppParams;
-  fn rmse(&self) -> f64 {
-    self.rmse
-  }
-
-  fn converged(&self) -> bool {
-    self.converged
-  }
-
-  fn params(&self) -> Self::Params {
-    self.params.clone()
   }
 }
 
@@ -397,69 +356,69 @@ pub struct G2ppSwaptionCalibrator<'a> {
   pub quotes: &'a [SwaptionQuote],
   pub curve: &'a DiscountCurve<f64>,
   pub notional: f64,
-  pub initial_rate: f64,
   /// Tree levels per year.
   pub steps_per_year: usize,
-  pub initial_guess: Option<[f64; 5]>,
-  pub max_iters: u64,
-  pub sd_tolerance: f64,
-  /// Optional Tikhonov pull of `(a, b, σ, η, ρ)` toward an anchor.
-  pub regularization: Option<Regularization>,
+  pub start: G2ppParams,
+  /// Nelder–Mead: `max_iterations` (default 400), `tolerance` its spread; pull `(a, b, σ, η, ρ)`.
+  pub options: CalibrationOptions,
 }
 
 impl<'a> G2ppSwaptionCalibrator<'a> {
+  /// Panics unless `notional > 0`, `steps_per_year > 0` and the start is finite.
   pub fn new(
     quotes: &'a [SwaptionQuote],
     curve: &'a DiscountCurve<f64>,
     notional: f64,
-    initial_rate: f64,
     steps_per_year: usize,
+    start: G2ppParams,
   ) -> Self {
+    assert_tree_inputs(notional, steps_per_year);
+    check_finite_start(&start.fields()).unwrap_or_else(|e| panic!("{e}"));
     Self {
       quotes,
       curve,
       notional,
-      initial_rate,
       steps_per_year,
-      initial_guess: None,
-      max_iters: 400,
-      sd_tolerance: 1e-10,
-      regularization: None,
+      start,
+      options: CalibrationOptions::default(),
     }
   }
 
-  /// Overrides the Nelder–Mead iteration cap.
-  pub fn with_max_iters(mut self, max_iters: u64) -> Self {
-    self.max_iters = max_iters;
+  pub fn with_options(mut self, options: CalibrationOptions) -> Self {
+    self.options = options;
     self
   }
 
-  /// Adds a Tikhonov pull toward `regularization.anchor` in the order
-  /// `(a, b, σ, η, ρ)`.
-  pub fn with_regularization(mut self, regularization: Regularization) -> Self {
-    assert_eq!(
-      regularization.dimension(),
-      5,
-      "G2++ regularisation needs five anchors"
-    );
-    self.regularization = Some(regularization);
-    self
-  }
-
-  fn cost(&self) -> G2ppCost {
+  fn cost(&self, phi: f64, regularization: Option<Regularization>) -> G2ppCost {
     G2ppCost {
       quotes: self.quotes.to_vec(),
       curve_points: serialize_curve(self.curve),
       notional: self.notional,
-      initial_rate: self.initial_rate,
+      phi,
       steps_per_year: self.steps_per_year,
-      regularization: self.regularization.clone(),
+      regularization,
     }
   }
+}
 
-  fn solve(&self) -> G2ppCalibrationResult {
-    let problem = self.cost();
-    let x0 = self.initial_guess.unwrap_or([0.5, 0.05, 0.01, 0.005, -0.5]);
+impl crate::traits::Calibrator for G2ppSwaptionCalibrator<'_> {
+  type Params = G2ppParams;
+  type Output = Calibrated<G2ppParams>;
+  type Error = QuantError;
+
+  /// A start replaces `self.start` whole, `phi` included.
+  fn calibrate(&self, initial: Option<G2ppParams>) -> Result<Self::Output, QuantError> {
+    let start = initial.unwrap_or(self.start);
+    check_finite_start(&start.fields())?;
+    validate_swaption_quotes(self.quotes)?;
+    let problem = self.cost(start.phi, self.options.regularization_for(5)?);
+    let x0 = [
+      start.mean_reversion_x,
+      start.mean_reversion_y,
+      start.sigma_x,
+      start.sigma_y,
+      start.rho,
+    ];
     let mut simplex = vec![x0.to_vec()];
     for i in 0..5 {
       let mut v = x0.to_vec();
@@ -470,33 +429,17 @@ impl<'a> G2ppSwaptionCalibrator<'a> {
       };
       simplex.push(v);
     }
-    let (best, converged) =
-      run_nelder_mead(problem.clone(), simplex, self.max_iters, self.sd_tolerance);
-    let params = G2ppCost::params(&best);
-    let (model_prices, market_prices) = problem.price_series(&params);
-    G2ppCalibrationResult {
-      params,
-      rmse: rmse(&model_prices, &market_prices),
-      converged,
-      model_prices,
-      market_prices,
-      initial_rate: self.initial_rate,
-    }
-  }
-}
-
-impl<'a> crate::traits::Calibrator for G2ppSwaptionCalibrator<'a> {
-  type InitialGuess = [f64; 5];
-  type Params = G2ppParams;
-  type Output = G2ppCalibrationResult;
-  type Error = QuantError;
-
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
-    let mut this = self.clone();
-    if let Some(guess) = initial {
-      this.initial_guess = Some(guess);
-    }
-    Ok(this.solve())
+    Ok(nelder_mead_fit(
+      problem.clone(),
+      simplex,
+      &self.options,
+      400,
+      |x| {
+        let params = problem.params(x);
+        let (market, model) = problem.price_series(&params);
+        (params, market, model)
+      },
+    ))
   }
 }
 
@@ -505,7 +448,7 @@ struct G2ppCost {
   quotes: Vec<SwaptionQuote>,
   curve_points: CurveSnapshot,
   notional: f64,
-  initial_rate: f64,
+  phi: f64,
   steps_per_year: usize,
   regularization: Option<Regularization>,
 }
@@ -513,13 +456,14 @@ struct G2ppCost {
 impl G2ppCost {
   /// Positive reversions and volatilities, correlation clamped inside
   /// `(−1, 1)`.
-  fn params(x: &[f64]) -> G2ppParams {
+  fn params(&self, x: &[f64]) -> G2ppParams {
     G2ppParams {
       mean_reversion_x: x[0].abs().max(1e-6),
       mean_reversion_y: x[1].abs().max(1e-6),
       sigma_x: x[2].abs().max(1e-6),
       sigma_y: x[3].abs().max(1e-6),
       rho: x[4].clamp(-0.999, 0.999),
+      phi: self.phi,
     }
   }
 
@@ -528,7 +472,7 @@ impl G2ppCost {
     let model = G2ppTreeModel::new(
       0.0,
       0.0,
-      self.initial_rate,
+      p.phi,
       p.mean_reversion_x,
       p.mean_reversion_y,
       p.sigma_x,
@@ -546,7 +490,7 @@ impl G2ppCost {
       model_prices.push(w * swaption.price_on_g2pp(&tree));
       market_prices.push(w * market.market_price);
     }
-    (model_prices, market_prices)
+    (market_prices, model_prices)
   }
 }
 
@@ -556,8 +500,8 @@ impl CostFunction for G2ppCost {
   type Error = Infallible;
 
   fn cost(&self, x: &Self::Param) -> Result<f64, Self::Error> {
-    let p = Self::params(x);
-    let (model, market) = self.price_series(&p);
+    let p = self.params(x);
+    let (market, model) = self.price_series(&p);
     let penalty = self.regularization.as_ref().map_or(0.0, |reg| {
       reg.penalty(&[
         p.mean_reversion_x,

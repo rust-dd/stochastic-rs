@@ -301,6 +301,7 @@ pub fn calibrate_svi<T: RealExt>(
       tolerance: Some(1e-12),
       patience: 200,
       pivoted_qr: false,
+      ..LmOptions::default()
     },
   );
 
@@ -368,7 +369,7 @@ impl LeastSquaresProblem for SviLmProblem {
     self.params.clone()
   }
 
-  fn residuals(&self) -> Option<Array1<f64>> {
+  fn residuals(&mut self) -> Option<Array1<f64>> {
     let p = SviRawParams::<f64>::from_dvector(&self.params);
     let n = self.ks.len();
     let mut r = Array1::zeros(n);

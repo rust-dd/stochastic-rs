@@ -173,12 +173,11 @@ impl crate::traits::CalibrationResult for LevyCalibrationResult {
 }
 
 impl crate::traits::Calibrator for LevyCalibrator {
-  type InitialGuess = Vec<f64>;
   type Params = LevyParams;
   type Output = LevyCalibrationResult;
   type Error = QuantError;
 
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
-    Ok(self.solve(initial))
+  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
+    Ok(self.solve(initial.map(|p| p.values)))
   }
 }

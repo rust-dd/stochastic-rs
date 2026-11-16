@@ -6,7 +6,6 @@ use ndarray::Array2;
 
 use super::EPS;
 use super::loss::default_params;
-use super::loss::fourier_call_price;
 use super::loss::fourier_option_price;
 use super::loss::param_bounds;
 use super::loss::param_count;
@@ -229,49 +228,28 @@ impl LeastSquaresProblem for LevyCalibrator {
     Array1::from_vec(self.effective_params())
   }
 
-  fn residuals(&self) -> Option<Array1<f64>> {
+  fn residuals(&mut self) -> Option<Array1<f64>> {
     let c_model = self.compute_model_prices();
     let n = self.flat_prices.len();
 
     if self.record_history {
-      self
-        .calibration_history
-        .borrow_mut()
-        .push(CalibrationHistory {
-          residuals: Array1::from_iter(
-            self
-              .flat_prices
-              .iter()
-              .zip(c_model.iter())
-              .map(|(m, d)| m - d),
-          ),
-          call_put: self
-            .flat_prices
-            .iter()
-            .enumerate()
-            .map(|(i, _)| {
-              let call = fourier_call_price(
-                self.model_type,
-                &self.params,
-                self.s,
-                self.flat_strikes[i],
-                self.r,
-                self.q,
-                self.flat_t[i],
-              );
-              let put = call - self.s * (-self.q * self.flat_t[i]).exp()
-                + self.flat_strikes[i] * (-self.r * self.flat_t[i]).exp();
-              (call, put.max(0.0))
-            })
-            .collect::<Vec<(f64, f64)>>()
-            .into(),
-          params: self.params.clone(),
-          loss_scores: CalibrationLossScore::compute_selected(
-            &self.flat_prices,
-            &c_model,
-            self.loss_metrics,
-          ),
-        });
+      let loss =
+        CalibrationLossScore::compute_selected(&self.flat_prices, &c_model, self.loss_metrics);
+      let residuals = Array1::from_iter(
+        self
+          .flat_prices
+          .iter()
+          .zip(c_model.iter())
+          .map(|(m, d)| m - d),
+      );
+      let mut history = self.calibration_history.borrow_mut();
+      let iteration = history.len();
+      history.push(CalibrationHistory::new(
+        iteration,
+        self.params.clone(),
+        residuals,
+        loss,
+      ));
     }
 
     let mut residuals = Array1::zeros(n);

@@ -203,6 +203,7 @@ impl<'m, M: SurrogateModel> SurrogateCalibrator<'m, M> {
         tolerance: Some(self.tolerance),
         patience: self.patience,
         pivoted_qr: true,
+        ..LmOptions::default()
       },
     );
     let (surface, _) = problem
@@ -231,7 +232,6 @@ impl<'m, M: SurrogateModel> SurrogateCalibrator<'m, M> {
 }
 
 impl<M: SurrogateModel> Calibrator for SurrogateCalibrator<'_, M> {
-  type InitialGuess = Vec<f64>;
   type Params = Vec<f64>;
   type Output = SurrogateCalibrationResult;
   type Error = anyhow::Error;
@@ -289,7 +289,7 @@ impl<M: SurrogateModel> LeastSquaresProblem for Problem<'_, M> {
     self.x.clone()
   }
 
-  fn residuals(&self) -> Option<Array1<f64>> {
+  fn residuals(&mut self) -> Option<Array1<f64>> {
     let (surface, _) = self.evaluate()?;
     Some(Array1::from_iter(
       surface
@@ -418,7 +418,6 @@ impl ToModel for HestonSurrogateResult {
 }
 
 impl Calibrator for HestonSurrogateCalibrator<'_> {
-  type InitialGuess = HestonParams;
   type Params = HestonParams;
   type Output = HestonSurrogateResult;
   type Error = anyhow::Error;
@@ -505,7 +504,6 @@ impl ToModel for RBergomiSurrogateResult {
 }
 
 impl Calibrator for RBergomiSurrogateCalibrator<'_> {
-  type InitialGuess = RBergomiParams;
   type Params = RBergomiParams;
   type Output = RBergomiSurrogateResult;
   type Error = anyhow::Error;

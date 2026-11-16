@@ -51,12 +51,11 @@ pub struct SvjCalibrator {
 }
 
 impl crate::traits::Calibrator for SvjCalibrator {
-  type InitialGuess = SvjParams;
   type Params = SvjParams;
   type Output = SvjCalibrationResult;
   type Error = QuantError;
 
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
+  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
     Ok(self.solve(initial))
   }
 }

@@ -202,14 +202,17 @@ impl HscmCalibrator {
 }
 
 impl crate::traits::Calibrator for HscmCalibrator {
-  type InitialGuess = [f64; 9];
   type Params = HscmParams;
   type Output = HscmCalibrationResult;
   type Error = QuantError;
 
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
+  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
     // A mild-skew, short-tenor SPX-style start; a caller with a better prior passes `Some(..)`.
-    let guess = initial.unwrap_or([2.0, 0.04, 0.3, 0.04, 5.0, -0.5, 0.2, -0.7, 0.3]);
+    let guess = initial.map_or([2.0, 0.04, 0.3, 0.04, 5.0, -0.5, 0.2, -0.7, 0.3], |p| {
+      [
+        p.kappa_v, p.theta_v, p.sigma_v, p.v0, p.kappa_r, p.mu_r, p.sigma_r, p.rho0, p.rho2,
+      ]
+    });
     Ok(calibrate_hscm(self.s, &self.options, &guess, self.max_iter))
   }
 }

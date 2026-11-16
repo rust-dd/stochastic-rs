@@ -21,6 +21,10 @@ use basin::TerminationReason;
 use ndarray::Array1;
 use ndarray::Array2;
 
+use crate::LossMetric;
+use crate::calibration::Calibrated;
+use crate::calibration::CalibrationHistory;
+
 /// Internal bridge shared by the quant calibrators and the AI surrogate.
 /// Model coordinates and parameter projections remain owned by the calibrator.
 pub trait LeastSquaresProblem {
@@ -28,7 +32,8 @@ pub trait LeastSquaresProblem {
 
   fn params(&self) -> Array1<f64>;
 
-  fn residuals(&self) -> Option<Array1<f64>>;
+  /// `&mut self` so a problem can record its history without interior mutability.
+  fn residuals(&mut self) -> Option<Array1<f64>>;
 
   fn jacobian(&self) -> Option<Array2<f64>>;
 }
@@ -39,6 +44,8 @@ pub struct LmOptions {
   pub patience: usize,
   /// Use pivoted QR for fits that need its additional rank robustness.
   pub pivoted_qr: bool,
+  /// Iteration cap under the evaluation budget; `None` caps at the budget itself.
+  pub max_iterations: Option<usize>,
 }
 
 impl Default for LmOptions {
@@ -47,6 +54,7 @@ impl Default for LmOptions {
       tolerance: None,
       patience: 100,
       pivoted_qr: true,
+      max_iterations: None,
     }
   }
 }
@@ -54,7 +62,10 @@ impl Default for LmOptions {
 #[derive(Clone, Copy, Debug)]
 pub struct LmReport {
   pub converged: bool,
+  /// Residual evaluations, the budget's unit.
   pub evaluations: usize,
+  /// Accepted stepper iterations, the cap's unit.
+  pub iterations: usize,
   pub reason: TerminationReason,
 }
 
@@ -69,6 +80,21 @@ impl LmReport {
       _ => "stopped without convergence",
     }
   }
+
+  /// The fit as a `Calibrated`: loss and worst error of `model` against `market`, and this stop.
+  pub fn calibrated<P>(
+    &self,
+    params: P,
+    market: &[f64],
+    model: &[f64],
+    metrics: &[LossMetric],
+    history: Vec<CalibrationHistory<P>>,
+  ) -> Calibrated<P> {
+    Calibrated::repriced(params, market, model, metrics, self.converged)
+      .with_iterations(self.iterations)
+      .with_message(self.message())
+      .with_history(history)
+  }
 }
 
 struct Objective<P> {
@@ -78,14 +104,15 @@ struct Objective<P> {
 }
 
 impl<P: LeastSquaresProblem> Objective<P> {
-  fn at(&self, x: &Array1<f64>) -> std::cell::Ref<'_, P> {
+  fn at(&self, x: &Array1<f64>) -> std::cell::RefMut<'_, P> {
     let mut coordinates = self.coordinates.borrow_mut();
+    let mut model = self.model.borrow_mut();
     if coordinates.as_ref() != Some(x) {
-      self.model.borrow_mut().set_params(x);
+      model.set_params(x);
       *coordinates = Some(x.clone());
     }
     // Reusing the same coordinates preserves the surrogate's cached forward pass.
-    self.model.borrow()
+    model
   }
 }
 
@@ -137,12 +164,14 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
   let budget = options
     .patience
     .saturating_mul(initial.len().saturating_add(1));
+  let max_iter = options.max_iterations.map_or(budget, |n| n.min(budget));
   if options.patience == 0 || !tolerance.is_finite() || tolerance < 0.0 || initial.is_empty() {
     return (
       objective.model.into_inner(),
       LmReport {
         converged: false,
         evaluations: 0,
+        iterations: 0,
         reason: TerminationReason::SolverFailed,
       },
     );
@@ -153,10 +182,16 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
     .with_gradient_orthogonality_tolerance(gradient_tolerance)
     .with_relative_model_reduction_tolerance(tolerance)
     .with_relative_trust_radius_tolerance(tolerance);
-  let (best, reason) = if options.pivoted_qr {
-    run(&objective, solver.with_pivoted_qr(), initial, budget)
+  let (best, reason, iterations) = if options.pivoted_qr {
+    run(
+      &objective,
+      solver.with_pivoted_qr(),
+      initial,
+      budget,
+      max_iter,
+    )
   } else {
-    run(&objective, solver, initial, budget)
+    run(&objective, solver, initial, budget, max_iter)
   };
   let mut model = objective.model.into_inner();
   // A rejected or failed trial may be the last callback. Return the accepted fit.
@@ -166,6 +201,7 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
     LmReport {
       converged: reason == TerminationReason::SolverConverged,
       evaluations: objective.evaluations.get(),
+      iterations,
       reason,
     },
   )
@@ -176,14 +212,16 @@ fn run<'a, P, So>(
   solver: So,
   initial: Array1<f64>,
   budget: usize,
-) -> (Array1<f64>, TerminationReason)
+  max_iter: usize,
+) -> (Array1<f64>, TerminationReason, usize)
 where
   P: LeastSquaresProblem,
   So: Solver<&'a Objective<P>, NllsState<Array1<f64>>, Error = ()>,
 {
   let mut best = initial.clone();
+  let mut iterations = 0;
   let reason = match Executor::new(objective, solver, NllsState::new(initial))
-    .max_iter(budget as u64)
+    .max_iter(max_iter as u64)
     .max_cost_evals(budget as u64)
     .into_stepper()
   {
@@ -193,6 +231,7 @@ where
         Err(()) => break TerminationReason::SolverFailed,
         Ok(outcome) => {
           best.clone_from(stepper.state().best_param());
+          iterations = stepper.state().iter() as usize;
           if let StepOutcome::Stopped(reason) = outcome {
             break reason;
           }
@@ -200,7 +239,7 @@ where
       }
     },
   };
-  (best, reason)
+  (best, reason, iterations)
 }
 
 #[cfg(test)]
@@ -236,7 +275,7 @@ mod tests {
       self.x.clone()
     }
 
-    fn residuals(&self) -> Option<Array1<f64>> {
+    fn residuals(&mut self) -> Option<Array1<f64>> {
       self.calls.set(self.calls.get() + 1);
       if self.fail_at == Some(self.calls.get()) {
         return None;
@@ -274,6 +313,24 @@ mod tests {
   }
 
   #[test]
+  fn the_report_builds_the_calibrated_fit() {
+    use crate::traits::CalibrationResult;
+    let (problem, report) = minimize(Rosenbrock::new(), LmOptions::default());
+    let fit = report.calibrated(
+      problem.x.to_vec(),
+      &[1.0, 2.0],
+      &[1.5, 2.0],
+      &LossMetric::ALL,
+      vec![],
+    );
+    assert!(fit.converged() && fit.history().is_empty());
+    assert_eq!(fit.iterations(), Some(report.iterations));
+    assert_eq!(fit.message(), Some("converged"));
+    assert_eq!(fit.max_error(), Some(0.5));
+    assert_eq!(fit.rmse(), 0.125_f64.sqrt());
+  }
+
+  #[test]
   fn evaluation_budget_is_not_convergence() {
     let (problem, report) = minimize(
       Rosenbrock::new(),
@@ -287,6 +344,24 @@ mod tests {
     assert_eq!(report.message(), "evaluation budget exhausted");
     assert_eq!(report.evaluations, 3);
     assert!(problem.x.iter().all(|v| v.is_finite()));
+  }
+
+  #[test]
+  fn an_iteration_cap_below_the_budget_stops_the_fit() {
+    let options = |max_iterations| LmOptions {
+      max_iterations,
+      ..LmOptions::default()
+    };
+    let (free, free_report) = minimize(Rosenbrock::new(), options(None));
+    let (capped, report) = minimize(Rosenbrock::new(), options(Some(2)));
+    assert!(free_report.converged);
+    assert!(!report.converged, "{report:?}");
+    assert_eq!(report.reason, TerminationReason::MaxIter);
+    assert!(report.evaluations < free_report.evaluations);
+    assert!(distance_to_optimum(&capped.x) > distance_to_optimum(&free.x));
+    let fit = report.calibrated(capped.x.to_vec(), &[1.0], &[1.0], &LossMetric::ALL, vec![]);
+    assert!(fit.iterations.unwrap() <= 2, "{:?}", fit.iterations);
+    assert!(fit.iterations.unwrap() < report.evaluations);
   }
 
   #[test]
