@@ -85,12 +85,13 @@ impl GaussianKde {
 }
 
 /// Silverman's rule, `σ̂` alone when the interquartile range is zero; `Err` below two points, on a
-/// non-finite one or on zero spread.
+/// non-finite one or zero spread, `Err(Numerical { stage: "silverman bandwidth" })` on overflow.
 pub fn silverman_bandwidth(data: ArrayView1<f64>) -> Result<f64, StatsError> {
   let sample = as_slice_or_copy(data);
   validate(&sample, 2)?;
   let nf = data.len() as f64;
-  let mean = data.sum() / nf;
+  // ndarray's `sum()` regroups contiguous memory; a fold in index order rounds a view as its copy.
+  let mean = data.iter().fold(0.0, |acc, &x| acc + x) / nf;
   let std = (data.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / (nf - 1.0)).sqrt();
   let mut sorted = sample.into_owned();
   sorted.sort_by(f64::total_cmp);

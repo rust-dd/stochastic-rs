@@ -3,7 +3,12 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::s;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stats::hurst::Whittle;
+use stochastic_rs_stats::kde::silverman_bandwidth;
 use stochastic_rs_stats::normality::anderson_darling::AndersonDarlingConfig;
 use stochastic_rs_stats::normality::anderson_darling::anderson_darling_normal_test;
 use stochastic_rs_stats::normality::jarque_bera::JarqueBeraConfig;
@@ -110,5 +115,29 @@ fn strided_views_match_their_contiguous_copies() {
   assert_eq!(
     (a.hurst, a.eta, a.neg_log_lik),
     (b.hurst, b.eta, b.neg_log_lik)
+  );
+}
+
+#[test]
+fn silverman_bandwidth_of_a_strided_or_reversed_view_matches_its_copy() {
+  let mut normal = SimdNormal::<f64>::new(100.0, 3.0).seeded(&Deterministic::new(7));
+  let (mut strided_moves, mut reversed_moves) = (0, 0);
+  for trial in 0..2000 {
+    let n = 9 + trial % 192;
+    let mut copy = Array1::<f64>::zeros(n);
+    normal.fill_slice(copy.as_slice_mut().unwrap());
+    let mut interleaved = Array1::<f64>::zeros(2 * n);
+    interleaved.slice_mut(s![..;2]).assign(&copy);
+    let backwards = Array1::from_iter(copy.iter().rev().copied());
+    let want = silverman_bandwidth(copy.view()).unwrap().to_bits();
+    let strided = silverman_bandwidth(interleaved.slice(s![..;2])).unwrap();
+    let reversed = silverman_bandwidth(backwards.slice(s![..;-1])).unwrap();
+    strided_moves += usize::from(strided.to_bits() != want);
+    reversed_moves += usize::from(reversed.to_bits() != want);
+  }
+  assert_eq!(
+    (strided_moves, reversed_moves),
+    (0, 0),
+    "(strided, reversed) bandwidths of 2000 that differ from the copy's"
   );
 }
