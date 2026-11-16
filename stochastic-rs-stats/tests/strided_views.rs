@@ -3,6 +3,7 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::s;
+use stochastic_rs_stats::hurst::Whittle;
 use stochastic_rs_stats::normality::anderson_darling::AndersonDarlingConfig;
 use stochastic_rs_stats::normality::anderson_darling::anderson_darling_normal_test;
 use stochastic_rs_stats::normality::jarque_bera::JarqueBeraConfig;
@@ -102,4 +103,12 @@ fn strided_views_match_their_contiguous_copies() {
     .unwrap()
     .spectrum;
   assert_eq!(a, b);
+  let short = full.slice(s![..80;2]);
+  let whittle = Whittle::new(72, 1.0 / 250.0);
+  let a = whittle.fit(short).unwrap();
+  let b = whittle.fit(short.to_owned().view()).unwrap();
+  assert_eq!(
+    (a.hurst, a.eta, a.neg_log_lik),
+    (b.hurst, b.eta, b.neg_log_lik)
+  );
 }

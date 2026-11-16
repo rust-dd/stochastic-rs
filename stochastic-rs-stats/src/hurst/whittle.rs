@@ -1,4 +1,5 @@
-//! Fukasawa adapted Whittle estimator for the Hurst parameter.
+//! Adapted Whittle estimate of the roughness `H` of log-volatility from log realized variance:
+//! §3.2's Paxson spectral sum, low-frequency terms `A¹`, `A²` (eq. 16), L-BFGS-B from a grid start.
 //!
 //! $$
 //! \hat H = \arg\min_{(H,\nu)} U_n(H,\nu), \quad
@@ -7,18 +8,7 @@
 //!       + A^1_{H,\nu}(\psi) + A^2_{H,\nu}(\psi)
 //! $$
 //!
-//! Estimates the Hurst parameter of the log-volatility from a realized
-//! variance time series using the adapted Whittle quasi-likelihood of
-//! Fukasawa, Takabatake & Westphal (2019), arXiv:1905.04852.
-//!
-//! Implementation follows Section 3.2 of the paper:
-//! - Paxson (Euler-Maclaurin) boundary correction for the spectral density sum
-//! - Correction terms `A¹` and `A²` for low-frequency truncation (eq. 16)
-//! - Multi-start L-BFGS-B optimisation via Basin
-//!
-//! Wrapped under the [`super::HurstEstimator`] trait as [`Whittle`];
-//! free functions [`estimate`] / [`estimate_from_prices`] are also
-//! available for direct use.
+//! Reference: Fukasawa, M., Takabatake, T. & Westphal, R. (2019), "Is Volatility Rough?", arXiv:1905.04852.
 
 use std::convert::Infallible;
 
@@ -31,12 +21,10 @@ use basin::Lbfgsb;
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::gamma;
 
-use super::HurstDiagnostic;
-use super::HurstEstimator;
-use super::HurstFit;
 use crate::StatsError;
+use crate::input::as_slice_or_copy;
+use crate::input::validate;
 use crate::optim::more_thuente;
-use crate::traits::FloatExt;
 
 /// Estimation result from the adapted Whittle estimator.
 #[derive(Clone, Debug)]
@@ -86,34 +74,20 @@ impl Whittle {
       ..Self::default()
     }
   }
-}
 
-impl<T: FloatExt> HurstEstimator<T> for Whittle {
-  fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError> {
-    if x.len() < 30 {
-      return Err(StatsError::InsufficientData {
-        needed: 30,
-        got: x.len(),
-      });
-    }
-    let log_rv: Vec<f64> = x.iter().map(|v| v.to_f64().unwrap_or(f64::NAN)).collect();
-    let result = run_estimate(
+  /// The Fukasawa–Takabatake–Westphal fit to log realized variance; `Err` below 30 points or on a
+  /// non-finite one.
+  pub fn fit(&self, log_rv: ArrayView1<f64>) -> Result<FukasawaFit, StatsError> {
+    let log_rv = as_slice_or_copy(log_rv);
+    validate(&log_rv, 30)?;
+    Ok(run_estimate(
       &log_rv,
       self.m,
       self.delta,
       self.psi,
       self.k_trunc,
       self.j_max,
-    );
-    Ok(HurstFit {
-      hurst: T::from_f64_fast(result.hurst),
-      std_err: None,
-      nobs: result.nobs,
-      diagnostic: HurstDiagnostic::Whittle {
-        neg_log_lik: T::from_f64_fast(result.neg_log_lik),
-        eta: T::from_f64_fast(result.eta),
-      },
-    })
+    ))
   }
 }
 
@@ -445,46 +419,6 @@ fn run_estimate(
   }
 }
 
-/// Estimate `(H, η)` from log realized variance increments.
-///
-/// `m` = intraday observations / day (e.g. 72 for 5-min bars).
-/// `delta` = day fraction in years (e.g. `1/250`).  Uses dense grid +
-/// L-BFGS refinement with Paxson spectral density correction.
-pub fn estimate(log_rv: ArrayView1<f64>, m: usize, delta: f64) -> FukasawaFit {
-  let log_rv = log_rv
-    .as_slice()
-    .expect("estimate requires a contiguous ArrayView1");
-  assert!(
-    log_rv.len() >= 30,
-    "need at least 30 observations, got {}",
-    log_rv.len()
-  );
-  run_estimate(log_rv, m, delta, 1e-5, 500, 20)
-}
-
-/// Convenience: estimate `H` from daily close prices (`m = 1`,
-/// `δ = 1/250`).  Note the heavy downward bias when `m = 1`
-/// (Fukasawa Table 1 footnote).
-pub fn estimate_from_prices(closes: ArrayView1<f64>) -> FukasawaFit {
-  let closes = closes
-    .as_slice()
-    .expect("estimate_from_prices requires a contiguous ArrayView1");
-  assert!(closes.len() >= 31, "need at least 31 prices");
-  let log_rv: Vec<f64> = (1..closes.len())
-    .map(|i| {
-      let r = (closes[i] / closes[i - 1]).ln();
-      (r * r).max(1e-20).ln()
-    })
-    .collect();
-  estimate(ArrayView1::from(&log_rv), 1, 1.0 / 250.0)
-}
-
-/// FloatExt generic wrapper.
-pub fn estimate_from_prices_generic<T: FloatExt>(closes: ArrayView1<T>) -> FukasawaFit {
-  let closes_f64: Vec<f64> = closes.iter().map(|x| x.to_f64().unwrap()).collect();
-  estimate_from_prices(ArrayView1::from(&closes_f64))
-}
-
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
@@ -568,7 +502,9 @@ mod tests {
   fn estimate_h_from_simulated_rv() {
     let true_h = 0.3_f64;
     let log_rv = simulate_log_rv(true_h, 72, 500, 1.0 / 250.0, 42);
-    let result = estimate(ArrayView1::from(&log_rv), 72, 1.0 / 250.0);
+    let result = Whittle::new(72, 1.0 / 250.0)
+      .fit(ArrayView1::from(&log_rv))
+      .unwrap();
     assert!(
       (result.hurst - true_h).abs() < 0.1,
       "H={:.3}, true={true_h}",
@@ -578,52 +514,40 @@ mod tests {
 
   #[test]
   fn rough_vs_smooth_distinguished() {
+    let whittle = Whittle::new(72, 1.0 / 250.0);
     let log_rv_rough = simulate_log_rv(0.1, 72, 500, 1.0 / 250.0, 77);
     let log_rv_smooth = simulate_log_rv(0.45, 72, 500, 1.0 / 250.0, 88);
-    let h_rough = estimate(ArrayView1::from(&log_rv_rough), 72, 1.0 / 250.0).hurst;
-    let h_smooth = estimate(ArrayView1::from(&log_rv_smooth), 72, 1.0 / 250.0).hurst;
+    let h_rough = whittle.fit(ArrayView1::from(&log_rv_rough)).unwrap().hurst;
+    let h_smooth = whittle.fit(ArrayView1::from(&log_rv_smooth)).unwrap().hurst;
     assert!(
       h_rough < h_smooth,
       "rough H={h_rough:.3} should be < smooth H={h_smooth:.3}"
     );
   }
 
-  /// [`Whittle`] expects log realized-variance increments built the way
-  /// [`simulate_log_rv`] builds them, not a path sampled directly from a
-  /// self-similar process — see the module doc's "Choosing an estimator"
-  /// warning in `crate::hurst`. Feed it the wrong kind of input on
-  /// purpose: an [`Fgn`](stochastic_rs_stochastic::noise::fgn::Fgn) path
-  /// at a known `H`, unmodified. This is the concrete evidence backing
-  /// that warning, not just an assertion in prose.
+  /// `fit` is the estimator's one entry; the `HurstEstimator` trait is for path self-similarity, not latent volatility.
   #[test]
-  fn raw_path_recovers_nonsense_h_from_whittle() {
-    use stochastic_rs_stochastic::noise::fgn::Fgn;
-
-    let true_h = 0.3;
-    let path: Array1<f64> = Fgn::new(true_h, 512, Some(1.0), Deterministic::new(3)).sample();
-    let r = Whittle::default()
-      .estimate(path.view())
-      .expect("whittle trait estimate");
-    assert!(
-      (r.hurst - true_h).abs() > 0.15,
-      "expected an estimate far from the true H={true_h} (wrong input kind), \
-       got H={:.3} — if this starts passing, Whittle may have started \
-       tolerating raw paths and the module doc's warning needs revisiting",
-      r.hurst
+  fn fit_reports_the_fukasawa_estimate_and_rejects_short_or_non_finite_data() {
+    let whittle = Whittle::new(72, 1.0 / 250.0);
+    let short = Array1::<f64>::linspace(-1.0, 1.0, 10);
+    assert_eq!(
+      whittle.fit(short.view()).unwrap_err(),
+      StatsError::InsufficientData {
+        needed: 30,
+        got: 10
+      }
     );
-  }
-
-  #[test]
-  fn whittle_trait_smoke() {
-    let log_rv = simulate_log_rv(0.3, 72, 500, 1.0 / 250.0, 11);
-    let r = Whittle {
-      m: 72,
-      delta: 1.0 / 250.0,
-      ..Default::default()
-    }
-    .estimate(Array1::from_vec(log_rv).view())
-    .expect("whittle trait estimate");
-    assert!(r.hurst > 0.0 && r.hurst < 0.5);
-    assert!(matches!(r.diagnostic, HurstDiagnostic::Whittle { .. }));
+    let mut with_nan = Array1::<f64>::linspace(-1.0, 1.0, 40);
+    with_nan[5] = f64::NAN;
+    assert!(matches!(
+      whittle.fit(with_nan.view()),
+      Err(StatsError::InvalidObservation { index: 5, .. })
+    ));
+    let log_rv = simulate_log_rv(0.1, 72, 400, 1.0 / 250.0, 3);
+    let fit = whittle.fit(ArrayView1::from(&log_rv)).unwrap();
+    assert!(
+      (fit.hurst - 0.1).abs() < 0.08 && fit.eta > 0.0 && fit.nobs == 400,
+      "{fit:?}"
+    );
   }
 }

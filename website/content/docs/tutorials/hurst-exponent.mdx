@@ -95,7 +95,7 @@ Every default here takes the level path — the fBm itself — and differences o
 
 ## Step 3 — choose an estimator
 
-Seven of the eight estimators measure the same thing, the self-similarity exponent of the series you hand them, by different routes; one measures something else.
+The seven `HurstEstimator` implementors measure the same thing, the self-similarity exponent of the series you hand them, by different routes; `Whittle::fit` measures something else.
 
 | Estimator | Reach for it when |
 |---|---|
@@ -104,11 +104,11 @@ Seven of the eight estimators measure the same thing, the self-similarity expone
 | `Variations` | the generating model is mean-reverting and rough (a fractional Ornstein–Uhlenbeck type) rather than a pure fractional walk |
 | `Higuchi`, `Variogram` | you want the fractal dimension of the curve |
 | `RescaledRange` | you want the classic statistic: cheap and historical, but the least reliable of the group in finite samples |
-| `Whittle` | you are estimating the **roughness of volatility** from a realised-variance series |
+| `Whittle::fit` | you are estimating the **roughness of volatility** from a realised-variance series |
 
-`Whittle` (and `FukasawaHurst` in Python) implements the adapted Whittle estimator of Fukasawa, Takabatake and Westphal (2019): it estimates the Hurst exponent of a *latent volatility* process from log realised variance aggregated from intraday returns (`FukasawaHurst.from_prices(closes)`, `FukasawaHurst.from_log_rv(log_rv)`). Handed a directly sampled path it does not fail — it returns a number unrelated to that path's exponent — so build its input from prices, not from a simulated `Fgn`.
+`Whittle::fit` (and `FukasawaHurst` in Python) implements the adapted Whittle estimator of Fukasawa, Takabatake and Westphal (2019) and is not a `HurstEstimator`: it estimates the Hurst exponent of a *latent volatility* process from log realised variance aggregated from intraday returns (`Whittle(...).estimate(log_rv)` or `FukasawaHurst.from_log_rv(log_rv, m, delta)` in Python). Handed a directly sampled path it does not fail — it returns a number unrelated to that path's exponent — so build its input from intraday returns, not from a simulated `Fgn`.
 
-The estimators also have hard minimum lengths with their defaults: 68 observations for `RescaledRange`, 36 for `Dfa`, 64 for `Gph` and `Wavelet`, 30 for `Whittle`. Those are validation floors, not sample sizes to aim for — a log-log regression wants thousands of points.
+The estimators also have hard minimum lengths with their defaults: 68 observations for `RescaledRange`, 36 for `Dfa`, 64 for `Gph` and `Wavelet`, 30 for `Whittle::fit`. Those are validation floors, not sample sizes to aim for — a log-log regression wants thousands of points.
 
 ## Result
 

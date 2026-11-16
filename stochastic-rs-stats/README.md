@@ -45,9 +45,8 @@ let est = estimator.estimate(path.view()).expect("a path long enough to estimate
 assert!((est.hurst - 0.3).abs() < 0.1);
 ```
 
-The Fukasawa and Whittle estimators in `hurst::whittle` take price data
-(`estimate_from_prices(closes)`) and estimate the roughness of volatility,
-not the Hurst exponent of the path itself.
+`hurst::whittle::Whittle::fit` takes log realized variance and estimates
+the roughness of volatility, not the Hurst exponent of the path itself.
 
 ## Part of stochastic-rs
 
