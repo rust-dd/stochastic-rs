@@ -54,6 +54,20 @@ pub struct Fgn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub(crate) backend: B,
 }
 
+impl<T: FloatExt, S: SeedExt + std::fmt::Debug, B: std::fmt::Debug> std::fmt::Debug
+  for Fgn<T, S, B>
+{
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("Fgn")
+      .field("hurst", &self.hurst)
+      .field("n", &self.out_len)
+      .field("t", &self.t)
+      .field("seed", &self.seed)
+      .field("backend", &self.backend)
+      .finish_non_exhaustive()
+  }
+}
+
 /// Rebuilds the embedding, so it is defined on the `Cpu` type; move to a device with `on` afterwards.
 impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
   #[must_use]

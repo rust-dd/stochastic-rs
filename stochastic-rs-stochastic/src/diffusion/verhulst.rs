@@ -21,7 +21,7 @@ use crate::traits::ProcessExt;
 
 /// Verhulst (logistic) diffusion
 /// dX_t = r X_t (1 - X_t / K) dt + sigma X_t dW_t
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Verhulst<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Logistic growth rate r (matches the module header's own r in
   /// `dX_t=rX_t(1−X_t/K)dt+...`).
@@ -206,6 +206,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`Verhulst`] sampling state: precomputed Euler scales and the owned
 /// Gaussian source.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct VerhulstSampler<T: FloatExt> {
   n: usize,
   x0: T,

@@ -59,7 +59,7 @@ impl ValidInputs {
 }
 
 #[test]
-fn shapes_match_n() {
+fn the_output_names_its_slots() {
   let h = Heston2D::<f64, _>::new(
     [0.0, 0.0],
     [0.4, 0.4],
@@ -73,7 +73,7 @@ fn shapes_match_n() {
     VarianceBoundary::Floor,
     Deterministic::new(1),
   );
-  let [x1, v1, x2, v2] = h.sample();
+  let Heston2DPaths { x1, v1, x2, v2, .. } = h.sample();
   assert_eq!(x1.len(), 512);
   assert_eq!(v1.len(), 512);
   assert_eq!(x2.len(), 512);
@@ -99,8 +99,8 @@ fn seeded_is_deterministic() {
       Deterministic::new(42),
     )
   };
-  let [a, _, b, _] = mk().sample();
-  let [c, _, d, _] = mk().sample();
+  let Heston2DPaths { x1: a, x2: b, .. } = mk().sample();
+  let Heston2DPaths { x1: c, x2: d, .. } = mk().sample();
   for i in 0..a.len() {
     assert!((a[i] - c[i]).abs() < 1e-12);
     assert!((b[i] - d[i]).abs() < 1e-12);
@@ -125,7 +125,7 @@ fn cross_correlation_matches_rho() {
     VarianceBoundary::Floor,
     Deterministic::new(7),
   );
-  let [x1, _, x2, _] = h.sample();
+  let Heston2DPaths { x1, x2, .. } = h.sample();
   let r1 = Array1::from_iter((1..x1.len()).map(|i| x1[i] - x1[i - 1]));
   let r2 = Array1::from_iter((1..x2.len()).map(|i| x2[i] - x2[i - 1]));
   let n = r1.len() as f64;
@@ -182,7 +182,7 @@ fn accepts_consistent_zero_cholesky_pivot() {
     ..ValidInputs::default()
   };
   let model = inputs.build();
-  let [x1, v1, x2, v2] = model.sample();
+  let Heston2DPaths { x1, v1, x2, v2, .. } = model.sample();
   assert!(x1.iter().chain(v1.iter()).all(|value| value.is_finite()));
   assert!(x2.iter().chain(v2.iter()).all(|value| value.is_finite()));
 }
@@ -310,7 +310,7 @@ fn accepts_matlab_feller_violation_under_reflection() {
     VarianceBoundary::Reflect,
     Deterministic::new(5),
   );
-  let [x1, v1, x2, v2] = model.sample();
+  let Heston2DPaths { x1, v1, x2, v2, .. } = model.sample();
   assert!(x1.iter().chain(v1.iter()).all(|value| value.is_finite()));
   assert!(x2.iter().chain(v2.iter()).all(|value| value.is_finite()));
   assert!(v1.iter().all(|x| *x >= 0.0));
@@ -333,7 +333,7 @@ fn accepts_matlab_feller_violation_under_the_floor() {
     VarianceBoundary::Floor,
     Deterministic::new(5),
   );
-  let [x1, v1, x2, v2] = model.sample();
+  let Heston2DPaths { x1, v1, x2, v2, .. } = model.sample();
   assert!(x1.iter().chain(v1.iter()).all(|value| value.is_finite()));
   assert!(x2.iter().chain(v2.iter()).all(|value| value.is_finite()));
   assert!(v1.iter().all(|x| *x >= 0.0));

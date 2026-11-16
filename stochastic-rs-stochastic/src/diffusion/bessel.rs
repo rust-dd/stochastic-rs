@@ -44,7 +44,7 @@ use crate::traits::ProcessExt;
 /// See the module doc for the relationship to [`Bessel`] (its square root,
 /// in law) and to [`Cir`](crate::diffusion::cir::Cir) (a time-changed,
 /// scaled instance of this process).
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SquaredBessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Dimension δ of the process. The literature convention is δ ≥ 0; δ ≥ 2
   /// additionally keeps the continuous-time process strictly positive once
@@ -290,6 +290,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`SquaredBessel`] sampling state: precomputed Euler scale and the
 /// owned Gaussian source.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct SquaredBesselSampler<T: FloatExt> {
   n: usize,
   x0: T,
@@ -377,7 +378,7 @@ py_process_1d!(PySquaredBessel, SquaredBessel,
 /// the bias shrinks toward 0 as `n → ∞` — not an exact transition kernel the
 /// way, say, a noncentral-χ² exact CIR sampler would be. Worth keeping in
 /// mind when choosing step counts for a calibration.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Bessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Dimension δ (see [`SquaredBessel::delta`] — the same δ ≥ 2 threshold
   /// keeps the process strictly positive).
@@ -624,6 +625,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// in squared/BESQ space rather than on the Bessel SDE's singular drift
 /// directly).
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct BesselSampler<T: FloatExt> {
   n: usize,
   x0: T,

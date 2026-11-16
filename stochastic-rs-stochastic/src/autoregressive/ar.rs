@@ -244,6 +244,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Ar`] sampling state: owns the Gaussian innovation source and the
 /// model coefficients so a Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct ArSampler<T: FloatExt> {
   n: usize,
   phi: Array1<T>,

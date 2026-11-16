@@ -25,6 +25,7 @@ use crate::traits::ProcessExt;
 ///
 /// This implementation treats `r`, `p`, and `f` as user-driven SDE components and
 /// does not enforce the no-arbitrage Hjm drift restriction between `alpha` and `sigma`.
+#[derive(Debug, Clone)]
 pub struct Hjm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Time-dependent coefficient a(t) in the short rate's drift term
   /// `a(t)·dt`.
@@ -74,6 +75,21 @@ pub struct Hjm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
+}
+
+/// Short rate, bond price and forward rate.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct HjmPaths<T> {
+  pub r: Array1<T>,
+  pub p: Array1<T>,
+  pub f: Array1<T>,
+}
+
+impl<T> From<[Array1<T>; 3]> for HjmPaths<T> {
+  fn from([r, p, f]: [Array1<T>; 3]) -> Self {
+    Self { r, p, f }
+  }
 }
 
 impl<T: FloatExt, S: SeedExt> Hjm<T, S> {
@@ -196,7 +212,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     ])
   }
 
-  fn host_sample(&self) -> [Array1<T>; 3] {
+  fn host_sample(&self) -> HjmPaths<T> {
     let out = <Self as ProcessExt<T>>::sampler(self).sample();
     <Self as ProcessExt<T>>::advance_chunk_seed(self);
     out
@@ -211,7 +227,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::S
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Hjm<T, S, B> {
-  type Output = [Array1<T>; 3];
+  type Output = HjmPaths<T>;
   type Sampler<'s>
     = HjmSampler<'s, T, S, B>
   where
@@ -239,23 +255,23 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   /// Through the Euler engine: on a device the three rows are stepped in the
   /// kernel under the tabulated coefficients, on the host devices it is this
   /// process's own sampler, chunked exactly as [`ProcessExt`] chunks.
-  fn sample(&self) -> [Array1<T>; 3] {
+  fn sample(&self) -> HjmPaths<T> {
     self.backend.system_sample(self)
   }
 
-  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 3]) -> R + Sync) -> Vec<R> {
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&HjmPaths<T>) -> R + Sync) -> Vec<R> {
     self.backend.system_paths_map(self, m, f)
   }
 
-  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 3]> {
+  fn sample_par(&self, m: usize) -> Vec<HjmPaths<T>> {
     self.backend.system_paths(self, m)
   }
 
-  fn try_sample(&self) -> Result<[Array1<T>; 3], crate::device::DeviceError> {
+  fn try_sample(&self) -> Result<HjmPaths<T>, crate::device::DeviceError> {
     self.backend.try_system_sample(self)
   }
 
-  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 3]>, crate::device::DeviceError> {
+  fn try_sample_par(&self, m: usize) -> Result<Vec<HjmPaths<T>>, crate::device::DeviceError> {
     self.backend.try_system_paths(self, m)
   }
 }
@@ -264,6 +280,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// once at construction. Each SDE component's Gaussian increments are
 /// generated inside the step body from that owned seed.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct HjmSampler<'a, T: FloatExt, S: SeedExt, B> {
   hjm: &'a Hjm<T, S, B>,
   seed: S,
@@ -277,31 +294,31 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::S
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> PathSampler<T>
   for HjmSampler<'_, T, S, B>
 {
-  type Output = [Array1<T>; 3];
+  type Output = HjmPaths<T>;
 
-  fn sample_into(&mut self, out: &mut [Array1<T>; 3]) {
+  fn sample_into(&mut self, out: &mut HjmPaths<T>) {
     *out = self.hjm.sample_inner(&self.seed);
   }
 
-  fn sample(&mut self) -> [Array1<T>; 3] {
+  fn sample(&mut self) -> HjmPaths<T> {
     self.hjm.sample_inner(&self.seed)
   }
 }
 
 impl<T: FloatExt, S: SeedExt, B> Hjm<T, S, B> {
-  fn sample_inner(&self, seed: &S) -> [Array1<T>; 3] {
+  fn sample_inner(&self, seed: &S) -> HjmPaths<T> {
     let mut r = Array1::<T>::zeros(self.n);
     let mut p = Array1::<T>::zeros(self.n);
     let mut f_ = Array1::<T>::zeros(self.n);
     if self.n == 0 {
-      return [r, p, f_];
+      return HjmPaths { r, p, f: f_ };
     }
 
     r[0] = self.r0.unwrap_or(T::zero());
     p[0] = self.p0.unwrap_or(T::zero());
     f_[0] = self.f0.unwrap_or(T::zero());
     if self.n == 1 {
-      return [r, p, f_];
+      return HjmPaths { r, p, f: f_ };
     }
 
     let n_increments = self.n - 1;
@@ -343,7 +360,7 @@ impl<T: FloatExt, S: SeedExt, B> Hjm<T, S, B> {
       f_[i] = f_[i - 1] + self.alpha.call(t, t_max) * dt + self.sigma.call(t, t_max) * f_[i];
     }
 
-    [r, p, f_]
+    HjmPaths { r, p, f: f_ }
   }
 }
 
@@ -432,11 +449,11 @@ impl PyHjm {
 
       use crate::traits::ProcessExt;
       py_dispatch_f64!(self, |inner| {
-        let [a, b, c] = inner.sample();
+        let HjmPaths { r, p, f, .. } = inner.sample();
         (
-          a.into_pyarray(py).into_py_any(py).unwrap(),
-          b.into_pyarray(py).into_py_any(py).unwrap(),
-          c.into_pyarray(py).into_py_any(py).unwrap(),
+          r.into_pyarray(py).into_py_any(py).unwrap(),
+          p.into_pyarray(py).into_py_any(py).unwrap(),
+          f.into_pyarray(py).into_py_any(py).unwrap(),
         )
       })
     })
@@ -462,13 +479,13 @@ impl PyHjm {
       use crate::traits::ProcessExt;
       py_dispatch_f64!(self, |inner| {
         let paths = py.detach(|| inner.sample_par(m));
-        let n = paths.first().map_or(0, |p| p[0].len());
+        let n = paths.first().map_or(0, |p| p.r.len());
         let mut stacked = [
           Array2::zeros((m, n)),
           Array2::zeros((m, n)),
           Array2::zeros((m, n)),
         ];
-        for (i, [r, p, f]) in paths.iter().enumerate() {
+        for (i, HjmPaths { r, p, f, .. }) in paths.iter().enumerate() {
           stacked[0].row_mut(i).assign(r);
           stacked[1].row_mut(i).assign(p);
           stacked[2].row_mut(i).assign(f);
@@ -505,6 +522,27 @@ mod tests {
   }
 
   #[test]
+  fn the_output_names_its_slots() {
+    let HjmPaths { r, p, f, .. } = Hjm::new(
+      zero_1d as fn(f64) -> f64,
+      zero_1d as fn(f64) -> f64,
+      one_2d as fn(f64, f64) -> f64,
+      zero_2d as fn(f64, f64) -> f64,
+      one_2d as fn(f64, f64) -> f64,
+      zero_2d as fn(f64, f64) -> f64,
+      one_2d as fn(f64, f64) -> f64,
+      16,
+      Some(0.03),
+      Some(1.0),
+      Some(0.04),
+      None,
+      Unseeded,
+    )
+    .sample();
+    assert_eq!((r.len(), p.len(), f.len()), (16, 16, 16));
+  }
+
+  #[test]
   fn default_t_max_is_one() {
     let model = Hjm::new(
       zero_1d as fn(f64) -> f64,
@@ -522,7 +560,7 @@ mod tests {
       Unseeded,
     );
 
-    let [_r, p, _f] = model.sample();
+    let p = model.sample().p;
     assert!((p[1] - 0.5).abs() < 1e-12);
     assert!((p[2] - 1.0).abs() < 1e-12);
   }

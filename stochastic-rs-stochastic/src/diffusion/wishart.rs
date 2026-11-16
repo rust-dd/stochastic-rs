@@ -50,7 +50,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Wishart<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Degree α ≥ d − 1.
   pub alpha: T,
@@ -73,7 +73,7 @@ pub struct Wishart<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 /// The maps of Proposition 6 for one grid step, computed once.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct StepMaps<T> {
   /// `m = exp(Δt b)`.
   m: Array2<T>,
@@ -378,6 +378,7 @@ impl<T: FloatExt, S: SeedExt, B> Wishart<T, S, B> {
 /// The Euler engine's view of the matrix path: the three entries of the
 /// symmetric matrix as one launch's slots, the exact step's maps folded once.
 #[doc(hidden)]
+#[derive(Debug, Clone)]
 pub struct WishartLaunch<'a, T: FloatExt, S: SeedExt, B>(&'a Wishart<T, S, B>);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
@@ -402,6 +403,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 }
 
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct WishartLaunchSampler<T: FloatExt, S: SeedExt> {
   inner: WishartSampler<T, S>,
 }
@@ -612,6 +614,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Wishart`] sampling state with a derived seed, so parallel
 /// chunks draw independent paths.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct WishartSampler<T: FloatExt, S: SeedExt> {
   process: Wishart<T, S>,
 }

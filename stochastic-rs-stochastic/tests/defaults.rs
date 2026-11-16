@@ -104,25 +104,8 @@ fn theta05(_t: f64) -> f64 {
   0.05
 }
 
-/// Same parameter values as each type's `Default` (seed swapped for an
-/// explicit `Deterministic` one) — `x.clone().sample() == x.sample()`
-/// bit-for-bit must hold uniformly per the pinned decision (`ProcessExt`'s
-/// `## Clone semantics`): whole-struct `Clone` snapshots the seed rather
-/// than forking it, so the clone replays the identical path if sampled
-/// before either side draws anything else.
-///
-/// `Merton`/`Kou` are included below (they were excluded before the
-/// zero-exception-reproducibility wave's Task 1: their `cpoisson` field
-/// type was `CompoundPoisson<T, D>`, fixing *that* field's own seed
-/// strategy to `Unseeded` regardless of the outer process's `S`, so
-/// `x.sample() != x.sample()` held for the very same instance before
-/// `Clone` even entered the picture). `new()` now builds `cpoisson`
-/// internally from the same `seed: S` passed in, so `#[derive(Clone)]`'s
-/// plain field-wise clone of `seed` — the mechanism this test otherwise
-/// exercises uniformly — snapshots the jump component's reproducibility
-/// exactly as it always did the diffusion's. A nonzero-intensity jump
-/// distribution is used for both so the jump half is actually exercised,
-/// not short-circuited to an all-zero, RNG-free array.
+/// A clone snapshots a `Deterministic` seed, so it replays its original's next path; `Merton` and
+/// `Kou` run at a nonzero rate, so their jumps replay too.
 #[test]
 fn clone_preserves_deterministic_path() {
   let a = Gbm::<f64, _>::new(0.05, 0.2, N, 100.0, Some(1.0), Deterministic::new(42));
@@ -348,10 +331,6 @@ fn clone_preserves_deterministic_path() {
   assert_eq!(bits(&s1), bits(&s2));
   assert_eq!(bits(&v1), bits(&v2));
 
-  // `Merton`/`Kou`: see this function's module doc for why these two were
-  // excluded before the zero-exception-reproducibility wave's Task 1, and
-  // why a nonzero-intensity jump distribution is used here (proves the
-  // jump component specifically, not just the diffusion).
   let a = Merton::new(
     0.03,
     0.2,

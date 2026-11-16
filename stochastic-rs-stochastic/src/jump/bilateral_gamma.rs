@@ -29,7 +29,7 @@ use crate::traits::ProcessExt;
 /// $$
 /// \psi(\xi)=\alpha_p\ln\!\frac{\lambda_p}{\lambda_p-i\xi}+\alpha_m\ln\!\frac{\lambda_m}{\lambda_m+i\xi}
 /// $$
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BilateralGamma<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Shape parameter for positive jumps.
   pub alpha_p: T,
@@ -234,6 +234,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`BilateralGamma`] sampling state: owns the positive- and
 /// negative-side gamma sources so a Monte-Carlo loop pays their setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct BilateralGammaSampler<T: FloatExt> {
   n: usize,
   x0: T,
@@ -286,7 +287,7 @@ impl<T: FloatExt> PathSampler<T> for BilateralGammaSampler<T> {
 /// $$
 /// X_t=\sigma W_t+\Gamma^+_t-\Gamma^-_t
 /// $$
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BilateralGammaMotion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Diffusion coefficient of the Brownian component.
   pub sigma: T,
@@ -502,6 +503,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`BilateralGammaMotion`] sampling state: owns both gamma sources
 /// and the Gaussian source so a Monte-Carlo loop pays their setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct BilateralGammaMotionSampler<T: FloatExt> {
   n: usize,
   sigma: T,

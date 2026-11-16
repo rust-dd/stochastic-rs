@@ -19,7 +19,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Ckls<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift intercept parameter.
   pub theta1: T,
@@ -194,6 +194,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 
 /// Reusable [`Ckls`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CklsSampler<T: FloatExt> {
   n: usize,
   x0: T,

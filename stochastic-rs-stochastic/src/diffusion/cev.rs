@@ -20,7 +20,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Cev<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant proportional drift rate μ — CEV has no mean reversion.
   pub mu: T,
@@ -264,6 +264,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 
 /// Reusable [`Cev`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CevSampler<T: FloatExt> {
   n: usize,
   x0: T,

@@ -19,7 +19,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Jacobi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Linear-drift intercept (κθ combined) in the reparametrized drift
   /// `alpha - beta·X`, equivalent to `κ(θ-X)` with `alpha = κθ`. Must be
@@ -195,6 +195,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 
 /// Reusable [`Jacobi`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct JacobiSampler<T: FloatExt> {
   n: usize,
   x0: T,

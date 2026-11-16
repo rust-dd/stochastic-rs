@@ -792,6 +792,42 @@ fn jump_fou_custom_with_exponential_laws_agrees_with_the_cpu_law() {
   );
 }
 
+/// Exponential times with normal sizes, the pair one law parameter could not hold.
+#[test]
+fn jump_fou_custom_with_normal_sizes_agrees_with_the_cpu_law() {
+  let build = || {
+    JumpFouCustom::<f32, _, _, _>::new(
+      0.7,
+      2.0,
+      1.0,
+      0.3,
+      N,
+      Some(0.0),
+      Some(1.0),
+      SimdExp::<f32>::new(3.0),
+      SimdNormal::<f32>::new(0.05, 0.1),
+      Deterministic::new(47),
+    )
+  };
+  const PATHS: usize = 3 * M;
+  assert!(build().device_ready());
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  all_finite(&device, "custom jump fOU, normal sizes");
+  agrees(
+    terminal_mean(&host),
+    terminal_mean(&device),
+    0.03,
+    "custom jump fOU, normal sizes, terminal mean",
+  );
+  agrees(
+    terminal_std(&host),
+    terminal_std(&device),
+    0.06,
+    "custom jump fOU, normal sizes, terminal spread",
+  );
+}
+
 #[test]
 fn volterra_square_root_agrees_with_the_cpu_law() {
   let build = || {

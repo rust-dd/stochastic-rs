@@ -13,7 +13,7 @@ use crate::traits::ProcessExt;
 
 /// Poisson subordinator with unit jumps:
 /// `N_t` with independent increments `Poisson(lambda * dt)`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct PoissonSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Intensity parameter.
   pub lambda: T,
@@ -165,6 +165,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`PoissonSubordinator`] sampling state: the owned Poisson stream.
 /// Each step adds a `Poisson(lambda * dt)` unit-jump count.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct PoissonSubordinatorSampler<T: FloatExt> {
   n: usize,
   x0: T,

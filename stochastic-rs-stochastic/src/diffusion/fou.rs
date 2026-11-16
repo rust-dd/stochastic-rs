@@ -55,7 +55,7 @@ use crate::traits::ProcessExt;
 /// let mut p = Fou::<f64>::new(0.7, 1.0, 0.0, 0.2, 10, None, None, Unseeded);
 /// p.n = 1000;
 /// ```
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Fou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   hurst: T,
   theta: T,
@@ -310,6 +310,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
 /// [`Fvasicek`](crate::interest::fvasicek::Fvasicek)'s sampler,
 /// which is an alias for this type.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct FouSampler<'a, T: FloatExt, S: SeedExt, B> {
   fou: &'a Fou<T, S, B>,
   seed: S,

@@ -19,7 +19,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ThreeHalf<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed parameter.
   pub kappa: T,
@@ -178,6 +178,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`ThreeHalf`] sampling state: precomputed Euler step and the owned
 /// Gaussian source.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct ThreeHalfSampler<T: FloatExt> {
   n: usize,
   x0: T,

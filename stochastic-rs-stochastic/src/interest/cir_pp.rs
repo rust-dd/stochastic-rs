@@ -30,7 +30,7 @@ use crate::traits::ProcessExt;
 ///
 /// See the module doc for the `kappa`/`theta` naming note and the
 /// composition with [`Cir`].
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct CirPlusPlus<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed κ of the underlying CIR factor `x_t` (see the
   /// module doc: unlike [`Cir::theta`], the speed here is named `kappa`).
@@ -384,6 +384,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// underlying factor `x_t`, a scratch buffer to receive it, and the
 /// borrowed shift function `phi` added on top.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CirPlusPlusSampler<'a, T: FloatExt> {
   n: usize,
   dt: T,

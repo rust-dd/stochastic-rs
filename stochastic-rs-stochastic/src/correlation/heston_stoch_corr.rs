@@ -11,8 +11,6 @@
 //!
 //! With correlations (Eq. 2.4, ρ₁ = 0 assumption):
 //!   dW^S·dW^v = ρ_t dt,    dW^v·dW^ρ = ρ₂ dt
-//!
-//! Returns `[S, v, ρ]` — three paths.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -70,7 +68,7 @@ pub struct HestonStochCorr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant correlation between dW^v and dW^ρ.
   pub rho2: T,
 
-  /// Number of points sampled along each of the `[S, v, ρ]` paths.
+  /// Number of points sampled along each of the three paths.
   pub n: usize,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
@@ -79,6 +77,21 @@ pub struct HestonStochCorr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
+}
+
+/// The three paths of a Heston model with stochastic correlation.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct HestonStochCorrPaths<T> {
+  pub s: Array1<T>,
+  pub v: Array1<T>,
+  pub rho: Array1<T>,
+}
+
+impl<T> From<[Array1<T>; 3]> for HestonStochCorrPaths<T> {
+  fn from([s, v, rho]: [Array1<T>; 3]) -> Self {
+    Self { s, v, rho }
+  }
 }
 
 impl<T: FloatExt, S: SeedExt> HestonStochCorr<T, S> {
@@ -347,7 +360,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     crate::euler::draw_seed(&self.seed)
   }
 
-  fn host_sample(&self) -> [Array1<T>; 3] {
+  fn host_sample(&self) -> HestonStochCorrPaths<T> {
     let out = <Self as ProcessExt<T>>::sampler(self).sample();
     <Self as ProcessExt<T>>::advance_chunk_seed(self);
     out
@@ -364,7 +377,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::S
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for HestonStochCorr<T, S, B>
 {
-  type Output = [Array1<T>; 3]; // [S, v, rho]
+  type Output = HestonStochCorrPaths<T>;
   type Sampler<'s>
     = HestonStochCorrSampler<T, S>
   where
@@ -396,23 +409,30 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   /// Through the Euler engine: on a device every component steps in the
   /// kernel, on the host devices it is this process's own sampler, chunked
   /// exactly as `ProcessExt` chunks.
-  fn sample(&self) -> [Array1<T>; 3] {
+  fn sample(&self) -> HestonStochCorrPaths<T> {
     self.backend.system_sample(self)
   }
 
-  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 3]) -> R + Sync) -> Vec<R> {
+  fn sample_map<R: Send>(
+    &self,
+    m: usize,
+    f: impl Fn(&HestonStochCorrPaths<T>) -> R + Sync,
+  ) -> Vec<R> {
     self.backend.system_paths_map(self, m, f)
   }
 
-  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 3]> {
+  fn sample_par(&self, m: usize) -> Vec<HestonStochCorrPaths<T>> {
     self.backend.system_paths(self, m)
   }
 
-  fn try_sample(&self) -> Result<[Array1<T>; 3], crate::device::DeviceError> {
+  fn try_sample(&self) -> Result<HestonStochCorrPaths<T>, crate::device::DeviceError> {
     self.backend.try_system_sample(self)
   }
 
-  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 3]>, crate::device::DeviceError> {
+  fn try_sample_par(
+    &self,
+    m: usize,
+  ) -> Result<Vec<HestonStochCorrPaths<T>>, crate::device::DeviceError> {
     self.backend.try_system_paths(self, m)
   }
 }
@@ -422,6 +442,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// are rebuilt per call from the (derived) seed, exactly as the legacy `sample`
 /// body did.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct HestonStochCorrSampler<T: FloatExt, S: SeedExt> {
   r: T,
   s0: T,
@@ -512,10 +533,10 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorrSampler<T, S> {
 impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for HestonStochCorrSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for HestonStochCorrSampler<T, S> {
-  type Output = [Array1<T>; 3];
+  type Output = HestonStochCorrPaths<T>;
 
-  fn sample_into(&mut self, out: &mut [Array1<T>; 3]) {
-    let [s, v, rho] = out;
+  fn sample_into(&mut self, out: &mut HestonStochCorrPaths<T>) {
+    let HestonStochCorrPaths { s, v, rho } = out;
     self.fill_paths(
       s.as_slice_mut()
         .expect("HestonStochCorr output must be contiguous"),
@@ -527,7 +548,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for HestonStochCorrSampler<T, S> {
     );
   }
 
-  fn sample(&mut self) -> [Array1<T>; 3] {
+  fn sample(&mut self) -> HestonStochCorrPaths<T> {
     let mut s = Array1::<T>::zeros(self.n);
     let mut v = Array1::<T>::zeros(self.n);
     let mut rho = Array1::<T>::zeros(self.n);
@@ -536,7 +557,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for HestonStochCorrSampler<T, S> {
       v.as_slice_mut().expect("contiguous"),
       rho.as_slice_mut().expect("contiguous"),
     );
-    [s, v, rho]
+    HestonStochCorrPaths { s, v, rho }
   }
 }
 
@@ -545,6 +566,15 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
+
+  #[test]
+  fn the_output_names_its_slots() {
+    let HestonStochCorrPaths { s, v, rho, .. } = HestonStochCorr::new(
+      0.0_f64, 100.0, 0.02, 2.1, 0.03, 0.2, -0.4, 3.4, -0.6, 0.1, 0.4, 64, None, Unseeded,
+    )
+    .sample();
+    assert_eq!((s.len(), v.len(), rho.len()), (64, 64, 64));
+  }
 
   #[test]
   fn produces_valid_paths() {
@@ -565,7 +595,7 @@ mod tests {
       Some(1.0),              // t
       Deterministic::new(42), // seed
     );
-    let [s, v, rho] = model.sample();
+    let HestonStochCorrPaths { s, v, rho, .. } = model.sample();
     assert_eq!(s.len(), 500);
     assert!(
       s.iter().all(|x| x.is_finite() && *x > 0.0),
@@ -601,8 +631,8 @@ mod tests {
         Deterministic::new(99),
       )
     };
-    let [s1, _, _] = mk().sample();
-    let [s2, _, _] = mk().sample();
+    let s1 = mk().sample().s;
+    let s2 = mk().sample().s;
     for i in 0..200 {
       assert!((s1[i] - s2[i]).abs() < 1e-14, "paths diverged at i={i}");
     }
@@ -626,7 +656,7 @@ mod tests {
       Some(1.0),
       Deterministic::new(55),
     );
-    let [_, _, rho] = model.sample();
+    let rho = model.sample().rho;
     // With σ_r ≈ 0, correlation should stay near ρ₀ = -0.7
     for &r in rho.iter() {
       assert!(

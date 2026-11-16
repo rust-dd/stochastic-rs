@@ -174,40 +174,11 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// Overriding it to advance the shared state before each chunk's
 /// `sampler()` call gives each such clone a distinct starting point.
 ///
-/// **No process in this crate is an exception, full or partial.** Every
-/// concrete `ProcessExt` implementor derives all of its sampled randomness
-/// from `self.seed` — its diffusion component, and, for the jump-diffusion
-/// types that have one, its jump component too. That was not always true;
-/// getting here took several corrected rounds (a `Cgns`- or `Fgn`-shaped
-/// diffusion once thought structurally unfixable turned out to be a plain
-/// missed wire — `Cgns::sample_impl<S2: SeedExt>(&self, seed: &S2)` was
-/// generic over an *external* seed all along, so a bare `.sample()`
-/// bypassing it was a bug, not a limitation; a `pub cpoisson:
-/// CompoundPoisson<T, D>` field structurally pinned to `Unseeded` — present
-/// on `Merton`, `Kou`, `LevyDiffusion`, `Bates` and `JumpFou` — turned
-/// out to need a genuine breaking constructor change, made by the
-/// zero-exception-reproducibility wave's Tasks 1 and 2). That history is
-/// deliberately not repeated here — a corrected verdict restated as a live
-/// exception list is exactly how this file drifted out of sync with the
-/// code three times before.
+/// **No process in this crate is an exception**: every implementor draws all of its randomness,
+/// jumps included, from `self.seed`.
 ///
-/// **This guarantee is enforced, not merely asserted.**
-/// `tests/reproducibility_all_processes.rs` enumerates every concrete
-/// `ProcessExt` implementor in the crate (124 as of this wave — derived by
-/// grepping `impl … ProcessExt<…> for …` blocks under `src/`, excluding the
-/// blanket marker-trait impls in this file; the test's own doc comment
-/// carries the exact command and an instruction to extend the list when a
-/// process is added) and asserts, for each: two freshly constructed,
-/// identically-[`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)
-/// -seeded instances agree bit-for-bit on [`sample`](Self::sample), and
-/// [`sample_par`](Self::sample_par) agrees bit-for-bit across rayon
-/// thread-pool sizes at both `m <= MAX_CHUNKS` (one path per chunk — cannot
-/// by itself expose cross-chunk correlation) and `m > MAX_CHUNKS` (several
-/// paths per chunk). Five separate instances of the missed-wire/pinned-field
-/// bug class above were each found by a different ad-hoc sweep before this
-/// test existed, precisely because no single test enumerated the whole
-/// surface; a type with no line in that file is a type nothing here is
-/// proving anything about.
+/// **This guarantee is enforced**: `tests/reproducibility_all_processes.rs` checks every concrete
+/// implementor under `sample` and under `sample_par` at one and at several paths per chunk.
 ///
 /// **Backend-level exceptions are a separate axis, untouched by the
 /// above and not covered by that test** (which only instantiates
@@ -501,13 +472,8 @@ pub trait OneDimensional<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {}
 
 impl<T: FloatExt, P> OneDimensional<T> for P where P: ProcessExt<T, Output = Array1<T>> {}
 
-/// Marker for processes whose [`ProcessExt::sample`] returns `N` aligned
-/// 1D trajectories `[Array1<T>; N]`.
-///
-/// Auto-implemented for any `P: ProcessExt<T, Output = [Array1<T>; N]>`.
-/// Stochastic-volatility models (`Heston`, `Bergomi`, `Sabr`, `RBergomi`)
-/// use `N = 2` (asset + variance); 3-state models (`HestonStochCorr`,
-/// `DoubleHeston`, `Hjm`) use `N = 3`.
+/// Marker for processes whose [`ProcessExt::sample`] returns `N` aligned paths `[Array1<T>; N]`,
+/// such as `Heston`, `Bergomi` and `Sabr` (`N = 2`); implemented from `Output` alone.
 pub trait MultiDimensional<T: FloatExt, const N: usize>:
   ProcessExt<T, Output = [Array1<T>; N]>
 {
@@ -527,7 +493,7 @@ pub trait TwoDimensional<T: FloatExt>: MultiDimensional<T, 2> {}
 impl<T: FloatExt, P> TwoDimensional<T> for P where P: MultiDimensional<T, 2> {}
 
 /// Marker for processes whose [`ProcessExt::sample`] returns an `Array2<T>`, a discretised curve or
-/// sheet: `Hjm` with tenors, `WuZhang`, `Fbs`.
+/// sheet: `WuZhang`, `Fbs`.
 pub trait CurveOutput<T: FloatExt>: ProcessExt<T, Output = Array2<T>> {}
 
 impl<T: FloatExt, P> CurveOutput<T> for P where P: ProcessExt<T, Output = Array2<T>> {}

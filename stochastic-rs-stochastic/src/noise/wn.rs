@@ -19,7 +19,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Wn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Number of i.i.d. noise samples generated.
   pub n: usize,
@@ -174,6 +174,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Wn`] sampling state: the owned Gaussian source, `None` at a zero
 /// deviation, where every draw is the mean.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct WnSampler<T: FloatExt> {
   n: usize,
   mu: T,

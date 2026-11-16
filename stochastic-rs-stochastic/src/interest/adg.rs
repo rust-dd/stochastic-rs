@@ -28,6 +28,7 @@ use crate::traits::Fn1D;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Debug, Clone)]
 pub struct Adg<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Time-dependent additive drift target function k(t) — the level each
   /// latent factor is pulled toward, analogous to Hull-White's θ(t).
@@ -156,6 +157,7 @@ impl<T: FloatExt, S: SeedExt, B> Adg<T, S, B> {
 /// for all of them. It borrows rather than owns, so the seed it advances is
 /// the process's own.
 #[doc(hidden)]
+#[derive(Debug, Clone)]
 pub struct AdgRow<'a, T: FloatExt, S: SeedExt, B>(&'a Adg<T, S, B>, usize);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
@@ -183,6 +185,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 
 /// [`AdgRow`]'s sampler: one factor's recursion from a seed derived once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct AdgRowSampler<'a, T: FloatExt, S: SeedExt, B> {
   adg: &'a Adg<T, S, B>,
   factor: usize,
@@ -346,6 +349,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// once at construction. Each row's Gaussian increments are generated
 /// inside the row recursion from that owned seed.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct AdgSampler<'a, T: FloatExt, S: SeedExt, B> {
   adg: &'a Adg<T, S, B>,
   seed: S,

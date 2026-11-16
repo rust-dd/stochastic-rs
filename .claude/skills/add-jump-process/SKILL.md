@@ -82,9 +82,8 @@ Three constructor facts:
 
 `lambda` is the only rate: the sampler and the engine's `jump_intensity()`
 both read it, and nothing mirrors it. The setters are `with_lambda(λ)`
-(asserting what `new` asserts), `with_jump_law(law)` (keeping the jump
-seed) and `with_seed(seed)` (re-deriving the jump seed as `new` does);
-`jump_law()` reads the law back.
+(asserting what `new` asserts) and `with_jump_law(law)` (keeping the jump
+seed); `jump_law()` reads the law back.
 
 ## 2. The sample step
 
@@ -175,7 +174,7 @@ Notes on the jump-increment call:
   multiplicatively — use it for a relative-return jump term).
 - There is **no** `sample_increments` and **no** `sample_arrival_times`.
   Arrival times come from driving `CompoundPoisson` itself: its
-  `ProcessExt::Output` is `[Array1<T>; 3]`.
+  `ProcessExt::Output` is `process::CompoundPaths { arrivals, cumulative, jumps }`.
 - The jump array is indexed `jump_increments[i]`, not `[i - 1]` — index
   0 is the (zero) increment at the path's initial point.
 

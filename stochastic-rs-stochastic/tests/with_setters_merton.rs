@@ -5,6 +5,7 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_stochastic::euler::EulerCoefficients;
 use stochastic_rs_stochastic::jump::merton::Merton;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
@@ -99,7 +100,9 @@ fn merton_at(lambda: f64, law: SimdNormal<f64>) -> Merton<f64, SimdNormal<f64>, 
 #[test]
 fn merton_with_lambda_matches_fresh_construction() {
   let law = SimdNormal::new(0.0, 0.1);
-  let got = merton_at(0.0, law).with_lambda(80.0).sample();
+  let m = merton_at(0.0, law).with_lambda(80.0);
+  assert_eq!(EulerCoefficients::jump_intensity(&m), Some(80.0));
+  let got = m.sample();
   assert_eq!(got, merton_at(80.0, law).sample());
   assert_ne!(got, merton_at(0.0, law).sample());
   assert_eq!(

@@ -9,6 +9,7 @@ use rand_distr::Exp;
 use rand_distr::Normal;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::params::Horizon;
+use stochastic_rs::stochastic::process::CompoundPaths;
 use stochastic_rs::stochastic::process::ccustom::CompoundCustom;
 use stochastic_rs::stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs::stochastic::process::customjt::CustomJt;
@@ -78,7 +79,11 @@ fn bench_poisson_process(c: &mut Criterion) {
       &n,
       |b, &_n| {
         b.iter(|| {
-          let [p, _, j] = model.sample();
+          let CompoundPaths {
+            arrivals: p,
+            jumps: j,
+            ..
+          } = model.sample();
           black_box((p.len(), j[j.len().saturating_sub(1)]))
         });
       },
@@ -87,23 +92,20 @@ fn bench_poisson_process(c: &mut Criterion) {
 
   for &n in &[4_000usize, 100_000usize] {
     let jump_dist = Normal::new(0.0, 1.0).expect("valid normal params");
-    let jump_times_distribution = Exp::new(3.0).expect("valid rate");
     let customjt_distribution = Exp::new(3.0).expect("valid rate");
     let customjt = CustomJt::<f64, _, _>::new(Horizon::Events(n), customjt_distribution, Unseeded);
-    let model = CompoundCustom::new(
-      Horizon::Events(n),
-      jump_dist,
-      jump_times_distribution,
-      customjt,
-      Unseeded,
-    );
+    let model = CompoundCustom::new(jump_dist, customjt, Unseeded);
 
     group.bench_with_input(
       BenchmarkId::new("compound_custom_sample", n),
       &n,
       |b, &_n| {
         b.iter(|| {
-          let [p, _, j] = model.sample();
+          let CompoundPaths {
+            arrivals: p,
+            jumps: j,
+            ..
+          } = model.sample();
           black_box((p.len(), j[j.len().saturating_sub(1)]))
         });
       },

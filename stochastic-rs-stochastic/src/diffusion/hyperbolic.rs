@@ -19,7 +19,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Hyperbolic<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Nonlinear restoring-force strength κ in the drift `-κX_t/√(1+X_t²)`
   /// (a bounded, hyperbolic-tangent-like pull toward 0, not a linear
@@ -170,6 +170,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 
 /// Reusable [`Hyperbolic`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct HyperbolicSampler<T: FloatExt> {
   n: usize,
   x0: T,

@@ -55,6 +55,15 @@ where
   seed: S,
 }
 
+impl<F: Fn(usize, usize) -> f64, S: SeedExt + std::fmt::Debug> std::fmt::Debug for IsoNormal<F, S> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("IsoNormal")
+      .field("index_functions", &self.index_functions)
+      .field("seed", &self.seed)
+      .finish_non_exhaustive()
+  }
+}
+
 impl<F, S: SeedExt> IsoNormal<F, S>
 where
   F: Fn(usize, usize) -> f64,

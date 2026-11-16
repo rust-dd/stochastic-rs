@@ -18,7 +18,7 @@ use crate::traits::ProcessExt;
 /// Uses truncated-stable large jumps with exponential thinning and
 /// deterministic small-jump drift:
 /// `nu(dx) = c * exp(-mu x) * x^{-1-alpha} dx`, `x > 0`, `alpha in (0,1)`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct TemperedStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Stable index in `(0,1)`.
   pub alpha: T,
@@ -238,6 +238,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// driver for candidate counts, the uniform source for jump sizes / thinning,
 /// and precomputed scalars.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct TemperedStableSubordinatorSampler<T: FloatExt> {
   n: usize,
   x0: T,

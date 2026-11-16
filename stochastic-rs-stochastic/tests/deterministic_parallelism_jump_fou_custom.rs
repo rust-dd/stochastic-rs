@@ -1,19 +1,5 @@
-//! Reproducibility tests for `JumpFouCustom`'s diffusion fix: its private
-//! `fgn: Fgn<T, Unseeded, B>` field's own `.sampler()` used to build the
-//! diffusion's Gaussian source, which reads `fgn`'s own dead `Unseeded`
-//! field rather than the outer `self.seed` — the same bug class as
-//! `Bates`/`Fheston`'s `cgns` bug (see
-//! `deterministic_parallelism_bates_rough_heston.rs`), on a private field
-//! rather than a `cgns` one. Because the field is private, this was fixable
-//! non-breakingly (unlike `Merton`'s public `cpoisson`, which cannot be
-//! re-typed without breaking callers): `sampler()` now builds the Gaussian
-//! source directly from `self.seed.derive()` and borrows `fgn` only for its
-//! `Arc`-shared FFT plan and eigenvalues.
-//!
-//! `JumpFouCustom` has no `CompoundPoisson` field (its jump timing/size
-//! draws were already reproducible via `rng: self.seed.rng()`), so fixing
-//! the diffusion makes it **fully** seed-reproducible — it carries no
-//! exception to `ProcessExt`'s reproducibility guarantee at all now.
+//! `JumpFouCustom` draws its fGN from a child of its seed, `fgn` lending only the FFT plan, and its
+//! jumps from the seed too, so identically seeded processes agree at any thread count.
 
 use ndarray::Array1;
 use rayon::ThreadPoolBuilder;

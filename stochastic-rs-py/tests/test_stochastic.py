@@ -118,6 +118,21 @@ def test_cheyette_state_and_bonds():
     assert abs(model.short_rate(0.5, 0.004) - 0.034) < 1e-15
 
 
+def test_hjm_returns_the_short_rate_bond_price_and_forward_rate():
+    flat = lambda t, m: 0.0
+    vol = lambda t, m: 0.01
+    model = sr.PyHjm(
+        lambda t: 0.0, lambda t: 0.01, lambda t, m: 1.0, flat, vol, flat, vol, 16,
+        r0=0.03, p0=1.0, f0=0.04, seed=3,
+    )
+    r, p, f = model.sample()
+    assert r.shape == p.shape == f.shape == (16,)
+    assert (r[0], p[0], f[0]) == (0.03, 1.0, 0.04)
+    rs, ps, fs = model.sample_par(8)
+    assert rs.shape == ps.shape == fs.shape == (8, 16)
+    assert (rs[:, 0] == 0.03).all() and (fs[:, 0] == 0.04).all()
+
+
 def test_device_classes_reproduce_the_euler_moments():
     paths = sr.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7).sample_par(20_000)
     assert paths.shape == (20_000, 253) and np.allclose(paths[:, 0], 100.0)

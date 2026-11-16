@@ -1,16 +1,18 @@
 //! `DoubleHeston`'s setters: `with_rho1`/`with_rho2` rebuild their own noise cache, `with_points`
 //! and `with_horizon` both, and every single-field assertion of `new()` has a rejection test.
 
-use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
+use stochastic_rs_stochastic::volatility::double_heston::DoubleHestonPaths;
 
-fn finite3(out: &[Array1<f64>; 3]) -> bool {
-  out.iter().all(|a| a.iter().all(|v| v.is_finite()))
+fn finite3(out: &DoubleHestonPaths<f64>) -> bool {
+  [&out.s, &out.v1, &out.v2]
+    .iter()
+    .all(|a| a.iter().all(|v| v.is_finite()))
 }
 
 fn dh_base_seeded<S: SeedExt>(seed: S) -> DoubleHeston<f64, S> {

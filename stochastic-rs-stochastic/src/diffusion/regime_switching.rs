@@ -32,6 +32,7 @@ use crate::traits::ProcessExt;
 ///
 /// The stock follows Gbm in each regime with a different volatility.
 /// Regime transitions are governed by a CTMC generator matrix Q.
+#[derive(Debug, Clone)]
 pub struct RegimeSwitchingDiffusion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift rate (e.g. r - q).
   pub mu: T,
@@ -386,6 +387,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// regime-transition RNG are rebuilt per call from the derived seed, in the same
 /// order as the legacy `sample` body.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct RegimeSwitchingDiffusionSampler<T: FloatExt, S: SeedExt> {
   mu: T,
   q_matrix: Array2<T>,

@@ -197,6 +197,7 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Selects the driving noise process for the SDE.
+#[derive(Debug)]
 #[non_exhaustive]
 pub enum NoiseModel {
   /// Standard Brownian motion with i.i.d. Gaussian increments.
@@ -210,6 +211,7 @@ pub enum NoiseModel {
 ///
 /// See the [module-level documentation](self) for the mathematical formulas and
 /// convergence properties of each method.
+#[derive(Debug)]
 #[non_exhaustive]
 pub enum SdeMethod {
   /// Euler–Maruyama scheme. Strong order 0.5, weak order 1.0.
@@ -247,6 +249,20 @@ where
   /// Required when `noise` is [`NoiseModel::Fractional`], ignored otherwise.
   pub hursts: Option<Array1<T>>,
   pub backend: B,
+}
+
+impl<T: FloatExt, F, G, B: std::fmt::Debug> std::fmt::Debug for Sde<T, F, G, B>
+where
+  F: Fn(&Array1<T>, T) -> Array1<T>,
+  G: Fn(&Array1<T>, T) -> Array2<T>,
+{
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("Sde")
+      .field("noise", &self.noise)
+      .field("hursts", &self.hursts)
+      .field("backend", &self.backend)
+      .finish_non_exhaustive()
+  }
 }
 
 impl<T: FloatExt, F, G> Sde<T, F, G, Cpu>

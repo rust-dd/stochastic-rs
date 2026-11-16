@@ -295,7 +295,7 @@ that another seed passes it too.
 
 ## 9. Reference impls
 
-The `mc/` module is nine files under
+The `mc/` module is eight files under
 `stochastic-rs-stochastic/src/mc/`:
 
 - `mod.rs` — `McEstimate<T>`, the shared `estimate_from_samples`
@@ -325,7 +325,6 @@ The `mc/` module is nine files under
 - `add-diffusion-process` — produces the underlying paths; the seed is
   the constructor's last parameter, and CRN depends on `Clone`
   snapshotting it.
-- `feature-flag-management` — if a new
-  LAPACK-dependent technique needs the same treatment.
+- `feature-flag-management` — if a new technique needs a feature gate.
 - `bench-writing` — variance-reduction factor is a natural benchmark
   metric.

@@ -24,7 +24,7 @@ use crate::traits::ProcessExt;
 
 /// Feller–logistic diffusion
 /// dX_t = kappa (theta - X_t) X_t dt + sigma sqrt(X_t) dW_t
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct FellerLogistic<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion / logistic-growth speed κ.
   pub kappa: T,
@@ -205,6 +205,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 
 /// Reusable [`FellerLogistic`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct FellerLogisticSampler<T: FloatExt> {
   n: usize,
   x0: T,

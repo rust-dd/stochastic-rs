@@ -19,7 +19,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct FellerRoot<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Coefficient θ₁ setting the linear part of the drift
   /// `X_t(θ_1 − X_t(θ_3³ − θ_1θ_2))`.
@@ -190,6 +190,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 
 /// Reusable [`FellerRoot`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct FellerRootSampler<T: FloatExt> {
   n: usize,
   x0: T,

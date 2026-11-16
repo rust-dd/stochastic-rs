@@ -25,6 +25,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Debug, Clone)]
 pub struct LevyDiffusion<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
@@ -110,7 +111,7 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Replace `lambda`, all else unchanged.
+  /// Replace `lambda`, all else unchanged; panics if `lambda < 0`.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     assert!(
       lambda.is_finite(),
@@ -321,6 +322,7 @@ where
 /// Reusable [`LevyDiffusion`] sampling state: the Gaussian diffusion source and the borrowed jump
 /// law, so a Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct LevyDiffusionSampler<'a, T, D, S: SeedExt>
 where
   T: FloatExt,

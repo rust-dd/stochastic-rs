@@ -39,6 +39,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Debug, Clone)]
 pub struct Fheston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
@@ -352,6 +353,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// precomputed Volterra-kernel constants, so a Monte-Carlo loop reuses both
 /// output buffers.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct FhestonSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   hurst: T,

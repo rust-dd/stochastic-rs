@@ -22,6 +22,7 @@ use super::common::Device;
 use super::common::M;
 use super::common::agrees;
 use super::common::all_finite;
+use super::common::slots;
 use super::common::terminal_mean;
 use super::common::within;
 
@@ -294,8 +295,8 @@ fn hjm_agrees_with_the_cpu_law() {
       Deterministic::new(97),
     )
   };
-  let device = build().on::<Device>().sample_par(M);
-  let host = build().sample_par(M);
+  let device = slots(build().on::<Device>().sample_par(M));
+  let host = slots(build().sample_par(M));
   assert_eq!(device.len(), M);
   assert_eq!(device[0][0].len(), N);
   assert_eq!(device[0][0][0], 0.03, "the short rate starts at r0");

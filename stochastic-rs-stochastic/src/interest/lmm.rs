@@ -81,6 +81,7 @@ use crate::traits::ProcessExt;
 
 /// Drift-coupled LIBOR Market Model (BGM/Jamshidian) under the spot-LIBOR measure; the module
 /// header gives the scope, the dynamics and the references.
+#[derive(Debug, Clone)]
 pub struct Lmm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Tenor dates `T_0 < T_1 < … < T_M`, length `M+1`. Strictly increasing.
   pub tenor: Array1<T>,
@@ -329,6 +330,7 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
 /// of one launch, an absent rate travelling with a zero volatility and an
 /// identity row of the factor so it neither moves nor enters a drift.
 #[doc(hidden)]
+#[derive(Debug, Clone)]
 pub struct LmmLaunch<'a, T: FloatExt, S: SeedExt, B>(&'a Lmm<T, S, B>);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
@@ -353,6 +355,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 }
 
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct LmmLaunchSampler<T: FloatExt, S: SeedExt> {
   inner: LmmSampler<T, S>,
 }
@@ -588,6 +591,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// spot-LIBOR drift-coupling and frozen-drift log-Euler stepping live in
 /// [`LmmSampler::fill_matrix`] unchanged.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct LmmSampler<T: FloatExt, S: SeedExt> {
   tenor: Array1<T>,
   l0: Array1<T>,

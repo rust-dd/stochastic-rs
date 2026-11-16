@@ -29,7 +29,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Fractional Black–Scholes asset path driven by RL-fBM.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct RlBlackScholes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent.
   pub hurst: T,
@@ -248,6 +248,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// applies the closed-form fractional Black–Scholes log-price pointwise; the
 /// owned `Gn` stream advances each call for independent paths.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct RlBlackScholesSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   s0: T,

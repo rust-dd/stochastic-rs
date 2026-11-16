@@ -19,7 +19,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Hyperbolic2<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift-shape coefficient β, the constant term inside the bracket
   /// `β − γX_t/√(δ²+(X_t−μ)²)`.
@@ -212,6 +212,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 
 /// Reusable [`Hyperbolic2`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct Hyperbolic2Sampler<T: FloatExt> {
   n: usize,
   x0: T,

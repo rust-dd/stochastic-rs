@@ -13,7 +13,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Gamma subordinator where `G_t ~ Gamma(nu * t, rate)`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct GammaSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Shape intensity `nu`.
   pub nu: T,
@@ -177,6 +177,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`GammaSubordinator`] sampling state: the owned Gamma increment
 /// source. The path is `x0` followed by the running sum of the increments.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct GammaSubordinatorSampler<T: FloatExt> {
   n: usize,
   x0: T,

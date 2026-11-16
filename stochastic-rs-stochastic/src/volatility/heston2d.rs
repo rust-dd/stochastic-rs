@@ -18,7 +18,7 @@
 //! scheme even when the random draws agree.
 //!
 //! Output is **log-prices** `x_i`, not levels `S_i = exp(x_i)`, matching MATLAB
-//! and the convention expected by `FMVol`.
+//! and the convention expected by `FmVol`.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -34,13 +34,9 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Bivariate Heston stochastic-volatility process.
-///
-/// Two correlated Heston SDEs with a 4×4 instantaneous-correlation structure
-/// on `(Z_1, Z_2, W_1, W_2)`, parameterised by the 6-element MATLAB-style
-/// correlation vector `rho`. Sampling produces four arrays `[x_1, v_1, x_2,
-/// v_2]` of length `n`, where `x_i` is the **log-price** and `v_i` is the
-/// instantaneous variance.
+/// Two correlated Heston SDEs under a 4×4 correlation of `(Z_1, Z_2, W_1, W_2)`, given as MATLAB's
+/// six-element `rho`; sampling gives the [`Heston2DPaths`] of the two log-prices and variances.
+#[derive(Debug, Clone)]
 pub struct Heston2D<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Initial log-prices `[x_1(0), x_2(0)]`.
   pub x0: [T; 2],
@@ -72,6 +68,22 @@ pub struct Heston2D<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
+}
+
+/// Log-prices and variances of the two assets.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct Heston2DPaths<T> {
+  pub x1: Array1<T>,
+  pub v1: Array1<T>,
+  pub x2: Array1<T>,
+  pub v2: Array1<T>,
+}
+
+impl<T> From<[Array1<T>; 4]> for Heston2DPaths<T> {
+  fn from([x1, v1, x2, v2]: [Array1<T>; 4]) -> Self {
+    Self { x1, v1, x2, v2 }
+  }
 }
 
 /// Lower-triangular Cholesky factor of the 4×4 correlation matrix induced by
@@ -324,7 +336,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     crate::euler::draw_seed(&self.seed)
   }
 
-  fn host_sample(&self) -> [Array1<T>; 4] {
+  fn host_sample(&self) -> Heston2DPaths<T> {
     let out = <Self as ProcessExt<T>>::sampler(self).sample();
     <Self as ProcessExt<T>>::advance_chunk_seed(self);
     out
@@ -341,9 +353,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::S
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for Heston2D<T, S, B>
 {
-  /// Output: `[x_1, v_1, x_2, v_2]` — log-prices and instantaneous variances
-  /// for both assets, each of length `n`.
-  type Output = [Array1<T>; 4];
+  type Output = Heston2DPaths<T>;
   type Sampler<'s>
     = Heston2DSampler<T>
   where
@@ -375,23 +385,23 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   /// Through the Euler engine: on a device all four components step in the
   /// kernel, on the host devices it is this process's own sampler, chunked
   /// exactly as `ProcessExt` chunks.
-  fn sample(&self) -> [Array1<T>; 4] {
+  fn sample(&self) -> Heston2DPaths<T> {
     self.backend.system_sample(self)
   }
 
-  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 4]) -> R + Sync) -> Vec<R> {
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Heston2DPaths<T>) -> R + Sync) -> Vec<R> {
     self.backend.system_paths_map(self, m, f)
   }
 
-  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 4]> {
+  fn sample_par(&self, m: usize) -> Vec<Heston2DPaths<T>> {
     self.backend.system_paths(self, m)
   }
 
-  fn try_sample(&self) -> Result<[Array1<T>; 4], crate::device::DeviceError> {
+  fn try_sample(&self) -> Result<Heston2DPaths<T>, crate::device::DeviceError> {
     self.backend.try_system_sample(self)
   }
 
-  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 4]>, crate::device::DeviceError> {
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Heston2DPaths<T>>, crate::device::DeviceError> {
     self.backend.try_system_paths(self, m)
   }
 }
@@ -400,6 +410,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// streams plus the precomputed Cholesky factor and step size so a Monte-Carlo
 /// loop reuses all four output buffers and the RNG setup.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct Heston2DSampler<T: FloatExt> {
   n: usize,
   x0: [T; 2],
@@ -470,10 +481,10 @@ impl<T: FloatExt> Heston2DSampler<T> {
 impl<T: FloatExt> crate::traits::Sealed for Heston2DSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for Heston2DSampler<T> {
-  type Output = [Array1<T>; 4];
+  type Output = Heston2DPaths<T>;
 
-  fn sample_into(&mut self, out: &mut [Array1<T>; 4]) {
-    let [x1, v1, x2, v2] = out;
+  fn sample_into(&mut self, out: &mut Heston2DPaths<T>) {
+    let Heston2DPaths { x1, v1, x2, v2 } = out;
     self.fill_paths(
       x1.as_slice_mut()
         .expect("Heston2D output must be contiguous"),
@@ -486,7 +497,7 @@ impl<T: FloatExt> PathSampler<T> for Heston2DSampler<T> {
     );
   }
 
-  fn sample(&mut self) -> [Array1<T>; 4] {
+  fn sample(&mut self) -> Heston2DPaths<T> {
     let mut x1 = Array1::<T>::zeros(self.n);
     let mut v1 = Array1::<T>::zeros(self.n);
     let mut x2 = Array1::<T>::zeros(self.n);
@@ -497,7 +508,7 @@ impl<T: FloatExt> PathSampler<T> for Heston2DSampler<T> {
       x2.as_slice_mut().expect("contiguous"),
       v2.as_slice_mut().expect("contiguous"),
     );
-    [x1, v1, x2, v2]
+    Heston2DPaths { x1, v1, x2, v2 }
   }
 }
 

@@ -13,6 +13,8 @@
 //! differences). For generic-precision SDE simulation use
 //! [`crate::sde::Sde`] (`<T: FloatExt>`) or any of the strongly-typed
 //! [`crate::traits::ProcessExt`] processes.
+use std::fmt;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::DistributionSampler;
@@ -33,7 +35,20 @@ pub struct Function2D {
   pub eval: Box<dyn Fn(f64, f64) -> f64 + Send + Sync>,
 }
 
+impl fmt::Debug for DiffusionProcessFn {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("DiffusionProcessFn").finish_non_exhaustive()
+  }
+}
+
+impl fmt::Debug for Function2D {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("Function2D").finish_non_exhaustive()
+  }
+}
+
 /// A simple result structure holding the drift and diffusion terms from the Ito transformation.
+#[derive(Debug)]
 pub struct ItoResult {
   /// Combined `dt`-coefficient `∂f/∂t + μ ∂f/∂x + ½σ² ∂²f/∂x²` from Ito's
   /// lemma applied to `f(t, X_t)`.
@@ -51,6 +66,7 @@ pub struct ItoResult {
 /// * `process` - The stochastic process (drift, diffusion, jump).
 /// * `function` - The 2D function \(f(t, x)\) for Ito's lemma.
 /// * `h` - A small step used in the finite-difference approximation.
+#[derive(Debug)]
 pub struct ItoCalculator {
   /// The underlying SDE's drift/diffusion/jump functions being
   /// transformed by Ito's lemma.

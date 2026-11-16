@@ -1,12 +1,12 @@
-//! Shared infrastructure for the ten directory-grouped guard submodules
+//! Shared infrastructure for the eleven directory-grouped guard submodules
 //! (`autoregressive`, `correlation`, `diffusion`, `interest`, `jump`,
-//! `noise`, `process`, `rough`, `sheet`, `volatility`) — see the crate-root
+//! `noise`, `process`, `rough`, `sheet`, `volatility`, `volterra`) — see the crate-root
 //! doc comment in `../reproducibility_all_processes.rs` for the full
-//! rationale, derivation of the 127-type list, and methodology notes.
+//! rationale, derivation of the 129-type list, and methodology notes.
 //! Split out purely to keep every file under this crate's line-count limit;
-//! all ten submodules plus this one compile into the single
+//! all eleven submodules plus this one compile into the single
 //! `reproducibility_all_processes` test binary, so `cargo test` still runs
-//! and reports all 124 checks together.
+//! and reports all 129 checks together.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -14,7 +14,13 @@ use ndarray::Array3;
 use num_complex::Complex;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorrPaths;
+use stochastic_rs_stochastic::interest::hjm::HjmPaths;
+use stochastic_rs_stochastic::process::CompoundPaths;
 use stochastic_rs_stochastic::traits::ProcessExt;
+use stochastic_rs_stochastic::volatility::double_heston::DoubleHestonPaths;
+use stochastic_rs_stochastic::volatility::heston2d::Heston2DPaths;
+use stochastic_rs_stochastic::volatility::multifactor_heston::MultifactorHestonPaths;
 
 pub(crate) const SEED: u64 = 42;
 /// A second seed, distinct from [`SEED`], used only by the discrimination
@@ -96,10 +102,55 @@ impl<const K: usize> ReproBits for [Array1<f64>; K] {
   }
 }
 
-impl<const K: usize> ReproBits for (Array1<f64>, [Array1<f64>; K]) {
+impl ReproBits for HestonStochCorrPaths<f64> {
   fn repro_bits(&self) -> Vec<u64> {
-    let mut bits = self.0.repro_bits();
-    bits.extend(self.1.repro_bits());
+    [&self.s, &self.v, &self.rho]
+      .iter()
+      .flat_map(|a| a.repro_bits())
+      .collect()
+  }
+}
+
+impl ReproBits for DoubleHestonPaths<f64> {
+  fn repro_bits(&self) -> Vec<u64> {
+    [&self.s, &self.v1, &self.v2]
+      .iter()
+      .flat_map(|a| a.repro_bits())
+      .collect()
+  }
+}
+
+impl ReproBits for HjmPaths<f64> {
+  fn repro_bits(&self) -> Vec<u64> {
+    [&self.r, &self.p, &self.f]
+      .iter()
+      .flat_map(|a| a.repro_bits())
+      .collect()
+  }
+}
+
+impl ReproBits for CompoundPaths<f64> {
+  fn repro_bits(&self) -> Vec<u64> {
+    [&self.arrivals, &self.cumulative, &self.jumps]
+      .iter()
+      .flat_map(|a| a.repro_bits())
+      .collect()
+  }
+}
+
+impl ReproBits for Heston2DPaths<f64> {
+  fn repro_bits(&self) -> Vec<u64> {
+    [&self.x1, &self.v1, &self.x2, &self.v2]
+      .iter()
+      .flat_map(|a| a.repro_bits())
+      .collect()
+  }
+}
+
+impl<const K: usize> ReproBits for MultifactorHestonPaths<f64, K> {
+  fn repro_bits(&self) -> Vec<u64> {
+    let mut bits = self.s.repro_bits();
+    bits.extend(self.v.repro_bits());
     bits
   }
 }
@@ -175,7 +226,7 @@ where
 
 /// One `#[test]` per invocation, named `$test_fn`, checking `$display`
 /// built by the seed-taking closure/expr `$make` — see the crate-root doc
-/// comment for how the full 124-entry list was derived.
+/// comment for how the full 129-entry list was derived.
 macro_rules! guard {
   ($test_fn:ident, $display:literal, $make:expr) => {
     #[test]

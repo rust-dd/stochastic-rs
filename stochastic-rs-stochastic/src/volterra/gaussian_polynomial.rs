@@ -54,6 +54,7 @@ use crate::volterra::kernel::VolterraKernel;
 use crate::volterra::lift::VolterraLift;
 
 /// Volatility as a polynomial of a Gaussian Volterra process.
+#[derive(Clone, Debug)]
 pub struct GaussianPolynomialVolatility<T: FloatExt, K, S: SeedExt = Unseeded, B = Cpu>
 where
   K: VolterraKernel<T> + Send + Sync,
@@ -76,25 +77,6 @@ where
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
-}
-
-impl<T: FloatExt, K, S: SeedExt> Clone for GaussianPolynomialVolatility<T, K, S>
-where
-  K: VolterraKernel<T> + Send + Sync,
-  S: Clone,
-{
-  /// Snapshot semantics, matching every other process in this crate.
-  fn clone(&self) -> Self {
-    Self {
-      backend: Cpu,
-      kernel: self.kernel.clone(),
-      coefficients: self.coefficients.clone(),
-      n: self.n,
-      t: self.t,
-      seed: self.seed.clone(),
-      lift: self.lift.clone(),
-    }
-  }
 }
 
 impl<T: FloatExt, K, S: SeedExt> GaussianPolynomialVolatility<T, K, S>
@@ -396,6 +378,7 @@ where
 
 /// Reusable [`GaussianPolynomialVolatility`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct GaussianPolynomialVolatilitySampler<T: FloatExt, K, S: SeedExt>
 where
   K: VolterraKernel<T> + Send + Sync,

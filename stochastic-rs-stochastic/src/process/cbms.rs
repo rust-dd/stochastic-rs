@@ -15,7 +15,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Cbms<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Instantaneous correlation between the two Brownian components.
   pub rho: T,
@@ -152,6 +152,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Cbms`] sampling state: owns the correlated-Gaussian generator and
 /// the seed source so a Monte-Carlo loop reuses both output buffers.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CbmsSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   cgns: Cgns<T>,

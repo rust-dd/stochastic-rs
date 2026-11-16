@@ -154,7 +154,8 @@ table points, `CORRELATED_STREAMS = 4`.
 
 **2c. The trait impl.** One component → `crate::euler::EulerCoefficients<T>`
 (needs `ProcessExt<T, Output = Array1<T>>`); 2–4 components →
-`crate::euler::EulerSystem<T, D>` (needs `Output = [Array1<T>; D]`).
+`crate::euler::EulerSystem<T, D>` (needs an `Output` built `From<[Array1<T>; D]>`: the
+`D` arrays themselves, or a named struct of them such as `HjmPaths`).
 
 | Hook | Required | Notes |
 |---|---|---|

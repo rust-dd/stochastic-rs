@@ -7,6 +7,7 @@ use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 use stochastic_rs_stochastic::volatility::heston2d::Heston2D;
+use stochastic_rs_stochastic::volatility::heston2d::Heston2DPaths;
 
 use crate::traits::ProcessExt;
 
@@ -73,7 +74,7 @@ pub(super) fn heston2d_paths() -> (
     VarianceBoundary::Floor,
     Deterministic::new(42),
   );
-  let [x1, v1, x2, v2] = heston.sample();
+  let Heston2DPaths { x1, v1, x2, v2, .. } = heston.sample();
   let dt = horizon / (n as f64 - 1.0);
   let times = (0..n).map(|index| index as f64 * dt).collect::<Array1<_>>();
   (x1, x2, times, v1, v2)

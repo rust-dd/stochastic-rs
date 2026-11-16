@@ -18,6 +18,7 @@ use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
+use super::CompoundPaths;
 use super::poisson::Poisson;
 use crate::device::Cpu;
 use crate::params::Horizon;
@@ -25,7 +26,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct CompoundPoisson<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
@@ -96,7 +97,7 @@ pub(crate) fn device_arrival_rate<T: FloatExt, D: Any>(distribution: &D) -> Opti
 
 /// The jumps of a jump-diffusion: their size law and the seed their arrivals derive from, at the
 /// process's own `lambda`; it holds no `Poisson`, so a zero rate draws zero increments.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct JumpDriver<D, S> {
   pub(crate) law: D,
   pub(crate) seed: S,
@@ -290,7 +291,7 @@ where
     crate::euler::draw_seed(&self.seed)
   }
 
-  fn host_sample(&self) -> [Array1<T>; 3] {
+  fn host_sample(&self) -> CompoundPaths<T> {
     let _ = <Self as crate::euler::EulerSystem<T, 3>>::grid_points(self);
     let out = <Self as ProcessExt<T>>::sampler(self).sample();
     <Self as ProcessExt<T>>::advance_chunk_seed(self);
@@ -314,7 +315,7 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync + Any,
 {
-  type Output = [Array1<T>; 3];
+  type Output = CompoundPaths<T>;
   type Sampler<'s>
     = CompoundPoissonSampler<'s, T, D, S>
   where
@@ -335,7 +336,7 @@ where
   /// Through the Euler engine when the arrival count is fixed and the
   /// jump-size law is one the device kernels draw; anything else keeps the process on the host,
   /// chunked exactly as [`ProcessExt`] chunks.
-  fn sample(&self) -> [Array1<T>; 3] {
+  fn sample(&self) -> CompoundPaths<T> {
     if self.device_ready() {
       crate::euler::EulerBackend::system_sample(&self.backend, self)
     } else {
@@ -345,7 +346,7 @@ where
     }
   }
 
-  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 3]) -> R + Sync) -> Vec<R> {
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&CompoundPaths<T>) -> R + Sync) -> Vec<R> {
     if self.device_ready() {
       crate::euler::EulerBackend::system_paths_map(&self.backend, self, m, f)
     } else {
@@ -353,7 +354,7 @@ where
     }
   }
 
-  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 3]> {
+  fn sample_par(&self, m: usize) -> Vec<CompoundPaths<T>> {
     if self.device_ready() {
       crate::euler::EulerBackend::system_paths(&self.backend, self, m)
     } else {
@@ -361,7 +362,7 @@ where
     }
   }
 
-  fn try_sample(&self) -> Result<[Array1<T>; 3], crate::device::DeviceError> {
+  fn try_sample(&self) -> Result<CompoundPaths<T>, crate::device::DeviceError> {
     if self.device_ready() {
       crate::euler::EulerBackend::try_system_sample(&self.backend, self)
     } else {
@@ -369,7 +370,7 @@ where
     }
   }
 
-  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 3]>, crate::device::DeviceError> {
+  fn try_sample_par(&self, m: usize) -> Result<Vec<CompoundPaths<T>>, crate::device::DeviceError> {
     if self.device_ready() {
       crate::euler::EulerBackend::try_system_paths(&self.backend, self, m)
     } else {
@@ -390,6 +391,7 @@ where
 /// length is event-count-dependent, so the three buffers are reallocated each
 /// call; the seed advances exactly as the legacy `sample` body did.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CompoundPoissonSampler<'a, T, D, S: SeedExt>
 where
   T: FloatExt,
@@ -405,7 +407,7 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  fn sample_inner(&mut self) -> [Array1<T>; 3] {
+  fn sample_inner(&mut self) -> CompoundPaths<T> {
     let poisson = self.poisson.sample_impl(&self.seed);
     let mut jumps = Array1::<T>::zeros(poisson.len());
     self.seed.derive(); // skip one so `rng` differs from `poisson`'s stream
@@ -417,7 +419,11 @@ where
     let mut cum_jupms = jumps.clone();
     cum_jupms.accumulate_axis_inplace(Axis(0), |&prev, curr| *curr += prev);
 
-    [poisson, cum_jupms, jumps]
+    CompoundPaths {
+      arrivals: poisson,
+      cumulative: cum_jupms,
+      jumps,
+    }
   }
 }
 
@@ -433,13 +439,13 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  type Output = [Array1<T>; 3];
+  type Output = CompoundPaths<T>;
 
-  fn sample_into(&mut self, out: &mut [Array1<T>; 3]) {
+  fn sample_into(&mut self, out: &mut CompoundPaths<T>) {
     *out = self.sample_inner();
   }
 
-  fn sample(&mut self) -> [Array1<T>; 3] {
+  fn sample(&mut self) -> CompoundPaths<T> {
     self.sample_inner()
   }
 }
@@ -457,6 +463,25 @@ mod tests {
     fn sample<R: rand::Rng + ?Sized>(&self, _rng: &mut R) -> T {
       self.0
     }
+  }
+
+  #[test]
+  fn the_output_names_its_slots() {
+    let CompoundPaths {
+      arrivals,
+      cumulative,
+      jumps,
+      ..
+    } = CompoundPoisson::new(
+      ConstJump(1.0f64),
+      Poisson::new(2.0, Horizon::Events(16), Unseeded),
+      Unseeded,
+    )
+    .sample();
+    assert_eq!(
+      (arrivals.len(), cumulative.len(), jumps.len()),
+      (17, 17, 17)
+    );
   }
 
   #[test]
@@ -479,7 +504,10 @@ mod tests {
       Unseeded,
     );
     let origin = Array1::from(vec![0.0]);
-    assert_eq!(cp.sample(), [origin.clone(), origin.clone(), origin]);
+    assert_eq!(
+      cp.sample(),
+      CompoundPaths::from([origin.clone(), origin.clone(), origin])
+    );
   }
 
   #[test]
@@ -549,33 +577,13 @@ impl PyCompoundPoisson {
     })?
   }
 
-  fn sample<'py>(
-    &self,
-    py: pyo3::Python<'py>,
-  ) -> pyo3::PyResult<(
-    pyo3::Py<pyo3::PyAny>,
-    pyo3::Py<pyo3::PyAny>,
-    pyo3::Py<pyo3::PyAny>,
-  )> {
+  fn sample(&self, py: pyo3::Python<'_>) -> pyo3::PyResult<super::PyTriple> {
     stochastic_rs_distributions::python::runtime_error_on_panic(|| {
-      use numpy::IntoPyArray;
-      use pyo3::IntoPyObjectExt;
-
       use crate::traits::ProcessExt;
       if let Some(ref inner) = self.inner_f64 {
-        let [p, cum, j] = inner.sample();
-        (
-          p.into_pyarray(py).into_py_any(py).unwrap(),
-          cum.into_pyarray(py).into_py_any(py).unwrap(),
-          j.into_pyarray(py).into_py_any(py).unwrap(),
-        )
+        inner.sample().into_py_tuple(py)
       } else if let Some(ref inner) = self.inner_f32 {
-        let [p, cum, j] = inner.sample();
-        (
-          p.into_pyarray(py).into_py_any(py).unwrap(),
-          cum.into_pyarray(py).into_py_any(py).unwrap(),
-          j.into_pyarray(py).into_py_any(py).unwrap(),
-        )
+        inner.sample().into_py_tuple(py)
       } else {
         unreachable!()
       }

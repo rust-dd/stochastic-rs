@@ -147,14 +147,14 @@ where
   }
 
   /// Replace the inter-arrival law, all else unchanged.
-  pub fn with_jump_times(mut self, jump_times: DT) -> Self {
-    self.jump_times = jump_times;
+  pub fn with_jump_time_law(mut self, law: DT) -> Self {
+    self.jump_times = law;
     self
   }
 
   /// Replace the jump-size law, all else unchanged.
-  pub fn with_jump_sizes(mut self, jump_sizes: DS) -> Self {
-    self.jump_sizes = jump_sizes;
+  pub fn with_jump_size_law(mut self, law: DS) -> Self {
+    self.jump_sizes = law;
     self
   }
 

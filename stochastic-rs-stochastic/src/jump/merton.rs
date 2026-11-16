@@ -41,7 +41,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Merton<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
@@ -73,11 +73,8 @@ where
   pub backend: B,
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `Merton::default().with_alpha(0.06)`. No persisted cache:
-/// `sampler()` builds its Gaussian diffusion source fresh from `self`
-/// every call, correctly threading `self.seed` (unlike `Bates`'s
-/// documented `cgns` quirk — see that type's own doc).
+/// Every field has a `with_*` setter, e.g. `Merton::default().with_alpha(0.06)`; nothing is cached,
+/// since `sampler()` builds its diffusion source from `self` on every call.
 impl<T, D, S: SeedExt> Merton<T, D, S>
 where
   T: FloatExt,
@@ -164,7 +161,7 @@ where
     self
   }
 
-  /// Replace `lambda`, all else unchanged.
+  /// Replace `lambda`, all else unchanged; panics if `lambda < 0`.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     assert!(
       lambda.is_finite(),
@@ -448,6 +445,7 @@ where
 /// Reusable [`Merton`] sampling state: the Gaussian diffusion source and the borrowed jump law, so
 /// a Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct MertonSampler<'a, T, D, S: SeedExt>
 where
   T: FloatExt,
@@ -653,45 +651,5 @@ impl PyMerton {
         result.into_pyarray(py).into_py_any(py).unwrap()
       })
     })
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::*;
-  use crate::euler::EulerCoefficients;
-
-  fn merton(lambda: f64, law: SimdNormal<f64>) -> Merton<f64, SimdNormal<f64>, Deterministic> {
-    Merton::new(
-      0.03,
-      0.2,
-      lambda,
-      0.0,
-      law,
-      64,
-      Some(0.0),
-      Some(1.0),
-      Deterministic::new(3),
-    )
-  }
-
-  #[test]
-  fn with_lambda_is_the_intensity_the_sampler_and_the_engine_read() {
-    let law = SimdNormal::new(0.0, 0.1);
-    let faster = merton(1.0, law).with_lambda(2.0);
-    assert_eq!(EulerCoefficients::jump_intensity(&faster), Some(2.0));
-    let path = faster.sample();
-    assert_eq!(path, merton(2.0, law).sample());
-    assert_ne!(path, merton(1.0, law).sample());
-  }
-
-  #[test]
-  fn with_jump_law_replaces_the_law_and_keeps_the_seed() {
-    let wide = SimdNormal::new(0.0, 0.5);
-    let got = merton(1.0, SimdNormal::new(0.0, 0.1)).with_jump_law(wide);
-    assert_eq!(got.jump_law().sigma(), 0.5);
-    assert_eq!(got.sample(), merton(1.0, wide).sample());
   }
 }

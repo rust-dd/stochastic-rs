@@ -1,14 +1,16 @@
 //! The `with_*` setters of `HestonStochCorr`, which keeps no cache, so each is a field round trip.
 
-use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
+use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorrPaths;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
-fn finite3(out: &[Array1<f64>; 3]) -> bool {
-  out.iter().all(|a| a.iter().all(|v| v.is_finite()))
+fn finite3(out: &HestonStochCorrPaths<f64>) -> bool {
+  [&out.s, &out.v, &out.rho]
+    .iter()
+    .all(|a| a.iter().all(|v| v.is_finite()))
 }
 
 fn hsc_base_seeded<S: SeedExt>(seed: S) -> HestonStochCorr<f64, S> {

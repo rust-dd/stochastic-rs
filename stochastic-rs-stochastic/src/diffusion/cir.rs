@@ -35,7 +35,7 @@ mod transition;
 /// In the SDE notation `dX = κ(θ − X) dt + σ √X dW` the Rust field
 /// [`theta`](Self::theta) corresponds to κ (mean-reversion speed) and
 /// [`mu`](Self::mu) corresponds to θ (long-run mean level).
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Cir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed (κ in the SDE). Controls how fast `X` is pulled
   /// back toward [`mu`](Self::mu).
@@ -287,6 +287,7 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> ProcessExt<T> for Cir<T, S, B>
 
 /// Reusable [`Cir`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CirSampler<T: FloatExt> {
   n: usize,
   x0: T,

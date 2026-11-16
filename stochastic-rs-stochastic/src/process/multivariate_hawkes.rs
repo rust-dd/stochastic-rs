@@ -34,6 +34,7 @@ use crate::traits::ProcessExt;
 /// event times per component (length D), each component's vector sized to
 /// however many events it actually had (event counts differ per
 /// component, so this is not a fixed-shape `Array2<T>`).
+#[derive(Debug, Clone)]
 pub struct MultivariateHawkes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Baseline intensities $\mu_i > 0$, length D.
   pub mu: Array1<T>,
@@ -122,6 +123,7 @@ fn rows_to_components<T: FloatExt>(rows: [Array1<T>; 2], d: usize) -> Vec<Array1
 /// The Euler engine's view of the process: the events as two rows, time and
 /// mark, one event per grid step.
 #[doc(hidden)]
+#[derive(Debug, Clone)]
 pub struct MultivariateHawkesLaunch<'a, T: FloatExt, S: SeedExt, B>(
   &'a MultivariateHawkes<T, S, B>,
 );
@@ -148,6 +150,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 }
 
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct MultivariateHawkesLaunchSampler<'a, T: FloatExt, S: SeedExt> {
   inner: MultivariateHawkesSampler<'a, T, S>,
 }
@@ -368,6 +371,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// path, so each call rebuilds the output `Vec`; the RNG is rebuilt from the
 /// owned seed each call, exactly as the legacy `sample` body did.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct MultivariateHawkesSampler<'a, T: FloatExt, S: SeedExt> {
   mu: &'a Array1<T>,
   alpha: &'a Array2<T>,

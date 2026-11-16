@@ -2,7 +2,12 @@
 //! statistics the comparisons are made on, and the agreement predicates.
 
 use ndarray::Array1;
+use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorrPaths;
+use stochastic_rs_stochastic::interest::hjm::HjmPaths;
+use stochastic_rs_stochastic::process::CompoundPaths;
 use stochastic_rs_stochastic::traits::ProcessExt;
+use stochastic_rs_stochastic::volatility::double_heston::DoubleHestonPaths;
+use stochastic_rs_stochastic::volatility::heston2d::Heston2DPaths;
 
 /// The device the cases run on. CUDA when the crate is built for it, Metal
 /// otherwise; the whole binary is gated on one of the two being present.
@@ -134,4 +139,56 @@ where
     owned, viewed,
     "{what}: sample_map and sample_map_view disagree"
   );
+}
+
+/// A named multi-slot output as the array of its rows, in slot order.
+pub(crate) trait Slots {
+  type Rows;
+
+  fn rows(self) -> Self::Rows;
+}
+
+/// Each path's rows in slot order, for statistics taken slot by slot.
+pub(crate) fn slots<P: Slots>(paths: Vec<P>) -> Vec<P::Rows> {
+  paths.into_iter().map(P::rows).collect()
+}
+
+impl Slots for CompoundPaths<f32> {
+  type Rows = [Array1<f32>; 3];
+
+  fn rows(self) -> Self::Rows {
+    [self.arrivals, self.cumulative, self.jumps]
+  }
+}
+
+impl Slots for HjmPaths<f32> {
+  type Rows = [Array1<f32>; 3];
+
+  fn rows(self) -> Self::Rows {
+    [self.r, self.p, self.f]
+  }
+}
+
+impl Slots for DoubleHestonPaths<f32> {
+  type Rows = [Array1<f32>; 3];
+
+  fn rows(self) -> Self::Rows {
+    [self.s, self.v1, self.v2]
+  }
+}
+
+impl Slots for HestonStochCorrPaths<f32> {
+  type Rows = [Array1<f32>; 3];
+
+  fn rows(self) -> Self::Rows {
+    [self.s, self.v, self.rho]
+  }
+}
+
+impl Slots for Heston2DPaths<f32> {
+  type Rows = [Array1<f32>; 4];
+
+  fn rows(self) -> Self::Rows {
+    [self.x1, self.v1, self.x2, self.v2]
+  }
 }

@@ -7,8 +7,7 @@
 //! The variance, a Riemann–Liouville Volterra–CIR, steps by one Markov lift with drift
 //! $\kappa(\theta-V)$ and diffusion $\nu\sqrt{V^+}$; the price steps by Euler on $W^s$.
 //!
-//! Reference: Bilokon & Wong (2026) §5.5.
-//! Reference: El Euch & Rosenbaum (2019), Math. Finance 29, 3–38.
+//! Reference: Bilokon & Wong (2026) §5.5; El Euch & Rosenbaum (2019), Math. Finance 29, 3–38.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -23,7 +22,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Rough Heston model with Volterra-Cir variance and correlated Gbm asset.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct RlHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent $H \in (0, 1/2)$ of the variance kernel.
   pub hurst: T,
@@ -281,6 +280,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// and the seed source, and borrows the prebuilt Markov-lift so a Monte-Carlo
 /// loop reuses both output buffers without rebuilding the kernel.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct RlHestonSampler<'a, T: FloatExt, S: SeedExt> {
   n: usize,
   s0: T,

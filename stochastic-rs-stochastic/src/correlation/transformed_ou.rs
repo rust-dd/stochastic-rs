@@ -269,6 +269,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// [`Transformation`] in place; the owned source advances each call for
 /// independent paths.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct TransformedOuSampler<T: FloatExt> {
   n: usize,
   kappa: T,

@@ -26,7 +26,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Univariate Hawkes process with exponential kernel.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Hawkes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Baseline intensity (immigration rate).
   pub mu: T,
@@ -265,6 +265,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// $\bar\lambda = \mu + S$ (evaluated right after the last accepted event) is
 /// tight and acceptance is efficient.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct HawkesSampler<T: FloatExt> {
   mu: T,
   alpha: T,

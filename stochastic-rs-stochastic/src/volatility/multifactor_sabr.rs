@@ -65,6 +65,7 @@ use crate::traits::ProcessExt;
 
 /// Dynamic / multi-factor SABR with piecewise-constant `beta`, `rho` and
 /// `nu` term structures. See module docs for the SDE and discretisation.
+#[derive(Debug, Clone)]
 pub struct MultifactorSabr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Initial forward-rate level.
   pub f0: Option<T>,
@@ -343,6 +344,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// order is preserved, so the first call reproduces the original stream
 /// bit-for-bit.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct MultifactorSabrSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   t: Option<T>,

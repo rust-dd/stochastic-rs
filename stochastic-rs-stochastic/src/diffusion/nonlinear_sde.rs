@@ -19,7 +19,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct NonlinearSde<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Inverse-state drift coefficient a₋₁ in `a₋₁/X_t + a_0 + a_1 X_t + a_2 X_t²`.
   pub am1: T,
@@ -238,6 +238,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`NonlinearSde`] sampling state: precomputed Euler step and the
 /// owned Gaussian source.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct NonLinearSdeSampler<T: FloatExt> {
   n: usize,
   x0: T,

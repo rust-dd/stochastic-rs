@@ -27,7 +27,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct MultiGbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drifts $\mu_i$, one per asset.
   pub mu: Array1<T>,
@@ -140,6 +140,7 @@ impl<T: FloatExt, S: SeedExt, B> MultiGbm<T, S, B> {
 /// the assets in the first `k` slots, the rest padded to constant zero. It
 /// borrows rather than owns, so the seed it advances is the process's own.
 #[doc(hidden)]
+#[derive(Debug, Clone)]
 pub struct MultiGbmLaunch<'a, T: FloatExt, S: SeedExt, B>(&'a MultiGbm<T, S, B>);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
@@ -166,6 +167,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// [`MultiGbmLaunch`]'s sampler: the matrix sampler, its rows lifted into
 /// the four slots.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct MultiGbmLaunchSampler<T: FloatExt, S: SeedExt> {
   inner: MultiGbmSampler<T, S>,
 }
@@ -371,6 +373,7 @@ fn slots_to_matrix<T: FloatExt>(slots: [Array1<T>; 4], k: usize) -> Array2<T> {
 /// Reusable [`MultiGbm`] sampling state with a derived seed, so parallel
 /// chunks draw independent paths.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct MultiGbmSampler<T: FloatExt, S: SeedExt> {
   process: MultiGbm<T, S>,
 }

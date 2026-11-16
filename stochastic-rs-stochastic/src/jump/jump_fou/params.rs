@@ -144,7 +144,7 @@ where
     self
   }
 
-  /// Replace `lambda`, all else unchanged.
+  /// Replace `lambda`, all else unchanged; panics if `lambda < 0`.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     assert!(
       lambda.is_finite(),

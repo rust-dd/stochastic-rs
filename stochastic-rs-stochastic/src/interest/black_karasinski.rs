@@ -53,7 +53,7 @@ use crate::traits::ProcessExt;
 /// See the module doc for the `theta`/`a` naming convention (shared with
 /// [`HullWhite`](crate::interest::hull_white::HullWhite)) and the exact-OU
 /// discretization.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BlackKarasinski<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Time-dependent additive drift target θ(t), fitted to the initial term
   /// structure of the log-rate — same role as
@@ -364,6 +364,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`BlackKarasinski`] sampling state: the exact OU step's decay, pull and deviation;
 /// `sigma` multiplies each draw at consumption, so `sigma <= 0` needs no special case.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct BlackKarasinskiSampler<'a, T: FloatExt> {
   n: usize,
   r0: T,

@@ -1,19 +1,5 @@
-//! Reproducibility tests for Task 1 of the zero-exception-reproducibility
-//! wave: `Merton`, `Kou`, `LevyDiffusion` absorb their compound-Poisson jump
-//! driver's construction into `new()`, threading the constructor's own
-//! `seed: S` into it (`seed.clone().derive()`) instead of hard-wiring
-//! `cpoisson: CompoundPoisson<T, D>` to `Unseeded` in the public field type.
-//! All three are now fully seed-reproducible — no exception to
-//! `ProcessExt`'s reproducibility guarantee. See `traits/process.rs`'s
-//! trait-level reproducibility section.
-//!
-//! Before this fix (see this file's prior revision / the RED-phase probe in
-//! the task report), two identically-`Deterministic`-seeded objects
-//! diverged under any nonzero jump intensity, because `cpoisson`'s own seed
-//! field was structurally pinned to `Unseeded` regardless of the outer
-//! `S`. `lambda = 50` below makes jumps dominate the path, so a
-//! reproducibility failure in the jump component cannot hide behind a
-//! diffusion-only comparison.
+//! `Merton`, `Kou` and `LevyDiffusion` draw their jumps from a child of their seed, so identically
+//! seeded processes agree at any thread count; `lambda = 50` makes the jumps dominate each path.
 
 use ndarray::Array1;
 use rayon::ThreadPoolBuilder;

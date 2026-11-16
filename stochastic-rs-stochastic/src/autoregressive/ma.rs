@@ -223,6 +223,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// Reusable [`Ma`] sampling state: owns the Gaussian innovation source and the
 /// MA coefficients so a Monte-Carlo loop pays the `SimdNormal` setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct MaSampler<T: FloatExt> {
   n: usize,
   theta: Array1<T>,

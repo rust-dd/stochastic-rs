@@ -34,6 +34,7 @@ use crate::traits::ProcessExt;
 ///
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `Hkde::new(..).with_lambda(0.8).with_rho(-0.4)`.
+#[derive(Debug, Clone)]
 pub struct Hkde<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift rate (or risk-free rate minus dividend yield).
   pub mu: T,
@@ -258,7 +259,7 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
     self
   }
 
-  /// Replace `lambda`, all else unchanged.
+  /// Replace `lambda`, all else unchanged; panics if `lambda < 0`.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     assert!(
       lambda.is_finite(),
@@ -502,6 +503,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// rebuilt per fill in the legacy seed-consumption order, so the first call
 /// reproduces the original stream bit-for-bit.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct HkdeSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   mu: T,

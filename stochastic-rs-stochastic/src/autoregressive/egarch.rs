@@ -263,6 +263,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// source and the log-variance coefficients so a Monte-Carlo loop pays the
 /// `SimdNormal` setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct EgarchSampler<T: FloatExt> {
   n: usize,
   omega: T,

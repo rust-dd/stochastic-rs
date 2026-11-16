@@ -68,6 +68,7 @@ use crate::volterra::lift::VolterraLift;
 /// decay rate, an `RlKernel` needs a Hurst exponent and quadrature degree,
 /// …) — the same reason [`CompoundPoisson`](crate::process::cpoisson::CompoundPoisson)`<T,
 /// D, S>` has no `Default` for its own extra generic `D`.
+#[derive(Clone, Debug)]
 pub struct VolterraSde<T: FloatExt, K, S: SeedExt = Unseeded, B = Cpu>
 where
   K: VolterraKernel<T> + Send + Sync,
@@ -94,26 +95,6 @@ where
   /// launch binds; rebuilt whenever the kernel, the step count or the
   /// horizon changes.
   pub(crate) lift: VolterraLift<T, K>,
-}
-
-impl<T: FloatExt, K, S: SeedExt> Clone for VolterraSde<T, K, S>
-where
-  K: VolterraKernel<T> + Send + Sync,
-  S: Clone,
-{
-  fn clone(&self) -> Self {
-    Self {
-      backend: Cpu,
-      kernel: self.kernel.clone(),
-      drift: self.drift.clone(),
-      diffusion: self.diffusion.clone(),
-      n: self.n,
-      x0: self.x0,
-      t: self.t,
-      seed: self.seed.clone(),
-      lift: VolterraLift::new(self.kernel.clone(), self.step_size()),
-    }
-  }
 }
 
 impl<T: FloatExt, K, S: SeedExt> VolterraSde<T, K, S>
@@ -428,6 +409,7 @@ where
 /// which is what lets [`Volterra`](crate::volterra::Volterra)
 /// embed it directly when delegating to this engine.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct VolterraSdeSampler<T: FloatExt, K, S: SeedExt>
 where
   K: VolterraKernel<T> + Send + Sync,

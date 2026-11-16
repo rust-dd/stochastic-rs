@@ -37,6 +37,7 @@ use crate::traits::ProcessExt;
 /// let mut p = JumpFouCustom::new(0.7, 1.0, 0.0, 0.2, 10, None, None, times, sizes, Unseeded);
 /// p.n = 1000;
 /// ```
+#[derive(Debug, Clone)]
 pub struct JumpFouCustom<T, DT, DS, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
@@ -78,14 +79,9 @@ where
   where
     Self: 's;
 
+  /// The diffusion draws from a child of `self.seed`, `fgn` lending only its FFT plan; the jumps
+  /// from a generator taken from `self.seed` after it.
   fn sampler(&self) -> JumpFouCustomSampler<'_, T, DT, DS, B> {
-    // Owns a Gaussian source derived from `self.seed` (not `fgn.sampler()`,
-    // which would build it from `fgn`'s own permanently-`Unseeded` field —
-    // see the type doc) and an owned jump RNG also derived from `self.seed`,
-    // and borrows `fgn` (for its `Arc`-shared FFT plan/eigenvalues only) and
-    // the user-supplied inter-arrival / jump-size distributions. The two
-    // owned sources are independent derives off the same counter, so they
-    // stay mutually uncorrelated; both advance on reuse.
     JumpFouCustomSampler {
       n: self.n,
       theta: self.theta,
@@ -171,6 +167,7 @@ where
 /// distributions, and owns the Gaussian source and jump RNG, so a
 /// Monte-Carlo loop pays the fGn `SimdNormal` setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct JumpFouCustomSampler<'a, T, DT, DS, B>
 where
   T: FloatExt,

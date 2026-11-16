@@ -59,7 +59,7 @@ use crate::traits::ProcessExt;
 /// mirrored fields by [`new`](Self::new) and by every `with_*` setter;
 /// assigning to a public field directly changes the mirror only, so build
 /// with those rather than by mutating in place.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Vasicek<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed (`a` in the SDE). Controls how fast `r` is pulled
   /// back toward [`mu`](Self::mu).

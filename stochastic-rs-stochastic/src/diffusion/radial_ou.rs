@@ -26,7 +26,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct RadialOu<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Radial restoring-force coefficient κ in the drift `κ/X_t − X_t`,
   /// which repels `X` away from 0 while an ordinary OU-style `-X_t` term
@@ -178,6 +178,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`RadialOu`] sampling state: precomputed Euler step and the owned
 /// Gaussian source.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct RadialOuSampler<T: FloatExt> {
   n: usize,
   x0: T,

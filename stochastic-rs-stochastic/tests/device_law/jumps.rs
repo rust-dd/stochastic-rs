@@ -30,6 +30,7 @@ use super::common::M;
 use super::common::agrees;
 use super::common::all_finite;
 use super::common::means_agree;
+use super::common::slots;
 use super::common::spreads_agree;
 use super::common::terminal_mean;
 use super::common::terminal_std;
@@ -257,8 +258,8 @@ fn compound_poisson_events_agree_with_the_cpu_law() {
       Deterministic::new(17),
     )
   };
-  let device = build().on::<Device>().sample_par(M);
-  let host = build().sample_par(M);
+  let device = slots(build().on::<Device>().sample_par(M));
+  let host = slots(build().sample_par(M));
   assert_eq!(device.len(), M);
   assert!(
     device
@@ -295,6 +296,16 @@ fn compound_poisson_events_agree_with_the_cpu_law() {
 fn a_counting_process_refuses_a_zero_rate_written_past_new() {
   let mut p = Poisson::<f32, _>::new(2.0, Horizon::Events(8), Unseeded);
   p.lambda = 0.0;
+  let _ = p.on::<Device>().sample();
+}
+
+/// An infinite rate written past `new` is refused on the device as on the host, where the kernel
+/// would step a path of zeros.
+#[test]
+#[should_panic(expected = "lambda must satisfy `lambda.is_finite()`")]
+fn a_counting_process_refuses_an_infinite_rate_written_past_new() {
+  let mut p = Poisson::<f32, _>::new(2.0, Horizon::Events(8), Unseeded);
+  p.lambda = f32::INFINITY;
   let _ = p.on::<Device>().sample();
 }
 
@@ -338,15 +349,13 @@ fn compound_custom_agrees_with_the_cpu_law() {
   const EVENTS: usize = 50;
   let build = || {
     CompoundCustom::<f32, _, _, _>::new(
-      Horizon::Events(EVENTS),
       SimdNormal::<f32>::new(1.0, 0.3),
-      SimdExp::<f32>::new(2.0),
       CustomJt::new(Horizon::Events(EVENTS), SimdExp::<f32>::new(2.0), Unseeded),
       Deterministic::new(29),
     )
   };
-  let device = build().on::<Device>().sample_par(M);
-  let host = build().sample_par(M);
+  let device = slots(build().on::<Device>().sample_par(M));
+  let host = slots(build().sample_par(M));
   nondecreasing(&device, "compound custom");
   accumulates(&device, "compound custom");
   agrees(

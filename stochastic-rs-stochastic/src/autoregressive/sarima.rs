@@ -315,6 +315,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// the seasonal/non-seasonal ARMA coefficients so a Monte-Carlo loop pays the
 /// `SimdNormal` setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct SarimaSampler<T: FloatExt> {
   n: usize,
   non_seasonal_ar_coefs: Array1<T>,

@@ -40,7 +40,7 @@ use crate::traits::ProcessExt;
 /// let mut p = Fcir::<f64>::new(0.7, 1.0, 0.04, 0.1, 10, None, None, boundary, Unseeded);
 /// p.n = 1000;
 /// ```
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Fcir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   hurst: T,
   theta: T,
@@ -314,6 +314,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
 /// Reusable [`Fcir`] sampling state: borrows the process for its inner [`Fgn`] and owns a seed
 /// derived once at construction.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct FcirSampler<'a, T: FloatExt, S: SeedExt, B> {
   fcir: &'a Fcir<T, S, B>,
   seed: S,

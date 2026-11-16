@@ -46,7 +46,7 @@ use crate::traits::ProcessExt;
 /// [`Cheyette::initial_discount`].
 const FORWARD_INTEGRATION_PANELS: usize = 256;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Cheyette<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Initial instantaneous forward curve `f₀(t)`.
   pub f0: Fn1D<T>,
@@ -294,6 +294,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`Cheyette`] sampling state: borrows the local volatility and
 /// owns the Gaussian source, so a Monte Carlo loop pays the setup once.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CheyetteSampler<'a, T: FloatExt> {
   n: usize,
   dt: T,

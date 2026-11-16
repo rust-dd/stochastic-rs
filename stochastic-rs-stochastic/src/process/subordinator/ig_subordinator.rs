@@ -14,7 +14,7 @@ use crate::traits::ProcessExt;
 
 /// Inverse-Gaussian subordinator with BNS parameterization:
 /// `phi(lambda) = delta (sqrt(gamma^2 + 2 lambda) - gamma)`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct IgSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Scale `delta`.
   pub delta: T,
@@ -177,6 +177,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`IgSubordinator`] sampling state: the owned inverse-Gaussian
 /// increment source. The path is `x0` followed by the running sum.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct IgSubordinatorSampler<T: FloatExt> {
   n: usize,
   x0: T,

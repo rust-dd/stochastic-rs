@@ -21,7 +21,7 @@ use crate::traits::ProcessExt;
 
 /// Quadratic diffusion
 /// dX_t = (alpha + beta X_t + gamma X_t^2) dt + sigma X_t dW_t
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Quadratic<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant term α in the drift `α + βX_t + γX_t²`.
   pub alpha: T,
@@ -199,6 +199,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// Reusable [`Quadratic`] sampling state: precomputed Euler scales and the
 /// owned Gaussian source.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct QuadraticSampler<T: FloatExt> {
   n: usize,
   x0: T,

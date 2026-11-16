@@ -29,7 +29,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Mcgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Instantaneous correlation matrix ρ of the `k` streams (`k × k`).
   pub rho: Array2<T>,
@@ -115,6 +115,7 @@ impl<T: FloatExt, S: SeedExt, B> Mcgns<T, S, B> {
 /// padded with a unit diagonal and dropped. It borrows rather than owns, so
 /// the seed it advances is the process's own.
 #[doc(hidden)]
+#[derive(Debug, Clone)]
 pub struct McgnsLaunch<'a, T: FloatExt, S: SeedExt, B>(&'a Mcgns<T, S, B>);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
@@ -141,6 +142,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// [`McgnsLaunch`]'s sampler: the matrix sampler, its rows lifted into the
 /// four slots.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct McgnsLaunchSampler<T: FloatExt, S: SeedExt> {
   inner: McgnsSampler<T, S>,
 }
@@ -317,6 +319,7 @@ fn slots_to_matrix<T: FloatExt>(slots: [Array1<T>; 4], k: usize) -> Array2<T> {
 /// Reusable [`Mcgns`] sampling state with a derived seed, so parallel
 /// chunks draw independent streams.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct McgnsSampler<T: FloatExt, S: SeedExt> {
   noise: Mcgns<T, S>,
 }

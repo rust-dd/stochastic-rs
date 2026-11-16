@@ -33,7 +33,7 @@ use crate::traits::ProcessExt;
 
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `HestonLog::new(..).with_kappa(2.0).with_rho(-0.4)`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct HestonLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// The asset's drift: `μ`, a cost of carry, or the rate pair.
   pub drift: Drift<T>,
@@ -385,6 +385,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// driving the asset, one combined into the variance shock) and the
 /// precomputed drift / step size so a Monte-Carlo loop reuses both buffers.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct HestonLogSampler<T: FloatExt> {
   n: usize,
   s0: T,

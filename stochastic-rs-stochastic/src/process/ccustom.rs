@@ -18,6 +18,7 @@ use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use super::CompoundPaths;
 use super::customjt::CustomJt;
 use crate::device::Cpu;
 use crate::params::Horizon;
@@ -25,20 +26,17 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Debug, Clone)]
 pub struct CompoundCustom<T, D1, D2, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
   D1: Distribution<T> + Send + Sync,
   D2: Distribution<T> + Send + Sync,
 {
-  /// `Events(n)`: rows of the origin and the `n` jumps after it; under `Until` they follow
-  /// `customjt`, which draws the times either way.
-  pub horizon: Horizon<T>,
   /// Distribution of jump magnitudes.
   pub jumps_distribution: D1,
-  /// Distribution of jump waiting times / event times.
-  pub jump_times_distribution: D2,
-  /// Underlying jump-time generator used internally.
+  /// The arrival times, whose horizon and inter-arrival law are the process's: under `Events(n)`
+  /// the rows hold the origin and the `n` jumps after it.
   pub customjt: CustomJt<T, D2>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
@@ -53,19 +51,10 @@ where
   D1: Distribution<T> + Send + Sync,
   D2: Distribution<T> + Send + Sync,
 {
-  pub fn new(
-    horizon: Horizon<T>,
-    jumps_distribution: D1,
-    jump_times_distribution: D2,
-    customjt: CustomJt<T, D2>,
-    seed: S,
-  ) -> Self {
-    horizon.assert_valid();
+  pub fn new(jumps_distribution: D1, customjt: CustomJt<T, D2>, seed: S) -> Self {
     Self {
       backend: Cpu,
-      horizon,
       jumps_distribution,
-      jump_times_distribution,
       customjt,
       seed,
     }
@@ -78,10 +67,10 @@ where
   D1: Distribution<T> + Send + Sync,
   D2: Distribution<T> + Send + Sync,
 {
-  /// Replace `horizon`, all else unchanged; panics on an `Until` that is not positive and finite.
+  /// Replace the arrivals' horizon, all else unchanged; panics on an `Until` that is not positive
+  /// and finite.
   pub fn with_horizon(mut self, horizon: Horizon<T>) -> Self {
-    horizon.assert_valid();
-    self.horizon = horizon;
+    self.customjt = self.customjt.with_horizon(horizon);
     self
   }
 }
@@ -93,9 +82,7 @@ where
   D2: Distribution<T> + Send + Sync + Any,
 {
   /// The arrival intensity when the inter-arrival law is exponential, which
-  /// is when the arrivals are the Poisson stream the kernels draw. Read off
-  /// the `customjt` that the host actually samples the arrivals from, not the
-  /// separately held `jump_times_distribution`.
+  /// is when the arrivals are the Poisson stream the kernels draw.
   fn device_intensity(&self) -> Option<T> {
     crate::process::cpoisson::device_arrival_rate(&self.customjt.distribution)
   }
@@ -133,7 +120,7 @@ where
   }
 
   fn grid_points(&self) -> usize {
-    let Horizon::Events(n) = self.horizon else {
+    let Horizon::Events(n) = self.customjt.horizon else {
       panic!("the Euler engine describes CompoundCustom's count mode; horizon mode has no grid");
     };
     n + 1
@@ -156,7 +143,7 @@ where
     crate::euler::draw_seed(&self.seed)
   }
 
-  fn host_sample(&self) -> [Array1<T>; 3] {
+  fn host_sample(&self) -> CompoundPaths<T> {
     let _ = <Self as crate::euler::EulerSystem<T, 3>>::grid_points(self);
     let out = <Self as ProcessExt<T>>::sampler(self).sample();
     <Self as ProcessExt<T>>::advance_chunk_seed(self);
@@ -164,7 +151,7 @@ where
   }
 }
 
-backend_switch!([T, D1, D2, S: SeedExt] CompoundCustom<T, D1, D2, S> { horizon, jumps_distribution, jump_times_distribution, customjt, seed } via euler where  T: FloatExt,  D1: Distribution<T> + Send + Sync,  D2: Distribution<T> + Send + Sync);
+backend_switch!([T, D1, D2, S: SeedExt] CompoundCustom<T, D1, D2, S> { jumps_distribution, customjt, seed } via euler where  T: FloatExt,  D1: Distribution<T> + Send + Sync,  D2: Distribution<T> + Send + Sync);
 
 impl<T, D1, D2, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for CompoundCustom<T, D1, D2, S, B>
@@ -182,7 +169,7 @@ where
   D1: Distribution<T> + Send + Sync + Any,
   D2: Distribution<T> + Send + Sync + Any,
 {
-  type Output = [Array1<T>; 3];
+  type Output = CompoundPaths<T>;
   type Sampler<'s>
     = CompoundCustomSampler<'s, T, D1, D2, S>
   where
@@ -194,7 +181,6 @@ where
   /// relative to each other rather than one raw stride apart.
   fn sampler(&self) -> CompoundCustomSampler<'_, T, D1, D2, S> {
     CompoundCustomSampler {
-      horizon: self.horizon,
       jumps_distribution: &self.jumps_distribution,
       customjt: &self.customjt,
       seed: self.seed.derive(),
@@ -205,7 +191,7 @@ where
   /// inter-arrivals are exponential and the jump-size law is one the device
   /// kernels draw; anything else keeps the process on the host,
   /// chunked exactly as [`ProcessExt`] chunks.
-  fn sample(&self) -> [Array1<T>; 3] {
+  fn sample(&self) -> CompoundPaths<T> {
     if self.device_ready() {
       crate::euler::EulerBackend::system_sample(&self.backend, self)
     } else {
@@ -215,7 +201,7 @@ where
     }
   }
 
-  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 3]) -> R + Sync) -> Vec<R> {
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&CompoundPaths<T>) -> R + Sync) -> Vec<R> {
     if self.device_ready() {
       crate::euler::EulerBackend::system_paths_map(&self.backend, self, m, f)
     } else {
@@ -223,7 +209,7 @@ where
     }
   }
 
-  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 3]> {
+  fn sample_par(&self, m: usize) -> Vec<CompoundPaths<T>> {
     if self.device_ready() {
       crate::euler::EulerBackend::system_paths(&self.backend, self, m)
     } else {
@@ -231,7 +217,7 @@ where
     }
   }
 
-  fn try_sample(&self) -> Result<[Array1<T>; 3], crate::device::DeviceError> {
+  fn try_sample(&self) -> Result<CompoundPaths<T>, crate::device::DeviceError> {
     if self.device_ready() {
       crate::euler::EulerBackend::try_system_sample(&self.backend, self)
     } else {
@@ -239,7 +225,7 @@ where
     }
   }
 
-  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 3]>, crate::device::DeviceError> {
+  fn try_sample_par(&self, m: usize) -> Result<Vec<CompoundPaths<T>>, crate::device::DeviceError> {
     if self.device_ready() {
       crate::euler::EulerBackend::try_system_paths(&self.backend, self, m)
     } else {
@@ -247,14 +233,11 @@ where
     }
   }
 
-  /// What a device runs here: a fixed number of arrivals — the
-  /// horizon mode has no grid — that the arrival stream `customjt` counts to
-  /// as well, exponential inter-arrivals, and sizes under a law the kernels
-  /// draw. Anything else samples on the host.
+  /// What a device runs here: a fixed number of arrivals — the horizon mode has no grid —
+  /// exponential inter-arrivals, and sizes under a law the kernels draw.
   fn device_fallback(&self) -> Option<&'static str> {
     let ready = {
-      matches!(self.horizon, Horizon::Events(_))
-        && self.customjt.horizon == self.horizon
+      matches!(self.customjt.horizon, Horizon::Events(_))
         && self.device_intensity().is_some()
         && self.device_jump_sizes().is_some()
     };
@@ -269,13 +252,13 @@ where
 /// is event-count-dependent, so the three buffers are reallocated each call; the
 /// seed advances exactly as the legacy `sample` body did.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CompoundCustomSampler<'a, T, D1, D2, S: SeedExt>
 where
   T: FloatExt,
   D1: Distribution<T> + Send + Sync,
   D2: Distribution<T> + Send + Sync,
 {
-  horizon: Horizon<T>,
   jumps_distribution: &'a D1,
   customjt: &'a CustomJt<T, D2>,
   seed: S,
@@ -287,13 +270,9 @@ where
   D1: Distribution<T> + Send + Sync,
   D2: Distribution<T> + Send + Sync,
 {
-  fn sample_inner(&mut self) -> [Array1<T>; 3] {
+  fn sample_inner(&mut self) -> CompoundPaths<T> {
     let p = self.customjt.sample_impl(&self.seed);
-    let len = match self.horizon {
-      Horizon::Events(n) => n + 1,
-      Horizon::Until(_) => p.len(),
-    };
-    let mut jumps = Array1::<T>::zeros(len);
+    let mut jumps = Array1::<T>::zeros(p.len());
     let mut rng = self.seed.rng();
     for i in 1..p.len() {
       jumps[i] = self.jumps_distribution.sample(&mut rng);
@@ -302,7 +281,11 @@ where
     let mut cum_jupms = jumps.clone();
     cum_jupms.accumulate_axis_inplace(Axis(0), |&prev, curr| *curr += prev);
 
-    [p, cum_jupms, jumps]
+    CompoundPaths {
+      arrivals: p,
+      cumulative: cum_jupms,
+      jumps,
+    }
   }
 }
 
@@ -320,13 +303,13 @@ where
   D1: Distribution<T> + Send + Sync,
   D2: Distribution<T> + Send + Sync,
 {
-  type Output = [Array1<T>; 3];
+  type Output = CompoundPaths<T>;
 
-  fn sample_into(&mut self, out: &mut [Array1<T>; 3]) {
+  fn sample_into(&mut self, out: &mut CompoundPaths<T>) {
     *out = self.sample_inner();
   }
 
-  fn sample(&mut self) -> [Array1<T>; 3] {
+  fn sample(&mut self) -> CompoundPaths<T> {
     self.sample_inner()
   }
 }
@@ -357,21 +340,14 @@ impl PyCompoundCustom {
       let horizon = crate::python_params::horizon_from_kwargs(n, t_max)?;
       Ok(match dtype.unwrap_or("f64") {
         "f32" => {
-          let (jt_dist, customjt_dist) = pyo3::Python::attach(|py| {
-            let a = jump_times_distribution.clone_ref(py);
-            let b = jump_times_distribution;
-            (
-              crate::traits::CallableDist::<f32>::new(a),
-              crate::traits::CallableDist::<f32>::new(b),
-            )
-          });
-          let horizon = crate::python_params::horizon_f32(horizon);
-          let customjt = CustomJt::new(horizon, customjt_dist, Unseeded);
+          let customjt = CustomJt::new(
+            crate::python_params::horizon_f32(horizon),
+            crate::traits::CallableDist::new(jump_times_distribution),
+            Unseeded,
+          );
           Self {
             inner_f32: Some(CompoundCustom::new(
-              horizon,
               crate::traits::CallableDist::new(jumps_distribution),
-              jt_dist,
               customjt,
               Unseeded,
             )),
@@ -379,21 +355,15 @@ impl PyCompoundCustom {
           }
         }
         _ => {
-          let (jt_dist, customjt_dist) = pyo3::Python::attach(|py| {
-            let a = jump_times_distribution.clone_ref(py);
-            let b = jump_times_distribution;
-            (
-              crate::traits::CallableDist::<f64>::new(a),
-              crate::traits::CallableDist::<f64>::new(b),
-            )
-          });
-          let customjt = CustomJt::new(horizon, customjt_dist, Unseeded);
+          let customjt = CustomJt::new(
+            horizon,
+            crate::traits::CallableDist::new(jump_times_distribution),
+            Unseeded,
+          );
           Self {
             inner_f32: None,
             inner_f64: Some(CompoundCustom::new(
-              horizon,
               crate::traits::CallableDist::new(jumps_distribution),
-              jt_dist,
               customjt,
               Unseeded,
             )),
@@ -403,36 +373,58 @@ impl PyCompoundCustom {
     })?
   }
 
-  fn sample<'py>(
-    &self,
-    py: pyo3::Python<'py>,
-  ) -> pyo3::PyResult<(
-    pyo3::Py<pyo3::PyAny>,
-    pyo3::Py<pyo3::PyAny>,
-    pyo3::Py<pyo3::PyAny>,
-  )> {
+  fn sample(&self, py: pyo3::Python<'_>) -> pyo3::PyResult<super::PyTriple> {
     stochastic_rs_distributions::python::runtime_error_on_panic(|| {
-      use numpy::IntoPyArray;
-      use pyo3::IntoPyObjectExt;
-
       use crate::traits::ProcessExt;
       if let Some(ref inner) = self.inner_f64 {
-        let [p, cum, j] = inner.sample();
-        (
-          p.into_pyarray(py).into_py_any(py).unwrap(),
-          cum.into_pyarray(py).into_py_any(py).unwrap(),
-          j.into_pyarray(py).into_py_any(py).unwrap(),
-        )
+        inner.sample().into_py_tuple(py)
       } else if let Some(ref inner) = self.inner_f32 {
-        let [p, cum, j] = inner.sample();
-        (
-          p.into_pyarray(py).into_py_any(py).unwrap(),
-          cum.into_pyarray(py).into_py_any(py).unwrap(),
-          j.into_pyarray(py).into_py_any(py).unwrap(),
-        )
+        inner.sample().into_py_tuple(py)
       } else {
         unreachable!()
       }
     })
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::exp::SimdExp;
+  use stochastic_rs_distributions::normal::SimdNormal;
+
+  use super::*;
+
+  #[test]
+  fn the_output_names_its_slots() {
+    let CompoundPaths {
+      arrivals,
+      cumulative,
+      jumps,
+      ..
+    } = CompoundCustom::new(
+      SimdNormal::new(0.0, 0.1),
+      CustomJt::new(Horizon::Events(8), SimdExp::new(2.0), Unseeded),
+      Deterministic::new(3),
+    )
+    .sample();
+    assert_eq!((arrivals.len(), cumulative.len(), jumps.len()), (9, 9, 9));
+  }
+
+  #[test]
+  fn with_horizon_moves_the_arrivals_too() {
+    let p = CompoundCustom::new(
+      SimdNormal::new(0.0, 0.1),
+      CustomJt::new(Horizon::Events(8), SimdExp::new(2.0), Unseeded),
+      Deterministic::new(3),
+    )
+    .with_horizon(Horizon::Events(4));
+    let CompoundPaths {
+      arrivals,
+      cumulative,
+      jumps,
+      ..
+    } = p.sample();
+    assert_eq!((arrivals.len(), cumulative.len(), jumps.len()), (5, 5, 5));
   }
 }

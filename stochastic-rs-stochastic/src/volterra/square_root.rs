@@ -76,6 +76,7 @@ use crate::volterra::kernel::VolterraKernel;
 use crate::volterra::lift::VolterraLift;
 
 /// Volterra square-root process with a nonnegativity-preserving scheme.
+#[derive(Clone, Debug)]
 pub struct VolterraSquareRoot<T: FloatExt, K, S: SeedExt = Unseeded, B = Cpu>
 where
   K: VolterraKernel<T> + Send + Sync,
@@ -103,30 +104,6 @@ where
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
-}
-
-impl<T: FloatExt, K, S: SeedExt> Clone for VolterraSquareRoot<T, K, S>
-where
-  K: VolterraKernel<T> + Send + Sync,
-  S: Clone,
-{
-  /// Snapshot semantics, matching every other process in this crate: the
-  /// clone resumes the same stream rather than advancing it, so bumping one
-  /// parameter on a clone isolates that parameter under common random numbers.
-  fn clone(&self) -> Self {
-    Self {
-      backend: Cpu,
-      kernel: self.kernel.clone(),
-      kappa: self.kappa,
-      theta: self.theta,
-      nu: self.nu,
-      n: self.n,
-      v0: self.v0,
-      t: self.t,
-      seed: self.seed.clone(),
-      lift: self.lift.clone(),
-    }
-  }
 }
 
 impl<T: FloatExt, K, S: SeedExt> VolterraSquareRoot<T, K, S>
@@ -407,6 +384,7 @@ where
 
 /// Reusable [`VolterraSquareRoot`] sampling state.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct VolterraSquareRootSampler<T: FloatExt, K, S: SeedExt>
 where
   K: VolterraKernel<T> + Send + Sync,

@@ -30,7 +30,7 @@ use crate::traits::ProcessExt;
 
 /// The Bates (1996) model for any law `D` of the relative jump `Y − 1`, `SimdNormal` by default.
 /// The paper's [`LogNormalJump`], exact in log space, steps `ln S` so `S > 0`; others step `S`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Bates<T, D = SimdNormal<T>, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
@@ -179,7 +179,7 @@ where
     self
   }
 
-  /// Replace `lambda`, all else unchanged.
+  /// Replace `lambda`, all else unchanged; panics if `lambda < 0`.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     assert!(
       lambda.is_finite(),
@@ -531,6 +531,7 @@ where
 /// Reusable [`Bates`] sampling state: the correlated-Gaussian generator, the borrowed jump law and
 /// two derived seeds, one for the diffusion and one for the jump arrivals.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct BatesSampler<'a, T, D, S: SeedExt>
 where
   T: FloatExt,
@@ -564,41 +565,47 @@ where
     }
     let dt = self.dt;
     let [cgn1, cgn2] = &self.cgns.sample_impl(&self.seed);
-    let jumps = match self.log_jumps {
-      Some(law) => law.grid_log_jumps(self.lambda, &self.jump_seed, self.n, dt),
-      None => crate::process::cpoisson::grid_relative_increments(
-        self.jump_distribution,
-        self.lambda,
-        &self.jump_seed,
-        self.n,
-        dt,
-      ),
-    };
-
     s[0] = self.s0;
     v[0] = self.v0;
-
-    for i in 1..self.n {
-      let v_prev = v[i - 1].max(T::zero());
-      s[i] = match self.log_jumps {
-        Some(_) => {
+    match self.log_jumps {
+      Some(law) => {
+        let mut jumps = law.jump_sums(self.lambda, &self.jump_seed, self.n, dt);
+        for i in 1..self.n {
+          let v_prev = v[i - 1].max(T::zero());
           let half_v = T::from_f64_fast(0.5) * v_prev;
-          s[i - 1] * ((self.drift_c - half_v) * dt + v_prev.sqrt() * cgn1[i - 1] + jumps[i]).exp()
+          let log_step =
+            (self.drift_c - half_v) * dt + v_prev.sqrt() * cgn1[i - 1] + jumps.next_sum();
+          s[i] = s[i - 1] * log_step.exp();
+          v[i] = self.variance_step(v[i - 1], v_prev, cgn2[i - 1]);
         }
-        None => {
-          s[i - 1]
+      }
+      None => {
+        let jumps = crate::process::cpoisson::grid_relative_increments(
+          self.jump_distribution,
+          self.lambda,
+          &self.jump_seed,
+          self.n,
+          dt,
+        );
+        for i in 1..self.n {
+          let v_prev = v[i - 1].max(T::zero());
+          s[i] = s[i - 1]
             + self.drift_c * s[i - 1] * dt
             + s[i - 1] * v_prev.sqrt() * cgn1[i - 1]
-            + s[i - 1] * jumps[i]
+            + s[i - 1] * jumps[i];
+          v[i] = self.variance_step(v[i - 1], v_prev, cgn2[i - 1]);
         }
-      };
-
-      let dv = (self.alpha - self.beta * v_prev) * dt + self.sigma * v_prev.sqrt() * cgn2[i - 1];
-
-      v[i] = match self.boundary {
-        VarianceBoundary::Floor => (v[i - 1] + dv).max(T::zero()),
-        VarianceBoundary::Reflect => (v[i - 1] + dv).abs(),
       }
+    }
+  }
+
+  /// The variance one step on from `v`, whose floored value is `v_prev`, under the noise `z`.
+  #[inline]
+  fn variance_step(&self, v: T, v_prev: T, z: T) -> T {
+    let dv = (self.alpha - self.beta * v_prev) * self.dt + self.sigma * v_prev.sqrt() * z;
+    match self.boundary {
+      VarianceBoundary::Floor => (v + dv).max(T::zero()),
+      VarianceBoundary::Reflect => (v + dv).abs(),
     }
   }
 }

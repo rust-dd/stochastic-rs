@@ -46,7 +46,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Cgmy<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Overall jump intensity scale C > 0
   pub c: T,
@@ -340,6 +340,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// hard-wired to fresh randomness. The jump sizes and ordering are rebuilt
 /// per path inside `fill_path`.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CgmySampler<T: FloatExt, S: SeedExt> {
   n: usize,
   j: usize,

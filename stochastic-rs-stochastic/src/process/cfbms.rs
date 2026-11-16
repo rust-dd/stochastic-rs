@@ -29,7 +29,7 @@ use crate::traits::ProcessExt;
 /// let mut p = Cfbms::<f64>::new(0.7, 0.3, 10, None, Unseeded);
 /// p.n = 1000;
 /// ```
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Cfbms<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   hurst: T,
   rho: T,
@@ -218,6 +218,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
 /// pipeline (which owns non-`Copy` FFT scratch) and owns the seed source so a
 /// Monte-Carlo loop reuses both output buffers.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct CfbmsSampler<'a, T: FloatExt, S: SeedExt, B> {
   cfbms: &'a Cfbms<T, S, B>,
   seed: S,
