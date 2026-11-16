@@ -33,7 +33,8 @@ where
 {
   /// Distribution of per-jump sizes `Y_k`.
   pub distribution: D,
-  /// Poisson driver defining jump arrival intensity and timeline.
+  /// Poisson driver defining jump arrival intensity and timeline; under `Events(n)` the rows hold
+  /// the origin and the `n` jumps after it.
   pub poisson: Poisson<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,

@@ -16,7 +16,7 @@ pub enum VarianceBoundary {
   Reflect,
 }
 
-/// The drift of a log-price model: a rate, a cost of carry, or the domestic–foreign pair (`r − r_f`).
+/// The drift of a price model: a rate, a cost of carry, or the domestic–foreign pair (`r − r_f`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum Drift<T> {

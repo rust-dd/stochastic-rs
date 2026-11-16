@@ -367,10 +367,10 @@ seeds only — `Deterministic::new(42)`, never `Unseeded`, never `rand::rng()`; 
 ## 5. Python bindings
 
 At column 0 in the process file, invoke the wrapper macro from `src/macros.rs`:
-`py_process_1d!` for an `Array1` output (69 uses), `py_process_2x1d!` for `[Array1; 2]`
-(10), `py_process_2d!` for `Array2` (2). Each has a plain and a `device` arm; the
+`py_process_1d!` for an `Array1` output (65 uses), `py_process_2x1d!` for `[Array1; 2]`
+(9), `py_process_2d!` for `Array2` (2). Each has a plain and a `device` arm; the
 trailing bare `device` token adds a `device=` keyword routed through
-`py_device_dispatch!` (46 of the 81 invocations carry it) — add it whenever the process
+`py_device_dispatch!` (all 76 invocations carry it) — add it whenever the process
 reaches the engine. `sig:` is the `#[pyo3(signature = ..)]` list, `seed=None,
 dtype=None` always last and `lambda_`/`gamma_` for Python keywords; `params:` repeats
 the same names with Rust types, in `new()`'s order.
@@ -387,6 +387,12 @@ A process generic over a distribution has no monomorphic signature, so it gets a
 hand-written `#[pyclass]` fixing `D = CallableDist<T>` instead — see `PyMerton`. Put
 `#[doc(hidden)]` on the line above that `#[pyclass]` (the macros already carry it) and
 above any `pub use python::…` re-export of it; `tests/python_surface_hidden.rs` fails without it.
+
+A hand-written class on the macros' slots (`inner_f32`, `inner_f64`, `seeded_f32`,
+`seeded_f64`, and `device` for `py_device_dispatch`) writes only its `#[new]`, inside
+`py_process_methods!(PyX, <shape>, <dispatch>, { #[new] … })` (`array1`, `array2` or
+`pair`; `py_dispatch` or `py_device_dispatch`), which adds `sample`, `sample_par`,
+`device_fallback` and `device_ready` — see `process/poisson/python.rs`.
 
 Register in the single flat `#[pymodule]` of `stochastic-rs-py/src/lib.rs` (its only
 source file): a `use` in the `// Stochastic — <dir>` banner group, then
