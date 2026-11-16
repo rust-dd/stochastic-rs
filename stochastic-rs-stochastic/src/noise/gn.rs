@@ -53,12 +53,17 @@ impl<T: FloatExt, S: SeedExt> Gn<T, S> {
 impl<T: FloatExt, S: SeedExt, B> Gn<T, S, B> {
   /// Replace the number of increments `n`, all else unchanged.
   pub fn with_increments(mut self, n: usize) -> Self {
+    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self
   }

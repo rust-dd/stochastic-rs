@@ -179,12 +179,20 @@ impl<T: FloatExt> Default for Heston<T, Euler, Unseeded> {
 impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: T) -> Self {
+    assert!(
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
+    );
     self.s0 = s0;
     self
   }
 
   /// Replace `v0`, all else unchanged.
   pub fn with_v0(mut self, v0: T) -> Self {
+    assert!(
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
+    );
     assert!(
       v0 >= T::zero(),
       "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
@@ -196,6 +204,10 @@ impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
   /// Replace `kappa`, all else unchanged.
   pub fn with_kappa(mut self, kappa: T) -> Self {
     assert!(
+      kappa.is_finite(),
+      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
+    );
+    assert!(
       kappa >= T::zero(),
       "kappa must satisfy `kappa >= T::zero()`, got kappa = {kappa:?}"
     );
@@ -206,6 +218,10 @@ impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: T) -> Self {
     assert!(
+      theta.is_finite(),
+      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
+    );
+    assert!(
       theta >= T::zero(),
       "theta must satisfy `theta >= T::zero()`, got theta = {theta:?}"
     );
@@ -215,6 +231,10 @@ impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
 
   /// Replace `sigma`, all else unchanged.
   pub fn with_sigma(mut self, sigma: T) -> Self {
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
     assert!(
       sigma >= T::zero(),
       "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
@@ -227,6 +247,10 @@ impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
   /// (`cgns`) so the new correlation actually reaches the sampler instead
   /// of a stale one computed from the old `rho`.
   pub fn with_rho(mut self, rho: T) -> Self {
+    assert!(
+      rho.is_finite(),
+      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
+    );
     self.rho = rho;
     self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
     self
@@ -234,6 +258,10 @@ impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
 
   /// Replace `mu`, all else unchanged.
   pub fn with_mu(mut self, mu: T) -> Self {
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
     self.mu = mu;
     self
   }
@@ -241,6 +269,7 @@ impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
   /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
   /// generator, whose length and step size derive from `n`.
   pub fn with_points(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self
@@ -249,6 +278,10 @@ impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
   /// Replace the simulation horizon `t`; rebuilds the cached
   /// correlated-Gaussian generator's step size, which derives from `t`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
     self

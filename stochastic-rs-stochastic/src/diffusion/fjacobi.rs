@@ -116,6 +116,10 @@ impl<T: FloatExt, S: SeedExt> FJacobi<T, S, Cpu> {
 
   /// Replace `hurst`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_hurst(mut self, hurst: T) -> Self {
+    assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
     self.hurst = hurst;
     self.fgn = Self::fgn_for(hurst, self.n, self.t);
     self
@@ -131,6 +135,10 @@ impl<T: FloatExt, S: SeedExt> FJacobi<T, S, Cpu> {
 
   /// Replace `t`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self.fgn = Self::fgn_for(self.hurst, self.n, t);
     self
@@ -141,6 +149,10 @@ impl<T: FloatExt, S: SeedExt, B> FJacobi<T, S, B> {
   /// Replace `alpha`. Panics unless `0 < alpha < beta`, matching `new()`'s
   /// own assertions: to move both drift parameters up, raise `beta` first.
   pub fn with_alpha(mut self, alpha: T) -> Self {
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
     assert!(
       alpha > T::zero(),
       "alpha must satisfy `alpha > T::zero()`, got alpha = {alpha:?}"
@@ -158,6 +170,10 @@ impl<T: FloatExt, S: SeedExt, B> FJacobi<T, S, B> {
   /// own assertions: to move both drift parameters down, lower `alpha` first.
   pub fn with_beta(mut self, beta: T) -> Self {
     assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
+    assert!(
       beta > T::zero(),
       "beta must satisfy `beta > T::zero()`, got beta = {beta:?}"
     );
@@ -174,6 +190,10 @@ impl<T: FloatExt, S: SeedExt, B> FJacobi<T, S, B> {
   /// assertion.
   pub fn with_sigma(mut self, sigma: T) -> Self {
     assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
       sigma > T::zero(),
       "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
     );
@@ -183,6 +203,10 @@ impl<T: FloatExt, S: SeedExt, B> FJacobi<T, S, B> {
 
   /// Replace `x0`, all else unchanged.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
     self.x0 = x0;
     self
   }

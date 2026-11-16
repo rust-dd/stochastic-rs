@@ -118,24 +118,40 @@ impl<T: FloatExt, S: SeedExt> Bergomi<T, S> {
 impl<T: FloatExt, S: SeedExt, B> Bergomi<T, S, B> {
   /// Replace `nu`, all else unchanged.
   pub fn with_nu(mut self, nu: T) -> Self {
+    assert!(
+      nu.is_finite(),
+      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
+    );
     self.nu = nu;
     self
   }
 
   /// Replace `v0`, all else unchanged.
   pub fn with_v0(mut self, v0: T) -> Self {
+    assert!(
+      v0.is_finite(),
+      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
+    );
     self.v0 = v0;
     self
   }
 
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: T) -> Self {
+    assert!(
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
+    );
     self.s0 = s0;
     self
   }
 
   /// Replace `r`, all else unchanged.
   pub fn with_r(mut self, r: T) -> Self {
+    assert!(
+      r.is_finite(),
+      "r must satisfy `r.is_finite()`, got r = {r:?}"
+    );
     self.r = r;
     self
   }
@@ -144,6 +160,10 @@ impl<T: FloatExt, S: SeedExt, B> Bergomi<T, S, B> {
   /// (`cgns`) so the new correlation actually reaches the sampler instead
   /// of a stale one computed from the old `rho`.
   pub fn with_rho(mut self, rho: T) -> Self {
+    assert!(
+      rho.is_finite(),
+      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
+    );
     self.rho = rho;
     self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
     self
@@ -152,6 +172,7 @@ impl<T: FloatExt, S: SeedExt, B> Bergomi<T, S, B> {
   /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
   /// generator, whose length and step size derive from `n`.
   pub fn with_points(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self
@@ -160,6 +181,10 @@ impl<T: FloatExt, S: SeedExt, B> Bergomi<T, S, B> {
   /// Replace the simulation horizon `t`; rebuilds the cached
   /// correlated-Gaussian generator's step size, which derives from `t`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
     self

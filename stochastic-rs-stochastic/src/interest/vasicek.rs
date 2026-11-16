@@ -144,24 +144,40 @@ impl<T: FloatExt, S: SeedExt, B> Vasicek<T, S, B> {
 
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: T) -> Self {
+    assert!(
+      theta.is_finite(),
+      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
+    );
     self.theta = theta;
     self.resync()
   }
 
   /// Replace `mu`, all else unchanged.
   pub fn with_mu(mut self, mu: T) -> Self {
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
     self.mu = mu;
     self.resync()
   }
 
   /// Replace `sigma`, all else unchanged.
   pub fn with_sigma(mut self, sigma: T) -> Self {
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
     self.sigma = sigma;
     self.resync()
   }
 
   /// Replace `x0`, all else unchanged.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    assert!(
+      x0.is_none_or(|v| v.is_finite()),
+      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
+    );
     self.x0 = x0;
     self.resync()
   }
@@ -174,6 +190,10 @@ impl<T: FloatExt, S: SeedExt, B> Vasicek<T, S, B> {
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self.resync()
   }

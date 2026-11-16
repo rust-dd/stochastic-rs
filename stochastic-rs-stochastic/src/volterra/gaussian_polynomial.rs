@@ -158,6 +158,12 @@ where
   /// Replace the polynomial, all else unchanged; panics if `coefficients` is empty.
   #[must_use]
   pub fn with_coefficients(mut self, coefficients: Array1<T>) -> Self {
+    assert_entries(
+      "coefficients",
+      "coefficients[i].is_finite()",
+      &coefficients,
+      |v| v.is_finite(),
+    );
     assert!(
       !coefficients.is_empty(),
       "coefficients must satisfy `!coefficients.is_empty()`, got coefficients = []"
@@ -178,6 +184,10 @@ where
   /// Replace `t`, all else unchanged.
   #[must_use]
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(self.n, t));
     self

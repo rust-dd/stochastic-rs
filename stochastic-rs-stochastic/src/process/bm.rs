@@ -52,12 +52,17 @@ impl<T: FloatExt, S: SeedExt> Bm<T, S> {
 impl<T: FloatExt, S: SeedExt, B> Bm<T, S, B> {
   /// Replace `n`, the grid points along the path, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self
   }

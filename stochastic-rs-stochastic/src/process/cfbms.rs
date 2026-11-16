@@ -84,6 +84,10 @@ impl<T: FloatExt, S: SeedExt> Cfbms<T, S> {
   /// Replace `hurst`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     assert!(
+      hurst.is_finite(),
+      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
+    );
+    assert!(
       (T::zero()..=T::one()).contains(&hurst),
       "hurst must satisfy `(T::zero()..=T::one()).contains(&hurst)`, got hurst = {hurst:?}"
     );
@@ -102,6 +106,10 @@ impl<T: FloatExt, S: SeedExt> Cfbms<T, S> {
 
   /// Replace `t`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self.fgn = Self::fgn_for(self.hurst, self.n, t);
     self
@@ -112,6 +120,10 @@ impl<T: FloatExt, S: SeedExt, B> Cfbms<T, S, B> {
   /// Replace `rho`. Panics if `rho` is outside `[-1, 1]`, matching `new()`'s
   /// own assertion.
   pub fn with_rho(mut self, rho: T) -> Self {
+    assert!(
+      rho.is_finite(),
+      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
+    );
     assert!(
       (-T::one()..=T::one()).contains(&rho),
       "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"

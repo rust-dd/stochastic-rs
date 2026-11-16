@@ -123,6 +123,10 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
   /// Replace `nu`, all else unchanged.
   pub fn with_nu(mut self, nu: T) -> Self {
     assert!(
+      nu.is_finite(),
+      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
+    );
+    assert!(
       nu >= T::zero(),
       "nu must satisfy `nu >= T::zero()`, got nu = {nu:?}"
     );
@@ -132,6 +136,10 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
 
   /// Replace `beta`, all else unchanged.
   pub fn with_beta(mut self, beta: T) -> Self {
+    assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
     assert!(
       beta >= T::zero() && beta <= T::one(),
       "beta must satisfy `beta >= T::zero() && beta <= T::one()`, got beta = {beta:?}"
@@ -144,6 +152,10 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
   /// (`cgns`) so the new correlation actually reaches the sampler instead
   /// of a stale one computed from the old `rho`.
   pub fn with_rho(mut self, rho: T) -> Self {
+    assert!(
+      rho.is_finite(),
+      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
+    );
     self.rho = rho;
     self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
     self
@@ -151,12 +163,20 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
 
   /// Replace `f0`, all else unchanged.
   pub fn with_f0(mut self, f0: Option<T>) -> Self {
+    assert!(
+      f0.is_none_or(|v| v.is_finite()),
+      "f0 must satisfy `f0.is_none_or(|v| v.is_finite())`, got f0 = {f0:?}"
+    );
     self.f0 = f0;
     self
   }
 
   /// Replace `alpha0`, all else unchanged.
   pub fn with_alpha0(mut self, alpha0: Option<T>) -> Self {
+    assert!(
+      alpha0.is_none_or(|v| v.is_finite()),
+      "alpha0 must satisfy `alpha0.is_none_or(|v| v.is_finite())`, got alpha0 = {alpha0:?}"
+    );
     assert!(
       alpha0.is_none_or(|a| a >= T::zero()),
       "alpha0 must satisfy `alpha0.is_none_or(|a| a >= T::zero())`, got alpha0 = {alpha0:?}"
@@ -168,6 +188,7 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
   /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
   /// generator, whose length and step size derive from `n`.
   pub fn with_points(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self
@@ -176,6 +197,10 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
   /// Replace the simulation horizon `t`; rebuilds the cached
   /// correlated-Gaussian generator's step size, which derives from `t`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
     self

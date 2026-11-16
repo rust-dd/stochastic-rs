@@ -168,6 +168,7 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
   /// there, same as indexing a too-short array inside `Lmm::new`'s own
   /// equivalent misuse would.
   pub fn with_tenor(mut self, tenor: Array1<T>) -> Self {
+    assert_entries("tenor", "tenor[i].is_finite()", &tenor, |v| v.is_finite());
     assert!(
       tenor.len() >= 2,
       "tenor.len() must satisfy `tenor.len() >= 2`, got tenor.len() = {:?}",
@@ -198,6 +199,7 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
   /// `chol` untouched, since its value never depended on `l0`'s contents,
   /// only its length.
   pub fn with_l0(mut self, l0: Array1<T>) -> Self {
+    assert_entries("l0", "l0[i].is_finite()", &l0, |v| v.is_finite());
     for (i, &v) in l0.iter().enumerate() {
       assert!(
         v > T::zero(),
@@ -214,6 +216,7 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
 
   /// Replace `sigma`. Panics if any entry is negative.
   pub fn with_sigma(mut self, sigma: Array1<T>) -> Self {
+    assert_entries("sigma", "sigma[i].is_finite()", &sigma, |v| v.is_finite());
     for (i, &v) in sigma.iter().enumerate() {
       assert!(
         v >= T::zero(),
@@ -226,12 +229,17 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
 
   /// Replace the number of simulation grid points `n`, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self
   }

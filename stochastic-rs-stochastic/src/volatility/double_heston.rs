@@ -215,12 +215,20 @@ impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
 impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: T) -> Self {
+    assert!(
+      s0.is_finite(),
+      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
+    );
     self.s0 = s0;
     self
   }
 
   /// Replace `v1_0`, all else unchanged.
   pub fn with_v1_0(mut self, v1_0: T) -> Self {
+    assert!(
+      v1_0.is_finite(),
+      "v1_0 must satisfy `v1_0.is_finite()`, got v1_0 = {v1_0:?}"
+    );
     assert!(
       v1_0 >= T::zero(),
       "v1_0 must satisfy `v1_0 >= T::zero()`, got v1_0 = {v1_0:?}"
@@ -232,6 +240,10 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   /// Replace `v2_0`, all else unchanged.
   pub fn with_v2_0(mut self, v2_0: T) -> Self {
     assert!(
+      v2_0.is_finite(),
+      "v2_0 must satisfy `v2_0.is_finite()`, got v2_0 = {v2_0:?}"
+    );
+    assert!(
       v2_0 >= T::zero(),
       "v2_0 must satisfy `v2_0 >= T::zero()`, got v2_0 = {v2_0:?}"
     );
@@ -241,6 +253,10 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
 
   /// Replace `kappa1`, all else unchanged.
   pub fn with_kappa1(mut self, kappa1: T) -> Self {
+    assert!(
+      kappa1.is_finite(),
+      "kappa1 must satisfy `kappa1.is_finite()`, got kappa1 = {kappa1:?}"
+    );
     assert!(
       kappa1 >= T::zero(),
       "kappa1 must satisfy `kappa1 >= T::zero()`, got kappa1 = {kappa1:?}"
@@ -252,6 +268,10 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   /// Replace `theta1`, all else unchanged.
   pub fn with_theta1(mut self, theta1: T) -> Self {
     assert!(
+      theta1.is_finite(),
+      "theta1 must satisfy `theta1.is_finite()`, got theta1 = {theta1:?}"
+    );
+    assert!(
       theta1 >= T::zero(),
       "theta1 must satisfy `theta1 >= T::zero()`, got theta1 = {theta1:?}"
     );
@@ -261,6 +281,10 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
 
   /// Replace `sigma1`, all else unchanged.
   pub fn with_sigma1(mut self, sigma1: T) -> Self {
+    assert!(
+      sigma1.is_finite(),
+      "sigma1 must satisfy `sigma1.is_finite()`, got sigma1 = {sigma1:?}"
+    );
     assert!(
       sigma1 >= T::zero(),
       "sigma1 must satisfy `sigma1 >= T::zero()`, got sigma1 = {sigma1:?}"
@@ -273,6 +297,10 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   /// generator (`cgns1`) so the new correlation actually reaches the
   /// sampler instead of a stale one computed from the old `rho1`.
   pub fn with_rho1(mut self, rho1: T) -> Self {
+    assert!(
+      rho1.is_finite(),
+      "rho1 must satisfy `rho1.is_finite()`, got rho1 = {rho1:?}"
+    );
     self.rho1 = rho1;
     self.cgns1 = Cgns::new(rho1, self.n - 1, self.t, Unseeded);
     self
@@ -280,6 +308,10 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
 
   /// Replace `kappa2`, all else unchanged.
   pub fn with_kappa2(mut self, kappa2: T) -> Self {
+    assert!(
+      kappa2.is_finite(),
+      "kappa2 must satisfy `kappa2.is_finite()`, got kappa2 = {kappa2:?}"
+    );
     assert!(
       kappa2 >= T::zero(),
       "kappa2 must satisfy `kappa2 >= T::zero()`, got kappa2 = {kappa2:?}"
@@ -291,6 +323,10 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   /// Replace `theta2`, all else unchanged.
   pub fn with_theta2(mut self, theta2: T) -> Self {
     assert!(
+      theta2.is_finite(),
+      "theta2 must satisfy `theta2.is_finite()`, got theta2 = {theta2:?}"
+    );
+    assert!(
       theta2 >= T::zero(),
       "theta2 must satisfy `theta2 >= T::zero()`, got theta2 = {theta2:?}"
     );
@@ -300,6 +336,10 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
 
   /// Replace `sigma2`, all else unchanged.
   pub fn with_sigma2(mut self, sigma2: T) -> Self {
+    assert!(
+      sigma2.is_finite(),
+      "sigma2 must satisfy `sigma2.is_finite()`, got sigma2 = {sigma2:?}"
+    );
     assert!(
       sigma2 >= T::zero(),
       "sigma2 must satisfy `sigma2 >= T::zero()`, got sigma2 = {sigma2:?}"
@@ -312,6 +352,10 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   /// generator (`cgns2`) so the new correlation actually reaches the
   /// sampler instead of a stale one computed from the old `rho2`.
   pub fn with_rho2(mut self, rho2: T) -> Self {
+    assert!(
+      rho2.is_finite(),
+      "rho2 must satisfy `rho2.is_finite()`, got rho2 = {rho2:?}"
+    );
     self.rho2 = rho2;
     self.cgns2 = Cgns::new(rho2, self.n - 1, self.t, Unseeded);
     self
@@ -319,6 +363,10 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
 
   /// Replace `mu`, all else unchanged.
   pub fn with_mu(mut self, mu: T) -> Self {
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
     self.mu = mu;
     self
   }
@@ -326,6 +374,7 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   /// Replace `n`, the grid points along the path; rebuilds both cached correlated-Gaussian
   /// generators, whose lengths and step sizes derive from `n`.
   pub fn with_points(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.cgns1 = Cgns::new(self.rho1, n - 1, self.t, Unseeded);
     self.cgns2 = Cgns::new(self.rho2, n - 1, self.t, Unseeded);
@@ -335,6 +384,10 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   /// Replace the simulation horizon `t`; rebuilds both cached
   /// correlated-Gaussian generators' step sizes, which derive from `t`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    assert!(
+      t.is_none_or(|t| t > T::zero() && t.is_finite()),
+      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
+    );
     self.t = t;
     self.cgns1 = Cgns::new(self.rho1, self.n - 1, t, Unseeded);
     self.cgns2 = Cgns::new(self.rho2, self.n - 1, t, Unseeded);
