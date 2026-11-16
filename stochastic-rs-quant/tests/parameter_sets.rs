@@ -1,5 +1,15 @@
 //! Each model's parameters in its paper's order, through every constructor and function.
 
+use stochastic_rs_quant::pricing::heston::HestonParams;
+
+const P: HestonParams = HestonParams {
+  v0: 0.04,
+  kappa: 1.5,
+  theta: 0.04,
+  sigma: 0.3,
+  rho: -0.7,
+};
+
 #[test]
 fn sabr_params_are_in_hagan_order_everywhere() {
   use stochastic_rs_quant::instruments::option::SabrVolatility;
@@ -39,19 +49,11 @@ fn every_heston_carrier_takes_the_same_params() {
   use stochastic_rs_quant::pricing::engines::AnalyticHestonEngine;
   use stochastic_rs_quant::pricing::fourier::GilPelaezPricer;
   use stochastic_rs_quant::pricing::fourier::HestonFourier;
-  use stochastic_rs_quant::pricing::heston::HestonParams;
   use stochastic_rs_quant::pricing::heston::HestonPricer;
   use stochastic_rs_quant::pricing::heston_adi::HestonAdiPricer;
   use stochastic_rs_quant::traits::ModelPricer;
   use stochastic_rs_quant::traits::PricingEngine;
   use stochastic_rs_quant::traits::PricingResult;
-  const P: HestonParams = HestonParams {
-    v0: 0.04,
-    kappa: 1.5,
-    theta: 0.04,
-    sigma: 0.3,
-    rho: -0.7,
-  };
   let (s, k, r, q, tau) = (100.0, 105.0, 0.03, 0.01, 1.0);
   // Heston (1993) call at P, 30 digits by mpmath: 6.02549536300591493.
   let exact = 6.025_495_363_005_915;
@@ -77,17 +79,10 @@ fn every_heston_constructor_rejects_a_bad_literal_by_name() {
   use stochastic_rs_quant::pricing::engines::AnalyticHestonEngine;
   use stochastic_rs_quant::pricing::fourier::DoubleHestonFourier;
   use stochastic_rs_quant::pricing::fourier::HestonFourier;
-  use stochastic_rs_quant::pricing::heston::HestonParams;
   use stochastic_rs_quant::pricing::heston::HestonPricer;
   use stochastic_rs_quant::pricing::heston_adi::HestonAdiPricer;
-  let good = HestonParams {
-    v0: 0.04,
-    kappa: 1.5,
-    theta: 0.04,
-    sigma: 0.3,
-    rho: -0.7,
-  };
-  let bad = HestonParams { sigma: 0.0, ..good };
+  let good = P;
+  let bad = HestonParams { sigma: 0.0, ..P };
   let builds: [fn(HestonParams, HestonParams); 5] = [
     |p, _| {
       HestonPricer::new(p);
@@ -121,5 +116,5 @@ fn every_heston_constructor_rejects_a_bad_literal_by_name() {
 #[test]
 #[should_panic(expected = "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = 1.5")]
 fn heston_params_new_names_the_broken_predicate() {
-  let _ = stochastic_rs_quant::pricing::heston::HestonParams::new(0.04, 1.5, 0.04, 0.3, 1.5);
+  let _ = HestonParams::new(0.04, 1.5, 0.04, 0.3, 1.5);
 }

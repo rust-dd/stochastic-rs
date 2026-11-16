@@ -5,6 +5,14 @@
 use super::*;
 use crate::pricing::heston::HestonPricer;
 
+const P: HestonParams = HestonParams {
+  v0: 0.04,
+  kappa: 1.5,
+  theta: 0.04,
+  sigma: 0.3,
+  rho: -0.7,
+};
+
 #[test]
 fn spot_beyond_eight_strikes_keeps_the_intrinsic_value() {
   let model = HestonAdiPricer::new(HestonParams {
@@ -28,21 +36,13 @@ fn spot_beyond_eight_strikes_keeps_the_intrinsic_value() {
 
 #[test]
 fn initial_variance_beyond_five_matches_the_analytic_price() {
-  let model = HestonAdiPricer::new(HestonParams {
+  let p = HestonParams {
     v0: 6.0,
     kappa: 2.0,
-    theta: 0.04,
-    sigma: 0.3,
-    rho: -0.7,
-  })
-  .with_grid(160, 80, 80);
-  let analytic = HestonPricer::new(HestonParams {
-    v0: 6.0,
-    kappa: 2.0,
-    theta: 0.04,
-    sigma: 0.3,
-    rho: -0.7,
-  });
+    ..P
+  };
+  let model = HestonAdiPricer::new(p).with_grid(160, 80, 80);
+  let analytic = HestonPricer::new(p);
   let want = analytic.price_call(100.0, 100.0, 0.0, 0.0, 1.0);
   let got = model.price_call(100.0, 100.0, 0.0, 0.0, 1.0);
   assert!(
@@ -225,55 +225,28 @@ fn each_rejected_parameter_is_named_with_its_value() {
     (
       "v0 must satisfy `v0.is_finite() && v0 >= 0.0`, got v0 = -0.01",
       || {
-        let _ = HestonAdiPricer::new(HestonParams {
-          v0: -0.01,
-          kappa: 1.5,
-          theta: 0.04,
-          sigma: 0.3,
-          rho: -0.7,
-        });
+        let _ = HestonAdiPricer::new(HestonParams { v0: -0.01, ..P });
       },
     ),
     ("kappa must satisfy `kappa > 0.0`, got kappa = 0.0", || {
-      let _ = HestonAdiPricer::new(HestonParams {
-        v0: 0.04,
-        kappa: 0.0,
-        theta: 0.04,
-        sigma: 0.3,
-        rho: -0.7,
-      });
+      let _ = HestonAdiPricer::new(HestonParams { kappa: 0.0, ..P });
     }),
     ("theta must satisfy `theta > 0.0`, got theta = 0.0", || {
-      let _ = HestonAdiPricer::new(HestonParams {
-        v0: 0.04,
-        kappa: 1.5,
-        theta: 0.0,
-        sigma: 0.3,
-        rho: -0.7,
-      });
+      let _ = HestonAdiPricer::new(HestonParams { theta: 0.0, ..P });
     }),
     (
       "sigma must satisfy `sigma.is_finite() && sigma > 0.0`, got sigma = NaN",
       || {
         let _ = HestonAdiPricer::new(HestonParams {
-          v0: 0.04,
-          kappa: 1.5,
-          theta: 0.04,
           sigma: f64::NAN,
-          rho: -0.7,
+          ..P
         });
       },
     ),
     (
       "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = -1.5",
       || {
-        let _ = HestonAdiPricer::new(HestonParams {
-          v0: 0.04,
-          kappa: 1.5,
-          theta: 0.04,
-          sigma: 0.3,
-          rho: -1.5,
-        });
+        let _ = HestonAdiPricer::new(HestonParams { rho: -1.5, ..P });
       },
     ),
   ];
