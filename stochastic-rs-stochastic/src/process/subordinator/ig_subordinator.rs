@@ -220,7 +220,7 @@ impl<T: FloatExt> PathSampler<T> for IgSubordinatorSampler<T> {
   }
 }
 
-/// The inverse-Gaussian process of mean `γt` and shape `(γt)²` is this subordinator at `gamma = 1`.
+/// The inverse-Gaussian process of mean `δt` and shape `(δt)²` is this subordinator at `gamma = 1`.
 ///
 /// ```compile_fail,E0432
 /// use stochastic_rs_stochastic::jump::ig::Ig;

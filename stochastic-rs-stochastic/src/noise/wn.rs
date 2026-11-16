@@ -23,8 +23,8 @@ use crate::traits::ProcessExt;
 pub struct Wn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Number of i.i.d. noise samples generated.
   pub n: usize,
-  /// Target mean level for generated noise samples.
-  pub mean: Option<T>,
+  /// Mean `mu` of each draw, zero when `None`.
+  pub mu: Option<T>,
   /// Standard deviation of generated noise samples.
   pub sigma: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
@@ -35,11 +35,11 @@ pub struct Wn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Wn<T, S> {
-  pub fn new(n: usize, mean: Option<T>, sigma: Option<T>, seed: S) -> Self {
+  pub fn new(n: usize, mu: Option<T>, sigma: Option<T>, seed: S) -> Self {
     assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
     assert!(
-      mean.is_none_or(|v| v.is_finite()),
-      "mean must satisfy `mean.is_none_or(|v| v.is_finite())`, got mean = {mean:?}"
+      mu.is_none_or(|v| v.is_finite()),
+      "mu must satisfy `mu.is_none_or(|v| v.is_finite())`, got mu = {mu:?}"
     );
     assert!(
       sigma.is_none_or(|v| v.is_finite()),
@@ -52,7 +52,7 @@ impl<T: FloatExt, S: SeedExt> Wn<T, S> {
     Wn {
       backend: Cpu,
       n,
-      mean,
+      mu,
       sigma,
       seed,
     }
@@ -77,7 +77,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::Innovation {
-      mean: self.mean.unwrap_or(T::zero()),
+      mean: self.mu.unwrap_or(T::zero()),
       sd: self.checked_sigma(),
     }
   }
@@ -115,7 +115,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Wn<T, S> { n, mean, sigma, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] Wn<T, S> { n, mu, sigma, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for Wn<T, S, B>
@@ -130,12 +130,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> WnSampler<T> {
-    let mean = self.mean.unwrap_or(T::zero());
+    let mu = self.mu.unwrap_or(T::zero());
     let sigma = self.checked_sigma();
     WnSampler {
       n: self.n,
-      mean,
-      normal: (sigma != T::zero()).then(|| SimdNormal::<T>::new(mean, sigma).seeded(&self.seed)),
+      mu,
+      normal: (sigma != T::zero()).then(|| SimdNormal::<T>::new(mu, sigma).seeded(&self.seed)),
     }
   }
 
@@ -176,7 +176,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 #[doc(hidden)]
 pub struct WnSampler<T: FloatExt> {
   n: usize,
-  mean: T,
+  mu: T,
   normal: Option<Seeded<SimdNormal<T>>>,
 }
 
@@ -188,7 +188,7 @@ impl<T: FloatExt> WnSampler<T> {
     }
     match &mut self.normal {
       Some(normal) => normal.fill_slice(&mut out[..len]),
-      None => out[..len].fill(self.mean),
+      None => out[..len].fill(self.mu),
     }
   }
 }
@@ -210,7 +210,7 @@ impl<T: FloatExt> PathSampler<T> for WnSampler<T> {
 }
 
 py_process_1d!(PyWn, Wn,
-  sig: (n, mean=None, sigma=None, seed=None, dtype=None),
-  params: (n: usize, mean: Option<f64>, sigma: Option<f64>),
+  sig: (n, mu=None, sigma=None, seed=None, dtype=None),
+  params: (n: usize, mu: Option<f64>, sigma: Option<f64>),
   device
 );

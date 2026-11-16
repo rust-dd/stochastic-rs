@@ -14,7 +14,7 @@ Accelerate as well as on the CPU.
 
 - **Diffusions** — GBM, OU, CIR, CEV, CKLS, Jacobi, Ait-Sahalia, Pearson,
   Verhulst, Kimura, three-halves, and their fractional counterparts.
-- **Jump processes** — Merton, Kou, Bates, CGMY, Kobol, variance gamma,
+- **Jump processes** — Merton, Kou, Bates, CGMY, KoBoL, variance gamma,
   NIG, bilateral gamma, Hawkes and multivariate Hawkes, compound Poisson.
 - **Stochastic volatility** — Heston (several schemes), double Heston,
   multifactor Heston, SABR, multifactor SABR, Bergomi, rough Bergomi,

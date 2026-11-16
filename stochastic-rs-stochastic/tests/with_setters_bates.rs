@@ -162,23 +162,8 @@ fn bates_with_cpoisson_round_trip_and_reaches_sampler() {
   assert_eq!(got.cpoisson.poisson.lambda, 4.0);
 }
 
-/// Regression test for the `Bates` instance of the bug a Task 1 review
-/// caught on `Merton` and the zero-exception-reproducibility wave's Task 2
-/// controller addendum confirmed live here too: since `sampler()` reads
-/// `self.lambda` (not `cpoisson.poisson.lambda`) for the jump-arrival rate
-/// and the drift's `-lambda*k` compensator, `with_cpoisson` swapping in a
-/// driver with a *different* lambda would otherwise silently keep sampling
-/// at the *old* `self.lambda` — the distribution swap would take effect, the
-/// intensity swap would not. Fixed by having `with_cpoisson` adopt the
-/// incoming driver's lambda into `self.lambda`. `lambda = 0` on the
-/// swapped-in side is deliberate, not just a stand-in value:
-/// `CompoundPoisson::sample_grid_relative_increments` (via
-/// `grid_relative_increments`) short-circuits to an all-zero, RNG-free array
-/// whenever `lambda * dt <= 0`, so the "did the new intensity actually take
-/// effect" question has a bit-exact, luck-independent answer. `k = 0` on
-/// both sides isolates the jump half further: it removes any residual
-/// `-lambda*k` drift-term difference so a mismatch can only come from the
-/// jump increments themselves, not the deterministic drift.
+/// `with_cpoisson` adopts the driver's rate as `lambda`; a zero rate draws no jumps, so the path
+/// matches a fresh zero-rate build bit for bit, and `k = 0` keeps the compensator out of it.
 #[test]
 fn bates_with_cpoisson_changes_sampled_intensity() {
   let seed = 7;

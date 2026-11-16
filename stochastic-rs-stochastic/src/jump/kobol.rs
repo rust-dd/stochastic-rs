@@ -1,6 +1,6 @@
 //! # Kobol / Cts (general tempered stable family)
 //!
-//! Lévy measure (one common Kobol/Cts parametrization):
+//! Lévy measure (one common KoBoL/Cts parametrization):
 //! $$
 //! \nu(dx)=D\left(p\,e^{-\lambda_+ x}x^{-1-\alpha}\mathbf 1_{x>0}
 //! \;+\;q\,e^{-\lambda_-|x|}|x|^{-1-\alpha}\mathbf 1_{x<0}\right)dx
@@ -32,7 +32,7 @@
 //! - Boyarchenko S. I., Levendorskiĭ S. Z. (2000) — *Option Pricing for
 //!   Truncated Lévy Processes*, International Journal of Theoretical
 //!   and Applied Finance 3(3), 549–552, DOI: 10.1142/S0219024900000541
-//!   — coined "Kobol" and applied the family to option pricing.
+//!   — coined "KoBoL" and applied the family to option pricing.
 //! - Rosiński J. (2007) — *Tempering Stable Processes*, Stochastic
 //!   Processes and their Applications 117(6), 677–707,
 //!   DOI: 10.1016/j.spa.2006.10.003 — the truncated shot-noise series
@@ -434,7 +434,7 @@ impl<T: FloatExt, S: SeedExt> KobolSampler<T, S> {
     let mut jump_size = Array1::<T>::zeros(size);
 
     for j in 1..size {
-      // HERE IS THE Kobol DIFFERENCE:
+      // HERE IS THE KoBoL DIFFERENCE:
       // probability of choosing + side is p/(p+q) instead of fixed 0.5
       let v_j = if self.uniform.sample() < w_plus {
         self.lambda_plus
@@ -442,7 +442,7 @@ impl<T: FloatExt, S: SeedExt> KobolSampler<T, S> {
         -self.lambda_minus
       };
 
-      // HERE IS THE Kobol DIFFERENCE:
+      // HERE IS THE KoBoL DIFFERENCE:
       // divisor uses total coefficient D(p+q) instead of 2C
       let divisor = c_total * t_max; // <-- (2*C*t_max)
       let numerator = self.alpha * arrivals[j];

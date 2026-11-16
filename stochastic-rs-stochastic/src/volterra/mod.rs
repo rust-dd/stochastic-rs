@@ -30,8 +30,8 @@
 //! that module for the `impl` block), so [`VolterraLift`] — the
 //! Markov-lift-style stepper built on top of this trait — drives both the
 //! fractional and the exponential-family kernels through one interface.
-//! [`crate::rough::MarkovLift`] is `VolterraLift<T,
-//! RlKernel<T>>` kept as a thin, backward-compatible wrapper.
+//! [`crate::rough::MarkovLift`] wraps `VolterraLift<T,
+//! RlKernel<T>>` for coefficients of the state alone.
 //!
 //! [`VolterraSde`] promotes [`VolterraLift`] to a first-class
 //! [`ProcessExt`](crate::traits::ProcessExt): general $b$/$\sigma$

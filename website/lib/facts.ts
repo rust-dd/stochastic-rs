@@ -35,5 +35,5 @@ export const FACTS = {
   testsFloor: 3000,
 } as const;
 
-/** "120+" for prose that should stay true between releases. */
+/** The process count rounded down to ten, for prose that should stay true between releases. */
 export const PROCESSES_ROUNDED = `${Math.floor(FACTS.processes / 10) * 10}+`;

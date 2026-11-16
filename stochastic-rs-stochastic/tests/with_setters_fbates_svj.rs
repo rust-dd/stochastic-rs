@@ -1,14 +1,4 @@
-//! TDD tests for A1-c Task 2: `with_*` builder setters on `FbatesSvj`
-//! (`volatility/fbates_svj.rs`), the fractional (rough-variance) Bates SVJ
-//! process. Split out of a combined `with_setters_volatility.rs` to stay
-//! under the project's 600-line file cap (per-type split, alongside
-//! `with_setters_bates_svj.rs`, `with_setters_double_heston.rs`,
-//! `with_setters_heston_log.rs`, and `with_setters_hkde.rs`).
-//!
-//! `FbatesSvj` has no persisted cache: `cgns` is rebuilt fresh inside
-//! `sampler()` from `self.{rho,n,t}` on every call, and `new()` has no
-//! `assert!`s of its own, so every setter here is a plain field write and
-//! no rejection tests are needed.
+//! The `with_*` setters of `FbatesSvj`, which keeps no cache: `sampler()` builds its `cgns`.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;

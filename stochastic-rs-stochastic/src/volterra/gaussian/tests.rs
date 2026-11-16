@@ -58,8 +58,8 @@ fn volterra_seeded_deterministic() {
   assert_eq!(v1.sample(), v2.sample());
 }
 
-/// `H = 0.7` is exactly the value the 124-type reproducibility guard
-/// (`tests/reproducibility_all_processes/process.rs`) instantiates
+/// `H = 0.7` is exactly the value the reproducibility guard
+/// (`tests/reproducibility_all_processes/volterra.rs`) instantiates
 /// `Volterra::fbm` at — the fallback path this pins, since `RlKernel`
 /// cannot represent `H >= 0.5`.
 #[test]

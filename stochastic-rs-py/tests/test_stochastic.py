@@ -424,9 +424,10 @@ def test_the_inverse_gaussian_process_is_the_unit_subordinator():
     assert path.shape == (65,) and path[0] == 0.0 and np.all(np.diff(path) > 0.0)
 
 
-def test_white_noise_takes_its_scale_as_sigma():
-    flat = sr.PyWn(64, mean=0.5, sigma=0.0, seed=1).sample()
+def test_white_noise_takes_its_location_as_mu_and_its_scale_as_sigma():
+    flat = sr.PyWn(64, mu=0.5, sigma=0.0, seed=1).sample()
     assert np.all(flat == 0.5)
     assert np.array_equal(sr.PyWn(64, sigma=2.0, seed=1).sample(), 2.0 * sr.PyWn(64, seed=1).sample())
-    with pytest.raises(TypeError):
-        sr.PyWn(64, std_dev=1.0)
+    for old in ({"std_dev": 1.0}, {"mean": 0.5}):
+        with pytest.raises(TypeError):
+            sr.PyWn(64, **old)

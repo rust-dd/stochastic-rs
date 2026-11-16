@@ -13,7 +13,7 @@
 //! [`RlKernel`] applies — sampling delegates to [`VolterraSde`] with
 //! $b\equiv0$, $\sigma\equiv1$, solved at $O(nN')$ by the Markov lift
 //! instead of the direct $O(n^2)$ convolution below. Every other case —
-//! $H \ge 1/2$ (the 124-type reproducibility guard exercises exactly this,
+//! $H \ge 1/2$ (the reproducibility guard exercises exactly this,
 //! at $H=0.7$), [`VolterraKernelSpec::PowerLaw`], and
 //! [`VolterraKernelSpec::Exponential`] — has no
 //! [`crate::volterra::VolterraKernel`] representation available in this

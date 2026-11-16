@@ -1,28 +1,4 @@
-//! Reproducibility tests for Task 2 of the zero-exception-reproducibility
-//! wave: `Bates` and `JumpFou` absorb their compound-Poisson jump
-//! driver's construction into `new()`, threading the constructor's own
-//! `seed: S` into it (`seed.clone().derive()`) instead of hard-wiring
-//! `cpoisson: CompoundPoisson<T, D>` to `Unseeded` in the public field type
-//! — the same fix Task 1 applied to `Merton`/`Kou`/`LevyDiffusion` (see
-//! `reproducibility_jump_family.rs`). Both types' diffusion component was
-//! already seed-reproducible before this task (`Bates`'s `cgns`, fixed
-//! by an earlier wave; `JumpFou`'s private `fgn`, fixed by the predecessor
-//! wave's final round — see `deterministic_parallelism_jump_fou.rs`), so
-//! this task closes the crate's last exception: **zero** exceptions remain.
-//!
-//! Before this fix, two identically-`Deterministic`-seeded objects diverged
-//! on their jump-carrying output under any nonzero jump intensity, because
-//! `cpoisson`'s own seed field was structurally pinned to `Unseeded`
-//! regardless of the outer `S`. `lambda = 50` below makes jumps dominate
-//! (mean ~50 arrivals over the unit horizon at `N = 128`), so a
-//! reproducibility failure in the jump component cannot hide behind a
-//! diffusion-only comparison — confirmed directly by
-//! `bates_price_path_diverges_from_zero_lambda_counterfactual` /
-//! `jump_fou_diverges_from_zero_lambda_counterfactual` below, which are not
-//! merely restating the bit-identity tests: they show the *value* actually
-//! moves when the jump component is toggled off, so the bit-identity tests
-//! above them cannot be silently passing because the jump term is a
-//! structural no-op.
+//! A seeded `Bates` or `JumpFou` reproduces its jumps and its diffusion at any thread count.
 
 use ndarray::Array1;
 use rayon::ThreadPoolBuilder;
