@@ -4,6 +4,7 @@ use ndarray::Array2;
 use super::*;
 use crate::volatility::common::TrainConfig;
 use crate::volatility::common::synthetic_surface_dataset;
+use crate::volatility::grid;
 use crate::volatility::heston;
 use crate::volatility::rbergomi;
 
@@ -178,12 +179,118 @@ fn rbergomi_bridge_round_trips_the_parameter_order() {
     .iter()
     .map(|&x| x as f64)
     .collect();
+  let theta: [f32; rbergomi::INPUT_DIM] = std::array::from_fn(|j| v[j] as f32);
+  let surface = model
+    .predict_implied_vol_surface(&theta, 1.0, &[1.0; grid::MATURITIES.len()])
+    .unwrap();
+  let from_surface = RBergomiSurrogateCalibrator::from_surface(&model, &surface, 1.0).unwrap();
+  assert_eq!(
+    from_surface.inner.market, target,
+    "ascending columns need no reordering"
+  );
   let result = RBergomiSurrogateCalibrator::new(&model, target)
     .unwrap()
     .calibrate(Some(params))
     .unwrap();
   assert!(result.rmse() < 1e-5, "{}", result.rmse());
   let _pricer: RBergomiPricer = result.to_model();
+}
+
+/// The Heston network's columns descend in strike, so its ascending surface recovers θ only through
+/// `from_surface`; the same grid read as a flat vector calibrates to the mirrored smile.
+#[test]
+fn an_ascending_surface_recovers_theta_and_its_flat_reading_does_not() {
+  let model = trained_heston(5);
+  let truth = box_point(
+    &heston::PARAM_LB,
+    &heston::PARAM_UB,
+    &[0.35, 0.55, 0.6, 0.4, 0.65],
+  );
+  let theta: [f32; heston::INPUT_DIM] = std::array::from_fn(|j| truth[j] as f32);
+  let forwards = [100.0; grid::MATURITIES.len()];
+  let surface = model
+    .predict_implied_vol_surface(&theta, 100.0, &forwards)
+    .unwrap();
+  let calibrator = HestonSurrogateCalibrator::from_surface(&model, &surface, 100.0).unwrap();
+  let network: Vec<f64> = model
+    .predict_surface(&theta)
+    .unwrap()
+    .iter()
+    .map(|&v| f64::from(v))
+    .collect();
+  assert_eq!(calibrator.inner.market, network);
+  let recovered =
+    |params: &[f64]| {
+      params.iter().zip(&truth).enumerate().all(|(j, (p, t))| {
+        (p - t).abs() < 2e-3 * (heston::PARAM_UB[j] - heston::PARAM_LB[j]) as f64
+      })
+    };
+  let fit = calibrator.calibrate(None).unwrap();
+  assert!(fit.converged() && fit.rmse() < 1e-6, "rmse {}", fit.rmse());
+  assert!(
+    recovered(&heston_params_to_surrogate(&fit.params)),
+    "{:?}",
+    fit.params
+  );
+  let flat = surface.ivs.iter().copied().collect::<Vec<f64>>();
+  let misread = SurrogateCalibrator::new(&model, flat)
+    .unwrap()
+    .calibrate(None)
+    .unwrap();
+  assert!(!recovered(&misread.params), "{:?}", misread.params);
+}
+
+#[test]
+fn a_surface_off_the_grid_names_the_axis_the_index_and_both_values() {
+  let model = HestonNn::new(&Device::Cpu, 7).unwrap();
+  let maturities = grid::MATURITIES.to_vec();
+  let strikes: Vec<f64> = heston::STRIKES.iter().rev().map(|k| k * 100.0).collect();
+  let surface = |strikes: Vec<f64>, maturities: Vec<f64>| {
+    let shape = (maturities.len(), strikes.len());
+    ImpliedVolSurface::from_iv_grid(
+      strikes,
+      maturities,
+      vec![100.0; shape.0],
+      Array2::from_elem(shape, 0.2),
+    )
+  };
+  let on_grid =
+    SurrogateCalibrator::from_surface(&model, &surface(strikes.clone(), maturities.clone()), 100.0);
+  assert!(on_grid.is_ok());
+  let mut wrong_strikes = strikes.clone();
+  wrong_strikes[2] *= 1.01;
+  let mut wrong_maturities = maturities.clone();
+  wrong_maturities[5] = 1.6;
+  for (bad, axis, got, want) in [
+    (
+      surface(wrong_strikes.clone(), maturities.clone()),
+      "strikes[2]",
+      wrong_strikes[2],
+      strikes[2],
+    ),
+    (
+      surface(strikes.clone(), wrong_maturities),
+      "maturities[5]",
+      1.6,
+      1.5,
+    ),
+  ] {
+    let message = format!(
+      "{:#}",
+      SurrogateCalibrator::from_surface(&model, &bad, 100.0)
+        .err()
+        .unwrap()
+    );
+    assert!(
+      message.contains(axis)
+        && message.contains(&format!("{got:?}"))
+        && message.contains(&format!("{want:?}")),
+      "{message}"
+    );
+  }
+  assert!(
+    SurrogateCalibrator::from_surface(&model, &surface(strikes, maturities), f64::NAN).is_err()
+  );
 }
 
 #[test]

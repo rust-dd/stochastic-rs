@@ -1,5 +1,6 @@
 use ndarray::Array1;
 use stochastic_rs::prelude::OptionType;
+use stochastic_rs::quant::OptionQuote;
 use stochastic_rs::quant::QuantError;
 use stochastic_rs::quant::calibration::bsm::BsmCalibrator;
 use stochastic_rs::quant::calibration::bsm::BsmParams;
@@ -113,24 +114,21 @@ pub fn cases() -> Vec<Case> {
     rho: -0.3,
     nu: 0.6,
   });
+  let sabr_quotes = strikes
+    .iter()
+    .map(|&k| {
+      let price = sabr.call_put(100.0, k, 0.03, 0.0, 1.0).0;
+      OptionQuote::new(k, 1.0, price, OptionType::Call)
+    })
+    .collect();
   cases.push(calibration(
     "sabr",
-    SabrCalibrator::new(
-      Some(SabrParams {
-        alpha: 0.25,
-        beta: 1.0,
-        rho: 0.0,
-        nu: 0.8,
-      }),
-      strikes.mapv(|k| sabr.call_put(100.0, k, 0.03, 0.0, 1.0).0),
-      spot,
-      strikes.clone(),
-      0.03,
-      None,
-      1.0,
-      OptionType::Call,
-      false,
-    ),
+    SabrCalibrator::new(100.0, 0.03, 0.0, sabr_quotes).with_start(SabrParams {
+      alpha: 0.25,
+      beta: 1.0,
+      rho: 0.0,
+      nu: 0.8,
+    }),
     1e-5,
   ));
   for (name, model, prices) in [

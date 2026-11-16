@@ -24,14 +24,15 @@ use basin::CostFunction;
 
 use super::hw_swaption::CurveSnapshot;
 use super::hw_swaption::SwaptionQuote;
-use super::hw_swaption::check_finite_start;
 use super::hw_swaption::serialize_curve;
 use super::hw_swaption::validate_swaption_quotes;
+use super::hw_swaption::weighted_sse;
 use crate::QuantError;
 use crate::calibration::Calibrated;
 use crate::calibration::CalibrationOptions;
 use crate::calibration::Regularization;
 use crate::calibration::nelder_mead_fit;
+use crate::calibration::quote::check_finite_start;
 use crate::curves::DiscountCurve;
 use crate::instruments::option::bermudan::BermudanSwaption;
 use crate::instruments::option::caplet::black_forward_caplet;
@@ -275,9 +276,8 @@ impl BlackKarasinskiCost {
       let (horizon, steps, swaption) =
         tree_swaption(quote, &market, self.notional, self.steps_per_year);
       let tree = BlackKarasinskiTree::new(model.clone(), horizon, steps);
-      let w = quote.weight.unwrap_or(1.0);
-      model_prices.push(w * swaption.price_on_tree(&tree.tree, &tree.model));
-      market_prices.push(w * market.market_price);
+      model_prices.push(swaption.price_on_tree(&tree.tree, &tree.model));
+      market_prices.push(market.market_price);
     }
     (market_prices, model_prices)
   }
@@ -295,14 +295,7 @@ impl CostFunction for BlackKarasinskiCost {
       .regularization
       .as_ref()
       .map_or(0.0, |reg| reg.penalty(&[a, sigma]));
-    Ok(
-      model
-        .iter()
-        .zip(&market)
-        .map(|(m, q)| (m - q).powi(2))
-        .sum::<f64>()
-        + penalty,
-    )
+    Ok(weighted_sse(&self.quotes, &market, &model) + penalty)
   }
 }
 
@@ -486,9 +479,8 @@ impl G2ppCost {
       let (horizon, steps, swaption) =
         tree_swaption(quote, &market, self.notional, self.steps_per_year);
       let tree = G2ppTree::new(model.clone(), horizon, steps);
-      let w = quote.weight.unwrap_or(1.0);
-      model_prices.push(w * swaption.price_on_g2pp(&tree));
-      market_prices.push(w * market.market_price);
+      model_prices.push(swaption.price_on_g2pp(&tree));
+      market_prices.push(market.market_price);
     }
     (market_prices, model_prices)
   }
@@ -511,14 +503,7 @@ impl CostFunction for G2ppCost {
         p.rho,
       ])
     });
-    Ok(
-      model
-        .iter()
-        .zip(&market)
-        .map(|(m, q)| (m - q).powi(2))
-        .sum::<f64>()
-        + penalty,
-    )
+    Ok(weighted_sse(&self.quotes, &market, &model) + penalty)
   }
 }
 

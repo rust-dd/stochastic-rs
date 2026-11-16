@@ -1,5 +1,17 @@
 use super::*;
+use crate::OptionType;
+use crate::traits::CalibrationResult;
 use crate::traits::Calibrator;
+
+fn smile(truth: SabrParams, r: f64, q: f64, tau: f64) -> Vec<OptionQuote> {
+  [80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0]
+    .into_iter()
+    .map(|k| {
+      let price = SabrPricer::new(truth).price_call(100.0, k, r, q, tau);
+      OptionQuote::new(k, tau, price, OptionType::Call)
+    })
+    .collect()
+}
 
 #[test]
 fn sabr_params_array_round_trip_preserves_beta() {
@@ -24,76 +36,129 @@ fn sabr_params_array_round_trip_preserves_beta() {
 }
 
 #[test]
-fn test_sabr_calibrate_price_based() {
-  let s = vec![100.0; 8];
-  let k = vec![80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0];
-  let r = 0.02;
-  let q = 0.01;
-  let tau = 0.5;
-
-  let true_p = SabrParams {
+fn a_recorded_fit_recovers_the_smile_and_its_trail_is_per_call() {
+  let truth = SabrParams {
     alpha: 0.2,
     beta: 1.0,
     rho: -0.4,
     nu: 0.6,
   };
-
-  let mut c_market = Vec::new();
-  for &kk in &k {
-    let pr = SabrPricer::new(true_p);
-    let (call, _) = pr.call_put(100.0, kk, r, q, tau);
-    c_market.push(call);
-  }
-
-  let calibrator = SabrCalibrator::new(
-    Some(SabrParams {
+  let calibrator = SabrCalibrator::new(100.0, 0.02, 0.01, smile(truth, 0.02, 0.01, 0.5))
+    .with_start(SabrParams {
       alpha: 0.15,
       beta: 1.0,
       rho: 0.0,
       nu: 0.8,
-    }),
-    c_market.clone().into(),
-    s.clone().into(),
-    k.clone().into(),
-    r,
-    Some(q),
-    tau,
-    OptionType::Call,
-    true,
-  );
-
-  calibrator.calibrate(None).unwrap();
+    })
+    .with_options(CalibrationOptions::default().with_record_history(true));
+  let fit = calibrator.calibrate(None).unwrap();
+  assert!(fit.converged() && fit.rmse() < 1e-6, "rmse {}", fit.rmse());
+  assert!((fit.params.nu - 0.6).abs() < 1e-3 && (fit.params.rho + 0.4).abs() < 1e-3);
+  assert_eq!(fit.message(), Some("converged"));
+  assert!(fit.iterations.is_some() && fit.max_error.unwrap() < 1e-5);
+  assert!(!fit.history.is_empty() && fit.history[0].iteration == 0);
+  assert_eq!(fit.history[0].params.alpha, 0.15);
+  let again = calibrator.calibrate(None).unwrap();
+  assert_eq!(again.history.len(), fit.history.len());
+  assert_eq!(again.params, fit.params);
 }
 
-fn calibrator(s: f64, k: f64) -> SabrCalibrator {
-  SabrCalibrator::new(
-    None,
-    vec![1.0].into(),
-    vec![s].into(),
-    vec![k].into(),
-    0.02,
-    Some(0.01),
-    0.5,
-    OptionType::Call,
-    false,
-  )
-}
-
-/// `calibrate` answers `Err` naming the quote for a non-positive or NaN spot or strike.
 #[test]
-fn sabr_calibrate_rejects_nonpositive_or_nan_spot_and_strike() {
-  for bad_s in [0.0, -50.0, f64::NAN] {
-    let err = calibrator(bad_s, 100.0).calibrate(None).unwrap_err();
-    assert!(
-      matches!(&err, QuantError::InvalidQuote { index: 0, reason } if reason.contains("s[0]")),
-      "s = {bad_s}: unexpected error {err}"
-    );
-  }
+fn a_bad_strike_is_an_invalid_quote_and_a_bad_start_an_invalid_input() {
   for bad_k in [0.0, -10.0, f64::NAN] {
-    let err = calibrator(100.0, bad_k).calibrate(None).unwrap_err();
+    let quotes = vec![OptionQuote::new(bad_k, 0.5, 1.0, OptionType::Call)];
+    let err = SabrCalibrator::new(100.0, 0.02, 0.01, quotes)
+      .calibrate(None)
+      .unwrap_err();
     assert!(
-      matches!(&err, QuantError::InvalidQuote { index: 0, reason } if reason.contains("k[0]")),
-      "k = {bad_k}: unexpected error {err}"
+      matches!(&err, QuantError::InvalidQuote { index: 0, reason } if reason.starts_with("strike")),
+      "k = {bad_k}: {err}"
     );
   }
+  let quotes = vec![OptionQuote::new(100.0, 0.5, 1.0, OptionType::Call)];
+  let calibrator = SabrCalibrator::new(100.0, 0.02, 0.01, quotes);
+  let bad_start = SabrParams {
+    alpha: 0.2,
+    beta: 1.5,
+    rho: 0.0,
+    nu: 0.5,
+  };
+  let err = calibrator.calibrate(Some(bad_start)).unwrap_err();
+  assert!(
+    matches!(&err, QuantError::InvalidInput { what: "start", reason } if reason.starts_with("beta")),
+    "{err}"
+  );
+  assert!(matches!(
+    SabrCalibrator::new(100.0, 0.02, 0.01, Vec::new())
+      .calibrate(None)
+      .unwrap_err(),
+    QuantError::InsufficientData { .. }
+  ));
+}
+
+#[test]
+#[should_panic(expected = "s must satisfy `s.is_finite() && s > 0.0`, got s = 0.0")]
+fn a_non_positive_spot_panics_in_new() {
+  let _ = SabrCalibrator::new(0.0, 0.02, 0.01, Vec::new());
+}
+
+#[test]
+#[should_panic(expected = "beta must satisfy `(0.0..=1.0).contains(&beta)`, got beta = 1.5")]
+fn a_start_outside_the_parameter_space_panics() {
+  let _ = SabrCalibrator::new(100.0, 0.02, 0.01, Vec::new()).with_start(SabrParams {
+    alpha: 0.2,
+    beta: 1.5,
+    rho: 0.0,
+    nu: 0.5,
+  });
+}
+
+#[test]
+fn a_put_quote_is_fitted_as_a_put() {
+  let truth = SabrParams {
+    alpha: 0.25,
+    beta: 1.0,
+    rho: -0.3,
+    nu: 0.5,
+  };
+  let quotes: Vec<OptionQuote> = [85.0, 95.0, 100.0, 105.0, 115.0]
+    .into_iter()
+    .map(|k| {
+      let pricer = SabrPricer::new(truth);
+      let (option_type, price) = if k < 100.0 {
+        (OptionType::Put, pricer.price_put(100.0, k, 0.01, 0.0, 1.0))
+      } else {
+        (
+          OptionType::Call,
+          pricer.price_call(100.0, k, 0.01, 0.0, 1.0),
+        )
+      };
+      OptionQuote::new(k, 1.0, price, option_type)
+    })
+    .collect();
+  let fit = SabrCalibrator::new(100.0, 0.01, 0.0, quotes)
+    .calibrate(None)
+    .unwrap();
+  assert!(
+    fit.rmse() < 1e-6 && (fit.params.nu - 0.5).abs() < 1e-3,
+    "{:?}",
+    fit.params
+  );
+}
+
+#[test]
+fn a_start_written_through_the_field_is_validated_like_an_explicit_one() {
+  let quotes = vec![OptionQuote::new(100.0, 0.5, 1.0, OptionType::Call)];
+  let mut calibrator = SabrCalibrator::new(100.0, 0.02, 0.01, quotes);
+  calibrator.start = Some(SabrParams {
+    alpha: 0.2,
+    beta: 1.5,
+    rho: 0.0,
+    nu: 0.5,
+  });
+  let err = calibrator.calibrate(None).unwrap_err();
+  assert!(
+    matches!(&err, QuantError::InvalidInput { what: "start", reason } if reason.starts_with("beta")),
+    "{err}"
+  );
 }

@@ -4,14 +4,8 @@
 //! \hat\theta = \arg\min_\theta \sum_i w_i\left(P_i^{model}(\theta) - P_i^{mkt}\right)^2 + \sum_j \lambda_j\left(\theta_j - \theta_j^0\right)^2
 //! $$
 //!
-//! Tikhonov pull of the calibrated parameters toward an anchor `θ⁰`. The
-//! least-squares calibrators (Heston, SABR) take it as extra residual rows
-//! `√λ_j (θ_j − θ_j⁰)` with the matching diagonal Jacobian rows, the
-//! Nelder–Mead ones (the swaption calibrators) as a penalty added to their
-//! cost. `None` leaves every calibrator bit-for-bit on its unregularised
-//! path: no rows are appended, so the loss scores and the goldens do not
-//! move. The weights live in price² units per parameter² — a weight that is
-//! large against the squared price residuals pins the parameter.
+//! Tikhonov pull toward `θ⁰`: residual rows in least-squares fits, a cost penalty in Nelder–Mead.
+//! Weights are in price² per parameter², vol² for the SABR caplet; `None` leaves a fit unchanged.
 //!
 //! References: Tikhonov, A. N. (1963), *Solution of incorrectly formulated
 //! problems and the regularization method*, Soviet Mathematics Doklady 4,

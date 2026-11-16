@@ -147,9 +147,12 @@ fn implied_vol_solve(atm_forward_value: f64, forward: f64, _strike: f64, tau: f6
 
 #[test]
 fn sabr_caplet_calibration_recovers_self_consistent_params() {
+  use stochastic_rs::quant::calibration::CalibrationOptions;
   use stochastic_rs::quant::calibration::SabrCapletCalibrator;
+  use stochastic_rs::quant::calibration::SabrCapletParams;
   use stochastic_rs::quant::pricing::sabr::SabrParams;
   use stochastic_rs::quant::pricing::sabr::hagan_implied_vol;
+  use stochastic_rs::traits::CalibrationResult;
   use stochastic_rs::traits::Calibrator;
 
   let target_alpha = 0.035_f64;
@@ -171,24 +174,40 @@ fn sabr_caplet_calibration_recovers_self_consistent_params() {
     .map(|&k| hagan_implied_vol(k, forward, expiry, &target))
     .collect();
 
-  let cal = SabrCapletCalibrator {
-    forward,
+  let start = SabrCapletParams {
+    sabr: SabrParams {
+      alpha: 0.03,
+      beta: target_beta,
+      rho: -0.1,
+      nu: 0.3,
+    },
     shift: 0.0,
-    expiry,
-    beta: target_beta,
-    strikes: strikes.clone(),
-    market_vols: market_vols.clone(),
-    weights: None,
-    initial_guess: Some((0.03, 0.3, -0.1)),
-    max_iters: 800,
-    sd_tolerance: 1e-12,
   };
+  let cal = SabrCapletCalibrator::new(forward, expiry, strikes, market_vols, start).with_options(
+    CalibrationOptions::default()
+      .with_max_iterations(800)
+      .with_tolerance(1e-12),
+  );
   let res = cal.calibrate(None).unwrap();
-  assert!(res.rmse < 1e-6, "RMSE too large: {}", res.rmse);
-  assert!((res.alpha - target_alpha).abs() < 1e-3);
-  assert!((res.nu - target_nu).abs() < 1e-2);
-  assert!((res.rho - target_rho).abs() < 1e-2);
-  assert_eq!(res.shift, 0.0);
+  let fit = res.params.sabr;
+  assert!(res.rmse() < 1e-6, "RMSE too large: {}", res.rmse());
+  assert!((fit.alpha - target_alpha).abs() < 1e-3);
+  assert!((fit.nu - target_nu).abs() < 1e-2);
+  assert!((fit.rho - target_rho).abs() < 1e-2);
+  assert_eq!(res.params.shift, 0.0);
+}
+
+fn caplet_start(shift: f64) -> stochastic_rs::quant::calibration::SabrCapletParams {
+  use stochastic_rs::quant::pricing::sabr::SabrParams;
+  stochastic_rs::quant::calibration::SabrCapletParams {
+    sabr: SabrParams {
+      alpha: 0.5,
+      beta: 1.0,
+      rho: -0.2,
+      nu: 0.4,
+    },
+    shift,
+  }
 }
 
 /// A negative forward and strikes with no shift configured: `calibrate` answers `Err` naming the forward
@@ -201,9 +220,9 @@ fn sabr_caplet_calibration_rejects_negative_forward_without_shift() {
   let cal = SabrCapletCalibrator::new(
     -0.002,
     0.5,
-    1.0,
     vec![-0.005, -0.002, 0.0, 0.005],
     vec![0.5, 0.5, 0.5, 0.5],
+    caplet_start(0.0),
   );
   let err = cal.calibrate(None).unwrap_err();
   let msg = err.to_string();
@@ -226,11 +245,10 @@ fn sabr_caplet_calibration_rejects_insufficient_shift() {
   let cal = SabrCapletCalibrator::new(
     -0.002,
     0.5,
-    1.0,
     vec![-0.005, -0.002, 0.0, 0.005],
     vec![0.5, 0.5, 0.5, 0.5],
-  )
-  .with_shift(0.003);
+    caplet_start(0.003),
+  );
   let err = cal.calibrate(None).unwrap_err();
   let msg = err.to_string();
   assert!(
@@ -246,9 +264,12 @@ fn sabr_caplet_calibration_rejects_insufficient_shift() {
 /// then comfortably positive (0.0125 to 0.03).
 #[test]
 fn sabr_caplet_calibration_recovers_self_consistent_params_negative_forward() {
+  use stochastic_rs::quant::calibration::CalibrationOptions;
   use stochastic_rs::quant::calibration::SabrCapletCalibrator;
+  use stochastic_rs::quant::calibration::SabrCapletParams;
   use stochastic_rs::quant::pricing::sabr::SabrParams;
   use stochastic_rs::quant::pricing::sabr::hagan_implied_vol;
+  use stochastic_rs::traits::CalibrationResult;
   use stochastic_rs::traits::Calibrator;
 
   let shift = 0.02_f64;
@@ -276,35 +297,38 @@ fn sabr_caplet_calibration_recovers_self_consistent_params_negative_forward() {
     .map(|&k| hagan_implied_vol(k + shift, shifted_forward, expiry, &target))
     .collect();
 
-  let cal = SabrCapletCalibrator {
-    forward,
+  let start = SabrCapletParams {
+    sabr: SabrParams {
+      alpha: 0.03,
+      beta: target_beta,
+      rho: -0.1,
+      nu: 0.3,
+    },
     shift,
-    expiry,
-    beta: target_beta,
-    strikes: strikes.clone(),
-    market_vols: market_vols.clone(),
-    weights: None,
-    initial_guess: Some((0.03, 0.3, -0.1)),
-    max_iters: 800,
-    sd_tolerance: 1e-12,
   };
+  let cal = SabrCapletCalibrator::new(forward, expiry, strikes, market_vols, start).with_options(
+    CalibrationOptions::default()
+      .with_max_iterations(800)
+      .with_tolerance(1e-12),
+  );
   let res = cal.calibrate(None).unwrap();
+  let fit = res.params.sabr;
 
-  assert_eq!(res.shift, shift);
-  assert!(res.rmse < 1e-6, "RMSE too large: {}", res.rmse);
+  assert_eq!(res.params.shift, shift);
+  assert!(res.rmse() < 1e-6, "RMSE too large: {}", res.rmse());
   assert!(
-    (res.alpha - target_alpha).abs() < 1e-3,
+    (fit.alpha - target_alpha).abs() < 1e-3,
     "alpha recovery: got {}, target {target_alpha}",
-    res.alpha
+    fit.alpha
   );
   assert!(
-    (res.nu - target_nu).abs() < 1e-2,
+    (fit.nu - target_nu).abs() < 1e-2,
     "nu recovery: got {}, target {target_nu}",
-    res.nu
+    fit.nu
   );
   assert!(
-    (res.rho - target_rho).abs() < 1e-2,
+    (fit.rho - target_rho).abs() < 1e-2,
     "rho recovery: got {}, target {target_rho}",
-    res.rho
+    fit.rho
   );
 }

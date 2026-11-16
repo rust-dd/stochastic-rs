@@ -60,7 +60,7 @@ $$
 \hat\theta = \arg\min_{\theta}\ \sum_{ij} w_{ij}^2\bigl(\tilde F(\theta)_{ij} - \sigma^{\text{mkt}}_{ij}\bigr)^2 ,
 $$
 
-solved with Levenberg–Marquardt on the surrogate's **exact Jacobian** (reverse-mode differentiation through the network, one backward pass per grid point); the pricer never runs during the calibration. `SurrogateCalibrator` works on any `StochVolNn`; `HestonSurrogateCalibrator` and `RBergomiSurrogateCalibrator` add the parameter mapping to quant's `HestonParams` / `RBergomiParams` and implement `Calibrator` + `ToModel`, so the fitted surrogate drops into the vol-surface pipeline. The result reports whether $\hat\theta$ stayed inside the training box: the network is untrained outside it, and a solution on the boundary is a warning, not an answer. The market surface must be given on the surrogate's own grid (`heston::STRIKES` for Heston), so interpolate quotes onto it first.
+solved with Levenberg–Marquardt on the surrogate's **exact Jacobian** (reverse-mode differentiation through the network, one backward pass per grid point); the pricer never runs during the calibration. `SurrogateCalibrator` works on any `StochVolNn`; `HestonSurrogateCalibrator` and `RBergomiSurrogateCalibrator` add the parameter mapping to quant's `HestonParams` / `RBergomiParams` and implement `Calibrator` + `ToModel`, so the fitted surrogate drops into the vol-surface pipeline. The result reports whether $\hat\theta$ stayed inside the training box: the network is untrained outside it, and a solution on the boundary is a warning, not an answer. The market surface must be given on the surrogate's own grid, so interpolate quotes onto it first; `from_surface(&model, &surface, spot)` takes it as the ascending `ImpliedVolSurface` that `predict_implied_vol_surface` returns, checks both axes against the grid and reorders the columns, while `new` takes the flat vector in the network's column order, which descends in strike for Heston (`heston::STRIKES`).
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -75,6 +75,8 @@ import stochastic_rs as srs
 model = srs.HestonNn()                       # best available device
 report = model.train(params, surfaces, epochs=200)   # rows: [v0, rho, sigma, theta, kappa] → 88 IVs
 fit = srs.calibrate_surrogate(model, market_surface)  # LM on the exact network Jacobian
+# a surface on its own axes is checked against the grid and reordered; flat input is trusted as is
+fit = srs.calibrate_surrogate(model, market_surface, strikes=strikes, maturities=maturities, spot=100.0)
 print(fit["params"], fit["rmse"], fit["converged"], fit["in_bounds"])
 surface, jacobian = model.predict_surface_with_jacobian(fit["params"])
 ```

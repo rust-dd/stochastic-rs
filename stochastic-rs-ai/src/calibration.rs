@@ -26,6 +26,7 @@ use stochastic_rs_quant::traits::CalibrationResult;
 use stochastic_rs_quant::traits::Calibrator;
 use stochastic_rs_quant::traits::RealExt;
 use stochastic_rs_quant::traits::ToModel;
+use stochastic_rs_quant::vol_surface::ImpliedVolSurface;
 
 use crate::volatility::common::StochVolNn;
 use crate::volatility::heston::HestonNn;
@@ -90,8 +91,7 @@ impl CalibrationResult for SurrogateCalibrationResult {
   }
 }
 
-/// Levenberg–Marquardt calibration of a surrogate to market implied vols on its grid: flat,
-/// maturity-major, columns in the model's `STRIKES` order (descending for Heston).
+/// Levenberg–Marquardt calibration of a surrogate to market implied vols on its grid.
 pub struct SurrogateCalibrator<'m, M: SurrogateModel> {
   model: &'m M,
   market: Vec<f64>,
@@ -102,7 +102,8 @@ pub struct SurrogateCalibrator<'m, M: SurrogateModel> {
 }
 
 impl<'m, M: SurrogateModel> SurrogateCalibrator<'m, M> {
-  /// `market` must have the surrogate's `output_dim` entries and be finite.
+  /// `market` flat in the network's order, maturity-major with columns in the spec's `strikes`
+  /// order (descending for Heston), finite; [`Self::from_surface`] takes the ascending grid.
   pub fn new(model: &'m M, market: Vec<f64>) -> Result<Self> {
     let dim = model.nn().spec().output_dim();
     if market.len() != dim {
@@ -124,7 +125,19 @@ impl<'m, M: SurrogateModel> SurrogateCalibrator<'m, M> {
     })
   }
 
-  /// Per-grid-point residual weights `w_k` (one per market entry).
+  /// `surface` as `predict_implied_vol_surface` lays it out at `spot`, strikes ascending; `Err`
+  /// naming the axis, the index and both values unless each axis is the grid's to 1e-12 relative.
+  pub fn from_surface(model: &'m M, surface: &ImpliedVolSurface, spot: f64) -> Result<Self> {
+    let market = model.nn().spec().network_order(
+      &surface.strikes,
+      &surface.maturities,
+      surface.ivs.view(),
+      spot,
+    )?;
+    Self::new(model, market)
+  }
+
+  /// Per-grid-point residual weights `w_k`, one per market entry in the network's order.
   pub fn with_weights(mut self, weights: Vec<f64>) -> Result<Self> {
     if weights.len() != self.market.len() {
       bail!(
@@ -361,9 +374,16 @@ pub struct HestonSurrogateResult {
 }
 
 impl<'m> HestonSurrogateCalibrator<'m> {
+  /// `market` flat in the network's order, whose columns descend in strike.
   pub fn new(model: &'m HestonNn, market: Vec<f64>) -> Result<Self> {
     Ok(Self {
       inner: SurrogateCalibrator::new(model, market)?,
+    })
+  }
+
+  pub fn from_surface(model: &'m HestonNn, surface: &ImpliedVolSurface, spot: f64) -> Result<Self> {
+    Ok(Self {
+      inner: SurrogateCalibrator::from_surface(model, surface, spot)?,
     })
   }
 
@@ -450,6 +470,16 @@ impl<'m> RBergomiSurrogateCalibrator<'m> {
   pub fn new(model: &'m RBergomiNn, market: Vec<f64>) -> Result<Self> {
     Ok(Self {
       inner: SurrogateCalibrator::new(model, market)?,
+    })
+  }
+
+  pub fn from_surface(
+    model: &'m RBergomiNn,
+    surface: &ImpliedVolSurface,
+    spot: f64,
+  ) -> Result<Self> {
+    Ok(Self {
+      inner: SurrogateCalibrator::from_surface(model, surface, spot)?,
     })
   }
 

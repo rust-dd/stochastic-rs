@@ -56,7 +56,7 @@ The `stochastic-rs-quant` crate covers pricing, calibration, vol surface constru
 | A vanilla surface plus exotics that need the right mix of local and stochastic volatility | `HestonSlvCalibrator` (Heston fit → Dupire local vol → leverage by the Guyon–Henry-Labordère particle method or the finite-volume forward Kolmogorov equation) | reprices the surface at any mixing fraction $\eta$ |
 | A trained surrogate | `HestonSurrogateCalibrator`, `RBergomiSurrogateCalibrator` (`ai` feature) | LM on the network's exact Jacobian |
 
-All of them except `SabrSmileCalibrator` and the `calibrate_essvi` function implement `Calibrator` (`calibrate(initial) -> Result<…>`) and hand their result to a pricer through `ToModel` / `ToShortRateModel`; `Regularization` adds a Tikhonov pull toward an anchor on the Heston, SABR and swaption calibrators.
+All of them except the `calibrate_essvi` function implement `Calibrator` (`calibrate(initial) -> Result<…>`) and hand their result to a pricer through `ToModel` / `ToShortRateModel`; `Regularization` adds a Tikhonov pull toward an anchor on the Heston, SABR and swaption calibrators.
 
 ## Examples
 
@@ -205,7 +205,7 @@ print(g2.calibrate())                                    # (a, b, sigma, eta, rh
 </Tab>
 </Tabs>
 
-For these three swaption calibrators and `SabrCapletCalibrator`, `converged` means the sample standard deviation of the simplex objective values fell below the tolerance (`CalibrationOptions::tolerance`, 1e-10 by default; the caplet's `sd_tolerance`); reaching the iteration cap or meeting nonfinite simplex costs returns `false` with the best parameters found. Check both `converged` and `rmse` before using a fit. The SABR caplet Python tuple is `(alpha, beta, nu, rho, rmse, converged)`.
+For these three swaption calibrators and `SabrCapletCalibrator`, `converged` means the sample standard deviation of the simplex objective values fell below the tolerance (`CalibrationOptions::tolerance`, 1e-10 by default); reaching the iteration cap or meeting nonfinite simplex costs returns `false` with the best parameters found. Check both `converged` and `rmse` before using a fit. The SABR caplet Python tuple is `(alpha, beta, nu, rho, rmse, converged)`.
 
 ### eSSVI slices with arbitrage-free interpolation
 
@@ -235,7 +235,7 @@ print(surface.implied_vol(0.1, 0.75))                        # interpolated betw
 
 ### Regularised calibration
 
-The Heston, SABR and swaption calibrators accept an optional `Regularization`: a Tikhonov pull `Σ λ_j (θ_j − θ_j⁰)²` toward an anchor, entering the Levenberg–Marquardt problems (Heston, SABR) as extra residual rows `√λ_j (θ_j − θ_j⁰)` with matching Jacobian rows and the swaption calibrators (Hull–White, Black–Karasinski, G2++) as a cost penalty. Weights are in price² per parameter²; the default `None` leaves the calibrator on its unregularised path, and a weight that is large against the squared price residuals pins its parameter.
+The Heston, SABR and swaption calibrators accept an optional `Regularization`: a Tikhonov pull `Σ λ_j (θ_j − θ_j⁰)²` toward an anchor, entering the Levenberg–Marquardt problems (Heston, SABR) as extra residual rows `√λ_j (θ_j − θ_j⁰)` with matching Jacobian rows and the Nelder–Mead calibrators (Hull–White, Black–Karasinski, G2++, the SABR caplet) as a cost penalty. Weights are in the squared units of each calibrator's residual per parameter²: price² for the Heston, LM SABR and swaption fits, vol² for the SABR caplet; the default `None` leaves the calibrator on its unregularised path, and a weight that is large against the squared price residuals pins its parameter.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">

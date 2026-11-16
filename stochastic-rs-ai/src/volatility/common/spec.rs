@@ -1,5 +1,7 @@
 use anyhow::Result;
 use anyhow::bail;
+#[cfg(feature = "quant")]
+use ndarray::ArrayView2;
 
 #[derive(Clone, Debug)]
 pub struct TrainConfig {
@@ -94,28 +96,60 @@ impl StochVolModelSpec {
 
   /// `Err` unless the grid is exactly `strikes` and `maturities`: a wrapper's own constants.
   pub(crate) fn ensure_grid(&self, strikes: &[f64], maturities: &[f64]) -> Result<()> {
+    let owner = format!("the {} surrogate", self.model_id);
     for (axis, saved, own) in [
       ("strikes", &self.strikes[..], strikes),
       ("maturities", &self.maturities[..], maturities),
     ] {
-      if saved.len() != own.len() {
-        bail!(
-          "saved {axis} has {} entries, the {} surrogate's has {}",
-          saved.len(),
-          self.model_id,
-          own.len()
-        );
-      }
-      if let Some(i) = (0..own.len()).find(|&i| saved[i] != own[i]) {
-        bail!(
-          "saved {axis}[{i}] is {:?}, the {} surrogate's is {:?}",
-          saved[i],
-          self.model_id,
-          own[i]
-        );
-      }
+      check_axis(axis, ("saved", saved), (&owner, own), 0.0)?;
     }
     Ok(())
+  }
+
+  /// The strikes times `spot`, ascending, and the network column each one sits in: ascending cell
+  /// `(t, k)` is flat entry `t · n_k + order[k]`.
+  #[cfg(feature = "quant")]
+  pub(crate) fn ascending_strikes(&self, spot: f64) -> (Vec<f64>, Vec<usize>) {
+    let mut order = (0..self.strikes.len()).collect::<Vec<usize>>();
+    order.sort_by(|&a, &b| self.strikes[a].total_cmp(&self.strikes[b]));
+    let strikes = order.iter().map(|&k| self.strikes[k] * spot).collect();
+    (strikes, order)
+  }
+
+  /// `ivs` over the ascending `strikes` × `maturities`, in the network's flat order once both axes
+  /// are this grid at `spot`.
+  #[cfg(feature = "quant")]
+  pub(crate) fn network_order(
+    &self,
+    strikes: &[f64],
+    maturities: &[f64],
+    ivs: ArrayView2<'_, f64>,
+    spot: f64,
+  ) -> Result<Vec<f64>> {
+    if !(spot.is_finite() && spot > 0.0) {
+      bail!("spot must be finite and positive, got {spot:?}");
+    }
+    let (grid_strikes, order) = self.ascending_strikes(spot);
+    let owner = format!("the {} grid", self.model_id);
+    for (axis, got, want) in [
+      ("strikes", strikes, &grid_strikes[..]),
+      ("maturities", maturities, &self.maturities[..]),
+    ] {
+      check_axis(axis, ("surface", got), (&owner, want), 1e-12)?;
+    }
+    let n_k = order.len();
+    if ivs.dim() != (maturities.len(), n_k) {
+      bail!(
+        "the surface grid is {:?}, its axes give ({}, {n_k})",
+        ivs.dim(),
+        maturities.len()
+      );
+    }
+    let mut market = vec![0.0; ivs.len()];
+    for ((t, k), &iv) in ivs.indexed_iter() {
+      market[t * n_k + order[k]] = iv;
+    }
+    Ok(market)
   }
 
   pub fn input_dim(&self) -> usize {
@@ -133,6 +167,35 @@ pub(super) fn check_ascending(what: &str, values: &[f64]) -> Result<()> {
     bail!("{what} must be finite and strictly ascending");
   }
   Ok(())
+}
+
+/// `Err` naming the axis, the first differing index and both values unless the axes match to
+/// `rel_tol` relative; a NaN never matches.
+fn check_axis(
+  axis: &str,
+  (got_label, got): (&str, &[f64]),
+  (want_label, want): (&str, &[f64]),
+  rel_tol: f64,
+) -> Result<()> {
+  if got.len() != want.len() {
+    bail!(
+      "{got_label} {axis} has {} entries, {want_label} has {}",
+      got.len(),
+      want.len()
+    );
+  }
+  let off = (0..want.len()).find(|&i| {
+    let within = (got[i] - want[i]).abs() <= rel_tol * want[i].abs();
+    !within
+  });
+  match off {
+    Some(i) => bail!(
+      "{got_label} {axis}[{i}] is {:?}, {want_label}'s is {:?}",
+      got[i],
+      want[i]
+    ),
+    None => Ok(()),
+  }
 }
 
 #[cfg(test)]
