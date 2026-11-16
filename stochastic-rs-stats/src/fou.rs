@@ -178,7 +178,7 @@ pub fn fit_fou_central_differences(
 ///
 /// $$
 /// |\hat\sigma|^p=\frac{\Delta^{1-p\hat H}\,V_{k,p}(1)}{c_{k,p}\,T},\quad T=n\Delta,\qquad
-/// \hat\theta=\Bigl(\frac{\sum_i(X_i-\bar X)^2}{n\,\hat\sigma^2\hat H\,\Gamma(2\hat H)}\Bigr)^{-1/(2\hat H)}
+/// \hat\theta=\Bigl(\frac{\sum_{i=1}^{n}(X_i-\hat\mu)^2}{n\,\hat\sigma^2\hat H\,\Gamma(2\hat H)}\Bigr)^{-1/(2\hat H)}
 /// $$
 pub fn fit_fou_power_variation(
   path: ArrayView1<f64>,
