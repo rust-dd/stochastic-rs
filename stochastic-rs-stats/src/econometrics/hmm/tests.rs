@@ -189,7 +189,10 @@ fn an_infinite_std_panics() {
 fn an_empty_series_gives_the_empty_answers() {
   let hmm = two_state(0.5, 0.1, 0.5, 1.0);
   let empty = Array1::<f64>::zeros(0);
-  assert_eq!(hmm.log_likelihood(empty.view()), 0.0);
+  assert_eq!(
+    hmm.log_likelihood(empty.view()).to_bits(),
+    0.0_f64.to_bits()
+  );
   assert_eq!(hmm.filtered_state_probs(empty.view()).dim(), (0, 2));
   assert!(hmm.viterbi(empty.view()).is_empty());
 }

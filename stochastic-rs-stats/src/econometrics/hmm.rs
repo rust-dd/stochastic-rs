@@ -106,6 +106,9 @@ impl GaussianHmm {
 
   /// Forward-backward log-likelihood with log-space scaling; `0.0` for an empty series.
   pub fn log_likelihood(&self, observations: ArrayView1<f64>) -> f64 {
+    if observations.is_empty() {
+      return 0.0;
+    }
     let (_, scaling) = self.forward(observations);
     scaling.iter().map(|s| s.ln()).sum()
   }
