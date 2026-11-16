@@ -201,47 +201,50 @@ impl PySabrCalibrator {
     regularization: Option<(Vec<f64>, Vec<f64>)>,
   ) -> PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
-      use ndarray::Array1;
       if strikes.len() != prices.len() {
         return Err(PyValueError::new_err(
           "strikes and prices must have equal length",
         ));
       }
-      let n = strikes.len();
       let ot = parse_option_type(option_type)?;
-      let mut inner = crate::calibration::sabr::SabrCalibrator::new(
-        None,
-        Array1::from_vec(prices),
-        Array1::from_vec(vec![s; n]),
-        Array1::from_vec(strikes),
-        r,
-        q,
-        tau,
-        ot,
-        false,
-      );
+      let quotes = strikes
+        .iter()
+        .zip(&prices)
+        .map(|(&k, &price)| crate::OptionQuote::new(k, tau, price, ot))
+        .collect();
+      let mut options = crate::calibration::CalibrationOptions::default();
       if let Some((anchor, weights)) = regularization {
-        inner.regularization = Some(crate::calibration::Regularization::new(anchor, weights));
+        options = options.with_regularization(crate::calibration::Regularization::new(
+          hagan_order(anchor),
+          hagan_order(weights),
+        ));
       }
+      let inner = crate::calibration::sabr::SabrCalibrator::new(s, r, q.unwrap_or(0.0), quotes)
+        .with_options(options);
       Ok(Self { inner })
     })?
   }
 
   /// Returns `(alpha, beta, nu, rho, converged, loss_rmse)`.
   fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, bool, f64)> {
+    use crate::traits::CalibrationResult;
     use crate::traits::Calibrator;
-    let res = self
+    let fit = self
       .inner
       .calibrate(None)
       .map_err(|e| PyValueError::new_err(format!("SABR calibration failed: {e}")))?;
-    Ok((
-      res.alpha,
-      res.beta,
-      res.nu,
-      res.rho,
-      res.converged,
-      res.loss.get(crate::LossMetric::Rmse),
-    ))
+    let p = fit.params;
+    Ok((p.alpha, p.beta, p.nu, p.rho, fit.converged, fit.rmse()))
+  }
+}
+
+/// Python's `(alpha, nu, rho)` in the Rust anchor's Hagan order `(alpha, rho, nu)`; any other
+/// length reaches the calibrator unchanged, which reports the count.
+fn hagan_order(v: Vec<f64>) -> Vec<f64> {
+  if let [alpha, nu, rho] = v[..] {
+    vec![alpha, rho, nu]
+  } else {
+    v
   }
 }
 
@@ -252,8 +255,8 @@ pub struct PySabrCapletCalibrator {
 
 #[pymethods]
 impl PySabrCapletCalibrator {
-  /// SABR caplet smile calibrator — fits `(α, ν, ρ)` for a single expiry,
-  /// β held fixed.
+  /// SABR caplet smile calibrator: fits `(α, ν, ρ)` for one expiry at a fixed β, from `ν = 0.4`,
+  /// `ρ = −0.2` and `α = σ F^{1−β}` with `σ` the vol at the strike nearest the forward.
   #[new]
   fn new(
     forward: f64,
@@ -262,34 +265,58 @@ impl PySabrCapletCalibrator {
     strikes: Vec<f64>,
     market_vols: Vec<f64>,
   ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::calibration::sabr_caplet::SabrCapletCalibrator::new(
-        forward,
-        expiry,
-        beta,
-        strikes,
-        market_vols,
-      ),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let start = caplet_start(forward, beta, &strikes, &market_vols)?;
+      Ok(Self {
+        inner: crate::calibration::sabr_caplet::SabrCapletCalibrator::new(
+          forward,
+          expiry,
+          strikes,
+          market_vols,
+          start,
+        ),
+      })
+    })?
   }
 
-  /// Returns `(alpha, beta, nu, rho, rmse, converged)`.
-  ///
-  /// `converged` requires simplex objective spread below `sd_tolerance`.
-  /// An iteration limit or nonfinite simplex costs returns `false`.
+  /// Returns `(alpha, beta, nu, rho, rmse, converged)`; `converged` means the simplex cost spread
+  /// fell below 1e-10, and reaching 600 iterations or a nonfinite cost gives `false`.
   fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, bool)> {
+    use crate::traits::CalibrationResult;
     use crate::traits::Calibrator;
-    let res = self
+    let fit = self
       .inner
       .calibrate(None)
       .map_err(|e| PyValueError::new_err(format!("SABR caplet calibration failed: {e}")))?;
-    Ok((
-      res.alpha,
-      res.beta,
-      res.nu,
-      res.rho,
-      res.rmse,
-      res.converged,
-    ))
+    let p = fit.params.sabr;
+    Ok((p.alpha, p.beta, p.nu, p.rho, fit.rmse(), fit.converged))
   }
+}
+
+fn caplet_start(
+  forward: f64,
+  beta: f64,
+  strikes: &[f64],
+  vols: &[f64],
+) -> PyResult<crate::calibration::sabr_caplet::SabrCapletParams> {
+  let atm = strikes
+    .iter()
+    .zip(vols)
+    .min_by(|a, b| (a.0 - forward).abs().total_cmp(&(b.0 - forward).abs()))
+    .map_or(0.2, |(_, &vol)| vol);
+  let alpha = atm * forward.powf(1.0 - beta);
+  if !(alpha.is_finite() && alpha > 0.0) {
+    return Err(PyValueError::new_err(format!(
+      "forward {forward} and the vol nearest it give no positive starting alpha, got {alpha}"
+    )));
+  }
+  Ok(crate::calibration::sabr_caplet::SabrCapletParams {
+    sabr: crate::pricing::sabr::SabrParams {
+      alpha,
+      beta,
+      rho: -0.2,
+      nu: 0.4,
+    },
+    shift: 0.0,
+  })
 }

@@ -2,6 +2,11 @@ use super::*;
 use basin::CostFunction;
 use basin::Gradient;
 
+use crate::LossMetric;
+use crate::QuantError;
+use crate::pricing::sabr::SabrParams;
+use crate::traits::Calibrator;
+
 fn bounded_problem() -> objective::SabrSmileProblem {
   objective::SabrSmileProblem {
     s: 1.0,
@@ -56,12 +61,13 @@ fn bounded_sabr_low_spot_calibration_returns_consistent_results() {
     let calibrator = SabrSmileCalibrator::new(0.05, 0.02, 0.01, 1.0, quotes)
       .with_strike_bounds(0.02, 0.08)
       .with_basin_hopping_iters(iterations, iterations);
-    let result = calibrator.calibrate();
+    let result = calibrator.calibrate(None).unwrap();
+    let k = result.diagnostics;
     let x = vec![
-      result.k_rr_call,
-      result.k_rr_put,
-      result.k_bf_call,
-      result.k_bf_put,
+      k.k_rr_call,
+      k.k_rr_put,
+      k.k_bf_call,
+      k.k_bf_put,
       result.params.nu,
       result.params.rho,
     ];
@@ -72,10 +78,98 @@ fn bounded_sabr_low_spot_calibration_returns_consistent_results() {
     for i in 0..x.len() {
       assert!((problem.bounds_lo[i]..=problem.bounds_hi[i]).contains(&x[i]));
     }
-    assert!(result.objective.is_finite());
-    assert_eq!(result.objective, problem.cost(&x).unwrap());
-    assert_eq!(result.success, result.objective < calibrator.success_tol);
+    let objective = problem.cost(&x).unwrap();
+    assert!(objective.is_finite());
+    assert_eq!(result.loss.get(LossMetric::Mse), objective / 3.0);
+    assert_eq!(result.loss.get(LossMetric::Rmse), (objective / 3.0).sqrt());
+    assert_eq!(result.message, Some(format!("objective {objective:e}")));
+    assert_eq!(result.converged, objective < calibrator.success_tol);
   }
+}
+
+/// With no hop the fit stays at its start and reads back the `(ν, ρ)` it was seeded with.
+#[test]
+fn a_start_seeds_nu_and_rho() {
+  let quotes = SabrSmileQuotes {
+    tau: 0.5,
+    sigma_atm: 0.2,
+    sigma_rr: 0.01,
+    sigma_bf: 0.002,
+  };
+  let start = SabrParams {
+    alpha: 0.2,
+    beta: 0.5,
+    rho: -0.4,
+    nu: 1.2,
+  };
+  let fit = SabrSmileCalibrator::new(1.0, 0.02, 0.01, 1.0, quotes)
+    .with_basin_hopping_iters(0, 0)
+    .calibrate(Some(start))
+    .unwrap();
+  assert_eq!(
+    (fit.params.nu, fit.params.rho, fit.params.beta),
+    (1.2, -0.4, 1.0)
+  );
+}
+
+#[test]
+fn bad_quotes_and_a_non_finite_start_are_errors() {
+  let quotes = SabrSmileQuotes {
+    tau: 0.5,
+    sigma_atm: 0.2,
+    sigma_rr: 0.01,
+    sigma_bf: 0.002,
+  };
+  for (field, bad) in [
+    ("tau", SabrSmileQuotes { tau: 0.0, ..quotes }),
+    (
+      "sigma_atm",
+      SabrSmileQuotes {
+        sigma_atm: f64::NAN,
+        ..quotes
+      },
+    ),
+    (
+      "sigma_rr",
+      SabrSmileQuotes {
+        sigma_rr: f64::INFINITY,
+        ..quotes
+      },
+    ),
+  ] {
+    let err = SabrSmileCalibrator::new(1.0, 0.02, 0.01, 1.0, bad)
+      .calibrate(None)
+      .unwrap_err();
+    assert!(
+      matches!(&err, QuantError::InvalidInput { what: "smile quotes", reason } if reason.starts_with(field)),
+      "{err}"
+    );
+  }
+  let start = SabrParams {
+    alpha: 0.2,
+    beta: 1.0,
+    rho: f64::NAN,
+    nu: 0.5,
+  };
+  let err = SabrSmileCalibrator::new(1.0, 0.02, 0.01, 1.0, quotes)
+    .calibrate(Some(start))
+    .unwrap_err();
+  assert!(
+    matches!(err, QuantError::InvalidInput { what: "start", .. }),
+    "{err}"
+  );
+}
+
+#[test]
+#[should_panic(expected = "beta must satisfy `(0.0..=1.0).contains(&beta)`, got beta = 1.5")]
+fn a_beta_outside_the_unit_interval_panics_in_new() {
+  let quotes = SabrSmileQuotes {
+    tau: 0.5,
+    sigma_atm: 0.2,
+    sigma_rr: 0.01,
+    sigma_bf: 0.002,
+  };
+  let _ = SabrSmileCalibrator::new(1.0, 0.02, 0.01, 1.5, quotes);
 }
 
 #[test]
@@ -160,23 +254,10 @@ fn test_sabr_smile_calibrate() {
     ),
   ];
 
-  let results = SabrSmileCalibrator::calibrate_and_plot_many(s, r_brl, r_usd, beta, &cases);
-
-  for (i, ((label, q), res)) in cases.iter().zip(results.iter()).enumerate() {
-    println!("\nTenor {} (T={:.4}):", label, q.tau);
-    println!(
-      "  K_ATM={:.6}, alpha={:.6}, beta={:.2}, nu={:.6}, rho={:.6}",
-      res.k_atm, res.params.alpha, res.params.beta, res.params.nu, res.params.rho
-    );
-    println!("  Objective: {:.6e}", res.objective);
-    assert!(res.success);
-    assert!(res.objective < 1e-3, "Objective too large for tenor {}", i);
-  }
-
-  #[cfg(feature = "viz")]
-  {
-    let page = std::fs::read_to_string(calibrate::plot_path("sabr_smile_many.html"));
-    assert!(page.unwrap().contains("Plotly.newPlot"));
+  let results = SabrSmileCalibrator::calibrate_many(s, r_brl, r_usd, beta, &cases).unwrap();
+  assert_eq!(results.len(), cases.len());
+  for ((label, _), fit) in cases.iter().zip(&results) {
+    assert!(fit.converged, "tenor {label}: {:?}", fit.message);
   }
 }
 

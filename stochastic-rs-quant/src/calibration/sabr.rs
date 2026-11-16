@@ -1,113 +1,46 @@
-//! # Sabr
-//!
-//! Price-based Sabr calibrator using Levenberg-Marquardt.
-//!
-//! **Reference:** P. S. Hagan, D. Kumar, A. S. Lesniewski, D. E. Woodward,
-//! *Managing Smile Risk*, Wilmott Magazine, pp. 84–108, 2002.
+//! SABR fit to vanilla prices by Levenberg–Marquardt. A non-positive `s` panics in `new`; a
+//! non-positive strike is `Err(InvalidQuote)`: unlike a caplet's rate, it has no shifted reading.
 //!
 //! $$
 //! dF_t=\alpha_t F_t^\beta dW_t^1,\quad d\alpha_t=\nu\alpha_t dW_t^2,\ d\langle W^1,W^2\rangle_t=\rho dt
 //! $$
 //!
-//! ## Non-positive spot or strike
-//!
-//! [`hagan_implied_vol`](crate::pricing::sabr::hagan_implied_vol) requires a
-//! strictly positive forward and strike, and `s`/`k` here feed both
-//! directly. [`SabrCapletCalibrator`](crate::calibration::sabr_caplet::SabrCapletCalibrator)
-//! handles the analogous problem with a displacement shift because a
-//! negative interest-rate forward is a genuine market state (EUR, JPY and
-//! CHF caplet forwards were routinely negative from roughly 2015 to 2022).
-//! That reasoning does not transfer here: `s`/`k` are an equity or FX spot
-//! and strike, so a non-positive value is not a market state, it is invalid
-//! input. [`Calibrator::calibrate`](crate::traits::Calibrator::calibrate)
-//! therefore rejects it outright — `Err` naming the offending quote —
-//! rather than reinterpreting it in shifted coordinates. Do not
-//! "harmonise" this calibrator with the caplet one's shift; the two fixes
-//! address the same symptom for different, non-interchangeable reasons.
-//!
-use std::cell::RefCell;
-use std::rc::Rc;
+//! Hagan, Kumar, Lesniewski & Woodward (2002), "Managing Smile Risk", Wilmott Magazine, 84–108.
 
 use ndarray::Array1;
 use ndarray::Array2;
 
 use crate::CalibrationLossScore;
-use crate::LossMetric;
-use crate::OptionType;
+use crate::OptionQuote;
 use crate::QuantError;
+use crate::calibration::Calibrated;
 use crate::calibration::CalibrationHistory;
+use crate::calibration::CalibrationOptions;
 use crate::calibration::Regularization;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::LmOptions;
 use crate::calibration::least_squares::minimize;
+use crate::calibration::quote::validate_quotes;
 use crate::pricing::sabr::SabrParams;
 use crate::pricing::sabr::SabrPricer;
+use crate::traits::ModelPricer;
+use crate::traits::ToModel;
 
 const RHO_BOUND: f64 = 0.9999;
 const ALPHA_MIN: f64 = 1e-6;
 const NU_MIN: f64 = 1e-6;
+const DEFAULT_START: SabrParams = SabrParams {
+  alpha: 0.2,
+  beta: 1.0,
+  rho: 0.0,
+  nu: 0.8,
+};
 
-/// Calibration result for the Sabr model.
-#[derive(Clone, Debug)]
-pub struct SabrCalibrationResult {
-  pub alpha: f64,
-  pub beta: f64,
-  pub nu: f64,
-  pub rho: f64,
-  /// Calibration loss metrics.
-  pub loss: CalibrationLossScore,
-  /// Whether the optimiser converged.
-  pub converged: bool,
-}
+impl<D> ToModel for Calibrated<SabrParams, D> {
+  type Model = SabrPricer;
 
-impl crate::traits::ToModel for SabrCalibrationResult {
-  type Model = crate::pricing::sabr::SabrPricer;
-  fn to_model(&self) -> Self::Model {
-    crate::pricing::sabr::SabrPricer::new(SabrParams {
-      alpha: self.alpha,
-      beta: self.beta,
-      rho: self.rho,
-      nu: self.nu,
-    })
-  }
-}
-
-impl crate::traits::CalibrationResult for SabrCalibrationResult {
-  type Params = SabrParams;
-  fn rmse(&self) -> f64 {
-    self.loss.get(LossMetric::Rmse)
-  }
-
-  fn converged(&self) -> bool {
-    self.converged
-  }
-
-  fn params(&self) -> Self::Params {
-    SabrParams {
-      alpha: self.alpha,
-      beta: self.beta,
-      rho: self.rho,
-      nu: self.nu,
-    }
-  }
-
-  fn loss_score(&self) -> Option<&CalibrationLossScore> {
-    Some(&self.loss)
-  }
-}
-
-impl crate::traits::Calibrator for SabrCalibrator {
-  type Params = SabrParams;
-  type Output = SabrCalibrationResult;
-  type Error = QuantError;
-
-  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
-    let mut this = self.clone();
-    if let Some(p) = initial {
-      this.params = Some(p.projected());
-    }
-    this.validate_market_data()?;
-    Ok(this.solve())
+  fn to_model(&self) -> SabrPricer {
+    SabrPricer::new(self.params)
   }
 }
 
@@ -161,203 +94,138 @@ impl SabrParams {
   }
 }
 
-#[derive(Clone)]
+/// Levenberg–Marquardt fit of `(α, ν, ρ)` to vanilla quotes at the start's fixed `β`.
+#[derive(Clone, Debug)]
 pub struct SabrCalibrator {
-  /// Model parameter set (input or calibrated output).
-  pub params: Option<SabrParams>,
-  /// Observed market option prices used for calibration.
-  pub c_market: Array1<f64>,
-  /// Underlying spot/forward level.
-  pub s: Array1<f64>,
-  /// Strike level.
-  pub k: Array1<f64>,
-  /// Risk-free rate used for discounting.
+  pub s: f64,
   pub r: f64,
-  /// Dividend yield / convenience yield.
-  pub q: Option<f64>,
-  /// Time to maturity in years.
-  pub tau: f64,
-  /// Option direction (call/put).
-  pub option_type: OptionType,
-  /// If true, stores optimization parameter history.
-  pub record_history: bool,
-  /// Which loss metrics to compute when recording history.
-  pub loss_metrics: &'static [LossMetric],
-  /// Optional Tikhonov pull of `(α, ν, ρ)` toward an anchor; `None` keeps
-  /// the unregularised path.
-  pub regularization: Option<Regularization>,
-  calibration_history: Rc<RefCell<Vec<CalibrationHistory<SabrParams>>>>,
+  pub q: f64,
+  pub quotes: Vec<OptionQuote>,
+  /// `None` starts from `α = 0.2, β = 1, ρ = 0, ν = 0.8`.
+  pub start: Option<SabrParams>,
+  /// Levenberg–Marquardt knobs; `regularization` pulls Hagan's `(α, ρ, ν)`.
+  pub options: CalibrationOptions,
 }
 
 impl SabrCalibrator {
-  pub fn new(
-    params: Option<SabrParams>,
-    c_market: Array1<f64>,
-    s: Array1<f64>,
-    k: Array1<f64>,
-    r: f64,
-    q: Option<f64>,
-    tau: f64,
-    option_type: OptionType,
-    record_history: bool,
-  ) -> Self {
+  /// Panics unless `s` is finite and positive and `r`, `q` finite; `calibrate` checks the quotes.
+  pub fn new(s: f64, r: f64, q: f64, quotes: Vec<OptionQuote>) -> Self {
     assert!(
-      s.len() == k.len() && k.len() == c_market.len(),
-      "s, k and c_market must have equal length, got s.len() = {}, k.len() = {}, c_market.len() = {}",
-      s.len(),
-      k.len(),
-      c_market.len()
+      s.is_finite() && s > 0.0,
+      "s must satisfy `s.is_finite() && s > 0.0`, got s = {s:?}"
+    );
+    assert!(
+      r.is_finite(),
+      "r must satisfy `r.is_finite()`, got r = {r:?}"
+    );
+    assert!(
+      q.is_finite(),
+      "q must satisfy `q.is_finite()`, got q = {q:?}"
     );
     Self {
-      params,
-      c_market,
       s,
-      k,
       r,
       q,
-      tau,
-      option_type,
-      record_history,
-      loss_metrics: &LossMetric::ALL,
-      regularization: None,
-      calibration_history: Rc::new(RefCell::new(Vec::new())),
+      quotes,
+      start: None,
+      options: CalibrationOptions::default(),
     }
   }
 
-  /// Adds a Tikhonov pull toward `regularization.anchor` in the natural
-  /// order `(α, ν, ρ)`; β stays fixed.
-  pub fn with_regularization(mut self, regularization: Regularization) -> Self {
-    assert_eq!(
-      regularization.dimension(),
-      3,
-      "SABR regularisation needs three anchors"
-    );
-    self.regularization = Some(regularization);
+  /// Panics unless `start` passes [`SabrParams::new`]; its `β` stays fixed through the fit.
+  pub fn with_start(mut self, start: SabrParams) -> Self {
+    self.start = Some(SabrParams::new(
+      start.alpha,
+      start.beta,
+      start.rho,
+      start.nu,
+    ));
+    self
+  }
+
+  pub fn with_options(mut self, options: CalibrationOptions) -> Self {
+    self.options = options;
     self
   }
 }
 
-impl SabrCalibrator {
-  /// `Err` naming the first spot or strike that is not finite and positive, where the Hagan expansion would feed NaN residuals to the
-  /// Levenberg–Marquardt fit; `!x.is_finite() || x <= 0.0` so a NaN, which fails every comparison, is rejected too.
-  fn validate_market_data(&self) -> Result<(), QuantError> {
-    for (i, &s) in self.s.iter().enumerate() {
-      if !s.is_finite() || s <= 0.0 {
-        return Err(QuantError::InvalidQuote {
-          index: i,
-          reason: format!("spot s[{i}] must be finite and positive, got {s}"),
-        });
-      }
-    }
-    for (i, &k) in self.k.iter().enumerate() {
-      if !k.is_finite() || k <= 0.0 {
-        return Err(QuantError::InvalidQuote {
-          index: i,
-          reason: format!("strike k[{i}] must be finite and positive, got {k}"),
-        });
-      }
-    }
-    Ok(())
-  }
+impl crate::traits::Calibrator for SabrCalibrator {
+  type Params = SabrParams;
+  type Output = Calibrated<SabrParams>;
+  type Error = QuantError;
 
-  fn solve(&self) -> SabrCalibrationResult {
-    let mut problem = self.clone();
-    problem.ensure_initial_guess();
-
-    let (result, report) = minimize(
+  /// A start replaces `self.start`; `InvalidInput` unless it passes `SabrParams::new`.
+  fn calibrate(&self, initial: Option<SabrParams>) -> Result<Calibrated<SabrParams>, QuantError> {
+    validate_quotes(&self.quotes)?;
+    if let Some(reason) = initial.and_then(|start| start.violation()) {
+      return Err(QuantError::invalid("start", reason));
+    }
+    let problem = SabrProblem {
+      calibrator: self,
+      market: self.quotes.iter().map(|quote| quote.price).collect(),
+      params: initial.or(self.start).unwrap_or(DEFAULT_START).projected(),
+      regularization: self.options.regularization_for(3)?.map(optimiser_order),
+      history: Vec::new(),
+    };
+    let (problem, report) = minimize(
       problem,
       LmOptions {
+        tolerance: self.options.tolerance,
+        patience: self.options.patience,
         pivoted_qr: false,
-        ..LmOptions::default()
+        max_iterations: self.options.max_iterations,
       },
     );
-    let converged = report.converged;
-    let p = result.effective_params();
-    let c_model = result.compute_model_prices_for(&p);
-    let loss = CalibrationLossScore::compute_selected(
-      result.c_market.as_standard_layout().as_slice().unwrap(),
-      c_model.as_slice().unwrap(),
-      result.loss_metrics,
-    );
-
-    SabrCalibrationResult {
-      alpha: p.alpha,
-      beta: p.beta,
-      nu: p.nu,
-      rho: p.rho,
-      loss,
-      converged,
-    }
+    let model = problem.model_prices(&problem.params);
+    Ok(report.calibrated(
+      problem.params,
+      &problem.market,
+      &model,
+      self.options.loss_metrics,
+      problem.history,
+    ))
   }
+}
 
-  pub fn set_initial_guess(&mut self, params: SabrParams) {
-    self.params = Some(params.projected());
-  }
+/// Hagan's `(α, ρ, ν)` anchor and weights in the optimiser's `(α, ν, ρ)` order.
+fn optimiser_order(regularization: Regularization) -> Regularization {
+  let reorder = |v: &[f64]| vec![v[0], v[2], v[1]];
+  Regularization::new(
+    reorder(&regularization.anchor),
+    reorder(&regularization.weights),
+  )
+}
 
-  pub fn set_record_history(&mut self, record: bool) {
-    self.record_history = record;
-  }
+/// One fit: the current point, the regularization in the optimiser's order and the trail.
+struct SabrProblem<'a> {
+  calibrator: &'a SabrCalibrator,
+  market: Vec<f64>,
+  params: SabrParams,
+  regularization: Option<Regularization>,
+  history: Vec<CalibrationHistory<SabrParams>>,
+}
 
-  pub fn history(&self) -> Vec<CalibrationHistory<SabrParams>> {
-    self.calibration_history.borrow().clone()
-  }
-
-  fn ensure_initial_guess(&mut self) {
-    if self.params.is_none() {
-      self.params = Some(
-        SabrParams {
-          alpha: 0.2,
-          beta: 1.0,
-          rho: 0.0,
-          nu: 0.8,
-        }
-        .projected(),
-      );
-    }
-  }
-
-  fn effective_params(&self) -> SabrParams {
-    if let Some(p) = &self.params {
-      return (*p).projected();
-    }
-    SabrParams {
-      alpha: 0.2,
-      beta: 1.0,
-      rho: 0.0,
-      nu: 0.8,
-    }
-    .projected()
-  }
-
-  fn compute_model_prices_for(&self, p: &SabrParams) -> Array1<f64> {
-    let mut c_model = Array1::zeros(self.c_market.len());
-    for i in 0..self.c_market.len() {
-      let pr = SabrPricer::new(*p);
-      let (call, put) = pr.call_put(
-        self.s[i],
-        self.k[i],
-        self.r,
-        self.q.unwrap_or(0.0),
-        self.tau,
-      );
-      c_model[i] = match self.option_type {
-        OptionType::Call => call,
-        OptionType::Put => put,
-      };
-    }
-    c_model
+impl SabrProblem<'_> {
+  fn model_prices(&self, p: &SabrParams) -> Vec<f64> {
+    let pricer = SabrPricer::new(*p);
+    let SabrCalibrator { s, r, q, .. } = *self.calibrator;
+    self
+      .calibrator
+      .quotes
+      .iter()
+      .map(|quote| pricer.price_option(s, quote.strike, r, q, quote.tau, quote.option_type))
+      .collect()
   }
 
   fn residuals_for(&self, p: &SabrParams) -> Array1<f64> {
-    self.c_market.clone() - self.compute_model_prices_for(p)
+    let model = self.model_prices(p);
+    Array1::from_iter(self.market.iter().zip(&model).map(|(m, q)| m - q))
   }
 
   fn numeric_jacobian(&self, p: &SabrParams) -> Array2<f64> {
-    let n = self.c_market.len();
-    let m = 3usize; // alpha, nu, rho
-    let base: Array1<f64> = p.as_lm_vec();
-    let mut J = Array2::zeros((n, m));
-    for col in 0..m {
+    let base = p.as_lm_vec();
+    let mut jacobian = Array2::zeros((self.market.len(), base.len()));
+    for col in 0..base.len() {
       let x = base[col];
       let mut h = 1e-5_f64.max(1e-3 * x.abs());
       let mut p_plus = *p;
@@ -385,53 +253,38 @@ impl SabrCalibrator {
       }
       p_plus.project_in_place();
       p_minus.project_in_place();
-      let r_plus = self.residuals_for(&p_plus);
-      let r_minus = self.residuals_for(&p_minus);
-      let diff = (r_plus - r_minus) / (2.0 * h);
-      for row in 0..n {
-        J[(row, col)] = diff[row];
-      }
+      let diff = (self.residuals_for(&p_plus) - self.residuals_for(&p_minus)) / (2.0 * h);
+      jacobian.column_mut(col).assign(&diff);
     }
-    J
+    jacobian
   }
 }
 
-impl LeastSquaresProblem for SabrCalibrator {
-  fn set_params(&mut self, params: &Array1<f64>) {
-    let beta = self.effective_params().beta;
-    let mut p = SabrParams {
-      alpha: params[0],
-      beta,
-      rho: params[2],
-      nu: params[1],
-    };
-    p.project_in_place();
-    self.params = Some(p);
+impl LeastSquaresProblem for SabrProblem<'_> {
+  fn set_params(&mut self, x: &Array1<f64>) {
+    self.params = SabrParams {
+      alpha: x[0],
+      beta: self.params.beta,
+      rho: x[2],
+      nu: x[1],
+    }
+    .projected();
   }
 
   fn params(&self) -> Array1<f64> {
-    self.effective_params().as_lm_vec()
+    self.params.as_lm_vec()
   }
 
   fn residuals(&mut self) -> Option<Array1<f64>> {
-    let p = self.effective_params();
-    let c_model = self.compute_model_prices_for(&p);
-    if self.record_history {
-      let loss = CalibrationLossScore::compute_selected(
-        self.c_market.as_standard_layout().as_slice().unwrap(),
-        c_model.as_slice().unwrap(),
-        self.loss_metrics,
-      );
-      let mut history = self.calibration_history.borrow_mut();
-      let iteration = history.len();
-      history.push(CalibrationHistory::new(
-        iteration,
-        p,
-        self.c_market.clone() - c_model.clone(),
-        loss,
-      ));
+    let model = self.model_prices(&self.params);
+    let residuals = Array1::from_iter(self.market.iter().zip(&model).map(|(m, q)| m - q));
+    let options = &self.calibrator.options;
+    if options.record_history {
+      let loss = CalibrationLossScore::compute_selected(&self.market, &model, options.loss_metrics);
+      let entry = CalibrationHistory::new(self.history.len(), self.params, residuals.clone(), loss);
+      self.history.push(entry);
     }
-    let residuals = self.c_market.clone() - c_model;
+    let p = self.params;
     match &self.regularization {
       Some(reg) if reg.is_active() => {
         Some(reg.augment_residuals(residuals, &[p.alpha, p.nu, p.rho]))
@@ -441,7 +294,7 @@ impl LeastSquaresProblem for SabrCalibrator {
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
-    let jacobian = self.numeric_jacobian(&self.effective_params());
+    let jacobian = self.numeric_jacobian(&self.params);
     match &self.regularization {
       Some(reg) if reg.is_active() => Some(reg.augment_jacobian(jacobian, reg.jacobian_rows())),
       _ => Some(jacobian),

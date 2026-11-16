@@ -190,8 +190,7 @@
 //! ### Sabr (per-slice, stitched with SSVI)
 //!
 //! ```
-//! use ndarray::Array1;
-//! use stochastic_rs_quant::OptionType;
+//! use stochastic_rs_quant::{OptionQuote, OptionType};
 //! use stochastic_rs_quant::calibration::SabrCalibrator;
 //! use stochastic_rs_quant::pricing::sabr::{SabrParams, SabrPricer};
 //! use stochastic_rs_quant::traits::{Calibrator, ModelPricer, ToModel};
@@ -206,13 +205,11 @@
 //!
 //! // Calibrate Sabr per slice, from synthetic (round-trippable) market prices.
 //! let sabr_results: Vec<_> = taus.iter().map(|&tau| {
-//!     let prices: Vec<f64> = strikes.iter().map(|&k| {
-//!         SabrPricer::new(true_p)
-//!             .price_call(s0, k, r, q, tau)
+//!     let quotes: Vec<OptionQuote> = strikes.iter().map(|&k| {
+//!         let price = SabrPricer::new(true_p).price_call(s0, k, r, q, tau);
+//!         OptionQuote::new(k, tau, price, OptionType::Call)
 //!     }).collect();
-//!     let cal = SabrCalibrator::new(None, prices.into(), Array1::from_elem(strikes.len(), s0),
-//!         Array1::from_vec(strikes.to_vec()), r, Some(q), tau, OptionType::Call, false);
-//!     cal.calibrate(None).unwrap()
+//!     SabrCalibrator::new(s0, r, q, quotes).calibrate(None).unwrap()
 //! }).collect();
 //!
 //! // Use any single slice model for a surface, or stitch via the IV pipeline:
@@ -295,7 +292,7 @@ pub use pipeline::build_surface_from_iv;
 pub use pipeline::build_surface_from_model;
 pub use sabr_smile::SabrSmileCalibrator;
 pub use sabr_smile::SabrSmileQuotes;
-pub use sabr_smile::SabrSmileResult;
+pub use sabr_smile::SmileStrikes;
 pub use ssvi::SsviParams;
 pub use ssvi::SsviSurface;
 pub use svi::SviJumpWings;

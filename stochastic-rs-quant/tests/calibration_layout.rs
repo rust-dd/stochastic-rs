@@ -228,3 +228,133 @@ fn the_tree_calibrators_carry_their_fixed_inputs_in_params() {
   .unwrap();
   assert_eq!(bk.to_short_rate_model().theta_log, 0.03_f64.ln());
 }
+
+#[test]
+fn the_sabr_family_shares_the_shape_and_the_smile_implements_calibrator() {
+  use stochastic_rs_quant::OptionQuote;
+  use stochastic_rs_quant::QuantError;
+  use stochastic_rs_quant::calibration::CalibrationOptions;
+  use stochastic_rs_quant::calibration::sabr::SabrCalibrator;
+  use stochastic_rs_quant::calibration::sabr_caplet::SabrCapletCalibrator;
+  use stochastic_rs_quant::calibration::sabr_caplet::SabrCapletParams;
+  use stochastic_rs_quant::pricing::sabr::SabrParams;
+  use stochastic_rs_quant::pricing::sabr::SabrPricer;
+  use stochastic_rs_quant::pricing::sabr::hagan_implied_vol;
+  use stochastic_rs_quant::traits::CalibrationResult;
+  use stochastic_rs_quant::vol_surface::sabr_smile::SabrSmileCalibrator;
+  use stochastic_rs_quant::vol_surface::sabr_smile::SabrSmileQuotes;
+  fn assert_send_sync<T: Send + Sync>() {}
+  assert_send_sync::<SabrCalibrator>();
+  assert_send_sync::<SabrCapletCalibrator>();
+  assert_send_sync::<SabrSmileCalibrator>();
+  let truth = SabrParams {
+    alpha: 0.2,
+    beta: 1.0,
+    rho: -0.3,
+    nu: 0.6,
+  };
+  let strikes = [80.0, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0];
+  let quotes: Vec<OptionQuote> = strikes
+    .iter()
+    .map(|&k| {
+      let price = SabrPricer::new(truth).price_call(100.0, k, 0.01, 0.0, 1.0);
+      OptionQuote::new(k, 1.0, price, OptionType::Call)
+    })
+    .collect();
+  let fit = SabrCalibrator::new(100.0, 0.01, 0.0, quotes.clone())
+    .calibrate(None)
+    .unwrap();
+  assert!((fit.params.nu - 0.6).abs() < 0.05 && fit.max_error.is_some());
+  let mut bad = quotes;
+  bad[2].strike = -1.0;
+  assert!(matches!(
+    SabrCalibrator::new(100.0, 0.01, 0.0, bad)
+      .calibrate(None)
+      .unwrap_err(),
+    QuantError::InvalidQuote { index: 2, .. }
+  ));
+  let caplet_truth = SabrParams {
+    alpha: 0.03,
+    beta: 0.5,
+    rho: -0.2,
+    nu: 0.4,
+  };
+  let vols: Vec<f64> = strikes
+    .iter()
+    .map(|&k| hagan_implied_vol(k / 1000.0, 0.1, 2.0, &caplet_truth))
+    .collect();
+  let start = SabrCapletParams {
+    sabr: SabrParams {
+      alpha: 0.02,
+      beta: 0.5,
+      rho: 0.0,
+      nu: 0.3,
+    },
+    shift: 0.0,
+  };
+  let caplet = SabrCapletCalibrator::new(
+    0.1,
+    2.0,
+    strikes.iter().map(|k| k / 1000.0).collect(),
+    vols,
+    start,
+  )
+  .with_options(CalibrationOptions::default().with_tolerance(1e-14))
+  .calibrate(None)
+  .unwrap();
+  assert!(
+    caplet.rmse() < 1e-6 && (caplet.params.sabr.nu - 0.4).abs() < 1e-2,
+    "rmse {}",
+    caplet.rmse()
+  );
+  let smile = SabrSmileCalibrator::new(
+    1.1,
+    0.02,
+    0.01,
+    1.0,
+    SabrSmileQuotes {
+      tau: 1.0,
+      sigma_atm: 0.1,
+      sigma_rr: -0.01,
+      sigma_bf: 0.003,
+    },
+  );
+  let out = smile.calibrate(None).unwrap();
+  assert!(out.converged && out.diagnostics.k_atm > 1.0 && out.params.beta == 1.0);
+}
+
+#[cfg(feature = "viz")]
+#[test]
+fn the_smile_plots_go_where_they_are_told() {
+  use stochastic_rs_quant::vol_surface::sabr_smile::SabrSmileCalibrator;
+  use stochastic_rs_quant::vol_surface::sabr_smile::SabrSmileQuotes;
+  let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"));
+  let cases = [(
+    "1Y",
+    SabrSmileQuotes {
+      tau: 1.0,
+      sigma_atm: 0.1,
+      sigma_rr: -0.01,
+      sigma_bf: 0.003,
+    },
+  )];
+  let fits = SabrSmileCalibrator::calibrate_many(1.1, 0.02, 0.01, 1.0, &cases).unwrap();
+  let many = dir.join("sabr_smiles.html");
+  SabrSmileCalibrator::plot_many(&many, 1.1, 0.02, 0.01, 1.0, &cases, &fits).unwrap();
+  assert!(
+    std::fs::read_to_string(&many)
+      .unwrap()
+      .contains("Plotly.newPlot")
+  );
+  let one = dir.join("sabr_smile.html");
+  SabrSmileCalibrator::new(1.1, 0.02, 0.01, 1.0, cases[0].1)
+    .plot(&one, &fits[0])
+    .unwrap();
+  assert!(
+    std::fs::read_to_string(&one)
+      .unwrap()
+      .contains("Plotly.newPlot")
+  );
+  let nowhere = dir.join("no such directory").join("smile.html");
+  assert!(SabrSmileCalibrator::plot_many(nowhere, 1.1, 0.02, 0.01, 1.0, &cases, &fits).is_err());
+}

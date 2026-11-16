@@ -1,4 +1,4 @@
-use crate::pricing::sabr::SabrParams;
+use crate::QuantError;
 
 #[derive(Clone, Copy, Debug)]
 pub struct SabrSmileQuotes {
@@ -10,6 +10,44 @@ pub struct SabrSmileQuotes {
   pub sigma_rr: f64,
   /// Butterfly (decimal): average of call/put away-from-atm vol premium over ATM
   pub sigma_bf: f64,
+}
+
+impl SabrSmileQuotes {
+  /// `InvalidInput` unless `tau` and `sigma_atm` are finite and positive and both spreads finite.
+  pub(super) fn validate(&self) -> Result<(), QuantError> {
+    let Self {
+      tau,
+      sigma_atm,
+      sigma_rr,
+      sigma_bf,
+    } = *self;
+    let reason = if !(tau.is_finite() && tau > 0.0) {
+      format!("tau must satisfy `tau.is_finite() && tau > 0.0`, got tau = {tau:?}")
+    } else if !(sigma_atm.is_finite() && sigma_atm > 0.0) {
+      format!(
+        "sigma_atm must satisfy `sigma_atm.is_finite() && sigma_atm > 0.0`, got sigma_atm = \
+         {sigma_atm:?}"
+      )
+    } else if !sigma_rr.is_finite() {
+      format!("sigma_rr must satisfy `sigma_rr.is_finite()`, got sigma_rr = {sigma_rr:?}")
+    } else if !sigma_bf.is_finite() {
+      format!("sigma_bf must satisfy `sigma_bf.is_finite()`, got sigma_bf = {sigma_bf:?}")
+    } else {
+      return Ok(());
+    };
+    Err(QuantError::invalid("smile quotes", reason))
+  }
+}
+
+/// The strikes a smile fit solves for: ATM (the forward) and the 25-delta risk-reversal and
+/// butterfly call/put pairs.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SmileStrikes {
+  pub k_atm: f64,
+  pub k_rr_call: f64,
+  pub k_rr_put: f64,
+  pub k_bf_call: f64,
+  pub k_bf_put: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -43,12 +81,29 @@ pub struct SabrSmileCalibrator {
   /// Maximum strike for `[k_rr_c, k_rr_p, k_bf_c, k_bf_p]`. Defaults to
   /// `s * 2.0`.
   pub strike_hi: f64,
-  /// [`SabrSmileResult::success`] holds when the final objective is below this; default `1e-3`.
+  /// `converged` holds when the final objective is below this; default `1e-3`.
   pub success_tol: f64,
 }
 
 impl SabrSmileCalibrator {
+  /// Panics unless `s` is finite and positive, `r_d` and `r_f` are finite and `beta ∈ [0, 1]`.
   pub fn new(s: f64, r_d: f64, r_f: f64, beta: f64, quotes: SabrSmileQuotes) -> Self {
+    assert!(
+      s.is_finite() && s > 0.0,
+      "s must satisfy `s.is_finite() && s > 0.0`, got s = {s:?}"
+    );
+    assert!(
+      r_d.is_finite(),
+      "r_d must satisfy `r_d.is_finite()`, got r_d = {r_d:?}"
+    );
+    assert!(
+      r_f.is_finite(),
+      "r_f must satisfy `r_f.is_finite()`, got r_f = {r_f:?}"
+    );
+    assert!(
+      (0.0..=1.0).contains(&beta),
+      "beta must satisfy `(0.0..=1.0).contains(&beta)`, got beta = {beta:?}"
+    );
     Self {
       s,
       r_d,
@@ -97,24 +152,4 @@ impl SabrSmileCalibrator {
     self.success_tol = tol;
     self
   }
-}
-
-#[derive(Clone, Debug)]
-pub struct SabrSmileResult {
-  /// ATM strike (= forward).
-  pub k_atm: f64,
-  /// Call strike corresponding to risk-reversal quote.
-  pub k_rr_call: f64,
-  /// Put strike corresponding to risk-reversal quote.
-  pub k_rr_put: f64,
-  /// Call strike corresponding to butterfly quote.
-  pub k_bf_call: f64,
-  /// Put strike corresponding to butterfly quote.
-  pub k_bf_put: f64,
-  /// Model parameter set (calibrated output).
-  pub params: SabrParams,
-  /// Final objective-function value.
-  pub objective: f64,
-  /// Indicates whether optimization converged successfully.
-  pub success: bool,
 }

@@ -28,7 +28,7 @@ export const FACTS = {
   /** 15 bivariate + 6 multivariate `BivariateExt` / `MultivariateExt` implementors. */
   copulas: 21,
   /** `impl Calibrator for` in stochastic-rs-quant. */
-  calibrators: 15,
+  calibrators: 16,
   /** `public/python-parity.json` count minus the four `ai`-feature registrations. */
   pythonEntries: 306,
   /** `#[test]` functions across the workspace, rounded down. */
