@@ -160,6 +160,21 @@ fn transition_density_has_unit_mass_and_correct_first_moment() {
   );
 }
 
+/// From `r_t = 5e-320` the density is its central limit, `8.79526042415e-93` by mpmath.
+#[test]
+fn a_subnormal_start_has_the_central_limit() {
+  let (cir, t, x) = (law(2.0, 0.04, 0.3), 1.0 / 252.0, 0.04);
+  let (subnormal, central) = (
+    cir.transition_pdf(t, 5e-320, x),
+    cir.transition_pdf(t, 0.0, x),
+  );
+  assert!(
+    ((subnormal - central) / central).abs() < 1e-12,
+    "{subnormal} vs {central}"
+  );
+  assert!(((central - 8.79526042415e-93) / 8.79526042415e-93).abs() < 1e-10);
+}
+
 #[test]
 fn zero_initial_state_reduces_to_the_central_chi_square_density() {
   let density = law(2.0, 0.04, 0.4).transition_pdf(1.0, 0.0, 0.03);
