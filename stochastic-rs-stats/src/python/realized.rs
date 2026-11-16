@@ -289,7 +289,7 @@ pub struct PyTwoScaleRV {
 #[pymethods]
 impl PyTwoScaleRV {
   /// Two-scale realised variance (Zhang-Mykland-Aït-Sahalia 2005).
-  /// `prices`: log-price series; `k`: subsample step.
+  /// `prices`: log-price series; `k`: subsample step, at least 2.
   #[new]
   fn new<'py>(prices: PyReadonlyArray1<'py, f64>, k: usize) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {

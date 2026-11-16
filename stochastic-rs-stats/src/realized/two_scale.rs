@@ -31,10 +31,11 @@ use ndarray::ArrayView1;
 use crate::traits::FloatExt;
 
 /// Two-scale realized variance (Zhang, Mykland, Aït-Sahalia 2005) of a price path subsampled every
-/// `k` prices, typically `c n^{2/3}`; NaN below `k + 2` prices, and panics unless `k >= 1`.
+/// `k` prices, typically `c n^{2/3}`; NaN below `k + 2` prices, and panics unless `k >= 2`.
 pub fn two_scale_rv<T: FloatExt>(prices: ArrayView1<T>, k: usize) -> T {
   let len = prices.len();
-  assert!(k >= 1, "k must satisfy `k >= 1`, got k = {k:?}");
+  // At `k = 1` the slow and fast scales coincide and the estimate is identically zero.
+  assert!(k >= 2, "k must satisfy `k >= 2`, got k = {k:?}");
   if len < k.saturating_add(2) {
     return T::nan();
   }
@@ -154,6 +155,12 @@ mod tests {
     let rv: f64 = dy.iter().map(|v| v * v).sum();
     let msrv = multi_scale_rv(y.view(), 12);
     assert!((msrv - iv).abs() < (rv - iv).abs());
+  }
+
+  #[test]
+  #[should_panic(expected = "k must satisfy `k >= 2`, got k = 1")]
+  fn a_unit_subsampling_step_panics() {
+    let _ = two_scale_rv(Array1::<f64>::linspace(1.0, 2.0, 50).view(), 1);
   }
 
   #[test]
