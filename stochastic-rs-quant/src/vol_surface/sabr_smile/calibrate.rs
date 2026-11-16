@@ -124,7 +124,7 @@ impl Calibrator for SabrSmileCalibrator {
       k_bf_call: x_best[2],
       k_bf_put: x_best[3],
     };
-    let (market, model) = problem.quotes_in_vol(&params, &strikes);
+    let (market, model) = problem.quotes_in_vol(&params, &strikes)?;
     let loss =
       CalibrationLossScore::compute_selected(&market, &model, &[LossMetric::Mse, LossMetric::Rmse]);
     let converged = f_best.is_finite() && f_best < self.success_tol;

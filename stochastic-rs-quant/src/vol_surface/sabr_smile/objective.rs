@@ -12,6 +12,7 @@ use basin::TerminationReason;
 use stochastic_rs_core::simd_rng::SimdRng;
 
 use super::types::SmileStrikes;
+use crate::QuantError;
 use crate::pricing::sabr::SabrParams;
 use crate::pricing::sabr::alpha_from_atm_vol;
 use crate::pricing::sabr::bs_price_fx;
@@ -76,9 +77,13 @@ pub(super) struct SabrSmileProblem {
 }
 
 impl SabrSmileProblem {
-  /// Market and model `[ATM, RR, BF]` in vol; the model BF is `σ_BF` plus the strangle premium
-  /// mismatch over the strangle's vega at `σ_ATM + σ_BF`.
-  pub(super) fn quotes_in_vol(&self, p: &SabrParams, k: &SmileStrikes) -> ([f64; 3], [f64; 3]) {
+  /// Market and model `[ATM, RR, BF]` in vol, the model BF `σ_BF` plus the strangle premium
+  /// mismatch over its vega at `σ_ATM + σ_BF`; `Numerical` unless that vega is finite and positive.
+  pub(super) fn quotes_in_vol(
+    &self,
+    p: &SabrParams,
+    k: &SmileStrikes,
+  ) -> Result<([f64; 3], [f64; 3]), QuantError> {
     let f = k.k_atm;
     let sigma_ref = self.sigma_atm + self.sigma_bf;
     let mismatch = bf_premium_mismatch(
@@ -93,13 +98,22 @@ impl SabrSmileProblem {
     );
     let vega = fx_vega(self.s, k.k_bf_call, f, self.r_f, self.tau, sigma_ref)
       + fx_vega(self.s, k.k_bf_put, f, self.r_f, self.tau, sigma_ref);
+    if !(vega.is_finite() && vega > 0.0) {
+      return Err(QuantError::Numerical {
+        what: "strangle vega",
+        reason: format!(
+          "it is {vega:?} at strikes {:?} and {:?}, sigma_atm + sigma_bf = {sigma_ref:?}",
+          k.k_bf_call, k.k_bf_put
+        ),
+      });
+    }
     let market = [self.sigma_atm, self.sigma_rr, self.sigma_bf];
     let model = [
       hagan_implied_vol(f, f, self.tau, p),
       rr_sigma(k.k_rr_call, k.k_rr_put, f, self.tau, p),
       self.sigma_bf + mismatch / vega,
     ];
-    (market, model)
+    Ok((market, model))
   }
 
   pub(super) fn clamp_params(&self, x: &[f64]) -> [f64; NVARS] {

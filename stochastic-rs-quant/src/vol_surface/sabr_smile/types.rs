@@ -13,7 +13,8 @@ pub struct SabrSmileQuotes {
 }
 
 impl SabrSmileQuotes {
-  /// `InvalidInput` unless `tau` and `sigma_atm` are finite and positive and both spreads finite.
+  /// `InvalidInput` unless `tau` and `sigma_atm` are finite and positive, both spreads finite and
+  /// the strangle's quoting vol `sigma_atm + sigma_bf` positive.
   pub(super) fn validate(&self) -> Result<(), QuantError> {
     let Self {
       tau,
@@ -32,6 +33,12 @@ impl SabrSmileQuotes {
       format!("sigma_rr must satisfy `sigma_rr.is_finite()`, got sigma_rr = {sigma_rr:?}")
     } else if !sigma_bf.is_finite() {
       format!("sigma_bf must satisfy `sigma_bf.is_finite()`, got sigma_bf = {sigma_bf:?}")
+    } else if sigma_atm + sigma_bf <= 0.0 {
+      format!(
+        "sigma_atm + sigma_bf must satisfy `sigma_atm + sigma_bf > 0.0`, got sigma_atm + sigma_bf = \
+         {:?}",
+        sigma_atm + sigma_bf
+      )
     } else {
       return Ok(());
     };
