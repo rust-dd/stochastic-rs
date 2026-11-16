@@ -43,6 +43,7 @@ use crate::hurst::variations::a2_coefficients;
 use crate::hurst::variations::daubechies_coeffs;
 use crate::hurst::variations::lfilter_f64;
 use crate::hurst::variations::power_variation;
+use crate::hurst::variations::power_variation_nonoverlap;
 use crate::traits::ProcessExt;
 
 /// Structured result of an fOU parameter estimator.
@@ -397,8 +398,8 @@ pub fn fit_fou_power_variation(
   let dt = delta.unwrap_or(1.0 / (path.len() - 1) as f64);
 
   let hurst = hurst_override.unwrap_or_else(|| {
-    let v1 = power_variation::<f64>(path, k, p, 1);
-    let v2 = power_variation::<f64>(path, k, p, 2);
+    let v1 = power_variation_nonoverlap::<f64>(path, k, p, 1);
+    let v2 = power_variation_nonoverlap::<f64>(path, k, p, 2);
     assert!(
       v1 > 0.0 && v2 > 0.0,
       "estimate_fou_v4: power variations must be positive"

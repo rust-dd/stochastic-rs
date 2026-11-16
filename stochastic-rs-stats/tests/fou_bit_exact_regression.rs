@@ -191,11 +191,12 @@ fn fou_v4_bit_exact_against_struct_era_inline_reference() {
     let sign = if ((kk - j) & 1) == 0 { 1.0 } else { -1.0 };
     sign * binom_ref(kk, j)
   }
-  let pv_ref = |path: &Array1<f64>, k: usize, p: f64, stride: usize| -> f64 {
+  // `step == stride` sums disjoint windows (ratio 2^(pH - 1)); overlapping ones give 2^(pH).
+  let pv_ref = |path: &Array1<f64>, k: usize, p: f64, stride: usize, step: usize| -> f64 {
     let nn = path.len();
     let span = k * stride;
     let mut v = 0.0;
-    for i in 0..(nn - span) {
+    for i in (0..(nn - span)).step_by(step) {
       let mut d = 0.0;
       for j in 0..=k {
         d += diff_coeff_ref(k, j) * path[i + j * stride];
@@ -216,8 +217,8 @@ fn fou_v4_bit_exact_against_struct_era_inline_reference() {
     0.5 * acc
   };
 
-  let v1 = pv_ref(&path, k, p, 1);
-  let v2 = pv_ref(&path, k, p, 2);
+  let v1 = pv_ref(&path, k, p, 1, 1);
+  let v2 = pv_ref(&path, k, p, 2, 2);
   let mut h = (1.0 + (v2 / v1).log2()) / p;
   if !h.is_finite() {
     h = 0.5;
@@ -226,7 +227,7 @@ fn fou_v4_bit_exact_against_struct_era_inline_reference() {
 
   let n_f = (n - 1) as f64;
   let t_horizon = n_f * delta_ref;
-  let v_sigma = pv_ref(&path, k, p, 1);
+  let v_sigma = pv_ref(&path, k, p, 1, 1);
   let rho0 = rho_zero_ref(k, hurst_ref);
   let normal_abs_p = 2.0_f64.powf(p / 2.0) * gamma((p + 1.0) / 2.0) / gamma(0.5);
   let c_kp = normal_abs_p * rho0.powf(p / 2.0);

@@ -289,7 +289,7 @@ pub(crate) fn power_variation<T: FloatExt>(
 /// **non-overlapping** (windows step by `stride`).  This is the
 /// Coeurjolly / Brouste-Iacus variant and gives the unbiased
 /// Hurst estimate via the `(1 + log₂(V₂/V₁)) / p` formula.
-fn power_variation_nonoverlap<T: FloatExt>(
+pub(crate) fn power_variation_nonoverlap<T: FloatExt>(
   x: ArrayView1<T>,
   k: usize,
   p: f64,
