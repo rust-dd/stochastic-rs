@@ -32,11 +32,10 @@ fn stdev<T: RealExt>(xs: ArrayView1<T>) -> T {
   var.sqrt()
 }
 
-/// Annualised Sharpe ratio, NaN for a zero `σ`; `InsufficientData` below two returns,
-/// `InvalidInput` for a non-finite one.
+/// Annualised Sharpe ratio over `k` periods a year, NaN for a zero `σ`; `InsufficientData` below
+/// two returns, `InvalidInput` for a non-finite one.
 ///
-/// $$\mathrm{Sharpe}=\frac{\bar r-r_f^{\text{period}}}{\sigma}\sqrt{k},$$
-/// where $k$ is the number of periods per year.
+/// $$\mathrm{Sharpe}=\frac{\bar r-r_f^{\text{period}}}{\sigma}\sqrt{k}.$$
 pub fn sharpe_ratio<T: RealExt>(
   returns: ArrayView1<T>,
   risk_free_per_period: T,

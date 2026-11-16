@@ -1,8 +1,7 @@
 //! # Liquidity-adjusted risk metrics
 //!
-//! Bridges [`crate::risk::var`] with [`crate::microstructure`]: combines
-//! Monte-Carlo / historical Value-at-Risk with the Almgren-Chriss expected
-//! execution cost so unwind friction is reflected in the headline number.
+//! Value-at-Risk plus the Almgren–Chriss expected cost of unwinding the position, so the headline
+//! number carries the execution friction.
 //!
 //! # Example
 //!
