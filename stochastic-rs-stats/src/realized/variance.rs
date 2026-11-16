@@ -49,9 +49,13 @@ pub fn realized_volatility<T: FloatExt>(returns: ArrayView1<T>, annualisation: T
   (annualisation * realized_variance(returns)).sqrt()
 }
 
-/// Realized semivariances `(RV⁻, RV⁺)` below and above `threshold` (typically `0`); a return equal
-/// to it counts in neither. NaN for no returns.
+/// Realized semivariances `(RV⁻, RV⁺)` below and above `threshold` (typically `0`), a return equal
+/// to it in neither; NaN for no returns or a NaN one, and panics unless `threshold` is finite.
 pub fn realized_semivariance<T: FloatExt>(returns: ArrayView1<T>, threshold: T) -> (T, T) {
+  assert!(
+    threshold.is_finite(),
+    "threshold must satisfy `threshold.is_finite()`, got threshold = {threshold:?}"
+  );
   if returns.is_empty() {
     return (T::nan(), T::nan());
   }
@@ -63,6 +67,8 @@ pub fn realized_semivariance<T: FloatExt>(returns: ArrayView1<T>, threshold: T) 
       down += r2;
     } else if r > threshold {
       up += r2;
+    } else if r.is_nan() {
+      return (T::nan(), T::nan());
     }
   }
   (down, up)
@@ -166,6 +172,12 @@ mod tests {
       1e-15
     ));
     assert!(approx(rs_plus, 0.01_f64.powi(2) + 0.03_f64.powi(2), 1e-15));
+  }
+
+  #[test]
+  #[should_panic(expected = "threshold must satisfy `threshold.is_finite()`, got threshold = NaN")]
+  fn a_nan_threshold_panics() {
+    let _ = realized_semivariance(array![0.01_f64, -0.02].view(), f64::NAN);
   }
 
   #[test]
