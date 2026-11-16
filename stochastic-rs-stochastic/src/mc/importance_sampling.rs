@@ -21,7 +21,7 @@ use super::estimate_from_samples;
 use crate::traits::FloatExt;
 
 /// `E[payoff(Z)]` for `Z ~ N(0, I)`, from `seed`'s normals moved by `shift` and reweighted by
-/// `dP/dQ`; `payoff` receives the moved draw.
+/// `dP/dQ`; `payoff` receives the moved draw; panics unless `shift.len() == dim`.
 pub fn estimate<T, F, S>(
   n_paths: usize,
   dim: usize,
