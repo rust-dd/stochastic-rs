@@ -73,7 +73,7 @@ fn antithetic_vs_bs_call() {
   let bs = bs_call(S0, K, R, SIGMA, TAU);
   let payoff = gbm_call_payoff(S0, K, R, SIGMA, TAU);
 
-  let av = mc::antithetic::estimate(N_PATHS, 1, &payoff);
+  let av = mc::antithetic::estimate(N_PATHS, 1, &payoff, &Deterministic::new(11));
   let plain = plain_mc(N_PATHS, 1, &payoff);
 
   let err = (av.mean - bs).abs();
@@ -110,7 +110,14 @@ fn control_variate_vs_bs_call() {
   };
   let control_mean = S0; // E[e^{-rT} S_T] = S_0 under risk-neutral measure
 
-  let cv = mc::control_variates::estimate(N_PATHS, 1, payoff, control, control_mean);
+  let cv = mc::control_variates::estimate(
+    N_PATHS,
+    1,
+    payoff,
+    control,
+    control_mean,
+    &Deterministic::new(12),
+  );
   let plain = plain_mc(N_PATHS, 1, &gbm_call_payoff(S0, K, R, SIGMA, TAU));
 
   let err = (cv.mean - bs).abs();
@@ -143,7 +150,7 @@ fn importance_sampling_vs_bs_call() {
 
   // Modest shift towards positive tail for an ATM call
   let shift = Array1::from_vec(vec![0.5]);
-  let is = mc::importance_sampling::estimate(N_PATHS, 1, &payoff, &shift);
+  let is = mc::importance_sampling::estimate(N_PATHS, 1, &payoff, &shift, &Deterministic::new(13));
 
   let err = (is.mean - bs).abs();
   println!(
@@ -175,8 +182,9 @@ fn stratified_vs_bs_call() {
   let mut strat_errors = Vec::new();
   let mut plain_errors = Vec::new();
 
+  let reps_seed = Deterministic::new(14);
   for _ in 0..n_reps {
-    let s = mc::stratified::estimate(n_per_rep, 1, &payoff);
+    let s = mc::stratified::estimate(n_per_rep, 1, &payoff, &reps_seed);
     let p = plain_mc(n_per_rep, 1, &payoff);
     strat_errors.push((s.mean - bs).abs());
     plain_errors.push((p.mean - bs).abs());
@@ -194,7 +202,7 @@ fn stratified_vs_bs_call() {
   );
 
   // Single full run should match BS
-  let strat = mc::stratified::estimate(N_PATHS, 1, &payoff);
+  let strat = mc::stratified::estimate(N_PATHS, 1, &payoff, &Deterministic::new(15));
   let err = (strat.mean - bs).abs();
   println!(
     "Strat full: mean={:.4}, err={:.4}, BS={bs:.4}",

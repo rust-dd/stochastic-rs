@@ -122,6 +122,11 @@ impl<T: FloatExt> Lsm<T> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
+  use stochastic_rs_distributions::normal::SimdNormal;
+
   use super::*;
 
   /// American put ≥ European put (early exercise premium).
@@ -138,10 +143,11 @@ mod tests {
     let sqrt_dt = dt.sqrt();
 
     // Generate Gbm paths (log-Euler for positivity)
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(9));
     let mut paths = Array2::<f64>::zeros((n_paths, n_steps + 1));
     for i in 0..n_paths {
       paths[[i, 0]] = s0;
-      let z = f64::normal_array(n_steps, 0.0, 1.0);
+      let z = normal.sample_n(n_steps);
       for j in 0..n_steps {
         paths[[i, j + 1]] =
           paths[[i, j]] * ((r - 0.5 * sigma * sigma) * dt + sigma * sqrt_dt * z[j]).exp();

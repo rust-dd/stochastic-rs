@@ -4,7 +4,8 @@ use ndarray::Array1;
 use ndarray::Array3;
 use ndarray::ArrayView1;
 use ndarray::s;
-use rand::Rng;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::Sde;
 use crate::device::FgnBackend;
@@ -25,7 +26,7 @@ where
     t1: T,
     dt: T,
     n_paths: usize,
-    rng: &mut impl Rng,
+    normal: &mut Seeded<SimdNormal<T>>,
   ) -> Array3<T> {
     let steps = ((t1 - t0) / dt).ceil().to_usize().unwrap();
     let dim = x0.len();
@@ -37,7 +38,7 @@ where
       let mut time = t0;
       out.slice_mut(s![p, 0, ..]).assign(&x);
       for i in 1..=steps {
-        self.fill_gauss_increment(&mut d_w, sqrt_dt, rng);
+        self.fill_gauss_increment(&mut d_w, sqrt_dt, normal);
         let mu_val = (self.drift)(&x, time);
         let sigma_val = (self.diffusion)(&x, time);
         for i_dim in 0..dim {
@@ -62,7 +63,7 @@ where
     t1: T,
     dt: T,
     n_paths: usize,
-    rng: &mut impl Rng,
+    normal: &mut Seeded<SimdNormal<T>>,
   ) -> Array3<T> {
     let steps = ((t1 - t0) / dt).ceil().to_usize().unwrap();
     let dim = x0.len();
@@ -74,7 +75,7 @@ where
       let mut time = t0;
       out.slice_mut(s![p, 0, ..]).assign(&x);
       for i in 1..=steps {
-        self.fill_gauss_increment(&mut d_w, sqrt_dt, rng);
+        self.fill_gauss_increment(&mut d_w, sqrt_dt, normal);
         let mu_val = (self.drift)(&x, time);
         let sigma_val = (self.diffusion)(&x, time);
         let correction = self.milstein_correction(&x, time, ArrayView1::from(&d_w[..]), dt);
@@ -104,7 +105,7 @@ where
     t1: T,
     dt: T,
     n_paths: usize,
-    rng: &mut impl Rng,
+    normal: &mut Seeded<SimdNormal<T>>,
   ) -> Array3<T> {
     let steps = ((t1 - t0) / dt).ceil().to_usize().unwrap();
     let dim = x0.len();
@@ -118,7 +119,7 @@ where
       let mut time = t0;
       out.slice_mut(s![p, 0, ..]).assign(&x);
       for i in 1..=steps {
-        self.fill_gauss_increment(&mut d_w, sqrt_dt, rng);
+        self.fill_gauss_increment(&mut d_w, sqrt_dt, normal);
         let mu1 = (self.drift)(&x, time);
         let sig1 = (self.diffusion)(&x, time);
         let mut x_half = x.clone();
@@ -156,7 +157,7 @@ where
     t1: T,
     dt: T,
     n_paths: usize,
-    rng: &mut impl Rng,
+    normal: &mut Seeded<SimdNormal<T>>,
   ) -> Array3<T> {
     let steps = ((t1 - t0) / dt).ceil().to_usize().unwrap();
     let dim = x0.len();
@@ -172,7 +173,7 @@ where
       let mut time = t0;
       out.slice_mut(s![p, 0, ..]).assign(&x);
       for i in 1..=steps {
-        self.fill_gauss_increment(&mut d_w_full, sqrt_dt, rng);
+        self.fill_gauss_increment(&mut d_w_full, sqrt_dt, normal);
         let k1_mu = (self.drift)(&x, time);
         let k1_sig = (self.diffusion)(&x, time);
         let mut x1 = x.clone();
