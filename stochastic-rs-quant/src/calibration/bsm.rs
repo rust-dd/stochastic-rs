@@ -6,6 +6,7 @@
 //!
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs_distributions::RealExt;
 
 use crate::CalibrationLossScore;
 use crate::OptionQuote;
@@ -202,7 +203,7 @@ impl LeastSquaresProblem for BsmCalibrator {
       let vega = model
         .vega(self.s, quote.strike, self.r, self.q, quote.tau)
         .abs()
-        .max(1e-8);
+        .max_or_nan(1e-8);
       residuals[idx] = (price - quote.price) / vega;
       if record {
         prices.push(price);
@@ -234,7 +235,7 @@ impl LeastSquaresProblem for BsmCalibrator {
       let (s, k, r, q, tau) = (self.s, quote.strike, self.r, self.q, quote.tau);
       let c_model_i = model.price_option(s, k, r, q, tau, quote.option_type);
 
-      let vega = model.vega(s, k, r, q, tau).abs().max(1e-8);
+      let vega = model.vega(s, k, r, q, tau).abs().max_or_nan(1e-8);
       let vomma = model.vomma(s, k, r, q, tau);
       let r_i = (c_model_i - quote.price) / vega;
 

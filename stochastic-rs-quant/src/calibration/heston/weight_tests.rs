@@ -5,6 +5,8 @@ use super::HestonJacobianMethod;
 use crate::OptionQuote;
 use crate::OptionType;
 use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::pricing::bsm::BsmCoc;
+use crate::pricing::bsm::BsmPricer;
 use crate::pricing::heston::HestonParams;
 
 fn calibrator() -> HestonCalibrator {
@@ -37,9 +39,45 @@ fn residual_weights_scale_the_objective_rows_after_rms_normalization() {
 }
 
 #[test]
-#[should_panic(expected = "residual weights, one per quote: expected 2, got 1")]
+#[should_panic(
+  expected = "weights must satisfy `weights.len() == quotes.len()`, got weights.len() = 1 for 2 quotes"
+)]
 fn one_weight_short_panics() {
   let _ = calibrator().with_residual_weights(vec![1.0]);
+}
+
+#[test]
+fn ordinary_weights_are_scaled_by_their_plain_root_mean_square() {
+  let rms = ((1.0_f64 * 1.0 + 2.0 * 2.0) / 2.0).sqrt();
+  let stored = calibrator()
+    .with_residual_weights(vec![1.0, 2.0])
+    .residual_weights
+    .unwrap();
+  assert_eq!(stored.to_vec(), vec![1.0 / rms, 2.0 / rms]);
+}
+
+/// Inverse vegas of a one-week wing (σ = 0.2, r = 2 %) reach 2.5e174 at K = 220, past √f64::MAX.
+#[test]
+fn inverse_vegas_whose_squares_overflow_still_normalise() {
+  let (tau, strikes) = (1.0 / 52.0, [100.0, 140.0, 180.0, 220.0, 250.0]);
+  let pricer = BsmPricer::new(0.2, BsmCoc::Merton1973);
+  let weights = strikes.map(|k| 1.0 / pricer.vega(100.0, k, 0.02, 0.0, tau));
+  assert!(weights.iter().all(|w| w.is_finite()) && (weights[3] * weights[3]).is_infinite());
+  let quotes = strikes
+    .iter()
+    .map(|&k| OptionQuote::new(k, tau, 1.0, OptionType::Call))
+    .collect();
+  let stored = HestonCalibrator::new(100.0, 0.02, 0.0, quotes)
+    .with_residual_weights(weights.to_vec())
+    .residual_weights
+    .unwrap();
+  assert!(stored.iter().all(|w| w.is_finite() && *w > 0.0), "{stored}");
+  let rms = (stored.iter().map(|w| w * w).sum::<f64>() / 5.0).sqrt();
+  assert!((rms - 1.0).abs() < 1e-15, "{rms}");
+  for i in 1..5 {
+    let ratio = (stored[i] / stored[0]) / (weights[i] / weights[0]);
+    assert!((ratio - 1.0).abs() < 1e-14, "{ratio}");
+  }
 }
 
 #[test]

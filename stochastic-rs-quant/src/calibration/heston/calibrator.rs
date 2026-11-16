@@ -1,4 +1,5 @@
 use ndarray::Array1;
+use stochastic_rs_distributions::RealExt;
 use stochastic_rs_stats::heston_nmle_cekf::HestonNmleCekfConfig;
 
 use super::params::HestonJacobianMethod;
@@ -43,7 +44,8 @@ pub struct HestonCalibrator {
   pub start: Option<HestonParams>,
   /// Levenberg–Marquardt knobs; `regularization` pulls `(v0, κ, θ, σ, ρ)`.
   pub options: CalibrationOptions,
-  /// Positive per-quote weights, normalised to unit root mean square; `None` is unit weights.
+  /// Positive per-quote weights, `None` for unit ones; the builder scales them to unit root mean
+  /// square, while a write to this field is used as it stands.
   pub residual_weights: Option<Array1<f64>>,
   pub jacobian_method: HestonJacobianMethod,
   /// Lower σ of the start and of every iterate to Feller's bound `σ² ≤ 2κθ` (off by default).
@@ -89,17 +91,18 @@ impl HestonCalibrator {
     self
   }
 
-  /// Panics unless `weights.len() == quotes.len()` and every weight is finite and positive, with a
-  /// root mean square that neither overflows nor underflows.
+  /// Panics unless `weights.len() == quotes.len()` and every weight is finite and positive; stores
+  /// them scaled to unit root mean square.
   pub fn with_residual_weights(mut self, weights: impl Into<Array1<f64>>) -> Self {
     let weights = weights.into();
-    check_residual_weights(&weights, self.quotes.len()).unwrap_or_else(|e| panic!("{e}"));
-    let rms = (weights.iter().map(|w| w * w).sum::<f64>() / weights.len() as f64).sqrt();
+    let quotes = self.quotes.len();
     assert!(
-      rms.is_finite() && rms > 0.0,
-      "the weights' root mean square must satisfy `rms.is_finite() && rms > 0.0`, got rms = {rms:?}"
+      weights.len() == quotes,
+      "weights must satisfy `weights.len() == quotes.len()`, got weights.len() = {} for {quotes} quotes",
+      weights.len()
     );
-    self.residual_weights = Some(weights / rms);
+    check_residual_weights(&weights, quotes).unwrap_or_else(|e| panic!("{e}"));
+    self.residual_weights = Some(unit_root_mean_square(weights));
     self
   }
 
@@ -143,6 +146,19 @@ impl HestonCalibrator {
       None => Ok(Self::fallback_params()),
     }
   }
+}
+
+/// `weights` over their plain root mean square, so ordinary weights scale as they always have, and
+/// over the same quantity factored through the largest weight where the squares leave `f64`.
+fn unit_root_mean_square(weights: Array1<f64>) -> Array1<f64> {
+  let n = weights.len() as f64;
+  let rms = (weights.iter().map(|w| w * w).sum::<f64>() / n).sqrt();
+  if rms.is_finite() && rms > 0.0 {
+    return weights / rms;
+  }
+  let largest = f64::max_or_nan_fold(weights.iter().copied());
+  let scaled = (weights.iter().map(|w| (w / largest).powi(2)).sum::<f64>() / n).sqrt();
+  weights / (largest * scaled)
 }
 
 /// `DimensionMismatch` unless there is one weight per quote, `InvalidInput` for the first weight
