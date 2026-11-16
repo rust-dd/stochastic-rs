@@ -9,12 +9,7 @@ fn sabr_pricer_basic() {
   let r = 0.065;
   let q = 0.022;
   let tau = 30.0 / 365.0;
-  let pr = SabrPricer::new(SabrParams {
-    alpha: 0.11,
-    beta: 1.0,
-    rho: 0.5,
-    nu: 0.6,
-  });
+  let pr = SabrPricer::new(SabrParams::new(0.11, 1.0, 0.5, 0.6));
   let (c, p) = pr.call_put(s, k, r, q, tau);
   assert!(c >= 0.0 && p >= 0.0);
   let d = pr.sabr_fx_forward_delta(s, k, r, q, tau, 1.0);
@@ -24,24 +19,14 @@ fn sabr_pricer_basic() {
 /// A non-positive spot (hence forward) or strike is a query outside the domain: NaN, never a panic.
 #[test]
 fn sabr_pricer_sigma_is_nan_for_a_nonpositive_spot_or_strike() {
-  let pricer = SabrPricer::new(SabrParams {
-    alpha: 0.11,
-    beta: 1.0,
-    rho: 0.5,
-    nu: 0.6,
-  });
+  let pricer = SabrPricer::new(SabrParams::new(0.11, 1.0, 0.5, 0.6));
   assert!(pricer.sigma(-3.724, 3.8, 0.065, 0.022, 0.5).is_nan());
   assert!(pricer.sigma(3.724, -3.8, 0.065, 0.022, 0.5).is_nan());
 }
 
 #[test]
 fn sabr_price_is_nan_for_a_nonpositive_spot_or_strike() {
-  let model = SabrPricer::new(SabrParams {
-    alpha: 0.2,
-    beta: 1.0,
-    rho: -0.3,
-    nu: 0.6,
-  });
+  let model = SabrPricer::new(SabrParams::new(0.2, 1.0, -0.3, 0.6));
   for (s, k) in [(-100.0, 100.0), (100.0, -10.0)] {
     assert!(model.price_call(s, k, 0.02, 0.0, 1.0).is_nan());
     assert!(model.price_put(s, k, 0.02, 0.0, 1.0).is_nan());
@@ -52,12 +37,7 @@ fn sabr_price_is_nan_for_a_nonpositive_spot_or_strike() {
 /// (`sigma = -0.3925`); both legs are then NaN, never `(0, 0)`.
 #[test]
 fn sabr_degenerate_hagan_vol_is_nan_on_both_legs() {
-  let m = SabrPricer::new(SabrParams {
-    alpha: 0.2,
-    beta: 1.0,
-    rho: -0.9,
-    nu: 3.0,
-  });
+  let m = SabrPricer::new(SabrParams::new(0.2, 1.0, -0.9, 3.0));
   let sigma = m.sigma(100.0, 100.0, 0.0, 0.0, 10.0);
   assert!(
     sigma < 0.0,
@@ -77,12 +57,7 @@ fn sabr_degenerate_hagan_vol_is_nan_on_both_legs() {
 /// value the expansion is actually valid at brings every point back finite.
 #[test]
 fn sabr_degeneracy_tracks_tau_not_the_strike_grid() {
-  let m = SabrPricer::new(SabrParams {
-    alpha: 0.2,
-    beta: 1.0,
-    rho: -0.9,
-    nu: 3.0,
-  });
+  let m = SabrPricer::new(SabrParams::new(0.2, 1.0, -0.9, 3.0));
   for &k in &[80.0, 100.0, 125.0] {
     assert!(
       m.price_call(100.0, k, 0.0, 0.0, 10.0).is_nan(),
@@ -108,12 +83,7 @@ const TAU: f64 = 0.75;
 const TOL: f64 = 1e-12;
 
 fn golden_model() -> SabrPricer {
-  SabrPricer::new(SabrParams {
-    alpha: 0.11,
-    beta: 1.0,
-    rho: 0.5,
-    nu: 0.6,
-  })
+  SabrPricer::new(SabrParams::new(0.11, 1.0, 0.5, 0.6))
 }
 
 /// Captured from `PricerExt::calculate_call_put()` and the four inherent
@@ -263,17 +233,7 @@ fn hagan_implied_vol_reference() {
   ];
 
   for (i, &(k, f, t, alpha, beta, rho, nu, expected)) in cases.iter().enumerate() {
-    let got = hagan_implied_vol(
-      k,
-      f,
-      t,
-      &SabrParams {
-        alpha,
-        beta,
-        rho,
-        nu,
-      },
-    );
+    let got = hagan_implied_vol(k, f, t, &SabrParams::new(alpha, beta, rho, nu));
     let err = (got - expected).abs();
     assert!(
       err < 1e-12,
@@ -316,17 +276,7 @@ fn alpha_from_atm_vol_reference() {
       expected,
       err
     );
-    let vol_rt = hagan_implied_vol(
-      f,
-      f,
-      t,
-      &SabrParams {
-        alpha: got,
-        beta,
-        rho,
-        nu,
-      },
-    );
+    let vol_rt = hagan_implied_vol(f, f, t, &SabrParams::new(got, beta, rho, nu));
     let rt_err = (vol_rt - v_atm).abs();
     assert!(
       rt_err < 1e-10,
@@ -370,32 +320,13 @@ fn alpha_from_atm_vol_close_roots_reference() {
     "solver did not return the economically meaningful root: got {got:.15e}, expected {correct_root:.15e}, rel_err={err:.2e}"
   );
 
-  let vol_at_correct = hagan_implied_vol(
-    f,
-    f,
-    tau,
-    &SabrParams {
-      alpha: correct_root,
-      beta,
-      rho,
-      nu,
-    },
-  );
+  let vol_at_correct = hagan_implied_vol(f, f, tau, &SabrParams::new(correct_root, beta, rho, nu));
   assert!(
     (vol_at_correct - v_atm).abs() < 1e-10,
     "correct root should round-trip: got {vol_at_correct:.15e}"
   );
-  let vol_at_spurious = hagan_implied_vol(
-    f,
-    f,
-    tau,
-    &SabrParams {
-      alpha: spurious_root,
-      beta,
-      rho,
-      nu,
-    },
-  );
+  let vol_at_spurious =
+    hagan_implied_vol(f, f, tau, &SabrParams::new(spurious_root, beta, rho, nu));
   assert!(
     (vol_at_spurious - v_atm).abs() < 1e-10,
     "spurious root should *also* round-trip, which is exactly the hazard: got {vol_at_spurious:.15e}"
@@ -446,17 +377,7 @@ fn hagan_matches_an_independent_high_precision_implementation() {
     (110.0, 100.0, 0.5, 0.15, 0.5, -0.2, 0.8, 0.03080869461133287),
   ];
   for &(k, f, tau, alpha, beta, rho, nu, expected) in cases {
-    let got = hagan_implied_vol(
-      k,
-      f,
-      tau,
-      &SabrParams {
-        alpha,
-        beta,
-        rho,
-        nu,
-      },
-    );
+    let got = hagan_implied_vol(k, f, tau, &SabrParams::new(alpha, beta, rho, nu));
     let rel = (got - expected).abs() / expected.abs();
     assert!(
       rel < 1e-14,
@@ -476,17 +397,7 @@ fn atm_beta_one_matches_hand_computation() {
   let b = 0.25 * rho * nu * alpha;
   let c = (2.0 - 3.0 * rho * rho) * nu * nu / 24.0;
   let expected = alpha * (1.0 + (b + c) * tau);
-  let got = hagan_implied_vol(
-    100.0,
-    100.0,
-    tau,
-    &SabrParams {
-      alpha,
-      beta: 1.0,
-      rho,
-      nu,
-    },
-  );
+  let got = hagan_implied_vol(100.0, 100.0, tau, &SabrParams::new(alpha, 1.0, rho, nu));
   assert!((got - expected).abs() < 1e-15, "got {got}, hand {expected}");
 }
 
@@ -508,20 +419,7 @@ fn rejects_rho_at_one() {
 
 #[test]
 fn a_zero_strike_is_nan() {
-  assert!(
-    hagan_implied_vol(
-      0.0,
-      100.0,
-      1.0,
-      &SabrParams {
-        alpha: 0.2,
-        beta: 1.0,
-        rho: -0.3,
-        nu: 0.5
-      }
-    )
-    .is_nan()
-  );
+  assert!(hagan_implied_vol(0.0, 100.0, 1.0, &SabrParams::new(0.2, 1.0, -0.3, 0.5)).is_nan());
 }
 
 /// The parameter asserts run first, so an invalid `alpha` panics whatever the query.
