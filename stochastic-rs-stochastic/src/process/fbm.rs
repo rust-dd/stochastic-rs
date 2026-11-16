@@ -10,6 +10,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_distributions::special::gamma;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
@@ -304,14 +305,16 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
 backend_switch!([T: FloatExt, S: SeedExt] Fbm<T, S> { hurst, n, t, seed } via fgn euler);
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> Fbm<T, S, B> {
-  /// The path and `D_{t_i} B^H_T`, the Mandelbrot–Van Ness kernel `(T − t_i)^{H − ½} / Γ(H + ½)`,
-  /// which does not depend on the path.
+  /// The path and `D_{t_i} B^H_T = √(Γ(2H+1) sin πH) (T − t_i)^{H−½} / Γ(H+½)` (Mishura 2008, §1.3)
+  /// with respect to the Mandelbrot–Van Ness driver; the last entry is ∞ for H < ½.
   pub fn malliavin(&self) -> Malliavin<T, Array1<T>> {
     let dt = self.fgn.dt();
-    let g = stochastic_rs_distributions::special::gamma(self.hurst.to_f64().unwrap() + 0.5);
+    let h = self.hurst.to_f64().unwrap();
+    let g = gamma(h + 0.5);
+    let c = (gamma(2.0 * h + 1.0) * (std::f64::consts::PI * h).sin()).sqrt();
+    let scale = T::from_f64_fast(c / g);
     let derivative = Array1::from_shape_fn(self.n, |i| {
-      T::one() / T::from_f64_fast(g)
-        * (T::from_usize_(self.n - 1 - i) * dt).powf(self.hurst - T::from_f64_fast(0.5))
+      scale * (T::from_usize_(self.n - 1 - i) * dt).powf(self.hurst - T::from_f64_fast(0.5))
     });
     Malliavin {
       paths: self.sample(),
@@ -330,25 +333,27 @@ py_process_1d!(PyFbm, Fbm,
 mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::special::erf;
-  use stochastic_rs_distributions::special::gamma;
 
   use super::*;
 
   #[test]
-  fn the_malliavin_derivative_is_the_kernel_at_the_time_left_to_the_horizon() {
-    let fbm = || Fbm::<f64, _>::new(0.7, 17, Some(1.0), Deterministic::new(5));
-    let Malliavin {
-      paths, derivative, ..
-    } = fbm().malliavin();
-    assert_eq!(paths, fbm().sample());
-    for (i, d) in derivative.iter().enumerate() {
-      let expected = (1.0 - i as f64 / 16.0).powf(0.7 - 0.5) / gamma(1.2);
-      assert!(
-        (d - expected).abs() <= 1e-15,
-        "t_{i}: {d} against {expected}"
-      );
+  fn the_malliavin_derivative_is_the_mandelbrot_van_ness_kernel_of_a_standard_fbm() {
+    // √(Γ(2H+1) sin πH) / Γ(H+½), by mpmath at 40 digits.
+    for (h, c_h) in [(0.7, 1.0918091308839126), (0.3, 0.730282934079923)] {
+      let fbm = || Fbm::<f64, _>::new(h, 17, Some(1.0), Deterministic::new(5));
+      let Malliavin {
+        paths, derivative, ..
+      } = fbm().malliavin();
+      assert_eq!(paths, fbm().sample());
+      for (i, d) in derivative.iter().take(16).enumerate() {
+        let expected = c_h * (1.0 - i as f64 / 16.0).powf(h - 0.5);
+        assert!(
+          (d - expected).abs() <= 1e-14 * expected,
+          "H = {h}, t_{i}: {d} against {expected}"
+        );
+      }
+      assert_eq!(derivative[16], if h < 0.5 { f64::INFINITY } else { 0.0 });
     }
-    assert_eq!(derivative[16], 0.0);
   }
 
   fn nearest_quantile(sorted: &[f64], p: f64) -> f64 {
