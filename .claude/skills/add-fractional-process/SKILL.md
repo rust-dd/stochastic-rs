@@ -308,7 +308,7 @@ test the other backends distributionally. See `add-gpu-sampler` §2 and
   remaining lift-driven models.
 - `FbatesSvj` (`volatility/fbates_svj.rs`) — fractional Bates with
   jumps; composition with `CompoundPoisson`. See `add-jump-process`.
-- `RoughBergomi` (`volatility/rbergomi.rs`) — a standalone type, **not**
+- `RoughBergomi` (`volatility/rough_bergomi.rs`) — a standalone type, **not**
   assembled from the `rl_*` family. `S`-parameterised, no `B`.
 
 ## Related SKILLs
