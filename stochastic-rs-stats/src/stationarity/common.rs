@@ -377,11 +377,20 @@ pub fn unit_scaled(mut y: Vec<f64>) -> Vec<f64> {
 pub fn reject_exact_fit(y: &[f64], residuals: &[f64]) -> Result<(), StatsError> {
   let mean = y.iter().sum::<f64>() / y.len() as f64;
   let spread = f64::max_or_nan_fold(y.iter().map(|v| (v - mean).abs()));
-  let mean_square = |values: &mut dyn Iterator<Item = f64>, n: usize| {
-    values.map(|v| (v / spread) * (v / spread)).sum::<f64>() / n as f64
-  };
-  let own = mean_square(&mut y.iter().map(|v| v - mean), y.len());
-  let left = mean_square(&mut residuals.iter().copied(), residuals.len());
+  let square = |v: f64| (v / spread) * (v / spread);
+  // Both sums run in index order, interleaved so that neither waits on the other.
+  let (mut own, mut left) = (-0.0, -0.0);
+  for (v, u) in y.iter().zip(residuals) {
+    own += square(v - mean);
+    left += square(*u);
+  }
+  for v in y.iter().skip(residuals.len()) {
+    own += square(v - mean);
+  }
+  for u in residuals.iter().skip(y.len()) {
+    left += square(*u);
+  }
+  let (own, left) = (own / y.len() as f64, left / residuals.len() as f64);
   if left <= EXACT_FIT * own {
     return Err(StatsError::DegenerateData("zero residual variance"));
   }
