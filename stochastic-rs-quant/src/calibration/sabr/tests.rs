@@ -145,3 +145,20 @@ fn a_put_quote_is_fitted_as_a_put() {
     fit.params
   );
 }
+
+#[test]
+fn a_start_written_through_the_field_is_validated_like_an_explicit_one() {
+  let quotes = vec![OptionQuote::new(100.0, 0.5, 1.0, OptionType::Call)];
+  let mut calibrator = SabrCalibrator::new(100.0, 0.02, 0.01, quotes);
+  calibrator.start = Some(SabrParams {
+    alpha: 0.2,
+    beta: 1.5,
+    rho: 0.0,
+    nu: 0.5,
+  });
+  let err = calibrator.calibrate(None).unwrap_err();
+  assert!(
+    matches!(&err, QuantError::InvalidInput { what: "start", reason } if reason.starts_with("beta")),
+    "{err}"
+  );
+}

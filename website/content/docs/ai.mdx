@@ -75,6 +75,8 @@ import stochastic_rs as srs
 model = srs.HestonNn()                       # best available device
 report = model.train(params, surfaces, epochs=200)   # rows: [v0, rho, sigma, theta, kappa] → 88 IVs
 fit = srs.calibrate_surrogate(model, market_surface)  # LM on the exact network Jacobian
+# a surface on its own axes is checked against the grid and reordered; flat input is trusted as is
+fit = srs.calibrate_surrogate(model, market_surface, strikes=strikes, maturities=maturities, spot=100.0)
 print(fit["params"], fit["rmse"], fit["converged"], fit["in_bounds"])
 surface, jacobian = model.predict_surface_with_jacobian(fit["params"])
 ```

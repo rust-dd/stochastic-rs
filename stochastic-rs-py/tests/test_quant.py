@@ -149,6 +149,38 @@ def test_sabr_regularization_pulls_nu_to_the_anchor():
     ).calibrate()
     assert abs(plain[2] - 0.6) < 0.05 and abs(pulled[2] - 0.9) < 0.05
 
+def _hagan_lognormal_vols(alpha, nu, rho, forward, tau, strikes):
+    vols = []
+    for k in strikes:
+        z = nu / alpha * math.log(forward / k)
+        x = math.log((math.sqrt(1.0 - 2.0 * rho * z + z * z) + z - rho) / (1.0 - rho)) if abs(z) > 1e-12 else 1.0
+        ratio = z / x if abs(z) > 1e-12 else 1.0
+        vols.append(alpha * ratio * (1.0 + (rho * nu * alpha / 4.0 + (2.0 - 3.0 * rho * rho) * nu * nu / 24.0) * tau))
+    return vols
+
+
+def test_sabr_caplet_calibrator_default_fit_recovers_nu():
+    forward, tau, strikes = 0.03, 2.0, [0.02, 0.025, 0.03, 0.035, 0.04]
+    vols = _hagan_lognormal_vols(0.25, 0.5, -0.3, forward, tau, strikes)
+    fit = sr.SabrCapletCalibrator(forward, tau, 1.0, strikes, vols).calibrate()
+    alpha, beta, nu, rho, rmse, converged = fit
+    assert beta == 1.0 and converged and rmse < 1e-4
+    assert abs(nu - 0.5) < 0.05 and abs(rho + 0.3) < 0.1
+
+
+def test_sabr_caplet_calibrator_rejects_a_beta_outside_the_unit_interval():
+    with pytest.raises(ValueError, match="beta must satisfy"):
+        sr.SabrCapletCalibrator(0.03, 2.0, 1.5, [0.02, 0.03, 0.04], [0.3, 0.25, 0.3])
+
+
+def test_sabr_calibrator_rejects_a_wrong_anchor_count():
+    strikes = [90.0, 100.0, 110.0]
+    prices = [sr.SabrPricer(s=100.0, alpha=0.2, beta=1.0, nu=0.6, rho=-0.3, k=k, r=0.01, tau=1.0).price() for k in strikes]
+    calibrator = sr.SabrCalibrator(strikes, prices, s=100.0, r=0.01, tau=1.0, regularization=([0.2, 0.6], [1.0, 1.0]))
+    with pytest.raises(ValueError, match="regularization anchors"):
+        calibrator.calibrate()
+
+
 def test_heston_adi_pricer_matches_the_analytic_price():
     kwargs = dict(s=100.0, k=100.0, r=0.025, tau=1.0, v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.9, q=0.0)
     pde = sr.HestonAdiPricer(m1=100, m2=50, steps=50, scheme="mcs", **kwargs)

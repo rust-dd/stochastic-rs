@@ -262,15 +262,13 @@ impl CostFunction for SabrCapletCost {
 
   fn cost(&self, x: &Self::Param) -> Result<f64, Self::Error> {
     let params = self.params(x);
-    let shifted_forward = self.forward + self.shift;
     let mut sse = 0.0;
-    for ((&k, &v_mkt), &w) in self
-      .strikes
-      .iter()
-      .zip(self.market_vols.iter())
-      .zip(self.weights.iter())
+    for ((v_model, &v_mkt), &w) in self
+      .model_vols(&params)
+      .into_iter()
+      .zip(&self.market_vols)
+      .zip(&self.weights)
     {
-      let v_model = hagan_implied_vol(k + self.shift, shifted_forward, self.tau, &params);
       let diff = v_model - v_mkt;
       sse += w * diff * diff;
     }

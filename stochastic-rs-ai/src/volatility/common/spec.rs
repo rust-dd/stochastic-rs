@@ -96,26 +96,12 @@ impl StochVolModelSpec {
 
   /// `Err` unless the grid is exactly `strikes` and `maturities`: a wrapper's own constants.
   pub(crate) fn ensure_grid(&self, strikes: &[f64], maturities: &[f64]) -> Result<()> {
+    let owner = format!("the {} surrogate", self.model_id);
     for (axis, saved, own) in [
       ("strikes", &self.strikes[..], strikes),
       ("maturities", &self.maturities[..], maturities),
     ] {
-      if saved.len() != own.len() {
-        bail!(
-          "saved {axis} has {} entries, the {} surrogate's has {}",
-          saved.len(),
-          self.model_id,
-          own.len()
-        );
-      }
-      if let Some(i) = (0..own.len()).find(|&i| saved[i] != own[i]) {
-        bail!(
-          "saved {axis}[{i}] is {:?}, the {} surrogate's is {:?}",
-          saved[i],
-          self.model_id,
-          own[i]
-        );
-      }
+      check_axis(axis, ("saved", saved), (&owner, own), 0.0)?;
     }
     Ok(())
   }
@@ -144,29 +130,12 @@ impl StochVolModelSpec {
       bail!("spot must be finite and positive, got {spot:?}");
     }
     let (grid_strikes, order) = self.ascending_strikes(spot);
+    let owner = format!("the {} grid", self.model_id);
     for (axis, got, want) in [
       ("strikes", strikes, &grid_strikes[..]),
       ("maturities", maturities, &self.maturities[..]),
     ] {
-      if got.len() != want.len() {
-        bail!(
-          "surface {axis} has {} entries, the {} grid has {}",
-          got.len(),
-          self.model_id,
-          want.len()
-        );
-      }
-      if let Some(i) = (0..want.len()).find(|&i| {
-        let within = (got[i] - want[i]).abs() <= 1e-12 * want[i].abs();
-        !within
-      }) {
-        bail!(
-          "surface {axis}[{i}] is {:?}, the {} grid's is {:?}",
-          got[i],
-          self.model_id,
-          want[i]
-        );
-      }
+      check_axis(axis, ("surface", got), (&owner, want), 1e-12)?;
     }
     let n_k = order.len();
     if ivs.dim() != (maturities.len(), n_k) {
@@ -198,6 +167,35 @@ pub(super) fn check_ascending(what: &str, values: &[f64]) -> Result<()> {
     bail!("{what} must be finite and strictly ascending");
   }
   Ok(())
+}
+
+/// `Err` naming the axis, the first differing index and both values unless the axes match to
+/// `rel_tol` relative; a NaN never matches.
+fn check_axis(
+  axis: &str,
+  (got_label, got): (&str, &[f64]),
+  (want_label, want): (&str, &[f64]),
+  rel_tol: f64,
+) -> Result<()> {
+  if got.len() != want.len() {
+    bail!(
+      "{got_label} {axis} has {} entries, {want_label} has {}",
+      got.len(),
+      want.len()
+    );
+  }
+  let off = (0..want.len()).find(|&i| {
+    let within = (got[i] - want[i]).abs() <= rel_tol * want[i].abs();
+    !within
+  });
+  match off {
+    Some(i) => bail!(
+      "{got_label} {axis}[{i}] is {:?}, {want_label}'s is {:?}",
+      got[i],
+      want[i]
+    ),
+    None => Ok(()),
+  }
 }
 
 #[cfg(test)]

@@ -154,16 +154,17 @@ impl crate::traits::Calibrator for SabrCalibrator {
   type Output = Calibrated<SabrParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`; `InvalidInput` unless it passes `SabrParams::new`.
+  /// A start replaces `self.start`; `InvalidInput` unless the one used passes `SabrParams::new`.
   fn calibrate(&self, initial: Option<SabrParams>) -> Result<Calibrated<SabrParams>, QuantError> {
     validate_quotes(&self.quotes)?;
-    if let Some(reason) = initial.and_then(|start| start.violation()) {
+    let start = initial.or(self.start);
+    if let Some(reason) = start.and_then(|start| start.violation()) {
       return Err(QuantError::invalid("start", reason));
     }
     let problem = SabrProblem {
       calibrator: self,
       market: self.quotes.iter().map(|quote| quote.price).collect(),
-      params: initial.or(self.start).unwrap_or(DEFAULT_START).projected(),
+      params: start.unwrap_or(DEFAULT_START).projected(),
       regularization: self.options.regularization_for(3)?.map(optimiser_order),
       history: Vec::new(),
     };
