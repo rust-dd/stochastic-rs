@@ -59,8 +59,11 @@ fn assert_rescaled(what: &str, statistic: impl Fn(&Array1<f64>) -> f64, scales: 
   }
 }
 
-/// Scales at which a criterion compared over samples of different sizes would move the lag.
-const FAR_SCALES: [f64; 2] = [1e-6, 1e6];
+/// From the foot of the double range to its top, where a square under- or overflows unscaled, and
+/// `1e±6`, where a criterion compared over samples of different sizes would move the lag.
+const FAR_SCALES: [f64; 9] = [
+  1e-300, 1e-200, 1e-160, 1e-150, 1e-6, 1e6, 1e154, 1e156, 1e300,
+];
 
 #[test]
 fn adf_and_df_gls_keep_their_statistic_under_rescaling() {
@@ -92,7 +95,7 @@ fn adf_and_df_gls_keep_their_statistic_under_rescaling() {
   }
 }
 
-/// `x` is `y` plus noise of half the spread of its steps, so the pair scales together.
+/// `x` is `y` plus noise of a fifth of its largest step, which no square underflows at `1e-300`.
 #[test]
 fn engle_granger_keeps_its_statistic_under_rescaling() {
   let mut noise = vec![0.0; 400];
@@ -101,7 +104,7 @@ fn engle_granger_keeps_its_statistic_under_rescaling() {
     .fill_slice(&mut noise);
   let engle_granger = |y: &Array1<f64>| {
     let steps = y.slice(ndarray::s![1..]).to_owned() - y.slice(ndarray::s![..-1]);
-    let spread = steps.std(0.0);
+    let spread = 0.4 * steps.iter().fold(0.0f64, |m, v| m.max(v.abs()));
     let x = Array1::from_iter(y.iter().zip(&noise).map(|(v, e)| v + 0.5 * spread * e));
     engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default())
       .unwrap()
@@ -146,7 +149,7 @@ fn phillips_perron_keeps_its_statistics_under_rescaling() {
 /// The bootstrap paths scale with the series, so its p-value is a count that does not move.
 #[test]
 fn leybourne_mccabe_keeps_its_statistic_and_p_value_under_rescaling() {
-  let scales = [1e-5, 1e-6, 1e-7, 1e7];
+  let scales = [1e-300, 1e-160, 1e-5, 1e-6, 1e-7, 1e7, 1e154, 1e300];
   for trend in [Trend::Constant, Trend::ConstantTrend] {
     let cfg = LeybourneMcCabeConfig {
       trend,

@@ -23,6 +23,7 @@ use super::common::choose_lag_for_adf;
 use super::common::fit_adf;
 use super::common::min_sample_size;
 use super::common::schwert_max_lags;
+use super::common::unit_scaled;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
@@ -89,6 +90,7 @@ pub fn adf_test(y: ArrayView1<f64>, cfg: AdfConfig) -> Result<AdfTest, StatsErro
   let y = as_slice_or_copy(y);
   validate(&y, 20)?;
   reject_constant(&y, "constant series")?;
+  let y = unit_scaled(y.into_owned());
 
   let n = y.len();
   let max_lags = match cfg.lag_selection {

@@ -356,11 +356,16 @@ pub fn centred(y: &[f64]) -> Vec<f64> {
   y.iter().map(|v| v - mean).collect()
 }
 
-/// `y` times the power of two nearest the inverse of its largest magnitude, an exact scaling that
-/// leaves a scale-free statistic as it is and puts it on the scale of the trend terms beside it.
-pub fn unit_scaled(mut y: Vec<f64>) -> Vec<f64> {
+/// The power of two nearest the inverse of the largest magnitude in `y`.
+pub fn unit_scale(y: &[f64]) -> f64 {
   let spread = f64::max_or_nan_fold(y.iter().map(|v| v.abs()));
-  let unit = 2f64.powi(-(spread.log2().round() as i32).clamp(-1022, 1022));
+  2f64.powi(-(spread.log2().round() as i32).clamp(-1022, 1022))
+}
+
+/// `y` times its [`unit_scale`], an exact scaling that leaves a scale-free statistic as it is and
+/// puts it on the scale of the trend terms beside it.
+pub fn unit_scaled(mut y: Vec<f64>) -> Vec<f64> {
+  let unit = unit_scale(&y);
   for v in &mut y {
     *v *= unit;
   }

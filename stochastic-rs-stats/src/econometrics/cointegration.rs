@@ -29,6 +29,7 @@ use crate::input::validate_view;
 use crate::stationarity::adf::AdfConfig;
 use crate::stationarity::adf::adf_test;
 use crate::stationarity::common::reject_exact_fit;
+use crate::stationarity::common::unit_scale;
 
 /// Configuration for [`engle_granger_test`].
 #[derive(Debug, Clone, Copy)]
@@ -90,16 +91,19 @@ pub fn engle_granger_test(
   }
   validate_view(y, 30)?;
   validate_view(x, 30)?;
-  let y_slice = as_slice_or_copy(y);
-  reject_constant(&y_slice, "constant series")?;
-  reject_constant(&as_slice_or_copy(x), "constant series")?;
+  let (y, x) = (as_slice_or_copy(y), as_slice_or_copy(x));
+  reject_constant(&y, "constant series")?;
+  reject_constant(&x, "constant series")?;
+  let (y_unit, x_unit) = (unit_scale(&y), unit_scale(&x));
+  let y = Array1::from_iter(y.iter().map(|v| v * y_unit));
+  let x = Array1::from_iter(x.iter().map(|v| v * x_unit));
   let n = y.len();
   let mut design = Array2::<f64>::zeros((n, 2));
   for i in 0..n {
     design[[i, 0]] = 1.0;
     design[[i, 1]] = x[i];
   }
-  let sol = lstsq(design.view(), y);
+  let sol = lstsq(design.view(), y.view());
   let intercept = sol[0];
   let beta = sol[1];
   if !(intercept.is_finite() && beta.is_finite()) {
@@ -109,16 +113,16 @@ pub fn engle_granger_test(
   for i in 0..n {
     residuals[i] = y[i] - intercept - beta * x[i];
   }
-  reject_exact_fit(&y_slice, residuals.as_slice().unwrap())?;
+  reject_exact_fit(y.as_slice().unwrap(), residuals.as_slice().unwrap())?;
   let adf = adf_test(residuals.view(), AdfConfig::default())?;
   Ok(EngleGrangerTest {
     statistic: adf.statistic,
     p_value: None,
     critical_values: Some(critical_values),
     rejects_null: adf.statistic < critical,
-    intercept,
-    beta,
-    residuals,
+    intercept: intercept / y_unit,
+    beta: beta * x_unit / y_unit,
+    residuals: residuals / y_unit,
   })
 }
 
