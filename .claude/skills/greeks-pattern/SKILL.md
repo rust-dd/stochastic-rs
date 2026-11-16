@@ -335,7 +335,7 @@ Malliavin-Greeks estimator (`pricing/malliavin_greeks/tests.rs`).
 
 - `add-mc-variance-reduction` — explains the Common Random Numbers
   requirement that the single-pass `greeks()` override depends on.
-- `calibration-pattern` — calibrators consume Greeks via the result's
-  `to_model().greeks(s, k, r, q, tau, option_type)` chain.
+- `calibration-pattern` — calibration results convert to pricers through `to_model()`; only
+  `BsmPricer`, `HestonPricer`, `Merton1976Pricer` and the two digitals carry `greeks`.
 - `release-checklist` — `MIGRATION.md` should note any new Greek
   added to the public surface.

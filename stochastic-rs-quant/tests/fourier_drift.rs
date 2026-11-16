@@ -67,7 +67,7 @@ fn the_pricers_apply_the_carry_from_the_query() {
       let frft =
         FrftCarrMadanPricer::cumulant_sized(&bsm, 1.0, 12.0).price_call(&bsm, 100.0, k, r, q, 1.0);
       let want = closed.price_call(100.0, k, r, q, 1.0);
-      // Both quadratures start at u = 1e-8; the head Lewis drops is ≈ 1.3e-6 at these strikes.
+      // Lewis drops the ∫₀^{1e-8} head (≈ 1.3e-6); Gil–Pelaez's band is its quadrature error.
       for (name, got, tol) in [
         ("gil-pelaez", gp, 2e-6),
         ("lewis", lw, 2e-6),

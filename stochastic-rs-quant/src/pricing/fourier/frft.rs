@@ -226,7 +226,7 @@ impl FrftCarrMadanPricer {
     let (log_strikes, prices) = self.price_call_surface(model, s, r, q, t);
     let target = k.ln();
     let n = log_strikes.len();
-    if target < log_strikes[0] || target > log_strikes[n - 1] {
+    if !(log_strikes[0] <= target && target <= log_strikes[n - 1]) {
       return f64::NAN;
     }
     for i in 0..n - 1 {
@@ -356,6 +356,25 @@ mod tests {
       "{:?}",
       &prices.as_slice().unwrap()[..4]
     );
+  }
+
+  /// A NaN query argument prices NaN; the rate-dependent grid used to make it panic.
+  #[test]
+  fn frft_nan_query_argument_prices_nan() {
+    let model = BsmFourier { sigma: 0.15 };
+    let pricer = FrftCarrMadanPricer::cumulant_sized(&model, 1.0, 12.0);
+    let nan = f64::NAN;
+    for (name, price) in [
+      ("r", pricer.price_call(&model, 100.0, 100.0, nan, 0.0, 1.0)),
+      ("q", pricer.price_call(&model, 100.0, 100.0, 0.05, nan, 1.0)),
+      (
+        "tau",
+        pricer.price_call(&model, 100.0, 100.0, 0.05, 0.0, nan),
+      ),
+      ("k", pricer.price_call(&model, 100.0, nan, 0.05, 0.0, 1.0)),
+    ] {
+      assert!(price.is_nan(), "NaN {name} must price NaN, got {price}");
+    }
   }
 
   /// Out-of-grid strikes return NaN, not a silent zero.

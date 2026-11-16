@@ -75,7 +75,7 @@ impl CosEngine {
 
       let v_k = match option_type {
         OptionType::Call => call_coefficient(kf, a, b, bma, k),
-        OptionType::Put => put_coefficient(kf, a, bma, k),
+        OptionType::Put => put_coefficient(kf, a, b, bma, k),
       };
 
       let weight = if k_idx == 0 { 0.5 } else { 1.0 };
@@ -90,17 +90,23 @@ impl CosEngine {
   }
 }
 
-/// Call payoff coefficient $V_k=\frac{2}{b-a}K(\chi_k(0,b)-\psi_k(0,b))$,
-/// Fang-Oosterlee (2008) Eq. (29).
+/// Call payoff coefficient $V_k$ on $[a,b]\cap[0,\infty)$, Fang-Oosterlee (2008) Eq. (29)
+/// for $a<0<b$.
 fn call_coefficient(kf: f64, a: f64, b: f64, bma: f64, strike: f64) -> f64 {
-  let (chi, psi) = chi_psi(kf, a, bma, 0.0, b);
+  if b <= 0.0 {
+    return 0.0;
+  }
+  let (chi, psi) = chi_psi(kf, a, bma, a.max(0.0), b);
   (2.0 / bma) * strike * (chi - psi)
 }
 
-/// Put payoff coefficient $V_k=\frac{2}{b-a}K(\psi_k(a,0)-\chi_k(a,0))$,
-/// Fang-Oosterlee (2008) Eq. (30).
-fn put_coefficient(kf: f64, a: f64, bma: f64, strike: f64) -> f64 {
-  let (chi, psi) = chi_psi(kf, a, bma, a, 0.0);
+/// Put payoff coefficient $V_k$ on $[a,b]\cap(-\infty,0]$, Fang-Oosterlee (2008) Eq. (30)
+/// for $a<0<b$.
+fn put_coefficient(kf: f64, a: f64, b: f64, bma: f64, strike: f64) -> f64 {
+  if a >= 0.0 {
+    return 0.0;
+  }
+  let (chi, psi) = chi_psi(kf, a, bma, a, b.min(0.0));
   (2.0 / bma) * strike * (psi - chi)
 }
 
@@ -276,5 +282,26 @@ mod tests {
       price.is_nan(),
       "NaN chf must propagate to a NaN price, got {price}"
     );
+  }
+
+  /// Where 0 falls outside [a, b] the payoff coefficients must clamp to the payoff's support.
+  #[test]
+  fn cos_matches_closed_form_at_wing_strikes() {
+    let model = BsmFourier { sigma: 0.2 };
+    let bsm = BsmPricer::new(0.2, BsmCoc::Merton1973);
+    let engine = CosEngine::default();
+    for k in [40.0, 250.0] {
+      let call = engine.price(&model, 100.0, k, 0.05, 0.01, 0.05, OptionType::Call);
+      let put = engine.price(&model, 100.0, k, 0.05, 0.01, 0.05, OptionType::Put);
+      let (want_c, want_p) = (
+        bsm.price_call(100.0, k, 0.05, 0.01, 0.05),
+        bsm.price_put(100.0, k, 0.05, 0.01, 0.05),
+      );
+      assert!(
+        (call - want_c).abs() < 1e-9,
+        "K={k} call: {call} vs {want_c}"
+      );
+      assert!((put - want_p).abs() < 1e-9, "K={k} put: {put} vs {want_p}");
+    }
   }
 }

@@ -196,7 +196,7 @@ impl CarrMadanPricer {
     let target = k.ln();
     let n = log_strikes.len();
 
-    if target < log_strikes[0] || target > log_strikes[n - 1] {
+    if !(log_strikes[0] <= target && target <= log_strikes[n - 1]) {
       return f64::NAN;
     }
 
@@ -300,8 +300,8 @@ impl GilPelaezPricer {
 /// Lewis (2001) single-strike quadrature pricer.
 ///
 /// $$
-/// C=S F e^{-rT}-\frac{\sqrt{SK}\,e^{-rT}}{\pi}
-/// \int_0^\infty\!\operatorname{Re}\!\left[\frac{\phi_T(u-\tfrac i2)\,e^{-iu\ln(K/S)}}{u^2+\tfrac14}\right]du
+/// C=Se^{-qT}-\frac{\sqrt{SK}\,e^{-(r+q)T/2}}{\pi}
+/// \int_0^\infty\!\operatorname{Re}\!\left[\frac{e^{-iu\ln(K/F)}\,\phi_X(u-\tfrac i2)}{u^2+\tfrac14}\right]du
 /// $$
 pub struct LewisPricer;
 
@@ -363,6 +363,13 @@ mod tests {
 
   fn bsm() -> BsmFourier {
     BsmFourier { sigma: 0.15 }
+  }
+
+  /// A NaN strike prices NaN rather than falling through the grid bracket.
+  #[test]
+  fn carr_madan_nan_strike_prices_nan() {
+    let price = CarrMadanPricer::default().price_call(&bsm(), 100.0, f64::NAN, 0.05, 0.0, 1.0);
+    assert!(price.is_nan(), "NaN strike must price NaN, got {price}");
   }
 
   /// The FFT carries a `NaN` characteristic function straight through to the

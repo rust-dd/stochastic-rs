@@ -4,13 +4,13 @@
 //! enabling pricing via any Fourier pricer (Carr-Madan, Gil-Pelaez, Lewis).
 //!
 //! $$
-//! dS_t = (r - q - \tfrac12\sigma_{Z_t}^2)S_t\,dt + \sigma_{Z_t}S_t\,dW_t
+//! d\ln S_t = (r - q - \tfrac12\sigma_{Z_t}^2)\,dt + \sigma_{Z_t}\,dW_t
 //! $$
 //!
 //! where $Z_t$ is a continuous-time Markov chain with generator matrix $Q$.
 //!
-//! The characteristic function is obtained via the matrix exponential of a
-//! state-dependent drift/diffusion matrix:
+//! The characteristic function of $\ln(S_T/F_T)$, with $\mu_k=-\tfrac12\sigma_k^2$, is the
+//! matrix exponential of a state-dependent drift/diffusion matrix:
 //!
 //! $$
 //! \phi_T(\xi) = \mathbf{e}_{z_0}^\top \exp\!\bigl(T\bigl(Q + \mathrm{diag}(
