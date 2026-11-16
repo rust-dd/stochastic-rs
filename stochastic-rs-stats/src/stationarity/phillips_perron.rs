@@ -7,7 +7,12 @@
 //! References:
 //! - Phillips P. C. B. & Perron P. (1988) — *Testing for a Unit Root in
 //!   Time Series Regression*, Biometrika 75(2), 335–346,
-//!   DOI: 10.1093/biomet/75.2.335.
+//!   DOI: 10.1093/biomet/75.2.335; the origin of both statistics.
+//! - StataCorp (2025) — *Stata Time-Series Reference Manual*,
+//!   `[TS] pperron`, Methods and formulas; the finite-sample `Z_ρ` and
+//!   `Z_τ` computed here.
+//! - Hamilton J. D. (1994) — *Time Series Analysis*, Princeton University
+//!   Press, ch. 17, DOI: 10.2307/j.ctv14jx6sm, which Stata cites for them.
 //! - Newey W. K. & West K. D. (1987) — *A Simple, Positive
 //!   Semi-Definite, Heteroskedasticity and Autocorrelation Consistent
 //!   Covariance Matrix*, Econometrica 55(3), 703–708,
