@@ -30,7 +30,6 @@ pub use crate::ito::ItoResult;
 pub use crate::mc::McEstimate;
 pub use crate::mc::Welford;
 pub use crate::mc::brownian_bridge_qmc::BrownianBridgeQmc;
-pub use crate::mc::lsm::Lsm;
 pub use crate::mc::mlmc::Mlmc;
 pub use crate::mc::mlmc::MlmcResult;
 pub use stochastic_rs_distributions::qmc::HaltonSeq;

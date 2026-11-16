@@ -316,11 +316,8 @@ The `mc/` module is nine files under
   variance needs two samples) + `estimate(level_sampler) -> MlmcResult<T>`;
   note it returns its own result type, not `McEstimate`. Its per-level
   mean and variance come from `mc::Welford`.
-- `lsm.rs` — Longstaff-Schwartz, `Lsm::new(r, tau, n_basis)` +
-  `price(paths, payoff)`. Ungated — the least-squares solve runs on the
-  pure-Rust `faer`, so it is in every build —
-  it needs LAPACK for the regression step, so it is absent from a
-  default build.
+- Longstaff–Schwartz is not here: it is quant's
+  `stochastic_rs_quant::pricing::BermudanLsmPricer`.
 
 ## Related SKILLs
 

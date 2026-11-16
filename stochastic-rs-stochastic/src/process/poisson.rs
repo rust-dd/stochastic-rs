@@ -6,7 +6,6 @@
 //!
 
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
@@ -27,7 +26,7 @@ pub struct Poisson<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub lambda: T,
   /// `Events(n)`: the origin and the `n` arrivals after it; `Until(t)`: the arrivals before `t`.
   pub horizon: Horizon<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -87,11 +86,6 @@ impl<T: FloatExt> Default for Poisson<T, Unseeded> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
-  /// Sample with an explicit seed, used by callers like CompoundPoisson.
-  pub fn sample_with_seed(&self, seed: u64) -> Array1<T> {
-    self.sample_impl(&Deterministic::new(seed))
-  }
-
   /// One-shot sample from any seed source. Retained for callers such as
   /// [`crate::process::cpoisson`] that need the arrival times directly.
   pub(crate) fn sample_impl<S2: SeedExt>(&self, seed: &S2) -> Array1<T> {
@@ -323,6 +317,8 @@ impl<T: FloatExt> PathSampler<T> for PoissonSampler<T> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   #[test]

@@ -43,11 +43,6 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   pub fn sample_pair(&self) -> (Array1<T>, Array1<T>) {
     self.sample_pair_cpu()
   }
-
-  /// As [`sample_pair`](Self::sample_pair) but with an explicit seed.
-  pub fn sample_pair_with_seed(&self, seed: u64) -> (Array1<T>, Array1<T>) {
-    self.sample_pair_cpu_with_seed(seed)
-  }
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed for Fgn<T, S, B> {}

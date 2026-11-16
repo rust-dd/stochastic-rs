@@ -302,7 +302,7 @@ impl PyBatesSvj {
   /// configuration decides, so `device=` does not change the answer.
   fn device_fallback(&self) -> Option<&'static str> {
     use crate::traits::ProcessExt;
-    crate::py_dispatch!(self, |inner| inner.device_fallback())
+    py_dispatch!(self, |inner| inner.device_fallback())
   }
 
   fn device_ready(&self) -> bool {

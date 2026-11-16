@@ -296,16 +296,11 @@ fn sample_pair_independent_paths_match_theory() {
   );
 }
 
-/// `sample_pair` with an explicit seed must be fully deterministic and
-/// bit-for-bit match two separate `sample_cpu_with_seed` invocations —
-/// the second one using a seed derived by replaying the same SplitMix64
-/// step the single-path variant would have produced. Here we check the
-/// simpler determinism-across-identical-seed property.
+/// Two processes built with one seed draw the same pair.
 #[test]
 fn sample_pair_is_deterministic_with_seed() {
-  let fgn = Fgn::<f64>::new(0.55, 1024, Some(1.0), Unseeded);
-  let (a1, b1) = fgn.sample_pair_cpu_with_seed(7);
-  let (a2, b2) = fgn.sample_pair_cpu_with_seed(7);
+  let pair = || Fgn::<f64, _>::new(0.55, 1024, Some(1.0), Deterministic::new(7)).sample_pair();
+  let ((a1, b1), (a2, b2)) = (pair(), pair());
   assert_eq!(a1, a2);
   assert_eq!(b1, b2);
 }

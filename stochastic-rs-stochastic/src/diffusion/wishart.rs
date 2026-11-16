@@ -694,7 +694,7 @@ impl PyWishart {
     stochastic_rs_distributions::python::runtime_error_on_panic(|| {
       use numpy::IntoPyArray;
       use pyo3::IntoPyObjectExt;
-      crate::py_dispatch_f64!(self, |inner| inner
+      py_dispatch_f64!(self, |inner| inner
         .sample()
         .into_pyarray(py)
         .into_py_any(py)
@@ -711,7 +711,7 @@ impl PyWishart {
     stochastic_rs_distributions::python::runtime_error_on_panic(|| {
       use numpy::IntoPyArray;
       use pyo3::IntoPyObjectExt;
-      crate::py_dispatch_f64!(self, |inner| {
+      py_dispatch_f64!(self, |inner| {
         let paths: Vec<pyo3::Py<pyo3::PyAny>> = inner
           .sample_par(m)
           .into_iter()
@@ -726,7 +726,7 @@ impl PyWishart {
   fn mean<'py>(&self, py: pyo3::Python<'py>, t: f64) -> pyo3::Py<pyo3::PyAny> {
     use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
-    crate::py_dispatch_f64!(self, |inner| inner
+    py_dispatch_f64!(self, |inner| inner
       .mean(t)
       .into_pyarray(py)
       .into_py_any(py)
@@ -737,6 +737,6 @@ impl PyWishart {
   /// convergence domain (every negative semidefinite `v` qualifies).
   fn laplace_transform(&self, v: numpy::PyReadonlyArray2<'_, f64>, t: f64) -> f64 {
     let v = v.as_array().to_owned();
-    crate::py_dispatch_f64!(self, |inner| inner.laplace_transform(&v, t))
+    py_dispatch_f64!(self, |inner| inner.laplace_transform(&v, t))
   }
 }

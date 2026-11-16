@@ -327,7 +327,7 @@ impl PyHoLee {
   /// the answer is the same whatever `device=` was passed.
   fn device_fallback(&self) -> Option<&'static str> {
     use crate::traits::ProcessExt;
-    crate::py_dispatch_f64!(self, |inner| inner.device_fallback())
+    py_dispatch_f64!(self, |inner| inner.device_fallback())
   }
 
   /// Whether this configuration runs on a device kernel: the absence of a

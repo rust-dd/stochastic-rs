@@ -6,7 +6,6 @@
 //!
 
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
@@ -25,7 +24,7 @@ pub struct Cgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -59,11 +58,6 @@ impl<T: FloatExt, S: SeedExt> Cgns<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Cgns<T, S, B> {
-  /// Sample with an explicit seed, used by callers like Cbms.
-  pub fn sample_with_seed(&self, seed: u64) -> [Array1<T>; 2] {
-    self.sample_impl(&Deterministic::new(seed))
-  }
-
   /// Core sampling — monomorphised per seed strategy, zero runtime branching.
   #[inline]
   pub(crate) fn sample_impl<S2: SeedExt>(&self, seed: &S2) -> [Array1<T>; 2] {

@@ -225,7 +225,7 @@ fn grid_spacing<T: FloatExt>(n: usize, t: Option<T>) -> T {
 
 /// The most coefficients a device evaluates: the kernels unroll Horner's
 /// rule over this many slots, and a longer polynomial samples on the host.
-pub const DEVICE_COEFFICIENTS: usize = 8;
+pub(crate) const DEVICE_COEFFICIENTS: usize = 8;
 
 impl<T: FloatExt, K, S: SeedExt, B: crate::euler::EulerBackend<T>>
   crate::euler::EulerCoefficients<T> for GaussianPolynomialVolatility<T, K, S, B>

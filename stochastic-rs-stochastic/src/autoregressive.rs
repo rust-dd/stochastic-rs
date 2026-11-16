@@ -8,7 +8,6 @@ pub mod agarch;
 pub mod ar;
 pub mod arch;
 pub mod arima;
-pub mod drr_garch;
 pub mod egarch;
 pub mod garch;
 pub mod gjr_garch;

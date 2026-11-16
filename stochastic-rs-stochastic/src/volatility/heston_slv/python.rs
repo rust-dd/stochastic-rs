@@ -188,7 +188,7 @@ impl PyHestonSlv {
   /// Python the leverage is a callable or a grid, neither of which a kernel
   /// evaluates, so the process samples on the host.
   fn device_fallback(&self) -> Option<&'static str> {
-    crate::py_dispatch_f64!(self, |inner| inner.device_fallback())
+    py_dispatch_f64!(self, |inner| inner.device_fallback())
   }
 
   fn device_ready(&self) -> bool {
@@ -197,7 +197,7 @@ impl PyHestonSlv {
 
   /// The leverage at `(t, s)`, as the sampler reads it.
   fn leverage(&self, t: f64, s: f64) -> PyResult<f64> {
-    callback_result(|| crate::py_dispatch_f64!(self, |inner| inner.leverage.call(t, s)))
+    callback_result(|| py_dispatch_f64!(self, |inner| inner.leverage.call(t, s)))
   }
 
   /// One path as the pair `(s, v)` of arrays.
@@ -205,7 +205,7 @@ impl PyHestonSlv {
   fn sample<'py>(&self, py: Python<'py>) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
     stochastic_rs_distributions::python::runtime_error_on_panic(
       || -> PyResult<(Py<PyAny>, Py<PyAny>)> {
-        let [s, v] = callback_result(|| crate::py_dispatch_f64!(self, |inner| inner.sample()))?;
+        let [s, v] = callback_result(|| py_dispatch_f64!(self, |inner| inner.sample()))?;
         Ok((
           s.into_pyarray(py).into_py_any(py)?,
           v.into_pyarray(py).into_py_any(py)?,
@@ -221,7 +221,7 @@ impl PyHestonSlv {
   fn sample_par<'py>(&self, py: Python<'py>, m: usize) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
     stochastic_rs_distributions::python::runtime_error_on_panic(
       || -> PyResult<(Py<PyAny>, Py<PyAny>)> {
-        crate::py_dispatch_f64!(self, |inner| {
+        py_dispatch_f64!(self, |inner| {
           // The callbacks re-attach to the interpreter from the worker threads, so
           // the GIL must be released here or the parallel sampler deadlocks.
           let samples = callback_result(|| py.detach(|| inner.sample_par(m)))?;

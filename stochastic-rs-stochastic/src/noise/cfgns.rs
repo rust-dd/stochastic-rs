@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -158,18 +157,13 @@ impl<T: FloatExt, S: SeedExt, B> Cfgns<T, S, B> {
     self.t
   }
 
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
   pub fn seed(&self) -> &S {
     &self.seed
   }
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Cfgns<T, S, B> {
-  /// Sample with an explicit seed, used by callers like Cfbms.
-  pub fn sample_with_seed(&self, seed: u64) -> [Array1<T>; 2] {
-    self.sample_impl(&Deterministic::new(seed))
-  }
-
   /// Core sampling — monomorphised per seed strategy, zero runtime branching.
   /// Uses one paired fGN pass (real/imag of a single circulant FFT) for the two
   /// independent fields; on a GPU backend they come from a batch of two.

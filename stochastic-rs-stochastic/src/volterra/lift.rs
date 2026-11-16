@@ -159,15 +159,8 @@ impl<T: FloatExt, K: VolterraKernel<T>> VolterraLift<T, K> {
     path
   }
 
-  /// Integrate $m$ independent paths driven by the given Brownian increment
-  /// matrix `dw` of shape $(m, n{-}1)$. Returns an $(m, n)$ path matrix.
-  ///
-  /// Uses **cache-tiled path-SIMD**: the $m$ paths are processed in blocks
-  /// of [`BATCH_TILE`] columns so that the state arrays
-  /// $(N', \mathrm{tile})$ fit in L1 ($\lesssim 32$ KB). Each tile advances
-  /// independently through all $n$ time steps; the outer tile loop can be
-  /// parallelised across cores (see
-  /// [`simulate_batch_par`](Self::simulate_batch_par)).
+  /// The `(m, n)` paths the `(m, n − 1)` increments `dw` drive, stepped in tiles of 64 paths whose
+  /// lift states stay in L1; `simulate_batch_par` runs the tiles in parallel.
   pub fn simulate_batch<F, G>(&self, x0: T, f: F, g: G, dw: ArrayView2<T>) -> Array2<T>
   where
     F: Fn(T, T) -> T,
@@ -328,10 +321,8 @@ impl<T: FloatExt, K: VolterraKernel<T>> VolterraLift<T, K> {
   }
 }
 
-/// Path block size for [`VolterraLift::simulate_batch`]. Chosen so the
-/// $(N', \mathrm{tile})$ state arrays fit in a 32 KB L1 cache for
-/// $N' \lesssim 30$ (tile × 30 × 2 × 8 ≈ 31 KB at tile = 64).
-pub const BATCH_TILE: usize = 64;
+/// The batch tile: at 64 paths the `(N', tile)` states fit a 32 KB L1 for `N' ≲ 30`.
+pub(crate) const BATCH_TILE: usize = 64;
 
 #[cfg(test)]
 mod tests {

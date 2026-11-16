@@ -587,7 +587,7 @@ impl PyMultiGbm {
     stochastic_rs_distributions::python::runtime_error_on_panic(|| {
       use numpy::IntoPyArray;
       use pyo3::IntoPyObjectExt;
-      crate::py_dispatch_f64!(self, |inner| inner
+      py_dispatch_f64!(self, |inner| inner
         .sample()
         .into_pyarray(py)
         .into_py_any(py)
@@ -604,7 +604,7 @@ impl PyMultiGbm {
     stochastic_rs_distributions::python::runtime_error_on_panic(|| {
       use numpy::IntoPyArray;
       use pyo3::IntoPyObjectExt;
-      crate::py_dispatch_f64!(self, |inner| {
+      py_dispatch_f64!(self, |inner| {
         let samples = inner.sample_par(m);
         pyo3::types::PyList::new(
           py,

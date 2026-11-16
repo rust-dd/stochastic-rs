@@ -3054,20 +3054,6 @@ mod family_parity;
 #[cfg(test)]
 mod tests;
 
-/// A single-precision device refuses an `f64` process at compile time.
-///
-/// ```compile_fail,E0277
-/// use stochastic_rs_core::simd_rng::Unseeded;
-/// use stochastic_rs_stochastic::device::Metal;
-/// use stochastic_rs_stochastic::diffusion::gbm::Gbm;
-/// use stochastic_rs_stochastic::traits::ProcessExt;
-///
-/// let gbm = Gbm::<f64, _>::new(0.05, 0.2, 16, 1.0, None, Unseeded);
-/// let _ = gbm.on::<Metal>().sample();
-/// ```
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
-pub mod precision_guard {}
-
 #[cfg(feature = "python")]
 #[doc(hidden)]
 pub mod python {

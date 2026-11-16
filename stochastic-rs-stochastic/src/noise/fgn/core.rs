@@ -10,7 +10,6 @@ use ndarray::prelude::*;
 use ndrustfft::FftHandler;
 use ndrustfft::ndfft_inplace_par;
 use num_complex::Complex;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
@@ -184,7 +183,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     self.t
   }
 
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
   pub fn seed(&self) -> &S {
     &self.seed
   }
@@ -209,11 +208,6 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   pub fn dt(&self) -> T {
     let step_count = self.out_len.max(1);
     self.t.unwrap_or(T::one()) / T::from_usize_(step_count)
-  }
-
-  /// Sample fGn using a specific deterministic seed.
-  pub fn sample_cpu_with_seed(&self, seed: u64) -> Array1<T> {
-    self.sample_cpu_impl(&Deterministic::new(seed))
   }
 
   /// Test-only convenience: `sample_cpu_impl(&self.seed)`, identical to what
@@ -293,11 +287,6 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
         *dst = c.re * self.scale;
       }
     });
-  }
-
-  /// Sample a pair of independent fGn paths using a specific deterministic seed.
-  pub(crate) fn sample_pair_cpu_with_seed(&self, seed: u64) -> (Array1<T>, Array1<T>) {
-    self.sample_pair_cpu_impl(&Deterministic::new(seed))
   }
 
   pub(crate) fn sample_pair_cpu(&self) -> (Array1<T>, Array1<T>) {
