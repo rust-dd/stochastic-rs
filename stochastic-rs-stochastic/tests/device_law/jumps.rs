@@ -298,6 +298,16 @@ fn a_counting_process_refuses_a_zero_rate_written_past_new() {
   let _ = p.on::<Device>().sample();
 }
 
+/// An infinite rate written past `new` is refused on the device as on the host, where the kernel
+/// would step a path of zeros.
+#[test]
+#[should_panic(expected = "lambda must satisfy `lambda.is_finite()`")]
+fn a_counting_process_refuses_an_infinite_rate_written_past_new() {
+  let mut p = Poisson::<f32, _>::new(2.0, Horizon::Events(8), Unseeded);
+  p.lambda = f32::INFINITY;
+  let _ = p.on::<Device>().sample();
+}
+
 /// Exponential inter-arrivals in count mode are Poisson arrivals, so the
 /// device draws them as such.
 #[test]

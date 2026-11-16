@@ -41,16 +41,8 @@ impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
   /// Arrivals at rate `lambda ≥ 0` up to `horizon`; panics on `Events(n ≥ 1)` at `lambda = 0`,
   /// whose n-th arrival never comes.
   pub fn new(lambda: T, horizon: Horizon<T>, seed: S) -> Self {
-    assert!(
-      lambda.is_finite(),
-      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
-    );
-    assert!(
-      lambda >= T::zero(),
-      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
-    );
+    assert_rate(lambda, horizon);
     horizon.assert_valid();
-    assert_arrivals_come(lambda, horizon);
     Poisson {
       backend: Cpu,
       lambda,
@@ -61,17 +53,10 @@ impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
-  /// Replace `lambda`, all else unchanged; panics on a zero rate under an `Events(n ≥ 1)` horizon.
+  /// Replace `lambda`, all else unchanged; panics if `lambda < 0`, or on a zero rate under an
+  /// `Events(n ≥ 1)` horizon.
   pub fn with_lambda(mut self, lambda: T) -> Self {
-    assert!(
-      lambda.is_finite(),
-      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
-    );
-    assert!(
-      lambda >= T::zero(),
-      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
-    );
-    assert_arrivals_come(lambda, self.horizon);
+    assert_rate(lambda, self.horizon);
     self.lambda = lambda;
     self
   }
@@ -80,7 +65,7 @@ impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
   /// and on `Events(n ≥ 1)` at a zero rate.
   pub fn with_horizon(mut self, horizon: Horizon<T>) -> Self {
     horizon.assert_valid();
-    assert_arrivals_come(self.lambda, horizon);
+    assert_rate(self.lambda, horizon);
     self.horizon = horizon;
     self
   }
@@ -92,9 +77,18 @@ impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
   }
 }
 
-/// Panics on `Events(n ≥ 1)` at `lambda = 0`: the n-th arrival never comes.
+/// Checked in `new` and the setters, and again where a sampler starts, since the fields stay
+/// public; a zero rate is refused under `Events(n ≥ 1)`, whose n-th arrival never comes.
 #[track_caller]
-fn assert_arrivals_come<T: FloatExt>(lambda: T, horizon: Horizon<T>) {
+fn assert_rate<T: FloatExt>(lambda: T, horizon: Horizon<T>) {
+  assert!(
+    lambda.is_finite(),
+    "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+  );
+  assert!(
+    lambda >= T::zero(),
+    "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
+  );
   assert!(
     lambda > T::zero() || !matches!(horizon, Horizon::Events(1..)),
     "horizon must satisfy `lambda > T::zero() || !matches!(horizon, Horizon::Events(1..))`, got horizon = {horizon:?}, lambda = {lambda:?}"
@@ -115,20 +109,9 @@ impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
     self.sampler_impl(seed).sample()
   }
 
-  /// Checked in `new` and again where a sampler runs, since the fields stay public.
-  #[track_caller]
-  fn assert_rate(&self) {
-    let lambda = self.lambda;
-    assert!(
-      lambda >= T::zero(),
-      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
-    );
-    assert_arrivals_come(lambda, self.horizon);
-  }
-
   /// Build the reusable sampling state from any seed source.
   pub(crate) fn sampler_impl<S2: SeedExt>(&self, seed: &S2) -> PoissonSampler<T> {
-    self.assert_rate();
+    assert_rate(self.lambda, self.horizon);
     // A zero rate takes the draw a stream would, so the streams seeded after it stay put.
     let distr = if self.lambda > T::zero() {
       Some(SimdExp::<T>::new(self.lambda).seeded(seed))
@@ -152,7 +135,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   for Poisson<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    self.assert_rate();
+    assert_rate(self.lambda, self.horizon);
     crate::euler::EulerSpec::PoissonArrivals {
       lambda: self.lambda,
     }
