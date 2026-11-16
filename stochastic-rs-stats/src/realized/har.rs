@@ -104,8 +104,7 @@ impl HarRv {
   }
 }
 
-/// The design `[1, RV(d), RV(w), RV(m)]` and next-day target of a history of `MONTHLY_LAGS + 2` or
-/// more daily RVs.
+/// The design `[1, RV(d), RV(w), RV(m)]` and next-day target of a daily RV history.
 fn build_design_matrix<T: FloatExt>(daily_rv: ArrayView1<T>) -> (Array2<f64>, Array1<f64>) {
   let n = daily_rv.len();
   let rows = n - MONTHLY_LAGS - 1;
