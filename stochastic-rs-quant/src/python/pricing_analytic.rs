@@ -160,9 +160,8 @@ impl PyHestonPricer {
   }
 }
 
-/// The Rust model holds `(alpha, beta, nu, rho)` only, so the wrapper
-/// carries the `(s, k, r, q, tau)` query the Python-visible no-argument
-/// methods are defined at. Python's constructor signature is unchanged.
+/// The Rust model holds one `SabrParams`, so the wrapper carries the `(s, k, r, q, tau)` query its
+/// no-argument methods price at.
 #[pyclass(name = "SabrPricer", unsendable)]
 pub struct PySabrPricer {
   inner: crate::pricing::sabr::SabrPricer,
@@ -189,7 +188,13 @@ impl PySabrPricer {
     q: Option<f64>,
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| {
-      let inner = crate::pricing::sabr::SabrPricer::new(alpha, beta, nu, rho);
+      let params = crate::pricing::sabr::SabrParams {
+        alpha,
+        beta,
+        rho,
+        nu,
+      };
+      let inner = crate::pricing::sabr::SabrPricer::new(params);
       Self {
         inner,
         s,

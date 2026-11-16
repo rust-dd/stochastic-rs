@@ -7,8 +7,8 @@ fn sabr_params_array_round_trip_preserves_beta() {
     let p = SabrParams {
       alpha: 0.18,
       beta,
-      nu: 0.62,
       rho: -0.31,
+      nu: 0.62,
     };
     let v = Array1::from(p);
     let p2 = SabrParams::from(v);
@@ -34,13 +34,13 @@ fn test_sabr_calibrate_price_based() {
   let true_p = SabrParams {
     alpha: 0.2,
     beta: 1.0,
-    nu: 0.6,
     rho: -0.4,
+    nu: 0.6,
   };
 
   let mut c_market = Vec::new();
   for &kk in &k {
-    let pr = SabrPricer::new(true_p.alpha, true_p.beta, true_p.nu, true_p.rho);
+    let pr = SabrPricer::new(true_p);
     let (call, _) = pr.call_put(100.0, kk, r, q, tau);
     c_market.push(call);
   }
@@ -49,8 +49,8 @@ fn test_sabr_calibrate_price_based() {
     Some(SabrParams {
       alpha: 0.15,
       beta: 1.0,
-      nu: 0.8,
       rho: 0.0,
+      nu: 0.8,
     }),
     c_market.clone().into(),
     s.clone().into(),

@@ -232,7 +232,6 @@ pub use levy::MarketSlice;
 pub use regularization::Regularization;
 pub use sabr::SabrCalibrationResult;
 pub use sabr::SabrCalibrator;
-pub use sabr::SabrParams;
 pub use sabr_caplet::SabrCapletCalibrationResult;
 pub use sabr_caplet::SabrCapletCalibrator;
 pub use sabr_caplet::SabrCapletParams;

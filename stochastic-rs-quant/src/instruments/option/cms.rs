@@ -206,7 +206,7 @@ mod tests {
 
   #[test]
   fn a_known_fixing_pays_its_intrinsic_value_without_the_vol_model() {
-    let vol = SabrVolatility::new(0.035_f64, 0.5, 0.4, -0.2);
+    let vol = SabrVolatility::new(0.035_f64, 0.5, -0.2, 0.4);
     let caplet = |t_fix: f64| {
       CmsCaplet {
         strike: 0.02,

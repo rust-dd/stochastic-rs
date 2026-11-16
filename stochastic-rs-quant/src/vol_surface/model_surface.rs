@@ -185,6 +185,7 @@ mod tests {
   use crate::pricing::fourier::HestonFourier;
   use crate::pricing::fourier::VarianceGammaFourier;
   use crate::pricing::heston_stoch_corr::HestonStochCorrPricer;
+  use crate::pricing::sabr::SabrParams;
   use crate::pricing::sabr::SabrPricer;
 
   const GRID_K: [f64; 5] = [90.0, 95.0, 100.0, 105.0, 110.0];
@@ -256,12 +257,12 @@ mod tests {
 
   #[test]
   fn sabr_via_model_surface() {
-    let model = SabrPricer {
+    let model = SabrPricer::new(SabrParams {
       alpha: 0.2,
       beta: 1.0,
-      nu: 0.4,
       rho: -0.3,
-    };
+      nu: 0.4,
+    });
 
     let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
     let maturities = vec![0.25, 0.5, 1.0];
@@ -453,12 +454,12 @@ mod tests {
       r: 0.05,
       q: 0.0,
     };
-    let sabr = SabrPricer {
+    let sabr = SabrPricer::new(SabrParams {
       alpha: 0.2,
       beta: 1.0,
-      nu: 0.4,
       rho: -0.3,
-    };
+      nu: 0.4,
+    });
 
     for &(s, r, q) in &[
       (100.0, 0.05, 0.0),

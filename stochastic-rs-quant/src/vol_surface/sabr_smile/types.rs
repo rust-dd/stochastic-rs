@@ -1,4 +1,4 @@
-use crate::calibration::sabr::SabrParams;
+use crate::pricing::sabr::SabrParams;
 
 #[derive(Clone, Copy, Debug)]
 pub struct SabrSmileQuotes {

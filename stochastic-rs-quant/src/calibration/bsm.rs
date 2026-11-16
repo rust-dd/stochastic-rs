@@ -97,7 +97,7 @@ pub struct BsmParams {
 impl BsmParams {
   /// Project onto the admissible set $[\text{V\_MIN}, \infty)$, in the
   /// shape of
-  /// [`SabrParams::project_in_place`](crate::calibration::sabr::SabrParams::project_in_place).
+  /// [`SabrParams::project_in_place`](crate::pricing::sabr::SabrParams::project_in_place).
   ///
   /// A negative `v` does not announce itself: $d_1$ and $d_2$ both flip
   /// sign with $\sigma$ (the $\sigma^2/2$ in the numerator does not), so

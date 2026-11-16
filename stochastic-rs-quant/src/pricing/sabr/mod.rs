@@ -12,6 +12,7 @@
 //! $$
 //!
 mod hagan;
+mod params;
 mod pricer;
 
 #[cfg(test)]
@@ -22,7 +23,6 @@ pub use hagan::bs_price_fx;
 pub use hagan::forward_fx;
 pub use hagan::fx_delta_from_forward;
 pub use hagan::hagan_implied_vol;
-pub use hagan::hagan_implied_vol_beta1;
 pub use hagan::model_price_hagan;
-pub use hagan::model_price_hagan_general;
+pub use params::SabrParams;
 pub use pricer::SabrPricer;

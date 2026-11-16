@@ -9,10 +9,10 @@ use stochastic_rs::quant::calibration::levy::LevyCalibrator;
 use stochastic_rs::quant::calibration::levy::LevyModelType;
 use stochastic_rs::quant::calibration::levy::MarketSlice;
 use stochastic_rs::quant::calibration::sabr::SabrCalibrator;
-use stochastic_rs::quant::calibration::sabr::SabrParams;
 use stochastic_rs::quant::pricing::bsm::BsmCoc;
 use stochastic_rs::quant::pricing::bsm::BsmPricer;
 use stochastic_rs::quant::pricing::heston::HestonPricer;
+use stochastic_rs::quant::pricing::sabr::SabrParams;
 use stochastic_rs::quant::pricing::sabr::SabrPricer;
 use stochastic_rs::quant::vol_surface::ssvi::SsviParams;
 use stochastic_rs::quant::vol_surface::ssvi::SsviSlice;
@@ -106,15 +106,20 @@ pub fn cases() -> Vec<Case> {
     };
     cases.push(calibration(name, cal, max_rmse));
   }
-  let sabr = SabrPricer::new(0.2, 1.0, 0.6, -0.3);
+  let sabr = SabrPricer::new(SabrParams {
+    alpha: 0.2,
+    beta: 1.0,
+    rho: -0.3,
+    nu: 0.6,
+  });
   cases.push(calibration(
     "sabr",
     SabrCalibrator::new(
       Some(SabrParams {
         alpha: 0.25,
         beta: 1.0,
-        nu: 0.8,
         rho: 0.0,
+        nu: 0.8,
       }),
       strikes.mapv(|k| sabr.call_put(100.0, k, 0.03, 0.0, 1.0).0),
       spot,

@@ -39,6 +39,7 @@ use crate::calibration::Regularization;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::LmOptions;
 use crate::calibration::least_squares::minimize;
+use crate::pricing::sabr::SabrParams;
 use crate::pricing::sabr::SabrPricer;
 
 const RHO_BOUND: f64 = 0.9999;
@@ -69,12 +70,12 @@ impl SabrCalibrationResult {
   /// Convert to a [`SabrPricer`] for
   /// pricing / vol surface generation.
   pub fn to_model(&self) -> crate::pricing::sabr::SabrPricer {
-    crate::pricing::sabr::SabrPricer {
+    crate::pricing::sabr::SabrPricer::new(SabrParams {
       alpha: self.alpha,
       beta: self.beta,
-      nu: self.nu,
       rho: self.rho,
-    }
+      nu: self.nu,
+    })
   }
 }
 
@@ -92,8 +93,8 @@ impl crate::traits::CalibrationResult for SabrCalibrationResult {
     SabrParams {
       alpha: self.alpha,
       beta: self.beta,
-      nu: self.nu,
       rho: self.rho,
+      nu: self.nu,
     }
   }
 
@@ -118,18 +119,6 @@ impl crate::traits::Calibrator for SabrCalibrator {
   }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct SabrParams {
-  /// Model shape/loading parameter.
-  pub alpha: f64,
-  /// Cev exponent (0 = normal, 1 = lognormal).
-  pub beta: f64,
-  /// Volatility-of-volatility parameter.
-  pub nu: f64,
-  /// Correlation parameter.
-  pub rho: f64,
-}
-
 impl SabrParams {
   pub fn project_in_place(&mut self) {
     self.alpha = self.alpha.abs().max(ALPHA_MIN);
@@ -144,29 +133,29 @@ impl SabrParams {
   }
 }
 
-/// Lossless round-trip [α, β, ν, ρ]. Use `SabrParams::as_lm_vec` for the
+/// Lossless round-trip [α, β, ρ, ν]. Use `SabrParams::as_lm_vec` for the
 /// 3-vec [α, ν, ρ] form the Levenberg-Marquardt solver operates on.
 impl From<SabrParams> for Array1<f64> {
   fn from(p: SabrParams) -> Self {
-    Array1::from_vec(vec![p.alpha, p.beta, p.nu, p.rho])
+    Array1::from_vec(vec![p.alpha, p.beta, p.rho, p.nu])
   }
 }
 
-/// Lossless round-trip from a 4-vec [α, β, ν, ρ]. Panics on a vector with
+/// Lossless round-trip from a 4-vec [α, β, ρ, ν]. Panics on a vector with
 /// fewer than 4 elements (e.g. an LM 3-vec).
 impl From<Array1<f64>> for SabrParams {
   fn from(v: Array1<f64>) -> Self {
     assert_eq!(
       v.len(),
       4,
-      "SabrParams::from(Array1) expects 4 elements [alpha, beta, nu, rho], got {}",
+      "SabrParams::from(Array1) expects 4 elements [alpha, beta, rho, nu], got {}",
       v.len()
     );
     SabrParams {
       alpha: v[0],
       beta: v[1],
-      nu: v[2],
-      rho: v[3],
+      rho: v[2],
+      nu: v[3],
     }
   }
 }
@@ -321,8 +310,8 @@ impl SabrCalibrator {
         SabrParams {
           alpha: 0.2,
           beta: 1.0,
-          nu: 0.8,
           rho: 0.0,
+          nu: 0.8,
         }
         .projected(),
       );
@@ -336,8 +325,8 @@ impl SabrCalibrator {
     SabrParams {
       alpha: 0.2,
       beta: 1.0,
-      nu: 0.8,
       rho: 0.0,
+      nu: 0.8,
     }
     .projected()
   }
@@ -345,7 +334,7 @@ impl SabrCalibrator {
   fn compute_model_prices_for(&self, p: &SabrParams) -> Array1<f64> {
     let mut c_model = Array1::zeros(self.c_market.len());
     for i in 0..self.c_market.len() {
-      let pr = SabrPricer::new(p.alpha, p.beta, p.nu, p.rho);
+      let pr = SabrPricer::new(*p);
       let (call, put) = pr.call_put(
         self.s[i],
         self.k[i],
@@ -415,8 +404,8 @@ impl LeastSquaresProblem for SabrCalibrator {
     let mut p = SabrParams {
       alpha: params[0],
       beta,
-      nu: params[1],
       rho: params[2],
+      nu: params[1],
     };
     p.project_in_place();
     self.params = Some(p);
@@ -440,7 +429,7 @@ impl LeastSquaresProblem for SabrCalibrator {
             .iter()
             .enumerate()
             .map(|(i, _)| {
-              let pr = SabrPricer::new(p.alpha, p.beta, p.nu, p.rho);
+              let pr = SabrPricer::new(p);
               pr.call_put(
                 self.s[i],
                 self.k[i],

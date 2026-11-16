@@ -11,25 +11,17 @@ use basin::Problem;
 use basin::TerminationReason;
 use stochastic_rs_core::simd_rng::SimdRng;
 
+use crate::pricing::sabr::SabrParams;
 use crate::pricing::sabr::alpha_from_atm_vol;
 use crate::pricing::sabr::bs_price_fx;
 use crate::pricing::sabr::forward_fx;
 use crate::pricing::sabr::fx_delta_from_forward;
 use crate::pricing::sabr::hagan_implied_vol;
-use crate::pricing::sabr::model_price_hagan_general;
+use crate::pricing::sabr::model_price_hagan;
 
-pub(super) fn rr_sigma(
-  k_call: f64,
-  k_put: f64,
-  f: f64,
-  tau: f64,
-  alpha: f64,
-  beta: f64,
-  nu: f64,
-  rho: f64,
-) -> f64 {
-  let sc = hagan_implied_vol(k_call, f, tau, alpha, beta, nu, rho);
-  let sp = hagan_implied_vol(k_put, f, tau, alpha, beta, nu, rho);
+pub(super) fn rr_sigma(k_call: f64, k_put: f64, f: f64, tau: f64, params: &SabrParams) -> f64 {
+  let sc = hagan_implied_vol(k_call, f, tau, params);
+  let sp = hagan_implied_vol(k_put, f, tau, params);
   sc - sp
 }
 
@@ -40,14 +32,11 @@ pub(super) fn bf_premium_mismatch(
   r_d: f64,
   r_f: f64,
   tau: f64,
-  alpha: f64,
-  beta: f64,
-  nu: f64,
-  rho: f64,
+  params: &SabrParams,
   sigma_ref: f64,
 ) -> f64 {
-  let (mc, _) = model_price_hagan_general(s, k_call, r_d, r_f, tau, alpha, beta, nu, rho);
-  let (_, mp) = model_price_hagan_general(s, k_put, r_d, r_f, tau, alpha, beta, nu, rho);
+  let (mc, _) = model_price_hagan(s, k_call, r_d, r_f, tau, params);
+  let (_, mp) = model_price_hagan(s, k_put, r_d, r_f, tau, params);
   let (bc, _) = bs_price_fx(s, k_call, r_d, r_f, tau, sigma_ref);
   let (_, bp) = bs_price_fx(s, k_put, r_d, r_f, tau, sigma_ref);
   (mc + mp) - (bc + bp)
@@ -98,11 +87,16 @@ impl CostFunction for SabrSmileProblem {
       return Ok(f64::MAX);
     }
 
-    let term_rr =
-      (rr_sigma(k_rr_c, k_rr_p, f, self.tau, alpha, self.beta, nu, rho) - self.sigma_rr).powi(2);
+    let params = SabrParams {
+      alpha,
+      beta: self.beta,
+      rho,
+      nu,
+    };
+    let term_rr = (rr_sigma(k_rr_c, k_rr_p, f, self.tau, &params) - self.sigma_rr).powi(2);
 
-    let call_sigma_rr = hagan_implied_vol(k_rr_c, f, self.tau, alpha, self.beta, nu, rho);
-    let put_sigma_rr = hagan_implied_vol(k_rr_p, f, self.tau, alpha, self.beta, nu, rho);
+    let call_sigma_rr = hagan_implied_vol(k_rr_c, f, self.tau, &params);
+    let put_sigma_rr = hagan_implied_vol(k_rr_p, f, self.tau, &params);
     let d_call_rr = fx_delta_from_forward(k_rr_c, f, call_sigma_rr, self.tau, self.r_f, 1.0);
     let d_put_rr = fx_delta_from_forward(k_rr_p, f, put_sigma_rr, self.tau, self.r_f, -1.0);
     let term_rr_delta = (d_call_rr - 0.25).powi(2) + (d_put_rr + 0.25).powi(2);
@@ -110,7 +104,7 @@ impl CostFunction for SabrSmileProblem {
     // Market strangle convention: σ_ref = σ_ATM + σ_BF when computing delta.
     let sigma_ref = self.sigma_atm + self.sigma_bf;
     let term_bf = bf_premium_mismatch(
-      self.s, k_bf_c, k_bf_p, self.r_d, self.r_f, self.tau, alpha, self.beta, nu, rho, sigma_ref,
+      self.s, k_bf_c, k_bf_p, self.r_d, self.r_f, self.tau, &params, sigma_ref,
     )
     .powi(2);
 

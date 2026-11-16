@@ -19,6 +19,7 @@ use stochastic_rs::quant::pricing::fourier::HestonFourier;
 use stochastic_rs::quant::pricing::fourier::KouFourier;
 use stochastic_rs::quant::pricing::fourier::LewisPricer;
 use stochastic_rs::quant::pricing::heston::HestonPricer;
+use stochastic_rs::quant::pricing::sabr::SabrParams;
 use stochastic_rs::quant::pricing::sabr::SabrPricer;
 use stochastic_rs::quant::pricing::sabr::hagan_implied_vol;
 use stochastic_rs::traits::ModelPricer;
@@ -161,12 +162,18 @@ fn bsm_and_sabr(c: &mut Criterion) {
   group
     .sample_size(50)
     .measurement_time(Duration::from_secs(4));
-  let sabr = SabrPricer::new(0.2, 1.0, 0.6, -0.3);
+  let params = SabrParams {
+    alpha: 0.2,
+    beta: 1.0,
+    rho: -0.3,
+    nu: 0.6,
+  };
+  let sabr = SabrPricer::new(params);
   group.bench_function("hagan_vol_9", |b| {
     b.iter(|| {
       STRIKES
         .iter()
-        .map(|&k| hagan_implied_vol(k, S, 1.0, 0.2, 1.0, 0.6, -0.3))
+        .map(|&k| hagan_implied_vol(k, S, 1.0, &params))
         .sum::<f64>()
     })
   });

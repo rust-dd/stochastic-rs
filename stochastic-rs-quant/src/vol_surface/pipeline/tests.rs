@@ -293,14 +293,15 @@ fn build_surface_from_calibration_levy_vg() {
 
 #[test]
 fn build_surface_from_model_sabr() {
+  use crate::pricing::sabr::SabrParams;
   use crate::pricing::sabr::SabrPricer;
 
-  let model = SabrPricer {
+  let model = SabrPricer::new(SabrParams {
     alpha: 0.2,
     beta: 1.0,
-    nu: 0.4,
     rho: -0.3,
-  };
+    nu: 0.4,
+  });
   let result = build_surface_from_model(
     &model,
     100.0,

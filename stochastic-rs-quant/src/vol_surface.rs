@@ -192,8 +192,8 @@
 //! ```
 //! use ndarray::Array1;
 //! use stochastic_rs_quant::OptionType;
-//! use stochastic_rs_quant::calibration::{SabrCalibrator, SabrParams};
-//! use stochastic_rs_quant::pricing::sabr::SabrPricer;
+//! use stochastic_rs_quant::calibration::SabrCalibrator;
+//! use stochastic_rs_quant::pricing::sabr::{SabrParams, SabrPricer};
 //! use stochastic_rs_quant::traits::{Calibrator, ModelPricer};
 //! use stochastic_rs_quant::vol_surface::build_surface_from_model;
 //!
@@ -202,12 +202,12 @@
 //! let r = 0.02;
 //! let q = 0.01;
 //! let taus = [0.25, 0.5, 1.0];
-//! let true_p = SabrParams { alpha: 0.2, beta: 1.0, nu: 0.6, rho: -0.4 };
+//! let true_p = SabrParams { alpha: 0.2, beta: 1.0, rho: -0.4, nu: 0.6 };
 //!
 //! // Calibrate Sabr per slice, from synthetic (round-trippable) market prices.
 //! let sabr_results: Vec<_> = taus.iter().map(|&tau| {
 //!     let prices: Vec<f64> = strikes.iter().map(|&k| {
-//!         SabrPricer::new(true_p.alpha, true_p.beta, true_p.nu, true_p.rho)
+//!         SabrPricer::new(true_p)
 //!             .price_call(s0, k, r, q, tau)
 //!     }).collect();
 //!     let cal = SabrCalibrator::new(None, prices.into(), Array1::from_elem(strikes.len(), s0),

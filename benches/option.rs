@@ -158,7 +158,7 @@ fn bench_european_swaption_sabr(c: &mut Criterion) {
     0.045,
     expiry,
     swap,
-    SabrVolatility::new(0.3, 0.5, 0.4, -0.2),
+    SabrVolatility::new(0.3, 0.5, -0.2, 0.4),
   );
 
   c.bench_function("option_european_swaption_sabr", |b| {

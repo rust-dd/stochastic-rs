@@ -27,6 +27,7 @@
 //! Wilmott Magazine (2002).
 
 use super::types::VolatilityQuoteKind;
+use crate::pricing::sabr::SabrParams;
 use crate::pricing::sabr::hagan_implied_vol;
 use crate::traits::RealExt;
 
@@ -98,20 +99,20 @@ pub struct SabrVolatility<T: RealExt> {
   pub alpha: T,
   /// Sabr Cev exponent $\beta$ ($\beta=0$ normal, $\beta=1$ lognormal).
   pub beta: T,
-  /// Sabr volatility of volatility $\nu$.
-  pub nu: T,
   /// Sabr correlation $\rho$.
   pub rho: T,
+  /// Sabr volatility of volatility $\nu$.
+  pub nu: T,
 }
 
 impl<T: RealExt> SabrVolatility<T> {
   /// Build a Sabr implied-volatility surface.
-  pub fn new(alpha: T, beta: T, nu: T, rho: T) -> Self {
+  pub fn new(alpha: T, beta: T, rho: T, nu: T) -> Self {
     Self {
       alpha,
       beta,
-      nu,
       rho,
+      nu,
     }
   }
 }
@@ -122,10 +123,7 @@ impl<T: RealExt> VolatilityModel<T> for SabrVolatility<T> {
       strike.to_f64().unwrap_or(f64::NAN),
       forward.to_f64().unwrap_or(f64::NAN),
       tau.to_f64().unwrap_or(f64::NAN),
-      self.alpha.to_f64().unwrap_or(f64::NAN),
-      self.beta.to_f64().unwrap_or(f64::NAN),
-      self.nu.to_f64().unwrap_or(f64::NAN),
-      self.rho.to_f64().unwrap_or(f64::NAN),
+      &sabr_params(self.alpha, self.beta, self.rho, self.nu),
     );
     T::from_f64_fast(sigma)
   }
@@ -151,22 +149,22 @@ pub struct ShiftedSabrVolatility<T: RealExt> {
   pub alpha: T,
   /// Sabr Cev exponent $\beta$.
   pub beta: T,
-  /// Sabr volatility of volatility $\nu$.
-  pub nu: T,
   /// Sabr correlation $\rho$.
   pub rho: T,
+  /// Sabr volatility of volatility $\nu$.
+  pub nu: T,
   /// Displacement $s$ so that $F_s = F + s$ and $K_s = K + s$.
   pub shift: T,
 }
 
 impl<T: RealExt> ShiftedSabrVolatility<T> {
   /// Build a shifted Sabr volatility surface with displacement `shift`.
-  pub fn new(alpha: T, beta: T, nu: T, rho: T, shift: T) -> Self {
+  pub fn new(alpha: T, beta: T, rho: T, nu: T, shift: T) -> Self {
     Self {
       alpha,
       beta,
-      nu,
       rho,
+      nu,
       shift,
     }
   }
@@ -178,15 +176,21 @@ impl<T: RealExt> VolatilityModel<T> for ShiftedSabrVolatility<T> {
       (strike + self.shift).to_f64().unwrap_or(f64::NAN),
       (forward + self.shift).to_f64().unwrap_or(f64::NAN),
       tau.to_f64().unwrap_or(f64::NAN),
-      self.alpha.to_f64().unwrap_or(f64::NAN),
-      self.beta.to_f64().unwrap_or(f64::NAN),
-      self.nu.to_f64().unwrap_or(f64::NAN),
-      self.rho.to_f64().unwrap_or(f64::NAN),
+      &sabr_params(self.alpha, self.beta, self.rho, self.nu),
     );
     T::from_f64_fast(sigma)
   }
 
   fn quote_kind(&self) -> VolatilityQuoteKind {
     VolatilityQuoteKind::Lognormal
+  }
+}
+
+fn sabr_params<T: RealExt>(alpha: T, beta: T, rho: T, nu: T) -> SabrParams {
+  SabrParams {
+    alpha: alpha.to_f64().unwrap_or(f64::NAN),
+    beta: beta.to_f64().unwrap_or(f64::NAN),
+    rho: rho.to_f64().unwrap_or(f64::NAN),
+    nu: nu.to_f64().unwrap_or(f64::NAN),
   }
 }
