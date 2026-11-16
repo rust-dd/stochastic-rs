@@ -147,7 +147,8 @@ fn concentrate(series: ArrayView2<f64>, lags: usize) -> Result<Concentrated, Sta
   if k < 2 {
     return Err(StatsError::InsufficientData { needed: 2, got: k });
   }
-  let needed = lags.saturating_add(3);
+  // S00 needs `k` residual degrees of freedom beyond the `(lags − 1) k + 1` lag regressors.
+  let needed = lags.saturating_mul(k.saturating_add(1)).saturating_add(1);
   if t < needed {
     return Err(StatsError::InsufficientData { needed, got: t });
   }
@@ -273,7 +274,7 @@ fn sequential_rank(statistics: &Array1<f64>, critical: &Array1<f64>) -> usize {
 }
 
 /// Johansen trace and max-eigenvalue tests of a `(t, k)` series at VAR order `lags`; `Err` below 2
-/// series or `lags + 3` rows, on a non-finite entry or no finite fit; panics if `lags = 0`.
+/// series or `lags (k + 1) + 1` rows, on a non-finite entry or no finite fit; panics if `lags = 0`.
 pub fn johansen_test(series: ArrayView2<f64>, lags: usize) -> Result<JohansenTest, StatsError> {
   let c = concentrate(series, lags)?;
   let k = c.eigenvalues.len();
