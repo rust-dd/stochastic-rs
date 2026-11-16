@@ -49,7 +49,7 @@ pub trait CalibrationResult {
 
 pub trait ToModel {
     type Model: ModelPricer;                 // the bound is load-bearing
-    fn to_model(&self, r: f64, q: f64) -> Self::Model;
+    fn to_model(&self) -> Self::Model;     // rates travel with the pricing query
 }
 
 // Short-rate results bridge through a separate trait whose Model has
@@ -134,7 +134,7 @@ impl crate::traits::CalibrationResult for XyzCalibrationResult {
 
 impl crate::traits::ToModel for XyzCalibrationResult {
     type Model = XyzModel;
-    fn to_model(&self, _r: f64, _q: f64) -> XyzModel {
+    fn to_model(&self) -> XyzModel {
         XyzModel { a: self.a, b: self.b, c: self.c }
     }
 }
@@ -333,9 +333,10 @@ impl PyXyzCalibrator {
     #[pyo3(signature = (initial=None))]
     fn calibrate_to_model(&self, initial: Option<[f64; 3]>) -> PyResult<PyXyzModel> {
         use crate::traits::Calibrator;
+        use crate::traits::ToModel;
         let res = self.inner.calibrate(initial)
             .map_err(|e| PyValueError::new_err(format!("XYZ calibration failed: {e}")))?;
-        Ok(PyXyzModel { inner: res.to_model(0.0, 0.0) })
+        Ok(PyXyzModel { inner: res.to_model() })
     }
 }
 ```

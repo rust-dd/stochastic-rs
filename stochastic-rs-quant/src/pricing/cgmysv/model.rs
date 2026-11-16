@@ -43,10 +43,6 @@ pub struct CgmysvParams {
 #[derive(Debug, Clone)]
 pub struct CgmysvModel {
   pub params: CgmysvParams,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Continuous dividend yield.
-  pub q: f64,
 }
 
 impl CgmysvParams {
@@ -129,7 +125,7 @@ impl FourierModelExt for CgmysvModel {
   fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
     let omega = self.params.omega(t);
     let i = Complex64::i();
-    (i * xi * ((self.r - self.q) * t - omega)).exp() * self.params.chf_l(t, xi)
+    (-i * xi * omega).exp() * self.params.chf_l(t, xi)
   }
 
   fn cumulants(&self, t: f64) -> Cumulants {

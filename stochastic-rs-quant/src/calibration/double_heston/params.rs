@@ -86,10 +86,11 @@ impl DoubleHestonParams {
     self.project_in_place();
     self
   }
+}
 
-  /// Convert to a [`DoubleHestonFourier`](crate::pricing::fourier::DoubleHestonFourier)
-  /// model for pricing / vol surface generation.
-  pub fn to_model(&self, r: f64, q: f64) -> crate::pricing::fourier::DoubleHestonFourier {
+impl crate::traits::ToModel for DoubleHestonParams {
+  type Model = crate::pricing::fourier::DoubleHestonFourier;
+  fn to_model(&self) -> Self::Model {
     crate::pricing::fourier::DoubleHestonFourier {
       v1_0: self.v1_0,
       kappa1: self.kappa1,
@@ -101,16 +102,7 @@ impl DoubleHestonParams {
       theta2: self.theta2,
       sigma2: self.sigma2,
       rho2: self.rho2,
-      r,
-      q,
     }
-  }
-}
-
-impl crate::traits::ToModel for DoubleHestonParams {
-  type Model = crate::pricing::fourier::DoubleHestonFourier;
-  fn to_model(&self, r: f64, q: f64) -> Self::Model {
-    DoubleHestonParams::to_model(self, r, q)
   }
 }
 

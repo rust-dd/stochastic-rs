@@ -73,47 +73,17 @@ impl CarrMadanPricer {
     }
   }
 
-  /// Build a Carr-Madan pricer with cumulant-based grid sizing
-  /// (Lord-Kahl 2010 §3.2, Andersen-Andreasen 2002).
+  /// Lord–Kahl half-width `|ln s| + l_factor·√(|c₂| + √|c₄|)` at `t` around `ln K = 0` (the FRFT
+  /// pricer centres on the forward); panics unless `s`, `l_factor`, `c₂` are finite and positive.
   ///
-  /// Reference: Lord, R. & Kahl, C. (2010), "Complex logarithms in
-  /// Heston-like models", *Mathematical Finance* 20(4), §3.2 (truncation /
-  /// step-size rule).
+  /// Reference: Lord, R. & Kahl, C. (2010), "Complex logarithms in Heston-like models", Mathematical Finance 20(4), §3.2
   ///
-  /// The FFT log-strike grid runs over `[-L/2, +L/2]` with half-width
-  /// $L/2 = |\ln S_0| + L_{\text{factor}}\sqrt{|c_2|+\sqrt{|c_4|}}$. The
-  /// $|\ln S_0|$ term guarantees the grid covers the at-the-money log-strike
-  /// $\ln S_0$; the cumulant term scales the tail buffer by the model's
-  /// second / fourth cumulants at maturity $t$, so skewed (Heston/Bates with
-  /// large $|\rho|$) or long-dated models get a wider grid than typical
-  /// equity options. Per Lord-Kahl 2010 §3.2, $L_{\text{factor}} = 12$
-  /// is the practical sweet spot — it captures > 99.9% of the log-return
-  /// distribution mass for moderate skew/kurtosis without diluting the
-  /// FFT resolution.
-  ///
-  /// **Grid centring note:** This pricer keeps the FFT grid centred at
-  /// $\ln K = 0$, since the standard FFT phase $e^{-2\pi i j u / N}$ does
-  /// not tolerate an arbitrary grid shift. For true Lord-Kahl grid
-  /// centring around the model-implied log-asset mean
-  /// $\mu_T = \ln S_0 + c_1$ — which puts the FFT resolution where the
-  /// option is price-sensitive and reaches the same accuracy on a much
-  /// smaller grid — use [`super::FrftCarrMadanPricer`], the fractional-FFT
-  /// variant. The cumulant-sized half-width here already gives the
-  /// dominant accuracy gain for production Heston / Bates / Lévy
-  /// calibration workloads.
-  ///
-  /// Panics unless `s`, `l_factor` and the model's second cumulant are finite and positive; `alpha` stays the
-  /// default damping (0.75).
-  ///
-  /// # Example
   /// ```
   /// use stochastic_rs_quant::pricing::fourier::{CarrMadanPricer, HestonFourier};
   ///
-  /// let heston = HestonFourier {
-  ///     v0: 0.04, kappa: 1.5, theta: 0.04, sigma: 0.3, rho: -0.6, r: 0.05, q: 0.0,
-  /// };
+  /// let heston = HestonFourier { v0: 0.04, kappa: 1.5, theta: 0.04, sigma: 0.3, rho: -0.6 };
   /// let pricer = CarrMadanPricer::cumulant_sized(&heston, /* t */ 5.0, /* s */ 100.0, 12.0);
-  /// let price = pricer.price_call(&heston, 100.0, 100.0, 0.05, 5.0);
+  /// let price = pricer.price_call(&heston, 100.0, 100.0, 0.05, 0.0, 5.0);
   /// assert!(price.is_finite() && price > 0.0);
   /// ```
   pub fn cumulant_sized(model: &impl FourierModelExt, t: f64, s: f64, l_factor: f64) -> Self {
@@ -160,6 +130,7 @@ impl CarrMadanPricer {
     model: &impl FourierModelExt,
     s: f64,
     r: f64,
+    q: f64,
     t: f64,
   ) -> (Array1<f64>, Array1<f64>) {
     let n = self.n;
@@ -169,7 +140,7 @@ impl CarrMadanPricer {
     let b = -0.5 * n as f64 * lambda;
 
     let i_unit = Complex64::i();
-    let ln_s = s.ln();
+    let ln_f = s.ln() + (r - q) * t;
     let disc = (-r * t).exp();
 
     let mut input = Array1::<Complex64>::zeros(n);
@@ -186,7 +157,7 @@ impl CarrMadanPricer {
       };
 
       let xi = Complex64::new(v_j, -(alpha + 1.0));
-      let phi = model.chf(t, xi) * (i_unit * xi * ln_s).exp();
+      let phi = model.chf(t, xi) * (i_unit * xi * ln_f).exp();
 
       let denom = Complex64::new(alpha * alpha + alpha - v_j * v_j, (2.0 * alpha + 1.0) * v_j);
 
@@ -212,8 +183,16 @@ impl CarrMadanPricer {
 
   /// Call price interpolated on the FFT surface; NaN when `ln(k)` falls outside the grid (test with
   /// [`Self::strike_in_grid`], or widen it with a larger `n` or a smaller `eta`).
-  pub fn price_call(&self, model: &impl FourierModelExt, s: f64, k: f64, r: f64, t: f64) -> f64 {
-    let (log_strikes, prices) = self.price_call_surface(model, s, r, t);
+  pub fn price_call(
+    &self,
+    model: &impl FourierModelExt,
+    s: f64,
+    k: f64,
+    r: f64,
+    q: f64,
+    t: f64,
+  ) -> f64 {
+    let (log_strikes, prices) = self.price_call_surface(model, s, r, q, t);
     let target = k.ln();
     let n = log_strikes.len();
 
@@ -239,9 +218,10 @@ impl CarrMadanPricer {
     s: f64,
     k: f64,
     r: f64,
+    q: f64,
     t: f64,
   ) -> bool {
-    let (log_strikes, _) = self.price_call_surface(model, s, r, t);
+    let (log_strikes, _) = self.price_call_surface(model, s, r, q, t);
     let target = k.ln();
     let n = log_strikes.len();
     target >= log_strikes[0] && target <= log_strikes[n - 1]
@@ -257,7 +237,7 @@ impl CarrMadanPricer {
     q: f64,
     t: f64,
   ) -> f64 {
-    let call = self.price_call(model, s, k, r, t);
+    let call = self.price_call(model, s, k, r, q, t);
     call - s * (-q * t).exp() + k * (-r * t).exp()
   }
 }
@@ -280,7 +260,8 @@ impl GilPelaezPricer {
   /// as its missing-data return. The result is otherwise floored at zero; see
   /// `floor_price` for why the two are separate operations.
   pub fn price_call(model: &impl FourierModelExt, s: f64, k: f64, r: f64, q: f64, t: f64) -> f64 {
-    let ln_ks = (k / s).ln();
+    // The carry e^{iu(r−q)t} of both integrands folds into the kernel's phase as ln(K/F).
+    let ln_kf = (k / s).ln() - (r - q) * t;
 
     let i_unit = Complex64::i();
 
@@ -294,7 +275,7 @@ impl GilPelaezPricer {
       if phi_neg_i.norm() < 1e-30 {
         return 0.0;
       }
-      let kernel = (-i_unit * u * ln_ks).exp() / (i_unit * u);
+      let kernel = (-i_unit * u * ln_kf).exp() / (i_unit * u);
       (kernel * phi / phi_neg_i).re
     };
 
@@ -304,7 +285,7 @@ impl GilPelaezPricer {
       }
       let xi = Complex64::new(u, 0.0);
       let phi = model.chf(t, xi);
-      let kernel = (-i_unit * u * ln_ks).exp() / (i_unit * u);
+      let kernel = (-i_unit * u * ln_kf).exp() / (i_unit * u);
       (kernel * phi).re
     };
 
@@ -331,9 +312,12 @@ impl LewisPricer {
   /// on the same terms as [`GilPelaezPricer::price_call`]; the result is
   /// otherwise floored at zero by `floor_price`.
   pub fn price_call(model: &impl FourierModelExt, s: f64, k: f64, r: f64, q: f64, t: f64) -> f64 {
-    let ln_ks = (k / s).ln();
+    let carry = (r - q) * t;
+    // e^{iξ(r−q)t} at ξ = u − i/2 is a phase, folded into ln(K/F), times e^{(r−q)t/2}.
+    let ln_kf = (k / s).ln() - carry;
+    let half_carry = (0.5 * carry).exp();
     let disc = (-r * t).exp();
-    let fwd_factor = ((r - q) * t).exp();
+    let fwd_factor = carry.exp();
     let sqrt_sk = (s * k).sqrt();
 
     let i_unit = Complex64::i();
@@ -341,7 +325,7 @@ impl LewisPricer {
     let integrand = |u: f64| -> f64 {
       let xi = Complex64::new(u, -0.5);
       let phi = model.chf(t, xi);
-      let kernel = (-i_unit * u * ln_ks).exp() / (u * u + 0.25);
+      let kernel = half_carry * (-i_unit * u * ln_kf).exp() / (u * u + 0.25);
       (kernel * phi).re
     };
 
@@ -378,11 +362,7 @@ mod tests {
   }
 
   fn bsm() -> BsmFourier {
-    BsmFourier {
-      sigma: 0.15,
-      r: 0.05,
-      q: 0.0,
-    }
+    BsmFourier { sigma: 0.15 }
   }
 
   /// The FFT carries a `NaN` characteristic function straight through to the
@@ -392,13 +372,13 @@ mod tests {
   #[test]
   fn carr_madan_surface_preserves_nan_from_chf_blowup() {
     let pricer = CarrMadanPricer::default();
-    let (_, prices) = pricer.price_call_surface(&NanChfModel, 100.0, 0.05, 1.0);
+    let (_, prices) = pricer.price_call_surface(&NanChfModel, 100.0, 0.05, 0.0, 1.0);
     assert!(
       prices.iter().all(|p| p.is_nan()),
       "a NaN chf must leave every grid price NaN"
     );
 
-    let interpolated = pricer.price_call(&NanChfModel, 100.0, 100.0, 0.05, 1.0);
+    let interpolated = pricer.price_call(&NanChfModel, 100.0, 100.0, 0.05, 0.0, 1.0);
     assert!(
       interpolated.is_nan(),
       "interpolating a poisoned grid must stay NaN, got {interpolated}"
@@ -467,7 +447,7 @@ mod tests {
     let m = bsm();
     let gp = GilPelaezPricer::price_call(&m, 100.0, 100.0, 0.05, 0.0, 1.0);
     let lw = LewisPricer::price_call(&m, 100.0, 100.0, 0.05, 0.0, 1.0);
-    let cm = CarrMadanPricer::default().price_call(&m, 100.0, 100.0, 0.05, 1.0);
+    let cm = CarrMadanPricer::default().price_call(&m, 100.0, 100.0, 0.05, 0.0, 1.0);
     for (name, p) in [("gil-pelaez", gp), ("lewis", lw), ("carr-madan", cm)] {
       assert!(
         p.is_finite() && p > 0.0,
@@ -481,22 +461,14 @@ mod tests {
     expected = "l_factor must satisfy `l_factor.is_finite() && l_factor > 0.0`, got l_factor = 0.0"
   )]
   fn cumulant_sizing_rejects_a_non_positive_l_factor() {
-    let model = BsmFourier {
-      sigma: 0.2,
-      r: 0.05,
-      q: 0.0,
-    };
+    let model = BsmFourier { sigma: 0.2 };
     let _ = CarrMadanPricer::cumulant_sized(&model, 1.0, 100.0, 0.0);
   }
 
   #[test]
   #[should_panic(expected = "cumulants.c2 must satisfy `c2.is_finite() && c2 > 0.0`, got c2 = 0.0")]
   fn cumulant_sizing_rejects_a_vanishing_second_cumulant() {
-    let model = BsmFourier {
-      sigma: 0.2,
-      r: 0.05,
-      q: 0.0,
-    };
+    let model = BsmFourier { sigma: 0.2 };
     let _ = CarrMadanPricer::cumulant_sized(&model, 0.0, 100.0, 12.0);
   }
 }

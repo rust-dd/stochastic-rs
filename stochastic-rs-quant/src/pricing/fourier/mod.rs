@@ -41,7 +41,7 @@ pub use pricer::LewisPricer;
 /// Cumulants of the log-price distribution.
 #[derive(Debug, Clone)]
 pub struct Cumulants {
-  /// First cumulant (mean of log-return).
+  /// First cumulant, the mean of $\ln(S_T/F_T)$.
   pub c1: f64,
   /// Second cumulant (variance of log-return).
   pub c2: f64,
@@ -52,14 +52,11 @@ pub struct Cumulants {
 /// Trait for models that expose a characteristic function of the log-price,
 /// enabling pricing via Fourier inversion.
 pub trait FourierModelExt {
-  /// Characteristic function of the log-price $\ln(S_T/S_0)$:
-  /// $\phi_T(\xi) = E[e^{i\xi \ln(S_T/S_0)}]$.
-  ///
-  /// Must already include the risk-neutral drift, i.e.\ the expectation is
-  /// under the risk-neutral measure $\mathbb{Q}$.
+  /// $E^{\mathbb{Q}}[e^{i\xi X_T}]$ of $X_T = \ln(S_T/F_T)$, $F_T = S_0 e^{(r-q)T}$: drift-free, so
+  /// $E[e^{X_T}] = 1$, and a pricer applies the carry $e^{i\xi(r-q)T}$ from its query.
   fn chf(&self, t: f64, xi: Complex64) -> Complex64;
 
-  /// Cumulants of the log-return for maturity `t`.
+  /// Cumulants of $X_T = \ln(S_T/F_T)$ at maturity `t`.
   fn cumulants(&self, t: f64) -> Cumulants;
 }
 
@@ -117,8 +114,6 @@ mod tests {
       theta: 0.04,
       sigma: 0.30,
       rho: -0.7,
-      r: 0.05,
-      q: 0.0,
     };
     // (K, τ, converged call)
     let cases = [
@@ -146,13 +141,9 @@ mod tests {
 
   #[test]
   fn carr_madan_bsm_reference() {
-    let model = BsmFourier {
-      sigma: 0.15,
-      r: 0.05,
-      q: 0.01,
-    };
+    let model = BsmFourier { sigma: 0.15 };
     let pricer = CarrMadanPricer::default();
-    let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 1.0);
+    let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
     let expected = 7.94871378854164;
     assert!(
       (price - expected).abs() < TOL_FOURIER,
@@ -164,43 +155,35 @@ mod tests {
   /// a silent zero.
   #[test]
   fn carr_madan_out_of_grid_returns_nan_not_zero() {
-    let model = BsmFourier {
-      sigma: 0.15,
-      r: 0.05,
-      q: 0.0,
-    };
+    let model = BsmFourier { sigma: 0.15 };
     let pricer = CarrMadanPricer::default();
     let s = 100.0;
     let r = 0.05;
     let t = 1.0;
 
-    let p_itm = pricer.price_call(&model, s, 1e-9, r, t);
+    let p_itm = pricer.price_call(&model, s, 1e-9, r, 0.0, t);
     assert!(
       p_itm.is_nan(),
       "Out-of-grid deep-ITM must return NaN to flag truncation, got {p_itm}"
     );
 
-    let p_otm = pricer.price_call(&model, s, 1e9, r, t);
+    let p_otm = pricer.price_call(&model, s, 1e9, r, 0.0, t);
     assert!(
       p_otm.is_nan(),
       "Out-of-grid deep-OTM must return NaN to flag truncation, got {p_otm}"
     );
 
-    let p_atm = pricer.price_call(&model, s, 100.0, r, t);
+    let p_atm = pricer.price_call(&model, s, 100.0, r, 0.0, t);
     assert!(p_atm.is_finite() && p_atm > 0.0);
 
-    assert!(!pricer.strike_in_grid(&model, s, 1e-9, r, t));
-    assert!(!pricer.strike_in_grid(&model, s, 1e9, r, t));
-    assert!(pricer.strike_in_grid(&model, s, 100.0, r, t));
+    assert!(!pricer.strike_in_grid(&model, s, 1e-9, r, 0.0, t));
+    assert!(!pricer.strike_in_grid(&model, s, 1e9, r, 0.0, t));
+    assert!(pricer.strike_in_grid(&model, s, 100.0, r, 0.0, t));
   }
 
   #[test]
   fn lewis_bsm_reference() {
-    let model = BsmFourier {
-      sigma: 0.15,
-      r: 0.05,
-      q: 0.01,
-    };
+    let model = BsmFourier { sigma: 0.15 };
     let price = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
     let expected = 7.94871378854164;
     assert!(
@@ -211,11 +194,7 @@ mod tests {
 
   #[test]
   fn gil_pelaez_bsm_reference() {
-    let model = BsmFourier {
-      sigma: 0.15,
-      r: 0.05,
-      q: 0.01,
-    };
+    let model = BsmFourier { sigma: 0.15 };
     let price = GilPelaezPricer::price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
     let expected = 7.94871378854164;
     assert!(
@@ -230,11 +209,9 @@ mod tests {
       sigma: 0.2,
       theta: 0.1,
       nu: 0.85,
-      r: 0.05,
-      q: 0.01,
     };
     let pricer = CarrMadanPricer::default();
-    let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 1.0);
+    let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
     let expected = 10.13935062748614;
     assert!(
       (price - expected).abs() < TOL_FOURIER,
@@ -249,11 +226,9 @@ mod tests {
       g: 5.0,
       m: 15.0,
       y: 1.2,
-      r: 0.05,
-      q: 0.01,
     };
     let pricer = CarrMadanPricer::default();
-    let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 1.0);
+    let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
     let expected = 5.80222163947386;
     assert!(
       (price - expected).abs() < TOL_FOURIER,
@@ -268,11 +243,9 @@ mod tests {
       lambda: 0.4,
       mu_j: -0.12,
       sigma_j: 0.18,
-      r: 0.05,
-      q: 0.01,
     };
     let pricer = CarrMadanPricer::default();
-    let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 1.0);
+    let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
     let expected = 8.675684635426279;
     assert!(
       (price - expected).abs() < TOL_FOURIER,
@@ -288,11 +261,9 @@ mod tests {
       p_up: 0.2,
       eta1: 25.0,
       eta2: 10.0,
-      r: 0.05,
-      q: 0.01,
     };
     let pricer = CarrMadanPricer::default();
-    let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 1.0);
+    let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
     let expected = 11.92430307601936;
     assert!(
       (price - expected).abs() < TOL_FOURIER,
@@ -308,11 +279,9 @@ mod tests {
       theta: 0.04,
       sigma: 0.1,
       rho: -0.6,
-      r: 0.05,
-      q: 0.0,
     };
     let pricer = CarrMadanPricer::default();
-    let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 1.0);
+    let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 0.0, 1.0);
     assert!(
       (price - 10.474).abs() < 0.2,
       "Carr-Madan Heston: got={price}, expected≈10.474"
@@ -330,19 +299,17 @@ mod tests {
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-      r: 0.05,
-      q: 0.0,
     };
     let cum_pricer = CarrMadanPricer::cumulant_sized(&model, 1.0, 100.0, 12.0);
     assert!(cum_pricer.n.is_power_of_two(), "n must be power of two");
     assert!(cum_pricer.n >= 4096, "n must be at least default 4096");
-    let price = cum_pricer.price_call(&model, 100.0, 100.0, 0.05, 1.0);
+    let price = cum_pricer.price_call(&model, 100.0, 100.0, 0.05, 0.0, 1.0);
     assert!(
       price.is_finite() && price > 0.0,
       "cumulant_sized Carr-Madan must produce positive finite price, got {price}"
     );
     let default_pricer = CarrMadanPricer::default();
-    let default_price = default_pricer.price_call(&model, 100.0, 100.0, 0.05, 1.0);
+    let default_price = default_pricer.price_call(&model, 100.0, 100.0, 0.05, 0.0, 1.0);
     assert!(
       (price - default_price).abs() < 1.0,
       "cumulant_sized vs default Heston ATM should agree to within 1.0: cum={price}, def={default_price}"
@@ -362,13 +329,11 @@ mod tests {
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-      r: 0.05,
-      q: 0.0,
     };
     let s = 100.0_f64;
     let t = 1.0_f64;
     let pricer = CarrMadanPricer::cumulant_sized(&model, t, s, 12.0);
-    let (log_strikes, _) = pricer.price_call_surface(&model, s, 0.05, t);
+    let (log_strikes, _) = pricer.price_call_surface(&model, s, 0.05, 0.0, t);
     let half_width = (log_strikes[log_strikes.len() - 1] - log_strikes[0]) / 2.0;
     let cumulants = model.cumulants(t);
     let c4_term = cumulants
@@ -400,8 +365,6 @@ mod tests {
       theta: 0.04,
       sigma: 0.5,
       rho: -0.85,
-      r: 0.05,
-      q: 0.0,
     };
     let s = 100.0_f64;
     let t = 5.0_f64;
@@ -410,7 +373,8 @@ mod tests {
 
     let reference = GilPelaezPricer::price_call(&model, s, k, r, 0.0, t);
 
-    let cum = CarrMadanPricer::cumulant_sized(&model, t, s, 12.0).price_call(&model, s, k, r, t);
+    let cum =
+      CarrMadanPricer::cumulant_sized(&model, t, s, 12.0).price_call(&model, s, k, r, 0.0, t);
 
     assert!(
       cum.is_finite() && cum > 0.0 && cum < s,
@@ -455,8 +419,6 @@ mod tests {
       theta: 0.04,
       sigma: 0.1,
       rho: -0.6,
-      r: 0.05,
-      q: 0.0,
     };
     let hkde = HkdeFourier {
       v0: 0.04,
@@ -464,16 +426,14 @@ mod tests {
       theta: 0.04,
       sigma_v: 0.1,
       rho: -0.6,
-      r: 0.05,
-      q: 0.0,
       lam: 0.0,
       p_up: 0.5,
       eta1: 10.0,
       eta2: 10.0,
     };
     let pricer = CarrMadanPricer::default();
-    let heston_price = pricer.price_call(&heston, 100.0, 100.0, 0.05, 1.0);
-    let hkde_price = pricer.price_call(&hkde, 100.0, 100.0, 0.05, 1.0);
+    let heston_price = pricer.price_call(&heston, 100.0, 100.0, 0.05, 0.0, 1.0);
+    let hkde_price = pricer.price_call(&hkde, 100.0, 100.0, 0.05, 0.0, 1.0);
     assert!(
       (heston_price - hkde_price).abs() < TOL_TIGHT,
       "Hkde(lam=0) vs Heston: hkde={hkde_price}, heston={heston_price}"
@@ -488,15 +448,13 @@ mod tests {
       theta: 0.04,
       sigma_v: 0.3,
       rho: -0.7,
-      r: 0.05,
-      q: 0.01,
       lam: 3.0,
       p_up: 0.4,
       eta1: 10.0,
       eta2: 5.0,
     };
     let pricer = CarrMadanPricer::default();
-    let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 1.0);
+    let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
     assert!(
       price > 0.0,
       "Hkde call price should be positive, got={price}"
@@ -511,17 +469,15 @@ mod tests {
       theta: 0.04,
       sigma_v: 0.3,
       rho: -0.7,
-      r: 0.05,
-      q: 0.01,
       lam: 3.0,
       p_up: 0.4,
       eta1: 10.0,
       eta2: 5.0,
     };
     let pricer = CarrMadanPricer::default();
-    let p1 = pricer.price_call(&model, 100.0, 90.0, 0.05, 1.0);
-    let p2 = pricer.price_call(&model, 100.0, 100.0, 0.05, 1.0);
-    let p3 = pricer.price_call(&model, 100.0, 110.0, 0.05, 1.0);
+    let p1 = pricer.price_call(&model, 100.0, 90.0, 0.05, 0.01, 1.0);
+    let p2 = pricer.price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
+    let p3 = pricer.price_call(&model, 100.0, 110.0, 0.05, 0.01, 1.0);
     assert!(
       p1 > p2 && p2 > p3,
       "Hkde call should decrease with strike: p(90)={p1}, p(100)={p2}, p(110)={p3}"
@@ -536,14 +492,12 @@ mod tests {
       theta: 0.04,
       sigma_v: 0.3,
       rho: -0.7,
-      r: 0.05,
-      q: 0.01,
       lam: 1.0,
       p_up: 0.4,
       eta1: 10.0,
       eta2: 5.0,
     };
-    let cm_price = CarrMadanPricer::default().price_call(&model, 100.0, 100.0, 0.05, 1.0);
+    let cm_price = CarrMadanPricer::default().price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
     let lw_price = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
     assert!(
       (cm_price - lw_price).abs() < TOL_FOURIER,
@@ -563,8 +517,6 @@ mod tests {
       theta: 0.04,
       sigma: 0.3,
       rho: -0.9,
-      r: 0.05,
-      q: 0.0,
     };
     let call = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.0, 5.0);
     assert!(
@@ -588,8 +540,6 @@ mod tests {
       theta2: 0.03,
       sigma2: 0.25,
       rho2: -0.85,
-      r: 0.05,
-      q: 0.0,
     };
     let call = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.0, 5.0);
     assert!(
@@ -608,8 +558,6 @@ mod tests {
       theta: 0.04,
       sigma_v: 0.3,
       rho: -0.9,
-      r: 0.05,
-      q: 0.0,
       lam: 1.5,
       p_up: 0.4,
       eta1: 10.0,
@@ -636,8 +584,6 @@ mod tests {
       lambda: 0.3,
       mu_j: -0.05,
       sigma_j: 0.15,
-      r: 0.05,
-      q: 0.0,
     };
     let call = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.0, 5.0);
     assert!(
@@ -649,11 +595,7 @@ mod tests {
   #[test]
   #[should_panic(expected = "s must satisfy `s.is_finite() && s > 0.0`")]
   fn cumulant_sizing_rejects_a_non_positive_spot_instead_of_a_default_grid() {
-    let model = crate::pricing::fourier::BsmFourier {
-      sigma: 0.2,
-      r: 0.05,
-      q: 0.0,
-    };
+    let model = crate::pricing::fourier::BsmFourier { sigma: 0.2 };
     let _ = CarrMadanPricer::cumulant_sized(&model, 1.0, -100.0, 12.0);
   }
 }

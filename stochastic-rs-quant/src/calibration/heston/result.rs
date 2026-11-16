@@ -1,6 +1,7 @@
 use super::params::HestonParams;
 use crate::CalibrationLossScore;
 use crate::LossMetric;
+use crate::traits::ToModel;
 
 /// Calibration result for the Heston model.
 ///
@@ -16,16 +17,10 @@ pub struct HestonCalibrationResult {
   pub(super) message: &'static str,
 }
 
-impl HestonCalibrationResult {
-  pub fn to_model(&self, r: f64, q: f64) -> crate::pricing::fourier::HestonFourier {
-    self.params.to_model(r, q)
-  }
-}
-
-impl crate::traits::ToModel for HestonCalibrationResult {
+impl ToModel for HestonCalibrationResult {
   type Model = crate::pricing::fourier::HestonFourier;
-  fn to_model(&self, r: f64, q: f64) -> Self::Model {
-    self.params.to_model(r, q)
+  fn to_model(&self) -> Self::Model {
+    self.params.to_model()
   }
 }
 

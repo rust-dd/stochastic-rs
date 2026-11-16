@@ -53,7 +53,7 @@ The default `price_put` recomposes the put from the call by **European** put-cal
 ```rust
 pub trait ToModel {
   type Model: ModelPricer;
-  fn to_model(&self, r: f64, q: f64) -> Self::Model;
+  fn to_model(&self) -> Self::Model;
 }
 ```
 

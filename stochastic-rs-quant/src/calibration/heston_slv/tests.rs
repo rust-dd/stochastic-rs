@@ -40,8 +40,6 @@ fn heston_surface(strikes: &[f64], maturities: &[f64]) -> Array2<f64> {
     theta: p.theta,
     sigma: p.sigma,
     rho: p.rho,
-    r: R,
-    q: Q,
   };
   Array2::from_shape_fn((maturities.len(), strikes.len()), |(j, i)| {
     model.price_call(S, strikes[i], R, Q, maturities[j])
@@ -325,27 +323,13 @@ fn to_model_prices_at_the_calibration_rates() {
     .with_particle_method(method().with_particles(2_000))
     .calibrate(None)
     .unwrap();
-  let pricer = result
-    .to_model(R, Q)
-    .with_paths(4_000)
-    .with_steps_per_year(50);
+  let pricer = result.to_model().with_paths(4_000).with_steps_per_year(50);
+  assert_eq!(pricer.calibration_rates, Some((R, Q)));
   let c = pricer.price_call(S, 100.0, R, Q, 0.5);
   assert!(c.is_finite() && c > 0.0);
   let exact =
     HestonPricer::new(0.04, -0.6, 2.0, 0.05, 0.4, Some(0.0)).price_call(S, 100.0, R, Q, 0.5);
   assert!((c - exact).abs() < 1.0, "slv {c} vs heston {exact}");
-  let via_trait = ToModel::to_model(&result, R, Q);
-  assert_eq!(via_trait.calibration_rates, Some((R, Q)));
-}
-
-#[test]
-#[should_panic(expected = "calibrated at r=0.02, q=0.005 but a pricer at r=0.03, q=0.005")]
-fn to_model_rejects_other_rates() {
-  let result = calibrator(1.0)
-    .with_particle_method(method().with_particles(500))
-    .calibrate(None)
-    .unwrap();
-  let _ = result.to_model(0.03, Q);
 }
 
 #[test]

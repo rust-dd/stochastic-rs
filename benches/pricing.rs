@@ -75,8 +75,6 @@ fn fourier(c: &mut Criterion) {
     theta: 0.04,
     sigma: 0.3,
     rho: -0.7,
-    r: R,
-    q: Q,
   };
   group.bench_function("gil_pelaez_9", |b| {
     b.iter(|| {
@@ -96,7 +94,7 @@ fn fourier(c: &mut Criterion) {
   });
   group.bench_function("carr_madan_surface", |b| {
     let pricer = CarrMadanPricer::default();
-    b.iter(|| black_box(pricer.price_call_surface(&heston, S, R, 1.0)))
+    b.iter(|| black_box(pricer.price_call_surface(&heston, S, R, Q, 1.0)))
   });
   group.bench_function("cos_9", |b| {
     let cos = CosEngine::default();
@@ -120,8 +118,6 @@ fn fourier(c: &mut Criterion) {
     p_up: 0.4,
     eta1: 10.0,
     eta2: 5.0,
-    r: R,
-    q: Q,
   };
   group.bench_function("kou_gil_pelaez_9", |b| {
     b.iter(|| {

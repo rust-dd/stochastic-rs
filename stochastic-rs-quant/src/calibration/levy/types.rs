@@ -82,10 +82,8 @@ pub struct LevyCalibrationResult {
   pub iterations: usize,
 }
 
-/// Variant-dispatching wrapper around the five Lévy Fourier pricers.
-///
-/// Used by [`LevyCalibrationResult::to_model`] so the result remains a
-/// concrete `ModelPricer` (no `Box<dyn>`).
+/// The five Lévy Fourier models behind one enum, so [`LevyCalibrationResult`]'s
+/// [`ToModel::to_model`](crate::traits::ToModel::to_model) stays a concrete `ModelPricer`.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum LevyModel {
@@ -115,8 +113,40 @@ impl crate::traits::VanillaEuropeanCall for LevyModel {}
 
 impl crate::traits::ToModel for LevyCalibrationResult {
   type Model = LevyModel;
-  fn to_model(&self, r: f64, q: f64) -> Self::Model {
-    LevyCalibrationResult::to_model(self, r, q)
+  fn to_model(&self) -> Self::Model {
+    use crate::pricing::fourier::*;
+    let p = &self.params;
+    match self.model_type {
+      LevyModelType::VarianceGamma => LevyModel::VarianceGamma(VarianceGammaFourier {
+        sigma: p[0],
+        theta: p[1],
+        nu: p[2],
+      }),
+      LevyModelType::Nig => LevyModel::Nig(NigFourier {
+        alpha: p[0],
+        beta: p[1],
+        delta: p[2],
+      }),
+      LevyModelType::Cgmy => LevyModel::Cgmy(CgmyFourier {
+        c: p[0],
+        g: p[1],
+        m: p[2],
+        y: p[3],
+      }),
+      LevyModelType::MertonJd => LevyModel::MertonJd(MertonJdFourier {
+        sigma: p[0],
+        lambda: p[1],
+        mu_j: p[2],
+        sigma_j: p[3],
+      }),
+      LevyModelType::Kou => LevyModel::Kou(KouFourier {
+        sigma: p[0],
+        lambda: p[1],
+        p_up: p[2],
+        eta1: p[3],
+        eta2: p[4],
+      }),
+    }
   }
 }
 
@@ -150,54 +180,5 @@ impl crate::traits::Calibrator for LevyCalibrator {
 
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error> {
     Ok(self.solve(initial))
-  }
-}
-
-impl LevyCalibrationResult {
-  /// Convert to a Fourier model for pricing / vol surface generation.
-  pub fn to_model(&self, r: f64, q: f64) -> LevyModel {
-    use crate::pricing::fourier::*;
-    let p = &self.params;
-    match self.model_type {
-      LevyModelType::VarianceGamma => LevyModel::VarianceGamma(VarianceGammaFourier {
-        sigma: p[0],
-        theta: p[1],
-        nu: p[2],
-        r,
-        q,
-      }),
-      LevyModelType::Nig => LevyModel::Nig(NigFourier {
-        alpha: p[0],
-        beta: p[1],
-        delta: p[2],
-        r,
-        q,
-      }),
-      LevyModelType::Cgmy => LevyModel::Cgmy(CgmyFourier {
-        c: p[0],
-        g: p[1],
-        m: p[2],
-        y: p[3],
-        r,
-        q,
-      }),
-      LevyModelType::MertonJd => LevyModel::MertonJd(MertonJdFourier {
-        sigma: p[0],
-        lambda: p[1],
-        mu_j: p[2],
-        sigma_j: p[3],
-        r,
-        q,
-      }),
-      LevyModelType::Kou => LevyModel::Kou(KouFourier {
-        sigma: p[0],
-        lambda: p[1],
-        p_up: p[2],
-        eta1: p[3],
-        eta2: p[4],
-        r,
-        q,
-      }),
-    }
   }
 }

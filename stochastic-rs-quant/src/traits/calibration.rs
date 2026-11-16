@@ -4,22 +4,13 @@
 use super::pricing::ModelPricer;
 use crate::CalibrationLossScore;
 
-/// Trait for calibration results that can produce a [`ModelPricer`].
-///
-/// Every calibration result implementing this trait can be fed directly into
-/// the vol-surface pipeline via [`build_surface_from_calibration`]. Uses an
-/// associated type so calling code stays in static dispatch — no `&dyn` or
-/// `Box<dyn>` in the user-facing surface.
-///
-/// Fourier-based models (Heston, Bates, Lévy) embed `r` and `q` in their
-/// characteristic function. Non-Fourier models (Sabr, HSCM) receive `r`/`q`
-/// at pricing time and may ignore them here.
-///
-/// [`build_surface_from_calibration`]: crate::vol_surface::pipeline::build_surface_from_calibration
+/// A calibration result that determines a [`ModelPricer`], statically typed, which
+/// [`crate::vol_surface::build_surface_from_calibration`] turns into a surface.
 pub trait ToModel {
   /// Concrete pricer type produced by this calibration result.
   type Model: ModelPricer;
-  fn to_model(&self, r: f64, q: f64) -> Self::Model;
+  /// The pricer a calibration result determines; rates travel with the pricing query, not the model.
+  fn to_model(&self) -> Self::Model;
 }
 
 /// Bridge from a short-rate calibration result to the lattice model it determines. The result carries

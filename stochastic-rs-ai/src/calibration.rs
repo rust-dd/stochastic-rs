@@ -412,8 +412,8 @@ impl CalibrationResult for HestonSurrogateResult {
 
 impl ToModel for HestonSurrogateResult {
   type Model = HestonFourier;
-  fn to_model(&self, r: f64, q: f64) -> HestonFourier {
-    self.params.to_model(r, q)
+  fn to_model(&self) -> HestonFourier {
+    self.params.to_model()
   }
 }
 
@@ -499,7 +499,7 @@ impl CalibrationResult for RBergomiSurrogateResult {
 
 impl ToModel for RBergomiSurrogateResult {
   type Model = RBergomiPricer;
-  fn to_model(&self, _r: f64, _q: f64) -> RBergomiPricer {
+  fn to_model(&self) -> RBergomiPricer {
     RBergomiPricer::new(self.params.clone())
   }
 }

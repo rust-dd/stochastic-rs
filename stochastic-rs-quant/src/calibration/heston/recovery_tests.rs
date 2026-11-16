@@ -78,8 +78,6 @@ fn surface(truth: &HestonParams) -> Vec<MarketSlice> {
     theta: truth.theta,
     sigma: truth.sigma,
     rho: truth.rho,
-    r: RATE,
-    q: DIVIDEND,
   };
   MATURITIES
     .iter()

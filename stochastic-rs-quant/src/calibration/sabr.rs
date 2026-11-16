@@ -62,15 +62,7 @@ pub struct SabrCalibrationResult {
 
 impl crate::traits::ToModel for SabrCalibrationResult {
   type Model = crate::pricing::sabr::SabrPricer;
-  fn to_model(&self, _r: f64, _q: f64) -> Self::Model {
-    SabrCalibrationResult::to_model(self)
-  }
-}
-
-impl SabrCalibrationResult {
-  /// Convert to a [`SabrPricer`] for
-  /// pricing / vol surface generation.
-  pub fn to_model(&self) -> crate::pricing::sabr::SabrPricer {
+  fn to_model(&self) -> Self::Model {
     crate::pricing::sabr::SabrPricer::new(SabrParams {
       alpha: self.alpha,
       beta: self.beta,

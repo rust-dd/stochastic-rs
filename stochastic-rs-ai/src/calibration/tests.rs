@@ -136,7 +136,7 @@ fn heston_bridge_maps_the_parameter_order_and_builds_the_pricer() {
   let result = calibrator.calibrate(Some(truth.clone())).unwrap();
   assert!(result.converged() && result.rmse() < 1e-6);
   assert!((result.params().kappa - 3.0).abs() < 0.05);
-  let pricer = result.to_model(0.01, 0.0);
+  let pricer = result.to_model();
   assert!((pricer.kappa - result.params.kappa).abs() < 1e-12);
   assert!((pricer.rho - result.params.rho).abs() < 1e-12);
 }
@@ -183,7 +183,7 @@ fn rbergomi_bridge_round_trips_the_parameter_order() {
     .calibrate(Some(params))
     .unwrap();
   assert!(result.rmse() < 1e-5, "{}", result.rmse());
-  let _pricer: RBergomiPricer = result.to_model(0.0, 0.0);
+  let _pricer: RBergomiPricer = result.to_model();
 }
 
 #[test]

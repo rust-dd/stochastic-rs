@@ -30,11 +30,7 @@ fn bsm_demo() {
   let strikes = vec![80.0_f64, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0];
 
   // Synthesise call prices from the closed-form chf via Gil-Pelaez.
-  let model_true = stochastic_rs::quant::pricing::fourier::BsmFourier {
-    sigma: sigma_true,
-    r,
-    q,
-  };
+  let model_true = stochastic_rs::quant::pricing::fourier::BsmFourier { sigma: sigma_true };
   let market: Vec<f64> = strikes
     .iter()
     .map(|&k| model_true.price_call(s0, k, r, q, tau))
@@ -73,7 +69,7 @@ fn bsm_demo() {
     "BSM should recover σ to ~1e-4"
   );
 
-  let model = res.to_model(r, q);
+  let model = res.to_model();
   let max_repricing_err = strikes
     .iter()
     .zip(market.iter())
@@ -109,8 +105,6 @@ fn heston_demo() {
     theta: true_params.theta,
     sigma: true_params.sigma,
     rho: true_params.rho,
-    r,
-    q,
   };
 
   let strikes = vec![80.0_f64, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0];
@@ -167,7 +161,7 @@ fn heston_demo() {
   );
 
   // ToModel → ModelPricer round-trip on the full surface.
-  let model = res.to_model(r, q);
+  let model = res.to_model();
   let mut max_err = 0.0_f64;
   for slice in &slices {
     for (&k, &px) in slice.strikes.iter().zip(slice.prices.iter()) {

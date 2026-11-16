@@ -1,45 +1,15 @@
-//! Fractional FFT (Bailey-Swarztrauber 1991) and the FRFT-based Carr-Madan
-//! pricer with true grid centring.
-//!
-//! The classic [`super::pricer::CarrMadanPricer`] is bound by the FFT
-//! reciprocity $\lambda\eta = 2\pi/N$ — the log-strike step $\lambda$ and
-//! the integration step $\eta$ cannot be chosen independently, and the
-//! grid is forced to centre on $\ln K = 0$. The **fractional FFT**
-//! evaluates the chirp sum
+//! Fractional FFT for any `γ` (Bailey–Swarztrauber, three FFTs of length `2N`) and Carr–Madan on
+//! it: `γ = ηλ/2π` frees the strike step from `λη = 2π/N`, so the grid centres on `ln F_T + c₁`.
 //!
 //! $$
-//! G_k = \sum_{j=0}^{N-1} x_j\,e^{-2\pi i \gamma j k}, \qquad k = 0,\dots,N-1
+//! G_k = \sum_{j=0}^{N-1} x_j\,e^{-2\pi i \gamma j k}
+//!     = e^{-i\pi\gamma k^2}\sum_{j} \bigl(x_j\,e^{-i\pi\gamma j^2}\bigr)\,e^{i\pi\gamma (k-j)^2},
+//! \qquad k = 0,\dots,N-1
 //! $$
 //!
-//! for an **arbitrary** $\gamma$ (the standard DFT is the special case
-//! $\gamma = 1/N$). Decoupling $\gamma = \eta\lambda/(2\pi)$ lets us pick a
-//! fine integration step $\eta$ and an independent strike step $\lambda$,
-//! and shift the grid to centre on the model-implied log-asset mean
-//! $\mu_T = \ln S_0 + c_1$ (Lord-Kahl 2010 §4). Centring on the forward
-//! puts the FFT resolution where the option is price-sensitive, so a
-//! centred grid reaches the same accuracy as a much larger 0-centred grid.
-//!
-//! ## Algorithm (Bailey-Swarztrauber 1991)
-//!
-//! Using $jk = \tfrac{1}{2}(j^2 + k^2 - (k-j)^2)$ the chirp sum becomes a
-//! convolution:
-//!
-//! $$
-//! G_k = e^{-i\pi\gamma k^2}\sum_{j} \bigl(x_j\,e^{-i\pi\gamma j^2}\bigr)\,
-//!       e^{i\pi\gamma (k-j)^2},
-//! $$
-//!
-//! i.e. the linear convolution of $y_j = x_j e^{-i\pi\gamma j^2}$ with the
-//! kernel $h_m = e^{i\pi\gamma m^2}$, evaluated through three length-$2N$
-//! FFTs (zero-pad $y$, wrap $h$ symmetrically since $h_{-m} = h_m$).
-//!
-//! References:
-//! - Bailey, D.H., Swarztrauber, P.N. (1991), "The fractional Fourier
-//!   transform and applications", *SIAM Review* 33(3), 389-404.
-//! - Chourdakis, K. (2005), "Option pricing using the fractional FFT",
-//!   *Journal of Computational Finance* 8(2), 1-18.
-//! - Lord, R., Kahl, C. (2010), "Complex logarithms in Heston-like
-//!   models", *Mathematical Finance* 20(4), §4 (grid centring).
+//! Reference: Bailey, D.H. & Swarztrauber, P.N. (1991), "The fractional Fourier transform and applications", SIAM Review 33(3), 389–404
+//! Reference: Chourdakis, K. (2005), "Option pricing using the fractional FFT", Journal of Computational Finance 8(2), 1–18
+//! Reference: Lord, R. & Kahl, C. (2010), "Complex logarithms in Heston-like models", Mathematical Finance 20(4), §4
 
 use std::f64::consts::PI;
 
@@ -50,6 +20,7 @@ use ndrustfft::ndifft;
 use num_complex::Complex64;
 
 use super::FourierModelExt;
+use crate::traits::RealExt;
 
 /// Fractional Fourier transform $G_k = \sum_j x_j e^{-2\pi i \gamma jk}$.
 ///
@@ -181,14 +152,14 @@ impl FrftCarrMadanPricer {
     }
   }
 
-  /// Compute call prices on the centred FRFT strike grid. Returns
-  /// `(log_strikes, call_prices)` with `log_strikes` centred on
-  /// $\mu_T = \ln S_0 + c_1$.
+  /// `(log_strikes, call_prices)` on the grid centred on `ln F_T + c₁`; a NaN `chf` leaves its
+  /// prices NaN.
   pub fn price_call_surface(
     &self,
     model: &impl FourierModelExt,
     s: f64,
     r: f64,
+    q: f64,
     t: f64,
   ) -> (Array1<f64>, Array1<f64>) {
     let n = self.n;
@@ -198,9 +169,9 @@ impl FrftCarrMadanPricer {
     let gamma = eta * lambda / (2.0 * PI);
 
     let cumulants = model.cumulants(t);
-    let ln_s = s.ln();
+    let ln_f = s.ln() + (r - q) * t;
     // Centre the log-strike grid on the model-implied log-asset mean.
-    let mu_t = ln_s + cumulants.c1;
+    let mu_t = ln_f + cumulants.c1;
     let b = mu_t - 0.5 * n as f64 * lambda;
 
     let i_unit = Complex64::i();
@@ -217,7 +188,7 @@ impl FrftCarrMadanPricer {
         eta * 2.0 / 3.0
       };
       let xi = Complex64::new(v_j, -(alpha + 1.0));
-      let phi = model.chf(t, xi) * (i_unit * xi * ln_s).exp();
+      let phi = model.chf(t, xi) * (i_unit * xi * ln_f).exp();
       let denom = Complex64::new(alpha * alpha + alpha - v_j * v_j, (2.0 * alpha + 1.0) * v_j);
       let psi = disc * phi / denom;
       // e^{-i v_j b}: the Carr-Madan kernel is e^{-i v_j k_u} =
@@ -235,7 +206,7 @@ impl FrftCarrMadanPricer {
     for u in 0..n {
       let k_u = b + lambda * u as f64;
       log_strikes[u] = k_u;
-      prices[u] = ((-alpha * k_u).exp() * output[u].re / PI).max(0.0);
+      prices[u] = ((-alpha * k_u).exp() * output[u].re / PI).max_or_nan(0.0);
     }
     (log_strikes, prices)
   }
@@ -243,8 +214,16 @@ impl FrftCarrMadanPricer {
   /// Price a single call by interpolating the centred FRFT surface.
   /// Returns `f64::NAN` for strikes outside the grid (same truncation
   /// contract as [`super::pricer::CarrMadanPricer::price_call`]).
-  pub fn price_call(&self, model: &impl FourierModelExt, s: f64, k: f64, r: f64, t: f64) -> f64 {
-    let (log_strikes, prices) = self.price_call_surface(model, s, r, t);
+  pub fn price_call(
+    &self,
+    model: &impl FourierModelExt,
+    s: f64,
+    k: f64,
+    r: f64,
+    q: f64,
+    t: f64,
+  ) -> f64 {
+    let (log_strikes, prices) = self.price_call_surface(model, s, r, q, t);
     let target = k.ln();
     let n = log_strikes.len();
     if target < log_strikes[0] || target > log_strikes[n - 1] {
@@ -269,7 +248,7 @@ impl FrftCarrMadanPricer {
     q: f64,
     t: f64,
   ) -> f64 {
-    let call = self.price_call(model, s, k, r, t);
+    let call = self.price_call(model, s, k, r, q, t);
     call - s * (-q * t).exp() + k * (-r * t).exp()
   }
 }
@@ -315,13 +294,9 @@ mod tests {
   /// hit it far tighter than the 0-centred standard pricer.
   #[test]
   fn frft_carr_madan_bsm_reference() {
-    let model = BsmFourier {
-      sigma: 0.15,
-      r: 0.05,
-      q: 0.01,
-    };
+    let model = BsmFourier { sigma: 0.15 };
     let pricer = FrftCarrMadanPricer::cumulant_sized(&model, 1.0, 12.0);
-    let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 1.0);
+    let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
     let expected = 7.94871378854164;
     assert!(
       (price - expected).abs() < 1e-4,
@@ -340,15 +315,13 @@ mod tests {
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-      r: 0.03,
-      q: 0.0,
     };
     let s = 100.0;
     let r = 0.03;
     let t = 1.0;
     let pricer = FrftCarrMadanPricer::cumulant_sized(&model, t, 12.0);
     for k in [80.0, 90.0, 100.0, 110.0, 120.0] {
-      let frft_price = pricer.price_call(&model, s, k, r, t);
+      let frft_price = pricer.price_call(&model, s, k, r, 0.0, t);
       let gp_price = GilPelaezPricer::price_call(&model, s, k, r, 0.0, t);
       assert!(
         (frft_price - gp_price).abs() < 5e-2,
@@ -357,16 +330,40 @@ mod tests {
     }
   }
 
+  /// A NaN `chf` leaves every grid price NaN, as on the Carr–Madan grid, not a floored zero.
+  #[test]
+  fn frft_surface_preserves_nan_from_chf_blowup() {
+    struct NanModel;
+
+    impl FourierModelExt for NanModel {
+      fn chf(&self, _t: f64, _xi: Complex64) -> Complex64 {
+        Complex64::new(f64::NAN, f64::NAN)
+      }
+
+      fn cumulants(&self, _t: f64) -> super::super::Cumulants {
+        super::super::Cumulants {
+          c1: 0.0,
+          c2: 0.04,
+          c4: Some(0.0),
+        }
+      }
+    }
+
+    let pricer = FrftCarrMadanPricer::default();
+    let (_, prices) = pricer.price_call_surface(&NanModel, 100.0, 0.05, 0.0, 1.0);
+    assert!(
+      prices.iter().all(|p| p.is_nan()),
+      "{:?}",
+      &prices.as_slice().unwrap()[..4]
+    );
+  }
+
   /// Out-of-grid strikes return NaN, not a silent zero.
   #[test]
   fn frft_out_of_grid_returns_nan() {
-    let model = BsmFourier {
-      sigma: 0.15,
-      r: 0.05,
-      q: 0.0,
-    };
+    let model = BsmFourier { sigma: 0.15 };
     let pricer = FrftCarrMadanPricer::cumulant_sized(&model, 1.0, 12.0);
-    let deep = pricer.price_call(&model, 100.0, 1e12, 0.05, 1.0);
+    let deep = pricer.price_call(&model, 100.0, 1e12, 0.05, 0.0, 1.0);
     assert!(deep.is_nan(), "out-of-grid strike must be NaN, got {deep}");
   }
 
@@ -375,22 +372,14 @@ mod tests {
     expected = "l_factor must satisfy `l_factor.is_finite() && l_factor > 0.0`, got l_factor = NaN"
   )]
   fn cumulant_sizing_rejects_a_non_finite_l_factor() {
-    let model = BsmFourier {
-      sigma: 0.2,
-      r: 0.05,
-      q: 0.0,
-    };
+    let model = BsmFourier { sigma: 0.2 };
     let _ = FrftCarrMadanPricer::cumulant_sized(&model, 1.0, f64::NAN);
   }
 
   #[test]
   #[should_panic(expected = "cumulants.c2 must satisfy `c2.is_finite() && c2 > 0.0`, got c2 = 0.0")]
   fn cumulant_sizing_rejects_a_vanishing_second_cumulant() {
-    let model = BsmFourier {
-      sigma: 0.2,
-      r: 0.05,
-      q: 0.0,
-    };
+    let model = BsmFourier { sigma: 0.2 };
     let _ = FrftCarrMadanPricer::cumulant_sized(&model, 0.0, 12.0);
   }
 }

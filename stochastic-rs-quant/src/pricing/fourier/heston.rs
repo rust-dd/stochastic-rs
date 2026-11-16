@@ -13,8 +13,6 @@ pub struct HestonFourier {
   pub theta: f64,
   pub sigma: f64,
   pub rho: f64,
-  pub r: f64,
-  pub q: f64,
 }
 
 impl FourierModelExt for HestonFourier {
@@ -36,15 +34,14 @@ impl FourierModelExt for HestonFourier {
       * ((self.kappa - rsi * xi - d) * t - 2.0 * ((1.0 - g * exp_dt) / (1.0 - g)).ln());
     let d_val = ((self.kappa - rsi * xi - d) / sigma2) * (1.0 - exp_dt) / (1.0 - g * exp_dt);
 
-    (c_val + d_val * self.v0 + i * xi * (self.r - self.q) * t).exp()
+    (c_val + d_val * self.v0).exp()
   }
 
   /// Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826–848, Table 11 for `c1`; `c2` is
   /// `−Re ∂²ᵤ ln chf(t, u)` at `u = 0` of this chf, grouped by powers of `e^{−κt}`.
   fn cumulants(&self, t: f64) -> Cumulants {
     let ekt = (-self.kappa * t).exp();
-    let c1 = (self.r - self.q) * t + (1.0 - ekt) * (self.theta - self.v0) / (2.0 * self.kappa)
-      - 0.5 * self.theta * t;
+    let c1 = (1.0 - ekt) * (self.theta - self.v0) / (2.0 * self.kappa) - 0.5 * self.theta * t;
 
     let kappa2 = self.kappa * self.kappa;
     let kappa3 = kappa2 * self.kappa;
@@ -72,9 +69,8 @@ impl FourierModelExt for HestonFourier {
   }
 }
 
-/// Double Heston stochastic volatility model for Fourier pricing.
-///
-/// Two independent Cox-Ingersoll-Ross variance factors driving the spot:
+/// Double Heston: two independent CIR variance factors, each correlated only with its own spot
+/// Brownian motion ($\rho_j$), so the chf of $\ln(S_T/F_T)$ is a sum of two Heston exponents.
 /// $$
 /// \begin{aligned}
 /// dS_t &= (r-q)\,S_t\,dt + \sqrt{v_{1,t}}\,S_t\,dW_{1,t}^S + \sqrt{v_{2,t}}\,S_t\,dW_{2,t}^S \\
@@ -82,15 +78,9 @@ impl FourierModelExt for HestonFourier {
 /// dv_{2,t} &= \kappa_2(\theta_2 - v_{2,t})\,dt + \sigma_2\sqrt{v_{2,t}}\,dW_{2,t}^v
 /// \end{aligned}
 /// $$
-/// with $d\langle W_1^S, W_1^v\rangle_t = \rho_1\,dt$ and
-/// $d\langle W_2^S, W_2^v\rangle_t = \rho_2\,dt$. All other Brownian motion
-/// pairs are independent. Because the factors are independent, the
-/// characteristic function of $\ln(S_T/S_0)$ factorises into a sum of two
-/// Heston-type contributions plus a single risk-neutral drift:
 /// $$
-/// \phi_T(u) = \exp\!\left(iu(r-q)T + \sum_{j=1}^{2}\bigl[C_j(u,T) + D_j(u,T)\,v_{j,0}\bigr]\right)
+/// \phi_T(u) = \exp\!\left(\sum_{j=1}^{2}\bigl[C_j(u,T) + D_j(u,T)\,v_{j,0}\bigr]\right)
 /// $$
-/// with, for $j=1,2$,
 /// $$
 /// \begin{aligned}
 /// d_j &= \sqrt{(\kappa_j - i\rho_j\sigma_j u)^2 + \sigma_j^2(u^2 + iu)} \\
@@ -100,14 +90,8 @@ impl FourierModelExt for HestonFourier {
 /// \end{aligned}
 /// $$
 ///
-/// Source:
-/// - Christoffersen, Heston & Jacobs (2009), "The Shape and Term Structure of
-///   the Index Option Smirk: Why Multifactor Stochastic Volatility Models Work
-///   So Well", <https://doi.org/10.1287/mnsc.1090.1065>
-/// - Mehrdoust, Noorani & Hamdi (2021), "Calibration of the double Heston
-///   model and an analytical formula in pricing American put option",
-///   J. Comput. Appl. Math. 392, 113422,
-///   <https://doi.org/10.1016/j.cam.2021.113422>
+/// Reference: Christoffersen, P., Heston, S. & Jacobs, K. (2009), "The Shape and Term Structure of the Index Option Smirk: Why Multifactor Stochastic Volatility Models Work So Well", Management Science 55(12), 1914–1932, DOI 10.1287/mnsc.1090.1065
+/// Reference: Mehrdoust, F., Noorani, I. & Hamdi, A. (2021), "Calibration of the double Heston model and an analytical formula in pricing American put option", J. Comput. Appl. Math. 392, 113422, DOI 10.1016/j.cam.2021.113422
 #[derive(Debug, Clone)]
 pub struct DoubleHestonFourier {
   /// Initial variance of factor 1.
@@ -130,10 +114,6 @@ pub struct DoubleHestonFourier {
   pub sigma2: f64,
   /// Spot-variance correlation for factor 2.
   pub rho2: f64,
-  /// Risk-free rate.
-  pub r: f64,
-  /// Dividend yield.
-  pub q: f64,
 }
 
 impl DoubleHestonFourier {
@@ -169,12 +149,10 @@ impl DoubleHestonFourier {
 
 impl FourierModelExt for DoubleHestonFourier {
   fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
-    let i = Complex64::i();
-
     let (c1, d1) = Self::factor_cd(self.kappa1, self.theta1, self.sigma1, self.rho1, t, xi);
     let (c2, d2) = Self::factor_cd(self.kappa2, self.theta2, self.sigma2, self.rho2, t, xi);
 
-    (c1 + c2 + d1 * self.v1_0 + d2 * self.v2_0 + i * xi * (self.r - self.q) * t).exp()
+    (c1 + c2 + d1 * self.v1_0 + d2 * self.v2_0).exp()
   }
 
   fn cumulants(&self, t: f64) -> Cumulants {
@@ -184,7 +162,7 @@ impl FourierModelExt for DoubleHestonFourier {
     let int_v1 = self.theta1 * t + (self.v1_0 - self.theta1) * (1.0 - ekt1) / self.kappa1;
     let int_v2 = self.theta2 * t + (self.v2_0 - self.theta2) * (1.0 - ekt2) / self.kappa2;
 
-    let c1 = (self.r - self.q) * t - 0.5 * (int_v1 + int_v2);
+    let c1 = -0.5 * (int_v1 + int_v2);
     let c2 = int_v1 + int_v2;
     Cumulants { c1, c2, c4: None }
   }
@@ -201,8 +179,6 @@ mod tests {
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-      r: 0.05,
-      q: 0.0,
     }
   }
 

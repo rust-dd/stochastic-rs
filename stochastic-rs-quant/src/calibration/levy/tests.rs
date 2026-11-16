@@ -7,6 +7,7 @@ use super::types::MarketSlice;
 use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::traits::Calibrator;
+use crate::traits::ToModel;
 
 // Analytical reference prices (Gil-Pelaez inversion)
 // S=100, r=0.05, q=0, T=1.0
@@ -141,7 +142,7 @@ fn nig_to_model_matches_calibrator_pricer() {
     converged: true,
     loss: CalibrationLossScore::default(),
   };
-  let model = result.to_model(r, q);
+  let model = result.to_model();
 
   for &k in &STRIKES {
     let from_calibrator = fourier_call_price(LevyModelType::Nig, &params, s, k, r, q, t);

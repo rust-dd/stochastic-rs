@@ -29,15 +29,7 @@ pub struct SvjCalibrationResult {
 
 impl crate::traits::ToModel for SvjCalibrationResult {
   type Model = crate::pricing::fourier::BatesFourier;
-  fn to_model(&self, r: f64, q: f64) -> Self::Model {
-    SvjCalibrationResult::to_model(self, r, q)
-  }
-}
-
-impl SvjCalibrationResult {
-  /// Convert to a [`BatesFourier`](crate::pricing::fourier::BatesFourier) model for
-  /// pricing / vol surface generation.
-  pub fn to_model(&self, r: f64, q: f64) -> crate::pricing::fourier::BatesFourier {
+  fn to_model(&self) -> Self::Model {
     crate::pricing::fourier::BatesFourier {
       v0: self.v0,
       kappa: self.kappa,
@@ -47,8 +39,6 @@ impl SvjCalibrationResult {
       lambda: self.lambda,
       mu_j: self.mu_j,
       sigma_j: self.sigma_j,
-      r,
-      q,
     }
   }
 }

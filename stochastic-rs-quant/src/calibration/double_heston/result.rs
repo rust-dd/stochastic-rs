@@ -1,5 +1,6 @@
 use super::params::DoubleHestonParams;
 use crate::CalibrationLossScore;
+use crate::traits::ToModel;
 
 /// Calibration result for the double Heston model.
 #[derive(Clone, Debug)]
@@ -33,16 +34,12 @@ impl DoubleHestonCalibrationResult {
       rho2: self.rho2,
     }
   }
-
-  pub fn to_model(&self, r: f64, q: f64) -> crate::pricing::fourier::DoubleHestonFourier {
-    self.params().to_model(r, q)
-  }
 }
 
-impl crate::traits::ToModel for DoubleHestonCalibrationResult {
+impl ToModel for DoubleHestonCalibrationResult {
   type Model = crate::pricing::fourier::DoubleHestonFourier;
-  fn to_model(&self, r: f64, q: f64) -> Self::Model {
-    self.params().to_model(r, q)
+  fn to_model(&self) -> Self::Model {
+    DoubleHestonCalibrationResult::params(self).to_model()
   }
 }
 

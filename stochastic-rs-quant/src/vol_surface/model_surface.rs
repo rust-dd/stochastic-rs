@@ -49,7 +49,7 @@ use crate::traits::VanillaEuropeanCall;
 /// use stochastic_rs_quant::pricing::fourier::BsmFourier;
 /// use stochastic_rs_quant::vol_surface::ModelSurface;
 ///
-/// let model = BsmFourier { sigma: 0.35, r: 0.05, q: 0.0 };
+/// let model = BsmFourier { sigma: 0.35 };
 /// let surface = model.vol_surface(100.0, 0.05, 0.0, &[100.0], &[1.0]);
 /// assert!((surface.ivs[[0, 0]] - 0.35).abs() < 1e-6);
 /// ```
@@ -157,7 +157,7 @@ pub fn fourier_model_surface_fft_with(
   for (j, &t) in maturities.iter().enumerate() {
     let df = (-r * t).exp();
     for (i, &k) in strikes.iter().enumerate() {
-      let call = cm.price_call(model, s, k, r, t);
+      let call = cm.price_call(model, s, k, r, q, t);
       let undiscounted = if df > 0.0 { call / df } else { call };
       prices[[j, i]] = undiscounted;
     }
@@ -199,8 +199,6 @@ mod tests {
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-      r: 0.05,
-      q: 0.0,
     };
 
     let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
@@ -241,8 +239,6 @@ mod tests {
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-      r: 0.05,
-      q: 0.0,
     };
     let fft = fourier_model_surface_fft(&model, 100.0, 0.05, 0.0, &GRID_K, &GRID_T);
     let quadrature = model.vol_surface(100.0, 0.05, 0.0, &GRID_K, &GRID_T);
@@ -285,8 +281,6 @@ mod tests {
       sigma: 0.12,
       theta: -0.14,
       nu: 0.2,
-      r: 0.05,
-      q: 0.0,
     };
 
     let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
@@ -319,8 +313,6 @@ mod tests {
       theta2: 0.03,
       sigma2: 0.2,
       rho2: -0.3,
-      r: 0.05,
-      q: 0.0,
     };
 
     let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
@@ -364,8 +356,6 @@ mod tests {
       lambda: 0.5,
       mu_j: -0.1,
       sigma_j: 0.15,
-      r: 0.05,
-      q: 0.0,
     };
 
     let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
@@ -420,8 +410,6 @@ mod tests {
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-      r: 0.05,
-      q: 0.0,
     };
 
     let strikes: Vec<f64> = (80..=120).step_by(2).map(|k| k as f64).collect();
@@ -451,8 +439,6 @@ mod tests {
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-      r: 0.05,
-      q: 0.0,
     };
     let sabr = SabrPricer::new(SabrParams {
       alpha: 0.2,

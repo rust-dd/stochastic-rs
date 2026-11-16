@@ -160,6 +160,7 @@ impl PyHscmCalibrator {
   #[pyo3(signature = (initial_guess=None))]
   fn calibrate_to_model(&self, initial_guess: Option<[f64; 9]>) -> PyResult<PyHscmModel> {
     use crate::traits::Calibrator;
+    use crate::traits::ToModel;
     let res = self
       .inner
       .calibrate(initial_guess)

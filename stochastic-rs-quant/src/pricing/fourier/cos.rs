@@ -1,37 +1,7 @@
-//! Generic Fourier-cosine (COS) pricing engine.
+//! Fang–Oosterlee COS pricing of any [`FourierModelExt`] model in `y = ln(S_T/K)` from
+//! `x = ln(F_T/K)`: `chf(t, u)·e^{iux}` is their `φ(u; x)`, and Eqs. (22)–(23), (29)–(30) follow.
 //!
-//! Reference:
-//! - Fang, F. & Oosterlee, C.W. (2008), "A Novel Pricing Method for European
-//!   Options Based on Fourier-Cosine Series Expansions", SIAM Journal on
-//!   Scientific Computing 31(2), 826-848, DOI: 10.1137/080718061.
-//!
-//! Unlike [`crate::pricing::regime_switching::CosPricer`] (hardcoded to
-//! [`crate::pricing::regime_switching::RegimeSwitchingModel`]), [`CosEngine`]
-//! prices any [`FourierModelExt`] model — the same trait consumed by
-//! [`super::CarrMadanPricer`], [`super::GilPelaezPricer`] and
-//! [`super::LewisPricer`].
-//!
-//! # Convention adaptation
-//!
-//! Fang-Oosterlee's own derivation works directly in the state variable
-//! $y=\ln(S_T/K)$: the process starts at $x=\ln(S_0/K)$, so their cumulants
-//! $c_1,c_2,c_4$ and characteristic function $\varphi(u;x)=\phi(u)e^{iux}$
-//! are already expressed relative to the strike. [`FourierModelExt::chf`]
-//! and [`super::Cumulants`] are instead expressed relative to the *spot*:
-//! `chf` is the characteristic function of $\ln(S_T/S_0)$ (see the trait
-//! doc) and `cumulants` are cumulants of that same log-return, so one model
-//! instance can price any strike without rebuilding its `chf`.
-//!
-//! This engine bridges the two conventions with the deterministic shift
-//! $x=\ln(S_0/K)$: the truncation range folds $x$ into the first cumulant
-//! ($\tilde c_1=x+c_1$; $c_2,c_4$ are shift-invariant so they need no
-//! adjustment), and the per-frequency characteristic function is
-//! $\varphi_y(u)=\mathrm{chf}(t,u)\cdot e^{iux}$ rather than Fang-Oosterlee's
-//! $e^{-iu\ln K}$ (their formula assumes a `chf` that is already the
-//! characteristic function of $\ln S_T$ itself, not of $\ln(S_T/S_0)$).
-//! With that substitution the payoff coefficients and pricing sum below are
-//! exactly Fang-Oosterlee (2008) Eq. (22)-(23) and Eq. (29)-(30)/(32),
-//! evaluated in $y=\ln(S_T/K)$-space.
+//! Reference: Fang, F. & Oosterlee, C.W. (2008), "A Novel Pricing Method for European Options Based on Fourier-Cosine Series Expansions", SIAM J. Sci. Comput. 31(2), 826–848, DOI 10.1137/080718061
 
 use std::f64::consts::PI;
 
@@ -70,36 +40,15 @@ impl CosEngine {
     Self { n, l }
   }
 
-  /// Price a European call or put under `model`'s risk-neutral dynamics.
-  ///
-  /// `r` discounts the terminal payoff (`e^{-rt}`), matching
-  /// [`super::GilPelaezPricer::price_call`] /
-  /// [`super::LewisPricer::price_call`]. `q` is accepted for signature
-  /// parity with those pricers but is not read here: the COS sum
-  /// integrates the discounted payoff directly against `model.chf`, so any
-  /// risk-neutral drift adjustment (dividend yield, jump compensator, …)
-  /// must already be embedded in `model` — as it is for every in-tree
-  /// [`FourierModelExt`] implementor.
-  ///
-  /// Returns [`f64::NAN`] when the truncation range degenerates
-  /// (`c2 + sqrt(c4)` not finite and positive, e.g. at `t=0`) — the crate
-  /// convention is `NaN` for an undefined result, never a silent `0.0`.
-  /// `NaN` also propagates from a `model.chf` blow-up further down (e.g.
-  /// characteristic-function overflow for extreme parameters): the finite
-  /// sum is clamped at `0.0` from below (the truncated cosine series can
-  /// leave machine-epsilon-scale negative noise on a deep out-of-the-money
-  /// price whose true value is ~0, and a price can never be negative), but
-  /// that clamp checks for `NaN` explicitly first rather than using
-  /// `f64::max` directly — `f64::max` returns its non-`NaN` operand when
-  /// one side is `NaN`, which would otherwise turn the blow-up into a
-  /// silent `0.0` instead of the `NaN` this convention requires.
+  /// `r` discounts the payoff and `r − q` is the carry of the forward the drift-free `chf` is
+  /// centred on; NaN when `c2 + √c4` is not finite and positive, or when `chf` is NaN.
   pub fn price<M: FourierModelExt>(
     &self,
     model: &M,
     s0: f64,
     k: f64,
     r: f64,
-    _q: f64,
+    q: f64,
     t: f64,
     option_type: OptionType,
   ) -> f64 {
@@ -109,7 +58,7 @@ impl CosEngine {
       return f64::NAN;
     }
 
-    let x = (s0 / k).ln();
+    let x = (s0 / k).ln() + (r - q) * t;
     let half_width = self.l * width_arg.sqrt();
     let a = x + cumulants.c1 - half_width;
     let b = x + cumulants.c1 + half_width;
@@ -188,11 +137,7 @@ mod tests {
   /// Fang & Oosterlee (2008) §5.1: COS at `N = 256, L = 10` reproduces the closed-form BSM call.
   #[test]
   fn cos_bsm_matches_analytic() {
-    let model = BsmFourier {
-      sigma: 0.25,
-      r: 0.05,
-      q: 0.0,
-    };
+    let model = BsmFourier { sigma: 0.25 };
     let expected = BsmPricer::new(0.25, BsmCoc::Bsm1973).price_call(100.0, 110.0, 0.05, 0.0, 1.0);
     let price = CosEngine::default().price(&model, 100.0, 110.0, 0.05, 0.0, 1.0, OptionType::Call);
     assert!(
@@ -209,8 +154,6 @@ mod tests {
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-      r: 0.05,
-      q: 0.0,
     };
     let reference =
       HestonPricer::new(0.04, -0.7, 1.5, 0.04, 0.3, None).price_call(100.0, 100.0, 0.05, 0.0, 1.0);
@@ -241,8 +184,6 @@ mod tests {
       p_up: 0.2,
       eta1: 25.0,
       eta2: 10.0,
-      r: 0.05,
-      q: 0.01,
     };
     let reference = GilPelaezPricer::price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
     let price = CosEngine::default().price(&model, 100.0, 100.0, 0.05, 0.01, 1.0, OptionType::Call);
@@ -254,11 +195,7 @@ mod tests {
 
   #[test]
   fn cos_put_call_parity() {
-    let model = BsmFourier {
-      sigma: 0.2,
-      r: 0.05,
-      q: 0.03,
-    };
+    let model = BsmFourier { sigma: 0.2 };
     let engine = CosEngine::default();
     let call = engine.price(&model, 100.0, 95.0, 0.05, 0.03, 0.5, OptionType::Call);
     let put = engine.price(&model, 100.0, 95.0, 0.05, 0.03, 0.5, OptionType::Put);
@@ -271,11 +208,7 @@ mod tests {
 
   #[test]
   fn cos_converges_in_n() {
-    let model = BsmFourier {
-      sigma: 0.25,
-      r: 0.05,
-      q: 0.0,
-    };
+    let model = BsmFourier { sigma: 0.25 };
     let expected = BsmPricer::new(0.25, BsmCoc::Bsm1973).price_call(100.0, 110.0, 0.05, 0.0, 1.0);
     let err_small =
       (CosEngine::new(64, 10.0).price(&model, 100.0, 110.0, 0.05, 0.0, 1.0, OptionType::Call)
@@ -297,11 +230,7 @@ mod tests {
   /// in `super::super::tests` for the same convention elsewhere in this module).
   #[test]
   fn cos_invalid_cumulants_gives_nan() {
-    let model = BsmFourier {
-      sigma: 0.25,
-      r: 0.05,
-      q: 0.0,
-    };
+    let model = BsmFourier { sigma: 0.25 };
     let price = CosEngine::default().price(&model, 100.0, 100.0, 0.05, 0.0, 0.0, OptionType::Call);
     assert!(
       price.is_nan(),

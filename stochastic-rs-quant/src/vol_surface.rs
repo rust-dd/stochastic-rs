@@ -61,7 +61,7 @@
 //! let true_params = HestonParams { v0: 0.04, kappa: 1.5, theta: 0.04, sigma: 0.30, rho: -0.6 };
 //! let model_true = HestonFourier {
 //!     v0: true_params.v0, kappa: true_params.kappa, theta: true_params.theta,
-//!     sigma: true_params.sigma, rho: true_params.rho, r, q,
+//!     sigma: true_params.sigma, rho: true_params.rho,
 //! };
 //! let strikes = [90., 100., 110.];
 //! let maturities = [0.25, 0.5, 1.0];
@@ -102,7 +102,7 @@
 //! let model_true = BatesFourier {
 //!     v0: true_params.v0, kappa: true_params.kappa, theta: true_params.theta,
 //!     sigma_v: true_params.sigma_v, rho: true_params.rho, lambda: true_params.lambda,
-//!     mu_j: true_params.mu_j, sigma_j: true_params.sigma_j, r, q,
+//!     mu_j: true_params.mu_j, sigma_j: true_params.sigma_j,
 //! };
 //! let strikes = [90., 95., 100., 105., 110.];
 //! let maturities = [0.25, 0.5, 1.0];
@@ -194,7 +194,7 @@
 //! use stochastic_rs_quant::OptionType;
 //! use stochastic_rs_quant::calibration::SabrCalibrator;
 //! use stochastic_rs_quant::pricing::sabr::{SabrParams, SabrPricer};
-//! use stochastic_rs_quant::traits::{Calibrator, ModelPricer};
+//! use stochastic_rs_quant::traits::{Calibrator, ModelPricer, ToModel};
 //! use stochastic_rs_quant::vol_surface::build_surface_from_model;
 //!
 //! let s0 = 100.0;

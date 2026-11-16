@@ -269,7 +269,7 @@ def _heston(**kwargs):
 
 
 def test_heston_qe_prices_the_atm_call_within_monte_carlo_error():
-    exact = sr.HestonFourier(0.04, 1.5, 0.04, 0.5, -0.7, 0.02, 0.0).price_call(
+    exact = sr.HestonFourier(0.04, 1.5, 0.04, 0.5, -0.7).price_call(
         100.0, 100.0, 0.02, 0.0, 1.0
     )
     errors = []
