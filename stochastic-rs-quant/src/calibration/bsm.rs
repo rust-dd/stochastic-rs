@@ -182,7 +182,8 @@ impl LeastSquaresProblem for BsmCalibrator {
   fn residuals(&mut self) -> Option<Array1<f64>> {
     let params = self.effective_params();
     let model = BsmPricer::new(params.sigma, BsmCoc::Merton1973);
-    let mut prices = Vec::with_capacity(self.quotes.len());
+    let record = self.options.record_history;
+    let mut prices = Vec::with_capacity(if record { self.quotes.len() } else { 0 });
     let mut residuals = Array1::zeros(self.quotes.len());
 
     for (idx, quote) in self.quotes.iter().enumerate() {
@@ -197,10 +198,12 @@ impl LeastSquaresProblem for BsmCalibrator {
         .abs()
         .max(1e-8);
       residuals[idx] = (price - quote.price) / vega;
-      prices.push(price);
+      if record {
+        prices.push(price);
+      }
     }
 
-    if self.options.record_history {
+    if record {
       let market = self
         .quotes
         .iter()
