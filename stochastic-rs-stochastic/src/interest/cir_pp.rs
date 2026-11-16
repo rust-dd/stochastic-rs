@@ -4,8 +4,8 @@
 //! r_t=x_t+\varphi(t),\qquad dx_t=\kappa(\theta-x_t)\,dt+\sigma\sqrt{x_t}\,dW_t
 //! $$
 //!
-//! Fields follow the CIR literature: `kappa` is the speed and `theta` the level, the reverse of [`Cir`]'s `theta`/`mu` (see the [glossary](crate::glossary)).
-//! [`sampler`](ProcessExt::sampler) runs a [`Cir`] through its [`CirSampler`], so at `phi ≡ 0` the two agree bit for bit.
+//! `kappa` is the speed and `theta` the level, where [`Cir`] names them `theta` and `mu`.
+//! At `phi ≡ 0` it samples [`Cir`]'s paths bit for bit.
 //!
 //! Brigo, Mercurio (2006), Interest Rate Models, 2nd ed., §3.9, DOI 10.1007/978-3-540-34604-3.
 
