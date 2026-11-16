@@ -110,7 +110,7 @@
 //! | [`RescaledRange`] | `4 (min_window + 1)` → 68 (`2 max(min_window + 1, 8)` with `max_window`) |
 //! | [`Dfa`] | `4 (min_window + 1)` → 36 (`max(4 min_window, order + 4)` with `max_window`) |
 //! | [`Gph`] | 64 |
-//! | [`Wavelet`] | 64 |
+//! | [`Wavelet`] | `max(64, 2^(j_min + 3) + 1)` → 64 |
 //! | [`Variations`] | 5 (`CentralDiff`, the default) to 8 (`Daubechies`), or `k+3` for `PowerVariation { k, .. }` |
 //! | [`crate::fractal_dim::Higuchi`] | 3 (but see the `kmax` caveat above — the hard floor is far below what a meaningful log-log regression needs) |
 //! | [`crate::fractal_dim::Variogram`] | 3 (same caveat) |
