@@ -1,10 +1,15 @@
-//! fOU estimates `(H, σ, θ)` by method: `H` from the ratio of a filtered path's variations at two
-//! scales, `σ` from their level, `θ` from the ergodic second moment.
+//! fOU estimates `(H, σ, θ)` by method: two as Brouste & Iacus print them (plain sums over full
+//! windows of `N + 1` points), the power variation as Coeurjolly and Hu, Nualart & Zhou do.
 //!
 //! $$
+//! V_{\mathbf a}=\sum_{i=0}^{N-K}\Bigl(\sum_{k=0}^{K}a_kX_{i+k}\Bigr)^2,\qquad
 //! \hat H=\tfrac12\log_2\frac{V_{\mathbf a^2}}{V_{\mathbf a}},\qquad
-//! \hat\sigma^2=\frac{-2\,V_{\mathbf a}}{\Delta^{2\hat H}\sum_{k,\ell}a_ka_\ell|k-\ell|^{2\hat H}},\qquad
-//! \hat\theta=\Bigl(\frac{2\hat\mu_2}{\hat\sigma^2\,\Gamma(2\hat H+1)}\Bigr)^{-1/(2\hat H)}
+//! \hat\sigma^2=\frac{-2\,V_{\mathbf a}}{N\Delta^{2\hat H}\sum_{k,\ell}a_ka_\ell|k-\ell|^{2\hat H}}
+//! $$
+//!
+//! $$
+//! \hat\theta=\Bigl(\frac{2\hat\mu_2}{\hat\sigma^2\,\Gamma(2\hat H+1)}\Bigr)^{-1/(2\hat H)},\qquad
+//! \hat\mu_2=\frac1N\sum_{n=1}^{N}(X_n-\hat\mu)^2
 //! $$
 //!
 //! Reference: Brouste, A. & Iacus, S. M. (2013), "Parameter estimation for the discretely observed fractional Ornstein–Uhlenbeck process and the Yuima R package", Computational Statistics 28(4), 1529–1547, DOI 10.1007/s00180-012-0365-6, arXiv:1112.3777.
@@ -60,8 +65,8 @@ pub enum FilterType {
   Daubechies,
 }
 
-/// Brouste–Iacus fit over full windows; `Err` below 7 points (6 with `hurst_override`), on bad or
-/// flat data or no usable `H ∈ (0, 1)`, `σ`, `θ`; panics on a bad `delta` or override.
+/// Brouste & Iacus's estimator as printed, filter `a`; `Err` below 7 points (6 with an override),
+/// on bad or flat data or no usable `H ∈ (0, 1)`, `σ`, `θ`; panics on a bad `delta` or override.
 pub fn fit_fou_filtered_variations(
   path: ArrayView1<f64>,
   filter_type: FilterType,
@@ -78,7 +83,7 @@ pub fn fit_fou_filtered_variations(
     None => 2 * l_filter - 1,
   };
   checked(path, min_n)?;
-  let n = path.len();
+  let big_n = (path.len() - 1) as f64;
 
   let v1_sum = filtered_variation(path, &a, 1);
   if v1_sum == 0.0 {
@@ -88,7 +93,7 @@ pub fn fit_fou_filtered_variations(
     Some(hurst) => hurst,
     None => hurst_from_ratio(0.5 * (filtered_variation(path, &a, 2) / v1_sum).log2())?,
   };
-  let dt = delta.unwrap_or(1.0 / n as f64);
+  let dt = delta.unwrap_or(1.0 / big_n);
 
   let mut const_filter = 0.0;
   for i in 0..l_filter {
@@ -96,19 +101,12 @@ pub fn fit_fou_filtered_variations(
       const_filter += a[i] * a[j] * ((i as f64 - j as f64).abs()).powf(2.0 * hurst);
     }
   }
-  let numerator = -2.0 * v1_sum / ((n - l_filter) as f64);
-  let denominator = const_filter * dt.powf(2.0 * hurst);
-  let sigma = positive((numerator / denominator).sqrt(), "sigma from the variation")?;
-
-  let mu = mean_in_order(path);
-
-  let mean_square = path.iter().fold(0.0, |acc, &x| acc + x * x) / n as f64;
-  let theta_num = 2.0 * mean_square;
-  let theta_den = sigma.powi(2) * gamma(2.0 * hurst + 1.0);
-  let theta = positive(
-    (theta_num / theta_den).powf(-1.0 / (2.0 * hurst)),
-    "theta from the second moment",
+  let sigma = positive(
+    (-2.0 * v1_sum / (const_filter * dt.powf(2.0 * hurst) * big_n)).sqrt(),
+    "sigma from the variation",
   )?;
+  let mu = mean_in_order(path);
+  let theta = brouste_iacus_drift(path, mu, hurst, sigma)?;
 
   Ok(FouFit {
     hurst,
@@ -118,8 +116,8 @@ pub fn fit_fou_filtered_variations(
   })
 }
 
-/// Brouste–Iacus fit with the second difference; `Err` on fewer than five points, on non-finite or
-/// flat data or no usable `H ∈ (0, 1)`, `σ`, `θ`; panics on a bad `delta` or override.
+/// Brouste & Iacus's estimator as printed, with the second difference; `Err` below five points, on
+/// bad or flat data or no usable `H ∈ (0, 1)`, `σ`, `θ`; panics on a bad `delta` or override.
 pub fn fit_fou_central_differences(
   path: ArrayView1<f64>,
   delta: Option<f64>,
@@ -128,7 +126,7 @@ pub fn fit_fou_central_differences(
   assert_step_and_hurst(delta, hurst_override);
   checked(path, 5)?;
   let n = path.len();
-  let n_f = n as f64;
+  let big_n = (n - 1) as f64;
 
   let sigma_num: f64 = (0..(n - 2))
     .map(|i| {
@@ -154,20 +152,11 @@ pub fn fit_fou_central_differences(
     }
   };
 
-  let dt = delta.unwrap_or(1.0 / n_f);
-  let sigma_den = n_f * (4.0 - 2.0_f64.powf(2.0 * hurst)) * dt.powf(2.0 * hurst);
+  let dt = delta.unwrap_or(1.0 / big_n);
+  let sigma_den = big_n * (4.0 - 2.0_f64.powf(2.0 * hurst)) * dt.powf(2.0 * hurst);
   let sigma = positive((sigma_num / sigma_den).sqrt(), "sigma from the variation")?;
-
   let mu = mean_in_order(path);
-
-  let sum_x_sq = path.iter().fold(0.0, |acc, &x| acc + x * x);
-  let sum_x = path.iter().fold(0.0, |acc, &x| acc + x);
-  let theta_num = n_f * sum_x_sq - sum_x.powi(2);
-  let theta_den = n_f.powi(2) * sigma.powi(2) * hurst * gamma(2.0 * hurst);
-  let theta = positive(
-    (theta_num / theta_den).powf(-1.0 / (2.0 * hurst)),
-    "theta from the second moment",
-  )?;
+  let theta = brouste_iacus_drift(path, mu, hurst, sigma)?;
 
   Ok(FouFit {
     hurst,
@@ -177,9 +166,9 @@ pub fn fit_fou_central_differences(
   })
 }
 
-/// Hu–Nualart–Zhou fit; `Err` below `2k + 1` points (`k + 2` with `hurst_override`), on non-finite
-/// or flat data or no usable `H ∈ (0, 1)`, `σ`, `θ`; panics on a bad argument.
-/// Reference: Brouste & Iacus (2013), arXiv:1112.3777, §3.1, and Coeurjolly (2001), Statistical Inference for Stochastic Processes 4, 199–227, for `H`.
+/// Hu–Nualart–Zhou `σ` and `θ` at Coeurjolly's `H`; `Err` below `2k + 1` points (`k + 2` with an
+/// override), on bad or flat data or no usable `H ∈ (0, 1)`, `σ`, `θ`; panics on a bad argument.
+/// Reference: Coeurjolly (2001), Statistical Inference for Stochastic Processes 4, 199–227, for `H` from variations normalised by their counts; Hu, Nualart & Zhou (2019), arXiv:1703.09372, (4.2) and (5.22).
 ///
 /// $$
 /// V_{k,p}(s)=\sum_{i=0}^{n-ks}\Bigl|\sum_{j=0}^{k}(-1)^{k-j}\tbinom kj X_{i+js}\Bigr|^p,\qquad
@@ -308,6 +297,26 @@ fn hurst_from_ratio(hurst: f64) -> Result<f64, StatsError> {
       stage: "hurst from the variation ratio",
     })
   }
+}
+
+/// Brouste & Iacus's `λ̂`, its second moment `μ̂₂` taken about the fitted mean, which their model
+/// fixes at zero.
+fn brouste_iacus_drift(
+  path: ArrayView1<f64>,
+  mu: f64,
+  hurst: f64,
+  sigma: f64,
+) -> Result<f64, StatsError> {
+  let big_n = (path.len() - 1) as f64;
+  let mu2 = path
+    .iter()
+    .skip(1)
+    .fold(0.0, |acc, &x| acc + (x - mu).powi(2))
+    / big_n;
+  positive(
+    (2.0 * mu2 / (sigma.powi(2) * gamma(2.0 * hurst + 1.0))).powf(-1.0 / (2.0 * hurst)),
+    "theta from the second moment",
+  )
 }
 
 fn positive(value: f64, stage: &'static str) -> Result<f64, StatsError> {

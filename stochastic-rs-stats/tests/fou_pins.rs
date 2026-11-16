@@ -40,10 +40,22 @@ fn v1_pin_path() -> Array1<f64> {
   .sample()
 }
 
+/// Brouste & Iacus's drift `λ̂` from `μ̂₂ = Σ_{n=1}^N (X_n − μ̂)² / N`, about the path's mean.
+fn theta_ref(path: &Array1<f64>, mu: f64, hurst: f64, sigma: f64) -> f64 {
+  let big_n = (path.len() - 1) as f64;
+  let mu2 = path
+    .iter()
+    .skip(1)
+    .fold(0.0, |acc, &x| acc + (x - mu).powi(2))
+    / big_n;
+  (2.0 * mu2 / (sigma.powi(2) * gamma(2.0 * hurst + 1.0))).powf(-1.0 / (2.0 * hurst))
+}
+
 #[test]
 fn fou_v1_bit_exact_against_its_inline_reference() {
   let path = v1_pin_path();
-  let delta = 1.0 / path.len() as f64;
+  let big_n = (path.len() - 1) as f64;
+  let delta = 1.0 / big_n;
 
   let a = [
     0.4829629131445341 / SQRT_2,
@@ -72,40 +84,29 @@ fn fou_v1_bit_exact_against_its_inline_reference() {
       const_filter += a[i] * a[j] * ((i as f64 - j as f64).abs()).powf(2.0 * hurst_ref);
     }
   }
-  let numerator_ref = -2.0 * v1_sum_ref / ((path.len() - l_filter) as f64);
-  let denominator_ref = const_filter * delta.powf(2.0 * hurst_ref);
-  let sigma_ref = (numerator_ref / denominator_ref).sqrt();
-
+  let sigma_ref = (-2.0 * v1_sum_ref / (const_filter * delta.powf(2.0 * hurst_ref) * big_n)).sqrt();
   let mu_ref = path.iter().fold(0.0, |acc, &x| acc + x) / path.len() as f64;
-  let mean_square_ref = path.iter().fold(0.0, |acc, &x| acc + x * x) / path.len() as f64;
-  let theta_num_ref = 2.0 * mean_square_ref;
-  let theta_den_ref = sigma_ref.powi(2) * gamma(2.0 * hurst_ref + 1.0);
-  let theta_ref = (theta_num_ref / theta_den_ref).powf(-1.0 / (2.0 * hurst_ref));
 
-  let res =
-    fit_fou_filtered_variations(path.view(), FilterType::Daubechies, Some(delta), None).unwrap();
-
+  let fit =
+    |delta| fit_fou_filtered_variations(path.view(), FilterType::Daubechies, delta, None).unwrap();
+  let res = fit(Some(delta));
   assert_close(res.hurst, hurst_ref, "v1 hurst");
   assert_close(res.sigma, sigma_ref, "v1 sigma");
   assert_close(res.mu, mu_ref, "v1 mu");
-  assert_close(res.theta, theta_ref, "v1 theta");
+  assert_close(
+    res.theta,
+    theta_ref(&path, mu_ref, hurst_ref, sigma_ref),
+    "v1 theta",
+  );
+  assert_eq!(fit(None), res);
 }
 
 #[test]
-fn fou_v2_bit_exact_against_struct_era_inline_reference() {
-  let n = 512usize;
-  let path = Fou::<f64, _>::new(
-    0.6,
-    1.0,
-    0.0,
-    0.2,
-    n,
-    Some(0.0),
-    Some(1.0),
-    Deterministic::new(0xF0_E5_71_AA),
-  )
-  .sample();
-  let delta_ref = 1.0 / n as f64;
+fn fou_v2_bit_exact_against_its_inline_reference() {
+  let path = v1_pin_path();
+  let n = path.len();
+  let big_n = (n - 1) as f64;
+  let delta_ref = 1.0 / big_n;
 
   let sum1: f64 = (0..(n - 4))
     .map(|i| {
@@ -120,30 +121,22 @@ fn fou_v2_bit_exact_against_struct_era_inline_reference() {
     })
     .sum();
   let hurst_ref = 0.5 * (sum1 / sum2).log2();
+  let sigma_den_ref =
+    big_n * (4.0 - 2.0_f64.powf(2.0 * hurst_ref)) * delta_ref.powf(2.0 * hurst_ref);
+  let sigma_ref = (sum2 / sigma_den_ref).sqrt();
+  let mu_ref = path.iter().fold(0.0, |acc, &x| acc + x) / n as f64;
 
-  let n_f = n as f64;
-  let sigma_num_ref: f64 = (0..(n - 2))
-    .map(|i| {
-      let diff = path[i + 2] - 2.0 * path[i + 1] + path[i];
-      diff * diff
-    })
-    .sum();
-  let sigma_den_ref = n_f * (4.0 - 2.0_f64.powf(2.0 * hurst_ref)) * delta_ref.powf(2.0 * hurst_ref);
-  let sigma_ref = (sigma_num_ref / sigma_den_ref).sqrt();
-
-  let mu_ref = path.mean().unwrap();
-  let sum_x_sq: f64 = path.mapv(|x| x * x).sum();
-  let sum_x: f64 = path.sum();
-  let theta_num_ref = n_f * sum_x_sq - sum_x.powi(2);
-  let theta_den_ref = n_f.powi(2) * sigma_ref.powi(2) * hurst_ref * gamma(2.0 * hurst_ref);
-  let theta_ref = (theta_num_ref / theta_den_ref).powf(-1.0 / (2.0 * hurst_ref));
-
-  let res = fit_fou_central_differences(path.view(), Some(delta_ref), None).unwrap();
-
+  let fit = |delta| fit_fou_central_differences(path.view(), delta, None).unwrap();
+  let res = fit(Some(delta_ref));
   assert_close(res.hurst, hurst_ref, "v2 hurst");
   assert_close(res.sigma, sigma_ref, "v2 sigma");
   assert_close(res.mu, mu_ref, "v2 mu");
-  assert_close(res.theta, theta_ref, "v2 theta");
+  assert_close(
+    res.theta,
+    theta_ref(&path, mu_ref, hurst_ref, sigma_ref),
+    "v2 theta",
+  );
+  assert_eq!(fit(None), res);
 }
 
 #[test]
