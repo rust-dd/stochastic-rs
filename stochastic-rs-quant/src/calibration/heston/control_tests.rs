@@ -2,6 +2,7 @@ use ndarray::Array1;
 
 use super::*;
 use crate::OptionType;
+use crate::pricing::heston::HestonParams;
 
 fn calibrator() -> HestonCalibrator {
   HestonCalibrator::new(

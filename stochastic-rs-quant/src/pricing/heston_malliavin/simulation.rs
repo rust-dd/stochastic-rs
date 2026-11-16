@@ -5,6 +5,7 @@ use super::HestonModel;
 use super::invalid_input;
 use super::variance_vega::effective_initial_variance_bump;
 use crate::QuantError;
+use crate::pricing::heston::HestonParams;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct SimulatedPath {
@@ -26,7 +27,7 @@ pub(super) fn simulate_path(
 ) -> Result<SimulatedPath, QuantError> {
   let dt = model.tau / variance_normals.len() as f64;
   let sqrt_dt = dt.sqrt();
-  let orthogonal_scale = (1.0 - model.rho.powi(2)).sqrt();
+  let orthogonal_scale = (1.0 - model.params.rho.powi(2)).sqrt();
   let mut variance = initial_variance;
   let mut log_spot = model.s.ln();
   let mut integrated_variance = 0.0;
@@ -40,9 +41,9 @@ pub(super) fn simulate_path(
     integrated_variance += positive_variance * dt;
     orthogonal_stochastic_integral += sqrt_variance * sqrt_dt * z_orthogonal;
     log_spot += (model.risk_free_rate - model.dividend_yield - 0.5 * positive_variance) * dt
-      + sqrt_variance * sqrt_dt * (model.rho * z_variance + orthogonal_scale * z_orthogonal);
-    variance += model.kappa * (model.theta - positive_variance) * dt
-      + model.vol_of_vol * sqrt_variance * sqrt_dt * z_variance;
+      + sqrt_variance * sqrt_dt * (model.params.rho * z_variance + orthogonal_scale * z_orthogonal);
+    variance += model.params.kappa * (model.params.theta - positive_variance) * dt
+      + model.params.sigma * sqrt_variance * sqrt_dt * z_variance;
   }
 
   if integrated_variance <= minimum_integrated_variance {
@@ -86,56 +87,46 @@ pub(super) fn simulate_path(
   })
 }
 
-pub(super) fn validate_model(model: HestonModel) -> Result<(), QuantError> {
-  if !model.s.is_finite() || model.s <= 0.0 {
-    return Err(invalid_input(format!(
-      "spot must be finite and positive, got {}",
-      model.s
-    )));
-  }
-  if !model.initial_variance.is_finite() || model.initial_variance <= 0.0 {
-    return Err(invalid_input(format!(
-      "initial_variance must be finite and positive, got {}",
-      model.initial_variance
-    )));
-  }
-  if !model.theta.is_finite() || model.theta < 0.0 {
-    return Err(invalid_input(format!(
-      "theta must be finite and non-negative, got {}",
-      model.theta
-    )));
-  }
-  if !model.kappa.is_finite() || model.kappa < 0.0 {
-    return Err(invalid_input(format!(
-      "kappa must be finite and non-negative, got {}",
-      model.kappa
-    )));
-  }
-  if !model.vol_of_vol.is_finite() || model.vol_of_vol < 0.0 {
-    return Err(invalid_input(format!(
-      "vol_of_vol must be finite and non-negative, got {}",
-      model.vol_of_vol
-    )));
-  }
-  if !model.rho.is_finite() || model.rho.abs() >= 1.0 {
-    return Err(invalid_input(format!(
-      "the orthogonal Malliavin estimator requires abs(rho) < 1, got rho = {}",
-      model.rho
-    )));
-  }
-  if !model.risk_free_rate.is_finite() || !model.dividend_yield.is_finite() {
-    return Err(invalid_input(format!(
-      "rates must be finite, got r = {}, q = {}",
-      model.risk_free_rate, model.dividend_yield
-    )));
-  }
-  if !model.tau.is_finite() || model.tau <= 0.0 {
-    return Err(invalid_input(format!(
-      "maturity must be finite and positive, got tau = {}",
-      model.tau
-    )));
-  }
-  Ok(())
+pub(super) fn assert_model(model: HestonModel) {
+  let HestonModel {
+    s,
+    params,
+    risk_free_rate,
+    dividend_yield,
+    tau,
+  } = model;
+  assert!(
+    s.is_finite() && s > 0.0,
+    "s must satisfy `s.is_finite() && s > 0.0`, got s = {s:?}"
+  );
+  assert!(
+    params.v0 > 0.0,
+    "v0 must satisfy `v0 > 0.0`, got v0 = {:?}",
+    params.v0
+  );
+  let HestonParams { kappa, rho, .. } = params.checked();
+  assert!(
+    kappa >= 0.0,
+    "kappa must satisfy `kappa >= 0.0`, got kappa = {kappa:?}"
+  );
+  assert!(
+    rho.abs() < 1.0,
+    "rho must satisfy `rho.abs() < 1.0`, got rho = {rho:?}"
+  );
+  assert!(
+    risk_free_rate.is_finite(),
+    "risk_free_rate must satisfy `risk_free_rate.is_finite()`, got risk_free_rate = \
+     {risk_free_rate:?}"
+  );
+  assert!(
+    dividend_yield.is_finite(),
+    "dividend_yield must satisfy `dividend_yield.is_finite()`, got dividend_yield = \
+     {dividend_yield:?}"
+  );
+  assert!(
+    tau.is_finite() && tau > 0.0,
+    "tau must satisfy `tau.is_finite() && tau > 0.0`, got tau = {tau:?}"
+  );
 }
 
 pub(super) fn validate_config(
@@ -152,7 +143,7 @@ pub(super) fn validate_config(
     return Err(invalid_input("steps must be positive, got 0"));
   }
   effective_initial_variance_bump(
-    model.initial_variance,
+    model.params.v0,
     config.initial_variance_bump,
     config.minimum_relative_initial_variance_bump,
   )?;
@@ -174,7 +165,7 @@ pub(super) fn validate_config(
       "minimum_orthogonal_variance_fraction must lie in (0, 1), got {fraction}"
     )));
   }
-  let orthogonal = 1.0 - model.rho.powi(2);
+  let orthogonal = 1.0 - model.params.rho.powi(2);
   if orthogonal < fraction {
     return Err(invalid_input(format!(
       "rho leaves too little orthogonal variance for a stable Malliavin score: 1 - rho^2 = \

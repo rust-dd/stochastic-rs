@@ -14,13 +14,13 @@ use anyhow::Result;
 use anyhow::bail;
 use ndarray::Array1;
 use ndarray::Array2;
-use stochastic_rs_quant::calibration::heston::HestonParams;
 use stochastic_rs_quant::calibration::least_squares::LeastSquaresProblem;
 use stochastic_rs_quant::calibration::least_squares::LmOptions;
 use stochastic_rs_quant::calibration::least_squares::minimize;
 use stochastic_rs_quant::calibration::rbergomi::RBergomiParams;
 use stochastic_rs_quant::calibration::rbergomi::RBergomiXi0;
 use stochastic_rs_quant::pricing::fourier::HestonFourier;
+use stochastic_rs_quant::pricing::heston::HestonParams;
 use stochastic_rs_quant::pricing::rbergomi::RBergomiPricer;
 use stochastic_rs_quant::traits::CalibrationResult;
 use stochastic_rs_quant::traits::Calibrator;
@@ -414,7 +414,7 @@ impl CalibrationResult for HestonSurrogateResult {
   }
 
   fn params(&self) -> HestonParams {
-    self.params.clone()
+    self.params
   }
 
   fn iterations(&self) -> Option<usize> {
@@ -446,10 +446,18 @@ impl Calibrator for HestonSurrogateCalibrator<'_> {
     let fit = self
       .inner
       .run(initial.as_ref().map(heston_params_to_surrogate))?;
-    Ok(HestonSurrogateResult {
-      params: heston_params_from_surrogate(&fit.params),
-      fit,
-    })
+    let params = fitted_heston_params(&fit)?;
+    Ok(HestonSurrogateResult { params, fit })
+  }
+}
+
+/// The scaled coordinates are unbounded, so a fit can leave the Heston domain that
+/// `to_model` would panic on.
+fn fitted_heston_params(fit: &SurrogateCalibrationResult) -> Result<HestonParams> {
+  let params = heston_params_from_surrogate(&fit.params);
+  match params.violation() {
+    Some(reason) => Err(anyhow::anyhow!("the fit left the Heston domain: {reason}")),
+    None => Ok(params),
   }
 }
 

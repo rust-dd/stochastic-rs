@@ -1,7 +1,12 @@
+use num_complex::Complex64;
+
 use super::loss::double_heston_call_price;
+use super::loss::double_heston_cf;
 use super::*;
 use crate::LossMetric;
 use crate::OptionType;
+use crate::pricing::fourier::FourierModelExt;
+use crate::pricing::heston::HestonParams;
 use crate::traits::Calibrator;
 use crate::traits::ToModel;
 
@@ -17,16 +22,20 @@ const STRIKES: [f64; 9] = [80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 1
 fn double_heston_reduces_to_heston_when_one_factor_vanishes() {
   // Factor 2 has v2_0=0 and theta2≈0 so its contribution is negligible.
   let p = DoubleHestonParams {
-    v1_0: 0.04,
-    kappa1: 1.5,
-    theta1: 0.04,
-    sigma1: 0.3,
-    rho1: -0.7,
-    v2_0: 1e-6,
-    kappa2: 5.0,
-    theta2: 1e-6,
-    sigma2: 0.01,
-    rho2: 0.0,
+    first: HestonParams {
+      v0: 0.04,
+      kappa: 1.5,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    },
+    second: HestonParams {
+      v0: 1e-6,
+      kappa: 5.0,
+      theta: 1e-6,
+      sigma: 0.01,
+      rho: 0.0,
+    },
   };
   for (i, &k) in STRIKES.iter().enumerate() {
     let price = double_heston_call_price(&p, 100.0, k, 0.05, 0.0, 1.0);
@@ -44,16 +53,20 @@ fn double_heston_two_factors_produces_sensible_smile() {
   // one slow-mean-reverting factor. Prices should be positive, finite,
   // monotonic in strike, and satisfy basic bounds.
   let p = DoubleHestonParams {
-    v1_0: 0.02,
-    kappa1: 3.0,
-    theta1: 0.02,
-    sigma1: 0.4,
-    rho1: -0.6,
-    v2_0: 0.02,
-    kappa2: 0.5,
-    theta2: 0.03,
-    sigma2: 0.2,
-    rho2: -0.3,
+    first: HestonParams {
+      v0: 0.02,
+      kappa: 3.0,
+      theta: 0.02,
+      sigma: 0.4,
+      rho: -0.6,
+    },
+    second: HestonParams {
+      v0: 0.02,
+      kappa: 0.5,
+      theta: 0.03,
+      sigma: 0.2,
+      rho: -0.3,
+    },
   };
   let mut prev = f64::INFINITY;
   for &k in STRIKES.iter() {
@@ -78,16 +91,20 @@ fn double_heston_calibrate_to_heston_surface() {
   let n = STRIKES.len();
   let calibrator = DoubleHestonCalibrator::new(
     Some(DoubleHestonParams {
-      v1_0: 0.03,
-      kappa1: 2.0,
-      theta1: 0.03,
-      sigma1: 0.25,
-      rho1: -0.5,
-      v2_0: 0.01,
-      kappa2: 0.8,
-      theta2: 0.02,
-      sigma2: 0.15,
-      rho2: -0.4,
+      first: HestonParams {
+        v0: 0.03,
+        kappa: 2.0,
+        theta: 0.03,
+        sigma: 0.25,
+        rho: -0.5,
+      },
+      second: HestonParams {
+        v0: 0.01,
+        kappa: 0.8,
+        theta: 0.02,
+        sigma: 0.15,
+        rho: -0.4,
+      },
     }),
     HESTON_REF.to_vec().into(),
     vec![100.0; n].into(),
@@ -106,7 +123,7 @@ fn double_heston_calibrate_to_heston_surface() {
     result.loss.get(LossMetric::Rmse)
   );
   // Verify the calibrated price is close to the reference
-  let p_out = result.params();
+  let p_out = result.params;
   for (i, &k) in STRIKES.iter().enumerate() {
     let price = double_heston_call_price(&p_out, 100.0, k, 0.05, 0.0, 1.0);
     assert!(
@@ -120,18 +137,23 @@ fn double_heston_calibrate_to_heston_surface() {
 #[test]
 fn double_heston_params_to_model() {
   let p = DoubleHestonParams {
-    v1_0: 0.02,
-    kappa1: 3.0,
-    theta1: 0.02,
-    sigma1: 0.3,
-    rho1: -0.6,
-    v2_0: 0.02,
-    kappa2: 0.5,
-    theta2: 0.02,
-    sigma2: 0.15,
-    rho2: -0.3,
+    first: HestonParams {
+      v0: 0.02,
+      kappa: 3.0,
+      theta: 0.02,
+      sigma: 0.3,
+      rho: -0.6,
+    },
+    second: HestonParams {
+      v0: 0.02,
+      kappa: 0.5,
+      theta: 0.02,
+      sigma: 0.15,
+      rho: -0.3,
+    },
   };
   let model = p.to_model();
-  assert_eq!(model.v1_0, 0.02);
-  assert_eq!(model.kappa2, 0.5);
+  for u in [Complex64::new(0.7, 0.0), Complex64::new(1.3, -0.5)] {
+    assert_eq!(model.chf(1.0, u), double_heston_cf(&p, 0.0, 0.0, 1.0, u));
+  }
 }

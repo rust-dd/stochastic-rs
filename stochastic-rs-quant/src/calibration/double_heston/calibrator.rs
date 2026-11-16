@@ -14,6 +14,7 @@ use crate::calibration::CalibrationHistory;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::LmOptions;
 use crate::calibration::least_squares::minimize;
+use crate::pricing::heston::HestonParams;
 
 /// Double Heston least-squares calibrator using Levenberg-Marquardt.
 #[derive(Clone)]
@@ -128,16 +129,7 @@ impl DoubleHestonCalibrator {
     );
 
     DoubleHestonCalibrationResult {
-      v1_0: p.v1_0,
-      kappa1: p.kappa1,
-      theta1: p.theta1,
-      sigma1: p.sigma1,
-      rho1: p.rho1,
-      v2_0: p.v2_0,
-      kappa2: p.kappa2,
-      theta2: p.theta2,
-      sigma2: p.sigma2,
-      rho2: p.rho2,
+      params: p,
       loss,
       converged: report.converged,
     }
@@ -160,16 +152,20 @@ impl DoubleHestonCalibrator {
   /// in ≈ 2 years).
   pub(super) fn fallback_params() -> DoubleHestonParams {
     DoubleHestonParams {
-      v1_0: 0.02,
-      kappa1: 3.0,
-      theta1: 0.02,
-      sigma1: 0.3,
-      rho1: -0.6,
-      v2_0: 0.02,
-      kappa2: 0.5,
-      theta2: 0.02,
-      sigma2: 0.15,
-      rho2: -0.3,
+      first: HestonParams {
+        v0: 0.02,
+        kappa: 3.0,
+        theta: 0.02,
+        sigma: 0.3,
+        rho: -0.6,
+      },
+      second: HestonParams {
+        v0: 0.02,
+        kappa: 0.5,
+        theta: 0.02,
+        sigma: 0.15,
+        rho: -0.3,
+      },
     }
     .projected()
   }

@@ -103,17 +103,18 @@ impl PyDoubleHestonCalibrator {
       .inner
       .calibrate(None)
       .map_err(|e| PyValueError::new_err(format!("Double-Heston calibration failed: {e}")))?;
+    let (a, b) = (res.params.first, res.params.second);
     Ok((
-      res.v1_0,
-      res.kappa1,
-      res.theta1,
-      res.sigma1,
-      res.rho1,
-      res.v2_0,
-      res.kappa2,
-      res.theta2,
-      res.sigma2,
-      res.rho2,
+      a.v0,
+      a.kappa,
+      a.theta,
+      a.sigma,
+      a.rho,
+      b.v0,
+      b.kappa,
+      b.theta,
+      b.sigma,
+      b.rho,
       res.converged,
       res.loss.get(crate::LossMetric::Rmse),
     ))

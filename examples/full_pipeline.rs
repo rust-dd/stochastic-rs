@@ -20,9 +20,9 @@ use stochastic_rs::quant::microstructure::AlmgrenChrissParams;
 use stochastic_rs::quant::microstructure::ExecutionDirection;
 use stochastic_rs::quant::pricing::AnalyticBsEngine;
 use stochastic_rs::quant::pricing::AnalyticHestonEngine;
-use stochastic_rs::quant::pricing::HestonStaticParams;
 use stochastic_rs::quant::pricing::VarianceSwapPricer;
 use stochastic_rs::quant::pricing::execution_adjusted_price;
+use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::risk::liquidity_adjusted_var;
 use stochastic_rs::quant::risk::var::PnlOrLoss;
 use stochastic_rs::quant::risk::var::VarMethod;
@@ -53,7 +53,13 @@ fn main() {
 
   let bs_engine = AnalyticBsEngine::new(spot.clone(), vol.clone(), rate.clone(), div.clone());
 
-  let heston_params = HestonStaticParams::new(0.04, 1.5, 0.04, 0.30, -0.7);
+  let heston_params = HestonParams {
+    v0: 0.04,
+    kappa: 1.5,
+    theta: 0.04,
+    sigma: 0.30,
+    rho: -0.7,
+  };
   let heston_engine =
     AnalyticHestonEngine::new(spot.clone(), rate.clone(), div.clone(), heston_params);
 

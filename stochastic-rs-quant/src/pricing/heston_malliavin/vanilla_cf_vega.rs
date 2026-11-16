@@ -4,10 +4,11 @@ use super::HestonModel;
 use super::VanillaLeg;
 use super::VanillaPortfolio;
 use super::invalid_input;
-use super::simulation::validate_model;
+use super::simulation::assert_model;
 use super::variance_vega::effective_initial_variance_bump;
 use crate::OptionType;
 use crate::QuantError;
+use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
 
 /// Bump controls for deterministic Heston characteristic-function vega.
@@ -63,24 +64,14 @@ pub struct HestonVanillaCfVegaEstimate {
   pub bump_stable: bool,
 }
 
-/// Computes a deterministic Heston CF `v0` derivative for a vanilla portfolio.
-///
-/// This helper is limited to linear portfolios of European calls and puts. Its
-/// primary value differentiates the characteristic-function integral
-/// analytically. The retained centered finite differences are compatibility
-/// diagnostics and do not determine whether the analytic value is available.
+/// Analytic Heston CF `∂price/∂v0` of a linear call/put portfolio, the centred differences beside
+/// it diagnostics only; panics on a `model` outside [`HestonModel`]'s domain.
 pub fn heston_vanilla_portfolio_cf_initial_variance_vega(
   model: HestonModel,
   portfolio: &VanillaPortfolio,
   config: HestonVanillaCfVegaConfig,
 ) -> Result<HestonVanillaCfVegaEstimate, QuantError> {
-  validate_model(model)?;
-  if model.vol_of_vol <= 0.0 {
-    return Err(invalid_input(format!(
-      "Heston CF vega requires positive vol_of_vol, got {}",
-      model.vol_of_vol
-    )));
-  }
+  assert_model(model);
   let tolerance = config.maximum_relative_bump_difference;
   if !tolerance.is_finite() || tolerance < 0.0 {
     return Err(invalid_input(format!(
@@ -88,12 +79,12 @@ pub fn heston_vanilla_portfolio_cf_initial_variance_vega(
     )));
   }
   let effective_bump = effective_initial_variance_bump(
-    model.initial_variance,
+    model.params.v0,
     config.initial_variance_bump,
     config.minimum_relative_initial_variance_bump,
   )?;
   let comparison_bump = 0.5 * effective_bump;
-  let base_price = portfolio_price(model, portfolio, model.initial_variance)?;
+  let base_price = portfolio_price(model, portfolio, model.params.v0)?;
   let value = portfolio_initial_variance_vega(model, portfolio)?;
   let finite_difference_value = centered_derivative(model, portfolio, effective_bump)?;
   let comparison_value = centered_derivative(model, portfolio, comparison_bump)?;
@@ -123,7 +114,7 @@ fn portfolio_initial_variance_vega(
   let mut value = 0.0;
   for (index, leg) in portfolio.legs().iter().enumerate() {
     check_leg(index, leg)?;
-    let (pricer, s, k, r, q, tau) = pricer(model, leg.strike, model.initial_variance);
+    let (pricer, s, k, r, q, tau) = pricer(model, leg.strike, model.params.v0);
     let (call, put) = pricer.call_put_initial_variance_vega(s, k, r, q, tau);
     let leg_value = match leg.kind {
       OptionType::Call => call,
@@ -146,8 +137,8 @@ fn centered_derivative(
   portfolio: &VanillaPortfolio,
   bump: f64,
 ) -> Result<f64, QuantError> {
-  let up = portfolio_price(model, portfolio, model.initial_variance + bump)?;
-  let down = portfolio_price(model, portfolio, model.initial_variance - bump)?;
+  let up = portfolio_price(model, portfolio, model.params.v0 + bump)?;
+  let down = portfolio_price(model, portfolio, model.params.v0 - bump)?;
   let derivative = (up - down) / (2.0 * bump);
   if derivative.is_finite() {
     Ok(derivative)
@@ -204,14 +195,10 @@ fn pricer(
   initial_variance: f64,
 ) -> (HestonPricer, f64, f64, f64, f64, f64) {
   (
-    HestonPricer::new(
-      initial_variance,
-      model.rho,
-      model.kappa,
-      model.theta,
-      model.vol_of_vol,
-      None,
-    ),
+    HestonPricer::new(HestonParams {
+      v0: initial_variance,
+      ..model.params
+    }),
     model.s,
     strike,
     model.risk_free_rate,

@@ -13,7 +13,7 @@ use stochastic_rs::ai::volatility::heston::OUTPUT_DIM;
 use stochastic_rs::ai::volatility::heston::PARAM_LB;
 use stochastic_rs::ai::volatility::heston::PARAM_UB;
 use stochastic_rs::ai::volatility::heston::STRIKES;
-use stochastic_rs::quant::calibration::heston::HestonParams;
+use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::vol_surface::ImpliedVolSurface;
 use stochastic_rs::traits::CalibrationResult;
 use stochastic_rs::traits::Calibrator;

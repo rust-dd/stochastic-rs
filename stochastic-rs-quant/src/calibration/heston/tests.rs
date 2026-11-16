@@ -7,6 +7,7 @@ use stochastic_rs_stochastic::volatility::heston::Heston as HestonProcess;
 
 use super::*;
 use crate::OptionType;
+use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
 use crate::traits::Calibrator;
 use crate::traits::ProcessExt;
@@ -19,7 +20,13 @@ const REF_STRIKES: [f64; 9] = [80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.
 #[test]
 fn heston_pricer_matches_reference() {
   for (i, &k) in REF_STRIKES.iter().enumerate() {
-    let pricer = HestonPricer::new(0.04, -0.7, 1.5, 0.04, 0.3, Some(0.0));
+    let pricer = HestonPricer::new(HestonParams {
+      v0: 0.04,
+      kappa: 1.5,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    });
     let (call, _) = pricer.call_put(100.0, k, 0.05, 0.0, 1.0);
     assert!(
       (call - HESTON_REF[i]).abs() < 0.15,
@@ -156,14 +163,7 @@ fn test_heston_calibrate_with_mle_seed() {
 
   let mut c_market = Vec::with_capacity(strikes.len());
   for &kk in &strikes {
-    let pr = HestonPricer::new(
-      true_params.v0,
-      true_params.rho,
-      true_params.kappa,
-      true_params.theta,
-      true_params.sigma,
-      Some(0.0),
-    );
+    let pr = HestonPricer::new(true_params);
     let (call, _) = pr.call_put(s0, kk, r, q_value, tau);
     c_market.push(call);
   }
@@ -226,14 +226,7 @@ fn test_heston_calibrate_with_pmle_seed() {
 
   let mut c_market = Vec::with_capacity(strikes.len());
   for &kk in &strikes {
-    let pr = HestonPricer::new(
-      true_params.v0,
-      true_params.rho,
-      true_params.kappa,
-      true_params.theta,
-      true_params.sigma,
-      Some(0.0),
-    );
+    let pr = HestonPricer::new(true_params);
     let (call, _) = pr.call_put(s0, kk, r, q_value, tau);
     c_market.push(call);
   }
@@ -298,14 +291,7 @@ fn test_heston_calibrate_with_nmle_cekf_seed() {
 
   let mut c_market = Vec::with_capacity(strikes.len());
   for &kk in &strikes {
-    let pr = HestonPricer::new(
-      true_params.v0,
-      true_params.rho,
-      true_params.kappa,
-      true_params.theta,
-      true_params.sigma,
-      Some(0.0),
-    );
+    let pr = HestonPricer::new(true_params);
     let (call, _) = pr.call_put(s0, kk, r, q_value, tau);
     c_market.push(call);
   }
@@ -401,7 +387,7 @@ fn test_heston_cui_price_and_jacobian_finite() {
 
   let market = vec![22.0, 14.8, 11.9, 9.5, 6.2, 4.0];
   let mut calibrator = HestonCalibrator::new(
-    Some(params.clone()),
+    Some(params),
     market.into(),
     s.clone().into(),
     k.clone().into(),
@@ -426,14 +412,7 @@ fn test_heston_cui_price_and_jacobian_finite() {
   assert!(jac.iter().all(|x| x.is_finite()));
 
   for (i, &strike) in k.iter().enumerate() {
-    let pr = HestonPricer::new(
-      params.v0,
-      params.rho,
-      params.kappa,
-      params.theta,
-      params.sigma,
-      Some(0.0),
-    );
+    let pr = HestonPricer::new(params);
     let (call_ref, _) = pr.call_put(s[i], strike, r, q_value, tau);
     let rel = ((c_model[i] - call_ref).abs()) / (1.0 + call_ref.abs());
     assert!(rel < 5e-2, "quote {} relative gap too large: {}", i, rel);
@@ -457,7 +436,7 @@ fn test_heston_cui_jacobian_matches_numeric() {
 
   let market = vec![18.0, 11.0, 8.5, 6.4, 3.7];
   let calibrator = HestonCalibrator::new(
-    Some(params.clone()),
+    Some(params),
     market.into(),
     s.into(),
     k.into(),

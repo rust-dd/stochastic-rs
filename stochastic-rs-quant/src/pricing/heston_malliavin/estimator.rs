@@ -6,9 +6,9 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::TerminalPayoff;
 use super::non_finite_payoff;
+use super::simulation::assert_model;
 use super::simulation::simulate_path;
 use super::simulation::validate_config;
-use super::simulation::validate_model;
 use super::statistics::OnlineCovariance;
 use super::statistics::OnlineScalar;
 use super::variance_vega::DEFAULT_MINIMUM_RELATIVE_BUMP;
@@ -16,24 +16,17 @@ use super::variance_vega::HestonInitialVarianceVegaDiagnostics;
 use super::variance_vega::classify_initial_variance_vega;
 use super::variance_vega::effective_initial_variance_bump;
 use crate::QuantError;
+use crate::pricing::heston::HestonParams;
 
 pub(super) const OBSERVABLES: usize = 4;
 
-/// Risk-neutral Heston parameters.
+/// Risk-neutral Heston model at spot `s` to horizon `tau`; estimators panic unless all are finite,
+/// `s, tau, v0 > 0`, `κ ≥ 0`, `|ρ| < 1` and `params` passes [`HestonParams::new`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HestonModel {
   /// Initial underlying price.
   pub s: f64,
-  /// Initial instantaneous variance.
-  pub initial_variance: f64,
-  /// Variance mean-reversion speed.
-  pub kappa: f64,
-  /// Long-run variance.
-  pub theta: f64,
-  /// Volatility of variance.
-  pub vol_of_vol: f64,
-  /// Spot/variance Brownian correlation.
-  pub rho: f64,
+  pub params: HestonParams,
   /// Continuously compounded risk-free rate.
   pub risk_free_rate: f64,
   /// Continuous dividend yield.
@@ -163,9 +156,10 @@ pub struct HestonMalliavinEstimator {
 }
 
 impl HestonMalliavinEstimator {
-  /// Creates an estimator after validating model and simulation inputs.
+  /// Panics on a `model` outside [`HestonModel`]'s domain; `InvalidInput` for a bad `config`, or
+  /// one that leaves `rho` too little orthogonal variance.
   pub fn new(model: HestonModel, config: HestonMalliavinConfig) -> Result<Self, QuantError> {
-    validate_model(model)?;
+    assert_model(model);
     validate_config(model, config)?;
     Ok(Self { model, config })
   }
@@ -290,7 +284,7 @@ impl HestonMalliavinEstimator {
       self.config.initial_variance_bump,
       self.config.minimum_relative_initial_variance_bump,
       effective_initial_variance_bump(
-        self.model.initial_variance,
+        self.model.params.v0,
         self.config.initial_variance_bump,
         self.config.minimum_relative_initial_variance_bump,
       )?,
@@ -325,14 +319,14 @@ impl HestonMalliavinEstimator {
   ) -> Result<HestonMalliavinPathContribution, QuantError> {
     let sign_value = f64::from(sign);
     let effective_bump = effective_initial_variance_bump(
-      self.model.initial_variance,
+      self.model.params.v0,
       self.config.initial_variance_bump,
       self.config.minimum_relative_initial_variance_bump,
     )?;
     let comparison_bump = 0.5 * effective_bump;
     let base = simulate_path(
       self.model,
-      self.model.initial_variance,
+      self.model.params.v0,
       sign_value,
       variance_normals,
       orthogonal_normals,
@@ -341,7 +335,7 @@ impl HestonMalliavinEstimator {
     )?;
     let up = simulate_path(
       self.model,
-      self.model.initial_variance + effective_bump,
+      self.model.params.v0 + effective_bump,
       sign_value,
       variance_normals,
       orthogonal_normals,
@@ -350,7 +344,7 @@ impl HestonMalliavinEstimator {
     )?;
     let down = simulate_path(
       self.model,
-      self.model.initial_variance - effective_bump,
+      self.model.params.v0 - effective_bump,
       sign_value,
       variance_normals,
       orthogonal_normals,
@@ -359,7 +353,7 @@ impl HestonMalliavinEstimator {
     )?;
     let comparison_up = simulate_path(
       self.model,
-      self.model.initial_variance + comparison_bump,
+      self.model.params.v0 + comparison_bump,
       sign_value,
       variance_normals,
       orthogonal_normals,
@@ -368,7 +362,7 @@ impl HestonMalliavinEstimator {
     )?;
     let comparison_down = simulate_path(
       self.model,
-      self.model.initial_variance - comparison_bump,
+      self.model.params.v0 - comparison_bump,
       sign_value,
       variance_normals,
       orthogonal_normals,

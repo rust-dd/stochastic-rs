@@ -7,6 +7,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::pricing::slv::HestonSlvParams;
 use stochastic_rs::quant::pricing::slv::HestonSlvPricer;
 use stochastic_rs::quant::pricing::slv::LeverageSurface;
@@ -17,11 +18,13 @@ use stochastic_rs::traits::ModelPricer;
 
 fn heston_params(eta: f64) -> HestonSlvParams {
   HestonSlvParams {
-    kappa: 2.0,
-    theta: 0.04,
-    sigma: 0.3,
-    rho: -0.7,
-    v0: 0.04,
+    heston: HestonParams {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    },
     eta,
   }
 }
@@ -275,11 +278,11 @@ fn the_process_paths_and_the_pricer_agree_on_a_vanilla() {
   let n = 51;
   let process = HestonSlv::<f64, _>::new(
     s0,
-    params.v0,
-    params.kappa,
-    params.theta,
-    params.sigma,
-    params.rho,
+    params.heston.v0,
+    params.heston.kappa,
+    params.heston.theta,
+    params.heston.sigma,
+    params.heston.rho,
     r - q,
     params.eta,
     surface,

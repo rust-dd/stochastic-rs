@@ -1,21 +1,11 @@
-//! Instrument / PricingEngine decouple — the split of a payoff
-//! (`Instrument`) from the model+market+method that values it
-//! (`PricingEngine`).
-//!
-//! The pair is deliberately small: two instruments
-//! ([`crate::instruments::equity::EuropeanOption`],
-//! [`crate::instruments::equity::DigitalOption`]) and two engines, three
-//! engine×instrument pairings in all. Its role is cross-engine validation —
-//! price the same contract under Black-Scholes and under Heston and compare
-//! — not a third pricing layer: the crate's two load-bearing layers are
-//! [`crate::traits::ModelPricer`] (model struct + spot/strike query) and the
-//! curve-valued instruments. The four traits here are reachable via
-//! `traits::*` and are deliberately not in the umbrella prelude.
+//! A payoff (`Instrument`) apart from the model, market and method that value it (`PricingEngine`):
+//! two instruments and two engines, a cross-engine check rather than a third pricing layer.
 //!
 //! ```
 //! use stochastic_rs_quant::OptionType;
 //! use stochastic_rs_quant::instruments::equity::EuropeanOption;
-//! use stochastic_rs_quant::pricing::engines::{AnalyticBsEngine, AnalyticHestonEngine, HestonStaticParams};
+//! use stochastic_rs_quant::pricing::engines::{AnalyticBsEngine, AnalyticHestonEngine};
+//! use stochastic_rs_quant::pricing::heston::HestonParams;
 //! use stochastic_rs_quant::traits::{PricingEngine, PricingResult};
 //!
 //! let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
@@ -26,7 +16,7 @@
 //! }
 //!
 //! // Swap engines without touching the instrument:
-//! let params = HestonStaticParams::new(0.04, 1.5, 0.04, 0.3, -0.6);
+//! let params = HestonParams { v0: 0.04, kappa: 1.5, theta: 0.04, sigma: 0.3, rho: -0.6 };
 //! let heston = AnalyticHestonEngine::with_constants(100.0, 0.05, 0.0, params);
 //! let r2 = heston.calculate(&opt);
 //! assert!(r2.npv() > 0.0);

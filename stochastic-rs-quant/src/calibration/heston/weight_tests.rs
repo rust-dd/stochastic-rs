@@ -2,9 +2,9 @@ use ndarray::Array1;
 
 use super::HestonCalibrator;
 use super::HestonJacobianMethod;
-use super::HestonParams;
 use crate::OptionType;
 use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::pricing::heston::HestonParams;
 
 fn calibrator() -> HestonCalibrator {
   let mut calibrator = HestonCalibrator::new(
@@ -68,7 +68,7 @@ fn invalid_residual_weights_fail_without_mutating_existing_weights() {
 fn analytic_residual_jacobian_uses_the_same_row_weights() {
   let mut calibrator = calibrator();
   calibrator.set_jacobian_method(HestonJacobianMethod::CuiAnalytic);
-  let params = calibrator.params.clone().unwrap();
+  let params = calibrator.params.unwrap();
   let (_, raw) = calibrator
     .compute_model_prices_and_residual_jacobian_cui(&params)
     .unwrap();

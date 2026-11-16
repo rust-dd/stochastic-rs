@@ -3,12 +3,12 @@ use ndarray::s;
 use super::HestonCalibrationResult;
 use super::HestonCalibrator;
 use super::HestonJacobianMethod;
-use super::HestonParams;
 use super::transform::to_optimizer_coordinates;
 use crate::OptionType;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::levy::MarketSlice;
 use crate::pricing::fourier::HestonFourier;
+use crate::pricing::heston::HestonParams;
 use crate::traits::CalibrationResult;
 use crate::traits::Calibrator;
 use crate::traits::ModelPricer;
@@ -72,13 +72,7 @@ const INNER_START: HestonParams = HestonParams {
 const STARTS: [Option<HestonParams>; 3] = [None, Some(NEAR_START), Some(INNER_START)];
 
 fn surface(truth: &HestonParams) -> Vec<MarketSlice> {
-  let model = HestonFourier {
-    v0: truth.v0,
-    kappa: truth.kappa,
-    theta: truth.theta,
-    sigma: truth.sigma,
-    rho: truth.rho,
-  };
+  let model = HestonFourier::new(*truth);
   MATURITIES
     .iter()
     .map(|&t| MarketSlice {
@@ -157,7 +151,7 @@ fn reported_rmse_is_the_price_error_of_the_fitted_pricer() {
   let truth = &CASES[2];
   let mut calibrator = calibrator(truth, HestonJacobianMethod::CuiAnalytic);
   calibrator.set_feller_projection(true);
-  let result = calibrator.calibrate(Some(truth.clone())).unwrap();
+  let result = calibrator.calibrate(Some(*truth)).unwrap();
   let mut objective = calibrator.clone();
   objective.feller_row_weight = Some(1.0);
   objective.set_params(&to_optimizer_coordinates(&result.params));

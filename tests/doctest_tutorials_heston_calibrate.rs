@@ -4,6 +4,7 @@
 use stochastic_rs::quant::OptionType;
 use stochastic_rs::quant::calibration::MarketSlice;
 use stochastic_rs::quant::calibration::heston::HestonCalibrator;
+use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::pricing::heston::HestonPricer;
 use stochastic_rs::traits::CalibrationResult;
 use stochastic_rs::traits::Calibrator;
@@ -12,7 +13,13 @@ use stochastic_rs::traits::ModelPricer;
 #[test]
 fn heston_calibrator_recovers_generating_parameters() {
   let (s, r) = (100.0, 0.02);
-  let truth = HestonPricer::new(0.05, -0.6, 1.8, 0.06, 0.5, None);
+  let truth = HestonPricer::new(HestonParams {
+    v0: 0.05,
+    kappa: 1.8,
+    theta: 0.06,
+    sigma: 0.5,
+    rho: -0.6,
+  });
   let strikes = (0..9).map(|i| 80.0 + 5.0 * i as f64).collect::<Vec<_>>();
   let slices = [0.25, 0.5, 1.0].map(|tau| MarketSlice {
     prices: strikes

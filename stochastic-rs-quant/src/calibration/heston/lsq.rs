@@ -3,7 +3,6 @@ use ndarray::Array2;
 
 use super::calibrator::HestonCalibrator;
 use super::params::HestonJacobianMethod;
-use super::params::HestonParams;
 use super::params::feller_sigma_cap;
 use super::transform::apply_chain_rule;
 use super::transform::from_optimizer_coordinates;
@@ -11,6 +10,7 @@ use super::transform::to_optimizer_coordinates;
 use crate::CalibrationLossScore;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::pricing::heston::HestonParams;
 
 impl LeastSquaresProblem for HestonCalibrator {
   fn set_params(&mut self, params: &Array1<f64>) {
@@ -23,7 +23,7 @@ impl LeastSquaresProblem for HestonCalibrator {
 
   fn residuals(&mut self) -> Option<Array1<f64>> {
     let free = self.free_params();
-    let params_eff = self.feller_projected(free.clone());
+    let params_eff = self.feller_projected(free);
     let c_model = self.compute_model_prices_for(&params_eff);
     let weighted_residuals = (&self.c_market - &c_model) * &self.residual_weights;
 
@@ -37,7 +37,7 @@ impl LeastSquaresProblem for HestonCalibrator {
       let iteration = history.len();
       history.push(CalibrationHistory::new(
         iteration,
-        params_eff.clone(),
+        params_eff,
         weighted_residuals.clone(),
         loss,
       ));
@@ -63,7 +63,7 @@ impl LeastSquaresProblem for HestonCalibrator {
 
   fn jacobian(&self) -> Option<Array2<f64>> {
     let free = self.free_params();
-    let p = self.feller_projected(free.clone());
+    let p = self.feller_projected(free);
     let optimizer_coordinates = to_optimizer_coordinates(&free);
     let capped = self.feller_projection && p.sigma < free.sigma;
     let to_optimizer = |physical: Array2<f64>| {

@@ -5,16 +5,18 @@ use super::VanillaLeg;
 use super::VanillaPortfolio;
 use super::heston_vanilla_portfolio_cf_initial_variance_vega;
 use crate::OptionType;
-use crate::QuantError;
+use crate::pricing::heston::HestonParams;
 
 fn high_vol_of_vol_non_feller_model() -> HestonModel {
   HestonModel {
     s: 490.91,
-    initial_variance: 0.299_494,
-    kappa: 4.0,
-    theta: 0.072_326,
-    vol_of_vol: 2.646_148,
-    rho: 0.390_534,
+    params: HestonParams {
+      v0: 0.299_494,
+      kappa: 4.0,
+      theta: 0.072_326,
+      sigma: 2.646_148,
+      rho: 0.390_534,
+    },
     risk_free_rate: 0.05,
     dividend_yield: 0.0,
     tau: 36.0 / 365.0,
@@ -36,7 +38,7 @@ fn non_feller_vertical_cf_vega_is_positive_and_bump_stable() {
   assert!((estimate.value - 20.849_039).abs() < 2e-4);
   assert!(estimate.bump_stable, "estimate={estimate:?}");
   assert_eq!(estimate.requested_bump, 1e-5);
-  assert!((estimate.effective_bump - model.initial_variance * 1e-4).abs() < 1e-15);
+  assert!((estimate.effective_bump - model.params.v0 * 1e-4).abs() < 1e-15);
   assert_eq!(estimate.comparison_bump, 0.5 * estimate.effective_bump);
 }
 
@@ -86,23 +88,20 @@ fn cf_helper_respects_signed_vanilla_portfolios() {
 }
 
 #[test]
-fn cf_helper_rejects_zero_vol_of_vol_instead_of_dividing_by_zero() {
+#[should_panic(expected = "sigma must satisfy `sigma.is_finite() && sigma > 0.0`, got sigma = 0.0")]
+fn cf_helper_panics_on_a_zero_vol_of_vol() {
+  let base = high_vol_of_vol_non_feller_model();
   let model = HestonModel {
-    vol_of_vol: 0.0,
-    ..high_vol_of_vol_non_feller_model()
+    params: HestonParams {
+      sigma: 0.0,
+      ..base.params
+    },
+    ..base
   };
-  let error = heston_vanilla_portfolio_cf_initial_variance_vega(
+  let _ = heston_vanilla_portfolio_cf_initial_variance_vega(
     model,
     &VanillaPortfolio::call(455.0),
     HestonVanillaCfVegaConfig::default(),
-  )
-  .unwrap_err();
-  assert_eq!(
-    error,
-    QuantError::InvalidInput {
-      what: "Heston Malliavin input",
-      reason: "Heston CF vega requires positive vol_of_vol, got 0".to_string(),
-    }
   );
 }
 
@@ -112,11 +111,13 @@ fn cf_helper_rejects_zero_vol_of_vol_instead_of_dividing_by_zero() {
 fn short_dated_low_variance_vertical_agrees_with_its_own_bumps() {
   let model = HestonModel {
     s: 720.65,
-    initial_variance: 0.010_896_709_741_918,
-    kappa: 8.0,
-    theta: 0.054_842_534_327_897_8,
-    vol_of_vol: 1.258_813_626_480_49,
-    rho: -0.479_725_587_697_811,
+    params: HestonParams {
+      v0: 0.010_896_709_741_918,
+      kappa: 8.0,
+      theta: 0.054_842_534_327_897_8,
+      sigma: 1.258_813_626_480_49,
+      rho: -0.479_725_587_697_811,
+    },
     risk_free_rate: 0.036_667_089_448_444_35,
     dividend_yield: 0.006_297_374_154_871_42,
     tau: 0.076_712_328_767_123_3,
@@ -177,7 +178,7 @@ fn short_dated_low_variance_vertical_agrees_with_its_own_bumps() {
     "richardson={richardson:.12} value={:.12}",
     estimate.value
   );
-  assert!(diagnostics[3].effective_bump < model.initial_variance / 4.0);
+  assert!(diagnostics[3].effective_bump < model.params.v0 / 4.0);
   let resolved = HestonVanillaCfVegaConfig {
     initial_variance_bump: 1e-4,
     minimum_relative_initial_variance_bump: 0.0,

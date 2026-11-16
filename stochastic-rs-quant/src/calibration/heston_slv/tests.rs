@@ -4,8 +4,8 @@ use stochastic_rs_distributions::special::norm_cdf;
 
 use super::calibrator::clean_local_vol;
 use super::*;
-use crate::calibration::heston::HestonParams;
 use crate::pricing::fourier::HestonFourier;
+use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
 use crate::pricing::slv::FokkerPlanckMethod;
 use crate::pricing::slv::HestonSlvParams;
@@ -36,13 +36,7 @@ fn heston() -> HestonParams {
 /// stencil and a maturity grid dense enough for its time derivative.
 fn heston_surface(strikes: &[f64], maturities: &[f64]) -> Array2<f64> {
   let p = heston();
-  let model = HestonFourier {
-    v0: p.v0,
-    kappa: p.kappa,
-    theta: p.theta,
-    sigma: p.sigma,
-    rho: p.rho,
-  };
+  let model = HestonFourier::new(p);
   Array2::from_shape_fn((maturities.len(), strikes.len()), |(j, i)| {
     model.price_call(S, strikes[i], R, Q, maturities[j])
   })
@@ -259,7 +253,7 @@ fn an_ssvi_surface_is_repriced_through_both_leverage_routes() {
   let base = || {
     HestonSlvCalibrator::new(S, R, Q, strikes.clone(), maturities.clone(), calls.clone())
       .with_mixing(0.5)
-      .with_heston_params(heston.clone())
+      .with_heston_params(heston)
       .with_local_vol(local_vol.clone())
   };
   let particle = base()
@@ -302,11 +296,13 @@ fn the_heston_fit_runs_when_the_parameters_are_not_pinned() {
   let calls = heston_surface(&strikes, &maturities);
   let guess = HestonSlvFit {
     params: HestonSlvParams {
-      kappa: 1.5,
-      theta: 0.04,
-      sigma: 0.5,
-      rho: -0.5,
-      v0: 0.05,
+      heston: HestonParams {
+        v0: 0.05,
+        kappa: 1.5,
+        theta: 0.04,
+        sigma: 0.5,
+        rho: -0.5,
+      },
       eta: 1.0,
     },
     leverage: LeverageSurface::new(
@@ -323,7 +319,7 @@ fn the_heston_fit_runs_when_the_parameters_are_not_pinned() {
   let p = &fit.params;
   assert!(p.kappa > 0.0 && p.theta > 0.0 && p.sigma > 0.0 && p.rho.abs() < 1.0);
   assert!((p.v0 - 0.04).abs() < 0.02, "v0 = {}", p.v0);
-  assert_eq!(result.slv_params().kappa, p.kappa);
+  assert_eq!(result.slv_params().heston.kappa, p.kappa);
   assert!(result.rmse().is_finite());
 }
 
@@ -337,8 +333,14 @@ fn to_model_prices_at_the_calibration_rates() {
   assert_eq!(pricer.calibration_rates, Some((R, Q)));
   let c = pricer.price_call(S, 100.0, R, Q, 0.5);
   assert!(c.is_finite() && c > 0.0);
-  let exact =
-    HestonPricer::new(0.04, -0.6, 2.0, 0.05, 0.4, Some(0.0)).price_call(S, 100.0, R, Q, 0.5);
+  let exact = HestonPricer::new(HestonParams {
+    v0: 0.04,
+    kappa: 2.0,
+    theta: 0.05,
+    sigma: 0.4,
+    rho: -0.6,
+  })
+  .price_call(S, 100.0, R, Q, 0.5);
   assert!((c - exact).abs() < 1.0, "slv {c} vs heston {exact}");
 }
 

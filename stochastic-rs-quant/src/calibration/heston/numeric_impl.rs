@@ -9,11 +9,11 @@ use stochastic_rs_stats::heston_nmle_cekf::fit_heston_nmle_cekf;
 use super::calibrator::HestonCalibrator;
 use super::params::HestonJacobianMethod;
 use super::params::HestonMleSeedMethod;
-use super::params::HestonParams;
 use super::transform::canonicalize;
 use super::transform::from_optimizer_coordinates;
 use super::transform::to_optimizer_coordinates;
 use crate::OptionType;
+use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
 
 /// Overshoot weight per unit of the price residuals' σ sensitivity: boundary fits keep their optimum from 0.01 to 0.3
@@ -115,7 +115,7 @@ impl HestonCalibrator {
   /// The canonical point the optimiser's coordinates stand for, before the Feller projection.
   pub(super) fn free_params(&self) -> HestonParams {
     let projected = if let Some(p) = &self.params {
-      p.clone().projected()
+      (*p).projected()
     } else {
       self
         .infer_initial_guess_from_series()
@@ -136,7 +136,7 @@ impl HestonCalibrator {
     let step = 1e-5 * (1.0 + start.sigma);
     let lowered = HestonParams {
       sigma: start.sigma - step,
-      ..start.clone()
+      ..start
     };
     let column = (self.residuals_for(&start) - self.residuals_for(&lowered)) / step;
     let norm = Some(column.dot(&column).sqrt()).filter(|norm| norm.is_finite() && *norm > 0.0);
@@ -155,14 +155,7 @@ impl HestonCalibrator {
     let mut c_model = Array1::zeros(self.c_market.len());
 
     for (idx, _) in self.c_market.iter().enumerate() {
-      let pricer = HestonPricer::new(
-        params.v0,
-        params.rho,
-        params.kappa,
-        params.theta,
-        params.sigma,
-        Some(0.0),
-      );
+      let pricer = HestonPricer::new(*params);
       let (call, put) = pricer.call_put(
         self.s[idx],
         self.k[idx],

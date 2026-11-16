@@ -16,97 +16,53 @@ use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
 mod greeks;
+mod params;
 
-/// Heston stochastic volatility pricer using the characteristic-function method.
-///
-/// The struct holds **model state only** — the six Heston parameters. Spot,
-/// strike, rate, dividend yield and maturity are the pricing *query* and
-/// travel as arguments to [`ModelPricer::price_call`] and to every Greek,
-/// so one instance prices a whole strike/maturity grid.
-///
-/// Source:
-/// - Heston, S. L. (1993), "A Closed-Form Solution for Options with Stochastic Volatility
-///   with Applications to Bond and Currency Options"
-///   <https://doi.org/10.1093/rfs/6.2.327>
+pub use params::HestonParams;
+
+/// Heston (1993) semi-closed-form pricer; the query `(s, k, r, q, τ)` travels as arguments, so one
+/// instance prices a whole strike/maturity grid.
+/// Heston, S. L. (1993), Rev. Financ. Stud. 6(2), 327–343, DOI 10.1093/rfs/6.2.327.
 ///
 /// ```
+/// use stochastic_rs_quant::pricing::heston::HestonParams;
 /// use stochastic_rs_quant::pricing::heston::HestonPricer;
 /// use stochastic_rs_quant::traits::ModelPricer;
 ///
-/// let model = HestonPricer::new(0.04, -0.7, 2.0, 0.04, 0.3, None);
+/// let params = HestonParams { v0: 0.04, kappa: 2.0, theta: 0.04, sigma: 0.3, rho: -0.7 };
+/// let model = HestonPricer::new(params);
 /// let atm = model.price_call(100.0, 100.0, 0.05, 0.02, 0.75);
 /// let otm = model.price_call(100.0, 120.0, 0.05, 0.02, 0.75);
 /// assert!(atm > otm);
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct HestonPricer {
-  /// Initial variance v₀ — a variance, not a volatility: this module's own
-  /// Greeks document the chain rule `σ = √v0` they use to convert into
-  /// volatility-space derivatives (see `vega`/`vanna`/`volga`/`veta`).
-  pub v0: f64,
-  /// Correlation between the stock price and its volatility
-  pub rho: f64,
-  /// Mean reversion rate
-  pub kappa: f64,
-  /// Long-run variance level (θ) — a variance, not a volatility, for the
-  /// same reason as `v0`.
-  pub theta: f64,
-  /// Volatility of variance σ in `dv = κ(θ − v)dt + σ√v dW`.
-  pub sigma: f64,
-  /// Market price of volatility risk
-  pub lambda: Option<f64>,
+  params: HestonParams,
+  /// Heston's market price of volatility risk `λ`.
+  lambda: f64,
 }
 
 impl HestonPricer {
-  /// Validating constructor.
-  ///
-  /// Rejects the parameter values that have no Heston model behind them, so
-  /// one invalid value gets one response — case 1 of the crate's [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails) — instead of
-  /// a finite price from [`price_call`](ModelPricer::price_call), a whole
-  /// surface from `vol_surface`, and a panic from
-  /// [`vega`](Self::vega), chosen by which method the caller reaches for.
-  ///
-  /// What it deliberately **accepts**: `v0 == 0` and `theta == 0` (admissible
-  /// degenerate states — the volatility-space Greeks return `NaN` there
-  /// rather than rejecting them), `|rho| == 1`, any `kappa` (a non-positive
-  /// mean-reversion rate is a non-stationary but well-defined affine model),
-  /// any `lambda`, and any parameter set violating the Feller condition
-  /// $2\kappa\theta \ge \sigma^2$, which is a warning condition in this
-  /// crate and not an error.
-  ///
-  /// The fields are `pub`, so this is the front door and not a wall: a
-  /// struct literal or a later assignment can still install a negative
-  /// variance, which is why the volatility-space Greeks keep their own
-  /// [guard](Self::vega) with a distinct message.
-  ///
-  /// # Panics
-  /// - if `v0` or `theta` is negative or `NaN` — a variance cannot be either
-  /// - if `sigma` is not strictly positive — the characteristic function
-  ///   divides by $\sigma^2$
-  /// - if `rho` is outside `[-1, 1]` or `NaN` — not a correlation
-  pub fn new(v0: f64, rho: f64, kappa: f64, theta: f64, sigma: f64, lambda: Option<f64>) -> Self {
-    assert!(v0 >= 0.0, "v0 must satisfy `v0 >= 0.0`, got v0 = {v0:?}");
-    assert!(
-      theta >= 0.0,
-      "theta must satisfy `theta >= 0.0`, got theta = {theta:?}"
-    );
-    assert!(
-      sigma > 0.0,
-      "sigma must satisfy `sigma > 0.0`, got sigma = {sigma:?}"
-    );
-    assert!(
-      (-1.0..=1.0).contains(&rho),
-      "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = {rho:?}"
-    );
+  /// Panics unless `params` passes [`HestonParams::new`].
+  pub fn new(params: HestonParams) -> Self {
     Self {
-      v0,
-      rho,
-      kappa,
-      theta,
-      sigma,
-      lambda,
+      params: params.checked(),
+      lambda: 0.0,
     }
+  }
+
+  /// Sets Heston's `λ` (default `0`); panics unless `lambda` is finite.
+  pub fn with_vol_risk_premium(mut self, lambda: f64) -> Self {
+    assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    self.lambda = lambda;
+    self
+  }
+
+  pub fn params(&self) -> HestonParams {
+    self.params
   }
 
   /// Call and put price at one query point.
@@ -205,44 +161,49 @@ impl HestonPricer {
 
   pub(self) fn b(&self, j: u8) -> f64 {
     match j {
-      1 => self.kappa + self.lambda.unwrap_or(0.0) - self.rho * self.sigma,
-      2 => self.kappa + self.lambda.unwrap_or(0.0),
+      1 => self.params.kappa + self.lambda - self.params.rho * self.params.sigma,
+      2 => self.params.kappa + self.lambda,
       _ => unreachable!("Heston P_j index must be 1 or 2"),
     }
   }
 
   pub(self) fn d(&self, j: u8, phi: f64) -> Complex64 {
-    ((self.b(j) - self.rho * self.sigma * phi * Complex64::i()).powi(2)
-      - self.sigma.powi(2) * (2.0 * Complex64::i() * self.u(j) * phi - phi.powi(2)))
+    ((self.b(j) - self.params.rho * self.params.sigma * phi * Complex64::i()).powi(2)
+      - self.params.sigma.powi(2) * (2.0 * Complex64::i() * self.u(j) * phi - phi.powi(2)))
     .sqrt()
   }
 
   /// Albrecher-Mayer-Schoutens-Tistaert (2007) "Little Heston Trap" form:
   /// g̃ = 1/g_original keeps log-argument on the principal branch for all τ.
   pub(self) fn g(&self, j: u8, phi: f64) -> Complex64 {
-    (self.b(j) - self.rho * self.sigma * Complex64::i() * phi - self.d(j, phi))
-      / (self.b(j) - self.rho * self.sigma * Complex64::i() * phi + self.d(j, phi))
+    (self.b(j) - self.params.rho * self.params.sigma * Complex64::i() * phi - self.d(j, phi))
+      / (self.b(j) - self.params.rho * self.params.sigma * Complex64::i() * phi + self.d(j, phi))
   }
 
   pub(self) fn C(&self, j: u8, phi: f64, tau: f64, r: f64, q: f64) -> Complex64 {
     (r - q) * Complex64::i() * phi * tau
-      + (self.kappa * self.theta / self.sigma.powi(2))
-        * ((self.b(j) - self.rho * self.sigma * Complex64::i() * phi - self.d(j, phi)) * tau
+      + (self.params.kappa * self.params.theta / self.params.sigma.powi(2))
+        * ((self.b(j)
+          - self.params.rho * self.params.sigma * Complex64::i() * phi
+          - self.d(j, phi))
+          * tau
           - 2.0
             * ((1.0 - self.g(j, phi) * (-self.d(j, phi) * tau).exp()) / (1.0 - self.g(j, phi)))
               .ln())
   }
 
   pub(self) fn D(&self, j: u8, phi: f64, tau: f64) -> Complex64 {
-    ((self.b(j) - self.rho * self.sigma * Complex64::i() * phi - self.d(j, phi))
-      / self.sigma.powi(2))
+    ((self.b(j) - self.params.rho * self.params.sigma * Complex64::i() * phi - self.d(j, phi))
+      / self.params.sigma.powi(2))
       * ((1.0 - (-self.d(j, phi) * tau).exp())
         / (1.0 - self.g(j, phi) * (-self.d(j, phi) * tau).exp()))
   }
 
   pub(self) fn f(&self, j: u8, phi: f64, tau: f64, s: f64, r: f64, q: f64) -> Complex64 {
-    (self.C(j, phi, tau, r, q) + self.D(j, phi, tau) * self.v0 + Complex64::i() * phi * s.ln())
-      .exp()
+    (self.C(j, phi, tau, r, q)
+      + self.D(j, phi, tau) * self.params.v0
+      + Complex64::i() * phi * s.ln())
+    .exp()
   }
 
   pub(self) fn re(&self, j: u8, tau: f64, s: f64, k: f64, r: f64, q: f64) -> impl Fn(f64) -> f64 {

@@ -7,10 +7,10 @@ use num_complex::Complex64;
 use super::calibrator::HestonCalibrator;
 use super::params::CuiCfTerms;
 use super::params::EPS;
-use super::params::HestonParams;
 use super::params::finite_c64;
 use crate::OptionType;
 use crate::calibration::integrate_gl_to_convergence;
+use crate::pricing::heston::HestonParams;
 
 impl HestonCalibrator {
   pub(super) fn cui_terms_for(

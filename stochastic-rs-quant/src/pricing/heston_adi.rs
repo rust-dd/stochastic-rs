@@ -36,6 +36,7 @@ use self::grid::origin_centred_mesh;
 use self::grid::strike_centred_mesh;
 use self::operators::HestonCoefficients;
 use self::operators::Operators;
+use crate::pricing::heston::HestonParams;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
@@ -47,16 +48,8 @@ const SPOT_CAP_STRIKES: f64 = 8.0;
 /// Heston ADI finite-difference pricer.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HestonAdiPricer {
-  /// Initial variance `v₀`.
-  pub v0: f64,
-  /// Mean reversion `κ`.
-  pub kappa: f64,
-  /// Long-run variance (`η` in the paper).
-  pub theta: f64,
-  /// Volatility of variance `σ`.
-  pub sigma: f64,
-  /// Correlation `ρ`.
-  pub rho: f64,
+  /// `theta` is the paper's long-run variance `η`.
+  pub params: HestonParams,
   /// Mesh intervals in `s`.
   pub m1: usize,
   /// Mesh intervals in `v`.
@@ -74,10 +67,12 @@ pub struct HestonAdiPricer {
 }
 
 impl HestonAdiPricer {
-  /// Pricer with the paper's default numerics: `m1 = 100`, `m2 = 50`, 50 time steps, MCS at `θ = ⅓` with damping;
-  /// panics unless `v0 >= 0`, `kappa`, `theta` and `sigma` are positive and `|rho| <= 1`.
-  pub fn new(v0: f64, kappa: f64, theta: f64, sigma: f64, rho: f64) -> Self {
-    assert!(v0 >= 0.0, "v0 must satisfy `v0 >= 0.0`, got v0 = {v0:?}");
+  /// The paper's numerics (`m1 = 100`, `m2 = 50`, 50 steps, MCS at `θ = ⅓`, damped); panics unless
+  /// `params` passes [`HestonParams::new`] with `kappa > 0`, `theta > 0` (in 't Hout–Foulon §2.1;
+  /// their Feller assumption is not imposed).
+  pub fn new(params: HestonParams) -> Self {
+    let params = params.checked();
+    let HestonParams { kappa, theta, .. } = params;
     assert!(
       kappa > 0.0,
       "kappa must satisfy `kappa > 0.0`, got kappa = {kappa:?}"
@@ -86,20 +81,8 @@ impl HestonAdiPricer {
       theta > 0.0,
       "theta must satisfy `theta > 0.0`, got theta = {theta:?}"
     );
-    assert!(
-      sigma > 0.0,
-      "sigma must satisfy `sigma > 0.0`, got sigma = {sigma:?}"
-    );
-    assert!(
-      rho.abs() <= 1.0,
-      "rho must satisfy `rho.abs() <= 1.0`, got rho = {rho:?}"
-    );
     Self {
-      v0,
-      kappa,
-      theta,
-      sigma,
-      rho,
+      params,
       m1: 100,
       m2: 50,
       steps: 50,
@@ -157,10 +140,9 @@ impl HestonAdiPricer {
 
   /// Solves the PDE for the call payoff and reads the price at `(s, v₀)`.
   fn solve_call(&self, s: f64, k: f64, r_d: f64, r_f: f64, tau: f64) -> f64 {
-    if !(s > 0.0 && k > 0.0 && tau > 0.0 && self.v0 >= 0.0)
-      || [s, k, tau, r_d, r_f, self.v0]
-        .iter()
-        .any(|v| !v.is_finite())
+    let p = self.params;
+    if !(s > 0.0 && k > 0.0 && tau > 0.0 && p.v0 >= 0.0)
+      || [s, k, tau, r_d, r_f, p.v0].iter().any(|v| !v.is_finite())
     {
       return f64::NAN;
     }
@@ -169,7 +151,7 @@ impl HestonAdiPricer {
       return if s <= lower { 0.0 } else { f64::NAN };
     }
     let spot_cap = (SPOT_CAP_STRIKES * k).max(2.0 * s);
-    let variance_cap = VARIANCE_CAP.max(2.0 * self.v0);
+    let variance_cap = VARIANCE_CAP.max(2.0 * p.v0);
     if !spot_cap.is_finite() || !variance_cap.is_finite() {
       return f64::NAN;
     }
@@ -179,10 +161,10 @@ impl HestonAdiPricer {
       s_mesh,
       v_mesh,
       HestonCoefficients {
-        kappa: self.kappa,
-        eta: self.theta,
-        sigma: self.sigma,
-        rho: self.rho,
+        kappa: p.kappa,
+        eta: p.theta,
+        sigma: p.sigma,
+        rho: p.rho,
         r_d,
         r_f,
       },
@@ -202,7 +184,7 @@ impl HestonAdiPricer {
       tau,
       u0,
     );
-    ops.interpolate(&u, s, self.v0, (-r_f * tau).exp())
+    ops.interpolate(&u, s, p.v0, (-r_f * tau).exp())
   }
 }
 

@@ -2,14 +2,17 @@ use ndarray::Array1;
 use ndarray::Array2;
 
 use super::*;
+use crate::pricing::heston::HestonParams;
 
 fn params() -> HestonSlvParams {
   HestonSlvParams {
-    kappa: 2.0,
-    theta: 0.04,
-    sigma: 0.3,
-    rho: -0.7,
-    v0: 0.04,
+    heston: HestonParams {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    },
     eta: 1.0,
   }
 }
@@ -194,8 +197,7 @@ fn unit_leverage_reprices_the_closed_form_heston_call() {
     .with_seed(99);
   let (s, k, r, q, tau) = (100.0, 100.0, 0.03, 0.01, 0.5);
   let estimate = pricer.price_call_estimate(s, k, r, q, tau);
-  let exact = HestonPricer::new(p.v0, p.rho, p.kappa, p.theta, p.sigma, Some(0.0))
-    .price_call(s, k, r, q, tau);
+  let exact = HestonPricer::new(p.heston).price_call(s, k, r, q, tau);
   let band = 3.0 * estimate.std_err + 0.03;
   assert!(
     (estimate.mean - exact).abs() < band,

@@ -27,6 +27,7 @@ pub use frft::FrftCarrMadanPricer;
 pub use frft::frft;
 pub use heston::DoubleHestonFourier;
 pub use heston::HestonFourier;
+pub(crate) use heston::factor_cd;
 pub use hybrid::BatesFourier;
 pub use hybrid::HkdeFourier;
 pub use levy::CgmyFourier;
@@ -100,6 +101,7 @@ pub(crate) fn gamma_neg_y(y: f64) -> f64 {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::pricing::heston::HestonParams;
 
   const TOL_FOURIER: f64 = 0.15;
   const TOL_TIGHT: f64 = 0.05;
@@ -108,13 +110,13 @@ mod tests {
   /// the tail: Gil-Pelaez and Lewis match the converged inversion and each other.
   #[test]
   fn fourier_pricers_match_converged_short_dated() {
-    let model = HestonFourier {
+    let model = HestonFourier::new(HestonParams {
       v0: 0.04,
       kappa: 1.5,
       theta: 0.04,
       sigma: 0.30,
       rho: -0.7,
-    };
+    });
     // (K, τ, converged call)
     let cases = [
       (100.0, 0.005, 0.576581),
@@ -273,13 +275,13 @@ mod tests {
 
   #[test]
   fn carr_madan_heston_vs_analytical() {
-    let model = HestonFourier {
+    let model = HestonFourier::new(HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
       sigma: 0.1,
       rho: -0.6,
-    };
+    });
     let pricer = CarrMadanPricer::default();
     let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 0.0, 1.0);
     assert!(
@@ -293,13 +295,13 @@ mod tests {
   /// remaining configurable for skewed/long-maturity regimes.
   #[test]
   fn carr_madan_cumulant_sized_constructor() {
-    let model = HestonFourier {
+    let model = HestonFourier::new(HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-    };
+    });
     let cum_pricer = CarrMadanPricer::cumulant_sized(&model, 1.0, 100.0, 12.0);
     assert!(cum_pricer.n.is_power_of_two(), "n must be power of two");
     assert!(cum_pricer.n >= 4096, "n must be at least default 4096");
@@ -323,13 +325,13 @@ mod tests {
   /// covering ln(K) for K in roughly `[exp(-7), exp(+7)] ≈ [0.9e-3, 1100]`.
   #[test]
   fn carr_madan_cumulant_sized_grid_brackets_log_spot() {
-    let model = HestonFourier {
+    let model = HestonFourier::new(HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-    };
+    });
     let s = 100.0_f64;
     let t = 1.0_f64;
     let pricer = CarrMadanPricer::cumulant_sized(&model, t, s, 12.0);
@@ -359,13 +361,13 @@ mod tests {
   /// positive and close to Gil-Pelaez, where a fixed-η grid truncates the skewed wings.
   #[test]
   fn carr_madan_cumulant_sized_finite_positive_long_maturity_skew() {
-    let model = HestonFourier {
+    let model = HestonFourier::new(HestonParams {
       v0: 0.04,
       kappa: 1.0,
       theta: 0.04,
       sigma: 0.5,
       rho: -0.85,
-    };
+    });
     let s = 100.0_f64;
     let t = 5.0_f64;
     let r = 0.05_f64;
@@ -413,13 +415,13 @@ mod tests {
 
   #[test]
   fn hkde_zero_jumps_equals_heston() {
-    let heston = HestonFourier {
+    let heston = HestonFourier::new(HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
       sigma: 0.1,
       rho: -0.6,
-    };
+    });
     let hkde = HkdeFourier {
       v0: 0.04,
       kappa: 2.0,
@@ -511,13 +513,13 @@ mod tests {
   /// branch-cut discontinuity at T = 5y, ρ = -0.9; the Trap form does not.
   #[test]
   fn heston_fourier_little_trap_long_maturity_high_rho() {
-    let model = HestonFourier {
+    let model = HestonFourier::new(HestonParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
       sigma: 0.3,
       rho: -0.9,
-    };
+    });
     let call = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.0, 5.0);
     assert!(
       call.is_finite() && call > 0.0 && call < 100.0,
@@ -525,22 +527,13 @@ mod tests {
     );
   }
 
-  /// Same long-maturity / high-|ρ| stress for `DoubleHestonFourier::factor_cd` —
-  /// both factors must stay on the principal log-branch.
+  /// The same stress on both factors of `DoubleHestonFourier`, each on the principal log branch.
   #[test]
   fn double_heston_fourier_little_trap_long_maturity_high_rho() {
-    let model = DoubleHestonFourier {
-      v1_0: 0.04,
-      kappa1: 2.0,
-      theta1: 0.04,
-      sigma1: 0.3,
-      rho1: -0.9,
-      v2_0: 0.02,
-      kappa2: 1.0,
-      theta2: 0.03,
-      sigma2: 0.25,
-      rho2: -0.85,
-    };
+    let model = DoubleHestonFourier::new(
+      HestonParams::new(0.04, 2.0, 0.04, 0.3, -0.9),
+      HestonParams::new(0.02, 1.0, 0.03, 0.25, -0.85),
+    );
     let call = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.0, 5.0);
     assert!(
       call.is_finite() && call > 0.0 && call < 100.0,

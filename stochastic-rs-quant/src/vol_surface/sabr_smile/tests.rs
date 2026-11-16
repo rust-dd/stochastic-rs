@@ -239,6 +239,51 @@ fn bad_quotes_and_a_non_finite_start_are_errors() {
   );
 }
 
+/// The strangle is quoted at `σ_ATM + σ_BF`, so a quote putting it at or below 0 is `InvalidInput`.
+#[test]
+fn a_non_positive_strangle_vol_is_an_input_error() {
+  let quotes = SabrSmileQuotes {
+    tau: 0.5,
+    sigma_atm: 0.2,
+    sigma_rr: 0.01,
+    sigma_bf: -0.2,
+  };
+  let err = SabrSmileCalibrator::new(1.0, 0.02, 0.01, 1.0, quotes)
+    .with_basin_hopping_iters(0, 0)
+    .calibrate(None)
+    .unwrap_err();
+  assert_eq!(
+    err,
+    QuantError::InvalidInput {
+      what: "smile quotes",
+      reason: "sigma_atm + sigma_bf must satisfy `sigma_atm + sigma_bf > 0.0`, got sigma_atm + \
+               sigma_bf = 0.0"
+        .to_string(),
+    }
+  );
+}
+
+/// Strikes held 50 % above the forward at `σ√τ ≈ 0.006` underflow the strangle's vega to zero:
+/// `Numerical`, not a NaN BF error inside `Ok`.
+#[test]
+fn an_underflowing_strangle_vega_is_a_numerical_error() {
+  let quotes = SabrSmileQuotes {
+    tau: 1e-3,
+    sigma_atm: 0.2,
+    sigma_rr: 0.01,
+    sigma_bf: 0.002,
+  };
+  let err = SabrSmileCalibrator::new(1.0, 0.02, 0.01, 1.0, quotes)
+    .with_strike_bounds(1.5, 2.0)
+    .with_basin_hopping_iters(0, 0)
+    .calibrate(None)
+    .unwrap_err();
+  assert!(
+    matches!(&err, QuantError::Numerical { what: "strangle vega", reason } if reason.starts_with("it is 0.0 at strikes 1.5 and 1.5")),
+    "{err}"
+  );
+}
+
 #[test]
 #[should_panic(expected = "beta must satisfy `(0.0..=1.0).contains(&beta)`, got beta = 1.5")]
 fn a_beta_outside_the_unit_interval_panics_in_new() {

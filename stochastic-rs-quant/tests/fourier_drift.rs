@@ -12,6 +12,7 @@ use stochastic_rs_quant::pricing::fourier::FrftCarrMadanPricer;
 use stochastic_rs_quant::pricing::fourier::GilPelaezPricer;
 use stochastic_rs_quant::pricing::fourier::HestonFourier;
 use stochastic_rs_quant::pricing::fourier::LewisPricer;
+use stochastic_rs_quant::pricing::heston::HestonParams;
 use stochastic_rs_quant::traits::ModelPricer;
 
 const CARRIES: [(f64, f64); 4] = [(0.0, 0.0), (0.05, 0.0), (0.05, 0.02), (-0.01, 0.03)];
@@ -27,13 +28,13 @@ const HESTON_CALLS: [[f64; 3]; 4] = [
 ];
 
 fn heston() -> HestonFourier {
-  HestonFourier {
+  HestonFourier::new(HestonParams {
     v0: 0.04,
     kappa: 1.5,
     theta: 0.04,
     sigma: 0.3,
     rho: -0.7,
-  }
+  })
 }
 
 #[test]

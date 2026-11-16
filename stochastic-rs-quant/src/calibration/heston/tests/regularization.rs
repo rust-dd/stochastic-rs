@@ -3,8 +3,8 @@ use ndarray::Array1;
 use crate::OptionType;
 use crate::calibration::Regularization;
 use crate::calibration::heston::HestonCalibrator;
-use crate::calibration::heston::HestonParams;
 use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
 use crate::traits::Calibrator;
 
@@ -19,14 +19,7 @@ const TRUTH: HestonParams = HestonParams {
 fn calibrator(regularization: Option<Regularization>) -> HestonCalibrator {
   let (s, r, tau) = (100.0, 0.02, 0.5);
   let strikes = [80.0, 90.0, 100.0, 110.0, 120.0];
-  let pricer = HestonPricer::new(
-    TRUTH.v0,
-    TRUTH.rho,
-    TRUTH.kappa,
-    TRUTH.theta,
-    TRUTH.sigma,
-    Some(0.0),
-  );
+  let pricer = HestonPricer::new(TRUTH);
   let prices: Vec<f64> = strikes
     .iter()
     .map(|&k| pricer.call_put(s, k, r, 0.0, tau).0)

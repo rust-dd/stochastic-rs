@@ -114,7 +114,7 @@ fn spot_observation<P: TerminalPayoff + ?Sized>(
 ) -> Result<[f64; HESTON_MALLIAVIN_SPOT_OBSERVABLES], QuantError> {
   let path = simulate_path(
     model,
-    model.initial_variance,
+    model.params.v0,
     sign,
     variance_normals,
     orthogonal_normals,

@@ -9,10 +9,10 @@ use crate::OptionType;
 use crate::QuantError;
 use crate::calibration::heston::HestonCalibrationResult;
 use crate::calibration::heston::HestonCalibrator;
-use crate::calibration::heston::HestonParams;
 use crate::calibration::levy::MarketSlice;
 use crate::error::check_grid_shape;
 use crate::pricing::dupire::Dupire;
+use crate::pricing::heston::HestonParams;
 use crate::pricing::slv::FokkerPlanckMethod;
 use crate::pricing::slv::HestonSlvParams;
 use crate::pricing::slv::LeverageSurface;
@@ -296,12 +296,12 @@ impl HestonSlvCalibrator {
     &self,
     initial: Option<HestonParams>,
   ) -> Result<(HestonParams, Option<HestonCalibrationResult>), QuantError> {
-    if let Some(pinned) = &self.heston_params {
-      return Ok((pinned.clone(), None));
+    if let Some(pinned) = self.heston_params {
+      return Ok((pinned, None));
     }
     let slices = self.market_slices();
     let calibrator = HestonCalibrator::from_slices(
-      initial.or_else(|| self.heston_initial_guess.clone()),
+      initial.or(self.heston_initial_guess),
       &slices,
       self.s,
       self.r,
@@ -310,7 +310,7 @@ impl HestonSlvCalibrator {
       false,
     );
     let fit = calibrator.calibrate(None)?;
-    Ok((fit.params.clone(), Some(fit)))
+    Ok((fit.params, Some(fit)))
   }
 
   /// The local volatility as the `(t, K)` grid the particle method reads.
@@ -443,20 +443,10 @@ impl Calibrator for HestonSlvCalibrator {
   /// parameters pinned by [`with_heston_params`](HestonSlvCalibrator::with_heston_params) skip it.
   fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
     self.validate()?;
-    let start = initial.map(|fit| HestonParams {
-      v0: fit.params.v0,
-      kappa: fit.params.kappa,
-      theta: fit.params.theta,
-      sigma: fit.params.sigma,
-      rho: fit.params.rho,
-    });
+    let start = initial.map(|fit| fit.params.heston);
     let (heston, heston_fit) = self.heston(start)?;
     let params = HestonSlvParams {
-      kappa: heston.kappa,
-      theta: heston.theta,
-      sigma: heston.sigma,
-      rho: heston.rho,
-      v0: heston.v0,
+      heston,
       eta: self.eta,
     };
     let local_vol = self.local_vol_grid()?;

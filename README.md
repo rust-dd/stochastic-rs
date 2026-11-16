@@ -82,6 +82,7 @@ assert!(total(&path).is_finite());
 use stochastic_rs::prelude::*;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::ou::Ou;
+use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::pricing::heston::HestonPricer;
 
 fn main() {
@@ -93,8 +94,8 @@ fn main() {
     // Heston (1993) European option, closed form. The model holds only its own
     // parameters; the pricing query is passed to the call, so one model can
     // price a whole strike/maturity grid.
-    // HestonPricer::new args: v0, rho, kappa, theta, sigma, lambda
-    let pricer = HestonPricer::new(0.04, -0.5, 2.0, 0.04, 0.3, Some(0.0));
+    let params = HestonParams { v0: 0.04, kappa: 2.0, theta: 0.04, sigma: 0.3, rho: -0.5 };
+    let pricer = HestonPricer::new(params);
     // price_call/price_put args: s, k, r, q, tau
     let call = pricer.price_call(100.0, 100.0, 0.03, 0.0, 1.0);
     let put = pricer.price_put(100.0, 100.0, 0.03, 0.0, 1.0);

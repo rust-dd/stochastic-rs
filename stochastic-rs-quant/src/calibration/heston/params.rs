@@ -3,6 +3,7 @@ use num_complex::Complex64;
 use stochastic_rs_stats::heston_mle::HestonMleFit;
 
 use super::super::periodic_map;
+use crate::pricing::heston::HestonParams;
 
 pub(super) const EPS: f64 = 1e-8;
 pub(super) const RHO_BOUND: f64 = 0.9999;
@@ -53,35 +54,15 @@ pub enum HestonMleSeedMethod {
   NmleCekf,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct HestonParams {
-  /// Initial variance v0 (not volatility) in Heston model
-  pub v0: f64,
-  /// Mean reversion speed
-  pub kappa: f64,
-  /// Long-run variance
-  pub theta: f64,
-  /// Volatility of variance
-  pub sigma: f64,
-  /// Correlation between price and variance Brownian motions
-  pub rho: f64,
-}
-
 impl crate::traits::ToModel for HestonParams {
   type Model = crate::pricing::fourier::HestonFourier;
   fn to_model(&self) -> Self::Model {
-    crate::pricing::fourier::HestonFourier {
-      v0: self.v0,
-      kappa: self.kappa,
-      theta: self.theta,
-      sigma: self.sigma,
-      rho: self.rho,
-    }
+    crate::pricing::fourier::HestonFourier::new(*self)
   }
 }
 
 impl HestonParams {
-  /// Project parameters into finite positive calibration ranges.
+  /// Project parameters into the calibration ranges; a NaN stays NaN.
   ///
   /// The Feller condition is deliberately not imposed here. It is sufficient
   /// for strict positivity of the CIR variance process, but it is not required

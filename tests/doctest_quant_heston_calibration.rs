@@ -6,7 +6,7 @@
 
 use stochastic_rs::quant::OptionType;
 use stochastic_rs::quant::calibration::heston::HestonCalibrator;
-use stochastic_rs::quant::calibration::heston::HestonParams;
+use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::traits::CalibrationResult;
 use stochastic_rs::traits::Calibrator;
 

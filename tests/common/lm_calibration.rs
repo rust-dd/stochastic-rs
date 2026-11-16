@@ -6,13 +6,13 @@ use stochastic_rs::quant::calibration::bsm::BsmCalibrator;
 use stochastic_rs::quant::calibration::bsm::BsmParams;
 use stochastic_rs::quant::calibration::heston::HestonCalibrator;
 use stochastic_rs::quant::calibration::heston::HestonJacobianMethod;
-use stochastic_rs::quant::calibration::heston::HestonParams;
 use stochastic_rs::quant::calibration::levy::LevyCalibrator;
 use stochastic_rs::quant::calibration::levy::LevyModelType;
 use stochastic_rs::quant::calibration::levy::MarketSlice;
 use stochastic_rs::quant::calibration::sabr::SabrCalibrator;
 use stochastic_rs::quant::pricing::bsm::BsmCoc;
 use stochastic_rs::quant::pricing::bsm::BsmPricer;
+use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::pricing::heston::HestonPricer;
 use stochastic_rs::quant::pricing::sabr::SabrParams;
 use stochastic_rs::quant::pricing::sabr::SabrPricer;
@@ -69,7 +69,13 @@ pub fn cases() -> Vec<Case> {
       1e-8,
     ));
   }
-  let heston = HestonPricer::new(0.04, -0.6, 1.5, 0.04, 0.3, Some(0.0));
+  let heston = HestonPricer::new(HestonParams {
+    v0: 0.04,
+    kappa: 1.5,
+    theta: 0.04,
+    sigma: 0.3,
+    rho: -0.6,
+  });
   let slices = [0.25, 1.0, 2.0].map(|tau| MarketSlice {
     strikes: strikes.to_vec(),
     prices: strikes

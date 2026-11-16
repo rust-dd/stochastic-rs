@@ -1,8 +1,8 @@
 use super::HestonCalibrator;
 use super::HestonJacobianMethod;
-use super::HestonParams;
 use crate::LossMetric;
 use crate::OptionType;
+use crate::pricing::heston::HestonParams;
 use crate::traits::Calibrator;
 
 fn non_feller_params() -> HestonParams {
@@ -20,7 +20,7 @@ fn ordinary_projection_preserves_an_in_range_non_feller_fit() {
   let original = non_feller_params();
   assert!(!original.satisfies_feller_condition());
 
-  let projected = original.clone().projected();
+  let projected = original.projected();
 
   assert_eq!(projected, original);
   assert!(!projected.satisfies_feller_condition());
@@ -36,7 +36,7 @@ fn ordinary_projection_preserves_vol_of_vol_above_the_legacy_cap() {
     rho: -0.7,
   };
 
-  let projected = original.clone().projected();
+  let projected = original.projected();
 
   assert_eq!(projected, original);
 }
@@ -45,7 +45,7 @@ fn ordinary_projection_preserves_vol_of_vol_above_the_legacy_cap() {
 fn explicit_feller_projection_remains_available() {
   let original = non_feller_params();
 
-  let projected = original.clone().projected_with_feller_condition();
+  let projected = original.projected_with_feller_condition();
 
   assert!(projected.satisfies_feller_condition());
   assert_ne!(projected, original);
@@ -63,7 +63,7 @@ fn feller_projection_lowers_sigma_alone_past_a_square_root_that_rounds_up() {
   };
   assert!(2.0_f64.sqrt() * 2.0_f64.sqrt() > 2.0);
 
-  let projected = original.clone().projected_with_feller_condition();
+  let projected = original.projected_with_feller_condition();
 
   assert!(projected.satisfies_feller_condition());
   assert_eq!(projected.sigma, 2.0_f64.sqrt().next_down());
@@ -74,10 +74,7 @@ fn feller_projection_lowers_sigma_alone_past_a_square_root_that_rounds_up() {
       ..original
     }
   );
-  assert_eq!(
-    projected.clone().projected_with_feller_condition(),
-    projected
-  );
+  assert_eq!(projected.projected_with_feller_condition(), projected);
 }
 
 #[test]
@@ -86,7 +83,7 @@ fn exact_non_feller_surface_is_representable_by_the_calibrator() {
   let spot = 100.0;
   let strikes = vec![80.0, 90.0, 100.0, 110.0, 120.0];
   let seed = HestonCalibrator::new(
-    Some(true_params.clone()),
+    Some(true_params),
     vec![1.0; strikes.len()].into(),
     vec![spot; strikes.len()].into(),
     strikes.clone().into(),

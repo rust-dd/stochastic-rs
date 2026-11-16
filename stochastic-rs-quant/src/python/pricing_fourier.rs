@@ -1,6 +1,7 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
+use crate::pricing::heston::HestonParams;
 use crate::traits::ModelPricer;
 
 #[pyclass(name = "BSMFourier", unsendable)]
@@ -32,13 +33,13 @@ impl PyHestonFourier {
   #[new]
   fn new(v0: f64, kappa: f64, theta: f64, sigma: f64, rho: f64) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::fourier::HestonFourier {
+      inner: crate::pricing::fourier::HestonFourier::new(HestonParams {
         v0,
         kappa,
         theta,
         sigma,
         rho,
-      },
+      }),
     })
   }
 
@@ -284,18 +285,22 @@ impl PyDoubleHestonFourier {
     rho2: f64,
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::fourier::DoubleHestonFourier {
-        v1_0,
-        kappa1,
-        theta1,
-        sigma1,
-        rho1,
-        v2_0,
-        kappa2,
-        theta2,
-        sigma2,
-        rho2,
-      },
+      inner: crate::pricing::fourier::DoubleHestonFourier::new(
+        HestonParams {
+          v0: v1_0,
+          kappa: kappa1,
+          theta: theta1,
+          sigma: sigma1,
+          rho: rho1,
+        },
+        HestonParams {
+          v0: v2_0,
+          kappa: kappa2,
+          theta: theta2,
+          sigma: sigma2,
+          rho: rho2,
+        },
+      ),
     })
   }
 
