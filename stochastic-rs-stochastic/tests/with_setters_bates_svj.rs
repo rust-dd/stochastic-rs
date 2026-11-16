@@ -1,25 +1,11 @@
-//! TDD tests for A1-c Task 2: `with_*` builder setters on `BatesSvj`
-//! (`volatility/bates_svj.rs`). Split out of a combined
-//! `with_setters_volatility.rs` to stay under the project's 600-line file
-//! cap (per-type split, alongside `with_setters_double_heston.rs`,
-//! `with_setters_heston_log.rs`, `with_setters_hkde.rs`, and
-//! `with_setters_fbates_svj.rs`).
-//!
-//! `BatesSvj` caches a correlated-Gaussian generator (`cgns`) keyed on
-//! `(rho, n, t)`; for `with_rho`/`with_steps`/`with_horizon`, a second test
-//! asserts sampling matches a *fresh* equivalent `new(...)` call
-//! bit-for-bit. Every single-field `assert!` in `new()` (`n >= 2`,
-//! `omega >= 0`, `lambda >= 0`, `rho ∈ [-1,1]`) gets both a round-trip test
-//! (via the plain-setter macro) and a dedicated `#[should_panic]`
-//! rejection test; `validate_drift_args`'s cross-field check gets one
-//! representative rejection test via `with_mu` (all four of
-//! `with_mu`/`with_b`/`with_r`/`with_r_f` call the identical check, so one
-//! is sufficient — this is the stated policy, not an oversight).
+//! `BatesSvj`'s setters round-trip, keep `new`'s assertions, and the `cgns`-rebuilding ones match
+//! a fresh `new(..)` bit for bit.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::bates_svj::BatesSvj;
@@ -30,10 +16,7 @@ fn finite2(out: &[Array1<f64>; 2]) -> bool {
 
 fn bsvj_base_seeded<S: SeedExt>(seed: S) -> BatesSvj<f64, S> {
   BatesSvj::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+    Drift::Mu(0.05),
     0.5,
     -0.1,
     0.2,
@@ -59,10 +42,7 @@ fn bsvj_base() -> BatesSvj<f64> {
 // than that.
 #[derive(Debug, PartialEq)]
 struct BsvjFields {
-  mu: Option<f64>,
-  b: Option<f64>,
-  r: Option<f64>,
-  r_f: Option<f64>,
+  drift: Drift<f64>,
   lambda: f64,
   nu: f64,
   omega: f64,
@@ -79,10 +59,7 @@ struct BsvjFields {
 
 fn bsvj_fields<S: SeedExt>(x: &BatesSvj<f64, S>) -> BsvjFields {
   BsvjFields {
-    mu: x.mu,
-    b: x.b,
-    r: x.r,
-    r_f: x.r_f,
+    drift: x.drift,
     lambda: x.lambda,
     nu: x.nu,
     omega: x.omega,
@@ -112,10 +89,12 @@ macro_rules! bsvj_plain_test {
   };
 }
 
-bsvj_plain_test!(bates_svj_with_mu_round_trip, with_mu, mu, Some(0.09));
-bsvj_plain_test!(bates_svj_with_b_round_trip, with_b, b, Some(0.02));
-bsvj_plain_test!(bates_svj_with_r_round_trip, with_r, r, Some(0.03));
-bsvj_plain_test!(bates_svj_with_r_f_round_trip, with_r_f, r_f, Some(0.01));
+bsvj_plain_test!(
+  bates_svj_with_drift_round_trip,
+  with_drift,
+  drift,
+  Drift::Rates { r: 0.03, r_f: 0.01 }
+);
 bsvj_plain_test!(bates_svj_with_lambda_round_trip, with_lambda, lambda, 0.8);
 bsvj_plain_test!(bates_svj_with_nu_round_trip, with_nu, nu, -0.05);
 bsvj_plain_test!(bates_svj_with_omega_round_trip, with_omega, omega, 0.25);
@@ -144,12 +123,11 @@ fn bates_svj_with_omega_rejects_negative() {
 }
 
 #[test]
-#[should_panic(expected = "one of (r and r_f), b, or mu must be provided")]
-fn bates_svj_with_mu_rejects_when_no_drift_spec_remains() {
-  // Base has only `mu = Some(0.05)` set; clearing it to `None` leaves
-  // `(r, r_f)`, `b`, and `mu` all absent, which `validate_drift_args`
-  // rejects — the same check `new()` itself runs.
-  let _ = bsvj_base().with_mu(None);
+#[should_panic(
+  expected = "drift must satisfy `drift.rate().is_finite()`, got drift = CostOfCarry(inf)"
+)]
+fn bates_svj_with_drift_rejects_a_non_finite_rate() {
+  let _ = bsvj_base().with_drift(Drift::CostOfCarry(f64::INFINITY));
 }
 
 #[test]
@@ -161,10 +139,7 @@ fn bates_svj_with_rho_rebuilds_cgns_cache() {
   assert_eq!(bsvj_fields(&got), bsvj_fields(&expected));
 
   let want = BatesSvj::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+    Drift::Mu(0.05),
     0.5,
     -0.1,
     0.2,
@@ -202,10 +177,7 @@ fn bates_svj_with_steps_rebuilds_cgns_cache() {
   assert!(finite2(&got.sample()));
 
   let want = BatesSvj::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+    Drift::Mu(0.05),
     0.5,
     -0.1,
     0.2,
@@ -242,10 +214,7 @@ fn bates_svj_with_horizon_rebuilds_cgns_cache() {
   assert_eq!(bsvj_fields(&got), bsvj_fields(&expected));
 
   let want = BatesSvj::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+    Drift::Mu(0.05),
     0.5,
     -0.1,
     0.2,

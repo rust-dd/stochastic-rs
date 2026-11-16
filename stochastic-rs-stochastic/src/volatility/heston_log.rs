@@ -25,39 +25,18 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
+use crate::params::Drift;
 use crate::params::VarianceBoundary;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Construction-time validator for drift parametrisations. Panics at the
-/// API boundary if none of `(r and r_f)`, `b`, or `mu` is provided.
-#[inline]
-fn validate_drift_args<T: FloatExt>(
-  mu: Option<T>,
-  b: Option<T>,
-  r: Option<T>,
-  r_f: Option<T>,
-  type_name: &'static str,
-) {
-  let has_r_pair = r.is_some() && r_f.is_some();
-  if !(has_r_pair || b.is_some() || mu.is_some()) {
-    panic!("{type_name}: one of (r and r_f), b, or mu must be provided");
-  }
-}
-
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `HestonLog::new(..).with_kappa(2.0).with_rho(-0.4)`.
 #[derive(Clone)]
 pub struct HestonLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Drift rate of the asset price
-  pub mu: Option<T>,
-  /// Cost-of-carry rate
-  pub b: Option<T>,
-  /// Domestic risk-free interest rate
-  pub r: Option<T>,
-  /// Foreign risk-free interest rate
-  pub r_f: Option<T>,
+  /// The asset's drift: `μ`, a cost of carry, or the rate pair.
+  pub drift: Drift<T>,
   /// Variance mean-reversion speed
   pub kappa: T,
   /// Long-run variance level
@@ -85,10 +64,7 @@ pub struct HestonLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
   pub fn new(
-    mu: Option<T>,
-    b: Option<T>,
-    r: Option<T>,
-    r_f: Option<T>,
+    drift: Drift<T>,
     kappa: T,
     theta: T,
     xi: T,
@@ -100,22 +76,7 @@ impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
     boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
-    assert!(
-      mu.is_none_or(|v| v.is_finite()),
-      "mu must satisfy `mu.is_none_or(|v| v.is_finite())`, got mu = {mu:?}"
-    );
-    assert!(
-      b.is_none_or(|v| v.is_finite()),
-      "b must satisfy `b.is_none_or(|v| v.is_finite())`, got b = {b:?}"
-    );
-    assert!(
-      r.is_none_or(|v| v.is_finite()),
-      "r must satisfy `r.is_none_or(|v| v.is_finite())`, got r = {r:?}"
-    );
-    assert!(
-      r_f.is_none_or(|v| v.is_finite()),
-      "r_f must satisfy `r_f.is_none_or(|v| v.is_finite())`, got r_f = {r_f:?}"
-    );
+    drift.assert_finite();
     assert!(
       kappa.is_finite(),
       "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
@@ -165,14 +126,10 @@ impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
       v0.is_none_or(|v| v >= T::zero()),
       "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
     );
-    validate_drift_args(mu, b, r, r_f, "HestonLog");
 
     Self {
       backend: Cpu,
-      mu,
-      b,
-      r,
-      r_f,
+      drift,
       kappa,
       theta,
       xi,
@@ -188,31 +145,10 @@ impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
-  /// Replace `mu`; re-validates that a drift specification still exists.
-  pub fn with_mu(mut self, mu: Option<T>) -> Self {
-    self.mu = mu;
-    validate_drift_args(self.mu, self.b, self.r, self.r_f, "HestonLog");
-    self
-  }
-
-  /// Replace `b`; re-validates that a drift specification still exists.
-  pub fn with_b(mut self, b: Option<T>) -> Self {
-    self.b = b;
-    validate_drift_args(self.mu, self.b, self.r, self.r_f, "HestonLog");
-    self
-  }
-
-  /// Replace `r`; re-validates that a drift specification still exists.
-  pub fn with_r(mut self, r: Option<T>) -> Self {
-    self.r = r;
-    validate_drift_args(self.mu, self.b, self.r, self.r_f, "HestonLog");
-    self
-  }
-
-  /// Replace `r_f`; re-validates that a drift specification still exists.
-  pub fn with_r_f(mut self, r_f: Option<T>) -> Self {
-    self.r_f = r_f;
-    validate_drift_args(self.mu, self.b, self.r, self.r_f, "HestonLog");
+  /// Replace `drift`, all else unchanged; panics on a non-finite rate.
+  pub fn with_drift(mut self, drift: Drift<T>) -> Self {
+    drift.assert_finite();
+    self.drift = drift;
     self
   }
 
@@ -301,19 +237,6 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
-  #[inline]
-  fn drift(&self) -> T {
-    // Construction-time `validate_drift_args` guarantees totality at runtime.
-    match (self.r, self.r_f, self.b, self.mu) {
-      (Some(r), Some(r_f), _, _) => r - r_f,
-      (_, _, Some(b), _) => b,
-      (_, _, _, Some(mu)) => mu,
-      _ => unreachable!("validate_drift_args ensures at least one of (r+r_f), b, mu is set"),
-    }
-  }
-}
-
 /// The Euler engine's view of the log-price Heston model. The drift is
 /// resolved once here from whichever of the rate, carry or drift arguments
 /// the process was built with.
@@ -323,14 +246,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     match self.boundary {
       VarianceBoundary::Floor => crate::euler::EulerSpec::LogHeston {
-        drift: self.drift(),
+        drift: self.drift.rate(),
         kappa: self.kappa,
         theta: self.theta,
         xi: self.xi,
         rho: self.rho,
       },
       VarianceBoundary::Reflect => crate::euler::EulerSpec::LogHestonReflected {
-        drift: self.drift(),
+        drift: self.drift.rate(),
         kappa: self.kappa,
         theta: self.theta,
         xi: self.xi,
@@ -367,7 +290,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] HestonLog<T, S> { mu, b, r, r_f, kappa, theta, xi, rho, n, s0, v0, t, boundary, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] HestonLog<T, S> { drift, kappa, theta, xi, rho, n, s0, v0, t, boundary, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for HestonLog<T, S, B>
@@ -394,7 +317,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       n: self.n,
       s0: self.s0.unwrap_or(T::one()),
       v0: self.v0.unwrap_or(self.theta).max(T::zero()),
-      drift: self.drift(),
+      drift: self.drift.rate(),
       kappa: self.kappa,
       theta: self.theta,
       xi: self.xi,
@@ -532,10 +455,7 @@ mod tests {
   #[test]
   fn price_stays_positive() {
     let p = HestonLog::new(
-      Some(0.05_f64),
-      None,
-      None,
-      None,
+      Drift::Mu(0.05_f64),
       1.5,
       0.04,
       0.3,
@@ -554,10 +474,7 @@ mod tests {
   #[test]
   fn variance_stays_non_negative() {
     let p = HestonLog::new(
-      Some(0.05_f64),
-      None,
-      None,
-      None,
+      Drift::Mu(0.05_f64),
       1.5,
       0.04,
       0.5,
@@ -574,8 +491,9 @@ mod tests {
   }
 }
 
-py_process_2x1d!(PyHestonLog, HestonLog,
-  sig: (mu=None, b=None, r=None, r_f=None, *, kappa, theta, xi, rho, n, s0=None, v0=None, t=None, boundary=None, seed=None, dtype=None),
-  params: (mu: Option<f64>, b: Option<f64>, r: Option<f64>, r_f: Option<f64>, kappa: f64, theta: f64, xi: f64, rho: f64, n: usize, s0: Option<f64>, v0: Option<f64>, t: Option<f64>, boundary: Option<crate::python_params::PyVarianceBoundary> => crate::python_params::boundary),
-  device
-);
+#[cfg(feature = "python")]
+mod python;
+
+#[cfg(feature = "python")]
+#[doc(hidden)]
+pub use python::PyHestonLog;

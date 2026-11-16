@@ -44,6 +44,7 @@ use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::params::Horizon;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -370,7 +371,7 @@ impl<T: FloatExt, S: SeedExt> CtsSampler<T, S> {
     let mut U = Array1::<T>::zeros(size);
     self.uniform.fill_slice(U.as_slice_mut().unwrap());
     let E = Array1::from_shape_fn(size, |_| self.exp.sample());
-    let P = Poisson::new(T::one(), Some(size), None, self.seed.derive()).sample();
+    let P = Poisson::new(T::one(), Horizon::Events(J), self.seed.derive()).sample();
     let mut tau_raw = Array1::<T>::zeros(size);
     self.uniform.fill_slice(tau_raw.as_slice_mut().unwrap());
     let tau = tau_raw * t_max;

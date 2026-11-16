@@ -12,12 +12,12 @@
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_distributions::traits::Fn1D;
 use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::interest::black_karasinski::BlackKarasinski;
 use stochastic_rs_stochastic::interest::ho_lee::HoLee;
 use stochastic_rs_stochastic::interest::hull_white::HullWhite;
 use stochastic_rs_stochastic::interest::vasicek::Vasicek;
+use stochastic_rs_stochastic::params::HoLeeDrift;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
@@ -168,8 +168,7 @@ fn ho_lee_is_a_brownian_motion_with_drift() {
   let grid = 4_097;
   let horizon = 4.0;
   let paths = HoLee::<f64, _>::new(
-    None::<Fn1D<f64>>,
-    Some(drift),
+    HoLeeDrift::Constant(drift),
     sigma,
     grid,
     Some(horizon),

@@ -22,6 +22,7 @@ use stochastic_rs_stochastic::diffusion::radial_ou::RadialOU;
 use stochastic_rs_stochastic::diffusion::three_half::ThreeHalf;
 use stochastic_rs_stochastic::interest::vasicek::Vasicek;
 use stochastic_rs_stochastic::jump::mjd_log::MjdLog;
+use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::process::bm::Bm;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
@@ -85,10 +86,7 @@ fn ckls_agrees_with_the_cpu_law() {
 fn log_gbm_agrees_with_the_cpu_law() {
   let build = || {
     GbmLog::<f32, _>::new(
-      Some(0.05),
-      None,
-      None,
-      None,
+      Drift::Mu(0.05),
       0.2,
       253,
       Some(100.0),
@@ -366,10 +364,7 @@ fn brownian_motion_agrees_with_the_cpu_law() {
 fn merton_jump_diffusion_agrees_with_the_cpu_law() {
   let build = || {
     MjdLog::<f32, _>::new(
-      Some(0.05),
-      None,
-      None,
-      None,
+      Drift::Mu(0.05),
       0.2,
       3.0,
       -0.05,

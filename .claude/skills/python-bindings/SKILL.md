@@ -73,7 +73,7 @@ shape:
 | Macro | Output shape | Examples |
 |---|---|---|
 | `py_process_1d!` | `Array1<T>` (single 1-D path) | `Gbm`, `Ou`, `Fou`, `Fbm`, `Cir` |
-| `py_process_2x1d!` | `[Array1<T>; 2]` (two 1-D paths) | `Sabr`, `HestonLog`, `DuffieKan`, `Cgns`, `Cbms` |
+| `py_process_2x1d!` | `[Array1<T>; 2]` (two 1-D paths) | `Sabr`, `Svcgmy`, `DuffieKan`, `Cgns`, `Cbms` |
 | `py_process_2d!` | `Array2<T>` (correlated multi-asset) | `Cfou`, `Fbs` (`sheet/fbs.rs`) |
 
 Not every two-component process uses the macro: `Heston` itself has a
@@ -83,7 +83,13 @@ Reach for a hand-written wrapper when the constructor takes something
 the macro cannot express — a Python callable, or a third type parameter
 like `Heston`'s scheme selector. Such a wrapper carries `#[doc(hidden)]` on the
 line above its `#[pyclass]` (and above a `pub use python::…` re-export of it);
-`tests/python_surface_hidden.rs` enforces both.
+`tests/python_surface_hidden.rs` enforces both. A hand-written class on the macros'
+slots (`inner_f32`, `inner_f64`, `seeded_f32`, `seeded_f64`, and `device` for
+`py_device_dispatch`) writes only its `#[new]`, inside
+`py_process_methods!(PyX, <shape>, <dispatch>, { #[new] … })`
+(`array1`, `array2` or `pair`; `py_dispatch` or `py_device_dispatch`), which adds
+`sample`, `sample_par`, `device_fallback` and `device_ready` — see
+`process/poisson/python.rs`.
 
 Invoke at the **bottom of the process's source file**, e.g.
 `stochastic-rs-stochastic/src/diffusion/gbm.rs`:

@@ -29,6 +29,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::params::Horizon;
 use crate::process::cpoisson::CompoundPoisson;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
@@ -63,7 +64,7 @@ where
   ) -> Self {
     let cpoisson = CompoundPoisson::new(
       jump_dist,
-      Poisson::new(lambda, Some(n), t, Unseeded),
+      Poisson::new(lambda, Horizon::Events(n), Unseeded),
       seed.clone().derive(),                   // hash-mixed child of the same seed
     );
     Self { alpha, sigma, lambda, theta, n, x0, t, cpoisson, seed }
@@ -81,7 +82,8 @@ Three constructor facts:
 - **`CompoundPoisson::new(distribution, poisson, seed)`** takes exactly
   three arguments in that order — the jump-size distribution, a
   fully-built `Poisson<T>`, and the seed source. `Poisson::new(lambda,
-  n, t_max, seed)` needs one of `n` / `t_max` (it validates).
+  horizon, seed)` takes a `Horizon`: the origin and `n` arrivals after it
+  for `Events(n)`, or every arrival before `Until(t_max)`.
 
 ### `lambda` lives in two places — keep them synced
 
@@ -222,7 +224,7 @@ our own types implement it, and it is how `.sample()` resolves. Per `dev-rules` 
 ## 4. Construction-time parameter validation
 
 Validate in `new(...)`, never in `sample()`. `Poisson::new` already
-calls `validate_n_or_tmax`; add your own asserts for the model's own
+checks its `Horizon`; add your own asserts for the model's own
 invariants (every float finite, `sigma > 0`, `lambda >= 0`, `n >= 2`) in
 dev-rules §14's form, which a `#[should_panic(expected = "…")]` test can pin.
 

@@ -11,7 +11,7 @@ import stochastic_rs as sr
 
 
 def test_process_constructor_raises_value_error():
-    with pytest.raises(ValueError, match="or mu must be provided"):
+    with pytest.raises(ValueError, match="exactly one drift"):
         sr.PyGbmLog(sigma=0.2, n=16)
 
 

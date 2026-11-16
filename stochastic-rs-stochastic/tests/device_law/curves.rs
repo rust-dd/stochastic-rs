@@ -14,6 +14,7 @@ use stochastic_rs_stochastic::interest::cir_pp::CirPlusPlus;
 use stochastic_rs_stochastic::interest::hjm::Hjm;
 use stochastic_rs_stochastic::interest::ho_lee::HoLee;
 use stochastic_rs_stochastic::interest::hull_white::HullWhite;
+use stochastic_rs_stochastic::params::HoLeeDrift;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
@@ -57,7 +58,15 @@ fn hull_white_agrees_with_the_cpu_law() {
 
 #[test]
 fn ho_lee_agrees_with_the_cpu_law() {
-  let build = || HoLee::<f32, _>::new(None, Some(0.03), 0.01, N, Some(1.0), Deterministic::new(43));
+  let build = || {
+    HoLee::<f32, _>::new(
+      HoLeeDrift::Constant(0.03),
+      0.01,
+      N,
+      Some(1.0),
+      Deterministic::new(43),
+    )
+  };
   let device = build().on::<Device>().sample_par(M);
   all_finite(&device, "Ho-Lee");
   agrees(

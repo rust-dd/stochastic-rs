@@ -22,34 +22,15 @@ use stochastic_rs_distributions::poisson::SimdPoisson;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::params::Drift;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[inline]
-fn validate_drift_args<T: FloatExt>(
-  mu: Option<T>,
-  b: Option<T>,
-  r: Option<T>,
-  r_f: Option<T>,
-  type_name: &'static str,
-) {
-  let has_r_pair = r.is_some() && r_f.is_some();
-  if !(has_r_pair || b.is_some() || mu.is_some()) {
-    panic!("{type_name}: one of (r and r_f), b, or mu must be provided");
-  }
-}
-
 #[derive(Clone)]
 pub struct MjdLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Drift rate
-  pub mu: Option<T>,
-  /// Cost-of-carry rate
-  pub b: Option<T>,
-  /// Domestic risk-free interest rate
-  pub r: Option<T>,
-  /// Foreign risk-free interest rate
-  pub r_f: Option<T>,
+  /// The price's drift: `μ`, a cost of carry, or the rate pair.
+  pub drift: Drift<T>,
   /// Diffusion volatility
   pub sigma: T,
   /// Jump intensity (Poisson arrival rate)
@@ -73,10 +54,7 @@ pub struct MjdLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
   pub fn new(
-    mu: Option<T>,
-    b: Option<T>,
-    r: Option<T>,
-    r_f: Option<T>,
+    drift: Drift<T>,
     sigma: T,
     lambda: T,
     nu: T,
@@ -86,22 +64,7 @@ impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(
-      mu.is_none_or(|v| v.is_finite()),
-      "mu must satisfy `mu.is_none_or(|v| v.is_finite())`, got mu = {mu:?}"
-    );
-    assert!(
-      b.is_none_or(|v| v.is_finite()),
-      "b must satisfy `b.is_none_or(|v| v.is_finite())`, got b = {b:?}"
-    );
-    assert!(
-      r.is_none_or(|v| v.is_finite()),
-      "r must satisfy `r.is_none_or(|v| v.is_finite())`, got r = {r:?}"
-    );
-    assert!(
-      r_f.is_none_or(|v| v.is_finite()),
-      "r_f must satisfy `r_f.is_none_or(|v| v.is_finite())`, got r_f = {r_f:?}"
-    );
+    drift.assert_finite();
     assert!(
       sigma.is_finite(),
       "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
@@ -139,13 +102,9 @@ impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
       omega >= T::zero(),
       "omega must satisfy `omega >= T::zero()`, got omega = {omega:?}"
     );
-    validate_drift_args(mu, b, r, r_f, "MjdLog");
     Self {
       backend: Cpu,
-      mu,
-      b,
-      r,
-      r_f,
+      drift,
       sigma,
       lambda,
       nu,
@@ -158,19 +117,16 @@ impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> MjdLog<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> MjdLog<T, S, B> {
+  /// Replace `drift`, all else unchanged; panics on a non-finite rate.
+  pub fn with_drift(mut self, drift: Drift<T>) -> Self {
+    drift.assert_finite();
+    self.drift = drift;
+    self
+  }
+}
 
 impl<T: FloatExt, S: SeedExt, B> MjdLog<T, S, B> {
-  #[inline]
-  fn drift(&self) -> T {
-    match (self.r, self.r_f, self.b, self.mu) {
-      (Some(r), Some(r_f), _, _) => r - r_f,
-      (_, _, Some(b), _) => b,
-      (_, _, _, Some(mu)) => mu,
-      _ => unreachable!("validate_drift_args ensures at least one of (r+r_f), b, mu is set"),
-    }
-  }
-
   #[inline]
   fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
@@ -192,7 +148,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let half = T::from_f64_fast(0.5);
     let drift_ln =
-      (self.drift() - self.lambda * self.kappa_j() - half * self.sigma * self.sigma) * self.dt();
+      (self.drift.rate() - self.lambda * self.kappa_j() - half * self.sigma * self.sigma)
+        * self.dt();
     crate::euler::EulerSpec::MertonJumpLog {
       drift_ln,
       sigma: self.sigma,
@@ -241,7 +198,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] MjdLog<T, S> { mu, b, r, r_f, sigma, lambda, nu, omega, n, s0, t, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] MjdLog<T, S> { drift, sigma, lambda, nu, omega, n, s0, t, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for MjdLog<T, S, B>
@@ -260,7 +217,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     // for independent paths.
     let dt = self.dt();
     let sqrt_dt = dt.sqrt();
-    let drift = self.drift();
+    let drift = self.drift.rate();
     let kappa_j = self.kappa_j();
     let half = T::from_f64_fast(0.5);
     let drift_ln = (drift - self.lambda * kappa_j - half * self.sigma * self.sigma) * dt;
@@ -404,10 +361,7 @@ mod tests {
   #[test]
   fn price_stays_positive() {
     let p = MjdLog::new(
-      Some(0.05_f64),
-      None,
-      None,
-      None,
+      Drift::Mu(0.05_f64),
       0.2,
       0.5,
       -0.1,
@@ -422,8 +376,9 @@ mod tests {
   }
 }
 
-py_process_1d!(PyMjdLog, MjdLog,
-  sig: (mu=None, b=None, r=None, r_f=None, *, sigma, lambda_, nu, omega, n, s0=None, t=None, seed=None, dtype=None),
-  params: (mu: Option<f64>, b: Option<f64>, r: Option<f64>, r_f: Option<f64>, sigma: f64, lambda_: f64, nu: f64, omega: f64, n: usize, s0: Option<f64>, t: Option<f64>),
-  device
-);
+#[cfg(feature = "python")]
+mod python;
+
+#[cfg(feature = "python")]
+#[doc(hidden)]
+pub use python::PyMjdLog;

@@ -29,6 +29,7 @@ use stochastic_rs_stochastic::interest::hull_white_2f::HullWhite2F;
 use stochastic_rs_stochastic::interest::lmm::Lmm;
 use stochastic_rs_stochastic::interest::vasicek::Vasicek;
 use stochastic_rs_stochastic::interest::wu_zhang::WuZhangD;
+use stochastic_rs_stochastic::params::HoLeeDrift;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use crate::common::N;
@@ -189,8 +190,7 @@ guard!(hjm, "Hjm", |s| Hjm::new(
 ));
 
 guard!(ho_lee, "HoLee", |s| HoLee::new(
-  None,
-  Some(0.02),
+  HoLeeDrift::Constant(0.02),
   0.01,
   N,
   Some(1.0),

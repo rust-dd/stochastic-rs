@@ -20,26 +20,14 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
 use crate::noise::cgns::Cgns;
+use crate::params::Drift;
+use crate::params::Horizon;
 use crate::params::VarianceBoundary;
 use crate::process::cpoisson::CompoundPoisson;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
-
-#[inline]
-fn validate_drift_args<T: FloatExt>(
-  mu: Option<T>,
-  b: Option<T>,
-  r: Option<T>,
-  r_f: Option<T>,
-  type_name: &'static str,
-) {
-  let has_r_pair = r.is_some() && r_f.is_some();
-  if !(has_r_pair || b.is_some() || mu.is_some()) {
-    panic!("{type_name}: one of (r and r_f), b, or mu must be provided");
-  }
-}
 
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `Bates1996::new(..).with_lambda(0.8).with_rho(-0.4)`.
@@ -48,17 +36,8 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Direct drift rate μ of the asset — one of three mutually-exclusive
-  /// drift specifications (`mu` xor `b` xor the `(r, r_f)` pair); exactly
-  /// one must be `Some`.
-  pub mu: Option<T>,
-  /// Cost-of-carry rate b, an alternative drift specification to `mu`.
-  pub b: Option<T>,
-  /// Domestic risk-free rate; paired with `r_f` as a third drift
-  /// specification via `r - r_f`.
-  pub r: Option<T>,
-  /// Foreign risk-free rate / dividend yield, paired with `r`.
-  pub r_f: Option<T>,
+  /// The asset's drift before the `λk` compensator: `μ`, a cost of carry, or `r − r_f`.
+  pub drift: Drift<T>,
   /// Jump (Poisson) intensity λ — arrival rate of the log-price jumps.
   /// Single source of truth: `sampler()` reads this field directly (not
   /// `cpoisson.poisson.lambda`) for both the jump-arrival rate and the
@@ -100,31 +79,8 @@ where
   /// field's own dead `Unseeded` is irrelevant to reproducibility. Private,
   /// so this indirection is an implementation detail.
   cgns: Cgns<T>,
-  /// Compound-Poisson jump driver added to the asset's log-return.
-  /// Fully seed-reproducible: [`new`](Self::new) builds it internally from
-  /// `seed` (`seed.clone().derive()` — a hash-mixed child, decorrelated
-  /// from but a deterministic function of the same `seed` the diffusion
-  /// component (`cgns`) consults directly), and `sampler()` derives a
-  /// fresh, chunk-local basis off `self.cpoisson.seed` for every chunk,
-  /// mirroring the diffusion component's own per-chunk `self.seed`-derived
-  /// basis.
-  ///
-  /// `sampler()` reads only `cpoisson.distribution` (the jump-size law)
-  /// and `self.lambda` — **not** `cpoisson.poisson.lambda` — from this
-  /// field on the sampling path; `cpoisson.poisson.{n,t_max,seed}` are
-  /// inert there (`grid_relative_increments` never consults them). That
-  /// inertness is scoped to *this type's own* sampling, though: `cpoisson`
-  /// is a `CompoundPoisson` in its own right, and calling `.sample()` on it
-  /// directly (bypassing `Bates1996` entirely) drives it through
-  /// `Poisson::sample_impl`, which *does* branch on `.n`/`.t_max` (fixed
-  /// count vs. horizon mode) and *does* consult `.seed` — genuinely live
-  /// there. Left `pub` for both reasons: a caller can inspect or directly
-  /// `.sample()` the embedded compound-Poisson process as its own
-  /// standalone `ProcessExt`, and can replace it wholesale via
-  /// [`with_cpoisson`](Self::with_cpoisson) (which keeps `self.lambda` in
-  /// sync with the replacement — see that method's doc) or direct field
-  /// assignment (which does not; assign through `with_cpoisson` unless you
-  /// separately update `self.lambda` to match).
+  /// The jump driver, seeded from `seed.derive()`; sampling reads its law and seed but takes the
+  /// rate from `lambda`, so replace it through [`with_cpoisson`](Self::with_cpoisson).
   pub cpoisson: CompoundPoisson<T, D, S>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`). Consulted
   /// directly by the diffusion component (via `cgns.sample_impl`);
@@ -147,10 +103,7 @@ where
   /// instead of pre-building a `Poisson`/`CompoundPoisson` pair and
   /// threading a third, independent seed through it by hand.
   pub fn new(
-    mu: Option<T>,
-    b: Option<T>,
-    r: Option<T>,
-    r_f: Option<T>,
+    drift: Drift<T>,
     lambda: T,
     k: T,
     alpha: T,
@@ -165,22 +118,7 @@ where
     boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
-    assert!(
-      mu.is_none_or(|v| v.is_finite()),
-      "mu must satisfy `mu.is_none_or(|v| v.is_finite())`, got mu = {mu:?}"
-    );
-    assert!(
-      b.is_none_or(|v| v.is_finite()),
-      "b must satisfy `b.is_none_or(|v| v.is_finite())`, got b = {b:?}"
-    );
-    assert!(
-      r.is_none_or(|v| v.is_finite()),
-      "r must satisfy `r.is_none_or(|v| v.is_finite())`, got r = {r:?}"
-    );
-    assert!(
-      r_f.is_none_or(|v| v.is_finite()),
-      "r_f must satisfy `r_f.is_none_or(|v| v.is_finite())`, got r_f = {r_f:?}"
-    );
+    drift.assert_finite();
     assert!(
       lambda.is_finite(),
       "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
@@ -222,20 +160,16 @@ where
       v0.is_none_or(|v| v >= T::zero()),
       "v0 must satisfy `v0.is_none_or(|v| v >= T::zero())`, got v0 = {v0:?}"
     );
-    validate_drift_args(mu, b, r, r_f, "Bates1996");
 
     let cpoisson = CompoundPoisson::new(
       jump_dist,
-      Poisson::new(lambda, Some(n), t, Unseeded),
+      Poisson::new(lambda, Horizon::Events(n), Unseeded),
       seed.clone().derive(),
     );
 
     Self {
       backend: Cpu,
-      mu,
-      b,
-      r,
-      r_f,
+      drift,
       lambda,
       k,
       alpha,
@@ -259,31 +193,10 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Replace `mu`; re-validates that a drift specification still exists.
-  pub fn with_mu(mut self, mu: Option<T>) -> Self {
-    self.mu = mu;
-    validate_drift_args(self.mu, self.b, self.r, self.r_f, "Bates1996");
-    self
-  }
-
-  /// Replace `b`; re-validates that a drift specification still exists.
-  pub fn with_b(mut self, b: Option<T>) -> Self {
-    self.b = b;
-    validate_drift_args(self.mu, self.b, self.r, self.r_f, "Bates1996");
-    self
-  }
-
-  /// Replace `r`; re-validates that a drift specification still exists.
-  pub fn with_r(mut self, r: Option<T>) -> Self {
-    self.r = r;
-    validate_drift_args(self.mu, self.b, self.r, self.r_f, "Bates1996");
-    self
-  }
-
-  /// Replace `r_f`; re-validates that a drift specification still exists.
-  pub fn with_r_f(mut self, r_f: Option<T>) -> Self {
-    self.r_f = r_f;
-    validate_drift_args(self.mu, self.b, self.r, self.r_f, "Bates1996");
+  /// Replace `drift`, all else unchanged; panics on a non-finite rate.
+  pub fn with_drift(mut self, drift: Drift<T>) -> Self {
+    drift.assert_finite();
+    self.drift = drift;
     self
   }
 
@@ -354,28 +267,16 @@ where
     self
   }
 
-  /// Replace the compound-Poisson jump driver wholesale, adopting its
-  /// intensity as the new `self.lambda` — `sampler()` reads `self.lambda`,
-  /// not `cpoisson.poisson.lambda`, for the jump-arrival rate and the
-  /// drift's `-lambda*k` compensator term (see `cpoisson`'s field doc), so
-  /// without this adoption the incoming driver's own intensity would be
-  /// silently ignored and the *old* `self.lambda` would keep driving both
-  /// while only the distribution changed. `cpoisson.poisson.{n,t_max}` are
-  /// left exactly as the caller supplied them (not normalized to
-  /// `self.{n,t}`) since, unlike `lambda`, they carry no live weight on
-  /// this type's sampling path either way.
+  /// Replace the jump driver and adopt its intensity as `lambda`, the rate the sampler reads; its
+  /// horizon is kept as given, since sampling never reads it.
   pub fn with_cpoisson(mut self, cpoisson: CompoundPoisson<T, D, S>) -> Self {
     self.lambda = cpoisson.poisson.lambda;
     self.cpoisson = cpoisson;
     self
   }
 
-  /// Replace the number of simulation steps `n`; rebuilds the cached
-  /// correlated-Gaussian generator, whose length and step size derive
-  /// from `n`, and re-syncs `cpoisson.poisson.n` (see
-  /// `resync_cpoisson_poisson`) — dead on this type's own sampling path,
-  /// but kept from silently going stale for a caller inspecting `cpoisson`
-  /// directly.
+  /// Replace `n`; rebuilds the correlated-Gaussian generator, and the jump driver's event count
+  /// follows, though sampling never reads that.
   pub fn with_steps(mut self, n: usize) -> Self {
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
@@ -383,15 +284,10 @@ where
     self
   }
 
-  /// Replace the simulation horizon `t`; rebuilds the cached
-  /// correlated-Gaussian generator's step size, which derives from `t`,
-  /// and re-syncs `cpoisson.poisson.t_max` (see `resync_cpoisson_poisson`)
-  /// — dead on this type's own sampling path, but kept from silently going
-  /// stale for a caller inspecting `cpoisson` directly.
+  /// Replace `t`; rebuilds the correlated-Gaussian generator, whose step follows `t`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
-    self.resync_cpoisson_poisson();
     self
   }
 
@@ -406,33 +302,10 @@ where
     self
   }
 
-  /// Rebuilds `cpoisson.poisson` from `self.{lambda, n, t}` so a caller
-  /// reading `cpoisson.poisson` directly never sees it disagree with the
-  /// outer struct's own record of the same three values — most
-  /// load-bearing for `lambda`, which `sampler()` actually reads off
-  /// `self` (not off this mirror) for the jump-arrival rate and the
-  /// drift's `-lambda*k` compensator term, but applied uniformly to
-  /// `n`/`t_max` too even though those two are inert on the sampling path
-  /// either way (see `cpoisson`'s field doc). Called from every setter
-  /// that changes `lambda`, `n`, or `t`.
+  /// Rebuilds the `cpoisson.poisson` mirror from `lambda` and `n`, which sampling reads off `self`;
+  /// every setter that changes either calls it.
   fn resync_cpoisson_poisson(&mut self) {
-    self.cpoisson.poisson = Poisson::new(self.lambda, Some(self.n), self.t, Unseeded);
-  }
-}
-
-impl<T, D, S: SeedExt, B> Bates1996<T, D, S, B>
-where
-  T: FloatExt,
-  D: Distribution<T> + Send + Sync,
-{
-  #[inline]
-  fn effective_drift(&self) -> T {
-    match (self.r, self.r_f, self.b, self.mu) {
-      (Some(r), Some(r_f), _, _) => r - r_f,
-      (_, _, Some(b), _) => b,
-      (_, _, _, Some(mu)) => mu,
-      _ => unreachable!("validate_drift_args ensures at least one of (r+r_f), b, mu is set"),
-    }
+    self.cpoisson.poisson = Poisson::new(self.lambda, Horizon::Events(self.n), Unseeded);
   }
 }
 
@@ -458,7 +331,7 @@ where
   /// The spot's drift arrives compensated by `lambda k`, and the variance
   /// keeps whichever treatment of the boundary the process was built with.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    let drift_c = self.effective_drift() - self.lambda * self.k;
+    let drift_c = self.drift.rate() - self.lambda * self.k;
     match self.boundary {
       VarianceBoundary::Floor => crate::euler::EulerSpec::Bates1996 {
         drift_c,
@@ -528,7 +401,7 @@ where
   }
 }
 
-backend_switch!([T, D, S: SeedExt] Bates1996<T, D, S> { mu, b, r, r_f, lambda, k, alpha, beta, sigma, rho, n, s0, v0, t, boundary, cgns, cpoisson, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
+backend_switch!([T, D, S: SeedExt] Bates1996<T, D, S> { drift, lambda, k, alpha, beta, sigma, rho, n, s0, v0, t, boundary, cgns, cpoisson, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
 
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for Bates1996<T, D, S, B>
@@ -572,7 +445,7 @@ where
       alpha: self.alpha,
       beta: self.beta,
       sigma: self.sigma,
-      drift: self.effective_drift(),
+      drift: self.drift.rate(),
       boundary: self.boundary,
       dt: self.cgns.dt(),
       cgns: self.cgns,

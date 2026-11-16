@@ -40,6 +40,7 @@ use stochastic_rs_stochastic::diffusion::regime_switching::RegimeSwitchingDiffus
 use stochastic_rs_stochastic::diffusion::three_half::ThreeHalf;
 use stochastic_rs_stochastic::diffusion::verhulst::Verhulst;
 use stochastic_rs_stochastic::diffusion::wishart::Wishart;
+use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use crate::common::N;
@@ -223,10 +224,7 @@ guard!(gbm_ih, "GbmIh", |s| GbmIh::new(
 ));
 
 guard!(gbm_log, "GbmLog", |s| GbmLog::new(
-  Some(0.05),
-  None,
-  None,
-  None,
+  Drift::Mu(0.05),
   0.2,
   N,
   Some(100.0),

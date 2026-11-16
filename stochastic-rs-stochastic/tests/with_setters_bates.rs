@@ -76,6 +76,8 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::jump::bates::Bates1996;
+use stochastic_rs_stochastic::params::Drift;
+use stochastic_rs_stochastic::params::Horizon;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs_stochastic::process::poisson::Poisson;
@@ -87,10 +89,7 @@ fn finite2(out: &[Array1<f64>; 2]) -> bool {
 
 fn bates_base_seeded<S: SeedExt>(seed: S) -> Bates1996<f64, SimdNormal<f64>, S> {
   Bates1996::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+    Drift::Mu(0.05),
     0.5,
     0.05,
     0.04,
@@ -117,10 +116,7 @@ fn bates_base() -> Bates1996<f64, SimdNormal<f64>> {
 // checked behaviorally instead, in `bates_with_cpoisson_round_trip...`.
 #[derive(Debug, PartialEq)]
 struct BatesFields {
-  mu: Option<f64>,
-  b: Option<f64>,
-  r: Option<f64>,
-  r_f: Option<f64>,
+  drift: Drift<f64>,
   lambda: f64,
   k: f64,
   alpha: f64,
@@ -136,10 +132,7 @@ struct BatesFields {
 
 fn bates_fields<S: SeedExt>(x: &Bates1996<f64, SimdNormal<f64>, S>) -> BatesFields {
   BatesFields {
-    mu: x.mu,
-    b: x.b,
-    r: x.r,
-    r_f: x.r_f,
+    drift: x.drift,
     lambda: x.lambda,
     k: x.k,
     alpha: x.alpha,
@@ -168,10 +161,12 @@ macro_rules! bates_plain_test {
   };
 }
 
-bates_plain_test!(bates_with_mu_round_trip, with_mu, mu, Some(0.09));
-bates_plain_test!(bates_with_b_round_trip, with_b, b, Some(0.02));
-bates_plain_test!(bates_with_r_round_trip, with_r, r, Some(0.03));
-bates_plain_test!(bates_with_r_f_round_trip, with_r_f, r_f, Some(0.01));
+bates_plain_test!(
+  bates_with_drift_round_trip,
+  with_drift,
+  drift,
+  Drift::CostOfCarry(0.02)
+);
 bates_plain_test!(bates_with_lambda_round_trip, with_lambda, lambda, 0.8);
 bates_plain_test!(bates_with_k_round_trip, with_k, k, 0.08);
 bates_plain_test!(bates_with_alpha_round_trip, with_alpha, alpha, 0.06);
@@ -195,14 +190,9 @@ fn bates_with_v0_rejects_negative() {
 }
 
 #[test]
-#[should_panic(expected = "one of (r and r_f), b, or mu must be provided")]
-fn bates_with_mu_rejects_when_no_drift_spec_remains() {
-  // Base has only `mu = Some(0.05)` set; clearing it to `None` leaves
-  // `(r, r_f)`, `b`, and `mu` all absent, which `validate_drift_args`
-  // rejects — the same check `new()` itself runs. One representative test
-  // via `with_mu` suffices: `with_b`/`with_r`/`with_r_f` all call the
-  // identical check.
-  let _ = bates_base().with_mu(None);
+#[should_panic(expected = "drift must satisfy `drift.rate().is_finite()`, got drift = Mu(NaN)")]
+fn bates_with_drift_rejects_a_non_finite_rate() {
+  let _ = bates_base().with_drift(Drift::Mu(f64::NAN));
 }
 
 /// `with_cpoisson` adopts the incoming driver's `lambda` into `self.lambda`
@@ -216,16 +206,13 @@ fn bates_with_cpoisson_round_trip_and_reaches_sampler() {
   let wide_cpoisson = || {
     CompoundPoisson::new(
       SimdNormal::new(0.0, 5.0),
-      Poisson::new(4.0, Some(256), Some(1.0), Unseeded),
+      Poisson::new(4.0, Horizon::Events(256), Unseeded),
       Unseeded,
     )
   };
   let base = bates_base();
   let got = bates_base().with_cpoisson(wide_cpoisson());
-  assert_eq!(got.mu, base.mu);
-  assert_eq!(got.b, base.b);
-  assert_eq!(got.r, base.r);
-  assert_eq!(got.r_f, base.r_f);
+  assert_eq!(got.drift, base.drift);
   assert_eq!(got.k, base.k);
   assert_eq!(got.alpha, base.alpha);
   assert_eq!(got.beta, base.beta);
@@ -271,10 +258,7 @@ fn bates_with_cpoisson_changes_sampled_intensity() {
 
   let with_lambda = |lambda: f64| {
     Bates1996::new(
-      Some(0.05),
-      None,
-      None,
-      None,
+      Drift::Mu(0.05),
       lambda,
       0.0,
       0.04,
@@ -293,7 +277,7 @@ fn bates_with_cpoisson_changes_sampled_intensity() {
 
   let swapped_driver = CompoundPoisson::new(
     SimdNormal::new(0.0, 1.0),
-    Poisson::new(swapped_lambda, Some(256), Some(1.0), Unseeded),
+    Poisson::new(swapped_lambda, Horizon::Events(256), Unseeded),
     Deterministic::new(seed),
   );
   let got = with_lambda(base_lambda).with_cpoisson(swapped_driver);
@@ -332,10 +316,7 @@ fn bates_with_lambda_syncs_cpoisson_and_changes_sampled_path() {
   let new_lambda = 80.0;
   let base = || {
     Bates1996::new(
-      Some(0.05),
-      None,
-      None,
-      None,
+      Drift::Mu(0.05),
       0.0,
       0.0,
       0.04,
@@ -359,10 +340,7 @@ fn bates_with_lambda_syncs_cpoisson_and_changes_sampled_path() {
   );
 
   let want = Bates1996::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+    Drift::Mu(0.05),
     new_lambda,
     0.0,
     0.04,
@@ -455,10 +433,7 @@ fn bates_with_horizon_round_trip() {
 /// identically regardless of `Unseeded`'s actual entropy.
 fn degenerate_bates<S: SeedExt>(t: Option<f64>, seed: S) -> Bates1996<f64, SimdNormal<f64>, S> {
   Bates1996::new(
-    Some(0.05),
-    None,
-    None,
-    None,
+    Drift::Mu(0.05),
     0.0, // lambda: disables the drift's jump compensation term AND the jump arrivals themselves (single source of truth) — no jumps, ever
     0.0,
     0.0, // alpha: keeps v pinned at v0 = 0

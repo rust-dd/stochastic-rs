@@ -23,6 +23,7 @@ use stochastic_rs_stochastic::jump::merton::Merton;
 use stochastic_rs_stochastic::jump::vg::Vg;
 use stochastic_rs_stochastic::noise::fgn::Fgn;
 use stochastic_rs_stochastic::noise::gn::Gn;
+use stochastic_rs_stochastic::params::Horizon;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::bm::Bm;
 use stochastic_rs_stochastic::process::brownian_bridge::BrownianBridge;
@@ -243,7 +244,7 @@ fn clone_preserves_deterministic_path() {
   let b = a.clone();
   assert_eq!(bits(&a.sample()), bits(&b.sample()));
 
-  let a = Poisson::<f64, _>::new(2.0, Some(N), Some(1.0), Deterministic::new(42));
+  let a = Poisson::<f64, _>::new(2.0, Horizon::Events(N), Deterministic::new(42));
   let b = a.clone();
   assert_eq!(bits(&a.sample()), bits(&b.sample()));
 

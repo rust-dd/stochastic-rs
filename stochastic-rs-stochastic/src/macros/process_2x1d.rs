@@ -14,8 +14,7 @@ macro_rules! py_process_2x1d {
       seeded_f64: Option<$inner<f64, stochastic_rs_core::simd_rng::Deterministic>>,
     }
 
-    #[pyo3::prelude::pymethods]
-    impl $py_name {
+    py_process_methods!($py_name, pair, py_dispatch, {
       #[new]
       #[pyo3(signature = ($($sig)*))]
       fn new($($param: $pty,)* seed: Option<u64>, dtype: Option<&str>) -> pyo3::PyResult<Self> {
@@ -30,61 +29,7 @@ macro_rules! py_process_2x1d {
           s
         })
       }
-
-      /// Why this configuration cannot run on a device kernel, or `None`
-      /// when it can — a grid past a per-path array, a dimension past the
-      /// state slots, a coefficient that is a closure, a mode with no grid.
-      ///
-      /// The question is about the configuration, not the handle, so the
-      /// answer is the same whatever `device=` was passed, and a `device=`
-      /// that cannot be honoured samples on the host at a cost this is the
-      /// only way to see coming.
-      fn device_fallback(&self) -> Option<&'static str> {
-        use $crate::traits::ProcessExt;
-        $crate::py_dispatch!(self, |inner| inner.device_fallback())
-      }
-
-      /// Whether this configuration runs on a device kernel: the absence of
-      /// a [`device_fallback`](Self::device_fallback) reason.
-      fn device_ready(&self) -> bool {
-        self.device_fallback().is_none()
-      }
-
-      fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::PyResult<(pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>)> {
-        stochastic_rs_distributions::python::runtime_error_on_panic(|| {
-          use numpy::IntoPyArray;
-          use $crate::traits::ProcessExt;
-          use pyo3::IntoPyObjectExt;
-          $crate::py_dispatch!(self, |inner| {
-            let [a, b] = inner.sample();
-            (a.into_pyarray(py).into_py_any(py).unwrap(), b.into_pyarray(py).into_py_any(py).unwrap())
-          })
-        })
-      }
-
-      /// Same reproducibility guarantee as `py_process_1d!`'s `sample_par`
-      /// (see its doc comment) — bit-identical across rayon thread-pool
-      /// sizes for a given seed and `m`.
-      fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::PyResult<(pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>)> {
-        stochastic_rs_distributions::python::runtime_error_on_panic(|| {
-          use numpy::IntoPyArray;
-          use numpy::ndarray::Array2;
-          use $crate::traits::ProcessExt;
-          use pyo3::IntoPyObjectExt;
-          $crate::py_dispatch!(self, |inner| {
-            let samples = inner.sample_par(m);
-            let n = samples[0][0].len();
-            let mut r0 = Array2::zeros((m, n));
-            let mut r1 = Array2::zeros((m, n));
-            for (i, [a, b]) in samples.iter().enumerate() {
-              r0.row_mut(i).assign(a);
-              r1.row_mut(i).assign(b);
-            }
-            (r0.into_pyarray(py).into_py_any(py).unwrap(), r1.into_pyarray(py).into_py_any(py).unwrap())
-          })
-        })
-      }
-    }
+    });
   };
 
   ($py_name:ident, $inner:ident,
@@ -102,8 +47,7 @@ macro_rules! py_process_2x1d {
       device: $crate::python_device::Device,
     }
 
-    #[pyo3::prelude::pymethods]
-    impl $py_name {
+    py_process_methods!($py_name, pair, py_device_dispatch, {
       #[new]
       #[pyo3(signature = ($($sig)*, device=None))]
       fn new($($param: $pty,)* seed: Option<u64>, dtype: Option<&str>, device: Option<&str>) -> pyo3::PyResult<Self> {
@@ -119,61 +63,7 @@ macro_rules! py_process_2x1d {
           s
         })
       }
-
-      /// Why this configuration cannot run on a device kernel, or `None`
-      /// when it can — a grid past a per-path array, a dimension past the
-      /// state slots, a coefficient that is a closure, a mode with no grid.
-      ///
-      /// The question is about the configuration, not the handle, so the
-      /// answer is the same whatever `device=` was passed, and a `device=`
-      /// that cannot be honoured samples on the host at a cost this is the
-      /// only way to see coming.
-      fn device_fallback(&self) -> Option<&'static str> {
-        use $crate::traits::ProcessExt;
-        $crate::py_dispatch!(self, |inner| inner.device_fallback())
-      }
-
-      /// Whether this configuration runs on a device kernel: the absence of
-      /// a [`device_fallback`](Self::device_fallback) reason.
-      fn device_ready(&self) -> bool {
-        self.device_fallback().is_none()
-      }
-
-      fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::PyResult<(pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>)> {
-        stochastic_rs_distributions::python::runtime_error_on_panic(|| {
-          use numpy::IntoPyArray;
-          use $crate::traits::ProcessExt;
-          use pyo3::IntoPyObjectExt;
-          $crate::py_device_dispatch!(self, |inner| {
-            let [a, b] = inner.sample();
-            (a.into_pyarray(py).into_py_any(py).unwrap(), b.into_pyarray(py).into_py_any(py).unwrap())
-          })
-        })
-      }
-
-      /// Same reproducibility guarantee as `py_process_1d!`'s `sample_par`
-      /// (see its doc comment) — bit-identical across rayon thread-pool
-      /// sizes for a given seed and `m`.
-      fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::PyResult<(pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>)> {
-        stochastic_rs_distributions::python::runtime_error_on_panic(|| {
-          use numpy::IntoPyArray;
-          use numpy::ndarray::Array2;
-          use $crate::traits::ProcessExt;
-          use pyo3::IntoPyObjectExt;
-          $crate::py_device_dispatch!(self, |inner| {
-            let samples = inner.sample_par(m);
-            let n = samples[0][0].len();
-            let mut r0 = Array2::zeros((m, n));
-            let mut r1 = Array2::zeros((m, n));
-            for (i, [a, b]) in samples.iter().enumerate() {
-              r0.row_mut(i).assign(a);
-              r1.row_mut(i).assign(b);
-            }
-            (r0.into_pyarray(py).into_py_any(py).unwrap(), r1.into_pyarray(py).into_py_any(py).unwrap())
-          })
-        })
-      }
-    }
+    });
   };
 }
 
