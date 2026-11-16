@@ -21,6 +21,7 @@ use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::device::DeviceError;
 use crate::euler::EulerBackend;
+use crate::params::VarianceBoundary;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -48,8 +49,8 @@ pub struct Cir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub x0: Option<T>,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Enables symmetric/truncated update variant when true.
-  pub use_sym: Option<bool>,
+  /// Treatment of a negative square-root state after a step; the Feller condition is not required.
+  pub boundary: VarianceBoundary,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -61,18 +62,8 @@ pub struct Cir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// `Cir::default().with_theta(3.0).with_sigma(0.3)`. No persisted cache:
 /// `sampler()` builds its Gaussian stream fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> Cir<T, S> {
-  /// Create a new Cir process.
-  ///
-  /// The Feller condition `2·theta·mu ≥ sigma²` keeps the *continuous-time*
-  /// process strictly positive. Parameters that violate it are accepted
-  /// rather than rejected: the discretised step already keeps every
-  /// sample non-negative regardless — floored at zero by default, or
-  /// reflected about zero when [`use_sym`](Self::use_sym) is `true`,
-  /// which is the documented way to handle sub-Feller paths (matching the
-  /// same-shaped variance factor in
-  /// [`Heston`](crate::volatility::heston::Heston), which imposes no
-  /// Feller precondition at all). A violation not paired with `use_sym = Some(true)` emits a
-  /// `log::warn!`: silently biased boundary handling is what a caller needs to know; never panics.
+  /// A sub-Feller `2·theta·mu < sigma²` is accepted, since the step stays non-negative; under
+  /// [`VarianceBoundary::Floor`] it emits a `log::warn!`, as the floor biases the path there.
   pub fn new(
     theta: T,
     mu: T,
@@ -80,7 +71,7 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
     n: usize,
     x0: Option<T>,
     t: Option<T>,
-    use_sym: Option<bool>,
+    boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
     assert!(
@@ -104,12 +95,12 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
-    if T::from_usize_(2) * theta * mu < sigma.powi(2) && use_sym != Some(true) {
+    if T::from_usize_(2) * theta * mu < sigma.powi(2) && boundary != VarianceBoundary::Reflect {
       log::warn!(
         "Cir::new: Feller condition violated (2*theta*mu < sigma^2) \
-         without use_sym = Some(true); the path floors at zero on every \
-         boundary hit instead of reflecting — pass use_sym = Some(true) for \
-         the standard sub-Feller mitigation"
+         under VarianceBoundary::Floor; the path floors at zero on every \
+         boundary hit instead of reflecting — pass VarianceBoundary::Reflect \
+         for the standard sub-Feller mitigation"
       );
     }
 
@@ -120,7 +111,7 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
       n,
       x0,
       t,
-      use_sym,
+      boundary,
       seed,
       backend: Cpu,
     }
@@ -150,9 +141,9 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
     self
   }
 
-  /// Replace `use_sym`, all else unchanged.
-  pub fn with_use_sym(mut self, use_sym: Option<bool>) -> Self {
-    self.use_sym = use_sym;
+  /// Replace `boundary`, all else unchanged.
+  pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
+    self.boundary = boundary;
     self
   }
 
@@ -175,10 +166,8 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
   }
 }
 
-/// θ=2.5, μ=0.04, σ=0.2, x₀=0.04, use_sym=false — a textbook Cir
-/// parameterization; Feller condition `2θμ = 0.2 ≥ σ² = 0.04` holds. t=1,
-/// n=252 — one trading year of daily steps (this crate's `Default`
-/// convention).
+/// θ=2.5, μ=0.04, σ=0.2, x₀=0.04 under the floor, a textbook Cir with `2θμ = 0.2 ≥ σ² = 0.04`;
+/// t=1, n=252, one trading year of daily steps (this crate's `Default` convention).
 impl<T: FloatExt> Default for Cir<T, Unseeded> {
   fn default() -> Self {
     Self::new(
@@ -188,13 +177,13 @@ impl<T: FloatExt> Default for Cir<T, Unseeded> {
       252,
       Some(T::from_f64_fast(0.04)),
       Some(T::one()),
-      Some(false),
+      VarianceBoundary::Floor,
       Unseeded,
     )
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Cir<T, S> { theta, mu, sigma, n, x0, t, use_sym, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] Cir<T, S> { theta, mu, sigma, n, x0, t, boundary, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> crate::traits::Sealed for Cir<T, S, B> {}
 
@@ -215,7 +204,7 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> ProcessExt<T> for Cir<T, S, B>
       theta: self.theta,
       mu: self.mu,
       diff_scale: self.sigma,
-      use_sym: self.use_sym.unwrap_or(false),
+      boundary: self.boundary,
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
@@ -258,7 +247,7 @@ pub struct CirSampler<T: FloatExt> {
   theta: T,
   mu: T,
   diff_scale: T,
-  use_sym: bool,
+  boundary: VarianceBoundary,
   normal: Seeded<SimdNormal<T>>,
 }
 
@@ -276,9 +265,9 @@ impl<T: FloatExt> CirSampler<T> {
     let mut prev = self.x0;
     for z in tail.iter_mut() {
       let dcir = self.theta * (self.mu - prev) * self.dt + self.diff_scale * prev.abs().sqrt() * *z;
-      let next = match self.use_sym {
-        true => (prev + dcir).abs(),
-        false => (prev + dcir).max(T::zero()),
+      let next = match self.boundary {
+        VarianceBoundary::Floor => (prev + dcir).max(T::zero()),
+        VarianceBoundary::Reflect => (prev + dcir).abs(),
       };
       *z = next;
       prev = next;
@@ -303,8 +292,8 @@ impl<T: FloatExt> PathSampler<T> for CirSampler<T> {
 }
 
 py_process_1d!(PyCir, Cir,
-  sig: (theta, mu, sigma, n, x0=None, t=None, use_sym=None, seed=None, dtype=None),
-  params: (theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, use_sym: Option<bool>),
+  sig: (theta, mu, sigma, n, x0=None, t=None, boundary=None, seed=None, dtype=None),
+  params: (theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, boundary: Option<crate::python_params::PyVarianceBoundary> => crate::python_params::boundary),
   device
 );
 
@@ -314,12 +303,9 @@ mod tests {
 
   use super::*;
 
-  /// `2*theta*mu = 2*0.5*0.1 = 0.1 < sigma^2 = 1.0` — Feller condition
-  /// violated. `use_sym = Some(true)` is the documented mitigation:
-  /// construction and sampling must succeed without panicking, and the
-  /// path must stay finite.
+  /// `2·theta·mu = 0.1 < sigma² = 1.0` violates Feller; the reflected path must still build and stay finite.
   #[test]
-  fn cir_accepts_sub_feller_with_use_sym() {
+  fn cir_accepts_sub_feller_under_reflection() {
     let cir = Cir::<f64, _>::new(
       0.5,
       0.1,
@@ -327,21 +313,20 @@ mod tests {
       256,
       Some(0.1),
       Some(1.0),
-      Some(true),
+      VarianceBoundary::Reflect,
       Deterministic::new(7),
     );
     let path = cir.sample();
     assert_eq!(path.len(), 256);
     assert!(
       path.iter().all(|x| x.is_finite()),
-      "sub-Feller Cir path must stay finite under use_sym = Some(true)"
+      "sub-Feller Cir path must stay finite under VarianceBoundary::Reflect"
     );
   }
 
-  /// The default (floor-at-zero) scheme must also accept sub-Feller
-  /// parameters without panicking — only the diagnostic warning differs.
+  /// The floored step accepts sub-Feller parameters too; only the diagnostic warning differs.
   #[test]
-  fn cir_accepts_sub_feller_without_use_sym() {
+  fn cir_accepts_sub_feller_under_the_floor() {
     let cir = Cir::<f64, _>::new(
       0.5,
       0.1,
@@ -349,7 +334,7 @@ mod tests {
       256,
       Some(0.1),
       Some(1.0),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(7),
     );
     let path = cir.sample();

@@ -11,6 +11,7 @@ use stochastic_rs_stochastic::diffusion::fou::Fou;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
 use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::cfbms::Cfbms;
 
 use super::common::jump_law;
@@ -53,7 +54,7 @@ fn fcir_cache_setters_match_fresh_construction() {
       n,
       Some(0.04),
       t,
-      Some(false),
+      VarianceBoundary::Floor,
       seed(7),
     )
   };

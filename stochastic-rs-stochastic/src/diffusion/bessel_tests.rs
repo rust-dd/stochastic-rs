@@ -16,8 +16,14 @@ fn besq_mean_matches_closed_form() {
   let best_rel_err = [2718u64, 999, 42]
     .into_iter()
     .map(|seed| {
-      let besq =
-        SquaredBessel::<f64, _>::new(delta, n, Some(x0), Some(t), None, Deterministic::new(seed));
+      let besq = SquaredBessel::<f64, _>::new(
+        delta,
+        n,
+        Some(x0),
+        Some(t),
+        VarianceBoundary::Floor,
+        Deterministic::new(seed),
+      );
       let mean = besq
         .sample_par(paths)
         .iter()
@@ -34,23 +40,22 @@ fn besq_mean_matches_closed_form() {
   );
 }
 
-/// δ=1 is sub-boundary (δ < 2): the discretized path must stay
-/// non-negative and finite under both `use_sym` branches.
+/// δ = 1 < 2 is sub-boundary: the path must stay non-negative and finite under either boundary.
 #[test]
 fn besq_stays_nonnegative() {
-  for use_sym in [None, Some(true)] {
+  for boundary in [VarianceBoundary::Floor, VarianceBoundary::Reflect] {
     let besq = SquaredBessel::<f64, _>::new(
       1.0,
       500,
       Some(0.5),
       Some(1.0),
-      use_sym,
+      boundary,
       Deterministic::new(2718),
     );
     let path = besq.sample();
     assert!(
       path.iter().all(|x| x.is_finite() && *x >= 0.0),
-      "use_sym = {use_sym:?}"
+      "boundary = {boundary:?}"
     );
   }
 }
@@ -67,8 +72,14 @@ fn bessel_squared_matches_besq_mean() {
   let best_rel_err = [2718u64, 999, 42]
     .into_iter()
     .map(|seed| {
-      let besq =
-        SquaredBessel::<f64, _>::new(delta, n, Some(x0), Some(t), None, Deterministic::new(seed));
+      let besq = SquaredBessel::<f64, _>::new(
+        delta,
+        n,
+        Some(x0),
+        Some(t),
+        VarianceBoundary::Floor,
+        Deterministic::new(seed),
+      );
       let besq_mean = besq
         .sample_par(paths)
         .iter()
@@ -81,7 +92,7 @@ fn bessel_squared_matches_besq_mean() {
         n,
         Some(x0.sqrt()),
         Some(t),
-        None,
+        VarianceBoundary::Floor,
         Deterministic::new(seed),
       );
       let bes_squared_mean = bes
@@ -117,7 +128,14 @@ fn bessel_mean_matches_chi_distribution_identity() {
   let best_rel_err = [2718u64, 999, 42]
     .into_iter()
     .map(|seed| {
-      let bes = Bessel::<f64, _>::new(delta, n, Some(0.0), Some(t), None, Deterministic::new(seed));
+      let bes = Bessel::<f64, _>::new(
+        delta,
+        n,
+        Some(0.0),
+        Some(t),
+        VarianceBoundary::Floor,
+        Deterministic::new(seed),
+      );
       let mean = bes
         .sample_par(paths)
         .iter()
@@ -137,21 +155,47 @@ fn bessel_mean_matches_chi_distribution_identity() {
 /// Same seed twice must be bit-identical, for both process types.
 #[test]
 fn besq_is_deterministic() {
-  let besq1 =
-    SquaredBessel::<f64, _>::new(3.0, 50, Some(1.0), Some(1.0), None, Deterministic::new(42))
-      .sample();
-  let besq2 =
-    SquaredBessel::<f64, _>::new(3.0, 50, Some(1.0), Some(1.0), None, Deterministic::new(42))
-      .sample();
+  let besq1 = SquaredBessel::<f64, _>::new(
+    3.0,
+    50,
+    Some(1.0),
+    Some(1.0),
+    VarianceBoundary::Floor,
+    Deterministic::new(42),
+  )
+  .sample();
+  let besq2 = SquaredBessel::<f64, _>::new(
+    3.0,
+    50,
+    Some(1.0),
+    Some(1.0),
+    VarianceBoundary::Floor,
+    Deterministic::new(42),
+  )
+  .sample();
   assert_eq!(besq1, besq2);
 }
 
 /// Same seed twice must be bit-identical, for both process types.
 #[test]
 fn bessel_is_deterministic() {
-  let bes1 =
-    Bessel::<f64, _>::new(3.0, 50, Some(1.0), Some(1.0), None, Deterministic::new(42)).sample();
-  let bes2 =
-    Bessel::<f64, _>::new(3.0, 50, Some(1.0), Some(1.0), None, Deterministic::new(42)).sample();
+  let bes1 = Bessel::<f64, _>::new(
+    3.0,
+    50,
+    Some(1.0),
+    Some(1.0),
+    VarianceBoundary::Floor,
+    Deterministic::new(42),
+  )
+  .sample();
+  let bes2 = Bessel::<f64, _>::new(
+    3.0,
+    50,
+    Some(1.0),
+    Some(1.0),
+    VarianceBoundary::Floor,
+    Deterministic::new(42),
+  )
+  .sample();
   assert_eq!(bes1, bes2);
 }

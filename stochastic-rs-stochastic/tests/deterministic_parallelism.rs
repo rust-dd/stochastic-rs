@@ -46,8 +46,10 @@ use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::jump::cgmy::Cgmy;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::HestonPow;
+use stochastic_rs_stochastic::volatility::heston::Euler;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 use stochastic_rs_stochastic::volatility::sabr::Sabr;
 use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
@@ -69,8 +71,8 @@ fn gbm(seed: u64) -> Gbm<f64, Deterministic> {
 /// read `model.seed.derive()` fresh per path, from inside the (potentially
 /// parallel) closure — advancing `self.seed` at construction alone cannot
 /// fix a process that never advances anything at construction.
-fn heston(seed: u64) -> Heston<f64, Deterministic> {
-  Heston::<f64, _>::new(
+fn heston(seed: u64) -> Heston<f64, Euler, Deterministic> {
+  Heston::new(
     Some(1.0),
     Some(0.04),
     2.0,
@@ -81,7 +83,7 @@ fn heston(seed: u64) -> Heston<f64, Deterministic> {
     32,
     Some(1.0),
     HestonPow::Sqrt,
-    None,
+    VarianceBoundary::Floor,
     Deterministic::new(seed),
   )
 }

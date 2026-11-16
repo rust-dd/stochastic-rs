@@ -1,3 +1,20 @@
+/// One constructor argument of a class: through the `=> map` the class names for it, else through
+/// the precision shims.
+#[cfg(feature = "python")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! py_arg {
+  (f32, $param:ident) => {
+    stochastic_rs_core::python::IntoF32::into_f32($param)
+  };
+  (f64, $param:ident) => {
+    stochastic_rs_core::python::IntoF64::into_f64($param)
+  };
+  ($precision:ident, $param:ident, $map:path) => {
+    $map($param)
+  };
+}
+
 #[cfg(feature = "python")]
 #[macro_export]
 macro_rules! py_dispatch_f64 {

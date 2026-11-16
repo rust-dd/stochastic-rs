@@ -14,7 +14,7 @@ pub struct PyBatesSvj {
 #[pyo3::prelude::pymethods]
 impl PyBatesSvj {
   #[new]
-  #[pyo3(signature = (lambda_, nu, omega, alpha, beta, sigma, rho, n, mu=None, b=None, r=None, r_f=None, s0=None, v0=None, t=None, use_sym=None, seed=None, dtype=None, device=None))]
+  #[pyo3(signature = (lambda_, nu, omega, alpha, beta, sigma, rho, n, mu=None, b=None, r=None, r_f=None, s0=None, v0=None, t=None, boundary=None, seed=None, dtype=None, device=None))]
   fn new(
     lambda_: f64,
     nu: f64,
@@ -31,11 +31,12 @@ impl PyBatesSvj {
     s0: Option<f64>,
     v0: Option<f64>,
     t: Option<f64>,
-    use_sym: Option<bool>,
+    boundary: Option<crate::python_params::PyVarianceBoundary>,
     seed: Option<u64>,
     dtype: Option<&str>,
     device: Option<&str>,
   ) -> pyo3::PyResult<Self> {
+    let boundary = crate::python_params::boundary(boundary);
     stochastic_rs_distributions::python::value_error_on_panic(|| -> pyo3::PyResult<Self> {
       let device = crate::python_device::Device::parse(device, dtype.unwrap_or("f64"))?;
       let mut s = Self {
@@ -63,7 +64,7 @@ impl PyBatesSvj {
             s0.map(|v| v as f32),
             v0.map(|v| v as f32),
             t.map(|v| v as f32),
-            use_sym,
+            boundary,
             crate::python_device::SharedSeed::new(sd),
           ));
         }
@@ -84,7 +85,7 @@ impl PyBatesSvj {
             s0,
             v0,
             t,
-            use_sym,
+            boundary,
             crate::python_device::SharedSeed::new(sd),
           ));
         }
@@ -105,13 +106,13 @@ impl PyBatesSvj {
             s0.map(|v| v as f32),
             v0.map(|v| v as f32),
             t.map(|v| v as f32),
-            use_sym,
+            boundary,
             Unseeded,
           ));
         }
         (None, _) => {
           s.inner_f64 = Some(BatesSvj::new(
-            mu, b, r, r_f, lambda_, nu, omega, alpha, beta, sigma, rho, n, s0, v0, t, use_sym,
+            mu, b, r, r_f, lambda_, nu, omega, alpha, beta, sigma, rho, n, s0, v0, t, boundary,
             Unseeded,
           ));
         }

@@ -18,6 +18,7 @@ use stochastic_rs_stochastic::interest::fractional_vasicek::FVasicek;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
 use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::cfbms::Cfbms;
 use stochastic_rs_stochastic::process::fbm::Fbm;
 use stochastic_rs_stochastic::process::volterra::Volterra;
@@ -108,7 +109,7 @@ fn fcir_stays_nonnegative_and_agrees() {
       N,
       Some(0.04),
       Some(1.0),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(9),
     )
   };

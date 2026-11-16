@@ -412,12 +412,13 @@ that line if your new process is material.
   reference.
 - `Vasicek` (`interest/vasicek.rs`) — note the directory: mean-reverting
   short-rate models live under `interest/`, not `diffusion/`.
-- `Cir` (`diffusion/cir.rs`) — CIR; carries an extra `use_sym` option.
+- `Cir` (`diffusion/cir.rs`) — CIR; carries an extra `boundary: VarianceBoundary`
+  option (`params.rs`), floored or reflected at zero.
 - `Fou` (`diffusion/fou.rs`) — fractional OU; adds a third type
   parameter `B` (backend, defaulting to `Cpu`) and composes an `Fgn`
   driver. See `add-fractional-process`.
 - `Heston` (`volatility/heston.rs`) — `Output = [Array1<T>; 2]`, and a
-  third type parameter `Sch: HestonScheme = Euler` selecting the
+  second type parameter `Sch: HestonScheme = Euler`, before the seed, selecting the
   discretisation at compile time (`HestonScheme` is sealed: a new scheme
   is added in `heston/scheme.rs`, nowhere else).
 - `CirPlusPlus` (`interest/cir_pp.rs`) — the one process that overrides

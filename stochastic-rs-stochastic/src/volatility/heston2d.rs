@@ -29,6 +29,7 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
+use crate::params::VarianceBoundary;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -62,8 +63,8 @@ pub struct Heston2D<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Positive finite time horizon (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Reflect negative variance to its absolute value (true) or floor at zero (false / None).
-  pub use_sym: Option<bool>,
+  /// Treatment of a negative square-root state after a step; the Feller condition is not required.
+  pub boundary: VarianceBoundary,
   /// Seed strategy.
   pub seed: S,
   /// Cholesky factor `L` of the 4×4 correlation matrix, stored as
@@ -193,18 +194,15 @@ fn validate_params<T: FloatExt>(
   }
 }
 
-/// Emits a `log::warn!` for each asset whose variance factor violates the Feller condition
-/// `2·kappa·theta ≥ sigma²` without `use_sym = Some(true)`. Mirrors
-/// [`crate::diffusion::cir::Cir::new`]: sub-Feller parameters are
-/// accepted, not rejected, since the Euler step already floors (or
-/// reflects, under `use_sym`) each variance factor at zero regardless.
+/// A `log::warn!` per asset whose variance violates Feller's `2·kappa·theta ≥ sigma²` under
+/// [`VarianceBoundary::Floor`], as [`crate::diffusion::cir::Cir::new`] warns.
 fn warn_on_feller_violation<T: FloatExt>(
   kappa: &[T; 2],
   theta: &[T; 2],
   sigma: &[T; 2],
-  use_sym: Option<bool>,
+  boundary: VarianceBoundary,
 ) {
-  if use_sym == Some(true) {
+  if boundary == VarianceBoundary::Reflect {
     return;
   }
   for i in 0..2 {
@@ -212,9 +210,9 @@ fn warn_on_feller_violation<T: FloatExt>(
     if feller_lhs < sigma[i] * sigma[i] {
       log::warn!(
         "Heston2D::new: asset {i} does not satisfy the Feller \
-         condition (2*kappa*theta < sigma^2) and use_sym is not set to \
-         true; its variance floors at zero on every boundary hit instead \
-         of reflecting — pass use_sym = Some(true) for the standard \
+         condition (2*kappa*theta < sigma^2) under VarianceBoundary::Floor; \
+         its variance floors at zero on every boundary hit instead \
+         of reflecting — pass VarianceBoundary::Reflect for the standard \
          sub-Feller mitigation"
       );
     }
@@ -233,11 +231,11 @@ impl<T: FloatExt, S: SeedExt> Heston2D<T, S> {
     rho: [T; 6],
     n: usize,
     t: Option<T>,
-    use_sym: Option<bool>,
+    boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
     validate_params(&x0, &v0, &mu, &theta, &kappa, &sigma, &rho, n, t);
-    warn_on_feller_violation(&kappa, &theta, &sigma, use_sym);
+    warn_on_feller_violation(&kappa, &theta, &sigma, boundary);
     let chol = cholesky_4x4::<T>(rho);
     Self {
       backend: Cpu,
@@ -250,7 +248,7 @@ impl<T: FloatExt, S: SeedExt> Heston2D<T, S> {
       rho,
       n,
       t,
-      use_sym,
+      boundary,
       seed,
       chol,
     }
@@ -267,8 +265,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let [l11, l21, l22, l31, l32, l33, l41, l42, l43, l44] = self.chol;
-    if self.use_sym.unwrap_or(false) {
-      crate::euler::EulerSpec::TwoAssetHestonReflected {
+    match self.boundary {
+      VarianceBoundary::Floor => crate::euler::EulerSpec::TwoAssetHeston {
         mu1: self.mu[0],
         mu2: self.mu[1],
         kappa1: self.kappa[0],
@@ -287,9 +285,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
         l42,
         l43,
         l44,
-      }
-    } else {
-      crate::euler::EulerSpec::TwoAssetHeston {
+      },
+      VarianceBoundary::Reflect => crate::euler::EulerSpec::TwoAssetHestonReflected {
         mu1: self.mu[0],
         mu2: self.mu[1],
         kappa1: self.kappa[0],
@@ -308,7 +305,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
         l42,
         l43,
         l44,
-      }
+      },
     }
   }
 
@@ -340,7 +337,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Heston2D<T, S> { x0, v0, mu, theta, kappa, sigma, rho, n, t, use_sym, seed, chol } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] Heston2D<T, S> { x0, v0, mu, theta, kappa, sigma, rho, n, t, boundary, seed, chol } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for Heston2D<T, S, B>
@@ -382,7 +379,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       sigma: self.sigma,
       chol: self.chol,
       dt,
-      use_sym: self.use_sym.unwrap_or(false),
+      boundary: self.boundary,
       normals,
     }
   }
@@ -425,7 +422,7 @@ pub struct Heston2DSampler<T: FloatExt> {
   sigma: [T; 2],
   chol: [T; 10],
   dt: T,
-  use_sym: bool,
+  boundary: VarianceBoundary,
   normals: [Seeded<SimdNormal<T>>; 4],
 }
 
@@ -454,7 +451,6 @@ impl<T: FloatExt> Heston2DSampler<T> {
 
     let dt = self.dt;
     let half = T::from_f64_fast(0.5);
-    let use_sym = self.use_sym;
     for i in 1..self.n {
       let dz1 = l11 * e1[i - 1];
       let dz2 = l21 * e1[i - 1] + l22 * e2[i - 1];
@@ -469,15 +465,12 @@ impl<T: FloatExt> Heston2DSampler<T> {
       let dv2 =
         self.kappa[1] * (self.theta[1] - v2_prev) * dt + self.sigma[1] * v2_prev.sqrt() * dz2;
 
-      v1[i] = if use_sym {
-        (v1[i - 1] + dv1).abs()
-      } else {
-        (v1[i - 1] + dv1).max(T::zero())
-      };
-      v2[i] = if use_sym {
-        (v2[i - 1] + dv2).abs()
-      } else {
-        (v2[i - 1] + dv2).max(T::zero())
+      (v1[i], v2[i]) = match self.boundary {
+        VarianceBoundary::Floor => (
+          (v1[i - 1] + dv1).max(T::zero()),
+          (v2[i - 1] + dv2).max(T::zero()),
+        ),
+        VarianceBoundary::Reflect => ((v1[i - 1] + dv1).abs(), (v2[i - 1] + dv2).abs()),
       };
 
       x1[i] = x1[i - 1] + (self.mu[0] - half * v1_prev) * dt + v1_prev.sqrt() * dw1;

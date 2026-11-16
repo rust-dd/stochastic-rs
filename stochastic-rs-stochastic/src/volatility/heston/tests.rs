@@ -1,3 +1,5 @@
+use stochastic_rs_core::simd_rng::Deterministic;
+
 use super::*;
 use crate::traits::ProcessExt;
 
@@ -17,7 +19,7 @@ fn negative_initial_variance_panics() {
     8,
     Some(1.0),
     HestonPow::Sqrt,
-    Some(false),
+    VarianceBoundary::Floor,
     Unseeded,
   );
 }
@@ -35,7 +37,7 @@ fn variance_path_stays_non_negative() {
     128,
     Some(1.0),
     HestonPow::Sqrt,
-    Some(false),
+    VarianceBoundary::Floor,
     Unseeded,
   );
   let [_s, v] = p.sample();
@@ -50,7 +52,6 @@ fn variance_path_stays_non_negative() {
 /// Andersen has an optional exact correction not applied here).
 #[test]
 fn qe_variance_mean_and_asset_martingale() {
-  use stochastic_rs_core::simd_rng::Deterministic;
   let (s0, v0, kappa, theta, sigma, rho, mu) = (100.0_f64, 0.04, 2.0, 0.04, 0.5, -0.7, 0.0);
   let (n, t, m) = (64usize, 1.0_f64, 30_000usize);
   let model = Heston::new(
@@ -64,7 +65,7 @@ fn qe_variance_mean_and_asset_martingale() {
     n,
     Some(t),
     HestonPow::Sqrt,
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(20_240_601),
   )
   .qe();
@@ -115,14 +116,14 @@ fn qe_rejects_three_halves() {
     16,
     Some(1.0),
     HestonPow::ThreeHalves,
-    Some(false),
+    VarianceBoundary::Floor,
     Unseeded,
   )
   .qe()
   .sample();
 }
 
-fn qe_switch(kappa: f64, sigma: f64, s0: f64) -> Heston<f64, Unseeded, AndersenQe> {
+fn qe_switch(kappa: f64, sigma: f64, s0: f64) -> Heston<f64, AndersenQe> {
   Heston::new(
     Some(s0),
     Some(0.04),
@@ -134,7 +135,7 @@ fn qe_switch(kappa: f64, sigma: f64, s0: f64) -> Heston<f64, Unseeded, AndersenQ
     16,
     Some(1.0),
     HestonPow::Sqrt,
-    Some(false),
+    VarianceBoundary::Floor,
     Unseeded,
   )
   .qe()
@@ -162,4 +163,43 @@ fn qe_switch_rejects_a_non_positive_spot() {
 #[should_panic(expected = "sigma must satisfy `sigma > T::zero()`, got sigma = 0.0")]
 fn qe_rechecks_its_parameters_where_the_scheme_runs() {
   let _ = qe_switch(2.0, 0.5, 100.0).with_sigma(0.0).sample();
+}
+
+#[test]
+fn the_boundary_selects_the_step() {
+  let make = |b| {
+    Heston::<f64, Euler, Deterministic>::new(
+      Some(100.0),
+      Some(0.0),
+      2.0,
+      0.04,
+      2.0,
+      -0.7,
+      0.03,
+      65,
+      Some(1.0),
+      HestonPow::Sqrt,
+      b,
+      Deterministic::new(3),
+    )
+    .sample()
+  };
+  let [_, floor] = make(VarianceBoundary::Floor);
+  let [_, reflect] = make(VarianceBoundary::Reflect);
+  assert!(floor.iter().all(|v| *v >= 0.0) && reflect.iter().all(|v| *v >= 0.0));
+  assert_ne!(
+    floor, reflect,
+    "v0 = 0 under a vol-of-vol of 2 crosses zero, where the two steps part"
+  );
+}
+
+/// A generic re-tag type-checks only if `qe` keeps the handle it was given.
+#[test]
+fn qe_keeps_the_backend_handle() {
+  fn retag<B: crate::euler::EulerBackend<f64>>(
+    h: Heston<f64, Euler, Unseeded, B>,
+  ) -> Heston<f64, AndersenQe, Unseeded, B> {
+    h.qe()
+  }
+  assert_eq!(retag(Heston::default().on::<Cpu>()).backend(), &Cpu);
 }

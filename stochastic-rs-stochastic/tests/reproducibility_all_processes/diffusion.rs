@@ -40,6 +40,7 @@ use stochastic_rs_stochastic::diffusion::regime_switching::RegimeSwitchingDiffus
 use stochastic_rs_stochastic::diffusion::three_half::ThreeHalf;
 use stochastic_rs_stochastic::diffusion::verhulst::Verhulst;
 use stochastic_rs_stochastic::diffusion::wishart::Wishart;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use crate::common::N;
 use crate::common::guard;
@@ -64,7 +65,7 @@ guard!(squared_bessel, "SquaredBessel", |s| SquaredBessel::new(
   N,
   Some(1.0),
   Some(1.0),
-  None,
+  VarianceBoundary::Floor,
   s
 ));
 
@@ -73,7 +74,7 @@ guard!(bessel, "Bessel", |s| Bessel::new(
   N,
   Some(1.0),
   Some(1.0),
-  None,
+  VarianceBoundary::Floor,
   s
 ));
 
@@ -106,7 +107,7 @@ guard!(cir, "Cir", |s| Cir::new(
   N,
   Some(0.04),
   Some(1.0),
-  Some(false),
+  VarianceBoundary::Floor,
   s
 ));
 
@@ -133,7 +134,7 @@ guard!(fcir, "Fcir", |s| Fcir::new(
   N,
   Some(0.04),
   Some(1.0),
-  Some(false),
+  VarianceBoundary::Floor,
   s
 ));
 
@@ -144,7 +145,7 @@ guard!(feller_logistic, "FellerLogistic", |s| FellerLogistic::new(
   N,
   Some(0.04),
   Some(1.0),
-  Some(false),
+  VarianceBoundary::Floor,
   s
 ));
 
@@ -403,7 +404,7 @@ guard!(verhulst, "Verhulst", |s| Verhulst::new(
   N,
   Some(0.5),
   Some(1.0),
-  Some(false),
+  false,
   s
 ));
 guard!(multi_gbm, "MultiGbm", |s| MultiGbm::new(

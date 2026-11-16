@@ -10,10 +10,12 @@ use stochastic_rs::stochastic::diffusion::ou::Ou;
 use stochastic_rs::stochastic::jump::bates::Bates1996;
 use stochastic_rs::stochastic::jump::merton::Merton;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
+use stochastic_rs::stochastic::params::VarianceBoundary;
 use stochastic_rs::stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs::stochastic::process::poisson::Poisson;
 use stochastic_rs::stochastic::traits::PathSampler;
 use stochastic_rs::stochastic::volatility::HestonPow;
+use stochastic_rs::stochastic::volatility::heston::Euler;
 use stochastic_rs::stochastic::volatility::heston::Heston;
 use stochastic_rs::stochastic::volatility::sabr::Sabr;
 use stochastic_rs::traits::ProcessExt;
@@ -87,7 +89,7 @@ fn golden_ou_stream() {
 
 #[test]
 fn golden_heston_streams() {
-  let heston = Heston::<f64, _>::new(
+  let heston = Heston::<f64, Euler, _>::new(
     Some(1.0),
     Some(0.04),
     2.0,
@@ -98,7 +100,7 @@ fn golden_heston_streams() {
     N,
     Some(1.0),
     HestonPow::Sqrt,
-    None,
+    VarianceBoundary::Floor,
     Deterministic::new(42),
   );
   let [s, v] = heston.sample();
@@ -302,7 +304,7 @@ fn golden_bates_streams() {
     Some(100.0),
     Some(0.04),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(42),
   );
   let [s, v] = bates.sample();
@@ -352,7 +354,7 @@ fn golden_bates_streams() {
     Some(100.0),
     Some(0.04),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(42),
   );
   let [s_zero, _] = zero_lambda.sample();

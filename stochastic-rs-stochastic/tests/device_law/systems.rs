@@ -17,6 +17,7 @@ use stochastic_rs_stochastic::interest::duffie_kan::DuffieKan;
 use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
 use stochastic_rs_stochastic::interest::hull_white_2f::HullWhite2F;
 use stochastic_rs_stochastic::jump::bates::Bates1996;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::cbms::Cbms;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::HestonPow;
@@ -24,6 +25,7 @@ use stochastic_rs_stochastic::volatility::bates_svj::BatesSvj;
 use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
 use stochastic_rs_stochastic::volatility::bns::Bns;
 use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
+use stochastic_rs_stochastic::volatility::heston::Euler;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 use stochastic_rs_stochastic::volatility::heston_log::HestonLog;
 use stochastic_rs_stochastic::volatility::heston2d::Heston2D;
@@ -55,7 +57,7 @@ fn terminal_mean(paths: &[[Array1<f32>; 2]], component: usize) -> f64 {
 #[test]
 fn heston_agrees_with_the_cpu_law() {
   let build = || {
-    Heston::<f32, _>::new(
+    Heston::<f32, Euler, _>::new(
       Some(100.0),
       Some(0.04),
       2.0,
@@ -66,7 +68,7 @@ fn heston_agrees_with_the_cpu_law() {
       253,
       Some(1.0),
       HestonPow::Sqrt,
-      Some(false),
+      VarianceBoundary::Floor,
       Deterministic::new(17),
     )
   };
@@ -102,7 +104,7 @@ fn heston_agrees_with_the_cpu_law() {
 #[test]
 fn reflected_heston_agrees_with_the_cpu_law() {
   let build = || {
-    Heston::<f32, _>::new(
+    Heston::<f32, Euler, _>::new(
       Some(100.0),
       Some(0.04),
       2.0,
@@ -113,7 +115,7 @@ fn reflected_heston_agrees_with_the_cpu_law() {
       253,
       Some(1.0),
       HestonPow::Sqrt,
-      Some(true),
+      VarianceBoundary::Reflect,
       Deterministic::new(17),
     )
   };
@@ -262,7 +264,7 @@ fn log_heston_agrees_with_the_cpu_law() {
       Some(100.0),
       Some(0.04),
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Deterministic::new(29),
     )
   };
@@ -306,7 +308,7 @@ fn double_heston_agrees_with_the_cpu_law() {
       0.0,
       253,
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Deterministic::new(31),
     )
   };
@@ -484,7 +486,7 @@ fn two_asset_heston_agrees_with_the_cpu_law() {
       [-0.6, 0.2, 0.1, -0.2, 0.3, 0.15],
       253,
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Deterministic::new(83),
     )
   };
@@ -533,7 +535,7 @@ fn bates_agrees_with_the_cpu_law() {
       Some(100.0),
       Some(0.04),
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Deterministic::new(97),
     )
   };
@@ -567,7 +569,7 @@ fn bates_agrees_with_the_cpu_law() {
 #[test]
 fn andersen_qe_heston_agrees_with_the_cpu_law() {
   let build = || {
-    Heston::<f32, _>::new(
+    Heston::<f32, Euler, _>::new(
       Some(100.0),
       Some(0.04),
       2.0,
@@ -578,7 +580,7 @@ fn andersen_qe_heston_agrees_with_the_cpu_law() {
       253,
       Some(1.0),
       HestonPow::Sqrt,
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(101),
     )
     .qe()
@@ -627,7 +629,7 @@ fn kou_jump_heston_agrees_with_the_cpu_law() {
       253,
       Some(100.0),
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Deterministic::new(131),
     )
   };
@@ -1082,7 +1084,7 @@ fn regime_switching_wider_than_four_regimes_still_samples() {
 /// draw as a product law rather than an aggregated sum.
 #[test]
 fn bates_1996_agrees_with_the_cpu_law() {
-  for reflected in [false, true] {
+  for boundary in [VarianceBoundary::Floor, VarianceBoundary::Reflect] {
     let build = || {
       Bates1996::<f32, _, _>::new(
         Some(0.02),
@@ -1100,7 +1102,7 @@ fn bates_1996_agrees_with_the_cpu_law() {
         Some(100.0),
         Some(0.04),
         Some(1.0),
-        Some(reflected),
+        boundary,
         Deterministic::new(97),
       )
     };
@@ -1108,7 +1110,7 @@ fn bates_1996_agrees_with_the_cpu_law() {
     let device = build().on::<Device>().sample_par(PATHS);
     assert!(
       device.iter().all(|p| p[1].iter().all(|&v| v >= 0.0)),
-      "the variance went negative (reflected: {reflected})"
+      "the variance went negative (boundary: {boundary:?})"
     );
     let host = build().sample_par(PATHS);
     agrees(
@@ -1153,7 +1155,10 @@ fn bates_1996_reflection_moves_the_boundary() {
     paths.iter().filter(|p| p[1][252] < 1e-4).count() as f64 / paths.len() as f64
   };
   let mut shares = [0.0f64; 2];
-  for (k, reflected) in [false, true].into_iter().enumerate() {
+  for (k, boundary) in [VarianceBoundary::Floor, VarianceBoundary::Reflect]
+    .into_iter()
+    .enumerate()
+  {
     let build = || {
       Bates1996::<f32, _, _>::new(
         Some(0.02),
@@ -1171,7 +1176,7 @@ fn bates_1996_reflection_moves_the_boundary() {
         Some(100.0),
         Some(0.04),
         Some(1.0),
-        Some(reflected),
+        boundary,
         Deterministic::new(101),
       )
     };
@@ -1181,7 +1186,7 @@ fn bates_1996_reflection_moves_the_boundary() {
     let (h, d) = (share_at_zero(&host), share_at_zero(&device));
     assert!(
       (h - d).abs() < 0.03,
-      "Bates 1996 share of variances at zero (reflected: {reflected}): host {h}, device {d}"
+      "Bates 1996 share of variances at zero (boundary: {boundary:?}): host {h}, device {d}"
     );
     shares[k] = d;
   }
@@ -1216,7 +1221,7 @@ fn bates_1996_compounds_several_jumps_a_step() {
       Some(100.0),
       Some(0.04),
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Deterministic::new(103),
     )
   };

@@ -16,6 +16,7 @@ use stochastic_rs_stochastic::diffusion::jacobi::Jacobi;
 use stochastic_rs_stochastic::diffusion::kimura::Kimura;
 use stochastic_rs_stochastic::diffusion::pearson::Pearson;
 use stochastic_rs_stochastic::diffusion::verhulst::Verhulst;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 use super::common::Device;
@@ -35,7 +36,7 @@ fn cir_stays_nonnegative_and_agrees() {
       253,
       Some(0.04),
       Some(1.0),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(3),
     )
   };
@@ -97,7 +98,7 @@ fn verhulst_honours_its_carrying_capacity() {
       253,
       Some(0.5),
       Some(1.0),
-      Some(true),
+      true,
       Deterministic::new(3),
     )
   };
@@ -121,7 +122,7 @@ fn unclamped_verhulst_agrees_with_the_cpu_law() {
       253,
       Some(0.5),
       Some(1.0),
-      Some(false),
+      false,
       Deterministic::new(3),
     )
   };
@@ -145,7 +146,7 @@ fn feller_logistic_stays_nonnegative() {
       253,
       Some(0.5),
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Deterministic::new(3),
     )
   };
@@ -184,8 +185,16 @@ fn feller_root_agrees_with_the_cpu_law() {
 
 #[test]
 fn squared_bessel_stays_nonnegative() {
-  let build =
-    || SquaredBessel::<f32, _>::new(3.0, 253, Some(1.0), Some(1.0), None, Deterministic::new(3));
+  let build = || {
+    SquaredBessel::<f32, _>::new(
+      3.0,
+      253,
+      Some(1.0),
+      Some(1.0),
+      VarianceBoundary::Floor,
+      Deterministic::new(3),
+    )
+  };
   let device = build().on::<Device>().sample_par(M);
   within(&device, 0.0, f32::INFINITY, "squared Bessel");
   agrees(
@@ -200,7 +209,16 @@ fn squared_bessel_stays_nonnegative() {
 /// root, so a device path is non-negative for the same reason the host's is.
 #[test]
 fn bessel_stays_nonnegative() {
-  let build = || Bessel::<f32, _>::new(3.0, 253, Some(1.0), Some(1.0), None, Deterministic::new(3));
+  let build = || {
+    Bessel::<f32, _>::new(
+      3.0,
+      253,
+      Some(1.0),
+      Some(1.0),
+      VarianceBoundary::Floor,
+      Deterministic::new(3),
+    )
+  };
   let device = build().on::<Device>().sample_par(M);
   within(&device, 0.0, f32::INFINITY, "Bessel");
   agrees(

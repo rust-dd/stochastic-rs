@@ -29,6 +29,7 @@ use stochastic_rs_stochastic::interest::hull_white_2f::HullWhite2F;
 use stochastic_rs_stochastic::interest::lmm::Lmm;
 use stochastic_rs_stochastic::interest::vasicek::Vasicek;
 use stochastic_rs_stochastic::interest::wu_zhang::WuZhangD;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use crate::common::N;
 use crate::common::fn1d_a;
@@ -87,7 +88,7 @@ guard!(cir_2f, "Cir2F", |s: Deterministic| Cir2F::new(
     N,
     Some(0.03),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(7)
   ),
   Cir::new(
@@ -97,7 +98,7 @@ guard!(cir_2f, "Cir2F", |s: Deterministic| Cir2F::new(
     N,
     Some(0.02),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(8)
   ),
   fn1d_a as fn(f64) -> f64,
@@ -112,7 +113,7 @@ guard!(cir_plus_plus, "CirPlusPlus", |s| CirPlusPlus::new(
   N,
   Some(0.03),
   Some(1.0),
-  Some(false),
+  VarianceBoundary::Floor,
   s
 ));
 

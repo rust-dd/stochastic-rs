@@ -17,6 +17,7 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
 
@@ -40,7 +41,7 @@ fn dh_base_seeded<S: SeedExt>(seed: S) -> DoubleHeston<f64, S> {
     0.05,
     128,
     Some(1.0),
-    Some(true),
+    VarianceBoundary::Reflect,
     seed,
   )
 }
@@ -65,7 +66,7 @@ struct DhFields {
   mu: f64,
   n: usize,
   t: Option<f64>,
-  use_sym: Option<bool>,
+  boundary: VarianceBoundary,
 }
 
 fn dh_fields<S: SeedExt>(x: &DoubleHeston<f64, S>) -> DhFields {
@@ -84,7 +85,7 @@ fn dh_fields<S: SeedExt>(x: &DoubleHeston<f64, S>) -> DhFields {
     mu: x.mu,
     n: x.n,
     t: x.t,
-    use_sym: x.use_sym,
+    boundary: x.boundary,
   }
 }
 
@@ -153,10 +154,10 @@ dh_plain_test!(
 );
 dh_plain_test!(double_heston_with_mu_round_trip, with_mu, mu, 0.02);
 dh_plain_test!(
-  double_heston_with_use_sym_round_trip,
-  with_use_sym,
-  use_sym,
-  Some(false)
+  double_heston_with_boundary_round_trip,
+  with_boundary,
+  boundary,
+  VarianceBoundary::Floor
 );
 
 #[test]
@@ -234,7 +235,7 @@ fn double_heston_with_rho1_rebuilds_cgns1_cache() {
     0.05,
     128,
     Some(1.0),
-    Some(true),
+    VarianceBoundary::Reflect,
     Deterministic::new(7),
   )
   .sample();
@@ -267,7 +268,7 @@ fn double_heston_with_rho2_rebuilds_cgns2_cache() {
     0.05,
     128,
     Some(1.0),
-    Some(true),
+    VarianceBoundary::Reflect,
     Deterministic::new(8),
   )
   .sample();
@@ -301,7 +302,7 @@ fn double_heston_with_steps_rebuilds_both_cgns_caches() {
     0.05,
     64,
     Some(1.0),
-    Some(true),
+    VarianceBoundary::Reflect,
     Deterministic::new(9),
   )
   .sample();
@@ -334,7 +335,7 @@ fn double_heston_with_horizon_rebuilds_both_cgns_caches() {
     0.05,
     128,
     Some(2.0),
-    Some(true),
+    VarianceBoundary::Reflect,
     Deterministic::new(11),
   )
   .sample();

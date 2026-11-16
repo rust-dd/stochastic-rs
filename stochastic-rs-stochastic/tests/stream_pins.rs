@@ -2,6 +2,7 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
 use stochastic_rs_stochastic::jump::mjd_log::MjdLog;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PoissonSubordinator;
 use stochastic_rs_stochastic::traits::PathSampler;
@@ -147,7 +148,7 @@ fn bates_svj_is_pinned() {
     Some(100.0),
     Some(0.04),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(SEED),
   )
   .sample();
@@ -218,7 +219,7 @@ fn hkde_is_pinned() {
     N,
     Some(100.0),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(SEED),
   )
   .sample();

@@ -17,6 +17,7 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::hkde::Hkde;
 
@@ -39,7 +40,7 @@ fn hkde_base_seeded<S: SeedExt>(seed: S) -> Hkde<f64, S> {
     256,
     Some(100.0),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     seed,
   )
 }
@@ -63,7 +64,7 @@ struct HkdeFields {
   n: usize,
   s0: Option<f64>,
   t: Option<f64>,
-  use_sym: Option<bool>,
+  boundary: VarianceBoundary,
 }
 
 fn hkde_fields<S: SeedExt>(x: &Hkde<f64, S>) -> HkdeFields {
@@ -81,7 +82,7 @@ fn hkde_fields<S: SeedExt>(x: &Hkde<f64, S>) -> HkdeFields {
     n: x.n,
     s0: x.s0,
     t: x.t,
-    use_sym: x.use_sym,
+    boundary: x.boundary,
   }
 }
 
@@ -110,10 +111,10 @@ hkde_plain_test!(hkde_with_eta1_round_trip, with_eta1, eta1, 6.0);
 hkde_plain_test!(hkde_with_eta2_round_trip, with_eta2, eta2, 4.0);
 hkde_plain_test!(hkde_with_s0_round_trip, with_s0, s0, Some(120.0));
 hkde_plain_test!(
-  hkde_with_use_sym_round_trip,
-  with_use_sym,
-  use_sym,
-  Some(true)
+  hkde_with_boundary_round_trip,
+  with_boundary,
+  boundary,
+  VarianceBoundary::Reflect
 );
 
 #[test]
@@ -156,7 +157,7 @@ fn hkde_with_rho_rebuilds_cgns_cache() {
     256,
     Some(100.0),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(7),
   )
   .sample();
@@ -195,7 +196,7 @@ fn hkde_with_steps_rebuilds_cgns_cache() {
     64,
     Some(100.0),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(9),
   )
   .sample();
@@ -233,7 +234,7 @@ fn hkde_with_horizon_rebuilds_cgns_cache() {
     256,
     Some(100.0),
     Some(2.0),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(11),
   )
   .sample();

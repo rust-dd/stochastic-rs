@@ -1,6 +1,7 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stats::heston_nmle_cekf::HestonNmleCekfConfig;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::heston::Heston as HestonProcess;
 
@@ -140,7 +141,7 @@ fn test_heston_calibrate_with_mle_seed() {
     n,
     Some(t),
     HestonPow::Sqrt,
-    Some(true),
+    VarianceBoundary::Reflect,
     Deterministic::new(42),
   );
 
@@ -211,7 +212,7 @@ fn test_heston_calibrate_with_pmle_seed() {
     n,
     Some(t),
     HestonPow::Sqrt,
-    Some(true),
+    VarianceBoundary::Reflect,
     Deterministic::new(42),
   );
   let [s_ts, v_ts] = process.sample();
@@ -283,7 +284,7 @@ fn test_heston_calibrate_with_nmle_cekf_seed() {
     n,
     Some(t),
     HestonPow::Sqrt,
-    Some(true),
+    VarianceBoundary::Reflect,
     Deterministic::new(42),
   );
   let [s_ts, _v_ts] = process.sample();

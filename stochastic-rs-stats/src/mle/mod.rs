@@ -105,6 +105,7 @@ mod tests {
   use stochastic_rs_stochastic::diffusion::cir::Cir;
   use stochastic_rs_stochastic::diffusion::gbm::Gbm;
   use stochastic_rs_stochastic::diffusion::ou::Ou;
+  use stochastic_rs_stochastic::params::VarianceBoundary;
 
   use super::*;
   use crate::traits::ProcessExt;
@@ -248,7 +249,7 @@ mod tests {
       5001,
       Some(0.04),
       Some(20.0),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(55),
     );
     let path = cir.sample();
@@ -261,7 +262,7 @@ mod tests {
       100,
       Some(0.04),
       Some(1.0),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(0),
     );
     let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Euler, None).unwrap();
@@ -359,7 +360,7 @@ mod tests {
       100,
       Some(0.4),
       Some(1.0),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(0),
     );
     let dt = 1.0 / 250.0;
@@ -380,7 +381,7 @@ mod tests {
       100,
       Some(0.4),
       Some(1.0),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(0),
     );
     let dt = 1.0 / 250.0;
@@ -477,7 +478,7 @@ mod tests {
       1251,
       Some(0.4),
       Some(5.0),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(42),
     );
     let path = cir.sample();
@@ -490,7 +491,7 @@ mod tests {
       100,
       Some(0.4),
       Some(1.0),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(0),
     );
     let result = fit_mle(&mut cir_fit, path.view(), dt, DensityApprox::Kessler, None).unwrap();

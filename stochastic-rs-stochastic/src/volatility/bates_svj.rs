@@ -28,6 +28,7 @@ use stochastic_rs_distributions::poisson::SimdPoisson;
 
 use crate::device::Cpu;
 use crate::noise::cgns::Cgns;
+use crate::params::VarianceBoundary;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -80,8 +81,8 @@ pub struct BatesSvj<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub v0: Option<T>,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// Use symmetric (abs) instead of truncation (max(0)) for variance positivity
-  pub use_sym: Option<bool>,
+  /// Treatment of a negative square-root state after a step; the Feller condition is not required.
+  pub boundary: VarianceBoundary,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   cgns: Cgns<T>,
@@ -107,7 +108,7 @@ impl<T: FloatExt, S: SeedExt> BatesSvj<T, S> {
     s0: Option<T>,
     v0: Option<T>,
     t: Option<T>,
-    use_sym: Option<bool>,
+    boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
     assert!(
@@ -198,7 +199,7 @@ impl<T: FloatExt, S: SeedExt> BatesSvj<T, S> {
       s0,
       v0,
       t,
-      use_sym,
+      boundary,
       seed,
       cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
@@ -303,9 +304,9 @@ impl<T: FloatExt, S: SeedExt, B> BatesSvj<T, S, B> {
     self
   }
 
-  /// Replace `use_sym`, all else unchanged.
-  pub fn with_use_sym(mut self, use_sym: Option<bool>) -> Self {
-    self.use_sym = use_sym;
+  /// Replace `boundary`, all else unchanged.
+  pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
+    self.boundary = boundary;
     self
   }
 
@@ -360,22 +361,21 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let drift_c = self.drift() - self.lambda * self.kappa_j();
-    if self.use_sym.unwrap_or(false) {
-      crate::euler::EulerSpec::BatesJumpReflected {
+    match self.boundary {
+      VarianceBoundary::Floor => crate::euler::EulerSpec::BatesJump {
         drift_c,
         alpha: self.alpha,
         beta: self.beta,
         sigma: self.sigma,
         rho: self.rho,
-      }
-    } else {
-      crate::euler::EulerSpec::BatesJump {
+      },
+      VarianceBoundary::Reflect => crate::euler::EulerSpec::BatesJumpReflected {
         drift_c,
         alpha: self.alpha,
         beta: self.beta,
         sigma: self.sigma,
         rho: self.rho,
-      }
+      },
     }
   }
 
@@ -425,7 +425,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] BatesSvj<T, S> { mu, b, r, r_f, lambda, nu, omega, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, seed, cgns } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] BatesSvj<T, S> { mu, b, r, r_f, lambda, nu, omega, alpha, beta, sigma, rho, n, s0, v0, t, boundary, seed, cgns } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for BatesSvj<T, S, B>
@@ -459,7 +459,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       drift: self.drift(),
       kappa_j: self.kappa_j(),
       dt: self.cgns.dt(),
-      use_sym: self.use_sym.unwrap_or(false),
+      boundary: self.boundary,
       cgns: self.cgns,
       seed: self.seed.derive(),
     }
@@ -507,7 +507,7 @@ pub struct BatesSvjSampler<T: FloatExt, S: SeedExt> {
   drift: T,
   kappa_j: T,
   dt: T,
-  use_sym: bool,
+  boundary: VarianceBoundary,
   cgns: Cgns<T>,
   seed: S,
 }
@@ -541,9 +541,9 @@ impl<T: FloatExt, S: SeedExt> BatesSvjSampler<T, S> {
     };
 
     for i in 1..self.n {
-      let v_prev = match self.use_sym {
-        true => v[i - 1].abs(),
-        false => v[i - 1].max(T::zero()),
+      let v_prev = match self.boundary {
+        VarianceBoundary::Floor => v[i - 1].max(T::zero()),
+        VarianceBoundary::Reflect => v[i - 1].abs(),
       };
       let sqrt_v = v_prev.sqrt();
 
@@ -563,9 +563,9 @@ impl<T: FloatExt, S: SeedExt> BatesSvjSampler<T, S> {
       s[i] = s[i - 1] * log_inc.exp();
 
       let dv = (self.alpha - self.beta * v_prev) * dt + self.sigma * sqrt_v * cgn2[i - 1];
-      v[i] = match self.use_sym {
-        true => (v_prev + dv).abs(),
-        false => (v_prev + dv).max(T::zero()),
+      v[i] = match self.boundary {
+        VarianceBoundary::Floor => (v_prev + dv).max(T::zero()),
+        VarianceBoundary::Reflect => (v_prev + dv).abs(),
       };
     }
   }

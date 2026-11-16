@@ -2,6 +2,7 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::ProcessExt;
 use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::interest::cir_2f::Cir2F;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use super::common::seed;
 
@@ -13,7 +14,7 @@ pub(super) fn cir(n: usize, horizon: f64) -> Cir<f64, Deterministic> {
     n,
     Some(0.03),
     Some(horizon),
-    Some(false),
+    VarianceBoundary::Floor,
     seed(0),
   )
 }
@@ -26,7 +27,7 @@ fn other_cir() -> Cir<f64, Deterministic> {
     32,
     Some(0.05),
     Some(1.0),
-    Some(false),
+    VarianceBoundary::Floor,
     seed(99),
   )
 }

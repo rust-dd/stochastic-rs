@@ -13,6 +13,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use super::HestonPow;
 use crate::device::Cpu;
 use crate::noise::cgns::Cgns;
+use crate::params::VarianceBoundary;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -23,7 +24,7 @@ pub use scheme::Euler;
 pub use scheme::HestonScheme;
 
 #[derive(Clone)]
-pub struct Heston<T: FloatExt, S: SeedExt = Unseeded, Sch: HestonScheme = Euler, B = Cpu> {
+pub struct Heston<T: FloatExt, Sch: HestonScheme = Euler, S: SeedExt = Unseeded, B = Cpu> {
   /// Initial stock price
   pub s0: Option<T>,
   /// Initial variance v₀ — a variance, not a volatility: `dv_t` above is
@@ -49,8 +50,8 @@ pub struct Heston<T: FloatExt, S: SeedExt = Unseeded, Sch: HestonScheme = Euler,
   /// If 0.5 then it is the original Heston model
   /// If 1.5 then it is the 3/2 model
   pub pow: HestonPow,
-  /// Use the symmetric method for the variance to avoid negative values
-  pub use_sym: Option<bool>,
+  /// Treatment of a negative square-root state after a step; the Feller condition is not required.
+  pub boundary: VarianceBoundary,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   /// Noise generator (used by the [`Euler`] scheme; [`AndersenQe`] draws its
@@ -63,7 +64,7 @@ pub struct Heston<T: FloatExt, S: SeedExt = Unseeded, Sch: HestonScheme = Euler,
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> Heston<T, S, Euler> {
+impl<T: FloatExt, S: SeedExt> Heston<T, Euler, S> {
   pub fn new(
     s0: Option<T>,
     v0: Option<T>,
@@ -75,7 +76,7 @@ impl<T: FloatExt, S: SeedExt> Heston<T, S, Euler> {
     n: usize,
     t: Option<T>,
     pow: HestonPow,
-    use_sym: Option<bool>,
+    boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
     assert!(
@@ -140,7 +141,7 @@ impl<T: FloatExt, S: SeedExt> Heston<T, S, Euler> {
       n,
       t,
       pow,
-      use_sym,
+      boundary,
       seed,
       cgns: Cgns::new(rho, n - 1, t, Unseeded),
       _scheme: PhantomData,
@@ -152,7 +153,7 @@ impl<T: FloatExt, S: SeedExt> Heston<T, S, Euler> {
 /// parameterization of the Heston (1993) stochastic-volatility model
 /// satisfying the Feller condition (`2κθ = 0.16 ≥ σ² = 0.09`). t=1, n=252
 /// — one trading year of daily steps (this crate's `Default` convention).
-impl<T: FloatExt> Default for Heston<T, Unseeded, Euler> {
+impl<T: FloatExt> Default for Heston<T, Euler, Unseeded> {
   fn default() -> Self {
     Self::new(
       Some(T::from_f64_fast(100.0)),
@@ -165,7 +166,7 @@ impl<T: FloatExt> Default for Heston<T, Unseeded, Euler> {
       252,
       Some(T::one()),
       HestonPow::Sqrt,
-      Some(false),
+      VarianceBoundary::Floor,
       Unseeded,
     )
   }
@@ -178,7 +179,7 @@ impl<T: FloatExt> Default for Heston<T, Unseeded, Euler> {
 /// scheme-independent — this is what lets the setters chain after
 /// [`qe()`](Heston::qe) too, e.g.
 /// `Heston::default().qe().with_kappa(3.0)`.
-impl<T: FloatExt, S: SeedExt, Sch: HestonScheme, B> Heston<T, S, Sch, B> {
+impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: Option<T>) -> Self {
     self.s0 = s0;
@@ -263,9 +264,9 @@ impl<T: FloatExt, S: SeedExt, Sch: HestonScheme, B> Heston<T, S, Sch, B> {
     self
   }
 
-  /// Replace `use_sym`, all else unchanged.
-  pub fn with_use_sym(mut self, use_sym: Option<bool>) -> Self {
-    self.use_sym = use_sym;
+  /// Replace `boundary`, all else unchanged.
+  pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
+    self.boundary = boundary;
     self
   }
 
@@ -301,13 +302,13 @@ impl<T: FloatExt, S: SeedExt, Sch: HestonScheme, B> Heston<T, S, Sch, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Heston<T, S, Euler, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Heston<T, Euler, S, B> {
   /// Re-tag the model with the [`AndersenQe`] variance scheme at no runtime cost; panics unless
   /// `pow` is `HestonPow::Sqrt` and `kappa`, `sigma` and a given `s0` are positive.
-  pub fn qe(self) -> Heston<T, S, AndersenQe> {
+  pub fn qe(self) -> Heston<T, AndersenQe, S, B> {
     self.assert_qe_parameters();
     Heston {
-      backend: Cpu,
+      backend: self.backend,
       s0: self.s0,
       v0: self.v0,
       kappa: self.kappa,
@@ -318,7 +319,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Heston<T, S, Eul
       n: self.n,
       t: self.t,
       pow: self.pow,
-      use_sym: self.use_sym,
+      boundary: self.boundary,
       seed: self.seed,
       cgns: self.cgns,
       _scheme: PhantomData,
@@ -326,41 +327,33 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Heston<T, S, Eul
   }
 }
 
-/// The Euler engine's view of the Heston model. Only the [`Euler`] scheme has
-/// a device form: the quadratic-exponential scheme draws from a
-/// non-central chi-square, which is a different recursion rather than a
-/// different family, so `Heston<_, _, AndersenQe>` stays on the host.
-///
-/// The variance's exponent travels as a parameter rather than picking a
-/// family, since the kernel raises to it either way; whether the variance is
-/// truncated or reflected does pick the family, as it does for every other
-/// square-root diffusion here.
+/// The Euler engine's view of the Euler scheme: the variance's exponent travels as a parameter,
+/// while the [`VarianceBoundary`] picks the family, as for every square-root diffusion here.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
-  for Heston<T, S, Euler, B>
+  for Heston<T, Euler, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let pow_v = match self.pow {
       HestonPow::Sqrt => T::from_f64_fast(0.5),
       HestonPow::ThreeHalves => T::from_f64_fast(1.5),
     };
-    if self.use_sym.unwrap_or(false) {
-      crate::euler::EulerSpec::HestonReflected {
+    match self.boundary {
+      VarianceBoundary::Floor => crate::euler::EulerSpec::Heston {
         mu: self.mu,
         kappa: self.kappa,
         theta: self.theta,
         sigma: self.sigma,
         rho: self.rho,
         pow_v,
-      }
-    } else {
-      crate::euler::EulerSpec::Heston {
+      },
+      VarianceBoundary::Reflect => crate::euler::EulerSpec::HestonReflected {
         mu: self.mu,
         kappa: self.kappa,
         theta: self.theta,
         sigma: self.sigma,
         rho: self.rho,
         pow_v,
-      }
+      },
     }
   }
 
@@ -398,7 +391,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt, Sch: HestonScheme] Heston<T, S, Sch> { s0, v0, kappa, theta, sigma, rho, mu, n, t, pow, use_sym, seed, cgns, _scheme } via euler);
+backend_switch!([T: FloatExt, Sch: HestonScheme, S: SeedExt] Heston<T, Sch, S> { s0, v0, kappa, theta, sigma, rho, mu, n, t, pow, boundary, seed, cgns, _scheme } via euler);
 
 /// Derives a seed once, at construction, for [`HestonSampler`] to own and
 /// pass into `Sch::simulate` — see that trait method's docs for why.
@@ -408,7 +401,7 @@ backend_switch!([T: FloatExt, S: SeedExt, Sch: HestonScheme] Heston<T, S, Sch> {
 /// other rather than one raw stride apart.
 macro_rules! heston_sampler_impl {
   ($scheme:ty) => {
-    fn sampler(&self) -> HestonSampler<'_, T, S, $scheme, B> {
+    fn sampler(&self) -> HestonSampler<'_, T, $scheme, S, B> {
       HestonSampler {
         model: self,
         seed: self.seed.derive(),
@@ -418,18 +411,18 @@ macro_rules! heston_sampler_impl {
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for Heston<T, S, Euler, B>
+  for Heston<T, Euler, S, B>
 {
 }
 
 /// The Euler scheme is the one the engine reproduces, so this half of the
 /// process routes through the backend.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
-  for Heston<T, S, Euler, B>
+  for Heston<T, Euler, S, B>
 {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
-    = HestonSampler<'s, T, S, Euler, B>
+    = HestonSampler<'s, T, Euler, S, B>
   where
     Self: 's;
 
@@ -465,7 +458,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// the scheme hoists out of its own path loop is folded here for the same
 /// reason it hoists them.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
-  for Heston<T, S, AndersenQe, B>
+  for Heston<T, AndersenQe, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     self.assert_qe_parameters();
@@ -520,18 +513,18 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for Heston<T, S, AndersenQe, B>
+  for Heston<T, AndersenQe, S, B>
 {
 }
 
 /// The quadratic-exponential scheme reaches a device through its own family,
 /// so this half routes through the backend as the Euler half does.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
-  for Heston<T, S, AndersenQe, B>
+  for Heston<T, AndersenQe, S, B>
 {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
-    = HestonSampler<'s, T, S, AndersenQe, B>
+    = HestonSampler<'s, T, AndersenQe, S, B>
   where
     Self: 's;
 
@@ -564,18 +557,18 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 /// beyond that seed, so each call re-dispatches to `Sch::simulate`; there is
 /// nothing else reusable to hoist across calls.
 #[doc(hidden)]
-pub struct HestonSampler<'a, T: FloatExt, S: SeedExt, Sch: HestonScheme, B> {
-  model: &'a Heston<T, S, Sch, B>,
+pub struct HestonSampler<'a, T: FloatExt, Sch: HestonScheme, S: SeedExt, B> {
+  model: &'a Heston<T, Sch, S, B>,
   seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt, Sch: HestonScheme, B: Send + Sync> crate::traits::Sealed
-  for HestonSampler<'_, T, S, Sch, B>
+impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B: Send + Sync> crate::traits::Sealed
+  for HestonSampler<'_, T, Sch, S, B>
 {
 }
 
-impl<T: FloatExt, S: SeedExt, Sch: HestonScheme, B: Send + Sync> PathSampler<T>
-  for HestonSampler<'_, T, S, Sch, B>
+impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B: Send + Sync> PathSampler<T>
+  for HestonSampler<'_, T, Sch, S, B>
 {
   type Output = [Array1<T>; 2];
 
@@ -588,7 +581,7 @@ impl<T: FloatExt, S: SeedExt, Sch: HestonScheme, B: Send + Sync> PathSampler<T>
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Heston<T, S, Euler, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Heston<T, Euler, S, B> {
   /// Malliavin derivative of the volatility
   ///
   /// The Malliavin derivative of the Heston model is given by

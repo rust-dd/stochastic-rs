@@ -9,6 +9,7 @@ use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
 use stochastic_rs_stochastic::jump::kou::Kou;
 use stochastic_rs_stochastic::jump::levy_diffusion::LevyDiffusion;
 use stochastic_rs_stochastic::jump::merton::Merton;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::ccustom::CompoundCustom;
 use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs_stochastic::process::customjt::CustomJt;
@@ -139,7 +140,7 @@ fn stateless_simd_laws_reach_the_kernels_of_every_law_taking_process() {
       Some(100.0),
       Some(0.04),
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Unseeded,
     )
     .device_fallback(),
@@ -269,7 +270,7 @@ fn a_law_the_kernels_do_not_draw_stays_on_the_host() {
       Some(100.0),
       Some(0.04),
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Unseeded,
     )
     .device_fallback(),

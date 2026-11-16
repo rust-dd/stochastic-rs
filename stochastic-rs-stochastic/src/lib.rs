@@ -42,11 +42,15 @@ pub mod jump;
 pub mod mc;
 pub mod noise;
 pub mod numerics;
+pub mod params;
 pub(crate) mod precondition;
 pub mod process;
 #[cfg(feature = "python")]
 #[doc(hidden)]
 pub mod python_device;
+#[cfg(feature = "python")]
+#[doc(hidden)]
+pub mod python_params;
 pub mod rough;
 pub mod sde;
 pub mod sheet;

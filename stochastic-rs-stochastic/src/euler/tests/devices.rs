@@ -78,7 +78,7 @@ fn cir_stays_nonnegative<T: FloatExt, B: EulerBackend<T> + Default>(label: &str)
     253,
     Some(T::from_f64_fast(0.09)),
     Some(T::one()),
-    None,
+    VarianceBoundary::Floor,
     Deterministic::new(3),
   );
   let paths = stack(&cir.on::<B>().sample_par(4_000));

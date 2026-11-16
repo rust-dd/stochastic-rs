@@ -2,13 +2,14 @@
 //! Backs the Heston example on the processes catalog page.
 
 use stochastic_rs::simd_rng::Unseeded;
+use stochastic_rs::stochastic::params::VarianceBoundary;
 use stochastic_rs::stochastic::volatility::HestonPow;
 use stochastic_rs::stochastic::volatility::heston::Heston;
 use stochastic_rs::traits::ProcessExt;
 
 #[test]
 fn heston_two_factor_sample() {
-  let p = Heston::<f64, _>::new(
+  let p = Heston::<f64>::new(
     Some(100.0),
     Some(0.04),
     2.0,
@@ -19,7 +20,7 @@ fn heston_two_factor_sample() {
     1_000,
     Some(1.0),
     HestonPow::Sqrt,
-    Some(true),
+    VarianceBoundary::Reflect,
     Unseeded,
   );
   let [s_path, v_path] = p.sample();

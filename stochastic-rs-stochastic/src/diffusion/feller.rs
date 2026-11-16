@@ -17,6 +17,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::params::VarianceBoundary;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -38,8 +39,8 @@ pub struct FellerLogistic<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub x0: Option<T>,
   /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
   pub t: Option<T>,
-  /// If true, reflect at 0; otherwise clamp at 0
-  pub use_sym: Option<bool>,
+  /// Treatment of a negative square-root state after a step; the Feller condition is not required.
+  pub boundary: VarianceBoundary,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -55,7 +56,7 @@ impl<T: FloatExt, S: SeedExt> FellerLogistic<T, S> {
     n: usize,
     x0: Option<T>,
     t: Option<T>,
-    use_sym: Option<bool>,
+    boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
     assert!(
@@ -87,7 +88,7 @@ impl<T: FloatExt, S: SeedExt> FellerLogistic<T, S> {
       n,
       x0,
       t,
-      use_sym,
+      boundary,
       seed,
     }
   }
@@ -102,18 +103,17 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   for FellerLogistic<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    if self.use_sym.unwrap_or(false) {
-      crate::euler::EulerSpec::FellerLogisticReflected {
+    match self.boundary {
+      VarianceBoundary::Floor => crate::euler::EulerSpec::FellerLogistic {
         kappa: self.kappa,
         theta: self.theta,
         sigma: self.sigma,
-      }
-    } else {
-      crate::euler::EulerSpec::FellerLogistic {
+      },
+      VarianceBoundary::Reflect => crate::euler::EulerSpec::FellerLogisticReflected {
         kappa: self.kappa,
         theta: self.theta,
         sigma: self.sigma,
-      }
+      },
     }
   }
 
@@ -140,7 +140,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] FellerLogistic<T, S> { kappa, theta, sigma, n, x0, t, use_sym, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] FellerLogistic<T, S> { kappa, theta, sigma, n, x0, t, boundary, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for FellerLogistic<T, S, B>
@@ -166,7 +166,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       kappa: self.kappa,
       theta: self.theta,
       diff_scale: self.sigma,
-      use_sym: self.use_sym.unwrap_or(false),
+      boundary: self.boundary,
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
@@ -212,7 +212,7 @@ pub struct FellerLogisticSampler<T: FloatExt> {
   kappa: T,
   theta: T,
   diff_scale: T,
-  use_sym: bool,
+  boundary: VarianceBoundary,
   normal: Seeded<SimdNormal<T>>,
 }
 
@@ -233,9 +233,9 @@ impl<T: FloatExt> FellerLogisticSampler<T> {
       let drift = self.kappa * (self.theta - xi) * xi * self.dt;
       let diff = self.diff_scale * xi.sqrt() * *z;
       let next = xi + drift + diff;
-      let clamped = match self.use_sym {
-        true => next.abs(),
-        false => next.max(T::zero()),
+      let clamped = match self.boundary {
+        VarianceBoundary::Floor => next.max(T::zero()),
+        VarianceBoundary::Reflect => next.abs(),
       };
       *z = clamped;
       prev = clamped;
@@ -262,7 +262,7 @@ impl<T: FloatExt> PathSampler<T> for FellerLogisticSampler<T> {
 }
 
 py_process_1d!(PyFellerLogistic, FellerLogistic,
-  sig: (kappa, theta, sigma, n, x0=None, t=None, use_sym=None, seed=None, dtype=None),
-  params: (kappa: f64, theta: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, use_sym: Option<bool>),
+  sig: (kappa, theta, sigma, n, x0=None, t=None, boundary=None, seed=None, dtype=None),
+  params: (kappa: f64, theta: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, boundary: Option<crate::python_params::PyVarianceBoundary> => crate::python_params::boundary),
   device
 );

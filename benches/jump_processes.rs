@@ -12,6 +12,7 @@ use stochastic_rs::stochastic::jump::kou::Kou;
 use stochastic_rs::stochastic::jump::levy_diffusion::LevyDiffusion;
 use stochastic_rs::stochastic::jump::merton::Merton;
 use stochastic_rs::stochastic::jump::mjd_log::MjdLog;
+use stochastic_rs::stochastic::params::VarianceBoundary;
 use stochastic_rs::stochastic::process::subordinator::ctrw::Ctrw;
 use stochastic_rs::stochastic::process::subordinator::ctrw::CtrwJumpLaw;
 use stochastic_rs::stochastic::process::subordinator::ctrw::CtrwWaitingLaw;
@@ -147,7 +148,7 @@ fn bench_jump_processes(c: &mut Criterion) {
       Some(100.0),
       Some(0.04),
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Unseeded,
     );
     group.bench_with_input(BenchmarkId::new("bates_svj", n), &n, |b, _| {

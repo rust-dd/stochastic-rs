@@ -291,3 +291,19 @@ def test_heston_qe_is_seeded_and_validated():
             _heston(**bad)
     with pytest.raises(ValueError):
         sr.PyHeston(0.0, 0.04, 0.5, -0.7, 0.02, 53, s0=100.0, v0=0.04, t=1.0, scheme="qe")
+
+
+def test_the_boundary_kwarg_selects_the_variance_step():
+    def variance(boundary):
+        kwargs = {"s0": 100.0, "v0": 0.0, "t": 1.0, "seed": 3, "boundary": boundary}
+        return sr.PyHeston(2.0, 0.04, 2.0, -0.7, 0.03, 65, **kwargs).sample()[1]
+
+    floor, reflect = variance("floor"), variance("reflect")
+    assert np.all(floor >= 0.0) and np.all(reflect >= 0.0)
+    assert not np.array_equal(floor, reflect)
+    assert np.array_equal(variance(None), floor)
+    cir = sr.PyCir(1.5, 0.04, 0.3, 64, x0=0.04, t=1.0, seed=5, boundary="floor").sample()
+    assert np.array_equal(cir, sr.PyCir(1.5, 0.04, 0.3, 64, x0=0.04, t=1.0, seed=5).sample())
+    for build in (variance, lambda b: sr.PyCir(1.5, 0.04, 0.3, 64, boundary=b)):
+        with pytest.raises(ValueError):
+            build("symmetric")

@@ -20,6 +20,7 @@ use crate::device::Cpu;
 use crate::device::DeviceError;
 use crate::device::FgnBackend;
 use crate::noise::fgn::Fgn;
+use crate::params::VarianceBoundary;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -34,7 +35,9 @@ use crate::traits::ProcessExt;
 /// ```compile_fail,E0616
 /// use stochastic_rs_core::simd_rng::Unseeded;
 /// use stochastic_rs_stochastic::diffusion::fcir::Fcir;
-/// let mut p = Fcir::<f64>::new(0.7, 1.0, 0.04, 0.1, 10, None, None, None, Unseeded);
+/// use stochastic_rs_stochastic::params::VarianceBoundary;
+/// let boundary = VarianceBoundary::Floor;
+/// let mut p = Fcir::<f64>::new(0.7, 1.0, 0.04, 0.1, 10, None, None, boundary, Unseeded);
 /// p.n = 1000;
 /// ```
 #[derive(Clone)]
@@ -46,22 +49,14 @@ pub struct Fcir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   n: usize,
   x0: Option<T>,
   t: Option<T>,
-  use_sym: Option<bool>,
+  boundary: VarianceBoundary,
   seed: S,
   fgn: Fgn<T, Unseeded, B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
-  /// Create a new Fcir process.
-  ///
-  /// Same Feller-condition contract as [`crate::diffusion::cir::Cir`]:
-  /// `2·theta·mu ≥ sigma²` keeps the continuous-time process strictly
-  /// positive, but sub-Feller parameters are accepted rather than
-  /// rejected, since the discretised step already keeps every sample
-  /// non-negative — floored at zero by default, or reflected when
-  /// [`use_sym`](Self::use_sym) is `true`. A violation not paired with
-  /// `use_sym = Some(true)` emits a `log::warn!` and never panics; the `with_*` setters, like
-  /// [`Cir`](crate::diffusion::cir::Cir)'s, do not repeat it.
+  /// [`Cir::new`](crate::diffusion::cir::Cir::new)'s Feller contract: a violation under
+  /// [`VarianceBoundary::Floor`] emits a `log::warn!`, which the `with_*` setters do not repeat.
   #[must_use]
   pub fn new(
     hurst: T,
@@ -71,7 +66,7 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
     n: usize,
     x0: Option<T>,
     t: Option<T>,
-    use_sym: Option<bool>,
+    boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
     assert!(
@@ -99,12 +94,12 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    if T::from_usize_(2) * theta * mu < sigma.powi(2) && use_sym != Some(true) {
+    if T::from_usize_(2) * theta * mu < sigma.powi(2) && boundary != VarianceBoundary::Reflect {
       log::warn!(
         "Fcir::new: Feller condition violated (2*theta*mu < sigma^2) \
-         without use_sym = Some(true); the path floors at zero on every \
-         boundary hit instead of reflecting — pass use_sym = Some(true) for \
-         the standard sub-Feller mitigation"
+         under VarianceBoundary::Floor; the path floors at zero on every \
+         boundary hit instead of reflecting — pass VarianceBoundary::Reflect \
+         for the standard sub-Feller mitigation"
       );
     }
 
@@ -116,7 +111,7 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
       n,
       x0,
       t,
-      use_sym,
+      boundary,
       seed,
       fgn: Self::fgn_for(hurst, n, t),
     }
@@ -174,9 +169,9 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
     self
   }
 
-  /// Replace `use_sym`, all else unchanged.
-  pub fn with_use_sym(mut self, use_sym: Option<bool>) -> Self {
-    self.use_sym = use_sym;
+  /// Replace `boundary`, all else unchanged.
+  pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
+    self.boundary = boundary;
     self
   }
 
@@ -226,9 +221,9 @@ impl<T: FloatExt, S: SeedExt, B> Fcir<T, S, B> {
     self.t
   }
 
-  /// Enables symmetric/truncated update variant when true.
-  pub fn use_sym(&self) -> Option<bool> {
-    self.use_sym
+  /// Treatment of a negative square-root state after a step; the Feller condition is not required.
+  pub fn boundary(&self) -> VarianceBoundary {
+    self.boundary
   }
 
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
@@ -297,10 +292,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   }
 }
 
-/// Reusable [`Fcir`] sampling state: borrows the process for its inner [`Fgn`]
-/// and owns a seed derived once at construction. The path is an Euler
-/// discretisation of `dX = theta(mu - X) dt + sigma sqrt(X) dB^H`, clamped at
-/// zero (or reflected when `use_sym`) so the variance stays non-negative.
+/// Reusable [`Fcir`] sampling state: borrows the process for its inner [`Fgn`] and owns a seed
+/// derived once at construction.
 #[doc(hidden)]
 pub struct FcirSampler<'a, T: FloatExt, S: SeedExt, B> {
   fcir: &'a Fcir<T, S, B>,
@@ -315,15 +308,14 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FcirSampler<'_, T, S, B> {
     let p = self.fcir;
     let dt = p.fgn.dt();
     let fgn = p.fgn.try_noise(&self.seed)?;
-    let use_sym = p.use_sym.unwrap_or(false);
 
     out[0] = p.x0.unwrap_or(T::zero());
     let mut prev = out[0];
     for (dst, inc) in out[1..].iter_mut().zip(fgn.iter()) {
       let dfcir = p.theta * (p.mu - prev) * dt + p.sigma * prev.abs().sqrt() * *inc;
-      let next = match use_sym {
-        true => (prev + dfcir).abs(),
-        false => (prev + dfcir).max(T::zero()),
+      let next = match p.boundary {
+        VarianceBoundary::Floor => (prev + dfcir).max(T::zero()),
+        VarianceBoundary::Reflect => (prev + dfcir).abs(),
       };
       *dst = next;
       prev = next;
@@ -360,24 +352,22 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FcirSampler<'
   }
 }
 
-/// The Euler engine's view of fractional CIR, in the reflected or the
-/// mirrored form depending on `use_sym`.
+/// The Euler engine's view of fractional CIR, in the floored or the mirrored form by its boundary.
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
   crate::euler::EulerCoefficients<T> for Fcir<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    if self.use_sym.unwrap_or(false) {
-      crate::euler::EulerSpec::MirroredSquareRoot {
+    match self.boundary {
+      VarianceBoundary::Floor => crate::euler::EulerSpec::ReflectedSquareRoot {
         theta: self.theta,
         mu: self.mu,
         sigma: self.sigma,
-      }
-    } else {
-      crate::euler::EulerSpec::ReflectedSquareRoot {
+      },
+      VarianceBoundary::Reflect => crate::euler::EulerSpec::MirroredSquareRoot {
         theta: self.theta,
         mu: self.mu,
         sigma: self.sigma,
-      }
+      },
     }
   }
 
@@ -410,11 +400,11 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Fcir<T, S> { hurst, theta, mu, sigma, n, x0, t, use_sym, seed } via fgn euler);
+backend_switch!([T: FloatExt, S: SeedExt] Fcir<T, S> { hurst, theta, mu, sigma, n, x0, t, boundary, seed } via fgn euler);
 
 py_process_1d!(PyFcir, Fcir,
-  sig: (hurst, theta, mu, sigma, n, x0=None, t=None, use_sym=None, seed=None, dtype=None),
-  params: (hurst: f64, theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, use_sym: Option<bool>),
+  sig: (hurst, theta, mu, sigma, n, x0=None, t=None, boundary=None, seed=None, dtype=None),
+  params: (hurst: f64, theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, boundary: Option<crate::python_params::PyVarianceBoundary> => crate::python_params::boundary),
   device
 );
 
@@ -424,11 +414,9 @@ mod tests {
 
   use super::*;
 
-  /// `2*theta*mu = 2*0.5*0.1 = 0.1 < sigma^2 = 1.0` — Feller condition
-  /// violated, mirroring the equivalent `Cir` test. `use_sym = Some(true)`
-  /// must build and sample without panicking.
+  /// `2·theta·mu = 0.1 < sigma² = 1.0` violates Feller; the reflected path must still build and stay finite.
   #[test]
-  fn fcir_accepts_sub_feller_with_use_sym() {
+  fn fcir_accepts_sub_feller_under_reflection() {
     let fcir = Fcir::<f64, _>::new(
       0.7,
       0.5,
@@ -437,21 +425,20 @@ mod tests {
       256,
       Some(0.1),
       Some(1.0),
-      Some(true),
+      VarianceBoundary::Reflect,
       Deterministic::new(7),
     );
     let path = fcir.sample();
     assert_eq!(path.len(), 256);
     assert!(
       path.iter().all(|x| x.is_finite()),
-      "sub-Feller Fcir path must stay finite under use_sym = Some(true)"
+      "sub-Feller Fcir path must stay finite under VarianceBoundary::Reflect"
     );
   }
 
-  /// The default (floor-at-zero) scheme must also accept sub-Feller
-  /// parameters without panicking — only the diagnostic warning differs.
+  /// The floored step accepts sub-Feller parameters too; only the diagnostic warning differs.
   #[test]
-  fn fcir_accepts_sub_feller_without_use_sym() {
+  fn fcir_accepts_sub_feller_under_the_floor() {
     let fcir = Fcir::<f64, _>::new(
       0.7,
       0.5,
@@ -460,7 +447,7 @@ mod tests {
       256,
       Some(0.1),
       Some(1.0),
-      None,
+      VarianceBoundary::Floor,
       Deterministic::new(7),
     );
     let path = fcir.sample();

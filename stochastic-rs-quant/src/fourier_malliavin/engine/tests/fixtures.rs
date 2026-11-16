@@ -3,6 +3,7 @@
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 use stochastic_rs_stochastic::volatility::heston2d::Heston2D;
@@ -26,7 +27,7 @@ pub(super) fn heston_paths() -> (Array1<f64>, Array1<f64>, Array1<f64>) {
     n,
     Some(horizon),
     HestonPow::Sqrt,
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(42),
   );
   let [prices, variance] = heston.sample();
@@ -69,7 +70,7 @@ pub(super) fn heston2d_paths() -> (
     [0.5, -0.5, 0.0, 0.0, -0.5, 0.5],
     n,
     Some(horizon),
-    Some(false),
+    VarianceBoundary::Floor,
     Deterministic::new(42),
   );
   let [x1, v1, x2, v2] = heston.sample();

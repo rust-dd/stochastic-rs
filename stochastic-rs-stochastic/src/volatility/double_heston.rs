@@ -27,6 +27,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
 use crate::noise::cgns::Cgns;
+use crate::params::VarianceBoundary;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -68,8 +69,8 @@ pub struct DoubleHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Time to maturity.
   pub t: Option<T>,
-  /// Use the reflection method for the variance to avoid negative values.
-  pub use_sym: Option<bool>,
+  /// Treatment of a negative square-root state after a step; the Feller condition is not required.
+  pub boundary: VarianceBoundary,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   /// First factor's correlated Gaussian noise source: $(W_1^S, W_1^v)$.
@@ -98,7 +99,7 @@ impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
     mu: T,
     n: usize,
     t: Option<T>,
-    use_sym: Option<bool>,
+    boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
     assert!(
@@ -203,7 +204,7 @@ impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
       mu,
       n,
       t,
-      use_sym,
+      boundary,
       seed,
       cgns1: Cgns::new(rho1, n - 1, t, Unseeded),
       cgns2: Cgns::new(rho2, n - 1, t, Unseeded),
@@ -341,9 +342,9 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
     self
   }
 
-  /// Replace `use_sym`, all else unchanged.
-  pub fn with_use_sym(mut self, use_sym: Option<bool>) -> Self {
-    self.use_sym = use_sym;
+  /// Replace `boundary`, all else unchanged.
+  pub fn with_boundary(mut self, boundary: VarianceBoundary) -> Self {
+    self.boundary = boundary;
     self
   }
 
@@ -361,8 +362,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   for DoubleHeston<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    if self.use_sym.unwrap_or(false) {
-      crate::euler::EulerSpec::DoubleHestonReflected {
+    match self.boundary {
+      VarianceBoundary::Floor => crate::euler::EulerSpec::DoubleHeston {
         mu: self.mu,
         kappa1: self.kappa1,
         theta1: self.theta1,
@@ -372,9 +373,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
         theta2: self.theta2,
         sigma2: self.sigma2,
         rho2: self.rho2,
-      }
-    } else {
-      crate::euler::EulerSpec::DoubleHeston {
+      },
+      VarianceBoundary::Reflect => crate::euler::EulerSpec::DoubleHestonReflected {
         mu: self.mu,
         kappa1: self.kappa1,
         theta1: self.theta1,
@@ -384,7 +384,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
         theta2: self.theta2,
         sigma2: self.sigma2,
         rho2: self.rho2,
-      }
+      },
     }
   }
 
@@ -422,7 +422,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] DoubleHeston<T, S> { s0, v1_0, v2_0, kappa1, theta1, sigma1, rho1, kappa2, theta2, sigma2, rho2, mu, n, t, use_sym, seed, cgns1, cgns2 } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] DoubleHeston<T, S> { s0, v1_0, v2_0, kappa1, theta1, sigma1, rho1, kappa2, theta2, sigma2, rho2, mu, n, t, boundary, seed, cgns1, cgns2 } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for DoubleHeston<T, S, B>
@@ -457,7 +457,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       sigma2: self.sigma2,
       mu: self.mu,
       dt: self.cgns1.dt(),
-      use_sym: self.use_sym.unwrap_or(false),
+      boundary: self.boundary,
       cgns1: self.cgns1,
       cgns2: self.cgns2,
       seed: self.seed.derive(),
@@ -505,7 +505,7 @@ pub struct DoubleHestonSampler<T: FloatExt, S: SeedExt> {
   sigma2: T,
   mu: T,
   dt: T,
-  use_sym: bool,
+  boundary: VarianceBoundary,
   cgns1: Cgns<T>,
   cgns2: Cgns<T>,
   seed: S,
@@ -523,8 +523,6 @@ impl<T: FloatExt, S: SeedExt> DoubleHestonSampler<T, S> {
     s[0] = self.s0;
     v1[0] = self.v1_0;
     v2[0] = self.v2_0;
-
-    let use_sym = self.use_sym;
 
     for i in 1..self.n {
       let v1_prev = v1[i - 1].max(T::zero());
@@ -544,15 +542,9 @@ impl<T: FloatExt, S: SeedExt> DoubleHestonSampler<T, S> {
       let new_v1 = v1[i - 1] + dv1;
       let new_v2 = v2[i - 1] + dv2;
 
-      v1[i] = if use_sym {
-        new_v1.abs()
-      } else {
-        new_v1.max(T::zero())
-      };
-      v2[i] = if use_sym {
-        new_v2.abs()
-      } else {
-        new_v2.max(T::zero())
+      (v1[i], v2[i]) = match self.boundary {
+        VarianceBoundary::Floor => (new_v1.max(T::zero()), new_v2.max(T::zero())),
+        VarianceBoundary::Reflect => (new_v1.abs(), new_v2.abs()),
       };
     }
   }
@@ -614,7 +606,7 @@ mod tests {
       0.0,
       8,
       Some(1.0),
-      Some(false),
+      VarianceBoundary::Floor,
       Unseeded,
     );
   }
@@ -636,7 +628,7 @@ mod tests {
       0.05,
       128,
       Some(1.0),
-      Some(true),
+      VarianceBoundary::Reflect,
       Unseeded,
     );
     let [_s, v1, v2] = p.sample();
@@ -661,7 +653,7 @@ mod tests {
       0.05,
       64,
       Some(0.5),
-      Some(true),
+      VarianceBoundary::Reflect,
       Deterministic::new(42),
     );
     let [s, _, _] = p.sample();
