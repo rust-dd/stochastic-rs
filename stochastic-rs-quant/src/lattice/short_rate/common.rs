@@ -194,8 +194,8 @@ pub(crate) fn correlated_joint_probabilities<T: RealExt>(
   joint
 }
 
-/// A branch the grid cannot centre (a vol under its `1e-6` floor, a mean reversion `a·dt > 2`)
-/// has a negative probability; its non-negative part, renormalised, enters the product instead.
+/// A branch whose spacing exceeds 2σ√Δt, or whose mean leaves the grid, has a negative probability;
+/// its non-negative part, renormalised, is contained here until the builder is fixed.
 fn non_negative<T: RealExt>(p: [T; 3]) -> [T; 3] {
   if p.iter().all(|&q| q >= T::zero()) {
     return p;

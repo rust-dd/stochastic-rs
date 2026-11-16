@@ -37,9 +37,8 @@ fn grid(pairs: &[(f64, f64)]) -> Vec<SwaptionQuote> {
 /// F (2Φ(σ√T/2) − 1)`.
 fn atm_black_vol(price: f64, quote: &SwaptionQuote, curve: &DiscountCurve<f64>) -> f64 {
   let market = market_swaption(quote, curve, 1.0);
-  let payments = (quote.tenor / market.accrual).round() as usize;
-  let annuity: f64 = (1..=payments)
-    .map(|k| curve.discount_factor(quote.expiry + market.accrual * k as f64) * market.accrual)
+  let annuity: f64 = (market.coupon_times.iter())
+    .map(|&t| curve.discount_factor(t) * market.accrual)
     .sum();
   let ratio = price / (annuity * market.fair_rate);
   2.0 * ndtri((ratio + 1.0) / 2.0) / quote.expiry.sqrt()

@@ -76,8 +76,15 @@ pub(crate) fn validate_swaption_quotes(
         return Err(QuantError::InvalidQuote { index, reason });
       }
     }
-    let fair_rate = fair_rate(quote, curve);
-    if fair_rate < 0.0 {
+    let n_payments = payment_count(quote);
+    if n_payments > MAX_PAYMENTS {
+      let reason = format!(
+        "fixed_accrual implies {n_payments} fixed payments, above the cap of {MAX_PAYMENTS}"
+      );
+      return Err(QuantError::InvalidQuote { index, reason });
+    }
+    let fair_rate = market_swaption(quote, curve, 1.0).fair_rate;
+    if fair_rate.is_nan() || fair_rate < 0.0 {
       let reason = format!(
         "fair_rate must satisfy `fair_rate >= 0.0`, as Black-76 prices no negative forward, got fair_rate = {fair_rate:?}"
       );
@@ -87,15 +94,51 @@ pub(crate) fn validate_swaption_quotes(
   Ok(())
 }
 
-/// A quote's forward swap rate on the schedule both swaption pricers build; its sign is theirs.
-fn fair_rate(quote: &SwaptionQuote, curve: &DiscountCurve<f64>) -> f64 {
-  let n_payments = ((quote.tenor * (1.0 / quote.fixed_accrual).round()).round() as usize).max(1);
+/// Cap on a quote's fixed payments, so an absurd `fixed_accrual` is refused, not walked.
+const MAX_PAYMENTS: usize = 100_000;
+
+/// Fixed payments of a quote's swap: tenor over the accrual, rounded, at least one.
+pub(crate) fn payment_count(quote: &SwaptionQuote) -> usize {
+  let payments_per_year = (1.0 / quote.fixed_accrual).round();
+  ((quote.tenor * payments_per_year).round() as usize).max(1)
+}
+
+/// Market side of one quote: the forward swap and its Black-76 price.
+#[derive(Debug, Clone)]
+pub(crate) struct MarketSwaption {
+  pub(crate) fair_rate: f64,
+  pub(crate) coupon_times: Vec<f64>,
+  pub(crate) accrual: f64,
+  pub(crate) market_price: f64,
+}
+
+/// The one swap schedule every swaption calibrator and the quote validation price on.
+pub(crate) fn market_swaption(
+  quote: &SwaptionQuote,
+  curve: &DiscountCurve<f64>,
+  notional: f64,
+) -> MarketSwaption {
+  let n_payments = payment_count(quote);
   let accrual = quote.tenor / n_payments as f64;
-  let annuity = (1..=n_payments)
-    .map(|k| curve.discount_factor(quote.expiry + accrual * k as f64) * accrual)
-    .sum::<f64>();
-  let p_end = curve.discount_factor(quote.expiry + accrual * n_payments as f64);
-  (curve.discount_factor(quote.expiry) - p_end) / annuity
+  let coupon_times: Vec<f64> = (1..=n_payments)
+    .map(|k| quote.expiry + accrual * k as f64)
+    .collect();
+  let annuity: f64 = coupon_times
+    .iter()
+    .map(|&t| curve.discount_factor(t) * accrual)
+    .sum::<f64>()
+    * notional;
+  let p_exp = curve.discount_factor(quote.expiry);
+  let p_end = curve.discount_factor(*coupon_times.last().expect("non-empty"));
+  let fair_rate = (p_exp - p_end) / (annuity / notional).max(1e-14);
+  let market_price =
+    annuity * black_forward_caplet(fair_rate, fair_rate, quote.expiry, quote.black_vol);
+  MarketSwaption {
+    fair_rate,
+    coupon_times,
+    accrual,
+    market_price,
+  }
 }
 
 /// `Σ (wᵢ·modelᵢ − wᵢ·marketᵢ)²`: the swaption objective, while `rmse()` stays on the raw prices.
@@ -239,40 +282,15 @@ impl HullWhiteCost {
     let mut model_prices = Vec::with_capacity(self.quotes.len());
     let mut market_prices = Vec::with_capacity(self.quotes.len());
     for quote in &self.quotes {
-      let payments_per_year = (1.0 / quote.fixed_accrual).round();
-      let n_payments = (quote.tenor * payments_per_year).round() as usize;
-      let n_payments = n_payments.max(1);
-      let accrual = quote.tenor / n_payments as f64;
-      let coupon_times: Vec<f64> = (1..=n_payments)
-        .map(|k| quote.expiry + accrual * k as f64)
-        .collect();
-      let accrual_factors = vec![accrual; n_payments];
-
-      let annuity: f64 = coupon_times
-        .iter()
-        .map(|&t_i| curve.discount_factor(t_i) * accrual)
-        .sum::<f64>()
-        * self.notional;
-
-      let p_exp = curve.discount_factor(quote.expiry);
-      // `coupon_times` is built from `(1..=n_payments)` after `n_payments.max(1)`
-      // above, so it is non-empty by construction. Use `expect` to encode the
-      // invariant rather than blank `unwrap`.
-      let p_end = curve.discount_factor(
-        *coupon_times
-          .last()
-          .expect("coupon_times non-empty by n_payments.max(1) construction"),
-      );
-      let fair_rate = (p_exp - p_end) / (annuity / self.notional).max(1e-14);
-      let forward_value = black_forward_caplet(fair_rate, fair_rate, quote.expiry, quote.black_vol);
-      let market_price = annuity * forward_value;
+      let market = market_swaption(quote, &curve, self.notional);
+      let accrual_factors = vec![market.accrual; market.coupon_times.len()];
 
       let model_price = price_jamshidian_hull_white(
         quote.direction,
-        fair_rate,
+        market.fair_rate,
         self.notional,
         quote.expiry,
-        &coupon_times,
+        &market.coupon_times,
         &accrual_factors,
         a,
         sigma,
@@ -280,7 +298,7 @@ impl HullWhiteCost {
       );
 
       model_prices.push(model_price);
-      market_prices.push(market_price);
+      market_prices.push(market.market_price);
     }
     (market_prices, model_prices)
   }
@@ -527,5 +545,30 @@ mod tests {
       ..START
     };
     HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, start);
+  }
+
+  #[test]
+  fn a_quote_whose_swap_rate_is_nan_is_refused_as_well() {
+    let curve = DiscountCurve::from_zero_rates(
+      &Array1::from_vec(vec![1.0, 3.0, 5.0]),
+      &Array1::from_vec(vec![0.02, f64::NAN, 0.02]),
+      InterpolationMethod::LogLinearOnDiscountFactors,
+    );
+    let err = validate_swaption_quotes(&quotes(), &curve).unwrap_err();
+    assert!(
+      matches!(&err, QuantError::InvalidQuote { reason, .. } if reason.contains("fair_rate")),
+      "{err}"
+    );
+  }
+
+  #[test]
+  fn an_accrual_that_implies_an_absurd_schedule_is_refused_before_it_is_walked() {
+    let mut quotes = quotes();
+    quotes[1].fixed_accrual = 1e-10;
+    let err = validate_swaption_quotes(&quotes, &curve()).unwrap_err();
+    assert!(
+      matches!(&err, QuantError::InvalidQuote { index: 1, reason } if reason.contains("fixed_accrual")),
+      "{err}"
+    );
   }
 }

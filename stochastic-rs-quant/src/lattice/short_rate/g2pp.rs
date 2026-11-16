@@ -225,20 +225,23 @@ mod tests {
     cov / (px.dot(&(&dx * &dx)) * py.dot(&(&dy * &dy))).sqrt()
   }
 
-  /// Auer (2009)'s `Corr_{x,y}(t)` of the two OU factors: within 0.05 and converging where `a ≠ b`.
+  /// Auer (2009)'s `Corr_{x,y}(t)`: within 0.05 for `|ρ| < 1` and converging where `a ≠ b`.
   #[test]
   fn the_terminal_factor_correlation_converges_to_auers() {
     for (a, b, rho, t, auer) in [
       (0.5, 0.05, -0.7, 3.0, -0.655_250_231_639_761_1),
       (0.05, 0.05, -0.9, 1.0, -0.9),
       (0.5, 0.05, -0.7, 1.0, -0.694_215_295_961_855_3),
+      (0.5, 0.05, -1.0, 3.0, -0.936_071_759_485_373),
     ] {
       let coarse = terminal_correlation(a, b, rho, t, 30);
       let fine = terminal_correlation(a, b, rho, t, 120);
-      assert!(
-        (fine - auer).abs() < 0.05,
-        "a {a} b {b} t {t}: {fine} vs {auer}"
-      );
+      if rho.abs() < 1.0 {
+        assert!(
+          (fine - auer).abs() < 0.05,
+          "a {a} b {b} t {t}: {fine} vs {auer}"
+        );
+      }
       if a != b {
         assert!(
           (fine - auer).abs() < (coarse - auer).abs(),
