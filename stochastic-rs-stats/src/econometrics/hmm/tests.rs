@@ -167,8 +167,7 @@ fn an_observation_far_from_every_state_keeps_the_exact_likelihood() {
   }
 }
 
-/// State 0 cannot leave itself: the observation at 100 favours state 1 by 950 nats, which a
-/// transition cost of `ln 1e-300` would let it buy.
+/// State 0 cannot leave itself, so no observation may route the path through state 1.
 #[test]
 fn viterbi_never_takes_a_zero_probability_transition() {
   let hmm = GaussianHmm::new(
@@ -471,6 +470,31 @@ fn a_sample_variance_that_overflows_is_a_numerical_error() {
     hmm.baum_welch(observations.view(), 5, 1e-8).unwrap_err(),
     StatsError::Numerical {
       stage: "sample variance"
+    }
+  );
+  assert_eq!(hmm.initial, before.initial);
+  assert_eq!(hmm.transitions, before.transitions);
+  assert_eq!(hmm.means, before.means);
+  assert_eq!(hmm.stds, before.stds);
+}
+
+/// One point `1.35e154` from 39 near 0 keeps the sample variance finite, but its squared distance
+/// from the other state's mean overflows that state's variance.
+#[test]
+fn an_emission_variance_that_overflows_is_a_numerical_error() {
+  let d = 1.35e154;
+  let mut hmm = GaussianHmm::new(
+    array![0.5, 0.5],
+    array![[0.9, 0.1], [0.1, 0.9]],
+    array![0.0, d],
+    array![1.0, 1e153],
+  );
+  let before = hmm.clone();
+  let observations = Array1::from_iter((0..39).map(|t| 0.3 * (t as f64).sin()).chain([d]));
+  assert_eq!(
+    hmm.baum_welch(observations.view(), 5, 1e-8).unwrap_err(),
+    StatsError::Numerical {
+      stage: "emission variance"
     }
   );
   assert_eq!(hmm.initial, before.initial);

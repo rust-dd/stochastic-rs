@@ -336,3 +336,18 @@ pub fn fit_ar(y: &[f64], lags: usize) -> Result<(Vec<f64>, Vec<f64>, f64), Stats
   let sigma = fit.sigma2.sqrt();
   Ok((fit.beta, fit.residuals, sigma))
 }
+
+#[cfg(test)]
+mod tests {
+  use super::newey_west_long_run_variance;
+  use crate::StatsError;
+
+  /// The residuals of an exact fit are all zero, so they carry no long-run variance.
+  #[test]
+  fn zero_residuals_have_no_long_run_variance() {
+    assert_eq!(
+      newey_west_long_run_variance(&[0.0; 30], 4).unwrap_err(),
+      StatsError::DegenerateData("zero long-run variance")
+    );
+  }
+}

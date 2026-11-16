@@ -35,7 +35,7 @@ fn series(seed: u64) -> Array1<f64> {
 
 const SEEDS: [u64; 3] = [7, 11, 13];
 
-/// Where an absolute variance floor of `1e-12` bound these statistics.
+/// Scales several decades below unit variance.
 const SCALES: [f64; 3] = [1e-5, 1e-6, 1e-7];
 
 fn assert_rescaled(what: &str, statistic: impl Fn(&Array1<f64>) -> f64, scales: &[f64]) {
@@ -119,22 +119,6 @@ fn kpss_answers_a_long_run_variance_that_overflows_with_numerical() {
       stage: "long-run variance"
     }
   );
-}
-
-/// A line is fitted exactly by the Dickey–Fuller regression, so its residuals are all zero.
-#[test]
-fn phillips_perron_answers_zero_residuals_with_degenerate_data() {
-  let y = Array1::from_iter((0..30).map(|t| t as f64));
-  for test_type in [PpTestType::Tau, PpTestType::Rho] {
-    let cfg = PhillipsPerronConfig {
-      test_type,
-      ..PhillipsPerronConfig::default()
-    };
-    assert_eq!(
-      phillips_perron_test(y.view(), cfg).unwrap_err(),
-      StatsError::DegenerateData("zero long-run variance")
-    );
-  }
 }
 
 /// An alternating series is an exact AR(1) with coefficient −1 about its zero mean.
