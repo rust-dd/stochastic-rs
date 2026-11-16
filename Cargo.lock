@@ -3523,8 +3523,6 @@ name = "stochastic-rs-stats"
 version = "3.0.0-rc.4"
 dependencies = [
  "basin",
- "faer",
- "faer-ext",
  "linreg",
  "ndarray",
  "ndrustfft",

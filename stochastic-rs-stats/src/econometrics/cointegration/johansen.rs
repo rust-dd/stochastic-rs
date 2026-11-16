@@ -46,13 +46,13 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::s;
+use stochastic_rs_distributions::linalg::inverse;
+use stochastic_rs_distributions::linalg::lstsq;
+use stochastic_rs_distributions::linalg::spd_cholesky_lower;
+use stochastic_rs_distributions::linalg::symmetric_eigen;
 
 use crate::StatsError;
 use crate::input::validate_rows;
-use crate::linalg::inverse;
-use crate::linalg::lstsq;
-use crate::linalg::spd_cholesky_lower;
-use crate::linalg::symmetric_eigen;
 
 /// 5% critical values of the trace statistic for $K - r = 1, \ldots, 12$
 /// (MacKinnon–Haug–Michelis 1999, unrestricted constant).
@@ -184,7 +184,7 @@ fn concentrate(series: ArrayView2<f64>, lags: usize) -> Result<Concentrated, Sta
   let s00 = r0.t().dot(&r0) / n;
   let s11 = r1.t().dot(&r1) / n;
   let s01 = r0.t().dot(&r1) / n;
-  let s00_inv = inverse(&s00).ok_or(StatsError::Singular("S00"))?;
+  let s00_inv = inverse(s00.view()).ok_or(StatsError::Singular("S00"))?;
   let m = s01.t().dot(&s00_inv).dot(&s01);
   let (eigenvalues, eigenvectors) = ordered_eigen(&m, &s11)?;
   Ok(Concentrated {
@@ -207,12 +207,12 @@ fn ordered_eigen(
   s11: &Array2<f64>,
 ) -> Result<(Array1<f64>, Array2<f64>), StatsError> {
   let k = s11.nrows();
-  let l = spd_cholesky_lower(s11).ok_or(StatsError::Singular("S11"))?;
-  let l_inv = inverse(&l).ok_or(StatsError::Singular("S11"))?;
+  let l = spd_cholesky_lower(s11.view()).ok_or(StatsError::Singular("S11"))?;
+  let l_inv = inverse(l.view()).ok_or(StatsError::Singular("S11"))?;
   let whitened = l_inv.dot(m).dot(&l_inv.t());
   let symmetric = (&whitened + &whitened.t()) / 2.0;
   // faer answers a non-finite matrix with NaN eigenvalues, not an error.
-  let (values, vectors) = symmetric_eigen(&symmetric)
+  let (values, vectors) = symmetric_eigen(symmetric.view())
     .filter(|(values, _)| values.iter().all(|v| v.is_finite()))
     .ok_or(StatsError::Numerical {
       stage: "eigen decomposition",
@@ -237,8 +237,7 @@ fn residualise(y: &Array2<f64>, x: &Array2<f64>) -> Array2<f64> {
     return y.clone();
   }
   for col in 0..p {
-    let target = y.column(col).to_owned();
-    let beta = lstsq(x, &target);
+    let beta = lstsq(x.view(), y.column(col));
     for row in 0..n {
       let mut yhat = 0.0;
       for j in 0..q {
@@ -315,8 +314,9 @@ pub fn fit_vecm(series: ArrayView2<f64>, lags: usize, rank: usize) -> Result<Vec
   let (n_eff, n_cols) = c.z2.dim();
   let mut coef = Array2::<f64>::zeros((n_cols, k));
   for j in 0..k {
-    let column = target.column(j).to_owned();
-    coef.column_mut(j).assign(&lstsq(&c.z2, &column));
+    coef
+      .column_mut(j)
+      .assign(&lstsq(c.z2.view(), target.column(j)));
   }
   let residuals = &target - &c.z2.dot(&coef);
   let sigma = residuals.t().dot(&residuals) / n_eff as f64;

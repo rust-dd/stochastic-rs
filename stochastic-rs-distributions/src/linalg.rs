@@ -7,6 +7,7 @@ use faer::linalg::solvers::DenseSolveCore;
 use faer::linalg::solvers::Llt;
 use faer::linalg::solvers::LltError;
 use faer::linalg::solvers::PartialPivLu;
+use faer::linalg::solvers::SelfAdjointEigen;
 use faer::linalg::solvers::Solve;
 use faer::linalg::solvers::SolveLstsqCore;
 use faer_ext::IntoFaer;
@@ -32,6 +33,15 @@ pub fn solve(a: ArrayView2<f64>, b: ArrayView1<f64>) -> Option<Array1<f64>> {
   let rhs = faer::Mat::from_fn(b.len(), 1, |i, _| b[i]);
   let x = lu.solve(rhs.as_ref());
   let out = Array1::from_iter((0..b.len()).map(|i| x[(i, 0)]));
+  out.iter().all(|v| v.is_finite()).then_some(out)
+}
+
+/// LU inverse; `None` when it is not finite, a pivoted LU's singularity signal; panics if `a` is
+/// not square.
+pub fn inverse(a: ArrayView2<f64>) -> Option<Array2<f64>> {
+  let lu = PartialPivLu::new(a.into_faer());
+  let inv = lu.inverse();
+  let out = inv.as_ref().into_ndarray().to_owned();
   out.iter().all(|v| v.is_finite()).then_some(out)
 }
 
@@ -82,6 +92,16 @@ pub fn symmetric_eigenvalues(a: ArrayView2<f64>) -> Option<Array1<f64>> {
     .map(Array1::from)
 }
 
+/// Eigenvalues of a symmetric matrix in nondecreasing order and their orthonormal eigenvectors as
+/// columns; `None` where the solver does not converge; panics if `a` is not square.
+pub fn symmetric_eigen(a: ArrayView2<f64>) -> Option<(Array1<f64>, Array2<f64>)> {
+  let evd = SelfAdjointEigen::new(a.into_faer(), Side::Lower).ok()?;
+  let s = evd.S();
+  let values = Array1::from_iter((0..a.nrows()).map(|i| s[i]));
+  let vectors = evd.U().into_ndarray().to_owned();
+  Some((values, vectors))
+}
+
 #[cfg(test)]
 mod tests {
   use ndarray::array;
@@ -107,6 +127,19 @@ mod tests {
     }
     let sing = array![[1.0, 2.0], [2.0, 4.0]];
     assert!(solve(sing.view(), b.view()).is_none());
+  }
+
+  #[test]
+  fn inverse_inverts_a_regular_matrix_and_flags_a_singular_one() {
+    let a = array![[4.0, 7.0], [2.0, 6.0]];
+    let id = a.dot(&inverse(a.view()).expect("nonsingular"));
+    for i in 0..2 {
+      for j in 0..2 {
+        let want = if i == j { 1.0 } else { 0.0 };
+        assert!((id[[i, j]] - want).abs() < 1e-12, "A A^-1 != I");
+      }
+    }
+    assert!(inverse(array![[1.0, 2.0], [2.0, 4.0]].view()).is_none());
   }
 
   #[test]
@@ -149,5 +182,32 @@ mod tests {
       }
     }
     assert!(symmetric_eigenvalues(array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]].view()).is_none());
+  }
+
+  #[test]
+  fn symmetric_eigen_reconstructs_the_matrix() {
+    let a = array![[4.0, 1.0, 0.5], [1.0, 3.0, 0.2], [0.5, 0.2, 1.0]];
+    let (values, vectors) = symmetric_eigen(a.view()).expect("evd");
+    assert!(values[0] <= values[1] && values[1] <= values[2], "{values}");
+    let mut recon = Array2::<f64>::zeros((3, 3));
+    for k in 0..3 {
+      for i in 0..3 {
+        for j in 0..3 {
+          recon[[i, j]] += values[k] * vectors[[i, k]] * vectors[[j, k]];
+        }
+      }
+    }
+    for i in 0..3 {
+      for j in 0..3 {
+        assert!((recon[[i, j]] - a[[i, j]]).abs() < 1e-12);
+      }
+    }
+    let gram = vectors.t().dot(&vectors);
+    for i in 0..3 {
+      for j in 0..3 {
+        let want = if i == j { 1.0 } else { 0.0 };
+        assert!((gram[[i, j]] - want).abs() < 1e-12);
+      }
+    }
   }
 }

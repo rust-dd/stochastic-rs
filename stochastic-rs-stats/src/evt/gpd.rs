@@ -25,12 +25,12 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
+use stochastic_rs_distributions::linalg::inverse;
 
 use crate::StatsError;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_domain;
-use crate::linalg::inverse;
 use crate::optim::best_start;
 use crate::optim::nelder_mead_vec;
 use crate::traits::FloatExt;
@@ -318,5 +318,5 @@ pub(crate) fn information_inverse<F: Fn(&[f64]) -> f64>(
       hessian[[j, i]] = mixed;
     }
   }
-  inverse(&hessian).unwrap_or_else(|| Array2::from_elem((k, k), f64::NAN))
+  inverse(hessian.view()).unwrap_or_else(|| Array2::from_elem((k, k), f64::NAN))
 }

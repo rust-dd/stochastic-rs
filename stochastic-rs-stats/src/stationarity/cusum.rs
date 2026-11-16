@@ -38,6 +38,7 @@
 use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
+use stochastic_rs_distributions::linalg::inverse;
 
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
@@ -46,7 +47,6 @@ use crate::input::assert_alpha;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_rows;
-use crate::linalg::inverse;
 use crate::traits::RealExt;
 
 /// Choice of CUSUM variant.
@@ -260,7 +260,8 @@ fn recursive_residuals(y: ArrayView1<f64>, x: ArrayView2<f64>) -> Result<Vec<f64
 
   let x_init = x.slice(ndarray::s![..k, ..]).to_owned();
   let y_init = y.slice(ndarray::s![..k]).to_owned();
-  let mut xtx_inv = inverse(&x_init.t().dot(&x_init)).ok_or(StatsError::Singular("OLS design"))?;
+  let mut xtx_inv =
+    inverse(x_init.t().dot(&x_init).view()).ok_or(StatsError::Singular("OLS design"))?;
   let mut xty = x_init.t().dot(&y_init);
 
   let mut w = Vec::with_capacity(t_total - k);
@@ -498,7 +499,7 @@ mod tests {
     let s2_w = w.iter().map(|wj| (wj - w_mean).powi(2)).sum::<f64>() / (w.len() as f64 - 1.0);
 
     // OLS σ² on the full sample.
-    let beta = inverse(&x.t().dot(&x)).unwrap().dot(&x.t().dot(&y));
+    let beta = inverse(x.t().dot(&x).view()).unwrap().dot(&x.t().dot(&y));
     let resid = &y - &x.dot(&beta);
     let s2_ols = resid.iter().map(|r| r * r).sum::<f64>() / (n as f64 - 2.0);
 

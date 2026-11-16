@@ -8,7 +8,6 @@
 #![allow(clippy::needless_range_loop)]
 
 mod input;
-mod linalg;
 
 pub mod error;
 pub mod traits;

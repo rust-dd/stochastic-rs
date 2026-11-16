@@ -17,10 +17,10 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
+use stochastic_rs_distributions::linalg::inverse;
+use stochastic_rs_distributions::linalg::spd_cholesky_lower;
 
 use crate::StatsError;
-use crate::linalg::inverse;
-use crate::linalg::spd_cholesky_lower;
 
 /// State estimate (mean + covariance) on entry to / exit from a UKF step.
 #[derive(Debug, Clone)]
@@ -55,7 +55,7 @@ where
   let scale = (n as f64 + lambda).sqrt();
 
   let chol =
-    spd_cholesky_lower(&prior.covariance).ok_or(StatsError::Singular("prior covariance"))?;
+    spd_cholesky_lower(prior.covariance.view()).ok_or(StatsError::Singular("prior covariance"))?;
 
   let n_sigma = 2 * n + 1;
   let mut sigma = Array2::<f64>::zeros((n_sigma, n));
@@ -153,7 +153,7 @@ where
       }
     }
   }
-  let s_inv = inverse(&s).ok_or(StatsError::Singular("innovation covariance"))?;
+  let s_inv = inverse(s.view()).ok_or(StatsError::Singular("innovation covariance"))?;
   let kalman_gain = cross.dot(&s_inv);
   let innovation: Array1<f64> = (0..m)
     .map(|j| observation[j] - z_mean[j])

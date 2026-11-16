@@ -11,6 +11,7 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
+use stochastic_rs_distributions::linalg::lstsq;
 use stochastic_rs_distributions::special::beta_i as beta_reg;
 
 use crate::StatsError;
@@ -19,7 +20,6 @@ use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
 use crate::input::reject_constant;
 use crate::input::validate;
-use crate::linalg::lstsq;
 
 /// Granger-causality F-test (null: `x` does not Granger-cause `y`), decided by its p-value.
 #[derive(Debug, Clone)]
@@ -119,7 +119,7 @@ pub fn granger_causality_test(
 }
 
 fn ols_rss(x: &Array2<f64>, y: &Array1<f64>) -> Result<f64, StatsError> {
-  let beta = lstsq(x, y);
+  let beta = lstsq(x.view(), y.view());
   let yhat = x.dot(&beta);
   let rss = (y - &yhat).iter().map(|v| v * v).sum::<f64>();
   if rss.is_finite() {

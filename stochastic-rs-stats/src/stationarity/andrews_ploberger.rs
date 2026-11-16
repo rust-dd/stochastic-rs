@@ -39,6 +39,8 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
+use stochastic_rs_distributions::linalg::inverse;
+use stochastic_rs_distributions::linalg::solve;
 
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
@@ -47,8 +49,6 @@ use crate::input::assert_alpha;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_rows;
-use crate::linalg::inverse;
-use crate::linalg::solve;
 use crate::traits::RealExt;
 
 /// Which aggregation of the local Wald statistic to report.
@@ -208,7 +208,7 @@ fn local_wald(y: ArrayView1<f64>, x: ArrayView2<f64>, t1: usize, k: usize) -> f6
 
   let diff = &b1 - &b2;
   let vsum = &v1 + &v2;
-  match solve(&vsum, &diff) {
+  match solve(vsum.view(), diff.view()) {
     Some(z) => diff.dot(&z).max(0.0),
     None => f64::NAN,
   }
@@ -231,11 +231,11 @@ fn segment_fit(
   let ys = y.slice(ndarray::s![lo..hi]).to_owned();
   let xtx = xs.t().dot(&xs);
   let xty = xs.t().dot(&ys);
-  let beta = solve(&xtx, &xty)?;
+  let beta = solve(xtx.view(), xty.view())?;
   let resid = &ys - &xs.dot(&beta);
   let sse: f64 = resid.iter().map(|r| r * r).sum();
   let sigma2 = sse / (n as f64 - k as f64).max(1.0);
-  let xtx_inv = inverse(&xtx)?;
+  let xtx_inv = inverse(xtx.view())?;
   Some((beta, &xtx_inv * sigma2))
 }
 
