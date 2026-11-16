@@ -345,6 +345,28 @@ fn jump_fou_setters_keep_the_jump_driver_in_step() {
 }
 
 #[test]
+fn jump_fou_with_horizon_leaves_the_jump_driver_alone() {
+  let p = JumpFou::<f64, _, _>::new(
+    0.7,
+    1.0,
+    0.0,
+    0.2,
+    2.0,
+    jump_law(0.1),
+    16,
+    Some(0.0),
+    Some(1.0),
+    seed(1),
+  );
+  let _ = p.sample();
+  let jump_seed = p.cpoisson().seed.current();
+  assert_eq!(
+    p.with_horizon(Some(2.0)).cpoisson().seed.current(),
+    jump_seed
+  );
+}
+
+#[test]
 fn jump_fou_custom_setters_match_fresh_construction() {
   let chained = JumpFOUCustom::<f64, _, _>::new(
     0.3,

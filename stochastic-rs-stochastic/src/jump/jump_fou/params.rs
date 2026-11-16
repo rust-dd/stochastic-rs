@@ -150,12 +150,11 @@ where
     self
   }
 
-  /// Replace the simulation horizon `t`; rebuilds the embedded `fgn` and
-  /// `cpoisson`.
+  /// Replace the simulation horizon `t`; rebuilds the embedded `fgn`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     self.t = t;
     self.fgn = Self::fgn_for(self.hurst, self.n, t);
-    self.rebuild_cpoisson()
+    self
   }
 
   /// Replace the seed; re-derives `cpoisson`'s seed from it as `new()` does, so the result matches
