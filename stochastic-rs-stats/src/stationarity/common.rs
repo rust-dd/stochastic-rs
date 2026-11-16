@@ -15,6 +15,9 @@ pub enum Trend {
   ConstantTrend,
 }
 
+/// The lag of the ADF and DF-GLS regressions: fixed, or by AIC, BIC or the largest lag whose
+/// `|t| ≥ 1.645`, every candidate up to `max_lags` fitted on the rows of `max_lags`.
+/// Reference: Ng & Perron (2005), DOI: 10.1111/j.1468-0084.2005.00113.x
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum LagSelection {
@@ -205,6 +208,8 @@ pub fn bic_from_sse(sse: f64, nobs: usize, k: usize) -> f64 {
   n * (sse / n).ln() + (k as f64) * n.ln()
 }
 
+/// The lag `lag_selection` takes from `0..=max_lags`, every candidate fitted on the rows of
+/// `max_lags` so that their criteria compare; `Err` on a singular fit or a NaN criterion.
 pub fn choose_lag_for_adf(
   y: &[f64],
   trend: Trend,
@@ -214,54 +219,48 @@ pub fn choose_lag_for_adf(
   if let LagSelection::Fixed(p) = lag_selection {
     return Ok(p);
   }
-
-  let mut best_lag = 0usize;
-  let mut best_score = f64::INFINITY;
-
-  let mut candidates: Vec<(usize, f64, f64)> = Vec::new();
-
+  let (lhs, rhs, gamma_index) = build_adf_design(y, max_lags, trend)?;
+  let mut criteria = Vec::with_capacity(max_lags + 1);
+  let mut significant = 0;
   for lag in 0..=max_lags {
-    let (lhs, rhs, _gamma_idx) = build_adf_design(y, lag, trend)?;
-    if rhs.is_empty() {
-      continue;
+    let columns = gamma_index + 1 + lag;
+    let rows = rhs
+      .iter()
+      .map(|row| row[..columns].to_vec())
+      .collect::<Vec<_>>();
+    let fit = ols(&lhs, &rows)?;
+    match lag_selection {
+      LagSelection::Aic => criteria.push(aic_from_sse(fit.sse, fit.nobs, fit.k)),
+      LagSelection::Bic => criteria.push(bic_from_sse(fit.sse, fit.nobs, fit.k)),
+      _ => {
+        let (beta, se) = (fit.beta[columns - 1], fit.std_err[columns - 1]);
+        if lag > 0 && se > 0.0 && (beta / se).abs() >= 1.644_853_626_951_472_2 {
+          significant = lag;
+        }
+      }
     }
-    let fit = ols(&lhs, &rhs)?;
-
-    let ic = match lag_selection {
-      LagSelection::Aic => aic_from_sse(fit.sse, fit.nobs, fit.k),
-      LagSelection::Bic => bic_from_sse(fit.sse, fit.nobs, fit.k),
-      LagSelection::Fixed(_) | LagSelection::TStat => 0.0,
-    };
-
-    let t_last = if lag > 0 {
-      let idx = fit.k - 1;
-      let se = fit.std_err[idx];
-      if se > 0.0 { fit.beta[idx] / se } else { 0.0 }
-    } else {
-      0.0
-    };
-
-    if matches!(lag_selection, LagSelection::Aic | LagSelection::Bic) && ic < best_score {
-      best_score = ic;
-      best_lag = lag;
-    }
-
-    candidates.push((lag, ic, t_last));
   }
+  if lag_selection == LagSelection::TStat {
+    return Ok(significant);
+  }
+  least_criterion(&criteria)
+}
 
-  Ok(match lag_selection {
-    LagSelection::Aic | LagSelection::Bic => best_lag,
-    LagSelection::TStat => {
-      let mut ordered = candidates;
-      ordered.sort_by_key(|(lag, _, _)| *lag);
-      ordered
-        .into_iter()
-        .rev()
-        .find(|&(lag, _, t_last)| lag == 0 || t_last.abs() >= 1.644_853_626_951_472_2)
-        .map_or(0, |(lag, _, _)| lag)
+/// The index of the smallest criterion, ties to the smaller lag; a NaN leaves the candidates with
+/// no order.
+fn least_criterion(criteria: &[f64]) -> Result<usize, StatsError> {
+  if criteria.iter().any(|c| c.is_nan()) {
+    return Err(StatsError::Numerical {
+      stage: "lag selection",
+    });
+  }
+  let mut best = 0;
+  for (lag, &criterion) in criteria.iter().enumerate() {
+    if criterion < criteria[best] {
+      best = lag;
     }
-    LagSelection::Fixed(_) => unreachable!(),
-  })
+  }
+  Ok(best)
 }
 
 /// Bartlett-weighted long-run variance of `u`, `>= 0` in exact arithmetic; `Err` on an empty
@@ -339,8 +338,26 @@ pub fn fit_ar(y: &[f64], lags: usize) -> Result<(Vec<f64>, Vec<f64>, f64), Stats
 
 #[cfg(test)]
 mod tests {
+  use super::least_criterion;
   use super::newey_west_long_run_variance;
   use crate::StatsError;
+
+  /// Ties go to the smaller lag, an exact fit's `−∞` wins, and a NaN leaves no order to choose by.
+  #[test]
+  fn the_least_criterion_takes_the_smaller_lag_and_refuses_nan() {
+    assert_eq!(least_criterion(&[3.0, 1.0, 1.0, 2.0]), Ok(1));
+    assert_eq!(
+      least_criterion(&[f64::INFINITY, 2.0, f64::NEG_INFINITY, f64::NEG_INFINITY]),
+      Ok(2)
+    );
+    assert_eq!(least_criterion(&[f64::INFINITY, f64::INFINITY]), Ok(0));
+    assert_eq!(
+      least_criterion(&[1.0, f64::NAN, 0.5]),
+      Err(StatsError::Numerical {
+        stage: "lag selection"
+      })
+    );
+  }
 
   /// The residuals of an exact fit are all zero, so they carry no long-run variance.
   #[test]

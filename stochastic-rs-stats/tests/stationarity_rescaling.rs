@@ -7,7 +7,14 @@ use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stats::StatsError;
+use stochastic_rs_stats::econometrics::cointegration::EngleGrangerConfig;
+use stochastic_rs_stats::econometrics::cointegration::engle_granger_test;
+use stochastic_rs_stats::stationarity::LagSelection;
 use stochastic_rs_stats::stationarity::Trend;
+use stochastic_rs_stats::stationarity::adf::AdfConfig;
+use stochastic_rs_stats::stationarity::adf::adf_test;
+use stochastic_rs_stats::stationarity::ers_dfgls::ErsConfig;
+use stochastic_rs_stats::stationarity::ers_dfgls::ers_dfgls_test;
 use stochastic_rs_stats::stationarity::kpss::KpssConfig;
 use stochastic_rs_stats::stationarity::kpss::kpss_test;
 use stochastic_rs_stats::stationarity::leybourne_mccabe::LeybourneMcCabeConfig;
@@ -50,6 +57,57 @@ fn assert_rescaled(what: &str, statistic: impl Fn(&Array1<f64>) -> f64, scales: 
       );
     }
   }
+}
+
+/// Scales at which a criterion compared over samples of different sizes would move the lag.
+const FAR_SCALES: [f64; 2] = [1e-6, 1e6];
+
+#[test]
+fn adf_and_df_gls_keep_their_statistic_under_rescaling() {
+  for lag_selection in [LagSelection::Aic, LagSelection::Bic, LagSelection::TStat] {
+    for trend in [Trend::None, Trend::Constant, Trend::ConstantTrend] {
+      let cfg = AdfConfig {
+        trend,
+        lag_selection,
+        ..AdfConfig::default()
+      };
+      assert_rescaled(
+        &format!("ADF {trend:?} {lag_selection:?}"),
+        |y| adf_test(y.view(), cfg).unwrap().statistic,
+        &FAR_SCALES,
+      );
+    }
+    for trend in [Trend::Constant, Trend::ConstantTrend] {
+      let cfg = ErsConfig {
+        trend,
+        lag_selection,
+        ..ErsConfig::default()
+      };
+      assert_rescaled(
+        &format!("ERS {trend:?} {lag_selection:?}"),
+        |y| ers_dfgls_test(y.view(), cfg).unwrap().statistic,
+        &FAR_SCALES,
+      );
+    }
+  }
+}
+
+/// `x` is `y` plus noise of half the spread of its steps, so the pair scales together.
+#[test]
+fn engle_granger_keeps_its_statistic_under_rescaling() {
+  let mut noise = vec![0.0; 400];
+  SimdNormal::<f64>::new(0.0, 1.0)
+    .seeded(&Deterministic::new(99))
+    .fill_slice(&mut noise);
+  let engle_granger = |y: &Array1<f64>| {
+    let steps = y.slice(ndarray::s![1..]).to_owned() - y.slice(ndarray::s![..-1]);
+    let spread = steps.std(0.0);
+    let x = Array1::from_iter(y.iter().zip(&noise).map(|(v, e)| v + 0.5 * spread * e));
+    engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default())
+      .unwrap()
+      .statistic
+  };
+  assert_rescaled("Engle-Granger", engle_granger, &FAR_SCALES);
 }
 
 #[test]
