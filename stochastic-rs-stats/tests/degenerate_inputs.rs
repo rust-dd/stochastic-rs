@@ -6,10 +6,26 @@ use ndarray::Array2;
 use ndarray::ArrayView1;
 use stochastic_rs_stats::StatsError;
 use stochastic_rs_stats::acf::LjungBoxConfig;
+use stochastic_rs_stats::acf::acf;
 use stochastic_rs_stats::acf::ljung_box;
+use stochastic_rs_stats::acf::pacf;
+use stochastic_rs_stats::distfit::fit_johnson_su;
+use stochastic_rs_stats::distfit::fit_skew_t;
+use stochastic_rs_stats::distfit::fit_variance_gamma;
 use stochastic_rs_stats::econometrics::cointegration::EngleGrangerConfig;
 use stochastic_rs_stats::econometrics::cointegration::engle_granger_test;
+use stochastic_rs_stats::econometrics::cointegration::fit_vecm;
+use stochastic_rs_stats::econometrics::cointegration::johansen_test;
 use stochastic_rs_stats::econometrics::granger::granger_causality_test;
+use stochastic_rs_stats::evt::fit_gev;
+use stochastic_rs_stats::evt::fit_gpd;
+use stochastic_rs_stats::evt::fit_gpd_pwm;
+use stochastic_rs_stats::evt::fit_hill;
+use stochastic_rs_stats::evt::fit_pot;
+use stochastic_rs_stats::garch::GarchSpec;
+use stochastic_rs_stats::garch::fit_garch;
+use stochastic_rs_stats::goodness_of_fit::chi_square::ChiSquareGofConfig;
+use stochastic_rs_stats::goodness_of_fit::chi_square::chi_square_gof_test;
 use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::KolmogorovSmirnovConfig;
 use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::kolmogorov_smirnov_test;
 use stochastic_rs_stats::normality::anderson_darling::AndersonDarlingConfig;
@@ -18,8 +34,27 @@ use stochastic_rs_stats::normality::jarque_bera::JarqueBeraConfig;
 use stochastic_rs_stats::normality::jarque_bera::jarque_bera_test;
 use stochastic_rs_stats::normality::shapiro_francia::ShapiroFranciaConfig;
 use stochastic_rs_stats::normality::shapiro_francia::shapiro_francia_test;
+use stochastic_rs_stats::realized::HarRv;
+use stochastic_rs_stats::realized::KernelType;
 use stochastic_rs_stats::realized::bipower::bns_jump_test;
+use stochastic_rs_stats::realized::bipower_variation;
+use stochastic_rs_stats::realized::ewma_variance;
 use stochastic_rs_stats::realized::lee_mykland::lee_mykland_test;
+use stochastic_rs_stats::realized::medrv;
+use stochastic_rs_stats::realized::minrv;
+use stochastic_rs_stats::realized::multi_scale_rv;
+use stochastic_rs_stats::realized::pre_averaged_variance;
+use stochastic_rs_stats::realized::pre_averaging::pre_averaged_variance_with_block;
+use stochastic_rs_stats::realized::realized_kernel;
+use stochastic_rs_stats::realized::realized_kurtosis;
+use stochastic_rs_stats::realized::realized_quarticity;
+use stochastic_rs_stats::realized::realized_semivariance;
+use stochastic_rs_stats::realized::realized_skewness;
+use stochastic_rs_stats::realized::realized_variance;
+use stochastic_rs_stats::realized::realized_volatility;
+use stochastic_rs_stats::realized::riskmetrics_variance;
+use stochastic_rs_stats::realized::tripower_quarticity;
+use stochastic_rs_stats::realized::two_scale_rv;
 use stochastic_rs_stats::stationarity::adf::AdfConfig;
 use stochastic_rs_stats::stationarity::adf::adf_test;
 use stochastic_rs_stats::stationarity::andrews_ploberger::AndrewsPlobergerConfig;
@@ -49,6 +84,10 @@ const SERIES: Option<StatsError> = Some(StatsError::DegenerateData("constant ser
 
 const SAMPLE: Option<StatsError> = Some(StatsError::DegenerateData("constant sample"));
 
+const EXCESSES: Option<StatsError> = Some(StatsError::DegenerateData("constant excesses"));
+
+const JOHANSEN: Option<StatsError> = Some(StatsError::Singular("S00"));
+
 fn err<T, F: Fn(ArrayView1<f64>) -> Result<T, StatsError> + 'static>(f: F) -> Answer {
   Box::new(move |x| f(x).err())
 }
@@ -60,6 +99,18 @@ fn design(n: usize) -> Array2<f64> {
 /// An intercept and a trend: RESET's powers of an intercept-only fit are collinear with it.
 fn trend_design(n: usize) -> Array2<f64> {
   Array2::<f64>::from_shape_fn((n, 2), |(t, j)| if j == 0 { 1.0 } else { t as f64 })
+}
+
+/// The series and its square as the two columns of a matrix-input test.
+fn pair(x: ArrayView1<f64>) -> Array2<f64> {
+  Array2::<f64>::from_shape_fn(
+    (x.len(), 2),
+    |(t, j)| if j == 0 { x[t] } else { x[t] * x[t] },
+  )
+}
+
+fn har_model() -> HarRv {
+  HarRv::fit(Array1::from_iter((0..60).map(|t| 1.0 + 0.5 * (t as f64 * 0.7).sin())).view()).unwrap()
 }
 
 pub fn hypothesis_tests() -> Vec<Entry> {
@@ -136,6 +187,60 @@ pub fn hypothesis_tests() -> Vec<Entry> {
     ),
     ("bns", err(|x| bns_jump_test(x, 0.05)), None),
     ("lee_mykland", err(|x| lee_mykland_test(x, 16, 0.05)), None),
+    ("acf", err(|x| acf(x, 20)), SERIES),
+    ("pacf", err(|x| pacf(x, 20)), SERIES),
+    (
+      "johansen",
+      err(|x| johansen_test(pair(x).view(), 2)),
+      JOHANSEN,
+    ),
+    ("vecm", err(|x| fit_vecm(pair(x).view(), 2, 1)), JOHANSEN),
+  ]
+}
+
+pub fn estimators_a() -> Vec<Entry> {
+  vec![
+    (
+      "fit_gev",
+      err(fit_gev),
+      Some(StatsError::DegenerateData("constant block maxima")),
+    ),
+    (
+      "fit_gpd",
+      err(|x| fit_gpd(x.mapv(f64::abs).view())),
+      EXCESSES,
+    ),
+    (
+      "fit_gpd_pwm",
+      err(|x| fit_gpd_pwm(x.mapv(f64::abs).view())),
+      None,
+    ),
+    ("fit_pot", err(|x| fit_pot(x, 0.0)), EXCESSES),
+    (
+      "fit_hill",
+      err(|x| fit_hill(x.mapv(|v| v.abs() + 1.0).view(), 5)),
+      None,
+    ),
+    ("fit_johnson_su", err(fit_johnson_su), SAMPLE),
+    ("fit_skew_t", err(fit_skew_t), SAMPLE),
+    ("fit_variance_gamma", err(fit_variance_gamma), SAMPLE),
+    (
+      "fit_garch",
+      err(|x| fit_garch(x, GarchSpec::garch(1, 1))),
+      Some(StatsError::DegenerateData("zero-variance returns")),
+    ),
+    (
+      "har_fit",
+      err(|x| HarRv::fit(x.mapv(f64::abs).view())),
+      SERIES,
+    ),
+    (
+      "har_forecast",
+      err(|x| har_model().forecast(x.mapv(f64::abs).view())),
+      None,
+    ),
+    ("ewma", err(|x| ewma_variance(x, 0.94)), None),
+    ("riskmetrics", err(riskmetrics_variance), None),
   ]
 }
 
@@ -169,4 +274,63 @@ fn check(entries: Vec<Entry>) {
 #[test]
 fn hypothesis_tests_answer_err_on_degenerate_input() {
   check(hypothesis_tests());
+}
+
+/// Counts cannot be NaN, so the chi-square test has the empty and constant rows only.
+#[test]
+fn chi_square_answers_err_on_too_few_bins_and_a_value_on_flat_counts() {
+  assert_eq!(
+    chi_square_gof_test(&[], &[], ChiSquareGofConfig::default()).unwrap_err(),
+    StatsError::InsufficientData { needed: 2, got: 0 }
+  );
+  let flat = chi_square_gof_test(
+    &[3; 400],
+    &[1.0 / 400.0; 400],
+    ChiSquareGofConfig::default(),
+  );
+  assert!(flat.is_ok(), "{flat:?}");
+}
+
+#[test]
+#[should_panic(expected = "alpha must satisfy `0.0 < alpha < 1.0`, got alpha = 1.5")]
+fn an_alpha_outside_the_unit_interval_panics() {
+  let _ = bns_jump_test(Array1::<f64>::linspace(-1.0, 1.0, 50).view(), 1.5);
+}
+
+#[test]
+#[should_panic(expected = "lags must satisfy `lags >= 1`, got lags = 0")]
+fn zero_lags_panic() {
+  let x = Array1::<f64>::linspace(-1.0, 1.0, 50);
+  let _ = granger_causality_test(x.view(), x.view(), 0, 0.05);
+}
+
+#[test]
+fn estimators_a_answer_err_on_degenerate_input() {
+  check(estimators_a());
+}
+
+#[test]
+fn realized_measures_answer_nan_below_their_minimum_length() {
+  let empty = Array1::<f64>::zeros(0);
+  let one = Array1::<f64>::from_vec(vec![0.01]);
+  let two = Array1::<f64>::from_vec(vec![0.01, -0.02]);
+  let three = Array1::<f64>::from_vec(vec![0.01, -0.02, 0.015]);
+  assert!(realized_variance(empty.view()).is_nan());
+  assert!(realized_volatility(empty.view(), 252.0).is_nan());
+  let (down, up) = realized_semivariance(empty.view(), 0.0);
+  assert!(down.is_nan() && up.is_nan());
+  assert!(realized_quarticity(empty.view()).is_nan());
+  assert!(realized_skewness(one.view()).is_nan() && realized_kurtosis(one.view()).is_nan());
+  let zeros = Array1::<f64>::zeros(5);
+  assert!(realized_skewness(zeros.view()).is_nan() && realized_kurtosis(zeros.view()).is_nan());
+  assert!(bipower_variation(one.view()).is_nan() && minrv(one.view()).is_nan());
+  assert!(medrv(two.view()).is_nan() && tripower_quarticity(two.view()).is_nan());
+  assert!(realized_kernel(one.view(), KernelType::Parzen, 1).is_nan());
+  assert!(pre_averaged_variance(three.view(), 0.5).is_nan());
+  assert!(pre_averaged_variance_with_block(three.view(), 4).is_nan());
+  assert!(two_scale_rv(two.view(), 1).is_nan() && multi_scale_rv(three.view(), 2).is_nan());
+  let mut with_nan = Array1::<f64>::linspace(-0.01, 0.01, 50);
+  with_nan[3] = f64::NAN;
+  assert!(medrv(with_nan.view()).is_nan() && bipower_variation(with_nan.view()).is_nan());
+  assert!(minrv(with_nan.view()).is_nan());
 }

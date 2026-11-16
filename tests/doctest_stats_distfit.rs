@@ -18,12 +18,12 @@ fn skew_t_fit_recovers_the_simulated_shape() {
   dist.fill_slice(&mut z);
   let returns = Array1::from_iter(z.iter().map(|v| 0.0005 + 0.015 * v));
 
-  let fit = fit_skew_t(returns.view());
+  let fit = fit_skew_t(returns.view()).expect("4 000 finite, non-constant returns");
   assert!(fit.converged);
   assert!((fit.lambda + 0.3).abs() < 3.0 * fit.std_errors[3]);
   assert!((fit.sigma - 0.015).abs() < 3.0 * fit.std_errors[1]);
 
   // A Johnson SU fit of the same sample ranks below it on AIC.
-  let jsu = fit_johnson_su(returns.view());
+  let jsu = fit_johnson_su(returns.view()).expect("the same sample");
   assert!(jsu.converged && jsu.aic > fit.aic);
 }

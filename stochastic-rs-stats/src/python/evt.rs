@@ -1,6 +1,8 @@
 use numpy::PyReadonlyArray1;
 use pyo3::prelude::*;
 
+use super::stats_error;
+
 #[pyclass(name = "HillEstimator", unsendable)]
 pub struct PyHillEstimator {
   inner: crate::evt::HillFit,
@@ -11,9 +13,11 @@ impl PyHillEstimator {
   /// Hill (1975) tail-index estimate from the `k` largest positive entries.
   #[new]
   fn new<'py>(data: PyReadonlyArray1<'py, f64>, k: usize) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::evt::fit_hill(data.as_array(), k),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::evt::fit_hill(data.as_array(), k).map_err(stats_error)?,
+      })
+    })?
   }
 
   #[getter]
@@ -57,9 +61,11 @@ impl PyGpdFit {
   /// GPD maximum-likelihood fit to non-negative threshold excesses.
   #[new]
   fn new<'py>(exceedances: PyReadonlyArray1<'py, f64>) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::evt::fit_gpd(exceedances.as_array()),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::evt::fit_gpd(exceedances.as_array()).map_err(stats_error)?,
+      })
+    })?
   }
 
   /// Standard errors of `[sigma, xi]`.
@@ -124,9 +130,11 @@ impl PyPotFit {
   /// Peaks-over-threshold tail model of `data` (losses) above `threshold`.
   #[new]
   fn new<'py>(data: PyReadonlyArray1<'py, f64>, threshold: f64) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::evt::fit_pot(data.as_array(), threshold),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::evt::fit_pot(data.as_array(), threshold).map_err(stats_error)?,
+      })
+    })?
   }
 
   /// Tail quantile (Value-at-Risk) at level `p`.
@@ -196,9 +204,11 @@ impl PyGevFit {
   /// GEV maximum-likelihood fit to block maxima.
   #[new]
   fn new<'py>(maxima: PyReadonlyArray1<'py, f64>) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::evt::fit_gev(maxima.as_array()),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::evt::fit_gev(maxima.as_array()).map_err(stats_error)?,
+      })
+    })?
   }
 
   /// Return level exceeded once every `period` blocks on average.

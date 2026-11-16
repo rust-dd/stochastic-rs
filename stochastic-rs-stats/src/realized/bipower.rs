@@ -27,15 +27,12 @@ use crate::input::validate;
 use crate::realized::variance::realized_variance;
 use crate::traits::FloatExt;
 
-/// Bipower variation: $BV = \mu_1^{-2}\sum_{i=2}^{n} |r_{i-1}|\,|r_i|$
-/// with $\mu_1 = \mathbb E|Z| = \sqrt{2/\pi}$, so $\mu_1^{-2} = \pi/2$.
-///
-/// Robust to finite-activity jumps; converges to integrated variance under no
-/// jumps (BN-Shephard 2004).
+/// Bipower variation $BV = \frac{\pi}{2}\sum_{i=2}^{n} |r_{i-1}|\,|r_i|$, robust to finite-activity
+/// jumps (BN-Shephard 2004); NaN below two returns.
 pub fn bipower_variation<T: FloatExt>(returns: ArrayView1<T>) -> T {
   let n = returns.len();
   if n < 2 {
-    return T::zero();
+    return T::nan();
   }
   let mu1_inv2 = T::from_f64_fast(std::f64::consts::FRAC_PI_2);
   let mut sum = T::zero();
@@ -45,53 +42,53 @@ pub fn bipower_variation<T: FloatExt>(returns: ArrayView1<T>) -> T {
   mu1_inv2 * sum
 }
 
-/// MinRV (Andersen, Dobrev, Schaumburg 2012): nearest-neighbour-truncation
-/// jump-robust estimator,
-/// $MinRV = \frac{\pi}{\pi - 2}\sum_{i=2}^{n} \min(|r_{i-1}|, |r_i|)^2$.
+/// MinRV $= \frac{\pi}{\pi - 2}\frac{n}{n - 1}\sum_{i=2}^{n} \min(|r_{i-1}|, |r_i|)^2$, the
+/// jump-robust nearest-neighbour truncation of Andersen, Dobrev, Schaumburg (2012); NaN below two.
 pub fn minrv<T: FloatExt>(returns: ArrayView1<T>) -> T {
   let n = returns.len();
   if n < 2 {
-    return T::zero();
+    return T::nan();
   }
   let pi = T::from_f64_fast(std::f64::consts::PI);
   let scale = pi / (pi - T::from_f64_fast(2.0));
   let mut sum = T::zero();
   for i in 1..n {
-    let m = returns[i - 1].abs().min(returns[i].abs());
+    let m = returns[i - 1].abs().min_or_nan(returns[i].abs());
     sum += m * m;
   }
   let nn = T::from_usize_(n);
   scale * (nn / (nn - T::one())) * sum
 }
 
-/// MedRV (Andersen, Dobrev, Schaumburg 2012):
-/// $MedRV = \frac{\pi}{6 - 4\sqrt 3 + \pi}\sum_{i=3}^{n} \mathrm{med}(|r_{i-2}|, |r_{i-1}|, |r_i|)^2$.
+/// MedRV $= \frac{\pi}{6 - 4\sqrt 3 + \pi}\frac{n}{n - 2}\sum_{i=3}^{n} \mathrm{med}(|r_{i-2}|,
+/// |r_{i-1}|, |r_i|)^2$ (Andersen, Dobrev, Schaumburg 2012); NaN below three returns.
 pub fn medrv<T: FloatExt>(returns: ArrayView1<T>) -> T {
   let n = returns.len();
   if n < 3 {
-    return T::zero();
+    return T::nan();
   }
   let pi = T::from_f64_fast(std::f64::consts::PI);
   let denom = T::from_f64_fast(6.0) - T::from_f64_fast(4.0) * T::from_f64_fast(3.0).sqrt() + pi;
   let scale = pi / denom;
   let mut sum = T::zero();
   for i in 2..n {
-    let mut t = [returns[i - 2].abs(), returns[i - 1].abs(), returns[i].abs()];
-    t.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let m = t[1];
+    let (a, b, c) = (returns[i - 2].abs(), returns[i - 1].abs(), returns[i].abs());
+    let m = a
+      .max_or_nan(b)
+      .min_or_nan(a.max_or_nan(c))
+      .min_or_nan(b.max_or_nan(c));
     sum += m * m;
   }
   let nn = T::from_usize_(n);
   scale * (nn / (nn - T::from_f64_fast(2.0))) * sum
 }
 
-/// Tripower quarticity: $TPQ = n \cdot \mu_{4/3}^{-3}\sum_{i=3}^n
-/// |r_{i-2}|^{4/3}|r_{i-1}|^{4/3}|r_i|^{4/3}$, used as the jump-robust
-/// estimator of integrated quarticity in the BNS jump test.
+/// Tripower quarticity $TPQ = n\,\mu_{4/3}^{-3}\sum_{i=3}^n |r_{i-2} r_{i-1} r_i|^{4/3}$, the
+/// jump-robust integrated quarticity of the BNS test; NaN below three returns.
 pub fn tripower_quarticity<T: FloatExt>(returns: ArrayView1<T>) -> T {
   let n = returns.len();
   if n < 3 {
-    return T::zero();
+    return T::nan();
   }
   let p43 = T::from_f64_fast(4.0 / 3.0);
   let mu_43 = mu_p::<T>(4.0 / 3.0);
@@ -272,9 +269,20 @@ mod tests {
   }
 
   #[test]
-  fn medrv_zero_when_too_short() {
-    let r = array![0.01_f64];
-    assert_eq!(medrv(r.view()), 0.0);
+  fn medrv_is_nan_when_too_short() {
+    let r = array![0.01_f64, -0.02];
+    assert!(medrv(r.view()).is_nan());
+  }
+
+  #[test]
+  fn medrv_takes_the_middle_of_three_without_a_sort() {
+    let r = array![0.03_f64, -0.01, 0.02, -0.05, 0.04];
+    let pi = std::f64::consts::PI;
+    let medians = [0.02_f64, 0.02, 0.04];
+    let want = pi / (6.0 - 4.0 * 3.0_f64.sqrt() + pi)
+      * (5.0 / 3.0)
+      * medians.iter().map(|m| m * m).sum::<f64>();
+    assert_eq!(medrv(r.view()), want);
   }
 
   #[test]

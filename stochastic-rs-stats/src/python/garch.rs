@@ -2,6 +2,7 @@ use numpy::PyReadonlyArray1;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
+use super::stats_error;
 use crate::garch::GarchKind;
 use crate::garch::GarchSpec;
 use crate::garch::MeanSpec;
@@ -46,7 +47,7 @@ impl PyGarchFit {
       };
       let spec = GarchSpec { kind, p, q, mean };
       Ok(Self {
-        inner: crate::garch::fit_garch(returns.as_array(), spec),
+        inner: crate::garch::fit_garch(returns.as_array(), spec).map_err(stats_error)?,
       })
     })?
   }

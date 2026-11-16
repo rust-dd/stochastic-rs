@@ -69,7 +69,7 @@ fn check_fit(
   robust: &[f64],
 ) -> GarchFit {
   let r = lcg_garch_returns();
-  let fit = fit_garch(r.view(), spec);
+  let fit = fit_garch(r.view(), spec).unwrap();
   assert_close(fit.backcast, BACKCAST, 1e-12, "backcast");
   assert!(fit.converged, "simplex did not converge");
   assert!(
@@ -382,14 +382,28 @@ fn param_names_follow_the_layout() {
 }
 
 #[test]
-#[should_panic(expected = "p must be at least 1")]
+#[should_panic(expected = "p must satisfy `p >= 1`, got p = 0")]
 fn rejects_zero_arch_order() {
   let _ = fit_garch(lcg_garch_returns().view(), GarchSpec::garch(0, 1));
 }
 
 #[test]
-#[should_panic(expected = "need at least 20 observations")]
 fn rejects_a_short_series() {
   let r = Array1::from(vec![0.01_f64; 10]);
-  let _ = fit_garch(r.view(), GarchSpec::garch(1, 1));
+  assert_eq!(
+    fit_garch(r.view(), GarchSpec::garch(1, 1)).unwrap_err(),
+    StatsError::InsufficientData {
+      needed: 20,
+      got: 10
+    }
+  );
+}
+
+#[test]
+fn rejects_constant_returns() {
+  let r = Array1::from(vec![0.01_f64; 40]);
+  assert_eq!(
+    fit_garch(r.view(), GarchSpec::garch(1, 1)).unwrap_err(),
+    StatsError::DegenerateData("zero-variance returns")
+  );
 }

@@ -28,29 +28,31 @@ use ndarray::ArrayView1;
 use crate::realized::variance::realized_variance;
 use crate::traits::FloatExt;
 
-/// Pre-averaged variance estimator (Jacod et al. 2009).
-///
-/// `returns` are intraday log-returns. `theta` is the block-size parameter
-/// (typical value `1/3 .. 1/2`), used to pick $k_n = \lfloor \theta \sqrt n \rfloor$.
-/// Falls back to `2` if the resulting $k_n$ would be smaller than `2`.
+/// Pre-averaged variance (Jacod et al. 2009) with block `k_n = max(⌊θ√n⌋, 2)` for `theta` θ,
+/// typically `1/3..1/2`; NaN below four returns, and panics unless `theta` is finite and positive.
 pub fn pre_averaged_variance<T: FloatExt>(returns: ArrayView1<T>, theta: T) -> T {
+  let theta_f = theta.to_f64().unwrap();
+  assert!(
+    theta_f.is_finite() && theta_f > 0.0,
+    "theta must satisfy `theta.is_finite() && theta > 0.0`, got theta = {theta_f:?}"
+  );
   let n = returns.len();
   if n < 4 {
-    return T::zero();
+    return T::nan();
   }
-  let theta_f = theta.to_f64().unwrap();
-  assert!(theta_f > 0.0, "theta must be positive");
   let nf = n as f64;
   let kn = (theta_f * nf.sqrt()).floor() as usize;
   let kn = kn.max(2).min(n);
   pre_averaged_variance_with_block(returns, kn)
 }
 
-/// Pre-averaged variance estimator with explicit block length `kn`.
+/// Pre-averaged variance with an explicit block length `kn`; NaN below `kn` returns, and panics
+/// unless `kn >= 2`.
 pub fn pre_averaged_variance_with_block<T: FloatExt>(returns: ArrayView1<T>, kn: usize) -> T {
+  assert!(kn >= 2, "kn must satisfy `kn >= 2`, got kn = {kn:?}");
   let n = returns.len();
-  if n < kn || kn < 2 {
-    return T::zero();
+  if n < kn {
+    return T::nan();
   }
   let kn_f = T::from_usize_(kn);
   let mut sum_bar2 = T::zero();

@@ -9,6 +9,7 @@ use stochastic_rs_distributions::traits::DistributionExt;
 use super::minimise;
 use super::negative_log_likelihood;
 use super::sample;
+use crate::StatsError;
 use crate::evt::gpd::information_inverse;
 use crate::traits::FloatExt;
 
@@ -51,14 +52,10 @@ fn log_density(x: &[f64], gamma: f64, delta: f64, xi: f64, lambda: f64) -> f64 {
   })
 }
 
-/// Johnson SU maximum-likelihood fit of `data`.
-///
-/// # Panics
-///
-/// If there are fewer than 10 observations, any is non-finite, or they are
-/// constant.
-pub fn fit_johnson_su<T: FloatExt>(data: ArrayView1<T>) -> JohnsonSuFit {
-  let (x, mean, sd) = sample(data, 10);
+/// Johnson SU maximum-likelihood fit of `data`; `Err` below 10 observations, on a non-finite one
+/// or a constant sample.
+pub fn fit_johnson_su<T: FloatExt>(data: ArrayView1<T>) -> Result<JohnsonSuFit, StatsError> {
+  let (x, mean, sd) = sample(data, 10)?;
   let objective = |p: &[f64]| log_density(&x, p[0], p[1].exp(), p[2], p[3].exp());
   let mut starts = Vec::new();
   for gamma0 in [-1.0, 0.0, 1.0] {
@@ -73,7 +70,7 @@ pub fn fit_johnson_su<T: FloatExt>(data: ArrayView1<T>) -> JohnsonSuFit {
   let covariance = information_inverse(&nll, &natural, &[1.0, natural[1], sd, natural[3]]);
   let std_errors = Array1::from_iter((0..4).map(|i| covariance[[i, i]].sqrt()));
   let n = x.len() as f64;
-  JohnsonSuFit {
+  Ok(JohnsonSuFit {
     gamma: natural[0],
     delta: natural[1],
     xi: natural[2],
@@ -86,5 +83,5 @@ pub fn fit_johnson_su<T: FloatExt>(data: ArrayView1<T>) -> JohnsonSuFit {
     nobs: x.len(),
     iterations,
     converged,
-  }
+  })
 }

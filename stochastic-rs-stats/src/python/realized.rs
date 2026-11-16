@@ -336,9 +336,12 @@ impl PyEwmaVariance {
   #[new]
   #[pyo3(signature = (returns, lambda_=0.94))]
   fn new<'py>(returns: PyReadonlyArray1<'py, f64>, lambda_: f64) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::realized::ewma::ewma_variance(returns.as_array(), lambda_),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::realized::ewma::ewma_variance(returns.as_array(), lambda_)
+          .map_err(stats_error)?,
+      })
+    })?
   }
 
   /// Conditional variance series (same length as the input).
@@ -373,9 +376,11 @@ impl PyHarRv {
   /// Fit HAR-RV (Corsi 2009) on a daily realised-variance history.
   #[new]
   fn new<'py>(daily_rv: PyReadonlyArray1<'py, f64>) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::realized::har::HarRv::fit(daily_rv.as_array()),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::realized::har::HarRv::fit(daily_rv.as_array()).map_err(stats_error)?,
+      })
+    })?
   }
 
   #[getter]
@@ -409,7 +414,10 @@ impl PyHarRv {
   }
 
   /// One-step-ahead point forecast given recent daily-RV history.
-  fn forecast<'py>(&self, recent_daily_rv: PyReadonlyArray1<'py, f64>) -> f64 {
-    self.inner.forecast(recent_daily_rv.as_array())
+  fn forecast<'py>(&self, recent_daily_rv: PyReadonlyArray1<'py, f64>) -> PyResult<f64> {
+    self
+      .inner
+      .forecast(recent_daily_rv.as_array())
+      .map_err(stats_error)
   }
 }

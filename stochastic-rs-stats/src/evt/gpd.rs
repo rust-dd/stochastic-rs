@@ -26,7 +26,12 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 
+use crate::StatsError;
+use crate::input::reject_constant;
+use crate::input::validate;
+use crate::input::validate_domain;
 use crate::linalg::inverse;
+use crate::optim::best_start;
 use crate::optim::nelder_mead_vec;
 use crate::traits::FloatExt;
 
@@ -72,10 +77,13 @@ pub struct PotFit {
 }
 
 impl PotFit {
-  /// Tail quantile $\widehat{\mathrm{VaR}}_p$ (McNeil–Frey–Embrechts eq.
-  /// 5.18); meaningful for $p > 1 - n_u/n$.
+  /// Tail quantile $\widehat{\mathrm{VaR}}_p$ (McNeil–Frey–Embrechts eq. 5.18), meaningful for
+  /// $p > 1 - n_u/n$; panics unless `0 < p < 1`.
   pub fn quantile(&self, p: f64) -> f64 {
-    assert!(p > 0.0 && p < 1.0, "p must lie in (0, 1), got {p}");
+    assert!(
+      p > 0.0 && p < 1.0,
+      "p must satisfy `0.0 < p < 1.0`, got p = {p:?}"
+    );
     let ratio = (1.0 - p) / self.exceedance_rate;
     let (sigma, xi) = (self.gpd.sigma, self.gpd.xi);
     if xi.abs() < 1e-12 {
@@ -116,28 +124,21 @@ fn negative_log_likelihood(y: &[f64], sigma: f64, xi: f64) -> f64 {
   n * sigma.ln() + (1.0 / xi + 1.0) * acc
 }
 
-/// GPD maximum-likelihood fit to non-negative excesses.
-///
-/// Returns a NaN covariance, and NaN standard errors with it, when the
-/// observed-information Hessian at the optimum is singular.
-///
-/// # Panics
-///
-/// If there are fewer than 10 excesses or any is negative or non-finite.
-pub fn fit_gpd<T: FloatExt>(exceedances: ArrayView1<T>) -> GpdFit {
-  let y: Vec<f64> = exceedances
+/// GPD maximum-likelihood fit to excesses; `Err` below 10, on a negative or non-finite excess or a
+/// constant sample. A singular Hessian at the optimum gives NaN standard errors.
+pub fn fit_gpd<T: FloatExt>(exceedances: ArrayView1<T>) -> Result<GpdFit, StatsError> {
+  let y = exceedances
     .iter()
     .map(|x| x.to_f64().unwrap_or(f64::NAN))
-    .collect();
+    .collect::<Vec<f64>>();
+  validate_domain(&y, 10, "finite and >= 0", |v| v >= 0.0)?;
+  reject_constant(&y, "constant excesses")?;
   let n = y.len();
-  assert!(n >= 10, "need at least 10 exceedances, got {n}");
-  assert!(
-    y.iter().all(|v| *v >= 0.0 && v.is_finite()),
-    "exceedances must be non-negative and finite"
-  );
   let mean = y.iter().sum::<f64>() / n as f64;
   let var = y.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / n as f64;
-  assert!(mean > 0.0 && var > 0.0, "exceedances must not be constant");
+  if mean == 0.0 || var == 0.0 {
+    return Err(StatsError::DegenerateData("constant excesses"));
+  }
 
   let objective = |p: &[f64]| negative_log_likelihood(&y, p[0].exp(), p[1]);
   let ratio = mean * mean / var;
@@ -148,10 +149,7 @@ pub fn fit_gpd<T: FloatExt>(exceedances: ArrayView1<T>) -> GpdFit {
   for xi0 in [-0.2, 0.0, 0.2, 0.5] {
     starts.push([(mean * (1.0 - xi0)).ln(), xi0]);
   }
-  let start = starts
-    .into_iter()
-    .min_by(|a, b| objective(a).partial_cmp(&objective(b)).unwrap())
-    .unwrap();
+  let start = best_start(starts, objective).expect("a non-empty starting grid");
   let (theta, iters, converged) = nelder_mead_vec(&start, 5_000, objective);
   let (theta, iters_restart, converged_restart) = nelder_mead_vec(&theta, 5_000, objective);
   let sigma = theta[0].exp();
@@ -161,7 +159,7 @@ pub fn fit_gpd<T: FloatExt>(exceedances: ArrayView1<T>) -> GpdFit {
   let nll = |p: &[f64]| negative_log_likelihood(&y, p[0], p[1]);
   let covariance = information_inverse(&nll, &[sigma, xi], &[mean, 1.0]);
   let std_errors = Array1::from_iter((0..2).map(|i| covariance[[i, i]].sqrt()));
-  GpdFit {
+  Ok(GpdFit {
     sigma,
     xi,
     std_errors,
@@ -172,7 +170,7 @@ pub fn fit_gpd<T: FloatExt>(exceedances: ArrayView1<T>) -> GpdFit {
     nobs: n,
     iterations: iters + iters_restart,
     converged: converged || converged_restart,
-  }
+  })
 }
 
 /// Probability-weighted-moment estimate of the GPD (Hosking–Wallis 1987).
@@ -190,41 +188,21 @@ pub struct GpdPwmFit {
   pub nobs: usize,
 }
 
-/// Hosking and Wallis's probability-weighted-moment estimator of the GPD
-/// on non-negative excesses: with the order statistics
-/// $x_{(1)} \le \dots \le x_{(n)}$,
-///
+/// Hosking–Wallis probability-weighted-moment GPD estimates over the order statistics `x(i)`; `Err`
+/// below 2 or on a negative or non-finite excess, NaN estimates for a constant sample.
 /// $$
 /// a_0 = \bar x,\qquad a_1 = \frac1n\sum_{i=1}^{n}\frac{n - i}{n - 1}\,x_{(i)},\qquad
-/// \hat\xi = 2 - \frac{a_0}{a_0 - 2a_1},\qquad \hat\sigma = \frac{2a_0a_1}{a_0 - 2a_1},
+/// \hat\xi = 2 - \frac{a_0}{a_0 - 2a_1},\qquad \hat\sigma = \frac{2a_0a_1}{a_0 - 2a_1}
 /// $$
-///
-/// their $\hat k = a_0/(a_0 - 2a_1) - 2$ in the $k = -\xi$ convention. Cheap,
-/// closed-form and well behaved for $\xi < 1/2$; the usual starting point
-/// or sanity check for [`fit_gpd`].
-///
-/// Reference: Hosking, Wallis, "Parameter and Quantile Estimation for the
-/// Generalized Pareto Distribution", Technometrics, 29(3), 339-349 (1987).
-/// DOI: 10.1080/00401706.1987.10488243
-///
-/// Returns NaN for both estimates when $a_0 - 2a_1$ vanishes, as it does for
-/// all-zero excesses.
-///
-/// # Panics
-///
-/// If there are fewer than 2 excesses or any is negative or non-finite.
-pub fn fit_gpd_pwm<T: FloatExt>(exceedances: ArrayView1<T>) -> GpdPwmFit {
-  let mut y: Vec<f64> = exceedances
+/// Hosking & Wallis (1987), Technometrics 29(3), 339-349. DOI: 10.1080/00401706.1987.10488243
+pub fn fit_gpd_pwm<T: FloatExt>(exceedances: ArrayView1<T>) -> Result<GpdPwmFit, StatsError> {
+  let mut y = exceedances
     .iter()
     .map(|x| x.to_f64().unwrap_or(f64::NAN))
-    .collect();
+    .collect::<Vec<f64>>();
+  validate_domain(&y, 2, "finite and >= 0", |v| v >= 0.0)?;
   let n = y.len();
-  assert!(n >= 2, "need at least 2 exceedances, got {n}");
-  assert!(
-    y.iter().all(|v| *v >= 0.0 && v.is_finite()),
-    "exceedances must be non-negative and finite"
-  );
-  y.sort_by(|a, b| a.partial_cmp(b).unwrap());
+  y.sort_by(f64::total_cmp);
   let nf = n as f64;
   let a0 = y.iter().sum::<f64>() / nf;
   let a1 = y
@@ -233,44 +211,54 @@ pub fn fit_gpd_pwm<T: FloatExt>(exceedances: ArrayView1<T>) -> GpdPwmFit {
     .map(|(i, v)| v * (nf - (i + 1) as f64) / (nf - 1.0))
     .sum::<f64>()
     / nf;
-  let denominator = a0 - 2.0 * a1;
-  GpdPwmFit {
-    sigma: 2.0 * a0 * a1 / denominator,
-    xi: 2.0 - a0 / denominator,
+  // `a0 = 2 a1` exactly for a constant sample, which the rounded sums need not reproduce.
+  let (sigma, xi) = if y[0] == y[n - 1] {
+    (f64::NAN, f64::NAN)
+  } else {
+    let denominator = a0 - 2.0 * a1;
+    (2.0 * a0 * a1 / denominator, 2.0 - a0 / denominator)
+  };
+  Ok(GpdPwmFit {
+    sigma,
+    xi,
     a0,
     a1,
     nobs: n,
-  }
+  })
 }
 
-/// Peaks-over-threshold fit of `data` (losses) above `threshold`.
-///
-/// The embedded [`fit_gpd`] contributes a NaN covariance and NaN standard
-/// errors when its observed-information Hessian at the optimum is singular.
-///
-/// # Panics
-///
-/// If fewer than 10 observations exceed the threshold.
-pub fn fit_pot<T: FloatExt>(data: ArrayView1<T>, threshold: f64) -> PotFit {
-  let exceedances: Vec<f64> = data
-    .iter()
-    .map(|x| x.to_f64().unwrap_or(f64::NAN))
-    .filter(|x| *x > threshold)
-    .map(|x| x - threshold)
-    .collect();
-  let n_exceedances = exceedances.len();
+/// Peaks-over-threshold fit of losses `data` above `threshold`; `Err` on a non-finite observation,
+/// below 10 exceedances or as [`fit_gpd`] on them, and panics unless `threshold` is finite.
+pub fn fit_pot<T: FloatExt>(data: ArrayView1<T>, threshold: f64) -> Result<PotFit, StatsError> {
   assert!(
-    n_exceedances >= 10,
-    "need at least 10 exceedances above the threshold, got {n_exceedances}"
+    threshold.is_finite(),
+    "threshold must satisfy `threshold.is_finite()`, got threshold = {threshold:?}"
   );
-  let gpd = fit_gpd(Array1::from(exceedances).view());
-  PotFit {
+  let x = data
+    .iter()
+    .map(|v| v.to_f64().unwrap_or(f64::NAN))
+    .collect::<Vec<f64>>();
+  validate(&x, 0)?;
+  let exceedances = x
+    .iter()
+    .filter(|v| **v > threshold)
+    .map(|v| v - threshold)
+    .collect::<Array1<f64>>();
+  let n_exceedances = exceedances.len();
+  if n_exceedances < 10 {
+    return Err(StatsError::InsufficientData {
+      needed: 10,
+      got: n_exceedances,
+    });
+  }
+  let gpd = fit_gpd(exceedances.view())?;
+  Ok(PotFit {
     threshold,
     gpd,
     n_exceedances,
     nobs: data.len(),
     exceedance_rate: n_exceedances as f64 / data.len() as f64,
-  }
+  })
 }
 
 /// Mean excess $e(u) = \mathbb E[X - u \mid X > u]$ at each threshold —

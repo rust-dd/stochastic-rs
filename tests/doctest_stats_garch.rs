@@ -27,7 +27,8 @@ fn garch_qmle_recovers_the_simulated_parameters() {
   let fit = fit_garch(
     returns.view(),
     GarchSpec::garch(1, 1).with_mean(MeanSpec::Zero),
-  );
+  )
+  .expect("2 000 finite, non-constant returns");
   assert!(fit.converged);
   assert!((fit.alpha[0] - 0.10).abs() < 3.0 * fit.robust_std_errors[1]);
   assert!((fit.beta[0] - 0.85).abs() < 3.0 * fit.robust_std_errors[2]);

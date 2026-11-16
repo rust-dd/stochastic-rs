@@ -17,44 +17,44 @@ use ndarray::ArrayView1;
 
 use crate::traits::FloatExt;
 
-/// Convert a price path to log-returns: $r_i = \ln(p_i / p_{i-1})$.
+/// Log-returns $r_i = \ln(p_i / p_{i-1})$ of a price path, empty below two prices; a non-positive
+/// price gives NaN returns on both sides.
 pub fn log_returns<T: FloatExt>(prices: ArrayView1<T>) -> Array1<T> {
-  assert!(prices.len() >= 2, "need at least two prices");
-  let n = prices.len() - 1;
+  let n = prices.len().saturating_sub(1);
   let mut out = Array1::<T>::zeros(n);
   for i in 0..n {
     let p0 = prices[i];
     let p1 = prices[i + 1];
-    assert!(
-      p0 > T::zero() && p1 > T::zero(),
-      "prices must be strictly positive"
-    );
-    out[i] = (p1 / p0).ln();
+    out[i] = if p0 > T::zero() && p1 > T::zero() {
+      (p1 / p0).ln()
+    } else {
+      T::nan()
+    };
   }
   out
 }
 
-/// Realized variance: $RV = \sum_i r_i^2$.
-///
-/// Pass intraday log-returns (use [`log_returns`] to transform a price path).
+/// Realized variance $RV = \sum_i r_i^2$ of intraday log-returns (see [`log_returns`]); NaN for no
+/// returns.
 pub fn realized_variance<T: FloatExt>(returns: ArrayView1<T>) -> T {
+  if returns.is_empty() {
+    return T::nan();
+  }
   returns.iter().fold(T::zero(), |acc, &r| acc + r * r)
 }
 
-/// Realized volatility: $\sqrt{a \cdot RV}$ where $a$ is the user-supplied
-/// annualisation factor (e.g. number of trading days per year if `returns` is
-/// the daily realized variance, or `1.0` for raw realized standard deviation).
+/// Realized volatility $\sqrt{a \cdot RV}$ for an annualisation factor $a$ (`1.0` for the raw
+/// realized standard deviation); NaN for no returns.
 pub fn realized_volatility<T: FloatExt>(returns: ArrayView1<T>, annualisation: T) -> T {
   (annualisation * realized_variance(returns)).sqrt()
 }
 
-/// Realized semivariance with user-defined sign threshold (typically `0`).
-///
-/// Returns `(downside, upside)` such that
-/// $RV^- = \sum r_i^2 \mathbf 1\{r_i < \tau\}$,
-/// $RV^+ = \sum r_i^2 \mathbf 1\{r_i > \tau\}$
-/// and $RV^- + RV^+ + \sum r_i^2 \mathbf 1\{r_i = \tau\} = RV$.
+/// Realized semivariances `(RV⁻, RV⁺)` below and above `threshold` (typically `0`); a return equal
+/// to it counts in neither. NaN for no returns.
 pub fn realized_semivariance<T: FloatExt>(returns: ArrayView1<T>, threshold: T) -> (T, T) {
+  if returns.is_empty() {
+    return (T::nan(), T::nan());
+  }
   let mut down = T::zero();
   let mut up = T::zero();
   for &r in returns.iter() {
@@ -68,27 +68,31 @@ pub fn realized_semivariance<T: FloatExt>(returns: ArrayView1<T>, threshold: T) 
   (down, up)
 }
 
-/// Realized skewness (Amaya et al. 2015):
-/// $RSK = \frac{\sqrt n \sum_i r_i^3}{RV^{3/2}}$.
+/// Realized skewness $RSK = \sqrt n \sum_i r_i^3 / RV^{3/2}$ (Amaya et al. 2015); NaN below two
+/// returns or for zero $RV$.
 pub fn realized_skewness<T: FloatExt>(returns: ArrayView1<T>) -> T {
   let n = returns.len();
-  assert!(n >= 2, "need at least two returns for skewness");
+  if n < 2 {
+    return T::nan();
+  }
   let rv = realized_variance(returns);
-  if rv <= T::zero() {
-    return T::zero();
+  if rv == T::zero() {
+    return T::nan();
   }
   let cube_sum = returns.iter().fold(T::zero(), |acc, &r| acc + r * r * r);
   T::from_usize_(n).sqrt() * cube_sum / rv.powf(T::from_f64_fast(1.5))
 }
 
-/// Realized kurtosis (Amaya et al. 2015):
-/// $RKT = \frac{n \sum_i r_i^4}{RV^2}$.
+/// Realized kurtosis $RKT = n \sum_i r_i^4 / RV^2$ (Amaya et al. 2015); NaN below two returns or
+/// for zero $RV$.
 pub fn realized_kurtosis<T: FloatExt>(returns: ArrayView1<T>) -> T {
   let n = returns.len();
-  assert!(n >= 2, "need at least two returns for kurtosis");
+  if n < 2 {
+    return T::nan();
+  }
   let rv = realized_variance(returns);
-  if rv <= T::zero() {
-    return T::zero();
+  if rv == T::zero() {
+    return T::nan();
   }
   let quad_sum = returns.iter().fold(T::zero(), |acc, &r| {
     let r2 = r * r;
@@ -97,11 +101,13 @@ pub fn realized_kurtosis<T: FloatExt>(returns: ArrayView1<T>) -> T {
   T::from_usize_(n) * quad_sum / (rv * rv)
 }
 
-/// Realized quarticity: $RQ = \frac{n}{3} \sum_i r_i^4$, the natural
-/// $L^4$ companion to $RV$ used as the variance estimator of $RV$ under
-/// no-jump asymptotics (BN-Shephard 2002).
+/// Realized quarticity $RQ = \frac{n}{3} \sum_i r_i^4$, the no-jump variance estimator of $RV$
+/// (BN-Shephard 2002); NaN for no returns.
 pub fn realized_quarticity<T: FloatExt>(returns: ArrayView1<T>) -> T {
   let n = returns.len();
+  if n == 0 {
+    return T::nan();
+  }
   let quad_sum = returns.iter().fold(T::zero(), |acc, &r| {
     let r2 = r * r;
     acc + r2 * r2
@@ -127,6 +133,18 @@ mod tests {
     assert!(approx(r[0], (101.0_f64 / 100.0).ln(), 1e-12));
     assert!(approx(r[1], (100.5_f64 / 101.0).ln(), 1e-12));
     assert!(approx(r[2], (102.0_f64 / 100.5).ln(), 1e-12));
+  }
+
+  #[test]
+  fn fewer_than_two_prices_give_no_returns() {
+    assert!(log_returns(Array1::<f64>::zeros(0).view()).is_empty());
+    assert!(log_returns(array![100.0_f64].view()).is_empty());
+  }
+
+  #[test]
+  fn a_non_positive_price_gives_a_nan_return() {
+    let r = log_returns(array![100.0_f64, 0.0, 101.0, -1.0, 102.0].view());
+    assert!(r.iter().all(|v| v.is_nan()), "{r:?}");
   }
 
   #[test]

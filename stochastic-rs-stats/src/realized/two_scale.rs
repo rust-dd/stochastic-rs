@@ -30,15 +30,14 @@ use ndarray::ArrayView1;
 
 use crate::traits::FloatExt;
 
-/// Two-Scale Realized Variance (Zhang, Mykland, Aït-Sahalia 2005).
-///
-/// `prices` is the (length $n+1$) intraday price path. `k` is the
-/// sub-sampling factor — the slow scale uses every $k$-th price. Typical
-/// values are 5, 10, 20, or chosen via $K^{*} = c\,n^{2/3}$.
+/// Two-scale realized variance (Zhang, Mykland, Aït-Sahalia 2005) of a price path subsampled every
+/// `k` prices, typically `c n^{2/3}`; NaN below `k + 2` prices, and panics unless `k >= 1`.
 pub fn two_scale_rv<T: FloatExt>(prices: ArrayView1<T>, k: usize) -> T {
   let len = prices.len();
-  assert!(k >= 1, "subsampling factor must be ≥ 1");
-  assert!(len >= k + 2, "price path too short for k = {k}");
+  assert!(k >= 1, "k must satisfy `k >= 1`, got k = {k:?}");
+  if len < k.saturating_add(2) {
+    return T::nan();
+  }
   let n = len - 1;
   let rv_all = price_rv(prices, 1);
   let rv_slow = average_subsample_rv(prices, k);
@@ -53,18 +52,13 @@ pub fn two_scale_rv<T: FloatExt>(prices: ArrayView1<T>, k: usize) -> T {
   }
 }
 
-/// Multi-Scale Realized Variance (Zhang 2006).
-///
-/// Combines RVs at scales $1, 2, \ldots, M$ with weights of the form
-/// $a_i = \lambda + \mu/i$, where $(\lambda, \mu)$ are chosen so that
-/// $\sum_i a_i = 1$ (consistency) and $\sum_i a_i/i = 0$ (cancellation of
-/// the leading-order noise bias). The closed form is
-/// $\mu = H_M / (H_M^2 - M H_M^{(2)})$ and
-/// $\lambda = -H_M^{(2)}\,\mu / H_M$ with $H_M = \sum 1/i$,
-/// $H_M^{(2)} = \sum 1/i^2$.
+/// Multi-scale realized variance (Zhang 2006) over scales `1..=M`, `M = max(scales, 2)`, with the
+/// weights of the module doc; NaN below `M + 2` prices.
 pub fn multi_scale_rv<T: FloatExt>(prices: ArrayView1<T>, scales: usize) -> T {
   let m = scales.max(2);
-  assert!(prices.len() >= m + 2, "price path too short for {m} scales");
+  if prices.len() < m.saturating_add(2) {
+    return T::nan();
+  }
   let h1: f64 = (1..=m).map(|i| 1.0 / i as f64).sum();
   let h2: f64 = (1..=m).map(|i| 1.0 / (i as f64).powi(2)).sum();
   let mu = h1 / (h1.powi(2) - (m as f64) * h2);

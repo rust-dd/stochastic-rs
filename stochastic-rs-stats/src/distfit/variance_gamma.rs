@@ -11,6 +11,7 @@ use stochastic_rs_distributions::variance_gamma::SimdVarianceGamma;
 use super::minimise;
 use super::negative_log_likelihood;
 use super::sample;
+use crate::StatsError;
 use crate::evt::gpd::information_inverse;
 use crate::traits::FloatExt;
 
@@ -55,14 +56,12 @@ fn log_density(x: &[f64], sigma: f64, nu: f64, theta: f64, mu: f64) -> f64 {
   })
 }
 
-/// Variance-gamma maximum-likelihood fit of `data`.
-///
-/// # Panics
-///
-/// If there are fewer than 10 observations, any is non-finite, or they are
-/// constant.
-pub fn fit_variance_gamma<T: FloatExt>(data: ArrayView1<T>) -> VarianceGammaFit {
-  let (x, mean, sd) = sample(data, 10);
+/// Variance-gamma maximum-likelihood fit of `data`; `Err` below 10 observations, on a non-finite
+/// one or a constant sample.
+pub fn fit_variance_gamma<T: FloatExt>(
+  data: ArrayView1<T>,
+) -> Result<VarianceGammaFit, StatsError> {
+  let (x, mean, sd) = sample(data, 10)?;
   let objective = |p: &[f64]| log_density(&x, p[0].exp(), p[1].exp(), p[2], p[3]);
   let mut starts = Vec::new();
   for nu0 in [0.3_f64, 1.0] {
@@ -86,7 +85,7 @@ pub fn fit_variance_gamma<T: FloatExt>(data: ArrayView1<T>) -> VarianceGammaFit 
   let covariance = information_inverse(&nll, &natural, &[natural[0], natural[1], sd, sd]);
   let std_errors = Array1::from_iter((0..4).map(|i| covariance[[i, i]].sqrt()));
   let n = x.len() as f64;
-  VarianceGammaFit {
+  Ok(VarianceGammaFit {
     sigma: natural[0],
     nu: natural[1],
     theta: natural[2],
@@ -99,5 +98,5 @@ pub fn fit_variance_gamma<T: FloatExt>(data: ArrayView1<T>) -> VarianceGammaFit 
     nobs: x.len(),
     iterations,
     converged,
-  }
+  })
 }
