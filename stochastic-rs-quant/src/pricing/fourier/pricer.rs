@@ -76,12 +76,14 @@ impl CarrMadanPricer {
   /// Lord–Kahl half-width `|ln s| + l_factor·√(|c₂| + √|c₄|)` at `t` around `ln K = 0` (the FRFT
   /// pricer centres on the forward); panics unless `s`, `l_factor`, `c₂` are finite and positive.
   ///
-  /// Reference: Lord, R. & Kahl, C. (2010), "Complex logarithms in Heston-like models", Mathematical Finance 20(4), §3.2
+  /// Lord & Kahl (2010), "Complex logarithms in Heston-like models", Math. Finance 20(4), §3.2.
   ///
   /// ```
   /// use stochastic_rs_quant::pricing::fourier::{CarrMadanPricer, HestonFourier};
+  /// use stochastic_rs_quant::pricing::heston::HestonParams;
   ///
-  /// let heston = HestonFourier { v0: 0.04, kappa: 1.5, theta: 0.04, sigma: 0.3, rho: -0.6 };
+  /// let p = HestonParams { v0: 0.04, kappa: 1.5, theta: 0.04, sigma: 0.3, rho: -0.6 };
+  /// let heston = HestonFourier::new(p);
   /// let pricer = CarrMadanPricer::cumulant_sized(&heston, /* t */ 5.0, /* s */ 100.0, 12.0);
   /// let price = pricer.price_call(&heston, 100.0, 100.0, 0.05, 0.0, 5.0);
   /// assert!(price.is_finite() && price > 0.0);

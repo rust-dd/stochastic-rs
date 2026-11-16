@@ -26,7 +26,7 @@ pub(super) fn simulate_path(
 ) -> Result<SimulatedPath, QuantError> {
   let dt = model.tau / variance_normals.len() as f64;
   let sqrt_dt = dt.sqrt();
-  let orthogonal_scale = (1.0 - model.rho.powi(2)).sqrt();
+  let orthogonal_scale = (1.0 - model.params.rho.powi(2)).sqrt();
   let mut variance = initial_variance;
   let mut log_spot = model.s.ln();
   let mut integrated_variance = 0.0;
@@ -40,9 +40,9 @@ pub(super) fn simulate_path(
     integrated_variance += positive_variance * dt;
     orthogonal_stochastic_integral += sqrt_variance * sqrt_dt * z_orthogonal;
     log_spot += (model.risk_free_rate - model.dividend_yield - 0.5 * positive_variance) * dt
-      + sqrt_variance * sqrt_dt * (model.rho * z_variance + orthogonal_scale * z_orthogonal);
-    variance += model.kappa * (model.theta - positive_variance) * dt
-      + model.vol_of_vol * sqrt_variance * sqrt_dt * z_variance;
+      + sqrt_variance * sqrt_dt * (model.params.rho * z_variance + orthogonal_scale * z_orthogonal);
+    variance += model.params.kappa * (model.params.theta - positive_variance) * dt
+      + model.params.sigma * sqrt_variance * sqrt_dt * z_variance;
   }
 
   if integrated_variance <= minimum_integrated_variance {
@@ -93,34 +93,34 @@ pub(super) fn validate_model(model: HestonModel) -> Result<(), QuantError> {
       model.s
     )));
   }
-  if !model.initial_variance.is_finite() || model.initial_variance <= 0.0 {
+  if !model.params.v0.is_finite() || model.params.v0 <= 0.0 {
     return Err(invalid_input(format!(
       "initial_variance must be finite and positive, got {}",
-      model.initial_variance
+      model.params.v0
     )));
   }
-  if !model.theta.is_finite() || model.theta < 0.0 {
+  if !model.params.theta.is_finite() || model.params.theta < 0.0 {
     return Err(invalid_input(format!(
       "theta must be finite and non-negative, got {}",
-      model.theta
+      model.params.theta
     )));
   }
-  if !model.kappa.is_finite() || model.kappa < 0.0 {
+  if !model.params.kappa.is_finite() || model.params.kappa < 0.0 {
     return Err(invalid_input(format!(
       "kappa must be finite and non-negative, got {}",
-      model.kappa
+      model.params.kappa
     )));
   }
-  if !model.vol_of_vol.is_finite() || model.vol_of_vol < 0.0 {
+  if !model.params.sigma.is_finite() || model.params.sigma < 0.0 {
     return Err(invalid_input(format!(
       "vol_of_vol must be finite and non-negative, got {}",
-      model.vol_of_vol
+      model.params.sigma
     )));
   }
-  if !model.rho.is_finite() || model.rho.abs() >= 1.0 {
+  if !model.params.rho.is_finite() || model.params.rho.abs() >= 1.0 {
     return Err(invalid_input(format!(
       "the orthogonal Malliavin estimator requires abs(rho) < 1, got rho = {}",
-      model.rho
+      model.params.rho
     )));
   }
   if !model.risk_free_rate.is_finite() || !model.dividend_yield.is_finite() {
@@ -152,7 +152,7 @@ pub(super) fn validate_config(
     return Err(invalid_input("steps must be positive, got 0"));
   }
   effective_initial_variance_bump(
-    model.initial_variance,
+    model.params.v0,
     config.initial_variance_bump,
     config.minimum_relative_initial_variance_bump,
   )?;
@@ -174,7 +174,7 @@ pub(super) fn validate_config(
       "minimum_orthogonal_variance_fraction must lie in (0, 1), got {fraction}"
     )));
   }
-  let orthogonal = 1.0 - model.rho.powi(2);
+  let orthogonal = 1.0 - model.params.rho.powi(2);
   if orthogonal < fraction {
     return Err(invalid_input(format!(
       "rho leaves too little orthogonal variance for a stable Malliavin score: 1 - rho^2 = \

@@ -132,7 +132,7 @@ impl PyHestonCalibrator {
   ) -> PyResult<Py<PyAny>> {
     use pyo3::IntoPyObjectExt;
 
-    use crate::calibration::heston::HestonParams;
+    use crate::pricing::heston::HestonParams;
     use crate::traits::CalibrationResult;
     use crate::traits::Calibrator;
     let initial_guess = initial_guess.map(|[v0, kappa, theta, sigma, rho]| HestonParams {

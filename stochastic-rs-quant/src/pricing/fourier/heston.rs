@@ -4,65 +4,87 @@ use num_complex::Complex64;
 
 use super::Cumulants;
 use super::FourierModelExt;
+use crate::pricing::heston::HestonParams;
+
+/// One Heston factor's `(C, D)` at `xi`, `chf = exp(C + D·v0)`, in the Little-Trap form
+/// `g̃ = 1/g`, `exp(−d·t)`, which stays on the principal log branch at large τ and `|ρ| → 1`.
+/// Albrecher, Mayer, Schoutens & Tistaert (2007), "The Little Heston Trap", Wilmott, 83–92.
+pub(crate) fn factor_cd(p: &HestonParams, t: f64, xi: Complex64) -> (Complex64, Complex64) {
+  let HestonParams {
+    kappa,
+    theta,
+    sigma,
+    rho,
+    ..
+  } = *p;
+  let i = Complex64::i();
+  let sigma2 = sigma * sigma;
+  let rsi = rho * sigma * i;
+
+  let d = ((kappa - rsi * xi).powi(2) + sigma2 * (i * xi + xi * xi)).sqrt();
+  let g = (kappa - rsi * xi - d) / (kappa - rsi * xi + d);
+  let exp_dt = (-d * t).exp();
+
+  let c_val = (kappa * theta / sigma2)
+    * ((kappa - rsi * xi - d) * t - 2.0 * ((1.0 - g * exp_dt) / (1.0 - g)).ln());
+  let d_val = ((kappa - rsi * xi - d) / sigma2) * (1.0 - exp_dt) / (1.0 - g * exp_dt);
+
+  (c_val, d_val)
+}
 
 /// Heston stochastic volatility model for Fourier pricing.
 #[derive(Debug, Clone)]
 pub struct HestonFourier {
-  pub v0: f64,
-  pub kappa: f64,
-  pub theta: f64,
-  pub sigma: f64,
-  pub rho: f64,
+  params: HestonParams,
+}
+
+impl HestonFourier {
+  /// Panics unless `params` passes [`HestonParams::new`].
+  pub fn new(params: HestonParams) -> Self {
+    Self {
+      params: params.checked(),
+    }
+  }
+
+  pub fn params(&self) -> HestonParams {
+    self.params
+  }
 }
 
 impl FourierModelExt for HestonFourier {
-  /// Albrecher-Mayer-Schoutens-Tistaert (2007) "Little Heston Trap" form:
-  /// `g̃ = 1/g_original` with `exp(-d·t)` keeps the principal-branch logarithm
-  /// stable for large τ and `|ρ| → 1`. Reverting to the original Heston (1993)
-  /// numerator `(κ - ρσiξ + d)` / `exp(+d·t)` triggers branch-cut jumps —
-  /// see the `heston_fourier_little_trap_long_maturity_high_rho` regression.
   fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
-    let i = Complex64::i();
-    let sigma2 = self.sigma * self.sigma;
-    let rsi = self.rho * self.sigma * i;
-
-    let d = ((self.kappa - rsi * xi).powi(2) + sigma2 * (i * xi + xi * xi)).sqrt();
-    let g = (self.kappa - rsi * xi - d) / (self.kappa - rsi * xi + d);
-
-    let exp_dt = (-d * t).exp();
-    let c_val = (self.kappa * self.theta / sigma2)
-      * ((self.kappa - rsi * xi - d) * t - 2.0 * ((1.0 - g * exp_dt) / (1.0 - g)).ln());
-    let d_val = ((self.kappa - rsi * xi - d) / sigma2) * (1.0 - exp_dt) / (1.0 - g * exp_dt);
-
-    (c_val + d_val * self.v0).exp()
+    let (c_val, d_val) = factor_cd(&self.params, t, xi);
+    (c_val + d_val * self.params.v0).exp()
   }
 
   /// Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826–848, Table 11 for `c1`; `c2` is
   /// `−Re ∂²ᵤ ln chf(t, u)` at `u = 0` of this chf, grouped by powers of `e^{−κt}`.
   fn cumulants(&self, t: f64) -> Cumulants {
-    let ekt = (-self.kappa * t).exp();
-    let c1 = (1.0 - ekt) * (self.theta - self.v0) / (2.0 * self.kappa) - 0.5 * self.theta * t;
+    let HestonParams {
+      v0,
+      kappa,
+      theta,
+      sigma,
+      rho,
+    } = self.params;
+    let ekt = (-kappa * t).exp();
+    let c1 = (1.0 - ekt) * (theta - v0) / (2.0 * kappa) - 0.5 * theta * t;
 
-    let kappa2 = self.kappa * self.kappa;
-    let kappa3 = kappa2 * self.kappa;
-    let sigma2 = self.sigma * self.sigma;
-    let rs = self.rho * self.sigma;
-    let n0 = self.theta
+    let kappa2 = kappa * kappa;
+    let kappa3 = kappa2 * kappa;
+    let sigma2 = sigma * sigma;
+    let rs = rho * sigma;
+    let n0 = theta
       * (8.0 * kappa3 * t - 8.0 * kappa2 * rs * t - 8.0 * kappa2
-        + 16.0 * self.kappa * rs
-        + 2.0 * self.kappa * sigma2 * t
+        + 16.0 * kappa * rs
+        + 2.0 * kappa * sigma2 * t
         - 5.0 * sigma2)
-      + self.v0 * 2.0 * (4.0 * kappa2 - 4.0 * self.kappa * rs + sigma2);
-    let n1 = self.theta
+      + v0 * 2.0 * (4.0 * kappa2 - 4.0 * kappa * rs + sigma2);
+    let n1 = theta
       * -4.0
-      * (2.0 * kappa2 * rs * t - 2.0 * kappa2 + 4.0 * self.kappa * rs
-        - self.kappa * sigma2 * t
-        - sigma2)
-      + self.v0
-        * 4.0
-        * self.kappa
-        * (2.0 * self.kappa * rs * t - 2.0 * self.kappa + 2.0 * rs - sigma2 * t);
-    let n2 = sigma2 * (self.theta - 2.0 * self.v0);
+      * (2.0 * kappa2 * rs * t - 2.0 * kappa2 + 4.0 * kappa * rs - kappa * sigma2 * t - sigma2)
+      + v0 * 4.0 * kappa * (2.0 * kappa * rs * t - 2.0 * kappa + 2.0 * rs - sigma2 * t);
+    let n2 = sigma2 * (theta - 2.0 * v0);
     let c2 = (n0 + n1 * ekt + n2 * ekt * ekt) / (8.0 * kappa3);
 
     Cumulants { c1, c2, c4: None }
@@ -94,73 +116,35 @@ impl FourierModelExt for HestonFourier {
 /// Reference: Mehrdoust, F., Noorani, I. & Hamdi, A. (2021), "Calibration of the double Heston model and an analytical formula in pricing American put option", J. Comput. Appl. Math. 392, 113422, DOI 10.1016/j.cam.2021.113422
 #[derive(Debug, Clone)]
 pub struct DoubleHestonFourier {
-  /// Initial variance of factor 1.
-  pub v1_0: f64,
-  /// Mean-reversion speed of factor 1.
-  pub kappa1: f64,
-  /// Long-run variance of factor 1.
-  pub theta1: f64,
-  /// Volatility-of-variance of factor 1.
-  pub sigma1: f64,
-  /// Spot-variance correlation for factor 1.
-  pub rho1: f64,
-  /// Initial variance of factor 2.
-  pub v2_0: f64,
-  /// Mean-reversion speed of factor 2.
-  pub kappa2: f64,
-  /// Long-run variance of factor 2.
-  pub theta2: f64,
-  /// Volatility-of-variance of factor 2.
-  pub sigma2: f64,
-  /// Spot-variance correlation for factor 2.
-  pub rho2: f64,
+  first: HestonParams,
+  second: HestonParams,
 }
 
 impl DoubleHestonFourier {
-  /// Compute a single Heston factor contribution $(C_j, D_j)$ evaluated at `xi`.
-  ///
-  /// Uses the Albrecher-Mayer-Schoutens-Tistaert (2007) "Little Heston Trap"
-  /// form (`g̃ = 1/g_original`, `exp(-d·t)`) so each factor stays on the
-  /// principal log-branch for large τ and `|ρ_j| → 1`.
-  #[inline]
-  fn factor_cd(
-    kappa: f64,
-    theta: f64,
-    sigma: f64,
-    rho: f64,
-    t: f64,
-    xi: Complex64,
-  ) -> (Complex64, Complex64) {
-    let i = Complex64::i();
-    let sigma2 = sigma * sigma;
-    let rsi = rho * sigma * i;
-
-    let d = ((kappa - rsi * xi).powi(2) + sigma2 * (i * xi + xi * xi)).sqrt();
-    let g = (kappa - rsi * xi - d) / (kappa - rsi * xi + d);
-    let exp_dt = (-d * t).exp();
-
-    let c_val = (kappa * theta / sigma2)
-      * ((kappa - rsi * xi - d) * t - 2.0 * ((1.0 - g * exp_dt) / (1.0 - g)).ln());
-    let d_val = ((kappa - rsi * xi - d) / sigma2) * (1.0 - exp_dt) / (1.0 - g * exp_dt);
-
-    (c_val, d_val)
+  /// Panics unless both factors pass [`HestonParams::new`].
+  pub fn new(first: HestonParams, second: HestonParams) -> Self {
+    Self {
+      first: first.checked(),
+      second: second.checked(),
+    }
   }
 }
 
 impl FourierModelExt for DoubleHestonFourier {
   fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
-    let (c1, d1) = Self::factor_cd(self.kappa1, self.theta1, self.sigma1, self.rho1, t, xi);
-    let (c2, d2) = Self::factor_cd(self.kappa2, self.theta2, self.sigma2, self.rho2, t, xi);
+    let (c1, d1) = factor_cd(&self.first, t, xi);
+    let (c2, d2) = factor_cd(&self.second, t, xi);
 
-    (c1 + c2 + d1 * self.v1_0 + d2 * self.v2_0).exp()
+    (c1 + c2 + d1 * self.first.v0 + d2 * self.second.v0).exp()
   }
 
   fn cumulants(&self, t: f64) -> Cumulants {
-    let ekt1 = (-self.kappa1 * t).exp();
-    let ekt2 = (-self.kappa2 * t).exp();
+    let (a, b) = (self.first, self.second);
+    let ekt1 = (-a.kappa * t).exp();
+    let ekt2 = (-b.kappa * t).exp();
 
-    let int_v1 = self.theta1 * t + (self.v1_0 - self.theta1) * (1.0 - ekt1) / self.kappa1;
-    let int_v2 = self.theta2 * t + (self.v2_0 - self.theta2) * (1.0 - ekt2) / self.kappa2;
+    let int_v1 = a.theta * t + (a.v0 - a.theta) * (1.0 - ekt1) / a.kappa;
+    let int_v2 = b.theta * t + (b.v0 - b.theta) * (1.0 - ekt2) / b.kappa;
 
     let c1 = -0.5 * (int_v1 + int_v2);
     let c2 = int_v1 + int_v2;
@@ -173,13 +157,13 @@ mod tests {
   use super::*;
 
   fn task1_params() -> HestonFourier {
-    HestonFourier {
+    HestonFourier::new(HestonParams {
       v0: 0.04,
       kappa: 1.5,
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-    }
+    })
   }
 
   fn ln_chf(model: &HestonFourier, t: f64, u: f64) -> Complex64 {

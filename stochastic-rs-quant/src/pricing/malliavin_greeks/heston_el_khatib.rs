@@ -21,7 +21,7 @@ impl HestonMalliavinGreeks {
     normal_perp: &mut Seeded<SimdNormal<f64>>,
   ) -> HestonElKhatibPath {
     let n_increments = self.n_steps - 1;
-    let corr_scale = (1.0 - self.rho * self.rho).max(0.0).sqrt();
+    let corr_scale = (1.0 - self.params.rho * self.params.rho).max(0.0).sqrt();
     let mut dw_s = Array1::<f64>::zeros(n_increments);
     let mut dw_v = Array1::<f64>::zeros(n_increments);
 
@@ -29,7 +29,7 @@ impl HestonMalliavinGreeks {
       let dws = normal_s.sample();
       let dwp = normal_perp.sample();
       dw_s[k] = dws;
-      dw_v[k] = self.rho * dws + corr_scale * dwp;
+      dw_v[k] = self.params.rho * dws + corr_scale * dwp;
     }
 
     let (s, v) = self.simulate_heston_from_increments(&dw_s, &dw_v);
@@ -58,12 +58,12 @@ impl HestonMalliavinGreeks {
   fn variance_path_from_shifted_increments(&self, dw_v: &Array1<f64>, shift: f64) -> Array1<f64> {
     let dt = self.tau / (self.n_steps - 1) as f64;
     let mut v = Array1::<f64>::zeros(self.n_steps);
-    v[0] = self.v0.max(0.0);
+    v[0] = self.params.v0.max(0.0);
 
     for k in 0..(self.n_steps - 1) {
       let v_prev = v[k].max(0.0);
-      let dv =
-        self.kappa * (self.theta - v_prev) * dt + self.xi * v_prev.sqrt() * (dw_v[k] + shift);
+      let dv = self.params.kappa * (self.params.theta - v_prev) * dt
+        + self.params.sigma * v_prev.sqrt() * (dw_v[k] + shift);
       v[k + 1] = (v[k] + dv).max(0.0);
     }
 
@@ -85,7 +85,7 @@ impl HestonMalliavinGreeks {
     let dt = self.tau / (self.n_steps - 1) as f64;
     let n_increments = self.n_steps - 1;
 
-    if self.xi.abs() <= f64::EPSILON || self.rho.abs() <= f64::EPSILON {
+    if self.params.sigma.abs() <= f64::EPSILON || self.params.rho.abs() <= f64::EPSILON {
       let mut a = 0.0;
       for i in 0..n_increments {
         a += v[i].max(0.0).sqrt() * dt;
@@ -97,7 +97,7 @@ impl HestonMalliavinGreeks {
     for i in 0..n_increments {
       let sqrt_v_i = v[i].max(0.0).sqrt();
       let mut g = sqrt_v_i;
-      let mut d_v = self.rho * self.xi * sqrt_v_i;
+      let mut d_v = self.params.rho * self.params.sigma * sqrt_v_i;
 
       for j in i..n_increments {
         let sqrt_v_j = v[j].max(Self::EL_KHATIB_VAR_FLOOR).sqrt();
@@ -105,9 +105,10 @@ impl HestonMalliavinGreeks {
         g += d_sigma * d_v * (dw_s[j] + dw_s_shift - sqrt_v_j * dt);
 
         let raw_next = v[j]
-          + self.kappa * (self.theta - v[j].max(0.0)) * dt
-          + self.xi * v[j].max(0.0).sqrt() * (dw_v[j] + dw_v_shift);
-        let tangent = 1.0 - self.kappa * dt + self.xi * 0.5 / sqrt_v_j * (dw_v[j] + dw_v_shift);
+          + self.params.kappa * (self.params.theta - v[j].max(0.0)) * dt
+          + self.params.sigma * v[j].max(0.0).sqrt() * (dw_v[j] + dw_v_shift);
+        let tangent = 1.0 - self.params.kappa * dt
+          + self.params.sigma * 0.5 / sqrt_v_j * (dw_v[j] + dw_v_shift);
         d_v = if raw_next > 0.0 { d_v * tangent } else { 0.0 };
       }
 
@@ -129,14 +130,14 @@ impl HestonMalliavinGreeks {
   }
 
   fn el_khatib_du_a(&self, dw_s: &Array1<f64>, dw_v: &Array1<f64>) -> f64 {
-    if self.xi.abs() <= f64::EPSILON || self.rho.abs() <= f64::EPSILON {
+    if self.params.sigma.abs() <= f64::EPSILON || self.params.rho.abs() <= f64::EPSILON {
       return 0.0;
     }
 
     let dt = self.tau / (self.n_steps - 1) as f64;
     let eps = Self::EL_KHATIB_DU_EPS;
     let dw_s_shift = eps * dt;
-    let dw_v_shift = self.rho * dw_s_shift;
+    let dw_v_shift = self.params.rho * dw_s_shift;
     let a_up = self.shifted_el_khatib_a(dw_s, dw_v, dw_s_shift, dw_v_shift);
     let a_dn = self.shifted_el_khatib_a(dw_s, dw_v, -dw_s_shift, -dw_v_shift);
 

@@ -1,6 +1,7 @@
 use pyo3::prelude::*;
 
 use super::parse_option_type;
+use crate::pricing::heston::HestonParams;
 use crate::traits::ModelPricer;
 
 /// The Rust model holds `(v, coc)` only, so the wrapper carries the
@@ -135,7 +136,16 @@ impl PyHestonPricer {
     lambda_: Option<f64>,
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| {
-      let inner = crate::pricing::heston::HestonPricer::new(v0, rho, kappa, theta, sigma, lambda_);
+      let mut inner = crate::pricing::heston::HestonPricer::new(HestonParams {
+        v0,
+        kappa,
+        theta,
+        sigma,
+        rho,
+      });
+      if let Some(lambda) = lambda_ {
+        inner = inner.with_vol_risk_premium(lambda);
+      }
       Self {
         inner,
         s,
@@ -484,11 +494,16 @@ impl PyHestonAdiPricer {
           )));
         }
       };
-      let mut inner =
-        crate::pricing::heston_adi::HestonAdiPricer::new(v0, kappa, theta, sigma, rho)
-          .with_grid(m1, m2, steps)
-          .with_scheme(scheme)
-          .with_damping(damping);
+      let mut inner = crate::pricing::heston_adi::HestonAdiPricer::new(HestonParams {
+        v0,
+        kappa,
+        theta,
+        sigma,
+        rho,
+      })
+      .with_grid(m1, m2, steps)
+      .with_scheme(scheme)
+      .with_damping(damping);
       if let Some(b) = barrier {
         inner = inner.with_barrier(b);
       }

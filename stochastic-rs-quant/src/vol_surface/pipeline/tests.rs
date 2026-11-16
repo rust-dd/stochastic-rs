@@ -80,14 +80,15 @@ fn pipeline_local_vol() {
 #[test]
 fn build_surface_from_model_heston() {
   use crate::pricing::fourier::HestonFourier;
+  use crate::pricing::heston::HestonParams;
 
-  let model = HestonFourier {
+  let model = HestonFourier::new(HestonParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
     sigma: 0.3,
     rho: -0.7,
-  };
+  });
   let strikes: Vec<f64> = (85..=115).step_by(5).map(|k| k as f64).collect();
   let maturities = vec![0.25, 0.5, 1.0];
 
@@ -104,19 +105,19 @@ fn build_surface_from_model_heston() {
 fn build_surface_from_calibration_heston_multi_maturity() {
   use crate::OptionType;
   use crate::calibration::heston::HestonCalibrator;
-  use crate::calibration::heston::HestonParams;
   use crate::calibration::levy::MarketSlice;
   use crate::pricing::fourier::HestonFourier;
+  use crate::pricing::heston::HestonParams;
   use crate::traits::ModelPricer;
 
   // Generate synthetic prices from known Heston params
-  let true_model = HestonFourier {
+  let true_model = HestonFourier::new(HestonParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
     sigma: 0.3,
     rho: -0.7,
-  };
+  });
   let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
   let taus = [0.25, 0.5, 1.0];
 
@@ -311,17 +312,18 @@ fn build_surface_from_model_sabr() {
 #[test]
 fn to_model_trait_works_with_pipeline() {
   use crate::pricing::fourier::HestonFourier;
+  use crate::pricing::heston::HestonParams;
   use crate::traits::ToModel;
 
-  let model = HestonFourier {
+  let model = HestonFourier::new(HestonParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
     sigma: 0.3,
     rho: -0.7,
-  };
+  });
   // Use HestonParams (implements ToModel) via the trait
-  let params = crate::calibration::heston::HestonParams {
+  let params = HestonParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,

@@ -161,7 +161,7 @@ impl HestonSlvPricer {
     let dt = tau / n_steps as f64;
     let sqrt_dt = dt.sqrt();
     let sigma_mixed = self.params.sigma_mixed();
-    let rho_bar = (1.0 - self.params.rho * self.params.rho).sqrt();
+    let rho_bar = (1.0 - self.params.heston.rho * self.params.heston.rho).sqrt();
 
     let mut normals = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(self.seed));
     let mut payoff_sum = 0.0;
@@ -169,13 +169,13 @@ impl HestonSlvPricer {
 
     for _ in 0..self.n_paths {
       let mut x = s.ln();
-      let mut v = self.params.v0;
+      let mut v = self.params.heston.v0;
 
       for step in 0..n_steps {
         let t = step as f64 * dt;
         let dw_v = normals.sample() * sqrt_dt;
         let dw_ind = normals.sample() * sqrt_dt;
-        let dw_x = self.params.rho * dw_v + rho_bar * dw_ind;
+        let dw_x = self.params.heston.rho * dw_v + rho_bar * dw_ind;
 
         let v_pos = v.max(0.0);
         let sqrt_v = v_pos.sqrt();
@@ -183,9 +183,10 @@ impl HestonSlvPricer {
 
         let l = self.leverage.interpolate(s_curr, t);
 
-        v =
-          (v + self.params.kappa * (self.params.theta - v_pos) * dt + sigma_mixed * sqrt_v * dw_v)
-            .max(0.0);
+        v = (v
+          + self.params.heston.kappa * (self.params.heston.theta - v_pos) * dt
+          + sigma_mixed * sqrt_v * dw_v)
+          .max(0.0);
 
         let drift = (r - q) - 0.5 * l * l * v_pos;
         x += drift * dt + l * sqrt_v * dw_x;

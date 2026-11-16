@@ -6,7 +6,6 @@ use stochastic_rs_stats::heston_nmle_cekf::HestonNmleCekfConfig;
 
 use super::params::HestonJacobianMethod;
 use super::params::HestonMleSeedMethod;
-use super::params::HestonParams;
 use super::result::HestonCalibrationResult;
 use crate::CalibrationLossScore;
 use crate::LossMetric;
@@ -16,6 +15,7 @@ use crate::calibration::CalibrationHistory;
 use crate::calibration::Regularization;
 use crate::calibration::least_squares::LmOptions;
 use crate::calibration::least_squares::minimize;
+use crate::pricing::heston::HestonParams;
 
 #[derive(Clone)]
 /// Heston least-squares calibrator using Levenberg-Marquardt iterations.

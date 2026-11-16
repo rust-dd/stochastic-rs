@@ -1,5 +1,6 @@
 use super::SvjParams;
 use super::loss::bates_call_price;
+use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
 
 #[test]
@@ -16,14 +17,13 @@ fn zero_jump_svj_matches_heston_at_short_maturity() {
   };
   for (k, tau) in [(95.0, 0.01), (100.0, 0.005), (105.0, 0.01)] {
     let svj = bates_call_price(&params, 100.0, k, 0.05, 0.0, tau);
-    let heston = HestonPricer::new(
-      params.v0,
-      params.rho,
-      params.kappa,
-      params.theta,
-      params.sigma_v,
-      Some(0.0),
-    )
+    let heston = HestonPricer::new(HestonParams {
+      v0: params.v0,
+      kappa: params.kappa,
+      theta: params.theta,
+      sigma: params.sigma_v,
+      rho: params.rho,
+    })
     .call_put(100.0, k, 0.05, 0.0, tau)
     .0;
 

@@ -3,7 +3,6 @@ use ndarray::Array2;
 
 use super::calibrator::HestonCalibrator;
 use super::params::HestonJacobianMethod;
-use super::params::HestonParams;
 use super::params::P_KAPPA;
 use super::params::P_SIGMA;
 use super::params::P_THETA;
@@ -15,6 +14,7 @@ use super::transform::from_optimizer_coordinates;
 use super::transform::to_optimizer_coordinates;
 use crate::OptionType;
 use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::pricing::heston::HestonParams;
 use crate::traits::Calibrator;
 
 fn non_feller_params() -> HestonParams {
@@ -122,11 +122,7 @@ fn exact_box_boundaries_are_moved_to_a_finite_interior_point() {
 #[test]
 fn least_squares_set_params_is_monotone_without_periodic_reflection() {
   let truth = non_feller_params();
-  let mut calibrator = synthetic_calibrator(
-    &truth,
-    truth.clone(),
-    HestonJacobianMethod::NumericFiniteDiff,
-  );
+  let mut calibrator = synthetic_calibrator(&truth, truth, HestonJacobianMethod::NumericFiniteDiff);
   calibrator.set_params(&Array1::from_elem(5, -3.0));
   let lower = calibrator.effective_params();
   calibrator.set_params(&Array1::from_elem(5, 3.0));
@@ -142,7 +138,7 @@ fn least_squares_set_params_is_monotone_without_periodic_reflection() {
 #[test]
 fn analytic_jacobian_includes_the_optimizer_chain_rule() {
   let params = non_feller_params();
-  let calibrator = synthetic_calibrator(&params, params.clone(), HestonJacobianMethod::CuiAnalytic);
+  let calibrator = synthetic_calibrator(&params, params, HestonJacobianMethod::CuiAnalytic);
   let coordinates = to_optimizer_coordinates(&params);
   let (_, physical_jacobian) = calibrator
     .compute_model_prices_and_residual_jacobian_cui(&params)
@@ -155,8 +151,7 @@ fn analytic_jacobian_includes_the_optimizer_chain_rule() {
 #[test]
 fn analytic_jacobian_differentiates_through_an_active_feller_cap() {
   let params = non_feller_params();
-  let mut calibrator =
-    synthetic_calibrator(&params, params.clone(), HestonJacobianMethod::CuiAnalytic);
+  let mut calibrator = synthetic_calibrator(&params, params, HestonJacobianMethod::CuiAnalytic);
   calibrator.set_feller_projection(true);
   calibrator.set_params(&to_optimizer_coordinates(&params));
   let analytic = calibrator.jacobian().unwrap();
@@ -168,8 +163,7 @@ fn analytic_jacobian_differentiates_through_an_active_feller_cap() {
 #[test]
 fn feller_overshoot_row_differentiates_like_its_finite_difference() {
   let params = non_feller_params();
-  let mut calibrator =
-    synthetic_calibrator(&params, params.clone(), HestonJacobianMethod::CuiAnalytic);
+  let mut calibrator = synthetic_calibrator(&params, params, HestonJacobianMethod::CuiAnalytic);
   calibrator.set_feller_projection(true);
   calibrator.feller_row_weight = Some(2.0);
   let coordinates = to_optimizer_coordinates(&params);
@@ -199,11 +193,7 @@ fn feller_overshoot_row_differentiates_like_its_finite_difference() {
 #[test]
 fn least_squares_numeric_path_differentiates_optimizer_coordinates() {
   let params = non_feller_params();
-  let calibrator = synthetic_calibrator(
-    &params,
-    params.clone(),
-    HestonJacobianMethod::NumericFiniteDiff,
-  );
+  let calibrator = synthetic_calibrator(&params, params, HestonJacobianMethod::NumericFiniteDiff);
   let expected = calibrator.numeric_optimizer_jacobian(&params);
   let actual = calibrator.jacobian().unwrap();
   assert_jacobians_close(&actual, &expected);
@@ -219,7 +209,7 @@ fn boundary_adjacent_non_feller_jacobian_remains_finite_and_consistent() {
     rho: -0.98,
   };
   assert!(!params.satisfies_feller_condition());
-  let calibrator = synthetic_calibrator(&params, params.clone(), HestonJacobianMethod::CuiAnalytic);
+  let calibrator = synthetic_calibrator(&params, params, HestonJacobianMethod::CuiAnalytic);
   let analytic = calibrator.jacobian().unwrap();
   let numeric = calibrator.numeric_optimizer_jacobian(&calibrator.effective_params());
   assert!(analytic.iter().all(|value| value.is_finite()));

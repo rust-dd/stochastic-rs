@@ -17,6 +17,7 @@ use super::params::RHO_BOUND;
 use super::params::SIGMA_MIN;
 use super::params::THETA_MIN;
 use crate::OptionType;
+use crate::pricing::fourier::factor_cd;
 
 /// Double Heston characteristic function $\phi_T(u)$ of $\ln(S_T/S_0)$,
 /// computed as the sum of two independent Heston contributions.
@@ -29,38 +30,10 @@ pub(super) fn double_heston_cf(
 ) -> Complex64 {
   let i = Complex64::i();
 
-  let (c1, d1) = factor_cd(p.kappa1, p.theta1, p.sigma1, p.rho1, tau, u);
-  let (c2, d2) = factor_cd(p.kappa2, p.theta2, p.sigma2, p.rho2, tau, u);
+  let (c1, d1) = factor_cd(&p.first, tau, u);
+  let (c2, d2) = factor_cd(&p.second, tau, u);
 
-  (c1 + c2 + d1 * p.v1_0 + d2 * p.v2_0 + i * u * (r - q) * tau).exp()
-}
-
-/// Single Heston factor $(C_j, D_j)$ at Fourier argument `u`.
-///
-/// Uses the Albrecher-Mayer-Schoutens-Tistaert (2007) "Little Heston Trap"
-/// form (`g̃ = 1/g_original`, `exp(-d·τ)`) so each independent factor stays on
-/// the principal log-branch at long τ / high `|ρ_j|`.
-fn factor_cd(
-  kappa: f64,
-  theta: f64,
-  sigma: f64,
-  rho: f64,
-  tau: f64,
-  u: Complex64,
-) -> (Complex64, Complex64) {
-  let i = Complex64::i();
-  let sigma2 = sigma * sigma;
-  let rsi = rho * sigma * i;
-
-  let d = ((kappa - rsi * u).powi(2) + sigma2 * (i * u + u * u)).sqrt();
-  let g = (kappa - rsi * u - d) / (kappa - rsi * u + d);
-  let exp_dt = (-d * tau).exp();
-
-  let c_val = (kappa * theta / sigma2)
-    * ((kappa - rsi * u - d) * tau - 2.0 * ((1.0 - g * exp_dt) / (1.0 - g)).ln());
-  let d_val = ((kappa - rsi * u - d) / sigma2) * (1.0 - exp_dt) / (1.0 - g * exp_dt);
-
-  (c_val, d_val)
+  (c1 + c2 + d1 * p.first.v0 + d2 * p.second.v0 + i * u * (r - q) * tau).exp()
 }
 
 /// Price a European call option under the double Heston model via a
@@ -149,73 +122,47 @@ impl DoubleHestonCalibrator {
 
       let mut params_plus = *params;
       let mut params_minus = *params;
+      let (plus, minus) = if col < 5 {
+        (&mut params_plus.first, &mut params_minus.first)
+      } else {
+        (&mut params_plus.second, &mut params_minus.second)
+      };
 
       let field_plus_minus = |x: f64, h: f64, lo: f64, hi: f64| -> (f64, f64) {
         (periodic_map(x + h, lo, hi), periodic_map(x - h, lo, hi))
       };
 
-      match col {
+      match col % 5 {
         0 => {
           let (a, b) = field_plus_minus(x, h, P_V0.0, P_V0.1);
-          params_plus.v1_0 = a.max(0.0);
-          params_minus.v1_0 = b.max(0.0);
+          plus.v0 = a.max(0.0);
+          minus.v0 = b.max(0.0);
         }
         1 => {
           let (a, b) = field_plus_minus(x, h, P_KAPPA.0, P_KAPPA.1);
-          params_plus.kappa1 = a.max(KAPPA_MIN);
-          params_minus.kappa1 = b.max(KAPPA_MIN);
+          plus.kappa = a.max(KAPPA_MIN);
+          minus.kappa = b.max(KAPPA_MIN);
         }
         2 => {
           let (a, b) = field_plus_minus(x, h, P_THETA.0, P_THETA.1);
-          params_plus.theta1 = a.max(THETA_MIN);
-          params_minus.theta1 = b.max(THETA_MIN);
+          plus.theta = a.max(THETA_MIN);
+          minus.theta = b.max(THETA_MIN);
         }
         3 => {
           let (a, b) = field_plus_minus(x, h, P_SIGMA.0, P_SIGMA.1);
-          params_plus.sigma1 = a.abs().max(SIGMA_MIN);
-          params_minus.sigma1 = b.abs().max(SIGMA_MIN);
+          plus.sigma = a.abs().max(SIGMA_MIN);
+          minus.sigma = b.abs().max(SIGMA_MIN);
         }
-        4 => {
+        _ => {
           let clamp = |y: f64| y.clamp(-RHO_BOUND, RHO_BOUND);
-          params_plus.rho1 = clamp(x + h);
-          params_minus.rho1 = clamp(x - h);
-          if (params_plus.rho1 - params_minus.rho1).abs() < 0.5 * h {
+          plus.rho = clamp(x + h);
+          minus.rho = clamp(x - h);
+          if (plus.rho - minus.rho).abs() < 0.5 * h {
             h = 1e-4;
-            params_plus.rho1 = clamp(x + h);
-            params_minus.rho1 = clamp(x - h);
+            plus.rho = clamp(x + h);
+            minus.rho = clamp(x - h);
           }
         }
-        5 => {
-          let (a, b) = field_plus_minus(x, h, P_V0.0, P_V0.1);
-          params_plus.v2_0 = a.max(0.0);
-          params_minus.v2_0 = b.max(0.0);
-        }
-        6 => {
-          let (a, b) = field_plus_minus(x, h, P_KAPPA.0, P_KAPPA.1);
-          params_plus.kappa2 = a.max(KAPPA_MIN);
-          params_minus.kappa2 = b.max(KAPPA_MIN);
-        }
-        7 => {
-          let (a, b) = field_plus_minus(x, h, P_THETA.0, P_THETA.1);
-          params_plus.theta2 = a.max(THETA_MIN);
-          params_minus.theta2 = b.max(THETA_MIN);
-        }
-        8 => {
-          let (a, b) = field_plus_minus(x, h, P_SIGMA.0, P_SIGMA.1);
-          params_plus.sigma2 = a.abs().max(SIGMA_MIN);
-          params_minus.sigma2 = b.abs().max(SIGMA_MIN);
-        }
-        9 => {
-          let clamp = |y: f64| y.clamp(-RHO_BOUND, RHO_BOUND);
-          params_plus.rho2 = clamp(x + h);
-          params_minus.rho2 = clamp(x - h);
-          if (params_plus.rho2 - params_minus.rho2).abs() < 0.5 * h {
-            h = 1e-4;
-            params_plus.rho2 = clamp(x + h);
-            params_minus.rho2 = clamp(x - h);
-          }
-        }
-        _ => unreachable!(),
       }
 
       params_plus.project_in_place();

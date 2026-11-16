@@ -7,9 +7,9 @@ use stochastic_rs::quant::OptionType;
 use stochastic_rs::quant::calibration::bsm::BsmCalibrator;
 use stochastic_rs::quant::calibration::bsm::BsmParams;
 use stochastic_rs::quant::calibration::heston::HestonCalibrator;
-use stochastic_rs::quant::calibration::heston::HestonParams;
 use stochastic_rs::quant::calibration::levy::MarketSlice;
 use stochastic_rs::quant::pricing::fourier::HestonFourier;
+use stochastic_rs::quant::pricing::heston::HestonParams;
 
 fn main() {
   println!("=== stochastic-rs calibration demo ===\n");
@@ -99,13 +99,7 @@ fn heston_demo() {
     sigma: 0.30,
     rho: -0.6,
   };
-  let model_true = HestonFourier {
-    v0: true_params.v0,
-    kappa: true_params.kappa,
-    theta: true_params.theta,
-    sigma: true_params.sigma,
-    rho: true_params.rho,
-  };
+  let model_true = HestonFourier::new(true_params);
 
   let strikes = vec![80.0_f64, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0];
   let maturities = [0.25_f64, 0.5, 1.0, 2.0];

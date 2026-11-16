@@ -1,6 +1,6 @@
-use super::params::HestonParams;
 use crate::CalibrationLossScore;
 use crate::LossMetric;
+use crate::pricing::heston::HestonParams;
 use crate::traits::ToModel;
 
 /// Calibration result for the Heston model.
@@ -35,7 +35,7 @@ impl crate::traits::CalibrationResult for HestonCalibrationResult {
   }
 
   fn params(&self) -> Self::Params {
-    self.params.clone()
+    self.params
   }
 
   fn loss_score(&self) -> Option<&CalibrationLossScore> {

@@ -15,7 +15,6 @@ mod transform;
 pub use calibrator::HestonCalibrator;
 pub use params::HestonJacobianMethod;
 pub use params::HestonMleSeedMethod;
-pub use params::HestonParams;
 pub use result::HestonCalibrationResult;
 
 #[cfg(test)]

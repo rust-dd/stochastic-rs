@@ -53,7 +53,7 @@ impl HestonPricer {
   }
 
   fn h_v(&self) -> f64 {
-    self.v0.abs().max(0.01) * 1e-4
+    self.params.v0.abs().max(0.01) * 1e-4
   }
 
   /// Whether the `σ = √v0` chain rule the volatility-space Greeks share is
@@ -74,8 +74,12 @@ impl HestonPricer {
   /// # Panics
   /// - if `v0` is negative (or `NaN`), naming the offending value
   fn vol_chain_rule_is_defined(&self) -> bool {
-    assert!(self.v0 >= 0.0, "v0 must be non-negative (got {})", self.v0);
-    self.v0 > 0.0
+    assert!(
+      self.params.v0 >= 0.0,
+      "v0 must be non-negative (got {})",
+      self.params.v0
+    );
+    self.params.v0 > 0.0
   }
 
   /// Copy with `v0` bumped, floored at `1e-12` (mirrors
@@ -84,7 +88,7 @@ impl HestonPricer {
   /// produce a negative, model-invalid variance.
   fn with_v0_bump(&self, dv0: f64) -> Self {
     let mut bumped = *self;
-    bumped.v0 = (bumped.v0 + dv0).max(1e-12);
+    bumped.params.v0 = (bumped.params.v0 + dv0).max(1e-12);
     bumped
   }
 
@@ -125,7 +129,7 @@ impl HestonPricer {
     if !self.vol_chain_rule_is_defined() {
       return f64::NAN;
     }
-    2.0 * self.v0.sqrt() * self.v0_vega(s, k, r, q, tau)
+    2.0 * self.params.v0.sqrt() * self.v0_vega(s, k, r, q, tau)
   }
 
   /// Theta — $\partial V/\partial t$ (calendar convention, $-\partial/\partial\tau$).
@@ -166,7 +170,7 @@ impl HestonPricer {
     let h = Self::h_s(s);
     let p_s_v0 =
       (self.v0_vega(s + h, k, r, q, tau) - self.v0_vega(s - h, k, r, q, tau)) / (2.0 * h);
-    2.0 * self.v0.sqrt() * p_s_v0
+    2.0 * self.params.v0.sqrt() * p_s_v0
   }
 
   /// Charm — $\partial^2 V/\partial S\partial t$ (delta decay).
@@ -203,7 +207,7 @@ impl HestonPricer {
     let p_v0v0 = (self.with_v0_bump(h).v0_vega(s, k, r, q, tau)
       - self.with_v0_bump(-h).v0_vega(s, k, r, q, tau))
       / (2.0 * h);
-    4.0 * self.v0 * p_v0v0 + 2.0 * self.v0_vega(s, k, r, q, tau)
+    4.0 * self.params.v0 * p_v0v0 + 2.0 * self.v0_vega(s, k, r, q, tau)
   }
 
   /// Veta — $\partial^2 V/\partial\sigma\partial t$ (vega decay).
@@ -229,7 +233,7 @@ impl HestonPricer {
     }
     let p_tau_v0 =
       (self.v0_vega(s, k, r, q, tau + h) - self.v0_vega(s, k, r, q, tau - h)) / (2.0 * h);
-    -2.0 * self.v0.sqrt() * p_tau_v0
+    -2.0 * self.params.v0.sqrt() * p_tau_v0
   }
 
   /// Every Greek at one query point, in a single [`Greeks`] struct.

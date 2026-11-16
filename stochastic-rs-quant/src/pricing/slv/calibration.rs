@@ -214,7 +214,12 @@ pub fn calibrate_leverage(
   let spots = local_vol.xs().to_vec();
   let n_eval = spots.len();
   let n = method.n_particles;
-  let (kappa, theta, rho, v0) = (params.kappa, params.theta, params.rho, params.v0.max(0.0));
+  let (kappa, theta, rho, v0) = (
+    params.heston.kappa,
+    params.heston.theta,
+    params.heston.rho,
+    params.heston.v0.max(0.0),
+  );
   let sigma_mixed = params.sigma_mixed();
   let rho_bar = (1.0 - rho * rho).sqrt();
   let carry = r - q;
@@ -306,10 +311,13 @@ pub(super) fn validate(
       format!("must be finite, got r = {r}, q = {q}"),
     ));
   }
-  if !(params.v0.is_finite() && params.v0 >= 0.0) {
+  if !(params.heston.v0.is_finite() && params.heston.v0 >= 0.0) {
     return Err(QuantError::invalid(
       "v0",
-      format!("must be a finite non-negative variance, got {}", params.v0),
+      format!(
+        "must be a finite non-negative variance, got {}",
+        params.heston.v0
+      ),
     ));
   }
   if !(params.eta.is_finite() && params.eta >= 0.0) {
@@ -318,13 +326,20 @@ pub(super) fn validate(
       format!("must be finite and non-negative, got {}", params.eta),
     ));
   }
-  if !(params.rho.is_finite() && params.rho.abs() <= 1.0) {
+  if !(params.heston.rho.is_finite() && params.heston.rho.abs() <= 1.0) {
     return Err(QuantError::invalid(
       "rho",
-      format!("must be a correlation in [-1, 1], got {}", params.rho),
+      format!(
+        "must be a correlation in [-1, 1], got {}",
+        params.heston.rho
+      ),
     ));
   }
-  let (kappa, theta, sigma) = (params.kappa, params.theta, params.sigma);
+  let (kappa, theta, sigma) = (
+    params.heston.kappa,
+    params.heston.theta,
+    params.heston.sigma,
+  );
   if !(kappa.is_finite() && theta.is_finite() && sigma.is_finite()) {
     return Err(QuantError::invalid(
       "Heston parameters",

@@ -213,7 +213,7 @@ impl FokkerPlanckMethod {
         format!("must be finite and positive, got {w}"),
       ));
     }
-    let v_scale = params.v0.max(params.theta);
+    let v_scale = params.heston.v0.max(params.heston.theta);
     if let Some(v) = self.v_max.filter(|v| !(v.is_finite() && *v > v_scale)) {
       return Err(QuantError::invalid(
         "v_max",
@@ -224,14 +224,14 @@ impl FokkerPlanckMethod {
   }
 
   fn mesh(&self, params: &HestonSlvParams, s0: f64) -> Mesh {
-    let v_scale = params.v0.max(params.theta).max(1e-6);
+    let v_scale = params.heston.v0.max(params.heston.theta).max(1e-6);
     let v_max = self.v_max.unwrap_or((15.0 * v_scale).max(0.5));
     Mesh::new(
       s0.ln(),
       self.x_half_width.unwrap_or(DEFAULT_LOG_SPOT_HALF_WIDTH),
       self.x_stretch,
       self.log_spot_nodes,
-      params.v0.max(0.0),
+      params.heston.v0.max(0.0),
       v_max,
       self.v_stretch * v_scale,
       self.variance_nodes,
@@ -327,7 +327,7 @@ pub fn calibrate_leverage_fokker_planck(
   validate(params, s0, r, q, local_vol, snapshot_maturities)?;
   method.validate(params)?;
   let mesh = method.mesh(params, s0);
-  let sqrt_v0 = params.v0.max(CONDITIONAL_VARIANCE_FLOOR).sqrt();
+  let sqrt_v0 = params.heston.v0.max(CONDITIONAL_VARIANCE_FLOOR).sqrt();
   let first_row = mesh
     .x
     .iter()
@@ -337,14 +337,14 @@ pub fn calibrate_leverage_fokker_planck(
   let source = if deterministic {
     Source::Deterministic {
       local_vol,
-      kappa: params.kappa,
-      theta: params.theta,
-      v0: params.v0.max(0.0),
+      kappa: params.heston.kappa,
+      theta: params.heston.theta,
+      v0: params.heston.v0.max(0.0),
     }
   } else {
     Source::Calibrated {
       local_vol,
-      previous: vec![params.v0.max(0.0); mesh.m1()],
+      previous: vec![params.heston.v0.max(0.0); mesh.m1()],
     }
   };
   let (rows, density) = march(
@@ -424,7 +424,12 @@ fn march(
   first_row: Vec<f64>,
   mut source: Source<'_>,
 ) -> Result<(Vec<(f64, Vec<f64>)>, FokkerPlanckDensity), QuantError> {
-  let (rho, xi, kappa, theta) = (params.rho, params.sigma_mixed(), params.kappa, params.theta);
+  let (rho, xi, kappa, theta) = (
+    params.heston.rho,
+    params.sigma_mixed(),
+    params.heston.kappa,
+    params.heston.theta,
+  );
   let attainable = 2.0 * kappa * theta < xi * xi;
   let along_v = Direction::along_v(mesh, kappa, theta, xi);
   let mut buffers = StepBuffers::new(mesh.len());

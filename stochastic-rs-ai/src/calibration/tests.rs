@@ -134,12 +134,10 @@ fn heston_bridge_maps_the_parameter_order_and_builds_the_pricer() {
     .map(|&v| v as f64)
     .collect();
   let calibrator = HestonSurrogateCalibrator::new(&model, target).unwrap();
-  let result = calibrator.calibrate(Some(truth.clone())).unwrap();
+  let result = calibrator.calibrate(Some(truth)).unwrap();
   assert!(result.converged() && result.rmse() < 1e-6);
   assert!((result.params().kappa - 3.0).abs() < 0.05);
-  let pricer = result.to_model();
-  assert!((pricer.kappa - result.params.kappa).abs() < 1e-12);
-  assert!((pricer.rho - result.params.rho).abs() < 1e-12);
+  assert_eq!(result.to_model().params(), result.params);
 }
 
 /// The rough Bergomi bridge maps `[ξ₀, η, ρ, H]` onto a flat-ξ₀

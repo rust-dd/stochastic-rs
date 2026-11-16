@@ -7,15 +7,18 @@ use super::HestonMalliavinSpotProvenance;
 use super::HestonModel;
 use super::VanillaPortfolio;
 use crate::QuantError;
+use crate::pricing::heston::HestonParams;
 
 fn model() -> HestonModel {
   HestonModel {
     s: 100.0,
-    initial_variance: 0.04,
-    kappa: 1.5,
-    theta: 0.06,
-    vol_of_vol: 0.5,
-    rho: -0.65,
+    params: HestonParams {
+      v0: 0.04,
+      kappa: 1.5,
+      theta: 0.06,
+      sigma: 0.5,
+      rho: -0.65,
+    },
     risk_free_rate: 0.03,
     dividend_yield: 0.01,
     tau: 45.0 / 365.0,

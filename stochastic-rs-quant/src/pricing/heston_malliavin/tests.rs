@@ -7,16 +7,19 @@ use crate::OptionType;
 use crate::QuantError;
 use crate::pricing::bsm::BsmCoc;
 use crate::pricing::bsm::BsmPricer;
+use crate::pricing::heston::HestonParams;
 use crate::traits::ModelPricer;
 
 fn bsm_limit_model(rho: f64) -> HestonModel {
   HestonModel {
     s: 100.0,
-    initial_variance: 0.04,
-    kappa: 0.0,
-    theta: 0.04,
-    vol_of_vol: 0.0,
-    rho,
+    params: HestonParams {
+      v0: 0.04,
+      kappa: 0.0,
+      theta: 0.04,
+      sigma: 0.0,
+      rho,
+    },
     risk_free_rate: 0.03,
     dividend_yield: 0.01,
     tau: 0.75,
@@ -40,7 +43,7 @@ fn config(paths: usize, steps: usize, seed: u64) -> HestonMalliavinConfig {
 /// volatility, plus the `(s, k, r, q, tau)` query point it is compared at.
 fn bsm(model: HestonModel, strike: f64) -> (BsmPricer, (f64, f64, f64, f64, f64)) {
   (
-    BsmPricer::new(model.initial_variance.sqrt(), BsmCoc::Merton1973),
+    BsmPricer::new(model.params.v0.sqrt(), BsmCoc::Merton1973),
     (
       model.s,
       strike,
@@ -96,7 +99,7 @@ fn correlated_zero_vol_of_vol_matches_bsm_price_and_malliavin_greeks() {
   assert_mc_close(
     result.initial_variance_vega.value,
     result.initial_variance_vega.standard_error,
-    reference.vega(s, k, r, q, tau) / (2.0 * model.initial_variance.sqrt()),
+    reference.vega(s, k, r, q, tau) / (2.0 * model.params.v0.sqrt()),
     3e-2,
   );
 }
@@ -104,8 +107,8 @@ fn correlated_zero_vol_of_vol_matches_bsm_price_and_malliavin_greeks() {
 #[test]
 fn small_vol_of_vol_converges_to_the_bsm_limit() {
   let mut model = bsm_limit_model(-0.7);
-  model.kappa = 1.8;
-  model.vol_of_vol = 1e-7;
+  model.params.kappa = 1.8;
+  model.params.sigma = 1e-7;
   let estimator = HestonMalliavinEstimator::new(model, config(180_000, 32, 117)).unwrap();
   let result = estimator.estimate(&VanillaPortfolio::put(95.0)).unwrap();
   let (reference, (s, k, r, q, tau)) = bsm(model, 95.0);
@@ -135,11 +138,13 @@ fn small_vol_of_vol_converges_to_the_bsm_limit() {
 fn vertical_estimate_is_pathwise_linear_in_its_call_legs() {
   let model = HestonModel {
     s: 100.0,
-    initial_variance: 0.05,
-    kappa: 1.6,
-    theta: 0.04,
-    vol_of_vol: 0.45,
-    rho: -0.65,
+    params: HestonParams {
+      v0: 0.05,
+      kappa: 1.6,
+      theta: 0.04,
+      sigma: 0.45,
+      rho: -0.65,
+    },
     risk_free_rate: 0.025,
     dividend_yield: 0.012,
     tau: 0.5,

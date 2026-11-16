@@ -261,6 +261,7 @@ mod tests {
   use super::super::heston::HestonFourier;
   use super::super::pricer::GilPelaezPricer;
   use super::*;
+  use crate::pricing::heston::HestonParams;
 
   /// FRFT with γ = 1/N must reproduce the standard forward DFT.
   #[test]
@@ -309,13 +310,13 @@ mod tests {
   /// tolerance the 0-centred FFT needs.
   #[test]
   fn frft_carr_madan_heston_matches_gil_pelaez() {
-    let model = HestonFourier {
+    let model = HestonFourier::new(HestonParams {
       v0: 0.04,
       kappa: 1.5,
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-    };
+    });
     let s = 100.0;
     let r = 0.03;
     let t = 1.0;

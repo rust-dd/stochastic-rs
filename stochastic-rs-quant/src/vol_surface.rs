@@ -47,9 +47,10 @@
 //!
 //! ```
 //! use stochastic_rs_quant::OptionType;
-//! use stochastic_rs_quant::calibration::heston::{HestonCalibrator, HestonParams};
+//! use stochastic_rs_quant::calibration::heston::HestonCalibrator;
 //! use stochastic_rs_quant::calibration::levy::MarketSlice;
 //! use stochastic_rs_quant::pricing::fourier::HestonFourier;
+//! use stochastic_rs_quant::pricing::heston::HestonParams;
 //! use stochastic_rs_quant::traits::{Calibrator, ModelPricer};
 //! use stochastic_rs_quant::vol_surface::build_surface_from_calibration;
 //!
@@ -59,10 +60,7 @@
 //! // Synthesise a market from a known parameter set so calibration has a
 //! // guaranteed-recoverable target.
 //! let true_params = HestonParams { v0: 0.04, kappa: 1.5, theta: 0.04, sigma: 0.30, rho: -0.6 };
-//! let model_true = HestonFourier {
-//!     v0: true_params.v0, kappa: true_params.kappa, theta: true_params.theta,
-//!     sigma: true_params.sigma, rho: true_params.rho,
-//! };
+//! let model_true = HestonFourier::new(true_params);
 //! let strikes = [90., 100., 110.];
 //! let maturities = [0.25, 0.5, 1.0];
 //! let slices: Vec<MarketSlice> = maturities.iter().map(|&tau| MarketSlice {

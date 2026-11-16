@@ -1,24 +1,17 @@
 use super::HestonCalibrator;
-use super::HestonParams;
 use crate::OptionType;
+use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
 
 fn converged_call(params: &HestonParams, k: f64, tau: f64) -> f64 {
-  HestonPricer::new(
-    params.v0,
-    params.rho,
-    params.kappa,
-    params.theta,
-    params.sigma,
-    Some(0.0),
-  )
-  .call_put(100.0, k, 0.05, 0.0, tau)
-  .0
+  HestonPricer::new(*params)
+    .call_put(100.0, k, 0.05, 0.0, tau)
+    .0
 }
 
 fn calibrator(params: &HestonParams, k: f64, tau: f64) -> HestonCalibrator {
   HestonCalibrator::new(
-    Some(params.clone()),
+    Some(*params),
     vec![0.0].into(),
     vec![100.0].into(),
     vec![k].into(),
@@ -93,8 +86,8 @@ fn cui_gradient_matches_converged_finite_difference() {
   let steps = [1e-5, 1e-4, 1e-5, 1e-5, 1e-5];
 
   for (component, step) in steps.into_iter().enumerate() {
-    let mut plus = params.clone();
-    let mut minus = params.clone();
+    let mut plus = params;
+    let mut minus = params;
     match component {
       0 => {
         plus.v0 += step;

@@ -10,87 +10,13 @@ use crate::instruments::equity::EuropeanOption;
 use crate::market::Handle;
 use crate::market::Quote;
 use crate::market::SimpleQuote;
-use crate::pricing::HestonPricer;
+use crate::pricing::heston::HestonParams;
+use crate::pricing::heston::HestonPricer;
 use crate::traits::Greeks;
 use crate::traits::ModelPricer;
 use crate::traits::PricingEngine;
 use crate::traits::StandardResult;
 use crate::traits::TimeExt;
-
-/// Heston model parameters that are calibrated, not market-quoted.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct HestonStaticParams {
-  /// Initial variance.
-  pub v0: f64,
-  /// Mean-reversion speed.
-  pub kappa: f64,
-  /// Long-run variance.
-  pub theta: f64,
-  /// Volatility of variance.
-  pub sigma: f64,
-  /// Spot/variance correlation.
-  pub rho: f64,
-  /// Optional market price of vol risk.
-  pub lambda: Option<f64>,
-}
-
-impl HestonStaticParams {
-  /// Validating constructor, rejecting exactly what
-  /// [`HestonPricer::new`] rejects.
-  ///
-  /// These parameters feed that constructor inside
-  /// `AnalyticHestonEngine::model_and_query`, so an invalid one was
-  /// already rejected — but at *pricing* time, naming a type the caller
-  /// never mentioned, and only if they went on to call
-  /// [`PricingEngine::calculate`]. Nothing about which values are valid
-  /// changes here; only the layer that says so.
-  ///
-  /// Note the argument order differs from the inner constructor's
-  /// (`v0, rho, kappa, theta, sigma, lambda`), which is why each check is
-  /// matched to its field by name rather than by position.
-  ///
-  /// The fields are `pub`, so this is the front door and not a wall: a
-  /// struct literal still reaches them, and the inner constructor stays the
-  /// second line of defence. Its messages carry the `HestonPricer::new`
-  /// prefix and these carry `HestonStaticParams::new`, so neither is a
-  /// substring of the other.
-  ///
-  /// # Panics
-  /// - if `v0` or `theta` is negative or `NaN` — a variance cannot be either
-  /// - if `sigma` is not strictly positive — the characteristic function
-  ///   divides by $\sigma^2$
-  /// - if `rho` is outside `[-1, 1]` or `NaN` — not a correlation
-  ///
-  /// `kappa` is unconstrained for the same reason it is on
-  /// [`HestonPricer::new`]: a non-positive mean-reversion rate is a
-  /// non-stationary but well-defined affine model.
-  pub fn new(v0: f64, kappa: f64, theta: f64, sigma: f64, rho: f64) -> Self {
-    assert!(
-      v0 >= 0.0,
-      "HestonStaticParams::new: v0 must be a non-negative variance (got {v0})"
-    );
-    assert!(
-      theta >= 0.0,
-      "HestonStaticParams::new: theta must be a non-negative variance (got {theta})"
-    );
-    assert!(
-      sigma > 0.0,
-      "HestonStaticParams::new: sigma must be strictly positive (got {sigma})"
-    );
-    assert!(
-      (-1.0..=1.0).contains(&rho),
-      "HestonStaticParams::new: rho must be in [-1, 1] (got {rho})"
-    );
-    Self {
-      v0,
-      kappa,
-      theta,
-      sigma,
-      rho,
-      lambda: None,
-    }
-  }
-}
 
 /// [`PricingEngine`] pricing a European option with the semi-closed-form Heston formula.
 #[derive(Clone)]
@@ -98,29 +24,33 @@ pub struct AnalyticHestonEngine {
   pub s: Handle<SimpleQuote<f64>>,
   pub r: Handle<SimpleQuote<f64>>,
   pub dividend_yield: Handle<SimpleQuote<f64>>,
-  pub params: HestonStaticParams,
+  pub params: HestonParams,
+  /// Heston's market price of volatility risk `λ`; `None` is `λ = 0`.
+  pub lambda: Option<f64>,
   /// Relative bump used for finite-difference Greeks (default 1e-3).
   pub bump: f64,
 }
 
 impl AnalyticHestonEngine {
+  /// Panics unless `params` passes [`HestonParams::new`].
   pub fn new(
     s: Handle<SimpleQuote<f64>>,
     r: Handle<SimpleQuote<f64>>,
     dividend_yield: Handle<SimpleQuote<f64>>,
-    params: HestonStaticParams,
+    params: HestonParams,
   ) -> Self {
     Self {
       s,
       r,
       dividend_yield,
-      params,
+      params: params.checked(),
+      lambda: None,
       bump: 1e-3,
     }
   }
 
-  /// Wrap scalars in fresh handles. Useful in tests / one-shot pricing.
-  pub fn with_constants(s: f64, r: f64, q: f64, params: HestonStaticParams) -> Self {
+  /// Wraps the scalars in fresh handles; panics as [`new`](Self::new) does.
+  pub fn with_constants(s: f64, r: f64, q: f64, params: HestonParams) -> Self {
     Self::new(
       Handle::new(Arc::new(SimpleQuote::new(s))),
       Handle::new(Arc::new(SimpleQuote::new(r))),
@@ -149,14 +79,11 @@ impl AnalyticHestonEngine {
     tau_override: Option<f64>,
     opt: &EuropeanOption,
   ) -> (HestonPricer, f64, f64, f64, f64, f64) {
-    let model = HestonPricer::new(
-      v0_override.unwrap_or(self.params.v0),
-      self.params.rho,
-      self.params.kappa,
-      self.params.theta,
-      self.params.sigma,
-      self.params.lambda,
-    );
+    let mut model = HestonPricer::new(HestonParams {
+      v0: v0_override.unwrap_or(self.params.v0),
+      ..self.params
+    });
+    model.lambda = self.lambda;
     let s = s_override.unwrap_or_else(|| Self::read_quote(&self.s));
     let r = Self::read_quote(&self.r);
     let q = Self::read_quote(&self.dividend_yield);
@@ -255,7 +182,13 @@ mod tests {
   #[test]
   fn heston_call_atm_positive() {
     let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
-    let params = HestonStaticParams::new(0.04, 1.5, 0.04, 0.3, -0.7);
+    let params = HestonParams {
+      v0: 0.04,
+      kappa: 1.5,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    };
     let engine = AnalyticHestonEngine::with_constants(100.0, 0.05, 0.0, params);
     let r = engine.calculate(&opt);
     assert!(r.npv() > 0.0);
@@ -270,7 +203,13 @@ mod tests {
     // sigma → 0 with v0 = theta freezes variance at v0 → Heston ≈ BS(σ=√v0).
     let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
     let v0 = 0.04;
-    let params = HestonStaticParams::new(v0, 1.0, v0, 1e-4, 0.0);
+    let params = HestonParams {
+      v0,
+      kappa: 1.0,
+      theta: v0,
+      sigma: 1e-4,
+      rho: 0.0,
+    };
     let heston = AnalyticHestonEngine::with_constants(100.0, 0.05, 0.0, params);
     let bs = AnalyticBsEngine::with_constants(100.0, v0.sqrt(), 0.05, 0.0);
     let p_h = heston.calculate(&opt).npv();
@@ -283,7 +222,13 @@ mod tests {
   #[test]
   fn every_unlinked_handle_poisons_npv_and_greeks() {
     let opt = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
-    let params = HestonStaticParams::new(0.04, 1.5, 0.04, 0.3, -0.7);
+    let params = HestonParams {
+      v0: 0.04,
+      kappa: 1.5,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    };
     let linked = |v: f64| Handle::new(Arc::new(SimpleQuote::new(v)));
     let quotes = [100.0, 0.05, 0.0];
 
@@ -305,7 +250,13 @@ mod tests {
   fn heston_put_call_parity() {
     let call = EuropeanOption::new_tau(100.0, OptionType::Call, 1.0);
     let put = EuropeanOption::new_tau(100.0, OptionType::Put, 1.0);
-    let params = HestonStaticParams::new(0.04, 1.5, 0.04, 0.3, -0.7);
+    let params = HestonParams {
+      v0: 0.04,
+      kappa: 1.5,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    };
     let engine = AnalyticHestonEngine::with_constants(100.0, 0.05, 0.02, params);
     let c = engine.calculate(&call).npv();
     let p = engine.calculate(&put).npv();
@@ -313,91 +264,59 @@ mod tests {
     assert!((c - p - parity).abs() < 1e-2);
   }
 
-  /// `HestonStaticParams::new` validates the parameters [`HestonPricer::new`] does, under its own
-  /// message prefix, so an `expected` anchor cannot match the wrong guard.
-  mod construction_validation {
-    use super::*;
-
-    #[test]
-    #[should_panic(
-      expected = "HestonStaticParams::new: v0 must be a non-negative variance (got -0.01)"
-    )]
-    fn new_rejects_negative_v0() {
-      let _ = HestonStaticParams::new(-0.01, 1.5, 0.04, 0.3, -0.7);
+  /// A literal handed to the engine meets `HestonParams::new`'s checks, by name; `κ < 0`, zero
+  /// variances and `|ρ| = 1` still construct.
+  #[test]
+  fn new_checks_a_literal_as_heston_params_new_does() {
+    let good = HestonParams {
+      v0: 0.04,
+      kappa: 1.5,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    };
+    let cases = [
+      (
+        HestonParams { v0: -0.01, ..good },
+        "v0 must satisfy `v0.is_finite() && v0 >= 0.0`, got v0 = -0.01",
+      ),
+      (
+        HestonParams {
+          theta: -0.04,
+          ..good
+        },
+        "theta must satisfy `theta.is_finite() && theta >= 0.0`, got theta = -0.04",
+      ),
+      (
+        HestonParams { sigma: 0.0, ..good },
+        "sigma must satisfy `sigma.is_finite() && sigma > 0.0`, got sigma = 0.0",
+      ),
+      (
+        HestonParams { rho: -1.5, ..good },
+        "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = -1.5",
+      ),
+    ];
+    for (bad, expected) in cases {
+      let payload = std::panic::catch_unwind(|| {
+        AnalyticHestonEngine::with_constants(100.0, 0.05, 0.0, bad);
+      })
+      .expect_err(expected);
+      let message = payload
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .unwrap_or_default();
+      assert_eq!(message, expected);
     }
-
-    #[test]
-    #[should_panic(
-      expected = "HestonStaticParams::new: theta must be a non-negative variance (got -0.04)"
-    )]
-    fn new_rejects_negative_theta() {
-      let _ = HestonStaticParams::new(0.04, 1.5, -0.04, 0.3, -0.7);
-    }
-
-    #[test]
-    #[should_panic(expected = "HestonStaticParams::new: sigma must be strictly positive (got 0)")]
-    fn new_rejects_zero_sigma() {
-      let _ = HestonStaticParams::new(0.04, 1.5, 0.04, 0.0, -0.7);
-    }
-
-    #[test]
-    #[should_panic(expected = "HestonStaticParams::new: rho must be in [-1, 1] (got -1.5)")]
-    fn new_rejects_out_of_range_rho() {
-      let _ = HestonStaticParams::new(0.04, 1.5, 0.04, 0.3, -1.5);
-    }
-
-    /// The argument order differs from [`HestonPricer::new`]'s — this one
-    /// is `(v0, kappa, theta, sigma, rho)`, that one is
-    /// `(v0, rho, kappa, theta, sigma, lambda)` — so a guard copied
-    /// positionally rather than by name would check the wrong field. This
-    /// pins each message against the value that actually offended.
-    #[test]
-    fn each_message_names_the_field_the_caller_passed() {
-      let cases: [(&str, fn()); 4] = [
-        ("v0", || {
-          let _ = HestonStaticParams::new(-0.5, 1.5, 0.04, 0.3, -0.7);
-        }),
-        ("theta", || {
-          let _ = HestonStaticParams::new(0.04, 1.5, -0.5, 0.3, -0.7);
-        }),
-        ("sigma", || {
-          let _ = HestonStaticParams::new(0.04, 1.5, 0.04, -0.5, -0.7);
-        }),
-        ("rho", || {
-          let _ = HestonStaticParams::new(0.04, 1.5, 0.04, 0.3, -1.5);
-        }),
-      ];
-      for (field, build) in cases {
-        let err = std::panic::catch_unwind(build).expect_err("must reject");
-        let msg = err.downcast_ref::<String>().cloned().unwrap_or_else(|| {
-          err
-            .downcast_ref::<&str>()
-            .copied()
-            .unwrap_or("")
-            .to_string()
-        });
-        assert!(
-          msg.contains(&format!("HestonStaticParams::new: {field} ")),
-          "{field}: wrong message {msg}"
-        );
-      }
-    }
-
-    /// `kappa` stays unconstrained for the same reason it does on
-    /// [`HestonPricer::new`] — a non-positive mean-reversion rate is a
-    /// non-stationary but well-defined affine model — and the admissible
-    /// zero variances and unit correlations must still construct.
-    #[test]
-    fn new_accepts_what_the_inner_constructor_accepts() {
-      assert_eq!(
-        HestonStaticParams::new(0.04, -1.5, 0.04, 0.3, -0.7).kappa,
-        -1.5
-      );
-      let edges = HestonStaticParams::new(0.0, 1.5, 0.0, 1e-12, -1.0);
-      assert_eq!(edges.v0, 0.0);
-      assert_eq!(edges.theta, 0.0);
-      assert_eq!(edges.rho, -1.0);
-      assert_eq!(HestonStaticParams::new(0.04, 1.5, 0.04, 0.3, 1.0).rho, 1.0);
-    }
+    let edges = HestonParams {
+      v0: 0.0,
+      kappa: -1.5,
+      theta: 0.0,
+      sigma: 1e-12,
+      rho: -1.0,
+    };
+    assert_eq!(
+      AnalyticHestonEngine::with_constants(100.0, 0.05, 0.0, edges).params,
+      edges
+    );
   }
 }

@@ -7,12 +7,12 @@
 use ndarray::Array1;
 use ndarray::Array2;
 
-use super::params::HestonParams;
 use super::params::P_KAPPA;
 use super::params::P_SIGMA;
 use super::params::P_THETA;
 use super::params::P_V0;
 use super::params::RHO_BOUND;
+use crate::pricing::heston::HestonParams;
 
 const PARAMETER_COUNT: usize = 5;
 const INVERSE_UNIT_MARGIN: f64 = 1e-6;

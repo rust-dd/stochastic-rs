@@ -18,6 +18,7 @@ use stochastic_rs::quant::pricing::fourier::GilPelaezPricer;
 use stochastic_rs::quant::pricing::fourier::HestonFourier;
 use stochastic_rs::quant::pricing::fourier::KouFourier;
 use stochastic_rs::quant::pricing::fourier::LewisPricer;
+use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::pricing::heston::HestonPricer;
 use stochastic_rs::quant::pricing::sabr::SabrParams;
 use stochastic_rs::quant::pricing::sabr::SabrPricer;
@@ -34,7 +35,13 @@ fn heston_pricer(c: &mut Criterion) {
   group
     .sample_size(30)
     .measurement_time(Duration::from_secs(5));
-  let model = HestonPricer::new(0.04, -0.7, 1.5, 0.04, 0.3, None);
+  let model = HestonPricer::new(HestonParams {
+    v0: 0.04,
+    kappa: 1.5,
+    theta: 0.04,
+    sigma: 0.3,
+    rho: -0.7,
+  });
   group.bench_function("call_grid_9x1y", |b| {
     b.iter(|| {
       STRIKES
@@ -70,13 +77,13 @@ fn fourier(c: &mut Criterion) {
   group
     .sample_size(30)
     .measurement_time(Duration::from_secs(5));
-  let heston = HestonFourier {
+  let heston = HestonFourier::new(HestonParams {
     v0: 0.04,
     kappa: 1.5,
     theta: 0.04,
     sigma: 0.3,
     rho: -0.7,
-  };
+  });
   group.bench_function("gil_pelaez_9", |b| {
     b.iter(|| {
       STRIKES

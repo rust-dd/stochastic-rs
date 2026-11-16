@@ -3,6 +3,7 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::pricing::slv::FokkerPlanckMethod;
 use stochastic_rs::quant::pricing::slv::HestonSlvParams;
 use stochastic_rs::quant::pricing::slv::HestonSlvPricer;
@@ -14,11 +15,13 @@ use stochastic_rs::traits::ModelPricer;
 
 fn params() -> HestonSlvParams {
   HestonSlvParams {
-    kappa: 2.0,
-    theta: 0.04,
-    sigma: 0.3,
-    rho: -0.7,
-    v0: 0.04,
+    heston: HestonParams {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    },
     eta: 1.0,
   }
 }

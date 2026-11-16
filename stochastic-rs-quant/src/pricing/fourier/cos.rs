@@ -137,6 +137,7 @@ mod tests {
   use crate::pricing::fourier::GilPelaezPricer;
   use crate::pricing::fourier::HestonFourier;
   use crate::pricing::fourier::KouFourier;
+  use crate::pricing::heston::HestonParams;
   use crate::pricing::heston::HestonPricer;
   use crate::traits::ModelPricer;
 
@@ -154,15 +155,21 @@ mod tests {
 
   #[test]
   fn cos_heston_matches_quadrature() {
-    let model = HestonFourier {
+    let model = HestonFourier::new(HestonParams {
       v0: 0.04,
       kappa: 1.5,
       theta: 0.04,
       sigma: 0.3,
       rho: -0.7,
-    };
-    let reference =
-      HestonPricer::new(0.04, -0.7, 1.5, 0.04, 0.3, None).price_call(100.0, 100.0, 0.05, 0.0, 1.0);
+    });
+    let reference = HestonPricer::new(HestonParams {
+      v0: 0.04,
+      kappa: 1.5,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    })
+    .price_call(100.0, 100.0, 0.05, 0.0, 1.0);
     // A wider `L` under-resolves the density at `N = 256` (`L = 40` misses by 6.8e-4).
     let price = CosEngine::default().price(&model, 100.0, 100.0, 0.05, 0.0, 1.0, OptionType::Call);
     // Cross-check against an independent Gil-Pelaez quadrature over the

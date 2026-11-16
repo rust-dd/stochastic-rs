@@ -2,6 +2,7 @@ use num_complex::Complex64;
 
 use super::*;
 use crate::OptionType;
+use crate::pricing::heston::HestonParams;
 use crate::traits::ModelPricer;
 
 /// Parameters from Table 2 in Teng et al.
@@ -29,7 +30,13 @@ fn carr_madan_reduces_to_heston_short_dated() {
   use crate::pricing::heston::HestonPricer;
   let (rho, kappa, theta, sigma, v0, s, r) = (-0.7, 2.0, 0.04, 0.3, 0.04, 100.0, 0.03);
   for tau in [0.02, 0.005, 0.002] {
-    let heston = HestonPricer::new(v0, rho, kappa, theta, sigma, Some(0.0));
+    let heston = HestonPricer::new(HestonParams {
+      v0,
+      kappa,
+      theta,
+      sigma,
+      rho,
+    });
     let heston_call = heston.call_put(s, s, r, 0.0, tau).0;
     let hscm = HestonStochCorrPricer::new(v0, kappa, theta, sigma, rho, 10.0, rho, 1e-10, 0.0);
     let hscm_call = hscm.price_call_carr_madan(s, s, r, 0.0, tau);
@@ -237,7 +244,13 @@ fn compare_with_standard_heston() {
   let k = 100.0;
   let tau = 0.5;
 
-  let heston = HestonPricer::new(v0, rho, kappa, theta, sigma, Some(0.0));
+  let heston = HestonPricer::new(HestonParams {
+    v0,
+    kappa,
+    theta,
+    sigma,
+    rho,
+  });
   let (h_call, _) = heston.call_put(s, k, r, 0.0, tau);
 
   // HSCM with σ_r ≈ 0 should be close to Heston

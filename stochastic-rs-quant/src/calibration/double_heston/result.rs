@@ -5,41 +5,15 @@ use crate::traits::ToModel;
 /// Calibration result for the double Heston model.
 #[derive(Clone, Debug)]
 pub struct DoubleHestonCalibrationResult {
-  pub v1_0: f64,
-  pub kappa1: f64,
-  pub theta1: f64,
-  pub sigma1: f64,
-  pub rho1: f64,
-  pub v2_0: f64,
-  pub kappa2: f64,
-  pub theta2: f64,
-  pub sigma2: f64,
-  pub rho2: f64,
+  pub params: DoubleHestonParams,
   pub loss: CalibrationLossScore,
   pub converged: bool,
-}
-
-impl DoubleHestonCalibrationResult {
-  pub fn params(&self) -> DoubleHestonParams {
-    DoubleHestonParams {
-      v1_0: self.v1_0,
-      kappa1: self.kappa1,
-      theta1: self.theta1,
-      sigma1: self.sigma1,
-      rho1: self.rho1,
-      v2_0: self.v2_0,
-      kappa2: self.kappa2,
-      theta2: self.theta2,
-      sigma2: self.sigma2,
-      rho2: self.rho2,
-    }
-  }
 }
 
 impl ToModel for DoubleHestonCalibrationResult {
   type Model = crate::pricing::fourier::DoubleHestonFourier;
   fn to_model(&self) -> Self::Model {
-    DoubleHestonCalibrationResult::params(self).to_model()
+    self.params.to_model()
   }
 }
 
@@ -54,7 +28,7 @@ impl crate::traits::CalibrationResult for DoubleHestonCalibrationResult {
   }
 
   fn params(&self) -> Self::Params {
-    DoubleHestonCalibrationResult::params(self)
+    self.params
   }
 
   fn loss_score(&self) -> Option<&crate::CalibrationLossScore> {

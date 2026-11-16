@@ -8,9 +8,9 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use super::PyMcEstimate;
-use crate::calibration::heston::HestonParams;
 use crate::calibration::heston_slv::HestonSlvCalibrationResult;
 use crate::calibration::heston_slv::HestonSlvCalibrator;
+use crate::pricing::heston::HestonParams;
 use crate::pricing::slv::FokkerPlanckMethod;
 use crate::pricing::slv::HestonSlvParams;
 use crate::pricing::slv::HestonSlvPricer;
@@ -21,7 +21,8 @@ use crate::traits::Calibrator;
 use crate::traits::ModelPricer;
 
 fn params_tuple(p: &HestonSlvParams) -> (f64, f64, f64, f64, f64, f64) {
-  (p.kappa, p.theta, p.sigma, p.rho, p.v0, p.eta)
+  let h = p.heston;
+  (h.kappa, h.theta, h.sigma, h.rho, h.v0, p.eta)
 }
 
 #[pyclass(name = "LeverageSurface", from_py_object)]
@@ -161,11 +162,13 @@ impl PyHestonSlvPricer {
         ));
       }
       let params = HestonSlvParams {
-        kappa,
-        theta,
-        sigma,
-        rho,
-        v0,
+        heston: HestonParams {
+          v0,
+          kappa,
+          theta,
+          sigma,
+          rho,
+        },
         eta,
       };
       let inner = match (r, q) {

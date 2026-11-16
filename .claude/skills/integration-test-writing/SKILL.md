@@ -110,8 +110,8 @@ When a test asserts agreement with a paper's published table:
 /// (S=100, K=100, T=0.5, σ²=0.04, κ=2, θ=0.04, σ_v=0.5, ρ=-0.5).
 #[test]
 fn heston_table1_row4() {
-    // Model parameters on the struct: v0, rho, kappa, theta, sigma, lambda.
-    let model = HestonPricer::new(0.04, -0.5, 2.0, 0.04, 0.5, Some(0.0));
+    // Model parameters on the struct.
+    let model = HestonPricer::new(HestonParams { v0: 0.04, kappa: 2.0, theta: 0.04, sigma: 0.5, rho: -0.5 });
     // Market query at the call: s, k, r, q, tau.
     let call = model.price_call(100.0, 100.0, 0.0, 0.0, 0.5);
     assert!(
