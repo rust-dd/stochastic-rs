@@ -150,29 +150,41 @@ pub(super) fn log_likelihood_terms(
   returns: &[f64],
   backcast: f64,
 ) -> (f64, Vec<f64>) {
-  let n = returns.len();
-  let mut resid = vec![0.0; n];
-  let mut sigma2 = vec![0.0; n];
-  variance_path(spec, natural, returns, backcast, &mut resid, &mut sigma2);
-  let mut terms = vec![0.0; n];
-  let mut total = 0.0;
-  for t in 0..n {
-    let v = sigma2[t];
-    if !(v > 0.0 && v.is_finite()) {
-      return (f64::NEG_INFINITY, terms);
-    }
-    terms[t] = -0.5 * (LN_2PI + v.ln() + resid[t] * resid[t] / v);
-    total += terms[t];
-  }
+  let mut terms = vec![0.0; returns.len()];
+  let total = sum_terms(spec, natural, returns, backcast, |t, term| terms[t] = term);
   (total, terms)
 }
 
-/// The summed quasi-log-likelihood alone.
+/// The summed quasi-log-likelihood alone, with no per-observation vector to allocate.
 pub(super) fn total_log_likelihood(
   spec: &GarchSpec,
   natural: &[f64],
   returns: &[f64],
   backcast: f64,
 ) -> f64 {
-  log_likelihood_terms(spec, natural, returns, backcast).0
+  sum_terms(spec, natural, returns, backcast, |_, _| {})
+}
+
+fn sum_terms(
+  spec: &GarchSpec,
+  natural: &[f64],
+  returns: &[f64],
+  backcast: f64,
+  mut each: impl FnMut(usize, f64),
+) -> f64 {
+  let n = returns.len();
+  let mut resid = vec![0.0; n];
+  let mut sigma2 = vec![0.0; n];
+  variance_path(spec, natural, returns, backcast, &mut resid, &mut sigma2);
+  let mut total = 0.0;
+  for t in 0..n {
+    let v = sigma2[t];
+    if !(v > 0.0 && v.is_finite()) {
+      return f64::NEG_INFINITY;
+    }
+    let term = -0.5 * (LN_2PI + v.ln() + resid[t] * resid[t] / v);
+    each(t, term);
+    total += term;
+  }
+  total
 }
