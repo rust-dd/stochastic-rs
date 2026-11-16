@@ -8,6 +8,7 @@ use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::SimdRng;
 use stochastic_rs::stats::filtering::ParticleFilter;
 use stochastic_rs::stats::filtering::UkfState;
+use stochastic_rs::stats::filtering::UkfTuning;
 use stochastic_rs::stats::filtering::random_walk_metropolis;
 use stochastic_rs::stats::filtering::unscented_kalman_step;
 
@@ -65,9 +66,7 @@ fn ukf_remains_finite_under_long_run() {
       q.view(),
       r.view(),
       y.view(),
-      0.001,
-      2.0,
-      0.0,
+      UkfTuning::default(),
     )
     .unwrap();
     assert!(state.mean.iter().all(|v| v.is_finite()));

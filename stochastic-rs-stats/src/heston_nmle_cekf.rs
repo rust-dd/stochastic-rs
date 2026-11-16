@@ -67,10 +67,8 @@ impl From<HestonMleFit> for HestonNmleCekfParams {
 }
 
 impl HestonNmleCekfParams {
+  /// The batch's bound on an iterate's `rho`; the refit's moment estimate is held in `[-1, 1]`.
   pub(crate) fn projected_batch(mut self) -> Self {
-    self.kappa = self.kappa.abs().max(EPS);
-    self.theta = self.theta.abs().max(EPS);
-    self.sigma = self.sigma.abs().max(EPS);
     self.rho = self.rho.clamp(-BATCH_RHO_MAX, BATCH_RHO_MAX);
     self
   }

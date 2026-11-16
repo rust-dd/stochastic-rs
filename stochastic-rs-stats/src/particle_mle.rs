@@ -53,6 +53,7 @@ use crate::input::reject_constant;
 use crate::input::validate;
 use crate::optim::nelder_mead;
 use crate::traits::FloatExt;
+use crate::traits::RealExt;
 
 /// Result of a particle-filter MLE fit of the SV model.
 #[derive(Debug, Clone)]
@@ -112,16 +113,7 @@ fn sv_pf_loglik(
 
   let mut total = 0.0;
   for (t, &yt) in y.iter().enumerate() {
-    // Observation log-likelihood per particle: y_t | h ~ N(0, e^h).
-    let mut max_lo = f64::NEG_INFINITY;
-    for i in 0..n {
-      let hi = h[i];
-      let lo = -0.5 * (hi + yt * yt * (-hi).exp() + ln_2pi);
-      log_obs[i] = lo;
-      if lo > max_lo {
-        max_lo = lo;
-      }
-    }
+    let max_lo = observation_log_densities(&h, yt, ln_2pi, &mut log_obs);
     // Incremental marginal log-likelihood log[(1/N) Σ_i e^{log_obs_i}].
     let mut sum_exp = 0.0;
     for &lo in &log_obs {
@@ -134,13 +126,13 @@ fn sv_pf_loglik(
     let u0 = f64::sample_uniform_simd(&mut resample_rng) / n as f64;
     let mut cumulative = 0.0;
     let mut idx = 0usize;
-    for k in 0..n {
+    for (k, slot) in resampled.iter_mut().enumerate() {
       let point = u0 + k as f64 / n as f64;
       while idx + 1 < n && cumulative + (log_obs[idx] - max_lo).exp() / total_w < point {
         cumulative += (log_obs[idx] - max_lo).exp() / total_w;
         idx += 1;
       }
-      resampled[k] = h[idx];
+      *slot = h[idx];
     }
     std::mem::swap(&mut h, &mut resampled);
 
@@ -152,6 +144,14 @@ fn sv_pf_loglik(
     }
   }
   total
+}
+
+/// Writes each particle's `log p(y_t | h)` into `log_obs` and returns their maximum, NaN if any is.
+fn observation_log_densities(h: &[f64], yt: f64, ln_2pi: f64, log_obs: &mut [f64]) -> f64 {
+  for (lo, &hi) in log_obs.iter_mut().zip(h) {
+    *lo = -0.5 * (hi + yt * yt * (-hi).exp() + ln_2pi);
+  }
+  f64::max_or_nan_fold(log_obs.iter().copied())
 }
 
 /// SV model by particle-filter MLE, `n_particles` (500-2000) and a common-random-numbers `seed`;
@@ -258,6 +258,16 @@ mod tests {
       "σ_η = {} out of plausible [0.1, 0.7] band (true {sig_t})",
       res.sigma_eta
     );
+  }
+
+  #[test]
+  fn a_nan_log_density_makes_the_particles_maximum_nan() {
+    let ln_2pi = (2.0 * std::f64::consts::PI).ln();
+    let mut log_obs = [0.0; 3];
+    let max = observation_log_densities(&[0.0, -1.0, 2.0], 0.1, ln_2pi, &mut log_obs);
+    assert_eq!(max.to_bits(), log_obs[1].to_bits());
+    let max = observation_log_densities(&[0.0, f64::NAN, -1.0], 0.1, ln_2pi, &mut log_obs);
+    assert!(max.is_nan(), "a NaN particle was dropped: {max}");
   }
 
   #[test]

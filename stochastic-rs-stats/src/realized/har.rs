@@ -15,13 +15,13 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
+use stochastic_rs_distributions::linalg::lstsq;
 
 use crate::StatsError;
 use crate::input::as_slice_or_copy;
 use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_view;
-use crate::linalg::lstsq;
 use crate::traits::FloatExt;
 
 /// Daily horizon for the HAR weekly component.
@@ -144,7 +144,7 @@ fn avg_last<T: FloatExt>(v: ArrayView1<T>, window: usize) -> f64 {
 }
 
 fn ols(x: &Array2<f64>, y: &Array1<f64>) -> Array1<f64> {
-  lstsq(x, y)
+  lstsq(x.view(), y.view())
 }
 
 fn residuals(x: &Array2<f64>, y: &Array1<f64>, beta: &Array1<f64>) -> Array1<f64> {

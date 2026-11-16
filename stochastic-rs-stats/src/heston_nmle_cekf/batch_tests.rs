@@ -184,11 +184,11 @@ fn the_batch_rejects_bad_prices_before_filtering() {
   let (mut prices, _) = simulate_heston_prices(64, 1.0 / 252.0, 67);
   assert_eq!(
     fit_heston_nmle_cekf(
-      prices.slice(ndarray::s![..1]),
+      prices.slice(ndarray::s![..3]),
       HestonNmleCekfConfig::default()
     )
     .unwrap_err(),
-    crate::StatsError::InsufficientData { needed: 2, got: 1 }
+    crate::StatsError::InsufficientData { needed: 4, got: 3 }
   );
   prices[9] = 0.0;
   assert_eq!(
@@ -328,10 +328,12 @@ fn the_batch_clamp_answers_a_non_finite_step_with_a_numerical_error() {
   }
 }
 
+type ConfigEdit = fn(&mut HestonNmleCekfConfig);
+
 #[test]
 fn the_batch_configuration_panics_in_the_predicate_form() {
   let (prices, _) = simulate_heston_prices(16, 1.0 / 252.0, 61);
-  let cases: [(fn(&mut HestonNmleCekfConfig), &str); 12] = [
+  let cases: [(ConfigEdit, &str); 17] = [
     (
       |c| c.r = f64::NAN,
       "r must satisfy `r.is_finite()`, got r = NaN",
@@ -353,6 +355,10 @@ fn the_batch_configuration_panics_in_the_predicate_form() {
       "param_damping must satisfy `param_damping.is_finite()`, got param_damping = NaN",
     ),
     (
+      |c| c.param_damping = 1.5,
+      "param_damping must satisfy `0.0 <= param_damping <= 1.0`, got param_damping = 1.5",
+    ),
+    (
       |c| c.initial_v0 = -0.04,
       "initial_v0 must satisfy `initial_v0 > 0.0`, got initial_v0 = -0.04",
     ),
@@ -363,6 +369,22 @@ fn the_batch_configuration_panics_in_the_predicate_form() {
     (
       |c| c.initial_params.kappa = f64::NAN,
       "initial_params.kappa must satisfy `initial_params.kappa.is_finite()`, got initial_params.kappa = NaN",
+    ),
+    (
+      |c| c.initial_params.kappa = -1.5,
+      "initial_params.kappa must satisfy `initial_params.kappa > 0.0`, got initial_params.kappa = -1.5",
+    ),
+    (
+      |c| c.initial_params.theta = 0.0,
+      "initial_params.theta must satisfy `initial_params.theta > 0.0`, got initial_params.theta = 0.0",
+    ),
+    (
+      |c| c.initial_params.sigma = -0.4,
+      "initial_params.sigma must satisfy `initial_params.sigma > 0.0`, got initial_params.sigma = -0.4",
+    ),
+    (
+      |c| c.initial_params.rho = -1.0,
+      "initial_params.rho must satisfy `-0.9999 <= initial_params.rho <= 0.9999`, got initial_params.rho = -1.0",
     ),
     (
       |c| c.q22 = f64::INFINITY,
@@ -390,4 +412,16 @@ fn the_batch_configuration_panics_in_the_predicate_form() {
     });
     assert_eq!(text, message);
   }
+}
+
+/// A refit of this short path finds no mean reversion, which leaves the batch no iterate.
+#[test]
+fn a_refit_without_mean_reversion_ends_the_batch() {
+  let (prices, _) = simulate_heston_prices(16, 1.0 / 252.0, 4);
+  assert_eq!(
+    fit_heston_nmle_cekf(prices.view(), HestonNmleCekfConfig::default()).unwrap_err(),
+    StatsError::Numerical {
+      stage: "batch variance path"
+    }
+  );
 }

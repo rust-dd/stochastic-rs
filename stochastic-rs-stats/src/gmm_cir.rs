@@ -50,10 +50,11 @@
 use ndarray::ArrayView1;
 
 use crate::StatsError;
-use crate::input::reject_constant;
-use crate::input::validate;
 use crate::optim::nelder_mead;
+use crate::qmle::DiffusionKind;
 use crate::qmle::assert_dt;
+use crate::qmle::check_start;
+use crate::qmle::diffusion_path;
 use crate::traits::FloatExt;
 
 /// Result of the two-step GMM fit of the CIR variance process.
@@ -76,15 +77,10 @@ pub struct GmmCirFit {
 }
 
 /// Two-step GMM of the CIR process on its exact moments, sampled every `dt`; `Err` below 3 points,
-/// on a non-finite one or a constant path, and panics unless `dt` is finite and positive.
+/// a negative or non-finite one, a constant path or a non-finite start; panics unless `0 < dt < ∞`.
 pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCirFit, StatsError> {
   assert_dt(dt);
-  let x = series
-    .iter()
-    .map(|v| v.to_f64().unwrap())
-    .collect::<Vec<f64>>();
-  validate(&x, 3)?;
-  reject_constant(&x, "constant series")?;
+  let x = diffusion_path(series, DiffusionKind::Cir)?;
   let nobs = x.len();
 
   // Moment matrix builder: for params (kappa, theta, sigma) returns the
@@ -109,8 +105,8 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
       rows.push(row);
     }
     let inv_t = 1.0 / (nobs - 1) as f64;
-    for k in 0..4 {
-      mean[k] *= inv_t;
+    for entry in &mut mean {
+      *entry *= inv_t;
     }
     (rows, mean)
   };
@@ -153,12 +149,13 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
   // var(X_{t+1}|X_t) ≈ X̄ σ²/κ (a-a²) + ... ≈ scale; invert for σ².
   let a0 = (-kappa0 * dt).exp();
   let scale = sample_mean * (a0 - a0 * a0) / kappa0 + theta0 * (1.0 - a0).powi(2) / (2.0 * kappa0);
-  let sigma0 = (resid_var / scale.max(1e-12)).sqrt().clamp(1e-3, 10.0);
+  let sigma0 = (resid_var / scale).sqrt().clamp(1e-3, 10.0);
+  check_start(kappa0, theta0, sigma0)?;
 
   let identity = {
     let mut w = [[0.0; 4]; 4];
-    for i in 0..4 {
-      w[i][i] = 1.0;
+    for (i, row) in w.iter_mut().enumerate() {
+      row[i] = 1.0;
     }
     w
   };
@@ -180,12 +177,12 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
     }
   }
   let inv_t = 1.0 / rows1.len() as f64;
-  for i in 0..4 {
-    for j in 0..4 {
-      s_hat[i][j] *= inv_t;
+  for (i, row) in s_hat.iter_mut().enumerate() {
+    for entry in row.iter_mut() {
+      *entry *= inv_t;
     }
     // Ridge regularisation guards against a near-singular Ŝ on short series.
-    s_hat[i][i] += 1e-10;
+    row[i] += 1e-10;
   }
   let w2 = invert4(&s_hat).unwrap_or(identity);
 
@@ -214,8 +211,8 @@ fn invert4(m: &[[f64; 4]; 4]) -> Option<[[f64; 4]; 4]> {
   let mut a = *m;
   let mut inv = {
     let mut e = [[0.0; 4]; 4];
-    for i in 0..4 {
-      e[i][i] = 1.0;
+    for (i, row) in e.iter_mut().enumerate() {
+      row[i] = 1.0;
     }
     e
   };
@@ -387,6 +384,31 @@ mod tests {
     assert_eq!(
       fit_cir_gmm(s.view(), 1.0 / 252.0).unwrap_err(),
       StatsError::InsufficientData { needed: 3, got: 2 }
+    );
+  }
+
+  #[test]
+  fn gmm_cir_rejects_a_negative_observation() {
+    let s = Array1::from(vec![0.04, 0.05, 0.045, -0.01, 0.04, 0.05]);
+    assert_eq!(
+      fit_cir_gmm(s.view(), 1.0 / 252.0).unwrap_err(),
+      StatsError::InvalidObservation {
+        index: 3,
+        value: -0.01,
+        constraint: "finite and >= 0"
+      }
+    );
+  }
+
+  /// The sample mean of these finite points overflows, so the moment start is not finite.
+  #[test]
+  fn gmm_cir_answers_an_overflowing_start_with_a_numerical_error() {
+    let s = Array1::from(vec![1e308, 1.5e308, 1e308, 0.5e308, 1.2e308]);
+    assert_eq!(
+      fit_cir_gmm(s.view(), 1.0 / 252.0).unwrap_err(),
+      StatsError::Numerical {
+        stage: "starting point"
+      }
     );
   }
 

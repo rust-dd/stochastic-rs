@@ -13,10 +13,12 @@ impl PyFukasawaHurst {
   /// Fit to log realized variance with `m` intraday samples per day of length `delta`.
   #[staticmethod]
   fn from_log_rv<'py>(log_rv: PyReadonlyArray1<'py, f64>, m: usize, delta: f64) -> PyResult<Self> {
-    crate::hurst::Whittle::new(m, delta)
-      .fit(log_rv.as_array())
-      .map(|inner| Self { inner })
-      .map_err(stats_error)
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      crate::hurst::Whittle::new(m, delta)
+        .fit(log_rv.as_array())
+        .map(|inner| Self { inner })
+        .map_err(stats_error)
+    })?
   }
 
   #[getter]
@@ -434,14 +436,16 @@ impl PyWhittle {
   #[new]
   #[pyo3(signature = (m=1, delta=1.0/250.0, psi=1e-5, k_trunc=500, j_max=20))]
   fn new(m: usize, delta: f64, psi: f64, k_trunc: usize, j_max: usize) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::hurst::Whittle {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let inner = crate::hurst::Whittle {
         m,
         delta,
         psi,
         k_trunc,
         j_max,
-      },
+      };
+      inner.assert_config();
+      Self { inner }
     })
   }
 

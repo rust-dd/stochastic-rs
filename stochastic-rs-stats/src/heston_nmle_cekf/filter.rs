@@ -183,7 +183,7 @@ pub(crate) fn validate_filter_config(config: &HestonCekfFilterConfig) {
     assert_finite("floor", floor);
     assert!(
       floor > EPS,
-      "floor must satisfy `floor > EPS`, got floor = {floor:?}"
+      "floor must satisfy `floor > {EPS:?}`, got floor = {floor:?}"
     );
   }
 }

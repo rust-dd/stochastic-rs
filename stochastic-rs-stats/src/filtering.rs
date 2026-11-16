@@ -37,4 +37,5 @@ pub use mcmc::random_walk_metropolis;
 pub use particle::ParticleFilter;
 pub use particle::ResamplingScheme;
 pub use ukf::UkfState;
+pub use ukf::UkfTuning;
 pub use ukf::unscented_kalman_step;

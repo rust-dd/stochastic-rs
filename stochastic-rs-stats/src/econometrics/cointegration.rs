@@ -18,12 +18,12 @@ pub use johansen::johansen_test;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
+use stochastic_rs_distributions::linalg::lstsq;
 
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::assert_alpha;
 use crate::input::validate_view;
-use crate::linalg::lstsq;
 use crate::stationarity::adf::AdfConfig;
 use crate::stationarity::adf::adf_test;
 
@@ -93,8 +93,7 @@ pub fn engle_granger_test(
     design[[i, 0]] = 1.0;
     design[[i, 1]] = x[i];
   }
-  let y_owned = y.to_owned();
-  let sol = lstsq(&design, &y_owned);
+  let sol = lstsq(design.view(), y);
   let intercept = sol[0];
   let beta = sol[1];
   if !(intercept.is_finite() && beta.is_finite()) {

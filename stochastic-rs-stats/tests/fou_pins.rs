@@ -1,4 +1,5 @@
-//! The three fOU estimators against an inline transcription of their formulas on seeded paths.
+//! The three fOU estimators on seeded paths: inline transcriptions of their sources' formulas, and
+//! the scalings and invariances those formulas imply.
 
 use std::f64::consts::SQRT_2;
 
@@ -25,52 +26,57 @@ fn assert_close(actual: f64, expected: f64, label: &str) {
   );
 }
 
-#[test]
-fn fou_v1_bit_exact_against_struct_era_inline_reference() {
-  let n = 512usize;
-  let path = Fou::<f64, _>::new(
+fn v1_pin_path() -> Array1<f64> {
+  Fou::<f64, _>::new(
     0.6,
     1.0,
     0.0,
     0.2,
-    n,
+    512,
     Some(0.0),
     Some(1.0),
     Deterministic::new(0xF0_E5_71_AA),
   )
-  .sample();
-  let delta = 1.0 / n as f64;
+  .sample()
+}
 
-  let a = array![
-    0.482962913144534 / SQRT_2,
-    -0.836516303737808 / SQRT_2,
-    0.224143868042013 / SQRT_2,
-    0.12940952255126 / SQRT_2,
+/// Brouste & Iacus's drift `λ̂` from `μ̂₂ = Σ_{n=1}^N (X_n − μ̂)² / N`, about the path's mean.
+fn theta_ref(path: &Array1<f64>, mu: f64, hurst: f64, sigma: f64) -> f64 {
+  let big_n = (path.len() - 1) as f64;
+  let mu2 = path
+    .iter()
+    .skip(1)
+    .fold(0.0, |acc, &x| acc + (x - mu).powi(2))
+    / big_n;
+  (2.0 * mu2 / (sigma.powi(2) * gamma(2.0 * hurst + 1.0))).powf(-1.0 / (2.0 * hurst))
+}
+
+#[test]
+fn fou_v1_hurst_sigma_and_mu_are_bit_exact_and_theta_within_4_eps() {
+  let path = v1_pin_path();
+  let big_n = (path.len() - 1) as f64;
+  let delta = 1.0 / big_n;
+
+  let a = [
+    0.4829629131445341 / SQRT_2,
+    -0.8365163037378077 / SQRT_2,
+    0.2241438680420134 / SQRT_2,
+    0.1294095225512603 / SQRT_2,
   ];
   let l_filter = a.len();
-  let mut a_2 = Array1::<f64>::zeros(a.len() * 2);
-  for (i, &val) in a.iter().enumerate() {
-    a_2[i * 2 + 1] = val;
-  }
-  let lfilt = |b: &Array1<f64>, x: &Array1<f64>| -> Array1<f64> {
-    let nx = x.len();
-    let mut y = Array1::<f64>::zeros(nx);
-    for i in 0..nx {
-      let mut acc = 0.0;
-      for j in 0..b.len() {
-        if i >= j {
-          acc += b[j] * x[i - j];
-        }
+  let variation = |dilation: usize| {
+    let mut v = 0.0;
+    for i in 0..path.len() - (l_filter - 1) * dilation {
+      let mut d = 0.0;
+      for (k, &ak) in a.iter().enumerate() {
+        d += ak * path[i + k * dilation];
       }
-      y[i] = acc;
+      v += d * d;
     }
-    y
+    v
   };
-  let v1_path_ref = lfilt(&a, &path);
-  let v1_sum_ref: f64 = v1_path_ref.mapv(|x| x * x).sum();
-  let v2_path_ref = lfilt(&a_2, &path);
-  let v2_sum_ref: f64 = v2_path_ref.mapv(|x| x * x).sum();
-  let hurst_ref = 0.5 * (v2_sum_ref / v1_sum_ref).log2();
+  let v1_sum_ref = variation(1);
+  let hurst_ref = 0.5 * (variation(2) / v1_sum_ref).log2();
 
   let mut const_filter = 0.0;
   for i in 0..l_filter {
@@ -78,40 +84,29 @@ fn fou_v1_bit_exact_against_struct_era_inline_reference() {
       const_filter += a[i] * a[j] * ((i as f64 - j as f64).abs()).powf(2.0 * hurst_ref);
     }
   }
-  let numerator_ref = -2.0 * v1_sum_ref / ((path.len() - l_filter) as f64);
-  let denominator_ref = const_filter * delta.powf(2.0 * hurst_ref);
-  let sigma_ref = (numerator_ref / denominator_ref).sqrt();
+  let sigma_ref = (-2.0 * v1_sum_ref / (const_filter * delta.powf(2.0 * hurst_ref) * big_n)).sqrt();
+  let mu_ref = path.iter().fold(0.0, |acc, &x| acc + x) / path.len() as f64;
 
-  let mu_ref = path.mean().unwrap();
-  let mean_square_ref = path.mapv(|x| x * x).mean().unwrap();
-  let theta_num_ref = 2.0 * mean_square_ref;
-  let theta_den_ref = sigma_ref.powi(2) * gamma(2.0 * hurst_ref + 1.0);
-  let theta_ref = (theta_num_ref / theta_den_ref).powf(-1.0 / (2.0 * hurst_ref));
-
-  let res =
-    fit_fou_filtered_variations(path.view(), FilterType::Daubechies, Some(delta), None).unwrap();
-
-  assert_close(res.hurst, hurst_ref, "v1 hurst");
-  assert_close(res.sigma, sigma_ref, "v1 sigma");
-  assert_close(res.mu, mu_ref, "v1 mu");
-  assert_close(res.theta, theta_ref, "v1 theta");
+  let fit =
+    |delta| fit_fou_filtered_variations(path.view(), FilterType::Daubechies, delta, None).unwrap();
+  let res = fit(Some(delta));
+  assert_eq!(res.hurst, hurst_ref, "v1 hurst");
+  assert_eq!(res.sigma, sigma_ref, "v1 sigma");
+  assert_eq!(res.mu, mu_ref, "v1 mu");
+  assert_close(
+    res.theta,
+    theta_ref(&path, mu_ref, hurst_ref, sigma_ref),
+    "v1 theta",
+  );
+  assert_eq!(fit(None), res);
 }
 
 #[test]
-fn fou_v2_bit_exact_against_struct_era_inline_reference() {
-  let n = 512usize;
-  let path = Fou::<f64, _>::new(
-    0.6,
-    1.0,
-    0.0,
-    0.2,
-    n,
-    Some(0.0),
-    Some(1.0),
-    Deterministic::new(0xF0_E5_71_AA),
-  )
-  .sample();
-  let delta_ref = 1.0 / n as f64;
+fn fou_v2_agrees_with_its_inline_reference_within_4_eps() {
+  let path = v1_pin_path();
+  let n = path.len();
+  let big_n = (n - 1) as f64;
+  let delta_ref = 1.0 / big_n;
 
   let sum1: f64 = (0..(n - 4))
     .map(|i| {
@@ -126,34 +121,26 @@ fn fou_v2_bit_exact_against_struct_era_inline_reference() {
     })
     .sum();
   let hurst_ref = 0.5 * (sum1 / sum2).log2();
+  let sigma_den_ref =
+    big_n * (4.0 - 2.0_f64.powf(2.0 * hurst_ref)) * delta_ref.powf(2.0 * hurst_ref);
+  let sigma_ref = (sum2 / sigma_den_ref).sqrt();
+  let mu_ref = path.iter().fold(0.0, |acc, &x| acc + x) / n as f64;
 
-  let n_f = n as f64;
-  let sigma_num_ref: f64 = (0..(n - 2))
-    .map(|i| {
-      let diff = path[i + 2] - 2.0 * path[i + 1] + path[i];
-      diff * diff
-    })
-    .sum();
-  let sigma_den_ref = n_f * (4.0 - 2.0_f64.powf(2.0 * hurst_ref)) * delta_ref.powf(2.0 * hurst_ref);
-  let sigma_ref = (sigma_num_ref / sigma_den_ref).sqrt();
-
-  let mu_ref = path.mean().unwrap();
-  let sum_x_sq: f64 = path.mapv(|x| x * x).sum();
-  let sum_x: f64 = path.sum();
-  let theta_num_ref = n_f * sum_x_sq - sum_x.powi(2);
-  let theta_den_ref = n_f.powi(2) * sigma_ref.powi(2) * hurst_ref * gamma(2.0 * hurst_ref);
-  let theta_ref = (theta_num_ref / theta_den_ref).powf(-1.0 / (2.0 * hurst_ref));
-
-  let res = fit_fou_central_differences(path.view(), Some(delta_ref), None).unwrap();
-
+  let fit = |delta| fit_fou_central_differences(path.view(), delta, None).unwrap();
+  let res = fit(Some(delta_ref));
   assert_close(res.hurst, hurst_ref, "v2 hurst");
   assert_close(res.sigma, sigma_ref, "v2 sigma");
   assert_close(res.mu, mu_ref, "v2 mu");
-  assert_close(res.theta, theta_ref, "v2 theta");
+  assert_close(
+    res.theta,
+    theta_ref(&path, mu_ref, hurst_ref, sigma_ref),
+    "v2 theta",
+  );
+  assert_eq!(fit(None), res);
 }
 
 #[test]
-fn fou_v4_bit_exact_against_its_inline_reference() {
+fn fou_v4_agrees_with_its_inline_reference_within_4_eps() {
   let n = 512usize;
   let k = 2usize;
   let p = 2.0_f64;
@@ -223,7 +210,7 @@ fn fou_v4_bit_exact_against_its_inline_reference() {
   let rho0 = rho_zero_ref(k, hurst_ref);
   let normal_abs_p = 2.0_f64.powf(p / 2.0) * gamma((p + 1.0) / 2.0) / gamma(0.5);
   let c_kp = normal_abs_p * rho0.powf(p / 2.0);
-  let scaled = n_f.powf(-1.0 + p * hurst_ref) * v1;
+  let scaled = (1.0 / delta_ref).powf(-1.0 + p * hurst_ref) * v1;
   let sigma_abs_p = scaled / (c_kp * t_horizon);
   let sigma_ref = sigma_abs_p.powf(1.0 / p);
 
@@ -265,6 +252,59 @@ fn a_short_path_is_insufficient_data() {
     StatsError::InsufficientData { needed: 5, got: 4 }
   );
   assert!(fit_fou_power_variation(four.view(), None, 2, 2.0, Some(0.5), None).is_ok());
+  let six = array![0.0, 1.0, -0.5, 0.7, 0.2, -0.3];
+  let daubechies =
+    |hurst| fit_fou_filtered_variations(six.view(), FilterType::Daubechies, None, hurst);
+  assert_eq!(
+    daubechies(None).unwrap_err(),
+    StatsError::InsufficientData { needed: 7, got: 6 }
+  );
+  assert!(daubechies(Some(0.5)).is_ok());
+}
+
+#[test]
+fn a_level_shift_leaves_the_filtered_variation_estimates_alone() {
+  let path = v1_pin_path();
+  let fit = |x: &Array1<f64>| {
+    fit_fou_filtered_variations(x.view(), FilterType::Daubechies, None, None).unwrap()
+  };
+  let (level, shifted) = (fit(&path), fit(&(&path + 5.0)));
+  assert!(
+    (shifted.hurst - level.hurst).abs() < 1e-9,
+    "{level:?} {shifted:?}"
+  );
+  assert!(
+    (shifted.sigma / level.sigma - 1.0).abs() < 1e-9,
+    "{level:?} {shifted:?}"
+  );
+}
+
+#[test]
+fn fou_v4_sigma_reads_the_sampling_rate_at_any_horizon() {
+  let (h, n) = (0.65, 2048usize);
+  let path = Fou::<f64, _>::new(
+    h,
+    1.2,
+    0.0,
+    0.25,
+    n,
+    Some(0.0),
+    Some(10.0),
+    Deterministic::new(0x5EED),
+  )
+  .sample();
+  let dt = 10.0 / (n - 1) as f64;
+  let fit = |delta: f64| {
+    fit_fou_power_variation(path.view(), Some(delta), 2, 2.0, Some(h), None)
+      .unwrap()
+      .sigma
+  };
+  assert_close(
+    fit(4.0 * dt),
+    4.0_f64.powf(-h) * fit(dt),
+    "sigma at four times the step",
+  );
+  assert!((fit(dt) / 0.25 - 1.0).abs() < 0.1, "sigma = {}", fit(dt));
 }
 
 #[test]

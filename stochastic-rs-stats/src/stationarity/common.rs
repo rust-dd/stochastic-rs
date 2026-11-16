@@ -1,11 +1,11 @@
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs_distributions::linalg::inverse;
+use stochastic_rs_distributions::linalg::solve;
 
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::validate;
-use crate::linalg::inverse;
-use crate::linalg::solve;
 
 /// Deterministic terms of a unit-root or stationarity regression.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,7 +102,7 @@ pub fn ols(y: &[f64], x: &[Vec<f64>]) -> Result<OlsResult, StatsError> {
   let xtx = x_mat.t().dot(&x_mat);
   let xty = x_mat.t().dot(&y_vec);
 
-  let beta_arr = solve(&xtx, &xty).ok_or(StatsError::Singular("OLS design"))?;
+  let beta_arr = solve(xtx.view(), xty.view()).ok_or(StatsError::Singular("OLS design"))?;
   let fitted = x_mat.dot(&beta_arr);
   let residuals_arr = &y_vec - &fitted;
 
@@ -111,7 +111,7 @@ pub fn ols(y: &[f64], x: &[Vec<f64>]) -> Result<OlsResult, StatsError> {
   let dof = (n - k) as f64;
   let sigma2 = (sse / dof).max(0.0);
 
-  let xtx_inv = inverse(&xtx).ok_or(StatsError::Singular("OLS design"))?;
+  let xtx_inv = inverse(xtx.view()).ok_or(StatsError::Singular("OLS design"))?;
   let cov = &xtx_inv * sigma2;
   let std_err = (0..k).map(|i| cov[[i, i]].max(0.0).sqrt()).collect();
 
@@ -126,11 +126,10 @@ pub fn ols(y: &[f64], x: &[Vec<f64>]) -> Result<OlsResult, StatsError> {
   })
 }
 
-fn build_adf_design(
-  y: &[f64],
-  lags: usize,
-  trend: Trend,
-) -> Result<(Vec<f64>, Vec<Vec<f64>>, usize), StatsError> {
+/// The regressand, the regressor rows and the column of `y_{t-1}` in them.
+type AdfDesign = (Vec<f64>, Vec<Vec<f64>>, usize);
+
+fn build_adf_design(y: &[f64], lags: usize, trend: Trend) -> Result<AdfDesign, StatsError> {
   validate(y, 3 + lags)?;
   let dy = difference(y);
   let n_dy = dy.len();

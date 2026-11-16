@@ -165,13 +165,8 @@ fn rank_tests_match_statsmodels_on_the_lcg_system() {
   } else {
     1.0
   };
-  for i in 0..3 {
-    assert_close(
-      flip * res.eigenvectors[[i, 0]],
-      evec[i],
-      1e-6,
-      "eigenvector",
-    );
+  for (i, &want) in evec.iter().enumerate() {
+    assert_close(flip * res.eigenvectors[[i, 0]], want, 1e-6, "eigenvector");
   }
 }
 
@@ -294,8 +289,8 @@ fn vecm_without_lagged_differences_matches_statsmodels_at_rank_two() {
     0.014_455_198_943_958_624,
     -0.010_135_064_323_076_49,
   ];
-  for i in 0..3 {
-    assert_close(fit.intercept[i], intercept[i], 1e-9, "intercept");
+  for (i, &want) in intercept.iter().enumerate() {
+    assert_close(fit.intercept[i], want, 1e-9, "intercept");
   }
   assert_close(
     fit.sigma[[0, 0]],

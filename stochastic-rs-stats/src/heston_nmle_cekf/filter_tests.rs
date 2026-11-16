@@ -306,13 +306,13 @@ fn a_nan_projection_floor_panics() {
 }
 
 #[test]
-#[should_panic(expected = "floor must satisfy `floor > EPS`, got floor = 0.0")]
+#[should_panic(expected = "floor must satisfy `floor > 1e-12`, got floor = 0.0")]
 fn a_zero_projection_floor_panics() {
   filter_with_projection_floor(0.0);
 }
 
 #[test]
-#[should_panic(expected = "floor must satisfy `floor > EPS`, got floor = 1e-12")]
+#[should_panic(expected = "floor must satisfy `floor > 1e-12`, got floor = 1e-12")]
 fn a_projection_floor_at_the_numerical_floor_panics() {
   filter_with_projection_floor(1e-12);
 }

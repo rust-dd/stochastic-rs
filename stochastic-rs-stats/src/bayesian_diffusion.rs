@@ -29,10 +29,9 @@ use ndarray::ArrayView1;
 
 use crate::StatsError;
 use crate::filtering::mcmc::random_walk_metropolis;
-use crate::input::reject_constant;
-use crate::input::validate;
 use crate::qmle::DiffusionKind;
 use crate::qmle::assert_dt;
+use crate::qmle::diffusion_path;
 use crate::qmle::quasi_log_likelihood;
 use crate::traits::FloatExt;
 
@@ -56,7 +55,7 @@ pub struct BayesianDiffusionFit {
 }
 
 /// Metropolis posterior of `(ln κ, ln θ, ln σ)` from the prior means, `Err` if it is not finite
-/// there; `Err` and panics as [`crate::qmle::fit_diffusion_qmle`], and panics if `n_samples = 0`.
+/// there; path `Err`s and panics as [`crate::qmle::fit_diffusion_qmle`], panics if `n_samples = 0`.
 pub fn fit_diffusion_bayesian<T: FloatExt>(
   series: ArrayView1<T>,
   dt: f64,
@@ -67,12 +66,7 @@ pub fn fit_diffusion_bayesian<T: FloatExt>(
   seed: u64,
 ) -> Result<BayesianDiffusionFit, StatsError> {
   assert_dt(dt);
-  let x = series
-    .iter()
-    .map(|v| v.to_f64().unwrap())
-    .collect::<Vec<f64>>();
-  validate(&x, 3)?;
-  reject_constant(&x, "constant series")?;
+  let x = diffusion_path(series, kind)?;
 
   let sample_mean = x.iter().sum::<f64>() / x.len() as f64;
   // Prior means on the log-parameters: κ around 1, θ around the sample
@@ -243,6 +237,28 @@ mod tests {
     assert_eq!(
       fit.unwrap_err(),
       StatsError::InsufficientData { needed: 3, got: 2 }
+    );
+  }
+
+  #[test]
+  fn bayesian_cir_rejects_a_negative_observation() {
+    let s = Array1::from(vec![0.04, 0.05, 0.045, -0.01, 0.04, 0.05]);
+    let fit = fit_diffusion_bayesian(
+      s.view(),
+      1.0 / 252.0,
+      DiffusionKind::Cir,
+      [0.1, 0.1, 0.1],
+      100,
+      10,
+      1,
+    );
+    assert_eq!(
+      fit.unwrap_err(),
+      StatsError::InvalidObservation {
+        index: 3,
+        value: -0.01,
+        constraint: "finite and >= 0"
+      }
     );
   }
 }

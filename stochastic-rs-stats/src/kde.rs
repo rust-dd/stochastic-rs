@@ -14,6 +14,7 @@ use ndarray::ArrayView1;
 
 use crate::StatsError;
 use crate::input::as_slice_or_copy;
+use crate::input::mean_in_order;
 use crate::input::validate;
 use crate::input::validate_view;
 
@@ -90,8 +91,7 @@ pub fn silverman_bandwidth(data: ArrayView1<f64>) -> Result<f64, StatsError> {
   let sample = as_slice_or_copy(data);
   validate(&sample, 2)?;
   let nf = data.len() as f64;
-  // ndarray's `sum()` regroups contiguous memory; a fold in index order rounds a view as its copy.
-  let mean = data.iter().fold(0.0, |acc, &x| acc + x) / nf;
+  let mean = mean_in_order(data);
   let std = (data.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / (nf - 1.0)).sqrt();
   let mut sorted = sample.into_owned();
   sorted.sort_by(f64::total_cmp);

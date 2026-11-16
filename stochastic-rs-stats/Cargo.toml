@@ -24,8 +24,6 @@ python = [
 
 [dependencies]
 basin = { workspace = true }
-faer = { workspace = true }
-faer-ext = { workspace = true }
 linreg = { workspace = true }
 ndarray = { workspace = true }
 ndrustfft = { workspace = true }

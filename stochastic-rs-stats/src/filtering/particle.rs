@@ -118,7 +118,7 @@ where
 
   /// Mean state across particles, weighted by the current normalised weights.
   pub fn mean_state(&self) -> Array1<f64> {
-    let (n, d) = self.particles.dim();
+    let d = self.particles.ncols();
     let max_lw = self.max_log_weight();
     let weights: Vec<f64> = self
       .log_weights
@@ -127,8 +127,8 @@ where
       .collect();
     let total: f64 = weights.iter().sum();
     let mut m = Array1::<f64>::zeros(d);
-    for i in 0..n {
-      let w = weights[i] / total;
+    for (i, &weight) in weights.iter().enumerate() {
+      let w = weight / total;
       for j in 0..d {
         m[j] += w * self.particles[[i, j]];
       }

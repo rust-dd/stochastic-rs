@@ -11,6 +11,7 @@
 //! Reference: Fukasawa, M., Takabatake, T. & Westphal, R. (2019), "Is Volatility Rough?", arXiv:1905.04852.
 
 use std::convert::Infallible;
+use std::f64::consts::PI;
 
 use basin::BoxConstraints;
 use basin::CostFunction;
@@ -66,28 +67,52 @@ impl Default for Whittle {
 }
 
 impl Whittle {
+  /// `m` intraday observations a day of `delta` years; panics unless `m >= 1` and `delta` is finite
+  /// and positive.
   #[must_use]
   pub fn new(m: usize, delta: f64) -> Self {
-    Self {
+    let whittle = Self {
       m,
       delta,
       ..Self::default()
-    }
+    };
+    whittle.assert_config();
+    whittle
   }
 
-  /// The Fukasawa–Takabatake–Westphal fit to log realized variance; `Err` below 30 points or on a
-  /// non-finite one.
+  /// The Fukasawa–Takabatake–Westphal fit to log realized variance; `Err` below 30 points, on a
+  /// non-finite one or objective; panics unless `m >= 1`, `delta > 0` is finite and `0 < psi < π`.
   pub fn fit(&self, log_rv: ArrayView1<f64>) -> Result<FukasawaFit, StatsError> {
+    self.assert_config();
     let log_rv = as_slice_or_copy(log_rv);
     validate(&log_rv, 30)?;
-    Ok(run_estimate(
+    run_estimate(
       &log_rv,
       self.m,
       self.delta,
       self.psi,
       self.k_trunc,
       self.j_max,
-    ))
+    )
+  }
+
+  /// [`Whittle::new`]'s checks and `psi`'s, which `fit` repeats for a struct literal.
+  #[track_caller]
+  pub(crate) fn assert_config(&self) {
+    let Self { m, delta, psi, .. } = *self;
+    assert!(m >= 1, "m must satisfy `m >= 1`, got m = {m:?}");
+    assert!(
+      delta.is_finite(),
+      "delta must satisfy `delta.is_finite()`, got delta = {delta:?}"
+    );
+    assert!(
+      delta > 0.0,
+      "delta must satisfy `delta > 0.0`, got delta = {delta:?}"
+    );
+    assert!(
+      psi > 0.0 && psi < PI,
+      "psi must satisfy `0.0 < psi < {PI:?}`, got psi = {psi:?}"
+    );
   }
 }
 
@@ -98,7 +123,7 @@ fn c_h(h: f64) -> f64 {
 }
 
 /// Approximate spectral density of the observation process (eq. 14).
-pub fn spectral_density(lambda: f64, h: f64, v: f64, m: usize, _n: usize, k_trunc: usize) -> f64 {
+fn spectral_density(lambda: f64, h: f64, v: f64, m: usize, k_trunc: usize) -> f64 {
   let pi = std::f64::consts::PI;
   let ch = c_h(h);
   let alpha = 1.0 + 2.0 * h;
@@ -201,7 +226,7 @@ fn correction_a2(gamma_buf: &[f64], psi: f64, h: f64, v: f64, j_max: usize) -> f
   sum / (2.0 * pi)
 }
 
-pub fn whittle_objective(
+fn whittle_objective(
   pgram: &[f64],
   h: f64,
   v: f64,
@@ -219,7 +244,7 @@ pub fn whittle_objective(
     if lam < psi {
       continue;
     }
-    let g = spectral_density(lam, h, v, m, n, k_trunc);
+    let g = spectral_density(lam, h, v, m, k_trunc);
     if g > 1e-20 {
       sum += g.ln() + pgram[j - 1] / g;
       count += 1;
@@ -227,34 +252,6 @@ pub fn whittle_objective(
   }
   if count > 0 {
     sum / count as f64
-  } else {
-    f64::INFINITY
-  }
-}
-
-fn whittle_objective_full(
-  pgram: &[f64],
-  gamma_buf: &[f64],
-  h: f64,
-  v: f64,
-  m: usize,
-  n: usize,
-  psi: f64,
-  k_trunc: usize,
-  j_max: usize,
-) -> f64 {
-  if h <= 0.0 || h >= 1.0 || v <= 0.0 {
-    return f64::INFINITY;
-  }
-  let base = whittle_objective(pgram, h, v, m, n, psi, k_trunc);
-  if !base.is_finite() {
-    return f64::INFINITY;
-  }
-  let a1 = correction_a1(psi, h, v, m);
-  let a2 = correction_a2(gamma_buf, psi, h, v, j_max);
-  let result = base + a1 + a2;
-  if result.is_finite() {
-    result
   } else {
     f64::INFINITY
   }
@@ -285,17 +282,25 @@ impl WhittleProblem {
   fn eval(&self, params: &[f64]) -> f64 {
     // The spectral parameterization remains restricted during line searches.
     let params = self.clamp(params);
-    whittle_objective_full(
-      &self.pgram,
-      &self.gamma,
-      params[0],
-      params[1],
-      self.m,
-      self.n,
-      self.psi,
-      self.k_trunc,
-      self.j_max,
-    )
+    self.objective(params[0], params[1])
+  }
+
+  fn objective(&self, h: f64, v: f64) -> f64 {
+    if h <= 0.0 || h >= 1.0 || v <= 0.0 {
+      return f64::INFINITY;
+    }
+    let base = whittle_objective(&self.pgram, h, v, self.m, self.n, self.psi, self.k_trunc);
+    if !base.is_finite() {
+      return f64::INFINITY;
+    }
+    let a1 = correction_a1(self.psi, h, v, self.m);
+    let a2 = correction_a2(&self.gamma, self.psi, h, v, self.j_max);
+    let result = base + a1 + a2;
+    if result.is_finite() {
+      result
+    } else {
+      f64::INFINITY
+    }
   }
 }
 
@@ -363,7 +368,7 @@ fn run_estimate(
   psi: f64,
   k_trunc: usize,
   j_max: usize,
-) -> FukasawaFit {
+) -> Result<FukasawaFit, StatsError> {
   let n = log_rv.len();
   let y: Vec<f64> = (1..n).map(|i| log_rv[i] - log_rv[i - 1]).collect();
   let ny = y.len();
@@ -410,144 +415,19 @@ fn run_estimate(
     best_h = h_r;
     best_v = v_r;
   }
+  if !best_nll.is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "whittle objective",
+    });
+  }
   let eta = best_v / delta.powf(best_h);
-  FukasawaFit {
+  Ok(FukasawaFit {
     hurst: best_h,
     eta,
     neg_log_lik: best_nll,
     nobs: n,
-  }
+  })
 }
 
 #[cfg(test)]
-mod tests {
-  use ndarray::Array1;
-  use stochastic_rs_core::simd_rng::Deterministic;
-  use stochastic_rs_distributions::SimdDistribution;
-  use stochastic_rs_distributions::normal::SimdNormal;
-  use stochastic_rs_stochastic::diffusion::fou::Fou;
-
-  use super::*;
-  use crate::traits::ProcessExt;
-
-  fn bounded_problem() -> WhittleProblem {
-    WhittleProblem {
-      pgram: vec![0.1; 16],
-      gamma: vec![0.1; 32],
-      m: 72,
-      n: 32,
-      psi: 1e-5,
-      k_trunc: 20,
-      j_max: 5,
-      lower: vec![0.005, 0.01],
-      upper: vec![0.495, 12.0],
-    }
-  }
-
-  #[test]
-  fn bounded_whittle_cost_and_gradient_use_feasible_parameters() {
-    let problem = bounded_problem();
-    for (outside, boundary) in [
-      (vec![0.6, 1.0], vec![0.495, 1.0]),
-      (vec![-0.1, 1.0], vec![0.005, 1.0]),
-      (vec![0.3, 15.0], vec![0.3, 12.0]),
-    ] {
-      assert_eq!(problem.eval(&outside), problem.eval(&boundary));
-      let expected = problem.gradient(&boundary).unwrap();
-      assert!(expected.iter().any(|value| value.abs() > 1e-6));
-      assert_eq!(problem.gradient(&outside).unwrap(), expected);
-    }
-  }
-
-  #[test]
-  fn bounded_whittle_refinement_returns_feasible_parameters_and_cost() {
-    let problem = bounded_problem();
-    for initial in [[0.2, 1.0], [0.6, 15.0], [-0.1, -1.0]] {
-      let (h, v, cost) = run_lbfgs(&problem, initial[0], initial[1]);
-      assert!((problem.lower[0]..=problem.upper[0]).contains(&h));
-      assert!((problem.lower[1]..=problem.upper[1]).contains(&v));
-      assert!(cost.is_finite());
-      assert_eq!(cost, problem.eval(&[h, v]));
-    }
-  }
-
-  fn simulate_log_rv(true_h: f64, m: usize, n_days: usize, delta: f64, seed: u64) -> Vec<f64> {
-    let fou = Fou::new(
-      true_h,
-      0.001,
-      -3.2,
-      1.0,
-      n_days + 1,
-      Some(-3.2),
-      Some(n_days as f64 * delta),
-      Deterministic::new(seed),
-    );
-    let log_vol_sq: Array1<f64> = fou.sample();
-    let mut log_rv = vec![0.0_f64; n_days];
-    let mut normals = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(0x7717));
-    for day in 0..n_days {
-      let sigma = log_vol_sq[day].exp().sqrt();
-      let dt = delta / m as f64;
-      let mut rv = 0.0;
-      for _ in 0..m {
-        let z = normals.sample();
-        rv += (sigma * dt.sqrt() * z).powi(2);
-      }
-      log_rv[day] = rv.max(1e-20).ln();
-    }
-    log_rv
-  }
-
-  #[test]
-  fn estimate_h_from_simulated_rv() {
-    let true_h = 0.3_f64;
-    let log_rv = simulate_log_rv(true_h, 72, 500, 1.0 / 250.0, 42);
-    let result = Whittle::new(72, 1.0 / 250.0)
-      .fit(ArrayView1::from(&log_rv))
-      .unwrap();
-    assert!(
-      (result.hurst - true_h).abs() < 0.1,
-      "H={:.3}, true={true_h}",
-      result.hurst
-    );
-  }
-
-  #[test]
-  fn rough_vs_smooth_distinguished() {
-    let whittle = Whittle::new(72, 1.0 / 250.0);
-    let log_rv_rough = simulate_log_rv(0.1, 72, 500, 1.0 / 250.0, 77);
-    let log_rv_smooth = simulate_log_rv(0.45, 72, 500, 1.0 / 250.0, 88);
-    let h_rough = whittle.fit(ArrayView1::from(&log_rv_rough)).unwrap().hurst;
-    let h_smooth = whittle.fit(ArrayView1::from(&log_rv_smooth)).unwrap().hurst;
-    assert!(
-      h_rough < h_smooth,
-      "rough H={h_rough:.3} should be < smooth H={h_smooth:.3}"
-    );
-  }
-
-  /// `fit` is the estimator's one entry; the `HurstEstimator` trait is for path self-similarity, not latent volatility.
-  #[test]
-  fn fit_reports_the_fukasawa_estimate_and_rejects_short_or_non_finite_data() {
-    let whittle = Whittle::new(72, 1.0 / 250.0);
-    let short = Array1::<f64>::linspace(-1.0, 1.0, 10);
-    assert_eq!(
-      whittle.fit(short.view()).unwrap_err(),
-      StatsError::InsufficientData {
-        needed: 30,
-        got: 10
-      }
-    );
-    let mut with_nan = Array1::<f64>::linspace(-1.0, 1.0, 40);
-    with_nan[5] = f64::NAN;
-    assert!(matches!(
-      whittle.fit(with_nan.view()),
-      Err(StatsError::InvalidObservation { index: 5, .. })
-    ));
-    let log_rv = simulate_log_rv(0.1, 72, 400, 1.0 / 250.0, 3);
-    let fit = whittle.fit(ArrayView1::from(&log_rv)).unwrap();
-    assert!(
-      (fit.hurst - 0.1).abs() < 0.08 && fit.eta > 0.0 && fit.nobs == 400,
-      "{fit:?}"
-    );
-  }
-}
+mod tests;
