@@ -20,6 +20,7 @@ use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
 use crate::input::reject_constant;
 use crate::input::validate;
+use crate::stationarity::common::reject_exact_fit;
 
 /// Granger-causality F-test (null: `x` does not Granger-cause `y`), decided by its p-value.
 #[derive(Debug, Clone)]
@@ -48,7 +49,7 @@ impl crate::traits::HypothesisTest for GrangerTest {
 }
 
 /// Granger F-test of "does `x` cause `y`?" at `lags` lags; `Err` below `3 lags + 3` points, a
-/// non-finite or constant series, unequal lengths, a singular or perfect fit; panics on bad config.
+/// non-finite or constant series, unequal lengths, a singular or exact fit; panics on bad config.
 pub fn granger_causality_test(
   y: ArrayView1<f64>,
   x: ArrayView1<f64>,
@@ -92,11 +93,9 @@ pub fn granger_causality_test(
       design_rest[[i, l]] = y[lags + i - l];
     }
   }
-  let rss_unrest = ols_rss(&design_unrest, &target)?;
-  if rss_unrest == 0.0 {
-    return Err(StatsError::DegenerateData("perfect fit"));
-  }
-  let rss_rest = ols_rss(&design_rest, &target)?;
+  let (residuals, rss_unrest) = ols_rss(&design_unrest, &target)?;
+  reject_exact_fit(&y_slice, residuals.as_slice().unwrap())?;
+  let (_, rss_rest) = ols_rss(&design_rest, &target)?;
   let q = lags as f64;
   let dof = (n as f64) - (1.0 + 2.0 * q);
   let f = ((rss_rest - rss_unrest) / q) / (rss_unrest / dof.max(1.0));
@@ -118,12 +117,13 @@ pub fn granger_causality_test(
   })
 }
 
-fn ols_rss(x: &Array2<f64>, y: &Array1<f64>) -> Result<f64, StatsError> {
+fn ols_rss(x: &Array2<f64>, y: &Array1<f64>) -> Result<(Array1<f64>, f64), StatsError> {
   let beta = lstsq(x.view(), y.view());
   let yhat = x.dot(&beta);
-  let rss = (y - &yhat).iter().map(|v| v * v).sum::<f64>();
+  let residuals = y - &yhat;
+  let rss = residuals.iter().map(|v| v * v).sum::<f64>();
   if rss.is_finite() {
-    Ok(rss)
+    Ok((residuals, rss))
   } else {
     Err(StatsError::Singular("OLS design"))
   }
@@ -217,7 +217,32 @@ mod tests {
     let x = Array1::from_iter((0..12).map(|i| i as f64));
     assert_eq!(
       granger_causality_test(y.view(), x.view(), 1, 0.05).unwrap_err(),
-      StatsError::DegenerateData("perfect fit")
+      StatsError::DegenerateData("zero residual variance")
     );
+  }
+
+  /// `y` driven by the last `x` with noise far below `1e-12` of it fits to rounding at any scale.
+  #[test]
+  fn a_fit_to_rounding_is_degenerate_data_at_every_scale() {
+    let normals = |seed: u64| {
+      let mut z = vec![0.0_f64; 200];
+      SimdNormal::<f64>::new(0.0, 1.0)
+        .seeded(&Deterministic::new(seed))
+        .fill_slice(&mut z);
+      Array1::from(z)
+    };
+    let (x, noise) = (normals(23), normals(29));
+    let y = Array1::from_iter((0..200).map(|t| {
+      let driven = if t == 0 { 0.4 } else { 0.7 * x[t - 1] };
+      driven + 1e-15 * noise[t]
+    }));
+    for c in [1e-6, 1.0, 1e6] {
+      assert_eq!(
+        granger_causality_test(y.mapv(|v| v * c).view(), x.mapv(|v| v * c).view(), 2, 0.05)
+          .unwrap_err(),
+        StatsError::DegenerateData("zero residual variance"),
+        "c = {c:e}"
+      );
+    }
   }
 }

@@ -22,10 +22,13 @@ use stochastic_rs_distributions::linalg::lstsq;
 
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
+use crate::input::reject_constant;
 use crate::input::validate_view;
 use crate::stationarity::adf::AdfConfig;
 use crate::stationarity::adf::adf_test;
+use crate::stationarity::common::reject_exact_fit;
 
 /// Configuration for [`engle_granger_test`].
 #[derive(Debug, Clone, Copy)]
@@ -69,8 +72,8 @@ impl crate::traits::HypothesisTest for EngleGrangerTest {
   }
 }
 
-/// Engle–Granger 2-step cointegration test; `Err` below 30 points, on a non-finite one, unequal
-/// lengths, a singular fit or the residual ADF's `Err`, and panics unless `0.01 <= alpha < 1`.
+/// Engle–Granger 2-step test; `Err` below 30 points, on non-finite or constant data, unequal
+/// lengths, a singular or exact fit or the residual ADF's `Err`; panics unless `0.01 <= alpha < 1`.
 pub fn engle_granger_test(
   y: ArrayView1<f64>,
   x: ArrayView1<f64>,
@@ -87,6 +90,9 @@ pub fn engle_granger_test(
   }
   validate_view(y, 30)?;
   validate_view(x, 30)?;
+  let y_slice = as_slice_or_copy(y);
+  reject_constant(&y_slice, "constant series")?;
+  reject_constant(&as_slice_or_copy(x), "constant series")?;
   let n = y.len();
   let mut design = Array2::<f64>::zeros((n, 2));
   for i in 0..n {
@@ -103,6 +109,7 @@ pub fn engle_granger_test(
   for i in 0..n {
     residuals[i] = y[i] - intercept - beta * x[i];
   }
+  reject_exact_fit(&y_slice, residuals.as_slice().unwrap())?;
   let adf = adf_test(residuals.view(), AdfConfig::default())?;
   Ok(EngleGrangerTest {
     statistic: adf.statistic,
@@ -157,6 +164,18 @@ mod tests {
     let y = random_walk(17, 500, 1.0);
     let res = engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default()).unwrap();
     assert!(!res.rejects_null);
+  }
+
+  /// A constant `x` leaves the regression singular, and a constant `y` fits it exactly.
+  #[test]
+  fn either_series_constant_is_degenerate_data() {
+    let (walk, constant) = (random_walk(13, 200, 1.0), Array1::from_elem(200, 0.3));
+    for (y, x) in [(&walk, &constant), (&constant, &walk)] {
+      assert_eq!(
+        engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default()).unwrap_err(),
+        StatsError::DegenerateData("constant series")
+      );
+    }
   }
 
   #[test]

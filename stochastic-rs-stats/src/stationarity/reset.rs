@@ -26,6 +26,7 @@ use ndarray::ArrayView2;
 use stochastic_rs_distributions::special::beta_i;
 
 use super::common::ols;
+use super::common::reject_exact_fit;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
@@ -93,7 +94,7 @@ impl crate::traits::HypothesisTest for ResetTest {
 }
 
 /// Ramsey (1969) RESET of `y` on `x` (with its constant column); `Err` below `k + q + 2` points, a
-/// non-finite entry, constant `y`, mismatched rows, a singular or perfect fit; panics on bad `cfg`.
+/// non-finite entry, constant `y`, mismatched rows, a singular or exact fit; panics on bad `cfg`.
 pub fn reset_test(
   y: ArrayView1<f64>,
   x: ArrayView2<f64>,
@@ -140,10 +141,8 @@ pub fn reset_test(
     }
   }
   let fit_u = ols(&y_slice, &x_aug_rows)?;
+  reject_exact_fit(&y_slice, &fit_u.residuals)?;
   let sse_u = fit_u.sse;
-  if sse_u == 0.0 {
-    return Err(StatsError::DegenerateData("perfect fit"));
-  }
 
   let df_num = q;
   let df_den = t_total - k - q;
@@ -246,19 +245,21 @@ mod tests {
     );
   }
 
+  /// A line, exact or with noise far below `1e-12` of it, leaves both fits rounding at any scale.
   #[test]
-  fn reset_f_stat_matches_hand_computed_fixture() {
-    // Exactly linear DGP with no noise — augmented model fits identically and
-    // F-stat must be ≈ 0 to numerical precision.
+  fn a_line_fitted_to_rounding_is_degenerate_data_at_every_scale() {
     let x: Array1<f64> = Array1::linspace(-1.0, 1.0, 50);
-    let y: Array1<f64> = &x * 3.0 + 2.0;
-    let xm = design_with_intercept(&x);
-    let res = reset_test(y.view(), xm.view(), ResetConfig::default()).unwrap();
-    assert!(
-      res.statistic < 1e-6,
-      "noiseless linear F should be ~ 0; got {}",
-      res.statistic
-    );
+    let (_, noise) = normal_pair(50, 1e-15, 5);
+    for y in [&x * 3.0 + 2.0, &x * 3.0 + 2.0 + &noise] {
+      for c in [1e-6, 1.0, 1e6] {
+        let xm = design_with_intercept(&x.mapv(|v| v * c));
+        assert_eq!(
+          reset_test(y.mapv(|v| v * c).view(), xm.view(), ResetConfig::default()).unwrap_err(),
+          StatsError::DegenerateData("zero residual variance"),
+          "c = {c:e}"
+        );
+      }
+    }
   }
 
   #[test]
@@ -311,7 +312,7 @@ mod tests {
     let xm = x.clone().insert_axis(ndarray::Axis(1));
     assert_eq!(
       reset_test(x.view(), xm.view(), ResetConfig::default()).unwrap_err(),
-      StatsError::DegenerateData("perfect fit")
+      StatsError::DegenerateData("zero residual variance")
     );
   }
 

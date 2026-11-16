@@ -19,6 +19,7 @@ use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
+use crate::input::reject_constant;
 use crate::input::validate;
 
 /// Configuration for the Elliott-Rothenberg-Stock DF-GLS test.
@@ -116,8 +117,8 @@ fn gls_detrend(y: &[f64], include_trend: bool) -> Result<Vec<f64>, StatsError> {
   Ok(detrended)
 }
 
-/// ERS DF-GLS test; `Err` below 20 points or `2p + 3` for the largest lag `p`, on a non-finite one
-/// or a singular regression; panics unless `trend != Trend::None` and `0.01 <= alpha < 1`.
+/// DF-GLS; `Err` below `max(20, 2p + 3)` points for the largest lag `p`, on non-finite or constant
+/// data or a singular or exact fit; panics unless `trend != Trend::None` and `0.01 <= alpha < 1`.
 pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> Result<ErsTest, StatsError> {
   assert!(
     cfg.trend != Trend::None,
@@ -130,6 +131,7 @@ pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> Result<ErsTest, Sta
   let critical = critical_values.value_at(cfg.alpha);
   let y = as_slice_or_copy(y);
   validate(&y, 20)?;
+  reject_constant(&y, "constant series")?;
 
   let n = y.len();
   let max_lags = match cfg.lag_selection {
@@ -144,7 +146,7 @@ pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> Result<ErsTest, Sta
 
   let y_detrended = gls_detrend(&y, include_trend)?;
   let used_lags = choose_lag_for_adf(&y_detrended, Trend::None, cfg.lag_selection, max_lags)?;
-  let fit = fit_adf(&y_detrended, used_lags, Trend::None)?;
+  let fit = fit_adf(&y_detrended, used_lags, Trend::None, &y)?;
 
   Ok(ErsTest {
     statistic: fit.statistic,

@@ -136,6 +136,12 @@ type AdfDesign = (Vec<f64>, Vec<Vec<f64>>, usize);
 
 fn build_adf_design(y: &[f64], lags: usize, trend: Trend) -> Result<AdfDesign, StatsError> {
   validate(y, 3 + lags)?;
+  // A lagged level that is a constant, or a line under a trend, leaves the regression no design.
+  if trend != Trend::None {
+    let level = &y[lags..y.len() - 1];
+    let on_terms = regress_on_deterministics(level, trend == Trend::ConstantTrend)?;
+    reject_exact_fit(y, &on_terms.residuals)?;
+  }
   let dy = difference(y);
   let n_dy = dy.len();
 
@@ -179,15 +185,21 @@ fn build_adf_design(y: &[f64], lags: usize, trend: Trend) -> Result<AdfDesign, S
   Ok((lhs, rhs, gamma_index))
 }
 
-/// The ADF regression at a fixed lag order and the lagged level's t-statistic, NaN for an exactly
-/// fitting regression; `Err` on too short a series or a singular design.
-pub fn fit_adf(y: &[f64], lags: usize, trend: Trend) -> Result<AdfFit, StatsError> {
+/// The ADF regression at a fixed lag order and the lagged level's t-statistic; `Err` on too short a
+/// series, a singular design or a standard error of no use, or as `reject_exact_fit` of `source`.
+pub fn fit_adf(y: &[f64], lags: usize, trend: Trend, source: &[f64]) -> Result<AdfFit, StatsError> {
   let (lhs, rhs, gamma_index) = build_adf_design(y, lags, trend)?;
   let ols_fit = ols(&lhs, &rhs)?;
+  reject_exact_fit(source, &ols_fit.residuals)?;
 
   let gamma = ols_fit.beta[gamma_index];
   let se = ols_fit.std_err[gamma_index];
-  let statistic = if se > 0.0 { gamma / se } else { f64::NAN };
+  if !(se.is_finite() && se > 0.0) {
+    return Err(StatsError::Numerical {
+      stage: "standard error",
+    });
+  }
+  let statistic = gamma / se;
 
   Ok(AdfFit {
     statistic,
@@ -210,7 +222,7 @@ pub fn bic_from_sse(sse: f64, nobs: usize, k: usize) -> f64 {
 }
 
 /// The lag `lag_selection` takes from `0..=max_lags`, every candidate fitted on the rows of
-/// `max_lags` so that their criteria compare; `Err` on a singular fit or a NaN criterion or `t`.
+/// `max_lags`; `Err` on a singular fit, a NaN criterion or `t`, or a `t` an exact fit leaves.
 pub fn choose_lag_for_adf(
   y: &[f64],
   trend: Trend,
@@ -246,15 +258,19 @@ pub fn choose_lag_for_adf(
   least_criterion(&criteria)
 }
 
-/// Whether `|beta / se|` reaches the 10 % two-sided normal point; `Err` on a NaN `t`.
+/// Whether `|beta / se|` reaches the 10 % two-sided normal point; `Err` on a NaN `t`, and on a zero
+/// `se`, which only a candidate that fits exactly leaves.
 fn t_is_significant(beta: f64, se: f64) -> Result<bool, StatsError> {
+  if se == 0.0 {
+    return Err(StatsError::DegenerateData("zero residual variance"));
+  }
   let t = (beta / se).abs();
   if t.is_nan() {
     return Err(StatsError::Numerical {
       stage: "lag selection",
     });
   }
-  Ok(se > 0.0 && t >= 1.644_853_626_951_472_2)
+  Ok(t >= 1.644_853_626_951_472_2)
 }
 
 /// The index of the smallest criterion, ties to the smaller lag; a NaN leaves the candidates with
@@ -419,7 +435,14 @@ mod tests {
     assert_eq!(t_is_significant(-1.0, 1.0), Ok(false));
     assert_eq!(t_is_significant(1.0, f64::NAN), refused);
     assert_eq!(t_is_significant(f64::NAN, 1.0), refused);
-    assert_eq!(t_is_significant(0.0, 0.0), refused);
+  }
+
+  /// A zero standard error is an exactly fitting candidate, whatever its coefficient.
+  #[test]
+  fn a_zero_standard_error_is_an_exact_fit() {
+    let exact = Err(StatsError::DegenerateData("zero residual variance"));
+    assert_eq!(t_is_significant(1.0, 0.0), exact);
+    assert_eq!(t_is_significant(0.0, 0.0), exact);
   }
 
   /// The residuals of an exact fit are all zero, so they carry no long-run variance.
