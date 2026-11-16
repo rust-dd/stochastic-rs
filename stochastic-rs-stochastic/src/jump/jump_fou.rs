@@ -45,7 +45,7 @@ use crate::traits::ProcessExt;
 ///   own seed — `sampler()` builds a plain [`SimdNormal`] from
 ///   `self.seed.derive()` and borrows `fgn` only for its `Arc`-shared FFT
 ///   plan and eigenvalues, the same pattern
-///   [`JumpFOUCustom`](crate::jump::jump_fou_custom::JumpFOUCustom) and
+///   [`JumpFouCustom`](crate::jump::jump_fou_custom::JumpFouCustom) and
 ///   [`Fbm`](crate::process::fbm::Fbm) use for their own embedded,
 ///   permanently-`Unseeded` `fgn`. (This was fixable non-breakingly because
 ///   the field is private — rewiring how it's used carries no signature

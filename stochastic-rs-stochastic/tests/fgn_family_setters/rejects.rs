@@ -2,10 +2,10 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::diffusion::cfou::Cfou;
 use stochastic_rs_stochastic::diffusion::fcir::Fcir;
 use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
-use stochastic_rs_stochastic::diffusion::fjacobi::FJacobi;
+use stochastic_rs_stochastic::diffusion::fjacobi::Fjacobi;
 use stochastic_rs_stochastic::diffusion::fou::Fou;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
-use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
+use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFouCustom;
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::cfbms::Cfbms;
@@ -48,8 +48,8 @@ fn fcir() -> Fcir<f64> {
   )
 }
 
-fn fjacobi() -> FJacobi<f64> {
-  FJacobi::new(0.7, 1.0, 2.0, 0.2, 16, None, None, Default::default())
+fn fjacobi() -> Fjacobi<f64> {
+  Fjacobi::new(0.7, 1.0, 2.0, 0.2, 16, None, None, Default::default())
 }
 
 fn cfbms() -> Cfbms<f64> {
@@ -79,8 +79,8 @@ fn jump_fou() -> JumpFou<f64, SimdNormal<f64>> {
   )
 }
 
-fn jump_fou_custom() -> JumpFOUCustom<f64, SimdNormal<f64>> {
-  JumpFOUCustom::new(
+fn jump_fou_custom() -> JumpFouCustom<f64, SimdNormal<f64>> {
+  JumpFouCustom::new(
     0.7,
     1.0,
     0.0,

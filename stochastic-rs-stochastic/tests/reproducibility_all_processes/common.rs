@@ -26,7 +26,7 @@ pub(crate) const OTHER_SEED: u64 = 43;
 /// Steps per path. Small on purpose — this guard is about seed plumbing,
 /// not statistics.
 pub(crate) const N: usize = 24;
-/// Grid size for the tempered-stable jump family (`Cgmy`/`Cts`/`KoBoL`/
+/// Grid size for the tempered-stable jump family (`Cgmy`/`Cts`/`Kobol`/
 /// `Rdts`/`Svcgmy`), a parameter distinct from `N`.
 pub(crate) const J: usize = 8;
 /// Jump intensity for the seven distribution-taking types: high enough that

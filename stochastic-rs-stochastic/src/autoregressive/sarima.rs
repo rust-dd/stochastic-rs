@@ -42,7 +42,7 @@ use crate::traits::ProcessExt;
 /// - `seasonal_ar_coefs` (\(\Phi\)): array of length P.
 /// - `seasonal_ma_coefs` (\(\Theta\)): array of length Q.
 /// - `d`: Non-seasonal differencing order.
-/// - `D`: Seasonal differencing order.
+/// - `seasonal_d`: Seasonal differencing order.
 /// - `s`: Season length.
 /// - `sigma`: Std dev of the white noise.
 /// - `n`: Length of the final time series.
@@ -66,7 +66,7 @@ pub struct Sarima<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Non-seasonal differencing (d)
   pub d: usize,
   /// Seasonal differencing (D)
-  pub D: usize,
+  pub seasonal_d: usize,
   /// Season length
   pub s: usize,
   /// Noise std dev
@@ -82,14 +82,13 @@ pub struct Sarima<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> Sarima<T, S> {
   /// Create a new Sarima model
-  #[allow(non_snake_case)]
   pub fn new(
     non_seasonal_ar_coefs: Array1<T>,
     non_seasonal_ma_coefs: Array1<T>,
     seasonal_ar_coefs: Array1<T>,
     seasonal_ma_coefs: Array1<T>,
     d: usize,
-    D: usize,
+    seasonal_d: usize,
     s: usize,
     sigma: T,
     n: usize,
@@ -136,7 +135,7 @@ impl<T: FloatExt, S: SeedExt> Sarima<T, S> {
       seasonal_ar_coefs,
       seasonal_ma_coefs,
       d,
-      D,
+      seasonal_d,
       s,
       sigma,
       n,
@@ -200,7 +199,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
         &self.seasonal_ar_coefs,
         &self.seasonal_ma_coefs,
         self.d,
-        self.D,
+        self.seasonal_d,
         self.s,
       )
     })])
@@ -217,7 +216,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Sarima<T, S> { non_seasonal_ar_coefs, non_seasonal_ma_coefs, seasonal_ar_coefs, seasonal_ma_coefs, d, D, s, sigma, n, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] Sarima<T, S> { non_seasonal_ar_coefs, non_seasonal_ma_coefs, seasonal_ar_coefs, seasonal_ma_coefs, d, seasonal_d, s, sigma, n, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for Sarima<T, S, B>
@@ -240,7 +239,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       seasonal_ar_coefs: self.seasonal_ar_coefs.clone(),
       seasonal_ma_coefs: self.seasonal_ma_coefs.clone(),
       d: self.d,
-      big_d: self.D,
+      big_d: self.seasonal_d,
       s: self.s,
       normal: (sigma != T::zero())
         .then(|| SimdNormal::<T>::new(T::zero(), sigma).seeded(&self.seed)),

@@ -43,8 +43,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 use crate::volterra::reference::reference_path;
-use crate::volterra::sve::VolterraSde;
-use crate::volterra::sve::VolterraSdeSampler;
+use crate::volterra::volterra_sde::VolterraSde;
+use crate::volterra::volterra_sde::VolterraSdeSampler;
 
 /// Volterra kernel specification.
 ///
@@ -113,7 +113,7 @@ impl<T: FloatExt> PreparedVolterraKernel<T> {
 /// module doc for which kernels take which branch.
 enum VolterraEngine<T: FloatExt> {
   /// $H \in (0, 1/2)$: an [`RlKernel`], driving
-  /// [`VolterraSde`](crate::volterra::sve::VolterraSde) at $O(nN')$.
+  /// [`VolterraSde`](crate::volterra::volterra_sde::VolterraSde) at $O(nN')$.
   Lift(RlKernel<T>),
   /// Everything else: the prepared closed-form kernel, driving the direct
   /// $O(n^2)$ convolution.
@@ -224,7 +224,7 @@ impl<T: FloatExt, S: SeedExt, B> Volterra<T, S, B> {
 }
 
 /// The Euler engine's view of both branches: fBm under the Markov lift in
-/// the lift branch — the same family `RlFBm` rides — and the reference
+/// the lift branch — the same family `RlFbm` rides — and the reference
 /// convolution in the other, run by the history block against the kernel
 /// tabulated on the grid.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>

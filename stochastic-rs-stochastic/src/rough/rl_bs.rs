@@ -7,7 +7,7 @@
 //! Closed-form pathwise solution of the fractional Black–Scholes SDE
 //! $dS_t = rS_t\,dt + \sigma S_t\,dW^H_t$ under Wick–Itô–Skorokhod integration
 //! (Hu & Øksendal 2003). The fBM path is generated non-cumulatively via
-//! [`RlFBm`], then the log-price formula is applied pointwise — no Euler
+//! [`RlFbm`], then the log-price formula is applied pointwise — no Euler
 //! step, no drift discretisation.
 //!
 //! Reference: Bilokon & Wong (2026) §5.1; Hu Y., Øksendal B. *Fractional
@@ -21,7 +21,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::markov_lift::MarkovLift;
-use super::rl_fbm::RlFBm;
+use super::rl_fbm::RlFbm;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::noise::gn::Gn;
@@ -48,7 +48,7 @@ pub struct RlBlackScholes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub degree: Option<usize>,
   /// Seed strategy.
   pub seed: S,
-  fbm: RlFBm<T>,
+  fbm: RlFbm<T>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
@@ -105,7 +105,7 @@ impl<T: FloatExt, S: SeedExt> RlBlackScholes<T, S> {
       t,
       degree,
       seed,
-      fbm: RlFBm::new(hurst, n, t, degree, Unseeded),
+      fbm: RlFbm::new(hurst, n, t, degree, Unseeded),
     }
   }
 }

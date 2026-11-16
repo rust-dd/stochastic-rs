@@ -7,9 +7,9 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::Array1;
 use stochastic_rs::simd_rng::Unseeded;
-use stochastic_rs::stochastic::diffusion::fouque::FouqueOU2D;
+use stochastic_rs::stochastic::diffusion::fouque::FouqueOu2D;
 use stochastic_rs::stochastic::interest::hjm::Hjm;
-use stochastic_rs::stochastic::interest::wu_zhang::WuZhangD;
+use stochastic_rs::stochastic::interest::wu_zhang::WuZhang;
 use stochastic_rs::stochastic::noise::cgns::Cgns;
 use stochastic_rs::stochastic::noise::gn::Gn;
 use stochastic_rs::traits::ProcessExt;
@@ -44,13 +44,13 @@ fn bench_cgns(c: &mut Criterion) {
 }
 
 fn bench_fouque(c: &mut Criterion) {
-  let mut group = c.benchmark_group("GnBatching/FouqueOU2D");
+  let mut group = c.benchmark_group("GnBatching/FouqueOu2D");
   group.measurement_time(Duration::from_secs(3));
   group.warm_up_time(Duration::from_millis(500));
   let n = 100_000usize;
 
   group.bench_with_input(BenchmarkId::new("new", n), &n, |b, &n| {
-    let proc = FouqueOU2D::<f64, _>::new(
+    let proc = FouqueOu2D::<f64, _>::new(
       1.0,
       0.5,
       0.1,
@@ -169,7 +169,7 @@ fn bench_hjm(c: &mut Criterion) {
 }
 
 fn bench_wuzhang(c: &mut Criterion) {
-  let mut group = c.benchmark_group("GnBatching/WuZhangD");
+  let mut group = c.benchmark_group("GnBatching/WuZhang");
   group.measurement_time(Duration::from_secs(3));
   group.warm_up_time(Duration::from_millis(500));
   let n = 5_000usize;
@@ -183,7 +183,7 @@ fn bench_wuzhang(c: &mut Criterion) {
   let v0 = Array1::from_elem(xn, 0.04f64);
 
   group.bench_with_input(BenchmarkId::new("new", n), &n, |b, &_n| {
-    let proc = WuZhangD::<f64, _>::new(
+    let proc = WuZhang::<f64, _>::new(
       alpha.clone(),
       beta.clone(),
       nu.clone(),

@@ -32,7 +32,7 @@ use stochastic_rs_stochastic::process::subordinator::ctrw::Ctrw;
 use stochastic_rs_stochastic::process::subordinator::ctrw::CtrwJumpLaw;
 use stochastic_rs_stochastic::process::subordinator::ctrw::CtrwWaitingLaw;
 use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::GammaSubordinator;
-use stochastic_rs_stochastic::process::subordinator::ig_subordinator::IGSubordinator;
+use stochastic_rs_stochastic::process::subordinator::ig_subordinator::IgSubordinator;
 use stochastic_rs_stochastic::process::subordinator::inverse_alpha_stable::InverseAlphaStableSubordinator;
 use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PoissonSubordinator;
 use stochastic_rs_stochastic::process::subordinator::tempered_stable::TemperedStableSubordinator;
@@ -137,7 +137,7 @@ guard!(gamma_subordinator, "GammaSubordinator", |s| {
   GammaSubordinator::new(1.0, 1.0, N, Some(0.0), Some(1.0), s)
 });
 
-guard!(ig_subordinator, "IGSubordinator", |s| IGSubordinator::new(
+guard!(ig_subordinator, "IgSubordinator", |s| IgSubordinator::new(
   1.0,
   1.0,
   N,

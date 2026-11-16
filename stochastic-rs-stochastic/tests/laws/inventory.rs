@@ -15,7 +15,7 @@ use std::path::Path;
 /// here without a case to back it is the one way to make this test lie, so it
 /// is the list a reviewer reads first.
 const COVERED: &[&str] = &[
-  "ARp",
+  "Ar",
   "Agarch",
   "AlphaStableSubordinator",
   "Arch",
@@ -37,10 +37,10 @@ const COVERED: &[&str] = &[
   "Gompertz",
   "HoLee",
   "HullWhite",
-  "IGSubordinator",
+  "IgSubordinator",
   "Jacobi",
   "Logistic",
-  "MAq",
+  "Ma",
   "Nig",
   "Pearson",
   "PoissonSubordinator",

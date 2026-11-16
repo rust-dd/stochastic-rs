@@ -10,7 +10,7 @@ use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGamma;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGammaMotion;
-use stochastic_rs_stochastic::jump::hawkes_jd::HawkesJD;
+use stochastic_rs_stochastic::jump::hawkes_jd::HawkesJd;
 use stochastic_rs_stochastic::jump::nig::Nig;
 use stochastic_rs_stochastic::jump::vg::Vg;
 use stochastic_rs_stochastic::params::Horizon;
@@ -19,7 +19,7 @@ use stochastic_rs_stochastic::process::multivariate_hawkes::MultivariateHawkes;
 use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::process::subordinator::alpha_stable::AlphaStableSubordinator;
 use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::GammaSubordinator;
-use stochastic_rs_stochastic::process::subordinator::ig_subordinator::IGSubordinator;
+use stochastic_rs_stochastic::process::subordinator::ig_subordinator::IgSubordinator;
 use stochastic_rs_stochastic::process::subordinator::inverse_alpha_stable::InverseAlphaStableSubordinator;
 use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PoissonSubordinator;
 use stochastic_rs_stochastic::process::subordinator::tempered_stable::TemperedStableSubordinator;
@@ -60,7 +60,7 @@ fn poisson_subordinator_agrees_with_the_cpu_law() {
 #[test]
 fn inverse_gaussian_subordinator_agrees_with_the_cpu_law() {
   let build =
-    || IGSubordinator::<f32, _>::new(1.0, 2.0, N, Some(0.0), Some(1.0), Deterministic::new(107));
+    || IgSubordinator::<f32, _>::new(1.0, 2.0, N, Some(0.0), Some(1.0), Deterministic::new(107));
   let device = build().on::<Device>().sample_par(M);
   within(&device, 0.0, f32::INFINITY, "IG subordinator");
   agrees(
@@ -112,7 +112,7 @@ fn normal_inverse_gaussian_agrees_with_the_cpu_law() {
 fn the_inverse_gaussian_clock_survives_a_fine_grid() {
   const FINE: usize = 2_048;
   let clock = || {
-    IGSubordinator::<f32, _>::new(
+    IgSubordinator::<f32, _>::new(
       1.0,
       2.0,
       FINE,
@@ -192,7 +192,7 @@ fn stable_subordinator_agrees_with_the_cpu_law() {
 #[test]
 fn hawkes_jump_diffusion_agrees_with_the_cpu_law() {
   let build = || {
-    HawkesJD::<f32, _>::new(
+    HawkesJd::<f32, _>::new(
       0.02,
       0.2,
       1.0,

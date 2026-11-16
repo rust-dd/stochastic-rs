@@ -5,7 +5,7 @@
 //! `cpoisson: CompoundPoisson<T, D>` jump field were "the type's own
 //! public-field-shaped structural pins." That was wrong about `fgn`:
 //! unlike `cpoisson`, the `fgn` field is **private**, byte-for-byte the
-//! same shape as `JumpFOUCustom`'s field this wave already fixed
+//! same shape as `JumpFouCustom`'s field this wave already fixed
 //! non-breakingly (see `deterministic_parallelism_jump_fou_custom.rs`).
 //! `JumpFou::sampler()` builds its Gaussian source from `self.seed.derive()`
 //! directly (rather than `self.fgn.sampler()`, which read `fgn`'s own dead

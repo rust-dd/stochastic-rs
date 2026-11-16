@@ -12,15 +12,15 @@
 use ndarray::Array1;
 use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_stochastic::autoregressive::agrach::Agarch;
-use stochastic_rs_stochastic::autoregressive::ar::ARp;
+use stochastic_rs_stochastic::autoregressive::agarch::Agarch;
+use stochastic_rs_stochastic::autoregressive::ar::Ar;
 use stochastic_rs_stochastic::autoregressive::arch::Arch;
 use stochastic_rs_stochastic::autoregressive::arima::Arima;
 use stochastic_rs_stochastic::autoregressive::egarch::Egarch;
 use stochastic_rs_stochastic::autoregressive::garch::Garch;
-use stochastic_rs_stochastic::autoregressive::ma::MAq;
+use stochastic_rs_stochastic::autoregressive::gjr_garch::GjrGarch;
+use stochastic_rs_stochastic::autoregressive::ma::Ma;
 use stochastic_rs_stochastic::autoregressive::sarima::Sarima;
-use stochastic_rs_stochastic::autoregressive::tgarch::GjrGarch;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 use super::common::N;
@@ -47,7 +47,7 @@ const LOG_CHI2_VARIANCE: f64 = 4.934_802_200_544_679;
 fn ar1_variance_and_acf_match_the_yule_walker_law() {
   let (phi, sigma) = (0.6, 1.0);
   let paths =
-    ARp::<f64, _>::new(array![phi], sigma, N, None, Deterministic::new(11)).sample_par(PATHS);
+    Ar::<f64, _>::new(array![phi], sigma, N, None, Deterministic::new(11)).sample_par(PATHS);
   holds(
     across_paths(&paths, variance),
     sigma * sigma / (1.0 - phi * phi),
@@ -68,8 +68,8 @@ fn ar1_variance_and_acf_match_the_yule_walker_law() {
 #[test]
 fn ar2_variance_and_first_lag_match_the_yule_walker_law() {
   let (phi1, phi2, sigma) = (0.5, 0.3, 0.8);
-  let paths = ARp::<f64, _>::new(array![phi1, phi2], sigma, N, None, Deterministic::new(23))
-    .sample_par(PATHS);
+  let paths =
+    Ar::<f64, _>::new(array![phi1, phi2], sigma, N, None, Deterministic::new(23)).sample_par(PATHS);
   let variance_law =
     sigma * sigma * (1.0 - phi2) / ((1.0 + phi2) * ((1.0 - phi2).powi(2) - phi1 * phi1));
   holds(
@@ -95,8 +95,7 @@ fn ar2_variance_and_first_lag_match_the_yule_walker_law() {
 #[test]
 fn ma2_variance_and_acf_cut_off_after_the_order() {
   let (t1, t2, sigma) = (0.7, 0.4, 1.3);
-  let paths =
-    MAq::<f64, _>::new(array![t1, t2], sigma, N, Deterministic::new(37)).sample_par(PATHS);
+  let paths = Ma::<f64, _>::new(array![t1, t2], sigma, N, Deterministic::new(37)).sample_par(PATHS);
   let scale = 1.0 + t1 * t1 + t2 * t2;
   holds(
     across_paths(&paths, variance),
@@ -404,12 +403,12 @@ fn seasonal_ar_puts_its_only_spike_at_the_season() {
 fn every_autoregressive_path_stays_in_the_reals() {
   let checks: Vec<(&str, Array1<f64>)> = vec![
     (
-      "ARp",
-      ARp::<f64, _>::new(array![0.5], 1.0, 4_096, None, Deterministic::new(2)).sample(),
+      "Ar",
+      Ar::<f64, _>::new(array![0.5], 1.0, 4_096, None, Deterministic::new(2)).sample(),
     ),
     (
-      "MAq",
-      MAq::<f64, _>::new(array![0.5, 0.2], 1.0, 4_096, Deterministic::new(3)).sample(),
+      "Ma",
+      Ma::<f64, _>::new(array![0.5, 0.2], 1.0, 4_096, Deterministic::new(3)).sample(),
     ),
     (
       "Arch",

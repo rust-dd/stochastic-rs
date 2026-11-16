@@ -18,7 +18,7 @@ pub mod cir;
 pub mod ckls;
 pub mod displaced_diffusion;
 pub mod fcir;
-pub mod feller;
+pub mod feller_logistic;
 pub mod feller_root;
 pub mod fgbm;
 pub mod fjacobi;

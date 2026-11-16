@@ -313,6 +313,6 @@ kernel:
 - `feature-flag-management` — propagating `cuda` / `metal` / `accelerate`
   from the sub-crate to the umbrella.
 - `add-fractional-process` — the backend-generic consumers (`Fou`,
-  `Fgbm`, `FJacobi`, `Cfou`, `JumpFou`, … all carry `B`).
+  `Fgbm`, `Fjacobi`, `Cfou`, `JumpFou`, … all carry `B`).
 - `bench-writing` — the exact `required-features` sets for the gated
   GPU benches.

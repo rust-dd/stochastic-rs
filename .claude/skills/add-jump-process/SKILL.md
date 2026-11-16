@@ -304,9 +304,9 @@ crate-wide guard and a new process must appear in it. See
   the relative jump `Y − 1`, and `LogNormalJump` is Bates (1996)'s own,
   with its compensator as `mean()`. The `cpoisson: CompoundPoisson<T, D, S>`
   widening and its `cgns` caching quirk are documented on the type.
-- `FBatesSvj` (`volatility/fbates_svj.rs`) — the non-generic fractional
+- `FbatesSvj` (`volatility/fbates_svj.rs`) — the non-generic fractional
   SVJ variant; it composes path (1) of `add-fractional-process`.
-- `LevyDiffusion` (`jump/levy_diffusion.rs`), `JumpFOUCustom`
+- `LevyDiffusion` (`jump/levy_diffusion.rs`), `JumpFouCustom`
   (`jump/jump_fou_custom.rs`) — the other two generic-`D` jump slots.
 
 ## Related SKILLs

@@ -9,7 +9,7 @@ use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PoissonSubordinator;
 use stochastic_rs_stochastic::traits::PathSampler;
 use stochastic_rs_stochastic::traits::ProcessExt;
-use stochastic_rs_stochastic::volatility::fbates_svj::FBatesSvj;
+use stochastic_rs_stochastic::volatility::fbates_svj::FbatesSvj;
 use stochastic_rs_stochastic::volatility::hkde::Hkde;
 
 const N: usize = 24;
@@ -130,7 +130,7 @@ fn mjd_log_is_pinned() {
 
 #[test]
 fn f_bates_svj_is_pinned() {
-  let [s, _] = FBatesSvj::new(
+  let [s, _] = FbatesSvj::new(
     0.1,
     0.05,
     100.0,
@@ -148,7 +148,7 @@ fn f_bates_svj_is_pinned() {
   )
   .sample();
   pin(
-    "FBatesSvj",
+    "FbatesSvj",
     &s,
     [
       4636737291354636288,

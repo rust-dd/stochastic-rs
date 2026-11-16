@@ -12,10 +12,10 @@ on the structure of the SDE you are simulating:
 
 1. **Wrap `Fgn`** — the simplest path for processes that read like
    `dX = drift dt + diffusion dB^H_t`. Used by `Fou`, `Fbm`, `Fgbm`,
-   `FJacobi`, `Cfou`, `FBatesSvj`, `JumpFou`.
+   `Fjacobi`, `Cfou`, `FbatesSvj`, `JumpFou`.
 2. **Drive `MarkovLift`** — for rough processes whose Riemann-Liouville
    kernel is approximated by a finite sum of exponentials (Abi Jaber
-   2018 / Bilokon-Wong 2026). Used by `RlFOU`, `RlFBm`, `RlBs`,
+   2018 / Bilokon-Wong 2026). Used by `RlFou`, `RlFbm`, `RlBs`,
    `RlHeston`.
 3. **Add a new Volterra kernel** — when neither (1) nor (2) suits. The
    `volterra` module has `ExponentialKernel`, `GammaKernel`,
@@ -160,7 +160,7 @@ consumes Brownian increments you supply as `dw`, so your process draws
 them (from its own seed, in `sampler()`) and hands them over. Wrap it
 the same way path (1) wraps `Fgn`.
 
-References: `rough/rl_fou.rs` (`RlFOU`), `rough/rl_fbm.rs` (`RlFBm`),
+References: `rough/rl_fou.rs` (`RlFou`), `rough/rl_fbm.rs` (`RlFbm`),
 `rough/rl_bs.rs`, `rough/rl_heston.rs`.
 
 ## 3. Path (3) — add a new Volterra kernel
@@ -298,15 +298,15 @@ test the other backends distributionally. See `add-gpu-sampler` §2 and
 - `Fbm` (`process/fbm.rs`) — fractional Brownian motion; thinnest
   wrapper around `Fgn` (cumulative sum).
 - `Fou` (`diffusion/fou.rs`) — fractional OU; reference for path (1).
-- `Fgbm`, `FJacobi`, `Cfou` (`diffusion/`) — the other path-(1)
+- `Fgbm`, `Fjacobi`, `Cfou` (`diffusion/`) — the other path-(1)
   wrappers; all three carry `B` and follow `Fou` line for line.
-- `RlFBm` (`rough/rl_fbm.rs`) and `RlFOU` (`rough/rl_fou.rs`) —
+- `RlFbm` (`rough/rl_fbm.rs`) and `RlFou` (`rough/rl_fou.rs`) —
   Riemann-Liouville via `MarkovLift`; the path-(2) references. Note the
-  capitalisation (`RlFBm`, `RlFOU`), which differs from the `Fbm` /
+  capitalisation (`RlFbm`, `RlFou`), which differs from the `Fbm` /
   `Fou` spelling of the path-(1) types.
 - `RlBs` (`rough/rl_bs.rs`), `RlHeston` (`rough/rl_heston.rs`) — the
   remaining lift-driven models.
-- `FBatesSvj` (`volatility/fbates_svj.rs`) — fractional Bates with
+- `FbatesSvj` (`volatility/fbates_svj.rs`) — fractional Bates with
   jumps; composition with `CompoundPoisson`. See `add-jump-process`.
 - `RoughBergomi` (`volatility/rbergomi.rs`) — a standalone type, **not**
   assembled from the `rl_*` family. `S`-parameterised, no `B`.

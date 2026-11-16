@@ -11,9 +11,9 @@ use stochastic_rs_stochastic::autoregressive::arima::Arima;
 use stochastic_rs_stochastic::autoregressive::sarima::Sarima;
 use stochastic_rs_stochastic::process::lfsm::Lfsm;
 use stochastic_rs_stochastic::traits::ProcessExt;
-use stochastic_rs_stochastic::volatility::fbates_svj::FBatesSvj;
-use stochastic_rs_stochastic::volatility::fheston::RoughHeston;
-use stochastic_rs_stochastic::volatility::rbergomi::RoughBergomi;
+use stochastic_rs_stochastic::volatility::fbates_svj::FbatesSvj;
+use stochastic_rs_stochastic::volatility::fheston::Fheston;
+use stochastic_rs_stochastic::volatility::rough_bergomi::RoughBergomi;
 
 use super::common::Device;
 use super::common::M;
@@ -60,7 +60,7 @@ fn iqr_at(paths: &[Array1<f32>], at: usize) -> f64 {
 #[test]
 fn rough_heston_agrees_with_the_cpu_law() {
   let build = || {
-    RoughHeston::<f32, _>::new(
+    Fheston::<f32, _>::new(
       0.3,
       0.2,
       0.04,
@@ -108,7 +108,7 @@ fn rough_heston_agrees_with_the_cpu_law() {
 #[test]
 fn fractional_bates_agrees_with_the_cpu_law() {
   let build = || {
-    FBatesSvj::<f32, _>::new(
+    FbatesSvj::<f32, _>::new(
       0.3,
       0.02,
       100.0,

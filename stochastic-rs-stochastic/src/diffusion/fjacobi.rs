@@ -25,12 +25,12 @@ use crate::traits::ProcessExt;
 ///
 /// ```compile_fail,E0616
 /// use stochastic_rs_core::simd_rng::Unseeded;
-/// use stochastic_rs_stochastic::diffusion::fjacobi::FJacobi;
-/// let mut p = FJacobi::<f64>::new(0.7, 1.0, 2.0, 0.2, 10, None, None, Unseeded);
+/// use stochastic_rs_stochastic::diffusion::fjacobi::Fjacobi;
+/// let mut p = Fjacobi::<f64>::new(0.7, 1.0, 2.0, 0.2, 10, None, None, Unseeded);
 /// p.n = 1000;
 /// ```
 #[derive(Clone)]
-pub struct FJacobi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+pub struct Fjacobi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   hurst: T,
   alpha: T,
   beta: T,
@@ -42,7 +42,7 @@ pub struct FJacobi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   fgn: Fgn<T, Unseeded, B>,
 }
 
-impl<T: FloatExt, S: SeedExt> FJacobi<T, S, Cpu> {
+impl<T: FloatExt, S: SeedExt> Fjacobi<T, S, Cpu> {
   #[must_use]
   pub fn new(
     hurst: T,
@@ -146,7 +146,7 @@ impl<T: FloatExt, S: SeedExt> FJacobi<T, S, Cpu> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> FJacobi<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B> Fjacobi<T, S, B> {
   /// Replace `alpha`. Panics unless `0 < alpha < beta`, matching `new()`'s
   /// own assertions: to move both drift parameters up, raise `beta` first.
   pub fn with_alpha(mut self, alpha: T) -> Self {
@@ -262,16 +262,16 @@ impl<T: FloatExt, S: SeedExt, B> FJacobi<T, S, B> {
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
-  crate::traits::Sealed for FJacobi<T, S, B>
+  crate::traits::Sealed for Fjacobi<T, S, B>
 {
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
-  for FJacobi<T, S, B>
+  for Fjacobi<T, S, B>
 {
   type Output = Array1<T>;
   type Sampler<'s>
-    = FJacobiSampler<'s, T, S, B>
+    = FjacobiSampler<'s, T, S, B>
   where
     Self: 's;
 
@@ -286,8 +286,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   /// consumed, so the first path reproduces the legacy stream bit-for-bit.
   /// Repeat calls on one sampler advance the same owned seed further, for
   /// an independent path each time.
-  fn sampler(&self) -> FJacobiSampler<'_, T, S, B> {
-    FJacobiSampler {
+  fn sampler(&self) -> FjacobiSampler<'_, T, S, B> {
+    FjacobiSampler {
       fjacobi: self,
       seed: self.seed.derive(),
     }
@@ -321,17 +321,17 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   }
 }
 
-/// Reusable [`FJacobi`] sampling state: borrows the process for its inner
+/// Reusable [`Fjacobi`] sampling state: borrows the process for its inner
 /// [`Fgn`] and owns a seed derived once at construction. The path is an
 /// Euler discretisation of `dX = (alpha - beta X) dt + sigma sqrt(X(1 - X))
 /// dB^H`, clamped into `[0, 1]`.
 #[doc(hidden)]
-pub struct FJacobiSampler<'a, T: FloatExt, S: SeedExt, B> {
-  fjacobi: &'a FJacobi<T, S, B>,
+pub struct FjacobiSampler<'a, T: FloatExt, S: SeedExt, B> {
+  fjacobi: &'a Fjacobi<T, S, B>,
   seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FJacobiSampler<'_, T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FjacobiSampler<'_, T, S, B> {
   fn try_fill_path(&mut self, out: &mut [T]) -> Result<(), DeviceError> {
     if out.is_empty() {
       return Ok(());
@@ -364,17 +364,17 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FJacobiSampler<'_, T, S, B> {
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed
-  for FJacobiSampler<'_, T, S, B>
+  for FjacobiSampler<'_, T, S, B>
 {
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FJacobiSampler<'_, T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FjacobiSampler<'_, T, S, B> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
     let slice = out
       .as_slice_mut()
-      .expect("FJacobi output must be contiguous");
+      .expect("Fjacobi output must be contiguous");
     self.fill_path(slice);
   }
 
@@ -388,7 +388,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FJacobiSample
     self.try_fill_path(
       out
         .as_slice_mut()
-        .expect("FJacobi output must be contiguous"),
+        .expect("Fjacobi output must be contiguous"),
     )?;
     Ok(out)
   }
@@ -397,7 +397,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FJacobiSample
 /// The Euler engine's view of fractional Jacobi: the same absorbing recursion,
 /// with fractional increments instead of hashed ones.
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
-  crate::euler::EulerCoefficients<T> for FJacobi<T, S, B>
+  crate::euler::EulerCoefficients<T> for Fjacobi<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::Jacobi {
@@ -436,9 +436,9 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] FJacobi<T, S> { hurst, alpha, beta, sigma, n, x0, t, seed } via fgn euler);
+backend_switch!([T: FloatExt, S: SeedExt] Fjacobi<T, S> { hurst, alpha, beta, sigma, n, x0, t, seed } via fgn euler);
 
-py_process_1d!(PyFJacobi, FJacobi,
+py_process_1d!(PyFJacobi, Fjacobi,
   sig: (hurst, alpha, beta, sigma, n, x0=None, t=None, seed=None, dtype=None),
   params: (hurst: f64, alpha: f64, beta: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>),
   device

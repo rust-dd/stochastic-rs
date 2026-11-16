@@ -21,7 +21,7 @@ use stochastic_rs_stochastic::jump::nig::Nig;
 use stochastic_rs_stochastic::jump::vg::Vg;
 use stochastic_rs_stochastic::process::subordinator::alpha_stable::AlphaStableSubordinator;
 use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::GammaSubordinator;
-use stochastic_rs_stochastic::process::subordinator::ig_subordinator::IGSubordinator;
+use stochastic_rs_stochastic::process::subordinator::ig_subordinator::IgSubordinator;
 use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PoissonSubordinator;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
@@ -127,7 +127,7 @@ fn bilateral_gamma_matches_the_kuchler_tappe_transform() {
 #[test]
 fn inverse_gaussian_subordinator_matches_its_laplace_transform() {
   let delta = 1.4;
-  let paths = IGSubordinator::<f64, _>::new(
+  let paths = IgSubordinator::<f64, _>::new(
     delta,
     1.0,
     STEPS,
@@ -276,8 +276,8 @@ fn every_levy_path_stays_in_the_reals() {
       .sample(),
     ),
     (
-      "IGSubordinator",
-      IGSubordinator::<f64, _>::new(1.0, 1.0, 1_024, Some(2.0), None, Deterministic::new(7))
+      "IgSubordinator",
+      IgSubordinator::<f64, _>::new(1.0, 1.0, 1_024, Some(2.0), None, Deterministic::new(7))
         .sample(),
     ),
     (

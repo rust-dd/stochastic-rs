@@ -10,7 +10,7 @@ use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::traits::Fn1D;
 use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
-use stochastic_rs_stochastic::diffusion::fouque::FouqueOU2D;
+use stochastic_rs_stochastic::diffusion::fouque::FouqueOu2D;
 use stochastic_rs_stochastic::diffusion::regime_switching::RegimeSwitchingDiffusion;
 use stochastic_rs_stochastic::diffusion::wishart::Wishart;
 use stochastic_rs_stochastic::interest::duffie_kan::DuffieKan;
@@ -212,7 +212,7 @@ fn bergomi_agrees_with_the_cpu_law() {
 #[test]
 fn two_scale_ornstein_uhlenbeck_agrees_with_the_cpu_law() {
   let build = || {
-    FouqueOU2D::<f32, _>::new(
+    FouqueOu2D::<f32, _>::new(
       1.0,
       0.3,
       0.25,

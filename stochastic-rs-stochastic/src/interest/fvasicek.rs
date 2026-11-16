@@ -9,10 +9,10 @@
 //! What Vasicek named is the term-structure reading of the equation, not the
 //! equation: `dr = a(b − r)dt + σ dB^H` is the fractional Ornstein-Uhlenbeck
 //! process with the short rate as its state. The dictionary is `a = `
-//! [`theta`](FVasicek::theta) `= ` [`Fou::theta`] (reversion speed), `b = `
-//! [`mu`](FVasicek::mu) `= ` [`Fou::mu`] (the level reverted to), `σ = `
-//! [`sigma`](FVasicek::sigma) `= ` [`Fou::sigma`], `H = `
-//! [`hurst`](FVasicek::hurst) `= ` [`Fou::hurst`], and `r = X`.
+//! [`theta`](Fvasicek::theta) `= ` [`Fou::theta`] (reversion speed), `b = `
+//! [`mu`](Fvasicek::mu) `= ` [`Fou::mu`] (the level reverted to), `σ = `
+//! [`sigma`](Fvasicek::sigma) `= ` [`Fou::sigma`], `H = `
+//! [`hurst`](Fvasicek::hurst) `= ` [`Fou::hurst`], and `r = X`.
 //!
 //! So this type re-derives nothing. It holds a [`Fou`], its sampler *is*
 //! [`FouSampler`], and both the Euler family and the fGN pipeline it reports
@@ -20,7 +20,7 @@
 //! application — the same reason [`Vasicek`](super::vasicek::Vasicek) is
 //! distinct from [`Ou`](crate::diffusion::ou::Ou).
 //!
-//! The random stream is the one thing not shared: [`FVasicek::new`] derives a
+//! The random stream is the one thing not shared: [`Fvasicek::new`] derives a
 //! child seed for the embedded `Fou`, so the two built from one
 //! [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic) seed are
 //! independent draws of the same law.
@@ -49,7 +49,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Clone)]
-pub struct FVasicek<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+pub struct Fvasicek<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Mean-reversion speed (`a` in the module header's `a(b-r_t)dt`) —
@@ -69,13 +69,13 @@ pub struct FVasicek<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)), kept
   /// for API symmetry with every other process in the crate. Sampling
-  /// itself never reads this field directly — [`FVasicek::new`] derives a
+  /// itself never reads this field directly — [`Fvasicek::new`] derives a
   /// child seed from it once, at construction, to seed [`fou`](Self::fou),
   /// which is what all sampling actually consults — including chunk
   /// decorrelation, via `fou`'s own `sampler()`.
   pub seed: S,
   /// Wrapped fractional-OU process carrying the actual sampling state;
-  /// see module header — `FVasicek` is `Fou` under short-rate-model
+  /// see module header — `Fvasicek` is `Fou` under short-rate-model
   /// parameter names.
   pub fou: Fou<T, S>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -83,7 +83,7 @@ pub struct FVasicek<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> FVasicek<T, S> {
+impl<T: FloatExt, S: SeedExt> Fvasicek<T, S> {
   pub fn new(
     hurst: T,
     theta: T,
@@ -138,7 +138,7 @@ impl<T: FloatExt, S: SeedExt> FVasicek<T, S> {
 /// increment pipeline all come from that process rather than being restated
 /// here.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for FVasicek<T, S, B>
+  for Fvasicek<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerCoefficients::euler_spec(&self.fou)
@@ -157,7 +157,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   /// The one thing not taken from the embedded `Fou`: its seed is a child of
-  /// this one, so reading it here would give an `FVasicek` the stream of the
+  /// this one, so reading it here would give an `Fvasicek` the stream of the
   /// `Fou` it holds rather than its own.
   fn device_seed(&self) -> u64 {
     crate::euler::draw_seed(&self.seed)
@@ -176,19 +176,19 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] FVasicek<T, S> { hurst, theta, mu, sigma, n, x0, t, seed, fou } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] Fvasicek<T, S> { hurst, theta, mu, sigma, n, x0, t, seed, fou } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for FVasicek<T, S, B>
+  for Fvasicek<T, S, B>
 {
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
-  for FVasicek<T, S, B>
+  for Fvasicek<T, S, B>
 {
   type Output = Array1<T>;
   type Sampler<'s>
-    = FVasicekSampler<'s, T, S>
+    = FvasicekSampler<'s, T, S>
   where
     Self: 's;
 
@@ -196,11 +196,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   /// calling [`Fou::sample`] (which would call `Fou::sampler()` fresh, and
   /// hence derive a new seed basis, on every path). Owning it here is what
   /// makes `sample_par`/`sample_map`'s chunked fan-out deterministic: each
-  /// chunk's `FVasicekSampler` is built sequentially, so each owns a
+  /// chunk's `FvasicekSampler` is built sequentially, so each owns a
   /// distinct `FouSampler` basis; repeat calls on one sampler reuse and
   /// advance that same inner sampler, exactly as a standalone `Fou` would.
-  fn sampler(&self) -> FVasicekSampler<'_, T, S> {
-    FVasicekSampler {
+  fn sampler(&self) -> FvasicekSampler<'_, T, S> {
+    FvasicekSampler {
       fou: self.fou.sampler(),
     }
   }
@@ -237,16 +237,16 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`FVasicek`] sampling state: owns the wrapped [`Fou`]'s sampler
+/// Reusable [`Fvasicek`] sampling state: owns the wrapped [`Fou`]'s sampler
 /// (borrowed FFT plan, owned per-chunk seed), built once.
 #[doc(hidden)]
-pub struct FVasicekSampler<'a, T: FloatExt, S: SeedExt> {
+pub struct FvasicekSampler<'a, T: FloatExt, S: SeedExt> {
   fou: FouSampler<'a, T, S, Cpu>,
 }
 
-impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for FVasicekSampler<'_, T, S> {}
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for FvasicekSampler<'_, T, S> {}
 
-impl<T: FloatExt, S: SeedExt> PathSampler<T> for FVasicekSampler<'_, T, S> {
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for FvasicekSampler<'_, T, S> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
@@ -258,7 +258,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for FVasicekSampler<'_, T, S> {
   }
 }
 
-py_process_1d!(PyFVasicek, FVasicek,
+py_process_1d!(PyFVasicek, Fvasicek,
   sig: (hurst, theta, mu, sigma, n, x0=None, t=None, seed=None, dtype=None),
   params: (hurst: f64, theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>),
   device
@@ -270,7 +270,7 @@ mod tests {
 
   #[test]
   fn sample_length_matches_n() {
-    let v = FVasicek::<f64>::new(0.7, 0.5, 0.04, 0.01, 64, Some(0.05), Some(1.0), Unseeded);
+    let v = Fvasicek::<f64>::new(0.7, 0.5, 0.04, 0.01, 64, Some(0.05), Some(1.0), Unseeded);
     let path = v.sample();
     assert_eq!(path.len(), 64);
   }

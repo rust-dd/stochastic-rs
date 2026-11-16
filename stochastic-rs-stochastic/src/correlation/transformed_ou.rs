@@ -70,7 +70,7 @@ impl Transformation {
 /// and maps to correlation via ρ_t = f(X_t) where f is a
 /// [`Transformation`] (tanh or arctan).
 #[derive(Debug, Clone)]
-pub struct TransformedOU<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+pub struct TransformedOu<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed κ of the underlying (unbounded) X-space Ou.
   pub kappa: T,
   /// Long-run level μ of X-space, mapped through `transform` into the
@@ -95,7 +95,7 @@ pub struct TransformedOU<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> TransformedOU<T, S> {
+impl<T: FloatExt, S: SeedExt> TransformedOu<T, S> {
   pub fn new(
     kappa: T,
     mu: T,
@@ -148,14 +148,14 @@ impl<T: FloatExt, S: SeedExt> TransformedOU<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> TransformedOU<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> TransformedOu<T, S, B> {}
 
 /// The Euler engine's view: the step is the plain Ornstein-Uhlenbeck one and
 /// the bounded map lives in the report, so the state travels in X-space and
 /// only the reported point is a correlation. The transform is carried as a
 /// parameter rather than two families, since both branches are total.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for TransformedOU<T, S, B>
+  for TransformedOu<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::TransformedOrnsteinUhlenbeck {
@@ -196,30 +196,30 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] TransformedOU<T, S> { kappa, mu, sigma, rho0, transform, n, t, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] TransformedOu<T, S> { kappa, mu, sigma, rho0, transform, n, t, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for TransformedOU<T, S, B>
+  for TransformedOu<T, S, B>
 {
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
-  for TransformedOU<T, S, B>
+  for TransformedOu<T, S, B>
 {
   type Output = Array1<T>;
   type Sampler<'s>
-    = TransformedOUSampler<T>
+    = TransformedOuSampler<T>
   where
     Self: 's;
 
-  fn sampler(&self) -> TransformedOUSampler<T> {
+  fn sampler(&self) -> TransformedOuSampler<T> {
     let n_steps = self.n.saturating_sub(1);
     let dt = if n_steps > 0 {
       self.t.unwrap_or(T::one()) / T::from_usize_(n_steps)
     } else {
       T::zero()
     };
-    TransformedOUSampler {
+    TransformedOuSampler {
       n: self.n,
       kappa: self.kappa,
       mu: self.mu,
@@ -263,13 +263,13 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`TransformedOU`] sampling state: owns the Gaussian source and the
+/// Reusable [`TransformedOu`] sampling state: owns the Gaussian source and the
 /// precomputed step size, so a Monte-Carlo loop pays the `SimdNormal` setup
 /// once. `fill_path` Euler-steps the X-space Ou and maps through the bounded
 /// [`Transformation`] in place; the owned source advances each call for
 /// independent paths.
 #[doc(hidden)]
-pub struct TransformedOUSampler<T: FloatExt> {
+pub struct TransformedOuSampler<T: FloatExt> {
   n: usize,
   kappa: T,
   mu: T,
@@ -280,7 +280,7 @@ pub struct TransformedOUSampler<T: FloatExt> {
   normal: Seeded<SimdNormal<T>>,
 }
 
-impl<T: FloatExt> TransformedOUSampler<T> {
+impl<T: FloatExt> TransformedOuSampler<T> {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -300,15 +300,15 @@ impl<T: FloatExt> TransformedOUSampler<T> {
   }
 }
 
-impl<T: FloatExt> crate::traits::Sealed for TransformedOUSampler<T> {}
+impl<T: FloatExt> crate::traits::Sealed for TransformedOuSampler<T> {}
 
-impl<T: FloatExt> PathSampler<T> for TransformedOUSampler<T> {
+impl<T: FloatExt> PathSampler<T> for TransformedOuSampler<T> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
     let slice = out
       .as_slice_mut()
-      .expect("TransformedOU output must be contiguous");
+      .expect("TransformedOu output must be contiguous");
     self.fill_path(slice);
   }
 
@@ -326,7 +326,7 @@ mod tests {
 
   #[test]
   fn tanh_stays_bounded() {
-    let scp = TransformedOU::new(
+    let scp = TransformedOu::new(
       5.0_f64,
       0.0,
       1.5,
@@ -343,7 +343,7 @@ mod tests {
 
   #[test]
   fn arctan_stays_bounded() {
-    let scp = TransformedOU::new(
+    let scp = TransformedOu::new(
       5.0_f64,
       0.0,
       1.5,

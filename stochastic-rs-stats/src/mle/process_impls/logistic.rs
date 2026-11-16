@@ -1,7 +1,7 @@
 use ndarray::Array1;
 use ndarray::array;
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_stochastic::diffusion::feller::FellerLogistic;
+use stochastic_rs_stochastic::diffusion::feller_logistic::FellerLogistic;
 use stochastic_rs_stochastic::diffusion::feller_root::FellerRoot;
 use stochastic_rs_stochastic::diffusion::gompertz::Gompertz;
 use stochastic_rs_stochastic::diffusion::jacobi::Jacobi;

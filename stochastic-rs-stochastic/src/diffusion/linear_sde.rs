@@ -1,4 +1,4 @@
-//! # LinearSDE
+//! # LinearSde
 //!
 //! $$
 //! dX_t=(a+bX_t)\,dt+cX_t\,dW_t
@@ -20,7 +20,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
-pub struct LinearSDE<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+pub struct LinearSde<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift intercept a in `(a + bX_t)dt`.
   pub a: T,
   /// Drift slope b (linear mean-reversion-like coefficient) in
@@ -41,7 +41,7 @@ pub struct LinearSDE<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> LinearSDE<T, S> {
+impl<T: FloatExt, S: SeedExt> LinearSde<T, S> {
   pub fn new(a: T, b: T, c: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(
       a.is_finite(),
@@ -77,11 +77,11 @@ impl<T: FloatExt, S: SeedExt> LinearSDE<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> LinearSDE<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> LinearSde<T, S, B> {}
 
 /// The Euler engine's view of the linear scalar SDE.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for LinearSDE<T, S, B>
+  for LinearSde<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::LinearSde {
@@ -114,26 +114,26 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] LinearSDE<T, S> { a, b, c, n, x0, t, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] LinearSde<T, S> { a, b, c, n, x0, t, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for LinearSDE<T, S, B>
+  for LinearSde<T, S, B>
 {
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
-  for LinearSDE<T, S, B>
+  for LinearSde<T, S, B>
 {
   type Output = Array1<T>;
   type Sampler<'s>
-    = LinearSDESampler<T>
+    = LinearSdeSampler<T>
   where
     Self: 's;
 
-  fn sampler(&self) -> LinearSDESampler<T> {
+  fn sampler(&self) -> LinearSdeSampler<T> {
     let n_increments = self.n.saturating_sub(1).max(1);
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
-    LinearSDESampler {
+    LinearSdeSampler {
       n: self.n,
       x0: self.x0.unwrap_or(T::zero()),
       dt,
@@ -176,9 +176,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`LinearSDE`] sampling state.
+/// Reusable [`LinearSde`] sampling state.
 #[doc(hidden)]
-pub struct LinearSDESampler<T: FloatExt> {
+pub struct LinearSdeSampler<T: FloatExt> {
   n: usize,
   x0: T,
   dt: T,
@@ -188,7 +188,7 @@ pub struct LinearSDESampler<T: FloatExt> {
   normal: Seeded<SimdNormal<T>>,
 }
 
-impl<T: FloatExt> LinearSDESampler<T> {
+impl<T: FloatExt> LinearSdeSampler<T> {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -208,15 +208,15 @@ impl<T: FloatExt> LinearSDESampler<T> {
   }
 }
 
-impl<T: FloatExt> crate::traits::Sealed for LinearSDESampler<T> {}
+impl<T: FloatExt> crate::traits::Sealed for LinearSdeSampler<T> {}
 
-impl<T: FloatExt> PathSampler<T> for LinearSDESampler<T> {
+impl<T: FloatExt> PathSampler<T> for LinearSdeSampler<T> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
     let slice = out
       .as_slice_mut()
-      .expect("LinearSDE output must be contiguous");
+      .expect("LinearSde output must be contiguous");
     self.fill_path(slice);
   }
 
@@ -226,7 +226,7 @@ impl<T: FloatExt> PathSampler<T> for LinearSDESampler<T> {
   }
 }
 
-py_process_1d!(PyLinearSDE, LinearSDE,
+py_process_1d!(PyLinearSDE, LinearSde,
   sig: (a, b, c, n, x0=None, t=None, seed=None, dtype=None),
   params: (a: f64, b: f64, c: f64, n: usize, x0: Option<f64>, t: Option<f64>),
   device

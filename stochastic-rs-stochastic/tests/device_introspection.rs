@@ -11,7 +11,7 @@ use ndarray::Array2;
 use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::Unseeded;
-use stochastic_rs_stochastic::autoregressive::ar::ARp;
+use stochastic_rs_stochastic::autoregressive::ar::Ar;
 use stochastic_rs_stochastic::device::Cpu;
 use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
@@ -49,11 +49,11 @@ fn a_fractional_process_reports_its_backend_too() {
 /// rather than discovering the fallback in a profile.
 #[test]
 fn a_configuration_past_the_kernels_names_its_reason() {
-  let first = ARp::<f64, _>::new(array![0.5], 1.0, 128, None, Deterministic::new(3));
+  let first = Ar::<f64, _>::new(array![0.5], 1.0, 128, None, Deterministic::new(3));
   assert!(first.device_ready());
   assert_eq!(first.device_fallback(), None);
 
-  let second = ARp::<f64, _>::new(array![0.5, 0.2], 1.0, 128, None, Deterministic::new(3));
+  let second = Ar::<f64, _>::new(array![0.5, 0.2], 1.0, 128, None, Deterministic::new(3));
   assert!(!second.device_ready());
   let why = second
     .device_fallback()

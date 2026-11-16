@@ -1,6 +1,6 @@
-//! # KoBoL / Cts (general tempered stable family)
+//! # Kobol / Cts (general tempered stable family)
 //!
-//! Lévy measure (one common KoBoL/Cts parametrization):
+//! Lévy measure (one common Kobol/Cts parametrization):
 //! $$
 //! \nu(dx)=D\left(p\,e^{-\lambda_+ x}x^{-1-\alpha}\mathbf 1_{x>0}
 //! \;+\;q\,e^{-\lambda_-|x|}|x|^{-1-\alpha}\mathbf 1_{x<0}\right)dx
@@ -32,7 +32,7 @@
 //! - Boyarchenko S. I., Levendorskiĭ S. Z. (2000) — *Option Pricing for
 //!   Truncated Lévy Processes*, International Journal of Theoretical
 //!   and Applied Finance 3(3), 549–552, DOI: 10.1142/S0219024900000541
-//!   — coined "KoBoL" and applied the family to option pricing.
+//!   — coined "Kobol" and applied the family to option pricing.
 //! - Rosiński J. (2007) — *Tempering Stable Processes*, Stochastic
 //!   Processes and their Applications 117(6), 677–707,
 //!   DOI: 10.1016/j.spa.2006.10.003 — the truncated shot-noise series
@@ -59,7 +59,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Clone)]
-pub struct KoBoL<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+pub struct Kobol<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Overall scale D > 0
   pub d: T,
   /// Positive-side weight p > 0
@@ -87,7 +87,7 @@ pub struct KoBoL<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> KoBoL<T, S> {
+impl<T: FloatExt, S: SeedExt> Kobol<T, S> {
   pub fn new(
     d: T,
     p: T,
@@ -188,7 +188,7 @@ impl<T: FloatExt, S: SeedExt> KoBoL<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> KoBoL<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B> Kobol<T, S, B> {
   /// The horizon, one when omitted.
   fn t_max(&self) -> T {
     self.t.unwrap_or(T::one())
@@ -225,7 +225,7 @@ impl<T: FloatExt, S: SeedExt, B> KoBoL<T, S, B> {
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for KoBoL<T, S, B>
+  for Kobol<T, S, B>
 {
   /// The series constants folded once: the arrival bound's rate
   /// `α / (D (p + q) T)`, the exponential draw entering plainly, and the
@@ -275,21 +275,21 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] KoBoL<T, S> { d, p, q, lambda_plus, lambda_minus, alpha, n, j, x0, t, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] Kobol<T, S> { d, p, q, lambda_plus, lambda_minus, alpha, n, j, x0, t, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for KoBoL<T, S, B>
+  for Kobol<T, S, B>
 {
 }
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for KoBoL<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Kobol<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
-    = KoBoLSampler<T, S>
+    = KobolSampler<T, S>
   where
     Self: 's;
 
-  fn sampler(&self) -> KoBoLSampler<T, S> {
+  fn sampler(&self) -> KobolSampler<T, S> {
     // Uniform and Exp(1) sources are derived from `self.seed` in the same
     // order as the legacy `sample()`, so the first fill reproduces it
     // bit-for-bit; both owned sources advance on reuse. The seed-independent
@@ -300,7 +300,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     let c_total = self.total_coefficient();
     let b_t = self.drift_rate();
 
-    KoBoLSampler {
+    KobolSampler {
       n: self.n,
       j: self.j,
       lambda_plus: self.lambda_plus,
@@ -383,7 +383,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`KoBoL`] sampling state: owns the uniform and exponential sources
+/// Reusable [`Kobol`] sampling state: owns the uniform and exponential sources
 /// driving the truncated Rosiński series so a Monte-Carlo loop pays their
 /// setup once, plus an owned `seed` for the per-path Gamma-arrival-time
 /// series (`P`, below) — derived once more per fill so `P` is reproducible
@@ -391,7 +391,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 /// hard-wired to fresh randomness. The jump sizes and ordering are rebuilt
 /// per path inside `fill_path`.
 #[doc(hidden)]
-pub struct KoBoLSampler<T: FloatExt, S: SeedExt> {
+pub struct KobolSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   j: usize,
   lambda_plus: T,
@@ -408,7 +408,7 @@ pub struct KoBoLSampler<T: FloatExt, S: SeedExt> {
   seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt> KoBoLSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> KobolSampler<T, S> {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -420,13 +420,13 @@ impl<T: FloatExt, S: SeedExt> KoBoLSampler<T, S> {
     let c_total = self.c_total;
     let b_t = self.b_t;
 
-    let J = self.j;
-    let size = J + 1; // index 0 reserved (Γ0=0)
+    let n_terms = self.j;
+    let size = n_terms + 1; // index 0 reserved (Γ0=0)
 
-    let mut U = Array1::<T>::zeros(size);
-    self.uniform.fill_slice(U.as_slice_mut().unwrap());
-    let E = Array1::from_shape_fn(size, |_| self.exp.sample());
-    let P = Poisson::new(T::one(), Horizon::Events(J), self.seed.derive()).sample();
+    let mut u = Array1::<T>::zeros(size);
+    self.uniform.fill_slice(u.as_slice_mut().unwrap());
+    let e = Array1::from_shape_fn(size, |_| self.exp.sample());
+    let arrivals = Poisson::new(T::one(), Horizon::Events(n_terms), self.seed.derive()).sample();
     let mut tau_raw = Array1::<T>::zeros(size);
     self.uniform.fill_slice(tau_raw.as_slice_mut().unwrap());
     let tau = tau_raw * t_max;
@@ -434,7 +434,7 @@ impl<T: FloatExt, S: SeedExt> KoBoLSampler<T, S> {
     let mut jump_size = Array1::<T>::zeros(size);
 
     for j in 1..size {
-      // HERE IS THE KoBoL DIFFERENCE:
+      // HERE IS THE Kobol DIFFERENCE:
       // probability of choosing + side is p/(p+q) instead of fixed 0.5
       let v_j = if self.uniform.sample() < w_plus {
         self.lambda_plus
@@ -442,13 +442,13 @@ impl<T: FloatExt, S: SeedExt> KoBoLSampler<T, S> {
         -self.lambda_minus
       };
 
-      // HERE IS THE KoBoL DIFFERENCE:
+      // HERE IS THE Kobol DIFFERENCE:
       // divisor uses total coefficient D(p+q) instead of 2C
       let divisor = c_total * t_max; // <-- (2*C*t_max)
-      let numerator = self.alpha * P[j];
+      let numerator = self.alpha * arrivals[j];
 
       let term1 = (numerator / divisor).powf(-T::one() / self.alpha);
-      let term2 = E[j] * U[j].powf(T::one() / self.alpha) / v_j.abs();
+      let term2 = e[j] * u[j].powf(T::one() / self.alpha) / v_j.abs();
 
       jump_size[j] = term1.min(term2) * (v_j / v_j.abs());
     }
@@ -480,13 +480,13 @@ impl<T: FloatExt, S: SeedExt> KoBoLSampler<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for KoBoLSampler<T, S> {}
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for KobolSampler<T, S> {}
 
-impl<T: FloatExt, S: SeedExt> PathSampler<T> for KoBoLSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for KobolSampler<T, S> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
-    self.fill_path(out.as_slice_mut().expect("KoBoL output must be contiguous"));
+    self.fill_path(out.as_slice_mut().expect("Kobol output must be contiguous"));
   }
 
   fn sample(&mut self) -> Array1<T> {
@@ -495,7 +495,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for KoBoLSampler<T, S> {
   }
 }
 
-py_process_1d!(PyKoBoL, KoBoL,
+py_process_1d!(PyKoBoL, Kobol,
   sig: (d, p, q, lambda_plus, lambda_minus, alpha, n, j, x0=None, t=None, seed=None, dtype=None),
   params: (d: f64, p: f64, q: f64, lambda_plus: f64, lambda_minus: f64, alpha: f64, n: usize, j: usize, x0: Option<f64>, t: Option<f64>),
   device

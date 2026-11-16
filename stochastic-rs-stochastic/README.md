@@ -4,9 +4,9 @@
 
 # stochastic-rs-stochastic
 
-**Stochastic process simulation — 130 processes**
+**Stochastic process simulation — 129 processes**
 
-The simulation engine: 130 processes behind one `ProcessExt<T>` trait,
+The simulation engine: 129 processes behind one `ProcessExt<T>` trait,
 generic over `f32` / `f64`, each of which samples on CUDA, Metal or Apple
 Accelerate as well as on the CPU.
 
@@ -14,7 +14,7 @@ Accelerate as well as on the CPU.
 
 - **Diffusions** — GBM, OU, CIR, CEV, CKLS, Jacobi, Ait-Sahalia, Pearson,
   Verhulst, Kimura, three-halves, and their fractional counterparts.
-- **Jump processes** — Merton, Kou, Bates, CGMY, KoBoL, variance gamma,
+- **Jump processes** — Merton, Kou, Bates, CGMY, Kobol, variance gamma,
   NIG, bilateral gamma, Hawkes and multivariate Hawkes, compound Poisson.
 - **Stochastic volatility** — Heston (several schemes), double Heston,
   multifactor Heston, SABR, multifactor SABR, Bergomi, rough Bergomi,

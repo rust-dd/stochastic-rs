@@ -27,7 +27,7 @@
 //! Use this type for log-normal-vol smoke tests, GBM-with-stochastic-vol
 //! sanity checks, or as a baseline for educational comparison. For a
 //! genuine rough Bergomi (Volterra integral driver, `H < ½`) see
-//! [`crate::volatility::rbergomi::RoughBergomi`] (hybrid-scheme Volterra
+//! [`crate::volatility::rough_bergomi::RoughBergomi`] (hybrid-scheme Volterra
 //! simulation — see its module doc) or build a simulator on top of
 //! [`crate::rough::MarkovLift`] or [`crate::volterra::Volterra`].
 //!

@@ -1,4 +1,4 @@
-//! Reproducibility tests for `Bates` and `RoughHeston`, whose earlier
+//! Reproducibility tests for `Bates` and `Fheston`, whose earlier
 //! "cannot be fixed this way" verdict (documented in
 //! `stochastic-rs-stochastic/src/traits/process.rs`) was
 //! wrong: both built a correlated-Gaussian generator (`Cgns`) with the
@@ -8,7 +8,7 @@
 //! sibling `cgns`-holding type in this crate drives it. Both `sampler()`s
 //! now do that.
 //!
-//! `RoughHeston` has no jump component, so this made it **fully**
+//! `Fheston` has no jump component, so this made it **fully**
 //! seed-reproducible. `Bates`'s jump component (`cpoisson: CompoundPoisson<T,
 //! D>` structurally pinned to `Unseeded`, the same shape as
 //! `Merton`/`Kou`/`LevyDiffusion`'s field of the same name) remained broken
@@ -31,7 +31,7 @@ use stochastic_rs_stochastic::jump::bates::Bates;
 use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
-use stochastic_rs_stochastic::volatility::fheston::RoughHeston;
+use stochastic_rs_stochastic::volatility::fheston::Fheston;
 
 const SEED: u64 = 42;
 const N: usize = 128;
@@ -61,8 +61,8 @@ fn bates(seed: u64) -> Bates<f64, SimdNormal<f64>, Deterministic> {
   )
 }
 
-fn rough_heston(seed: u64) -> RoughHeston<f64, Deterministic> {
-  let mut m = RoughHeston::new(
+fn rough_heston(seed: u64) -> Fheston<f64, Deterministic> {
+  let mut m = Fheston::new(
     0.1,
     0.04,
     0.04,
@@ -178,7 +178,7 @@ fn bates_price_path_is_seed_reproducible() {
   );
 }
 
-/// `RoughHeston` has no jump component, so the `cgns` fix makes it fully
+/// `Fheston` has no jump component, so the `cgns` fix makes it fully
 /// reproducible: two identically-seeded objects must agree completely.
 #[test]
 fn rough_heston_sample_is_seed_reproducible() {
@@ -187,7 +187,7 @@ fn rough_heston_sample_is_seed_reproducible() {
   assert_eq!(
     bits_2d(&a),
     bits_2d(&b),
-    "two identically-seeded RoughHeston objects diverged"
+    "two identically-seeded Fheston objects diverged"
   );
 }
 
@@ -209,11 +209,11 @@ fn rough_heston_sample_par_is_thread_count_independent() {
   assert_eq!(r1.len(), m);
   assert_eq!(
     r1, r3,
-    "RoughHeston sample_par diverged between 1 and 3 threads"
+    "Fheston sample_par diverged between 1 and 3 threads"
   );
   assert_eq!(
     r1, r8,
-    "RoughHeston sample_par diverged between 1 and 8 threads"
+    "Fheston sample_par diverged between 1 and 8 threads"
   );
 }
 
@@ -236,7 +236,7 @@ fn rough_heston_sample_par_is_thread_count_independent_beyond_max_chunks() {
   assert_eq!(r1.len(), m);
   assert_eq!(
     r1, r8,
-    "RoughHeston sample_par diverged between 1 and 8 threads at m=256"
+    "Fheston sample_par diverged between 1 and 8 threads at m=256"
   );
 }
 
@@ -249,9 +249,5 @@ fn rough_heston_sample_par_paths_are_distinct() {
     .iter()
     .map(bits_2d)
     .collect::<std::collections::HashSet<_>>();
-  assert_eq!(
-    keys.len(),
-    m,
-    "RoughHeston sample_par produced duplicate paths"
-  );
+  assert_eq!(keys.len(), m, "Fheston sample_par produced duplicate paths");
 }

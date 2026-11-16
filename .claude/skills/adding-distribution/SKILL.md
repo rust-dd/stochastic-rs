@@ -271,7 +271,7 @@ root — there are no per-crate `CLAUDE.md` files, so do not look for
 ## 8a. Jump-size laws
 
 A process's jump-size slot (`D: Distribution<T> + Send + Sync`: `CompoundPoisson`, `Bates`,
-`LevyDiffusion`, `JumpFOUCustom`, …) takes a scalar continuous `Simd*` law itself: it holds parameters only, so it
+`LevyDiffusion`, `JumpFouCustom`, …) takes a scalar continuous `Simd*` law itself: it holds parameters only, so it
 is `Send + Sync`, and `draw_with` gives it the honest `Distribution::sample(&mut rng)`. `SimdNormal` is the
 reference impl; the device engine recognises `SimdNormal` and `SimdExp`.
 

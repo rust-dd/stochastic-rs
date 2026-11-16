@@ -21,7 +21,7 @@ pub mod heston_slv;
 pub mod hkde;
 pub mod multifactor_heston;
 pub mod multifactor_sabr;
-pub mod rbergomi;
+pub mod rough_bergomi;
 pub mod sabr;
 pub mod svcgmy;
 

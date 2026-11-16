@@ -50,8 +50,8 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Every field has a matching `with_*` builder setter, e.g.
-/// `FBatesSvj::new(..).with_hurst(0.15).with_rho(-0.4)`.
-pub struct FBatesSvj<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+/// `FbatesSvj::new(..).with_hurst(0.15).with_rho(-0.4)`.
+pub struct FbatesSvj<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness (H ∈ (0, 0.5) for rough).
   pub hurst: T,
   /// Drift rate.
@@ -85,7 +85,7 @@ pub struct FBatesSvj<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> FBatesSvj<T, S> {
+impl<T: FloatExt, S: SeedExt> FbatesSvj<T, S> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     hurst: T,
@@ -172,8 +172,8 @@ impl<T: FloatExt, S: SeedExt> FBatesSvj<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> FBatesSvj<T, S, B> {
-  /// Replace `hurst`, all else unchanged. `FBatesSvj` has no persisted
+impl<T: FloatExt, S: SeedExt, B> FbatesSvj<T, S, B> {
+  /// Replace `hurst`, all else unchanged. `FbatesSvj` has no persisted
   /// correlated-noise cache (`sampler()` builds `cgns` fresh from `rho`,
   /// `n`, `t` on every call), so every setter here is a plain field write.
   pub fn with_hurst(mut self, hurst: T) -> Self {
@@ -330,7 +330,7 @@ impl<T: FloatExt, S: SeedExt, B> FBatesSvj<T, S, B> {
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
-  for FBatesSvj<T, S, B>
+  for FbatesSvj<T, S, B>
 {
   /// The drift compensated by `λ κ_J`, `κ_J = exp(ν + ω²/2) − 1`, as the host
   /// compensates it; the factor's decay and `1 / Γ(H − 1/2)` folded once.
@@ -392,19 +392,19 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] FBatesSvj<T, S> { hurst, mu, s0, v0, theta, kappa, xi, rho, lambda, nu, omega, n, t, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] FbatesSvj<T, S> { hurst, mu, s0, v0, theta, kappa, xi, rho, lambda, nu, omega, n, t, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for FBatesSvj<T, S, B>
+  for FbatesSvj<T, S, B>
 {
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
-  for FBatesSvj<T, S, B>
+  for FbatesSvj<T, S, B>
 {
   type Output = [Array1<T>; 2]; // [S, v]
   type Sampler<'s>
-    = FBatesSvjSampler<T, S>
+    = FbatesSvjSampler<T, S>
   where
     Self: 's;
 
@@ -412,14 +412,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
   /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
   /// relative to each other rather than one raw stride apart.
-  fn sampler(&self) -> FBatesSvjSampler<T, S> {
+  fn sampler(&self) -> FbatesSvjSampler<T, S> {
     let n_steps = self.n.saturating_sub(1);
     let dt = if n_steps > 0 {
       self.t.unwrap_or(T::one()) / T::from_usize_(n_steps)
     } else {
       T::zero()
     };
-    FBatesSvjSampler {
+    FbatesSvjSampler {
       n: self.n,
       hurst: self.hurst,
       mu: self.mu,
@@ -494,12 +494,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`FBatesSvj`] sampling state: owns the correlated-Gaussian generator
+/// Reusable [`FbatesSvj`] sampling state: owns the correlated-Gaussian generator
 /// and the seed source. The jump (Poisson + Normal) generators are rebuilt per
 /// fill in the legacy seed-consumption order, so the first call reproduces the
 /// original stream bit-for-bit.
 #[doc(hidden)]
-pub struct FBatesSvjSampler<T: FloatExt, S: SeedExt> {
+pub struct FbatesSvjSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   hurst: T,
   mu: T,
@@ -517,7 +517,7 @@ pub struct FBatesSvjSampler<T: FloatExt, S: SeedExt> {
   seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt> FBatesSvjSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> FbatesSvjSampler<T, S> {
   fn fill_paths(&mut self, s: &mut [T], v2: &mut [T]) {
     if self.n == 0 {
       return;
@@ -557,7 +557,7 @@ impl<T: FloatExt, S: SeedExt> FBatesSvjSampler<T, S> {
     for i in 1..self.n {
       let t_i = dt * T::from_usize_(i);
 
-      // Rough variance dynamics (same as RoughHeston/fheston.rs)
+      // Rough variance dynamics (same as Fheston/fheston.rs)
       yt[i] = self.theta + (yt[i - 1] - self.theta) * (-self.kappa * dt).exp();
       zt[i] = zt[i - 1] * (-self.kappa * dt).exp()
         + sigma_tilde2[i - 1].max(T::zero()).sqrt() * gn_vol[i - 1];
@@ -594,18 +594,18 @@ impl<T: FloatExt, S: SeedExt> FBatesSvjSampler<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for FBatesSvjSampler<T, S> {}
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for FbatesSvjSampler<T, S> {}
 
-impl<T: FloatExt, S: SeedExt> PathSampler<T> for FBatesSvjSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for FbatesSvjSampler<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
     let [s, v2] = out;
     self.fill_paths(
       s.as_slice_mut()
-        .expect("FBatesSvj output must be contiguous"),
+        .expect("FbatesSvj output must be contiguous"),
       v2.as_slice_mut()
-        .expect("FBatesSvj output must be contiguous"),
+        .expect("FbatesSvj output must be contiguous"),
     );
   }
 
@@ -628,7 +628,7 @@ mod tests {
 
   #[test]
   fn price_stays_positive() {
-    let m = FBatesSvj::new(
+    let m = FbatesSvj::new(
       0.1_f64,
       0.05,
       100.0,
@@ -653,7 +653,7 @@ mod tests {
 
   #[test]
   fn variance_path_is_finite() {
-    let m = FBatesSvj::new(
+    let m = FbatesSvj::new(
       0.15_f64,
       0.05,
       100.0,
@@ -676,7 +676,7 @@ mod tests {
   #[test]
   fn seeded_is_deterministic() {
     let mk = || {
-      FBatesSvj::new(
+      FbatesSvj::new(
         0.1_f64,
         0.05,
         100.0,
@@ -702,8 +702,8 @@ mod tests {
 
   #[test]
   fn reduces_to_rough_heston_without_jumps() {
-    // With λ=0, should be identical to RoughHeston
-    let m = FBatesSvj::new(
+    // With λ=0, should be identical to Fheston
+    let m = FbatesSvj::new(
       0.1_f64,
       0.05,
       100.0,

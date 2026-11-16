@@ -63,16 +63,16 @@ pub fn horizon_from_kwargs(n: Option<usize>, t_max: Option<f64>) -> PyResult<Hor
   }
 }
 
-/// Exactly one of `theta` and the forward curve `f_T`.
+/// Exactly one of `theta` and the `forward_curve`.
 pub fn ho_lee_drift_from_kwargs(
   theta: Option<f64>,
-  f_t: Option<Py<PyAny>>,
+  forward_curve: Option<Py<PyAny>>,
 ) -> PyResult<HoLeeDrift<f64>> {
-  match (theta, f_t) {
+  match (theta, forward_curve) {
     (Some(theta), None) => Ok(HoLeeDrift::Constant(theta)),
     (None, Some(f)) => Ok(HoLeeDrift::ForwardCurve(Fn1D::Py(f))),
     _ => Err(PyValueError::new_err(
-      "give exactly one drift: theta or f_T",
+      "give exactly one drift: theta or forward_curve",
     )),
   }
 }

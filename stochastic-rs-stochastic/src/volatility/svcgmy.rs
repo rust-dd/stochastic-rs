@@ -404,7 +404,6 @@ pub struct SvcgmySampler<T: FloatExt, S: SeedExt> {
 }
 
 impl<T: FloatExt, S: SeedExt> SvcgmySampler<T, S> {
-  #[allow(non_snake_case)]
   fn fill_paths(&mut self, x: &mut [T], v: &mut [T]) {
     if self.n == 0 {
       return;
@@ -423,7 +422,7 @@ impl<T: FloatExt, S: SeedExt> SvcgmySampler<T, S> {
 
     // C = (Γ(2-α) (λ+^(α-2) + λ-^(α-2)))^{-1}
     let g = gamma(2.0 - self.alpha.to_f64().unwrap());
-    let C = T::one()
+    let c_norm = T::one()
       / (T::from_f64_fast(g)
         * (self.lambda_plus.powf(self.alpha - f2) + self.lambda_minus.powf(self.alpha - f2)));
 
@@ -440,16 +439,16 @@ impl<T: FloatExt, S: SeedExt> SvcgmySampler<T, S> {
     }
 
     // 2) Series random variables (Algorithm 1 uses j=1..J with Γ0=0)
-    let J = self.j;
-    let size = J + 1; // index 0 is reserved (Γ0=0)
+    let n_terms = self.j;
+    let size = n_terms + 1; // index 0 is reserved (Γ0=0)
 
     let mut uniform = SimdUniform::<T>::new(T::zero(), T::one()).seeded(&self.seed);
     let mut exp = SimdExp::<T>::new(T::one()).seeded(&self.seed);
 
     // U_j ~ Unif(0,1), E_j ~ Exp(1), τ_j ~ Unif(0,T)
-    let mut U = Array1::<T>::zeros(size);
-    uniform.fill_slice(U.as_slice_mut().unwrap());
-    let E = Array1::from_shape_fn(size, |_| exp.sample());
+    let mut u = Array1::<T>::zeros(size);
+    uniform.fill_slice(u.as_slice_mut().unwrap());
+    let e = Array1::from_shape_fn(size, |_| exp.sample());
     let mut tau_raw = Array1::<T>::zeros(size);
     uniform.fill_slice(tau_raw.as_slice_mut().unwrap());
     let tau = tau_raw * t_max;
@@ -459,7 +458,7 @@ impl<T: FloatExt, S: SeedExt> SvcgmySampler<T, S> {
     // distinct path-to-path: `self.seed` is this sampler's own already chunk-decorrelated
     // basis (see `sampler()`), so ticking it once more per fill stays safely confined to
     // this chunk's own sequence.
-    let P = Poisson::new(T::one(), Horizon::Events(J), self.seed.derive()).sample();
+    let arrivals = Poisson::new(T::one(), Horizon::Events(n_terms), self.seed.derive()).sample();
 
     // c(τ_j) = C * v_{k-1} where (k-1)dt < τ_j <= k dt
     let mut c_tau = Array1::<T>::zeros(size);
@@ -471,7 +470,7 @@ impl<T: FloatExt, S: SeedExt> SvcgmySampler<T, S> {
       } else {
         v[k.to_usize().unwrap() - 1]
       };
-      c_tau[j] = C * v_km1;
+      c_tau[j] = c_norm * v_km1;
     }
 
     // 3) Build Y on the grid (Algorithm 1)
@@ -489,7 +488,7 @@ impl<T: FloatExt, S: SeedExt> SvcgmySampler<T, S> {
       let t_1 = T::from_usize_(i - 1) * dt;
       let t = T::from_usize_(i) * dt;
 
-      for j in 1..=J {
+      for j in 1..=n_terms {
         if tau[j] > t_1 && tau[j] <= t {
           // V_j is chosen as λ+ or -λ- with prob 1/2
           let v_j = if uniform.sample() < T::from_f64_fast(0.5) {
@@ -499,11 +498,11 @@ impl<T: FloatExt, S: SeedExt> SvcgmySampler<T, S> {
           };
 
           // min term: ((α Γ_j)/(2 c(τ_j) T))^{-1/α}  ∧  E_j U_j^{1/α} / |V_j|
-          let num = self.alpha * P[j];
+          let num = self.alpha * arrivals[j];
           let den = f2 * c_tau[j] * t_max;
           let term1 = (num / den).powf(-T::one() / self.alpha);
 
-          let term2 = E[j] * U[j].powf(T::one() / self.alpha) / v_j.abs();
+          let term2 = e[j] * u[j].powf(T::one() / self.alpha) / v_j.abs();
           let min_term = term1.min(term2);
 
           jump_component += min_term * (v_j / v_j.abs());

@@ -4,10 +4,10 @@ use stochastic_rs_stochastic::ProcessExt;
 use stochastic_rs_stochastic::diffusion::cfou::Cfou;
 use stochastic_rs_stochastic::diffusion::fcir::Fcir;
 use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
-use stochastic_rs_stochastic::diffusion::fjacobi::FJacobi;
+use stochastic_rs_stochastic::diffusion::fjacobi::Fjacobi;
 use stochastic_rs_stochastic::diffusion::fou::Fou;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
-use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
+use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFouCustom;
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
 use stochastic_rs_stochastic::params::Horizon;
 use stochastic_rs_stochastic::params::VarianceBoundary;
@@ -141,7 +141,7 @@ fn fcir_setters_match_fresh_construction() {
 
 #[test]
 fn fjacobi_setters_match_fresh_construction() {
-  let chained = FJacobi::<f64, _>::new(0.3, 0.5, 1.5, 0.4, 16, Some(0.3), Some(2.0), seed(1))
+  let chained = Fjacobi::<f64, _>::new(0.3, 0.5, 1.5, 0.4, 16, Some(0.3), Some(2.0), seed(1))
     .with_hurst(0.7)
     .with_beta(2.0)
     .with_alpha(1.0)
@@ -150,7 +150,7 @@ fn fjacobi_setters_match_fresh_construction() {
     .with_x0(Some(0.5))
     .with_horizon(Some(1.0))
     .with_seed(seed(7));
-  let fresh = FJacobi::<f64, _>::new(0.7, 1.0, 2.0, 0.2, 64, Some(0.5), Some(1.0), seed(7));
+  let fresh = Fjacobi::<f64, _>::new(0.7, 1.0, 2.0, 0.2, 64, Some(0.5), Some(1.0), seed(7));
 
   assert_eq!(
     (
@@ -368,7 +368,7 @@ fn jump_fou_with_horizon_leaves_the_jump_driver_alone() {
 
 #[test]
 fn jump_fou_custom_setters_match_fresh_construction() {
-  let chained = JumpFOUCustom::<f64, _, _>::new(
+  let chained = JumpFouCustom::<f64, _, _>::new(
     0.3,
     2.0,
     0.5,
@@ -390,7 +390,7 @@ fn jump_fou_custom_setters_match_fresh_construction() {
   .with_jump_times(SimdNormal::new(0.5, 0.01))
   .with_jump_sizes(jump_law(0.1))
   .with_seed(seed(7));
-  let fresh = JumpFOUCustom::<f64, _, _>::new(
+  let fresh = JumpFouCustom::<f64, _, _>::new(
     0.7,
     1.0,
     0.0,

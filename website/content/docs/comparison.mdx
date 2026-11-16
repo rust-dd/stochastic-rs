@@ -20,7 +20,7 @@ Three open-source options price derivatives without you writing the numerics: [Q
 |---|---|---|---|
 | Language | Rust | C++ | Rust |
 | Licence | MIT | BSD-style | Apache-2.0 |
-| Python | Native PyO3, 305 entries | SWIG wrappers | Early-stage (`rustquant` 0.0.x) |
+| Python | Native PyO3, 304 entries | SWIG wrappers | Early-stage (`rustquant` 0.0.x) |
 | Float precision | Generic `f32` / `f64` simulation | `double` | `f64` |
 | SIMD / GPU | CPU SIMD, CUDA, Metal, Accelerate | None | None |
 | First released | 2024 | 2000 | 2023 |
@@ -29,7 +29,7 @@ Three open-source options price derivatives without you writing the numerics: [Q
 
 Areas where the other two have little or nothing:
 
-**Rough and fractional volatility.** 130 processes including rough Bergomi, rough Heston, fractional OU, fractional CIR, Volterra kernels and a Markovian lift. QuantLib ships one rough engine (`analyticroughhestonengine`); RustQuant has none. See [processes](/docs/processes).
+**Rough and fractional volatility.** 129 processes including rough Bergomi, rough Heston, fractional OU, fractional CIR, Volterra kernels and a Markovian lift. QuantLib ships one rough engine (`analyticroughhestonengine`); RustQuant has none. See [processes](/docs/processes).
 
 **Malliavin Greeks.** Thalmaier and El Khatib weight schemes, plus a Fourier-Malliavin volatility estimator. Neither of the others implements Malliavin calculus.
 
@@ -39,7 +39,7 @@ Areas where the other two have little or nothing:
 
 **Hardware acceleration.** SIMD sampling on the CPU, every process on a CUDA or Metal GPU, and Apple's vDSP FFT (Accelerate) for fractional Gaussian noise. Neither alternative attempts this. See [GPU support](/docs/concepts/gpu-support) and [benchmarks](/docs/benchmarks).
 
-**Native Python.** 305 PyO3 entries, NumPy in and NumPy out, no SWIG layer and no C++ toolchain needed to install. See [Python bindings](/docs/python).
+**Native Python.** 304 PyO3 entries, NumPy in and NumPy out, no SWIG layer and no C++ toolchain needed to install. See [Python bindings](/docs/python).
 
 ## Where QuantLib is the better choice
 
@@ -65,7 +65,7 @@ It also ships ISO-3166 country codes and ISO-10383 market identifier codes, a sm
 
 | Area | stochastic-rs | QuantLib | RustQuant |
 |---|---|---|---|
-| Stochastic processes | 130 | ~20 | ~10 |
+| Stochastic processes | 129 | ~20 | ~10 |
 | Rough / fractional volatility | Extensive | One engine | None |
 | Fourier pricing | Heston, Bates, Merton, Kou, VG, CGMY, double Heston | Heston family | None |
 | Model calibration | Heston, Heston SLV, SABR, SVJ, Lévy, rough Bergomi, double Heston, Hull-White, G2++, Black-Karasinski | Broad | None |

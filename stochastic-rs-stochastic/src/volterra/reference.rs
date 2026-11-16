@@ -9,7 +9,7 @@
 //! typically a [`VolterraKernel::evaluate`](super::kernel::VolterraKernel::evaluate)
 //! call, never the exponential-sum fit) at every $(i,j)$ pair, at $O(n^2)$
 //! cost. This is deliberately **not** scaffolding: it is the permanent
-//! cross-implementation oracle for [`VolterraSde`](super::sve::VolterraSde) /
+//! cross-implementation oracle for [`VolterraSde`](super::volterra_sde::VolterraSde) /
 //! [`VolterraLift`](super::lift::VolterraLift) — this crate's own validation
 //! audit found cross-implementation comparisons to be its highest-yield test
 //! class, and a fast $O(nN')$ path with no independent oracle is exactly how

@@ -10,16 +10,16 @@
 //! driver. A general `mu` is the standard form — the zero-mean case is
 //! `mu = 0`, not a different equation.
 //!
-//! ## Same SDE as [`FVasicek`]
+//! ## Same SDE as [`Fvasicek`]
 //!
-//! [`FVasicek`] is this equation under short-rate vocabulary: its `a` is
+//! [`Fvasicek`] is this equation under short-rate vocabulary: its `a` is
 //! this `theta` (speed), its `b` is this `mu` (level), its `r` is this `X`.
 //! It is built on this type rather than beside it — it holds a `Fou`, its
 //! sampler *is* [`FouSampler`], and both the Euler family and the fGN
 //! pipeline it reports are the ones this process reports. The separate name
 //! carries the short-rate application, not a second implementation.
 //!
-//! The random stream is the one thing not shared: [`FVasicek::new`] derives a
+//! The random stream is the one thing not shared: [`Fvasicek::new`] derives a
 //! child seed for the embedded `Fou`, so the two built from one
 //! [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic) seed are
 //! independent draws of the same law.
@@ -28,8 +28,8 @@
 //! *Fractional Ornstein-Uhlenbeck Processes*, Electronic Journal of
 //! Probability 8, paper 3, 1–14, DOI: 10.1214/EJP.v8-125.
 //!
-//! [`FVasicek`]: crate::interest::fractional_vasicek::FVasicek
-//! [`FVasicek::new`]: crate::interest::fractional_vasicek::FVasicek::new
+//! [`Fvasicek`]: crate::interest::fvasicek::Fvasicek
+//! [`Fvasicek::new`]: crate::interest::fvasicek::Fvasicek::new
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -210,13 +210,13 @@ impl<T: FloatExt, S: SeedExt, B> Fou<T, S, B> {
   }
 
   /// Mean-reversion speed (θ in the SDE), the same quantity
-  /// [`FVasicek::theta`](crate::interest::fractional_vasicek::FVasicek::theta) calls `a`.
+  /// [`Fvasicek::theta`](crate::interest::fvasicek::Fvasicek::theta) calls `a`.
   pub fn theta(&self) -> T {
     self.theta
   }
 
   /// Long-run mean level (μ in the SDE), the same quantity
-  /// [`FVasicek::mu`](crate::interest::fractional_vasicek::FVasicek::mu) calls `b`.
+  /// [`Fvasicek::mu`](crate::interest::fvasicek::Fvasicek::mu) calls `b`.
   pub fn mu(&self) -> T {
     self.mu
   }
@@ -312,7 +312,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
 /// and owns a seed derived once at construction. The path is an Euler
 /// discretisation of `dX = theta(mu - X) dt + sigma dB^H` started at `x0`.
 /// Also the whole of
-/// [`FVasicek`](crate::interest::fractional_vasicek::FVasicek)'s sampler,
+/// [`Fvasicek`](crate::interest::fvasicek::Fvasicek)'s sampler,
 /// which is an alias for this type.
 #[doc(hidden)]
 pub struct FouSampler<'a, T: FloatExt, S: SeedExt, B> {

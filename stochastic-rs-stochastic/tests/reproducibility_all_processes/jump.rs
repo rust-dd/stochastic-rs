@@ -4,7 +4,7 @@
 //! `Bates`, `JumpFou`, `Kou`, `LevyDiffusion` and `Merton` are five of
 //! the eight distribution-taking types named there, driven at `LAMBDA = 50`
 //! so a jump-component reproducibility bug cannot hide behind a
-//! diffusion-only comparison; `JumpFOUCustom` is the sixth (its jump
+//! diffusion-only comparison; `JumpFouCustom` is the sixth (its jump
 //! timing/size draws use two independent `SimdExp` distributions instead
 //! of one `SimdNormal`) and one of the ten backend-generic types besides.
 
@@ -15,10 +15,10 @@ use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGamma;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGammaMotion;
 use stochastic_rs_stochastic::jump::cgmy::Cgmy;
 use stochastic_rs_stochastic::jump::cts::Cts;
-use stochastic_rs_stochastic::jump::hawkes_jd::HawkesJD;
+use stochastic_rs_stochastic::jump::hawkes_jd::HawkesJd;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
-use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
-use stochastic_rs_stochastic::jump::kobol::KoBoL;
+use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFouCustom;
+use stochastic_rs_stochastic::jump::kobol::Kobol;
 use stochastic_rs_stochastic::jump::kou::Kou;
 use stochastic_rs_stochastic::jump::levy_diffusion::LevyDiffusion;
 use stochastic_rs_stochastic::jump::merton::Merton;
@@ -82,7 +82,7 @@ guard!(cts, "Cts", |s| Cts::new(
   s
 ));
 
-guard!(hawkes_jd, "HawkesJD", |s| HawkesJD::new(
+guard!(hawkes_jd, "HawkesJd", |s| HawkesJd::new(
   0.05,
   0.2,
   0.5,
@@ -109,8 +109,8 @@ guard!(jump_fou, "JumpFou", |s| JumpFou::new(
   s
 ));
 
-guard!(jump_fou_custom, "JumpFOUCustom", |s| {
-  JumpFOUCustom::new(
+guard!(jump_fou_custom, "JumpFouCustom", |s| {
+  JumpFouCustom::new(
     0.65,
     1.5,
     0.0,
@@ -124,7 +124,7 @@ guard!(jump_fou_custom, "JumpFOUCustom", |s| {
   )
 });
 
-guard!(kobol, "KoBoL", |s| KoBoL::new(
+guard!(kobol, "Kobol", |s| Kobol::new(
   1.0,
   1.0,
   1.0,

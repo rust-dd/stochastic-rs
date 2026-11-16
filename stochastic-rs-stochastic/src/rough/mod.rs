@@ -35,8 +35,8 @@ pub mod rl_heston;
 pub use kernel::RlKernel;
 pub use markov_lift::MarkovLift;
 pub use rl_bs::RlBlackScholes;
-pub use rl_fbm::RlFBm;
-pub use rl_fou::RlFOU;
+pub use rl_fbm::RlFbm;
+pub use rl_fou::RlFou;
 pub use rl_heston::RlHeston;
 
 /// [`MarkovLift`] has one path, `rough::MarkovLift`.

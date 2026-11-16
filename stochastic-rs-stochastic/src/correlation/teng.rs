@@ -35,18 +35,18 @@ use crate::traits::ProcessExt;
 ///
 /// Output ρ_t = tanh(X_t) ∈ (−1, 1).
 #[derive(Debug, Clone)]
-pub struct TengSCP<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+pub struct TengScp<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed (κ > 0).
   pub kappa: T,
   /// Long-run correlation level (μ ∈ (−1, 1)).
   pub mu: T,
-  /// Correlation volatility (σ > 0). Not validated by [`TengSCP::new`]: at
-  /// `sigma = 0`, [`density_a`](TengSCP::density_a)/
-  /// [`density_b`](TengSCP::density_b)/
-  /// [`stationary_density_unnorm`](TengSCP::stationary_density_unnorm) all
+  /// Correlation volatility (σ > 0). Not validated by [`TengScp::new`]: at
+  /// `sigma = 0`, [`density_a`](TengScp::density_a)/
+  /// [`density_b`](TengScp::density_b)/
+  /// [`stationary_density_unnorm`](TengScp::stationary_density_unnorm) all
   /// divide by `sigma * sigma`, so those (but not path simulation itself,
   /// which never divides by `sigma`) return non-finite values — see
-  /// [`stationary_density_unnorm`](TengSCP::stationary_density_unnorm)'s own
+  /// [`stationary_density_unnorm`](TengScp::stationary_density_unnorm)'s own
   /// doc for the exact breakdown.
   pub sigma: T,
   /// Initial correlation (ρ₀ ∈ (−1, 1)).
@@ -62,7 +62,7 @@ pub struct TengSCP<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> TengSCP<T, S> {
+impl<T: FloatExt, S: SeedExt> TengScp<T, S> {
   pub fn new(kappa: T, mu: T, sigma: T, rho0: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(
       kappa.is_finite(),
@@ -98,7 +98,7 @@ impl<T: FloatExt, S: SeedExt> TengSCP<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> TengSCP<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B> TengScp<T, S, B> {
   /// Reparametrised coefficients (Eq. 21):
   /// κ* = κ + σ², μ* = κμ/(κ+σ²), σ* = σ.
   pub fn kappa_star(&self) -> T {
@@ -157,7 +157,7 @@ impl<T: FloatExt, S: SeedExt, B> TengSCP<T, S, B> {
 /// state is the unbounded variable the recursion runs on, so `ρ₀` enters as
 /// its inverse transform and the reported value is transformed back.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
-  for TengSCP<T, S, B>
+  for TengScp<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::TanhOrnsteinUhlenbeck {
@@ -193,28 +193,28 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] TengSCP<T, S> { kappa, mu, sigma, rho0, n, t, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] TengScp<T, S> { kappa, mu, sigma, rho0, n, t, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for TengSCP<T, S, B>
+  for TengScp<T, S, B>
 {
 }
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for TengSCP<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for TengScp<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
-    = TengSCPSampler<T>
+    = TengScpSampler<T>
   where
     Self: 's;
 
-  fn sampler(&self) -> TengSCPSampler<T> {
+  fn sampler(&self) -> TengScpSampler<T> {
     let n_steps = self.n.saturating_sub(1);
     let dt = if n_steps > 0 {
       self.t.unwrap_or(T::one()) / T::from_usize_(n_steps)
     } else {
       T::zero()
     };
-    TengSCPSampler {
+    TengScpSampler {
       n: self.n,
       kappa: self.kappa,
       mu: self.mu,
@@ -257,12 +257,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`TengSCP`] sampling state: owns the Gaussian source and the
+/// Reusable [`TengScp`] sampling state: owns the Gaussian source and the
 /// precomputed step size. `fill_path` Euler-steps the modified Ou in X-space
 /// (`dX = κ(μ − tanh X)dt + σ dW`) and outputs `ρ = tanh(X)` in place; the owned
 /// source advances each call for independent paths.
 #[doc(hidden)]
-pub struct TengSCPSampler<T: FloatExt> {
+pub struct TengScpSampler<T: FloatExt> {
   n: usize,
   kappa: T,
   mu: T,
@@ -272,7 +272,7 @@ pub struct TengSCPSampler<T: FloatExt> {
   normal: Seeded<SimdNormal<T>>,
 }
 
-impl<T: FloatExt> TengSCPSampler<T> {
+impl<T: FloatExt> TengScpSampler<T> {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -299,15 +299,15 @@ impl<T: FloatExt> TengSCPSampler<T> {
   }
 }
 
-impl<T: FloatExt> crate::traits::Sealed for TengSCPSampler<T> {}
+impl<T: FloatExt> crate::traits::Sealed for TengScpSampler<T> {}
 
-impl<T: FloatExt> PathSampler<T> for TengSCPSampler<T> {
+impl<T: FloatExt> PathSampler<T> for TengScpSampler<T> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
     let slice = out
       .as_slice_mut()
-      .expect("TengSCP output must be contiguous");
+      .expect("TengScp output must be contiguous");
     self.fill_path(slice);
   }
 
@@ -317,7 +317,7 @@ impl<T: FloatExt> PathSampler<T> for TengSCPSampler<T> {
   }
 }
 
-py_process_1d!(PyTengSCP, TengSCP,
+py_process_1d!(PyTengSCP, TengScp,
   sig: (kappa, mu, sigma, rho0, n, t=None, seed=None, dtype=None),
   params: (kappa: f64, mu: f64, sigma: f64, rho0: f64, n: usize, t: Option<f64>),
   device
@@ -331,7 +331,7 @@ mod tests {
 
   #[test]
   fn stays_bounded() {
-    let scp = TengSCP::new(
+    let scp = TengScp::new(
       8.0_f64,
       0.0,
       1.2,
@@ -347,7 +347,7 @@ mod tests {
   #[test]
   fn mean_reverts() {
     let mu = -0.4_f64;
-    let scp = TengSCP::new(12.0, mu, 0.5, 0.5, 5000, Some(10.0), Deterministic::new(99));
+    let scp = TengScp::new(12.0, mu, 0.5, 0.5, 5000, Some(10.0), Deterministic::new(99));
     let path = scp.sample();
     let tail = &path.as_slice().unwrap()[4000..];
     let avg: f64 = tail.iter().sum::<f64>() / tail.len() as f64;
@@ -359,24 +359,24 @@ mod tests {
 
   #[test]
   fn stationary_density_peaks_near_mu() {
-    let scp = TengSCP::new(8.0_f64, 0.3, 0.5, 0.0, 100, None, Unseeded);
+    let scp = TengScp::new(8.0_f64, 0.3, 0.5, 0.0, 100, None, Unseeded);
     let d_at_mu = scp.stationary_density_unnorm(0.3);
     let d_at_0 = scp.stationary_density_unnorm(0.0);
     assert!(d_at_mu > d_at_0);
   }
 
   /// Backs the doc comments on `sigma`/`density_a`/`density_b`/
-  /// `stationary_density_unnorm`: `TengSCP::new` does not validate that
+  /// `stationary_density_unnorm`: `TengScp::new` does not validate that
   /// `sigma` is positive, so this must actually reach the documented
   /// non-finite outputs rather than just claim to.
   #[test]
   fn zero_sigma_density_functions_are_non_finite() {
-    let zero_mu = TengSCP::new(8.0_f64, 0.0, 0.0, 0.0, 10, Some(1.0), Unseeded);
+    let zero_mu = TengScp::new(8.0_f64, 0.0, 0.0, 0.0, 10, Some(1.0), Unseeded);
     assert_eq!(zero_mu.density_a(), f64::INFINITY);
     assert!(zero_mu.density_b().is_nan(), "mu=0 makes density_b a 0/0");
     assert!(zero_mu.stationary_density_unnorm(0.0).is_nan());
 
-    let positive_mu = TengSCP::new(8.0_f64, 0.3, 0.0, 0.0, 10, Some(1.0), Unseeded);
+    let positive_mu = TengScp::new(8.0_f64, 0.3, 0.0, 0.0, 10, Some(1.0), Unseeded);
     assert_eq!(positive_mu.density_a(), f64::INFINITY);
     assert_eq!(positive_mu.density_b(), f64::INFINITY);
     assert!(
@@ -384,7 +384,7 @@ mod tests {
       "a - b is inf - inf even though a and b were each merely infinite"
     );
 
-    let negative_mu = TengSCP::new(8.0_f64, -0.3, 0.0, 0.0, 10, Some(1.0), Unseeded);
+    let negative_mu = TengScp::new(8.0_f64, -0.3, 0.0, 0.0, 10, Some(1.0), Unseeded);
     assert_eq!(negative_mu.density_b(), f64::NEG_INFINITY);
     assert!(
       negative_mu.stationary_density_unnorm(0.0).is_nan(),
@@ -394,7 +394,7 @@ mod tests {
 
   #[test]
   fn seeded_reproducibility() {
-    let p1 = TengSCP::new(
+    let p1 = TengScp::new(
       5.0_f64,
       0.0,
       0.8,
@@ -404,7 +404,7 @@ mod tests {
       Deterministic::new(42),
     )
     .sample();
-    let p2 = TengSCP::new(
+    let p2 = TengScp::new(
       5.0_f64,
       0.0,
       0.8,

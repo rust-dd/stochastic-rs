@@ -261,8 +261,8 @@ of silently drawing zeros — `Merton::jump_sizes`,
 `GaussianPolynomialVolatility::euler_spec`. Guards in tree: `Merton` (a jump law the
 kernels draw, via `src/process/cpoisson.rs::device_jump_sizes`),
 `GaussianPolynomialVolatility` (`DEVICE_COEFFICIENTS = 8`), `MultiGbm` (`assets() <=
-CORRELATED_STREAMS`), `RoughHeston` / `RoughBergomi` / `FBatesSvj` / `Arima`
-(`HISTORY_SLOTS`), `Cgmy` / `Cts` / `KoBoL` / `Rdts` (`SERIES_SLOTS`),
+CORRELATED_STREAMS`), `Fheston` / `RoughBergomi` / `FbatesSvj` / `Arima`
+(`HISTORY_SLOTS`), `Cgmy` / `Cts` / `Kobol` / `Rdts` (`SERIES_SLOTS`),
 `InverseAlphaStableSubordinator` (`TABLE_SLOTS`), `Lmm` (`CORRELATED_STREAMS`
 forwards), `Ctrw` (exponential waits), `Hawkes` (count mode).
 
@@ -534,11 +534,11 @@ shrinks as the engine grows (empty today) — check the nine documented ways rou
    `LIFT_SLOTS` nodes.
 4. **A `history` clause** — the host's own exact O(n²) convolution for grids up
    to `HISTORY_SLOTS`, weights travelling as a curve. This is what moved
-   `RoughHeston`, `FBatesSvj`, `RoughBergomi`, `Lfsm` and `Arima`/`Sarima` onto
+   `Fheston`, `FbatesSvj`, `RoughBergomi`, `Lfsm` and `Arima`/`Sarima` onto
    the engine.
 5. **A `series` clause** — a shot-noise series drawn per path before the steps
    and summed into the grid cells its terms fall in, so the host's sort is not
-   needed; grids up to `SERIES_SLOTS`. This is what moved `Cgmy`, `Cts`, `KoBoL`
+   needed; grids up to `SERIES_SLOTS`. This is what moved `Cgmy`, `Cts`, `Kobol`
    and `Rdts` onto the engine, as one family with host-folded constants.
 6. **A `table` clause** — a monotone table built per path before the steps and
    inverted by interpolation at every step, the extent doubled until the table

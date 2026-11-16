@@ -5,8 +5,8 @@ use stochastic_rs_distributions::special::ln_bessel_ie;
 use stochastic_rs_stochastic::diffusion::cev::Cev;
 use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::diffusion::ckls::Ckls;
-use stochastic_rs_stochastic::diffusion::modified_cir::ModifiedCIR;
-use stochastic_rs_stochastic::diffusion::radial_ou::RadialOU;
+use stochastic_rs_stochastic::diffusion::modified_cir::ModifiedCir;
+use stochastic_rs_stochastic::diffusion::radial_ou::RadialOu;
 
 use crate::mle::DiffusionModel;
 
@@ -138,7 +138,7 @@ impl<S: SeedExt> DiffusionModel for Ckls<f64, S> {
   }
 }
 
-impl<S: SeedExt> DiffusionModel for ModifiedCIR<f64, S> {
+impl<S: SeedExt> DiffusionModel for ModifiedCir<f64, S> {
   fn num_params(&self) -> usize {
     2
   }
@@ -169,7 +169,7 @@ impl<S: SeedExt> DiffusionModel for ModifiedCIR<f64, S> {
   }
 }
 
-impl<S: SeedExt> DiffusionModel for RadialOU<f64, S> {
+impl<S: SeedExt> DiffusionModel for RadialOu<f64, S> {
   fn num_params(&self) -> usize {
     2
   }

@@ -12,19 +12,19 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::diffusion::cfou::Cfou;
 use stochastic_rs_stochastic::diffusion::fcir::Fcir;
 use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
-use stochastic_rs_stochastic::diffusion::fjacobi::FJacobi;
+use stochastic_rs_stochastic::diffusion::fjacobi::Fjacobi;
 use stochastic_rs_stochastic::diffusion::fou::Fou;
-use stochastic_rs_stochastic::interest::fractional_vasicek::FVasicek;
+use stochastic_rs_stochastic::interest::fvasicek::Fvasicek;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
-use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
+use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFouCustom;
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::cfbms::Cfbms;
 use stochastic_rs_stochastic::process::fbm::Fbm;
 use stochastic_rs_stochastic::rough::kernel::RlKernel;
 use stochastic_rs_stochastic::rough::rl_bs::RlBlackScholes;
-use stochastic_rs_stochastic::rough::rl_fbm::RlFBm;
-use stochastic_rs_stochastic::rough::rl_fou::RlFOU;
+use stochastic_rs_stochastic::rough::rl_fbm::RlFbm;
+use stochastic_rs_stochastic::rough::rl_fou::RlFou;
 use stochastic_rs_stochastic::rough::rl_heston::RlHeston;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volterra::Volterra;
@@ -128,7 +128,7 @@ fn fcir_stays_nonnegative_and_agrees() {
 #[test]
 fn fjacobi_stays_in_the_unit_interval() {
   let build = || {
-    FJacobi::<f32, _>::new(
+    Fjacobi::<f32, _>::new(
       0.7,
       0.3,
       0.6,
@@ -173,7 +173,7 @@ fn fbm_agrees_with_the_cpu_law() {
 #[test]
 fn fractional_vasicek_agrees_with_the_cpu_law() {
   let build = || {
-    FVasicek::<f32, _>::new(
+    Fvasicek::<f32, _>::new(
       0.7,
       2.0,
       0.04,
@@ -428,7 +428,7 @@ fn complex_fou_agrees_with_the_cpu_law() {
 /// would look Brownian.
 #[test]
 fn rl_fbm_agrees_with_the_cpu_law() {
-  let build = || RlFBm::<f32, _>::new(0.3, N, Some(4.0), None, Deterministic::new(29));
+  let build = || RlFbm::<f32, _>::new(0.3, N, Some(4.0), None, Deterministic::new(29));
   const PATHS: usize = 3 * M;
   let device = build().on::<Device>().sample_par(PATHS);
   let host = build().sample_par(PATHS);
@@ -469,7 +469,7 @@ fn rl_fbm_agrees_with_the_cpu_law() {
 #[test]
 fn rl_fou_agrees_with_the_cpu_law() {
   let build = || {
-    RlFOU::<f32, _>::new(
+    RlFou::<f32, _>::new(
       0.3,
       2.0,
       0.05,
@@ -636,7 +636,7 @@ fn rl_heston_agrees_with_the_cpu_law() {
 }
 
 /// The general Volterra process's lift branch is fBm under the Markov lift —
-/// the family `RlFBm` rides — while a kernel outside the rough range takes the
+/// the family `RlFbm` rides — while a kernel outside the rough range takes the
 /// reference convolution, which the history block runs in the kernel against
 /// the kernel tabulated on the grid.
 #[test]
@@ -761,7 +761,7 @@ fn jump_fou_agrees_with_the_cpu_law() {
 #[test]
 fn jump_fou_custom_with_exponential_laws_agrees_with_the_cpu_law() {
   let build = || {
-    JumpFOUCustom::<f32, _, _>::new(
+    JumpFouCustom::<f32, _, _>::new(
       0.7,
       2.0,
       1.0,

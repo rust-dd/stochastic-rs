@@ -10,9 +10,8 @@ use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::diffusion::multi_gbm::MultiGbm;
 use stochastic_rs_stochastic::interest::adg::Adg;
-use stochastic_rs_stochastic::interest::bgm::Bgm;
 use stochastic_rs_stochastic::interest::lmm::Lmm;
-use stochastic_rs_stochastic::interest::wu_zhang::WuZhangD;
+use stochastic_rs_stochastic::interest::wu_zhang::WuZhang;
 use stochastic_rs_stochastic::noise::mcgns::Mcgns;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
@@ -53,55 +52,6 @@ fn row_corr(paths: &[Array2<f32>], a: usize, b: usize) -> f64 {
     sbb += y * y;
   }
   sab / (saa * sbb).sqrt()
-}
-
-/// Each rate is a driftless proportional diffusion, so its terminal mean is
-/// its own start and its terminal spread grows with its own `lambda`; the
-/// three rows are given distinct values of both so a row that read its
-/// neighbour's would move.
-#[test]
-fn bgm_agrees_with_the_cpu_law() {
-  let build = || {
-    Bgm::<f32, _>::new(
-      array![0.15, 0.30, 0.45],
-      array![0.03, 0.05, 0.07],
-      3,
-      Some(1.0),
-      N,
-      Deterministic::new(41),
-    )
-  };
-  let device = build().on::<Device>().sample_par(M);
-  let host = build().sample_par(M);
-  assert_eq!(device.len(), M);
-  assert_eq!(device[0].dim(), (3, N));
-  for (i, x0) in [0.03f32, 0.05, 0.07].iter().enumerate() {
-    assert_eq!(device[0][(i, 0)], *x0, "row {i} starts at its own x0");
-  }
-  assert!(
-    device.iter().all(|p| p.iter().all(|v| v.is_finite())),
-    "BGM: a device path left the reals"
-  );
-  for i in 0..3 {
-    let (h, d) = (row_mean(&host, i), row_mean(&device, i));
-    assert!(
-      (h - d).abs() < 0.002,
-      "BGM row {i} terminal mean: host {h}, device {d}"
-    );
-    agrees(
-      row_spread(&host, i),
-      row_spread(&device, i),
-      0.08,
-      &format!("BGM row {i} terminal spread"),
-    );
-  }
-  for (a, b) in [(0, 1), (1, 2), (0, 2)] {
-    let c = row_corr(&device, a, b);
-    assert!(
-      c.abs() < 0.08,
-      "BGM rows {a} and {b} are correlated on the device ({c}): the rows share a stream"
-    );
-  }
 }
 
 /// Each factor mean-reverts under two shared curves and is observed through a
@@ -187,7 +137,7 @@ fn adg_agrees_with_the_cpu_law() {
 #[test]
 fn wu_zhang_agrees_with_the_cpu_law() {
   let build = || {
-    WuZhangD::<f32, _>::new(
+    WuZhang::<f32, _>::new(
       array![0.02, 0.04, 0.06],
       array![2.0, 1.5, 1.0],
       array![0.2, 0.3, 0.4],

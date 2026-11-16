@@ -41,15 +41,15 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_distributions::variance_gamma::PyVarianceGamma;
   use stochastic_rs_distributions::weibull::PyWeibull;
   // Stochastic — autoregressive
-  use stochastic_rs_stochastic::autoregressive::agrach::PyAgarch;
+  use stochastic_rs_stochastic::autoregressive::agarch::PyAgarch;
   use stochastic_rs_stochastic::autoregressive::ar::PyARp;
   use stochastic_rs_stochastic::autoregressive::arch::PyArch;
   use stochastic_rs_stochastic::autoregressive::arima::PyArima;
   use stochastic_rs_stochastic::autoregressive::egarch::PyEgarch;
   use stochastic_rs_stochastic::autoregressive::garch::PyGarch;
+  use stochastic_rs_stochastic::autoregressive::gjr_garch::PyGjrGarch;
   use stochastic_rs_stochastic::autoregressive::ma::PyMAq;
   use stochastic_rs_stochastic::autoregressive::sarima::PySarima;
-  use stochastic_rs_stochastic::autoregressive::tgarch::PyGjrGarch;
   use stochastic_rs_stochastic::correlation::teng::PyTengSCP;
   use stochastic_rs_stochastic::diffusion::ait_sahalia::PyAitSahalia;
   use stochastic_rs_stochastic::diffusion::bessel::PyBessel;
@@ -61,7 +61,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::diffusion::ckls::PyCkls;
   use stochastic_rs_stochastic::diffusion::displaced_diffusion::PyDisplacedDiffusion;
   use stochastic_rs_stochastic::diffusion::fcir::PyFcir;
-  use stochastic_rs_stochastic::diffusion::feller::PyFellerLogistic;
+  use stochastic_rs_stochastic::diffusion::feller_logistic::PyFellerLogistic;
   use stochastic_rs_stochastic::diffusion::feller_root::PyFellerRoot;
   use stochastic_rs_stochastic::diffusion::fgbm::PyFgbm;
   use stochastic_rs_stochastic::diffusion::fjacobi::PyFJacobi;
@@ -89,13 +89,12 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::diffusion::wishart::PyWishart;
   // Stochastic — interest rates
   use stochastic_rs_stochastic::interest::adg::PyAdg;
-  use stochastic_rs_stochastic::interest::bgm::PyBgm;
   use stochastic_rs_stochastic::interest::black_karasinski::PyBlackKarasinski;
   use stochastic_rs_stochastic::interest::cheyette::PyCheyette;
   use stochastic_rs_stochastic::interest::cir_pp::PyCirPlusPlus;
   use stochastic_rs_stochastic::interest::duffie_kan::PyDuffieKan;
   use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::PyDuffieKanJumpExp;
-  use stochastic_rs_stochastic::interest::fractional_vasicek::PyFVasicek;
+  use stochastic_rs_stochastic::interest::fvasicek::PyFVasicek;
   use stochastic_rs_stochastic::interest::hjm::PyHjm;
   use stochastic_rs_stochastic::interest::ho_lee::PyHoLee;
   use stochastic_rs_stochastic::interest::hull_white::PyHullWhite;
@@ -156,7 +155,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::volatility::heston::PyHeston;
   use stochastic_rs_stochastic::volatility::heston_log::PyHestonLog;
   use stochastic_rs_stochastic::volatility::heston_slv::PyHestonSlv;
-  use stochastic_rs_stochastic::volatility::rbergomi::PyRoughBergomi;
+  use stochastic_rs_stochastic::volatility::rough_bergomi::PyRoughBergomi;
   use stochastic_rs_stochastic::volatility::sabr::PySabr;
   use stochastic_rs_stochastic::volatility::svcgmy::PySvcgmy;
 
@@ -250,7 +249,6 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyDuffieKanJumpExp>()?;
   m.add_class::<PyFVasicek>()?;
   m.add_class::<PyVasicek>()?;
-  m.add_class::<PyBgm>()?;
   m.add_class::<PyWuZhangD>()?;
   m.add_class::<PyAdg>()?;
   m.add_class::<PyHjm>()?;

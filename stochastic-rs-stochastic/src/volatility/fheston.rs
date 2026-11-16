@@ -1,5 +1,8 @@
 //! # Fheston
 //!
+//! A Heston model whose variance is driven by fractional Gaussian noise through a one-factor
+//! carrier; the literature's rough Heston is `rough::RlHeston`.
+//!
 //! $$
 //! dS_t=\mu S_tdt+\sqrt{v_t}S_tdW_t,\quad dv_t=\kappa(\theta-v_t)dt+\xi\sqrt{v_t}dB_t^H
 //! $$
@@ -36,7 +39,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-pub struct RoughHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
+pub struct Fheston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Initial volatility; the variance starts at `v0²`.
@@ -74,7 +77,7 @@ pub struct RoughHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-impl<T: FloatExt, S: SeedExt> RoughHeston<T, S> {
+impl<T: FloatExt, S: SeedExt> Fheston<T, S> {
   /// Starts at spot 1 with zero drift and correlation, which `with_s0`, `with_mu`, `with_rho` set.
   pub fn new(
     hurst: T,
@@ -121,7 +124,7 @@ impl<T: FloatExt, S: SeedExt> RoughHeston<T, S> {
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    RoughHeston {
+    Fheston {
       backend: Cpu,
       hurst,
       v0,
@@ -140,7 +143,7 @@ impl<T: FloatExt, S: SeedExt> RoughHeston<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> RoughHeston<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B> Fheston<T, S, B> {
   /// Replace `s0`, all else unchanged; the price steps multiplicatively, so it starts positive.
   pub fn with_s0(mut self, s0: T) -> Self {
     assert!(
@@ -197,7 +200,7 @@ impl<T: FloatExt, S: SeedExt, B> RoughHeston<T, S, B> {
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
-  for RoughHeston<T, S, B>
+  for Fheston<T, S, B>
 {
   /// The host's constants folded once: the factor's decay over a step and the
   /// reciprocal of `Γ(H - 1/2)` the memory term is divided by.
@@ -248,25 +251,23 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] RoughHeston<T, S> { hurst, v0, theta, kappa, nu, c1, c2, t, n, mu, s0, rho, seed } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] Fheston<T, S> { hurst, v0, theta, kappa, nu, c1, c2, t, n, mu, s0, rho, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for RoughHeston<T, S, B>
+  for Fheston<T, S, B>
 {
 }
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
-  for RoughHeston<T, S, B>
-{
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Fheston<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
-    = RoughHestonSampler<T, S>
+    = FhestonSampler<T, S>
   where
     Self: 's;
 
   /// Derives `self.seed` into the sampler, which drives `cgns` through `sample_impl`, so every
   /// draw of the path follows the seed.
-  fn sampler(&self) -> RoughHestonSampler<T, S> {
+  fn sampler(&self) -> FhestonSampler<T, S> {
     let n_steps = self.n.saturating_sub(1);
     let dt = if n_steps > 0 {
       self.t.unwrap_or(T::one()) / T::from_usize_(n_steps)
@@ -275,7 +276,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     };
     // `cgns` keeps its unread `Unseeded` seed: the sampler drives it through
     // `sample_impl(&self.seed)`, as `Bates` drives its own.
-    RoughHestonSampler {
+    FhestonSampler {
       n: self.n,
       hurst: self.hurst,
       theta: self.theta,
@@ -346,12 +347,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`RoughHeston`] sampling state: owns the correlated-Gaussian
+/// Reusable [`Fheston`] sampling state: owns the correlated-Gaussian
 /// generator, an owned already-derived seed to drive it, and the
 /// precomputed Volterra-kernel constants, so a Monte-Carlo loop reuses both
 /// output buffers.
 #[doc(hidden)]
-pub struct RoughHestonSampler<T: FloatExt, S: SeedExt> {
+pub struct FhestonSampler<T: FloatExt, S: SeedExt> {
   n: usize,
   hurst: T,
   theta: T,
@@ -368,7 +369,7 @@ pub struct RoughHestonSampler<T: FloatExt, S: SeedExt> {
   seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt> RoughHestonSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> FhestonSampler<T, S> {
   fn fill_paths(&mut self, s: &mut [T], v2: &mut [T]) {
     if self.n == 0 {
       return;
@@ -418,18 +419,17 @@ impl<T: FloatExt, S: SeedExt> RoughHestonSampler<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for RoughHestonSampler<T, S> {}
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for FhestonSampler<T, S> {}
 
-impl<T: FloatExt, S: SeedExt> PathSampler<T> for RoughHestonSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for FhestonSampler<T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
     let [s, v2] = out;
     self.fill_paths(
-      s.as_slice_mut()
-        .expect("RoughHeston output must be contiguous"),
+      s.as_slice_mut().expect("Fheston output must be contiguous"),
       v2.as_slice_mut()
-        .expect("RoughHeston output must be contiguous"),
+        .expect("Fheston output must be contiguous"),
     );
   }
 
@@ -448,10 +448,10 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for RoughHestonSampler<T, S> {
 #[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyRoughHeston {
-  inner_f32: Option<RoughHeston<f32>>,
-  inner_f64: Option<RoughHeston<f64>>,
-  seeded_f32: Option<RoughHeston<f32, crate::simd_rng::Deterministic>>,
-  seeded_f64: Option<RoughHeston<f64, crate::simd_rng::Deterministic>>,
+  inner_f32: Option<Fheston<f32>>,
+  inner_f64: Option<Fheston<f64>>,
+  seeded_f32: Option<Fheston<f32, crate::simd_rng::Deterministic>>,
+  seeded_f64: Option<Fheston<f64, crate::simd_rng::Deterministic>>,
 }
 
 #[cfg(feature = "python")]
@@ -484,7 +484,7 @@ impl PyRoughHeston {
       };
       match (seed, dtype.unwrap_or("f64")) {
         (Some(sd), "f32") => {
-          let m = RoughHeston::new(
+          let m = Fheston::new(
             hurst as f32,
             v0 as f32,
             theta as f32,
@@ -500,7 +500,7 @@ impl PyRoughHeston {
           obj.seeded_f32 = Some(m);
         }
         (Some(sd), _) => {
-          let m = RoughHeston::new(
+          let m = Fheston::new(
             hurst,
             v0,
             theta,
@@ -516,7 +516,7 @@ impl PyRoughHeston {
           obj.seeded_f64 = Some(m);
         }
         (None, "f32") => {
-          let m = RoughHeston::new(
+          let m = Fheston::new(
             hurst as f32,
             v0 as f32,
             theta as f32,
@@ -532,7 +532,7 @@ impl PyRoughHeston {
           obj.inner_f32 = Some(m);
         }
         (None, _) => {
-          let m = RoughHeston::new(hurst, v0, theta, kappa, nu, c1, c2, t, n, Unseeded);
+          let m = Fheston::new(hurst, v0, theta, kappa, nu, c1, c2, t, n, Unseeded);
           let m = m.with_mu(mu).with_s0(s0).with_rho(rho);
           obj.inner_f64 = Some(m);
         }

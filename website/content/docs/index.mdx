@@ -1,13 +1,13 @@
 ---
 title: stochastic-rs
 seo_title: "stochastic-rs docs: quant finance in Rust and Python"
-description: Simulate 130 stochastic processes, price and calibrate against them, and move any of it to a GPU by naming one — in Rust or in Python.
+description: Simulate 129 stochastic processes, price and calibrate against them, and move any of it to a GPU by naming one — in Rust or in Python.
 category: concept
 status: stable
 since: 2.0.0
 ---
 
-stochastic-rs is an open-source quantitative-finance library for Rust and Python. Simulate **130 stochastic processes**, price and calibrate against them, and move any of it to a GPU by naming one. The model and its law stay the same on the device; a configuration the kernels cannot carry samples on the host, and `device_fallback()` says why.
+stochastic-rs is an open-source quantitative-finance library for Rust and Python. Simulate **129 stochastic processes**, price and calibrate against them, and move any of it to a GPU by naming one. The model and its law stay the same on the device; a configuration the kernels cannot carry samples on the host, and `device_fallback()` says why.
 
 ## One thread, end to end
 
@@ -87,7 +87,7 @@ let h = RescaledRange::default().estimate(fbm.view())?;         // 0.61 for a tr
 
 ## What are you here for?
 
-**To simulate.** 130 processes behind one trait — diffusions, jumps, stochastic volatility, short rates, fractional and rough, point processes, subordinators, conditional-variance time series: Heston and its rough relatives, Bates, SABR, CGMY, Hull-White, LMM, fBm. → [Processes](/docs/processes) · [Tutorials](/docs/tutorials)
+**To simulate.** 129 processes behind one trait — diffusions, jumps, stochastic volatility, short rates, fractional and rough, point processes, subordinators, conditional-variance time series: Heston and its rough relatives, Bates, SABR, CGMY, Hull-White, LMM, fBm. → [Processes](/docs/processes) · [Tutorials](/docs/tutorials)
 
 **To price or calibrate.** Analytic, Fourier, ADI and Monte Carlo pricers with first- and second-order Greeks; fifteen calibrators behind one `Calibrator` trait; SVI and SSVI surfaces; curves, bonds, credit and risk. → [Quant](/docs/quant)
 
@@ -95,7 +95,7 @@ let h = RescaledRange::default().estimate(fbm.view())?;         // 0.61 for a tr
 
 **To draw.** 35 SIMD distribution samplers, most with closed-form characteristic function, pdf, cdf and moments, and 21 copulas with fitting and goodness-of-fit. → [Distributions](/docs/distributions) · [Copulas](/docs/copulas)
 
-**To do it from Python.** 305 classes and functions, NumPy in and NumPy out, and the same `device=` argument. → [Python](/docs/python)
+**To do it from Python.** 304 classes and functions, NumPy in and NumPy out, and the same `device=` argument. → [Python](/docs/python)
 
 ## Where to start
 

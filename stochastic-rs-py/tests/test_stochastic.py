@@ -365,12 +365,14 @@ def test_an_event_process_takes_exactly_one_of_n_and_t_max():
     assert sr.PyHawkes(0.5, 0.3, 1.0, t_max=2.0).device_fallback() is not None
 
 
-def test_ho_lee_takes_exactly_one_of_theta_and_f_t():
+def test_ho_lee_takes_exactly_one_of_theta_and_forward_curve():
     sr.PyHoLee(0.01, 64, theta=0.02)
-    sr.PyHoLee(0.01, 64, f_T=lambda t: 0.03)
-    for bad in ({}, {"theta": 0.02, "f_T": lambda t: 0.03}):
-        with pytest.raises(ValueError, match="exactly one drift"):
+    sr.PyHoLee(0.01, 64, forward_curve=lambda t: 0.03)
+    for bad in ({}, {"theta": 0.02, "forward_curve": lambda t: 0.03}):
+        with pytest.raises(ValueError, match="exactly one drift: theta or forward_curve"):
             sr.PyHoLee(0.01, 64, **bad)
+    with pytest.raises(TypeError):
+        sr.PyHoLee(0.01, 64, f_T=lambda t: 0.03)
 
 
 def test_the_fractional_sheet_names_its_grid_rows_and_cols():
@@ -401,3 +403,11 @@ def test_the_inverse_gaussian_process_is_the_unit_subordinator():
     assert not hasattr(sr, "PyIg")
     path = sr.PyIGSubordinator(2.0, 1.0, 65, seed=3).sample()
     assert path.shape == (65,) and path[0] == 0.0 and np.all(np.diff(path) > 0.0)
+
+
+def test_white_noise_takes_its_scale_as_sigma():
+    flat = sr.PyWn(64, mean=0.5, sigma=0.0, seed=1).sample()
+    assert np.all(flat == 0.5)
+    assert np.array_equal(sr.PyWn(64, sigma=2.0, seed=1).sample(), 2.0 * sr.PyWn(64, seed=1).sample())
+    with pytest.raises(TypeError):
+        sr.PyWn(64, std_dev=1.0)

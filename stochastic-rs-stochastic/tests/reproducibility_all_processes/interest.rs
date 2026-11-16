@@ -14,21 +14,20 @@ use stochastic_rs_core::simd_rng::Deterministic;
 // constructor-heavy type — pulled in from the diffusion family.
 use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::interest::adg::Adg;
-use stochastic_rs_stochastic::interest::bgm::Bgm;
 use stochastic_rs_stochastic::interest::black_karasinski::BlackKarasinski;
 use stochastic_rs_stochastic::interest::cheyette::Cheyette;
 use stochastic_rs_stochastic::interest::cir_2f::Cir2F;
 use stochastic_rs_stochastic::interest::cir_pp::CirPlusPlus;
 use stochastic_rs_stochastic::interest::duffie_kan::DuffieKan;
 use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
-use stochastic_rs_stochastic::interest::fractional_vasicek::FVasicek;
+use stochastic_rs_stochastic::interest::fvasicek::Fvasicek;
 use stochastic_rs_stochastic::interest::hjm::Hjm;
 use stochastic_rs_stochastic::interest::ho_lee::HoLee;
 use stochastic_rs_stochastic::interest::hull_white::HullWhite;
 use stochastic_rs_stochastic::interest::hull_white_2f::HullWhite2F;
 use stochastic_rs_stochastic::interest::lmm::Lmm;
 use stochastic_rs_stochastic::interest::vasicek::Vasicek;
-use stochastic_rs_stochastic::interest::wu_zhang::WuZhangD;
+use stochastic_rs_stochastic::interest::wu_zhang::WuZhang;
 use stochastic_rs_stochastic::params::HoLeeDrift;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 
@@ -48,15 +47,6 @@ guard!(adg, "Adg", |s| Adg::new(
   3,
   Array1::from(vec![0.03, 0.03, 0.03]),
   Some(1.0),
-  s
-));
-
-guard!(bgm, "Bgm", |s| Bgm::new(
-  Array1::from(vec![0.2, 0.2, 0.2]),
-  Array1::from(vec![0.03, 0.03, 0.03]),
-  3,
-  Some(1.0),
-  N,
   s
 ));
 
@@ -162,7 +152,7 @@ guard!(duffie_kan_jump_exp, "DuffieKanJumpExp", |s| {
   )
 });
 
-guard!(f_vasicek, "FVasicek", |s| FVasicek::new(
+guard!(f_vasicek, "Fvasicek", |s| Fvasicek::new(
   0.7,
   1.0,
   0.03,
@@ -239,7 +229,7 @@ guard!(vasicek, "Vasicek", |s| Vasicek::new(
   s
 ));
 
-guard!(wu_zhang, "WuZhangD", |s| WuZhangD::new(
+guard!(wu_zhang, "WuZhang", |s| WuZhang::new(
   Array1::from(vec![0.1, 0.1]),
   Array1::from(vec![0.1, 0.1]),
   Array1::from(vec![0.2, 0.2]),

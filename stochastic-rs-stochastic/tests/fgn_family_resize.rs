@@ -5,10 +5,10 @@ use stochastic_rs_stochastic::ProcessExt;
 use stochastic_rs_stochastic::diffusion::cfou::Cfou;
 use stochastic_rs_stochastic::diffusion::fcir::Fcir;
 use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
-use stochastic_rs_stochastic::diffusion::fjacobi::FJacobi;
+use stochastic_rs_stochastic::diffusion::fjacobi::Fjacobi;
 use stochastic_rs_stochastic::diffusion::fou::Fou;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
-use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
+use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFouCustom;
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
 use stochastic_rs_stochastic::noise::fgn::Fgn;
 use stochastic_rs_stochastic::params::VarianceBoundary;
@@ -74,7 +74,7 @@ fn fcir_resizes_through_with_points() {
 #[test]
 fn fjacobi_resizes_through_with_points() {
   let p =
-    FJacobi::<f64, _>::new(0.7, 1.0, 2.0, 0.2, 10, Some(0.5), Some(1.0), seed()).with_points(1000);
+    Fjacobi::<f64, _>::new(0.7, 1.0, 2.0, 0.2, 10, Some(0.5), Some(1.0), seed()).with_points(1000);
   assert_resized(&p.sample(), 1000);
 }
 
@@ -136,7 +136,7 @@ fn jump_fou_resizes_through_with_points() {
 fn jump_fou_custom_resizes_through_with_points() {
   let times = SimdNormal::<f64>::new(0.5, 0.01);
   let sizes = SimdNormal::<f64>::new(0.0, 0.1);
-  let p = JumpFOUCustom::<f64, _, _>::new(
+  let p = JumpFouCustom::<f64, _, _>::new(
     0.7,
     1.0,
     0.0,
