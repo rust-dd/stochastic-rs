@@ -11,6 +11,7 @@ use basin::Problem;
 use basin::TerminationReason;
 use stochastic_rs_core::simd_rng::SimdRng;
 
+use super::types::SmileStrikes;
 use crate::pricing::sabr::SabrParams;
 use crate::pricing::sabr::alpha_from_atm_vol;
 use crate::pricing::sabr::bs_price_fx;
@@ -42,6 +43,17 @@ pub(super) fn bf_premium_mismatch(
   (mc + mp) - (bc + bp)
 }
 
+pub(super) const NU_BOUNDS: (f64, f64) = (0.01, 10.0);
+
+pub(super) const RHO_BOUNDS: (f64, f64) = (-0.99, 0.99);
+
+/// Garman–Kohlhagen vega of one option at `sigma`.
+fn fx_vega(s: f64, k: f64, f: f64, r_f: f64, tau: f64, sigma: f64) -> f64 {
+  let root = tau.sqrt();
+  let d1 = ((f / k).ln() + 0.5 * sigma * sigma * tau) / (sigma * root);
+  s * (-r_f * tau).exp() * (-0.5 * d1 * d1).exp() / std::f64::consts::TAU.sqrt() * root
+}
+
 /// Optimization variables: `[k_rr_c, k_rr_p, k_bf_c, k_bf_p, nu, rho]`.
 ///
 /// α is derived from σ_ATM via [`alpha_from_atm_vol`] so the ATM vol is
@@ -64,6 +76,32 @@ pub(super) struct SabrSmileProblem {
 }
 
 impl SabrSmileProblem {
+  /// Market and model `[ATM, RR, BF]` in vol; the model BF is `σ_BF` plus the strangle premium
+  /// mismatch over the strangle's vega at `σ_ATM + σ_BF`.
+  pub(super) fn quotes_in_vol(&self, p: &SabrParams, k: &SmileStrikes) -> ([f64; 3], [f64; 3]) {
+    let f = k.k_atm;
+    let sigma_ref = self.sigma_atm + self.sigma_bf;
+    let mismatch = bf_premium_mismatch(
+      self.s,
+      k.k_bf_call,
+      k.k_bf_put,
+      self.r_d,
+      self.r_f,
+      self.tau,
+      p,
+      sigma_ref,
+    );
+    let vega = fx_vega(self.s, k.k_bf_call, f, self.r_f, self.tau, sigma_ref)
+      + fx_vega(self.s, k.k_bf_put, f, self.r_f, self.tau, sigma_ref);
+    let market = [self.sigma_atm, self.sigma_rr, self.sigma_bf];
+    let model = [
+      hagan_implied_vol(f, f, self.tau, p),
+      rr_sigma(k.k_rr_call, k.k_rr_put, f, self.tau, p),
+      self.sigma_bf + mismatch / vega,
+    ];
+    (market, model)
+  }
+
   pub(super) fn clamp_params(&self, x: &[f64]) -> [f64; NVARS] {
     std::array::from_fn(|i| x[i].clamp(self.bounds_lo[i], self.bounds_hi[i]))
   }

@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 #[cfg(feature = "viz")]
 use plotly::Plot;
 #[cfg(feature = "viz")]
@@ -13,7 +11,9 @@ use plotly::layout::Axis;
 #[cfg(feature = "viz")]
 use plotly::layout::Layout;
 
+use super::objective::NU_BOUNDS;
 use super::objective::NVARS;
+use super::objective::RHO_BOUNDS;
 use super::objective::SabrSmileProblem;
 use super::objective::basin_hopping_opt;
 use super::types::SabrSmileCalibrator;
@@ -23,7 +23,6 @@ use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::QuantError;
 use crate::calibration::Calibrated;
-use crate::calibration::hw_swaption::check_finite_start;
 use crate::pricing::sabr::SabrParams;
 use crate::pricing::sabr::alpha_from_atm_vol;
 use crate::pricing::sabr::forward_fx;
@@ -36,12 +35,19 @@ impl Calibrator for SabrSmileCalibrator {
   type Output = Calibrated<SabrParams, SmileStrikes>;
   type Error = QuantError;
 
-  /// `start` seeds `(ν, ρ)`, `α` follows from the ATM vol and `β` is the calibrator's; `Optimizer`
-  /// when no searched point reaches the ATM vol. `loss` is the objective over the three quotes.
+  /// `start` seeds `(ν, ρ)` inside the search box and `α` follows from the ATM vol; `loss` is the
+  /// ATM, RR and BF errors in vol, and `message` holds the six-term objective the fit minimises.
   fn calibrate(&self, start: Option<SabrParams>) -> Result<Self::Output, QuantError> {
     self.quotes.validate()?;
     if let Some(p) = start {
-      check_finite_start(&[("nu", p.nu), ("rho", p.rho)])?;
+      for (name, value, (lo, hi)) in [("nu", p.nu, NU_BOUNDS), ("rho", p.rho, RHO_BOUNDS)] {
+        if !(lo..=hi).contains(&value) {
+          let reason = format!(
+            "{name} must satisfy `({lo:?}..={hi:?}).contains(&{name})`, got {name} = {value:?}"
+          );
+          return Err(QuantError::invalid("start", reason));
+        }
+      }
     }
     // Bounds of [k_rr_c, k_rr_p, k_bf_c, k_bf_p, nu, rho].
     let lo = [
@@ -49,16 +55,16 @@ impl Calibrator for SabrSmileCalibrator {
       self.strike_lo,
       self.strike_lo,
       self.strike_lo,
-      0.01,
-      -0.99,
+      NU_BOUNDS.0,
+      RHO_BOUNDS.0,
     ];
     let hi = [
       self.strike_hi,
       self.strike_hi,
       self.strike_hi,
       self.strike_hi,
-      10.0,
-      0.99,
+      NU_BOUNDS.1,
+      RHO_BOUNDS.1,
     ];
 
     let s = self.s;
@@ -105,10 +111,6 @@ impl Calibrator for SabrSmileCalibrator {
         reason: format!("no searched (nu, rho) reaches the ATM vol, objective {f_best:e}"),
       });
     }
-    let mse = f_best / 3.0;
-    let loss = CalibrationLossScore {
-      scores: HashMap::from([(LossMetric::Mse, mse), (LossMetric::Rmse, mse.sqrt())]),
-    };
     let params = SabrParams {
       alpha,
       beta: self.beta,
@@ -122,6 +124,9 @@ impl Calibrator for SabrSmileCalibrator {
       k_bf_call: x_best[2],
       k_bf_put: x_best[3],
     };
+    let (market, model) = problem.quotes_in_vol(&params, &strikes);
+    let loss =
+      CalibrationLossScore::compute_selected(&market, &model, &[LossMetric::Mse, LossMetric::Rmse]);
     let converged = f_best.is_finite() && f_best < self.success_tol;
     Ok(
       Calibrated::new(params, loss, converged)
@@ -132,7 +137,7 @@ impl Calibrator for SabrSmileCalibrator {
 }
 
 impl SabrSmileCalibrator {
-  /// One fit per case, in order; the first `Err` ends the run.
+  /// One fit per case, in order; the first `Err` ends the run; panics as `new` does.
   pub fn calibrate_many(
     s: f64,
     r_d: f64,

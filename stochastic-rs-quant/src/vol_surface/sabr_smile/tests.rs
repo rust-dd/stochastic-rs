@@ -80,8 +80,6 @@ fn bounded_sabr_low_spot_calibration_returns_consistent_results() {
     }
     let objective = problem.cost(&x).unwrap();
     assert!(objective.is_finite());
-    assert_eq!(result.loss.get(LossMetric::Mse), objective / 3.0);
-    assert_eq!(result.loss.get(LossMetric::Rmse), (objective / 3.0).sqrt());
     assert_eq!(result.message, Some(format!("objective {objective:e}")));
     assert_eq!(result.converged, objective < calibrator.success_tol);
   }
@@ -110,6 +108,87 @@ fn a_start_seeds_nu_and_rho() {
     (fit.params.nu, fit.params.rho, fit.params.beta),
     (1.2, -0.4, 1.0)
   );
+}
+
+fn norm_pdf(x: f64) -> f64 {
+  (-0.5 * x * x).exp() / std::f64::consts::TAU.sqrt()
+}
+
+/// `rmse()` is the root-mean-square of the ATM, RR and BF quote errors in vol, the BF one being the
+/// strangle-premium mismatch over the strangle's vega at `σ_ATM + σ_BF`.
+#[test]
+fn rmse_is_the_root_mean_square_of_the_three_quote_errors_in_vol() {
+  use crate::pricing::sabr::bs_price_fx;
+  use crate::pricing::sabr::forward_fx;
+  use crate::pricing::sabr::hagan_implied_vol;
+  use crate::pricing::sabr::model_price_hagan;
+  use crate::traits::CalibrationResult;
+
+  let quotes = SabrSmileQuotes {
+    tau: 0.5,
+    sigma_atm: 0.2,
+    sigma_rr: 0.01,
+    sigma_bf: 0.002,
+  };
+  let (s, r_d, r_f) = (1.0, 0.02, 0.01);
+  let fit = SabrSmileCalibrator::new(s, r_d, r_f, 1.0, quotes)
+    .with_basin_hopping_iters(0, 0)
+    .calibrate(None)
+    .unwrap();
+  let (k, p) = (fit.diagnostics, fit.params);
+  let f = forward_fx(s, quotes.tau, r_d, r_f);
+  let vol = |strike: f64| hagan_implied_vol(strike, f, quotes.tau, &p);
+  let sigma_ref = quotes.sigma_atm + quotes.sigma_bf;
+  let (mc, _) = model_price_hagan(s, k.k_bf_call, r_d, r_f, quotes.tau, &p);
+  let (_, mp) = model_price_hagan(s, k.k_bf_put, r_d, r_f, quotes.tau, &p);
+  let (bc, _) = bs_price_fx(s, k.k_bf_call, r_d, r_f, quotes.tau, sigma_ref);
+  let (_, bp) = bs_price_fx(s, k.k_bf_put, r_d, r_f, quotes.tau, sigma_ref);
+  let vega = |strike: f64| {
+    let root = quotes.tau.sqrt();
+    let d1 = ((f / strike).ln() + 0.5 * sigma_ref * sigma_ref * quotes.tau) / (sigma_ref * root);
+    s * (-r_f * quotes.tau).exp() * norm_pdf(d1) * root
+  };
+  let bf_error = ((mc + mp) - (bc + bp)) / (vega(k.k_bf_call) + vega(k.k_bf_put));
+  let atm_error = vol(f) - quotes.sigma_atm;
+  let rr_error = vol(k.k_rr_call) - vol(k.k_rr_put) - quotes.sigma_rr;
+  assert!(bf_error.abs() > 1e-6, "the case must exercise the BF term");
+  let mse = (atm_error.powi(2) + rr_error.powi(2) + bf_error.powi(2)) / 3.0;
+  assert!(
+    (fit.rmse() - mse.sqrt()).abs() < 1e-12,
+    "{} vs {}",
+    fit.rmse(),
+    mse.sqrt()
+  );
+  assert!((fit.loss.get(LossMetric::Mse) - mse).abs() < 1e-12);
+}
+
+#[test]
+fn a_start_outside_the_search_box_is_an_error_not_a_clamp() {
+  let quotes = SabrSmileQuotes {
+    tau: 0.5,
+    sigma_atm: 0.2,
+    sigma_rr: 0.01,
+    sigma_bf: 0.002,
+  };
+  let calibrator = SabrSmileCalibrator::new(1.0, 0.02, 0.01, 1.0, quotes);
+  for (field, nu, rho) in [
+    ("rho", 0.5, 5.0),
+    ("rho", 0.5, -0.995),
+    ("nu", 20.0, 0.0),
+    ("nu", 0.0, 0.0),
+  ] {
+    let start = SabrParams {
+      alpha: 0.2,
+      beta: 1.0,
+      rho,
+      nu,
+    };
+    let err = calibrator.calibrate(Some(start)).unwrap_err();
+    assert!(
+      matches!(&err, QuantError::InvalidInput { what: "start", reason } if reason.starts_with(field)),
+      "{err}"
+    );
+  }
 }
 
 #[test]
