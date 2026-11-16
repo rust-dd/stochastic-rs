@@ -29,7 +29,7 @@ fn batch_estimator_returns_finite_outputs() {
     },
     ..HestonNmleCekfConfig::default()
   };
-  let result = fit_heston_nmle_cekf(prices.view(), config);
+  let result = fit_heston_nmle_cekf(prices.view(), config).unwrap();
 
   assert_eq!(result.vol_path.len(), observations);
   assert_eq!(result.cov_path.len(), observations);
@@ -65,9 +65,10 @@ fn batch_reported_parameters_reproduce_the_returned_path() {
     initial_v0: 0.07,
     ..HestonNmleCekfConfig::default()
   };
-  let result = fit_heston_nmle_cekf(prices.view(), config.clone());
+  let result = fit_heston_nmle_cekf(prices.view(), config.clone()).unwrap();
   let reported = HestonNmleCekfParams::from(result.params.clone()).projected_batch();
-  let (expected_variance, expected_covariance) = cekf_pass(prices.view(), reported, &config);
+  let (expected_variance, expected_covariance) =
+    cekf_pass(prices.view(), reported, &config).unwrap();
 
   assert_eq!(result.vol_path, expected_variance);
   assert_eq!(result.cov_path, expected_covariance);
@@ -91,7 +92,7 @@ fn batch_stops_without_a_hidden_parameter_refresh() {
     initial_params: initial,
     ..HestonNmleCekfConfig::default()
   };
-  let result = fit_heston_nmle_cekf(prices.view(), config);
+  let result = fit_heston_nmle_cekf(prices.view(), config).unwrap();
 
   assert_eq!(result.params.kappa.to_bits(), initial.kappa.to_bits());
   assert_eq!(result.params.theta.to_bits(), initial.theta.to_bits());
@@ -119,7 +120,7 @@ fn batch_nonidentity_noise_uses_the_corrected_filter_core() {
     use_consistent_terms: true,
     ..HestonNmleCekfConfig::default()
   };
-  let (batch_variance, batch_covariance) = cekf_pass(prices.view(), parameters, &batch);
+  let (batch_variance, batch_covariance) = cekf_pass(prices.view(), parameters, &batch).unwrap();
   let filter = HestonCekfFilterConfig {
     r: batch.r,
     delta,
@@ -141,4 +142,26 @@ fn batch_nonidentity_noise_uses_the_corrected_filter_core() {
 
   assert_eq!(batch_variance, corrected.variance_path);
   assert_eq!(batch_covariance, corrected.error_covariance_bound_path);
+}
+
+#[test]
+fn the_batch_rejects_bad_prices_before_filtering() {
+  let (mut prices, _) = simulate_heston_prices(64, 1.0 / 252.0, 67);
+  assert_eq!(
+    fit_heston_nmle_cekf(
+      prices.slice(ndarray::s![..1]),
+      HestonNmleCekfConfig::default()
+    )
+    .unwrap_err(),
+    crate::StatsError::InsufficientData { needed: 2, got: 1 }
+  );
+  prices[9] = 0.0;
+  assert_eq!(
+    fit_heston_nmle_cekf(prices.view(), HestonNmleCekfConfig::default()).unwrap_err(),
+    crate::StatsError::InvalidObservation {
+      index: 9,
+      value: 0.0,
+      constraint: "finite and > 0"
+    }
+  );
 }

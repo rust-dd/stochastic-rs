@@ -68,6 +68,9 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 
+use crate::StatsError;
+use crate::input::reject_constant;
+use crate::input::validate;
 use crate::optim::more_thuente;
 use crate::optim::nelder_mead_vec;
 use crate::traits::FloatExt;
@@ -174,7 +177,7 @@ impl GarchSpec {
   }
 
   fn validate(&self) {
-    assert!(self.p >= 1, "p must be at least 1, got {}", self.p);
+    assert!(self.p >= 1, "p must satisfy `p >= 1`, got p = {:?}", self.p);
   }
 }
 
@@ -228,29 +231,30 @@ pub struct GarchFit {
   pub nobs: usize,
 }
 
-/// Fits `spec` to `returns` by Gaussian QMLE.
-///
-/// Returns NaN covariances, and NaN standard errors with them, when the
-/// finite-difference Hessian at the optimum is singular.
-///
-/// # Panics
-///
-/// If `spec.p` is zero, if there are fewer than 20 observations, or if the
-/// returns have no positive finite variance.
-pub fn fit_garch<T: FloatExt>(returns: ArrayView1<T>, spec: GarchSpec) -> GarchFit {
+/// Gaussian QMLE of `spec` on `returns` (NaN standard errors at a singular Hessian); `Err` below 20
+/// returns, on a non-finite one or a zero or overflowing variance, and panics unless `spec.p >= 1`.
+pub fn fit_garch<T: FloatExt>(
+  returns: ArrayView1<T>,
+  spec: GarchSpec,
+) -> Result<GarchFit, StatsError> {
   spec.validate();
-  let r: Vec<f64> = returns
+  let r = returns
     .iter()
     .map(|x| x.to_f64().unwrap_or(f64::NAN))
-    .collect();
+    .collect::<Vec<f64>>();
+  validate(&r, 20)?;
+  reject_constant(&r, "zero-variance returns")?;
   let n = r.len();
-  assert!(n >= 20, "need at least 20 observations, got {n}");
   let mean = r.iter().sum::<f64>() / n as f64;
   let backcast = r.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>() / n as f64;
-  assert!(
-    backcast > 0.0 && backcast.is_finite(),
-    "returns must have a positive, finite variance"
-  );
+  if backcast == 0.0 {
+    return Err(StatsError::DegenerateData("zero-variance returns"));
+  }
+  if !backcast.is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "backcast variance",
+    });
+  }
 
   let problem = Problem {
     spec,
@@ -292,7 +296,7 @@ pub fn fit_garch<T: FloatExt>(returns: ArrayView1<T>, spec: GarchSpec) -> GarchF
     GarchKind::Egarch => beta.sum(),
   };
   let kf = k as f64;
-  GarchFit {
+  Ok(GarchFit {
     spec,
     mu: split.mu,
     omega: split.omega,
@@ -315,7 +319,7 @@ pub fn fit_garch<T: FloatExt>(returns: ArrayView1<T>, spec: GarchSpec) -> GarchF
     iterations: iters_nm + iters_restart + iters_lbfgs,
     converged: converged || converged_restart,
     nobs: n,
-  }
+  })
 }
 
 /// The negative quasi-log-likelihood in unconstrained coordinates, shared by

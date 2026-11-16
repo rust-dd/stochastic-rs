@@ -10,6 +10,7 @@ use stochastic_rs_distributions::traits::DistributionExt;
 use super::minimise;
 use super::negative_log_likelihood;
 use super::sample;
+use crate::StatsError;
 use crate::evt::gpd::information_inverse;
 use crate::traits::FloatExt;
 
@@ -56,14 +57,10 @@ fn log_density(x: &[f64], mu: f64, sigma: f64, eta: f64, lambda: f64) -> f64 {
   })
 }
 
-/// Hansen skew-t maximum-likelihood fit of `data`.
-///
-/// # Panics
-///
-/// If there are fewer than 10 observations, any is non-finite, or they are
-/// constant.
-pub fn fit_skew_t<T: FloatExt>(data: ArrayView1<T>) -> SkewTFit {
-  let (x, mean, sd) = sample(data, 10);
+/// Hansen skew-t maximum-likelihood fit of `data`; `Err` below 10 observations, on a non-finite one
+/// or a constant sample.
+pub fn fit_skew_t<T: FloatExt>(data: ArrayView1<T>) -> Result<SkewTFit, StatsError> {
+  let (x, mean, sd) = sample(data, 10)?;
   let objective = |p: &[f64]| log_density(&x, p[0], p[1].exp(), 2.0 + p[2].exp(), p[3].tanh());
   let mut starts = Vec::new();
   for eta0 in [4.0_f64, 8.0, 20.0] {
@@ -83,7 +80,7 @@ pub fn fit_skew_t<T: FloatExt>(data: ArrayView1<T>) -> SkewTFit {
   let covariance = information_inverse(&nll, &natural, &[sd, natural[1], natural[2], 1.0]);
   let std_errors = Array1::from_iter((0..4).map(|i| covariance[[i, i]].sqrt()));
   let n = x.len() as f64;
-  SkewTFit {
+  Ok(SkewTFit {
     mu: natural[0],
     sigma: natural[1],
     eta: natural[2],
@@ -96,5 +93,5 @@ pub fn fit_skew_t<T: FloatExt>(data: ArrayView1<T>) -> SkewTFit {
     nobs: x.len(),
     iterations,
     converged,
-  }
+  })
 }

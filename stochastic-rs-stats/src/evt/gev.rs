@@ -24,6 +24,10 @@ use ndarray::Array2;
 use ndarray::ArrayView1;
 
 use super::gpd::information_inverse;
+use crate::StatsError;
+use crate::input::reject_constant;
+use crate::input::validate;
+use crate::optim::best_start;
 use crate::optim::nelder_mead_vec;
 use crate::traits::FloatExt;
 use crate::traits::RealExt;
@@ -60,9 +64,11 @@ pub struct GevFit {
 }
 
 impl GevFit {
-  /// Return level $z_m$ for a return `period` of $m > 1$ blocks.
+  /// Return level $z_m$ for a return `period` of $m$ blocks; NaN unless `period > 1`.
   pub fn return_level(&self, period: f64) -> f64 {
-    assert!(period > 1.0, "period must exceed 1 block, got {period}");
+    if period.is_nan() || period <= 1.0 {
+      return f64::NAN;
+    }
     let yp = -(1.0 - 1.0 / period).ln();
     if self.xi.abs() < 1e-12 {
       self.mu - self.sigma * yp.ln()
@@ -100,38 +106,30 @@ fn negative_log_likelihood(z: &[f64], mu: f64, sigma: f64, xi: f64) -> f64 {
   n * sigma.ln() + (1.0 / xi + 1.0) * log_terms + power_terms
 }
 
-/// GEV maximum-likelihood fit to block maxima.
-///
-/// Returns a NaN covariance, and NaN standard errors with it, when the
-/// observed-information Hessian at the optimum is singular.
-///
-/// # Panics
-///
-/// If there are fewer than 10 maxima, any is non-finite, or they are
-/// constant.
-pub fn fit_gev<T: FloatExt>(maxima: ArrayView1<T>) -> GevFit {
-  let z: Vec<f64> = maxima
+/// GEV maximum-likelihood fit to block maxima; `Err` below 10 maxima, on a non-finite maximum or a
+/// constant sample. A singular Hessian at the optimum gives NaN standard errors.
+pub fn fit_gev<T: FloatExt>(maxima: ArrayView1<T>) -> Result<GevFit, StatsError> {
+  let z = maxima
     .iter()
     .map(|x| x.to_f64().unwrap_or(f64::NAN))
-    .collect();
+    .collect::<Vec<f64>>();
+  validate(&z, 10)?;
+  reject_constant(&z, "constant block maxima")?;
   let n = z.len();
-  assert!(n >= 10, "need at least 10 block maxima, got {n}");
-  assert!(
-    z.iter().all(|v| v.is_finite()),
-    "block maxima must be finite"
-  );
   let mean = z.iter().sum::<f64>() / n as f64;
   let sd = (z.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / (n as f64 - 1.0)).sqrt();
-  assert!(sd > 0.0, "block maxima must not be constant");
+  if sd == 0.0 {
+    return Err(StatsError::DegenerateData("constant block maxima"));
+  }
 
   let objective = |p: &[f64]| negative_log_likelihood(&z, p[0], p[1].exp(), p[2]);
   let sigma0 = 6.0_f64.sqrt() * sd / std::f64::consts::PI;
   let mu0 = mean - EULER_MASCHERONI * sigma0;
-  let start = [-0.2, 0.0, 0.1, 0.3]
-    .into_iter()
-    .map(|xi0| [mu0, sigma0.ln(), xi0])
-    .min_by(|a, b| objective(a).partial_cmp(&objective(b)).unwrap())
-    .unwrap();
+  let start = best_start(
+    [-0.2, 0.0, 0.1, 0.3].map(|xi0| [mu0, sigma0.ln(), xi0]),
+    objective,
+  )
+  .expect("a non-empty starting grid");
   let (theta, iters, converged) = nelder_mead_vec(&start, 5_000, objective);
   let (theta, iters_restart, converged_restart) = nelder_mead_vec(&theta, 5_000, objective);
   let (mu, sigma, xi) = (theta[0], theta[1].exp(), theta[2]);
@@ -140,7 +138,7 @@ pub fn fit_gev<T: FloatExt>(maxima: ArrayView1<T>) -> GevFit {
   let nll = |p: &[f64]| negative_log_likelihood(&z, p[0], p[1], p[2]);
   let covariance = information_inverse(&nll, &[mu, sigma, xi], &[sd, sd, 1.0]);
   let std_errors = Array1::from_iter((0..3).map(|i| covariance[[i, i]].sqrt()));
-  GevFit {
+  Ok(GevFit {
     mu,
     sigma,
     xi,
@@ -152,17 +150,16 @@ pub fn fit_gev<T: FloatExt>(maxima: ArrayView1<T>) -> GevFit {
     nobs: n,
     iterations: iters + iters_restart,
     converged: converged || converged_restart,
-  }
+  })
 }
 
-/// Maxima of consecutive blocks of `block_size` observations; a trailing
-/// partial block is dropped.
-///
-/// # Panics
-///
-/// If `block_size` is zero.
+/// Maxima of consecutive blocks of `block_size` observations, a trailing partial block dropped;
+/// panics unless `block_size >= 1`.
 pub fn block_maxima<T: FloatExt>(data: ArrayView1<T>, block_size: usize) -> Array1<f64> {
-  assert!(block_size >= 1, "block_size must be at least 1");
+  assert!(
+    block_size >= 1,
+    "block_size must satisfy `block_size >= 1`, got block_size = {block_size:?}"
+  );
   let x: Vec<f64> = data
     .iter()
     .map(|v| v.to_f64().unwrap_or(f64::NAN))

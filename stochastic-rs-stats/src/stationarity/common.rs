@@ -50,14 +50,14 @@ pub fn difference(y: &[f64]) -> Vec<f64> {
 }
 
 /// Shortest series for a levels autoregression of order `lags` plus `trend`'s terms: it keeps
-/// `n − lags` rows, which must outnumber its `lags + terms` regressors.
+/// `n − lags` rows, which must outnumber its `lags + terms` regressors; saturates at `usize::MAX`.
 pub fn min_sample_size(lags: usize, trend: Trend) -> usize {
   let terms = match trend {
     Trend::None => 0,
     Trend::Constant => 1,
     Trend::ConstantTrend => 2,
   };
-  2 * lags + terms + 1
+  lags.saturating_mul(2).saturating_add(terms + 1)
 }
 
 pub fn schwert_max_lags(n: usize) -> usize {

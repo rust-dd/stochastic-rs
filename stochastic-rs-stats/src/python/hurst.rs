@@ -1,6 +1,8 @@
 use numpy::PyReadonlyArray1;
 use pyo3::prelude::*;
 
+use super::stats_error;
+
 #[pyclass(name = "FukasawaHurst", unsendable)]
 pub struct PyFukasawaHurst {
   inner: crate::hurst::whittle::FukasawaFit,
@@ -210,7 +212,7 @@ impl PyRescaledRange {
       .inner
       .estimate(x.as_array())
       .map(|inner| PyHurstResult { inner })
-      .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+      .map_err(stats_error)
   }
 }
 
@@ -249,7 +251,7 @@ impl PyDfa {
       .inner
       .estimate(x.as_array())
       .map(|inner| PyHurstResult { inner })
-      .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+      .map_err(stats_error)
   }
 }
 
@@ -277,7 +279,7 @@ impl PyGph {
       .inner
       .estimate(x.as_array())
       .map(|inner| PyHurstResult { inner })
-      .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+      .map_err(stats_error)
   }
 }
 
@@ -307,7 +309,7 @@ impl PyWavelet {
       .inner
       .estimate(x.as_array())
       .map(|inner| PyHurstResult { inner })
-      .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+      .map_err(stats_error)
   }
 }
 
@@ -392,16 +394,16 @@ impl PyHiguchi {
       .inner
       .estimate(x.as_array())
       .map(|inner| PyFdResult { inner })
-      .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+      .map_err(stats_error)
   }
 
-  /// Return the Hurst exponent `H = 2 - D` (clamped to `(0, 1)`) via
-  /// the [`HurstEstimator`](crate::hurst::HurstEstimator) trait impl.
+  /// Return the Hurst exponent `H = 2 - D`, unclamped, via the
+  /// [`HurstEstimator`](crate::hurst::HurstEstimator) trait impl.
   fn estimate_hurst<'py>(&self, x: PyReadonlyArray1<'py, f64>) -> PyResult<PyHurstResult> {
     use crate::hurst::HurstEstimator;
     HurstEstimator::<f64>::estimate(&self.inner, x.as_array())
       .map(|inner| PyHurstResult { inner })
-      .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+      .map_err(stats_error)
   }
 }
 
@@ -428,16 +430,16 @@ impl PyVariogram {
       .inner
       .estimate(x.as_array())
       .map(|inner| PyFdResult { inner })
-      .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+      .map_err(stats_error)
   }
 
-  /// Return the Hurst exponent `H = 2 - D` (clamped to `(0, 1)`) via
-  /// the [`HurstEstimator`](crate::hurst::HurstEstimator) trait impl.
+  /// Return the Hurst exponent `H = 2 - D`, unclamped, via the
+  /// [`HurstEstimator`](crate::hurst::HurstEstimator) trait impl.
   fn estimate_hurst<'py>(&self, x: PyReadonlyArray1<'py, f64>) -> PyResult<PyHurstResult> {
     use crate::hurst::HurstEstimator;
     HurstEstimator::<f64>::estimate(&self.inner, x.as_array())
       .map(|inner| PyHurstResult { inner })
-      .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+      .map_err(stats_error)
   }
 }
 
@@ -468,7 +470,7 @@ impl PyWhittle {
       .inner
       .estimate(x.as_array())
       .map(|inner| PyHurstResult { inner })
-      .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+      .map_err(stats_error)
   }
 }
 
@@ -508,6 +510,6 @@ impl PyVariations {
       .inner
       .estimate(x.as_array())
       .map(|inner| PyHurstResult { inner })
-      .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+      .map_err(stats_error)
   }
 }

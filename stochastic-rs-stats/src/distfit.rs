@@ -47,29 +47,33 @@ pub use skew_t::fit_skew_t;
 pub use variance_gamma::VarianceGammaFit;
 pub use variance_gamma::fit_variance_gamma;
 
+use crate::StatsError;
+use crate::input::reject_constant;
+use crate::input::validate;
+use crate::optim::best_start;
 use crate::optim::more_thuente;
 use crate::optim::nelder_mead_vec;
 use crate::traits::FloatExt;
 
-/// The sample as `f64`, with the size and moment checks every fitter shares.
-pub(crate) fn sample<T: FloatExt>(data: ArrayView1<T>, minimum: usize) -> (Vec<f64>, f64, f64) {
-  let x: Vec<f64> = data
+/// The sample as `f64` with its mean and standard deviation; `Err` below `minimum`, on a
+/// non-finite observation or a constant sample.
+pub(crate) fn sample<T: FloatExt>(
+  data: ArrayView1<T>,
+  minimum: usize,
+) -> Result<(Vec<f64>, f64, f64), StatsError> {
+  let x = data
     .iter()
     .map(|v| v.to_f64().unwrap_or(f64::NAN))
-    .collect();
+    .collect::<Vec<f64>>();
+  validate(&x, minimum)?;
+  reject_constant(&x, "constant sample")?;
   let n = x.len();
-  assert!(
-    n >= minimum,
-    "need at least {minimum} observations, got {n}"
-  );
-  assert!(
-    x.iter().all(|v| v.is_finite()),
-    "observations must be finite"
-  );
   let mean = x.iter().sum::<f64>() / n as f64;
   let sd = (x.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / (n as f64 - 1.0)).sqrt();
-  assert!(sd > 0.0, "observations must not be constant");
-  (x, mean, sd)
+  if sd == 0.0 {
+    return Err(StatsError::DegenerateData("constant sample"));
+  }
+  Ok((x, mean, sd))
 }
 
 /// Best starting point of `starts` under `objective`, a Nelder–Mead simplex
@@ -82,10 +86,7 @@ pub(crate) fn minimise<F: Fn(&[f64]) -> f64 + Clone>(
   starts: &[Vec<f64>],
   objective: F,
 ) -> (Vec<f64>, usize, bool) {
-  let start = starts
-    .iter()
-    .min_by(|a, b| objective(a).partial_cmp(&objective(b)).unwrap())
-    .expect("non-empty starting grid");
+  let start = best_start(starts, &objective).expect("a non-empty starting grid");
   let (theta, iters, converged) = nelder_mead_vec(start, 5_000, &objective);
   let (theta, iters_restart, converged_restart) = nelder_mead_vec(&theta, 5_000, &objective);
   let (theta, iters_polish) = Polish {

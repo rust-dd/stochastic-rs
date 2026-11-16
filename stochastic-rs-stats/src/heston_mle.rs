@@ -6,6 +6,11 @@
 //!
 use ndarray::ArrayView1;
 
+use crate::StatsError;
+use crate::input::as_slice_or_copy;
+use crate::input::reject_constant;
+use crate::input::validate;
+
 #[derive(Clone, Debug)]
 pub struct HestonMleFit {
   /// Initial variance/volatility level.
@@ -20,42 +25,35 @@ pub struct HestonMleFit {
   pub rho: f64,
 }
 
-/// NMLE estimator for Heston parameters from observed `(S_t, V_t)` samples.
-///
-/// Source:
-/// - Wang et al. (2018), NMLE closed-form estimators
-///   <https://doi.org/10.1007/s11432-017-9215-8>
-///   <http://scis.scichina.com/en/2018/042202.pdf>
-pub fn fit_heston_nmle(s: ArrayView1<f64>, v: ArrayView1<f64>, r: f64) -> HestonMleFit {
-  assert_eq!(s.len(), v.len(), "s and v must have the same length");
-  let nobs = v.len();
-  assert!(nobs >= 2, "nmle_heston requires at least 2 observations");
-  let delta = 1.0 / (nobs - 1) as f64;
-  fit_heston_nmle_with_delta(s, v, r, delta)
+/// Wang et al. (2018) closed-form NMLE of Heston from `(S_t, V_t)` over one unit of time; `Err` on
+/// unequal lengths, fewer than 2 or non-finite observations or a constant variance path.
+/// Reference: Wang et al. (2018), Sci. China Inf. Sci. 61, 042202. DOI: 10.1007/s11432-017-9215-8
+pub fn fit_heston_nmle(
+  s: ArrayView1<f64>,
+  v: ArrayView1<f64>,
+  r: f64,
+) -> Result<HestonMleFit, StatsError> {
+  validate_series(s, v)?;
+  Ok(nmle(s, v, r, 1.0 / (v.len() - 1) as f64))
 }
 
-/// NMLE estimator with explicit sampling interval `delta`.
-///
-/// Source:
-/// - Wang et al. (2018), Eq. (19)-(21) and rho moment estimator
-///   <https://doi.org/10.1007/s11432-017-9215-8>
-///   <http://scis.scichina.com/en/2018/042202.pdf>
+/// [`fit_heston_nmle`] at sampling interval `delta` (Wang et al. eq. 19-21 and the rho moment
+/// estimator); `Err` as it, and panics unless `delta` is finite and positive.
 pub fn fit_heston_nmle_with_delta(
   s: ArrayView1<f64>,
   v: ArrayView1<f64>,
   r: f64,
   delta: f64,
-) -> HestonMleFit {
+) -> Result<HestonMleFit, StatsError> {
+  assert_delta(delta);
+  validate_series(s, v)?;
+  Ok(nmle(s, v, r, delta))
+}
+
+fn nmle(s: ArrayView1<f64>, v: ArrayView1<f64>, r: f64, delta: f64) -> HestonMleFit {
   const EPS: f64 = 1e-12;
 
-  assert_eq!(s.len(), v.len(), "s and v must have the same length");
   let nobs = v.len();
-  assert!(nobs >= 2, "nmle_heston requires at least 2 observations");
-  assert!(
-    delta.is_finite() && delta > 0.0,
-    "delta must be finite and positive"
-  );
-
   let n_f = (nobs - 1) as f64;
 
   // Following Wang et al. (2018), Eq. (19)-(21):
@@ -132,42 +130,34 @@ pub fn fit_heston_nmle_with_delta(
   }
 }
 
-/// PMLE estimator for Heston parameters from observed `(S_t, V_t)` samples.
-///
-/// Source:
-/// - Wang et al. (2018), PMLE closed-form estimators
-///   <https://doi.org/10.1007/s11432-017-9215-8>
-///   <http://scis.scichina.com/en/2018/042202.pdf>
-pub fn fit_heston_pmle(s: ArrayView1<f64>, v: ArrayView1<f64>, r: f64) -> HestonMleFit {
-  assert_eq!(s.len(), v.len(), "s and v must have the same length");
-  let nobs = v.len();
-  assert!(nobs >= 2, "pmle_heston requires at least 2 observations");
-  let delta = 1.0 / (nobs - 1) as f64;
-  fit_heston_pmle_with_delta(s, v, r, delta)
+/// Wang et al. (2018) closed-form PMLE of Heston from `(S_t, V_t)` over one unit of time; `Err` as
+/// [`fit_heston_nmle`].
+pub fn fit_heston_pmle(
+  s: ArrayView1<f64>,
+  v: ArrayView1<f64>,
+  r: f64,
+) -> Result<HestonMleFit, StatsError> {
+  validate_series(s, v)?;
+  Ok(pmle(s, v, r, 1.0 / (v.len() - 1) as f64))
 }
 
-/// PMLE estimator with explicit sampling interval `delta`.
-///
-/// Source:
-/// - Wang et al. (2018), PMLE formulas and rho moment estimator
-///   <https://doi.org/10.1007/s11432-017-9215-8>
-///   <http://scis.scichina.com/en/2018/042202.pdf>
+/// [`fit_heston_pmle`] at sampling interval `delta` (Wang et al.'s PMLE and the rho moment
+/// estimator); `Err` as it, and panics unless `delta` is finite and positive.
 pub fn fit_heston_pmle_with_delta(
   s: ArrayView1<f64>,
   v: ArrayView1<f64>,
   r: f64,
   delta: f64,
-) -> HestonMleFit {
+) -> Result<HestonMleFit, StatsError> {
+  assert_delta(delta);
+  validate_series(s, v)?;
+  Ok(pmle(s, v, r, delta))
+}
+
+fn pmle(s: ArrayView1<f64>, v: ArrayView1<f64>, r: f64, delta: f64) -> HestonMleFit {
   const EPS: f64 = 1e-12;
 
-  assert_eq!(s.len(), v.len(), "s and v must have the same length");
   let nobs = v.len();
-  assert!(nobs >= 2, "pmle_heston requires at least 2 observations");
-  assert!(
-    delta.is_finite() && delta > 0.0,
-    "delta must be finite and positive"
-  );
-
   let n_f = (nobs - 1) as f64;
 
   let mut sum_v_k = 0.0;
@@ -245,6 +235,29 @@ pub fn fit_heston_pmle_with_delta(
   }
 }
 
+/// Equal lengths, two or more finite observations each, and a variance path that moves: the
+/// closed forms divide by its spread.
+fn validate_series(s: ArrayView1<f64>, v: ArrayView1<f64>) -> Result<(), StatsError> {
+  if s.len() != v.len() {
+    return Err(StatsError::DimensionMismatch {
+      expected: s.len(),
+      got: v.len(),
+    });
+  }
+  validate(&as_slice_or_copy(s), 2)?;
+  let v = as_slice_or_copy(v);
+  validate(&v, 2)?;
+  reject_constant(&v, "constant variance series")
+}
+
+#[track_caller]
+fn assert_delta(delta: f64) {
+  assert!(
+    delta.is_finite() && delta > 0.0,
+    "delta must satisfy `delta.is_finite() && delta > 0.0`, got delta = {delta:?}"
+  );
+}
+
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
@@ -256,25 +269,55 @@ mod tests {
   use super::fit_heston_nmle_with_delta;
   use super::fit_heston_pmle;
   use super::fit_heston_pmle_with_delta;
+  use crate::StatsError;
 
   #[test]
-  #[should_panic(expected = "s and v must have the same length")]
-  fn nmle_heston_panics_on_mismatched_lengths() {
+  fn nmle_heston_rejects_mismatched_lengths() {
     let s = Array1::from(vec![100.0, 101.0, 102.0]);
     let v = Array1::from(vec![0.04, 0.05]);
-    let _ = fit_heston_nmle(s.view(), v.view(), 0.01);
+    assert_eq!(
+      fit_heston_nmle(s.view(), v.view(), 0.01).unwrap_err(),
+      StatsError::DimensionMismatch {
+        expected: 3,
+        got: 2
+      }
+    );
   }
 
   #[test]
-  #[should_panic(expected = "at least 2 observations")]
-  fn nmle_heston_panics_on_short_series() {
+  fn nmle_heston_rejects_a_short_series() {
     let s = Array1::from(vec![100.0]);
     let v = Array1::from(vec![0.04]);
-    let _ = fit_heston_nmle(s.view(), v.view(), 0.01);
+    assert_eq!(
+      fit_heston_nmle(s.view(), v.view(), 0.01).unwrap_err(),
+      StatsError::InsufficientData { needed: 2, got: 1 }
+    );
   }
 
   #[test]
-  #[should_panic(expected = "delta must be finite and positive")]
+  fn a_non_finite_or_constant_series_is_an_err() {
+    let s = Array1::from(vec![100.0, 101.0, 102.0, 101.5]);
+    let v = Array1::from(vec![0.04, f64::INFINITY, 0.05, 0.045]);
+    for fit in [fit_heston_nmle, fit_heston_pmle] {
+      assert_eq!(
+        fit(s.view(), v.view(), 0.01).unwrap_err(),
+        StatsError::InvalidObservation {
+          index: 1,
+          value: f64::INFINITY,
+          constraint: "finite"
+        }
+      );
+      assert_eq!(
+        fit(s.view(), Array1::from_elem(4, 0.04).view(), 0.01).unwrap_err(),
+        StatsError::DegenerateData("constant variance series")
+      );
+    }
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "delta must satisfy `delta.is_finite() && delta > 0.0`, got delta = 0.0"
+  )]
   fn nmle_heston_with_delta_panics_on_non_positive_step() {
     let s = Array1::from(vec![100.0, 101.0]);
     let v = Array1::from(vec![0.04, 0.05]);
@@ -282,7 +325,9 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "delta must be finite and positive")]
+  #[should_panic(
+    expected = "delta must satisfy `delta.is_finite() && delta > 0.0`, got delta = 0.0"
+  )]
   fn pmle_heston_with_delta_panics_on_non_positive_step() {
     let s = Array1::from(vec![100.0, 101.0]);
     let v = Array1::from(vec![0.04, 0.05]);
@@ -337,7 +382,7 @@ mod tests {
         s[i] = log_s_next.exp();
       }
 
-      fit_heston_nmle_with_delta(s.view(), v.view(), r, dt)
+      fit_heston_nmle_with_delta(s.view(), v.view(), r, dt).unwrap()
     };
 
     let fits = [7u64, 19, 41].map(|seed| (seed, run(seed)));
@@ -415,7 +460,7 @@ mod tests {
       s[i] = log_s_next.exp();
     }
 
-    let est = fit_heston_pmle(s.view(), v.view(), r);
+    let est = fit_heston_pmle(s.view(), v.view(), r).unwrap();
     assert!(est.kappa.is_finite() && est.kappa > 0.0);
     assert!(est.theta.is_finite() && est.theta > 0.0);
     assert!(est.sigma.is_finite() && est.sigma > 0.0);

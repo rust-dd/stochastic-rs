@@ -90,7 +90,7 @@ pub fn adf_test(y: ArrayView1<f64>, cfg: AdfConfig) -> Result<AdfTest, StatsErro
     _ => cfg.max_lags.unwrap_or_else(|| schwert_max_lags(n)),
   };
   // The lag-p ADF regression has the rows and columns of a levels autoregression of order p + 1.
-  let needed = min_sample_size(max_lags + 1, cfg.trend);
+  let needed = min_sample_size(max_lags.saturating_add(1), cfg.trend);
   if n < needed {
     return Err(StatsError::InsufficientData { needed, got: n });
   }
@@ -236,5 +236,29 @@ mod tests {
         got: 20
       }
     );
+  }
+
+  #[test]
+  fn a_lag_bound_at_usize_max_is_insufficient_data() {
+    let x = simulate_ar1(0.5, 20, 0xADF6);
+    let configs = [
+      AdfConfig {
+        lag_selection: LagSelection::Fixed(usize::MAX),
+        ..AdfConfig::default()
+      },
+      AdfConfig {
+        max_lags: Some(usize::MAX),
+        ..AdfConfig::default()
+      },
+    ];
+    for cfg in configs {
+      assert_eq!(
+        adf_test(ndarray::ArrayView1::from(&x), cfg).unwrap_err(),
+        StatsError::InsufficientData {
+          needed: usize::MAX,
+          got: 20
+        }
+      );
+    }
   }
 }

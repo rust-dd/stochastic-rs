@@ -10,6 +10,8 @@ use super::filter::HestonCekfCorrection;
 use super::filter::HestonCekfFilterConfig;
 use super::filter::HestonCekfPositiveStatePolicy;
 use super::filter::filter_heston_cekf_batch;
+use super::filter::validate_prices;
+use crate::StatsError;
 use crate::heston_mle::HestonMleFit;
 use crate::heston_mle::fit_heston_nmle_with_delta;
 
@@ -64,25 +66,24 @@ pub struct HestonNmleCekfFit {
   pub converged: bool,
 }
 
-/// Runs the damped, alternating full-batch fixed-point heuristic.
-///
-/// Each iteration filters the entire series and then refreshes every Heston
-/// parameter. `converged` refers only to that batch parameter loop; it is not a
-/// CEKF filtering property and this composition is not the causal online
-/// recursion from Wang et al. After termination, no additional parameter
-/// refresh is performed.
+/// Damped batch fixed point of CEKF passes and NMLE refreshes, `converged` being that loop's; `Err`
+/// below 2 prices, on a non-finite or non-positive one or a path it cannot refit; config panics.
 pub fn fit_heston_nmle_cekf(
   prices: ArrayView1<'_, f64>,
   config: HestonNmleCekfConfig,
-) -> HestonNmleCekfFit {
-  validate_batch_config(prices, &config);
+) -> Result<HestonNmleCekfFit, StatsError> {
+  validate_batch_config(&config);
+  validate_prices(prices)?;
   let mut parameters = config.initial_params.projected_batch();
   let mut converged = false;
   let mut iterations = 0;
 
   for iteration in 0..config.max_iters {
-    let (variance_path, _) = cekf_pass(prices, parameters, &config);
-    let nmle = fit_heston_nmle_with_delta(prices, variance_path.view(), config.r, config.delta);
+    let (variance_path, _) = cekf_pass(prices, parameters, &config)?;
+    let nmle = fit_heston_nmle_with_delta(prices, variance_path.view(), config.r, config.delta)
+      .map_err(|_| StatsError::Numerical {
+        stage: "batch variance path",
+      })?;
     let updated = HestonNmleCekfParams::from(nmle).projected_batch();
     let blended = blend_params(parameters, updated, config.param_damping).projected_batch();
     let max_difference = (blended.kappa - parameters.kappa)
@@ -99,8 +100,8 @@ pub fn fit_heston_nmle_cekf(
     }
   }
 
-  let (variance_path, covariance_path) = cekf_pass(prices, parameters, &config);
-  HestonNmleCekfFit {
+  let (variance_path, covariance_path) = cekf_pass(prices, parameters, &config)?;
+  Ok(HestonNmleCekfFit {
     params: HestonMleFit {
       v0: variance_path[0].max(0.0),
       kappa: parameters.kappa,
@@ -112,14 +113,14 @@ pub fn fit_heston_nmle_cekf(
     cov_path: covariance_path,
     iterations,
     converged,
-  }
+  })
 }
 
 pub(super) fn cekf_pass(
   prices: ArrayView1<'_, f64>,
   parameters: HestonNmleCekfParams,
   config: &HestonNmleCekfConfig,
-) -> (Array1<f64>, Array1<f64>) {
+) -> Result<(Array1<f64>, Array1<f64>), StatsError> {
   let filter_config = HestonCekfFilterConfig {
     r: config.r,
     delta: config.delta,
@@ -131,8 +132,8 @@ pub(super) fn cekf_pass(
     correction: batch_correction(parameters, config),
     positive_state_policy: HestonCekfPositiveStatePolicy::Strict,
   };
-  let result = filter_heston_cekf_batch(prices, parameters, &filter_config);
-  (result.variance_path, result.error_covariance_bound_path)
+  let result = filter_heston_cekf_batch(prices, parameters, &filter_config)?;
+  Ok((result.variance_path, result.error_covariance_bound_path))
 }
 
 fn batch_correction(
@@ -166,11 +167,7 @@ fn blend_params(
   }
 }
 
-fn validate_batch_config(prices: ArrayView1<'_, f64>, config: &HestonNmleCekfConfig) {
-  assert!(
-    prices.len() >= 2,
-    "nmle_cekf_heston requires at least 2 prices"
-  );
+fn validate_batch_config(config: &HestonNmleCekfConfig) {
   assert!(
     config.delta.is_finite() && config.delta > 0.0,
     "delta must be finite and positive"

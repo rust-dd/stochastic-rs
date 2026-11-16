@@ -1,13 +1,10 @@
-//! Variogram-ratio (p-power) fractal dimension.
-//!
+//! Variogram-ratio (p-power) fractal dimension from the lag-1 and lag-2 variograms:
 //! $$
 //! V_p(l) = \frac{1}{2(N - l)} \sum_{i=l}^{N-1} |X_i - X_{i-l}|^p,
 //! \quad
 //! D = 2 - \frac{1}{p} \cdot \frac{\log V_p(2) - \log V_p(1)}{\log 2}.
 //! $$
-//!
-//! Reference: Constantine A. G., Hall P. (1994) — *Characterizing surface
-//! smoothness via estimation of effective fractal dimension*, JRSS-B 56(1).
+//! Reference: Constantine, Hall (1994), "Characterizing surface smoothness …", JRSS-B 56(1).
 
 use std::f64::consts::LN_2;
 
@@ -62,16 +59,9 @@ impl<T: FloatExt> FractalDimEstimator<T> for Variogram {
   }
 }
 
-/// Variogram-based fractal dimension of `x`; `Err` below 3 points, for a non-positive `p`, or when
-/// the lag-1 or lag-2 variogram is non-finite or zero (a constant path).
-pub fn compute<T: FloatExt>(x: ArrayView1<T>, p: T) -> Result<T, StatsError> {
-  let (d, _, _) = compute_with_diagnostic::<T>(x, p)?;
-  Ok(T::from_f64_fast(d))
-}
-
-/// Same as [`compute`] but also returns the variogram-ratio diagnostics
-/// `(d, V₁, V₂)`.
-pub(crate) fn compute_with_diagnostic<T: FloatExt>(
+/// `(d, V₁, V₂)`; `Err` below 3 points, for a non-positive `p`, or when the lag-1 or lag-2
+/// variogram is non-finite or zero (a constant path).
+fn compute_with_diagnostic<T: FloatExt>(
   x: ArrayView1<T>,
   p: T,
 ) -> Result<(f64, f64, f64), StatsError> {

@@ -9,6 +9,8 @@ use stochastic_rs_stats::normality::jarque_bera::JarqueBeraConfig;
 use stochastic_rs_stats::normality::jarque_bera::jarque_bera_test;
 use stochastic_rs_stats::normality::shapiro_francia::ShapiroFranciaConfig;
 use stochastic_rs_stats::normality::shapiro_francia::shapiro_francia_test;
+use stochastic_rs_stats::spectral::PeriodogramConfig;
+use stochastic_rs_stats::spectral::periodogram_fft;
 use stochastic_rs_stats::stationarity::adf::AdfConfig;
 use stochastic_rs_stats::stationarity::adf::adf_test;
 use stochastic_rs_stats::stationarity::andrews_ploberger::AndrewsPlobergerConfig;
@@ -39,6 +41,11 @@ fn strided_views_match_their_contiguous_copies() {
   assert!(strided.as_slice().is_none());
   let contiguous = strided.to_owned();
   let design = Array2::<f64>::ones((strided.len(), 1));
+  // RESET's powers of a fit on the intercept alone would be collinear with it.
+  let trend = Array2::<f64>::from_shape_fn(
+    (strided.len(), 2),
+    |(t, j)| if j == 0 { 1.0 } else { t as f64 },
+  );
   macro_rules! same {
     ($name:literal, $f:expr) => {{
       let a = $f(strided).unwrap().statistic;
@@ -73,7 +80,7 @@ fn strided_views_match_their_contiguous_copies() {
   ));
   same!("reset", |x| reset_test(
     x,
-    design.view(),
+    trend.view(),
     ResetConfig::default()
   ));
   same!("anderson_darling", |x| anderson_darling_normal_test(
@@ -88,4 +95,11 @@ fn strided_views_match_their_contiguous_copies() {
     x,
     ShapiroFranciaConfig::default()
   ));
+  let a = periodogram_fft(strided, PeriodogramConfig::default())
+    .unwrap()
+    .spectrum;
+  let b = periodogram_fft(contiguous.view(), PeriodogramConfig::default())
+    .unwrap()
+    .spectrum;
+  assert_eq!(a, b);
 }

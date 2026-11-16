@@ -30,15 +30,15 @@ use ndarray::ArrayView1;
 
 use crate::traits::FloatExt;
 
-/// Two-Scale Realized Variance (Zhang, Mykland, Aït-Sahalia 2005).
-///
-/// `prices` is the (length $n+1$) intraday price path. `k` is the
-/// sub-sampling factor — the slow scale uses every $k$-th price. Typical
-/// values are 5, 10, 20, or chosen via $K^{*} = c\,n^{2/3}$.
+/// Two-scale realized variance (Zhang, Mykland, Aït-Sahalia 2005) of a price path subsampled every
+/// `k` prices, typically `c n^{2/3}`; NaN below `k + 2` prices, and panics unless `k >= 2`.
 pub fn two_scale_rv<T: FloatExt>(prices: ArrayView1<T>, k: usize) -> T {
   let len = prices.len();
-  assert!(k >= 1, "subsampling factor must be ≥ 1");
-  assert!(len >= k + 2, "price path too short for k = {k}");
+  // At `k = 1` the slow and fast scales coincide and the estimate is identically zero.
+  assert!(k >= 2, "k must satisfy `k >= 2`, got k = {k:?}");
+  if len < k.saturating_add(2) {
+    return T::nan();
+  }
   let n = len - 1;
   let rv_all = price_rv(prices, 1);
   let rv_slow = average_subsample_rv(prices, k);
@@ -53,18 +53,17 @@ pub fn two_scale_rv<T: FloatExt>(prices: ArrayView1<T>, k: usize) -> T {
   }
 }
 
-/// Multi-Scale Realized Variance (Zhang 2006).
-///
-/// Combines RVs at scales $1, 2, \ldots, M$ with weights of the form
-/// $a_i = \lambda + \mu/i$, where $(\lambda, \mu)$ are chosen so that
-/// $\sum_i a_i = 1$ (consistency) and $\sum_i a_i/i = 0$ (cancellation of
-/// the leading-order noise bias). The closed form is
-/// $\mu = H_M / (H_M^2 - M H_M^{(2)})$ and
-/// $\lambda = -H_M^{(2)}\,\mu / H_M$ with $H_M = \sum 1/i$,
-/// $H_M^{(2)} = \sum 1/i^2$.
+/// Multi-scale realized variance (Zhang 2006) over scales `1..=scales` with the weights of the
+/// module doc; NaN below `scales + 2` prices, and panics unless `scales >= 2`.
 pub fn multi_scale_rv<T: FloatExt>(prices: ArrayView1<T>, scales: usize) -> T {
-  let m = scales.max(2);
-  assert!(prices.len() >= m + 2, "price path too short for {m} scales");
+  assert!(
+    scales >= 2,
+    "scales must satisfy `scales >= 2`, got scales = {scales:?}"
+  );
+  let m = scales;
+  if prices.len() < m.saturating_add(2) {
+    return T::nan();
+  }
   let h1: f64 = (1..=m).map(|i| 1.0 / i as f64).sum();
   let h2: f64 = (1..=m).map(|i| 1.0 / (i as f64).powi(2)).sum();
   let mu = h1 / (h1.powi(2) - (m as f64) * h2);
@@ -156,5 +155,17 @@ mod tests {
     let rv: f64 = dy.iter().map(|v| v * v).sum();
     let msrv = multi_scale_rv(y.view(), 12);
     assert!((msrv - iv).abs() < (rv - iv).abs());
+  }
+
+  #[test]
+  #[should_panic(expected = "k must satisfy `k >= 2`, got k = 1")]
+  fn a_unit_subsampling_step_panics() {
+    let _ = two_scale_rv(Array1::<f64>::linspace(1.0, 2.0, 50).view(), 1);
+  }
+
+  #[test]
+  #[should_panic(expected = "scales must satisfy `scales >= 2`, got scales = 1")]
+  fn a_single_scale_panics() {
+    let _ = multi_scale_rv(Array1::<f64>::linspace(1.0, 2.0, 50).view(), 1);
   }
 }

@@ -43,6 +43,7 @@ use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
+use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_rows;
 use crate::linalg::inverse;
@@ -134,8 +135,8 @@ fn cusumq_critical_coefficient(alpha: f64) -> f64 {
   }
 }
 
-/// Brown–Durbin–Evans (1975) CUSUM / CUSUMQ test of `y` on `x`; `Err` below `k + 2` points, a
-/// non-finite `y` or `x`, mismatched rows or a singular leading block; panics on bad config.
+/// Brown–Durbin–Evans (1975) CUSUM / CUSUMQ test of `y` on `x`; `Err` below `k + 2` points, on a
+/// non-finite or constant `y`, non-finite `x`, mismatched rows or a singular block; config panics.
 pub fn cusum_test(
   y: ArrayView1<f64>,
   x: ArrayView2<f64>,
@@ -153,8 +154,10 @@ pub fn cusum_test(
       got: x.nrows(),
     });
   }
-  validate(&as_slice_or_copy(y), k + 2)?;
+  let y_slice = as_slice_or_copy(y);
+  validate(&y_slice, k + 2)?;
   validate_rows(x)?;
+  reject_constant(&y_slice, "constant series")?;
 
   let t_total = y.len();
   let w = recursive_residuals(y, x)?;
@@ -442,6 +445,15 @@ mod tests {
         expected: 100,
         got: 99
       }
+    );
+  }
+
+  #[test]
+  fn a_constant_series_is_degenerate_data() {
+    let y = Array1::<f64>::from_elem(100, 0.3);
+    assert_eq!(
+      cusum_test(y.view(), linear_design(100).view(), CusumConfig::default()).unwrap_err(),
+      StatsError::DegenerateData("constant series")
     );
   }
 

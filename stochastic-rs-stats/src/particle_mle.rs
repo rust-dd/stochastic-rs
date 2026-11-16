@@ -48,6 +48,9 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::traits::SimdFloatExt;
 
+use crate::StatsError;
+use crate::input::reject_constant;
+use crate::input::validate;
 use crate::optim::nelder_mead;
 use crate::traits::FloatExt;
 
@@ -151,22 +154,23 @@ fn sv_pf_loglik(
   total
 }
 
-/// Fit the SV model by particle-filter MLE.
-///
-/// `returns` is the observed return series, `n_particles` the filter size
-/// (500-2000 typical), `seed` the common-random-numbers filter seed.
+/// SV model by particle-filter MLE, `n_particles` (500-2000) and a common-random-numbers `seed`;
+/// `Err` below 10 returns, on a non-finite or constant one, and panics unless `n_particles >= 1`.
 pub fn fit_sv_particle_mle<T: FloatExt>(
   returns: ArrayView1<T>,
   n_particles: usize,
   seed: u64,
-) -> ParticleMleFit {
-  let nobs = returns.len();
+) -> Result<ParticleMleFit, StatsError> {
   assert!(
-    nobs >= 10,
-    "particle_mle_sv requires at least 10 observations"
+    n_particles >= 1,
+    "n_particles must satisfy `n_particles >= 1`, got n_particles = {n_particles:?}"
   );
-  assert!(n_particles >= 1, "n_particles must be positive");
-  let y: Vec<f64> = returns.iter().map(|v| v.to_f64().unwrap()).collect();
+  let y = returns
+    .iter()
+    .map(|v| v.to_f64().unwrap())
+    .collect::<Vec<f64>>();
+  validate(&y, 10)?;
+  reject_constant(&y, "constant series")?;
 
   // Unconstrained reparameterisation: μ free, φ = tanh(p1) ∈ (-1,1),
   // σ_η = exp(p2) > 0.
@@ -194,14 +198,14 @@ pub fn fit_sv_particle_mle<T: FloatExt>(
   let (p, iters, converged) = nelder_mead(start, 250, neg_ll);
   let (mu, phi, sigma_eta) = unpack(&p);
 
-  ParticleMleFit {
+  Ok(ParticleMleFit {
     mu,
     phi,
     sigma_eta,
     log_likelihood: -neg_ll(&p),
     iterations: iters,
     converged,
-  }
+  })
 }
 
 #[cfg(test)]
@@ -237,7 +241,7 @@ mod tests {
   fn particle_mle_recovers_sv_params() {
     let (mu_t, phi_t, sig_t) = (-9.0, 0.9, 0.30);
     let returns = simulate_sv(mu_t, phi_t, sig_t, 1500, 17);
-    let res = fit_sv_particle_mle(returns.view(), 600, 4242);
+    let res = fit_sv_particle_mle(returns.view(), 600, 4242).unwrap();
     assert!(res.converged, "PF-MLE optimiser must converge");
     assert!(
       (res.mu - mu_t).abs() < 0.7,
@@ -257,9 +261,11 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "at least 10 observations")]
-  fn particle_mle_panics_on_short_series() {
+  fn particle_mle_rejects_a_short_series() {
     let s = Array1::from(vec![0.01, -0.02, 0.005]);
-    let _ = fit_sv_particle_mle(s.view(), 100, 1);
+    assert_eq!(
+      fit_sv_particle_mle(s.view(), 100, 1).unwrap_err(),
+      StatsError::InsufficientData { needed: 10, got: 3 }
+    );
   }
 }

@@ -37,14 +37,9 @@ fn bench_mcmc(c: &mut Criterion) {
   let log_target = |x: ArrayView1<f64>| -0.5 * x[0] * x[0];
   c.bench_function("metropolis_5k_after_burn1k", |b| {
     b.iter(|| {
-      std::hint::black_box(random_walk_metropolis(
-        init.view(),
-        log_target,
-        scale.view(),
-        5_000,
-        1_000,
-        17,
-      ))
+      std::hint::black_box(
+        random_walk_metropolis(init.view(), log_target, scale.view(), 5_000, 1_000, 17).unwrap(),
+      )
     });
   });
 }
@@ -71,7 +66,8 @@ fn bench_ukf(c: &mut Criterion) {
         0.001,
         2.0,
         0.0,
-      );
+      )
+      .unwrap();
     });
   });
 }

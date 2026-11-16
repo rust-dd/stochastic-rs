@@ -102,22 +102,28 @@ impl<T: FloatExt> HurstEstimator<T> for Dfa {
         constraint: "min_window >= order + 2",
       });
     }
-    let min_required = (self.min_window * 4).max(self.order + 4);
+    // Unset, the largest window is `n / 4`, which must exceed `min_window`.
+    let windows = self
+      .min_window
+      .saturating_add(usize::from(self.max_window.is_none()));
+    let min_required = windows.saturating_mul(4).max(self.order.saturating_add(4));
     if n < min_required {
       return Err(StatsError::InsufficientData {
         needed: min_required,
         got: n,
       });
     }
-
-    let max_window = self.max_window.unwrap_or(n / 4).min(n / 2);
-    if max_window <= self.min_window {
+    if let Some(max_window) = self.max_window
+      && max_window <= self.min_window
+    {
       return Err(StatsError::InvalidParameter {
         name: "max_window",
         value: max_window as f64,
         constraint: "max_window > min_window",
       });
     }
+
+    let max_window = self.max_window.unwrap_or(n / 4).min(n / 2);
     let windows = log_spaced_windows(self.min_window, max_window, self.n_windows);
     if windows.len() < 2 {
       return Err(StatsError::DegenerateData("fewer than two valid scales"));
@@ -305,6 +311,7 @@ fn solve_symmetric(a: &mut [f64], b: &mut [f64], n: usize) -> Option<Vec<f64>> {
 
 #[cfg(test)]
 mod tests {
+  use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Unseeded;
   use stochastic_rs_stochastic::process::fbm::Fbm;
 
@@ -376,5 +383,29 @@ mod tests {
       rss.abs() < 1e-10,
       "linear detrend should leave 0 rss, got {rss}"
     );
+  }
+
+  #[test]
+  fn the_window_range_folds_into_the_length_check() {
+    let x = Array1::<f64>::linspace(0.0, 1.0, 34);
+    assert_eq!(
+      HurstEstimator::<f64>::estimate(&Dfa::default(), x.view()).unwrap_err(),
+      StatsError::InsufficientData {
+        needed: 36,
+        got: 34
+      }
+    );
+    let at_min = Dfa {
+      max_window: Some(8),
+      ..Dfa::default()
+    };
+    let long = Array1::<f64>::linspace(0.0, 1.0, 200);
+    assert!(matches!(
+      HurstEstimator::<f64>::estimate(&at_min, long.view()),
+      Err(StatsError::InvalidParameter {
+        name: "max_window",
+        ..
+      })
+    ));
   }
 }

@@ -36,6 +36,9 @@
 
 use ndarray::ArrayView1;
 
+use crate::StatsError;
+use crate::input::reject_constant;
+use crate::input::validate;
 use crate::optim::nelder_mead;
 use crate::traits::FloatExt;
 
@@ -111,19 +114,21 @@ pub(crate) fn quasi_log_likelihood(
   ll
 }
 
-/// Fit a mean-reverting diffusion by Gaussian QMLE.
-///
-/// `series` is the discretely-observed path, `dt` the sampling interval.
-/// Requires at least 3 observations.
+/// Gaussian QMLE of a mean-reverting diffusion sampled every `dt`; `Err` below 3 observations, on
+/// a non-finite one or a constant path, and panics unless `dt` is finite and positive.
 pub fn fit_diffusion_qmle<T: FloatExt>(
   series: ArrayView1<T>,
   dt: f64,
   kind: DiffusionKind,
-) -> QmleFit {
-  let nobs = series.len();
-  assert!(nobs >= 3, "qmle requires at least 3 observations");
-  assert!(dt.is_finite() && dt > 0.0, "dt must be finite and positive");
-  let x: Vec<f64> = series.iter().map(|v| v.to_f64().unwrap()).collect();
+) -> Result<QmleFit, StatsError> {
+  assert_dt(dt);
+  let x = series
+    .iter()
+    .map(|v| v.to_f64().unwrap())
+    .collect::<Vec<f64>>();
+  validate(&x, 3)?;
+  reject_constant(&x, "constant series")?;
+  let nobs = x.len();
 
   // Negative quasi-log-likelihood (minimised). Parameters carried in
   // log-space so κ, θ, σ stay strictly positive.
@@ -165,31 +170,31 @@ pub fn fit_diffusion_qmle<T: FloatExt>(
   let (p, iters, converged) = nelder_mead([kappa0.ln(), theta0.ln(), sigma0.ln()], 2000, neg_ll);
   let (kappa, theta, sigma) = (p[0].exp(), p[1].exp(), p[2].exp());
 
-  QmleFit {
+  Ok(QmleFit {
     kappa,
     theta,
     sigma,
     log_likelihood: -neg_ll(&p),
     iterations: iters,
     converged,
-  }
+  })
 }
 
-/// Closed-form exact MLE for the Ornstein-Uhlenbeck / Vasicek process, used
-/// both as a fast path and as the reference the QMLE must match (the OU
-/// transition is Gaussian, so QMLE = exact MLE).
-///
-/// AR(1) representation: $X_{t+\Delta} = \theta(1-\beta) + \beta X_t +
-/// \varepsilon_t$ with $\beta = e^{-\kappa\Delta}$ and
-/// $\operatorname{Var}(\varepsilon) = \sigma^2(1-\beta^2)/(2\kappa)$.
-pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> QmleFit {
-  let nobs = series.len();
-  assert!(
-    nobs >= 3,
-    "mle_ou_closed_form requires at least 3 observations"
-  );
-  assert!(dt.is_finite() && dt > 0.0, "dt must be finite and positive");
-  let x: Vec<f64> = series.iter().map(|v| v.to_f64().unwrap()).collect();
+/// Closed-form OU / Vasicek MLE through the AR(1) below, $\beta = e^{-\kappa\Delta}$; `Err` and
+/// panics as [`fit_diffusion_qmle`], with the constant check on the regressor `x[..n - 1]`.
+/// $$
+/// X_{t+\Delta} = \theta(1-\beta) + \beta X_t + \varepsilon_t
+/// $$
+pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit, StatsError> {
+  assert_dt(dt);
+  let x = series
+    .iter()
+    .map(|v| v.to_f64().unwrap())
+    .collect::<Vec<f64>>();
+  validate(&x, 3)?;
+  let nobs = x.len();
+  // The regressor is the path without its last point; its spread is the slope's denominator.
+  reject_constant(&x[..nobs - 1], "constant series")?;
   let m = nobs - 1;
   let mf = m as f64;
 
@@ -222,14 +227,23 @@ pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> QmleFit {
       -0.5 * ((2.0 * std::f64::consts::PI * var_eps).ln() + (x[t + 1] - pred).powi(2) / var_eps);
   }
 
-  QmleFit {
+  Ok(QmleFit {
     kappa,
     theta,
     sigma,
     log_likelihood: ll,
     iterations: 0,
     converged: true,
-  }
+  })
+}
+
+/// The sampling-interval precondition the diffusion fitters share.
+#[track_caller]
+pub(crate) fn assert_dt(dt: f64) {
+  assert!(
+    dt.is_finite() && dt > 0.0,
+    "dt must satisfy `dt.is_finite() && dt > 0.0`, got dt = {dt:?}"
+  );
 }
 
 #[cfg(test)]
@@ -315,8 +329,8 @@ mod tests {
   #[test]
   fn qmle_ou_matches_closed_form_mle() {
     let path = simulate_ou(1.8, 0.06, 0.12, 0.06, 1.0 / 252.0, 6000, 3);
-    let q = fit_diffusion_qmle(path.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck);
-    let cf = fit_ou_mle(path.view(), 1.0 / 252.0);
+    let q = fit_diffusion_qmle(path.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).unwrap();
+    let cf = fit_ou_mle(path.view(), 1.0 / 252.0).unwrap();
     assert!(
       (q.kappa - cf.kappa).abs() / cf.kappa < 1e-3,
       "QMLE κ={} vs closed-form κ={}",
@@ -355,7 +369,7 @@ mod tests {
       let path = simulate_ou(kt, tt, st, 0.06, 1.0 / 252.0, 8000, seed);
       (
         seed,
-        fit_diffusion_qmle(path.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck),
+        fit_diffusion_qmle(path.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).unwrap(),
       )
     });
     let ok = fits.iter().any(|(_, q)| {
@@ -386,7 +400,7 @@ mod tests {
       let path = simulate_cir(kt, tt, st, 0.04, 1.0 / 252.0, 8000, seed);
       (
         seed,
-        fit_diffusion_qmle(path.view(), 1.0 / 252.0, DiffusionKind::Cir),
+        fit_diffusion_qmle(path.view(), 1.0 / 252.0, DiffusionKind::Cir).unwrap(),
       )
     });
     let ok = fits.iter().any(|(_, q)| {
@@ -409,9 +423,20 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "at least 3 observations")]
-  fn qmle_panics_on_short_series() {
+  fn qmle_rejects_a_short_series() {
     let s = Array1::from(vec![0.05, 0.06]);
-    let _ = fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck);
+    assert_eq!(
+      fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).unwrap_err(),
+      StatsError::InsufficientData { needed: 3, got: 2 }
+    );
+  }
+
+  #[test]
+  fn a_constant_regressor_is_degenerate_data() {
+    let s = Array1::from(vec![0.05, 0.05, 0.05, 0.07]);
+    assert_eq!(
+      fit_ou_mle(s.view(), 1.0 / 252.0).unwrap_err(),
+      StatsError::DegenerateData("constant series")
+    );
   }
 }

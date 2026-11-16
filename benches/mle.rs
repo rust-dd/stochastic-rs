@@ -150,13 +150,7 @@ fn bench_mle_fit(c: &mut Criterion) {
           Some(1.0),
           Deterministic::new(0),
         );
-        black_box(fit_mle(
-          &mut ou_fit,
-          path.view(),
-          dt,
-          DensityApprox::Euler,
-          None,
-        ))
+        black_box(fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Euler, None).unwrap())
       })
     });
 
@@ -171,13 +165,7 @@ fn bench_mle_fit(c: &mut Criterion) {
           Some(1.0),
           Deterministic::new(0),
         );
-        black_box(fit_mle(
-          &mut ou_fit,
-          path.view(),
-          dt,
-          DensityApprox::Kessler,
-          None,
-        ))
+        black_box(fit_mle(&mut ou_fit, path.view(), dt, DensityApprox::Kessler, None).unwrap())
       })
     });
 
@@ -207,13 +195,16 @@ fn bench_mle_fit(c: &mut Criterion) {
           None,
           Deterministic::new(0),
         );
-        black_box(fit_mle(
-          &mut cir_fit,
-          cir_path.view(),
-          cir_dt,
-          DensityApprox::Kessler,
-          None,
-        ))
+        black_box(
+          fit_mle(
+            &mut cir_fit,
+            cir_path.view(),
+            cir_dt,
+            DensityApprox::Kessler,
+            None,
+          )
+          .unwrap(),
+        )
       })
     });
   }
@@ -240,7 +231,7 @@ fn bench_garch_fit(c: &mut Criterion) {
       ("Egarch11", GarchSpec::egarch(1, 1)),
     ] {
       group.bench_function(BenchmarkId::new(name, label), |b| {
-        b.iter(|| black_box(fit_garch(returns.view(), spec)))
+        b.iter(|| black_box(fit_garch(returns.view(), spec).unwrap()))
       });
     }
   }
@@ -255,14 +246,14 @@ fn bench_evt_fit(c: &mut Criterion) {
   dist.fill_slice(&mut losses);
   let losses = ndarray::Array1::from(losses);
   group.bench_function("hill_20k_k500", |b| {
-    b.iter(|| black_box(fit_hill(losses.view(), 500)))
+    b.iter(|| black_box(fit_hill(losses.view(), 500).unwrap()))
   });
   group.bench_function("pot_20k_u3", |b| {
-    b.iter(|| black_box(fit_pot(losses.view(), 3.0)))
+    b.iter(|| black_box(fit_pot(losses.view(), 3.0).unwrap()))
   });
   let maxima = block_maxima(losses.view(), 100);
   group.bench_function("gev_200_maxima", |b| {
-    b.iter(|| black_box(fit_gev(maxima.view())))
+    b.iter(|| black_box(fit_gev(maxima.view()).unwrap()))
   });
   group.finish();
 }

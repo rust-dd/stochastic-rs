@@ -45,7 +45,7 @@ fn a_short_path_is_insufficient_data() {
   let short = Array1::<f64>::linspace(0.0, 1.0, 5);
   assert_eq!(
     RescaledRange::default().estimate(short.view()).unwrap_err(),
-    StatsError::InsufficientData { needed: 32, got: 5 }
+    StatsError::InsufficientData { needed: 68, got: 5 }
   );
 }
 

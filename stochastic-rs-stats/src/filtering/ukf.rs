@@ -18,6 +18,7 @@ use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 
+use crate::StatsError;
 use crate::linalg::inverse;
 use crate::linalg::spd_cholesky_lower;
 
@@ -30,16 +31,8 @@ pub struct UkfState {
   pub covariance: Array2<f64>,
 }
 
-/// One predict-update cycle of the Unscented Kalman Filter.
-///
-/// `prior`: state at time $t-1$.
-/// `transition`: $f: \mathbb R^{n_x} \to \mathbb R^{n_x}$ (deterministic; the
-/// process noise is added via `process_cov`).
-/// `measurement`: $h: \mathbb R^{n_x} \to \mathbb R^{n_y}$.
-/// `process_cov`, `measurement_cov`: $Q$ and $R$.
-/// `observation`: $y_t$.
-/// `alpha`, `beta`, `kappa`: standard UKF tuning parameters; defaults
-/// $(0.001, 2, 0)$ are a sensible starting point.
+/// One UKF predict-update of `prior`, tuned by `(alpha, beta, kappa)` such as `(1e-3, 2, 0)`; `Err`
+/// on a non-PD prior or a singular innovation covariance, and panics on mismatched shapes.
 pub fn unscented_kalman_step<F, H>(
   prior: &UkfState,
   transition: F,
@@ -50,7 +43,7 @@ pub fn unscented_kalman_step<F, H>(
   alpha: f64,
   beta: f64,
   kappa: f64,
-) -> UkfState
+) -> Result<UkfState, StatsError>
 where
   F: Fn(ArrayView1<f64>) -> Array1<f64>,
   H: Fn(ArrayView1<f64>) -> Array1<f64>,
@@ -61,7 +54,8 @@ where
   let lambda = alpha * alpha * (n as f64 + kappa) - n as f64;
   let scale = (n as f64 + lambda).sqrt();
 
-  let chol = spd_cholesky_lower(&prior.covariance).expect("UKF prior covariance not PD");
+  let chol =
+    spd_cholesky_lower(&prior.covariance).ok_or(StatsError::Singular("prior covariance"))?;
 
   let n_sigma = 2 * n + 1;
   let mut sigma = Array2::<f64>::zeros((n_sigma, n));
@@ -159,7 +153,7 @@ where
       }
     }
   }
-  let s_inv = inverse(&s).expect("UKF innovation covariance singular");
+  let s_inv = inverse(&s).ok_or(StatsError::Singular("innovation covariance"))?;
   let kalman_gain = cross.dot(&s_inv);
   let innovation: Array1<f64> = (0..m)
     .map(|j| observation[j] - z_mean[j])
@@ -178,10 +172,10 @@ where
       cov_post[[r, c]] -= update[[r, c]];
     }
   }
-  UkfState {
+  Ok(UkfState {
     mean: mean_post,
     covariance: cov_post,
-  }
+  })
 }
 
 #[cfg(test)]
@@ -231,7 +225,8 @@ mod tests {
         0.001,
         2.0,
         0.0,
-      );
+      )
+      .unwrap();
       errs += (state.mean[0] - x_true[t]).abs();
     }
     let mean_err = errs / n as f64;
@@ -260,8 +255,61 @@ mod tests {
         0.001,
         2.0,
         0.0,
-      );
+      )
+      .unwrap();
       assert!(state.mean.iter().all(|v| v.is_finite()));
     }
+  }
+
+  #[test]
+  fn a_prior_covariance_without_a_cholesky_factor_is_singular() {
+    let prior = UkfState {
+      mean: Array1::from(vec![0.0_f64, 0.0]),
+      covariance: Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 2.0, 1.0]).unwrap(),
+    };
+    let q = Array2::<f64>::eye(2);
+    let r = Array2::<f64>::eye(1);
+    let y = Array1::from(vec![0.0_f64]);
+    let identity = |x: ArrayView1<f64>| x.to_owned();
+    let first = |x: ArrayView1<f64>| Array1::from(vec![x[0]]);
+    let err = unscented_kalman_step(
+      &prior,
+      identity,
+      first,
+      q.view(),
+      r.view(),
+      y.view(),
+      1e-3,
+      2.0,
+      0.0,
+    )
+    .unwrap_err();
+    assert_eq!(err, StatsError::Singular("prior covariance"));
+  }
+
+  #[test]
+  fn a_singular_innovation_covariance_is_singular() {
+    let prior = UkfState {
+      mean: Array1::from(vec![0.0_f64]),
+      covariance: Array2::from_shape_vec((1, 1), vec![1.0]).unwrap(),
+    };
+    let q = Array2::<f64>::zeros((1, 1));
+    let r = Array2::<f64>::zeros((1, 1));
+    let y = Array1::from(vec![0.0_f64]);
+    let identity = |x: ArrayView1<f64>| x.to_owned();
+    let constant = |_: ArrayView1<f64>| Array1::from(vec![1.0_f64]);
+    let err = unscented_kalman_step(
+      &prior,
+      identity,
+      constant,
+      q.view(),
+      r.view(),
+      y.view(),
+      1e-3,
+      2.0,
+      0.0,
+    )
+    .unwrap_err();
+    assert_eq!(err, StatsError::Singular("innovation covariance"));
   }
 }

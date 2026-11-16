@@ -27,8 +27,12 @@
 use ndarray::Array1;
 use ndarray::ArrayView1;
 
+use crate::StatsError;
 use crate::filtering::mcmc::random_walk_metropolis;
+use crate::input::reject_constant;
+use crate::input::validate;
 use crate::qmle::DiffusionKind;
+use crate::qmle::assert_dt;
 use crate::qmle::quasi_log_likelihood;
 use crate::traits::FloatExt;
 
@@ -51,11 +55,8 @@ pub struct BayesianDiffusionFit {
   pub acceptance_rate: f64,
 }
 
-/// Run random-walk Metropolis on the diffusion posterior.
-///
-/// `proposal_scale` is the per-dimension Gaussian step in **log-parameter**
-/// space, ordered $(\ln\kappa, \ln\theta, \ln\sigma)$. Tune it so the
-/// acceptance rate lands in the 0.2-0.5 band.
+/// Metropolis posterior of `(ln κ, ln θ, ln σ)` from the prior means, `Err` if it is not finite
+/// there; `Err` and panics as [`crate::qmle::fit_diffusion_qmle`], and panics if `n_samples = 0`.
 pub fn fit_diffusion_bayesian<T: FloatExt>(
   series: ArrayView1<T>,
   dt: f64,
@@ -64,14 +65,14 @@ pub fn fit_diffusion_bayesian<T: FloatExt>(
   n_samples: usize,
   burn_in: usize,
   seed: u64,
-) -> BayesianDiffusionFit {
-  let nobs = series.len();
-  assert!(
-    nobs >= 3,
-    "bayesian_diffusion requires at least 3 observations"
-  );
-  assert!(dt.is_finite() && dt > 0.0, "dt must be finite and positive");
-  let x: Vec<f64> = series.iter().map(|v| v.to_f64().unwrap()).collect();
+) -> Result<BayesianDiffusionFit, StatsError> {
+  assert_dt(dt);
+  let x = series
+    .iter()
+    .map(|v| v.to_f64().unwrap())
+    .collect::<Vec<f64>>();
+  validate(&x, 3)?;
+  reject_constant(&x, "constant series")?;
 
   let sample_mean = x.iter().sum::<f64>() / x.len() as f64;
   // Prior means on the log-parameters: κ around 1, θ around the sample
@@ -106,7 +107,7 @@ pub fn fit_diffusion_bayesian<T: FloatExt>(
     n_samples,
     burn_in,
     seed,
-  );
+  )?;
 
   // Back-transform the log-parameter draws and summarise.
   let n = mh.samples.nrows();
@@ -119,7 +120,7 @@ pub fn fit_diffusion_bayesian<T: FloatExt>(
     sigmas.push(mh.samples[[r, 2]].exp());
   }
 
-  BayesianDiffusionFit {
+  Ok(BayesianDiffusionFit {
     kappa_mean: mean(&kappas),
     theta_mean: mean(&thetas),
     sigma_mean: mean(&sigmas),
@@ -127,7 +128,7 @@ pub fn fit_diffusion_bayesian<T: FloatExt>(
     theta_ci: credible_interval(&mut thetas),
     sigma_ci: credible_interval(&mut sigmas),
     acceptance_rate: mh.acceptance_rate,
-  }
+  })
 }
 
 fn mean(v: &[f64]) -> f64 {
@@ -136,7 +137,7 @@ fn mean(v: &[f64]) -> f64 {
 
 /// Equal-tailed 95 % credible interval (2.5 % / 97.5 % empirical quantiles).
 fn credible_interval(v: &mut [f64]) -> (f64, f64) {
-  v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+  v.sort_by(f64::total_cmp);
   let n = v.len();
   let lo = v[((0.025 * n as f64) as usize).min(n - 1)];
   let hi = v[((0.975 * n as f64) as usize).min(n - 1)];
@@ -199,7 +200,8 @@ mod tests {
         20_000,
         4_000,
         chain_seed,
-      );
+      )
+      .unwrap();
       assert!(
         res.acceptance_rate > 0.15 && res.acceptance_rate < 0.7,
         "acceptance rate {} out of healthy band on path {path_seed}",
@@ -227,10 +229,9 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "at least 3 observations")]
-  fn bayesian_diffusion_panics_on_short_series() {
+  fn bayesian_diffusion_rejects_a_short_series() {
     let s = Array1::from(vec![0.05, 0.06]);
-    let _ = fit_diffusion_bayesian(
+    let fit = fit_diffusion_bayesian(
       s.view(),
       1.0 / 252.0,
       DiffusionKind::OrnsteinUhlenbeck,
@@ -238,6 +239,10 @@ mod tests {
       100,
       10,
       1,
+    );
+    assert_eq!(
+      fit.unwrap_err(),
+      StatsError::InsufficientData { needed: 3, got: 2 }
     );
   }
 }

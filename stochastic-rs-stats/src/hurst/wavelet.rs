@@ -96,18 +96,33 @@ impl Wavelet {
 impl<T: FloatExt> HurstEstimator<T> for Wavelet {
   fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError> {
     let nobs = x.len();
-    if nobs < 64 {
-      return Err(StatsError::InsufficientData {
-        needed: 64,
-        got: nobs,
-      });
-    }
     if self.j_min < 1 {
       return Err(StatsError::InvalidParameter {
         name: "j_min",
         value: self.j_min as f64,
         constraint: "j_min >= 1",
       });
+    }
+    if let Some(j_max) = self.j_max
+      && j_max <= self.j_min
+    {
+      return Err(StatsError::InvalidParameter {
+        name: "j_max",
+        value: j_max as f64,
+        constraint: "j_max >= j_min + 1",
+      });
+    }
+    // Scale `j` holds `⌊n / 2^j⌋` coefficients and a regression scale needs four, so scales `j_min`
+    // and `j_min + 1` need `2^(j_min + 3)` points after differencing.
+    let levels_needed = u32::try_from(self.j_min.saturating_add(3))
+      .ok()
+      .and_then(|shift| 1usize.checked_shl(shift))
+      .unwrap_or(usize::MAX);
+    let needed = levels_needed
+      .saturating_add(usize::from(self.take_differences))
+      .max(64);
+    if nobs < needed {
+      return Err(StatsError::InsufficientData { needed, got: nobs });
     }
 
     let signal_raw = to_f64_vec::<T>(x);
@@ -117,12 +132,6 @@ impl<T: FloatExt> HurstEstimator<T> for Wavelet {
       signal_raw
     };
     let n_series = signal.len();
-    if n_series < 32 {
-      return Err(StatsError::InsufficientData {
-        needed: 32,
-        got: n_series,
-      });
-    }
     let (h_filter, g_filter) = match self.wavelet {
       WaveletKind::Daubechies4 => qmf_from_low(&daubechies4_scaling()),
     };
@@ -132,9 +141,6 @@ impl<T: FloatExt> HurstEstimator<T> for Wavelet {
       .j_max
       .unwrap_or(max_levels.saturating_sub(2))
       .min(max_levels);
-    if j_cap < self.j_min + 1 {
-      return Err(StatsError::DegenerateData("fewer than two valid scales"));
-    }
 
     let levels = pyramidal_dwt(&signal, &h_filter, &g_filter, j_cap);
     if levels.len() < 2 {
@@ -250,6 +256,7 @@ pub(crate) fn pyramidal_dwt(
 
 #[cfg(test)]
 mod tests {
+  use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Unseeded;
   use stochastic_rs_stochastic::noise::fgn::Fgn;
   use stochastic_rs_stochastic::process::fbm::Fbm;
@@ -305,5 +312,52 @@ mod tests {
     let r = Wavelet::default().estimate(path.view()).expect("wavelet");
     let se = r.std_err.expect("std_err present");
     assert!(se > 0.0 && se < 1.0, "SE={se}");
+  }
+
+  #[test]
+  fn a_scale_range_without_two_levels_is_invalid_parameter() {
+    let x = Array1::<f64>::linspace(0.0, 1.0, 256);
+    let narrow = Wavelet {
+      j_max: Some(2),
+      ..Wavelet::default()
+    };
+    assert_eq!(
+      HurstEstimator::<f64>::estimate(&narrow, x.view()).unwrap_err(),
+      StatsError::InvalidParameter {
+        name: "j_max",
+        value: 2.0,
+        constraint: "j_max >= j_min + 1"
+      }
+    );
+  }
+
+  /// Scales `j_min` and `j_min + 1` need four coefficients each: `2^(j_min + 3)` differences.
+  #[test]
+  fn the_scale_range_folds_into_the_length_check() {
+    let coarse = Wavelet {
+      j_min: 4,
+      ..Wavelet::default()
+    };
+    let x = Array1::from_iter((0..129).map(|t| (t as f64 * 0.7).sin() + 0.01 * t as f64));
+    assert_eq!(
+      HurstEstimator::<f64>::estimate(&coarse, x.slice(ndarray::s![..128])).unwrap_err(),
+      StatsError::InsufficientData {
+        needed: 129,
+        got: 128
+      }
+    );
+    assert!(HurstEstimator::<f64>::estimate(&coarse, x.view()).is_ok());
+    let levels = Wavelet {
+      take_differences: false,
+      ..coarse
+    };
+    assert_eq!(
+      HurstEstimator::<f64>::estimate(&levels, x.slice(ndarray::s![..127])).unwrap_err(),
+      StatsError::InsufficientData {
+        needed: 128,
+        got: 127
+      }
+    );
+    assert!(HurstEstimator::<f64>::estimate(&levels, x.slice(ndarray::s![..128])).is_ok());
   }
 }

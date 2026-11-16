@@ -140,7 +140,7 @@ fn har_round_trip_recovers_intercept_at_steady_state() {
     let m: f64 = (1..=22).map(|i| rv[t - i]).sum::<f64>() / 22.0;
     rv[t] = (0.0001 + 0.4 * d + 0.3 * w + 0.2 * m + shocks[t]).max(1e-8);
   }
-  let model = HarRv::fit(rv.view());
+  let model = HarRv::fit(rv.view()).unwrap();
   assert!(model.fit.r_squared > 0.0);
   assert!(model.fit.beta_d.is_finite());
   assert!(model.fit.beta_w.is_finite());

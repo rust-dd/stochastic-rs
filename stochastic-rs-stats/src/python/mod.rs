@@ -56,8 +56,6 @@ pub use hurst::PyWavelet;
 pub use hurst::PyWhittle;
 pub use mcmc::random_walk_metropolis;
 pub use misc::PyGaussianKDE;
-pub use misc::PyLeverage;
-pub use misc::PyTailIndex;
 pub use mle::PyHestonMLE;
 pub use mle::PyHestonNMLECEKF;
 pub use normality::PyAndersonDarling;

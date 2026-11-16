@@ -1,8 +1,11 @@
-//! Higuchi (1988) curve-length fractal dimension.
-//!
-//! Reference: Higuchi T. (1988) — *Approach to an irregular time series on
-//! the basis of the fractal theory*, Physica D 31(2), 277–283,
-//! DOI: 10.1016/0167-2789(88)90081-4.
+//! Higuchi (1988) curve-length fractal dimension, the slope of `log L(k)` against `log(1/k)`:
+//! $$
+//! L_m(k) = \frac{N - 1}{k \cdot n_{max}} \cdot \frac{1}{k}
+//!          \sum_{j=1}^{n_{max}} |X_{m+jk} - X_{m+(j-1)k}|,
+//! \quad
+//! L(k) = \frac{1}{k} \sum_{m=1}^{k} L_m(k).
+//! $$
+//! Reference: Higuchi (1988), Physica D 31(2), 277–283. DOI: 10.1016/0167-2789(88)90081-4
 
 use linreg::linear_regression;
 use ndarray::Array1;
@@ -54,25 +57,9 @@ impl<T: FloatExt> FractalDimEstimator<T> for Higuchi {
   }
 }
 
-/// Higuchi fractal dimension of `x`, the slope of `log L(k)` against `log(1/k)`:
-///
-/// $$
-/// L_m(k) = \frac{N - 1}{k \cdot n_{max}} \cdot \frac{1}{k}
-///          \sum_{j=1}^{n_{max}} |X_{m+jk} - X_{m+(j-1)k}|,
-/// \quad
-/// L(k) = \frac{1}{k} \sum_{m=1}^{k} L_m(k).
-/// $$
-///
-/// `Err` below 3 points, for `kmax < 2`, on fewer than two finite scales or a singular regression.
-pub fn compute<T: FloatExt>(x: ArrayView1<T>, kmax: usize) -> Result<T, StatsError> {
-  let (d, _, _, _, _) = compute_with_diagnostic::<T>(x, kmax)?;
-  Ok(T::from_f64_fast(d))
-}
-
-/// Same as [`compute`] but also returns the log-log regression
-/// diagnostics `(d, intercept, r_squared, log_scales, log_stats)`.
-/// For Higuchi `d == slope`.
-pub(crate) fn compute_with_diagnostic<T: FloatExt>(
+/// The log-log fit `(d, intercept, r_squared, log_scales, log_stats)`, `d` its slope; `Err` below
+/// 3 points, for `kmax < 2`, on fewer than two finite scales or a singular regression.
+fn compute_with_diagnostic<T: FloatExt>(
   x: ArrayView1<T>,
   kmax: usize,
 ) -> Result<(f64, f64, f64, Vec<f64>, Vec<f64>), StatsError> {

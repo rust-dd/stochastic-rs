@@ -6,7 +6,26 @@
 //! both, so the fixed-size entry point is a thin wrapper over the
 //! any-dimension one.
 
+use std::cmp::Ordering;
+
 use basin::MoreThuente;
+
+/// Orders a NaN after every number whatever its sign bit, which arithmetic leaves unspecified.
+pub(crate) fn nan_last(a: f64, b: f64) -> Ordering {
+  a.is_nan().cmp(&b.is_nan()).then(a.total_cmp(&b))
+}
+
+/// The start with the lowest objective; a NaN objective loses to every number.
+pub(crate) fn best_start<P: AsRef<[f64]>>(
+  starts: impl IntoIterator<Item = P>,
+  objective: impl Fn(&[f64]) -> f64,
+) -> Option<P> {
+  starts
+    .into_iter()
+    .map(|start| (objective(start.as_ref()), start))
+    .min_by(|a, b| nan_last(a.0, b.0))
+    .map(|(_, start)| start)
+}
 
 /// Moré–Thuente line search with Nocedal–Wright's quasi-Newton constants `c1 = 1e-4`, `c2 = 0.9`.
 pub(crate) fn more_thuente() -> MoreThuente<f64> {
@@ -64,7 +83,7 @@ pub(crate) fn nelder_mead_vec<F: Fn(&[f64]) -> f64>(
   while iters < max_iter {
     iters += 1;
     let mut order: Vec<usize> = (0..=n).collect();
-    order.sort_by(|&a, &b| fvals[a].partial_cmp(&fvals[b]).unwrap());
+    order.sort_by(|&a, &b| nan_last(fvals[a], fvals[b]));
     let best = order[0];
     let worst = order[n];
     let second_worst = order[n - 1];
@@ -113,12 +132,9 @@ pub(crate) fn nelder_mead_vec<F: Fn(&[f64]) -> f64>(
       }
     }
   }
-  let mut best = 0;
-  for i in 1..=n {
-    if fvals[i] < fvals[best] {
-      best = i;
-    }
-  }
+  let best = (0..=n)
+    .min_by(|&a, &b| nan_last(fvals[a], fvals[b]))
+    .expect("a simplex has n + 1 vertices");
   (simplex[best].clone(), iters, false)
 }
 
@@ -136,4 +152,38 @@ fn combine(centroid: &[f64], worst: &[f64], coef: f64, reflect: bool) -> Vec<f64
       }
     })
     .collect()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// Arithmetic leaves a NaN's sign unspecified (x86 sets it), so both signs must lose.
+  #[test]
+  fn a_nan_objective_never_wins_the_start_search() {
+    for nan in [f64::NAN, -f64::NAN] {
+      let objective = |p: &[f64]| if p[0] == 1.0 { 3.0 } else { nan };
+      assert_eq!(best_start([[0.0], [1.0], [2.0]], objective), Some([1.0]));
+      assert_eq!(
+        nan_last(nan, f64::NEG_INFINITY),
+        std::cmp::Ordering::Greater
+      );
+    }
+  }
+
+  /// A NaN vertex ranks worst, so the simplex reflects away from it instead of shrinking onto it.
+  #[test]
+  fn the_simplex_leaves_a_nan_vertex() {
+    for nan in [f64::NAN, -f64::NAN] {
+      let objective = |p: &[f64]| {
+        if p[0] < 0.05 {
+          nan
+        } else {
+          (p[0] - 1.0).powi(2)
+        }
+      };
+      let (argmin, _, converged) = nelder_mead_vec(&[0.0], 500, objective);
+      assert!(converged && objective(&argmin) < 0.02, "{nan}: {argmin:?}");
+    }
+  }
 }

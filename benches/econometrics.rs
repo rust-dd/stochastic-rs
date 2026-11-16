@@ -39,10 +39,10 @@ fn iid_normal(seed: u64, n: usize) -> Array1<f64> {
 fn bench_changepoint(c: &mut Criterion) {
   let s = iid_normal(7, 5_000);
   c.bench_function("cusum_5k", |b| {
-    b.iter(|| std::hint::black_box(cusum(s.view(), 0.5, 5.0)));
+    b.iter(|| std::hint::black_box(cusum(s.view(), 0.5, 5.0).unwrap()));
   });
   c.bench_function("pelt_5k", |b| {
-    b.iter(|| std::hint::black_box(pelt(s.view(), 5.0, 10)));
+    b.iter(|| std::hint::black_box(pelt(s.view(), 5.0, 10).unwrap()));
   });
 }
 
@@ -97,7 +97,7 @@ fn bench_hmm(c: &mut Criterion) {
         Array1::from(vec![-1.0, 1.0]),
         Array1::from(vec![1.0, 1.0]),
       );
-      std::hint::black_box(hmm.baum_welch(obs.view(), 20, 1e-6))
+      std::hint::black_box(hmm.baum_welch(obs.view(), 20, 1e-6).unwrap())
     });
   });
 }

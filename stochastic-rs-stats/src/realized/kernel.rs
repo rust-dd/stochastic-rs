@@ -124,15 +124,12 @@ pub fn parzen_default_bandwidth(n: usize, xi: f64) -> usize {
   h.round().max(1.0) as usize
 }
 
-/// Realized kernel estimator with the chosen weight family and bandwidth `h`.
-///
-/// `returns` are intraday log-returns. `h` should typically be set via
-/// [`parzen_default_bandwidth`] or the optimal-bandwidth analytical result of
-/// BNHLS (2008).
+/// Realized kernel of intraday log-returns with weight family `kernel` and bandwidth `h` (see
+/// [`parzen_default_bandwidth`]); NaN below two returns.
 pub fn realized_kernel<T: FloatExt>(returns: ArrayView1<T>, kernel: KernelType, h: usize) -> T {
   let n = returns.len();
-  if n == 0 {
-    return T::zero();
+  if n < 2 {
+    return T::nan();
   }
   let gamma_0 = autocovariance(returns, 0);
   let mut acc = gamma_0;

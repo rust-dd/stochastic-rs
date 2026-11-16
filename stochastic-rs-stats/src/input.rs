@@ -18,20 +18,35 @@ pub(crate) fn as_slice_or_copy<T: Clone>(x: ArrayView1<'_, T>) -> Cow<'_, [T]> {
 
 /// At least `min_n` finite observations, else the `Err` the caller returns.
 pub(crate) fn validate<T: FloatExt>(y: &[T], min_n: usize) -> Result<(), StatsError> {
+  validate_domain(y, min_n, "finite", |_| true)
+}
+
+/// As [`validate`], each observation also inside `domain`; `constraint` names both conditions.
+pub(crate) fn validate_domain<T: FloatExt>(
+  y: &[T],
+  min_n: usize,
+  constraint: &'static str,
+  domain: impl Fn(T) -> bool,
+) -> Result<(), StatsError> {
   if y.len() < min_n {
     return Err(StatsError::InsufficientData {
       needed: min_n,
       got: y.len(),
     });
   }
-  if let Some((index, value)) = y.iter().enumerate().find(|(_, v)| !v.is_finite()) {
-    return Err(StatsError::InvalidObservation {
+  let inside = |v: T| v.is_finite() & domain(v);
+  // A branch-free pass first: the index search runs only on data that fails it.
+  if y.iter().fold(true, |ok, &v| ok & inside(v)) {
+    return Ok(());
+  }
+  match y.iter().enumerate().find(|(_, v)| !inside(**v)) {
+    Some((index, value)) => Err(StatsError::InvalidObservation {
       index,
       value: value.to_f64().unwrap(),
-      constraint: "finite",
-    });
+      constraint,
+    }),
+    None => Ok(()),
   }
-  Ok(())
 }
 
 /// Every entry of `x` finite, else `InvalidObservation` at the row (the observation `t`) of the

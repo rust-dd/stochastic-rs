@@ -1,15 +1,5 @@
-//! [`HurstEstimator`] implementations for the fractal-dimension
-//! estimators in [`crate::fractal_dim`].
-//!
-//! Both [`crate::fractal_dim::Higuchi`] and
-//! [`crate::fractal_dim::Variogram`] implement
-//! [`crate::fractal_dim::FractalDimEstimator`] natively (output: `D`).
-//! These adapter `impl` blocks let the same structs be invoked through
-//! the [`HurstEstimator`] trait (output: `H = 2 - D`, clamped to
-//! `(0, 1)`), so callers who only care about Hurst can use a uniform
-//! `HurstEstimator` interface.
-//!
-//! Disambiguate at the call site when both traits are in scope:
+//! [`HurstEstimator`] for the fractal-dimension estimators, `H = 2 − D` unclamped; name the trait
+//! at the call site when both are in scope:
 //!
 //! ```
 //! use stochastic_rs_core::simd_rng::Deterministic;
@@ -56,16 +46,14 @@ impl<T: FloatExt> HurstEstimator<T> for Variogram {
   }
 }
 
-/// Convert a fractal-dimension result into a Hurst result via
-/// `H = 2 - D`, clamped to `(0, 1)`.
+/// `H = 2 − D` (the fBm identity), reported unclamped so a fit outside `(0, 1)` stays visible.
 fn fd_to_hurst<T: FloatExt>(fd: crate::fractal_dim::FdFit<T>) -> Result<HurstFit<T>, StatsError> {
-  let d_f64 = fd.d.to_f64().unwrap_or(f64::NAN);
-  if !d_f64.is_finite() {
-    return Err(StatsError::DegenerateData("constant or zero-variance path"));
+  let d = fd.d.to_f64().unwrap_or(f64::NAN);
+  if !d.is_finite() {
+    return Err(StatsError::DegenerateData("non-finite fractal dimension"));
   }
-  let h = (2.0 - d_f64).clamp(0.0, 1.0);
   Ok(HurstFit {
-    hurst: T::from_f64_fast(h),
+    hurst: T::from_f64_fast(2.0 - d),
     std_err: None,
     nobs: fd.nobs,
     diagnostic: HurstDiagnostic::FractalDim { d: fd.d },
@@ -117,6 +105,18 @@ mod tests {
       (h_est - h).abs() < 0.08,
       "Variogram(Hurst) H={h_est:.3}, expected {h:.3}"
     );
+  }
+
+  /// `H = 2 − D` as computed: a fit outside `(0, 1)` stays visible instead of hitting a boundary.
+  #[test]
+  fn the_adapter_does_not_clamp() {
+    let fd = crate::fractal_dim::FdFit::<f64> {
+      d: 2.3,
+      nobs: 64,
+      diagnostic: crate::fractal_dim::FdDiagnostic::None,
+    };
+    let h = super::fd_to_hurst::<f64>(fd).unwrap();
+    assert_eq!(h.hurst, 2.0 - 2.3);
   }
 
   #[test]

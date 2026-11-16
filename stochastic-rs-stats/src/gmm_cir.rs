@@ -49,7 +49,11 @@
 
 use ndarray::ArrayView1;
 
+use crate::StatsError;
+use crate::input::reject_constant;
+use crate::input::validate;
 use crate::optim::nelder_mead;
+use crate::qmle::assert_dt;
 use crate::traits::FloatExt;
 
 /// Result of the two-step GMM fit of the CIR variance process.
@@ -71,17 +75,17 @@ pub struct GmmCirFit {
   pub converged: bool,
 }
 
-/// Fit the CIR variance process by two-step GMM on the exact conditional
-/// moments.
-///
-/// `series` is the discretely-observed variance (or short-rate) path and
-/// `dt` the sampling interval $\Delta$. Requires at least 3 observations.
-pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> GmmCirFit {
-  let nobs = series.len();
-  assert!(nobs >= 3, "gmm_cir requires at least 3 observations");
-  assert!(dt.is_finite() && dt > 0.0, "dt must be finite and positive");
-
-  let x: Vec<f64> = series.iter().map(|v| v.to_f64().unwrap()).collect();
+/// Two-step GMM of the CIR process on its exact moments, sampled every `dt`; `Err` below 3 points,
+/// on a non-finite one or a constant path, and panics unless `dt` is finite and positive.
+pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCirFit, StatsError> {
+  assert_dt(dt);
+  let x = series
+    .iter()
+    .map(|v| v.to_f64().unwrap())
+    .collect::<Vec<f64>>();
+  validate(&x, 3)?;
+  reject_constant(&x, "constant series")?;
+  let nobs = x.len();
 
   // Moment matrix builder: for params (kappa, theta, sigma) returns the
   // T-1 length-4 moment rows g_t and their column mean.
@@ -194,7 +198,7 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> GmmCirFit {
   let j_stat = (rows1.len() as f64) * objective(kappa, theta, sigma, &w2);
   let j_pvalue = 1.0 - chi2_cdf_1dof(j_stat);
 
-  GmmCirFit {
+  Ok(GmmCirFit {
     kappa,
     theta,
     sigma,
@@ -202,7 +206,7 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> GmmCirFit {
     j_pvalue,
     iterations: it1 + it2,
     converged: conv1 && conv2,
-  }
+  })
 }
 
 /// 4×4 Gauss-Jordan matrix inverse. Returns `None` on a singular pivot.
@@ -342,7 +346,7 @@ mod tests {
     let dt = 1.0 / 252.0;
     let fits = [7u64, 13, 29].map(|seed| {
       let path = simulate_cir_path(kt, tt, st, 0.04, dt, 8000, seed);
-      (seed, fit_cir_gmm(path.view(), dt))
+      (seed, fit_cir_gmm(path.view(), dt).unwrap())
     });
     let ok = fits.iter().any(|(_, r)| {
       r.converged
@@ -369,7 +373,7 @@ mod tests {
   fn gmm_cir_j_test_does_not_reject_correct_model() {
     let dt = 1.0 / 252.0;
     let path = simulate_cir_path(1.5, 0.05, 0.3, 0.05, dt, 6000, 11);
-    let res = fit_cir_gmm(path.view(), dt);
+    let res = fit_cir_gmm(path.view(), dt).unwrap();
     assert!(
       res.j_pvalue > 0.01,
       "correctly-specified CIR should not be rejected at 1%, J p-value = {}",
@@ -378,14 +382,16 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "at least 3 observations")]
-  fn gmm_cir_panics_on_short_series() {
+  fn gmm_cir_rejects_a_short_series() {
     let s = Array1::from(vec![0.04, 0.05]);
-    let _ = fit_cir_gmm(s.view(), 1.0 / 252.0);
+    assert_eq!(
+      fit_cir_gmm(s.view(), 1.0 / 252.0).unwrap_err(),
+      StatsError::InsufficientData { needed: 3, got: 2 }
+    );
   }
 
   #[test]
-  #[should_panic(expected = "dt must be finite and positive")]
+  #[should_panic(expected = "dt must satisfy `dt.is_finite() && dt > 0.0`, got dt = 0.0")]
   fn gmm_cir_panics_on_bad_dt() {
     let s = Array1::from(vec![0.04, 0.05, 0.045, 0.05]);
     let _ = fit_cir_gmm(s.view(), 0.0);

@@ -57,9 +57,11 @@ impl HestonCalibrator {
         }
         let p: HestonParams = if self.mle_delta.is_some() {
           let delta = self.inferred_mle_delta(s.len());
-          fit_heston_nmle_with_delta(s.view(), v.view(), r, delta).into()
+          fit_heston_nmle_with_delta(s.view(), v.view(), r, delta)
+            .ok()?
+            .into()
         } else {
-          fit_heston_nmle(s.view(), v.view(), r).into()
+          fit_heston_nmle(s.view(), v.view(), r).ok()?.into()
         };
         Some(p.projected())
       }
@@ -70,9 +72,11 @@ impl HestonCalibrator {
         }
         let p: HestonParams = if self.mle_delta.is_some() {
           let delta = self.inferred_mle_delta(s.len());
-          fit_heston_pmle_with_delta(s.view(), v.view(), r, delta).into()
+          fit_heston_pmle_with_delta(s.view(), v.view(), r, delta)
+            .ok()?
+            .into()
         } else {
-          fit_heston_pmle(s.view(), v.view(), r).into()
+          fit_heston_pmle(s.view(), v.view(), r).ok()?.into()
         };
         Some(p.projected())
       }
@@ -91,7 +95,7 @@ impl HestonCalibrator {
         {
           cfg.initial_v0 = v_ts[0];
         }
-        let out = fit_heston_nmle_cekf(s.view(), cfg);
+        let out = fit_heston_nmle_cekf(s.view(), cfg).ok()?;
         let p: HestonParams = out.params.into();
         Some(p.projected())
       }

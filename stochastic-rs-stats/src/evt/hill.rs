@@ -19,6 +19,8 @@
 
 use ndarray::ArrayView1;
 
+use crate::StatsError;
+use crate::input::validate;
 use crate::traits::FloatExt;
 
 /// Result of the Hill estimator.
@@ -38,28 +40,23 @@ pub struct HillFit {
   pub nobs: usize,
 }
 
-/// Hill estimator on the `k` largest of the positive entries of `data`
-/// (pass losses or absolute returns; non-positive values are ignored).
-///
-/// Returns a NaN tail index when infinite observations reach the threshold
-/// order statistic.
-///
-/// # Panics
-///
-/// If `k` is zero or there are fewer than `k + 1` positive observations.
-pub fn fit_hill<T: FloatExt>(data: ArrayView1<T>, k: usize) -> HillFit {
-  assert!(k >= 1, "k must be at least 1");
-  let mut positive: Vec<f64> = data
+/// Hill estimator on the `k` largest positive entries of `data` (non-positive ones are ignored);
+/// `Err` on a non-finite entry or at most `k` positive ones, and panics unless `k >= 1`.
+pub fn fit_hill<T: FloatExt>(data: ArrayView1<T>, k: usize) -> Result<HillFit, StatsError> {
+  assert!(k >= 1, "k must satisfy `k >= 1`, got k = {k:?}");
+  let x = data
     .iter()
-    .map(|x| x.to_f64().unwrap_or(f64::NAN))
-    .filter(|x| *x > 0.0)
-    .collect();
-  assert!(
-    positive.len() > k,
-    "need more than k = {k} positive observations, got {}",
-    positive.len()
-  );
-  positive.sort_by(|a, b| b.partial_cmp(a).unwrap());
+    .map(|v| v.to_f64().unwrap_or(f64::NAN))
+    .collect::<Vec<f64>>();
+  validate(&x, 0)?;
+  let mut positive = x.into_iter().filter(|v| *v > 0.0).collect::<Vec<f64>>();
+  if positive.len() <= k {
+    return Err(StatsError::InsufficientData {
+      needed: k.saturating_add(1),
+      got: positive.len(),
+    });
+  }
+  positive.sort_by(|a, b| b.total_cmp(a));
   let threshold = positive[k];
   let log_threshold = threshold.ln();
   let xi = positive[..k]
@@ -67,12 +64,12 @@ pub fn fit_hill<T: FloatExt>(data: ArrayView1<T>, k: usize) -> HillFit {
     .map(|x| x.ln() - log_threshold)
     .sum::<f64>()
     / k as f64;
-  HillFit {
+  Ok(HillFit {
     xi,
     alpha: 1.0 / xi,
     std_error: xi / (k as f64).sqrt(),
     k,
     threshold,
     nobs: positive.len(),
-  }
+  })
 }

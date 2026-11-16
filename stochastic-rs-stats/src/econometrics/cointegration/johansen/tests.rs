@@ -371,8 +371,45 @@ fn one_series_or_too_few_rows_is_insufficient_data() {
   );
   assert_eq!(
     johansen_test(y.slice(s![..4, ..]), 2).unwrap_err(),
-    StatsError::InsufficientData { needed: 5, got: 4 }
+    StatsError::InsufficientData { needed: 9, got: 4 }
   );
+}
+
+/// `lags (k + 1) + 1` rows leave S00 the `k` residual degrees of freedom of a full rank.
+#[test]
+fn the_minimum_length_leaves_s00_its_full_rank() {
+  let y = lcg_system();
+  for (lags, needed) in [(1, 5), (3, 13)] {
+    let short = y.slice(s![..needed - 1, ..]);
+    let expected = StatsError::InsufficientData {
+      needed,
+      got: needed - 1,
+    };
+    assert_eq!(
+      johansen_test(short, lags).unwrap_err(),
+      expected,
+      "lags {lags}"
+    );
+    assert_eq!(
+      fit_vecm(short, lags, 1).unwrap_err(),
+      expected,
+      "lags {lags}"
+    );
+    let enough = y.slice(s![..needed, ..]);
+    assert!(johansen_test(enough, lags).is_ok(), "lags {lags}");
+    assert!(fit_vecm(enough, lags, 1).is_ok(), "lags {lags}");
+  }
+}
+
+#[test]
+fn a_lag_bound_of_usize_max_is_insufficient_data() {
+  let y = lcg_system();
+  let expected = StatsError::InsufficientData {
+    needed: usize::MAX,
+    got: y.nrows(),
+  };
+  assert_eq!(johansen_test(y.view(), usize::MAX).unwrap_err(), expected);
+  assert_eq!(fit_vecm(y.view(), usize::MAX, 1).unwrap_err(), expected);
 }
 
 #[test]

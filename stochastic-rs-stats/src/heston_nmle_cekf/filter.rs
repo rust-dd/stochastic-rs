@@ -151,17 +151,17 @@ pub fn filter_heston_cekf(
   filter_impl(prices, parameters, config, initial, FloorPolicy::Error)
 }
 
+/// The batch's pass over prices its caller validated; `FloorPolicy::Clamp` keeps every step `Ok`.
 pub(crate) fn filter_heston_cekf_batch(
   prices: ArrayView1<'_, f64>,
   parameters: HestonNmleCekfParams,
   config: &HestonCekfFilterConfig,
-) -> HestonCekfFilterResult {
+) -> Result<HestonCekfFilterResult, StatsError> {
   let initial = HestonCekfState {
-    variance: config.initial_variance.max(EPS),
-    error_covariance_bound: config.initial_error_covariance_bound.max(EPS),
+    variance: config.initial_variance,
+    error_covariance_bound: config.initial_error_covariance_bound,
   };
   filter_impl(prices, parameters, config, initial, FloorPolicy::Clamp)
-    .expect("batch CEKF configuration must be valid")
 }
 
 pub(crate) fn validate_filter_config(config: &HestonCekfFilterConfig) {
@@ -267,9 +267,7 @@ fn filter_impl(
       variance: variance_path[index - 1],
       error_covariance_bound: covariance_path[index - 1],
     };
-    let previous_price = prices[index - 1].max(EPS);
-    let current_price = prices[index].max(EPS);
-    let log_return = current_price.ln() - previous_price.ln();
+    let log_return = prices[index].ln() - prices[index - 1].ln();
     let step = step_impl(previous, log_return, parameters, config, floor_policy)?;
     variance_path[index] = step.state.variance;
     covariance_path[index] = step.state.error_covariance_bound;

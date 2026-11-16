@@ -60,7 +60,6 @@ pub use ewma::ewma_variance;
 pub use ewma::riskmetrics_variance;
 pub use har::HarFit;
 pub use har::HarRv;
-pub use har::har_features;
 pub use kernel::KernelType;
 pub use kernel::realized_kernel;
 pub use lee_mykland::LEE_MYKLAND_C;

@@ -91,7 +91,7 @@ print(f"Higuchi  H = {srs.Higuchi().estimate_hurst(path).hurst:.3f}")
 Every default here takes the level path — the fBm itself — and differences or integrates it internally. Two things to know before feeding it your own data:
 
 - **Increments instead of levels.** For a noise series such as fractional Gaussian noise or returns, pass `take_differences=False` to `RescaledRange`, `Gph` and `Wavelet`, and `assume_integrated=True` to `Dfa` only if you have already cumulated the noise into a walk.
-- **Higuchi returns a fractal dimension.** `Higuchi` and `Variogram` estimate the fractal dimension $D$ of the curve; `estimate_hurst` (Python) or the `HurstEstimator` impl (Rust) converts it as $H = 2 - D$, clamped to $(0, 1)$. Call `estimate` for $D$ itself when a degenerate fit should stay visible instead of being squashed to a boundary value.
+- **Higuchi returns a fractal dimension.** `Higuchi` and `Variogram` estimate the fractal dimension $D$ of the curve; `estimate_hurst` (Python) or the `HurstEstimator` impl (Rust) converts it as $H = 2 - D$, unclamped, so a fit with $D$ outside $[1, 2]$ shows as an $H$ outside $[0, 1]$. Call `estimate` for $D$ itself.
 
 ## Step 3 — choose an estimator
 
@@ -108,7 +108,7 @@ Seven of the eight estimators measure the same thing, the self-similarity expone
 
 `Whittle` (and `FukasawaHurst` in Python) implements the adapted Whittle estimator of Fukasawa, Takabatake and Westphal (2019): it estimates the Hurst exponent of a *latent volatility* process from log realised variance aggregated from intraday returns (`FukasawaHurst.from_prices(closes)`, `FukasawaHurst.from_log_rv(log_rv)`). Handed a directly sampled path it does not fail — it returns a number unrelated to that path's exponent — so build its input from prices, not from a simulated `Fgn`.
 
-The estimators also have hard minimum lengths with their defaults: 32 observations for `RescaledRange` and `Dfa`, 64 for `Gph` and `Wavelet`, 30 for `Whittle`. Those are validation floors, not sample sizes to aim for — a log-log regression wants thousands of points.
+The estimators also have hard minimum lengths with their defaults: 68 observations for `RescaledRange`, 36 for `Dfa`, 64 for `Gph` and `Wavelet`, 30 for `Whittle`. Those are validation floors, not sample sizes to aim for — a log-log regression wants thousands of points.
 
 ## Result
 

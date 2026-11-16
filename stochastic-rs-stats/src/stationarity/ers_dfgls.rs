@@ -137,7 +137,7 @@ pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> Result<ErsTest, Sta
     _ => cfg.max_lags.unwrap_or_else(|| schwert_max_lags(n)),
   };
   // The ADF stage on the detrended series is a levels autoregression of order p + 1, no terms.
-  let needed = min_sample_size(max_lags + 1, Trend::None);
+  let needed = min_sample_size(max_lags.saturating_add(1), Trend::None);
   if n < needed {
     return Err(StatsError::InsufficientData { needed, got: n });
   }
@@ -213,5 +213,29 @@ mod tests {
         .used_lags,
       8
     );
+  }
+
+  #[test]
+  fn a_lag_bound_at_usize_max_is_insufficient_data() {
+    let x = simulate_ar1(0.5, 20, 0xE55A13);
+    let configs = [
+      ErsConfig {
+        lag_selection: LagSelection::Fixed(usize::MAX),
+        ..ErsConfig::default()
+      },
+      ErsConfig {
+        max_lags: Some(usize::MAX),
+        ..ErsConfig::default()
+      },
+    ];
+    for cfg in configs {
+      assert_eq!(
+        ers_dfgls_test(ndarray::ArrayView1::from(&x), cfg).unwrap_err(),
+        StatsError::InsufficientData {
+          needed: usize::MAX,
+          got: 20
+        }
+      );
+    }
   }
 }

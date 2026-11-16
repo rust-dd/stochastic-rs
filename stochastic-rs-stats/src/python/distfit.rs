@@ -1,6 +1,8 @@
 use numpy::PyReadonlyArray1;
 use pyo3::prelude::*;
 
+use super::stats_error;
+
 macro_rules! fit_class {
   ($py:ident, $name:literal, $inner:path, $fit:path, $doc:literal, [$(($getter:ident, $field:ident)),+]) => {
     #[pyclass(name = $name, unsendable)]
@@ -13,9 +15,11 @@ macro_rules! fit_class {
       #[doc = $doc]
       #[new]
       fn new<'py>(data: PyReadonlyArray1<'py, f64>) -> PyResult<Self> {
-        stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-          inner: $fit(data.as_array()),
-        })
+        stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+          Ok(Self {
+            inner: $fit(data.as_array()).map_err(stats_error)?,
+          })
+        })?
       }
 
       /// Standard errors in the parameter order of the getters.
@@ -104,9 +108,11 @@ impl PyGpdPwm {
   /// Hosking-Wallis probability-weighted-moment GPD estimate on excesses.
   #[new]
   fn new<'py>(exceedances: PyReadonlyArray1<'py, f64>) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::evt::fit_gpd_pwm(exceedances.as_array()),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::evt::fit_gpd_pwm(exceedances.as_array()).map_err(stats_error)?,
+      })
+    })?
   }
 
   #[getter]

@@ -11,12 +11,12 @@ fn ewma_variance_tracks_a_return_series() {
   let returns = Array1::from(vec![0.012_f64, -0.007, 0.021, 0.0, -0.015, 0.004]);
 
   // RiskMetrics daily decay (λ = 0.94) is the default convention…
-  let rm = riskmetrics_variance(returns.view());
+  let rm = riskmetrics_variance(returns.view()).expect("six finite returns");
   assert_eq!(rm.lambda, RISKMETRICS_DAILY_LAMBDA);
   assert_eq!(rm.variance.len(), returns.len());
 
   // …and any λ ∈ (0, 1) is accepted explicitly.
-  let fast = ewma_variance(returns.view(), 0.80);
+  let fast = ewma_variance(returns.view(), 0.80).expect("the same returns");
   assert!(fast.forecast > 0.0);
   // A faster decay weights the newest shock harder, so the two forecasts
   // genuinely differ.

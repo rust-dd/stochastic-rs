@@ -43,7 +43,7 @@ pub fn acf<T: FloatExt>(x: ArrayView1<T>, max_lag: usize) -> Result<Array1<T>, S
     max_lag >= 1,
     "max_lag must satisfy `max_lag >= 1`, got max_lag = {max_lag:?}"
   );
-  validate(&as_slice_or_copy(x), max_lag + 1)?;
+  validate(&as_slice_or_copy(x), max_lag.saturating_add(1))?;
   if x.iter().all(|&v| v == x[0]) {
     return Err(StatsError::DegenerateData("constant series"));
   }
@@ -268,6 +268,22 @@ mod tests {
       acf(x.view(), 3).unwrap_err(),
       StatsError::InsufficientData { needed: 4, got: 3 }
     );
+  }
+
+  #[test]
+  fn a_lag_bound_of_usize_max_is_insufficient_data() {
+    let x = Array1::<f64>::linspace(0.0, 1.0, 20);
+    let expected = StatsError::InsufficientData {
+      needed: usize::MAX,
+      got: 20,
+    };
+    assert_eq!(acf(x.view(), usize::MAX).unwrap_err(), expected);
+    assert_eq!(pacf(x.view(), usize::MAX).unwrap_err(), expected);
+    let cfg = LjungBoxConfig {
+      lags: usize::MAX,
+      ..LjungBoxConfig::default()
+    };
+    assert_eq!(ljung_box(x.view(), cfg).unwrap_err(), expected);
   }
 
   /// Durbin-Levinson base case: phi_{1,1} = rho_1 exactly.

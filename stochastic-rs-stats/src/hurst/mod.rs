@@ -21,7 +21,7 @@
 //! The fractal-dimension estimators ([`crate::fractal_dim::Higuchi`],
 //! [`crate::fractal_dim::Variogram`]) implement **both**
 //! [`crate::fractal_dim::FractalDimEstimator`] (returns `D`) and
-//! [`HurstEstimator`] (returns `H = 2 - D` clamped to `(0, 1)`).  Pick
+//! [`HurstEstimator`] (returns `H = 2 - D`, unclamped).  Pick
 //! which output you want by importing the relevant trait or by
 //! disambiguating the call:
 //!
@@ -84,13 +84,8 @@
 //! literature entirely — curve-length (Higuchi 1988, biophysical signal
 //! processing) and variogram-ratio (Constantine & Hall 1994, spatial
 //! statistics) fractal-dimension estimation, converted via the FBM
-//! identity `H = 2 - D`. Prefer
-//! [`crate::fractal_dim::FractalDimEstimator`] directly (returns `D`
-//! un-clamped) over the [`HurstEstimator`] adapter when a degenerate fit
-//! matters to you: [`fd_adapters`] clamps `H = 2 - D` to `(0, 1)`
-//! unconditionally, so a noisy fit that pushes `D` outside `[1, 2]` is
-//! silently squashed to a boundary value instead of surfaced as
-//! suspicious.
+//! identity `H = 2 - D`. [`fd_adapters`] reports `H = 2 - D` unclamped, so a noisy fit
+//! that pushes `D` outside `[1, 2]` shows as an `H` outside `[0, 1]`.
 //!
 //! **A different quantity entirely** ([`Whittle`]): Fukasawa, Takabatake &
 //! Westphal (2019, arXiv:1905.04852) estimate the roughness of a
@@ -112,10 +107,10 @@
 //!
 //! | Estimator | Min. obs. (defaults) |
 //! |---|---|
-//! | [`RescaledRange`] | `max(min_window, 8) * 2` → 32 |
-//! | [`Dfa`] | `max(min_window * 4, order + 4)` → 32 |
+//! | [`RescaledRange`] | `4 (min_window + 1)` → 68 (`2 max(min_window + 1, 8)` with `max_window`) |
+//! | [`Dfa`] | `4 (min_window + 1)` → 36 (`max(4 min_window, order + 4)` with `max_window`) |
 //! | [`Gph`] | 64 |
-//! | [`Wavelet`] | 64 |
+//! | [`Wavelet`] | `max(64, 2^(j_min + 3) + 1)` → 64 |
 //! | [`Variations`] | 5 (`CentralDiff`, the default) to 8 (`Daubechies`), or `k+3` for `PowerVariation { k, .. }` |
 //! | [`crate::fractal_dim::Higuchi`] | 3 (but see the `kmax` caveat above — the hard floor is far below what a meaningful log-log regression needs) |
 //! | [`crate::fractal_dim::Variogram`] | 3 (same caveat) |
@@ -128,7 +123,6 @@ use crate::traits::FloatExt;
 
 pub mod dfa;
 pub mod fd_adapters;
-pub mod from_prices;
 pub mod gph;
 pub mod rs;
 pub mod variations;
