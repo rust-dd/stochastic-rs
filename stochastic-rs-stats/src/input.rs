@@ -34,18 +34,19 @@ pub(crate) fn validate_domain<T: FloatExt>(
       got: y.len(),
     });
   }
-  if let Some((index, value)) = y
-    .iter()
-    .enumerate()
-    .find(|(_, v)| !v.is_finite() || !domain(**v))
-  {
-    return Err(StatsError::InvalidObservation {
+  let inside = |v: T| v.is_finite() & domain(v);
+  // A branch-free pass first: the index search runs only on data that fails it.
+  if y.iter().fold(true, |ok, &v| ok & inside(v)) {
+    return Ok(());
+  }
+  match y.iter().enumerate().find(|(_, v)| !inside(**v)) {
+    Some((index, value)) => Err(StatsError::InvalidObservation {
       index,
       value: value.to_f64().unwrap(),
       constraint,
-    });
+    }),
+    None => Ok(()),
   }
-  Ok(())
 }
 
 /// Every entry of `x` finite, else `InvalidObservation` at the row (the observation `t`) of the
