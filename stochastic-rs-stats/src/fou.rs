@@ -24,6 +24,7 @@ use crate::StatsError;
 use crate::hurst::variations::daubechies_coeffs;
 use crate::hurst::variations::filtered_variation;
 use crate::hurst::variations::power_variation;
+use crate::hurst::variations::power_variation_hurst;
 use crate::input::as_slice_or_copy;
 use crate::input::mean_in_order;
 use crate::input::reject_constant;
@@ -221,8 +222,7 @@ pub fn fit_fou_power_variation(
       if v1 == 0.0 || v2 == 0.0 {
         return Err(StatsError::DegenerateData("zero power variation"));
       }
-      let mean_ratio = (v2 / (n_points - 2 * k) as f64) / (v1 / (n_points - k) as f64);
-      hurst_from_ratio(mean_ratio.log2() / p)?
+      hurst_from_ratio(power_variation_hurst(v1, v2, n_points, k, p))?
     }
   };
 
