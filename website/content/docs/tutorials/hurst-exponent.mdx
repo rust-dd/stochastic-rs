@@ -91,7 +91,7 @@ print(f"Higuchi  H = {srs.Higuchi().estimate_hurst(path).hurst:.3f}")
 Every default here takes the level path — the fBm itself — and differences or integrates it internally. Two things to know before feeding it your own data:
 
 - **Increments instead of levels.** For a noise series such as fractional Gaussian noise or returns, pass `take_differences=False` to `RescaledRange`, `Gph` and `Wavelet`, and `assume_integrated=True` to `Dfa` only if you have already cumulated the noise into a walk.
-- **Higuchi returns a fractal dimension.** `Higuchi` and `Variogram` estimate the fractal dimension $D$ of the curve; `estimate_hurst` (Python) or the `HurstEstimator` impl (Rust) converts it as $H = 2 - D$, clamped to $(0, 1)$. Call `estimate` for $D$ itself when a degenerate fit should stay visible instead of being squashed to a boundary value.
+- **Higuchi returns a fractal dimension.** `Higuchi` and `Variogram` estimate the fractal dimension $D$ of the curve; `estimate_hurst` (Python) or the `HurstEstimator` impl (Rust) converts it as $H = 2 - D$, unclamped, so a fit with $D$ outside $[1, 2]$ shows as an $H$ outside $[0, 1]$. Call `estimate` for $D$ itself.
 
 ## Step 3 — choose an estimator
 

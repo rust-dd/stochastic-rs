@@ -21,7 +21,7 @@
 //! The fractal-dimension estimators ([`crate::fractal_dim::Higuchi`],
 //! [`crate::fractal_dim::Variogram`]) implement **both**
 //! [`crate::fractal_dim::FractalDimEstimator`] (returns `D`) and
-//! [`HurstEstimator`] (returns `H = 2 - D` clamped to `(0, 1)`).  Pick
+//! [`HurstEstimator`] (returns `H = 2 - D`, unclamped).  Pick
 //! which output you want by importing the relevant trait or by
 //! disambiguating the call:
 //!
@@ -84,13 +84,8 @@
 //! literature entirely — curve-length (Higuchi 1988, biophysical signal
 //! processing) and variogram-ratio (Constantine & Hall 1994, spatial
 //! statistics) fractal-dimension estimation, converted via the FBM
-//! identity `H = 2 - D`. Prefer
-//! [`crate::fractal_dim::FractalDimEstimator`] directly (returns `D`
-//! un-clamped) over the [`HurstEstimator`] adapter when a degenerate fit
-//! matters to you: [`fd_adapters`] clamps `H = 2 - D` to `(0, 1)`
-//! unconditionally, so a noisy fit that pushes `D` outside `[1, 2]` is
-//! silently squashed to a boundary value instead of surfaced as
-//! suspicious.
+//! identity `H = 2 - D`. [`fd_adapters`] reports `H = 2 - D` unclamped, so a noisy fit
+//! that pushes `D` outside `[1, 2]` shows as an `H` outside `[0, 1]`.
 //!
 //! **A different quantity entirely** ([`Whittle`]): Fukasawa, Takabatake &
 //! Westphal (2019, arXiv:1905.04852) estimate the roughness of a
@@ -128,7 +123,6 @@ use crate::traits::FloatExt;
 
 pub mod dfa;
 pub mod fd_adapters;
-pub mod from_prices;
 pub mod gph;
 pub mod rs;
 pub mod variations;

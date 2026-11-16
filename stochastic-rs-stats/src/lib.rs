@@ -33,7 +33,6 @@ pub mod heston_mle;
 pub mod heston_nmle_cekf;
 pub mod hurst;
 pub mod kde;
-pub mod leverage;
 pub mod log_realized_variance_qml;
 pub mod mle;
 pub mod normality;
@@ -43,7 +42,6 @@ pub mod qmle;
 pub mod realized;
 pub mod spectral;
 pub mod stationarity;
-pub mod tail_index;
 
 #[cfg(feature = "python")]
 #[doc(hidden)]

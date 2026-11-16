@@ -21,9 +21,7 @@ The `stochastic-rs-stats` crate ships estimators for common quant-finance workfl
 | `filtering`            | Particle filter, UKF, random-walk Metropolis-Hastings                          |
 | `hurst`                | Six native estimators behind one `HurstEstimator` trait: rescaled-range, DFA, GPH, wavelet, Whittle (the Fukasawa, Takabatake & Westphal 2019 adapted quasi-likelihood), variations. Two more implement the same trait by adapting a fractal-dimension estimate (`fractal_dim::{Higuchi, Variogram}`, `H = 2 - D`) — **8** `HurstEstimator` implementors in total. `hurst::whittle` also exposes `Whittle`'s algorithm through one-shot functions (`estimate`, `estimate_from_prices`) — see below |
 | `kde`                  | Gaussian KDE                                                                   |
-| `tail_index`           | Hill estimator + variants                                                      |
 | `spectral`             | Periodogram and spectrum search                                                |
-| `leverage`             | Leverage-effect estimators                                                     |
 | `fou`                  | fOU MLE with Hurst joint estimation                                            |
 | `garch`                | GARCH / GJR-GARCH / EGARCH Gaussian QMLE with inverse-Hessian and Bollerslev-Wooldridge robust standard errors |
 | `evt`                  | Extreme-value theory: Hill tail index, GPD peaks-over-threshold (MLE and Hosking-Wallis PWM) with VaR / ES, GEV block-maxima MLE with return levels |
@@ -246,7 +244,7 @@ Seven of the eight `HurstEstimator` implementors estimate the same quantity — 
 | A reasonable general-purpose default | `dfa::Dfa` — its polynomial detrending is why it tolerates real (trending) data better than `rs::RescaledRange` |
 | A confidence interval, not just a point estimate | `gph::Gph` or `wavelet::Wavelet` — the only two that report a closed-form standard error |
 | The series is believed to be a rough, mean-reverting (fractional-OU-like) process rather than pure fBM/fGN | `variations::Variations` with `VariationKind::PowerVariation` |
-| You already think in terms of fractal dimension `D` | `fractal_dim::Higuchi` / `fractal_dim::Variogram` via the `H = 2 - D` adapter — prefer `FractalDimEstimator` directly when a degenerate fit matters, since the adapter clamps silently |
+| You already think in terms of fractal dimension `D` | `fractal_dim::Higuchi` / `fractal_dim::Variogram` via the `H = 2 - D` adapter, which reports `2 - D` unclamped; `FractalDimEstimator` gives `D` itself |
 | Roughness of *latent volatility* from a realized-variance series (rough-vol calibration) | `hurst::whittle::Whittle` — and only that input |
 
 `rs::RescaledRange` is the classic statistic (Hurst 1951) but the least reliable of the group in finite samples, as the paper behind its bias correction documents.

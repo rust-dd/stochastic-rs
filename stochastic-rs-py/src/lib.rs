@@ -599,12 +599,10 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stats::python::PyHiguchi;
   use stochastic_rs_stats::python::PyHurstResult;
   use stochastic_rs_stats::python::PyJarqueBera;
-  use stochastic_rs_stats::python::PyLeverage;
   use stochastic_rs_stats::python::PyRealizedKernel;
   use stochastic_rs_stats::python::PyRealizedMoments;
   use stochastic_rs_stats::python::PyRescaledRange;
   use stochastic_rs_stats::python::PyShapiroFrancia;
-  use stochastic_rs_stats::python::PyTailIndex;
   use stochastic_rs_stats::python::PyTwoScaleRV;
   use stochastic_rs_stats::python::PyVariations;
   use stochastic_rs_stats::python::PyVariogram;
@@ -634,8 +632,6 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyRealizedKernel>()?;
   m.add_class::<PyTwoScaleRV>()?;
   m.add_class::<PyGaussianKDE>()?;
-  m.add_class::<PyTailIndex>()?;
-  m.add_class::<PyLeverage>()?;
 
   use stochastic_rs_stats::python::PyCusum;
   use stochastic_rs_stats::python::PyPelt;

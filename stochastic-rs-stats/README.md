@@ -24,8 +24,7 @@ workspace. Every estimator is anchored to a published paper.
 - **Econometrics** — cointegration, Granger causality, hidden Markov
   models, changepoint detection.
 - **Filtering** — particle filter, unscented Kalman filter, MCMC.
-- **Tails and spectra** — tail index estimation, periodogram-based spectral
-  search.
+- **Spectra** — periodogram-based spectral search.
 
 ## Usage
 
