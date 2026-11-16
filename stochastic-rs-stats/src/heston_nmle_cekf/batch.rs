@@ -1,4 +1,4 @@
-//! Backward-compatible alternating batch refinement API.
+//! The damped, alternating batch estimator: filter the series, refresh the parameters, repeat.
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -13,6 +13,7 @@ use super::filter::assert_finite;
 use super::filter::assert_nonnegative;
 use super::filter::assert_positive;
 use super::filter::filter_heston_cekf_batch;
+use super::filter::validate_parameters;
 use super::filter::validate_prices;
 use crate::StatsError;
 use crate::heston_mle::HestonMleFit;
@@ -32,12 +33,21 @@ pub struct HestonNmleCekfConfig {
   pub q11: f64,
   pub q12: f64,
   pub q22: f64,
-  /// Enables the original CEKF correction terms using current coefficients as
-  /// surrogate bounds.
-  ///
-  /// This compatibility mode does not provide the prior-bound consistency
-  /// guarantee of `HestonCekfCorrection::Consistent` in the new filter API.
-  pub use_consistent_terms: bool,
+  /// How the covariance step is corrected; the default rebuilds the bounds from each iterate.
+  pub correction: HestonNmleCekfCorrection,
+}
+
+/// How the batch estimator corrects the EKF covariance step.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum HestonNmleCekfCorrection {
+  /// The plain EKF covariance equations.
+  Traditional,
+  /// Consistent-EKF terms bounded by each iterate's own coefficients: no prior-bound guarantee.
+  #[default]
+  IterateBounds,
+  /// Consistent-EKF terms against prior bounds over the admissible set: initial parameters outside
+  /// them panic, and a refreshed iterate outside them is `Err(Numerical)` at "consistency bounds".
+  PriorBounds(HestonCekfConsistencyBounds),
 }
 
 impl Default for HestonNmleCekfConfig {
@@ -54,7 +64,7 @@ impl Default for HestonNmleCekfConfig {
       q11: 1.0,
       q12: 0.0,
       q22: 1.0,
-      use_consistent_terms: true,
+      correction: HestonNmleCekfCorrection::IterateBounds,
     }
   }
 }
@@ -69,8 +79,8 @@ pub struct HestonNmleCekfFit {
   pub converged: bool,
 }
 
-/// Damped batch fixed point of CEKF passes and NMLE refreshes, `converged` being that loop's; `Err`
-/// below 2 prices, on a non-finite or non-positive one or a path it cannot refit; config panics.
+/// Damped CEKF/NMLE fixed point (`converged` is that loop's); config panics; `Err` below 2 prices,
+/// on a non-finite or non-positive one, a non-finite step, a failed refit or a `PriorBounds` exit.
 pub fn fit_heston_nmle_cekf(
   prices: ArrayView1<'_, f64>,
   config: HestonNmleCekfConfig,
@@ -124,7 +134,22 @@ pub(super) fn cekf_pass(
   parameters: HestonNmleCekfParams,
   config: &HestonNmleCekfConfig,
 ) -> Result<(Array1<f64>, Array1<f64>), StatsError> {
-  let filter_config = HestonCekfFilterConfig {
+  if let HestonNmleCekfCorrection::PriorBounds(bounds) = config.correction
+    && !within(coefficients(parameters, config.delta), bounds)
+  {
+    return Err(StatsError::Numerical {
+      stage: "consistency bounds",
+    });
+  }
+  let result = filter_heston_cekf_batch(prices, parameters, &filter_config(parameters, config))?;
+  Ok((result.variance_path, result.error_covariance_bound_path))
+}
+
+fn filter_config(
+  parameters: HestonNmleCekfParams,
+  config: &HestonNmleCekfConfig,
+) -> HestonCekfFilterConfig {
+  HestonCekfFilterConfig {
     r: config.r,
     delta: config.delta,
     initial_variance: config.initial_v0,
@@ -134,26 +159,36 @@ pub(super) fn cekf_pass(
     q22: config.q22,
     correction: batch_correction(parameters, config),
     positive_state_policy: HestonCekfPositiveStatePolicy::Strict,
-  };
-  let result = filter_heston_cekf_batch(prices, parameters, &filter_config)?;
-  Ok((result.variance_path, result.error_covariance_bound_path))
+  }
 }
 
 fn batch_correction(
   parameters: HestonNmleCekfParams,
   config: &HestonNmleCekfConfig,
 ) -> HestonCekfCorrection {
-  if config.use_consistent_terms {
-    HestonCekfCorrection::Consistent {
-      bounds: HestonCekfConsistencyBounds {
-        max_abs_state_transition: (1.0 - parameters.kappa * config.delta).abs(),
-        max_abs_kappa_theta: (parameters.kappa * parameters.theta).abs(),
-        max_abs_sigma: parameters.sigma.abs(),
-      },
-    }
-  } else {
-    HestonCekfCorrection::Traditional
+  match config.correction {
+    HestonNmleCekfCorrection::Traditional => HestonCekfCorrection::Traditional,
+    HestonNmleCekfCorrection::IterateBounds => HestonCekfCorrection::Consistent {
+      bounds: coefficients(parameters, config.delta),
+    },
+    HestonNmleCekfCorrection::PriorBounds(bounds) => HestonCekfCorrection::Consistent { bounds },
   }
+}
+
+/// The iterate's own `|1 − κΔ|`, `|κθ|` and `|σ|`, the coefficients the consistent terms bound.
+fn coefficients(parameters: HestonNmleCekfParams, delta: f64) -> HestonCekfConsistencyBounds {
+  HestonCekfConsistencyBounds {
+    max_abs_state_transition: (1.0 - parameters.kappa * delta).abs(),
+    max_abs_kappa_theta: (parameters.kappa * parameters.theta).abs(),
+    max_abs_sigma: parameters.sigma.abs(),
+  }
+}
+
+/// Every coefficient within its prior bound, with the filter's `EPS` slack; false on a NaN.
+fn within(coefficients: HestonCekfConsistencyBounds, prior: HestonCekfConsistencyBounds) -> bool {
+  coefficients.max_abs_state_transition <= prior.max_abs_state_transition + EPS
+    && coefficients.max_abs_kappa_theta <= prior.max_abs_kappa_theta + EPS
+    && coefficients.max_abs_sigma <= prior.max_abs_sigma + EPS
 }
 
 fn blend_params(
@@ -194,4 +229,11 @@ fn validate_batch_config(config: &HestonNmleCekfConfig) {
     noise_determinant >= -EPS,
     "q11 * q22 - q12 * q12 must satisfy `>= -EPS`, got q11 * q22 - q12 * q12 = {noise_determinant:?}"
   );
+  if let HestonNmleCekfCorrection::PriorBounds(bounds) = config.correction {
+    assert_nonnegative("max_abs_state_transition", bounds.max_abs_state_transition);
+    assert_nonnegative("max_abs_kappa_theta", bounds.max_abs_kappa_theta);
+    assert_nonnegative("max_abs_sigma", bounds.max_abs_sigma);
+    let initial = config.initial_params.projected_batch();
+    validate_parameters(initial, &filter_config(initial, config));
+  }
 }
