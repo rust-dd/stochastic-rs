@@ -12,7 +12,7 @@ fn sampler(seed: u64) -> Seeded<SimdNormal<f64>> {
 }
 
 fn var(sampler: &mut Seeded<SimdNormal<f64>>) -> f64 {
-  monte_carlo_var_with_sampler(sampler, 20_000, 0.99, PnlOrLoss::Loss)
+  monte_carlo_var_with_sampler(sampler, 20_000, 0.99, PnlOrLoss::Loss).unwrap()
 }
 
 #[test]

@@ -48,7 +48,9 @@ fn optimizer_handles_empty_inputs() {
 
 /// A confidence level such as `0.95` passed as the tail proportion `cvar_alpha` panics.
 #[test]
-#[should_panic(expected = "tail proportion")]
+#[should_panic(
+  expected = "alpha must satisfy `alpha > 0.0 && alpha < 0.5`, a tail proportion, not a confidence level, got alpha = 0.95"
+)]
 fn empirical_cvar_rejects_confidence_level_misuse() {
   let mut returns = vec![-0.05, -0.03, -0.01, 0.0, 0.01, 0.02, 0.03, 0.04];
   let _ = empirical_cvar(&mut returns, 0.95);
@@ -57,8 +59,8 @@ fn empirical_cvar_rejects_confidence_level_misuse() {
 #[test]
 fn empirical_cvar_accepts_typical_tail_proportions() {
   let mut returns: Vec<f64> = (-50..=50).map(|i| i as f64 * 0.001).collect();
-  let cvar_5pct = empirical_cvar(&mut returns.clone(), 0.05);
-  let cvar_10pct = empirical_cvar(&mut returns, 0.10);
+  let cvar_5pct = empirical_cvar(&mut returns.clone(), 0.05).unwrap();
+  let cvar_10pct = empirical_cvar(&mut returns, 0.10).unwrap();
   // CVaR at 5% tail must be MORE negative (worse loss) than 10% tail.
   assert!(
     cvar_5pct >= cvar_10pct,

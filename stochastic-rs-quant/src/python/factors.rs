@@ -178,23 +178,17 @@ impl PyPairsStrategy {
   }
 }
 
-/// Empirical CVaR, `-mean` of the worst `alpha` fraction of `returns` (`0.05` is the worst 5 %, the opposite of `value_at_risk`'s
-/// confidence level); raises `ValueError` on an empty sample or an `alpha` outside `(0, 0.5)`.
+/// Minus the mean of the worst `alpha` share of `returns` (`0.05`: the worst 5 %, not a confidence
+/// level); `ValueError` for an empty or non-finite sample or an `alpha` outside `(0, 0.5)`.
 #[pyfunction]
 #[pyo3(signature = (returns, alpha))]
 pub fn empirical_cvar<'py>(
   returns: numpy::PyReadonlyArray1<'py, f64>,
   alpha: f64,
 ) -> PyResult<f64> {
-  if !(alpha > 0.0 && alpha < 0.5) {
-    return Err(PyValueError::new_err(format!(
-      "empirical_cvar `alpha` is the tail proportion (typical 0.01-0.10), \
-       not a confidence level. Got {alpha}. Pass `1.0 - c` if you have a \
-       confidence c (e.g. 0.95)."
-    )));
-  }
   let mut returns_vec: Vec<f64> = returns.as_array().to_vec();
   stochastic_rs_distributions::python::value_error_on_panic(|| {
     crate::portfolio::optimizers::empirical_cvar(&mut returns_vec, alpha)
-  })
+  })?
+  .map_err(|e| PyValueError::new_err(e.to_string()))
 }

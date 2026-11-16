@@ -21,86 +21,104 @@ use stochastic_rs_distributions::special::norm_pdf;
 
 use super::var::PnlOrLoss;
 use super::var::VarMethod;
+use super::var::ascending;
 use super::var::assert_confidence;
 use super::var::gaussian_var;
+use super::var::loss_moments;
 use super::var::losses_from_samples;
 use super::var::sample_quantile;
+use super::var::validate_samples;
+use crate::QuantError;
 use crate::traits::RealExt;
 
-/// Expected Shortfall using the chosen estimation method.
+/// Expected Shortfall by `method`, with that method's errors; panics unless `0 < confidence < 1`.
 pub fn expected_shortfall<T: RealExt>(
   samples: ArrayView1<T>,
   confidence: T,
   orientation: PnlOrLoss,
   method: VarMethod,
-) -> T {
+) -> Result<T, QuantError> {
   assert_confidence(confidence);
   match method {
     VarMethod::Gaussian => gaussian_es(samples, confidence, orientation),
-    VarMethod::Historical | VarMethod::MonteCarlo => {
-      historical_es(samples, confidence, orientation)
-    }
+    VarMethod::Historical => historical_es(samples, confidence, orientation),
+    VarMethod::MonteCarlo => monte_carlo_es(samples, confidence, orientation),
   }
 }
 
-/// Parametric Gaussian ES using sample mean and standard deviation.
+/// Parametric Gaussian ES from the sample moments; `InsufficientData` below two samples,
+/// `InvalidInput` for a non-finite one, and a panic unless `0 < confidence < 1`.
 ///
 /// $$
 /// \mathrm{ES}_{\alpha}=-\hat\mu+\hat\sigma\,\frac{\phi(\Phi^{-1}(\alpha))}{1-\alpha}.
 /// $$
-pub fn gaussian_es<T: RealExt>(samples: ArrayView1<T>, confidence: T, orientation: PnlOrLoss) -> T {
+pub fn gaussian_es<T: RealExt>(
+  samples: ArrayView1<T>,
+  confidence: T,
+  orientation: PnlOrLoss,
+) -> Result<T, QuantError> {
   assert_confidence(confidence);
-  let losses = losses_from_samples(samples, orientation);
-  let n = losses.len();
-  assert!(n >= 2, "need at least two observations for Gaussian ES");
-  let mean = losses.iter().fold(T::zero(), |acc, &v| acc + v) / T::from_usize_(n);
-  let var = losses
-    .iter()
-    .fold(T::zero(), |acc, &v| acc + (v - mean).powi(2))
-    / T::from_usize_(n - 1);
-  let sigma = var.sqrt();
+  let (mean, sigma) = loss_moments(samples, orientation, "gaussian ES")?;
   let c = confidence.to_f64().unwrap();
   let q = ndtri(c);
   let phi_q = norm_pdf(q);
   let factor = T::from_f64_fast(phi_q / (1.0 - c));
-  mean + sigma * factor
+  Ok(mean + sigma * factor)
 }
 
-/// Historical ES with the Rockafellar–Uryasev tail-share correction, which keeps it coherent when
-/// the VaR quantile falls inside a cluster of tied losses:
+/// Historical ES with Rockafellar & Uryasev's tail share (2002, eq. 17), coherent when the VaR
+/// quantile falls among tied losses; the errors and panic of `historical_var`.
 ///
 /// $$
 /// \mathrm{ES}_\alpha = \frac{1}{n(1-\alpha)}
 ///   \Big[\sum_{i: L_i > \mathrm{VaR}_\alpha} L_i
 ///        + (n(1-\alpha) - \#\{i: L_i > \mathrm{VaR}_\alpha\})\,\mathrm{VaR}_\alpha\Big].
 /// $$
-///
-/// Rockafellar & Uryasev (2002), J. Banking & Finance 26(7), 1443–1471, eq. (17).
-/// Artzner, Delbaen, Eber & Heath (1999), "Coherent Measures of Risk", Math. Finance 9(3), 203–228.
 pub fn historical_es<T: RealExt>(
   samples: ArrayView1<T>,
   confidence: T,
   orientation: PnlOrLoss,
-) -> T {
+) -> Result<T, QuantError> {
+  tail_es(samples, confidence, orientation, "historical ES")
+}
+
+/// Monte Carlo ES: [`historical_es`] over simulated samples.
+pub fn monte_carlo_es<T: RealExt>(
+  simulated_samples: ArrayView1<T>,
+  confidence: T,
+  orientation: PnlOrLoss,
+) -> Result<T, QuantError> {
+  tail_es(simulated_samples, confidence, orientation, "Monte Carlo ES")
+}
+
+/// Gaussian VaR and ES together.
+pub fn gaussian_var_es<T: RealExt>(
+  samples: ArrayView1<T>,
+  confidence: T,
+  orientation: PnlOrLoss,
+) -> Result<(T, T), QuantError> {
+  Ok((
+    gaussian_var(samples, confidence, orientation)?,
+    gaussian_es(samples, confidence, orientation)?,
+  ))
+}
+
+fn tail_es<T: RealExt>(
+  samples: ArrayView1<T>,
+  confidence: T,
+  orientation: PnlOrLoss,
+  what: &'static str,
+) -> Result<T, QuantError> {
   assert_confidence(confidence);
-  let losses = losses_from_samples(samples, orientation);
-  let n = losses.len();
-  assert!(n >= 1, "need at least one observation for historical ES");
-  let mut sorted = losses.to_vec();
-  sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-
+  validate_samples(samples, what, 1)?;
+  let mut sorted = losses_from_samples(samples, orientation).to_vec();
+  sorted.sort_by(ascending);
+  let n = sorted.len();
   let var = sample_quantile(&sorted, confidence);
-
-  // Rockafellar-Uryasev finite-sample formula:
-  //   strict_tail = {L_i > VaR}    (strictly above)
-  //   strict_sum  = Σ L_i  over strict_tail
-  //   target      = n * (1 - α)    (expected tail size, possibly fractional)
-  //   weight_var  = max(target - |strict_tail|, 0)   (slice of ties on VaR)
-  //   ES          = (strict_sum + weight_var * VaR) / target
   let confidence_f64 = confidence.to_f64().unwrap_or(0.0);
   let target = (n as f64) * (1.0 - confidence_f64);
   if target <= 0.0 {
-    return var;
+    return Ok(var);
   }
   let mut strict_sum = T::zero();
   let mut strict_count = 0usize;
@@ -112,28 +130,7 @@ pub fn historical_es<T: RealExt>(
   }
   let weight_var = (target - strict_count as f64).max(0.0);
   let total = strict_sum + var * T::from_f64_fast(weight_var);
-  total / T::from_f64_fast(target)
-}
-
-/// Monte-Carlo ES alias of [`historical_es`], kept separate for intent.
-pub fn monte_carlo_es<T: RealExt>(
-  simulated_samples: ArrayView1<T>,
-  confidence: T,
-  orientation: PnlOrLoss,
-) -> T {
-  historical_es(simulated_samples, confidence, orientation)
-}
-
-/// Convenience: Gaussian VaR and ES together.
-pub fn gaussian_var_es<T: RealExt>(
-  samples: ArrayView1<T>,
-  confidence: T,
-  orientation: PnlOrLoss,
-) -> (T, T) {
-  (
-    gaussian_var(samples, confidence, orientation),
-    gaussian_es(samples, confidence, orientation),
-  )
+  Ok(total / T::from_f64_fast(target))
 }
 
 #[cfg(test)]
@@ -151,7 +148,7 @@ mod tests {
     let losses = Array1::from_vec(vec![
       -3.0_f64, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 10.0,
     ]);
-    let es = historical_es(losses.view(), 0.85, PnlOrLoss::Loss);
+    let es = historical_es(losses.view(), 0.85, PnlOrLoss::Loss).unwrap();
     // n*(1-α) = 1.5; sample_quantile at 0.85 lands at the 9th
     // ordered sample (≈ 5.0) by linear interpolation. Strictly above
     // that quantile is the single observation 10.0; weight_var =
@@ -167,7 +164,7 @@ mod tests {
   #[test]
   fn historical_es_constant_losses() {
     let losses = Array1::from_vec(vec![1.5_f64; 50]);
-    let es = historical_es(losses.view(), 0.95, PnlOrLoss::Loss);
+    let es = historical_es(losses.view(), 0.95, PnlOrLoss::Loss).unwrap();
     assert!((es - 1.5).abs() < 1e-12, "ES = {es}, expected 1.5");
   }
 }

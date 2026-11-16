@@ -41,13 +41,15 @@ fn main() {
   }
 
   // 4) VaR estimates.
-  let gauss_var = value_at_risk(pnl.view(), confidence, PnlOrLoss::Pnl, VarMethod::Gaussian);
+  let gauss_var =
+    value_at_risk(pnl.view(), confidence, PnlOrLoss::Pnl, VarMethod::Gaussian).expect("finite PnL");
   let hist_var = value_at_risk(
     pnl.view(),
     confidence,
     PnlOrLoss::Pnl,
     VarMethod::Historical,
-  );
+  )
+  .expect("finite PnL");
 
   // Baseline: i.i.d. Gaussian portfolio (no copula structure).
   let port_mu = weights[0] * mu[0] + weights[1] * mu[1];

@@ -269,8 +269,20 @@ def test_survival_curve_is_accepted_wherever_a_flat_hazard_is():
 def test_empirical_cvar_rejects_an_empty_sample():
     import numpy as np
 
-    with pytest.raises(ValueError, match="returns must satisfy"):
+    with pytest.raises(ValueError, match="empirical CVaR: needs at least 1, got 0"):
         sr.empirical_cvar(np.array([], dtype=np.float64), 0.05)
+
+
+def test_the_risk_classes_raise_value_error_on_short_or_non_finite_data():
+    import numpy as np
+
+    empty = np.array([], dtype=np.float64)
+    with pytest.raises(ValueError, match="historical VaR: needs at least 1, got 0"):
+        sr.VaR(empty)
+    with pytest.raises(ValueError, match="sample 1 is NaN"):
+        sr.VaR(np.array([0.01, np.nan, -0.02]), method="gaussian")
+    with pytest.raises(ValueError, match="drawdown statistics: needs at least 1, got 0"):
+        sr.DrawdownStats(empty)
 
 
 def test_implied_vol_surface_rejects_an_unsorted_strike_grid():
