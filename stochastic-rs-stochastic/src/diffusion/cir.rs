@@ -26,6 +26,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+mod transition;
+
 /// Cox-Ingersoll-Ross (Cir) process.
 ///
 /// `dX(t) = theta * (mu - X(t)) * dt + sigma * sqrt(X(t)) * dW(t)`
@@ -166,6 +168,30 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
   }
 }
 
+impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
+  /// Exact transition density to `r_next` after `t` from `r_t`; NaN at `t = 0`, for a negative state or outside the domain.
+  pub fn transition_pdf(&self, t: T, r_t: T, r_next: T) -> T {
+    let [theta, mu, sigma, t, r_t, r_next] =
+      [self.theta, self.mu, self.sigma, t, r_t, r_next].map(|v| v.to_f64().unwrap());
+    T::from_f64_fast(transition::transition_pdf(theta, mu, sigma, t, r_t, r_next))
+  }
+
+  /// One exact transition draw after `t` from `r_t`; the conditional mean once the χ² parameters overflow.
+  pub fn sample_transition<S2: SeedExt>(&self, t: T, r_t: T, seed: &S2) -> T {
+    let [theta, mu, sigma, t, r_t] =
+      [self.theta, self.mu, self.sigma, t, r_t].map(|v| v.to_f64().unwrap());
+    T::from_f64_fast(transition::sample_transition(
+      theta, mu, sigma, t, r_t, seed,
+    ))
+  }
+
+  /// Stationary density at `r`: the Gamma law with shape `2θµ/σ²` and rate `2θ/σ²`.
+  pub fn stationary_pdf(&self, r: T) -> T {
+    let [theta, mu, sigma, r] = [self.theta, self.mu, self.sigma, r].map(|v| v.to_f64().unwrap());
+    T::from_f64_fast(transition::stationary_pdf(theta, mu, sigma, r))
+  }
+}
+
 /// θ=2.5, μ=0.04, σ=0.2, x₀=0.04 under the floor, a textbook Cir with `2θμ = 0.2 ≥ σ² = 0.04`;
 /// t=1, n=252, one trading year of daily steps (this crate's `Default` convention).
 impl<T: FloatExt> Default for Cir<T, Unseeded> {
@@ -298,46 +324,4 @@ py_process_1d!(PyCir, Cir,
 );
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::*;
-
-  /// `2·theta·mu = 0.1 < sigma² = 1.0` violates Feller; the reflected path must still build and stay finite.
-  #[test]
-  fn cir_accepts_sub_feller_under_reflection() {
-    let cir = Cir::<f64, _>::new(
-      0.5,
-      0.1,
-      1.0,
-      256,
-      Some(0.1),
-      Some(1.0),
-      VarianceBoundary::Reflect,
-      Deterministic::new(7),
-    );
-    let path = cir.sample();
-    assert_eq!(path.len(), 256);
-    assert!(
-      path.iter().all(|x| x.is_finite()),
-      "sub-Feller Cir path must stay finite under VarianceBoundary::Reflect"
-    );
-  }
-
-  /// The floored step accepts sub-Feller parameters too; only the diagnostic warning differs.
-  #[test]
-  fn cir_accepts_sub_feller_under_the_floor() {
-    let cir = Cir::<f64, _>::new(
-      0.5,
-      0.1,
-      1.0,
-      256,
-      Some(0.1),
-      Some(1.0),
-      VarianceBoundary::Floor,
-      Deterministic::new(7),
-    );
-    let path = cir.sample();
-    assert!(path.iter().all(|x| x.is_finite() && *x >= 0.0));
-  }
-}
+mod tests;
