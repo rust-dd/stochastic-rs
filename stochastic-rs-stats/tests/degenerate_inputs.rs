@@ -1,5 +1,5 @@
-//! Too little or non-finite data is an `Err`, never a panic inside a regression, and every test's
-//! answer to a constant series is pinned.
+//! Too little or non-finite data is an `Err` (NaN from a realized measure), never a panic inside
+//! a fit or a test, and every entry's answer to a constant series is pinned.
 
 use ndarray::Array1;
 use ndarray::Array2;
