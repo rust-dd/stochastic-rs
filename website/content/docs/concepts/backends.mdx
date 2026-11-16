@@ -53,7 +53,7 @@ Bound on `Backend` to say "device-parameterised"; bound on a capability when the
 
 ## Which processes support it
 
-All 132 processes carry the parameter and reach a device: 130 through the Euler engine (`EulerBackend`), `Fgn` through its FFT pipeline (`FgnBackend`) and `Fbs` through the sheet pipeline (`SheetBackend`). The per-family inventory — which process runs on which device, at what precision, and its Python entry point — is on [GPU support](/docs/concepts/gpu-support).
+All 133 processes carry the parameter and 132 reach a device: 130 through the Euler engine (`EulerBackend`), `Fgn` through its FFT pipeline (`FgnBackend`) and `Fbs` through the sheet pipeline (`SheetBackend`); `HestonHullWhite2F` has a host sampler only. The per-family inventory — which process runs on which device, at what precision, and its Python entry point — is on [GPU support](/docs/concepts/gpu-support).
 
 ## One fallback rule
 

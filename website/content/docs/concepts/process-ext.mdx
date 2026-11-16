@@ -102,7 +102,7 @@ In every mode the seeds handed out are globally unique, so paths never collide o
 
 ## Acceleration
 
-The CPU path uses `wide` SIMD (`f32x8` / `f64x8`) where the sampler allows. Every process also reaches a device backend (`cuda`, `metal`) through `.on::<B>()` — see [Sampling backends](/docs/concepts/backends).
+The CPU path uses `wide` SIMD (`f32x8` / `f64x8`) where the sampler allows. Every process but `HestonHullWhite2F` also reaches a device backend (`cuda`, `metal`) through `.on::<B>()` — see [Sampling backends](/docs/concepts/backends).
 
 ## Construction patterns
 

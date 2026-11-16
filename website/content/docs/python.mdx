@@ -1,13 +1,13 @@
 ---
 title: Python bindings
 seo_title: "stochastic-rs for Python: quant finance with NumPy"
-description: stochastic-rs-py — Python coverage for distributions, processes, pricers, calibrators, copulas, stats. NumPy in / out, 306 entries.
+description: stochastic-rs-py — Python coverage for distributions, processes, pricers, calibrators, copulas, stats. NumPy in / out, 307 entries.
 category: concept
 since: 2.0.0
 status: stable
 ---
 
-The `stochastic_rs` Python package wraps the Rust crates via PyO3: **306 entries**, 284 classes and 22 functions across distributions, stochastic processes, pricers, calibrators, copulas and stats, all in every wheel. Four more — three surrogate classes and `calibrate_surrogate` — are behind the `ai` feature and come only with a source build.
+The `stochastic_rs` Python package wraps the Rust crates via PyO3: **307 entries**, 285 classes and 22 functions across distributions, stochastic processes, pricers, calibrators, copulas and stats, all in every wheel. Four more — three surrogate classes and `calibrate_surrogate` — are behind the `ai` feature and come only with a source build.
 
 ## Installation
 
@@ -70,7 +70,7 @@ mc_call = np.exp(-0.05) * payoffs.mean()
 print("MC call =", mc_call)
 ```
 
-The models driven by Python callables — `PyHullWhite(theta, …)`, `PyAdg`, `PyHjm`, `PyCheyette` — have `sample_par` too. They release the GIL while the paths are generated and re-acquire it for each callback evaluation, so the callables run from the worker threads one at a time. `PyAdg.sample_par(m)` returns an `(m, factors, n)` array and `PyHjm.sample_par(m)` three `(m, n)` arrays (short rate, bond price, forward rate).
+The models driven by Python callables — `PyHullWhite(theta, …)`, `PyAdg`, `PyHjm`, `PyCheyette` — have `sample_par` too. They release the GIL while the paths are generated and re-acquire it for each callback evaluation, so the callables run from the worker threads one at a time. `PyAdg.sample_par(m)` returns an `(m, factors, n)` array, `PyHjm.sample_par(m)` three `(m, n)` arrays (short rate, bond price, forward rate) and `PyHestonHullWhite2F.sample_par(m)` an `(m, 5, n)` array (spot, variance, the two rate factors, the integrated short rate).
 
 ## Devices
 
@@ -81,7 +81,7 @@ srs.probe_device("metal")             # {'backend': 'Metal', 'name': 'Apple M2 M
 srs.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7, device="cuda:1")   # second CUDA GPU
 ```
 
-89 process classes take `device=` (`PyGbm(..., dtype="f32", device="metal")`). The process classes without it sample on the host: `PyAdg`, `PyBates`, `PyBgm`, `PyCheyette`, `PyCompoundCustom`, `PyCompoundPoisson`, `PyCtrw`, `PyCustomJt`, `PyHestonSlv`, `PyHjm`, `PyJumpFou`, `PyJumpFOUCustom`, `PyKou`, `PyLevyDiffusion`, `PyMcgns`, `PyMerton`, `PyMultiGbm`, `PyRoughBergomi`, `PyRoughHeston`, `PyVolterra`, `PyWishart`, `PyWuZhangD`. The name is checked against the build (`ValueError` with a rebuild hint), a single-precision device needs `dtype="f32"` (`ValueError` otherwise), and the device is probed when the object is built (`RuntimeError` if it cannot be opened); `sample()` / `sample_par(m)` then run on it and return arrays in the class's dtype. `device="cpu"` is the default. `device_ready()` and `device_fallback()` say whether the configuration a class holds runs on its device.
+89 process classes take `device=` (`PyGbm(..., dtype="f32", device="metal")`). The process classes without it sample on the host: `PyAdg`, `PyBates`, `PyBgm`, `PyCheyette`, `PyCompoundCustom`, `PyCompoundPoisson`, `PyCtrw`, `PyCustomJt`, `PyHestonHullWhite2F`, `PyHestonSlv`, `PyHjm`, `PyJumpFou`, `PyJumpFOUCustom`, `PyKou`, `PyLevyDiffusion`, `PyMcgns`, `PyMerton`, `PyMultiGbm`, `PyRoughBergomi`, `PyRoughHeston`, `PyVolterra`, `PyWishart`, `PyWuZhangD`. The name is checked against the build (`ValueError` with a rebuild hint), a single-precision device needs `dtype="f32"` (`ValueError` otherwise), and the device is probed when the object is built (`RuntimeError` if it cannot be opened); `sample()` / `sample_par(m)` then run on it and return arrays in the class's dtype. `device="cpu"` is the default. `device_ready()` and `device_fallback()` say whether the configuration a class holds runs on its device.
 
 ## Credit curves
 

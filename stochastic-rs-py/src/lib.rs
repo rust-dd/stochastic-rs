@@ -155,6 +155,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::volatility::bergomi::PyBergomi;
   use stochastic_rs_stochastic::volatility::fheston::PyRoughHeston;
   use stochastic_rs_stochastic::volatility::heston::PyHeston;
+  use stochastic_rs_stochastic::volatility::heston_hull_white_2f::PyHestonHullWhite2F;
   use stochastic_rs_stochastic::volatility::heston_log::PyHestonLog;
   use stochastic_rs_stochastic::volatility::heston_slv::PyHestonSlv;
   use stochastic_rs_stochastic::volatility::rbergomi::PyRoughBergomi;
@@ -224,6 +225,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyBatesSvj>()?;
   m.add_class::<PyBergomi>()?;
   m.add_class::<PyHeston>()?;
+  m.add_class::<PyHestonHullWhite2F>()?;
   m.add_class::<PyHestonLog>()?;
   m.add_class::<PyHestonSlv>()?;
   m.add_class::<PyRoughBergomi>()?;

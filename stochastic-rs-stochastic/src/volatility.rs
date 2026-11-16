@@ -17,6 +17,7 @@ pub mod fbates_svj;
 pub mod fheston;
 pub mod heston;
 pub mod heston2d;
+pub mod heston_hull_white_2f;
 pub mod heston_log;
 pub mod heston_slv;
 pub mod hkde;

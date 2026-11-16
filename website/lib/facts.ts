@@ -18,8 +18,8 @@ function workspaceVersion(): string {
 export const FACTS = {
   /** `[workspace.package] version` in the root `Cargo.toml`, read at build time. */
   version: workspaceVersion(),
-  /** Root `CLAUDE.md`, `ProcessExt`: 142 implementors over 132 processes. */
-  processes: 132,
+  /** Root `CLAUDE.md`, `ProcessExt`: 143 implementors over 133 processes. */
+  processes: 133,
   /** `concepts/gpu-support.mdx`: families of the device engine and the processes they carry. */
   deviceFamilies: 121,
   processesOnEngine: 130,
@@ -30,7 +30,7 @@ export const FACTS = {
   /** `impl Calibrator for` in stochastic-rs-quant. */
   calibrators: 15,
   /** `public/python-parity.json` count minus the four `ai`-feature registrations. */
-  pythonEntries: 306,
+  pythonEntries: 307,
   /** `#[test]` functions across the workspace, rounded down. */
   testsFloor: 3000,
 } as const;
