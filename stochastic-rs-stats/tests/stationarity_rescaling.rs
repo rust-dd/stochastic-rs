@@ -206,3 +206,81 @@ fn leybourne_mccabe_answers_an_exact_ar_fit_with_degenerate_data() {
     StatsError::DegenerateData("zero residual variance")
   );
 }
+
+/// Each series is its test's regression to rounding, at a level of 0 or `1e5` and at every scale:
+/// the residuals then carry no variance against the series' own.
+#[test]
+fn an_exact_fit_is_degenerate_data_at_every_level_and_scale() {
+  let line = |level: f64| Array1::from_iter((0..30).map(|t| level + t as f64));
+  let power = Array1::from_iter((0..80).map(|t| 1.5f64.powi(t)));
+  let square = Array1::from_iter((0..100).map(|t| (t * t) as f64));
+  let pp = |trend| PhillipsPerronConfig {
+    trend,
+    ..PhillipsPerronConfig::default()
+  };
+  let kpss = KpssConfig {
+    trend: Trend::ConstantTrend,
+    ..KpssConfig::default()
+  };
+  let zero = StatsError::DegenerateData("zero residual variance");
+  for c in [1e-6, 1.0, 1e6] {
+    for level in [0.0, 1e5] {
+      let y = line(level).mapv(|v| v * c);
+      for trend in [Trend::Constant, Trend::ConstantTrend] {
+        let got = phillips_perron_test(y.view(), pp(trend));
+        assert_eq!(
+          got.unwrap_err(),
+          zero,
+          "PP {trend:?}, line at {level:e}, c = {c:e}"
+        );
+      }
+      let got = kpss_test(y.view(), kpss);
+      assert_eq!(got.unwrap_err(), zero, "KPSS, line at {level:e}, c = {c:e}");
+    }
+    for trend in [Trend::None, Trend::Constant, Trend::ConstantTrend] {
+      let got = phillips_perron_test(power.mapv(|v| v * c).view(), pp(trend));
+      assert_eq!(got.unwrap_err(), zero, "PP {trend:?}, 1.5^t, c = {c:e}");
+    }
+    let got = phillips_perron_test(square.mapv(|v| v * c).view(), pp(Trend::ConstantTrend));
+    assert_eq!(got.unwrap_err(), zero, "PP ConstantTrend, t^2, c = {c:e}");
+  }
+}
+
+/// Noise of `1e-7` about `1e8` tests as the same points less `1e8`, a subtraction that is exact.
+#[test]
+fn a_level_far_above_the_variation_keeps_the_statistic() {
+  let mut noise = vec![0.0; 200];
+  SimdNormal::<f64>::new(0.0, 1.0)
+    .seeded(&Deterministic::new(3))
+    .fill_slice(&mut noise);
+  let y = Array1::from_iter(noise.iter().map(|e| 1e8 + 1e-7 * e));
+  let w = y.mapv(|v| v - 1e8);
+  for trend in [Trend::Constant, Trend::ConstantTrend] {
+    let cfg = PhillipsPerronConfig {
+      trend,
+      ..PhillipsPerronConfig::default()
+    };
+    let (at_level, less_level) = (
+      phillips_perron_test(y.view(), cfg).map(|r| r.statistic),
+      phillips_perron_test(w.view(), cfg).unwrap().statistic,
+    );
+    assert!(
+      at_level
+        .as_ref()
+        .is_ok_and(|s| (s - less_level).abs() <= 1e-12 * less_level.abs()),
+      "PP {trend:?}: {at_level:?} at 1e8 against {less_level}"
+    );
+    let cfg = KpssConfig {
+      trend,
+      ..KpssConfig::default()
+    };
+    let (at_level, less_level) = (
+      kpss_test(y.view(), cfg).unwrap().statistic,
+      kpss_test(w.view(), cfg).unwrap().statistic,
+    );
+    assert!(
+      (at_level - less_level).abs() <= 1e-12 * less_level.abs(),
+      "KPSS {trend:?}: {at_level} at 1e8 against {less_level}"
+    );
+  }
+}

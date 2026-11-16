@@ -6,6 +6,7 @@ use stochastic_rs_distributions::linalg::solve;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::validate;
+use crate::traits::RealExt;
 
 /// Deterministic terms of a unit-root or stationarity regression.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -297,6 +298,33 @@ pub fn newey_west_long_run_variance(u: &[f64], lags: usize) -> Result<f64, Stats
     return Err(StatsError::DegenerateData("zero long-run variance"));
   }
   Ok(lr_var)
+}
+
+/// An exact fit leaves residual variances near `ε² ≈ 5e-32` of the series' own; residuals spread
+/// below `1e-12` of the series' keep too few digits above rounding to carry a statistic.
+const EXACT_FIT: f64 = 1e-24;
+
+/// `y` less its mean: a fit with a constant is the same, and keeps every digit of a variation that
+/// is small against the level, which is why arch's `PhillipsPerron` centres its regression.
+pub fn centred(y: &[f64]) -> Vec<f64> {
+  let mean = y.iter().sum::<f64>() / y.len() as f64;
+  y.iter().map(|v| v - mean).collect()
+}
+
+/// `DegenerateData("zero residual variance")` when `residuals`, of a fit to `y`, vary by less than
+/// `EXACT_FIT` of `y` itself; both are scaled by `y`'s spread, so neither under- or overflows.
+pub fn reject_exact_fit(y: &[f64], residuals: &[f64]) -> Result<(), StatsError> {
+  let mean = y.iter().sum::<f64>() / y.len() as f64;
+  let spread = f64::max_or_nan_fold(y.iter().map(|v| (v - mean).abs()));
+  let mean_square = |values: &mut dyn Iterator<Item = f64>, n: usize| {
+    values.map(|v| (v / spread) * (v / spread)).sum::<f64>() / n as f64
+  };
+  let own = mean_square(&mut y.iter().map(|v| v - mean), y.len());
+  let left = mean_square(&mut residuals.iter().copied(), residuals.len());
+  if left <= EXACT_FIT * own {
+    return Err(StatsError::DegenerateData("zero residual variance"));
+  }
+  Ok(())
 }
 
 pub fn regress_on_deterministics(y: &[f64], include_trend: bool) -> Result<OlsResult, StatsError> {

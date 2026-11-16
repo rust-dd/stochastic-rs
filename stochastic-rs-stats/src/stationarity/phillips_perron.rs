@@ -1,8 +1,5 @@
-//! Phillips-Perron unit-root test — corrects the (lag-0) Dickey-Fuller
-//! regression for serial correlation and heteroskedasticity via a
-//! Newey-West long-run variance estimate instead of augmenting the
-//! regression with lagged differences. Implements both the `Tau`
-//! (t-ratio-style) and `Rho` variants of the test statistic.
+//! Phillips-Perron unit-root test: the lag-0 Dickey-Fuller regression corrected for serial
+//! correlation by a Newey-West long-run variance, as the `Tau` and `Rho` statistics.
 //!
 //! References:
 //! - Phillips P. C. B. & Perron P. (1988) — *Testing for a Unit Root in
@@ -13,17 +10,24 @@
 //!   `Z_τ` computed here.
 //! - Hamilton J. D. (1994) — *Time Series Analysis*, Princeton University
 //!   Press, ch. 17, DOI: 10.2307/j.ctv14jx6sm, which Stata cites for them.
+//! - Sheppard K. et al. — *arch* 9.0.0, `arch.unitroot.PhillipsPerron`,
+//!   DOI: 10.5281/zenodo.593254; the regression on the series less its mean.
 //! - Newey W. K. & West K. D. (1987) — *A Simple, Positive
 //!   Semi-Definite, Heteroskedasticity and Autocorrelation Consistent
 //!   Covariance Matrix*, Econometrica 55(3), 703–708,
 //!   DOI: 10.2307/1913610.
 
+use std::borrow::Cow;
+
 use ndarray::ArrayView1;
 
 use super::common::Trend;
 use super::common::adf_critical_values;
+use super::common::centred;
 use super::common::fit_adf;
 use super::common::newey_west_long_run_variance;
+use super::common::regress_on_deterministics;
+use super::common::reject_exact_fit;
 use super::common::schwert_max_lags;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
@@ -92,8 +96,8 @@ impl crate::traits::HypothesisTest for PhillipsPerronTest {
   }
 }
 
-/// Phillips–Perron test; `Err` below 20 points, on a non-finite one, a constant series, a singular
-/// fit or a zero or non-finite variance; panics unless `0 < alpha < 1` (`>= 0.01` for `Tau`).
+/// Phillips–Perron test; `Err` below 20 points, on non-finite, constant or exactly fitted data, a
+/// singular fit or a zero or non-finite variance; panics unless `0 < alpha < 1` (`Tau`: `>= 0.01`).
 pub fn phillips_perron_test(
   y: ArrayView1<f64>,
   cfg: PhillipsPerronConfig,
@@ -107,9 +111,18 @@ pub fn phillips_perron_test(
   let y = as_slice_or_copy(y);
   validate(&y, 20)?;
   reject_constant(&y, "constant series")?;
+  let y = match cfg.trend {
+    Trend::None => y,
+    Trend::Constant | Trend::ConstantTrend => Cow::Owned(centred(&y)),
+  };
+  // A line makes the lagged level a combination of the trend terms, which leaves no design to fit.
+  if cfg.trend == Trend::ConstantTrend {
+    reject_exact_fit(&y, &regress_on_deterministics(&y, true)?.residuals)?;
+  }
 
   let fit = fit_adf(&y, 0, cfg.trend)?;
   let u = fit.residuals;
+  reject_exact_fit(&y, &u)?;
   let n_f = u.len() as f64;
   let gamma0 = u.iter().map(|v| v * v).sum::<f64>() / n_f;
 
