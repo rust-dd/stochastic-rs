@@ -62,6 +62,7 @@ pub struct SabrCapletCalibrationResult {
 impl SabrCapletCalibrationResult {
   /// A [`SabrPricer`](crate::pricing::sabr::SabrPricer) in shifted coordinates when `shift != 0`: shift `s` and `k` yourself
   /// (an unshifted non-positive one prices as NaN) or use [`Self::to_shifted_volatility`], which shifts internally.
+  /// Panics when `beta` lies outside [0, 1].
   pub fn to_model(&self) -> crate::pricing::sabr::SabrPricer {
     crate::pricing::sabr::SabrPricer::new(SabrParams {
       alpha: self.alpha,

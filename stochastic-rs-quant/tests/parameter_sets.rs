@@ -17,7 +17,7 @@ fn sabr_params_are_in_hagan_order_everywhere() {
   // Hagan et al. (2002) eq. A.69a, 50 digits (mpmath): 0.1972899165457992224840861.
   let vol = hagan_implied_vol(110.0, 100.0, 1.0, &p);
   assert!((vol - 0.197_289_916_545_799_2).abs() < 1e-12, "{vol}");
-  // The expansion's exact f64 at this point: any reordering of its arithmetic moves these bits.
+  // The expansion's exact f64 here; a change to its arithmetic will most likely move these bits.
   assert_eq!(vol.to_bits(), 0x3fc9_40cb_c5b2_8809, "{vol}");
   assert_eq!(SabrPricer::new(p).params(), p);
   let model = SabrVolatility::new(0.2_f64, 1.0, -0.3, 0.6);

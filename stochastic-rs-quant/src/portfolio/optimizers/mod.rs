@@ -109,7 +109,7 @@ pub fn optimize_with_method(
     }
     OptimizerMethod::InverseVol => optimize_inverse_vol(mu, cov, risk_free),
     OptimizerMethod::RiskParity => optimize_risk_parity(mu, cov, risk_free),
-    OptimizerMethod::HRP => {
+    OptimizerMethod::Hrp => {
       let corr_mat: Vec<Vec<f64>> = corr.map(|x| x.to_vec()).unwrap_or_else(|| {
         let n = cov.len();
         let mut m = ndarray::Array2::<f64>::zeros((n, n));

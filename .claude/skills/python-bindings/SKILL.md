@@ -225,8 +225,7 @@ pip install maturin pytest numpy
 maturin develop --release
 
 # Smoke test:
-python -c "from stochastic_rs import PyBsmPricer; \
-  p = PyBsmPricer(100, 100, 0.05, 0.0, 0.2, 1.0); print(p.price())"
+python -c "import stochastic_rs as sr; print(sr.BSMPricer(100.0, 0.2, 100.0, 0.05, 1.0).price())"
 ```
 
 `pyproject.toml` has `[tool.maturin] manifest-path = ".../Cargo.toml"`

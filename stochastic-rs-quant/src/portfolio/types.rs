@@ -19,7 +19,7 @@ pub enum OptimizerMethod {
   /// Equalized marginal risk contributions.
   RiskParity,
   /// Hierarchical Risk Parity (Lopez de Prado).
-  HRP,
+  Hrp,
   /// Black-Litterman posterior expected returns with Markowitz solve.
   BlackLitterman,
 }
@@ -50,7 +50,7 @@ impl std::str::FromStr for OptimizerMethod {
       "cvar" | "mean-cvar" | "meancvar" => Ok(Self::MeanCvar),
       "inv-vol" | "inverse-vol" | "invvol" => Ok(Self::InverseVol),
       "risk-parity" | "riskparity" => Ok(Self::RiskParity),
-      "hrp" => Ok(Self::HRP),
+      "hrp" => Ok(Self::Hrp),
       "bl" | "black-litterman" | "blacklitterman" => Ok(Self::BlackLitterman),
       _ => Err(UnknownOptimizerMethod(s.to_string())),
     }
