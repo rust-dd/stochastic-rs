@@ -54,9 +54,10 @@ fn heston_pricer(c: &mut Criterion) {
   group.bench_function("implied_vol_9", |b| {
     let prices = STRIKES.map(|k| model.price_call(S, k, R, Q, 1.0));
     b.iter(|| {
-      STRIKES
+      let model = black_box(&model);
+      black_box(&STRIKES)
         .iter()
-        .zip(prices)
+        .zip(black_box(prices))
         .map(|(&k, p)| model.implied_volatility(p, S, k, R, Q, 1.0, OptionType::Call))
         .sum::<f64>()
     })
@@ -105,7 +106,9 @@ fn fourier(c: &mut Criterion) {
         .sum::<f64>()
     })
   });
-  group.bench_function("cumulants", |b| b.iter(|| black_box(heston.cumulants(1.0))));
+  group.bench_function("cumulants", |b| {
+    b.iter(|| black_box(&heston).cumulants(black_box(1.0)))
+  });
   group.finish();
 
   let mut group = c.benchmark_group("pricing/fourier_levy");
@@ -167,9 +170,10 @@ fn bsm_and_sabr(c: &mut Criterion) {
   let sabr = SabrPricer::new(params);
   group.bench_function("hagan_vol_9", |b| {
     b.iter(|| {
-      STRIKES
+      let params = black_box(&params);
+      black_box(&STRIKES)
         .iter()
-        .map(|&k| hagan_implied_vol(k, S, 1.0, &params))
+        .map(|&k| hagan_implied_vol(k, S, 1.0, params))
         .sum::<f64>()
     })
   });
