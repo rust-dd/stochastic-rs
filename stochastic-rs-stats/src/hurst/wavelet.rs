@@ -109,6 +109,15 @@ impl<T: FloatExt> HurstEstimator<T> for Wavelet {
         constraint: "j_min >= 1",
       });
     }
+    if let Some(j_max) = self.j_max
+      && j_max <= self.j_min
+    {
+      return Err(StatsError::InvalidParameter {
+        name: "j_max",
+        value: j_max as f64,
+        constraint: "j_max >= j_min + 1",
+      });
+    }
 
     let signal_raw = to_f64_vec::<T>(x);
     let signal: Vec<f64> = if self.take_differences {
@@ -250,6 +259,7 @@ pub(crate) fn pyramidal_dwt(
 
 #[cfg(test)]
 mod tests {
+  use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Unseeded;
   use stochastic_rs_stochastic::noise::fgn::Fgn;
   use stochastic_rs_stochastic::process::fbm::Fbm;
@@ -305,5 +315,22 @@ mod tests {
     let r = Wavelet::default().estimate(path.view()).expect("wavelet");
     let se = r.std_err.expect("std_err present");
     assert!(se > 0.0 && se < 1.0, "SE={se}");
+  }
+
+  #[test]
+  fn a_scale_range_without_two_levels_is_invalid_parameter() {
+    let x = Array1::<f64>::linspace(0.0, 1.0, 256);
+    let narrow = Wavelet {
+      j_max: Some(2),
+      ..Wavelet::default()
+    };
+    assert_eq!(
+      HurstEstimator::<f64>::estimate(&narrow, x.view()).unwrap_err(),
+      StatsError::InvalidParameter {
+        name: "j_max",
+        value: 2.0,
+        constraint: "j_max >= j_min + 1"
+      }
+    );
   }
 }

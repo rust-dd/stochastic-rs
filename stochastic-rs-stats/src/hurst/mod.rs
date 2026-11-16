@@ -112,8 +112,8 @@
 //!
 //! | Estimator | Min. obs. (defaults) |
 //! |---|---|
-//! | [`RescaledRange`] | `max(min_window, 8) * 2` → 32 |
-//! | [`Dfa`] | `max(min_window * 4, order + 4)` → 32 |
+//! | [`RescaledRange`] | `4 (min_window + 1)` → 68 (`2 max(min_window + 1, 8)` with `max_window`) |
+//! | [`Dfa`] | `4 (min_window + 1)` → 36 (`max(4 min_window, order + 4)` with `max_window`) |
 //! | [`Gph`] | 64 |
 //! | [`Wavelet`] | 64 |
 //! | [`Variations`] | 5 (`CentralDiff`, the default) to 8 (`Daubechies`), or `k+3` for `PowerVariation { k, .. }` |

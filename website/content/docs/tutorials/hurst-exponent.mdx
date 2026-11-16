@@ -108,7 +108,7 @@ Seven of the eight estimators measure the same thing, the self-similarity expone
 
 `Whittle` (and `FukasawaHurst` in Python) implements the adapted Whittle estimator of Fukasawa, Takabatake and Westphal (2019): it estimates the Hurst exponent of a *latent volatility* process from log realised variance aggregated from intraday returns (`FukasawaHurst.from_prices(closes)`, `FukasawaHurst.from_log_rv(log_rv)`). Handed a directly sampled path it does not fail — it returns a number unrelated to that path's exponent — so build its input from prices, not from a simulated `Fgn`.
 
-The estimators also have hard minimum lengths with their defaults: 32 observations for `RescaledRange` and `Dfa`, 64 for `Gph` and `Wavelet`, 30 for `Whittle`. Those are validation floors, not sample sizes to aim for — a log-log regression wants thousands of points.
+The estimators also have hard minimum lengths with their defaults: 68 observations for `RescaledRange`, 36 for `Dfa`, 64 for `Gph` and `Wavelet`, 30 for `Whittle`. Those are validation floors, not sample sizes to aim for — a log-log regression wants thousands of points.
 
 ## Result
 

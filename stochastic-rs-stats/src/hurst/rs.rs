@@ -81,7 +81,14 @@ impl RescaledRange {
 impl<T: FloatExt> HurstEstimator<T> for RescaledRange {
   fn estimate(&self, x: ArrayView1<T>) -> Result<HurstFit<T>, StatsError> {
     let n = x.len();
-    let min_required = self.min_window.max(8) * 2;
+    // The largest window, `max_window` or else `n / 4`, is capped at `n / 2` and must exceed
+    // `min_window`.
+    let per_window = if self.max_window.is_some() { 2 } else { 4 };
+    let min_required = self
+      .min_window
+      .saturating_add(1)
+      .saturating_mul(per_window)
+      .max(self.min_window.max(8).saturating_mul(2));
     if n < min_required {
       return Err(StatsError::InsufficientData {
         needed: min_required,
@@ -103,14 +110,16 @@ impl<T: FloatExt> HurstEstimator<T> for RescaledRange {
       });
     }
 
-    let max_window = self.max_window.unwrap_or(n / 4).min(n / 2);
-    if max_window <= self.min_window {
+    if let Some(max_window) = self.max_window
+      && max_window <= self.min_window
+    {
       return Err(StatsError::InvalidParameter {
         name: "max_window",
         value: max_window as f64,
         constraint: "max_window > min_window",
       });
     }
+    let max_window = self.max_window.unwrap_or(n / 4).min(n / 2);
     let windows = log_spaced_windows(self.min_window, max_window, self.n_windows);
     if windows.len() < 2 {
       return Err(StatsError::DegenerateData("fewer than two valid scales"));
@@ -308,5 +317,42 @@ mod tests {
       (h_est - h).abs() < 0.08,
       "R/S H={h_est:.3}, expected {h:.3}"
     );
+  }
+
+  /// With `max_window` unset the largest window is `n / 4`, which must exceed `min_window`.
+  #[test]
+  fn the_window_range_folds_into_the_length_check() {
+    let x = Array1::<f64>::linspace(0.0, 1.0, 40);
+    assert_eq!(
+      HurstEstimator::<f64>::estimate(&RescaledRange::default(), x.view()).unwrap_err(),
+      StatsError::InsufficientData {
+        needed: 68,
+        got: 40
+      }
+    );
+    let set = RescaledRange {
+      max_window: Some(100),
+      ..RescaledRange::default()
+    };
+    let short = Array1::<f64>::linspace(0.0, 1.0, 33);
+    assert_eq!(
+      HurstEstimator::<f64>::estimate(&set, short.view()).unwrap_err(),
+      StatsError::InsufficientData {
+        needed: 34,
+        got: 33
+      }
+    );
+    let at_min = RescaledRange {
+      max_window: Some(16),
+      ..RescaledRange::default()
+    };
+    let long = Array1::<f64>::linspace(0.0, 1.0, 200);
+    assert!(matches!(
+      HurstEstimator::<f64>::estimate(&at_min, long.view()),
+      Err(StatsError::InvalidParameter {
+        name: "max_window",
+        ..
+      })
+    ));
   }
 }
