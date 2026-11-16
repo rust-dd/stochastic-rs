@@ -126,10 +126,10 @@ fn digamma_keeps_its_accuracy_next_to_the_poles() {
   }
 }
 
-/// Within 2 ulp of mpmath's correctly rounded value at 50 digits, through the recurrence, the
-/// series and the reflection.
+/// Each of these 12 pins lies within 2 ulp of mpmath's correctly rounded value at 50 digits; they
+/// reach the recurrence, the series and the reflection.
 #[test]
-fn trigamma_holds_two_ulp_of_mpmath() {
+fn trigamma_matches_its_mpmath_pins() {
   for (x, want) in [
     (0.5, 4.934802200544679),
     (1.0, 1.6449340668482264),
