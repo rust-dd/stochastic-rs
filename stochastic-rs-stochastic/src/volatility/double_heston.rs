@@ -500,7 +500,6 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::S
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for DoubleHeston<T, S, B>
 {
-  /// Output tuple: `[S, v1, v2]`.
   type Output = DoubleHestonPaths<T>;
   type Sampler<'s>
     = DoubleHestonSampler<T, S>

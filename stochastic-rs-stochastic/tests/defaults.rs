@@ -331,10 +331,6 @@ fn clone_preserves_deterministic_path() {
   assert_eq!(bits(&s1), bits(&s2));
   assert_eq!(bits(&v1), bits(&v2));
 
-  // `Merton`/`Kou`: see this function's module doc for why these two were
-  // excluded before the zero-exception-reproducibility wave's Task 1, and
-  // why a nonzero-intensity jump distribution is used here (proves the
-  // jump component specifically, not just the diffusion).
   let a = Merton::new(
     0.03,
     0.2,

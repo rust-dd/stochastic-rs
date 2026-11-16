@@ -493,7 +493,7 @@ pub trait TwoDimensional<T: FloatExt>: MultiDimensional<T, 2> {}
 impl<T: FloatExt, P> TwoDimensional<T> for P where P: MultiDimensional<T, 2> {}
 
 /// Marker for processes whose [`ProcessExt::sample`] returns an `Array2<T>`, a discretised curve or
-/// sheet: `Hjm` with tenors, `WuZhang`, `Fbs`.
+/// sheet: `WuZhang`, `Fbs`.
 pub trait CurveOutput<T: FloatExt>: ProcessExt<T, Output = Array2<T>> {}
 
 impl<T: FloatExt, P> CurveOutput<T> for P where P: ProcessExt<T, Output = Array2<T>> {}

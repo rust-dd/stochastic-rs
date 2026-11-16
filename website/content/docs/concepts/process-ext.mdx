@@ -45,7 +45,8 @@ The device methods are covered in [Sampling backends](/docs/concepts/backends).
 | Family                                            | `Output`               |
 |---------------------------------------------------|------------------------|
 | Single-factor (OU, GBM, CIR, Vasicek, …)          | `Array1<T>`            |
-| Multi-state (Heston, SABR, Bergomi, HJM, …)       | `[Array1<T>; N]`       |
+| Multi-state (Heston, SABR, Bergomi, …)            | `[Array1<T>; N]`       |
+| Named slots (Hjm, DoubleHeston, HestonStochCorr, Heston2D, MultifactorHeston, CompoundPoisson, CompoundCustom) | a `…Paths` struct (`HjmPaths { r, p, f }`, …) |
 | Matrix rows / sheet (Adg, MultiGbm, Fbs)          | `Array2<T>`            |
 | Matrix-valued (Wishart)                           | `Array3<T>`            |
 | Variable-dimension (multivariate Hawkes)          | `Vec<Array1<T>>`       |
