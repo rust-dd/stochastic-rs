@@ -30,11 +30,11 @@ where
   let two = T::from_f64_fast(2.0);
   let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(seed);
   let mut z = Array1::<T>::zeros(dim);
-  let mut neg_z = Array1::<T>::zeros(dim);
   estimate_from_samples((0..n_paths).map(|_| {
     normal.fill_slice(z.as_slice_mut().expect("contiguous"));
-    neg_z.zip_mut_with(&z, |neg, &v| *neg = -v);
-    (payoff(&z) + payoff(&neg_z)) / two
+    let up = payoff(&z);
+    z.mapv_inplace(|v| -v);
+    (up + payoff(&z)) / two
   }))
 }
 
@@ -48,9 +48,10 @@ where
 {
   let two = T::from_f64_fast(2.0);
   let acc = par_welford_seeded(n_paths, seed, |_, normal| {
-    let z = normal.sample_n(dim);
-    let neg_z = z.mapv(|v: T| -v);
-    (payoff(&z) + payoff(&neg_z)) / two
+    let mut z = normal.sample_n(dim);
+    let up = payoff(&z);
+    z.mapv_inplace(|v: T| -v);
+    (up + payoff(&z)) / two
   });
   McEstimate::from(&acc)
 }

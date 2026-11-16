@@ -140,11 +140,11 @@ where T: FloatExt, F: Fn(&Array1<T>) -> T, S: SeedExt
     // The workspace's own Gaussian stream: `rand_distr` and `StdRng` are for benches only.
     let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(seed);
     let mut z = Array1::<T>::zeros(dim);
-    let mut neg_z = Array1::<T>::zeros(dim);
     estimate_from_samples((0..n_paths).map(|_| {
         normal.fill_slice(z.as_slice_mut().expect("contiguous"));
-        neg_z.zip_mut_with(&z, |neg, &v| *neg = -v);
-        (payoff(&z) + payoff(&neg_z)) / two
+        let up = payoff(&z);
+        z.mapv_inplace(|v| -v);
+        (up + payoff(&z)) / two
     }))
 }
 ```
@@ -152,6 +152,11 @@ where T: FloatExt, F: Fn(&Array1<T>) -> T, S: SeedExt
 Note `n_samples: n_paths`, not `2 * n_paths`: a pair counts as one
 sample of the averaged estimator, which is what makes the standard
 error comparable to plain MC at the same `n_samples`.
+
+Negate the draw in place between the two payoff calls rather than
+building `−z` in a second array: in `estimate_par`, where each path
+draws its own array, the second allocation took a third of the time
+on the one-normal payoff of `benches/mc_antithetic.rs`.
 
 Antithetic works **only** when the payoff is monotonic in `z`. For
 strangles / digitals, antithetic can *increase* variance — always
