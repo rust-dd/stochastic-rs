@@ -394,8 +394,7 @@ pub struct Bessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> Bessel<T, S> {
   /// Create a new Bessel process.
   ///
-  /// Same δ ≥ 2 strict-positivity threshold and the same `log::warn!`
-  /// (never a panic) as [`SquaredBessel::new`] — see there for the full rationale.
+  /// The δ < 2 `log::warn!` of [`SquaredBessel::new`], under [`VarianceBoundary::Floor`].
   pub fn new(
     delta: T,
     n: usize,

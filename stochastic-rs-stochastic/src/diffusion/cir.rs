@@ -185,7 +185,7 @@ impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
     ))
   }
 
-  /// Stationary density at `r`: the Gamma law with shape `2θµ/σ²` and rate `2θ/σ²`.
+  /// Stationary density at `r`: Gamma with shape `2θμ/σ²` and rate `2θ/σ²`; NaN for a negative state or outside the domain.
   pub fn stationary_pdf(&self, r: T) -> T {
     let [theta, mu, sigma, r] = [self.theta, self.mu, self.sigma, r].map(|v| v.to_f64().unwrap());
     T::from_f64_fast(transition::stationary_pdf(theta, mu, sigma, r))

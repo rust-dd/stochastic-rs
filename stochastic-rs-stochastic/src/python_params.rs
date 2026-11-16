@@ -1,4 +1,4 @@
-//! The Python kwargs of [`crate::params`] and their `None` defaults, mapped by the class macros.
+//! The `=> map` functions the Python class macros use to turn an optional kwarg into its Rust value.
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -28,7 +28,7 @@ pub fn boundary(boundary: Option<PyVarianceBoundary>) -> VarianceBoundary {
   boundary.map_or(VarianceBoundary::Floor, |b| b.0)
 }
 
-/// `clamp=None` clamps, as the Rust default does.
+/// `clamp=None` clamps.
 pub fn clamp(clamp: Option<bool>) -> bool {
   clamp.unwrap_or(true)
 }

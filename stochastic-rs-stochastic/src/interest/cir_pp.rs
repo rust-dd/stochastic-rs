@@ -4,30 +4,10 @@
 //! r_t=x_t+\varphi(t),\qquad dx_t=\kappa(\theta-x_t)\,dt+\sigma\sqrt{x_t}\,dW_t
 //! $$
 //!
-//! Shift-extended CIR short-rate model (Brigo & Mercurio, *Interest Rate
-//! Models — Theory and Practice*, 2nd ed., 2006, §3.9,
-//! DOI: 10.1007/978-3-540-34604-3): the CIR factor
-//! `x_t` carries all of the stochastic dynamics, and the deterministic
-//! shift `phi(t)` is fitted separately so that `r_t` matches today's
-//! observed term structure exactly — the same shift-extension idea
-//! [`Cir2F`](crate::interest::cir_2f::Cir2F) already applies to a
-//! two-factor sum `x_t + y_t`.
+//! Fields follow the CIR literature: `kappa` is the speed and `theta` the level, the reverse of [`Cir`]'s `theta`/`mu` (see the [glossary](crate::glossary)).
+//! [`sampler`](ProcessExt::sampler) runs a [`Cir`] through its [`CirSampler`], so at `phi ≡ 0` the two agree bit for bit.
 //!
-//! **Naming note.** Unlike [`Cir`], whose Rust field `theta` names the
-//! mean-reversion *speed* (κ) and `mu` the long-run *level* (θ) — the
-//! workspace's own θ=speed/μ=level convention, see the
-//! [glossary](crate::glossary) — `CirPlusPlus` follows the CIR
-//! literature's own κ/θ notation directly: [`kappa`](CirPlusPlus::kappa) is
-//! the speed and [`theta`](CirPlusPlus::theta) is the long-run level. This is a
-//! deliberate departure from `Cir`'s field names, not an inconsistency to
-//! "fix": the shift-extension literature that motivates this type (Brigo
-//! & Mercurio) itself writes the factor's SDE as `dx_t = κ(θ-x_t)dt +
-//! ...`. See the glossary's θ (theta) table for this meaning alongside
-//! [`BlackKarasinski::theta`](crate::interest::black_karasinski::BlackKarasinski::theta)'s
-//! unrelated additive-drift-function meaning.
-//!
-//! [`sampler`](ProcessExt::sampler) runs a [`Cir`] built from the struct's fields through its
-//! [`CirSampler`], so at `phi ≡ 0` the two processes agree bit for bit.
+//! Brigo, Mercurio (2006), Interest Rate Models, 2nd ed., §3.9, DOI 10.1007/978-3-540-34604-3.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

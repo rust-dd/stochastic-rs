@@ -4,7 +4,7 @@
 //! X_{s+t}\mid X_s=r\ \sim\ \frac{\sigma^2(1-e^{-\theta t})}{4\theta}\,\chi'^2_{4\theta\mu/\sigma^2}\!\left(\frac{4\theta e^{-\theta t}\,r}{\sigma^2(1-e^{-\theta t})}\right)
 //! $$
 //!
-//! Reference: Cox, J. C., Ingersoll, J. E., Ross, S. A. (1985), "A Theory of the Term Structure of Interest Rates", Econometrica 53(2) 385–407, DOI 10.2307/1911242
+//! Cox, Ingersoll, Ross (1985), Econometrica 53(2) 385–407, DOI 10.2307/1911242.
 
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::non_central_chi_squared;
@@ -44,6 +44,9 @@ pub(crate) fn transition_pdf(
 }
 
 pub(crate) fn stationary_pdf(theta: f64, mu: f64, sigma: f64, r: f64) -> f64 {
+  if !valid_parameters(theta, mu, sigma, 0.0, r) {
+    return f64::NAN;
+  }
   let beta = 2.0 * theta / sigma.powi(2);
   let alpha = 2.0 * theta * mu / sigma.powi(2);
 

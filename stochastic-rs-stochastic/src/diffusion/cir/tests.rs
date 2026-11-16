@@ -97,6 +97,17 @@ fn zero_horizon_and_invalid_inputs_are_explicit() {
   assert!(cir.transition_pdf(0.0, 0.05, 0.05).is_nan());
   assert!(cir.transition_pdf(1.0, 0.05, -0.01).is_nan());
   assert!(cir.transition_pdf(1.0, -0.05, 0.05).is_nan());
+  assert!(cir.stationary_pdf(0.05).is_finite());
+  assert!(law(2.0, 0.0625, 0.5).stationary_pdf(-0.1).is_nan());
+  assert!(law(2.0, 0.04, -0.4).stationary_pdf(0.05).is_nan());
+  assert!(law(0.0, 0.04, 0.4).stationary_pdf(0.05).is_nan());
+  assert!(cir.stationary_pdf(f64::NAN).is_nan());
+  assert!(
+    law(2.0, 0.04, 0.4)
+      .with_sigma(f64::NAN)
+      .stationary_pdf(0.05)
+      .is_nan()
+  );
 }
 
 #[test]
