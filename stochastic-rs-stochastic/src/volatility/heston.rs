@@ -12,6 +12,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::HestonPow;
 use crate::device::Cpu;
+use crate::malliavin::Malliavin;
 use crate::noise::cgns::Cgns;
 use crate::params::VarianceBoundary;
 use crate::traits::FloatExt;
@@ -568,14 +569,9 @@ impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B: Send + Sync> PathSampler<T>
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Heston<T, Euler, S, B> {
-  /// Malliavin derivative of the volatility
-  ///
-  /// The Malliavin derivative of the Heston model is given by
-  /// D_r v_t = \sigma v_t^{1/2} / 2 * exp(-(\kappa \theta / 2 - \sigma^2 / 8) / v_t * dt)
-  ///
-  /// The Malliavin derivative of the 3/2 Heston model is given by
-  /// D_r v_t = \sigma v_t^{3/2} / 2 * exp(-(\kappa \theta / 2 + 3 \sigma^2 / 8) * v_t * dt)
-  pub fn malliavin_of_vol(&self) -> [Array1<T>; 3] {
+  /// The path and a frozen-variance closed form of the variance's derivative at each `t_i`:
+  /// `σ v_T^p / 2 · exp(c (n − i) Δt)`, `c` Alòs and Ewald's (2008) rate at `v_T` for `p = 1/2`.
+  pub fn malliavin(&self) -> Malliavin<T, [Array1<T>; 2]> {
     let [s, v] = self.sample();
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
 
@@ -607,7 +603,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Heston<T, Euler,
       };
     }
 
-    [s, v, malliavin]
+    Malliavin {
+      paths: [s, v],
+      derivative: malliavin,
+    }
   }
 }
 

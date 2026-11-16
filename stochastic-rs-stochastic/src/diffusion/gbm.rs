@@ -20,6 +20,7 @@ use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::device::DeviceError;
 use crate::euler::EulerBackend;
+use crate::malliavin::Malliavin;
 use crate::traits::DistributionExt;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -279,23 +280,11 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
     }
   }
 
-  /// Malliavin derivative of the Gbm process
-  ///
-  /// The Malliavin derivative of the Gbm process is given by
-  /// `D_r S_t = \sigma S_t \mathbf{1}_{0 \le r \le t}`.
-  ///
-  /// The Malliavin derivate of the Gbm shows the sensitivity of the stock price with respect to the Wiener process.
-  pub fn malliavin(&self) -> [Array1<T>; 2] {
-    let gbm = self.sample();
-    let mut m = Array1::zeros(self.n);
-
-    // reverse due the option pricing
-    let s_t = *gbm.last().unwrap();
-    for i in 0..self.n {
-      m[i] = self.sigma * s_t;
-    }
-
-    [gbm, m]
+  /// The path and `D_{t_i} S_T = σ S_T`, the same at every grid point.
+  pub fn malliavin(&self) -> Malliavin<T, Array1<T>> {
+    let paths = self.sample();
+    let derivative = Array1::from_elem(self.n, self.sigma * paths[paths.len() - 1]);
+    Malliavin { paths, derivative }
   }
 }
 
@@ -365,7 +354,19 @@ impl<T: FloatExt, S: SeedExt> DistributionExt for Gbm<T, S> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
+
+  #[test]
+  fn the_malliavin_derivative_is_sigma_times_the_terminal_value() {
+    let gbm = || Gbm::<f64, _>::new(0.05, 0.2, 17, 100.0, Some(1.0), Deterministic::new(3));
+    let Malliavin {
+      paths, derivative, ..
+    } = gbm().malliavin();
+    assert_eq!(paths, gbm().sample());
+    assert!(derivative.iter().all(|d| *d == 0.2 * paths[16]));
+  }
 
   /// The lognormal terminal law: ten closed forms, and `None` for its cf and mgf, which have none.
   #[test]

@@ -15,6 +15,7 @@ use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::device::DeviceError;
 use crate::device::FgnBackend;
+use crate::malliavin::Malliavin;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -302,26 +303,20 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
 
 backend_switch!([T: FloatExt, S: SeedExt] Fbm<T, S> { hurst, n, t, seed } via fgn euler);
 
-impl<T: FloatExt, S: SeedExt, B> Fbm<T, S, B> {
-  /// Calculate the Malliavin derivative
-  ///
-  /// The Malliavin derivative of the fractional Brownian motion is given by:
-  /// D_s B^H_t = 1 / Γ(H + 1/2) (t - s)^{H - 1/2}
-  ///
-  /// where B^H_t is the fractional Brownian motion with Hurst parameter H in Mandelbrot-Van Ness representation as
-  /// B^H_t = 1 / Γ(H + 1/2) ∫_0^t (t - s)^{H - 1/2} dW_s
-  /// which is a truncated Wiener integral.
-  pub fn malliavin(&self) -> Array1<T> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> Fbm<T, S, B> {
+  /// The path and `D_{t_i} B^H_T`, the Mandelbrot–Van Ness kernel `(T − t_i)^{H − ½} / Γ(H + ½)`,
+  /// which does not depend on the path.
+  pub fn malliavin(&self) -> Malliavin<T, Array1<T>> {
     let dt = self.fgn.dt();
-    let mut m = Array1::zeros(self.n);
     let g = stochastic_rs_distributions::special::gamma(self.hurst.to_f64().unwrap() + 0.5);
-
-    for i in 0..self.n {
-      m[i] = T::one() / T::from_f64_fast(g)
-        * (T::from_usize_(i) * dt).powf(self.hurst - T::from_f64_fast(0.5));
+    let derivative = Array1::from_shape_fn(self.n, |i| {
+      T::one() / T::from_f64_fast(g)
+        * (T::from_usize_(self.n - 1 - i) * dt).powf(self.hurst - T::from_f64_fast(0.5))
+    });
+    Malliavin {
+      paths: self.sample(),
+      derivative,
     }
-
-    m
   }
 }
 
@@ -335,8 +330,26 @@ py_process_1d!(PyFbm, Fbm,
 mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::special::erf;
+  use stochastic_rs_distributions::special::gamma;
 
   use super::*;
+
+  #[test]
+  fn the_malliavin_derivative_is_the_kernel_at_the_time_left_to_the_horizon() {
+    let fbm = || Fbm::<f64, _>::new(0.7, 17, Some(1.0), Deterministic::new(5));
+    let Malliavin {
+      paths, derivative, ..
+    } = fbm().malliavin();
+    assert_eq!(paths, fbm().sample());
+    for (i, d) in derivative.iter().enumerate() {
+      let expected = (1.0 - i as f64 / 16.0).powf(0.7 - 0.5) / gamma(1.2);
+      assert!(
+        (d - expected).abs() <= 1e-15,
+        "t_{i}: {d} against {expected}"
+      );
+    }
+    assert_eq!(derivative[16], 0.0);
+  }
 
   fn nearest_quantile(sorted: &[f64], p: f64) -> f64 {
     let idx = (((sorted.len() - 1) as f64) * p).round() as usize;

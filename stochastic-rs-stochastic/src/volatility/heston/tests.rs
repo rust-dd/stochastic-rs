@@ -216,6 +216,32 @@ fn the_initial_values_are_the_first_points() {
   );
 }
 
+#[test]
+fn the_variance_derivative_rides_on_the_sampled_path() {
+  let make = || {
+    Heston::<f64, Euler, Deterministic>::new(
+      100.0,
+      0.04,
+      2.0,
+      0.04,
+      0.3,
+      -0.7,
+      0.05,
+      17,
+      Some(1.0),
+      HestonPow::Sqrt,
+      VarianceBoundary::Floor,
+      Deterministic::new(9),
+    )
+  };
+  let Malliavin {
+    paths, derivative, ..
+  } = make().malliavin();
+  assert_eq!(paths, make().sample());
+  assert_eq!(derivative.len(), 17);
+  assert!(derivative.iter().all(|d| d.is_finite() && *d > 0.0));
+}
+
 /// A generic re-tag type-checks only if `qe` keeps the handle it was given.
 #[test]
 fn qe_keeps_the_backend_handle() {

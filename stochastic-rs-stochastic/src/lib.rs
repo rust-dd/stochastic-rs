@@ -39,6 +39,7 @@ pub mod interest;
 pub mod isonormal;
 pub mod ito;
 pub mod jump;
+pub mod malliavin;
 pub mod mc;
 pub mod noise;
 pub mod numerics;
