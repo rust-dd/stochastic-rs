@@ -79,8 +79,8 @@ fn kpss_critical_values(include_trend: bool) -> CriticalValues {
   }
 }
 
-/// KPSS stationarity test; `Err` below 20 points, on a non-finite one or a constant series, and
-/// panics unless `trend != Trend::None` and `0.01 <= alpha < 1`.
+/// KPSS stationarity test; `Err` below 20 points, on a non-finite one, a constant series or a zero
+/// or non-finite long-run variance; panics unless `trend != Trend::None` and `0.01 <= alpha < 1`.
 pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> Result<KpssTest, StatsError> {
   assert!(
     cfg.trend != Trend::None,
@@ -109,7 +109,7 @@ pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> Result<KpssTest, StatsE
   eta /= n_f * n_f;
 
   let used_lags = cfg.lags.unwrap_or_else(|| schwert_max_lags(n));
-  let long_run_var = newey_west_long_run_variance(&resid, used_lags)?.max(1e-12);
+  let long_run_var = newey_west_long_run_variance(&resid, used_lags)?;
   let statistic = eta / long_run_var;
 
   Ok(KpssTest {

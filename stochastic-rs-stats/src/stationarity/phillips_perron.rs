@@ -87,8 +87,8 @@ impl crate::traits::HypothesisTest for PhillipsPerronTest {
   }
 }
 
-/// Phillips–Perron unit-root test; `Err` below 20 points, on a non-finite one, a constant series or
-/// a singular fit; panics unless `0 < alpha < 1` (`>= 0.01` for `Tau`, decided on the ADF table).
+/// Phillips–Perron test; `Err` below 20 points, on a non-finite one, a constant series, a singular
+/// fit or a zero or non-finite variance; panics unless `0 < alpha < 1` (`>= 0.01` for `Tau`).
 pub fn phillips_perron_test(
   y: ArrayView1<f64>,
   cfg: PhillipsPerronConfig,
@@ -109,22 +109,28 @@ pub fn phillips_perron_test(
   let n_f = nobs as f64;
 
   let s2 = u.iter().map(|v| v * v).sum::<f64>() / n_f;
-  let s = s2.max(1e-12).sqrt();
+  let s = s2.sqrt();
   let gamma0 = s2;
 
   let used_lags = cfg.lags.unwrap_or_else(|| schwert_max_lags(y.len()));
-  let lam2 = newey_west_long_run_variance(&u, used_lags)?.max(1e-12);
+  let lam2 = newey_west_long_run_variance(&u, used_lags)?;
   let lam = lam2.sqrt();
+  let se = fit.std_err_gamma;
+  if !se.is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "standard error",
+    });
+  }
+  if se <= 0.0 {
+    return Err(StatsError::DegenerateData("zero standard error"));
+  }
 
   // In the ADF parameterization, gamma = rho - 1.
   let rho = 1.0 + fit.gamma;
 
   let statistic = match cfg.test_type {
-    PpTestType::Rho => {
-      n_f * (rho - 1.0) - 0.5 * ((n_f * n_f * fit.sigma2 / s2.max(1e-12)) * (lam2 - s2))
-    }
+    PpTestType::Rho => n_f * (rho - 1.0) - 0.5 * ((n_f * n_f * fit.sigma2 / s2) * (lam2 - s2)),
     PpTestType::Tau => {
-      let se = fit.std_err_gamma.max(1e-12);
       (gamma0 / lam2).sqrt() * ((rho - 1.0) / se) - 0.5 * ((lam2 - s2) / lam) * (n_f * se / s)
     }
   };

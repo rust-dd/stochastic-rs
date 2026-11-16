@@ -76,12 +76,17 @@ fn detrend_series(y: &[f64], include_trend: bool) -> Result<Vec<f64>, StatsError
   }
 }
 
-fn lm_statistic_from_residuals(residuals: &[f64]) -> f64 {
+fn lm_statistic_from_residuals(residuals: &[f64]) -> Result<f64, StatsError> {
   let m = residuals.len();
   let m_f = m as f64;
   let sigma2 = residuals.iter().map(|u| u * u).sum::<f64>() / m_f;
-  if sigma2 <= 0.0 || !sigma2.is_finite() {
-    return f64::INFINITY;
+  if !sigma2.is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "residual variance",
+    });
+  }
+  if sigma2 <= 0.0 {
+    return Err(StatsError::DegenerateData("zero residual variance"));
   }
 
   let mut cum = 0.0;
@@ -90,7 +95,7 @@ fn lm_statistic_from_residuals(residuals: &[f64]) -> f64 {
     cum += u;
     sum_sq += cum * cum;
   }
-  sum_sq / (m_f * m_f * sigma2)
+  Ok(sum_sq / (m_f * m_f * sigma2))
 }
 
 fn lm_statistic_with_prewhitening(
@@ -100,7 +105,7 @@ fn lm_statistic_with_prewhitening(
 ) -> Result<(f64, Vec<f64>, f64), StatsError> {
   let y_det = detrend_series(y, include_trend)?;
   let (phi, residuals, sigma) = fit_ar(&y_det, ar_lags)?;
-  let stat = lm_statistic_from_residuals(&residuals);
+  let stat = lm_statistic_from_residuals(&residuals)?;
   Ok((stat, phi, sigma))
 }
 
@@ -117,18 +122,14 @@ fn simulate_ar(phi: &[f64], noise: &mut Seeded<SimdNormal<f64>>, n: usize) -> Ve
     for i in 0..p {
       value += phi[i] * x[t - 1 - i];
     }
-    if !value.is_finite() {
-      value = 0.0;
-    }
-    value = value.clamp(-1e6, 1e6);
     x[t] = value;
   }
 
   x[burnin..].to_vec()
 }
 
-/// Leybourne–McCabe test with a bootstrap p-value; `Err` below `max(40, p + 15, 2p + 1)` points
-/// (`p = ar_lags`), on a non-finite one, a constant series or a singular fit; panics on bad config.
+/// Leybourne–McCabe test; `Err` below `max(40, ar_lags + 15, 2 ar_lags + 1)` points, a non-finite
+/// or constant series, a singular or exact AR fit or a failed bootstrap; panics on a bad config.
 pub fn leybourne_mccabe_test(
   y: ArrayView1<f64>,
   cfg: LeybourneMcCabeConfig,
@@ -160,11 +161,14 @@ pub fn leybourne_mccabe_test(
   let (obs_stat, phi, sigma) = lm_statistic_with_prewhitening(&y, include_trend, cfg.ar_lags)?;
 
   let mut noise =
-    SimdNormal::<f64>::new(0.0, sigma.max(1e-12)).seeded(&Deterministic::new(cfg.bootstrap_seed));
+    SimdNormal::<f64>::new(0.0, sigma).seeded(&Deterministic::new(cfg.bootstrap_seed));
   let mut exceed = 0usize;
   for _ in 0..cfg.bootstrap_samples {
     let sim = simulate_ar(&phi, &mut noise, y.len());
-    let (sim_stat, _, _) = lm_statistic_with_prewhitening(&sim, include_trend, cfg.ar_lags)?;
+    let (sim_stat, _, _) = lm_statistic_with_prewhitening(&sim, include_trend, cfg.ar_lags)
+      .map_err(|_| StatsError::Numerical {
+        stage: "bootstrap path",
+      })?;
     if sim_stat >= obs_stat {
       exceed += 1;
     }
@@ -189,6 +193,7 @@ mod tests {
 
   use super::LeybourneMcCabeConfig;
   use super::leybourne_mccabe_test;
+  use super::simulate_ar;
   use crate::StatsError;
 
   fn simulate_ar1(phi: f64, n: usize, seed: u64) -> Vec<f64> {
@@ -284,6 +289,14 @@ mod tests {
         got: 40
       }
     );
+  }
+
+  /// An explosive fitted AR overflows its bootstrap path, which the test then answers with `Err`.
+  #[test]
+  fn an_explosive_bootstrap_path_overflows() {
+    let mut noise = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(3));
+    let path = simulate_ar(&[30.0], &mut noise, 40);
+    assert!(path.iter().any(|v| !v.is_finite()), "{path:?}");
   }
 
   #[test]
