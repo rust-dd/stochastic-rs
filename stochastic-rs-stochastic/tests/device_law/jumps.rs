@@ -287,6 +287,17 @@ fn compound_poisson_events_agree_with_the_cpu_law() {
   );
 }
 
+/// A zero rate written past `new` is refused on the device as on the host: no arrival ever comes.
+#[test]
+#[should_panic(
+  expected = "horizon must satisfy `lambda > T::zero() || !matches!(horizon, Horizon::Events(1..))`"
+)]
+fn a_counting_process_refuses_a_zero_rate_written_past_new() {
+  let mut p = Poisson::<f32, _>::new(2.0, Horizon::Events(8), Unseeded);
+  p.lambda = 0.0;
+  let _ = p.on::<Device>().sample();
+}
+
 /// Exponential inter-arrivals in count mode are Poisson arrivals, so the
 /// device draws them as such.
 #[test]

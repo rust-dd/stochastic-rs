@@ -115,15 +115,20 @@ impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
     self.sampler_impl(seed).sample()
   }
 
+  /// Checked in `new` and again where a sampler runs, since the fields stay public.
+  #[track_caller]
+  fn assert_rate(&self) {
+    let lambda = self.lambda;
+    assert!(
+      lambda >= T::zero(),
+      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
+    );
+    assert_arrivals_come(lambda, self.horizon);
+  }
+
   /// Build the reusable sampling state from any seed source.
   pub(crate) fn sampler_impl<S2: SeedExt>(&self, seed: &S2) -> PoissonSampler<T> {
-    // The fields are public, so a rate or a horizon written past `new` is checked here.
-    assert!(
-      self.lambda >= T::zero(),
-      "lambda must satisfy `lambda >= T::zero()`, got lambda = {:?}",
-      self.lambda
-    );
-    assert_arrivals_come(self.lambda, self.horizon);
+    self.assert_rate();
     // A zero rate takes the draw a stream would, so the streams seeded after it stay put.
     let distr = if self.lambda > T::zero() {
       Some(SimdExp::<T>::new(self.lambda).seeded(seed))
@@ -147,6 +152,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   for Poisson<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    self.assert_rate();
     crate::euler::EulerSpec::PoissonArrivals {
       lambda: self.lambda,
     }
