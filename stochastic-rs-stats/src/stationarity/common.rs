@@ -1,10 +1,13 @@
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 use stochastic_rs_distributions::linalg::inverse;
 use stochastic_rs_distributions::linalg::solve;
 
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
+use crate::input::as_slice_or_copy;
+use crate::input::reject_constant;
 use crate::input::validate;
 use crate::traits::RealExt;
 
@@ -394,6 +397,15 @@ pub fn unit_scaled(mut y: Vec<f64>) -> Vec<f64> {
     *v *= unit;
   }
   y
+}
+
+/// `y` with `min_n` finite points or more and not constant, then [`unit_scaled`]; the length comes
+/// first, as a series too short to compare is vacuously constant.
+pub fn prepared(y: ArrayView1<f64>, min_n: usize) -> Result<Vec<f64>, StatsError> {
+  let y = as_slice_or_copy(y);
+  validate(&y, min_n)?;
+  reject_constant(&y, "constant series")?;
+  Ok(unit_scaled(y.into_owned()))
 }
 
 /// `DegenerateData("zero residual variance")` when `residuals` from `y`'s data keep a mean square

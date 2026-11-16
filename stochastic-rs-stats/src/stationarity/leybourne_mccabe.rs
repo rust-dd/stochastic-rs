@@ -9,15 +9,12 @@ use super::common::Trend;
 use super::common::centred;
 use super::common::fit_ar;
 use super::common::min_sample_size;
+use super::common::prepared;
 use super::common::regress_on_deterministics;
 use super::common::reject_exact_fit;
-use super::common::unit_scaled;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
-use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
-use crate::input::reject_constant;
-use crate::input::validate;
 
 /// Configuration for the Leybourne-McCabe stationarity test.
 #[derive(Debug, Clone, Copy)]
@@ -150,13 +147,10 @@ pub fn leybourne_mccabe_test(
     cfg.bootstrap_samples
   );
   assert_alpha(cfg.alpha);
-  let y = as_slice_or_copy(y);
   let needed = 40
     .max(cfg.ar_lags.saturating_add(15))
     .max(min_sample_size(cfg.ar_lags, Trend::None));
-  validate(&y, needed)?;
-  reject_constant(&y, "constant series")?;
-  let y = unit_scaled(y.into_owned());
+  let y = prepared(y, needed)?;
 
   let include_trend = cfg.trend == Trend::ConstantTrend;
   let (obs_stat, phi, sigma) = lm_statistic_with_prewhitening(&y, include_trend, cfg.ar_lags)?;

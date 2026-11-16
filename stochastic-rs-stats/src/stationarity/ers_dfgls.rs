@@ -14,13 +14,11 @@ use super::common::dfgls_critical_values;
 use super::common::fit_adf;
 use super::common::min_sample_size;
 use super::common::ols;
+use super::common::prepared;
 use super::common::schwert_max_lags;
-use super::common::unit_scaled;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
-use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
-use crate::input::reject_constant;
 use crate::input::validate;
 
 /// Configuration for the Elliott-Rothenberg-Stock DF-GLS test.
@@ -131,10 +129,7 @@ pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> Result<ErsTest, Sta
   let include_trend = cfg.trend == Trend::ConstantTrend;
   let critical_values = dfgls_critical_values(include_trend);
   let critical = critical_values.value_at(cfg.alpha);
-  let y = as_slice_or_copy(y);
-  validate(&y, 20)?;
-  reject_constant(&y, "constant series")?;
-  let y = unit_scaled(y.into_owned());
+  let y = prepared(y, 20)?;
 
   let n = y.len();
   let max_lags = match cfg.lag_selection {
