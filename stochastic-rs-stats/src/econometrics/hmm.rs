@@ -332,8 +332,8 @@ impl GaussianHmm {
     beta
   }
 
-  /// Baum–Welch EM, at most `max_iter` steps or until the gain is below `tol`; panics as `new`;
-  /// `Err`, the last full update kept, on 0 states, < 2, non-finite or constant points or overflow.
+  /// Baum–Welch EM, up to `max_iter` steps, until the gain is below `tol`; panics as `new`; `Err`,
+  /// the last full update kept, on 0 states, < 2, non-finite or constant points, or under/overflow.
   pub fn baum_welch(
     &mut self,
     observations: ArrayView1<f64>,
@@ -353,6 +353,15 @@ impl GaussianHmm {
     validate(&y, 2)?;
     reject_constant(&y, "constant series")?;
     let n = observations.len();
+    let mean = y.iter().sum::<f64>() / n as f64;
+    // Rabiner (1989), §V.D, eq. (113b): a reestimated variance is held at a floor δ, here 1e-8 of
+    // the observations' sample variance, so that rescaling the data rescales the fit.
+    let variance_floor = 1e-8 * y.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n - 1) as f64;
+    if !(variance_floor > 0.0 && variance_floor.is_finite()) {
+      return Err(StatsError::Numerical {
+        stage: "sample variance",
+      });
+    }
     let mut prev_ll = f64::NEG_INFINITY;
     let mut converged = false;
     let mut iter_done = 0;
@@ -446,8 +455,7 @@ impl GaussianHmm {
       for (s, update) in emission.into_iter().enumerate() {
         if let Some((mu, var)) = update {
           self.means[s] = mu;
-          // Rabiner (1989), §V.D, eq. (113b): a reestimated variance is held at a floor δ.
-          self.stds[s] = var.max(1e-8).sqrt();
+          self.stds[s] = var.max(variance_floor).sqrt();
         }
       }
       if (ll - prev_ll).abs() < tol {

@@ -225,13 +225,66 @@ fn a_state_with_a_subnormal_mass_keeps_a_stochastic_row() {
   }
 }
 
-/// At 1e300 every state's squared z-score overflows, so no density is left to scale by.
+/// Data and model scaled by `c` shift the log-likelihood by `−n ln c` and keep every state, which
+/// needs Rabiner's floor relative to the data: at `c = 1e-5` the quiet state's variance is `1e-10`.
+#[test]
+fn a_rescaled_fit_shifts_the_log_likelihood_and_keeps_the_viterbi_path() {
+  let mut z = vec![0.0; 600];
+  SimdNormal::<f64>::new(0.0, 1.0)
+    .seeded(&Deterministic::new(3))
+    .fill_slice(&mut z);
+  let regime = (0..600).map(|t| (t / 120) % 2).collect::<Vec<_>>();
+  let y = Array1::from_iter((0..600).map(|t| [1.0, 3.0][regime[t]] * z[t]));
+  let fit = |c: f64| {
+    let mut hmm = GaussianHmm::new(
+      array![0.5, 0.5],
+      array![[0.95, 0.05], [0.05, 0.95]],
+      array![0.0, 0.0],
+      array![0.8 * c, 2.5 * c],
+    );
+    let scaled = y.mapv(|v| v * c);
+    let fit = hmm.baum_welch(scaled.view(), 200, 1e-10).unwrap();
+    (fit, hmm.viterbi(scaled.view()))
+  };
+  let (unit, unit_path) = fit(1.0);
+  assert!(unit.converged);
+  for c in [1e-3, 1e-5, 1e5] {
+    let (scaled, path) = fit(c);
+    let shifted = scaled.log_likelihood + 600.0 * c.ln();
+    assert!(scaled.converged, "c = {c:e}: {scaled:?}");
+    assert!(
+      (shifted - unit.log_likelihood).abs() <= 1e-9 * unit.log_likelihood.abs(),
+      "c = {c:e}: {shifted} against {}",
+      unit.log_likelihood
+    );
+    assert_eq!(path, unit_path, "c = {c:e}");
+  }
+}
+
+#[test]
+fn a_sample_variance_that_underflows_is_a_numerical_error() {
+  let mut hmm = two_state(0.5, 0.1, 0.5, 1.0);
+  let observations = Array1::from_iter((0..40).map(|t| 1e-170 * (t as f64 * 0.7).sin()));
+  assert_eq!(
+    hmm.baum_welch(observations.view(), 5, 1e-8).unwrap_err(),
+    StatsError::Numerical {
+      stage: "sample variance"
+    }
+  );
+}
+
+/// With standard deviations of `1e-160` every squared z-score overflows, so no density is left to
+/// scale by.
 #[test]
 fn a_log_likelihood_that_is_not_finite_is_a_numerical_error() {
-  let mut hmm = two_state(0.5, 0.1, 0.5, 1.0);
+  let mut hmm = GaussianHmm::new(
+    array![0.5, 0.5],
+    array![[0.9, 0.1], [0.1, 0.9]],
+    array![-0.5, 0.5],
+    array![1e-160, 1e-160],
+  );
   let before = hmm.clone();
-  let mut observations = Array1::from_iter((0..40).map(|t| 0.3 * (t as f64 * 0.7).sin()));
-  observations[20] = 1e300;
+  let observations = Array1::from_iter((0..40).map(|t| 0.3 * (t as f64 * 0.7).sin()));
   assert_eq!(
     hmm.baum_welch(observations.view(), 5, 1e-8).unwrap_err(),
     StatsError::Numerical {
@@ -426,10 +479,10 @@ fn baum_welch_rejects_short_or_constant_observations() {
   );
 }
 
-/// State 0's density underflows at `1e155`, whose squared deviation then enters its variance as
-/// `0 · ∞`; the NaN is an `Err` that leaves the model as it was, never Rabiner's floor.
+/// A point at `1e155` overflows the sample variance that Rabiner's floor is taken from; the `Err`
+/// leaves the model as it was.
 #[test]
-fn a_non_finite_emission_variance_is_a_numerical_error() {
+fn a_sample_variance_that_overflows_is_a_numerical_error() {
   let mut hmm = GaussianHmm::new(
     array![0.5, 0.5],
     array![[0.9, 0.1], [0.1, 0.9]],
@@ -442,7 +495,7 @@ fn a_non_finite_emission_variance_is_a_numerical_error() {
   assert_eq!(
     hmm.baum_welch(observations.view(), 5, 1e-8).unwrap_err(),
     StatsError::Numerical {
-      stage: "emission variance"
+      stage: "sample variance"
     }
   );
   assert_eq!(hmm.initial, before.initial);
