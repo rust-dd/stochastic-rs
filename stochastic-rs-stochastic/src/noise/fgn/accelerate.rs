@@ -62,7 +62,7 @@ unsafe extern "C" {
   );
 }
 
-/// A vDSP FFT setup owned by the thread that created it; freed on thread exit.
+/// A vDSP FFT setup owned by the thread that created it; freed when it exits or releases it.
 struct FftSetup {
   log2n: u64,
   ptr: *mut c_void,
@@ -93,9 +93,8 @@ thread_local! {
   }) };
 }
 
-/// Returns a vDSP setup for `log2n`, creating it once per thread and reusing it
-/// thereafter. The returned pointer stays valid for the thread's lifetime (the
-/// owning [`FftSetup`] lives in the thread-local cache).
+/// The vDSP setup for `log2n`, created once per thread; the pointer stays valid until the thread
+/// exits or releases its scratch, since the owning [`FftSetup`] lives in the thread-local cache.
 fn cached_setup(log2n: u64) -> Result<*mut c_void> {
   SETUPS.with(|cell| {
     let mut setups = cell.borrow_mut();
@@ -111,6 +110,19 @@ fn cached_setup(log2n: u64) -> Result<*mut c_void> {
     setups.push(FftSetup { log2n, ptr });
     Ok(ptr)
   })
+}
+
+/// Destroys the calling thread's vDSP setups and drops its split-complex scratch.
+pub(crate) fn release_accelerate_scratch() {
+  SETUPS.with_borrow_mut(Vec::clear);
+  SCRATCH.with_borrow_mut(|scratch| {
+    *scratch = Scratch {
+      real: Vec::new(),
+      imag: Vec::new(),
+      out: Vec::new(),
+      eig: Vec::new(),
+    }
+  });
 }
 
 fn sample_f32<T: FloatExt, S: SeedExt>(
@@ -223,5 +235,28 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     let t = self.t().unwrap_or(T::one()).to_f64().unwrap();
     let eig_t = self.sqrt_eigenvalues();
     sample_f32::<T, S2>(eig_t, n, m, offset, hurst, t, seed)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+
+  #[test]
+  fn a_released_thread_holds_no_setup_or_scratch() {
+    let fgn = Fgn::<f32, _>::new(0.7, 1024, Some(1.0), Deterministic::new(3));
+    let before = fgn
+      .sample_accelerate_impl(4, &Deterministic::new(5))
+      .unwrap();
+    assert!(SETUPS.with_borrow(|setups| !setups.is_empty()));
+    release_accelerate_scratch();
+    assert!(SETUPS.with_borrow(Vec::is_empty));
+    assert!(SCRATCH.with_borrow(|s| s.real.capacity() + s.imag.capacity() + s.out.capacity() == 0));
+    let after = fgn
+      .sample_accelerate_impl(4, &Deterministic::new(5))
+      .unwrap();
+    assert_eq!(before.dim(), after.dim());
   }
 }

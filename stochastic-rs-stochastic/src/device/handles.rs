@@ -24,7 +24,7 @@ device_handle!(
 #[cfg(metal_backend)]
 device_handle!(
   /// Metal compute in `f32` on Apple Silicon with macOS 15 or newer; each thread that samples
-  /// keeps its own command queue, kernel library and buffers until it exits.
+  /// keeps its own command queue, kernel library and buffers until it exits or releases them.
   Metal,
   "Which device to open: the index into `Device::all()`, `0` being the system default."
 );
@@ -70,3 +70,26 @@ impl HostBackend for Cpu {}
 
 #[cfg(accelerate_backend)]
 impl HostBackend for Accelerate {}
+
+#[cfg(feature = "cuda")]
+impl Cuda {
+  /// Frees the kernels, cuFFT plans, device buffers and pinned staging cached for this ordinal; the
+  /// next launch rebuilds them, and another ordinal's caches are left alone.
+  pub fn release(&self) {
+    crate::euler::cuda::release(self.ordinal);
+    crate::noise::fgn::cuda::release(self.ordinal);
+    crate::sheet::fbs::cuda::release(self.ordinal);
+  }
+}
+
+#[cfg(metal_backend)]
+impl Metal {
+  /// Frees the pipelines, buffers and pooled outputs the calling thread caches for this ordinal;
+  /// each thread keeps its own, and its next launch rebuilds them.
+  pub fn release(&self) {
+    crate::euler::metal::release(self.ordinal);
+    crate::noise::fgn::metal::release(self.ordinal);
+    crate::sheet::fbs::metal::release(self.ordinal);
+    super::metal::release(self.ordinal);
+  }
+}

@@ -12,6 +12,7 @@ pub(crate) mod bindings {}
 type Result<T> = std::result::Result<T, DeviceError>;
 
 pub(crate) struct Context {
+  pub(crate) ordinal: usize,
   pub(crate) device: Device,
   pub(crate) module: Module,
 }
@@ -27,10 +28,19 @@ pub(crate) fn context(ordinal: usize) -> Result<Rc<Context>> {
     }
     let device = create_device(ordinal)?;
     let module = bindings::module(&device).map_err(device_error)?;
-    let context = Rc::new(Context { device, module });
+    let context = Rc::new(Context {
+      ordinal,
+      device,
+      module,
+    });
     contexts.push((ordinal, Rc::clone(&context)));
     Ok(context)
   })
+}
+
+/// Drops the calling thread's context for `ordinal`; it goes once no cache still holds it.
+pub(crate) fn release(ordinal: usize) {
+  CONTEXTS.with_borrow_mut(|contexts| contexts.retain(|(index, _)| *index != ordinal));
 }
 
 fn create_device(ordinal: usize) -> Result<Device> {

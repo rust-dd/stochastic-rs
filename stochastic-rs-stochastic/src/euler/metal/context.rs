@@ -24,6 +24,15 @@ thread_local! {
   static CONTEXT: RefCell<Option<(usize, Context)>> = const { RefCell::new(None) };
 }
 
+/// Drops the calling thread's Euler pipelines and buffers on `ordinal`.
+pub(crate) fn release(ordinal: usize) {
+  CONTEXT.with_borrow_mut(|slot| {
+    if slot.as_ref().is_some_and(|(index, _)| *index == ordinal) {
+      *slot = None;
+    }
+  });
+}
+
 impl Context {
   fn new(ordinal: usize) -> Result<Self> {
     let shared = metal::context(ordinal)?;

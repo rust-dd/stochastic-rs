@@ -48,9 +48,9 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[cfg(feature = "cuda")]
-mod cuda;
+pub(crate) mod cuda;
 #[cfg(metal_backend)]
-mod metal;
+pub(crate) mod metal;
 
 #[derive(Debug, Clone)]
 pub struct Fbs<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {

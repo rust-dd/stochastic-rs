@@ -56,6 +56,18 @@ pub use sheet_backend::SheetBackend;
 #[cfg_attr(not(device_backend), allow(dead_code))]
 pub(crate) const CACHE_SLOTS: usize = 4;
 
+/// Frees the fGN FFT workspace (and with `accelerate` the vDSP setups) of the calling thread and of
+/// every thread of the current rayon pool; nothing shrinks on its own.
+pub fn release_host_scratch() {
+  let release = || {
+    stochastic_rs_distributions::release_fgn_scratch();
+    #[cfg(accelerate_backend)]
+    crate::noise::fgn::release_accelerate_scratch();
+  };
+  release();
+  rayon::broadcast(|_| release());
+}
+
 /// A compile-time device marker, sealed to the handles this module declares: `probe` is the one run-time
 /// question it answers, the sampling stays a compile-time choice (`.on::<B>()`, zero runtime branching).
 pub trait Backend: sealed::Sealed + Clone + Send + Sync {

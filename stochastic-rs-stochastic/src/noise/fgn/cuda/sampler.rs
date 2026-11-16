@@ -18,6 +18,7 @@ use super::state::SIZED_F64;
 use super::state::SizedCtxF32;
 use super::state::SizedCtxF64;
 use super::state::get_or_init_gpu;
+use super::state::staging;
 use crate::device::DeviceError;
 use crate::device::launch_len;
 use crate::traits::FloatExt;
@@ -205,7 +206,7 @@ pub(crate) fn sample_f32_device(
         d_out: stream
           .alloc_zeros::<f32>(m * out_size)
           .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?,
-        host_pinned: PinnedHost::<f32>::alloc(m * out_size)?,
+        host_pinned: None,
         n,
         m,
         offset,
@@ -317,7 +318,7 @@ fn sample_f32<T: FloatExt>(
         d_out: stream
           .alloc_zeros::<f32>(m * out_size)
           .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?,
-        host_pinned: PinnedHost::<f32>::alloc(m * out_size)?,
+        host_pinned: None,
         n,
         m,
         offset,
@@ -385,7 +386,12 @@ fn sample_f32<T: FloatExt>(
 
   let host = match prefaulted {
     Some(mut host) => {
-      drain_into(&stream, &s.d_out, &s.host_pinned, &mut host)?;
+      drain_into(
+        &stream,
+        &s.d_out,
+        staging(&mut s.host_pinned, len)?,
+        &mut host,
+      )?;
       host
     }
     None => stream
@@ -468,7 +474,7 @@ pub(crate) fn sample_f64_device(
         d_out: stream
           .alloc_zeros::<f64>(m * out_size)
           .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?,
-        host_pinned: PinnedHost::<f64>::alloc(m * out_size)?,
+        host_pinned: None,
         n,
         m,
         offset,
@@ -580,7 +586,7 @@ fn sample_f64<T: FloatExt>(
         d_out: stream
           .alloc_zeros::<f64>(m * out_size)
           .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?,
-        host_pinned: PinnedHost::<f64>::alloc(m * out_size)?,
+        host_pinned: None,
         n,
         m,
         offset,
@@ -638,7 +644,12 @@ fn sample_f64<T: FloatExt>(
     .then(|| alloc_prefaulted::<f64>(len))
   {
     Some(mut host) => {
-      drain_into(&stream, &s.d_out, &s.host_pinned, &mut host)?;
+      drain_into(
+        &stream,
+        &s.d_out,
+        staging(&mut s.host_pinned, len)?,
+        &mut host,
+      )?;
       host
     }
     None => stream

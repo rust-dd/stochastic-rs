@@ -92,6 +92,24 @@ impl<T> Drop for PinnedHost<T> {
 
 unsafe impl<T: Send> Send for PinnedHost<T> {}
 
+/// A sized context's page-locked staging buffer, allocated by the first transfer that needs it.
+pub(super) fn staging<T>(slot: &mut Option<PinnedHost<T>>, len: usize) -> Result<&PinnedHost<T>> {
+  if slot.is_none() {
+    *slot = Some(PinnedHost::alloc(len)?);
+  }
+  Ok(slot.as_ref().expect("allocated above"))
+}
+
+/// Drops the fGN kernels, cuFFT plans and buffers cached for `ordinal`.
+pub(crate) fn release(ordinal: usize) {
+  let mut gpu = GPU.lock();
+  if gpu.as_ref().is_some_and(|k| k.ordinal == ordinal) {
+    SIZED_F32.lock().clear();
+    SIZED_F64.lock().clear();
+    *gpu = None;
+  }
+}
+
 pub(super) fn get_or_init_gpu(ordinal: usize) -> Result<()> {
   let mut g = GPU.lock();
   if g.as_ref().is_some_and(|k| k.ordinal == ordinal) {
@@ -135,7 +153,7 @@ pub(super) struct SizedCtxF32 {
   pub(super) d_eigs: CudaSlice<f32>,
   pub(super) d_data: CudaSlice<f32>,
   pub(super) d_out: CudaSlice<f32>,
-  pub(super) host_pinned: PinnedHost<f32>,
+  pub(super) host_pinned: Option<PinnedHost<f32>>,
   pub(super) n: usize,
   pub(super) m: usize,
   pub(super) offset: usize,
@@ -156,7 +174,7 @@ pub(super) struct SizedCtxF64 {
   pub(super) d_eigs: CudaSlice<f64>,
   pub(super) d_data: CudaSlice<f64>,
   pub(super) d_out: CudaSlice<f64>,
-  pub(super) host_pinned: PinnedHost<f64>,
+  pub(super) host_pinned: Option<PinnedHost<f64>>,
   pub(super) n: usize,
   pub(super) m: usize,
   pub(super) offset: usize,

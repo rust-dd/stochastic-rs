@@ -247,3 +247,35 @@ fn cuda_index_rows_keep_the_work_buffer_inside_int() {
   assert_eq!(index_rows(5, 1, 1024), 5);
   assert_eq!(index_rows(5, 1, 1 << 30), 1);
 }
+
+/// A transfer under the staging threshold copies straight out, so it pins no host buffer.
+#[test]
+fn a_small_batch_pins_no_staging_buffer() {
+  let fgn = Fgn::<f32>::new(0.7, 256, Some(1.0), Unseeded);
+  fgn
+    .sample_cuda_impl(3, &Unseeded, &Cuda::default())
+    .expect("a small batch");
+  let sized = super::state::SIZED_F32.lock();
+  assert!(sized.iter().any(|s| s.m == 3));
+  assert!(
+    sized
+      .iter()
+      .filter(|s| s.m == 3)
+      .all(|s| s.host_pinned.is_none())
+  );
+}
+
+/// A release empties the fGN cache of its own ordinal and leaves another ordinal's alone.
+#[test]
+fn a_release_empties_the_fgn_cache_of_its_ordinal() {
+  let fgn = Fgn::<f32>::new(0.7, 256, Some(1.0), Unseeded);
+  fgn
+    .sample_cuda_impl(5, &Unseeded, &Cuda::default())
+    .expect("a batch");
+  let cached = || super::state::SIZED_F32.lock().iter().any(|s| s.m == 5);
+  assert!(cached());
+  Cuda::new(1).release();
+  assert!(cached(), "another ordinal's release kept it");
+  Cuda::default().release();
+  assert!(!cached());
+}

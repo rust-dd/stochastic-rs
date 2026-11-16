@@ -6,6 +6,8 @@
 //!
 #[cfg(accelerate_backend)]
 mod accelerate;
+#[cfg(accelerate_backend)]
+pub(crate) use accelerate::release_accelerate_scratch;
 mod core;
 #[cfg(feature = "cuda")]
 pub(crate) mod cuda;

@@ -194,3 +194,20 @@ handle_surface!(
   the_cuda_handle_has_the_same_surface_as_the_metal_handle,
   Cuda
 );
+
+/// A release frees caches, not a seed's stream: two identically built processes, one sampled before
+/// the release and one after, draw the same paths.
+#[cfg(metal_backend)]
+#[test]
+fn a_released_metal_cache_rebuilds_on_the_next_launch() {
+  use stochastic_rs_stochastic::device::{Metal, release_host_scratch};
+
+  let gbm = || {
+    Gbm::<f32, Deterministic>::new(0.05, 0.2, 64, 100.0, Some(1.0), Deterministic::new(1))
+      .on::<Metal>()
+  };
+  let before = gbm().sample_par(8);
+  Metal::default().release();
+  release_host_scratch();
+  assert_eq!(before, gbm().sample_par(8));
+}

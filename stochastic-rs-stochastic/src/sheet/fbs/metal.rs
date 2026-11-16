@@ -3,6 +3,8 @@
 
 mod context;
 
+pub(crate) use context::release;
+
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 

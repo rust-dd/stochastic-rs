@@ -543,3 +543,41 @@ fn metal_system_rows_count_every_plane() {
 fn cuda_system_rows_count_every_plane() {
   system_rows_count_every_plane(crate::device::Cuda::default().with_batch_budget(1 << 20));
 }
+
+/// A release drops every cache the calling thread holds on the device, so the device context goes
+/// with them; releasing another ordinal leaves them alone.
+#[cfg(metal_backend)]
+#[test]
+fn metal_release_frees_every_cache_holding_the_device() {
+  use crate::device::Metal;
+  use crate::process::fbm::Fbm;
+  use crate::sheet::fbs::Fbs;
+
+  let _ = gbm::<f32>(3).on::<Metal>().sample_par(4);
+  let _ = Fbm::<f32, _>::new(0.7, 64, Some(1.0), Deterministic::new(5))
+    .on::<Metal>()
+    .sample_par(4);
+  let _ = Fbs::<f32, _>::new(0.7, 17, 9, 1.0, Deterministic::new(19))
+    .on::<Metal>()
+    .sample();
+  let device = std::rc::Rc::downgrade(&crate::device::metal::context(0).expect("a Metal device"));
+  Metal::new(1).release();
+  assert!(
+    device.upgrade().is_some(),
+    "another ordinal's release kept them"
+  );
+  Metal::default().release();
+  assert!(device.upgrade().is_none(), "a cache still holds the device");
+}
+
+/// A release frees the compiled kernels and buffers; the next launch rebuilds them and draws the
+/// same paths from the same seed.
+#[cfg(feature = "cuda")]
+#[test]
+fn cuda_release_rebuilds_on_the_next_launch() {
+  use crate::device::Cuda;
+
+  let before = gbm::<f32>(9).on::<Cuda>().sample_par(8);
+  Cuda::default().release();
+  assert_eq!(before, gbm::<f32>(9).on::<Cuda>().sample_par(8));
+}

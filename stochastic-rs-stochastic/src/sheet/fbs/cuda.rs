@@ -131,6 +131,16 @@ unsafe impl Send for Kernels {}
 
 static GPU: Mutex<Option<Kernels>> = Mutex::new(None);
 
+/// Drops the sheet kernels, cuFFT plans and buffers cached for `ordinal`.
+pub(crate) fn release(ordinal: usize) {
+  let mut gpu = GPU.lock();
+  if gpu.as_ref().is_some_and(|k| k.ordinal == ordinal) {
+    SIZED_F32.lock().clear();
+    SIZED_F64.lock().clear();
+    *gpu = None;
+  }
+}
+
 fn ensure_kernels(ordinal: usize) -> Result<()> {
   let mut g = GPU.lock();
   if g.as_ref().is_some_and(|k| k.ordinal == ordinal) {

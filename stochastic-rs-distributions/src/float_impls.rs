@@ -18,6 +18,12 @@ thread_local! {
   static FGN_SCRATCH_F32: RefCell<Vec<Complex<f32>>> = const { RefCell::new(Vec::new()) };
 }
 
+/// Frees the calling thread's fGN FFT workspace; the next transform grows it to its own length.
+pub fn release_fgn_scratch() {
+  FGN_SCRATCH_F64.with_borrow_mut(|scratch| *scratch = Vec::new());
+  FGN_SCRATCH_F32.with_borrow_mut(|scratch| *scratch = Vec::new());
+}
+
 impl RealExt for f64 {
   fn from_usize_(n: usize) -> Self {
     n as f64
@@ -150,5 +156,22 @@ impl FloatExt for f32 {
       *x = mu + sigma * *x;
     }
     out
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// A released workspace regrows to what the next transform asks for, not to the largest seen.
+  #[test]
+  fn a_released_fgn_scratch_regrows_only_to_the_next_length() {
+    assert_eq!(f64::with_fgn_complex_scratch(1 << 16, |s| s.len()), 1 << 16);
+    assert_eq!(f32::with_fgn_complex_scratch(1 << 16, |s| s.len()), 1 << 16);
+    release_fgn_scratch();
+    assert_eq!(f64::with_fgn_complex_scratch(8, |s| s.len()), 8);
+    assert_eq!(f32::with_fgn_complex_scratch(8, |s| s.len()), 8);
+    assert!(FGN_SCRATCH_F64.with_borrow(Vec::capacity) < 1 << 16);
+    assert!(FGN_SCRATCH_F32.with_borrow(Vec::capacity) < 1 << 16);
   }
 }

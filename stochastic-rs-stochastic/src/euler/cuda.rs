@@ -187,21 +187,8 @@ struct Kernels {
   out_f32: [Option<CudaSlice<f32>>; 2],
   out_f64: [Option<CudaSlice<f64>>; 2],
 
-  /// The host buffer a single launch lands in, page-locked and kept between
-  /// calls for the same reason the device buffers are.
-  ///
-  /// `clone_dtoh` allocates a fresh `Vec` and copies into pageable memory,
-  /// which the driver has to stage through a bounce buffer of its own: about
-  /// 3.6 GB/s where a page-locked destination reaches the bus. The batch pays
-  /// that on every launch, along with the first-touch page fault of every
-  /// page of the fresh allocation — tens of thousands of them at a hundred
-  /// thousand paths. The pipelined path already stages through pinned memory;
-  /// this is the same for the single launch, which is what every batch that
-  /// fits the budget takes.
-  ///
-  /// It holds the largest batch seen so far, page-locked, until the process
-  /// ends — the same bargain the device buffers strike, and the same size as
-  /// the `Vec` the call returns, so the peak is what it always was.
+  /// The page-locked host buffer a single launch lands in: pageable memory crosses the bus at about
+  /// 3.6 GB/s. It holds the largest batch seen, as the device buffers do, until `Cuda::release`.
   staging_f32: [Option<PinnedHost<f32>>; 2],
   staging_f64: [Option<PinnedHost<f64>>; 2],
 
@@ -221,6 +208,14 @@ struct Kernels {
 unsafe impl Send for Kernels {}
 
 static KERNELS: Mutex<Option<Kernels>> = Mutex::new(None);
+
+/// Drops the engine's kernels, output buffers and pinned staging cached for `ordinal`.
+pub(crate) fn release(ordinal: usize) {
+  let mut kernels = KERNELS.lock();
+  if kernels.as_ref().is_some_and(|k| k.ordinal == ordinal) {
+    *kernels = None;
+  }
+}
 
 /// The CUDA device at `ordinal`, or why it cannot be used.
 pub(crate) fn probe(ordinal: usize) -> Result<DeviceInfo> {
