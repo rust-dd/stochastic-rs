@@ -3,6 +3,7 @@
 use ndarray::Array1;
 use ndarray::ArrayView1;
 
+use super::BATCH_RHO_MAX;
 use super::EPS;
 use super::HestonNmleCekfParams;
 use super::filter::HestonCekfConsistencyBounds;
@@ -27,9 +28,12 @@ pub struct HestonNmleCekfConfig {
   pub delta: f64,
   pub max_iters: usize,
   pub tol: f64,
+  /// The refit's weight in each blend, in `[0, 1]`.
   pub param_damping: f64,
   pub initial_v0: f64,
   pub initial_p0: f64,
+  /// The first iterate: positive `kappa`, `theta` and `sigma`, and `rho` in `[-0.9999, 0.9999]`,
+  /// the bound every iterate's `rho` is held in.
   pub initial_params: HestonNmleCekfParams,
   pub q11: f64,
   pub q12: f64,
@@ -80,15 +84,22 @@ pub struct HestonNmleCekfFit {
   pub converged: bool,
 }
 
-/// Damped CEKF/NMLE fixed point (`converged` is that loop's); config panics; `Err` below 2 prices,
+/// Damped CEKF/NMLE fixed point (`converged` is that loop's); config panics; `Err` below 4 prices,
 /// on a non-finite or non-positive one, a non-finite step, a failed refit or a `PriorBounds` exit.
 pub fn fit_heston_nmle_cekf(
   prices: ArrayView1<'_, f64>,
   config: HestonNmleCekfConfig,
 ) -> Result<HestonNmleCekfFit, StatsError> {
   validate_batch_config(&config);
+  // The refit is the NMLE on the filtered variance path, which needs four points.
+  if prices.len() < 4 {
+    return Err(StatsError::InsufficientData {
+      needed: 4,
+      got: prices.len(),
+    });
+  }
   validate_prices(prices)?;
-  let mut parameters = config.initial_params.projected_batch();
+  let mut parameters = config.initial_params;
   let mut converged = false;
   let mut iterations = 0;
 
@@ -117,7 +128,7 @@ pub fn fit_heston_nmle_cekf(
   let (variance_path, covariance_path) = cekf_pass(prices, parameters, &config)?;
   Ok(HestonNmleCekfFit {
     params: HestonMleFit {
-      v0: variance_path[0].max(0.0),
+      v0: variance_path[0],
       kappa: parameters.kappa,
       theta: parameters.theta,
       sigma: parameters.sigma,
@@ -195,9 +206,8 @@ fn within(coefficients: HestonCekfConsistencyBounds, prior: HestonCekfConsistenc
 fn blend_params(
   old: HestonNmleCekfParams,
   new: HestonNmleCekfParams,
-  alpha: f64,
+  weight: f64,
 ) -> HestonNmleCekfParams {
-  let weight = alpha.clamp(0.0, 1.0);
   HestonNmleCekfParams {
     kappa: (1.0 - weight) * old.kappa + weight * new.kappa,
     theta: (1.0 - weight) * old.theta + weight * new.theta,
@@ -216,18 +226,28 @@ fn validate_batch_config(config: &HestonNmleCekfConfig) {
   );
   assert_positive("tol", config.tol);
   assert_finite("param_damping", config.param_damping);
+  assert!(
+    (0.0..=1.0).contains(&config.param_damping),
+    "param_damping must satisfy `0.0 <= param_damping <= 1.0`, got param_damping = {:?}",
+    config.param_damping
+  );
   assert_positive("initial_v0", config.initial_v0);
   assert_positive("initial_p0", config.initial_p0);
-  assert_finite("initial_params.kappa", config.initial_params.kappa);
-  assert_finite("initial_params.theta", config.initial_params.theta);
-  assert_finite("initial_params.sigma", config.initial_params.sigma);
-  assert_finite("initial_params.rho", config.initial_params.rho);
+  let initial = config.initial_params;
+  assert_positive("initial_params.kappa", initial.kappa);
+  assert_positive("initial_params.theta", initial.theta);
+  assert_positive("initial_params.sigma", initial.sigma);
+  assert_finite("initial_params.rho", initial.rho);
+  assert!(
+    (-BATCH_RHO_MAX..=BATCH_RHO_MAX).contains(&initial.rho),
+    "initial_params.rho must satisfy `-{BATCH_RHO_MAX:?} <= initial_params.rho <= {BATCH_RHO_MAX:?}`, got initial_params.rho = {:?}",
+    initial.rho
+  );
   assert_noise(config.q11, config.q12, config.q22);
   if let HestonNmleCekfCorrection::PriorBounds(bounds) = config.correction {
     assert_nonnegative("max_abs_state_transition", bounds.max_abs_state_transition);
     assert_nonnegative("max_abs_kappa_theta", bounds.max_abs_kappa_theta);
     assert_nonnegative("max_abs_sigma", bounds.max_abs_sigma);
-    let initial = config.initial_params.projected_batch();
     validate_parameters(initial, &filter_config(initial, config));
   }
 }
