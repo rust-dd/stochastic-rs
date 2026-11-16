@@ -22,6 +22,7 @@ use crate::StatsError;
 use crate::input::as_slice_or_copy;
 use crate::input::reject_constant;
 use crate::input::validate;
+use crate::input::validate_view;
 use crate::traits::RealExt;
 
 mod log_space;
@@ -203,13 +204,14 @@ impl GaussianHmm {
     next / sum
   }
 
-  /// Viterbi most-likely state sequence, a zero probability scoring `ln 0 = −∞`; empty for an empty
-  /// series, and panics as [`Self::new`] does on a struct literal.
-  pub fn viterbi(&self, observations: ArrayView1<f64>) -> Array1<usize> {
+  /// Viterbi most-likely state sequence, a zero probability scoring `ln 0 = −∞`; `Err` on a
+  /// non-finite point or a series no path scores above `−∞`; panics as `new` on a struct literal.
+  pub fn viterbi(&self, observations: ArrayView1<f64>) -> Result<Array1<usize>, StatsError> {
     self.assert_parameters();
+    validate_view(observations, 0)?;
     let n = observations.len();
     if n == 0 {
-      return Array1::zeros(0);
+      return Ok(Array1::zeros(0));
     }
     let k = self.n_states();
     let ln_stds = self.stds.mapv(f64::ln);
@@ -245,11 +247,16 @@ impl GaussianHmm {
         arg = s;
       }
     }
+    if best == f64::NEG_INFINITY {
+      return Err(StatsError::Numerical {
+        stage: "path score",
+      });
+    }
     path[n - 1] = arg;
     for t in (1..n).rev() {
       path[t - 1] = psi[[t, path[t]]];
     }
-    path
+    Ok(path)
   }
 
   /// Each step's densities scaled by the largest of them, and the shifts `ln` of those largest: the

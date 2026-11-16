@@ -29,7 +29,7 @@ fn viterbi_recovers_two_state_path() {
   let obs = array![
     -1.0_f64, -0.9, -1.1, -1.05, -0.95, -1.0, 1.0, 1.1, 0.9, 1.05, 0.95, 1.0
   ];
-  let path = hmm.viterbi(obs.view());
+  let path = hmm.viterbi(obs.view()).unwrap();
   assert!(path.iter().take(6).all(|&s| s == 0));
   assert!(path.iter().skip(6).all(|&s| s == 1));
 }
@@ -177,8 +177,45 @@ fn viterbi_never_takes_a_zero_probability_transition() {
     array![1.0, 1.0],
   );
   assert_eq!(
-    hmm.viterbi(array![0.0, 0.0, 100.0, 0.0].view()),
+    hmm.viterbi(array![0.0, 0.0, 100.0, 0.0].view()).unwrap(),
     array![0, 0, 0, 0]
+  );
+}
+
+/// Every path through a NaN or infinite point has an undefined score, so none is the most likely.
+#[test]
+fn viterbi_answers_a_non_finite_observation_with_err() {
+  let hmm = two_state(0.5, 0.1, 0.5, 1.0);
+  assert_eq!(
+    hmm.viterbi(array![-1.0, -0.9, 1.0, 1.1].view()).unwrap(),
+    array![1, 1, 1, 1]
+  );
+  for (index, value) in [(2, f64::NAN), (1, f64::INFINITY), (3, f64::NEG_INFINITY)] {
+    let mut y = array![-1.0, -0.9, 1.0, 1.1];
+    y[index] = value;
+    let err = hmm.viterbi(y.view()).unwrap_err();
+    assert!(
+      matches!(err, StatsError::InvalidObservation { index: i, constraint: "finite", .. } if i == index),
+      "{err:?}"
+    );
+  }
+}
+
+/// With standard deviations of `1e-160` every log density overflows to `−∞`, so no path scores.
+#[test]
+fn viterbi_answers_a_series_no_path_scores_with_numerical() {
+  let hmm = GaussianHmm::new(
+    array![0.5, 0.5],
+    array![[0.9, 0.1], [0.1, 0.9]],
+    array![-0.5, 0.5],
+    array![1e-160, 1e-160],
+  );
+  let observations = Array1::from_iter((0..40).map(|t| 0.3 * (t as f64 * 0.7).sin()));
+  assert_eq!(
+    hmm.viterbi(observations.view()).unwrap_err(),
+    StatsError::Numerical {
+      stage: "path score"
+    }
   );
 }
 
@@ -218,7 +255,7 @@ fn a_rescaled_fit_shifts_the_log_likelihood_and_keeps_the_viterbi_path() {
     );
     let scaled = y.mapv(|v| v * c);
     let fit = hmm.baum_welch(scaled.view(), 200, 1e-10).unwrap();
-    (fit, hmm.viterbi(scaled.view()))
+    (fit, hmm.viterbi(scaled.view()).unwrap())
   };
   let (unit, unit_path) = fit(1.0);
   assert!(unit.converged);
@@ -377,7 +414,7 @@ fn every_entry_point_checks_a_struct_literal() {
       hmm.filter_step(hmm.initial.view(), 0.1);
     }),
     panic_message(|| {
-      hmm.viterbi(y.view());
+      let _ = hmm.viterbi(y.view());
     }),
     panic_message(|| {
       let _ = hmm.clone().baum_welch(y.view(), 5, 1e-6);
@@ -409,7 +446,7 @@ fn an_empty_series_gives_the_empty_answers() {
     0.0_f64.to_bits()
   );
   assert_eq!(hmm.filtered_state_probs(empty.view()).dim(), (0, 2));
-  assert!(hmm.viterbi(empty.view()).is_empty());
+  assert!(hmm.viterbi(empty.view()).unwrap().is_empty());
 }
 
 /// The fields are public, so a model without states can bypass `new`.
