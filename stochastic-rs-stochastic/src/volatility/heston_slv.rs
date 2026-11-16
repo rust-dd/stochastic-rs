@@ -184,10 +184,8 @@ impl<T: FloatExt, S: SeedExt> HestonSlv<T, S> {
   }
 }
 
-/// s₀=100, v₀=0.04, κ=2.0, θ=0.04, σ=0.3, ρ=-0.7, μ=0.05 — the crate's
-/// Heston parameterization — under full mixing `η = 1` and unit leverage
-/// written as an expression, so the default is the Heston model and runs on
-/// a device. t=1, n=252 — one trading year of daily steps.
+/// The crate's Heston (s₀=100, v₀=0.04, κ=2, θ=0.04, σ=0.3, ρ=-0.7, μ=0.05) at `η = 1` with a unit
+/// leverage expression, so it runs on a device; t=1, 252 points, a trading year of daily closes.
 impl<T: FloatExt> Default for HestonSlv<T, Unseeded> {
   fn default() -> Self {
     Self::new(
@@ -291,7 +289,7 @@ impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
   }
 
   /// Replace the number of grid points `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  pub fn with_points(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self

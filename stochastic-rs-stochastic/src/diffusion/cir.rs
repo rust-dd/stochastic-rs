@@ -118,7 +118,9 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
       backend: Cpu,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: T) -> Self {
     self.theta = theta;
@@ -149,8 +151,8 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path, all else unchanged.
+  pub fn with_points(mut self, n: usize) -> Self {
     self.n = n;
     self
   }
@@ -193,7 +195,7 @@ impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
 }
 
 /// θ=2.5, μ=0.04, σ=0.2, x₀=0.04 under the floor, a textbook Cir with `2θμ = 0.2 ≥ σ² = 0.04`;
-/// t=1, n=252, one trading year of daily steps (this crate's `Default` convention).
+/// t=1, 252 points, a trading year of daily closes.
 impl<T: FloatExt> Default for Cir<T, Unseeded> {
   fn default() -> Self {
     Self::new(

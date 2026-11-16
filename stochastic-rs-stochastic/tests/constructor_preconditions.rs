@@ -6,10 +6,13 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::uniform::SimdUniform;
+use stochastic_rs_stochastic::autoregressive::agrach::Agarch;
 use stochastic_rs_stochastic::autoregressive::ar::ARp;
 use stochastic_rs_stochastic::autoregressive::arima::Arima;
+use stochastic_rs_stochastic::autoregressive::garch::Garch;
 use stochastic_rs_stochastic::autoregressive::ma::MAq;
 use stochastic_rs_stochastic::autoregressive::sarima::Sarima;
+use stochastic_rs_stochastic::autoregressive::tgarch::GjrGarch;
 use stochastic_rs_stochastic::correlation::VanEmmerich;
 use stochastic_rs_stochastic::correlation::stochastic_correlated_bm;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
@@ -47,6 +50,9 @@ use stochastic_rs_stochastic::process::hawkes::Hawkes;
 use stochastic_rs_stochastic::process::lfsm::Lfsm;
 use stochastic_rs_stochastic::process::multivariate_hawkes::MultivariateHawkes;
 use stochastic_rs_stochastic::process::poisson::Poisson;
+use stochastic_rs_stochastic::process::subordinator::ctrw::Ctrw;
+use stochastic_rs_stochastic::process::subordinator::ctrw::CtrwJumpLaw;
+use stochastic_rs_stochastic::process::subordinator::ctrw::CtrwWaitingLaw;
 use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::GammaSubordinator;
 use stochastic_rs_stochastic::process::volterra::Volterra;
 use stochastic_rs_stochastic::process::volterra::VolterraKernelSpec;
@@ -229,6 +235,17 @@ refuses! {
     => BatesSvj::<f64>::new(Drift::Mu(0.05), 0.5, -0.1, 0.2, 0.04, 1.5, 0.3, -0.6, 64, 100.0, 0.04, None, VarianceBoundary::Floor, Unseeded).with_v0(-0.01);
   the_double_exponential_heston_variance_setter_checks_its_value: "v0 must satisfy `v0 >= T::zero()`, got v0 = -0.01"
     => Hkde::<f64>::new(0.05, 1.5, 0.04, 0.3, -0.7, 0.04, 0.5, 0.4, 5.0, 5.0, 64, 100.0, None, VarianceBoundary::Floor, Unseeded).with_v0(-0.01);
+
+  a_garch_without_a_finite_unconditional_variance_is_refused: "alpha must satisfy `1 - alpha.sum() - beta.sum() > 0`, got alpha = [0.5], beta = [0.5]"
+    => Garch::<f64>::new(0.1, array![0.5], array![0.5], 64, Unseeded);
+  an_asymmetric_garch_without_a_finite_unconditional_variance_is_refused: "alpha must satisfy `1 - alpha.sum() - 0.5 * delta.sum() - beta.sum() > 0`, got alpha = [0.3], delta = [0.4], beta = [0.5]"
+    => Agarch::<f64>::new(0.1, array![0.3], array![0.4], array![0.5], 64, Unseeded);
+  a_threshold_garch_without_a_finite_unconditional_variance_is_refused: "alpha must satisfy `1 - alpha.sum() - 0.5 * gamma.sum() - beta.sum() > 0`, got alpha = [0.3], gamma = [0.4], beta = [0.5]"
+    => GjrGarch::<f64>::new(0.1, array![0.3], array![0.4], array![0.5], 64, Unseeded);
+  a_random_walk_refuses_a_zero_waiting_rate: "rate must satisfy `rate > T::zero() && rate.is_finite()`, got rate = 0.0"
+    => Ctrw::<f64>::new(CtrwWaitingLaw::Exponential { rate: 0.0 }, CtrwJumpLaw::Normal { mean: 0.0, std: 1.0 }, 64, None, None, Unseeded);
+  a_random_walk_refuses_a_stable_jump_index_above_two: "alpha must satisfy `alpha > T::zero() && alpha <= T::from_usize_(2)`, got alpha = 2.5"
+    => Ctrw::<f64>::new(CtrwWaitingLaw::Exponential { rate: 1.0 }, CtrwJumpLaw::SymmetricStable { alpha: 2.5, scale: 1.0 }, 64, None, None, Unseeded);
 }
 
 fn scales_with_sigma(path: impl Fn(f64) -> Array1<f64>) {

@@ -168,10 +168,10 @@ fn bates_svj_with_rho_rejects_out_of_range() {
 }
 
 #[test]
-fn bates_svj_with_steps_rebuilds_cgns_cache() {
+fn bates_svj_with_points_rebuilds_cgns_cache() {
   let mut expected = bsvj_base();
   expected.n = 64;
-  let got = bsvj_base().with_steps(64);
+  let got = bsvj_base().with_points(64);
   assert_eq!(got.n, 64);
   assert_eq!(bsvj_fields(&got), bsvj_fields(&expected));
   assert!(finite2(&got.sample()));
@@ -194,15 +194,15 @@ fn bates_svj_with_steps_rebuilds_cgns_cache() {
   )
   .sample();
   let got_seeded = bsvj_base_seeded(Deterministic::new(9))
-    .with_steps(64)
+    .with_points(64)
     .sample();
   assert_eq!(want, got_seeded);
 }
 
 #[test]
 #[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
-fn bates_svj_with_steps_rejects_too_few_steps() {
-  let _ = bsvj_base().with_steps(1);
+fn bates_svj_with_points_rejects_too_few_steps() {
+  let _ = bsvj_base().with_points(1);
 }
 
 #[test]

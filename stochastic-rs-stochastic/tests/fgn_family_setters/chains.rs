@@ -21,7 +21,7 @@ use super::common::seed;
 fn fbm_setters_match_fresh_construction() {
   let chained = Fbm::<f64, _>::new(0.3, 16, Some(2.0), seed(1))
     .with_hurst(0.7)
-    .with_steps(64)
+    .with_points(64)
     .with_horizon(Some(1.0))
     .with_seed(seed(7));
   let fresh = Fbm::<f64, _>::new(0.7, 64, Some(1.0), seed(7));
@@ -41,7 +41,7 @@ fn fou_setters_match_fresh_construction() {
     .with_theta(1.0)
     .with_mu(0.0)
     .with_sigma(0.2)
-    .with_steps(64)
+    .with_points(64)
     .with_x0(Some(0.0))
     .with_horizon(Some(1.0))
     .with_seed(seed(7));
@@ -70,7 +70,7 @@ fn fgbm_setters_match_fresh_construction() {
     .with_hurst(0.7)
     .with_mu(0.05)
     .with_sigma(0.2)
-    .with_steps(64)
+    .with_points(64)
     .with_x0(Some(1.0))
     .with_horizon(Some(1.0))
     .with_seed(seed(7));
@@ -105,7 +105,7 @@ fn fcir_setters_match_fresh_construction() {
   .with_theta(1.0)
   .with_mu(0.04)
   .with_sigma(0.1)
-  .with_steps(64)
+  .with_points(64)
   .with_x0(Some(0.04))
   .with_horizon(Some(1.0))
   .with_boundary(VarianceBoundary::Floor)
@@ -146,7 +146,7 @@ fn fjacobi_setters_match_fresh_construction() {
     .with_beta(2.0)
     .with_alpha(1.0)
     .with_sigma(0.2)
-    .with_steps(64)
+    .with_points(64)
     .with_x0(Some(0.5))
     .with_horizon(Some(1.0))
     .with_seed(seed(7));
@@ -174,7 +174,7 @@ fn cfbms_setters_match_fresh_construction() {
   let chained = Cfbms::<f64, _>::new(0.4, -0.5, 16, Some(2.0), seed(1))
     .with_hurst(0.7)
     .with_rho(0.3)
-    .with_steps(64)
+    .with_points(64)
     .with_horizon(Some(1.0))
     .with_seed(seed(7));
   let fresh = Cfbms::<f64, _>::new(0.7, 0.3, 64, Some(1.0), seed(7));
@@ -192,7 +192,7 @@ fn cfgns_setters_match_fresh_construction() {
   let chained = Cfgns::<f64, _>::new(0.4, -0.5, 16, Some(2.0), seed(1))
     .with_hurst(0.7)
     .with_rho(0.3)
-    .with_steps(64)
+    .with_increments(64)
     .with_horizon(Some(1.0))
     .with_seed(seed(7));
   let fresh = Cfgns::<f64, _>::new(0.7, 0.3, 64, Some(1.0), seed(7));
@@ -222,7 +222,7 @@ fn cfou_setters_match_fresh_construction() {
   .with_lambda(1.0)
   .with_omega(0.5)
   .with_a(0.2)
-  .with_steps(64)
+  .with_points(64)
   .with_x1_0(Some(0.0))
   .with_x2_0(Some(0.0))
   .with_horizon(Some(1.0))
@@ -277,7 +277,7 @@ fn jump_fou_setters_match_fresh_construction() {
   .with_sigma(0.2)
   .with_lambda(3.0)
   .with_jump_dist(jump_law(0.05))
-  .with_steps(64)
+  .with_points(64)
   .with_x0(Some(0.0))
   .with_horizon(Some(1.0));
   let fresh = JumpFou::<f64, _, _>::new(
@@ -331,7 +331,7 @@ fn jump_fou_setters_keep_the_jump_driver_in_step() {
   assert_eq!(p.lambda(), 3.0);
   assert_eq!(p.cpoisson().poisson.lambda, 3.0);
 
-  let p = p.with_steps(64);
+  let p = p.with_points(64);
   assert_eq!(p.cpoisson().poisson.horizon, Horizon::Events(64));
 
   let p = p.with_horizon(Some(2.0));
@@ -384,7 +384,7 @@ fn jump_fou_custom_setters_match_fresh_construction() {
   .with_theta(1.0)
   .with_mu(0.0)
   .with_sigma(0.2)
-  .with_steps(64)
+  .with_points(64)
   .with_x0(Some(0.0))
   .with_horizon(Some(1.0))
   .with_jump_times(SimdNormal::new(0.5, 0.01))

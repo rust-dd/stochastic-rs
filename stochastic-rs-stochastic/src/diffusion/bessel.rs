@@ -135,8 +135,8 @@ impl<T: FloatExt, S: SeedExt, B> SquaredBessel<T, S, B> {
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path, all else unchanged.
+  pub fn with_points(mut self, n: usize) -> Self {
     self.n = n;
     self
   }
@@ -154,11 +154,8 @@ impl<T: FloatExt, S: SeedExt, B> SquaredBessel<T, S, B> {
   }
 }
 
-/// δ=3, x₀=1, t=1 — matches this file's own
-/// `besq_mean_matches_closed_form` / `bessel_squared_matches_besq_mean` test
-/// fixture (which itself runs at n=200, not the n=252 below); δ≥2 keeps the
-/// process strictly positive. n=252 — one trading year of daily steps
-/// (this crate's `Default` convention).
+/// δ=3, x₀=1, t=1, the closed-form mean tests' values (δ≥2 keeps the process positive); 252 points,
+/// a trading year of daily closes.
 impl<T: FloatExt> Default for SquaredBessel<T, Unseeded> {
   fn default() -> Self {
     Self::new(
@@ -456,8 +453,8 @@ impl<T: FloatExt, S: SeedExt, B> Bessel<T, S, B> {
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path, all else unchanged.
+  pub fn with_points(mut self, n: usize) -> Self {
     self.n = n;
     self
   }
@@ -475,11 +472,8 @@ impl<T: FloatExt, S: SeedExt, B> Bessel<T, S, B> {
   }
 }
 
-/// δ=3, x₀=1, t=1 — same δ/x₀/t as [`SquaredBessel`]'s `Default` (this
-/// file's own `bessel_squared_matches_besq_mean` test fixture compares the
-/// two directly, at n=200 there); δ≥2 keeps the process strictly positive.
-/// n=252 — one trading year of daily steps (this crate's `Default`
-/// convention).
+/// δ=3, x₀=1, t=1, as [`SquaredBessel`]'s `Default` (δ≥2 keeps the process positive); 252 points, a
+/// trading year of daily closes.
 impl<T: FloatExt> Default for Bessel<T, Unseeded> {
   fn default() -> Self {
     Self::new(

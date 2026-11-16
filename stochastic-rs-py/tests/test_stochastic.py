@@ -371,3 +371,10 @@ def test_ho_lee_takes_exactly_one_of_theta_and_f_t():
     for bad in ({}, {"theta": 0.02, "f_T": lambda t: 0.03}):
         with pytest.raises(ValueError, match="exactly one drift"):
             sr.PyHoLee(0.01, 64, **bad)
+
+
+def test_the_fractional_sheet_names_its_grid_rows_and_cols():
+    sheet = sr.PyFbs(0.7, rows=9, cols=5, r=1.0, seed=3).sample()
+    assert sheet.shape == (9, 5)
+    with pytest.raises(TypeError):
+        sr.PyFbs(0.7, m=9, n=5, r=1.0)

@@ -21,7 +21,7 @@ use crate::traits::ProcessExt;
 pub struct Cgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Instantaneous correlation ρ between the two output Gaussian streams.
   pub rho: T,
-  /// Number of points sampled along each correlated-Gaussian stream.
+  /// Increments drawn per stream; `dt = t / n`.
   pub n: usize,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,

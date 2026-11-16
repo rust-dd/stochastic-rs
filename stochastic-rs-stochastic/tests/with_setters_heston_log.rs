@@ -95,7 +95,7 @@ hlog_plain_test!(
   boundary,
   VarianceBoundary::Reflect
 );
-hlog_plain_test!(heston_log_with_steps_round_trip, with_steps, n, 64usize);
+hlog_plain_test!(heston_log_with_points_round_trip, with_points, n, 64usize);
 hlog_plain_test!(
   heston_log_with_horizon_round_trip,
   with_horizon,
@@ -135,8 +135,8 @@ fn heston_log_with_v0_rejects_negative() {
 
 #[test]
 #[should_panic(expected = "n must satisfy `n >= 2`, got n = 1")]
-fn heston_log_with_steps_rejects_too_few_steps() {
-  let _ = hlog_base().with_steps(1);
+fn heston_log_with_points_rejects_too_few_steps() {
+  let _ = hlog_base().with_points(1);
 }
 
 #[test]

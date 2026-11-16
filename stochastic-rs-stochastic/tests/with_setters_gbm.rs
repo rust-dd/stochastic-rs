@@ -1,12 +1,5 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `Gbm`
-//! (`diffusion/gbm.rs`). Cache: private `ln_mu: f64`/`ln_sigma: f64` (the
-//! terminal log-normal's parameters, always plain `f64` regardless of `T`),
-//! a pure function of `mu`/`sigma`/`x0`/`t` computed once in `new()`.
-//! `with_mu`/`with_sigma`/`with_x0`/`with_horizon` all feed it and must
-//! recompute it with the identical formula; `with_steps`/`with_seed` don't
-//! touch it. Verified via `DistributionExt::mean()`, which reads the cache
-//! directly, plus the usual bit-exact sampled-path check against a fresh
-//! `new(..)` construction.
+//! `Gbm`'s setters: those feeding the terminal log-normal cache (`mu`, `sigma`, `x0`, `t`)
+//! recompute it, read back through `DistributionExt::mean`; `with_points` and `with_seed` leave it.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -61,7 +54,7 @@ macro_rules! plain_test {
   };
 }
 
-plain_test!(gbm_with_steps_round_trip, with_steps, n, 128usize);
+plain_test!(gbm_with_points_round_trip, with_points, n, 128usize);
 
 #[test]
 fn gbm_with_mu_rebuilds_terminal_lognormal_cache() {

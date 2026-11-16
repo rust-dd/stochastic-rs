@@ -113,8 +113,8 @@ cache_test!(
   (3.0, 0.03, 0.02, 64, Some(0.06), Some(1.0))
 );
 cache_test!(
-  vasicek_with_steps_rebuilds_ou,
-  with_steps,
+  vasicek_with_points_rebuilds_ou,
+  with_points,
   n,
   128,
   (3.0, 0.03, 0.02, 128, Some(0.03), Some(1.0))

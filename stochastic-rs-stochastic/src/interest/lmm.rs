@@ -82,13 +82,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Drift-coupled LIBOR Market Model (BGM/Jamshidian) under the spot-LIBOR
-/// measure. See module header for the precise scope, dynamics and
-/// references.
-///
-/// Every field has a matching `with_*` builder setter (in addition to
-/// [`with_correlation`](Lmm::with_correlation)), e.g.
-/// `Lmm::new(..).with_steps(200).with_horizon(Some(1.5))`.
+/// Drift-coupled LIBOR Market Model (BGM/Jamshidian) under the spot-LIBOR measure; the module
+/// header gives the scope, the dynamics and the references.
 pub struct Lmm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Tenor dates `T_0 < T_1 < … < T_M`, length `M+1`. Strictly increasing.
   pub tenor: Array1<T>,
@@ -100,8 +95,7 @@ pub struct Lmm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Lower-triangular Cholesky factor `L` of the forward correlation matrix
   /// `ρ = L Lᵀ`. Square `M × M`. `None` ⇒ identity (independent factors).
   pub chol: Option<Array2<T>>,
-  /// Number of equally-spaced simulation grid points across `[0, t_horizon]`.
-  /// Must be `≥ 1`; the first grid point is `t_0 = 0`.
+  /// Grid points from `t_0 = 0` to the horizon; `dt = horizon / (n − 1)`.
   pub n: usize,
   /// Simulation horizon `t_horizon`. Defaults to `T_M` (last tenor date)
   /// when `None`. Must satisfy `0 < t_horizon ≤ T_M`.
@@ -231,7 +225,7 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
   }
 
   /// Replace the number of simulation grid points `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  pub fn with_points(mut self, n: usize) -> Self {
     self.n = n;
     self
   }

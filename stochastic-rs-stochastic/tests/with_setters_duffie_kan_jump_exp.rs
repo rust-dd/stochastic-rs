@@ -1,15 +1,5 @@
-//! TDD tests for A1-c Task 2: `with_*` builder setters on
-//! `DuffieKanJumpExp` (`interest/duffie_kan_jump_exp.rs`), the Duffie-Kan
-//! model with an exponential-inter-arrival jump overlay. Split out of a
-//! combined `with_setters_interest.rs` to stay under the project's
-//! 600-line file cap (per-type split, alongside `with_setters_duffie_kan.rs`
-//! and `with_setters_lmm.rs`).
-//!
-//! Same pattern as `with_setters_duffie_kan.rs`: `DuffieKanJumpExp` caches a
-//! correlated-Gaussian generator (`cgns`) keyed on `(rho, n, t)`; for
-//! `with_rho`/`with_steps`/`with_horizon`, a second test asserts sampling
-//! matches a *fresh* equivalent `new(...)` call bit-for-bit. `new()` has no
-//! `assert!`s of its own, so no setter here needs a rejection test.
+//! `DuffieKanJumpExp`'s setters agree with a direct field write; `with_rho`, `with_points` and
+//! `with_horizon` also sample bit for bit like a fresh `new`, so the `cgns` cache is rebuilt.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -210,10 +200,10 @@ fn duffie_kan_jump_exp_with_rho_rebuilds_cgns_cache() {
 }
 
 #[test]
-fn duffie_kan_jump_exp_with_steps_rebuilds_cgns_cache() {
+fn duffie_kan_jump_exp_with_points_rebuilds_cgns_cache() {
   let mut expected = dkj_base();
   expected.n = 128;
-  let got = dkj_base().with_steps(128);
+  let got = dkj_base().with_points(128);
   assert_eq!(got.n, 128);
   assert_eq!(dkj_fields(&got), dkj_fields(&expected));
   assert!(finite2(&got.sample()));
@@ -241,11 +231,11 @@ fn duffie_kan_jump_exp_with_steps_rebuilds_cgns_cache() {
   )
   .sample();
   let got_seeded = dkj_base_seeded(Deterministic::new(9))
-    .with_steps(128)
+    .with_points(128)
     .sample();
   assert_eq!(
     want, got_seeded,
-    "with_steps must resize the cgns cache, not just n"
+    "with_points must resize the cgns cache, not just n"
   );
 }
 

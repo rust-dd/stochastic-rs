@@ -95,14 +95,14 @@ fn jump_fou_custom() -> JumpFOUCustom<f64, SimdNormal<f64>> {
 }
 
 rejects! {
-  fou_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => fou().with_steps(1);
-  fgbm_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => fgbm().with_steps(1);
-  fcir_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => fcir().with_steps(1);
-  fjacobi_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => fjacobi().with_steps(1);
-  cfbms_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => cfbms().with_steps(1);
-  cfou_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => cfou().with_steps(1);
-  jump_fou_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => jump_fou().with_steps(1);
-  jump_fou_custom_with_steps_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => jump_fou_custom().with_steps(1);
+  fou_with_points_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => fou().with_points(1);
+  fgbm_with_points_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => fgbm().with_points(1);
+  fcir_with_points_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => fcir().with_points(1);
+  fjacobi_with_points_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => fjacobi().with_points(1);
+  cfbms_with_points_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => cfbms().with_points(1);
+  cfou_with_points_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => cfou().with_points(1);
+  jump_fou_with_points_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => jump_fou().with_points(1);
+  jump_fou_custom_with_points_rejects_one_point: "n must satisfy `n >= 2`, got n = 1" => jump_fou_custom().with_points(1);
 
   fjacobi_with_alpha_rejects_zero: "alpha must satisfy `alpha > T::zero()`, got alpha = 0.0" => fjacobi().with_alpha(0.0);
   fjacobi_with_alpha_rejects_the_value_of_beta: "alpha must satisfy `alpha < self.beta`, got alpha = 2.0, self.beta = 2.0" => fjacobi().with_alpha(2.0);

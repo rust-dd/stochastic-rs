@@ -165,10 +165,9 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
     self
   }
 
-  /// Replace the number of simulation steps `n`; rebuilds the cached
-  /// correlated-Gaussian generator, whose length and step size derive
-  /// from `n`.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
+  /// generator, whose length and step size derive from `n`.
+  pub fn with_points(mut self, n: usize) -> Self {
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self
@@ -189,9 +188,8 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
   }
 }
 
-/// ν=0.4, β=0.7, ρ=-0.3, f₀=1, α₀=0.3 — a textbook Sabr parameterization.
-/// t=1, n=252 — one trading year of daily steps (this crate's `Default`
-/// convention).
+/// ν=0.4, β=0.7, ρ=-0.3, f₀=1, α₀=0.3, a textbook Sabr; t=1, 252 points, a trading year of daily
+/// closes.
 impl<T: FloatExt> Default for Sabr<T, Unseeded> {
   fn default() -> Self {
     Self::new(

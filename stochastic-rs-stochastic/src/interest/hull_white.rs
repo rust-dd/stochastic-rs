@@ -124,8 +124,8 @@ impl<T: FloatExt, S: SeedExt, B> HullWhite<T, S, B> {
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path, all else unchanged.
+  pub fn with_points(mut self, n: usize) -> Self {
     self.n = n;
     self
   }
@@ -143,9 +143,8 @@ impl<T: FloatExt, S: SeedExt, B> HullWhite<T, S, B> {
   }
 }
 
-/// θ(t)≡0.04 (this file's own `const_theta` test fixture), α=0.4, σ=0.02,
-/// r₀=0.02 — a textbook Hull-White parameterization. t=1, n=252 — one
-/// trading year of daily steps (this crate's `Default` convention).
+/// θ(t)≡0.04, α=0.4, σ=0.02, r₀=0.02, a textbook Hull-White (this file's `const_theta` fixture);
+/// t=1, 252 points, a trading year of daily closes.
 impl<T: FloatExt> Default for HullWhite<T, Unseeded> {
   fn default() -> Self {
     Self::new(

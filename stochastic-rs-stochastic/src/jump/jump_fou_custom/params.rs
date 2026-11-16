@@ -73,13 +73,34 @@ where
     Fgn::new(hurst, n - 1, t, Unseeded)
   }
 
-  /// Replace `hurst`; rebuilds the embedded `fgn`.
+  /// Replace `hurst`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     self.hurst = hurst;
     self.fgn = Self::fgn_for(hurst, self.n, self.t);
     self
   }
 
+  /// Replace `n`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  pub fn with_points(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    self.n = n;
+    self.fgn = Self::fgn_for(self.hurst, n, self.t);
+    self
+  }
+
+  /// Replace `t`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self.fgn = Self::fgn_for(self.hurst, self.n, t);
+    self
+  }
+}
+
+impl<T, D, S: SeedExt, B> JumpFOUCustom<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: T) -> Self {
     self.theta = theta;
@@ -98,25 +119,9 @@ where
     self
   }
 
-  /// Replace the number of simulation steps `n`; rebuilds the embedded
-  /// `fgn`. Panics if `n < 2`, matching `new()`'s own assertion.
-  pub fn with_steps(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    self.n = n;
-    self.fgn = Self::fgn_for(self.hurst, n, self.t);
-    self
-  }
-
   /// Replace `x0`, all else unchanged.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
     self.x0 = x0;
-    self
-  }
-
-  /// Replace the simulation horizon `t`; rebuilds the embedded `fgn`.
-  pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    self.t = t;
-    self.fgn = Self::fgn_for(self.hurst, self.n, t);
     self
   }
 

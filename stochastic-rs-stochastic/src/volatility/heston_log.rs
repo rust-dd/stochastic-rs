@@ -45,7 +45,7 @@ pub struct HestonLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub xi: T,
   /// Correlation between asset and variance Brownian motions
   pub rho: T,
-  /// Number of discrete time steps
+  /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
   /// Initial spot.
   pub s0: T,
@@ -225,8 +225,8 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path, all else unchanged.
+  pub fn with_points(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self

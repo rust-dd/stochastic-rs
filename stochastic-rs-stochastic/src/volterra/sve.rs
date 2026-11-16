@@ -200,8 +200,8 @@ where
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path, all else unchanged.
+  pub fn with_points(mut self, n: usize) -> Self {
     self.n = n;
     self.lift = VolterraLift::new(self.kernel.clone(), self.step_size());
     self

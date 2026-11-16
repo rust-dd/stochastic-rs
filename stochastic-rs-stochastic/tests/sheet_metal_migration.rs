@@ -118,8 +118,8 @@ fn direct_sheet_calls_reject_unsupported_dimensions_before_opening_a_device() {
   let overflowing = (1_usize << (usize::BITS - 1)) + 1;
   for (m, n) in [(0, 5), (1, 5), (4, 5), (9, 4), (overflowing, 5)] {
     let mut fbs = process(9, 5, 0.7, 1.0, 61).with_backend(Metal::new(usize::MAX));
-    fbs.m = m;
-    fbs.n = n;
+    fbs.rows = m;
+    fbs.cols = n;
     let expected = fbs.seed.clone();
     assert!(matches!(
       fbs.backend.try_sheet(&fbs),
@@ -137,8 +137,8 @@ fn direct_sheet_calls_reject_unsupported_dimensions_before_opening_a_device() {
 fn direct_sheet_calls_reject_a_stale_embedding_shape() {
   for (m, n) in [(17, 5), (5, 9)] {
     let mut fbs = process(9, 5, 0.7, 1.0, 67).with_backend(Metal::new(usize::MAX));
-    fbs.m = m;
-    fbs.n = n;
+    fbs.rows = m;
+    fbs.cols = n;
     assert!(matches!(
       fbs.backend.try_sheets(&fbs, 3),
       Err(DeviceError::Launch(_))

@@ -169,8 +169,8 @@ impl<T: FloatExt, S: SeedExt, B> CirPlusPlus<T, S, B> {
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path, all else unchanged.
+  pub fn with_points(mut self, n: usize) -> Self {
     self.n = n;
     self
   }
@@ -188,21 +188,8 @@ impl<T: FloatExt, S: SeedExt, B> CirPlusPlus<T, S, B> {
   }
 }
 
-/// κ=2.5, θ=0.04, σ=0.2, φ(t)≡0, x₀=0.04 — reuses
-/// [`Cir`]'s own `Default` parameterization
-/// verbatim, since φ≡0 degenerates `CirPlusPlus` to `Cir` exactly (this
-/// file's own `cir_pp_zero_shift_equals_cir` test proves it bit-for-bit).
-/// Feller condition `2κθ = 0.2 ≥ σ² = 0.04` holds with a comfortable
-/// margin. This deliberately does **not** reuse this file's own
-/// `cir_pp_is_deterministic` test values (κ=0.5, θ=0.04, σ=0.2, x₀=0.03):
-/// those sit exactly *on* the Feller boundary in real arithmetic
-/// (`2·0.5·0.04 = 0.04 = 0.2²`), but `0.2 * 0.2 == 0.040000000000000001`
-/// in `f64` — one ulp above `0.04` — so `CirPlusPlus::new`'s sub-Feller
-/// guard fires and prints a warning on every construction. A `Default`
-/// that warns on construction defeats the point of a zero-friction entry
-/// point, so this picks a parameterization with real headroom instead.
-/// t=1, n=252 — one trading year of daily steps (this crate's `Default`
-/// convention).
+/// [`Cir`]'s `Default` (κ=2.5, θ=0.04, σ=0.2, x₀=0.04) at φ≡0, clear of the Feller boundary,
+/// where `f64` rounding fires the warning; t=1, 252 points, a trading year of daily closes.
 impl<T: FloatExt> Default for CirPlusPlus<T, Unseeded> {
   fn default() -> Self {
     Self::new(

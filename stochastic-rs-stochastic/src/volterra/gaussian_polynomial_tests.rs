@@ -160,3 +160,17 @@ fn quintic_zeroes_the_quadratic_and_quartic_terms() {
 fn rejects_n_below_two() {
   let _ = GaussianPolynomialVolatility::new(kernel(), array![0.2], 1, None, Deterministic::new(1));
 }
+
+#[test]
+fn the_horizon_setter_takes_the_optional_horizon_new_takes() {
+  let built = |t: Option<f64>| {
+    GaussianPolynomialVolatility::new(kernel(), array![0.1, 0.2], N, t, Deterministic::new(5))
+  };
+  for t in [Some(2.0), None] {
+    assert_eq!(
+      built(Some(1.0)).with_horizon(t).sample(),
+      built(t).sample(),
+      "t = {t:?}"
+    );
+  }
+}

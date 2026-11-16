@@ -22,12 +22,12 @@ fn finite(out: &Array1<f64>) -> bool {
 }
 
 #[test]
-fn bm_with_steps_round_trip() {
+fn bm_with_points_round_trip() {
   let expected = Bm::<f64> {
     n: 64,
     ..Bm::<f64>::default()
   };
-  let got = Bm::<f64>::default().with_steps(64);
+  let got = Bm::<f64>::default().with_points(64);
   assert_eq!(got.n, 64);
   assert_eq!(fields(&got), fields(&expected));
   assert!(finite(&got.sample()));

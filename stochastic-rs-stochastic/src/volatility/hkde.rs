@@ -55,7 +55,7 @@ pub struct Hkde<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub eta1: T,
   /// Downward jump rate parameter (eta2 > 0).
   pub eta2: T,
-  /// Number of time steps.
+  /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
   /// Initial spot.
   pub s0: T,
@@ -286,10 +286,9 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
     self
   }
 
-  /// Replace the number of simulation steps `n`; rebuilds the cached
-  /// correlated-Gaussian generator, whose length and step size derive
-  /// from `n`.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
+  /// generator, whose length and step size derive from `n`.
+  pub fn with_points(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);

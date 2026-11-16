@@ -22,12 +22,12 @@ fn finite(out: &Array1<f64>) -> bool {
 }
 
 #[test]
-fn gn_with_steps_round_trip() {
+fn gn_with_increments_round_trip() {
   let expected = Gn::<f64> {
     n: 64,
     ..Gn::<f64>::default()
   };
-  let got = Gn::<f64>::default().with_steps(64);
+  let got = Gn::<f64>::default().with_increments(64);
   assert_eq!(got.n, 64);
   assert_eq!(fields(&got), fields(&expected));
   assert!(finite(&got.sample()));

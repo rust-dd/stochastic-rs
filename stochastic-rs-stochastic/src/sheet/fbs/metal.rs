@@ -23,7 +23,7 @@ impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
     if sheets == 0 {
       return Ok(Vec::new());
     }
-    let (m, n) = (self.m, self.n);
+    let (m, n) = (self.rows, self.cols);
     let cells = self.metal_cells()?;
     let lam = self
       .lam
@@ -71,7 +71,7 @@ impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
           DeviceError::Launch("sheet embedding sides must be nonzero powers of two".into())
         })
     };
-    let shape = (side(self.m)?, side(self.n)?);
+    let shape = (side(self.rows)?, side(self.cols)?);
     if self.lam.dim() != shape {
       return Err(DeviceError::Launch(
         "sheet dimensions do not match the stored embedding".into(),

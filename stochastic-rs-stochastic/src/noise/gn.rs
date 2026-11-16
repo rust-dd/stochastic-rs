@@ -21,7 +21,7 @@ use crate::traits::ProcessExt;
 
 #[derive(Copy, Clone)]
 pub struct Gn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Number of `N(0, dt)` increments sampled (no leading zero).
+  /// Increments drawn, with no leading zero; `dt = t / n`.
   pub n: usize,
   /// Horizon of the path; `None` is a unit horizon.
   /// The `n` increments span it, so `dt = t / n`.
@@ -33,9 +33,7 @@ pub struct Gn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `Gn::default().with_steps(500)`. No persisted cache: `sampler()`
-/// builds its Gaussian source fresh from `self` every call.
+/// No persisted cache: `sampler()` builds its Gaussian source fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> Gn<T, S> {
   pub fn new(n: usize, t: Option<T>, seed: S) -> Self {
     assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
@@ -54,7 +52,7 @@ impl<T: FloatExt, S: SeedExt> Gn<T, S> {
 
 impl<T: FloatExt, S: SeedExt, B> Gn<T, S, B> {
   /// Replace the number of increments `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  pub fn with_increments(mut self, n: usize) -> Self {
     self.n = n;
     self
   }
@@ -234,3 +232,13 @@ py_process_1d!(PyGn, Gn,
   params: (n: usize, t: Option<f64>),
   device
 );
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn ten_increments_split_a_unit_horizon_into_tenths() {
+    assert_eq!(Gn::<f64>::default().with_increments(10).dt(), 0.1);
+  }
+}

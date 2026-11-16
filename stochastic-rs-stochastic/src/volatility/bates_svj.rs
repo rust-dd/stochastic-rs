@@ -54,7 +54,7 @@ pub struct BatesSvj<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Correlation between asset and variance Brownian motions
   pub rho: T,
-  /// Number of discrete time steps in the simulation grid
+  /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
   /// Initial spot.
   pub s0: T,
@@ -264,10 +264,9 @@ impl<T: FloatExt, S: SeedExt, B> BatesSvj<T, S, B> {
     self
   }
 
-  /// Replace the number of simulation steps `n`; rebuilds the cached
-  /// correlated-Gaussian generator, whose length and step size derive
-  /// from `n`.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
+  /// generator, whose length and step size derive from `n`.
+  pub fn with_points(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);

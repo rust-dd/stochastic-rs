@@ -34,6 +34,61 @@ pub enum CtrwJumpLaw<T: FloatExt> {
   Rademacher { scale: T },
 }
 
+impl<T: FloatExt> CtrwWaitingLaw<T> {
+  #[track_caller]
+  fn assert_valid(&self) {
+    match *self {
+      CtrwWaitingLaw::Exponential { rate } => assert_positive("rate", rate),
+      CtrwWaitingLaw::Gamma { shape, rate } => {
+        assert_positive("shape", shape);
+        assert_positive("rate", rate);
+      }
+      CtrwWaitingLaw::InverseGaussian { mu, lambda } => {
+        assert_positive("mu", mu);
+        assert_positive("lambda", lambda);
+      }
+      CtrwWaitingLaw::PositiveStable { alpha, scale } => {
+        assert!(
+          alpha > T::zero() && alpha < T::one(),
+          "alpha must satisfy `alpha > T::zero() && alpha < T::one()`, got alpha = {alpha:?}"
+        );
+        assert_positive("scale", scale);
+      }
+    }
+  }
+}
+
+impl<T: FloatExt> CtrwJumpLaw<T> {
+  #[track_caller]
+  fn assert_valid(&self) {
+    match *self {
+      CtrwJumpLaw::Normal { mean, std } => {
+        assert!(
+          mean.is_finite(),
+          "mean must satisfy `mean.is_finite()`, got mean = {mean:?}"
+        );
+        assert_positive("std", std);
+      }
+      CtrwJumpLaw::SymmetricStable { alpha, scale } => {
+        assert!(
+          alpha > T::zero() && alpha <= T::from_usize_(2),
+          "alpha must satisfy `alpha > T::zero() && alpha <= T::from_usize_(2)`, got alpha = {alpha:?}"
+        );
+        assert_positive("scale", scale);
+      }
+      CtrwJumpLaw::Rademacher { scale } => assert_positive("scale", scale),
+    }
+  }
+}
+
+#[track_caller]
+fn assert_positive<T: FloatExt>(name: &str, value: T) {
+  assert!(
+    value > T::zero() && value.is_finite(),
+    "{name} must satisfy `{name} > T::zero() && {name}.is_finite()`, got {name} = {value:?}"
+  );
+}
+
 /// Continuous-time random walk sampled on a fixed output grid.
 pub struct Ctrw<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Inter-arrival-time (waiting-time) distribution between jumps.
@@ -72,6 +127,8 @@ impl<T: FloatExt, S: SeedExt> Ctrw<T, S> {
       t.is_none_or(|t| t > T::zero() && t.is_finite()),
       "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
     );
+    waiting.assert_valid();
+    jumps.assert_valid();
     Self {
       backend: Cpu,
       waiting,
@@ -190,58 +247,32 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     let t_max = self.t.unwrap_or(T::one()).to_f64().unwrap();
     let dt = t_max / n_increments as f64;
 
+    self.waiting.assert_valid();
+    self.jumps.assert_valid();
     let waiting = match self.waiting {
       CtrwWaitingLaw::Exponential { rate } => {
-        assert!(
-          rate > T::zero(),
-          "Ctrw Exponential waiting requires rate > 0"
-        );
         WaitingSampler::Exp(SimdExp::new(rate).seeded(&self.seed))
       }
       CtrwWaitingLaw::Gamma { shape, rate } => {
-        assert!(
-          shape > T::zero() && rate > T::zero(),
-          "Ctrw Gamma waiting requires shape > 0 and rate > 0"
-        );
         WaitingSampler::Gamma(SimdGamma::<T>::new(shape, T::one() / rate).seeded(&self.seed))
       }
       CtrwWaitingLaw::InverseGaussian { mu, lambda } => {
-        assert!(
-          mu > T::zero() && lambda > T::zero(),
-          "Ctrw Ig waiting requires mu > 0 and lambda > 0"
-        );
         WaitingSampler::Ig(SimdInverseGauss::<T>::new(mu, lambda).seeded(&self.seed))
       }
-      CtrwWaitingLaw::PositiveStable { alpha, scale } => {
-        assert!(
-          alpha > T::zero() && alpha < T::one() && scale > T::zero(),
-          "Ctrw positive-stable waiting requires alpha in (0,1) and scale > 0"
-        );
-        WaitingSampler::PosStable {
-          alpha: alpha.to_f64().unwrap(),
-          log_scale: scale.to_f64().unwrap().ln(),
-        }
-      }
+      CtrwWaitingLaw::PositiveStable { alpha, scale } => WaitingSampler::PosStable {
+        alpha: alpha.to_f64().unwrap(),
+        log_scale: scale.to_f64().unwrap().ln(),
+      },
     };
 
     let jumps = match self.jumps {
       CtrwJumpLaw::Normal { mean, std } => {
-        assert!(std > T::zero(), "Ctrw normal jumps require std > 0");
         JumpSampler::Normal(SimdNormal::new(mean, std).seeded(&self.seed))
       }
-      CtrwJumpLaw::SymmetricStable { alpha, scale } => {
-        assert!(
-          alpha > T::zero() && alpha <= T::from_usize_(2) && scale > T::zero(),
-          "Ctrw stable jumps require alpha in (0,2] and scale > 0"
-        );
-        JumpSampler::Stable(
-          SimdAlphaStable::<T>::new(alpha, T::zero(), scale, T::zero()).seeded(&self.seed),
-        )
-      }
-      CtrwJumpLaw::Rademacher { scale } => {
-        assert!(scale > T::zero(), "Ctrw rademacher jumps require scale > 0");
-        JumpSampler::Rademacher(scale)
-      }
+      CtrwJumpLaw::SymmetricStable { alpha, scale } => JumpSampler::Stable(
+        SimdAlphaStable::<T>::new(alpha, T::zero(), scale, T::zero()).seeded(&self.seed),
+      ),
+      CtrwJumpLaw::Rademacher { scale } => JumpSampler::Rademacher(scale),
     };
 
     let uniform = SimdUniform::<f64>::new(0.0, 1.0).seeded(&self.seed);

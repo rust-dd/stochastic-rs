@@ -268,10 +268,9 @@ impl<T: FloatExt, S: SeedExt, B> DuffieKan<T, S, B> {
     self
   }
 
-  /// Replace the number of simulation steps `n`; rebuilds the cached
-  /// correlated-Gaussian generator, whose length and step size derive
-  /// from `n`.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
+  /// generator, whose length and step size derive from `n`.
+  pub fn with_points(mut self, n: usize) -> Self {
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self

@@ -79,29 +79,30 @@ impl<T: FloatExt, S: SeedExt> Fbm<T, S, Cpu> {
     Fgn::new(hurst, n - 1, t, Unseeded)
   }
 
-  /// Replace `hurst`; rebuilds the embedded `fgn`.
+  /// Replace `hurst`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     self.hurst = hurst;
     self.fgn = Self::fgn_for(hurst, self.n, self.t);
     self
   }
 
-  /// Replace the number of simulation steps `n`; rebuilds the embedded
-  /// `fgn`. Panics if `n < 2`, matching `new()`'s own assertion.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  pub fn with_points(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.fgn = Self::fgn_for(self.hurst, n, self.t);
     self
   }
 
-  /// Replace the simulation horizon `t`; rebuilds the embedded `fgn`.
+  /// Replace `t`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     self.t = t;
     self.fgn = Self::fgn_for(self.hurst, self.n, t);
     self
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> Fbm<T, S, B> {
   /// Replace the seed strategy's value, all else unchanged. `fgn`'s own
   /// seed is a never-read dummy, so this does not touch it.
   pub fn with_seed(mut self, seed: S) -> Self {
@@ -132,8 +133,7 @@ impl<T: FloatExt, S: SeedExt, B> Fbm<T, S, B> {
   }
 }
 
-/// H=0.7, t=1 — a textbook Fbm parameterization. n=252 — one trading year
-/// of daily steps (this crate's `Default` convention).
+/// H=0.7, t=1, a textbook Fbm; 252 points, a trading year of daily closes.
 impl<T: FloatExt> Default for Fbm<T, Unseeded, Cpu> {
   fn default() -> Self {
     Self::new(T::from_f64_fast(0.7), 252, Some(T::one()), Unseeded)

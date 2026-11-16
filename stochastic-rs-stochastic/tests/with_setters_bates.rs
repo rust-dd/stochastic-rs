@@ -1,74 +1,5 @@
-//! TDD tests for A1-c Task 2: `with_*` builder setters on `Bates1996`
-//! (jump module, generic over its jump-size distribution `D`). Split from
-//! `HestonStochCorr`'s own tests (now `with_setters_heston_stoch_corr.rs`)
-//! to keep the combined file under the project's 600-line cap, the same
-//! way Task 2 of the zero-exception-reproducibility wave split
-//! `src/jump/bates.rs` into `bates.rs`/`bates_tests.rs`/`bates_python.rs`.
-//!
-//! Same pattern as the other `with_setters_*.rs` files, with one
-//! type-specific wrinkle documented below. `Bates1996` caches a
-//! correlated-Gaussian generator (`cgns`) keyed on `(rho, n, t)`, exactly
-//! like `BatesSvj`/`Hkde`; its `cpoisson: CompoundPoisson<T, D, S>` field has
-//! no `PartialEq`, so it is excluded from
-//! the generic field-equality snapshot and instead checked via
-//! `Poisson::lambda`, a directly comparable sub-field.
-//!
-//! **`Bates1996` reproducibility status — now fully fixed.** Two separate
-//! bugs used to keep this type from being seed-reproducible, both closed by
-//! this file's own revision history:
-//!
-//! - `BatesSampler::fill_paths` used to drive the correlated-Gaussian
-//!   generator via a bare `self.cgns.sample()`, which only ever read `cgns`'s
-//!   own permanently-`Unseeded` field (`cgns` is always constructed with the
-//!   literal `Unseeded` — see `Bates1996::new` and
-//!   `with_rho`/`with_steps`/`with_horizon`, which rebuild it identically),
-//!   unlike every sibling `cgns`-holding type in this crate (`DuffieKan`,
-//!   `DuffieKanJumpExp`, `BatesSvj`, `DoubleHeston`, `Hkde`), which drew via
-//!   `cgns.sample_impl(&self.seed)`, explicitly threading the *outer* seed
-//!   through. Fixed by an earlier wave: `fill_paths` now drives `cgns` via
-//!   `cgns.sample_impl(&self.seed)` (an owned, per-chunk-derived copy),
-//!   making the variance path `v` fully seed-reproducible.
-//! - `cpoisson: CompoundPoisson<T, D>` was independently, structurally
-//!   pinned to `Unseeded` (the same shape as `Merton`/`Kou`/`LevyDiffusion`'s
-//!   field of the same name before their own fix), so jump arrivals/sizes —
-//!   and therefore the price path `s`, which sums jump increments at every
-//!   step — were not seed-reproducible even after the `cgns` fix. Closed by
-//!   the zero-exception-reproducibility wave's Task 2: `cpoisson` is now
-//!   `CompoundPoisson<T, D, S>`, and `Bates1996::new` absorbs its
-//!   construction from a `jump_dist: D` parameter and the existing `lambda:
-//!   T`, seeded from the constructor's own `seed: S`.
-//!
-//! `Bates1996` is now **fully** seed-reproducible — both `s` and `v` agree
-//! for two identically-seeded objects. Dedicated reproducibility tests
-//! (bit-identity, thread-count independence, distinctness) live in
-//! `deterministic_parallelism_bates_rough_heston.rs` and
-//! `reproducibility_bates_jump_fou.rs`; the setter-round-trip tests below
-//! were written against the old, jump-half-unreproducible behavior and
-//! mostly still pass unchanged (none of them asserted non-reproducibility as
-//! a requirement) — `with_rho`/`with_seed` below still only assert the field
-//! was set and sampling stays finite, not bit-exact equality against a fresh
-//! construction like every other cached type in this wave gets — a
-//! *stronger*, `Deterministic`-seeded version pinning `v` exactly is now
-//! possible but was not retrofitted here, to keep this task's
-//! setter-round-trip scope unchanged. `with_steps` is one exception to that
-//! general limitation — growing `n` past the old cache's buffer length would
-//! panic with an out-of-bounds index if the cache were left stale,
-//! regardless of any RNG values, so "no panic" is still a genuine,
-//! deterministic proof of resize. `with_horizon` is the other: a degenerate
-//! parameterization (`v0 = alpha = 0`, jump intensity `0`) pins the variance
-//! path at exactly `0` and the jump increments at exactly `0` with *no RNG
-//! draw at all* (see
-//! `bates_with_horizon_rebuilds_cgns_cache_dt_via_degenerate_recurrence`),
-//! collapsing price to the exact, RNG-independent recurrence
-//! `s[i] = s[i-1]*(1 + drift*dt)` — making `dt`, and therefore whether
-//! `with_horizon` rebuilt the cache, directly observable. Two new tests,
-//! `bates_with_lambda_syncs_cpoisson_and_changes_sampled_path` and
-//! `bates_with_cpoisson_changes_sampled_intensity`, guard the
-//! single-source-of-truth invariant a Task 1 review caught broken on
-//! `Merton` and the Task 2 controller addendum found live on `Bates1996`
-//! itself (`with_lambda` used to leave `cpoisson.poisson.lambda` — the value
-//! that actually governed jump arrivals — stale). See `Bates1996::{lambda,
-//! cpoisson, with_lambda, with_cpoisson}`'s doc comments.
+//! `Bates1996`'s setters round-trip their fields; the `cgns` setters are checked by resizing past
+//! the old buffer and by a jump-free degenerate recurrence that makes `dt` observable.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -383,17 +314,12 @@ fn bates_with_rho_round_trip() {
 }
 
 #[test]
-fn bates_with_steps_rebuilds_cgns_cache() {
+fn bates_with_points_rebuilds_cgns_cache() {
   let mut expected = bates_base();
   expected.n = 1024;
-  // Grow well past the baseline's 256-length cache: if `with_steps` left
-  // `cgns` stale (still sized for 256 increments), `fill_paths`'s
-  // `cgn1[i - 1]`/`cgn2[i - 1]` indexing would panic with an out-of-bounds
-  // access once `i` exceeded the old length — a deterministic,
-  // RNG-value-independent proof of resize that works regardless of whether
-  // sampling is otherwise reproducible (see the module doc: `Bates1996` is
-  // now fully seed-reproducible).
-  let got = bates_base().with_steps(1024);
+  // Past the old 256-length `cgns`, a stale cache would index out of bounds: a resize proof
+  // that reads no random value.
+  let got = bates_base().with_points(1024);
   assert_eq!(got.n, 1024);
   assert_eq!(bates_fields(&got), bates_fields(&expected));
   assert!(finite2(&got.sample()));

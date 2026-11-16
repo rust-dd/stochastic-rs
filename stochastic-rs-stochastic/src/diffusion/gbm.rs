@@ -108,7 +108,9 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
       backend: Cpu,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> Gbm<T, S, B> {
   /// Replace `mu`; rebuilds the cached terminal-log-normal parameters
   /// (`ln_mu`/`ln_sigma`, read by [`DistributionExt`]'s moment methods) so
   /// they stay consistent with the new `mu`.
@@ -132,9 +134,8 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged. Does
-  /// not touch the terminal-log-normal cache, which does not depend on `n`.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; the terminal log-normal cache does not read it.
+  pub fn with_points(mut self, n: usize) -> Self {
     self.n = n;
     self
   }
@@ -154,8 +155,8 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
   }
 }
 
-/// μ=0.05, σ=0.2, x₀=100, t=1, n=252 — one trading year of daily steps on a
-/// textbook equity (matches this file's own tests).
+/// μ=0.05, σ=0.2, x₀=100, t=1, a textbook equity (this file's tests); 252 points, a trading year of
+/// daily closes.
 impl<T: FloatExt> Default for Gbm<T, Unseeded> {
   fn default() -> Self {
     Self::new(

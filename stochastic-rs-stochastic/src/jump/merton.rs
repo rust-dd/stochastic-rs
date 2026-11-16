@@ -208,7 +208,7 @@ where
   }
 
   /// Replace `n`; the jump driver's event count follows it, though sampling never reads that.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  pub fn with_points(mut self, n: usize) -> Self {
     self.n = n;
     self.resync_cpoisson_poisson();
     self

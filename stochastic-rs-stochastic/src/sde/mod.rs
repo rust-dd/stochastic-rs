@@ -170,8 +170,8 @@
 //! );
 //!
 //! let x0 = array![100.0_f64];
-//! let paths = sde.solve(&x0, 0.0, 1.0, 0.001, 100, SdeMethod::Milstein, &Deterministic::new(42));
-//! // paths.shape() == [100, 1001, 1]
+//! let paths = sde.solve(&x0, 0.0, 1.0, 1000, 100, SdeMethod::Milstein, &Deterministic::new(42));
+//! assert_eq!(paths.shape(), [100, 1001, 1]);
 //! ```
 
 mod fractional;
@@ -281,14 +281,14 @@ where
   F: Fn(&Array1<T>, T) -> Array1<T>,
   G: Fn(&Array1<T>, T) -> Array2<T>,
 {
-  /// `n_paths` paths `[n_paths, steps + 1, dim]` from `x0` at index 0; every Gaussian increment, or
-  /// each dimension's fGN seed under [`NoiseModel::Fractional`], is drawn from `seed`.
+  /// `[n_paths, steps + 1, dim]` paths from `x0` at `t0` to `t1`, `dt = (t1 − t0) / steps`; the
+  /// Gaussian increments, or every fGN seed under [`NoiseModel::Fractional`], come from `seed`.
   pub fn solve<S: SeedExt>(
     &self,
     x0: &Array1<T>,
     t0: T,
     t1: T,
-    dt: T,
+    steps: usize,
     n_paths: usize,
     method: SdeMethod,
     seed: &S,
@@ -296,18 +296,22 @@ where
   where
     B: Default,
   {
+    assert!(
+      steps >= 1,
+      "steps must satisfy `steps >= 1`, got steps = {steps:?}"
+    );
+    let dt = (t1 - t0) / T::from_usize_(steps);
     match self.noise {
       NoiseModel::Gaussian => {
         let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(seed);
         match method {
-          SdeMethod::Euler => self.solve_euler_gauss(x0, t0, t1, dt, n_paths, &mut normal),
-          SdeMethod::Milstein => self.solve_milstein_gauss(x0, t0, t1, dt, n_paths, &mut normal),
-          SdeMethod::SRK2 => self.solve_srk2_gauss(x0, t0, t1, dt, n_paths, &mut normal),
-          SdeMethod::SRK4 => self.solve_srk4_gauss(x0, t0, t1, dt, n_paths, &mut normal),
+          SdeMethod::Euler => self.solve_euler_gauss(x0, t0, steps, dt, n_paths, &mut normal),
+          SdeMethod::Milstein => self.solve_milstein_gauss(x0, t0, steps, dt, n_paths, &mut normal),
+          SdeMethod::SRK2 => self.solve_srk2_gauss(x0, t0, steps, dt, n_paths, &mut normal),
+          SdeMethod::SRK4 => self.solve_srk4_gauss(x0, t0, steps, dt, n_paths, &mut normal),
         }
       }
       NoiseModel::Fractional => {
-        let steps = ((t1 - t0) / dt).ceil().to_usize().unwrap();
         let dim = x0.len();
         let mut incs = Array3::zeros((n_paths, steps, dim));
 

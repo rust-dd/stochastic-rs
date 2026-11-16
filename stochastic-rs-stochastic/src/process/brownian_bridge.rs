@@ -46,11 +46,7 @@ use crate::traits::ProcessExt;
 pub struct BrownianBridge<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Diffusion scale σ multiplying `dW_s` in the bridge SDE.
   pub sigma: T,
-  /// Number of points sampled along the path. Both endpoints are
-  /// represented as distinct points only when `n >= 2`; `n = 1` collapses to
-  /// the single value `x0`, not `xt` — an arbitrary but documented tie-break
-  /// (matching how every other single-path process in this crate degrades at
-  /// `n = 1`), not a claim that `x0` is somehow more correct than `xt` here.
+  /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
   /// Initial value; `None` starts at zero.
   pub x0: Option<T>,
@@ -122,8 +118,8 @@ impl<T: FloatExt, S: SeedExt, B> BrownianBridge<T, S, B> {
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path, all else unchanged.
+  pub fn with_points(mut self, n: usize) -> Self {
     self.n = n;
     self
   }

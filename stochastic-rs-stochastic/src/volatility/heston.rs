@@ -41,7 +41,7 @@ pub struct Heston<T: FloatExt, Sch: HestonScheme = Euler, S: SeedExt = Unseeded,
   pub rho: T,
   /// Drift of the stock price
   pub mu: T,
-  /// Number of time steps
+  /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
@@ -148,10 +148,8 @@ impl<T: FloatExt, S: SeedExt> Heston<T, Euler, S> {
   }
 }
 
-/// s₀=100, v₀=0.04, κ=2.0, θ=0.04, σ=0.3, ρ=-0.7, μ=0.05 — a
-/// parameterization of the Heston (1993) stochastic-volatility model
-/// satisfying the Feller condition (`2κθ = 0.16 ≥ σ² = 0.09`). t=1, n=252
-/// — one trading year of daily steps (this crate's `Default` convention).
+/// s₀=100, v₀=0.04, κ=2.0, θ=0.04, σ=0.3, ρ=-0.7, μ=0.05, a Heston (1993) model inside Feller
+/// (`2κθ = 0.16 ≥ σ² = 0.09`); t=1, 252 points, a trading year of daily closes.
 impl<T: FloatExt> Default for Heston<T, Euler, Unseeded> {
   fn default() -> Self {
     Self::new(
@@ -240,10 +238,9 @@ impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
     self
   }
 
-  /// Replace the number of simulation steps `n`; rebuilds the cached
-  /// correlated-Gaussian generator, whose length and step size derive
-  /// from `n`.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
+  /// generator, whose length and step size derive from `n`.
+  pub fn with_points(mut self, n: usize) -> Self {
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self

@@ -72,12 +72,8 @@ where
   pub t: Option<T>,
   /// Treatment of a negative square-root state after a step; the Feller condition is not required.
   pub boundary: VarianceBoundary,
-  /// Correlated-Gaussian generator driving the price/variance diffusion.
-  /// Constructed once (and rebuilt by `with_rho`/`with_steps`/`with_horizon`)
-  /// with a `Cgns<T>` (`S = Unseeded`) that itself is never consulted — the
-  /// sampler drives it via `cgns.sample_impl(&self.seed)` instead, so this
-  /// field's own dead `Unseeded` is irrelevant to reproducibility. Private,
-  /// so this indirection is an implementation detail.
+  /// Correlated-Gaussian generator of the price/variance diffusion; the sampler drives it through
+  /// `cgns.sample_impl(&self.seed)`, so its own `Unseeded` seed is never read.
   cgns: Cgns<T>,
   /// The jump driver, seeded from `seed.derive()`; sampling reads its law and seed but takes the
   /// rate from `lambda`, so replace it through [`with_cpoisson`](Self::with_cpoisson).
@@ -277,7 +273,7 @@ where
 
   /// Replace `n`; rebuilds the correlated-Gaussian generator, and the jump driver's event count
   /// follows, though sampling never reads that.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  pub fn with_points(mut self, n: usize) -> Self {
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self.resync_cpoisson_poisson();

@@ -10,8 +10,10 @@
 use ndarray::Array2;
 use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::autoregressive::ar::ARp;
 use stochastic_rs_stochastic::device::Cpu;
+use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::diffusion::wishart::Wishart;
 use stochastic_rs_stochastic::interest::black_karasinski::BlackKarasinski;
@@ -141,4 +143,26 @@ fn a_dense_ctrw_keeps_to_the_host() {
     "the reason should name the kernels' count limit"
   );
   assert!(build(2.0, 512).device_ready());
+}
+
+/// A setter that rebuilds no cache is defined for every backend, so a process can be adjusted after
+/// it has moved to a device.
+#[test]
+fn a_setter_is_defined_for_every_backend() {
+  fn retune<B>(c: Cir<f64, Unseeded, B>) -> Cir<f64, Unseeded, B> {
+    c.with_sigma(0.3).with_points(128)
+  }
+  let c = retune(Cir::<f64>::default());
+  assert_eq!((c.sigma, c.n), (0.3, 128));
+}
+
+#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#[test]
+fn a_device_backed_process_takes_its_setters() {
+  use stochastic_rs_stochastic::device::Metal;
+  let c = Cir::<f32>::default()
+    .on::<Metal>()
+    .with_sigma(0.3)
+    .with_points(128);
+  assert_eq!((c.sigma, c.n), (0.3, 128));
 }

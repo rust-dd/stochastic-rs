@@ -160,8 +160,8 @@ impl<T: FloatExt, S: SeedExt, B> BlackKarasinski<T, S, B> {
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path, all else unchanged.
+  pub fn with_points(mut self, n: usize) -> Self {
     self.n = n;
     self
   }
@@ -179,12 +179,8 @@ impl<T: FloatExt, S: SeedExt, B> BlackKarasinski<T, S, B> {
   }
 }
 
-/// θ(t)≡0.05 (this file's own `theta_const` test fixture), a=0.8, σ=0.1,
-/// r₀=0.03, t=1 — matches
-/// `black_karasinski_log_mean_matches_ou`/`black_karasinski_is_deterministic`
-/// below (both use these values at t=1; their own `n` varies across this
-/// file's tests and is not itself a fixture value). n=252 — one trading
-/// year of daily steps (this crate's `Default` convention).
+/// θ(t)≡0.05, a=0.8, σ=0.1, r₀=0.03, t=1, the values this file's tests use; 252 points, a trading
+/// year of daily closes.
 impl<T: FloatExt> Default for BlackKarasinski<T, Unseeded> {
   fn default() -> Self {
     Self::new(

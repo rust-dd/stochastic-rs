@@ -169,3 +169,26 @@ fn rejects_n_below_two() {
     Deterministic::new(1),
   );
 }
+
+#[test]
+fn the_horizon_setter_takes_the_optional_horizon_new_takes() {
+  let built = |t: Option<f64>| {
+    VolterraSquareRoot::new(
+      kernel(),
+      KAPPA,
+      THETA,
+      NU,
+      N,
+      THETA,
+      t,
+      Deterministic::new(5),
+    )
+  };
+  for t in [Some(2.0), None] {
+    assert_eq!(
+      process(5).with_horizon(t).sample(),
+      built(t).sample(),
+      "t = {t:?}"
+    );
+  }
+}

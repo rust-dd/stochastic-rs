@@ -52,7 +52,7 @@ plain_test!(cev_with_mu_round_trip, with_mu, mu, 0.06);
 plain_test!(cev_with_sigma_round_trip, with_sigma, sigma, 0.3);
 plain_test!(cev_with_gamma_round_trip, with_gamma, gamma, 0.5);
 plain_test!(cev_with_x0_round_trip, with_x0, x0, Some(120.0));
-plain_test!(cev_with_steps_round_trip, with_steps, n, 64usize);
+plain_test!(cev_with_points_round_trip, with_points, n, 64usize);
 plain_test!(cev_with_horizon_round_trip, with_horizon, t, Some(2.0));
 
 #[test]

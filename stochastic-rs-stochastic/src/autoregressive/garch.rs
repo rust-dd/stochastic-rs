@@ -74,6 +74,7 @@ impl<T: FloatExt, S: SeedExt> Garch<T, S> {
       omega > T::zero(),
       "omega must satisfy `omega > T::zero()`, got omega = {omega:?}"
     );
+    variance_denominator(&alpha, &beta);
     Garch {
       backend: Cpu,
       omega,
@@ -86,6 +87,22 @@ impl<T: FloatExt, S: SeedExt> Garch<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Garch<T, S, B> {}
+
+/// `1 − Σα − Σβ`, the unconditional variance's denominator; panics unless positive, so `new` and
+/// the samplers, which a field written after `new` reaches, share one check.
+#[track_caller]
+fn variance_denominator<T: FloatExt>(alpha: &Array1<T>, beta: &Array1<T>) -> T {
+  let sum_alpha: T = alpha.iter().cloned().sum();
+  let sum_beta: T = beta.iter().cloned().sum();
+  let denom = T::one() - sum_alpha - sum_beta;
+  assert!(
+    denom > T::zero(),
+    "alpha must satisfy `1 - alpha.sum() - beta.sum() > 0`, got alpha = {:?}, beta = {:?}",
+    alpha.to_vec(),
+    beta.to_vec()
+  );
+  denom
+}
 
 /// The Euler engine's view of GARCH(1,1).
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
@@ -111,7 +128,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   /// first point: the state it starts from is the seed variance and the
   /// not-yet-warm marker, not a value the path reports.
   fn initial_state(&self) -> [T; 4] {
-    let denom = T::one() - self.alpha[0] - self.beta[0];
+    let denom = variance_denominator(&self.alpha, &self.beta);
     [T::zero(), self.omega / denom, T::zero(), T::zero()]
   }
 
@@ -263,14 +280,7 @@ impl<T: FloatExt> GarchSampler<T> {
     let mut sigma2 = Array1::<T>::zeros(n);
     let var_floor = T::from_f64_fast(1e-12);
 
-    // Sum of alpha/beta for unconditional variance initialization
-    let sum_alpha = self.alpha.iter().cloned().sum();
-    let sum_beta = self.beta.iter().cloned().sum();
-    let denom = T::one() - sum_alpha - sum_beta;
-    assert!(
-      denom > T::zero(),
-      "Garch requires sum(alpha) + sum(beta) < 1 for finite unconditional variance"
-    );
+    let denom = variance_denominator(&self.alpha, &self.beta);
 
     for t in 0..n {
       if t == 0 {

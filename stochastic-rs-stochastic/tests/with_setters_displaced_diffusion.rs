@@ -53,7 +53,7 @@ plain_test!(dd_with_mu_round_trip, with_mu, mu, 0.06);
 plain_test!(dd_with_sigma_round_trip, with_sigma, sigma, 0.3);
 plain_test!(dd_with_beta_round_trip, with_beta, beta, 10.0);
 plain_test!(dd_with_x0_round_trip, with_x0, x0, 50.0);
-plain_test!(dd_with_steps_round_trip, with_steps, n, 64usize);
+plain_test!(dd_with_points_round_trip, with_points, n, 64usize);
 plain_test!(dd_with_horizon_round_trip, with_horizon, t, Some(2.0));
 
 #[test]

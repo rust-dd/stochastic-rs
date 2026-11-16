@@ -28,33 +28,34 @@ fn seed() -> Deterministic {
 }
 
 #[test]
-fn fgn_resizes_through_with_steps() {
-  let p = Fgn::<f64, _>::new(0.7, 10, Some(1.0), seed()).with_steps(1000);
+fn fgn_resizes_through_with_increments() {
+  let p = Fgn::<f64, _>::new(0.7, 10, Some(1.0), seed()).with_increments(1000);
   assert_eq!(p.n(), 1000);
   assert_resized(&p.sample(), 1000);
 }
 
 #[test]
-fn fbm_resizes_through_with_steps() {
-  let p = Fbm::<f64, _>::new(0.7, 10, Some(1.0), seed()).with_steps(1000);
+fn fbm_resizes_through_with_points() {
+  let p = Fbm::<f64, _>::new(0.7, 10, Some(1.0), seed()).with_points(1000);
   assert_eq!(p.n(), 1000);
   assert_resized(&p.sample(), 1000);
 }
 
 #[test]
-fn fou_resizes_through_with_steps() {
-  let p = Fou::<f64, _>::new(0.7, 1.0, 0.0, 0.2, 10, Some(0.0), Some(1.0), seed()).with_steps(1000);
+fn fou_resizes_through_with_points() {
+  let p =
+    Fou::<f64, _>::new(0.7, 1.0, 0.0, 0.2, 10, Some(0.0), Some(1.0), seed()).with_points(1000);
   assert_resized(&p.sample(), 1000);
 }
 
 #[test]
-fn fgbm_resizes_through_with_steps() {
-  let p = Fgbm::<f64, _>::new(0.7, 0.05, 0.2, 10, Some(1.0), Some(1.0), seed()).with_steps(1000);
+fn fgbm_resizes_through_with_points() {
+  let p = Fgbm::<f64, _>::new(0.7, 0.05, 0.2, 10, Some(1.0), Some(1.0), seed()).with_points(1000);
   assert_resized(&p.sample(), 1000);
 }
 
 #[test]
-fn fcir_resizes_through_with_steps() {
+fn fcir_resizes_through_with_points() {
   let p = Fcir::<f64, _>::new(
     0.7,
     1.0,
@@ -66,35 +67,35 @@ fn fcir_resizes_through_with_steps() {
     VarianceBoundary::Floor,
     seed(),
   )
-  .with_steps(1000);
+  .with_points(1000);
   assert_resized(&p.sample(), 1000);
 }
 
 #[test]
-fn fjacobi_resizes_through_with_steps() {
+fn fjacobi_resizes_through_with_points() {
   let p =
-    FJacobi::<f64, _>::new(0.7, 1.0, 2.0, 0.2, 10, Some(0.5), Some(1.0), seed()).with_steps(1000);
+    FJacobi::<f64, _>::new(0.7, 1.0, 2.0, 0.2, 10, Some(0.5), Some(1.0), seed()).with_points(1000);
   assert_resized(&p.sample(), 1000);
 }
 
 #[test]
-fn cfbms_resizes_through_with_steps() {
-  let p = Cfbms::<f64, _>::new(0.7, 0.3, 10, Some(1.0), seed()).with_steps(1000);
+fn cfbms_resizes_through_with_points() {
+  let p = Cfbms::<f64, _>::new(0.7, 0.3, 10, Some(1.0), seed()).with_points(1000);
   let [a, b] = p.sample();
   assert_resized(&a, 1000);
   assert_resized(&b, 1000);
 }
 
 #[test]
-fn cfgns_resizes_through_with_steps() {
-  let p = Cfgns::<f64, _>::new(0.7, 0.3, 10, Some(1.0), seed()).with_steps(1000);
+fn cfgns_resizes_through_with_increments() {
+  let p = Cfgns::<f64, _>::new(0.7, 0.3, 10, Some(1.0), seed()).with_increments(1000);
   let [a, b] = p.sample();
   assert_resized(&a, 1000);
   assert_resized(&b, 1000);
 }
 
 #[test]
-fn cfou_resizes_through_with_steps() {
+fn cfou_resizes_through_with_points() {
   let p = Cfou::<f64, _>::new(
     0.7,
     1.0,
@@ -106,14 +107,14 @@ fn cfou_resizes_through_with_steps() {
     Some(1.0),
     seed(),
   )
-  .with_steps(1000);
+  .with_points(1000);
   let path = p.sample();
   assert_eq!(path.len(), 1000);
   assert!(path.iter().all(|z| z.re.is_finite() && z.im.is_finite()));
 }
 
 #[test]
-fn jump_fou_resizes_through_with_steps() {
+fn jump_fou_resizes_through_with_points() {
   let law = SimdNormal::<f64>::new(0.0, 0.1);
   let p = JumpFou::<f64, _, _>::new(
     0.7,
@@ -127,12 +128,12 @@ fn jump_fou_resizes_through_with_steps() {
     Some(1.0),
     seed(),
   )
-  .with_steps(1000);
+  .with_points(1000);
   assert_resized(&p.sample(), 1000);
 }
 
 #[test]
-fn jump_fou_custom_resizes_through_with_steps() {
+fn jump_fou_custom_resizes_through_with_points() {
   let times = SimdNormal::<f64>::new(0.5, 0.01);
   let sizes = SimdNormal::<f64>::new(0.0, 0.1);
   let p = JumpFOUCustom::<f64, _, _>::new(
@@ -147,7 +148,7 @@ fn jump_fou_custom_resizes_through_with_steps() {
     sizes,
     seed(),
   )
-  .with_steps(1000);
+  .with_points(1000);
   assert_resized(&p.sample(), 1000);
 }
 

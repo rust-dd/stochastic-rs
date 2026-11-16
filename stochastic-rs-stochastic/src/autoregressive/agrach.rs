@@ -93,6 +93,7 @@ impl<T: FloatExt, S: SeedExt> Agarch<T, S> {
       alpha.len(),
       delta.len()
     );
+    variance_denominator(&alpha, &delta, &beta);
     Self {
       backend: Cpu,
       omega,
@@ -106,6 +107,24 @@ impl<T: FloatExt, S: SeedExt> Agarch<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Agarch<T, S, B> {}
+
+/// `1 − Σα − Σδ/2 − Σβ`, the unconditional variance's denominator; panics unless positive, so `new`
+/// and the samplers, which a field written after `new` reaches, share one check.
+#[track_caller]
+fn variance_denominator<T: FloatExt>(alpha: &Array1<T>, delta: &Array1<T>, beta: &Array1<T>) -> T {
+  let sum_alpha: T = alpha.iter().cloned().sum();
+  let sum_delta_half = delta.iter().cloned().sum::<T>() * T::from_f64_fast(0.5);
+  let sum_beta: T = beta.iter().cloned().sum();
+  let denom = T::one() - sum_alpha - sum_delta_half - sum_beta;
+  assert!(
+    denom > T::zero(),
+    "alpha must satisfy `1 - alpha.sum() - 0.5 * delta.sum() - beta.sum() > 0`, got alpha = {:?}, delta = {:?}, beta = {:?}",
+    alpha.to_vec(),
+    delta.to_vec(),
+    beta.to_vec()
+  );
+  denom
+}
 
 /// The Euler engine's view of the asymmetric GARCH(1,1), whose threshold term
 /// is the same one GJR-GARCH takes under another name.
@@ -133,8 +152,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   /// first point: the state it starts from is the seed variance and the
   /// not-yet-warm marker, not a value the path reports.
   fn initial_state(&self) -> [T; 4] {
-    let half = T::from_f64_fast(0.5);
-    let denom = T::one() - self.alpha[0] - half * self.delta[0] - self.beta[0];
+    let denom = variance_denominator(&self.alpha, &self.delta, &self.beta);
     [T::zero(), self.omega / denom, T::zero(), T::zero()]
   }
 
@@ -289,15 +307,7 @@ impl<T: FloatExt> AgarchSampler<T> {
     let mut sigma2 = Array1::<T>::zeros(n);
     let var_floor = T::from_f64_fast(1e-12);
 
-    // Summation for unconditional variance init
-    let sum_alpha = self.alpha.iter().cloned().sum();
-    let sum_delta_half = self.delta.iter().cloned().sum::<T>() * T::from_f64_fast(0.5);
-    let sum_beta = self.beta.iter().cloned().sum();
-    let denom = T::one() - sum_alpha - sum_delta_half - sum_beta;
-    assert!(
-      denom > T::zero(),
-      "Agarch requires sum(alpha) + 0.5*sum(delta) + sum(beta) < 1 for finite unconditional variance"
-    );
+    let denom = variance_denominator(&self.alpha, &self.delta, &self.beta);
 
     for t in 0..n {
       if t == 0 {

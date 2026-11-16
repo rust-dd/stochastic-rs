@@ -149,10 +149,9 @@ impl<T: FloatExt, S: SeedExt, B> Bergomi<T, S, B> {
     self
   }
 
-  /// Replace the number of simulation steps `n`; rebuilds the cached
-  /// correlated-Gaussian generator, whose length and step size derive
-  /// from `n`.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
+  /// generator, whose length and step size derive from `n`.
+  pub fn with_points(mut self, n: usize) -> Self {
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self
@@ -173,9 +172,8 @@ impl<T: FloatExt, S: SeedExt, B> Bergomi<T, S, B> {
   }
 }
 
-/// ν=0.4, v₀=0.2, s₀=100, r=0.01, ρ=-0.6 — a textbook Bergomi
-/// parameterization. t=1, n=252 — one trading year of daily steps (this
-/// crate's `Default` convention).
+/// ν=0.4, v₀=0.2, s₀=100, r=0.01, ρ=-0.6, a textbook Bergomi; t=1, 252 points, a trading year of
+/// daily closes.
 impl<T: FloatExt> Default for Bergomi<T, Unseeded> {
   fn default() -> Self {
     Self::new(

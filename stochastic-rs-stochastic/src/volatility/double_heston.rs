@@ -65,7 +65,7 @@ pub struct DoubleHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub rho2: T,
   /// Drift of the stock price (risk-neutral drift = r - q).
   pub mu: T,
-  /// Number of time steps.
+  /// Grid points sampled along the path; `dt = t / (n − 1)`.
   pub n: usize,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
@@ -323,10 +323,9 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
     self
   }
 
-  /// Replace the number of simulation steps `n`; rebuilds both cached
-  /// correlated-Gaussian generators, whose lengths and step sizes derive
-  /// from `n`.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path; rebuilds both cached correlated-Gaussian
+  /// generators, whose lengths and step sizes derive from `n`.
+  pub fn with_points(mut self, n: usize) -> Self {
     self.n = n;
     self.cgns1 = Cgns::new(self.rho1, n - 1, self.t, Unseeded);
     self.cgns2 = Cgns::new(self.rho2, n - 1, self.t, Unseeded);

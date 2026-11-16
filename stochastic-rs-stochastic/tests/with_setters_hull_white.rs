@@ -60,7 +60,7 @@ macro_rules! plain_test {
 plain_test!(hw_with_alpha_round_trip, with_alpha, alpha, 0.6);
 plain_test!(hw_with_sigma_round_trip, with_sigma, sigma, 0.04);
 plain_test!(hw_with_x0_round_trip, with_x0, x0, Some(0.03));
-plain_test!(hw_with_steps_round_trip, with_steps, n, 64usize);
+plain_test!(hw_with_points_round_trip, with_points, n, 64usize);
 plain_test!(hw_with_horizon_round_trip, with_horizon, t, Some(2.0));
 
 #[test]

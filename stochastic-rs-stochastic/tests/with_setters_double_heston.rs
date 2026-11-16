@@ -1,4 +1,4 @@
-//! `DoubleHeston`'s setters: `with_rho1`/`with_rho2` rebuild their own noise cache, `with_steps`
+//! `DoubleHeston`'s setters: `with_rho1`/`with_rho2` rebuild their own noise cache, `with_points`
 //! and `with_horizon` both, and every single-field assertion of `new()` has a rejection test.
 
 use ndarray::Array1;
@@ -253,10 +253,10 @@ fn double_heston_with_rho2_rebuilds_cgns2_cache() {
 }
 
 #[test]
-fn double_heston_with_steps_rebuilds_both_cgns_caches() {
+fn double_heston_with_points_rebuilds_both_cgns_caches() {
   let mut expected = dh_base();
   expected.n = 64;
-  let got = dh_base().with_steps(64);
+  let got = dh_base().with_points(64);
   assert_eq!(got.n, 64);
   assert_eq!(dh_fields(&got), dh_fields(&expected));
   assert!(finite3(&got.sample()));
@@ -281,7 +281,7 @@ fn double_heston_with_steps_rebuilds_both_cgns_caches() {
   )
   .sample();
   let got_seeded = dh_base_seeded(Deterministic::new(9))
-    .with_steps(64)
+    .with_points(64)
     .sample();
   assert_eq!(want, got_seeded);
 }

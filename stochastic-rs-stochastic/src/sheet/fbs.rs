@@ -57,12 +57,10 @@ pub struct Fbs<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent `H`, `α = 2H` in the covariance; the field is isotropic,
   /// one exponent for both coordinates.
   pub hurst: T,
-  /// Grid resolution along the sheet's second coordinate axis (rows of
-  /// the output `Array2`).
-  pub m: usize,
-  /// Grid resolution along the sheet's first coordinate axis (columns of
-  /// the output `Array2`).
-  pub n: usize,
+  /// Grid points along the sheet's second axis (rows of the output).
+  pub rows: usize,
+  /// Grid points along the sheet's first axis (columns of the output).
+  pub cols: usize,
   /// Physical domain extent for the simulation grid — the covariance
   /// kernel in this type's internal `rho` helper is defined on `[0, r]²`
   /// with a cutoff at distance `r`. Not a financial rate; this is a pure
@@ -73,9 +71,8 @@ pub struct Fbs<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
-  /// The square roots of the circulant embedding's eigenvalues: the
-  /// `2(m − 1) × 2(n − 1)` block every sample scales its complex Gaussian
-  /// noise by, computed once here and uploaded once per device configuration.
+  /// Square roots of the circulant embedding's `2(rows − 1) × 2(cols − 1)` eigenvalues, which
+  /// scale every sample's complex noise; computed once, uploaded once per device configuration.
   pub(crate) lam: Arc<Array2<T>>,
   /// The `c₂` of the intrinsic embedding at this Hurst exponent and cutoff:
   /// the random linear term `√(2c₂) (t₁ Z₁ + t₂ Z₂)` added after the shift
@@ -84,7 +81,7 @@ pub struct Fbs<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
-  pub fn new(hurst: T, m: usize, n: usize, r: T, seed: S) -> Self {
+  pub fn new(hurst: T, rows: usize, cols: usize, r: T, seed: S) -> Self {
     assert!(
       hurst.is_finite(),
       "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
@@ -93,19 +90,35 @@ impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
       r.is_finite(),
       "r must satisfy `r.is_finite()`, got r = {r:?}"
     );
-    assert!(m >= 2, "m must satisfy `m >= 2`, got m = {m:?}");
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    let (lam, c2) = Self::embedding(hurst, m, n, r);
+    assert!(
+      rows >= 2,
+      "rows must satisfy `rows >= 2`, got rows = {rows:?}"
+    );
+    assert!(
+      cols >= 2,
+      "cols must satisfy `cols >= 2`, got cols = {cols:?}"
+    );
+    let (lam, c2) = Self::embedding(hurst, rows, cols, r);
     Self {
       backend: Cpu,
       hurst,
-      m,
-      n,
+      rows,
+      cols,
       r,
       seed,
       lam: Arc::new(lam),
       c2,
     }
+  }
+
+  /// Replace `rows`; rebuilds the embedding, so it is defined on `Cpu`; move with `on` afterwards.
+  pub fn with_rows(self, rows: usize) -> Self {
+    Self::new(self.hurst, rows, self.cols, self.r, self.seed)
+  }
+
+  /// Replace `cols`; rebuilds the embedding, so it is defined on `Cpu`; move with `on` afterwards.
+  pub fn with_cols(self, cols: usize) -> Self {
+    Self::new(self.hurst, self.rows, cols, self.r, self.seed)
   }
 
   /// The circulant embedding of the covariance on the `m × n` grid: the
@@ -171,7 +184,7 @@ impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> Fbs<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Fbs<T, S> { hurst, m, n, r, seed, lam, c2 } via sheet);
+backend_switch!([T: FloatExt, S: SeedExt] Fbs<T, S> { hurst, rows, cols, r, seed, lam, c2 } via sheet);
 
 impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> crate::traits::Sealed for Fbs<T, S, B> {}
 
@@ -190,8 +203,8 @@ impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> ProcessExt<T> for Fbs<T, S, B>
     FbsSampler {
       lam: Arc::clone(&self.lam),
       c2: self.c2,
-      m: self.m,
-      n: self.n,
+      m: self.rows,
+      n: self.cols,
       r: self.r,
       seed: self.seed.derive(),
     }
@@ -249,11 +262,10 @@ impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> ProcessExt<T> for Fbs<T, S, B>
     }
   }
 
-  /// What a device runs here: both embedding sides, `2(m − 1)`
-  /// and `2(n − 1)`, powers of two, which is what the kernels' radix-2
-  /// transforms take. Any other grid samples on the host.
+  /// What a device runs here: both embedding sides, `2(rows − 1)` and `2(cols − 1)`, powers of
+  /// two, as the kernels' radix-2 transforms take; any other grid samples on the host.
   fn device_fallback(&self) -> Option<&'static str> {
-    (!((self.m - 1).is_power_of_two() && (self.n - 1).is_power_of_two()))
+    (!((self.rows - 1).is_power_of_two() && (self.cols - 1).is_power_of_two()))
       .then_some("an embedding side that is not a power of two")
   }
 }
@@ -391,10 +403,10 @@ pub(crate) struct SheetLaunch<'a, F> {
   feature = "cuda"
 ))]
 impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
-  /// The embedding's cells: `2(m − 1) · 2(n − 1)`.
+  /// The embedding's cells: `2(rows − 1) · 2(cols − 1)`.
   #[cfg(feature = "cuda")]
   pub(crate) fn cells(&self) -> usize {
-    4 * (self.m - 1) * (self.n - 1)
+    4 * (self.rows - 1) * (self.cols - 1)
   }
 
   /// The key a per-size cache tells this embedding by: the Hurst exponent's
@@ -411,9 +423,9 @@ impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
     (T::from_usize_(2) * self.c2).sqrt()
   }
 
-  /// A batch's flat `sheets · m · n` values as one array per sheet.
+  /// A batch's flat `sheets · rows · cols` values as one array per sheet.
   pub(crate) fn sheets_from_flat<F: Copy + Into<f64>>(&self, flat: &[F]) -> Vec<Array2<T>> {
-    let (m, n) = (self.m, self.n);
+    let (m, n) = (self.rows, self.cols);
     flat
       .chunks_exact(m * n)
       .map(|sheet| {
@@ -424,7 +436,24 @@ impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
 }
 
 py_process_2d!(PyFbs, Fbs,
-  sig: (hurst, m, n, r, seed=None, dtype=None),
-  params: (hurst: f64, m: usize, n: usize, r: f64),
+  sig: (hurst, rows, cols, r, seed=None, dtype=None),
+  params: (hurst: f64, rows: usize, cols: usize, r: f64),
   device
 );
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+
+  #[test]
+  fn the_grid_setters_rebuild_the_embedding() {
+    let resized = Fbs::<f64, _>::new(0.7, 9, 5, 1.0, Deterministic::new(3))
+      .with_rows(17)
+      .with_cols(9);
+    let fresh = Fbs::<f64, _>::new(0.7, 17, 9, 1.0, Deterministic::new(3));
+    assert_eq!((resized.rows, resized.cols), (17, 9));
+    assert_eq!(resized.sample(), fresh.sample());
+  }
+}

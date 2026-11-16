@@ -231,9 +231,9 @@ where
     self
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
+  /// Replace `n`, the grid points along the path, all else unchanged.
   #[must_use]
-  pub fn with_steps(mut self, n: usize) -> Self {
+  pub fn with_points(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     self.n = n;
     self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(n, self.t));
@@ -251,11 +251,11 @@ where
     self
   }
 
-  /// Replace the horizon, all else unchanged.
+  /// Replace `t`, all else unchanged.
   #[must_use]
-  pub fn with_horizon(mut self, t: T) -> Self {
-    self.t = Some(t);
-    self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(self.n, Some(t)));
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(self.n, t));
     self
   }
 

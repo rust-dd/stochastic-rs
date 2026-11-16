@@ -166,8 +166,8 @@ impl<T: FloatExt, S: SeedExt, B> Vasicek<T, S, B> {
     self.resync()
   }
 
-  /// Replace the number of simulation steps `n`, all else unchanged.
-  pub fn with_steps(mut self, n: usize) -> Self {
+  /// Replace `n`, the grid points along the path, all else unchanged.
+  pub fn with_points(mut self, n: usize) -> Self {
     self.n = n;
     self.resync()
   }
@@ -196,9 +196,8 @@ impl<T: FloatExt, S: SeedExt, B> Vasicek<T, S, B> {
   }
 }
 
-/// a=3.0, b=0.03, σ=0.02, r₀=0.03 — a textbook Vasicek parameterization.
-/// t=1, n=252 — one trading year of daily steps (this crate's `Default`
-/// convention).
+/// a=3.0, b=0.03, σ=0.02, r₀=0.03, a textbook Vasicek; t=1, 252 points, a trading year of daily
+/// closes.
 impl<T: FloatExt> Default for Vasicek<T, Unseeded> {
   fn default() -> Self {
     Self::new(
