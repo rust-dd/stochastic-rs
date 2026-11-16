@@ -160,9 +160,7 @@ fn stateless_simd_laws_reach_the_kernels_of_every_law_taking_process() {
   reaches_the_kernels(
     "CompoundCustom",
     CompoundCustom::new(
-      Horizon::Events(N),
       normal(),
-      exp(),
       CustomJt::new(Horizon::Events(N), exp(), Unseeded),
       Unseeded,
     )
@@ -286,9 +284,7 @@ fn a_law_the_kernels_do_not_draw_stays_on_the_host() {
   stays_on_the_host(
     "CompoundCustom",
     CompoundCustom::new(
-      Horizon::Events(N),
       Const(0.1),
-      exp(),
       CustomJt::new(Horizon::Events(N), exp(), Unseeded),
       Unseeded,
     )

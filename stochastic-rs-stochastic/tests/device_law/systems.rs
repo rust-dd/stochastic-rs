@@ -10,6 +10,7 @@ use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::traits::Fn1D;
 use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
+use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorrPaths;
 use stochastic_rs_stochastic::diffusion::fouque::FouqueOu2D;
 use stochastic_rs_stochastic::diffusion::regime_switching::RegimeSwitchingDiffusion;
 use stochastic_rs_stochastic::diffusion::wishart::Wishart;
@@ -25,12 +26,15 @@ use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
 use stochastic_rs_stochastic::volatility::bns::Bns;
 use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
+use stochastic_rs_stochastic::volatility::double_heston::DoubleHestonPaths;
 use stochastic_rs_stochastic::volatility::heston::Euler;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 use stochastic_rs_stochastic::volatility::heston_log::HestonLog;
 use stochastic_rs_stochastic::volatility::heston2d::Heston2D;
+use stochastic_rs_stochastic::volatility::heston2d::Heston2DPaths;
 use stochastic_rs_stochastic::volatility::hkde::Hkde;
 use stochastic_rs_stochastic::volatility::multifactor_heston::MultifactorHeston;
+use stochastic_rs_stochastic::volatility::multifactor_heston::MultifactorHestonPaths;
 use stochastic_rs_stochastic::volatility::multifactor_sabr::MultifactorSabr;
 use stochastic_rs_stochastic::volatility::sabr::Sabr;
 use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
@@ -309,14 +313,20 @@ fn double_heston_agrees_with_the_cpu_law() {
       Deterministic::new(31),
     )
   };
-  let device = build().on::<Device>().sample_par(M);
+  let slots = |paths: Vec<DoubleHestonPaths<f32>>| {
+    paths
+      .into_iter()
+      .map(|p| [p.s, p.v1, p.v2])
+      .collect::<Vec<_>>()
+  };
+  let device = slots(build().on::<Device>().sample_par(M));
   assert!(
     device
       .iter()
       .all(|p| p[1].iter().chain(p[2].iter()).all(|&v| v >= 0.0)),
     "a truncated variance went negative"
   );
-  let host = build().sample_par(M);
+  let host = slots(build().sample_par(M));
   for (c, tol, what) in [
     (0usize, 0.04, "spot"),
     (1, 0.08, "first variance"),
@@ -353,14 +363,20 @@ fn stochastic_correlation_heston_agrees_with_the_cpu_law() {
       Deterministic::new(37),
     )
   };
-  let device = build().on::<Device>().sample_par(M);
+  let slots = |paths: Vec<HestonStochCorrPaths<f32>>| {
+    paths
+      .into_iter()
+      .map(|p| [p.s, p.v, p.rho])
+      .collect::<Vec<_>>()
+  };
+  let device = slots(build().on::<Device>().sample_par(M));
   assert!(
     device
       .iter()
       .all(|p| p[2].iter().all(|&v| (-1.0..=1.0).contains(&v))),
     "the reported correlation left [-1, 1]"
   );
-  let host = build().sample_par(M);
+  let host = slots(build().sample_par(M));
   for (c, tol, what) in [
     (0usize, 0.04, "spot"),
     (1, 0.08, "variance"),
@@ -487,14 +503,20 @@ fn two_asset_heston_agrees_with_the_cpu_law() {
       Deterministic::new(83),
     )
   };
-  let device = build().on::<Device>().sample_par(M);
+  let slots = |paths: Vec<Heston2DPaths<f32>>| {
+    paths
+      .into_iter()
+      .map(|p| [p.x1, p.v1, p.x2, p.v2])
+      .collect::<Vec<_>>()
+  };
+  let device = slots(build().on::<Device>().sample_par(M));
   assert!(
     device
       .iter()
       .all(|p| p[1].iter().chain(p[3].iter()).all(|&v| v >= 0.0)),
     "a truncated variance went negative"
   );
-  let host = build().sample_par(M);
+  let host = slots(build().sample_par(M));
   for (c, tol, what) in [
     (0usize, 0.02, "first log-price"),
     (1, 0.08, "first variance"),
@@ -799,31 +821,32 @@ fn multifactor_heston_agrees_with_the_cpu_law() {
   let device = build().on::<Device>().sample_par(PATHS);
   let host = build().sample_par(PATHS);
   assert_eq!(device.len(), PATHS);
-  assert_eq!(device[0].0.len(), 253);
-  assert_eq!(device[0].0[0], 100.0, "the spot starts at s0");
-  assert_eq!(device[0].1[0][0], 0.04, "the first factor starts at its v0");
+  assert_eq!(device[0].s.len(), 253);
+  assert_eq!(device[0].s[0], 100.0, "the spot starts at s0");
+  assert_eq!(device[0].v[0][0], 0.04, "the first factor starts at its v0");
   assert_eq!(
-    device[0].1[1][0], 0.02,
+    device[0].v[1][0], 0.02,
     "the second factor starts at its v0"
   );
   assert!(
-    device.iter().all(|(s, v)| {
-      s.iter().all(|x| x.is_finite())
-        && v
+    device.iter().all(|p| {
+      p.s.iter().all(|x| x.is_finite())
+        && p
+          .v
           .iter()
           .all(|f| f.iter().all(|x| x.is_finite() && *x >= 0.0))
     }),
     "multifactor Heston: a device path left its domain"
   );
   let last = 252;
-  let log_spot = |paths: &[(Array1<f32>, [Array1<f32>; 2])]| -> Vec<f64> {
+  let log_spot = |paths: &[MultifactorHestonPaths<f32, 2>]| -> Vec<f64> {
     paths
       .iter()
-      .map(|(s, _)| (s[last] as f64 / 100.0).ln())
+      .map(|p| (p.s[last] as f64 / 100.0).ln())
       .collect()
   };
-  let factor = |paths: &[(Array1<f32>, [Array1<f32>; 2])], k: usize| -> Vec<f64> {
-    paths.iter().map(|(_, v)| v[k][last] as f64).collect()
+  let factor = |paths: &[MultifactorHestonPaths<f32, 2>], k: usize| -> Vec<f64> {
+    paths.iter().map(|p| p.v[k][last] as f64).collect()
   };
   let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
   let sd = |v: &[f64]| {
@@ -892,7 +915,7 @@ fn multifactor_heston_other_factor_counts_still_sample() {
   assert!(
     one
       .iter()
-      .all(|(s, v)| s.len() == 64 && v[0].len() == 64 && s.iter().all(|x| x.is_finite()))
+      .all(|p| p.s.len() == 64 && p.v[0].len() == 64 && p.s.iter().all(|x| x.is_finite()))
   );
   let three = MultifactorHeston::<f32, 3, _>::new(
     100.0,
@@ -911,7 +934,7 @@ fn multifactor_heston_other_factor_counts_still_sample() {
   assert!(
     three
       .iter()
-      .all(|(s, v)| s.len() == 64 && v.len() == 3 && s.iter().all(|x| x.is_finite()))
+      .all(|p| p.s.len() == 64 && p.v.len() == 3 && p.s.iter().all(|x| x.is_finite()))
   );
 }
 

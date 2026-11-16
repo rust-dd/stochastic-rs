@@ -472,13 +472,8 @@ pub trait OneDimensional<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {}
 
 impl<T: FloatExt, P> OneDimensional<T> for P where P: ProcessExt<T, Output = Array1<T>> {}
 
-/// Marker for processes whose [`ProcessExt::sample`] returns `N` aligned
-/// 1D trajectories `[Array1<T>; N]`.
-///
-/// Auto-implemented for any `P: ProcessExt<T, Output = [Array1<T>; N]>`.
-/// Stochastic-volatility models (`Heston`, `Bergomi`, `Sabr`, `RBergomi`)
-/// use `N = 2` (asset + variance); 3-state models (`HestonStochCorr`,
-/// `DoubleHeston`, `Hjm`) use `N = 3`.
+/// Marker for processes whose [`ProcessExt::sample`] returns `N` aligned paths `[Array1<T>; N]`,
+/// such as `Heston`, `Bergomi` and `Sabr` (`N = 2`); implemented from `Output` alone.
 pub trait MultiDimensional<T: FloatExt, const N: usize>:
   ProcessExt<T, Output = [Array1<T>; N]>
 {

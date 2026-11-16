@@ -2357,7 +2357,9 @@ impl<T: FloatExt> GammaDraws<T> {
 /// draw rather than one, which is what a stochastic-volatility or two-factor
 /// model returns.
 #[doc(hidden)]
-pub trait EulerSystem<T: FloatExt, const D: usize>: ProcessExt<T, Output = [Array1<T>; D]> {
+pub trait EulerSystem<T: FloatExt, const D: usize>:
+  ProcessExt<T, Output: From<[Array1<T>; D]>>
+{
   /// The family this system steps. Its component count must be `D`.
   fn euler_spec(&self) -> EulerSpec<T>;
 
@@ -2472,7 +2474,7 @@ pub trait EulerSystem<T: FloatExt, const D: usize>: ProcessExt<T, Output = [Arra
   }
 
   /// One draw from the process's own sampler, the host stream.
-  fn host_sample(&self) -> [Array1<T>; D];
+  fn host_sample(&self) -> Self::Output;
 }
 
 /// The arity check that a system's `D` paths are components its family
@@ -2579,30 +2581,30 @@ pub trait EulerBackend<T: FloatExt>: Backend {
       .unwrap_or_else(crate::device::device_panic)
   }
 
-  /// One draw of a multi-component system.
+  /// One draw of a multi-component system, its `D` rows built into the process's output.
   fn try_system_sample<const D: usize, P: EulerSystem<T, D>>(
     &self,
     process: &P,
-  ) -> Result<[Array1<T>; D], DeviceError>;
+  ) -> Result<P::Output, DeviceError>;
 
   /// `m` draws of a multi-component system.
   fn try_system_paths<const D: usize, P: EulerSystem<T, D>>(
     &self,
     process: &P,
     m: usize,
-  ) -> Result<Vec<[Array1<T>; D]>, DeviceError>;
+  ) -> Result<Vec<P::Output>, DeviceError>;
 
   /// `f` over `m` draws of a system, mapped as they are produced.
   fn try_system_paths_map<const D: usize, P: EulerSystem<T, D>, R: Send>(
     &self,
     process: &P,
     m: usize,
-    f: impl Fn(&[Array1<T>; D]) -> R + Sync,
+    f: impl Fn(&P::Output) -> R + Sync,
   ) -> Result<Vec<R>, DeviceError>;
 
   /// [`try_system_sample`](Self::try_system_sample), panicking with the
   /// device's error.
-  fn system_sample<const D: usize, P: EulerSystem<T, D>>(&self, process: &P) -> [Array1<T>; D] {
+  fn system_sample<const D: usize, P: EulerSystem<T, D>>(&self, process: &P) -> P::Output {
     self
       .try_system_sample(process)
       .unwrap_or_else(crate::device::device_panic)
@@ -2614,7 +2616,7 @@ pub trait EulerBackend<T: FloatExt>: Backend {
     &self,
     process: &P,
     m: usize,
-  ) -> Vec<[Array1<T>; D]> {
+  ) -> Vec<P::Output> {
     self
       .try_system_paths(process, m)
       .unwrap_or_else(crate::device::device_panic)
@@ -2626,7 +2628,7 @@ pub trait EulerBackend<T: FloatExt>: Backend {
     &self,
     process: &P,
     m: usize,
-    f: impl Fn(&[Array1<T>; D]) -> R + Sync,
+    f: impl Fn(&P::Output) -> R + Sync,
   ) -> Vec<R> {
     self
       .try_system_paths_map(process, m, f)
@@ -2686,7 +2688,7 @@ macro_rules! host_euler_backend {
       fn try_system_sample<const D: usize, P: EulerSystem<T, D>>(
         &self,
         process: &P,
-      ) -> Result<[Array1<T>; D], DeviceError> {
+      ) -> Result<P::Output, DeviceError> {
         Ok(process.host_sample())
       }
 
@@ -2694,7 +2696,7 @@ macro_rules! host_euler_backend {
         &self,
         process: &P,
         m: usize,
-      ) -> Result<Vec<[Array1<T>; D]>, DeviceError> {
+      ) -> Result<Vec<P::Output>, DeviceError> {
         Ok(sample_par_chunked(process, m))
       }
 
@@ -2702,7 +2704,7 @@ macro_rules! host_euler_backend {
         &self,
         process: &P,
         m: usize,
-        f: impl Fn(&[Array1<T>; D]) -> R + Sync,
+        f: impl Fn(&P::Output) -> R + Sync,
       ) -> Result<Vec<R>, DeviceError> {
         Ok(sample_map_chunked(process, m, f))
       }
@@ -2865,27 +2867,31 @@ macro_rules! kernel_euler_backend {
     fn try_system_sample<const D: usize, P: EulerSystem<$scalar, D>>(
       &self,
       process: &P,
-    ) -> Result<[Array1<$scalar>; D], DeviceError> {
+    ) -> Result<P::Output, DeviceError> {
       let seed = process.device_seed();
       let planes = <Self as EulerKernel<$scalar>>::euler_system_kernel(self, process, 0, 1, seed)?;
-      Ok(system_row(&planes, 0))
+      Ok(P::Output::from(system_row::<$scalar, D>(&planes, 0)))
     }
 
     fn try_system_paths<const D: usize, P: EulerSystem<$scalar, D>>(
       &self,
       process: &P,
       m: usize,
-    ) -> Result<Vec<[Array1<$scalar>; D]>, DeviceError> {
+    ) -> Result<Vec<P::Output>, DeviceError> {
       let seed = process.device_seed();
       let planes = <Self as EulerKernel<$scalar>>::euler_system_batch(self, process, m, seed)?;
-      Ok((0..m).map(|row| system_row(&planes, row)).collect())
+      Ok(
+        (0..m)
+          .map(|row| P::Output::from(system_row::<$scalar, D>(&planes, row)))
+          .collect(),
+      )
     }
 
     fn try_system_paths_map<const D: usize, P: EulerSystem<$scalar, D>, R: Send>(
       &self,
       process: &P,
       m: usize,
-      f: impl Fn(&[Array1<$scalar>; D]) -> R + Sync,
+      f: impl Fn(&P::Output) -> R + Sync,
     ) -> Result<Vec<R>, DeviceError> {
       use rayon::prelude::*;
       let seed = process.device_seed();
@@ -2897,9 +2903,10 @@ macro_rules! kernel_euler_backend {
       crate::device::over_chunks(m, rows, |first, len| {
         let planes =
           <Self as EulerKernel<$scalar>>::euler_system_kernel(self, process, first, len, seed)?;
-        let chunk: Vec<[Array1<$scalar>; D]> =
-          (0..len).map(|row| system_row(&planes, row)).collect();
-        out.extend(chunk.par_iter().map(&f).collect::<Vec<R>>());
+        let chunk: Vec<P::Output> = (0..len)
+          .map(|row| P::Output::from(system_row::<$scalar, D>(&planes, row)))
+          .collect();
+        out.extend(chunk.into_par_iter().map(|o| f(&o)).collect::<Vec<R>>());
         Ok(())
       })?;
       Ok(out)

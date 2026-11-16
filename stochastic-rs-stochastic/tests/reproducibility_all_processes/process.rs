@@ -56,9 +56,7 @@ guard!(cbms, "Cbms", |s| Cbms::new(0.3, N, Some(1.0), s));
 
 guard!(compound_custom, "CompoundCustom", |s| {
   CompoundCustom::new(
-    Horizon::Events(N - 1),
     SimdNormal::new(0.0, 0.1),
-    SimdExp::new(2.0),
     CustomJt::new(Horizon::Events(N - 1), SimdExp::new(2.0), Unseeded),
     s,
   )

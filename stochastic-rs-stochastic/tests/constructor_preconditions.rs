@@ -239,7 +239,7 @@ refuses! {
   a_renewal_process_refuses_an_infinite_horizon: "t_max must satisfy `t_max > T::zero() && t_max.is_finite()`, got t_max = inf"
     => CustomJt::<f64, _>::new(Horizon::Until(f64::INFINITY), SimdExp::new(1.0), Unseeded);
   a_compound_renewal_process_refuses_a_nan_horizon: "t_max must satisfy `t_max > T::zero() && t_max.is_finite()`, got t_max = NaN"
-    => CompoundCustom::<f64, _, _>::new(Horizon::Until(f64::NAN), SimdNormal::new(0.0, 1.0), SimdExp::new(1.0), CustomJt::new(Horizon::Events(8), SimdExp::new(1.0), Unseeded), Unseeded);
+    => CompoundCustom::<f64, _, _>::new(SimdNormal::new(0.0, 1.0), CustomJt::new(Horizon::Until(f64::NAN), SimdExp::new(1.0), Unseeded), Unseeded);
   a_multivariate_hawkes_refuses_a_zero_horizon: "t_max must satisfy `t_max > T::zero() && t_max.is_finite()`, got t_max = 0.0"
     => MultivariateHawkes::<f64>::new(array![1.0], array![[0.1]], array![[1.0]], Horizon::Until(0.0), Unseeded);
   hawkes_refuses_a_zero_baseline_at_construction: "mu must satisfy `mu > T::zero()`, got mu = 0.0"
@@ -255,7 +255,7 @@ refuses! {
   the_renewal_horizon_setter_checks_its_time: "t_max must satisfy `t_max > T::zero() && t_max.is_finite()`, got t_max = -2.0"
     => CustomJt::<f64, _>::new(Horizon::Events(8), SimdExp::new(1.0), Unseeded).with_horizon(Horizon::Until(-2.0));
   the_compound_renewal_horizon_setter_checks_its_time: "t_max must satisfy `t_max > T::zero() && t_max.is_finite()`, got t_max = inf"
-    => CompoundCustom::<f64, _, _>::new(Horizon::Events(8), SimdNormal::new(0.0, 1.0), SimdExp::new(1.0), CustomJt::new(Horizon::Events(8), SimdExp::new(1.0), Unseeded), Unseeded).with_horizon(Horizon::Until(f64::INFINITY));
+    => CompoundCustom::<f64, _, _>::new(SimdNormal::new(0.0, 1.0), CustomJt::new(Horizon::Events(8), SimdExp::new(1.0), Unseeded), Unseeded).with_horizon(Horizon::Until(f64::INFINITY));
   the_multivariate_hawkes_horizon_setter_checks_its_time: "t_max must satisfy `t_max > T::zero() && t_max.is_finite()`, got t_max = NaN"
     => MultivariateHawkes::<f64>::new(array![1.0], array![[0.1]], array![[1.0]], Horizon::Events(8), Unseeded).with_horizon(Horizon::Until(f64::NAN));
 

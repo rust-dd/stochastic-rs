@@ -14,7 +14,14 @@ use ndarray::Array3;
 use num_complex::Complex;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorrPaths;
+use stochastic_rs_stochastic::interest::hjm::HjmPaths;
+use stochastic_rs_stochastic::process::ccustom::CompoundCustomPaths;
+use stochastic_rs_stochastic::process::cpoisson::CompoundPoissonPaths;
 use stochastic_rs_stochastic::traits::ProcessExt;
+use stochastic_rs_stochastic::volatility::double_heston::DoubleHestonPaths;
+use stochastic_rs_stochastic::volatility::heston2d::Heston2DPaths;
+use stochastic_rs_stochastic::volatility::multifactor_heston::MultifactorHestonPaths;
 
 pub(crate) const SEED: u64 = 42;
 /// A second seed, distinct from [`SEED`], used only by the discrimination
@@ -96,10 +103,64 @@ impl<const K: usize> ReproBits for [Array1<f64>; K] {
   }
 }
 
-impl<const K: usize> ReproBits for (Array1<f64>, [Array1<f64>; K]) {
+impl ReproBits for HestonStochCorrPaths<f64> {
   fn repro_bits(&self) -> Vec<u64> {
-    let mut bits = self.0.repro_bits();
-    bits.extend(self.1.repro_bits());
+    [&self.s, &self.v, &self.rho]
+      .iter()
+      .flat_map(|a| a.repro_bits())
+      .collect()
+  }
+}
+
+impl ReproBits for DoubleHestonPaths<f64> {
+  fn repro_bits(&self) -> Vec<u64> {
+    [&self.s, &self.v1, &self.v2]
+      .iter()
+      .flat_map(|a| a.repro_bits())
+      .collect()
+  }
+}
+
+impl ReproBits for HjmPaths<f64> {
+  fn repro_bits(&self) -> Vec<u64> {
+    [&self.r, &self.p, &self.f]
+      .iter()
+      .flat_map(|a| a.repro_bits())
+      .collect()
+  }
+}
+
+impl ReproBits for CompoundPoissonPaths<f64> {
+  fn repro_bits(&self) -> Vec<u64> {
+    [&self.arrivals, &self.cumulative, &self.jumps]
+      .iter()
+      .flat_map(|a| a.repro_bits())
+      .collect()
+  }
+}
+
+impl ReproBits for CompoundCustomPaths<f64> {
+  fn repro_bits(&self) -> Vec<u64> {
+    [&self.arrivals, &self.cumulative, &self.jumps]
+      .iter()
+      .flat_map(|a| a.repro_bits())
+      .collect()
+  }
+}
+
+impl ReproBits for Heston2DPaths<f64> {
+  fn repro_bits(&self) -> Vec<u64> {
+    [&self.x1, &self.v1, &self.x2, &self.v2]
+      .iter()
+      .flat_map(|a| a.repro_bits())
+      .collect()
+  }
+}
+
+impl<const K: usize> ReproBits for MultifactorHestonPaths<f64, K> {
+  fn repro_bits(&self) -> Vec<u64> {
+    let mut bits = self.s.repro_bits();
+    bits.extend(self.v.repro_bits());
     bits
   }
 }

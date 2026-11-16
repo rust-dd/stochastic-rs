@@ -12,6 +12,7 @@ use stochastic_rs_stochastic::interest::black_karasinski::BlackKarasinski;
 use stochastic_rs_stochastic::interest::cir_2f::Cir2F;
 use stochastic_rs_stochastic::interest::cir_pp::CirPlusPlus;
 use stochastic_rs_stochastic::interest::hjm::Hjm;
+use stochastic_rs_stochastic::interest::hjm::HjmPaths;
 use stochastic_rs_stochastic::interest::ho_lee::HoLee;
 use stochastic_rs_stochastic::interest::hull_white::HullWhite;
 use stochastic_rs_stochastic::params::HoLeeDrift;
@@ -294,8 +295,14 @@ fn hjm_agrees_with_the_cpu_law() {
       Deterministic::new(97),
     )
   };
-  let device = build().on::<Device>().sample_par(M);
-  let host = build().sample_par(M);
+  let slots = |paths: Vec<HjmPaths<f32>>| {
+    paths
+      .into_iter()
+      .map(|p| [p.r, p.p, p.f])
+      .collect::<Vec<_>>()
+  };
+  let device = slots(build().on::<Device>().sample_par(M));
+  let host = slots(build().sample_par(M));
   assert_eq!(device.len(), M);
   assert_eq!(device[0][0].len(), N);
   assert_eq!(device[0][0][0], 0.03, "the short rate starts at r0");

@@ -82,6 +82,21 @@ pub struct DoubleHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
+/// Spot and the two variance factors.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct DoubleHestonPaths<T> {
+  pub s: Array1<T>,
+  pub v1: Array1<T>,
+  pub v2: Array1<T>,
+}
+
+impl<T> From<[Array1<T>; 3]> for DoubleHestonPaths<T> {
+  fn from([s, v1, v2]: [Array1<T>; 3]) -> Self {
+    Self { s, v1, v2 }
+  }
+}
+
 impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
@@ -467,7 +482,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     crate::euler::draw_seed(&self.seed)
   }
 
-  fn host_sample(&self) -> [Array1<T>; 3] {
+  fn host_sample(&self) -> DoubleHestonPaths<T> {
     let out = <Self as ProcessExt<T>>::sampler(self).sample();
     <Self as ProcessExt<T>>::advance_chunk_seed(self);
     out
@@ -485,7 +500,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for DoubleHeston<T, S, B>
 {
   /// Output tuple: `[S, v1, v2]`.
-  type Output = [Array1<T>; 3];
+  type Output = DoubleHestonPaths<T>;
   type Sampler<'s>
     = DoubleHestonSampler<T, S>
   where
@@ -519,23 +534,26 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   /// Through the Euler engine: on a device every component steps in the
   /// kernel, on the host devices it is this process's own sampler, chunked
   /// exactly as `ProcessExt` chunks.
-  fn sample(&self) -> [Array1<T>; 3] {
+  fn sample(&self) -> DoubleHestonPaths<T> {
     self.backend.system_sample(self)
   }
 
-  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 3]) -> R + Sync) -> Vec<R> {
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&DoubleHestonPaths<T>) -> R + Sync) -> Vec<R> {
     self.backend.system_paths_map(self, m, f)
   }
 
-  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 3]> {
+  fn sample_par(&self, m: usize) -> Vec<DoubleHestonPaths<T>> {
     self.backend.system_paths(self, m)
   }
 
-  fn try_sample(&self) -> Result<[Array1<T>; 3], crate::device::DeviceError> {
+  fn try_sample(&self) -> Result<DoubleHestonPaths<T>, crate::device::DeviceError> {
     self.backend.try_system_sample(self)
   }
 
-  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 3]>, crate::device::DeviceError> {
+  fn try_sample_par(
+    &self,
+    m: usize,
+  ) -> Result<Vec<DoubleHestonPaths<T>>, crate::device::DeviceError> {
     self.backend.try_system_paths(self, m)
   }
 }
@@ -605,10 +623,10 @@ impl<T: FloatExt, S: SeedExt> DoubleHestonSampler<T, S> {
 impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for DoubleHestonSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for DoubleHestonSampler<T, S> {
-  type Output = [Array1<T>; 3];
+  type Output = DoubleHestonPaths<T>;
 
-  fn sample_into(&mut self, out: &mut [Array1<T>; 3]) {
-    let [s, v1, v2] = out;
+  fn sample_into(&mut self, out: &mut DoubleHestonPaths<T>) {
+    let DoubleHestonPaths { s, v1, v2 } = out;
     self.fill_paths(
       s.as_slice_mut()
         .expect("DoubleHeston output must be contiguous"),
@@ -619,7 +637,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for DoubleHestonSampler<T, S> {
     );
   }
 
-  fn sample(&mut self) -> [Array1<T>; 3] {
+  fn sample(&mut self) -> DoubleHestonPaths<T> {
     let mut s = Array1::<T>::zeros(self.n);
     let mut v1 = Array1::<T>::zeros(self.n);
     let mut v2 = Array1::<T>::zeros(self.n);
@@ -628,7 +646,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for DoubleHestonSampler<T, S> {
       v1.as_slice_mut().expect("contiguous"),
       v2.as_slice_mut().expect("contiguous"),
     );
-    [s, v1, v2]
+    DoubleHestonPaths { s, v1, v2 }
   }
 }
 
@@ -662,6 +680,30 @@ mod tests {
   }
 
   #[test]
+  fn the_output_names_its_slots() {
+    let DoubleHestonPaths { s, v1, v2, .. } = DoubleHeston::new(
+      100.0_f64,
+      0.02,
+      0.02,
+      3.0,
+      0.02,
+      0.4,
+      -0.6,
+      0.5,
+      0.02,
+      0.2,
+      -0.3,
+      0.05,
+      64,
+      Some(1.0),
+      VarianceBoundary::Floor,
+      Unseeded,
+    )
+    .sample();
+    assert_eq!((s.len(), v1.len(), v2.len()), (64, 64, 64));
+  }
+
+  #[test]
   fn variance_paths_stay_non_negative() {
     let p = DoubleHeston::new(
       100.0_f64,
@@ -681,7 +723,7 @@ mod tests {
       VarianceBoundary::Reflect,
       Unseeded,
     );
-    let [_s, v1, v2] = p.sample();
+    let DoubleHestonPaths { v1, v2, .. } = p.sample();
     assert!(v1.iter().all(|x| *x >= 0.0));
     assert!(v2.iter().all(|x| *x >= 0.0));
   }
@@ -706,7 +748,7 @@ mod tests {
       VarianceBoundary::Reflect,
       Deterministic::new(42),
     );
-    let [s, _, _] = p.sample();
+    let s = p.sample().s;
     assert!(s.iter().all(|x| x.is_finite()));
   }
 }

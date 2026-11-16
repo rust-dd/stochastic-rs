@@ -17,7 +17,9 @@ use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::Horizon;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::ccustom::CompoundCustom;
+use stochastic_rs_stochastic::process::ccustom::CompoundCustomPaths;
 use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
+use stochastic_rs_stochastic::process::cpoisson::CompoundPoissonPaths;
 use stochastic_rs_stochastic::process::customjt::CustomJt;
 use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::process::subordinator::ctrw::Ctrw;
@@ -257,8 +259,14 @@ fn compound_poisson_events_agree_with_the_cpu_law() {
       Deterministic::new(17),
     )
   };
-  let device = build().on::<Device>().sample_par(M);
-  let host = build().sample_par(M);
+  let slots = |paths: Vec<CompoundPoissonPaths<f32>>| {
+    paths
+      .into_iter()
+      .map(|p| [p.arrivals, p.cumulative, p.jumps])
+      .collect::<Vec<_>>()
+  };
+  let device = slots(build().on::<Device>().sample_par(M));
+  let host = slots(build().sample_par(M));
   assert_eq!(device.len(), M);
   assert!(
     device
@@ -348,15 +356,19 @@ fn compound_custom_agrees_with_the_cpu_law() {
   const EVENTS: usize = 50;
   let build = || {
     CompoundCustom::<f32, _, _, _>::new(
-      Horizon::Events(EVENTS),
       SimdNormal::<f32>::new(1.0, 0.3),
-      SimdExp::<f32>::new(2.0),
       CustomJt::new(Horizon::Events(EVENTS), SimdExp::<f32>::new(2.0), Unseeded),
       Deterministic::new(29),
     )
   };
-  let device = build().on::<Device>().sample_par(M);
-  let host = build().sample_par(M);
+  let slots = |paths: Vec<CompoundCustomPaths<f32>>| {
+    paths
+      .into_iter()
+      .map(|p| [p.arrivals, p.cumulative, p.jumps])
+      .collect::<Vec<_>>()
+  };
+  let device = slots(build().on::<Device>().sample_par(M));
+  let host = slots(build().sample_par(M));
   nondecreasing(&device, "compound custom");
   accumulates(&device, "compound custom");
   agrees(

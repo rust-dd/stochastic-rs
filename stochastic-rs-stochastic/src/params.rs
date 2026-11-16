@@ -151,9 +151,7 @@ mod tests {
     let hawkes = Hawkes::new(0.5, 0.3, 1.0, horizon, seed());
     let customjt = CustomJt::new(horizon, SimdExp::new(2.0), seed());
     let ccustom = CompoundCustom::new(
-      horizon,
       SimdNormal::new(0.0, 0.1),
-      SimdExp::new(2.0),
       CustomJt::new(horizon, SimdExp::new(2.0), Unseeded),
       seed(),
     );
@@ -169,8 +167,10 @@ mod tests {
       hawkes.sample().len(),
       customjt.sample().len(),
     ];
-    rows.extend(ccustom.sample().iter().map(|row| row.len()));
-    rows.extend(cpoisson.sample().iter().map(|row| row.len()));
+    let c = ccustom.sample();
+    rows.extend([c.arrivals.len(), c.cumulative.len(), c.jumps.len()]);
+    let c = cpoisson.sample();
+    rows.extend([c.arrivals.len(), c.cumulative.len(), c.jumps.len()]);
     rows.push(one_component.sample()[0].len());
     let grids = vec![
       EulerCoefficients::grid_points(&poisson),

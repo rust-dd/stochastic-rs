@@ -43,6 +43,25 @@ where
   pub backend: B,
 }
 
+/// Arrival times, the running sum of the jumps and the jump sizes.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub struct CompoundPoissonPaths<T> {
+  pub arrivals: Array1<T>,
+  pub cumulative: Array1<T>,
+  pub jumps: Array1<T>,
+}
+
+impl<T> From<[Array1<T>; 3]> for CompoundPoissonPaths<T> {
+  fn from([arrivals, cumulative, jumps]: [Array1<T>; 3]) -> Self {
+    Self {
+      arrivals,
+      cumulative,
+      jumps,
+    }
+  }
+}
+
 impl<T, D, S: SeedExt> CompoundPoisson<T, D, S>
 where
   T: FloatExt,
@@ -290,7 +309,7 @@ where
     crate::euler::draw_seed(&self.seed)
   }
 
-  fn host_sample(&self) -> [Array1<T>; 3] {
+  fn host_sample(&self) -> CompoundPoissonPaths<T> {
     let _ = <Self as crate::euler::EulerSystem<T, 3>>::grid_points(self);
     let out = <Self as ProcessExt<T>>::sampler(self).sample();
     <Self as ProcessExt<T>>::advance_chunk_seed(self);
@@ -314,7 +333,7 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync + Any,
 {
-  type Output = [Array1<T>; 3];
+  type Output = CompoundPoissonPaths<T>;
   type Sampler<'s>
     = CompoundPoissonSampler<'s, T, D, S>
   where
@@ -335,7 +354,7 @@ where
   /// Through the Euler engine when the arrival count is fixed and the
   /// jump-size law is one the device kernels draw; anything else keeps the process on the host,
   /// chunked exactly as [`ProcessExt`] chunks.
-  fn sample(&self) -> [Array1<T>; 3] {
+  fn sample(&self) -> CompoundPoissonPaths<T> {
     if self.device_ready() {
       crate::euler::EulerBackend::system_sample(&self.backend, self)
     } else {
@@ -345,7 +364,11 @@ where
     }
   }
 
-  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 3]) -> R + Sync) -> Vec<R> {
+  fn sample_map<R: Send>(
+    &self,
+    m: usize,
+    f: impl Fn(&CompoundPoissonPaths<T>) -> R + Sync,
+  ) -> Vec<R> {
     if self.device_ready() {
       crate::euler::EulerBackend::system_paths_map(&self.backend, self, m, f)
     } else {
@@ -353,7 +376,7 @@ where
     }
   }
 
-  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 3]> {
+  fn sample_par(&self, m: usize) -> Vec<CompoundPoissonPaths<T>> {
     if self.device_ready() {
       crate::euler::EulerBackend::system_paths(&self.backend, self, m)
     } else {
@@ -361,7 +384,7 @@ where
     }
   }
 
-  fn try_sample(&self) -> Result<[Array1<T>; 3], crate::device::DeviceError> {
+  fn try_sample(&self) -> Result<CompoundPoissonPaths<T>, crate::device::DeviceError> {
     if self.device_ready() {
       crate::euler::EulerBackend::try_system_sample(&self.backend, self)
     } else {
@@ -369,7 +392,10 @@ where
     }
   }
 
-  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 3]>, crate::device::DeviceError> {
+  fn try_sample_par(
+    &self,
+    m: usize,
+  ) -> Result<Vec<CompoundPoissonPaths<T>>, crate::device::DeviceError> {
     if self.device_ready() {
       crate::euler::EulerBackend::try_system_paths(&self.backend, self, m)
     } else {
@@ -405,7 +431,7 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  fn sample_inner(&mut self) -> [Array1<T>; 3] {
+  fn sample_inner(&mut self) -> CompoundPoissonPaths<T> {
     let poisson = self.poisson.sample_impl(&self.seed);
     let mut jumps = Array1::<T>::zeros(poisson.len());
     self.seed.derive(); // skip one so `rng` differs from `poisson`'s stream
@@ -417,7 +443,11 @@ where
     let mut cum_jupms = jumps.clone();
     cum_jupms.accumulate_axis_inplace(Axis(0), |&prev, curr| *curr += prev);
 
-    [poisson, cum_jupms, jumps]
+    CompoundPoissonPaths {
+      arrivals: poisson,
+      cumulative: cum_jupms,
+      jumps,
+    }
   }
 }
 
@@ -433,13 +463,13 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  type Output = [Array1<T>; 3];
+  type Output = CompoundPoissonPaths<T>;
 
-  fn sample_into(&mut self, out: &mut [Array1<T>; 3]) {
+  fn sample_into(&mut self, out: &mut CompoundPoissonPaths<T>) {
     *out = self.sample_inner();
   }
 
-  fn sample(&mut self) -> [Array1<T>; 3] {
+  fn sample(&mut self) -> CompoundPoissonPaths<T> {
     self.sample_inner()
   }
 }
@@ -457,6 +487,25 @@ mod tests {
     fn sample<R: rand::Rng + ?Sized>(&self, _rng: &mut R) -> T {
       self.0
     }
+  }
+
+  #[test]
+  fn the_output_names_its_slots() {
+    let CompoundPoissonPaths {
+      arrivals,
+      cumulative,
+      jumps,
+      ..
+    } = CompoundPoisson::new(
+      ConstJump(1.0f64),
+      Poisson::new(2.0, Horizon::Events(16), Unseeded),
+      Unseeded,
+    )
+    .sample();
+    assert_eq!(
+      (arrivals.len(), cumulative.len(), jumps.len()),
+      (17, 17, 17)
+    );
   }
 
   #[test]
@@ -479,7 +528,10 @@ mod tests {
       Unseeded,
     );
     let origin = Array1::from(vec![0.0]);
-    assert_eq!(cp.sample(), [origin.clone(), origin.clone(), origin]);
+    assert_eq!(
+      cp.sample(),
+      CompoundPoissonPaths::from([origin.clone(), origin.clone(), origin])
+    );
   }
 
   #[test]
@@ -563,18 +615,28 @@ impl PyCompoundPoisson {
 
       use crate::traits::ProcessExt;
       if let Some(ref inner) = self.inner_f64 {
-        let [p, cum, j] = inner.sample();
+        let CompoundPoissonPaths {
+          arrivals,
+          cumulative,
+          jumps,
+          ..
+        } = inner.sample();
         (
-          p.into_pyarray(py).into_py_any(py).unwrap(),
-          cum.into_pyarray(py).into_py_any(py).unwrap(),
-          j.into_pyarray(py).into_py_any(py).unwrap(),
+          arrivals.into_pyarray(py).into_py_any(py).unwrap(),
+          cumulative.into_pyarray(py).into_py_any(py).unwrap(),
+          jumps.into_pyarray(py).into_py_any(py).unwrap(),
         )
       } else if let Some(ref inner) = self.inner_f32 {
-        let [p, cum, j] = inner.sample();
+        let CompoundPoissonPaths {
+          arrivals,
+          cumulative,
+          jumps,
+          ..
+        } = inner.sample();
         (
-          p.into_pyarray(py).into_py_any(py).unwrap(),
-          cum.into_pyarray(py).into_py_any(py).unwrap(),
-          j.into_pyarray(py).into_py_any(py).unwrap(),
+          arrivals.into_pyarray(py).into_py_any(py).unwrap(),
+          cumulative.into_pyarray(py).into_py_any(py).unwrap(),
+          jumps.into_pyarray(py).into_py_any(py).unwrap(),
         )
       } else {
         unreachable!()
