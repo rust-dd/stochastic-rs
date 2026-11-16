@@ -121,6 +121,24 @@ fn kpss_answers_a_long_run_variance_that_overflows_with_numerical() {
   );
 }
 
+/// At these scales the squared partial sums overflow `η` while the long-run variance stays finite.
+#[test]
+fn kpss_answers_a_statistic_that_overflows_with_numerical() {
+  for trend in [Trend::Constant, Trend::ConstantTrend] {
+    for c in [1e153, 1e154] {
+      let cfg = KpssConfig {
+        trend,
+        ..KpssConfig::default()
+      };
+      assert_eq!(
+        kpss_test(series(7).mapv(|v| v * c).view(), cfg).unwrap_err(),
+        StatsError::Numerical { stage: "statistic" },
+        "{trend:?}, c = {c:e}"
+      );
+    }
+  }
+}
+
 /// An alternating series is an exact AR(1) with coefficient −1 about its zero mean.
 #[test]
 fn leybourne_mccabe_answers_an_exact_ar_fit_with_degenerate_data() {
