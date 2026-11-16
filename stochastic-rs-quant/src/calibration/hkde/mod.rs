@@ -54,13 +54,23 @@
 mod calibrator;
 mod loss;
 mod params;
-mod result;
 
 pub use calibrator::HkdeCalibrator;
 pub use loss::paper_table1;
 pub use loss::paper_table2;
 pub use params::HkdeParams;
-pub use result::HkdeCalibrationResult;
+
+use crate::calibration::Calibrated;
+use crate::pricing::fourier::HkdeFourier;
+use crate::traits::ToModel;
+
+impl ToModel for Calibrated<HkdeParams> {
+  type Model = HkdeFourier;
+
+  fn to_model(&self) -> HkdeFourier {
+    HkdeFourier::new(self.params)
+  }
+}
 
 #[cfg(test)]
 mod tests;

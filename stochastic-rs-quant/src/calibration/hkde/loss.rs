@@ -3,6 +3,8 @@ use std::f64::consts::PI;
 use ndarray::Array1;
 use ndarray::Array2;
 
+use stochastic_rs_distributions::RealExt;
+
 use super::calibrator::HkdeCalibrator;
 use super::params::ETA1_MIN;
 use super::params::ETA2_MIN;
@@ -23,8 +25,48 @@ use crate::traits::ModelPricer;
 
 const EPS: f64 = 1e-8;
 
-impl HkdeCalibrator {
-  pub(super) fn build_model(&self, p: &HkdeParams) -> HkdeFourier {
+/// One fit: each quote's weight, the current point and the trail of its accepted iterates.
+pub(super) struct HkdeProblem<'a> {
+  calibrator: &'a HkdeCalibrator,
+  sqrt_weights: Vec<f64>,
+  params: HkdeParams,
+  pub(super) history: Vec<CalibrationHistory<HkdeParams>>,
+  pending: Option<CalibrationHistory<HkdeParams>>,
+}
+
+impl<'a> HkdeProblem<'a> {
+  pub(super) fn new(calibrator: &'a HkdeCalibrator, start: HkdeParams) -> Self {
+    let HkdeCalibrator { s, r, q, .. } = *calibrator;
+    let sqrt_weights = calibrator
+      .quotes
+      .iter()
+      .map(|quote| {
+        market_weight(
+          s,
+          quote.strike,
+          r,
+          q,
+          quote.tau,
+          quote.price,
+          quote.option_type,
+        )
+        .sqrt()
+      })
+      .collect();
+    Self {
+      calibrator,
+      sqrt_weights,
+      params: start,
+      history: Vec::new(),
+      pending: None,
+    }
+  }
+
+  pub(super) fn effective_params(&self) -> HkdeParams {
+    self.params.projected()
+  }
+
+  fn build_model(&self, p: &HkdeParams) -> HkdeFourier {
     HkdeFourier {
       v0: p.v0,
       kappa: p.kappa,
@@ -38,40 +80,38 @@ impl HkdeCalibrator {
     }
   }
 
-  pub(super) fn compute_model_prices_for(&self, p: &HkdeParams) -> Array1<f64> {
-    let n = self.c_market.len();
+  pub(super) fn compute_model_prices_for(&self, p: &HkdeParams) -> Vec<f64> {
     let model = self.build_model(p);
-    let r = self.r;
-    let q = self.q.unwrap_or(0.0);
+    let HkdeCalibrator { s, r, q, .. } = *self.calibrator;
+    self
+      .calibrator
+      .quotes
+      .iter()
+      .map(|quote| {
+        let price = model.price_option(s, quote.strike, r, q, quote.tau, quote.option_type);
+        price.max_or_nan(0.0)
+      })
+      .collect()
+  }
 
-    let mut c_model = Array1::zeros(n);
-    for idx in 0..n {
-      let price = model.price_option(
-        self.s[idx],
-        self.k[idx],
-        r,
-        q,
-        self.flat_t[idx],
-        self.option_type,
-      );
-      c_model[idx] = price.max(0.0);
-    }
-    c_model
+  /// `√w · (model − market)`, the fit's residual; a trail reads its negation.
+  fn weighted_residuals_of(&self, model: &[f64]) -> Array1<f64> {
+    let rows = self
+      .calibrator
+      .quotes
+      .iter()
+      .zip(model)
+      .zip(&self.sqrt_weights);
+    Array1::from_iter(rows.map(|((quote, model), w)| w * (model - quote.price)))
   }
 
   pub(super) fn weighted_residuals_for(&self, p: &HkdeParams) -> Array1<f64> {
-    let c_model = self.compute_model_prices_for(p);
-    let n = self.c_market.len();
-    let mut r = Array1::zeros(n);
-    for i in 0..n {
-      r[i] = self.sqrt_weights[i] * (c_model[i] - self.c_market[i]);
-    }
-    r
+    self.weighted_residuals_of(&self.compute_model_prices_for(p))
   }
 
   /// Central finite-difference Jacobian of the weighted residuals.
   pub(super) fn numeric_jacobian(&self, params: &HkdeParams) -> Array2<f64> {
-    let n = self.c_market.len();
+    let n = self.calibrator.quotes.len();
     let p_dim = 9usize;
     let base_vec: Array1<f64> = (*params).into();
     let mut j_mat = Array2::zeros((n, p_dim));
@@ -136,10 +176,9 @@ impl HkdeCalibrator {
   }
 }
 
-impl LeastSquaresProblem for HkdeCalibrator {
+impl LeastSquaresProblem for HkdeProblem<'_> {
   fn set_params(&mut self, params: &Array1<f64>) {
-    let p = HkdeParams::from(params.clone()).projected();
-    self.params = Some(p);
+    self.params = HkdeParams::from(params.clone()).projected();
   }
 
   fn params(&self) -> Array1<f64> {
@@ -148,58 +187,30 @@ impl LeastSquaresProblem for HkdeCalibrator {
 
   fn residuals(&mut self) -> Option<Array1<f64>> {
     let params_eff = self.effective_params();
-    let c_model = self.compute_model_prices_for(&params_eff);
-
-    if self.record_history {
-      let loss = CalibrationLossScore::compute_selected(
-        self.c_market.as_standard_layout().as_slice().unwrap(),
-        c_model.as_slice().unwrap(),
-        self.loss_metrics,
-      );
-      let mut history = self.calibration_history.borrow_mut();
-      let iteration = history.len();
-      history.push(CalibrationHistory::new(
-        iteration,
-        params_eff,
-        self.c_market.clone() - c_model.clone(),
-        loss,
-      ));
+    let model = self.compute_model_prices_for(&params_eff);
+    let residuals = self.weighted_residuals_of(&model);
+    let options = &self.calibrator.options;
+    if options.record_history {
+      let market = self
+        .calibrator
+        .quotes
+        .iter()
+        .map(|quote| quote.price)
+        .collect::<Vec<_>>();
+      let loss = CalibrationLossScore::compute_selected(&market, &model, options.loss_metrics);
+      let entry = CalibrationHistory::new(self.history.len(), params_eff, -&residuals, loss);
+      self.pending = Some(entry);
     }
-
-    let n = self.c_market.len();
-    let mut r = Array1::zeros(n);
-    for i in 0..n {
-      r[i] = self.sqrt_weights[i] * (c_model[i] - self.c_market[i]);
-    }
-    Some(r)
+    Some(residuals)
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
     Some(self.numeric_jacobian(&self.effective_params()))
   }
-}
 
-/// Compute $\sqrt{w_j^{(n)}}$ for each market quote (Eq. 13 of the paper).
-///
-/// The market implied volatility $\sigma_j^{(n)}$ is recovered from the
-/// observed price by inverting Black-Scholes; the resulting normalised
-/// vega $S_0\,\psi(d_1)\,\sqrt{T}$ is then used as weight.
-pub(super) fn compute_sqrt_weights(
-  s: &[f64],
-  k: &[f64],
-  t: &[f64],
-  r: f64,
-  q: f64,
-  prices: &[f64],
-  option_type: OptionType,
-) -> Vec<f64> {
-  let n = prices.len();
-  let mut out = Vec::with_capacity(n);
-  for i in 0..n {
-    let w = market_weight(s[i], k[i], r, q, t[i], prices[i], option_type);
-    out.push(w.sqrt());
+  fn accept(&mut self) {
+    self.history.extend(self.pending.take());
   }
-  out
 }
 
 /// Single-quote weight $w_j^{(n)} = (S_0\,\psi(d_1)\,\sqrt{T_n})^{-1}$

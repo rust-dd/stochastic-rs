@@ -157,13 +157,14 @@ fn build_surface_from_calibration_heston_multi_maturity() {
 
 #[test]
 fn build_surface_from_calibration_svj_multi_maturity() {
+  use crate::OptionQuote;
   use crate::OptionType;
-  use crate::calibration::levy::MarketSlice;
   use crate::calibration::svj::SvjCalibrator;
+  use crate::calibration::svj::SvjParams;
   use crate::pricing::fourier::BatesFourier;
   use crate::traits::ModelPricer;
 
-  let true_model = BatesFourier {
+  let true_model = BatesFourier::new(SvjParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
@@ -172,35 +173,18 @@ fn build_surface_from_calibration_svj_multi_maturity() {
     lambda: 0.5,
     mu_j: -0.1,
     sigma_j: 0.15,
-  };
-  let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
-  let taus = [0.5, 1.0];
-
-  let slices: Vec<MarketSlice> = taus
-    .iter()
-    .map(|&tau| {
-      let prices: Vec<f64> = strikes
-        .iter()
-        .map(|&k| true_model.price_call(100.0, k, 0.05, 0.0, tau))
-        .collect();
-      MarketSlice {
-        strikes: strikes.clone(),
-        prices,
-        is_call: vec![true; strikes.len()],
-        tau,
-      }
+  });
+  let strikes = [90.0, 95.0, 100.0, 105.0, 110.0];
+  let quotes = [0.5, 1.0]
+    .into_iter()
+    .flat_map(|tau| strikes.map(|k| (k, tau)))
+    .map(|(k, tau)| {
+      let price = true_model.price_call(100.0, k, 0.05, 0.0, tau);
+      OptionQuote::new(k, tau, price, OptionType::Call)
     })
     .collect();
 
-  let cal = SvjCalibrator::from_slices(
-    None,
-    &slices,
-    100.0,
-    0.05,
-    Some(0.0),
-    OptionType::Call,
-    false,
-  );
+  let cal = SvjCalibrator::new(100.0, 0.05, 0.0, quotes);
   let result = cal.calibrate(None).unwrap();
   assert!(result.converged, "SVJ should converge");
 

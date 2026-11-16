@@ -1,22 +1,15 @@
 use ndarray::Array1;
 
-use super::super::periodic_map;
+use crate::calibration::heston::params::EPS;
+use crate::calibration::heston::params::P_THETA;
+use crate::calibration::heston::params::THETA_MIN;
 use crate::pricing::heston::HestonParams;
 
-pub(super) const EPS: f64 = 1e-8;
-pub(super) const RHO_BOUND: f64 = 0.9999;
-pub(super) const KAPPA_MIN: f64 = 1e-3;
-pub(super) const THETA_MIN: f64 = 1e-8;
-pub(super) const SIGMA_MIN: f64 = 1e-8;
-
 pub(super) const P_V0: (f64, f64) = (0.001, 0.25);
-pub(super) const P_KAPPA: (f64, f64) = (0.1, 20.0);
-pub(super) const P_THETA: (f64, f64) = (0.001, 0.4);
 pub(super) const P_SIGMA: (f64, f64) = (0.01, 1.0);
-pub(super) const P_RHO: (f64, f64) = (-1.0, 1.0);
 
 /// Double Heston model parameters: two independent Heston factors.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DoubleHestonParams {
   pub first: HestonParams,
   pub second: HestonParams,
@@ -37,14 +30,7 @@ impl DoubleHestonParams {
 }
 
 fn project_factor(p: &mut HestonParams) {
-  p.v0 = periodic_map(p.v0, P_V0.0, P_V0.1).max(0.0);
-  p.kappa = periodic_map(p.kappa, P_KAPPA.0, P_KAPPA.1).max(KAPPA_MIN);
-  p.theta = periodic_map(p.theta, P_THETA.0, P_THETA.1).max(THETA_MIN);
-  p.sigma = periodic_map(p.sigma, P_SIGMA.0, P_SIGMA.1)
-    .abs()
-    .max(SIGMA_MIN);
-  p.rho = periodic_map(p.rho, P_RHO.0, P_RHO.1).clamp(-RHO_BOUND, RHO_BOUND);
-
+  p.project_box(P_V0, P_SIGMA);
   if 2.0 * p.kappa * p.theta < p.sigma * p.sigma {
     let sigma_star = (2.0 * p.kappa * p.theta).sqrt();
     if sigma_star >= P_SIGMA.0 {

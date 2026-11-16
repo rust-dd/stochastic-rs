@@ -10,7 +10,7 @@ mod calibrator;
 mod cui_impl;
 mod lsq;
 mod numeric_impl;
-mod params;
+pub(super) mod params;
 mod transform;
 
 pub use calibrator::HestonCalibrator;
