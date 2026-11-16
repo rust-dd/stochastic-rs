@@ -47,36 +47,41 @@ pub struct PyFouEstimate {
 
 #[pymethods]
 impl PyFouEstimate {
-  /// V1 estimator (Daubechies-filter-based).
+  /// `fit_fou_filtered_variations` with the Daubechies filter.
   #[staticmethod]
   #[pyo3(signature = (path, delta=None, hurst_override=None))]
   fn v1<'py>(
     path: PyReadonlyArray1<'py, f64>,
     delta: Option<f64>,
     hurst_override: Option<f64>,
-  ) -> Self {
-    Self {
-      inner: crate::fou::fit_fou_filtered_variations(
-        path.as_array(),
-        crate::fou::FilterType::Daubechies,
-        delta,
-        hurst_override,
-      ),
-    }
+  ) -> PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::fou::fit_fou_filtered_variations(
+          path.as_array(),
+          crate::fou::FilterType::Daubechies,
+          delta,
+          hurst_override,
+        )
+        .map_err(stats_error)?,
+      })
+    })?
   }
 
-  /// V2 estimator (moments-based, no linear filters).
+  /// `fit_fou_central_differences`.
   #[staticmethod]
   #[pyo3(signature = (path, delta=None, hurst_override=None))]
   fn v2<'py>(
     path: PyReadonlyArray1<'py, f64>,
     delta: Option<f64>,
     hurst_override: Option<f64>,
-  ) -> Self {
-    let n = path.as_array().len();
-    Self {
-      inner: crate::fou::fit_fou_central_differences(path.as_array(), delta, n, hurst_override),
-    }
+  ) -> PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: crate::fou::fit_fou_central_differences(path.as_array(), delta, hurst_override)
+          .map_err(stats_error)?,
+      })
+    })?
   }
 
   #[getter]

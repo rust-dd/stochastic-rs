@@ -22,7 +22,7 @@ The `stochastic-rs-stats` crate ships estimators for common quant-finance workfl
 | `hurst`                | Five native estimators behind one `HurstEstimator` trait: rescaled-range, DFA, GPH, wavelet, variations. Two more implement the same trait by adapting a fractal-dimension estimate (`fractal_dim::{Higuchi, Variogram}`, `H = 2 - D`) — **7** `HurstEstimator` implementors in total. `hurst::whittle::Whittle::fit` estimates a different quantity (the roughness of latent volatility from log realized variance, Fukasawa, Takabatake & Westphal 2019) and is not a `HurstEstimator` — see below |
 | `kde`                  | Gaussian KDE                                                                   |
 | `spectral`             | Periodogram and spectrum search                                                |
-| `fou`                  | fOU MLE with Hurst joint estimation                                            |
+| `fou`                  | fOU estimators by method: filtered variations and central differences (Brouste & Iacus 2013), power variation (Hu, Nualart & Zhou 2019) |
 | `garch`                | GARCH / GJR-GARCH / EGARCH Gaussian QMLE with inverse-Hessian and Bollerslev-Wooldridge robust standard errors |
 | `evt`                  | Extreme-value theory: Hill tail index, GPD peaks-over-threshold (MLE and Hosking-Wallis PWM) with VaR / ES, GEV block-maxima MLE with return levels |
 | `distfit`              | Maximum-likelihood fits of the skewed return laws: Johnson SU, Hansen skew-t with location and scale, variance gamma |

@@ -68,7 +68,7 @@
 //!   [`Wavelet`]'s `Daubechies4` filter has 2 vanishing moments, so it is
 //!   blind to a linear trend but not a quadratic one; [`Dfa`] with a
 //!   higher `order` handles trends [`Wavelet`] cannot.
-//! - [`Variations`] (Coeurjolly 2001; Brouste & Iacus, arXiv:1703.09372)
+//! - [`Variations`] (Coeurjolly 2001; Brouste & Iacus 2013, arXiv:1112.3777)
 //!   is the one derived for a discretely-observed **fractional
 //!   Ornstein-Uhlenbeck**-type process rather than pure fBM/fGN
 //!   self-similarity — reach for it, specifically
