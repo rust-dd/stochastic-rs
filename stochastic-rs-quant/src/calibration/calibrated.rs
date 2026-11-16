@@ -132,8 +132,8 @@ impl<P: Clone, D> CalibrationResult for Calibrated<P, D> {
   }
 }
 
-/// One accepted optimiser iterate: its parameters, its residuals as market − model, weighted as the
-/// fit weights them, and its loss.
+/// One accepted optimiser iterate: its parameters, its residuals as market − model, scaled by a
+/// Levenberg–Marquardt fit's row weights, and its loss.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct CalibrationHistory<P> {
