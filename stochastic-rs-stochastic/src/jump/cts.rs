@@ -140,8 +140,6 @@ impl<T: FloatExt, S: SeedExt> Cts<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Cts<T, S, B> {}
-
 impl<T: FloatExt, S: SeedExt, B> Cts<T, S, B> {
   /// The horizon, one when omitted.
   fn t_max(&self) -> T {

@@ -218,9 +218,7 @@ impl<T: FloatExt, S: SeedExt, B> FJacobi<T, S, B> {
     self.seed = seed;
     self
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> FJacobi<T, S, B> {
   /// Hurst exponent controlling roughness and long-memory.
   pub fn hurst(&self) -> T {
     self.hurst

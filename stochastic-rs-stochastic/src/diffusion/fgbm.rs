@@ -152,9 +152,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgbm<T, S, B> {
     self.seed = seed;
     self
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> Fgbm<T, S, B> {
   /// Hurst exponent controlling roughness and long-memory.
   pub fn hurst(&self) -> T {
     self.hurst

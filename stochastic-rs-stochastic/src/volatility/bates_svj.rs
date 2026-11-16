@@ -326,9 +326,7 @@ impl<T: FloatExt, S: SeedExt, B> BatesSvj<T, S, B> {
     self.seed = seed;
     self
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> BatesSvj<T, S, B> {
   #[inline]
   fn kappa_j(&self) -> T {
     (self.nu + T::from_f64_fast(0.5) * self.omega * self.omega).exp() - T::one()

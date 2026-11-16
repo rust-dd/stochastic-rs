@@ -58,8 +58,6 @@ impl<T: FloatExt, S: SeedExt> Cgns<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Cgns<T, S, B> {}
-
 impl<T: FloatExt, S: SeedExt, B> Cgns<T, S, B> {
   /// Sample with an explicit seed, used by callers like Cbms.
   pub fn sample_with_seed(&self, seed: u64) -> [Array1<T>; 2] {

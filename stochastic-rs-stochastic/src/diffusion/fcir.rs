@@ -207,9 +207,7 @@ impl<T: FloatExt, S: SeedExt, B> Fcir<T, S, B> {
     self.seed = seed;
     self
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> Fcir<T, S, B> {
   /// Hurst exponent controlling roughness and long-memory.
   pub fn hurst(&self) -> T {
     self.hurst

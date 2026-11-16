@@ -174,9 +174,7 @@ impl<T: FloatExt, S: SeedExt, B> RoughHeston<T, S, B> {
     self.rho = rho;
     self
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> RoughHeston<T, S, B> {
   /// The grid spacing, zero for a single point.
   fn dt(&self) -> T {
     if self.n > 1 {

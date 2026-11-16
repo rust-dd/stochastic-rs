@@ -225,9 +225,7 @@ impl<T: FloatExt, S: SeedExt, B> Cfou<T, S, B> {
     self.seed = seed;
     self
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> Cfou<T, S, B> {
   /// Hurst exponent of the driving fractional Brownian motion.
   pub fn hurst(&self) -> T {
     self.hurst

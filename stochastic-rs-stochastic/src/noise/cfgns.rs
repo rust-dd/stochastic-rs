@@ -136,9 +136,7 @@ impl<T: FloatExt, S: SeedExt, B> Cfgns<T, S, B> {
     self.seed = seed;
     self
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> Cfgns<T, S, B> {
   /// Hurst exponent controlling roughness and long-memory.
   pub fn hurst(&self) -> T {
     self.hurst

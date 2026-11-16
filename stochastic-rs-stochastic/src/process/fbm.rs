@@ -118,9 +118,7 @@ impl<T: FloatExt, S: SeedExt, B> Fbm<T, S, B> {
     self.seed = seed;
     self
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> Fbm<T, S, B> {
   /// Hurst parameter (`0 < H < 1`) controlling roughness and memory.
   pub fn hurst(&self) -> T {
     self.hurst

@@ -88,8 +88,6 @@ impl<T: FloatExt, S: SeedExt> Nig<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Nig<T, S, B> {}
-
 impl<T: FloatExt, S: SeedExt, B> Nig<T, S, B> {
   #[inline]
   fn dt(&self) -> T {

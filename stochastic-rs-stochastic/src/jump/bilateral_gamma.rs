@@ -118,8 +118,6 @@ impl<T: FloatExt, S: SeedExt> BilateralGamma<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> BilateralGamma<T, S, B> {}
-
 impl<T: FloatExt, S: SeedExt, B> BilateralGamma<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
@@ -384,8 +382,6 @@ impl<T: FloatExt, S: SeedExt> BilateralGammaMotion<T, S> {
     }
   }
 }
-
-impl<T: FloatExt, S: SeedExt, B> BilateralGammaMotion<T, S, B> {}
 
 impl<T: FloatExt, S: SeedExt, B> BilateralGammaMotion<T, S, B> {
   #[inline]

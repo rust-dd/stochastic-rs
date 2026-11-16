@@ -197,13 +197,7 @@ where
     self.seed = seed;
     self.rebuild_cpoisson()
   }
-}
 
-impl<T, D, S: SeedExt, B> JumpFou<T, D, S, B>
-where
-  T: FloatExt,
-  D: Distribution<T> + Send + Sync,
-{
   /// Hurst exponent H of the driving fractional Gaussian noise; H = 0.5 recovers an OU process
   /// with jumps.
   pub fn hurst(&self) -> T {

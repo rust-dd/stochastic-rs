@@ -356,9 +356,7 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
     self.seed = seed;
     self
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
   /// Kou double-exponential jump compensator: E[e^J - 1]
   #[inline]
   fn k_bar(&self) -> T {

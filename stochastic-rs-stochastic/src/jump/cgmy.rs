@@ -151,8 +151,6 @@ impl<T: FloatExt, S: SeedExt> Cgmy<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Cgmy<T, S, B> {}
-
 impl<T: FloatExt, S: SeedExt, B> Cgmy<T, S, B> {
   /// The horizon, one when omitted.
   fn t_max(&self) -> T {

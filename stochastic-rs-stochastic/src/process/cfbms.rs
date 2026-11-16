@@ -140,9 +140,7 @@ impl<T: FloatExt, S: SeedExt, B> Cfbms<T, S, B> {
     self.seed = seed;
     self
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> Cfbms<T, S, B> {
   /// Hurst parameter (`0 < H < 1`) shared by both components.
   pub fn hurst(&self) -> T {
     self.hurst

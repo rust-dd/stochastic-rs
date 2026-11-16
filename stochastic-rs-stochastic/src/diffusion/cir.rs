@@ -189,9 +189,7 @@ impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
     self.seed = seed;
     self
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
   /// Exact transition density to `r_next` after `t` from `r_t`; NaN at `t = 0`, for a negative state or outside the domain.
   pub fn transition_pdf(&self, t: T, r_t: T, r_next: T) -> T {
     let [theta, mu, sigma, t, r_t, r_next] =

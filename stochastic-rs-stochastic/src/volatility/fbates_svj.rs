@@ -307,9 +307,7 @@ impl<T: FloatExt, S: SeedExt, B> FBatesSvj<T, S, B> {
     self.seed = seed;
     self
   }
-}
 
-impl<T: FloatExt, S: SeedExt, B> FBatesSvj<T, S, B> {
   /// The grid spacing, zero for a single point.
   fn dt(&self) -> T {
     if self.n > 1 {
