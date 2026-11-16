@@ -231,7 +231,7 @@ impl crate::traits::Calibrator for BlackKarasinskiSwaptionCalibrator<'_> {
   fn calibrate(&self, initial: Option<BlackKarasinskiParams>) -> Result<Self::Output, QuantError> {
     let start = initial.unwrap_or(self.start);
     start.check()?;
-    validate_swaption_quotes(self.quotes)?;
+    validate_swaption_quotes(self.quotes, self.curve)?;
     let problem = self.cost(&start, self.options.regularization_for(2)?);
     let (a0, s0) = (start.mean_reversion, start.sigma);
     let simplex = vec![vec![a0, s0], vec![a0 * 1.5, s0], vec![a0, s0 * 1.5]];
@@ -403,7 +403,7 @@ impl crate::traits::Calibrator for G2ppSwaptionCalibrator<'_> {
   fn calibrate(&self, initial: Option<G2ppParams>) -> Result<Self::Output, QuantError> {
     let start = initial.unwrap_or(self.start);
     check_finite_start(&start.fields())?;
-    validate_swaption_quotes(self.quotes)?;
+    validate_swaption_quotes(self.quotes, self.curve)?;
     let problem = self.cost(start.phi, self.options.regularization_for(5)?);
     let x0 = [
       start.mean_reversion_x,

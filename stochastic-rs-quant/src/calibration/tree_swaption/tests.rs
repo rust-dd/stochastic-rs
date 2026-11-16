@@ -94,6 +94,44 @@ fn black_karasinski_bridge_keeps_the_two_rates_apart() {
   assert_eq!(model.theta_log, 0.05_f64.ln());
 }
 
+/// The forward turns negative past three years, so the 2y × 3y swap rate is about −3 %: Black-76
+/// prices no such quote, and neither tree fit starts.
+#[test]
+fn a_quote_whose_swap_rate_is_negative_has_no_black_price_and_is_refused() {
+  let curve = DiscountCurve::from_zero_rates(
+    &Array1::from_vec(vec![1.0, 3.0, 5.0]),
+    &Array1::from_vec(vec![0.02, 0.02, -0.01]),
+    InterpolationMethod::LogLinearOnDiscountFactors,
+  );
+  let mut quotes = grid(&[(1.0, 2.0), (2.0, 3.0)]);
+  for quote in &mut quotes {
+    quote.black_vol = 0.2;
+  }
+  let bk_start = BlackKarasinskiParams {
+    mean_reversion: 0.1,
+    sigma: 0.2,
+    initial_rate: 0.03,
+    long_run_rate: 0.03,
+  };
+  let g2_start = G2ppParams {
+    mean_reversion_x: 0.4,
+    mean_reversion_y: 0.08,
+    sigma_x: 0.012,
+    sigma_y: 0.005,
+    rho: -0.5,
+    phi: 0.03,
+  };
+  let bk =
+    BlackKarasinskiSwaptionCalibrator::new(&quotes, &curve, 1.0, 8, bk_start).calibrate(None);
+  let g2 = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 4, g2_start).calibrate(None);
+  for err in [bk.unwrap_err(), g2.unwrap_err()] {
+    assert!(
+      matches!(&err, QuantError::InvalidQuote { index: 1, reason } if reason.contains("fair_rate")),
+      "{err}"
+    );
+  }
+}
+
 /// Five G2++ parameters from four quotes are not identifiable one by one,
 /// so the check is on the repricing error and the trait plumbing.
 #[test]

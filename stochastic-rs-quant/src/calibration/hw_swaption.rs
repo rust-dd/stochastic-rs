@@ -45,9 +45,12 @@ pub struct SwaptionQuote {
   pub weight: Option<f64>,
 }
 
-/// `InsufficientData` for no quote; `InvalidQuote` for a non-finite or non-positive expiry, tenor
-/// or accrual, or a non-finite or negative volatility or weight.
-pub(crate) fn validate_swaption_quotes(quotes: &[SwaptionQuote]) -> Result<(), QuantError> {
+/// `InsufficientData` for no quote; `InvalidQuote` for a non-finite or non-positive expiry, tenor or
+/// accrual, a non-finite or negative volatility or weight, or a negative forward swap rate on `curve`.
+pub(crate) fn validate_swaption_quotes(
+  quotes: &[SwaptionQuote],
+  curve: &DiscountCurve<f64>,
+) -> Result<(), QuantError> {
   if quotes.is_empty() {
     return Err(QuantError::InsufficientData {
       what: "swaption quotes",
@@ -73,8 +76,26 @@ pub(crate) fn validate_swaption_quotes(quotes: &[SwaptionQuote]) -> Result<(), Q
         return Err(QuantError::InvalidQuote { index, reason });
       }
     }
+    let fair_rate = fair_rate(quote, curve);
+    if fair_rate < 0.0 {
+      let reason = format!(
+        "fair_rate must satisfy `fair_rate >= 0.0`, as Black-76 prices no negative forward, got fair_rate = {fair_rate:?}"
+      );
+      return Err(QuantError::InvalidQuote { index, reason });
+    }
   }
   Ok(())
+}
+
+/// The forward swap rate of a quote on the schedule both swaption pricers build; its sign is theirs.
+fn fair_rate(quote: &SwaptionQuote, curve: &DiscountCurve<f64>) -> f64 {
+  let n_payments = ((quote.tenor * (1.0 / quote.fixed_accrual).round()).round() as usize).max(1);
+  let accrual = quote.tenor / n_payments as f64;
+  let annuity = (1..=n_payments)
+    .map(|k| curve.discount_factor(quote.expiry + accrual * k as f64) * accrual)
+    .sum::<f64>();
+  let p_end = curve.discount_factor(quote.expiry + accrual * n_payments as f64);
+  (curve.discount_factor(quote.expiry) - p_end) / annuity
 }
 
 /// `Σ (wᵢ·modelᵢ − wᵢ·marketᵢ)²`: the swaption objective, while `rmse()` stays on the raw prices.
@@ -172,7 +193,7 @@ impl crate::traits::Calibrator for HullWhiteSwaptionCalibrator<'_> {
   fn calibrate(&self, initial: Option<HullWhiteParams>) -> Result<Self::Output, QuantError> {
     let start = initial.unwrap_or(self.start);
     check_finite_start(&start.fields())?;
-    validate_swaption_quotes(self.quotes)?;
+    validate_swaption_quotes(self.quotes, self.curve)?;
     let problem = HullWhiteCost {
       quotes: self.quotes.to_vec(),
       curve_points: serialize_curve(self.curve),
@@ -476,6 +497,24 @@ mod tests {
     assert!(
       matches!(quote, QuantError::InvalidQuote { index: 1, .. }),
       "{quote}"
+    );
+  }
+
+  /// The forward turns negative past three years, so the 2y × 3y swap rate is about −3 %.
+  #[test]
+  fn a_quote_whose_swap_rate_is_negative_has_no_black_price_and_is_refused() {
+    let curve = DiscountCurve::from_zero_rates(
+      &Array1::from_vec(vec![1.0, 3.0, 5.0]),
+      &Array1::from_vec(vec![0.02, 0.02, -0.01]),
+      InterpolationMethod::LogLinearOnDiscountFactors,
+    );
+    let quotes = quotes();
+    let err = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, START)
+      .calibrate(None)
+      .unwrap_err();
+    assert!(
+      matches!(&err, QuantError::InvalidQuote { index: 1, reason } if reason.contains("fair_rate")),
+      "{err}"
     );
   }
 
