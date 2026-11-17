@@ -39,28 +39,24 @@ pub struct Cfgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
+  fn check_hurst(hurst: T) {
+    require!(hurst.is_finite(), hurst);
+    require!((T::zero()..=T::one()).contains(&hurst), hurst);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 1, n);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   pub fn new(hurst: T, rho: T, n: usize, t: Option<T>, seed: S) -> Self {
-    assert!(
-      hurst.is_finite(),
-      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
-    );
-    assert!(
-      rho.is_finite(),
-      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
-    );
-    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
-    assert!(
-      (T::zero()..=T::one()).contains(&hurst),
-      "hurst must satisfy `(T::zero()..=T::one()).contains(&hurst)`, got hurst = {hurst:?}"
-    );
-    assert!(
-      (-T::one()..=T::one()).contains(&rho),
-      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
-    );
+    Self::check_hurst(hurst);
+    Self::check_rho(rho);
+    Self::check_n(n);
+    Self::check_t(t);
 
     Self {
       hurst,
@@ -75,14 +71,7 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
   /// Replace `hurst`; panics unless `0 ≤ hurst ≤ 1`.
   /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_hurst(mut self, hurst: T) -> Self {
-    assert!(
-      hurst.is_finite(),
-      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
-    );
-    assert!(
-      (T::zero()..=T::one()).contains(&hurst),
-      "hurst must satisfy `(T::zero()..=T::one()).contains(&hurst)`, got hurst = {hurst:?}"
-    );
+    Self::check_hurst(hurst);
     self.hurst = hurst;
     self.fgn = Fgn::new(hurst, self.n, self.t, Unseeded);
     self
@@ -90,7 +79,7 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
 
   /// Replace `n`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_increments(mut self, n: usize) -> Self {
-    assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self.fgn = Fgn::new(self.hurst, n, self.t, Unseeded);
     self
@@ -98,10 +87,7 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
 
   /// Replace `t`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self.fgn = Fgn::new(self.hurst, self.n, t, Unseeded);
     self
@@ -109,17 +95,15 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Cfgns<T, S, B> {
+  fn check_rho(rho: T) {
+    require!(rho.is_finite(), rho);
+    require!((-T::one()..=T::one()).contains(&rho), rho);
+  }
+
   /// Replace `rho`. Panics if `rho` is outside `[-1, 1]`, matching `new()`'s
   /// own assertion.
   pub fn with_rho(mut self, rho: T) -> Self {
-    assert!(
-      rho.is_finite(),
-      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
-    );
-    assert!(
-      (-T::one()..=T::one()).contains(&rho),
-      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
-    );
+    Self::check_rho(rho);
     self.rho = rho;
     self
   }

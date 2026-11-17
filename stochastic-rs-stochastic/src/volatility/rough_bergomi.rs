@@ -43,8 +43,6 @@
 //! semistationary processes*, Finance and Stochastics 21, 931–965, DOI 10.1007/s00780-017-0335-5.
 
 use ndarray::Array1;
-#[cfg(feature = "python")]
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
@@ -90,35 +88,14 @@ pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// `RoughBergomi::default().with_hurst(0.3).with_rho(-0.2)`.
 impl<T: FloatExt, S: SeedExt> RoughBergomi<T, S> {
   pub fn new(hurst: T, nu: T, v0: T, s0: T, r: T, rho: T, n: usize, t: Option<T>, seed: S) -> Self {
-    assert!(
-      hurst.is_finite(),
-      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
-    );
-    assert!(
-      nu.is_finite(),
-      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
-    );
-    assert!(
-      v0.is_finite(),
-      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
-    );
-    assert!(
-      s0.is_finite(),
-      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
-    );
-    assert!(
-      r.is_finite(),
-      "r must satisfy `r.is_finite()`, got r = {r:?}"
-    );
-    assert!(
-      rho.is_finite(),
-      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_hurst(hurst);
+    Self::check_nu(nu);
+    Self::check_v0(v0);
+    Self::check_s0(s0);
+    Self::check_r(r);
+    Self::check_rho(rho);
+    Self::check_n(n);
+    Self::check_t(t);
     RoughBergomi {
       backend: Cpu,
       hurst,
@@ -136,52 +113,69 @@ impl<T: FloatExt, S: SeedExt> RoughBergomi<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> RoughBergomi<T, S, B> {
+  fn check_hurst(hurst: T) {
+    require!(hurst.is_finite(), hurst);
+  }
+
+  fn check_nu(nu: T) {
+    require!(nu.is_finite(), nu);
+  }
+
+  fn check_v0(v0: T) {
+    require!(v0.is_finite(), v0);
+  }
+
+  fn check_s0(s0: T) {
+    require!(s0.is_finite(), s0);
+  }
+
+  fn check_r(r: T) {
+    require!(r.is_finite(), r);
+  }
+
+  fn check_rho(rho: T) {
+    require!(rho.is_finite(), rho);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Replace `hurst`, all else unchanged.
   pub fn with_hurst(mut self, hurst: T) -> Self {
-    assert!(
-      hurst.is_finite(),
-      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
-    );
+    Self::check_hurst(hurst);
     self.hurst = hurst;
     self
   }
 
   /// Replace `nu`, all else unchanged.
   pub fn with_nu(mut self, nu: T) -> Self {
-    assert!(
-      nu.is_finite(),
-      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
-    );
+    Self::check_nu(nu);
     self.nu = nu;
     self
   }
 
   /// Replace `v0`, all else unchanged.
   pub fn with_v0(mut self, v0: T) -> Self {
-    assert!(
-      v0.is_finite(),
-      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
-    );
+    Self::check_v0(v0);
     self.v0 = v0;
     self
   }
 
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: T) -> Self {
-    assert!(
-      s0.is_finite(),
-      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
-    );
+    Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
   /// Replace `r`, all else unchanged.
   pub fn with_r(mut self, r: T) -> Self {
-    assert!(
-      r.is_finite(),
-      "r must satisfy `r.is_finite()`, got r = {r:?}"
-    );
+    Self::check_r(r);
     self.r = r;
     self
   }
@@ -190,10 +184,7 @@ impl<T: FloatExt, S: SeedExt, B> RoughBergomi<T, S, B> {
   /// (`cgns`) so the new correlation actually reaches the sampler instead
   /// of a stale one computed from the old `rho`.
   pub fn with_rho(mut self, rho: T) -> Self {
-    assert!(
-      rho.is_finite(),
-      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
-    );
+    Self::check_rho(rho);
     self.rho = rho;
     self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
     self
@@ -202,7 +193,7 @@ impl<T: FloatExt, S: SeedExt, B> RoughBergomi<T, S, B> {
   /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
   /// generator, whose length and step size derive from `n`.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self
@@ -211,10 +202,7 @@ impl<T: FloatExt, S: SeedExt, B> RoughBergomi<T, S, B> {
   /// Replace the simulation horizon `t`; rebuilds the cached
   /// correlated-Gaussian generator's step size, which derives from `t`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
     self
@@ -515,251 +503,11 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for RoughBergomiSampler<T, S> {
 }
 
 #[cfg(feature = "python")]
-#[doc(hidden)]
-#[pyo3::prelude::pyclass]
-pub struct PyRoughBergomi {
-  inner_f32: Option<RoughBergomi<f32>>,
-  inner_f64: Option<RoughBergomi<f64>>,
-  seeded_f32: Option<RoughBergomi<f32, crate::simd_rng::Deterministic>>,
-  seeded_f64: Option<RoughBergomi<f64, crate::simd_rng::Deterministic>>,
-}
+mod python;
 
 #[cfg(feature = "python")]
-#[pyo3::prelude::pymethods]
-impl PyRoughBergomi {
-  #[new]
-  #[pyo3(signature = (hurst, nu, r, rho, n, v0, s0, t=None, seed=None, dtype=None))]
-  fn new(
-    hurst: f64,
-    nu: f64,
-    r: f64,
-    rho: f64,
-    n: usize,
-    v0: f64,
-    s0: f64,
-    t: Option<f64>,
-    seed: Option<u64>,
-    dtype: Option<&str>,
-  ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| {
-      let mut s = Self {
-        inner_f32: None,
-        inner_f64: None,
-        seeded_f32: None,
-        seeded_f64: None,
-      };
-      match (seed, dtype.unwrap_or("f64")) {
-        (Some(sd), "f32") => {
-          s.seeded_f32 = Some(RoughBergomi::new(
-            hurst as f32,
-            nu as f32,
-            v0 as f32,
-            s0 as f32,
-            r as f32,
-            rho as f32,
-            n,
-            t.map(|v| v as f32),
-            Deterministic::new(sd),
-          ));
-        }
-        (Some(sd), _) => {
-          s.seeded_f64 = Some(RoughBergomi::new(
-            hurst,
-            nu,
-            v0,
-            s0,
-            r,
-            rho,
-            n,
-            t,
-            Deterministic::new(sd),
-          ));
-        }
-        (None, "f32") => {
-          s.inner_f32 = Some(RoughBergomi::new(
-            hurst as f32,
-            nu as f32,
-            v0 as f32,
-            s0 as f32,
-            r as f32,
-            rho as f32,
-            n,
-            t.map(|v| v as f32),
-            Unseeded,
-          ));
-        }
-        (None, _) => {
-          s.inner_f64 = Some(RoughBergomi::new(hurst, nu, v0, s0, r, rho, n, t, Unseeded));
-        }
-      }
-      s
-    })
-  }
-
-  fn sample<'py>(
-    &self,
-    py: pyo3::Python<'py>,
-  ) -> pyo3::PyResult<(pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>)> {
-    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
-      use numpy::IntoPyArray;
-      use pyo3::IntoPyObjectExt;
-
-      use crate::traits::ProcessExt;
-      py_dispatch!(self, |inner| {
-        let [a, b] = inner.sample();
-        (
-          a.into_pyarray(py).into_py_any(py).unwrap(),
-          b.into_pyarray(py).into_py_any(py).unwrap(),
-        )
-      })
-    })
-  }
-
-  fn sample_par<'py>(
-    &self,
-    py: pyo3::Python<'py>,
-    m: usize,
-  ) -> pyo3::PyResult<(pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>)> {
-    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
-      use numpy::IntoPyArray;
-      use numpy::ndarray::Array2;
-      use pyo3::IntoPyObjectExt;
-
-      use crate::traits::ProcessExt;
-      py_dispatch!(self, |inner| {
-        let samples = inner.sample_par(m);
-        let n = samples[0][0].len();
-        let mut r0 = Array2::zeros((m, n));
-        let mut r1 = Array2::zeros((m, n));
-        for (i, [a, b]) in samples.iter().enumerate() {
-          r0.row_mut(i).assign(a);
-          r1.row_mut(i).assign(b);
-        }
-        (
-          r0.into_pyarray(py).into_py_any(py).unwrap(),
-          r1.into_pyarray(py).into_py_any(py).unwrap(),
-        )
-      })
-    })
-  }
-}
+#[doc(hidden)]
+pub use python::PyRoughBergomi;
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::*;
-
-  fn model(hurst: f64, n: usize, seed: u64) -> RoughBergomi<f64, Deterministic> {
-    RoughBergomi::new(
-      hurst,
-      0.4,
-      0.2,
-      100.0,
-      0.0,
-      -0.6,
-      n,
-      Some(1.0),
-      Deterministic::new(seed),
-    )
-  }
-
-  /// Bennedsen–Lunde–Pakkanen (2017) Proposition 2.8: the `k = 2` weight is
-  /// `Δ^α (2^{α+1} − 1)/(α+1)`; at `H = ½` every weight is one and the exact
-  /// last-interval integral collapses onto the increment.
-  #[test]
-  fn hybrid_weights_match_the_closed_forms() {
-    let (kernel, on_increment, residual_sd) =
-      RoughBergomiSampler::<f64, Deterministic>::hybrid_weights(0.1, 0.01, 6);
-    let alpha = -0.4;
-    let expected_k2 = 0.01_f64.powf(alpha) * (2.0_f64.powf(alpha + 1.0) - 1.0) / (alpha + 1.0);
-    assert!((kernel[2] - expected_k2).abs() < 1e-12);
-    assert!((on_increment - 0.01_f64.powf(alpha) / (alpha + 1.0)).abs() < 1e-12);
-    let expected_var =
-      0.01_f64.powf(2.0 * alpha + 1.0) * (1.0 / (2.0 * alpha + 1.0) - 1.0 / (alpha + 1.0).powi(2));
-    assert!((residual_sd * residual_sd - expected_var).abs() < 1e-14);
-    assert!(
-      kernel[2] > kernel[3] && kernel[3] > kernel[4],
-      "weights decay"
-    );
-    let (brownian, on_inc, sd) =
-      RoughBergomiSampler::<f64, Deterministic>::hybrid_weights(0.5, 0.01, 6);
-    assert!(brownian[2..].iter().all(|w| (w - 1.0).abs() < 1e-12));
-    assert!((on_inc - 1.0).abs() < 1e-12 && sd.abs() < 1e-9);
-  }
-
-  #[test]
-  fn the_hybrid_weights_keep_their_digits_in_single_precision() {
-    let (w, _, _) = RoughBergomiSampler::<f32, Unseeded>::hybrid_weights(0.1, 1.0 / 4096.0, 4001);
-    let exact = [
-      (2usize, 23.944_391_87_f64),
-      (100, 4.424_006_643),
-      (1000, 1.758_048_573),
-      (4000, 1.009_582_234),
-    ];
-    for (k, e) in exact {
-      assert!(
-        (w[k] as f64 / e - 1.0).abs() < 1e-6,
-        "k = {k}: got {}, exact {e}",
-        w[k]
-      );
-    }
-  }
-
-  /// `E[v_t] = v_0²` for every `t` (the `½ν²t^{2H}` compensator is exact
-  /// when `Var[W^H_t] = t^{2H}`), and the sample variance of the implied
-  /// `W^H_t` tracks `t^{2H}` — the scheme's variance error is second order.
-  #[test]
-  fn variance_driver_is_a_martingale_with_t_2h_variance() {
-    let n = 65;
-    let paths = 20_000;
-    let m = model(0.1, n, 7);
-    let v2 = m
-      .sample_par(paths)
-      .iter()
-      .map(|[_, v2]| v2.clone())
-      .collect::<Vec<_>>();
-    let nu = 0.4;
-    for i in [8usize, 32, 64] {
-      let t = i as f64 / 64.0;
-      let mean: f64 = v2.iter().map(|p| p[i]).sum::<f64>() / paths as f64 / 0.04;
-      assert!((mean - 1.0).abs() < 0.04, "t {t}: E[v]/v0² = {mean}");
-      let logs: Vec<f64> = v2
-        .iter()
-        .map(|p| ((p[i] / 0.04).ln() + 0.5 * nu * nu * t.powf(0.2)) / nu)
-        .collect();
-      let mean_w = logs.iter().sum::<f64>() / paths as f64;
-      let var_w = logs.iter().map(|w| (w - mean_w).powi(2)).sum::<f64>() / paths as f64;
-      assert!(
-        (var_w / t.powf(0.2) - 1.0).abs() < 0.05,
-        "t {t}: Var[W^H] = {var_w}, t^2H = {}",
-        t.powf(0.2)
-      );
-    }
-  }
-
-  /// The lag-one autocorrelation of the log-variance increments is the
-  /// fractional-Gaussian-noise value `½(2^{2H} − 2)` at `H = 0.1`, a
-  /// negative number a driver with independent increments cannot produce.
-  #[test]
-  fn log_variance_increments_are_antipersistent() {
-    let n = 257;
-    let paths = 4_000;
-    let m = model(0.1, n, 3);
-    let (mut num, mut den) = (0.0, 0.0);
-    for [_, v2] in m.sample_par(paths) {
-      let w: Vec<f64> = v2.iter().map(|v| (v / 0.04).ln()).collect();
-      let d: Vec<f64> = w.windows(2).map(|p| p[1] - p[0]).collect();
-      for k in 128..d.len() - 1 {
-        num += d[k] * d[k + 1];
-        den += d[k] * d[k];
-      }
-    }
-    let rho1 = num / den;
-    let fgn = 0.5 * (2.0_f64.powf(0.2) - 2.0);
-    assert!(
-      rho1 < -0.3 && (rho1 - fgn).abs() < 0.08,
-      "rho1 {rho1} vs fGN {fgn}"
-    );
-  }
-}
+mod tests;

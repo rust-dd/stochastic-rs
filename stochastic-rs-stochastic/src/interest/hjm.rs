@@ -6,8 +6,6 @@
 //!
 
 use ndarray::Array1;
-#[cfg(feature = "python")]
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
@@ -365,206 +363,14 @@ impl<T: FloatExt, S: SeedExt, B> Hjm<T, S, B> {
 }
 
 #[cfg(feature = "python")]
-#[doc(hidden)]
-#[pyo3::prelude::pyclass]
-pub struct PyHjm {
-  inner: Option<Hjm<f64>>,
-  seeded: Option<Hjm<f64, crate::simd_rng::Deterministic>>,
-}
+mod python;
 
 #[cfg(feature = "python")]
-#[pyo3::prelude::pymethods]
-impl PyHjm {
-  #[new]
-  #[pyo3(signature = (a, b, p, q, v, alpha, sigma, n, r0=None, p0=None, f0=None, t=None, seed=None))]
-  fn new(
-    a: pyo3::Py<pyo3::PyAny>,
-    b: pyo3::Py<pyo3::PyAny>,
-    p: pyo3::Py<pyo3::PyAny>,
-    q: pyo3::Py<pyo3::PyAny>,
-    v: pyo3::Py<pyo3::PyAny>,
-    alpha: pyo3::Py<pyo3::PyAny>,
-    sigma: pyo3::Py<pyo3::PyAny>,
-    n: usize,
-    r0: Option<f64>,
-    p0: Option<f64>,
-    f0: Option<f64>,
-    t: Option<f64>,
-    seed: Option<u64>,
-  ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| {
-      use crate::traits::Fn2D;
-      match seed {
-        Some(s) => Self {
-          inner: None,
-          seeded: Some(Hjm::new(
-            Fn1D::Py(a),
-            Fn1D::Py(b),
-            Fn2D::Py(p),
-            Fn2D::Py(q),
-            Fn2D::Py(v),
-            Fn2D::Py(alpha),
-            Fn2D::Py(sigma),
-            n,
-            r0,
-            p0,
-            f0,
-            t,
-            Deterministic::new(s),
-          )),
-        },
-        None => Self {
-          inner: Some(Hjm::new(
-            Fn1D::Py(a),
-            Fn1D::Py(b),
-            Fn2D::Py(p),
-            Fn2D::Py(q),
-            Fn2D::Py(v),
-            Fn2D::Py(alpha),
-            Fn2D::Py(sigma),
-            n,
-            r0,
-            p0,
-            f0,
-            t,
-            Unseeded,
-          )),
-          seeded: None,
-        },
-      }
-    })
-  }
-
-  fn sample<'py>(
-    &self,
-    py: pyo3::Python<'py>,
-  ) -> pyo3::PyResult<(
-    pyo3::Py<pyo3::PyAny>,
-    pyo3::Py<pyo3::PyAny>,
-    pyo3::Py<pyo3::PyAny>,
-  )> {
-    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
-      use numpy::IntoPyArray;
-      use pyo3::IntoPyObjectExt;
-
-      use crate::traits::ProcessExt;
-      py_dispatch_f64!(self, |inner| {
-        let HjmPaths { r, p, f, .. } = inner.sample();
-        (
-          r.into_pyarray(py).into_py_any(py).unwrap(),
-          p.into_pyarray(py).into_py_any(py).unwrap(),
-          f.into_pyarray(py).into_py_any(py).unwrap(),
-        )
-      })
-    })
-  }
-
-  /// `m` independent paths as three `(m, n)` arrays — short rate, bond
-  /// price and forward rate. The GIL is released while the paths are
-  /// generated; the Python callables re-acquire it per evaluation.
-  fn sample_par<'py>(
-    &self,
-    py: pyo3::Python<'py>,
-    m: usize,
-  ) -> pyo3::PyResult<(
-    pyo3::Py<pyo3::PyAny>,
-    pyo3::Py<pyo3::PyAny>,
-    pyo3::Py<pyo3::PyAny>,
-  )> {
-    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
-      use ndarray::Array2;
-      use numpy::IntoPyArray;
-      use pyo3::IntoPyObjectExt;
-
-      use crate::traits::ProcessExt;
-      py_dispatch_f64!(self, |inner| {
-        let paths = py.detach(|| inner.sample_par(m));
-        let n = paths.first().map_or(0, |p| p.r.len());
-        let mut stacked = [
-          Array2::zeros((m, n)),
-          Array2::zeros((m, n)),
-          Array2::zeros((m, n)),
-        ];
-        for (i, HjmPaths { r, p, f, .. }) in paths.iter().enumerate() {
-          stacked[0].row_mut(i).assign(r);
-          stacked[1].row_mut(i).assign(p);
-          stacked[2].row_mut(i).assign(f);
-        }
-        let [r, p, f] = stacked;
-        (
-          r.into_pyarray(py).into_py_any(py).unwrap(),
-          p.into_pyarray(py).into_py_any(py).unwrap(),
-          f.into_pyarray(py).into_py_any(py).unwrap(),
-        )
-      })
-    })
-  }
-}
+#[doc(hidden)]
+pub use python::PyHjm;
 
 #[cfg(test)]
-mod tests {
-  use super::*;
-
-  fn zero_1d(_: f64) -> f64 {
-    0.0
-  }
-
-  fn zero_2d(_: f64, _: f64) -> f64 {
-    0.0
-  }
-
-  fn one_2d(_: f64, _: f64) -> f64 {
-    1.0
-  }
-
-  fn tmax_2d(_: f64, t_max: f64) -> f64 {
-    t_max
-  }
-
-  #[test]
-  fn the_output_names_its_slots() {
-    let HjmPaths { r, p, f, .. } = Hjm::new(
-      zero_1d as fn(f64) -> f64,
-      zero_1d as fn(f64) -> f64,
-      one_2d as fn(f64, f64) -> f64,
-      zero_2d as fn(f64, f64) -> f64,
-      one_2d as fn(f64, f64) -> f64,
-      zero_2d as fn(f64, f64) -> f64,
-      one_2d as fn(f64, f64) -> f64,
-      16,
-      Some(0.03),
-      Some(1.0),
-      Some(0.04),
-      None,
-      Unseeded,
-    )
-    .sample();
-    assert_eq!((r.len(), p.len(), f.len()), (16, 16, 16));
-  }
-
-  #[test]
-  fn default_t_max_is_one() {
-    let model = Hjm::new(
-      zero_1d as fn(f64) -> f64,
-      zero_1d as fn(f64) -> f64,
-      tmax_2d as fn(f64, f64) -> f64,
-      one_2d as fn(f64, f64) -> f64,
-      zero_2d as fn(f64, f64) -> f64,
-      zero_2d as fn(f64, f64) -> f64,
-      zero_2d as fn(f64, f64) -> f64,
-      3,
-      Some(0.0),
-      Some(0.0),
-      Some(0.0),
-      None,
-      Unseeded,
-    );
-
-    let p = model.sample().p;
-    assert!((p[1] - 0.5).abs() < 1e-12);
-    assert!((p[2] - 1.0).abs() < 1e-12);
-  }
-}
+mod tests;
 
 #[cfg(test)]
 mod tabulation {

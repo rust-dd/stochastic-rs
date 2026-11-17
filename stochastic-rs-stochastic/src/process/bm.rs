@@ -35,11 +35,8 @@ pub struct Bm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// No persisted cache: `sampler()` builds its Gaussian source fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> Bm<T, S> {
   pub fn new(n: usize, t: Option<T>, seed: S) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_n(n);
+    Self::check_t(t);
     Self {
       backend: Cpu,
       n,
@@ -50,19 +47,24 @@ impl<T: FloatExt, S: SeedExt> Bm<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Bm<T, S, B> {
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Replace `n`, the grid points along the path, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self
   }

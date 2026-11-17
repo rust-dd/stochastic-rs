@@ -1,7 +1,5 @@
-//! Every `with_*` setter asserts what its type's `new` asserts on the same argument.
-//!
-//! Reads the sources: a setter whose predicate or message differs from `new`'s, or one that has
-//! none where `new` asserts, fails. A check against stored state (`self.`) is not mirrored.
+//! Every `with_*` setter runs the check its type's `new` runs on the same argument: the field's one
+//! `Self::check_*` or the argument's own `assert_*`, and no assert of its own unless on `self.`.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -247,10 +245,13 @@ fn statements(src: &str, m: &[u8], b0: usize, b1: usize) -> Vec<Stmt> {
       let e = close(m, i + 8, b'(', b')');
       let args = split_top(std::str::from_utf8(&m[i + 8..e - 1]).unwrap(), false);
       (e, idents(&args[0]))
-    } else if boundary && m[i..].starts_with(b"assert_entries(") {
-      let e = close(m, i + 15, b'(', b')');
-      let args = split_top(std::str::from_utf8(&m[i + 15..e - 1]).unwrap(), false);
-      (e, args.get(2).map_or_else(HashSet::new, |a| idents(a)))
+    } else if boundary && m[i..].starts_with(b"Self::check_") {
+      let open = m[i..]
+        .iter()
+        .position(|&c| c == b'(')
+        .map_or(b1, |p| i + p + 1);
+      let e = close(m, open, b'(', b')');
+      (e, idents(std::str::from_utf8(&m[open..e - 1]).unwrap()))
     } else if m[i..].starts_with(b".assert_") {
       let mut k = i + 8;
       while k < b1 && (m[k].is_ascii_lowercase() || m[k] == b'_') {
@@ -492,6 +493,13 @@ fn check(files: &[(String, String)]) -> (Vec<String>, usize, usize) {
     if !s.have.is_empty() {
       asserting += 1;
     }
+    if let Some(own) = s.have.iter().find(|t| t.starts_with("assert!(")) {
+      errors.push(format!(
+        "{}::{} ({}): `{own}` belongs in the `check_{}` that `new` calls too",
+        s.ty, s.name, s.at, s.arg
+      ));
+      continue;
+    }
     if !ok {
       let want = cands
         .iter()
@@ -563,21 +571,29 @@ fn every_setter_asserts_what_new_asserts() {
 const MIRROR: &str = r#"
 impl<T: FloatExt> Foo<T> {
   pub fn new(sigma: T, n: usize) -> Self {
-    assert!(sigma > T::zero(), "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}");
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_sigma(sigma);
+    Self::check_n(n);
     Self { sigma, n }
   }
 }
 
 impl<T: FloatExt> Foo<T> {
+  fn check_sigma(sigma: T) {
+    require!(sigma > T::zero(), sigma);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
   pub fn with_sigma(mut self, sigma: T) -> Self {
-    assert!(sigma > T::zero(), "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}");
+    Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self
   }
@@ -595,16 +611,21 @@ fn a_mirrored_setter_passes() {
 }
 
 #[test]
-fn a_changed_or_missing_setter_assert_fails() {
-  let changed = MIRROR
-    .replacen("assert!(n >= 2,", "assert!(n >= 1,", 2)
-    .replacen("n >= 1", "n >= 2", 1);
-  let (errors, ..) = check(&[("changed.rs".into(), changed)]);
+fn a_setter_with_its_own_assert_or_without_the_check_fails() {
+  let (shared, own) = (
+    "    Self::check_n(n);\n    self.n",
+    "    assert!(n >= 2, \"n must satisfy `n >= 2`, got n = {n:?}\");\n    self.n",
+  );
+  let (errors, ..) = check(&[("own.rs".into(), MIRROR.replacen(shared, own, 1))]);
   assert!(
     errors.iter().any(|e| e.starts_with("Foo::with_points")),
     "{errors:?}"
   );
-  let dropped = MIRROR.replacen("    assert!(sigma > T::zero(), \"sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}\");\n    self.sigma", "    self.sigma", 1);
+  let dropped = MIRROR.replacen(
+    "    Self::check_sigma(sigma);\n    self.sigma",
+    "    self.sigma",
+    1,
+  );
   let (errors, ..) = check(&[("dropped.rs".into(), dropped)]);
   assert!(
     errors.iter().any(|e| e.starts_with("Foo::with_sigma")),

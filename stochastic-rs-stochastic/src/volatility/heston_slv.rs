@@ -101,71 +101,16 @@ impl<T: FloatExt, S: SeedExt> HestonSlv<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(
-      s0.is_finite(),
-      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
-    );
-    assert!(
-      v0.is_finite(),
-      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
-    );
-    assert!(
-      kappa.is_finite(),
-      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
-    );
-    assert!(
-      theta.is_finite(),
-      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
-    );
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
-    assert!(
-      rho.is_finite(),
-      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
-    );
-    assert!(
-      mu.is_finite(),
-      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
-    );
-    assert!(
-      eta.is_finite(),
-      "eta must satisfy `eta.is_finite()`, got eta = {eta:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      kappa >= T::zero(),
-      "kappa must satisfy `kappa >= T::zero()`, got kappa = {kappa:?}"
-    );
-    assert!(
-      theta >= T::zero(),
-      "theta must satisfy `theta >= T::zero()`, got theta = {theta:?}"
-    );
-    assert!(
-      sigma >= T::zero(),
-      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
-    );
-    assert!(
-      eta >= T::zero(),
-      "eta must satisfy `eta >= T::zero()`, got eta = {eta:?}"
-    );
-    assert!(
-      (-T::one()..=T::one()).contains(&rho),
-      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
-    );
-    assert!(
-      s0 > T::zero(),
-      "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
-    );
-    assert!(
-      v0 >= T::zero(),
-      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
-    );
+    Self::check_s0(s0);
+    Self::check_v0(v0);
+    Self::check_kappa(kappa);
+    Self::check_theta(theta);
+    Self::check_sigma(sigma);
+    Self::check_rho(rho);
+    Self::check_mu(mu);
+    Self::check_eta(eta);
+    Self::check_t(t);
+    Self::check_n(n);
     Self {
       backend: Cpu,
       s0,
@@ -206,110 +151,105 @@ impl<T: FloatExt> Default for HestonSlv<T, Unseeded> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
+  fn check_s0(s0: T) {
+    require!(s0.is_finite(), s0);
+    require!(s0 > T::zero(), s0);
+  }
+
+  fn check_v0(v0: T) {
+    require!(v0.is_finite(), v0);
+    require!(v0 >= T::zero(), v0);
+  }
+
+  fn check_kappa(kappa: T) {
+    require!(kappa.is_finite(), kappa);
+    require!(kappa >= T::zero(), kappa);
+  }
+
+  fn check_theta(theta: T) {
+    require!(theta.is_finite(), theta);
+    require!(theta >= T::zero(), theta);
+  }
+
+  fn check_sigma(sigma: T) {
+    require!(sigma.is_finite(), sigma);
+    require!(sigma >= T::zero(), sigma);
+  }
+
+  fn check_rho(rho: T) {
+    require!(rho.is_finite(), rho);
+    require!((-T::one()..=T::one()).contains(&rho), rho);
+  }
+
+  fn check_mu(mu: T) {
+    require!(mu.is_finite(), mu);
+  }
+
+  fn check_eta(eta: T) {
+    require!(eta.is_finite(), eta);
+    require!(eta >= T::zero(), eta);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: T) -> Self {
-    assert!(
-      s0.is_finite(),
-      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
-    );
-    assert!(
-      s0 > T::zero(),
-      "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
-    );
+    Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
   /// Replace `v0`, all else unchanged.
   pub fn with_v0(mut self, v0: T) -> Self {
-    assert!(
-      v0.is_finite(),
-      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
-    );
-    assert!(
-      v0 >= T::zero(),
-      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
-    );
+    Self::check_v0(v0);
     self.v0 = v0;
     self
   }
 
   /// Replace `kappa`, all else unchanged.
   pub fn with_kappa(mut self, kappa: T) -> Self {
-    assert!(
-      kappa.is_finite(),
-      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
-    );
-    assert!(
-      kappa >= T::zero(),
-      "kappa must satisfy `kappa >= T::zero()`, got kappa = {kappa:?}"
-    );
+    Self::check_kappa(kappa);
     self.kappa = kappa;
     self
   }
 
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: T) -> Self {
-    assert!(
-      theta.is_finite(),
-      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
-    );
-    assert!(
-      theta >= T::zero(),
-      "theta must satisfy `theta >= T::zero()`, got theta = {theta:?}"
-    );
+    Self::check_theta(theta);
     self.theta = theta;
     self
   }
 
   /// Replace `sigma`, all else unchanged.
   pub fn with_sigma(mut self, sigma: T) -> Self {
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
-    assert!(
-      sigma >= T::zero(),
-      "sigma must satisfy `sigma >= T::zero()`, got sigma = {sigma:?}"
-    );
+    Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
   /// Replace `rho`, all else unchanged.
   pub fn with_rho(mut self, rho: T) -> Self {
-    assert!(
-      rho.is_finite(),
-      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
-    );
-    assert!(
-      (-T::one()..=T::one()).contains(&rho),
-      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
-    );
+    Self::check_rho(rho);
     self.rho = rho;
     self
   }
 
   /// Replace `mu`, all else unchanged.
   pub fn with_mu(mut self, mu: T) -> Self {
-    assert!(
-      mu.is_finite(),
-      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
-    );
+    Self::check_mu(mu);
     self.mu = mu;
     self
   }
 
   /// Replace the mixing fraction `eta`, all else unchanged.
   pub fn with_eta(mut self, eta: T) -> Self {
-    assert!(
-      eta.is_finite(),
-      "eta must satisfy `eta.is_finite()`, got eta = {eta:?}"
-    );
-    assert!(
-      eta >= T::zero(),
-      "eta must satisfy `eta >= T::zero()`, got eta = {eta:?}"
-    );
+    Self::check_eta(eta);
     self.eta = eta;
     self
   }
@@ -322,17 +262,14 @@ impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
 
   /// Replace the number of grid points `n`, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self
   }

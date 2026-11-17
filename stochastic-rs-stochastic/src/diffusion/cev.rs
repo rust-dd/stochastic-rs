@@ -51,27 +51,12 @@ pub struct Cev<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// `sampler()` builds its Gaussian stream fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> Cev<T, S> {
   pub fn new(mu: T, sigma: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(
-      mu.is_finite(),
-      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
-    );
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
-    assert!(
-      gamma.is_finite(),
-      "gamma must satisfy `gamma.is_finite()`, got gamma = {gamma:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_mu(mu);
+    Self::check_sigma(sigma);
+    Self::check_gamma(gamma);
+    Self::check_n(n);
+    Self::check_x0(x0);
+    Self::check_t(t);
     Self {
       backend: Cpu,
       mu,
@@ -86,59 +71,68 @@ impl<T: FloatExt, S: SeedExt> Cev<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Cev<T, S, B> {
+  fn check_mu(mu: T) {
+    require!(mu.is_finite(), mu);
+  }
+
+  fn check_sigma(sigma: T) {
+    require!(sigma.is_finite(), sigma);
+  }
+
+  fn check_gamma(gamma: T) {
+    require!(gamma.is_finite(), gamma);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_x0(x0: Option<T>) {
+    require!(x0.is_none_or(|v| v.is_finite()), x0);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Replace `mu`, all else unchanged.
   pub fn with_mu(mut self, mu: T) -> Self {
-    assert!(
-      mu.is_finite(),
-      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
-    );
+    Self::check_mu(mu);
     self.mu = mu;
     self
   }
 
   /// Replace `sigma`, all else unchanged.
   pub fn with_sigma(mut self, sigma: T) -> Self {
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
+    Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
   /// Replace `gamma`, all else unchanged.
   pub fn with_gamma(mut self, gamma: T) -> Self {
-    assert!(
-      gamma.is_finite(),
-      "gamma must satisfy `gamma.is_finite()`, got gamma = {gamma:?}"
-    );
+    Self::check_gamma(gamma);
     self.gamma = gamma;
     self
   }
 
   /// Replace `x0`, all else unchanged.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
+    Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
   /// Replace `n`, the grid points along the path, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self
   }

@@ -116,15 +116,9 @@ where
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_x0(x0);
+    Self::check_t(t);
+    Self::check_n(n);
     let lift = VolterraLift::new(
       kernel.clone(),
       t.unwrap_or(T::one()) / T::from_usize_(n - 1),
@@ -147,6 +141,18 @@ impl<T: FloatExt, K, S: SeedExt, B> VolterraSde<T, K, S, B>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_x0(x0: Option<T>) {
+    require!(x0.is_none_or(|v| v.is_finite()), x0);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Replace `kernel`, all else unchanged.
   pub fn with_kernel(mut self, kernel: K) -> Self {
     self.kernel = kernel;
@@ -183,7 +189,7 @@ where
 
   /// Replace `n`, the grid points along the path, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self.lift = VolterraLift::new(self.kernel.clone(), self.step_size());
     self
@@ -191,20 +197,14 @@ where
 
   /// Replace `x0`, all else unchanged.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
+    Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self.lift = VolterraLift::new(self.kernel.clone(), self.step_size());
     self

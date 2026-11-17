@@ -118,91 +118,20 @@ impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
     boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
-    assert!(
-      s0.is_finite(),
-      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
-    );
-    assert!(
-      v1_0.is_finite(),
-      "v1_0 must satisfy `v1_0.is_finite()`, got v1_0 = {v1_0:?}"
-    );
-    assert!(
-      v2_0.is_finite(),
-      "v2_0 must satisfy `v2_0.is_finite()`, got v2_0 = {v2_0:?}"
-    );
-    assert!(
-      kappa1.is_finite(),
-      "kappa1 must satisfy `kappa1.is_finite()`, got kappa1 = {kappa1:?}"
-    );
-    assert!(
-      theta1.is_finite(),
-      "theta1 must satisfy `theta1.is_finite()`, got theta1 = {theta1:?}"
-    );
-    assert!(
-      sigma1.is_finite(),
-      "sigma1 must satisfy `sigma1.is_finite()`, got sigma1 = {sigma1:?}"
-    );
-    assert!(
-      rho1.is_finite(),
-      "rho1 must satisfy `rho1.is_finite()`, got rho1 = {rho1:?}"
-    );
-    assert!(
-      kappa2.is_finite(),
-      "kappa2 must satisfy `kappa2.is_finite()`, got kappa2 = {kappa2:?}"
-    );
-    assert!(
-      theta2.is_finite(),
-      "theta2 must satisfy `theta2.is_finite()`, got theta2 = {theta2:?}"
-    );
-    assert!(
-      sigma2.is_finite(),
-      "sigma2 must satisfy `sigma2.is_finite()`, got sigma2 = {sigma2:?}"
-    );
-    assert!(
-      rho2.is_finite(),
-      "rho2 must satisfy `rho2.is_finite()`, got rho2 = {rho2:?}"
-    );
-    assert!(
-      mu.is_finite(),
-      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
-    assert!(
-      kappa1 >= T::zero(),
-      "kappa1 must satisfy `kappa1 >= T::zero()`, got kappa1 = {kappa1:?}"
-    );
-    assert!(
-      theta1 >= T::zero(),
-      "theta1 must satisfy `theta1 >= T::zero()`, got theta1 = {theta1:?}"
-    );
-    assert!(
-      sigma1 >= T::zero(),
-      "sigma1 must satisfy `sigma1 >= T::zero()`, got sigma1 = {sigma1:?}"
-    );
-    assert!(
-      kappa2 >= T::zero(),
-      "kappa2 must satisfy `kappa2 >= T::zero()`, got kappa2 = {kappa2:?}"
-    );
-    assert!(
-      theta2 >= T::zero(),
-      "theta2 must satisfy `theta2 >= T::zero()`, got theta2 = {theta2:?}"
-    );
-    assert!(
-      sigma2 >= T::zero(),
-      "sigma2 must satisfy `sigma2 >= T::zero()`, got sigma2 = {sigma2:?}"
-    );
-    assert!(
-      v1_0 >= T::zero(),
-      "v1_0 must satisfy `v1_0 >= T::zero()`, got v1_0 = {v1_0:?}"
-    );
-    assert!(
-      v2_0 >= T::zero(),
-      "v2_0 must satisfy `v2_0 >= T::zero()`, got v2_0 = {v2_0:?}"
-    );
+    Self::check_s0(s0);
+    Self::check_v1_0(v1_0);
+    Self::check_v2_0(v2_0);
+    Self::check_kappa1(kappa1);
+    Self::check_theta1(theta1);
+    Self::check_sigma1(sigma1);
+    Self::check_rho1(rho1);
+    Self::check_kappa2(kappa2);
+    Self::check_theta2(theta2);
+    Self::check_sigma2(sigma2);
+    Self::check_rho2(rho2);
+    Self::check_mu(mu);
+    Self::check_n(n);
+    Self::check_t(t);
 
     Self {
       backend: Cpu,
@@ -229,82 +158,108 @@ impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
+  fn check_s0(s0: T) {
+    require!(s0.is_finite(), s0);
+  }
+
+  fn check_v1_0(v1_0: T) {
+    require!(v1_0.is_finite(), v1_0);
+    require!(v1_0 >= T::zero(), v1_0);
+  }
+
+  fn check_v2_0(v2_0: T) {
+    require!(v2_0.is_finite(), v2_0);
+    require!(v2_0 >= T::zero(), v2_0);
+  }
+
+  fn check_kappa1(kappa1: T) {
+    require!(kappa1.is_finite(), kappa1);
+    require!(kappa1 >= T::zero(), kappa1);
+  }
+
+  fn check_theta1(theta1: T) {
+    require!(theta1.is_finite(), theta1);
+    require!(theta1 >= T::zero(), theta1);
+  }
+
+  fn check_sigma1(sigma1: T) {
+    require!(sigma1.is_finite(), sigma1);
+    require!(sigma1 >= T::zero(), sigma1);
+  }
+
+  fn check_rho1(rho1: T) {
+    require!(rho1.is_finite(), rho1);
+  }
+
+  fn check_kappa2(kappa2: T) {
+    require!(kappa2.is_finite(), kappa2);
+    require!(kappa2 >= T::zero(), kappa2);
+  }
+
+  fn check_theta2(theta2: T) {
+    require!(theta2.is_finite(), theta2);
+    require!(theta2 >= T::zero(), theta2);
+  }
+
+  fn check_sigma2(sigma2: T) {
+    require!(sigma2.is_finite(), sigma2);
+    require!(sigma2 >= T::zero(), sigma2);
+  }
+
+  fn check_rho2(rho2: T) {
+    require!(rho2.is_finite(), rho2);
+  }
+
+  fn check_mu(mu: T) {
+    require!(mu.is_finite(), mu);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: T) -> Self {
-    assert!(
-      s0.is_finite(),
-      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
-    );
+    Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
   /// Replace `v1_0`, all else unchanged.
   pub fn with_v1_0(mut self, v1_0: T) -> Self {
-    assert!(
-      v1_0.is_finite(),
-      "v1_0 must satisfy `v1_0.is_finite()`, got v1_0 = {v1_0:?}"
-    );
-    assert!(
-      v1_0 >= T::zero(),
-      "v1_0 must satisfy `v1_0 >= T::zero()`, got v1_0 = {v1_0:?}"
-    );
+    Self::check_v1_0(v1_0);
     self.v1_0 = v1_0;
     self
   }
 
   /// Replace `v2_0`, all else unchanged.
   pub fn with_v2_0(mut self, v2_0: T) -> Self {
-    assert!(
-      v2_0.is_finite(),
-      "v2_0 must satisfy `v2_0.is_finite()`, got v2_0 = {v2_0:?}"
-    );
-    assert!(
-      v2_0 >= T::zero(),
-      "v2_0 must satisfy `v2_0 >= T::zero()`, got v2_0 = {v2_0:?}"
-    );
+    Self::check_v2_0(v2_0);
     self.v2_0 = v2_0;
     self
   }
 
   /// Replace `kappa1`, all else unchanged.
   pub fn with_kappa1(mut self, kappa1: T) -> Self {
-    assert!(
-      kappa1.is_finite(),
-      "kappa1 must satisfy `kappa1.is_finite()`, got kappa1 = {kappa1:?}"
-    );
-    assert!(
-      kappa1 >= T::zero(),
-      "kappa1 must satisfy `kappa1 >= T::zero()`, got kappa1 = {kappa1:?}"
-    );
+    Self::check_kappa1(kappa1);
     self.kappa1 = kappa1;
     self
   }
 
   /// Replace `theta1`, all else unchanged.
   pub fn with_theta1(mut self, theta1: T) -> Self {
-    assert!(
-      theta1.is_finite(),
-      "theta1 must satisfy `theta1.is_finite()`, got theta1 = {theta1:?}"
-    );
-    assert!(
-      theta1 >= T::zero(),
-      "theta1 must satisfy `theta1 >= T::zero()`, got theta1 = {theta1:?}"
-    );
+    Self::check_theta1(theta1);
     self.theta1 = theta1;
     self
   }
 
   /// Replace `sigma1`, all else unchanged.
   pub fn with_sigma1(mut self, sigma1: T) -> Self {
-    assert!(
-      sigma1.is_finite(),
-      "sigma1 must satisfy `sigma1.is_finite()`, got sigma1 = {sigma1:?}"
-    );
-    assert!(
-      sigma1 >= T::zero(),
-      "sigma1 must satisfy `sigma1 >= T::zero()`, got sigma1 = {sigma1:?}"
-    );
+    Self::check_sigma1(sigma1);
     self.sigma1 = sigma1;
     self
   }
@@ -313,10 +268,7 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   /// generator (`cgns1`) so the new correlation actually reaches the
   /// sampler instead of a stale one computed from the old `rho1`.
   pub fn with_rho1(mut self, rho1: T) -> Self {
-    assert!(
-      rho1.is_finite(),
-      "rho1 must satisfy `rho1.is_finite()`, got rho1 = {rho1:?}"
-    );
+    Self::check_rho1(rho1);
     self.rho1 = rho1;
     self.cgns1 = Cgns::new(rho1, self.n - 1, self.t, Unseeded);
     self
@@ -324,42 +276,21 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
 
   /// Replace `kappa2`, all else unchanged.
   pub fn with_kappa2(mut self, kappa2: T) -> Self {
-    assert!(
-      kappa2.is_finite(),
-      "kappa2 must satisfy `kappa2.is_finite()`, got kappa2 = {kappa2:?}"
-    );
-    assert!(
-      kappa2 >= T::zero(),
-      "kappa2 must satisfy `kappa2 >= T::zero()`, got kappa2 = {kappa2:?}"
-    );
+    Self::check_kappa2(kappa2);
     self.kappa2 = kappa2;
     self
   }
 
   /// Replace `theta2`, all else unchanged.
   pub fn with_theta2(mut self, theta2: T) -> Self {
-    assert!(
-      theta2.is_finite(),
-      "theta2 must satisfy `theta2.is_finite()`, got theta2 = {theta2:?}"
-    );
-    assert!(
-      theta2 >= T::zero(),
-      "theta2 must satisfy `theta2 >= T::zero()`, got theta2 = {theta2:?}"
-    );
+    Self::check_theta2(theta2);
     self.theta2 = theta2;
     self
   }
 
   /// Replace `sigma2`, all else unchanged.
   pub fn with_sigma2(mut self, sigma2: T) -> Self {
-    assert!(
-      sigma2.is_finite(),
-      "sigma2 must satisfy `sigma2.is_finite()`, got sigma2 = {sigma2:?}"
-    );
-    assert!(
-      sigma2 >= T::zero(),
-      "sigma2 must satisfy `sigma2 >= T::zero()`, got sigma2 = {sigma2:?}"
-    );
+    Self::check_sigma2(sigma2);
     self.sigma2 = sigma2;
     self
   }
@@ -368,10 +299,7 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   /// generator (`cgns2`) so the new correlation actually reaches the
   /// sampler instead of a stale one computed from the old `rho2`.
   pub fn with_rho2(mut self, rho2: T) -> Self {
-    assert!(
-      rho2.is_finite(),
-      "rho2 must satisfy `rho2.is_finite()`, got rho2 = {rho2:?}"
-    );
+    Self::check_rho2(rho2);
     self.rho2 = rho2;
     self.cgns2 = Cgns::new(rho2, self.n - 1, self.t, Unseeded);
     self
@@ -379,10 +307,7 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
 
   /// Replace `mu`, all else unchanged.
   pub fn with_mu(mut self, mu: T) -> Self {
-    assert!(
-      mu.is_finite(),
-      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
-    );
+    Self::check_mu(mu);
     self.mu = mu;
     self
   }
@@ -390,7 +315,7 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   /// Replace `n`, the grid points along the path; rebuilds both cached correlated-Gaussian
   /// generators, whose lengths and step sizes derive from `n`.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self.cgns1 = Cgns::new(self.rho1, n - 1, self.t, Unseeded);
     self.cgns2 = Cgns::new(self.rho2, n - 1, self.t, Unseeded);
@@ -400,10 +325,7 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   /// Replace the simulation horizon `t`; rebuilds both cached
   /// correlated-Gaussian generators' step sizes, which derive from `t`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self.cgns1 = Cgns::new(self.rho1, self.n - 1, t, Unseeded);
     self.cgns2 = Cgns::new(self.rho2, self.n - 1, t, Unseeded);
@@ -652,104 +574,4 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for DoubleHestonSampler<T, S> {
 }
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::*;
-
-  #[test]
-  #[should_panic(expected = "v1_0 must satisfy `v1_0 >= T::zero()`, got v1_0 = -0.01")]
-  fn negative_initial_variance_panics() {
-    let _ = DoubleHeston::new(
-      100.0_f64,
-      -0.01,
-      0.02,
-      1.0,
-      0.04,
-      0.3,
-      -0.5,
-      0.5,
-      0.04,
-      0.2,
-      -0.3,
-      0.0,
-      8,
-      Some(1.0),
-      VarianceBoundary::Floor,
-      Unseeded,
-    );
-  }
-
-  #[test]
-  fn the_output_names_its_slots() {
-    let DoubleHestonPaths { s, v1, v2, .. } = DoubleHeston::new(
-      100.0_f64,
-      0.02,
-      0.02,
-      3.0,
-      0.02,
-      0.4,
-      -0.6,
-      0.5,
-      0.02,
-      0.2,
-      -0.3,
-      0.05,
-      64,
-      Some(1.0),
-      VarianceBoundary::Floor,
-      Unseeded,
-    )
-    .sample();
-    assert_eq!((s.len(), v1.len(), v2.len()), (64, 64, 64));
-  }
-
-  #[test]
-  fn variance_paths_stay_non_negative() {
-    let p = DoubleHeston::new(
-      100.0_f64,
-      0.02,
-      0.02,
-      3.0,
-      0.02,
-      0.4,
-      -0.6,
-      0.5,
-      0.02,
-      0.2,
-      -0.3,
-      0.05,
-      128,
-      Some(1.0),
-      VarianceBoundary::Reflect,
-      Unseeded,
-    );
-    let DoubleHestonPaths { v1, v2, .. } = p.sample();
-    assert!(v1.iter().all(|x| *x >= 0.0));
-    assert!(v2.iter().all(|x| *x >= 0.0));
-  }
-
-  #[test]
-  fn stock_path_is_finite() {
-    let p = DoubleHeston::new(
-      100.0_f64,
-      0.02,
-      0.02,
-      3.0,
-      0.02,
-      0.4,
-      -0.6,
-      0.5,
-      0.02,
-      0.2,
-      -0.3,
-      0.05,
-      64,
-      Some(0.5),
-      VarianceBoundary::Reflect,
-      Deterministic::new(42),
-    );
-    let s = p.sample().s;
-    assert!(s.iter().all(|x| x.is_finite()));
-  }
-}
+mod tests;

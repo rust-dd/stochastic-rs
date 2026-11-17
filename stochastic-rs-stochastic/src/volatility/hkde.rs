@@ -91,79 +91,19 @@ impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
     boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
-    assert!(
-      mu.is_finite(),
-      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
-    );
-    assert!(
-      kappa.is_finite(),
-      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
-    );
-    assert!(
-      theta.is_finite(),
-      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
-    );
-    assert!(
-      sigma_v.is_finite(),
-      "sigma_v must satisfy `sigma_v.is_finite()`, got sigma_v = {sigma_v:?}"
-    );
-    assert!(
-      rho.is_finite(),
-      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
-    );
-    assert!(
-      v0.is_finite(),
-      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
-    );
-    assert!(
-      lambda.is_finite(),
-      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
-    );
-    assert!(
-      p_up.is_finite(),
-      "p_up must satisfy `p_up.is_finite()`, got p_up = {p_up:?}"
-    );
-    assert!(
-      eta1.is_finite(),
-      "eta1 must satisfy `eta1.is_finite()`, got eta1 = {eta1:?}"
-    );
-    assert!(
-      eta2.is_finite(),
-      "eta2 must satisfy `eta2.is_finite()`, got eta2 = {eta2:?}"
-    );
-    assert!(
-      s0.is_finite(),
-      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      rho >= -T::one() && rho <= T::one(),
-      "rho must satisfy `rho >= -T::one() && rho <= T::one()`, got rho = {rho:?}"
-    );
-    assert!(
-      eta1 > T::one(),
-      "eta1 must satisfy `eta1 > T::one()`, got eta1 = {eta1:?}"
-    );
-    assert!(
-      eta2 > T::zero(),
-      "eta2 must satisfy `eta2 > T::zero()`, got eta2 = {eta2:?}"
-    );
-    assert!(
-      lambda >= T::zero(),
-      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
-    );
-    assert!(
-      s0 > T::zero(),
-      "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
-    );
-    assert!(
-      v0 >= T::zero(),
-      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
-    );
+    Self::check_mu(mu);
+    Self::check_kappa(kappa);
+    Self::check_theta(theta);
+    Self::check_sigma_v(sigma_v);
+    Self::check_rho(rho);
+    Self::check_v0(v0);
+    Self::check_lambda(lambda);
+    Self::check_p_up(p_up);
+    Self::check_eta1(eta1);
+    Self::check_eta2(eta2);
+    Self::check_s0(s0);
+    Self::check_t(t);
+    Self::check_n(n);
 
     Self {
       backend: Cpu,
@@ -188,42 +128,88 @@ impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
+  fn check_mu(mu: T) {
+    require!(mu.is_finite(), mu);
+  }
+
+  fn check_kappa(kappa: T) {
+    require!(kappa.is_finite(), kappa);
+  }
+
+  fn check_theta(theta: T) {
+    require!(theta.is_finite(), theta);
+  }
+
+  fn check_sigma_v(sigma_v: T) {
+    require!(sigma_v.is_finite(), sigma_v);
+  }
+
+  fn check_rho(rho: T) {
+    require!(rho.is_finite(), rho);
+    require!(rho >= -T::one() && rho <= T::one(), rho);
+  }
+
+  fn check_v0(v0: T) {
+    require!(v0.is_finite(), v0);
+    require!(v0 >= T::zero(), v0);
+  }
+
+  fn check_lambda(lambda: T) {
+    require!(lambda.is_finite(), lambda);
+    require!(lambda >= T::zero(), lambda);
+  }
+
+  fn check_p_up(p_up: T) {
+    require!(p_up.is_finite(), p_up);
+  }
+
+  fn check_eta1(eta1: T) {
+    require!(eta1.is_finite(), eta1);
+    require!(eta1 > T::one(), eta1);
+  }
+
+  fn check_eta2(eta2: T) {
+    require!(eta2.is_finite(), eta2);
+    require!(eta2 > T::zero(), eta2);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_s0(s0: T) {
+    require!(s0.is_finite(), s0);
+    require!(s0 > T::zero(), s0);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Replace `mu`, all else unchanged.
   pub fn with_mu(mut self, mu: T) -> Self {
-    assert!(
-      mu.is_finite(),
-      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
-    );
+    Self::check_mu(mu);
     self.mu = mu;
     self
   }
 
   /// Replace `kappa`, all else unchanged.
   pub fn with_kappa(mut self, kappa: T) -> Self {
-    assert!(
-      kappa.is_finite(),
-      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
-    );
+    Self::check_kappa(kappa);
     self.kappa = kappa;
     self
   }
 
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: T) -> Self {
-    assert!(
-      theta.is_finite(),
-      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
-    );
+    Self::check_theta(theta);
     self.theta = theta;
     self
   }
 
   /// Replace `sigma_v`, all else unchanged.
   pub fn with_sigma_v(mut self, sigma_v: T) -> Self {
-    assert!(
-      sigma_v.is_finite(),
-      "sigma_v must satisfy `sigma_v.is_finite()`, got sigma_v = {sigma_v:?}"
-    );
+    Self::check_sigma_v(sigma_v);
     self.sigma_v = sigma_v;
     self
   }
@@ -232,14 +218,7 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
   /// (`cgns`) so the new correlation actually reaches the sampler instead
   /// of a stale one computed from the old `rho`.
   pub fn with_rho(mut self, rho: T) -> Self {
-    assert!(
-      rho.is_finite(),
-      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
-    );
-    assert!(
-      rho >= -T::one() && rho <= T::one(),
-      "rho must satisfy `rho >= -T::one() && rho <= T::one()`, got rho = {rho:?}"
-    );
+    Self::check_rho(rho);
     self.rho = rho;
     self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
     self
@@ -247,80 +226,42 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
 
   /// Replace `v0`, all else unchanged.
   pub fn with_v0(mut self, v0: T) -> Self {
-    assert!(
-      v0.is_finite(),
-      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
-    );
-    assert!(
-      v0 >= T::zero(),
-      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
-    );
+    Self::check_v0(v0);
     self.v0 = v0;
     self
   }
 
   /// Replace `lambda`, all else unchanged; panics if `lambda < 0`.
   pub fn with_lambda(mut self, lambda: T) -> Self {
-    assert!(
-      lambda.is_finite(),
-      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
-    );
-    assert!(
-      lambda >= T::zero(),
-      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
-    );
+    Self::check_lambda(lambda);
     self.lambda = lambda;
     self
   }
 
   /// Replace `p_up`, all else unchanged.
   pub fn with_p_up(mut self, p_up: T) -> Self {
-    assert!(
-      p_up.is_finite(),
-      "p_up must satisfy `p_up.is_finite()`, got p_up = {p_up:?}"
-    );
+    Self::check_p_up(p_up);
     self.p_up = p_up;
     self
   }
 
   /// Replace `eta1`, all else unchanged.
   pub fn with_eta1(mut self, eta1: T) -> Self {
-    assert!(
-      eta1.is_finite(),
-      "eta1 must satisfy `eta1.is_finite()`, got eta1 = {eta1:?}"
-    );
-    assert!(
-      eta1 > T::one(),
-      "eta1 must satisfy `eta1 > T::one()`, got eta1 = {eta1:?}"
-    );
+    Self::check_eta1(eta1);
     self.eta1 = eta1;
     self
   }
 
   /// Replace `eta2`, all else unchanged.
   pub fn with_eta2(mut self, eta2: T) -> Self {
-    assert!(
-      eta2.is_finite(),
-      "eta2 must satisfy `eta2.is_finite()`, got eta2 = {eta2:?}"
-    );
-    assert!(
-      eta2 > T::zero(),
-      "eta2 must satisfy `eta2 > T::zero()`, got eta2 = {eta2:?}"
-    );
+    Self::check_eta2(eta2);
     self.eta2 = eta2;
     self
   }
 
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: T) -> Self {
-    assert!(
-      s0.is_finite(),
-      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
-    );
-    assert!(
-      s0 > T::zero(),
-      "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
-    );
+    Self::check_s0(s0);
     self.s0 = s0;
     self
   }
@@ -334,7 +275,7 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
   /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
   /// generator, whose length and step size derive from `n`.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self
@@ -343,10 +284,7 @@ impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
   /// Replace the simulation horizon `t`; rebuilds the cached
   /// correlated-Gaussian generator's step size, which derives from `t`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
     self
@@ -657,112 +595,4 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for HkdeSampler<T, S> {
 }
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::*;
-
-  fn default_hkde() -> Hkde<f64> {
-    Hkde::new(
-      0.05,
-      1.5,
-      0.04,
-      0.3,
-      -0.7,
-      0.04,
-      0.5,
-      0.4,
-      5.0,
-      5.0,
-      256,
-      100.0,
-      Some(1.0),
-      VarianceBoundary::Floor,
-      Unseeded,
-    )
-  }
-
-  #[test]
-  fn price_stays_positive() {
-    let p = default_hkde();
-    let [s, _v] = p.sample();
-    assert!(s.iter().all(|x| *x > 0.0));
-  }
-
-  #[test]
-  fn variance_non_negative() {
-    let p = default_hkde();
-    let [_s, v] = p.sample();
-    assert!(v.iter().all(|x| *x >= 0.0));
-  }
-
-  #[test]
-  fn no_jumps_reduces_to_heston() {
-    let p = Hkde::new(
-      0.05,
-      1.5,
-      0.04,
-      0.3,
-      -0.7,
-      0.04,
-      0.0,
-      0.5,
-      5.0,
-      5.0,
-      1000,
-      100.0,
-      Some(1.0),
-      VarianceBoundary::Floor,
-      Deterministic::new(42),
-    );
-    let [s, _v] = p.sample();
-    // With no jumps, should behave like Heston - just check it runs and produces reasonable values
-    let final_price = *s.last().unwrap();
-    assert!(
-      final_price > 20.0 && final_price < 500.0,
-      "final={final_price}"
-    );
-  }
-
-  #[test]
-  fn seeded_is_deterministic() {
-    let p1 = Hkde::new(
-      0.05,
-      1.5,
-      0.04,
-      0.3,
-      -0.7,
-      0.04,
-      0.5,
-      0.4,
-      5.0,
-      5.0,
-      100,
-      100.0,
-      Some(1.0),
-      VarianceBoundary::Floor,
-      Deterministic::new(123),
-    );
-    let p2 = Hkde::new(
-      0.05,
-      1.5,
-      0.04,
-      0.3,
-      -0.7,
-      0.04,
-      0.5,
-      0.4,
-      5.0,
-      5.0,
-      100,
-      100.0,
-      Some(1.0),
-      VarianceBoundary::Floor,
-      Deterministic::new(123),
-    );
-    let [s1, v1] = p1.sample();
-    let [s2, v2] = p2.sample();
-    assert_eq!(s1, s2);
-    assert_eq!(v1, v2);
-  }
-}
+mod tests;

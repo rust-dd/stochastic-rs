@@ -25,8 +25,6 @@ use std::any::Any;
 
 use ndarray::Array1;
 use rand::distr::Distribution;
-#[cfg(feature = "python")]
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
@@ -92,35 +90,13 @@ where
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(
-      alpha.is_finite(),
-      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
-    );
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
-    assert!(
-      lambda.is_finite(),
-      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
-    );
-    assert!(
-      lambda >= T::zero(),
-      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
-    );
-    assert!(
-      theta.is_finite(),
-      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_alpha(alpha);
+    Self::check_sigma(sigma);
+    Self::check_lambda(lambda);
+    Self::check_theta(theta);
+    Self::check_n(n);
+    Self::check_x0(x0);
+    Self::check_t(t);
     Self {
       backend: Cpu,
       alpha,
@@ -141,36 +117,52 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
+  fn check_alpha(alpha: T) {
+    require!(alpha.is_finite(), alpha);
+  }
+
+  fn check_sigma(sigma: T) {
+    require!(sigma.is_finite(), sigma);
+  }
+
+  fn check_lambda(lambda: T) {
+    require!(lambda.is_finite(), lambda);
+    require!(lambda >= T::zero(), lambda);
+  }
+
+  fn check_theta(theta: T) {
+    require!(theta.is_finite(), theta);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_x0(x0: Option<T>) {
+    require!(x0.is_none_or(|v| v.is_finite()), x0);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Replace `alpha`, all else unchanged.
   pub fn with_alpha(mut self, alpha: T) -> Self {
-    assert!(
-      alpha.is_finite(),
-      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
-    );
+    Self::check_alpha(alpha);
     self.alpha = alpha;
     self
   }
 
   /// Replace `sigma`, all else unchanged.
   pub fn with_sigma(mut self, sigma: T) -> Self {
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
+    Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
   /// Replace `lambda`, all else unchanged; panics if `lambda < 0`.
   pub fn with_lambda(mut self, lambda: T) -> Self {
-    assert!(
-      lambda.is_finite(),
-      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
-    );
-    assert!(
-      lambda >= T::zero(),
-      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
-    );
+    Self::check_lambda(lambda);
     self.lambda = lambda;
     self
   }
@@ -188,37 +180,28 @@ where
 
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: T) -> Self {
-    assert!(
-      theta.is_finite(),
-      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
-    );
+    Self::check_theta(theta);
     self.theta = theta;
     self
   }
 
   /// Replace `x0`, all else unchanged.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
+    Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
   /// Replace `n`, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self
   }
 
   /// Replace `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self
   }
@@ -527,135 +510,8 @@ where
 }
 
 #[cfg(feature = "python")]
-#[doc(hidden)]
-#[pyo3::prelude::pyclass]
-pub struct PyMerton {
-  inner_f32: Option<Merton<f32, crate::traits::CallableDist<f32>>>,
-  inner_f64: Option<Merton<f64, crate::traits::CallableDist<f64>>>,
-  seeded_f32: Option<Merton<f32, crate::traits::CallableDist<f32>, crate::simd_rng::Deterministic>>,
-  seeded_f64: Option<Merton<f64, crate::traits::CallableDist<f64>, crate::simd_rng::Deterministic>>,
-}
+mod python;
 
 #[cfg(feature = "python")]
-#[pyo3::prelude::pymethods]
-impl PyMerton {
-  #[new]
-  #[pyo3(signature = (alpha, sigma, lambda_, theta, distribution, n, x0=None, t=None, seed=None, dtype=None))]
-  fn new(
-    alpha: f64,
-    sigma: f64,
-    lambda_: f64,
-    theta: f64,
-    distribution: pyo3::Py<pyo3::PyAny>,
-    n: usize,
-    x0: Option<f64>,
-    t: Option<f64>,
-    seed: Option<u64>,
-    dtype: Option<&str>,
-  ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| {
-      let mut s = Self {
-        inner_f32: None,
-        inner_f64: None,
-        seeded_f32: None,
-        seeded_f64: None,
-      };
-      match dtype.unwrap_or("f64") {
-        "f32" => {
-          let jump_dist = crate::traits::CallableDist::new(distribution);
-          match seed {
-            Some(sd) => {
-              s.seeded_f32 = Some(Merton::new(
-                alpha as f32,
-                sigma as f32,
-                lambda_ as f32,
-                theta as f32,
-                jump_dist,
-                n,
-                x0.map(|v| v as f32),
-                t.map(|v| v as f32),
-                Deterministic::new(sd),
-              ));
-            }
-            None => {
-              s.inner_f32 = Some(Merton::new(
-                alpha as f32,
-                sigma as f32,
-                lambda_ as f32,
-                theta as f32,
-                jump_dist,
-                n,
-                x0.map(|v| v as f32),
-                t.map(|v| v as f32),
-                Unseeded,
-              ));
-            }
-          }
-        }
-        _ => {
-          let jump_dist = crate::traits::CallableDist::new(distribution);
-          match seed {
-            Some(sd) => {
-              s.seeded_f64 = Some(Merton::new(
-                alpha,
-                sigma,
-                lambda_,
-                theta,
-                jump_dist,
-                n,
-                x0,
-                t,
-                Deterministic::new(sd),
-              ));
-            }
-            None => {
-              s.inner_f64 = Some(Merton::new(
-                alpha, sigma, lambda_, theta, jump_dist, n, x0, t, Unseeded,
-              ));
-            }
-          }
-        }
-      }
-      s
-    })
-  }
-
-  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
-    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
-      use numpy::IntoPyArray;
-      use pyo3::IntoPyObjectExt;
-
-      use crate::traits::ProcessExt;
-      py_dispatch!(self, |inner| inner
-        .sample()
-        .into_pyarray(py)
-        .into_py_any(py)
-        .unwrap())
-    })
-  }
-
-  /// `m` paths as an `(m, n)` array. The GIL is released while they are generated; the Python
-  /// law runs on rayon workers, one call at a time.
-  fn sample_par<'py>(
-    &self,
-    py: pyo3::Python<'py>,
-    m: usize,
-  ) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
-    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
-      use numpy::IntoPyArray;
-      use numpy::ndarray::Array2;
-      use pyo3::IntoPyObjectExt;
-
-      use crate::traits::ProcessExt;
-      py_dispatch!(self, |inner| {
-        let paths = py.detach(|| inner.sample_par(m));
-        let n = paths.first().map_or(0, |p| p.len());
-        let mut result = Array2::zeros((m, n));
-        for (i, path) in paths.iter().enumerate() {
-          result.row_mut(i).assign(path);
-        }
-        result.into_pyarray(py).into_py_any(py).unwrap()
-      })
-    })
-  }
-}
+#[doc(hidden)]
+pub use python::PyMerton;

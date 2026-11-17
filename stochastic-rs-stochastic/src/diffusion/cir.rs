@@ -76,27 +76,12 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
     boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
-    assert!(
-      theta.is_finite(),
-      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
-    );
-    assert!(
-      mu.is_finite(),
-      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
-    );
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_theta(theta);
+    Self::check_mu(mu);
+    Self::check_sigma(sigma);
+    Self::check_n(n);
+    Self::check_x0(x0);
+    Self::check_t(t);
     if T::from_usize_(2) * theta * mu < sigma.powi(2) && boundary != VarianceBoundary::Reflect {
       log::warn!(
         "Cir::new: Feller condition violated (2*theta*mu < sigma^2) \
@@ -121,42 +106,54 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
+  fn check_theta(theta: T) {
+    require!(theta.is_finite(), theta);
+  }
+
+  fn check_mu(mu: T) {
+    require!(mu.is_finite(), mu);
+  }
+
+  fn check_sigma(sigma: T) {
+    require!(sigma.is_finite(), sigma);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_x0(x0: Option<T>) {
+    require!(x0.is_none_or(|v| v.is_finite()), x0);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: T) -> Self {
-    assert!(
-      theta.is_finite(),
-      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
-    );
+    Self::check_theta(theta);
     self.theta = theta;
     self
   }
 
   /// Replace `mu`, all else unchanged.
   pub fn with_mu(mut self, mu: T) -> Self {
-    assert!(
-      mu.is_finite(),
-      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
-    );
+    Self::check_mu(mu);
     self.mu = mu;
     self
   }
 
   /// Replace `sigma`, all else unchanged.
   pub fn with_sigma(mut self, sigma: T) -> Self {
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
+    Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
   /// Replace `x0`, all else unchanged.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
+    Self::check_x0(x0);
     self.x0 = x0;
     self
   }
@@ -169,17 +166,14 @@ impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
 
   /// Replace `n`, the grid points along the path, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self
   }
@@ -195,6 +189,15 @@ impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
     let [theta, mu, sigma, t, r_t, r_next] =
       [self.theta, self.mu, self.sigma, t, r_t, r_next].map(|v| v.to_f64().unwrap());
     T::from_f64_fast(transition::transition_pdf(theta, mu, sigma, t, r_t, r_next))
+  }
+
+  /// Logarithm of [`transition_pdf`](Self::transition_pdf), finite where that underflows; NaN where it is NaN, `−∞` where it is `0`.
+  pub fn transition_ln_pdf(&self, t: T, r_t: T, r_next: T) -> T {
+    let [theta, mu, sigma, t, r_t, r_next] =
+      [self.theta, self.mu, self.sigma, t, r_t, r_next].map(|v| v.to_f64().unwrap());
+    T::from_f64_fast(transition::transition_ln_pdf(
+      theta, mu, sigma, t, r_t, r_next,
+    ))
   }
 
   /// One exact transition draw after `t` from `r_t`; the conditional mean once the χ² parameters overflow.

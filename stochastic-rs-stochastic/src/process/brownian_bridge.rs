@@ -70,23 +70,11 @@ pub struct BrownianBridge<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// `self` every call.
 impl<T: FloatExt, S: SeedExt> BrownianBridge<T, S> {
   pub fn new(sigma: T, n: usize, x0: Option<T>, xt: Option<T>, t: Option<T>, seed: S) -> Self {
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
-    assert!(
-      xt.is_none_or(|v| v.is_finite()),
-      "xt must satisfy `xt.is_none_or(|v| v.is_finite())`, got xt = {xt:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_sigma(sigma);
+    Self::check_n(n);
+    Self::check_x0(x0);
+    Self::check_xt(xt);
+    Self::check_t(t);
     Self {
       backend: Cpu,
       sigma,
@@ -100,49 +88,57 @@ impl<T: FloatExt, S: SeedExt> BrownianBridge<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> BrownianBridge<T, S, B> {
+  fn check_sigma(sigma: T) {
+    require!(sigma.is_finite(), sigma);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_x0(x0: Option<T>) {
+    require!(x0.is_none_or(|v| v.is_finite()), x0);
+  }
+
+  fn check_xt(xt: Option<T>) {
+    require!(xt.is_none_or(|v| v.is_finite()), xt);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Replace `sigma`, all else unchanged.
   pub fn with_sigma(mut self, sigma: T) -> Self {
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
+    Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
   /// Replace the pinned starting value `x0`, all else unchanged.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
+    Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
   /// Replace the pinned terminal value `xt`, all else unchanged.
   pub fn with_xt(mut self, xt: Option<T>) -> Self {
-    assert!(
-      xt.is_none_or(|v| v.is_finite()),
-      "xt must satisfy `xt.is_none_or(|v| v.is_finite())`, got xt = {xt:?}"
-    );
+    Self::check_xt(xt);
     self.xt = xt;
     self
   }
 
   /// Replace `n`, the grid points along the path, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self
   }

@@ -100,51 +100,16 @@ where
     seed: S,
   ) -> Self {
     drift.assert_finite();
-    assert!(
-      lambda.is_finite(),
-      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
-    );
-    assert!(
-      lambda >= T::zero(),
-      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
-    );
-    assert!(
-      k.is_finite(),
-      "k must satisfy `k.is_finite()`, got k = {k:?}"
-    );
-    assert!(
-      alpha.is_finite(),
-      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
-    );
-    assert!(
-      beta.is_finite(),
-      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
-    );
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
-    assert!(
-      rho.is_finite(),
-      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      s0.is_finite(),
-      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
-    );
-    assert!(
-      v0.is_finite(),
-      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
-    assert!(
-      v0 >= T::zero(),
-      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
-    );
+    Self::check_lambda(lambda);
+    Self::check_k(k);
+    Self::check_alpha(alpha);
+    Self::check_beta(beta);
+    Self::check_sigma(sigma);
+    Self::check_rho(rho);
+    Self::check_n(n);
+    Self::check_s0(s0);
+    Self::check_v0(v0);
+    Self::check_t(t);
 
     Self {
       backend: Cpu,
@@ -172,6 +137,48 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
+  fn check_lambda(lambda: T) {
+    require!(lambda.is_finite(), lambda);
+    require!(lambda >= T::zero(), lambda);
+  }
+
+  fn check_k(k: T) {
+    require!(k.is_finite(), k);
+  }
+
+  fn check_alpha(alpha: T) {
+    require!(alpha.is_finite(), alpha);
+  }
+
+  fn check_beta(beta: T) {
+    require!(beta.is_finite(), beta);
+  }
+
+  fn check_sigma(sigma: T) {
+    require!(sigma.is_finite(), sigma);
+  }
+
+  fn check_rho(rho: T) {
+    require!(rho.is_finite(), rho);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_s0(s0: T) {
+    require!(s0.is_finite(), s0);
+  }
+
+  fn check_v0(v0: T) {
+    require!(v0.is_finite(), v0);
+    require!(v0 >= T::zero(), v0);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Replace `drift`, all else unchanged; panics on a non-finite rate.
   pub fn with_drift(mut self, drift: Drift<T>) -> Self {
     drift.assert_finite();
@@ -181,14 +188,7 @@ where
 
   /// Replace `lambda`, all else unchanged; panics if `lambda < 0`.
   pub fn with_lambda(mut self, lambda: T) -> Self {
-    assert!(
-      lambda.is_finite(),
-      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
-    );
-    assert!(
-      lambda >= T::zero(),
-      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
-    );
+    Self::check_lambda(lambda);
     self.lambda = lambda;
     self
   }
@@ -206,40 +206,28 @@ where
 
   /// Replace `k`, all else unchanged.
   pub fn with_k(mut self, k: T) -> Self {
-    assert!(
-      k.is_finite(),
-      "k must satisfy `k.is_finite()`, got k = {k:?}"
-    );
+    Self::check_k(k);
     self.k = k;
     self
   }
 
   /// Replace `alpha`, all else unchanged.
   pub fn with_alpha(mut self, alpha: T) -> Self {
-    assert!(
-      alpha.is_finite(),
-      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
-    );
+    Self::check_alpha(alpha);
     self.alpha = alpha;
     self
   }
 
   /// Replace `beta`, all else unchanged.
   pub fn with_beta(mut self, beta: T) -> Self {
-    assert!(
-      beta.is_finite(),
-      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
-    );
+    Self::check_beta(beta);
     self.beta = beta;
     self
   }
 
   /// Replace `sigma`, all else unchanged.
   pub fn with_sigma(mut self, sigma: T) -> Self {
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
+    Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
@@ -248,10 +236,7 @@ where
   /// (`cgns`) so the new correlation actually reaches the sampler instead
   /// of a stale one computed from the old `rho`.
   pub fn with_rho(mut self, rho: T) -> Self {
-    assert!(
-      rho.is_finite(),
-      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
-    );
+    Self::check_rho(rho);
     self.rho = rho;
     self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
     self
@@ -259,24 +244,14 @@ where
 
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: T) -> Self {
-    assert!(
-      s0.is_finite(),
-      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
-    );
+    Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
   /// Replace `v0`, all else unchanged.
   pub fn with_v0(mut self, v0: T) -> Self {
-    assert!(
-      v0.is_finite(),
-      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
-    );
-    assert!(
-      v0 >= T::zero(),
-      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
-    );
+    Self::check_v0(v0);
     self.v0 = v0;
     self
   }
@@ -289,7 +264,7 @@ where
 
   /// Replace `n`; rebuilds the correlated-Gaussian generator, whose length follows `n`.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self
@@ -297,10 +272,7 @@ where
 
   /// Replace `t`; rebuilds the correlated-Gaussian generator, whose step follows `t`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
     self

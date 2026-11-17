@@ -175,6 +175,23 @@ fn a_subnormal_start_has_the_central_limit() {
   assert!(((central - 8.79526042415e-93) / 8.79526042415e-93).abs() < 1e-10);
 }
 
+/// The central limit either side of the range switch: `1e-300` keeps `v / u` and `u · v` normal,
+/// `1e-311` overflows the ratio alone, and `1e-200` with a value as small underflows the product.
+#[test]
+fn the_density_is_continuous_where_its_noncentral_terms_leave_the_normal_range() {
+  let (cir, t) = (law(2.0, 0.04, 0.3), 1.0 / 252.0);
+  for (start, x) in [(1e-300, 0.04), (1e-311, 0.04), (1e-200, 1e-200)] {
+    let (near, central) = (
+      cir.transition_pdf(t, start, x),
+      cir.transition_pdf(t, 0.0, x),
+    );
+    assert!(
+      ((near - central) / central).abs() < 1e-12,
+      "from {start:e} at {x:e}: {near:e} vs {central:e}"
+    );
+  }
+}
+
 #[test]
 fn zero_initial_state_reduces_to_the_central_chi_square_density() {
   let density = law(2.0, 0.04, 0.4).transition_pdf(1.0, 0.0, 0.03);
@@ -199,6 +216,94 @@ fn transition_density_matches_mpmath() {
       ((got - want) / want).abs() < 1e-11,
       "transition_pdf({theta}, {mu}, {sigma}; {t}, {r_t}, {x}) = {got}, want {want}"
     );
+    let log = law(theta, mu, sigma).transition_ln_pdf(t, r_t, x);
+    assert!((log - want.ln()).abs() < 1e-11, "{log} vs {}", want.ln());
+  }
+}
+
+/// mpmath at 50 digits. The first is a monthly move at the speed a far search passes, the second
+/// a central tail: both densities are below the double range.
+#[test]
+fn the_log_density_is_finite_where_the_density_underflows() {
+  for ((theta, mu, sigma, t, r_t, x), want) in [
+    (
+      (2.393_253_854_325_386e-4, 0.5, 1e-3, 1.0 / 12.0, 0.03, 0.033),
+      -1_695.674_964_605_331_8,
+    ),
+    (
+      (5.0, 1.0, 0.2, 1.0 / 252.0, 0.0, 1.0),
+      -11_491.098_046_762_26,
+    ),
+  ] {
+    let cir = law(theta, mu, sigma);
+    assert_eq!(cir.transition_pdf(t, r_t, x), 0.0);
+    let got = cir.transition_ln_pdf(t, r_t, x);
+    assert!(((got - want) / want).abs() < 1e-13, "{got} vs {want}");
+  }
+}
+
+/// mpmath at 50 digits, at shapes `2θμ/σ²` of 80, 250, 250 and 100: `c^shape` and `Γ(shape)`
+/// leave the double range there while the density does not.
+#[test]
+fn a_zero_start_with_a_large_shape_matches_mpmath() {
+  for ((theta, mu, sigma, t, x), density, log) in [
+    (
+      (2.0, 0.2, 0.1, 1.0 / 252.0, 0.0015),
+      2_131.430_664_606_624_5,
+      7.664_548_706_756_003,
+    ),
+    (
+      (5.0, 1.0, 0.2, 1.0 / 252.0, 0.02),
+      302.873_377_107_051_6,
+      5.713_314_820_829_479,
+    ),
+    (
+      (5.0, 1.0, 0.2, 1.0 / 12.0, 0.3),
+      3.004_904_063_367_840_6,
+      1.100_245_641_809_596,
+    ),
+    (
+      (0.5, 1.0, 0.1, 1.0 / 12.0, 0.041),
+      97.117_558_793_046_94,
+      4.575_922_191_009_349,
+    ),
+  ] {
+    let cir = law(theta, mu, sigma);
+    let (got, got_log) = (
+      cir.transition_pdf(t, 0.0, x),
+      cir.transition_ln_pdf(t, 0.0, x),
+    );
+    assert!(
+      ((got - density) / density).abs() < 1e-11,
+      "{got} vs {density}"
+    );
+    assert!((got_log - log).abs() < 1e-11, "{got_log} vs {log}");
+  }
+}
+
+#[test]
+fn the_log_density_is_nan_and_infinite_where_the_density_is_nan_zero_and_infinite() {
+  let cir = law(2.0, 0.04, 0.4);
+  for (t, r_t, x) in [(0.0, 0.05, 0.05), (1.0, 0.05, -0.01), (1.0, -0.05, 0.05)] {
+    assert!(cir.transition_pdf(t, r_t, x).is_nan() && cir.transition_ln_pdf(t, r_t, x).is_nan());
+  }
+  for (sigma, r_t, density) in [
+    (0.3, 0.05, 0.0),
+    (0.3, 0.0, 0.0),
+    (0.5, 0.05, f64::INFINITY),
+    (0.5, 0.0, f64::INFINITY),
+  ] {
+    let cir = law(2.0, 0.04, sigma);
+    assert_eq!(cir.transition_pdf(1.0, r_t, 0.0), density);
+    assert_eq!(cir.transition_ln_pdf(1.0, r_t, 0.0), density.ln());
+  }
+  let boundary = law(2.0, 0.0625, 0.5);
+  for r_t in [0.05, 0.0] {
+    let (density, log) = (
+      boundary.transition_pdf(1.0, r_t, 0.0),
+      boundary.transition_ln_pdf(1.0, r_t, 0.0),
+    );
+    assert!(density.is_finite() && density > 0.0 && log == density.ln());
   }
 }
 
@@ -233,6 +338,10 @@ fn the_f32_law_is_the_f64_law_rounded_once() {
   assert_eq!(
     narrow.transition_pdf(0.5, r, x),
     wide.transition_pdf(0.5, r as f64, x as f64) as f32
+  );
+  assert_eq!(
+    narrow.transition_ln_pdf(0.5, r, x),
+    wide.transition_ln_pdf(0.5, r as f64, x as f64) as f32
   );
   assert_eq!(
     narrow.stationary_pdf(x),

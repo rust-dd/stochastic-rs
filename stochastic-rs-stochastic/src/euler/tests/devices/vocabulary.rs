@@ -1,5 +1,36 @@
 //! The family vocabulary as the GPU computes it.
 
+/// The kernel entry `name` applied to each value: one `f32` in, one out.
+#[cfg(metal_backend)]
+pub(super) fn unary_kat(name: &str, values: &[f32]) -> Vec<f32> {
+  use metal_oxide::{Argument, DynamicLaunchConfig, Launch, Operation, Pipeline};
+
+  let n = values.len();
+  let context = crate::device::metal::context(0).expect("a Metal device");
+  let input = context.device.buffer_from_slice(values).unwrap();
+  let mut output = context.device.buffer_zeroed::<f32>(n).unwrap();
+  let pipeline = Pipeline::new(&context.device, &context.module, name).unwrap();
+  let config = DynamicLaunchConfig::for_elements(n as u32, 64).unwrap();
+  // SAFETY: both buffers hold `n` values; nothing else holds them.
+  unsafe {
+    Launch::new(
+      Ok(&pipeline),
+      config,
+      (&input, &mut output, n as u32),
+      |(input, output, cases)| {
+        Ok([
+          Argument::read(input),
+          Argument::write(output),
+          Argument::value(*cases)?,
+        ])
+      },
+    )
+    .wait()
+  }
+  .unwrap();
+  output.read().wait().to_vec()
+}
+
 /// Every top uniform `1 − (2k + 1)·2⁻²⁴`, the values just above 1, and a grid over `(0, 2]`.
 #[cfg(metal_backend)]
 fn log_cases() -> Vec<f32> {
@@ -16,33 +47,8 @@ fn log_cases() -> Vec<f32> {
 #[cfg(metal_backend)]
 #[test]
 fn metal_family_log_keeps_its_sign_and_digits_near_one() {
-  use metal_oxide::{Argument, DynamicLaunchConfig, Launch, Operation, Pipeline};
-
   let values = log_cases();
-  let n = values.len();
-  let context = crate::device::metal::context(0).expect("a Metal device");
-  let input = context.device.buffer_from_slice(&values).unwrap();
-  let mut logs = context.device.buffer_zeroed::<f32>(n).unwrap();
-  let pipeline = Pipeline::new(&context.device, &context.module, "log_kat").unwrap();
-  let config = DynamicLaunchConfig::for_elements(n as u32, 64).unwrap();
-  // SAFETY: both buffers hold `n` values; nothing else holds them.
-  unsafe {
-    Launch::new(
-      Ok(&pipeline),
-      config,
-      (&input, &mut logs, n as u32),
-      |(input, logs, cases)| {
-        Ok([
-          Argument::read(input),
-          Argument::write(logs),
-          Argument::value(*cases)?,
-        ])
-      },
-    )
-    .wait()
-  }
-  .unwrap();
-  let logs = logs.read().wait().to_vec();
+  let logs = unary_kat("log_kat", &values);
   for (&x, &got) in values.iter().zip(&logs) {
     let want = (x as f64).ln();
     let got = got as f64;

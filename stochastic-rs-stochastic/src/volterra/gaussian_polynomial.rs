@@ -87,21 +87,9 @@ where
   /// or holds a non-finite entry.
   #[must_use]
   pub fn new(kernel: K, coefficients: Array1<T>, n: usize, t: Option<T>, seed: S) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert_entries(
-      "coefficients",
-      "coefficients[i].is_finite()",
-      &coefficients,
-      |v| v.is_finite(),
-    );
-    assert!(
-      !coefficients.is_empty(),
-      "coefficients must satisfy `!coefficients.is_empty()`, got coefficients = []"
-    );
+    Self::check_t(t);
+    Self::check_n(n);
+    Self::check_coefficients(&coefficients);
     let lift = VolterraLift::new(kernel.clone(), grid_spacing(n, t));
     Self {
       backend: Cpu,
@@ -138,20 +126,32 @@ impl<T: FloatExt, K, S: SeedExt, B> GaussianPolynomialVolatility<T, K, S, B>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
-  /// Replace the polynomial, all else unchanged; panics if `coefficients` is empty or holds a
-  /// non-finite entry.
-  #[must_use]
-  pub fn with_coefficients(mut self, coefficients: Array1<T>) -> Self {
+  fn check_coefficients(coefficients: &Array1<T>) {
     assert_entries(
       "coefficients",
       "coefficients[i].is_finite()",
-      &coefficients,
+      coefficients,
       |v| v.is_finite(),
     );
     assert!(
       !coefficients.is_empty(),
       "coefficients must satisfy `!coefficients.is_empty()`, got coefficients = []"
     );
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
+  /// Replace the polynomial, all else unchanged; panics if `coefficients` is empty or holds a
+  /// non-finite entry.
+  #[must_use]
+  pub fn with_coefficients(mut self, coefficients: Array1<T>) -> Self {
+    Self::check_coefficients(&coefficients);
     self.coefficients = coefficients;
     self
   }
@@ -159,7 +159,7 @@ where
   /// Replace `n`, the grid points along the path, all else unchanged; panics if `n < 2`.
   #[must_use]
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(n, self.t));
     self
@@ -168,10 +168,7 @@ where
   /// Replace `t`, all else unchanged.
   #[must_use]
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(self.n, t));
     self
