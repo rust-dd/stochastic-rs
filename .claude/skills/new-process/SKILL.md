@@ -140,9 +140,9 @@ Traps, each learned from a real failure:
   counts *report* expressions (planes written), `Family::slots()` counts *state*;
   `RoughHestonMemory` has four states, two reports.
 
-**2b. The `EulerSpec` variant.** `src/euler.rs` carries one
-`pub enum EulerSpec<T: FloatExt>` variant per family (121 today, one-to-one) plus an
-`encode()` arm — `(Family::Foo.code(), pad([theta, mu, sigma]))`, `pad` widening to
+**2b. The `EulerSpec` variant.** `src/euler/spec.rs` carries one
+`pub enum EulerSpec<T: FloatExt>` variant per family (121 today, one-to-one) and
+`src/euler/spec/encode.rs` its `encode()` arm — `(Family::Foo.code(), pad([theta, mu, sigma]))`, `pad` widening to
 `PARAM_SLOTS = 20`. Capacities: 4 state slots, 4 noise components, 20 parameters,
 `CURVE_SLOTS = 8` (`ct`, `ct1`..`ct7`), 4 uniforms `u`..`u4`, Poisson count `nj`, jump
 sum `js`, Gamma draws `gm`/`gm2`, lifted value `lv` over `LIFT_SLOTS = 176` nodes,
@@ -198,7 +198,8 @@ toolchain, and commit the regenerated artifact. CI's `--check` rejects stale ent
 **2e. `src/euler/family_parity.rs`.** `family_name`'s `match` has no wildcard, so
 a new `EulerSpec` variant fails to compile until it is named. Then add a probe to
 `every_family()` (one component) or `every_two_component_family()` /
-`every_three_component_family()` / `every_four_component_family()`, built with the local
+`every_three_component_family()` / `every_four_component_family()` (one file each under
+`family_parity/`, the last two sharing `three_four_component.rs`), built with the local
 `p(spec, x0)` closure — `p_lift(spec, x0)` for a lifted family.
 `every_family_has_a_probe` asserts declared-family count equals probe count and checks
 each probe's arity. Give `probe_sizes(spec)` an arm when the family exists to exercise a
@@ -486,7 +487,7 @@ All three clippy runs matter, and the `cuda` one compiles on a machine with no G
 batch path, and a launch scalar added to one and not the others is an arity error only
 that build shows — the history/series/table scalars once shipped that way for three
 commits. A helper only device launches call is dead code in the no-feature build, so give it the crate's guard, as `flatten_curves` and `history_slot`
-in `euler.rs` have — `#[cfg_attr(not(device_backend), allow(dead_code))]`. The crate's `build.rs`
+in `euler/slots.rs` have — `#[cfg_attr(not(device_backend), allow(dead_code))]`. The crate's `build.rs`
 emits `device_backend` (CUDA or Metal), `metal_backend` and `accelerate_backend`, the only
 spellings of the device gates inside `stochastic-rs-stochastic`. `src/lib.rs` carries
 `#![deny(rustdoc::broken_intra_doc_links)]`, so a mistyped `[`Foo`]` fails `cargo doc`

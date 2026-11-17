@@ -23,7 +23,7 @@ capability only for the precisions its kernels compute in, so selecting
 an unavailable backend — or `f64` on a `f32`-only device — is a
 **compile error**, not a silent fallback. Read
 `stochastic-rs-stochastic/src/device.rs` and its `device/` submodules in full
-before touching any of this: they are current, and they are the contract. `euler.rs` is the second half.
+before touching any of this: they are current, and they are the contract. `euler.rs` and its `euler/` submodules are the second half.
 
 ## 0. What a back-end owes the caller
 
@@ -296,8 +296,8 @@ kernel:
   device handles through `device_handle!`), `FgnBackend` and the
   `gpu_backend!` macro (`fgn_backend.rs`), `chunk_rows` and the LRU cache
   helper (`chunks.rs`).
-- `euler.rs` — `EulerCoefficients`, `EulerKernel`, `EulerBackend`, the
-  `host_euler_backend!` and `kernel_euler_backend!` macros.
+- `euler/` — `coefficients.rs` (`EulerCoefficients`), `kernel_trait.rs` (`EulerKernel`),
+  `backend.rs` (`EulerBackend`, the `host_euler_backend!` and `kernel_euler_backend!` macros).
 - `noise/fgn/cuda/` — `mod.rs`, `kernels.rs` (NVRTC sources),
   `sampler.rs`, `state.rs`, `convert.rs`, `tests.rs`. The most complete
   fGN backend, and the only one with the two-stream pipeline.
