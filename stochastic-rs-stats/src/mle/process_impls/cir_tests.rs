@@ -99,3 +99,27 @@ fn the_exact_cir_log_density_keeps_the_tail_the_density_loses() {
     assert!((ln - reference).abs() < 0.05, "{x0} to {xt}: {ln}");
   }
 }
+
+/// `σ√x` steepens without bound towards zero, which no fixed difference step follows: below the
+/// step Elerian's density is the Milstein law's, of the exact density's order.
+#[test]
+fn elerian_from_a_start_near_zero_is_of_the_exact_densitys_order() {
+  let (law, dt) = (cir(2.0, 0.04, 0.3), 1.0 / 252.0);
+  for x0 in [1e-12, 1e-9, 1e-7, 1e-6] {
+    let slope = law.diffusion_x(x0, 0.0);
+    assert!(
+      (slope * x0.sqrt() / 0.15 - 1.0).abs() < 1e-15,
+      "{x0}: {slope}"
+    );
+    for xt in [0.01, 0.051] {
+      let elerian = DensityApprox::Elerian.ln_density(&law, x0, xt, 0.0, dt);
+      let exact = DensityApprox::Exact.ln_density(&law, x0, xt, 0.0, dt);
+      assert!(
+        (elerian / exact - 1.0).abs() < 0.2,
+        "{x0} to {xt}: {elerian} for {exact}"
+      );
+    }
+  }
+  let milstein = DensityApprox::Elerian.ln_density(&law, 1e-9, 0.05, 0.0, dt);
+  assert!((milstein + 274.2).abs() < 0.05, "{milstein}");
+}

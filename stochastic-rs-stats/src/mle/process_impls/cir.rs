@@ -40,6 +40,11 @@ impl<S: SeedExt> DiffusionModel for Cir<f64, S> {
     self.sigma * x.abs().sqrt()
   }
 
+  /// `σ/(2√x)`: unbounded at zero, so the trait's fixed difference step misses it below `1e-5`.
+  fn diffusion_x(&self, x: f64, _t: f64) -> f64 {
+    0.5 * self.sigma * x.signum() / x.abs().sqrt()
+  }
+
   fn is_positive(&self) -> bool {
     2.0 * self.theta * self.mu >= self.sigma * self.sigma
   }
