@@ -282,7 +282,7 @@ fn ozakis_law_at_a_zero_state_or_slope_is_his_eq_2_12() {
 }
 
 /// An OU path about a level of `0.03` crosses zero, and at its law a monthly step carries the
-/// states just below zero across it: Ozaki's likelihood has no value there, and the fit is the `Err`.
+/// states just below zero across it: Ozaki's likelihood has no value there, and the fit is `Err`.
 #[test]
 fn an_ozaki_fit_is_an_err_where_the_laws_steps_cross_zero() {
   let dt = 1.0 / 12.0;
