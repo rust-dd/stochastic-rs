@@ -164,8 +164,8 @@ pub(crate) fn sorted_losses<T: RealExt>(
     PnlOrLoss::Loss => samples.to_vec(),
   };
   sorted.sort_by(ascending);
-  let finite = |end: Option<&T>| end.is_some_and(|v| v.is_finite());
-  if !(finite(sorted.first()) && finite(sorted.last())) {
+  let finite_end = |end: Option<&T>| end.is_some_and(|v| v.is_finite());
+  if !(finite_end(sorted.first()) && finite_end(sorted.last())) {
     validate_samples(samples, what, 1)?;
   }
   Ok(sorted)
