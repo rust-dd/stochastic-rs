@@ -39,11 +39,16 @@ pub(crate) fn transition_pdf(
       std::cmp::Ordering::Greater => 0.0,
     };
   }
-  // Roots and logarithms taken apart: `v / u` overflows and `u · v` loses digits as `r_t` nears the
-  // subnormal range.
   let (root_u, root_v) = (u.sqrt(), v.sqrt());
   let gap = root_u - root_v;
-  (c.ln() - gap * gap + 0.5 * q * (v.ln() - u.ln()) + ln_bessel_ie(q, 2.0 * root_u * root_v)).exp()
+  let (ratio, product) = (v / u, u * v);
+  // Taken apart where `v / u` overflows or `u · v` loses digits, as `r_t` nears the subnormal range.
+  let (log_ratio, root) = if ratio.is_normal() && product.is_normal() {
+    (ratio.ln(), product.sqrt())
+  } else {
+    (v.ln() - u.ln(), root_u * root_v)
+  };
+  (c.ln() - gap * gap + 0.5 * q * log_ratio + ln_bessel_ie(q, 2.0 * root)).exp()
 }
 
 pub(crate) fn stationary_pdf(theta: f64, mu: f64, sigma: f64, r: f64) -> f64 {

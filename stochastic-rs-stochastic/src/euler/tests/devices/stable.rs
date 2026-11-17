@@ -127,37 +127,6 @@ fn reference(words: [u32; 4], alpha: f32, count: f32) -> f64 {
     * ratio.powf((1.0 - alpha as f64) * inverse)
 }
 
-/// One value a case from the kernel entry `name`, the law's sine or cosine of each value.
-#[cfg(metal_backend)]
-fn trig_kat(name: &str, values: &[f32]) -> Vec<f32> {
-  use metal_oxide::{Argument, DynamicLaunchConfig, Launch, Operation, Pipeline};
-
-  let n = values.len();
-  let context = crate::device::metal::context(0).expect("a Metal device");
-  let input = context.device.buffer_from_slice(values).unwrap();
-  let mut output = context.device.buffer_zeroed::<f32>(n).unwrap();
-  let pipeline = Pipeline::new(&context.device, &context.module, name).unwrap();
-  let config = DynamicLaunchConfig::for_elements(n as u32, 64).unwrap();
-  // SAFETY: both buffers hold `n` values; nothing else holds them.
-  unsafe {
-    Launch::new(
-      Ok(&pipeline),
-      config,
-      (&input, &mut output, n as u32),
-      |(input, output, cases)| {
-        Ok([
-          Argument::read(input),
-          Argument::write(output),
-          Argument::value(*cases)?,
-        ])
-      },
-    )
-    .wait()
-  }
-  .unwrap();
-  output.read().wait().to_vec()
-}
-
 /// The law's jump for each case, from the kernel entry `stable_kat` at scale 1.
 #[cfg(metal_backend)]
 fn stable_jumps(cases: &[([u32; 4], f32, f32)]) -> Vec<f32> {
@@ -202,7 +171,10 @@ fn stable_jumps(cases: &[([u32; 4], f32, f32)]) -> Vec<f32> {
 #[test]
 fn metal_stable_cosine_keeps_its_digits_near_a_right_angle() {
   let values = cos_cases();
-  for (&x, &got) in values.iter().zip(&trig_kat("cos_kat", &values)) {
+  for (&x, &got) in values
+    .iter()
+    .zip(&super::vocabulary::unary_kat("cos_kat", &values))
+  {
     let want = (x as f64).cos();
     assert!(
       (got as f64 - want).abs() <= 4.0 * f32::EPSILON as f64 * want,
@@ -217,7 +189,10 @@ fn metal_stable_cosine_keeps_its_digits_near_a_right_angle() {
 #[test]
 fn metal_stable_sine_keeps_its_digits_near_zero_and_pi() {
   let values = sin_cases();
-  for (&x, &got) in values.iter().zip(&trig_kat("sin_kat", &values)) {
+  for (&x, &got) in values
+    .iter()
+    .zip(&super::vocabulary::unary_kat("sin_kat", &values))
+  {
     let want = (x as f64).sin();
     assert!(
       (got as f64 - want).abs() <= 4.0 * f32::EPSILON as f64 * want.abs(),

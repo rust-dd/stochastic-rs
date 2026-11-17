@@ -175,6 +175,23 @@ fn a_subnormal_start_has_the_central_limit() {
   assert!(((central - 8.79526042415e-93) / 8.79526042415e-93).abs() < 1e-10);
 }
 
+/// The central limit either side of the range switch: `1e-300` keeps `v / u` and `u · v` normal,
+/// `1e-311` overflows the ratio alone, and `1e-200` with a value as small underflows the product.
+#[test]
+fn the_density_is_continuous_where_its_noncentral_terms_leave_the_normal_range() {
+  let (cir, t) = (law(2.0, 0.04, 0.3), 1.0 / 252.0);
+  for (start, x) in [(1e-300, 0.04), (1e-311, 0.04), (1e-200, 1e-200)] {
+    let (near, central) = (
+      cir.transition_pdf(t, start, x),
+      cir.transition_pdf(t, 0.0, x),
+    );
+    assert!(
+      ((near - central) / central).abs() < 1e-12,
+      "from {start:e} at {x:e}: {near:e} vs {central:e}"
+    );
+  }
+}
+
 #[test]
 fn zero_initial_state_reduces_to_the_central_chi_square_density() {
   let density = law(2.0, 0.04, 0.4).transition_pdf(1.0, 0.0, 0.03);

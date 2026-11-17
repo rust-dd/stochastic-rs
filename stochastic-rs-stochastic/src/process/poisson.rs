@@ -112,13 +112,13 @@ impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
   /// Build the reusable sampling state from any seed source.
   pub(crate) fn sampler_impl<S2: SeedExt>(&self, seed: &S2) -> PoissonSampler<T> {
     assert_rate(self.lambda, self.horizon);
-    // A zero rate takes the draw a stream would, so the streams seeded after it stay put.
-    let distr = if self.lambda > T::zero() {
-      Some(SimdExp::<T>::new(self.lambda).seeded(seed))
+    // A zero rate binds a unit-rate stream it never draws, so the streams seeded after it stay put.
+    let rate = if self.lambda > T::zero() {
+      self.lambda
     } else {
-      seed.next_seed();
-      None
+      T::one()
     };
+    let distr = SimdExp::<T>::new(rate).seeded(seed);
     // A draw no engine reads; skipping it would move every stream seeded after this one.
     seed.next_seed();
     PoissonSampler {
@@ -256,12 +256,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Poisson`] sampling state: the owned exponential inter-arrival source, none at a zero
+/// Reusable [`Poisson`] sampling state: the owned exponential inter-arrival source, idle at a zero
 /// rate, and the sampling regime.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct PoissonSampler<T: FloatExt> {
-  distr: Option<Seeded<SimdExp<T>>>,
+  distr: Seeded<SimdExp<T>>,
   horizon: Horizon<T>,
   lambda: T,
 }
@@ -277,11 +277,7 @@ impl<T: FloatExt> PoissonSampler<T> {
       return;
     }
     let tail = &mut out[1..];
-    self
-      .distr
-      .as_mut()
-      .expect("an `Events` horizon at a zero rate is refused before sampling")
-      .fill_slice(tail);
+    self.distr.fill_slice(tail);
     let mut acc = T::zero();
     for x in tail.iter_mut() {
       acc += *x;
@@ -303,13 +299,13 @@ impl<T: FloatExt> PoissonSampler<T> {
     };
     let mut poisson = Vec::with_capacity(cap);
     poisson.push(T::zero());
-    let Some(distr) = self.distr.as_mut().filter(|_| t_max > T::zero()) else {
+    if t_max <= T::zero() || lambda <= T::zero() {
       return Array1::from(poisson);
-    };
+    }
 
     let mut t = T::zero();
     while t < t_max {
-      t += distr.sample();
+      t += self.distr.sample();
       if t < t_max {
         poisson.push(t);
       }
