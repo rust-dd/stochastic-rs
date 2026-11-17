@@ -45,8 +45,8 @@ pub struct SwaptionQuote {
   pub weight: Option<f64>,
 }
 
-/// `InsufficientData` for no quote; `InvalidQuote` for an expiry, tenor or accrual not finite and
-/// `> 0`, a vol or weight not finite and `≥ 0`, or a negative forward swap rate on `curve`.
+/// `InvalidQuote` for an expiry, tenor or accrual not finite and `> 0`, a vol or weight not finite
+/// and `≥ 0`, over 100,000 payments or a negative or NaN swap rate; no quote is `InsufficientData`.
 pub(crate) fn validate_swaption_quotes(
   quotes: &[SwaptionQuote],
   curve: &DiscountCurve<f64>,

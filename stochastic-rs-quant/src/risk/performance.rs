@@ -16,107 +16,120 @@ use ndarray::ArrayView1;
 
 use super::drawdown::equity_from_returns;
 use super::drawdown::max_drawdown;
+use super::input::finite;
+use super::input::finite_positive;
+use super::input::is_constant;
+use super::input::validate_samples;
+use crate::QuantError;
 use crate::traits::RealExt;
 
 /// Arithmetic mean of a slice.
 fn mean<T: RealExt>(xs: ArrayView1<T>) -> T {
-  let n = xs.len();
-  assert!(n > 0, "empty series");
-  xs.iter().fold(T::zero(), |a, &v| a + v) / T::from_usize_(n)
+  xs.iter().fold(T::zero(), |a, &v| a + v) / T::from_usize_(xs.len())
 }
 
-/// Sample standard deviation (Bessel-corrected).
-fn stdev<T: RealExt>(xs: ArrayView1<T>) -> T {
-  let n = xs.len();
-  assert!(n >= 2, "need at least two observations for stdev");
+/// Mean and Bessel-corrected deviation of finite, non-constant samples, whose deviation only an
+/// under- or overflow keeps from being finite and positive.
+fn mean_and_deviation<T: RealExt>(
+  xs: ArrayView1<T>,
+  what: &'static str,
+) -> Result<(T, T), QuantError> {
   let m = mean(xs);
-  let var = xs.iter().fold(T::zero(), |a, &v| a + (v - m).powi(2)) / T::from_usize_(n - 1);
-  var.sqrt()
+  let var = xs.iter().fold(T::zero(), |a, &v| a + (v - m).powi(2)) / T::from_usize_(xs.len() - 1);
+  Ok((m, finite_positive(var.sqrt(), what, "the deviation")?))
 }
 
-/// Annualised Sharpe ratio.
+/// Annualised Sharpe ratio over `k` periods a year, NaN for a constant series; `InsufficientData`
+/// below two returns, `InvalidInput` for a non-finite one, `Numerical` if `σ` under- or overflows.
 ///
-/// $$\mathrm{Sharpe}=\frac{\bar r-r_f^{\text{period}}}{\sigma}\sqrt{k},$$
-/// where $k$ is the number of periods per year.
+/// $$\mathrm{Sharpe}=\frac{\bar r-r_f^{\text{period}}}{\sigma}\sqrt{k}.$$
 pub fn sharpe_ratio<T: RealExt>(
   returns: ArrayView1<T>,
   risk_free_per_period: T,
   periods_per_year: T,
-) -> T {
-  let m = mean(returns);
-  let s = stdev(returns);
-  if s <= T::min_positive_val() {
-    return T::zero();
+) -> Result<T, QuantError> {
+  validate_samples(returns, "Sharpe ratio", 2)?;
+  if is_constant(returns) {
+    return Ok(T::nan());
   }
-  (m - risk_free_per_period) / s * periods_per_year.sqrt()
+  let (m, s) = mean_and_deviation(returns, "Sharpe ratio")?;
+  Ok((m - risk_free_per_period) / s * periods_per_year.sqrt())
 }
 
-/// Annualised Sortino ratio with target `mar` (minimum acceptable return).
+/// Annualised Sortino ratio, NaN with no return below the target; the downside deviation divides
+/// by all `n` returns (Bawa & Lindenberg 1977), not the count below. Errors as [`sharpe_ratio`]'s.
 ///
-/// $$\mathrm{Sortino}=\frac{\bar r-\mathrm{MAR}}{\sigma_{\text{down}}}\sqrt{k},$$
-/// where the downside deviation uses only returns below MAR.
-///
-/// **Convention (Bawa-Lindenberg):** the downside deviation divisor is `n`
-/// (the full sample size), **not** the count of below-MAR observations.
-/// This matches the original Bawa & Lindenberg (1977) lower partial moment
-/// formulation and the implementation in `pyfolio` / `quantstats`. Sortino
-/// & Price (1994) and Sortino & Forsey (1996) use `n_downside` instead, so
-/// figures from those texts will differ by a factor of `sqrt(n /
-/// n_downside)`.
+/// $$\mathrm{Sortino}=\frac{\bar r-\mathrm{MAR}}{\sigma_{\text{down}}}\sqrt{k}.$$
 pub fn sortino_ratio<T: RealExt>(
   returns: ArrayView1<T>,
   mar_per_period: T,
   periods_per_year: T,
-) -> T {
+) -> Result<T, QuantError> {
+  validate_samples(returns, "Sortino ratio", 2)?;
   let n = returns.len();
-  assert!(n >= 2, "need at least two observations for Sortino");
   let m = mean(returns);
   let mut sum_sq = T::zero();
+  let mut below = false;
   for &r in returns.iter() {
     let d = r - mar_per_period;
     if d < T::zero() {
       sum_sq += d.powi(2);
+      below = true;
     }
   }
-  let downside = (sum_sq / T::from_usize_(n)).sqrt();
-  if downside <= T::min_positive_val() {
-    return T::zero();
+  if !below {
+    return Ok(T::nan());
   }
-  (m - mar_per_period) / downside * periods_per_year.sqrt()
+  let m = finite(m, "Sortino ratio", "the mean")?;
+  let downside = (sum_sq / T::from_usize_(n)).sqrt();
+  let downside = finite_positive(downside, "Sortino ratio", "the downside deviation")?;
+  Ok((m - mar_per_period) / downside * periods_per_year.sqrt())
 }
 
-/// Annualised Information Ratio against a benchmark return series.
+/// Annualised Information Ratio against `benchmark`, NaN for a constant excess series; errors as
+/// [`sharpe_ratio`]'s over the excess returns, and `DimensionMismatch` for unequal lengths.
 ///
 /// $$\mathrm{IR}=\frac{\overline{r-r_b}}{\sigma_{r-r_b}}\sqrt{k}.$$
 pub fn information_ratio<T: RealExt>(
   returns: ArrayView1<T>,
   benchmark: ArrayView1<T>,
   periods_per_year: T,
-) -> T {
-  assert_eq!(
-    returns.len(),
-    benchmark.len(),
-    "returns and benchmark must have matching length"
-  );
-  let diff = &returns.to_owned() - &benchmark.to_owned();
-  let m = mean(diff.view());
-  let s = stdev(diff.view());
-  if s <= T::min_positive_val() {
-    return T::zero();
+) -> Result<T, QuantError> {
+  if benchmark.len() != returns.len() {
+    return Err(QuantError::DimensionMismatch {
+      what: "benchmark, one per return",
+      expected: returns.len(),
+      got: benchmark.len(),
+    });
   }
-  m / s * periods_per_year.sqrt()
+  let diff = &returns.to_owned() - &benchmark.to_owned();
+  validate_samples(diff.view(), "information ratio", 2)?;
+  if is_constant(diff.view()) {
+    return Ok(T::nan());
+  }
+  let (m, s) = mean_and_deviation(diff.view(), "information ratio")?;
+  Ok(m / s * periods_per_year.sqrt())
 }
 
-/// Annualised Calmar ratio — annualised return divided by max drawdown.
+/// Annualised Calmar ratio, NaN with no drawdown; `InsufficientData` for no return, `InvalidInput`
+/// for a non-finite one, `Numerical` if the mean or the equity curve overflows.
 ///
 /// $$\mathrm{Calmar}=\frac{\bar r\,k}{|\mathrm{MDD}|}.$$
-pub fn calmar_ratio<T: RealExt>(returns: ArrayView1<T>, periods_per_year: T) -> T {
-  let annualised_return = mean(returns) * periods_per_year;
+pub fn calmar_ratio<T: RealExt>(
+  returns: ArrayView1<T>,
+  periods_per_year: T,
+) -> Result<T, QuantError> {
+  validate_samples(returns, "Calmar ratio", 1)?;
+  let annualised_return = finite(mean(returns), "Calmar ratio", "the mean")? * periods_per_year;
   let equity = equity_from_returns(returns, T::one());
-  let mdd = max_drawdown(equity.view());
+  let mdd = finite(
+    max_drawdown(equity.view()),
+    "Calmar ratio",
+    "the maximum drawdown",
+  )?;
   let mdd_abs = mdd.abs();
   if mdd_abs <= T::min_positive_val() {
-    return T::zero();
+    return Ok(T::nan());
   }
-  annualised_return / mdd_abs
+  Ok(annualised_return / mdd_abs)
 }

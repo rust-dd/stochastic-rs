@@ -1,10 +1,5 @@
-//! # Liquidity-adjusted risk metrics
-//!
-//! Bridges [`crate::risk::var`] with [`crate::microstructure`]: combines
-//! Monte-Carlo / historical Value-at-Risk with the Almgren-Chriss expected
-//! execution cost so unwind friction is reflected in the headline number.
-//!
-//! # Example
+//! Value-at-Risk plus the Almgren–Chriss expected cost of unwinding the position, so the headline
+//! number carries the execution friction.
 //!
 //! ```
 //! use ndarray::Array1;
@@ -20,12 +15,14 @@
 //!     PnlOrLoss::Pnl,
 //!     VarMethod::Historical,
 //!     &execution_params,
-//! );
+//! )?;
 //! assert!(var_plus_exec.is_finite());
+//! # Ok::<(), stochastic_rs_quant::QuantError>(())
 //! ```
 
 use ndarray::ArrayView1;
 
+use crate::QuantError;
 use crate::microstructure::AlmgrenChrissParams;
 use crate::microstructure::optimal_execution;
 use crate::risk::var::PnlOrLoss;
@@ -34,17 +31,17 @@ use crate::risk::var::value_at_risk;
 use crate::traits::RealExt;
 
 /// VaR plus the Almgren-Chriss expected execution cost of liquidating the
-/// position over the configured horizon.
+/// position over the configured horizon; the errors of [`value_at_risk`].
 pub fn liquidity_adjusted_var<T: RealExt>(
   samples: ArrayView1<T>,
   confidence: T,
   orientation: PnlOrLoss,
   method: VarMethod,
   execution: &AlmgrenChrissParams<T>,
-) -> T {
-  let var_loss = value_at_risk(samples, confidence, orientation, method);
+) -> Result<T, QuantError> {
+  let var_loss = value_at_risk(samples, confidence, orientation, method)?;
   let plan = optimal_execution(execution);
-  var_loss + plan.expected_cost
+  Ok(var_loss + plan.expected_cost)
 }
 
 #[cfg(test)]
@@ -68,14 +65,16 @@ mod tests {
       epsilon: 0.0,
       lambda: 0.0,
     };
-    let raw_var = value_at_risk(samples.view(), 0.95, PnlOrLoss::Pnl, VarMethod::Historical);
+    let raw_var =
+      value_at_risk(samples.view(), 0.95, PnlOrLoss::Pnl, VarMethod::Historical).unwrap();
     let lq_var = liquidity_adjusted_var(
       samples.view(),
       0.95,
       PnlOrLoss::Pnl,
       VarMethod::Historical,
       &exec,
-    );
+    )
+    .unwrap();
     assert!(lq_var > raw_var);
   }
 }

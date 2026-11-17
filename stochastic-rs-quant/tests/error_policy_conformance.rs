@@ -4,6 +4,7 @@
 use chrono::NaiveDate;
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::array;
 use stochastic_rs_quant::OptionQuote;
 use stochastic_rs_quant::OptionType;
 use stochastic_rs_quant::QuantError;
@@ -18,11 +19,27 @@ use stochastic_rs_quant::curves::DiscountCurve;
 use stochastic_rs_quant::curves::InterpolationMethod;
 use stochastic_rs_quant::inflation::InflationCurve;
 use stochastic_rs_quant::inflation::ZeroCouponInflationCurve;
+use stochastic_rs_quant::microstructure::AlmgrenChrissParams;
 use stochastic_rs_quant::portfolio::momentum::WeightScheme;
 use stochastic_rs_quant::portfolio::optimizers::empirical_cvar;
 use stochastic_rs_quant::portfolio::types::OptimizerMethod;
 use stochastic_rs_quant::pricing::sabr::SabrParams;
 use stochastic_rs_quant::pricing::sabr::hagan_implied_vol;
+use stochastic_rs_quant::risk::DrawdownStats;
+use stochastic_rs_quant::risk::PnlOrLoss;
+use stochastic_rs_quant::risk::VarMethod;
+use stochastic_rs_quant::risk::calmar_ratio;
+use stochastic_rs_quant::risk::gaussian_es;
+use stochastic_rs_quant::risk::gaussian_var;
+use stochastic_rs_quant::risk::historical_es;
+use stochastic_rs_quant::risk::historical_var;
+use stochastic_rs_quant::risk::information_ratio;
+use stochastic_rs_quant::risk::liquidity_adjusted_var;
+use stochastic_rs_quant::risk::max_drawdown;
+use stochastic_rs_quant::risk::running_drawdown;
+use stochastic_rs_quant::risk::sharpe_ratio;
+use stochastic_rs_quant::risk::sortino_ratio;
+use stochastic_rs_quant::risk::value_at_risk;
 use stochastic_rs_quant::risk::xva::ExposureProfile;
 use stochastic_rs_quant::vol_surface::implied::ImpliedVolSurface;
 
@@ -70,10 +87,204 @@ fn a_query_outside_the_domain_is_nan_not_a_panic() {
 }
 
 #[test]
-#[should_panic(expected = "returns must satisfy `!returns.is_empty()`")]
-fn an_empty_sample_is_a_precondition() {
-  let mut empty: Vec<f64> = Vec::new();
-  empirical_cvar(&mut empty, 0.05);
+fn an_empty_sample_is_insufficient_data() {
+  let err = empirical_cvar(&mut [], 0.05).unwrap_err();
+  assert_eq!(err.to_string(), "empirical CVaR: needs at least 1, got 0");
+}
+
+#[test]
+fn the_risk_estimators_report_short_or_bad_data_as_errors_and_bad_parameters_as_panics() {
+  let empty = Array1::<f64>::zeros(0);
+  let one = Array1::from_vec(vec![0.01]);
+  let bad = Array1::from_vec(vec![0.01, f64::NAN, -0.02]);
+  assert!(matches!(
+    historical_var(empty.view(), 0.99, PnlOrLoss::Pnl).unwrap_err(),
+    QuantError::InsufficientData {
+      needed: 1,
+      got: 0,
+      ..
+    }
+  ));
+  assert!(matches!(
+    gaussian_var(one.view(), 0.99, PnlOrLoss::Pnl).unwrap_err(),
+    QuantError::InsufficientData {
+      needed: 2,
+      got: 1,
+      ..
+    }
+  ));
+  assert!(matches!(
+    value_at_risk(bad.view(), 0.99, PnlOrLoss::Pnl, VarMethod::Historical).unwrap_err(),
+    QuantError::InvalidInput {
+      what: "samples",
+      ..
+    }
+  ));
+  assert!(matches!(
+    historical_es(empty.view(), 0.975, PnlOrLoss::Loss).unwrap_err(),
+    QuantError::InsufficientData { .. }
+  ));
+  assert!(matches!(
+    sharpe_ratio(one.view(), 0.0, 252.0).unwrap_err(),
+    QuantError::InsufficientData { needed: 2, .. }
+  ));
+  assert!(matches!(
+    empirical_cvar(&mut [], 0.05).unwrap_err(),
+    QuantError::InsufficientData { .. }
+  ));
+  let ok = historical_var(
+    Array1::from_vec(vec![-0.03_f64, 0.01, 0.02, -0.01, 0.0]).view(),
+    0.8,
+    PnlOrLoss::Pnl,
+  )
+  .unwrap();
+  assert!(ok.is_finite());
+  let panicked = std::panic::catch_unwind(|| historical_var(one.view(), 1.0, PnlOrLoss::Pnl));
+  assert!(panicked.is_err(), "confidence is a parameter");
+}
+
+#[test]
+fn a_non_finite_sample_is_invalid_input_at_its_index() {
+  let bad = array![0.01, -0.02, f64::INFINITY, 0.03];
+  for err in [
+    gaussian_var(bad.view(), 0.99, PnlOrLoss::Pnl).unwrap_err(),
+    gaussian_es(bad.view(), 0.99, PnlOrLoss::Loss).unwrap_err(),
+    historical_es(bad.view(), 0.99, PnlOrLoss::Pnl).unwrap_err(),
+    sortino_ratio(bad.view(), 0.0, 252.0).unwrap_err(),
+    information_ratio(bad.view(), Array1::zeros(4).view(), 252.0).unwrap_err(),
+    DrawdownStats::from_equity(bad.view()).unwrap_err(),
+  ] {
+    assert_eq!(err.to_string(), "invalid samples: sample 2 is inf");
+  }
+  let err = empirical_cvar(&mut [0.1, f64::NAN], 0.05).unwrap_err();
+  assert_eq!(err.to_string(), "invalid samples: sample 1 is NaN");
+}
+
+#[test]
+#[should_panic(
+  expected = "confidence must satisfy `confidence > 0.0 && confidence < 1.0`, got confidence = 1.0"
+)]
+fn a_confidence_of_one_is_a_precondition() {
+  let _ = gaussian_var(array![0.01, -0.02].view(), 1.0, PnlOrLoss::Pnl);
+}
+
+#[test]
+fn a_ratio_with_a_zero_denominator_is_nan() {
+  let flat = array![0.01_f64, 0.01, 0.01, 0.01];
+  let tenth = array![0.1_f64, 0.1, 0.1];
+  let up = array![0.01_f64, 0.02, 0.03, 0.04];
+  assert!(sharpe_ratio(flat.view(), 0.0, 252.0).unwrap().is_nan());
+  assert!(sharpe_ratio(tenth.view(), 0.0, 252.0).unwrap().is_nan());
+  let zero = Array1::zeros(3);
+  assert!(
+    information_ratio(tenth.view(), zero.view(), 252.0)
+      .unwrap()
+      .is_nan()
+  );
+  assert!(sortino_ratio(up.view(), 0.0, 252.0).unwrap().is_nan());
+  assert!(
+    information_ratio(up.view(), up.view(), 252.0)
+      .unwrap()
+      .is_nan()
+  );
+  assert!(calmar_ratio(up.view(), 252.0).unwrap().is_nan());
+  assert!(matches!(
+    information_ratio(up.view(), array![0.0, 0.0].view(), 252.0).unwrap_err(),
+    QuantError::DimensionMismatch {
+      expected: 4,
+      got: 2,
+      ..
+    }
+  ));
+  assert!(matches!(
+    calmar_ratio(Array1::<f64>::zeros(0).view(), 252.0).unwrap_err(),
+    QuantError::InsufficientData {
+      needed: 1,
+      got: 0,
+      ..
+    }
+  ));
+}
+
+#[test]
+fn an_empty_equity_series_has_no_drawdown() {
+  let empty = Array1::<f64>::zeros(0);
+  assert!(max_drawdown(empty.view()).is_nan());
+  assert!(max_drawdown(array![100.0, f64::NAN, 90.0].view()).is_nan());
+  let err = DrawdownStats::from_equity(empty.view()).unwrap_err();
+  assert_eq!(
+    err.to_string(),
+    "drawdown statistics: needs at least 1, got 0"
+  );
+}
+
+#[test]
+fn a_drawdown_from_a_non_positive_peak_is_nan() {
+  assert!(max_drawdown(array![f64::NAN, 100.0, 90.0].view()).is_nan());
+  assert!(max_drawdown(array![-10.0_f64, -20.0].view()).is_nan());
+  let running = running_drawdown(array![-1.0_f64, 2.0, 1.0].view());
+  assert!(
+    running[0].is_nan() && running[1] == 0.0 && running[2] == -0.5,
+    "{running}"
+  );
+  let err = DrawdownStats::from_equity(array![-10.0, -20.0].view()).unwrap_err();
+  assert_eq!(
+    err.to_string(),
+    "invalid samples: sample 0 is -10.0, not positive"
+  );
+}
+
+#[test]
+fn finite_samples_whose_moments_overflow_or_underflow_are_a_numerical_error() {
+  let big = array![1e200, -1e200, 1e200];
+  let tiny = array![1e-200, 2e-200, 1e-200];
+  let mean_overflows = array![1e308, 1e308, -0.5];
+  let mut equity_overflows = vec![1.0; 1100];
+  equity_overflows.push(-0.5);
+  let equity_overflows = Array1::from_vec(equity_overflows);
+  let results = [
+    gaussian_var(array![1e308, 1e308, 1e308].view(), 0.99, PnlOrLoss::Pnl),
+    gaussian_var(array![1e200, -1e200].view(), 0.99, PnlOrLoss::Pnl),
+    gaussian_es(array![1e200, -1e200].view(), 0.99, PnlOrLoss::Loss),
+    sharpe_ratio(big.view(), 0.0, 252.0),
+    sharpe_ratio(tiny.view(), 0.0, 252.0),
+    sortino_ratio(big.view(), 0.0, 252.0),
+    sortino_ratio(tiny.view(), 1.5e-200, 252.0),
+    sortino_ratio(mean_overflows.view(), 0.0, 252.0),
+    information_ratio(big.view(), Array1::zeros(3).view(), 252.0),
+    calmar_ratio(mean_overflows.view(), 252.0),
+    calmar_ratio(equity_overflows.view(), 252.0),
+  ];
+  for result in results {
+    assert!(
+      matches!(result, Err(QuantError::Numerical { .. })),
+      "{result:?}"
+    );
+  }
+  let err = gaussian_var(array![1e308, 1e308].view(), 0.99, PnlOrLoss::Pnl).unwrap_err();
+  assert_eq!(
+    err.to_string(),
+    "gaussian VaR: the sum of finite samples overflows to -inf"
+  );
+  let err = sharpe_ratio(tiny.view(), 0.0, 252.0).unwrap_err();
+  assert_eq!(
+    err.to_string(),
+    "Sharpe ratio: the deviation of finite samples underflows to 0.0"
+  );
+}
+
+#[test]
+fn liquidity_adjusted_var_reports_the_var_error() {
+  let execution = AlmgrenChrissParams::<f64>::new(1e4, 1.0, 10, 0.02, 1e-6, 1e-5, 1e-6);
+  let err = liquidity_adjusted_var(
+    Array1::zeros(0).view(),
+    0.99,
+    PnlOrLoss::Pnl,
+    VarMethod::Historical,
+    &execution,
+  )
+  .unwrap_err();
+  assert_eq!(err.to_string(), "historical VaR: needs at least 1, got 0");
 }
 
 #[test]

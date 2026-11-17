@@ -90,10 +90,8 @@ pub fn mape(market: &[f64], model: &[f64]) -> f64 {
   (sum / market.len() as f64) * 100.0
 }
 
-/// Mean Squared Percentage Error (in %): MSPE = (100/N) Σ[((market_i - model_i) / market_i)²]
-///
-/// Returns `f64::NAN` when any `market_i` is approximately zero. See
-/// [`mpe`] for the rationale.
+/// `(100/N) Σ ((market_i − model_i)/market_i)²`, a hundred times the mean squared relative error
+/// and so in neither % nor %²; NaN when any `market_i` is near zero.
 pub fn mspe(market: &[f64], model: &[f64]) -> f64 {
   let sum: f64 = market
     .iter()
@@ -109,7 +107,18 @@ pub fn mspe(market: &[f64], model: &[f64]) -> f64 {
   (sum / market.len() as f64) * 100.0
 }
 
-/// Root Mean Squared Percentage Error (in %): RMSPE = √MSPE
+/// Root mean squared percentage error (in %): `100·√((1/N) Σ ((market_i − model_i)/market_i)²)`,
+/// NaN when any `market_i` is near zero.
 pub fn rmspe(market: &[f64], model: &[f64]) -> f64 {
-  mspe(market, model).sqrt()
+  (100.0 * mspe(market, model)).sqrt()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn two_prices_each_missed_by_one_percent_read_one() {
+    assert_eq!(rmspe(&[100.0, 200.0], &[101.0, 198.0]), 1.0);
+  }
 }

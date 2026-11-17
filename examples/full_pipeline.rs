@@ -189,8 +189,8 @@ fn main() {
     })
     .collect();
   let pnl_arr = ndarray::Array1::from(pnl);
-  let var_95 = gaussian_var(ArrayView1::from(&pnl_arr), 0.95, PnlOrLoss::Pnl);
-  let var_99 = gaussian_var(ArrayView1::from(&pnl_arr), 0.99, PnlOrLoss::Pnl);
+  let var_95 = gaussian_var(ArrayView1::from(&pnl_arr), 0.95, PnlOrLoss::Pnl).expect("finite PnL");
+  let var_99 = gaussian_var(ArrayView1::from(&pnl_arr), 0.99, PnlOrLoss::Pnl).expect("finite PnL");
   println!("Portfolio risk (parametric 1d Gaussian, n={}):", n_sim);
   println!("  VaR(95%) = {:.4}", var_95);
   println!("  VaR(99%) = {:.4}\n", var_99);
@@ -212,7 +212,8 @@ fn main() {
     PnlOrLoss::Pnl,
     VarMethod::Historical,
     &exec,
-  );
+  )
+  .expect("finite PnL");
   let exec_adj_call = execution_adjusted_price(bs_call.npv(), &exec, exec.lambda);
   println!("Liquidity-adjusted view (Almgren-Chriss, 50k shares, T=1d):");
   println!("  VaR(95%) raw     = {:.4}", var_95);

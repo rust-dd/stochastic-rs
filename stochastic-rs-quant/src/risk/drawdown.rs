@@ -14,16 +14,11 @@
 use ndarray::Array1;
 use ndarray::ArrayView1;
 
+use super::input::validate_samples;
+use crate::QuantError;
 use crate::traits::RealExt;
 
-/// Running drawdown series.  Entry $i$ is $V_i/\max_{s\le i}V_s - 1$.
-///
-/// `peak` is initialised to `T::neg_infinity()` so the first observation
-/// always becomes the running peak — even for series that start with a
-/// negative value or below `T::min_positive_val()`. The drawdown formula
-/// itself only makes sense on strictly-positive equity series; values
-/// outside that domain pin `out[i] = 0` since the ratio `v / peak - 1`
-/// has no economic meaning for non-positive peaks.
+/// Running drawdown `V_i / max_{s≤i} V_s − 1`, NaN where that peak is not positive.
 pub fn running_drawdown<T: RealExt>(equity: ArrayView1<T>) -> Array1<T> {
   let mut out = Array1::zeros(equity.len());
   let mut peak = T::neg_infinity();
@@ -34,18 +29,19 @@ pub fn running_drawdown<T: RealExt>(equity: ArrayView1<T>) -> Array1<T> {
     out[i] = if peak > T::zero() {
       v / peak - T::one()
     } else {
-      T::zero()
+      T::nan()
     };
   }
   out
 }
 
-/// Maximum drawdown (most negative value of the running drawdown series).
+/// Maximum drawdown, the most negative running drawdown; NaN for an empty series, a NaN value or a
+/// non-positive start.
 pub fn max_drawdown<T: RealExt>(equity: ArrayView1<T>) -> T {
-  let dd = running_drawdown(equity);
-  dd.iter()
-    .copied()
-    .fold(T::zero(), |a, b| if b < a { b } else { a })
+  if equity.is_empty() {
+    return T::nan();
+  }
+  T::min_or_nan_fold(running_drawdown(equity).iter().copied())
 }
 
 /// Length of the longest drawdown period (in observations).
@@ -134,8 +130,14 @@ pub struct DrawdownStats<T: RealExt> {
 }
 
 impl<T: RealExt> DrawdownStats<T> {
-  /// Compute all drawdown statistics from an equity series.
-  pub fn from_equity(equity: ArrayView1<T>) -> Self {
+  /// `InsufficientData` for an empty series, `InvalidInput` for a non-finite value or a
+  /// non-positive start.
+  pub fn from_equity(equity: ArrayView1<T>) -> Result<Self, QuantError> {
+    validate_samples(equity, "drawdown statistics", 1)?;
+    if equity[0] <= T::zero() {
+      let reason = format!("sample 0 is {:?}, not positive", equity[0]);
+      return Err(QuantError::invalid("samples", reason));
+    }
     let series = running_drawdown(equity);
     let mut max = T::zero();
     let mut max_index = 0usize;
@@ -145,15 +147,14 @@ impl<T: RealExt> DrawdownStats<T> {
         max_index = i;
       }
     }
-    let n = series.len().max(1);
-    let average = series.iter().fold(T::zero(), |acc, &v| acc + v) / T::from_usize_(n);
-    Self {
+    let average = series.iter().fold(T::zero(), |acc, &v| acc + v) / T::from_usize_(series.len());
+    Ok(Self {
       series,
       max,
       max_index,
       longest_duration: max_drawdown_duration(equity),
       average,
-    }
+    })
   }
 }
 
