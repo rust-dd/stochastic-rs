@@ -106,7 +106,7 @@ pub fn phillips_perron_test(
   let y = prepared(y, 20)?;
   let y = match cfg.trend {
     Trend::None => y,
-    Trend::Constant | Trend::ConstantTrend => unit_scaled(centred(&y)),
+    Trend::Constant | Trend::ConstantTrend => unit_scaled(centred(&y)).0,
   };
 
   let fit = fit_adf(&y, 0, cfg.trend, &y)?;
