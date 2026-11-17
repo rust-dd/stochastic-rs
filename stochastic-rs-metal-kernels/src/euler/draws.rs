@@ -4,6 +4,7 @@ use metal_oxide_device::math;
 
 use super::philox::{
   GAMMA_BOOST, LN_2_23, SITE_COUNT, SITE_GAMMA, SITE_NOISE, philox4x32_10, u01_f32,
+  u01_f32_zero_cell,
 };
 
 /// `step` as the compiler's numerical proofs see any value, so they analyze a step's draws once,
@@ -18,11 +19,11 @@ pub(crate) fn words(path: u32, step: u32, site: u32, index: u32, key: [u32; 2]) 
   philox4x32_10([path, step, site, index], key)
 }
 
-/// `Exp(1)` from two words, the second refining the first's zero cell; the fast log's error can
-/// take `−ln u` below zero near `u = 1`, where the normal's root would be NaN.
+/// `Exp(1)` from two words, its zero cell refined in `u01_f64`'s bit order; the fast log's error
+/// can take `−ln u` below zero near `u = 1`, where the normal's root would be NaN.
 pub(crate) fn exponential(first: u32, second: u32) -> f32 {
   let e = if first >> 9 == 0 {
-    LN_2_23 - math::ln(u01_f32(second))
+    LN_2_23 - math::ln(u01_f32_zero_cell(first, second))
   } else {
     -math::ln(u01_f32(first))
   };

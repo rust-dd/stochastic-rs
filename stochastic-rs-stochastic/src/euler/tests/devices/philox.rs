@@ -20,6 +20,7 @@ fn cases() -> Vec<([u32; 4], [u32; 2])> {
   }
   for edge in [
     [u32::MAX, u32::MAX],
+    [0x1ff, u32::MAX],
     [0, u32::MAX],
     [1 << 9, 0],
     [0x1ff, 0x1ff],

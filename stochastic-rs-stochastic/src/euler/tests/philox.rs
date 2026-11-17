@@ -7,12 +7,13 @@ use crate::euler::philox::LN_2_23;
 use crate::euler::philox::key;
 use crate::euler::philox::philox4x32_10;
 use crate::euler::philox::u01_f32;
+use crate::euler::philox::u01_f32_zero_cell;
 use crate::euler::philox::u01_f64;
 
 /// `Exp(1)` from two words as the `f32` kernels draw it, with an accurate logarithm.
 pub(crate) fn exp1_f32(a: u32, b: u32) -> f32 {
   let e = if a >> 9 == 0 {
-    LN_2_23 - u01_f32(b).ln()
+    LN_2_23 - u01_f32_zero_cell(a, b).ln()
   } else {
     -u01_f32(a).ln()
   };
@@ -79,7 +80,7 @@ fn the_uniforms_are_strictly_inside_the_unit_interval() {
 
 #[test]
 fn the_exponential_extension_continues_the_tail() {
-  let e_top = exp1_f32(0, u32::MAX);
+  let e_top = exp1_f32(0x1ff, u32::MAX);
   let e_first = exp1_f32(1 << 9, 0);
   assert!(e_top > e_first && e_top - 23.0 * LN_2 < 1e-6);
   assert!(
@@ -87,6 +88,37 @@ fn the_exponential_extension_continues_the_tail() {
     "two zero words reach 47 ln 2"
   );
   assert!(exp1_f32(u32::MAX, 0) >= 0.0 && exp1_f32(u32::MAX, u32::MAX) >= 0.0);
+}
+
+/// Over four million word pairs, half in the exponential's zero cell, an `f32` uniform and the
+/// uniform under an `f32` exponential are the `f64` uniform cut to their resolution.
+#[test]
+fn an_f32_draw_is_the_truncation_of_the_f64_draw() {
+  let cell = |u: f64, width: f64| ((u / width).floor() + 0.5) * width;
+  let width = f64::from(f32::EPSILON);
+  for i in 0..1u32 << 20 {
+    let w = philox4x32_10([i, 0, 0, 0], key(0x5eed));
+    for (a, b) in [
+      (w[0], w[1]),
+      (w[2], w[3]),
+      (w[0] & 0x1ff, w[1]),
+      (w[2] & 0x1ff, w[3]),
+    ] {
+      let u = u01_f64(a, b);
+      assert_eq!(f64::from(u01_f32(a)), cell(u, width), "{a:#x} {b:#x}");
+      let under = if u < width {
+        cell(u, width * width)
+      } else {
+        cell(u, width)
+      };
+      let e = f64::from(exp1_f32(a, b));
+      assert!(
+        (e + under.ln()).abs() <= 4e-6 * (1.0 + e),
+        "{a:#x} {b:#x}: {e} against {}",
+        -under.ln()
+      );
+    }
+  }
 }
 
 #[test]

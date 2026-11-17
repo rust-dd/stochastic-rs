@@ -75,6 +75,12 @@ pub fn u01_f32(word: u32) -> f32 {
   ((word >> 9) as f32 + 0.5) * f32::EPSILON
 }
 
+/// `u01_f32(first)`'s zero cell `[0, 2⁻²³)` refined in `u01_f64`'s bit order, the first word's low
+/// 9 bits then the second's top 14, as a uniform on `(0, 1)`.
+pub fn u01_f32_zero_cell(first: u32, second: u32) -> f32 {
+  u01_f32((first << 23) | (second >> 9))
+}
+
 /// `(2j + 1)·2⁻⁵³` from 52 bits, all of the first word and the second's top 20: never 0 or 1.
 pub fn u01_f64(first: u32, second: u32) -> f64 {
   ((((first as u64) << 20) | (second >> 12) as u64) as f64 + 0.5) * f64::EPSILON
