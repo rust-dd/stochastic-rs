@@ -441,47 +441,41 @@ where
     Deterministic::new(2),
   )
   .with_backend(device.clone());
-  let after_one = |seed: &Deterministic| {
-    let seed = seed.clone();
-    seed.next_seed();
-    seed.current()
-  };
-  let (gbm_seed, bergomi_seed) = (after_one(&gbm.seed), after_one(&bergomi.seed));
-  let refusals: [(Result<(), DeviceError>, u64, u64); 5] = [
+  let (once_gbm, once_bergomi) = (gbm.clone(), bergomi.clone());
+  let _ = (once_gbm.device_seed(), once_bergomi.device_seed());
+  let (g, b) = (once_gbm.seed.current(), once_bergomi.seed.current());
+  let refusals: [(Result<(), DeviceError>, u64); 5] = [
     promptly({
       let p = gbm.clone();
-      move || (p.try_sample_par(m).map(drop), p.seed.current(), gbm_seed)
+      move || (p.try_sample_par(m).map(drop), p.seed.current())
     }),
     promptly({
       let (p, d) = (gbm.clone(), device.clone());
       move || {
         let refusal = d.try_euler_paths_map(&p, m, |path| path[0]).map(drop);
-        (refusal, p.seed.current(), gbm_seed)
+        (refusal, p.seed.current())
       }
     }),
     promptly({
       let (p, d) = (gbm.clone(), device.clone());
       move || {
         let refusal = d.try_euler_paths_map_view(&p, m, |path| path[0]).map(drop);
-        (refusal, p.seed.current(), gbm_seed)
+        (refusal, p.seed.current())
       }
     }),
     promptly({
       let p = bergomi.clone();
-      move || {
-        let refusal = p.try_sample_par(m).map(drop);
-        (refusal, p.seed.current(), bergomi_seed)
-      }
+      move || (p.try_sample_par(m).map(drop), p.seed.current())
     }),
     promptly({
       let (p, d) = (bergomi, device);
       move || {
         let refusal = d.try_system_paths_map(&p, m, |paths| paths[0][0]).map(drop);
-        (refusal, p.seed.current(), bergomi_seed)
+        (refusal, p.seed.current())
       }
     }),
   ];
-  for (refusal, seed, once) in refusals {
+  for ((refusal, seed), once) in refusals.into_iter().zip([g, g, g, b, b]) {
     assert!(
       matches!(&refusal, Err(DeviceError::Launch(why)) if why.contains("32-bit path index")),
       "{refusal:?}"
