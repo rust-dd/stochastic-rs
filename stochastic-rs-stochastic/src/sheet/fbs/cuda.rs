@@ -115,6 +115,7 @@ fn kernel_source(real: &str) -> String {
 }
 
 /// Persistent GPU state: the stream and the six compiled kernels.
+#[derive(Clone)]
 struct Kernels {
   ordinal: usize,
   stream: Arc<CudaStream>,
@@ -135,21 +136,32 @@ static GPU: Mutex<Option<Kernels>> = Mutex::new(None);
 pub(crate) fn release(ordinal: usize) {
   let mut gpu = GPU.lock();
   if gpu.as_ref().is_some_and(|k| k.ordinal == ordinal) {
-    SIZED_F32.lock().clear();
-    SIZED_F64.lock().clear();
-    *gpu = None;
+    invalidate(&mut gpu);
   }
 }
 
-fn ensure_kernels(ordinal: usize) -> Result<()> {
-  let mut g = GPU.lock();
-  if g.as_ref().is_some_and(|k| k.ordinal == ordinal) {
-    return Ok(());
-  }
-  // A new context invalidates the per-size buffers and plans of the old one.
-  *g = None;
+/// Empties the cache: the per-size buffers and plans belong to the context that built them.
+fn invalidate(gpu: &mut Option<Kernels>) {
+  *gpu = None;
   SIZED_F32.lock().clear();
   SIZED_F64.lock().clear();
+}
+
+#[cfg(test)]
+pub(crate) fn cached_context() -> Option<std::sync::Weak<CudaContext>> {
+  GPU
+    .lock()
+    .as_ref()
+    .map(|k| Arc::downgrade(k.stream.context()))
+}
+
+/// The stream and kernels of the device at `ordinal`, opened if need be and cloned under one lock.
+fn ensure_kernels(ordinal: usize) -> Result<Kernels> {
+  let mut g = GPU.lock();
+  if let Some(k) = g.as_ref().filter(|k| k.ordinal == ordinal) {
+    return Ok(k.clone());
+  }
+  invalidate(&mut g);
   let ctx =
     CudaContext::new(ordinal).map_err(|e| DeviceError::Unavailable(format!("CudaContext: {e}")))?;
   let stream = ctx
@@ -178,7 +190,7 @@ fn ensure_kernels(ordinal: usize) -> Result<()> {
   let (gen_f32, transpose_f32, extract_f32) = load("float")?;
   let (gen_f64, transpose_f64, extract_f64) = load("double")?;
 
-  *g = Some(Kernels {
+  let kernels = Kernels {
     ordinal,
     stream,
     gen_f32,
@@ -187,8 +199,9 @@ fn ensure_kernels(ordinal: usize) -> Result<()> {
     gen_f64,
     transpose_f64,
     extract_f64,
-  });
-  Ok(())
+  };
+  *g = Some(kernels.clone());
+  Ok(kernels)
 }
 
 /// A batched one-dimensional plan on the stream, destroyed with its cache
@@ -237,7 +250,8 @@ macro_rules! sheet_precision {
 
     unsafe impl Send for $sized {}
 
-    /// The last [`crate::device::CACHE_SLOTS`] per-size states, least recent first.
+    /// The last [`crate::device::CACHE_SLOTS`] per-size states, least recent first; a launch reuses
+    /// one only on the stream that built it, which its plans run on.
     static $cache: Mutex<Vec<$sized>> = Mutex::new(Vec::new());
 
     /// One chunk of the batch: `sheets` sheets from `first` on, as their
@@ -270,23 +284,23 @@ macro_rules! sheet_precision {
       let grid = launch_len::<u32>(total, "sheet grid")?;
       let grid_out = launch_len::<u32>(out_len, "sheet_extract grid")?;
 
-      ensure_kernels(ordinal)?;
-      // Clone the handles out of the global lock so another size can launch
-      // concurrently; the per-size state below keeps its own lock.
-      let (stream, draw, transpose, extract) = {
-        let g = GPU.lock();
-        let k = g.as_ref().unwrap();
-        (
-          k.stream.clone(),
-          k.$gen.clone(),
-          k.$transpose.clone(),
-          k.$extract.clone(),
-        )
-      };
+      let Kernels {
+        stream,
+        $gen: draw,
+        $transpose: transpose,
+        $extract: extract,
+        ..
+      } = ensure_kernels(ordinal)?;
       let mut sized = $cache.lock();
       let s = crate::device::lru_slot(
         &mut sized,
-        |s| s.m == m && s.n == n && s.sheets == sheets && s.key == sheet.key,
+        |s| {
+          Arc::ptr_eq(s.d_out.stream(), &stream)
+            && s.m == m
+            && s.n == n
+            && s.sheets == sheets
+            && s.key == sheet.key
+        },
         || {
           let plan_rows = make_plan(
             &stream,

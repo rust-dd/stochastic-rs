@@ -217,6 +217,34 @@ pub(crate) fn release(ordinal: usize) {
   }
 }
 
+#[cfg(test)]
+pub(crate) fn cached_context() -> Option<std::sync::Weak<CudaContext>> {
+  KERNELS.lock().as_ref().map(|k| Arc::downgrade(&k.context))
+}
+
+/// What a launch of one compiled shape needs, cloned under the lock that compiled it.
+struct Launcher {
+  context: Arc<CudaContext>,
+  streams: [Arc<CudaStream>; 2],
+  func: CudaFunction,
+}
+
+/// The cache that compiled `context`'s launch, or the error a release or rebind on another thread
+/// leaves behind: a launch never takes buffers from, or returns them to, another context's cache.
+fn lender<'a>(
+  kernels: &'a mut Option<Kernels>,
+  context: &Arc<CudaContext>,
+) -> Result<&'a mut Kernels> {
+  kernels
+    .as_mut()
+    .filter(|k| Arc::ptr_eq(&k.context, context))
+    .ok_or_else(|| {
+      DeviceError::Launch(
+        "the kernel cache was released or rebound to another device mid-launch".into(),
+      )
+    })
+}
+
 /// The CUDA device at `ordinal`, or why it cannot be used.
 pub(crate) fn probe(ordinal: usize) -> Result<DeviceInfo> {
   let ctx =
@@ -281,14 +309,7 @@ impl KernelProfile {
 /// `ordinal`, at a block size of `block` threads.
 pub fn kernel_profile(ordinal: usize, real: &'static str, block: u32) -> Result<KernelProfile> {
   let shape = Shape::new(super::families::Family::GeometricBrownian, false, false);
-  ensure_kernels(ordinal, shape, real)?;
-  let guard = KERNELS.lock();
-  let kernels = guard.as_ref().expect("initialised");
-  // As in `run`: the lock was released between compiling and this lookup, so
-  // a concurrent call on another ordinal can have emptied the map.
-  let func = kernels.functions.get(&(shape, real)).ok_or_else(|| {
-    DeviceError::Launch("the kernel cache was rebound to another device mid-launch".into())
-  })?;
+  let Launcher { context, func, .. } = ensure_kernels(ordinal, shape, real)?;
   let attr = |what: &str, v: std::result::Result<i32, DriverError>| -> Result<i32> {
     v.map_err(|e| driver_error(what, e))
   };
@@ -303,55 +324,65 @@ pub fn kernel_profile(ordinal: usize, real: &'static str, block: u32) -> Result<
     block,
     threads_per_multiprocessor: attr(
       "max_threads_per_multiprocessor",
-      kernels.context.attribute(
+      context.attribute(
         cudarc::driver::sys::CUdevice_attribute::CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_MULTIPROCESSOR,
       ),
     )?,
   })
 }
 
-/// Opens the device at `ordinal` if it is not already open, and compiles the
-/// kernel for `shape` at `real` if that one is not already built.
-fn ensure_kernels(ordinal: usize, shape: Shape, real: &'static str) -> Result<()> {
+/// Opens the device at `ordinal` if it is not already open, compiles the kernel for `shape` at
+/// `real` if that one is not already built, and hands back what a launch of it needs.
+fn ensure_kernels(ordinal: usize, shape: Shape, real: &'static str) -> Result<Launcher> {
   let mut guard = KERNELS.lock();
-  if !guard.as_ref().is_some_and(|k| k.ordinal == ordinal) {
-    let ctx = CudaContext::new(ordinal)
-      .map_err(|e| DeviceError::Unavailable(format!("CudaContext: {e}")))?;
-    let stream = ctx
-      .new_stream()
-      .map_err(|e| DeviceError::Launch(format!("stream: {e}")))?;
-    let context = stream.context();
-    let stream_b = ctx
-      .new_stream()
-      .map_err(|e| DeviceError::Launch(format!("stream: {e}")))?;
-    *guard = Some(Kernels {
-      ordinal,
-      context: context.clone(),
-      stream,
-      stream_b,
-      out_f32: [None, None],
-      out_f64: [None, None],
-      staging_f32: [None, None],
-      staging_f64: [None, None],
-      functions: HashMap::new(),
-    });
-  }
-  let kernels = guard.as_mut().expect("initialised");
-  if kernels.functions.contains_key(&(shape, real)) {
-    return Ok(());
-  }
-  let name = format!("euler_paths_{real}");
-  let ptx = nvrtc::compile_ptx(kernel_source(real, shape))
-    .map_err(|e| DeviceError::Compile(format!("NVRTC {name}: {e}")))?;
-  let module = kernels
-    .context
-    .load_module(ptx)
-    .map_err(|e| DeviceError::Launch(format!("load {name}: {e}")))?;
-  let function = module
-    .load_function(&name)
-    .map_err(|e| DeviceError::Launch(format!("fn {name}: {e}")))?;
-  kernels.functions.insert((shape, real), function);
-  Ok(())
+  let kernels = match &mut *guard {
+    Some(kernels) if kernels.ordinal == ordinal => kernels,
+    slot => slot.insert(open(ordinal)?),
+  };
+  let func = match kernels.functions.entry((shape, real)) {
+    std::collections::hash_map::Entry::Occupied(entry) => entry.get().clone(),
+    std::collections::hash_map::Entry::Vacant(entry) => {
+      let name = format!("euler_paths_{real}");
+      let ptx = nvrtc::compile_ptx(kernel_source(real, shape))
+        .map_err(|e| DeviceError::Compile(format!("NVRTC {name}: {e}")))?;
+      let module = kernels
+        .context
+        .load_module(ptx)
+        .map_err(|e| DeviceError::Launch(format!("load {name}: {e}")))?;
+      let function = module
+        .load_function(&name)
+        .map_err(|e| DeviceError::Launch(format!("fn {name}: {e}")))?;
+      entry.insert(function).clone()
+    }
+  };
+  Ok(Launcher {
+    context: kernels.context.clone(),
+    streams: [kernels.stream.clone(), kernels.stream_b.clone()],
+    func,
+  })
+}
+
+/// The device at `ordinal` with its two streams and nothing compiled or cached yet.
+fn open(ordinal: usize) -> Result<Kernels> {
+  let ctx =
+    CudaContext::new(ordinal).map_err(|e| DeviceError::Unavailable(format!("CudaContext: {e}")))?;
+  let stream = ctx
+    .new_stream()
+    .map_err(|e| DeviceError::Launch(format!("stream: {e}")))?;
+  let stream_b = ctx
+    .new_stream()
+    .map_err(|e| DeviceError::Launch(format!("stream: {e}")))?;
+  Ok(Kernels {
+    ordinal,
+    context: stream.context().clone(),
+    stream,
+    stream_b,
+    out_f32: [None, None],
+    out_f64: [None, None],
+    staging_f32: [None, None],
+    staging_f64: [None, None],
+    functions: HashMap::new(),
+  })
 }
 
 /// One launch, with `finish` run over the values it wrote.
@@ -417,23 +448,16 @@ where
   );
   let use_incs = increments.map_or(0, |(_, streams)| streams);
   let (steps, paths, first_path) = super::launch_scalars(n, first, m, use_incs)?;
-  ensure_kernels(ordinal, shape, real)?;
+  let Launcher {
+    context,
+    streams: [stream, _],
+    func,
+  } = ensure_kernels(ordinal, shape, real)?;
   let out_len = components as usize * m * n;
-  let mut guard = KERNELS.lock();
-  let kernels = guard.as_mut().expect("initialised");
-  let stream = kernels.stream.clone();
-  // Not `expect`: `ensure_kernels` released the lock before this took it, and
-  // a concurrent call naming a different ordinal rebinds the whole cache in
-  // between, which empties the map. That is a race to report, not to panic on.
-  let func = kernels
-    .functions
-    .get(&(shape, real))
-    .ok_or_else(|| {
-      DeviceError::Launch("the kernel cache was rebound to another device mid-launch".into())
-    })?
-    .clone();
-  let mut d_out = take_output::<R>(kernels, &stream, 0, out_len)?;
-  drop(guard);
+  let mut d_out = {
+    let mut guard = KERNELS.lock();
+    take_output::<R>(lender(&mut guard, &context)?, &stream, 0, out_len)?
+  };
   let stream = &stream;
   let func = &func;
   let d_params = stream
@@ -542,7 +566,7 @@ where
   // launch and copy into pageable pages the driver then stages itself.
   let mut staging = {
     let mut guard = KERNELS.lock();
-    take_staging::<R>(guard.as_mut().expect("initialised"), 0, out_len)?
+    take_staging::<R>(lender(&mut guard, &context)?, 0, out_len)?
   };
   stream
     .memcpy_dtoh(&d_out.slice(0..out_len), unsafe {
@@ -555,9 +579,8 @@ where
     .synchronize()
     .map_err(|e| driver_error("dtoh sync", e))?;
   let out = finish(unsafe { staging.as_slice(out_len) });
-  {
-    let mut guard = KERNELS.lock();
-    let kernels = guard.as_mut().expect("initialised");
+  // Only the cache that lent the buffers takes them back; after a release or rebind they drop here.
+  if let Ok(kernels) = lender(&mut KERNELS.lock(), &context) {
     return_output(kernels, 0, d_out);
     return_staging(kernels, 0, staging);
   }
@@ -1205,21 +1228,11 @@ where
     use_jumps != 0 || jump_law != 0,
     gamma_law != 0,
   );
-  ensure_kernels(ordinal, shape, real)?;
-  let guard = KERNELS.lock();
-  let kernels = guard.as_ref().expect("initialised");
-  let streams = [kernels.stream.clone(), kernels.stream_b.clone()];
-  // Not `expect`: `ensure_kernels` released the lock before this took it, and
-  // a concurrent call naming a different ordinal rebinds the whole cache in
-  // between, which empties the map. That is a race to report, not to panic on.
-  let func = kernels
-    .functions
-    .get(&(shape, real))
-    .ok_or_else(|| {
-      DeviceError::Launch("the kernel cache was rebound to another device mid-launch".into())
-    })?
-    .clone();
-  drop(guard);
+  let Launcher {
+    context,
+    streams,
+    func,
+  } = ensure_kernels(ordinal, shape, real)?;
   let planes = components as usize;
   let mut host = vec![R::zero(); planes * m * n];
   /// Synchronises both streams before the page-locked buffers can be freed.
@@ -1245,7 +1258,7 @@ where
   // gigabyte each — paid on every pipelined batch before this.
   let staging = {
     let mut guard = KERNELS.lock();
-    let kernels = guard.as_mut().expect("initialised");
+    let kernels = lender(&mut guard, &context)?;
     [
       take_staging::<R>(kernels, 0, planes * rows * n)?,
       take_staging::<R>(kernels, 1, planes * rows * n)?,
@@ -1276,7 +1289,7 @@ where
   // made a Metal batch three times slower than its kernel.
   let mut buffers = {
     let mut guard = KERNELS.lock();
-    let kernels = guard.as_mut().expect("initialised");
+    let kernels = lender(&mut guard, &context)?;
     let need = planes * rows * n;
     [
       take_output::<R>(kernels, &streams[0], 0, need)?,
@@ -1347,9 +1360,7 @@ where
   }
   drain(0, &mut in_flight, &mut host)?;
   drain(1, &mut in_flight, &mut host)?;
-  {
-    let mut guard = KERNELS.lock();
-    let kernels = guard.as_mut().expect("initialised");
+  if let Ok(kernels) = lender(&mut KERNELS.lock(), &context) {
     let [b0, b1] = buffers;
     return_output(kernels, 0, b0);
     return_output(kernels, 1, b1);

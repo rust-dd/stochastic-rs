@@ -265,17 +265,104 @@ fn a_small_batch_pins_no_staging_buffer() {
   );
 }
 
-/// A release empties the fGN cache of its own ordinal and leaves another ordinal's alone.
+/// A release drops every cache that holds the device, and the context each one opened goes with it;
+/// releasing another ordinal leaves them alone.
 #[test]
-fn a_release_empties_the_fgn_cache_of_its_ordinal() {
-  let fgn = Fgn::<f32>::new(0.7, 256, Some(1.0), Unseeded);
-  fgn
-    .sample_cuda_impl(5, &Unseeded, &Cuda::default())
-    .expect("a batch");
-  let cached = || super::state::SIZED_F32.lock().iter().any(|s| s.m == 5);
-  assert!(cached());
+fn a_release_frees_every_cache_holding_the_device() {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use crate::process::fbm::Fbm;
+  use crate::sheet::fbs::Fbs;
+  use crate::traits::ProcessExt;
+
+  let _ = Fbm::<f32, _>::new(0.7, 64, Some(1.0), Deterministic::new(5))
+    .on::<Cuda>()
+    .sample_par(4);
+  let _ = Fbs::<f32, _>::new(0.7, 17, 9, 1.0, Deterministic::new(19))
+    .on::<Cuda>()
+    .sample();
+  let contexts = [
+    crate::euler::cuda::cached_context(),
+    super::state::cached_context(),
+    crate::sheet::fbs::cuda::cached_context(),
+  ]
+  .map(|context| context.expect("the batches opened the device"));
   Cuda::new(1).release();
-  assert!(cached(), "another ordinal's release kept it");
+  assert!(
+    contexts.iter().all(|c| c.upgrade().is_some()),
+    "another ordinal's release kept them"
+  );
   Cuda::default().release();
-  assert!(!cached());
+  assert!(
+    contexts.iter().all(|c| c.upgrade().is_none()),
+    "a cache still holds the device"
+  );
+}
+
+/// A release racing launches on another thread fails a launch or lets it finish, never panics it,
+/// and a batch that finishes is the one the call draws with no release around.
+#[test]
+fn a_release_racing_launches_never_panics_them() {
+  use std::sync::atomic::AtomicBool;
+  use std::sync::atomic::Ordering;
+
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use crate::device::DeviceError;
+  use crate::diffusion::gbm::Gbm;
+  use crate::process::fbm::Fbm;
+  use crate::sheet::fbs::Fbs;
+  use crate::traits::ProcessExt;
+
+  fn unharmed<R: PartialEq + std::fmt::Debug>(launch: Result<R, DeviceError>, alone: &R) {
+    if let Ok(batch) = launch {
+      assert_eq!(
+        &batch, alone,
+        "a launch the release let finish drew another batch"
+      );
+    }
+  }
+
+  let gbm = |device: &Cuda| {
+    Gbm::<f32, _>::new(0.05, 0.2, 64, 100.0, Some(1.0), Deterministic::new(9))
+      .with_backend(device.clone())
+  };
+  // Three paths a chunk send eight through the two-stream pipeline.
+  let piped = Cuda::default().with_batch_budget(64 * 4 * 3);
+  let fbm = || Fbm::<f32, _>::new(0.7, 64, Some(1.0), Deterministic::new(5)).on::<Cuda>();
+  let fbs = || Fbs::<f32, _>::new(0.7, 17, 9, 1.0, Deterministic::new(19)).on::<Cuda>();
+  let fgn = Fgn::<f32>::new(0.7, 256, Some(1.0), Unseeded);
+  let fgn_batch = || fgn.sample_cuda_impl(8, &Deterministic::new(5), &Cuda::default());
+  let single = gbm(&Cuda::default()).try_sample_par(8).expect("CUDA");
+  let pipelined = gbm(&piped).try_sample_par(8).expect("CUDA");
+  let fractional = fbm().try_sample_par(4).expect("CUDA");
+  let sheets = fbs().try_sample_par(2).expect("CUDA");
+  let noise = fgn_batch().expect("CUDA");
+  let stop = AtomicBool::new(false);
+  std::thread::scope(|scope| {
+    let releaser = scope.spawn(|| {
+      while !stop.load(Ordering::Relaxed) {
+        Cuda::default().release();
+      }
+    });
+    let launcher = scope.spawn(|| {
+      for _ in 0..8 {
+        unharmed(gbm(&Cuda::default()).try_sample_par(8), &single);
+        unharmed(gbm(&piped).try_sample_par(8), &pipelined);
+        unharmed(fbm().try_sample_par(4), &fractional);
+        unharmed(fbs().try_sample_par(2), &sheets);
+        unharmed(fgn_batch(), &noise);
+      }
+    });
+    let launched = launcher.join();
+    stop.store(true, Ordering::Relaxed);
+    releaser.join().expect("a release never panics");
+    launched.expect("a launch never panics");
+  });
+  assert_eq!(
+    gbm(&Cuda::default())
+      .try_sample_par(8)
+      .expect("a launch with no release around"),
+    single
+  );
 }
