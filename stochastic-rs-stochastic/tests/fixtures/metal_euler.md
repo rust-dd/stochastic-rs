@@ -14,8 +14,9 @@ results from diagnostic shape combinations. Comparison accepts no tolerance.
 
 The fixture contains 1,579 cases and 2,152,832 bytes from the Euler kernels in
 `MathMode::Fast` (relaxed math, fast fp32 functions, fast contraction). Its
-`.meta` sibling records revision, GPU, operating system, Xcode/SDK and math
-mode. Classic Metal and Metal 4 produce identical bytes. Fast contraction lets
+`.meta` sibling records revision, metal-oxide version, the artifact's
+`kernels.metallib` hash, GPU, operating system, Xcode/SDK and math mode.
+Classic Metal and Metal 4 produce identical bytes. Fast contraction lets
 the GPU compiler group multiplies and adds from each kernel's structure, so a
 kernel change can move final bits; record a new fixture only after the family
 law and edge tests pass.
@@ -23,7 +24,7 @@ law and edge tests pass.
 To record a new fixture with all other GPU work stopped:
 
 ```sh
-STOCHASTIC_RS_EULER_BASELINE_LABEL='revision=<sha>; metal-oxide=<sha>; GPU=<name>; OS=<version>; Xcode=<version>; SDK=<version>; math=Fast' \
+STOCHASTIC_RS_EULER_BASELINE_LABEL='revision=<sha>; metal-oxide=<version>; artifact=<metallib sha256>; GPU=<name>; OS=<version>; Xcode=<version>; SDK=<version>; math=Fast; Euler=metal-oxide' \
 cargo test -p stochastic-rs-stochastic --features metal --lib --locked \
   euler::family_parity::migration::record_euler_paths -- --ignored --exact --test-threads=1
 ```
@@ -40,6 +41,6 @@ cargo test -p stochastic-rs-stochastic --features metal --lib --locked \
 ```
 
 Repeat with `METAL_OXIDE_BACKEND=metal4`. These cases exercise the Euler frame
-with hashed noise. Fractional increment handoff, actual process seed
-advancement, all nine jump laws, and the 512-term live-series correction need
+with Philox-4x32-10 noise. Fractional increment handoff, actual process seed
+advancement, all twelve jump laws, and the 512-term live-series correction need
 their dedicated tests.
