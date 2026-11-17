@@ -113,7 +113,7 @@ impl MleProblem<'_> {
 const NO_LIKELIHOOD: f64 = 1e100;
 
 /// `nll` up to `1e97`, far past any realistic path's sum, and its logarithmic continuation past it,
-/// at most `4.9e99`: increasing and C¹, so every finite sum ranks below the penalty and none is `∞`.
+/// at most `4.9e99`: increasing and C¹, so a finite sum ranks below the penalty and none is `∞`.
 fn ranked(nll: f64) -> f64 {
   const KNEE: f64 = 1e97;
   if nll <= KNEE {
