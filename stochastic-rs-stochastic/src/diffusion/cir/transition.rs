@@ -8,7 +8,6 @@
 
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::non_central_chi_squared;
-use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_distributions::special::ln_bessel_ie;
 use stochastic_rs_distributions::special::ln_gamma;
 
@@ -34,7 +33,7 @@ pub(crate) fn transition_ln_pdf(
   ln_density(theta, mu, sigma, t, r_t, r_next)
 }
 
-// One body in both forms: called out of line, the density measured 18 % slower.
+// Inlined so each form folds constant arguments as the one body did: the bench row passes literals.
 #[inline(always)]
 fn ln_density(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64, r_next: f64) -> f64 {
   if !valid_parameters(theta, mu, sigma, t, r_t) || t == 0.0 || !r_next.is_finite() || r_next < 0.0
@@ -48,7 +47,7 @@ fn ln_density(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64, r_next: f64) ->
   let u = c * r_t * decay;
   let v = c * r_next;
   if u == 0.0 {
-    return central_transition_ln_pdf(c, q + 1.0, r_next);
+    return gamma_ln_pdf(c, q + 1.0, r_next);
   }
   if v == 0.0 {
     return match q.total_cmp(&0.0) {
@@ -75,8 +74,7 @@ pub(crate) fn stationary_pdf(theta: f64, mu: f64, sigma: f64, r: f64) -> f64 {
   }
   let beta = 2.0 * theta / sigma.powi(2);
   let alpha = 2.0 * theta * mu / sigma.powi(2);
-
-  (beta.powf(alpha) / gamma(alpha)) * r.powf(alpha - 1.0) * (-beta * r).exp()
+  gamma_ln_pdf(beta, alpha, r).exp()
 }
 
 pub(crate) fn sample_transition<S: SeedExt>(
@@ -119,13 +117,14 @@ fn valid_parameters(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64) -> bool {
     && r_t >= 0.0
 }
 
-fn central_transition_ln_pdf(c: f64, shape: f64, value: f64) -> f64 {
+// In logs, so that `rate^shape` and `Γ(shape)` cancel before either leaves the double range.
+fn gamma_ln_pdf(rate: f64, shape: f64, value: f64) -> f64 {
   if value == 0.0 {
     return match shape.total_cmp(&1.0) {
       std::cmp::Ordering::Less => f64::INFINITY,
-      std::cmp::Ordering::Equal => c.ln(),
+      std::cmp::Ordering::Equal => rate.ln(),
       std::cmp::Ordering::Greater => f64::NEG_INFINITY,
     };
   }
-  shape * c.ln() + (shape - 1.0) * value.ln() - c * value - ln_gamma(shape)
+  shape * rate.ln() + (shape - 1.0) * value.ln() - rate * value - ln_gamma(shape)
 }

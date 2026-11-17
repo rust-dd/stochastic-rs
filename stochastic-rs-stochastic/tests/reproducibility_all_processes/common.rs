@@ -39,7 +39,7 @@ pub(crate) const J: usize = 8;
 /// a jump-component reproducibility bug cannot hide behind a
 /// diffusion-only comparison.
 pub(crate) const LAMBDA: f64 = 50.0;
-/// `<= MAX_CHUNKS` (`traits/process.rs`): one path per chunk, the regime
+/// `<= MAX_CHUNKS` (`traits/process/chunks.rs`): one path per chunk, the regime
 /// that cannot expose cross-chunk correlation.
 pub(crate) const M_ONE_PER_CHUNK: usize = 64;
 /// `> MAX_CHUNKS`: several paths share a chunk, the regime

@@ -50,6 +50,8 @@ use stochastic_rs_distributions::SimdDistribution;
 
 use crate::device::Cpu;
 use crate::noise::cgns::Cgns;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -94,8 +96,8 @@ impl<T: FloatExt, S: SeedExt> RoughBergomi<T, S> {
     Self::check_s0(s0);
     Self::check_r(r);
     Self::check_rho(rho);
-    Self::check_n(n);
-    Self::check_t(t);
+    check_n(n);
+    check_t(t);
     RoughBergomi {
       backend: Cpu,
       hurst,
@@ -135,14 +137,6 @@ impl<T: FloatExt, S: SeedExt, B> RoughBergomi<T, S, B> {
 
   fn check_rho(rho: T) {
     require!(rho.is_finite(), rho);
-  }
-
-  fn check_n(n: usize) {
-    require!(n >= 2, n);
-  }
-
-  fn check_t(t: Option<T>) {
-    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
   }
 
   /// Replace `hurst`, all else unchanged.
@@ -193,7 +187,7 @@ impl<T: FloatExt, S: SeedExt, B> RoughBergomi<T, S, B> {
   /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
   /// generator, whose length and step size derive from `n`.
   pub fn with_points(mut self, n: usize) -> Self {
-    Self::check_n(n);
+    check_n(n);
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self
@@ -202,7 +196,7 @@ impl<T: FloatExt, S: SeedExt, B> RoughBergomi<T, S, B> {
   /// Replace the simulation horizon `t`; rebuilds the cached
   /// correlated-Gaussian generator's step size, which derives from `t`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    Self::check_t(t);
+    check_t(t);
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
     self

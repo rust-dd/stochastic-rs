@@ -145,36 +145,36 @@ impl<T: FloatExt, S: SeedExt> Fheston<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fheston<T, S, B> {
+  fn check_s0(s0: T) {
+    require!(s0.is_finite(), s0);
+    require!(s0 > T::zero(), s0);
+  }
+
+  fn check_mu(mu: T) {
+    require!(mu.is_finite(), mu);
+  }
+
+  fn check_rho(rho: T) {
+    require!((-T::one()..=T::one()).contains(&rho), rho);
+  }
+
   /// Replace `s0`, all else unchanged; the price steps multiplicatively, so it starts positive.
   pub fn with_s0(mut self, s0: T) -> Self {
-    assert!(
-      s0.is_finite(),
-      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
-    );
-    assert!(
-      s0 > T::zero(),
-      "s0 must satisfy `s0 > T::zero()`, got s0 = {s0:?}"
-    );
+    Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
   /// Replace `mu`, all else unchanged.
   pub fn with_mu(mut self, mu: T) -> Self {
-    assert!(
-      mu.is_finite(),
-      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
-    );
+    Self::check_mu(mu);
     self.mu = mu;
     self
   }
 
   /// Replace `rho`, all else unchanged.
   pub fn with_rho(mut self, rho: T) -> Self {
-    assert!(
-      (-T::one()..=T::one()).contains(&rho),
-      "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = {rho:?}"
-    );
+    Self::check_rho(rho);
     self.rho = rho;
     self
   }

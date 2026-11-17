@@ -20,6 +20,8 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -123,8 +125,8 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorr<T, S> {
     Self::check_mu_r(mu_r);
     Self::check_sigma_r(sigma_r);
     Self::check_rho2(rho2);
-    Self::check_n(n);
-    Self::check_t(t);
+    check_n(n);
+    check_t(t);
     Self {
       backend: Cpu,
       r,
@@ -188,14 +190,6 @@ impl<T: FloatExt, S: SeedExt, B> HestonStochCorr<T, S, B> {
 
   fn check_rho2(rho2: T) {
     require!(rho2.is_finite(), rho2);
-  }
-
-  fn check_n(n: usize) {
-    require!(n >= 2, n);
-  }
-
-  fn check_t(t: Option<T>) {
-    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
   }
 
   /// Replace `r`, all else unchanged.
@@ -277,14 +271,14 @@ impl<T: FloatExt, S: SeedExt, B> HestonStochCorr<T, S, B> {
 
   /// Replace `n`, the grid points along the path, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    Self::check_n(n);
+    check_n(n);
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    Self::check_t(t);
+    check_t(t);
     self.t = t;
     self
   }

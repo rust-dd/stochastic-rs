@@ -22,6 +22,8 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::device::Cpu;
 use crate::malliavin::Malliavin;
 use crate::noise::cgns::Cgns;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -69,10 +71,10 @@ impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
     Self::check_nu(nu);
     Self::check_beta(beta);
     Self::check_rho(rho);
-    Self::check_n(n);
+    check_n(n);
     Self::check_f0(f0);
     Self::check_alpha0(alpha0);
-    Self::check_t(t);
+    check_t(t);
 
     Self {
       backend: Cpu,
@@ -104,10 +106,6 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
     require!(rho.is_finite(), rho);
   }
 
-  fn check_n(n: usize) {
-    require!(n >= 2, n);
-  }
-
   fn check_f0(f0: Option<T>) {
     require!(f0.is_none_or(|v| v.is_finite()), f0);
   }
@@ -115,10 +113,6 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
   fn check_alpha0(alpha0: Option<T>) {
     require!(alpha0.is_none_or(|v| v.is_finite()), alpha0);
     require!(alpha0.is_none_or(|a| a >= T::zero()), alpha0);
-  }
-
-  fn check_t(t: Option<T>) {
-    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
   }
 
   /// Replace `nu`, all else unchanged.
@@ -162,7 +156,7 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
   /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
   /// generator, whose length and step size derive from `n`.
   pub fn with_points(mut self, n: usize) -> Self {
-    Self::check_n(n);
+    check_n(n);
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self
@@ -171,7 +165,7 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
   /// Replace the simulation horizon `t`; rebuilds the cached
   /// correlated-Gaussian generator's step size, which derives from `t`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    Self::check_t(t);
+    check_t(t);
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
     self

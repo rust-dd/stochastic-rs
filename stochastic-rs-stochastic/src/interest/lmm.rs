@@ -65,16 +65,14 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
-use ndarray::Axis;
 use ndarray::s;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use stochastic_rs_distributions::DistributionSampler;
-use stochastic_rs_distributions::SimdDistribution;
-use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
 use crate::precondition::assert_entries;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -115,12 +113,12 @@ impl<T: FloatExt, S: SeedExt> Lmm<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    Self::check_n(n);
-    Self::check_t(t);
-    assert_entries("tenor", "tenor[i].is_finite()", &tenor, |v| v.is_finite());
-    assert_entries("l0", "l0[i].is_finite()", &l0, |v| v.is_finite());
-    assert_entries("sigma", "sigma[i].is_finite()", &sigma, |v| v.is_finite());
-    validate_lmm_inputs(&tenor, &l0, &sigma);
+    check_n(n);
+    check_t(t);
+    Self::check_tenor(&tenor);
+    Self::check_l0(&l0);
+    Self::check_sigma(&sigma);
+    Self::check_lengths(&tenor, &l0, &sigma);
     Self {
       backend: Cpu,
       tenor,
@@ -135,12 +133,56 @@ impl<T: FloatExt, S: SeedExt> Lmm<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
-  fn check_n(n: usize) {
-    require!(n >= 2, n);
+  fn check_tenor(tenor: &Array1<T>) {
+    assert_entries("tenor", "tenor[i].is_finite()", tenor, |v| v.is_finite());
+    assert!(
+      tenor.len() >= 2,
+      "tenor.len() must satisfy `tenor.len() >= 2`, got tenor.len() = {:?}",
+      tenor.len()
+    );
+    for i in 0..tenor.len() - 1 {
+      assert!(
+        tenor[i + 1] > tenor[i],
+        "tenor[{}] must satisfy `tenor[i + 1] > tenor[i]`, got tenor[{}] = {:?}, tenor[{i}] = {:?}",
+        i + 1,
+        i + 1,
+        tenor[i + 1],
+        tenor[i]
+      );
+    }
   }
 
-  fn check_t(t: Option<T>) {
-    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  fn check_l0(l0: &Array1<T>) {
+    assert_entries("l0", "l0[i].is_finite()", l0, |v| v.is_finite());
+    assert_entries("l0", "l0[i] > T::zero()", l0, |v| v > T::zero());
+  }
+
+  fn check_sigma(sigma: &Array1<T>) {
+    assert_entries("sigma", "sigma[i].is_finite()", sigma, |v| v.is_finite());
+    assert_entries("sigma", "sigma[i] >= T::zero()", sigma, |v| v >= T::zero());
+  }
+
+  /// The joint shape, which no setter checks: a chain of them changes the Libor count one array
+  /// at a time.
+  fn check_lengths(tenor: &Array1<T>, l0: &Array1<T>, sigma: &Array1<T>) {
+    assert!(
+      l0.len() == tenor.len() - 1,
+      "l0.len() must satisfy `l0.len() == tenor.len() - 1`, got l0.len() = {:?}",
+      l0.len()
+    );
+    assert!(
+      sigma.len() == tenor.len() - 1,
+      "sigma.len() must satisfy `sigma.len() == tenor.len() - 1`, got sigma.len() = {:?}",
+      sigma.len()
+    );
+  }
+
+  /// Every array check again, where a sampler or a launch reads arrays set one at a time.
+  fn validate_lmm_inputs(&self) {
+    Self::check_tenor(&self.tenor);
+    Self::check_l0(&self.l0);
+    Self::check_sigma(&self.sigma);
+    Self::check_lengths(&self.tenor, &self.l0, &self.sigma);
   }
 
   /// Attach a forward correlation matrix `rho` (`M × M`, symmetric,
@@ -171,22 +213,7 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
   /// there, same as indexing a too-short array inside `Lmm::new`'s own
   /// equivalent misuse would.
   pub fn with_tenor(mut self, tenor: Array1<T>) -> Self {
-    assert_entries("tenor", "tenor[i].is_finite()", &tenor, |v| v.is_finite());
-    assert!(
-      tenor.len() >= 2,
-      "tenor.len() must satisfy `tenor.len() >= 2`, got tenor.len() = {:?}",
-      tenor.len()
-    );
-    for i in 0..tenor.len() - 1 {
-      assert!(
-        tenor[i + 1] > tenor[i],
-        "tenor[{}] must satisfy `tenor[i + 1] > tenor[i]`, got tenor[{}] = {:?}, tenor[{i}] = {:?}",
-        i + 1,
-        i + 1,
-        tenor[i + 1],
-        tenor[i]
-      );
-    }
+    Self::check_tenor(&tenor);
     self.tenor = tenor;
     self
   }
@@ -202,13 +229,7 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
   /// `chol` untouched, since its value never depended on `l0`'s contents,
   /// only its length.
   pub fn with_l0(mut self, l0: Array1<T>) -> Self {
-    assert_entries("l0", "l0[i].is_finite()", &l0, |v| v.is_finite());
-    for (i, &v) in l0.iter().enumerate() {
-      assert!(
-        v > T::zero(),
-        "l0[{i}] must satisfy `l0[i] > T::zero()`, got l0[{i}] = {v:?}"
-      );
-    }
+    Self::check_l0(&l0);
     let shape_changed = l0.len() != self.l0.len();
     self.l0 = l0;
     if shape_changed {
@@ -219,27 +240,21 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
 
   /// Replace `sigma`. Panics if any entry is negative.
   pub fn with_sigma(mut self, sigma: Array1<T>) -> Self {
-    assert_entries("sigma", "sigma[i].is_finite()", &sigma, |v| v.is_finite());
-    for (i, &v) in sigma.iter().enumerate() {
-      assert!(
-        v >= T::zero(),
-        "sigma[{i}] must satisfy `sigma[i] >= T::zero()`, got sigma[{i}] = {v:?}"
-      );
-    }
+    Self::check_sigma(&sigma);
     self.sigma = sigma;
     self
   }
 
   /// Replace the number of simulation grid points `n`, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    Self::check_n(n);
+    check_n(n);
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    Self::check_t(t);
+    check_t(t);
     self.t = t;
     self
   }
@@ -248,44 +263,6 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
-  }
-}
-
-fn validate_lmm_inputs<T: FloatExt>(tenor: &Array1<T>, l0: &Array1<T>, sigma: &Array1<T>) {
-  assert!(
-    tenor.len() >= 2,
-    "tenor.len() must satisfy `tenor.len() >= 2`, got tenor.len() = {:?}",
-    tenor.len()
-  );
-  assert!(
-    l0.len() == tenor.len() - 1,
-    "l0.len() must satisfy `l0.len() == tenor.len() - 1`, got l0.len() = {:?}",
-    l0.len()
-  );
-  assert!(
-    sigma.len() == tenor.len() - 1,
-    "sigma.len() must satisfy `sigma.len() == tenor.len() - 1`, got sigma.len() = {:?}",
-    sigma.len()
-  );
-  for i in 0..l0.len() {
-    assert!(
-      tenor[i + 1] > tenor[i],
-      "tenor[{}] must satisfy `tenor[i + 1] > tenor[i]`, got tenor[{}] = {:?}, tenor[{i}] = {:?}",
-      i + 1,
-      i + 1,
-      tenor[i + 1],
-      tenor[i]
-    );
-    assert!(
-      l0[i] > T::zero(),
-      "l0[{i}] must satisfy `l0[i] > T::zero()`, got l0[{i}] = {:?}",
-      l0[i]
-    );
-    assert!(
-      sigma[i] >= T::zero(),
-      "sigma[{i}] must satisfy `sigma[i] >= T::zero()`, got sigma[{i}] = {:?}",
-      sigma[i]
-    );
   }
 }
 
@@ -392,7 +369,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   /// bypassing that guard; the horizon is held to the host's own bounds.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let p = self.0;
-    validate_lmm_inputs(&p.tenor, &p.l0, &p.sigma);
+    p.validate_lmm_inputs();
     assert!(
       p.device_ready(),
       "Lmm: a launch carries at most {} forwards; sample through `ProcessExt`, which keeps a wider \
@@ -479,272 +456,6 @@ fn rows_to_matrix<T: FloatExt>(slots: [Array1<T>; 4], m: usize) -> Array2<T> {
 
 backend_switch!([T: FloatExt, S: SeedExt] Lmm<T, S> { tenor, l0, sigma, chol, n, t, seed } via euler);
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
-  for Lmm<T, S, B>
-{
-}
-
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Lmm<T, S, B> {
-  type Output = Array2<T>;
-  type Sampler<'s>
-    = LmmSampler<T, S>
-  where
-    Self: 's;
-
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
-  ///
-  /// Re-validates `tenor`/`l0`/`sigma` jointly before doing anything else:
-  /// the `with_*` setters for these three fields (deliberately, see their
-  /// own docs) only check each field's own internal invariant, not their
-  /// combined shape, since doing that eagerly would make it impossible to
-  /// change the Libor count via chained setters. This restores a clean
-  /// `assert_eq!`-quality panic for a leftover mismatch at sample time,
-  /// instead of an opaque out-of-bounds index panic from `fill_matrix`.
-  fn sampler(&self) -> LmmSampler<T, S> {
-    validate_lmm_inputs(&self.tenor, &self.l0, &self.sigma);
-    LmmSampler {
-      tenor: self.tenor.clone(),
-      l0: self.l0.clone(),
-      sigma: self.sigma.clone(),
-      chol: self.chol.clone(),
-      n: self.n,
-      t: self.t,
-      seed: self.seed.derive(),
-    }
-  }
-
-  /// Through the Euler engine when the curve fits a launch's four slots; a
-  /// wider one keeps the process on the host, chunked exactly as
-  /// [`ProcessExt`] chunks.
-  fn sample(&self) -> Array2<T> {
-    if self.device_ready() {
-      rows_to_matrix(self.backend.system_sample(&LmmLaunch(self)), self.l0.len())
-    } else {
-      let out = self.sampler().sample();
-      self.advance_chunk_seed();
-      out
-    }
-  }
-
-  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array2<T>) -> R + Sync) -> Vec<R> {
-    if self.device_ready() {
-      let rows = self.l0.len();
-      self.backend.system_paths_map(&LmmLaunch(self), m, |slots| {
-        f(&rows_to_matrix(slots.clone(), rows))
-      })
-    } else {
-      crate::traits::process::sample_map_chunked(self, m, f)
-    }
-  }
-
-  fn sample_par(&self, m: usize) -> Vec<Array2<T>> {
-    if self.device_ready() {
-      let rows = self.l0.len();
-      self
-        .backend
-        .system_paths(&LmmLaunch(self), m)
-        .into_iter()
-        .map(|slots| rows_to_matrix(slots, rows))
-        .collect()
-    } else {
-      crate::traits::process::sample_par_chunked(self, m)
-    }
-  }
-
-  fn try_sample(&self) -> Result<Array2<T>, crate::device::DeviceError> {
-    if self.device_ready() {
-      let slots = self.backend.try_system_sample(&LmmLaunch(self))?;
-      Ok(rows_to_matrix(slots, self.l0.len()))
-    } else {
-      Ok(<Self as ProcessExt<T>>::sample(self))
-    }
-  }
-
-  fn try_sample_par(&self, m: usize) -> Result<Vec<Array2<T>>, crate::device::DeviceError> {
-    if self.device_ready() {
-      let rows = self.l0.len();
-      Ok(
-        self
-          .backend
-          .try_system_paths(&LmmLaunch(self), m)?
-          .into_iter()
-          .map(|slots| rows_to_matrix(slots, rows))
-          .collect(),
-      )
-    } else {
-      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
-    }
-  }
-
-  /// What a device runs here: at most as many forwards as a
-  /// launch has state slots and shocks. A wider curve samples on the host.
-  fn device_fallback(&self) -> Option<&'static str> {
-    (!(self.l0.len() <= crate::euler::CORRELATED_STREAMS))
-      .then_some("more forwards than a launch has state slots and shocks")
-  }
-}
-
-/// Reusable [`Lmm`] sampling state: owns the tenor structure, the initial
-/// forward curve, the per-Libor volatilities, the optional Cholesky factor and
-/// the seed source so a Monte-Carlo loop reuses the output matrix. The full
-/// spot-LIBOR drift-coupling and frozen-drift log-Euler stepping live in
-/// [`LmmSampler::fill_matrix`] unchanged.
-#[doc(hidden)]
-#[derive(Debug)]
-pub struct LmmSampler<T: FloatExt, S: SeedExt> {
-  tenor: Array1<T>,
-  l0: Array1<T>,
-  sigma: Array1<T>,
-  chol: Option<Array2<T>>,
-  n: usize,
-  t: Option<T>,
-  seed: S,
-}
-
-impl<T: FloatExt, S: SeedExt> LmmSampler<T, S> {
-  fn fill_matrix(&mut self, path: &mut Array2<T>) {
-    let m = self.l0.len();
-    let n_steps = self.n;
-    if n_steps == 0 {
-      return;
-    }
-
-    for (n, &l0) in self.l0.iter().enumerate() {
-      path[(n, 0)] = l0;
-    }
-    if n_steps == 1 {
-      return;
-    }
-
-    let t_max = self.tenor[m];
-    let horizon = self.t.unwrap_or(t_max);
-    assert!(
-      horizon > T::zero() && horizon <= t_max,
-      "horizon must satisfy `horizon > T::zero() && horizon <= t_max`, got horizon = {horizon:?}, t_max = {t_max:?}"
-    );
-
-    let n_increments = n_steps - 1;
-    let dt = horizon / T::from_usize_(n_increments);
-    let sqrt_dt = dt.sqrt();
-    let half = T::from_f64_fast(0.5);
-
-    // Day-count fractions delta_j = T_{j+1} - T_j (length M).
-    let delta: Array1<T> = (0..m).map(|j| self.tenor[j + 1] - self.tenor[j]).collect();
-
-    // Standard normal innovations for one full simulation: M factors × n_increments.
-    let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed);
-    let mut eps = Array2::<T>::zeros((m, n_increments));
-    {
-      let buf = eps
-        .as_slice_mut()
-        .expect("LMM eps buffer must be contiguous");
-      normal.fill_slice(buf);
-    }
-
-    // Pre-compute correlated standard normals: Z_n,k = Σ_j chol_{n,j} eps_{j,k}
-    // (only when chol is provided; identity otherwise).
-    let z_corr: Array2<T> = match &self.chol {
-      Some(chol) => chol.dot(&eps),
-      None => eps,
-    };
-
-    // Step loop. Each step uses spot-LIBOR drift with the active set
-    // η(t) ≤ n, where η(t) = min{n : T_n > t}.
-    let mut t_now = T::zero();
-    let mut eta: usize = 0;
-    let mut prev = self.l0.clone();
-    for k in 0..n_increments {
-      // Advance η(t) so that T_{eta} > t_now (i.e. Libor 0..eta have reset).
-      while eta < m && self.tenor[eta] <= t_now {
-        eta += 1;
-      }
-      let eta_idx = eta.saturating_sub(1).min(m); // index into Libor vector
-
-      // Drift summation: for each alive n in [eta_idx..m), compute
-      //   μ_n(t) = σ_n · Σ_{j=eta_idx..=n} (δ_j ρ_{n,j} σ_j L_j) / (1 + δ_j L_j).
-      // For correlation = identity ρ_{n,j} = δ_{n,j} (Kronecker), so the sum
-      // collapses to the j=n term.
-      let mut next = prev.clone();
-      for n in eta_idx..m {
-        if self.sigma[n] <= T::zero() {
-          // Zero-vol Libor stays at its current value.
-          continue;
-        }
-        // Drift μ_n.
-        let mut drift = T::zero();
-        match &self.chol {
-          Some(_chol) => {
-            // Full correlated drift sum.
-            // ρ_{n,j} is recovered as Σ_p chol_{n,p} chol_{j,p}.
-            // We apply the formula directly using the original ρ matrix
-            // reconstructed from the Cholesky factor on the fly.
-            let chol_ref = self.chol.as_ref().unwrap();
-            for j in eta_idx..=n {
-              let mut rho_nj = T::zero();
-              for p in 0..=j.min(n) {
-                rho_nj += chol_ref[(n, p)] * chol_ref[(j, p)];
-              }
-              let denom = T::one() + delta[j] * prev[j];
-              drift += (delta[j] * rho_nj * self.sigma[j] * prev[j]) / denom;
-            }
-            drift = drift * self.sigma[n];
-          }
-          None => {
-            // Identity correlation: only j = n term survives.
-            let denom = T::one() + delta[n] * prev[n];
-            drift = self.sigma[n] * self.sigma[n] * delta[n] * prev[n] / denom;
-          }
-        }
-
-        // Log-Euler step with frozen drift.
-        let z_nk = z_corr[(n, k)];
-        let log_inc =
-          (drift - half * self.sigma[n] * self.sigma[n]) * dt + self.sigma[n] * sqrt_dt * z_nk;
-        next[n] = prev[n] * log_inc.exp();
-      }
-
-      // Freeze any Libor whose reset has just passed (T_n ≤ t_now + dt).
-      // Their forward is locked at the value at reset time.
-      // We model this by leaving prev[n] untouched once T_n is in the past.
-      let t_next = t_now + dt;
-      for n in 0..m {
-        if self.tenor[n] <= t_now {
-          // Already reset — keep prev[n]. (Skip in next pass via eta.)
-          next[n] = prev[n];
-        }
-      }
-
-      for n in 0..m {
-        path[(n, k + 1)] = next[n];
-      }
-      prev = next;
-      t_now = t_next;
-    }
-
-    let _ = path.axis_iter(Axis(0));
-    let _ = path.slice(s![.., ..]);
-  }
-}
-
-impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for LmmSampler<T, S> {}
-
-impl<T: FloatExt, S: SeedExt> PathSampler<T> for LmmSampler<T, S> {
-  type Output = Array2<T>;
-
-  fn sample_into(&mut self, out: &mut Array2<T>) {
-    self.fill_matrix(out);
-  }
-
-  fn sample(&mut self) -> Array2<T> {
-    let mut path = Array2::<T>::zeros((self.l0.len(), self.n));
-    self.fill_matrix(&mut path);
-    path
-  }
-}
-
 /// Lower-triangular Cholesky decomposition of a symmetric positive-definite
 /// matrix. Hand-rolled (no linalg dependency); panics if `rho` is not PSD.
 ///
@@ -771,104 +482,10 @@ fn cholesky_lower<T: FloatExt>(rho: &Array2<T>) -> Array2<T> {
   l
 }
 
+mod sampler;
+
+#[doc(hidden)]
+pub use sampler::LmmSampler;
+
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::*;
-
-  fn flat_tenor(m: usize, dt: f64) -> Array1<f64> {
-    Array1::from_iter((0..=m).map(|i| i as f64 * dt))
-  }
-
-  #[test]
-  fn lmm_sample_runs_independent_factors() {
-    let m = 4;
-    let tenor = flat_tenor(m, 0.5); // T_0=0, T_1=0.5, ..., T_4=2.0
-    let l0 = Array1::from(vec![0.03, 0.035, 0.04, 0.045]);
-    let sigma = Array1::from(vec![0.20, 0.20, 0.20, 0.20]);
-    let lmm: Lmm<f64, Deterministic> =
-      Lmm::new(tenor, l0, sigma, 100, Some(2.0), Deterministic::new(42));
-    let path = lmm.sample();
-    assert_eq!(path.shape(), &[m, 100]);
-    // Initial column matches l0.
-    for n in 0..m {
-      assert!(path[(n, 0)] > 0.0);
-    }
-    // All values must remain positive (log-Euler preserves positivity).
-    for v in path.iter() {
-      assert!(*v > 0.0, "LMM forward went non-positive");
-    }
-  }
-
-  #[test]
-  fn lmm_correlated_factors_run() {
-    let m = 3;
-    let tenor = flat_tenor(m, 1.0);
-    let l0 = Array1::from(vec![0.04, 0.045, 0.05]);
-    let sigma = Array1::from(vec![0.25, 0.20, 0.18]);
-    // Constant 0.6 off-diagonal correlation.
-    let mut rho = Array2::<f64>::eye(m);
-    for i in 0..m {
-      for j in 0..m {
-        if i != j {
-          rho[(i, j)] = 0.6;
-        }
-      }
-    }
-    let lmm: Lmm<f64, Deterministic> =
-      Lmm::new(tenor, l0, sigma, 50, Some(3.0), Deterministic::new(123)).with_correlation(rho);
-    let path = lmm.sample();
-    assert_eq!(path.shape(), &[m, 50]);
-    for v in path.iter() {
-      assert!(*v > 0.0);
-    }
-  }
-
-  #[test]
-  fn lmm_seeded_is_deterministic() {
-    let tenor = flat_tenor(2, 0.5);
-    let l0 = Array1::from(vec![0.03, 0.035]);
-    let sigma = Array1::from(vec![0.2, 0.2]);
-    let a: Lmm<f64, Deterministic> = Lmm::new(
-      tenor.clone(),
-      l0.clone(),
-      sigma.clone(),
-      30,
-      Some(1.0),
-      Deterministic::new(7),
-    );
-    let b: Lmm<f64, Deterministic> =
-      Lmm::new(tenor, l0, sigma, 30, Some(1.0), Deterministic::new(7));
-    let pa = a.sample();
-    let pb = b.sample();
-    for (x, y) in pa.iter().zip(pb.iter()) {
-      assert_eq!(x, y, "seeded LMM not reproducible");
-    }
-  }
-
-  #[test]
-  fn cholesky_lower_recovers_identity() {
-    let rho = Array2::<f64>::eye(4);
-    let l = cholesky_lower::<f64>(&rho);
-    for i in 0..4 {
-      for j in 0..4 {
-        let expected: f64 = if i == j { 1.0 } else { 0.0 };
-        assert!((l[(i, j)] - expected).abs() < 1e-12_f64);
-      }
-    }
-  }
-
-  #[test]
-  fn cholesky_lower_recovers_2x2() {
-    let rho: Array2<f64> = ndarray::array![[1.0, 0.6], [0.6, 1.0]];
-    let l = cholesky_lower::<f64>(&rho);
-    let recon = l.dot(&l.t());
-    for i in 0..2 {
-      for j in 0..2 {
-        let diff: f64 = recon[(i, j)] - rho[(i, j)];
-        assert!(diff.abs() < 1e-12_f64);
-      }
-    }
-  }
-}
+mod tests;

@@ -43,6 +43,8 @@ use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::device::DeviceError;
 use crate::noise::gn::Gn;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::Fn2D;
 use crate::traits::PathSampler;
@@ -117,8 +119,8 @@ where
     seed: S,
   ) -> Self {
     Self::check_x0(x0);
-    Self::check_t(t);
-    Self::check_n(n);
+    check_t(t);
+    check_n(n);
     let lift = VolterraLift::new(
       kernel.clone(),
       t.unwrap_or(T::one()) / T::from_usize_(n - 1),
@@ -141,16 +143,8 @@ impl<T: FloatExt, K, S: SeedExt, B> VolterraSde<T, K, S, B>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
-  fn check_n(n: usize) {
-    require!(n >= 2, n);
-  }
-
   fn check_x0(x0: Option<T>) {
     require!(x0.is_none_or(|v| v.is_finite()), x0);
-  }
-
-  fn check_t(t: Option<T>) {
-    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
   }
 
   /// Replace `kernel`, all else unchanged.
@@ -189,7 +183,7 @@ where
 
   /// Replace `n`, the grid points along the path, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    Self::check_n(n);
+    check_n(n);
     self.n = n;
     self.lift = VolterraLift::new(self.kernel.clone(), self.step_size());
     self
@@ -204,7 +198,7 @@ where
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    Self::check_t(t);
+    check_t(t);
     self.t = t;
     self.lift = VolterraLift::new(self.kernel.clone(), self.step_size());
     self

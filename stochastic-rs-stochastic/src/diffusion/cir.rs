@@ -22,6 +22,8 @@ use crate::device::Cpu;
 use crate::device::DeviceError;
 use crate::euler::EulerBackend;
 use crate::params::VarianceBoundary;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -79,9 +81,9 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
     Self::check_theta(theta);
     Self::check_mu(mu);
     Self::check_sigma(sigma);
-    Self::check_n(n);
+    check_n(n);
     Self::check_x0(x0);
-    Self::check_t(t);
+    check_t(t);
     if T::from_usize_(2) * theta * mu < sigma.powi(2) && boundary != VarianceBoundary::Reflect {
       log::warn!(
         "Cir::new: Feller condition violated (2*theta*mu < sigma^2) \
@@ -118,16 +120,8 @@ impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
     require!(sigma.is_finite(), sigma);
   }
 
-  fn check_n(n: usize) {
-    require!(n >= 2, n);
-  }
-
   fn check_x0(x0: Option<T>) {
     require!(x0.is_none_or(|v| v.is_finite()), x0);
-  }
-
-  fn check_t(t: Option<T>) {
-    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
   }
 
   /// Replace `theta`, all else unchanged.
@@ -166,14 +160,14 @@ impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
 
   /// Replace `n`, the grid points along the path, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    Self::check_n(n);
+    check_n(n);
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    Self::check_t(t);
+    check_t(t);
     self.t = t;
     self
   }
@@ -191,7 +185,7 @@ impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
     T::from_f64_fast(transition::transition_pdf(theta, mu, sigma, t, r_t, r_next))
   }
 
-  /// Logarithm of [`transition_pdf`](Self::transition_pdf), finite where that underflows; NaN where it is NaN, `−∞` where it is `0`.
+  /// Logarithm of [`transition_pdf`](Self::transition_pdf), finite where that underflows to `0`; NaN where it is NaN, `−∞` into `r_next = 0` when `2θμ > σ²`.
   pub fn transition_ln_pdf(&self, t: T, r_t: T, r_next: T) -> T {
     let [theta, mu, sigma, t, r_t, r_next] =
       [self.theta, self.mu, self.sigma, t, r_t, r_next].map(|v| v.to_f64().unwrap());
