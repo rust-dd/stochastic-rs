@@ -23,6 +23,16 @@ fn negative_level_path() -> Array1<f64> {
   .sample()
 }
 
+/// `X_{t+1} = 0.37 X_t + 1.1` in doubles from 3, whose residuals are rounding alone, near `1e-15`.
+fn rounded_ar1() -> Array1<f64> {
+  let mut x = Array1::<f64>::zeros(12);
+  x[0] = 3.0;
+  for t in 1..12 {
+    x[t] = 0.37 * x[t - 1] + 1.1;
+  }
+  x
+}
+
 /// A fit of `kind` at fixed parameters, for the conversions' preconditions.
 fn literal(kind: DiffusionKind) -> QmleFit {
   QmleFit {
@@ -386,17 +396,14 @@ fn an_underflowing_autocorrelation_is_a_numerical_error() {
 /// For OU the two fits are one estimator, so a path the closed form refuses gets its `Err` here.
 #[test]
 fn the_ou_qmle_refuses_what_the_closed_form_refuses() {
-  let mut rounded = Array1::<f64>::zeros(12);
-  rounded[0] = 3.0;
-  for t in 1..12 {
-    rounded[t] = 0.37 * rounded[t - 1] + 1.1;
-  }
   let cases = [
+    // `X_{t+1} = 0.5 X_t + 1` exactly: the slope is in range and every residual is zero.
     (
       Array1::from(vec![0.0, 1.0, 1.5, 1.75, 1.875, 1.9375, 1.96875]),
       "zero residual variance",
     ),
-    (rounded, "zero residual variance"),
+    // Rounding alone, which the exact-fit rule refuses as it refuses exact zeros.
+    (rounded_ar1(), "zero residual variance"),
     (
       Array1::from_iter((0..12).map(|t| 1.1_f64.powi(t) + 0.01 * (t as f64).sin())),
       "series without mean reversion",
@@ -405,7 +412,16 @@ fn the_ou_qmle_refuses_what_the_closed_form_refuses() {
       Array1::from_iter((0..12).map(|t| if t % 2 == 0 { 1.0 } else { -1.0 } + 0.01 * t as f64)),
       "series without positive autocorrelation",
     ),
+    (
+      Array1::from(vec![0.05, 0.05, 0.05, 0.07]),
+      "constant series",
+    ),
+    // `X_{t+1} = c` fits with slope 0, which rounding makes `±1e-31`: the slope test a coin flip.
     (Array1::from(vec![1.0, 0.7, 0.7, 0.7]), "constant series"),
+    (
+      Array1::from(vec![0.11, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7]),
+      "constant series",
+    ),
   ];
   let dt = 1.0 / 252.0;
   for (x, why) in cases {
@@ -423,12 +439,7 @@ fn the_ou_qmle_refuses_what_the_closed_form_refuses() {
 /// refuses `X_{t+1} = 0.37 X_t + 1.1` in doubles by the same rule.
 #[test]
 fn a_cir_exact_fit_has_zero_residual_variance() {
-  let mut x = Array1::<f64>::zeros(12);
-  x[0] = 3.0;
-  for t in 1..12 {
-    x[t] = 0.37 * x[t - 1] + 1.1;
-  }
-  let fit = fit_diffusion_qmle(x.view(), 1.0 / 252.0, DiffusionKind::Cir);
+  let fit = fit_diffusion_qmle(rounded_ar1().view(), 1.0 / 252.0, DiffusionKind::Cir);
   assert_eq!(
     fit.map(|f| (f.theta, f.sigma, f.converged)),
     Err(StatsError::DegenerateData("zero residual variance"))
@@ -459,46 +470,6 @@ fn ou_mle_needs_four_points() {
     StatsError::InsufficientData { needed: 4, got: 3 }
   );
   assert!(fit_ou_mle(Array1::from(vec![1.0, 0.8, 0.7, 0.5]).view(), 1.0 / 252.0).is_ok());
-}
-
-#[test]
-fn an_ar1_slope_outside_the_unit_interval_is_degenerate_data() {
-  let explosive = Array1::from_iter((0..12).map(|t| 1.1_f64.powi(t) + 0.01 * (t as f64).sin()));
-  assert_eq!(
-    fit_ou_mle(explosive.view(), 1.0 / 252.0).unwrap_err(),
-    StatsError::DegenerateData("series without mean reversion")
-  );
-  let alternating =
-    Array1::from_iter((0..12).map(|t| if t % 2 == 0 { 1.0 } else { -1.0 } + 0.01 * t as f64));
-  assert_eq!(
-    fit_ou_mle(alternating.view(), 1.0 / 252.0).unwrap_err(),
-    StatsError::DegenerateData("series without positive autocorrelation")
-  );
-}
-
-/// `X_{t+1} = 0.5 X_t + 1` exactly: the slope is in range and every residual is zero.
-#[test]
-fn an_exact_ar1_path_has_zero_residual_variance() {
-  let x = Array1::from(vec![0.0, 1.0, 1.5, 1.75, 1.875, 1.9375, 1.96875]);
-  assert_eq!(
-    fit_ou_mle(x.view(), 1.0 / 252.0).unwrap_err(),
-    StatsError::DegenerateData("zero residual variance")
-  );
-}
-
-/// `X_{t+1} = 0.37 X_t + 1.1` in doubles leaves residuals of rounding alone, near `1e-15`, which
-/// the exact-fit rule refuses as it refuses exact zeros.
-#[test]
-fn an_ar1_path_exact_to_rounding_has_zero_residual_variance() {
-  let mut x = Array1::<f64>::zeros(12);
-  x[0] = 3.0;
-  for t in 1..12 {
-    x[t] = 0.37 * x[t - 1] + 1.1;
-  }
-  assert_eq!(
-    fit_ou_mle(x.view(), 1.0 / 252.0).unwrap_err(),
-    StatsError::DegenerateData("zero residual variance")
-  );
 }
 
 /// Shifted far from zero against its spread, the path keeps the closed form's slope: its sums run
@@ -536,27 +507,4 @@ fn ou_mle_reads_theta_off_a_slope_near_one() {
   x[0] = 1000.0;
   let fit = fit_ou_mle(x.view(), dt).unwrap();
   assert!(fit.theta < 0.99, "theta = {}", fit.theta);
-}
-
-#[test]
-fn a_constant_regressor_is_degenerate_data() {
-  let s = Array1::from(vec![0.05, 0.05, 0.05, 0.07]);
-  assert_eq!(
-    fit_ou_mle(s.view(), 1.0 / 252.0).unwrap_err(),
-    StatsError::DegenerateData("constant series")
-  );
-}
-
-/// `X_{t+1} = c` fits with slope 0, which rounding makes `±1e-31`: the slope test a coin flip.
-#[test]
-fn a_path_constant_after_its_first_point_is_degenerate_data() {
-  for v in [
-    vec![1.0, 0.7, 0.7, 0.7],
-    vec![0.11, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7],
-  ] {
-    assert_eq!(
-      fit_ou_mle(Array1::from(v).view(), 1.0 / 252.0).map(|f| (f.theta, f.sigma)),
-      Err(StatsError::DegenerateData("constant series"))
-    );
-  }
 }
