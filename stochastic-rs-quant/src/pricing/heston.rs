@@ -209,7 +209,7 @@ impl HestonPricer {
     ((big_c + big_d * v0 + i * phi * s.ln()).exp(), big_d)
   }
 
-  /// `E_j[∫₀^τ v]` under `P_j`'s mean reversion `b_j`: the variance of its Gaussian control variate.
+  /// `E_j[∫₀^τ v]` under `P_j`'s mean reversion `b_j`: its Gaussian control variate's variance.
   fn mean_integrated_variance(&self, j: u8, tau: f64) -> f64 {
     let x = self.b(j) * tau;
     let (level, slope) = if x.abs() < 1e-4 {

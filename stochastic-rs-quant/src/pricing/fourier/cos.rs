@@ -10,8 +10,8 @@ use num_complex::Complex64;
 use super::FourierModelExt;
 use crate::OptionType;
 
-/// Fang–Oosterlee (2008) COS pricer for any [`FourierModelExt`] over `l` (default 10, §5.1) cumulant
-/// standard deviations, so understated `cumulants()` misprice silently.
+/// Fang–Oosterlee (2008) COS pricer for any [`FourierModelExt`] over `l` (default 10, §5.1)
+/// cumulant standard deviations, so understated `cumulants()` misprice silently.
 #[derive(Debug, Clone)]
 pub struct CosEngine {
   /// Cosine terms; `None`, the default, adds terms from 256 until `|chf| < 1e-9`, up to 2,048.
@@ -20,7 +20,7 @@ pub struct CosEngine {
   pub l: f64,
 }
 
-/// Fang & Oosterlee's `N` for the smooth densities of §5.1; a heavy-tailed chf is still large there.
+/// Fang & Oosterlee's `N` for the smooth densities of §5.1; a slowly decaying chf needs more.
 const MIN_TERMS: usize = 256;
 const MAX_TERMS: usize = 2048;
 const CHF_FLOOR: f64 = 1e-9;
