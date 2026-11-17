@@ -20,15 +20,11 @@ fn read_gmm(fit: Result<GmmCirFit, StatsError>, c: f64, s: f64) -> (Fit, Option<
   (fit, j)
 }
 
-/// The four fits of `x` scaled by `2^k`, an even `k`, read in the units of `x`.
+/// The four fits of a non-negative `x` scaled by `2^k`, an even `k`, read in the units of `x`.
 fn fits_at(x: &Array1<f64>, dt: f64, k: i32) -> ([Fit; 4], Option<(f64, f64)>) {
   let (c, root) = (2f64.powi(k), 2f64.powi(k / 2));
   let y = x.mapv(|v| c * v);
-  let (gmm, j) = if x.iter().all(|&v| v >= 0.0) {
-    read_gmm(fit_cir_gmm(y.view(), dt), c, root)
-  } else {
-    (Err(StatsError::DegenerateData("a negative path")), None)
-  };
+  let (gmm, j) = read_gmm(fit_cir_gmm(y.view(), dt), c, root);
   let ou = DiffusionKind::OrnsteinUhlenbeck;
   let fits = [
     read(fit_diffusion_qmle(y.view(), dt, ou), c, c),
