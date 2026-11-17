@@ -2172,8 +2172,8 @@ pub(crate) fn count_fallback<T: FloatExt>(intensity: Option<T>, dt: T) -> Option
     .then_some("more than 25 expected events per step, past the kernels' 64-event count")
 }
 
-/// How big a jump is, when a family declares jumps that carry a size: a normal or stable sum is one
-/// draw of the aggregated law, any other law's sizes are summed or compounded in a bounded loop.
+/// How big a jump is: a normal or stable sum is one draw of the aggregated law; a one-per-step law
+/// is one draw, any other is summed or compounded in a bounded loop.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 #[doc(hidden)]

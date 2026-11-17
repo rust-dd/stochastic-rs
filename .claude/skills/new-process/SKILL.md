@@ -165,13 +165,19 @@ table points, `CORRELATED_STREAMS = 4`.
 | `host_sample()` | yes | sampler **and** `advance_chunk_seed` (below) |
 | `time_step()` | default `horizon / (n − 1)` | override when the host divides differently |
 | `curve()` / `curves()` | default `None` | implement **one**, never both; ≤ `CURVE_SLOTS` |
-| `jump_intensity()` / `jump_sizes()` | default `None` | `JumpSizes` carries 7 laws |
+| `jump_intensity()` / `jump_sizes()` | default `None` | `JumpSizes` carries 12 laws |
 | `gamma_draws()` | default `None` | `GammaDraws { first, second }` |
 | `step_first()` | default `false` | `true` when the first grid point is itself a draw |
 | `fgn_spec()` | default `None` | `Some(self.fgn.fgn_spec(streams))` — the embedded `Fgn` builds the `FgnSpec` |
 | `lift_spec()` | default `None` | `LiftSpec { decay, weight, drift_scale, drift_boundary, diffusion_boundary, x0 }` |
 | `series_terms()` | default `None` | `Some(j)` terms per path for a family with a `series` clause — exactly when, the launch asserts both ways |
 | `table_spec()` | default `None` | `Some(TableSpec { points, u_max })` for a family with a `table` clause — same both-ways assert; `points ≤ TABLE_SLOTS` |
+
+A `jump_intensity()` makes the kernel count the step's arrivals, up to 64: `device_fallback()` (§3)
+answers `crate::euler::count_fallback(jump_intensity, time_step)` through the trait it implements
+(`<Self as crate::euler::EulerCoefficients<T>>::jump_intensity(self)`), after any reason of its own,
+and every sampling method branches on `device_ready()`. The dense-count table in
+`tests/device_introspection.rs` gains a row; its census of `fn jump_intensity` fails without one.
 
 `host_sample` is always exactly this — the `advance_chunk_seed` call is what keeps a
 host fallback chunk-correct:
