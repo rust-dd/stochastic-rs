@@ -1,18 +1,5 @@
-//! Compile-time sampling backends.
-//!
-//! A process is parameterised by a backend marker `B` ([`Cpu`] is the default);
-//! the [`Backend`] trait monomorphises `sample` / `sample_par` to that backend
-//! with **no runtime branch**. Switch backend by handing `.on` a handle,
-//! `process.on::<Cuda>()` — the marker must be in scope, and the GPU
-//! markers only exist when their feature is compiled (the Apple ones on macOS
-//! only), so selecting an unavailable backend is a compile error rather than a
-//! runtime fallback.
-//!
-//! The capability traits ([`FgnBackend`], [`crate::euler::EulerBackend`]) take
-//! the scalar as a type parameter, and a device implements them only for the
-//! precision its kernels compute in: `Cuda` for `f32` and `f64`,
-//! `Metal` for `f32` alone. `Fgn<f64>` on `Metal`
-//! does not compile; nothing is computed in `f32` behind an `f64` type.
+//! Compile-time sampling backends, picked by `process.on::<Cuda>()` without a runtime branch; a
+//! marker exists only where it builds, `Metal` on Apple Silicon macOS and `Accelerate` on macOS.
 
 mod chunks;
 mod env;
@@ -50,9 +37,8 @@ pub use handles::Cuda;
 pub use handles::Metal;
 pub use sheet_backend::SheetBackend;
 
-/// How many per-size device states (FFT plans, buffers) a back-end keeps.
-/// Only the native CUDA and Metal fGN samplers cache per-size state, so a
-/// build without them has no caller.
+/// How many per-size states (plans, buffers) each fGN and sheet device cache keeps, and how many
+/// outputs the Metal fGN pool holds; a build without a device has no caller.
 #[cfg_attr(not(device_backend), allow(dead_code))]
 pub(crate) const CACHE_SLOTS: usize = 4;
 

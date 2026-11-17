@@ -197,7 +197,11 @@ The work:
    doc — which writes the `#[non_exhaustive]` struct, its `Default`
    (ordinal `0`, `DEFAULT_BATCH_BUDGET_BYTES`), `new` / `from_env` /
    `with_batch_budget` and the seal impl; re-export it from `device.rs`
-   and name it in the seal's `on_unimplemented` note.
+   and name it in the seal's `on_unimplemented` note. `device_handle!` and
+   `kernel_euler_backend!` compile only under the `device_backend` alias,
+   so extend it in `stochastic-rs-stochastic/build.rs` to the new feature,
+   with an alias of its own if the device is target-specific, as
+   `metal_backend` is.
 2. Implement `Backend::probe` for it.
 3. Write the sampler in a new `noise/fgn/<name>.rs`, gated on the
    feature: draw the launch seed **once** from `seed_src`, chunk with
