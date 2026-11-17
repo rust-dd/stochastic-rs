@@ -25,20 +25,29 @@ pub struct Regularization {
 }
 
 impl Regularization {
+  /// Panics unless `weights` has one entry per anchor, every anchor is finite and every weight is
+  /// finite and non-negative.
   pub fn new(anchor: Vec<f64>, weights: Vec<f64>) -> Self {
-    assert_eq!(
-      anchor.len(),
-      weights.len(),
-      "anchor and weights must have the same length"
-    );
     assert!(
-      weights.iter().all(|w| w.is_finite() && *w >= 0.0),
-      "regularisation weights must be finite and non-negative"
+      weights.len() == anchor.len(),
+      "weights must satisfy `weights.len() == anchor.len()`, got weights.len() = {} for {} anchors",
+      weights.len(),
+      anchor.len()
     );
+    if let Some((j, a)) = anchor.iter().enumerate().find(|(_, a)| !a.is_finite()) {
+      panic!("anchor {j} must satisfy `anchor.is_finite()`, got anchor = {a:?}");
+    }
+    let bad_weight = weights
+      .iter()
+      .enumerate()
+      .find(|(_, w)| !(w.is_finite() && **w >= 0.0));
+    if let Some((j, w)) = bad_weight {
+      panic!("weight {j} must satisfy `weight.is_finite() && weight >= 0.0`, got weight = {w:?}");
+    }
     Self { anchor, weights }
   }
 
-  /// The same weight `lambda` on every parameter.
+  /// The same weight `lambda` on every parameter; panics as [`new`](Self::new) does.
   pub fn uniform(anchor: Vec<f64>, lambda: f64) -> Self {
     let n = anchor.len();
     Self::new(anchor, vec![lambda; n])
@@ -54,7 +63,7 @@ impl Regularization {
     self.weights.iter().any(|w| *w > 0.0)
   }
 
-  /// `Σ_j λ_j (θ_j − θ_j⁰)²`.
+  /// `Σ_j λ_j (θ_j − θ_j⁰)²`; panics unless `params` has `dimension()` entries.
   pub fn penalty(&self, params: &[f64]) -> f64 {
     self.check(params);
     params
@@ -65,7 +74,8 @@ impl Regularization {
       .sum()
   }
 
-  /// Residual rows `√λ_j (θ_j − θ_j⁰)`, whose squared norm is the penalty.
+  /// Residual rows `√λ_j (θ_j − θ_j⁰)`, whose squared norm is the penalty; panics unless `params`
+  /// has `dimension()` entries.
   pub fn residual_rows(&self, params: &[f64]) -> Array1<f64> {
     self.check(params);
     Array1::from_iter(
@@ -77,8 +87,8 @@ impl Regularization {
     )
   }
 
-  /// Jacobian `diag(√λ_j) · ∂θ/∂x` of the residual rows, scaling row `j` of `natural_jacobian`
-  /// (`∂θ/∂x` in the fit's coordinates; the identity gives `diag(√λ_j)`).
+  /// The rows' Jacobian `diag(√λ_j) · ∂θ/∂x` for the fit's `∂θ/∂x`, `diag(√λ_j)` at the identity;
+  /// panics unless `natural_jacobian` has `dimension()` rows.
   pub fn jacobian_rows(&self, mut natural_jacobian: Array2<f64>) -> Array2<f64> {
     assert_eq!(
       natural_jacobian.nrows(),
@@ -92,14 +102,14 @@ impl Regularization {
     natural_jacobian
   }
 
-  /// Appends the residual rows to a residual vector.
+  /// Appends the residual rows to a residual vector; panics as [`penalty`](Self::penalty) does.
   pub fn augment_residuals(&self, residuals: Array1<f64>, params: &[f64]) -> Array1<f64> {
     let rows = self.residual_rows(params);
     Array1::from_iter(residuals.iter().chain(rows.iter()).copied())
   }
 
-  /// Appends `rows` (the Jacobian of the residual rows, already mapped into
-  /// the optimiser's coordinates by the caller) under `jacobian`.
+  /// Appends `rows`, the residual rows' Jacobian in the optimiser's coordinates, under `jacobian`;
+  /// panics unless the two share their column count.
   pub fn augment_jacobian(&self, jacobian: Array2<f64>, rows: Array2<f64>) -> Array2<f64> {
     assert_eq!(
       jacobian.ncols(),
@@ -173,8 +183,30 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "same length")]
+  #[should_panic(
+    expected = "weights must satisfy `weights.len() == anchor.len()`, got weights.len() = 2 for 1 anchors"
+  )]
   fn rejects_mismatched_lengths() {
     let _ = Regularization::new(vec![1.0], vec![1.0, 2.0]);
+  }
+
+  #[test]
+  #[should_panic(expected = "anchor 1 must satisfy `anchor.is_finite()`, got anchor = NaN")]
+  fn a_non_finite_anchor_panics() {
+    let _ = Regularization::new(vec![0.5, f64::NAN], vec![1.0, 0.0]);
+  }
+
+  #[test]
+  #[should_panic(expected = "anchor 0 must satisfy `anchor.is_finite()`, got anchor = inf")]
+  fn an_infinite_anchor_panics_through_uniform() {
+    let _ = Regularization::uniform(vec![f64::INFINITY], 1.0);
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "weight 1 must satisfy `weight.is_finite() && weight >= 0.0`, got weight = -1.0"
+  )]
+  fn a_negative_weight_panics() {
+    let _ = Regularization::new(vec![0.5, 0.5], vec![1.0, -1.0]);
   }
 }
