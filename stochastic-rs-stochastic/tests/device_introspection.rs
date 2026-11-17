@@ -7,6 +7,10 @@
 //! an order of magnitude's cost. The second one used to be a bare `bool`;
 //! the reason is what makes it actionable.
 
+use std::collections::BTreeSet;
+use std::fs;
+use std::path::Path;
+
 use ndarray::Array2;
 use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -126,6 +130,45 @@ fn a_zero_reversion_black_karasinski_reaches_the_device() {
   };
   assert!(build(0.0).device_ready() && build(0.0).device_fallback().is_none());
   assert!(build(0.1).device_ready());
+}
+
+/// Every type in `src` that implements `jump_intensity`, so its kernel reads the step's count; the
+/// engine's trait defaults and its test probes are not processes.
+fn count_readers() -> BTreeSet<String> {
+  let mut found = BTreeSet::new();
+  let mut dirs = vec![Path::new(env!("CARGO_MANIFEST_DIR")).join("src")];
+  while let Some(dir) = dirs.pop() {
+    let entries = fs::read_dir(&dir).expect("the crate's own source tree is readable");
+    for path in entries.flatten().map(|entry| entry.path()) {
+      if path.is_dir() {
+        dirs.push(path);
+        continue;
+      }
+      if path.extension().is_none_or(|e| e != "rs")
+        || path.to_string_lossy().contains("family_parity")
+      {
+        continue;
+      }
+      let text = fs::read_to_string(&path).expect("a source file is readable");
+      for (at, _) in text.match_indices("fn jump_intensity") {
+        let header = &text[text[..at].rfind("\nimpl").unwrap_or(0)..at];
+        if header.contains("\npub trait ") {
+          continue;
+        }
+        let (_, implementor) = header
+          .split_once(" for ")
+          .unwrap_or_else(|| panic!("{}: an impl names its type", path.display()));
+        found.insert(
+          implementor
+            .trim_start()
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect(),
+        );
+      }
+    }
+  }
+  found
 }
 
 /// A device draws a step's Poisson count only up to 64 events, exact to `f32` up to 25 expected:
@@ -364,6 +407,14 @@ fn a_dense_count_keeps_every_count_reading_process_on_the_host() {
       }),
     ),
   ];
+  assert_eq!(
+    cases
+      .iter()
+      .map(|(name, _)| name.to_string())
+      .collect::<BTreeSet<_>>(),
+    count_readers(),
+    "the table must hold every process whose kernel reads the step's count"
+  );
   for (name, fallback) in cases {
     assert!(
       fallback(100.0 * 64.0).is_some_and(|why| why.contains("64")),

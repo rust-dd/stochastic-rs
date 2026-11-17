@@ -78,6 +78,15 @@ fn the_sheet_pipeline_matches_the_cpu_field() {
   }
 }
 
+/// A sheet's normals count the batch-global sheet, so a batch of seven is the first seven sheets
+/// of a batch of eight.
+#[test]
+fn a_device_sheet_does_not_depend_on_its_batch_size() {
+  let build = || Fbs::<f32, _>::new(0.7, 17, 9, 1.0, Deterministic::new(29)).on::<Device>();
+  let (seven, eight) = (build().sample_par(7), build().sample_par(8));
+  assert_eq!(seven[..], eight[..7], "a sheet moved with its batch's size");
+}
+
 /// A grid whose embedding sides are not powers of two has no radix-2
 /// transform; the device build samples on the host and is the host build to
 /// the bit.

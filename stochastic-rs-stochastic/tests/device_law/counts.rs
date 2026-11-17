@@ -1,6 +1,8 @@
 //! The kernels draw a step's Poisson count up to 64 events, exact to `f32` up to 25 expected: a
 //! denser count samples on the host, the Cpu build to the bit, and a sparser one keeps the law.
 
+use ndarray::Array1;
+use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::jump::merton::Merton;
@@ -39,10 +41,15 @@ fn host_to_the_bit<P, C>(device: impl Fn() -> P, cpu: impl Fn() -> C, what: &str
 where
   P: ProcessExt<f32>,
   C: ProcessExt<f32, Output = P::Output>,
-  P::Output: PartialEq + std::fmt::Debug,
+  P::Output: Clone + PartialEq + Send + std::fmt::Debug,
 {
   assert!(!device().device_ready(), "{what}: a dense count is ready");
   assert_eq!(device().sample(), cpu().sample(), "{what}: sample");
+  assert_eq!(
+    device().try_sample().unwrap(),
+    cpu().sample(),
+    "{what}: try_sample"
+  );
   assert_eq!(
     device().sample_par(8),
     cpu().sample_par(8),
@@ -53,11 +60,35 @@ where
     cpu().sample_par(8),
     "{what}: try_sample_par"
   );
+  assert_eq!(
+    device().sample_map(8, |path| path.clone()),
+    cpu().sample_map(8, |path| path.clone()),
+    "{what}: sample_map"
+  );
+}
+
+/// [`host_to_the_bit`]'s borrowing form, for a process whose output is one path.
+fn view_to_the_bit<P, C>(device: impl Fn() -> P, cpu: impl Fn() -> C, what: &str)
+where
+  P: ProcessExt<f32, Output = Array1<f32>>,
+  C: ProcessExt<f32, Output = Array1<f32>>,
+{
+  let path = |path: ArrayView1<f32>| path.to_owned();
+  assert_eq!(
+    device().sample_map_view(8, path),
+    cpu().sample_map_view(8, path),
+    "{what}: sample_map_view"
+  );
 }
 
 #[test]
 fn a_hundred_expected_jumps_a_step_sample_on_the_host() {
   host_to_the_bit(
+    || merton(6400.0, 29).on::<Device>(),
+    || merton(6400.0, 29),
+    "Merton",
+  );
+  view_to_the_bit(
     || merton(6400.0, 29).on::<Device>(),
     || merton(6400.0, 29),
     "Merton",
@@ -75,6 +106,11 @@ fn a_hundred_expected_jumps_a_step_sample_on_the_host() {
     )
   };
   host_to_the_bit(
+    || stable().on::<Device>(),
+    stable,
+    "TemperedStableSubordinator",
+  );
+  view_to_the_bit(
     || stable().on::<Device>(),
     stable,
     "TemperedStableSubordinator",
