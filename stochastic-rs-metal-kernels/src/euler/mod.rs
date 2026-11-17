@@ -19,4 +19,4 @@ mod entries;
 
 pub use args::EulerArgs;
 pub use entries::*;
-pub use kat::philox_kat;
+pub use kat::{log_kat, philox_kat};

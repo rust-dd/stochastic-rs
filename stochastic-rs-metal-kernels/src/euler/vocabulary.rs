@@ -4,8 +4,15 @@ use metal_oxide_device::math;
 
 pub(crate) use math::{atan, exp, sin, sqrt, tanh};
 
+/// Within 2⁻⁵ of 1 the series of `ln(1 + x)`: there the fast log's absolute error of 2⁻²¹ can
+/// outweigh the result, and turn `−ln u` of a uniform near 1 zero or negative.
 pub(crate) fn ln(value: f32) -> f32 {
-  math::ln(value)
+  let x = value - 1.0;
+  if x.abs() < 0.031_25 {
+    x * (1.0 + x * (-0.5 + x * (0.333_333_34 + x * (-0.25 + x * 0.2))))
+  } else {
+    math::ln(value)
+  }
 }
 
 pub(crate) fn pow(value: f32, exponent: f32) -> f32 {

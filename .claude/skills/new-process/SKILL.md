@@ -119,7 +119,7 @@ the terms are sized in the step of their cell and the size may read the state �
 — one increment of a monotone table from `uj`, `uv` and the spacing `tv`, and the step
 reads the table's interpolated inverse at its time as `iv`. A step or report may open
 with `bind name = expr;` lines. A step reads `x` (its own state names), `dt`, its noise
-names, its parameters, plus `ct`/`ct1`..`ct7`, `nj`, `js`, `gm`, `gm2`, `u`, `u2`, `lv`,
+names, its parameters, plus `ct`/`ct1`..`ct7`, `nj`, `js`, `gm`, `gm2`, `u`..`u4`, `lv`,
 `cv`, `sj`, `iv`.
 Vocabulary: `sqrt exp ln pow abs negate tanh atan sin recip positive max min lit less
 leq geq pick` — a **new** intrinsic goes into host `ops` and `C_PRELUDE` in
@@ -144,7 +144,7 @@ Traps, each learned from a real failure:
 `pub enum EulerSpec<T: FloatExt>` variant per family (121 today, one-to-one) plus an
 `encode()` arm — `(Family::Foo.code(), pad([theta, mu, sigma]))`, `pad` widening to
 `PARAM_SLOTS = 20`. Capacities: 4 state slots, 4 noise components, 20 parameters,
-`CURVE_SLOTS = 8` (`ct`, `ct1`..`ct7`), 2 uniforms `u`/`u2`, Poisson count `nj`, jump
+`CURVE_SLOTS = 8` (`ct`, `ct1`..`ct7`), 4 uniforms `u`..`u4`, Poisson count `nj`, jump
 sum `js`, Gamma draws `gm`/`gm2`, lifted value `lv` over `LIFT_SLOTS = 176` nodes,
 history convolution `cv` over `HISTORY_SLOTS = 512` grid points, series cell sum `sj`
 over `SERIES_SLOTS = 512` grid points, table inverse `iv` over `TABLE_SLOTS = 512`
@@ -543,16 +543,15 @@ no host-only form — check the nine documented ways round the cap:
    inverted by interpolation at every step, the extent doubled until the table
    reaches the horizon; tables up to `TABLE_SLOTS`. This is what moved
    `InverseAlphaStableSubordinator` onto the engine.
-7. **An exact recursion in place of a rejection loop** — a family reads two
+7. **An exact recursion in place of a rejection loop** — a family reads four
    uniforms a step, so a thinning loop with a random number of proposals has no
    home in it, but an exact inverse-transform of the same law does. This is
    what moved `Hawkes` (Dassios–Zhao) onto the engine, and `MultivariateHawkes`
    in count mode by **superposition**: each target's excess clock and the
    baselines' joint Poisson clock are independent given the state, so the next
-   event is the earliest of their exact arrivals and the mark its index. Extra
-   uniforms come from the noise components — half the sum of two squared
-   normals is a unit exponential and one minus its negative exponential a
-   uniform — so no `erf` enters the vocabulary.
+   event is the earliest of their exact arrivals and the mark its index. The
+   first target's clock reads `$u`, the second's `$u3`, the baselines' clock
+   `$u2` and its mark `$u4`, each a uniform of its own.
 8. **A pipeline of its own** — a process whose sample is a transform rather
    than a recursion gets a capability trait beside `FgnBackend`
    (`SheetBackend<T>` in `device/sheet_backend.rs`), a `via sheet` switch arm, and one

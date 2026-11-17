@@ -1,9 +1,11 @@
-//! The generator as the GPU computes it, for the host to hold against the port and Random123.
+//! The generator and the family log as the GPU computes them, for the host to hold against the
+//! port, Random123 and an `f64` log.
 
 use metal_oxide_device::{ReadBuffer, WriteBuffer, kernel};
 
 use super::draws::{exponential, normal};
 use super::philox::{philox4x32_10, u01_f32};
+use super::vocabulary;
 
 /// # Safety
 /// `input` holds `cases` six-word cases (counter, key), `words` four words a case, `draws` three.
@@ -36,5 +38,19 @@ pub unsafe fn philox_kat(
     draws.store_unchecked(3 * case, u01_f32(counter[0]));
     draws.store_unchecked(3 * case + 1, exponential(counter[0], counter[1]));
     draws.store_unchecked(3 * case + 2, normal(out));
+  }
+}
+
+/// # Safety
+/// `values` and `logs` hold `cases` values each.
+#[kernel]
+pub unsafe fn log_kat(values: ReadBuffer<f32>, logs: WriteBuffer<f32>, cases: u32) {
+  let case = crate::index();
+  if case >= cases {
+    return;
+  }
+  // SAFETY: the caller sized both buffers for `cases` values, and `case < cases`.
+  unsafe {
+    logs.store_unchecked(case, vocabulary::ln(values.load_unchecked(case)));
   }
 }

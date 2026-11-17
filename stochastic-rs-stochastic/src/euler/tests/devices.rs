@@ -590,3 +590,5 @@ fn cuda_release_rebuilds_on_the_next_launch() {
 }
 
 mod philox;
+
+mod vocabulary;
