@@ -404,6 +404,48 @@ fn an_exact_ar1_path_has_zero_residual_variance() {
   );
 }
 
+/// `X_{t+1} = 0.37 X_t + 1.1` in doubles leaves residuals of rounding alone, near `1e-15`, which
+/// the exact-fit rule refuses as it refuses exact zeros.
+#[test]
+fn an_ar1_path_exact_to_rounding_has_zero_residual_variance() {
+  let mut x = Array1::<f64>::zeros(12);
+  x[0] = 3.0;
+  for t in 1..12 {
+    x[t] = 0.37 * x[t - 1] + 1.1;
+  }
+  assert_eq!(
+    fit_ou_mle(x.view(), 1.0 / 252.0).unwrap_err(),
+    StatsError::DegenerateData("zero residual variance")
+  );
+}
+
+/// The slope from centred sums: raw ones cancel at a level far above the spread, where the
+/// closed form read `θ̂` as a slope of at least 1.
+#[test]
+fn the_closed_form_keeps_its_slope_at_a_level_far_above_its_spread() {
+  let dt = 1.0 / 252.0;
+  let path = simulate_ou(1.8, 0.06, 0.12, 0.06, dt, 6000, 3);
+  let unit = fit_ou_mle(path.view(), dt).unwrap();
+  for (c, b) in [(1e-3, 1000.0), (1e-3, -5.0)] {
+    let fit = fit_ou_mle(path.mapv(|v| c * v + b).view(), dt).unwrap();
+    assert!(
+      (fit.theta / unit.theta - 1.0).abs() < 1e-6,
+      "{c} x + {b}: θ̂ = {}",
+      fit.theta
+    );
+    assert!(
+      (fit.sigma / (c * unit.sigma) - 1.0).abs() < 1e-6,
+      "{c} x + {b}: σ̂ = {}",
+      fit.sigma
+    );
+    assert!(
+      (fit.mu - (c * unit.mu + b)).abs() < 1e-9,
+      "{c} x + {b}: μ̂ = {}",
+      fit.mu
+    );
+  }
+}
+
 /// At `θΔ = 5e-7` the slope lies in `(1 − 1e-6, 1)`, and `θ̂` is read off it, not off a bound.
 #[test]
 fn ou_mle_reads_theta_off_a_slope_near_one() {

@@ -21,6 +21,7 @@ use crate::input::reject_constant;
 use crate::input::validate;
 use crate::input::validate_domain;
 use crate::optim::nelder_mead;
+use crate::stationarity::common::reject_exact_fit;
 use crate::traits::FloatExt;
 
 #[cfg(test)]
@@ -328,7 +329,7 @@ pub(crate) fn ar1_start(
 }
 
 /// Closed-form OU / Vasicek MLE through the AR(1) below; `Err` below 4 points, on a non-finite one,
-/// a constant `x[..n - 1]`, a slope outside `(0, 1)` or zero residuals; panics unless `0 < dt < ∞`.
+/// a constant `x[..n - 1]`, a slope outside `(0, 1)` or an exact fit; panics unless `0 < dt < ∞`.
 /// $$
 /// X_{t+\Delta} = \mu(1-\beta) + \beta X_t + \varepsilon_t,\qquad \beta = e^{-\theta\Delta}
 /// $$
@@ -340,19 +341,22 @@ pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit
     .collect::<Vec<f64>>();
   // Two coefficients fit two transitions exactly, leaving the residual variance nothing to read.
   validate(&x, 4)?;
-  let nobs = x.len();
-  // The regressor is the path without its last point; its spread is the slope's denominator.
-  reject_constant(&x[..nobs - 1], "constant series")?;
-  let m = nobs - 1;
+  let m = x.len() - 1;
+  let (lagged, next) = (&x[..m], &x[1..]);
+  // The regressor's spread is the slope's denominator.
+  reject_constant(lagged, "constant series")?;
   let mf = m as f64;
 
-  let sx: f64 = (0..m).map(|t| x[t]).sum();
-  let sy: f64 = (0..m).map(|t| x[t + 1]).sum();
-  let sxx: f64 = (0..m).map(|t| x[t] * x[t]).sum();
-  let sxy: f64 = (0..m).map(|t| x[t] * x[t + 1]).sum();
-
-  let denom = mf * sxx - sx * sx;
-  let beta = (mf * sxy - sx * sy) / denom;
+  // About the means, as raw sums cancel where the level dwarfs the spread.
+  let lagged_mean = lagged.iter().sum::<f64>() / mf;
+  let next_mean = next.iter().sum::<f64>() / mf;
+  let (mut sxy, mut sxx) = (0.0, 0.0);
+  for (u, v) in lagged.iter().zip(next) {
+    let d = u - lagged_mean;
+    sxy += d * (v - next_mean);
+    sxx += d * d;
+  }
+  let beta = sxy / sxx;
   if !beta.is_finite() {
     return Err(StatsError::Numerical {
       stage: "ar(1) slope",
@@ -366,32 +370,26 @@ pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit
       "series without positive autocorrelation",
     ));
   }
-  let alpha = (sy - beta * sx) / mf;
-  let mu = alpha / (1.0 - beta);
+  let mu = (next_mean - beta * lagged_mean) / (1.0 - beta);
   let theta = -beta.ln() / dt;
 
-  let mut resid_var = 0.0;
-  for t in 0..m {
-    let pred = alpha + beta * x[t];
-    resid_var += (x[t + 1] - pred).powi(2);
-  }
-  resid_var /= mf;
+  let residuals = lagged
+    .iter()
+    .zip(next)
+    .map(|(u, v)| (v - next_mean) - beta * (u - lagged_mean))
+    .collect::<Vec<f64>>();
+  reject_exact_fit(next, &residuals, 1.0)?;
+  let resid_var = residuals.iter().map(|r| r * r).sum::<f64>() / mf;
   let sigma2 = resid_var * 2.0 * theta / (1.0 - beta * beta);
-  if !sigma2.is_finite() {
+  if !sigma2.is_finite() || sigma2 <= 0.0 {
     return Err(StatsError::Numerical { stage: "sigma" });
-  }
-  if sigma2 == 0.0 {
-    return Err(StatsError::DegenerateData("zero residual variance"));
   }
   let sigma = sigma2.sqrt();
 
-  // Gaussian log-likelihood at the closed-form estimate.
   let var_eps = sigma * sigma * (1.0 - beta * beta) / (2.0 * theta);
   let mut ll = 0.0;
-  for t in 0..m {
-    let pred = mu + (x[t] - mu) * beta;
-    ll +=
-      -0.5 * ((2.0 * std::f64::consts::PI * var_eps).ln() + (x[t + 1] - pred).powi(2) / var_eps);
+  for r in &residuals {
+    ll += -0.5 * ((2.0 * std::f64::consts::PI * var_eps).ln() + r * r / var_eps);
   }
 
   Ok(QmleFit {
