@@ -131,32 +131,39 @@ fn an_ou_fit_round_trips_into_the_process_it_names() {
   assert_eq!(rebuilt.sample().len(), 10_000);
 }
 
-/// The QMLE meets the closed form at a level below zero, and a path scaled by 1e4 scales `mu` and
-/// `sigma` alone: the level is carried in the path's standard deviations.
+/// The QMLE meets the closed form at a level below zero and at a `σ` near `2e-4`, and a path scaled
+/// by `c` scales `mu` and `sigma` alone: the level and the start are in the path's own units.
 #[test]
 fn a_negative_level_is_the_closed_forms_at_every_scale() {
-  let path = negative_level_path();
-  let dt = 100.0 / 9_999.0;
   let rel = |a: f64, b: f64| (a - b).abs() / b.abs();
-  let fit =
-    |x: &Array1<f64>| fit_diffusion_qmle(x.view(), dt, DiffusionKind::OrnsteinUhlenbeck).unwrap();
-  let unit = fit(&path);
-  for c in [1.0, 1e4] {
-    let x = path.mapv(|v| c * v);
-    let q = fit(&x);
-    let cf = fit_ou_mle(x.view(), dt).unwrap();
-    for (a, b) in [(q.theta, cf.theta), (q.mu, cf.mu), (q.sigma, cf.sigma)] {
-      assert!(
-        rel(a, b) < 1e-5,
-        "scale {c}: QMLE {a} against the closed form's {b}"
-      );
-    }
-    let scaled = [unit.theta, c * unit.mu, c * unit.sigma];
-    for (a, b) in [q.theta, q.mu, q.sigma].into_iter().zip(scaled) {
-      assert!(
-        rel(a, b) < 1e-5,
-        "scale {c}: {a} against the unit fit's {b}"
-      );
+  let paths = [
+    (negative_level_path(), 100.0 / 9_999.0),
+    (
+      simulate_ou(8.0, 0.03, 0.02, 0.03, 1.0 / 252.0, 100, 48),
+      1.0 / 252.0,
+    ),
+  ];
+  for (path, dt) in paths {
+    let fit =
+      |x: &Array1<f64>| fit_diffusion_qmle(x.view(), dt, DiffusionKind::OrnsteinUhlenbeck).unwrap();
+    let unit = fit(&path);
+    for c in [1e-4, 1e-2, 1.0, 1e4] {
+      let x = path.mapv(|v| c * v);
+      let q = fit(&x);
+      let cf = fit_ou_mle(x.view(), dt).unwrap();
+      for (a, b) in [(q.theta, cf.theta), (q.mu, cf.mu), (q.sigma, cf.sigma)] {
+        assert!(
+          rel(a, b) < 1e-5,
+          "scale {c}: QMLE {a} against the closed form's {b}"
+        );
+      }
+      let scaled = [unit.theta, c * unit.mu, c * unit.sigma];
+      for (a, b) in [q.theta, q.mu, q.sigma].into_iter().zip(scaled) {
+        assert!(
+          rel(a, b) < 1e-5,
+          "scale {c}: {a} against the unit fit's {b}"
+        );
+      }
     }
   }
 }
@@ -257,18 +264,19 @@ fn an_overflowing_start_is_a_numerical_error() {
   );
 }
 
-/// The start is finite, `σ₀` near 7e153 clamped to 10, but there a jump of 1e154 among zeros
-/// overflows the likelihood at every vertex the simplex tries.
+/// Here the CIR start reads `σ₀` near 2e78, where the step after the spike overflows the
+/// log-likelihood at every vertex the simplex tries; OU's variance does not grow with the state.
 #[test]
 fn a_non_finite_optimum_is_a_numerical_error() {
   let mut s = Array1::<f64>::zeros(1000);
   s[500] = 1e154;
   assert_eq!(
-    fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).unwrap_err(),
+    fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::Cir).unwrap_err(),
     StatsError::Numerical {
       stage: "quasi-log-likelihood"
     }
   );
+  assert!(fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).is_ok());
 }
 
 /// The mean, the autocorrelation and the speed are finite, but the residuals near 1.1e154 square

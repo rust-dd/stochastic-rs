@@ -294,7 +294,7 @@ impl Carrier {
 }
 
 /// The simplex's start `[ln θ₀, p₀, ln σ₀]`: the carrier's centre, the speed from the lag-1
-/// autocorrelation and `σ` from the residuals; `Err` unless each is finite before its clamp.
+/// autocorrelation and `σ` from the residuals, in the path's units; `Err` unless each is finite.
 pub(crate) fn ar1_start(
   x: &[f64],
   dt: f64,
@@ -332,7 +332,10 @@ pub(crate) fn ar1_start(
       stage: "starting point",
     });
   }
-  Ok([theta0.ln(), p0, sigma_raw.clamp(1e-3, 10.0).ln()])
+  // Zero only where every residual's square underflows; a bound in absolute units would move the
+  // start off the data's scale and leave the simplex on a plateau of the likelihood.
+  let sigma0 = if sigma_raw > 0.0 { sigma_raw } else { 1e-3 };
+  Ok([theta0.ln(), p0, sigma0.ln()])
 }
 
 /// Closed-form OU MLE; `Err` under 4 points, a non-finite one, a constant `x[..n-1]` or `x[1..]`, a
