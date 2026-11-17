@@ -56,9 +56,16 @@ pub(crate) fn agrees(host: f64, device: f64, tol: f64, what: &str) {
 /// zero — a square-root process at `v₀ = 0.04`, a rate reverting to `0.04` —
 /// the ratio of two small numbers says nothing about agreement.
 pub(crate) fn means_agree(host: &[Array1<f32>], device: &[Array1<f32>], what: &str) {
-  let stats = |paths: &[Array1<f32>]| {
+  let last = |paths: &[Array1<f32>]| {
     let last = paths[0].len() - 1;
-    let values: Vec<f64> = paths.iter().map(|p| p[last] as f64).collect();
+    paths.iter().map(|p| p[last] as f64).collect::<Vec<_>>()
+  };
+  means_agree_values(&last(host), &last(device), what);
+}
+
+/// [`means_agree`] on values a case has already taken from its paths.
+pub(crate) fn means_agree_values(host: &[f64], device: &[f64], what: &str) {
+  let stats = |values: &[f64]| {
     let n = values.len() as f64;
     let mean = values.iter().sum::<f64>() / n;
     let var = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n - 1.0);

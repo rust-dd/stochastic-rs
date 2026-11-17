@@ -175,6 +175,29 @@ fn device_seed_follows_the_seed_source() {
   assert_ne!(u.device_seed(), u.device_seed());
 }
 
+/// An exponential size law has a code of its own, with a product form and a one-per-step form.
+#[test]
+fn an_exponential_size_law_encodes_as_codes_ten_to_twelve() {
+  let sizes = JumpSizes::Exponential { rate: 2.0f32 };
+  assert_eq!(sizes.encode(), (10, 2.0, 0.0, 0.0));
+  assert_eq!(
+    sizes.product(),
+    Some(JumpSizes::ExponentialProduct { rate: 2.0 })
+  );
+  assert_eq!(
+    sizes.single(),
+    Some(JumpSizes::OneExponential { rate: 2.0 })
+  );
+  assert_eq!(
+    JumpSizes::ExponentialProduct { rate: 2.0f32 }.encode(),
+    (11, 2.0, 0.0, 0.0)
+  );
+  assert_eq!(
+    JumpSizes::OneExponential { rate: 2.0f32 }.encode(),
+    (12, 2.0, 0.0, 0.0)
+  );
+}
+
 /// Every compiled device back-end reproduces the lognormal moments and is deterministic in its
 /// seed; the back-ends share one generator, so they agree seed for seed up to libm rounding.
 #[cfg(device_backend)]

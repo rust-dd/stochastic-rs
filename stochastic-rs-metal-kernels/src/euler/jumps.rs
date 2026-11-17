@@ -45,12 +45,18 @@ pub(crate) fn draw(
       * math::powf(ratio, (1.0 - a) * inverse);
     return b * math::powf(count, inverse) * stable;
   }
+  if law == 12 {
+    let pair = words(path, step, SITE_SIZES, 0, key);
+    return exponential(pair[0], pair[1]) / a;
+  }
   match law {
     2 => compound::<2>(path, step, key, a, b, c, count),
     3 => compound::<3>(path, step, key, a, b, c, count),
     4 => compound::<4>(path, step, key, a, b, c, count),
     5 => compound::<5>(path, step, key, a, b, c, count),
     8 => compound::<8>(path, step, key, a, b, c, count),
+    10 => compound::<10>(path, step, key, a, b, c, count),
+    11 => compound::<11>(path, step, key, a, b, c, count),
     _ => 0.0,
   }
 }
@@ -90,8 +96,14 @@ fn compound<const LAW: u32>(
     if LAW == 8 {
       sum += if u01_f32(pair[0]) < 0.5 { a } else { -a };
     }
+    if LAW == 10 {
+      sum += exponential(pair[0], pair[1]) / a;
+    }
+    if LAW == 11 {
+      product *= 1.0 + exponential(pair[0], pair[1]) / a;
+    }
   }
-  if LAW == 4 || LAW == 5 {
+  if LAW == 4 || LAW == 5 || LAW == 11 {
     product - 1.0
   } else {
     sum

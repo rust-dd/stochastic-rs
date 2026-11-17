@@ -2164,17 +2164,8 @@ pub(crate) fn launch_scalars(
   Ok((steps, paths, first_path))
 }
 
-/// How a backend handle produces Euler paths for the processes it serves:
-/// the CPU handles run the process's own sampler, a device handle runs its
-/// [`EulerKernel`]. The `try_*` methods report a device failure as a
-/// [`DeviceError`]; the plain ones panic with it.
-/// How big a jump is, when a family declares jumps that carry a size.
-///
-/// The normal case aggregates exactly: the sum of `n` normal jump sizes is
-/// itself normal with mean `n·mean` and standard deviation `sd·√n`, so the
-/// kernel draws it once however many jumps the step saw. The
-/// double-exponential case has no such aggregation, so the kernel sums the
-/// sizes in a bounded loop.
+/// How big a jump is, when a family declares jumps that carry a size: a normal or stable sum is one
+/// draw of the aggregated law, any other law's sizes are summed or compounded in a bounded loop.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 #[doc(hidden)]
@@ -2205,6 +2196,12 @@ pub enum JumpSizes<T: FloatExt> {
   /// Symmetric α-stable sizes, summed over the step's jumps in one draw: the
   /// sum of `n` of them is the same law at scale `scale · n^{1/α}`.
   SymmetricStable { alpha: T, scale: T },
+  /// Exponential sizes of rate `rate`, summed over the step's jumps.
+  Exponential { rate: T },
+  /// [`Exponential`](JumpSizes::Exponential) sizes compounded multiplicatively, `∏ (1 + y_j) − 1`.
+  ExponentialProduct { rate: T },
+  /// Exactly one exponential size per step, for an event-indexed path.
+  OneExponential { rate: T },
 }
 
 impl<T: FloatExt> JumpSizes<T> {
@@ -2238,12 +2235,14 @@ impl<T: FloatExt> JumpSizes<T> {
       } => (7, p_up, eta_up, eta_down),
       JumpSizes::Rademacher { scale } => (8, scale, T::zero(), T::zero()),
       JumpSizes::SymmetricStable { alpha, scale } => (9, alpha, scale, T::zero()),
+      JumpSizes::Exponential { rate } => (10, rate, T::zero(), T::zero()),
+      JumpSizes::ExponentialProduct { rate } => (11, rate, T::zero(), T::zero()),
+      JumpSizes::OneExponential { rate } => (12, rate, T::zero(), T::zero()),
     }
   }
 
-  /// The same sizes compounded multiplicatively, `∏ (1 + y_j) − 1`, for a
-  /// step whose jump multiplies the state. Only the normal and the
-  /// double-exponential law have a product form the kernels draw.
+  /// The same sizes compounded multiplicatively, `∏ (1 + y_j) − 1`, for a step whose jump
+  /// multiplies the state; only the normal, double-exponential and exponential laws have one.
   pub fn product(self) -> Option<Self> {
     match self {
       JumpSizes::Normal { mean, sd } => Some(JumpSizes::NormalProduct { mean, sd }),
@@ -2256,13 +2255,13 @@ impl<T: FloatExt> JumpSizes<T> {
         eta_up,
         eta_down,
       }),
+      JumpSizes::Exponential { rate } => Some(JumpSizes::ExponentialProduct { rate }),
       _ => None,
     }
   }
 
-  /// One size of this law per step, for an event-indexed path that takes a
-  /// jump at every step. Only the normal and the double-exponential law have
-  /// such a form.
+  /// One size of this law per step, for an event-indexed path that jumps at every step; only the
+  /// normal, double-exponential and exponential laws have such a form.
   pub fn single(self) -> Option<Self> {
     match self {
       JumpSizes::Normal { mean, sd } => Some(JumpSizes::OneNormal { mean, sd }),
@@ -2275,6 +2274,7 @@ impl<T: FloatExt> JumpSizes<T> {
         eta_up,
         eta_down,
       }),
+      JumpSizes::Exponential { rate } => Some(JumpSizes::OneExponential { rate }),
       _ => None,
     }
   }
@@ -2465,6 +2465,8 @@ pub fn system_row<T: FloatExt, const D: usize>(planes: &Array3<T>, row: usize) -
   std::array::from_fn(|c| planes.slice(ndarray::s![c, row, ..]).to_owned())
 }
 
+/// How a backend handle produces Euler paths: a CPU handle runs the process's own sampler, a device
+/// handle its [`EulerKernel`]; the `try_*` methods return a [`DeviceError`] where the rest panic.
 pub trait EulerBackend<T: FloatExt>: Backend {
   /// One path.
   fn try_sample<P: EulerCoefficients<T>>(&self, process: &P) -> Result<Array1<T>, DeviceError>;

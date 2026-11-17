@@ -67,7 +67,7 @@ where
 }
 
 /// The Euler engine's description of `distribution` when it is a law the kernels draw: `SimdNormal`,
-/// or `SimdExp` as the double-exponential law that only jumps up; any other law stays on the host.
+/// or `SimdExp` as the exponential size law; any other law stays on the host.
 pub(crate) fn device_jump_sizes<T: FloatExt, D: Any>(
   distribution: &D,
 ) -> Option<crate::euler::JumpSizes<T>> {
@@ -78,13 +78,7 @@ pub(crate) fn device_jump_sizes<T: FloatExt, D: Any>(
       sd: normal.sigma(),
     });
   }
-  device_arrival_rate(distribution).map(|rate| crate::euler::JumpSizes::DoubleExponential {
-    // Every draw takes the up branch: the kernels compare a uniform in `[0, 1)` against `p_up`, and `2`
-    // (not `1`, which a uniform rounded up to `1.0` in f32 would fail) means "always".
-    p_up: T::from_f64_fast(2.0),
-    eta_up: rate,
-    eta_down: rate,
-  })
+  device_arrival_rate(distribution).map(|rate| crate::euler::JumpSizes::Exponential { rate })
 }
 
 /// The rate of `distribution` when it is the `SimdExp` law [`device_jump_sizes`] recognises: what makes an

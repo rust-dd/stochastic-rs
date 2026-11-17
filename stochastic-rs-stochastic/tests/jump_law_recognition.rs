@@ -3,6 +3,9 @@ use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_stochastic::euler::EulerCoefficients;
+use stochastic_rs_stochastic::euler::EulerSystem;
+use stochastic_rs_stochastic::euler::JumpSizes;
 use stochastic_rs_stochastic::jump::bates::Bates;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
 use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFouCustom;
@@ -306,4 +309,49 @@ fn single_precision_laws_reach_the_kernels_too() {
     Unseeded,
   );
   reaches_the_kernels("Merton f32", merton.device_fallback());
+}
+
+/// `SimdExp` sizes are the kernels' exponential law: summed for a jump diffusion, compounded for
+/// Bates's spot, and one an arrival for an event-indexed compound Poisson path.
+#[test]
+fn exponential_sizes_reach_the_kernels_as_the_exponential_law() {
+  let exp = || SimdExp::<f64>::new(3.0);
+  let kou = Kou::new(
+    0.03,
+    0.2,
+    LAMBDA,
+    0.0,
+    exp(),
+    N,
+    Some(0.0),
+    Some(1.0),
+    Unseeded,
+  );
+  let sizes = EulerCoefficients::jump_sizes(&kou).expect("a law the kernels draw");
+  assert!(matches!(sizes, JumpSizes::Exponential { rate } if rate == 3.0));
+  let bates = Bates::new(
+    Drift::Mu(0.05),
+    LAMBDA,
+    0.0,
+    0.04,
+    1.5,
+    0.3,
+    -0.6,
+    exp(),
+    N,
+    100.0,
+    0.04,
+    Some(1.0),
+    VarianceBoundary::Floor,
+    Unseeded,
+  );
+  let sizes = EulerSystem::<f64, 2>::jump_sizes(&bates).expect("a law the kernels draw");
+  assert_eq!(sizes.encode(), (11, 3.0, 0.0, 0.0));
+  let events = CompoundPoisson::new(
+    exp(),
+    Poisson::new(LAMBDA, Horizon::Events(N), Unseeded),
+    Unseeded,
+  );
+  let sizes = EulerSystem::<f64, 3>::jump_sizes(&events).expect("a law the kernels draw");
+  assert_eq!(sizes.encode(), (12, 3.0, 0.0, 0.0));
 }

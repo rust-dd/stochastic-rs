@@ -145,13 +145,13 @@ const PROBE_SIZES: JumpSizes<f32> = JumpSizes::DoubleExponential {
   eta_down: 20.0,
 };
 
-/// The size law a probe's jump sum is drawn under: the shared
-/// double-exponential unless the family exists for another law, which is
-/// then the one its parity run exercises — so every `js` branch of the
-/// kernels — the aggregated normal, the tempered-stable thinning, the two
-/// products and the two one-per-step laws — has a family that reaches it.
+/// The size law a probe's jump sum is drawn under: the shared double-exponential unless the family
+/// is held to another law, so every `js` branch of the kernels has a family that reaches it.
 fn probe_sizes(spec: &EulerSpec<f32>) -> JumpSizes<f32> {
   match spec {
+    EulerSpec::KouJumpHestonReflected { .. } => JumpSizes::Exponential { rate: 20.0 },
+    EulerSpec::BatesJumpReflected { .. } => JumpSizes::ExponentialProduct { rate: 20.0 },
+    EulerSpec::FractionalBatesMemory { .. } => JumpSizes::OneExponential { rate: 20.0 },
     EulerSpec::TemperedStableSubordinator { .. } => JumpSizes::TemperedStable {
       eps: 0.05,
       neg_inv_alpha: -1.0 / 0.7,

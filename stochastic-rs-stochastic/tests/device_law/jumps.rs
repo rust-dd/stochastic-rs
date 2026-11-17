@@ -16,6 +16,7 @@ use stochastic_rs_stochastic::jump::merton::Merton;
 use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::Horizon;
 use stochastic_rs_stochastic::params::VarianceBoundary;
+use stochastic_rs_stochastic::process::CompoundPaths;
 use stochastic_rs_stochastic::process::ccustom::CompoundCustom;
 use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs_stochastic::process::customjt::CustomJt;
@@ -30,6 +31,7 @@ use super::common::M;
 use super::common::agrees;
 use super::common::all_finite;
 use super::common::means_agree;
+use super::common::means_agree_values;
 use super::common::slots;
 use super::common::spreads_agree;
 use super::common::terminal_mean;
@@ -151,8 +153,8 @@ fn kou_agrees_with_the_cpu_law() {
   );
 }
 
-/// Exponential sizes travel as the double-exponential law that only jumps
-/// up; the drift and the one-sided jumps both push the terminal mean.
+/// Exponential sizes are the kernels' exponential law, summed over a step's jumps; the drift and
+/// the one-sided jumps both push the terminal mean.
 #[test]
 fn levy_diffusion_agrees_with_the_cpu_law() {
   let build = || {
@@ -285,6 +287,30 @@ fn compound_poisson_events_agree_with_the_cpu_law() {
     std_of(&device, 2, EVENTS / 2),
     0.06,
     "compound Poisson jump size spread",
+  );
+}
+
+/// Exponential sizes, one an arrival: the cumulative jump at the last arrival keeps the host's law.
+#[test]
+fn exponential_jump_sizes_match_the_host_law() {
+  let arrivals = Poisson::<f32>::new(20.0, Horizon::Events(65), Unseeded);
+  let p = CompoundPoisson::<f32, SimdExp<f32>, Deterministic>::new(
+    SimdExp::new(4.0),
+    arrivals,
+    Deterministic::new(3),
+  );
+  let host = p.sample_par(M);
+  let device = p.clone().on::<Device>().sample_par(M);
+  let last = |paths: &[CompoundPaths<f32>]| {
+    paths
+      .iter()
+      .map(|q| q.cumulative[q.cumulative.len() - 1] as f64)
+      .collect::<Vec<_>>()
+  };
+  means_agree_values(
+    &last(&host),
+    &last(&device),
+    "exponential sizes, the cumulative jump at the last arrival",
   );
 }
 
