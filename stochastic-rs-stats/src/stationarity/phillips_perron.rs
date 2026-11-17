@@ -24,16 +24,12 @@ use super::common::adf_critical_values;
 use super::common::centred;
 use super::common::fit_adf;
 use super::common::newey_west_long_run_variance;
-use super::common::regress_on_deterministics;
-use super::common::reject_exact_fit;
+use super::common::prepared;
 use super::common::schwert_max_lags;
 use super::common::unit_scaled;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
-use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
-use crate::input::reject_constant;
-use crate::input::validate;
 
 /// Phillips-Perron test statistic variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -107,23 +103,14 @@ pub fn phillips_perron_test(
     PpTestType::Rho => None,
   };
   let critical = critical_values.as_ref().map(|cv| cv.value_at(cfg.alpha));
-  let y = as_slice_or_copy(y);
-  validate(&y, 20)?;
-  reject_constant(&y, "constant series")?;
-  let y = unit_scaled(match cfg.trend {
-    Trend::None => y.into_owned(),
-    Trend::Constant | Trend::ConstantTrend => centred(&unit_scaled(y.into_owned())),
-  });
-  // A lagged level that is a constant, or a line under a trend, leaves the regression no design.
-  if cfg.trend != Trend::None {
-    let lagged = &y[..y.len() - 1];
-    let on_terms = regress_on_deterministics(lagged, cfg.trend == Trend::ConstantTrend)?;
-    reject_exact_fit(&y, &on_terms.residuals)?;
-  }
+  let y = prepared(y, 20)?;
+  let y = match cfg.trend {
+    Trend::None => y,
+    Trend::Constant | Trend::ConstantTrend => unit_scaled(centred(&y)),
+  };
 
-  let fit = fit_adf(&y, 0, cfg.trend)?;
+  let fit = fit_adf(&y, 0, cfg.trend, &y)?;
   let u = fit.residuals;
-  reject_exact_fit(&y, &u)?;
   let n_f = u.len() as f64;
   let gamma0 = u.iter().map(|v| v * v).sum::<f64>() / n_f;
 
@@ -131,14 +118,6 @@ pub fn phillips_perron_test(
   let lam2 = newey_west_long_run_variance(&u, used_lags)?;
   let lam = lam2.sqrt();
   let se = fit.std_err_gamma;
-  if !se.is_finite() {
-    return Err(StatsError::Numerical {
-      stage: "standard error",
-    });
-  }
-  if se <= 0.0 {
-    return Err(StatsError::DegenerateData("zero standard error"));
-  }
 
   // Phillips & Perron (1988) as Stata's `pperron` prints them: `s2` has the regression's `n − k`
   // degrees of freedom, and the ADF regression's `gamma` is `ρ̂ − 1`.

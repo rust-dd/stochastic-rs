@@ -102,8 +102,6 @@ type Answer = Box<dyn Fn(ArrayView1<f64>) -> Option<StatsError>>;
 
 type Entry = (&'static str, Answer, Option<StatsError>);
 
-const OLS: Option<StatsError> = Some(StatsError::Singular("OLS design"));
-
 const SERIES: Option<StatsError> = Some(StatsError::DegenerateData("constant series"));
 
 const SAMPLE: Option<StatsError> = Some(StatsError::DegenerateData("constant sample"));
@@ -160,9 +158,13 @@ fn har_model() -> HarRv {
 
 pub fn hypothesis_tests() -> Vec<Entry> {
   vec![
-    ("adf", err(|x| adf_test(x, AdfConfig::default())), OLS),
+    ("adf", err(|x| adf_test(x, AdfConfig::default())), SERIES),
     ("kpss", err(|x| kpss_test(x, KpssConfig::default())), SERIES),
-    ("ers", err(|x| ers_dfgls_test(x, ErsConfig::default())), OLS),
+    (
+      "ers",
+      err(|x| ers_dfgls_test(x, ErsConfig::default())),
+      SERIES,
+    ),
     (
       "pp",
       err(|x| phillips_perron_test(x, PhillipsPerronConfig::default())),
@@ -223,7 +225,7 @@ pub fn hypothesis_tests() -> Vec<Entry> {
     (
       "engle_granger",
       err(|x| engle_granger_test(x, x, EngleGrangerConfig::default())),
-      OLS,
+      SERIES,
     ),
     (
       "granger",

@@ -22,12 +22,11 @@ use super::common::adf_critical_values;
 use super::common::choose_lag_for_adf;
 use super::common::fit_adf;
 use super::common::min_sample_size;
+use super::common::prepared;
 use super::common::schwert_max_lags;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
-use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
-use crate::input::validate;
 
 /// Configuration for the Augmented Dickey-Fuller unit-root test.
 #[derive(Debug, Clone, Copy)]
@@ -79,14 +78,13 @@ impl crate::traits::HypothesisTest for AdfTest {
   }
 }
 
-/// Augmented Dickey–Fuller test; `Err` below 20 points or `2p + c + 3` for the largest lag `p` and
-/// `c` trend terms, on a non-finite one or a singular fit; panics unless `0.01 <= alpha < 1`.
+/// ADF test; `Err` below `max(20, 2p + c + 3)` points for the largest lag `p` and `c` terms, on
+/// non-finite or constant data or a singular or exact fit; panics unless `0.01 <= alpha < 1`.
 pub fn adf_test(y: ArrayView1<f64>, cfg: AdfConfig) -> Result<AdfTest, StatsError> {
   assert_alpha(cfg.alpha);
   let critical_values = adf_critical_values(cfg.trend);
   let critical = critical_values.value_at(cfg.alpha);
-  let y = as_slice_or_copy(y);
-  validate(&y, 20)?;
+  let y = prepared(y, 20)?;
 
   let n = y.len();
   let max_lags = match cfg.lag_selection {
@@ -100,7 +98,7 @@ pub fn adf_test(y: ArrayView1<f64>, cfg: AdfConfig) -> Result<AdfTest, StatsErro
   }
 
   let used_lags = choose_lag_for_adf(&y, cfg.trend, cfg.lag_selection, max_lags)?;
-  let fit = fit_adf(&y, used_lags, cfg.trend)?;
+  let fit = fit_adf(&y, used_lags, cfg.trend, &y)?;
 
   Ok(AdfTest {
     statistic: fit.statistic,

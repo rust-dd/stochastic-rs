@@ -14,10 +14,10 @@ use super::common::dfgls_critical_values;
 use super::common::fit_adf;
 use super::common::min_sample_size;
 use super::common::ols;
+use super::common::prepared;
 use super::common::schwert_max_lags;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
-use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
 use crate::input::validate;
 
@@ -26,7 +26,8 @@ use crate::input::validate;
 pub struct ErsConfig {
   /// GLS detrending: `Constant` or `ConstantTrend`.
   pub trend: Trend,
-  /// Lag-order selection strategy for the ADF-on-detrended stage.
+  /// How the lag is chosen: on the GLS-detrended series; arch's `DFGLS` takes the OLS-detrended one
+  /// after Perron & Qu (2007), Economics Letters 94(1), 12–19, DOI: 10.1016/j.econlet.2006.06.009.
   pub lag_selection: LagSelection,
   /// Maximum lag considered by automatic lag selection.
   pub max_lags: Option<usize>,
@@ -88,8 +89,11 @@ fn gls_detrend(y: &[f64], include_trend: bool) -> Result<Vec<f64>, StatsError> {
     }
   }
 
-  let mut delta_y = Vec::with_capacity(n - 1);
-  let mut delta_z = Vec::with_capacity(n - 1);
+  // Row one is `(y_1, z_1)` itself, as in Elliott, Rothenberg & Stock (1996) and arch's `DFGLS`.
+  let mut delta_y = Vec::with_capacity(n);
+  let mut delta_z = Vec::with_capacity(n);
+  delta_y.push(y[0]);
+  delta_z.push(z[0].clone());
   for t in 1..n {
     delta_y.push(y[t] - alpha * y[t - 1]);
     let row_t = &z[t];
@@ -116,8 +120,8 @@ fn gls_detrend(y: &[f64], include_trend: bool) -> Result<Vec<f64>, StatsError> {
   Ok(detrended)
 }
 
-/// ERS DF-GLS test; `Err` below 20 points or `2p + 3` for the largest lag `p`, on a non-finite one
-/// or a singular regression; panics unless `trend != Trend::None` and `0.01 <= alpha < 1`.
+/// DF-GLS; `Err` below `max(20, 2p + 3)` points for the largest lag `p`, on non-finite or constant
+/// data or a singular or exact fit; panics unless `trend != Trend::None` and `0.01 <= alpha < 1`.
 pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> Result<ErsTest, StatsError> {
   assert!(
     cfg.trend != Trend::None,
@@ -128,8 +132,7 @@ pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> Result<ErsTest, Sta
   let include_trend = cfg.trend == Trend::ConstantTrend;
   let critical_values = dfgls_critical_values(include_trend);
   let critical = critical_values.value_at(cfg.alpha);
-  let y = as_slice_or_copy(y);
-  validate(&y, 20)?;
+  let y = prepared(y, 20)?;
 
   let n = y.len();
   let max_lags = match cfg.lag_selection {
@@ -144,7 +147,7 @@ pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> Result<ErsTest, Sta
 
   let y_detrended = gls_detrend(&y, include_trend)?;
   let used_lags = choose_lag_for_adf(&y_detrended, Trend::None, cfg.lag_selection, max_lags)?;
-  let fit = fit_adf(&y_detrended, used_lags, Trend::None)?;
+  let fit = fit_adf(&y_detrended, used_lags, Trend::None, &y)?;
 
   Ok(ErsTest {
     statistic: fit.statistic,
@@ -159,6 +162,7 @@ pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> Result<ErsTest, Sta
 #[cfg(test)]
 mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
   use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
@@ -213,6 +217,49 @@ mod tests {
         .used_lags,
       8
     );
+  }
+
+  /// arch 9.0.0's `DFGLS(y, trend, lags=2)` on walks `5 + 0.5 Σ z`, whose GLS regression keeps
+  /// `(y_1, z_1)` as its first row, as Elliott, Rothenberg & Stock (1996) do.
+  #[test]
+  fn the_statistics_match_arch() {
+    let walk = |seed: u64| {
+      let mut z = vec![0.0; 200];
+      SimdNormal::<f64>::new(0.0, 1.0)
+        .seeded(&Deterministic::new(seed))
+        .fill_slice(&mut z);
+      let mut w = 0.0;
+      z.into_iter()
+        .map(|e| {
+          w += e;
+          5.0 + 0.5 * w
+        })
+        .collect::<Vec<_>>()
+    };
+    let cases = [
+      (80_000, Trend::Constant, -0.8258479031397337),
+      (80_000, Trend::ConstantTrend, -1.9136670415239592),
+      (80_001, Trend::Constant, -2.1541778009705217),
+      (80_001, Trend::ConstantTrend, -2.181113835761613),
+      (80_002, Trend::Constant, -1.4745473727889928),
+      (80_002, Trend::ConstantTrend, -1.8381066346233128),
+      (80_003, Trend::Constant, -1.1963795015681389),
+      (80_003, Trend::ConstantTrend, -1.4457474312335827),
+    ];
+    for (seed, trend, arch) in cases {
+      let cfg = ErsConfig {
+        trend,
+        lag_selection: LagSelection::Fixed(2),
+        ..ErsConfig::default()
+      };
+      let got = ers_dfgls_test(ndarray::ArrayView1::from(&walk(seed)), cfg)
+        .unwrap()
+        .statistic;
+      assert!(
+        (got - arch).abs() <= 1e-10 * arch.abs(),
+        "seed {seed} {trend:?}: {got} against arch's {arch}"
+      );
+    }
   }
 
   #[test]

@@ -43,8 +43,13 @@ use stochastic_rs_stats::stationarity::phillips_perron::phillips_perron_test;
 use stochastic_rs_stats::stationarity::reset::ResetConfig;
 use stochastic_rs_stats::stationarity::reset::reset_test;
 
+/// A sinusoid on a trend is an exact AR(4) in levels, so it carries noise to leave ADF a fit.
 fn series() -> Array1<f64> {
-  Array1::from_iter((0..800).map(|i| ((i as f64) * 0.37).sin() + 0.001 * i as f64))
+  let mut noise = vec![0.0; 800];
+  SimdNormal::<f64>::new(0.0, 0.1)
+    .seeded(&Deterministic::new(3))
+    .fill_slice(&mut noise);
+  Array1::from_iter((0..800).map(|i| ((i as f64) * 0.37).sin() + 0.001 * i as f64 + noise[i]))
 }
 
 #[test]

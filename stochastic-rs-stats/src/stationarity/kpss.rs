@@ -18,16 +18,13 @@ use ndarray::ArrayView1;
 use super::common::Trend;
 use super::common::centred;
 use super::common::newey_west_long_run_variance;
+use super::common::prepared;
 use super::common::regress_on_deterministics;
 use super::common::reject_exact_fit;
 use super::common::schwert_max_lags;
-use super::common::unit_scaled;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
-use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
-use crate::input::reject_constant;
-use crate::input::validate;
 
 /// Configuration for the KPSS stationarity test.
 #[derive(Debug, Clone, Copy)]
@@ -94,13 +91,10 @@ pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> Result<KpssTest, StatsE
   let include_trend = cfg.trend == Trend::ConstantTrend;
   let critical_values = kpss_critical_values(include_trend);
   let critical = critical_values.value_at(cfg.alpha);
-  let y = as_slice_or_copy(y);
-  validate(&y, 20)?;
-  reject_constant(&y, "constant series")?;
-
-  let y = unit_scaled(y.into_owned());
-  let resid = regress_on_deterministics(&centred(&y), include_trend)?.residuals;
-  reject_exact_fit(&y, &resid)?;
+  let y = prepared(y, 20)?;
+  let fit = regress_on_deterministics(&centred(&y), include_trend)?;
+  reject_exact_fit(&y, &fit.residuals, fit.condition)?;
+  let resid = fit.residuals;
   let n = resid.len();
   let n_f = n as f64;
 
