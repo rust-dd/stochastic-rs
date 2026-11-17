@@ -43,8 +43,8 @@ pub struct MleFit {
   /// [`params`](Self::params) still contains the best feasible point found.
   /// Inspect this field before trusting [`params`](Self::params) downstream.
   pub converged: bool,
-  /// Number of L-BFGS-B iterations performed. `0` when the model has no free
-  /// parameters to fit (trivially `converged = true` in that case).
+  /// L-BFGS-B iterations summed over every search run, at most 200 each: the first and up to three
+  /// more, kept or not. `0` when the model has no free parameters (trivially `converged = true`).
   pub iterations: usize,
 }
 
@@ -75,13 +75,54 @@ struct MleProblem<'a> {
   upper: Vec<f64>,
 }
 
-impl MleProblem<'_> {
+impl<'a> MleProblem<'a> {
+  fn new(
+    model: &'a mut dyn DiffusionModel,
+    sample: ArrayView1<'a, f64>,
+    dt: f64,
+    density: DensityApprox,
+    lower: &[f64],
+    upper: &[f64],
+  ) -> Self {
+    Self {
+      model: Mutex::new(model),
+      sample,
+      dt,
+      density,
+      lower: lower.to_vec(),
+      upper: upper.to_vec(),
+    }
+  }
+
   fn clamp(&self, params: &[f64]) -> Vec<f64> {
     params
       .iter()
       .enumerate()
       .map(|(i, &value)| value.clamp(self.lower[i], self.upper[i]))
       .collect()
+  }
+
+  /// `at` with each parameter the likelihood does not hold inside its box back at `start`'s
+  /// value: one whose move alone to an end of the box costs less than [`IDENTIFIED`].
+  fn loosened(&self, at: &[f64], start: &[f64]) -> Vec<f64> {
+    let here = self.eval_nll(at);
+    let mut from = at.to_vec();
+    if here >= NO_LIKELIHOOD {
+      return from;
+    }
+    for i in 0..at.len() {
+      let ends = [self.lower[i], self.upper[i]];
+      let loose = ends[0] < ends[1]
+        && ends.into_iter().any(|end| {
+          let mut moved = at.to_vec();
+          moved[i] = end;
+          self.eval_nll(&moved) - here < IDENTIFIED
+        });
+      if loose {
+        from[i] = start[i];
+      }
+    }
+    from
   }
 
   fn eval_nll(&self, params: &[f64]) -> f64 {
@@ -109,11 +150,20 @@ impl MleProblem<'_> {
   }
 }
 
+/// Half of `χ²₁(0.95)`, the drop in log-likelihood at the end of a 95 % likelihood interval.
+const IDENTIFIED: f64 = 1.92;
+
+/// What a further search must gain in log-likelihood to replace the estimate it started from.
+const GAIN: f64 = 1e-6;
+
+/// Searches after the first: each starts where the last one left a parameter unidentified.
+const STAGES: usize = 3;
+
 /// The objective at a point without a likelihood, above every sum [`ranked`] returns.
 const NO_LIKELIHOOD: f64 = 1e100;
 
-/// `nll` up to `1e97`, which no path's sum reaches, and its logarithmic continuation past it, at
-/// most `4.9e99`: increasing and C¹, so every finite sum ranks below the penalty and none is `∞`.
+/// `nll` up to `1e97`, far past any realistic path's sum, and its logarithmic continuation past it,
+/// at most `4.9e99`: increasing and C¹, so a finite sum ranks below the penalty and none is `∞`.
 fn ranked(nll: f64) -> f64 {
   const KNEE: f64 = 1e97;
   if nll <= KNEE {
@@ -167,6 +217,34 @@ impl BoxConstraints for MleProblem<'_> {
   }
 }
 
+/// Where an L-BFGS-B search ended: the best point, the objective there and the fit signals.
+struct Search {
+  params: Vec<f64>,
+  cost: f64,
+  converged: bool,
+  iterations: usize,
+}
+
+/// One L-BFGS-B search of at most 200 iterations from `start`, with an empty memory.
+fn search(problem: MleProblem<'_>, start: Vec<f64>) -> Search {
+  let solver = Lbfgsb::with_line_search(more_thuente())
+    .with_absolute_projected_gradient_tolerance(f64::EPSILON.sqrt())
+    .with_absolute_cost_change_tolerance(f64::EPSILON);
+  let result = Executor::new(problem, solver, LbfgsState::new(start, 10))
+    .max_iter(200)
+    .run()
+    .expect("MLE objective is infallible");
+  let cost = result.best_cost();
+  let (params, converged, iterations) =
+    resolve_fit_outcome(result.best_param().clone(), result.reason, result.iter());
+  Search {
+    params,
+    cost,
+    converged,
+    iterations,
+  }
+}
+
 /// Resolves a Basin L-BFGS-B outcome into the public fit signals.
 fn resolve_fit_outcome(
   best_param: Vec<f64>,
@@ -182,7 +260,7 @@ fn resolve_fit_outcome(
   (best_param, converged, iterations as usize)
 }
 
-/// L-BFGS-B MLE of `model`, left at the estimate, on a path every `dt`; check `converged`. `Err`
+/// L-BFGS-B MLE of `model`, left at the estimate, on a path every `dt`, in up to 4 searches. `Err`
 /// below 2 points, on a non-finite one or log-likelihood; panics unless one bound per parameter.
 /// $$
 /// -\sum_{i=1}^{N} \ln p(X_{t_i}\mid X_{t_{i-1}};\theta,\Delta t)
@@ -214,25 +292,30 @@ pub fn fit_mle(
 
     let lower = bounds.iter().map(|bound| bound.0).collect::<Vec<_>>();
     let upper = bounds.iter().map(|bound| bound.1).collect::<Vec<_>>();
-    let problem = MleProblem {
-      model: Mutex::new(&mut *model),
-      sample,
-      dt,
-      density,
-      lower,
-      upper,
-    };
-
-    let solver = Lbfgsb::with_line_search(more_thuente())
-      .with_absolute_projected_gradient_tolerance(f64::EPSILON.sqrt())
-      .with_absolute_cost_change_tolerance(f64::EPSILON);
-    let state = LbfgsState::new(init, 10);
-    let result = Executor::new(problem, solver, state)
-      .max_iter(200)
-      .run()
-      .expect("MLE objective is infallible");
-
-    resolve_fit_outcome(result.best_param().clone(), result.reason, result.iter())
+    let mut fit = search(
+      MleProblem::new(&mut *model, sample, dt, density, &lower, &upper),
+      init.clone(),
+    );
+    // A search can stall where a parameter has no gradient, as a level at a speed near zero: it
+    // runs again from the start's value of each such parameter, and the higher likelihood stays.
+    let mut iterations = fit.iterations;
+    for _ in 0..STAGES {
+      if !fit.converged {
+        break;
+      }
+      let problem = MleProblem::new(&mut *model, sample, dt, density, &lower, &upper);
+      let from = problem.loosened(&fit.params, &init);
+      if from == fit.params {
+        break;
+      }
+      let next = search(problem, from);
+      iterations += next.iterations;
+      if fit.cost - next.cost <= GAIN {
+        break;
+      }
+      fit = next;
+    }
+    (fit.params, fit.converged, iterations)
   };
 
   // A convergence signal at an infeasible iterate does not certify the
@@ -279,5 +362,7 @@ pub fn fit_mle(
   })
 }
 
+#[cfg(test)]
+mod far_start_tests;
 #[cfg(test)]
 mod tests;

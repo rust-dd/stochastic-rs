@@ -50,11 +50,16 @@ pub(crate) fn simulate_cir(
     let lambda = path[t - 1] * 4.0 * theta * a / (s2 * (1.0 - a));
     let pois_seed = seed ^ (t as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15);
     let gamma_seed = seed ^ (t as u64).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    let n_pois = f64::from(
-      SimdPoisson::<u32>::new(lambda / 2.0)
-        .seeded(&Deterministic::new(pois_seed))
-        .sample(),
-    );
+    // From a state of zero `λ = 0` and the step is the central χ², with no Poisson draw.
+    let n_pois = if lambda > 0.0 {
+      f64::from(
+        SimdPoisson::<u32>::new(lambda / 2.0)
+          .seeded(&Deterministic::new(pois_seed))
+          .sample(),
+      )
+    } else {
+      0.0
+    };
     let shape = d / 2.0 + n_pois;
     let chi2 = if shape > 0.0 {
       SimdGamma::<f64>::new(shape, 2.0)

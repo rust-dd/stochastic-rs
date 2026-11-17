@@ -423,7 +423,7 @@ fn the_log_density_keeps_the_tails_the_density_loses() {
   let b = 0.05 - 0.5 * sig / sig_x + cir.drift(0.05, 0.0) * dt - a;
   let (z, c) = ((0.051 - b) / a, 1.0 / (sig_x * sig_x * dt));
   let written_out = z.powf(-0.5) * (c * z).sqrt().cosh() * (-0.5 * (c + z)).exp()
-    / (2.0 * a * (2.0 * std::f64::consts::PI).sqrt());
+    / (a * (2.0 * std::f64::consts::PI).sqrt());
   let near = DensityApprox::Elerian.density(&cir, 0.05, 0.051, 0.0, dt);
   assert!(
     (near / written_out - 1.0).abs() < 1e-10,
