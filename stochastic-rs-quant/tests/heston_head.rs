@@ -83,6 +83,26 @@ fn a_maturity_of_seconds_prices_at_its_black_scholes_limit() {
   }
 }
 
+/// `E₁[∫v] = 3.7e4` at `ρσ > κ`, where a Gaussian that narrow is past the quadrature: the control
+/// variance stops at its cap and the price keeps the head `S·1e-8·(E₁ − cap)/(2π) = 5.5e-3`.
+#[test]
+fn an_exploding_share_measure_variance_keeps_the_quadrature() {
+  let pricer = HestonPricer::new(HestonParams {
+    kappa: 0.5,
+    sigma: 1.0,
+    rho: 0.9,
+    ..P
+  });
+  // (τ, call at (100, 100, 0.05, 0)) by Lewis quadrature at 30 digits (mpmath).
+  for (tau, want, tol) in [
+    (10.0, 40.309405418969645, 1e-9),
+    (30.0, 77.97317902193187, 1e-2),
+  ] {
+    let got = pricer.price_call(100.0, 100.0, 0.05, 0.0, tau);
+    assert!((got - want).abs() < tol, "tau = {tau}: {got} vs {want}");
+  }
+}
+
 /// Calls at `K = 100`, `r = 0.05`, `q = 0` by Lewis quadrature of the chf at 30 digits (mpmath).
 #[test]
 fn short_maturities_match_the_converged_integral() {

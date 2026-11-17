@@ -27,6 +27,9 @@ const LOWER_LIMIT: f64 = 1e-8;
 /// The control variate leaves an integrand far below `P_j`'s own, whose panels pass a `1e-8` target
 /// early: two bumped prices then differed by 7.5e-9 on a spot of 720, and by 3e-12 at `1e-10`.
 const REST_TOLERANCE: f64 = 1e-10;
+/// Past this variance the Gaussian, `1/√w` wide, is narrower than the quadrature's smallest
+/// sub-panel: the control variate keeps this variance and no longer matches the mean.
+const CONTROL_VARIANCE_CAP: f64 = 2e3;
 
 /// Heston (1993) semi-closed-form pricer; the query `(s, k, r, q, τ)` travels as arguments, so one
 /// instance prices a whole strike/maturity grid.
@@ -258,7 +261,11 @@ impl HestonPricer {
   /// Heston (1993)'s `P_j` less a Gaussian of variance `w = E_j[∫v]`, whose share is `N(d_j)`, a
   /// step at `w = 0`: the rest vanishes at `φ → 0`, and almost everywhere at a `τ` of seconds.
   pub(self) fn p(&self, j: u8, tau: f64, s: f64, k: f64, r: f64, q: f64) -> f64 {
-    let w = self.mean_integrated_variance(j, tau);
+    let expected = self.mean_integrated_variance(j, tau);
+    if !expected.is_finite() {
+      return f64::NAN;
+    }
+    let w = expected.min(CONTROL_VARIANCE_CAP);
     let log_moneyness = (s / k).ln() + (r - q) * tau + self.u(j) * w;
     let d = if log_moneyness == 0.0 {
       0.0
