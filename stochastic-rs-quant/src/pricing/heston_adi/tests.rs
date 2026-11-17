@@ -259,3 +259,33 @@ fn each_rejected_parameter_is_named_with_its_value() {
     assert_eq!(message, expected);
   }
 }
+
+/// §2.1 assumes Feller for the `v = 0` outflow boundary. Below it (`2κη/σ²` of 0.48, 0.089 and
+/// 0.09 here) the error against the Fourier price still falls threefold or more per mesh halving.
+#[test]
+fn converges_below_the_feller_condition() {
+  for (kappa, theta, sigma, rho, v0) in [
+    (1.5, 0.04, 0.5, -0.7, 0.04),
+    (0.1, 0.04, 0.3, -0.7, 0.04),
+    (0.5, 0.09, 1.0, -0.9, 0.02),
+  ] {
+    let p = HestonParams {
+      v0,
+      kappa,
+      theta,
+      sigma,
+      rho,
+    };
+    assert!(2.0 * kappa * theta < sigma * sigma);
+    let want = HestonPricer::new(p).price_call(100.0, 120.0, 0.03, 0.01, 1.0);
+    let error = |m1, m2, steps| {
+      let adi = HestonAdiPricer::new(p).with_grid(m1, m2, steps);
+      (adi.price_call(100.0, 120.0, 0.03, 0.01, 1.0) - want).abs()
+    };
+    let (coarse, fine) = (error(100, 50, 50), error(200, 100, 100));
+    assert!(
+      coarse < 2e-2 && fine < coarse / 3.0,
+      "sigma = {sigma}: {coarse} then {fine}"
+    );
+  }
+}
