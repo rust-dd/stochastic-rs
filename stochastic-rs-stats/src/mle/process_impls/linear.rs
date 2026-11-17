@@ -116,26 +116,17 @@ impl<S: SeedExt> DiffusionModel for Gbm<f64, S> {
 
   fn exact_density(&self, x0: f64, xt: f64, _t0: f64, dt: f64) -> Option<f64> {
     use std::f64::consts::PI;
-    if x0.is_nan() || x0 <= 0.0 {
-      return Some(f64::NAN);
-    }
-    if xt <= 0.0 {
-      return Some(0.0);
-    }
-    let (log_mean, log_var) = gbm_log_law(self, x0, dt);
-    let z = (xt.ln() - log_mean) / log_var.sqrt();
-    Some((-0.5 * z * z).exp() / (xt * (2.0 * PI * log_var).sqrt()))
+    let density = |(log_mean, log_var): (f64, f64)| {
+      let z = (xt.ln() - log_mean) / log_var.sqrt();
+      (-0.5 * z * z).exp() / (xt * (2.0 * PI * log_var).sqrt())
+    };
+    Some(gbm_log_law(self, x0, xt, dt, 0.0).map_or_else(|edge| edge, density))
   }
 
   fn exact_ln_density(&self, x0: f64, xt: f64, _t0: f64, dt: f64) -> Option<f64> {
-    if x0.is_nan() || x0 <= 0.0 {
-      return Some(f64::NAN);
-    }
-    if xt <= 0.0 {
-      return Some(f64::NEG_INFINITY);
-    }
-    let (log_mean, log_var) = gbm_log_law(self, x0, dt);
-    Some(gaussian_ln_pdf(xt.ln(), log_mean, log_var) - xt.ln())
+    let ln_density =
+      |(log_mean, log_var): (f64, f64)| gaussian_ln_pdf(xt.ln(), log_mean, log_var) - xt.ln();
+    Some(gbm_log_law(self, x0, xt, dt, f64::NEG_INFINITY).map_or_else(|edge| edge, ln_density))
   }
 
   fn exact_step(&self, _t: f64, dt: f64, x: f64, dz: f64) -> Option<f64> {
@@ -190,10 +181,23 @@ impl<S: SeedExt> DiffusionModel for Ou<f64, S> {
   }
 }
 
-/// The mean and variance of `ln X_{t+Δ}` from `x0`, a normal.
-fn gbm_log_law<S: SeedExt>(gbm: &Gbm<f64, S>, x0: f64, dt: f64) -> (f64, f64) {
+/// The mean and variance of `ln X_{t+Δ}` from `x0`, a normal; `Err` where the law has no such
+/// density: NaN from a start not above zero, `outside` at an `xt` there.
+fn gbm_log_law<S: SeedExt>(
+  gbm: &Gbm<f64, S>,
+  x0: f64,
+  xt: f64,
+  dt: f64,
+  outside: f64,
+) -> Result<(f64, f64), f64> {
+  if x0.is_nan() || x0 <= 0.0 {
+    return Err(f64::NAN);
+  }
+  if xt <= 0.0 {
+    return Err(outside);
+  }
   let log_mean = x0.ln() + (gbm.mu - 0.5 * gbm.sigma * gbm.sigma) * dt;
-  (log_mean, gbm.sigma * gbm.sigma * dt)
+  Ok((log_mean, gbm.sigma * gbm.sigma * dt))
 }
 
 /// The mean and variance of `X_{t+Δ}` from `x0`, a normal.

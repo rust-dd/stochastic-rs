@@ -9,15 +9,22 @@ use crate::gmm_cir::fit_cir_gmm;
 type Fit = Result<(f64, f64, f64, usize, bool), StatsError>;
 
 /// `(θ, μ/c, σ/s)` and how the search ended: what a path scaled by `c` shares with the path itself.
-fn read(fit: Result<QmleFit, StatsError>, c: f64, s: f64) -> Fit {
-  fit.map(|f| (f.theta, f.mu / c, f.sigma / s, f.iterations, f.converged))
+fn read(fit: Fit, c: f64, s: f64) -> Fit {
+  fit.map(|(theta, mu, sigma, iterations, converged)| {
+    (theta, mu / c, sigma / s, iterations, converged)
+  })
+}
+
+fn read_qmle(fit: Result<QmleFit, StatsError>, c: f64, s: f64) -> Fit {
+  let fit = fit.map(|f| (f.theta, f.mu, f.sigma, f.iterations, f.converged));
+  read(fit, c, s)
 }
 
 /// [`read`] of a GMM fit, with `J` and its p-value, which no scale moves.
 fn read_gmm(fit: Result<GmmCirFit, StatsError>, c: f64, s: f64) -> (Fit, Option<(f64, f64)>) {
   let j = fit.as_ref().ok().map(|f| (f.j_stat, f.j_pvalue));
-  let fit = fit.map(|f| (f.theta, f.mu / c, f.sigma / s, f.iterations, f.converged));
-  (fit, j)
+  let fit = fit.map(|f| (f.theta, f.mu, f.sigma, f.iterations, f.converged));
+  (read(fit, c, s), j)
 }
 
 /// The four fits of a non-negative `x` scaled by `2^k`, an even `k`, read in the units of `x`.
@@ -27,9 +34,9 @@ fn fits_at(x: &Array1<f64>, dt: f64, k: i32) -> ([Fit; 4], Option<(f64, f64)>) {
   let (gmm, j) = read_gmm(fit_cir_gmm(y.view(), dt), c, root);
   let ou = DiffusionKind::OrnsteinUhlenbeck;
   let fits = [
-    read(fit_diffusion_qmle(y.view(), dt, ou), c, c),
-    read(fit_ou_mle(y.view(), dt), c, c),
-    read(
+    read_qmle(fit_diffusion_qmle(y.view(), dt, ou), c, c),
+    read_qmle(fit_ou_mle(y.view(), dt), c, c),
+    read_qmle(
       fit_diffusion_qmle(y.view(), dt, DiffusionKind::Cir),
       c,
       root,
