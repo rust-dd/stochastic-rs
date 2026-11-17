@@ -1,4 +1,5 @@
-//! The launch seed reaches the kernels whole: a seed's high half moves every path.
+//! The kernels key on the whole launch seed: two seeds whose 32-bit halves XOR alike draw distinct
+//! device paths.
 
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
@@ -7,7 +8,7 @@ use stochastic_rs_stochastic::euler::EulerKernel;
 use super::common::Device;
 
 #[test]
-fn the_high_half_of_the_launch_seed_reaches_the_kernel() {
+fn launch_seeds_whose_halves_xor_alike_draw_distinct_paths() {
   let gbm = Gbm::<f32, _>::new(0.05, 0.2, 64, 100.0, Some(1.0), Deterministic::new(1));
   let paths = |seed: u64| {
     Device::default()
