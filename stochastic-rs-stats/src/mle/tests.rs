@@ -276,10 +276,10 @@ fn density_cir_kessler_reference() {
   );
   let dt = 1.0 / 250.0;
   let d = DensityApprox::Kessler.density(&cir, 0.4, 0.41, 0.0, dt);
-  // reference value: 18.734374214427948
+  // reference value: 18.6187883870385
   assert!(
-    (d - 18.734374214427948).abs() < 1e-6,
-    "Cir Kessler: got {d}, expected 18.734374214427948"
+    (d - 18.6187883870385).abs() < 1e-6,
+    "Cir Kessler: got {d}, expected 18.6187883870385"
   );
 }
 
@@ -352,10 +352,10 @@ fn density_ou_kessler_reference() {
     Deterministic::new(0),
   );
   let d = DensityApprox::Kessler.density(&ou, 0.5, 0.55, 0.0, 0.01);
-  // reference value: 5.447446973872427
+  // reference value: 5.4036554696777
   assert!(
-    (d - 5.447446973872427).abs() < 1e-6,
-    "Ou Kessler: got {d}, expected 5.447446973872427"
+    (d - 5.4036554696777).abs() < 1e-6,
+    "Ou Kessler: got {d}, expected 5.4036554696777"
   );
 }
 

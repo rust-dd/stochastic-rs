@@ -219,27 +219,34 @@ impl DensityApprox {
     Some(-0.5 * z.ln() + ln_kernel - (2.0 * a_coeff.abs() * (2.0 * PI).sqrt()).ln())
   }
 
-  /// Ref: Kessler (1997)
+  /// Kessler's (1997) second-order moments as `sde::dcKessler` (Iacus 2008) states them, the
+  /// variance with its `x₀²` terms cancelled by hand; not positive, it leaves no density.
+  /// $$
+  /// E = x_0 + \mu\Delta + c\,\tfrac{\Delta^2}{2},\qquad
+  /// c = \mu\mu_x + \tfrac12\sigma^2\mu_{xx},
+  /// $$
+  /// $$
+  /// V = \sigma^2\Delta
+  ///   + \bigl\{2\mu\sigma\sigma_x + \sigma^2(2\mu_x + \sigma_x^2 + \sigma\sigma_{xx})\bigr\}
+  ///     \tfrac{\Delta^2}{2} - \mu c\,\Delta^3 - \tfrac14 c^2\Delta^4
+  /// $$
   fn moments_kessler(model: &dyn DiffusionModel, x0: f64, t0: f64, dt: f64) -> (f64, f64) {
     let mu = model.drift(x0, t0);
     let sig = model.diffusion(x0, t0);
     let mu_x = model.drift_x(x0, t0);
+    let mu_xx = model.drift_xx(x0, t0);
     let sig_x = model.diffusion_x(x0, t0);
     let sig_xx = model.diffusion_xx(x0, t0);
 
     let sig2 = sig * sig;
     let d = dt * dt / 2.0;
+    let c = mu * mu_x + 0.5 * sig2 * mu_xx;
 
-    let e_x = x0 + mu * dt + (mu * mu_x + 0.5 * sig2 * sig_xx) * d;
+    let e_x = x0 + mu * dt + c * d;
+    let second = 2.0 * mu * sig * sig_x + sig2 * (2.0 * mu_x + sig_x * sig_x + sig * sig_xx);
+    let var = sig2 * dt + second * d - mu * c * dt.powi(3) - 0.25 * c * c * dt.powi(4);
 
-    let term = 2.0 * sig * sig_x;
-    let e_x2 = x0 * x0
-      + (2.0 * mu * x0 + sig2) * dt
-      + (2.0 * mu * (mu_x * x0 + mu + sig * sig_x)
-        + sig2 * (sig_xx * x0 + 2.0 * sig_x + term + sig * sig_xx))
-        * d;
-
-    (e_x, (e_x2 - e_x * e_x).abs())
+    (e_x, var)
   }
 
   /// Ref: Aït-Sahalia (2002)
