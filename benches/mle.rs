@@ -75,6 +75,10 @@ fn bench_density_eval(c: &mut Criterion) {
     b.iter(|| black_box(stochastic_rs::stats::cir::pdf(3.0, 0.3, 0.2, dt, 0.4, 0.41)))
   });
 
+  group.bench_function(BenchmarkId::new("Cir", "transition_ln_pdf"), |b| {
+    b.iter(|| black_box(cir.transition_ln_pdf(dt, 0.4, 0.41)))
+  });
+
   group.finish();
 }
 
