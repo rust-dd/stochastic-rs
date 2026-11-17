@@ -226,9 +226,9 @@ impl DensityApprox {
   /// c = \mu\mu_x + \tfrac12\sigma^2\mu_{xx},
   /// $$
   /// $$
-  /// V = \sigma^2\Delta
-  ///   + \bigl\{2\mu\sigma\sigma_x + \sigma^2(2\mu_x + \sigma_x^2 + \sigma\sigma_{xx})\bigr\}
-  ///     \tfrac{\Delta^2}{2} - \mu c\,\Delta^3 - \tfrac14 c^2\Delta^4
+  /// V = \sigma^2\Delta +
+  /// \bigl\{2\mu\sigma\sigma_x + \sigma^2(2\mu_x + \sigma_x^2 + \sigma\sigma_{xx})\bigr\}
+  /// \tfrac{\Delta^2}{2} - \mu c\,\Delta^3 - \tfrac14 c^2\Delta^4
   /// $$
   fn moments_kessler(model: &dyn DiffusionModel, x0: f64, t0: f64, dt: f64) -> (f64, f64) {
     let mu = model.drift(x0, t0);
