@@ -18,5 +18,7 @@ mod entrypoint;
 mod entries;
 
 pub use args::EulerArgs;
+pub(crate) use draws::normal;
 pub use entries::*;
 pub use kat::{log_kat, philox_kat};
+pub(crate) use philox::{SITE_FGN, SITE_SHEET, SITE_SHEET_CORRECTION, philox4x32_10};

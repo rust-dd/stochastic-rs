@@ -556,13 +556,13 @@ no host-only form — check the nine documented ways round the cap:
    than a recursion gets a capability trait beside `FgnBackend`
    (`SheetBackend<T>` in `device/sheet_backend.rs`), a `via sheet` switch arm, and one
    pipeline file per backend under its module (`sheet/fbs/{metal,cuda}.rs`)
-   reusing the fGN pipeline's FFT stages, hash and bit reversal. The host
+   reusing the fGN pipeline's FFT stages, Philox draws and bit reversal. The host
    devices route through the process's own sampler, so a fallback is
    bit-identical to the `Cpu` build, and `device_ready()` names what the
    kernels take (radix-2: embedding sides that are powers of two). This is
    what moved the sheet `Fbs` onto the devices. A chunk-invariance test
-   (`with_batch_budget`) is mandatory: every hash must run on a batch-global
-   counter, the correction's on one past every cell of the batch.
+   (`with_batch_budget`) is mandatory: every Philox draw must count a batch-global
+   cell, and the correction's a batch-global sheet under a site of its own.
 9. **A program** — a coefficient of time and state the user writes as an
    `Expr` (`stochastic_rs_distributions::traits::Expr`, stored as
    `Fn2D::Expr(Program)`) reaches the kernel as postfix code: the process

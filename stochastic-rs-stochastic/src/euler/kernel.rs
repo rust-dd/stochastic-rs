@@ -12,6 +12,8 @@ mod tests;
 use frame::{FRAME_BLOCKS, Need};
 use language::substitute;
 pub(crate) use language::{Language, cuda_language, prelude};
+#[cfg(feature = "cuda")]
+pub(crate) use philox::philox_prelude;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(crate) struct Shape {

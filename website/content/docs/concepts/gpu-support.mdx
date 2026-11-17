@@ -56,7 +56,7 @@ let cheyette = Cheyette::<f32, _>::new(f0, 0.5, sigma, 252, Some(1.0), seed).on:
 
 ## Large batches
 
-A device handle holds at most `batch_budget` bytes of path data per launch (1 GiB by default; `Cuda::from_env()?` reads `STOCHASTIC_RS_DEVICE_BATCH_BYTES`, or set `Cuda::default().with_batch_budget(n)`). A larger `sample_par(m)` runs as several launches whose union is bit-identical to one launch, because every draw's Philox counter carries the global path index; `sample_map(m, f)` maps each chunk on the host before the next is launched, so the batch never has to fit in memory at once. The fGN devices chunk the same way.
+A device handle holds at most `batch_budget` bytes of path data per launch (1 GiB by default; `Cuda::from_env()?` reads `STOCHASTIC_RS_DEVICE_BATCH_BYTES`, or set `Cuda::default().with_batch_budget(n)`). A larger `sample_par(m)` runs as several launches whose union is bit-identical to one launch, because every draw's Philox counter carries the global path index; `sample_map(m, f)` maps each chunk on the host before the next is launched, so the batch never has to fit in memory at once. The fGN and sheet pipelines chunk the same way, each normal's counter carrying its batch-global cell.
 
 A handle keeps what it compiled and allocated between calls — kernels, FFT plans, device buffers, the CUDA pinned staging — and frees nothing on its own. `Cuda::default().release()` frees what the crate caches for that ordinal, `Metal::default().release()` what the calling thread caches for it (Metal's caches are per thread), and `device::release_host_scratch()` the host FFT workspace of the calling thread and of the rayon pool. The next launch rebuilds what it needs and draws the same paths from the same seed.
 

@@ -165,7 +165,7 @@ fn fgn_buffer(
         spec.offset,
         spec.hurst,
         spec.t,
-        seed as u32,
+        crate::euler::philox::key(seed),
         produced,
         ordinal,
       )?;

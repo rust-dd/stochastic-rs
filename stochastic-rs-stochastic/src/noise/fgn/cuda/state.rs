@@ -7,8 +7,7 @@ use parking_lot::Mutex;
 
 use super::kernels::EXTRACT_F32;
 use super::kernels::EXTRACT_F64;
-use super::kernels::GEN_SCALE_F32;
-use super::kernels::GEN_SCALE_F64;
+use super::kernels::gen_scale_source;
 use crate::device::DeviceError;
 
 type Result<T> = std::result::Result<T, DeviceError>;
@@ -166,9 +165,9 @@ pub(super) fn get_or_init_gpu(ordinal: usize) -> Result<GpuKernels> {
 
   let kernels = GpuKernels {
     ordinal,
-    gen_scale_f32: load(GEN_SCALE_F32, "gen_scale_f32")?,
+    gen_scale_f32: load(&gen_scale_source("float"), "gen_scale_float")?,
     extract_f32: load(EXTRACT_F32, "extract_f32")?,
-    gen_scale_f64: load(GEN_SCALE_F64, "gen_scale_f64")?,
+    gen_scale_f64: load(&gen_scale_source("double"), "gen_scale_double")?,
     extract_f64: load(EXTRACT_F64, "extract_f64")?,
     stream,
   };

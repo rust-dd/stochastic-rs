@@ -25,9 +25,9 @@ use crate::traits::FloatExt;
 /// process keeps any other grid on the host itself.
 ///
 /// Reproducibility per backend is as [`FgnBackend`](super::FgnBackend) states it: a GPU draws
-/// one launch seed per batch from the process's own seed and hashes every
-/// normal from it, so a `Deterministic` sheet reproduces its device sheets
-/// and a batch produced in chunks equals one launch sheet for sheet.
+/// one launch seed per batch from the process's own seed and keys every normal's Philox draw
+/// on it, so a `Deterministic` sheet reproduces its device sheets and a batch produced in
+/// chunks equals one launch sheet for sheet.
 pub trait SheetBackend<T: FloatExt>: Backend {
   /// One sheet, or why the device could not produce it.
   fn try_sheet<S: SeedExt>(&self, fbs: &Fbs<T, S, Self>) -> Result<Array2<T>, DeviceError>;

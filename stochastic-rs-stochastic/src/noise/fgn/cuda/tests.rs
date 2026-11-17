@@ -162,9 +162,8 @@ fn cuda_covariance_structure_matches_cpu() {
   );
 }
 
-/// Two `Fgn`s from the same `Deterministic` seed agree bit for bit even when
-/// an unrelated device draw happens between them: the Philox offset is a
-/// function of the seed, not of the process's launch history.
+/// Two `Fgn`s from the same `Deterministic` seed agree bit for bit even when an unrelated device
+/// draw happens between them: Philox keys on the launch seed and counts the cell, not the history.
 #[test]
 fn cuda_same_seed_same_paths_regardless_of_history() {
   use stochastic_rs_core::simd_rng::Deterministic;
@@ -430,4 +429,40 @@ fn a_release_frees_per_size_states_left_with_no_kernels_cached() {
   );
   Cuda::default().release();
   assert_eq!(sizes(), (0, 0), "a per-size state outlived the release");
+}
+
+/// The fGN and sheet kernels draw each normal from the Euler kernels' Philox source on the
+/// batch-global cell under a site of their own, in both precisions, with no generator of their own.
+#[test]
+fn the_fgn_and_sheet_kernels_draw_from_the_shared_philox() {
+  for real in ["float", "double"] {
+    let fgn = super::kernels::gen_scale_source(real);
+    let sheet = crate::sheet::fbs::cuda::kernel_source(real);
+    for (name, source, sites) in [
+      ("fGN", &fgn, &["site_fgn"][..]),
+      (
+        "sheet",
+        &sheet,
+        &["site_sheet,", "site_sheet_correction"][..],
+      ),
+    ] {
+      assert!(
+        source.contains("__device__ __forceinline__ void stoch_philox("),
+        "{name} {real}: the Philox prelude is missing"
+      );
+      for site in sites {
+        for which in ["0u", "1u"] {
+          let call = format!("(unsigned int)(cell >> 32), {which}, {site}");
+          let correction = format!("(unsigned int)(global >> 32), {which}, {site}");
+          assert!(
+            source.contains(&call) || source.contains(&correction),
+            "{name} {real}: no {which} draw under {site}"
+          );
+        }
+      }
+      for gone in ["0xD2511F53u * lo", "2.3283064365386963e-10", "philox_pair"] {
+        assert!(!source.contains(gone), "{name} {real}: {gone} is left");
+      }
+    }
+  }
 }

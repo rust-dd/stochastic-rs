@@ -91,9 +91,9 @@ impl Context {
     sheet: &SheetLaunch<'_, f32>,
     sheets: usize,
     first: usize,
-    correction_cell: u64,
-    seed: u32,
+    key: [u32; 2],
   ) -> Result<&[f32]> {
+    let [seed_lo, seed_hi] = key;
     let (m, n) = (sheet.m, sheet.n);
     let big_m = 2 * (m - 1);
     let big_n = 2 * (n - 1);
@@ -179,10 +179,19 @@ impl Context {
             &mut *imag,
             &*lam,
             &*row_twiddles,
-            (log_cols, log_rows + log_cols, row_tile, seed, first_cell),
+            (log_cols, log_rows + log_cols, row_tile),
+            (seed_lo, seed_hi, first_cell),
             scratch(row_tile),
           ),
-          |(real, imag, lam, twiddles, (log_cols, log_n, tile, seed, first_cell), scratch)| {
+          |(
+            real,
+            imag,
+            lam,
+            twiddles,
+            (log_cols, log_n, tile),
+            (seed_lo, seed_hi, first_cell),
+            scratch,
+          )| {
             Ok([
               Argument::write(real),
               Argument::write(imag),
@@ -191,7 +200,8 @@ impl Context {
               Argument::value(*log_cols)?,
               Argument::value(*log_n)?,
               Argument::value(*tile)?,
-              Argument::value(*seed)?,
+              Argument::value(*seed_lo)?,
+              Argument::value(*seed_hi)?,
               Argument::value(*first_cell)?,
               Argument::threadgroup::<f32>(*scratch)?,
               Argument::threadgroup::<f32>(*scratch)?,
@@ -278,9 +288,16 @@ impl Context {
               &*real_t,
               &mut *output,
               (cells_u32, rows, m_u32, n_u32),
-              (sheet.r, sheet.corr, seed, correction_cell, out_len),
+              (sheet.r, sheet.corr),
+              (seed_lo, seed_hi, first as u64, out_len),
             ),
-            |(real_t, output, (cells, rows, m, n), (r, corr, seed, correction_cell, out_len))| {
+            |(
+              real_t,
+              output,
+              (cells, rows, m, n),
+              (r, corr),
+              (seed_lo, seed_hi, first_sheet, out_len),
+            )| {
               Ok([
                 Argument::read(real_t),
                 Argument::write(output),
@@ -290,8 +307,9 @@ impl Context {
                 Argument::value(*n)?,
                 Argument::value(*r)?,
                 Argument::value(*corr)?,
-                Argument::value(*seed)?,
-                Argument::value(*correction_cell)?,
+                Argument::value(*seed_lo)?,
+                Argument::value(*seed_hi)?,
+                Argument::value(*first_sheet)?,
                 Argument::value(*out_len)?,
               ])
             },

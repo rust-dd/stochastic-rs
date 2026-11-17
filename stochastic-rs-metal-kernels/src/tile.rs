@@ -126,7 +126,7 @@ unsafe fn transform(
   twiddles: ReadBuffer<f32>,
   log_n: u32,
   tile_log: u32,
-  seed: u32,
+  key: [u32; 2],
   base_cell: u64,
   shared_real: DynamicThreadgroupBuffer<f32>,
   shared_imag: DynamicThreadgroupBuffer<f32>,
@@ -143,7 +143,8 @@ unsafe fn transform(
     for k in 0..2 {
       let p = within + position(i, k, 0);
       let natural = p.reverse_bits() >> (32 - log_n);
-      let pair = crate::random::normal_pair(cell_base.wrapping_add(natural as u64), seed);
+      let cell = cell_base.wrapping_add(natural as u64);
+      let pair = crate::random::normal_pair(cell, crate::euler::SITE_FGN, key);
       let eig = eigs.load_unchecked(p);
       values[k as usize] = Complex {
         re: pair.0 * eig,
@@ -174,7 +175,8 @@ pub unsafe fn gen_tile_fft(
   twiddles: ReadBuffer<f32>,
   log_n: u32,
   tile_log: u32,
-  seed: u32,
+  seed_lo: u32,
+  seed_hi: u32,
   base_cell: u64,
   shared_real: DynamicThreadgroupBuffer<f32>,
   shared_imag: DynamicThreadgroupBuffer<f32>,
@@ -186,7 +188,7 @@ pub unsafe fn gen_tile_fft(
       twiddles,
       log_n,
       tile_log,
-      seed,
+      [seed_lo, seed_hi],
       base_cell,
       shared_real,
       shared_imag,
@@ -210,7 +212,8 @@ pub unsafe fn gen_fft_extract(
   eigs: ReadBuffer<f32>,
   twiddles: ReadBuffer<f32>,
   log_n: u32,
-  seed: u32,
+  seed_lo: u32,
+  seed_hi: u32,
   base_cell: u64,
   output: WriteBuffer<f32>,
   size: u32,
@@ -233,7 +236,7 @@ pub unsafe fn gen_fft_extract(
       twiddles,
       log_n,
       log_n,
-      seed,
+      [seed_lo, seed_hi],
       base_cell,
       shared_real,
       shared_imag,

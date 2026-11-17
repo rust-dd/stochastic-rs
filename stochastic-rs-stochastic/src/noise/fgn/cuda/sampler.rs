@@ -30,21 +30,6 @@ type Result<T> = std::result::Result<T, DeviceError>;
 /// staging round-trip and rayon overhead aren't worth it.
 const STAGING_MIN_BYTES: usize = 32 << 20;
 
-/// Philox counter base for one launch, a pure function of the launch's seed.
-///
-/// The kernel keys Philox with the low 32 bits of `seed` and counts from
-/// `tid + seq`; deriving `seq` from the seed (SplitMix64 finaliser) makes
-/// every draw a function of the seed alone, so two `Fgn`s built from the
-/// same `Deterministic` seed produce the same paths no matter what other
-/// device draws the process made in between. A process-global counter used
-/// to sit here and made CUDA fGN paths depend on that history.
-pub(crate) fn counter_offset(seed: u64) -> u64 {
-  let mut z = seed.wrapping_add(0x9E37_79B9_7F4A_7C15);
-  z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-  z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-  z ^ (z >> 31)
-}
-
 /// `rows` cut until a launch of `streams` paths a row keeps every index in the kernels' `int`: a
 /// path is `2n` complex work values and the kernel writes `data[2 * tid + 1]`, so it costs `4n`.
 pub(crate) fn index_rows(rows: usize, streams: usize, n: usize) -> usize {
@@ -218,7 +203,8 @@ pub(crate) fn sample_f32_device(
   // 1. Fused generate normals + scale by eigenvalues
   // One seed per batch; chunks continue the element count, so a batch
   // produced in chunks equals one launch element for element.
-  let seq = counter_offset(seed) + (first * traj_size) as u64;
+  let [seed_lo, seed_hi] = crate::euler::philox::key(seed);
+  let first_cell = (first * traj_size) as u64;
   unsafe {
     stream
       .launch_builder(&gen_scale)
@@ -226,8 +212,9 @@ pub(crate) fn sample_f32_device(
       .arg(&s.d_eigs)
       .arg(&args.traj)
       .arg(&args.total)
-      .arg(&seed)
-      .arg(&seq)
+      .arg(&seed_lo)
+      .arg(&seed_hi)
+      .arg(&first_cell)
       .launch(LaunchConfig::for_num_elems(args.grid))
       .map_err(|e| DeviceError::Launch(format!("gen_scale: {e}")))?;
   }
@@ -331,7 +318,8 @@ fn sample_f32<T: FloatExt>(
   // 1. Fused generate normals + scale by eigenvalues
   // One seed per batch; chunks continue the element count, so a batch
   // produced in chunks equals one launch element for element.
-  let seq = counter_offset(seed) + (first * traj_size) as u64;
+  let [seed_lo, seed_hi] = crate::euler::philox::key(seed);
+  let first_cell = (first * traj_size) as u64;
   unsafe {
     stream
       .launch_builder(&gen_scale)
@@ -339,8 +327,9 @@ fn sample_f32<T: FloatExt>(
       .arg(&s.d_eigs)
       .arg(&args.traj)
       .arg(&args.total)
-      .arg(&seed)
-      .arg(&seq)
+      .arg(&seed_lo)
+      .arg(&seed_hi)
+      .arg(&first_cell)
       .launch(LaunchConfig::for_num_elems(args.grid))
       .map_err(|e| DeviceError::Launch(format!("gen_scale: {e}")))?;
   }
@@ -484,7 +473,8 @@ pub(crate) fn sample_f64_device(
   // 1. Fused generate + scale
   // One seed per batch; chunks continue the element count, so a batch
   // produced in chunks equals one launch element for element.
-  let seq = counter_offset(seed) + (first * traj_size) as u64;
+  let [seed_lo, seed_hi] = crate::euler::philox::key(seed);
+  let first_cell = (first * traj_size) as u64;
   unsafe {
     stream
       .launch_builder(&gen_scale)
@@ -492,8 +482,9 @@ pub(crate) fn sample_f64_device(
       .arg(&s.d_eigs)
       .arg(&args.traj)
       .arg(&args.total)
-      .arg(&seed)
-      .arg(&seq)
+      .arg(&seed_lo)
+      .arg(&seed_hi)
+      .arg(&first_cell)
       .launch(LaunchConfig::for_num_elems(args.grid))
       .map_err(|e| DeviceError::Launch(format!("gen_scale: {e}")))?;
   }
@@ -595,7 +586,8 @@ fn sample_f64<T: FloatExt>(
   // 1. Fused generate + scale
   // One seed per batch; chunks continue the element count, so a batch
   // produced in chunks equals one launch element for element.
-  let seq = counter_offset(seed) + (first * traj_size) as u64;
+  let [seed_lo, seed_hi] = crate::euler::philox::key(seed);
+  let first_cell = (first * traj_size) as u64;
   unsafe {
     stream
       .launch_builder(&gen_scale)
@@ -603,8 +595,9 @@ fn sample_f64<T: FloatExt>(
       .arg(&s.d_eigs)
       .arg(&args.traj)
       .arg(&args.total)
-      .arg(&seed)
-      .arg(&seq)
+      .arg(&seed_lo)
+      .arg(&seed_hi)
+      .arg(&first_cell)
       .launch(LaunchConfig::for_num_elems(args.grid))
       .map_err(|e| DeviceError::Launch(format!("gen_scale: {e}")))?;
   }
