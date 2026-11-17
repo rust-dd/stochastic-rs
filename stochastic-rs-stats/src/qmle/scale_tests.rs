@@ -136,7 +136,7 @@ fn a_step_whose_unit_variance_underflows_has_no_start() {
 }
 
 /// Stage 1 weighs the moments of the path over its mean, so a factor that is no power of two, and
-/// so rounds the path, moves the GMM fit by that rounding; on the path's own it followed the unit.
+/// so rounds the path, moves the GMM fit by that rounding; the path's own would follow its unit.
 #[test]
 fn a_decimal_scale_moves_the_gmm_fit_by_its_rounding_alone() {
   let dt = 1.0 / 252.0;
