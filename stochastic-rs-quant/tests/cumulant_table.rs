@@ -248,7 +248,7 @@ fn the_cumulant_table() {
     1.0,
     -0.03168729519299476,
     0.06370181258561475,
-    None,
+    Some(0.0040188323614403845),
   );
   check(
     f,
@@ -257,7 +257,7 @@ fn the_cumulant_table() {
     0.25,
     -0.01947319756968176,
     0.03895130985811067,
-    None,
+    Some(5.837728602746485e-5),
   );
   check(
     f,
@@ -266,7 +266,7 @@ fn the_cumulant_table() {
     5.0,
     -0.2414835455729094,
     0.49040486171133396,
-    None,
+    Some(0.08863731099080273),
   );
   assert!(failures.is_empty(), "\n{}", failures.join("\n"));
 }
@@ -424,6 +424,114 @@ fn heston_cumulants_keep_their_digits_at_a_small_kappa() {
 #[test]
 fn the_default_cos_put_holds_at_a_small_kappa() {
   let model = HestonFourier::new(heston(0.04, 1e-4, 0.04, 0.3, -0.7));
+  for k in [80.0, 100.0, 120.0] {
+    let put = CosEngine::default().price(&model, 100.0, k, 0.03, 0.01, 0.1, OptionType::Put);
+    let want = model.price_put(100.0, k, 0.03, 0.01, 0.1);
+    assert!((put - want).abs() < 1e-7, "K = {k}: {put} vs {want}");
+  }
+}
+
+fn three_states(initial_state: usize) -> RegimeSwitchingModel {
+  RegimeSwitchingModel {
+    q_matrix: ndarray::array![[-1.0, 0.5, 0.5], [0.3, -0.6, 0.3], [0.4, 0.4, -0.8]],
+    vols: ndarray::array![0.1, 0.25, 0.5],
+    initial_state,
+  }
+}
+
+/// mpmath's 60-digit derivatives of the regime log-chf, from a chain that barely switches to one
+/// that switches 1,000 times; one state is Black–Scholes, whose `c4` is exactly 0.
+#[test]
+fn regime_switching_cumulants_match_mpmath() {
+  let mut failures = Vec::new();
+  let f = &mut failures;
+  for (t, c1, c2, c4) in [
+    (
+      0.01,
+      -5.3638687612343844e-5,
+      0.00010727986347984686,
+      2.988477696453268e-8,
+    ),
+    (
+      0.1,
+      -0.0008486105828292529,
+      0.0016994853251261662,
+      2.738838269815171e-5,
+    ),
+    (
+      1.0,
+      -0.02878858083708144,
+      0.05856819512957116,
+      0.012421687865042367,
+    ),
+    (
+      10.0,
+      -0.5123411010586318,
+      1.0599735549927356,
+      0.4580224554829713,
+    ),
+  ] {
+    check_relative(f, "three states", &three_states(0), t, (c1, c2, c4), 1e-10);
+  }
+  let want = (
+    -0.012089583733568438,
+    0.024181961314369407,
+    3.32757706889181e-5,
+  );
+  check_relative(f, "from the high state", &three_states(2), 0.1, want, 1e-10);
+  let two = |down: f64, up: f64, vols: [f64; 2]| RegimeSwitchingModel {
+    q_matrix: ndarray::array![[-down, down], [up, -up]],
+    vols: ndarray::arr1(&vols),
+    initial_state: 0,
+  };
+  for (t, c1, c2, c4) in [
+    (
+      0.01,
+      -0.00021128438519986726,
+      0.00042273246425934586,
+      1.96632798508574e-6,
+    ),
+    (
+      1.0,
+      -0.13940000000007777,
+      0.27919200000013966,
+      0.00465082264964076,
+    ),
+    (50.0, -7.2444, 14.5084, 0.2322448319106048),
+  ] {
+    let fast = two(20.0, 5.0, [0.1, 0.6]);
+    check_relative(f, "fast", &fast, t, (c1, c2, c4), 1e-10);
+  }
+  for (t, c1, c2, c4) in [
+    (
+      0.01,
+      -0.00020000299997000024,
+      0.00040000600113997646,
+      1.440619204254164e-11,
+    ),
+    (
+      1.0,
+      -0.020029970022486507,
+      0.04006113764802995,
+      1.5019615194837014e-5,
+    ),
+  ] {
+    let slow = two(0.001, 0.002, [0.2, 0.4]);
+    check_relative(f, "slow", &slow, t, (c1, c2, c4), 1e-10);
+  }
+  assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+  let one = RegimeSwitchingModel {
+    q_matrix: ndarray::array![[0.0]],
+    vols: ndarray::array![0.2],
+    initial_state: 0,
+  };
+  assert_eq!(one.cumulants(1.0).c4, Some(0.0));
+}
+
+/// Without a `c4` the range was `10√c2`, and this put, started in the low state, was 2.9e-4 off.
+#[test]
+fn the_default_cos_put_holds_for_three_regimes_at_a_short_maturity() {
+  let model = three_states(0);
   for k in [80.0, 100.0, 120.0] {
     let put = CosEngine::default().price(&model, 100.0, k, 0.03, 0.01, 0.1, OptionType::Put);
     let want = model.price_put(100.0, k, 0.03, 0.01, 0.1);

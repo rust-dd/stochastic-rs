@@ -8,7 +8,7 @@ pub struct Cumulants {
   pub c1: f64,
   /// Second cumulant (variance of log-return).
   pub c2: f64,
-  /// Fourth cumulant; `None` for a model that does not compute it (regime switching, CGMYSV).
+  /// Fourth cumulant; `None` where neither a closed nor an exact matrix form exists (CGMYSV).
   pub c4: Option<f64>,
 }
 
