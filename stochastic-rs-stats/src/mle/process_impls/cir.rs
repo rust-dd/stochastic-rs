@@ -9,6 +9,17 @@ use stochastic_rs_stochastic::diffusion::radial_ou::RadialOu;
 
 use crate::mle::DiffusionModel;
 
+/// `d/dx` of `c|x|^p`: below `p = 1` unbounded at zero, where the trait's fixed difference step
+/// misses it.
+fn power_x(c: f64, p: f64, x: f64) -> f64 {
+  c * p * x.signum() * x.abs().powf(p - 1.0)
+}
+
+/// `d²/dx²` of `c|x|^p`, unbounded at zero below `p = 2`.
+fn power_xx(c: f64, p: f64, x: f64) -> f64 {
+  c * p * (p - 1.0) * x.abs().powf(p - 2.0)
+}
+
 impl<S: SeedExt> DiffusionModel for Cir<f64, S> {
   fn num_params(&self) -> usize {
     3
@@ -43,6 +54,10 @@ impl<S: SeedExt> DiffusionModel for Cir<f64, S> {
   /// `σ/(2√x)`: unbounded at zero, so the trait's fixed difference step misses it below `1e-5`.
   fn diffusion_x(&self, x: f64, _t: f64) -> f64 {
     0.5 * self.sigma * x.signum() / x.abs().sqrt()
+  }
+
+  fn diffusion_xx(&self, x: f64, _t: f64) -> f64 {
+    -0.25 * self.sigma / (x.abs() * x.abs().sqrt())
   }
 
   fn is_positive(&self) -> bool {
@@ -89,6 +104,14 @@ impl<S: SeedExt> DiffusionModel for Cev<f64, S> {
     self.sigma * x.abs().powf(self.gamma)
   }
 
+  fn diffusion_x(&self, x: f64, _t: f64) -> f64 {
+    power_x(self.sigma, self.gamma, x)
+  }
+
+  fn diffusion_xx(&self, x: f64, _t: f64) -> f64 {
+    power_xx(self.sigma, self.gamma, x)
+  }
+
   fn is_positive(&self) -> bool {
     self.gamma >= 0.5
   }
@@ -124,6 +147,14 @@ impl<S: SeedExt> DiffusionModel for Ckls<f64, S> {
 
   fn diffusion(&self, x: f64, _t: f64) -> f64 {
     self.theta3 * x.abs().powf(self.theta4)
+  }
+
+  fn diffusion_x(&self, x: f64, _t: f64) -> f64 {
+    power_x(self.theta3, self.theta4, x)
+  }
+
+  fn diffusion_xx(&self, x: f64, _t: f64) -> f64 {
+    power_xx(self.theta3, self.theta4, x)
   }
 }
 
