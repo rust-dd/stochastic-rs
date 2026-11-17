@@ -15,7 +15,6 @@
 //! When inputs are PnL samples (profit positive), pass `PnlOrLoss::Pnl` to
 //! automatically negate before ranking.
 
-use std::cmp::Ordering;
 use std::fmt::Display;
 
 use ndarray::Array1;
@@ -25,6 +24,7 @@ use stochastic_rs_distributions::special::ndtri;
 use super::input::finite;
 use super::input::validate_samples;
 use crate::QuantError;
+use crate::total_order::ascending;
 use crate::traits::RealExt;
 
 /// Interpretation of the input sample.
@@ -192,15 +192,6 @@ pub(crate) fn loss_moments<T: RealExt>(
   Ok((mean, finite(var, what, "the variance")?.sqrt()))
 }
 
-/// Ascending with NaN last, a total order for `RealExt`, which has no `total_cmp`; branch-free: an
-/// `if` chain sorts 100k samples about 4× slower.
-pub(crate) fn ascending<T: RealExt>(a: &T, b: &T) -> Ordering {
-  let (a_nan, b_nan) = (a.is_nan(), b.is_nan());
-  let less = (a < b) | (!a_nan & b_nan);
-  let greater = (b < a) | (a_nan & !b_nan);
-  greater.cmp(&less)
-}
-
 pub(crate) fn losses_from_samples<T: RealExt>(
   samples: ArrayView1<T>,
   orientation: PnlOrLoss,
@@ -233,17 +224,4 @@ pub(crate) fn assert_confidence<T: RealExt>(confidence: T) {
 
 fn standard_normal_quantile(p: f64) -> f64 {
   ndtri(p)
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn ascending_puts_every_nan_last_whatever_its_sign() {
-    let mut xs = [f64::NAN, 2.0, -f64::NAN, -1.0, 0.0];
-    xs.sort_by(ascending);
-    assert_eq!(xs[..3], [-1.0, 0.0, 2.0]);
-    assert!(xs[3..].iter().all(|x| x.is_nan()));
-  }
 }

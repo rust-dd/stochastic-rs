@@ -76,6 +76,9 @@ impl HestonPricer {
 
   /// Delta — $\partial V/\partial S$.
   pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let h = Self::h_s(s);
     (self.price_option(s + h, k, r, q, tau, option_type)
       - self.price_option(s - h, k, r, q, tau, option_type))
@@ -85,6 +88,9 @@ impl HestonPricer {
   /// Gamma — $\partial^2 V/\partial S^2$. Option-type independent: the
   /// put differs from the call by terms linear in `S`.
   pub fn gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let h = Self::h_s(s);
     let p0 = self.price_call(s, k, r, q, tau);
     (self.price_call(s + h, k, r, q, tau) - 2.0 * p0 + self.price_call(s - h, k, r, q, tau))
@@ -119,6 +125,9 @@ impl HestonPricer {
 
   /// Rho — $\partial V/\partial r$.
   pub fn rho(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let h = Self::H_R;
     (self.price_option(s, k, r + h, q, tau, option_type)
       - self.price_option(s, k, r - h, q, tau, option_type))
@@ -208,6 +217,9 @@ impl HestonPricer {
     tau: f64,
     option_type: OptionType,
   ) -> Greeks {
+    if tau == 0.0 {
+      return Greeks::nan();
+    }
     Greeks {
       delta: self.delta(s, k, r, q, tau, option_type),
       gamma: self.gamma(s, k, r, q, tau),

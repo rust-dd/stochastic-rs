@@ -62,7 +62,8 @@ fn dual_curve_bootstrap_recovers_the_tenor_basis() {
     &quotes,
     &ois,
     InterpolationMethod::LogLinearOnDiscountFactors,
-  );
+  )
+  .unwrap();
   for t in [0.25, 0.5, 1.0, 2.0, 3.0, 5.0] {
     assert!((forecast.discount_factor(t) - tenor_df(t)).abs() < 1e-9);
   }

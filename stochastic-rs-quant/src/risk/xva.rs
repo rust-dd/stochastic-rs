@@ -28,6 +28,7 @@ use ndarray::Array2;
 use crate::QuantError;
 use crate::credit::survival_curve::SurvivalCurve;
 use crate::curves::DiscountCurve;
+use crate::total_order::ascending;
 use crate::traits::RealExt;
 
 /// Exposure profile on a date grid.
@@ -122,7 +123,7 @@ impl ExposureProfile {
       let mut positive = col.iter().map(|v| v.max(0.0)).collect::<Vec<_>>();
       epe.push(positive.iter().sum::<f64>() / paths);
       ene.push(col.iter().map(|v| (-v).max(0.0)).sum::<f64>() / paths);
-      positive.sort_by(|a, b| a.partial_cmp(b).expect("finite exposures"));
+      positive.sort_by(ascending);
       let rank = ((positive.len() - 1) as f64 * quantile).round() as usize;
       pfe.push(positive[rank]);
     }
@@ -156,7 +157,7 @@ impl ExposureProfile {
 
   /// Peak expected positive exposure.
   pub fn peak_epe(&self) -> f64 {
-    self.epe.iter().copied().fold(0.0, f64::max_or_nan)
+    f64::max_or_nan_fold(self.epe.iter().copied()).max_or_nan(0.0)
   }
 
   /// Time-averaged expected positive exposure (the "expected exposure"

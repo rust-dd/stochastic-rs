@@ -226,7 +226,8 @@ mod tests {
     let curve = bootstrap(
       &instruments,
       InterpolationMethod::LogLinearOnDiscountFactors,
-    );
+    )
+    .unwrap();
     for inst in &instruments {
       let t = inst.maturity();
       assert!(

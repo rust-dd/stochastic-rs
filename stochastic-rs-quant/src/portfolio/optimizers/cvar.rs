@@ -17,6 +17,7 @@ use crate::portfolio::types::PortfolioResult;
 use crate::portfolio::types::empty_result;
 use crate::risk::expected_shortfall::tail_mean;
 use crate::risk::input::validate_samples;
+use crate::total_order::ascending;
 
 /// Tail mean of the losses `−returns` over their worst `alpha` share (not a confidence level);
 /// `InsufficientData` if empty, `InvalidInput` if not finite; panics unless `0 < alpha < 0.5`.
@@ -26,7 +27,7 @@ pub fn empirical_cvar(returns: &mut [f64], alpha: f64) -> Result<f64, QuantError
     "alpha must satisfy `alpha > 0.0 && alpha < 0.5`, a tail proportion, not a confidence level, got alpha = {alpha:?}"
   );
   validate_samples(ArrayView1::from(&*returns), "empirical CVaR", 1)?;
-  returns.sort_by(f64::total_cmp);
+  returns.sort_by(ascending);
   let w = returns.len() as f64 * alpha;
   Ok(tail_mean(returns.iter().map(|&r| -r), w))
 }

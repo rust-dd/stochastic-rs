@@ -63,6 +63,7 @@ use stochastic_rs_distributions::traits::Grid2D;
 use super::HestonSlvParams;
 use super::LeverageSurface;
 use crate::QuantError;
+use crate::total_order::ascending;
 
 /// Floor of the conditional-variance estimate before the square root.
 pub(super) const CONDITIONAL_VARIANCE_FLOOR: f64 = 1e-8;
@@ -268,7 +269,7 @@ pub fn calibrate_leverage(
     for (slot, (xp, vp)) in sorted.iter_mut().zip(x.iter().zip(v.iter())) {
       *slot = (xp.exp(), *vp);
     }
-    sorted.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
+    sorted.sort_unstable_by(|a, b| ascending(&a.0, &b.0));
     let h =
       bandwidth_scale * local_vol.eval(t_next, s0) * t_next.max(method.bandwidth_t_min).sqrt();
     let half_width = window_half_width(h);

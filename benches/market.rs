@@ -99,7 +99,8 @@ fn bench_reactive_bootstrap(c: &mut Criterion) {
         &helpers,
         val_date,
         InterpolationMethod::LogLinearOnDiscountFactors,
-      );
+      )
+      .unwrap();
       std::hint::black_box(curve.discount_factor(5.0))
     });
   });

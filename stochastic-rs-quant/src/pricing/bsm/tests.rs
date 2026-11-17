@@ -260,11 +260,6 @@ fn bsm_greeks_match_pre_refactor_goldens() {
       37.330_048_668_340_48,
     ),
     (
-      "put zeta",
-      m.zeta(s, k, r, q, tau, put),
-      -0.590_830_652_704_328_6,
-    ),
-    (
       "put strike_delta",
       m.strike_delta(s, k, r, q, tau, put),
       0.569_084_786_503_158_9,
@@ -273,6 +268,16 @@ fn bsm_greeks_match_pre_refactor_goldens() {
   for (name, got, want) in cases {
     assert!((got - want).abs() < TOL, "{name}: got {got}, want {want}");
   }
+}
+
+#[test]
+fn a_put_zeta_is_its_in_the_money_probability() {
+  let (s, k, r, q, tau) = Q;
+  let m = BsmPricer::new(V, BsmCoc::Merton1973);
+  let put = m.zeta(s, k, r, q, tau, OptionType::Put);
+  assert!((put - 0.590_830_652_704_328_6).abs() < TOL, "{put}");
+  let call = m.zeta(s, k, r, q, tau, OptionType::Call);
+  assert!((call + put - 1.0).abs() < TOL, "{call} + {put}");
 }
 
 #[test]

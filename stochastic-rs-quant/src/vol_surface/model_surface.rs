@@ -188,6 +188,7 @@ mod tests {
   use crate::pricing::heston_stoch_corr::HestonStochCorrPricer;
   use crate::pricing::sabr::SabrParams;
   use crate::pricing::sabr::SabrPricer;
+  use crate::total_order::ascending;
 
   const GRID_K: [f64; 5] = [90.0, 95.0, 100.0, 105.0, 110.0];
   const GRID_T: [f64; 2] = [0.25, 1.0];
@@ -223,7 +224,7 @@ mod tests {
       .log_moneyness
       .iter()
       .enumerate()
-      .min_by(|(_, a), (_, b)| a.abs().partial_cmp(&b.abs()).unwrap())
+      .min_by(|(_, a), (_, b)| ascending(&a.abs(), &b.abs()))
       .map(|(i, _)| i)
       .unwrap();
     assert!(
@@ -341,7 +342,7 @@ mod tests {
       .log_moneyness
       .iter()
       .enumerate()
-      .min_by(|(_, a), (_, b)| a.abs().partial_cmp(&b.abs()).unwrap())
+      .min_by(|(_, a), (_, b)| ascending(&a.abs(), &b.abs()))
       .map(|(i, _)| i)
       .unwrap();
     assert!(

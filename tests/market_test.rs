@@ -122,7 +122,8 @@ fn deposit_npv_equals_bootstrapped_instrument_value() {
   let curve = bootstrap(
     &instruments,
     InterpolationMethod::LogLinearOnDiscountFactors,
-  );
+  )
+  .unwrap();
 
   let deposit = Deposit::new(1.0, rate, val_date, maturity, day_count);
   let v = deposit.valuation(val_date, day_count, &curve);
@@ -165,7 +166,8 @@ fn helper_driven_curve_roundtrips_par_swap() {
     &helpers,
     val_date,
     InterpolationMethod::LogLinearOnDiscountFactors,
-  );
+  )
+  .unwrap();
 
   let implied_5y_par = curve.par_rate(5.0, 2);
   assert!(
@@ -178,7 +180,8 @@ fn helper_driven_curve_roundtrips_par_swap() {
     &helpers,
     val_date,
     InterpolationMethod::LogLinearOnDiscountFactors,
-  );
+  )
+  .unwrap();
   assert!(
     curve2.discount_factor(5.0) < curve.discount_factor(5.0),
     "higher swap rate must lower the 5Y discount factor"

@@ -3,17 +3,11 @@ use stochastic_rs_distributions::special::norm_pdf;
 
 use super::pricer::BsmPricer;
 use crate::OptionType;
+use crate::pricing::digital::expiry_indicator;
 use crate::traits::Greeks;
 
-/// Closed-form Greeks, evaluated at the same `(s, k, r, q, tau)` query
-/// [`BsmPricer`]'s pricing methods take. Only the Greeks whose value
-/// actually differs between a call and a put take `option_type`.
-///
-/// These are inherent methods and not a
-/// [`GreeksExt`](crate::traits::GreeksExt) impl: that trait's accessors
-/// take no arguments, so only a type that already carries a query can
-/// implement it. The query-carrying types built on this model
-/// (`AnalyticBsEngine`, `Merton1976Pricer`) implement it and delegate here.
+/// Closed-form Greeks at the `(s, k, r, q, tau)` query of [`BsmPricer`]'s prices, each but `zeta`
+/// NaN at `tau = 0`, where an expired option has a value and no sensitivity.
 impl BsmPricer {
   /// Every Greek at one query point; the one place `Greeks::volga` maps to [`vomma`](Self::vomma)
   /// and `Greeks::veta` to [`dvega_dtime`](Self::dvega_dtime).
@@ -26,6 +20,9 @@ impl BsmPricer {
     tau: f64,
     option_type: OptionType,
   ) -> Greeks {
+    if tau == 0.0 {
+      return Greeks::nan();
+    }
     Greeks {
       delta: self.delta(s, k, r, q, tau, option_type),
       gamma: self.gamma(s, k, r, q, tau),
@@ -41,6 +38,9 @@ impl BsmPricer {
 
   /// Delta — $\partial V/\partial S$.
   pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let (d1, _) = self.d1_d2(s, k, r, q, tau);
     let exp_bt = ((self.b(r, q) - r) * tau).exp();
 
@@ -53,6 +53,9 @@ impl BsmPricer {
 
   /// Gamma — $\partial^2 V/\partial S^2$.
   pub fn gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let (d1, _) = self.d1_d2(s, k, r, q, tau);
 
     ((self.b(r, q) - r) * tau).exp() * norm_pdf(d1) / (s * self.v * tau.sqrt())
@@ -65,6 +68,9 @@ impl BsmPricer {
 
   /// Theta — $\partial V/\partial t$ (calendar convention).
   pub fn theta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let (d1, d2) = self.d1_d2(s, k, r, q, tau);
     let b = self.b(r, q);
 
@@ -87,6 +93,9 @@ impl BsmPricer {
 
   /// Vega — $\partial V/\partial \sigma$.
   pub fn vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let (d1, _) = self.d1_d2(s, k, r, q, tau);
 
     s * ((self.b(r, q) - r) * tau).exp() * norm_pdf(d1) * tau.sqrt()
@@ -94,6 +103,9 @@ impl BsmPricer {
 
   /// Rho — $\partial V/\partial r$.
   pub fn rho(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let (_, d2) = self.d1_d2(s, k, r, q, tau);
 
     let exp_rt = (-r * tau).exp();
@@ -114,6 +126,9 @@ impl BsmPricer {
 
   /// Charm — $\partial^2 V/\partial S\partial t$ (delta decay).
   pub fn charm(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let v = self.v;
     let b = self.b(r, q);
     let (d1, d2) = self.d1_d2(s, k, r, q, tau);
@@ -134,6 +149,9 @@ impl BsmPricer {
 
   /// Vanna — $\partial^2 V/\partial S\partial \sigma$.
   pub fn vanna(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let (d1, d2) = self.d1_d2(s, k, r, q, tau);
 
     -((self.b(r, q) - r) * tau).exp() * norm_pdf(d1) * d2 / self.v
@@ -202,6 +220,9 @@ impl BsmPricer {
 
   /// Phi — $\partial V/\partial q$ (dividend / carry rho).
   pub fn phi(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let (d1, _) = self.d1_d2(s, k, r, q, tau);
 
     let exp_bt = ((self.b(r, q) - r) * tau).exp();
@@ -213,14 +234,18 @@ impl BsmPricer {
     }
   }
 
-  /// Zeta — risk-neutral probability of finishing in the money.
+  /// Zeta — the in-the-money probability of Haug (2007), *The Complete Guide to Option Pricing
+  /// Formulas*: `N(d₂)` (call) or `N(−d₂)` (put), and `1{s > k}` or `1{s < k}` at `tau = 0`.
   pub fn zeta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if tau == 0.0 && self.v.is_finite() {
+      return expiry_indicator(option_type, s * (self.b(r, q) * tau).exp(), k);
+    }
     let (_, d2) = self.d1_d2(s, k, r, q, tau);
 
     if option_type == OptionType::Call {
       norm_cdf(d2)
     } else {
-      -norm_cdf(-d2)
+      norm_cdf(-d2)
     }
   }
 
@@ -234,6 +259,9 @@ impl BsmPricer {
     tau: f64,
     option_type: OptionType,
   ) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let (_, d2) = self.d1_d2(s, k, r, q, tau);
 
     let exp_rt = (-r * tau).exp();
@@ -247,6 +275,9 @@ impl BsmPricer {
 
   /// Strike gamma — $\partial^2 V/\partial K^2$.
   pub fn strike_gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let (_, d2) = self.d1_d2(s, k, r, q, tau);
 
     norm_pdf(d2) * (-r * tau).exp() / (k * self.v * tau.sqrt())

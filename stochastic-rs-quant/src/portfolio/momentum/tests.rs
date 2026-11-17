@@ -49,6 +49,38 @@ fn build_portfolio_equal_weights() {
   assert!((short_sum - 1.0).abs() < 1e-12);
 }
 
+/// A NaN score ranks last whatever its sign, which an x86 and an aarch64 NaN do not share.
+#[test]
+fn a_nan_score_ranks_last_whatever_its_sign() {
+  let mut scores = compute_scores(&dummy_evals(), 0.0);
+  let ends = |scores: &[MomentumScore]| {
+    let pf = build_portfolio(scores, 1, 1, WeightScheme::Equal, None);
+    (
+      pf.long_positions[0].0.clone(),
+      pf.short_positions[0].0.clone(),
+    )
+  };
+  for nan in [f64::NAN, -f64::NAN] {
+    scores[1].momentum_score = nan;
+    assert_eq!(ends(&scores), ("AAA".to_string(), "BBB".to_string()));
+    let averages = decile_analysis(&scores)
+      .iter()
+      .map(|bucket| bucket.avg_momentum_score)
+      .collect::<Vec<_>>();
+    assert!(
+      (averages[0] - 0.6).abs() < 1e-12 && averages[2].is_nan(),
+      "{averages:?}"
+    );
+  }
+  scores[0].momentum_score = -f64::NAN;
+  scores[1].momentum_score = f64::NAN;
+  let ranked = decile_analysis(&scores)
+    .iter()
+    .map(|bucket| bucket.tickers.concat())
+    .collect::<Vec<_>>();
+  assert_eq!(ranked, ["CCC", "AAA", "BBB"]);
+}
+
 #[test]
 fn compute_scores_from_custom_model_estimate_type() {
   struct CustomEstimate {

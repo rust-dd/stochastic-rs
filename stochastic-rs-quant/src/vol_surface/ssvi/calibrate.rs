@@ -35,11 +35,13 @@ pub fn calibrate_ssvi<T: RealExt>(
     })
     .collect();
 
-  let theta_max = slices_f64
-    .iter()
-    .map(|s| s.theta)
-    .filter(|t| t.is_finite() && *t > 0.0)
-    .fold(0.0_f64, f64::max_or_nan);
+  let theta_max = f64::max_or_nan_fold(
+    slices_f64
+      .iter()
+      .map(|s| s.theta)
+      .filter(|t| t.is_finite() && *t > 0.0),
+  )
+  .max_or_nan(0.0);
 
   let problem = SsviLmProblem {
     slices: slices_f64,

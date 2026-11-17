@@ -31,14 +31,8 @@ use crate::OptionType;
 use crate::traits::RealExt;
 
 fn mat_inf_norm(a: &Array2<Complex64>) -> f64 {
-  // ndarray's `mapv(Complex64::norm)` + per-row sum + max gives us the
-  // infinity norm in three lines without a hand-written triple loop.
   let abs = a.mapv(|z| z.norm());
-  abs
-    .rows()
-    .into_iter()
-    .map(|row| row.sum())
-    .fold(0.0_f64, f64::max_or_nan)
+  f64::max_or_nan_fold(abs.rows().into_iter().map(|row| row.sum())).max_or_nan(0.0)
 }
 
 fn matrix_exp_complex(a: &Array2<Complex64>) -> Array2<Complex64> {

@@ -79,7 +79,8 @@ impl PyDiscountCurve {
       )
       .collect();
     Ok(Self {
-      inner: crate::curves::bootstrap(&instruments, method),
+      inner: crate::curves::bootstrap(&instruments, method)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?,
     })
   }
 
@@ -116,7 +117,8 @@ impl PyDiscountCurve {
       }
     }));
     Ok(Self {
-      inner: crate::curves::dual_curve::bootstrap_forecast(&instruments, &discount.inner, method),
+      inner: crate::curves::dual_curve::bootstrap_forecast(&instruments, &discount.inner, method)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?,
     })
   }
 }
@@ -170,8 +172,8 @@ impl PyMultiCurve {
     self.inner.basis_spread(tenor, t1, t2)
   }
 
-  /// Fair fixed rate of a swap against `tenor` on the shared payment
-  /// `schedule` (first entry = start).
+  /// Fair fixed rate of a swap against `tenor` on the shared payment `schedule` (first entry =
+  /// start); `None` for an unknown tenor or under two dates.
   fn fair_swap_rate(&self, tenor: &str, schedule: Vec<f64>) -> Option<f64> {
     self
       .inner

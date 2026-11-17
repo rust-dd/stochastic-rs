@@ -184,19 +184,18 @@ fn the_pure_jump_corner_is_zero_for_every_intensity() {
   }
 }
 
-/// The `NaN` the direct form would have silenced.
-///
-/// `gamma` and `lambda` of opposite sign make `z = √(v²γ/λ)` imaginary,
-/// and `v²(1−γ)` is a perfectly finite number at exactly those points —
-/// so without `diffusive_std`'s realness branch an inadmissible `gamma`
-/// would price as confidently as an admissible one. `new` documents that
-/// a `gamma` outside `[0, 1]` announces itself; this is the pin. The
-/// third case is the other half of that claim, where the announcement
-/// comes from the subtraction rather than from `z`.
+/// An inadmissible `(lambda, gamma)` in a literal that bypasses `new` prices NaN: `√(v²γ/λ)` or
+/// `√(v² − v²γ)` is not real there, where the direct `v²(1 − γ)` gives a finite number.
 #[test]
 fn an_inadmissible_gamma_still_announces_itself() {
   for &(lambda, gamma) in &[(0.5, -0.25), (-0.5, 0.4), (0.5, 1.5)] {
-    let m = Merton1976Pricer::new(0.2, lambda, gamma, 20, BsmCoc::Bsm1973);
+    let m = Merton1976Pricer {
+      v: 0.2,
+      lambda,
+      gamma,
+      m: 20,
+      b: BsmCoc::Bsm1973,
+    };
     assert!(
       m.diffusive_std().is_nan(),
       "lambda={lambda} gamma={gamma} diffusive_std {}",

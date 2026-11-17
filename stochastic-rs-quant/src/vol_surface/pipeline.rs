@@ -12,6 +12,7 @@ use super::implied::ImpliedVolSurface;
 use super::model_surface::ModelSurface;
 use super::ssvi::SsviSurface;
 use super::svi::SviRawParams;
+use crate::total_order::ascending;
 use crate::traits::ToModel;
 
 /// Result of the full vol-surface pipeline.
@@ -196,7 +197,7 @@ pub fn build_surface_from_iv(iv_surface: &ImpliedVolSurface) -> VolSurfaceResult
     .collect();
 
   // De-dupe & sort calendar k-grid for cheaper / deterministic checking.
-  calendar_ks.sort_by(|a, b| a.total_cmp(b));
+  calendar_ks.sort_by(ascending);
   calendar_ks.dedup_by(|a, b| (*a - *b).abs() < 1e-12);
 
   let calendar_spread_free = ssvi_surface.is_calendar_spread_free(&calendar_ks);

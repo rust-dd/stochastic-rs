@@ -12,6 +12,7 @@ use num_complex::Complex64;
 
 use super::cf_quadrature::integrate_to_convergence;
 use crate::OptionType;
+use crate::pricing::digital::vanilla_payoff;
 use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
@@ -65,12 +66,21 @@ impl HestonPricer {
     self.params
   }
 
-  /// Call and put price at one query point.
+  /// Call and put price at one query point, NaN for a negative or NaN `tau`; at `tau = 0` the
+  /// payoff, which the `P_j` integrals, undamped there, do not resolve.
   ///
   /// $$
   /// C=Se^{-q\tau}P_1-Ke^{-r\tau}P_2,\qquad P=C+Ke^{-r\tau}-Se^{-q\tau}
   /// $$
   pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+    if tau.is_nan() || tau < 0.0 {
+      return (f64::NAN, f64::NAN);
+    }
+    if tau == 0.0 {
+      let payoff =
+        |option_type| vanilla_payoff(option_type, s * (-q * tau).exp(), k * (-r * tau).exp());
+      return (payoff(OptionType::Call), payoff(OptionType::Put));
+    }
     let call = s * (-q * tau).exp() * self.p(1, tau, s, k, r, q)
       - k * (-r * tau).exp() * self.p(2, tau, s, k, r, q);
     let put = call + k * (-r * tau).exp() - s * (-q * tau).exp();
@@ -132,12 +142,8 @@ impl ModelPricer for HestonPricer {
 impl VanillaEuropeanCall for HestonPricer {}
 
 impl HestonPricer {
-  /// Returns analytic call and put derivatives with respect to initial variance.
-  ///
-  /// For each Heston probability, the derivative is evaluated under the
-  /// Fourier integral as `D_j f_j`. This avoids subtracting nearly equal option
-  /// prices in a finite difference. Put-call parity makes the two derivatives
-  /// identical when rates and dividend yield do not depend on initial variance.
+  /// `∂C/∂v₀ = ∂P/∂v₀` under the Fourier integral as `D_j f_j`, no finite difference; NaN for
+  /// `tau ≤ 0` or a NaN `tau`, as an expired option has a value and no sensitivity.
   pub fn call_put_initial_variance_vega(
     &self,
     s: f64,
@@ -146,6 +152,9 @@ impl HestonPricer {
     q: f64,
     tau: f64,
   ) -> (f64, f64) {
+    if tau.is_nan() || tau <= 0.0 {
+      return (f64::NAN, f64::NAN);
+    }
     let vega = s * (-q * tau).exp() * self.p_initial_variance_derivative(1, tau, s, k, r, q)
       - k * (-r * tau).exp() * self.p_initial_variance_derivative(2, tau, s, k, r, q);
     (vega, vega)

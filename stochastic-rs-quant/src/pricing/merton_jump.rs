@@ -95,16 +95,20 @@ enum TermRegime {
 }
 
 impl Merton1976Pricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// Panics if `v` is negative or `NaN`, or if the series length `m` is zero.
-  /// `lambda` and `gamma` are not validated. At zero intensity the model
-  /// reduces to Black-Scholes with volatility `v`.
+  /// Panics unless `v ≥ 0`, `lambda` is finite and `≥ 0`, `gamma ∈ [0, 1]` and `m ≥ 1`; at
+  /// `lambda = 0` the model is Black-Scholes at volatility `v`.
   pub fn new(v: f64, lambda: f64, gamma: f64, m: usize, b: BsmCoc) -> Self {
     assert!(
       v >= 0.0,
       "Merton1976Pricer::new: v must be a non-negative volatility (got {v})"
+    );
+    assert!(
+      lambda.is_finite() && lambda >= 0.0,
+      "lambda must satisfy `lambda.is_finite() && lambda >= 0.0`, got lambda = {lambda:?}"
+    );
+    assert!(
+      (0.0..=1.0).contains(&gamma),
+      "gamma must satisfy `(0.0..=1.0).contains(&gamma)`, got gamma = {gamma:?}"
     );
     assert!(
       m >= 1,
@@ -120,8 +124,11 @@ impl Merton1976Pricer {
   }
 
   /// Poisson-weighted series $\sum_{n=0}^{m-1} w_n \cdot V_{BS}(\sigma_n)$ with running-product
-  /// weights, so `m` may exceed the ≈ 21 terms an integer `n!` survives.
+  /// weights, so `m` may exceed the ≈ 21 terms an integer `n!` survives; the payoff at `tau = 0`.
   pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+    if tau == 0.0 {
+      return self.base_bsm().call_put(s, k, r, q, tau);
+    }
     let mut call = 0.0;
     let mut put = 0.0;
 
@@ -144,36 +151,8 @@ impl Merton1976Pricer {
     (self.v.powi(2) * self.gamma / self.lambda).sqrt()
   }
 
-  /// Diffusive volatility component: total variance minus the jump
-  /// variance rate $\lambda z^2$.
-  ///
-  /// $\lambda z^2$ is the only form in which the jump size enters the
-  /// model, and it is $v^2\gamma$ by construction — substitute
-  /// [`jump_size_std`](Self::jump_size_std)'s $z^2 = v^2\gamma/\lambda$
-  /// and the $\lambda$ cancels — so it is taken directly rather than by
-  /// squaring that method's `sqrt` back out. The round-trip was not
-  /// value-preserving: at the pure-jump corner `gamma == 1` it landed on
-  /// `d = 0` for `(v, lambda)` of `(0.5, 1)`, `(0.2, 1)`, `(0.3, 0.5)` and
-  /// `(0.2, 0.25)`, and one ulp *below* zero — a `NaN` — for `(0.2, 0.5)`
-  /// and `(0.25, 2)`. The same model priced or did not by rounding;
-  /// `the_pure_jump_corner_is_zero_for_every_intensity` is the pin.
-  ///
-  /// The two branches are the states where $\lambda z^2 = v^2\gamma$ is
-  /// *not* an identity, and in both the round-trip announced something the
-  /// bare $v^2(1-\gamma)$ would silence:
-  ///
-  /// - `lambda == 0` has no jump size to speak of, so
-  ///   [`jump_size_std`](Self::jump_size_std) answers `0` and the whole
-  ///   variance is diffusive: `d = v`, not `v√(1-γ)`. That second value is
-  ///   the `λ → 0⁺` *limit*, a different number, and
-  ///   `the_lambda_zero_limit_is_discontinuous_in_gamma` pins the gap.
-  /// - a `z` that is not a real number — $v^2\gamma/\lambda < 0$, which is
-  ///   every `gamma` and `lambda` of opposite sign — must stay `NaN`
-  ///   rather than become a finite $v^2(1-\gamma)$, since that is how a
-  ///   `gamma` outside `[0, 1]` announces itself as [`new`](Self::new)
-  ///   documents. Testing [`jump_size_std`](Self::jump_size_std)'s own
-  ///   output rather than re-deriving the condition keeps the `NaN` set
-  ///   identical to the round-trip's by construction.
+  /// `√(v² − λz²)` with `λz² = v²γ` taken directly, as squaring `jump_size_std` back rounds below 0
+  /// at `gamma = 1`; `v` at `lambda = 0`, NaN where `z` is not real, as in a literal past `new`.
   fn diffusive_std(&self) -> f64 {
     let jump_variance_rate = if self.lambda == 0.0 {
       0.0

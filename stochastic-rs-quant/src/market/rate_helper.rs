@@ -16,6 +16,7 @@ use chrono::NaiveDate;
 
 use super::handle::Handle;
 use super::quote::Quote;
+use crate::QuantError;
 use crate::calendar::BusinessDayConvention;
 use crate::calendar::Calendar;
 use crate::calendar::DayCountConvention;
@@ -25,6 +26,7 @@ use crate::curves::BootstrapInstrument;
 use crate::curves::DiscountCurve;
 use crate::curves::InterpolationMethod;
 use crate::curves::bootstrap;
+use crate::curves::bootstrap::finite_maturities;
 use crate::traits::RealExt;
 
 mod ois;
@@ -340,28 +342,20 @@ impl<T: RealExt> RateHelper<T> for FuturesRateHelper<T> {
   }
 }
 
-/// Build a discount curve from a slice of rate helpers.
-///
-/// Helpers whose quotes are invalid are silently skipped. The resulting
-/// `Vec` of [`BootstrapInstrument`]s is sorted internally by
-/// [`bootstrap()`](crate::curves::bootstrap::bootstrap).
-///
-/// **Design note (`&[&dyn RateHelper<T>]`):** the bootstrap input is
-/// intentionally heterogeneous — deposits, FRAs, futures, and swaps each
-/// implement [`RateHelper`] differently but must coexist in one slice for
-/// term-structure bootstrapping. A generic `[H: RateHelper<T>]` parameter
-/// would force one concrete helper type per call, defeating the purpose.
-/// The slice-of-trait-objects pattern is the canonical QuantLib /
-/// `RateHelper`-vector approach.
+/// [`bootstrap()`] over the quoted helpers, skipping the rest; `InvalidQuote` at a helper's own
+/// index for a non-finite maturity.
 pub fn build_curve<T: RealExt>(
   helpers: &[&dyn RateHelper<T>],
   valuation_date: NaiveDate,
   method: InterpolationMethod,
-) -> DiscountCurve<T> {
-  let instruments: Vec<BootstrapInstrument<T>> = helpers
-    .iter()
-    .filter_map(|h| h.to_instrument(valuation_date))
-    .collect();
+) -> Result<DiscountCurve<T>, QuantError> {
+  let mut instruments = Vec::with_capacity(helpers.len());
+  for (index, helper) in helpers.iter().enumerate() {
+    if let Some(instrument) = helper.to_instrument(valuation_date) {
+      finite_maturities([(index, instrument.maturity())])?;
+      instruments.push(instrument);
+    }
+  }
   bootstrap(&instruments, method)
 }
 
@@ -414,7 +408,7 @@ mod tests {
     );
 
     let helpers: Vec<&dyn RateHelper<f64>> = vec![&dep, &fra, &swap];
-    let curve = build_curve(&helpers, val_date, InterpolationMethod::LinearOnZeroRates);
+    let curve = build_curve(&helpers, val_date, InterpolationMethod::LinearOnZeroRates).unwrap();
     assert!(curve.len() >= 4);
     let df_short = curve.discount_factor(0.25);
     let df_long = curve.discount_factor(2.0);

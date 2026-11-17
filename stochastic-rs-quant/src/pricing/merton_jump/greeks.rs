@@ -128,6 +128,9 @@ impl Merton1976Pricer {
   /// in `r` and `τ` rather than as the number it evaluates to, so a
   /// non-finite rate still propagates.
   pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     self.greek_series(tau, |bsm| {
       match Merton1976Pricer::term_regime(bsm, s, k, r, q, tau) {
         TermRegime::AtTheForward => {
@@ -145,6 +148,9 @@ impl Merton1976Pricer {
   /// Gamma $\partial^2 V/\partial S^2$: a degenerate term contributes `+∞` at its forward, where
   /// `Γ` diverges like `1/σ`, and `0` away from it.
   pub fn gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     self.greek_series(tau, |bsm| {
       match Merton1976Pricer::term_regime(bsm, s, k, r, q, tau) {
         TermRegime::AtTheForward => {
@@ -166,6 +172,9 @@ impl Merton1976Pricer {
   /// carry factor, so it is the accessor that would catch a mix-up of the
   /// two.
   pub fn rho(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     self.greek_series(tau, |bsm| {
       match Merton1976Pricer::term_regime(bsm, s, k, r, q, tau) {
         TermRegime::AtTheForward => {
@@ -189,6 +198,9 @@ impl Merton1976Pricer {
   /// spread is linear in $S$ — while `delta`, `theta`, `rho` and `charm`
   /// each leave a surviving spread term and keep theirs.
   pub fn vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     if self.lambda <= 0.0 {
       return self.base_bsm().vega(s, k, r, q, tau);
     }
@@ -210,6 +222,9 @@ impl Merton1976Pricer {
   /// larger than `H_TAU`; the `λ ≤ 0` path delegates to [`BsmPricer`] and
   /// inherits its behaviour instead.
   pub fn theta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     if self.lambda <= 0.0 {
       return self.base_bsm().theta(s, k, r, q, tau, option_type);
     }
@@ -231,6 +246,9 @@ impl Merton1976Pricer {
   /// spread is linear in $S$ — while `delta`, `theta`, `rho` and `charm`
   /// each leave a surviving spread term and keep theirs.
   pub fn vanna(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     if self.lambda <= 0.0 {
       return self.base_bsm().vanna(s, k, r, q, tau);
     }
@@ -252,6 +270,9 @@ impl Merton1976Pricer {
   /// larger than `H_TAU`; the `λ ≤ 0` path delegates to [`BsmPricer`] and
   /// inherits its behaviour instead.
   pub fn charm(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     if self.lambda <= 0.0 {
       return self.base_bsm().charm(s, k, r, q, tau, option_type);
     }
@@ -276,6 +297,9 @@ impl Merton1976Pricer {
   /// spread is linear in $S$ — while `delta`, `theta`, `rho` and `charm`
   /// each leave a surviving spread term and keep theirs.
   pub fn volga(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     if self.lambda <= 0.0 {
       return self.base_bsm().vomma(s, k, r, q, tau);
     }
@@ -302,6 +326,9 @@ impl Merton1976Pricer {
   /// larger than `H_TAU`; the `λ ≤ 0` path delegates to [`BsmPricer`] and
   /// inherits its behaviour instead.
   pub fn veta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     if self.lambda <= 0.0 {
       return self.base_bsm().dvega_dtime(s, k, r, q, tau);
     }
@@ -326,6 +353,9 @@ impl Merton1976Pricer {
     tau: f64,
     option_type: OptionType,
   ) -> Greeks {
+    if tau == 0.0 {
+      return Greeks::nan();
+    }
     Greeks {
       delta: self.delta(s, k, r, q, tau, option_type),
       gamma: self.gamma(s, k, r, q, tau),
