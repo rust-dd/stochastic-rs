@@ -296,6 +296,38 @@ fn an_underflowing_autocorrelation_is_a_numerical_error() {
   );
 }
 
+/// For OU the two fits are one estimator, so a path the closed form refuses gets its `Err` here.
+#[test]
+fn the_ou_qmle_refuses_what_the_closed_form_refuses() {
+  let mut rounded = Array1::<f64>::zeros(12);
+  rounded[0] = 3.0;
+  for t in 1..12 {
+    rounded[t] = 0.37 * rounded[t - 1] + 1.1;
+  }
+  let cases = [
+    (
+      Array1::from(vec![0.0, 1.0, 1.5, 1.75, 1.875, 1.9375, 1.96875]),
+      "zero residual variance",
+    ),
+    (rounded, "zero residual variance"),
+    (
+      Array1::from_iter((0..12).map(|t| 1.1_f64.powi(t) + 0.01 * (t as f64).sin())),
+      "series without mean reversion",
+    ),
+    (Array1::from(vec![1.0, 0.7, 0.7, 0.7]), "constant series"),
+  ];
+  let dt = 1.0 / 252.0;
+  for (x, why) in cases {
+    let fit = fit_diffusion_qmle(x.view(), dt, DiffusionKind::OrnsteinUhlenbeck);
+    let refused = Err(StatsError::DegenerateData(why));
+    assert_eq!(fit.map(|f| (f.theta, f.sigma, f.converged)), refused);
+    assert_eq!(
+      fit_ou_mle(x.view(), dt).map(|f| (f.theta, f.sigma, f.converged)),
+      refused
+    );
+  }
+}
+
 /// A negative lag-1 autocorrelation is data, which the start's clamp to `[1e-4, 0.999]` takes.
 #[test]
 fn a_negative_autocorrelation_starts_at_the_clamp() {

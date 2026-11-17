@@ -165,8 +165,8 @@ pub(crate) fn quasi_log_likelihood(
   ll
 }
 
-/// Gaussian QMLE of a mean-reverting diffusion every `dt`; `Err` below 4 points, on one non-finite
-/// or (CIR) negative, a constant path or a non-finite start or optimum; panics unless `0 < dt < ∞`.
+/// Gaussian QMLE every `dt`; `Err` below 4 points, on one non-finite or (CIR) negative, a constant
+/// path, a non-finite start or optimum, an OU slope ≥ 1 or exact fit; panics unless `0 < dt < ∞`.
 pub fn fit_diffusion_qmle<T: FloatExt>(
   series: ArrayView1<T>,
   dt: f64,
@@ -181,6 +181,11 @@ pub fn fit_diffusion_qmle<T: FloatExt>(
     -quasi_log_likelihood(&x, dt, kind, theta, mu, sigma)
   };
   let start = ar1_start(&x, dt, kind, carrier)?;
+  if kind == DiffusionKind::OrnsteinUhlenbeck {
+    // The OU quasi-likelihood is the exact one, so without mean reversion it peaks on a ridge in
+    // the level and on an exact fit it grows without bound as `σ` falls.
+    reject_exact_fit(&x[1..], &Ar1::of(&x)?.residuals, 1.0)?;
+  }
 
   let (p, iterations, converged) = nelder_mead(start, 2000, neg_ll);
   let [theta, mu, sigma] = carrier.params(p);
@@ -343,32 +348,12 @@ pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit
     .collect::<Vec<f64>>();
   // Two coefficients fit two transitions exactly, leaving the residual variance nothing to read.
   validate(&x, 4)?;
-  let m = x.len() - 1;
-  let (lagged, next) = (&x[..m], &x[1..]);
-  // The regressor's spread is the slope's denominator, and a constant regressand leaves the slope
-  // nothing but rounding.
-  reject_constant(lagged, "constant series")?;
-  reject_constant(next, "constant series")?;
-  let mf = m as f64;
-
-  // About the means, as raw sums cancel where the level dwarfs the spread.
-  let lagged_mean = lagged.iter().sum::<f64>() / mf;
-  let next_mean = next.iter().sum::<f64>() / mf;
-  let (mut sxy, mut sxx) = (0.0, 0.0);
-  for (u, v) in lagged.iter().zip(next) {
-    let d = u - lagged_mean;
-    sxy += d * (v - next_mean);
-    sxx += d * d;
-  }
-  let beta = sxy / sxx;
-  if !beta.is_finite() {
-    return Err(StatsError::Numerical {
-      stage: "ar(1) slope",
-    });
-  }
-  if beta >= 1.0 {
-    return Err(StatsError::DegenerateData("series without mean reversion"));
-  }
+  let Ar1 {
+    lagged_mean,
+    next_mean,
+    beta,
+    residuals,
+  } = Ar1::of(&x)?;
   if beta <= 0.0 {
     return Err(StatsError::DegenerateData(
       "series without positive autocorrelation",
@@ -377,12 +362,8 @@ pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit
   let mu = (next_mean - beta * lagged_mean) / (1.0 - beta);
   let theta = -beta.ln() / dt;
 
-  let residuals = lagged
-    .iter()
-    .zip(next)
-    .map(|(u, v)| (v - next_mean) - beta * (u - lagged_mean))
-    .collect::<Vec<f64>>();
-  reject_exact_fit(next, &residuals, 1.0)?;
+  reject_exact_fit(&x[1..], &residuals, 1.0)?;
+  let mf = residuals.len() as f64;
   let resid_var = residuals.iter().map(|r| r * r).sum::<f64>() / mf;
   let sigma2 = resid_var * 2.0 * theta / (1.0 - beta * beta);
   if !sigma2.is_finite() || sigma2 <= 0.0 {
@@ -405,6 +386,58 @@ pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit
     iterations: 0,
     converged: true,
   })
+}
+
+/// `x[1..]` regressed on `x[..n-1]` about their means, the closed form's slope and residuals.
+struct Ar1 {
+  lagged_mean: f64,
+  next_mean: f64,
+  beta: f64,
+  residuals: Vec<f64>,
+}
+
+impl Ar1 {
+  /// The regression of `x`; `Err` on a constant `x[..n-1]` or `x[1..]`, or a slope not finite or of
+  /// at least 1, which no mean reversion fits.
+  fn of(x: &[f64]) -> Result<Self, StatsError> {
+    let m = x.len() - 1;
+    let (lagged, next) = (&x[..m], &x[1..]);
+    // The regressor's spread is the slope's denominator, and a constant regressand leaves the slope
+    // nothing but rounding.
+    reject_constant(lagged, "constant series")?;
+    reject_constant(next, "constant series")?;
+    let mf = m as f64;
+
+    // About the means, as raw sums cancel where the level dwarfs the spread.
+    let lagged_mean = lagged.iter().sum::<f64>() / mf;
+    let next_mean = next.iter().sum::<f64>() / mf;
+    let (mut sxy, mut sxx) = (0.0, 0.0);
+    for (u, v) in lagged.iter().zip(next) {
+      let d = u - lagged_mean;
+      sxy += d * (v - next_mean);
+      sxx += d * d;
+    }
+    let beta = sxy / sxx;
+    if !beta.is_finite() {
+      return Err(StatsError::Numerical {
+        stage: "ar(1) slope",
+      });
+    }
+    if beta >= 1.0 {
+      return Err(StatsError::DegenerateData("series without mean reversion"));
+    }
+    let residuals = lagged
+      .iter()
+      .zip(next)
+      .map(|(u, v)| (v - next_mean) - beta * (u - lagged_mean))
+      .collect::<Vec<f64>>();
+    Ok(Self {
+      lagged_mean,
+      next_mean,
+      beta,
+      residuals,
+    })
+  }
 }
 
 /// The sampling-interval precondition the diffusion fitters share.
