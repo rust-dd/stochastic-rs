@@ -82,8 +82,8 @@ fn a_maturity_of_seconds_prices_at_its_black_scholes_limit() {
   }
 }
 
-/// `(v0, κ, θ, σ, ρ)`, then `(τ, s, call)` at `K = 100`, `r = 0.05`, `q = 0` by Lewis quadrature of
-/// the chf at 30 digits (mpmath): a maturity of minutes, 42 standard deviations and 2 from the money.
+/// `(v0, κ, θ, σ, ρ)`, `τ`, then `(s, call)` at `K = 100`, `r = 0.05`, `q = 0` by Lewis quadrature
+/// at 30 digits (mpmath): a maturity of minutes, 42 standard deviations and 2 from the money.
 const MINUTES: [(HestonParams, f64, [(f64, f64); 2]); 4] = [
   (
     P,
