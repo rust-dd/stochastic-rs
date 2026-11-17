@@ -580,7 +580,7 @@ pub enum EulerSpec<T: FloatExt> {
   /// A drift that is entirely the curve, which is Ho-Lee.
   CurveDrift { sigma: T },
   /// The exact Ornstein-Uhlenbeck transition in log space: Black-Karasinski.
-  LogMeanReverting { decay: T, a: T, sigma_eff: T },
+  LogMeanReverting { decay: T, pull: T, sigma_eff: T },
   /// A square-root diffusion shifted by a curve: CIR++.
   ShiftedSquareRoot { theta: T, mu: T, sigma: T },
   /// [`ShiftedSquareRoot`](EulerSpec::ShiftedSquareRoot) reflected at zero.
@@ -1313,9 +1313,12 @@ impl<T: FloatExt> EulerSpec<T> {
       EulerSpec::CurveDrift { sigma } => (Family::CurveDrift.code(), pad([sigma])),
       EulerSpec::LogMeanReverting {
         decay,
-        a,
+        pull,
         sigma_eff,
-      } => (Family::LogMeanReverting.code(), pad([decay, a, sigma_eff])),
+      } => (
+        Family::LogMeanReverting.code(),
+        pad([decay, pull, sigma_eff]),
+      ),
       EulerSpec::ShiftedSquareRoot { theta, mu, sigma } => {
         (Family::ShiftedSquareRoot.code(), pad([theta, mu, sigma]))
       }

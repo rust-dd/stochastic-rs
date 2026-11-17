@@ -181,14 +181,12 @@ macro_rules! euler_systems {
     step { x + $ct * $dt + sigma * dz }
     report { x },
 
-  /// The exact one-step Ornstein–Uhlenbeck transition in log space, reported
-  /// exponentiated: Black-Karasinski. `decay` is `exp(−a·dt)` and the noise
-  /// scale folds the exact transition standard deviation, both of which
-  /// depend on `dt` alone.
-  47 => LogMeanReverting { decay, a, sigma_eff }
+  /// Black-Karasinski's exact OU step in log space, reported exponentiated: `decay = e^{−a dt}`,
+  /// `pull` the host's `(1 − decay)/a` (`dt` at `a = 0`), the noise scale the step's deviation.
+  47 => LogMeanReverting { decay, pull, sigma_eff }
     state (y)
     noise (dz)
-    step { y * decay + ($ct / a) * negate(decay - lit(1.0)) + sigma_eff * dz }
+    step { y * decay + $ct * pull + sigma_eff * dz }
     report { exp(y) },
 
   /// A square-root diffusion shifted by a deterministic curve, truncated at

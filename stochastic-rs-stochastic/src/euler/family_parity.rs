@@ -1117,7 +1117,7 @@ fn every_family() -> Vec<Probe> {
     p(
       EulerSpec::LogMeanReverting {
         decay: 0.99,
-        a: 0.5,
+        pull: 0.02,
         sigma_eff: 0.02,
       },
       (0.03_f32).ln(),
