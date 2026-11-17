@@ -9,6 +9,7 @@ use std::f64::consts::FRAC_1_PI;
 use implied_vol::DefaultSpecialFn;
 use implied_vol::ImpliedBlackVolatility;
 use num_complex::Complex64;
+use stochastic_rs_distributions::special::norm_cdf;
 
 use super::cf_quadrature::integrate_to_convergence;
 use crate::OptionType;
@@ -21,8 +22,11 @@ mod params;
 
 pub use params::HestonParams;
 
-/// Where the `P_j` integrals start: the Fourier pricers' lower limit.
+/// Where the `P_j` integrals start: Gil–Pelaez's lower limit.
 const LOWER_LIMIT: f64 = 1e-8;
+/// The control variate leaves an integrand far below `P_j`'s own, whose panels pass a `1e-8` target
+/// early: two bumped prices then differed by 7.5e-9 on a spot of 720, and by 3e-12 at `1e-10`.
+const REST_TOLERANCE: f64 = 1e-10;
 
 /// Heston (1993) semi-closed-form pricer; the query `(s, k, r, q, τ)` travels as arguments, so one
 /// instance prices a whole strike/maturity grid.
@@ -205,11 +209,34 @@ impl HestonPricer {
     ((big_c + big_d * v0 + i * phi * s.ln()).exp(), big_d)
   }
 
-  pub(self) fn re(&self, j: u8, tau: f64, s: f64, k: f64, r: f64, q: f64) -> impl Fn(f64) -> f64 {
+  /// `E_j[∫₀^τ v]` under `P_j`'s mean reversion `b_j`: the variance of its Gaussian control variate.
+  fn mean_integrated_variance(&self, j: u8, tau: f64) -> f64 {
+    let x = self.b(j) * tau;
+    let (level, slope) = if x.abs() < 1e-4 {
+      (1.0 - 0.5 * x, 0.5 - x / 6.0)
+    } else {
+      let level = -(-x).exp_m1() / x;
+      (level, (1.0 - level) / x)
+    };
+    tau * (self.params.v0 * level + self.params.kappa * self.params.theta * tau * slope)
+  }
+
+  pub(self) fn re(
+    &self,
+    j: u8,
+    tau: f64,
+    (s, k, r, q): (f64, f64, f64, f64),
+    control_variance: Option<f64>,
+  ) -> impl Fn(f64) -> f64 {
     let self_ = *self;
+    let ln_forward = s.ln() + (r - q) * tau;
     move |phi: f64| -> f64 {
+      let i_phi = Complex64::i() * phi;
+      let gaussian = control_variance.map_or(Complex64::ZERO, |w| {
+        (i_phi * ln_forward + (self_.u(j) * i_phi - 0.5 * phi * phi) * w).exp()
+      });
       let (f, _) = self_.f_and_d(j, phi, tau, s, r, q);
-      (f * (-Complex64::i() * phi * k.ln()).exp() / (Complex64::i() * phi)).re
+      ((f - gaussian) * (-i_phi * k.ln()).exp() / i_phi).re
     }
   }
 
@@ -229,10 +256,16 @@ impl HestonPricer {
     }
   }
 
-  /// Heston (1993), Eq. (18); the integrand is bounded at `φ → 0`, so the head below
-  /// `LOWER_LIMIT` is worth under `2e-9`.
+  /// Heston (1993)'s `P_j` less a Gaussian of variance `E_j[∫v]`, whose share is `N(d_j)`: the rest
+  /// vanishes at `φ → 0`, and nearly everywhere at a `τ` whose decay outlasts the panels.
   pub(self) fn p(&self, j: u8, tau: f64, s: f64, k: f64, r: f64, q: f64) -> f64 {
-    0.5 + FRAC_1_PI * integrate_to_convergence(self.re(j, tau, s, k, r, q), LOWER_LIMIT, 1e-8)
+    let variance =
+      Some(self.mean_integrated_variance(j, tau)).filter(|w| w.is_finite() && *w > 0.0);
+    let gaussian_share = variance.map_or(0.5, |w| {
+      norm_cdf(((s / k).ln() + (r - q) * tau + self.u(j) * w) / w.sqrt())
+    });
+    let rest = self.re(j, tau, (s, k, r, q), variance);
+    gaussian_share + FRAC_1_PI * integrate_to_convergence(rest, LOWER_LIMIT, REST_TOLERANCE)
   }
 
   fn p_initial_variance_derivative(&self, j: u8, tau: f64, s: f64, k: f64, r: f64, q: f64) -> f64 {

@@ -1,6 +1,8 @@
-//! The Heston `P_j` integrals start where the Fourier pricers start, so a short-dated deep
-//! out-of-the-money call stays within the quadrature tolerance of zero.
+//! The Heston `P_j` integrals at short maturities: no negative deep out-of-the-money call, and the
+//! Black–Scholes limit where the integrand outlasts the quadrature.
 
+use stochastic_rs_quant::pricing::bsm::BsmCoc;
+use stochastic_rs_quant::pricing::bsm::BsmPricer;
 use stochastic_rs_quant::pricing::fourier::GilPelaezPricer;
 use stochastic_rs_quant::pricing::fourier::HestonFourier;
 use stochastic_rs_quant::pricing::heston::HestonParams;
@@ -42,7 +44,7 @@ fn the_short_maturity_surface_has_no_negative_price_and_inverts_every_time_value
   for (j, &tau) in maturities.iter().enumerate() {
     for (i, &k) in strikes.iter().enumerate() {
       let price = pricer.price_call(100.0, k, 0.05, 0.0, tau);
-      assert!(price > -2e-7, "k = {k}, tau = {tau}: {price}");
+      assert!(price > -1e-8, "k = {k}, tau = {tau}: {price}");
       let time_value = price - (100.0 - k * (-0.05 * tau).exp()).max(0.0);
       let vol = surface.ivs[[j, i]];
       assert!(
@@ -50,5 +52,56 @@ fn the_short_maturity_surface_has_no_negative_price_and_inverts_every_time_value
         "k = {k}, tau = {tau}: {price} has no vol"
       );
     }
+  }
+}
+
+/// Below `τ ≈ 1e-5` the integrand outlasts the quadrature's panels and the Gaussian share carries
+/// the price: to 1.4e-6 at worst, near `τ = 1.6e-6`, and to rounding as `τ → 0`.
+#[test]
+fn a_maturity_of_seconds_prices_at_its_black_scholes_limit() {
+  let pricer = HestonPricer::new(P);
+  let bsm = BsmPricer::new(0.2, BsmCoc::Merton1973);
+  for i in 0..=40 {
+    let tau = 10f64.powf(-12.0 + 0.2 * f64::from(i));
+    let tol = if tau < 1e-8 { 1e-8 } else { 2e-6 };
+    for s in [90.0, 110.0] {
+      let got = pricer.price_call(s, 100.0, 0.05, 0.0, tau);
+      let intrinsic = (s - 100.0 * (-0.05 * tau).exp()).max(0.0);
+      assert!(
+        (got - intrinsic).abs() < tol,
+        "s = {s}, tau = {tau}: {got} vs {intrinsic}"
+      );
+    }
+    if tau < 1e-8 {
+      let got = pricer.price_call(100.0, 100.0, 0.05, 0.0, tau);
+      let want = bsm.price_call(100.0, 100.0, 0.05, 0.0, tau);
+      assert!(
+        (got - want).abs() < 1e-8,
+        "at the money, tau = {tau}: {got} vs {want}"
+      );
+    }
+  }
+}
+
+/// Calls at `K = 100`, `r = 0.05`, `q = 0` by Lewis quadrature of the chf at 30 digits (mpmath).
+#[test]
+fn short_maturities_match_the_converged_integral() {
+  let pricer = HestonPricer::new(P);
+  for (tau, s, want) in [
+    (1e-4, 110.0, 10.000499998750002),
+    (1e-4, 100.0, 0.08003814985406024),
+    (1e-4, 90.0, 0.0),
+    (1e-3, 110.0, 10.004999875002083),
+    (1e-3, 100.0, 0.254803539033173),
+    (1e-3, 90.0, 0.0),
+    (1e-2, 110.0, 10.049992063341942),
+    (1e-2, 100.0, 0.8225772944091662),
+    (1e-2, 90.0, 1.6619165947277462e-10),
+  ] {
+    let got = pricer.price_call(s, 100.0, 0.05, 0.0, tau);
+    assert!(
+      (got - want).abs() < 1e-8,
+      "s = {s}, tau = {tau}: {got} vs {want}"
+    );
   }
 }

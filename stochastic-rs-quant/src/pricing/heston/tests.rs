@@ -32,19 +32,20 @@ fn short_dated_matches_converged_reference() {
   for (v0, k, sigma, tau, expected) in cases {
     let c = price(v0, k, sigma, tau);
     assert!(
-      (c - expected).abs() < 1e-6,
+      (c - expected).abs() < 1e-9,
       "Heston call at v0={v0}, K={k}, σ={sigma}, τ={tau}: got {c}, converged {expected}"
     );
   }
 }
 
-/// `HestonPricer` applies no floor, so a truncated integral shows as a negative price here.
+/// `HestonPricer` applies no floor, so a truncated integral shows as a negative price here; the
+/// exact calls are `8.2e-14` and `9.89e-9`.
 #[test]
 fn deep_otm_short_dated_stays_within_the_quadrature_tolerance_of_zero() {
   for (v0, k, sigma, tau) in [(0.04, 150.0, 0.50, 0.10), (0.04, 110.0, 0.30, 0.01)] {
     let c = price(v0, k, sigma, tau);
     assert!(
-      c > -1e-7 && c < 1e-2,
+      c > -1e-8 && c < 1e-7,
       "deep-OTM call at K={k}, τ={tau}: {c}"
     );
   }
@@ -416,14 +417,14 @@ fn heston_model_pricer_matches_pre_refactor_goldens() {
   let ot = OptionType::Call;
 
   let (call, put) = m.call_put(s, k, r, q, tau);
-  assert!((call - 5.229927042335028).abs() < TOL, "call {call}");
-  assert!((put - 7.854146942715062).abs() < TOL, "put {put}");
+  assert!((call - 5.229927051858368).abs() < TOL, "call {call}");
+  assert!((put - 7.854146952238395).abs() < TOL, "put {put}");
   assert_eq!(m.price_call(s, k, r, q, tau), call);
   assert_eq!(m.price_put(s, k, r, q, tau), put);
 
   let iv = m.implied_volatility(8.0, s, k, r, q, tau, ot);
   assert!((iv - 0.26891374755614555).abs() < TOL, "iv {iv}");
-  // The same integral from `phi = 0`, 30 digits by mpmath, is `44.2102926490`.
+  // The vega integral starts at `phi = 1e-8`; from 0, 30 digits by mpmath, it is `44.2102926490`.
   let v0_vega = m.call_put_initial_variance_vega(s, k, r, q, tau).0;
   assert!(
     (v0_vega - 44.210292529055565).abs() < TOL,
@@ -431,13 +432,13 @@ fn heston_model_pricer_matches_pre_refactor_goldens() {
   );
 
   let want = [
-    0.5179825270175797,
-    0.025354656116860497,
+    0.5179825268950111,
+    0.025354656330023317,
     17.684117011622227,
-    -5.4901985841127035,
-    34.92624531418187,
+    -5.4901985947708445,
+    34.926245297484115,
     0.1873979818161331,
-    -0.13335180071294417,
+    -0.13335176518580738,
     45.78517450487997,
     2.628564242854736,
   ];
