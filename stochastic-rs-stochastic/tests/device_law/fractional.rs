@@ -204,12 +204,8 @@ fn fractional_vasicek_agrees_with_the_cpu_law() {
 /// exactly the correlation.
 #[test]
 fn correlated_fbm_agrees_with_the_cpu_law() {
-  // Horizon 4 rather than 1: at `t = 1` the terminal spread of fBm is
-  // `t^H = 1` and of Brownian motion `sqrt(t) = 1`, so a launch that read a
-  // hashed Gaussian instead of the fractional stream would pass. At 4 they
-  // are 2.64 and 2.00. The path count is raised with it because the
-  // correlation estimator's standard error at `M` paths is a third of the
-  // tolerance, which is too thin to call an agreement.
+  // At t = 4, not 1, fBm's terminal spread t^H = 2.64 parts from Brownian motion's 2.00, so a
+  // launch reading its own normals for the fGN stream fails; 6·M paths tighten the correlation.
   const PATHS: usize = 6 * M;
   let build = || Cfbms::<f32, _>::new(0.7, 0.4, N, Some(4.0), Deterministic::new(23));
   let device = build().on::<Device>().sample_par(PATHS);

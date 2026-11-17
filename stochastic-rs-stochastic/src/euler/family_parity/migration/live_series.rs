@@ -86,8 +86,8 @@ fn words(path: usize, site: u32, term: u32, seed: u64) -> [u32; 4] {
   philox::philox4x32_10([path as u32, 0, site, term], philox::key(seed))
 }
 
-/// The reference keeps no indexed arrival cache: it accumulates the clock
-/// once and adds each term directly to the cell identified by its own hash.
+/// The reference keeps no indexed arrival cache: it accumulates the clock once and adds each term
+/// directly to the cell its own Philox counter draws.
 fn reference(paths: &Array3<f32>, first: usize, seed: u64) -> (Array3<f32>, Array3<f32>) {
   use crate::euler::philox::{SITE_SERIES, SITE_SERIES_MARKS, SITE_SERIES_TIME, u01_f32};
   use crate::euler::tests::philox::exp1_f32;

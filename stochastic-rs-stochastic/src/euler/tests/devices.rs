@@ -111,13 +111,8 @@ fn metal_native_chunks_are_bit_identical_to_one_launch() {
   assert_eq!(mapped, whole.iter().map(|p| p[252]).collect::<Vec<_>>());
 }
 
-/// The chunk-invariance the engine promises, for the fractional launches
-/// rather than the hashed ones. A Gaussian family hashes its noise from
-/// `(first_path + path, step, seed)` and so is chunk-invariant by
-/// construction; a fractional one draws from a pipeline whose counter the
-/// launch has to advance itself, and a two-stream launch has to advance it
-/// by `streams` rows a path. Both are places a batch can silently repeat or
-/// overlap its own noise, which no statistic of a single batch reveals.
+/// The kernel's own draws are chunk-invariant by their Philox counters; a fractional launch moves
+/// its fGN counter itself, `streams` rows a path, and a slip there shows in no one-batch statistic.
 #[cfg(metal_backend)]
 #[test]
 fn metal_fractional_chunks_are_bit_identical_to_one_launch() {
@@ -390,9 +385,8 @@ fn cuda_backend_matches_the_moments() {
   gbm_moments_hold::<f32, crate::device::Cuda>("Cuda f32");
   cir_stays_nonnegative::<f64, crate::device::Cuda>("Cuda f64");
   cir_stays_nonnegative::<f32, crate::device::Cuda>("Cuda f32");
-  // The f32 and f64 kernels draw the same uniforms (one integer hash) and
-  // differ only by float rounding, so the same process on the same grid
-  // agrees across the two precisions to well under 1e-3 relative.
+  // The two precisions read the same Philox words, an f32 draw the f64 one truncated, so the same
+  // process on the same grid agrees across them to well under 1e-3 relative.
   let single = gbm::<f32>(5).on::<crate::device::Cuda>().sample_par(4);
   let double = gbm::<f64>(5).on::<crate::device::Cuda>().sample_par(4);
   assert_eq!(single.len(), double.len());

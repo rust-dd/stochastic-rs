@@ -1,5 +1,5 @@
 //! Philox-4x32-10 and the draws on it in CUDA C, word for word the generator of `euler::philox`.
-//! Salmon, Moraes, Dror & Shaw (2011), "Parallel random numbers: as easy as 1, 2, 3", SC'11.
+//! Reference: Salmon, J. K., Moraes, M. A., Dror, R. O., Shaw, D. E. (2011), "Parallel random numbers: as easy as 1, 2, 3", SC'11, DOI 10.1145/2063384.2063405
 
 use crate::euler::philox;
 

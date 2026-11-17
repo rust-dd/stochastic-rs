@@ -671,11 +671,8 @@ fn hawkes_step_is_the_dassios_zhao_recursion() {
   assert!((next[1] - (s * (-beta * s2).exp() + alpha)).abs() < 1e-12);
 }
 
-/// Two targets with excess intensities and the baselines together: the step
-/// takes the earliest of the three exact clocks, marks its component, and
-/// excites both targets from that component's column of `α`. The noise
-/// components enter as uniforms: half the sum of two squared normals is a
-/// unit exponential, one minus its negative exponential a uniform.
+/// Two targets and the baselines: the step takes the earliest of the three exact clocks, marks its
+/// component and excites both targets from that column of `α`.
 #[test]
 fn bivariate_hawkes_step_is_the_superposition_of_exact_clocks() {
   let params = [1.0_f64, 0.7, 0.3, 0.2, 0.1, 0.4, 1.5, 2.0];

@@ -557,10 +557,8 @@ impl EulerCoefficients<f32> for Probe {
     })
   }
 
-  /// Every probe takes jumps, so the count's own hash stream runs on both
-  /// kernels whether or not the family under test reads it.
-  /// A series family draws the probes' fixed handful of terms per path; the
-  /// rest draw none.
+  /// Every probe takes jumps, so the count's Philox draws run on both kernels whether or not the
+  /// family reads them; a series family draws the probes' fixed handful of terms a path.
   fn series_terms(&self) -> Option<u32> {
     let (code, _) = self.spec.encode();
     super::families::Family::from_code(code)

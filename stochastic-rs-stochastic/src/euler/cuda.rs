@@ -741,14 +741,8 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
     if m <= rows {
       return self.euler_kernel(process, 0, m, seed);
     }
-    // The pipelined batch hashes its own Gaussian increments and knows
-    // nothing of a fractional pipeline or a Markov lift, so a process with
-    // either goes chunk by chunk through the single launch instead, which
-    // runs the pipeline at the right row offset for each chunk. Sending it
-    // through the pipeline would silently step Brownian motion in place of
-    // the fractional or rough one. The history, series and table blocks live
-    // in the kernel's own per-path arrays and travel as launch scalars, so
-    // they ride the pipeline unchanged.
+    // The pipelined batch draws its own normals and runs no fGN pipeline or lift, so it would step
+    // Brownian motion in their place: such a process takes the single launch chunk by chunk.
     if process.fgn_spec().is_some() || process.lift_spec().is_some() {
       let mut out = Array2::<T>::zeros((m, n));
       // Through `over_chunks`, not a plain loop: a chunk that runs the card

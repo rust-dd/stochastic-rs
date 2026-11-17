@@ -1,6 +1,6 @@
 //! Philox-4x32-10, its key, its uniform maps and the counter sites of the Euler kernels; the Metal
 //! kernel crate includes this file, so it takes no `std` and no transcendental.
-//! Salmon, Moraes, Dror & Shaw (2011), "Parallel random numbers: as easy as 1, 2, 3", SC'11.
+//! Reference: Salmon, J. K., Moraes, M. A., Dror, R. O., Shaw, D. E. (2011), "Parallel random numbers: as easy as 1, 2, 3", SC'11, DOI 10.1145/2063384.2063405
 
 /// Normal noise, one site per component (`+ k`, `k < 4`); the counter is `(path, step, site, 0)`.
 pub const SITE_NOISE: u32 = 0;

@@ -349,9 +349,8 @@ fn hjm_agrees_with_the_cpu_law() {
       &format!("HJM {name} terminal spread"),
     );
   }
-  // The three rows take three independent shocks, so their terminal values
-  // are uncorrelated. A kernel feeding one hashed component to every row
-  // keeps each marginal above exactly right and fails only here.
+  // The three rows take independent shocks, so their terminals are uncorrelated; a kernel feeding
+  // one noise component to every row keeps each marginal right and fails only here.
   let row_corr = |paths: &[[Array1<f32>; 3]], a: usize, b: usize| {
     let last = paths[0][a].len() - 1;
     let (ma, mb) = (row_mean(paths, a), row_mean(paths, b));
