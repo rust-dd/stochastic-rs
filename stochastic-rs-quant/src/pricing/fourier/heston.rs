@@ -7,8 +7,8 @@ use super::FourierModelExt;
 use super::heston_cumulants;
 use crate::pricing::heston::HestonParams;
 
-/// One Heston factor's `(C, D)` at `xi`, `chf = exp(C + D·v0)`, in the Little-Trap form
-/// `g̃ = 1/g`, `exp(−d·t)`, which stays on the principal log branch at large τ and `|ρ| → 1`.
+/// One Heston factor's `(C, D)` at `xi`, `chf = exp(C + D·v0)`: the Little-Trap form with `g̃`
+/// multiplied out by its denominator `κ − iρσξ + d`, which is 0 at `ξ = −i` when `ρσ > κ`.
 /// Albrecher, Mayer, Schoutens & Tistaert (2007), "The Little Heston Trap", Wilmott, 83–92.
 pub(crate) fn factor_cd(p: &HestonParams, t: f64, xi: Complex64) -> (Complex64, Complex64) {
   let HestonParams {
@@ -20,15 +20,20 @@ pub(crate) fn factor_cd(p: &HestonParams, t: f64, xi: Complex64) -> (Complex64, 
   } = *p;
   let i = Complex64::i();
   let sigma2 = sigma * sigma;
-  let rsi = rho * sigma * i;
+  let beta = kappa - rho * sigma * i * xi;
+  let moment = i * xi + xi * xi;
 
-  let d = ((kappa - rsi * xi).powi(2) + sigma2 * (i * xi + xi * xi)).sqrt();
-  let g = (kappa - rsi * xi - d) / (kappa - rsi * xi + d);
+  let d = (beta * beta + sigma2 * moment).sqrt();
   let exp_dt = (-d * t).exp();
+  let decay = if d == Complex64::ZERO {
+    Complex64::from(t)
+  } else {
+    (1.0 - exp_dt) / d
+  };
+  let denom = beta * decay + 1.0 + exp_dt;
 
-  let c_val = (kappa * theta / sigma2)
-    * ((kappa - rsi * xi - d) * t - 2.0 * ((1.0 - g * exp_dt) / (1.0 - g)).ln());
-  let d_val = ((kappa - rsi * xi - d) / sigma2) * (1.0 - exp_dt) / (1.0 - g * exp_dt);
+  let c_val = (kappa * theta / sigma2) * ((beta - d) * t - 2.0 * (0.5 * denom).ln());
+  let d_val = -moment * decay / denom;
 
   (c_val, d_val)
 }

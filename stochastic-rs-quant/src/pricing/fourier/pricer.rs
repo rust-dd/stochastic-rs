@@ -261,17 +261,15 @@ impl GilPelaezPricer {
     let ln_kf = (k / s).ln() - (r - q) * t;
 
     let i_unit = Complex64::i();
+    let phi_neg_i = model.chf(t, Complex64::new(0.0, -1.0));
+    let no_share_measure = phi_neg_i.norm() < 1e-30;
 
     let integrand_p1 = |u: f64| -> f64 {
-      if u.abs() < 1e-12 {
+      if u.abs() < 1e-12 || no_share_measure {
         return 0.0;
       }
       let xi = Complex64::new(u, -1.0);
       let phi = model.chf(t, xi);
-      let phi_neg_i = model.chf(t, Complex64::new(0.0, -1.0));
-      if phi_neg_i.norm() < 1e-30 {
-        return 0.0;
-      }
       let kernel = (-i_unit * u * ln_kf).exp() / (i_unit * u);
       (kernel * phi / phi_neg_i).re
     };
@@ -326,7 +324,7 @@ impl LewisPricer {
       (kernel * phi).re
     };
 
-    let integral = integrate_to_convergence(integrand, 1e-8, 1e-8);
+    let integral = integrate_to_convergence(integrand, 0.0, 1e-8);
 
     let call = s * disc * fwd_factor - sqrt_sk * disc * FRAC_1_PI * integral;
     floor_price(call)
