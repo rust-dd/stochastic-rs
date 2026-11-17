@@ -265,11 +265,13 @@ PyO3 `#[pyclass]` wrappers default to `Send + Sync`. For `unsendable` types
 handles), add `unsendable`:
 
 ```rust
-#[pyclass(name = "RBergomiCalibrator", unsendable)]
+#[pyclass(name = "Xyz", unsendable)] // its inner type holds an Rc<RefCell<…>>
 ```
 
 Forgetting `unsendable` on a non-`Send` type triggers a compile error
-("the trait `Send` is not implemented for `Rc<...>`").
+("the trait `Send` is not implemented for `Rc<...>`"). Every quant calibrator is
+`Send + Sync` (`stochastic-rs-quant/tests/calibration_errors.rs` asserts it), so
+its wrapper needs no `unsendable`.
 
 ### 5.2. Numpy interop
 

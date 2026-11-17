@@ -139,7 +139,7 @@ pub trait CalibrationResult {
 }
 ```
 
-`calibrate(None)` lets the calibrator pick its own start, and `calibrate(Some(p))` starts from a value of the type the fit returns. Every quant calibrator returns a `Calibrated<P>`: the parameters (`params`), the loss breakdown, whether the optimiser converged, its iteration count and stop message, the worst repricing error and, under `CalibrationOptions::with_record_history(true)`, the start and each accepted iterate (`history()`). Its error type is `QuantError`, and a fit that does not converge is `Ok` with `converged` false. The [Quant catalog](/docs/quant) lists the calibrators.
+`calibrate(None)` lets the calibrator pick its own start, and `calibrate(Some(p))` starts from a value of the type the fit returns. Every quant calibrator returns a `Calibrated<P, D>`: the parameters (`params`), the loss breakdown, whether the optimiser converged on its own criterion (a cap is not a convergence) and, where the optimiser reports them, its iterations, stop message and worst error and, under `CalibrationOptions::with_record_history(true)`, the start and each accepted iterate (`history()`). Its error type is `QuantError`, a fit that does not converge is `Ok` with `converged` false, and a fit answers an option it cannot read with `Unsupported`. The [Quant catalog](/docs/quant) lists the calibrators.
 
 ## `GreeksExt` and the `Greeks` aggregator
 

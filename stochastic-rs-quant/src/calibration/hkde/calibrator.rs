@@ -73,8 +73,8 @@ impl crate::traits::Calibrator for HkdeCalibrator {
   type Output = Calibrated<HkdeParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`; `InvalidInput` unless the one used passes `HkdeFourier::new`,
-  /// and `InvalidQuote` for a quote that no implied volatility at the carry `r − q` can weight.
+  /// A start replaces `self.start`; `InvalidInput` unless it passes `HkdeFourier::new`,
+  /// `InvalidQuote` for a quote no vol at `r − q` weights, `Optimizer`, the options' errors.
   fn calibrate(&self, initial: Option<HkdeParams>) -> Result<Calibrated<HkdeParams>, QuantError> {
     validate_quotes(&self.quotes)?;
     let start = initial.or(self.start).unwrap_or_else(Self::fallback_params);

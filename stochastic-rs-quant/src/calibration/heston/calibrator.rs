@@ -173,7 +173,8 @@ impl crate::traits::Calibrator for HestonCalibrator {
   type Output = Calibrated<HestonParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`; `InvalidInput` unless the one used passes `HestonParams::new`.
+  /// A start replaces `self.start`; `InvalidInput` unless the one used passes `HestonParams::new`,
+  /// `Optimizer` when the fit cannot evaluate it, and the `CalibrationOptions` errors.
   fn calibrate(
     &self,
     initial: Option<HestonParams>,

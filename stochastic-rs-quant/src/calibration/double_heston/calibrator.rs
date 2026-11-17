@@ -90,8 +90,8 @@ impl crate::traits::Calibrator for DoubleHestonCalibrator {
   type Output = Calibrated<DoubleHestonParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`; `InvalidInput` unless both of its factors pass
-  /// `HestonParams::new`.
+  /// A start replaces `self.start`; `InvalidInput` unless its factors pass `HestonParams::new`,
+  /// `Optimizer` when the fit cannot evaluate it, and the `CalibrationOptions` errors.
   fn calibrate(
     &self,
     initial: Option<DoubleHestonParams>,

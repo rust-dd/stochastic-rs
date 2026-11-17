@@ -122,7 +122,8 @@ impl crate::traits::Calibrator for BsmCalibrator {
   type Output = Calibrated<BsmParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`; `InvalidInput` unless the one used is finite.
+  /// A start replaces `self.start`; `InvalidInput` unless the one used is finite, `Optimizer` when
+  /// the fit cannot evaluate it, and the `CalibrationOptions` errors.
   fn calibrate(&self, initial: Option<BsmParams>) -> Result<Calibrated<BsmParams>, QuantError> {
     validate_quotes(&self.quotes)?;
     let start = initial.unwrap_or(self.start);

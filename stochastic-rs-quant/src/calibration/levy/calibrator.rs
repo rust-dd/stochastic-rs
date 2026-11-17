@@ -111,8 +111,8 @@ impl crate::traits::Calibrator for LevyCalibrator {
   type Output = Calibrated<LevyParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`; `InvalidInput` unless the one used is of this model and finite,
-  /// `DimensionMismatch` unless it has the model's parameter count.
+  /// A start replaces `self.start`; `InvalidInput` unless it is this model's and finite,
+  /// `DimensionMismatch` for a wrong count, `Optimizer`, and the `CalibrationOptions` errors.
   fn calibrate(&self, initial: Option<LevyParams>) -> Result<Calibrated<LevyParams>, QuantError> {
     validate_quotes(&self.quotes)?;
     let start = initial.or_else(|| self.start.clone());

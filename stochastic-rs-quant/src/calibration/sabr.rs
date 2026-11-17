@@ -142,7 +142,8 @@ impl crate::traits::Calibrator for SabrCalibrator {
   type Output = Calibrated<SabrParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`; `InvalidInput` unless the one used passes `SabrParams::new`.
+  /// A start replaces `self.start`; `InvalidInput` unless the one used passes `SabrParams::new`,
+  /// `Optimizer` when the fit cannot evaluate it, and the `CalibrationOptions` errors.
   fn calibrate(&self, initial: Option<SabrParams>) -> Result<Calibrated<SabrParams>, QuantError> {
     validate_quotes(&self.quotes)?;
     let start = initial.or(self.start);

@@ -77,7 +77,8 @@ impl crate::traits::Calibrator for SvjCalibrator {
   type Output = Calibrated<SvjParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`; `InvalidInput` unless the one used passes `BatesFourier::new`.
+  /// A start replaces `self.start`; `InvalidInput` unless the one used passes `BatesFourier::new`,
+  /// `Optimizer` when the fit cannot evaluate it, and the `CalibrationOptions` errors.
   fn calibrate(&self, initial: Option<SvjParams>) -> Result<Calibrated<SvjParams>, QuantError> {
     validate_quotes(&self.quotes)?;
     let start = initial.or(self.start).unwrap_or_else(Self::fallback_params);

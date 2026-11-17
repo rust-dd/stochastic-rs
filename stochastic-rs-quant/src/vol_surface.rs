@@ -150,10 +150,8 @@
 //!
 //! ### Rough Bergomi (Monte Carlo pricing)
 //!
-//! Calibrating [`RBergomiCalibrator`](crate::calibration::rbergomi::RBergomiCalibrator)
-//! from market slices follows the same `from_slices` → `calibrate(None)` →
-//! `build_surface_from_calibration` shape as the families above. Once
-//! parameters are known (calibrated or otherwise), price directly:
+//! [`RBergomiCalibrator`](crate::calibration::rbergomi::RBergomiCalibrator) fits terminal-price
+//! samples into a `Calibrated` for `build_surface_from_calibration`. Known parameters price as:
 //!
 //! ```
 //! use stochastic_rs_quant::calibration::rbergomi::{RBergomiParams, RBergomiXi0};

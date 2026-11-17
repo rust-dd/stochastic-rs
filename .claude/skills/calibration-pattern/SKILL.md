@@ -6,7 +6,7 @@ description: How to implement a model calibrator in stochastic-rs (BSM, Heston, 
 # Calibration pattern — stochastic-rs
 
 A calibrator in `stochastic-rs-quant` takes its market data in its constructor,
-fits a model from a start and returns a `Calibrated<Params>` or a `QuantError`.
+fits a model from a start and returns a `Calibrated<Params, D>` or a `QuantError`.
 Sixteen quant calibrators share this one shape
 (`stochastic-rs-quant/tests/calibration_errors.rs` asserts `Send + Sync` for each);
 `ToModel` and `ToShortRateModel` bridge a result to the pricer or lattice model it
@@ -77,15 +77,23 @@ entry 0 and then each accepted iterate, when the options record history; the tra
 belongs to the result, never to the calibrator.
 
 `CalibrationOptions { max_iterations, tolerance, patience, record_history,
-loss_metrics, regularization }` is the knob set every calibrator takes through
-`with_options`. `max_iterations: None` keeps each optimiser's own cap (the
+loss_metrics, regularization }` is the knob set fifteen of the sixteen take through
+`with_options`; `SabrSmileCalibrator` keeps its basin-hopping knobs
+(`with_basin_hopping_iters`, `with_short_tenor_threshold`, `with_strike_bounds`,
+`with_success_tol`). `max_iterations: None` keeps each optimiser's own cap (the
 Levenberg–Marquardt budget `patience·(n + 1)`, Nelder–Mead 400 or 600, SLSQP 500,
 Adam 60). `regularization` is the Tikhonov pull of §4.
 
+A fit honours every knob it receives or, once the knob is set away from its default,
+answers `Err(QuantError::Unsupported { what })`: it names the knobs it cannot read to
+`CalibrationOptions::check`, which also answers a knob written through its field
+outside its builder's domain with `InvalidInput { what: "options" }`
+(`options.lm(..)` calls it for every Levenberg–Marquardt fit).
+
 `CalibrationLossScore` (in `crate::types`) is a HashMap of `LossMetric → f64`.
 `LossMetric` has **nine** variants — `Mae, Mse, Rmse, Mpe, Mape, Mspe, Rmspe, Mre,
-Mrpe` — each with a `compute(market, model)` in `crate::loss`. `get(metric)`
-returns `f64::NAN` for a missing entry, never 0.0: a silent zero would read as a
+Mrpe` — each computed by its function in `crate::loss` (`loss::mae(market, model)`,
+…). `get(metric)` returns `f64::NAN` for a missing entry, never 0.0: a silent zero would read as a
 perfect fit.
 
 ## 2. The files of a calibrator
@@ -235,9 +243,11 @@ impl LeastSquaresProblem for XyzProblem<'_> {
 `report.calibrated` is the one Levenberg–Marquardt tail: it reprices for `loss` and
 `max_error`, takes `iterations` and `message` from the stop and answers a start the
 optimiser could not evaluate with `Err(QuantError::Optimizer)`. Another optimiser
-builds the result itself, `Calibrated::new(params, loss, converged)` with
-`.with_iterations(..)`, `.with_max_error(..)`, `.with_message(..)` and
-`.with_history(..)`.
+calls `options.check(&[..])` with the knobs it cannot read and builds the result
+itself, `Calibrated::new(params, loss, converged)` with `.with_iterations(..)`,
+`.with_max_error(..)`, `.with_message(..)` and `.with_history(..)`; its `converged`
+is a stop on the optimiser's own criterion, never a cap, and `message` names the
+stop.
 
 Field names follow the crate-wide vocabulary: `s` spot, `k` or `strike`, `tau` time
 to maturity in years, `r` and `q` the rates (`r_d`/`r_f` only where two rates
@@ -247,7 +257,7 @@ genuinely exist); never `spot`, `s0`, `maturity` or `risk_free`. A quote is the 
 
 ## 4. Optimizer choices
 
-`stochastic-rs` uses **four** optimizers depending on the problem shape. Check the
+`stochastic-rs` uses **five** optimizers depending on the problem shape. Check the
 file you are copying from rather than assuming.
 
 - **`basin` Levenberg–Marquardt through `calibration::least_squares`** — the
@@ -257,8 +267,9 @@ file you are copying from rather than assuming.
   `least_squares::minimize(problem, options.lm(pivoted_qr, n)?)`. Used by
   `BsmCalibrator`, `HestonCalibrator` (`calibration/heston/{calibrator,lsq}.rs`),
   `SabrCalibrator`, `SvjCalibrator`, `DoubleHestonCalibrator`, `HkdeCalibrator`,
-  `LevyCalibrator`, `CgmysvCalibrator` and both vol-surface fits
-  (`vol_surface/svi.rs`, `vol_surface/ssvi/calibrate.rs`).
+  `LevyCalibrator`, `CgmysvCalibrator`, and both vol-surface fits
+  (`vol_surface/svi.rs`, `vol_surface/ssvi/calibrate.rs`), which pass their own
+  `LmOptions`.
   - **The pull.** The core appends `CalibrationOptions::regularization`'s rows
     `√λⱼ(θⱼ − θ⁰ⱼ)` and their Jacobian to every fit; `options.lm(pivoted_qr, n)`
     answers a pull of another length with `DimensionMismatch`. A problem whose
@@ -269,18 +280,24 @@ file you are copying from rather than assuming.
 - **`basin` Nelder–Mead** — derivative-free simplex fits: `calibration/hw_swaption.rs`,
   `calibration/tree_swaption.rs`, `calibration/sabr_caplet.rs`. Reuse
   `calibration::nelder_mead_fit`, which keeps the sample-standard-deviation stop,
-  records the best vertex per iteration and builds the `Calibrated`; the pull is a
-  cost penalty there (`Regularization::penalty`). Bounded objectives and finite
-  differences clamp their inputs: do not rely on the solver to keep iterates
-  feasible.
+  records the best vertex per iteration, refuses `patience` and builds the
+  `Calibrated`; the pull is a cost penalty there (`Regularization::penalty`). Bounded
+  objectives and finite differences clamp their inputs: do not rely on the solver to
+  keep iterates feasible.
+- **`basin` L-BFGS-B under basin-hopping** — a bounded gradient fit:
+  `SabrSmileCalibrator` (`vol_surface/sabr_smile/objective.rs`), on its own
+  basin-hopping knobs rather than `CalibrationOptions`.
 - **`slsqp` crate** — explicit bounds and constraints. One in-tree user:
-  `HscmCalibrator` (`calibration/heston_stoch_corr.rs`).
+  `HscmCalibrator` (`calibration/heston_stoch_corr.rs`), whose `tolerance` is SLSQP's
+  `ftol_rel` and whose `converged` holds only for `Success`, `FtolReached`,
+  `XtolReached` or `StopValReached`.
 - **A hand-written routine** — a loss that is not a sum of squares.
   `RBergomiCalibrator` (`calibration/rbergomi/calibrator.rs`) runs projected Adam
   on the mean empirical Wasserstein-1 distance (`super::loss::empirical_wasserstein_1`).
 
-A fit whose optimiser cannot honour the pull (SLSQP, Adam, the SLV leverage)
-answers `Err(QuantError::Unsupported { what: "regularization" })`.
+HSCM, rBergomi and Heston SLV answer a pull with
+`Err(QuantError::Unsupported { what: "regularization" })`, as every fit answers a knob
+it cannot read (§1).
 
 **Do not** add another optimizer crate; `basin`, `slsqp` and the hand-written route
 above cover everything we have needed.
@@ -294,9 +311,9 @@ above cover everything we have needed.
    `InsufficientData` for no quote and `InvalidQuote { index }` for the first bad
    one; a start passed to `calibrate` or written through the `start` field outside
    the model's domain is `InvalidInput { what: "start" }`; a start the optimiser
-   cannot evaluate is `Optimizer`.
-3. **Non-convergence is `Ok`** with `converged: false`, the stop reason in
-   `message`.
+   cannot evaluate is `Optimizer`; a knob is answered as §1 says.
+3. **Non-convergence is `Ok`** with `converged: false` and, where the optimiser
+   reports one, the stop reason in `message`. A cap is never a convergence.
 4. **A model price that is not finite stays not finite**:
    `calibration::clip_negative` floors a finite negative price at 0 and passes NaN
    and ±∞ through, so the optimiser rejects the trial. Never floor with `f64::max`,
@@ -339,7 +356,7 @@ was a no-op.
 Follow the `python-bindings` SKILL:
 
 ```rust
-#[pyclass(name = "XyzCalibrator", unsendable)]
+#[pyclass(name = "XyzCalibrator")]
 pub struct PyXyzCalibrator {
   inner: crate::calibration::xyz::XyzCalibrator,
 }
@@ -383,8 +400,8 @@ the class in `stochastic-rs-py/src/lib.rs` with `m.add_class::<PyXyzCalibrator>(
   it to the result.
 - **Do not** silently fall back to the start on failure. Either answer `Err` or
   report `converged: false` so downstream knows.
-- **Do not** leave a `CalibrationOptions` knob unread: honour it or answer
-  `Unsupported`.
+- **Do not** leave a `CalibrationOptions` knob unread: honour it or name it to
+  `CalibrationOptions::check`, which answers it with `Unsupported`.
 
 ## 10. Reference impls
 

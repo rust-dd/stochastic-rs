@@ -177,7 +177,8 @@ impl crate::traits::Calibrator for CgmysvCalibrator {
   type Output = Calibrated<CgmysvParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`; `InvalidInput` unless every value of the one used is finite.
+  /// A start replaces `self.start`; `InvalidInput` unless every value of the one used is finite,
+  /// `Optimizer` when the fit cannot evaluate it, and the `CalibrationOptions` errors.
   fn calibrate(
     &self,
     initial: Option<CgmysvParams>,
