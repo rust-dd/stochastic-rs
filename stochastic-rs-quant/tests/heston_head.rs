@@ -55,20 +55,19 @@ fn the_short_maturity_surface_has_no_negative_price_and_inverts_every_time_value
   }
 }
 
-/// Below `τ ≈ 1e-5` the integrand outlasts the quadrature's panels and the Gaussian share carries
-/// the price: to 1.4e-6 at worst, near `τ = 1.6e-6`, and to rounding as `τ → 0`.
+/// Below `τ ≈ 1e-5` the integrand outlasts the walk in `φ`: it is integrated rescaled, and 60
+/// standard deviations from the money the Gaussian share is the price.
 #[test]
 fn a_maturity_of_seconds_prices_at_its_black_scholes_limit() {
   let pricer = HestonPricer::new(P);
   let bsm = BsmPricer::new(0.2, BsmCoc::Merton1973);
   for i in 0..=40 {
     let tau = 10f64.powf(-12.0 + 0.2 * f64::from(i));
-    let tol = if tau < 1e-8 { 1e-8 } else { 2e-6 };
     for s in [90.0, 110.0] {
       let got = pricer.price_call(s, 100.0, 0.05, 0.0, tau);
       let intrinsic = (s - 100.0 * (-0.05 * tau).exp()).max(0.0);
       assert!(
-        (got - intrinsic).abs() < tol,
+        (got - intrinsic).abs() < 1e-8,
         "s = {s}, tau = {tau}: {got} vs {intrinsic}"
       );
     }
@@ -81,6 +80,70 @@ fn a_maturity_of_seconds_prices_at_its_black_scholes_limit() {
       );
     }
   }
+}
+
+/// `(v0, κ, θ, σ, ρ)`, then `(τ, s, call)` at `K = 100`, `r = 0.05`, `q = 0` by Lewis quadrature of
+/// the chf at 30 digits (mpmath): a maturity of minutes, 42 standard deviations and 2 from the money.
+const MINUTES: [(HestonParams, f64, [(f64, f64); 2]); 4] = [
+  (
+    P,
+    1.4e-6,
+    [(101.0, 1.000006999999755), (100.05, 0.05015550439907494)],
+  ),
+  (
+    HestonParams {
+      v0: 0.02,
+      kappa: 0.5,
+      theta: 0.09,
+      sigma: 1.0,
+      rho: -0.9,
+    },
+    2.8e-6,
+    [(101.0, 1.00001399999902), (100.05, 0.05016745651580408)],
+  ),
+  (
+    HestonParams { v0: 0.0025, ..P },
+    2.2e-5,
+    [(101.0, 1.0001099999395), (100.05, 0.05025758985321513)],
+  ),
+  (
+    HestonParams {
+      v0: 0.04,
+      kappa: 1.0,
+      theta: 0.04,
+      sigma: 2.0,
+      rho: 0.6,
+    },
+    1.4e-6,
+    [(101.0, 1.000006999999755), (100.05, 0.05015106692168332)],
+  ),
+];
+
+#[test]
+fn a_maturity_of_minutes_matches_the_converged_integral() {
+  for (params, tau, cells) in MINUTES {
+    let pricer = HestonPricer::new(params);
+    for (s, want) in cells {
+      let got = pricer.price_call(s, 100.0, 0.05, 0.0, tau);
+      assert!(
+        (got - want).abs() < 1e-9,
+        "{params:?}, s = {s}, tau = {tau}: {got} vs {want}"
+      );
+    }
+  }
+}
+
+/// `v0 ≪ σ²τ` leaves a chf far wider than a Gaussian of variance `E[∫v]`, which sets no scale for
+/// `φ`: the call stays at its forward's intrinsic value, `100 − 100e^{−0.0005}`.
+#[test]
+fn a_variance_far_below_its_own_volatility_is_not_rescaled() {
+  let pricer = HestonPricer::new(HestonParams {
+    v0: 1e-8,
+    theta: 0.0,
+    ..P
+  });
+  let got = pricer.price_call(100.0, 100.0, 0.05, 0.0, 1e-2);
+  assert!((got - 0.049987502083).abs() < 1e-6, "{got}");
 }
 
 /// `E₁[∫v] = 3.7e4` at `ρσ > κ`, where a Gaussian that narrow is past the quadrature: the control

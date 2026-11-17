@@ -5,6 +5,7 @@
 //! $$
 //!
 use std::f64::consts::FRAC_1_PI;
+use std::ops::Range;
 
 use implied_vol::DefaultSpecialFn;
 use implied_vol::ImpliedBlackVolatility;
@@ -30,6 +31,11 @@ const REST_TOLERANCE: f64 = 1e-10;
 /// Past this variance the Gaussian, `1/√w` wide, is narrower than the quadrature's smallest
 /// sub-panel: the control variate keeps this variance and no longer matches the mean.
 const CONTROL_VARIANCE_CAP: f64 = 2e3;
+/// `√w` at which the walk, which ends near `φ = 8,000`, stops inside the Gaussian, `1/√w` wide,
+/// with an integrand it can no longer neglect.
+const UNCOVERED: Range<f64> = 1e-5..1e-3;
+/// Standard deviations `√w` from the money past which `P_j` is its Gaussian share to rounding.
+const FAR: f64 = 60.0;
 
 /// Heston (1993) semi-closed-form pricer; the query `(s, k, r, q, τ)` travels as arguments, so one
 /// instance prices a whole strike/maturity grid.
@@ -91,8 +97,9 @@ impl HestonPricer {
         |option_type| vanilla_payoff(option_type, s * (-q * tau).exp(), k * (-r * tau).exp());
       return (payoff(OptionType::Call), payoff(OptionType::Put));
     }
-    let call = s * (-q * tau).exp() * self.p(1, tau, s, k, r, q)
-      - k * (-r * tau).exp() * self.p(2, tau, s, k, r, q);
+    let scale = self.rest_scale(tau, s, k, r, q);
+    let call = s * (-q * tau).exp() * self.p(1, tau, (s, k, r, q), scale)
+      - k * (-r * tau).exp() * self.p(2, tau, (s, k, r, q), scale);
     let put = call + k * (-r * tau).exp() - s * (-q * tau).exp();
 
     (call, put)
@@ -258,9 +265,27 @@ impl HestonPricer {
     }
   }
 
+  /// The factor `φ` is rescaled by so that the walk ends past the Gaussian, one for both `P_j`;
+  /// `None` where nothing is left to integrate, `FAR` from the money at a `√w` in `UNCOVERED`.
+  fn rest_scale(&self, tau: f64, s: f64, k: f64, r: f64, q: f64) -> Option<f64> {
+    let root = self.mean_integrated_variance(2, tau).sqrt();
+    // A chf that outlasts the Gaussian (`v0 ≪ σ²τ`) has no such scale, and `φ` stays as it is.
+    if !UNCOVERED.contains(&root) || self.f_and_d(2, 8.0 / root, tau, s, r, q).0.norm() >= 1e-8 {
+      return Some(1.0);
+    }
+    let log_moneyness = (s / k).ln() + (r - q) * tau;
+    (log_moneyness.abs() <= FAR * root).then_some(1e-2 / root)
+  }
+
   /// Heston (1993)'s `P_j` less a Gaussian of variance `w = E_j[∫v]`, whose share is `N(d_j)`, a
   /// step at `w = 0`: the rest vanishes at `φ → 0`, and almost everywhere at a `τ` of seconds.
-  pub(self) fn p(&self, j: u8, tau: f64, s: f64, k: f64, r: f64, q: f64) -> f64 {
+  pub(self) fn p(
+    &self,
+    j: u8,
+    tau: f64,
+    (s, k, r, q): (f64, f64, f64, f64),
+    scale: Option<f64>,
+  ) -> f64 {
     let expected = self.mean_integrated_variance(j, tau);
     if !expected.is_finite() {
       return f64::NAN;
@@ -272,8 +297,12 @@ impl HestonPricer {
     } else {
       log_moneyness / w.sqrt()
     };
+    let Some(scale) = scale else {
+      return norm_cdf(d);
+    };
     let rest = self.re(j, tau, (s, k, r, q), w);
-    norm_cdf(d) + FRAC_1_PI * integrate_to_convergence(rest, LOWER_LIMIT, REST_TOLERANCE)
+    let scaled = |y: f64| scale * rest(scale * y);
+    norm_cdf(d) + FRAC_1_PI * integrate_to_convergence(scaled, LOWER_LIMIT / scale, REST_TOLERANCE)
   }
 
   fn p_initial_variance_derivative(&self, j: u8, tau: f64, s: f64, k: f64, r: f64, q: f64) -> f64 {
