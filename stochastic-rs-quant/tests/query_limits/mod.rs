@@ -442,6 +442,22 @@ fn a_multi_curve_leg_skips_an_empty_period_and_a_swap_rate_needs_two_dates() {
 }
 
 #[test]
+fn a_multi_curve_leg_over_a_backward_period_is_nan() {
+  let flat = DiscountCurve::<f64>::from_zero_rates(
+    &Array1::from_vec(vec![0.5, 1.0, 2.0, 5.0]),
+    &Array1::from_vec(vec![0.04; 4]),
+    InterpolationMethod::LogLinearOnDiscountFactors,
+  );
+  let mut curves = MultiCurve::new(flat.clone());
+  curves.add_forecast("3M", flat);
+  let backward = Array1::from_vec(vec![0.5, 2.0, 1.0]);
+  let pv = curves.pv_floating_leg("3M", &backward, 1.0);
+  assert!(pv.is_some_and(f64::is_nan), "{pv:?}");
+  let rate = curves.fair_swap_rate("3M", &backward);
+  assert!(rate.is_some_and(f64::is_nan), "{rate:?}");
+}
+
+#[test]
 fn a_bootstrap_quote_at_a_non_finite_maturity_is_an_invalid_quote() {
   let method = InterpolationMethod::LogLinearOnDiscountFactors;
   let deposit = |maturity| BootstrapInstrument::Deposit {

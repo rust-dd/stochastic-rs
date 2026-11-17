@@ -4,6 +4,7 @@ use num_complex::Complex64;
 
 use super::Cumulants;
 use super::FourierModelExt;
+use super::heston_cumulants;
 use crate::pricing::heston::HestonParams;
 
 /// One Heston factor's `(C, D)` at `xi`, `chf = exp(C + D·v0)`, in the Little-Trap form
@@ -57,32 +58,8 @@ impl FourierModelExt for HestonFourier {
     (c_val + d_val * self.params.v0).exp()
   }
 
-  /// Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826–848, Table 11 for `c1`; `c2` is
-  /// `−Re ∂²ᵤ ln chf(t, u)` at `u = 0` of this chf, grouped by powers of `e^{−κt}`.
   fn cumulants(&self, t: f64) -> Cumulants {
-    // Each field is read where it is used: copying all five up front evicts the hoisted constants.
-    let p = &self.params;
-    let ekt = (-p.kappa * t).exp();
-    let c1 = (1.0 - ekt) * (p.theta - p.v0) / (2.0 * p.kappa) - 0.5 * p.theta * t;
-
-    let kappa2 = p.kappa * p.kappa;
-    let kappa3 = kappa2 * p.kappa;
-    let sigma2 = p.sigma * p.sigma;
-    let rs = p.rho * p.sigma;
-    let n0 = p.theta
-      * (8.0 * kappa3 * t - 8.0 * kappa2 * rs * t - 8.0 * kappa2
-        + 16.0 * p.kappa * rs
-        + 2.0 * p.kappa * sigma2 * t
-        - 5.0 * sigma2)
-      + p.v0 * 2.0 * (4.0 * kappa2 - 4.0 * p.kappa * rs + sigma2);
-    let n1 = p.theta
-      * -4.0
-      * (2.0 * kappa2 * rs * t - 2.0 * kappa2 + 4.0 * p.kappa * rs - p.kappa * sigma2 * t - sigma2)
-      + p.v0 * 4.0 * p.kappa * (2.0 * p.kappa * rs * t - 2.0 * p.kappa + 2.0 * rs - sigma2 * t);
-    let n2 = sigma2 * (p.theta - 2.0 * p.v0);
-    let c2 = (n0 + n1 * ekt + n2 * ekt * ekt) / (8.0 * kappa3);
-
-    Cumulants { c1, c2, c4: None }
+    heston_cumulants(&self.params, t)
   }
 }
 
@@ -133,17 +110,9 @@ impl FourierModelExt for DoubleHestonFourier {
     (c1 + c2 + d1 * self.first.v0 + d2 * self.second.v0).exp()
   }
 
+  /// The factors are independent, so their cumulants add.
   fn cumulants(&self, t: f64) -> Cumulants {
-    let (a, b) = (self.first, self.second);
-    let ekt1 = (-a.kappa * t).exp();
-    let ekt2 = (-b.kappa * t).exp();
-
-    let int_v1 = a.theta * t + (a.v0 - a.theta) * (1.0 - ekt1) / a.kappa;
-    let int_v2 = b.theta * t + (b.v0 - b.theta) * (1.0 - ekt2) / b.kappa;
-
-    let c1 = -0.5 * (int_v1 + int_v2);
-    let c2 = int_v1 + int_v2;
-    Cumulants { c1, c2, c4: None }
+    heston_cumulants(&self.first, t).plus(heston_cumulants(&self.second, t))
   }
 }
 
@@ -185,12 +154,8 @@ mod tests {
     (c1, c2)
   }
 
-  /// `c4 = f''''(0)`, via the standard 5-point central-difference stencil.
-  /// Uses a looser step (`h=1e-2`) than `fd_c1_c2`: a 4th derivative's
-  /// cancellation noise scales as `O(\epsilon_{mach}/h^4)`, so it needs a
-  /// larger `h` to stay controlled — acceptable here since this is only
-  /// used to demonstrate `c4` is clearly nonzero (order of magnitude), not
-  /// matched to a tight tolerance.
+  /// `c4 = f''''(0)` by the 5-point stencil at `h = 1e-2`, whose `O(ε/h⁴)` rounding, near `1e-7`,
+  /// and `O(h²)` truncation limit it to a `c4` far above `1e-7`.
   fn fd_c4(model: &HestonFourier, t: f64) -> f64 {
     let h = 1e-2;
     let f0 = ln_chf(model, t, 0.0);
@@ -231,12 +196,18 @@ mod tests {
     }
   }
 
-  /// Heston's fourth cumulant has a closed form the crate does not compute; `None` says so
-  /// (finite differences give ~1e-3, not zero).
+  /// `c4` against a finite difference of `ln chf` at `τ = 1` and at `τ = 5`.
   #[test]
-  fn heston_c4_is_not_computed() {
+  fn heston_c4_matches_fd_of_log_chf() {
     let model = task1_params();
-    assert!(model.cumulants(1.0).c4.is_none());
-    assert!(fd_c4(&model, 1.0) > 1e-4);
+    for t in [1.0, 5.0] {
+      let c4 = model.cumulants(t).c4.unwrap();
+      let c4_fd = fd_c4(&model, t);
+      let rel = ((c4 - c4_fd) / c4_fd).abs();
+      assert!(
+        rel < 1e-3,
+        "t={t}: cumulants().c4={c4}, fd={c4_fd}, rel={rel}"
+      );
+    }
   }
 }

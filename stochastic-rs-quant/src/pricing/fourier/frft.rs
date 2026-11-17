@@ -111,14 +111,8 @@ impl FrftCarrMadanPricer {
     }
   }
 
-  /// Cumulant-sized constructor (Lord-Kahl 2010): the log-strike half-width
-  /// is $L_{\text{factor}}\sqrt{|c_2| + \sqrt{|c_4|}}$, so the grid spans
-  /// $[\mu_T - \text{hw}, \mu_T + \text{hw}]$ centred on the forward. The
-  /// integration step `eta` stays fine and fixed (the FRFT decouples it
-  /// from the strike step), giving an $N\eta$ truncation range that fully
-  /// captures the Heston / Bates / Lévy integrand tail.
-  ///
-  /// Panics unless `l_factor` and the model's second cumulant are finite and positive.
+  /// Lord–Kahl (2010) grid of half-width `Cumulants::truncation_half_width(l_factor)` about
+  /// `ln F_T + c1`; panics unless `l_factor` and the model's `c2` are finite and positive.
   pub fn cumulant_sized(model: &impl FourierModelExt, t: f64, l_factor: f64) -> Self {
     assert!(
       l_factor.is_finite() && l_factor > 0.0,
@@ -130,19 +124,11 @@ impl FrftCarrMadanPricer {
       c2.is_finite() && c2 > 0.0,
       "cumulants.c2 must satisfy `c2.is_finite() && c2 > 0.0`, got c2 = {c2:?}"
     );
-    let c4_term = cumulants
-      .c4
-      .filter(|c| c.is_finite() && *c >= 0.0)
-      .map_or(0.0, f64::sqrt);
-    let half_width = l_factor * (c2.abs() + c4_term).sqrt();
+    let half_width = cumulants.truncation_half_width(l_factor);
     let n = 4096_usize;
-    // Integration step: the FRFT decouples η from the strike step, so we
-    // pick η to give a frequency truncation range Nη that comfortably
-    // covers the integrand tail (negligible past v* where the Gaussian
-    // core e^{-½ c₂ v²} ≈ e^{-40}, i.e. v* = √(80/c₂)), then take a 2×
-    // safety margin. Finer η than the classic reciprocity rule yields a
-    // markedly tighter Simpson quadrature near the money.
-    let v_max = 2.0 * (80.0 / c2.abs()).sqrt();
+    // `Nη` spans twice `v* = √(80/c₂)`, where the Gaussian core `e^{−c₂v²/2}` is `e^{−40}`; the
+    // strike step is free of `η`, so a finer `η` than reciprocity tightens Simpson near the money.
+    let v_max = 2.0 * (80.0 / c2).sqrt();
     let eta = (v_max / n as f64).clamp(0.005, 0.25);
     Self {
       n,

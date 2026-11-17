@@ -17,11 +17,17 @@ pub struct VarianceGammaFourier {
   pub nu: f64,
 }
 
+impl VarianceGammaFourier {
+  /// Martingale drift `ω = ln(1 − θν − σ²ν/2)/ν`, which sets `E[e^{X_t}] = 1`.
+  fn compensator(&self) -> f64 {
+    (1.0 / self.nu) * (1.0 - self.nu * self.theta - 0.5 * self.nu * self.sigma.powi(2)).ln()
+  }
+}
+
 impl FourierModelExt for VarianceGammaFourier {
   fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
     let i = Complex64::i();
-    let omega =
-      (1.0 / self.nu) * (1.0 - self.nu * self.theta - 0.5 * self.nu * self.sigma.powi(2)).ln();
+    let omega = self.compensator();
     let inner = Complex64::new(1.0, 0.0) - i * self.theta * self.nu * xi
       + Complex64::new(0.5 * self.sigma.powi(2) * self.nu, 0.0) * xi * xi;
     let psi = -inner.ln() / self.nu;
@@ -30,7 +36,7 @@ impl FourierModelExt for VarianceGammaFourier {
 
   fn cumulants(&self, t: f64) -> Cumulants {
     Cumulants {
-      c1: self.theta * t,
+      c1: (self.theta + self.compensator()) * t,
       c2: (self.sigma.powi(2) + self.nu * self.theta.powi(2)) * t,
       c4: Some(
         3.0
@@ -52,6 +58,16 @@ pub struct CgmyFourier {
   pub y: f64,
 }
 
+impl CgmyFourier {
+  /// Martingale drift `ω = −CΓ(−Y)[(M − 1)^Y − M^Y + (G + 1)^Y − G^Y]`, given `Γ(−Y)`.
+  fn compensator(&self, gamma_neg_y: f64) -> f64 {
+    -self.c
+      * gamma_neg_y
+      * ((self.m - 1.0).powf(self.y) - self.m.powf(self.y) + (self.g + 1.0).powf(self.y)
+        - self.g.powf(self.y))
+  }
+}
+
 impl FourierModelExt for CgmyFourier {
   fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
     let i = Complex64::i();
@@ -63,21 +79,17 @@ impl FourierModelExt for CgmyFourier {
         + (Complex64::new(self.g, 0.0) + i * xi).powf(self.y)
         - self.g.powf(self.y));
 
-    let omega = -self.c
-      * gamma_neg_y_val
-      * ((self.m - 1.0).powf(self.y) - self.m.powf(self.y) + (self.g + 1.0).powf(self.y)
-        - self.g.powf(self.y));
+    let omega = self.compensator(gamma_neg_y_val);
 
     (i * xi * omega * t + psi * t).exp()
   }
 
   fn cumulants(&self, t: f64) -> Cumulants {
     let gamma_fn = |z: f64| stochastic_rs_distributions::special::gamma(z);
+    let mean =
+      self.c * gamma_fn(1.0 - self.y) * (self.m.powf(self.y - 1.0) - self.g.powf(self.y - 1.0));
     Cumulants {
-      c1: self.c
-        * gamma_fn(1.0 - self.y)
-        * (self.m.powf(self.y - 1.0) - self.g.powf(self.y - 1.0))
-        * t,
+      c1: (mean + self.compensator(gamma_neg_y(self.y))) * t,
       c2: self.c
         * gamma_fn(2.0 - self.y)
         * (self.m.powf(self.y - 2.0) + self.g.powf(self.y - 2.0))
@@ -101,21 +113,33 @@ pub struct MertonJdFourier {
   pub sigma_j: f64,
 }
 
+impl MertonJdFourier {
+  /// Martingale drift `ω = −σ²/2 − λ(e^{μ_J + σ_J²/2} − 1)`, which sets `E[e^{X_t}] = 1`.
+  pub(super) fn compensator(&self) -> f64 {
+    let m = (self.mu_j + 0.5 * self.sigma_j.powi(2)).exp() - 1.0;
+    -0.5 * self.sigma.powi(2) - self.lambda * m
+  }
+
+  /// Lévy exponent of the jumps alone, `λ(E[e^{iξJ}] − 1)`.
+  pub(super) fn jump_exponent(&self, xi: Complex64) -> Complex64 {
+    let i = Complex64::i();
+    let jump_exp =
+      (i * self.mu_j * xi - Complex64::new(0.5 * self.sigma_j.powi(2), 0.0) * xi * xi).exp();
+    self.lambda * (jump_exp - 1.0)
+  }
+}
+
 impl FourierModelExt for MertonJdFourier {
   fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
     let i = Complex64::i();
-    let m = (self.mu_j + 0.5 * self.sigma_j.powi(2)).exp() - 1.0;
-    let omega = -0.5 * self.sigma.powi(2) - self.lambda * m;
+    let omega = self.compensator();
     let diffusion = Complex64::new(-0.5 * self.sigma.powi(2), 0.0) * xi * xi;
-    let jump_exp =
-      (i * self.mu_j * xi - Complex64::new(0.5 * self.sigma_j.powi(2), 0.0) * xi * xi).exp();
-    let jump = self.lambda * (jump_exp - 1.0);
-    (i * xi * omega * t + (diffusion + jump) * t).exp()
+    (i * xi * omega * t + (diffusion + self.jump_exponent(xi)) * t).exp()
   }
 
   fn cumulants(&self, t: f64) -> Cumulants {
     Cumulants {
-      c1: -0.5 * self.sigma.powi(2) * t + self.lambda * self.mu_j * t,
+      c1: (self.compensator() + self.lambda * self.mu_j) * t,
       c2: (self.sigma.powi(2) + self.lambda * (self.mu_j.powi(2) + self.sigma_j.powi(2))) * t,
       c4: Some(
         self.lambda
@@ -138,21 +162,33 @@ pub struct KouFourier {
   pub eta2: f64,
 }
 
-impl FourierModelExt for KouFourier {
-  fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
+impl KouFourier {
+  /// Martingale drift `ω = −σ²/2 − λ(pη₁/(η₁ − 1) + (1 − p)η₂/(η₂ + 1) − 1)`.
+  pub(super) fn compensator(&self) -> f64 {
+    let p = self.p_up;
+    let up0 = p * self.eta1 / (self.eta1 - 1.0);
+    let dn0 = (1.0 - p) * self.eta2 / (self.eta2 + 1.0);
+    let m = self.lambda * (up0 + dn0 - 1.0);
+    -0.5 * self.sigma.powi(2) - m
+  }
+
+  /// Lévy exponent of the jumps alone, `λ(E[e^{iξJ}] − 1)`.
+  pub(super) fn jump_exponent(&self, xi: Complex64) -> Complex64 {
     let i = Complex64::i();
     let p = self.p_up;
     let up = p * self.eta1 / (Complex64::new(self.eta1, 0.0) - i * xi);
     let dn = (1.0 - p) * self.eta2 / (Complex64::new(self.eta2, 0.0) + i * xi);
-    let jump = self.lambda * (up + dn - 1.0);
+    self.lambda * (up + dn - 1.0)
+  }
+}
 
-    let up0 = p * self.eta1 / (self.eta1 - 1.0);
-    let dn0 = (1.0 - p) * self.eta2 / (self.eta2 + 1.0);
-    let m = self.lambda * (up0 + dn0 - 1.0);
-    let omega = -0.5 * self.sigma.powi(2) - m;
+impl FourierModelExt for KouFourier {
+  fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
+    let i = Complex64::i();
+    let omega = self.compensator();
 
     let diffusion = Complex64::new(-0.5 * self.sigma.powi(2), 0.0) * xi * xi;
-    (i * xi * omega * t + (diffusion + jump) * t).exp()
+    (i * xi * omega * t + (diffusion + self.jump_exponent(xi)) * t).exp()
   }
 
   fn cumulants(&self, t: f64) -> Cumulants {
@@ -160,7 +196,7 @@ impl FourierModelExt for KouFourier {
     let c1_jump = self.lambda * (p / self.eta1 - (1.0 - p) / self.eta2);
     let c2_jump = self.lambda * (2.0 * p / self.eta1.powi(2) + 2.0 * (1.0 - p) / self.eta2.powi(2));
     Cumulants {
-      c1: -0.5 * self.sigma.powi(2) * t + c1_jump * t,
+      c1: (self.compensator() + c1_jump) * t,
       c2: (self.sigma.powi(2) + c2_jump) * t,
       c4: Some(
         24.0
@@ -201,6 +237,15 @@ pub struct NigFourier {
   pub delta: f64,
 }
 
+impl NigFourier {
+  /// Martingale drift `ω = −δ(√(α² − β²) − √(α² − (β + 1)²))`, which sets `E[e^{X_t}] = 1`.
+  fn compensator(&self) -> f64 {
+    let a2 = self.alpha * self.alpha;
+    let base = (a2 - self.beta * self.beta).sqrt();
+    -self.delta * (base - (a2 - (self.beta + 1.0).powi(2)).sqrt())
+  }
+}
+
 impl FourierModelExt for NigFourier {
   fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
     let i = Complex64::i();
@@ -214,9 +259,7 @@ impl FourierModelExt for NigFourier {
     let branch = (Complex64::new(a2, 0.0) - shifted * shifted).sqrt();
     let psi = delta * (Complex64::new(base, 0.0) - branch);
 
-    let omega = -delta * (base - (a2 - (beta + 1.0).powi(2)).sqrt());
-
-    (i * xi * omega * t + psi * t).exp()
+    (i * xi * self.compensator() * t + psi * t).exp()
   }
 
   fn cumulants(&self, t: f64) -> Cumulants {
@@ -227,7 +270,7 @@ impl FourierModelExt for NigFourier {
     let b2 = beta * beta;
     let denom = (a2 - b2).sqrt();
     let denom3 = denom.powi(3);
-    let c1 = delta * beta / denom * t;
+    let c1 = (delta * beta / denom + self.compensator()) * t;
     let c2 = delta * a2 / denom3 * t;
     let c4 = 3.0 * delta * a2 * (a2 + 4.0 * b2) / (a2 - b2).powf(3.5) * t;
     Cumulants {

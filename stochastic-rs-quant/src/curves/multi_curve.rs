@@ -75,9 +75,8 @@ impl<T: RealExt> MultiCurve<T> {
     Some(fwd_forecast - fwd_ois)
   }
 
-  /// Present value of a floating leg using OIS discounting and forecast curve projection.
-  ///
-  /// Payment schedule: $t_0, t_1, \ldots, t_n$ with $\delta_i = t_i - t_{i-1}$.
+  /// PV of a floating leg paying forecast forwards over each `[tᵢ₋₁, tᵢ]` of `schedule`, discounted
+  /// on OIS; `None` for an unknown `tenor`, NaN over a period that runs backwards.
   pub fn pv_floating_leg(&self, tenor: &str, schedule: &Array1<T>, notional: T) -> Option<T> {
     let fc = self.forecast(tenor)?;
     let n = schedule.len();
@@ -119,9 +118,9 @@ impl<T: RealExt> MultiCurve<T> {
     pv
   }
 
-  /// Multi-curve fair swap rate; `None` for an unknown `tenor` or a schedule under two dates.
+  /// Multi-curve fair swap rate; `None` for an unknown `tenor` or a schedule under two dates, NaN
+  /// over a period that runs backwards, and where no period has length.
   ///
-  /// The fair rate $S$ satisfies $\text{PV}_{\text{fixed}} = \text{PV}_{\text{float}}$:
   /// $$
   /// S = \frac{\sum_j D_{\text{OIS}}(t_j)\,\delta_j\,L_{\text{forecast}}(t_{j-1}, t_j)}
   ///          {\sum_j D_{\text{OIS}}(t_j)\,\delta_j}

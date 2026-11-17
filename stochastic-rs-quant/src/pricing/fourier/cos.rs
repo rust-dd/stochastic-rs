@@ -40,8 +40,8 @@ impl CosEngine {
     Self { n, l }
   }
 
-  /// `r` discounts the payoff and `r − q` is the carry of the forward the drift-free `chf` is
-  /// centred on; NaN when `c2 + √c4` is not finite and positive, or when `chf` is NaN.
+  /// `r` discounts and `r − q` carries the forward the drift-free `chf` is centred on; a call is
+  /// the put plus `S e^{−qt} − K e^{−rt}`; NaN where `truncation_half_width` or `chf` is.
   pub fn price<M: FourierModelExt>(
     &self,
     model: &M,
@@ -53,19 +53,18 @@ impl CosEngine {
     option_type: OptionType,
   ) -> f64 {
     let cumulants = model.cumulants(t);
-    let width_arg = cumulants.c2 + cumulants.c4.map_or(0.0, f64::sqrt);
-    if !(width_arg.is_finite() && width_arg > 0.0) {
+    let half_width = cumulants.truncation_half_width(self.l);
+    if !half_width.is_finite() {
       return f64::NAN;
     }
 
     let x = (s0 / k).ln() + (r - q) * t;
-    let half_width = self.l * width_arg.sqrt();
     let a = x + cumulants.c1 - half_width;
     let b = x + cumulants.c1 + half_width;
     let bma = b - a;
 
     let i_unit = Complex64::i();
-    let mut price = 0.0;
+    let mut put = 0.0;
     for k_idx in 0..self.n {
       let kf = k_idx as f64;
       let u = kf * PI / bma;
@@ -73,31 +72,21 @@ impl CosEngine {
       let phi_y = model.chf(t, Complex64::new(u, 0.0)) * (i_unit * u * x).exp();
       let f_k = (phi_y * (-i_unit * u * a).exp()).re;
 
-      let v_k = match option_type {
-        OptionType::Call => call_coefficient(kf, a, b, bma, k),
-        OptionType::Put => put_coefficient(kf, a, b, bma, k),
-      };
-
       let weight = if k_idx == 0 { 0.5 } else { 1.0 };
-      price += weight * f_k * v_k;
+      put += weight * f_k * put_coefficient(kf, a, b, bma, k);
     }
 
-    let discounted = (-r * t).exp() * price;
-    if discounted.is_nan() {
+    let put = (-r * t).exp() * put;
+    // The call's coefficients grow like `e^b`, the put's stay below `K`: Le Floc'h (2020), §3.
+    let price = match option_type {
+      OptionType::Call => put + s0 * (-q * t).exp() - k * (-r * t).exp(),
+      OptionType::Put => put,
+    };
+    if price.is_nan() {
       return f64::NAN;
     }
-    discounted.max(0.0)
+    price.max(0.0)
   }
-}
-
-/// Call payoff coefficient $V_k$ on $[a,b]\cap[0,\infty)$, Fang-Oosterlee (2008) Eq. (29)
-/// for $a<0<b$.
-fn call_coefficient(kf: f64, a: f64, b: f64, bma: f64, strike: f64) -> f64 {
-  if b <= 0.0 {
-    return 0.0;
-  }
-  let (chi, psi) = chi_psi(kf, a, bma, a.max(0.0), b);
-  (2.0 / bma) * strike * (chi - psi)
 }
 
 /// Put payoff coefficient $V_k$ on $[a,b]\cap(-\infty,0]$, Fang-Oosterlee (2008) Eq. (30)
@@ -170,7 +159,7 @@ mod tests {
       rho: -0.7,
     })
     .price_call(100.0, 100.0, 0.05, 0.0, 1.0);
-    // A wider `L` under-resolves the density at `N = 256` (`L = 40` misses by 6.8e-4).
+    // A wider `L` under-resolves the density at `N = 256` (`L = 40` misses by 1.5e-4).
     let price = CosEngine::default().price(&model, 100.0, 100.0, 0.05, 0.0, 1.0, OptionType::Call);
     // Cross-check against an independent Gil-Pelaez quadrature over the
     // same `chf`: the two agree to ~1.25e-8, confirming COS(256, L=10) has
@@ -289,6 +278,20 @@ mod tests {
       price.is_nan(),
       "NaN chf must propagate to a NaN price, got {price}"
     );
+  }
+
+  /// Le Floc'h (2020), arXiv:2005.13248, §3: a call's coefficients grow like `e^b`, so over a wide
+  /// range a call stays at the closed form only through the put and parity.
+  #[test]
+  fn cos_call_holds_over_a_wide_truncation_range() {
+    let model = BsmFourier { sigma: 0.2 };
+    let bsm = BsmPricer::new(0.2, BsmCoc::Merton1973);
+    let engine = CosEngine::new(4096, 100.0);
+    for k in [80.0, 100.0, 120.0] {
+      let call = engine.price(&model, 100.0, k, 0.05, 0.01, 1.0, OptionType::Call);
+      let want = bsm.price_call(100.0, k, 0.05, 0.01, 1.0);
+      assert!((call - want).abs() < 1e-10, "K={k}: {call} vs {want}");
+    }
   }
 
   /// Where 0 falls outside [a, b] the payoff coefficients must clamp to the payoff's support.

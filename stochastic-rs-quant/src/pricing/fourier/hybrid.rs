@@ -5,8 +5,13 @@ use num_complex::Complex64;
 
 use super::Cumulants;
 use super::FourierModelExt;
+use super::KouFourier;
+use super::MertonJdFourier;
+use super::factor_cd;
+use super::heston_cumulants;
 use crate::calibration::hkde::HkdeParams;
 use crate::calibration::svj::SvjParams;
+use crate::pricing::heston::HestonParams;
 
 /// Heston + Kou Double-Exponential jump model (Hkde) for Fourier pricing.
 ///
@@ -74,59 +79,40 @@ impl HkdeFourier {
       eta2,
     }
   }
+
+  fn heston(&self) -> HestonParams {
+    HestonParams {
+      v0: self.v0,
+      kappa: self.kappa,
+      theta: self.theta,
+      sigma: self.sigma_v,
+      rho: self.rho,
+    }
+  }
+
+  /// The jumps as a Kou model without diffusion: its compensator is `−λk̄`, `k̄ = E[e^J] − 1`.
+  fn jumps(&self) -> KouFourier {
+    KouFourier {
+      sigma: 0.0,
+      lambda: self.lam,
+      p_up: self.p_up,
+      eta1: self.eta1,
+      eta2: self.eta2,
+    }
+  }
 }
 
 impl FourierModelExt for HkdeFourier {
-  /// Heston diffusion uses the Albrecher-Mayer-Schoutens-Tistaert (2007)
-  /// "Little Heston Trap" form (`g̃ = 1/g_original`, `exp(-d·t)`); the Kou jump
-  /// CF is added linearly on top. Required for principal-branch stability at
-  /// long τ / high `|ρ|`.
   fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
-    let i = Complex64::i();
-    let sigma_v2 = self.sigma_v * self.sigma_v;
-
-    let rsi = self.rho * self.sigma_v * i;
-    let d = ((self.kappa - rsi * xi).powi(2) + sigma_v2 * (i * xi + xi * xi)).sqrt();
-    let g = (self.kappa - rsi * xi - d) / (self.kappa - rsi * xi + d);
-    let exp_dt = (-d * t).exp();
-
-    let c_heston = (self.kappa * self.theta / sigma_v2)
-      * ((self.kappa - rsi * xi - d) * t - 2.0 * ((1.0 - g * exp_dt) / (1.0 - g)).ln());
-    let d_heston = ((self.kappa - rsi * xi - d) / sigma_v2) * (1.0 - exp_dt) / (1.0 - g * exp_dt);
-
-    let k_bar = self.p_up * self.eta1 / (self.eta1 - 1.0)
-      + (1.0 - self.p_up) * self.eta2 / (self.eta2 + 1.0)
-      - 1.0;
-
-    let jump_cf = self.lam
-      * ((1.0 - self.p_up) * self.eta2 / (Complex64::new(self.eta2, 0.0) + i * xi)
-        + self.p_up * self.eta1 / (Complex64::new(self.eta1, 0.0) - i * xi)
-        - 1.0);
-
-    let drift_correction = -self.lam * k_bar;
-
-    (c_heston + d_heston * self.v0 + i * xi * drift_correction * t + jump_cf * t).exp()
+    let (c_heston, d_heston) = factor_cd(&self.heston(), t, xi);
+    let jumps = self.jumps();
+    let drift = Complex64::i() * xi * jumps.compensator() * t;
+    (c_heston + d_heston * self.v0 + drift + jumps.jump_exponent(xi) * t).exp()
   }
 
+  /// The Heston factor and the compensated jumps are independent, so their cumulants add.
   fn cumulants(&self, t: f64) -> Cumulants {
-    let ekt = (-self.kappa * t).exp();
-    let c1_h = (1.0 - ekt) * (self.theta - self.v0) / (2.0 * self.kappa) - 0.5 * self.theta * t;
-    let c2_h = self.sigma_v.powi(2) * t * self.theta / (2.0 * self.kappa);
-
-    let c1_j = self.lam * t * (self.p_up / self.eta1 - (1.0 - self.p_up) / self.eta2);
-    let c2_j = 2.0
-      * self.lam
-      * t
-      * (self.p_up / (self.eta1 * self.eta1) + (1.0 - self.p_up) / (self.eta2 * self.eta2));
-    let c4_j =
-      24.0 * self.lam * t * (self.p_up / self.eta1.powi(4) + (1.0 - self.p_up) / self.eta2.powi(4));
-
-    // The Heston part's fourth cumulant is not computed; the jump part alone widens the grid.
-    Cumulants {
-      c1: c1_h + c1_j,
-      c2: c2_h + c2_j,
-      c4: Some(c4_j),
-    }
+    heston_cumulants(&self.heston(), t).plus(self.jumps().cumulants(t))
   }
 }
 
@@ -179,45 +165,38 @@ impl BatesFourier {
       sigma_j,
     }
   }
+
+  fn heston(&self) -> HestonParams {
+    HestonParams {
+      v0: self.v0,
+      kappa: self.kappa,
+      theta: self.theta,
+      sigma: self.sigma_v,
+      rho: self.rho,
+    }
+  }
+
+  /// The jumps as a Merton model without diffusion: its compensator is `−λk̄`, `k̄ = E[e^J] − 1`.
+  fn jumps(&self) -> MertonJdFourier {
+    MertonJdFourier {
+      sigma: 0.0,
+      lambda: self.lambda,
+      mu_j: self.mu_j,
+      sigma_j: self.sigma_j,
+    }
+  }
 }
 
 impl FourierModelExt for BatesFourier {
-  /// Heston diffusion uses the Albrecher-Mayer-Schoutens-Tistaert (2007)
-  /// "Little Heston Trap" form (`g̃ = 1/g_original`, `exp(-d·t)`); the Merton
-  /// log-normal jump CF is added linearly on top. Required for principal-branch
-  /// stability at long τ / high `|ρ|`.
   fn chf(&self, t: f64, xi: Complex64) -> Complex64 {
-    let i = Complex64::i();
-    let sigma_v2 = self.sigma_v * self.sigma_v;
-
-    let rsi = self.rho * self.sigma_v * i;
-    let d = ((self.kappa - rsi * xi).powi(2) + sigma_v2 * (i * xi + xi * xi)).sqrt();
-    let g = (self.kappa - rsi * xi - d) / (self.kappa - rsi * xi + d);
-    let exp_dt = (-d * t).exp();
-
-    let c_heston = (self.kappa * self.theta / sigma_v2)
-      * ((self.kappa - rsi * xi - d) * t - 2.0 * ((1.0 - g * exp_dt) / (1.0 - g)).ln());
-    let d_heston = ((self.kappa - rsi * xi - d) / sigma_v2) * (1.0 - exp_dt) / (1.0 - g * exp_dt);
-
-    let k_bar = (self.mu_j + 0.5 * self.sigma_j * self.sigma_j).exp() - 1.0;
-    let jump_cf = self.lambda
-      * ((i * self.mu_j * xi - 0.5 * self.sigma_j * self.sigma_j * xi * xi).exp() - 1.0);
-    let drift_correction = -self.lambda * k_bar;
-
-    (c_heston + d_heston * self.v0 + i * xi * drift_correction * t + jump_cf * t).exp()
+    let (c_heston, d_heston) = factor_cd(&self.heston(), t, xi);
+    let jumps = self.jumps();
+    let drift = Complex64::i() * xi * jumps.compensator() * t;
+    (c_heston + d_heston * self.v0 + drift + jumps.jump_exponent(xi) * t).exp()
   }
 
+  /// The Heston factor and the compensated jumps are independent, so their cumulants add.
   fn cumulants(&self, t: f64) -> Cumulants {
-    let ekt = (-self.kappa * t).exp();
-    let c1_h = (1.0 - ekt) * (self.theta - self.v0) / (2.0 * self.kappa) - 0.5 * self.theta * t;
-    let c2_h = self.sigma_v.powi(2) * t * self.theta / (2.0 * self.kappa);
-    let c1_j = self.lambda * self.mu_j * t;
-    let c2_j = self.lambda * (self.mu_j.powi(2) + self.sigma_j.powi(2)) * t;
-
-    Cumulants {
-      c1: c1_h + c1_j,
-      c2: c2_h + c2_j,
-      c4: None,
-    }
+    heston_cumulants(&self.heston(), t).plus(self.jumps().cumulants(t))
   }
 }

@@ -119,32 +119,50 @@ impl FourierModelExt for RegimeSwitchingModel {
     chf_val
   }
 
+  /// Exact, from `I = ∫₀ᵗ σ²(Z_s) ds`: given `I` the log-return is `N(−I/2, I)`, so its cumulant
+  /// function is `K_I((s² − s)/2)` and `c4 = 3κ₂(I) + (3/2)κ₃(I) + κ₄(I)/16`.
   fn cumulants(&self, t: f64) -> Cumulants {
-    let m = self.vols.len();
-    let sigma_eff = self.vols[self.initial_state];
-
-    let (mean_sig2, mean_sig4) = if m == 2 {
-      let q01 = self.q_matrix[[0, 1]];
-      let q10 = self.q_matrix[[1, 0]];
-      let total = q01 + q10;
-      if total > 1e-12 {
-        let pi0 = q10 / total;
-        let pi1 = q01 / total;
-        let s2 = pi0 * self.vols[0].powi(2) + pi1 * self.vols[1].powi(2);
-        let s4 = pi0 * self.vols[0].powi(4) + pi1 * self.vols[1].powi(4);
-        (s2, s4)
-      } else {
-        (sigma_eff.powi(2), sigma_eff.powi(4))
-      }
-    } else {
-      (sigma_eff.powi(2), sigma_eff.powi(4))
-    };
-
+    let [centre, ..] = self.integrated_variance_moments(t, 0.0, 1);
+    let [m1, m2, m3, m4] = self.integrated_variance_moments(t, centre, 4);
+    let k2 = m2 - m1 * m1;
+    let k3 = m3 - 3.0 * m2 * m1 + 2.0 * m1 * m1 * m1;
+    let k4 = m4 - 4.0 * m3 * m1 - 3.0 * m2 * m2 + 12.0 * m2 * m1 * m1 - 6.0 * m1.powi(4);
+    let mean = centre + m1;
     Cumulants {
-      c1: -0.5 * mean_sig2 * t,
-      c2: mean_sig2 * t,
-      c4: Some(3.0 * mean_sig4 * t),
+      c1: -0.5 * mean,
+      c2: mean + 0.25 * k2,
+      c4: Some(3.0 * k2 + 1.5 * k3 + k4 / 16.0),
     }
+  }
+}
+
+impl RegimeSwitchingModel {
+  /// `E[(I − c)ᵏ] = k!·B₁,ₖ₊₁1` at the initial state for `k ≤ order`, `B` the first block row of
+  /// `exp(A)`, `A` with `tQ` on and `diag(σᵢ²t − c)` above its block diagonal; `c = E[I]` centres.
+  /// Carbonell, Jimenez & Pedroso (2008), J. Comput. Appl. Math. 213(1), 300–305.
+  fn integrated_variance_moments(&self, t: f64, c: f64, order: usize) -> [f64; 4] {
+    let (m, blocks) = (self.vols.len(), order + 1);
+    let mut block = Array2::<Complex64>::zeros((blocks * m, blocks * m));
+    for i in 0..m {
+      let above = self.vols[i] * self.vols[i] * t - c;
+      for d in 0..blocks {
+        for j in 0..m {
+          block[[d * m + i, d * m + j]] = Complex64::new(self.q_matrix[[i, j]] * t, 0.0);
+        }
+        if d < order {
+          block[[d * m + i, (d + 1) * m + i]] = Complex64::new(above, 0.0);
+        }
+      }
+    }
+    let exp = matrix_exp_complex(&block);
+    let row = self.initial_state;
+    let mut moments = [0.0; 4];
+    let mut factorial = 1.0;
+    for k in 1..=order {
+      factorial *= k as f64;
+      moments[k - 1] = factorial * (0..m).map(|j| exp[[row, k * m + j]].re).sum::<f64>();
+    }
+    moments
   }
 }
 
@@ -206,8 +224,16 @@ impl CosPricer {
     vols: &Array1<f64>,
     initial_state: usize,
   ) -> f64 {
-    let call = self.price_call(s, k, r, q_div, t, q_matrix, vols, initial_state);
-    (call - s * (-q_div * t).exp() + k * (-r * t).exp()).max_or_nan(0.0)
+    let model = RegimeSwitchingModel {
+      q_matrix: q_matrix.clone(),
+      vols: vols.clone(),
+      initial_state,
+    };
+    CosEngine {
+      n: self.n,
+      l: self.l,
+    }
+    .price(&model, s, k, r, q_div, t, OptionType::Put)
   }
 }
 
