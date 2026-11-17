@@ -244,12 +244,7 @@ pub fn try_calibrate_essvi<T: RealExt>(
       ));
     }
     let anchor = (0..ks.len())
-      .min_by(|&i, &j| {
-        ks[i]
-          .abs()
-          .partial_cmp(&ks[j].abs())
-          .expect("finite log-moneyness")
-      })
+      .min_by(|&i, &j| ks[i].abs().total_cmp(&ks[j].abs()))
       .expect("non-empty");
     let anchored = AnchoredSlice {
       k_star: ks[anchor],

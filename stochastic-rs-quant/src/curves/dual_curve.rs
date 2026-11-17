@@ -24,6 +24,7 @@ use super::discount_curve::DiscountCurve;
 use super::interpolation::interpolate_discount_factor;
 use super::types::CurvePoint;
 use super::types::InterpolationMethod;
+use crate::order::ascending;
 use crate::traits::RealExt;
 
 /// Quote on the tenor being bootstrapped; times are year fractions from the
@@ -65,11 +66,7 @@ pub fn bootstrap_forecast<T: RealExt>(
   method: InterpolationMethod,
 ) -> DiscountCurve<T> {
   let mut sorted: Vec<&ForecastInstrument<T>> = instruments.iter().collect();
-  sorted.sort_by(|a, b| {
-    a.maturity()
-      .partial_cmp(&b.maturity())
-      .expect("finite maturities")
-  });
+  sorted.sort_by(|a, b| ascending(&a.maturity(), &b.maturity()));
   let mut points: Vec<CurvePoint<T>> = vec![CurvePoint {
     time: T::zero(),
     discount_factor: T::one(),

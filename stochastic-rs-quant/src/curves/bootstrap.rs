@@ -17,6 +17,7 @@ use super::interpolation;
 use super::types::BootstrapInstrument;
 use super::types::CurvePoint;
 use super::types::InterpolationMethod;
+use crate::order::ascending;
 use crate::traits::RealExt;
 
 /// Build a discount curve by bootstrapping from a set of market instruments.
@@ -28,7 +29,7 @@ pub fn bootstrap<T: RealExt>(
   method: InterpolationMethod,
 ) -> DiscountCurve<T> {
   let mut sorted: Vec<&BootstrapInstrument<T>> = instruments.iter().collect();
-  sorted.sort_by(|a, b| a.maturity().partial_cmp(&b.maturity()).unwrap());
+  sorted.sort_by(|a, b| ascending(&a.maturity(), &b.maturity()));
 
   let mut points: Vec<CurvePoint<T>> = vec![CurvePoint {
     time: T::zero(),
@@ -172,7 +173,7 @@ pub fn bootstrap_iterative<T: RealExt>(
   max_iter: usize,
 ) -> DiscountCurve<T> {
   let mut sorted: Vec<&BootstrapInstrument<T>> = instruments.iter().collect();
-  sorted.sort_by(|a, b| a.maturity().partial_cmp(&b.maturity()).unwrap());
+  sorted.sort_by(|a, b| ascending(&a.maturity(), &b.maturity()));
 
   let mut points: Vec<CurvePoint<T>> = vec![CurvePoint {
     time: T::zero(),

@@ -33,18 +33,15 @@ pub fn compute_scores<T: ModelEstimate>(evals: &[T], risk_free: f64) -> Vec<Mome
     .collect()
 }
 
-/// Split scored universe into 10 (or fewer) decile buckets.
+/// Split scored universe into 10 (or fewer) decile buckets, best score first; a NaN score ranks at
+/// an end, `+NaN` first and `-NaN` last, as `f64::total_cmp` orders them.
 pub fn decile_analysis(scores: &[MomentumScore]) -> Vec<DecileBucket> {
   if scores.is_empty() {
     return Vec::new();
   }
 
   let mut sorted: Vec<MomentumScore> = scores.to_vec();
-  sorted.sort_by(|a, b| {
-    b.momentum_score
-      .partial_cmp(&a.momentum_score)
-      .unwrap_or(std::cmp::Ordering::Equal)
-  });
+  sorted.sort_by(|a, b| b.momentum_score.total_cmp(&a.momentum_score));
 
   let n = sorted.len();
   let n_buckets = 10.min(n);

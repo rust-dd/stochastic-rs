@@ -101,12 +101,7 @@ impl VarianceSwapPricer {
     let k0_idx = strikes
       .iter()
       .enumerate()
-      .min_by(|(_, a), (_, b)| {
-        (*a - fwd)
-          .abs()
-          .partial_cmp(&(*b - fwd).abs())
-          .unwrap_or(std::cmp::Ordering::Equal)
-      })
+      .min_by(|(_, a), (_, b)| (*a - fwd).abs().total_cmp(&(*b - fwd).abs()))
       .map(|(i, _)| i)
       .unwrap_or(0);
     let k0 = strikes[k0_idx];

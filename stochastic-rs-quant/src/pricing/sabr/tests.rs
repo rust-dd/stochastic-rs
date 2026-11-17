@@ -456,19 +456,17 @@ fn rejects_a_nonpositive_alpha() {
 }
 
 #[test]
-#[should_panic(expected = "forward f must be strictly positive")]
-fn alpha_from_atm_vol_rejects_a_nonpositive_forward() {
-  let _ = alpha_from_atm_vol(0.2, 0.0, 1.0, 1.0, -0.3, 0.5);
+fn alpha_from_atm_vol_is_nan_at_a_nonpositive_forward() {
+  assert!(alpha_from_atm_vol(0.2, 0.0, 1.0, 1.0, -0.3, 0.5).is_nan());
 }
 
 #[test]
-#[should_panic(expected = "v_atm must be strictly positive")]
-fn alpha_from_atm_vol_rejects_a_nonpositive_v_atm() {
-  let _ = alpha_from_atm_vol(0.0, 100.0, 1.0, 1.0, -0.3, 0.5);
+fn alpha_from_atm_vol_is_nan_at_a_nonpositive_v_atm() {
+  assert!(alpha_from_atm_vol(0.0, 100.0, 1.0, 1.0, -0.3, 0.5).is_nan());
 }
 
 #[test]
-#[should_panic(expected = "rho must lie strictly inside (-1, 1)")]
+#[should_panic(expected = "rho must satisfy `rho > -1.0 && rho < 1.0`, got rho = 1.0")]
 fn alpha_from_atm_vol_rejects_rho_at_one() {
   let _ = alpha_from_atm_vol(0.2, 100.0, 1.0, 1.0, 1.0, 0.5);
 }

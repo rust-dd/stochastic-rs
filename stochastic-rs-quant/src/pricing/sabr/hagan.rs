@@ -65,8 +65,8 @@ pub fn hagan_implied_vol(k: f64, f: f64, tau: f64, params: &SabrParams) -> f64 {
   }
 }
 
-/// Compute Sabr α from an ATM lognormal vol by solving the Hagan (2002) ATM
-/// condition (Eq. A.69b) as a cubic polynomial in α (quadratic when β = 1).
+/// Hagan et al. (2002) eq. A.69b: α at an ATM vol by Newton from `σ_ATM F^{1−β}`; NaN for `f ≤ 0`,
+/// `v_atm ≤ 0`, a negative or non-finite `tau` or no positive root; panics unless `rho ∈ (−1, 1)`.
 ///
 /// $$
 /// \frac{(1-\beta)^2 f_*^3}{24}\,\tau\;\alpha^3
@@ -74,42 +74,14 @@ pub fn hagan_implied_vol(k: f64, f: f64, tau: f64, params: &SabrParams) -> f64 {
 /// +\bigl(1+\tfrac{(2-3\rho^2)\nu^2}{24}\,\tau\bigr)\,f_*\;\alpha
 /// -\sigma_{ATM}=0, \quad f_*=F^{\beta-1}
 /// $$
-///
-/// # Root selection
-///
-/// This cubic can have up to three real roots (two when β = 1, since the
-/// α³ term vanishes and it degenerates to a quadratic). α is a volatility
-/// level, so only the root near the zeroth-order estimate
-/// `α₀ = σ_ATM · F^{1−β}` is economically meaningful: at ρ = 0, ν = 0 the
-/// bracketed correction term vanishes and `α₀` is the *exact* root, and
-/// that root drifts continuously away from `α₀` as ρ, ν move away from
-/// zero. Any other real root is an artifact of the polynomial's degree
-/// with no connection to that unperturbed solution — e.g. the first
-/// `alpha_from_atm_vol_reference` case in `tests.rs` (β = 1, ρ = −0.3,
-/// ν = 0.5, τ = 1, σ_ATM = 0.20) has a second positive root at α ≈ 26.9
-/// that [`hagan_implied_vol`] round-trips back to 0.20 exactly as validly
-/// as the correct α ≈ 0.198, since both are genuine algebraic roots of
-/// the same equation.
-///
-/// The solver below is Newton's method seeded at exactly `α₀`, which
-/// converges to the near-`α₀` root in every case this crate tests,
-/// including a close-roots case where the two positive real roots are
-/// within 5% of each other (`alpha_from_atm_vol_close_roots_reference` in
-/// `tests.rs`). Newton is *not proven* to stay in that basin for
-/// arbitrary (β, ρ, ν, τ) — there is no post-hoc check on which root was
-/// found, so parameters far outside what this crate tests could in
-/// principle converge elsewhere.
-///
-/// # Panics
-/// - if `f` or `v_atm` is not strictly positive
-/// - if `rho` is not strictly inside $(-1, 1)$
 pub fn alpha_from_atm_vol(v_atm: f64, f: f64, tau: f64, beta: f64, rho: f64, nu: f64) -> f64 {
-  assert!(f > 0.0, "forward f must be strictly positive (got {f})");
-  assert!(v_atm > 0.0, "v_atm must be strictly positive (got {v_atm})");
   assert!(
     rho > -1.0 && rho < 1.0,
-    "rho must lie strictly inside (-1, 1) (got {rho})"
+    "rho must satisfy `rho > -1.0 && rho < 1.0`, got rho = {rho:?}"
   );
+  if !(f > 0.0 && v_atm > 0.0 && tau.is_finite() && tau >= 0.0) {
+    return f64::NAN;
+  }
 
   let f_ = f.powf(beta - 1.0);
   let p3 = tau * f_.powi(3) * (1.0 - beta).powi(2) / 24.0;
@@ -117,9 +89,6 @@ pub fn alpha_from_atm_vol(v_atm: f64, f: f64, tau: f64, beta: f64, rho: f64, nu:
   let p1 = (1.0 + tau * nu * nu * (2.0 - 3.0 * rho * rho) / 24.0) * f_;
   let p0 = -v_atm;
 
-  // Newton's method from initial guess α ≈ σ_ATM · F^{1−β} — see the
-  // "Root selection" doc section above for why this is the economically
-  // meaningful branch.
   let mut x = v_atm * f.powf(1.0 - beta);
   for _ in 0..100 {
     let fx = p3 * x * x * x + p2 * x * x + p1 * x + p0;
@@ -133,7 +102,11 @@ pub fn alpha_from_atm_vol(v_atm: f64, f: f64, tau: f64, beta: f64, rho: f64, nu:
       break;
     }
   }
-  x.max(1e-8)
+  if x.is_finite() && x > 0.0 {
+    x
+  } else {
+    f64::NAN
+  }
 }
 
 /// Black-Scholes(-Garman-Kohlhagen) price for FX under GK using BsmPricer.

@@ -223,7 +223,7 @@ mod tests {
       .log_moneyness
       .iter()
       .enumerate()
-      .min_by(|(_, a), (_, b)| a.abs().partial_cmp(&b.abs()).unwrap())
+      .min_by(|(_, a), (_, b)| a.abs().total_cmp(&b.abs()))
       .map(|(i, _)| i)
       .unwrap();
     assert!(
@@ -341,7 +341,7 @@ mod tests {
       .log_moneyness
       .iter()
       .enumerate()
-      .min_by(|(_, a), (_, b)| a.abs().partial_cmp(&b.abs()).unwrap())
+      .min_by(|(_, a), (_, b)| a.abs().total_cmp(&b.abs()))
       .map(|(i, _)| i)
       .unwrap();
     assert!(

@@ -43,6 +43,8 @@ use stochastic_rs_quant::risk::value_at_risk;
 use stochastic_rs_quant::risk::xva::ExposureProfile;
 use stochastic_rs_quant::vol_surface::implied::ImpliedVolSurface;
 
+mod query_limits;
+
 fn flat_curve() -> DiscountCurve<f64> {
   DiscountCurve::from_zero_rates(
     &Array1::from_vec(vec![0.5, 1.0, 5.0]),

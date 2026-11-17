@@ -16,7 +16,8 @@ use super::types::WeightScheme;
 use super::weights::assign_weights;
 use super::weights::compute_portfolio_vol;
 
-/// Build rank-based long/short momentum portfolio.
+/// Build rank-based long/short momentum portfolio; a NaN score ranks at an end, `+NaN` first and
+/// `-NaN` last, as `f64::total_cmp` orders them.
 pub fn build_portfolio(
   scores: &[MomentumScore],
   long_n: usize,
@@ -32,8 +33,7 @@ pub fn build_portfolio(
   order.sort_by(|&a, &b| {
     scores[b]
       .momentum_score
-      .partial_cmp(&scores[a].momentum_score)
-      .unwrap_or(std::cmp::Ordering::Equal)
+      .total_cmp(&scores[a].momentum_score)
   });
 
   let long_count = long_n.min(order.len());

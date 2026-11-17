@@ -33,8 +33,8 @@ pub struct SnellEnvelopeResult {
   pub exercise_boundary: Vec<(f64, f64)>,
 }
 
-/// American option by Snell-envelope recursion on a CRR tree rebuilt per query; the struct holds σ and the step count. A query
-/// with a non-finite argument or a non-positive spot, strike or maturity is NaN; a risk-neutral `p` outside `[0, 1]` panics (raise `steps`).
+/// American option by Snell-envelope recursion on a CRR tree built per query; NaN for a non-finite
+/// argument, a non-positive `s`, `k` or `tau`, or a tree `p` outside `[0, 1]` (raise `steps`).
 ///
 /// ```
 /// use stochastic_rs_quant::pricing::snell_envelope::SnellEnvelopePricer;
@@ -53,14 +53,21 @@ pub struct SnellEnvelopePricer {
 }
 
 impl SnellEnvelopePricer {
+  /// Panics unless `v` is finite and positive and `steps >= 1`.
   pub fn new(v: f64, steps: usize) -> Self {
-    assert!(v.is_finite() && v > 0.0, "v must be finite and positive");
-    assert!(steps > 0, "steps must be > 0");
+    assert!(
+      v.is_finite() && v > 0.0,
+      "v must satisfy `v.is_finite() && v > 0.0`, got v = {v:?}"
+    );
+    assert!(
+      steps >= 1,
+      "steps must satisfy `steps >= 1`, got steps = {steps}"
+    );
 
     Self { v, steps }
   }
 
-  /// A well-posed query; the callers answer NaN for any other.
+  /// A well-posed query; the pricing calls answer NaN for any other.
   fn query_is_well_posed(s: f64, k: f64, r: f64, q: f64, tau: f64) -> bool {
     s.is_finite()
       && s > 0.0
@@ -72,8 +79,12 @@ impl SnellEnvelopePricer {
       && tau > 0.0
   }
 
-  /// CRR lattice constants `(dt, u, d, disc, p)` at one query point.
-  fn lattice(&self, r: f64, q: f64, tau: f64) -> (f64, f64, f64, f64, f64) {
+  /// CRR lattice constants `(dt, u, d, disc, p)` of a well-posed query, `None` for any other query
+  /// and wherever `p` leaves `[0, 1]`.
+  fn lattice(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> Option<(f64, f64, f64, f64, f64)> {
+    if !Self::query_is_well_posed(s, k, r, q, tau) {
+      return None;
+    }
     let dt = tau / self.steps as f64;
     let sqrt_dt = dt.sqrt();
     let u = (self.v * sqrt_dt).exp();
@@ -81,11 +92,7 @@ impl SnellEnvelopePricer {
     let disc = (-r * dt).exp();
     let growth = ((r - q) * dt).exp();
     let p = (growth - d) / (u - d);
-    assert!(
-      (0.0..=1.0).contains(&p),
-      "risk-neutral probability out of range: p={p}. Increase steps or adjust parameters."
-    );
-    (dt, u, d, disc, p)
+    (0.0..=1.0).contains(&p).then_some((dt, u, d, disc, p))
   }
 
   fn price_american(
@@ -97,10 +104,9 @@ impl SnellEnvelopePricer {
     tau: f64,
     option_type: OptionType,
   ) -> f64 {
-    if !Self::query_is_well_posed(s, k, r, q, tau) {
+    let Some((_dt, u, d, disc, p)) = self.lattice(s, k, r, q, tau) else {
       return f64::NAN;
-    }
-    let (_dt, u, d, disc, p) = self.lattice(r, q, tau);
+    };
 
     let mut values = vec![0.0_f64; self.steps + 1];
     let mut s_node = s * d.powi(self.steps as i32);
@@ -134,15 +140,14 @@ impl SnellEnvelopePricer {
     tau: f64,
     option_type: OptionType,
   ) -> SnellEnvelopeResult {
-    if !Self::query_is_well_posed(s, k, r, q, tau) {
+    let Some((dt, u, d, disc, p)) = self.lattice(s, k, r, q, tau) else {
       return SnellEnvelopeResult {
         price: f64::NAN,
         european_price: f64::NAN,
         early_exercise_premium: f64::NAN,
         exercise_boundary: Vec::new(),
       };
-    }
-    let (dt, u, d, disc, p) = self.lattice(r, q, tau);
+    };
     let ud_ratio = u / d;
 
     let mut am_values = vec![0.0_f64; self.steps + 1];
@@ -195,10 +200,7 @@ impl SnellEnvelopePricer {
       }
     }
 
-    // boundary times come from `(i as f64) * dt` with `i, dt` finite, so NaN
-    // is unreachable here; fall back to Equal in case future refactors plumb
-    // user data through this path.
-    exercise_boundary.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    exercise_boundary.sort_by(|a, b| a.0.total_cmp(&b.0));
 
     SnellEnvelopeResult {
       price: am_values[0],

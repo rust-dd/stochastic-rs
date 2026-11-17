@@ -86,6 +86,7 @@
 mod doctest_names;
 mod error;
 mod linalg;
+mod order;
 
 pub mod traits;
 
