@@ -1,3 +1,5 @@
+use stochastic_rs_distributions::RealExt;
+
 use super::*;
 
 struct Rosenbrock {
@@ -292,4 +294,40 @@ fn a_zero_weight_pull_is_the_unpulled_fit_bit_for_bit() {
 fn distance_to_optimum(x: &Array1<f64>) -> f64 {
   let distance = x - &Array1::from_elem(2, 1.0);
   distance.dot(&distance).sqrt()
+}
+
+/// `∂θ/∂x` of a problem's natural parameters by central differences of step `h` around `x`.
+pub(crate) fn natural_jacobian_by_differences<P: LeastSquaresProblem>(
+  problem: &mut P,
+  x: &Array1<f64>,
+  h: f64,
+) -> Array2<f64> {
+  let mut at = |y: &Array1<f64>| {
+    problem.set_params(y);
+    Array1::from_vec(problem.natural_params())
+  };
+  let rows = at(x).len();
+  let mut jacobian = Array2::zeros((rows, x.len()));
+  for column in 0..x.len() {
+    let (mut up, mut down) = (x.clone(), x.clone());
+    up[column] += h;
+    down[column] -= h;
+    let derivative = (at(&up) - at(&down)) / (2.0 * h);
+    jacobian.column_mut(column).assign(&derivative);
+  }
+  problem.set_params(x);
+  jacobian
+}
+
+/// The largest entrywise `|a − b| / max(|a|, |b|)`, zero where both are zero; NaN propagates.
+pub(crate) fn worst_relative_error(a: &Array2<f64>, b: &Array2<f64>) -> f64 {
+  let ratio = |(x, y): (&f64, &f64)| {
+    let scale = x.abs().max(y.abs());
+    if scale == 0.0 {
+      0.0
+    } else {
+      (x - y).abs() / scale
+    }
+  };
+  f64::max_or_nan_fold(a.iter().zip(b).map(ratio))
 }
