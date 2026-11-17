@@ -419,8 +419,8 @@ fn an_ar1_path_exact_to_rounding_has_zero_residual_variance() {
   );
 }
 
-/// The slope from centred sums: raw ones cancel at a level far above the spread, where the
-/// closed form read `θ̂` as a slope of at least 1.
+/// Shifted far from zero against its spread, the path keeps the closed form's slope: its sums run
+/// about the means.
 #[test]
 fn the_closed_form_keeps_its_slope_at_a_level_far_above_its_spread() {
   let dt = 1.0 / 252.0;

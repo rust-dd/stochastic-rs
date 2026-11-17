@@ -88,16 +88,16 @@ pub fn fit_diffusion_bayesian<T: FloatExt>(
   let inv_2tau2 = 1.0 / (2.0 * tau * tau);
 
   let log_post = |p: ArrayView1<f64>| -> f64 {
-    let (lth, lmu, ls) = (p[0], p[1], p[2]);
-    let [theta, mu, sigma] = carrier.params([lth, lmu, ls]);
+    let q = [p[0], p[1], p[2]];
+    let [theta, mu, sigma] = carrier.params(q);
     if !(theta.is_finite() && mu.is_finite() && sigma.is_finite()) {
       return f64::NEG_INFINITY;
     }
     let ll = quasi_log_likelihood(&x, dt, kind, theta, mu, sigma);
     let log_prior = -inv_2tau2
-      * ((lth - prior_mean[0]).powi(2)
-        + (lmu - prior_mean[1]).powi(2)
-        + (ls - prior_mean[2]).powi(2));
+      * ((q[0] - prior_mean[0]).powi(2)
+        + (q[1] - prior_mean[1]).powi(2)
+        + (q[2] - prior_mean[2]).powi(2));
     ll + log_prior
   };
 
@@ -228,8 +228,8 @@ mod tests {
     );
   }
 
-  /// A level below zero is the posterior's: the chain carries it in the path's standard deviations
-  /// about the mean, where `ln μ` held it above zero.
+  /// A level below zero lies inside the posterior's interval: the chain carries the level in the
+  /// path's standard deviations about its mean.
   #[test]
   fn a_negative_level_is_inside_the_credible_interval() {
     let (tht, mt, st) = (1.5, -0.03, 0.15);

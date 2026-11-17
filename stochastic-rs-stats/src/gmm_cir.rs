@@ -62,8 +62,8 @@ impl GmmCirFit {
   }
 }
 
-/// Two-step GMM of the CIR process on its exact moments, sampled every `dt`; `Err` below 5 points,
-/// a negative or non-finite one, a constant path or a non-finite start; panics unless `0 < dt < ∞`.
+/// Two-step GMM of CIR every `dt`; `Err` below 5 points, a negative or non-finite one, a constant
+/// path, a singular `Ŝ` or a start, `Ŝ` or `J` not finite; panics unless `0 < dt < ∞`.
 pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCirFit, StatsError> {
   assert_dt(dt);
   // `Ŝ` sums one outer product per transition, so its four moments need four transitions.
