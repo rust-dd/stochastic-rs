@@ -5,7 +5,7 @@
 /// Normal noise, one site per component (`+ k`, `k < 4`); the counter is `(path, step, site, 0)`.
 pub const SITE_NOISE: u32 = 0;
 
-/// The step's four uniforms, one word each.
+/// The step's four uniforms: uniform `k` from word `k` at index 0, its `f64` low bits from index 1.
 pub const SITE_UNIFORMS: u32 = 4;
 
 /// The Poisson count, two uniforms a call; the index counts the calls.
@@ -33,7 +33,7 @@ pub const SITE_SERIES_MARKS: u32 = 12;
 /// Past the 24 tries' indices, where the shape boost draws.
 pub const GAMMA_BOOST: u32 = 48;
 
-/// `23 ln 2`: an exponential's zero cell `[0, 2⁻²³)` refined by a second word starts here.
+/// `23 ln 2 = −ln 2⁻²³`, where an exponential's refined zero cell `[0, 2⁻²³)` starts.
 pub const LN_2_23: f32 = 15.942_385;
 
 const M0: u32 = 0xD251_1F53;
