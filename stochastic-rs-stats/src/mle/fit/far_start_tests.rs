@@ -5,9 +5,8 @@ use super::*;
 use crate::qmle::fit_ou_mle;
 use crate::qmle::test_support::simulate_ou;
 
-/// From a level and a `σ` far off, the search slides to a speed near its bound, where the level
-/// has no gradient: run again from the start's speed and level with `σ` fitted, it reaches the
-/// closed form's optimum.
+/// From a level and a `σ` far off the search slides to a speed near its bound, where the level has
+/// no gradient: again from the start's speed and level with `σ` fitted, it reaches the closed form.
 #[test]
 fn a_far_start_that_stalls_where_the_level_is_not_identified_reaches_the_closed_form() {
   let dt = 1.0 / 252.0;
