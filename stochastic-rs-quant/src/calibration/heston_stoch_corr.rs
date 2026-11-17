@@ -10,12 +10,17 @@
 //! - Teng, Ehrhardt & Günther (2016)
 //! - Tanaś, R. — <https://github.com/tanasr/HestonStochCorr>
 
+use slsqp::FailStatus;
+use slsqp::StopTols;
+use slsqp::SuccessStatus;
+
 use crate::LossMetric;
 use crate::OptionQuote;
 use crate::OptionType;
 use crate::QuantError;
 use crate::calibration::Calibrated;
 use crate::calibration::CalibrationOptions;
+use crate::calibration::Knob;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::check_finite_start;
 use crate::calibration::quote::validate_quotes;
@@ -110,7 +115,6 @@ impl<D> ToModel for Calibrated<HscmParams, D> {
   }
 }
 
-/// The objective's market: spot, the one rate pair and the quotes.
 #[derive(Clone)]
 struct CalibData {
   s: f64,
@@ -154,6 +158,24 @@ fn slsqp_objective(x: &[f64], gradient: Option<&mut [f64]>, data: &mut CalibData
   data.sse(x)
 }
 
+/// SLSQP's stop in words; only a stop on its own criterion is a convergence, a cap never is.
+fn slsqp_stop(status: Result<SuccessStatus, FailStatus>) -> (&'static str, bool) {
+  match status {
+    Ok(SuccessStatus::Success) => ("success", true),
+    Ok(SuccessStatus::StopValReached) => ("stop value reached", true),
+    Ok(SuccessStatus::FtolReached) => ("ftol reached", true),
+    Ok(SuccessStatus::XtolReached) => ("xtol reached", true),
+    Ok(SuccessStatus::MaxEvalReached) => ("max evaluations reached", false),
+    Ok(SuccessStatus::MaxTimeReached) => ("max time reached", false),
+    Err(FailStatus::Failure) => ("failure", false),
+    Err(FailStatus::InvalidArgs) => ("invalid arguments", false),
+    Err(FailStatus::OutOfMemory) => ("out of memory", false),
+    Err(FailStatus::RoundoffLimited) => ("roundoff limited", false),
+    Err(FailStatus::ForcedStop) => ("forced stop", false),
+    Err(FailStatus::UnexpectedError) => ("unexpected error", false),
+  }
+}
+
 /// HSCM fit to vanilla quotes by SLSQP inside `BOUNDS`, on the squared relative price errors.
 #[derive(Clone, Debug)]
 pub struct HscmCalibrator {
@@ -164,7 +186,8 @@ pub struct HscmCalibrator {
   /// `None` starts from (2, 0.04, 0.3, 0.04, 5, −0.5, 0.2, −0.7, 0.3); a start is clamped to
   /// `BOUNDS`.
   pub start: Option<HscmParams>,
-  /// SLSQP: `max_iterations` caps its evaluations (default 500); `regularization` is `Unsupported`.
+  /// SLSQP: `max_iterations` caps its evaluations (default 500) and `tolerance` is its `ftol_rel`;
+  /// `patience`, `record_history` and `regularization` are `Unsupported`.
   pub options: CalibrationOptions,
 }
 
@@ -205,15 +228,12 @@ impl crate::traits::Calibrator for HscmCalibrator {
   type Output = Calibrated<HscmParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`; `InvalidInput` unless every value of the one used is finite,
-  /// `Optimizer` when the objective at it is not finite.
+  /// A start replaces `self.start`; `InvalidInput` unless every value of it is finite, `Optimizer`
+  /// when the objective there is not finite, and the `CalibrationOptions` errors.
   fn calibrate(&self, initial: Option<HscmParams>) -> Result<Calibrated<HscmParams>, QuantError> {
     validate_quotes(&self.quotes)?;
-    if self.options.regularization.is_some() {
-      return Err(QuantError::Unsupported {
-        what: "regularization",
-      });
-    }
+    let unread = [Knob::Patience, Knob::RecordHistory, Knob::Regularization];
+    self.options.check(&unread)?;
     let start = initial.or_else(|| self.start.clone());
     if let Some(start) = &start {
       check_start(start)?;
@@ -238,18 +258,23 @@ impl crate::traits::Calibrator for HscmCalibrator {
       });
     }
     let cons: Vec<&dyn slsqp::Func<CalibData>> = vec![];
-    let (x, final_objective, ok) = match slsqp::minimize(
+    let tolerance = self.options.tolerance.map(|ftol_rel| StopTols {
+      ftol_rel,
+      ..StopTols::default()
+    });
+    let (status, x, final_objective) = match slsqp::minimize(
       slsqp_objective,
       &x_init,
       &BOUNDS,
       &cons,
       data.clone(),
       self.options.max_iterations.unwrap_or(500),
-      None,
+      tolerance,
     ) {
-      Ok((_status, x_opt, fval)) => (x_opt, fval, true),
-      Err((_status, x_opt, fval)) => (x_opt, fval, false),
+      Ok((status, x_opt, fval)) => (Ok(status), x_opt, fval),
+      Err((status, x_opt, fval)) => (Err(status), x_opt, fval),
     };
+    let (stop, converged) = slsqp_stop(status);
     let market = self
       .quotes
       .iter()
@@ -261,10 +286,16 @@ impl crate::traits::Calibrator for HscmCalibrator {
       .map(|quote| data.price(&x, quote))
       .collect::<Vec<_>>();
     let params = HscmParams::from_values(&x);
-    let mut fit = Calibrated::repriced(params, &market, &model, self.options.loss_metrics, ok);
+    let mut fit = Calibrated::repriced(
+      params,
+      &market,
+      &model,
+      self.options.loss_metrics,
+      converged,
+    );
     // An SLSQP success that reprices to a non-finite error is not a fit.
     fit.converged &= fit.loss.get(LossMetric::Rmse).is_finite();
-    Ok(fit.with_message(format!("slsqp objective {final_objective:e}")))
+    Ok(fit.with_message(format!("slsqp {stop}, objective {final_objective:e}")))
   }
 }
 
@@ -288,13 +319,20 @@ mod tests {
       .to_vec()
   }
 
+  const GUESS: [f64; 9] = [1.5, 0.05, 0.4, 0.05, 4.0, -0.3, 0.3, -0.5, 0.2];
+
+  fn from_guess(options: CalibrationOptions) -> Result<Calibrated<HscmParams>, QuantError> {
+    HscmCalibrator::new(100.0, 0.03, 0.0, quotes(&DEFAULT_START)[..1].to_vec())
+      .with_start(HscmParams::from_values(&GUESS))
+      .with_options(options)
+      .calibrate(None)
+  }
+
   #[test]
   #[ignore = "slow: HSCM Carr-Madan FFT × SLSQP iterations. Run with --ignored."]
   fn calibrate_recovers_synthetic_prices() {
-    let truth = [2.0, 0.04, 0.3, 0.04, 5.0, -0.5, 0.2, -0.7, 0.3];
-    let guess = [1.5, 0.05, 0.4, 0.05, 4.0, -0.3, 0.3, -0.5, 0.2];
-    let calibrator = HscmCalibrator::new(100.0, 0.03, 0.0, quotes(&truth))
-      .with_start(HscmParams::from_values(&guess))
+    let calibrator = HscmCalibrator::new(100.0, 0.03, 0.0, quotes(&DEFAULT_START))
+      .with_start(HscmParams::from_values(&GUESS))
       .with_options(CalibrationOptions::default().with_max_iterations(200));
     let initial = CalibData {
       s: 100.0,
@@ -302,14 +340,11 @@ mod tests {
       q: 0.0,
       quotes: calibrator.quotes.clone(),
     }
-    .sse(&guess);
+    .sse(&GUESS);
     let fit = calibrator.calibrate(None).unwrap();
     let message = fit.message.as_deref().unwrap();
-    let final_objective = message
-      .strip_prefix("slsqp objective ")
-      .unwrap()
-      .parse::<f64>()
-      .unwrap();
+    let (_, objective) = message.rsplit_once("objective ").unwrap();
+    let final_objective = objective.parse::<f64>().unwrap();
     assert!(
       final_objective < initial * 0.5,
       "final {final_objective} initial {initial}"
@@ -318,20 +353,54 @@ mod tests {
   }
 
   #[test]
-  fn a_pull_is_unsupported_and_a_start_must_be_finite() {
-    let calibrator = HscmCalibrator::new(100.0, 0.03, 0.0, quotes(&DEFAULT_START));
-    let pull = crate::calibration::Regularization::uniform(vec![0.0; 9], 1.0);
-    let err = calibrator
-      .clone()
-      .with_options(CalibrationOptions::default().with_regularization(pull))
-      .calibrate(None)
-      .unwrap_err();
-    assert_eq!(
-      err,
-      QuantError::Unsupported {
-        what: "regularization"
-      }
+  fn an_evaluation_cap_is_not_convergence_and_the_message_names_the_stop() {
+    let fit = from_guess(CalibrationOptions::default().with_max_iterations(1)).unwrap();
+    let message = fit.message.as_deref().unwrap();
+    assert!(!fit.converged, "{message}");
+    assert!(
+      message.starts_with("slsqp max evaluations reached, objective "),
+      "{message}"
     );
+  }
+
+  #[test]
+  fn a_tolerance_stops_slsqp_on_the_change_of_its_objective() {
+    let options = CalibrationOptions::default()
+      .with_max_iterations(12)
+      .with_tolerance(1e9);
+    let fit = from_guess(options).unwrap();
+    let message = fit.message.as_deref().unwrap();
+    assert!(fit.converged, "{message}");
+    assert!(
+      message.starts_with("slsqp ftol reached, objective "),
+      "{message}"
+    );
+  }
+
+  #[test]
+  fn a_knob_slsqp_cannot_read_is_unsupported_and_a_written_one_is_checked() {
+    let capped = || CalibrationOptions::default().with_max_iterations(3);
+    let pull = crate::calibration::Regularization::uniform(vec![0.0; 9], 1.0);
+    for (options, what) in [
+      (capped().with_patience(50), "patience"),
+      (capped().with_record_history(true), "record_history"),
+      (capped().with_regularization(pull), "regularization"),
+    ] {
+      let err = from_guess(options).unwrap_err();
+      assert_eq!(err, QuantError::Unsupported { what });
+    }
+    let mut nan = capped();
+    nan.tolerance = Some(f64::NAN);
+    let err = from_guess(nan).unwrap_err();
+    assert!(
+      matches!(&err, QuantError::InvalidInput { what: "options", reason } if reason.starts_with("tolerance")),
+      "{err}"
+    );
+  }
+
+  #[test]
+  fn a_start_must_be_finite() {
+    let calibrator = HscmCalibrator::new(100.0, 0.03, 0.0, quotes(&DEFAULT_START));
     let start = HscmParams {
       rho2: f64::NAN,
       ..HscmParams::from_values(&DEFAULT_START)

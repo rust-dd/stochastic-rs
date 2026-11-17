@@ -138,7 +138,8 @@ pub struct BlackKarasinskiSwaptionCalibrator<'a> {
   /// Tree levels per year.
   pub steps_per_year: usize,
   pub start: BlackKarasinskiParams,
-  /// Nelder–Mead: `max_iterations` (default 400), `tolerance` its spread; pull `(a, σ)`.
+  /// Nelder–Mead: `max_iterations` (default 400), `tolerance` its spread; pull `(a, σ)`, and
+  /// `patience` is `Unsupported`.
   pub options: CalibrationOptions,
 }
 
@@ -190,7 +191,8 @@ impl crate::traits::Calibrator for BlackKarasinskiSwaptionCalibrator<'_> {
   type Output = Calibrated<BlackKarasinskiParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start` whole, the two rates included.
+  /// A start replaces `self.start` whole, the two rates included; `InvalidInput` unless it is
+  /// finite with positive rates, and the `CalibrationOptions` errors.
   fn calibrate(&self, initial: Option<BlackKarasinskiParams>) -> Result<Self::Output, QuantError> {
     let start = initial.unwrap_or(self.start);
     start.check()?;
@@ -198,22 +200,16 @@ impl crate::traits::Calibrator for BlackKarasinskiSwaptionCalibrator<'_> {
     let problem = self.cost(&start, self.options.regularization_for(2)?);
     let (a0, s0) = (start.mean_reversion, start.sigma);
     let simplex = vec![vec![a0, s0], vec![a0 * 1.5, s0], vec![a0, s0 * 1.5]];
-    Ok(nelder_mead_fit(
-      problem.clone(),
-      simplex,
-      &self.options,
-      400,
-      |x| {
-        let (mean_reversion, sigma) = (x[0].abs().max(1e-6), x[1].abs().max(1e-6));
-        let (market, model) = problem.price_series(mean_reversion, sigma);
-        let params = BlackKarasinskiParams {
-          mean_reversion,
-          sigma,
-          ..start
-        };
-        (params, market, model)
-      },
-    ))
+    nelder_mead_fit(problem.clone(), simplex, &self.options, 400, |x| {
+      let (mean_reversion, sigma) = (x[0].abs().max(1e-6), x[1].abs().max(1e-6));
+      let (market, model) = problem.price_series(mean_reversion, sigma);
+      let params = BlackKarasinskiParams {
+        mean_reversion,
+        sigma,
+        ..start
+      };
+      (params, market, model)
+    })
   }
 }
 
@@ -315,7 +311,8 @@ pub struct G2ppSwaptionCalibrator<'a> {
   /// Tree levels per year.
   pub steps_per_year: usize,
   pub start: G2ppParams,
-  /// Nelder–Mead: `max_iterations` (default 400), `tolerance` its spread; pull `(a, b, σ, η, ρ)`.
+  /// Nelder–Mead: `max_iterations` (default 400), `tolerance` its spread; pull `(a, b, σ, η, ρ)`,
+  /// and `patience` is `Unsupported`.
   pub options: CalibrationOptions,
 }
 
@@ -362,7 +359,8 @@ impl crate::traits::Calibrator for G2ppSwaptionCalibrator<'_> {
   type Output = Calibrated<G2ppParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start` whole, `phi` included.
+  /// A start replaces `self.start` whole, `phi` included; `InvalidInput` unless it is finite,
+  /// and the `CalibrationOptions` errors.
   fn calibrate(&self, initial: Option<G2ppParams>) -> Result<Self::Output, QuantError> {
     let start = initial.unwrap_or(self.start);
     check_finite_start(&start.fields())?;
@@ -385,17 +383,11 @@ impl crate::traits::Calibrator for G2ppSwaptionCalibrator<'_> {
       };
       simplex.push(v);
     }
-    Ok(nelder_mead_fit(
-      problem.clone(),
-      simplex,
-      &self.options,
-      400,
-      |x| {
-        let params = problem.params(x);
-        let (market, model) = problem.price_series(&params);
-        (params, market, model)
-      },
-    ))
+    nelder_mead_fit(problem.clone(), simplex, &self.options, 400, |x| {
+      let params = problem.params(x);
+      let (market, model) = problem.price_series(&params);
+      (params, market, model)
+    })
   }
 }
 

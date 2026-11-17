@@ -164,13 +164,15 @@ impl<P> CalibrationHistory<P> {
   }
 }
 
-/// The knobs every calibrator shares; a model's own stay on its calibrator as `with_*` builders.
+/// Knobs calibrators share; a fit answers one it cannot read, once set, with `Unsupported`, and a
+/// field outside its builder's domain with `InvalidInput`. A model's own knobs are its builders.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct CalibrationOptions {
   /// Iteration cap; `None` keeps each optimiser's own, for Levenberg–Marquardt its budget.
   pub max_iterations: Option<usize>,
-  /// `None` keeps the optimiser's own: Levenberg–Marquardt 30 ε relative, Nelder–Mead 1e-10 spread.
+  /// `None` keeps the optimiser's own: Levenberg–Marquardt 30 ε relative, Nelder–Mead 1e-10 spread,
+  /// SLSQP none, so it stops only at its cap or on a failure.
   pub tolerance: Option<f64>,
   /// Levenberg–Marquardt budget: `patience · (n + 1)` evaluations for `n` parameters; default 100.
   pub patience: usize,
@@ -179,7 +181,7 @@ pub struct CalibrationOptions {
   /// Metrics computed for the result and each history entry, every one by default; `rmse()` always has Rmse.
   pub loss_metrics: &'static [LossMetric],
   /// Tikhonov pull on the parameters in the order each calibrator's `options` names; rows in a
-  /// Levenberg–Marquardt fit, a cost in Nelder–Mead.
+  /// Levenberg–Marquardt fit, a cost in Nelder–Mead, and `DimensionMismatch` at another length.
   pub regularization: Option<Regularization>,
 }
 
@@ -199,30 +201,27 @@ impl Default for CalibrationOptions {
 impl CalibrationOptions {
   /// Panics unless `max_iterations > 0`.
   pub fn with_max_iterations(mut self, max_iterations: usize) -> Self {
-    assert!(
-      max_iterations > 0,
-      "max_iterations must satisfy `max_iterations > 0`, got max_iterations = {max_iterations:?}"
-    );
+    if let Some(reason) = max_iterations_violation(max_iterations) {
+      panic!("{reason}");
+    }
     self.max_iterations = Some(max_iterations);
     self
   }
 
   /// Panics unless `tolerance` is finite and positive.
   pub fn with_tolerance(mut self, tolerance: f64) -> Self {
-    assert!(
-      tolerance.is_finite() && tolerance > 0.0,
-      "tolerance must satisfy `tolerance.is_finite() && tolerance > 0.0`, got tolerance = {tolerance:?}"
-    );
+    if let Some(reason) = tolerance_violation(tolerance) {
+      panic!("{reason}");
+    }
     self.tolerance = Some(tolerance);
     self
   }
 
   /// Panics unless `patience > 0`.
   pub fn with_patience(mut self, patience: usize) -> Self {
-    assert!(
-      patience > 0,
-      "patience must satisfy `patience > 0`, got patience = {patience:?}"
-    );
+    if let Some(reason) = patience_violation(patience) {
+      panic!("{reason}");
+    }
     self.patience = patience;
     self
   }
@@ -244,6 +243,7 @@ impl CalibrationOptions {
 
   /// A Levenberg–Marquardt fit's options for `dimension` natural parameters, the pull with them.
   pub(crate) fn lm(&self, pivoted_qr: bool, dimension: usize) -> Result<LmOptions, QuantError> {
+    self.check(&[])?;
     Ok(LmOptions {
       tolerance: self.tolerance,
       patience: self.patience,
@@ -267,6 +267,69 @@ impl CalibrationOptions {
       reg => Ok(reg.clone()),
     }
   }
+
+  /// `Unsupported` for a knob in `unread` set away from its default, then `InvalidInput` for one
+  /// written outside its builder's domain: no knob a fit receives goes unread in silence.
+  pub(crate) fn check(&self, unread: &[Knob]) -> Result<(), QuantError> {
+    let default = Self::default();
+    for &knob in unread {
+      let (what, set) = match knob {
+        Knob::MaxIterations => (
+          "max_iterations",
+          self.max_iterations != default.max_iterations,
+        ),
+        Knob::Tolerance => ("tolerance", self.tolerance != default.tolerance),
+        Knob::Patience => ("patience", self.patience != default.patience),
+        Knob::RecordHistory => ("record_history", self.record_history),
+        Knob::LossMetrics => ("loss_metrics", self.loss_metrics != default.loss_metrics),
+        Knob::Regularization => ("regularization", self.regularization.is_some()),
+      };
+      if set {
+        return Err(QuantError::Unsupported { what });
+      }
+    }
+    let violation = self
+      .max_iterations
+      .and_then(max_iterations_violation)
+      .or_else(|| self.tolerance.and_then(tolerance_violation))
+      .or_else(|| patience_violation(self.patience));
+    match violation {
+      Some(reason) => Err(QuantError::invalid("options", reason)),
+      None => Ok(()),
+    }
+  }
+}
+
+/// A `CalibrationOptions` field, named to `CalibrationOptions::check` by a fit that cannot read it.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Knob {
+  MaxIterations,
+  Tolerance,
+  Patience,
+  RecordHistory,
+  LossMetrics,
+  Regularization,
+}
+
+fn max_iterations_violation(max_iterations: usize) -> Option<String> {
+  (max_iterations == 0).then(|| {
+    format!(
+      "max_iterations must satisfy `max_iterations > 0`, got max_iterations = {max_iterations:?}"
+    )
+  })
+}
+
+fn tolerance_violation(tolerance: f64) -> Option<String> {
+  (!(tolerance.is_finite() && tolerance > 0.0)).then(|| {
+    format!(
+      "tolerance must satisfy `tolerance.is_finite() && tolerance > 0.0`, got tolerance = {tolerance:?}"
+    )
+  })
+}
+
+fn patience_violation(patience: usize) -> Option<String> {
+  (patience == 0)
+    .then(|| format!("patience must satisfy `patience > 0`, got patience = {patience:?}"))
 }
 
 #[cfg(test)]

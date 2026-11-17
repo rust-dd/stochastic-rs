@@ -7,6 +7,7 @@ use crate::OptionType;
 use crate::QuantError;
 use crate::calibration::Calibrated;
 use crate::calibration::CalibrationOptions;
+use crate::calibration::Knob;
 use crate::calibration::heston::HestonCalibrator;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::error::check_grid_shape;
@@ -100,7 +101,8 @@ pub struct HestonSlvCalibrator {
   pub dupire_eps: f64,
   /// How the leverage is calibrated and tuned.
   pub method: LeverageMethod,
-  /// The inner Heston fit's knobs; `regularization` is `Unsupported`.
+  /// The Heston fit's knobs, its trail in `diagnostics`; the grid reads `loss_metrics`, a pinned
+  /// fit refuses the rest, and `regularization` is `Unsupported`.
   pub options: CalibrationOptions,
 }
 
@@ -224,6 +226,18 @@ impl HestonSlvCalibrator {
         needed: 2,
         got: nt,
       });
+    }
+    if !(self.s.is_finite() && self.s > 0.0) {
+      return Err(QuantError::invalid(
+        "spot",
+        format!("must be finite and positive, got {}", self.s),
+      ));
+    }
+    if !(self.r.is_finite() && self.q.is_finite()) {
+      return Err(QuantError::invalid(
+        "rates",
+        format!("must be finite, got r = {}, q = {}", self.r, self.q),
+      ));
     }
     if !(self.eta.is_finite() && (0.0..=1.0).contains(&self.eta)) {
       return Err(QuantError::invalid(
@@ -440,15 +454,21 @@ impl Calibrator for HestonSlvCalibrator {
   type Output = Calibrated<HestonSlvFit, Option<Calibrated<HestonParams>>>;
   type Error = QuantError;
 
-  /// The Heston fit, the `diagnostics`, starts from `initial`'s Heston part (its leverage, `eta`
-  /// and rates unread); parameters pinned by `with_heston_params` skip it and leave `None`.
+  /// The Heston fit, `diagnostics` (`None` when pinned), starts from `initial.params.heston`; the
+  /// errors are the grid's, the Heston fit's, the leverage's and the `CalibrationOptions` ones.
   fn calibrate(&self, initial: Option<HestonSlvFit>) -> Result<Self::Output, QuantError> {
     self.validate()?;
-    if self.options.regularization.is_some() {
-      return Err(QuantError::Unsupported {
-        what: "regularization",
-      });
-    }
+    let unread: &[Knob] = match self.heston_params {
+      Some(_) => &[
+        Knob::MaxIterations,
+        Knob::Tolerance,
+        Knob::Patience,
+        Knob::RecordHistory,
+        Knob::Regularization,
+      ],
+      None => &[Knob::Regularization],
+    };
+    self.options.check(unread)?;
     let start = initial.map(|fit| fit.params.heston);
     let (heston, heston_fit) = self.heston(start)?;
     let params = HestonSlvParams {

@@ -106,6 +106,11 @@ fn every_bad_datum_is_its_error() {
       ..
     }
   ));
+  let patience = CalibrationOptions::default().with_patience(5);
+  assert_eq!(
+    smile().with_options(patience).calibrate(None).unwrap_err(),
+    QuantError::Unsupported { what: "patience" }
+  );
 }
 
 #[test]

@@ -20,6 +20,7 @@ use ndarray::Array1;
 use stochastic_rs_distributions::RealExt;
 
 use crate::CalibrationLossScore;
+use crate::QuantError;
 
 /// Preserves the existing sample-standard-deviation stopping rule for simplex fits.
 pub(crate) struct SimplexStandardDeviation {
@@ -131,10 +132,11 @@ pub(crate) fn nelder_mead_fit<C, P>(
   options: &CalibrationOptions,
   default_max_iterations: usize,
   price: impl Fn(&[f64]) -> (P, Vec<f64>, Vec<f64>),
-) -> Calibrated<P>
+) -> Result<Calibrated<P>, QuantError>
 where
   C: CostFunction<Param = Vec<f64>, Output = f64, Error = Infallible>,
 {
+  options.check(&[Knob::Patience])?;
   let run = run_nelder_mead(
     cost,
     simplex,
@@ -154,9 +156,12 @@ where
     })
     .collect();
   let (params, market, model) = price(&run.best);
-  Calibrated::repriced(params, &market, &model, options.loss_metrics, run.converged)
-    .with_iterations(run.iterations as usize)
-    .with_history(history)
+  let fit = Calibrated::repriced(params, &market, &model, options.loss_metrics, run.converged);
+  Ok(
+    fit
+      .with_iterations(run.iterations as usize)
+      .with_history(history),
+  )
 }
 
 pub mod bsm;
@@ -187,6 +192,7 @@ pub use bsm::BsmParams;
 pub use calibrated::Calibrated;
 pub use calibrated::CalibrationHistory;
 pub use calibrated::CalibrationOptions;
+pub(crate) use calibrated::Knob;
 pub use cgmysv::CgmysvCalibrator;
 pub use double_heston::DoubleHestonCalibrator;
 pub use double_heston::DoubleHestonParams;
@@ -408,7 +414,8 @@ mod optimizer_tests {
     let simplex = vec![vec![2.0], vec![3.0]];
     let fit = super::nelder_mead_fit(Sphere, simplex, &options, 400, |x| {
       (x[0], vec![1.0], vec![1.0 + x[0]])
-    });
+    })
+    .unwrap();
     assert!(fit.history.len() > 1);
     for entry in &fit.history {
       assert_eq!(entry.residuals[0], 1.0 - (1.0 + entry.params));

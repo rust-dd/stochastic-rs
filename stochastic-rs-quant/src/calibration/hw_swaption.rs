@@ -194,7 +194,8 @@ pub struct HullWhiteSwaptionCalibrator<'a> {
   /// Notional used consistently for all quotes.
   pub notional: f64,
   pub start: HullWhiteParams,
-  /// Nelder–Mead: `max_iterations` (default 400), `tolerance` its spread; pull `(a, σ)`.
+  /// Nelder–Mead: `max_iterations` (default 400), `tolerance` its spread; pull `(a, σ)`, and
+  /// `patience` is `Unsupported`.
   pub options: CalibrationOptions,
 }
 
@@ -232,7 +233,8 @@ impl crate::traits::Calibrator for HullWhiteSwaptionCalibrator<'_> {
   type Output = Calibrated<HullWhiteParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start` whole, tree inputs included.
+  /// A start replaces `self.start` whole, tree inputs included; `InvalidInput` unless it is finite,
+  /// and the `CalibrationOptions` errors.
   fn calibrate(&self, initial: Option<HullWhiteParams>) -> Result<Self::Output, QuantError> {
     let start = initial.unwrap_or(self.start);
     check_finite_start(&start.fields())?;
@@ -245,22 +247,16 @@ impl crate::traits::Calibrator for HullWhiteSwaptionCalibrator<'_> {
     };
     let (a0, s0) = (start.mean_reversion, start.sigma);
     let simplex = vec![vec![a0, s0], vec![a0 * 1.5, s0], vec![a0, s0 * 1.5]];
-    Ok(nelder_mead_fit(
-      problem.clone(),
-      simplex,
-      &self.options,
-      400,
-      |x| {
-        let (mean_reversion, sigma) = (x[0].abs(), x[1].abs());
-        let (market, model) = problem.price_series(mean_reversion, sigma);
-        let params = HullWhiteParams {
-          mean_reversion,
-          sigma,
-          ..start
-        };
-        (params, market, model)
-      },
-    ))
+    nelder_mead_fit(problem.clone(), simplex, &self.options, 400, |x| {
+      let (mean_reversion, sigma) = (x[0].abs(), x[1].abs());
+      let (market, model) = problem.price_series(mean_reversion, sigma);
+      let params = HullWhiteParams {
+        mean_reversion,
+        sigma,
+        ..start
+      };
+      (params, market, model)
+    })
   }
 }
 
@@ -510,6 +506,8 @@ mod tests {
       ),
       "{reg}"
     );
+    let patience = fit(&quotes, None, defaults().with_patience(5));
+    assert_eq!(patience, QuantError::Unsupported { what: "patience" });
     quotes[1].black_vol = f64::NAN;
     let quote = fit(&quotes, None, defaults());
     assert!(

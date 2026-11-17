@@ -98,7 +98,7 @@ fn test_rbergomi_calibration_reduces_loss_on_synthetic_data() {
 }
 
 #[test]
-fn the_start_and_the_slices_are_data_and_a_pull_is_unsupported() {
+fn the_start_and_the_slices_are_data() {
   let calibrator = RBergomiCalibrator::new(100.0, 0.01, 0.0, start(), slices(&[0.5]), config());
   let bad_start = RBergomiParams {
     hurst: 0.7,
@@ -125,7 +125,7 @@ fn the_start_and_the_slices_are_data_and_a_pull_is_unsupported() {
       got: 0
     }
   );
-  let mut nan = calibrator.clone();
+  let mut nan = calibrator;
   nan.market_slices[0].terminal_samples[3] = f64::NAN;
   assert!(matches!(
     nan.calibrate(None).unwrap_err(),
@@ -134,17 +134,66 @@ fn the_start_and_the_slices_are_data_and_a_pull_is_unsupported() {
       ..
     }
   ));
-  let pull = crate::calibration::Regularization::uniform(vec![0.0; 4], 1.0);
-  let err = calibrator
-    .with_options(CalibrationOptions::default().with_regularization(pull))
-    .calibrate(None)
-    .unwrap_err();
+}
+
+/// One short slice on few paths: a stop needs a step or two, not a converged fit.
+fn quick(config: RBergomiCalibrationConfig) -> RBergomiCalibrator {
+  let config = RBergomiCalibrationConfig {
+    paths: 256,
+    steps_per_year: 48,
+    ..config
+  };
+  RBergomiCalibrator::new(100.0, 0.01, 0.0, start(), slices(&[0.25]), config)
+}
+
+#[test]
+fn converged_is_a_stop_on_the_fits_own_criterion_and_the_message_names_it() {
+  let loose = RBergomiCalibrationConfig {
+    improvement_tol: 1e9,
+    ..config()
+  };
+  let fit = quick(loose).calibrate(None).unwrap();
+  assert!(fit.converged, "{:?}", fit.message);
   assert_eq!(
-    err,
-    QuantError::Unsupported {
-      what: "regularization"
-    }
+    fit.message.as_deref(),
+    Some("improvement below improvement_tol")
   );
+  let reached = RBergomiCalibrationConfig {
+    stop_loss: Some(1e9),
+    ..config()
+  };
+  let fit = quick(reached).calibrate(None).unwrap();
+  assert!(fit.converged, "{:?}", fit.message);
+  assert_eq!(fit.message.as_deref(), Some("loss reached stop_loss"));
+  let strict = RBergomiCalibrationConfig {
+    improvement_tol: 0.0,
+    ..config()
+  };
+  let capped = CalibrationOptions::default().with_max_iterations(1);
+  let fit = quick(strict).with_options(capped).calibrate(None).unwrap();
+  assert!(!fit.converged, "{:?}", fit.message);
+  assert_eq!(fit.message.as_deref(), Some("iteration cap reached"));
+}
+
+#[test]
+fn a_knob_adam_cannot_read_is_unsupported() {
+  let capped = || CalibrationOptions::default().with_max_iterations(1);
+  let pull = crate::calibration::Regularization::uniform(vec![0.0; 4], 1.0);
+  for (options, what) in [
+    (capped().with_tolerance(1e-6), "tolerance"),
+    (capped().with_patience(5), "patience"),
+    (
+      capped().with_loss_metrics(&[LossMetric::Mae]),
+      "loss_metrics",
+    ),
+    (capped().with_regularization(pull), "regularization"),
+  ] {
+    let err = quick(config())
+      .with_options(options)
+      .calibrate(None)
+      .unwrap_err();
+    assert_eq!(err, QuantError::Unsupported { what });
+  }
 }
 
 #[test]

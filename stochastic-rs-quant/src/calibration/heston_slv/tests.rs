@@ -311,8 +311,10 @@ fn the_heston_fit_runs_when_the_parameters_are_not_pinned() {
     r: R,
     q: Q,
   };
+  let options = crate::calibration::CalibrationOptions::default().with_record_history(true);
   let result = HestonSlvCalibrator::new(S, R, Q, strikes, maturities, calls)
     .with_particle_method(method().with_particles(2_000))
+    .with_options(options)
     .calibrate(Some(guess))
     .unwrap();
   let fit = result
@@ -325,6 +327,67 @@ fn the_heston_fit_runs_when_the_parameters_are_not_pinned() {
   assert_eq!(result.params.params.heston.kappa, p.kappa);
   assert_eq!((result.params.r, result.params.q), (R, Q));
   assert!(result.rmse().is_finite());
+  assert!(!fit.history.is_empty() && result.history.is_empty());
+}
+
+fn small_surface() -> HestonSlvCalibrator {
+  let strikes = Array1::linspace(80.0, 120.0, 9).to_vec();
+  let maturities = vec![0.25, 0.5];
+  let calls = heston_surface(&strikes, &maturities);
+  HestonSlvCalibrator::new(S, R, Q, strikes, maturities, calls)
+    .with_particle_method(method().with_particles(500))
+}
+
+/// A field write skips `new`'s panic; the spot and the rates are then the grid's data.
+#[test]
+fn a_written_spot_or_rate_is_invalid_input_with_heston_fitted_or_pinned() {
+  let writes: [(fn(&mut HestonSlvCalibrator), &str); 3] = [
+    (|c| c.s = -1.0, "spot"),
+    (|c| c.r = f64::NAN, "rates"),
+    (|c| c.q = f64::INFINITY, "rates"),
+  ];
+  for pinned in [false, true] {
+    for (write, what) in writes {
+      let mut calibrator = small_surface();
+      if pinned {
+        calibrator = calibrator.with_heston_params(heston());
+      }
+      write(&mut calibrator);
+      let err = calibrator.calibrate(None).unwrap_err();
+      assert!(
+        matches!(&err, QuantError::InvalidInput { what: w, .. } if *w == what),
+        "pinned {pinned}: {err}"
+      );
+    }
+  }
+}
+
+#[test]
+fn pinned_parameters_refuse_the_knobs_only_the_heston_fit_reads() {
+  use crate::calibration::CalibrationOptions;
+  let pinned = small_surface().with_heston_params(heston());
+  for (options, what) in [
+    (
+      CalibrationOptions::default().with_max_iterations(5),
+      "max_iterations",
+    ),
+    (
+      CalibrationOptions::default().with_tolerance(1e-8),
+      "tolerance",
+    ),
+    (CalibrationOptions::default().with_patience(5), "patience"),
+    (
+      CalibrationOptions::default().with_record_history(true),
+      "record_history",
+    ),
+  ] {
+    let err = pinned
+      .clone()
+      .with_options(options)
+      .calibrate(None)
+      .unwrap_err();
+    assert_eq!(err, QuantError::Unsupported { what });
+  }
 }
 
 fn unit_leverage() -> LeverageSurface {

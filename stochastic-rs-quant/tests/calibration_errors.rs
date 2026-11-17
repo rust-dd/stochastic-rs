@@ -1,6 +1,7 @@
 use stochastic_rs_quant::OptionQuote;
 use stochastic_rs_quant::OptionType;
 use stochastic_rs_quant::QuantError;
+use stochastic_rs_quant::calibration::CalibrationOptions;
 use stochastic_rs_quant::calibration::bsm::BsmCalibrator;
 use stochastic_rs_quant::calibration::bsm::BsmParams;
 use stochastic_rs_quant::calibration::cgmysv::CgmysvCalibrator;
@@ -221,6 +222,66 @@ fn a_carry_no_model_can_price_leaves_the_optimiser_without_an_iterate() {
       _ => matches!(err, Err(QuantError::Optimizer { .. })),
     };
     assert!(expected, "{name}: {err:?}");
+  }
+}
+
+type WithOptions = fn(CalibrationOptions) -> Result<(), QuantError>;
+
+/// A knob written through its field skips its builder's panic, so the fit answers it.
+#[test]
+fn a_levenberg_marquardt_knob_written_outside_its_builders_domain_is_invalid_input() {
+  let fits: [(&str, WithOptions); 8] = [
+    ("bsm", |o| {
+      let c = BsmCalibrator::new(S, R, 0.0, quotes());
+      c.with_options(o).calibrate(None).map(drop)
+    }),
+    ("heston", |o| {
+      let c = HestonCalibrator::new(S, R, 0.0, quotes());
+      c.with_options(o).calibrate(None).map(drop)
+    }),
+    ("sabr", |o| {
+      let c = SabrCalibrator::new(S, R, 0.0, quotes());
+      c.with_options(o).calibrate(None).map(drop)
+    }),
+    ("svj", |o| {
+      let c = SvjCalibrator::new(S, R, 0.0, quotes());
+      c.with_options(o).calibrate(None).map(drop)
+    }),
+    ("double heston", |o| {
+      let c = DoubleHestonCalibrator::new(S, R, 0.0, quotes());
+      c.with_options(o).calibrate(None).map(drop)
+    }),
+    ("hkde", |o| {
+      let c = HkdeCalibrator::new(S, R, 0.0, quotes());
+      c.with_options(o).calibrate(None).map(drop)
+    }),
+    ("levy", |o| {
+      let c = LevyCalibrator::new(LevyModelType::MertonJd, S, R, 0.0, quotes());
+      c.with_options(o).calibrate(None).map(drop)
+    }),
+    ("cgmysv", |o| {
+      let c = CgmysvCalibrator::new(S, R, 0.0, quotes());
+      c.with_options(o).calibrate(None).map(drop)
+    }),
+  ];
+  let mut patience = CalibrationOptions::default();
+  patience.patience = 0;
+  let mut tolerance = CalibrationOptions::default();
+  tolerance.tolerance = Some(NAN);
+  let mut cap = CalibrationOptions::default();
+  cap.max_iterations = Some(0);
+  for (name, fit) in fits {
+    for (knob, options) in [
+      ("patience", &patience),
+      ("tolerance", &tolerance),
+      ("max_iterations", &cap),
+    ] {
+      let err = fit(options.clone());
+      assert!(
+        matches!(&err, Err(QuantError::InvalidInput { what: "options", reason }) if reason.starts_with(knob)),
+        "{name}, {knob}: {err:?}"
+      );
+    }
   }
 }
 

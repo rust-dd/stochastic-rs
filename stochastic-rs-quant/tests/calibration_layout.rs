@@ -514,11 +514,7 @@ fn hscm_rbergomi_and_slv_share_the_shape() {
     .with_options(CalibrationOptions::default().with_max_iterations(3))
     .calibrate(None)
     .unwrap();
-  assert!(
-    hscm
-      .message
-      .as_deref()
-      .unwrap()
-      .starts_with("slsqp objective")
-  );
+  let message = hscm.message.as_deref().unwrap();
+  assert!(!hscm.converged, "{message}");
+  assert!(message.starts_with("slsqp max evaluations reached, objective "));
 }

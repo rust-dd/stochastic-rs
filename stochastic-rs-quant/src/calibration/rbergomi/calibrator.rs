@@ -13,6 +13,7 @@ use crate::QuantError;
 use crate::calibration::Calibrated;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::CalibrationOptions;
+use crate::calibration::Knob;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::pricing::rbergomi::RBergomiPricer;
 use crate::traits::ToModel;
@@ -37,8 +38,8 @@ pub struct RBergomiCalibrator {
   /// Sorted by maturity in `new`; `calibrate` reports a slice by its index in this order.
   pub market_slices: Vec<RBergomiMarketSlice>,
   pub config: RBergomiCalibrationConfig,
-  /// Projected Adam reads `max_iterations` (default 60) and `record_history`; its stop tolerance is
-  /// `config.improvement_tol`, and `regularization` is `Unsupported`.
+  /// Adam reads `max_iterations` (default 60) and `record_history`; its stop is `config`'s, so
+  /// `tolerance`, `patience`, `loss_metrics` and `regularization` are `Unsupported`.
   pub options: CalibrationOptions,
 }
 
@@ -174,15 +175,15 @@ impl RBergomiCalibrator {
     let mut b2_pow = 1.0_f64;
 
     let mut iterations = 0usize;
-    let mut converged = false;
+    let mut exit = Exit::Cap;
 
     for iter in 1..=self.options.max_iterations.unwrap_or(60) {
       iterations = iter;
 
-      if let Some(stop) = config.stop_loss
-        && current_loss <= stop
+      if let Some(stop_loss) = config.stop_loss
+        && current_loss <= stop_loss
       {
-        converged = true;
+        exit = Exit::StopLoss;
         break;
       }
 
@@ -251,6 +252,7 @@ impl RBergomiCalibrator {
       }
 
       if !accepted {
+        exit = Exit::NoDescent;
         break;
       }
 
@@ -268,15 +270,23 @@ impl RBergomiCalibrator {
       record(iter, &current_params, current_loss, &current_per_maturity);
 
       if improvement < config.improvement_tol {
+        exit = Exit::Improvement;
         break;
       }
     }
 
-    if let Some(stop) = config.stop_loss {
-      converged = converged || best_loss <= stop;
+    // The cap's last step can bring the loss to the stop the next iteration would test.
+    if exit == Exit::Cap
+      && config
+        .stop_loss
+        .is_some_and(|stop_loss| best_loss <= stop_loss)
+    {
+      exit = Exit::StopLoss;
     }
+    let converged = matches!(exit, Exit::StopLoss | Exit::Improvement);
     Calibrated::new(best_params, wasserstein_loss(best_loss), converged)
       .with_iterations(iterations)
+      .with_message(exit.message())
       .with_history(history)
   }
 
@@ -291,6 +301,26 @@ impl RBergomiCalibrator {
   }
 }
 
+/// Why the Adam loop ended; the fit converged only on `config`'s own criterion.
+#[derive(Clone, Copy, PartialEq)]
+enum Exit {
+  StopLoss,
+  Improvement,
+  NoDescent,
+  Cap,
+}
+
+impl Exit {
+  fn message(self) -> &'static str {
+    match self {
+      Exit::StopLoss => "loss reached stop_loss",
+      Exit::Improvement => "improvement below improvement_tol",
+      Exit::NoDescent => "no descent step",
+      Exit::Cap => "iteration cap reached",
+    }
+  }
+}
+
 /// The mean `W1` as `Mse` and its square root as `Rmse`, on a price fit's scale.
 fn wasserstein_loss(w1: f64) -> CalibrationLossScore {
   let scores = HashMap::from([(LossMetric::Mse, w1), (LossMetric::Rmse, w1.abs().sqrt())]);
@@ -302,17 +332,19 @@ impl crate::traits::Calibrator for RBergomiCalibrator {
   type Output = Calibrated<RBergomiParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`; `InvalidInput` unless it and every slice lie in their domain,
-  /// `InsufficientData` for no slice.
+  /// A start replaces `self.start`; `InvalidInput` unless it and each slice lie in their domain,
+  /// `InsufficientData` for no slice, and the `CalibrationOptions` errors.
   fn calibrate(
     &self,
     initial: Option<RBergomiParams>,
   ) -> Result<Calibrated<RBergomiParams>, QuantError> {
-    if self.options.regularization.is_some() {
-      return Err(QuantError::Unsupported {
-        what: "regularization",
-      });
-    }
+    let unread = [
+      Knob::Tolerance,
+      Knob::Patience,
+      Knob::LossMetrics,
+      Knob::Regularization,
+    ];
+    self.options.check(&unread)?;
     if self.market_slices.is_empty() {
       return Err(QuantError::InsufficientData {
         what: "market slices",
