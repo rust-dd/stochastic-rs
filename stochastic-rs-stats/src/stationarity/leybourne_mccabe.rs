@@ -5,6 +5,7 @@ use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use super::common::OlsResult;
 use super::common::Trend;
 use super::common::centred;
 use super::common::fit_ar;
@@ -75,39 +76,29 @@ fn detrend_series(y: &[f64], include_trend: bool) -> Result<Vec<f64>, StatsError
   }
 }
 
-fn lm_statistic_from_residuals(
-  source: &[f64],
-  residuals: &[f64],
-  condition: f64,
-) -> Result<f64, StatsError> {
-  let m = residuals.len();
-  let m_f = m as f64;
-  let sigma2 = residuals.iter().map(|u| u * u).sum::<f64>() / m_f;
+/// `Σ S_t² / (m² σ²)` of AR residuals `u`, `S_t` their partial sums and `σ²` their mean square;
+/// `Numerical` when that mean square is not finite.
+fn lm_statistic(u: &[f64]) -> Result<f64, StatsError> {
+  let m_f = u.len() as f64;
+  let sigma2 = u.iter().map(|v| v * v).sum::<f64>() / m_f;
   if !sigma2.is_finite() {
     return Err(StatsError::Numerical {
       stage: "residual variance",
     });
   }
-  reject_exact_fit(source, residuals, condition)?;
-
   let mut cum = 0.0;
   let mut sum_sq = 0.0;
-  for &u in residuals {
-    cum += u;
+  for &v in u {
+    cum += v;
     sum_sq += cum * cum;
   }
   Ok(sum_sq / (m_f * m_f * sigma2))
 }
 
-fn lm_statistic_with_prewhitening(
-  y: &[f64],
-  include_trend: bool,
-  ar_lags: usize,
-) -> Result<(f64, Vec<f64>, f64), StatsError> {
-  let y_det = detrend_series(y, include_trend)?;
-  let fit = fit_ar(&y_det, ar_lags)?;
-  let stat = lm_statistic_from_residuals(y, &fit.residuals, fit.condition)?;
-  Ok((stat, fit.beta, fit.sigma2.sqrt()))
+/// The AR fit of `y` less its constant, or less its line under a trend: one solve, with its bound,
+/// for the series and for each bootstrap path.
+fn prewhitened(y: &[f64], include_trend: bool, ar_lags: usize) -> Result<OlsResult, StatsError> {
+  fit_ar(&detrend_series(y, include_trend)?, ar_lags)
 }
 
 fn simulate_ar(phi: &[f64], noise: &mut Seeded<SimdNormal<f64>>, n: usize) -> Vec<f64> {
@@ -157,15 +148,21 @@ pub fn leybourne_mccabe_test(
   let y = prepared(y, needed)?;
 
   let include_trend = cfg.trend == Trend::ConstantTrend;
-  let (obs_stat, phi, sigma) = lm_statistic_with_prewhitening(&y, include_trend, cfg.ar_lags)?;
+  let fit = prewhitened(&y, include_trend, cfg.ar_lags)?;
+  let obs_stat = lm_statistic(&fit.residuals)?;
+  reject_exact_fit(&y, &fit.residuals, fit.condition)?;
 
   let mut noise =
-    SimdNormal::<f64>::new(0.0, sigma).seeded(&Deterministic::new(cfg.bootstrap_seed));
+    SimdNormal::<f64>::new(0.0, fit.sigma2.sqrt()).seeded(&Deterministic::new(cfg.bootstrap_seed));
   let mut exceed = 0usize;
   for _ in 0..cfg.bootstrap_samples {
-    let sim = simulate_ar(&phi, &mut noise, y.len());
-    let (sim_stat, _, _) = lm_statistic_with_prewhitening(&sim, include_trend, cfg.ar_lags)
-      .map_err(|_| StatsError::Numerical {
+    let sim = simulate_ar(&fit.beta, &mut noise, y.len());
+    // The exact-fit rule guards the caller's series, not its paths, which keep the solve's bound.
+    let sim_stat = prewhitened(&sim, include_trend, cfg.ar_lags)
+      .and_then(|path| lm_statistic(&path.residuals))
+      .ok()
+      .filter(|s| s.is_finite())
+      .ok_or(StatsError::Numerical {
         stage: "bootstrap path",
       })?;
     if sim_stat >= obs_stat {
