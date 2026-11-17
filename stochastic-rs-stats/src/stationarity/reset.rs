@@ -125,11 +125,19 @@ pub fn reset_test(
 
   // Fitted values from the restricted model.
   let fitted = x.dot(&beta_r);
+  // Ramsey (1969) adds powers of ŷ; with a constant in `x`, ŷ lies in its span, so those of the
+  // standardised ŷ span the same columns and give the same `F` without their collinearity.
+  let powered = if has_constant_column(x) {
+    standardised(&fitted)
+  } else {
+    // Without a constant the raw powers define the test, Singular from ŷ at 1e3 times its spread.
+    fitted
+  };
 
-  // Augmented design: append ŷ^2, …, ŷ^p as additional regressors.
+  // Augmented design: append the powers 2, …, p as additional regressors.
   let mut x_aug_rows = x_rows.clone();
   for (i, row) in x_aug_rows.iter_mut().enumerate() {
-    let yhat = fitted[i];
+    let yhat = powered[i];
     let mut power = yhat * yhat;
     row.push(power);
     for _ in 3..=cfg.max_power {
@@ -161,6 +169,26 @@ pub fn reset_test(
     df_num,
     df_den,
   })
+}
+
+/// Whether a column of `x` holds one nonzero value throughout, which puts the constant in its span.
+fn has_constant_column(x: ArrayView2<f64>) -> bool {
+  x.columns()
+    .into_iter()
+    .any(|c| c[0] != 0.0 && c.iter().all(|v| *v == c[0]))
+}
+
+/// `v` less its mean, over the root mean square of that; only less its mean where that is zero.
+fn standardised(v: &ndarray::Array1<f64>) -> ndarray::Array1<f64> {
+  let n = v.len() as f64;
+  let mean = v.iter().sum::<f64>() / n;
+  let centred = v.mapv(|u| u - mean);
+  let scale = (centred.iter().map(|u| u * u).sum::<f64>() / n).sqrt();
+  if scale > 0.0 {
+    centred / scale
+  } else {
+    centred
+  }
 }
 
 #[cfg(test)]
@@ -285,11 +313,11 @@ mod tests {
     }
   }
 
-  /// Fitted values far above their spread leave their powers collinear with the design to rounding.
+  /// An exact line leaves both fits rounding, its regressor to `1e5` times its spread above zero.
   #[test]
   fn an_exact_line_far_above_its_spread_is_refused() {
     let (x, _) = normal_pair(50, 0.0, 7);
-    for level in [10.0, 1e2, 1e3] {
+    for level in [10.0, 1e2, 1e3, 1e5] {
       let x = x.mapv(|v| v + level);
       let y = &x * 3.0 + 2.0;
       let got = reset_test(
@@ -316,7 +344,7 @@ mod tests {
       let at_zero = reset_test(y.view(), xm.view(), ResetConfig::default())
         .unwrap()
         .statistic;
-      for level in [10.0, 30.0, 100.0] {
+      for level in [10.0, 30.0, 100.0, 1e3, 1e5] {
         let got = reset_test(
           y.mapv(|v| v + level).view(),
           xm.view(),
@@ -333,18 +361,41 @@ mod tests {
     }
   }
 
-  /// At a level of `1e3` the powers of `ŷ` are collinear to rounding, and `F` off by tens of %.
+  /// The linear model's `F` at a level, against the same data's `F` in double-double arithmetic.
   #[test]
-  fn fitted_values_whose_powers_are_collinear_to_rounding_are_singular() {
+  fn the_statistic_matches_its_double_double_value_at_a_level() {
     let (x, y) = simulate_linear(300, 42);
     let xm = design_with_intercept(&x);
-    assert_eq!(
-      reset_test(
-        y.mapv(|v| v + 1e3).view(),
+    let cases = [
+      (1e2, 2.433378958960329),
+      (1e3, 2.43337895896031),
+      (1e5, 2.4333789589603674),
+    ];
+    for (level, reference) in cases {
+      let got = reset_test(
+        y.mapv(|v| v + level).view(),
         xm.view(),
-        ResetConfig::default()
+        ResetConfig::default(),
       )
-      .unwrap_err(),
+      .map(|r| r.statistic);
+      assert!(
+        got
+          .as_ref()
+          .is_ok_and(|f| (f - reference).abs() <= 1e-6 * reference),
+        "level {level:e}: {got:?} against {reference}"
+      );
+    }
+  }
+
+  /// Without a constant column the powers of `ŷ` itself define the test, collinear at `3e3` above.
+  #[test]
+  fn without_a_constant_the_raw_powers_far_above_their_spread_are_singular() {
+    let (x, noise) = normal_pair(300, 0.5, 42);
+    let x = x.mapv(|v| v + 3e3);
+    let y = &x * 2.0 + &noise;
+    let xm = x.clone().insert_axis(ndarray::Axis(1));
+    assert_eq!(
+      reset_test(y.view(), xm.view(), ResetConfig::default()).unwrap_err(),
       StatsError::Singular("OLS design")
     );
   }
