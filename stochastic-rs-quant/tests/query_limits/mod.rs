@@ -10,14 +10,13 @@ use stochastic_rs_quant::credit::HazardInterpolation;
 use stochastic_rs_quant::credit::SurvivalCurve;
 use stochastic_rs_quant::credit::SurvivalPoint;
 use stochastic_rs_quant::curves::BootstrapInstrument;
+use stochastic_rs_quant::curves::BootstrapSpec;
 use stochastic_rs_quant::curves::CurvePoint;
 use stochastic_rs_quant::curves::DiscountCurve;
 use stochastic_rs_quant::curves::InterpolationMethod;
+use stochastic_rs_quant::curves::IterativeOptions;
 use stochastic_rs_quant::curves::MultiCurve;
 use stochastic_rs_quant::curves::bootstrap;
-use stochastic_rs_quant::curves::bootstrap_iterative;
-use stochastic_rs_quant::curves::dual_curve::ForecastInstrument;
-use stochastic_rs_quant::curves::dual_curve::bootstrap_forecast;
 use stochastic_rs_quant::market::RateHelper;
 use stochastic_rs_quant::market::build_curve;
 use stochastic_rs_quant::pricing::AssetOrNothingPricer;
@@ -464,9 +463,10 @@ fn a_bootstrap_quote_at_a_non_finite_maturity_is_an_invalid_quote() {
   };
   for bad in [f64::NAN, f64::INFINITY] {
     let quotes = [deposit(0.5), deposit(bad), deposit(1.0)];
-    assert!(rejects_quote_1(bootstrap(&quotes, method)), "{bad}");
+    let spec = BootstrapSpec::new(&quotes, method);
+    assert!(rejects_quote_1(bootstrap(spec)), "{bad}");
     assert!(
-      rejects_quote_1(bootstrap_iterative(&quotes, method, 1e-12, 100)),
+      rejects_quote_1(bootstrap(spec.iterative(IterativeOptions::default()))),
       "{bad}"
     );
     let swap = BootstrapInstrument::Swap {
@@ -475,7 +475,7 @@ fn a_bootstrap_quote_at_a_non_finite_maturity_is_an_invalid_quote() {
       frequency: Frequency::SemiAnnual,
     };
     assert!(
-      rejects_quote_1(bootstrap(&[deposit(0.5), swap], method)),
+      rejects_quote_1(bootstrap(BootstrapSpec::new(&[deposit(0.5), swap], method))),
       "{bad}"
     );
   }
@@ -484,20 +484,22 @@ fn a_bootstrap_quote_at_a_non_finite_maturity_is_an_invalid_quote() {
     &Array1::from_vec(vec![0.02; 3]),
     method,
   );
-  let swap = ForecastInstrument::Swap {
+  let swap = BootstrapInstrument::SwapWithSchedule {
     rate: 0.03,
     fixed_times: vec![1.0, f64::NAN],
     float_times: vec![0.5, 1.0, f64::NAN],
   };
   let quotes = [
-    ForecastInstrument::Deposit {
+    BootstrapInstrument::Deposit {
       maturity: 0.25,
       rate: 0.03,
     },
     swap,
   ];
-  assert!(rejects_quote_1(bootstrap_forecast(&quotes, &ois, method)));
-  assert!(bootstrap(&[deposit(0.5), deposit(1.0)], method).is_ok());
+  assert!(rejects_quote_1(bootstrap(
+    BootstrapSpec::new(&quotes, method).discounting_with(&ois)
+  )));
+  assert!(bootstrap(BootstrapSpec::new(&[deposit(0.5), deposit(1.0)], method)).is_ok());
 }
 
 #[test]

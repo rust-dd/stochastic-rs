@@ -108,7 +108,7 @@ print(pricer.forward())   # 150.21 = E_p · S · exp((r_f − q − ρ σ_S σ_E
 
 ### Dual-curve bootstrap — OIS discounting, tenor forecasting
 
-Dual-curve building separates discounting from forecasting. `OisRateHelper` turns par OIS quotes into the fixed-leg schedules that pin the **discount** curve (the compounded overnight leg telescopes, so only the fixed dates matter); `bootstrap_forecast` then builds a tenor's **forecast** curve against that OIS discounting from tenor deposits, FRAs and par swaps, solving each pillar's pseudo-discount factor by bisection because the floating leg no longer telescopes (Ametrano & Bianchetti 2013, §4–5). `MultiCurve` holds both and reads projected forwards, fair swap rates and the tenor basis off the pair.
+Dual-curve building separates discounting from forecasting. `OisRateHelper` turns par OIS quotes into the fixed-leg schedules that pin the **discount** curve (the compounded overnight leg telescopes, so only the fixed dates matter); `bootstrap` with `BootstrapSpec::discounting_with` (`DiscountCurve.bootstrap_forecast` in Python) then builds a tenor's **forecast** curve against that OIS discounting from tenor deposits, FRAs and par swaps, solving each pillar's pseudo-discount factor by bisection because the floating leg no longer telescopes (Ametrano & Bianchetti 2013, §4–5). `MultiCurve` holds both and reads projected forwards, fair swap rates and the tenor basis off the pair.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">

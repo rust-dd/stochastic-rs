@@ -10,17 +10,27 @@ use ndarray::Array1;
 use super::types::CurvePoint;
 use crate::traits::RealExt;
 
+/// `D₁^(t/t₁)`, a flat zero rate, at or before the first pillar after `t = 0`; else those
+/// pillars. A pillar at `t = 0` is ignored: the curve is 1 there.
+fn short_end<T: RealExt>(points: &[CurvePoint<T>], t: T) -> Result<T, &[CurvePoint<T>]> {
+  let later = &points[points.partition_point(|p| p.time <= T::zero())..];
+  match later.first() {
+    None => Ok(T::one()),
+    Some(first) if t == first.time => Ok(first.discount_factor),
+    Some(first) if t > first.time => Err(later),
+    Some(first) => Ok((first.discount_factor.ln() * (t / first.time)).exp()),
+  }
+}
+
 /// Linearly interpolate on zero rates.
 ///
 /// Zero rates at knots: $r_i = -\ln D_i / t_i$. Between knots, $r(t)$ is linearly interpolated,
 /// then $D(t) = e^{-r(t)\,t}$.
 pub fn linear_on_zero_rates<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
-  if points.is_empty() {
-    return T::one();
-  }
-  if t <= points[0].time {
-    return points[0].discount_factor;
-  }
+  let points = match short_end(points, t) {
+    Ok(discount_factor) => return discount_factor,
+    Err(later) => later,
+  };
   if t >= points[points.len() - 1].time {
     let last = &points[points.len() - 1];
     let r = -last.discount_factor.ln() / last.time;
@@ -30,11 +40,7 @@ pub fn linear_on_zero_rates<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
   let idx = points.partition_point(|p| p.time < t).saturating_sub(1);
   let (p0, p1) = (&points[idx], &points[idx + 1]);
 
-  let r0 = if p0.time > T::zero() {
-    -p0.discount_factor.ln() / p0.time
-  } else {
-    T::zero()
-  };
+  let r0 = -p0.discount_factor.ln() / p0.time;
   let r1 = -p1.discount_factor.ln() / p1.time;
 
   let w = (t - p0.time) / (p1.time - p0.time);
@@ -47,12 +53,10 @@ pub fn linear_on_zero_rates<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
 /// $\ln D(t)$ is linearly interpolated between knots, which implies piecewise constant
 /// instantaneous forward rates.
 pub fn log_linear_on_discount_factors<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
-  if points.is_empty() {
-    return T::one();
-  }
-  if t <= points[0].time {
-    return points[0].discount_factor;
-  }
+  let points = match short_end(points, t) {
+    Ok(discount_factor) => return discount_factor,
+    Err(later) => later,
+  };
   if t >= points[points.len() - 1].time {
     let last = &points[points.len() - 1];
     let r = -last.discount_factor.ln() / last.time;
@@ -72,13 +76,11 @@ pub fn log_linear_on_discount_factors<T: RealExt>(points: &[CurvePoint<T>], t: T
 /// Fits a natural cubic spline (second derivative = 0 at boundaries) through the zero rate
 /// knots, then converts back to discount factors.
 pub fn cubic_spline_on_zero_rates<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
+  let points = match short_end(points, t) {
+    Ok(discount_factor) => return discount_factor,
+    Err(later) => later,
+  };
   let n = points.len();
-  if n == 0 {
-    return T::one();
-  }
-  if t <= points[0].time {
-    return points[0].discount_factor;
-  }
   if t >= points[n - 1].time {
     let last = &points[n - 1];
     let r = -last.discount_factor.ln() / last.time;
@@ -91,13 +93,7 @@ pub fn cubic_spline_on_zero_rates<T: RealExt>(points: &[CurvePoint<T>], t: T) ->
   let times: Vec<T> = points.iter().map(|p| p.time).collect();
   let rates: Vec<T> = points
     .iter()
-    .map(|p| {
-      if p.time > T::zero() {
-        -p.discount_factor.ln() / p.time
-      } else {
-        T::zero()
-      }
-    })
+    .map(|p| -p.discount_factor.ln() / p.time)
     .collect();
 
   let m2 = natural_cubic_spline_coefficients(&times, &rates);
@@ -187,13 +183,11 @@ fn natural_cubic_spline_coefficients<T: RealExt>(x: &[T], y: &[T]) -> Vec<T> {
 /// the Google `tf-quant-finance` implementation
 /// (`rates/hagan_west/monotone_convex.py`).
 pub fn monotone_convex<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
+  let points = match short_end(points, t) {
+    Ok(discount_factor) => return discount_factor,
+    Err(later) => later,
+  };
   let n = points.len();
-  if n == 0 {
-    return T::one();
-  }
-  if t <= points[0].time {
-    return points[0].discount_factor;
-  }
   if t >= points[n - 1].time {
     let last = &points[n - 1];
     let r = -last.discount_factor.ln() / last.time;
@@ -204,16 +198,7 @@ pub fn monotone_convex<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
   }
 
   let times: Vec<T> = points.iter().map(|p| p.time).collect();
-  let rt: Vec<T> = points
-    .iter()
-    .map(|p| {
-      if p.time > T::zero() {
-        -p.discount_factor.ln()
-      } else {
-        T::zero()
-      }
-    })
-    .collect();
+  let rt: Vec<T> = points.iter().map(|p| -p.discount_factor.ln()).collect();
 
   let mut fwd = vec![T::zero(); n];
   for i in 1..n {

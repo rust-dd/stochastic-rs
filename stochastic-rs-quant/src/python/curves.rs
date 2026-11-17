@@ -1,6 +1,10 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
+use crate::curves::BootstrapInstrument;
+use crate::curves::BootstrapSpec;
+use crate::curves::bootstrap;
+
 #[pyclass(name = "DiscountCurve", unsendable)]
 pub struct PyDiscountCurve {
   pub(super) inner: crate::curves::discount_curve::DiscountCurve<f64>,
@@ -20,7 +24,7 @@ impl PyDiscountCurve {
     let im = parse_interpolation(interp)?;
     let mat = maturities.as_array().to_owned();
     let zr = zero_rates.as_array().to_owned();
-    Ok(Self {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::curves::discount_curve::DiscountCurve::from_zero_rates(&mat, &zr, im),
     })
   }
@@ -74,18 +78,19 @@ impl PyDiscountCurve {
       ));
     }
     let method = parse_interpolation(interp)?;
-    let instruments: Vec<crate::curves::BootstrapInstrument<f64>> = payment_schedules
+    let instruments: Vec<BootstrapInstrument<f64>> = payment_schedules
       .into_iter()
       .zip(rates)
       .map(
-        |(payment_times, rate)| crate::curves::BootstrapInstrument::SwapWithSchedule {
+        |(fixed_times, rate)| BootstrapInstrument::SwapWithSchedule {
           rate,
-          payment_times,
+          fixed_times,
+          float_times: Vec::new(),
         },
       )
       .collect();
     Ok(Self {
-      inner: crate::curves::bootstrap(&instruments, method)
+      inner: bootstrap(BootstrapSpec::new(&instruments, method))
         .map_err(|e| PyValueError::new_err(e.to_string()))?,
     })
   }
@@ -102,28 +107,27 @@ impl PyDiscountCurve {
     swaps: Vec<(f64, Vec<f64>, Vec<f64>)>,
     interp: &str,
   ) -> PyResult<Self> {
-    use crate::curves::dual_curve::ForecastInstrument;
     let method = parse_interpolation(interp)?;
-    let mut instruments: Vec<ForecastInstrument<f64>> = Vec::new();
+    let mut instruments: Vec<BootstrapInstrument<f64>> = Vec::new();
     instruments.extend(
       deposits
         .into_iter()
-        .map(|(maturity, rate)| ForecastInstrument::Deposit { maturity, rate }),
+        .map(|(maturity, rate)| BootstrapInstrument::Deposit { maturity, rate }),
     );
     instruments.extend(
       fras
         .into_iter()
-        .map(|(start, end, rate)| ForecastInstrument::Fra { start, end, rate }),
+        .map(|(start, end, rate)| BootstrapInstrument::Fra { start, end, rate }),
     );
     instruments.extend(swaps.into_iter().map(|(rate, fixed_times, float_times)| {
-      ForecastInstrument::Swap {
+      BootstrapInstrument::SwapWithSchedule {
         rate,
         fixed_times,
         float_times,
       }
     }));
     Ok(Self {
-      inner: crate::curves::dual_curve::bootstrap_forecast(&instruments, &discount.inner, method)
+      inner: bootstrap(BootstrapSpec::new(&instruments, method).discounting_with(&discount.inner))
         .map_err(|e| PyValueError::new_err(e.to_string()))?,
     })
   }
@@ -157,7 +161,7 @@ impl PyMultiCurve {
     })
   }
 
-  /// Registers `curve` as the forecast curve of `tenor`: `"O/N"`, `"1M"`, `"3M"`, `"6M"` or `"12M"`.
+  /// Registers `curve` as the forecast curve of `tenor`: `"O/N"`, `"1M"`, `"3M"`, `"6M"`, `"12M"`.
   fn add_forecast(&mut self, tenor: &str, curve: &PyDiscountCurve) -> PyResult<()> {
     self
       .inner

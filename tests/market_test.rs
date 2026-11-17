@@ -14,6 +14,7 @@ use stochastic_rs::quant::calendar::Frequency;
 use stochastic_rs::quant::cashflows::IborIndex;
 use stochastic_rs::quant::cashflows::RateTenor;
 use stochastic_rs::quant::curves::BootstrapInstrument;
+use stochastic_rs::quant::curves::BootstrapSpec;
 use stochastic_rs::quant::curves::DiscountCurve;
 use stochastic_rs::quant::curves::InterpolationMethod;
 use stochastic_rs::quant::curves::bootstrap;
@@ -120,10 +121,10 @@ fn deposit_npv_equals_bootstrapped_instrument_value() {
     maturity: alpha,
     rate,
   }];
-  let curve = bootstrap(
+  let curve = bootstrap(BootstrapSpec::new(
     &instruments,
     InterpolationMethod::LogLinearOnDiscountFactors,
-  )
+  ))
   .unwrap();
 
   let deposit = Deposit::new(1.0, rate, val_date, maturity, day_count);

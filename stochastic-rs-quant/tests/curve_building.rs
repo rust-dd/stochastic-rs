@@ -1,8 +1,10 @@
-//! Curves and the instruments read off them: tenor-keyed forecast curves, `npv` beside `valuation`.
+//! Curves and the instruments read off them: tenor-keyed forecast curves, `npv` beside `valuation`,
+//! one bootstrap entry and the flat zero rate below a curve's first pillar.
 
 use chrono::NaiveDate;
 use ndarray::Array1;
 use ndarray::array;
+use stochastic_rs_quant::QuantError;
 use stochastic_rs_quant::calendar::DayCountConvention;
 use stochastic_rs_quant::calendar::Frequency;
 use stochastic_rs_quant::cashflows::CurveProvider;
@@ -13,9 +15,14 @@ use stochastic_rs_quant::credit::CdoTranche;
 use stochastic_rs_quant::credit::CdsIndex;
 use stochastic_rs_quant::credit::PoolName;
 use stochastic_rs_quant::credit::index::flat_survival;
+use stochastic_rs_quant::curves::BootstrapInstrument;
+use stochastic_rs_quant::curves::BootstrapSpec;
+use stochastic_rs_quant::curves::CurvePoint;
 use stochastic_rs_quant::curves::DiscountCurve;
 use stochastic_rs_quant::curves::InterpolationMethod;
+use stochastic_rs_quant::curves::IterativeOptions;
 use stochastic_rs_quant::curves::MultiCurve;
+use stochastic_rs_quant::curves::bootstrap;
 use stochastic_rs_quant::inflation::YearOnYearInflationSwap;
 use stochastic_rs_quant::inflation::ZeroCouponInflationCurve;
 use stochastic_rs_quant::inflation::ZeroCouponInflationSwap;
@@ -208,4 +215,348 @@ fn a_cms_caplet_answers_npv_and_a_valuation_with_its_convexity_adjustment() {
     "a known fixing has no adjustment"
   );
   assert!((floorlet.npv() - 9000.0).abs() < 1e-9 && v.npv == floorlet.npv());
+}
+
+fn deposit(maturity: f64, rate: f64) -> BootstrapInstrument<f64> {
+  BootstrapInstrument::Deposit { maturity, rate }
+}
+
+fn schedule_swap(rate: f64, fixed: &[f64], float: &[f64]) -> BootstrapInstrument<f64> {
+  BootstrapInstrument::SwapWithSchedule {
+    rate,
+    fixed_times: fixed.to_vec(),
+    float_times: float.to_vec(),
+  }
+}
+
+fn quarters(n: usize) -> Vec<f64> {
+  (1..=n).map(|i| 0.25 * i as f64).collect()
+}
+
+#[test]
+fn one_bootstrap_entry_and_a_flat_zero_short_end() {
+  let instruments = [
+    deposit(0.5, 0.03),
+    BootstrapInstrument::Swap {
+      maturity: 2.0,
+      rate: 0.032,
+      frequency: Frequency::SemiAnnual,
+    },
+    BootstrapInstrument::Swap {
+      maturity: 5.0,
+      rate: 0.035,
+      frequency: Frequency::SemiAnnual,
+    },
+  ];
+  let first_rate = -(1.0_f64 / 1.015).ln() / 0.5;
+  for method in [
+    InterpolationMethod::LinearOnZeroRates,
+    InterpolationMethod::LogLinearOnDiscountFactors,
+    InterpolationMethod::CubicSplineOnZeroRates,
+    InterpolationMethod::MonotoneConvex,
+  ] {
+    let direct = bootstrap(BootstrapSpec::new(&instruments, method)).unwrap();
+    let iterative =
+      bootstrap(BootstrapSpec::new(&instruments, method).iterative(IterativeOptions::default()))
+        .unwrap();
+    assert_eq!(direct.discount_factor(5.0), iterative.discount_factor(5.0));
+    assert_eq!(direct.len(), 3, "the origin is not a pillar");
+    // Below the first pillar the zero rate is the first pillar's, whatever the method.
+    for t in [0.1, 0.25, 0.4] {
+      let flat = (-first_rate * t).exp();
+      assert!(
+        (direct.discount_factor(t) - flat).abs() < 1e-15,
+        "{method:?} at {t}: {}",
+        direct.discount_factor(t)
+      );
+    }
+  }
+  let user = DiscountCurve::<f64>::from_zero_rates(
+    &array![0.5, 2.0],
+    &array![0.03, 0.032],
+    InterpolationMethod::LinearOnZeroRates,
+  );
+  assert!(
+    (user.discount_factor(0.1) - 0.997_004_495_503).abs() < 1e-12,
+    "{}",
+    user.discount_factor(0.1)
+  );
+  let ois = bootstrap(BootstrapSpec::new(
+    &instruments,
+    InterpolationMethod::LogLinearOnDiscountFactors,
+  ))
+  .unwrap();
+  let tenor = [
+    deposit(0.25, 0.034),
+    schedule_swap(0.036, &[0.5, 1.0], &quarters(4)),
+  ];
+  let spec = BootstrapSpec::new(&tenor, InterpolationMethod::LogLinearOnDiscountFactors);
+  let forecast = bootstrap(spec.discounting_with(&ois)).unwrap();
+  assert!(
+    forecast.discount_factor(1.0) < ois.discount_factor(1.0),
+    "a 3M tenor curve above OIS discounts more"
+  );
+  assert!(matches!(
+    bootstrap(BootstrapSpec::<f64>::new(
+      &[],
+      InterpolationMethod::LinearOnZeroRates
+    ))
+    .unwrap_err(),
+    QuantError::InsufficientData {
+      what: "instruments",
+      needed: 1,
+      got: 0
+    }
+  ));
+}
+
+#[test]
+fn a_quote_that_gives_no_pillar_is_an_error_at_its_index() {
+  let nan = f64::NAN;
+  let semi = Frequency::SemiAnnual;
+  let bad: Vec<(&str, BootstrapInstrument<f64>)> = vec![
+    ("maturity", deposit(nan, 0.03)),
+    ("maturity", deposit(0.0, 0.03)),
+    ("maturity", deposit(0.5, 0.031)),
+    ("rate", deposit(1.0, nan)),
+    ("discount factor", deposit(1.0, -1.0)),
+    (
+      "start",
+      BootstrapInstrument::Fra {
+        start: nan,
+        end: 1.0,
+        rate: 0.03,
+      },
+    ),
+    (
+      "start",
+      BootstrapInstrument::Fra {
+        start: 1.0,
+        end: 1.0,
+        rate: 0.03,
+      },
+    ),
+    (
+      "rate",
+      BootstrapInstrument::Fra {
+        start: 0.5,
+        end: 1.0,
+        rate: nan,
+      },
+    ),
+    (
+      "start",
+      BootstrapInstrument::Future {
+        start: nan,
+        end: 1.0,
+        price: 97.0,
+        sigma: 0.01,
+      },
+    ),
+    (
+      "price",
+      BootstrapInstrument::Future {
+        start: 0.5,
+        end: 1.0,
+        price: nan,
+        sigma: 0.01,
+      },
+    ),
+    (
+      "sigma",
+      BootstrapInstrument::Future {
+        start: 0.5,
+        end: 1.0,
+        price: 97.0,
+        sigma: nan,
+      },
+    ),
+    (
+      "rate",
+      BootstrapInstrument::Swap {
+        maturity: 2.0,
+        rate: nan,
+        frequency: semi,
+      },
+    ),
+    (
+      "maturity",
+      BootstrapInstrument::Swap {
+        maturity: 1.4,
+        rate: 0.03,
+        frequency: semi,
+      },
+    ),
+    ("fixed_times", schedule_swap(0.03, &[], &[])),
+    ("fixed_times", schedule_swap(0.03, &[1.0, 0.75, 2.0], &[])),
+    ("fixed_times", schedule_swap(0.03, &[1.0, nan, 2.0], &[])),
+    ("maturity", schedule_swap(0.03, &[1.0, nan], &[])),
+  ];
+  let method = InterpolationMethod::LinearOnZeroRates;
+  for (field, instrument) in bad {
+    let quotes = [deposit(0.5, 0.03), instrument];
+    for spec in [
+      BootstrapSpec::new(&quotes, method),
+      BootstrapSpec::new(&quotes, method).iterative(IterativeOptions::default()),
+    ] {
+      match bootstrap(spec) {
+        Err(QuantError::InvalidQuote { index: 1, reason }) => {
+          assert!(reason.contains(field), "{:?}: {reason}", quotes[1])
+        }
+        other => panic!("{:?}: {other:?}", quotes[1]),
+      }
+    }
+  }
+  let lone = [BootstrapInstrument::Fra {
+    start: 0.25,
+    end: 0.5,
+    rate: 0.03,
+  }];
+  assert!(matches!(
+    bootstrap(BootstrapSpec::new(&lone, method)),
+    Err(QuantError::InvalidQuote { index: 0, .. })
+  ));
+
+  let ois = flat(0.02);
+  let dual_bad = [
+    ("float_times", schedule_swap(0.03, &[1.0], &[])),
+    (
+      "float_times",
+      schedule_swap(0.03, &[1.0, 2.0], &[0.5, 1.0, 1.5]),
+    ),
+    ("float_times", schedule_swap(0.03, &[1.0], &[0.5, nan, 1.0])),
+    (
+      "SwapWithSchedule",
+      BootstrapInstrument::Swap {
+        maturity: 1.0,
+        rate: 0.03,
+        frequency: semi,
+      },
+    ),
+  ];
+  for (field, instrument) in dual_bad {
+    let quotes = [deposit(0.5, 0.03), instrument];
+    match bootstrap(BootstrapSpec::new(&quotes, method).discounting_with(&ois)) {
+      Err(QuantError::InvalidQuote { index: 1, reason }) => {
+        assert!(reason.contains(field), "{:?}: {reason}", quotes[1])
+      }
+      other => panic!("{:?}: {other:?}", quotes[1]),
+    }
+  }
+}
+
+#[test]
+fn a_solve_with_no_root_is_an_optimizer_error() {
+  let method = InterpolationMethod::LogLinearOnDiscountFactors;
+  let unbracketed = [deposit(0.5, 0.03), schedule_swap(-5.0, &[1.0], &[0.5, 1.0])];
+  let ois = flat(0.02);
+  assert!(matches!(
+    bootstrap(BootstrapSpec::new(&unbracketed, method).discounting_with(&ois)),
+    Err(QuantError::Optimizer {
+      what: "bootstrap",
+      ..
+    })
+  ));
+  // A negative par rate puts the discount factor above one, outside the bisection's bracket.
+  let negative = [
+    deposit(0.5, -0.004),
+    BootstrapInstrument::Swap {
+      maturity: 1.0,
+      rate: -0.005,
+      frequency: Frequency::SemiAnnual,
+    },
+  ];
+  let direct = bootstrap(BootstrapSpec::new(&negative, method)).unwrap();
+  assert!(direct.discount_factor(1.0) > 1.0);
+  assert!(matches!(
+    bootstrap(BootstrapSpec::new(&negative, method).iterative(IterativeOptions::default())),
+    Err(QuantError::Optimizer {
+      what: "bootstrap",
+      ..
+    })
+  ));
+}
+
+#[test]
+fn a_read_below_the_first_pillar_moves_the_pillars_after_it_except_under_log_linear() {
+  let quotes = [
+    schedule_swap(0.03, &[0.5], &[]),
+    schedule_swap(0.031, &quarters(4), &[]),
+    schedule_swap(0.033, &quarters(8), &[]),
+  ];
+  let pillars = |method| {
+    let curve = bootstrap(BootstrapSpec::new(&quotes, method)).unwrap();
+    [0.25, 0.5, 1.0, 2.0].map(|t| curve.discount_factor(t))
+  };
+  // The 1Y and 2Y swaps pay at 0.25, before the 6M pillar.
+  assert_eq!(
+    pillars(InterpolationMethod::LinearOnZeroRates),
+    [
+      0.9925833339709303,
+      0.9852216748768474,
+      0.9695789361618652,
+      0.9362657494680776
+    ]
+  );
+  assert_eq!(
+    pillars(InterpolationMethod::LogLinearOnDiscountFactors),
+    [
+      0.9925833339709303,
+      0.9852216748768474,
+      0.9695789361618652,
+      0.9362668653346841
+    ]
+  );
+}
+
+#[test]
+fn a_discount_curve_drops_a_pillar_at_the_origin() {
+  let point = |time: f64, discount_factor: f64| CurvePoint {
+    time,
+    discount_factor,
+  };
+  let method = InterpolationMethod::LinearOnZeroRates;
+  let with_origin = DiscountCurve::new(
+    vec![point(2.0, 0.93), point(0.0, 1.0), point(0.5, 0.985)],
+    method,
+  );
+  let without = DiscountCurve::new(vec![point(0.5, 0.985), point(2.0, 0.93)], method);
+  assert_eq!(with_origin.len(), 2);
+  assert_eq!(with_origin.points()[0].time, 0.5);
+  for t in [0.0, 0.1, 0.5, 1.0, 3.0] {
+    assert_eq!(
+      with_origin.discount_factor(t),
+      without.discount_factor(t),
+      "{t}"
+    );
+  }
+  assert_eq!(without.discount_factor(0.0), 1.0);
+  assert!((without.zero_rate(0.1) - without.zero_rate(0.5)).abs() < 1e-15);
+}
+
+#[test]
+#[should_panic(
+  expected = "points must satisfy `a.time != b.time` for every pair, got time = 1.0 twice"
+)]
+fn a_discount_curve_needs_distinct_times() {
+  let point = |discount_factor: f64| CurvePoint {
+    time: 1.0,
+    discount_factor,
+  };
+  DiscountCurve::new(
+    vec![point(0.97), point(0.96)],
+    InterpolationMethod::LinearOnZeroRates,
+  );
+}
+
+#[test]
+#[should_panic(
+  expected = "points must satisfy `p.time >= T::zero()` for every p, got p.time = -1.0"
+)]
+fn a_discount_curve_needs_times_from_the_origin_on() {
+  DiscountCurve::from_zero_rates(
+    &array![-1.0, 1.0],
+    &array![0.03, 0.03],
+    InterpolationMethod::LinearOnZeroRates,
+  );
 }

@@ -9,6 +9,7 @@ use ndarray::array;
 use stochastic_rs::quant::calendar::Frequency;
 use stochastic_rs::quant::cashflows::RateTenor;
 use stochastic_rs::quant::curves::BootstrapInstrument;
+use stochastic_rs::quant::curves::BootstrapSpec;
 use stochastic_rs::quant::curves::Compounding;
 use stochastic_rs::quant::curves::CurvePoint;
 use stochastic_rs::quant::curves::DiscountCurve;
@@ -230,7 +231,11 @@ fn bootstrap_deposits_simple_compounding() {
       rate: 0.056,
     },
   ];
-  let curve = bootstrap(&instruments, InterpolationMethod::LinearOnZeroRates).unwrap();
+  let curve = bootstrap(BootstrapSpec::new(
+    &instruments,
+    InterpolationMethod::LinearOnZeroRates,
+  ))
+  .unwrap();
 
   approx(
     curve.discount_factor(1.0 / 12.0),
@@ -258,7 +263,11 @@ fn bootstrap_deposit_plus_swap() {
       frequency: Frequency::Annual,
     },
   ];
-  let curve = bootstrap(&instruments, InterpolationMethod::LinearOnZeroRates).unwrap();
+  let curve = bootstrap(BootstrapSpec::new(
+    &instruments,
+    InterpolationMethod::LinearOnZeroRates,
+  ))
+  .unwrap();
 
   let d1 = 1.0 / (1.0 + 0.056);
   let d2 = (1.0 - 0.058 * d1) / (1.0 + 0.058);
@@ -283,7 +292,11 @@ fn bootstrap_fra() {
       rate: 0.055,
     },
   ];
-  let curve = bootstrap(&instruments, InterpolationMethod::LinearOnZeroRates).unwrap();
+  let curve = bootstrap(BootstrapSpec::new(
+    &instruments,
+    InterpolationMethod::LinearOnZeroRates,
+  ))
+  .unwrap();
 
   let d_3m = 1.0 / (1.0 + 0.05 * 0.25);
   let d_6m = d_3m / (1.0 + 0.055 * 0.25);
@@ -310,7 +323,11 @@ fn bootstrap_futures_with_convexity_adjustment() {
       sigma: 0.01,
     },
   ];
-  let curve = bootstrap(&instruments, InterpolationMethod::LinearOnZeroRates).unwrap();
+  let curve = bootstrap(BootstrapSpec::new(
+    &instruments,
+    InterpolationMethod::LinearOnZeroRates,
+  ))
+  .unwrap();
 
   let d_3m = 1.0 / (1.0 + 0.05 * 0.25);
   let fra_rate = 0.055 - 0.5 * 0.0001 * 0.25 * 0.50;
