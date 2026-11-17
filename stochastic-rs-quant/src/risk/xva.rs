@@ -156,7 +156,7 @@ impl ExposureProfile {
 
   /// Peak expected positive exposure.
   pub fn peak_epe(&self) -> f64 {
-    self.epe.iter().copied().fold(0.0, f64::max_or_nan)
+    f64::max_or_nan_fold(self.epe.iter().copied()).max_or_nan(0.0)
   }
 
   /// Time-averaged expected positive exposure (the "expected exposure"

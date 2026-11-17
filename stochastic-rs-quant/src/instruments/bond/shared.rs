@@ -399,17 +399,19 @@ fn min_yield_for_leg<T: RealExt>(
     Compounding::Continuous => -1.0,
     Compounding::Periodic(periods_per_year) => -(periods_per_year as f64) + 1e-6,
     Compounding::Simple => {
-      let max_tau = leg
-        .cashflows()
-        .iter()
-        .filter(|cashflow| cashflow.payment_date() >= settlement_date)
-        .map(|cashflow| {
-          yield_day_count
-            .year_fraction::<T>(settlement_date, cashflow.payment_date())
-            .to_f64()
-            .unwrap()
-        })
-        .fold(0.0f64, f64::max_or_nan);
+      let max_tau = f64::max_or_nan_fold(
+        leg
+          .cashflows()
+          .iter()
+          .filter(|cashflow| cashflow.payment_date() >= settlement_date)
+          .map(|cashflow| {
+            yield_day_count
+              .year_fraction::<T>(settlement_date, cashflow.payment_date())
+              .to_f64()
+              .unwrap()
+          }),
+      )
+      .max_or_nan(0.0);
       if max_tau <= 0.0 {
         -1.0
       } else {

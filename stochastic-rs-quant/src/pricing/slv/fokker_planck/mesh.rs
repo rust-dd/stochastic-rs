@@ -161,7 +161,7 @@ impl Mesh {
         (num, den)
       })
       .collect::<Vec<_>>();
-    let heaviest = sums.iter().map(|(_, den)| *den).fold(0.0, f64::max_or_nan);
+    let heaviest = f64::max_or_nan_fold(sums.iter().map(|(_, den)| *den)).max_or_nan(0.0);
     sums
       .into_iter()
       .map(|(num, den)| (den > threshold * heaviest && den > 0.0).then(|| num / den))
