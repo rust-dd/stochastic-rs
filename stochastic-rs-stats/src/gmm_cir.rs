@@ -1,79 +1,63 @@
-//! # GMM estimator for the CIR / Heston-variance process
+//! Two-step GMM of the CIR process on its exact transition moments: four conditions for three
+//! parameters, stage 1 weighted by the identity and stage 2 by `Ŝ⁻¹`, and Hansen's `J ~ χ²₁`.
 //!
 //! $$
-//! dX_t = \kappa(\theta - X_t)\,dt + \sigma\sqrt{X_t}\,dW_t
+//! dX_t = \theta(\mu - X_t)\,dt + \sigma\sqrt{X_t}\,dW_t,\qquad a = e^{-\theta\Delta},\qquad
+//! g_t = \bigl(e_t,\ e_t X_t,\ u_t,\ u_t X_t\bigr)^\top
 //! $$
 //!
-//! The variance leg of the Heston model is a Cox-Ingersoll-Ross (CIR)
-//! square-root diffusion. This estimator recovers $(\kappa, \theta,
-//! \sigma)$ from a discretely-observed variance / short-rate series by
-//! Hansen's (1982) Generalized Method of Moments, using the **exact**
-//! conditional moments of the CIR transition law (Cox-Ingersoll-Ross
-//! 1985), so the estimator carries no Euler-discretisation bias at any
-//! sampling interval $\Delta$.
-//!
-//! With $a = e^{-\kappa\Delta}$ the exact one-step moments are
-//!
 //! $$
-//! \begin{aligned}
-//! m(X_t) &= \mathbb{E}[X_{t+\Delta}\mid X_t] = \theta + (X_t - \theta)\,a,\\
-//! v(X_t) &= \operatorname{Var}[X_{t+\Delta}\mid X_t]
-//!        = X_t\,\frac{\sigma^2}{\kappa}(a - a^2)
-//!        + \theta\,\frac{\sigma^2}{2\kappa}(1 - a)^2.
-//! \end{aligned}
+//! e_t = X_{t+\Delta} - \mu - (X_t - \mu)\,a,\qquad J = T\,\bar g^\top \hat S^{-1} \bar g
 //! $$
 //!
-//! Defining the residuals $e_t = X_{t+\Delta} - m(X_t)$ and
-//! $u_t = e_t^2 - v(X_t)$, the population moment conditions instrumented by
-//! $\{1, X_t\}$ are $\mathbb{E}\left[g_t\right] = 0$ with
-//! $g_t = (e_t,\ e_t X_t,\ u_t,\ u_t X_t)^\top$ — four conditions for three
-//! parameters, so the system is over-identified by one, and Hansen's
-//! $J$-statistic $T\,\bar g'\,\hat S^{-1}\,\bar g \sim \chi^2_1$ tests the
-//! over-identifying restriction.
+//! $$
+//! u_t = e_t^2 - X_t\,\frac{\sigma^2}{\theta}(a - a^2) - \mu\,\frac{\sigma^2}{2\theta}(1 - a)^2
+//! $$
 //!
-//! Two-step GMM: stage 1 minimises $\bar g' \bar g$ (identity weighting);
-//! stage 2 re-weights by the inverse moment-covariance $\hat S^{-1}$
-//! evaluated at the stage-1 estimate (Hansen 1982, the efficient GMM
-//! weighting matrix).
-//!
-//! References:
-//! - Hansen, L.P. (1982), "Large sample properties of generalized method
-//!   of moments estimators", *Econometrica* 50(4), 1029-1054.
-//! - Cox, J.C., Ingersoll, J.E., Ross, S.A. (1985), "A theory of the term
-//!   structure of interest rates", *Econometrica* 53(2), 385-407
-//!   (exact transition moments).
-//! - Chan, K.C., Karolyi, G.A., Longstaff, F.A., Sanders, A.B. (1992),
-//!   "An empirical comparison of alternative models of the short-term
-//!   interest rate", *Journal of Finance* 47(3), 1209-1227 (GMM applied
-//!   to short-rate diffusions).
+//! Reference: Hansen, L. P. (1982), "Large sample properties of generalized method of moments estimators", Econometrica 50(4), 1029-1054.
+//! Reference: Cox, J. C., Ingersoll, J. E. & Ross, S. A. (1985), "A theory of the term structure of interest rates", Econometrica 53(2), 385-407.
+//! Reference: Chan, K. C., Karolyi, G. A., Longstaff, F. A. & Sanders, A. B. (1992), "An empirical comparison of alternative models of the short-term interest rate", Journal of Finance 47(3), 1209-1227.
 
 use ndarray::ArrayView1;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_stochastic::diffusion::cir::Cir;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use crate::StatsError;
 use crate::optim::nelder_mead;
 use crate::qmle::DiffusionKind;
+use crate::qmle::ar1_start;
 use crate::qmle::assert_dt;
-use crate::qmle::check_start;
 use crate::qmle::diffusion_path;
 use crate::traits::FloatExt;
 
-/// Result of the two-step GMM fit of the CIR variance process.
+/// The two-step GMM fit of the CIR process, in [`Cir`]'s names: `theta` the speed, `mu` the level.
 #[derive(Debug, Clone)]
 pub struct GmmCirFit {
-  /// Mean-reversion speed $\kappa$.
-  pub kappa: f64,
-  /// Long-run level $\theta$.
   pub theta: f64,
-  /// Volatility-of-variance $\sigma$.
+  pub mu: f64,
   pub sigma: f64,
-  /// Hansen over-identification $J$-statistic ($\sim \chi^2_1$).
+  /// Hansen's over-identification statistic, `χ²₁` under the model.
   pub j_stat: f64,
-  /// Asymptotic p-value of the $J$-statistic under $\chi^2_1$.
   pub j_pvalue: f64,
-  /// Nelder-Mead iterations consumed (summed over both GMM stages).
+  /// Simplex iterations over both stages.
   pub iterations: usize,
-  /// Whether both optimisation stages converged.
+  /// Whether both stages converged.
   pub converged: bool,
+}
+
+impl GmmCirFit {
+  /// The fitted [`Cir`].
+  pub fn to_cir<S: SeedExt>(
+    &self,
+    n: usize,
+    x0: Option<f64>,
+    t: Option<f64>,
+    boundary: VarianceBoundary,
+    seed: S,
+  ) -> Cir<f64, S> {
+    Cir::new(self.theta, self.mu, self.sigma, n, x0, t, boundary, seed)
+  }
 }
 
 /// Two-step GMM of the CIR process on its exact moments, sampled every `dt`; `Err` below 3 points,
@@ -83,19 +67,17 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
   let x = diffusion_path(series, DiffusionKind::Cir)?;
   let nobs = x.len();
 
-  // Moment matrix builder: for params (kappa, theta, sigma) returns the
-  // T-1 length-4 moment rows g_t and their column mean.
-  let moments = |kappa: f64, theta: f64, sigma: f64| -> (Vec<[f64; 4]>, [f64; 4]) {
-    let a = (-kappa * dt).exp();
+  // The `T − 1` moment rows `g_t` at `(θ, μ, σ)` and their column mean.
+  let moments = |theta: f64, mu: f64, sigma: f64| -> (Vec<[f64; 4]>, [f64; 4]) {
+    let a = (-theta * dt).exp();
     let s2 = sigma * sigma;
     let mut rows = Vec::with_capacity(nobs - 1);
     let mut mean = [0.0_f64; 4];
     for t in 0..nobs - 1 {
       let xt = x[t];
       let xnext = x[t + 1];
-      let m = theta + (xt - theta) * a;
-      let var =
-        xt * (s2 / kappa) * (a - a * a) + theta * (s2 / (2.0 * kappa)) * (1.0 - a) * (1.0 - a);
+      let m = mu + (xt - mu) * a;
+      let var = xt * (s2 / theta) * (a - a * a) + mu * (s2 / (2.0 * theta)) * (1.0 - a) * (1.0 - a);
       let e = xnext - m;
       let u = e * e - var;
       let row = [e, e * xt, u, u * xt];
@@ -111,9 +93,8 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
     (rows, mean)
   };
 
-  // GMM objective with a fixed 4×4 weighting matrix `w`.
-  let objective = |kappa: f64, theta: f64, sigma: f64, w: &[[f64; 4]; 4]| -> f64 {
-    let (_, g) = moments(kappa, theta, sigma);
+  let objective = |theta: f64, mu: f64, sigma: f64, w: &[[f64; 4]; 4]| -> f64 {
+    let (_, g) = moments(theta, mu, sigma);
     let mut q = 0.0;
     for i in 0..4 {
       for j in 0..4 {
@@ -123,34 +104,7 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
     q
   };
 
-  // Initial guess from sample moments: θ̂ = mean(X); κ̂ from the lag-1
-  // autocorrelation a = corr(X_{t+1}, X_t) ⟹ κ = -ln(a)/Δ; σ̂ from the
-  // residual variance scale.
-  let sample_mean = x.iter().sum::<f64>() / x.len() as f64;
-  let theta0 = sample_mean.max(1e-8);
-  let (mut num, mut den) = (0.0, 0.0);
-  for t in 0..nobs - 1 {
-    num += (x[t] - sample_mean) * (x[t + 1] - sample_mean);
-    den += (x[t] - sample_mean).powi(2);
-  }
-  let ac1 = if den > 0.0 {
-    (num / den).clamp(1e-4, 0.999)
-  } else {
-    0.5
-  };
-  let kappa0 = (-ac1.ln() / dt).clamp(1e-3, 50.0);
-  let mut resid_var = 0.0;
-  for t in 0..nobs - 1 {
-    let a = (-kappa0 * dt).exp();
-    let m = theta0 + (x[t] - theta0) * a;
-    resid_var += (x[t + 1] - m).powi(2);
-  }
-  resid_var /= (nobs - 1) as f64;
-  // var(X_{t+1}|X_t) ≈ X̄ σ²/κ (a-a²) + ... ≈ scale; invert for σ².
-  let a0 = (-kappa0 * dt).exp();
-  let scale = sample_mean * (a0 - a0 * a0) / kappa0 + theta0 * (1.0 - a0).powi(2) / (2.0 * kappa0);
-  let sigma0 = (resid_var / scale).sqrt().clamp(1e-3, 10.0);
-  check_start(kappa0, theta0, sigma0)?;
+  let start = ar1_start(&x, dt, DiffusionKind::Cir)?;
 
   let identity = {
     let mut w = [[0.0; 4]; 4];
@@ -160,14 +114,13 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
     w
   };
 
-  // Stage 1: identity weighting.
-  let (p1, it1, conv1) = nelder_mead([kappa0.ln(), theta0.ln(), sigma0.ln()], 2000, |p| {
+  let (p1, it1, conv1) = nelder_mead(start.map(f64::ln), 2000, |p| {
     objective(p[0].exp(), p[1].exp(), p[2].exp(), &identity)
   });
-  let (k1, th1, s1) = (p1[0].exp(), p1[1].exp(), p1[2].exp());
+  let (theta1, mu1, s1) = (p1[0].exp(), p1[1].exp(), p1[2].exp());
 
-  // Stage 2: efficient weighting Ŝ⁻¹ evaluated at the stage-1 estimate.
-  let (rows1, _) = moments(k1, th1, s1);
+  // Stage 2 weights by `Ŝ⁻¹` at the stage-1 estimate, Hansen's efficient choice.
+  let (rows1, _) = moments(theta1, mu1, s1);
   let mut s_hat = [[0.0_f64; 4]; 4];
   for row in &rows1 {
     for i in 0..4 {
@@ -189,15 +142,14 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
   let (p2, it2, conv2) = nelder_mead([p1[0], p1[1], p1[2]], 2000, |p| {
     objective(p[0].exp(), p[1].exp(), p[2].exp(), &w2)
   });
-  let (kappa, theta, sigma) = (p2[0].exp(), p2[1].exp(), p2[2].exp());
+  let (theta, mu, sigma) = (p2[0].exp(), p2[1].exp(), p2[2].exp());
 
-  // Hansen J = T · ḡ' Ŝ⁻¹ ḡ ~ χ²(#moments − #params) = χ²(1).
-  let j_stat = (rows1.len() as f64) * objective(kappa, theta, sigma, &w2);
+  let j_stat = (rows1.len() as f64) * objective(theta, mu, sigma, &w2);
   let j_pvalue = 1.0 - chi2_cdf_1dof(j_stat);
 
   Ok(GmmCirFit {
-    kappa,
     theta,
+    mu,
     sigma,
     j_stat,
     j_pvalue,
@@ -263,27 +215,26 @@ mod tests {
   use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::gamma::SimdGamma;
   use stochastic_rs_distributions::poisson::SimdPoisson;
+  use stochastic_rs_stochastic::traits::ProcessExt;
 
   use super::*;
 
-  /// Exact CIR transition: $X_{t+\Delta} = c\,\chi'^2_d(\lambda)$ with
-  /// $c = \sigma^2(1-a)/(4\kappa)$, $d = 4\kappa\theta/\sigma^2$,
-  /// $\lambda = X_t\,4\kappa a / (\sigma^2(1-a))$, $a = e^{-\kappa\Delta}$.
-  /// Non-central χ² sampled as a Poisson mixture of central χ² (= Gamma).
+  /// Exact CIR step `c χ'²_d(λ)`: `c = σ²(1−a)/(4θ)`, `d = 4θμ/σ²`, `λ = 4θa X_t/(σ²(1−a))`,
+  /// the non-central χ² drawn as a Poisson mixture of central ones (Gammas).
   fn cir_exact_step(
     x_t: f64,
-    kappa: f64,
     theta: f64,
+    mu: f64,
     sigma: f64,
     dt: f64,
     pois_seed: u64,
     gamma_seed: u64,
   ) -> f64 {
-    let a = (-kappa * dt).exp();
+    let a = (-theta * dt).exp();
     let s2 = sigma * sigma;
-    let c = s2 * (1.0 - a) / (4.0 * kappa);
-    let d = 4.0 * kappa * theta / s2;
-    let lambda = x_t * 4.0 * kappa * a / (s2 * (1.0 - a));
+    let c = s2 * (1.0 - a) / (4.0 * theta);
+    let d = 4.0 * theta * mu / s2;
+    let lambda = x_t * 4.0 * theta * a / (s2 * (1.0 - a));
     // χ'²_d(λ) = χ²_{d + 2N}, N ~ Poisson(λ/2); central χ²_k = Gamma(k/2, 2).
     let n_pois: f64 = f64::from(
       SimdPoisson::<u32>::new(lambda / 2.0)
@@ -302,8 +253,8 @@ mod tests {
   }
 
   fn simulate_cir_path(
-    kappa: f64,
     theta: f64,
+    mu: f64,
     sigma: f64,
     x0: f64,
     dt: f64,
@@ -317,8 +268,8 @@ mod tests {
       // without threading a mutable engine through the helper.
       path[t] = cir_exact_step(
         path[t - 1],
-        kappa,
         theta,
+        mu,
         sigma,
         dt,
         seed ^ (t as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15),
@@ -328,40 +279,60 @@ mod tests {
     path
   }
 
-  /// Round-trip: simulate an exactly-distributed CIR path with known
-  /// params, then GMM must recover them. θ (the long-run mean) is the
-  /// best-identified; κ and σ are noisier on finite samples, so the bands
-  /// reflect realistic GMM-CIR sampling variability.
+  /// Best of three pinned paths: the level's band sits near one standard error, so one path alone
+  /// is a coin flip.
   #[test]
-  /// Parameter recovery has a sampling distribution of its own: the tolerance
-  /// on theta here sits around one standard error, so any single path is a
-  /// coin flip. Three pinned seeds and an any() over them is the same
-  /// best-of pattern the normality tests use (see `integration-test-writing`
-  /// SKILL section 1.2) — deterministic per platform, ~1e-6 false failures.
   fn gmm_cir_recovers_params_from_exact_path() {
-    let (kt, tt, st) = (2.0, 0.04, 0.25);
+    let (tht, mt, st) = (2.0, 0.04, 0.25);
     let dt = 1.0 / 252.0;
     let fits = [7u64, 13, 29].map(|seed| {
-      let path = simulate_cir_path(kt, tt, st, 0.04, dt, 8000, seed);
+      let path = simulate_cir_path(tht, mt, st, 0.04, dt, 8000, seed);
       (seed, fit_cir_gmm(path.view(), dt).unwrap())
     });
     let ok = fits.iter().any(|(_, r)| {
       r.converged
-        && (r.theta - tt).abs() / tt < 0.12
-        && (r.kappa - kt).abs() / kt < 0.5
+        && (r.mu - mt).abs() / mt < 0.12
+        && (r.theta - tht).abs() / tht < 0.5
         && (r.sigma - st).abs() / st < 0.3
     });
     let report = fits
       .iter()
-      .map(|(s, r)| {
-        format!(
-          "seed {s}: κ={:.4} θ={:.4} σ={:.4}",
-          r.kappa, r.theta, r.sigma
-        )
-      })
+      .map(|(s, r)| format!("seed {s}: θ={:.4} μ={:.4} σ={:.4}", r.theta, r.mu, r.sigma))
       .collect::<Vec<_>>()
       .join("; ");
-    assert!(ok, "no seed recovered (κ={kt}, θ={tt}, σ={st}) — {report}");
+    assert!(ok, "no seed recovered (θ={tht}, μ={mt}, σ={st}) — {report}");
+  }
+
+  /// The fit's `theta` is the speed and `mu` the level, as in `Cir`, so the conversion hands them
+  /// over.
+  #[test]
+  fn a_gmm_fit_round_trips_into_the_cir_it_names() {
+    let truth = Cir::<f64, _>::new(
+      5.0,
+      0.04,
+      0.2,
+      10_000,
+      Some(0.04),
+      Some(100.0),
+      VarianceBoundary::Reflect,
+      Deterministic::new(5),
+    );
+    let path = truth.sample();
+    let fit = fit_cir_gmm(path.view(), 100.0 / 9_999.0).unwrap();
+    assert!((fit.theta - 5.0).abs() < 1.5, "speed {}", fit.theta);
+    assert!((fit.mu - 0.04).abs() < 0.01, "level {}", fit.mu);
+    let rebuilt = fit.to_cir(
+      10_000,
+      Some(0.04),
+      Some(100.0),
+      VarianceBoundary::Reflect,
+      Deterministic::new(6),
+    );
+    assert_eq!(
+      (rebuilt.theta, rebuilt.mu, rebuilt.sigma),
+      (fit.theta, fit.mu, fit.sigma)
+    );
+    assert_eq!(rebuilt.sample().len(), 10_000);
   }
 
   /// The Hansen J p-value should be large (fail to reject the over-id
