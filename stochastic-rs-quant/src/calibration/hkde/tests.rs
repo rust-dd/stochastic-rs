@@ -20,6 +20,20 @@ const HESTON_REF: [f64; 9] = [
 ];
 const STRIKES: [f64; 9] = [80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0];
 
+/// SHOP on 2024-02-20, Agazzotti et al. (2025), Table 1: Feller holds and every value lies in the
+/// default projection box.
+const SHOP: HkdeParams = HkdeParams {
+  v0: 0.176,
+  kappa: 0.191,
+  theta: 0.728,
+  sigma_v: 0.194,
+  rho: -0.718,
+  lambda: 1.009,
+  p_up: 0.958,
+  eta1: 8.739,
+  eta2: 0.733,
+};
+
 fn ref_hkde_params() -> HkdeParams {
   HkdeParams {
     v0: 0.04,
@@ -316,8 +330,8 @@ fn the_fit_converts_to_the_hkde_model_of_its_parameters() {
 /// that the published Table 1 numbers can be used verbatim as inputs to
 /// our calibrator / pricer without silent clipping.
 #[test]
-fn paper_table1_shop_is_admissible() {
-  let original = paper_table1::SHOP;
+fn the_published_shop_set_is_admissible() {
+  let original = SHOP;
   let projected = original.projected();
   let eps = 1e-12;
   assert!((projected.v0 - original.v0).abs() < eps);
@@ -340,8 +354,8 @@ fn paper_table1_shop_is_admissible() {
 /// from the paper's SHOP parameters and verify the calibrator recovers
 /// them starting from a perturbed guess.
 #[test]
-fn paper_table1_shop_self_consistency() {
-  let truth = paper_table1::SHOP;
+fn the_published_shop_set_is_recovered_from_its_own_prices() {
+  let truth = SHOP;
   let r = 0.05;
   let q = 0.0;
   let s0 = 100.0;

@@ -33,14 +33,6 @@
 
 use crate::total_order::ascending;
 
-/// Conventional daily increment for a 252-day equity trading year, exported
-/// so callers can write `realized_variance(prices, BUSINESS_DAY_252_DT)` to
-/// document the choice rather than sprinkling `1.0 / 252.0` literals.
-///
-/// Use a different value (e.g. `1.0 / 365.0` for calendar-day,
-/// `1.0 / 260.0` for FX) when the underlying observation frequency differs.
-pub const BUSINESS_DAY_252_DT: f64 = 1.0 / 252.0;
-
 mod discrete;
 
 /// Variance-swap pricer.
@@ -187,24 +179,8 @@ impl VarianceSwapPricer {
     cont + bias
   }
 
-  /// Realised variance estimator from a price path,
-  /// $\hat\sigma^2 = \frac{1}{N\Delta t}\sum_{i=1}^N (\ln S_i/S_{i-1})^2$.
-  ///
-  /// `dt` is the time between observations in years; use
-  /// [`BUSINESS_DAY_252_DT`] for the standard 252-day equity convention or
-  /// `1.0 / 365.0` for calendar-day sampling.
-  ///
-  /// # Panics
-  /// Panics if fewer than two prices are supplied: $N = \text{len} - 1$ log
-  /// returns is zero of them, and the estimator's $1/(N\Delta t)$ normaliser
-  /// divides by zero.
-  ///
-  /// This returned `0.0` before, and `0.0` is the sharpest possible case of
-  /// a plausible-looking sentinel here — it is also the *correct* answer for
-  /// a constant price path, which
-  /// `realized_variance_constant_path_is_zero` pins. "No data" and "no
-  /// movement" were the same number. Case 1 of the crate's [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails).
+  /// Realised variance $\frac{1}{N\Delta t}\sum_{i=1}^N (\ln S_i/S_{i-1})^2$ of a path sampled
+  /// every `dt` years (`1.0 / 252.0` on trading days); panics on fewer than two prices.
   pub fn realized_variance(prices: &[f64], dt: f64) -> f64 {
     assert!(
       prices.len() >= 2,

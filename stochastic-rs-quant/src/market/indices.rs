@@ -1,7 +1,7 @@
 //! Named rate indices and fixing history.
 //!
 //! Factory functions for the standard overnight and IBOR-style benchmarks
-//! (SOFR, ESTR, SONIA, TONAR, Fed Funds, Euribor, USD Libor), with canonical
+//! (SOFR, ESTR, SONIA, TONAR, Fed Funds, Euribor), with canonical
 //! day-count and calendar conventions attached to each. Historical fixings
 //! are stored in an observable [`FixingHistory`] so downstream coupons can
 //! pick up realised rates without rebuilding the index object.
@@ -259,32 +259,6 @@ pub mod ibor {
   /// Six-month Euribor.
   pub fn euribor_6m<T: RealExt>() -> NamedIborIndex<T> {
     euribor(RateTenor::SixMonths)
-  }
-
-  /// USD Libor with arbitrary tenor. Actual/360, US+UK joint calendar,
-  /// 2 business day spot lag. Retained for legacy trades.
-  pub fn usd_libor<T: RealExt>(tenor: RateTenor) -> NamedIborIndex<T> {
-    let name = format!("USD-LIBOR-{}", tenor.curve_key());
-    let index = IborIndex::new(name, tenor, DayCountConvention::Actual360);
-    NamedIborIndex::new(
-      index,
-      currency::USD,
-      Calendar::joint([
-        HolidayCalendar::UnitedStates,
-        HolidayCalendar::UnitedKingdom,
-      ]),
-      2,
-    )
-  }
-
-  /// Three-month USD Libor.
-  pub fn usd_libor_3m<T: RealExt>() -> NamedIborIndex<T> {
-    usd_libor(RateTenor::ThreeMonths)
-  }
-
-  /// Six-month USD Libor.
-  pub fn usd_libor_6m<T: RealExt>() -> NamedIborIndex<T> {
-    usd_libor(RateTenor::SixMonths)
   }
 }
 
