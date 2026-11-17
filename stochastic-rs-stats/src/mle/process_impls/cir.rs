@@ -47,6 +47,10 @@ impl<S: SeedExt> DiffusionModel for Cir<f64, S> {
   fn exact_density(&self, x0: f64, xt: f64, _t0: f64, dt: f64) -> Option<f64> {
     Some(self.transition_pdf(dt, x0, xt))
   }
+
+  fn exact_ln_density(&self, x0: f64, xt: f64, _t0: f64, dt: f64) -> Option<f64> {
+    Some(self.transition_ln_pdf(dt, x0, xt))
+  }
 }
 
 impl<S: SeedExt> DiffusionModel for Cev<f64, S> {
