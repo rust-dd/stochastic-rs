@@ -1,5 +1,5 @@
-"""Curve building: tenor-keyed forecast curves, the bootstrap's errors and the flat zero rate
-below a curve's first pillar."""
+"""Curve building: tenor-keyed forecast curves, the bootstrap's errors, the short end below a
+curve's first pillar and the interpolation between pillars."""
 
 from __future__ import annotations
 
@@ -41,25 +41,40 @@ def test_multi_curve_reads_a_tenor_string_and_rejects_one_that_names_no_tenor():
             call()
 
 
-def test_a_discount_curve_is_flat_in_the_zero_rate_below_its_first_pillar():
+def test_the_zero_rate_methods_are_flat_below_the_first_pillar_and_monotone_convex_starts_at_the_origin():
     times, rates = np.array([0.5, 1.0, 2.0, 5.0]), np.array([0.03, 0.032, 0.035, 0.04])
+    # cubic is scipy's CubicSpline(bc_type="natural") on the zero rates; monotone_convex is Hagan & West with tau_0 = 0
     from_the_first_pillar_on = {
         "linear": [0.9851119396030626, 0.9770181986892416, 0.9509916468680314, 0.8958341352965283, 0.7557837414557255],
         "log_df": [0.9851119396030626, 0.9767739746688439, 0.950278670532427, 0.8928529928432785, 0.7557837414557255],
-        "cubic": [0.9851119396030626, 0.9770082427121285, 0.9508792400969898, 0.8952500861145954, 0.7557837414557255],
-        "monotone_convex": [0.9851119396030626, 0.9768960790470421, 0.950753928672327, 0.8948393168143698, 0.7557837414557255],
+        "cubic": [0.9851119396030626, 0.9769982868364686, 0.9507668466123762, 0.8946664177101229, 0.7557837414557255],
+        "monotone_convex": [0.9851119396030626, 0.9769774904457238, 0.950753928672327, 0.8948393168143698, 0.7557837414557255],
     }
     for interp in INTERPS:
         curve = sr.DiscountCurve.from_zero_rates(times, rates, interp=interp)
-        for t in (0.05, 0.1, 0.25, 0.4):
-            assert abs(curve.discount_factor(t) - math.exp(-0.03 * t)) < 1e-15
-            assert abs(curve.zero_rate(t) - 0.03) < 1e-13
-        assert abs(curve.forward_rate(0.1, 0.3) - 0.03) < 1e-13
+        if interp == "monotone_convex":
+            below = [curve.discount_factor(t) for t in (0.05, 0.1, 0.25, 0.4)]
+            assert below == [0.9985505514666794, 0.997100212529285, 0.9927141712772897, 0.9882140054334019]
+            for t1, t2 in ((0.5 - 1e-7, 0.5), (0.5, 0.5 + 1e-7)):
+                assert abs(curve.forward_rate(t1, t2) - 0.032) < 1e-6
+        else:
+            for t in (0.05, 0.1, 0.25, 0.4):
+                assert abs(curve.discount_factor(t) - math.exp(-0.03 * t)) < 1e-15
+                assert abs(curve.zero_rate(t) - 0.03) < 1e-13
+            assert abs(curve.forward_rate(0.1, 0.3) - 0.03) < 1e-13
         assert [curve.discount_factor(t) for t in (0.5, 0.75, 1.5, 3.0, 7.0)] == from_the_first_pillar_on[interp]
         # A pillar at t = 0 is none: the curve is 1 there whatever rate it carries.
         with_origin = sr.DiscountCurve.from_zero_rates(np.append(0.0, times), np.append(0.07, rates), interp=interp)
         for t in (0.0, 0.1, 0.5, 0.75, 3.0, 7.0):
             assert with_origin.discount_factor(t) == curve.discount_factor(t)
+    schedules, par = [[0.5], [0.5, 1.0], [0.5, 1.0, 1.5, 2.0], [1.0, 2.0, 3.0, 4.0, 5.0]], [0.03, 0.031, 0.033, 0.036]
+    between_pillars = {
+        "cubic": [0.9970267065196697, 0.9775546034999668, 0.9534069436114718, 0.9025143601848119, 0.8692672813661254],
+        "monotone_convex": [0.997074211487444, 0.9775518541513034, 0.9532662540703966, 0.9031137188144021, 0.8697358250631962],
+    }
+    for interp, pins in between_pillars.items():
+        curve = sr.DiscountCurve.bootstrap_ois(schedules, par, interp=interp)
+        assert [curve.discount_factor(t) for t in (0.1, 0.75, 1.5, 3.0, 4.0)] == pins
 
 
 def test_a_log_linear_bootstrap_stays_and_a_linear_one_moves_after_a_read_below_its_first_pillar():

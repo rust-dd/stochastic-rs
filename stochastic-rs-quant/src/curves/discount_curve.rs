@@ -114,7 +114,7 @@ impl<T: RealExt> DiscountCurve<T> {
     self.method
   }
 
-  /// Discount factor at `t`, flat in the zero rate before the first pillar.
+  /// Discount factor at `t`, 1 for `t <= 0`; before the first pillar as the method's function says.
   pub fn discount_factor(&self, t: T) -> T {
     if t <= T::zero() {
       return T::one();

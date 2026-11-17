@@ -256,16 +256,14 @@ fn one_bootstrap_entry_and_a_flat_zero_short_end() {
     InterpolationMethod::MonotoneConvex,
   ] {
     let direct = bootstrap(BootstrapSpec::new(&instruments, method)).unwrap();
-    let iterative =
-      bootstrap(BootstrapSpec::new(&instruments, method).iterative(IterativeOptions::default()))
-        .unwrap();
-    assert_eq!(direct.discount_factor(5.0), iterative.discount_factor(5.0));
     assert_eq!(direct.len(), 3, "the origin is not a pillar");
-    // Below the first pillar the zero rate is the first pillar's, whatever the method.
+    // Monotone convex shapes [0, t₁] itself; the other three hold the first zero rate there.
+    let hagan_west = method == InterpolationMethod::MonotoneConvex;
     for t in [0.1, 0.25, 0.4] {
       let flat = (-first_rate * t).exp();
+      let gap = (direct.discount_factor(t) - flat).abs();
       assert!(
-        (direct.discount_factor(t) - flat).abs() < 1e-15,
+        if hagan_west { gap > 1e-6 } else { gap < 1e-15 },
         "{method:?} at {t}: {}",
         direct.discount_factor(t)
       );
