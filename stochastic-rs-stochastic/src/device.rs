@@ -56,8 +56,8 @@ pub use sheet_backend::SheetBackend;
 #[cfg_attr(not(device_backend), allow(dead_code))]
 pub(crate) const CACHE_SLOTS: usize = 4;
 
-/// Frees the fGN FFT workspace (and with `accelerate` the vDSP setups) of the calling thread and of
-/// every thread of the current rayon pool; nothing shrinks on its own.
+/// Frees the fGN FFT workspace and, with `accelerate`, the vDSP setups of this thread and of every
+/// thread of the current rayon pool, waiting for each; a scratch in use stays, none shrinks alone.
 pub fn release_host_scratch() {
   let release = || {
     stochastic_rs_distributions::release_fgn_scratch();

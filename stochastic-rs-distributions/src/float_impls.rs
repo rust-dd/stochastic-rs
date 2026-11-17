@@ -18,10 +18,17 @@ thread_local! {
   static FGN_SCRATCH_F32: RefCell<Vec<Complex<f32>>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Frees the calling thread's fGN FFT workspace; the next transform grows it to its own length.
+/// Frees the calling thread's fGN FFT workspace, skipping one a transform holds; the next transform
+/// grows it to its own length.
 pub fn release_fgn_scratch() {
-  FGN_SCRATCH_F64.with_borrow_mut(|scratch| *scratch = Vec::new());
-  FGN_SCRATCH_F32.with_borrow_mut(|scratch| *scratch = Vec::new());
+  FGN_SCRATCH_F64.with(free_unless_held);
+  FGN_SCRATCH_F32.with(free_unless_held);
+}
+
+fn free_unless_held<T>(scratch: &RefCell<Vec<T>>) {
+  if let Ok(mut scratch) = scratch.try_borrow_mut() {
+    *scratch = Vec::new();
+  }
 }
 
 impl RealExt for f64 {
@@ -173,5 +180,16 @@ mod tests {
     assert_eq!(f32::with_fgn_complex_scratch(8, |s| s.len()), 8);
     assert!(FGN_SCRATCH_F64.with_borrow(Vec::capacity) < 1 << 16);
     assert!(FGN_SCRATCH_F32.with_borrow(Vec::capacity) < 1 << 16);
+  }
+
+  /// A release that runs inside a transform skips the workspace that transform holds.
+  #[test]
+  fn a_release_inside_a_transform_keeps_its_workspace() {
+    let len = f64::with_fgn_complex_scratch(64, |s| {
+      release_fgn_scratch();
+      s.len()
+    });
+    assert_eq!(len, 64);
+    assert!(FGN_SCRATCH_F64.with_borrow(Vec::capacity) >= 64);
   }
 }
