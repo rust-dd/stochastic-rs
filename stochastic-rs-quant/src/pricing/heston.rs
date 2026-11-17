@@ -31,6 +31,9 @@ const REST_TOLERANCE: f64 = 1e-10;
 /// Past this variance the Gaussian, `1/√w` wide, is narrower than the quadrature's smallest
 /// sub-panel: the control variate keeps this variance and no longer matches the mean.
 const CONTROL_VARIANCE_CAP: f64 = 2e3;
+/// The `E_j[∫v]` up to which the head the unmatched mean leaves below `LOWER_LIMIT` is its first
+/// order, `LOWER_LIMIT·u_j·(E_j[∫v] − w)`, to 5.9e-6 on a spot of 100; 5.7e-3 at `1e6`.
+const EXPECTED_VARIANCE_BOUND: f64 = 1e5;
 /// `√w` at which the walk, which ends near `φ = 8,000`, stops inside the Gaussian, `1/√w` wide,
 /// with an integrand it can no longer neglect.
 const UNCOVERED: Range<f64> = 1e-5..1e-3;
@@ -82,8 +85,8 @@ impl HestonPricer {
     self.params
   }
 
-  /// Call and put price at one query point: NaN for a negative or NaN `tau` or an `E[∫₀^τ v]` past
-  /// `f64`; at `tau = 0` the payoff, which the `P_j` integrals, undamped there, do not resolve.
+  /// Call and put price at one query point: NaN for a negative or NaN `tau` or an `E_j[∫₀^τ v]`
+  /// past `1e5`; at `tau = 0` the payoff, which the `P_j` integrals, undamped there, do not resolve.
   ///
   /// $$
   /// C=Se^{-q\tau}P_1-Ke^{-r\tau}P_2,\qquad P=C+Ke^{-r\tau}-Se^{-q\tau}
@@ -265,7 +268,7 @@ impl HestonPricer {
     }
   }
 
-  /// The factor `φ` is rescaled by so that the walk ends past the Gaussian, one for both `P_j`;
+  /// The factor that rescales `φ` so that the walk ends past the Gaussian, one for both `P_j`;
   /// `None` where nothing is left to integrate, `FAR` from the money at a `√w` in `UNCOVERED`.
   fn rest_scale(&self, tau: f64, s: f64, k: f64, r: f64, q: f64) -> Option<f64> {
     let root = self.mean_integrated_variance(2, tau).sqrt();
@@ -287,7 +290,7 @@ impl HestonPricer {
     scale: Option<f64>,
   ) -> f64 {
     let expected = self.mean_integrated_variance(j, tau);
-    if !expected.is_finite() {
+    if !expected.is_finite() || expected > EXPECTED_VARIANCE_BOUND {
       return f64::NAN;
     }
     let w = expected.min(CONTROL_VARIANCE_CAP);
@@ -302,7 +305,9 @@ impl HestonPricer {
     };
     let rest = self.re(j, tau, (s, k, r, q), w);
     let scaled = |y: f64| scale * rest(scale * y);
-    norm_cdf(d) + FRAC_1_PI * integrate_to_convergence(scaled, LOWER_LIMIT / scale, REST_TOLERANCE)
+    let head = LOWER_LIMIT * self.u(j) * (expected - w);
+    let integral = integrate_to_convergence(scaled, LOWER_LIMIT / scale, REST_TOLERANCE);
+    norm_cdf(d) + FRAC_1_PI * (head + integral)
   }
 
   fn p_initial_variance_derivative(&self, j: u8, tau: f64, s: f64, k: f64, r: f64, q: f64) -> f64 {

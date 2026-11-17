@@ -146,7 +146,7 @@ fn a_variance_far_below_its_own_volatility_is_not_rescaled() {
 }
 
 /// `E₁[∫v] = 3.7e4` at `ρσ > κ`, where a Gaussian that narrow is past the quadrature: the control
-/// variance stops at its cap and the price keeps the head `S·1e-8·(E₁ − cap)/(2π) = 5.5e-3`.
+/// variance stops at its cap, and the mean it no longer matches is the head below `φ = 1e-8`.
 #[test]
 fn an_exploding_share_measure_variance_keeps_the_quadrature() {
   let pricer = HestonPricer::new(HestonParams {
@@ -158,11 +158,13 @@ fn an_exploding_share_measure_variance_keeps_the_quadrature() {
   // (τ, call at (100, 100, 0.05, 0)) by Lewis quadrature at 30 digits (mpmath).
   for (tau, want, tol) in [
     (10.0, 40.30940541896965, 1e-9),
-    (30.0, 77.97317902193187, 1e-2),
+    (30.0, 77.97317902193187, 1e-6),
   ] {
     let got = pricer.price_call(100.0, 100.0, 0.05, 0.0, tau);
     assert!((got - want).abs() < tol, "tau = {tau}: {got} vs {want}");
   }
+  let (call, put) = pricer.call_put(100.0, 100.0, 0.05, 0.0, 40.0);
+  assert!(call.is_nan() && put.is_nan(), "{call}, {put}");
 }
 
 /// Calls at `K = 100`, `r = 0.05`, `q = 0` by Lewis quadrature of the chf at 30 digits (mpmath).
@@ -205,10 +207,17 @@ fn a_zero_variance_model_prices_the_forward_payoff() {
   }
 }
 
-/// A risk premium of −800 puts `E[∫₀^τ v]` past `f64` at `τ = 1`.
+/// At `τ = 1` a risk premium of −50 puts `E[∫₀^τ v]` past the head term's reach, −800 past `f64`.
 #[test]
-fn an_expected_variance_past_f64_prices_nan() {
-  let pricer = HestonPricer::new(P).with_vol_risk_premium(-800.0);
-  let (call, put) = pricer.call_put(100.0, 100.0, 0.05, 0.0, 1.0);
-  assert!(call.is_nan() && put.is_nan(), "{call}, {put}");
+fn an_expected_variance_past_the_bound_prices_nan() {
+  for lambda in [-50.0, -800.0] {
+    let pricer = HestonPricer::new(P).with_vol_risk_premium(lambda);
+    for k in [80.0, 100.0, 120.0] {
+      let (call, put) = pricer.call_put(100.0, k, 0.05, 0.0, 1.0);
+      assert!(
+        call.is_nan() && put.is_nan(),
+        "lambda = {lambda}, k = {k}: {call}, {put}"
+      );
+    }
+  }
 }
