@@ -36,6 +36,10 @@ impl Cumulants {
   }
 }
 
+/// Below this `|κt|` the closed forms in `1/κ` cancel, `c4` to a relative `ε/(κt)⁷`, and the series
+/// in `t` takes over; the two agree to 2e-12 at the switch.
+const SERIES_BELOW: f64 = 1.0;
+
 /// `c1` from Fang & Oosterlee's Table 11; `c2` and `c4` are `(−i)ⁿ∂ⁿᵤ ln chf` at `u = 0` of the
 /// Little-Trap chf, grouped by powers of `e^{−κt}`.
 /// Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826–848.
@@ -47,6 +51,9 @@ pub(crate) fn heston_cumulants(p: &HestonParams, t: f64) -> Cumulants {
     sigma,
     rho,
   } = *p;
+  if (kappa * t).abs() < SERIES_BELOW {
+    return heston_cumulants_series(p, t);
+  }
   let ekt = (-kappa * t).exp();
   let c1 = (1.0 - ekt) * (theta - v0) / (2.0 * kappa) - 0.5 * theta * t;
 
@@ -71,6 +78,61 @@ pub(crate) fn heston_cumulants(p: &HestonParams, t: f64) -> Cumulants {
     c1,
     c2,
     c4: Some(heston_c4(v0, kappa, theta, sigma, rho, t, ekt)),
+  }
+}
+
+/// `cₙ = κθ∫₀ᵗdₙ + v0·dₙ(t)` from the Taylor series in `t` of `dₙ = ∂ⁿₛD` at `s = 0`, where
+/// `ln E[e^{sX}] = C + D·v0`, `C' = κθD`, `D' = ½σ²D² + (ρσs − κ)D + ½(s² − s)`; exact at `κ = 0`.
+/// $$
+/// \begin{aligned}
+/// d_1' &= -\kappa d_1 - \tfrac12, &
+/// d_2' &= -\kappa d_2 + 1 + 2\rho\sigma d_1 + \sigma^2 d_1^2, \\
+/// d_3' &= -\kappa d_3 + 3\rho\sigma d_2 + 3\sigma^2 d_1 d_2, &
+/// d_4' &= -\kappa d_4 + 4\rho\sigma d_3 + \sigma^2\bigl(4 d_1 d_3 + 3 d_2^2\bigr)
+/// \end{aligned}
+/// $$
+fn heston_cumulants_series(p: &HestonParams, t: f64) -> Cumulants {
+  const TERMS: usize = 40;
+  let HestonParams {
+    v0,
+    kappa,
+    theta,
+    sigma,
+    rho,
+  } = *p;
+  let (sigma2, rs) = (sigma * sigma, rho * sigma);
+  let mut d = [[0.0_f64; TERMS + 1]; 4];
+  let mut value = [0.0_f64; 4];
+  let mut integral = [0.0_f64; 4];
+  let mut settled_before = false;
+  for j in 0..TERMS {
+    let product = |a: usize, b: usize| (1..j).map(|i| d[a][i] * d[b][j - i]).sum::<f64>();
+    let unit = if j == 0 { 1.0 } else { 0.0 };
+    let forcing = [
+      -0.5 * unit,
+      unit + 2.0 * rs * d[0][j] + sigma2 * product(0, 0),
+      3.0 * rs * d[1][j] + 3.0 * sigma2 * product(0, 1),
+      4.0 * rs * d[2][j] + sigma2 * (4.0 * product(0, 2) + 3.0 * product(1, 1)),
+    ];
+    let mut settled = true;
+    for n in 0..4 {
+      let term = t / (j + 1) as f64 * (forcing[n] - kappa * d[n][j]);
+      d[n][j + 1] = term;
+      value[n] += term;
+      integral[n] += term / (j + 2) as f64;
+      settled &= term.abs() <= 1e-17 * value[n].abs();
+    }
+    // The leading `σ⁶t⁷` term of `d₄` enters at `j = 6`, and a zero term can precede it.
+    if settled && settled_before && j > 6 {
+      break;
+    }
+    settled_before = settled;
+  }
+  let cumulant = |n: usize| kappa * theta * t * integral[n] + v0 * value[n];
+  Cumulants {
+    c1: cumulant(0),
+    c2: cumulant(1),
+    c4: Some(cumulant(3)),
   }
 }
 

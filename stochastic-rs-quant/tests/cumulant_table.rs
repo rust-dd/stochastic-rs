@@ -2,11 +2,13 @@
 //! 40-digit derivatives of each log-chf, and the same identity in f64 by stencils of `ln chf`.
 
 use num_complex::Complex64;
+use stochastic_rs_quant::OptionType;
 use stochastic_rs_quant::calibration::hkde::HkdeParams;
 use stochastic_rs_quant::calibration::svj::SvjParams;
 use stochastic_rs_quant::pricing::fourier::BatesFourier;
 use stochastic_rs_quant::pricing::fourier::BsmFourier;
 use stochastic_rs_quant::pricing::fourier::CgmyFourier;
+use stochastic_rs_quant::pricing::fourier::CosEngine;
 use stochastic_rs_quant::pricing::fourier::Cumulants;
 use stochastic_rs_quant::pricing::fourier::DoubleHestonFourier;
 use stochastic_rs_quant::pricing::fourier::FourierModelExt;
@@ -18,6 +20,7 @@ use stochastic_rs_quant::pricing::fourier::NigFourier;
 use stochastic_rs_quant::pricing::fourier::VarianceGammaFourier;
 use stochastic_rs_quant::pricing::heston::HestonParams;
 use stochastic_rs_quant::pricing::regime_switching::RegimeSwitchingModel;
+use stochastic_rs_quant::traits::ModelPricer;
 
 /// κ₁ and κ₂ from the log-chf by fourth-order central differences at `h`; the pins carry κ₄.
 fn chf_c1_c2(model: &impl FourierModelExt, t: f64, h: f64) -> (f64, f64) {
@@ -283,5 +286,147 @@ fn the_width_helper_counts_an_absent_or_unusable_c4_as_zero_and_is_nan_without_a
   for c2 in [0.0, -0.04, f64::NAN, f64::INFINITY] {
     let w = cumulants(c2, Some(1.0)).truncation_half_width(10.0);
     assert!(w.is_nan(), "c2 = {c2}: {w}");
+  }
+}
+
+/// `|a − b| < rel·|b|` on each cumulant, false for a NaN or an absent `c4`.
+fn check_relative(
+  failures: &mut Vec<String>,
+  name: &str,
+  model: &impl FourierModelExt,
+  t: f64,
+  want: (f64, f64, f64),
+  rel: f64,
+) {
+  let c = model.cumulants(t);
+  let got = [c.c1, c.c2, c.c4.unwrap_or(f64::NAN)];
+  for (label, (got, want)) in ["c1", "c2", "c4"]
+    .into_iter()
+    .zip(got.into_iter().zip([want.0, want.1, want.2]))
+  {
+    if !within(got, want, rel * want.abs()) {
+      failures.push(format!("{name}, t = {t}, {label}: {got} vs {want}"));
+    }
+  }
+}
+
+fn heston(v0: f64, kappa: f64, theta: f64, sigma: f64, rho: f64) -> HestonParams {
+  HestonParams {
+    v0,
+    kappa,
+    theta,
+    sigma,
+    rho,
+  }
+}
+
+/// mpmath's 60-digit cumulants at `κt` from 1e-6 to 1.05: the closed forms in `1/κ` cancel below
+/// `κt = 1`, the fourth to nothing, and the series in `t` that replaces them meets them there.
+#[test]
+fn heston_cumulants_keep_their_digits_at_a_small_kappa() {
+  let mut failures = Vec::new();
+  let f = &mut failures;
+  for (kappa, t, c2, c4) in [
+    (1e-4, 0.01, 0.00040042029985977505, 7.1449861827034e-9),
+    (1e-4, 0.1, 0.00404229985775036, 7.299530715614993e-6),
+    (1e-4, 1.0, 0.044499837504549895, 0.009019056120474007),
+    (1e-3, 0.01, 0.00040042029859775353, 7.144945874218141e-9),
+    (1e-3, 0.1, 0.004042298577536049, 7.299115536368414e-6),
+    (1e-3, 1.0, 0.044498375454892526, 0.009013514969836588),
+    (0.01, 0.01, 0.00040042028597785106, 7.144542805373049e-9),
+    (0.01, 0.1, 0.004042285778604262, 7.294965404866033e-6),
+    (0.01, 1.0, 0.044483795392726934, 0.008958341038451643),
+    (0.0, 1.0, 0.0445, 0.00901967207142857),
+  ] {
+    let model = HestonFourier::new(heston(0.04, kappa, 0.04, 0.3, -0.7));
+    let name = format!("kappa = {kappa}");
+    check_relative(f, &name, &model, t, (-0.02 * t, c2, c4), 1e-13);
+  }
+  let model = HestonFourier::new(heston(0.04, 1e-4, 0.04, 0.3, 0.3));
+  let want = (-0.002, 0.003982300057749861, 4.182840616865885e-6);
+  check_relative(f, "rho = 0.3", &model, 0.1, want, 1e-13);
+  for (t, c1, c2, c4) in [
+    (
+      1.9,
+      -0.042571871641815084,
+      0.14287068545207995,
+      1.0812241827866693,
+    ),
+    (
+      1.99,
+      -0.04543064111808413,
+      0.15494660573663585,
+      1.2794204183020048,
+    ),
+    (
+      2.0,
+      -0.04575156088200096,
+      0.1563169055655099,
+      1.3029585145227762,
+    ),
+    (
+      2.1,
+      -0.04899564243778087,
+      0.17033106610974363,
+      1.555914357991067,
+    ),
+  ] {
+    let model = HestonFourier::new(heston(0.02, 0.5, 0.09, 1.0, -0.9));
+    check_relative(f, "across the switch", &model, t, (c1, c2, c4), 1e-11);
+  }
+  let bates = BatesFourier::new(SvjParams {
+    v0: 0.04,
+    kappa: 1e-3,
+    theta: 0.04,
+    sigma_v: 0.3,
+    rho: -0.5,
+    lambda: 0.5,
+    mu_j: -0.1,
+    sigma_j: 0.15,
+  });
+  let want = (
+    -0.0027537156779576175,
+    0.005655298977526049,
+    0.0001539533041376621,
+  );
+  check_relative(f, "bates", &bates, 0.1, want, 1e-13);
+  let hkde = HkdeFourier::new(HkdeParams {
+    v0: 0.04,
+    kappa: 1e-3,
+    theta: 0.04,
+    sigma_v: 0.5,
+    rho: -0.5,
+    lambda: 0.8,
+    p_up: 0.4,
+    eta1: 10.0,
+    eta2: 5.0,
+  });
+  let want = (
+    -0.003955555555555556,
+    0.00853083160421125,
+    0.0019355412285453934,
+  );
+  check_relative(f, "hkde", &hkde, 0.1, want, 1e-13);
+  let double = DoubleHestonFourier::new(
+    heston(0.04, 1e-3, 0.04, 0.3, -0.7),
+    heston(0.03, 2.0, 0.05, 0.4, -0.6),
+  );
+  let want = (
+    -0.0035936537653899095,
+    0.007265127257493327,
+    1.5030949348073349e-5,
+  );
+  check_relative(f, "double heston", &double, 0.1, want, 1e-13);
+  assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+}
+
+/// A `c4` lost to cancellation, 1.3e8 here, widened this put's range 1,300 times: 29 off at K 80.
+#[test]
+fn the_default_cos_put_holds_at_a_small_kappa() {
+  let model = HestonFourier::new(heston(0.04, 1e-4, 0.04, 0.3, -0.7));
+  for k in [80.0, 100.0, 120.0] {
+    let put = CosEngine::default().price(&model, 100.0, k, 0.03, 0.01, 0.1, OptionType::Put);
+    let want = model.price_put(100.0, k, 0.03, 0.01, 0.1);
+    assert!((put - want).abs() < 1e-7, "K = {k}: {put} vs {want}");
   }
 }
