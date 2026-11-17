@@ -2720,8 +2720,8 @@ macro_rules! kernel_euler_backend {
       f: impl Fn(&Array1<$scalar>) -> R + Sync,
     ) -> Result<Vec<R>, DeviceError> {
       use rayon::prelude::*;
-      check_path_index(m)?;
       let seed = process.device_seed();
+      check_path_index(m)?;
       let steps = process.grid_points();
       let rows = launch_rows(self, steps, process.euler_spec(), steps, process.fgn_spec());
       let mut out = Vec::with_capacity(m);
@@ -2784,8 +2784,8 @@ macro_rules! kernel_euler_backend {
       f: impl Fn(ArrayView1<$scalar>) -> R + Sync,
     ) -> Result<Vec<R>, DeviceError> {
       use rayon::prelude::*;
-      check_path_index(m)?;
       let seed = process.device_seed();
+      check_path_index(m)?;
       let steps = process.grid_points();
       let rows = launch_rows(self, steps, process.euler_spec(), steps, process.fgn_spec());
       let mut out = Vec::with_capacity(m);
@@ -2863,8 +2863,8 @@ macro_rules! kernel_euler_backend {
       f: impl Fn(&P::Output) -> R + Sync,
     ) -> Result<Vec<R>, DeviceError> {
       use rayon::prelude::*;
-      check_path_index(m)?;
       let seed = process.device_seed();
+      check_path_index(m)?;
       let (_, rows) = system_rows(self, process);
       let mut out = Vec::with_capacity(m);
       // `over_chunks`, so a chunk too large for the device is retried at half

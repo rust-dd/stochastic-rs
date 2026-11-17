@@ -417,7 +417,7 @@ fn promptly<R: Send + 'static>(refuse: impl FnOnce() -> R + Send + 'static) -> R
 }
 
 /// Every batch entry refuses more paths than the kernels' 32-bit path index reaches, before it
-/// allocates or launches; `sample_par` panics with the same message.
+/// allocates or launches, and draws the one seed any call draws; `sample_par` panics alike.
 fn unindexable_batches_are_refused<K>(device: K)
 where
   K: EulerKernel<f32> + EulerBackend<f32> + 'static,
@@ -441,33 +441,52 @@ where
     Deterministic::new(2),
   )
   .with_backend(device.clone());
-  let refusals: [Result<(), DeviceError>; 5] = [
+  let after_one = |seed: &Deterministic| {
+    let seed = seed.clone();
+    seed.next_seed();
+    seed.current()
+  };
+  let (gbm_seed, bergomi_seed) = (after_one(&gbm.seed), after_one(&bergomi.seed));
+  let refusals: [(Result<(), DeviceError>, u64, u64); 5] = [
     promptly({
       let p = gbm.clone();
-      move || p.try_sample_par(m).map(drop)
+      move || (p.try_sample_par(m).map(drop), p.seed.current(), gbm_seed)
     }),
     promptly({
       let (p, d) = (gbm.clone(), device.clone());
-      move || d.try_euler_paths_map(&p, m, |path| path[0]).map(drop)
+      move || {
+        let refusal = d.try_euler_paths_map(&p, m, |path| path[0]).map(drop);
+        (refusal, p.seed.current(), gbm_seed)
+      }
     }),
     promptly({
       let (p, d) = (gbm.clone(), device.clone());
-      move || d.try_euler_paths_map_view(&p, m, |path| path[0]).map(drop)
+      move || {
+        let refusal = d.try_euler_paths_map_view(&p, m, |path| path[0]).map(drop);
+        (refusal, p.seed.current(), gbm_seed)
+      }
     }),
     promptly({
       let p = bergomi.clone();
-      move || p.try_sample_par(m).map(drop)
+      move || {
+        let refusal = p.try_sample_par(m).map(drop);
+        (refusal, p.seed.current(), bergomi_seed)
+      }
     }),
     promptly({
       let (p, d) = (bergomi, device);
-      move || d.try_system_paths_map(&p, m, |paths| paths[0][0]).map(drop)
+      move || {
+        let refusal = d.try_system_paths_map(&p, m, |paths| paths[0][0]).map(drop);
+        (refusal, p.seed.current(), bergomi_seed)
+      }
     }),
   ];
-  for refusal in refusals {
+  for (refusal, seed, once) in refusals {
     assert!(
       matches!(&refusal, Err(DeviceError::Launch(why)) if why.contains("32-bit path index")),
       "{refusal:?}"
     );
+    assert_eq!(seed, once, "a refusal draws exactly one seed");
   }
   let panic = promptly(move || catch_unwind(AssertUnwindSafe(move || drop(gbm.sample_par(m)))))
     .expect_err("sample_par panics");
