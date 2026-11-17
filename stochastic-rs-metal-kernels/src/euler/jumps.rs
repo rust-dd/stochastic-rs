@@ -2,7 +2,7 @@
 
 use metal_oxide_device::math;
 
-use super::draws::{exponential, normal, words};
+use super::draws::{cos_accurate, exponential, exponential_accurate, normal, words};
 use super::philox::{SITE_SIZES, u01_f32};
 
 fn sized(up: f32, value: f32, a: f32, b: f32, c: f32) -> f32 {
@@ -33,17 +33,7 @@ pub(crate) fn draw(
     return sized(u01_f32(pair[0]), exponential(pair[2], pair[3]), a, b, c);
   }
   if law == 9 {
-    let pair = words(path, step, SITE_SIZES, 0, key);
-    let angle = (u01_f32(pair[0]) - 0.5) * core::f32::consts::PI;
-    let exponential = exponential(pair[2], pair[3]);
-    let inverse = 1.0 / a;
-    let mut ratio = math::cos(angle - a * angle) / exponential;
-    if ratio < 1.0e-30 {
-      ratio = 1.0e-30;
-    }
-    let stable = math::sin(a * angle) / math::powf(math::cos(angle), inverse)
-      * math::powf(ratio, (1.0 - a) * inverse);
-    return b * math::powf(count, inverse) * stable;
+    return stable(words(path, step, SITE_SIZES, 0, key), a, b, count);
   }
   if law == 12 {
     let pair = words(path, step, SITE_SIZES, 0, key);
@@ -59,6 +49,21 @@ pub(crate) fn draw(
     11 => compound::<11>(path, step, key, a, b, c, count),
     _ => 0.0,
   }
+}
+
+/// A Chambers–Mallows–Stuck (1976) draw at scale `b·count^{1/a}` on the accurate cosine and
+/// exponential: a fast one's error over a cosine near ±π/2 or an exponential near 0 is unbounded.
+pub(crate) fn stable(pair: [u32; 4], a: f32, b: f32, count: f32) -> f32 {
+  let angle = (u01_f32(pair[0]) - 0.5) * core::f32::consts::PI;
+  let exponential = exponential_accurate(pair[2], pair[3]);
+  let inverse = 1.0 / a;
+  let mut ratio = cos_accurate(angle - a * angle) / exponential;
+  if ratio < 1.0e-30 {
+    ratio = 1.0e-30;
+  }
+  let standard = math::sin(a * angle) / math::powf(cos_accurate(angle), inverse)
+    * math::powf(ratio, (1.0 - a) * inverse);
+  b * math::powf(count, inverse) * standard
 }
 
 #[allow(clippy::too_many_arguments)]

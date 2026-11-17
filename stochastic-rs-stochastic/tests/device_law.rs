@@ -19,5 +19,6 @@ mod device_law {
   pub(crate) mod seed;
   pub(crate) mod series;
   pub(crate) mod sheet;
+  pub(crate) mod stable;
   pub(crate) mod systems;
 }

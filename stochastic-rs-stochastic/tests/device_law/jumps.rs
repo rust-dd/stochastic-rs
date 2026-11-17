@@ -456,12 +456,6 @@ fn std_at(paths: &[Array1<f32>], at: usize) -> f64 {
     .sqrt()
 }
 
-fn iqr_at(paths: &[Array1<f32>], at: usize) -> f64 {
-  let mut values: Vec<f64> = paths.iter().map(|p| p[at] as f64).collect();
-  values.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
-  values[values.len() * 3 / 4] - values[values.len() / 4]
-}
-
 /// Exponential waits make the arrivals in a cell the Poisson count the
 /// kernels draw, and normal sizes the law they aggregate; the mean grows as
 /// `rate · mean · t` and the spread as `√(rate t (mean² + std²))`.
@@ -535,42 +529,6 @@ fn ctrw_with_rademacher_jumps_agrees_with_the_cpu_law() {
     std_at(&device, N / 4),
     0.05,
     "CTRW Rademacher quarter-horizon spread",
-  );
-}
-
-/// Symmetric stable sizes have no variance, so the spread is read off the
-/// quartiles; the kernel draws a cell's sum in one Chambers–Mallows–Stuck
-/// step at scale `scale · n^{1/α}`, the host draws each jump.
-#[test]
-fn ctrw_with_stable_jumps_agrees_with_the_cpu_law() {
-  let build = || {
-    Ctrw::<f32, _>::new(
-      CtrwWaitingLaw::Exponential { rate: 20.0 },
-      CtrwJumpLaw::SymmetricStable {
-        alpha: 1.7,
-        scale: 0.2,
-      },
-      N,
-      Some(0.0),
-      Some(1.0),
-      Deterministic::new(181),
-    )
-  };
-  const PATHS: usize = 3 * M;
-  let device = build().on::<Device>().sample_par(PATHS);
-  let host = build().sample_par(PATHS);
-  all_finite(&device, "CTRW stable");
-  agrees(
-    iqr_at(&host, N - 1),
-    iqr_at(&device, N - 1),
-    0.06,
-    "CTRW stable terminal interquartile range",
-  );
-  agrees(
-    iqr_at(&host, N / 4),
-    iqr_at(&device, N / 4),
-    0.06,
-    "CTRW stable quarter-horizon interquartile range",
   );
 }
 

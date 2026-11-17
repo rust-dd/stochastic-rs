@@ -1,9 +1,10 @@
-//! The generator and the family log as the GPU computes them, for the host to hold against the
-//! port, Random123 and an `f64` log.
+//! The generator, the family log and the stable law's cosine and jump as the GPU computes them,
+//! for the host to hold against the port, Random123 and `f64`.
 
 use metal_oxide_device::{ReadBuffer, WriteBuffer, kernel};
 
-use super::draws::{exponential, normal};
+use super::draws::{cos_accurate, exponential, normal};
+use super::jumps::stable;
 use super::philox::{philox4x32_10, u01_f32};
 use super::vocabulary;
 
@@ -52,5 +53,51 @@ pub unsafe fn log_kat(values: ReadBuffer<f32>, logs: WriteBuffer<f32>, cases: u3
   // SAFETY: the caller sized both buffers for `cases` values, and `case < cases`.
   unsafe {
     logs.store_unchecked(case, vocabulary::ln(values.load_unchecked(case)));
+  }
+}
+
+/// # Safety
+/// `values` and `cosines` hold `cases` values each.
+#[kernel]
+pub unsafe fn cos_kat(values: ReadBuffer<f32>, cosines: WriteBuffer<f32>, cases: u32) {
+  let case = crate::index();
+  if case >= cases {
+    return;
+  }
+  // SAFETY: the caller sized both buffers for `cases` values, and `case < cases`.
+  unsafe {
+    cosines.store_unchecked(case, cos_accurate(values.load_unchecked(case)));
+  }
+}
+
+/// # Safety
+/// `words` holds four words a case, `laws` three values a case (`α`, scale, count), `jumps` one.
+#[kernel]
+pub unsafe fn stable_kat(
+  words: ReadBuffer<u32>,
+  laws: ReadBuffer<f32>,
+  jumps: WriteBuffer<f32>,
+  cases: u32,
+) {
+  let case = crate::index();
+  if case >= cases {
+    return;
+  }
+  // SAFETY: the caller sized every buffer for `cases` cases, and `case < cases`.
+  unsafe {
+    let at = 4 * case;
+    let pair = [
+      words.load_unchecked(at),
+      words.load_unchecked(at + 1),
+      words.load_unchecked(at + 2),
+      words.load_unchecked(at + 3),
+    ];
+    let law = 3 * case;
+    let (alpha, scale, count) = (
+      laws.load_unchecked(law),
+      laws.load_unchecked(law + 1),
+      laws.load_unchecked(law + 2),
+    );
+    jumps.store_unchecked(case, stable(pair, alpha, scale, count));
   }
 }
