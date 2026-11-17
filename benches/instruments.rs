@@ -14,7 +14,7 @@ use stochastic_rs::quant::curves::InterpolationMethod;
 use stochastic_rs::quant::curves::MultiCurve;
 use stochastic_rs::quant::instruments::BasisSwap;
 use stochastic_rs::quant::instruments::FixedRateBond;
-use stochastic_rs::quant::instruments::SwapDirection;
+use stochastic_rs::quant::instruments::SwaptionDirection;
 use stochastic_rs::quant::instruments::VanillaInterestRateSwap;
 
 fn flat_curve(rate: f64, max_t: f64) -> DiscountCurve<f64> {
@@ -64,7 +64,7 @@ fn bench_swap_valuation(c: &mut Criterion) {
       .forward()
       .build();
   let swap = VanillaInterestRateSwap::new(
-    SwapDirection::Payer,
+    SwaptionDirection::Payer,
     &fixed_schedule,
     &float_schedule,
     10_000_000.0,

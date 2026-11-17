@@ -23,7 +23,6 @@ use stochastic_rs::quant::instruments::EuropeanSwaption;
 use stochastic_rs::quant::instruments::ExerciseSchedule;
 use stochastic_rs::quant::instruments::JamshidianHullWhiteSwaption;
 use stochastic_rs::quant::instruments::SabrVolatility;
-use stochastic_rs::quant::instruments::SwapDirection;
 use stochastic_rs::quant::instruments::SwaptionDirection;
 use stochastic_rs::quant::instruments::TreeCouponSchedule;
 use stochastic_rs::quant::instruments::VanillaInterestRateSwap;
@@ -92,7 +91,7 @@ fn bench_european_swaption_black(c: &mut Criterion) {
     DayCountConvention::Actual360,
   ));
   let swap = VanillaInterestRateSwap::new(
-    SwapDirection::Payer,
+    SwaptionDirection::Payer,
     &fixed_schedule,
     &float_schedule,
     10_000_000.0,
@@ -142,7 +141,7 @@ fn bench_european_swaption_sabr(c: &mut Criterion) {
     DayCountConvention::Actual360,
   ));
   let swap = VanillaInterestRateSwap::new(
-    SwapDirection::Payer,
+    SwaptionDirection::Payer,
     &fixed_schedule,
     &float_schedule,
     10_000_000.0,

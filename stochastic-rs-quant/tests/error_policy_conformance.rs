@@ -20,6 +20,7 @@ use stochastic_rs_quant::curves::InterpolationMethod;
 use stochastic_rs_quant::inflation::InflationCurve;
 use stochastic_rs_quant::inflation::ZeroCouponInflationCurve;
 use stochastic_rs_quant::microstructure::AlmgrenChrissParams;
+use stochastic_rs_quant::order_book::Side;
 use stochastic_rs_quant::portfolio::momentum::WeightScheme;
 use stochastic_rs_quant::portfolio::optimizers::empirical_cvar;
 use stochastic_rs_quant::portfolio::types::OptimizerMethod;
@@ -277,7 +278,7 @@ fn finite_samples_whose_moments_overflow_or_underflow_are_a_numerical_error() {
 
 #[test]
 fn liquidity_adjusted_var_reports_the_var_error() {
-  let execution = AlmgrenChrissParams::<f64>::new(1e4, 1.0, 10, 0.02, 1e-6, 1e-5, 1e-6);
+  let execution = AlmgrenChrissParams::<f64>::new(Side::Sell, 1e4, 1.0, 10, 0.02, 1e-6, 1e-5, 1e-6);
   let err = liquidity_adjusted_var(
     Array1::zeros(0).view(),
     0.99,

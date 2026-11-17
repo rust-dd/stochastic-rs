@@ -57,7 +57,7 @@ pub use swap::BasisSwapValuation;
 pub use swap::CrossCurrencyBasisSwap;
 pub use swap::CrossCurrencyBasisSwapValuation;
 pub use swap::CrossCurrencySwapDirection;
-pub use swap::SwapDirection;
+pub use swap::CurrencyLeg;
 pub use swap::SwapValuation;
 pub use swap::TotalReturnSwap;
 pub use swap::TrsDirection;

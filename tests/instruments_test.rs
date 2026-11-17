@@ -23,10 +23,11 @@ use stochastic_rs::quant::instruments::AmortizingFixedRateBond;
 use stochastic_rs::quant::instruments::BasisSwap;
 use stochastic_rs::quant::instruments::CrossCurrencyBasisSwap;
 use stochastic_rs::quant::instruments::CrossCurrencySwapDirection;
+use stochastic_rs::quant::instruments::CurrencyLeg;
 use stochastic_rs::quant::instruments::FixedRateBond;
 use stochastic_rs::quant::instruments::FloatingRateBond;
 use stochastic_rs::quant::instruments::InflationLinkedBond;
-use stochastic_rs::quant::instruments::SwapDirection;
+use stochastic_rs::quant::instruments::SwaptionDirection;
 use stochastic_rs::quant::instruments::VanillaInterestRateSwap;
 use stochastic_rs::quant::instruments::ZeroCouponBond;
 
@@ -130,7 +131,7 @@ fn fixed_rate_bond_spread_analytics_are_consistent() {
   curves.add_forecast("3M", discount_curve.clone());
 
   let par_swap = VanillaInterestRateSwap::new(
-    SwapDirection::Receiver,
+    SwaptionDirection::Receiver,
     &fixed_schedule,
     &float_schedule,
     100.0,
@@ -331,7 +332,7 @@ fn vanilla_swap_fair_rate_matches_annuity_formula_and_npv_is_zero_at_par() {
   curves.add_forecast("3M", forecast_curve.clone());
 
   let par_swap = VanillaInterestRateSwap::new(
-    SwapDirection::Receiver,
+    SwaptionDirection::Receiver,
     &fixed_schedule,
     &float_schedule,
     1_000_000.0,
@@ -367,7 +368,7 @@ fn vanilla_swap_fair_rate_matches_annuity_formula_and_npv_is_zero_at_par() {
   approx(fair_rate, manual_fair, 1e-10);
 
   let priced_swap = VanillaInterestRateSwap::new(
-    SwapDirection::Receiver,
+    SwaptionDirection::Receiver,
     &fixed_schedule,
     &float_schedule,
     1_000_000.0,
@@ -472,27 +473,31 @@ fn cross_currency_basis_swap_fair_domestic_spread_zeroes_npv() {
 
   let xccy = CrossCurrencyBasisSwap::new(
     CrossCurrencySwapDirection::PayDomesticReceiveForeign,
-    USD,
-    EUR,
     1.2,
-    &domestic_schedule,
-    &foreign_schedule,
-    1_200_000.0,
-    FloatingIndex::Ibor(IborIndex::new(
-      "USD-LIBOR-3M",
-      RateTenor::ThreeMonths,
-      DayCountConvention::Actual365Fixed,
-    )),
-    0.0,
-    DayCountConvention::Actual365Fixed,
-    1_000_000.0,
-    FloatingIndex::Ibor(IborIndex::new(
-      "EUR-EURIBOR-3M",
-      RateTenor::ThreeMonths,
-      DayCountConvention::Actual365Fixed,
-    )),
-    0.0,
-    DayCountConvention::Actual365Fixed,
+    CurrencyLeg {
+      currency: USD,
+      notional: 1_200_000.0,
+      index: FloatingIndex::Ibor(IborIndex::new(
+        "USD-LIBOR-3M",
+        RateTenor::ThreeMonths,
+        DayCountConvention::Actual365Fixed,
+      )),
+      spread: 0.0,
+      day_count: DayCountConvention::Actual365Fixed,
+      schedule: domestic_schedule.clone(),
+    },
+    CurrencyLeg {
+      currency: EUR,
+      notional: 1_000_000.0,
+      index: FloatingIndex::Ibor(IborIndex::new(
+        "EUR-EURIBOR-3M",
+        RateTenor::ThreeMonths,
+        DayCountConvention::Actual365Fixed,
+      )),
+      spread: 0.0,
+      day_count: DayCountConvention::Actual365Fixed,
+      schedule: foreign_schedule.clone(),
+    },
     false,
   );
   let valuation_summary = xccy.valuation(
@@ -505,27 +510,31 @@ fn cross_currency_basis_swap_fair_domestic_spread_zeroes_npv() {
 
   let repriced = CrossCurrencyBasisSwap::new(
     CrossCurrencySwapDirection::PayDomesticReceiveForeign,
-    USD,
-    EUR,
     1.2,
-    &domestic_schedule,
-    &foreign_schedule,
-    1_200_000.0,
-    FloatingIndex::Ibor(IborIndex::new(
-      "USD-LIBOR-3M",
-      RateTenor::ThreeMonths,
-      DayCountConvention::Actual365Fixed,
-    )),
-    valuation_summary.fair_domestic_spread,
-    DayCountConvention::Actual365Fixed,
-    1_000_000.0,
-    FloatingIndex::Ibor(IborIndex::new(
-      "EUR-EURIBOR-3M",
-      RateTenor::ThreeMonths,
-      DayCountConvention::Actual365Fixed,
-    )),
-    0.0,
-    DayCountConvention::Actual365Fixed,
+    CurrencyLeg {
+      currency: USD,
+      notional: 1_200_000.0,
+      index: FloatingIndex::Ibor(IborIndex::new(
+        "USD-LIBOR-3M",
+        RateTenor::ThreeMonths,
+        DayCountConvention::Actual365Fixed,
+      )),
+      spread: valuation_summary.fair_domestic_spread,
+      day_count: DayCountConvention::Actual365Fixed,
+      schedule: domestic_schedule.clone(),
+    },
+    CurrencyLeg {
+      currency: EUR,
+      notional: 1_000_000.0,
+      index: FloatingIndex::Ibor(IborIndex::new(
+        "EUR-EURIBOR-3M",
+        RateTenor::ThreeMonths,
+        DayCountConvention::Actual365Fixed,
+      )),
+      spread: 0.0,
+      day_count: DayCountConvention::Actual365Fixed,
+      schedule: foreign_schedule.clone(),
+    },
     false,
   );
   approx(
@@ -557,7 +566,7 @@ fn overnight_indexed_swap_constructor_reuses_overnight_float_leg() {
   curves.add_forecast("O/N", curve);
 
   let ois = VanillaInterestRateSwap::overnight_indexed(
-    SwapDirection::Payer,
+    SwaptionDirection::Payer,
     &fixed_schedule,
     &float_schedule,
     5_000_000.0,

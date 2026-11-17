@@ -107,8 +107,8 @@ impl<T: RealExt> FixingHistory<T> {
     changed
   }
 
-  /// Look up a fixing by date.
-  pub fn fixing(&self, date: NaiveDate) -> Option<T> {
+  /// The fixing on `date`, if one is stored.
+  pub fn get(&self, date: NaiveDate) -> Option<T> {
     self
       .inner
       .fixings
@@ -119,7 +119,7 @@ impl<T: RealExt> FixingHistory<T> {
   }
 
   /// Most recent fixing at or before `date`.
-  pub fn latest_before(&self, date: NaiveDate) -> Option<(NaiveDate, T)> {
+  pub fn last_before(&self, date: NaiveDate) -> Option<(NaiveDate, T)> {
     self
       .inner
       .fixings
@@ -128,6 +128,17 @@ impl<T: RealExt> FixingHistory<T> {
       .range(..=date)
       .next_back()
       .map(|(d, v)| (*d, *v))
+  }
+
+  /// The fixings at or before `date` and at or after it, read under one lock.
+  pub(crate) fn bracket(
+    &self,
+    date: NaiveDate,
+  ) -> (Option<(NaiveDate, T)>, Option<(NaiveDate, T)>) {
+    let map = self.inner.fixings.read().expect("fixings poisoned");
+    let before = map.range(..=date).next_back().map(|(d, v)| (*d, *v));
+    let after = map.range(date..).next().map(|(d, v)| (*d, *v));
+    (before, after)
   }
 
   /// Number of fixings stored.
@@ -339,9 +350,13 @@ mod tests {
     hist.add_fixing(d1, 0.053);
     hist.add_fixing(d2, 0.052);
     hist.add_fixing(d3, 0.051);
-    assert_eq!(hist.fixing(d2), Some(0.052));
+    assert_eq!(hist.get(d2), Some(0.052));
+    assert_eq!(
+      hist.get(NaiveDate::from_ymd_opt(2024, 1, 15).unwrap()),
+      None
+    );
     let (d, v) = hist
-      .latest_before(NaiveDate::from_ymd_opt(2024, 1, 15).unwrap())
+      .last_before(NaiveDate::from_ymd_opt(2024, 1, 15).unwrap())
       .unwrap();
     assert_eq!(d, d2);
     assert!((v - 0.052).abs() < 1e-12);

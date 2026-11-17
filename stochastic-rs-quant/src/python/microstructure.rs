@@ -28,11 +28,11 @@ impl PyAlmgrenChrissPlan {
   ) -> PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
       use crate::microstructure::almgren_chriss::AlmgrenChrissParams;
-      use crate::microstructure::almgren_chriss::ExecutionDirection;
       use crate::microstructure::almgren_chriss::optimal_execution;
+      use crate::order_book::Side;
       let dir = match direction.to_ascii_lowercase().as_str() {
-        "sell" => ExecutionDirection::Sell,
-        "buy" => ExecutionDirection::Buy,
+        "sell" => Side::Sell,
+        "buy" => Side::Buy,
         o => {
           return Err(PyValueError::new_err(format!(
             "direction must be 'sell' or 'buy', got '{o}'"
@@ -40,8 +40,8 @@ impl PyAlmgrenChrissPlan {
         }
       };
       let params = AlmgrenChrissParams {
+        side: dir,
         total_shares,
-        direction: dir,
         horizon,
         n_intervals,
         volatility,

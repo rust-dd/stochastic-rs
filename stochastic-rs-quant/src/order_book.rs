@@ -21,7 +21,7 @@ const EPSILON: f64 = 1e-9;
 /// A total‑ordered price key (wraps `f64` so it can live in a `BTreeMap`).
 pub type Price = OrderedFloat<f64>;
 
-/// Order side.
+/// Order side; also the direction of an Almgren–Chriss parent order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Side {
   Buy,

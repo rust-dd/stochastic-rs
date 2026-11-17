@@ -24,6 +24,7 @@ pub mod vanilla;
 
 pub use basis::BasisSwap;
 pub use cross_currency::CrossCurrencyBasisSwap;
+pub use cross_currency::CurrencyLeg;
 pub use trs::TotalReturnSwap;
 pub use trs::TrsDirection;
 pub use trs::TrsPeriod;
@@ -31,6 +32,5 @@ pub use trs::TrsValuation;
 pub use types::BasisSwapValuation;
 pub use types::CrossCurrencyBasisSwapValuation;
 pub use types::CrossCurrencySwapDirection;
-pub use types::SwapDirection;
 pub use types::SwapValuation;
 pub use vanilla::VanillaInterestRateSwap;
