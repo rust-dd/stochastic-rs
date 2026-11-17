@@ -7,6 +7,7 @@ use crate::mle::DensityApprox;
 use crate::mle::DiffusionModel;
 use crate::mle::MleFit;
 use crate::mle::fit_mle;
+use crate::qmle::test_support::simulate_cir;
 
 fn cir(theta: f64, mu: f64, sigma: f64) -> Cir<f64, Deterministic> {
   let floor = VarianceBoundary::Floor;
@@ -22,18 +23,6 @@ fn cir(theta: f64, mu: f64, sigma: f64) -> Cir<f64, Deterministic> {
   )
 }
 
-/// `n` points of the law's own draws every `dt` from `x0`, each step on its own stream.
-fn exact_path(law: [f64; 3], x0: f64, dt: f64, n: usize, seed: u64) -> Array1<f64> {
-  let law = cir(law[0], law[1], law[2]);
-  let mut path = Array1::zeros(n);
-  path[0] = x0;
-  for t in 1..n {
-    let stream = seed.wrapping_mul(1_000_003) ^ (t as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15);
-    path[t] = law.sample_transition(dt, path[t - 1], &Deterministic::new(stream));
-  }
-  path
-}
-
 fn exact_fit(start: [f64; 3], path: &Array1<f64>, dt: f64) -> MleFit {
   let mut model = cir(start[0], start[1], start[2]);
   fit_mle(&mut model, path.view(), dt, DensityApprox::Exact, None).unwrap()
@@ -44,8 +33,8 @@ fn exact_fit(start: [f64; 3], path: &Array1<f64>, dt: f64) -> MleFit {
 #[test]
 fn an_exact_cir_fit_through_underflowing_densities_reaches_the_optimum() {
   let (truth, dt) = ([8.0, 0.03, 0.02], 1.0 / 12.0);
-  for seed in [1001u64, 1003, 1012] {
-    let path = exact_path(truth, 0.03, dt, 1000, seed);
+  for seed in [2u64, 11, 39] {
+    let path = simulate_cir(8.0, 0.03, 0.02, 0.03, dt, 1000, seed);
     let near = exact_fit(truth, &path, dt);
     let far = exact_fit([1.0, 0.5, 0.5], &path, dt);
     assert!(near.converged && far.converged, "seed {seed}");
@@ -70,7 +59,7 @@ fn an_exact_cir_fit_through_underflowing_densities_reaches_the_optimum() {
 fn an_exact_cir_fit_of_a_path_from_zero_converges_at_a_large_shape() {
   let dt = 1.0 / 252.0;
   for truth in [[2.0, 0.2, 0.1], [5.0, 1.0, 0.2]] {
-    let path = exact_path(truth, 0.0, dt, 500, 1);
+    let path = simulate_cir(truth[0], truth[1], truth[2], 0.0, dt, 500, 1);
     assert_eq!(path[0], 0.0);
     for start in [truth, [1.0, 0.05, 0.2]] {
       let fit = exact_fit(start, &path, dt);
