@@ -41,7 +41,7 @@ impl CosEngine {
   }
 
   /// `r` discounts the payoff and `r − q` is the carry of the forward the drift-free `chf` is
-  /// centred on; NaN when `c2 + √c4` is not finite and positive, or when `chf` is NaN.
+  /// centred on; NaN where `Cumulants::truncation_half_width` is, or where `chf` is NaN.
   pub fn price<M: FourierModelExt>(
     &self,
     model: &M,
@@ -53,13 +53,12 @@ impl CosEngine {
     option_type: OptionType,
   ) -> f64 {
     let cumulants = model.cumulants(t);
-    let width_arg = cumulants.c2 + cumulants.c4.map_or(0.0, f64::sqrt);
-    if !(width_arg.is_finite() && width_arg > 0.0) {
+    let half_width = cumulants.truncation_half_width(self.l);
+    if !half_width.is_finite() {
       return f64::NAN;
     }
 
     let x = (s0 / k).ln() + (r - q) * t;
-    let half_width = self.l * width_arg.sqrt();
     let a = x + cumulants.c1 - half_width;
     let b = x + cumulants.c1 + half_width;
     let bma = b - a;
@@ -170,7 +169,7 @@ mod tests {
       rho: -0.7,
     })
     .price_call(100.0, 100.0, 0.05, 0.0, 1.0);
-    // A wider `L` under-resolves the density at `N = 256` (`L = 40` misses by 6.8e-4).
+    // A wider `L` under-resolves the density at `N = 256` (`L = 25` misses by 4.2e-4).
     let price = CosEngine::default().price(&model, 100.0, 100.0, 0.05, 0.0, 1.0, OptionType::Call);
     // Cross-check against an independent Gil-Pelaez quadrature over the
     // same `chf`: the two agree to ~1.25e-8, confirming COS(256, L=10) has

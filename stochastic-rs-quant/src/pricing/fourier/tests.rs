@@ -188,9 +188,7 @@ fn carr_madan_heston_vs_analytical() {
   );
 }
 
-/// Lord-Kahl 2007 cumulant-based grid sizing should produce a pricer that
-/// agrees with the default symmetric grid for moderate parameters, while
-/// remaining configurable for skewed/long-maturity regimes.
+/// A cumulant-sized grid prices a moderate Heston ATM call within 1.0 of the default grid.
 #[test]
 fn carr_madan_cumulant_sized_constructor() {
   let model = HestonFourier::new(HestonParams {
@@ -216,11 +214,8 @@ fn carr_madan_cumulant_sized_constructor() {
   );
 }
 
-/// Lord-Kahl 2010 §3.2 cumulant-based half-width sizing: `cumulant_sized`
-/// must produce a grid that brackets `ln S_0` plus a buffer scaled by
-/// $L_{\text{factor}}\sqrt{|c_2|+\sqrt{|c_4|}}$. For `s = 100, c2 = v0·T = 0.04`
-/// and `c4` small, the half-width is `ln(100) + 12·sqrt(0.04+ε) ≈ 7.05`,
-/// covering ln(K) for K in roughly `[exp(-7), exp(+7)] ≈ [0.9e-3, 1100]`.
+/// Lord–Kahl (2010) §3.2: the grid spans `|ln s| + truncation_half_width(12)` either side of
+/// `ln K = 0`, so it brackets `ln s`.
 #[test]
 fn carr_madan_cumulant_sized_grid_brackets_log_spot() {
   let model = HestonFourier::new(HestonParams {
@@ -235,16 +230,10 @@ fn carr_madan_cumulant_sized_grid_brackets_log_spot() {
   let pricer = CarrMadanPricer::cumulant_sized(&model, t, s, 12.0);
   let (log_strikes, _) = pricer.price_call_surface(&model, s, 0.05, 0.0, t);
   let half_width = (log_strikes[log_strikes.len() - 1] - log_strikes[0]) / 2.0;
-  let cumulants = model.cumulants(t);
-  let c4_term = cumulants
-    .c4
-    .filter(|c| c.is_finite() && *c >= 0.0)
-    .map_or(0.0, f64::sqrt);
-  let expected_buffer = 12.0 * (cumulants.c2.abs() + c4_term).sqrt();
-  let expected_half_width = s.ln().abs() + expected_buffer;
+  let expected_half_width = s.ln().abs() + model.cumulants(t).truncation_half_width(12.0);
   assert!(
     (half_width - expected_half_width).abs() < 0.1,
-    "FFT half-width {half_width} must match Lord-Kahl rule |ln(s)|+L_factor·sqrt(|c2|+sqrt|c4|) = {expected_half_width}"
+    "FFT half-width {half_width} against |ln s| + truncation_half_width(12) = {expected_half_width}"
   );
   let ln_s = s.ln();
   assert!(
@@ -404,10 +393,8 @@ fn hkde_lewis_vs_carr_madan() {
   );
 }
 
-/// Long-maturity / high-|ρ| regression: `HestonFourier::chf` must use the
-/// Albrecher-Mayer-Schoutens-Tistaert (2007) "Little Heston Trap" form
-/// (`g̃ = 1/g_original`, `exp(-d·t)`). Original Heston (1993) form develops a
-/// branch-cut discontinuity at T = 5y, ρ = -0.9; the Trap form does not.
+/// At `T = 5`, `ρ = −0.9` Heston's (1993) form of the chf crosses a branch cut; the Little-Trap
+/// form (Albrecher et al. 2007) prices finite and bounded.
 #[test]
 fn heston_fourier_little_trap_long_maturity_high_rho() {
   let model = HestonFourier::new(HestonParams {
@@ -460,9 +447,7 @@ fn hkde_fourier_little_trap_long_maturity_high_rho() {
   );
 }
 
-/// Same long-maturity / high-|ρ| stress for `BatesFourier::chf` — the Heston
-/// diffusion part must stay on the principal log-branch under the Merton
-/// log-normal jump CF.
+/// The same stress on `BatesFourier`, whose Heston part stays on the principal branch under jumps.
 #[test]
 fn bates_fourier_little_trap_long_maturity_high_rho() {
   let model = BatesFourier {

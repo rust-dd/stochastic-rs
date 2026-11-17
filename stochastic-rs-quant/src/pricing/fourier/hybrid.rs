@@ -5,6 +5,7 @@ use num_complex::Complex64;
 
 use super::Cumulants;
 use super::FourierModelExt;
+use super::heston_cumulants;
 use crate::calibration::hkde::HkdeParams;
 use crate::calibration::svj::SvjParams;
 
@@ -74,6 +75,14 @@ impl HkdeFourier {
       eta2,
     }
   }
+
+  /// Martingale drift `−λk̄` of the Kou jumps, `k̄ = E[e^J] − 1`.
+  fn compensator(&self) -> f64 {
+    let k_bar = self.p_up * self.eta1 / (self.eta1 - 1.0)
+      + (1.0 - self.p_up) * self.eta2 / (self.eta2 + 1.0)
+      - 1.0;
+    -self.lam * k_bar
+  }
 }
 
 impl FourierModelExt for HkdeFourier {
@@ -94,26 +103,22 @@ impl FourierModelExt for HkdeFourier {
       * ((self.kappa - rsi * xi - d) * t - 2.0 * ((1.0 - g * exp_dt) / (1.0 - g)).ln());
     let d_heston = ((self.kappa - rsi * xi - d) / sigma_v2) * (1.0 - exp_dt) / (1.0 - g * exp_dt);
 
-    let k_bar = self.p_up * self.eta1 / (self.eta1 - 1.0)
-      + (1.0 - self.p_up) * self.eta2 / (self.eta2 + 1.0)
-      - 1.0;
-
     let jump_cf = self.lam
       * ((1.0 - self.p_up) * self.eta2 / (Complex64::new(self.eta2, 0.0) + i * xi)
         + self.p_up * self.eta1 / (Complex64::new(self.eta1, 0.0) - i * xi)
         - 1.0);
 
-    let drift_correction = -self.lam * k_bar;
+    let drift_correction = self.compensator();
 
     (c_heston + d_heston * self.v0 + i * xi * drift_correction * t + jump_cf * t).exp()
   }
 
+  /// The Heston factor's cumulants plus the jumps', `λtE[Jⁿ]` (Cont & Tankov 2004, Prop. 3.13)
+  /// and the compensator's drift.
   fn cumulants(&self, t: f64) -> Cumulants {
-    let ekt = (-self.kappa * t).exp();
-    let c1_h = (1.0 - ekt) * (self.theta - self.v0) / (2.0 * self.kappa) - 0.5 * self.theta * t;
-    let c2_h = self.sigma_v.powi(2) * t * self.theta / (2.0 * self.kappa);
-
-    let c1_j = self.lam * t * (self.p_up / self.eta1 - (1.0 - self.p_up) / self.eta2);
+    let heston = heston_cumulants(self.v0, self.kappa, self.theta, self.sigma_v, self.rho, t);
+    let mean_j = self.p_up / self.eta1 - (1.0 - self.p_up) / self.eta2;
+    let c1_j = (self.lam * mean_j + self.compensator()) * t;
     let c2_j = 2.0
       * self.lam
       * t
@@ -121,11 +126,10 @@ impl FourierModelExt for HkdeFourier {
     let c4_j =
       24.0 * self.lam * t * (self.p_up / self.eta1.powi(4) + (1.0 - self.p_up) / self.eta2.powi(4));
 
-    // The Heston part's fourth cumulant is not computed; the jump part alone widens the grid.
     Cumulants {
-      c1: c1_h + c1_j,
-      c2: c2_h + c2_j,
-      c4: Some(c4_j),
+      c1: heston.c1 + c1_j,
+      c2: heston.c2 + c2_j,
+      c4: heston.c4.map(|c4| c4 + c4_j),
     }
   }
 }
@@ -179,6 +183,12 @@ impl BatesFourier {
       sigma_j,
     }
   }
+
+  /// Martingale drift `−λk̄` of the lognormal jumps, `k̄ = e^{μ_J + σ_J²/2} − 1`.
+  fn compensator(&self) -> f64 {
+    let k_bar = (self.mu_j + 0.5 * self.sigma_j * self.sigma_j).exp() - 1.0;
+    -self.lambda * k_bar
+  }
 }
 
 impl FourierModelExt for BatesFourier {
@@ -199,25 +209,26 @@ impl FourierModelExt for BatesFourier {
       * ((self.kappa - rsi * xi - d) * t - 2.0 * ((1.0 - g * exp_dt) / (1.0 - g)).ln());
     let d_heston = ((self.kappa - rsi * xi - d) / sigma_v2) * (1.0 - exp_dt) / (1.0 - g * exp_dt);
 
-    let k_bar = (self.mu_j + 0.5 * self.sigma_j * self.sigma_j).exp() - 1.0;
     let jump_cf = self.lambda
       * ((i * self.mu_j * xi - 0.5 * self.sigma_j * self.sigma_j * xi * xi).exp() - 1.0);
-    let drift_correction = -self.lambda * k_bar;
+    let drift_correction = self.compensator();
 
     (c_heston + d_heston * self.v0 + i * xi * drift_correction * t + jump_cf * t).exp()
   }
 
+  /// The Heston factor's cumulants plus the jumps', `λtE[Jⁿ]` (Cont & Tankov 2004, Prop. 3.13)
+  /// and the compensator's drift.
   fn cumulants(&self, t: f64) -> Cumulants {
-    let ekt = (-self.kappa * t).exp();
-    let c1_h = (1.0 - ekt) * (self.theta - self.v0) / (2.0 * self.kappa) - 0.5 * self.theta * t;
-    let c2_h = self.sigma_v.powi(2) * t * self.theta / (2.0 * self.kappa);
-    let c1_j = self.lambda * self.mu_j * t;
-    let c2_j = self.lambda * (self.mu_j.powi(2) + self.sigma_j.powi(2)) * t;
+    let heston = heston_cumulants(self.v0, self.kappa, self.theta, self.sigma_v, self.rho, t);
+    let (mu2, s2) = (self.mu_j * self.mu_j, self.sigma_j * self.sigma_j);
+    let c1_j = (self.lambda * self.mu_j + self.compensator()) * t;
+    let c2_j = self.lambda * (mu2 + s2) * t;
+    let c4_j = self.lambda * t * (mu2 * mu2 + 6.0 * mu2 * s2 + 3.0 * s2 * s2);
 
     Cumulants {
-      c1: c1_h + c1_j,
-      c2: c2_h + c2_j,
-      c4: None,
+      c1: heston.c1 + c1_j,
+      c2: heston.c2 + c2_j,
+      c4: heston.c4.map(|c4| c4 + c4_j),
     }
   }
 }

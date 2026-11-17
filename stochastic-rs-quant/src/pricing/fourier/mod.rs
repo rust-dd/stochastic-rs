@@ -25,6 +25,7 @@ mod pricer;
 pub use bsm::BsmFourier;
 pub use cos::CosEngine;
 pub use cumulants::Cumulants;
+pub(crate) use cumulants::heston_cumulants;
 pub use frft::FrftCarrMadanPricer;
 pub use frft::frft;
 pub use heston::DoubleHestonFourier;

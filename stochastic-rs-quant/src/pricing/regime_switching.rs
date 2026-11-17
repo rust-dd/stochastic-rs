@@ -119,32 +119,40 @@ impl FourierModelExt for RegimeSwitchingModel {
     chf_val
   }
 
+  /// Exact `c1 = −E[I]/2`, `c2 = E[I] + Var(I)/4` of `I = ∫₀ᵗ σ²(Z_s) ds`; `c4` is not computed.
   fn cumulants(&self, t: f64) -> Cumulants {
-    let m = self.vols.len();
-    let sigma_eff = self.vols[self.initial_state];
-
-    let (mean_sig2, mean_sig4) = if m == 2 {
-      let q01 = self.q_matrix[[0, 1]];
-      let q10 = self.q_matrix[[1, 0]];
-      let total = q01 + q10;
-      if total > 1e-12 {
-        let pi0 = q10 / total;
-        let pi1 = q01 / total;
-        let s2 = pi0 * self.vols[0].powi(2) + pi1 * self.vols[1].powi(2);
-        let s4 = pi0 * self.vols[0].powi(4) + pi1 * self.vols[1].powi(4);
-        (s2, s4)
-      } else {
-        (sigma_eff.powi(2), sigma_eff.powi(4))
-      }
-    } else {
-      (sigma_eff.powi(2), sigma_eff.powi(4))
-    };
-
+    let (mean, second) = self.van_loan_moments(t);
     Cumulants {
-      c1: -0.5 * mean_sig2 * t,
-      c2: mean_sig2 * t,
-      c4: Some(3.0 * mean_sig4 * t),
+      c1: -0.5 * mean,
+      c2: mean + 0.25 * (second - mean * mean),
+      c4: None,
     }
+  }
+}
+
+impl RegimeSwitchingModel {
+  /// `E[I]` and `E[I²]` from the first block row of `exp(t[[Q, D, 0], [0, Q, D], [0, 0, Q]])`,
+  /// `D = diag(σᵢ²)`: `E[I] = B₁₂1`, `E[I²] = 2B₁₃1`, read at the initial state.
+  /// Van Loan (1978), IEEE Trans. Automat. Control 23(3), 395–404.
+  fn van_loan_moments(&self, t: f64) -> (f64, f64) {
+    let m = self.vols.len();
+    let mut block = Array2::<Complex64>::zeros((3 * m, 3 * m));
+    for i in 0..m {
+      let sig2 = self.vols[i] * self.vols[i];
+      for d in 0..3 {
+        for j in 0..m {
+          block[[d * m + i, d * m + j]] = Complex64::new(self.q_matrix[[i, j]] * t, 0.0);
+        }
+        if d < 2 {
+          block[[d * m + i, (d + 1) * m + i]] = Complex64::new(sig2 * t, 0.0);
+        }
+      }
+    }
+    let exp = matrix_exp_complex(&block);
+    let row = self.initial_state;
+    let mean = (0..m).map(|j| exp[[row, m + j]].re).sum::<f64>();
+    let second = 2.0 * (0..m).map(|j| exp[[row, 2 * m + j]].re).sum::<f64>();
+    (mean, second)
   }
 }
 

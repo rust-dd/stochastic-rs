@@ -161,20 +161,16 @@ impl FourierModelExt for CgmysvModel {
     (-i * xi * omega).exp() * self.params.chf_l(t, xi)
   }
 
+  /// `c1`, `c2` by fourth-order five-point stencils of `ln chf` at `h = 1e-2` (truncation `O(h⁴)`,
+  /// rounding `ε/h²`); `c4` is not computed, its stencil's rounding over `h⁴` being noise.
   fn cumulants(&self, t: f64) -> Cumulants {
-    let h = 1e-4;
+    let h = 1e-2;
     let f = |u: f64| self.chf(t, Complex64::new(u, 0.0)).ln();
-
-    let f0 = f(0.0);
-    let fp = f(h);
-    let fm = f(-h);
-    let f2p = f(2.0 * h);
-    let f2m = f(-2.0 * h);
-
+    let (f2p, fp, f0, fm, f2m) = (f(2.0 * h), f(h), f(0.0), f(-h), f(-2.0 * h));
     Cumulants {
-      c1: (fp - fm).im / (2.0 * h),
-      c2: -(fp - 2.0 * f0 + fm).re / (h * h),
-      c4: Some((f2p - 4.0 * fp + 6.0 * f0 - 4.0 * fm + f2m).re / h.powi(4)),
+      c1: (-f2p + 8.0 * fp - 8.0 * fm + f2m).im / (12.0 * h),
+      c2: -(-f2p + 16.0 * fp - 30.0 * f0 + 16.0 * fm - f2m).re / (12.0 * h * h),
+      c4: None,
     }
   }
 }
@@ -287,6 +283,21 @@ mod tests {
         .chf(30.0, Complex64::new(1.0, 0.0))
         .is_finite()
     );
+  }
+
+  /// mpmath's 40-digit derivatives of `ln chf` at the paper set, which the stencils meet to 3e-12.
+  #[test]
+  fn cumulants_are_the_log_chf_derivatives() {
+    let model = CgmysvModel { params: paper() };
+    for (t, c1, c2) in [
+      (0.5, -0.007229657663142576, 0.015960469141563932),
+      (1.0, -0.01850432065438014, 0.04144037380264997),
+    ] {
+      let c = model.cumulants(t);
+      assert!((c.c1 - c1).abs() < 1e-10, "t = {t}: c1 {} vs {c1}", c.c1);
+      assert!((c.c2 - c2).abs() < 1e-10, "t = {t}: c2 {} vs {c2}", c.c2);
+      assert!(c.c4.is_none());
+    }
   }
 
   /// At `ζ = 2` a principal-branch power of `cosh + κ'/γ·sinh` leaves the branch the ODE follows.

@@ -84,9 +84,9 @@ fn the_pricers_apply_the_carry_from_the_query() {
       let call = m.price_call(100.0, k, r, q, 1.0);
       let put = cos.price(&m, 100.0, k, r, q, 1.0, OptionType::Put);
       let parity = 100.0 * (-q * 1.0_f64).exp() - k * (-r * 1.0_f64).exp();
-      // COS(256, L = 10) truncates Heston's heavy left tail, which only the put sees: ≈ 1.2e-6.
+      // COS(256, L = 10) spans `√c4` and meets parity to 1e-10; the rest, ≤ 4e-8, is Gil–Pelaez's.
       assert!(
-        (call - put - parity).abs() < 2e-6,
+        (call - put - parity).abs() < 1e-7,
         "parity at ({r}, {q}), k = {k}: {call} - {put} vs {parity}"
       );
     }

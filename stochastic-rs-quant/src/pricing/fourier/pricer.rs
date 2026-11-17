@@ -73,8 +73,8 @@ impl CarrMadanPricer {
     }
   }
 
-  /// Lord–Kahl half-width `|ln s| + l_factor·√(|c₂| + √|c₄|)` at `t` around `ln K = 0` (the FRFT
-  /// pricer centres on the forward); panics unless `s`, `l_factor`, `c₂` are finite and positive.
+  /// Lord–Kahl half-width `|ln s| + truncation_half_width(l_factor)` of the cumulants at `t`, about
+  /// `ln K = 0`; panics unless `s`, `l_factor` and `c₂` are finite and positive.
   ///
   /// Lord & Kahl (2010), "Complex logarithms in Heston-like models", Math. Finance 20(4), §3.2.
   ///
@@ -103,12 +103,7 @@ impl CarrMadanPricer {
       c2.is_finite() && c2 > 0.0,
       "cumulants.c2 must satisfy `c2.is_finite() && c2 > 0.0`, got c2 = {c2:?}"
     );
-    let c4_term = cumulants
-      .c4
-      .filter(|c| c.is_finite() && *c >= 0.0)
-      .map_or(0.0, f64::sqrt);
-    let cumulant_buffer = l_factor * (c2.abs() + c4_term).sqrt();
-    let required_half_width = s.ln().abs() + cumulant_buffer;
+    let required_half_width = s.ln().abs() + cumulants.truncation_half_width(l_factor);
     let n = 4096_usize;
     let eta = PI / required_half_width;
     Self {
