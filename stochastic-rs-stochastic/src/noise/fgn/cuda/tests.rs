@@ -265,6 +265,32 @@ fn a_small_batch_pins_no_staging_buffer() {
   );
 }
 
+/// A batch of at least 32 MiB lands through the staging buffer it pins, and matches the same batch
+/// copied straight out by launches under that size.
+#[test]
+fn a_staged_batch_pins_its_buffer_and_matches_direct_copies() {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  let fgn = Fgn::<f32>::new(0.7, 4096, Some(1.0), Unseeded);
+  let staged = fgn
+    .sample_cuda_impl(2048, &Deterministic::new(5), &Cuda::default())
+    .expect("one staged launch");
+  let pinned = |m: usize| {
+    let sized = super::state::SIZED_F32.lock();
+    sized
+      .iter()
+      .find(|s| s.m == m)
+      .map(|s| s.host_pinned.is_some())
+  };
+  assert_eq!(pinned(2048), Some(true));
+  let direct = Cuda::default().with_batch_budget(1024 * (4 * 4096 + 4096) * 4);
+  let copied = fgn
+    .sample_cuda_impl(2048, &Deterministic::new(5), &direct)
+    .expect("two direct launches");
+  assert_eq!(pinned(1024), Some(false));
+  assert_eq!(staged, copied);
+}
+
 /// A release drops every cache that holds the device, and the context each one opened goes with it;
 /// releasing another ordinal leaves them alone.
 #[test]
