@@ -1,13 +1,23 @@
 //! Query limits: NaN outside a pricer's domain and the payoff at `tau = 0`, never a sentinel.
 
+use chrono::NaiveDate;
 use ndarray::Array1;
 use stochastic_rs_quant::OptionType;
+use stochastic_rs_quant::QuantError;
 use stochastic_rs_quant::credit::HazardInterpolation;
 use stochastic_rs_quant::credit::SurvivalCurve;
 use stochastic_rs_quant::credit::SurvivalPoint;
+use stochastic_rs_quant::curves::BootstrapInstrument;
 use stochastic_rs_quant::curves::CurvePoint;
 use stochastic_rs_quant::curves::DiscountCurve;
 use stochastic_rs_quant::curves::InterpolationMethod;
+use stochastic_rs_quant::curves::MultiCurve;
+use stochastic_rs_quant::curves::bootstrap;
+use stochastic_rs_quant::curves::bootstrap_iterative;
+use stochastic_rs_quant::curves::dual_curve::ForecastInstrument;
+use stochastic_rs_quant::curves::dual_curve::bootstrap_forecast;
+use stochastic_rs_quant::market::RateHelper;
+use stochastic_rs_quant::market::build_curve;
 use stochastic_rs_quant::pricing::AssetOrNothingPricer;
 use stochastic_rs_quant::pricing::CashOrNothingPricer;
 use stochastic_rs_quant::pricing::bsm::BsmCoc;
@@ -238,4 +248,113 @@ fn an_expired_digital_pays_its_payoff_and_nothing_at_the_strike() {
   assert!(cash.price_call(f64::NAN, k, R, Q, 0.0).is_nan());
   assert!(cash.price_call(110.0, k, R, f64::NAN, 0.0).is_nan());
   assert!(asset.price_put(90.0, f64::NAN, R, Q, 0.0).is_nan());
+}
+
+#[test]
+fn a_multi_curve_leg_skips_an_empty_period_and_a_swap_rate_needs_two_dates() {
+  let flat = |rate: f64| {
+    DiscountCurve::<f64>::from_zero_rates(
+      &Array1::from_vec(vec![0.5, 1.0, 2.0, 5.0]),
+      &Array1::from_vec(vec![rate; 4]),
+      InterpolationMethod::LogLinearOnDiscountFactors,
+    )
+  };
+  let mut curves = MultiCurve::new(flat(0.04));
+  curves.add_forecast("3M", flat(0.045));
+  let schedule = Array1::from_vec(vec![0.5, 1.0, 2.0]);
+  let repeated = Array1::from_vec(vec![0.5, 1.0, 1.0, 2.0]);
+  let pv = curves.pv_floating_leg("3M", &schedule, 1.0);
+  assert!(pv.is_some_and(f64::is_finite), "{pv:?}");
+  assert_eq!(curves.pv_floating_leg("3M", &repeated, 1.0), pv);
+  let rate = curves.fair_swap_rate("3M", &schedule);
+  assert!(rate.is_some_and(f64::is_finite), "{rate:?}");
+  assert_eq!(curves.fair_swap_rate("3M", &repeated), rate);
+  assert_eq!(
+    curves.fair_swap_rate("3M", &Array1::from_vec(vec![1.0])),
+    None
+  );
+  assert_eq!(curves.fair_swap_rate("3M", &Array1::from_vec(vec![])), None);
+  let empty_period = curves.fair_swap_rate("3M", &Array1::from_vec(vec![1.0, 1.0]));
+  assert!(empty_period.is_some_and(f64::is_nan), "{empty_period:?}");
+}
+
+#[test]
+fn a_bootstrap_quote_at_a_non_finite_maturity_is_an_invalid_quote() {
+  let method = InterpolationMethod::LogLinearOnDiscountFactors;
+  let deposit = |maturity| BootstrapInstrument::Deposit {
+    maturity,
+    rate: 0.03,
+  };
+  let rejects_quote_1 = |result: Result<DiscountCurve<f64>, QuantError>| {
+    matches!(result, Err(QuantError::InvalidQuote { index: 1, .. }))
+  };
+  for bad in [f64::NAN, f64::INFINITY] {
+    let quotes = [deposit(0.5), deposit(bad), deposit(1.0)];
+    assert!(rejects_quote_1(bootstrap(&quotes, method)), "{bad}");
+    assert!(
+      rejects_quote_1(bootstrap_iterative(&quotes, method, 1e-12, 100)),
+      "{bad}"
+    );
+    let swap = BootstrapInstrument::Swap {
+      maturity: bad,
+      rate: 0.03,
+      frequency: 2,
+    };
+    assert!(
+      rejects_quote_1(bootstrap(&[deposit(0.5), swap], method)),
+      "{bad}"
+    );
+  }
+  let ois = DiscountCurve::<f64>::from_zero_rates(
+    &Array1::from_vec(vec![0.5, 1.0, 2.0]),
+    &Array1::from_vec(vec![0.02; 3]),
+    method,
+  );
+  let swap = ForecastInstrument::Swap {
+    rate: 0.03,
+    fixed_times: vec![1.0, f64::NAN],
+    float_times: vec![0.5, 1.0, f64::NAN],
+  };
+  let quotes = [
+    ForecastInstrument::Deposit {
+      maturity: 0.25,
+      rate: 0.03,
+    },
+    swap,
+  ];
+  assert!(rejects_quote_1(bootstrap_forecast(&quotes, &ois, method)));
+  assert!(bootstrap(&[deposit(0.5), deposit(1.0)], method).is_ok());
+}
+
+#[test]
+fn a_rate_helper_at_a_non_finite_maturity_is_an_invalid_quote_at_its_own_index() {
+  struct Pillar(f64, bool);
+
+  impl RateHelper<f64> for Pillar {
+    fn maturity(&self, _: NaiveDate) -> f64 {
+      self.0
+    }
+
+    fn to_instrument(&self, _: NaiveDate) -> Option<BootstrapInstrument<f64>> {
+      self.1.then_some(BootstrapInstrument::Deposit {
+        maturity: self.0,
+        rate: 0.03,
+      })
+    }
+  }
+
+  let date = NaiveDate::from_ymd_opt(2026, 1, 2).unwrap();
+  let (unquoted, short, broken) = (
+    Pillar(0.25, false),
+    Pillar(0.5, true),
+    Pillar(f64::NAN, true),
+  );
+  let helpers: [&dyn RateHelper<f64>; 3] = [&unquoted, &short, &broken];
+  let method = InterpolationMethod::LogLinearOnDiscountFactors;
+  let result = build_curve(&helpers, date, method);
+  assert!(
+    matches!(result, Err(QuantError::InvalidQuote { index: 2, .. })),
+    "{result:?}"
+  );
+  assert!(build_curve(&helpers[..2], date, method).is_ok());
 }

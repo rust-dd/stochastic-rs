@@ -90,6 +90,10 @@ impl<T: RealExt> MultiCurve<T> {
       let t0 = schedule[i - 1];
       let t1 = schedule[i];
       let delta = t1 - t0;
+      // An empty period pays exactly 0, though its forward, over no time, is NaN.
+      if delta == T::zero() {
+        continue;
+      }
       let fwd = fc.simple_forward_rate(t0, t1);
       let df = self.discount.discount_factor(t1);
       pv += df * delta * fwd * notional;
@@ -115,7 +119,7 @@ impl<T: RealExt> MultiCurve<T> {
     pv
   }
 
-  /// Fair swap rate under the multi-curve framework.
+  /// Multi-curve fair swap rate; `None` for an unknown `tenor` or a schedule under two dates.
   ///
   /// The fair rate $S$ satisfies $\text{PV}_{\text{fixed}} = \text{PV}_{\text{float}}$:
   /// $$
@@ -126,7 +130,7 @@ impl<T: RealExt> MultiCurve<T> {
     let fc = self.forecast(tenor)?;
     let n = schedule.len();
     if n < 2 {
-      return Some(T::zero());
+      return None;
     }
 
     let mut float_leg = T::zero();
@@ -136,6 +140,9 @@ impl<T: RealExt> MultiCurve<T> {
       let t0 = schedule[i - 1];
       let t1 = schedule[i];
       let delta = t1 - t0;
+      if delta == T::zero() {
+        continue;
+      }
       let df = self.discount.discount_factor(t1);
       let fwd = fc.simple_forward_rate(t0, t1);
       float_leg += df * delta * fwd;

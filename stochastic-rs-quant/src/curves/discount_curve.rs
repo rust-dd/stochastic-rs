@@ -44,7 +44,7 @@ impl<T: RealExt> DiscountCurve<T> {
     }
   }
 
-  /// Build from parallel arrays of times and discount factors.
+  /// Build from parallel arrays of times and discount factors; panics as [`new`](Self::new) does.
   pub fn from_arrays(
     times: &Array1<T>,
     discount_factors: &Array1<T>,
@@ -61,7 +61,8 @@ impl<T: RealExt> DiscountCurve<T> {
     Self::new(points, method)
   }
 
-  /// Build from parallel arrays of times and zero rates (continuous compounding).
+  /// Build from parallel arrays of times and zero rates (continuous compounding); panics as
+  /// [`new`](Self::new) does.
   pub fn from_zero_rates(
     times: &Array1<T>,
     rates: &Array1<T>,

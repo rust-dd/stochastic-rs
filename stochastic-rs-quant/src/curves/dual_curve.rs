@@ -20,10 +20,12 @@
 //! Afraid to Ask*, SSRN 2219548, §4–5; Bianchetti, M. (2010), *Two Curves, One
 //! Price*, Risk 23(8), 66–72.
 
+use super::bootstrap::finite_maturities;
 use super::discount_curve::DiscountCurve;
 use super::interpolation::interpolate_discount_factor;
 use super::types::CurvePoint;
 use super::types::InterpolationMethod;
+use crate::QuantError;
 use crate::total_order::ascending;
 use crate::traits::RealExt;
 
@@ -57,14 +59,19 @@ impl<T: RealExt> ForecastInstrument<T> {
   }
 }
 
-/// Bootstraps the tenor's pseudo-discount curve against the exogenous
-/// `discount` curve; instruments are processed by increasing maturity and
-/// each adds one node.
+/// The tenor's pseudo-discount curve against the exogenous `discount` curve, one node per
+/// instrument by increasing maturity; `InvalidQuote` for a non-finite maturity.
 pub fn bootstrap_forecast<T: RealExt>(
   instruments: &[ForecastInstrument<T>],
   discount: &DiscountCurve<T>,
   method: InterpolationMethod,
-) -> DiscountCurve<T> {
+) -> Result<DiscountCurve<T>, QuantError> {
+  finite_maturities(
+    instruments
+      .iter()
+      .map(ForecastInstrument::maturity)
+      .enumerate(),
+  )?;
   let mut sorted: Vec<&ForecastInstrument<T>> = instruments.iter().collect();
   sorted.sort_by(|a, b| ascending(&a.maturity(), &b.maturity()));
   let mut points: Vec<CurvePoint<T>> = vec![CurvePoint {
@@ -120,7 +127,7 @@ pub fn bootstrap_forecast<T: RealExt>(
       }
     }
   }
-  DiscountCurve::new(points, method)
+  Ok(DiscountCurve::new(points, method))
 }
 
 /// `S Σ_j δ_j D(t_j)` with `t_0 = 0`.
@@ -261,7 +268,8 @@ mod tests {
       &quotes(&ois, df),
       &ois,
       InterpolationMethod::LogLinearOnDiscountFactors,
-    );
+    )
+    .unwrap();
     for t in [0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0] {
       assert!(
         (forecast.discount_factor(t) - df(t)).abs() < 1e-10,
@@ -282,7 +290,8 @@ mod tests {
       &quotes(&ois, tenor),
       &ois,
       InterpolationMethod::LogLinearOnDiscountFactors,
-    );
+    )
+    .unwrap();
     for t in [0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0] {
       assert!(
         (forecast.discount_factor(t) - tenor(t)).abs() < 1e-9,
@@ -312,7 +321,8 @@ mod tests {
         rate: 0.032,
       },
     ];
-    let forecast = bootstrap_forecast(&q, &ois, InterpolationMethod::LogLinearOnDiscountFactors);
+    let forecast =
+      bootstrap_forecast(&q, &ois, InterpolationMethod::LogLinearOnDiscountFactors).unwrap();
     let p_half = 1.0 / (1.0 + 0.03 * 0.5);
     assert!((forecast.discount_factor(0.5) - p_half).abs() < 1e-14);
     assert!((forecast.discount_factor(1.0) - p_half / (1.0 + 0.032 * 0.5)).abs() < 1e-14);

@@ -17,17 +17,38 @@ use super::interpolation;
 use super::types::BootstrapInstrument;
 use super::types::CurvePoint;
 use super::types::InterpolationMethod;
+use crate::QuantError;
 use crate::total_order::ascending;
 use crate::traits::RealExt;
 
-/// Build a discount curve by bootstrapping from a set of market instruments.
-///
-/// Instruments are processed in order of increasing maturity. Each instrument
-/// provides one equation for one unknown discount factor.
+/// `InvalidQuote` at the first `(index, maturity)` that is not finite, so no curve sees it.
+pub(crate) fn finite_maturities<T: RealExt>(
+  maturities: impl IntoIterator<Item = (usize, T)>,
+) -> Result<(), QuantError> {
+  match maturities
+    .into_iter()
+    .find(|(_, maturity)| !maturity.is_finite())
+  {
+    Some((index, maturity)) => Err(QuantError::InvalidQuote {
+      index,
+      reason: format!("maturity must satisfy `maturity.is_finite()`, got maturity = {maturity:?}"),
+    }),
+    None => Ok(()),
+  }
+}
+
+/// A discount curve through `instruments` by increasing maturity, one discount factor each;
+/// `InvalidQuote` for a non-finite maturity.
 pub fn bootstrap<T: RealExt>(
   instruments: &[BootstrapInstrument<T>],
   method: InterpolationMethod,
-) -> DiscountCurve<T> {
+) -> Result<DiscountCurve<T>, QuantError> {
+  finite_maturities(
+    instruments
+      .iter()
+      .map(BootstrapInstrument::maturity)
+      .enumerate(),
+  )?;
   let mut sorted: Vec<&BootstrapInstrument<T>> = instruments.iter().collect();
   sorted.sort_by(|a, b| ascending(&a.maturity(), &b.maturity()));
 
@@ -160,18 +181,23 @@ pub fn bootstrap<T: RealExt>(
     }
   }
 
-  DiscountCurve::new(points, method)
+  Ok(DiscountCurve::new(points, method))
 }
 
-/// Iterative bootstrapping with root-finding for instruments that don't align with nodes.
-///
-/// Uses the bisection method to solve for the unknown discount factor at each step.
+/// [`bootstrap`] with a swap's discount factor found by bisection to `tol` in `max_iter` steps;
+/// `InvalidQuote` for a non-finite maturity.
 pub fn bootstrap_iterative<T: RealExt>(
   instruments: &[BootstrapInstrument<T>],
   method: InterpolationMethod,
   tol: T,
   max_iter: usize,
-) -> DiscountCurve<T> {
+) -> Result<DiscountCurve<T>, QuantError> {
+  finite_maturities(
+    instruments
+      .iter()
+      .map(BootstrapInstrument::maturity)
+      .enumerate(),
+  )?;
   let mut sorted: Vec<&BootstrapInstrument<T>> = instruments.iter().collect();
   sorted.sort_by(|a, b| ascending(&a.maturity(), &b.maturity()));
 
@@ -266,7 +292,7 @@ pub fn bootstrap_iterative<T: RealExt>(
     }
   }
 
-  DiscountCurve::new(points, method)
+  Ok(DiscountCurve::new(points, method))
 }
 
 /// Solve for the swap's terminal discount factor using bisection.
@@ -331,7 +357,7 @@ mod tests {
       maturity: 1.0,
       rate: 0.05,
     }];
-    let curve = bootstrap(&inst, InterpolationMethod::LinearOnZeroRates);
+    let curve = bootstrap(&inst, InterpolationMethod::LinearOnZeroRates).unwrap();
     assert!(
       !curve.is_empty(),
       "bootstrap should produce at least one point"
@@ -351,7 +377,8 @@ mod tests {
         frequency: 2,
       },
     ];
-    let curve = bootstrap_iterative(&inst, InterpolationMethod::LinearOnZeroRates, 1e-10, 50);
+    let curve =
+      bootstrap_iterative(&inst, InterpolationMethod::LinearOnZeroRates, 1e-10, 50).unwrap();
     assert!(!curve.is_empty());
   }
 }
