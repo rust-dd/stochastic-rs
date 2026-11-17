@@ -89,21 +89,34 @@ fn start_violation(model_type: LevyModelType, start: &LevyParams) -> Option<Stri
   }
 }
 
+/// `start_violation` as an `Err`, with a count other than the model's a `DimensionMismatch`.
+fn check_start(model_type: LevyModelType, start: &LevyParams) -> Result<(), QuantError> {
+  let expected = param_count(model_type);
+  if start.model_type == model_type && start.values.len() != expected {
+    return Err(QuantError::DimensionMismatch {
+      what: "start values",
+      expected,
+      got: start.values.len(),
+    });
+  }
+  match start_violation(model_type, start) {
+    Some(reason) => Err(QuantError::invalid("start", reason)),
+    None => Ok(()),
+  }
+}
+
 impl crate::traits::Calibrator for LevyCalibrator {
   type Params = LevyParams;
   type Output = Calibrated<LevyParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`; `InvalidInput` unless the one used is of this model, of its
-  /// parameter count and finite.
+  /// A start replaces `self.start`; `InvalidInput` unless the one used is of this model and finite,
+  /// `DimensionMismatch` unless it has the model's parameter count.
   fn calibrate(&self, initial: Option<LevyParams>) -> Result<Calibrated<LevyParams>, QuantError> {
     validate_quotes(&self.quotes)?;
     let start = initial.or_else(|| self.start.clone());
-    if let Some(reason) = start
-      .as_ref()
-      .and_then(|start| start_violation(self.model_type, start))
-    {
-      return Err(QuantError::invalid("start", reason));
+    if let Some(start) = &start {
+      check_start(self.model_type, start)?;
     }
     let mut values = start.map_or_else(|| default_params(self.model_type), |start| start.values);
     project_params(self.model_type, &mut values);

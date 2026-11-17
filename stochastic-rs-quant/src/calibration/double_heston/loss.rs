@@ -3,6 +3,7 @@ use std::f64::consts::FRAC_1_PI;
 use ndarray::Array1;
 use ndarray::Array2;
 use num_complex::Complex64;
+use stochastic_rs_distributions::RealExt;
 
 use super::super::integrate_gl_to_convergence;
 use super::super::periodic_map;
@@ -78,11 +79,7 @@ pub(super) fn double_heston_call_price(
   };
 
   let call = 0.5 * (s * disc_q - k * disc_r) + FRAC_1_PI * integral;
-  if call.is_finite() {
-    call.max(0.0)
-  } else {
-    call
-  }
+  call.max_or_nan(0.0)
 }
 
 /// One fit: the current point, the quotes' prices and the trail.
@@ -118,10 +115,7 @@ impl<'a> DoubleHestonProblem<'a> {
         let call = double_heston_call_price(p, s, k, r, q, tau);
         match quote.option_type {
           OptionType::Call => call,
-          OptionType::Put => {
-            let put = call - s * (-q * tau).exp() + k * (-r * tau).exp();
-            if put.is_finite() { put.max(0.0) } else { put }
-          }
+          OptionType::Put => (call - s * (-q * tau).exp() + k * (-r * tau).exp()).max_or_nan(0.0),
         }
       })
       .collect()

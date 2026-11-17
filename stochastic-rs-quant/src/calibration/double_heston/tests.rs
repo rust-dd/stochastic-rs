@@ -209,13 +209,15 @@ fn a_start_outside_the_heston_domain_is_an_error_before_the_fit() {
 }
 
 #[test]
-#[should_panic(expected = "sigma must satisfy `sigma.is_finite() && sigma > 0.0`, got sigma = 0.0")]
-fn with_start_panics_outside_the_heston_domain() {
+#[should_panic(
+  expected = "second factor: sigma must satisfy `sigma.is_finite() && sigma > 0.0`, got sigma = 0.0"
+)]
+fn with_start_panics_naming_the_factor_outside_the_heston_domain() {
   let _ = DoubleHestonCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes()).with_start(
     DoubleHestonParams {
-      first: HestonParams {
+      second: HestonParams {
         sigma: 0.0,
-        ..START.first
+        ..START.second
       },
       ..START
     },

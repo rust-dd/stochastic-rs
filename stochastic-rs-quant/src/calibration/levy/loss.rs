@@ -1,6 +1,7 @@
 use std::f64::consts::FRAC_1_PI;
 
 use num_complex::Complex64;
+use stochastic_rs_distributions::RealExt;
 
 use super::EPS;
 use super::types::LevyModelType;
@@ -133,11 +134,7 @@ pub(super) fn fourier_call_price(
   let disc_q = (-q * t).exp();
 
   let call = s * disc_q - (s * k).sqrt() * disc_r * FRAC_1_PI * integral;
-  if call.is_finite() {
-    call.max(0.0)
-  } else {
-    call
-  }
+  call.max_or_nan(0.0)
 }
 
 /// Price a European option (call or put) via put-call parity from the Fourier call price.
@@ -154,10 +151,7 @@ pub(super) fn fourier_option_price(
   let call = fourier_call_price(model_type, params, s, k, r, q, t);
   match option_type {
     OptionType::Call => call,
-    OptionType::Put => {
-      let put = call - s * (-q * t).exp() + k * (-r * t).exp();
-      if put.is_finite() { put.max(0.0) } else { put }
-    }
+    OptionType::Put => (call - s * (-q * t).exp() + k * (-r * t).exp()).max_or_nan(0.0),
   }
 }
 

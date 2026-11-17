@@ -244,7 +244,7 @@ fn calls_and_puts_fit_together() {
 }
 
 #[test]
-fn a_start_of_another_model_or_count_or_with_a_nan_is_an_error() {
+fn a_start_of_another_model_or_with_a_nan_is_invalid_and_one_of_another_count_mismatched() {
   let calibrator = LevyCalibrator::new(
     LevyModelType::MertonJd,
     100.0,
@@ -252,6 +252,7 @@ fn a_start_of_another_model_or_count_or_with_a_nan_is_an_error() {
     0.0,
     calls(&STRIKES, &MJD_REF, 1.0),
   );
+  let start = |values: Vec<f64>, model_type| Some(LevyParams { values, model_type });
   for (values, model_type, reason) in [
     (
       vec![0.2, 0.3, -0.05, 0.15],
@@ -259,17 +260,12 @@ fn a_start_of_another_model_or_count_or_with_a_nan_is_an_error() {
       "start.model_type must satisfy",
     ),
     (
-      vec![0.2, 0.3],
-      LevyModelType::MertonJd,
-      "start.values must satisfy",
-    ),
-    (
       vec![0.2, f64::NAN, -0.05, 0.15],
       LevyModelType::MertonJd,
       "start.values[1] must satisfy",
     ),
   ] {
-    match calibrator.calibrate(Some(LevyParams { values, model_type })) {
+    match calibrator.calibrate(start(values, model_type)) {
       Err(QuantError::InvalidInput {
         what: "start",
         reason: got,
@@ -279,6 +275,16 @@ fn a_start_of_another_model_or_count_or_with_a_nan_is_an_error() {
       other => panic!("{other:?}"),
     }
   }
+  assert_eq!(
+    calibrator
+      .calibrate(start(vec![0.2, 0.3], LevyModelType::MertonJd))
+      .unwrap_err(),
+    QuantError::DimensionMismatch {
+      what: "start values",
+      expected: 4,
+      got: 2,
+    }
+  );
 }
 
 #[test]

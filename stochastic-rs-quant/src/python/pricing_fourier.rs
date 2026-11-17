@@ -1,6 +1,8 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
+use crate::calibration::hkde::HkdeParams;
+use crate::calibration::svj::SvjParams;
 use crate::pricing::heston::HestonParams;
 use crate::traits::ModelPricer;
 
@@ -154,7 +156,7 @@ impl PyBatesFourier {
     sigma_j: f64,
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::fourier::BatesFourier {
+      inner: crate::pricing::fourier::BatesFourier::new(SvjParams {
         v0,
         kappa,
         theta,
@@ -163,7 +165,7 @@ impl PyBatesFourier {
         lambda,
         mu_j,
         sigma_j,
-      },
+      }),
     })
   }
 
@@ -329,17 +331,17 @@ impl PyHkdeFourier {
     eta2: f64,
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::pricing::fourier::HkdeFourier {
+      inner: crate::pricing::fourier::HkdeFourier::new(HkdeParams {
         v0,
         kappa,
         theta,
         sigma_v,
         rho,
-        lam,
+        lambda: lam,
         p_up,
         eta1,
         eta2,
-      },
+      }),
     })
   }
 

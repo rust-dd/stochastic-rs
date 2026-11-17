@@ -50,6 +50,8 @@
 //!   Management Science 48(8), <https://doi.org/10.1287/mnsc.48.8.1086.166>
 //! - Heston, S. L. (1993), "A closed-form solution for options with stochastic
 //!   volatility", <https://doi.org/10.1093/rfs/6.2.327>
+//! - Levenberg (1944), <https://doi.org/10.1090/qam/10666>
+//! - Marquardt (1963), <https://doi.org/10.1137/0111030>
 
 mod calibrator;
 mod loss;

@@ -36,13 +36,13 @@ impl DoubleHestonCalibrator {
     }
   }
 
-  /// Panics unless both factors pass [`HestonParams::new`]; the fit starts from the start's
-  /// projection onto the calibration box.
+  /// Panics, naming the factor, unless both pass [`HestonParams::new`]; the fit starts from the
+  /// start's projection onto the calibration box.
   pub fn with_start(mut self, start: DoubleHestonParams) -> Self {
-    self.start = Some(DoubleHestonParams {
-      first: start.first.checked(),
-      second: start.second.checked(),
-    });
+    if let Some(reason) = start_violation(&start) {
+      panic!("{reason}");
+    }
+    self.start = Some(start);
     self
   }
 
@@ -72,17 +72,15 @@ impl DoubleHestonCalibrator {
   }
 }
 
-/// `InvalidInput { what: "start" }` naming the first factor outside the Heston domain.
-fn check_start(start: &DoubleHestonParams) -> Result<(), QuantError> {
-  for (factor, params) in [("first", start.first), ("second", start.second)] {
-    if let Some(reason) = params.violation() {
-      return Err(QuantError::invalid(
-        "start",
-        format!("{factor} factor: {reason}"),
-      ));
-    }
-  }
-  Ok(())
+/// The first factor outside the Heston domain, named, in `HestonParams::new`'s words.
+fn start_violation(start: &DoubleHestonParams) -> Option<String> {
+  [("first", start.first), ("second", start.second)]
+    .into_iter()
+    .find_map(|(factor, params)| {
+      params
+        .violation()
+        .map(|reason| format!("{factor} factor: {reason}"))
+    })
 }
 
 impl crate::traits::Calibrator for DoubleHestonCalibrator {
@@ -98,7 +96,9 @@ impl crate::traits::Calibrator for DoubleHestonCalibrator {
   ) -> Result<Calibrated<DoubleHestonParams>, QuantError> {
     validate_quotes(&self.quotes)?;
     let start = initial.or(self.start).unwrap_or_else(Self::fallback_params);
-    check_start(&start)?;
+    if let Some(reason) = start_violation(&start) {
+      return Err(QuantError::invalid("start", reason));
+    }
     let (fitted, report) = minimize(DoubleHestonProblem::new(self, start), self.options.lm(true));
     let params = fitted.effective_params();
     let model = fitted.compute_model_prices_for(&params);
