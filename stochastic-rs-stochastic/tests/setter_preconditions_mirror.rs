@@ -1,26 +1,11 @@
 //! Every `with_*` setter runs the check its type's `new` runs on the same argument: the field's one
-//! `Self::check_*` or the argument's own `assert_*`, and no assert of its own unless on `self.`.
+//! `check_*` or the argument's own `assert_*`, and no assert of its own unless on `self.`.
 
 use std::collections::HashSet;
 use std::path::Path;
 
 /// (type, setter, why) pairs the mirror rule does not cover.
 const ALLOWED: &[(&str, &str, &str)] = &[
-  (
-    "Fheston",
-    "with_s0",
-    "hand-written: `new` takes no `s0` of its own",
-  ),
-  (
-    "Fheston",
-    "with_mu",
-    "hand-written: `new` takes no `mu` of its own",
-  ),
-  (
-    "Fheston",
-    "with_rho",
-    "hand-written: `new` takes no `rho` of its own",
-  ),
   (
     "Fgn",
     "with_hurst",
@@ -51,27 +36,15 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     "with_correlation",
     "`new` takes the matrix `rho` under another check",
   ),
-  (
-    "Lmm",
-    "with_tenor",
-    "`new` checks the three arrays jointly in `validate_lmm_inputs`",
-  ),
-  (
-    "Lmm",
-    "with_l0",
-    "`new` checks the three arrays jointly in `validate_lmm_inputs`",
-  ),
-  (
-    "Lmm",
-    "with_sigma",
-    "`new` checks the three arrays jointly in `validate_lmm_inputs`",
-  ),
 ];
 
 const KEYWORDS: &[&str] = &[
   "self", "Self", "true", "false", "as", "if", "else", "let", "mut", "move", "in", "for", "match",
   "return", "where", "fn", "impl", "T", "None", "Some",
 ];
+
+/// A check call: a type's own, a shared crate function, or the array form written out.
+const CHECKS: &[&[u8]] = &[b"Self::check_", b"check_", b"assert_entries("];
 
 fn is_ident(b: u8) -> bool {
   b.is_ascii_alphanumeric() || b == b'_'
@@ -245,7 +218,7 @@ fn statements(src: &str, m: &[u8], b0: usize, b1: usize) -> Vec<Stmt> {
       let e = close(m, i + 8, b'(', b')');
       let args = split_top(std::str::from_utf8(&m[i + 8..e - 1]).unwrap(), false);
       (e, idents(&args[0]))
-    } else if boundary && m[i..].starts_with(b"Self::check_") {
+    } else if boundary && CHECKS.iter().any(|c| m[i..].starts_with(c)) {
       let open = m[i..]
         .iter()
         .position(|&c| c == b'(')
@@ -493,14 +466,16 @@ fn check(files: &[(String, String)]) -> (Vec<String>, usize, usize) {
     if !s.have.is_empty() {
       asserting += 1;
     }
-    if let Some(own) = s.have.iter().find(|t| t.starts_with("assert!(")) {
+    let own = |t: &&String| t.starts_with("assert!(") || t.starts_with("assert_entries(");
+    if let Some(own) = s.have.iter().find(own) {
       errors.push(format!(
         "{}::{} ({}): `{own}` belongs in the `check_{}` that `new` calls too",
         s.ty, s.name, s.at, s.arg
       ));
       continue;
     }
-    if !ok {
+    let taken = cands.iter().any(|n| n.params.contains(&s.arg));
+    if taken && !ok {
       let want = cands
         .iter()
         .map(|n| {
@@ -572,8 +547,8 @@ const MIRROR: &str = r#"
 impl<T: FloatExt> Foo<T> {
   pub fn new(sigma: T, n: usize) -> Self {
     Self::check_sigma(sigma);
-    Self::check_n(n);
-    Self { sigma, n }
+    check_n(n);
+    Self { sigma, n, mu: T::zero() }
   }
 }
 
@@ -582,8 +557,8 @@ impl<T: FloatExt> Foo<T> {
     require!(sigma > T::zero(), sigma);
   }
 
-  fn check_n(n: usize) {
-    require!(n >= 2, n);
+  fn check_mu(mu: T) {
+    require!(mu.is_finite(), mu);
   }
 
   pub fn with_sigma(mut self, sigma: T) -> Self {
@@ -593,8 +568,14 @@ impl<T: FloatExt> Foo<T> {
   }
 
   pub fn with_points(mut self, n: usize) -> Self {
-    Self::check_n(n);
+    check_n(n);
     self.n = n;
+    self
+  }
+
+  pub fn with_mu(mut self, mu: T) -> Self {
+    Self::check_mu(mu);
+    self.mu = mu;
     self
   }
 }
@@ -603,7 +584,7 @@ impl<T: FloatExt> Foo<T> {
 #[test]
 fn a_mirrored_setter_passes() {
   let (errors, setters, asserting) = check(&[("mirror.rs".into(), MIRROR.into())]);
-  assert_eq!((setters, asserting), (2, 2));
+  assert_eq!((setters, asserting), (3, 3));
   assert!(
     errors.iter().all(|e| e.starts_with("allow-list entry")),
     "{errors:?}"
@@ -613,7 +594,7 @@ fn a_mirrored_setter_passes() {
 #[test]
 fn a_setter_with_its_own_assert_or_without_the_check_fails() {
   let (shared, own) = (
-    "    Self::check_n(n);\n    self.n",
+    "    check_n(n);\n    self.n",
     "    assert!(n >= 2, \"n must satisfy `n >= 2`, got n = {n:?}\");\n    self.n",
   );
   let (errors, ..) = check(&[("own.rs".into(), MIRROR.replacen(shared, own, 1))]);
@@ -626,9 +607,30 @@ fn a_setter_with_its_own_assert_or_without_the_check_fails() {
     "    self.sigma",
     1,
   );
-  let (errors, ..) = check(&[("dropped.rs".into(), dropped)]);
+  let (errors, ..) = check(&[("dropped.rs".into(), dropped.clone())]);
   assert!(
     errors.iter().any(|e| e.starts_with("Foo::with_sigma")),
+    "{errors:?}"
+  );
+  let (errors, ..) = check(&[("bare.rs".into(), MIRROR.replacen(shared, "    self.n", 1))]);
+  assert!(
+    errors.iter().any(|e| e.starts_with("Foo::with_points")),
+    "{errors:?}"
+  );
+  let (in_new, written) = (
+    "    Self::check_sigma(sigma);\n    check_n",
+    "    assert_entries(\"sigma\", \"sigma[i] > 0.0\", &sigma, |v| v > 0.0);\n    check_n",
+  );
+  let (errors, ..) = check(&[("array.rs".into(), dropped.replacen(in_new, written, 1))]);
+  assert!(
+    errors.iter().any(|e| e.starts_with("Foo::with_sigma")),
+    "{errors:?}"
+  );
+  let own = "    Self::check_mu(mu);\n    self.mu";
+  let written = "    assert_entries(\"mu\", \"mu[i] > 0.0\", &mu, |v| v > 0.0);\n    self.mu";
+  let (errors, ..) = check(&[("own.rs".into(), MIRROR.replacen(own, written, 1))]);
+  assert!(
+    errors.iter().any(|e| e.starts_with("Foo::with_mu")),
     "{errors:?}"
   );
 }

@@ -23,6 +23,8 @@ use crate::device::Cpu;
 use crate::noise::cgns::Cgns;
 use crate::params::Drift;
 use crate::params::VarianceBoundary;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::process::cpoisson::JumpDriver;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -106,10 +108,10 @@ where
     Self::check_beta(beta);
     Self::check_sigma(sigma);
     Self::check_rho(rho);
-    Self::check_n(n);
+    check_n(n);
     Self::check_s0(s0);
     Self::check_v0(v0);
-    Self::check_t(t);
+    check_t(t);
 
     Self {
       backend: Cpu,
@@ -162,10 +164,6 @@ where
     require!(rho.is_finite(), rho);
   }
 
-  fn check_n(n: usize) {
-    require!(n >= 2, n);
-  }
-
   fn check_s0(s0: T) {
     require!(s0.is_finite(), s0);
   }
@@ -173,10 +171,6 @@ where
   fn check_v0(v0: T) {
     require!(v0.is_finite(), v0);
     require!(v0 >= T::zero(), v0);
-  }
-
-  fn check_t(t: Option<T>) {
-    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
   }
 
   /// Replace `drift`, all else unchanged; panics on a non-finite rate.
@@ -264,7 +258,7 @@ where
 
   /// Replace `n`; rebuilds the correlated-Gaussian generator, whose length follows `n`.
   pub fn with_points(mut self, n: usize) -> Self {
-    Self::check_n(n);
+    check_n(n);
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self
@@ -272,7 +266,7 @@ where
 
   /// Replace `t`; rebuilds the correlated-Gaussian generator, whose step follows `t`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    Self::check_t(t);
+    check_t(t);
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
     self

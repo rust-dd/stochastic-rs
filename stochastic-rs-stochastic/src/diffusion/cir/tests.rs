@@ -221,8 +221,8 @@ fn transition_density_matches_mpmath() {
   }
 }
 
-/// mpmath at 50 digits. The first is a monthly move at the speed a far search passes, the second
-/// a central tail: both densities are below the double range.
+/// mpmath at 50 digits. The first is at the speed a far search ends at, with a `σ` small enough
+/// to underflow, the second a central tail: both densities are below the double range.
 #[test]
 fn the_log_density_is_finite_where_the_density_underflows() {
   for ((theta, mu, sigma, t, r_t, x), want) in [
@@ -316,6 +316,24 @@ fn the_long_run_transition_is_the_stationary_law() {
     assert!(
       ((long_run - stationary) / stationary).abs() < 1e-12,
       "x = {x}: {long_run} vs {stationary}"
+    );
+  }
+}
+
+/// mpmath at 50 digits, at a shape `2θμ/σ²` of 250: `β^shape` and `Γ(shape)` leave the double
+/// range there while the density does not.
+#[test]
+fn the_stationary_density_at_a_large_shape_matches_mpmath() {
+  let cir = law(5.0, 1.0, 0.2);
+  for (r, want) in [
+    (1.0, 6.305_729_046_132_535),
+    (0.9, 1.834_349_997_158_214_5),
+    (1.15, 0.424_086_533_548_943_5),
+  ] {
+    let got = cir.stationary_pdf(r);
+    assert!(
+      ((got - want) / want).abs() < 1e-11,
+      "stationary_pdf({r}) = {got}, want {want}"
     );
   }
 }

@@ -15,6 +15,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -37,7 +38,7 @@ pub struct Gn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> Gn<T, S> {
   pub fn new(n: usize, t: Option<T>, seed: S) -> Self {
     Self::check_n(n);
-    Self::check_t(t);
+    check_t(t);
     Gn {
       backend: Cpu,
       n,
@@ -52,10 +53,6 @@ impl<T: FloatExt, S: SeedExt, B> Gn<T, S, B> {
     require!(n >= 1, n);
   }
 
-  fn check_t(t: Option<T>) {
-    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
-  }
-
   /// Replace the number of increments `n`, all else unchanged.
   pub fn with_increments(mut self, n: usize) -> Self {
     Self::check_n(n);
@@ -65,7 +62,7 @@ impl<T: FloatExt, S: SeedExt, B> Gn<T, S, B> {
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    Self::check_t(t);
+    check_t(t);
     self.t = t;
     self
   }

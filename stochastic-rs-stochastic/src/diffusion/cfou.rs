@@ -25,6 +25,8 @@ use crate::device::Cpu;
 use crate::device::DeviceError;
 use crate::device::FgnBackend;
 use crate::noise::fgn::Fgn;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -62,14 +64,6 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
     require!(hurst.is_finite(), hurst);
   }
 
-  fn check_n(n: usize) {
-    require!(n >= 2, n);
-  }
-
-  fn check_t(t: Option<T>) {
-    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
-  }
-
   #[must_use]
   pub fn new(
     hurst: T,
@@ -88,8 +82,8 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
     Self::check_a(a);
     Self::check_x1_0(x1_0);
     Self::check_x2_0(x2_0);
-    Self::check_t(t);
-    Self::check_n(n);
+    check_t(t);
+    check_n(n);
 
     Self {
       hurst,
@@ -116,7 +110,7 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
   /// Replace `n`; panics if `n < 2`.
   /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_points(mut self, n: usize) -> Self {
-    Self::check_n(n);
+    check_n(n);
     self.n = n;
     self.fgn = Fgn::for_grid(self.hurst, n, self.t);
     self
@@ -124,7 +118,7 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
 
   /// Replace `t`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    Self::check_t(t);
+    check_t(t);
     self.t = t;
     self.fgn = Fgn::for_grid(self.hurst, self.n, t);
     self

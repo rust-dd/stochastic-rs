@@ -36,6 +36,8 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -71,10 +73,10 @@ pub struct BrownianBridge<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> BrownianBridge<T, S> {
   pub fn new(sigma: T, n: usize, x0: Option<T>, xt: Option<T>, t: Option<T>, seed: S) -> Self {
     Self::check_sigma(sigma);
-    Self::check_n(n);
+    check_n(n);
     Self::check_x0(x0);
     Self::check_xt(xt);
-    Self::check_t(t);
+    check_t(t);
     Self {
       backend: Cpu,
       sigma,
@@ -92,20 +94,12 @@ impl<T: FloatExt, S: SeedExt, B> BrownianBridge<T, S, B> {
     require!(sigma.is_finite(), sigma);
   }
 
-  fn check_n(n: usize) {
-    require!(n >= 2, n);
-  }
-
   fn check_x0(x0: Option<T>) {
     require!(x0.is_none_or(|v| v.is_finite()), x0);
   }
 
   fn check_xt(xt: Option<T>) {
     require!(xt.is_none_or(|v| v.is_finite()), xt);
-  }
-
-  fn check_t(t: Option<T>) {
-    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
   }
 
   /// Replace `sigma`, all else unchanged.
@@ -131,14 +125,14 @@ impl<T: FloatExt, S: SeedExt, B> BrownianBridge<T, S, B> {
 
   /// Replace `n`, the grid points along the path, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    Self::check_n(n);
+    check_n(n);
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    Self::check_t(t);
+    check_t(t);
     self.t = t;
     self
   }

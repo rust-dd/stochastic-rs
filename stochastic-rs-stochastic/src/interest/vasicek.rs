@@ -45,6 +45,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::device::Cpu;
 use crate::diffusion::ou::Ou;
 use crate::diffusion::ou::OuSampler;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -91,7 +92,7 @@ impl<T: FloatExt, S: SeedExt> Vasicek<T, S> {
     Self::check_mu(mu);
     Self::check_sigma(sigma);
     Self::check_x0(x0);
-    Self::check_t(t);
+    check_t(t);
     Self {
       backend: Cpu,
       mu,
@@ -121,10 +122,6 @@ impl<T: FloatExt, S: SeedExt, B> Vasicek<T, S, B> {
 
   fn check_x0(x0: Option<T>) {
     require!(x0.is_none_or(|v| v.is_finite()), x0);
-  }
-
-  fn check_t(t: Option<T>) {
-    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
   }
 
   /// Rebuilds the embedded [`Ou`] from the mirrored fields, keeping the
@@ -183,7 +180,7 @@ impl<T: FloatExt, S: SeedExt, B> Vasicek<T, S, B> {
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    Self::check_t(t);
+    check_t(t);
     self.t = t;
     self.resync()
   }

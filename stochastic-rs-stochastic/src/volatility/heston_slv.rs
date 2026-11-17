@@ -47,6 +47,8 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
 use crate::device::DeviceError;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::Expr;
 use crate::traits::FloatExt;
 use crate::traits::Fn2D;
@@ -109,8 +111,8 @@ impl<T: FloatExt, S: SeedExt> HestonSlv<T, S> {
     Self::check_rho(rho);
     Self::check_mu(mu);
     Self::check_eta(eta);
-    Self::check_t(t);
-    Self::check_n(n);
+    check_t(t);
+    check_n(n);
     Self {
       backend: Cpu,
       s0,
@@ -190,14 +192,6 @@ impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
     require!(eta >= T::zero(), eta);
   }
 
-  fn check_n(n: usize) {
-    require!(n >= 2, n);
-  }
-
-  fn check_t(t: Option<T>) {
-    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
-  }
-
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: T) -> Self {
     Self::check_s0(s0);
@@ -262,14 +256,14 @@ impl<T: FloatExt, S: SeedExt, B> HestonSlv<T, S, B> {
 
   /// Replace the number of grid points `n`, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    Self::check_n(n);
+    check_n(n);
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    Self::check_t(t);
+    check_t(t);
     self.t = t;
     self
   }

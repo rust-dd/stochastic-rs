@@ -241,3 +241,12 @@ fn lmm_sample_panics_on_leftover_shape_mismatch() {
   // construction — not an opaque out-of-bounds index panic.
   let _ = lmm_base().with_tenor(flat_tenor(3, 0.5)).sample();
 }
+
+/// The sampler re-runs each array's own check, so an entry written into a public field meets it.
+#[test]
+#[should_panic(expected = "sigma[1] must satisfy `sigma[i].is_finite()`, got sigma[1] = inf")]
+fn lmm_sample_refuses_a_non_finite_entry_written_into_a_field() {
+  let mut lmm = lmm_base();
+  lmm.sigma[1] = f64::INFINITY;
+  let _ = lmm.sample();
+}

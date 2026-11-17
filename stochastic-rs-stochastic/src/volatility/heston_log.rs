@@ -27,6 +27,8 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use crate::device::Cpu;
 use crate::params::Drift;
 use crate::params::VarianceBoundary;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -83,8 +85,8 @@ impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
     Self::check_rho(rho);
     Self::check_s0(s0);
     Self::check_v0(v0);
-    Self::check_t(t);
-    Self::check_n(n);
+    check_t(t);
+    check_n(n);
 
     Self {
       backend: Cpu,
@@ -124,10 +126,6 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
     require!(rho >= -T::one() && rho <= T::one(), rho);
   }
 
-  fn check_n(n: usize) {
-    require!(n >= 2, n);
-  }
-
   fn check_s0(s0: T) {
     require!(s0.is_finite(), s0);
     require!(s0 > T::zero(), s0);
@@ -136,10 +134,6 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
   fn check_v0(v0: T) {
     require!(v0.is_finite(), v0);
     require!(v0 >= T::zero(), v0);
-  }
-
-  fn check_t(t: Option<T>) {
-    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
   }
 
   /// Replace `drift`, all else unchanged; panics on a non-finite rate.
@@ -199,14 +193,14 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
 
   /// Replace `n`, the grid points along the path, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    Self::check_n(n);
+    check_n(n);
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    Self::check_t(t);
+    check_t(t);
     self.t = t;
     self
   }

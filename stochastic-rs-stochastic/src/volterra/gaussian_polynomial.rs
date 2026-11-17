@@ -47,6 +47,8 @@ use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::noise::gn::Gn;
 use crate::precondition::assert_entries;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -87,8 +89,8 @@ where
   /// or holds a non-finite entry.
   #[must_use]
   pub fn new(kernel: K, coefficients: Array1<T>, n: usize, t: Option<T>, seed: S) -> Self {
-    Self::check_t(t);
-    Self::check_n(n);
+    check_t(t);
+    check_n(n);
     Self::check_coefficients(&coefficients);
     let lift = VolterraLift::new(kernel.clone(), grid_spacing(n, t));
     Self {
@@ -139,14 +141,6 @@ where
     );
   }
 
-  fn check_n(n: usize) {
-    require!(n >= 2, n);
-  }
-
-  fn check_t(t: Option<T>) {
-    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
-  }
-
   /// Replace the polynomial, all else unchanged; panics if `coefficients` is empty or holds a
   /// non-finite entry.
   #[must_use]
@@ -159,7 +153,7 @@ where
   /// Replace `n`, the grid points along the path, all else unchanged; panics if `n < 2`.
   #[must_use]
   pub fn with_points(mut self, n: usize) -> Self {
-    Self::check_n(n);
+    check_n(n);
     self.n = n;
     self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(n, self.t));
     self
@@ -168,7 +162,7 @@ where
   /// Replace `t`, all else unchanged.
   #[must_use]
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    Self::check_t(t);
+    check_t(t);
     self.t = t;
     self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(self.n, t));
     self

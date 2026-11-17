@@ -69,6 +69,8 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::noise::gn::Gn;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -117,8 +119,8 @@ where
     Self::check_theta(theta);
     Self::check_nu(nu);
     Self::check_v0(v0);
-    Self::check_t(t);
-    Self::check_n(n);
+    check_t(t);
+    check_n(n);
     let lift = VolterraLift::new(kernel.clone(), grid_spacing(n, t));
     Self {
       backend: Cpu,
@@ -159,17 +161,9 @@ where
     require!(nu > T::zero(), nu);
   }
 
-  fn check_n(n: usize) {
-    require!(n >= 2, n);
-  }
-
   fn check_v0(v0: T) {
     require!(v0.is_finite(), v0);
     require!(v0 >= T::zero(), v0);
-  }
-
-  fn check_t(t: Option<T>) {
-    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
   }
 
   /// Replace `kappa`, all else unchanged.
@@ -199,7 +193,7 @@ where
   /// Replace `n`, the grid points along the path, all else unchanged.
   #[must_use]
   pub fn with_points(mut self, n: usize) -> Self {
-    Self::check_n(n);
+    check_n(n);
     self.n = n;
     self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(n, self.t));
     self
@@ -216,7 +210,7 @@ where
   /// Replace `t`, all else unchanged.
   #[must_use]
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    Self::check_t(t);
+    check_t(t);
     self.t = t;
     self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(self.n, t));
     self

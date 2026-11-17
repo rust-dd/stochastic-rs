@@ -75,6 +75,8 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
 use crate::precondition::assert_entries;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -115,12 +117,12 @@ impl<T: FloatExt, S: SeedExt> Lmm<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    Self::check_n(n);
-    Self::check_t(t);
-    assert_entries("tenor", "tenor[i].is_finite()", &tenor, |v| v.is_finite());
-    assert_entries("l0", "l0[i].is_finite()", &l0, |v| v.is_finite());
-    assert_entries("sigma", "sigma[i].is_finite()", &sigma, |v| v.is_finite());
-    validate_lmm_inputs(&tenor, &l0, &sigma);
+    check_n(n);
+    check_t(t);
+    Self::check_tenor(&tenor);
+    Self::check_l0(&l0);
+    Self::check_sigma(&sigma);
+    Self::check_lengths(&tenor, &l0, &sigma);
     Self {
       backend: Cpu,
       tenor,
@@ -135,12 +137,56 @@ impl<T: FloatExt, S: SeedExt> Lmm<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
-  fn check_n(n: usize) {
-    require!(n >= 2, n);
+  fn check_tenor(tenor: &Array1<T>) {
+    assert_entries("tenor", "tenor[i].is_finite()", tenor, |v| v.is_finite());
+    assert!(
+      tenor.len() >= 2,
+      "tenor.len() must satisfy `tenor.len() >= 2`, got tenor.len() = {:?}",
+      tenor.len()
+    );
+    for i in 0..tenor.len() - 1 {
+      assert!(
+        tenor[i + 1] > tenor[i],
+        "tenor[{}] must satisfy `tenor[i + 1] > tenor[i]`, got tenor[{}] = {:?}, tenor[{i}] = {:?}",
+        i + 1,
+        i + 1,
+        tenor[i + 1],
+        tenor[i]
+      );
+    }
   }
 
-  fn check_t(t: Option<T>) {
-    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  fn check_l0(l0: &Array1<T>) {
+    assert_entries("l0", "l0[i].is_finite()", l0, |v| v.is_finite());
+    assert_entries("l0", "l0[i] > T::zero()", l0, |v| v > T::zero());
+  }
+
+  fn check_sigma(sigma: &Array1<T>) {
+    assert_entries("sigma", "sigma[i].is_finite()", sigma, |v| v.is_finite());
+    assert_entries("sigma", "sigma[i] >= T::zero()", sigma, |v| v >= T::zero());
+  }
+
+  /// The joint shape, which no setter checks: a chain of them changes the Libor count one array
+  /// at a time.
+  fn check_lengths(tenor: &Array1<T>, l0: &Array1<T>, sigma: &Array1<T>) {
+    assert!(
+      l0.len() == tenor.len() - 1,
+      "l0.len() must satisfy `l0.len() == tenor.len() - 1`, got l0.len() = {:?}",
+      l0.len()
+    );
+    assert!(
+      sigma.len() == tenor.len() - 1,
+      "sigma.len() must satisfy `sigma.len() == tenor.len() - 1`, got sigma.len() = {:?}",
+      sigma.len()
+    );
+  }
+
+  /// Every array check again, where a sampler or a launch reads arrays set one at a time.
+  fn validate_lmm_inputs(&self) {
+    Self::check_tenor(&self.tenor);
+    Self::check_l0(&self.l0);
+    Self::check_sigma(&self.sigma);
+    Self::check_lengths(&self.tenor, &self.l0, &self.sigma);
   }
 
   /// Attach a forward correlation matrix `rho` (`M × M`, symmetric,
@@ -171,22 +217,7 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
   /// there, same as indexing a too-short array inside `Lmm::new`'s own
   /// equivalent misuse would.
   pub fn with_tenor(mut self, tenor: Array1<T>) -> Self {
-    assert_entries("tenor", "tenor[i].is_finite()", &tenor, |v| v.is_finite());
-    assert!(
-      tenor.len() >= 2,
-      "tenor.len() must satisfy `tenor.len() >= 2`, got tenor.len() = {:?}",
-      tenor.len()
-    );
-    for i in 0..tenor.len() - 1 {
-      assert!(
-        tenor[i + 1] > tenor[i],
-        "tenor[{}] must satisfy `tenor[i + 1] > tenor[i]`, got tenor[{}] = {:?}, tenor[{i}] = {:?}",
-        i + 1,
-        i + 1,
-        tenor[i + 1],
-        tenor[i]
-      );
-    }
+    Self::check_tenor(&tenor);
     self.tenor = tenor;
     self
   }
@@ -202,13 +233,7 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
   /// `chol` untouched, since its value never depended on `l0`'s contents,
   /// only its length.
   pub fn with_l0(mut self, l0: Array1<T>) -> Self {
-    assert_entries("l0", "l0[i].is_finite()", &l0, |v| v.is_finite());
-    for (i, &v) in l0.iter().enumerate() {
-      assert!(
-        v > T::zero(),
-        "l0[{i}] must satisfy `l0[i] > T::zero()`, got l0[{i}] = {v:?}"
-      );
-    }
+    Self::check_l0(&l0);
     let shape_changed = l0.len() != self.l0.len();
     self.l0 = l0;
     if shape_changed {
@@ -219,27 +244,21 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
 
   /// Replace `sigma`. Panics if any entry is negative.
   pub fn with_sigma(mut self, sigma: Array1<T>) -> Self {
-    assert_entries("sigma", "sigma[i].is_finite()", &sigma, |v| v.is_finite());
-    for (i, &v) in sigma.iter().enumerate() {
-      assert!(
-        v >= T::zero(),
-        "sigma[{i}] must satisfy `sigma[i] >= T::zero()`, got sigma[{i}] = {v:?}"
-      );
-    }
+    Self::check_sigma(&sigma);
     self.sigma = sigma;
     self
   }
 
   /// Replace the number of simulation grid points `n`, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    Self::check_n(n);
+    check_n(n);
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    Self::check_t(t);
+    check_t(t);
     self.t = t;
     self
   }
@@ -248,44 +267,6 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
-  }
-}
-
-fn validate_lmm_inputs<T: FloatExt>(tenor: &Array1<T>, l0: &Array1<T>, sigma: &Array1<T>) {
-  assert!(
-    tenor.len() >= 2,
-    "tenor.len() must satisfy `tenor.len() >= 2`, got tenor.len() = {:?}",
-    tenor.len()
-  );
-  assert!(
-    l0.len() == tenor.len() - 1,
-    "l0.len() must satisfy `l0.len() == tenor.len() - 1`, got l0.len() = {:?}",
-    l0.len()
-  );
-  assert!(
-    sigma.len() == tenor.len() - 1,
-    "sigma.len() must satisfy `sigma.len() == tenor.len() - 1`, got sigma.len() = {:?}",
-    sigma.len()
-  );
-  for i in 0..l0.len() {
-    assert!(
-      tenor[i + 1] > tenor[i],
-      "tenor[{}] must satisfy `tenor[i + 1] > tenor[i]`, got tenor[{}] = {:?}, tenor[{i}] = {:?}",
-      i + 1,
-      i + 1,
-      tenor[i + 1],
-      tenor[i]
-    );
-    assert!(
-      l0[i] > T::zero(),
-      "l0[{i}] must satisfy `l0[i] > T::zero()`, got l0[{i}] = {:?}",
-      l0[i]
-    );
-    assert!(
-      sigma[i] >= T::zero(),
-      "sigma[{i}] must satisfy `sigma[i] >= T::zero()`, got sigma[{i}] = {:?}",
-      sigma[i]
-    );
   }
 }
 
@@ -392,7 +373,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   /// bypassing that guard; the horizon is held to the host's own bounds.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let p = self.0;
-    validate_lmm_inputs(&p.tenor, &p.l0, &p.sigma);
+    p.validate_lmm_inputs();
     assert!(
       p.device_ready(),
       "Lmm: a launch carries at most {} forwards; sample through `ProcessExt`, which keeps a wider \
@@ -504,7 +485,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   /// `assert_eq!`-quality panic for a leftover mismatch at sample time,
   /// instead of an opaque out-of-bounds index panic from `fill_matrix`.
   fn sampler(&self) -> LmmSampler<T, S> {
-    validate_lmm_inputs(&self.tenor, &self.l0, &self.sigma);
+    self.validate_lmm_inputs();
     LmmSampler {
       tenor: self.tenor.clone(),
       l0: self.l0.clone(),

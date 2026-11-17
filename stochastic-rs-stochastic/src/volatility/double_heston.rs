@@ -28,6 +28,8 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::device::Cpu;
 use crate::noise::cgns::Cgns;
 use crate::params::VarianceBoundary;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -130,8 +132,8 @@ impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
     Self::check_sigma2(sigma2);
     Self::check_rho2(rho2);
     Self::check_mu(mu);
-    Self::check_n(n);
-    Self::check_t(t);
+    check_n(n);
+    check_t(t);
 
     Self {
       backend: Cpu,
@@ -212,14 +214,6 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
 
   fn check_mu(mu: T) {
     require!(mu.is_finite(), mu);
-  }
-
-  fn check_n(n: usize) {
-    require!(n >= 2, n);
-  }
-
-  fn check_t(t: Option<T>) {
-    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
   }
 
   /// Replace `s0`, all else unchanged.
@@ -315,7 +309,7 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   /// Replace `n`, the grid points along the path; rebuilds both cached correlated-Gaussian
   /// generators, whose lengths and step sizes derive from `n`.
   pub fn with_points(mut self, n: usize) -> Self {
-    Self::check_n(n);
+    check_n(n);
     self.n = n;
     self.cgns1 = Cgns::new(self.rho1, n - 1, self.t, Unseeded);
     self.cgns2 = Cgns::new(self.rho2, n - 1, self.t, Unseeded);
@@ -325,7 +319,7 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   /// Replace the simulation horizon `t`; rebuilds both cached
   /// correlated-Gaussian generators' step sizes, which derive from `t`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    Self::check_t(t);
+    check_t(t);
     self.t = t;
     self.cgns1 = Cgns::new(self.rho1, self.n - 1, t, Unseeded);
     self.cgns2 = Cgns::new(self.rho2, self.n - 1, t, Unseeded);

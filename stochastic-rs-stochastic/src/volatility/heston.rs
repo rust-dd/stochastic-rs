@@ -15,6 +15,8 @@ use crate::device::Cpu;
 use crate::malliavin::Malliavin;
 use crate::noise::cgns::Cgns;
 use crate::params::VarianceBoundary;
+use crate::precondition::check_n;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -85,8 +87,8 @@ impl<T: FloatExt, S: SeedExt> Heston<T, Euler, S> {
     Self::check_sigma(sigma);
     Self::check_rho(rho);
     Self::check_mu(mu);
-    Self::check_n(n);
-    Self::check_t(t);
+    check_n(n);
+    check_t(t);
 
     Self {
       backend: Cpu,
@@ -169,14 +171,6 @@ impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
     require!(mu.is_finite(), mu);
   }
 
-  fn check_n(n: usize) {
-    require!(n >= 2, n);
-  }
-
-  fn check_t(t: Option<T>) {
-    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
-  }
-
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: T) -> Self {
     Self::check_s0(s0);
@@ -232,7 +226,7 @@ impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
   /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
   /// generator, whose length and step size derive from `n`.
   pub fn with_points(mut self, n: usize) -> Self {
-    Self::check_n(n);
+    check_n(n);
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self
@@ -241,7 +235,7 @@ impl<T: FloatExt, Sch: HestonScheme, S: SeedExt, B> Heston<T, Sch, S, B> {
   /// Replace the simulation horizon `t`; rebuilds the cached
   /// correlated-Gaussian generator's step size, which derives from `t`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    Self::check_t(t);
+    check_t(t);
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
     self

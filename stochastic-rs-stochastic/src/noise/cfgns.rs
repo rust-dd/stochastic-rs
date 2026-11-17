@@ -12,6 +12,7 @@ use super::fgn::Fgn;
 use crate::device::Cpu;
 use crate::device::DeviceError;
 use crate::device::FgnBackend;
+use crate::precondition::check_t;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -48,15 +49,11 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
     require!(n >= 1, n);
   }
 
-  fn check_t(t: Option<T>) {
-    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
-  }
-
   pub fn new(hurst: T, rho: T, n: usize, t: Option<T>, seed: S) -> Self {
     Self::check_hurst(hurst);
     Self::check_rho(rho);
     Self::check_n(n);
-    Self::check_t(t);
+    check_t(t);
 
     Self {
       hurst,
@@ -87,7 +84,7 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
 
   /// Replace `t`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    Self::check_t(t);
+    check_t(t);
     self.t = t;
     self.fgn = Fgn::new(self.hurst, self.n, t, Unseeded);
     self
