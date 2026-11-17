@@ -88,6 +88,12 @@ pub trait DiffusionModel: Send + Sync {
     None
   }
 
+  /// The log of [`exact_density`](Self::exact_density), which a model overrides to keep the tails
+  /// where the density underflows.
+  fn exact_ln_density(&self, x0: f64, xt: f64, t0: f64, dt: f64) -> Option<f64> {
+    self.exact_density(x0, xt, t0, dt).map(f64::ln)
+  }
+
   /// Aït-Sahalia Hermite density expansion. Return `None` if not available.
   fn ait_sahalia_density(&self, _x0: f64, _xt: f64, _t0: f64, _dt: f64) -> Option<f64> {
     None

@@ -92,13 +92,14 @@ impl MleProblem<'_> {
     let mut sum = 0.0;
     for i in 1..self.sample.len() {
       let t0 = (i - 1) as f64 * self.dt;
-      let d = self
+      let ln_d = self
         .density
-        .density(&**model, self.sample[i - 1], self.sample[i], t0, self.dt);
-      if !(d > 0.0 && d.is_finite()) {
+        .ln_density(&**model, self.sample[i - 1], self.sample[i], t0, self.dt);
+      // A density of zero, an infinite one and none at all are no likelihood.
+      if !ln_d.is_finite() {
         return 1e30;
       }
-      sum -= d.ln();
+      sum -= ln_d;
     }
     if sum.is_finite() { sum } else { 1e30 }
   }
@@ -234,8 +235,7 @@ pub fn fit_mle(
   let mut log_lik = 0.0;
   for i in 1..sample.len() {
     let t0 = (i - 1) as f64 * dt;
-    let d = density.density(model, sample[i - 1], sample[i], t0, dt);
-    log_lik += d.ln();
+    log_lik += density.ln_density(model, sample[i - 1], sample[i], t0, dt);
   }
   // The search's penalty marks a point without a likelihood; an estimate there is no fit.
   if !log_lik.is_finite() {
@@ -265,9 +265,12 @@ pub fn fit_mle(
 mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_stochastic::diffusion::cir::Cir;
+  use stochastic_rs_stochastic::diffusion::ou::Ou;
   use stochastic_rs_stochastic::params::VarianceBoundary;
 
   use super::*;
+  use crate::qmle::fit_ou_mle;
+  use crate::qmle::test_support::simulate_ou;
 
   #[test]
   fn mle_converges_at_initial_brownian_drift_optimum() {
@@ -442,6 +445,73 @@ mod tests {
         stage: "log-likelihood"
       })
     );
+  }
+
+  /// At a `σ` far too small every transition lies where its normal density is zero: the objective
+  /// sums their log-densities, graded in `σ`, and keeps the penalty for a point with no likelihood.
+  #[test]
+  fn an_underflowing_density_keeps_its_log_in_the_objective() {
+    let sample = ndarray::array![0.5, 0.52, 0.49, 0.51];
+    let mut model = Ou::new(
+      1.0,
+      0.5,
+      0.5,
+      100,
+      Some(0.5),
+      Some(1.0),
+      Deterministic::new(0),
+    );
+    model.set_params(&[1.0, 0.5, 1e-6]);
+    assert_eq!(
+      DensityApprox::Euler.density(&model, 0.5, 0.52, 0.0, 0.01),
+      0.0
+    );
+    let problem = MleProblem {
+      model: Mutex::new(&mut model),
+      sample: sample.view(),
+      dt: 0.01,
+      density: DensityApprox::Euler,
+      lower: vec![1e-4, -10.0, 1e-6],
+      upper: vec![50.0, 10.0, 10.0],
+    };
+    let narrow = problem.eval_nll(&[1.0, 0.5, 1e-6]);
+    let wider = problem.eval_nll(&[1.0, 0.5, 2e-6]);
+    assert!(narrow > 1e10 && narrow < 1e12, "nll = {narrow}");
+    assert!(wider < 0.3 * narrow, "{wider} against {narrow}");
+  }
+
+  /// From `σ = 0.5` the search probes `σ` near its bound, where every density underflows; summed
+  /// in logs the objective leads it back, to the closed form's optimum.
+  #[test]
+  fn a_fit_through_underflowing_densities_reaches_the_closed_form() {
+    let dt = 1.0 / 12.0;
+    for seed in [1u64, 2, 3] {
+      let path = simulate_ou(8.0, 0.03, 0.02, 0.03, dt, 1000, seed);
+      let closed = fit_ou_mle(path.view(), dt).unwrap();
+      let mut model = Ou::new(
+        1.0,
+        0.5,
+        0.5,
+        100,
+        Some(1.0),
+        Some(1.0),
+        Deterministic::new(0),
+      );
+      let fit = fit_mle(&mut model, path.view(), dt, DensityApprox::Exact, None).unwrap();
+      assert!(fit.converged, "seed {seed}");
+      assert!(
+        (fit.log_likelihood - closed.log_likelihood).abs() < 1e-6,
+        "seed {seed}: {} for {}",
+        fit.log_likelihood,
+        closed.log_likelihood
+      );
+      assert!(
+        (fit.params[0] / closed.theta - 1.0).abs() < 1e-4,
+        "seed {seed}: θ̂ = {} for {}",
+        fit.params[0],
+        closed.theta
+      );
+    }
   }
 
   #[test]

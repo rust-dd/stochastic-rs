@@ -99,8 +99,7 @@ fn bench_log_likelihood(c: &mut Criterion) {
       b.iter(|| {
         let mut sum = 0.0f64;
         for i in 0..path.len() - 1 {
-          let d = DensityApprox::Euler.density(&ou, path[i], path[i + 1], 0.0, dt);
-          sum += d.ln();
+          sum += DensityApprox::Euler.ln_density(&ou, path[i], path[i + 1], 0.0, dt);
         }
         black_box(sum)
       })
@@ -110,8 +109,7 @@ fn bench_log_likelihood(c: &mut Criterion) {
       b.iter(|| {
         let mut sum = 0.0f64;
         for i in 0..path.len() - 1 {
-          let d = DensityApprox::Kessler.density(&ou, path[i], path[i + 1], 0.0, dt);
-          sum += d.ln();
+          sum += DensityApprox::Kessler.ln_density(&ou, path[i], path[i + 1], 0.0, dt);
         }
         black_box(sum)
       })
