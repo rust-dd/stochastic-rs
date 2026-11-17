@@ -162,7 +162,7 @@ pub(crate) fn quasi_log_likelihood(
   ll
 }
 
-/// Gaussian QMLE of a mean-reverting diffusion every `dt`; `Err` below 3 points, on one non-finite
+/// Gaussian QMLE of a mean-reverting diffusion every `dt`; `Err` below 4 points, on one non-finite
 /// or (CIR) negative, a constant path or a non-finite start or optimum; panics unless `0 < dt < ∞`.
 pub fn fit_diffusion_qmle<T: FloatExt>(
   series: ArrayView1<T>,
@@ -170,7 +170,8 @@ pub fn fit_diffusion_qmle<T: FloatExt>(
   kind: DiffusionKind,
 ) -> Result<QmleFit, StatsError> {
   assert_dt(dt);
-  let x = diffusion_path(series, kind)?;
+  // Three points are two transitions, which the drift's two coefficients fit exactly.
+  let x = diffusion_path(series, kind, 4)?;
   // In logs, so that the speed, the level and `σ` stay positive.
   let neg_ll = |p: &[f64; 3]| -> f64 {
     -quasi_log_likelihood(&x, dt, kind, p[0].exp(), p[1].exp(), p[2].exp())
@@ -197,41 +198,52 @@ pub fn fit_diffusion_qmle<T: FloatExt>(
   })
 }
 
-/// The path as `f64`: 3 or more finite points, not all equal and, for CIR, whose conditional
+/// The path as `f64`: `min_n` or more finite points, not all equal and, for CIR, whose conditional
 /// variance turns negative below zero, none negative.
 pub(crate) fn diffusion_path<T: FloatExt>(
   series: ArrayView1<T>,
   kind: DiffusionKind,
+  min_n: usize,
 ) -> Result<Vec<f64>, StatsError> {
   let x = series
     .iter()
     .map(|v| v.to_f64().unwrap())
     .collect::<Vec<f64>>();
   match kind {
-    DiffusionKind::OrnsteinUhlenbeck => validate(&x, 3)?,
-    DiffusionKind::Cir => validate_domain(&x, 3, "finite and >= 0", |v| v >= 0.0)?,
+    DiffusionKind::OrnsteinUhlenbeck => validate(&x, min_n)?,
+    DiffusionKind::Cir => validate_domain(&x, min_n, "finite and >= 0", |v| v >= 0.0)?,
   }
   reject_constant(&x, "constant series")?;
   Ok(x)
 }
 
+/// The path's mean, which centres the start and the prior; `Err` when it overflows.
+pub(crate) fn path_mean(x: &[f64]) -> Result<f64, StatsError> {
+  let mean = x.iter().sum::<f64>() / x.len() as f64;
+  if mean.is_finite() {
+    Ok(mean)
+  } else {
+    Err(StatsError::Numerical {
+      stage: "starting point",
+    })
+  }
+}
+
 /// `[θ₀, μ₀, σ₀]`: the level at the mean, the speed from the lag-1 autocorrelation and `σ` from
-/// the residuals about both, by `kind`'s conditional variance; `Err` when the data overflow it.
+/// the residuals about both; `Err` unless each is finite before the clamp that would hide it.
 pub(crate) fn ar1_start(x: &[f64], dt: f64, kind: DiffusionKind) -> Result<[f64; 3], StatsError> {
   let nobs = x.len();
-  let mean = x.iter().sum::<f64>() / nobs as f64;
+  let mean = path_mean(x)?;
   let mu0 = mean.max(1e-8);
   let (mut num, mut den) = (0.0, 0.0);
   for t in 0..nobs - 1 {
     num += (x[t] - mean) * (x[t + 1] - mean);
     den += (x[t] - mean).powi(2);
   }
-  let ac1 = if den > 0.0 {
-    (num / den).clamp(1e-4, 0.999)
-  } else {
-    0.5
-  };
-  let theta0 = (-ac1.ln() / dt).clamp(1e-3, 50.0);
+  // `den` is zero only when the deviations' squares underflow: a constant path is refused before.
+  let ac1 = num / den;
+  let theta_raw = -ac1.clamp(1e-4, 0.999).ln() / dt;
+  let theta0 = theta_raw.clamp(1e-3, 50.0);
   let a0 = (-theta0 * dt).exp();
   let mut resid_var = 0.0;
   for t in 0..nobs - 1 {
@@ -245,14 +257,13 @@ pub(crate) fn ar1_start(x: &[f64], dt: f64, kind: DiffusionKind) -> Result<[f64;
       mean * (a0 - a0 * a0) / theta0 + mu0 * (1.0 - a0).powi(2) / (2.0 * theta0)
     }
   };
-  let sigma0 = (resid_var / scale).sqrt().clamp(1e-3, 10.0);
-  if theta0.is_finite() && mu0.is_finite() && sigma0.is_finite() {
-    Ok([theta0, mu0, sigma0])
-  } else {
-    Err(StatsError::Numerical {
+  let sigma_raw = (resid_var / scale).sqrt();
+  if !(ac1.is_finite() && theta_raw.is_finite() && sigma_raw.is_finite()) {
+    return Err(StatsError::Numerical {
       stage: "starting point",
-    })
+    });
   }
+  Ok([theta0, mu0, sigma_raw.clamp(1e-3, 10.0)])
 }
 
 /// Closed-form OU / Vasicek MLE through the AR(1) below; `Err` below 4 points, on a non-finite one,

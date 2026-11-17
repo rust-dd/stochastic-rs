@@ -18,6 +18,7 @@ use crate::qmle::assert_dt;
 use crate::qmle::cir_of;
 use crate::qmle::diffusion_path;
 use crate::qmle::ou_of;
+use crate::qmle::path_mean;
 use crate::qmle::quasi_log_likelihood;
 use crate::traits::FloatExt;
 
@@ -67,8 +68,8 @@ impl BayesianDiffusionFit {
   }
 }
 
-/// Metropolis posterior of `(ln θ, ln μ, ln σ)` from the prior means, `Err` if it is not finite
-/// there; path `Err`s and panics as [`crate::qmle::fit_diffusion_qmle`], panics if `n_samples = 0`.
+/// Metropolis posterior of `(ln θ, ln μ, ln σ)` from the prior means, `Err` unless they and it are
+/// finite there; `Err`s and panics as [`crate::qmle::fit_diffusion_qmle`], also if `n_samples = 0`.
 pub fn fit_diffusion_bayesian<T: FloatExt>(
   series: ArrayView1<T>,
   dt: f64,
@@ -79,9 +80,9 @@ pub fn fit_diffusion_bayesian<T: FloatExt>(
   seed: u64,
 ) -> Result<BayesianDiffusionFit, StatsError> {
   assert_dt(dt);
-  let x = diffusion_path(series, kind)?;
+  let x = diffusion_path(series, kind, 4)?;
 
-  let sample_mean = x.iter().sum::<f64>() / x.len() as f64;
+  let sample_mean = path_mean(&x)?;
   // The speed about 1, the level about the sample mean and `σ` about 0.2.
   let prior_mean = [0.0_f64, sample_mean.max(1e-8).ln(), (-1.6_f64)];
   let tau = 4.0_f64;
@@ -275,7 +276,7 @@ mod tests {
 
   #[test]
   fn bayesian_diffusion_rejects_a_short_series() {
-    let s = Array1::from(vec![0.05, 0.06]);
+    let s = Array1::from(vec![0.05, 0.06, 0.04]);
     let fit = fit_diffusion_bayesian(
       s.view(),
       1.0 / 252.0,
@@ -287,7 +288,20 @@ mod tests {
     );
     assert_eq!(
       fit.unwrap_err(),
-      StatsError::InsufficientData { needed: 3, got: 2 }
+      StatsError::InsufficientData { needed: 4, got: 3 }
+    );
+  }
+
+  /// The mean of these finite points overflows, so the prior has no centre.
+  #[test]
+  fn an_overflowing_mean_is_a_numerical_start() {
+    let s = Array1::from(vec![1e308, 1.5e308, 1e308, 0.5e308, 1.2e308]);
+    let ou = DiffusionKind::OrnsteinUhlenbeck;
+    assert_eq!(
+      fit_diffusion_bayesian(s.view(), 1.0 / 252.0, ou, [0.1; 3], 100, 10, 1).unwrap_err(),
+      StatsError::Numerical {
+        stage: "starting point"
+      }
     );
   }
 

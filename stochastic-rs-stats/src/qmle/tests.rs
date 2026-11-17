@@ -242,13 +242,16 @@ fn fit_ou_mle_is_an_ou_fit() {
   assert_eq!(fit.to_ou(10, None, None, Unseeded).theta, fit.theta);
 }
 
+/// Three points are two transitions, which the drift's two coefficients fit exactly.
 #[test]
 fn qmle_rejects_a_short_series() {
-  let s = Array1::from(vec![0.05, 0.06]);
-  assert_eq!(
-    fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).unwrap_err(),
-    StatsError::InsufficientData { needed: 3, got: 2 }
-  );
+  let s = Array1::from(vec![0.05, 0.06, 0.04]);
+  for kind in [DiffusionKind::OrnsteinUhlenbeck, DiffusionKind::Cir] {
+    assert_eq!(
+      fit_diffusion_qmle(s.view(), 1.0 / 252.0, kind).unwrap_err(),
+      StatsError::InsufficientData { needed: 4, got: 3 }
+    );
+  }
 }
 
 /// At `θ = 0` the OU variance is `0 / 0`, so the log-likelihood is NaN rather than a number.
@@ -285,16 +288,50 @@ fn an_overflowing_start_is_a_numerical_error() {
   );
 }
 
-/// The start is finite, but its residuals near 1.5e154 square to `∞`: no finite likelihood.
+/// The start is finite, `σ₀` near 7e153 clamped to 10, but there a jump of 1e154 among zeros
+/// overflows the likelihood at every vertex the simplex tries.
 #[test]
 fn a_non_finite_optimum_is_a_numerical_error() {
-  let s = Array1::from(vec![8e153, -8e153, 8e153]);
+  let mut s = Array1::<f64>::zeros(1000);
+  s[500] = 1e154;
   assert_eq!(
     fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).unwrap_err(),
     StatsError::Numerical {
       stage: "quasi-log-likelihood"
     }
   );
+}
+
+/// The mean, the autocorrelation and the speed are finite, but the residuals near 1.1e154 square
+/// past the largest double: `σ₀` is `∞` before its clamp to 10.
+#[test]
+fn an_overflowing_sigma_start_is_a_numerical_error() {
+  let s = Array1::from(vec![6e153, -6e153, 6e153, -6e153]);
+  assert_eq!(
+    fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).unwrap_err(),
+    StatsError::Numerical {
+      stage: "starting point"
+    }
+  );
+}
+
+/// Deviations near 1e-170 square to zero, so the lag-1 autocorrelation is `0 / 0`.
+#[test]
+fn an_underflowing_autocorrelation_is_a_numerical_error() {
+  let s = Array1::from(vec![1e-170, 2e-170, 1.5e-170, 3e-170]);
+  assert_eq!(
+    fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).unwrap_err(),
+    StatsError::Numerical {
+      stage: "starting point"
+    }
+  );
+}
+
+/// A negative lag-1 autocorrelation is data, which the start's clamp to `[1e-4, 0.999]` takes.
+#[test]
+fn a_negative_autocorrelation_starts_at_the_clamp() {
+  let s = Array1::from(vec![0.05, 0.03, 0.06, 0.02, 0.07, 0.01]);
+  assert!(fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).is_ok());
 }
 
 /// Three points are two transitions, which the two AR(1) coefficients fit exactly.

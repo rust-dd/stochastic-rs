@@ -60,11 +60,12 @@ impl GmmCirFit {
   }
 }
 
-/// Two-step GMM of the CIR process on its exact moments, sampled every `dt`; `Err` below 3 points,
+/// Two-step GMM of the CIR process on its exact moments, sampled every `dt`; `Err` below 5 points,
 /// a negative or non-finite one, a constant path or a non-finite start; panics unless `0 < dt < ∞`.
 pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCirFit, StatsError> {
   assert_dt(dt);
-  let x = diffusion_path(series, DiffusionKind::Cir)?;
+  // `Ŝ` sums one outer product per transition, so its four moments need four transitions.
+  let x = diffusion_path(series, DiffusionKind::Cir, 5)?;
   let nobs = x.len();
 
   // The `T − 1` moment rows `g_t` at `(θ, μ, σ)` and their column mean.
@@ -349,12 +350,26 @@ mod tests {
     );
   }
 
+  /// `Ŝ` sums one outer product per transition, so its four moments need four transitions.
   #[test]
   fn gmm_cir_rejects_a_short_series() {
-    let s = Array1::from(vec![0.04, 0.05]);
+    let s = Array1::from(vec![0.04, 0.05, 0.045, 0.05]);
     assert_eq!(
       fit_cir_gmm(s.view(), 1.0 / 252.0).unwrap_err(),
-      StatsError::InsufficientData { needed: 3, got: 2 }
+      StatsError::InsufficientData { needed: 5, got: 4 }
+    );
+  }
+
+  /// The mean, the autocorrelation and the speed are finite, but the residuals near 1.1e154
+  /// square past the largest double: `σ₀` is `∞` before its clamp to 10.
+  #[test]
+  fn gmm_cir_answers_an_overflowing_sigma_start_with_a_numerical_error() {
+    let s = Array1::from(vec![1.2e154, 0.0, 1.2e154, 0.0, 1.2e154]);
+    assert_eq!(
+      fit_cir_gmm(s.view(), 1.0 / 252.0).unwrap_err(),
+      StatsError::Numerical {
+        stage: "starting point"
+      }
     );
   }
 
