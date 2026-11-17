@@ -4,6 +4,7 @@ use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::heston::Heston as HestonProcess;
 
+use super::lsq::HestonProblem;
 use super::*;
 use crate::OptionQuote;
 use crate::OptionType;
@@ -11,7 +12,6 @@ use crate::QuantError;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::CalibrationOptions;
 use crate::calibration::Regularization;
-use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::pricing::fourier::HestonFourier;
 use crate::pricing::heston::HestonParams;
 use crate::traits::Calibrator;
@@ -88,7 +88,8 @@ fn a_start_outside_the_heston_domain_is_an_error_before_the_fit() {
   ));
 }
 
-/// Each entry is an accepted step, so the weighted objective falls along the trail to the fit.
+/// The trail opens at the start and each later entry is an accepted step, so the weighted
+/// objective falls along it to the fit.
 #[test]
 fn the_trail_records_weighted_market_minus_model() {
   let calibrator = calibrator()
@@ -102,6 +103,8 @@ fn the_trail_records_weighted_market_minus_model() {
     .with_residual_weights(vec![1.0, 2.0, 1.0, 0.5, 1.0, 3.0])
     .with_options(CalibrationOptions::default().with_record_history(true));
   let fit = calibrator.calibrate(None).unwrap();
+  let start = HestonProblem::new(&calibrator, calibrator.start.unwrap()).effective_params();
+  assert_eq!(fit.history[0].params, start);
   assert_eq!(
     fit.history.last().map(|entry| entry.params),
     Some(fit.params)
@@ -123,24 +126,6 @@ fn the_trail_records_weighted_market_minus_model() {
       assert!((residual - gap).abs() < 1e-12, "{residual} against {gap}");
     }
   }
-}
-
-#[test]
-fn a_trail_filled_through_the_hidden_problem_is_not_inherited() {
-  let calibrator =
-    calibrator().with_options(CalibrationOptions::default().with_record_history(true));
-  let clean = calibrator.calibrate(None).unwrap();
-  let mut used = calibrator.clone();
-  for _ in 0..2 {
-    LeastSquaresProblem::residuals(&mut used);
-    LeastSquaresProblem::accept(&mut used);
-  }
-  let fit = used.calibrate(None).unwrap();
-  assert_eq!(fit.history.len(), clean.history.len());
-  assert_eq!(
-    fit.history.first().map(|entry| entry.params),
-    clean.history.first().map(|entry| entry.params)
-  );
 }
 
 #[test]

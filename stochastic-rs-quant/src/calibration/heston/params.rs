@@ -5,14 +5,14 @@ use stochastic_rs_stats::heston_mle::HestonMleFit;
 use super::super::periodic_map;
 use crate::pricing::heston::HestonParams;
 
-pub(super) const EPS: f64 = 1e-8;
-pub(super) const RHO_BOUND: f64 = 0.9999;
-pub(super) const KAPPA_MIN: f64 = 1e-3;
-pub(super) const THETA_MIN: f64 = 1e-8;
-pub(super) const SIGMA_MIN: f64 = 1e-8;
+pub(crate) const EPS: f64 = 1e-8;
+pub(crate) const RHO_BOUND: f64 = 0.9999;
+pub(crate) const KAPPA_MIN: f64 = 1e-3;
+pub(crate) const THETA_MIN: f64 = 1e-8;
+pub(crate) const SIGMA_MIN: f64 = 1e-8;
 
-pub(super) const P_KAPPA: (f64, f64) = (0.1, 20.0);
-pub(super) const P_THETA: (f64, f64) = (0.001, 0.4);
+pub(crate) const P_KAPPA: (f64, f64) = (0.1, 20.0);
+pub(crate) const P_THETA: (f64, f64) = (0.001, 0.4);
 pub(super) const P_SIGMA: (f64, f64) = (0.01, 3.0);
 pub(super) const P_RHO: (f64, f64) = (-1.0, 1.0);
 pub(super) const P_V0: (f64, f64) = (0.005, 0.25);
@@ -62,23 +62,22 @@ impl crate::traits::ToModel for HestonParams {
 }
 
 impl HestonParams {
-  /// Project parameters into the calibration ranges; a NaN stays NaN.
-  ///
-  /// The Feller condition is deliberately not imposed here. It is sufficient
-  /// for strict positivity of the CIR variance process, but it is not required
-  /// for Heston Fourier pricing and is frequently violated by market fits.
+  /// Project into the calibration box without Feller's condition, which Fourier pricing does not
+  /// need and market fits often violate.
   pub fn project_in_place(&mut self) {
-    self.kappa = periodic_map(self.kappa, P_KAPPA.0, P_KAPPA.1);
-    self.theta = periodic_map(self.theta, P_THETA.0, P_THETA.1);
-    self.sigma = periodic_map(self.sigma, P_SIGMA.0, P_SIGMA.1).abs();
-    self.rho = periodic_map(self.rho, P_RHO.0, P_RHO.1);
-    self.v0 = periodic_map(self.v0, P_V0.0, P_V0.1);
+    self.project_box(P_V0, P_SIGMA);
+  }
 
-    self.v0 = self.v0.max(0.0);
-    self.kappa = self.kappa.max(KAPPA_MIN);
-    self.theta = self.theta.max(THETA_MIN);
-    self.sigma = self.sigma.abs().max(SIGMA_MIN);
-    self.rho = self.rho.clamp(-RHO_BOUND, RHO_BOUND);
+  /// Wrap each value into its range, `v0` and `sigma` into the ones given, and floor it at its
+  /// minimum; the double-Heston factors share it with their own two ranges.
+  pub(crate) fn project_box(&mut self, v0: (f64, f64), sigma: (f64, f64)) {
+    self.v0 = periodic_map(self.v0, v0.0, v0.1).max(0.0);
+    self.kappa = periodic_map(self.kappa, P_KAPPA.0, P_KAPPA.1).max(KAPPA_MIN);
+    self.theta = periodic_map(self.theta, P_THETA.0, P_THETA.1).max(THETA_MIN);
+    self.sigma = periodic_map(self.sigma, sigma.0, sigma.1)
+      .abs()
+      .max(SIGMA_MIN);
+    self.rho = periodic_map(self.rho, P_RHO.0, P_RHO.1).clamp(-RHO_BOUND, RHO_BOUND);
   }
 
   /// Whether the CIR variance process stays strictly positive under Feller's condition.

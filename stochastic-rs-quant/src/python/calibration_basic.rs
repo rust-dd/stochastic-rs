@@ -4,7 +4,6 @@ use pyo3::prelude::*;
 use super::parse_option_type;
 use crate::OptionQuote;
 use crate::OptionType;
-use crate::calibration::levy::MarketSlice;
 
 #[pyclass(name = "MarketSlice", from_py_object, unsendable)]
 #[derive(Clone)]
@@ -52,17 +51,9 @@ pub(super) fn quotes_as(slices: Vec<PyMarketSlice>, option_type: OptionType) -> 
     .collect()
 }
 
-/// One single-quote `MarketSlice` per quote, for the calibrators that flatten slices themselves.
-pub(super) fn market_slices(slices: Vec<PyMarketSlice>) -> Vec<MarketSlice> {
-  let quotes = slices.into_iter().flat_map(|slice| slice.inner);
-  quotes
-    .map(|quote| MarketSlice {
-      strikes: vec![quote.strike],
-      prices: vec![quote.price],
-      is_call: vec![quote.option_type == OptionType::Call],
-      tau: quote.tau,
-    })
-    .collect()
+/// Every slice's quotes in slice order, each priced as its own `is_call` says.
+pub(super) fn quotes(slices: Vec<PyMarketSlice>) -> Vec<OptionQuote> {
+  slices.into_iter().flat_map(|slice| slice.inner).collect()
 }
 
 #[pyclass(name = "BSMCalibrator", unsendable)]

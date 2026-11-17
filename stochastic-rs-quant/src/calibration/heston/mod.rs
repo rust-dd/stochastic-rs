@@ -3,12 +3,14 @@
 //! $$
 //! \begin{aligned}dS_t&=\mu S_tdt+\sqrt{v_t}S_tdW_t^S\\dv_t&=\kappa(\theta-v_t)dt+\xi\sqrt{v_t}dW_t^v,\ d\langle W^S,W^v\rangle_t=\rho dt\end{aligned}
 //! $$
+//!
+//! Heston (1993), Rev. Financ. Stud. 6(2), 327–343, DOI 10.1093/rfs/6.2.327.
 
 mod calibrator;
 mod cui_impl;
 mod lsq;
 mod numeric_impl;
-mod params;
+pub(super) mod params;
 mod transform;
 
 pub use calibrator::HestonCalibrator;

@@ -76,7 +76,21 @@ impl SabrPricer {
   /// Call and put at one query point, both NaN unless [`sigma`](Self::sigma) is finite and > 0,
   /// as where Hagan's small-τ bracket turns negative (`α 0.2, β 1, ρ −0.9, ν 3` at `τ = 10`).
   pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
-    let sigma = self.sigma(s, k, r, q, tau);
+    self.call_put_at_forward(self.forward(s, r, q, tau), s, k, r, q, tau)
+  }
+
+  /// [`call_put`](Self::call_put) at the query's forward `f`, for a fit that prices each quote at
+  /// many parameter sets and computes its forward once.
+  pub(crate) fn call_put_at_forward(
+    &self,
+    f: f64,
+    s: f64,
+    k: f64,
+    r: f64,
+    q: f64,
+    tau: f64,
+  ) -> (f64, f64) {
+    let sigma = hagan_implied_vol(k, f, tau, &self.params);
     if !sigma.is_finite() || sigma <= 0.0 {
       return (f64::NAN, f64::NAN);
     }

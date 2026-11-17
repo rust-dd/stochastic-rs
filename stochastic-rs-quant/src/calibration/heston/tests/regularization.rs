@@ -3,6 +3,7 @@ use crate::OptionType;
 use crate::calibration::CalibrationOptions;
 use crate::calibration::Regularization;
 use crate::calibration::heston::HestonCalibrator;
+use crate::calibration::heston::lsq::HestonProblem;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
@@ -75,9 +76,10 @@ fn zero_weights_match_the_unregularised_calibration() {
 #[test]
 fn augmented_jacobian_has_the_penalty_rows() {
   let reg = Regularization::new(vec![0.0; 5], vec![0.0, 4.0, 0.0, 0.0, 0.0]);
-  let mut problem = calibrator(Some(reg));
+  let calibrator = calibrator(Some(reg));
+  let mut problem = HestonProblem::new(&calibrator, calibrator.start.unwrap());
   let jacobian = problem.jacobian().expect("jacobian");
-  let n = problem.quotes.len();
+  let n = calibrator.quotes.len();
   assert_eq!(jacobian.nrows(), n + 5);
   for col in 0..5 {
     for row in 0..5 {

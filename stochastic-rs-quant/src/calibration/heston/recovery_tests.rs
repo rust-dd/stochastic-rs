@@ -2,6 +2,7 @@ use ndarray::s;
 
 use super::HestonCalibrator;
 use super::HestonJacobianMethod;
+use super::lsq::HestonProblem;
 use super::transform::to_optimizer_coordinates;
 use crate::OptionQuote;
 use crate::OptionType;
@@ -139,11 +140,11 @@ fn reported_rmse_is_the_price_error_of_the_fitted_pricer() {
   let calibrator =
     calibrator(truth, HestonJacobianMethod::CuiAnalytic).with_feller_projection(true);
   let result = calibrator.calibrate(Some(*truth)).unwrap();
-  let mut objective = calibrator.clone();
+  let mut objective = HestonProblem::new(&calibrator, result.params);
   objective.feller_row_weight = Some(1.0);
   objective.set_params(&to_optimizer_coordinates(&result.params));
   let residuals = objective.residuals().unwrap();
-  let quotes = objective.quotes.len();
+  let quotes = calibrator.quotes.len();
   assert_eq!(residuals.len(), quotes + 1);
   let prices = residuals.slice(s![..quotes]);
   let price_rmse = (prices.dot(&prices) / quotes as f64).sqrt();

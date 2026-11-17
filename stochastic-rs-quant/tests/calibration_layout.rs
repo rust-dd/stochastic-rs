@@ -1,13 +1,10 @@
 use ndarray::Array1;
-use ndarray::s;
 use stochastic_rs_quant::OptionQuote;
 use stochastic_rs_quant::OptionType;
 use stochastic_rs_quant::QuantError;
 use stochastic_rs_quant::calibration::CalibrationOptions;
 use stochastic_rs_quant::calibration::bsm::BsmCalibrator;
 use stochastic_rs_quant::calibration::heston::HestonCalibrator;
-use stochastic_rs_quant::calibration::hkde::HkdeCalibrator;
-use stochastic_rs_quant::calibration::least_squares::LeastSquaresProblem;
 use stochastic_rs_quant::pricing::bsm::BsmCoc;
 use stochastic_rs_quant::pricing::bsm::BsmPricer;
 use stochastic_rs_quant::pricing::fourier::HestonFourier;
@@ -16,15 +13,6 @@ use stochastic_rs_quant::traits::CalibrationResult;
 use stochastic_rs_quant::traits::Calibrator;
 use stochastic_rs_quant::traits::ModelPricer;
 use stochastic_rs_quant::traits::ToModel;
-
-fn strided(values: impl IntoIterator<Item = f64>) -> Array1<f64> {
-  Array1::from_iter(values.into_iter().flat_map(|v| [v, f64::NAN])).slice_move(s![..;2])
-}
-
-fn reversed(values: impl IntoIterator<Item = f64>) -> Array1<f64> {
-  let values = values.into_iter().collect::<Vec<_>>();
-  Array1::from_iter(values.into_iter().rev()).slice_move(s![..;-1])
-}
 
 #[test]
 fn a_reversed_quote_list_gives_the_same_bsm_fit() {
@@ -47,51 +35,6 @@ fn a_reversed_quote_list_gives_the_same_bsm_fit() {
     reversed.params.sigma,
     forward.params.sigma
   );
-}
-
-#[test]
-fn hkde_weights_accept_strided_quotes() {
-  let mut model = HkdeCalibrator::new(
-    None,
-    strided([15.0, 9.0, 4.0]),
-    strided([100.0; 3]),
-    strided([90.0, 100.0, 110.0]),
-    0.03,
-    None,
-    1.0,
-    OptionType::Call,
-    true,
-  );
-  assert_eq!(model.c_market.len(), 3);
-  assert!(model.residuals().unwrap().iter().all(|x| x.is_finite()));
-}
-
-#[test]
-fn hkde_weights_preserve_reversed_quote_order() {
-  let mut contiguous = HkdeCalibrator::new(
-    None,
-    Array1::from_vec(vec![15.0, 9.0, 4.0]),
-    Array1::from_elem(3, 100.0),
-    Array1::from_vec(vec![90.0, 100.0, 110.0]),
-    0.03,
-    None,
-    1.0,
-    OptionType::Call,
-    true,
-  );
-  let mut reversed = HkdeCalibrator::new(
-    None,
-    reversed([15.0, 9.0, 4.0]),
-    reversed([100.0; 3]),
-    reversed([90.0, 100.0, 110.0]),
-    0.03,
-    None,
-    1.0,
-    OptionType::Call,
-    true,
-  );
-  assert_eq!(reversed.sqrt_weights, contiguous.sqrt_weights);
-  assert_eq!(reversed.residuals(), contiguous.residuals());
 }
 
 #[test]
@@ -417,4 +360,112 @@ fn a_bad_quote_is_an_error_and_a_bad_spot_a_panic() {
     "{err}"
   );
   assert!(std::panic::catch_unwind(|| BsmCalibrator::new(-1.0, 0.02, 0.0, Vec::new())).is_err());
+}
+
+#[test]
+fn the_jump_and_two_factor_calibrators_share_the_shape() {
+  use stochastic_rs_quant::calibration::double_heston::DoubleHestonCalibrator;
+  use stochastic_rs_quant::calibration::hkde::HkdeCalibrator;
+  use stochastic_rs_quant::calibration::svj::SvjCalibrator;
+  use stochastic_rs_quant::calibration::svj::SvjParams;
+  fn assert_send_sync<T: Send + Sync>() {}
+  assert_send_sync::<SvjCalibrator>();
+  assert_send_sync::<DoubleHestonCalibrator>();
+  assert_send_sync::<HkdeCalibrator>();
+  let truth = HestonParams {
+    v0: 0.04,
+    kappa: 1.5,
+    theta: 0.04,
+    sigma: 0.3,
+    rho: -0.7,
+  };
+  let quotes = heston_quotes(truth, 100.0, 0.02, 0.0);
+  let svj = SvjCalibrator::new(100.0, 0.02, 0.0, quotes.clone())
+    .with_start(SvjParams {
+      v0: 0.04,
+      kappa: 1.5,
+      theta: 0.04,
+      sigma_v: 0.3,
+      rho: -0.7,
+      lambda: 0.1,
+      mu_j: -0.05,
+      sigma_j: 0.1,
+    })
+    .with_options(CalibrationOptions::default().with_max_iterations(60))
+    .calibrate(None)
+    .unwrap();
+  assert!(svj.rmse().is_finite() && svj.iterations.is_some());
+  let model = svj.to_model();
+  assert!(model.price_call(100.0, 100.0, 0.02, 0.0, 0.5).is_finite());
+  let hkde = HkdeCalibrator::new(100.0, 0.02, 0.0, quotes.clone())
+    .with_options(CalibrationOptions::default().with_max_iterations(40))
+    .calibrate(None)
+    .unwrap();
+  assert!(hkde.rmse().is_finite() && hkde.max_error.is_some());
+  let dh = DoubleHestonCalibrator::new(100.0, 0.02, 0.0, quotes)
+    .with_options(CalibrationOptions::default().with_max_iterations(40))
+    .calibrate(None)
+    .unwrap();
+  assert!(dh.rmse() < 0.1, "rmse {}", dh.rmse());
+  let atm = |tau| HestonFourier::new(truth).price_call(100.0, 100.0, 0.02, 0.0, tau);
+  for tau in [0.25, 1.0] {
+    let gap = dh.to_model().price_call(100.0, 100.0, 0.02, 0.0, tau) - atm(tau);
+    assert!(gap.abs() < 5e-2, "tau {tau}: {gap}");
+  }
+}
+
+#[test]
+fn the_levy_and_cgmysv_calibrators_take_quotes_and_params() {
+  use stochastic_rs_quant::calibration::cgmysv::CgmysvCalibrator;
+  use stochastic_rs_quant::calibration::levy::LevyCalibrator;
+  use stochastic_rs_quant::calibration::levy::LevyModelType;
+  use stochastic_rs_quant::calibration::levy::LevyParams;
+  use stochastic_rs_quant::pricing::fourier::MertonJdFourier;
+  fn assert_send_sync<T: Send + Sync>() {}
+  assert_send_sync::<LevyCalibrator>();
+  assert_send_sync::<CgmysvCalibrator>();
+  let truth = MertonJdFourier {
+    sigma: 0.15,
+    lambda: 0.4,
+    mu_j: -0.1,
+    sigma_j: 0.2,
+  };
+  let quotes: Vec<OptionQuote> = [0.5, 1.0]
+    .into_iter()
+    .flat_map(|tau| (0..7).map(move |i| (85.0 + 5.0 * i as f64, tau)))
+    .map(|(k, tau)| {
+      let price = truth.price_call(100.0, k, 0.02, 0.0, tau);
+      OptionQuote::new(k, tau, price, OptionType::Call)
+    })
+    .collect();
+  let fit = LevyCalibrator::new(LevyModelType::MertonJd, 100.0, 0.02, 0.0, quotes.clone())
+    .with_start(LevyParams {
+      values: vec![0.2, 0.3, -0.05, 0.15],
+      model_type: LevyModelType::MertonJd,
+    })
+    .calibrate(None)
+    .unwrap();
+  assert!(
+    fit.rmse() < 1e-2 && fit.iterations.is_some(),
+    "rmse {}",
+    fit.rmse()
+  );
+  let gap = fit.to_model().price_call(100.0, 100.0, 0.02, 0.0, 1.0)
+    - truth.price_call(100.0, 100.0, 0.02, 0.0, 1.0);
+  assert!(gap.abs() < 5e-2, "{gap}");
+  let wrong = std::panic::catch_unwind(|| {
+    LevyCalibrator::new(LevyModelType::Kou, 100.0, 0.02, 0.0, Vec::new()).with_start(LevyParams {
+      values: vec![0.2],
+      model_type: LevyModelType::Kou,
+    })
+  });
+  assert!(
+    wrong.is_err(),
+    "a start with the wrong length is a programmer error"
+  );
+  let cg = CgmysvCalibrator::new(100.0, 0.02, 0.0, quotes)
+    .with_options(CalibrationOptions::default().with_max_iterations(5))
+    .calibrate(None)
+    .unwrap();
+  assert!(cg.rmse().is_finite() && cg.iterations.is_some_and(|n| n <= 5));
 }

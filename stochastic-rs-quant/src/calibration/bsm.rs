@@ -10,14 +10,13 @@ use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_distributions::RealExt;
 
-use crate::CalibrationLossScore;
 use crate::OptionQuote;
 use crate::OptionType;
 use crate::QuantError;
 use crate::calibration::Calibrated;
-use crate::calibration::CalibrationHistory;
 use crate::calibration::CalibrationOptions;
 use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::Trail;
 use crate::calibration::least_squares::minimize;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::check_finite_start;
@@ -84,8 +83,6 @@ pub struct BsmCalibrator {
   /// Reflected onto `[1e-6, ∞)` before the first evaluation.
   pub start: BsmParams,
   pub options: CalibrationOptions,
-  history: Vec<CalibrationHistory<BsmParams>>,
-  pending: Option<CalibrationHistory<BsmParams>>,
 }
 
 impl BsmCalibrator {
@@ -99,8 +96,6 @@ impl BsmCalibrator {
       quotes,
       start: BsmParams { sigma: 0.2 },
       options: CalibrationOptions::default(),
-      history: Vec::new(),
-      pending: None,
     }
   }
 
@@ -119,11 +114,6 @@ impl BsmCalibrator {
     self.options = options;
     self
   }
-
-  /// The stored iterate reflected, so even a raw `start` is priced inside the box.
-  fn effective_params(&self) -> BsmParams {
-    self.start.projected()
-  }
 }
 
 impl crate::traits::Calibrator for BsmCalibrator {
@@ -136,20 +126,10 @@ impl crate::traits::Calibrator for BsmCalibrator {
     validate_quotes(&self.quotes)?;
     let start = initial.unwrap_or(self.start);
     check_finite_start(&[("sigma", start.sigma)])?;
-    let problem = Self {
-      start: start.projected(),
-      history: Vec::new(),
-      pending: None,
-      ..self.clone()
-    };
-    let (mut fitted, report) = minimize(problem, self.options.lm(false));
+    let problem = BsmProblem::new(self, start.projected());
+    let (fitted, report) = minimize(problem, self.options.lm(false));
     let params = fitted.effective_params();
     let pricer = BsmPricer::new(params.sigma, BsmCoc::Merton1973);
-    let market = self
-      .quotes
-      .iter()
-      .map(|quote| quote.price)
-      .collect::<Vec<_>>();
     let model = self
       .quotes
       .iter()
@@ -164,15 +144,44 @@ impl crate::traits::Calibrator for BsmCalibrator {
         )
       })
       .collect::<Vec<_>>();
-    let history = std::mem::take(&mut fitted.history);
-    Ok(report.calibrated(params, &market, &model, self.options.loss_metrics, history))
+    Ok(report.calibrated(
+      params,
+      &fitted.market,
+      &model,
+      self.options.loss_metrics,
+      fitted.trail.into_entries(),
+    ))
   }
 }
 
-impl LeastSquaresProblem for BsmCalibrator {
+/// One fit: the current point, the quotes' prices and the trail.
+struct BsmProblem<'a> {
+  calibrator: &'a BsmCalibrator,
+  params: BsmParams,
+  market: Vec<f64>,
+  trail: Trail<BsmParams>,
+}
+
+impl<'a> BsmProblem<'a> {
+  fn new(calibrator: &'a BsmCalibrator, start: BsmParams) -> Self {
+    Self {
+      calibrator,
+      params: start,
+      market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
+      trail: Trail::negated(),
+    }
+  }
+
+  /// The stored iterate reflected, so even a raw start is priced inside the box.
+  fn effective_params(&self) -> BsmParams {
+    self.params.projected()
+  }
+}
+
+impl LeastSquaresProblem for BsmProblem<'_> {
   /// Levenberg–Marquardt is unconstrained, so each iterate is stored reflected.
   fn set_params(&mut self, params: &Array1<f64>) {
-    self.start = BsmParams::from(params.clone()).projected();
+    self.params = BsmParams::from(params.clone()).projected();
   }
 
   fn params(&self) -> Array1<f64> {
@@ -180,21 +189,29 @@ impl LeastSquaresProblem for BsmCalibrator {
   }
 
   fn residuals(&mut self) -> Option<Array1<f64>> {
+    let BsmCalibrator {
+      s,
+      r,
+      q,
+      ref quotes,
+      ref options,
+      ..
+    } = *self.calibrator;
     let params = self.effective_params();
     let model = BsmPricer::new(params.sigma, BsmCoc::Merton1973);
-    let record = self.options.record_history;
-    let mut prices = Vec::with_capacity(if record { self.quotes.len() } else { 0 });
-    let mut residuals = Array1::zeros(self.quotes.len());
+    let record = options.record_history;
+    let mut prices = Vec::with_capacity(if record { quotes.len() } else { 0 });
+    let mut residuals = Array1::zeros(quotes.len());
 
-    for (idx, quote) in self.quotes.iter().enumerate() {
-      let (call, put) = model.call_put(self.s, quote.strike, self.r, self.q, quote.tau);
+    for (idx, quote) in quotes.iter().enumerate() {
+      let (call, put) = model.call_put(s, quote.strike, r, q, quote.tau);
       let price = match quote.option_type {
         OptionType::Call => call,
         OptionType::Put => put,
       };
       // Vega weighting approximates calibration in implied-volatility space.
       let vega = model
-        .vega(self.s, quote.strike, self.r, self.q, quote.tau)
+        .vega(s, quote.strike, r, q, quote.tau)
         .abs()
         .max_or_nan(1e-8);
       residuals[idx] = (price - quote.price) / vega;
@@ -203,29 +220,27 @@ impl LeastSquaresProblem for BsmCalibrator {
       }
     }
 
-    if record {
-      let market = self
-        .quotes
-        .iter()
-        .map(|quote| quote.price)
-        .collect::<Vec<_>>();
-      let loss =
-        CalibrationLossScore::compute_selected(&market, &prices, self.options.loss_metrics);
-      // A trail reads market − model, the negation of this fit's residual.
-      let entry = CalibrationHistory::new(self.history.len(), params, -&residuals, loss);
-      self.pending = Some(entry);
-    }
+    self
+      .trail
+      .stage(options, &self.market, &prices, &params, &residuals);
     Some(residuals)
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
     // For vega-weighted residuals r = (C_model - C_mkt)/Vega,
     // dr/dsigma = 1 - r * (Vomma / Vega)
+    let BsmCalibrator {
+      s,
+      r,
+      q,
+      ref quotes,
+      ..
+    } = *self.calibrator;
     let model = BsmPricer::new(self.effective_params().sigma, BsmCoc::Merton1973);
-    let mut J = Array2::zeros((self.quotes.len(), 1));
+    let mut J = Array2::zeros((quotes.len(), 1));
 
-    for (idx, quote) in self.quotes.iter().enumerate() {
-      let (s, k, r, q, tau) = (self.s, quote.strike, self.r, self.q, quote.tau);
+    for (idx, quote) in quotes.iter().enumerate() {
+      let (k, tau) = (quote.strike, quote.tau);
       let c_model_i = model.price_option(s, k, r, q, tau, quote.option_type);
 
       let vega = model.vega(s, k, r, q, tau).abs().max_or_nan(1e-8);
@@ -239,7 +254,7 @@ impl LeastSquaresProblem for BsmCalibrator {
   }
 
   fn accept(&mut self) {
-    self.history.extend(self.pending.take());
+    self.trail.accept();
   }
 }
 

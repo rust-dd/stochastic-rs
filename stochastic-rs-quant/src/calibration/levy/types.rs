@@ -1,6 +1,5 @@
-use super::calibrator::LevyCalibrator;
-use crate::CalibrationLossScore;
-use crate::QuantError;
+use crate::calibration::Calibrated;
+use crate::traits::ToModel;
 
 /// Supported Lévy model types for calibration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -18,48 +17,9 @@ pub enum LevyModelType {
   Kou,
 }
 
-/// Market data for a single maturity slice.
-#[derive(Clone, Debug)]
-pub struct MarketSlice {
-  /// Strike prices.
-  pub strikes: Vec<f64>,
-  /// Market option prices.
-  pub prices: Vec<f64>,
-  /// `true` for call, `false` for put.
-  pub is_call: Vec<bool>,
-  /// Time to maturity in years.
-  pub tau: f64,
-}
-
-impl MarketSlice {
-  /// Build a `MarketSlice` from evaluation and expiration dates using a
-  /// day-count convention.
-  ///
-  /// Bridges the `tau`-only calibrator API with date-native market data —
-  /// callers can pass `chrono::NaiveDate` instead of pre-computed
-  /// year-fractions. Mirrors the `eval` / `expiration` pattern available on
-  /// pricers via [`crate::traits::TimeExt::tau_with_dcc`].
-  pub fn from_dates(
-    strikes: Vec<f64>,
-    prices: Vec<f64>,
-    is_call: Vec<bool>,
-    eval: chrono::NaiveDate,
-    expiration: chrono::NaiveDate,
-    dcc: crate::calendar::DayCountConvention,
-  ) -> Self {
-    let tau = dcc.year_fraction(eval, expiration);
-    Self {
-      strikes,
-      prices,
-      is_call,
-      tau,
-    }
-  }
-}
-
 /// Calibrated parameter set for a Lévy model — the parameter vector together
 /// with its [`LevyModelType`] tag (the vector layout depends on the model).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LevyParams {
   /// Calibrated parameter vector. Layout is model-specific.
   pub values: Vec<f64>,
@@ -67,22 +27,7 @@ pub struct LevyParams {
   pub model_type: LevyModelType,
 }
 
-/// Calibration result for a Lévy model.
-#[derive(Clone, Debug)]
-pub struct LevyCalibrationResult {
-  /// Calibrated parameter vector.
-  pub params: Vec<f64>,
-  /// Model type that was calibrated.
-  pub model_type: LevyModelType,
-  /// Calibration loss metrics.
-  pub loss: CalibrationLossScore,
-  /// Whether the optimiser converged.
-  pub converged: bool,
-  /// Number of LM iterations performed.
-  pub iterations: usize,
-}
-
-/// The five Lévy Fourier models behind one enum, so [`LevyCalibrationResult`]'s
+/// The five Lévy Fourier models behind one enum, so a Lévy fit's
 /// [`ToModel::to_model`](crate::traits::ToModel::to_model) stays a concrete `ModelPricer`.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
@@ -111,12 +56,13 @@ impl crate::traits::ModelPricer for LevyModel {
 /// members are.
 impl crate::traits::VanillaEuropeanCall for LevyModel {}
 
-impl crate::traits::ToModel for LevyCalibrationResult {
+impl ToModel for Calibrated<LevyParams> {
   type Model = LevyModel;
-  fn to_model(&self) -> Self::Model {
+
+  fn to_model(&self) -> LevyModel {
     use crate::pricing::fourier::*;
-    let p = &self.params;
-    match self.model_type {
+    let p = &self.params.values;
+    match self.params.model_type {
       LevyModelType::VarianceGamma => LevyModel::VarianceGamma(VarianceGammaFourier {
         sigma: p[0],
         theta: p[1],
@@ -147,37 +93,5 @@ impl crate::traits::ToModel for LevyCalibrationResult {
         eta2: p[4],
       }),
     }
-  }
-}
-
-impl crate::traits::CalibrationResult for LevyCalibrationResult {
-  type Params = LevyParams;
-  fn rmse(&self) -> f64 {
-    self.loss.get(crate::LossMetric::Rmse)
-  }
-
-  fn params(&self) -> Self::Params {
-    LevyParams {
-      values: self.params.clone(),
-      model_type: self.model_type,
-    }
-  }
-
-  fn converged(&self) -> bool {
-    self.converged
-  }
-
-  fn loss_score(&self) -> Option<&crate::CalibrationLossScore> {
-    Some(&self.loss)
-  }
-}
-
-impl crate::traits::Calibrator for LevyCalibrator {
-  type Params = LevyParams;
-  type Output = LevyCalibrationResult;
-  type Error = QuantError;
-
-  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
-    Ok(self.solve(initial.map(|p| p.values)))
   }
 }

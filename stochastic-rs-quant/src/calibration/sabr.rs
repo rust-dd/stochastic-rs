@@ -10,20 +10,20 @@
 use ndarray::Array1;
 use ndarray::Array2;
 
-use crate::CalibrationLossScore;
 use crate::OptionQuote;
+use crate::OptionType;
 use crate::QuantError;
 use crate::calibration::Calibrated;
-use crate::calibration::CalibrationHistory;
 use crate::calibration::CalibrationOptions;
 use crate::calibration::Regularization;
 use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::Trail;
 use crate::calibration::least_squares::minimize;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::validate_quotes;
 use crate::pricing::sabr::SabrParams;
 use crate::pricing::sabr::SabrPricer;
-use crate::traits::ModelPricer;
+use crate::pricing::sabr::forward_fx;
 use crate::traits::ToModel;
 
 const RHO_BOUND: f64 = 0.9999;
@@ -153,10 +153,14 @@ impl crate::traits::Calibrator for SabrCalibrator {
     let problem = SabrProblem {
       calibrator: self,
       market: self.quotes.iter().map(|quote| quote.price).collect(),
+      forwards: self
+        .quotes
+        .iter()
+        .map(|quote| forward_fx(self.s, quote.tau, self.r, self.q))
+        .collect(),
       params: start.unwrap_or(DEFAULT_START).projected(),
       regularization: self.options.regularization_for(3)?.map(optimiser_order),
-      history: Vec::new(),
-      pending: None,
+      trail: Trail::new(),
     };
     let (problem, report) = minimize(problem, self.options.lm(false));
     let model = problem.model_prices(&problem.params);
@@ -165,7 +169,7 @@ impl crate::traits::Calibrator for SabrCalibrator {
       &problem.market,
       &model,
       self.options.loss_metrics,
-      problem.history,
+      problem.trail.into_entries(),
     ))
   }
 }
@@ -179,25 +183,30 @@ fn optimiser_order(regularization: Regularization) -> Regularization {
   )
 }
 
-/// One fit: the current point, the regularization in the optimiser's order and the trail.
+/// One fit: each quote's forward, the current point, the regularization in the optimiser's order
+/// and the trail.
 struct SabrProblem<'a> {
   calibrator: &'a SabrCalibrator,
   market: Vec<f64>,
+  forwards: Vec<f64>,
   params: SabrParams,
   regularization: Option<Regularization>,
-  history: Vec<CalibrationHistory<SabrParams>>,
-  pending: Option<CalibrationHistory<SabrParams>>,
+  trail: Trail<SabrParams>,
 }
 
 impl SabrProblem<'_> {
   fn model_prices(&self, p: &SabrParams) -> Vec<f64> {
     let pricer = SabrPricer::new(*p);
     let SabrCalibrator { s, r, q, .. } = *self.calibrator;
-    self
-      .calibrator
-      .quotes
-      .iter()
-      .map(|quote| pricer.price_option(s, quote.strike, r, q, quote.tau, quote.option_type))
+    let quotes = self.calibrator.quotes.iter().zip(&self.forwards);
+    quotes
+      .map(|(quote, &f)| {
+        let (call, put) = pricer.call_put_at_forward(f, s, quote.strike, r, q, quote.tau);
+        match quote.option_type {
+          OptionType::Call => call,
+          OptionType::Put => put,
+        }
+      })
       .collect()
   }
 
@@ -263,11 +272,9 @@ impl LeastSquaresProblem for SabrProblem<'_> {
     let model = self.model_prices(&self.params);
     let residuals = Array1::from_iter(self.market.iter().zip(&model).map(|(m, q)| m - q));
     let options = &self.calibrator.options;
-    if options.record_history {
-      let loss = CalibrationLossScore::compute_selected(&self.market, &model, options.loss_metrics);
-      let entry = CalibrationHistory::new(self.history.len(), self.params, residuals.clone(), loss);
-      self.pending = Some(entry);
-    }
+    self
+      .trail
+      .stage(options, &self.market, &model, &self.params, &residuals);
     let p = self.params;
     match &self.regularization {
       Some(reg) if reg.is_active() => {
@@ -286,7 +293,7 @@ impl LeastSquaresProblem for SabrProblem<'_> {
   }
 
   fn accept(&mut self) {
-    self.history.extend(self.pending.take());
+    self.trail.accept();
   }
 }
 

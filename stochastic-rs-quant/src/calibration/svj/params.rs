@@ -3,6 +3,7 @@ use ndarray::Array1;
 use super::calibrator::KAPPA_MIN;
 use super::calibrator::SIGMA_V_MIN;
 use super::calibrator::THETA_MIN;
+use crate::calibration::quote::first_violation;
 
 pub(super) const EPS: f64 = 1e-8;
 pub(super) const RHO_BOUND: f64 = 0.9999;
@@ -17,7 +18,7 @@ pub(super) const P_MU_J: (f64, f64) = (-0.5, 0.5);
 pub(super) const P_SIGMA_J: (f64, f64) = (0.001, 1.0);
 
 /// SVJ / Bates model parameters.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SvjParams {
   /// Initial variance $v_0$.
   pub v0: f64,
@@ -69,6 +70,61 @@ impl SvjParams {
   pub fn projected(mut self) -> Self {
     self.project_in_place();
     self
+  }
+
+  /// The first of [`BatesFourier::new`](crate::pricing::fourier::BatesFourier::new)'s checks these
+  /// values fail, in its panic's words; `None` if all pass.
+  pub(crate) fn violation(&self) -> Option<String> {
+    let Self {
+      v0,
+      kappa,
+      theta,
+      sigma_v,
+      rho,
+      lambda,
+      mu_j,
+      sigma_j,
+    } = *self;
+    first_violation(&[
+      (
+        "v0",
+        v0,
+        "v0.is_finite() && v0 >= 0.0",
+        v0.is_finite() && v0 >= 0.0,
+      ),
+      ("kappa", kappa, "kappa.is_finite()", kappa.is_finite()),
+      (
+        "theta",
+        theta,
+        "theta.is_finite() && theta >= 0.0",
+        theta.is_finite() && theta >= 0.0,
+      ),
+      (
+        "sigma_v",
+        sigma_v,
+        "sigma_v.is_finite() && sigma_v > 0.0",
+        sigma_v.is_finite() && sigma_v > 0.0,
+      ),
+      (
+        "rho",
+        rho,
+        "(-1.0..=1.0).contains(&rho)",
+        (-1.0..=1.0).contains(&rho),
+      ),
+      (
+        "lambda",
+        lambda,
+        "lambda.is_finite() && lambda >= 0.0",
+        lambda.is_finite() && lambda >= 0.0,
+      ),
+      ("mu_j", mu_j, "mu_j.is_finite()", mu_j.is_finite()),
+      (
+        "sigma_j",
+        sigma_j,
+        "sigma_j.is_finite() && sigma_j >= 0.0",
+        sigma_j.is_finite() && sigma_j >= 0.0,
+      ),
+    ])
   }
 }
 

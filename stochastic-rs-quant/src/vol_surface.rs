@@ -78,8 +78,7 @@
 //! ### SVJ / Bates (multi-maturity joint calibration)
 //!
 //! ```
-//! use stochastic_rs_quant::OptionType;
-//! use stochastic_rs_quant::calibration::levy::MarketSlice;
+//! use stochastic_rs_quant::{OptionQuote, OptionType};
 //! use stochastic_rs_quant::calibration::{SvjCalibrator, SvjParams};
 //! use stochastic_rs_quant::pricing::fourier::BatesFourier;
 //! use stochastic_rs_quant::traits::{Calibrator, ModelPricer};
@@ -92,28 +91,20 @@
 //!     v0: 0.04, kappa: 1.5, theta: 0.04, sigma_v: 0.3, rho: -0.6,
 //!     lambda: 0.3, mu_j: -0.05, sigma_j: 0.15,
 //! };
-//! let model_true = BatesFourier {
-//!     v0: true_params.v0, kappa: true_params.kappa, theta: true_params.theta,
-//!     sigma_v: true_params.sigma_v, rho: true_params.rho, lambda: true_params.lambda,
-//!     mu_j: true_params.mu_j, sigma_j: true_params.sigma_j,
-//! };
+//! let model_true = BatesFourier::new(true_params);
 //! let strikes = [90., 95., 100., 105., 110.];
 //! let maturities = [0.25, 0.5, 1.0];
-//! let slices: Vec<MarketSlice> = maturities.iter().map(|&tau| MarketSlice {
-//!     strikes: strikes.to_vec(),
-//!     prices: strikes.iter().map(|&k| model_true.price_call(s0, k, r, q, tau)).collect(),
-//!     is_call: vec![true; strikes.len()],
-//!     tau,
-//! }).collect();
+//! let quotes = maturities.iter().flat_map(|&tau| strikes.map(|k| (k, tau)))
+//!     .map(|(k, tau)| OptionQuote::new(k, tau, model_true.price_call(s0, k, r, q, tau), OptionType::Call))
+//!     .collect();
 //!
-//! // A reasonable initial guess keeps the optimiser fast; `None` here would
-//! // fall back to a generic default and cost many more iterations.
+//! // A reasonable initial guess keeps the optimiser fast; without one the fit
+//! // starts from a generic default and costs many more iterations.
 //! let initial = SvjParams {
 //!     v0: 0.05, kappa: 2.0, theta: 0.05, sigma_v: 0.4, rho: -0.4,
 //!     lambda: 0.2, mu_j: -0.02, sigma_j: 0.1,
 //! };
-//! let cal = SvjCalibrator::from_slices(Some(initial), &slices, s0, r, Some(q),
-//!     OptionType::Call, false);
+//! let cal = SvjCalibrator::new(s0, r, q, quotes).with_start(initial);
 //! let result = cal.calibrate(None).unwrap();
 //! let surface = build_surface_from_calibration(&result, s0, r, q, &strikes, &maturities);
 //! assert_eq!(surface.iv_surface.ivs.dim(), (maturities.len(), strikes.len()));
@@ -122,17 +113,14 @@
 //! ### Lévy models (Vg, Nig, Cgmy, Merton, Kou)
 //!
 //! ```
-//! use stochastic_rs_quant::calibration::{LevyCalibrator, LevyModelType, MarketSlice};
+//! use stochastic_rs_quant::{OptionQuote, OptionType};
+//! use stochastic_rs_quant::calibration::{LevyCalibrator, LevyModelType};
 //! use stochastic_rs_quant::traits::Calibrator;
 //! use stochastic_rs_quant::vol_surface::build_surface_from_calibration;
 //!
-//! let slice = MarketSlice {
-//!     strikes: vec![90.0, 95.0, 100.0, 105.0, 110.0],
-//!     prices: vec![12.5, 9.0, 6.2, 4.0, 2.3],
-//!     is_call: vec![true; 5],
-//!     tau: 0.5,
-//! };
-//! let cal = LevyCalibrator::new(LevyModelType::VarianceGamma, 100.0, 0.03, 0.01, vec![slice]);
+//! let quotes = [(90.0, 12.5), (95.0, 9.0), (100.0, 6.2), (105.0, 4.0), (110.0, 2.3)]
+//!     .map(|(k, price)| OptionQuote::new(k, 0.5, price, OptionType::Call));
+//! let cal = LevyCalibrator::new(LevyModelType::VarianceGamma, 100.0, 0.03, 0.01, quotes.to_vec());
 //! let result = cal.calibrate(None).unwrap();
 //! let surface = build_surface_from_calibration(&result, 100.0, 0.03, 0.01,
 //!     &[90., 95., 100., 105., 110.], &[0.5]);

@@ -2,12 +2,12 @@ use ndarray::Array1;
 use stochastic_rs_distributions::RealExt;
 use stochastic_rs_stats::heston_nmle_cekf::HestonNmleCekfConfig;
 
+use super::lsq::HestonProblem;
 use super::params::HestonJacobianMethod;
 use super::params::HestonMleSeedMethod;
 use crate::OptionQuote;
 use crate::QuantError;
 use crate::calibration::Calibrated;
-use crate::calibration::CalibrationHistory;
 use crate::calibration::CalibrationOptions;
 use crate::calibration::least_squares::minimize;
 use crate::calibration::quote::assert_spot_and_rates;
@@ -30,9 +30,7 @@ pub struct HestonMleSeed {
   pub nmle_cekf: Option<HestonNmleCekfConfig>,
 }
 
-/// Heston fit to vanilla quotes by Levenberg–Marquardt in logistic coordinates, with Cui et al.'s
-/// analytic Jacobian by default.
-/// Heston (1993), Rev. Financ. Stud. 6(2), 327–343, DOI 10.1093/rfs/6.2.327.
+/// Heston fit to vanilla quotes by Levenberg–Marquardt, Cui et al.'s analytic Jacobian by default.
 /// Levenberg (1944), DOI 10.1090/qam/10666; Marquardt (1963), DOI 10.1137/0111030.
 #[derive(Clone, Debug)]
 pub struct HestonCalibrator {
@@ -51,11 +49,6 @@ pub struct HestonCalibrator {
   /// Lower σ of the start and of every iterate to Feller's bound `σ² ≤ 2κθ` (off by default).
   pub feller_projection: bool,
   pub mle_seed: Option<HestonMleSeed>,
-  /// The trail of the clone that runs the fit, moved into its result.
-  pub(super) history: Vec<CalibrationHistory<HestonParams>>,
-  pub(super) pending: Option<CalibrationHistory<HestonParams>>,
-  /// Weight of the row on σ's overshoot past the Feller cap; set only inside a projected fit.
-  pub(super) feller_row_weight: Option<f64>,
 }
 
 impl HestonCalibrator {
@@ -73,9 +66,6 @@ impl HestonCalibrator {
       jacobian_method: HestonJacobianMethod::default(),
       feller_projection: false,
       mle_seed: None,
-      history: Vec::new(),
-      pending: None,
-      feller_row_weight: None,
     }
   }
 
@@ -101,7 +91,7 @@ impl HestonCalibrator {
       "weights must satisfy `weights.len() == quotes.len()`, got weights.len() = {} for {quotes} quotes",
       weights.len()
     );
-    check_residual_weights(&weights, quotes).unwrap_or_else(|e| panic!("{e}"));
+    check_residual_weights(&weights).unwrap_or_else(|e| panic!("{e}"));
     self.residual_weights = Some(unit_root_mean_square(weights));
     self
   }
@@ -161,16 +151,8 @@ fn unit_root_mean_square(weights: Array1<f64>) -> Array1<f64> {
   weights / (largest * scaled)
 }
 
-/// `DimensionMismatch` unless there is one weight per quote, `InvalidInput` for the first weight
-/// that is not finite and positive.
-fn check_residual_weights(weights: &Array1<f64>, quotes: usize) -> Result<(), QuantError> {
-  if weights.len() != quotes {
-    return Err(QuantError::DimensionMismatch {
-      what: "residual weights, one per quote",
-      expected: quotes,
-      got: weights.len(),
-    });
-  }
+/// `InvalidInput` for the first weight that is not finite and positive.
+fn check_residual_weights(weights: &Array1<f64>) -> Result<(), QuantError> {
   match weights
     .iter()
     .enumerate()
@@ -199,7 +181,14 @@ impl crate::traits::Calibrator for HestonCalibrator {
     validate_quotes(&self.quotes)?;
     self.options.regularization_for(5)?;
     if let Some(weights) = &self.residual_weights {
-      check_residual_weights(weights, self.quotes.len())?;
+      if weights.len() != self.quotes.len() {
+        return Err(QuantError::DimensionMismatch {
+          what: "residual weights, one per quote",
+          expected: self.quotes.len(),
+          got: weights.len(),
+        });
+      }
+      check_residual_weights(weights)?;
     }
     let start = match initial.or(self.start) {
       Some(start) => start,
@@ -208,24 +197,19 @@ impl crate::traits::Calibrator for HestonCalibrator {
     if let Some(reason) = start.violation() {
       return Err(QuantError::invalid("start", reason));
     }
-    let mut problem = Self {
-      start: Some(start),
-      history: Vec::new(),
-      pending: None,
-      ..self.clone()
-    };
-    if problem.feller_projection {
-      problem.feller_row_weight = Some(problem.feller_row_weight_at_start());
+    let mut problem = HestonProblem::new(self, start);
+    if self.feller_projection {
+      problem.feller_row_weight = Some(self.feller_row_weight_at(problem.effective_params()));
     }
-    let (mut fitted, report) = minimize(problem, self.options.lm(true));
+    let (fitted, report) = minimize(problem, self.options.lm(true));
     let params = fitted.effective_params();
-    let model = fitted.compute_model_prices_for(&params).to_vec();
-    let market = self
-      .quotes
-      .iter()
-      .map(|quote| quote.price)
-      .collect::<Vec<_>>();
-    let history = std::mem::take(&mut fitted.history);
-    Ok(report.calibrated(params, &market, &model, self.options.loss_metrics, history))
+    let model = self.compute_model_prices_for(&params).to_vec();
+    Ok(report.calibrated(
+      params,
+      &fitted.market,
+      &model,
+      self.options.loss_metrics,
+      fitted.trail.into_entries(),
+    ))
   }
 }

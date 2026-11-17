@@ -3,20 +3,23 @@ use std::f64::consts::FRAC_1_PI;
 use ndarray::Array1;
 use ndarray::Array2;
 use num_complex::Complex64;
+use stochastic_rs_distributions::RealExt;
 
 use super::super::integrate_gl_to_convergence;
 use super::super::periodic_map;
 use super::calibrator::DoubleHestonCalibrator;
 use super::params::DoubleHestonParams;
-use super::params::KAPPA_MIN;
-use super::params::P_KAPPA;
 use super::params::P_SIGMA;
-use super::params::P_THETA;
 use super::params::P_V0;
-use super::params::RHO_BOUND;
-use super::params::SIGMA_MIN;
-use super::params::THETA_MIN;
 use crate::OptionType;
+use crate::calibration::heston::params::KAPPA_MIN;
+use crate::calibration::heston::params::P_KAPPA;
+use crate::calibration::heston::params::P_THETA;
+use crate::calibration::heston::params::RHO_BOUND;
+use crate::calibration::heston::params::SIGMA_MIN;
+use crate::calibration::heston::params::THETA_MIN;
+use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::Trail;
 use crate::pricing::fourier::factor_cd;
 
 /// Double Heston characteristic function $\phi_T(u)$ of $\ln(S_T/S_0)$,
@@ -76,41 +79,65 @@ pub(super) fn double_heston_call_price(
   };
 
   let call = 0.5 * (s * disc_q - k * disc_r) + FRAC_1_PI * integral;
-  if call.is_finite() {
-    call.max(0.0)
-  } else {
-    call
-  }
+  call.max_or_nan(0.0)
 }
 
-impl DoubleHestonCalibrator {
-  pub(super) fn compute_model_prices_for(&self, p: &DoubleHestonParams) -> Array1<f64> {
-    let n = self.c_market.len();
-    let mut c_model = Array1::zeros(n);
-    let q_val = self.q.unwrap_or(0.0);
+/// One fit: the current point, the quotes' prices and the trail.
+pub(super) struct DoubleHestonProblem<'a> {
+  calibrator: &'a DoubleHestonCalibrator,
+  params: DoubleHestonParams,
+  pub(super) market: Vec<f64>,
+  pub(super) trail: Trail<DoubleHestonParams>,
+}
 
-    for idx in 0..n {
-      let tau = self.flat_t[idx];
-      let call = double_heston_call_price(p, self.s[idx], self.k[idx], self.r, q_val, tau);
-      c_model[idx] = match self.option_type {
-        OptionType::Call => call,
-        OptionType::Put => {
-          let put = call - self.s[idx] * (-q_val * tau).exp() + self.k[idx] * (-self.r * tau).exp();
-          if put.is_finite() { put.max(0.0) } else { put }
-        }
-      };
+impl<'a> DoubleHestonProblem<'a> {
+  pub(super) fn new(calibrator: &'a DoubleHestonCalibrator, start: DoubleHestonParams) -> Self {
+    Self {
+      calibrator,
+      params: start,
+      market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
+      trail: Trail::new(),
     }
+  }
 
-    c_model
+  pub(super) fn effective_params(&self) -> DoubleHestonParams {
+    self.params.projected()
+  }
+
+  pub(super) fn compute_model_prices_for(&self, p: &DoubleHestonParams) -> Vec<f64> {
+    let DoubleHestonCalibrator { s, r, q, .. } = *self.calibrator;
+    self
+      .calibrator
+      .quotes
+      .iter()
+      .map(|quote| {
+        let (k, tau) = (quote.strike, quote.tau);
+        let call = double_heston_call_price(p, s, k, r, q, tau);
+        match quote.option_type {
+          OptionType::Call => call,
+          OptionType::Put => (call - s * (-q * tau).exp() + k * (-r * tau).exp()).max_or_nan(0.0),
+        }
+      })
+      .collect()
   }
 
   pub(super) fn residuals_for(&self, p: &DoubleHestonParams) -> Array1<f64> {
-    self.c_market.clone() - self.compute_model_prices_for(p)
+    self.market_minus(&self.compute_model_prices_for(p))
+  }
+
+  fn market_minus(&self, model: &[f64]) -> Array1<f64> {
+    Array1::from_iter(
+      self
+        .market
+        .iter()
+        .zip(model)
+        .map(|(market, model)| market - model),
+    )
   }
 
   /// Central finite-difference Jacobian over the 10 parameters.
   pub(super) fn numeric_jacobian(&self, params: &DoubleHestonParams) -> Array2<f64> {
-    let n = self.c_market.len();
+    let n = self.calibrator.quotes.len();
     let p_dim = 10usize;
 
     let base_params_vec: Array1<f64> = (*params).into();
@@ -178,5 +205,34 @@ impl DoubleHestonCalibrator {
     }
 
     j_mat
+  }
+}
+
+impl LeastSquaresProblem for DoubleHestonProblem<'_> {
+  fn set_params(&mut self, params: &Array1<f64>) {
+    self.params = DoubleHestonParams::from(params.clone()).projected();
+  }
+
+  fn params(&self) -> Array1<f64> {
+    self.effective_params().into()
+  }
+
+  fn residuals(&mut self) -> Option<Array1<f64>> {
+    let params_eff = self.effective_params();
+    let model = self.compute_model_prices_for(&params_eff);
+    let residuals = self.market_minus(&model);
+    let options = &self.calibrator.options;
+    self
+      .trail
+      .stage(options, &self.market, &model, &params_eff, &residuals);
+    Some(residuals)
+  }
+
+  fn jacobian(&self) -> Option<Array2<f64>> {
+    Some(self.numeric_jacobian(&self.effective_params()))
+  }
+
+  fn accept(&mut self) {
+    self.trail.accept();
   }
 }

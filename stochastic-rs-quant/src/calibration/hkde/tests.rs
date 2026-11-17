@@ -1,8 +1,16 @@
 use super::*;
 use crate::LossMetric;
+use crate::OptionQuote;
 use crate::OptionType;
+use crate::QuantError;
+use crate::calibration::CalibrationHistory;
+use crate::calibration::CalibrationOptions;
+use crate::pricing::bsm::BsmCoc;
+use crate::pricing::bsm::BsmPricer;
 use crate::pricing::fourier::HkdeFourier;
+use crate::traits::Calibrator;
 use crate::traits::ModelPricer;
+use crate::traits::ToModel;
 
 /// Analytical reference Heston prices at
 /// (v0=0.04, kappa=1.5, theta=0.04, sigma_v=0.3, rho=-0.7),
@@ -49,32 +57,37 @@ fn hkde_projection_enforces_feller() {
   );
 }
 
+fn calls(strikes: &[f64], taus: &[f64], price: impl Fn(f64, f64) -> f64) -> Vec<OptionQuote> {
+  taus
+    .iter()
+    .flat_map(|&tau| strikes.iter().map(move |&k| (k, tau)))
+    .map(|(k, tau)| OptionQuote::new(k, tau, price(k, tau), OptionType::Call))
+    .collect()
+}
+
+fn heston_ref_quotes() -> Vec<OptionQuote> {
+  let price = |k: f64, _| HESTON_REF[STRIKES.iter().position(|&x| x == k).unwrap()];
+  calls(&STRIKES, &[1.0], price)
+}
+
+const START: HkdeParams = HkdeParams {
+  v0: 0.05,
+  kappa: 1.8,
+  theta: 0.05,
+  sigma_v: 0.4,
+  rho: -0.6,
+  lambda: 0.05,
+  p_up: 0.5,
+  eta1: 10.0,
+  eta2: 10.0,
+};
+
 #[test]
 fn hkde_calibrate_recovers_heston_prices() {
-  let n = STRIKES.len();
-  let calibrator = HkdeCalibrator::new(
-    Some(HkdeParams {
-      v0: 0.05,
-      kappa: 1.8,
-      theta: 0.05,
-      sigma_v: 0.4,
-      rho: -0.6,
-      lambda: 0.05,
-      p_up: 0.5,
-      eta1: 10.0,
-      eta2: 10.0,
-    }),
-    HESTON_REF.to_vec().into(),
-    vec![100.0; n].into(),
-    STRIKES.to_vec().into(),
-    0.05,
-    Some(0.0),
-    1.0,
-    OptionType::Call,
-    false,
-  );
-
-  let result = calibrator.calibrate(None);
+  let result = HkdeCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes())
+    .with_start(START)
+    .calibrate(None)
+    .unwrap();
   assert!(
     result.loss.get(LossMetric::Rmse) < 1.0,
     "Hkde→Heston RMSE={:.6}",
@@ -85,17 +98,7 @@ fn hkde_calibrate_recovers_heston_prices() {
 #[test]
 fn hkde_calibrate_self_consistency() {
   let truth = ref_hkde_params();
-  let model = HkdeFourier {
-    v0: truth.v0,
-    kappa: truth.kappa,
-    theta: truth.theta,
-    sigma_v: truth.sigma_v,
-    rho: truth.rho,
-    lam: truth.lambda,
-    p_up: truth.p_up,
-    eta1: truth.eta1,
-    eta2: truth.eta2,
-  };
+  let model = HkdeFourier::new(truth);
 
   let s_val = 100.0;
   let r = 0.03;
@@ -118,18 +121,15 @@ fn hkde_calibrate_self_consistency() {
     eta2: 6.0,
   };
 
-  let calibrator = HkdeCalibrator::new(
-    Some(initial),
-    market.into(),
-    vec![s_val; STRIKES.len()].into(),
-    STRIKES.to_vec().into(),
-    r,
-    Some(q),
-    tau,
-    OptionType::Call,
-    false,
-  );
-  let result = calibrator.calibrate(None);
+  let quotes = STRIKES
+    .iter()
+    .zip(market)
+    .map(|(&k, price)| OptionQuote::new(k, tau, price, OptionType::Call))
+    .collect();
+  let result = HkdeCalibrator::new(s_val, r, q, quotes)
+    .with_start(initial)
+    .calibrate(None)
+    .unwrap();
   assert!(
     result.loss.get(LossMetric::Rmse) < 1.0,
     "Hkde self-consistency RMSE={:.6}",
@@ -138,44 +138,16 @@ fn hkde_calibrate_self_consistency() {
 }
 
 #[test]
-fn hkde_calibrate_from_slices_multi_maturity() {
-  use crate::calibration::levy::MarketSlice;
-
-  let truth = ref_hkde_params();
-  let r = 0.02;
-  let q = 0.0;
-  let s0 = 100.0;
-  let make_model = || HkdeFourier {
-    v0: truth.v0,
-    kappa: truth.kappa,
-    theta: truth.theta,
-    sigma_v: truth.sigma_v,
-    rho: truth.rho,
-    lam: truth.lambda,
-    p_up: truth.p_up,
-    eta1: truth.eta1,
-    eta2: truth.eta2,
-  };
-  let slice_strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
-
-  let make_slice = |tau: f64| -> MarketSlice {
-    let model = make_model();
-    let prices: Vec<f64> = slice_strikes
-      .iter()
-      .map(|&k| model.price_call(s0, k, r, q, tau).max(0.0))
-      .collect();
-    MarketSlice {
-      strikes: slice_strikes.clone(),
-      prices,
-      is_call: vec![true; slice_strikes.len()],
-      tau,
-    }
-  };
-
-  let slices = vec![make_slice(0.25), make_slice(0.5), make_slice(1.0)];
-
-  let calibrator = HkdeCalibrator::from_slices(
-    Some(HkdeParams {
+fn hkde_calibrate_multi_maturity() {
+  let model = HkdeFourier::new(ref_hkde_params());
+  let (r, q, s0) = (0.02, 0.0, 100.0);
+  let quotes = calls(
+    &[90.0, 95.0, 100.0, 105.0, 110.0],
+    &[0.25, 0.5, 1.0],
+    |k, tau| model.price_call(s0, k, r, q, tau).max(0.0),
+  );
+  let result = HkdeCalibrator::new(s0, r, q, quotes)
+    .with_start(HkdeParams {
       v0: 0.05,
       kappa: 1.8,
       theta: 0.05,
@@ -185,19 +157,157 @@ fn hkde_calibrate_from_slices_multi_maturity() {
       p_up: 0.5,
       eta1: 12.0,
       eta2: 6.0,
-    }),
-    &slices,
-    s0,
-    r,
-    Some(q),
-    OptionType::Call,
-    false,
-  );
-  let result = calibrator.calibrate(None);
+    })
+    .calibrate(None)
+    .unwrap();
   assert!(
     result.loss.get(LossMetric::Rmse) < 1.0,
     "Hkde multi-maturity RMSE={:.6}",
     result.loss.get(LossMetric::Rmse)
+  );
+}
+
+/// The trail opens at the projected start and records each accepted step's residuals as
+/// `√w · (market − model)`, the fit's own rows, so its objective falls to the fit.
+#[test]
+fn the_trail_records_weighted_market_minus_model() {
+  let quotes = heston_ref_quotes();
+  let calibrator = HkdeCalibrator::new(100.0, 0.05, 0.0, quotes.clone())
+    .with_start(START)
+    .with_options(
+      CalibrationOptions::default()
+        .with_record_history(true)
+        .with_max_iterations(6),
+    );
+  let fit = calibrator.calibrate(None).unwrap();
+  assert!(fit.history.len() > 1, "{} entries", fit.history.len());
+  assert_eq!(fit.history[0].params, START.projected());
+  assert_eq!(
+    fit.history.last().map(|entry| entry.params),
+    Some(fit.params)
+  );
+  let objective = |entry: &CalibrationHistory<HkdeParams>| entry.residuals.dot(&entry.residuals);
+  assert!(
+    fit
+      .history
+      .windows(2)
+      .all(|pair| objective(&pair[1]) < objective(&pair[0]))
+  );
+  let problem = super::loss::HkdeProblem::new(&calibrator, START).unwrap();
+  for entry in &fit.history {
+    let fit_rows = problem.weighted_residuals_for(&entry.params);
+    for (i, quote) in quotes.iter().enumerate() {
+      let model = HkdeFourier::new(entry.params).price_call(100.0, quote.strike, 0.05, 0.0, 1.0);
+      let weight = fit_rows[i] / (model - quote.price);
+      assert_eq!(entry.residuals[i], -fit_rows[i]);
+      assert!(
+        weight.is_finite() && weight > 0.0 && (weight - 1.0).abs() > 1e-3,
+        "{weight}"
+      );
+    }
+  }
+}
+
+/// Eq. 13 at the carry `r − q`: a call priced at σ = 0.25 (K = 90, T = 1, r = 3 %, q = 2 %),
+/// against mpmath's 50-digit `1/(S ψ(d₁) √T)`.
+#[test]
+fn a_weight_at_a_dividend_yield_inverts_at_the_carry_r_minus_q() {
+  let quote = OptionQuote::new(90.0, 1.0, 15.51751499245581, OptionType::Call);
+  let weight = super::loss::market_weight(100.0, 0.03, 0.02, &quote).unwrap();
+  let reference = 0.029769392626231853;
+  assert!(
+    (weight / reference - 1.0).abs() < 1e-12,
+    "{weight} against {reference}"
+  );
+}
+
+/// At `q = 0` the carry `r − q` is `r` to the bit, so every weight is the one inverted at `r`.
+#[test]
+fn without_a_dividend_yield_each_weight_is_the_one_inverted_at_r() {
+  let model = HkdeFourier::new(ref_hkde_params());
+  let carry_r = BsmPricer::new(0.2, BsmCoc::Bsm1973);
+  for tau in [0.25, 1.0] {
+    for (k, side) in [
+      (80.0, OptionType::Put),
+      (95.0, OptionType::Put),
+      (100.0, OptionType::Call),
+      (120.0, OptionType::Call),
+    ] {
+      let price = model.price_option(100.0, k, 0.03, 0.0, tau, side);
+      let quote = OptionQuote::new(k, tau, price, side);
+      let sigma = carry_r.implied_volatility(price, 100.0, k, 0.03, 0.0, tau, side);
+      let at_r = super::loss::weight_at(100.0, 0.03, 0.0, &quote, sigma).unwrap();
+      let weight = super::loss::market_weight(100.0, 0.03, 0.0, &quote).unwrap();
+      assert_eq!(weight.to_bits(), at_r.to_bits(), "K = {k}, T = {tau}");
+    }
+  }
+}
+
+/// A zero price has no implied volatility, and σ = 0.3 at K = 400 leaves a vega of about 1e-17.
+#[test]
+fn a_quote_the_weights_cannot_use_stops_the_fit_before_it_starts() {
+  let far = |price: f64| OptionQuote::new(400.0, 0.25, price, OptionType::Call);
+  let tiny = BsmPricer::new(0.3, BsmCoc::Merton1973).price_call(100.0, 400.0, 0.05, 0.0, 0.25);
+  for (quote, reason) in [
+    (far(0.0), "no Black volatility above 1e-8 reprices"),
+    (far(tiny), "its vega"),
+  ] {
+    let mut quotes = heston_ref_quotes();
+    quotes.push(quote);
+    let calibrator = HkdeCalibrator::new(100.0, 0.05, 0.0, quotes).with_start(START);
+    match calibrator.calibrate(None) {
+      Err(QuantError::InvalidQuote {
+        index: 9,
+        reason: got,
+      }) => {
+        assert!(got.starts_with(reason), "{got}")
+      }
+      other => panic!("{other:?}"),
+    }
+  }
+}
+
+#[test]
+fn a_start_outside_the_hkde_domain_is_an_error() {
+  let calibrator = HkdeCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
+  for start in [
+    HkdeParams { eta1: 0.9, ..START },
+    HkdeParams {
+      p_up: f64::NAN,
+      ..START
+    },
+  ] {
+    let err = calibrator.calibrate(Some(start)).unwrap_err();
+    assert!(
+      matches!(err, QuantError::InvalidInput { what: "start", .. }),
+      "{err}"
+    );
+  }
+}
+
+#[test]
+#[should_panic(expected = "eta2 must satisfy `eta2.is_finite() && eta2 > 0.0`, got eta2 = 0.0")]
+fn with_start_panics_outside_the_hkde_domain() {
+  let _ = HkdeCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes())
+    .with_start(HkdeParams { eta2: 0.0, ..START });
+}
+
+#[test]
+fn the_fit_converts_to_the_hkde_model_of_its_parameters() {
+  let fit = HkdeCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes())
+    .with_start(START)
+    .with_options(CalibrationOptions::default().with_max_iterations(2))
+    .calibrate(None)
+    .unwrap();
+  let model = fit.to_model();
+  let p = fit.params;
+  assert_eq!(
+    [model.v0, model.kappa, model.theta, model.sigma_v, model.rho],
+    [p.v0, p.kappa, p.theta, p.sigma_v, p.rho]
+  );
+  assert_eq!(
+    [model.lam, model.p_up, model.eta1, model.eta2],
+    [p.lambda, p.p_up, p.eta1, p.eta2]
   );
 }
 
@@ -238,17 +348,7 @@ fn paper_table1_shop_self_consistency() {
   let tau = 0.5;
   let strikes = [80.0_f64, 90.0, 100.0, 110.0, 120.0];
 
-  let model = HkdeFourier {
-    v0: truth.v0,
-    kappa: truth.kappa,
-    theta: truth.theta,
-    sigma_v: truth.sigma_v,
-    rho: truth.rho,
-    lam: truth.lambda,
-    p_up: truth.p_up,
-    eta1: truth.eta1,
-    eta2: truth.eta2,
-  };
+  let model = HkdeFourier::new(truth);
   let market: Vec<f64> = strikes
     .iter()
     .map(|&k| model.price_call(s0, k, r, q, tau).max(0.0))
@@ -266,45 +366,19 @@ fn paper_table1_shop_self_consistency() {
     eta2: 1.0,
   };
 
-  let calibrator = HkdeCalibrator::new(
-    Some(initial),
-    market.clone().into(),
-    vec![s0; strikes.len()].into(),
-    strikes.to_vec().into(),
-    r,
-    Some(q),
-    tau,
-    OptionType::Call,
-    false,
-  );
-  let result = calibrator.calibrate(None);
+  let quotes: Vec<OptionQuote> = strikes
+    .iter()
+    .zip(market)
+    .map(|(&k, price)| OptionQuote::new(k, tau, price, OptionType::Call))
+    .collect();
+  let calibrator = HkdeCalibrator::new(s0, r, q, quotes);
+  let result = calibrator.calibrate(Some(initial)).unwrap();
   assert!(
     result.loss.get(LossMetric::Rmse) < 0.5,
     "SHOP self-consistency RMSE={:.6}",
     result.loss.get(LossMetric::Rmse)
   );
-  let refined = HkdeCalibrator::new(
-    Some(HkdeParams {
-      v0: result.v0,
-      kappa: result.kappa,
-      theta: result.theta,
-      sigma_v: result.sigma_v,
-      rho: result.rho,
-      lambda: result.lambda,
-      p_up: result.p_up,
-      eta1: result.eta1,
-      eta2: result.eta2,
-    }),
-    market.into(),
-    vec![s0; strikes.len()].into(),
-    strikes.to_vec().into(),
-    r,
-    Some(q),
-    tau,
-    OptionType::Call,
-    false,
-  )
-  .calibrate(None);
+  let refined = calibrator.calibrate(Some(result.params)).unwrap();
   assert!(
     refined.loss.get(LossMetric::Rmse) <= result.loss.get(LossMetric::Rmse) + 1e-6,
     "refit should not degrade the fit"

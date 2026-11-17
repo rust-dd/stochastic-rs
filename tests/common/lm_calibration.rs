@@ -8,7 +8,6 @@ use stochastic_rs::quant::calibration::heston::HestonCalibrator;
 use stochastic_rs::quant::calibration::heston::HestonJacobianMethod;
 use stochastic_rs::quant::calibration::levy::LevyCalibrator;
 use stochastic_rs::quant::calibration::levy::LevyModelType;
-use stochastic_rs::quant::calibration::levy::MarketSlice;
 use stochastic_rs::quant::calibration::sabr::SabrCalibrator;
 use stochastic_rs::quant::pricing::bsm::BsmCoc;
 use stochastic_rs::quant::pricing::bsm::BsmPricer;
@@ -151,12 +150,11 @@ pub fn cases() -> Vec<Case> {
         100.0,
         0.05,
         0.0,
-        vec![MarketSlice {
-          strikes: strikes.to_vec(),
-          prices: prices.to_vec(),
-          is_call: vec![true; strikes.len()],
-          tau: 1.0,
-        }],
+        strikes
+          .iter()
+          .zip(prices)
+          .map(|(&k, price)| OptionQuote::new(k, 1.0, price, OptionType::Call))
+          .collect(),
       ),
       1e-4,
     ));

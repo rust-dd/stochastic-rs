@@ -37,6 +37,13 @@ def test_hand_written_pricer_constructor_raises_value_error():
         sr.CarrMadanPricer(n=12)
 
 
+def test_the_jump_fourier_models_refuse_parameters_outside_their_domain():
+    with pytest.raises(ValueError, match=r"eta1 must satisfy `eta1\.is_finite\(\) && eta1 > 1\.0`, got eta1 = 0\.9"):
+        sr.HKDEFourier(0.04, 1.5, 0.04, 0.3, -0.7, 0.5, 0.4, 0.9, 5.0)
+    with pytest.raises(ValueError, match=r"sigma_v must satisfy `sigma_v\.is_finite\(\) && sigma_v > 0\.0`, got sigma_v = 0\.0"):
+        sr.BatesFourier(0.04, 1.5, 0.04, 0.0, -0.7, 0.5, -0.05, 0.1)
+
+
 def test_quant_data_error_raises_value_error_with_its_display():
     calibrator = sr.HestonSlvCalibrator(
         100.0, 0.02, 0.0, [90.0, float("nan"), 110.0], [0.5, 1.0], np.full((2, 3), 5.0)

@@ -50,17 +50,28 @@
 //!   Management Science 48(8), <https://doi.org/10.1287/mnsc.48.8.1086.166>
 //! - Heston, S. L. (1993), "A closed-form solution for options with stochastic
 //!   volatility", <https://doi.org/10.1093/rfs/6.2.327>
+//! - Levenberg (1944), <https://doi.org/10.1090/qam/10666>
+//! - Marquardt (1963), <https://doi.org/10.1137/0111030>
 
 mod calibrator;
 mod loss;
 mod params;
-mod result;
 
 pub use calibrator::HkdeCalibrator;
 pub use loss::paper_table1;
 pub use loss::paper_table2;
 pub use params::HkdeParams;
-pub use result::HkdeCalibrationResult;
+
+use crate::calibration::Calibrated;
+use crate::traits::ToModel;
+
+impl ToModel for Calibrated<HkdeParams> {
+  type Model = crate::pricing::fourier::HkdeFourier;
+
+  fn to_model(&self) -> Self::Model {
+    crate::pricing::fourier::HkdeFourier::new(self.params)
+  }
+}
 
 #[cfg(test)]
 mod tests;

@@ -3,6 +3,7 @@ use std::f64::consts::FRAC_1_PI;
 use ndarray::Array1;
 use ndarray::Array2;
 use num_complex::Complex64;
+use stochastic_rs_distributions::RealExt;
 
 use super::SvjParams;
 use super::calibrator::KAPPA_MIN;
@@ -12,11 +13,10 @@ use super::calibrator::THETA_MIN;
 use super::params::P_MU_J;
 use super::params::P_SIGMA_J;
 use super::params::RHO_BOUND;
-use crate::CalibrationLossScore;
 use crate::OptionType;
-use crate::calibration::CalibrationHistory;
 use crate::calibration::integrate_gl_to_convergence;
 use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::Trail;
 
 /// Bates/SVJ characteristic function $\phi_T(\xi)$.
 ///
@@ -82,41 +82,65 @@ pub(super) fn bates_call_price(p: &SvjParams, s: f64, k: f64, r: f64, q: f64, ta
   let disc_r = (-r * tau).exp();
   let disc_q = (-q * tau).exp();
   let call = 0.5 * (s * disc_q - k * disc_r) + disc_r * FRAC_1_PI * integral;
-  if call.is_finite() {
-    call.max(0.0)
-  } else {
-    call
-  }
+  call.max_or_nan(0.0)
 }
 
-impl SvjCalibrator {
-  pub(super) fn compute_model_prices_for(&self, p: &SvjParams) -> Array1<f64> {
-    let n = self.c_market.len();
-    let mut c_model = Array1::zeros(n);
-    let q_val = self.q.unwrap_or(0.0);
+/// One fit: the current point, the quotes' prices and the trail.
+pub(super) struct SvjProblem<'a> {
+  calibrator: &'a SvjCalibrator,
+  params: SvjParams,
+  pub(super) market: Vec<f64>,
+  pub(super) trail: Trail<SvjParams>,
+}
 
-    for idx in 0..n {
-      let tau = self.flat_t[idx];
-      let call = bates_call_price(p, self.s[idx], self.k[idx], self.r, q_val, tau);
-      c_model[idx] = match self.option_type {
-        OptionType::Call => call,
-        OptionType::Put => {
-          let put = call - self.s[idx] * (-q_val * tau).exp() + self.k[idx] * (-self.r * tau).exp();
-          if put.is_finite() { put.max(0.0) } else { put }
-        }
-      };
+impl<'a> SvjProblem<'a> {
+  pub(super) fn new(calibrator: &'a SvjCalibrator, start: SvjParams) -> Self {
+    Self {
+      calibrator,
+      params: start,
+      market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
+      trail: Trail::new(),
     }
+  }
 
-    c_model
+  pub(super) fn effective_params(&self) -> SvjParams {
+    self.params.projected()
+  }
+
+  pub(super) fn compute_model_prices_for(&self, p: &SvjParams) -> Vec<f64> {
+    let SvjCalibrator { s, r, q, .. } = *self.calibrator;
+    self
+      .calibrator
+      .quotes
+      .iter()
+      .map(|quote| {
+        let (k, tau) = (quote.strike, quote.tau);
+        let call = bates_call_price(p, s, k, r, q, tau);
+        match quote.option_type {
+          OptionType::Call => call,
+          OptionType::Put => (call - s * (-q * tau).exp() + k * (-r * tau).exp()).max_or_nan(0.0),
+        }
+      })
+      .collect()
   }
 
   fn residuals_for(&self, p: &SvjParams) -> Array1<f64> {
-    self.c_market.clone() - self.compute_model_prices_for(p)
+    self.market_minus(&self.compute_model_prices_for(p))
+  }
+
+  fn market_minus(&self, model: &[f64]) -> Array1<f64> {
+    Array1::from_iter(
+      self
+        .market
+        .iter()
+        .zip(model)
+        .map(|(market, model)| market - model),
+    )
   }
 
   /// Central finite-difference Jacobian.
   fn numeric_jacobian(&self, params: &SvjParams) -> Array2<f64> {
-    let n = self.c_market.len();
+    let n = self.calibrator.quotes.len();
     let p = 8usize;
 
     let base_params_vec: Array1<f64> = (*params).into();
@@ -187,10 +211,9 @@ impl SvjCalibrator {
   }
 }
 
-impl LeastSquaresProblem for SvjCalibrator {
+impl LeastSquaresProblem for SvjProblem<'_> {
   fn set_params(&mut self, params: &Array1<f64>) {
-    let p = SvjParams::from(params.clone()).projected();
-    self.params = Some(p);
+    self.params = SvjParams::from(params.clone()).projected();
   }
 
   fn params(&self) -> Array1<f64> {
@@ -199,28 +222,20 @@ impl LeastSquaresProblem for SvjCalibrator {
 
   fn residuals(&mut self) -> Option<Array1<f64>> {
     let params_eff = self.effective_params();
-    let c_model = self.compute_model_prices_for(&params_eff);
-
-    if self.record_history {
-      let loss = CalibrationLossScore::compute_selected(
-        self.c_market.as_standard_layout().as_slice().unwrap(),
-        c_model.as_slice().unwrap(),
-        self.loss_metrics,
-      );
-      let mut history = self.calibration_history.borrow_mut();
-      let iteration = history.len();
-      history.push(CalibrationHistory::new(
-        iteration,
-        params_eff,
-        self.c_market.clone() - c_model.clone(),
-        loss,
-      ));
-    }
-
-    Some(self.c_market.clone() - c_model)
+    let model = self.compute_model_prices_for(&params_eff);
+    let residuals = self.market_minus(&model);
+    let options = &self.calibrator.options;
+    self
+      .trail
+      .stage(options, &self.market, &model, &params_eff, &residuals);
+    Some(residuals)
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
     Some(self.numeric_jacobian(&self.effective_params()))
+  }
+
+  fn accept(&mut self) {
+    self.trail.accept();
   }
 }

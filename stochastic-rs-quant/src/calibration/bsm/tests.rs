@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::OptionType;
+use crate::calibration::CalibrationHistory;
 use crate::traits::CalibrationResult;
 use crate::traits::Calibrator;
 
@@ -78,7 +79,8 @@ fn the_dividend_yield_sets_the_carry() {
   );
 }
 
-/// Each entry is an accepted step, so the vega-weighted objective falls along the trail to the fit.
+/// The trail opens at the start and each later entry is an accepted step, so the vega-weighted
+/// objective falls along it to the fit.
 #[test]
 fn calls_and_puts_fit_together_and_the_trail_records_market_minus_model_over_vega() {
   let cells = [
@@ -94,6 +96,7 @@ fn calls_and_puts_fit_together_and_the_trail_records_market_minus_model_over_veg
     .unwrap();
   assert!((fit.params.sigma - TRUE_SIGMA).abs() < 1e-10);
   assert_eq!(fit.history[0].iteration, 0);
+  assert_eq!(fit.history[0].params, BsmParams { sigma: 0.2 });
   assert_eq!(
     fit.history.last().map(|entry| entry.params),
     Some(fit.params)
@@ -116,31 +119,10 @@ fn calls_and_puts_fit_together_and_the_trail_records_market_minus_model_over_veg
   }
 }
 
-#[test]
-fn a_trail_filled_through_the_hidden_problem_is_not_inherited() {
-  let calibrator =
-    synthetic(0.2).with_options(CalibrationOptions::default().with_record_history(true));
-  let clean = calibrator.calibrate(None).unwrap();
-  let mut used = calibrator.clone();
-  for _ in 0..2 {
-    LeastSquaresProblem::residuals(&mut used);
-    LeastSquaresProblem::accept(&mut used);
-  }
-  let fit = used.calibrate(None).unwrap();
-  assert_eq!(fit.history.len(), clean.history.len());
-  assert!(
-    fit
-      .history
-      .iter()
-      .zip(&clean.history)
-      .all(|(a, b)| a.params == b.params)
-  );
-}
-
 /// basin counts a rejected trial as an iteration and stops a capped fit before its next trial, so
-/// a capped fit whose every step is accepted has one entry per iteration.
+/// a capped fit whose every step is accepted has the start and one entry per iteration.
 #[test]
-fn the_trail_has_one_entry_per_iteration() {
+fn the_trail_has_the_start_and_one_entry_per_iteration() {
   let strikes = [80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0];
   let calibrator = BsmCalibrator::new(
     100.0,
@@ -160,9 +142,10 @@ fn the_trail_has_one_entry_per_iteration() {
     assert_eq!(fit.message.as_deref(), Some("evaluation budget exhausted"));
     assert_eq!(
       (fit.history.len(), fit.iterations),
-      (cap, Some(cap)),
+      (cap + 1, Some(cap)),
       "start {start}"
     );
+    assert_eq!(fit.history[0].params, BsmParams { sigma: start });
   }
 }
 
@@ -170,10 +153,11 @@ fn the_trail_has_one_entry_per_iteration() {
 /// here negative, call, so the second assertion tests the projection rather than `abs`.
 #[test]
 fn sigma_is_reflected_not_clamped() {
-  let mut cal = synthetic(0.2);
-  LeastSquaresProblem::set_params(&mut cal, &Array1::from_vec(vec![-0.3]));
+  let cal = synthetic(0.2);
+  let mut problem = BsmProblem::new(&cal, cal.start);
+  problem.set_params(&Array1::from_vec(vec![-0.3]));
   assert_eq!(
-    cal.start.sigma, 0.3,
+    problem.params.sigma, 0.3,
     "a negative step must reflect, not clamp"
   );
 
@@ -185,9 +169,9 @@ fn sigma_is_reflected_not_clamped() {
     bsm(0.3)
   );
 
-  LeastSquaresProblem::set_params(&mut cal, &Array1::from_vec(vec![f64::NAN]));
+  problem.set_params(&Array1::from_vec(vec![f64::NAN]));
   assert_eq!(
-    cal.start.sigma, V_MIN,
+    problem.params.sigma, V_MIN,
     "a projection onto a set must be total"
   );
 
@@ -201,9 +185,11 @@ fn sigma_is_reflected_not_clamped() {
 /// The read path: the optimiser prices the start before it has a step to hand back.
 #[test]
 fn the_optimisers_first_evaluation_is_already_inside_the_box() {
+  let cal = synthetic(0.2);
+  let first = |sigma: f64| BsmProblem::new(&cal, BsmParams { sigma }).residuals();
   assert_eq!(
-    LeastSquaresProblem::residuals(&mut synthetic(-0.4)),
-    LeastSquaresProblem::residuals(&mut synthetic(0.4)),
+    first(-0.4),
+    first(0.4),
     "the first residual evaluation must not see the raw sign"
   );
 }

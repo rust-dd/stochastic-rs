@@ -26,11 +26,21 @@
 mod calibrator;
 mod loss;
 mod params;
-mod result;
 
 pub use calibrator::SvjCalibrator;
 pub use params::SvjParams;
-pub use result::SvjCalibrationResult;
+
+use crate::calibration::Calibrated;
+use crate::pricing::fourier::BatesFourier;
+use crate::traits::ToModel;
+
+impl ToModel for Calibrated<SvjParams> {
+  type Model = BatesFourier;
+
+  fn to_model(&self) -> BatesFourier {
+    BatesFourier::new(self.params)
+  }
+}
 
 #[cfg(test)]
 mod quadrature_tests;

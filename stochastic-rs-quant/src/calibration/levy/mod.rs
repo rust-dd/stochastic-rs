@@ -28,11 +28,9 @@ mod types;
 pub(super) const EPS: f64 = 1e-8;
 
 pub use calibrator::LevyCalibrator;
-pub use types::LevyCalibrationResult;
 pub use types::LevyModel;
 pub use types::LevyModelType;
 pub use types::LevyParams;
-pub use types::MarketSlice;
 
 #[cfg(test)]
 mod quadrature_tests;

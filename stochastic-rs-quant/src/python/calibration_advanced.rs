@@ -2,7 +2,8 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use super::calibration_basic::PyMarketSlice;
-use super::calibration_basic::market_slices;
+use super::calibration_basic::quotes;
+use super::calibration_basic::quotes_as;
 use super::parse_option_type;
 
 #[pyclass(name = "SVJCalibrator", unsendable)]
@@ -23,40 +24,33 @@ impl PySvjCalibrator {
     q: Option<f64>,
   ) -> PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
-      let ot = parse_option_type(option_type)?;
-      let inner_slices = market_slices(slices);
+      let quotes = quotes_as(slices, parse_option_type(option_type)?);
       Ok(Self {
-        inner: crate::calibration::svj::SvjCalibrator::from_slices(
-          None,
-          &inner_slices,
-          s,
-          r,
-          q,
-          ot,
-          false,
-        ),
+        inner: crate::calibration::svj::SvjCalibrator::new(s, r, q.unwrap_or(0.0), quotes),
       })
     })?
   }
 
   /// Returns `(v0, kappa, theta, sigma_v, rho, lambda, mu_j, sigma_j, converged, loss_rmse)`.
   fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, f64, f64, f64, bool, f64)> {
+    use crate::traits::CalibrationResult;
     use crate::traits::Calibrator;
-    let res = self
+    let fit = self
       .inner
       .calibrate(None)
       .map_err(|e| PyValueError::new_err(format!("SVJ calibration failed: {e}")))?;
+    let p = fit.params;
     Ok((
-      res.v0,
-      res.kappa,
-      res.theta,
-      res.sigma_v,
-      res.rho,
-      res.lambda,
-      res.mu_j,
-      res.sigma_j,
-      res.converged,
-      res.loss.get(crate::LossMetric::Rmse),
+      p.v0,
+      p.kappa,
+      p.theta,
+      p.sigma_v,
+      p.rho,
+      p.lambda,
+      p.mu_j,
+      p.sigma_j,
+      fit.converged,
+      fit.rmse(),
     ))
   }
 }
@@ -78,18 +72,10 @@ impl PyDoubleHestonCalibrator {
     q: Option<f64>,
   ) -> PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
-      let ot = parse_option_type(option_type)?;
-      let inner_slices = market_slices(slices);
+      use crate::calibration::double_heston::DoubleHestonCalibrator;
+      let quotes = quotes_as(slices, parse_option_type(option_type)?);
       Ok(Self {
-        inner: crate::calibration::double_heston::DoubleHestonCalibrator::from_slices(
-          None,
-          &inner_slices,
-          s,
-          r,
-          q,
-          ot,
-          false,
-        ),
+        inner: DoubleHestonCalibrator::new(s, r, q.unwrap_or(0.0), quotes),
       })
     })?
   }
@@ -97,12 +83,13 @@ impl PyDoubleHestonCalibrator {
   /// Returns `(v1_0, kappa1, theta1, sigma1, rho1, v2_0, kappa2, theta2, sigma2, rho2, converged, loss_rmse)`.
   #[allow(clippy::type_complexity)]
   fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, f64, f64, f64, f64, f64, bool, f64)> {
+    use crate::traits::CalibrationResult;
     use crate::traits::Calibrator;
-    let res = self
+    let fit = self
       .inner
       .calibrate(None)
       .map_err(|e| PyValueError::new_err(format!("Double-Heston calibration failed: {e}")))?;
-    let (a, b) = (res.params.first, res.params.second);
+    let (a, b) = (fit.params.first, fit.params.second);
     Ok((
       a.v0,
       a.kappa,
@@ -114,8 +101,8 @@ impl PyDoubleHestonCalibrator {
       b.theta,
       b.sigma,
       b.rho,
-      res.converged,
-      res.loss.get(crate::LossMetric::Rmse),
+      fit.converged,
+      fit.rmse(),
     ))
   }
 }
@@ -145,25 +132,26 @@ impl PyLevyCalibrator {
           )));
         }
       };
-      let inner_slices = market_slices(slices);
       Ok(Self {
-        inner: crate::calibration::levy::LevyCalibrator::new(mt, s, r, q, inner_slices),
+        inner: crate::calibration::levy::LevyCalibrator::new(mt, s, r, q, quotes(slices)),
       })
     })?
   }
 
   /// Returns `(params_vec, converged, loss_rmse, iterations)`.
   fn calibrate(&self) -> PyResult<(Vec<f64>, bool, f64, usize)> {
+    use crate::traits::CalibrationResult;
     use crate::traits::Calibrator;
-    let res = self
+    let fit = self
       .inner
       .calibrate(None)
       .map_err(|e| PyValueError::new_err(format!("Lévy calibration failed: {e}")))?;
+    let iterations = fit.iterations.unwrap_or_default();
     Ok((
-      res.params,
-      res.converged,
-      res.loss.get(crate::LossMetric::Rmse),
-      res.iterations,
+      fit.params.values.clone(),
+      fit.converged,
+      fit.rmse(),
+      iterations,
     ))
   }
 }
@@ -186,18 +174,9 @@ impl PyHkdeCalibrator {
     q: Option<f64>,
   ) -> PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
-      let ot = parse_option_type(option_type)?;
-      let inner_slices = market_slices(slices);
+      let quotes = quotes_as(slices, parse_option_type(option_type)?);
       Ok(Self {
-        inner: crate::calibration::hkde::HkdeCalibrator::from_slices(
-          None,
-          &inner_slices,
-          s,
-          r,
-          q,
-          ot,
-          false,
-        ),
+        inner: crate::calibration::hkde::HkdeCalibrator::new(s, r, q.unwrap_or(0.0), quotes),
       })
     })?
   }
@@ -205,19 +184,25 @@ impl PyHkdeCalibrator {
   /// Returns `(v0, kappa, theta, sigma_v, rho, lambda, p_up, eta1, eta2, converged, loss_rmse)`.
   #[allow(clippy::type_complexity)]
   fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, f64, f64, f64, f64, bool, f64)> {
-    let res = self.inner.calibrate(None);
+    use crate::traits::CalibrationResult;
+    use crate::traits::Calibrator;
+    let fit = self
+      .inner
+      .calibrate(None)
+      .map_err(|e| PyValueError::new_err(format!("HKDE calibration failed: {e}")))?;
+    let p = fit.params;
     Ok((
-      res.v0,
-      res.kappa,
-      res.theta,
-      res.sigma_v,
-      res.rho,
-      res.lambda,
-      res.p_up,
-      res.eta1,
-      res.eta2,
-      res.converged,
-      res.loss.get(crate::LossMetric::Rmse),
+      p.v0,
+      p.kappa,
+      p.theta,
+      p.sigma_v,
+      p.rho,
+      p.lambda,
+      p.p_up,
+      p.eta1,
+      p.eta2,
+      fit.converged,
+      fit.rmse(),
     ))
   }
 }
@@ -310,19 +295,21 @@ impl PyCgmysvCalibrator {
   /// via Lewis Fourier pricing + Levenberg-Marquardt.
   #[new]
   fn new(slices: Vec<PyMarketSlice>, s: f64, r: f64, q: f64) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| {
-      let inner_slices = market_slices(slices);
-      Self {
-        inner: crate::calibration::cgmysv::CgmysvCalibrator::new(s, r, q, inner_slices),
-      }
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
+      inner: crate::calibration::cgmysv::CgmysvCalibrator::new(s, r, q, quotes(slices)),
     })
   }
 
   /// Returns `(alpha, lambda_plus, lambda_minus, kappa, eta, zeta, rho, v0, converged, loss_rmse, iterations)`.
   #[allow(clippy::type_complexity)]
   fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, f64, f64, f64, bool, f64, usize)> {
-    let res = self.inner.calibrate(None);
-    let p = &res.params;
+    use crate::traits::CalibrationResult;
+    use crate::traits::Calibrator;
+    let fit = self
+      .inner
+      .calibrate(None)
+      .map_err(|e| PyValueError::new_err(format!("CGMYSV calibration failed: {e}")))?;
+    let p = &fit.params;
     Ok((
       p.alpha,
       p.lambda_plus,
@@ -332,9 +319,9 @@ impl PyCgmysvCalibrator {
       p.zeta,
       p.rho,
       p.v0,
-      res.converged,
-      res.loss.get(crate::LossMetric::Rmse),
-      res.iterations,
+      fit.converged,
+      fit.rmse(),
+      fit.iterations.unwrap_or_default(),
     ))
   }
 }

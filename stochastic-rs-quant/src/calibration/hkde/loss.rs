@@ -3,6 +3,8 @@ use std::f64::consts::PI;
 use ndarray::Array1;
 use ndarray::Array2;
 
+use stochastic_rs_distributions::RealExt;
+
 use super::calibrator::HkdeCalibrator;
 use super::params::ETA1_MIN;
 use super::params::ETA2_MIN;
@@ -12,10 +14,10 @@ use super::params::P_P_UP;
 use super::params::RHO_BOUND;
 use super::params::SIGMA_V_MIN;
 use super::params::THETA_MIN;
-use crate::CalibrationLossScore;
-use crate::OptionType;
-use crate::calibration::CalibrationHistory;
+use crate::OptionQuote;
+use crate::QuantError;
 use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::Trail;
 use crate::pricing::bsm::BsmCoc;
 use crate::pricing::bsm::BsmPricer;
 use crate::pricing::fourier::HkdeFourier;
@@ -23,8 +25,43 @@ use crate::traits::ModelPricer;
 
 const EPS: f64 = 1e-8;
 
-impl HkdeCalibrator {
-  pub(super) fn build_model(&self, p: &HkdeParams) -> HkdeFourier {
+/// One fit: each quote's weight, the current point, the quotes' prices and the trail.
+pub(super) struct HkdeProblem<'a> {
+  calibrator: &'a HkdeCalibrator,
+  sqrt_weights: Vec<f64>,
+  params: HkdeParams,
+  pub(super) market: Vec<f64>,
+  pub(super) trail: Trail<HkdeParams>,
+}
+
+impl<'a> HkdeProblem<'a> {
+  /// `InvalidQuote` for the first quote `market_weight` cannot weight.
+  pub(super) fn new(calibrator: &'a HkdeCalibrator, start: HkdeParams) -> Result<Self, QuantError> {
+    let HkdeCalibrator { s, r, q, .. } = *calibrator;
+    let sqrt_weights = calibrator
+      .quotes
+      .iter()
+      .enumerate()
+      .map(|(index, quote)| {
+        market_weight(s, r, q, quote)
+          .map(f64::sqrt)
+          .map_err(|reason| QuantError::InvalidQuote { index, reason })
+      })
+      .collect::<Result<Vec<_>, _>>()?;
+    Ok(Self {
+      calibrator,
+      sqrt_weights,
+      params: start,
+      market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
+      trail: Trail::negated(),
+    })
+  }
+
+  pub(super) fn effective_params(&self) -> HkdeParams {
+    self.params.projected()
+  }
+
+  fn build_model(&self, p: &HkdeParams) -> HkdeFourier {
     HkdeFourier {
       v0: p.v0,
       kappa: p.kappa,
@@ -38,40 +75,33 @@ impl HkdeCalibrator {
     }
   }
 
-  pub(super) fn compute_model_prices_for(&self, p: &HkdeParams) -> Array1<f64> {
-    let n = self.c_market.len();
+  pub(super) fn compute_model_prices_for(&self, p: &HkdeParams) -> Vec<f64> {
     let model = self.build_model(p);
-    let r = self.r;
-    let q = self.q.unwrap_or(0.0);
+    let HkdeCalibrator { s, r, q, .. } = *self.calibrator;
+    self
+      .calibrator
+      .quotes
+      .iter()
+      .map(|quote| {
+        let price = model.price_option(s, quote.strike, r, q, quote.tau, quote.option_type);
+        price.max_or_nan(0.0)
+      })
+      .collect()
+  }
 
-    let mut c_model = Array1::zeros(n);
-    for idx in 0..n {
-      let price = model.price_option(
-        self.s[idx],
-        self.k[idx],
-        r,
-        q,
-        self.flat_t[idx],
-        self.option_type,
-      );
-      c_model[idx] = price.max(0.0);
-    }
-    c_model
+  /// `√w · (model − market)`, the fit's residual; a trail reads its negation.
+  fn weighted_residuals_of(&self, model: &[f64]) -> Array1<f64> {
+    let rows = self.market.iter().zip(model).zip(&self.sqrt_weights);
+    Array1::from_iter(rows.map(|((market, model), w)| w * (model - market)))
   }
 
   pub(super) fn weighted_residuals_for(&self, p: &HkdeParams) -> Array1<f64> {
-    let c_model = self.compute_model_prices_for(p);
-    let n = self.c_market.len();
-    let mut r = Array1::zeros(n);
-    for i in 0..n {
-      r[i] = self.sqrt_weights[i] * (c_model[i] - self.c_market[i]);
-    }
-    r
+    self.weighted_residuals_of(&self.compute_model_prices_for(p))
   }
 
   /// Central finite-difference Jacobian of the weighted residuals.
   pub(super) fn numeric_jacobian(&self, params: &HkdeParams) -> Array2<f64> {
-    let n = self.c_market.len();
+    let n = self.calibrator.quotes.len();
     let p_dim = 9usize;
     let base_vec: Array1<f64> = (*params).into();
     let mut j_mat = Array2::zeros((n, p_dim));
@@ -136,10 +166,9 @@ impl HkdeCalibrator {
   }
 }
 
-impl LeastSquaresProblem for HkdeCalibrator {
+impl LeastSquaresProblem for HkdeProblem<'_> {
   fn set_params(&mut self, params: &Array1<f64>) {
-    let p = HkdeParams::from(params.clone()).projected();
-    self.params = Some(p);
+    self.params = HkdeParams::from(params.clone()).projected();
   }
 
   fn params(&self) -> Array1<f64> {
@@ -148,99 +177,66 @@ impl LeastSquaresProblem for HkdeCalibrator {
 
   fn residuals(&mut self) -> Option<Array1<f64>> {
     let params_eff = self.effective_params();
-    let c_model = self.compute_model_prices_for(&params_eff);
-
-    if self.record_history {
-      let loss = CalibrationLossScore::compute_selected(
-        self.c_market.as_standard_layout().as_slice().unwrap(),
-        c_model.as_slice().unwrap(),
-        self.loss_metrics,
-      );
-      let mut history = self.calibration_history.borrow_mut();
-      let iteration = history.len();
-      history.push(CalibrationHistory::new(
-        iteration,
-        params_eff,
-        self.c_market.clone() - c_model.clone(),
-        loss,
-      ));
-    }
-
-    let n = self.c_market.len();
-    let mut r = Array1::zeros(n);
-    for i in 0..n {
-      r[i] = self.sqrt_weights[i] * (c_model[i] - self.c_market[i]);
-    }
-    Some(r)
+    let model = self.compute_model_prices_for(&params_eff);
+    let residuals = self.weighted_residuals_of(&model);
+    let options = &self.calibrator.options;
+    self
+      .trail
+      .stage(options, &self.market, &model, &params_eff, &residuals);
+    Some(residuals)
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
     Some(self.numeric_jacobian(&self.effective_params()))
   }
+
+  fn accept(&mut self) {
+    self.trail.accept();
+  }
 }
 
-/// Compute $\sqrt{w_j^{(n)}}$ for each market quote (Eq. 13 of the paper).
-///
-/// The market implied volatility $\sigma_j^{(n)}$ is recovered from the
-/// observed price by inverting Black-Scholes; the resulting normalised
-/// vega $S_0\,\psi(d_1)\,\sqrt{T}$ is then used as weight.
-pub(super) fn compute_sqrt_weights(
-  s: &[f64],
-  k: &[f64],
-  t: &[f64],
-  r: f64,
-  q: f64,
-  prices: &[f64],
-  option_type: OptionType,
-) -> Vec<f64> {
-  let n = prices.len();
-  let mut out = Vec::with_capacity(n);
-  for i in 0..n {
-    let w = market_weight(s[i], k[i], r, q, t[i], prices[i], option_type);
-    out.push(w.sqrt());
-  }
-  out
-}
-
-/// Single-quote weight $w_j^{(n)} = (S_0\,\psi(d_1)\,\sqrt{T_n})^{-1}$
-/// evaluated at the market implied volatility.
-fn market_weight(
-  s: f64,
-  k: f64,
-  r: f64,
-  q: f64,
-  t: f64,
-  market_price: f64,
-  option_type: OptionType,
-) -> f64 {
-  if t <= 0.0 || s <= 0.0 || k <= 0.0 {
-    return 1.0;
-  }
-
-  // `implied_volatility` inverts a price for a vol, so the model's own `v`
-  // is unused — only the cost-of-carry convention matters.
-  let sigma_mkt = BsmPricer::new(0.2, BsmCoc::Bsm1973).implied_volatility(
-    market_price,
+/// Eq. 13's weight $w_j^{(n)} = (S_0\,\psi(d_1)\,\sqrt{T_n})^{-1}$ at the quote's implied
+/// volatility at the carry `r − q`; the reason, as `Err`, when the weights cannot use the quote.
+pub(super) fn market_weight(s: f64, r: f64, q: f64, quote: &OptionQuote) -> Result<f64, String> {
+  // The pricer's own volatility is unused: only its carry convention enters the inversion.
+  let sigma = BsmPricer::new(0.2, BsmCoc::Merton1973).implied_volatility(
+    quote.price,
     s,
-    k,
+    quote.strike,
     r,
     q,
-    t,
-    option_type,
+    quote.tau,
+    quote.option_type,
   );
+  weight_at(s, r, q, quote, sigma)
+}
 
-  if !sigma_mkt.is_finite() || sigma_mkt <= EPS {
-    return 1.0;
+/// Eq. 13's weight at the implied volatility `sigma`; `Err` unless it and the vega exceed 1e-8.
+pub(super) fn weight_at(
+  s: f64,
+  r: f64,
+  q: f64,
+  quote: &OptionQuote,
+  sigma: f64,
+) -> Result<f64, String> {
+  if !(sigma.is_finite() && sigma > EPS) {
+    return Err(format!(
+      "no Black volatility above 1e-8 reprices its price {:?} at the carry r − q = {:?}",
+      quote.price,
+      r - q
+    ));
   }
-
+  let (k, t) = (quote.strike, quote.tau);
   let sqrt_t = t.sqrt();
-  let d1 = ((s / k).ln() + (r - q + 0.5 * sigma_mkt * sigma_mkt) * t) / (sigma_mkt * sqrt_t);
+  let d1 = ((s / k).ln() + (r - q + 0.5 * sigma * sigma) * t) / (sigma * sqrt_t);
   let phi = (-0.5 * d1 * d1).exp() / (2.0 * PI).sqrt();
-  let vega_norm = s * phi * sqrt_t;
-  if vega_norm < EPS {
-    return 1.0;
+  let vega = s * phi * sqrt_t;
+  if !(vega.is_finite() && vega >= EPS) {
+    return Err(format!(
+      "its vega S·ψ(d1)·√T = {vega:?} at the implied volatility {sigma:?} is below 1e-8"
+    ));
   }
-  1.0 / vega_norm
+  Ok(1.0 / vega)
 }
 
 /// Reference calibrated Hkde parameters from Agazzotti et al. (2025), Table 1.

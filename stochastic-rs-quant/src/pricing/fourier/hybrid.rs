@@ -5,6 +5,8 @@ use num_complex::Complex64;
 
 use super::Cumulants;
 use super::FourierModelExt;
+use crate::calibration::hkde::HkdeParams;
+use crate::calibration::svj::SvjParams;
 
 /// Heston + Kou Double-Exponential jump model (Hkde) for Fourier pricing.
 ///
@@ -40,6 +42,38 @@ pub struct HkdeFourier {
   pub eta1: f64,
   /// Downward jump rate parameter (eta2 > 0).
   pub eta2: f64,
+}
+
+impl HkdeFourier {
+  /// Panics unless every value is finite, `v0, θ, λ ≥ 0`, `σ_v > 0`, `ρ ∈ [−1, 1]`, `p ∈ [0, 1]`,
+  /// `η1 > 1` and `η2 > 0`.
+  pub fn new(params: HkdeParams) -> Self {
+    if let Some(reason) = params.violation() {
+      panic!("{reason}");
+    }
+    let HkdeParams {
+      v0,
+      kappa,
+      theta,
+      sigma_v,
+      rho,
+      lambda,
+      p_up,
+      eta1,
+      eta2,
+    } = params;
+    Self {
+      v0,
+      kappa,
+      theta,
+      sigma_v,
+      rho,
+      lam: lambda,
+      p_up,
+      eta1,
+      eta2,
+    }
+  }
 }
 
 impl FourierModelExt for HkdeFourier {
@@ -116,6 +150,35 @@ pub struct BatesFourier {
   pub lambda: f64,
   pub mu_j: f64,
   pub sigma_j: f64,
+}
+
+impl BatesFourier {
+  /// Panics unless every value is finite, `v0, θ, λ, σ_J ≥ 0`, `σ_v > 0` and `ρ ∈ [−1, 1]`.
+  pub fn new(params: SvjParams) -> Self {
+    if let Some(reason) = params.violation() {
+      panic!("{reason}");
+    }
+    let SvjParams {
+      v0,
+      kappa,
+      theta,
+      sigma_v,
+      rho,
+      lambda,
+      mu_j,
+      sigma_j,
+    } = params;
+    Self {
+      v0,
+      kappa,
+      theta,
+      sigma_v,
+      rho,
+      lambda,
+      mu_j,
+      sigma_j,
+    }
+  }
 }
 
 impl FourierModelExt for BatesFourier {

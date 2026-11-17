@@ -21,9 +21,11 @@ use basin::TerminationReason;
 use ndarray::Array1;
 use ndarray::Array2;
 
+use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::calibration::Calibrated;
 use crate::calibration::CalibrationHistory;
+use crate::calibration::CalibrationOptions;
 
 /// Internal bridge shared by the quant calibrators and the AI surrogate.
 /// Model coordinates and parameter projections remain owned by the calibrator.
@@ -37,7 +39,8 @@ pub trait LeastSquaresProblem {
 
   fn jacobian(&self) -> Option<Array2<f64>>;
 
-  /// The optimiser accepted the point of the last `residuals` call; a recorded trail keeps it.
+  /// The point of the last `residuals` call is the start or a step the optimiser accepted; a
+  /// recorded trail keeps it.
   fn accept(&mut self) {}
 }
 
@@ -97,6 +100,62 @@ impl LmReport {
       .with_iterations(self.iterations)
       .with_message(self.message())
       .with_history(history)
+  }
+}
+
+/// One fit's trail: `residuals` stages the point it evaluated, and `accept` keeps it.
+pub(crate) struct Trail<P> {
+  entries: Vec<CalibrationHistory<P>>,
+  pending: Option<CalibrationHistory<P>>,
+  negated: bool,
+}
+
+impl<P: Clone> Trail<P> {
+  /// The trail of a fit whose rows are market − model.
+  pub(crate) fn new() -> Self {
+    Self {
+      entries: Vec::new(),
+      pending: None,
+      negated: false,
+    }
+  }
+
+  /// The trail of a fit whose rows are model − market, which an entry stores negated.
+  pub(crate) fn negated() -> Self {
+    Self {
+      negated: true,
+      ..Self::new()
+    }
+  }
+
+  /// `residuals` are the fit's rows at `params`; a no-op unless `options.record_history`.
+  pub(crate) fn stage(
+    &mut self,
+    options: &CalibrationOptions,
+    market: &[f64],
+    model: &[f64],
+    params: &P,
+    residuals: &Array1<f64>,
+  ) {
+    if !options.record_history {
+      return;
+    }
+    let residuals = if self.negated {
+      -residuals
+    } else {
+      residuals.clone()
+    };
+    let loss = CalibrationLossScore::compute_selected(market, model, options.loss_metrics);
+    let entry = CalibrationHistory::new(self.entries.len(), params.clone(), residuals, loss);
+    self.pending = Some(entry);
+  }
+
+  pub(crate) fn accept(&mut self) {
+    self.entries.extend(self.pending.take());
+  }
+
+  pub(crate) fn into_entries(self) -> Vec<CalibrationHistory<P>> {
+    self.entries
   }
 }
 
@@ -229,23 +288,27 @@ where
     .into_stepper()
   {
     Err(()) => TerminationReason::SolverFailed,
-    Ok(mut stepper) => loop {
-      let cost = stepper.state().best_cost();
-      match stepper.step() {
-        Err(()) => break TerminationReason::SolverFailed,
-        Ok(outcome) => {
-          // basin's LM moves its iterate only to a trial that lowers the cost.
-          if stepper.state().best_cost() < cost {
-            best.clone_from(stepper.state().best_param());
-            objective.model.borrow_mut().accept();
-          }
-          iterations = stepper.state().iter() as usize;
-          if let StepOutcome::Stopped(reason) = outcome {
-            break reason;
+    Ok(mut stepper) => {
+      // `into_stepper` evaluated the start last, so the trail opens with it.
+      objective.model.borrow_mut().accept();
+      loop {
+        let cost = stepper.state().best_cost();
+        match stepper.step() {
+          Err(()) => break TerminationReason::SolverFailed,
+          Ok(outcome) => {
+            // basin's LM moves its iterate only to a trial that lowers the cost.
+            if stepper.state().best_cost() < cost {
+              best.clone_from(stepper.state().best_param());
+              objective.model.borrow_mut().accept();
+            }
+            iterations = stepper.state().iter() as usize;
+            if let StepOutcome::Stopped(reason) = outcome {
+              break reason;
+            }
           }
         }
       }
-    },
+    }
   };
   (best, reason, iterations)
 }
@@ -314,7 +377,7 @@ mod tests {
   }
 
   #[test]
-  fn only_a_trial_that_lowers_the_cost_is_accepted() {
+  fn the_start_and_each_trial_that_lowers_the_cost_are_accepted() {
     for pivoted_qr in [false, true] {
       let mut problem = Rosenbrock::new();
       problem.reject_outside_domain = true;
@@ -326,9 +389,9 @@ mod tests {
         },
       );
       let accepted = &problem.accepted;
+      assert_eq!(accepted[0], Rosenbrock::new().x);
       assert!(problem.nonfinite_trials.get() > 0 && accepted.iter().all(|x| x[1] >= -2.0));
-      assert!(accepted.len() < report.evaluations - 1);
-      assert!(Rosenbrock::cost(&accepted[0]) < Rosenbrock::cost(&Rosenbrock::new().x));
+      assert!(accepted.len() < report.evaluations);
       assert!(
         accepted
           .windows(2)
@@ -371,6 +434,41 @@ mod tests {
     assert_eq!(fit.message(), Some("converged"));
     assert_eq!(fit.max_error(), Some(0.5));
     assert_eq!(fit.rmse(), 0.125_f64.sqrt());
+  }
+
+  #[test]
+  fn a_trail_keeps_the_last_staged_point_once_per_accept_and_numbers_it() {
+    let options = CalibrationOptions::default().with_record_history(true);
+    let (market, rows) = ([1.0, 2.0], Array1::from_vec(vec![0.5, -1.0]));
+    let mut trail = Trail::new();
+    trail.stage(&options, &market, &[0.5, 3.0], &0.1, &rows);
+    trail.accept();
+    trail.stage(&options, &market, &[9.0, 9.0], &0.2, &rows);
+    trail.stage(&options, &market, &[1.0, 2.0], &0.3, &rows);
+    trail.accept();
+    trail.accept();
+    let entries = trail.into_entries();
+    let numbered = entries.iter().map(|e| (e.iteration, e.params));
+    assert_eq!(numbered.collect::<Vec<_>>(), vec![(0, 0.1), (1, 0.3)]);
+    assert!(entries.iter().all(|entry| entry.residuals == rows));
+    assert_eq!(entries[0].loss.get(LossMetric::Mae), 0.75);
+    assert_eq!(entries[1].loss.get(LossMetric::Rmse), 0.0);
+  }
+
+  #[test]
+  fn a_negated_trail_stores_the_rows_negated_and_an_unrecorded_one_nothing() {
+    let rows = Array1::from_vec(vec![0.5, -0.0, f64::NAN]);
+    let mut recorded = Trail::negated();
+    let options = CalibrationOptions::default().with_record_history(true);
+    recorded.stage(&options, &[1.0; 3], &[1.0; 3], &(), &rows);
+    recorded.accept();
+    let stored = &recorded.into_entries()[0].residuals;
+    let bits = |v: &Array1<f64>| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+    assert_eq!(bits(stored), bits(&rows.mapv(|x| -x)));
+    let mut unrecorded = Trail::negated();
+    unrecorded.stage(&CalibrationOptions::default(), &[1.0], &[2.0], &(), &rows);
+    unrecorded.accept();
+    assert!(unrecorded.into_entries().is_empty());
   }
 
   #[test]

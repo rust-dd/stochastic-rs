@@ -10,104 +10,78 @@
 //!
 //! Reference: Kim, Y. S. (2021), arXiv:2101.11001
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs_distributions::RealExt;
 
-use super::CalibrationHistory;
-/// Market data for a single maturity slice.
-pub use super::levy::MarketSlice;
-use crate::CalibrationLossScore;
-use crate::LossMetric;
+use crate::OptionQuote;
+use crate::OptionType;
 use crate::QuantError;
+use crate::calibration::Calibrated;
+use crate::calibration::CalibrationOptions;
 use crate::calibration::least_squares::LeastSquaresProblem;
-use crate::calibration::least_squares::LmOptions;
+use crate::calibration::least_squares::Trail;
 use crate::calibration::least_squares::minimize;
+use crate::calibration::quote::assert_spot_and_rates;
+use crate::calibration::quote::check_finite_start;
+use crate::calibration::quote::validate_quotes;
 use crate::pricing::cgmysv::CgmysvModel;
 use crate::pricing::cgmysv::CgmysvParams;
 use crate::pricing::fourier::LewisPricer;
+use crate::traits::ToModel;
 
-/// Calibrated CGMYSV parameters with the fit's loss scores and optimizer status.
-#[derive(Clone, Debug)]
-pub struct CgmysvCalibrationResult {
-  pub params: CgmysvParams,
-  pub loss: CalibrationLossScore,
-  pub converged: bool,
-  pub iterations: usize,
-}
-
-impl crate::traits::ToModel for CgmysvCalibrationResult {
+impl ToModel for Calibrated<CgmysvParams> {
   type Model = CgmysvModel;
-  fn to_model(&self) -> Self::Model {
+
+  fn to_model(&self) -> CgmysvModel {
     CgmysvModel {
       params: self.params.clone(),
     }
   }
 }
 
-impl crate::traits::CalibrationResult for CgmysvCalibrationResult {
-  type Params = crate::pricing::cgmysv::CgmysvParams;
-  fn rmse(&self) -> f64 {
-    self.loss.get(LossMetric::Rmse)
-  }
-
-  fn converged(&self) -> bool {
-    self.converged
-  }
-
-  fn params(&self) -> Self::Params {
-    self.params.clone()
-  }
-
-  fn loss_score(&self) -> Option<&CalibrationLossScore> {
-    Some(&self.loss)
-  }
-}
-
-impl crate::traits::Calibrator for CgmysvCalibrator {
-  type Params = crate::pricing::cgmysv::CgmysvParams;
-  type Output = CgmysvCalibrationResult;
-  type Error = QuantError;
-
-  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
-    let start = initial.map(|p| {
-      vec![
-        p.alpha,
-        p.lambda_plus,
-        p.lambda_minus,
-        p.kappa,
-        p.eta,
-        p.zeta,
-        p.rho,
-        p.v0,
-      ]
-    });
-    Ok(CgmysvCalibrator::calibrate(self, start))
-  }
-}
-
-/// CGMYSV calibrator via Fourier pricing + Levenberg-Marquardt.
-#[derive(Clone)]
+/// CGMYSV fit to vanilla quotes by Levenberg–Marquardt in logistic coordinates on the bounds.
+#[derive(Clone, Debug)]
 pub struct CgmysvCalibrator {
   pub s: f64,
   pub r: f64,
   pub q: f64,
-  pub market_data: Vec<MarketSlice>,
-  pub record_history: bool,
-  pub loss_metrics: &'static [LossMetric],
-  params: Vec<f64>,
-  flat_prices: Vec<f64>,
-  flat_strikes: Vec<f64>,
-  flat_t: Vec<f64>,
-  flat_is_call: Vec<bool>,
-  calibration_history: Rc<RefCell<Vec<CalibrationHistory<Vec<f64>>>>>,
+  pub quotes: Vec<OptionQuote>,
+  /// `None` starts from (0.5, 20, 5, 1, 0.05, 0.3, −1, 0.01); a start is clamped to the bounds.
+  pub start: Option<CgmysvParams>,
+  pub options: CalibrationOptions,
+}
+
+impl CgmysvCalibrator {
+  /// Panics unless `s` is finite and positive and `r`, `q` finite; `calibrate` checks the quotes.
+  pub fn new(s: f64, r: f64, q: f64, quotes: Vec<OptionQuote>) -> Self {
+    assert_spot_and_rates(s, r, q);
+    Self {
+      s,
+      r,
+      q,
+      quotes,
+      start: None,
+      options: CalibrationOptions::default(),
+    }
+  }
+
+  /// Panics unless every value of `start` is finite.
+  pub fn with_start(mut self, start: CgmysvParams) -> Self {
+    check_start(&start).unwrap_or_else(|e| panic!("{e}"));
+    self.start = Some(start);
+    self
+  }
+
+  pub fn with_options(mut self, options: CalibrationOptions) -> Self {
+    self.options = options;
+    self
+  }
 }
 
 const N_PARAMS: usize = 8;
 
-// Parameter order: [alpha, lambda_plus, lambda_minus, kappa, eta, zeta, rho, v0]
+/// `[alpha, lambda_plus, lambda_minus, kappa, eta, zeta, rho, v0]`, the optimiser's order.
 fn to_cgmysv_params(p: &[f64]) -> CgmysvParams {
   CgmysvParams {
     alpha: p[0],
@@ -121,8 +95,35 @@ fn to_cgmysv_params(p: &[f64]) -> CgmysvParams {
   }
 }
 
+fn to_vec(p: &CgmysvParams) -> Vec<f64> {
+  vec![
+    p.alpha,
+    p.lambda_plus,
+    p.lambda_minus,
+    p.kappa,
+    p.eta,
+    p.zeta,
+    p.rho,
+    p.v0,
+  ]
+}
+
+fn check_start(p: &CgmysvParams) -> Result<(), QuantError> {
+  let names = [
+    "alpha",
+    "lambda_plus",
+    "lambda_minus",
+    "kappa",
+    "eta",
+    "zeta",
+    "rho",
+    "v0",
+  ];
+  let fields = names.into_iter().zip(to_vec(p)).collect::<Vec<_>>();
+  check_finite_start(&fields)
+}
+
 fn default_params() -> Vec<f64> {
-  // alpha, lambda_plus, lambda_minus, kappa, eta, zeta, rho, v0
   vec![0.5, 20.0, 5.0, 1.0, 0.05, 0.3, -1.0, 0.01]
 }
 
@@ -161,99 +162,75 @@ fn fourier_option_price(
   r: f64,
   q: f64,
   t: f64,
-  is_call: bool,
+  option_type: OptionType,
 ) -> f64 {
   let call = fourier_call_price(params, s, k, r, q, t);
-  if is_call {
-    call
-  } else {
-    (call - s * (-q * t).exp() + k * (-r * t).exp()).max(0.0)
+  match option_type {
+    OptionType::Call => call,
+    OptionType::Put => (call - s * (-q * t).exp() + k * (-r * t).exp()).max_or_nan(0.0),
   }
 }
 
-impl CgmysvCalibrator {
-  pub fn new(s: f64, r: f64, q: f64, market_data: Vec<MarketSlice>) -> Self {
-    let (flat_prices, flat_strikes, flat_t, flat_is_call) = Self::flatten(&market_data);
+impl crate::traits::Calibrator for CgmysvCalibrator {
+  type Params = CgmysvParams;
+  type Output = Calibrated<CgmysvParams>;
+  type Error = QuantError;
+
+  /// A start replaces `self.start`; `InvalidInput` unless every value of the one used is finite.
+  fn calibrate(
+    &self,
+    initial: Option<CgmysvParams>,
+  ) -> Result<Calibrated<CgmysvParams>, QuantError> {
+    validate_quotes(&self.quotes)?;
+    let start = initial.or_else(|| self.start.clone());
+    if let Some(start) = &start {
+      check_start(start)?;
+    }
+    let mut params = start.map_or_else(default_params, |start| to_vec(&start));
+    project(&mut params);
+    let (fitted, report) = minimize(CgmysvProblem::new(self, params), self.options.lm(true));
+    let model = fitted.compute_model_prices();
+    Ok(report.calibrated(
+      to_cgmysv_params(&fitted.params),
+      &fitted.market,
+      &model,
+      self.options.loss_metrics,
+      fitted.trail.into_entries(),
+    ))
+  }
+}
+
+/// One fit: the current point in bounds, the quotes' prices and the trail.
+struct CgmysvProblem<'a> {
+  calibrator: &'a CgmysvCalibrator,
+  params: Vec<f64>,
+  market: Vec<f64>,
+  trail: Trail<CgmysvParams>,
+}
+
+impl<'a> CgmysvProblem<'a> {
+  fn new(calibrator: &'a CgmysvCalibrator, params: Vec<f64>) -> Self {
     Self {
-      s,
-      r,
-      q,
-      market_data,
-      record_history: false,
-      loss_metrics: &LossMetric::ALL,
-      params: default_params(),
-      flat_prices,
-      flat_strikes,
-      flat_t,
-      flat_is_call,
-      calibration_history: Rc::new(RefCell::new(Vec::new())),
+      calibrator,
+      params,
+      market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
+      trail: Trail::negated(),
     }
   }
 
-  fn flatten(data: &[MarketSlice]) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<bool>) {
-    let mut prices = Vec::new();
-    let mut strikes = Vec::new();
-    let mut ts = Vec::new();
-    let mut is_call = Vec::new();
-    for slice in data {
-      for i in 0..slice.strikes.len() {
-        prices.push(slice.prices[i]);
-        strikes.push(slice.strikes[i]);
-        ts.push(slice.tau);
-        is_call.push(slice.is_call[i]);
-      }
-    }
-    (prices, strikes, ts, is_call)
-  }
-
-  pub fn set_record_history(&mut self, record: bool) {
-    self.record_history = record;
-  }
-
-  pub fn history(&self) -> Vec<CalibrationHistory<Vec<f64>>> {
-    self.calibration_history.borrow().clone()
+  fn price(&self, params: &CgmysvParams, quote: &OptionQuote) -> f64 {
+    let CgmysvCalibrator { s, r, q, .. } = *self.calibrator;
+    fourier_option_price(params, s, quote.strike, r, q, quote.tau, quote.option_type)
   }
 
   fn compute_model_prices(&self) -> Vec<f64> {
     let p = to_cgmysv_params(&self.params);
-    self
-      .flat_strikes
-      .iter()
-      .zip(self.flat_t.iter())
-      .zip(self.flat_is_call.iter())
-      .map(|((&k, &t), &is_call)| fourier_option_price(&p, self.s, k, self.r, self.q, t, is_call))
-      .collect()
-  }
-
-  /// Run calibration with optional initial parameters.
-  pub fn calibrate(&self, initial_params: Option<Vec<f64>>) -> CgmysvCalibrationResult {
-    let mut problem = self.clone();
-    if let Some(p) = initial_params {
-      assert_eq!(p.len(), N_PARAMS);
-      problem.params = p;
-    }
-    project(&mut problem.params);
-
-    let (result, report) = minimize(problem, LmOptions::default());
-
-    let final_params = to_cgmysv_params(&result.params);
-    let model_prices = result.compute_model_prices();
-    let loss = CalibrationLossScore::compute_selected(
-      &result.flat_prices,
-      &model_prices,
-      result.loss_metrics,
-    );
-
-    CgmysvCalibrationResult {
-      params: final_params,
-      loss,
-      converged: report.converged,
-      iterations: report.evaluations,
-    }
+    let quotes = self.calibrator.quotes.iter();
+    quotes.map(|quote| self.price(&p, quote)).collect()
   }
 }
 
-impl LeastSquaresProblem for CgmysvCalibrator {
+impl LeastSquaresProblem for CgmysvProblem<'_> {
   fn set_params(&mut self, params: &Array1<f64>) {
     self.params = params
       .iter()
@@ -280,29 +257,18 @@ impl LeastSquaresProblem for CgmysvCalibrator {
 
   fn residuals(&mut self) -> Option<Array1<f64>> {
     let model_prices = self.compute_model_prices();
-    let n = self.flat_prices.len();
-    let residuals: Vec<f64> = (0..n)
-      .map(|i| model_prices[i] - self.flat_prices[i])
-      .collect();
-
-    if self.record_history {
-      let loss =
-        CalibrationLossScore::compute_selected(&self.flat_prices, &model_prices, self.loss_metrics);
-      let mut history = self.calibration_history.borrow_mut();
-      let iteration = history.len();
-      history.push(CalibrationHistory::new(
-        iteration,
-        self.params.clone(),
-        Array1::from_vec(residuals.clone()),
-        loss,
-      ));
-    }
-
-    Some(Array1::from_vec(residuals))
+    let rows = self.market.iter().zip(&model_prices);
+    let residuals = Array1::from_iter(rows.map(|(market, model)| model - market));
+    let options = &self.calibrator.options;
+    let params = to_cgmysv_params(&self.params);
+    self
+      .trail
+      .stage(options, &self.market, &model_prices, &params, &residuals);
+    Some(residuals)
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
-    let n = self.flat_prices.len();
+    let n = self.calibrator.quotes.len();
     let mut jac = Array2::zeros((n, N_PARAMS));
     let h = 1e-6;
 
@@ -321,25 +287,9 @@ impl LeastSquaresProblem for CgmysvCalibrator {
         continue;
       }
 
-      for i in 0..n {
-        let price_up = fourier_option_price(
-          &params_up,
-          self.s,
-          self.flat_strikes[i],
-          self.r,
-          self.q,
-          self.flat_t[i],
-          self.flat_is_call[i],
-        );
-        let price_dn = fourier_option_price(
-          &params_dn,
-          self.s,
-          self.flat_strikes[i],
-          self.r,
-          self.q,
-          self.flat_t[i],
-          self.flat_is_call[i],
-        );
+      for (i, quote) in self.calibrator.quotes.iter().enumerate() {
+        let price_up = self.price(&params_up, quote);
+        let price_dn = self.price(&params_dn, quote);
         jac[(i, j)] = (price_up - price_dn) / denom;
       }
     }
@@ -351,147 +301,11 @@ impl LeastSquaresProblem for CgmysvCalibrator {
     }
     Some(jac)
   }
+
+  fn accept(&mut self) {
+    self.trail.accept();
+  }
 }
 
 #[cfg(test)]
-mod tests {
-  use super::*;
-
-  fn known_params() -> CgmysvParams {
-    CgmysvParams {
-      alpha: 0.5184,
-      lambda_plus: 25.4592,
-      lambda_minus: 4.6040,
-      kappa: 1.0029,
-      eta: 0.0711,
-      zeta: 0.3443,
-      rho: -2.0283,
-      v0: 0.01115,
-    }
-  }
-
-  /// Generate synthetic market data from known params, calibrate back, check recovery.
-  #[test]
-  fn round_trip_calibration() {
-    let p = known_params();
-    let s = 2488.11;
-    let r = 0.01213;
-    let q = 0.01884;
-    let tau = 28.0 / 365.0;
-
-    // Generate synthetic call prices at several strikes
-    let strikes: Vec<f64> = (2400..=2600).step_by(25).map(|k| k as f64).collect();
-    let prices: Vec<f64> = strikes
-      .iter()
-      .map(|&k| fourier_call_price(&p, s, k, r, q, tau))
-      .collect();
-    let is_call = vec![true; strikes.len()];
-
-    println!("Synthetic prices:");
-    for (k, p) in strikes.iter().zip(prices.iter()) {
-      println!("  K={k:.0}  C={p:.4}");
-    }
-
-    let market = MarketSlice {
-      strikes: strikes.clone(),
-      prices: prices.clone(),
-      is_call,
-      tau,
-    };
-
-    let calibrator = CgmysvCalibrator::new(s, r, q, vec![market]);
-    let result = calibrator.calibrate(None);
-
-    println!("Calibrated: {:?}", result.params);
-    println!("Loss RMSE: {:.6}", result.loss.get(LossMetric::Rmse));
-    println!(
-      "Converged: {}, Iterations: {}",
-      result.converged, result.iterations
-    );
-
-    assert!(result.converged, "CGMYSV exhausted its evaluation budget");
-    // The reference solver recovers these synthetic quotes to numerical precision.
-    assert!(
-      result.loss.get(LossMetric::Rmse) < 1e-6,
-      "RMSE = {:.4}, should be small for synthetic data",
-      result.loss.get(LossMetric::Rmse)
-    );
-  }
-
-  /// Fourier pricing sanity: call price positive and decreasing in K.
-  #[test]
-  fn fourier_call_monotone() {
-    let p = known_params();
-    let s = 2488.11;
-    let r = 0.01213;
-    let q = 0.01884;
-    let tau = 28.0 / 365.0;
-
-    let c1 = fourier_call_price(&p, s, 2400.0, r, q, tau);
-    let c2 = fourier_call_price(&p, s, 2500.0, r, q, tau);
-    let c3 = fourier_call_price(&p, s, 2600.0, r, q, tau);
-
-    println!("Call prices: K=2400: {c1:.4}, K=2500: {c2:.4}, K=2600: {c3:.4}");
-    assert!(c1 > c2 && c2 > c3, "calls must decrease in K");
-    assert!(c1 > 0.0 && c3 > 0.0, "calls must be positive");
-  }
-
-  #[test]
-  fn optimizer_coordinates_preserve_both_signs_of_rho() {
-    let mut calibrator = CgmysvCalibrator::new(100.0, 0.03, 0.0, Vec::new());
-    for rho in [-4.0, 0.0, 4.0] {
-      calibrator.params = default_params();
-      calibrator.params[6] = rho;
-      let physical = calibrator.params.clone();
-      let coordinates = LeastSquaresProblem::params(&calibrator);
-      calibrator.set_params(&coordinates);
-      for (&actual, &expected) in calibrator.params.iter().zip(&physical) {
-        assert!((actual - expected).abs() < 1e-12);
-      }
-    }
-    for upper in [false, true] {
-      calibrator.params = param_bounds()
-        .map(|(lo, hi)| if upper { hi } else { lo })
-        .to_vec();
-      let coordinates = LeastSquaresProblem::params(&calibrator);
-      assert!(coordinates.iter().all(|v| v.is_finite()));
-      calibrator.set_params(&coordinates);
-      for (&value, (lo, hi)) in calibrator.params.iter().zip(param_bounds()) {
-        assert!(value > lo && value < hi);
-      }
-    }
-  }
-
-  #[test]
-  fn optimizer_jacobian_matches_finite_differences() {
-    let market = MarketSlice {
-      strikes: vec![95.0, 100.0, 105.0],
-      prices: vec![0.0; 3],
-      is_call: vec![true; 3],
-      tau: 0.5,
-    };
-    let mut calibrator = CgmysvCalibrator::new(100.0, 0.03, 0.0, vec![market]);
-    let coordinates = LeastSquaresProblem::params(&calibrator);
-    calibrator.set_params(&coordinates);
-    let jacobian = calibrator.jacobian().unwrap();
-    let step = 1e-5;
-    for j in 0..N_PARAMS {
-      let mut shifted = coordinates.clone();
-      shifted[j] += step;
-      calibrator.set_params(&shifted);
-      let up = calibrator.residuals().unwrap();
-      shifted[j] -= 2.0 * step;
-      calibrator.set_params(&shifted);
-      let down = calibrator.residuals().unwrap();
-      for i in 0..3 {
-        let numeric = (up[i] - down[i]) / (2.0 * step);
-        let relative = (jacobian[(i, j)] - numeric).abs() / (1.0 + numeric.abs());
-        assert!(
-          relative < 1e-5,
-          "row {i}, column {j}: {} vs {numeric}",
-          jacobian[(i, j)]
-        );
-      }
-    }
-  }
-}
+mod tests;

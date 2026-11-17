@@ -12,7 +12,6 @@ use super::calibrator::HestonCalibrator;
 use super::calibrator::HestonMleSeed;
 use super::params::HestonJacobianMethod;
 use super::params::HestonMleSeedMethod;
-use super::transform::canonicalize;
 use super::transform::from_optimizer_coordinates;
 use super::transform::to_optimizer_coordinates;
 use crate::OptionType;
@@ -35,24 +34,9 @@ impl HestonCalibrator {
     .projected()
   }
 
-  /// The canonical point the optimiser's coordinates stand for, before the Feller projection.
-  pub(super) fn free_params(&self) -> HestonParams {
-    canonicalize(
-      &self
-        .start
-        .map_or_else(Self::fallback_params, HestonParams::projected),
-    )
-  }
-
-  /// The point every residual is evaluated at; projected last, so no rounding of the coordinates undoes Feller.
-  pub(super) fn effective_params(&self) -> HestonParams {
-    self.feller_projected(self.free_params())
-  }
-
-  /// The overshoot row's weight, scaled to the norm of the price residuals' σ column at the start; the difference
-  /// runs backwards, since lowering σ keeps the point feasible.
-  pub(super) fn feller_row_weight_at_start(&self) -> f64 {
-    let start = self.effective_params();
+  /// The overshoot row's weight, scaled to the norm of the price rows' σ column at `start`; the
+  /// difference runs backwards, since lowering σ keeps the point feasible.
+  pub(super) fn feller_row_weight_at(&self, start: HestonParams) -> f64 {
     let step = 1e-5 * (1.0 + start.sigma);
     let lowered = HestonParams {
       sigma: start.sigma - step,

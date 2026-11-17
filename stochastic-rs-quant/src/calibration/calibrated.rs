@@ -132,8 +132,8 @@ impl<P: Clone, D> CalibrationResult for Calibrated<P, D> {
   }
 }
 
-/// One accepted optimiser iterate: its parameters, its residuals as market − model, scaled by a
-/// Levenberg–Marquardt fit's row weights, and its loss.
+/// The start or one accepted optimiser iterate: its parameters, its residuals as market − model,
+/// scaled by a Levenberg–Marquardt fit's row weights, and its loss.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct CalibrationHistory<P> {
@@ -174,7 +174,7 @@ pub struct CalibrationOptions {
   pub tolerance: Option<f64>,
   /// Levenberg–Marquardt budget: `patience · (n + 1)` evaluations for `n` parameters; default 100.
   pub patience: usize,
-  /// Record the optimiser's accepted iterates into `Calibrated::history`.
+  /// Record the start and the optimiser's accepted iterates into `Calibrated::history`.
   pub record_history: bool,
   /// Metrics computed for the result and each history entry, every one by default; `rmse()` always has Rmse.
   pub loss_metrics: &'static [LossMetric],

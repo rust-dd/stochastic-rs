@@ -2,13 +2,38 @@ use super::SvjCalibrator;
 use super::SvjParams;
 use super::loss::bates_call_price;
 use crate::LossMetric;
+use crate::OptionQuote;
 use crate::OptionType;
+use crate::QuantError;
+use crate::calibration::CalibrationHistory;
+use crate::calibration::CalibrationOptions;
+use crate::pricing::fourier::BatesFourier;
+use crate::traits::CalibrationResult;
 use crate::traits::Calibrator;
+use crate::traits::ToModel;
 
 const HESTON_REF: [f64; 9] = [
   25.095178, 20.976171, 17.106937, 13.548230, 10.361869, 7.604362, 5.317953, 3.519953, 2.193310,
 ];
 const STRIKES: [f64; 9] = [80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0];
+const START: SvjParams = SvjParams {
+  v0: 0.06,
+  kappa: 2.0,
+  theta: 0.06,
+  sigma_v: 0.4,
+  rho: -0.5,
+  lambda: 0.1,
+  mu_j: 0.0,
+  sigma_j: 0.1,
+};
+
+fn heston_ref_quotes() -> Vec<OptionQuote> {
+  STRIKES
+    .iter()
+    .zip(HESTON_REF)
+    .map(|(&k, price)| OptionQuote::new(k, 1.0, price, OptionType::Call))
+    .collect()
+}
 
 #[test]
 fn bates_pricer_matches_heston_reference() {
@@ -34,37 +59,14 @@ fn bates_pricer_matches_heston_reference() {
 
 #[test]
 fn svj_calibrate_recovers_heston_prices() {
-  let n = STRIKES.len();
-  let calibrator = SvjCalibrator::new(
-    Some(SvjParams {
-      v0: 0.06,
-      kappa: 2.0,
-      theta: 0.06,
-      sigma_v: 0.4,
-      rho: -0.5,
-      lambda: 0.1,
-      mu_j: 0.0,
-      sigma_j: 0.1,
-    }),
-    HESTON_REF.to_vec().into(),
-    vec![100.0; n].into(),
-    STRIKES.to_vec().into(),
-    0.05,
-    Some(0.0),
-    1.0,
-    OptionType::Call,
-    false,
-  );
-
-  let result = calibrator.calibrate(None).unwrap();
+  let result = SvjCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes())
+    .with_start(START)
+    .calibrate(None)
+    .unwrap();
   assert!(
     result.loss.get(LossMetric::Rmse) < 0.5,
     "SVJ→Heston RMSE={:.6}",
     result.loss.get(LossMetric::Rmse)
-  );
-  println!(
-    "SVJ→Heston: v0={:.4}, kappa={:.4}, theta={:.4}, sigma_v={:.4}, rho={:.4}, lambda={:.4}",
-    result.v0, result.kappa, result.theta, result.sigma_v, result.rho, result.lambda
   );
 }
 
@@ -91,27 +93,117 @@ fn svj_bates_little_trap_long_maturity_high_rho() {
   );
 }
 
+/// The trail opens at the projected start and each later entry is an accepted step, so the
+/// objective falls along it to the fit.
+#[test]
+fn the_trail_opens_at_the_start_and_records_market_minus_model() {
+  let quotes = heston_ref_quotes();
+  let fit = SvjCalibrator::new(100.0, 0.05, 0.0, quotes.clone())
+    .with_start(START)
+    .with_options(CalibrationOptions::default().with_record_history(true))
+    .calibrate(None)
+    .unwrap();
+  assert!(fit.history.len() > 1, "{} entries", fit.history.len());
+  assert_eq!(fit.history[0].params, START.projected());
+  assert_eq!(
+    fit.history.last().map(|entry| entry.params),
+    Some(fit.params)
+  );
+  let objective = |entry: &CalibrationHistory<SvjParams>| entry.residuals.dot(&entry.residuals);
+  assert!(
+    fit
+      .history
+      .windows(2)
+      .all(|pair| objective(&pair[1]) < objective(&pair[0]))
+  );
+  for entry in [&fit.history[0], fit.history.last().unwrap()] {
+    for (quote, residual) in quotes.iter().zip(&entry.residuals) {
+      let model = bates_call_price(&entry.params, 100.0, quote.strike, 0.05, 0.0, quote.tau);
+      assert_eq!(*residual, quote.price - model);
+    }
+  }
+}
+
+#[test]
+fn a_start_outside_the_bates_domain_is_an_error() {
+  let calibrator = SvjCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes());
+  for start in [
+    SvjParams {
+      sigma_v: -0.3,
+      ..START
+    },
+    SvjParams {
+      rho: f64::NAN,
+      ..START
+    },
+  ] {
+    let err = calibrator.calibrate(Some(start)).unwrap_err();
+    assert!(
+      matches!(err, QuantError::InvalidInput { what: "start", .. }),
+      "{err}"
+    );
+  }
+  let mut field = calibrator;
+  field.start = Some(SvjParams {
+    lambda: -1.0,
+    ..START
+  });
+  assert!(matches!(
+    field.calibrate(None),
+    Err(QuantError::InvalidInput { what: "start", .. })
+  ));
+}
+
+#[test]
+#[should_panic(expected = "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = 1.5")]
+fn with_start_panics_outside_the_bates_domain() {
+  let _ = SvjCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes())
+    .with_start(SvjParams { rho: 1.5, ..START });
+}
+
+#[test]
+#[should_panic(expected = "sigma_j must satisfy `sigma_j.is_finite() && sigma_j >= 0.0`")]
+fn bates_fourier_new_panics_outside_the_domain() {
+  let _ = BatesFourier::new(SvjParams {
+    sigma_j: -0.1,
+    ..START
+  });
+}
+
+#[test]
+fn the_fit_converts_to_the_bates_model_of_its_parameters() {
+  let fit = SvjCalibrator::new(100.0, 0.05, 0.0, heston_ref_quotes())
+    .with_start(START)
+    .with_options(CalibrationOptions::default().with_max_iterations(3))
+    .calibrate(None)
+    .unwrap();
+  let model = fit.to_model();
+  let p = fit.params;
+  assert_eq!(
+    [model.v0, model.kappa, model.theta, model.sigma_v, model.rho],
+    [p.v0, p.kappa, p.theta, p.sigma_v, p.rho]
+  );
+  assert_eq!(
+    [model.lambda, model.mu_j, model.sigma_j],
+    [p.lambda, p.mu_j, p.sigma_j]
+  );
+}
+
 #[test]
 fn test_svj_calibrate() {
-  let s = vec![
-    100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0,
-  ];
-
-  let k = vec![
+  let k = [
     80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0, 125.0, 130.0, 135.0,
   ];
-
-  let c_market = vec![
+  let c_market = [
     21.5, 17.9, 14.2, 11.0, 8.2, 6.0, 4.3, 3.1, 2.2, 1.6, 1.2, 0.9,
   ];
-
-  let r = 0.01;
-  let q = Some(0.0);
-  let tau = 0.5;
-  let option_type = OptionType::Call;
-
-  let calibrator = SvjCalibrator::new(
-    Some(SvjParams {
+  let quotes = k
+    .iter()
+    .zip(c_market)
+    .map(|(&k, price)| OptionQuote::new(k, 0.5, price, OptionType::Call))
+    .collect();
+  let result = SvjCalibrator::new(100.0, 0.01, 0.0, quotes)
+    .with_start(SvjParams {
       v0: 0.04,
       kappa: 1.5,
       theta: 0.04,
@@ -120,28 +212,9 @@ fn test_svj_calibrate() {
       lambda: 0.5,
       mu_j: -0.05,
       sigma_j: 0.1,
-    }),
-    c_market.into(),
-    s.into(),
-    k.into(),
-    r,
-    q,
-    tau,
-    option_type,
-    true,
-  );
-
-  let result = calibrator.calibrate(None).unwrap();
-  println!(
-    "SVJ result: v0={}, kappa={}, theta={}, sigma_v={}, rho={}, lambda={}, mu_j={}, sigma_j={}",
-    result.v0,
-    result.kappa,
-    result.theta,
-    result.sigma_v,
-    result.rho,
-    result.lambda,
-    result.mu_j,
-    result.sigma_j,
-  );
-  println!("Loss: {:?}", result.loss);
+    })
+    .with_options(CalibrationOptions::default().with_record_history(true))
+    .calibrate(None)
+    .unwrap();
+  assert!(result.rmse().is_finite() && !result.history.is_empty());
 }
