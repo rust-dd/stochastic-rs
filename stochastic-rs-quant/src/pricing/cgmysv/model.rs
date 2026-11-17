@@ -38,10 +38,8 @@ pub struct CgmysvParams {
   pub v0: f64,
 }
 
-/// CGMYSV model for Fourier-based option pricing.
-///
-/// Implements [`FourierModelExt`] to enable pricing via Carr–Madan FFT,
-/// Gil–Pelaez quadrature, or Lewis formula.
+/// CGMYSV as a [`FourierModelExt`]; its `chf`, and so every price, is NaN at `λ₊ ≤ 1` and from
+/// the time `E[e^{L_t}]` turns infinite on.
 #[derive(Debug, Clone)]
 pub struct CgmysvModel {
   pub params: CgmysvParams,
@@ -107,14 +105,18 @@ impl CgmysvParams {
   ///
   /// $\phi_{L_t}(u) = \Phi_t(-i\psi(u),\,\rho u,\,v_0)$
   pub fn chf_l(&self, t: f64, u: Complex64) -> Complex64 {
-    let psi = self.psi_std_cgmy(u);
+    self.transform(t, u, self.psi_std_cgmy(u))
+  }
+
+  /// `chf_l` at `u`, given `psi = ψ(u)`.
+  fn transform(&self, t: f64, u: Complex64, psi: Complex64) -> Complex64 {
     let a = -Complex64::i() * psi;
     let b = Complex64::from(self.rho) * u;
     self.cir_joint_chf(t, a, b, self.v0)
   }
 
-  /// Convexity correction $\omega(t) = \ln E[e^{L_t}]$; NaN where that moment is infinite, at
-  /// `λ₊ ≤ 1` or from the CIR factor's explosion time on.
+  /// Convexity correction $\omega(t) = \ln E[e^{L_t}]$; NaN at `λ₊ ≤ 1`, and from the CIR factor's
+  /// explosion time on, where that moment is infinite.
   pub fn omega(&self, t: f64) -> f64 {
     let u = -Complex64::i();
     let psi = self.psi_std_cgmy(u);
@@ -122,17 +124,11 @@ impl CgmysvParams {
     if t >= limit || limit.is_nan() {
       return f64::NAN;
     }
-    let phi = self.cir_joint_chf(
-      t,
-      -Complex64::i() * psi,
-      Complex64::from(self.rho) * u,
-      self.v0,
-    );
-    phi.ln().re
+    self.transform(t, u, psi).ln().re
   }
 
-  /// First `t` with `E[e^{L_t}] = ∞`, `psi` being `ψ(−i)`: 0 at `λ₊ ≤ 1`, else where the Riccati
-  /// `B' = ½ζ²B² − κB + psi`, `B(0) = ρ` blows up, `∞` if it never does.
+  /// The `t` from which `omega` is NaN, `psi` being `ψ(−i)`: 0 at `λ₊ ≤ 1`, else where the Riccati
+  /// `B' = ½ζ²B² − κB + psi`, `B(0) = ρ` blows up and `E[e^{L_t}]` with it, `∞` if it never does.
   /// Andersen & Piterbarg (2007), Finance Stoch. 11(1), 29–50.
   fn explosion_time(&self, psi: f64) -> f64 {
     if self.lambda_plus <= 1.0 {
@@ -237,8 +233,8 @@ mod tests {
     assert!((call - 6.1426157634621505).abs() < 2e-6, "{call}");
   }
 
-  /// `E[e^{L_t}]` is infinite at `λ₊ ≤ 1` and past the CIR factor's blow-up (mpmath, which the
-  /// Riccati ODE confirms), where no drift-free chf exists.
+  /// No drift-free chf exists once `E[e^{L_t}]` is infinite, past the CIR factor's blow-up (mpmath,
+  /// which the Riccati ODE confirms) and at `λ₊ < 1`; the guard also takes `λ₊ = 1`.
   #[test]
   fn the_chf_is_nan_once_the_exponential_moment_explodes() {
     for (params, blow_up) in [
