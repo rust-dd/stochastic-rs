@@ -334,9 +334,17 @@ pub(crate) fn ar1_start(
       stage: "starting point",
     });
   }
-  // Zero only where every residual's square underflows; a bound in absolute units would move the
-  // start off the data's scale and leave the simplex on a plateau of the likelihood.
-  let sigma0 = if sigma_raw > 0.0 { sigma_raw } else { 1e-3 };
+  // Zero only where every residual's square underflows: then the `σ` whose stationary variance
+  // `v₁ σ²` is the path's, so that the data and not a constant set the start's scale.
+  let sigma0 = if sigma_raw > 0.0 {
+    sigma_raw
+  } else {
+    let v1 = match kind {
+      DiffusionKind::OrnsteinUhlenbeck => 1.0 / (2.0 * theta0),
+      DiffusionKind::Cir => mu0 / (2.0 * theta0),
+    };
+    den.sqrt() / ((nobs - 1) as f64 * v1).sqrt()
+  };
   Ok([theta0.ln(), p0, sigma0.ln()])
 }
 
