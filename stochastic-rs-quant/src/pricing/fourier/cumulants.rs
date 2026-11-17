@@ -37,7 +37,7 @@ impl Cumulants {
 }
 
 /// Below this `|κt|` the closed forms in `1/κ` cancel, `c4` to a relative `ε/(κt)⁷`, and the series
-/// in `t` takes over; the two agree to 2e-12 at the switch.
+/// in `t` takes over; the two agree to 3.8e-12 at the switch.
 const SERIES_BELOW: f64 = 1.0;
 
 /// `c1` from Fang & Oosterlee's Table 11; `c2` and `c4` are `(−i)ⁿ∂ⁿᵤ ln chf` at `u = 0` of the

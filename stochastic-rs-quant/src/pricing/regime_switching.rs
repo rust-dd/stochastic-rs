@@ -200,16 +200,8 @@ impl CosPricer {
     vols: &Array1<f64>,
     initial_state: usize,
   ) -> f64 {
-    let model = RegimeSwitchingModel {
-      q_matrix: q_matrix.clone(),
-      vols: vols.clone(),
-      initial_state,
-    };
-    CosEngine {
-      n: self.n,
-      l: self.l,
-    }
-    .price(&model, s, k, r, q_div, t, OptionType::Call)
+    let query = (s, k, r, q_div, t);
+    self.price(query, q_matrix, vols, initial_state, OptionType::Call)
   }
 
   /// Price a European put option under regime-switching diffusion.
@@ -224,6 +216,18 @@ impl CosPricer {
     vols: &Array1<f64>,
     initial_state: usize,
   ) -> f64 {
+    let query = (s, k, r, q_div, t);
+    self.price(query, q_matrix, vols, initial_state, OptionType::Put)
+  }
+
+  fn price(
+    &self,
+    (s, k, r, q_div, t): (f64, f64, f64, f64, f64),
+    q_matrix: &Array2<f64>,
+    vols: &Array1<f64>,
+    initial_state: usize,
+    option_type: OptionType,
+  ) -> f64 {
     let model = RegimeSwitchingModel {
       q_matrix: q_matrix.clone(),
       vols: vols.clone(),
@@ -233,7 +237,7 @@ impl CosPricer {
       n: self.n,
       l: self.l,
     }
-    .price(&model, s, k, r, q_div, t, OptionType::Put)
+    .price(&model, s, k, r, q_div, t, option_type)
   }
 }
 

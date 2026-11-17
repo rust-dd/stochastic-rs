@@ -420,7 +420,8 @@ fn heston_cumulants_keep_their_digits_at_a_small_kappa() {
   assert!(failures.is_empty(), "\n{}", failures.join("\n"));
 }
 
-/// A `c4` lost to cancellation, 1.3e8 here, widened this put's range 1,300 times: 29 off at K 80.
+/// A `c4` of rounding noise (1.3e8 at this κ) widens the range 1,300 times and puts this put 29
+/// off at K 80.
 #[test]
 fn the_default_cos_put_holds_at_a_small_kappa() {
   let model = HestonFourier::new(heston(0.04, 1e-4, 0.04, 0.3, -0.7));
@@ -528,7 +529,7 @@ fn regime_switching_cumulants_match_mpmath() {
   assert_eq!(one.cumulants(1.0).c4, Some(0.0));
 }
 
-/// Without a `c4` the range was `10√c2`, and this put, started in the low state, was 2.9e-4 off.
+/// A range of `10√c2` alone leaves this put, started in the low state, 2.9e-4 off.
 #[test]
 fn the_default_cos_put_holds_for_three_regimes_at_a_short_maturity() {
   let model = three_states(0);
