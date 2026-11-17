@@ -9,13 +9,12 @@ use super::loss::param_count;
 use super::loss::project_params;
 use super::types::LevyModelType;
 use super::types::LevyParams;
-use crate::CalibrationLossScore;
 use crate::OptionQuote;
 use crate::QuantError;
 use crate::calibration::Calibrated;
-use crate::calibration::CalibrationHistory;
 use crate::calibration::CalibrationOptions;
 use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::Trail;
 use crate::calibration::least_squares::minimize;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::validate_quotes;
@@ -110,37 +109,31 @@ impl crate::traits::Calibrator for LevyCalibrator {
     project_params(self.model_type, &mut values);
     let problem = LevyProblem {
       calibrator: self,
-      params: values,
-      history: Vec::new(),
-      pending: None,
+      params: LevyParams {
+        values,
+        model_type: self.model_type,
+      },
+      market: self.quotes.iter().map(|quote| quote.price).collect(),
+      trail: Trail::new(),
     };
     let (fitted, report) = minimize(problem, self.options.lm(false));
     let model = fitted.compute_model_prices();
-    let market = self
-      .quotes
-      .iter()
-      .map(|quote| quote.price)
-      .collect::<Vec<_>>();
-    let params = LevyParams {
-      values: fitted.params,
-      model_type: self.model_type,
-    };
     Ok(report.calibrated(
-      params,
-      &market,
+      fitted.params,
+      &fitted.market,
       &model,
       self.options.loss_metrics,
-      fitted.history,
+      fitted.trail.into_entries(),
     ))
   }
 }
 
-/// One fit: the current point and the trail of its accepted iterates.
+/// One fit: the current point, the quotes' prices and the trail.
 struct LevyProblem<'a> {
   calibrator: &'a LevyCalibrator,
-  params: Vec<f64>,
-  history: Vec<CalibrationHistory<LevyParams>>,
-  pending: Option<CalibrationHistory<LevyParams>>,
+  params: LevyParams,
+  market: Vec<f64>,
+  trail: Trail<LevyParams>,
 }
 
 impl LevyProblem<'_> {
@@ -159,12 +152,12 @@ impl LevyProblem<'_> {
   fn compute_model_prices(&self) -> Vec<f64> {
     let quotes = self.calibrator.quotes.iter();
     quotes
-      .map(|quote| self.price(&self.params, quote))
+      .map(|quote| self.price(&self.params.values, quote))
       .collect()
   }
 
   fn effective_params(&self) -> Vec<f64> {
-    let mut p = self.params.clone();
+    let mut p = self.params.values.clone();
     project_params(self.calibrator.model_type, &mut p);
     p
   }
@@ -209,7 +202,7 @@ impl LeastSquaresProblem for LevyProblem<'_> {
   fn set_params(&mut self, params: &Array1<f64>) {
     let mut p: Vec<f64> = params.to_vec();
     project_params(self.calibrator.model_type, &mut p);
-    self.params = p;
+    self.params.values = p;
   }
 
   fn params(&self) -> Array1<f64> {
@@ -218,24 +211,12 @@ impl LeastSquaresProblem for LevyProblem<'_> {
 
   fn residuals(&mut self) -> Option<Array1<f64>> {
     let c_model = self.compute_model_prices();
-    let quotes = self.calibrator.quotes.iter().zip(&c_model);
-    let residuals = Array1::from_iter(quotes.map(|(quote, model)| quote.price - model));
+    let rows = self.market.iter().zip(&c_model);
+    let residuals = Array1::from_iter(rows.map(|(market, model)| market - model));
     let options = &self.calibrator.options;
-    if options.record_history {
-      let market = self
-        .calibrator
-        .quotes
-        .iter()
-        .map(|quote| quote.price)
-        .collect::<Vec<_>>();
-      let loss = CalibrationLossScore::compute_selected(&market, &c_model, options.loss_metrics);
-      let params = LevyParams {
-        values: self.params.clone(),
-        model_type: self.calibrator.model_type,
-      };
-      let entry = CalibrationHistory::new(self.history.len(), params, residuals.clone(), loss);
-      self.pending = Some(entry);
-    }
+    self
+      .trail
+      .stage(options, &self.market, &c_model, &self.params, &residuals);
     Some(residuals)
   }
 
@@ -244,6 +225,6 @@ impl LeastSquaresProblem for LevyProblem<'_> {
   }
 
   fn accept(&mut self) {
-    self.history.extend(self.pending.take());
+    self.trail.accept();
   }
 }

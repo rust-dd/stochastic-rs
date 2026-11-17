@@ -1,5 +1,6 @@
 use super::*;
 use crate::LossMetric;
+use crate::calibration::CalibrationHistory;
 use crate::traits::Calibrator;
 
 fn known_params() -> CgmysvParams {
@@ -16,12 +17,7 @@ fn known_params() -> CgmysvParams {
 }
 
 fn problem(calibrator: &CgmysvCalibrator) -> CgmysvProblem<'_> {
-  CgmysvProblem {
-    calibrator,
-    params: default_params(),
-    history: Vec::new(),
-    pending: None,
-  }
+  CgmysvProblem::new(calibrator, default_params())
 }
 
 fn synthetic(s: f64, r: f64, q: f64, tau: f64) -> Vec<OptionQuote> {

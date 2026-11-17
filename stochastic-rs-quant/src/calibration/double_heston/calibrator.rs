@@ -102,17 +102,12 @@ impl crate::traits::Calibrator for DoubleHestonCalibrator {
     let (fitted, report) = minimize(DoubleHestonProblem::new(self, start), self.options.lm(true));
     let params = fitted.effective_params();
     let model = fitted.compute_model_prices_for(&params);
-    let market = self
-      .quotes
-      .iter()
-      .map(|quote| quote.price)
-      .collect::<Vec<_>>();
     Ok(report.calibrated(
       params,
-      &market,
+      &fitted.market,
       &model,
       self.options.loss_metrics,
-      fitted.history,
+      fitted.trail.into_entries(),
     ))
   }
 }

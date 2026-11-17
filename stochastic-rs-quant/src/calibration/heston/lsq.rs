@@ -5,16 +5,49 @@ use super::calibrator::HestonCalibrator;
 use super::params::HestonJacobianMethod;
 use super::params::feller_sigma_cap;
 use super::transform::apply_chain_rule;
+use super::transform::canonicalize;
 use super::transform::from_optimizer_coordinates;
 use super::transform::to_optimizer_coordinates;
-use crate::CalibrationLossScore;
-use crate::calibration::CalibrationHistory;
 use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::Trail;
 use crate::pricing::heston::HestonParams;
 
-impl LeastSquaresProblem for HestonCalibrator {
+/// One fit: the optimiser's point, the Feller row's weight, the quotes' prices and the trail.
+pub(super) struct HestonProblem<'a> {
+  calibrator: &'a HestonCalibrator,
+  point: HestonParams,
+  /// Weight of the row on σ's overshoot past the Feller cap; set only inside a projected fit.
+  pub(super) feller_row_weight: Option<f64>,
+  pub(super) market: Vec<f64>,
+  pub(super) trail: Trail<HestonParams>,
+}
+
+impl<'a> HestonProblem<'a> {
+  pub(super) fn new(calibrator: &'a HestonCalibrator, start: HestonParams) -> Self {
+    Self {
+      calibrator,
+      point: start,
+      feller_row_weight: None,
+      market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
+      trail: Trail::new(),
+    }
+  }
+
+  /// The canonical point the optimiser's coordinates stand for, before the Feller projection.
+  pub(super) fn free_params(&self) -> HestonParams {
+    canonicalize(&self.point.projected())
+  }
+
+  /// The point every residual is evaluated at; projected last, so no rounding of the coordinates
+  /// undoes Feller.
+  pub(super) fn effective_params(&self) -> HestonParams {
+    self.calibrator.feller_projected(self.free_params())
+  }
+}
+
+impl LeastSquaresProblem for HestonProblem<'_> {
   fn set_params(&mut self, params: &Array1<f64>) {
-    self.start = Some(from_optimizer_coordinates(params));
+    self.point = from_optimizer_coordinates(params);
   }
 
   fn params(&self) -> Array1<f64> {
@@ -22,31 +55,22 @@ impl LeastSquaresProblem for HestonCalibrator {
   }
 
   fn residuals(&mut self) -> Option<Array1<f64>> {
+    let calibrator = self.calibrator;
     let free = self.free_params();
-    let params_eff = self.feller_projected(free);
-    let c_model = self.compute_model_prices_for(&params_eff);
-    let weighted_residuals = self.weighted_residuals(&c_model);
+    let params_eff = calibrator.feller_projected(free);
+    let c_model = calibrator.compute_model_prices_for(&params_eff);
+    let weighted_residuals = calibrator.weighted_residuals(&c_model);
+    let model = c_model.as_slice().expect("model prices are a fresh array");
+    let options = &calibrator.options;
+    self.trail.stage(
+      options,
+      &self.market,
+      model,
+      &params_eff,
+      &weighted_residuals,
+    );
 
-    if self.options.record_history {
-      let market = self
-        .quotes
-        .iter()
-        .map(|quote| quote.price)
-        .collect::<Vec<_>>();
-      let loss = CalibrationLossScore::compute_selected(
-        &market,
-        &c_model.to_vec(),
-        self.options.loss_metrics,
-      );
-      self.pending = Some(CalibrationHistory::new(
-        self.history.len(),
-        params_eff,
-        weighted_residuals.clone(),
-        loss,
-      ));
-    }
-
-    let residuals = match &self.options.regularization {
+    let residuals = match &options.regularization {
       Some(reg) if reg.is_active() => {
         reg.augment_residuals(weighted_residuals, &physical(&params_eff))
       }
@@ -65,10 +89,11 @@ impl LeastSquaresProblem for HestonCalibrator {
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
+    let calibrator = self.calibrator;
     let free = self.free_params();
-    let p = self.feller_projected(free);
+    let p = calibrator.feller_projected(free);
     let optimizer_coordinates = to_optimizer_coordinates(&free);
-    let capped = self.feller_projection && p.sigma < free.sigma;
+    let capped = calibrator.feller_projection && p.sigma < free.sigma;
     let to_optimizer = |physical: Array2<f64>| {
       let physical = if capped {
         through_feller_cap(physical, &free)
@@ -77,16 +102,16 @@ impl LeastSquaresProblem for HestonCalibrator {
       };
       apply_chain_rule(physical, &optimizer_coordinates)
     };
-    let jacobian = match self.jacobian_method {
-      HestonJacobianMethod::NumericFiniteDiff => self.numeric_optimizer_jacobian(&free),
+    let jacobian = match calibrator.jacobian_method {
+      HestonJacobianMethod::NumericFiniteDiff => calibrator.numeric_optimizer_jacobian(&free),
       HestonJacobianMethod::CuiAnalytic => {
-        match self.compute_model_prices_and_residual_jacobian_cui(&p) {
+        match calibrator.compute_model_prices_and_residual_jacobian_cui(&p) {
           Some((_, jac)) => to_optimizer(jac),
-          None => self.numeric_optimizer_jacobian(&free),
+          None => calibrator.numeric_optimizer_jacobian(&free),
         }
       }
     };
-    let jacobian = match &self.options.regularization {
+    let jacobian = match &calibrator.options.regularization {
       // The penalty rows are diagonal in the physical parameters; the same
       // chain rule as the price rows maps them into the optimiser coordinates.
       Some(reg) if reg.is_active() => {
@@ -112,7 +137,7 @@ impl LeastSquaresProblem for HestonCalibrator {
   }
 
   fn accept(&mut self) {
-    self.history.extend(self.pending.take());
+    self.trail.accept();
   }
 }
 

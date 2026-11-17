@@ -14,14 +14,13 @@ use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_distributions::RealExt;
 
-use super::CalibrationHistory;
-use crate::CalibrationLossScore;
 use crate::OptionQuote;
 use crate::OptionType;
 use crate::QuantError;
 use crate::calibration::Calibrated;
 use crate::calibration::CalibrationOptions;
 use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::Trail;
 use crate::calibration::least_squares::minimize;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::check_finite_start;
@@ -189,38 +188,36 @@ impl crate::traits::Calibrator for CgmysvCalibrator {
     }
     let mut params = start.map_or_else(default_params, |start| to_vec(&start));
     project(&mut params);
-    let problem = CgmysvProblem {
-      calibrator: self,
-      params,
-      history: Vec::new(),
-      pending: None,
-    };
-    let (fitted, report) = minimize(problem, self.options.lm(true));
+    let (fitted, report) = minimize(CgmysvProblem::new(self, params), self.options.lm(true));
     let model = fitted.compute_model_prices();
-    let market = self
-      .quotes
-      .iter()
-      .map(|quote| quote.price)
-      .collect::<Vec<_>>();
     Ok(report.calibrated(
       to_cgmysv_params(&fitted.params),
-      &market,
+      &fitted.market,
       &model,
       self.options.loss_metrics,
-      fitted.history,
+      fitted.trail.into_entries(),
     ))
   }
 }
 
-/// One fit: the current point in bounds and the trail of its accepted iterates.
+/// One fit: the current point in bounds, the quotes' prices and the trail.
 struct CgmysvProblem<'a> {
   calibrator: &'a CgmysvCalibrator,
   params: Vec<f64>,
-  history: Vec<CalibrationHistory<CgmysvParams>>,
-  pending: Option<CalibrationHistory<CgmysvParams>>,
+  market: Vec<f64>,
+  trail: Trail<CgmysvParams>,
 }
 
-impl CgmysvProblem<'_> {
+impl<'a> CgmysvProblem<'a> {
+  fn new(calibrator: &'a CgmysvCalibrator, params: Vec<f64>) -> Self {
+    Self {
+      calibrator,
+      params,
+      market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
+      trail: Trail::negated(),
+    }
+  }
+
   fn price(&self, params: &CgmysvParams, quote: &OptionQuote) -> f64 {
     let CgmysvCalibrator { s, r, q, .. } = *self.calibrator;
     fourier_option_price(params, s, quote.strike, r, q, quote.tau, quote.option_type)
@@ -260,27 +257,13 @@ impl LeastSquaresProblem for CgmysvProblem<'_> {
 
   fn residuals(&mut self) -> Option<Array1<f64>> {
     let model_prices = self.compute_model_prices();
-    let quotes = self.calibrator.quotes.iter().zip(&model_prices);
-    let residuals = Array1::from_iter(quotes.map(|(quote, model)| model - quote.price));
+    let rows = self.market.iter().zip(&model_prices);
+    let residuals = Array1::from_iter(rows.map(|(market, model)| model - market));
     let options = &self.calibrator.options;
-    if options.record_history {
-      let market = self
-        .calibrator
-        .quotes
-        .iter()
-        .map(|quote| quote.price)
-        .collect::<Vec<_>>();
-      let loss =
-        CalibrationLossScore::compute_selected(&market, &model_prices, options.loss_metrics);
-      // A trail reads market − model, the negation of this fit's residual.
-      let entry = CalibrationHistory::new(
-        self.history.len(),
-        to_cgmysv_params(&self.params),
-        -&residuals,
-        loss,
-      );
-      self.pending = Some(entry);
-    }
+    let params = to_cgmysv_params(&self.params);
+    self
+      .trail
+      .stage(options, &self.market, &model_prices, &params, &residuals);
     Some(residuals)
   }
 
@@ -320,7 +303,7 @@ impl LeastSquaresProblem for CgmysvProblem<'_> {
   }
 
   fn accept(&mut self) {
-    self.history.extend(self.pending.take());
+    self.trail.accept();
   }
 }
 

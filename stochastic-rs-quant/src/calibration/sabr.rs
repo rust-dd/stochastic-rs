@@ -10,15 +10,14 @@
 use ndarray::Array1;
 use ndarray::Array2;
 
-use crate::CalibrationLossScore;
 use crate::OptionQuote;
 use crate::OptionType;
 use crate::QuantError;
 use crate::calibration::Calibrated;
-use crate::calibration::CalibrationHistory;
 use crate::calibration::CalibrationOptions;
 use crate::calibration::Regularization;
 use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::Trail;
 use crate::calibration::least_squares::minimize;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::validate_quotes;
@@ -161,8 +160,7 @@ impl crate::traits::Calibrator for SabrCalibrator {
         .collect(),
       params: start.unwrap_or(DEFAULT_START).projected(),
       regularization: self.options.regularization_for(3)?.map(optimiser_order),
-      history: Vec::new(),
-      pending: None,
+      trail: Trail::new(),
     };
     let (problem, report) = minimize(problem, self.options.lm(false));
     let model = problem.model_prices(&problem.params);
@@ -171,7 +169,7 @@ impl crate::traits::Calibrator for SabrCalibrator {
       &problem.market,
       &model,
       self.options.loss_metrics,
-      problem.history,
+      problem.trail.into_entries(),
     ))
   }
 }
@@ -193,8 +191,7 @@ struct SabrProblem<'a> {
   forwards: Vec<f64>,
   params: SabrParams,
   regularization: Option<Regularization>,
-  history: Vec<CalibrationHistory<SabrParams>>,
-  pending: Option<CalibrationHistory<SabrParams>>,
+  trail: Trail<SabrParams>,
 }
 
 impl SabrProblem<'_> {
@@ -275,11 +272,9 @@ impl LeastSquaresProblem for SabrProblem<'_> {
     let model = self.model_prices(&self.params);
     let residuals = Array1::from_iter(self.market.iter().zip(&model).map(|(m, q)| m - q));
     let options = &self.calibrator.options;
-    if options.record_history {
-      let loss = CalibrationLossScore::compute_selected(&self.market, &model, options.loss_metrics);
-      let entry = CalibrationHistory::new(self.history.len(), self.params, residuals.clone(), loss);
-      self.pending = Some(entry);
-    }
+    self
+      .trail
+      .stage(options, &self.market, &model, &self.params, &residuals);
     let p = self.params;
     match &self.regularization {
       Some(reg) if reg.is_active() => {
@@ -298,7 +293,7 @@ impl LeastSquaresProblem for SabrProblem<'_> {
   }
 
   fn accept(&mut self) {
-    self.history.extend(self.pending.take());
+    self.trail.accept();
   }
 }
 

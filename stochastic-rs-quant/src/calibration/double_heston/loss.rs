@@ -10,9 +10,7 @@ use super::calibrator::DoubleHestonCalibrator;
 use super::params::DoubleHestonParams;
 use super::params::P_SIGMA;
 use super::params::P_V0;
-use crate::CalibrationLossScore;
 use crate::OptionType;
-use crate::calibration::CalibrationHistory;
 use crate::calibration::heston::params::KAPPA_MIN;
 use crate::calibration::heston::params::P_KAPPA;
 use crate::calibration::heston::params::P_THETA;
@@ -20,6 +18,7 @@ use crate::calibration::heston::params::RHO_BOUND;
 use crate::calibration::heston::params::SIGMA_MIN;
 use crate::calibration::heston::params::THETA_MIN;
 use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::Trail;
 use crate::pricing::fourier::factor_cd;
 
 /// Double Heston characteristic function $\phi_T(u)$ of $\ln(S_T/S_0)$,
@@ -86,12 +85,12 @@ pub(super) fn double_heston_call_price(
   }
 }
 
-/// One fit: the current point and the trail of its accepted iterates.
+/// One fit: the current point, the quotes' prices and the trail.
 pub(super) struct DoubleHestonProblem<'a> {
   calibrator: &'a DoubleHestonCalibrator,
   params: DoubleHestonParams,
-  pub(super) history: Vec<CalibrationHistory<DoubleHestonParams>>,
-  pending: Option<CalibrationHistory<DoubleHestonParams>>,
+  pub(super) market: Vec<f64>,
+  pub(super) trail: Trail<DoubleHestonParams>,
 }
 
 impl<'a> DoubleHestonProblem<'a> {
@@ -99,8 +98,8 @@ impl<'a> DoubleHestonProblem<'a> {
     Self {
       calibrator,
       params: start,
-      history: Vec::new(),
-      pending: None,
+      market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
+      trail: Trail::new(),
     }
   }
 
@@ -133,8 +132,13 @@ impl<'a> DoubleHestonProblem<'a> {
   }
 
   fn market_minus(&self, model: &[f64]) -> Array1<f64> {
-    let quotes = self.calibrator.quotes.iter().zip(model);
-    Array1::from_iter(quotes.map(|(quote, model)| quote.price - model))
+    Array1::from_iter(
+      self
+        .market
+        .iter()
+        .zip(model)
+        .map(|(market, model)| market - model),
+    )
   }
 
   /// Central finite-difference Jacobian over the 10 parameters.
@@ -224,17 +228,9 @@ impl LeastSquaresProblem for DoubleHestonProblem<'_> {
     let model = self.compute_model_prices_for(&params_eff);
     let residuals = self.market_minus(&model);
     let options = &self.calibrator.options;
-    if options.record_history {
-      let market = self
-        .calibrator
-        .quotes
-        .iter()
-        .map(|quote| quote.price)
-        .collect::<Vec<_>>();
-      let loss = CalibrationLossScore::compute_selected(&market, &model, options.loss_metrics);
-      let entry = CalibrationHistory::new(self.history.len(), params_eff, residuals.clone(), loss);
-      self.pending = Some(entry);
-    }
+    self
+      .trail
+      .stage(options, &self.market, &model, &params_eff, &residuals);
     Some(residuals)
   }
 
@@ -243,6 +239,6 @@ impl LeastSquaresProblem for DoubleHestonProblem<'_> {
   }
 
   fn accept(&mut self) {
-    self.history.extend(self.pending.take());
+    self.trail.accept();
   }
 }

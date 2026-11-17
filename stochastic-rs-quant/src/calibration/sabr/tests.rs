@@ -1,5 +1,6 @@
 use super::*;
 use crate::OptionType;
+use crate::calibration::CalibrationHistory;
 use crate::traits::CalibrationResult;
 use crate::traits::Calibrator;
 use crate::traits::ModelPricer;

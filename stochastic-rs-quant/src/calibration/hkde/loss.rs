@@ -14,10 +14,9 @@ use super::params::P_P_UP;
 use super::params::RHO_BOUND;
 use super::params::SIGMA_V_MIN;
 use super::params::THETA_MIN;
-use crate::CalibrationLossScore;
 use crate::OptionType;
-use crate::calibration::CalibrationHistory;
 use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::Trail;
 use crate::pricing::bsm::BsmCoc;
 use crate::pricing::bsm::BsmPricer;
 use crate::pricing::fourier::HkdeFourier;
@@ -25,13 +24,13 @@ use crate::traits::ModelPricer;
 
 const EPS: f64 = 1e-8;
 
-/// One fit: each quote's weight, the current point and the trail of its accepted iterates.
+/// One fit: each quote's weight, the current point, the quotes' prices and the trail.
 pub(super) struct HkdeProblem<'a> {
   calibrator: &'a HkdeCalibrator,
   sqrt_weights: Vec<f64>,
   params: HkdeParams,
-  pub(super) history: Vec<CalibrationHistory<HkdeParams>>,
-  pending: Option<CalibrationHistory<HkdeParams>>,
+  pub(super) market: Vec<f64>,
+  pub(super) trail: Trail<HkdeParams>,
 }
 
 impl<'a> HkdeProblem<'a> {
@@ -57,8 +56,8 @@ impl<'a> HkdeProblem<'a> {
       calibrator,
       sqrt_weights,
       params: start,
-      history: Vec::new(),
-      pending: None,
+      market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
+      trail: Trail::negated(),
     }
   }
 
@@ -96,13 +95,8 @@ impl<'a> HkdeProblem<'a> {
 
   /// `√w · (model − market)`, the fit's residual; a trail reads its negation.
   fn weighted_residuals_of(&self, model: &[f64]) -> Array1<f64> {
-    let rows = self
-      .calibrator
-      .quotes
-      .iter()
-      .zip(model)
-      .zip(&self.sqrt_weights);
-    Array1::from_iter(rows.map(|((quote, model), w)| w * (model - quote.price)))
+    let rows = self.market.iter().zip(model).zip(&self.sqrt_weights);
+    Array1::from_iter(rows.map(|((market, model), w)| w * (model - market)))
   }
 
   pub(super) fn weighted_residuals_for(&self, p: &HkdeParams) -> Array1<f64> {
@@ -190,17 +184,9 @@ impl LeastSquaresProblem for HkdeProblem<'_> {
     let model = self.compute_model_prices_for(&params_eff);
     let residuals = self.weighted_residuals_of(&model);
     let options = &self.calibrator.options;
-    if options.record_history {
-      let market = self
-        .calibrator
-        .quotes
-        .iter()
-        .map(|quote| quote.price)
-        .collect::<Vec<_>>();
-      let loss = CalibrationLossScore::compute_selected(&market, &model, options.loss_metrics);
-      let entry = CalibrationHistory::new(self.history.len(), params_eff, -&residuals, loss);
-      self.pending = Some(entry);
-    }
+    self
+      .trail
+      .stage(options, &self.market, &model, &params_eff, &residuals);
     Some(residuals)
   }
 
@@ -209,7 +195,7 @@ impl LeastSquaresProblem for HkdeProblem<'_> {
   }
 
   fn accept(&mut self) {
-    self.history.extend(self.pending.take());
+    self.trail.accept();
   }
 }
 

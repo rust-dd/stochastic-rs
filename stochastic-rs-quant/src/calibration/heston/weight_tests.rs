@@ -2,6 +2,7 @@ use ndarray::Array1;
 
 use super::HestonCalibrator;
 use super::HestonJacobianMethod;
+use super::lsq::HestonProblem;
 use crate::OptionQuote;
 use crate::OptionType;
 use crate::calibration::least_squares::LeastSquaresProblem;
@@ -25,13 +26,15 @@ fn calibrator() -> HestonCalibrator {
     .with_jacobian_method(HestonJacobianMethod::NumericFiniteDiff)
 }
 
+fn rows(calibrator: &HestonCalibrator) -> Array1<f64> {
+  let start = calibrator.start.unwrap();
+  HestonProblem::new(calibrator, start).residuals().unwrap()
+}
+
 #[test]
 fn residual_weights_scale_the_objective_rows_after_rms_normalization() {
-  let raw = calibrator().residuals().unwrap();
-  let weighted = calibrator()
-    .with_residual_weights(Array1::from_vec(vec![1.0, 2.0]))
-    .residuals()
-    .unwrap();
+  let raw = rows(&calibrator());
+  let weighted = rows(&calibrator().with_residual_weights(Array1::from_vec(vec![1.0, 2.0])));
 
   let rms = 2.5_f64.sqrt();
   assert!((weighted[0] - raw[0] / rms).abs() < 1e-10);

@@ -12,11 +12,10 @@ use super::calibrator::THETA_MIN;
 use super::params::P_MU_J;
 use super::params::P_SIGMA_J;
 use super::params::RHO_BOUND;
-use crate::CalibrationLossScore;
 use crate::OptionType;
-use crate::calibration::CalibrationHistory;
 use crate::calibration::integrate_gl_to_convergence;
 use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::Trail;
 
 /// Bates/SVJ characteristic function $\phi_T(\xi)$.
 ///
@@ -89,12 +88,12 @@ pub(super) fn bates_call_price(p: &SvjParams, s: f64, k: f64, r: f64, q: f64, ta
   }
 }
 
-/// One fit: the current point and the trail of its accepted iterates.
+/// One fit: the current point, the quotes' prices and the trail.
 pub(super) struct SvjProblem<'a> {
   calibrator: &'a SvjCalibrator,
   params: SvjParams,
-  pub(super) history: Vec<CalibrationHistory<SvjParams>>,
-  pending: Option<CalibrationHistory<SvjParams>>,
+  pub(super) market: Vec<f64>,
+  pub(super) trail: Trail<SvjParams>,
 }
 
 impl<'a> SvjProblem<'a> {
@@ -102,8 +101,8 @@ impl<'a> SvjProblem<'a> {
     Self {
       calibrator,
       params: start,
-      history: Vec::new(),
-      pending: None,
+      market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
+      trail: Trail::new(),
     }
   }
 
@@ -136,8 +135,13 @@ impl<'a> SvjProblem<'a> {
   }
 
   fn market_minus(&self, model: &[f64]) -> Array1<f64> {
-    let quotes = self.calibrator.quotes.iter().zip(model);
-    Array1::from_iter(quotes.map(|(quote, model)| quote.price - model))
+    Array1::from_iter(
+      self
+        .market
+        .iter()
+        .zip(model)
+        .map(|(market, model)| market - model),
+    )
   }
 
   /// Central finite-difference Jacobian.
@@ -227,17 +231,9 @@ impl LeastSquaresProblem for SvjProblem<'_> {
     let model = self.compute_model_prices_for(&params_eff);
     let residuals = self.market_minus(&model);
     let options = &self.calibrator.options;
-    if options.record_history {
-      let market = self
-        .calibrator
-        .quotes
-        .iter()
-        .map(|quote| quote.price)
-        .collect::<Vec<_>>();
-      let loss = CalibrationLossScore::compute_selected(&market, &model, options.loss_metrics);
-      let entry = CalibrationHistory::new(self.history.len(), params_eff, residuals.clone(), loss);
-      self.pending = Some(entry);
-    }
+    self
+      .trail
+      .stage(options, &self.market, &model, &params_eff, &residuals);
     Some(residuals)
   }
 
@@ -246,6 +242,6 @@ impl LeastSquaresProblem for SvjProblem<'_> {
   }
 
   fn accept(&mut self) {
-    self.history.extend(self.pending.take());
+    self.trail.accept();
   }
 }
