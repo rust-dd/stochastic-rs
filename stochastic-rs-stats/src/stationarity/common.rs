@@ -394,24 +394,23 @@ pub fn unit_scale(y: &[f64]) -> f64 {
   2f64.powi(-(spread.log2().round() as i32).clamp(-1022, 1022))
 }
 
-/// `y` times its [`unit_scale`], an exact scaling that leaves a scale-free statistic as it is and
-/// puts it on the scale of the trend terms beside it.
-pub fn unit_scaled(mut y: Vec<f64>) -> Vec<f64> {
+/// `y` times its [`unit_scale`], and that scale: exact, it leaves a scale-free statistic as it is
+/// and puts it on the scale of the trend terms beside it.
+pub fn unit_scaled(mut y: Vec<f64>) -> (Vec<f64>, f64) {
   let unit = unit_scale(&y);
   for v in &mut y {
     *v *= unit;
   }
-  y
+  (y, unit)
 }
 
-/// `y` with `min_n` finite points or more and not constant, times its [`unit_scale`], and that
-/// scale; the length comes first, as a series too short to compare is vacuously constant.
+/// [`unit_scaled`] `y` with `min_n` finite points or more and not constant; the length comes first,
+/// as a series too short to compare is vacuously constant.
 pub fn prepared_with_unit(y: ArrayView1<f64>, min_n: usize) -> Result<(Vec<f64>, f64), StatsError> {
   let y = as_slice_or_copy(y);
   validate(&y, min_n)?;
   reject_constant(&y, "constant series")?;
-  let unit = unit_scale(&y);
-  Ok((y.iter().map(|v| v * unit).collect(), unit))
+  Ok(unit_scaled(y.into_owned()))
 }
 
 /// [`prepared_with_unit`]'s series.
