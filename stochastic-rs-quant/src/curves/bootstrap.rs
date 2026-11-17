@@ -90,9 +90,8 @@ pub fn bootstrap<T: RealExt>(spec: BootstrapSpec<'_, T>) -> Result<DiscountCurve
         rate,
         frequency,
       } => {
-        let per_year = frequency.periods_per_year();
-        let delta = T::one() / T::from_f64_fast(f64::from(per_year));
-        let payments = validate::whole_payments(*maturity, per_year).unwrap_or(1);
+        let delta = T::one() / T::from_f64_fast(f64::from(frequency.periods_per_year()));
+        let payments = validate::whole_payments(index, *maturity, *frequency)?;
         let mut annuity = T::zero();
         for i in 1..payments {
           annuity += delta * read(T::from_f64_fast(i as f64) * delta)?;

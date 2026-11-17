@@ -95,9 +95,8 @@ impl PyDiscountCurve {
     })
   }
 
-  /// Dual-curve bootstrap of a tenor's pseudo-discount curve against this
-  /// exogenous OIS `discount` curve: `deposits` as `(maturity, rate)`, `fras`
-  /// as `(start, end, rate)`, `swaps` as `(rate, fixed_times, float_times)`.
+  /// A tenor's forecast curve against `discount`: `(maturity, rate)` deposits, `(start, end, rate)`
+  /// FRAs and `(rate, fixed_times, float_times)` swaps; an error's quote index counts them in turn.
   #[staticmethod]
   #[pyo3(signature = (discount, deposits, fras, swaps, interp="log_df"))]
   fn bootstrap_forecast(
@@ -161,7 +160,8 @@ impl PyMultiCurve {
     })
   }
 
-  /// Registers `curve` as the forecast curve of `tenor`: `"O/N"`, `"1M"`, `"3M"`, `"6M"`, `"12M"`.
+  /// Registers `curve` under `tenor`, read without regard to case: `"O/N"` or `"ON"`, `"1M"`,
+  /// `"3M"`, `"6M"`, `"12M"` or `"1Y"`.
   fn add_forecast(&mut self, tenor: &str, curve: &PyDiscountCurve) -> PyResult<()> {
     self
       .inner

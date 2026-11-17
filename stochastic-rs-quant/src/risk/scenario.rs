@@ -77,13 +77,8 @@ impl<T: RealExt> CurveShift<T> {
     let points = base.points();
     let n = points.len();
     let times: Array1<T> = Array1::from_iter(points.iter().map(|p| p.time));
-    let base_rates: Array1<T> = Array1::from_iter(points.iter().map(|p| {
-      if p.time > T::zero() {
-        -p.discount_factor.ln() / p.time
-      } else {
-        T::zero()
-      }
-    }));
+    let base_rates: Array1<T> =
+      Array1::from_iter(points.iter().map(|p| -p.discount_factor.ln() / p.time));
 
     let shifted_rates = match self {
       Self::Parallel(amount) => base_rates.mapv(|r| r + *amount),

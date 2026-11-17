@@ -1,6 +1,7 @@
 //! The per-quote checks a bootstrap runs before any solve, in the caller's order.
 
 use crate::QuantError;
+use crate::calendar::Frequency;
 use crate::curves::types::BootstrapInstrument;
 use crate::traits::RealExt;
 
@@ -62,12 +63,7 @@ pub(super) fn check<T: RealExt>(
           "a swap against an exogenous discount curve must be a `SwapWithSchedule`".into(),
         );
       }
-      match whole_payments(*maturity, frequency.periods_per_year()) {
-        Some(_) => Ok(()),
-        None => bad(format!(
-          "maturity must satisfy `(maturity * frequency - payments).abs() < 0.1` for a whole number of payments, got maturity = {maturity:?}, frequency = {frequency}"
-        )),
-      }
+      whole_payments(index, *maturity, *frequency).map(|_| ())
     }
     BootstrapInstrument::SwapWithSchedule {
       fixed_times,
@@ -91,12 +87,23 @@ pub(super) fn check<T: RealExt>(
   }
 }
 
-/// The payment count of a swap whose `maturity · per_year` is within 0.1 of a whole number ≥ 1.
-pub(super) fn whole_payments<T: RealExt>(maturity: T, per_year: u32) -> Option<usize> {
-  let raw = maturity * T::from_f64_fast(f64::from(per_year));
+/// A swap's payment count; `InvalidQuote` unless `maturity · frequency` is within 0.1 of a whole
+/// number of payments, at least one.
+pub(super) fn whole_payments<T: RealExt>(
+  index: usize,
+  maturity: T,
+  frequency: Frequency,
+) -> Result<usize, QuantError> {
+  let raw = maturity * T::from_f64_fast(f64::from(frequency.periods_per_year()));
   let rounded = raw.round();
-  ((raw - rounded).abs() < T::from_f64_fast(0.1) && rounded >= T::one())
-    .then(|| rounded.to_f64().map_or(0, |n| n as usize))
+  let whole = (raw - rounded).abs() < T::from_f64_fast(0.1) && rounded >= T::one();
+  let count = rounded.to_f64().filter(|_| whole).map(|n| n as usize);
+  count.ok_or_else(|| QuantError::InvalidQuote {
+    index,
+    reason: format!(
+      "maturity must satisfy `(maturity * frequency - payments).abs() < 0.1` for a whole number of payments, got maturity = {maturity:?}, frequency = {frequency}"
+    ),
+  })
 }
 
 fn starts_before<T: RealExt>(start: T, end: T) -> Result<(), String> {

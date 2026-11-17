@@ -27,9 +27,7 @@ use crate::traits::RealExt;
 /// Leg values, net value and fair fixed rate of an inflation swap.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct InflationSwapValuation<T: RealExt> {
-  /// Present value of the inflation leg.
   pub inflation_leg: T,
-  /// Present value of the fixed leg.
   pub fixed_leg: T,
   /// Inflation leg minus fixed leg.
   pub npv: T,
@@ -53,8 +51,7 @@ impl<T: RealExt> ZeroCouponInflationSwap<T> {
   /// $T$, discounted by $P_n(0,T)$). The discount factor is supplied by
   /// the caller — typically the nominal discount curve.
   pub fn npv(&self, curve: &(impl InflationCurve<T> + ?Sized), nominal_df: T) -> T {
-    let inflation_leg = self.notional * (curve.forward_index_ratio(self.tau) - T::one());
-    let fixed_leg = self.notional * ((T::one() + self.fixed_rate).powf(self.tau) - T::one());
+    let (inflation_leg, fixed_leg) = self.undiscounted_legs(curve);
     nominal_df * (inflation_leg - fixed_leg)
   }
 
@@ -64,14 +61,19 @@ impl<T: RealExt> ZeroCouponInflationSwap<T> {
     curve: &(impl InflationCurve<T> + ?Sized),
     nominal_df: T,
   ) -> InflationSwapValuation<T> {
-    let inflation_leg = self.notional * (curve.forward_index_ratio(self.tau) - T::one());
-    let fixed_leg = self.notional * ((T::one() + self.fixed_rate).powf(self.tau) - T::one());
+    let (inflation_leg, fixed_leg) = self.undiscounted_legs(curve);
     InflationSwapValuation {
       inflation_leg: nominal_df * inflation_leg,
       fixed_leg: nominal_df * fixed_leg,
-      npv: self.npv(curve, nominal_df),
+      npv: nominal_df * (inflation_leg - fixed_leg),
       fair_fixed_rate: self.fair_fixed_rate(curve),
     }
+  }
+
+  fn undiscounted_legs(&self, curve: &(impl InflationCurve<T> + ?Sized)) -> (T, T) {
+    let inflation_leg = self.notional * (curve.forward_index_ratio(self.tau) - T::one());
+    let fixed_leg = self.notional * ((T::one() + self.fixed_rate).powf(self.tau) - T::one());
+    (inflation_leg, fixed_leg)
   }
 
   /// Par rate that makes the swap NPV zero.

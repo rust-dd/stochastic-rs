@@ -91,7 +91,6 @@ pub struct CmsValuation<T: RealExt> {
   pub forward_swap_rate: T,
   /// Hagan's convexity adjustment, added to the forward; zero once the rate has fixed.
   pub convexity_adjustment: T,
-  /// Present value.
   pub npv: T,
 }
 
