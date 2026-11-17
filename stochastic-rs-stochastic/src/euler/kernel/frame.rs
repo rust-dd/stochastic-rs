@@ -68,6 +68,9 @@ const FRAME_LOCALS: &str = r#"    if (path >= paths) return;
     REAL gm2 = (REAL)0;
     REAL u = (REAL)0;
     REAL u2 = (REAL)0;
+    REAL u3 = (REAL)0;
+    REAL u4 = (REAL)0;
+    unsigned int w[4];
     REAL lv = (REAL)0;
     REAL lift[3];
     lift[0] = (REAL)0; lift[1] = (REAL)0; lift[2] = (REAL)0;
@@ -98,19 +101,9 @@ REPORT
     }"#;
 
 const FRAME_NOISE: &str = r#"    for (unsigned int i = (step_first != 0u ? 0u : 1u); i < steps; i++) {
-        // Mix path and step separately so their product cannot wrap and repeat noise.
-        unsigned int g = (first_path + path) * 2654435761u;
-        g ^= (i + 2246822519u) * 2246822519u;
-        g ^= g >> 16; g *= 2246822519u; g ^= g >> 13; g *= 3266489917u; g ^= g >> 16;
-        for (unsigned int k = 0u; k < NOISES; k++) {
-            unsigned int a = (g ^ (2654435769u + k * 2654435761u)) ^ (seed * 2654435761u);
-            a ^= a >> 16; a *= 2246822519u; a ^= a >> 13; a *= 3266489917u; a ^= a >> 16;
-            unsigned int b = (g ^ (1442695041u + k * 1013904223u)) ^ (seed * 668265263u);
-            b ^= b >> 16; b *= 2246822519u; b ^= b >> 13; b *= 3266489917u; b ^= b >> 16;
-            REAL u1 = (REAL)a * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6;
-            REAL u2 = (REAL)b * (REAL)2.3283064e-10;
-            REAL z = STOCH_SQRT((REAL)-2.0 * STOCH_FAST_LOG(u1)) * STOCH_FAST_COS((REAL)6.283185307179586 * u2);
-            noise[k] = sqrt_dt * z;
+        for (unsigned int k = increments; k < NOISES; k++) {
+            stoch_philox(first_path + path, i, site_noise + k, 0u, seed_lo, seed_hi, w);
+            noise[k] = sqrt_dt * stoch_normal(w[0], w[1], w[2], w[3]);
         }
         if (increments != 0u) {
             unsigned int inc_len = steps;
@@ -131,12 +124,11 @@ const FRAME_NOISE: &str = r#"    for (unsigned int i = (step_first != 0u ? 0u : 
         if (n_curves > 7u) { ct7 = curve[(INDEX)7 * steps + i]; }
 "#;
 
-const FRAME_UNIFORMS: &str = r#"        unsigned int hu = (g ^ 2135587861u) ^ (seed * 2654435761u);
-        hu ^= hu >> 16; hu *= 2246822519u; hu ^= hu >> 13; hu *= 3266489917u; hu ^= hu >> 16;
-        u = (REAL)hu * (REAL)2.3283064e-10;
-        unsigned int hv = (g ^ 3266489917u) ^ (seed * 2654435761u);
-        hv ^= hv >> 16; hv *= 2246822519u; hv ^= hv >> 13; hv *= 3266489917u; hv ^= hv >> 16;
-        u2 = (REAL)hv * (REAL)2.3283064e-10;"#;
+const FRAME_UNIFORMS: &str = r#"        stoch_philox(first_path + path, i, site_uniforms, 0u, seed_lo, seed_hi, w);
+        u = stoch_u01(w[0]);
+        u2 = stoch_u01(w[1]);
+        u3 = stoch_u01(w[2]);
+        u4 = stoch_u01(w[3]);"#;
 
 const FRAME_PROGRAM: &str = r#"        if (program_n != 0u) {
             for (unsigned int w = 0u; w < program_n; w++) {

@@ -109,8 +109,8 @@ Two rules follow, and both have already been violated once:
 - **Draw that seed once per batch, then offset per chunk.** A
   `Deterministic` source advances on every draw, so drawing inside the
   chunk loop shifts the stream and breaks the chunk-identity guarantee.
-  The kernels hash the *global* path index (`first_path + path`), which
-  is what makes a chunked batch bit-identical to one launch — assert it.
+  Every draw's counter carries the *global* path index (`first_path + path`),
+  which is what makes a chunked batch bit-identical to one launch — assert it.
 
 So: **do not write a `cpu_and_gpu_match_bit_for_bit` test.** What you
 test instead:
@@ -250,10 +250,11 @@ NVRTC at runtime (`cuda/kernels.rs`), fusing RNG + scaling into
 one launch to avoid a memory round-trip. Four things carry over to a new
 kernel:
 
-- **Counter-based RNG** (Philox-2×32-10 for fGN, a Murmur3-style
-  finalizer for the Euler body), not cuRAND and no per-thread state:
-  the output must be a pure function of `(global index, seed)` or the
-  chunk-identity guarantee dies.
+- **Counter-based RNG** (a Philox-2×32 variant for fGN; Philox-4x32-10 for the
+  Euler body, `euler/philox.rs` in Rust and `euler/kernel/philox.rs` in C, on the
+  counter `(path, step, site, index)` under the whole seed), not cuRAND and no
+  per-thread state: the output must be a pure function of `(global index, seed)` or
+  the chunk-identity guarantee dies.
 - **Fuse.** One launch for RNG + Box–Muller + `sqrt_eigenvalue` scaling,
   writing interleaved complex, rather than three round-trips.
 - **Pad to a power of two.** cuFFT and MPS are tuned for it; `Fgn::new`

@@ -175,9 +175,9 @@ fn device_seed_follows_the_seed_source() {
   assert_ne!(u.device_seed(), u.device_seed());
 }
 
-/// Every compiled device back-end reproduces the lognormal moments and is
-/// deterministic in its seed; the device kernels share one integer hash for
-/// their uniforms, so two device back-ends agree seed for seed up to the
-/// `f32` libm rounding of Box–Muller.
+/// Every compiled device back-end reproduces the lognormal moments and is deterministic in its
+/// seed; the back-ends share one generator, so they agree seed for seed up to libm rounding.
 #[cfg(device_backend)]
 mod devices;
+
+pub(crate) mod philox;

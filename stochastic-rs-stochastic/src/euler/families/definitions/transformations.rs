@@ -1,8 +1,8 @@
 macro_rules! euler_transformations {
-  ($emit:ident; ($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $lv:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident); $($previous:tt)*) => {
+  ($emit:ident; ($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $u3:ident, $u4:ident, $lv:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident); $($previous:tt)*) => {
     euler_lifts! {
       $emit;
-      ($params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $lv, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $pv, $pv2);
+      ($params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $u3, $u4, $lv, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $pv, $pv2);
       $($previous)*
   /// `σ²_t = ω + αX²_{t−1} + βσ²_{t−1}`, `X_t = σ_t z_t`: GARCH(1,1), and at
   /// `β = 0` ARCH(1). The series starts at `σ₀ z₀` with `σ₀²` the
@@ -195,15 +195,12 @@ macro_rules! euler_transformations {
       )
     },
 
-  /// The arrival times of a Poisson process sampled to a fixed count: a
-  /// running sum of exponential inter-arrival times, each drawn by inverse
-  /// CDF from the step's own uniform. The uniform is floored before the
-  /// logarithm because the hash stream can land on exactly zero, which is a
-  /// clamp of probability `1e-7` rather than a change of law.
+  /// The arrival times of a Poisson process sampled to a fixed count: a running sum of exponential
+  /// waits, each by inverse CDF from the step's own uniform.
   86 => PoissonArrivals { lambda }
     state (x)
     noise (dz)
-    step { x + negate(ln(max($u, lit(1.0e-7)))) * recip(lambda) }
+    step { x + negate(ln($u)) * recip(lambda) }
     report { x },
 
   /// The dynamic SABR: a forward rate under a backbone exponent and a

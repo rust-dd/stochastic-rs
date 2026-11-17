@@ -36,7 +36,7 @@ pub(super) fn launch_paths<O>(
     return Ok(finish(&[], components));
   }
   let streams = match increments {
-    Increments::Hashed => 0,
+    Increments::Drawn => 0,
     Increments::Device {
       buffer,
       streams,
@@ -64,11 +64,13 @@ pub(super) fn launch_paths<O>(
   let series_n = crate::euler::series_terms(family, n, series);
   let series_live = crate::euler::series_live(family);
   let (table_n, table_u0) = crate::euler::table_terms(family, table);
+  let [seed_lo, seed_hi] = crate::euler::philox::key(seed);
   let args = EulerArgs {
     family,
     components: components as u32,
     noises: noises as u32,
-    seed: (seed ^ (seed >> 32)) as u32,
+    seed_lo,
+    seed_hi,
     steps,
     paths,
     first_path,

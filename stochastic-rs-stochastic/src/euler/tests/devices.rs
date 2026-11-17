@@ -594,3 +594,5 @@ fn cuda_release_rebuilds_on_the_next_launch() {
   Cuda::default().release();
   assert_eq!(before, gbm::<f32>(9).on::<Cuda>().sample_par(8));
 }
+
+mod philox;

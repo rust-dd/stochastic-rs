@@ -136,11 +136,11 @@ macro_rules! euler_family_exprs {
     )
   };
 
-  (@host_history $params:ident, $dt:ident, $u:ident, $u2:ident, $state_in:ident, $noise_in:ident, [$($param:ident)*], [$($state:ident)*], [$($noise:ident)*],) => {
+  (@host_history $params:ident, $dt:ident, $u:ident, $u2:ident, $u3:ident, $u4:ident, $state_in:ident, $noise_in:ident, [$($param:ident)*], [$($state:ident)*], [$($noise:ident)*],) => {
     None
   };
 
-  (@host_history $params:ident, $dt:ident, $u:ident, $u2:ident, $state_in:ident, $noise_in:ident, [$($param:ident)*], [$($state:ident)*], [$($noise:ident)*],
+  (@host_history $params:ident, $dt:ident, $u:ident, $u2:ident, $u3:ident, $u4:ident, $state_in:ident, $noise_in:ident, [$($param:ident)*], [$($state:ident)*], [$($noise:ident)*],
     { push ($($hp:tt)*) weights ($w:ident) }) => {{
     #[allow(unused_mut, unused_variables)]
     let mut slot = 0;

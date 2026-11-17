@@ -15,8 +15,8 @@
 //!   sampler**, so nothing is re-implemented on the host: GBM keeps its exact
 //!   log-normal scheme, OU and CIR their SIMD Euler steppers.
 //! - The GPU back-ends run one device thread per path with the whole
-//!   Euler–Maruyama recursion in the kernel and Box–Muller normals from a
-//!   counter hash of `(path, step, seed)`: `Cuda` (feature `cuda`: cudarc +
+//!   Euler–Maruyama recursion in the kernel and Box–Muller normals from
+//!   Philox-4x32-10 on `(path, step, site, index)`: `Cuda` (feature `cuda`: cudarc +
 //!   NVRTC, `f32` or `f64` after `T`) and `Metal` (feature `metal`:
 //!   Rust device kernels compiled by metal-oxide, `f32`).
 //!   `sample_par` is one launch for all `m` paths; `sample` launches one path.
@@ -25,7 +25,7 @@
 //! `Deterministic` seed value gives the same device paths, consecutive calls
 //! advance the stream and an `Unseeded` process draws fresh entropy, exactly
 //! as on the host. The device
-//! kernels share one integer hash, so the device back-ends agree with each
+//! kernels share one generator keyed on the whole seed, so the device back-ends agree with each
 //! other seed for seed up to libm rounding; the host path is the process's
 //! own stream, so CPU and device paths agree in distribution, not bit for bit.
 //!
@@ -1925,14 +1925,8 @@ pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
   /// One path from the process's own sampler, the host stream.
   fn host_sample(&self) -> Array1<T>;
 
-  /// The fGN pipeline's inputs when this process's increments come from one,
-  /// or `None` to let the kernel hash its own Gaussian increments from
-  /// `(path, step, seed)`.
-  ///
-  /// A device runs the pipeline itself and keeps the increments in the buffer
-  /// it wrote them to, so they never travel through host memory between the
-  /// two kernels. That is why this reports the pipeline's inputs rather than
-  /// the increments: handing over an array would be the round trip.
+  /// The fGN pipeline's inputs when the increments come from one, `None` for the kernel's own
+  /// normals: inputs, not increments, since the device keeps its increments in its own buffer.
   fn fgn_spec(&self) -> Option<FgnSpec<'_, T>> {
     None
   }
@@ -1995,10 +1989,8 @@ pub struct FgnSpec<'a, T> {
 /// directly.
 #[doc(hidden)]
 pub trait EulerKernel<T: FloatExt>: Backend {
-  /// Paths `first .. first + m` of the launch stream seeded by `seed`, as an
-  /// `m × n` matrix whose column 0 is the initial value. The kernels hash
-  /// `(first + path, step, seed)`, so a batch produced in chunks under one
-  /// seed is bit-identical to one launch of the whole batch.
+  /// Paths `first .. first + m` of the launch stream seeded by `seed`, column 0 the initial value;
+  /// every draw's counter carries the global path, so chunks under one seed equal one launch.
   fn euler_kernel<P: EulerCoefficients<T>>(
     &self,
     process: &P,
@@ -2409,10 +2401,8 @@ pub trait EulerSystem<T: FloatExt, const D: usize>:
     None
   }
 
-  /// The fGN pipeline's inputs when this system's noise components come from
-  /// one, or `None` to let the kernel hash its own Gaussian increments. The
-  /// same contract as [`EulerCoefficients::fgn_spec`], with
-  /// [`FgnSpec::streams`] saying how many components the pipeline fills.
+  /// [`EulerCoefficients::fgn_spec`] for a system, [`FgnSpec::streams`] saying how many noise
+  /// components the pipeline fills.
   fn fgn_spec(&self) -> Option<FgnSpec<'_, T>> {
     None
   }
@@ -3024,6 +3014,8 @@ pub(crate) mod kernel;
 #[cfg(metal_backend)]
 #[doc(hidden)]
 pub mod metal;
+#[doc(hidden)]
+pub mod philox;
 
 #[cfg(test)]
 mod family_parity;

@@ -141,16 +141,33 @@ fn every_placeholder_is_substituted() {
 }
 
 #[test]
-fn the_cell_key_takes_the_path_and_the_step_apart() {
+fn every_draw_goes_through_philox_on_the_path_the_step_and_a_site() {
   for (name, lang) in languages() {
     let source = render(&lang);
     assert!(
-      source.contains("unsigned int g = (first_path + path) * 2654435761u;"),
-      "{name}: the path does not enter the key through an odd multiplier"
+      source
+        .contains("stoch_philox(first_path + path, i, site_noise + k, 0u, seed_lo, seed_hi, w);"),
+      "{name}: the noise is not one Philox call per component"
     );
+    for forbidden in [
+      "2654435761u",
+      "1.0e-6",
+      "0.999998",
+      "2.3283064e-10",
+      "lit(1e-7)",
+      "lit(1.0e-7)",
+      "0.9999999",
+    ] {
+      assert!(
+        !source.contains(forbidden),
+        "{name}: the hash RNG or a uniform clamp left {forbidden} behind"
+      );
+    }
+    let prelude = prelude(&lang);
+    let real = lang.real;
     assert!(
-      !source.contains("(first_path + path) * steps"),
-      "{name}: the key is a product of the path and the step count"
+      prelude.contains(&format!("return e > ({real})0 ? e : ({real})0;")),
+      "{name}: an exponential from the fast log is not held at zero"
     );
   }
 }

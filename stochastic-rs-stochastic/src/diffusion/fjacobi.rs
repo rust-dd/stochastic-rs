@@ -391,7 +391,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FjacobiSample
 }
 
 /// The Euler engine's view of fractional Jacobi: the same absorbing recursion,
-/// with fractional increments instead of hashed ones.
+/// with fractional increments in place of the kernel's own normals.
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
   crate::euler::EulerCoefficients<T> for Fjacobi<T, S, B>
 {

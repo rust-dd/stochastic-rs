@@ -46,9 +46,9 @@ macro_rules! euler_family_definitions {
   ($emit:ident) => {
     euler_diffusions! {
       $emit;
-      (params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u, u2, lv, cv, sj, gj, ej, uj, uv, iv, tv, pv, pv2);
+      (params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u, u2, u3, u4, lv, cv, sj, gj, ej, uj, uv, iv, tv, pv, pv2);
       step_inputs(
-      params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u, u2, lv, cv, sj, gj, ej, uj, uv, iv, tv, pv, pv2,
+      params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u, u2, u3, u4, lv, cv, sj, gj, ej, uj, uv, iv, tv, pv, pv2,
       state(slot_a, slot_b, slot_c, slot_d),
       noise(shock_a, shock_b, shock_c, shock_d),
       select(component, produced)

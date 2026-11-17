@@ -5,12 +5,12 @@ mod helpers;
 
 macro_rules! euler_families {
   (
-    step_inputs($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident, state $sxs:tt, noise $sds:tt, select($component:ident, $produced:ident));
+    step_inputs($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $u3:ident, $u4:ident, $ln:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident, state $sxs:tt, noise $sds:tt, select($component:ident, $produced:ident));
     $(
     $(#[$meta:meta])*
     $code:literal => $name:ident { $($param:ident),* $(,)? }
       state ($($state:ident),+ $(,)?)
-      noise ($($noise:ident),+ $(,)?)
+      noise ($($noise:ident),* $(,)?)
       step { $($step:tt)* }
       report { $($report:tt)* }
       $(lift $lift:tt)?
@@ -105,7 +105,7 @@ macro_rules! euler_families {
       #[allow(dead_code)]
       pub(crate) fn noises(self) -> usize {
         match self {
-          $( Family::$name => [$(stringify!($noise)),*].len(), )*
+          $( Family::$name => <[&str]>::len(&[$(stringify!($noise)),*]), )*
         }
       }
 
@@ -148,6 +148,8 @@ macro_rules! euler_families {
       $gm2: T,
       $u: T,
       $u2: T,
+      $u3: T,
+      $u4: T,
       $ln: T,
       $cv: T,
       $sj: T,
@@ -208,6 +210,8 @@ macro_rules! euler_families {
       $gm2: T,
       $u: T,
       $u2: T,
+      $u3: T,
+      $u4: T,
       $ln: T,
       $cv: T,
       $sj: T,
@@ -297,13 +301,15 @@ macro_rules! euler_families {
       noise: &[T],
       $u: T,
       $u2: T,
+      $u3: T,
+      $u4: T,
     ) -> Option<T> {
       #[allow(unused_imports)]
       use ops::*;
       match family {
         $(
           Family::$name => {
-            euler_family_exprs!(@host_history $params, $dt, $u, $u2, state, noise, [$($param)*], [$($state)*], [$($noise)*], $($hist)?)
+            euler_family_exprs!(@host_history $params, $dt, $u, $u2, $u3, $u4, state, noise, [$($param)*], [$($state)*], [$($noise)*], $($hist)?)
           }
         )*
       }

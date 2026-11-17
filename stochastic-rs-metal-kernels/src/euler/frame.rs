@@ -6,6 +6,7 @@ use super::args::EulerArgs;
 use super::draws;
 use super::families::{Family, Inputs};
 use super::jumps;
+use super::philox::{SITE_UNIFORMS, u01_f32};
 use super::{memory, program};
 
 fn initial_inputs(dt: f32) -> Inputs {
@@ -15,7 +16,7 @@ fn initial_inputs(dt: f32) -> Inputs {
     count: 0.0,
     jump: 0.0,
     gamma: [0.0; 2],
-    uniform: [0.0; 2],
+    uniform: [0.0; 4],
     lift: 0.0,
     convolution: 0.0,
     series: 0.0,
@@ -130,6 +131,7 @@ pub(crate) unsafe fn run<
     return;
   }
   let global = args.first_path.wrapping_add(path);
+  let key = [args.seed_lo, args.seed_hi];
   let mut state = args.x0;
   let mut input = initial_inputs(args.dt);
   let lift_nodes = if args.lift_n < LIFT as u32 {
@@ -166,15 +168,15 @@ pub(crate) unsafe fn run<
       let mut arrival = 0.0;
       let mut j = 1u32;
       while j <= args.series_n {
-        let key = memory::key(global, j);
-        arrival += memory::gap(key, args.seed);
+        let words = memory::arrival(global, j, key);
+        arrival += memory::gap(words);
         if args.series_live != 0 {
           if j >= 1 && j <= BLOCK as u32 {
             block[(j - 1) as usize] = arrival;
           }
         } else {
-          let term = memory::term(input, key, args.seed, arrival);
-          let cell = memory::cell(key, args.seed, args.steps);
+          let term = memory::term(input, global, j, key, words, arrival);
+          let cell = memory::cell(global, j, key, args.steps);
           if cell < BLOCK as u32 {
             block[cell as usize] += F::series(params, args.x0, term)[0];
           }
@@ -190,7 +192,7 @@ pub(crate) unsafe fn run<
         block[0] = 0.0;
         for node in 1u32..args.table_n {
           let mut draw = input;
-          draw.series_uniform = memory::table_uniforms(global, attempt, node, args.seed);
+          draw.series_uniform = memory::table_uniforms(global, attempt, node, key);
           block[node as usize] = block[(node - 1) as usize] + F::table(params, args.x0, draw)[0];
         }
         if block[(args.table_n - 1) as usize] >= horizon {
@@ -214,19 +216,19 @@ pub(crate) unsafe fn run<
       );
     }
     for step in (if args.step_first == 0 { 1 } else { 0 })..args.steps {
-      let key = draws::cell(global, step);
-      // Fractional increments replace the first `increments` hashed draws.
+      let counter = draws::opaque_step(step, global);
+      // Fractional increments replace the first `increments` components, which are not drawn.
       if F::NOISES > 0 && !FRACTIONAL {
-        input.noise[0] = args.sqrt_dt * draws::noise(key, 0, args.seed);
+        input.noise[0] = args.sqrt_dt * draws::noise(global, counter, 0, key);
       }
       if F::NOISES > 1 && (!FRACTIONAL || args.increments < 2) {
-        input.noise[1] = args.sqrt_dt * draws::noise(key, 1, args.seed);
+        input.noise[1] = args.sqrt_dt * draws::noise(global, counter, 1, key);
       }
       if F::NOISES > 2 {
-        input.noise[2] = args.sqrt_dt * draws::noise(key, 2, args.seed);
+        input.noise[2] = args.sqrt_dt * draws::noise(global, counter, 2, key);
       }
       if F::NOISES > 3 {
-        input.noise[3] = args.sqrt_dt * draws::noise(key, 3, args.seed);
+        input.noise[3] = args.sqrt_dt * draws::noise(global, counter, 3, key);
       }
       if FRACTIONAL {
         let length = if args.step_first == 0 {
@@ -242,9 +244,12 @@ pub(crate) unsafe fn run<
       }
       input.curve = curves(curve, args.n_curves, args.steps, step);
       if F::HAS_UNIFORMS {
+        let words = draws::words(global, counter, SITE_UNIFORMS, 0, key);
         input.uniform = [
-          draws::uniform(key, 2_135_587_861, args.seed, 2_654_435_761),
-          draws::uniform(key, 3_266_489_917, args.seed, 2_654_435_761),
+          u01_f32(words[0]),
+          u01_f32(words[1]),
+          u01_f32(words[2]),
+          u01_f32(words[3]),
         ];
       }
       if F::HAS_SERIES && args.series_n != 0 {
@@ -257,9 +262,9 @@ pub(crate) unsafe fn run<
           };
           let mut j = 1u32;
           while j <= terms {
-            let series_key = memory::key(global, j);
-            if memory::cell(series_key, args.seed, args.steps) == step {
-              input = memory::term(input, series_key, args.seed, block[(j - 1) as usize]);
+            if memory::cell(global, j, key, args.steps) == step {
+              let words = memory::arrival(global, j, key);
+              input = memory::term(input, global, j, key, words, block[(j - 1) as usize]);
               input.series += F::series(params, state, input)[0];
             }
             j += 1;
@@ -294,22 +299,23 @@ pub(crate) unsafe fn run<
         }
       }
       if JUMPS && args.has_jumps != 0 && (F::READS_COUNT || F::READS_JUMP || F::READS_GAMMA) {
-        input.count = draws::poisson(key, args.seed, args.jump_lambda, args.dt);
+        input.count = draws::poisson(global, counter, key, args.jump_lambda, args.dt);
       }
       if GAMMA && F::READS_GAMMA {
         if args.gamma_law > 0 {
           let shape = args.g1_shape + args.g1_per * input.count;
-          input.gamma[0] = draws::gamma(key, args.seed, 0, shape, args.g1_scale);
+          input.gamma[0] = draws::gamma(global, counter, key, 0, shape, args.g1_scale);
         }
         if args.gamma_law > 1 {
           let shape = args.g2_shape + args.g2_per * input.count;
-          input.gamma[1] = draws::gamma(key, args.seed, 1, shape, args.g2_scale);
+          input.gamma[1] = draws::gamma(global, counter, key, 1, shape, args.g2_scale);
         }
       }
       if JUMPS && F::READS_JUMP {
         input.jump = jumps::draw(
+          global,
+          counter,
           key,
-          args.seed,
           args.jump_law,
           args.jump_a,
           args.jump_b,

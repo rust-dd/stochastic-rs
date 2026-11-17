@@ -16,7 +16,7 @@ pub(crate) struct Inputs {
   pub count: f32,
   pub jump: f32,
   pub gamma: [f32; 2],
-  pub uniform: [f32; 2],
+  pub uniform: [f32; 4],
   pub lift: f32,
   pub convolution: f32,
   pub series: f32,

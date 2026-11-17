@@ -29,6 +29,7 @@ use super::common::Device;
 use super::common::M;
 use super::common::agrees;
 use super::common::all_finite;
+use super::common::means_agree;
 use super::common::terminal_mean;
 use super::common::terminal_std;
 use super::common::within;
@@ -528,11 +529,12 @@ fn a_small_scale_keeps_the_stable_subordinator_on_the_cpu_law() {
     device_median > 0.0,
     "every device path collapsed to zero: median terminal = {device_median:e}"
   );
-  agrees(
-    median(&host),
-    device_median,
-    0.05,
-    "small-scale stable subordinator terminal median",
+  // The terminal law spans decades, so its median moves by a fifth between seeds; its log does not.
+  let logs = |paths: &[Array1<f32>]| paths.iter().map(|p| p.mapv(f32::ln)).collect::<Vec<_>>();
+  means_agree(
+    &logs(&host),
+    &logs(&device),
+    "small-scale stable subordinator terminal log",
   );
 }
 

@@ -15,8 +15,8 @@
 //! emitted C, which is how a family names a clamped or guarded state once and
 //! then reads like the host sampler it came from.
 //!
-//! A step or report may read `u` and `u2`, two uniforms in `[0, 1)` for the
-//! step, `nj`, the number of jumps it saw, `js`, the sum of their sizes, `gm`
+//! A step or report may read `u`, `u2`, `u3` and `u4`, four uniforms in `(0, 1)` for
+//! the step, `nj`, the number of jumps it saw, `js`, the sum of their sizes, `gm`
 //! and `gm2`, one or two Gamma draws, and `ct`, the step's value of a time-varying
 //! coefficient the host supplies as one value per grid point. A family that
 //! never names it costs nothing for it.

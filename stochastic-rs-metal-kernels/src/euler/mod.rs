@@ -5,7 +5,11 @@ mod draws;
 mod families;
 mod frame;
 mod jumps;
+mod kat;
 mod memory;
+#[allow(dead_code, reason = "the host's maps and key are not drawn here")]
+#[path = "../../../stochastic-rs-stochastic/src/euler/philox.rs"]
+mod philox;
 mod program;
 mod vocabulary;
 
@@ -15,3 +19,4 @@ mod entries;
 
 pub use args::EulerArgs;
 pub use entries::*;
+pub use kat::philox_kat;
