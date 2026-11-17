@@ -170,6 +170,15 @@ impl CdsIndex {
     }
   }
 
+  /// The buyer's net value, `protection − premium`.
+  pub fn npv(
+    &self,
+    valuation_date: NaiveDate,
+    discount: &(impl CurveProvider<f64> + ?Sized),
+  ) -> f64 {
+    self.valuation(valuation_date, discount).net_npv
+  }
+
   /// Index fair spread.
   pub fn fair_spread(
     &self,

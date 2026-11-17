@@ -157,9 +157,12 @@ impl PyMultiCurve {
     })
   }
 
-  /// Registers `curve` as the forecast curve of `tenor` (e.g. `"3M"`).
-  fn add_forecast(&mut self, tenor: &str, curve: &PyDiscountCurve) {
-    self.inner.add_forecast(tenor, curve.inner.clone());
+  /// Registers `curve` as the forecast curve of `tenor`: `"O/N"`, `"1M"`, `"3M"`, `"6M"` or `"12M"`.
+  fn add_forecast(&mut self, tenor: &str, curve: &PyDiscountCurve) -> PyResult<()> {
+    self
+      .inner
+      .add_forecast(parse_tenor(tenor)?, curve.inner.clone());
+    Ok(())
   }
 
   /// OIS discount factor at `t`.
@@ -168,23 +171,32 @@ impl PyMultiCurve {
   }
 
   /// Simple forward projected from the tenor's forecast curve over
-  /// `[t1, t2]`; `None` for an unknown tenor.
-  fn projected_forward(&self, tenor: &str, t1: f64, t2: f64) -> Option<f64> {
-    self.inner.projected_forward(tenor, t1, t2)
+  /// `[t1, t2]`; `None` for a tenor with no curve.
+  fn projected_forward(&self, tenor: &str, t1: f64, t2: f64) -> PyResult<Option<f64>> {
+    Ok(self.inner.projected_forward(parse_tenor(tenor)?, t1, t2))
   }
 
   /// Forecast-minus-OIS simple forward spread over `[t1, t2]`.
-  fn basis_spread(&self, tenor: &str, t1: f64, t2: f64) -> Option<f64> {
-    self.inner.basis_spread(tenor, t1, t2)
+  fn basis_spread(&self, tenor: &str, t1: f64, t2: f64) -> PyResult<Option<f64>> {
+    Ok(self.inner.basis_spread(parse_tenor(tenor)?, t1, t2))
   }
 
   /// Fair fixed rate of a swap against `tenor` on the shared payment `schedule` (first entry =
-  /// start); `None` for an unknown tenor or under two dates.
-  fn fair_swap_rate(&self, tenor: &str, schedule: Vec<f64>) -> Option<f64> {
-    self
-      .inner
-      .fair_swap_rate(tenor, &ndarray::Array1::from_vec(schedule))
+  /// start); `None` for a tenor with no curve or under two dates.
+  fn fair_swap_rate(&self, tenor: &str, schedule: Vec<f64>) -> PyResult<Option<f64>> {
+    Ok(
+      self
+        .inner
+        .fair_swap_rate(parse_tenor(tenor)?, &ndarray::Array1::from_vec(schedule)),
+    )
   }
+}
+
+fn parse_tenor(tenor: &str) -> PyResult<crate::cashflows::RateTenor> {
+  tenor
+    .to_ascii_uppercase()
+    .parse()
+    .map_err(|e: crate::QuantError| PyValueError::new_err(e.to_string()))
 }
 
 #[pyclass(name = "NelsonSiegel", unsendable)]

@@ -7,6 +7,7 @@
 
 use ndarray::array;
 use stochastic_rs::quant::calendar::Frequency;
+use stochastic_rs::quant::cashflows::RateTenor;
 use stochastic_rs::quant::curves::BootstrapInstrument;
 use stochastic_rs::quant::curves::Compounding;
 use stochastic_rs::quant::curves::CurvePoint;
@@ -459,10 +460,10 @@ fn multi_curve_fair_swap_rate_single_curve() {
   let forecast = DiscountCurve::new(pts, InterpolationMethod::LinearOnZeroRates);
 
   let mut mc = MultiCurve::new(curve);
-  mc.add_forecast("6M", forecast);
+  mc.add_forecast(RateTenor::SixMonths, forecast);
 
   let schedule = array![0.0, 0.5, 1.0];
-  let fair_rate = mc.fair_swap_rate("6M", &schedule).unwrap();
+  let fair_rate = mc.fair_swap_rate(RateTenor::SixMonths, &schedule).unwrap();
   let par_rate = mc.discount.par_rate(1.0, Frequency::SemiAnnual);
 
   approx(fair_rate, par_rate, 1e-4);
@@ -495,13 +496,15 @@ fn multi_curve_basis_spread() {
   let forecast = DiscountCurve::new(forecast_pts, InterpolationMethod::LinearOnZeroRates);
 
   let mut mc = MultiCurve::new(ois);
-  mc.add_forecast("3M", forecast);
+  mc.add_forecast(RateTenor::ThreeMonths, forecast);
 
-  let spread = mc.basis_spread("3M", 0.0, 1.0).unwrap();
+  let spread = mc.basis_spread(RateTenor::ThreeMonths, 0.0, 1.0).unwrap();
   // Forecast forward > OIS forward, so spread > 0
   assert!(spread > 0.0);
 
-  let fwd_forecast = mc.projected_forward("3M", 0.0, 1.0).unwrap();
+  let fwd_forecast = mc
+    .projected_forward(RateTenor::ThreeMonths, 0.0, 1.0)
+    .unwrap();
   let fwd_ois = mc.discount.simple_forward_rate(0.0, 1.0);
   approx(spread, fwd_forecast - fwd_ois, 1e-12);
 }
@@ -541,11 +544,13 @@ fn multi_curve_pv_floating_leg() {
   let forecast = DiscountCurve::new(forecast_pts, InterpolationMethod::LinearOnZeroRates);
 
   let mut mc = MultiCurve::new(ois);
-  mc.add_forecast("6M", forecast);
+  mc.add_forecast(RateTenor::SixMonths, forecast);
 
   let schedule = array![0.0, 0.5, 1.0];
   let notional = 1_000_000.0;
-  let pv = mc.pv_floating_leg("6M", &schedule, notional).unwrap();
+  let pv = mc
+    .pv_floating_leg(RateTenor::SixMonths, &schedule, notional)
+    .unwrap();
 
   // Manual: PV = D_ois(0.5) * 0.5 * F_fc(0,0.5) * N + D_ois(1) * 0.5 * F_fc(0.5,1) * N
   let f1 = (1.0 / 0.979 - 1.0) / 0.5;

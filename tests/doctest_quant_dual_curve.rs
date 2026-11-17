@@ -2,6 +2,7 @@
 //! Backs the dual-curve bootstrap example on the quant catalog page.
 
 use ndarray::Array1;
+use stochastic_rs::quant::cashflows::RateTenor;
 use stochastic_rs::quant::curves::DiscountCurve;
 use stochastic_rs::quant::curves::InterpolationMethod;
 use stochastic_rs::quant::curves::MultiCurve;
@@ -70,7 +71,9 @@ fn dual_curve_bootstrap_recovers_the_tenor_basis() {
 
   // The multi-curve container reads the 50 bp tenor basis back off the two curves.
   let mut multi = MultiCurve::new(ois);
-  multi.add_forecast("3M", forecast);
-  let basis = multi.basis_spread("3M", 1.0, 1.25).unwrap();
+  multi.add_forecast(RateTenor::ThreeMonths, forecast);
+  let basis = multi
+    .basis_spread(RateTenor::ThreeMonths, 1.0, 1.25)
+    .unwrap();
   assert!((basis - 0.005).abs() < 2e-4, "basis {basis}");
 }

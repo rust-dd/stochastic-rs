@@ -17,6 +17,8 @@
 
 pub mod bond;
 pub mod equity;
+pub mod fra;
+pub mod money_market;
 pub mod option;
 pub mod swap;
 
@@ -30,6 +32,11 @@ pub use bond::ZeroCouponBond;
 pub use equity::DigitalKind;
 pub use equity::DigitalOption;
 pub use equity::EuropeanOption;
+pub use fra::ForwardRateAgreement;
+pub use fra::FraPosition;
+pub use fra::FraValuation;
+pub use money_market::Deposit;
+pub use money_market::DepositValuation;
 pub use option::BachelierVolatility;
 pub use option::BermudanSwaption;
 pub use option::BermudanSwaptionValuation;
@@ -38,6 +45,7 @@ pub use option::Cap;
 pub use option::CapFloorValuation;
 pub use option::CmsCaplet;
 pub use option::CmsFloorlet;
+pub use option::CmsValuation;
 pub use option::Collar;
 pub use option::CollarValuation;
 pub use option::EuropeanSwaption;

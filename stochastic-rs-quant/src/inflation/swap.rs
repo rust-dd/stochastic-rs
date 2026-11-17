@@ -24,6 +24,19 @@ use ndarray::Array1;
 use super::InflationCurve;
 use crate::traits::RealExt;
 
+/// Leg values, net value and fair fixed rate of an inflation swap.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct InflationSwapValuation<T: RealExt> {
+  /// Present value of the inflation leg.
+  pub inflation_leg: T,
+  /// Present value of the fixed leg.
+  pub fixed_leg: T,
+  /// Inflation leg minus fixed leg.
+  pub npv: T,
+  /// Fixed rate at which `npv` is zero.
+  pub fair_fixed_rate: T,
+}
+
 /// Zero-coupon inflation-indexed swap.
 #[derive(Debug, Clone)]
 pub struct ZeroCouponInflationSwap<T: RealExt> {
@@ -43,6 +56,22 @@ impl<T: RealExt> ZeroCouponInflationSwap<T> {
     let inflation_leg = self.notional * (curve.forward_index_ratio(self.tau) - T::one());
     let fixed_leg = self.notional * ((T::one() + self.fixed_rate).powf(self.tau) - T::one());
     nominal_df * (inflation_leg - fixed_leg)
+  }
+
+  /// Both legs discounted by `nominal_df`, with [`npv`](Self::npv) and the fair fixed rate.
+  pub fn valuation(
+    &self,
+    curve: &(impl InflationCurve<T> + ?Sized),
+    nominal_df: T,
+  ) -> InflationSwapValuation<T> {
+    let inflation_leg = self.notional * (curve.forward_index_ratio(self.tau) - T::one());
+    let fixed_leg = self.notional * ((T::one() + self.fixed_rate).powf(self.tau) - T::one());
+    InflationSwapValuation {
+      inflation_leg: nominal_df * inflation_leg,
+      fixed_leg: nominal_df * fixed_leg,
+      npv: self.npv(curve, nominal_df),
+      fair_fixed_rate: self.fair_fixed_rate(curve),
+    }
   }
 
   /// Par rate that makes the swap NPV zero.
@@ -145,6 +174,16 @@ impl<T: RealExt> YearOnYearInflationSwap<T> {
   /// Net PV (inflation leg minus fixed leg).
   pub fn npv(&self, curve: &(impl InflationCurve<T> + ?Sized)) -> T {
     self.inflation_leg_pv(curve) - self.fixed_leg_pv()
+  }
+
+  /// Both legs, with [`npv`](Self::npv) and the fair fixed rate.
+  pub fn valuation(&self, curve: &(impl InflationCurve<T> + ?Sized)) -> InflationSwapValuation<T> {
+    InflationSwapValuation {
+      inflation_leg: self.inflation_leg_pv(curve),
+      fixed_leg: self.fixed_leg_pv(),
+      npv: self.npv(curve),
+      fair_fixed_rate: self.fair_fixed_rate(curve),
+    }
   }
 
   /// Par fixed rate that makes NPV zero.

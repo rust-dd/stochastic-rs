@@ -17,9 +17,10 @@ use stochastic_rs::quant::curves::BootstrapInstrument;
 use stochastic_rs::quant::curves::DiscountCurve;
 use stochastic_rs::quant::curves::InterpolationMethod;
 use stochastic_rs::quant::curves::bootstrap;
-use stochastic_rs::quant::market::Deposit;
+use stochastic_rs::quant::instruments::Deposit;
+use stochastic_rs::quant::instruments::ForwardRateAgreement;
+use stochastic_rs::quant::instruments::FraPosition;
 use stochastic_rs::quant::market::DepositRateHelper;
-use stochastic_rs::quant::market::ForwardRateAgreement;
 use stochastic_rs::quant::market::FraRateHelper;
 use stochastic_rs::quant::market::Handle;
 use stochastic_rs::quant::market::Quote;
@@ -89,7 +90,7 @@ fn fra_npv_matches_payoff_formula() {
   );
 
   let fra = ForwardRateAgreement::new(
-    stochastic_rs::quant::market::fra::FraPosition::Long,
+    FraPosition::Long,
     1_000_000.0,
     0.025,
     start,

@@ -45,7 +45,7 @@ pub trait CurveProvider<T: RealExt>: Send + Sync {
   fn discount_curve(&self) -> &DiscountCurve<T>;
 
   /// Optional tenor-specific forecast curve.
-  fn forecast_curve(&self, key: &str) -> Option<&DiscountCurve<T>>;
+  fn forecast_curve(&self, tenor: RateTenor) -> Option<&DiscountCurve<T>>;
 }
 
 impl<T: RealExt> CurveProvider<T> for DiscountCurve<T> {
@@ -53,7 +53,7 @@ impl<T: RealExt> CurveProvider<T> for DiscountCurve<T> {
     self
   }
 
-  fn forecast_curve(&self, _key: &str) -> Option<&DiscountCurve<T>> {
+  fn forecast_curve(&self, _tenor: RateTenor) -> Option<&DiscountCurve<T>> {
     Some(self)
   }
 }
@@ -63,15 +63,15 @@ impl<T: RealExt> CurveProvider<T> for MultiCurve<T> {
     &self.discount
   }
 
-  fn forecast_curve(&self, key: &str) -> Option<&DiscountCurve<T>> {
-    self.forecast(key).or(Some(&self.discount))
+  fn forecast_curve(&self, tenor: RateTenor) -> Option<&DiscountCurve<T>> {
+    self.forecast(tenor).or(Some(&self.discount))
   }
 }
 
 /// Extensibility point for rate indices used by floating coupons.
 pub trait RateIndex<T: RealExt>: Clone + Send + Sync {
-  /// Curve label used to request the forecast curve.
-  fn curve_key(&self) -> &str;
+  /// The tenor whose forecast curve the index reads.
+  fn tenor(&self) -> RateTenor;
 
   /// Forecast the coupon rate over an accrual period.
   fn forward_rate(

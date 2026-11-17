@@ -99,7 +99,7 @@ fn a_swap_and_a_swaption_share_one_direction_and_an_order_side_drives_execution(
     .frequency(Frequency::Quarterly)
     .build();
   let mut curves = MultiCurve::new(flat(0.03));
-  curves.add_forecast("3M", flat(0.03));
+  curves.add_forecast(RateTenor::ThreeMonths, flat(0.03));
   let npv = |direction| {
     VanillaInterestRateSwap::new(
       direction,

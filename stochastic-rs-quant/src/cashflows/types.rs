@@ -4,12 +4,14 @@
 //! Palgrave Macmillan (2014).
 
 use std::fmt::Display;
+use std::str::FromStr;
 
 use chrono::NaiveDate;
 use ndarray::Array1;
 
 use super::CurveProvider;
 use super::RateIndex;
+use crate::QuantError;
 use crate::calendar::DayCountConvention;
 use crate::calendar::Frequency;
 use crate::calendar::date_math::add_months;
@@ -77,22 +79,34 @@ pub enum RateTenor {
   TwelveMonths,
 }
 
-impl RateTenor {
-  /// Canonical curve key used by [`crate::curves::MultiCurve`].
-  pub fn curve_key(self) -> &'static str {
-    match self {
+impl Display for RateTenor {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str(match self {
       Self::Overnight => "O/N",
       Self::OneMonth => "1M",
       Self::ThreeMonths => "3M",
       Self::SixMonths => "6M",
       Self::TwelveMonths => "12M",
-    }
+    })
   }
 }
 
-impl Display for RateTenor {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{}", self.curve_key())
+/// Reads what `Display` prints, and `"ON"` and `"1Y"`; `InvalidInput` otherwise.
+impl FromStr for RateTenor {
+  type Err = QuantError;
+
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    match s {
+      "O/N" | "ON" => Ok(Self::Overnight),
+      "1M" => Ok(Self::OneMonth),
+      "3M" => Ok(Self::ThreeMonths),
+      "6M" => Ok(Self::SixMonths),
+      "12M" | "1Y" => Ok(Self::TwelveMonths),
+      other => Err(QuantError::InvalidInput {
+        what: "tenor",
+        reason: format!("tenor must be one of O/N, ON, 1M, 3M, 6M, 12M, 1Y, got {other:?}"),
+      }),
+    }
   }
 }
 
@@ -179,8 +193,8 @@ impl<T: RealExt> IborIndex<T> {
 }
 
 impl<T: RealExt> RateIndex<T> for IborIndex<T> {
-  fn curve_key(&self) -> &str {
-    self.tenor.curve_key()
+  fn tenor(&self) -> RateTenor {
+    self.tenor
   }
 
   fn forward_rate(
@@ -190,7 +204,7 @@ impl<T: RealExt> RateIndex<T> for IborIndex<T> {
     period: &AccrualPeriod<T>,
   ) -> T {
     let curve = curves
-      .forecast_curve(self.curve_key())
+      .forecast_curve(self.tenor)
       .unwrap_or_else(|| curves.discount_curve());
     let t0 = self
       .day_count
@@ -227,8 +241,8 @@ impl<T: RealExt> OvernightIndex<T> {
 }
 
 impl<T: RealExt> RateIndex<T> for OvernightIndex<T> {
-  fn curve_key(&self) -> &str {
-    self.tenor.curve_key()
+  fn tenor(&self) -> RateTenor {
+    self.tenor
   }
 
   fn forward_rate(
@@ -238,7 +252,7 @@ impl<T: RealExt> RateIndex<T> for OvernightIndex<T> {
     period: &AccrualPeriod<T>,
   ) -> T {
     let curve = curves
-      .forecast_curve(self.curve_key())
+      .forecast_curve(self.tenor)
       .unwrap_or_else(|| curves.discount_curve());
     let t0 = self
       .day_count
@@ -259,11 +273,11 @@ pub enum FloatingIndex<T: RealExt> {
 }
 
 impl<T: RealExt> FloatingIndex<T> {
-  /// Curve key for the built-in index.
-  pub fn curve_key(&self) -> &str {
+  /// The tenor whose forecast curve the index reads.
+  pub fn tenor(&self) -> RateTenor {
     match self {
-      Self::Ibor(index) => index.curve_key(),
-      Self::Overnight(index) => index.curve_key(),
+      Self::Ibor(index) => index.tenor,
+      Self::Overnight(index) => index.tenor,
     }
   }
 }
@@ -278,11 +292,8 @@ impl<T: RealExt> Display for FloatingIndex<T> {
 }
 
 impl<T: RealExt> RateIndex<T> for FloatingIndex<T> {
-  fn curve_key(&self) -> &str {
-    match self {
-      Self::Ibor(index) => index.curve_key(),
-      Self::Overnight(index) => index.curve_key(),
-    }
+  fn tenor(&self) -> RateTenor {
+    FloatingIndex::tenor(self)
   }
 
   fn forward_rate(
@@ -309,8 +320,8 @@ pub struct CmsIndex<T: RealExt> {
   pub payment_frequency: Frequency,
   /// Day count convention used for the fixed leg.
   pub day_count: DayCountConvention,
-  /// Forecast curve label.
-  pub curve_key: String,
+  /// The tenor whose forecast curve prices the reference swap.
+  pub tenor: RateTenor,
   _marker: std::marker::PhantomData<T>,
 }
 
@@ -321,22 +332,22 @@ impl<T: RealExt> CmsIndex<T> {
     swap_tenor_months: i32,
     payment_frequency: Frequency,
     day_count: DayCountConvention,
-    curve_key: impl Into<String>,
+    tenor: RateTenor,
   ) -> Self {
     Self {
       name: name.into(),
       swap_tenor_months,
       payment_frequency,
       day_count,
-      curve_key: curve_key.into(),
+      tenor,
       _marker: std::marker::PhantomData,
     }
   }
 }
 
 impl<T: RealExt> RateIndex<T> for CmsIndex<T> {
-  fn curve_key(&self) -> &str {
-    &self.curve_key
+  fn tenor(&self) -> RateTenor {
+    self.tenor
   }
 
   fn forward_rate(
@@ -346,7 +357,7 @@ impl<T: RealExt> RateIndex<T> for CmsIndex<T> {
     period: &AccrualPeriod<T>,
   ) -> T {
     let curve = curves
-      .forecast_curve(self.curve_key())
+      .forecast_curve(self.tenor)
       .unwrap_or_else(|| curves.discount_curve());
     let swap_end = add_months(
       period.accrual_start,

@@ -64,7 +64,7 @@ fn bench_floating_leg(c: &mut Criterion) {
   let discount_curve = flat_curve(0.03, 10.5);
   let forecast_curve = flat_curve(0.04, 10.5);
   let mut curves = MultiCurve::new(discount_curve);
-  curves.add_forecast("3M", forecast_curve);
+  curves.add_forecast(RateTenor::ThreeMonths, forecast_curve);
   let pricer = CashflowPricer::new(valuation, DayCountConvention::Actual365Fixed);
 
   c.bench_function("cashflows_floating_leg_npv", |b| {

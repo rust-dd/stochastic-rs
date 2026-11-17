@@ -129,7 +129,7 @@ fn fixed_rate_bond_spread_analytics_are_consistent() {
     .build();
   let discount_curve = flat_curve(0.03, 3.2);
   let mut curves = MultiCurve::new(discount_curve.clone());
-  curves.add_forecast("3M", discount_curve.clone());
+  curves.add_forecast(RateTenor::ThreeMonths, discount_curve.clone());
 
   let par_swap = VanillaInterestRateSwap::new(
     SwaptionDirection::Receiver,
@@ -330,7 +330,7 @@ fn vanilla_swap_fair_rate_matches_annuity_formula_and_npv_is_zero_at_par() {
   let discount_curve = flat_curve(0.03, 2.2);
   let forecast_curve = flat_curve(0.035, 2.2);
   let mut curves = MultiCurve::new(discount_curve.clone());
-  curves.add_forecast("3M", forecast_curve.clone());
+  curves.add_forecast(RateTenor::ThreeMonths, forecast_curve.clone());
 
   let par_swap = VanillaInterestRateSwap::new(
     SwaptionDirection::Receiver,
@@ -403,8 +403,8 @@ fn basis_swap_fair_pay_leg_spread_zeroes_npv() {
     .build();
   let discount_curve = flat_curve(0.03, 2.2);
   let mut curves = MultiCurve::new(discount_curve);
-  curves.add_forecast("3M", flat_curve(0.034, 2.2));
-  curves.add_forecast("6M", flat_curve(0.036, 2.2));
+  curves.add_forecast(RateTenor::ThreeMonths, flat_curve(0.034, 2.2));
+  curves.add_forecast(RateTenor::SixMonths, flat_curve(0.036, 2.2));
 
   let basis = BasisSwap::new(
     &pay_schedule,
@@ -468,9 +468,9 @@ fn cross_currency_basis_swap_fair_domestic_spread_zeroes_npv() {
     .build();
 
   let mut domestic_curves = MultiCurve::new(flat_curve(0.03, 1.2));
-  domestic_curves.add_forecast("3M", flat_curve(0.031, 1.2));
+  domestic_curves.add_forecast(RateTenor::ThreeMonths, flat_curve(0.031, 1.2));
   let mut foreign_curves = MultiCurve::new(flat_curve(0.02, 1.2));
-  foreign_curves.add_forecast("3M", flat_curve(0.021, 1.2));
+  foreign_curves.add_forecast(RateTenor::ThreeMonths, flat_curve(0.021, 1.2));
 
   let xccy = CrossCurrencyBasisSwap::new(
     CrossCurrencySwapDirection::PayDomesticReceiveForeign,
@@ -564,7 +564,7 @@ fn overnight_indexed_swap_constructor_reuses_overnight_float_leg() {
     .build();
   let curve = flat_curve(0.025, 1.1);
   let mut curves = MultiCurve::new(curve.clone());
-  curves.add_forecast("O/N", curve);
+  curves.add_forecast(RateTenor::Overnight, curve);
 
   let ois = VanillaInterestRateSwap::overnight_indexed(
     SwaptionDirection::Payer,

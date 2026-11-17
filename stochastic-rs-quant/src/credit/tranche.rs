@@ -228,6 +228,11 @@ impl CdoTranche {
     }
   }
 
+  /// The protection buyer's net value, `protection − premium`, per unit of pool notional.
+  pub fn npv(&self, pool: &[PoolName], discount: &DiscountCurve<f64>) -> f64 {
+    self.valuation(pool, discount).upfront
+  }
+
   /// Vasicek large-homogeneous-pool limit of the expected tranche loss for a
   /// pool with common default probability `p` and loss-given-default `lgd`:
   /// `E[min(max(lgd·Φ((Φ⁻¹(p) − √ρ Y)/√(1−ρ)) − A, 0), D − A)]`.

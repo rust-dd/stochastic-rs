@@ -84,6 +84,17 @@ pub fn hagan_linear_tsr_convexity_adjustment<T: RealExt>(
   natural + delay
 }
 
+/// A CMS caplet's or floorlet's value with the rate it is priced on.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CmsValuation<T: RealExt> {
+  /// Forward swap rate before the adjustment.
+  pub forward_swap_rate: T,
+  /// Hagan's convexity adjustment, added to the forward; zero once the rate has fixed.
+  pub convexity_adjustment: T,
+  /// Present value.
+  pub npv: T,
+}
+
 /// CMS caplet struck at `strike` with Hagan convexity adjustment applied to
 /// the forward CMS rate before Black-76 pricing.
 #[derive(Debug, Clone)]
@@ -112,8 +123,13 @@ pub struct CmsCaplet<T: RealExt, V: VolatilityModel<T>> {
 
 impl<T: RealExt, V: VolatilityModel<T>> CmsCaplet<T, V> {
   /// Present value.
-  pub fn price(&self) -> T {
-    price_cms_payoff(
+  pub fn npv(&self) -> T {
+    self.valuation().npv
+  }
+
+  /// Present value with the forward swap rate and its convexity adjustment.
+  pub fn valuation(&self) -> CmsValuation<T> {
+    cms_valuation(
       self.strike,
       self.notional,
       self.accrual_factor,
@@ -156,8 +172,13 @@ pub struct CmsFloorlet<T: RealExt, V: VolatilityModel<T>> {
 
 impl<T: RealExt, V: VolatilityModel<T>> CmsFloorlet<T, V> {
   /// Present value.
-  pub fn price(&self) -> T {
-    price_cms_payoff(
+  pub fn npv(&self) -> T {
+    self.valuation().npv
+  }
+
+  /// Present value with the forward swap rate and its convexity adjustment.
+  pub fn valuation(&self) -> CmsValuation<T> {
+    cms_valuation(
       self.strike,
       self.notional,
       self.accrual_factor,
@@ -175,7 +196,7 @@ impl<T: RealExt, V: VolatilityModel<T>> CmsFloorlet<T, V> {
 
 /// A fixing at `t_fix <= 0` is known, so it pays its intrinsic value on `s0` without a vol or a convexity adjustment.
 #[allow(clippy::too_many_arguments)]
-fn price_cms_payoff<T: RealExt, V: VolatilityModel<T> + ?Sized>(
+fn cms_valuation<T: RealExt, V: VolatilityModel<T> + ?Sized>(
   strike: T,
   notional: T,
   accrual: T,
@@ -187,10 +208,14 @@ fn price_cms_payoff<T: RealExt, V: VolatilityModel<T> + ?Sized>(
   payment_delay: T,
   vol: &V,
   is_caplet: bool,
-) -> T {
+) -> CmsValuation<T> {
   if t_fix <= T::zero() {
     let moneyness = if is_caplet { s0 - strike } else { strike - s0 };
-    return notional * accrual * discount * moneyness.max_or_nan(T::zero());
+    return CmsValuation {
+      forward_swap_rate: s0,
+      convexity_adjustment: T::zero(),
+      npv: notional * accrual * discount * moneyness.max_or_nan(T::zero()),
+    };
   }
   let sigma = vol.implied_volatility(s0, strike, t_fix);
   let ca =
@@ -201,7 +226,11 @@ fn price_cms_payoff<T: RealExt, V: VolatilityModel<T> + ?Sized>(
   } else {
     black_forward_floorlet(s_adj, strike, t_fix, sigma)
   };
-  notional * accrual * discount * forward_value
+  CmsValuation {
+    forward_swap_rate: s0,
+    convexity_adjustment: ca,
+    npv: notional * accrual * discount * forward_value,
+  }
 }
 
 #[cfg(test)]
@@ -225,7 +254,7 @@ mod tests {
         payment_delay: 0.0,
         vol,
       }
-      .price()
+      .npv()
     };
     let floorlet = |t_fix: f64| {
       CmsFloorlet {
@@ -240,7 +269,7 @@ mod tests {
         payment_delay: 0.0,
         vol,
       }
-      .price()
+      .npv()
     };
     for t_fix in [-0.5, 0.0] {
       assert!((caplet(t_fix) - 9700.0).abs() < 1e-6, "t_fix = {t_fix}");

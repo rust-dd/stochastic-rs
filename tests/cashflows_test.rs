@@ -99,7 +99,7 @@ fn floating_coupon_uses_multicurve_forecast_curve() {
   let discount_curve = flat_curve(0.02, 0.5);
   let forecast_curve = flat_curve(0.04, 0.5);
   let mut curves = MultiCurve::new(discount_curve);
-  curves.add_forecast("3M", forecast_curve);
+  curves.add_forecast(RateTenor::ThreeMonths, forecast_curve);
 
   let coupon = &leg.cashflows()[0];
   let delta: f64 = DayCountConvention::Actual365Fixed.year_fraction(valuation, maturity);
@@ -124,7 +124,7 @@ fn cms_coupon_matches_forward_swap_rate_under_flat_curve() {
       24,
       Frequency::SemiAnnual,
       DayCountConvention::Actual365Fixed,
-      "CMS",
+      RateTenor::SixMonths,
     ),
     0.0,
     DayCountConvention::Actual365Fixed,

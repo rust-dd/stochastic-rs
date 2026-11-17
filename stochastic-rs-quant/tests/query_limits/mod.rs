@@ -5,6 +5,7 @@ use ndarray::Array1;
 use stochastic_rs_quant::OptionType;
 use stochastic_rs_quant::QuantError;
 use stochastic_rs_quant::calendar::Frequency;
+use stochastic_rs_quant::cashflows::RateTenor;
 use stochastic_rs_quant::credit::HazardInterpolation;
 use stochastic_rs_quant::credit::SurvivalCurve;
 use stochastic_rs_quant::credit::SurvivalPoint;
@@ -423,21 +424,31 @@ fn a_multi_curve_leg_skips_an_empty_period_and_a_swap_rate_needs_two_dates() {
     )
   };
   let mut curves = MultiCurve::new(flat(0.04));
-  curves.add_forecast("3M", flat(0.045));
+  curves.add_forecast(RateTenor::ThreeMonths, flat(0.045));
   let schedule = Array1::from_vec(vec![0.5, 1.0, 2.0]);
   let repeated = Array1::from_vec(vec![0.5, 1.0, 1.0, 2.0]);
-  let pv = curves.pv_floating_leg("3M", &schedule, 1.0);
+  let pv = curves.pv_floating_leg(RateTenor::ThreeMonths, &schedule, 1.0);
   assert!(pv.is_some_and(f64::is_finite), "{pv:?}");
-  assert_eq!(curves.pv_floating_leg("3M", &repeated, 1.0), pv);
-  let rate = curves.fair_swap_rate("3M", &schedule);
-  assert!(rate.is_some_and(f64::is_finite), "{rate:?}");
-  assert_eq!(curves.fair_swap_rate("3M", &repeated), rate);
   assert_eq!(
-    curves.fair_swap_rate("3M", &Array1::from_vec(vec![1.0])),
+    curves.pv_floating_leg(RateTenor::ThreeMonths, &repeated, 1.0),
+    pv
+  );
+  let rate = curves.fair_swap_rate(RateTenor::ThreeMonths, &schedule);
+  assert!(rate.is_some_and(f64::is_finite), "{rate:?}");
+  assert_eq!(
+    curves.fair_swap_rate(RateTenor::ThreeMonths, &repeated),
+    rate
+  );
+  assert_eq!(
+    curves.fair_swap_rate(RateTenor::ThreeMonths, &Array1::from_vec(vec![1.0])),
     None
   );
-  assert_eq!(curves.fair_swap_rate("3M", &Array1::from_vec(vec![])), None);
-  let empty_period = curves.fair_swap_rate("3M", &Array1::from_vec(vec![1.0, 1.0]));
+  assert_eq!(
+    curves.fair_swap_rate(RateTenor::ThreeMonths, &Array1::from_vec(vec![])),
+    None
+  );
+  let empty_period =
+    curves.fair_swap_rate(RateTenor::ThreeMonths, &Array1::from_vec(vec![1.0, 1.0]));
   assert!(empty_period.is_some_and(f64::is_nan), "{empty_period:?}");
 }
 

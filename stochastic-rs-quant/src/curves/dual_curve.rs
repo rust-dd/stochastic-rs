@@ -300,9 +300,9 @@ mod tests {
       );
     }
     let mut multi = MultiCurve::new(ois);
-    multi.add_forecast("3M", forecast);
+    multi.add_forecast(crate::cashflows::RateTenor::ThreeMonths, forecast);
     let basis = multi
-      .basis_spread("3M", 1.0, 1.25)
+      .basis_spread(crate::cashflows::RateTenor::ThreeMonths, 1.0, 1.25)
       .expect("tenor registered");
     assert!((basis - 0.005).abs() < 2e-4, "basis {basis}");
   }
