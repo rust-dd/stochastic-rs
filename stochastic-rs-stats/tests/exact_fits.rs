@@ -251,7 +251,8 @@ fn an_exact_fit_on_an_ill_conditioned_design_is_refused_at_every_scale() {
   }
 }
 
-/// A walk of AR(0.9) steps has an AR(4) fit in its levels with a condition number past `1e6`.
+/// A walk of AR(0.9) steps keeps its statistic at `ar_lags = 4`: the AR fit in levels is
+/// ill-conditioned but resolved, so neither the bound nor the exact-fit rule refuses it.
 #[test]
 fn leybourne_mccabe_keeps_a_persistent_walk_at_ar_lags_four() {
   let e = normals(2, 2000);

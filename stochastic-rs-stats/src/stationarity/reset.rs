@@ -93,8 +93,8 @@ impl crate::traits::HypothesisTest for ResetTest {
   }
 }
 
-/// Ramsey (1969) RESET of `y` on `x` (with its constant column); `Err` below `k + q + 2` points, a
-/// non-finite entry, constant `y`, mismatched rows, a singular or exact fit; panics on bad `cfg`.
+/// Ramsey (1969) RESET; `Err` below `k + q + 2` points, a non-finite entry, constant `y`,
+/// mismatched rows, a singular or exact fit, `Numerical` on a non-finite `F`; panics on bad `cfg`.
 pub fn reset_test(
   y: ArrayView1<f64>,
   x: ArrayView2<f64>,
@@ -127,8 +127,8 @@ pub fn reset_test(
 
   // Fitted values from the restricted model.
   let fitted = x.dot(&beta_r).to_vec();
-  // Ramsey (1969) adds powers of ŷ; with a constant in `x`, ŷ lies in its span, so those of the
-  // standardised ŷ span the same columns and give the same `F` without their collinearity.
+  // Ramsey (1969) adds powers of ŷ; with a constant in `x`, ŷ and the constant lie in its span, so
+  // those of the standardised ŷ span the same columns: the same `F`, without their collinearity.
   let powered = if has_constant_column(x) {
     standardised(&fitted)
   } else {
@@ -136,7 +136,6 @@ pub fn reset_test(
     fitted
   };
 
-  // Augmented design: append the powers 2, …, p as additional regressors.
   let mut x_aug_rows = x_rows.clone();
   for (i, row) in x_aug_rows.iter_mut().enumerate() {
     let yhat = powered[i];
@@ -173,7 +172,6 @@ fn has_constant_column(x: ArrayView2<f64>) -> bool {
     .any(|c| c[0] != 0.0 && c.iter().all(|v| *v == c[0]))
 }
 
-/// `v` less its mean, over the root mean square of that; only less its mean where that is zero.
 fn standardised(v: &[f64]) -> Vec<f64> {
   let deviations = centred(v);
   let scale = (deviations.iter().map(|u| u * u).sum::<f64>() / v.len() as f64).sqrt();

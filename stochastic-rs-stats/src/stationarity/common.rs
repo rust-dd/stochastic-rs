@@ -98,7 +98,7 @@ pub fn ols(y: &[f64], x: &[Vec<f64>]) -> Result<OlsResult, StatsError> {
 }
 
 /// Past this condition number of the equilibrated normal equations the design is numerically
-/// singular: a coefficient errs by up to `κ ε`, and the statistics drift past `1e-6` from `5e13`.
+/// singular: a coefficient errs by up to `κ ε`, and a statistic by up to `2e-6` just below it.
 const MAX_CONDITION: f64 = 1e13;
 
 /// How far past `κ ε`, the solve's rounding of a coefficient, residuals must stay to be resolved.

@@ -47,8 +47,8 @@ impl crate::traits::HypothesisTest for GrangerTest {
   }
 }
 
-/// Granger F-test of "does `x` cause `y`?" at `lags` lags; `Err` below `3 lags + 3` points, a
-/// non-finite or constant series, unequal lengths, a singular or exact fit; panics on bad config.
+/// Does `x` Granger-cause `y`? `Err` below `3 lags + 3` points, a non-finite or constant series,
+/// unequal lengths, a singular or exact fit, `Numerical` on a non-finite `F`; panics on bad config.
 pub fn granger_causality_test(
   y: ArrayView1<f64>,
   x: ArrayView1<f64>,
