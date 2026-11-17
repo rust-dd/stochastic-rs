@@ -72,8 +72,8 @@ impl BayesianDiffusionFit {
   }
 }
 
-/// Metropolis posterior, defined where the QMLE's regression refuses; `Err`s and panics as the
-/// QMLE's checks of `dt`, the path, its start and data scale, and as [`random_walk_metropolis`].
+/// Metropolis posterior, priors `ln θ ~ N(0, 4²)` and `ln σ ~ N(ln σ₀, 4²)` about the data's `σ₀`;
+/// defined where the QMLE refuses; `Err`s and panics as its checks and [`random_walk_metropolis`].
 pub fn fit_diffusion_bayesian<T: FloatExt>(
   series: ArrayView1<T>,
   dt: f64,
