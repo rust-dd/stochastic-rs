@@ -296,6 +296,16 @@ where
   None
 }
 
+/// A finite negative model price clipped to 0; NaN and ±∞ pass through, so the optimiser rejects
+/// the trial instead of reading a price.
+pub(crate) fn clip_negative(price: f64) -> f64 {
+  if price.is_finite() {
+    price.max(0.0)
+  } else {
+    price
+  }
+}
+
 /// Periodic linear extension mapping `x` into `[c, d]`.
 ///
 /// Used to keep optimiser parameters in range without hard clipping.
@@ -323,8 +333,18 @@ mod optimizer_tests {
 
   use basin::CostFunction;
 
+  use super::clip_negative;
   use super::run_nelder_mead;
   use super::sample_standard_deviation;
+
+  #[test]
+  fn a_finite_negative_price_clips_to_zero_and_a_non_finite_one_passes() {
+    assert_eq!(clip_negative(-1e-12), 0.0);
+    assert_eq!(clip_negative(3.5), 3.5);
+    assert!(clip_negative(f64::NAN).is_nan());
+    assert_eq!(clip_negative(f64::INFINITY), f64::INFINITY);
+    assert_eq!(clip_negative(f64::NEG_INFINITY), f64::NEG_INFINITY);
+  }
 
   struct Sphere;
 

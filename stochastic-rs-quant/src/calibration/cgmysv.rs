@@ -12,13 +12,13 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
-use stochastic_rs_distributions::RealExt;
 
 use crate::OptionQuote;
 use crate::OptionType;
 use crate::QuantError;
 use crate::calibration::Calibrated;
 use crate::calibration::CalibrationOptions;
+use crate::calibration::clip_negative;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
 use crate::calibration::least_squares::minimize;
@@ -168,7 +168,7 @@ fn fourier_option_price(
   let call = fourier_call_price(params, s, k, r, q, t);
   match option_type {
     OptionType::Call => call,
-    OptionType::Put => (call - s * (-q * t).exp() + k * (-r * t).exp()).max_or_nan(0.0),
+    OptionType::Put => clip_negative(call - s * (-q * t).exp() + k * (-r * t).exp()),
   }
 }
 

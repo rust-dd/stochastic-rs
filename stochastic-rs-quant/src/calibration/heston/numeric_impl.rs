@@ -1,6 +1,5 @@
 use ndarray::Array1;
 use ndarray::Array2;
-use stochastic_rs_distributions::RealExt;
 use stochastic_rs_stats::StatsError;
 use stochastic_rs_stats::heston_mle::fit_heston_nmle;
 use stochastic_rs_stats::heston_mle::fit_heston_nmle_with_delta;
@@ -15,6 +14,7 @@ use super::params::HestonMleSeedMethod;
 use super::transform::from_optimizer_coordinates;
 use super::transform::to_optimizer_coordinates;
 use crate::OptionType;
+use crate::calibration::clip_negative;
 use crate::pricing::heston::HestonParams;
 use crate::pricing::heston::HestonPricer;
 
@@ -63,8 +63,8 @@ impl HestonCalibrator {
       let (call, put) = pricer.call_put(self.s, quote.strike, self.r, self.q, quote.tau);
 
       match quote.option_type {
-        OptionType::Call => c_model[idx] = call.max_or_nan(0.0),
-        OptionType::Put => c_model[idx] = put.max_or_nan(0.0),
+        OptionType::Call => c_model[idx] = clip_negative(call),
+        OptionType::Put => c_model[idx] = clip_negative(put),
       }
     }
 

@@ -3,8 +3,6 @@ use std::f64::consts::PI;
 use ndarray::Array1;
 use ndarray::Array2;
 
-use stochastic_rs_distributions::RealExt;
-
 use super::calibrator::HkdeCalibrator;
 use super::params::ETA1_MIN;
 use super::params::ETA2_MIN;
@@ -16,6 +14,7 @@ use super::params::SIGMA_V_MIN;
 use super::params::THETA_MIN;
 use crate::OptionQuote;
 use crate::QuantError;
+use crate::calibration::clip_negative;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
 use crate::pricing::bsm::BsmCoc;
@@ -84,7 +83,7 @@ impl<'a> HkdeProblem<'a> {
       .iter()
       .map(|quote| {
         let price = model.price_option(s, quote.strike, r, q, quote.tau, quote.option_type);
-        price.max_or_nan(0.0)
+        clip_negative(price)
       })
       .collect()
   }

@@ -3,7 +3,6 @@ use std::f64::consts::FRAC_1_PI;
 use ndarray::Array1;
 use ndarray::Array2;
 use num_complex::Complex64;
-use stochastic_rs_distributions::RealExt;
 
 use super::super::integrate_gl_to_convergence;
 use super::super::periodic_map;
@@ -12,6 +11,7 @@ use super::params::DoubleHestonParams;
 use super::params::P_SIGMA;
 use super::params::P_V0;
 use crate::OptionType;
+use crate::calibration::clip_negative;
 use crate::calibration::heston::params::KAPPA_MIN;
 use crate::calibration::heston::params::P_KAPPA;
 use crate::calibration::heston::params::P_THETA;
@@ -79,7 +79,7 @@ pub(super) fn double_heston_call_price(
   };
 
   let call = 0.5 * (s * disc_q - k * disc_r) + FRAC_1_PI * integral;
-  call.max_or_nan(0.0)
+  clip_negative(call)
 }
 
 /// One fit: the current point, the quotes' prices and the trail.
@@ -115,7 +115,7 @@ impl<'a> DoubleHestonProblem<'a> {
         let call = double_heston_call_price(p, s, k, r, q, tau);
         match quote.option_type {
           OptionType::Call => call,
-          OptionType::Put => (call - s * (-q * tau).exp() + k * (-r * tau).exp()).max_or_nan(0.0),
+          OptionType::Put => clip_negative(call - s * (-q * tau).exp() + k * (-r * tau).exp()),
         }
       })
       .collect()
