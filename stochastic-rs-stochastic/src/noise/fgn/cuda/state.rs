@@ -109,8 +109,8 @@ pub(crate) fn release(ordinal: usize) {
   }
 }
 
-/// Whether a release for `ordinal` empties a cache whose kernels belong to `cached`; with none cached
-/// it does, since a launch racing an earlier release may have left per-size states behind.
+/// Whether a release for `ordinal` empties a cache of `cached`'s kernels; with none cached it does,
+/// since a launch racing an earlier release may have left per-size states behind.
 pub(crate) fn frees(cached: Option<usize>, ordinal: usize) -> bool {
   cached.is_none_or(|cached| cached == ordinal)
 }
