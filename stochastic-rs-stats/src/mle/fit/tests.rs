@@ -138,7 +138,7 @@ fn a_path_without_a_density_is_penalised_and_its_fit_an_err() {
       upper: vec![50.0, 10.0, 10.0],
     };
     let nll = problem.eval_nll(&[1.0, 0.1, 0.3]);
-    assert_eq!(nll == 1e30, penalised, "nll = {nll}");
+    assert_eq!(nll == NO_LIKELIHOOD, penalised, "nll = {nll}");
     assert!(nll.is_finite());
     drop(problem);
     let fit = fit_mle(&mut model, sample.view(), 0.01, DensityApprox::Exact, None);
@@ -215,6 +215,48 @@ fn an_underflowing_density_keeps_its_log_in_the_objective() {
   assert!(wider < 0.3 * narrow, "{wider} against {narrow}");
 }
 
+/// On data near `1e9` the sum at `σ = 1e-6` is finite and past `1e30`: it ranks below a point with
+/// no likelihood, and a wider `σ` below it.
+#[test]
+fn a_point_with_a_likelihood_ranks_below_one_without() {
+  let sample = ndarray::array![1e9, 3e9, 2e9, 4e9];
+  let mut model = Ou::new(
+    1.0,
+    0.5,
+    0.5,
+    100,
+    Some(0.5),
+    Some(1.0),
+    Deterministic::new(0),
+  );
+  let problem = MleProblem {
+    model: Mutex::new(&mut model),
+    sample: sample.view(),
+    dt: 0.01,
+    density: DensityApprox::Euler,
+    lower: vec![1e-4, -10.0, 1e-6],
+    upper: vec![50.0, 10.0, 10.0],
+  };
+  let narrow = problem.eval_nll(&[1.0, 0.5, 1e-6]);
+  let wider = problem.eval_nll(&[1.0, 0.5, 2e-6]);
+  assert!(
+    wider < narrow && narrow < NO_LIKELIHOOD,
+    "{wider}, {narrow}"
+  );
+}
+
+#[test]
+fn the_ranking_keeps_a_sum_below_its_knee_and_every_finite_one_below_the_penalty() {
+  for nll in [-1e300, -3.5, 0.0, 39.38, 1e27] {
+    assert_eq!(ranked(nll), nll);
+  }
+  let past = [1e27, 1.0000001e27, 1e30, 1e100, f64::MAX].map(ranked);
+  assert!(past.windows(2).all(|w| w[0] < w[1]), "{past:?}");
+  assert!(past[4] < NO_LIKELIHOOD);
+  let slope = (ranked(1.0000001e27) - 1e27) / 1e20;
+  assert!((slope - 1.0).abs() < 1e-6, "slope {slope}");
+}
+
 /// From `σ = 0.5` the search probes `σ` near its bound, where every density underflows; summed
 /// in logs the objective leads it back, to the closed form's optimum.
 #[test]
@@ -280,4 +322,24 @@ fn mle_result_signals_genuine_convergence() {
   assert_eq!(params, fitted);
   assert!(converged);
   assert_eq!(iterations, 17);
+}
+
+/// From `σ = 1e-6` on a path near `1e9` the search starts past the ranking's knee, near `4e29`,
+/// and its line search still reaches the closed form's optimum.
+#[test]
+fn a_fit_from_past_the_rankings_knee_reaches_the_closed_form() {
+  let dt = 1.0 / 12.0;
+  for seed in [1u64, 3] {
+    let x = simulate_ou(8.0, 0.03, 0.02, 0.03, dt, 1000, seed).mapv(|v| 1e9 * v);
+    let mut model = Ou::new(1.0, 3e7, 1e-6, 100, None, Some(1.0), Deterministic::new(0));
+    let bounds = vec![(1e-4, 50.0), (-1e11, 1e11), (1e-6, 1e11)];
+    let fit = fit_mle(&mut model, x.view(), dt, DensityApprox::Exact, Some(bounds)).unwrap();
+    let closed = fit_ou_mle(x.view(), dt).unwrap().log_likelihood;
+    assert!(fit.converged, "seed {seed}");
+    assert!(
+      (fit.log_likelihood - closed).abs() < 1.0,
+      "seed {seed}: {} for {closed}",
+      fit.log_likelihood
+    );
+  }
 }

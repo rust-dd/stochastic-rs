@@ -97,11 +97,29 @@ impl MleProblem<'_> {
         .ln_density(&**model, self.sample[i - 1], self.sample[i], t0, self.dt);
       // A density of zero, an infinite one and none at all are no likelihood.
       if !ln_d.is_finite() {
-        return 1e30;
+        return NO_LIKELIHOOD;
       }
       sum -= ln_d;
     }
-    if sum.is_finite() { sum } else { 1e30 }
+    if sum.is_finite() {
+      ranked(sum)
+    } else {
+      NO_LIKELIHOOD
+    }
+  }
+}
+
+/// The objective at a point without a likelihood, above every sum [`ranked`] returns.
+const NO_LIKELIHOOD: f64 = 1e30;
+
+/// `nll` up to `1e27` and its logarithmic continuation past it, which no finite sum takes beyond
+/// `6.5e29`: increasing and C¹, so the search orders the sums as they are and never meets `∞`.
+fn ranked(nll: f64) -> f64 {
+  const KNEE: f64 = 1e27;
+  if nll <= KNEE {
+    nll
+  } else {
+    KNEE * (1.0 + (nll / KNEE).ln())
   }
 }
 
