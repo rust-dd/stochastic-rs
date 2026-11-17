@@ -260,7 +260,7 @@ fn schedule_with_business_day_adjustment() {
   let cal = Calendar::new(HolidayCalendar::Target);
   let schedule = ScheduleBuilder::new(d(2024, 1, 1), d(2025, 1, 1))
     .frequency(Frequency::Quarterly)
-    .calendar(cal)
+    .calendar(std::sync::Arc::new(cal))
     .convention(BusinessDayConvention::ModifiedFollowing)
     .rule(DateGenerationRule::Forward)
     .build();
@@ -357,6 +357,7 @@ fn joint_calendar_from_array() {
   assert!(cal.is_business_day(d(2024, 7, 16))); // Tue, not Marine Day
 }
 
+#[derive(Debug)]
 struct WeekdaysOnly;
 
 impl CalendarExt for WeekdaysOnly {

@@ -12,16 +12,18 @@
 //! Reference: Hagan & West, "Methods for Constructing a Yield Curve",
 //! Wilmott Magazine (2006).
 
+use std::sync::Arc;
+
 use chrono::NaiveDate;
 
 use super::handle::Handle;
 use super::quote::Quote;
 use crate::QuantError;
 use crate::calendar::BusinessDayConvention;
-use crate::calendar::Calendar;
 use crate::calendar::DayCountConvention;
 use crate::calendar::Frequency;
 use crate::calendar::ScheduleBuilder;
+use crate::calendar::SharedCalendar;
 use crate::curves::BootstrapInstrument;
 use crate::curves::DiscountCurve;
 use crate::curves::InterpolationMethod;
@@ -170,7 +172,7 @@ pub struct SwapRateHelper<T: RealExt> {
   /// Optional calendar for business-day-adjusted payment schedule
   /// construction. When `None`, [`to_instrument`](Self::to_instrument) falls
   /// back to the uniform [`BootstrapInstrument::Swap`] path.
-  pub calendar: Option<Calendar>,
+  pub calendar: Option<SharedCalendar>,
   /// Business day convention applied to each generated payment date.
   /// Honoured only when [`calendar`](Self::calendar) is `Some`. Defaults to
   /// `ModifiedFollowing` (market standard) when set via `with_calendar`.
@@ -203,7 +205,11 @@ impl<T: RealExt> SwapRateHelper<T> {
   /// generates an explicit [`Schedule`](crate::calendar::Schedule) via
   /// [`ScheduleBuilder`] (backward generation, `ShortFirst` default stub)
   /// and routes through [`BootstrapInstrument::SwapWithSchedule`] in `to_instrument`.
-  pub fn with_calendar(mut self, calendar: Calendar, convention: BusinessDayConvention) -> Self {
+  pub fn with_calendar(
+    mut self,
+    calendar: SharedCalendar,
+    convention: BusinessDayConvention,
+  ) -> Self {
     self.calendar = Some(calendar);
     self.convention = Some(convention);
     self
@@ -219,7 +225,7 @@ impl<T: RealExt> SwapRateHelper<T> {
     let mut builder = ScheduleBuilder::new(self.settlement_date, self.maturity_date)
       .frequency(self.fixed_frequency);
     if let Some(cal) = &self.calendar {
-      builder = builder.calendar(cal.clone());
+      builder = builder.calendar(Arc::clone(cal));
     }
     if let Some(conv) = self.convention {
       builder = builder.convention(conv);
@@ -484,7 +490,7 @@ mod tests {
       DayCountConvention::Actual365Fixed,
     )
     .with_calendar(
-      Calendar::new(HolidayCalendar::Target),
+      Arc::new(Calendar::new(HolidayCalendar::Target)),
       BusinessDayConvention::ModifiedFollowing,
     );
 

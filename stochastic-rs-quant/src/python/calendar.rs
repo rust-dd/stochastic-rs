@@ -317,7 +317,7 @@ impl PyScheduleBuilder {
       .inner
       .take()
       .ok_or_else(|| PyValueError::new_err("ScheduleBuilder already consumed"))?;
-    self.inner = Some(b.calendar(calendar.inner));
+    self.inner = Some(b.calendar(std::sync::Arc::new(calendar.inner)));
     Ok(())
   }
 

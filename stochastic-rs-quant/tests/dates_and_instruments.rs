@@ -1,19 +1,28 @@
 //! Market dates and instrument shapes: the schedules the market uses, the enums that name conventions.
 
+use std::sync::Arc;
+
+use chrono::Datelike;
+use chrono::Days;
 use chrono::NaiveDate;
+use chrono::Weekday;
 use ndarray::array;
 use stochastic_rs_quant::OptionType;
+use stochastic_rs_quant::calendar::BusinessDayConvention;
+use stochastic_rs_quant::calendar::CalendarExt;
 use stochastic_rs_quant::calendar::DateGenerationRule;
 use stochastic_rs_quant::calendar::DayCountConvention;
 use stochastic_rs_quant::calendar::Frequency;
 use stochastic_rs_quant::calendar::HolidayCalendar;
 use stochastic_rs_quant::calendar::ScheduleBuilder;
+use stochastic_rs_quant::calendar::SharedCalendar;
 use stochastic_rs_quant::calendar::date_math::cds_roll_on_or_before;
 use stochastic_rs_quant::calendar::date_math::imm_date;
 use stochastic_rs_quant::calendar::date_math::next_cds_roll;
 use stochastic_rs_quant::calendar::date_math::snap_to_imm;
 use stochastic_rs_quant::cashflows::FloatingIndex;
 use stochastic_rs_quant::cashflows::IborIndex;
+use stochastic_rs_quant::cashflows::OvernightIndex;
 use stochastic_rs_quant::cashflows::RateTenor;
 use stochastic_rs_quant::credit::CdsPosition;
 use stochastic_rs_quant::credit::CreditDefaultSwap;
@@ -30,6 +39,11 @@ use stochastic_rs_quant::instruments::CurrencyLeg;
 use stochastic_rs_quant::instruments::SwaptionDirection;
 use stochastic_rs_quant::instruments::VanillaInterestRateSwap;
 use stochastic_rs_quant::instruments::option::cms::hagan_linear_tsr_convexity_factor;
+use stochastic_rs_quant::market::Handle;
+use stochastic_rs_quant::market::NamedOvernightIndex;
+use stochastic_rs_quant::market::Quote;
+use stochastic_rs_quant::market::SimpleQuote;
+use stochastic_rs_quant::market::SwapRateHelper;
 use stochastic_rs_quant::microstructure::AlmgrenChrissParams;
 use stochastic_rs_quant::microstructure::optimal_execution;
 use stochastic_rs_quant::order_book::Side;
@@ -322,4 +336,52 @@ fn a_par_rate_and_a_cms_convexity_take_a_frequency() {
   assert!((annual - (0.03_f64.exp() - 1.0)).abs() < 1e-12, "{annual}");
   let lambda = hagan_linear_tsr_convexity_factor::<f64>(0.03, 10.0, Frequency::SemiAnnual);
   assert!(lambda.is_finite() && lambda < 0.0, "{lambda}");
+}
+
+#[derive(Debug)]
+struct ClosedOnWednesdays;
+
+impl CalendarExt for ClosedOnWednesdays {
+  fn is_business_day(&self, date: NaiveDate) -> bool {
+    !matches!(date.weekday(), Weekday::Sat | Weekday::Sun | Weekday::Wed)
+  }
+}
+
+#[test]
+fn a_calendar_of_the_callers_plugs_into_schedules_indices_and_the_swap_helper() {
+  let closed: SharedCalendar = Arc::new(ClosedOnWednesdays);
+  let s = ScheduleBuilder::new(d(2026, 3, 1), d(2027, 3, 1))
+    .frequency(Frequency::Quarterly)
+    .rule(DateGenerationRule::Imm)
+    .calendar(Arc::clone(&closed))
+    .convention(BusinessDayConvention::Following)
+    .build();
+  assert!(
+    s.dates
+      .iter()
+      .zip(&s.adjusted_dates)
+      .all(|(imm, adjusted)| *adjusted == *imm + Days::new(1)),
+    "{:?}",
+    s.adjusted_dates
+  );
+  let index = NamedOvernightIndex::<f64>::new(
+    OvernightIndex::new("XOIS", DayCountConvention::Actual360),
+    USD,
+    Arc::clone(&closed),
+  );
+  assert!(!index.calendar.is_business_day(d(2026, 3, 18)));
+  let quote: Arc<dyn Quote<f64>> = Arc::new(SimpleQuote::new(0.03));
+  let helper = SwapRateHelper::new(
+    Handle::new(quote),
+    d(2026, 1, 5),
+    d(2028, 1, 5),
+    Frequency::Quarterly,
+    DayCountConvention::Actual365Fixed,
+  )
+  .with_calendar(closed, BusinessDayConvention::Following);
+  let schedule = helper.built_schedule();
+  assert!(
+    schedule.iter().all(|x| x.weekday() != Weekday::Wed),
+    "{schedule:?}"
+  );
 }

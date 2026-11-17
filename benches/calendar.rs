@@ -1,7 +1,10 @@
 use chrono::NaiveDate;
+use std::sync::Arc;
+
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
+use stochastic_rs::quant::calendar::SharedCalendar;
 use stochastic_rs::quant::calendar::business_day::BusinessDayConvention;
 use stochastic_rs::quant::calendar::day_count::DayCountConvention;
 use stochastic_rs::quant::calendar::holiday::Calendar;
@@ -45,13 +48,13 @@ fn bench_is_business_day(c: &mut Criterion) {
 fn bench_schedule_generation(c: &mut Criterion) {
   let eff = NaiveDate::from_ymd_opt(2020, 1, 15).unwrap();
   let term = NaiveDate::from_ymd_opt(2050, 1, 15).unwrap();
-  let cal = Calendar::new(HolidayCalendar::Target);
+  let cal: SharedCalendar = Arc::new(Calendar::new(HolidayCalendar::Target));
 
   c.bench_function("schedule_30y_semi_annual", |b| {
     b.iter(|| {
       ScheduleBuilder::new(eff, term)
         .frequency(Frequency::SemiAnnual)
-        .calendar(cal.clone())
+        .calendar(Arc::clone(&cal))
         .convention(BusinessDayConvention::ModifiedFollowing)
         .rule(DateGenerationRule::Backward)
         .build()

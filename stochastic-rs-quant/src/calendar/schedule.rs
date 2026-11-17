@@ -7,12 +7,12 @@
 
 use chrono::NaiveDate;
 
+use super::SharedCalendar;
 use super::business_day::BusinessDayConvention;
 use super::date_math::add_months;
 use super::date_math::cds_roll_on_or_before;
 use super::date_math::snap_to_imm;
 use super::day_count::DayCountConvention;
-use super::holiday::Calendar;
 use crate::traits::RealExt;
 
 /// Payment / coupon frequency.
@@ -141,7 +141,7 @@ pub struct ScheduleBuilder {
   effective: NaiveDate,
   termination: NaiveDate,
   frequency: Frequency,
-  calendar: Option<Calendar>,
+  calendar: Option<SharedCalendar>,
   convention: BusinessDayConvention,
   rule: DateGenerationRule,
   end_of_month: bool,
@@ -197,7 +197,7 @@ impl ScheduleBuilder {
     self
   }
 
-  pub fn calendar(mut self, calendar: Calendar) -> Self {
+  pub fn calendar(mut self, calendar: SharedCalendar) -> Self {
     self.calendar = Some(calendar);
     self
   }
@@ -286,7 +286,7 @@ impl ScheduleBuilder {
     let adjusted = match &self.calendar {
       Some(cal) => raw_dates
         .iter()
-        .map(|&d| self.convention.adjust(d, cal))
+        .map(|&d| self.convention.adjust(d, cal.as_ref()))
         .collect(),
       None => raw_dates.clone(),
     };

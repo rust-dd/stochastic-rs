@@ -30,6 +30,7 @@ use super::observable::Observer;
 use crate::calendar::Calendar;
 use crate::calendar::DayCountConvention;
 use crate::calendar::HolidayCalendar;
+use crate::calendar::SharedCalendar;
 use crate::cashflows::IborIndex;
 use crate::cashflows::OvernightIndex;
 use crate::cashflows::RateTenor;
@@ -188,7 +189,7 @@ pub struct NamedIborIndex<T: RealExt> {
   /// Currency the rate is expressed in.
   pub currency: Currency,
   /// Fixing calendar.
-  pub calendar: Calendar,
+  pub calendar: SharedCalendar,
   /// Spot lag in business days between fixing and value date.
   pub spot_lag: u32,
   /// Realised fixing store.
@@ -197,7 +198,12 @@ pub struct NamedIborIndex<T: RealExt> {
 
 impl<T: RealExt> NamedIborIndex<T> {
   /// Construct from raw parts — typically via a factory in [`ibor`].
-  pub fn new(index: IborIndex<T>, currency: Currency, calendar: Calendar, spot_lag: u32) -> Self {
+  pub fn new(
+    index: IborIndex<T>,
+    currency: Currency,
+    calendar: SharedCalendar,
+    spot_lag: u32,
+  ) -> Self {
     Self {
       index,
       currency,
@@ -217,14 +223,14 @@ pub struct NamedOvernightIndex<T: RealExt> {
   /// Currency the rate is expressed in.
   pub currency: Currency,
   /// Fixing calendar.
-  pub calendar: Calendar,
+  pub calendar: SharedCalendar,
   /// Realised fixing store (indexed by business-day fixing date).
   pub fixings: FixingHistory<T>,
 }
 
 impl<T: RealExt> NamedOvernightIndex<T> {
   /// Construct from raw parts — typically via a factory in [`overnight`].
-  pub fn new(index: OvernightIndex<T>, currency: Currency, calendar: Calendar) -> Self {
+  pub fn new(index: OvernightIndex<T>, currency: Currency, calendar: SharedCalendar) -> Self {
     Self {
       index,
       currency,
@@ -246,7 +252,7 @@ pub mod ibor {
     NamedIborIndex::new(
       index,
       currency::EUR,
-      Calendar::new(HolidayCalendar::Target),
+      Arc::new(Calendar::new(HolidayCalendar::Target)),
       2,
     )
   }
@@ -273,7 +279,7 @@ pub mod overnight {
     NamedOvernightIndex::new(
       index,
       currency::USD,
-      Calendar::new(HolidayCalendar::UnitedStates),
+      Arc::new(Calendar::new(HolidayCalendar::UnitedStates)),
     )
   }
 
@@ -283,14 +289,18 @@ pub mod overnight {
     NamedOvernightIndex::new(
       index,
       currency::USD,
-      Calendar::new(HolidayCalendar::UnitedStates),
+      Arc::new(Calendar::new(HolidayCalendar::UnitedStates)),
     )
   }
 
   /// ESTR — Euro Short-Term Rate. Actual/360, TARGET2 calendar.
   pub fn estr<T: RealExt>() -> NamedOvernightIndex<T> {
     let index = OvernightIndex::new("ESTR", DayCountConvention::Actual360);
-    NamedOvernightIndex::new(index, currency::EUR, Calendar::new(HolidayCalendar::Target))
+    NamedOvernightIndex::new(
+      index,
+      currency::EUR,
+      Arc::new(Calendar::new(HolidayCalendar::Target)),
+    )
   }
 
   /// SONIA — Sterling Overnight Index Average. Actual/365 fixed, UK calendar.
@@ -299,7 +309,7 @@ pub mod overnight {
     NamedOvernightIndex::new(
       index,
       currency::GBP,
-      Calendar::new(HolidayCalendar::UnitedKingdom),
+      Arc::new(Calendar::new(HolidayCalendar::UnitedKingdom)),
     )
   }
 
@@ -307,7 +317,11 @@ pub mod overnight {
   /// Tokyo calendar.
   pub fn tonar<T: RealExt>() -> NamedOvernightIndex<T> {
     let index = OvernightIndex::new("TONAR", DayCountConvention::Actual365Fixed);
-    NamedOvernightIndex::new(index, currency::JPY, Calendar::new(HolidayCalendar::Tokyo))
+    NamedOvernightIndex::new(
+      index,
+      currency::JPY,
+      Arc::new(Calendar::new(HolidayCalendar::Tokyo)),
+    )
   }
 }
 
