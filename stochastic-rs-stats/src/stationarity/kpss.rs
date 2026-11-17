@@ -92,8 +92,9 @@ pub fn kpss_test(y: ArrayView1<f64>, cfg: KpssConfig) -> Result<KpssTest, StatsE
   let critical_values = kpss_critical_values(include_trend);
   let critical = critical_values.value_at(cfg.alpha);
   let y = prepared(y, 20)?;
-  let resid = regress_on_deterministics(&centred(&y), include_trend)?.residuals;
-  reject_exact_fit(&y, &resid)?;
+  let fit = regress_on_deterministics(&centred(&y), include_trend)?;
+  reject_exact_fit(&y, &fit.residuals, fit.condition)?;
+  let resid = fit.residuals;
   let n = resid.len();
   let n_f = n as f64;
 

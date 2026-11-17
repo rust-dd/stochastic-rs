@@ -89,7 +89,7 @@ pub fn granger_causality_test(
     }
   }
   let (residuals, rss_unrest) = ols_rss(&design_unrest, &target)?;
-  reject_exact_fit(&y, residuals.as_slice().unwrap())?;
+  reject_exact_fit(&y, residuals.as_slice().unwrap(), 1.0)?;
   let (_, rss_rest) = ols_rss(&design_rest, &target)?;
   let q = lags as f64;
   let dof = (n as f64) - (1.0 + 2.0 * q);

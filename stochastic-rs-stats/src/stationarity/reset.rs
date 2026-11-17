@@ -138,7 +138,7 @@ pub fn reset_test(
     }
   }
   let fit_u = ols(&y_slice, &x_aug_rows)?;
-  reject_exact_fit(&y_slice, &fit_u.residuals)?;
+  reject_exact_fit(&y_slice, &fit_u.residuals, fit_u.condition)?;
   let sse_u = fit_u.sse;
 
   let df_num = q;
@@ -306,6 +306,47 @@ mod tests {
         "level {level}: {got:?}"
       );
     }
+  }
+
+  /// A level added to `y` leaves the span of the powers of `ŷ`, and so `F`, as it is.
+  #[test]
+  fn the_statistic_holds_with_fitted_values_far_above_their_spread() {
+    for (x, y) in [simulate_linear(300, 42), simulate_quadratic(300, 7)] {
+      let xm = design_with_intercept(&x);
+      let at_zero = reset_test(y.view(), xm.view(), ResetConfig::default())
+        .unwrap()
+        .statistic;
+      for level in [10.0, 30.0, 100.0] {
+        let got = reset_test(
+          y.mapv(|v| v + level).view(),
+          xm.view(),
+          ResetConfig::default(),
+        )
+        .map(|r| r.statistic);
+        assert!(
+          got
+            .as_ref()
+            .is_ok_and(|f| (f - at_zero).abs() <= 1e-6 * at_zero),
+          "level {level}: {got:?} against {at_zero}"
+        );
+      }
+    }
+  }
+
+  /// At a level of `1e3` the powers of `ŷ` are collinear to rounding, and `F` off by tens of %.
+  #[test]
+  fn fitted_values_whose_powers_are_collinear_to_rounding_are_singular() {
+    let (x, y) = simulate_linear(300, 42);
+    let xm = design_with_intercept(&x);
+    assert_eq!(
+      reset_test(
+        y.mapv(|v| v + 1e3).view(),
+        xm.view(),
+        ResetConfig::default()
+      )
+      .unwrap_err(),
+      StatsError::Singular("OLS design")
+    );
   }
 
   #[test]

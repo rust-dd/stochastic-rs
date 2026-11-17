@@ -75,7 +75,11 @@ fn detrend_series(y: &[f64], include_trend: bool) -> Result<Vec<f64>, StatsError
   }
 }
 
-fn lm_statistic_from_residuals(source: &[f64], residuals: &[f64]) -> Result<f64, StatsError> {
+fn lm_statistic_from_residuals(
+  source: &[f64],
+  residuals: &[f64],
+  condition: f64,
+) -> Result<f64, StatsError> {
   let m = residuals.len();
   let m_f = m as f64;
   let sigma2 = residuals.iter().map(|u| u * u).sum::<f64>() / m_f;
@@ -84,7 +88,7 @@ fn lm_statistic_from_residuals(source: &[f64], residuals: &[f64]) -> Result<f64,
       stage: "residual variance",
     });
   }
-  reject_exact_fit(source, residuals)?;
+  reject_exact_fit(source, residuals, condition)?;
 
   let mut cum = 0.0;
   let mut sum_sq = 0.0;
@@ -101,9 +105,9 @@ fn lm_statistic_with_prewhitening(
   ar_lags: usize,
 ) -> Result<(f64, Vec<f64>, f64), StatsError> {
   let y_det = detrend_series(y, include_trend)?;
-  let (phi, residuals, sigma) = fit_ar(&y_det, ar_lags)?;
-  let stat = lm_statistic_from_residuals(y, &residuals)?;
-  Ok((stat, phi, sigma))
+  let fit = fit_ar(&y_det, ar_lags)?;
+  let stat = lm_statistic_from_residuals(y, &fit.residuals, fit.condition)?;
+  Ok((stat, fit.beta, fit.sigma2.sqrt()))
 }
 
 fn simulate_ar(phi: &[f64], noise: &mut Seeded<SimdNormal<f64>>, n: usize) -> Vec<f64> {

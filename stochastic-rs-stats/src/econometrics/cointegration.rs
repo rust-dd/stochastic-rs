@@ -114,7 +114,7 @@ pub fn engle_granger_test(
   for i in 0..n {
     residuals[i] = y[i] - intercept - beta * x[i];
   }
-  reject_exact_fit(y.as_slice().unwrap(), residuals.as_slice().unwrap())?;
+  reject_exact_fit(y.as_slice().unwrap(), residuals.as_slice().unwrap(), 1.0)?;
   // The residuals' ADF has no terms, as statsmodels' `coint` and arch's `engle_granger` run it,
   // and as MacKinnon's (2010) and Phillips & Ouliaris's (1990) critical values assume.
   let cfg = AdfConfig {

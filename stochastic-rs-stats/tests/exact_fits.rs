@@ -181,6 +181,100 @@ fn leybourne_mccabe_refuses_an_exact_ar_fit_at_every_scale() {
   }
 }
 
+/// Exact fits whose designs have a condition number between `1e9` and `1e10`, short of singular.
+#[test]
+fn an_exact_fit_on_an_ill_conditioned_design_is_refused_at_every_scale() {
+  let t = |n: usize| (0..n).map(|t| t as f64);
+  let cases = [
+    (
+      "t³ (100)",
+      t(100).map(|t| t.powi(3)).collect::<Array1<f64>>(),
+      Trend::None,
+      3,
+      false,
+    ),
+    (
+      "t⁴ (50)",
+      t(50).map(|t| t.powi(4)).collect(),
+      Trend::Constant,
+      3,
+      false,
+    ),
+    (
+      "t³ (50)",
+      t(50).map(|t| t.powi(3)).collect(),
+      Trend::Constant,
+      3,
+      true,
+    ),
+    (
+      "1.05^t + 1.1^t",
+      (0..200).map(|t| 1.05f64.powi(t) + 1.1f64.powi(t)).collect(),
+      Trend::None,
+      1,
+      false,
+    ),
+    (
+      "0.99^t + 0.995^t",
+      (0..200)
+        .map(|t| 0.99f64.powi(t) + 0.995f64.powi(t))
+        .collect(),
+      Trend::Constant,
+      2,
+      true,
+    ),
+  ];
+  for (what, y, trend, lag, ers) in cases {
+    for c in SCALES {
+      let y = y.mapv(|v| v * c);
+      let lag_selection = LagSelection::Fixed(lag);
+      let got = if ers {
+        let cfg = ErsConfig {
+          trend,
+          lag_selection,
+          ..ErsConfig::default()
+        };
+        ers_dfgls_test(y.view(), cfg).map(|r| r.statistic)
+      } else {
+        let cfg = AdfConfig {
+          trend,
+          lag_selection,
+          ..AdfConfig::default()
+        };
+        adf_test(y.view(), cfg).map(|r| r.statistic)
+      };
+      assert!(
+        refused(&got, lag_selection),
+        "{what}, {trend:?}, lag {lag}, c = {c:e}: {got:?}"
+      );
+    }
+  }
+}
+
+/// A walk of AR(0.9) steps has an AR(4) fit in its levels with a condition number past `1e6`.
+#[test]
+fn leybourne_mccabe_keeps_a_persistent_walk_at_ar_lags_four() {
+  let e = normals(2, 2000);
+  let (mut level, mut step) = (0.0, 0.0);
+  let y = Array1::from_iter(e.iter().map(|z| {
+    step = 0.9 * step + z;
+    level += step;
+    level
+  }));
+  let cfg = LeybourneMcCabeConfig {
+    ar_lags: 4,
+    bootstrap_samples: 19,
+    ..LeybourneMcCabeConfig::default()
+  };
+  let got = leybourne_mccabe_test(y.view(), cfg).map(|r| r.statistic);
+  assert!(
+    got
+      .as_ref()
+      .is_ok_and(|s| (s - 0.1969280235424315).abs() <= 1e-12),
+    "{got:?}"
+  );
+}
+
 /// `t²` less its mean or its line is an exact AR(3), whose lagged levels are collinear to rounding.
 #[test]
 fn leybourne_mccabe_refuses_an_exact_ar_fit_of_order_three_at_every_scale() {

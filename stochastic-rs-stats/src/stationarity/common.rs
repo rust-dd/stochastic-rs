@@ -40,6 +40,7 @@ pub struct OlsResult {
   pub sigma2: f64,
   pub nobs: usize,
   pub k: usize,
+  pub condition: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -96,9 +97,12 @@ pub fn ols(y: &[f64], x: &[Vec<f64>]) -> Result<OlsResult, StatsError> {
   ols_absorbing(y, x, 0)
 }
 
-/// Past this condition number of the equilibrated normal equations, a solve's residuals carry
-/// rounding of about `ε √κ` of the series, too near the exact-fit rule's `1e-12` to decide on.
-const MAX_CONDITION: f64 = 1e6;
+/// Past this condition number of the equilibrated normal equations the design is numerically
+/// singular: a coefficient errs by up to `κ ε`, and the statistics drift past `1e-6` from `5e13`.
+const MAX_CONDITION: f64 = 1e13;
+
+/// How far past `κ ε`, the solve's rounding of a coefficient, residuals must stay to be resolved.
+const ROUNDING_MARGIN: f64 = 10.0;
 
 /// `‖A‖₁ ‖A⁻¹‖₁` of `A = D X'X D` with `D = diag((X'X)_jj^{-1/2})`, which no column's scale moves.
 fn equilibrated_condition(xtx: &Array2<f64>, xtx_inv: &Array2<f64>) -> f64 {
@@ -161,6 +165,7 @@ fn ols_absorbing(y: &[f64], x: &[Vec<f64>], absorbed: usize) -> Result<OlsResult
     sigma2,
     nobs: n,
     k: k + absorbed,
+    condition,
   })
 }
 
@@ -214,7 +219,7 @@ fn build_adf_design(y: &[f64], lags: usize, trend: Trend) -> Result<AdfDesign, S
   let level = partialled(&y[lags..n_dy]);
   // A lagged level that is a constant, or a line under a trend, leaves the regression no design.
   if trend != Trend::None {
-    reject_exact_fit(y, &level)?;
+    reject_exact_fit(y, &level, 1.0)?;
   }
   let differences = (1..=lags)
     .map(|i| partialled(&dy[lags - i..n_dy - i]))
@@ -236,7 +241,7 @@ fn build_adf_design(y: &[f64], lags: usize, trend: Trend) -> Result<AdfDesign, S
 pub fn fit_adf(y: &[f64], lags: usize, trend: Trend, source: &[f64]) -> Result<AdfFit, StatsError> {
   let (lhs, rhs, terms) = build_adf_design(y, lags, trend)?;
   let ols_fit = ols_absorbing(&lhs, &rhs, terms)?;
-  reject_exact_fit(source, &ols_fit.residuals)?;
+  reject_exact_fit(source, &ols_fit.residuals, ols_fit.condition)?;
 
   let gamma = ols_fit.beta[0];
   let se = ols_fit.std_err[0];
@@ -408,11 +413,12 @@ pub fn prepared(y: ArrayView1<f64>, min_n: usize) -> Result<Vec<f64>, StatsError
   Ok(unit_scaled(y.into_owned()))
 }
 
-/// `DegenerateData("zero residual variance")` when `residuals` keep at most `EXACT_FIT` of the mean
-/// square of `y`'s deviations, each over the largest so none overflows; `y` must not be constant.
-pub fn reject_exact_fit(y: &[f64], residuals: &[f64]) -> Result<(), StatsError> {
+/// `DegenerateData("zero residual variance")` when `residuals` keep at most `EXACT_FIT` of `y`'s
+/// variance, or `(ROUNDING_MARGIN κ ε)²` at the solve's `condition` κ; `y` must not be constant.
+pub fn reject_exact_fit(y: &[f64], residuals: &[f64], condition: f64) -> Result<(), StatsError> {
   let mean = y.iter().sum::<f64>() / y.len() as f64;
   let spread = f64::max_or_nan_fold(y.iter().map(|v| (v - mean).abs()));
+  // Over the largest deviation, so that no square overflows.
   let square = |v: f64| (v / spread) * (v / spread);
   // Both sums run in index order, interleaved so that neither waits on the other.
   let (mut own, mut left) = (-0.0, -0.0);
@@ -427,7 +433,8 @@ pub fn reject_exact_fit(y: &[f64], residuals: &[f64]) -> Result<(), StatsError> 
     left += square(*u);
   }
   let (own, left) = (own / y.len() as f64, left / residuals.len() as f64);
-  if left <= EXACT_FIT * own {
+  let rounding = (ROUNDING_MARGIN * condition * f64::EPSILON).powi(2);
+  if left <= EXACT_FIT.max_or_nan(rounding) * own {
     return Err(StatsError::DegenerateData("zero residual variance"));
   }
   Ok(())
@@ -447,7 +454,7 @@ pub fn regress_on_deterministics(y: &[f64], include_trend: bool) -> Result<OlsRe
   ols(y, &x)
 }
 
-pub fn fit_ar(y: &[f64], lags: usize) -> Result<(Vec<f64>, Vec<f64>, f64), StatsError> {
+pub fn fit_ar(y: &[f64], lags: usize) -> Result<OlsResult, StatsError> {
   assert!(lags > 0, "AR lag order must be at least 1");
   validate(y, lags + 3)?;
 
@@ -465,15 +472,14 @@ pub fn fit_ar(y: &[f64], lags: usize) -> Result<(Vec<f64>, Vec<f64>, f64), Stats
     rhs.push(row);
   }
 
-  let fit = ols(&lhs, &rhs)?;
-  let sigma = fit.sigma2.sqrt();
-  Ok((fit.beta, fit.residuals, sigma))
+  ols(&lhs, &rhs)
 }
 
 #[cfg(test)]
 mod tests {
   use super::least_criterion;
   use super::newey_west_long_run_variance;
+  use super::reject_exact_fit;
   use super::t_is_significant;
   use crate::StatsError;
 
@@ -512,6 +518,21 @@ mod tests {
     let exact = Err(StatsError::DegenerateData("zero residual variance"));
     assert_eq!(t_is_significant(1.0, 0.0), exact);
     assert_eq!(t_is_significant(0.0, 0.0), exact);
+  }
+
+  /// Residuals at `1e-20` of the variance pass after a solve of condition `1e4`, not `1e5`, whose
+  /// rounding `(10 κ ε)²` is `4.9e-20`.
+  #[test]
+  fn the_exact_fit_threshold_rises_with_the_solve_s_rounding() {
+    let y = (0..10).map(f64::from).collect::<Vec<_>>();
+    let r = 8.25e-20f64.sqrt();
+    let residuals = (0..10)
+      .map(|i| if i % 2 == 0 { r } else { -r })
+      .collect::<Vec<_>>();
+    let exact = Err(StatsError::DegenerateData("zero residual variance"));
+    assert_eq!(reject_exact_fit(&y, &residuals, 1.0), Ok(()));
+    assert_eq!(reject_exact_fit(&y, &residuals, 1e4), Ok(()));
+    assert_eq!(reject_exact_fit(&y, &residuals, 1e5), exact);
   }
 
   /// The residuals of an exact fit are all zero, so they carry no long-run variance.
