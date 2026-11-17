@@ -34,8 +34,23 @@ fn params(kappa: f64, sigma: f64, rho: f64) -> HestonParams {
 }
 
 fn is_one(model: &impl FourierModelExt, name: &str) {
-  let one = model.chf(0.1, Complex64::new(0.0, -1.0));
-  assert!((one - 1.0).norm() < 1e-13, "{name}: E[e^X] = {one}");
+  for t in [0.1, 200.0] {
+    let one = model.chf(t, Complex64::new(0.0, -1.0));
+    assert!(
+      (one - 1.0).norm() < 1e-13,
+      "{name}, t = {t}: E[e^X] = {one}"
+    );
+  }
+}
+
+/// `(ρσ − κ)t` of 45 and 150, where `e^{−dt}` is far below the `1` it would be added to.
+#[test]
+fn the_martingale_value_is_one_at_long_maturities() {
+  let model = HestonFourier::new(params(0.6, 4.0, 0.9));
+  for t in [15.0, 50.0] {
+    let one = model.chf(t, Complex64::new(0.0, -1.0));
+    assert!((one - 1.0).norm() < 1e-13, "t = {t}: E[e^X] = {one}");
+  }
 }
 
 #[test]

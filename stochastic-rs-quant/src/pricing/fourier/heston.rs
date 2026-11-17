@@ -30,7 +30,7 @@ pub(crate) fn factor_cd(p: &HestonParams, t: f64, xi: Complex64) -> (Complex64, 
   } else {
     (1.0 - exp_dt) / d
   };
-  let denom = beta * decay + 1.0 + exp_dt;
+  let denom = (beta + d) * decay + 2.0 * exp_dt;
 
   let c_val = (kappa * theta / sigma2) * ((beta - d) * t - 2.0 * (0.5 * denom).ln());
   let d_val = -moment * decay / denom;
