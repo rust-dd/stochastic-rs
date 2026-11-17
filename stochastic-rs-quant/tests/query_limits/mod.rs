@@ -27,7 +27,9 @@ use stochastic_rs_quant::pricing::bsm::BsmPricer;
 use stochastic_rs_quant::pricing::heston::HestonParams;
 use stochastic_rs_quant::pricing::heston::HestonPricer;
 use stochastic_rs_quant::pricing::merton_jump::Merton1976Pricer;
+use stochastic_rs_quant::pricing::sabr::SabrParams;
 use stochastic_rs_quant::pricing::sabr::alpha_from_atm_vol;
+use stochastic_rs_quant::pricing::sabr::hagan_implied_vol;
 use stochastic_rs_quant::pricing::snell_envelope::SnellEnvelopePricer;
 use stochastic_rs_quant::traits::Greeks;
 use stochastic_rs_quant::traits::ModelPricer;
@@ -152,6 +154,29 @@ fn alpha_from_atm_vol_is_the_smallest_positive_root_and_nan_without_one() {
   assert!(close(alpha, 2.1019952276218388), "{alpha}");
   assert!(alpha_from_atm_vol(0.5, 0.05, 30.0, 1.0, -0.99, 0.1).is_nan());
   assert!(alpha_from_atm_vol(0.2, 100.0, 5.0, 1.0, -0.99, 10.0).is_nan());
+}
+
+#[test]
+fn alpha_from_atm_vol_is_nan_where_its_root_does_not_reprice_the_atm_vol() {
+  // β = 0.99: the cubic's one positive root, near 5.9e5, sums terms that cancel to σ_ATM.
+  assert!(alpha_from_atm_vol(0.05, 100.0, 30.0, 0.99, -0.95, 10.0).is_nan());
+  for (v, f, tau, beta, rho, nu) in [
+    (0.2, 100.0, 5.0, 1.0, 0.99, 10.0),
+    (0.2, 100.0, 30.0, 0.5, 0.95, 5.0),
+  ] {
+    let alpha = alpha_from_atm_vol(v, f, tau, beta, rho, nu);
+    let params = SabrParams {
+      alpha,
+      beta,
+      rho,
+      nu,
+    };
+    let atm = hagan_implied_vol(f, f, tau, &params);
+    assert!(
+      (atm - v).abs() <= f64::EPSILON.sqrt() * v,
+      "{atm} at {alpha}"
+    );
+  }
 }
 
 #[test]

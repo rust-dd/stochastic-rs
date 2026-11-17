@@ -66,8 +66,8 @@ pub fn hagan_implied_vol(k: f64, f: f64, tau: f64, params: &SabrParams) -> f64 {
   }
 }
 
-/// Hagan et al. (2002) eq. A.69b: α at an ATM vol, the cubic's smallest positive root, NaN with
-/// none and for `f ≤ 0`, `v_atm ≤ 0` or `tau ∉ [0, ∞)`; panics unless `rho ∈ (−1, 1)`.
+/// Hagan et al. (2002) eq. A.69b: α, the cubic's smallest positive root if it reprices `v_atm` to
+/// `√ε`, else NaN, as at `f ≤ 0`, `v_atm ≤ 0` or `tau ∉ [0, ∞)`; panics unless `rho ∈ (−1, 1)`.
 ///
 /// $$
 /// \frac{(1-\beta)^2 f_*^3}{24}\,\tau\;\alpha^3
@@ -88,15 +88,35 @@ pub fn alpha_from_atm_vol(v_atm: f64, f: f64, tau: f64, beta: f64, rho: f64, nu:
   let p3 = tau * f_.powi(3) * (1.0 - beta).powi(2) / 24.0;
   let p2 = tau * f_.powi(2) * rho * beta * nu / 4.0;
   let p1 = (1.0 + tau * nu * nu * (2.0 - 3.0 * rho * rho) / 24.0) * f_;
-  let p0 = -v_atm;
+  let alpha = smallest_positive_root([p3, p2, p1, -v_atm], v_atm * f.powf(1.0 - beta));
+  if !(alpha.is_finite() && alpha > 0.0) {
+    return f64::NAN;
+  }
+  // Far above α₀ the cubic's terms cancel to σ_ATM only within rounding, so its root may miss it.
+  let params = SabrParams {
+    alpha,
+    beta,
+    rho,
+    nu,
+  };
+  let atm = hagan_implied_vol(f, f, tau, &params);
+  if (atm - v_atm).abs() <= f64::EPSILON.sqrt() * v_atm {
+    alpha
+  } else {
+    f64::NAN
+  }
+}
+
+/// The smallest positive root of `p3 x³ + p2 x² + p1 x + p0` (`p3 ≥ 0 > p0`), Newton's from `seed`
+/// where it reaches that root and Brent's on a bracket from 0 where not; NaN with none.
+fn smallest_positive_root([p3, p2, p1, p0]: [f64; 4], seed: f64) -> f64 {
   let cubic = |x: f64| p3 * x * x * x + p2 * x * x + p1 * x + p0;
-  // Rising from −σ_ATM at 0, the cubic crosses 0 below its first peak when that peak is ≥ 0.
+  // Rising from `p0 < 0` at 0, the cubic crosses 0 below its first peak when that peak is ≥ 0.
   let disc = p2 * p2 - 3.0 * p3 * p1;
   let hump = (p2 < 0.0 && p1 > 0.0 && disc >= 0.0)
     .then(|| p1 / (disc.sqrt() - p2))
     .filter(|&peak| cubic(peak) >= 0.0);
 
-  let seed = v_atm * f.powf(1.0 - beta);
   let mut x = seed;
   let mut converged = false;
   for _ in 0..100 {
