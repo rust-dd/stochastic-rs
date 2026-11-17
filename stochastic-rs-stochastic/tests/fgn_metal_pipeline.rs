@@ -7,6 +7,11 @@
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_stochastic::device::Metal;
+use stochastic_rs_stochastic::euler::philox::SITE_FGN;
+use stochastic_rs_stochastic::euler::philox::key;
+use stochastic_rs_stochastic::euler::philox::philox4x32_10;
+use stochastic_rs_stochastic::euler::philox::u01_f32;
+use stochastic_rs_stochastic::euler::philox::u01_f32_zero_cell;
 use stochastic_rs_stochastic::noise::fgn::Fgn;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
@@ -137,47 +142,29 @@ fn cross(pairs: &[(Vec<f64>, Vec<f64>)], lag: isize) -> f64 {
   s / c / ((vx / n) * (vy / n)).sqrt()
 }
 
-/// The device's own keyed draw, recomputed on the host.
-///
-/// `u01x4` mixes the cell number under the launch seed and reads two 64-bit
-/// results as four uniforms; the pipeline turns them into one complex normal
-/// through two Box-Muller transforms. Mirrored here in `f64` so the reference
-/// below is an independent computation of the same definition rather than a
-/// second copy of the same arithmetic.
-fn u01x4(cell: u64, seed: u32) -> [f64; 4] {
-  fn sm64(mut x: u64) -> u64 {
-    x = x.wrapping_add(0x9e37_79b9_7f4a_7c15);
-    x ^= x >> 30;
-    x = x.wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    x ^= x >> 27;
-    x = x.wrapping_mul(0x94d0_49bb_1331_11eb);
-    x ^ (x >> 31)
-  }
-  fn u01(x: u32) -> f64 {
-    (((x >> 8) as f32 + 0.5) / 16_777_216.0) as f64
-  }
-  let k = cell ^ (seed as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15);
-  let h1 = sm64(k);
-  let h2 = sm64(k ^ 0xd1b5_4a32_d192_ed03);
-  [
-    u01(h1 as u32),
-    u01((h1 >> 32) as u32),
-    u01(h2 as u32),
-    u01((h2 >> 32) as u32),
-  ]
+/// The device's complex normal at `cell` from the Philox port's words, its radius and angle taken
+/// in `f64`: the draw's definition rather than a second copy of its arithmetic.
+fn cell_normals(cell: u64, seed: u64) -> (f64, f64) {
+  let normal = |which: u32| {
+    let w = philox4x32_10(
+      [cell as u32, (cell >> 32) as u32, which, SITE_FGN],
+      key(seed),
+    );
+    let e = if w[0] >> 9 == 0 {
+      23.0 * std::f64::consts::LN_2 - (u01_f32_zero_cell(w[0], w[1]) as f64).ln()
+    } else {
+      -(u01_f32(w[0]) as f64).ln()
+    };
+    (2.0 * e).sqrt() * (std::f64::consts::TAU * u01_f32(w[2]) as f64).cos()
+  };
+  (normal(0), normal(1))
 }
 
-/// Entry `j` of the transform absolute index `u` computes, from the
-/// definition: the circulant embedding's eigenvalues times a proper complex
-/// normal, summed directly against `exp(-2πijk/M)`. A direct sum rather than
-/// a transform of its own, so nothing about the device's factorisation — its
-/// tile, its column passes, its bit-reversal — is assumed by the thing
-/// checking it. One entry at a time, because that is what makes it affordable
-/// at the grid sizes where the pipeline has stages between the tile and the
-/// read-out.
+/// Entry `j` of transform `u` from the definition, the eigenvalue roots times the cells' normals
+/// summed directly against `exp(−2πijk/M)`, so none of the device's factorisation is assumed.
 fn reference_entry(
   fgn: &Fgn<f32, Deterministic, Metal>,
-  seed: u32,
+  seed: u64,
   u: usize,
   j: usize,
 ) -> (f64, f64) {
@@ -185,10 +172,8 @@ fn reference_entry(
   let traj = eigs.len();
   let (mut xr, mut xi) = (0.0, 0.0);
   for (k, &eig) in eigs.iter().enumerate() {
-    let q = u01x4(2 * u as u64 * traj as u64 + k as u64, seed);
-    let eig = eig as f64;
-    let zr = (-2.0 * (q[0] + 1e-10).ln()).sqrt() * (std::f64::consts::TAU * q[1]).cos() * eig;
-    let zi = (-2.0 * (q[2] + 1e-10).ln()).sqrt() * (std::f64::consts::TAU * q[3]).cos() * eig;
+    let (zr, zi) = cell_normals(2 * u as u64 * traj as u64 + k as u64, seed);
+    let (zr, zi) = (zr * eig as f64, zi * eig as f64);
     let a = -std::f64::consts::TAU * (j * k % traj) as f64 / traj as f64;
     let (sn, cs) = a.sin_cos();
     xr += zr * cs - zi * sn;
@@ -232,7 +217,7 @@ fn the_device_rows_are_the_transform_they_claim_to_be() {
       } else {
         Metal::default().with_batch_budget((2 * n.next_power_of_two() + n) * 4 * budget_rows)
       };
-      let seed = Deterministic::new(31).next_seed() as u32;
+      let seed = Deterministic::new(31).next_seed();
       let fgn =
         Fgn::<f32, _>::new(HURST as f32, n, Some(1.0), Deterministic::new(31)).with_backend(handle);
       let rows = fgn.sample_par(m);

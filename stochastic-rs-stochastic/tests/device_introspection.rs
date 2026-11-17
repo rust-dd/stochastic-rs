@@ -7,22 +7,43 @@
 //! an order of magnitude's cost. The second one used to be a bare `bool`;
 //! the reason is what makes it actionable.
 
+use std::collections::BTreeSet;
+use std::fs;
+use std::path::Path;
+
 use ndarray::Array2;
 use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::autoregressive::ar::Ar;
 use stochastic_rs_stochastic::device::Cpu;
 use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::diffusion::wishart::Wishart;
 use stochastic_rs_stochastic::interest::black_karasinski::BlackKarasinski;
+use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
 use stochastic_rs_stochastic::interest::vasicek::Vasicek;
+use stochastic_rs_stochastic::jump::bates::Bates;
+use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
+use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFouCustom;
+use stochastic_rs_stochastic::jump::kou::Kou;
+use stochastic_rs_stochastic::jump::levy_diffusion::LevyDiffusion;
+use stochastic_rs_stochastic::jump::merton::Merton;
+use stochastic_rs_stochastic::jump::mjd_log::MjdLog;
 use stochastic_rs_stochastic::noise::fgn::Fgn;
+use stochastic_rs_stochastic::params::Drift;
+use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::process::subordinator::ctrw::Ctrw;
 use stochastic_rs_stochastic::process::subordinator::ctrw::CtrwJumpLaw;
 use stochastic_rs_stochastic::process::subordinator::ctrw::CtrwWaitingLaw;
+use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PoissonSubordinator;
+use stochastic_rs_stochastic::process::subordinator::tempered_stable::TemperedStableSubordinator;
 use stochastic_rs_stochastic::traits::ProcessExt;
+use stochastic_rs_stochastic::volatility::bns::Bns;
+use stochastic_rs_stochastic::volatility::fbates_svj::FbatesSvj;
+use stochastic_rs_stochastic::volatility::hkde::Hkde;
 
 /// A process hands back the handle it holds, and the handle opens.
 #[test]
@@ -111,31 +132,300 @@ fn a_zero_reversion_black_karasinski_reaches_the_device() {
   assert!(build(0.1).device_ready());
 }
 
-/// The kernels' per-step count stops at 64 events, so a Ctrw expecting over 25 per step samples
-/// on the host, where every event is drawn.
+/// Every type in `src` that implements `jump_intensity`, so its kernel reads the step's count; the
+/// engine's trait defaults and its test probes are not processes.
+fn count_readers() -> BTreeSet<String> {
+  let mut found = BTreeSet::new();
+  let mut dirs = vec![Path::new(env!("CARGO_MANIFEST_DIR")).join("src")];
+  while let Some(dir) = dirs.pop() {
+    let entries = fs::read_dir(&dir).expect("the crate's own source tree is readable");
+    for path in entries.flatten().map(|entry| entry.path()) {
+      if path.is_dir() {
+        dirs.push(path);
+        continue;
+      }
+      if path.extension().is_none_or(|e| e != "rs")
+        || path.to_string_lossy().contains("family_parity")
+      {
+        continue;
+      }
+      let text = fs::read_to_string(&path).expect("a source file is readable");
+      for (at, _) in text.match_indices("fn jump_intensity") {
+        let header = &text[text[..at].rfind("\nimpl").unwrap_or(0)..at];
+        if header.contains("\npub trait ") {
+          continue;
+        }
+        let (_, implementor) = header
+          .split_once(" for ")
+          .unwrap_or_else(|| panic!("{}: an impl names its type", path.display()));
+        found.insert(
+          implementor
+            .trim_start()
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect(),
+        );
+      }
+    }
+  }
+  found
+}
+
+/// A device draws a step's Poisson count only up to 64 events, exact to `f32` up to 25 expected:
+/// every process whose kernel reads the count names that limit past 25 and keeps to the host.
 #[test]
-fn a_dense_ctrw_keeps_to_the_host() {
-  let build = |rate: f64, n: usize| {
-    Ctrw::<f64, _>::new(
-      CtrwWaitingLaw::Exponential { rate },
-      CtrwJumpLaw::Normal {
-        mean: 1.0,
-        std: 1e-6,
-      },
-      n,
-      None,
-      Some(1.0),
-      Deterministic::new(2),
-    )
-  };
-  assert!(!build(4.0e6, 2).device_ready());
-  assert!(
-    build(4.0e6, 2)
-      .device_fallback()
-      .is_some_and(|why| why.contains("64")),
-    "the reason should name the kernels' count limit"
+fn a_dense_count_keeps_every_count_reading_process_on_the_host() {
+  const N: usize = 65;
+  fn normal() -> SimdNormal<f64> {
+    SimdNormal::new(0.0, 0.01)
+  }
+  type Fallback = Box<dyn Fn(f64) -> Option<&'static str>>;
+  let cases: [(&str, Fallback); 14] = [
+    (
+      "Kou",
+      Box::new(|rate| {
+        Kou::new(
+          0.03,
+          0.2,
+          rate,
+          0.0,
+          normal(),
+          N,
+          Some(0.0),
+          Some(1.0),
+          Unseeded,
+        )
+        .device_fallback()
+      }),
+    ),
+    (
+      "Merton",
+      Box::new(|rate| {
+        Merton::new(
+          0.03,
+          0.2,
+          rate,
+          0.0,
+          normal(),
+          N,
+          Some(0.0),
+          Some(1.0),
+          Unseeded,
+        )
+        .device_fallback()
+      }),
+    ),
+    (
+      "LevyDiffusion",
+      Box::new(|rate| {
+        LevyDiffusion::new(0.01, 0.2, rate, normal(), N, Some(0.0), Some(1.0), Unseeded)
+          .device_fallback()
+      }),
+    ),
+    (
+      "JumpFou",
+      Box::new(|rate| {
+        JumpFou::new(
+          0.65,
+          1.5,
+          0.0,
+          0.2,
+          rate,
+          normal(),
+          N,
+          Some(0.0),
+          Some(1.0),
+          Unseeded,
+        )
+        .device_fallback()
+      }),
+    ),
+    (
+      "JumpFouCustom",
+      Box::new(|rate| {
+        JumpFouCustom::new(
+          0.65,
+          1.5,
+          0.0,
+          0.2,
+          N,
+          Some(0.0),
+          Some(1.0),
+          SimdExp::<f64>::new(rate),
+          normal(),
+          Unseeded,
+        )
+        .device_fallback()
+      }),
+    ),
+    (
+      "Bates",
+      Box::new(|rate| {
+        Bates::new(
+          Drift::Mu(0.05),
+          rate,
+          0.0,
+          0.04,
+          1.5,
+          0.3,
+          -0.6,
+          normal(),
+          N,
+          100.0,
+          0.04,
+          Some(1.0),
+          VarianceBoundary::Floor,
+          Unseeded,
+        )
+        .device_fallback()
+      }),
+    ),
+    (
+      "FbatesSvj",
+      Box::new(|rate| {
+        FbatesSvj::new(
+          0.7,
+          0.05,
+          100.0,
+          0.04,
+          0.04,
+          1.5,
+          0.3,
+          -0.6,
+          rate,
+          0.0,
+          0.01,
+          N,
+          Some(1.0),
+          Unseeded,
+        )
+        .device_fallback()
+      }),
+    ),
+    (
+      "Bns",
+      Box::new(|rate| {
+        Bns::new(100.0, 0.04, rate, 0.05, 1.0, 0.01, N, Some(1.0), Unseeded).device_fallback()
+      }),
+    ),
+    (
+      "DuffieKanJumpExp",
+      Box::new(|rate| {
+        DuffieKanJumpExp::new(
+          0.5,
+          0.5,
+          0.1,
+          0.3,
+          -0.5,
+          0.1,
+          0.02,
+          0.1,
+          -0.5,
+          0.1,
+          0.02,
+          0.1,
+          rate,
+          0.01,
+          N,
+          Some(0.03),
+          Some(0.01),
+          Some(1.0),
+          Unseeded,
+        )
+        .device_fallback()
+      }),
+    ),
+    (
+      "Hkde",
+      Box::new(|rate| {
+        Hkde::new(
+          0.05,
+          1.5,
+          0.04,
+          0.3,
+          -0.6,
+          0.04,
+          rate,
+          0.4,
+          10.0,
+          5.0,
+          N,
+          100.0,
+          Some(1.0),
+          VarianceBoundary::Floor,
+          Unseeded,
+        )
+        .device_fallback()
+      }),
+    ),
+    (
+      "PoissonSubordinator",
+      Box::new(|rate| {
+        PoissonSubordinator::new(rate, N, None, Some(1.0), Unseeded).device_fallback()
+      }),
+    ),
+    (
+      "MjdLog",
+      Box::new(|rate| {
+        MjdLog::new(
+          Drift::Mu(0.05),
+          0.2,
+          rate,
+          0.0,
+          0.01,
+          N,
+          100.0,
+          Some(1.0),
+          Unseeded,
+        )
+        .device_fallback()
+      }),
+    ),
+    (
+      "TemperedStableSubordinator",
+      // c/α · ε^{−α} = rate at α = 0.5 and ε = 1e-4.
+      Box::new(|rate| {
+        TemperedStableSubordinator::new(0.5, rate / 200.0, 1.0, 1e-4, N, None, Some(1.0), Unseeded)
+          .device_fallback()
+      }),
+    ),
+    (
+      "Ctrw",
+      Box::new(|rate| {
+        Ctrw::<f64, _>::new(
+          CtrwWaitingLaw::Exponential { rate },
+          CtrwJumpLaw::Normal {
+            mean: 1.0,
+            std: 1e-6,
+          },
+          N,
+          None,
+          Some(1.0),
+          Unseeded,
+        )
+        .device_fallback()
+      }),
+    ),
+  ];
+  assert_eq!(
+    cases
+      .iter()
+      .map(|(name, _)| name.to_string())
+      .collect::<BTreeSet<_>>(),
+    count_readers(),
+    "the table must hold every process whose kernel reads the step's count"
   );
-  assert!(build(2.0, 512).device_ready());
+  for (name, fallback) in cases {
+    assert!(
+      fallback(100.0 * 64.0).is_some_and(|why| why.contains("64")),
+      "{name}: a hundred expected events a step must name the kernels' count"
+    );
+    assert_eq!(
+      fallback(20.0 * 64.0),
+      None,
+      "{name}: twenty a step run on the device"
+    );
+  }
 }
 
 /// A setter that rebuilds no cache is defined for every backend, so a process can be adjusted after

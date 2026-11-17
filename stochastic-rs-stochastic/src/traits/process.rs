@@ -197,13 +197,11 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// table and `tests/deterministic_parallelism_accelerate.rs` for the
 /// measurement. GPU backends (`Cuda`/`Metal`) are
 /// excluded from this guarantee entirely, deliberately: each draws one
-/// value from `self.seed.rng()` per batch call and hands it to the
-/// on-device kernel's own Philox/PCG-style RNG, so output is a function of
+/// value from `self.seed.rng()` per batch call and keys the kernels'
+/// Philox-4x32-10 on it, so output is a function of
 /// the pinned seed but *not* of host thread-pool size, yet cross-run
 /// bit-identity across GPU driver versions, vendors, or repeated runs on
-/// the same device is untested and not promised; `Fbm` specifically does
-/// not even reach seed-dependence on those three (see
-/// [`Fbm::sample_par`](crate::process::fbm::Fbm::sample_par)'s own doc).
+/// the same device is untested and not promised.
 /// None of this is a defect to fix — it is a weaker, explicitly measured
 /// and documented contract for those backends specifically, standing
 /// alongside, not contradicting, the unconditional guarantee below.

@@ -27,6 +27,7 @@ The engine steps a bounded forward recursion over four scalar state slots and fo
 - **Too many coupled dimensions.** `Wishart` above `d = 2` or below degree 3; `Lmm`, `MultiGbm` and `Mcgns` above four components; `MultifactorHeston` with three or more factors; `RegimeSwitchingDiffusion` with five or more regimes; `MultivariateHawkes` above two components or with per-pair decays.
 - **Point processes on their own clock.** `Hawkes`, `MultivariateHawkes`, `Poisson`, `CompoundPoisson`, `CustomJt` and `CompoundCustom` in horizon mode, where the output length is the number of events; `CustomJt`, `CompoundCustom` and `JumpFouCustom` with an inter-arrival law other than the exponential; `Ctrw` with gamma, inverse-Gaussian or stable waits.
 - **Jump-size laws other than `SimdNormal` / `SimdExp`** for the processes generic over one (`Merton`, `Kou`, `LevyDiffusion`, `Bates`, `JumpFou`, `JumpFouCustom`); `Bates` also draws its `LogNormalJump` on a device.
+- **Dense jump counts.** A process whose kernel reads the step's Poisson count, past `λ·dt = 25` expected events a step, where the kernels' 64-event count would cut the tail.
 - **Lag order above one** for `Ar`, `Ma` and the GARCH family.
 - **`Svcgmy`** with `4κη/ζ² < 1`, where the exact variance step needs a Poisson mixture.
 - **`InverseAlphaStableSubordinator`** with more than 512 `u_steps`.
@@ -56,7 +57,7 @@ let cheyette = Cheyette::<f32, _>::new(f0, 0.5, sigma, 252, Some(1.0), seed).on:
 
 ## Large batches
 
-A device handle holds at most `batch_budget` bytes of path data per launch (1 GiB by default; `Cuda::from_env()?` reads `STOCHASTIC_RS_DEVICE_BATCH_BYTES`, or set `Cuda::default().with_batch_budget(n)`). A larger `sample_par(m)` runs as several launches whose union is bit-identical to one launch, because every draw's Philox counter carries the global path index; `sample_map(m, f)` maps each chunk on the host before the next is launched, so the batch never has to fit in memory at once. The fGN devices chunk the same way.
+A device handle holds at most `batch_budget` bytes of path data per launch (1 GiB by default; `Cuda::from_env()?` reads `STOCHASTIC_RS_DEVICE_BATCH_BYTES`, or set `Cuda::default().with_batch_budget(n)`). A larger `sample_par(m)` runs as several launches whose union is bit-identical to one launch, because every draw's Philox counter carries the global path index; `sample_map(m, f)` maps each chunk on the host before the next is launched, so the batch never has to fit in memory at once. The fGN and sheet pipelines chunk the same way, each normal's counter carrying its batch-global cell.
 
 A handle keeps what it compiled and allocated between calls — kernels, FFT plans, device buffers, the CUDA pinned staging — and frees nothing on its own. `Cuda::default().release()` frees what the crate caches for that ordinal, `Metal::default().release()` what the calling thread caches for it (Metal's caches are per thread), and `device::release_host_scratch()` the host FFT workspace of the calling thread and of the rayon pool. The next launch rebuilds what it needs and draws the same paths from the same seed.
 

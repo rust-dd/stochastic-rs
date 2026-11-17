@@ -30,6 +30,17 @@ pub const SITE_TABLE: u32 = 11;
 /// A series term's two uniforms, at step 0 and index `j`.
 pub const SITE_SERIES_MARKS: u32 = 12;
 
+/// An fGN cell's normals: `(cell_lo, cell_hi, which, SITE_FGN)`, `which` 0 the real part, 1 the
+/// imaginary, `cell` the batch-global complex index.
+pub const SITE_FGN: u32 = 13;
+
+/// A sheet cell's normals, counted as an fGN cell's.
+pub const SITE_SHEET: u32 = 14;
+
+/// A sheet's two correction normals, at `(sheet_lo, sheet_hi, which, SITE_SHEET_CORRECTION)` with
+/// `sheet` the batch-global sheet index.
+pub const SITE_SHEET_CORRECTION: u32 = 15;
+
 /// Past the 24 tries' indices, where the shape boost draws.
 pub const GAMMA_BOOST: u32 = 48;
 

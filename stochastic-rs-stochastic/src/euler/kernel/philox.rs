@@ -15,10 +15,23 @@ pub(crate) fn sites() -> String {
     ("site_series_time", philox::SITE_SERIES_TIME),
     ("site_table", philox::SITE_TABLE),
     ("site_series_marks", philox::SITE_SERIES_MARKS),
+    ("site_fgn", philox::SITE_FGN),
+    ("site_sheet", philox::SITE_SHEET),
+    ("site_sheet_correction", philox::SITE_SHEET_CORRECTION),
     ("gamma_boost", philox::GAMMA_BOOST),
   ]
   .map(|(name, value)| format!("#define {name} {value}u\n"))
   .concat()
+}
+
+/// The sites, the generator and the precision's draws, for a kernel outside the Euler frame.
+pub(crate) fn philox_prelude(lang: &super::Language<'_>) -> String {
+  format!(
+    "{}{}{}",
+    sites(),
+    C_PHILOX,
+    super::substitute(lang.draws, lang)
+  )
 }
 
 pub(crate) const C_PHILOX: &str = r#"__device__ __forceinline__ void stoch_philox(unsigned int c0, unsigned int c1, unsigned int c2,

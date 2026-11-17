@@ -520,11 +520,17 @@ where
     }
   }
 
-  /// What a device runs here: it has no jumps, or its sizes
-  /// follow a law the kernels draw. Anything else samples on the host.
+  /// What a device runs here: no jumps, or sizes under a law the kernels draw at no more than 25
+  /// expected a step. Anything else samples on the host.
   fn device_fallback(&self) -> Option<&'static str> {
     (!(self.lambda <= T::zero() || self.device_jump_sizes().is_some()))
       .then_some("a jump-size law the kernels do not draw")
+      .or_else(|| {
+        crate::euler::count_fallback(
+          <Self as crate::euler::EulerSystem<T, 2>>::jump_intensity(self),
+          <Self as crate::euler::EulerSystem<T, 2>>::time_step(self),
+        )
+      })
   }
 }
 

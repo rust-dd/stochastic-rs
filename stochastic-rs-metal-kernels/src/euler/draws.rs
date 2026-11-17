@@ -6,6 +6,13 @@ use super::philox::{
   GAMMA_BOOST, LN_2_23, SITE_COUNT, SITE_GAMMA, SITE_NOISE, philox4x32_10, u01_f32,
   u01_f32_zero_cell,
 };
+use super::vocabulary;
+
+/// `π/2` in units of 2⁻⁵⁶.
+const HALF_PI_2_56: u64 = 0x0192_1FB5_4442_D184;
+
+/// `π` in units of 2⁻⁵⁶, rounded on its own rather than doubled from `π/2`.
+const PI_2_56: u64 = 0x0324_3F6A_8885_A309;
 
 /// `step` as the compiler's numerical proofs see any value, so they analyze a step's draws once,
 /// not once per step; `path ^ path` is zero, which the GPU compiler folds away.
@@ -28,6 +35,79 @@ pub(crate) fn exponential(first: u32, second: u32) -> f32 {
     -math::ln(u01_f32(first))
   };
   if e < 0.0 { 0.0 } else { e }
+}
+
+/// [`exponential`] on the family log, positive at every uniform: the stable law divides by it,
+/// where a zero would make the jump infinite.
+pub(crate) fn exponential_accurate(first: u32, second: u32) -> f32 {
+  let e = if first >> 9 == 0 {
+    LN_2_23 - vocabulary::ln(u01_f32_zero_cell(first, second))
+  } else {
+    -vocabulary::ln(u01_f32(first))
+  };
+  if e < 0.0 { 0.0 } else { e }
+}
+
+/// `target − magnitude`, `target` in units of 2⁻⁵⁶ and `magnitude` in `[0.5, 4)`: exact in
+/// integers, which fast math cannot reorder, then rounded once.
+fn distance(target: u64, magnitude: f32) -> f32 {
+  let bits = magnitude.to_bits();
+  let significand = ((bits & 0x007F_FFFF) | 0x0080_0000) as u64;
+  let scaled = if bits >= 0x4000_0000 {
+    significand << 34
+  } else if bits >= 0x3F80_0000 {
+    significand << 33
+  } else {
+    significand << 32
+  };
+  if scaled <= target {
+    (target - scaled) as f32 * 1.387_778_8e-17
+  } else {
+    -((scaled - target) as f32 * 1.387_778_8e-17)
+  }
+}
+
+/// `sin x` for `|x| ≤ π/4`, Taylor to `x⁹`.
+fn sin_series(x: f32) -> f32 {
+  let s = x * x;
+  let tail = 0.008_333_334 + s * (-0.000_198_412_7 + s * 2.755_731_9e-6);
+  x * (1.0 + s * (-0.166_666_67 + s * tail))
+}
+
+/// `cos x` for `|x| ≤ π/4`, Taylor to `x¹⁰`.
+fn cos_series(x: f32) -> f32 {
+  let s = x * x;
+  let tail = 0.041_666_668 + s * (-0.001_388_888_9 + s * (2.480_158_8e-5 + s * -2.755_732e-7));
+  1.0 + s * (-0.5 + s * tail)
+}
+
+/// `cos` to two ulp within 2 of zero, where the fast cosine's absolute error of 2⁻¹³ can outweigh
+/// a result near ±π/2; past 2, or for NaN, the fast cosine.
+pub(crate) fn cos_accurate(value: f32) -> f32 {
+  let magnitude = value.abs();
+  if magnitude <= core::f32::consts::FRAC_PI_4 {
+    cos_series(magnitude)
+  } else if magnitude < 2.0 {
+    sin_series(distance(HALF_PI_2_56, magnitude))
+  } else {
+    math::cos(value)
+  }
+}
+
+/// `sin` to two ulp within `π` of zero, where the fast sine's absolute error of 2⁻¹³ can outweigh a
+/// result near 0 or ±π; from `π` on, or for NaN, the fast sine.
+pub(crate) fn sin_accurate(value: f32) -> f32 {
+  let magnitude = value.abs();
+  let sine = if magnitude <= core::f32::consts::FRAC_PI_4 {
+    sin_series(magnitude)
+  } else if magnitude <= 3.0 * core::f32::consts::FRAC_PI_4 {
+    cos_series(distance(HALF_PI_2_56, magnitude))
+  } else if magnitude < core::f32::consts::PI {
+    sin_series(distance(PI_2_56, magnitude))
+  } else {
+    return math::sin(value);
+  };
+  if value < 0.0 { -sine } else { sine }
 }
 
 pub(crate) fn normal(words: [u32; 4]) -> f32 {

@@ -1,5 +1,5 @@
 //! The Euler kernels on Metal: `sample_par` of 100 000 `f32` paths over 252 points, one row per
-//! family shape (a diffusion, a two-factor system, normal and exponential jump sizes).
+//! family shape (a diffusion, a two-factor system, normal and exponential jumps, a live series).
 
 #[cfg(metal_backend)]
 mod gated {
@@ -20,6 +20,7 @@ mod gated {
   use stochastic_rs_stochastic::traits::ProcessExt;
   use stochastic_rs_stochastic::volatility::HestonPow;
   use stochastic_rs_stochastic::volatility::heston::Heston;
+  use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
 
   const PATHS: usize = 100_000;
 
@@ -87,6 +88,26 @@ mod gated {
         SimdExp::<f32>::new(8.0),
         POINTS,
         Some(1.0),
+        Some(1.0),
+        seed(),
+      )
+      .on::<Metal>(),
+    );
+    row(
+      &mut group,
+      "Svcgmy",
+      Svcgmy::<f32, _>::new(
+        2.0,
+        6.0,
+        0.5,
+        2.0,
+        0.04,
+        0.2,
+        0.3,
+        POINTS,
+        256,
+        Some(0.0),
+        0.04,
         Some(1.0),
         seed(),
       )

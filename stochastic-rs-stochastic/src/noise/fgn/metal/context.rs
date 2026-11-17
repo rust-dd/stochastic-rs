@@ -97,7 +97,7 @@ impl Context {
       offset,
       hurst,
       t,
-      seed,
+      key: [seed_lo, seed_hi],
       first_cell,
       ..
     } = launch;
@@ -185,7 +185,7 @@ impl Context {
               (
                 &*eigs,
                 &*tile_twiddles,
-                (log_n, seed, base_cell),
+                (log_n, seed_lo, seed_hi, base_cell),
                 &mut *output,
                 (size, scale, rows, parity),
                 shared,
@@ -193,7 +193,7 @@ impl Context {
               |(
                 eigs,
                 tile_twiddles,
-                (log_n, seed, base_cell),
+                (log_n, seed_lo, seed_hi, base_cell),
                 output,
                 (size, scale, rows, parity),
                 shared,
@@ -202,7 +202,8 @@ impl Context {
                   Argument::read(eigs),
                   Argument::read(tile_twiddles),
                   Argument::value(*log_n)?,
-                  Argument::value(*seed)?,
+                  Argument::value(*seed_lo)?,
+                  Argument::value(*seed_hi)?,
                   Argument::value(*base_cell)?,
                   Argument::write(output),
                   Argument::value(*size)?,
@@ -224,10 +225,17 @@ impl Context {
             &mut *imag,
             &*eigs,
             &*tile_twiddles,
-            (log_n, tile_log as u32, seed, base_cell),
+            (log_n, tile_log as u32, seed_lo, seed_hi, base_cell),
             shared,
           ),
-          |(real, imag, eigs, tile_twiddles, (log_n, tile_log, seed, base_cell), shared)| {
+          |(
+            real,
+            imag,
+            eigs,
+            tile_twiddles,
+            (log_n, tile_log, seed_lo, seed_hi, base_cell),
+            shared,
+          )| {
             Ok([
               Argument::write(real),
               Argument::write(imag),
@@ -235,7 +243,8 @@ impl Context {
               Argument::read(tile_twiddles),
               Argument::value(*log_n)?,
               Argument::value(*tile_log)?,
-              Argument::value(*seed)?,
+              Argument::value(*seed_lo)?,
+              Argument::value(*seed_hi)?,
               Argument::value(*base_cell)?,
               Argument::threadgroup::<f32>(*shared)?,
               Argument::threadgroup::<f32>(*shared)?,

@@ -1,4 +1,4 @@
-# revision=bcd7183b; GPU=Apple M4 Max; OS=macOS26.2(25C56); Xcode=26.6(17F113); SDK=26.5; math=fast; Euler=handwritten-MSL
+# revision=bc67ff3d4; metal-oxide=0.1.0-alpha.1; artifact=scratch kernels.metallib sha256 7e213ed828b1; GPU=Apple M4 Max; OS=macOS27.2.1(26B131); Xcode=27.2(27B52); SDK=27.2; math=Fast; Euler=metal-oxide
 # case point f32_bits_hex
 opcode-0 0 bf400000
 opcode-0 1 bf400000
@@ -39,14 +39,14 @@ length-sixty-two 1 bf8874aa
 depth-eight-length-sixty-two 0 bf400000
 depth-eight-length-sixty-two 1 c1bc0cfc
 two-short-first 0 bf400000
-two-short-first 1 4012c517
+two-short-first 1 c1564fd2
 two-short-second 0 bf400000
-two-short-second 1 c1bb8b23
+two-short-second 1 c1be287c
 two-maximum-lengths 0 bf400000
-two-maximum-lengths 1 3ffd1584
+two-maximum-lengths 1 c15b5e67
 time-and-state 0 bf400000
-time-and-state 1 bf208ee5
-time-and-state 2 bf25cd14
+time-and-state 1 be7c107a
+time-and-state 2 bea2a3f1
 opcode-8-nan-left 0 bf400000
 opcode-8-nan-left 1 bdf16ac8
 opcode-8-nan-right 0 bf400000

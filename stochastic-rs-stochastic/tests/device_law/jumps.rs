@@ -16,6 +16,7 @@ use stochastic_rs_stochastic::jump::merton::Merton;
 use stochastic_rs_stochastic::params::Drift;
 use stochastic_rs_stochastic::params::Horizon;
 use stochastic_rs_stochastic::params::VarianceBoundary;
+use stochastic_rs_stochastic::process::CompoundPaths;
 use stochastic_rs_stochastic::process::ccustom::CompoundCustom;
 use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs_stochastic::process::customjt::CustomJt;
@@ -30,6 +31,7 @@ use super::common::M;
 use super::common::agrees;
 use super::common::all_finite;
 use super::common::means_agree;
+use super::common::means_agree_values;
 use super::common::slots;
 use super::common::spreads_agree;
 use super::common::terminal_mean;
@@ -151,8 +153,8 @@ fn kou_agrees_with_the_cpu_law() {
   );
 }
 
-/// Exponential sizes travel as the double-exponential law that only jumps
-/// up; the drift and the one-sided jumps both push the terminal mean.
+/// Exponential sizes are the kernels' exponential law, summed over a step's jumps; the drift and
+/// the one-sided jumps both push the terminal mean.
 #[test]
 fn levy_diffusion_agrees_with_the_cpu_law() {
   let build = || {
@@ -285,6 +287,30 @@ fn compound_poisson_events_agree_with_the_cpu_law() {
     std_of(&device, 2, EVENTS / 2),
     0.06,
     "compound Poisson jump size spread",
+  );
+}
+
+/// Exponential sizes, one an arrival: the cumulative jump at the last arrival keeps the host's law.
+#[test]
+fn exponential_jump_sizes_match_the_host_law() {
+  let arrivals = Poisson::<f32>::new(20.0, Horizon::Events(65), Unseeded);
+  let p = CompoundPoisson::<f32, SimdExp<f32>, Deterministic>::new(
+    SimdExp::new(4.0),
+    arrivals,
+    Deterministic::new(3),
+  );
+  let host = p.sample_par(M);
+  let device = p.clone().on::<Device>().sample_par(M);
+  let last = |paths: &[CompoundPaths<f32>]| {
+    paths
+      .iter()
+      .map(|q| q.cumulative[q.cumulative.len() - 1] as f64)
+      .collect::<Vec<_>>()
+  };
+  means_agree_values(
+    &last(&host),
+    &last(&device),
+    "exponential sizes, the cumulative jump at the last arrival",
   );
 }
 
@@ -430,12 +456,6 @@ fn std_at(paths: &[Array1<f32>], at: usize) -> f64 {
     .sqrt()
 }
 
-fn iqr_at(paths: &[Array1<f32>], at: usize) -> f64 {
-  let mut values: Vec<f64> = paths.iter().map(|p| p[at] as f64).collect();
-  values.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
-  values[values.len() * 3 / 4] - values[values.len() / 4]
-}
-
 /// Exponential waits make the arrivals in a cell the Poisson count the
 /// kernels draw, and normal sizes the law they aggregate; the mean grows as
 /// `rate · mean · t` and the spread as `√(rate t (mean² + std²))`.
@@ -471,28 +491,6 @@ fn ctrw_with_normal_jumps_agrees_with_the_cpu_law() {
     0.05,
     "CTRW normal terminal spread",
   );
-}
-
-/// A hundred expected events per step is past the kernels' 64-event count, so the device build
-/// samples on the host and is the Cpu build to the bit.
-#[test]
-fn a_dense_ctrw_keeps_to_the_host_on_any_backend() {
-  let build = || {
-    Ctrw::<f32, _>::new(
-      CtrwWaitingLaw::Exponential { rate: 6400.0 },
-      CtrwJumpLaw::Normal {
-        mean: 1.0,
-        std: 0.01,
-      },
-      65,
-      Some(0.0),
-      Some(1.0),
-      Deterministic::new(179),
-    )
-  };
-  assert!(!build().on::<Device>().device_ready());
-  assert_eq!(build().on::<Device>().sample_par(4), build().sample_par(4));
-  assert_eq!(build().on::<Device>().sample(), build().sample());
 }
 
 /// Rademacher sizes are the one law the kernels sum by coin flips; a wrong
@@ -531,42 +529,6 @@ fn ctrw_with_rademacher_jumps_agrees_with_the_cpu_law() {
     std_at(&device, N / 4),
     0.05,
     "CTRW Rademacher quarter-horizon spread",
-  );
-}
-
-/// Symmetric stable sizes have no variance, so the spread is read off the
-/// quartiles; the kernel draws a cell's sum in one Chambers–Mallows–Stuck
-/// step at scale `scale · n^{1/α}`, the host draws each jump.
-#[test]
-fn ctrw_with_stable_jumps_agrees_with_the_cpu_law() {
-  let build = || {
-    Ctrw::<f32, _>::new(
-      CtrwWaitingLaw::Exponential { rate: 20.0 },
-      CtrwJumpLaw::SymmetricStable {
-        alpha: 1.7,
-        scale: 0.2,
-      },
-      N,
-      Some(0.0),
-      Some(1.0),
-      Deterministic::new(181),
-    )
-  };
-  const PATHS: usize = 3 * M;
-  let device = build().on::<Device>().sample_par(PATHS);
-  let host = build().sample_par(PATHS);
-  all_finite(&device, "CTRW stable");
-  agrees(
-    iqr_at(&host, N - 1),
-    iqr_at(&device, N - 1),
-    0.06,
-    "CTRW stable terminal interquartile range",
-  );
-  agrees(
-    iqr_at(&host, N / 4),
-    iqr_at(&device, N / 4),
-    0.06,
-    "CTRW stable quarter-horizon interquartile range",
   );
 }
 

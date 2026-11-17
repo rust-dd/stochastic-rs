@@ -60,10 +60,8 @@ pub(crate) fn cuda_language(real: &'static str) -> Language<'static> {
 
 pub(crate) fn prelude(lang: &Language<'_>) -> String {
   format!(
-    "{}{}{}{}",
-    super::philox::sites(),
-    super::philox::C_PHILOX,
-    substitute(lang.draws, lang),
+    "{}{}",
+    super::philox::philox_prelude(lang),
     substitute(crate::euler::families::vocabulary::C_PRELUDE, lang)
   )
 }

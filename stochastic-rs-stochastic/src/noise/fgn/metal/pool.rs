@@ -90,7 +90,7 @@ pub(crate) fn sample_f32_buffer(
   offset: usize,
   hurst: f64,
   t: f64,
-  seed: u32,
+  key: [u32; 2],
   first_cell: u64,
   ordinal: usize,
 ) -> Result<(OutputRental, usize)> {
@@ -101,7 +101,7 @@ pub(crate) fn sample_f32_buffer(
     offset,
     hurst,
     t,
-    seed,
+    key,
     first_cell,
     ordinal,
   })

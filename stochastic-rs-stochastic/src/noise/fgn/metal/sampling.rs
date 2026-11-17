@@ -87,7 +87,7 @@ impl<S: SeedExt, B> Fgn<f32, S, B> {
     let (n, offset) = (self.padded_n, self.offset);
     let out_size = n - offset;
     let eigs = self.sqrt_eigenvalues();
-    let seed = seed_src.next_seed() as u32;
+    let key = crate::euler::philox::key(seed_src.next_seed());
     for chunk in chunks(n, out_size, m, device) {
       let launch = Launch {
         sqrt_eigs: eigs,
@@ -96,7 +96,7 @@ impl<S: SeedExt, B> Fgn<f32, S, B> {
         offset,
         hurst: self.hurst() as f64,
         t: self.t().unwrap_or(1.0) as f64,
-        seed,
+        key,
         first_cell: (chunk.first * 2 * n) as u64,
         ordinal: device.ordinal,
       };

@@ -121,4 +121,24 @@ pub(super) const FRAME_JUMP_LAWS: &str = r#"        js = (REAL)0;
             // absolute error turns relative and unbounded as the angle nears +-pi/2.
             REAL xs = STOCH_SIN(jump_a * va) / STOCH_POW(STOCH_COS(va), ia) * STOCH_POW(ratio, ((REAL)1 - jump_a) * ia);
             js = jump_b * STOCH_POW(nj, ia) * xs;
+        }
+        if (jump_law == 10u) {
+            for (unsigned int j = 0u; j < 64u; j++) {
+                if ((REAL)j >= nj) { break; }
+                stoch_philox(first_path + path, i, site_sizes, j, seed_lo, seed_hi, words);
+                js += stoch_exp1(words[0], words[1]) / jump_a;
+            }
+        }
+        if (jump_law == 11u) {
+            REAL jp = (REAL)1;
+            for (unsigned int j = 0u; j < 64u; j++) {
+                if ((REAL)j >= nj) { break; }
+                stoch_philox(first_path + path, i, site_sizes, j, seed_lo, seed_hi, words);
+                jp = jp * ((REAL)1 + stoch_exp1(words[0], words[1]) / jump_a);
+            }
+            js = jp - (REAL)1;
+        }
+        if (jump_law == 12u) {
+            stoch_philox(first_path + path, i, site_sizes, 0u, seed_lo, seed_hi, words);
+            js = stoch_exp1(words[0], words[1]) / jump_a;
         }"#;

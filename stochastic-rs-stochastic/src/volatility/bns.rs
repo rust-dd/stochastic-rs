@@ -264,23 +264,51 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   /// asset step together in the kernel, on the host devices it is this
   /// process's own sampler, chunked exactly as `ProcessExt` chunks.
   fn sample(&self) -> [Array1<T>; 2] {
-    self.backend.system_sample(self)
+    if self.device_ready() {
+      self.backend.system_sample(self)
+    } else {
+      <Self as crate::euler::EulerSystem<T, 2>>::host_sample(self)
+    }
   }
 
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 2]) -> R + Sync) -> Vec<R> {
-    self.backend.system_paths_map(self, m, f)
+    if self.device_ready() {
+      self.backend.system_paths_map(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
   }
 
   fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 2]> {
-    self.backend.system_paths(self, m)
+    if self.device_ready() {
+      self.backend.system_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
   }
 
   fn try_sample(&self) -> Result<[Array1<T>; 2], crate::device::DeviceError> {
-    self.backend.try_system_sample(self)
+    if self.device_ready() {
+      self.backend.try_system_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
   }
 
   fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 2]>, crate::device::DeviceError> {
-    self.backend.try_system_paths(self, m)
+    if self.device_ready() {
+      self.backend.try_system_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
+    }
+  }
+
+  /// A step expecting more than 25 jumps samples on the host, past the kernels' 64-event count.
+  fn device_fallback(&self) -> Option<&'static str> {
+    crate::euler::count_fallback(
+      <Self as crate::euler::EulerSystem<T, 2>>::jump_intensity(self),
+      <Self as crate::euler::EulerSystem<T, 2>>::time_step(self),
+    )
   }
 }
 

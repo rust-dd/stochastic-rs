@@ -119,7 +119,7 @@ the terms are sized in the step of their cell and the size may read the state �
 — one increment of a monotone table from `uj`, `uv` and the spacing `tv`, and the step
 reads the table's interpolated inverse at its time as `iv`. A step or report may open
 with `bind name = expr;` lines. A step reads `x` (its own state names), `dt`, its noise
-names, its parameters, plus `ct`/`ct1`..`ct7`, `nj`, `js`, `gm`, `gm2`, `u`, `u2`, `lv`,
+names, its parameters, plus `ct`/`ct1`..`ct7`, `nj`, `js`, `gm`, `gm2`, `u`..`u4`, `lv`,
 `cv`, `sj`, `iv`.
 Vocabulary: `sqrt exp ln pow abs negate tanh atan sin recip positive max min lit less
 leq geq pick` — a **new** intrinsic goes into host `ops` and `C_PRELUDE` in
@@ -144,7 +144,7 @@ Traps, each learned from a real failure:
 `pub enum EulerSpec<T: FloatExt>` variant per family (121 today, one-to-one) plus an
 `encode()` arm — `(Family::Foo.code(), pad([theta, mu, sigma]))`, `pad` widening to
 `PARAM_SLOTS = 20`. Capacities: 4 state slots, 4 noise components, 20 parameters,
-`CURVE_SLOTS = 8` (`ct`, `ct1`..`ct7`), 2 uniforms `u`/`u2`, Poisson count `nj`, jump
+`CURVE_SLOTS = 8` (`ct`, `ct1`..`ct7`), 4 uniforms `u`..`u4`, Poisson count `nj`, jump
 sum `js`, Gamma draws `gm`/`gm2`, lifted value `lv` over `LIFT_SLOTS = 176` nodes,
 history convolution `cv` over `HISTORY_SLOTS = 512` grid points, series cell sum `sj`
 over `SERIES_SLOTS = 512` grid points, table inverse `iv` over `TABLE_SLOTS = 512`
@@ -165,13 +165,19 @@ table points, `CORRELATED_STREAMS = 4`.
 | `host_sample()` | yes | sampler **and** `advance_chunk_seed` (below) |
 | `time_step()` | default `horizon / (n − 1)` | override when the host divides differently |
 | `curve()` / `curves()` | default `None` | implement **one**, never both; ≤ `CURVE_SLOTS` |
-| `jump_intensity()` / `jump_sizes()` | default `None` | `JumpSizes` carries 7 laws |
+| `jump_intensity()` / `jump_sizes()` | default `None` | `JumpSizes` carries 12 laws |
 | `gamma_draws()` | default `None` | `GammaDraws { first, second }` |
 | `step_first()` | default `false` | `true` when the first grid point is itself a draw |
 | `fgn_spec()` | default `None` | `Some(self.fgn.fgn_spec(streams))` — the embedded `Fgn` builds the `FgnSpec` |
 | `lift_spec()` | default `None` | `LiftSpec { decay, weight, drift_scale, drift_boundary, diffusion_boundary, x0 }` |
 | `series_terms()` | default `None` | `Some(j)` terms per path for a family with a `series` clause — exactly when, the launch asserts both ways |
 | `table_spec()` | default `None` | `Some(TableSpec { points, u_max })` for a family with a `table` clause — same both-ways assert; `points ≤ TABLE_SLOTS` |
+
+A `jump_intensity()` makes the kernel count the step's arrivals, up to 64: `device_fallback()` (§3)
+answers `crate::euler::count_fallback(jump_intensity, time_step)` through the trait it implements
+(`<Self as crate::euler::EulerCoefficients<T>>::jump_intensity(self)`), after any reason of its own,
+and every sampling method branches on `device_ready()`. The dense-count table in
+`tests/device_introspection.rs` gains a row; its census of `fn jump_intensity` fails without one.
 
 `host_sample` is always exactly this — the `advance_chunk_seed` call is what keeps a
 host fallback chunk-correct:
@@ -543,27 +549,26 @@ no host-only form — check the nine documented ways round the cap:
    inverted by interpolation at every step, the extent doubled until the table
    reaches the horizon; tables up to `TABLE_SLOTS`. This is what moved
    `InverseAlphaStableSubordinator` onto the engine.
-7. **An exact recursion in place of a rejection loop** — a family reads two
+7. **An exact recursion in place of a rejection loop** — a family reads four
    uniforms a step, so a thinning loop with a random number of proposals has no
    home in it, but an exact inverse-transform of the same law does. This is
    what moved `Hawkes` (Dassios–Zhao) onto the engine, and `MultivariateHawkes`
    in count mode by **superposition**: each target's excess clock and the
    baselines' joint Poisson clock are independent given the state, so the next
-   event is the earliest of their exact arrivals and the mark its index. Extra
-   uniforms come from the noise components — half the sum of two squared
-   normals is a unit exponential and one minus its negative exponential a
-   uniform — so no `erf` enters the vocabulary.
+   event is the earliest of their exact arrivals and the mark its index. The
+   first target's clock reads `$u`, the second's `$u3`, the baselines' clock
+   `$u2` and its mark `$u4`, each a uniform of its own.
 8. **A pipeline of its own** — a process whose sample is a transform rather
    than a recursion gets a capability trait beside `FgnBackend`
    (`SheetBackend<T>` in `device/sheet_backend.rs`), a `via sheet` switch arm, and one
    pipeline file per backend under its module (`sheet/fbs/{metal,cuda}.rs`)
-   reusing the fGN pipeline's FFT stages, hash and bit reversal. The host
+   reusing the fGN pipeline's FFT stages, Philox draws and bit reversal. The host
    devices route through the process's own sampler, so a fallback is
    bit-identical to the `Cpu` build, and `device_ready()` names what the
    kernels take (radix-2: embedding sides that are powers of two). This is
    what moved the sheet `Fbs` onto the devices. A chunk-invariance test
-   (`with_batch_budget`) is mandatory: every hash must run on a batch-global
-   counter, the correction's on one past every cell of the batch.
+   (`with_batch_budget`) is mandatory: every Philox draw must count a batch-global
+   cell, and the correction's a batch-global sheet under a site of its own.
 9. **A program** — a coefficient of time and state the user writes as an
    `Expr` (`stochastic_rs_distributions::traits::Expr`, stored as
    `Fn2D::Expr(Program)`) reaches the kernel as postfix code: the process
