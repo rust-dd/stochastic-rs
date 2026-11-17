@@ -1,9 +1,5 @@
-//! # Liquidity-adjusted risk metrics
-//!
 //! Value-at-Risk plus the Almgren–Chriss expected cost of unwinding the position, so the headline
 //! number carries the execution friction.
-//!
-//! # Example
 //!
 //! ```
 //! use ndarray::Array1;

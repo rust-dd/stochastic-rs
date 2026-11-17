@@ -90,10 +90,8 @@ pub fn mape(market: &[f64], model: &[f64]) -> f64 {
   (sum / market.len() as f64) * 100.0
 }
 
-/// Mean Squared Percentage Error (in %): MSPE = (100/N) Σ[((market_i - model_i) / market_i)²]
-///
-/// Returns `f64::NAN` when any `market_i` is approximately zero. See
-/// [`mpe`] for the rationale.
+/// `(100/N) Σ ((market_i − model_i)/market_i)²`, a hundred times the mean squared relative error
+/// and so in neither % nor %²; NaN when any `market_i` is near zero.
 pub fn mspe(market: &[f64], model: &[f64]) -> f64 {
   let sum: f64 = market
     .iter()

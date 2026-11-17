@@ -53,10 +53,9 @@ pub enum VarMethod {
   /// Parametric Gaussian VaR using the sample mean and standard deviation.
   #[default]
   Gaussian,
-  /// Historical simulation: empirical quantile of losses.
+  /// Historical simulation: the losses' type-7 quantile (Hyndman & Fan 1996, numpy's default).
   Historical,
-  /// Monte Carlo: empirical quantile of simulated losses (interface mirrors
-  /// `Historical` but documents intent separately).
+  /// Monte Carlo: the `Historical` quantile of simulated losses.
   MonteCarlo,
 }
 
@@ -102,8 +101,8 @@ pub fn gaussian_var<T: RealExt>(
   Ok(mean + sigma * z)
 }
 
-/// Historical-simulation VaR, the empirical loss quantile; `InsufficientData` for no sample,
-/// `InvalidInput` for a non-finite one, and a panic unless `0 < confidence < 1`.
+/// Historical VaR, the losses' type-7 quantile (Hyndman & Fan 1996); `InsufficientData` for no
+/// sample, `InvalidInput` for a non-finite one, and a panic unless `0 < confidence < 1`.
 pub fn historical_var<T: RealExt>(
   samples: ArrayView1<T>,
   confidence: T,
@@ -190,8 +189,8 @@ pub(crate) fn loss_moments<T: RealExt>(
   Ok((mean, finite(var, what, "the variance")?.sqrt()))
 }
 
-/// Ascending with NaN last, a total order for `RealExt`, which has no `total_cmp`; built without
-/// branches, since an `if` chain made a sort of 100k samples about four times slower.
+/// Ascending with NaN last, a total order for `RealExt`, which has no `total_cmp`; branch-free: an
+/// `if` chain sorts 100k samples about 4× slower.
 pub(crate) fn ascending<T: RealExt>(a: &T, b: &T) -> Ordering {
   let (a_nan, b_nan) = (a.is_nan(), b.is_nan());
   let less = (a < b) | (!a_nan & b_nan);
