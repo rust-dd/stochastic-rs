@@ -92,12 +92,34 @@ impl MleProblem<'_> {
     let mut sum = 0.0;
     for i in 1..self.sample.len() {
       let t0 = (i - 1) as f64 * self.dt;
-      let d = self
+      let ln_d = self
         .density
-        .density(&**model, self.sample[i - 1], self.sample[i], t0, self.dt);
-      sum -= d.max(1e-30).ln();
+        .ln_density(&**model, self.sample[i - 1], self.sample[i], t0, self.dt);
+      // A density of zero, an infinite one and none at all are no likelihood.
+      if !ln_d.is_finite() {
+        return NO_LIKELIHOOD;
+      }
+      sum -= ln_d;
     }
-    if sum.is_finite() { sum } else { 1e30 }
+    if sum.is_finite() {
+      ranked(sum)
+    } else {
+      NO_LIKELIHOOD
+    }
+  }
+}
+
+/// The objective at a point without a likelihood, above every sum [`ranked`] returns.
+const NO_LIKELIHOOD: f64 = 1e100;
+
+/// `nll` up to `1e97`, which no path's sum reaches, and its logarithmic continuation past it, at
+/// most `4.9e99`: increasing and C¹, so every finite sum ranks below the penalty and none is `∞`.
+fn ranked(nll: f64) -> f64 {
+  const KNEE: f64 = 1e97;
+  if nll <= KNEE {
+    nll
+  } else {
+    KNEE * (1.0 + (nll / KNEE).ln())
   }
 }
 
@@ -160,8 +182,8 @@ fn resolve_fit_outcome(
   (best_param, converged, iterations as usize)
 }
 
-/// L-BFGS-B MLE of `model`, left at the estimate, within its bounds on a path sampled every `dt`;
-/// `Err` below 2 or on non-finite points, panics unless one bound per parameter. Check `converged`.
+/// L-BFGS-B MLE of `model`, left at the estimate, on a path every `dt`; check `converged`. `Err`
+/// below 2 points, on a non-finite one or log-likelihood; panics unless one bound per parameter.
 /// $$
 /// -\sum_{i=1}^{N} \ln p(X_{t_i}\mid X_{t_{i-1}};\theta,\Delta t)
 /// $$
@@ -231,8 +253,13 @@ pub fn fit_mle(
   let mut log_lik = 0.0;
   for i in 1..sample.len() {
     let t0 = (i - 1) as f64 * dt;
-    let d = density.density(model, sample[i - 1], sample[i], t0, dt);
-    log_lik += d.max(1e-30).ln();
+    log_lik += density.ln_density(model, sample[i - 1], sample[i], t0, dt);
+  }
+  // The search's penalty marks a point without a likelihood; an estimate there is no fit.
+  if !log_lik.is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "log-likelihood",
+    });
   }
 
   let k = n_params as f64;
@@ -253,147 +280,4 @@ pub fn fit_mle(
 }
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-  use stochastic_rs_stochastic::diffusion::cir::Cir;
-  use stochastic_rs_stochastic::params::VarianceBoundary;
-
-  use super::*;
-
-  #[test]
-  fn mle_converges_at_initial_brownian_drift_optimum() {
-    struct BrownianDrift {
-      mu: f64,
-    }
-
-    impl DiffusionModel for BrownianDrift {
-      fn num_params(&self) -> usize {
-        1
-      }
-
-      fn params(&self) -> Array1<f64> {
-        ndarray::array![self.mu]
-      }
-
-      fn set_params(&mut self, params: &[f64]) {
-        self.mu = params[0];
-      }
-
-      fn param_names(&self) -> Vec<&str> {
-        vec!["mu"]
-      }
-
-      fn param_bounds(&self) -> Vec<(f64, f64)> {
-        vec![(-10.0, 10.0)]
-      }
-
-      fn drift(&self, _x: f64, _t: f64) -> f64 {
-        self.mu
-      }
-
-      fn diffusion(&self, _x: f64, _t: f64) -> f64 {
-        1.0
-      }
-    }
-
-    let sample = ndarray::array![0.0, 1.0, 0.0];
-    let mut model = BrownianDrift { mu: 0.0 };
-    let result = fit_mle(&mut model, sample.view(), 1.0, DensityApprox::Euler, None).unwrap();
-
-    assert!(result.converged, "The initial drift is already the MLE");
-    assert_eq!(result.iterations, 0);
-    assert_eq!(result.params, ndarray::array![0.0]);
-    assert_eq!(model.mu, 0.0);
-  }
-
-  #[test]
-  fn bounded_mle_cost_rejects_negative_sigma_mirror_minimum() {
-    let sample = Array1::from_vec(vec![0.1, 0.2, 0.15]);
-    let mut model = Cir::new(
-      1.0,
-      0.1,
-      3.0,
-      3,
-      None,
-      None,
-      VarianceBoundary::Floor,
-      Deterministic::new(0),
-    );
-    let problem = MleProblem {
-      model: Mutex::new(&mut model),
-      sample: sample.view(),
-      dt: 0.01,
-      density: DensityApprox::Euler,
-      lower: vec![1e-4, 1e-6, 1e-6],
-      upper: vec![50.0, 10.0, 10.0],
-    };
-    let positive = problem.eval_nll(&[1.0, 0.1, 3.0]);
-    let negative = problem.eval_nll(&[1.0, 0.1, -3.0]);
-    let boundary = problem.eval_nll(&[1.0, 0.1, 1e-6]);
-
-    assert_eq!(negative, boundary);
-    assert!(negative > positive);
-  }
-
-  #[test]
-  fn bounded_mle_gradient_uses_the_feasible_boundary() {
-    let sample = Array1::from_vec(vec![0.1, 0.2, 0.15]);
-    let mut model = Cir::new(
-      1.0,
-      0.1,
-      3.0,
-      3,
-      None,
-      None,
-      VarianceBoundary::Floor,
-      Deterministic::new(0),
-    );
-    let problem = MleProblem {
-      model: Mutex::new(&mut model),
-      sample: sample.view(),
-      dt: 0.01,
-      density: DensityApprox::Euler,
-      lower: vec![1e-4, 1e-6, 1e-6],
-      upper: vec![50.0, 10.0, 10.0],
-    };
-    let outside = problem.gradient(&vec![1.0, 0.1, 13.0]).unwrap();
-    let boundary = problem.gradient(&vec![1.0, 0.1, 10.0]).unwrap();
-
-    // At this upper bound the likelihood improves toward smaller sigma.
-    assert!(boundary[2] > 0.0);
-    assert_eq!(outside, boundary);
-  }
-
-  #[test]
-  fn mle_result_signals_non_convergence_without_error() {
-    let best = vec![0.5];
-    let (params, converged, iterations) =
-      resolve_fit_outcome(best.clone(), TerminationReason::MaxIter, 200);
-
-    assert_eq!(params, best);
-    assert!(!converged, "MaxIter must not be reported as converged");
-    assert_eq!(iterations, 200);
-  }
-
-  #[test]
-  fn mle_result_retains_best_point_on_solver_failure() {
-    let best = vec![1.0, 2.0, 3.0];
-    let (params, converged, iterations) =
-      resolve_fit_outcome(best.clone(), TerminationReason::SolverFailed, 7);
-
-    assert_eq!(params, best);
-    assert!(!converged);
-    assert_eq!(iterations, 7);
-  }
-
-  #[test]
-  fn mle_result_signals_genuine_convergence() {
-    let fitted = vec![1.23, 4.56];
-    let (params, converged, iterations) =
-      resolve_fit_outcome(fitted.clone(), TerminationReason::SolverConverged, 17);
-
-    assert_eq!(params, fitted);
-    assert!(converged);
-    assert_eq!(iterations, 17);
-  }
-}
+mod tests;

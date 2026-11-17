@@ -2,13 +2,23 @@ use std::f64::consts::PI;
 
 use super::DiffusionModel;
 
-/// Gaussian probability density function.
+/// The normal density; NaN at a variance not above zero.
 pub(super) fn gaussian_pdf(x: f64, mean: f64, var: f64) -> f64 {
-  if var <= 0.0 {
-    return 1e-30;
+  if var.is_nan() || var <= 0.0 {
+    return f64::NAN;
   }
   let z = (x - mean) / var.sqrt();
   (-0.5 * z * z).exp() / (2.0 * PI * var).sqrt()
+}
+
+/// The log of the normal density, finite in tails where the density underflows; NaN as
+/// [`gaussian_pdf`].
+pub(super) fn gaussian_ln_pdf(x: f64, mean: f64, var: f64) -> f64 {
+  if var.is_nan() || var <= 0.0 {
+    return f64::NAN;
+  }
+  let z = (x - mean) / var.sqrt();
+  -0.5 * z * z - 0.5 * (2.0 * PI * var).ln()
 }
 
 /// Transition-density approximation method.
@@ -45,43 +55,79 @@ pub enum DensityApprox {
   AitSahalia,
 }
 
+const NO_EXACT: &str = "Exact density not implemented for this model";
+
 impl DensityApprox {
-  /// Evaluate the transition density p(x0 -> xt | t0, dt) under the given model.
+  /// The transition density `p(xt | x0)` over `dt` from `t0`: `0.0` outside the method's support,
+  /// NaN where it has none, as at a variance not above zero; panics if `model` lacks the method.
   pub fn density(&self, model: &dyn DiffusionModel, x0: f64, xt: f64, t0: f64, dt: f64) -> f64 {
+    if let Some((mean, var)) = self.normal_moments(model, x0, t0, dt) {
+      return gaussian_pdf(xt, mean, var);
+    }
     match self {
-      DensityApprox::Exact => Self::density_exact(model, x0, xt, t0, dt),
-      DensityApprox::Euler => Self::density_euler(model, x0, xt, t0, dt),
-      DensityApprox::Ozaki => Self::density_ozaki(model, x0, xt, t0, dt),
-      DensityApprox::ShojiOzaki => Self::density_shoji_ozaki(model, x0, xt, t0, dt),
-      DensityApprox::Elerian => Self::density_elerian(model, x0, xt, t0, dt),
-      DensityApprox::Kessler => Self::density_kessler(model, x0, xt, t0, dt),
+      DensityApprox::Exact => model.exact_density(x0, xt, t0, dt).expect(NO_EXACT),
       DensityApprox::AitSahalia => Self::density_ait_sahalia(model, x0, xt, t0, dt),
+      DensityApprox::Elerian => match Self::ln_density_milstein(model, x0, xt, t0, dt) {
+        Some(ln_density) => ln_density.exp(),
+        None => DensityApprox::Euler.density(model, x0, xt, t0, dt),
+      },
+      DensityApprox::Euler
+      | DensityApprox::Ozaki
+      | DensityApprox::ShojiOzaki
+      | DensityApprox::Kessler => unreachable!("a normal method returned above"),
     }
   }
 
-  fn density_exact(model: &dyn DiffusionModel, x0: f64, xt: f64, t0: f64, dt: f64) -> f64 {
-    model
-      .exact_density(x0, xt, t0, dt)
-      .expect("Exact density not implemented for this model")
+  /// The log of [`density`](Self::density), formed in logs for a normal law and for Elerian's, so
+  /// finite where the density underflows; `−∞` outside the support, NaN and panics as `density`.
+  pub fn ln_density(&self, model: &dyn DiffusionModel, x0: f64, xt: f64, t0: f64, dt: f64) -> f64 {
+    if let Some((mean, var)) = self.normal_moments(model, x0, t0, dt) {
+      return gaussian_ln_pdf(xt, mean, var);
+    }
+    match self {
+      DensityApprox::Exact => model.exact_ln_density(x0, xt, t0, dt).expect(NO_EXACT),
+      DensityApprox::AitSahalia => Self::density_ait_sahalia(model, x0, xt, t0, dt).ln(),
+      DensityApprox::Elerian => Self::ln_density_milstein(model, x0, xt, t0, dt)
+        .unwrap_or_else(|| DensityApprox::Euler.ln_density(model, x0, xt, t0, dt)),
+      DensityApprox::Euler
+      | DensityApprox::Ozaki
+      | DensityApprox::ShojiOzaki
+      | DensityApprox::Kessler => unreachable!("a normal method returned above"),
+    }
+  }
+
+  /// The mean and variance of the four methods whose transition law is a normal.
+  fn normal_moments(
+    &self,
+    model: &dyn DiffusionModel,
+    x0: f64,
+    t0: f64,
+    dt: f64,
+  ) -> Option<(f64, f64)> {
+    match self {
+      DensityApprox::Euler => Some(Self::moments_euler(model, x0, t0, dt)),
+      DensityApprox::Ozaki => Some(Self::moments_ozaki(model, x0, t0, dt)),
+      DensityApprox::ShojiOzaki => Some(Self::moments_shoji_ozaki(model, x0, t0, dt)),
+      DensityApprox::Kessler => Some(Self::moments_kessler(model, x0, t0, dt)),
+      DensityApprox::Exact | DensityApprox::Elerian | DensityApprox::AitSahalia => None,
+    }
   }
 
   /// Ref: Maruyama (1955)
-  fn density_euler(model: &dyn DiffusionModel, x0: f64, xt: f64, t0: f64, dt: f64) -> f64 {
+  fn moments_euler(model: &dyn DiffusionModel, x0: f64, t0: f64, dt: f64) -> (f64, f64) {
     let mu = model.drift(x0, t0);
     let sig = model.diffusion(x0, t0);
-    let mean = x0 + mu * dt;
-    let var = sig * sig * dt;
-    gaussian_pdf(xt, mean, var)
+    (x0 + mu * dt, sig * sig * dt)
   }
 
   /// Ref: Ozaki (1992)
-  fn density_ozaki(model: &dyn DiffusionModel, x0: f64, xt: f64, t0: f64, dt: f64) -> f64 {
+  fn moments_ozaki(model: &dyn DiffusionModel, x0: f64, t0: f64, dt: f64) -> (f64, f64) {
     let mu = model.drift(x0, t0);
     let sig = model.diffusion(x0, t0);
     let mu_x = model.drift_x(x0, t0);
 
     if mu_x.abs() < 1e-10 {
-      return Self::density_euler(model, x0, xt, t0, dt);
+      return Self::moments_euler(model, x0, t0, dt);
     }
 
     let mt = x0 + mu * ((mu_x * dt).exp() - 1.0) / mu_x;
@@ -105,11 +151,11 @@ impl DensityApprox {
       sig * sig * dt
     };
 
-    gaussian_pdf(xt, mt, vt_sq)
+    (mt, vt_sq)
   }
 
   /// Ref: Shoji & Ozaki (1998)
-  fn density_shoji_ozaki(model: &dyn DiffusionModel, x0: f64, xt: f64, t0: f64, dt: f64) -> f64 {
+  fn moments_shoji_ozaki(model: &dyn DiffusionModel, x0: f64, t0: f64, dt: f64) -> (f64, f64) {
     let mu = model.drift(x0, t0);
     let sig = model.diffusion(x0, t0);
     let mu_x = model.drift_x(x0, t0);
@@ -123,50 +169,53 @@ impl DensityApprox {
       let exp_lt = (lt * dt).exp();
       let b2 = sig * sig * ((2.0 * lt * dt).exp() - 1.0) / (2.0 * lt);
       let a = x0 + mu / lt * (exp_lt - 1.0) + mt / (lt * lt) * (exp_lt - 1.0 - lt * dt);
-      gaussian_pdf(xt, a, b2)
+      (a, b2)
     } else {
       let b2 = sig * sig * dt;
       let a = x0 + mu * dt + mt * dt * dt / 2.0;
-      gaussian_pdf(xt, a, b2)
+      (a, b2)
     }
   }
 
-  /// Ref: Elerian, Chib & Shephard (2001)
-  fn density_elerian(model: &dyn DiffusionModel, x0: f64, xt: f64, t0: f64, dt: f64) -> f64 {
+  /// The Milstein step's log-density, `−∞` below its support, and `None` where the diffusion is
+  /// flat in `x` and the step Euler's; in logs, as its `cosh` overflows from `√(cz) ≈ 710`.
+  fn ln_density_milstein(
+    model: &dyn DiffusionModel,
+    x0: f64,
+    xt: f64,
+    t0: f64,
+    dt: f64,
+  ) -> Option<f64> {
     let mu = model.drift(x0, t0);
     let sig = model.diffusion(x0, t0);
     let sig_x = model.diffusion_x(x0, t0);
 
     if sig_x.abs() < 1e-10 {
-      return Self::density_euler(model, x0, xt, t0, dt);
+      return None;
     }
 
     let a_coeff = sig * sig_x * dt * 0.5;
     let b_coeff = -0.5 * sig / sig_x + x0 + mu * dt - a_coeff;
 
     if a_coeff.abs() < 1e-30 {
-      return Self::density_euler(model, x0, xt, t0, dt);
+      return None;
     }
 
     let z = (xt - b_coeff) / a_coeff;
     let c = 1.0 / (sig_x * sig_x * dt);
 
     if z <= 0.0 {
-      return 1e-30;
+      return Some(f64::NEG_INFINITY);
     }
 
-    let val = z.powf(-0.5) * (c * z).sqrt().cosh() * (-0.5 * (c + z)).exp()
-      / (2.0 * a_coeff.abs() * (2.0 * PI).sqrt());
-
-    if val.is_finite() && val > 0.0 {
-      val
-    } else {
-      1e-30
-    }
+    // `cosh(√(cz)) e^{−(c+z)/2} = ½ e^{−(√c − √z)²/2} (1 + e^{−2√(cz)})`.
+    let gap = c.sqrt() - z.sqrt();
+    let ln_kernel = -0.5 * gap * gap + (-2.0 * (c * z).sqrt()).exp().ln_1p();
+    Some(-0.5 * z.ln() + ln_kernel - (4.0 * a_coeff.abs() * (2.0 * PI).sqrt()).ln())
   }
 
   /// Ref: Kessler (1997)
-  fn density_kessler(model: &dyn DiffusionModel, x0: f64, xt: f64, t0: f64, dt: f64) -> f64 {
+  fn moments_kessler(model: &dyn DiffusionModel, x0: f64, t0: f64, dt: f64) -> (f64, f64) {
     let mu = model.drift(x0, t0);
     let sig = model.diffusion(x0, t0);
     let mu_x = model.drift_x(x0, t0);
@@ -185,14 +234,7 @@ impl DensityApprox {
         + sig2 * (sig_xx * x0 + 2.0 * sig_x + term + sig * sig_xx))
         * d;
 
-    let v = (e_x2 - e_x * e_x).abs();
-    let std = v.sqrt();
-    if std < 1e-30 {
-      return 1e-30;
-    }
-
-    let z = (xt - e_x) / std;
-    (-0.5 * z * z).exp() / ((2.0 * PI).sqrt() * std)
+    (e_x, (e_x2 - e_x * e_x).abs())
   }
 
   /// Ref: Aït-Sahalia (2002)

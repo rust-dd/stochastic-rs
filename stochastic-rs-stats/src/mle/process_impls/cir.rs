@@ -1,7 +1,6 @@
 use ndarray::Array1;
 use ndarray::array;
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_distributions::special::ln_bessel_ie;
 use stochastic_rs_stochastic::diffusion::cev::Cev;
 use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::diffusion::ckls::Ckls;
@@ -46,26 +45,7 @@ impl<S: SeedExt> DiffusionModel for Cir<f64, S> {
   }
 
   fn exact_density(&self, x0: f64, xt: f64, _t0: f64, dt: f64) -> Option<f64> {
-    let sig2 = self.sigma * self.sigma;
-    let e = (-self.theta * dt).exp();
-    let c = 2.0 * self.theta / (sig2 * (1.0 - e));
-    let q = 2.0 * self.theta * self.mu / sig2 - 1.0;
-    let u = c * x0.abs() * e;
-    let v = c * xt.abs();
-
-    if u < 1e-30 || v < 1e-30 {
-      return Some(1e-30);
-    }
-
-    let gap = u.sqrt() - v.sqrt();
-    let log_density =
-      c.ln() - gap * gap + 0.5 * q * (v / u).ln() + ln_bessel_ie(q, 2.0 * (u * v).sqrt());
-    let density = log_density.exp();
-    Some(if density.is_finite() && density > 0.0 {
-      density
-    } else {
-      1e-30
-    })
+    Some(self.transition_pdf(dt, x0, xt))
   }
 }
 

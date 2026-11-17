@@ -12,7 +12,6 @@ pub use error::StatsError;
 
 pub mod acf;
 pub mod bayesian_diffusion;
-pub mod cir;
 pub mod critical_values;
 pub mod distfit;
 pub mod econometrics;

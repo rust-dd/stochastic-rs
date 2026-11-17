@@ -1,5 +1,5 @@
-//! Two-step GMM of the CIR process on its exact transition moments: four conditions for three
-//! parameters, stage 1 weighted by the identity and stage 2 by `Ŝ⁻¹`, and Hansen's `J ~ χ²₁`.
+//! Two-step GMM of CIR on its exact transition moments, four for three parameters: stage 1 weighs
+//! them by the identity on the path over its mean, stage 2 by `Ŝ⁻¹`, and `J ~ χ²₁` is Hansen's.
 //!
 //! $$
 //! dX_t = \theta(\mu - X_t)\,dt + \sigma\sqrt{X_t}\,dW_t,\qquad a = e^{-\theta\Delta},\qquad
@@ -26,12 +26,15 @@ use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use crate::StatsError;
 use crate::optim::nelder_mead;
+use crate::qmle::Ar1;
 use crate::qmle::Carrier;
 use crate::qmle::DiffusionKind;
 use crate::qmle::Transition;
 use crate::qmle::ar1_start;
 use crate::qmle::assert_dt;
 use crate::qmle::diffusion_path;
+use crate::qmle::in_data_units;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
 /// The two-step GMM fit of the CIR process, in [`Cir`]'s names: `theta` the speed, `mu` the level.
@@ -64,11 +67,14 @@ impl GmmCirFit {
 }
 
 /// Two-step GMM of CIR every `dt`; `Err` below 5 points, a negative or non-finite one, a constant
-/// path, a singular `Ŝ` or a start, `Ŝ` or `J` not finite; panics unless `0 < dt < ∞`.
+/// or exact-fit path, singular `Ŝ`, non-finite start, `Ŝ`, `J` or fit; panics unless `0 < dt < ∞`.
 pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCirFit, StatsError> {
   assert_dt(dt);
-  // `Ŝ` sums one outer product per transition, so its four moments need four transitions.
-  let x = diffusion_path(series, DiffusionKind::Cir, 5)?;
+  // `Ŝ` sums one outer product per transition, so its four moments need four transitions. At unit
+  // scale no moment leaves the double range, whatever the path's unit.
+  let (x, unit) = unit_scaled(diffusion_path(series, DiffusionKind::Cir, 5)?);
+  // On an exact fit `σ̂` is where the simplex stops on its way to zero, which moves with the scale.
+  Ar1::of(&x, DiffusionKind::Cir)?;
   let nobs = x.len();
 
   // The `T − 1` moment rows `g_t` at `(θ, μ, σ)` and their column mean.
@@ -105,23 +111,21 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
     q
   };
 
-  let start = ar1_start(
-    &x,
-    dt,
-    DiffusionKind::Cir,
-    Carrier::new(&x, DiffusionKind::Cir)?,
-  )?;
+  let carrier = Carrier::new(&x, DiffusionKind::Cir)?;
+  let start = ar1_start(&x, dt, DiffusionKind::Cir, carrier)?;
 
-  let identity = {
+  // The identity on the moments of the path over its mean, of degrees 1, 2, 2 and 3 in the path:
+  // on the path's own it would weigh them by the data's unit.
+  let stage1 = {
     let mut w = [[0.0; 4]; 4];
-    for (i, row) in w.iter_mut().enumerate() {
-      row[i] = 1.0;
+    for (i, degree) in [1, 2, 2, 3].into_iter().enumerate() {
+      w[i][i] = carrier.mean().powi(-2 * degree);
     }
     w
   };
 
   let (p1, it1, conv1) = nelder_mead(start, 2000, |p| {
-    objective(p[0].exp(), p[1].exp(), p[2].exp(), &identity)
+    objective(p[0].exp(), p[1].exp(), p[2].exp(), &stage1)
   });
   let (theta1, mu1, s1) = (p1[0].exp(), p1[1].exp(), p1[2].exp());
 
@@ -147,6 +151,7 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
   let (theta, mu, sigma) = (p2[0].exp(), p2[1].exp(), p2[2].exp());
 
   let (j_stat, j_pvalue) = j_test(rows1.len(), objective(theta, mu, sigma, &w2))?;
+  let [theta, mu, sigma] = in_data_units(DiffusionKind::Cir, [theta, mu, sigma], unit)?;
 
   Ok(GmmCirFit {
     theta,
@@ -326,10 +331,10 @@ mod tests {
     );
   }
 
-  /// A path alternating between two values has two distinct moment rows, so `Ŝ` has rank 2.
+  /// A path of zeros with one spike has three distinct moment rows, so `Ŝ` has rank 3 at most.
   #[test]
   fn a_singular_weighting_matrix_is_an_err() {
-    let s = Array1::from_iter((0..100).map(|t| if t % 2 == 0 { 0.04 } else { 0.05 }));
+    let s = Array1::from_iter((0..100).map(|t| if t == 50 { 1.0 } else { 0.0 }));
     assert_eq!(
       fit_cir_gmm(s.view(), 1.0 / 252.0).unwrap_err(),
       StatsError::Singular("GMM weighting matrix")
@@ -343,12 +348,12 @@ mod tests {
     assert!(fit_cir_gmm(path.view(), 1.0 / 252.0).is_ok());
   }
 
-  /// At 1e80 the moment `u X_t` is near 1e238, whose square overflows `Ŝ`.
   #[test]
   fn a_non_finite_weighting_matrix_is_a_numerical_error() {
-    let path = simulate_cir(2.0, 0.04, 0.25, 0.04, 1.0 / 252.0, 200, 7).mapv(|v| v * 1e80);
+    let mut s_hat = [[1.0; 4]; 4];
+    s_hat[1][2] = f64::INFINITY;
     assert_eq!(
-      fit_cir_gmm(path.view(), 1.0 / 252.0).unwrap_err(),
+      weighting_matrix(&s_hat).unwrap_err(),
       StatsError::Numerical {
         stage: "GMM weighting matrix"
       }
@@ -393,19 +398,6 @@ mod tests {
     );
   }
 
-  /// The mean, the autocorrelation and the speed are finite, but the residuals near 1.1e154
-  /// square past the largest double, so `σ₀` is `∞`.
-  #[test]
-  fn gmm_cir_answers_an_overflowing_sigma_start_with_a_numerical_error() {
-    let s = Array1::from(vec![1.2e154, 0.0, 1.2e154, 0.0, 1.2e154]);
-    assert_eq!(
-      fit_cir_gmm(s.view(), 1.0 / 252.0).unwrap_err(),
-      StatsError::Numerical {
-        stage: "starting point"
-      }
-    );
-  }
-
   #[test]
   fn gmm_cir_rejects_a_negative_observation() {
     let s = Array1::from(vec![0.04, 0.05, 0.045, -0.01, 0.04, 0.05]);
@@ -415,18 +407,6 @@ mod tests {
         index: 3,
         value: -0.01,
         constraint: "finite and >= 0"
-      }
-    );
-  }
-
-  /// The sample mean of these finite points overflows, so the moment start is not finite.
-  #[test]
-  fn gmm_cir_answers_an_overflowing_start_with_a_numerical_error() {
-    let s = Array1::from(vec![1e308, 1.5e308, 1e308, 0.5e308, 1.2e308]);
-    assert_eq!(
-      fit_cir_gmm(s.view(), 1.0 / 252.0).unwrap_err(),
-      StatsError::Numerical {
-        stage: "starting point"
       }
     );
   }
