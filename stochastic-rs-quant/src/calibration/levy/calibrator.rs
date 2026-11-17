@@ -30,6 +30,7 @@ pub struct LevyCalibrator {
   pub quotes: Vec<OptionQuote>,
   /// `None` starts from the model's default parameters.
   pub start: Option<LevyParams>,
+  /// Levenberg–Marquardt knobs; `regularization` pulls `LevyParams::values` in the model's order.
   pub options: CalibrationOptions,
 }
 
@@ -110,8 +111,8 @@ impl crate::traits::Calibrator for LevyCalibrator {
   type Output = Calibrated<LevyParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`; `InvalidInput` unless the one used is of this model and finite,
-  /// `DimensionMismatch` unless it has the model's parameter count.
+  /// A start replaces `self.start`; `InvalidInput` unless it is this model's and finite,
+  /// `DimensionMismatch` for a wrong count, `Optimizer`, and the `CalibrationOptions` errors.
   fn calibrate(&self, initial: Option<LevyParams>) -> Result<Calibrated<LevyParams>, QuantError> {
     validate_quotes(&self.quotes)?;
     let start = initial.or_else(|| self.start.clone());
@@ -120,6 +121,7 @@ impl crate::traits::Calibrator for LevyCalibrator {
     }
     let mut values = start.map_or_else(|| default_params(self.model_type), |start| start.values);
     project_params(self.model_type, &mut values);
+    let lm = self.options.lm(false, param_count(self.model_type))?;
     let problem = LevyProblem {
       calibrator: self,
       params: LevyParams {
@@ -129,19 +131,18 @@ impl crate::traits::Calibrator for LevyCalibrator {
       market: self.quotes.iter().map(|quote| quote.price).collect(),
       trail: Trail::new(),
     };
-    let (fitted, report) = minimize(problem, self.options.lm(false));
+    let (fitted, report) = minimize(problem, lm);
     let model = fitted.compute_model_prices();
-    Ok(report.calibrated(
+    report.calibrated(
       fitted.params,
       &fitted.market,
       &model,
       self.options.loss_metrics,
       fitted.trail.into_entries(),
-    ))
+    )
   }
 }
 
-/// One fit: the current point, the quotes' prices and the trail.
 struct LevyProblem<'a> {
   calibrator: &'a LevyCalibrator,
   params: LevyParams,

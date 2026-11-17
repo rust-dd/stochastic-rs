@@ -208,14 +208,8 @@ pub struct RBergomiParams {
 }
 
 impl RBergomiParams {
-  /// Seed from a fractional OU estimate.
-  ///
-  /// Bridges [`stochastic_rs_stats::fou::FouFit`] (Hurst,
-  /// sigma, mu, theta) into an `RBergomiParams` initial guess. Only the
-  /// Hurst exponent transfers directly; `rho` defaults to `-0.7`, `eta` is
-  /// taken as the FOU `sigma`, and `xi0` is filled with a flat constant
-  /// derived from `mu` (long-run variance proxy). Use as a starting point for
-  /// the Levenberg-Marquardt solver.
+  /// A start for the projected Adam fit from a fractional-OU fit: the Hurst exponent transfers,
+  /// `eta` is `|sigma|`, `xi0` a flat `|mu|` (a long-run variance proxy) and `rho` is `-0.7`.
   pub fn seed_from_fou(fou: stochastic_rs_stats::fou::FouFit) -> Self {
     Self {
       hurst: fou.hurst.clamp(H_MIN, H_MAX),
@@ -334,8 +328,6 @@ pub struct RBergomiCalibrationConfig {
   pub steps_per_year: usize,
   /// Number of exponentials in mSOE kernel approximation.
   pub msoe_terms: usize,
-  /// Max number of optimizer iterations.
-  pub max_iters: usize,
   /// Base learning rate for projected Adam.
   pub learning_rate: f64,
   /// Relative finite-difference bump for numeric gradient.
@@ -360,7 +352,6 @@ impl Default for RBergomiCalibrationConfig {
       paths: 1_024,
       steps_per_year: 128,
       msoe_terms: 12,
-      max_iters: 60,
       learning_rate: 0.05,
       finite_diff_eps: 1e-3,
       adam_beta1: 0.9,
@@ -371,14 +362,4 @@ impl Default for RBergomiCalibrationConfig {
       improvement_tol: 1e-6,
     }
   }
-}
-
-#[derive(Clone, Debug)]
-pub struct RBergomiCalibrationHistory {
-  pub iteration: usize,
-  pub params: RBergomiParams,
-  /// Pairs of `(maturity, W1)` for this iteration.
-  pub maturity_losses: Vec<(f64, f64)>,
-  /// Average Wasserstein loss across maturities.
-  pub loss: f64,
 }

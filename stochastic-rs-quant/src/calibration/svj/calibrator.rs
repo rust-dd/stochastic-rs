@@ -24,6 +24,7 @@ pub struct SvjCalibrator {
   pub quotes: Vec<OptionQuote>,
   /// `None` starts from (0.04, 1.5, 0.04, 0.5, −0.5, 0.5, −0.05, 0.1), projected.
   pub start: Option<SvjParams>,
+  /// Levenberg–Marquardt knobs; `regularization` pulls `(v0, κ, θ, σ_v, ρ, λ, μ_J, σ_J)`.
   pub options: CalibrationOptions,
 }
 
@@ -76,22 +77,24 @@ impl crate::traits::Calibrator for SvjCalibrator {
   type Output = Calibrated<SvjParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`; `InvalidInput` unless the one used passes `BatesFourier::new`.
+  /// A start replaces `self.start`; `InvalidInput` unless the one used passes `BatesFourier::new`,
+  /// `Optimizer` when the fit cannot evaluate it, and the `CalibrationOptions` errors.
   fn calibrate(&self, initial: Option<SvjParams>) -> Result<Calibrated<SvjParams>, QuantError> {
     validate_quotes(&self.quotes)?;
     let start = initial.or(self.start).unwrap_or_else(Self::fallback_params);
     if let Some(reason) = start.violation() {
       return Err(QuantError::invalid("start", reason));
     }
-    let (fitted, report) = minimize(SvjProblem::new(self, start), self.options.lm(true));
+    let lm = self.options.lm(true, 8)?;
+    let (fitted, report) = minimize(SvjProblem::new(self, start), lm);
     let params = fitted.effective_params();
     let model = fitted.compute_model_prices_for(&params);
-    Ok(report.calibrated(
+    report.calibrated(
       params,
       &fitted.market,
       &model,
       self.options.loss_metrics,
       fitted.trail.into_entries(),
-    ))
+    )
   }
 }

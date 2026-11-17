@@ -60,31 +60,26 @@ impl FourierModelExt for HestonFourier {
   /// Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826–848, Table 11 for `c1`; `c2` is
   /// `−Re ∂²ᵤ ln chf(t, u)` at `u = 0` of this chf, grouped by powers of `e^{−κt}`.
   fn cumulants(&self, t: f64) -> Cumulants {
-    let HestonParams {
-      v0,
-      kappa,
-      theta,
-      sigma,
-      rho,
-    } = self.params;
-    let ekt = (-kappa * t).exp();
-    let c1 = (1.0 - ekt) * (theta - v0) / (2.0 * kappa) - 0.5 * theta * t;
+    // Each field is read where it is used: copying all five up front evicts the hoisted constants.
+    let p = &self.params;
+    let ekt = (-p.kappa * t).exp();
+    let c1 = (1.0 - ekt) * (p.theta - p.v0) / (2.0 * p.kappa) - 0.5 * p.theta * t;
 
-    let kappa2 = kappa * kappa;
-    let kappa3 = kappa2 * kappa;
-    let sigma2 = sigma * sigma;
-    let rs = rho * sigma;
-    let n0 = theta
+    let kappa2 = p.kappa * p.kappa;
+    let kappa3 = kappa2 * p.kappa;
+    let sigma2 = p.sigma * p.sigma;
+    let rs = p.rho * p.sigma;
+    let n0 = p.theta
       * (8.0 * kappa3 * t - 8.0 * kappa2 * rs * t - 8.0 * kappa2
-        + 16.0 * kappa * rs
-        + 2.0 * kappa * sigma2 * t
+        + 16.0 * p.kappa * rs
+        + 2.0 * p.kappa * sigma2 * t
         - 5.0 * sigma2)
-      + v0 * 2.0 * (4.0 * kappa2 - 4.0 * kappa * rs + sigma2);
-    let n1 = theta
+      + p.v0 * 2.0 * (4.0 * kappa2 - 4.0 * p.kappa * rs + sigma2);
+    let n1 = p.theta
       * -4.0
-      * (2.0 * kappa2 * rs * t - 2.0 * kappa2 + 4.0 * kappa * rs - kappa * sigma2 * t - sigma2)
-      + v0 * 4.0 * kappa * (2.0 * kappa * rs * t - 2.0 * kappa + 2.0 * rs - sigma2 * t);
-    let n2 = sigma2 * (theta - 2.0 * v0);
+      * (2.0 * kappa2 * rs * t - 2.0 * kappa2 + 4.0 * p.kappa * rs - p.kappa * sigma2 * t - sigma2)
+      + p.v0 * 4.0 * p.kappa * (2.0 * p.kappa * rs * t - 2.0 * p.kappa + 2.0 * rs - sigma2 * t);
+    let n2 = sigma2 * (p.theta - 2.0 * p.v0);
     let c2 = (n0 + n1 * ekt + n2 * ekt * ekt) / (8.0 * kappa3);
 
     Cumulants { c1, c2, c4: None }

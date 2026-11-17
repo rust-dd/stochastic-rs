@@ -19,6 +19,8 @@ pub struct DoubleHestonCalibrator {
   /// `None` starts from a fast factor (0.02, 3, 0.02, 0.3, −0.6) and a slow one
   /// (0.02, 0.5, 0.02, 0.15, −0.3), projected.
   pub start: Option<DoubleHestonParams>,
+  /// Levenberg–Marquardt knobs; `regularization` pulls the first factor's `(v0, κ, θ, σ, ρ)`, then
+  /// the second's.
   pub options: CalibrationOptions,
 }
 
@@ -88,8 +90,8 @@ impl crate::traits::Calibrator for DoubleHestonCalibrator {
   type Output = Calibrated<DoubleHestonParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`; `InvalidInput` unless both of its factors pass
-  /// `HestonParams::new`.
+  /// A start replaces `self.start`; `InvalidInput` unless its factors pass `HestonParams::new`,
+  /// `Optimizer` when the fit cannot evaluate it, and the `CalibrationOptions` errors.
   fn calibrate(
     &self,
     initial: Option<DoubleHestonParams>,
@@ -99,15 +101,16 @@ impl crate::traits::Calibrator for DoubleHestonCalibrator {
     if let Some(reason) = start_violation(&start) {
       return Err(QuantError::invalid("start", reason));
     }
-    let (fitted, report) = minimize(DoubleHestonProblem::new(self, start), self.options.lm(true));
+    let lm = self.options.lm(true, 10)?;
+    let (fitted, report) = minimize(DoubleHestonProblem::new(self, start), lm);
     let params = fitted.effective_params();
     let model = fitted.compute_model_prices_for(&params);
-    Ok(report.calibrated(
+    report.calibrated(
       params,
       &fitted.market,
       &model,
       self.options.loss_metrics,
       fitted.trail.into_entries(),
-    ))
+    )
   }
 }

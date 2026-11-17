@@ -1,11 +1,11 @@
 use std::f64::consts::FRAC_1_PI;
 
 use num_complex::Complex64;
-use stochastic_rs_distributions::RealExt;
 
 use super::EPS;
 use super::types::LevyModelType;
 use crate::OptionType;
+use crate::calibration::clip_negative;
 use crate::pricing::cf_quadrature::integrate_to_convergence;
 
 /// Compute the Lévy characteristic exponent $\psi(\xi)$ such that
@@ -134,7 +134,7 @@ pub(super) fn fourier_call_price(
   let disc_q = (-q * t).exp();
 
   let call = s * disc_q - (s * k).sqrt() * disc_r * FRAC_1_PI * integral;
-  call.max_or_nan(0.0)
+  clip_negative(call)
 }
 
 /// Price a European option (call or put) via put-call parity from the Fourier call price.
@@ -151,7 +151,7 @@ pub(super) fn fourier_option_price(
   let call = fourier_call_price(model_type, params, s, k, r, q, t);
   match option_type {
     OptionType::Call => call,
-    OptionType::Put => (call - s * (-q * t).exp() + k * (-r * t).exp()).max_or_nan(0.0),
+    OptionType::Put => clip_negative(call - s * (-q * t).exp() + k * (-r * t).exp()),
   }
 }
 

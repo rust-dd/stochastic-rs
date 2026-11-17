@@ -19,6 +19,7 @@ pub struct HkdeCalibrator {
   pub quotes: Vec<OptionQuote>,
   /// `None` starts from (0.04, 1.5, 0.04, 0.3, −0.5, 0.5, 0.4, 10, 5), projected.
   pub start: Option<HkdeParams>,
+  /// Levenberg–Marquardt knobs; `regularization` pulls `(v0, κ, θ, σ_v, ρ, λ, p, η₁, η₂)`.
   pub options: CalibrationOptions,
 }
 
@@ -72,23 +73,24 @@ impl crate::traits::Calibrator for HkdeCalibrator {
   type Output = Calibrated<HkdeParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`; `InvalidInput` unless the one used passes `HkdeFourier::new`,
-  /// and `InvalidQuote` for a quote that no implied volatility at the carry `r − q` can weight.
+  /// A start replaces `self.start`; `InvalidInput` unless it passes `HkdeFourier::new`,
+  /// `InvalidQuote` for a quote no vol at `r − q` weights, `Optimizer`, the options' errors.
   fn calibrate(&self, initial: Option<HkdeParams>) -> Result<Calibrated<HkdeParams>, QuantError> {
     validate_quotes(&self.quotes)?;
     let start = initial.or(self.start).unwrap_or_else(Self::fallback_params);
     if let Some(reason) = start.violation() {
       return Err(QuantError::invalid("start", reason));
     }
-    let (fitted, report) = minimize(HkdeProblem::new(self, start)?, self.options.lm(true));
+    let lm = self.options.lm(true, 9)?;
+    let (fitted, report) = minimize(HkdeProblem::new(self, start)?, lm);
     let params = fitted.effective_params();
     let model = fitted.compute_model_prices_for(&params);
-    Ok(report.calibrated(
+    report.calibrated(
       params,
       &fitted.market,
       &model,
       self.options.loss_metrics,
       fitted.trail.into_entries(),
-    ))
+    )
   }
 }

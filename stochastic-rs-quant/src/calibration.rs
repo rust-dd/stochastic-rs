@@ -20,6 +20,7 @@ use ndarray::Array1;
 use stochastic_rs_distributions::RealExt;
 
 use crate::CalibrationLossScore;
+use crate::QuantError;
 
 /// Preserves the existing sample-standard-deviation stopping rule for simplex fits.
 pub(crate) struct SimplexStandardDeviation {
@@ -131,10 +132,11 @@ pub(crate) fn nelder_mead_fit<C, P>(
   options: &CalibrationOptions,
   default_max_iterations: usize,
   price: impl Fn(&[f64]) -> (P, Vec<f64>, Vec<f64>),
-) -> Calibrated<P>
+) -> Result<Calibrated<P>, QuantError>
 where
   C: CostFunction<Param = Vec<f64>, Output = f64, Error = Infallible>,
 {
+  options.check(&[Knob::Patience])?;
   let run = run_nelder_mead(
     cost,
     simplex,
@@ -154,9 +156,12 @@ where
     })
     .collect();
   let (params, market, model) = price(&run.best);
-  Calibrated::repriced(params, &market, &model, options.loss_metrics, run.converged)
-    .with_iterations(run.iterations as usize)
-    .with_history(history)
+  let fit = Calibrated::repriced(params, &market, &model, options.loss_metrics, run.converged);
+  Ok(
+    fit
+      .with_iterations(run.iterations as usize)
+      .with_history(history),
+  )
 }
 
 pub mod bsm;
@@ -187,15 +192,14 @@ pub use bsm::BsmParams;
 pub use calibrated::Calibrated;
 pub use calibrated::CalibrationHistory;
 pub use calibrated::CalibrationOptions;
+pub(crate) use calibrated::Knob;
 pub use cgmysv::CgmysvCalibrator;
 pub use double_heston::DoubleHestonCalibrator;
 pub use double_heston::DoubleHestonParams;
 pub use heston::HestonCalibrator;
 pub use heston::HestonMleSeed;
-pub use heston_stoch_corr::HscmCalibrationResult;
+pub use heston_stoch_corr::HscmCalibrator;
 pub use heston_stoch_corr::HscmParams;
-pub use heston_stoch_corr::MarketOption;
-pub use heston_stoch_corr::calibrate_hscm;
 pub use hkde::HkdeCalibrator;
 pub use hkde::HkdeParams;
 pub use hw_swaption::HullWhiteParams;
@@ -296,6 +300,16 @@ where
   None
 }
 
+/// A finite negative model price clipped to 0; NaN and ±∞ pass through, so the optimiser rejects
+/// the trial instead of reading a price.
+pub(crate) fn clip_negative(price: f64) -> f64 {
+  if price.is_finite() {
+    price.max(0.0)
+  } else {
+    price
+  }
+}
+
 /// Periodic linear extension mapping `x` into `[c, d]`.
 ///
 /// Used to keep optimiser parameters in range without hard clipping.
@@ -323,8 +337,18 @@ mod optimizer_tests {
 
   use basin::CostFunction;
 
+  use super::clip_negative;
   use super::run_nelder_mead;
   use super::sample_standard_deviation;
+
+  #[test]
+  fn a_finite_negative_price_clips_to_zero_and_a_non_finite_one_passes() {
+    assert_eq!(clip_negative(-1e-12), 0.0);
+    assert_eq!(clip_negative(3.5), 3.5);
+    assert!(clip_negative(f64::NAN).is_nan());
+    assert_eq!(clip_negative(f64::INFINITY), f64::INFINITY);
+    assert_eq!(clip_negative(f64::NEG_INFINITY), f64::NEG_INFINITY);
+  }
 
   struct Sphere;
 
@@ -390,7 +414,8 @@ mod optimizer_tests {
     let simplex = vec![vec![2.0], vec![3.0]];
     let fit = super::nelder_mead_fit(Sphere, simplex, &options, 400, |x| {
       (x[0], vec![1.0], vec![1.0 + x[0]])
-    });
+    })
+    .unwrap();
     assert!(fit.history.len() > 1);
     for entry in &fit.history {
       assert_eq!(entry.residuals[0], 1.0 - (1.0 + entry.params));

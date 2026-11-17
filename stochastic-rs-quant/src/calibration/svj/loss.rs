@@ -3,7 +3,6 @@ use std::f64::consts::FRAC_1_PI;
 use ndarray::Array1;
 use ndarray::Array2;
 use num_complex::Complex64;
-use stochastic_rs_distributions::RealExt;
 
 use super::SvjParams;
 use super::calibrator::KAPPA_MIN;
@@ -14,6 +13,7 @@ use super::params::P_MU_J;
 use super::params::P_SIGMA_J;
 use super::params::RHO_BOUND;
 use crate::OptionType;
+use crate::calibration::clip_negative;
 use crate::calibration::integrate_gl_to_convergence;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
@@ -82,10 +82,9 @@ pub(super) fn bates_call_price(p: &SvjParams, s: f64, k: f64, r: f64, q: f64, ta
   let disc_r = (-r * tau).exp();
   let disc_q = (-q * tau).exp();
   let call = 0.5 * (s * disc_q - k * disc_r) + disc_r * FRAC_1_PI * integral;
-  call.max_or_nan(0.0)
+  clip_negative(call)
 }
 
-/// One fit: the current point, the quotes' prices and the trail.
 pub(super) struct SvjProblem<'a> {
   calibrator: &'a SvjCalibrator,
   params: SvjParams,
@@ -118,7 +117,7 @@ impl<'a> SvjProblem<'a> {
         let call = bates_call_price(p, s, k, r, q, tau);
         match quote.option_type {
           OptionType::Call => call,
-          OptionType::Put => (call - s * (-q * tau).exp() + k * (-r * tau).exp()).max_or_nan(0.0),
+          OptionType::Put => clip_negative(call - s * (-q * tau).exp() + k * (-r * tau).exp()),
         }
       })
       .collect()

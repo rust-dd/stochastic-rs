@@ -10,11 +10,25 @@
 //! - Teng, Ehrhardt & Günther (2016)
 //! - Tanaś, R. — <https://github.com/tanasr/HestonStochCorr>
 
+use slsqp::FailStatus;
+use slsqp::StopTols;
+use slsqp::SuccessStatus;
+
+use crate::LossMetric;
+use crate::OptionQuote;
+use crate::OptionType;
 use crate::QuantError;
+use crate::calibration::Calibrated;
+use crate::calibration::CalibrationOptions;
+use crate::calibration::Knob;
+use crate::calibration::quote::assert_spot_and_rates;
+use crate::calibration::quote::check_finite_start;
+use crate::calibration::quote::validate_quotes;
 use crate::pricing::heston_stoch_corr::HestonStochCorrPricer;
+use crate::traits::ToModel;
 
 /// Parameter bounds for HSCM calibration (matches Python repo).
-pub const BOUNDS: [(f64, f64); 9] = [
+pub(crate) const BOUNDS: [(f64, f64); 9] = [
   (0.01, 10.0),  // kappa_v
   (0.001, 1.0),  // theta_v
   (0.01, 2.0),   // sigma_v
@@ -26,17 +40,15 @@ pub const BOUNDS: [(f64, f64); 9] = [
   (-0.99, 0.99), // rho2
 ];
 
-/// Market data for a single option.
-#[derive(Clone, Debug)]
-pub struct MarketOption {
-  pub strike: f64,
-  pub tau: f64,
-  pub price: f64,
-  pub rate: f64,
-}
+/// A mild-skew, short-tenor SPX-style start in `HscmParams` order.
+const DEFAULT_START: [f64; 9] = [2.0, 0.04, 0.3, 0.04, 5.0, -0.5, 0.2, -0.7, 0.3];
+
+const NAMES: [&str; 9] = [
+  "kappa_v", "theta_v", "sigma_v", "v0", "kappa_r", "mu_r", "sigma_r", "rho0", "rho2",
+];
 
 /// Calibrated parameter set for the Heston-stochastic-correlation model.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct HscmParams {
   pub kappa_v: f64,
   pub theta_v: f64,
@@ -49,80 +61,9 @@ pub struct HscmParams {
   pub rho2: f64,
 }
 
-/// Calibrated HSCM parameters with the fit's RMSE, MAE and SLSQP status.
-#[derive(Clone, Debug)]
-pub struct HscmCalibrationResult {
-  pub kappa_v: f64,
-  pub theta_v: f64,
-  pub sigma_v: f64,
-  pub v0: f64,
-  pub kappa_r: f64,
-  pub mu_r: f64,
-  pub sigma_r: f64,
-  pub rho0: f64,
-  pub rho2: f64,
-  pub rmse: f64,
-  pub mae: f64,
-  /// Whether the SLSQP optimizer reported a success status. Distinct from
-  /// `rmse.is_finite()` — a diverged optimizer can still produce a finite RMSE
-  /// against the input data.
-  pub converged: bool,
-  /// Final SLSQP objective value (sum of squared relative errors). Useful for
-  /// comparing against pre-optimization sse to confirm progress was made.
-  pub final_objective: f64,
-}
-
-impl From<HscmCalibrationResult> for crate::pricing::heston_stoch_corr::HestonStochCorrPricer {
-  fn from(r: HscmCalibrationResult) -> Self {
-    Self {
-      v0: r.v0,
-      kappa_v: r.kappa_v,
-      theta_v: r.theta_v,
-      sigma_v: r.sigma_v,
-      rho0: r.rho0,
-      kappa_r: r.kappa_r,
-      mu_r: r.mu_r,
-      sigma_r: r.sigma_r,
-      rho2: r.rho2,
-    }
-  }
-}
-
-impl crate::traits::ToModel for HscmCalibrationResult {
-  type Model = crate::pricing::heston_stoch_corr::HestonStochCorrPricer;
-  fn to_model(&self) -> Self::Model {
-    crate::pricing::heston_stoch_corr::HestonStochCorrPricer::from(self.clone())
-  }
-}
-
-impl crate::traits::CalibrationResult for HscmCalibrationResult {
-  type Params = HscmParams;
-  fn rmse(&self) -> f64 {
-    self.rmse
-  }
-
-  fn converged(&self) -> bool {
-    self.converged && self.rmse.is_finite()
-  }
-
-  fn params(&self) -> Self::Params {
-    HscmParams {
-      kappa_v: self.kappa_v,
-      theta_v: self.theta_v,
-      sigma_v: self.sigma_v,
-      v0: self.v0,
-      kappa_r: self.kappa_r,
-      mu_r: self.mu_r,
-      sigma_r: self.sigma_r,
-      rho0: self.rho0,
-      rho2: self.rho2,
-    }
-  }
-}
-
-impl HscmCalibrationResult {
-  pub fn to_vec(&self) -> Vec<f64> {
-    vec![
+impl HscmParams {
+  fn values(&self) -> [f64; 9] {
+    [
       self.kappa_v,
       self.theta_v,
       self.sigma_v,
@@ -134,258 +75,340 @@ impl HscmCalibrationResult {
       self.rho2,
     ]
   }
+
+  fn from_values(x: &[f64]) -> Self {
+    Self {
+      kappa_v: x[0],
+      theta_v: x[1],
+      sigma_v: x[2],
+      v0: x[3],
+      kappa_r: x[4],
+      mu_r: x[5],
+      sigma_r: x[6],
+      rho0: x[7],
+      rho2: x[8],
+    }
+  }
 }
 
-fn price_call(p: &[f64], s0: f64, k: f64, tau: f64, r: f64) -> f64 {
-  let model = HestonStochCorrPricer::new(p[3], p[0], p[1], p[2], p[7], p[4], p[5], p[6], p[8]);
-  model.price_call_carr_madan(s0, k, r, 0.0, tau)
+impl From<HscmParams> for HestonStochCorrPricer {
+  fn from(p: HscmParams) -> Self {
+    Self {
+      v0: p.v0,
+      kappa_v: p.kappa_v,
+      theta_v: p.theta_v,
+      sigma_v: p.sigma_v,
+      rho0: p.rho0,
+      kappa_r: p.kappa_r,
+      mu_r: p.mu_r,
+      sigma_r: p.sigma_r,
+      rho2: p.rho2,
+    }
+  }
 }
 
-/// Data passed to the SLSQP objective via user_data.
+impl<D> ToModel for Calibrated<HscmParams, D> {
+  type Model = HestonStochCorrPricer;
+
+  fn to_model(&self) -> HestonStochCorrPricer {
+    HestonStochCorrPricer::from(self.params.clone())
+  }
+}
+
 #[derive(Clone)]
 struct CalibData {
-  s0: f64,
-  options: Vec<MarketOption>,
+  s: f64,
+  r: f64,
+  q: f64,
+  quotes: Vec<OptionQuote>,
 }
 
-/// SLSQP objective function: sum of squared relative errors.
+impl CalibData {
+  fn price(&self, x: &[f64], quote: &OptionQuote) -> f64 {
+    let model = HestonStochCorrPricer::new(x[3], x[0], x[1], x[2], x[7], x[4], x[5], x[6], x[8]);
+    let (k, tau) = (quote.strike, quote.tau);
+    match quote.option_type {
+      OptionType::Call => model.price_call_carr_madan(self.s, k, self.r, self.q, tau),
+      OptionType::Put => model.call_put(self.s, k, self.r, self.q, tau).1,
+    }
+  }
+
+  /// The sum of squared relative price errors.
+  fn sse(&self, x: &[f64]) -> f64 {
+    let mut obj = 0.0;
+    for quote in &self.quotes {
+      let err = (self.price(x, quote) - quote.price) / quote.price.max(1e-6);
+      obj += err * err;
+    }
+    obj
+  }
+}
+
+/// SLSQP objective with a forward-difference gradient.
 fn slsqp_objective(x: &[f64], gradient: Option<&mut [f64]>, data: &mut CalibData) -> f64 {
-  // Numerical gradient via central differences
   if let Some(g) = gradient {
     let h = 1e-5;
-    let f0 = eval_sse(x, data);
+    let f0 = data.sse(x);
     for i in 0..x.len() {
       let mut xp = x.to_vec();
       xp[i] += h;
-      let fp = eval_sse(&xp, data);
-      g[i] = (fp - f0) / h;
+      g[i] = (data.sse(&xp) - f0) / h;
     }
   }
-  eval_sse(x, data)
+  data.sse(x)
 }
 
-fn eval_sse(x: &[f64], data: &CalibData) -> f64 {
-  let mut obj = 0.0;
-  for opt in &data.options {
-    let model = price_call(x, data.s0, opt.strike, opt.tau, opt.rate);
-    let err = (model - opt.price) / opt.price.max(1e-6);
-    obj += err * err;
+/// SLSQP's stop in words; only a stop on its own criterion is a convergence, a cap never is.
+fn slsqp_stop(status: Result<SuccessStatus, FailStatus>) -> (&'static str, bool) {
+  match status {
+    Ok(SuccessStatus::Success) => ("success", true),
+    Ok(SuccessStatus::StopValReached) => ("stop value reached", true),
+    Ok(SuccessStatus::FtolReached) => ("ftol reached", true),
+    Ok(SuccessStatus::XtolReached) => ("xtol reached", true),
+    Ok(SuccessStatus::MaxEvalReached) => ("max evaluations reached", false),
+    Ok(SuccessStatus::MaxTimeReached) => ("max time reached", false),
+    Err(FailStatus::Failure) => ("failure", false),
+    Err(FailStatus::InvalidArgs) => ("invalid arguments", false),
+    Err(FailStatus::OutOfMemory) => ("out of memory", false),
+    Err(FailStatus::RoundoffLimited) => ("roundoff limited", false),
+    Err(FailStatus::ForcedStop) => ("forced stop", false),
+    Err(FailStatus::UnexpectedError) => ("unexpected error", false),
   }
-  obj
 }
 
-/// HSCM (Heston-stochastic-correlation) calibrator with the unified
-/// [`Calibrator`](crate::traits::Calibrator) trait surface. Wraps the free
-/// [`calibrate_hscm`] function in a stateful struct so generic pipelines
-/// (`build_surface_from_calibration` etc.) can consume it like any other
-/// calibrator.
+/// HSCM fit to vanilla quotes by SLSQP inside `BOUNDS`, on the squared relative price errors.
 #[derive(Clone, Debug)]
 pub struct HscmCalibrator {
   pub s: f64,
-  pub options: Vec<MarketOption>,
-  pub max_iter: usize,
+  pub r: f64,
+  pub q: f64,
+  pub quotes: Vec<OptionQuote>,
+  /// `None` starts from (2, 0.04, 0.3, 0.04, 5, −0.5, 0.2, −0.7, 0.3); a start is clamped to
+  /// `BOUNDS`.
+  pub start: Option<HscmParams>,
+  /// SLSQP: `max_iterations` caps its evaluations (default 500) and `tolerance` is its `ftol_rel`;
+  /// `patience`, `record_history` and `regularization` are `Unsupported`.
+  pub options: CalibrationOptions,
 }
 
 impl HscmCalibrator {
-  pub fn new(s: f64, options: Vec<MarketOption>) -> Self {
+  /// Panics unless `s` is finite and positive and `r`, `q` finite; `calibrate` checks the quotes.
+  pub fn new(s: f64, r: f64, q: f64, quotes: Vec<OptionQuote>) -> Self {
+    assert_spot_and_rates(s, r, q);
     Self {
       s,
-      options,
-      max_iter: 500,
+      r,
+      q,
+      quotes,
+      start: None,
+      options: CalibrationOptions::default(),
     }
   }
 
-  pub fn with_max_iter(mut self, max_iter: usize) -> Self {
-    self.max_iter = max_iter;
+  /// Panics unless every value of `start` is finite.
+  pub fn with_start(mut self, start: HscmParams) -> Self {
+    check_start(&start).unwrap_or_else(|e| panic!("{e}"));
+    self.start = Some(start);
+    self
+  }
+
+  pub fn with_options(mut self, options: CalibrationOptions) -> Self {
+    self.options = options;
     self
   }
 }
 
-impl crate::traits::Calibrator for HscmCalibrator {
-  type Params = HscmParams;
-  type Output = HscmCalibrationResult;
-  type Error = QuantError;
-
-  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
-    // A mild-skew, short-tenor SPX-style start; a caller with a better prior passes `Some(..)`.
-    let guess = initial.map_or([2.0, 0.04, 0.3, 0.04, 5.0, -0.5, 0.2, -0.7, 0.3], |p| {
-      [
-        p.kappa_v, p.theta_v, p.sigma_v, p.v0, p.kappa_r, p.mu_r, p.sigma_r, p.rho0, p.rho2,
-      ]
-    });
-    Ok(calibrate_hscm(self.s, &self.options, &guess, self.max_iter))
-  }
+fn check_start(start: &HscmParams) -> Result<(), QuantError> {
+  let fields = NAMES.into_iter().zip(start.values()).collect::<Vec<_>>();
+  check_finite_start(&fields)
 }
 
-/// Calibrate the HSCM model to market option prices using SLSQP.
-///
-/// # Arguments
-/// * `s0` — Spot price.
-/// * `options` — Market option data (strike, tau, price, rate).
-/// * `initial_guess` — 9-element initial parameter guess.
-/// * `max_iter` — Maximum SLSQP iterations.
-pub fn calibrate_hscm(
-  s0: f64,
-  options: &[MarketOption],
-  initial_guess: &[f64; 9],
-  max_iter: usize,
-) -> HscmCalibrationResult {
-  let n = options.len();
+impl crate::traits::Calibrator for HscmCalibrator {
+  type Params = HscmParams;
+  type Output = Calibrated<HscmParams>;
+  type Error = QuantError;
 
-  let x_init = initial_guess
-    .iter()
-    .enumerate()
-    .map(|(i, &v)| v.clamp(BOUNDS[i].0, BOUNDS[i].1))
-    .collect::<Vec<_>>();
-
-  let bounds: Vec<(f64, f64)> = BOUNDS.to_vec();
-  let cons: Vec<&dyn slsqp::Func<CalibData>> = vec![];
-  let data = CalibData {
-    s0,
-    options: options.to_vec(),
-  };
-
-  let (x, final_objective, converged) = match slsqp::minimize(
-    slsqp_objective,
-    &x_init,
-    &bounds,
-    &cons,
-    data,
-    max_iter,
-    None,
-  ) {
-    Ok((_status, x_opt, fval)) => (x_opt, fval, true),
-    Err((_status, x_opt, fval)) => (x_opt, fval, false),
-  };
-
-  // Compute final errors against the SLSQP-optimized parameters.
-  let mut sse = 0.0;
-  let mut sae = 0.0;
-  for opt in options {
-    let model = price_call(&x, s0, opt.strike, opt.tau, opt.rate);
-    let err = model - opt.price;
-    sse += err * err;
-    sae += err.abs();
-  }
-
-  HscmCalibrationResult {
-    kappa_v: x[0],
-    theta_v: x[1],
-    sigma_v: x[2],
-    v0: x[3],
-    kappa_r: x[4],
-    mu_r: x[5],
-    sigma_r: x[6],
-    rho0: x[7],
-    rho2: x[8],
-    rmse: (sse / n as f64).sqrt(),
-    mae: sae / n as f64,
-    converged,
-    final_objective,
+  /// A start replaces `self.start`; `InvalidInput` unless every value of it is finite, `Optimizer`
+  /// when the objective there is not finite, and the `CalibrationOptions` errors.
+  fn calibrate(&self, initial: Option<HscmParams>) -> Result<Calibrated<HscmParams>, QuantError> {
+    validate_quotes(&self.quotes)?;
+    let unread = [Knob::Patience, Knob::RecordHistory, Knob::Regularization];
+    self.options.check(&unread)?;
+    let start = initial.or_else(|| self.start.clone());
+    if let Some(start) = &start {
+      check_start(start)?;
+    }
+    let x_init = start
+      .map_or(DEFAULT_START, |p| p.values())
+      .iter()
+      .zip(BOUNDS)
+      .map(|(&v, (lower, upper))| v.clamp(lower, upper))
+      .collect::<Vec<_>>();
+    let data = CalibData {
+      s: self.s,
+      r: self.r,
+      q: self.q,
+      quotes: self.quotes.clone(),
+    };
+    let start_objective = data.sse(&x_init);
+    if !start_objective.is_finite() {
+      return Err(QuantError::Optimizer {
+        what: "slsqp fit",
+        reason: format!("the objective at the start is {start_objective:?}"),
+      });
+    }
+    let cons: Vec<&dyn slsqp::Func<CalibData>> = vec![];
+    let tolerance = self.options.tolerance.map(|ftol_rel| StopTols {
+      ftol_rel,
+      ..StopTols::default()
+    });
+    let (status, x, final_objective) = match slsqp::minimize(
+      slsqp_objective,
+      &x_init,
+      &BOUNDS,
+      &cons,
+      data.clone(),
+      self.options.max_iterations.unwrap_or(500),
+      tolerance,
+    ) {
+      Ok((status, x_opt, fval)) => (Ok(status), x_opt, fval),
+      Err((status, x_opt, fval)) => (Err(status), x_opt, fval),
+    };
+    let (stop, converged) = slsqp_stop(status);
+    let market = self
+      .quotes
+      .iter()
+      .map(|quote| quote.price)
+      .collect::<Vec<_>>();
+    let model = self
+      .quotes
+      .iter()
+      .map(|quote| data.price(&x, quote))
+      .collect::<Vec<_>>();
+    let params = HscmParams::from_values(&x);
+    let mut fit = Calibrated::repriced(
+      params,
+      &market,
+      &model,
+      self.options.loss_metrics,
+      converged,
+    );
+    // An SLSQP success that reprices to a non-finite error is not a fit.
+    fit.converged &= fit.loss.get(LossMetric::Rmse).is_finite();
+    Ok(fit.with_message(format!("slsqp {stop}, objective {final_objective:e}")))
   }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::traits::Calibrator;
 
-  #[test]
-  #[ignore = "slow: HSCM Carr-Madan + SLSQP. Run with `cargo test -- --ignored`."]
-  fn calibration_runs() {
-    let options = vec![
-      MarketOption {
-        strike: 95.0,
-        tau: 0.25,
-        price: 8.0,
-        rate: 0.03,
-      },
-      MarketOption {
-        strike: 100.0,
-        tau: 0.25,
-        price: 5.5,
-        rate: 0.03,
-      },
-      MarketOption {
-        strike: 105.0,
-        tau: 0.25,
-        price: 3.5,
-        rate: 0.03,
-      },
-    ];
-
-    let guess = [2.0, 0.04, 0.3, 0.04, 5.0, -0.5, 0.2, -0.7, 0.3];
-
-    let initial_sse: f64 = options
-      .iter()
-      .map(|opt| {
-        let m = price_call(&guess, 100.0, opt.strike, opt.tau, opt.rate);
-        let err = (m - opt.price) / opt.price.max(1e-6);
-        err * err
+  fn quotes(x: &[f64]) -> Vec<OptionQuote> {
+    let data = CalibData {
+      s: 100.0,
+      r: 0.03,
+      q: 0.0,
+      quotes: Vec::new(),
+    };
+    [95.0, 100.0, 105.0]
+      .map(|k| {
+        let call = OptionQuote::new(k, 0.25, 0.0, OptionType::Call);
+        OptionQuote::new(k, 0.25, data.price(x, &call), OptionType::Call)
       })
-      .sum();
+      .to_vec()
+  }
 
-    let result = calibrate_hscm(100.0, &options, &guess, 500);
+  const GUESS: [f64; 9] = [1.5, 0.05, 0.4, 0.05, 4.0, -0.3, 0.3, -0.5, 0.2];
 
-    assert!(result.rmse.is_finite(), "RMSE should be finite");
-    assert!(result.v0 > 0.0, "v0 should be positive");
-    assert!(result.rho0.abs() < 1.0, "rho0 should be in (-1,1)");
-    // Catches `let _ = slsqp::minimize(...)` — without progress the optimizer
-    // returned the initial guess unchanged and final_objective == initial_sse.
-    assert!(
-      result.final_objective <= initial_sse,
-      "SLSQP must not regress: final={} initial={}",
-      result.final_objective,
-      initial_sse
-    );
+  fn from_guess(options: CalibrationOptions) -> Result<Calibrated<HscmParams>, QuantError> {
+    HscmCalibrator::new(100.0, 0.03, 0.0, quotes(&DEFAULT_START)[..1].to_vec())
+      .with_start(HscmParams::from_values(&GUESS))
+      .with_options(options)
+      .calibrate(None)
   }
 
   #[test]
   #[ignore = "slow: HSCM Carr-Madan FFT × SLSQP iterations. Run with --ignored."]
   fn calibrate_recovers_synthetic_prices() {
-    // Ground-truth parameters drawn from the test pattern in `calibration_runs`.
-    let truth = [2.0, 0.04, 0.3, 0.04, 5.0, -0.5, 0.2, -0.7, 0.3];
-    let s0 = 100.0;
-    let tau = 0.25;
-    let r = 0.03;
-    let strikes = [95.0, 100.0, 105.0];
-
-    // Generate synthetic prices from the HSCM ground-truth pricer.
-    let options: Vec<MarketOption> = strikes
-      .iter()
-      .map(|&k| MarketOption {
-        strike: k,
-        tau,
-        price: price_call(&truth, s0, k, tau, r),
-        rate: r,
-      })
-      .collect();
-
-    // Perturbed initial guess — distinct from truth so the optimizer must move.
-    let guess = [1.5, 0.05, 0.4, 0.05, 4.0, -0.3, 0.3, -0.5, 0.2];
-    let initial_sse: f64 = options
-      .iter()
-      .map(|opt| {
-        let m = price_call(&guess, s0, opt.strike, opt.tau, opt.rate);
-        let err = (m - opt.price) / opt.price.max(1e-6);
-        err * err
-      })
-      .sum();
-
-    let result = calibrate_hscm(s0, &options, &guess, 200);
-
-    // A discarded optimizer result would leave the objective at the initial SSE.
+    let calibrator = HscmCalibrator::new(100.0, 0.03, 0.0, quotes(&DEFAULT_START))
+      .with_start(HscmParams::from_values(&GUESS))
+      .with_options(CalibrationOptions::default().with_max_iterations(200));
+    let initial = CalibData {
+      s: 100.0,
+      r: 0.03,
+      q: 0.0,
+      quotes: calibrator.quotes.clone(),
+    }
+    .sse(&GUESS);
+    let fit = calibrator.calibrate(None).unwrap();
+    let message = fit.message.as_deref().unwrap();
+    let (_, objective) = message.rsplit_once("objective ").unwrap();
+    let final_objective = objective.parse::<f64>().unwrap();
     assert!(
-      result.final_objective < initial_sse * 0.5,
-      "SLSQP didn't make meaningful progress: final={} initial={}",
-      result.final_objective,
-      initial_sse
+      final_objective < initial * 0.5,
+      "final {final_objective} initial {initial}"
     );
-    // Recovery quality is loose because 9 params × 3 prices is underdetermined,
-    // but RMSE on the price scale should be tight after optimization.
+    assert!(fit.loss.get(LossMetric::Rmse) < 1e-2, "{:?}", fit.loss);
+  }
+
+  #[test]
+  fn an_evaluation_cap_is_not_convergence_and_the_message_names_the_stop() {
+    let fit = from_guess(CalibrationOptions::default().with_max_iterations(1)).unwrap();
+    let message = fit.message.as_deref().unwrap();
+    assert!(!fit.converged, "{message}");
     assert!(
-      result.rmse < 1e-2,
-      "calibrated RMSE too large vs synthetic prices: {}",
-      result.rmse
+      message.starts_with("slsqp max evaluations reached, objective "),
+      "{message}"
+    );
+  }
+
+  #[test]
+  fn a_tolerance_stops_slsqp_on_the_change_of_its_objective() {
+    let options = CalibrationOptions::default()
+      .with_max_iterations(12)
+      .with_tolerance(1e9);
+    let fit = from_guess(options).unwrap();
+    let message = fit.message.as_deref().unwrap();
+    assert!(fit.converged, "{message}");
+    assert!(
+      message.starts_with("slsqp ftol reached, objective "),
+      "{message}"
+    );
+  }
+
+  #[test]
+  fn a_knob_slsqp_cannot_read_is_unsupported_and_a_written_one_is_checked() {
+    let capped = || CalibrationOptions::default().with_max_iterations(3);
+    let pull = crate::calibration::Regularization::uniform(vec![0.0; 9], 1.0);
+    for (options, what) in [
+      (capped().with_patience(50), "patience"),
+      (capped().with_record_history(true), "record_history"),
+      (capped().with_regularization(pull), "regularization"),
+    ] {
+      let err = from_guess(options).unwrap_err();
+      assert_eq!(err, QuantError::Unsupported { what });
+    }
+    let mut nan = capped();
+    nan.tolerance = Some(f64::NAN);
+    let err = from_guess(nan).unwrap_err();
+    assert!(
+      matches!(&err, QuantError::InvalidInput { what: "options", reason } if reason.starts_with("tolerance")),
+      "{err}"
+    );
+  }
+
+  #[test]
+  fn a_start_must_be_finite() {
+    let calibrator = HscmCalibrator::new(100.0, 0.03, 0.0, quotes(&DEFAULT_START));
+    let start = HscmParams {
+      rho2: f64::NAN,
+      ..HscmParams::from_values(&DEFAULT_START)
+    };
+    let err = calibrator.calibrate(Some(start)).unwrap_err();
+    assert!(
+      matches!(&err, QuantError::InvalidInput { what: "start", reason } if reason.starts_with("rho2")),
+      "{err}"
     );
   }
 }

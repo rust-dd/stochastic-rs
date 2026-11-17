@@ -3,13 +3,13 @@ use std::f64::consts::FRAC_1_PI;
 use ndarray::Array1;
 use ndarray::Array2;
 use num_complex::Complex64;
-use stochastic_rs_distributions::RealExt;
 
 use super::calibrator::HestonCalibrator;
 use super::params::CuiCfTerms;
 use super::params::EPS;
 use super::params::finite_c64;
 use crate::OptionType;
+use crate::calibration::clip_negative;
 use crate::calibration::integrate_gl_to_convergence;
 use crate::pricing::heston::HestonParams;
 
@@ -271,7 +271,7 @@ impl HestonCalibrator {
         OptionType::Put => (put_raw, grad_call),
       };
 
-      c_model[idx] = model_raw.max_or_nan(0.0);
+      c_model[idx] = clip_negative(model_raw);
       if model_raw > 0.0 {
         for col in 0..5 {
           j_residual[(idx, col)] = -self.weight(idx) * grad_model[col];

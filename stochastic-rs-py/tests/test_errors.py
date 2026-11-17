@@ -126,3 +126,16 @@ def test_copula_setter_rejections_print_no_rust_panic(capfd):
         sr.Bb7(delta=0.0)
     assert (clayton.theta(), bb1.theta(), bb1.delta()) == (2.0, 0.8, 1.6)
     assert "panicked" not in capfd.readouterr().err
+
+
+def test_hscm_quotes_must_share_one_rate():
+    options = [sr.HscmMarketOption(95.0, 0.25, 8.0, 0.03), sr.HscmMarketOption(100.0, 0.5, 7.5, 0.04)]
+    with pytest.raises(ValueError, match="HSCM quotes must share one rate; got 0.03 and 0.04"):
+        sr.HscmCalibrator(100.0, options)
+
+
+def test_a_regularization_anchor_that_is_not_finite_is_refused_at_construction():
+    slices = [sr.MarketSlice([90.0, 100.0, 110.0], [12.0, 6.0, 2.5], [True] * 3, 0.5)]
+    anchor = [0.04, float("nan"), 0.04, 0.5, -0.5]
+    with pytest.raises(ValueError, match=r"anchor 1 must satisfy `anchor\.is_finite\(\)`, got anchor = NaN"):
+        sr.HestonCalibrator(slices, 100.0, 0.02, regularization=(anchor, [1.0] * 5))

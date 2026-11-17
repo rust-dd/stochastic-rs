@@ -1,6 +1,8 @@
 use super::*;
 use crate::LossMetric;
 use crate::calibration::CalibrationHistory;
+use crate::calibration::least_squares::tests::natural_jacobian_by_differences;
+use crate::calibration::least_squares::tests::worst_relative_error;
 use crate::traits::Calibrator;
 
 fn known_params() -> CgmysvParams {
@@ -196,4 +198,17 @@ fn a_put_is_priced_by_parity_and_keeps_a_nan() {
   let put = fourier_option_price(&p, s, k, r, q, t, OptionType::Put);
   assert_eq!(put, call - s * (-q * t).exp() + k * (-r * t).exp());
   assert!(fourier_option_price(&p, f64::NAN, k, r, q, t, OptionType::Put).is_nan());
+}
+
+#[test]
+fn the_natural_jacobian_matches_central_differences() {
+  let quotes = vec![OptionQuote::new(100.0, 0.5, 5.0, OptionType::Call)];
+  let calibrator = CgmysvCalibrator::new(100.0, 0.02, 0.0, quotes);
+  let mut problem = CgmysvProblem::new(&calibrator, to_vec(&known_params()));
+  let x = problem.params();
+  problem.set_params(&x);
+  let analytic = problem.natural_jacobian();
+  let numeric = natural_jacobian_by_differences(&mut problem, &x, 1e-6);
+  let worst = worst_relative_error(&analytic, &numeric);
+  assert!(worst < 1e-6, "{worst:e}");
 }

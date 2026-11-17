@@ -12,7 +12,6 @@ use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
 use crate::pricing::heston::HestonParams;
 
-/// One fit: the optimiser's point, the Feller row's weight, the quotes' prices and the trail.
 pub(super) struct HestonProblem<'a> {
   calibrator: &'a HestonCalibrator,
   point: HestonParams,
@@ -43,6 +42,19 @@ impl<'a> HestonProblem<'a> {
   pub(super) fn effective_params(&self) -> HestonParams {
     self.calibrator.feller_projected(self.free_params())
   }
+
+  /// A Jacobian in the physical parameters, through the Feller cap where it binds, in the
+  /// optimiser's coordinates.
+  fn to_optimizer(&self, physical: Array2<f64>, free: &HestonParams) -> Array2<f64> {
+    let capped = self.calibrator.feller_projection
+      && self.calibrator.feller_projected(*free).sigma < free.sigma;
+    let physical = if capped {
+      through_feller_cap(physical, free)
+    } else {
+      physical
+    };
+    apply_chain_rule(physical, &to_optimizer_coordinates(free))
+  }
 }
 
 impl LeastSquaresProblem for HestonProblem<'_> {
@@ -70,21 +82,15 @@ impl LeastSquaresProblem for HestonProblem<'_> {
       &weighted_residuals,
     );
 
-    let residuals = match &options.regularization {
-      Some(reg) if reg.is_active() => {
-        reg.augment_residuals(weighted_residuals, &physical(&params_eff))
-      }
-      _ => weighted_residuals,
-    };
     Some(match self.feller_row_weight {
       // Zero wherever the iterate is feasible; past the cap it gives the optimiser a gradient back.
       Some(weight) => Array1::from_iter(
-        residuals
+        weighted_residuals
           .iter()
           .copied()
           .chain(std::iter::once(weight * (free.sigma - params_eff.sigma))),
       ),
-      None => residuals,
+      None => weighted_residuals,
     })
   }
 
@@ -93,37 +99,20 @@ impl LeastSquaresProblem for HestonProblem<'_> {
     let free = self.free_params();
     let p = calibrator.feller_projected(free);
     let optimizer_coordinates = to_optimizer_coordinates(&free);
-    let capped = calibrator.feller_projection && p.sigma < free.sigma;
-    let to_optimizer = |physical: Array2<f64>| {
-      let physical = if capped {
-        through_feller_cap(physical, &free)
-      } else {
-        physical
-      };
-      apply_chain_rule(physical, &optimizer_coordinates)
-    };
     let jacobian = match calibrator.jacobian_method {
       HestonJacobianMethod::NumericFiniteDiff => calibrator.numeric_optimizer_jacobian(&free),
       HestonJacobianMethod::CuiAnalytic => {
         match calibrator.compute_model_prices_and_residual_jacobian_cui(&p) {
-          Some((_, jac)) => to_optimizer(jac),
+          Some((_, jac)) => self.to_optimizer(jac, &free),
           None => calibrator.numeric_optimizer_jacobian(&free),
         }
       }
-    };
-    let jacobian = match &calibrator.options.regularization {
-      // The penalty rows are diagonal in the physical parameters; the same
-      // chain rule as the price rows maps them into the optimiser coordinates.
-      Some(reg) if reg.is_active() => {
-        reg.augment_jacobian(jacobian, to_optimizer(reg.jacobian_rows()))
-      }
-      _ => jacobian,
     };
     Some(match self.feller_row_weight {
       // w·σ(x) differentiates in the free coordinates, −w·σ(P(x)) through the projection as the price rows do.
       Some(weight) => {
         let overshoot = apply_chain_rule(sigma_row(weight), &optimizer_coordinates)
-          + to_optimizer(sigma_row(-weight));
+          + self.to_optimizer(sigma_row(-weight), &free);
         Array2::from_shape_fn((jacobian.nrows() + 1, jacobian.ncols()), |(i, j)| {
           if i < jacobian.nrows() {
             jacobian[(i, j)]
@@ -138,6 +127,15 @@ impl LeastSquaresProblem for HestonProblem<'_> {
 
   fn accept(&mut self) {
     self.trail.accept();
+  }
+
+  fn natural_params(&self) -> Vec<f64> {
+    physical(&self.effective_params()).to_vec()
+  }
+
+  /// The logistic transform's diagonal, with σ's row moved onto κ and θ where the Feller cap binds.
+  fn natural_jacobian(&self) -> Array2<f64> {
+    self.to_optimizer(Array2::eye(5), &self.free_params())
   }
 }
 

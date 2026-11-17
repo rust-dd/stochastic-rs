@@ -82,6 +82,7 @@ pub struct BsmCalibrator {
   pub quotes: Vec<OptionQuote>,
   /// Reflected onto `[1e-6, ∞)` before the first evaluation.
   pub start: BsmParams,
+  /// Levenberg–Marquardt knobs; `regularization` pulls `σ`.
   pub options: CalibrationOptions,
 }
 
@@ -121,13 +122,14 @@ impl crate::traits::Calibrator for BsmCalibrator {
   type Output = Calibrated<BsmParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`; `InvalidInput` unless the one used is finite.
+  /// A start replaces `self.start`; `InvalidInput` unless the one used is finite, `Optimizer` when
+  /// the fit cannot evaluate it, and the `CalibrationOptions` errors.
   fn calibrate(&self, initial: Option<BsmParams>) -> Result<Calibrated<BsmParams>, QuantError> {
     validate_quotes(&self.quotes)?;
     let start = initial.unwrap_or(self.start);
     check_finite_start(&[("sigma", start.sigma)])?;
-    let problem = BsmProblem::new(self, start.projected());
-    let (fitted, report) = minimize(problem, self.options.lm(false));
+    let lm = self.options.lm(false, 1)?;
+    let (fitted, report) = minimize(BsmProblem::new(self, start.projected()), lm);
     let params = fitted.effective_params();
     let pricer = BsmPricer::new(params.sigma, BsmCoc::Merton1973);
     let model = self
@@ -144,17 +146,16 @@ impl crate::traits::Calibrator for BsmCalibrator {
         )
       })
       .collect::<Vec<_>>();
-    Ok(report.calibrated(
+    report.calibrated(
       params,
       &fitted.market,
       &model,
       self.options.loss_metrics,
       fitted.trail.into_entries(),
-    ))
+    )
   }
 }
 
-/// One fit: the current point, the quotes' prices and the trail.
 struct BsmProblem<'a> {
   calibrator: &'a BsmCalibrator,
   params: BsmParams,

@@ -130,18 +130,19 @@
 //! ### HSCM (Heston with stochastic correlation)
 //!
 //! ```
-//! use stochastic_rs_quant::calibration::{MarketOption, calibrate_hscm};
+//! use stochastic_rs_quant::{OptionQuote, OptionType};
+//! use stochastic_rs_quant::calibration::{CalibrationOptions, HscmCalibrator};
+//! use stochastic_rs_quant::traits::Calibrator;
 //! use stochastic_rs_quant::vol_surface::build_surface_from_calibration;
 //!
-//! let options = vec![
-//!     MarketOption { strike: 95.0, tau: 0.25, price: 8.0, rate: 0.03 },
-//!     MarketOption { strike: 100.0, tau: 0.50, price: 7.5, rate: 0.03 },
-//!     MarketOption { strike: 105.0, tau: 1.00, price: 6.0, rate: 0.03 },
-//! ];
-//! let guess = [2.0, 0.04, 0.3, 0.04, 5.0, -0.5, 0.2, -0.7, 0.3];
-//! // A small `max_iter` keeps this example fast; it need not fully converge
+//! let quotes = [(95.0, 0.25, 8.0), (100.0, 0.50, 7.5), (105.0, 1.00, 6.0)]
+//!     .map(|(k, tau, price)| OptionQuote::new(k, tau, price, OptionType::Call));
+//! // A small iteration cap keeps this example fast; it need not fully converge
 //! // to demonstrate the API.
-//! let result = calibrate_hscm(100.0, &options, &guess, 20);
+//! let result = HscmCalibrator::new(100.0, 0.03, 0.0, quotes.to_vec())
+//!     .with_options(CalibrationOptions::default().with_max_iterations(20))
+//!     .calibrate(None)
+//!     .unwrap();
 //! let surface = build_surface_from_calibration(&result, 100.0, 0.03, 0.0,
 //!     &[90., 95., 100., 105., 110.], &[0.25, 0.5, 1.0]);
 //! assert!(surface.iv_surface.ivs.iter().any(|v| v.is_finite()));
@@ -149,10 +150,8 @@
 //!
 //! ### Rough Bergomi (Monte Carlo pricing)
 //!
-//! Calibrating [`RBergomiCalibrator`](crate::calibration::rbergomi::RBergomiCalibrator)
-//! from market slices follows the same `from_slices` → `calibrate(None)` →
-//! `build_surface_from_calibration` shape as the families above. Once
-//! parameters are known (calibrated or otherwise), price directly:
+//! [`RBergomiCalibrator`](crate::calibration::rbergomi::RBergomiCalibrator) fits terminal-price
+//! samples into a `Calibrated` for `build_surface_from_calibration`. Known parameters price as:
 //!
 //! ```
 //! use stochastic_rs_quant::calibration::rbergomi::{RBergomiParams, RBergomiXi0};

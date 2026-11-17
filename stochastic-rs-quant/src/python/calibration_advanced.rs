@@ -245,16 +245,14 @@ impl PyRBergomiCalibrator {
         eta,
         xi0: RBergomiXi0::Constant(xi0),
       };
-      let mut cfg = RBergomiCalibrationConfig {
-        max_iters,
+      let config = RBergomiCalibrationConfig {
         paths,
         ..RBergomiCalibrationConfig::default()
       };
-      cfg.paths = paths;
+      let options =
+        crate::calibration::CalibrationOptions::default().with_max_iterations(max_iters);
       let inner =
-        RBergomiCalibrator::new(s0, r, params, inner_slices, cfg, false).map_err(|e| {
-          PyValueError::new_err(format!("RBergomi calibrator construction failed: {e}"))
-        })?;
+        RBergomiCalibrator::new(s0, r, 0.0, params, inner_slices, config).with_options(options);
       Ok(Self { inner })
     })?
   }
@@ -263,11 +261,11 @@ impl PyRBergomiCalibrator {
   fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, usize, bool)> {
     use crate::calibration::rbergomi::RBergomiXi0;
     use crate::traits::Calibrator;
-    let res = self
+    let fit = self
       .inner
       .calibrate(None)
       .map_err(|e| PyValueError::new_err(format!("rBergomi calibration failed: {e}")))?;
-    let p = &res.calibrated_params;
+    let p = &fit.params;
     let xi0_const = match &p.xi0 {
       RBergomiXi0::Constant(c) => *c,
       _ => 0.0,
@@ -277,9 +275,9 @@ impl PyRBergomiCalibrator {
       p.rho,
       p.eta,
       xi0_const,
-      res.final_loss,
-      res.iterations,
-      res.converged,
+      fit.loss.get(crate::LossMetric::Mse),
+      fit.iterations.unwrap_or_default(),
+      fit.converged,
     ))
   }
 }

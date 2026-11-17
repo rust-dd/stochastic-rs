@@ -235,3 +235,35 @@ fn the_tree_calibrators_report_unweighted_errors() {
   let (rmse, worst) = unweighted(&market, &model);
   assert_eq!((fit.rmse(), fit.max_error), (rmse, Some(worst)));
 }
+
+#[test]
+fn the_tree_calibrators_refuse_patience() {
+  let curve = flat_curve();
+  let mut quotes = grid(&[(1.0, 2.0), (2.0, 2.0)]);
+  for quote in &mut quotes {
+    quote.black_vol = 0.2;
+  }
+  let options = CalibrationOptions::default()
+    .with_max_iterations(5)
+    .with_patience(5);
+  let bk_start = BlackKarasinskiParams {
+    mean_reversion: 0.1,
+    sigma: 0.2,
+    initial_rate: 0.03,
+    long_run_rate: 0.03,
+  };
+  let bk = BlackKarasinskiSwaptionCalibrator::new(&quotes, &curve, 1.0, 8, bk_start)
+    .with_options(options.clone());
+  let refused = QuantError::Unsupported { what: "patience" };
+  assert_eq!(bk.calibrate(None).unwrap_err(), refused);
+  let g2_start = G2ppParams {
+    mean_reversion_x: 0.4,
+    mean_reversion_y: 0.08,
+    sigma_x: 0.012,
+    sigma_y: 0.005,
+    rho: -0.5,
+    phi: 0.03,
+  };
+  let g2 = G2ppSwaptionCalibrator::new(&quotes, &curve, 1.0, 4, g2_start).with_options(options);
+  assert_eq!(g2.calibrate(None).unwrap_err(), refused);
+}

@@ -75,7 +75,8 @@ pub struct SabrCapletCalibrator {
   pub weights: Option<Vec<f64>>,
   /// Seeds `(α, ν, ρ)` and fixes `β` and the shift.
   pub start: SabrCapletParams,
-  /// Nelder–Mead: `max_iterations` (default 600), `tolerance` its spread; pull `(α, ρ, ν)`.
+  /// Nelder–Mead: `max_iterations` (default 600), `tolerance` its spread; pull `(α, ρ, ν)`, and
+  /// `patience` is `Unsupported`.
   pub options: CalibrationOptions,
 }
 
@@ -173,7 +174,8 @@ impl crate::traits::Calibrator for SabrCapletCalibrator {
   type Output = Calibrated<SabrCapletParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start` whole, `β` and the shift included.
+  /// A start replaces `self.start` whole, `β` and the shift included; `InvalidInput` unless it
+  /// passes `SabrParams::new` with a finite shift, and the `CalibrationOptions` errors.
   fn calibrate(&self, initial: Option<SabrCapletParams>) -> Result<Self::Output, QuantError> {
     let start = initial.unwrap_or(self.start);
     if let Some(reason) = start.violation() {
@@ -205,20 +207,14 @@ impl crate::traits::Calibrator for SabrCapletCalibrator {
       vec![a0, nu0 * 1.5, rho0],
       vec![a0, nu0, (rho0 + 0.2).clamp(-0.99, 0.99)],
     ];
-    Ok(nelder_mead_fit(
-      cost.clone(),
-      simplex,
-      &self.options,
-      600,
-      |x| {
-        let sabr = cost.params(x);
-        let fitted = SabrCapletParams {
-          sabr,
-          shift: start.shift,
-        };
-        (fitted, self.market_vols.clone(), cost.model_vols(&sabr))
-      },
-    ))
+    nelder_mead_fit(cost.clone(), simplex, &self.options, 600, |x| {
+      let sabr = cost.params(x);
+      let fitted = SabrCapletParams {
+        sabr,
+        shift: start.shift,
+      };
+      (fitted, self.market_vols.clone(), cost.model_vols(&sabr))
+    })
   }
 }
 

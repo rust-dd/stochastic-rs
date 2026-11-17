@@ -15,7 +15,6 @@ use crate::OptionType;
 use crate::QuantError;
 use crate::calibration::Calibrated;
 use crate::calibration::CalibrationOptions;
-use crate::calibration::Regularization;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
 use crate::calibration::least_squares::minimize;
@@ -143,13 +142,15 @@ impl crate::traits::Calibrator for SabrCalibrator {
   type Output = Calibrated<SabrParams>;
   type Error = QuantError;
 
-  /// A start replaces `self.start`; `InvalidInput` unless the one used passes `SabrParams::new`.
+  /// A start replaces `self.start`; `InvalidInput` unless the one used passes `SabrParams::new`,
+  /// `Optimizer` when the fit cannot evaluate it, and the `CalibrationOptions` errors.
   fn calibrate(&self, initial: Option<SabrParams>) -> Result<Calibrated<SabrParams>, QuantError> {
     validate_quotes(&self.quotes)?;
     let start = initial.or(self.start);
     if let Some(reason) = start.and_then(|start| start.violation()) {
       return Err(QuantError::invalid("start", reason));
     }
+    let lm = self.options.lm(false, 3)?;
     let problem = SabrProblem {
       calibrator: self,
       market: self.quotes.iter().map(|quote| quote.price).collect(),
@@ -159,38 +160,25 @@ impl crate::traits::Calibrator for SabrCalibrator {
         .map(|quote| forward_fx(self.s, quote.tau, self.r, self.q))
         .collect(),
       params: start.unwrap_or(DEFAULT_START).projected(),
-      regularization: self.options.regularization_for(3)?.map(optimiser_order),
       trail: Trail::new(),
     };
-    let (problem, report) = minimize(problem, self.options.lm(false));
+    let (problem, report) = minimize(problem, lm);
     let model = problem.model_prices(&problem.params);
-    Ok(report.calibrated(
+    report.calibrated(
       problem.params,
       &problem.market,
       &model,
       self.options.loss_metrics,
       problem.trail.into_entries(),
-    ))
+    )
   }
 }
 
-/// Hagan's `(α, ρ, ν)` anchor and weights in the optimiser's `(α, ν, ρ)` order.
-fn optimiser_order(regularization: Regularization) -> Regularization {
-  let reorder = |v: &[f64]| vec![v[0], v[2], v[1]];
-  Regularization::new(
-    reorder(&regularization.anchor),
-    reorder(&regularization.weights),
-  )
-}
-
-/// One fit: each quote's forward, the current point, the regularization in the optimiser's order
-/// and the trail.
 struct SabrProblem<'a> {
   calibrator: &'a SabrCalibrator,
   market: Vec<f64>,
   forwards: Vec<f64>,
   params: SabrParams,
-  regularization: Option<Regularization>,
   trail: Trail<SabrParams>,
 }
 
@@ -275,25 +263,25 @@ impl LeastSquaresProblem for SabrProblem<'_> {
     self
       .trail
       .stage(options, &self.market, &model, &self.params, &residuals);
-    let p = self.params;
-    match &self.regularization {
-      Some(reg) if reg.is_active() => {
-        Some(reg.augment_residuals(residuals, &[p.alpha, p.nu, p.rho]))
-      }
-      _ => Some(residuals),
-    }
+    Some(residuals)
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
-    let jacobian = self.numeric_jacobian(&self.params);
-    match &self.regularization {
-      Some(reg) if reg.is_active() => Some(reg.augment_jacobian(jacobian, reg.jacobian_rows())),
-      _ => Some(jacobian),
-    }
+    Some(self.numeric_jacobian(&self.params))
   }
 
   fn accept(&mut self) {
     self.trail.accept();
+  }
+
+  /// Hagan's `(α, ρ, ν)`.
+  fn natural_params(&self) -> Vec<f64> {
+    vec![self.params.alpha, self.params.rho, self.params.nu]
+  }
+
+  /// The reorder from the optimiser's `(α, ν, ρ)` to Hagan's `(α, ρ, ν)`.
+  fn natural_jacobian(&self) -> Array2<f64> {
+    ndarray::array![[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0, 0.0]]
   }
 }
 
