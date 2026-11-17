@@ -17,6 +17,7 @@ use stochastic_rs_distributions::special::beta_i as beta_reg;
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
 use crate::input::assert_alpha;
+use crate::stationarity::common::nested_f;
 use crate::stationarity::common::prepared;
 use crate::stationarity::common::reject_exact_fit;
 
@@ -93,14 +94,7 @@ pub fn granger_causality_test(
   let (_, rss_rest) = ols_rss(&design_rest, &target)?;
   let q = lags as f64;
   let dof = (n as f64) - (1.0 + 2.0 * q);
-  let f = ((rss_rest - rss_unrest) / q) / (rss_unrest / dof.max(1.0));
-  if !f.is_finite() {
-    return Err(StatsError::Numerical {
-      stage: "F statistic",
-    });
-  }
-  // The restricted fit is nested in the full one, so a negative `F` is the subtraction's rounding.
-  let f = f.max(0.0);
+  let f = nested_f(rss_rest, rss_unrest, q, dof.max(1.0))?;
   let p_value = if f > 0.0 {
     let d1 = q;
     let d2 = dof.max(1.0);

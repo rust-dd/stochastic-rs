@@ -446,6 +446,19 @@ pub fn reject_exact_fit(y: &[f64], residuals: &[f64], condition: f64) -> Result<
   Ok(())
 }
 
+/// `F` of a fit nested in one with `q` more regressors and `dof` residual degrees of freedom, from
+/// both residual sums of squares; `Numerical { stage: "F statistic" }` when it is not finite.
+pub fn nested_f(rss_nested: f64, rss_full: f64, q: f64, dof: f64) -> Result<f64, StatsError> {
+  let f = ((rss_nested - rss_full) / q) / (rss_full / dof);
+  if !f.is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "F statistic",
+    });
+  }
+  // The nested fit cannot fit better, so a negative `F` is the subtraction's rounding.
+  Ok(f.max(0.0))
+}
+
 pub fn regress_on_deterministics(y: &[f64], include_trend: bool) -> Result<OlsResult, StatsError> {
   validate(y, if include_trend { 3 } else { 2 })?;
   let n = y.len();

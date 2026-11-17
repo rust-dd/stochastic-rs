@@ -25,6 +25,8 @@ use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use stochastic_rs_distributions::special::beta_i;
 
+use super::common::centred;
+use super::common::nested_f;
 use super::common::ols;
 use super::common::prepared;
 use super::common::reject_exact_fit;
@@ -124,7 +126,7 @@ pub fn reset_test(
   let beta_r = ndarray::Array1::from_vec(fit_r.beta.clone());
 
   // Fitted values from the restricted model.
-  let fitted = x.dot(&beta_r);
+  let fitted = x.dot(&beta_r).to_vec();
   // Ramsey (1969) adds powers of ŷ; with a constant in `x`, ŷ lies in its span, so those of the
   // standardised ŷ span the same columns and give the same `F` without their collinearity.
   let powered = if has_constant_column(x) {
@@ -151,14 +153,7 @@ pub fn reset_test(
 
   let df_num = q;
   let df_den = t_total - k - q;
-  let f_statistic = ((sse_r - sse_u) / df_num as f64) / (sse_u / df_den as f64);
-  if !f_statistic.is_finite() {
-    return Err(StatsError::Numerical {
-      stage: "F statistic",
-    });
-  }
-  // The restricted fit nests in the augmented one, so a negative `F` is the subtraction's rounding.
-  let f_statistic = f_statistic.max(0.0);
+  let f_statistic = nested_f(sse_r, sse_u, df_num as f64, df_den as f64)?;
   let p_value = f_upper_tail(f_statistic, df_num as f64, df_den as f64);
 
   Ok(ResetTest {
@@ -179,15 +174,13 @@ fn has_constant_column(x: ArrayView2<f64>) -> bool {
 }
 
 /// `v` less its mean, over the root mean square of that; only less its mean where that is zero.
-fn standardised(v: &ndarray::Array1<f64>) -> ndarray::Array1<f64> {
-  let n = v.len() as f64;
-  let mean = v.iter().sum::<f64>() / n;
-  let centred = v.mapv(|u| u - mean);
-  let scale = (centred.iter().map(|u| u * u).sum::<f64>() / n).sqrt();
+fn standardised(v: &[f64]) -> Vec<f64> {
+  let deviations = centred(v);
+  let scale = (deviations.iter().map(|u| u * u).sum::<f64>() / v.len() as f64).sqrt();
   if scale > 0.0 {
-    centred / scale
+    deviations.iter().map(|u| u / scale).collect()
   } else {
-    centred
+    deviations
   }
 }
 
