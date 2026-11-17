@@ -38,7 +38,8 @@ pub struct BayesianDiffusionFit {
 }
 
 impl BayesianDiffusionFit {
-  /// The [`Ou`] at the posterior means; panics unless `kind` is `OrnsteinUhlenbeck`.
+  /// The [`Ou`] at the posterior means; panics unless `kind` is `OrnsteinUhlenbeck`, and as
+  /// [`Ou::new`].
   #[track_caller]
   pub fn to_ou<S: SeedExt>(
     &self,
@@ -50,7 +51,7 @@ impl BayesianDiffusionFit {
     ou_of(self.kind, self.means(), n, x0, t, seed)
   }
 
-  /// The [`Cir`] at the posterior means; panics unless `kind` is `Cir`.
+  /// The [`Cir`] at the posterior means; panics unless `kind` is `Cir`, and as [`Cir::new`].
   #[track_caller]
   pub fn to_cir<S: SeedExt>(
     &self,
@@ -158,32 +159,10 @@ mod tests {
   use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_core::simd_rng::Unseeded;
-  use stochastic_rs_distributions::SimdDistribution;
-  use stochastic_rs_distributions::normal::SimdNormal;
   use stochastic_rs_stochastic::traits::ProcessExt;
 
   use super::*;
-
-  fn simulate_ou(
-    theta: f64,
-    mu: f64,
-    sigma: f64,
-    x0: f64,
-    dt: f64,
-    n: usize,
-    seed: u64,
-  ) -> Array1<f64> {
-    let a = (-theta * dt).exp();
-    let sd = (sigma * sigma * (1.0 - a * a) / (2.0 * theta)).sqrt();
-    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
-    let mut path = Array1::<f64>::zeros(n);
-    path[0] = x0;
-    for t in 1..n {
-      let z = normal.sample();
-      path[t] = mu + (path[t - 1] - mu) * a + sd * z;
-    }
-    path
-  }
+  use crate::qmle::test_support::simulate_ou;
 
   /// Coverage is asked of the best of three pinned paths, as two 95 % intervals miss together once
   /// in ten; the point estimates, whose bands are wide, of every path.

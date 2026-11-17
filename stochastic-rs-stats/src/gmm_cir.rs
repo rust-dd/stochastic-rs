@@ -49,7 +49,7 @@ pub struct GmmCirFit {
 }
 
 impl GmmCirFit {
-  /// The fitted [`Cir`].
+  /// The fitted [`Cir`]; panics as [`Cir::new`].
   pub fn to_cir<S: SeedExt>(
     &self,
     n: usize,
@@ -252,72 +252,10 @@ fn j_test(t: usize, q: f64) -> Result<(f64, f64), StatsError> {
 mod tests {
   use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Deterministic;
-  use stochastic_rs_distributions::SimdDistribution;
-  use stochastic_rs_distributions::gamma::SimdGamma;
-  use stochastic_rs_distributions::poisson::SimdPoisson;
   use stochastic_rs_stochastic::traits::ProcessExt;
 
   use super::*;
-
-  /// Exact CIR step `c χ'²_d(λ)`: `c = σ²(1−a)/(4θ)`, `d = 4θμ/σ²`, `λ = 4θa X_t/(σ²(1−a))`,
-  /// the non-central χ² drawn as a Poisson mixture of central ones (Gammas).
-  fn cir_exact_step(
-    x_t: f64,
-    theta: f64,
-    mu: f64,
-    sigma: f64,
-    dt: f64,
-    pois_seed: u64,
-    gamma_seed: u64,
-  ) -> f64 {
-    let a = (-theta * dt).exp();
-    let s2 = sigma * sigma;
-    let c = s2 * (1.0 - a) / (4.0 * theta);
-    let d = 4.0 * theta * mu / s2;
-    let lambda = x_t * 4.0 * theta * a / (s2 * (1.0 - a));
-    // χ'²_d(λ) = χ²_{d + 2N}, N ~ Poisson(λ/2); central χ²_k = Gamma(k/2, 2).
-    let n_pois: f64 = f64::from(
-      SimdPoisson::<u32>::new(lambda / 2.0)
-        .seeded(&Deterministic::new(pois_seed))
-        .sample(),
-    );
-    let shape = d / 2.0 + n_pois;
-    let chi2 = if shape > 0.0 {
-      SimdGamma::<f64>::new(shape, 2.0)
-        .seeded(&Deterministic::new(gamma_seed))
-        .sample()
-    } else {
-      0.0
-    };
-    c * chi2
-  }
-
-  fn simulate_cir_path(
-    theta: f64,
-    mu: f64,
-    sigma: f64,
-    x0: f64,
-    dt: f64,
-    n: usize,
-    seed: u64,
-  ) -> Array1<f64> {
-    let mut path = Array1::<f64>::zeros(n);
-    path[0] = x0;
-    for t in 1..n {
-      // Each step gets its own derived seeds so the path stays reproducible
-      // without threading a mutable engine through the helper.
-      path[t] = cir_exact_step(
-        path[t - 1],
-        theta,
-        mu,
-        sigma,
-        dt,
-        seed ^ (t as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15),
-        seed ^ (t as u64).wrapping_mul(0xbf58_476d_1ce4_e5b9),
-      );
-    }
-    path
-  }
+  use crate::qmle::test_support::simulate_cir;
 
   /// Best of three pinned paths: the level's band sits near one standard error, so one path alone
   /// is a coin flip.
@@ -326,7 +264,7 @@ mod tests {
     let (tht, mt, st) = (2.0, 0.04, 0.25);
     let dt = 1.0 / 252.0;
     let fits = [7u64, 13, 29].map(|seed| {
-      let path = simulate_cir_path(tht, mt, st, 0.04, dt, 8000, seed);
+      let path = simulate_cir(tht, mt, st, 0.04, dt, 8000, seed);
       (seed, fit_cir_gmm(path.view(), dt).unwrap())
     });
     let ok = fits.iter().any(|(_, r)| {
@@ -381,7 +319,7 @@ mod tests {
   fn gmm_cir_j_test_does_not_reject_correct_model() {
     let dt = 1.0 / 252.0;
     let pvalues = [11u64, 12, 13].map(|seed| {
-      let path = simulate_cir_path(1.5, 0.05, 0.3, 0.05, dt, 6000, seed);
+      let path = simulate_cir(1.5, 0.05, 0.3, 0.05, dt, 6000, seed);
       fit_cir_gmm(path.view(), dt).unwrap().j_pvalue
     });
     assert!(
@@ -403,14 +341,14 @@ mod tests {
   /// Four transitions are the fewest that give `Ŝ` full rank, and its equilibrated pivots see it.
   #[test]
   fn five_points_are_enough_for_the_weighting_matrix() {
-    let path = simulate_cir_path(2.0, 0.04, 0.25, 0.04, 1.0 / 252.0, 5, 3);
+    let path = simulate_cir(2.0, 0.04, 0.25, 0.04, 1.0 / 252.0, 5, 3);
     assert!(fit_cir_gmm(path.view(), 1.0 / 252.0).is_ok());
   }
 
   /// At 1e80 the moment `u X_t` is near 1e238, whose square overflows `Ŝ`.
   #[test]
   fn a_non_finite_weighting_matrix_is_a_numerical_error() {
-    let path = simulate_cir_path(2.0, 0.04, 0.25, 0.04, 1.0 / 252.0, 200, 7).mapv(|v| v * 1e80);
+    let path = simulate_cir(2.0, 0.04, 0.25, 0.04, 1.0 / 252.0, 200, 7).mapv(|v| v * 1e80);
     assert_eq!(
       fit_cir_gmm(path.view(), 1.0 / 252.0).unwrap_err(),
       StatsError::Numerical {
@@ -447,7 +385,7 @@ mod tests {
     }
   }
 
-  /// `Ŝ` sums one outer product per transition, so its four moments need four transitions.
+  /// Four points are three transitions, one short of a full-rank `Ŝ`.
   #[test]
   fn gmm_cir_rejects_a_short_series() {
     let s = Array1::from(vec![0.04, 0.05, 0.045, 0.05]);

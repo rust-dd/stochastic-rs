@@ -1,80 +1,15 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::Unseeded;
-use stochastic_rs_distributions::SimdDistribution;
-use stochastic_rs_distributions::gamma::SimdGamma;
-use stochastic_rs_distributions::normal::SimdNormal;
-use stochastic_rs_distributions::poisson::SimdPoisson;
 use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::diffusion::ou::Ou;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
+use super::test_support::simulate_cir;
+use super::test_support::simulate_ou;
 use super::*;
 
-/// Exact OU transition: Gaussian with mean μ+(X−μ)e^{−θΔ} and variance σ²(1−e^{−2θΔ})/(2θ).
-fn simulate_ou(
-  theta: f64,
-  mu: f64,
-  sigma: f64,
-  x0: f64,
-  dt: f64,
-  n: usize,
-  seed: u64,
-) -> Array1<f64> {
-  let a = (-theta * dt).exp();
-  let sd = (sigma * sigma * (1.0 - a * a) / (2.0 * theta)).sqrt();
-  let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
-  let mut path = Array1::<f64>::zeros(n);
-  path[0] = x0;
-  for t in 1..n {
-    let z = normal.sample();
-    path[t] = mu + (path[t - 1] - mu) * a + sd * z;
-  }
-  path
-}
-
-/// Exact CIR transition via non-central χ² (Poisson mixture of Gamma).
-fn simulate_cir(
-  theta: f64,
-  mu: f64,
-  sigma: f64,
-  x0: f64,
-  dt: f64,
-  n: usize,
-  seed: u64,
-) -> Array1<f64> {
-  let a = (-theta * dt).exp();
-  let s2 = sigma * sigma;
-  let c = s2 * (1.0 - a) / (4.0 * theta);
-  let d = 4.0 * theta * mu / s2;
-  let mut path = Array1::<f64>::zeros(n);
-  path[0] = x0;
-  // λ and the χ² shape change every step, so each step seeds its own stream from `seed` and `t`:
-  // one seed for every step would restart the same stream and destroy the path.
-  for t in 1..n {
-    let lambda = path[t - 1] * 4.0 * theta * a / (s2 * (1.0 - a));
-    let pois_seed = seed ^ (t as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15);
-    let gamma_seed = seed ^ (t as u64).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    let n_pois: f64 = f64::from(
-      SimdPoisson::<u32>::new(lambda / 2.0)
-        .seeded(&Deterministic::new(pois_seed))
-        .sample(),
-    );
-    let shape = d / 2.0 + n_pois;
-    let chi2 = if shape > 0.0 {
-      SimdGamma::<f64>::new(shape, 2.0)
-        .seeded(&Deterministic::new(gamma_seed))
-        .sample()
-    } else {
-      0.0
-    };
-    path[t] = c * chi2;
-  }
-  path
-}
-
-/// `Ou` at speed 5, level −0.5 and `σ = 0.3`, 10 000 points over `t = 100`.
 fn negative_level_path() -> Array1<f64> {
   Ou::<f64, _>::new(
     5.0,
@@ -154,8 +89,7 @@ fn qmle_ou_recovers_true_params() {
   assert!(ok, "no seed recovered (θ={tht}, μ={mt}, σ={st}) — {report}");
 }
 
-/// CIR round-trip: QMLE with exact CIR conditional moments recovers the
-/// true parameters from an exactly-distributed CIR path.
+/// Best of three pinned paths, as the level's band sits near one standard error.
 #[test]
 fn qmle_cir_recovers_true_params() {
   let (tht, mt, st) = (2.0, 0.04, 0.25);

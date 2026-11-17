@@ -25,6 +25,8 @@ use crate::stationarity::common::reject_exact_fit;
 use crate::traits::FloatExt;
 
 #[cfg(test)]
+pub(crate) mod test_support;
+#[cfg(test)]
 mod tests;
 
 /// A mean-reverting diffusion `dX = θ(μ − X) dt + σ X^γ dW`, named by its `γ`.
@@ -53,7 +55,7 @@ pub struct QmleFit {
 }
 
 impl QmleFit {
-  /// The fitted [`Ou`]; panics unless `kind` is `OrnsteinUhlenbeck`.
+  /// The fitted [`Ou`]; panics unless `kind` is `OrnsteinUhlenbeck`, and as [`Ou::new`].
   #[track_caller]
   pub fn to_ou<S: SeedExt>(
     &self,
@@ -65,7 +67,7 @@ impl QmleFit {
     ou_of(self.kind, [self.theta, self.mu, self.sigma], n, x0, t, seed)
   }
 
-  /// The fitted [`Cir`]; panics unless `kind` is `Cir`.
+  /// The fitted [`Cir`]; panics unless `kind` is `Cir`, and as [`Cir::new`].
   #[track_caller]
   pub fn to_cir<S: SeedExt>(
     &self,
@@ -87,7 +89,7 @@ impl QmleFit {
   }
 }
 
-/// [`Ou`] at `[theta, mu, sigma]`; panics unless `kind` is `OrnsteinUhlenbeck`.
+/// [`Ou`] at `[theta, mu, sigma]`; panics unless `kind` is `OrnsteinUhlenbeck`, and as [`Ou::new`].
 #[track_caller]
 pub(crate) fn ou_of<S: SeedExt>(
   kind: DiffusionKind,
@@ -104,7 +106,7 @@ pub(crate) fn ou_of<S: SeedExt>(
   Ou::new(theta, mu, sigma, n, x0, t, seed)
 }
 
-/// [`Cir`] at `[theta, mu, sigma]`; panics unless `kind` is `Cir`.
+/// [`Cir`] at `[theta, mu, sigma]`; panics unless `kind` is `Cir`, and as [`Cir::new`].
 #[track_caller]
 pub(crate) fn cir_of<S: SeedExt>(
   kind: DiffusionKind,
@@ -220,7 +222,7 @@ pub(crate) fn diffusion_path<T: FloatExt>(
 }
 
 /// The path's mean, which centres the start and the prior; `Err` when it overflows.
-pub(crate) fn path_mean(x: &[f64]) -> Result<f64, StatsError> {
+fn path_mean(x: &[f64]) -> Result<f64, StatsError> {
   let mean = x.iter().sum::<f64>() / x.len() as f64;
   if mean.is_finite() {
     Ok(mean)
