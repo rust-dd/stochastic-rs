@@ -161,19 +161,13 @@ mod tests {
     .price_call(100.0, 100.0, 0.05, 0.0, 1.0);
     // A wider `L` under-resolves the density at `N = 256` (`L = 40` misses by 1.5e-4).
     let price = CosEngine::default().price(&model, 100.0, 100.0, 0.05, 0.0, 1.0, OptionType::Call);
-    // Cross-check against an independent Gil-Pelaez quadrature over the
-    // same `chf`: the two agree to ~1.25e-8, confirming COS(256, L=10) has
-    // itself saturated (its own truncation is not the source of the gap to
-    // `HestonPricer` below).
     let gil_pelaez = GilPelaezPricer::price_call(&model, 100.0, 100.0, 0.05, 0.0, 1.0);
     assert!(
       (price - gil_pelaez).abs() < 1e-6,
       "COS vs Gil-Pelaez (same chf): cos={price}, gil_pelaez={gil_pelaez}"
     );
-    // The remaining ~1.28e-5 to `HestonPricer` is the two implementations' own tolerance floor, not
-    // COS truncation.
     assert!(
-      (price - reference).abs() < 2e-5,
+      (price - reference).abs() < 1e-6,
       "COS Heston: got={price}, expected={reference}"
     );
   }

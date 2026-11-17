@@ -133,7 +133,8 @@ fn finite_difference_jacobian_recovers_a_surface_on_each_side_of_the_feller_boun
   }
 }
 
-// HestonPricer's quadrature sits 2.4e-5 from this surface and the fitted Cui pricer 3.6e-8, so 1e-6 tells them apart.
+// The fitted Cui pricer sits 3.6e-8 from this Gil–Pelaez surface; the second clause ties the
+// reported rmse to the residuals the fit minimised.
 #[test]
 fn reported_rmse_is_the_price_error_of_the_fitted_pricer() {
   let truth = &CASES[2];

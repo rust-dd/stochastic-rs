@@ -21,6 +21,9 @@ mod params;
 
 pub use params::HestonParams;
 
+/// Where the `P_j` integrals start: the Fourier pricers' lower limit.
+const LOWER_LIMIT: f64 = 1e-8;
+
 /// Heston (1993) semi-closed-form pricer; the query `(s, k, r, q, τ)` travels as arguments, so one
 /// instance prices a whole strike/maturity grid.
 /// Heston, S. L. (1993), Rev. Financ. Stud. 6(2), 327–343, DOI 10.1093/rfs/6.2.327.
@@ -243,20 +246,17 @@ impl HestonPricer {
     }
   }
 
-  /// Risk-neutral probability integral `P_j` in the original Heston semi-closed form.
-  ///
-  /// Source:
-  /// - Heston, S. L. (1993)
-  ///   https://doi.org/10.1093/rfs/6.2.327
+  /// Heston (1993), Eq. (18); the integrand is bounded at `φ → 0`, so the head below
+  /// `LOWER_LIMIT` is worth under `2e-9`.
   pub(self) fn p(&self, j: u8, tau: f64, s: f64, k: f64, r: f64, q: f64) -> f64 {
-    0.5 + FRAC_1_PI * integrate_to_convergence(self.re(j, tau, s, k, r, q), 0.00001, 1e-8)
+    0.5 + FRAC_1_PI * integrate_to_convergence(self.re(j, tau, s, k, r, q), LOWER_LIMIT, 1e-8)
   }
 
   fn p_initial_variance_derivative(&self, j: u8, tau: f64, s: f64, k: f64, r: f64, q: f64) -> f64 {
     FRAC_1_PI
       * integrate_to_convergence(
         self.re_initial_variance_derivative(j, tau, s, k, r, q),
-        0.00001,
+        LOWER_LIMIT,
         1e-8,
       )
   }
