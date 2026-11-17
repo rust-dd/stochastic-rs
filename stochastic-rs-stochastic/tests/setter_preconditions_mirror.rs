@@ -1,5 +1,5 @@
 //! Every `with_*` setter runs the check its type's `new` runs on the same argument: the field's one
-//! `Self::check_*` or the argument's own `assert_*`, and no assert of its own unless it reads `self.`.
+//! `Self::check_*` or the argument's own `assert_*`, and no assert of its own unless on `self.`.
 
 use std::collections::HashSet;
 use std::path::Path;

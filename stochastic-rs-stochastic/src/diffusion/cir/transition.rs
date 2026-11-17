@@ -42,7 +42,7 @@ pub(crate) fn transition_pdf(
   let (root_u, root_v) = (u.sqrt(), v.sqrt());
   let gap = root_u - root_v;
   let (ratio, product) = (v / u, u * v);
-  // Taken apart where `v / u` overflows or `u · v` loses digits, as `r_t` nears the subnormal range.
+  // Taken apart where `v / u` overflows or `u · v` loses digits, as `r_t` nears the subnormals.
   let (log_ratio, root) = if ratio.is_normal() && product.is_normal() {
     (ratio.ln(), product.sqrt())
   } else {
