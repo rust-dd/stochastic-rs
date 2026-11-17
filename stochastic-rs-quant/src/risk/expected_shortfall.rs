@@ -40,8 +40,8 @@ pub fn expected_shortfall<T: RealExt>(
   }
 }
 
-/// Parametric Gaussian ES from the sample moments; `InsufficientData` below two samples,
-/// `InvalidInput` for a non-finite one, and a panic unless `0 < confidence < 1`.
+/// Gaussian ES from the sample moments; `InsufficientData` below two samples, `InvalidInput`
+/// for a non-finite one, `Numerical` if a moment overflows; panics unless `0 < confidence < 1`.
 ///
 /// $$
 /// \mathrm{ES}_{\alpha}=-\hat\mu+\hat\sigma\,\frac{\phi(\Phi^{-1}(\alpha))}{1-\alpha}.

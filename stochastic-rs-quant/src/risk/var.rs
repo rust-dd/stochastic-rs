@@ -22,6 +22,8 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::ndtri;
 
+use super::input::finite;
+use super::input::validate_samples;
 use crate::QuantError;
 use crate::traits::RealExt;
 
@@ -83,8 +85,8 @@ pub fn value_at_risk<T: RealExt>(
   }
 }
 
-/// Parametric Gaussian VaR from the sample moments; `InsufficientData` below two samples,
-/// `InvalidInput` for a non-finite one, and a panic unless `0 < confidence < 1`.
+/// Gaussian VaR from the sample moments; `InsufficientData` below two samples, `InvalidInput`
+/// for a non-finite one, `Numerical` if a moment overflows; panics unless `0 < confidence < 1`.
 ///
 /// $$
 /// \mathrm{VaR}_{\alpha}=-\hat\mu+\hat\sigma\,\Phi^{-1}(\alpha).
@@ -167,27 +169,8 @@ pub(crate) fn sorted_losses<T: RealExt>(
   Ok(sorted)
 }
 
-/// `InsufficientData` below `needed` samples, `InvalidInput` naming the first non-finite one.
-pub(crate) fn validate_samples<T: RealExt>(
-  samples: ArrayView1<T>,
-  what: &'static str,
-  needed: usize,
-) -> Result<(), QuantError> {
-  let got = samples.len();
-  if got < needed {
-    return Err(QuantError::InsufficientData { what, needed, got });
-  }
-  match samples.iter().position(|v| !v.is_finite()) {
-    Some(i) => Err(QuantError::invalid(
-      "samples",
-      format!("sample {i} is {:?}", samples[i]),
-    )),
-    None => Ok(()),
-  }
-}
-
-/// Mean and Bessel-corrected deviation of the losses; their sum is non-finite whenever a sample
-/// is, so only then are the samples scanned.
+/// Mean and Bessel-corrected deviation of the losses, `Numerical` if either overflows; the sum is
+/// non-finite whenever a sample is, so only then are the samples scanned.
 pub(crate) fn loss_moments<T: RealExt>(
   samples: ArrayView1<T>,
   orientation: PnlOrLoss,
@@ -199,12 +182,12 @@ pub(crate) fn loss_moments<T: RealExt>(
   if n < 2 || !sum.is_finite() {
     validate_samples(samples, what, 2)?;
   }
-  let mean = sum / T::from_usize_(n);
+  let mean = finite(sum, what, "the sum")? / T::from_usize_(n);
   let var = losses
     .iter()
     .fold(T::zero(), |acc, &v| acc + (v - mean).powi(2))
     / T::from_usize_(n - 1);
-  Ok((mean, var.sqrt()))
+  Ok((mean, finite(var, what, "the variance")?.sqrt()))
 }
 
 /// Ascending with NaN last, a total order for `RealExt`, which has no `total_cmp`; built without

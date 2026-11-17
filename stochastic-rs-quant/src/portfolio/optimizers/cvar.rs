@@ -16,7 +16,7 @@ use crate::QuantError;
 use crate::portfolio::types::PortfolioResult;
 use crate::portfolio::types::empty_result;
 use crate::risk::expected_shortfall::tail_mean;
-use crate::risk::var::validate_samples;
+use crate::risk::input::validate_samples;
 
 /// Tail mean of the losses `−returns` over their worst `alpha` share (not a confidence level);
 /// `InsufficientData` if empty, `InvalidInput` if not finite; panics unless `0 < alpha < 0.5`.

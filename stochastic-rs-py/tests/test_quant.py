@@ -291,6 +291,8 @@ def test_the_risk_classes_raise_value_error_on_short_or_non_finite_data():
         sr.VaR(np.array([0.01, np.nan, -0.02]), method="gaussian")
     with pytest.raises(ValueError, match="drawdown statistics: needs at least 1, got 0"):
         sr.DrawdownStats(empty)
+    with pytest.raises(ValueError, match="sample 0 is -10.0, not positive"):
+        sr.DrawdownStats(np.array([-10.0, -20.0]))
 
 
 def test_implied_vol_surface_rejects_an_unsorted_strike_grid():

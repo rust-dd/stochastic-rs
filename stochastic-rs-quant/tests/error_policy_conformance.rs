@@ -36,6 +36,7 @@ use stochastic_rs_quant::risk::historical_var;
 use stochastic_rs_quant::risk::information_ratio;
 use stochastic_rs_quant::risk::liquidity_adjusted_var;
 use stochastic_rs_quant::risk::max_drawdown;
+use stochastic_rs_quant::risk::running_drawdown;
 use stochastic_rs_quant::risk::sharpe_ratio;
 use stochastic_rs_quant::risk::sortino_ratio;
 use stochastic_rs_quant::risk::value_at_risk;
@@ -170,8 +171,16 @@ fn a_confidence_of_one_is_a_precondition() {
 #[test]
 fn a_ratio_with_a_zero_denominator_is_nan() {
   let flat = array![0.01_f64, 0.01, 0.01, 0.01];
+  let tenth = array![0.1_f64, 0.1, 0.1];
   let up = array![0.01_f64, 0.02, 0.03, 0.04];
   assert!(sharpe_ratio(flat.view(), 0.0, 252.0).unwrap().is_nan());
+  assert!(sharpe_ratio(tenth.view(), 0.0, 252.0).unwrap().is_nan());
+  let zero = Array1::zeros(3);
+  assert!(
+    information_ratio(tenth.view(), zero.view(), 252.0)
+      .unwrap()
+      .is_nan()
+  );
   assert!(sortino_ratio(up.view(), 0.0, 252.0).unwrap().is_nan());
   assert!(
     information_ratio(up.view(), up.view(), 252.0)
@@ -206,6 +215,61 @@ fn an_empty_equity_series_has_no_drawdown() {
   assert_eq!(
     err.to_string(),
     "drawdown statistics: needs at least 1, got 0"
+  );
+}
+
+#[test]
+fn a_drawdown_from_a_non_positive_peak_is_nan() {
+  assert!(max_drawdown(array![f64::NAN, 100.0, 90.0].view()).is_nan());
+  assert!(max_drawdown(array![-10.0_f64, -20.0].view()).is_nan());
+  let running = running_drawdown(array![-1.0_f64, 2.0, 1.0].view());
+  assert!(
+    running[0].is_nan() && running[1] == 0.0 && running[2] == -0.5,
+    "{running}"
+  );
+  let err = DrawdownStats::from_equity(array![-10.0, -20.0].view()).unwrap_err();
+  assert_eq!(
+    err.to_string(),
+    "invalid samples: sample 0 is -10.0, not positive"
+  );
+}
+
+#[test]
+fn finite_samples_whose_moments_overflow_or_underflow_are_a_numerical_error() {
+  let big = array![1e200, -1e200, 1e200];
+  let tiny = array![1e-200, 2e-200, 1e-200];
+  let mean_overflows = array![1e308, 1e308, -0.5];
+  let mut equity_overflows = vec![1.0; 1100];
+  equity_overflows.push(-0.5);
+  let equity_overflows = Array1::from_vec(equity_overflows);
+  let results = [
+    gaussian_var(array![1e308, 1e308, 1e308].view(), 0.99, PnlOrLoss::Pnl),
+    gaussian_var(array![1e200, -1e200].view(), 0.99, PnlOrLoss::Pnl),
+    gaussian_es(array![1e200, -1e200].view(), 0.99, PnlOrLoss::Loss),
+    sharpe_ratio(big.view(), 0.0, 252.0),
+    sharpe_ratio(tiny.view(), 0.0, 252.0),
+    sortino_ratio(big.view(), 0.0, 252.0),
+    sortino_ratio(tiny.view(), 1.5e-200, 252.0),
+    sortino_ratio(mean_overflows.view(), 0.0, 252.0),
+    information_ratio(big.view(), Array1::zeros(3).view(), 252.0),
+    calmar_ratio(mean_overflows.view(), 252.0),
+    calmar_ratio(equity_overflows.view(), 252.0),
+  ];
+  for result in results {
+    assert!(
+      matches!(result, Err(QuantError::Numerical { .. })),
+      "{result:?}"
+    );
+  }
+  let err = gaussian_var(array![1e308, 1e308].view(), 0.99, PnlOrLoss::Pnl).unwrap_err();
+  assert_eq!(
+    err.to_string(),
+    "gaussian VaR: the sum of finite samples overflows to -inf"
+  );
+  let err = sharpe_ratio(tiny.view(), 0.0, 252.0).unwrap_err();
+  assert_eq!(
+    err.to_string(),
+    "Sharpe ratio: the deviation of finite samples underflows to 0.0"
   );
 }
 

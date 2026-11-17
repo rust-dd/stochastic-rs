@@ -28,6 +28,7 @@ pub mod drawdown;
 pub mod execution;
 pub mod expected_shortfall;
 pub mod greeks;
+pub(crate) mod input;
 pub mod performance;
 pub mod scenario;
 pub mod var;
