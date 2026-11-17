@@ -5,6 +5,8 @@ use crate::OptionType;
 use crate::QuantError;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::CalibrationOptions;
+use crate::pricing::bsm::BsmCoc;
+use crate::pricing::bsm::BsmPricer;
 use crate::pricing::fourier::HkdeFourier;
 use crate::traits::Calibrator;
 use crate::traits::ModelPricer;
@@ -191,7 +193,7 @@ fn the_trail_records_weighted_market_minus_model() {
       .windows(2)
       .all(|pair| objective(&pair[1]) < objective(&pair[0]))
   );
-  let problem = super::loss::HkdeProblem::new(&calibrator, START);
+  let problem = super::loss::HkdeProblem::new(&calibrator, START).unwrap();
   for entry in &fit.history {
     let fit_rows = problem.weighted_residuals_for(&entry.params);
     for (i, quote) in quotes.iter().enumerate() {
@@ -202,6 +204,65 @@ fn the_trail_records_weighted_market_minus_model() {
         weight.is_finite() && weight > 0.0 && (weight - 1.0).abs() > 1e-3,
         "{weight}"
       );
+    }
+  }
+}
+
+/// Eq. 13 at the carry `r − q`: a call priced at σ = 0.25 (K = 90, T = 1, r = 3 %, q = 2 %),
+/// against mpmath's 50-digit `1/(S ψ(d₁) √T)`.
+#[test]
+fn a_weight_at_a_dividend_yield_inverts_at_the_carry_r_minus_q() {
+  let quote = OptionQuote::new(90.0, 1.0, 15.51751499245581, OptionType::Call);
+  let weight = super::loss::market_weight(100.0, 0.03, 0.02, &quote).unwrap();
+  let reference = 0.029769392626231853;
+  assert!(
+    (weight / reference - 1.0).abs() < 1e-12,
+    "{weight} against {reference}"
+  );
+}
+
+/// At `q = 0` the carry `r − q` is `r` to the bit, so every weight is the one inverted at `r`.
+#[test]
+fn without_a_dividend_yield_each_weight_is_the_one_inverted_at_r() {
+  let model = HkdeFourier::new(ref_hkde_params());
+  let carry_r = BsmPricer::new(0.2, BsmCoc::Bsm1973);
+  for tau in [0.25, 1.0] {
+    for (k, side) in [
+      (80.0, OptionType::Put),
+      (95.0, OptionType::Put),
+      (100.0, OptionType::Call),
+      (120.0, OptionType::Call),
+    ] {
+      let price = model.price_option(100.0, k, 0.03, 0.0, tau, side);
+      let quote = OptionQuote::new(k, tau, price, side);
+      let sigma = carry_r.implied_volatility(price, 100.0, k, 0.03, 0.0, tau, side);
+      let at_r = super::loss::weight_at(100.0, 0.03, 0.0, &quote, sigma).unwrap();
+      let weight = super::loss::market_weight(100.0, 0.03, 0.0, &quote).unwrap();
+      assert_eq!(weight.to_bits(), at_r.to_bits(), "K = {k}, T = {tau}");
+    }
+  }
+}
+
+/// A zero price has no implied volatility, and σ = 0.3 at K = 400 leaves a vega of about 1e-17.
+#[test]
+fn a_quote_the_weights_cannot_use_stops_the_fit_before_it_starts() {
+  let far = |price: f64| OptionQuote::new(400.0, 0.25, price, OptionType::Call);
+  let tiny = BsmPricer::new(0.3, BsmCoc::Merton1973).price_call(100.0, 400.0, 0.05, 0.0, 0.25);
+  for (quote, reason) in [
+    (far(0.0), "no Black volatility above 1e-8 reprices"),
+    (far(tiny), "its vega"),
+  ] {
+    let mut quotes = heston_ref_quotes();
+    quotes.push(quote);
+    let calibrator = HkdeCalibrator::new(100.0, 0.05, 0.0, quotes).with_start(START);
+    match calibrator.calibrate(None) {
+      Err(QuantError::InvalidQuote {
+        index: 9,
+        reason: got,
+      }) => {
+        assert!(got.starts_with(reason), "{got}")
+      }
+      other => panic!("{other:?}"),
     }
   }
 }

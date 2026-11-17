@@ -14,7 +14,8 @@ use super::params::P_P_UP;
 use super::params::RHO_BOUND;
 use super::params::SIGMA_V_MIN;
 use super::params::THETA_MIN;
-use crate::OptionType;
+use crate::OptionQuote;
+use crate::QuantError;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
 use crate::pricing::bsm::BsmCoc;
@@ -34,31 +35,26 @@ pub(super) struct HkdeProblem<'a> {
 }
 
 impl<'a> HkdeProblem<'a> {
-  pub(super) fn new(calibrator: &'a HkdeCalibrator, start: HkdeParams) -> Self {
+  /// `InvalidQuote` for the first quote `market_weight` cannot weight.
+  pub(super) fn new(calibrator: &'a HkdeCalibrator, start: HkdeParams) -> Result<Self, QuantError> {
     let HkdeCalibrator { s, r, q, .. } = *calibrator;
     let sqrt_weights = calibrator
       .quotes
       .iter()
-      .map(|quote| {
-        market_weight(
-          s,
-          quote.strike,
-          r,
-          q,
-          quote.tau,
-          quote.price,
-          quote.option_type,
-        )
-        .sqrt()
+      .enumerate()
+      .map(|(index, quote)| {
+        market_weight(s, r, q, quote)
+          .map(f64::sqrt)
+          .map_err(|reason| QuantError::InvalidQuote { index, reason })
       })
-      .collect();
-    Self {
+      .collect::<Result<Vec<_>, _>>()?;
+    Ok(Self {
       calibrator,
       sqrt_weights,
       params: start,
       market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
       trail: Trail::negated(),
-    }
+    })
   }
 
   pub(super) fn effective_params(&self) -> HkdeParams {
@@ -199,45 +195,48 @@ impl LeastSquaresProblem for HkdeProblem<'_> {
   }
 }
 
-/// Single-quote weight $w_j^{(n)} = (S_0\,\psi(d_1)\,\sqrt{T_n})^{-1}$
-/// evaluated at the market implied volatility.
-fn market_weight(
-  s: f64,
-  k: f64,
-  r: f64,
-  q: f64,
-  t: f64,
-  market_price: f64,
-  option_type: OptionType,
-) -> f64 {
-  if t <= 0.0 || s <= 0.0 || k <= 0.0 {
-    return 1.0;
-  }
-
-  // `implied_volatility` inverts a price for a vol, so the model's own `v`
-  // is unused — only the cost-of-carry convention matters.
-  let sigma_mkt = BsmPricer::new(0.2, BsmCoc::Bsm1973).implied_volatility(
-    market_price,
+/// Eq. 13's weight $w_j^{(n)} = (S_0\,\psi(d_1)\,\sqrt{T_n})^{-1}$ at the quote's implied
+/// volatility at the carry `r − q`; the reason, as `Err`, when the weights cannot use the quote.
+pub(super) fn market_weight(s: f64, r: f64, q: f64, quote: &OptionQuote) -> Result<f64, String> {
+  // The pricer's own volatility is unused: only its carry convention enters the inversion.
+  let sigma = BsmPricer::new(0.2, BsmCoc::Merton1973).implied_volatility(
+    quote.price,
     s,
-    k,
+    quote.strike,
     r,
     q,
-    t,
-    option_type,
+    quote.tau,
+    quote.option_type,
   );
+  weight_at(s, r, q, quote, sigma)
+}
 
-  if !sigma_mkt.is_finite() || sigma_mkt <= EPS {
-    return 1.0;
+/// Eq. 13's weight at the implied volatility `sigma`; `Err` unless it and the vega exceed 1e-8.
+pub(super) fn weight_at(
+  s: f64,
+  r: f64,
+  q: f64,
+  quote: &OptionQuote,
+  sigma: f64,
+) -> Result<f64, String> {
+  if !(sigma.is_finite() && sigma > EPS) {
+    return Err(format!(
+      "no Black volatility above 1e-8 reprices its price {:?} at the carry r − q = {:?}",
+      quote.price,
+      r - q
+    ));
   }
-
+  let (k, t) = (quote.strike, quote.tau);
   let sqrt_t = t.sqrt();
-  let d1 = ((s / k).ln() + (r - q + 0.5 * sigma_mkt * sigma_mkt) * t) / (sigma_mkt * sqrt_t);
+  let d1 = ((s / k).ln() + (r - q + 0.5 * sigma * sigma) * t) / (sigma * sqrt_t);
   let phi = (-0.5 * d1 * d1).exp() / (2.0 * PI).sqrt();
-  let vega_norm = s * phi * sqrt_t;
-  if vega_norm < EPS {
-    return 1.0;
+  let vega = s * phi * sqrt_t;
+  if !(vega.is_finite() && vega >= EPS) {
+    return Err(format!(
+      "its vega S·ψ(d1)·√T = {vega:?} at the implied volatility {sigma:?} is below 1e-8"
+    ));
   }
-  1.0 / vega_norm
+  Ok(1.0 / vega)
 }
 
 /// Reference calibrated Hkde parameters from Agazzotti et al. (2025), Table 1.
