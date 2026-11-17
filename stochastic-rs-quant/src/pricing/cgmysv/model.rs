@@ -118,7 +118,8 @@ impl CgmysvParams {
   pub fn omega(&self, t: f64) -> f64 {
     let u = -Complex64::i();
     let psi = self.psi_std_cgmy(u);
-    if !(t < self.explosion_time(psi.re)) {
+    let limit = self.explosion_time(psi.re);
+    if t >= limit || limit.is_nan() {
       return f64::NAN;
     }
     let phi = self.cir_joint_chf(
@@ -134,7 +135,7 @@ impl CgmysvParams {
   /// `B' = ½ζ²B² − κB + psi`, `B(0) = ρ` blows up, `∞` if it never does.
   /// Andersen & Piterbarg (2007), Finance Stoch. 11(1), 29–50.
   fn explosion_time(&self, psi: f64) -> f64 {
-    if !(self.lambda_plus > 1.0) {
+    if self.lambda_plus <= 1.0 {
       return 0.0;
     }
     let zeta2 = self.zeta * self.zeta;
