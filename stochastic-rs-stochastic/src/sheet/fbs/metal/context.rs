@@ -43,11 +43,7 @@ thread_local! {
 
 /// Drops the calling thread's sheet pipelines and sized buffers on `ordinal`.
 pub(crate) fn release(ordinal: usize) {
-  CONTEXT.with_borrow_mut(|slot| {
-    if slot.as_ref().is_some_and(|(index, _)| *index == ordinal) {
-      *slot = None;
-    }
-  });
+  metal::release_slot(&CONTEXT, ordinal);
 }
 
 pub(super) fn with<R>(
