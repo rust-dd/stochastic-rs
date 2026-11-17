@@ -83,13 +83,14 @@ pub trait DiffusionModel: Send + Sync {
     (self.diffusion(x + h, t) - 2.0 * self.diffusion(x, t) + self.diffusion(x - h, t)) / (h * h)
   }
 
-  /// Exact transition density p(x0 -> xt | dt). Return `None` if not available.
+  /// The exact density of `xt` from `x0` over `dt`, `None` if the model has none: `0.0` outside the
+  /// support and NaN where there is no density, never a positive stand-in.
   fn exact_density(&self, _x0: f64, _xt: f64, _t0: f64, _dt: f64) -> Option<f64> {
     None
   }
 
-  /// The log of [`exact_density`](Self::exact_density), which a model overrides to keep the tails
-  /// where the density underflows.
+  /// The log of [`exact_density`](Self::exact_density), overridden to keep the tails where it
+  /// underflows: `None` where there is no exact density, `−∞` outside the support.
   fn exact_ln_density(&self, x0: f64, xt: f64, t0: f64, dt: f64) -> Option<f64> {
     self.exact_density(x0, xt, t0, dt).map(f64::ln)
   }
