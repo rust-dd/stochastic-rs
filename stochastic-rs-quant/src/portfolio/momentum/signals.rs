@@ -6,6 +6,7 @@
 use super::types::DecileBucket;
 use super::types::ModelEstimate;
 use super::types::MomentumScore;
+use crate::total_order::descending;
 
 /// Compute risk-adjusted momentum scores from model estimates.
 pub fn compute_scores<T: ModelEstimate>(evals: &[T], risk_free: f64) -> Vec<MomentumScore> {
@@ -33,15 +34,15 @@ pub fn compute_scores<T: ModelEstimate>(evals: &[T], risk_free: f64) -> Vec<Mome
     .collect()
 }
 
-/// Split scored universe into 10 (or fewer) decile buckets, best score first; a NaN score ranks at
-/// an end, `+NaN` first and `-NaN` last, as `f64::total_cmp` orders them.
+/// Split scored universe into 10 (or fewer) decile buckets, best score first; a NaN score ranks
+/// last whatever its sign.
 pub fn decile_analysis(scores: &[MomentumScore]) -> Vec<DecileBucket> {
   if scores.is_empty() {
     return Vec::new();
   }
 
   let mut sorted: Vec<MomentumScore> = scores.to_vec();
-  sorted.sort_by(|a, b| b.momentum_score.total_cmp(&a.momentum_score));
+  sorted.sort_by(|a, b| descending(&a.momentum_score, &b.momentum_score));
 
   let n = sorted.len();
   let n_buckets = 10.min(n);

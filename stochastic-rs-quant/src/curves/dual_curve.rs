@@ -24,7 +24,7 @@ use super::discount_curve::DiscountCurve;
 use super::interpolation::interpolate_discount_factor;
 use super::types::CurvePoint;
 use super::types::InterpolationMethod;
-use crate::order::ascending;
+use crate::total_order::ascending;
 use crate::traits::RealExt;
 
 /// Quote on the tenor being bootstrapped; times are year fractions from the

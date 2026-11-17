@@ -19,6 +19,7 @@ use crate::OptionQuote;
 use crate::OptionType;
 use crate::QuantError;
 use crate::calibration::quote::validate_quotes;
+use crate::total_order::ascending;
 
 /// Implied volatility surface built from market data.
 #[derive(Clone, Debug)]
@@ -201,11 +202,11 @@ impl ImpliedVolSurface {
     }
 
     let mut tau_set: Vec<f64> = quotes.iter().map(|q| q.tau).collect();
-    tau_set.sort_by(f64::total_cmp);
+    tau_set.sort_by(ascending);
     tau_set.dedup_by(|a, b| (*a - *b).abs() < 1e-12);
 
     let mut strike_set: Vec<f64> = quotes.iter().map(|q| q.strike).collect();
-    strike_set.sort_by(f64::total_cmp);
+    strike_set.sort_by(ascending);
     strike_set.dedup_by(|a, b| (*a - *b).abs() < 1e-12);
 
     let fwd_map: std::collections::HashMap<u64, f64> =

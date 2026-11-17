@@ -24,7 +24,7 @@ use stochastic_rs_distributions::special::ndtri;
 use super::input::finite;
 use super::input::validate_samples;
 use crate::QuantError;
-use crate::order::ascending;
+use crate::total_order::ascending;
 use crate::traits::RealExt;
 
 /// Interpretation of the input sample.

@@ -31,6 +31,8 @@
 //! - Carr, P. & Madan, D. (1998), "Towards a Theory of Volatility Trading",
 //!   in *Volatility: New Estimation Techniques for Pricing Derivatives*.
 
+use crate::total_order::ascending;
+
 /// Conventional daily increment for a 252-day equity trading year, exported
 /// so callers can write `realized_variance(prices, BUSINESS_DAY_252_DT)` to
 /// document the choice rather than sprinkling `1.0 / 252.0` literals.
@@ -101,7 +103,7 @@ impl VarianceSwapPricer {
     let k0_idx = strikes
       .iter()
       .enumerate()
-      .min_by(|(_, a), (_, b)| (*a - fwd).abs().total_cmp(&(*b - fwd).abs()))
+      .min_by(|(_, a), (_, b)| ascending(&(*a - fwd).abs(), &(*b - fwd).abs()))
       .map(|(i, _)| i)
       .unwrap_or(0);
     let k0 = strikes[k0_idx];

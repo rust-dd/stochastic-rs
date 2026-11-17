@@ -15,7 +15,7 @@ use super::interpolation;
 use super::types::Compounding;
 use super::types::CurvePoint;
 use super::types::InterpolationMethod;
-use crate::order::ascending;
+use crate::total_order::ascending;
 use crate::traits::RealExt;
 
 /// A calibrated discount curve built from (time, discount_factor) pairs.

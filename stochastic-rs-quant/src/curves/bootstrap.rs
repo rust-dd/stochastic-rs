@@ -17,7 +17,7 @@ use super::interpolation;
 use super::types::BootstrapInstrument;
 use super::types::CurvePoint;
 use super::types::InterpolationMethod;
-use crate::order::ascending;
+use crate::total_order::ascending;
 use crate::traits::RealExt;
 
 /// Build a discount curve by bootstrapping from a set of market instruments.

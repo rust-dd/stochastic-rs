@@ -19,7 +19,7 @@ use std::fmt::Display;
 
 use ndarray::Array1;
 
-use crate::order::ascending;
+use crate::total_order::ascending;
 use crate::traits::RealExt;
 
 /// Interpolation rule for survival probabilities between calibrated nodes.

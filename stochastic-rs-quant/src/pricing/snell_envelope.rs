@@ -22,6 +22,7 @@
 //! - Cox-Ross-Rubinstein binomial tree discretization
 
 use crate::OptionType;
+use crate::total_order::ascending;
 use crate::traits::ModelPricer;
 
 #[derive(Debug, Clone)]
@@ -200,7 +201,7 @@ impl SnellEnvelopePricer {
       }
     }
 
-    exercise_boundary.sort_by(|a, b| a.0.total_cmp(&b.0));
+    exercise_boundary.sort_by(|a, b| ascending(&a.0, &b.0));
 
     SnellEnvelopeResult {
       price: am_values[0],

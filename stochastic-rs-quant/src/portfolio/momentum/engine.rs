@@ -15,9 +15,10 @@ use super::types::MomentumScore;
 use super::types::WeightScheme;
 use super::weights::assign_weights;
 use super::weights::compute_portfolio_vol;
+use crate::total_order::descending;
 
-/// Build rank-based long/short momentum portfolio; a NaN score ranks at an end, `+NaN` first and
-/// `-NaN` last, as `f64::total_cmp` orders them.
+/// Build rank-based long/short momentum portfolio, best score first; a NaN score ranks last
+/// whatever its sign.
 pub fn build_portfolio(
   scores: &[MomentumScore],
   long_n: usize,
@@ -30,11 +31,7 @@ pub fn build_portfolio(
   }
 
   let mut order: Vec<usize> = (0..scores.len()).collect();
-  order.sort_by(|&a, &b| {
-    scores[b]
-      .momentum_score
-      .total_cmp(&scores[a].momentum_score)
-  });
+  order.sort_by(|&a, &b| descending(&scores[a].momentum_score, &scores[b].momentum_score));
 
   let long_count = long_n.min(order.len());
   let long_slice = &order[..long_count];
