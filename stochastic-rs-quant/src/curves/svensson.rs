@@ -143,7 +143,7 @@ impl<T: RealExt> Svensson<T> {
           }
         }
 
-        if let Some(betas) = super::linalg::solve_linalg::<4>(&xtx_data, &xty_data) {
+        if let Some(betas) = crate::linalg::solve_small::<4>(&xtx_data, &xty_data) {
           let candidate = Self::new(
             T::from_f64_fast(betas[0]),
             T::from_f64_fast(betas[1]),

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use ndarray::Array2;
 use rayon::prelude::*;
 use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::linalg::spd_cholesky_lower;
 use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_distributions::special::gamma_li;
 
@@ -227,7 +228,7 @@ fn cholesky_lower_with_jitter(mut sigma: Array2<f64>) -> Array2<f64> {
   let dim = sigma.nrows();
   let mut jitter = 1e-12;
   for _ in 0..8 {
-    if let Some(lower) = crate::linalg::spd_cholesky_lower(&sigma) {
+    if let Some(lower) = spd_cholesky_lower(sigma.view()) {
       return lower;
     }
     for i in 0..dim {

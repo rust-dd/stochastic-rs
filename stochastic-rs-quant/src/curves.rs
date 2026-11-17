@@ -23,7 +23,6 @@ pub mod bootstrap;
 pub mod discount_curve;
 mod dual_curve;
 pub mod interpolation;
-pub(crate) mod linalg;
 pub mod multi_curve;
 pub mod nelson_siegel;
 pub mod svensson;

@@ -7,6 +7,7 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 use rayon::prelude::*;
+use stochastic_rs_distributions::linalg::spd_cholesky_lower;
 use stochastic_rs_stochastic::mc::McEstimate;
 
 use crate::OptionType;
@@ -155,7 +156,7 @@ impl McBasketPricer {
     option_type: OptionType,
   ) -> McEstimate<f64> {
     let n_assets = s.len();
-    let l: Array2<f64> = crate::linalg::spd_cholesky_lower(&self.rho).expect(
+    let l: Array2<f64> = spd_cholesky_lower(self.rho.view()).expect(
       "correlation matrix must be positive definite — call try_price() to handle this gracefully",
     );
     let drifts: Vec<f64> = (0..n_assets)
