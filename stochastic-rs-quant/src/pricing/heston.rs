@@ -73,8 +73,8 @@ impl HestonPricer {
     self.params
   }
 
-  /// Call and put price at one query point, NaN for a negative or NaN `tau`; at `tau = 0` the
-  /// payoff, which the `P_j` integrals, undamped there, do not resolve.
+  /// Call and put price at one query point: NaN for a negative or NaN `tau` or an `E[∫₀^τ v]` past
+  /// `f64`; at `tau = 0` the payoff, which the `P_j` integrals, undamped there, do not resolve.
   ///
   /// $$
   /// C=Se^{-q\tau}P_1-Ke^{-r\tau}P_2,\qquad P=C+Ke^{-r\tau}-Se^{-q\tau}
@@ -226,15 +226,14 @@ impl HestonPricer {
     j: u8,
     tau: f64,
     (s, k, r, q): (f64, f64, f64, f64),
-    control_variance: Option<f64>,
+    control_variance: f64,
   ) -> impl Fn(f64) -> f64 {
     let self_ = *self;
     let ln_forward = s.ln() + (r - q) * tau;
     move |phi: f64| -> f64 {
       let i_phi = Complex64::i() * phi;
-      let gaussian = control_variance.map_or(Complex64::ZERO, |w| {
-        (i_phi * ln_forward + (self_.u(j) * i_phi - 0.5 * phi * phi) * w).exp()
-      });
+      let gaussian =
+        (i_phi * ln_forward + (self_.u(j) * i_phi - 0.5 * phi * phi) * control_variance).exp();
       let (f, _) = self_.f_and_d(j, phi, tau, s, r, q);
       ((f - gaussian) * (-i_phi * k.ln()).exp() / i_phi).re
     }
@@ -256,16 +255,18 @@ impl HestonPricer {
     }
   }
 
-  /// Heston (1993)'s `P_j` less a Gaussian of variance `E_j[∫v]`, whose share is `N(d_j)`: the rest
-  /// vanishes at `φ → 0`, and nearly everywhere at a `τ` whose decay outlasts the panels.
+  /// Heston (1993)'s `P_j` less a Gaussian of variance `w = E_j[∫v]`, whose share is `N(d_j)`, a
+  /// step at `w = 0`: the rest vanishes at `φ → 0`, and almost everywhere at a `τ` of seconds.
   pub(self) fn p(&self, j: u8, tau: f64, s: f64, k: f64, r: f64, q: f64) -> f64 {
-    let variance =
-      Some(self.mean_integrated_variance(j, tau)).filter(|w| w.is_finite() && *w > 0.0);
-    let gaussian_share = variance.map_or(0.5, |w| {
-      norm_cdf(((s / k).ln() + (r - q) * tau + self.u(j) * w) / w.sqrt())
-    });
-    let rest = self.re(j, tau, (s, k, r, q), variance);
-    gaussian_share + FRAC_1_PI * integrate_to_convergence(rest, LOWER_LIMIT, REST_TOLERANCE)
+    let w = self.mean_integrated_variance(j, tau);
+    let log_moneyness = (s / k).ln() + (r - q) * tau + self.u(j) * w;
+    let d = if log_moneyness == 0.0 {
+      0.0
+    } else {
+      log_moneyness / w.sqrt()
+    };
+    let rest = self.re(j, tau, (s, k, r, q), w);
+    norm_cdf(d) + FRAC_1_PI * integrate_to_convergence(rest, LOWER_LIMIT, REST_TOLERANCE)
   }
 
   fn p_initial_variance_derivative(&self, j: u8, tau: f64, s: f64, k: f64, r: f64, q: f64) -> f64 {

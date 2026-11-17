@@ -105,3 +105,28 @@ fn short_maturities_match_the_converged_integral() {
     );
   }
 }
+
+/// With `v0 = θ = 0` the variance stays at 0 and the integrand never decays: the price is the
+/// discounted payoff of the forward.
+#[test]
+fn a_zero_variance_model_prices_the_forward_payoff() {
+  let pricer = HestonPricer::new(HestonParams {
+    v0: 0.0,
+    theta: 0.0,
+    ..P
+  });
+  let forward = 100.0 * 0.05_f64.exp();
+  for k in [90.0, forward, 110.0] {
+    let got = pricer.price_call(100.0, k, 0.05, 0.0, 1.0);
+    let want = (100.0 - k * (-0.05_f64).exp()).max(0.0);
+    assert!((got - want).abs() < 1e-9, "k = {k}: {got} vs {want}");
+  }
+}
+
+/// A risk premium of −800 puts `E[∫₀^τ v]` past `f64` at `τ = 1`.
+#[test]
+fn an_expected_variance_past_f64_prices_nan() {
+  let pricer = HestonPricer::new(P).with_vol_risk_premium(-800.0);
+  let (call, put) = pricer.call_put(100.0, 100.0, 0.05, 0.0, 1.0);
+  assert!(call.is_nan() && put.is_nan(), "{call}, {put}");
+}
