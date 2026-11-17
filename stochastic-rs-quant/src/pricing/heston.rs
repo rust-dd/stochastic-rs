@@ -179,51 +179,37 @@ impl HestonPricer {
     }
   }
 
-  pub(self) fn d(&self, j: u8, phi: f64) -> Complex64 {
-    ((self.b(j) - self.params.rho * self.params.sigma * phi * Complex64::i()).powi(2)
-      - self.params.sigma.powi(2) * (2.0 * Complex64::i() * self.u(j) * phi - phi.powi(2)))
-    .sqrt()
-  }
-
-  /// Albrecher-Mayer-Schoutens-Tistaert (2007) "Little Heston Trap" form:
-  /// g̃ = 1/g_original keeps log-argument on the principal branch for all τ.
-  pub(self) fn g(&self, j: u8, phi: f64) -> Complex64 {
-    (self.b(j) - self.params.rho * self.params.sigma * Complex64::i() * phi - self.d(j, phi))
-      / (self.b(j) - self.params.rho * self.params.sigma * Complex64::i() * phi + self.d(j, phi))
-  }
-
-  pub(self) fn C(&self, j: u8, phi: f64, tau: f64, r: f64, q: f64) -> Complex64 {
-    (r - q) * Complex64::i() * phi * tau
-      + (self.params.kappa * self.params.theta / self.params.sigma.powi(2))
-        * ((self.b(j)
-          - self.params.rho * self.params.sigma * Complex64::i() * phi
-          - self.d(j, phi))
-          * tau
-          - 2.0
-            * ((1.0 - self.g(j, phi) * (-self.d(j, phi) * tau).exp()) / (1.0 - self.g(j, phi)))
-              .ln())
-  }
-
-  pub(self) fn D(&self, j: u8, phi: f64, tau: f64) -> Complex64 {
-    ((self.b(j) - self.params.rho * self.params.sigma * Complex64::i() * phi - self.d(j, phi))
-      / self.params.sigma.powi(2))
-      * ((1.0 - (-self.d(j, phi) * tau).exp())
-        / (1.0 - self.g(j, phi) * (-self.d(j, phi) * tau).exp()))
-  }
-
-  pub(self) fn f(&self, j: u8, phi: f64, tau: f64, s: f64, r: f64, q: f64) -> Complex64 {
-    (self.C(j, phi, tau, r, q)
-      + self.D(j, phi, tau) * self.params.v0
-      + Complex64::i() * phi * s.ln())
-    .exp()
+  /// `(f_j, D_j)` at `φ` in the Little-Trap form `g̃ = 1/g`, `e^{−dτ}`, which keeps the logarithm
+  /// on its principal branch at any `τ`; `d` and `g̃` are evaluated once per sample.
+  /// Albrecher, Mayer, Schoutens & Tistaert (2007), "The Little Heston Trap", Wilmott, 83–92.
+  fn f_and_d(&self, j: u8, phi: f64, tau: f64, s: f64, r: f64, q: f64) -> (Complex64, Complex64) {
+    let HestonParams {
+      v0,
+      kappa,
+      theta,
+      sigma,
+      rho,
+    } = self.params;
+    let i = Complex64::i();
+    let b = self.b(j);
+    let d = ((b - rho * sigma * phi * i).powi(2)
+      - sigma.powi(2) * (2.0 * i * self.u(j) * phi - phi.powi(2)))
+    .sqrt();
+    let drift = b - rho * sigma * i * phi - d;
+    let g = drift / (b - rho * sigma * i * phi + d);
+    let decay = (-d * tau).exp();
+    let big_c = (r - q) * i * phi * tau
+      + (kappa * theta / sigma.powi(2))
+        * (drift * tau - 2.0 * ((1.0 - g * decay) / (1.0 - g)).ln());
+    let big_d = (drift / sigma.powi(2)) * ((1.0 - decay) / (1.0 - g * decay));
+    ((big_c + big_d * v0 + i * phi * s.ln()).exp(), big_d)
   }
 
   pub(self) fn re(&self, j: u8, tau: f64, s: f64, k: f64, r: f64, q: f64) -> impl Fn(f64) -> f64 {
     let self_ = *self;
     move |phi: f64| -> f64 {
-      (self_.f(j, phi, tau, s, r, q) * (-Complex64::i() * phi * k.ln()).exp()
-        / (Complex64::i() * phi))
-        .re
+      let (f, _) = self_.f_and_d(j, phi, tau, s, r, q);
+      (f * (-Complex64::i() * phi * k.ln()).exp() / (Complex64::i() * phi)).re
     }
   }
 
@@ -238,11 +224,8 @@ impl HestonPricer {
   ) -> impl Fn(f64) -> f64 {
     let self_ = *self;
     move |phi: f64| -> f64 {
-      (self_.D(j, phi, tau)
-        * self_.f(j, phi, tau, s, r, q)
-        * (-Complex64::i() * phi * k.ln()).exp()
-        / (Complex64::i() * phi))
-        .re
+      let (f, big_d) = self_.f_and_d(j, phi, tau, s, r, q);
+      (big_d * f * (-Complex64::i() * phi * k.ln()).exp() / (Complex64::i() * phi)).re
     }
   }
 
