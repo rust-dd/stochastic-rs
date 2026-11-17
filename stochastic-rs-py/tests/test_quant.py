@@ -368,6 +368,23 @@ def test_heston_slv_calibrates_a_heston_surface_and_prices():
         sr.HestonSlvCalibrator(s, r, q, list(strikes), maturities, calls, method="galerkin")
 
 
+def test_heston_slv_starts_its_heston_fit_from_the_initial_guess():
+    import numpy as np
+
+    s, r, q = 100.0, 0.02, 0.005
+    model = sr.HestonFourier(v0=0.04, kappa=2.0, theta=0.05, sigma=0.4, rho=-0.6)
+    strikes = list(np.linspace(80.0, 120.0, 9))
+    maturities = [0.25, 0.5, 1.0]
+    calls = np.array([[model.price_call(s, k, r, q, t) for k in strikes] for t in maturities])
+    result = sr.HestonSlvCalibrator(
+        s, r, q, strikes, maturities, calls,
+        heston_initial_guess=(0.05, 1.5, 0.04, 0.5, -0.5), n_particles=2_000, steps_per_year=50, seed=3,
+    ).calibrate()
+    heston = result.heston()
+    assert heston is not None and abs(heston[0] - 0.04) < 0.02, heston
+    assert result.rates == (r, q) and math.isfinite(result.max_error)
+
+
 BELOW_FELLER = (0.04, 1.5, 0.04, 0.5, -0.7)
 HESTON_STRIKES = [70.0, 80.0, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0, 130.0]
 HESTON_MATURITIES = (0.25, 0.5, 1.0, 2.0, 3.0)

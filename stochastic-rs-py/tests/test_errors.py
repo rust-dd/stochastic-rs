@@ -126,3 +126,9 @@ def test_copula_setter_rejections_print_no_rust_panic(capfd):
         sr.Bb7(delta=0.0)
     assert (clayton.theta(), bb1.theta(), bb1.delta()) == (2.0, 0.8, 1.6)
     assert "panicked" not in capfd.readouterr().err
+
+
+def test_hscm_quotes_must_share_one_rate():
+    options = [sr.HscmMarketOption(95.0, 0.25, 8.0, 0.03), sr.HscmMarketOption(100.0, 0.5, 7.5, 0.04)]
+    with pytest.raises(ValueError, match="HSCM quotes must share one rate; got 0.03 and 0.04"):
+        sr.HscmCalibrator(100.0, options)
