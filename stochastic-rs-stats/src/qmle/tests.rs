@@ -178,7 +178,7 @@ fn a_negative_level_is_the_closed_forms_at_every_scale() {
   }
 }
 
-/// At `2^-532` every start residual's square underflows, so `σ₀` falls back to the `σ` whose
+/// At `2^-532` the start residuals' mean square underflows, so `σ₀` falls back to the `σ` whose
 /// stationary variance `v₁ σ²` is the path's: a scale the data set, not a constant.
 #[test]
 fn a_start_whose_residuals_underflow_takes_its_scale_from_the_path() {
@@ -368,11 +368,11 @@ fn a_non_finite_optimum_is_a_numerical_error() {
   );
 }
 
-/// The mean, the autocorrelation and the speed are finite, but the residuals near 1.1e154 square
-/// past the largest double, so `σ₀` is `∞`.
+/// The slope is in `(0, 1)` and the mean, autocorrelation and speed finite, but the residuals near
+/// 1e153 over a variance scale near `dt` put `σ₀²` past the largest double.
 #[test]
 fn an_overflowing_sigma_start_is_a_numerical_error() {
-  let s = Array1::from(vec![6e153, -6e153, 6e153, -6e153]);
+  let s = Array1::from(vec![1e153, 3e153, 5e153, 4e153, 2e153, 1e153, 2e153, 4e153]);
   assert_eq!(
     fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).unwrap_err(),
     StatsError::Numerical {
@@ -421,6 +421,15 @@ fn the_ou_qmle_refuses_what_the_closed_form_refuses() {
     (
       Array1::from(vec![0.11, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7]),
       "constant series",
+    ),
+    // At the double range's edge, where the start's `σ₀` overflows, the data's refusal comes first.
+    (
+      Array1::from(vec![6e153, -6e153, 6e153, -6e153]),
+      "series without positive autocorrelation",
+    ),
+    (
+      Array1::from(vec![1.2e154, 0.0, 1.2e154, 0.0, 1.2e154]),
+      "series without positive autocorrelation",
     ),
   ];
   let dt = 1.0 / 252.0;

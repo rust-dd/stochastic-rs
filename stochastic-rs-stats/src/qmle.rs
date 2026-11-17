@@ -186,14 +186,14 @@ pub fn fit_diffusion_qmle<T: FloatExt>(
   // Three points are two transitions, which the drift's two coefficients fit exactly.
   let x = diffusion_path(series, kind, 4)?;
   let carrier = Carrier::new(&x, kind)?;
+  // On an exact fit either quasi-likelihood grows without bound as `σ` falls, and OU's, the exact
+  // one, has its supremum on a ridge or at the iid limit unless the slope lies in `(0, 1)`.
+  Ar1::of(&x, kind)?;
   let neg_ll = |p: &[f64; 3]| -> f64 {
     let [theta, mu, sigma] = carrier.params(*p);
     -quasi_log_likelihood(&x, dt, kind, theta, mu, sigma)
   };
   let start = ar1_start(&x, dt, kind, carrier)?;
-  // On an exact fit either quasi-likelihood grows without bound as `σ` falls, and OU's, the exact
-  // one, has its supremum on a ridge or at the iid limit unless the slope lies in `(0, 1)`.
-  Ar1::of(&x, kind)?;
 
   let (p, iterations, converged) = nelder_mead(start, 2000, neg_ll);
   let [theta, mu, sigma] = carrier.params(p);
@@ -335,7 +335,7 @@ pub(crate) fn ar1_start(
       stage: "starting point",
     });
   }
-  // Zero only where every residual's square underflows: then the `σ` whose stationary variance
+  // Zero only where the residuals' mean square underflows: then the `σ` whose stationary variance
   // `v₁ σ²` is the path's, so that the data and not a constant set the start's scale.
   let sigma0 = if sigma_raw > 0.0 {
     sigma_raw
