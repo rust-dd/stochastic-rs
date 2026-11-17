@@ -59,8 +59,7 @@ impl FourierModelExt for HestonFourier {
   }
 
   fn cumulants(&self, t: f64) -> Cumulants {
-    let p = &self.params;
-    heston_cumulants(p.v0, p.kappa, p.theta, p.sigma, p.rho, t)
+    heston_cumulants(&self.params, t)
   }
 }
 
@@ -113,13 +112,7 @@ impl FourierModelExt for DoubleHestonFourier {
 
   /// The factors are independent, so their cumulants add.
   fn cumulants(&self, t: f64) -> Cumulants {
-    let factor = |p: &HestonParams| heston_cumulants(p.v0, p.kappa, p.theta, p.sigma, p.rho, t);
-    let (a, b) = (factor(&self.first), factor(&self.second));
-    Cumulants {
-      c1: a.c1 + b.c1,
-      c2: a.c2 + b.c2,
-      c4: a.c4.zip(b.c4).map(|(a, b)| a + b),
-    }
+    heston_cumulants(&self.first, t).plus(heston_cumulants(&self.second, t))
   }
 }
 

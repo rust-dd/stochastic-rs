@@ -1,3 +1,5 @@
+use crate::pricing::heston::HestonParams;
+
 /// Cumulants of $X_T = \ln(S_T/F_T)$ under the model's own `chf`, so `c1` holds no carry
 /// `(r − q)T`.
 #[derive(Debug, Clone)]
@@ -23,19 +25,28 @@ impl Cumulants {
       .unwrap_or(0.0);
     l * (self.c2 + c4.sqrt()).sqrt()
   }
+
+  /// Cumulants of the sum of two independent log-returns; `c4` is `None` if either's is.
+  pub(crate) fn plus(self, other: Self) -> Self {
+    Self {
+      c1: self.c1 + other.c1,
+      c2: self.c2 + other.c2,
+      c4: self.c4.zip(other.c4).map(|(a, b)| a + b),
+    }
+  }
 }
 
 /// `c1` from Fang & Oosterlee's Table 11; `c2` and `c4` are `(−i)ⁿ∂ⁿᵤ ln chf` at `u = 0` of the
 /// Little-Trap chf, grouped by powers of `e^{−κt}`.
 /// Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826–848.
-pub(crate) fn heston_cumulants(
-  v0: f64,
-  kappa: f64,
-  theta: f64,
-  sigma: f64,
-  rho: f64,
-  t: f64,
-) -> Cumulants {
+pub(crate) fn heston_cumulants(p: &HestonParams, t: f64) -> Cumulants {
+  let HestonParams {
+    v0,
+    kappa,
+    theta,
+    sigma,
+    rho,
+  } = *p;
   let ekt = (-kappa * t).exp();
   let c1 = (1.0 - ekt) * (theta - v0) / (2.0 * kappa) - 0.5 * theta * t;
 
