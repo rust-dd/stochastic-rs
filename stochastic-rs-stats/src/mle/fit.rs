@@ -95,7 +95,10 @@ impl MleProblem<'_> {
       let d = self
         .density
         .density(&**model, self.sample[i - 1], self.sample[i], t0, self.dt);
-      sum -= d.max(1e-30).ln();
+      if !(d > 0.0 && d.is_finite()) {
+        return 1e30;
+      }
+      sum -= d.ln();
     }
     if sum.is_finite() { sum } else { 1e30 }
   }
@@ -160,8 +163,8 @@ fn resolve_fit_outcome(
   (best_param, converged, iterations as usize)
 }
 
-/// L-BFGS-B MLE of `model`, left at the estimate, within its bounds on a path sampled every `dt`;
-/// `Err` below 2 or on non-finite points, panics unless one bound per parameter. Check `converged`.
+/// L-BFGS-B MLE of `model`, left at the estimate, on a path every `dt`; check `converged`. `Err`
+/// below 2 points, on a non-finite one or log-likelihood; panics unless one bound per parameter.
 /// $$
 /// -\sum_{i=1}^{N} \ln p(X_{t_i}\mid X_{t_{i-1}};\theta,\Delta t)
 /// $$
@@ -232,7 +235,13 @@ pub fn fit_mle(
   for i in 1..sample.len() {
     let t0 = (i - 1) as f64 * dt;
     let d = density.density(model, sample[i - 1], sample[i], t0, dt);
-    log_lik += d.max(1e-30).ln();
+    log_lik += d.ln();
+  }
+  // The search's penalty marks a point without a likelihood; an estimate there is no fit.
+  if !log_lik.is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "log-likelihood",
+    });
   }
 
   let k = n_params as f64;
@@ -362,6 +371,77 @@ mod tests {
     // At this upper bound the likelihood improves toward smaller sigma.
     assert!(boundary[2] > 0.0);
     assert_eq!(outside, boundary);
+  }
+
+  /// A negative point has no exact CIR density at any parameter, so the objective is its penalty
+  /// and the log-likelihood of the fit not finite.
+  #[test]
+  fn a_path_without_a_density_is_penalised_and_its_fit_an_err() {
+    let mut model = Cir::new(
+      1.0,
+      0.1,
+      0.3,
+      3,
+      None,
+      None,
+      VarianceBoundary::Floor,
+      Deterministic::new(0),
+    );
+    for (sample, penalised) in [
+      (ndarray::array![0.1, 0.2, 0.15], false),
+      (ndarray::array![0.1, -0.2, 0.15], true),
+    ] {
+      let problem = MleProblem {
+        model: Mutex::new(&mut model),
+        sample: sample.view(),
+        dt: 0.01,
+        density: DensityApprox::Exact,
+        lower: vec![1e-4, 1e-6, 1e-6],
+        upper: vec![50.0, 10.0, 10.0],
+      };
+      let nll = problem.eval_nll(&[1.0, 0.1, 0.3]);
+      assert_eq!(nll == 1e30, penalised, "nll = {nll}");
+      assert!(nll.is_finite());
+      drop(problem);
+      let fit = fit_mle(&mut model, sample.view(), 0.01, DensityApprox::Exact, None);
+      assert_eq!(
+        fit.map(|f| f.log_likelihood.is_finite()),
+        if penalised {
+          Err(StatsError::Numerical {
+            stage: "log-likelihood",
+          })
+        } else {
+          Ok(true)
+        }
+      );
+    }
+  }
+
+  /// From a state of zero Euler's CIR variance is zero, where the exact law has its central χ²
+  /// density: the same path is an `Err` by Euler and a fit by the law.
+  #[test]
+  fn a_cir_path_from_zero_fits_by_the_law_and_not_by_euler() {
+    let sample = ndarray::array![0.0, 0.02, 0.03, 0.025, 0.04, 0.035, 0.05, 0.04];
+    let fit = |density| {
+      let mut model = Cir::new(
+        1.0,
+        0.05,
+        0.2,
+        3,
+        None,
+        None,
+        VarianceBoundary::Floor,
+        Deterministic::new(0),
+      );
+      fit_mle(&mut model, sample.view(), 0.01, density, None).map(|f| f.log_likelihood.is_finite())
+    };
+    assert_eq!(fit(DensityApprox::Exact), Ok(true));
+    assert_eq!(
+      fit(DensityApprox::Euler),
+      Err(StatsError::Numerical {
+        stage: "log-likelihood"
+      })
+    );
   }
 
   #[test]

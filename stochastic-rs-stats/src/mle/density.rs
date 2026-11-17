@@ -2,10 +2,10 @@ use std::f64::consts::PI;
 
 use super::DiffusionModel;
 
-/// Gaussian probability density function.
+/// The normal density; NaN at a variance not above zero.
 pub(super) fn gaussian_pdf(x: f64, mean: f64, var: f64) -> f64 {
-  if var <= 0.0 {
-    return 1e-30;
+  if var.is_nan() || var <= 0.0 {
+    return f64::NAN;
   }
   let z = (x - mean) / var.sqrt();
   (-0.5 * z * z).exp() / (2.0 * PI * var).sqrt()
@@ -46,7 +46,8 @@ pub enum DensityApprox {
 }
 
 impl DensityApprox {
-  /// Evaluate the transition density p(x0 -> xt | t0, dt) under the given model.
+  /// The transition density `p(xt | x0)` over `dt` from `t0`: `0.0` outside the method's support,
+  /// NaN where it has none, as at a variance not above zero; panics if `model` lacks the method.
   pub fn density(&self, model: &dyn DiffusionModel, x0: f64, xt: f64, t0: f64, dt: f64) -> f64 {
     match self {
       DensityApprox::Exact => Self::density_exact(model, x0, xt, t0, dt),
@@ -152,17 +153,11 @@ impl DensityApprox {
     let c = 1.0 / (sig_x * sig_x * dt);
 
     if z <= 0.0 {
-      return 1e-30;
+      return 0.0;
     }
 
-    let val = z.powf(-0.5) * (c * z).sqrt().cosh() * (-0.5 * (c + z)).exp()
-      / (2.0 * a_coeff.abs() * (2.0 * PI).sqrt());
-
-    if val.is_finite() && val > 0.0 {
-      val
-    } else {
-      1e-30
-    }
+    z.powf(-0.5) * (c * z).sqrt().cosh() * (-0.5 * (c + z)).exp()
+      / (2.0 * a_coeff.abs() * (2.0 * PI).sqrt())
   }
 
   /// Ref: Kessler (1997)
@@ -187,9 +182,6 @@ impl DensityApprox {
 
     let v = (e_x2 - e_x * e_x).abs();
     let std = v.sqrt();
-    if std < 1e-30 {
-      return 1e-30;
-    }
 
     let z = (xt - e_x) / std;
     (-0.5 * z * z).exp() / ((2.0 * PI).sqrt() * std)

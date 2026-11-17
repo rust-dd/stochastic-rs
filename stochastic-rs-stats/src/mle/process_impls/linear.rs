@@ -110,8 +110,11 @@ impl<S: SeedExt> DiffusionModel for Gbm<f64, S> {
 
   fn exact_density(&self, x0: f64, xt: f64, _t0: f64, dt: f64) -> Option<f64> {
     use std::f64::consts::PI;
-    if xt <= 0.0 || x0 <= 0.0 {
-      return Some(1e-30);
+    if x0.is_nan() || x0 <= 0.0 {
+      return Some(f64::NAN);
+    }
+    if xt <= 0.0 {
+      return Some(0.0);
     }
     let log_mean = x0.ln() + (self.mu - 0.5 * self.sigma * self.sigma) * dt;
     let log_var = self.sigma * self.sigma * dt;
@@ -160,8 +163,8 @@ impl<S: SeedExt> DiffusionModel for Ou<f64, S> {
     let e = (-self.theta * dt).exp();
     let mean = self.mu + (x0 - self.mu) * e;
     let var = self.sigma * self.sigma / (2.0 * self.theta) * (1.0 - e * e);
-    if var <= 0.0 {
-      return Some(1e-30);
+    if var.is_nan() || var <= 0.0 {
+      return Some(f64::NAN);
     }
     let z = (xt - mean) / var.sqrt();
     Some((-0.5 * z * z).exp() / (2.0 * PI * var).sqrt())
