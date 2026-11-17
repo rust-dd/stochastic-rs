@@ -1,7 +1,10 @@
-//! Process backend switching, device handle and Python wrapper macros.
+//! Process backend switching, device handle, precondition and Python wrapper macros.
 
 #[macro_use]
 mod backend;
+
+#[macro_use]
+mod require;
 
 #[cfg(device_backend)]
 #[macro_use]

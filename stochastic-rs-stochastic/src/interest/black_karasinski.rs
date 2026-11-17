@@ -101,23 +101,11 @@ impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(
-      a.is_finite(),
-      "a must satisfy `a.is_finite()`, got a = {a:?}"
-    );
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      r0.is_none_or(|v| v.is_finite()),
-      "r0 must satisfy `r0.is_none_or(|v| v.is_finite())`, got r0 = {r0:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_a(a);
+    Self::check_sigma(sigma);
+    Self::check_n(n);
+    Self::check_r0(r0);
+    Self::check_t(t);
     if a < T::zero() {
       log::warn!("BlackKarasinski::new: a < 0 makes the log-rate diverge, got a = {a:?}");
     }
@@ -136,6 +124,26 @@ impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> BlackKarasinski<T, S, B> {
+  fn check_a(a: T) {
+    require!(a.is_finite(), a);
+  }
+
+  fn check_sigma(sigma: T) {
+    require!(sigma.is_finite(), sigma);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_r0(r0: Option<T>) {
+    require!(r0.is_none_or(|v| v.is_finite()), r0);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: impl Into<Fn1D<T>>) -> Self {
     self.theta = theta.into();
@@ -144,47 +152,35 @@ impl<T: FloatExt, S: SeedExt, B> BlackKarasinski<T, S, B> {
 
   /// Replace `a`, all else unchanged.
   pub fn with_a(mut self, a: T) -> Self {
-    assert!(
-      a.is_finite(),
-      "a must satisfy `a.is_finite()`, got a = {a:?}"
-    );
+    Self::check_a(a);
     self.a = a;
     self
   }
 
   /// Replace `sigma`, all else unchanged.
   pub fn with_sigma(mut self, sigma: T) -> Self {
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
+    Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
   /// Replace `r0`, all else unchanged.
   pub fn with_r0(mut self, r0: Option<T>) -> Self {
-    assert!(
-      r0.is_none_or(|v| v.is_finite()),
-      "r0 must satisfy `r0.is_none_or(|v| v.is_finite())`, got r0 = {r0:?}"
-    );
+    Self::check_r0(r0);
     self.r0 = r0;
     self
   }
 
   /// Replace `n`, the grid points along the path, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self
   }

@@ -82,19 +82,10 @@ impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
     boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
-    assert!(
-      delta.is_finite(),
-      "delta must satisfy `delta.is_finite()`, got delta = {delta:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_delta(delta);
+    Self::check_n(n);
+    Self::check_x0(x0);
+    Self::check_t(t);
     if delta < T::from_usize_(2) && boundary != VarianceBoundary::Reflect {
       log::warn!(
         "SquaredBessel::new: dimension below the strict-positivity \
@@ -117,22 +108,32 @@ impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> SquaredBessel<T, S, B> {
+  fn check_delta(delta: T) {
+    require!(delta.is_finite(), delta);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_x0(x0: Option<T>) {
+    require!(x0.is_none_or(|v| v.is_finite()), x0);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Replace `delta`, all else unchanged.
   pub fn with_delta(mut self, delta: T) -> Self {
-    assert!(
-      delta.is_finite(),
-      "delta must satisfy `delta.is_finite()`, got delta = {delta:?}"
-    );
+    Self::check_delta(delta);
     self.delta = delta;
     self
   }
 
   /// Replace `x0`, all else unchanged.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
+    Self::check_x0(x0);
     self.x0 = x0;
     self
   }
@@ -145,17 +146,14 @@ impl<T: FloatExt, S: SeedExt, B> SquaredBessel<T, S, B> {
 
   /// Replace `n`, the grid points along the path, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self
   }
@@ -414,19 +412,10 @@ impl<T: FloatExt, S: SeedExt> Bessel<T, S> {
     boundary: VarianceBoundary,
     seed: S,
   ) -> Self {
-    assert!(
-      delta.is_finite(),
-      "delta must satisfy `delta.is_finite()`, got delta = {delta:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_delta(delta);
+    Self::check_n(n);
+    Self::check_x0(x0);
+    Self::check_t(t);
     if delta < T::from_usize_(2) && boundary != VarianceBoundary::Reflect {
       log::warn!(
         "Bessel::new: dimension below the strict-positivity \
@@ -449,22 +438,32 @@ impl<T: FloatExt, S: SeedExt> Bessel<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Bessel<T, S, B> {
+  fn check_delta(delta: T) {
+    require!(delta.is_finite(), delta);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_x0(x0: Option<T>) {
+    require!(x0.is_none_or(|v| v.is_finite()), x0);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Replace `delta`, all else unchanged.
   pub fn with_delta(mut self, delta: T) -> Self {
-    assert!(
-      delta.is_finite(),
-      "delta must satisfy `delta.is_finite()`, got delta = {delta:?}"
-    );
+    Self::check_delta(delta);
     self.delta = delta;
     self
   }
 
   /// Replace `x0`, all else unchanged.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
+    Self::check_x0(x0);
     self.x0 = x0;
     self
   }
@@ -477,17 +476,14 @@ impl<T: FloatExt, S: SeedExt, B> Bessel<T, S, B> {
 
   /// Replace `n`, the grid points along the path, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self
   }

@@ -43,6 +43,18 @@ pub struct Fjacobi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Fjacobi<T, S, Cpu> {
+  fn check_hurst(hurst: T) {
+    require!(hurst.is_finite(), hurst);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   #[must_use]
   pub fn new(
     hurst: T,
@@ -54,43 +66,13 @@ impl<T: FloatExt, S: SeedExt> Fjacobi<T, S, Cpu> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(
-      hurst.is_finite(),
-      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
-    );
-    assert!(
-      alpha.is_finite(),
-      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
-    );
-    assert!(
-      beta.is_finite(),
-      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
-    );
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      alpha > T::zero(),
-      "alpha must satisfy `alpha > T::zero()`, got alpha = {alpha:?}"
-    );
-    assert!(
-      beta > T::zero(),
-      "beta must satisfy `beta > T::zero()`, got beta = {beta:?}"
-    );
-    assert!(
-      sigma > T::zero(),
-      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
-    );
+    Self::check_hurst(hurst);
+    Self::check_alpha(alpha);
+    Self::check_beta(beta);
+    Self::check_sigma(sigma);
+    Self::check_x0(x0);
+    Self::check_t(t);
+    Self::check_n(n);
     assert!(
       alpha < beta,
       "alpha must satisfy `alpha < beta`, got alpha = {alpha:?}, beta = {beta:?}"
@@ -111,10 +93,7 @@ impl<T: FloatExt, S: SeedExt> Fjacobi<T, S, Cpu> {
 
   /// Replace `hurst`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_hurst(mut self, hurst: T) -> Self {
-    assert!(
-      hurst.is_finite(),
-      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
-    );
+    Self::check_hurst(hurst);
     self.hurst = hurst;
     self.fgn = Fgn::for_grid(hurst, self.n, self.t);
     self
@@ -123,7 +102,7 @@ impl<T: FloatExt, S: SeedExt> Fjacobi<T, S, Cpu> {
   /// Replace `n`; panics if `n < 2`.
   /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self.fgn = Fgn::for_grid(self.hurst, n, self.t);
     self
@@ -131,10 +110,7 @@ impl<T: FloatExt, S: SeedExt> Fjacobi<T, S, Cpu> {
 
   /// Replace `t`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self.fgn = Fgn::for_grid(self.hurst, self.n, t);
     self
@@ -142,17 +118,29 @@ impl<T: FloatExt, S: SeedExt> Fjacobi<T, S, Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fjacobi<T, S, B> {
+  fn check_alpha(alpha: T) {
+    require!(alpha.is_finite(), alpha);
+    require!(alpha > T::zero(), alpha);
+  }
+
+  fn check_beta(beta: T) {
+    require!(beta.is_finite(), beta);
+    require!(beta > T::zero(), beta);
+  }
+
+  fn check_sigma(sigma: T) {
+    require!(sigma.is_finite(), sigma);
+    require!(sigma > T::zero(), sigma);
+  }
+
+  fn check_x0(x0: Option<T>) {
+    require!(x0.is_none_or(|v| v.is_finite()), x0);
+  }
+
   /// Replace `alpha`. Panics unless `0 < alpha < beta`, matching `new()`'s
   /// own assertions: to move both drift parameters up, raise `beta` first.
   pub fn with_alpha(mut self, alpha: T) -> Self {
-    assert!(
-      alpha.is_finite(),
-      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
-    );
-    assert!(
-      alpha > T::zero(),
-      "alpha must satisfy `alpha > T::zero()`, got alpha = {alpha:?}"
-    );
+    Self::check_alpha(alpha);
     assert!(
       alpha < self.beta,
       "alpha must satisfy `alpha < self.beta`, got alpha = {alpha:?}, self.beta = {:?}",
@@ -165,14 +153,7 @@ impl<T: FloatExt, S: SeedExt, B> Fjacobi<T, S, B> {
   /// Replace `beta`. Panics unless `0 < alpha < beta`, matching `new()`'s
   /// own assertions: to move both drift parameters down, lower `alpha` first.
   pub fn with_beta(mut self, beta: T) -> Self {
-    assert!(
-      beta.is_finite(),
-      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
-    );
-    assert!(
-      beta > T::zero(),
-      "beta must satisfy `beta > T::zero()`, got beta = {beta:?}"
-    );
+    Self::check_beta(beta);
     assert!(
       self.alpha < beta,
       "beta must satisfy `self.alpha < beta`, got beta = {beta:?}, self.alpha = {:?}",
@@ -185,24 +166,14 @@ impl<T: FloatExt, S: SeedExt, B> Fjacobi<T, S, B> {
   /// Replace `sigma`. Panics if `sigma <= 0`, matching `new()`'s own
   /// assertion.
   pub fn with_sigma(mut self, sigma: T) -> Self {
-    assert!(
-      sigma.is_finite(),
-      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
-    );
-    assert!(
-      sigma > T::zero(),
-      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
-    );
+    Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
   /// Replace `x0`, all else unchanged.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
+    Self::check_x0(x0);
     self.x0 = x0;
     self
   }

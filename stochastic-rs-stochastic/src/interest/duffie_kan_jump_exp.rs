@@ -108,75 +108,24 @@ impl<T: FloatExt, S: SeedExt> DuffieKanJumpExp<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(
-      alpha.is_finite(),
-      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
-    );
-    assert!(
-      beta.is_finite(),
-      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
-    );
-    assert!(
-      gamma.is_finite(),
-      "gamma must satisfy `gamma.is_finite()`, got gamma = {gamma:?}"
-    );
-    assert!(
-      rho.is_finite(),
-      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
-    );
-    assert!(
-      a1.is_finite(),
-      "a1 must satisfy `a1.is_finite()`, got a1 = {a1:?}"
-    );
-    assert!(
-      b1.is_finite(),
-      "b1 must satisfy `b1.is_finite()`, got b1 = {b1:?}"
-    );
-    assert!(
-      c1.is_finite(),
-      "c1 must satisfy `c1.is_finite()`, got c1 = {c1:?}"
-    );
-    assert!(
-      sigma1.is_finite(),
-      "sigma1 must satisfy `sigma1.is_finite()`, got sigma1 = {sigma1:?}"
-    );
-    assert!(
-      a2.is_finite(),
-      "a2 must satisfy `a2.is_finite()`, got a2 = {a2:?}"
-    );
-    assert!(
-      b2.is_finite(),
-      "b2 must satisfy `b2.is_finite()`, got b2 = {b2:?}"
-    );
-    assert!(
-      c2.is_finite(),
-      "c2 must satisfy `c2.is_finite()`, got c2 = {c2:?}"
-    );
-    assert!(
-      sigma2.is_finite(),
-      "sigma2 must satisfy `sigma2.is_finite()`, got sigma2 = {sigma2:?}"
-    );
-    assert!(
-      lambda.is_finite(),
-      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
-    );
-    assert!(
-      jump_scale.is_finite(),
-      "jump_scale must satisfy `jump_scale.is_finite()`, got jump_scale = {jump_scale:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      r0.is_none_or(|v| v.is_finite()),
-      "r0 must satisfy `r0.is_none_or(|v| v.is_finite())`, got r0 = {r0:?}"
-    );
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_alpha(alpha);
+    Self::check_beta(beta);
+    Self::check_gamma(gamma);
+    Self::check_rho(rho);
+    Self::check_a1(a1);
+    Self::check_b1(b1);
+    Self::check_c1(c1);
+    Self::check_sigma1(sigma1);
+    Self::check_a2(a2);
+    Self::check_b2(b2);
+    Self::check_c2(c2);
+    Self::check_sigma2(sigma2);
+    Self::check_lambda(lambda);
+    Self::check_jump_scale(jump_scale);
+    Self::check_n(n);
+    Self::check_r0(r0);
+    Self::check_x0(x0);
+    Self::check_t(t);
     Self {
       backend: Cpu,
       alpha,
@@ -204,32 +153,95 @@ impl<T: FloatExt, S: SeedExt> DuffieKanJumpExp<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> DuffieKanJumpExp<T, S, B> {
+  fn check_alpha(alpha: T) {
+    require!(alpha.is_finite(), alpha);
+  }
+
+  fn check_beta(beta: T) {
+    require!(beta.is_finite(), beta);
+  }
+
+  fn check_gamma(gamma: T) {
+    require!(gamma.is_finite(), gamma);
+  }
+
+  fn check_rho(rho: T) {
+    require!(rho.is_finite(), rho);
+  }
+
+  fn check_a1(a1: T) {
+    require!(a1.is_finite(), a1);
+  }
+
+  fn check_b1(b1: T) {
+    require!(b1.is_finite(), b1);
+  }
+
+  fn check_c1(c1: T) {
+    require!(c1.is_finite(), c1);
+  }
+
+  fn check_sigma1(sigma1: T) {
+    require!(sigma1.is_finite(), sigma1);
+  }
+
+  fn check_a2(a2: T) {
+    require!(a2.is_finite(), a2);
+  }
+
+  fn check_b2(b2: T) {
+    require!(b2.is_finite(), b2);
+  }
+
+  fn check_c2(c2: T) {
+    require!(c2.is_finite(), c2);
+  }
+
+  fn check_sigma2(sigma2: T) {
+    require!(sigma2.is_finite(), sigma2);
+  }
+
+  fn check_lambda(lambda: T) {
+    require!(lambda.is_finite(), lambda);
+  }
+
+  fn check_jump_scale(jump_scale: T) {
+    require!(jump_scale.is_finite(), jump_scale);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_r0(r0: Option<T>) {
+    require!(r0.is_none_or(|v| v.is_finite()), r0);
+  }
+
+  fn check_x0(x0: Option<T>) {
+    require!(x0.is_none_or(|v| v.is_finite()), x0);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Replace `alpha`, all else unchanged.
   pub fn with_alpha(mut self, alpha: T) -> Self {
-    assert!(
-      alpha.is_finite(),
-      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
-    );
+    Self::check_alpha(alpha);
     self.alpha = alpha;
     self
   }
 
   /// Replace `beta`, all else unchanged.
   pub fn with_beta(mut self, beta: T) -> Self {
-    assert!(
-      beta.is_finite(),
-      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
-    );
+    Self::check_beta(beta);
     self.beta = beta;
     self
   }
 
   /// Replace `gamma`, all else unchanged.
   pub fn with_gamma(mut self, gamma: T) -> Self {
-    assert!(
-      gamma.is_finite(),
-      "gamma must satisfy `gamma.is_finite()`, got gamma = {gamma:?}"
-    );
+    Self::check_gamma(gamma);
     self.gamma = gamma;
     self
   }
@@ -238,10 +250,7 @@ impl<T: FloatExt, S: SeedExt, B> DuffieKanJumpExp<T, S, B> {
   /// (`cgns`) so the new correlation actually reaches the sampler instead
   /// of a stale one computed from the old `rho`.
   pub fn with_rho(mut self, rho: T) -> Self {
-    assert!(
-      rho.is_finite(),
-      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
-    );
+    Self::check_rho(rho);
     self.rho = rho;
     self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
     self
@@ -249,120 +258,84 @@ impl<T: FloatExt, S: SeedExt, B> DuffieKanJumpExp<T, S, B> {
 
   /// Replace `a1`, all else unchanged.
   pub fn with_a1(mut self, a1: T) -> Self {
-    assert!(
-      a1.is_finite(),
-      "a1 must satisfy `a1.is_finite()`, got a1 = {a1:?}"
-    );
+    Self::check_a1(a1);
     self.a1 = a1;
     self
   }
 
   /// Replace `b1`, all else unchanged.
   pub fn with_b1(mut self, b1: T) -> Self {
-    assert!(
-      b1.is_finite(),
-      "b1 must satisfy `b1.is_finite()`, got b1 = {b1:?}"
-    );
+    Self::check_b1(b1);
     self.b1 = b1;
     self
   }
 
   /// Replace `c1`, all else unchanged.
   pub fn with_c1(mut self, c1: T) -> Self {
-    assert!(
-      c1.is_finite(),
-      "c1 must satisfy `c1.is_finite()`, got c1 = {c1:?}"
-    );
+    Self::check_c1(c1);
     self.c1 = c1;
     self
   }
 
   /// Replace `sigma1`, all else unchanged.
   pub fn with_sigma1(mut self, sigma1: T) -> Self {
-    assert!(
-      sigma1.is_finite(),
-      "sigma1 must satisfy `sigma1.is_finite()`, got sigma1 = {sigma1:?}"
-    );
+    Self::check_sigma1(sigma1);
     self.sigma1 = sigma1;
     self
   }
 
   /// Replace `a2`, all else unchanged.
   pub fn with_a2(mut self, a2: T) -> Self {
-    assert!(
-      a2.is_finite(),
-      "a2 must satisfy `a2.is_finite()`, got a2 = {a2:?}"
-    );
+    Self::check_a2(a2);
     self.a2 = a2;
     self
   }
 
   /// Replace `b2`, all else unchanged.
   pub fn with_b2(mut self, b2: T) -> Self {
-    assert!(
-      b2.is_finite(),
-      "b2 must satisfy `b2.is_finite()`, got b2 = {b2:?}"
-    );
+    Self::check_b2(b2);
     self.b2 = b2;
     self
   }
 
   /// Replace `c2`, all else unchanged.
   pub fn with_c2(mut self, c2: T) -> Self {
-    assert!(
-      c2.is_finite(),
-      "c2 must satisfy `c2.is_finite()`, got c2 = {c2:?}"
-    );
+    Self::check_c2(c2);
     self.c2 = c2;
     self
   }
 
   /// Replace `sigma2`, all else unchanged.
   pub fn with_sigma2(mut self, sigma2: T) -> Self {
-    assert!(
-      sigma2.is_finite(),
-      "sigma2 must satisfy `sigma2.is_finite()`, got sigma2 = {sigma2:?}"
-    );
+    Self::check_sigma2(sigma2);
     self.sigma2 = sigma2;
     self
   }
 
   /// Replace `lambda`, all else unchanged.
   pub fn with_lambda(mut self, lambda: T) -> Self {
-    assert!(
-      lambda.is_finite(),
-      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
-    );
+    Self::check_lambda(lambda);
     self.lambda = lambda;
     self
   }
 
   /// Replace `jump_scale`, all else unchanged.
   pub fn with_jump_scale(mut self, jump_scale: T) -> Self {
-    assert!(
-      jump_scale.is_finite(),
-      "jump_scale must satisfy `jump_scale.is_finite()`, got jump_scale = {jump_scale:?}"
-    );
+    Self::check_jump_scale(jump_scale);
     self.jump_scale = jump_scale;
     self
   }
 
   /// Replace `r0`, all else unchanged.
   pub fn with_r0(mut self, r0: Option<T>) -> Self {
-    assert!(
-      r0.is_none_or(|v| v.is_finite()),
-      "r0 must satisfy `r0.is_none_or(|v| v.is_finite())`, got r0 = {r0:?}"
-    );
+    Self::check_r0(r0);
     self.r0 = r0;
     self
   }
 
   /// Replace `x0`, all else unchanged.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
-    assert!(
-      x0.is_none_or(|v| v.is_finite()),
-      "x0 must satisfy `x0.is_none_or(|v| v.is_finite())`, got x0 = {x0:?}"
-    );
+    Self::check_x0(x0);
     self.x0 = x0;
     self
   }
@@ -370,7 +343,7 @@ impl<T: FloatExt, S: SeedExt, B> DuffieKanJumpExp<T, S, B> {
   /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
   /// generator, whose length and step size derive from `n`.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self
@@ -379,10 +352,7 @@ impl<T: FloatExt, S: SeedExt, B> DuffieKanJumpExp<T, S, B> {
   /// Replace the simulation horizon `t`; rebuilds the cached
   /// correlated-Gaussian generator's step size, which derives from `t`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
     self

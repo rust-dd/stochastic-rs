@@ -100,14 +100,7 @@ where
       sigma.is_finite(),
       "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
     );
-    assert!(
-      lambda.is_finite(),
-      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
-    );
-    assert!(
-      lambda >= T::zero(),
-      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
-    );
+    Self::check_lambda(lambda);
     assert!(
       theta.is_finite(),
       "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
@@ -141,16 +134,14 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
+  fn check_lambda(lambda: T) {
+    require!(lambda.is_finite(), lambda);
+    require!(lambda >= T::zero(), lambda);
+  }
+
   /// Replace `lambda`, all else unchanged; panics if `lambda < 0`.
   pub fn with_lambda(mut self, lambda: T) -> Self {
-    assert!(
-      lambda.is_finite(),
-      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
-    );
-    assert!(
-      lambda >= T::zero(),
-      "lambda must satisfy `lambda >= T::zero()`, got lambda = {lambda:?}"
-    );
+    Self::check_lambda(lambda);
     self.lambda = lambda;
     self
   }

@@ -54,16 +54,22 @@ pub struct Fbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// no seed-derivation subtlety here: every setter that feeds `fgn`
 /// rebuilds it through the one helper `new()` itself builds it with.
 impl<T: FloatExt, S: SeedExt> Fbm<T, S, Cpu> {
+  fn check_hurst(hurst: T) {
+    require!(hurst.is_finite(), hurst);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   pub fn new(hurst: T, n: usize, t: Option<T>, seed: S) -> Self {
-    assert!(
-      hurst.is_finite(),
-      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_hurst(hurst);
+    Self::check_t(t);
+    Self::check_n(n);
 
     Self {
       hurst,
@@ -76,10 +82,7 @@ impl<T: FloatExt, S: SeedExt> Fbm<T, S, Cpu> {
 
   /// Replace `hurst`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_hurst(mut self, hurst: T) -> Self {
-    assert!(
-      hurst.is_finite(),
-      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
-    );
+    Self::check_hurst(hurst);
     self.hurst = hurst;
     self.fgn = Fgn::for_grid(hurst, self.n, self.t);
     self
@@ -88,7 +91,7 @@ impl<T: FloatExt, S: SeedExt> Fbm<T, S, Cpu> {
   /// Replace `n`; panics if `n < 2`.
   /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self.fgn = Fgn::for_grid(self.hurst, n, self.t);
     self
@@ -96,10 +99,7 @@ impl<T: FloatExt, S: SeedExt> Fbm<T, S, Cpu> {
 
   /// Replace `t`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self.fgn = Fgn::for_grid(self.hurst, self.n, t);
     self

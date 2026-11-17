@@ -58,6 +58,18 @@ pub struct Cfou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
+  fn check_hurst(hurst: T) {
+    require!(hurst.is_finite(), hurst);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   #[must_use]
   pub fn new(
     hurst: T,
@@ -70,43 +82,14 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(
-      hurst.is_finite(),
-      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
-    );
-    assert!(
-      lambda.is_finite(),
-      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
-    );
-    assert!(
-      omega.is_finite(),
-      "omega must satisfy `omega.is_finite()`, got omega = {omega:?}"
-    );
-    assert!(
-      a.is_finite(),
-      "a must satisfy `a.is_finite()`, got a = {a:?}"
-    );
-    assert!(
-      x1_0.is_none_or(|v| v.is_finite()),
-      "x1_0 must satisfy `x1_0.is_none_or(|v| v.is_finite())`, got x1_0 = {x1_0:?}"
-    );
-    assert!(
-      x2_0.is_none_or(|v| v.is_finite()),
-      "x2_0 must satisfy `x2_0.is_none_or(|v| v.is_finite())`, got x2_0 = {x2_0:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      lambda > T::zero(),
-      "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
-    );
-    assert!(
-      a > T::zero(),
-      "a must satisfy `a > T::zero()`, got a = {a:?}"
-    );
+    Self::check_hurst(hurst);
+    Self::check_lambda(lambda);
+    Self::check_omega(omega);
+    Self::check_a(a);
+    Self::check_x1_0(x1_0);
+    Self::check_x2_0(x2_0);
+    Self::check_t(t);
+    Self::check_n(n);
 
     Self {
       hurst,
@@ -124,10 +107,7 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
 
   /// Replace `hurst`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_hurst(mut self, hurst: T) -> Self {
-    assert!(
-      hurst.is_finite(),
-      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
-    );
+    Self::check_hurst(hurst);
     self.hurst = hurst;
     self.fgn = Fgn::for_grid(hurst, self.n, self.t);
     self
@@ -136,7 +116,7 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
   /// Replace `n`; panics if `n < 2`.
   /// Rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self.fgn = Fgn::for_grid(self.hurst, n, self.t);
     self
@@ -144,10 +124,7 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
 
   /// Replace `t`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self.fgn = Fgn::for_grid(self.hurst, self.n, t);
     self
@@ -155,61 +132,60 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Cfou<T, S, B> {
+  fn check_lambda(lambda: T) {
+    require!(lambda.is_finite(), lambda);
+    require!(lambda > T::zero(), lambda);
+  }
+
+  fn check_omega(omega: T) {
+    require!(omega.is_finite(), omega);
+  }
+
+  fn check_a(a: T) {
+    require!(a.is_finite(), a);
+    require!(a > T::zero(), a);
+  }
+
+  fn check_x1_0(x1_0: Option<T>) {
+    require!(x1_0.is_none_or(|v| v.is_finite()), x1_0);
+  }
+
+  fn check_x2_0(x2_0: Option<T>) {
+    require!(x2_0.is_none_or(|v| v.is_finite()), x2_0);
+  }
+
   /// Replace `lambda`. Panics if `lambda <= 0`, matching `new()`'s own
   /// assertion.
   pub fn with_lambda(mut self, lambda: T) -> Self {
-    assert!(
-      lambda.is_finite(),
-      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
-    );
-    assert!(
-      lambda > T::zero(),
-      "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
-    );
+    Self::check_lambda(lambda);
     self.lambda = lambda;
     self
   }
 
   /// Replace `omega`, all else unchanged.
   pub fn with_omega(mut self, omega: T) -> Self {
-    assert!(
-      omega.is_finite(),
-      "omega must satisfy `omega.is_finite()`, got omega = {omega:?}"
-    );
+    Self::check_omega(omega);
     self.omega = omega;
     self
   }
 
   /// Replace `a`. Panics if `a <= 0`, matching `new()`'s own assertion.
   pub fn with_a(mut self, a: T) -> Self {
-    assert!(
-      a.is_finite(),
-      "a must satisfy `a.is_finite()`, got a = {a:?}"
-    );
-    assert!(
-      a > T::zero(),
-      "a must satisfy `a > T::zero()`, got a = {a:?}"
-    );
+    Self::check_a(a);
     self.a = a;
     self
   }
 
   /// Replace `x1_0`, all else unchanged.
   pub fn with_x1_0(mut self, x1_0: Option<T>) -> Self {
-    assert!(
-      x1_0.is_none_or(|v| v.is_finite()),
-      "x1_0 must satisfy `x1_0.is_none_or(|v| v.is_finite())`, got x1_0 = {x1_0:?}"
-    );
+    Self::check_x1_0(x1_0);
     self.x1_0 = x1_0;
     self
   }
 
   /// Replace `x2_0`, all else unchanged.
   pub fn with_x2_0(mut self, x2_0: Option<T>) -> Self {
-    assert!(
-      x2_0.is_none_or(|v| v.is_finite()),
-      "x2_0 must satisfy `x2_0.is_none_or(|v| v.is_finite())`, got x2_0 = {x2_0:?}"
-    );
+    Self::check_x2_0(x2_0);
     self.x2_0 = x2_0;
     self
   }

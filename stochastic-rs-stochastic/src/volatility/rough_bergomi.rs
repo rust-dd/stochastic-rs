@@ -90,35 +90,14 @@ pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// `RoughBergomi::default().with_hurst(0.3).with_rho(-0.2)`.
 impl<T: FloatExt, S: SeedExt> RoughBergomi<T, S> {
   pub fn new(hurst: T, nu: T, v0: T, s0: T, r: T, rho: T, n: usize, t: Option<T>, seed: S) -> Self {
-    assert!(
-      hurst.is_finite(),
-      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
-    );
-    assert!(
-      nu.is_finite(),
-      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
-    );
-    assert!(
-      v0.is_finite(),
-      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
-    );
-    assert!(
-      s0.is_finite(),
-      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
-    );
-    assert!(
-      r.is_finite(),
-      "r must satisfy `r.is_finite()`, got r = {r:?}"
-    );
-    assert!(
-      rho.is_finite(),
-      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_hurst(hurst);
+    Self::check_nu(nu);
+    Self::check_v0(v0);
+    Self::check_s0(s0);
+    Self::check_r(r);
+    Self::check_rho(rho);
+    Self::check_n(n);
+    Self::check_t(t);
     RoughBergomi {
       backend: Cpu,
       hurst,
@@ -136,52 +115,69 @@ impl<T: FloatExt, S: SeedExt> RoughBergomi<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> RoughBergomi<T, S, B> {
+  fn check_hurst(hurst: T) {
+    require!(hurst.is_finite(), hurst);
+  }
+
+  fn check_nu(nu: T) {
+    require!(nu.is_finite(), nu);
+  }
+
+  fn check_v0(v0: T) {
+    require!(v0.is_finite(), v0);
+  }
+
+  fn check_s0(s0: T) {
+    require!(s0.is_finite(), s0);
+  }
+
+  fn check_r(r: T) {
+    require!(r.is_finite(), r);
+  }
+
+  fn check_rho(rho: T) {
+    require!(rho.is_finite(), rho);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Replace `hurst`, all else unchanged.
   pub fn with_hurst(mut self, hurst: T) -> Self {
-    assert!(
-      hurst.is_finite(),
-      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
-    );
+    Self::check_hurst(hurst);
     self.hurst = hurst;
     self
   }
 
   /// Replace `nu`, all else unchanged.
   pub fn with_nu(mut self, nu: T) -> Self {
-    assert!(
-      nu.is_finite(),
-      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
-    );
+    Self::check_nu(nu);
     self.nu = nu;
     self
   }
 
   /// Replace `v0`, all else unchanged.
   pub fn with_v0(mut self, v0: T) -> Self {
-    assert!(
-      v0.is_finite(),
-      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
-    );
+    Self::check_v0(v0);
     self.v0 = v0;
     self
   }
 
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: T) -> Self {
-    assert!(
-      s0.is_finite(),
-      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
-    );
+    Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
   /// Replace `r`, all else unchanged.
   pub fn with_r(mut self, r: T) -> Self {
-    assert!(
-      r.is_finite(),
-      "r must satisfy `r.is_finite()`, got r = {r:?}"
-    );
+    Self::check_r(r);
     self.r = r;
     self
   }
@@ -190,10 +186,7 @@ impl<T: FloatExt, S: SeedExt, B> RoughBergomi<T, S, B> {
   /// (`cgns`) so the new correlation actually reaches the sampler instead
   /// of a stale one computed from the old `rho`.
   pub fn with_rho(mut self, rho: T) -> Self {
-    assert!(
-      rho.is_finite(),
-      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
-    );
+    Self::check_rho(rho);
     self.rho = rho;
     self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
     self
@@ -202,7 +195,7 @@ impl<T: FloatExt, S: SeedExt, B> RoughBergomi<T, S, B> {
   /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
   /// generator, whose length and step size derive from `n`.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self
@@ -211,10 +204,7 @@ impl<T: FloatExt, S: SeedExt, B> RoughBergomi<T, S, B> {
   /// Replace the simulation horizon `t`; rebuilds the cached
   /// correlated-Gaussian generator's step size, which derives from `t`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
     self

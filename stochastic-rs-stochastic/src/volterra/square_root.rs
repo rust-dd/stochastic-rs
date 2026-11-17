@@ -113,43 +113,12 @@ where
   /// Panics if `n < 2`, if `kappa` or `nu` is not positive, or if `theta` or `v0` is negative.
   #[must_use]
   pub fn new(kernel: K, kappa: T, theta: T, nu: T, n: usize, v0: T, t: Option<T>, seed: S) -> Self {
-    assert!(
-      kappa.is_finite(),
-      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
-    );
-    assert!(
-      theta.is_finite(),
-      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
-    );
-    assert!(
-      nu.is_finite(),
-      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
-    );
-    assert!(
-      v0.is_finite(),
-      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      kappa > T::zero(),
-      "kappa must satisfy `kappa > T::zero()`, got kappa = {kappa:?}"
-    );
-    assert!(
-      nu > T::zero(),
-      "nu must satisfy `nu > T::zero()`, got nu = {nu:?}"
-    );
-    assert!(
-      theta >= T::zero(),
-      "theta must satisfy `theta >= T::zero()`, got theta = {theta:?}"
-    );
-    assert!(
-      v0 >= T::zero(),
-      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
-    );
+    Self::check_kappa(kappa);
+    Self::check_theta(theta);
+    Self::check_nu(nu);
+    Self::check_v0(v0);
+    Self::check_t(t);
+    Self::check_n(n);
     let lift = VolterraLift::new(kernel.clone(), grid_spacing(n, t));
     Self {
       backend: Cpu,
@@ -175,17 +144,38 @@ impl<T: FloatExt, K, S: SeedExt, B> VolterraSquareRoot<T, K, S, B>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
+  fn check_kappa(kappa: T) {
+    require!(kappa.is_finite(), kappa);
+    require!(kappa > T::zero(), kappa);
+  }
+
+  fn check_theta(theta: T) {
+    require!(theta.is_finite(), theta);
+    require!(theta >= T::zero(), theta);
+  }
+
+  fn check_nu(nu: T) {
+    require!(nu.is_finite(), nu);
+    require!(nu > T::zero(), nu);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_v0(v0: T) {
+    require!(v0.is_finite(), v0);
+    require!(v0 >= T::zero(), v0);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Replace `kappa`, all else unchanged.
   #[must_use]
   pub fn with_kappa(mut self, kappa: T) -> Self {
-    assert!(
-      kappa.is_finite(),
-      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
-    );
-    assert!(
-      kappa > T::zero(),
-      "kappa must satisfy `kappa > T::zero()`, got kappa = {kappa:?}"
-    );
+    Self::check_kappa(kappa);
     self.kappa = kappa;
     self
   }
@@ -193,14 +183,7 @@ where
   /// Replace `theta`, all else unchanged.
   #[must_use]
   pub fn with_theta(mut self, theta: T) -> Self {
-    assert!(
-      theta.is_finite(),
-      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
-    );
-    assert!(
-      theta >= T::zero(),
-      "theta must satisfy `theta >= T::zero()`, got theta = {theta:?}"
-    );
+    Self::check_theta(theta);
     self.theta = theta;
     self
   }
@@ -208,14 +191,7 @@ where
   /// Replace `nu`, all else unchanged.
   #[must_use]
   pub fn with_nu(mut self, nu: T) -> Self {
-    assert!(
-      nu.is_finite(),
-      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
-    );
-    assert!(
-      nu > T::zero(),
-      "nu must satisfy `nu > T::zero()`, got nu = {nu:?}"
-    );
+    Self::check_nu(nu);
     self.nu = nu;
     self
   }
@@ -223,7 +199,7 @@ where
   /// Replace `n`, the grid points along the path, all else unchanged.
   #[must_use]
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(n, self.t));
     self
@@ -232,14 +208,7 @@ where
   /// Replace the initial variance $V_0$, all else unchanged.
   #[must_use]
   pub fn with_v0(mut self, v0: T) -> Self {
-    assert!(
-      v0.is_finite(),
-      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
-    );
-    assert!(
-      v0 >= T::zero(),
-      "v0 must satisfy `v0 >= T::zero()`, got v0 = {v0:?}"
-    );
+    Self::check_v0(v0);
     self.v0 = v0;
     self
   }
@@ -247,10 +216,7 @@ where
   /// Replace `t`, all else unchanged.
   #[must_use]
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(self.n, t));
     self

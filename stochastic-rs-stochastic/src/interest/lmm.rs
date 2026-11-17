@@ -115,11 +115,8 @@ impl<T: FloatExt, S: SeedExt> Lmm<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_n(n);
+    Self::check_t(t);
     assert_entries("tenor", "tenor[i].is_finite()", &tenor, |v| v.is_finite());
     assert_entries("l0", "l0[i].is_finite()", &l0, |v| v.is_finite());
     assert_entries("sigma", "sigma[i].is_finite()", &sigma, |v| v.is_finite());
@@ -138,6 +135,14 @@ impl<T: FloatExt, S: SeedExt> Lmm<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Attach a forward correlation matrix `rho` (`M × M`, symmetric,
   /// positive-definite). Panics if shape is wrong or Cholesky fails.
   pub fn with_correlation(mut self, rho: Array2<T>) -> Self {
@@ -227,17 +232,14 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
 
   /// Replace the number of simulation grid points `n`, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self
   }

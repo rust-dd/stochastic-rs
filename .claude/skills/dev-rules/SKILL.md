@@ -207,6 +207,8 @@ Library code reports through the `log` facade (`log::warn!`, `log::trace!`), nev
   argument, the predicate spelled in the message and the value last:
   ``assert!(sigma > T::zero(), "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}");``
   Every float parameter is finite (`x.is_finite()`; a truncation bound may be infinite, so `!x.is_nan()`).
+  In `stochastic-rs-stochastic` a field with a setter states its checks once, in `fn check_<field>`
+  built of `require!(pred, field)` (that `assert!`); `new` and the setter both call it.
   A method that can panic says so inside its ≤ 2-line doc (`…; panics if x ≤ 0`), never under a separate
   `# Panics` heading. The literal-only Fourier model structs validate once they have constructors.
   In copulas `new` panics, while `try_new` and `from_tau` return `Result<_, CopulaError>` for the

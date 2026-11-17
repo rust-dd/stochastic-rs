@@ -66,43 +66,13 @@ impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(
-      nu.is_finite(),
-      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
-    );
-    assert!(
-      beta.is_finite(),
-      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
-    );
-    assert!(
-      rho.is_finite(),
-      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      f0.is_none_or(|v| v.is_finite()),
-      "f0 must satisfy `f0.is_none_or(|v| v.is_finite())`, got f0 = {f0:?}"
-    );
-    assert!(
-      alpha0.is_none_or(|v| v.is_finite()),
-      "alpha0 must satisfy `alpha0.is_none_or(|v| v.is_finite())`, got alpha0 = {alpha0:?}"
-    );
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
-    assert!(
-      beta >= T::zero() && beta <= T::one(),
-      "beta must satisfy `beta >= T::zero() && beta <= T::one()`, got beta = {beta:?}"
-    );
-    assert!(
-      nu >= T::zero(),
-      "nu must satisfy `nu >= T::zero()`, got nu = {nu:?}"
-    );
-    assert!(
-      alpha0.is_none_or(|a| a >= T::zero()),
-      "alpha0 must satisfy `alpha0.is_none_or(|a| a >= T::zero())`, got alpha0 = {alpha0:?}"
-    );
+    Self::check_nu(nu);
+    Self::check_beta(beta);
+    Self::check_rho(rho);
+    Self::check_n(n);
+    Self::check_f0(f0);
+    Self::check_alpha0(alpha0);
+    Self::check_t(t);
 
     Self {
       backend: Cpu,
@@ -120,30 +90,47 @@ impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
+  fn check_nu(nu: T) {
+    require!(nu.is_finite(), nu);
+    require!(nu >= T::zero(), nu);
+  }
+
+  fn check_beta(beta: T) {
+    require!(beta.is_finite(), beta);
+    require!(beta >= T::zero() && beta <= T::one(), beta);
+  }
+
+  fn check_rho(rho: T) {
+    require!(rho.is_finite(), rho);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_f0(f0: Option<T>) {
+    require!(f0.is_none_or(|v| v.is_finite()), f0);
+  }
+
+  fn check_alpha0(alpha0: Option<T>) {
+    require!(alpha0.is_none_or(|v| v.is_finite()), alpha0);
+    require!(alpha0.is_none_or(|a| a >= T::zero()), alpha0);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Replace `nu`, all else unchanged.
   pub fn with_nu(mut self, nu: T) -> Self {
-    assert!(
-      nu.is_finite(),
-      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
-    );
-    assert!(
-      nu >= T::zero(),
-      "nu must satisfy `nu >= T::zero()`, got nu = {nu:?}"
-    );
+    Self::check_nu(nu);
     self.nu = nu;
     self
   }
 
   /// Replace `beta`, all else unchanged.
   pub fn with_beta(mut self, beta: T) -> Self {
-    assert!(
-      beta.is_finite(),
-      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
-    );
-    assert!(
-      beta >= T::zero() && beta <= T::one(),
-      "beta must satisfy `beta >= T::zero() && beta <= T::one()`, got beta = {beta:?}"
-    );
+    Self::check_beta(beta);
     self.beta = beta;
     self
   }
@@ -152,10 +139,7 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
   /// (`cgns`) so the new correlation actually reaches the sampler instead
   /// of a stale one computed from the old `rho`.
   pub fn with_rho(mut self, rho: T) -> Self {
-    assert!(
-      rho.is_finite(),
-      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
-    );
+    Self::check_rho(rho);
     self.rho = rho;
     self.cgns = Cgns::new(rho, self.n - 1, self.t, Unseeded);
     self
@@ -163,24 +147,14 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
 
   /// Replace `f0`, all else unchanged.
   pub fn with_f0(mut self, f0: Option<T>) -> Self {
-    assert!(
-      f0.is_none_or(|v| v.is_finite()),
-      "f0 must satisfy `f0.is_none_or(|v| v.is_finite())`, got f0 = {f0:?}"
-    );
+    Self::check_f0(f0);
     self.f0 = f0;
     self
   }
 
   /// Replace `alpha0`, all else unchanged.
   pub fn with_alpha0(mut self, alpha0: Option<T>) -> Self {
-    assert!(
-      alpha0.is_none_or(|v| v.is_finite()),
-      "alpha0 must satisfy `alpha0.is_none_or(|v| v.is_finite())`, got alpha0 = {alpha0:?}"
-    );
-    assert!(
-      alpha0.is_none_or(|a| a >= T::zero()),
-      "alpha0 must satisfy `alpha0.is_none_or(|a| a >= T::zero())`, got alpha0 = {alpha0:?}"
-    );
+    Self::check_alpha0(alpha0);
     self.alpha0 = alpha0;
     self
   }
@@ -188,7 +162,7 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
   /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
   /// generator, whose length and step size derive from `n`.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self.cgns = Cgns::new(self.rho, n - 1, self.t, Unseeded);
     self
@@ -197,10 +171,7 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
   /// Replace the simulation horizon `t`; rebuilds the cached
   /// correlated-Gaussian generator's step size, which derives from `t`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self.cgns = Cgns::new(self.rho, self.n - 1, t, Unseeded);
     self

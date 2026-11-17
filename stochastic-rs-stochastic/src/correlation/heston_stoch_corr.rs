@@ -112,55 +112,19 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorr<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(
-      r.is_finite(),
-      "r must satisfy `r.is_finite()`, got r = {r:?}"
-    );
-    assert!(
-      s0.is_finite(),
-      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
-    );
-    assert!(
-      v0.is_finite(),
-      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
-    );
-    assert!(
-      kappa_v.is_finite(),
-      "kappa_v must satisfy `kappa_v.is_finite()`, got kappa_v = {kappa_v:?}"
-    );
-    assert!(
-      mu_v.is_finite(),
-      "mu_v must satisfy `mu_v.is_finite()`, got mu_v = {mu_v:?}"
-    );
-    assert!(
-      sigma_v.is_finite(),
-      "sigma_v must satisfy `sigma_v.is_finite()`, got sigma_v = {sigma_v:?}"
-    );
-    assert!(
-      rho0.is_finite(),
-      "rho0 must satisfy `rho0.is_finite()`, got rho0 = {rho0:?}"
-    );
-    assert!(
-      kappa_r.is_finite(),
-      "kappa_r must satisfy `kappa_r.is_finite()`, got kappa_r = {kappa_r:?}"
-    );
-    assert!(
-      mu_r.is_finite(),
-      "mu_r must satisfy `mu_r.is_finite()`, got mu_r = {mu_r:?}"
-    );
-    assert!(
-      sigma_r.is_finite(),
-      "sigma_r must satisfy `sigma_r.is_finite()`, got sigma_r = {sigma_r:?}"
-    );
-    assert!(
-      rho2.is_finite(),
-      "rho2 must satisfy `rho2.is_finite()`, got rho2 = {rho2:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_r(r);
+    Self::check_s0(s0);
+    Self::check_v0(v0);
+    Self::check_kappa_v(kappa_v);
+    Self::check_mu_v(mu_v);
+    Self::check_sigma_v(sigma_v);
+    Self::check_rho0(rho0);
+    Self::check_kappa_r(kappa_r);
+    Self::check_mu_r(mu_r);
+    Self::check_sigma_r(sigma_r);
+    Self::check_rho2(rho2);
+    Self::check_n(n);
+    Self::check_t(t);
     Self {
       backend: Cpu,
       r,
@@ -182,129 +146,145 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorr<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> HestonStochCorr<T, S, B> {
+  fn check_r(r: T) {
+    require!(r.is_finite(), r);
+  }
+
+  fn check_s0(s0: T) {
+    require!(s0.is_finite(), s0);
+  }
+
+  fn check_v0(v0: T) {
+    require!(v0.is_finite(), v0);
+  }
+
+  fn check_kappa_v(kappa_v: T) {
+    require!(kappa_v.is_finite(), kappa_v);
+  }
+
+  fn check_mu_v(mu_v: T) {
+    require!(mu_v.is_finite(), mu_v);
+  }
+
+  fn check_sigma_v(sigma_v: T) {
+    require!(sigma_v.is_finite(), sigma_v);
+  }
+
+  fn check_rho0(rho0: T) {
+    require!(rho0.is_finite(), rho0);
+  }
+
+  fn check_kappa_r(kappa_r: T) {
+    require!(kappa_r.is_finite(), kappa_r);
+  }
+
+  fn check_mu_r(mu_r: T) {
+    require!(mu_r.is_finite(), mu_r);
+  }
+
+  fn check_sigma_r(sigma_r: T) {
+    require!(sigma_r.is_finite(), sigma_r);
+  }
+
+  fn check_rho2(rho2: T) {
+    require!(rho2.is_finite(), rho2);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Replace `r`, all else unchanged.
   pub fn with_r(mut self, r: T) -> Self {
-    assert!(
-      r.is_finite(),
-      "r must satisfy `r.is_finite()`, got r = {r:?}"
-    );
+    Self::check_r(r);
     self.r = r;
     self
   }
 
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: T) -> Self {
-    assert!(
-      s0.is_finite(),
-      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
-    );
+    Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
   /// Replace `v0`, all else unchanged.
   pub fn with_v0(mut self, v0: T) -> Self {
-    assert!(
-      v0.is_finite(),
-      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
-    );
+    Self::check_v0(v0);
     self.v0 = v0;
     self
   }
 
   /// Replace `kappa_v`, all else unchanged.
   pub fn with_kappa_v(mut self, kappa_v: T) -> Self {
-    assert!(
-      kappa_v.is_finite(),
-      "kappa_v must satisfy `kappa_v.is_finite()`, got kappa_v = {kappa_v:?}"
-    );
+    Self::check_kappa_v(kappa_v);
     self.kappa_v = kappa_v;
     self
   }
 
   /// Replace `mu_v`, all else unchanged.
   pub fn with_mu_v(mut self, mu_v: T) -> Self {
-    assert!(
-      mu_v.is_finite(),
-      "mu_v must satisfy `mu_v.is_finite()`, got mu_v = {mu_v:?}"
-    );
+    Self::check_mu_v(mu_v);
     self.mu_v = mu_v;
     self
   }
 
   /// Replace `sigma_v`, all else unchanged.
   pub fn with_sigma_v(mut self, sigma_v: T) -> Self {
-    assert!(
-      sigma_v.is_finite(),
-      "sigma_v must satisfy `sigma_v.is_finite()`, got sigma_v = {sigma_v:?}"
-    );
+    Self::check_sigma_v(sigma_v);
     self.sigma_v = sigma_v;
     self
   }
 
   /// Replace `rho0`, all else unchanged.
   pub fn with_rho0(mut self, rho0: T) -> Self {
-    assert!(
-      rho0.is_finite(),
-      "rho0 must satisfy `rho0.is_finite()`, got rho0 = {rho0:?}"
-    );
+    Self::check_rho0(rho0);
     self.rho0 = rho0;
     self
   }
 
   /// Replace `kappa_r`, all else unchanged.
   pub fn with_kappa_r(mut self, kappa_r: T) -> Self {
-    assert!(
-      kappa_r.is_finite(),
-      "kappa_r must satisfy `kappa_r.is_finite()`, got kappa_r = {kappa_r:?}"
-    );
+    Self::check_kappa_r(kappa_r);
     self.kappa_r = kappa_r;
     self
   }
 
   /// Replace `mu_r`, all else unchanged.
   pub fn with_mu_r(mut self, mu_r: T) -> Self {
-    assert!(
-      mu_r.is_finite(),
-      "mu_r must satisfy `mu_r.is_finite()`, got mu_r = {mu_r:?}"
-    );
+    Self::check_mu_r(mu_r);
     self.mu_r = mu_r;
     self
   }
 
   /// Replace `sigma_r`, all else unchanged.
   pub fn with_sigma_r(mut self, sigma_r: T) -> Self {
-    assert!(
-      sigma_r.is_finite(),
-      "sigma_r must satisfy `sigma_r.is_finite()`, got sigma_r = {sigma_r:?}"
-    );
+    Self::check_sigma_r(sigma_r);
     self.sigma_r = sigma_r;
     self
   }
 
   /// Replace `rho2`, all else unchanged.
   pub fn with_rho2(mut self, rho2: T) -> Self {
-    assert!(
-      rho2.is_finite(),
-      "rho2 must satisfy `rho2.is_finite()`, got rho2 = {rho2:?}"
-    );
+    Self::check_rho2(rho2);
     self.rho2 = rho2;
     self
   }
 
   /// Replace `n`, the grid points along the path, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self
   }

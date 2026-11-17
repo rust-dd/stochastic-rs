@@ -104,55 +104,19 @@ impl<T: FloatExt, S: SeedExt> FbatesSvj<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(
-      hurst.is_finite(),
-      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
-    );
-    assert!(
-      mu.is_finite(),
-      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
-    );
-    assert!(
-      s0.is_finite(),
-      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
-    );
-    assert!(
-      v0.is_finite(),
-      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
-    );
-    assert!(
-      theta.is_finite(),
-      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
-    );
-    assert!(
-      kappa.is_finite(),
-      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
-    );
-    assert!(
-      xi.is_finite(),
-      "xi must satisfy `xi.is_finite()`, got xi = {xi:?}"
-    );
-    assert!(
-      rho.is_finite(),
-      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
-    );
-    assert!(
-      lambda.is_finite(),
-      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
-    );
-    assert!(
-      nu.is_finite(),
-      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
-    );
-    assert!(
-      omega.is_finite(),
-      "omega must satisfy `omega.is_finite()`, got omega = {omega:?}"
-    );
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_hurst(hurst);
+    Self::check_mu(mu);
+    Self::check_s0(s0);
+    Self::check_v0(v0);
+    Self::check_theta(theta);
+    Self::check_kappa(kappa);
+    Self::check_xi(xi);
+    Self::check_rho(rho);
+    Self::check_lambda(lambda);
+    Self::check_nu(nu);
+    Self::check_omega(omega);
+    Self::check_n(n);
+    Self::check_t(t);
     Self {
       backend: Cpu,
       hurst,
@@ -174,131 +138,147 @@ impl<T: FloatExt, S: SeedExt> FbatesSvj<T, S> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> FbatesSvj<T, S, B> {
+  fn check_hurst(hurst: T) {
+    require!(hurst.is_finite(), hurst);
+  }
+
+  fn check_mu(mu: T) {
+    require!(mu.is_finite(), mu);
+  }
+
+  fn check_s0(s0: T) {
+    require!(s0.is_finite(), s0);
+  }
+
+  fn check_v0(v0: T) {
+    require!(v0.is_finite(), v0);
+  }
+
+  fn check_theta(theta: T) {
+    require!(theta.is_finite(), theta);
+  }
+
+  fn check_kappa(kappa: T) {
+    require!(kappa.is_finite(), kappa);
+  }
+
+  fn check_xi(xi: T) {
+    require!(xi.is_finite(), xi);
+  }
+
+  fn check_rho(rho: T) {
+    require!(rho.is_finite(), rho);
+  }
+
+  fn check_lambda(lambda: T) {
+    require!(lambda.is_finite(), lambda);
+  }
+
+  fn check_nu(nu: T) {
+    require!(nu.is_finite(), nu);
+  }
+
+  fn check_omega(omega: T) {
+    require!(omega.is_finite(), omega);
+  }
+
+  fn check_n(n: usize) {
+    require!(n >= 2, n);
+  }
+
+  fn check_t(t: Option<T>) {
+    require!(t.is_none_or(|t| t > T::zero() && t.is_finite()), t);
+  }
+
   /// Replace `hurst`, all else unchanged. `FbatesSvj` has no persisted
   /// correlated-noise cache (`sampler()` builds `cgns` fresh from `rho`,
   /// `n`, `t` on every call), so every setter here is a plain field write.
   pub fn with_hurst(mut self, hurst: T) -> Self {
-    assert!(
-      hurst.is_finite(),
-      "hurst must satisfy `hurst.is_finite()`, got hurst = {hurst:?}"
-    );
+    Self::check_hurst(hurst);
     self.hurst = hurst;
     self
   }
 
   /// Replace `mu`, all else unchanged.
   pub fn with_mu(mut self, mu: T) -> Self {
-    assert!(
-      mu.is_finite(),
-      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
-    );
+    Self::check_mu(mu);
     self.mu = mu;
     self
   }
 
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: T) -> Self {
-    assert!(
-      s0.is_finite(),
-      "s0 must satisfy `s0.is_finite()`, got s0 = {s0:?}"
-    );
+    Self::check_s0(s0);
     self.s0 = s0;
     self
   }
 
   /// Replace `v0`, all else unchanged.
   pub fn with_v0(mut self, v0: T) -> Self {
-    assert!(
-      v0.is_finite(),
-      "v0 must satisfy `v0.is_finite()`, got v0 = {v0:?}"
-    );
+    Self::check_v0(v0);
     self.v0 = v0;
     self
   }
 
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: T) -> Self {
-    assert!(
-      theta.is_finite(),
-      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
-    );
+    Self::check_theta(theta);
     self.theta = theta;
     self
   }
 
   /// Replace `kappa`, all else unchanged.
   pub fn with_kappa(mut self, kappa: T) -> Self {
-    assert!(
-      kappa.is_finite(),
-      "kappa must satisfy `kappa.is_finite()`, got kappa = {kappa:?}"
-    );
+    Self::check_kappa(kappa);
     self.kappa = kappa;
     self
   }
 
   /// Replace `xi`, all else unchanged.
   pub fn with_xi(mut self, xi: T) -> Self {
-    assert!(
-      xi.is_finite(),
-      "xi must satisfy `xi.is_finite()`, got xi = {xi:?}"
-    );
+    Self::check_xi(xi);
     self.xi = xi;
     self
   }
 
   /// Replace `rho`, all else unchanged.
   pub fn with_rho(mut self, rho: T) -> Self {
-    assert!(
-      rho.is_finite(),
-      "rho must satisfy `rho.is_finite()`, got rho = {rho:?}"
-    );
+    Self::check_rho(rho);
     self.rho = rho;
     self
   }
 
   /// Replace `lambda`, all else unchanged.
   pub fn with_lambda(mut self, lambda: T) -> Self {
-    assert!(
-      lambda.is_finite(),
-      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
-    );
+    Self::check_lambda(lambda);
     self.lambda = lambda;
     self
   }
 
   /// Replace `nu`, all else unchanged.
   pub fn with_nu(mut self, nu: T) -> Self {
-    assert!(
-      nu.is_finite(),
-      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
-    );
+    Self::check_nu(nu);
     self.nu = nu;
     self
   }
 
   /// Replace `omega`, all else unchanged.
   pub fn with_omega(mut self, omega: T) -> Self {
-    assert!(
-      omega.is_finite(),
-      "omega must satisfy `omega.is_finite()`, got omega = {omega:?}"
-    );
+    Self::check_omega(omega);
     self.omega = omega;
     self
   }
 
   /// Replace `n`, the grid points along the path, all else unchanged.
   pub fn with_points(mut self, n: usize) -> Self {
-    assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
+    Self::check_n(n);
     self.n = n;
     self
   }
 
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
-    assert!(
-      t.is_none_or(|t| t > T::zero() && t.is_finite()),
-      "t must satisfy `t.is_none_or(|t| t > T::zero() && t.is_finite())`, got t = {t:?}"
-    );
+    Self::check_t(t);
     self.t = t;
     self
   }
