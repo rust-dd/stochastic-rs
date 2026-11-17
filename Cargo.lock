@@ -3531,6 +3531,7 @@ dependencies = [
 name = "stochastic-rs-stochastic"
 version = "3.0.0-rc.4"
 dependencies = [
+ "criterion",
  "cudarc",
  "faer",
  "faer-ext",

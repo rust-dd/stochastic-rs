@@ -41,6 +41,11 @@ thread_local! {
   static CONTEXT: RefCell<Option<(usize, Context)>> = const { RefCell::new(None) };
 }
 
+/// Drops the calling thread's sheet pipelines and sized buffers on `ordinal`.
+pub(crate) fn release(ordinal: usize) {
+  metal::release_slot(&CONTEXT, ordinal);
+}
+
 pub(super) fn with<R>(
   ordinal: usize,
   use_context: impl FnOnce(&mut Context) -> Result<R>,

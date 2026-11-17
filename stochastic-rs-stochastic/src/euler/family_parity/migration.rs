@@ -1,6 +1,6 @@
 //! Exact Metal Euler paths across every declared family and launch shape.
 
-#![cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#![cfg(metal_backend)]
 
 use std::fs::OpenOptions;
 use std::io::Write;

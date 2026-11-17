@@ -1,7 +1,11 @@
-//! Process backend switching and Python wrapper macros.
+//! Process backend switching, device handle and Python wrapper macros.
 
 #[macro_use]
 mod backend;
+
+#[cfg(device_backend)]
+#[macro_use]
+mod device_handle;
 
 #[macro_use]
 mod dispatch;

@@ -15,6 +15,11 @@ thread_local! {
   static OUT_POOL: RefCell<Vec<Output>> = const { RefCell::new(Vec::new()) };
 }
 
+/// Drops the calling thread's pooled outputs on `ordinal`'s device.
+pub(super) fn release(ordinal: usize) {
+  OUT_POOL.with_borrow_mut(|pool| pool.retain(|output| output.context.ordinal != ordinal));
+}
+
 pub(crate) struct OutputRental(Option<Output>);
 
 impl OutputRental {

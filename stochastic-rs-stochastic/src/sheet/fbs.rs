@@ -48,9 +48,9 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[cfg(feature = "cuda")]
-mod cuda;
-#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
-mod metal;
+pub(crate) mod cuda;
+#[cfg(metal_backend)]
+pub(crate) mod metal;
 
 #[derive(Debug, Clone)]
 pub struct Fbs<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
@@ -386,10 +386,7 @@ impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
 /// eigenvalue roots in the device's precision, the grid, the domain extent,
 /// the linear correction's coefficient `√(2 c₂)`, and a key that tells one
 /// embedding from another in a per-size cache.
-#[cfg(any(
-  all(feature = "metal", target_os = "macos", target_arch = "aarch64"),
-  feature = "cuda"
-))]
+#[cfg(device_backend)]
 pub(crate) struct SheetLaunch<'a, F> {
   pub(crate) lam: &'a [F],
   pub(crate) m: usize,
@@ -399,10 +396,7 @@ pub(crate) struct SheetLaunch<'a, F> {
   pub(crate) key: (u64, u64),
 }
 
-#[cfg(any(
-  all(feature = "metal", target_os = "macos", target_arch = "aarch64"),
-  feature = "cuda"
-))]
+#[cfg(device_backend)]
 impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
   /// The embedding's cells: `2(rows − 1) · 2(cols − 1)`.
   #[cfg(feature = "cuda")]

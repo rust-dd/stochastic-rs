@@ -62,7 +62,7 @@ unsafe extern "C" {
   );
 }
 
-/// A vDSP FFT setup owned by the thread that created it; freed on thread exit.
+/// A vDSP FFT setup owned by the thread that created it; freed when it exits or releases it.
 struct FftSetup {
   log2n: u64,
   ptr: *mut c_void,
@@ -83,19 +83,22 @@ struct Scratch {
   eig: Vec<f32>,
 }
 
-thread_local! {
-  static SETUPS: RefCell<Vec<FftSetup>> = const { RefCell::new(Vec::new()) };
-  static SCRATCH: RefCell<Scratch> = const { RefCell::new(Scratch {
+impl Scratch {
+  const EMPTY: Self = Self {
     real: Vec::new(),
     imag: Vec::new(),
     out: Vec::new(),
     eig: Vec::new(),
-  }) };
+  };
 }
 
-/// Returns a vDSP setup for `log2n`, creating it once per thread and reusing it
-/// thereafter. The returned pointer stays valid for the thread's lifetime (the
-/// owning [`FftSetup`] lives in the thread-local cache).
+thread_local! {
+  static SETUPS: RefCell<Vec<FftSetup>> = const { RefCell::new(Vec::new()) };
+  static SCRATCH: RefCell<Scratch> = const { RefCell::new(Scratch::EMPTY) };
+}
+
+/// The vDSP setup for `log2n`, created once per thread; the pointer stays valid while the caller
+/// holds the thread's scratch, because a release skips a held scratch and its setups.
 fn cached_setup(log2n: u64) -> Result<*mut c_void> {
   SETUPS.with(|cell| {
     let mut setups = cell.borrow_mut();
@@ -113,6 +116,17 @@ fn cached_setup(log2n: u64) -> Result<*mut c_void> {
   })
 }
 
+/// Destroys the calling thread's vDSP setups and drops its split-complex scratch, unless a
+/// transform on this thread holds them.
+pub(crate) fn release_accelerate_scratch() {
+  SCRATCH.with(|scratch| {
+    if let Ok(mut scratch) = scratch.try_borrow_mut() {
+      *scratch = Scratch::EMPTY;
+      SETUPS.with_borrow_mut(Vec::clear);
+    }
+  });
+}
+
 fn sample_f32<T: FloatExt, S: SeedExt>(
   eig_t: &[T],
   n: usize,
@@ -127,7 +141,6 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
   let scale = (out_size.max(1) as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
   let total = m * traj_size;
   let log2n = traj_size.trailing_zeros() as u64;
-  let setup = cached_setup(log2n)?;
   let is_f32 = TypeId::of::<T>() == TypeId::of::<f32>();
 
   SCRATCH.with(|cell| {
@@ -137,6 +150,7 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
       out,
       eig,
     } = &mut *cell.borrow_mut();
+    let setup = cached_setup(log2n)?;
 
     // f32 eigenvalues: zero-copy when `T == f32`, else convert once into the
     // cached `eig` buffer (no per-call allocation either way).
@@ -210,7 +224,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   /// over the caller's own seed strategy rather than `self.seed` — this is
   /// what lets [`FgnBackend::generate_batch`](crate::device::FgnBackend::generate_batch)
   /// drive the CPU-equivalent chunked, thread-count-independent path (see
-  /// `device.rs`'s `Accelerate` impl) instead of racing every chunk on the
+  /// `device/fgn_backend.rs`'s `Accelerate` impl) instead of racing every chunk on the
   /// same `self.seed` atomic inside the parallel region.
   pub(crate) fn sample_accelerate_impl<S2: SeedExt>(
     &self,
@@ -223,5 +237,44 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     let t = self.t().unwrap_or(T::one()).to_f64().unwrap();
     let eig_t = self.sqrt_eigenvalues();
     sample_f32::<T, S2>(eig_t, n, m, offset, hurst, t, seed)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+
+  /// `f64` converts its eigenvalues into the scratch, so all four buffers fill.
+  #[test]
+  fn a_released_thread_holds_no_setup_or_scratch() {
+    let fgn = Fgn::<f64, _>::new(0.7, 1024, Some(1.0), Deterministic::new(3));
+    let before = fgn
+      .sample_accelerate_impl(4, &Deterministic::new(5))
+      .unwrap();
+    assert!(SETUPS.with_borrow(|setups| !setups.is_empty()));
+    assert!(SCRATCH.with_borrow(|s| s.eig.capacity() > 0));
+    release_accelerate_scratch();
+    assert!(SETUPS.with_borrow(Vec::is_empty));
+    assert!(SCRATCH.with_borrow(|s| {
+      s.real.capacity() + s.imag.capacity() + s.out.capacity() + s.eig.capacity() == 0
+    }));
+    let after = fgn
+      .sample_accelerate_impl(4, &Deterministic::new(5))
+      .unwrap();
+    assert_eq!(before.dim(), after.dim());
+  }
+
+  /// A release that runs while a transform holds the scratch skips it and the setup it reads.
+  #[test]
+  fn a_release_inside_a_transform_keeps_its_scratch_and_setups() {
+    let fgn = Fgn::<f32, _>::new(0.7, 1024, Some(1.0), Deterministic::new(3));
+    fgn
+      .sample_accelerate_impl(4, &Deterministic::new(5))
+      .unwrap();
+    SCRATCH.with_borrow(|_| release_accelerate_scratch());
+    assert!(SETUPS.with_borrow(|setups| !setups.is_empty()));
+    assert!(SCRATCH.with_borrow(|s| s.real.capacity() > 0));
   }
 }

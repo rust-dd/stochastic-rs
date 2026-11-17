@@ -24,6 +24,11 @@ thread_local! {
   static CONTEXT: RefCell<Option<(usize, Context)>> = const { RefCell::new(None) };
 }
 
+/// Drops the calling thread's Euler pipelines and buffers on `ordinal`.
+pub(crate) fn release(ordinal: usize) {
+  metal::release_slot(&CONTEXT, ordinal);
+}
+
 impl Context {
   fn new(ordinal: usize) -> Result<Self> {
     let shared = metal::context(ordinal)?;

@@ -155,15 +155,20 @@ If a test depends on a Cargo feature (e.g. uses a `metal`-gated
 backend), gate the *test* explicitly:
 
 ```rust
-#[cfg(all(feature = "metal", target_os = "macos"))]
+#[cfg(metal_backend)]
 #[test]
 fn metal_backend_test() { /* ... */ }
 ```
 
+`metal_backend`, `accelerate_backend` and `device_backend` are the aliases
+`stochastic-rs-stochastic/build.rs` emits for that crate's own targets; a test of
+the umbrella spells the gate out, `all(feature = "metal", target_os = "macos",
+target_arch = "aarch64")`.
+
 If the entire test module depends on a feature, gate the module:
 
 ```rust
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(metal_backend)]
 mod metal_tests {
     // ...
 }

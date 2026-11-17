@@ -30,6 +30,8 @@ pub mod traits;
 #[cfg(test)]
 mod tests;
 
+#[doc(hidden)]
+pub use crate::float_impls::release_fgn_scratch;
 pub use crate::seeded::Seeded;
 #[cfg(feature = "python")]
 pub use crate::traits::CallableDist;

@@ -42,15 +42,15 @@ The device methods are covered in [Sampling backends](/docs/concepts/backends).
 
 `Self::Output` depends on the process family:
 
-| Family                                            | `Output`               |
-|---------------------------------------------------|------------------------|
-| Single-factor (OU, GBM, CIR, Vasicek, …)          | `Array1<T>`            |
-| Multi-state (Heston, SABR, Bergomi, …)            | `[Array1<T>; N]`       |
+| Family                                                                                                         | `Output`                                      |
+|----------------------------------------------------------------------------------------------------------------|-----------------------------------------------|
+| Single-factor (OU, GBM, CIR, Vasicek, …)                                                                       | `Array1<T>`                                   |
+| Multi-state (Heston, SABR, Bergomi, …)                                                                         | `[Array1<T>; N]`                              |
 | Named slots (Hjm, DoubleHeston, HestonStochCorr, Heston2D, MultifactorHeston, CompoundPoisson, CompoundCustom) | a `…Paths` struct (`HjmPaths { r, p, f }`, …) |
-| Matrix rows / sheet (Adg, MultiGbm, Fbs)          | `Array2<T>`            |
-| Matrix-valued (Wishart)                           | `Array3<T>`            |
-| Variable-dimension (multivariate Hawkes)          | `Vec<Array1<T>>`       |
-| Complex-state (cfOU)                              | `Array1<Complex<T>>`   |
+| Matrix rows / sheet (Adg, MultiGbm, Fbs)                                                                       | `Array2<T>`                                   |
+| Matrix-valued (Wishart)                                                                                        | `Array3<T>`                                   |
+| Variable-dimension (multivariate Hawkes)                                                                       | `Vec<Array1<T>>`                              |
+| Complex-state (cfOU)                                                                                           | `Array1<Complex<T>>`                          |
 
 The dimensional marker traits (`OneDimensional`, `TwoDimensional`, `MultiDimensional<N>`, `CurveOutput`, `VariableDimensional`, `ComplexPathOutput`) are implemented automatically from `Output`, so generic code can bound on the shape it expects.
 

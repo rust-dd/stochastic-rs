@@ -11,13 +11,14 @@ use super::super::Fgn;
 use super::convert::array2_from_vec_f32;
 use super::convert::array2_from_vec_f64;
 use super::state::CUFFT_FORWARD;
-use super::state::GPU;
+use super::state::GpuKernels;
 use super::state::PinnedHost;
 use super::state::SIZED_F32;
 use super::state::SIZED_F64;
 use super::state::SizedCtxF32;
 use super::state::SizedCtxF64;
 use super::state::get_or_init_gpu;
+use super::state::staging;
 use crate::device::DeviceError;
 use crate::device::launch_len;
 use crate::traits::FloatExt;
@@ -169,23 +170,22 @@ pub(crate) fn sample_f32_device(
   let scale = (out_size.max(1) as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
   let args = LaunchArgs::new(n, m, out_size)?;
 
-  get_or_init_gpu(ordinal)?;
-  // Clone the handles out of the global lock so another size can launch
-  // concurrently; the per-size state below keeps its own lock for its buffers.
-  let (stream, gen_scale, extract) = {
-    let g = GPU.lock();
-    let k = g.as_ref().unwrap();
-    (
-      k.stream.clone(),
-      k.gen_scale_f32.clone(),
-      k.extract_f32.clone(),
-    )
-  };
+  let GpuKernels {
+    stream,
+    gen_scale_f32: gen_scale,
+    extract_f32: extract,
+    ..
+  } = get_or_init_gpu(ordinal)?;
   let mut sized = SIZED_F32.lock();
   let s = crate::device::lru_slot(
     &mut sized,
     |s| {
-      s.n == n && s.m == m && s.offset == offset && s.hurst_bits == hurst_bits && s.t_bits == t_bits
+      Arc::ptr_eq(s.d_out.stream(), &stream)
+        && s.n == n
+        && s.m == m
+        && s.offset == offset
+        && s.hurst_bits == hurst_bits
+        && s.t_bits == t_bits
     },
     || {
       let plan = cufft::result::plan_1d(args.traj, cufft::sys::cufftType::CUFFT_C2C, args.batch)
@@ -205,7 +205,7 @@ pub(crate) fn sample_f32_device(
         d_out: stream
           .alloc_zeros::<f32>(m * out_size)
           .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?,
-        host_pinned: PinnedHost::<f32>::alloc(m * out_size)?,
+        host_pinned: None,
         n,
         m,
         offset,
@@ -281,23 +281,22 @@ fn sample_f32<T: FloatExt>(
   let scale = (out_size.max(1) as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
   let args = LaunchArgs::new(n, m, out_size)?;
 
-  get_or_init_gpu(ordinal)?;
-  // Clone the handles out of the global lock so another size can launch
-  // concurrently; the per-size state below keeps its own lock for its buffers.
-  let (stream, gen_scale, extract) = {
-    let g = GPU.lock();
-    let k = g.as_ref().unwrap();
-    (
-      k.stream.clone(),
-      k.gen_scale_f32.clone(),
-      k.extract_f32.clone(),
-    )
-  };
+  let GpuKernels {
+    stream,
+    gen_scale_f32: gen_scale,
+    extract_f32: extract,
+    ..
+  } = get_or_init_gpu(ordinal)?;
   let mut sized = SIZED_F32.lock();
   let s = crate::device::lru_slot(
     &mut sized,
     |s| {
-      s.n == n && s.m == m && s.offset == offset && s.hurst_bits == hurst_bits && s.t_bits == t_bits
+      Arc::ptr_eq(s.d_out.stream(), &stream)
+        && s.n == n
+        && s.m == m
+        && s.offset == offset
+        && s.hurst_bits == hurst_bits
+        && s.t_bits == t_bits
     },
     || {
       let plan = cufft::result::plan_1d(args.traj, cufft::sys::cufftType::CUFFT_C2C, args.batch)
@@ -317,7 +316,7 @@ fn sample_f32<T: FloatExt>(
         d_out: stream
           .alloc_zeros::<f32>(m * out_size)
           .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?,
-        host_pinned: PinnedHost::<f32>::alloc(m * out_size)?,
+        host_pinned: None,
         n,
         m,
         offset,
@@ -385,7 +384,12 @@ fn sample_f32<T: FloatExt>(
 
   let host = match prefaulted {
     Some(mut host) => {
-      drain_into(&stream, &s.d_out, &s.host_pinned, &mut host)?;
+      drain_into(
+        &stream,
+        &s.d_out,
+        staging(&mut s.host_pinned, len)?,
+        &mut host,
+      )?;
       host
     }
     None => stream
@@ -432,23 +436,22 @@ pub(crate) fn sample_f64_device(
   let scale = (out_size.max(1) as f64).powf(-hurst) * t.powf(hurst);
   let args = LaunchArgs::new(n, m, out_size)?;
 
-  get_or_init_gpu(ordinal)?;
-  // Clone the handles out of the global lock so another size can launch
-  // concurrently; the per-size state below keeps its own lock for its buffers.
-  let (stream, gen_scale, extract) = {
-    let g = GPU.lock();
-    let k = g.as_ref().unwrap();
-    (
-      k.stream.clone(),
-      k.gen_scale_f64.clone(),
-      k.extract_f64.clone(),
-    )
-  };
+  let GpuKernels {
+    stream,
+    gen_scale_f64: gen_scale,
+    extract_f64: extract,
+    ..
+  } = get_or_init_gpu(ordinal)?;
   let mut sized = SIZED_F64.lock();
   let s = crate::device::lru_slot(
     &mut sized,
     |s| {
-      s.n == n && s.m == m && s.offset == offset && s.hurst_bits == hurst_bits && s.t_bits == t_bits
+      Arc::ptr_eq(s.d_out.stream(), &stream)
+        && s.n == n
+        && s.m == m
+        && s.offset == offset
+        && s.hurst_bits == hurst_bits
+        && s.t_bits == t_bits
     },
     || {
       let plan = cufft::result::plan_1d(args.traj, cufft::sys::cufftType::CUFFT_Z2Z, args.batch)
@@ -468,7 +471,7 @@ pub(crate) fn sample_f64_device(
         d_out: stream
           .alloc_zeros::<f64>(m * out_size)
           .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?,
-        host_pinned: PinnedHost::<f64>::alloc(m * out_size)?,
+        host_pinned: None,
         n,
         m,
         offset,
@@ -544,23 +547,22 @@ fn sample_f64<T: FloatExt>(
   let scale = (out_size.max(1) as f64).powf(-hurst) * t.powf(hurst);
   let args = LaunchArgs::new(n, m, out_size)?;
 
-  get_or_init_gpu(ordinal)?;
-  // Clone the handles out of the global lock so another size can launch
-  // concurrently; the per-size state below keeps its own lock for its buffers.
-  let (stream, gen_scale, extract) = {
-    let g = GPU.lock();
-    let k = g.as_ref().unwrap();
-    (
-      k.stream.clone(),
-      k.gen_scale_f64.clone(),
-      k.extract_f64.clone(),
-    )
-  };
+  let GpuKernels {
+    stream,
+    gen_scale_f64: gen_scale,
+    extract_f64: extract,
+    ..
+  } = get_or_init_gpu(ordinal)?;
   let mut sized = SIZED_F64.lock();
   let s = crate::device::lru_slot(
     &mut sized,
     |s| {
-      s.n == n && s.m == m && s.offset == offset && s.hurst_bits == hurst_bits && s.t_bits == t_bits
+      Arc::ptr_eq(s.d_out.stream(), &stream)
+        && s.n == n
+        && s.m == m
+        && s.offset == offset
+        && s.hurst_bits == hurst_bits
+        && s.t_bits == t_bits
     },
     || {
       let plan = cufft::result::plan_1d(args.traj, cufft::sys::cufftType::CUFFT_Z2Z, args.batch)
@@ -580,7 +582,7 @@ fn sample_f64<T: FloatExt>(
         d_out: stream
           .alloc_zeros::<f64>(m * out_size)
           .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?,
-        host_pinned: PinnedHost::<f64>::alloc(m * out_size)?,
+        host_pinned: None,
         n,
         m,
         offset,
@@ -638,7 +640,12 @@ fn sample_f64<T: FloatExt>(
     .then(|| alloc_prefaulted::<f64>(len))
   {
     Some(mut host) => {
-      drain_into(&stream, &s.d_out, &s.host_pinned, &mut host)?;
+      drain_into(
+        &stream,
+        &s.d_out,
+        staging(&mut s.host_pinned, len)?,
+        &mut host,
+      )?;
       host
     }
     None => stream

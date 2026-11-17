@@ -1,6 +1,6 @@
 //! Nested launches preserve rows borrowed from the shared Metal context.
 
-#![cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#![cfg(metal_backend)]
 
 use ndarray::{Array1, ArrayView1};
 use stochastic_rs_core::simd_rng::Deterministic;

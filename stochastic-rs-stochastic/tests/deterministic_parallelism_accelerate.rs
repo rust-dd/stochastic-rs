@@ -2,8 +2,8 @@
 //!
 //! An earlier version of this crate's docs claimed `Accelerate` carries the
 //! same bit-identical guarantee `Cpu` does, reasoning only about the
-//! seed-*consumption* layer this wave built (see `device.rs`'s `Backend`
-//! trait doc) and never measuring the actual output. That claim is wrong:
+//! seed-*consumption* layer this wave built (see `device/fgn_backend.rs`'s
+//! `FgnBackend` doc) and never measuring the actual output. That claim is wrong:
 //! the seed-consumption layer genuinely is thread-count independent (the
 //! tests below rely on that, unchanged, to prove per-path bases don't
 //! depend on scheduling) — but `vDSP_fft_zip` itself is not bit-stable
@@ -28,8 +28,8 @@
 //! not guaranteed to produce bit-identical results for the same
 //! floating-point computation. `Accelerate` is therefore
 //! **reproducible-effort-only**, the same tier as the GPU backends, not
-//! bit-identical like `Cpu` — see `device.rs`'s `Backend` trait doc for the
-//! corrected guarantee table.
+//! bit-identical like `Cpu` — see `device/fgn_backend.rs`'s `FgnBackend` doc for
+//! the corrected guarantee table.
 //!
 //! The tests below do not assert a specific divergence *rate* (it depends
 //! on system load at the moment the test runs, which this file cannot
@@ -39,7 +39,7 @@
 //! particular run happens to trigger vDSP's own hardware-level
 //! nondeterminism.
 
-#[cfg(all(feature = "accelerate", target_os = "macos"))]
+#[cfg(accelerate_backend)]
 mod accelerate_reproducibility {
   use std::sync::Arc;
   use std::sync::atomic::AtomicBool;

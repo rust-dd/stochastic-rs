@@ -29,10 +29,7 @@
 //! Split across files only to stay under this crate's line-count limit; all
 //! four compile into one test binary.
 
-#![cfg(any(
-  all(feature = "metal", target_os = "macos", target_arch = "aarch64"),
-  feature = "cuda"
-))]
+#![cfg(device_backend)]
 
 mod device_law {
   pub(crate) mod bounded;

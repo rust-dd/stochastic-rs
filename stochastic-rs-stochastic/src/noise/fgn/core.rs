@@ -227,7 +227,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   /// Test-only convenience: `sample_cpu_impl(&self.seed)`, identical to what
   /// `ProcessExt::sample()` does for the `Cpu` backend. `FgnBackend::generate_batch`
   /// used to call this once per path; it now builds one `SimdNormal` per
-  /// chunk and calls `fill_cpu` directly (see `device.rs`'s `Cpu` impl), so
+  /// chunk and calls `fill_cpu` directly (see `device/fgn_backend.rs`'s `Cpu` impl), so
   /// this has no production caller left — kept `#[cfg(test)]` for the
   /// covariance/marginal tests in this module and the CPU-vs-CUDA comparison
   /// tests in `cuda/tests.rs`, rather than duplicating this one-liner

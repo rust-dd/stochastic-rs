@@ -16,6 +16,7 @@ type Result<T> = std::result::Result<T, DeviceError>;
 pub(super) const CUFFT_FORWARD: i32 = -1;
 
 /// Persistent GPU state: compiled kernels and stream (survives param changes).
+#[derive(Clone)]
 pub(super) struct GpuKernels {
   pub(super) ordinal: usize,
   pub(super) stream: Arc<CudaStream>,
@@ -92,15 +93,44 @@ impl<T> Drop for PinnedHost<T> {
 
 unsafe impl<T: Send> Send for PinnedHost<T> {}
 
-pub(super) fn get_or_init_gpu(ordinal: usize) -> Result<()> {
-  let mut g = GPU.lock();
-  if g.as_ref().is_some_and(|k| k.ordinal == ordinal) {
-    return Ok(());
+/// A sized context's page-locked staging buffer, allocated by the first transfer that needs it.
+pub(super) fn staging<T>(slot: &mut Option<PinnedHost<T>>, len: usize) -> Result<&PinnedHost<T>> {
+  if slot.is_none() {
+    *slot = Some(PinnedHost::alloc(len)?);
   }
-  // A new context invalidates the per-size buffers and plans of the old one.
-  *g = None;
+  Ok(slot.as_ref().expect("allocated above"))
+}
+
+/// Drops the fGN kernels, cuFFT plans and buffers cached for `ordinal`.
+pub(crate) fn release(ordinal: usize) {
+  let mut gpu = GPU.lock();
+  if gpu.as_ref().is_some_and(|k| k.ordinal == ordinal) {
+    invalidate(&mut gpu);
+  }
+}
+
+/// Empties the cache: the per-size buffers and plans belong to the context that built them.
+fn invalidate(gpu: &mut Option<GpuKernels>) {
+  *gpu = None;
   SIZED_F32.lock().clear();
   SIZED_F64.lock().clear();
+}
+
+#[cfg(test)]
+pub(super) fn cached_context() -> Option<std::sync::Weak<CudaContext>> {
+  GPU
+    .lock()
+    .as_ref()
+    .map(|k| Arc::downgrade(k.stream.context()))
+}
+
+/// The kernels and stream of the device at `ordinal`, opened if need be and cloned under one lock.
+pub(super) fn get_or_init_gpu(ordinal: usize) -> Result<GpuKernels> {
+  let mut g = GPU.lock();
+  if let Some(k) = g.as_ref().filter(|k| k.ordinal == ordinal) {
+    return Ok(k.clone());
+  }
+  invalidate(&mut g);
   let ctx =
     CudaContext::new(ordinal).map_err(|e| DeviceError::Unavailable(format!("CudaContext: {e}")))?;
   let stream = ctx
@@ -118,15 +148,16 @@ pub(super) fn get_or_init_gpu(ordinal: usize) -> Result<()> {
       .map_err(|e| DeviceError::Launch(format!("fn {name}: {e}")))
   };
 
-  *g = Some(GpuKernels {
+  let kernels = GpuKernels {
     ordinal,
     gen_scale_f32: load(GEN_SCALE_F32, "gen_scale_f32")?,
     extract_f32: load(EXTRACT_F32, "extract_f32")?,
     gen_scale_f64: load(GEN_SCALE_F64, "gen_scale_f64")?,
     extract_f64: load(EXTRACT_F64, "extract_f64")?,
     stream,
-  });
-  Ok(())
+  };
+  *g = Some(kernels.clone());
+  Ok(kernels)
 }
 
 /// Per-precision GPU state: FFT plan and device buffers, re-created on param change.
@@ -135,7 +166,7 @@ pub(super) struct SizedCtxF32 {
   pub(super) d_eigs: CudaSlice<f32>,
   pub(super) d_data: CudaSlice<f32>,
   pub(super) d_out: CudaSlice<f32>,
-  pub(super) host_pinned: PinnedHost<f32>,
+  pub(super) host_pinned: Option<PinnedHost<f32>>,
   pub(super) n: usize,
   pub(super) m: usize,
   pub(super) offset: usize,
@@ -156,7 +187,7 @@ pub(super) struct SizedCtxF64 {
   pub(super) d_eigs: CudaSlice<f64>,
   pub(super) d_data: CudaSlice<f64>,
   pub(super) d_out: CudaSlice<f64>,
-  pub(super) host_pinned: PinnedHost<f64>,
+  pub(super) host_pinned: Option<PinnedHost<f64>>,
   pub(super) n: usize,
   pub(super) m: usize,
   pub(super) offset: usize,
@@ -175,6 +206,7 @@ impl Drop for SizedCtxF64 {
 unsafe impl Send for SizedCtxF32 {}
 unsafe impl Send for SizedCtxF64 {}
 
-/// The last [`crate::device::CACHE_SLOTS`] per-size states, least recent first.
+/// The last [`crate::device::CACHE_SLOTS`] per-size states, least recent first; a launch reuses one
+/// only on the stream that built it, which its plan runs on.
 pub(super) static SIZED_F32: Mutex<Vec<SizedCtxF32>> = Mutex::new(Vec::new());
 pub(super) static SIZED_F64: Mutex<Vec<SizedCtxF64>> = Mutex::new(Vec::new());

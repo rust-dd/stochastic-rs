@@ -1,6 +1,6 @@
 //! Recorded sheet bits, chunked streams, and owned output at the sampling boundary.
 
-#![cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+#![cfg(metal_backend)]
 
 use std::sync::{Arc, Barrier};
 

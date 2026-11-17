@@ -7,6 +7,7 @@ mod sampling;
 use metal_oxide::Buffer;
 
 use crate::device::DeviceError;
+pub(crate) use context::release;
 use launch::{device_paths, launch_paths};
 
 type Result<T> = std::result::Result<T, DeviceError>;

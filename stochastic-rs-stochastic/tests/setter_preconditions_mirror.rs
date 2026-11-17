@@ -68,16 +68,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     "with_sigma",
     "`new` checks the three arrays jointly in `validate_lmm_inputs`",
   ),
-  (
-    "Cuda",
-    "with_batch_budget",
-    "a device budget, no `new` parameter",
-  ),
-  (
-    "Metal",
-    "with_batch_budget",
-    "a device budget, no `new` parameter",
-  ),
 ];
 
 const KEYWORDS: &[&str] = &[
