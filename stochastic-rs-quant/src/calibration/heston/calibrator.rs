@@ -179,7 +179,7 @@ impl crate::traits::Calibrator for HestonCalibrator {
     initial: Option<HestonParams>,
   ) -> Result<Calibrated<HestonParams>, QuantError> {
     validate_quotes(&self.quotes)?;
-    self.options.regularization_for(5)?;
+    let lm = self.options.lm(true, 5)?;
     if let Some(weights) = &self.residual_weights {
       if weights.len() != self.quotes.len() {
         return Err(QuantError::DimensionMismatch {
@@ -201,7 +201,7 @@ impl crate::traits::Calibrator for HestonCalibrator {
     if self.feller_projection {
       problem.feller_row_weight = Some(self.feller_row_weight_at(problem.effective_params()));
     }
-    let (fitted, report) = minimize(problem, self.options.lm(true));
+    let (fitted, report) = minimize(problem, lm);
     let params = fitted.effective_params();
     let model = self.compute_model_prices_for(&params).to_vec();
     Ok(report.calibrated(

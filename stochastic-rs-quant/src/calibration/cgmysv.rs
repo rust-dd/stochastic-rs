@@ -49,6 +49,7 @@ pub struct CgmysvCalibrator {
   pub quotes: Vec<OptionQuote>,
   /// `None` starts from (0.5, 20, 5, 1, 0.05, 0.3, −1, 0.01); a start is clamped to the bounds.
   pub start: Option<CgmysvParams>,
+  /// Levenberg–Marquardt knobs; `regularization` pulls `(α, λ₊, λ₋, κ, η, ζ, ρ, v0)`.
   pub options: CalibrationOptions,
 }
 
@@ -188,7 +189,8 @@ impl crate::traits::Calibrator for CgmysvCalibrator {
     }
     let mut params = start.map_or_else(default_params, |start| to_vec(&start));
     project(&mut params);
-    let (fitted, report) = minimize(CgmysvProblem::new(self, params), self.options.lm(true));
+    let lm = self.options.lm(true, N_PARAMS)?;
+    let (fitted, report) = minimize(CgmysvProblem::new(self, params), lm);
     let model = fitted.compute_model_prices();
     Ok(report.calibrated(
       to_cgmysv_params(&fitted.params),
@@ -227,6 +229,12 @@ impl<'a> CgmysvProblem<'a> {
     let p = to_cgmysv_params(&self.params);
     let quotes = self.calibrator.quotes.iter();
     quotes.map(|quote| self.price(&p, quote)).collect()
+  }
+
+  /// `∂θⱼ/∂xⱼ` of the logistic map from the optimiser's coordinates onto each parameter's bounds.
+  fn logistic_factors(&self) -> impl Iterator<Item = f64> + '_ {
+    let bounds = self.params.iter().zip(param_bounds());
+    bounds.map(|(&value, (lower, upper))| (value - lower) * (upper - value) / (upper - lower))
   }
 }
 
@@ -294,9 +302,7 @@ impl LeastSquaresProblem for CgmysvProblem<'_> {
       }
     }
 
-    for (j, (lower, upper)) in param_bounds().into_iter().enumerate() {
-      let value = self.params[j];
-      let derivative = (value - lower) * (upper - value) / (upper - lower);
+    for (j, derivative) in self.logistic_factors().enumerate() {
       jac.column_mut(j).mapv_inplace(|v| v * derivative);
     }
     Some(jac)
@@ -304,6 +310,14 @@ impl LeastSquaresProblem for CgmysvProblem<'_> {
 
   fn accept(&mut self) {
     self.trail.accept();
+  }
+
+  fn natural_params(&self) -> Vec<f64> {
+    self.params.clone()
+  }
+
+  fn natural_jacobian(&self) -> Array2<f64> {
+    Array2::from_diag(&Array1::from_iter(self.logistic_factors()))
   }
 }
 

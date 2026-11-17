@@ -178,7 +178,8 @@ pub struct CalibrationOptions {
   pub record_history: bool,
   /// Metrics computed for the result and each history entry, every one by default; `rmse()` always has Rmse.
   pub loss_metrics: &'static [LossMetric],
-  /// Tikhonov pull in the calibrator's natural parameter order.
+  /// Tikhonov pull on the parameters in the order each calibrator's `options` names; rows in a
+  /// Levenberg–Marquardt fit, a cost in Nelder–Mead.
   pub regularization: Option<Regularization>,
 }
 
@@ -241,13 +242,15 @@ impl CalibrationOptions {
     self
   }
 
-  pub(crate) fn lm(&self, pivoted_qr: bool) -> LmOptions {
-    LmOptions {
+  /// A Levenberg–Marquardt fit's options for `dimension` natural parameters, the pull with them.
+  pub(crate) fn lm(&self, pivoted_qr: bool, dimension: usize) -> Result<LmOptions, QuantError> {
+    Ok(LmOptions {
       tolerance: self.tolerance,
       patience: self.patience,
       pivoted_qr,
       max_iterations: self.max_iterations,
-    }
+      regularization: self.regularization_for(dimension)?,
+    })
   }
 
   /// `DimensionMismatch` unless the regularization pulls the calibrator's `dimension` parameters.

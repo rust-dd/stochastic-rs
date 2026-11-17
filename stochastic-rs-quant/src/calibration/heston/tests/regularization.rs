@@ -71,25 +71,33 @@ fn zero_weights_match_the_unregularised_calibration() {
   assert_eq!(plain.params.rho, zero.params.rho);
 }
 
-/// The augmented Jacobian carries one extra row per parameter, with a single
-/// positive entry on the regularised coordinate.
+/// Off the Feller cap a pull sees `(v0, κ, θ, σ, ρ)` through the logistic transform's diagonal.
 #[test]
-fn augmented_jacobian_has_the_penalty_rows() {
-  let reg = Regularization::new(vec![0.0; 5], vec![0.0, 4.0, 0.0, 0.0, 0.0]);
-  let calibrator = calibrator(Some(reg));
-  let mut problem = HestonProblem::new(&calibrator, calibrator.start.unwrap());
-  let jacobian = problem.jacobian().expect("jacobian");
-  let n = calibrator.quotes.len();
-  assert_eq!(jacobian.nrows(), n + 5);
-  for col in 0..5 {
-    for row in 0..5 {
-      let value = jacobian[(n + row, col)];
-      if row == 1 && col == 1 {
-        assert!(value > 0.0, "kappa row must carry a positive derivative");
-      } else {
-        assert_eq!(value, 0.0);
-      }
-    }
+fn the_pull_reads_the_physical_parameters_through_the_transform() {
+  let calibrator = calibrator(None);
+  let start = calibrator.start.unwrap();
+  let problem = HestonProblem::new(&calibrator, start);
+  let physical = [start.v0, start.kappa, start.theta, start.sigma, start.rho];
+  for (natural, value) in problem.natural_params().iter().zip(physical) {
+    assert!((natural - value).abs() < 1e-12, "{natural} against {value}");
   }
-  assert_eq!(problem.residuals().expect("residuals").len(), n + 5);
+  for ((row, col), value) in problem.natural_jacobian().indexed_iter() {
+    assert_eq!(*value > 0.0, row == col, "({row}, {col}) = {value}");
+  }
+}
+
+/// Where the cap binds, σ = √(2κθ) moves with κ and θ alone, so its row leaves σ's column.
+#[test]
+fn under_the_feller_cap_the_sigma_row_moves_onto_kappa_and_theta() {
+  let calibrator = calibrator(None).with_feller_projection(true);
+  let problem = HestonProblem::new(&calibrator, calibrator.start.unwrap());
+  let jacobian = problem.natural_jacobian();
+  let sigma_row = jacobian.row(3).to_vec();
+  assert!(sigma_row[1] > 0.0 && sigma_row[2] > 0.0, "{sigma_row:?}");
+  assert!(sigma_row[0] == 0.0 && sigma_row[3] == 0.0 && sigma_row[4] == 0.0);
+  let capped = problem.natural_params()[3];
+  assert!(
+    (capped - (2.0 * 1.0 * 0.05_f64).sqrt()).abs() < 1e-9,
+    "{capped}"
+  );
 }

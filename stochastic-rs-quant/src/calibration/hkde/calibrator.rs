@@ -19,6 +19,7 @@ pub struct HkdeCalibrator {
   pub quotes: Vec<OptionQuote>,
   /// `None` starts from (0.04, 1.5, 0.04, 0.3, −0.5, 0.5, 0.4, 10, 5), projected.
   pub start: Option<HkdeParams>,
+  /// Levenberg–Marquardt knobs; `regularization` pulls `(v0, κ, θ, σ_v, ρ, λ, p, η₁, η₂)`.
   pub options: CalibrationOptions,
 }
 
@@ -80,7 +81,8 @@ impl crate::traits::Calibrator for HkdeCalibrator {
     if let Some(reason) = start.violation() {
       return Err(QuantError::invalid("start", reason));
     }
-    let (fitted, report) = minimize(HkdeProblem::new(self, start)?, self.options.lm(true));
+    let lm = self.options.lm(true, 9)?;
+    let (fitted, report) = minimize(HkdeProblem::new(self, start)?, lm);
     let params = fitted.effective_params();
     let model = fitted.compute_model_prices_for(&params);
     Ok(report.calibrated(

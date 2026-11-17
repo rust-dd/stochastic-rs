@@ -24,6 +24,7 @@ pub struct SvjCalibrator {
   pub quotes: Vec<OptionQuote>,
   /// `None` starts from (0.04, 1.5, 0.04, 0.5, −0.5, 0.5, −0.05, 0.1), projected.
   pub start: Option<SvjParams>,
+  /// Levenberg–Marquardt knobs; `regularization` pulls `(v0, κ, θ, σ_v, ρ, λ, μ_J, σ_J)`.
   pub options: CalibrationOptions,
 }
 
@@ -83,7 +84,8 @@ impl crate::traits::Calibrator for SvjCalibrator {
     if let Some(reason) = start.violation() {
       return Err(QuantError::invalid("start", reason));
     }
-    let (fitted, report) = minimize(SvjProblem::new(self, start), self.options.lm(true));
+    let lm = self.options.lm(true, 8)?;
+    let (fitted, report) = minimize(SvjProblem::new(self, start), lm);
     let params = fitted.effective_params();
     let model = fitted.compute_model_prices_for(&params);
     Ok(report.calibrated(

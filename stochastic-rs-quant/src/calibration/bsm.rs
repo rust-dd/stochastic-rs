@@ -82,6 +82,7 @@ pub struct BsmCalibrator {
   pub quotes: Vec<OptionQuote>,
   /// Reflected onto `[1e-6, ∞)` before the first evaluation.
   pub start: BsmParams,
+  /// Levenberg–Marquardt knobs; `regularization` pulls `σ`.
   pub options: CalibrationOptions,
 }
 
@@ -126,8 +127,8 @@ impl crate::traits::Calibrator for BsmCalibrator {
     validate_quotes(&self.quotes)?;
     let start = initial.unwrap_or(self.start);
     check_finite_start(&[("sigma", start.sigma)])?;
-    let problem = BsmProblem::new(self, start.projected());
-    let (fitted, report) = minimize(problem, self.options.lm(false));
+    let lm = self.options.lm(false, 1)?;
+    let (fitted, report) = minimize(BsmProblem::new(self, start.projected()), lm);
     let params = fitted.effective_params();
     let pricer = BsmPricer::new(params.sigma, BsmCoc::Merton1973);
     let model = self

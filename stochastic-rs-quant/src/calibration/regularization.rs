@@ -4,8 +4,8 @@
 //! \hat\theta = \arg\min_\theta \sum_i w_i\left(P_i^{model}(\theta) - P_i^{mkt}\right)^2 + \sum_j \lambda_j\left(\theta_j - \theta_j^0\right)^2
 //! $$
 //!
-//! Tikhonov pull toward `θ⁰`: residual rows in least-squares fits, a cost penalty in Nelder–Mead.
-//! Weights are in price² per parameter², vol² for the SABR caplet; `None` leaves a fit unchanged.
+//! Tikhonov pull toward `θ⁰`: rows appended to a Levenberg–Marquardt fit, a cost in Nelder–Mead.
+//! Weights are in the fit's residual unit squared per parameter squared; `None` leaves a fit as is.
 //!
 //! References: Tikhonov, A. N. (1963), *Solution of incorrectly formulated
 //! problems and the regularization method*, Soviet Mathematics Doklady 4,
@@ -49,8 +49,7 @@ impl Regularization {
     self.anchor.len()
   }
 
-  /// Whether any weight is positive; inactive instances are skipped by the
-  /// calibrators, which keeps their unregularised path untouched.
+  /// Whether any weight is positive; a fit skips an inactive pull and runs as without one.
   pub fn is_active(&self) -> bool {
     self.weights.iter().any(|w| *w > 0.0)
   }
@@ -78,13 +77,19 @@ impl Regularization {
     )
   }
 
-  /// Jacobian of the residual rows in the natural coordinates: `diag(√λ_j)`.
-  pub fn jacobian_rows(&self) -> Array2<f64> {
-    let n = self.dimension();
-    Array2::from_shape_fn(
-      (n, n),
-      |(i, j)| if i == j { self.weights[i].sqrt() } else { 0.0 },
-    )
+  /// Jacobian `diag(√λ_j) · ∂θ/∂x` of the residual rows, scaling row `j` of `natural_jacobian`
+  /// (`∂θ/∂x` in the fit's coordinates; the identity gives `diag(√λ_j)`).
+  pub fn jacobian_rows(&self, mut natural_jacobian: Array2<f64>) -> Array2<f64> {
+    assert_eq!(
+      natural_jacobian.nrows(),
+      self.dimension(),
+      "parameter count must match the regularisation dimension"
+    );
+    for (mut row, weight) in natural_jacobian.rows_mut().into_iter().zip(&self.weights) {
+      let root = weight.sqrt();
+      row.mapv_inplace(|v| v * root);
+    }
+    natural_jacobian
   }
 
   /// Appends the residual rows to a residual vector.
@@ -132,10 +137,18 @@ mod tests {
     assert!((rows.dot(&rows) - reg.penalty(&params)).abs() < 1e-14);
     assert!((reg.penalty(&params) - (4.0 * 0.25 + 9.0 * 1.0)).abs() < 1e-14);
     assert_eq!(rows[1], 0.0);
-    let jac = reg.jacobian_rows();
+    let jac = reg.jacobian_rows(Array2::eye(3));
     assert_eq!(jac[(0, 0)], 2.0);
     assert_eq!(jac[(2, 2)], 3.0);
     assert_eq!(jac[(0, 1)], 0.0);
+  }
+
+  #[test]
+  fn the_jacobian_rows_scale_the_fits_own_derivative() {
+    let reg = Regularization::new(vec![0.0; 2], vec![4.0, 9.0]);
+    let natural = ndarray::array![[0.0, 0.5, 1.0], [-2.0, 0.0, 0.25]];
+    let jac = reg.jacobian_rows(natural);
+    assert_eq!(jac, ndarray::array![[0.0, 1.0, 2.0], [-6.0, 0.0, 0.75]]);
   }
 
   #[test]
@@ -149,7 +162,10 @@ mod tests {
     let reg = Regularization::uniform(vec![0.0, 0.0], 1.0);
     let residuals = reg.augment_residuals(Array1::from_vec(vec![1.0, 2.0, 3.0]), &[0.5, -0.5]);
     assert_eq!(residuals.as_slice().unwrap(), &[1.0, 2.0, 3.0, 0.5, -0.5]);
-    let jac = reg.augment_jacobian(Array2::from_elem((3, 2), 7.0), reg.jacobian_rows());
+    let jac = reg.augment_jacobian(
+      Array2::from_elem((3, 2), 7.0),
+      reg.jacobian_rows(Array2::eye(2)),
+    );
     assert_eq!(jac.nrows(), 5);
     assert_eq!(jac[(2, 1)], 7.0);
     assert_eq!(jac[(3, 0)], 1.0);
