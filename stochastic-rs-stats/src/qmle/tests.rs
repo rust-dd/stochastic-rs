@@ -239,6 +239,29 @@ fn a_conditional_variance_outside_the_model_gives_a_nan_log_likelihood() {
   assert!(quasi_log_likelihood(&x, 1.0 / 252.0, ou, 1.0, 0.05, 0.1).is_finite());
 }
 
+/// At `θΔ = 5e-13` a variance from `1 − e^{−θΔ}` formed by subtraction keeps four digits; the
+/// series `σ²Δ(1 − θΔ)` (OU) and `σ²Δ(x(1 − 3θΔ/2) + μθΔ/2)` (CIR) keep all sixteen.
+#[test]
+fn the_variance_keeps_its_digits_at_a_small_speed_times_step() {
+  let (theta, mu, sigma, dt) = (50.0, 0.05, 1.0, 1e-14);
+  let h = theta * dt;
+  let x = [mu, mu + 2e-7];
+  let r = x[1] - mu;
+  let v_ou = sigma * sigma * dt * (1.0 - h);
+  let v_cir = sigma * sigma * dt * (x[0] * (1.0 - 1.5 * h) + mu * 0.5 * h);
+  for (kind, v) in [
+    (DiffusionKind::OrnsteinUhlenbeck, v_ou),
+    (DiffusionKind::Cir, v_cir),
+  ] {
+    let want = -0.5 * ((2.0 * std::f64::consts::PI * v).ln() + r * r / v);
+    let got = quasi_log_likelihood(&x, dt, kind, theta, mu, sigma);
+    assert!(
+      (got - want).abs() < 1e-12,
+      "{kind:?}: {got} against the series' {want}"
+    );
+  }
+}
+
 #[test]
 fn a_negative_cir_observation_is_invalid() {
   let s = Array1::from(vec![0.04, 0.05, 0.045, -0.01, 0.04, 0.05]);

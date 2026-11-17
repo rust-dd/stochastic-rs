@@ -124,26 +124,35 @@ pub(crate) fn cir_of<S: SeedExt>(
   Cir::new(theta, mu, sigma, n, x0, t, boundary, seed)
 }
 
-/// The exact mean `μ + (x − μ) a` of `X_{t+Δ} | X_t = x`, `a = e^{−θΔ}`, and its variance
-/// `σ²(1 − a²)/(2θ)` (OU) or `x σ²/θ (a − a²) + μ σ²/(2θ) (1 − a)²` (CIR).
-pub(crate) fn conditional_moments(
-  kind: DiffusionKind,
-  x: f64,
-  theta: f64,
+/// `X_{t+Δ} | X_t = x`: the exact mean `μ + (x − μ) a`, `a = e^{−θΔ}`, and variance
+/// `σ²(1 − a²)/(2θ)` (OU) or `x σ²/θ (a − a²) + μ σ²/(2θ) (1 − a)²` (CIR), linear in `x`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Transition {
   mu: f64,
-  sigma: f64,
-  dt: f64,
-) -> (f64, f64) {
-  let a = (-theta * dt).exp();
-  let mean = mu + (x - mu) * a;
-  let s2 = sigma * sigma;
-  let var = match kind {
-    DiffusionKind::OrnsteinUhlenbeck => s2 * (1.0 - a * a) / (2.0 * theta),
-    DiffusionKind::Cir => {
-      x * (s2 / theta) * (a - a * a) + mu * (s2 / (2.0 * theta)) * (1.0 - a) * (1.0 - a)
-    }
-  };
-  (mean, var)
+  a: f64,
+  var0: f64,
+  var_x: f64,
+}
+
+impl Transition {
+  /// At `(θ, μ, σ)` every `dt`; `1 − a` and `1 − a²` come from `expm1`, as a subtraction leaves
+  /// them few digits where `θΔ` is small.
+  pub(crate) fn new(kind: DiffusionKind, theta: f64, mu: f64, sigma: f64, dt: f64) -> Self {
+    let a = (-theta * dt).exp();
+    let s2 = sigma * sigma;
+    let (var0, var_x) = match kind {
+      DiffusionKind::OrnsteinUhlenbeck => (s2 * -(-2.0 * theta * dt).exp_m1() / (2.0 * theta), 0.0),
+      DiffusionKind::Cir => {
+        let b = -(-theta * dt).exp_m1();
+        (mu * (s2 / (2.0 * theta)) * b * b, (s2 / theta) * (a * b))
+      }
+    };
+    Self { mu, a, var0, var_x }
+  }
+
+  pub(crate) fn moments(self, x: f64) -> (f64, f64) {
+    (self.mu + (x - self.mu) * self.a, self.var0 + self.var_x * x)
+  }
 }
 
 /// Gaussian quasi-log-likelihood of `x` every `dt` at $(\theta, \mu, \sigma)$; NaN where a
@@ -156,9 +165,10 @@ pub(crate) fn quasi_log_likelihood(
   mu: f64,
   sigma: f64,
 ) -> f64 {
+  let transition = Transition::new(kind, theta, mu, sigma, dt);
   let mut ll = 0.0;
   for t in 0..x.len() - 1 {
-    let (m, var) = conditional_moments(kind, x[t], theta, mu, sigma, dt);
+    let (m, var) = transition.moments(x[t]);
     let resid = x[t + 1] - m;
     ll += -0.5 * ((2.0 * std::f64::consts::PI * var).ln() + resid * resid / var);
   }
@@ -313,20 +323,14 @@ pub(crate) fn ar1_start(
   let ac1 = num / den;
   let theta_raw = -ac1.clamp(1e-4, 0.999).ln() / dt;
   let theta0 = theta_raw.clamp(1e-3, 50.0);
-  let a0 = (-theta0 * dt).exp();
+  let unit = Transition::new(kind, theta0, mu0, 1.0, dt);
   let mut resid_var = 0.0;
   for t in 0..nobs - 1 {
-    let m = mu0 + (x[t] - mu0) * a0;
-    resid_var += (x[t + 1] - m).powi(2);
+    resid_var += (x[t + 1] - unit.moments(x[t]).0).powi(2);
   }
   resid_var /= (nobs - 1) as f64;
-  let scale = match kind {
-    DiffusionKind::OrnsteinUhlenbeck => (1.0 - a0 * a0) / (2.0 * theta0),
-    DiffusionKind::Cir => {
-      mean * (a0 - a0 * a0) / theta0 + mu0 * (1.0 - a0).powi(2) / (2.0 * theta0)
-    }
-  };
-  let sigma_raw = (resid_var / scale).sqrt();
+  // The conditional variance at `σ = 1` from the path's mean.
+  let sigma_raw = (resid_var / unit.moments(mean).1).sqrt();
   if !(ac1.is_finite() && theta_raw.is_finite() && sigma_raw.is_finite()) {
     return Err(StatsError::Numerical {
       stage: "starting point",

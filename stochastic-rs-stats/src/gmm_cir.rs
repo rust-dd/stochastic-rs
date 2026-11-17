@@ -28,6 +28,7 @@ use crate::StatsError;
 use crate::optim::nelder_mead;
 use crate::qmle::Carrier;
 use crate::qmle::DiffusionKind;
+use crate::qmle::Transition;
 use crate::qmle::ar1_start;
 use crate::qmle::assert_dt;
 use crate::qmle::diffusion_path;
@@ -72,16 +73,13 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
 
   // The `T − 1` moment rows `g_t` at `(θ, μ, σ)` and their column mean.
   let moments = |theta: f64, mu: f64, sigma: f64| -> (Vec<[f64; 4]>, [f64; 4]) {
-    let a = (-theta * dt).exp();
-    let s2 = sigma * sigma;
+    let transition = Transition::new(DiffusionKind::Cir, theta, mu, sigma, dt);
     let mut rows = Vec::with_capacity(nobs - 1);
     let mut mean = [0.0_f64; 4];
     for t in 0..nobs - 1 {
       let xt = x[t];
-      let xnext = x[t + 1];
-      let m = mu + (xt - mu) * a;
-      let var = xt * (s2 / theta) * (a - a * a) + mu * (s2 / (2.0 * theta)) * (1.0 - a) * (1.0 - a);
-      let e = xnext - m;
+      let (m, var) = transition.moments(xt);
+      let e = x[t + 1] - m;
       let u = e * e - var;
       let row = [e, e * xt, u, u * xt];
       for k in 0..4 {
