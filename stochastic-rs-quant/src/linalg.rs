@@ -15,7 +15,8 @@ use stochastic_rs_distributions::linalg::spd_cholesky_lower;
 
 use crate::traits::RealExt;
 
-/// LU solve of the `N`×`N` row-major system `a x = b`; `None` for a singular or mis-sized system.
+/// LU solve of the row-major `N`×`N` system `a x = b`; `None` for a singular system or an `a_flat`
+/// that is not `N * N` long; panics unless `b.len() == N`.
 pub(crate) fn solve_small<const N: usize>(a_flat: &[f64], b: &[f64]) -> Option<[f64; N]> {
   let a = ArrayView2::from_shape((N, N), a_flat).ok()?;
   let x = solve(a, ArrayView1::from(b))?;
@@ -70,6 +71,17 @@ mod tests {
   use ndarray::array;
 
   use super::*;
+
+  #[test]
+  fn solve_small_answers_a_regular_system_and_flags_a_singular_or_short_one() {
+    let a = [2.0, 1.0, 0.0, 1.0, 3.0, 1.0, 0.0, 1.0, 4.0];
+    let x = solve_small::<3>(&a, &[4.0, 10.0, 14.0]).expect("nonsingular");
+    for (got, want) in x.iter().zip([1.0, 2.0, 3.0]) {
+      assert!((got - want).abs() < 1e-12, "got {got}, want {want}");
+    }
+    assert!(solve_small::<2>(&[1.0, 2.0, 2.0, 4.0], &[5.0, 10.0]).is_none());
+    assert!(solve_small::<3>(&a[..8], &[4.0, 10.0, 14.0]).is_none());
+  }
 
   #[test]
   fn svd_thin_reconstructs_the_matrix() {
