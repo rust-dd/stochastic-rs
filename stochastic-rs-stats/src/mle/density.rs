@@ -67,11 +67,14 @@ impl DensityApprox {
     match self {
       DensityApprox::Exact => model.exact_density(x0, xt, t0, dt).expect(NO_EXACT),
       DensityApprox::AitSahalia => Self::density_ait_sahalia(model, x0, xt, t0, dt),
-      // Elerian's, the normal laws having returned.
-      _ => match Self::ln_density_milstein(model, x0, xt, t0, dt) {
+      DensityApprox::Elerian => match Self::ln_density_milstein(model, x0, xt, t0, dt) {
         Some(ln_density) => ln_density.exp(),
         None => DensityApprox::Euler.density(model, x0, xt, t0, dt),
       },
+      DensityApprox::Euler
+      | DensityApprox::Ozaki
+      | DensityApprox::ShojiOzaki
+      | DensityApprox::Kessler => unreachable!("a normal method returned above"),
     }
   }
 
@@ -84,9 +87,12 @@ impl DensityApprox {
     match self {
       DensityApprox::Exact => model.exact_ln_density(x0, xt, t0, dt).expect(NO_EXACT),
       DensityApprox::AitSahalia => Self::density_ait_sahalia(model, x0, xt, t0, dt).ln(),
-      // Elerian's, the normal laws having returned.
-      _ => Self::ln_density_milstein(model, x0, xt, t0, dt)
+      DensityApprox::Elerian => Self::ln_density_milstein(model, x0, xt, t0, dt)
         .unwrap_or_else(|| DensityApprox::Euler.ln_density(model, x0, xt, t0, dt)),
+      DensityApprox::Euler
+      | DensityApprox::Ozaki
+      | DensityApprox::ShojiOzaki
+      | DensityApprox::Kessler => unreachable!("a normal method returned above"),
     }
   }
 
