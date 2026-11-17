@@ -383,6 +383,16 @@ def test_heston_slv_starts_its_heston_fit_from_the_initial_guess():
     heston = result.heston()
     assert heston is not None and abs(heston[0] - 0.04) < 0.02, heston
     assert result.rates == (r, q) and math.isfinite(result.max_error)
+    outside = sr.HestonSlvCalibrator(s, r, q, strikes, maturities, calls, heston_initial_guess=(0.05, 1.5, 0.04, 0.5, 1.5))
+    with pytest.raises(ValueError, match="invalid start: rho must satisfy"):
+        outside.calibrate()
+
+
+def test_hscm_reports_an_evaluation_cap_as_no_convergence():
+    quotes = ((95.0, 0.25, 8.0), (100.0, 0.5, 7.5), (105.0, 1.0, 6.0))
+    options = [sr.HscmMarketOption(k, t, price, 0.03) for k, t, price in quotes]
+    *_, rmse, converged = sr.HscmCalibrator(100.0, options, max_iter=3).calibrate()
+    assert not converged and math.isfinite(rmse)
 
 
 BELOW_FELLER = (0.04, 1.5, 0.04, 0.5, -0.7)
