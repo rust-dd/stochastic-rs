@@ -306,6 +306,31 @@ mod tests {
   }
 
   #[test]
+  fn an_expired_option_npvs_its_payoff_and_has_no_greek() {
+    let engine = AnalyticBsEngine::with_constants(110.0, 0.20, 0.05, 0.01);
+    let res = engine.calculate(&EuropeanOption::new_tau(100.0, OptionType::Call, 0.0));
+    assert_eq!(res.npv(), 10.0);
+    let greeks = res.greeks().unwrap().as_array();
+    assert!(greeks.iter().all(|g| g.is_nan()), "{greeks:?}");
+    let put = EuropeanOption::new_tau(100.0, OptionType::Put, 0.0);
+    assert_eq!(engine.calculate(&put).npv(), 0.0);
+    let digital =
+      |opt: &DigitalOption| PricingEngine::<DigitalOption>::calculate(&engine, opt).npv();
+    let cash = DigitalOption::cash_or_nothing(100.0, OptionType::Call, 10.0, 0.0);
+    assert_eq!(digital(&cash), 10.0);
+    assert_eq!(
+      digital(&DigitalOption::asset_or_nothing(
+        100.0,
+        OptionType::Put,
+        0.0
+      )),
+      0.0
+    );
+    let at_strike = DigitalOption::cash_or_nothing(110.0, OptionType::Call, 10.0, 0.0);
+    assert_eq!(digital(&at_strike), 0.0);
+  }
+
+  #[test]
   fn digital_cash_or_nothing() {
     let opt = DigitalOption::cash_or_nothing(100.0, OptionType::Call, 1.0, 1.0);
     let engine = AnalyticBsEngine::with_constants(100.0, 0.20, 0.05, 0.0);

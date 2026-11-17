@@ -3,8 +3,8 @@ use implied_vol::ImpliedBlackVolatility;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
+use crate::pricing::digital::vanilla_payoff;
 use crate::traits::ModelPricer;
-use crate::traits::RealExt;
 use crate::traits::VanillaEuropeanCall;
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -98,11 +98,8 @@ impl BsmPricer {
     let carry = ((self.b(r, q) - r) * tau).exp();
     let disc = (-r * tau).exp();
     if tau == 0.0 && self.v.is_finite() {
-      let (forward, strike) = (s * carry, k * disc);
-      return (
-        (forward - strike).max_or_nan(0.0),
-        (strike - forward).max_or_nan(0.0),
-      );
+      let payoff = |option_type| vanilla_payoff(option_type, s * carry, k * disc);
+      return (payoff(OptionType::Call), payoff(OptionType::Put));
     }
     let (d1, d2) = self.d1_d2(s, k, r, q, tau);
 

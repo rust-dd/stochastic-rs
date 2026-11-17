@@ -79,6 +79,21 @@ def test_discount_curve_rates_are_nan_outside_their_domain():
     assert math.isnan(curve.par_rate(0.0, 2))
 
 
+def test_a_bad_curve_quote_or_merton_parameter_raises_value_error():
+    import numpy as np
+
+    with pytest.raises(ValueError, match="maturity must satisfy"):
+        sr.DiscountCurve.bootstrap_ois([[1.0], [1.0, float("nan")]], [0.02, 0.02], interp="log_df")
+    ois = sr.DiscountCurve.from_zero_rates(np.array([0.5, 1.0, 2.0]), np.full(3, 0.02), interp="log_df")
+    with pytest.raises(ValueError, match="maturity must satisfy"):
+        sr.DiscountCurve.bootstrap_forecast(ois, [(float("nan"), 0.03)], [], [], interp="log_df")
+    multi = sr.MultiCurve(ois)
+    multi.add_forecast("3M", ois)
+    assert multi.fair_swap_rate("3M", [1.0]) is None
+    with pytest.raises(ValueError, match="gamma must satisfy"):
+        sr.Merton1976Pricer(100.0, 0.2, 100.0, 0.05, 0.5, 1.5, 1.0)
+
+
 def test_quanto_pricer_matches_the_reiner_formula():
     kwargs = dict(s=100.0, v=0.2, k=105.0, r=0.08, tau=0.5, r_f=0.05, v_fx=0.12, rho=0.3, fixed_rate=1.5, q=0.04)
     pricer = sr.QuantoPricer(**kwargs)

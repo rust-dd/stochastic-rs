@@ -30,9 +30,10 @@ use stochastic_rs_distributions::special::norm_pdf;
 use crate::OptionType;
 use crate::traits::Greeks;
 use crate::traits::ModelPricer;
+use crate::traits::RealExt;
 
 /// Cash-or-nothing digital: pays the cash $Q$ when the option finishes strictly in the money, so
-/// nothing at `s = k`, which is its price at `tau = 0`.
+/// nothing at `s = k`; at `tau = 0` it is worth that payoff.
 ///
 /// $$
 /// C_{\text{CoN}}=Qe^{-rT}N(d_2),\qquad P_{\text{CoN}}=Qe^{-rT}N(-d_2)
@@ -183,7 +184,7 @@ impl ModelPricer for CashOrNothingPricer {
 }
 
 /// Asset-or-nothing digital: pays the underlying when the option finishes strictly in the money, so
-/// nothing at `s = k`, which is its price at `tau = 0`.
+/// nothing at `s = k`; at `tau = 0` it is worth that payoff.
 ///
 /// $$
 /// C_{\text{AoN}}=Se^{(b-r)T}N(d_1),\qquad P_{\text{AoN}}=Se^{(b-r)T}N(-d_1)
@@ -307,8 +308,8 @@ impl ModelPricer for AssetOrNothingPricer {
   }
 }
 
-/// Gap option: pays $S - K_2$ when $S > K_1$ (call) or $K_2 - S$ when
-/// $S < K_1$ (put). Reduces to a vanilla when $K_1 = K_2$.
+/// Gap option, a vanilla when $K_1 = K_2$: pays $S - K_2$ when $S > K_1$ (call) or $K_2 - S$ when
+/// $S < K_1$ (put), so nothing at $S = K_1$; at `tau = 0` it is worth that payoff.
 ///
 /// $$
 /// V = S e^{(b-r)T}N(d_1) - K_2 e^{-rT}N(d_2),\quad
@@ -380,9 +381,13 @@ impl ModelPricer for GapPricer {
   /// `gap_reduces_to_vanilla`.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let b = r - q;
-    let (d1, d2) = bsm_d1_d2(s, k, b, self.sigma, tau);
     let coc = ((b - r) * tau).exp();
     let disc = (-r * tau).exp();
+    if tau == 0.0 && self.sigma.is_finite() {
+      let pays = expiry_indicator(OptionType::Call, s, k);
+      return s * coc * pays - self.k2 * disc * pays;
+    }
+    let (d1, d2) = bsm_d1_d2(s, k, b, self.sigma, tau);
     s * coc * norm_cdf(d1) - self.k2 * disc * norm_cdf(d2)
   }
 
@@ -390,14 +395,19 @@ impl ModelPricer for GapPricer {
   /// rather than trusting vanilla parity against a single strike.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let b = r - q;
-    let (d1, d2) = bsm_d1_d2(s, k, b, self.sigma, tau);
     let coc = ((b - r) * tau).exp();
     let disc = (-r * tau).exp();
+    if tau == 0.0 && self.sigma.is_finite() {
+      let pays = expiry_indicator(OptionType::Put, s, k);
+      return self.k2 * disc * pays - s * coc * pays;
+    }
+    let (d1, d2) = bsm_d1_d2(s, k, b, self.sigma, tau);
     self.k2 * disc * norm_cdf(-d2) - s * coc * norm_cdf(-d1)
   }
 }
 
-/// Supershare option pays $S_T / X_L$ when $X_L \le S_T \le X_H$.
+/// Supershare option: pays $S_T / X_L$ when $X_L \le S_T \le X_H$, both band edges included; at
+/// `tau = 0` it is worth that payoff.
 ///
 /// $$
 /// V = \frac{S}{X_L} e^{(b-r)T}[N(d_1) - N(d_2)]
@@ -479,9 +489,13 @@ impl ModelPricer for SuperSharePricer {
   /// `self.sigma`.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let b = r - q;
+    let coc = ((b - r) * tau).exp();
+    if tau == 0.0 && self.sigma.is_finite() {
+      let pays = if k <= s && s <= self.x_high { 1.0 } else { 0.0 };
+      return s / k * coc * pays;
+    }
     let d1 = bsm_d1(s, k, b, self.sigma, tau);
     let d2 = bsm_d1(s, self.x_high, b, self.sigma, tau);
-    let coc = ((b - r) * tau).exp();
     s / k * coc * (norm_cdf(d1) - norm_cdf(d2))
   }
 
@@ -494,9 +508,9 @@ impl ModelPricer for SuperSharePricer {
   }
 }
 
-/// `1` for a forward strictly past the strike, `0` at or short of it, as QuantLib's digital payoffs
-/// pay at expiry; NaN for a NaN forward or strike.
-fn expiry_indicator(option_type: OptionType, forward: f64, k: f64) -> f64 {
+/// `1` strictly past the strike, `0` at or short of it, as QuantLib's `CashOrNothingPayoff` and
+/// `AssetOrNothingPayoff` pay; NaN for a NaN forward or strike.
+pub(crate) fn expiry_indicator(option_type: OptionType, forward: f64, k: f64) -> f64 {
   if forward.is_nan() || k.is_nan() {
     return f64::NAN;
   }
@@ -505,6 +519,14 @@ fn expiry_indicator(option_type: OptionType, forward: f64, k: f64) -> f64 {
     OptionType::Put => forward < k,
   };
   if in_the_money { 1.0 } else { 0.0 }
+}
+
+/// `(s − k)⁺` for a call and `(k − s)⁺` for a put, NaN for a NaN `s` or `k`.
+pub(crate) fn vanilla_payoff(option_type: OptionType, s: f64, k: f64) -> f64 {
+  match option_type {
+    OptionType::Call => (s - k).max_or_nan(0.0),
+    OptionType::Put => (k - s).max_or_nan(0.0),
+  }
 }
 
 /// $+1$ for a call, $-1$ for a put — the sign a digital Greek picks up

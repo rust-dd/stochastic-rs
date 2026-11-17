@@ -21,6 +21,7 @@
 //! - Snell envelope / optimal stopping foundation
 //! - Cox-Ross-Rubinstein binomial tree discretization
 
+use super::digital::vanilla_payoff;
 use crate::OptionType;
 use crate::total_order::ascending;
 use crate::traits::ModelPricer;
@@ -34,8 +35,8 @@ pub struct SnellEnvelopeResult {
   pub exercise_boundary: Vec<(f64, f64)>,
 }
 
-/// American option by Snell-envelope recursion on a CRR tree built per query; NaN for a non-finite
-/// argument, a non-positive `s`, `k` or `tau`, or a tree `p` outside `[0, 1]` (raise `steps`).
+/// American option by Snell recursion on a per-query CRR tree, the payoff at `tau = 0`; NaN for a
+/// non-finite argument, `s` or `k` at or below 0, `tau < 0` or a `p ∉ [0, 1]` (raise `steps`).
 ///
 /// ```
 /// use stochastic_rs_quant::pricing::snell_envelope::SnellEnvelopePricer;
@@ -68,22 +69,15 @@ impl SnellEnvelopePricer {
     Self { v, steps }
   }
 
-  /// A well-posed query; the pricing calls answer NaN for any other.
-  fn query_is_well_posed(s: f64, k: f64, r: f64, q: f64, tau: f64) -> bool {
-    s.is_finite()
-      && s > 0.0
-      && k.is_finite()
-      && k > 0.0
-      && r.is_finite()
-      && q.is_finite()
-      && tau.is_finite()
-      && tau > 0.0
+  /// Finite rates, spot and strike, the last two positive; the pricing calls answer NaN otherwise.
+  fn query_is_well_posed(s: f64, k: f64, r: f64, q: f64) -> bool {
+    s.is_finite() && s > 0.0 && k.is_finite() && k > 0.0 && r.is_finite() && q.is_finite()
   }
 
-  /// CRR lattice constants `(dt, u, d, disc, p)` of a well-posed query, `None` for any other query
-  /// and wherever `p` leaves `[0, 1]`.
+  /// CRR lattice constants `(dt, u, d, disc, p)` of a well-posed query before expiry; `None` for
+  /// any other query and wherever `p` leaves `[0, 1]`.
   fn lattice(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> Option<(f64, f64, f64, f64, f64)> {
-    if !Self::query_is_well_posed(s, k, r, q, tau) {
+    if !(Self::query_is_well_posed(s, k, r, q) && tau.is_finite() && tau > 0.0) {
       return None;
     }
     let dt = tau / self.steps as f64;
@@ -105,6 +99,9 @@ impl SnellEnvelopePricer {
     tau: f64,
     option_type: OptionType,
   ) -> f64 {
+    if tau == 0.0 && Self::query_is_well_posed(s, k, r, q) {
+      return vanilla_payoff(option_type, s, k);
+    }
     let Some((_dt, u, d, disc, p)) = self.lattice(s, k, r, q, tau) else {
       return f64::NAN;
     };
@@ -113,7 +110,7 @@ impl SnellEnvelopePricer {
     let mut s_node = s * d.powi(self.steps as i32);
     let ud_ratio = u / d;
     for val in values.iter_mut().take(self.steps + 1) {
-      *val = payoff(option_type, s_node, k);
+      *val = vanilla_payoff(option_type, s_node, k);
       s_node *= ud_ratio;
     }
 
@@ -121,7 +118,7 @@ impl SnellEnvelopePricer {
       let mut s_i0 = s * d.powi(i as i32);
       for j in 0..=i {
         let continuation = disc * (p * values[j + 1] + (1.0 - p) * values[j]);
-        let exercise = payoff(option_type, s_i0, k);
+        let exercise = vanilla_payoff(option_type, s_i0, k);
         values[j] = continuation.max(exercise);
         s_i0 *= ud_ratio;
       }
@@ -141,6 +138,15 @@ impl SnellEnvelopePricer {
     tau: f64,
     option_type: OptionType,
   ) -> SnellEnvelopeResult {
+    if tau == 0.0 && Self::query_is_well_posed(s, k, r, q) {
+      let payoff = vanilla_payoff(option_type, s, k);
+      return SnellEnvelopeResult {
+        price: payoff,
+        european_price: payoff,
+        early_exercise_premium: 0.0,
+        exercise_boundary: Vec::new(),
+      };
+    }
     let Some((dt, u, d, disc, p)) = self.lattice(s, k, r, q, tau) else {
       return SnellEnvelopeResult {
         price: f64::NAN,
@@ -155,7 +161,7 @@ impl SnellEnvelopePricer {
     let mut eu_values = vec![0.0_f64; self.steps + 1];
     let mut s_node = s * d.powi(self.steps as i32);
     for idx in 0..=self.steps {
-      let pv = payoff(option_type, s_node, k);
+      let pv = vanilla_payoff(option_type, s_node, k);
       am_values[idx] = pv;
       eu_values[idx] = pv;
       s_node *= ud_ratio;
@@ -173,7 +179,7 @@ impl SnellEnvelopePricer {
       for j in 0..=i {
         let am_cont = disc * (p * am_values[j + 1] + (1.0 - p) * am_values[j]);
         let eu_cont = disc * (p * eu_values[j + 1] + (1.0 - p) * eu_values[j]);
-        let exercise = payoff(option_type, s_i0, k);
+        let exercise = vanilla_payoff(option_type, s_i0, k);
 
         am_values[j] = am_cont.max(exercise);
         eu_values[j] = eu_cont;
@@ -225,13 +231,6 @@ impl ModelPricer for SnellEnvelopePricer {
   /// `snell_price_put_overrides_vanilla_parity`.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.price_american(s, k, r, q, tau, OptionType::Put)
-  }
-}
-
-fn payoff(option_type: OptionType, s: f64, k: f64) -> f64 {
-  match option_type {
-    OptionType::Call => (s - k).max(0.0),
-    OptionType::Put => (k - s).max(0.0),
   }
 }
 
@@ -369,7 +368,8 @@ mod tests {
   fn snell_prices_an_ill_posed_query_as_nan() {
     let model = SnellEnvelopePricer::new(V, 10);
     assert!(model.price_call(-1.0, K, R, Q, TAU).is_nan());
-    assert!(model.price_put(S, K, R, Q, 0.0).is_nan());
+    assert!(model.price_put(S, K, R, Q, -TAU).is_nan());
+    assert!(model.price_put(S, K, R, Q, f64::NAN).is_nan());
     assert!(model.price_call(S, K, f64::NAN, Q, TAU).is_nan());
     let detailed = model.price_detailed(S, -K, R, Q, TAU, OptionType::Put);
     assert!(detailed.price.is_nan());

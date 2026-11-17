@@ -3,10 +3,11 @@ use stochastic_rs_distributions::special::norm_pdf;
 
 use super::pricer::BsmPricer;
 use crate::OptionType;
+use crate::pricing::digital::expiry_indicator;
 use crate::traits::Greeks;
 
-/// Closed-form Greeks at the `(s, k, r, q, tau)` query of [`BsmPricer`]'s prices, each NaN at
-/// `tau = 0`, where an expired option has a value and no sensitivity.
+/// Closed-form Greeks at the `(s, k, r, q, tau)` query of [`BsmPricer`]'s prices, each but `zeta`
+/// NaN at `tau = 0`, where an expired option has a value and no sensitivity.
 impl BsmPricer {
   /// Every Greek at one query point; the one place `Greeks::volga` maps to [`vomma`](Self::vomma)
   /// and `Greeks::veta` to [`dvega_dtime`](Self::dvega_dtime).
@@ -233,17 +234,18 @@ impl BsmPricer {
     }
   }
 
-  /// Zeta — risk-neutral probability of finishing in the money.
+  /// Zeta — the exercise probability `N(d₂)` (call) or `N(−d₂)` (put), `1{s > k}` or `1{s < k}` at
+  /// `tau = 0`; Haug (2007), *The Complete Guide to Option Pricing Formulas*, ch. 2, p. 76.
   pub fn zeta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
-    if tau == 0.0 {
-      return f64::NAN;
+    if tau == 0.0 && self.v.is_finite() {
+      return expiry_indicator(option_type, s * (self.b(r, q) * tau).exp(), k);
     }
     let (_, d2) = self.d1_d2(s, k, r, q, tau);
 
     if option_type == OptionType::Call {
       norm_cdf(d2)
     } else {
-      -norm_cdf(-d2)
+      norm_cdf(-d2)
     }
   }
 

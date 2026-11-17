@@ -20,6 +20,8 @@ use stochastic_rs_quant::market::RateHelper;
 use stochastic_rs_quant::market::build_curve;
 use stochastic_rs_quant::pricing::AssetOrNothingPricer;
 use stochastic_rs_quant::pricing::CashOrNothingPricer;
+use stochastic_rs_quant::pricing::GapPricer;
+use stochastic_rs_quant::pricing::SuperSharePricer;
 use stochastic_rs_quant::pricing::bsm::BsmCoc;
 use stochastic_rs_quant::pricing::bsm::BsmPricer;
 use stochastic_rs_quant::pricing::heston::HestonParams;
@@ -47,10 +49,7 @@ fn heston() -> HestonPricer {
 
 fn assert_all_nan(greeks: Greeks, what: &str) {
   for (name, value) in Greeks::COMPONENT_NAMES.iter().zip(greeks.as_array()) {
-    assert!(
-      value.is_nan(),
-      "{what}: {name} must be NaN at tau = 0, got {value}"
-    );
+    assert!(value.is_nan(), "{what}: {name} must be NaN, got {value}");
   }
 }
 
@@ -179,12 +178,15 @@ fn prices_at_zero_maturity_are_intrinsic_and_greeks_are_nan() {
         bsm.delta(s, k, R, Q, 0.0, ot),
         bsm.rho(s, k, R, Q, 0.0, ot),
         bsm.phi(s, k, R, Q, 0.0, ot),
-        bsm.zeta(s, k, R, Q, 0.0, ot),
         bsm.strike_delta(s, k, R, Q, 0.0, ot),
         bsm.lambda(s, k, R, Q, 0.0, ot).0,
         bsm.lambda(s, k, R, Q, 0.0, ot).1,
         heston.delta(s, k, R, Q, 0.0, ot),
         heston.rho(s, k, R, Q, 0.0, ot),
+        merton.delta(s, k, R, Q, 0.0, ot),
+        merton.rho(s, k, R, Q, 0.0, ot),
+        merton.theta(s, k, R, Q, 0.0, ot),
+        merton.charm(s, k, R, Q, 0.0, ot),
       ];
       assert!(
         bsm_typed.iter().all(|g| g.is_nan()),
@@ -200,6 +202,11 @@ fn prices_at_zero_maturity_are_intrinsic_and_greeks_are_nan() {
       heston.vanna(s, k, R, Q, 0.0),
       heston.volga(s, k, R, Q, 0.0),
       heston.call_put_initial_variance_vega(s, k, R, Q, 0.0).0,
+      merton.gamma(s, k, R, Q, 0.0),
+      merton.vega(s, k, R, Q, 0.0),
+      merton.vanna(s, k, R, Q, 0.0),
+      merton.volga(s, k, R, Q, 0.0),
+      merton.veta(s, k, R, Q, 0.0),
     ];
     assert!(untyped.iter().all(|g| g.is_nan()), "s = {s}: {untyped:?}");
   }
@@ -238,6 +245,16 @@ fn an_expired_digital_pays_its_payoff_and_nothing_at_the_strike() {
     for ot in OPTION_TYPES {
       assert_all_nan(cash.greeks(s, k, R, Q, 0.0, ot), "cash-or-nothing");
       assert_all_nan(asset.greeks(s, k, R, Q, 0.0, ot), "asset-or-nothing");
+      let accessors = [
+        cash.delta(s, k, R, Q, 0.0, ot),
+        cash.gamma(s, k, R, Q, 0.0, ot),
+        cash.vega(s, k, R, Q, 0.0, ot),
+        asset.delta(s, k, R, Q, 0.0, ot),
+      ];
+      assert!(
+        accessors.iter().all(|g| g.is_nan()),
+        "{ot:?} s = {s}: {accessors:?}"
+      );
     }
   }
   assert!(
@@ -248,6 +265,123 @@ fn an_expired_digital_pays_its_payoff_and_nothing_at_the_strike() {
   assert!(cash.price_call(f64::NAN, k, R, Q, 0.0).is_nan());
   assert!(cash.price_call(110.0, k, R, f64::NAN, 0.0).is_nan());
   assert!(asset.price_put(90.0, f64::NAN, R, Q, 0.0).is_nan());
+}
+
+#[test]
+fn an_expired_american_option_is_worth_its_payoff() {
+  let snell = SnellEnvelopePricer::new(0.2, 200);
+  let k = 100.0;
+  for s in SPOTS {
+    let (call, put) = ((s - k).max(0.0), (k - s).max(0.0));
+    assert_eq!(snell.price_call(s, k, R, Q, 0.0), call, "call at s = {s}");
+    assert_eq!(snell.price_put(s, k, R, Q, 0.0), put, "put at s = {s}");
+    let detailed = snell.price_detailed(s, k, R, Q, 0.0, OptionType::Put);
+    let values = (
+      detailed.price,
+      detailed.european_price,
+      detailed.early_exercise_premium,
+    );
+    assert_eq!(values, (put, put, 0.0), "detailed put at s = {s}");
+    assert!(detailed.exercise_boundary.is_empty());
+  }
+  assert!(snell.price_call(f64::NAN, k, R, Q, 0.0).is_nan());
+  assert!(snell.price_call(110.0, k, f64::NAN, Q, 0.0).is_nan());
+  assert!(snell.price_call(110.0, k, R, Q, -1.0).is_nan());
+}
+
+#[test]
+#[should_panic(expected = "v must satisfy `v.is_finite() && v > 0.0`, got v = -0.2")]
+fn a_snell_lattice_with_a_non_positive_volatility_is_a_precondition() {
+  SnellEnvelopePricer::new(-0.2, 100);
+}
+
+#[test]
+fn zeta_is_the_exercise_probability_and_the_payoff_indicator_at_expiry() {
+  let bsm = BsmPricer::new(0.25, BsmCoc::Merton1973);
+  let call = bsm.zeta(100.0, 105.0, R, Q, 0.75, OptionType::Call);
+  let put = bsm.zeta(100.0, 105.0, R, Q, 0.75, OptionType::Put);
+  assert!(
+    put > 0.0 && (call + put - 1.0).abs() < 1e-15,
+    "{call} {put}"
+  );
+  let digital = CashOrNothingPricer::new(1.0, 0.25);
+  for s in SPOTS {
+    for ot in OPTION_TYPES {
+      let indicator = digital.price_option(s, 100.0, R, Q, 0.0, ot);
+      assert_eq!(
+        bsm.zeta(s, 100.0, R, Q, 0.0, ot),
+        indicator,
+        "{ot:?} at s = {s}"
+      );
+    }
+  }
+  let unlinked = BsmPricer::new(f64::NAN, BsmCoc::Merton1973);
+  assert!(
+    unlinked
+      .zeta(110.0, 100.0, R, Q, 0.0, OptionType::Call)
+      .is_nan()
+  );
+  assert!(
+    bsm
+      .zeta(f64::NAN, 100.0, R, Q, 0.0, OptionType::Put)
+      .is_nan()
+  );
+}
+
+#[test]
+fn an_expired_gap_pays_strictly_past_its_trigger_and_a_supershare_on_its_closed_band() {
+  let gap = GapPricer::new(95.0, 0.2);
+  for (s, call, put) in [(90.0, 0.0, 5.0), (100.0, 0.0, 0.0), (110.0, 15.0, 0.0)] {
+    assert_eq!(
+      gap.price_call(s, 100.0, R, Q, 0.0),
+      call,
+      "gap call at s = {s}"
+    );
+    assert_eq!(
+      gap.price_put(s, 100.0, R, Q, 0.0),
+      put,
+      "gap put at s = {s}"
+    );
+  }
+  let supershare = SuperSharePricer::new(110.0, 0.2);
+  let band = [
+    (80.0, 0.0),
+    (90.0, 1.0),
+    (100.0, 100.0 / 90.0),
+    (110.0, 110.0 / 90.0),
+    (120.0, 0.0),
+  ];
+  for (s, pays) in band {
+    assert_eq!(
+      supershare.price_call(s, 90.0, R, Q, 0.0),
+      pays,
+      "supershare at s = {s}"
+    );
+  }
+  assert!(gap.price_put(f64::NAN, 100.0, R, Q, 0.0).is_nan());
+  assert!(supershare.price_call(f64::NAN, 90.0, R, Q, 0.0).is_nan());
+  let unlinked = GapPricer::new(95.0, f64::NAN);
+  assert!(unlinked.price_call(110.0, 100.0, R, Q, 0.0).is_nan());
+}
+
+#[test]
+fn heston_answers_nan_before_expiry_and_at_a_nan_tau() {
+  let heston = heston();
+  for tau in [-1e-9, -1.0, f64::NAN] {
+    let (call, put) = heston.call_put(110.0, 100.0, R, Q, tau);
+    assert!(
+      call.is_nan() && put.is_nan(),
+      "tau = {tau}: ({call}, {put})"
+    );
+    let vega = heston
+      .call_put_initial_variance_vega(110.0, 100.0, R, Q, tau)
+      .0;
+    assert!(vega.is_nan(), "tau = {tau}: v0 vega {vega}");
+    assert_all_nan(
+      heston.greeks(110.0, 100.0, R, Q, tau, OptionType::Call),
+      "heston",
+    );
+  }
 }
 
 #[test]
