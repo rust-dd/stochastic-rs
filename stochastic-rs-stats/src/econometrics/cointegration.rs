@@ -22,15 +22,12 @@ use stochastic_rs_distributions::linalg::lstsq;
 
 use crate::StatsError;
 use crate::critical_values::CriticalValues;
-use crate::input::as_slice_or_copy;
 use crate::input::assert_alpha;
-use crate::input::reject_constant;
-use crate::input::validate_view;
 use crate::stationarity::Trend;
 use crate::stationarity::adf::AdfConfig;
 use crate::stationarity::adf::adf_test;
+use crate::stationarity::common::prepared_with_unit;
 use crate::stationarity::common::reject_exact_fit;
-use crate::stationarity::common::unit_scale;
 
 /// Configuration for [`engle_granger_test`].
 #[derive(Debug, Clone, Copy)]
@@ -90,14 +87,9 @@ pub fn engle_granger_test(
       got: x.len(),
     });
   }
-  validate_view(y, 30)?;
-  validate_view(x, 30)?;
-  let (y, x) = (as_slice_or_copy(y), as_slice_or_copy(x));
-  reject_constant(&y, "constant series")?;
-  reject_constant(&x, "constant series")?;
-  let (y_unit, x_unit) = (unit_scale(&y), unit_scale(&x));
-  let y = Array1::from_iter(y.iter().map(|v| v * y_unit));
-  let x = Array1::from_iter(x.iter().map(|v| v * x_unit));
+  let (y, y_unit) = prepared_with_unit(y, 30)?;
+  let (x, x_unit) = prepared_with_unit(x, 30)?;
+  let (y, x) = (Array1::from(y), Array1::from(x));
   let n = y.len();
   let mut design = Array2::<f64>::zeros((n, 2));
   for i in 0..n {
@@ -187,6 +179,24 @@ mod tests {
         StatsError::DegenerateData("constant series")
       );
     }
+  }
+
+  /// Both tests check each series in full before the next.
+  #[test]
+  fn a_constant_y_beside_a_nan_in_x_is_degenerate_data_as_in_granger() {
+    let y = Array1::from_elem(200, 0.3);
+    let mut x = random_walk(13, 200, 1.0);
+    x[10] = f64::NAN;
+    let constant = StatsError::DegenerateData("constant series");
+    assert_eq!(
+      engle_granger_test(y.view(), x.view(), EngleGrangerConfig::default()).unwrap_err(),
+      constant
+    );
+    assert_eq!(
+      crate::econometrics::granger::granger_causality_test(y.view(), x.view(), 1, 0.05)
+        .unwrap_err(),
+      constant
+    );
   }
 
   #[test]

@@ -404,13 +404,19 @@ pub fn unit_scaled(mut y: Vec<f64>) -> Vec<f64> {
   y
 }
 
-/// `y` with `min_n` finite points or more and not constant, then [`unit_scaled`]; the length comes
-/// first, as a series too short to compare is vacuously constant.
-pub fn prepared(y: ArrayView1<f64>, min_n: usize) -> Result<Vec<f64>, StatsError> {
+/// `y` with `min_n` finite points or more and not constant, times its [`unit_scale`], and that
+/// scale; the length comes first, as a series too short to compare is vacuously constant.
+pub fn prepared_with_unit(y: ArrayView1<f64>, min_n: usize) -> Result<(Vec<f64>, f64), StatsError> {
   let y = as_slice_or_copy(y);
   validate(&y, min_n)?;
   reject_constant(&y, "constant series")?;
-  Ok(unit_scaled(y.into_owned()))
+  let unit = unit_scale(&y);
+  Ok((y.iter().map(|v| v * unit).collect(), unit))
+}
+
+/// [`prepared_with_unit`]'s series.
+pub fn prepared(y: ArrayView1<f64>, min_n: usize) -> Result<Vec<f64>, StatsError> {
+  Ok(prepared_with_unit(y, min_n)?.0)
 }
 
 /// `DegenerateData("zero residual variance")` when `residuals` keep at most `EXACT_FIT` of `y`'s
