@@ -1,6 +1,7 @@
 use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
+use crate::malliavin::Malliavin;
 use crate::traits::ProcessExt;
 
 #[test]

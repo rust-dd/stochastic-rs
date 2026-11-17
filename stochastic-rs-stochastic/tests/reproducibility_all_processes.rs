@@ -27,7 +27,7 @@
 //! **How this list was derived and how to extend it.** `grep -rn
 //! "ProcessExt<T> for\|ProcessExt<T," stochastic-rs-stochastic/src
 //! --include='*.rs'` finds 129 concrete implementations outside
-//! `src/traits/` (the file `traits/process.rs` contributes only blanket
+//! `src/traits/` (the file `traits/process/markers.rs` contributes only blanket
 //! impls of *marker* traits keyed off a `P: ProcessExt<...>` bound —
 //! `OneDimensional`, `MultiDimensional`, `TwoDimensional`, `CurveOutput`,
 //! `VariableDimensional`, `ComplexPathOutput` — never a concrete process

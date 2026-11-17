@@ -1,7 +1,6 @@
 //! `ProcessExt` and dimensional output markers.
 
 use ndarray::Array1;
-use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::parallel::prelude::*;
 use stochastic_rs_distributions::traits::FloatExt;
@@ -9,65 +8,20 @@ use stochastic_rs_distributions::traits::FloatExt;
 use super::sampler::PathSampler;
 use crate::device::DeviceError;
 
-/// Upper bound on the number of chunks [`ProcessExt::sample_par`] /
-/// [`ProcessExt::sample_map`] split `m` paths into.
-///
-/// `chunk_count`'s prologue (building every chunk's sampler, sequentially,
-/// on the calling thread — see [`ProcessExt::chunked_samplers`]) costs at
-/// most `MAX_CHUNKS` sampler constructions, however large `m` is. That
-/// bound matters because `sampler()` is not always cheap: the worst in-tree
-/// case (`Cir2F`, whose `sampler()` evaluates a user-supplied `Fn1D` — a
-/// Python callback, for the `Fn1D::Py` variant — once per grid point) would
-/// otherwise pay a *sequential, GIL-round-tripping* construction cost that
-/// grows with `m` (the previous rule, `m.div_ceil(8)`, made `sample_par(1000)`
-/// build 125 chunks — 125 sequential constructions — instead of a number
-/// bounded by the machine's core count). 64 is comfortably above real-world
-/// hardware-thread counts, so `m >= 64` still saturates any realistic rayon
-/// pool, while `m < 64` gets one chunk per path (full parallelism for small
-/// `m`, the other end `m.div_ceil(8)` got wrong by forcing `m <= 8` fully
-/// serial).
-const MAX_CHUNKS: usize = 64;
+mod chunks;
+mod markers;
 
-/// Number of chunks to split `m` paths into.
-///
-/// A pure function of `m` alone. **Must never read
-/// `rayon::current_num_threads()`**: the chunk count fixes how many times
-/// [`sampler()`](ProcessExt::sampler) (and
-/// [`advance_chunk_seed()`](ProcessExt::advance_chunk_seed)) is called
-/// before any chunk starts running, which fixes how many times a
-/// [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic) process's
-/// shared seed state advances. If that count depended on the ambient
-/// thread-pool size, the same seed and the same `m` could produce different
-/// output on two machines (or two test runs) with different pool sizes —
-/// exactly the defect this module fixes.
-///
-/// `pub(crate)` rather than private: the `accelerate` feature's `Backend`
-/// impl (`device/fgn_backend.rs`) reuses it verbatim for `Fgn`/`Fbm`'s own `sample_par`
-/// overrides on that backend, which bypass this trait to reach the batched
-/// backend path but must split `m` the same data-derived way to get the
-/// same thread-count-independence guarantee. The default `Cpu` backend
-/// does not reuse it — measurement showed grouping several paths per
-/// `MAX_CHUNKS`-capped chunk regressed wall time roughly 2× at `m = 1000`
-/// there, because each path's own FFT call is itself a nested rayon
-/// parallel region (see `device/fgn_backend.rs`'s `Cpu::generate_batch` doc), so `Cpu`
-/// instead derives one basis per **path**, uncapped.
-pub(crate) fn chunk_count(m: usize) -> usize {
-  m.min(MAX_CHUNKS)
-}
-
-/// Splits `m` into `chunks` contiguous run lengths, as even as possible (the
-/// first `m % chunks` chunks get one extra path), yielded in chunk order.
-///
-/// `chunks == 0` only ever arises from `chunk_count(0)`; the `checked_div`/
-/// `checked_rem` fall back to `0` there (rather than relying on every caller
-/// to check `m` first) so this function stays total instead of panicking on
-/// the `m / 0` that a plain division would perform. `pub(crate)` for the
-/// same reason as `chunk_count` above.
-pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize> {
-  let base = m.checked_div(chunks).unwrap_or(0);
-  let rem = m.checked_rem(chunks).unwrap_or(0);
-  (0..chunks).map(move |i| base + usize::from(i < rem))
-}
+pub(crate) use chunks::chunk_count;
+pub(crate) use chunks::chunk_lens;
+pub(crate) use chunks::sample_map_chunked;
+pub(crate) use chunks::sample_par_chunked;
+pub(crate) use chunks::try_sample_par_chunked;
+pub use markers::ComplexPathOutput;
+pub use markers::CurveOutput;
+pub use markers::MultiDimensional;
+pub use markers::OneDimensional;
+pub use markers::TwoDimensional;
+pub use markers::VariableDimensional;
 
 /// Stochastic process simulation trait.
 ///
@@ -441,177 +395,4 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync + crate::traits::Sealed {
   fn try_sample_par(&self, m: usize) -> Result<Vec<Self::Output>, DeviceError> {
     try_sample_par_chunked(self, m)
   }
-}
-
-/// Marker for processes whose [`ProcessExt::sample`] returns a single
-/// 1D trajectory `Array1<T>`.
-///
-/// Auto-implemented via a blanket impl for any `P: ProcessExt<T, Output = Array1<T>>`,
-/// so the user only needs to query the marker — no manual `impl` lines on each
-/// process struct. Use this in generic code that should only operate on single-path
-/// processes (e.g. `Bm`, `Ou`, `Gbm`, `Vasicek`).
-///
-/// ```
-/// use stochastic_rs_stochastic::process::bm::Bm;
-/// use stochastic_rs_stochastic::simd_rng::Deterministic;
-/// use stochastic_rs_stochastic::traits::{FloatExt, OneDimensional, ProcessExt};
-///
-/// fn last_value<T: FloatExt, P: OneDimensional<T>>(p: &P) -> T {
-///   *p.sample().last().unwrap()
-/// }
-///
-/// // `Bm` has `Output = Array1<T>`, so the blanket impl gives it
-/// // `OneDimensional<T>` for free — no manual `impl` needed.
-/// let bm = Bm::<f64, _>::new(64, Some(1.0), Deterministic::new(1));
-/// let v = last_value(&bm);
-/// assert!(v.is_finite());
-/// ```
-pub trait OneDimensional<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {}
-
-impl<T: FloatExt, P> OneDimensional<T> for P where P: ProcessExt<T, Output = Array1<T>> {}
-
-/// Marker for processes whose [`ProcessExt::sample`] returns `N` aligned paths `[Array1<T>; N]`,
-/// such as `Heston`, `Bergomi` and `Sabr` (`N = 2`); implemented from `Output` alone.
-pub trait MultiDimensional<T: FloatExt, const N: usize>:
-  ProcessExt<T, Output = [Array1<T>; N]>
-{
-}
-
-impl<T: FloatExt, P, const N: usize> MultiDimensional<T, N> for P where
-  P: ProcessExt<T, Output = [Array1<T>; N]>
-{
-}
-
-/// Convenience marker for the common 2-state case `[Array1<T>; 2]`.
-///
-/// Subtrait of [`MultiDimensional<T, 2>`]. Useful for asset-plus-variance
-/// stochastic-vol models like `Heston`, `Bergomi`, `Sabr`.
-pub trait TwoDimensional<T: FloatExt>: MultiDimensional<T, 2> {}
-
-impl<T: FloatExt, P> TwoDimensional<T> for P where P: MultiDimensional<T, 2> {}
-
-/// Marker for processes whose [`ProcessExt::sample`] returns an `Array2<T>`, a discretised curve or
-/// sheet: `WuZhang`, `Fbs`.
-pub trait CurveOutput<T: FloatExt>: ProcessExt<T, Output = Array2<T>> {}
-
-impl<T: FloatExt, P> CurveOutput<T> for P where P: ProcessExt<T, Output = Array2<T>> {}
-
-/// Marker for processes whose [`ProcessExt::sample`] returns a runtime-sized
-/// collection of 1D trajectories `Vec<Array1<T>>`.
-///
-/// Auto-implemented for any `P: ProcessExt<T, Output = Vec<Array1<T>>>`.
-/// Used when the dimensionality `D` is determined by a runtime parameter and
-/// each component carries its own (possibly variable-length) trace —
-/// e.g. [`crate::process::multivariate_hawkes::MultivariateHawkes`], whose
-/// per-component event-time vectors have process-dependent lengths.
-pub trait VariableDimensional<T: FloatExt>: ProcessExt<T, Output = Vec<Array1<T>>> {}
-
-impl<T: FloatExt, P> VariableDimensional<T> for P where P: ProcessExt<T, Output = Vec<Array1<T>>> {}
-
-/// Marker for processes whose [`ProcessExt::sample`] returns a complex-valued
-/// 1D trajectory `Array1<Complex<T>>`.
-///
-/// Auto-implemented for any `P: ProcessExt<T, Output = Array1<Complex<T>>>`.
-/// Used by complex-state diffusions such as
-/// [`crate::diffusion::cfou::Cfou`], where the joint dynamics of two
-/// real OU components are expressed as a single complex Ornstein-Uhlenbeck
-/// `Z_t = X_1(t) + i X_2(t)`.
-pub trait ComplexPathOutput<T: FloatExt>:
-  ProcessExt<T, Output = ndarray::Array1<num_complex::Complex<T>>>
-{
-}
-
-impl<T: FloatExt, P> ComplexPathOutput<T> for P where
-  P: ProcessExt<T, Output = ndarray::Array1<num_complex::Complex<T>>>
-{
-}
-
-/// The trait's default `sample_map`: chunked host samplers on rayon, chunk order
-/// preserved. A backend-parameterised process calls this on its host path.
-pub(crate) fn sample_map_chunked<T: FloatExt, P: ProcessExt<T> + ?Sized, R: Send>(
-  p: &P,
-  m: usize,
-  f: impl Fn(&P::Output) -> R + Sync,
-) -> Vec<R> {
-  if m == 0 {
-    return Vec::new();
-  }
-  if m == 1 {
-    return vec![f(&p.sample())];
-  }
-  p.chunked_samplers(m)
-    .into_par_iter()
-    .map(|(mut sampler, len)| {
-      let mut slot: Option<P::Output> = None;
-      (0..len)
-        .map(|_| {
-          if let Some(buf) = slot.as_mut() {
-            sampler.sample_into(buf);
-            return f(buf);
-          }
-          // First path in this chunk: sample fresh (no wasted draw) and
-          // keep the buffer to reuse for the rest of the chunk.
-          let buf = sampler.sample();
-          let r = f(&buf);
-          slot = Some(buf);
-          r
-        })
-        .collect::<Vec<_>>()
-    })
-    // Chunks run on rayon, but `Vec::into_par_iter()` → `.map()` is an
-    // `IndexedParallelIterator`, so `.collect()` restores chunk order
-    // regardless of completion order; flattening then reproduces the
-    // exact global path order (chunk 0's paths, then chunk 1's, ...).
-    .collect::<Vec<_>>()
-    .into_iter()
-    .flatten()
-    .collect()
-}
-
-/// The trait's default `sample_par`: chunked host samplers on rayon, chunk order
-/// preserved. A backend-parameterised process calls this on its host path.
-pub(crate) fn sample_par_chunked<T: FloatExt, P: ProcessExt<T> + ?Sized>(
-  p: &P,
-  m: usize,
-) -> Vec<P::Output> {
-  if m == 0 {
-    return Vec::new();
-  }
-  if m == 1 {
-    return vec![p.sample()];
-  }
-  p.chunked_samplers(m)
-    .into_par_iter()
-    .map(|(mut sampler, len)| (0..len).map(|_| sampler.sample()).collect::<Vec<_>>())
-    // Same order-preserving collect-then-flatten as `sample_map` above.
-    .collect::<Vec<_>>()
-    .into_iter()
-    .flatten()
-    .collect()
-}
-
-/// [`sample_par_chunked`] through the sampler's fallible `try_sample`: the
-/// same chunks, the same per-chunk samplers in the same order, so a host
-/// process yields bit-identical paths and a device process reports its
-/// failure instead of panicking.
-pub(crate) fn try_sample_par_chunked<T: FloatExt, P: ProcessExt<T> + ?Sized>(
-  p: &P,
-  m: usize,
-) -> Result<Vec<P::Output>, DeviceError> {
-  if m == 0 {
-    return Ok(Vec::new());
-  }
-  if m == 1 {
-    return Ok(vec![p.try_sample()?]);
-  }
-  let chunks = p
-    .chunked_samplers(m)
-    .into_par_iter()
-    .map(|(mut sampler, len)| {
-      (0..len)
-        .map(|_| sampler.try_sample())
-        .collect::<Result<Vec<_>, DeviceError>>()
-    })
-    .collect::<Result<Vec<_>, DeviceError>>()?;
-  Ok(chunks.into_iter().flatten().collect())
 }
