@@ -5,8 +5,12 @@ pub(super) const FRAME_COUNTS: &str = r#"        if (has_jumps != 0u) {
             REAL prod = (REAL)1;
             unsigned int cnt = 0u;
             for (unsigned int j = 0u; j < 64u; j++) {
-                if ((j & 1u) == 0u) { stoch_philox(first_path + path, i, site_count, j >> 1u, seed_lo, seed_hi, w); }
-                prod = prod * stoch_uniform(w[2u * (j & 1u)], w[2u * (j & 1u) + 1u]);
+                if ((j & 1u) == 0u) {
+                    stoch_philox(first_path + path, i, site_count, j >> 1u, seed_lo, seed_hi, w);
+                    prod = prod * stoch_uniform(w[0], w[1]);
+                } else {
+                    prod = prod * stoch_uniform(w[2], w[3]);
+                }
                 if (prod <= ell) { break; }
                 cnt++;
             }
