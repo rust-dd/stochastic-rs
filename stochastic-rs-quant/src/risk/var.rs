@@ -159,7 +159,10 @@ pub(crate) fn sorted_losses<T: RealExt>(
   orientation: PnlOrLoss,
   what: &'static str,
 ) -> Result<Vec<T>, QuantError> {
-  let mut sorted = losses_from_samples(samples, orientation).to_vec();
+  let mut sorted = match orientation {
+    PnlOrLoss::Pnl => samples.iter().map(|&v| -v).collect::<Vec<_>>(),
+    PnlOrLoss::Loss => samples.to_vec(),
+  };
   sorted.sort_by(ascending);
   let finite = |end: Option<&T>| end.is_some_and(|v| v.is_finite());
   if !(finite(sorted.first()) && finite(sorted.last())) {
