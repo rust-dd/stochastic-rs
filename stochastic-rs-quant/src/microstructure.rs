@@ -42,7 +42,6 @@ pub mod spread;
 
 pub use almgren_chriss::AlmgrenChrissParams;
 pub use almgren_chriss::AlmgrenChrissPlan;
-pub use almgren_chriss::ExecutionDirection;
 pub use almgren_chriss::optimal_execution;
 pub use impact::ImpactKernel;
 pub use impact::propagator_impact_path;

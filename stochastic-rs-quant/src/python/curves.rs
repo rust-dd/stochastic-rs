@@ -37,8 +37,14 @@ impl PyDiscountCurve {
     self.inner.forward_rate(t1, t2)
   }
 
-  fn par_rate(&self, maturity: f64, frequency: u32) -> f64 {
-    self.inner.par_rate(maturity, frequency)
+  fn par_rate(&self, maturity: f64, frequency: u32) -> PyResult<f64> {
+    let frequency =
+      crate::calendar::Frequency::from_periods_per_year(frequency).ok_or_else(|| {
+        PyValueError::new_err(format!(
+          "frequency must be 1, 2, 4 or 12 payments a year, got {frequency}"
+        ))
+      })?;
+    Ok(self.inner.par_rate(maturity, frequency))
   }
 
   /// Vectorised zero rates on a maturity array.

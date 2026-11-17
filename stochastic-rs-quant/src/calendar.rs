@@ -7,6 +7,8 @@
 //! Day count conventions, business day adjustment, holiday calendars,
 //! and coupon schedule generation.
 
+use std::sync::Arc;
+
 use chrono::NaiveDate;
 
 pub mod business_day;
@@ -30,19 +32,15 @@ pub use schedule::Frequency;
 pub use schedule::Schedule;
 pub use schedule::ScheduleBuilder;
 
-/// Trait for types that can determine business days.
-///
-/// Implement this trait to plug custom holiday calendars into the
-/// business day adjustment and schedule generation machinery.
-///
-/// The built-in [`Calendar`] implements this trait. Users who need
-/// calendars not covered by [`HolidayCalendar`] (e.g. a proprietary
-/// exchange calendar) can implement `CalendarExt` on their own type
-/// and pass it to [`BusinessDayConvention::adjust`].
-pub trait CalendarExt {
+/// A holiday calendar, the built-in [`Calendar`] or a caller's type; `Send + Sync + Debug` so a
+/// [`SharedCalendar`] crosses threads and the structs holding one stay `Debug`.
+pub trait CalendarExt: Send + Sync + std::fmt::Debug {
   /// True if the date is a business day.
   fn is_business_day(&self, date: NaiveDate) -> bool;
 }
+
+/// How schedules, the named indices and the swap rate helper hold a calendar.
+pub type SharedCalendar = Arc<dyn CalendarExt>;
 
 impl CalendarExt for Calendar {
   fn is_business_day(&self, date: NaiveDate) -> bool {

@@ -18,6 +18,7 @@ use super::types::BootstrapInstrument;
 use super::types::CurvePoint;
 use super::types::InterpolationMethod;
 use crate::QuantError;
+use crate::calendar::Frequency;
 use crate::total_order::ascending;
 use crate::traits::RealExt;
 
@@ -112,7 +113,8 @@ pub fn bootstrap<T: RealExt>(
         // outside this tolerance, route through the date-aware
         // `market::rate_helper::SwapRateHelper`, which builds an explicit
         // payment schedule with the calendar.
-        let raw_payments = *maturity * T::from_f64_fast(*frequency as f64);
+        let per_year = frequency.periods_per_year();
+        let raw_payments = *maturity * T::from_f64_fast(per_year as f64);
         let rounded = raw_payments.round();
         let mismatch = (raw_payments - rounded).abs();
         assert!(
@@ -121,10 +123,10 @@ pub fn bootstrap<T: RealExt>(
            (got maturity={:?}, frequency={}, payments mismatch {:?}). \
            Use market::rate_helper::SwapRateHelper for date-aware non-integer schedules.",
           maturity,
-          frequency,
+          per_year,
           mismatch
         );
-        let delta = T::one() / T::from_f64_fast(*frequency as f64);
+        let delta = T::one() / T::from_f64_fast(per_year as f64);
         let n_payments = rounded.to_f64().unwrap() as usize;
 
         let mut annuity = T::zero();
@@ -300,16 +302,14 @@ fn solve_swap_df<T: RealExt>(
   existing_points: &[CurvePoint<T>],
   maturity: T,
   swap_rate: T,
-  frequency: u32,
+  frequency: Frequency,
   method: InterpolationMethod,
   tol: T,
   max_iter: usize,
 ) -> T {
-  let delta = T::one() / T::from_f64_fast(frequency as f64);
-  let n_payments = (maturity * T::from_f64_fast(frequency as f64))
-    .round()
-    .to_f64()
-    .unwrap() as usize;
+  let per_year = T::from_f64_fast(frequency.periods_per_year() as f64);
+  let delta = T::one() / per_year;
+  let n_payments = (maturity * per_year).round().to_f64().unwrap() as usize;
 
   let mut annuity_known = T::zero();
   for i in 1..n_payments {
@@ -374,7 +374,7 @@ mod tests {
       BootstrapInstrument::Swap {
         maturity: 1.0,
         rate: 0.045,
-        frequency: 2,
+        frequency: Frequency::SemiAnnual,
       },
     ];
     let curve =

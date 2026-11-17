@@ -14,5 +14,3 @@ pub mod optimizers;
 pub mod types;
 
 pub use covariance::portfolio_variance;
-pub use covariance::sample_covariance;
-pub use covariance::shrinkage_covariance;

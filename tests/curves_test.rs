@@ -6,6 +6,7 @@
 //! Par rate verified against manual derivation.
 
 use ndarray::array;
+use stochastic_rs::quant::calendar::Frequency;
 use stochastic_rs::quant::curves::BootstrapInstrument;
 use stochastic_rs::quant::curves::Compounding;
 use stochastic_rs::quant::curves::CurvePoint;
@@ -253,7 +254,7 @@ fn bootstrap_deposit_plus_swap() {
     BootstrapInstrument::Swap {
       maturity: 2.0,
       rate: 0.058,
-      frequency: 1,
+      frequency: Frequency::Annual,
     },
   ];
   let curve = bootstrap(&instruments, InterpolationMethod::LinearOnZeroRates).unwrap();
@@ -340,7 +341,7 @@ fn par_rate_semiannual() {
     ],
     InterpolationMethod::LinearOnZeroRates,
   );
-  let par = curve.par_rate(1.0, 2);
+  let par = curve.par_rate(1.0, Frequency::SemiAnnual);
   approx(par, 2.0 * (1.0 - 0.950) / (0.975 + 0.950), 1e-4);
 }
 
@@ -365,7 +366,7 @@ fn par_rate_annual() {
     ],
     InterpolationMethod::LinearOnZeroRates,
   );
-  let par = curve.par_rate(2.0, 1);
+  let par = curve.par_rate(2.0, Frequency::Annual);
   approx(par, (1.0 - 0.90) / (0.95 + 0.90), 1e-4);
 }
 
@@ -462,7 +463,7 @@ fn multi_curve_fair_swap_rate_single_curve() {
 
   let schedule = array![0.0, 0.5, 1.0];
   let fair_rate = mc.fair_swap_rate("6M", &schedule).unwrap();
-  let par_rate = mc.discount.par_rate(1.0, 2);
+  let par_rate = mc.discount.par_rate(1.0, Frequency::SemiAnnual);
 
   approx(fair_rate, par_rate, 1e-4);
 }

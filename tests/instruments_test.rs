@@ -5,6 +5,7 @@
 
 use chrono::NaiveDate;
 use ndarray::array;
+use stochastic_rs::quant::calendar::DateGenerationRule;
 use stochastic_rs::quant::calendar::DayCountConvention;
 use stochastic_rs::quant::calendar::Frequency;
 use stochastic_rs::quant::calendar::ScheduleBuilder;
@@ -23,10 +24,11 @@ use stochastic_rs::quant::instruments::AmortizingFixedRateBond;
 use stochastic_rs::quant::instruments::BasisSwap;
 use stochastic_rs::quant::instruments::CrossCurrencyBasisSwap;
 use stochastic_rs::quant::instruments::CrossCurrencySwapDirection;
+use stochastic_rs::quant::instruments::CurrencyLeg;
 use stochastic_rs::quant::instruments::FixedRateBond;
 use stochastic_rs::quant::instruments::FloatingRateBond;
 use stochastic_rs::quant::instruments::InflationLinkedBond;
-use stochastic_rs::quant::instruments::SwapDirection;
+use stochastic_rs::quant::instruments::SwaptionDirection;
 use stochastic_rs::quant::instruments::VanillaInterestRateSwap;
 use stochastic_rs::quant::instruments::ZeroCouponBond;
 
@@ -55,7 +57,7 @@ fn fixed_rate_bond_curve_price_matches_manual_discounting() {
   let valuation = d(2024, 1, 15);
   let schedule = ScheduleBuilder::new(valuation, d(2026, 1, 15))
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let bond = FixedRateBond::new(
     &schedule,
@@ -87,7 +89,7 @@ fn fixed_rate_bond_ytm_reprices_clean_price() {
   let valuation = d(2024, 4, 15);
   let schedule = ScheduleBuilder::new(d(2024, 1, 15), d(2027, 1, 15))
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let bond = FixedRateBond::new(
     &schedule,
@@ -119,18 +121,18 @@ fn fixed_rate_bond_spread_analytics_are_consistent() {
   let valuation = d(2024, 1, 15);
   let fixed_schedule = ScheduleBuilder::new(valuation, d(2027, 1, 15))
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let float_schedule = ScheduleBuilder::new(valuation, d(2027, 1, 15))
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let discount_curve = flat_curve(0.03, 3.2);
   let mut curves = MultiCurve::new(discount_curve.clone());
   curves.add_forecast("3M", discount_curve.clone());
 
   let par_swap = VanillaInterestRateSwap::new(
-    SwapDirection::Receiver,
+    SwaptionDirection::Receiver,
     &fixed_schedule,
     &float_schedule,
     100.0,
@@ -192,7 +194,7 @@ fn floating_rate_bond_is_near_par_under_single_curve_projection() {
   let valuation = d(2024, 1, 15);
   let schedule = ScheduleBuilder::new(valuation, d(2025, 1, 15))
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let bond = FloatingRateBond::new(
     &schedule,
@@ -218,7 +220,7 @@ fn amortizing_bond_curve_price_matches_manual_cashflows() {
   let valuation = d(2024, 1, 15);
   let schedule = ScheduleBuilder::new(valuation, d(2025, 1, 15))
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let notionals = NotionalSchedule::from_array(array![100.0, 80.0, 60.0, 40.0]);
   let bond = AmortizingFixedRateBond::new(
@@ -254,7 +256,7 @@ fn inflation_linked_bond_prices_projected_cashflows_and_accrual() {
   let valuation = d(2024, 1, 15);
   let schedule = ScheduleBuilder::new(valuation, d(2025, 1, 15))
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let bond = InflationLinkedBond::new(
     &schedule,
@@ -318,11 +320,11 @@ fn vanilla_swap_fair_rate_matches_annuity_formula_and_npv_is_zero_at_par() {
   let valuation = d(2024, 1, 15);
   let fixed_schedule = ScheduleBuilder::new(valuation, d(2026, 1, 15))
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let float_schedule = ScheduleBuilder::new(valuation, d(2026, 1, 15))
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
 
   let discount_curve = flat_curve(0.03, 2.2);
@@ -331,7 +333,7 @@ fn vanilla_swap_fair_rate_matches_annuity_formula_and_npv_is_zero_at_par() {
   curves.add_forecast("3M", forecast_curve.clone());
 
   let par_swap = VanillaInterestRateSwap::new(
-    SwapDirection::Receiver,
+    SwaptionDirection::Receiver,
     &fixed_schedule,
     &float_schedule,
     1_000_000.0,
@@ -367,7 +369,7 @@ fn vanilla_swap_fair_rate_matches_annuity_formula_and_npv_is_zero_at_par() {
   approx(fair_rate, manual_fair, 1e-10);
 
   let priced_swap = VanillaInterestRateSwap::new(
-    SwapDirection::Receiver,
+    SwaptionDirection::Receiver,
     &fixed_schedule,
     &float_schedule,
     1_000_000.0,
@@ -393,11 +395,11 @@ fn basis_swap_fair_pay_leg_spread_zeroes_npv() {
   let valuation = d(2024, 1, 15);
   let pay_schedule = ScheduleBuilder::new(valuation, d(2026, 1, 15))
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let receive_schedule = ScheduleBuilder::new(valuation, d(2026, 1, 15))
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let discount_curve = flat_curve(0.03, 2.2);
   let mut curves = MultiCurve::new(discount_curve);
@@ -458,11 +460,11 @@ fn cross_currency_basis_swap_fair_domestic_spread_zeroes_npv() {
   let valuation = d(2024, 1, 15);
   let domestic_schedule = ScheduleBuilder::new(valuation, d(2025, 1, 15))
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let foreign_schedule = ScheduleBuilder::new(valuation, d(2025, 1, 15))
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
 
   let mut domestic_curves = MultiCurve::new(flat_curve(0.03, 1.2));
@@ -472,27 +474,31 @@ fn cross_currency_basis_swap_fair_domestic_spread_zeroes_npv() {
 
   let xccy = CrossCurrencyBasisSwap::new(
     CrossCurrencySwapDirection::PayDomesticReceiveForeign,
-    USD,
-    EUR,
     1.2,
-    &domestic_schedule,
-    &foreign_schedule,
-    1_200_000.0,
-    FloatingIndex::Ibor(IborIndex::new(
-      "USD-LIBOR-3M",
-      RateTenor::ThreeMonths,
-      DayCountConvention::Actual365Fixed,
-    )),
-    0.0,
-    DayCountConvention::Actual365Fixed,
-    1_000_000.0,
-    FloatingIndex::Ibor(IborIndex::new(
-      "EUR-EURIBOR-3M",
-      RateTenor::ThreeMonths,
-      DayCountConvention::Actual365Fixed,
-    )),
-    0.0,
-    DayCountConvention::Actual365Fixed,
+    CurrencyLeg {
+      currency: USD,
+      notional: 1_200_000.0,
+      index: FloatingIndex::Ibor(IborIndex::new(
+        "USD-LIBOR-3M",
+        RateTenor::ThreeMonths,
+        DayCountConvention::Actual365Fixed,
+      )),
+      spread: 0.0,
+      day_count: DayCountConvention::Actual365Fixed,
+      schedule: domestic_schedule.clone(),
+    },
+    CurrencyLeg {
+      currency: EUR,
+      notional: 1_000_000.0,
+      index: FloatingIndex::Ibor(IborIndex::new(
+        "EUR-EURIBOR-3M",
+        RateTenor::ThreeMonths,
+        DayCountConvention::Actual365Fixed,
+      )),
+      spread: 0.0,
+      day_count: DayCountConvention::Actual365Fixed,
+      schedule: foreign_schedule.clone(),
+    },
     false,
   );
   let valuation_summary = xccy.valuation(
@@ -505,27 +511,31 @@ fn cross_currency_basis_swap_fair_domestic_spread_zeroes_npv() {
 
   let repriced = CrossCurrencyBasisSwap::new(
     CrossCurrencySwapDirection::PayDomesticReceiveForeign,
-    USD,
-    EUR,
     1.2,
-    &domestic_schedule,
-    &foreign_schedule,
-    1_200_000.0,
-    FloatingIndex::Ibor(IborIndex::new(
-      "USD-LIBOR-3M",
-      RateTenor::ThreeMonths,
-      DayCountConvention::Actual365Fixed,
-    )),
-    valuation_summary.fair_domestic_spread,
-    DayCountConvention::Actual365Fixed,
-    1_000_000.0,
-    FloatingIndex::Ibor(IborIndex::new(
-      "EUR-EURIBOR-3M",
-      RateTenor::ThreeMonths,
-      DayCountConvention::Actual365Fixed,
-    )),
-    0.0,
-    DayCountConvention::Actual365Fixed,
+    CurrencyLeg {
+      currency: USD,
+      notional: 1_200_000.0,
+      index: FloatingIndex::Ibor(IborIndex::new(
+        "USD-LIBOR-3M",
+        RateTenor::ThreeMonths,
+        DayCountConvention::Actual365Fixed,
+      )),
+      spread: valuation_summary.fair_domestic_spread,
+      day_count: DayCountConvention::Actual365Fixed,
+      schedule: domestic_schedule.clone(),
+    },
+    CurrencyLeg {
+      currency: EUR,
+      notional: 1_000_000.0,
+      index: FloatingIndex::Ibor(IborIndex::new(
+        "EUR-EURIBOR-3M",
+        RateTenor::ThreeMonths,
+        DayCountConvention::Actual365Fixed,
+      )),
+      spread: 0.0,
+      day_count: DayCountConvention::Actual365Fixed,
+      schedule: foreign_schedule.clone(),
+    },
     false,
   );
   approx(
@@ -546,18 +556,18 @@ fn overnight_indexed_swap_constructor_reuses_overnight_float_leg() {
   let valuation = d(2024, 1, 15);
   let fixed_schedule = ScheduleBuilder::new(valuation, d(2025, 1, 15))
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let float_schedule = ScheduleBuilder::new(valuation, d(2025, 1, 15))
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let curve = flat_curve(0.025, 1.1);
   let mut curves = MultiCurve::new(curve.clone());
   curves.add_forecast("O/N", curve);
 
   let ois = VanillaInterestRateSwap::overnight_indexed(
-    SwapDirection::Payer,
+    SwaptionDirection::Payer,
     &fixed_schedule,
     &float_schedule,
     5_000_000.0,

@@ -17,7 +17,7 @@ use stochastic_rs::quant::market::Handle;
 use stochastic_rs::quant::market::Quote;
 use stochastic_rs::quant::market::SimpleQuote;
 use stochastic_rs::quant::microstructure::AlmgrenChrissParams;
-use stochastic_rs::quant::microstructure::ExecutionDirection;
+use stochastic_rs::quant::order_book::Side;
 use stochastic_rs::quant::pricing::AnalyticBsEngine;
 use stochastic_rs::quant::pricing::AnalyticHestonEngine;
 use stochastic_rs::quant::pricing::VarianceSwapPricer;
@@ -196,10 +196,10 @@ fn main() {
   println!("  VaR(99%) = {:.4}\n", var_99);
 
   let exec = AlmgrenChrissParams {
+    side: Side::Sell,
     total_shares: 50_000.0,
     horizon: 1.0,
     n_intervals: 20,
-    direction: ExecutionDirection::Sell,
     volatility: vol_q.value(),
     gamma: 1e-7,
     eta: 5e-6,

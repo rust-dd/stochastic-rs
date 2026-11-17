@@ -6,6 +6,7 @@
 
 use chrono::NaiveDate;
 use ndarray::array;
+use stochastic_rs::quant::calendar::DateGenerationRule;
 use stochastic_rs::quant::calendar::DayCountConvention;
 use stochastic_rs::quant::calendar::Frequency;
 use stochastic_rs::quant::calendar::ScheduleBuilder;
@@ -49,7 +50,7 @@ fn floating_leg(
 ) -> Leg<f64> {
   let schedule = ScheduleBuilder::new(valuation, end)
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let periods = schedule.adjusted_dates.len() - 1;
   let index = FloatingIndex::Ibor(IborIndex::new(

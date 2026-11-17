@@ -7,6 +7,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs::distributions::special::norm_cdf;
 use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::pricing::slv::HestonSlvParams;
 use stochastic_rs::quant::pricing::slv::HestonSlvPricer;
@@ -173,7 +174,7 @@ fn slv_pricer_flat_vol_is_black_scholes() {
   let estimate = pricer.price_call_estimate(s0, k, r, q, tau);
   let d1 = ((s0 / k).ln() + (r + 0.5 * vol * vol) * tau) / (vol * tau.sqrt());
   let d2 = d1 - vol * tau.sqrt();
-  let bsm = s0 * normal_cdf(d1) - k * (-r * tau).exp() * normal_cdf(d2);
+  let bsm = s0 * norm_cdf(d1) - k * (-r * tau).exp() * norm_cdf(d2);
   assert!(
     (estimate.mean - bsm).abs() < 3.0 * estimate.std_err,
     "slv={} ± {}, bsm={bsm}",
@@ -232,10 +233,6 @@ fn slv_price_is_nan_beyond_the_calibrated_horizon() {
       "tau={tau} is past the 0.5 horizon but priced at {out}"
     );
   }
-}
-
-fn normal_cdf(x: f64) -> f64 {
-  stochastic_rs::distributions::special::norm_cdf(x)
 }
 
 /// The process and the pricer run the same recursion under the same

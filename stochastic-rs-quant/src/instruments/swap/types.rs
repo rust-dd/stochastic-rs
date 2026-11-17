@@ -2,25 +2,6 @@ use std::fmt::Display;
 
 use crate::traits::RealExt;
 
-/// Swap direction.
-///
-/// `Payer` means pay fixed / receive floating.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum SwapDirection {
-  #[default]
-  Payer,
-  Receiver,
-}
-
-impl Display for SwapDirection {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    match self {
-      Self::Payer => write!(f, "Payer"),
-      Self::Receiver => write!(f, "Receiver"),
-    }
-  }
-}
-
 /// Direction for cross-currency swaps quoted in the domestic currency.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CrossCurrencySwapDirection {

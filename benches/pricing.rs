@@ -1,5 +1,5 @@
-//! Hot paths of the quant pricers: Heston, the Fourier pricers, Black–Scholes, Hagan SABR,
-//! Black inversion, the caplet.
+//! Hot paths of the quant pricers: Heston, Fourier, Black–Scholes, Hagan SABR, Black inversion,
+//! the caplet, the Monte Carlo exotics and the Malliavin–Thalmaier delta.
 
 use std::hint::black_box;
 use std::time::Duration;
@@ -7,8 +7,17 @@ use std::time::Duration;
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
+use ndarray::Array1;
+use ndarray::Array2;
 use stochastic_rs::quant::OptionType;
 use stochastic_rs::quant::instruments::option::caplet::black_forward_caplet;
+use stochastic_rs::quant::pricing::AutocallablePricer;
+use stochastic_rs::quant::pricing::BasketAverageType;
+use stochastic_rs::quant::pricing::KnockInStyle;
+use stochastic_rs::quant::pricing::McBasketPricer;
+use stochastic_rs::quant::pricing::McCliquetPricer;
+use stochastic_rs::quant::pricing::barrier::BarrierType;
+use stochastic_rs::quant::pricing::barrier::McBarrierPricer;
 use stochastic_rs::quant::pricing::bsm::BsmCoc;
 use stochastic_rs::quant::pricing::bsm::BsmPricer;
 use stochastic_rs::quant::pricing::fourier::CarrMadanPricer;
@@ -20,9 +29,14 @@ use stochastic_rs::quant::pricing::fourier::KouFourier;
 use stochastic_rs::quant::pricing::fourier::LewisPricer;
 use stochastic_rs::quant::pricing::heston::HestonParams;
 use stochastic_rs::quant::pricing::heston::HestonPricer;
+use stochastic_rs::quant::pricing::malliavin_thalmaier::AssetParams;
+use stochastic_rs::quant::pricing::malliavin_thalmaier::MtGreeks;
+use stochastic_rs::quant::pricing::malliavin_thalmaier::MtPayoff;
+use stochastic_rs::quant::pricing::malliavin_thalmaier::MultiHestonParams;
 use stochastic_rs::quant::pricing::sabr::SabrParams;
 use stochastic_rs::quant::pricing::sabr::SabrPricer;
 use stochastic_rs::quant::pricing::sabr::hagan_implied_vol;
+use stochastic_rs::quant::pricing::spread::McSpreadPricer;
 use stochastic_rs::traits::ModelPricer;
 
 const S: f64 = 100.0;
@@ -208,5 +222,148 @@ fn bsm_and_sabr(c: &mut Criterion) {
   group.finish();
 }
 
-criterion_group!(benches, heston_pricer, fourier, bsm_and_sabr);
+fn bench_mc_exotics(c: &mut Criterion) {
+  let mut group = c.benchmark_group("pricing/mc_exotics");
+  group
+    .sample_size(10)
+    .measurement_time(Duration::from_secs(10));
+  let barrier = McBarrierPricer {
+    n_paths: 20_000,
+    n_steps: 252,
+  };
+  group.bench_function("mc_barrier_20k_paths_252_steps", |b| {
+    b.iter(|| {
+      black_box(&barrier).price(
+        black_box(S),
+        black_box(100.0),
+        black_box(120.0),
+        black_box(R),
+        black_box(0.2),
+        black_box(1.0),
+        black_box(BarrierType::UpAndOut),
+        black_box(OptionType::Call),
+      )
+    })
+  });
+  let cliquet = McCliquetPricer {
+    s: S,
+    notional: 100.0,
+    m: 12,
+    tau: 1.0,
+    r: R,
+    q: Q,
+    sigma: 0.2,
+    local_floor: Some(0.0),
+    local_cap: Some(0.08),
+    global_floor: Some(0.0),
+    global_cap: Some(0.5),
+    n_paths: 20_000,
+  };
+  group.bench_function("mc_cliquet_20k", |b| b.iter(|| black_box(&cliquet).price()));
+  let autocallable = AutocallablePricer {
+    s: S,
+    notional: 100.0,
+    observation_times: Array1::from_iter((1..=8).map(|i| 0.25 * i as f64)),
+    autocall_barrier: 1.0,
+    coupon_barrier: 0.75,
+    coupon: 0.025,
+    knock_in_barrier: 0.65,
+    knock_in_style: KnockInStyle::Continuous,
+    memory: false,
+    r: 0.03,
+    q: 0.01,
+    sigma: 0.3,
+    n_paths: 20_000,
+    steps_per_period: 8,
+  };
+  group.bench_function("autocallable_20k_continuous", |b| {
+    b.iter(|| black_box(&autocallable).price())
+  });
+  let spread = McSpreadPricer::new(0.3, 0.2, 0.5, 50_000);
+  group.bench_function("mc_spread_50k", |b| {
+    b.iter(|| {
+      black_box(&spread).price_call(
+        black_box(110.0),
+        black_box(100.0),
+        black_box(5.0),
+        black_box(0.03),
+        black_box(0.0),
+        black_box(0.0),
+        black_box(1.0),
+      )
+    })
+  });
+  let rho = Array2::from_shape_fn((3, 3), |(i, j)| if i == j { 1.0 } else { 0.5 });
+  let basket = McBasketPricer::new(
+    Array1::from_elem(3, 1.0 / 3.0),
+    BasketAverageType::Arithmetic,
+    Array1::from_vec(vec![0.2, 0.25, 0.3]),
+    rho,
+    50_000,
+  );
+  let spots = Array1::from_elem(3, S);
+  let yields = Array1::from_elem(3, Q);
+  group.bench_function("mc_basket_3_assets_50k", |b| {
+    b.iter(|| {
+      black_box(&basket).price_call(
+        black_box(spots.view()),
+        black_box(100.0),
+        black_box(0.03),
+        black_box(yields.view()),
+        black_box(1.0),
+      )
+    })
+  });
+  group.finish();
+}
+
+/// The two-asset set of Kohatsu-Higa & Yasuda (2008), RIMS Kokyuroku 1580, §7.
+fn mt_paper_params() -> MultiHestonParams<f64> {
+  let asset = |vol: f64| AssetParams {
+    s: 100.0,
+    v0: vol * vol,
+    kappa: 1.0,
+    theta: vol * vol,
+    xi: 0.0,
+    rho: 0.0,
+  };
+  let mut cross_corr = Array2::<f64>::eye(2);
+  cross_corr[[0, 1]] = 0.2;
+  cross_corr[[1, 0]] = 0.2;
+  MultiHestonParams {
+    assets: vec![asset(0.25), asset(0.20)],
+    cross_corr,
+    r: 0.0,
+    tau: 1.0,
+    n_steps: 9,
+  }
+}
+
+fn bench_malliavin_thalmaier(c: &mut Criterion) {
+  let mut group = c.benchmark_group("pricing/malliavin_thalmaier");
+  group
+    .sample_size(10)
+    .measurement_time(Duration::from_secs(10));
+  let engine = MtGreeks::new(mt_paper_params(), 0.01, 2_000);
+  let payoff = MtPayoff::DigitalPut2D {
+    strikes: [100.0, 100.0],
+  };
+  group.bench_function("mt_delta_2k_paths", |b| {
+    b.iter(|| {
+      black_box(&engine)
+        .try_delta_with_seed(black_box(&payoff), black_box(0), black_box(0x1580_0011))
+        .unwrap()
+    })
+  });
+  group.finish();
+}
+
+criterion_group!(
+  benches,
+  heston_pricer,
+  fourier,
+  bsm_and_sabr,
+  bench_mc_exotics,
+  bench_malliavin_thalmaier
+);
 criterion_main!(benches);

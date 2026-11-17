@@ -58,8 +58,6 @@ mod loss;
 mod params;
 
 pub use calibrator::HkdeCalibrator;
-pub use loss::paper_table1;
-pub use loss::paper_table2;
 pub use params::HkdeParams;
 
 use crate::calibration::Calibrated;

@@ -9,6 +9,7 @@
 //! - Forward rate extraction: $f(t_1, t_2) = -\frac{\ln D(t_2) - \ln D(t_1)}{t_2 - t_1}$
 //! - Par rate computation
 
+use crate::calendar::Frequency;
 use ndarray::Array1;
 
 use super::interpolation;
@@ -148,20 +149,20 @@ impl<T: RealExt> DiscountCurve<T> {
     (d1 / d2 - T::one()) / (t2 - t1)
   }
 
-  /// Par swap rate for `maturity` at `frequency` payments a year; NaN unless `maturity` is finite
-  /// and positive and `frequency > 0`.
+  /// Par swap rate for `maturity` at `frequency`; NaN unless `maturity` is finite and positive.
   ///
   /// $$
   /// S(T) = \frac{1 - D(T)}{\sum_{i=1}^{n} \delta_i\, D(t_i)}
   /// $$
-  pub fn par_rate(&self, maturity: T, frequency: u32) -> T {
-    let periods = (maturity * T::from_f64_fast(frequency as f64)).ceil();
+  pub fn par_rate(&self, maturity: T, frequency: Frequency) -> T {
+    let per_year = T::from_f64_fast(frequency.periods_per_year() as f64);
+    let periods = (maturity * per_year).ceil();
     if !(periods.is_finite() && periods >= T::one()) {
       return T::nan();
     }
     let n_payments = periods.to_f64().map_or(0, |n| n as usize);
 
-    let delta = T::one() / T::from_f64_fast(frequency as f64);
+    let delta = T::one() / per_year;
     let mut annuity = T::zero();
     for i in 1..=n_payments {
       let t = T::from_f64_fast(i as f64) * delta;

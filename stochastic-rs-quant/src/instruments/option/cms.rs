@@ -22,6 +22,7 @@
 use super::caplet::black_forward_caplet;
 use super::caplet::black_forward_floorlet;
 use super::volatility::VolatilityModel;
+use crate::calendar::Frequency;
 use crate::traits::RealExt;
 
 /// Flat-yield annuity-to-par function $G(S)=(1-(1+S\delta)^{-N})/S$.
@@ -35,11 +36,15 @@ fn g_function<T: RealExt>(s: T, n: T, delta: T) -> T {
 
 /// Hagan linear-TSR convexity factor $\lambda = S_0\,G'(S_0)/G(S_0)$.
 ///
-/// `swap_years` is the tenor of the CMS-referenced swap; `fixed_freq` is the
-/// number of fixed-leg payments per year of that swap.
-pub fn hagan_linear_tsr_convexity_factor<T: RealExt>(s0: T, swap_years: T, fixed_freq: T) -> T {
-  let delta = T::one() / fixed_freq;
-  let n = swap_years * fixed_freq;
+/// `swap_years` is the tenor of the CMS-referenced swap; `fixed_freq` is its fixed-leg frequency.
+pub fn hagan_linear_tsr_convexity_factor<T: RealExt>(
+  s0: T,
+  swap_years: T,
+  fixed_freq: Frequency,
+) -> T {
+  let per_year = T::from_f64_fast(fixed_freq.periods_per_year() as f64);
+  let delta = T::one() / per_year;
+  let n = swap_years * per_year;
   let bump = s0.abs() * T::from_f64_fast(1e-4);
   let eps = if bump > T::from_f64_fast(1e-8) {
     bump
@@ -65,7 +70,7 @@ pub fn hagan_linear_tsr_convexity_adjustment<T: RealExt>(
   sigma_black: T,
   t_fix: T,
   swap_years: T,
-  fixed_freq: T,
+  fixed_freq: Frequency,
   payment_delay: T,
 ) -> T {
   let lambda = hagan_linear_tsr_convexity_factor(s0, swap_years, fixed_freq);
@@ -97,8 +102,8 @@ pub struct CmsCaplet<T: RealExt, V: VolatilityModel<T>> {
   pub t_fix: T,
   /// Swap tenor in years.
   pub swap_years: T,
-  /// Fixed-leg frequency of the referenced swap (payments per year).
-  pub fixed_freq: T,
+  /// Fixed-leg frequency of the referenced swap.
+  pub fixed_freq: Frequency,
   /// Payment delay $T_{pay}-T_{fix}$ in years (0 for natural timing).
   pub payment_delay: T,
   /// Volatility model for $\sigma_B(S_0,K,T_{fix})$.
@@ -142,7 +147,7 @@ pub struct CmsFloorlet<T: RealExt, V: VolatilityModel<T>> {
   /// Swap tenor in years.
   pub swap_years: T,
   /// Fixed-leg frequency.
-  pub fixed_freq: T,
+  pub fixed_freq: Frequency,
   /// Payment delay in years.
   pub payment_delay: T,
   /// Volatility model.
@@ -178,7 +183,7 @@ fn price_cms_payoff<T: RealExt, V: VolatilityModel<T> + ?Sized>(
   s0: T,
   t_fix: T,
   swap_years: T,
-  fixed_freq: T,
+  fixed_freq: Frequency,
   payment_delay: T,
   vol: &V,
   is_caplet: bool,
@@ -216,7 +221,7 @@ mod tests {
         forward_cms: 0.03,
         t_fix,
         swap_years: 10.0,
-        fixed_freq: 2.0,
+        fixed_freq: Frequency::SemiAnnual,
         payment_delay: 0.0,
         vol,
       }
@@ -231,7 +236,7 @@ mod tests {
         forward_cms: 0.03,
         t_fix,
         swap_years: 10.0,
-        fixed_freq: 2.0,
+        fixed_freq: Frequency::SemiAnnual,
         payment_delay: 0.0,
         vol,
       }
@@ -246,15 +251,17 @@ mod tests {
 
   #[test]
   fn convexity_factor_is_negative_for_standard_swap() {
-    let lambda = hagan_linear_tsr_convexity_factor(0.04_f64, 10.0, 2.0);
+    let lambda = hagan_linear_tsr_convexity_factor(0.04_f64, 10.0, Frequency::SemiAnnual);
     assert!(lambda < 0.0, "lambda should be negative, got {lambda}");
     assert!(lambda.is_finite());
   }
 
   #[test]
   fn convexity_factor_goes_to_zero_for_short_swap() {
-    let lambda_long = hagan_linear_tsr_convexity_factor(0.04_f64, 20.0, 2.0).abs();
-    let lambda_short = hagan_linear_tsr_convexity_factor(0.04_f64, 1.0, 2.0).abs();
+    let lambda_long =
+      hagan_linear_tsr_convexity_factor(0.04_f64, 20.0, Frequency::SemiAnnual).abs();
+    let lambda_short =
+      hagan_linear_tsr_convexity_factor(0.04_f64, 1.0, Frequency::SemiAnnual).abs();
     assert!(
       lambda_long > lambda_short,
       "longer swap must show stronger convexity, long={lambda_long} short={lambda_short}"
@@ -263,8 +270,10 @@ mod tests {
 
   #[test]
   fn payment_delay_adds_positive_adjustment() {
-    let nat = hagan_linear_tsr_convexity_adjustment(0.04_f64, 0.3, 2.0, 10.0, 2.0, 0.0);
-    let delayed = hagan_linear_tsr_convexity_adjustment(0.04_f64, 0.3, 2.0, 10.0, 2.0, 0.5);
+    let nat =
+      hagan_linear_tsr_convexity_adjustment(0.04_f64, 0.3, 2.0, 10.0, Frequency::SemiAnnual, 0.0);
+    let delayed =
+      hagan_linear_tsr_convexity_adjustment(0.04_f64, 0.3, 2.0, 10.0, Frequency::SemiAnnual, 0.5);
     assert!(delayed > nat, "delay must push adjustment upwards");
   }
 }

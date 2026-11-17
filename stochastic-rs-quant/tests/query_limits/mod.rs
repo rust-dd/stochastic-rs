@@ -4,6 +4,7 @@ use chrono::NaiveDate;
 use ndarray::Array1;
 use stochastic_rs_quant::OptionType;
 use stochastic_rs_quant::QuantError;
+use stochastic_rs_quant::calendar::Frequency;
 use stochastic_rs_quant::credit::HazardInterpolation;
 use stochastic_rs_quant::credit::SurvivalCurve;
 use stochastic_rs_quant::credit::SurvivalPoint;
@@ -91,10 +92,13 @@ fn the_discount_curve_has_no_zero_sentinels() {
   assert_eq!(curve.forward_rates(&Array1::from_vec(vec![])).len(), 0);
   let forwards = curve.forward_rates(&Array1::from_vec(vec![1.0, 2.0, 2.0]));
   assert!((forwards[0] - 0.03).abs() < 1e-12 && forwards[1].is_nan());
-  assert!(curve.par_rate(0.0, 2).is_nan());
-  assert!(curve.par_rate(-1.0, 2).is_nan());
-  assert!(curve.par_rate(1.0, 0).is_nan());
-  assert!(curve.par_rate(f64::INFINITY, 2).is_nan());
+  assert!(curve.par_rate(0.0, Frequency::SemiAnnual).is_nan());
+  assert!(curve.par_rate(-1.0, Frequency::SemiAnnual).is_nan());
+  assert!(
+    curve
+      .par_rate(f64::INFINITY, Frequency::SemiAnnual)
+      .is_nan()
+  );
 }
 
 #[test]
@@ -457,7 +461,7 @@ fn a_bootstrap_quote_at_a_non_finite_maturity_is_an_invalid_quote() {
     let swap = BootstrapInstrument::Swap {
       maturity: bad,
       rate: 0.03,
-      frequency: 2,
+      frequency: Frequency::SemiAnnual,
     };
     assert!(
       rejects_quote_1(bootstrap(&[deposit(0.5), swap], method)),

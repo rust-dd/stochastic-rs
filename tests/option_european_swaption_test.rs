@@ -6,6 +6,7 @@
 
 use chrono::NaiveDate;
 use ndarray::array;
+use stochastic_rs::quant::calendar::DateGenerationRule;
 use stochastic_rs::quant::calendar::DayCountConvention;
 use stochastic_rs::quant::calendar::Frequency;
 use stochastic_rs::quant::calendar::ScheduleBuilder;
@@ -19,7 +20,6 @@ use stochastic_rs::quant::instruments::BlackVolatility;
 use stochastic_rs::quant::instruments::EuropeanSwaption;
 use stochastic_rs::quant::instruments::SabrVolatility;
 use stochastic_rs::quant::instruments::ShiftedSabrVolatility;
-use stochastic_rs::quant::instruments::SwapDirection;
 use stochastic_rs::quant::instruments::SwaptionDirection;
 use stochastic_rs::quant::instruments::VanillaInterestRateSwap;
 
@@ -52,11 +52,11 @@ fn european_payer_put_call_parity_against_forward_swap_value() {
 
   let fixed_schedule = ScheduleBuilder::new(start, end)
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let float_schedule = ScheduleBuilder::new(start, end)
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let index = FloatingIndex::Ibor(IborIndex::new(
     "LIBOR_3M",
@@ -64,7 +64,7 @@ fn european_payer_put_call_parity_against_forward_swap_value() {
     DayCountConvention::Actual360,
   ));
   let swap = VanillaInterestRateSwap::new(
-    SwapDirection::Payer,
+    SwaptionDirection::Payer,
     &fixed_schedule,
     &float_schedule,
     notional,
@@ -114,11 +114,11 @@ fn bachelier_swaption_matches_black_atm_at_small_vol() {
 
   let fixed_schedule = ScheduleBuilder::new(start, end)
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let float_schedule = ScheduleBuilder::new(start, end)
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let index = FloatingIndex::Ibor(IborIndex::new(
     "LIBOR_3M",
@@ -129,7 +129,7 @@ fn bachelier_swaption_matches_black_atm_at_small_vol() {
 
   let forward_swap_rate = {
     let swap = VanillaInterestRateSwap::new(
-      SwapDirection::Payer,
+      SwaptionDirection::Payer,
       &fixed_schedule,
       &float_schedule,
       notional,
@@ -146,7 +146,7 @@ fn bachelier_swaption_matches_black_atm_at_small_vol() {
 
   let strike = forward_swap_rate;
   let swap = VanillaInterestRateSwap::new(
-    SwapDirection::Payer,
+    SwaptionDirection::Payer,
     &fixed_schedule,
     &float_schedule,
     notional,
@@ -203,11 +203,11 @@ fn sabr_swaption_produces_positive_price() {
 
   let fixed_schedule = ScheduleBuilder::new(start, end)
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let float_schedule = ScheduleBuilder::new(start, end)
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let index = FloatingIndex::Ibor(IborIndex::new(
     "LIBOR_3M",
@@ -215,7 +215,7 @@ fn sabr_swaption_produces_positive_price() {
     DayCountConvention::Actual360,
   ));
   let swap = VanillaInterestRateSwap::new(
-    SwapDirection::Payer,
+    SwaptionDirection::Payer,
     &fixed_schedule,
     &float_schedule,
     notional,

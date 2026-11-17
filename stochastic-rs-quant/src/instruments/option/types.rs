@@ -23,7 +23,7 @@ impl Display for InterestRateOptionKind {
   }
 }
 
-/// Swaption payoff direction.
+/// Payer or receiver of a swap, and of a swaption on one.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SwaptionDirection {
   /// Pay fixed, receive floating — call on the forward swap rate.

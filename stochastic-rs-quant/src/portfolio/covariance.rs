@@ -1,14 +1,9 @@
-//! # Portfolio covariance estimators
-//!
-//! Bridges [`crate::portfolio`] to [`crate::factors::shrinkage`]: provides
-//! Ledoit-Wolf shrinkage covariance and a sample-covariance baseline, both
-//! suitable inputs to mean-variance optimisation in [`super::optimizers`].
-//!
-//! # Example
+//! Portfolio variance of a covariance estimate, such as [`crate::factors::shrinkage`]'s.
 //!
 //! ```
 //! use ndarray::array;
-//! use stochastic_rs_quant::portfolio::{portfolio_variance, shrinkage_covariance};
+//! use stochastic_rs_quant::factors::shrinkage::ledoit_wolf_shrinkage;
+//! use stochastic_rs_quant::portfolio::portfolio_variance;
 //!
 //! let returns = array![
 //!     [0.01, 0.02, -0.01],
@@ -17,27 +12,15 @@
 //!     [0.00, 0.02, -0.02],
 //!     [0.01, -0.03, 0.01],
 //! ];
-//! let cov = shrinkage_covariance(returns.view());
+//! let cov = ledoit_wolf_shrinkage(returns.view()).covariance;
 //! let weights = [0.5, 0.3, 0.2];
 //! let var = portfolio_variance(&weights, cov.view());
 //! assert!(var >= 0.0);
 //! ```
 
-use ndarray::Array2;
 use ndarray::ArrayView2;
 
-use crate::factors::shrinkage;
 use crate::traits::RealExt;
-
-/// Ledoit-Wolf shrinkage covariance for an `(observations × assets)` matrix.
-pub fn shrinkage_covariance<T: RealExt>(returns: ArrayView2<T>) -> Array2<T> {
-  shrinkage::ledoit_wolf_shrinkage(returns).covariance
-}
-
-/// Sample covariance baseline (unbiased divisor `n - 1`).
-pub fn sample_covariance<T: RealExt>(returns: ArrayView2<T>) -> Array2<T> {
-  shrinkage::sample_covariance(returns)
-}
 
 /// Portfolio variance $\mathbf{w}^{\top}\Sigma\,\mathbf{w}$.
 pub fn portfolio_variance<T: RealExt>(weights: &[T], cov: ArrayView2<T>) -> T {
@@ -57,15 +40,6 @@ mod tests {
   use ndarray::Array2;
 
   use super::*;
-
-  #[test]
-  fn shrinkage_matches_ledoit_wolf() {
-    let returns = Array2::<f64>::from_shape_fn((50, 3), |(t, j)| {
-      ((t as f64 * 0.1).sin() + j as f64 * 0.05) * 0.01
-    });
-    let cov = shrinkage_covariance(returns.view());
-    assert_eq!(cov.shape(), &[3, 3]);
-  }
 
   #[test]
   fn portfolio_variance_quadratic_form() {

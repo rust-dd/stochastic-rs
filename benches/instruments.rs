@@ -3,6 +3,7 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::array;
+use stochastic_rs::quant::calendar::DateGenerationRule;
 use stochastic_rs::quant::calendar::DayCountConvention;
 use stochastic_rs::quant::calendar::Frequency;
 use stochastic_rs::quant::calendar::ScheduleBuilder;
@@ -14,7 +15,7 @@ use stochastic_rs::quant::curves::InterpolationMethod;
 use stochastic_rs::quant::curves::MultiCurve;
 use stochastic_rs::quant::instruments::BasisSwap;
 use stochastic_rs::quant::instruments::FixedRateBond;
-use stochastic_rs::quant::instruments::SwapDirection;
+use stochastic_rs::quant::instruments::SwaptionDirection;
 use stochastic_rs::quant::instruments::VanillaInterestRateSwap;
 
 fn flat_curve(rate: f64, max_t: f64) -> DiscountCurve<f64> {
@@ -27,7 +28,7 @@ fn bench_bond_analytics(c: &mut Criterion) {
   let valuation = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
   let schedule = ScheduleBuilder::new(valuation, NaiveDate::from_ymd_opt(2054, 1, 15).unwrap())
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let bond = FixedRateBond::new(
     &schedule,
@@ -56,15 +57,15 @@ fn bench_swap_valuation(c: &mut Criterion) {
   let fixed_schedule =
     ScheduleBuilder::new(valuation, NaiveDate::from_ymd_opt(2054, 1, 15).unwrap())
       .frequency(Frequency::SemiAnnual)
-      .forward()
+      .rule(DateGenerationRule::Forward)
       .build();
   let float_schedule =
     ScheduleBuilder::new(valuation, NaiveDate::from_ymd_opt(2054, 1, 15).unwrap())
       .frequency(Frequency::Quarterly)
-      .forward()
+      .rule(DateGenerationRule::Forward)
       .build();
   let swap = VanillaInterestRateSwap::new(
-    SwapDirection::Payer,
+    SwaptionDirection::Payer,
     &fixed_schedule,
     &float_schedule,
     10_000_000.0,
@@ -92,12 +93,12 @@ fn bench_basis_swap_valuation(c: &mut Criterion) {
   let valuation = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
   let pay_schedule = ScheduleBuilder::new(valuation, NaiveDate::from_ymd_opt(2034, 1, 15).unwrap())
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let receive_schedule =
     ScheduleBuilder::new(valuation, NaiveDate::from_ymd_opt(2034, 1, 15).unwrap())
       .frequency(Frequency::SemiAnnual)
-      .forward()
+      .rule(DateGenerationRule::Forward)
       .build();
   let basis = BasisSwap::new(
     &pay_schedule,

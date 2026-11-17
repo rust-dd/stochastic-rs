@@ -5,6 +5,7 @@
 //! generate synthetic market quotes.
 
 use ndarray::array;
+use stochastic_rs::quant::calendar::Frequency;
 use stochastic_rs::quant::curves::DiscountCurve;
 use stochastic_rs::quant::curves::InterpolationMethod;
 use stochastic_rs::quant::instruments::BlackVolatility;
@@ -23,7 +24,7 @@ fn cms_caplet_produces_finite_positive_price() {
     forward_cms: 0.04,
     t_fix: 2.0,
     swap_years: 10.0,
-    fixed_freq: 2.0,
+    fixed_freq: Frequency::SemiAnnual,
     payment_delay: 0.25,
     vol: BlackVolatility::new(0.3_f64),
   };
@@ -38,7 +39,7 @@ fn cms_caplet_produces_finite_positive_price() {
     forward_cms: 0.04,
     t_fix: 2.0,
     swap_years: 10.0,
-    fixed_freq: 2.0,
+    fixed_freq: Frequency::SemiAnnual,
     payment_delay: 0.25,
     vol: BlackVolatility::new(0.3_f64),
   };

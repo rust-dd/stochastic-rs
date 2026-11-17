@@ -6,7 +6,6 @@ use stochastic_rs::distributions::DistributionSampler;
 use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::quant::microstructure::AlmgrenChrissParams;
-use stochastic_rs::quant::microstructure::ExecutionDirection;
 use stochastic_rs::quant::microstructure::ImpactKernel;
 use stochastic_rs::quant::microstructure::corwin_schultz_spread;
 use stochastic_rs::quant::microstructure::effective_spread;
@@ -16,6 +15,7 @@ use stochastic_rs::quant::microstructure::propagator_impact_path;
 use stochastic_rs::quant::microstructure::propagator_price_impact;
 use stochastic_rs::quant::microstructure::roll_spread;
 use stochastic_rs::quant::microstructure::single_period_kyle;
+use stochastic_rs::quant::order_book::Side;
 use stochastic_rs::simd_rng::Deterministic;
 
 #[test]
@@ -24,7 +24,7 @@ fn ac_efficient_frontier_monotonic_in_lambda() {
   let mut last_cost = -f64::INFINITY;
   let mut last_var = f64::INFINITY;
   for &lam in &lambdas {
-    let p = AlmgrenChrissParams::new(10_000.0, 1.0, 50, 0.02, 1e-7, 1e-5, lam);
+    let p = AlmgrenChrissParams::new(Side::Sell, 10_000.0, 1.0, 50, 0.02, 1e-7, 1e-5, lam);
     let plan = optimal_execution(&p);
     assert!(plan.expected_cost >= last_cost - 1e-9);
     assert!(plan.variance <= last_var + 1e-9);
@@ -36,9 +36,9 @@ fn ac_efficient_frontier_monotonic_in_lambda() {
 #[test]
 fn ac_buy_and_sell_are_mirror_images() {
   // A buy flips all three series (`inventory`, `trades`, `rates`) relative to the sell.
-  let mut p = AlmgrenChrissParams::new(2_000.0_f64, 1.0, 25, 0.025, 5e-8, 5e-6, 1.0);
+  let mut p = AlmgrenChrissParams::new(Side::Sell, 2_000.0_f64, 1.0, 25, 0.025, 5e-8, 5e-6, 1.0);
   let sell = optimal_execution(&p);
-  p.direction = ExecutionDirection::Buy;
+  p.side = Side::Buy;
   let buy = optimal_execution(&p);
   for i in 0..p.n_intervals {
     assert!(

@@ -1,18 +1,11 @@
-//! # Index
-//!
-//! Price-index identifiers and a simple historical-fixings store.
-//!
-//! Indices follow the "first publication of the calendar month $m$" rule:
-//! the value $I(\text{first day of month } m)$ is the print published a few
-//! weeks later for the calendar month $m-2$ or $m-3$, depending on the
-//! market convention. Concrete publication-lag handling is left to the
-//! consumer of this struct (e.g. swap and bond instruments).
-//!
-use std::collections::BTreeMap;
+//! Price indices and their prints: $I(\text{first day of month } m)$ is the print for month $m - 2$
+//! or $m - 3$ by market convention, and the instrument reading it handles the publication lag.
+
 use std::fmt::Display;
 
 use chrono::NaiveDate;
 
+use crate::market::FixingHistory;
 use crate::traits::RealExt;
 
 /// Built-in price indices. `Custom(name)` lets users register an arbitrary
@@ -75,65 +68,37 @@ impl Display for PriceIndex {
   }
 }
 
-/// Historical print store for a single index.
-#[derive(Debug, Clone, Default)]
-pub struct FixingHistory<T: RealExt> {
-  fixings: BTreeMap<NaiveDate, T>,
+/// A price index with its realised prints.
+#[derive(Debug, Clone)]
+pub struct InflationIndex<T: RealExt> {
+  /// The index the prints are of.
+  pub index: PriceIndex,
+  /// Realised prints, keyed by the first day of their month.
+  pub fixings: FixingHistory<T>,
 }
 
-impl<T: RealExt> FixingHistory<T> {
-  pub fn new() -> Self {
+impl<T: RealExt> InflationIndex<T> {
+  /// An index with no prints yet.
+  pub fn new(index: PriceIndex) -> Self {
     Self {
-      fixings: BTreeMap::new(),
+      index,
+      fixings: FixingHistory::new(),
     }
   }
 
-  /// Register a print. Overwrites any previous entry on the same date.
-  pub fn add(&mut self, date: NaiveDate, value: T) {
-    self.fixings.insert(date, value);
-  }
-
-  /// Lookup an exact print.
-  pub fn get(&self, date: NaiveDate) -> Option<T> {
-    self.fixings.get(&date).copied()
-  }
-
-  /// Last available print at or before `date`.
-  pub fn last_before(&self, date: NaiveDate) -> Option<(NaiveDate, T)> {
-    self
-      .fixings
-      .range(..=date)
-      .next_back()
-      .map(|(d, v)| (*d, *v))
-  }
-
-  /// Number of stored prints.
-  pub fn len(&self) -> usize {
-    self.fixings.len()
-  }
-
-  /// `true` iff no prints are stored.
-  pub fn is_empty(&self) -> bool {
-    self.fixings.is_empty()
-  }
-
-  /// Linearly interpolated reference ratio between the two surrounding
-  /// monthly prints. Used by inflation-linked instruments to compute the
-  /// indexation of a coupon paid on `date` against the base print
-  /// `base_value`.
+  /// Index ratio on `date` against `base_value`, linear between the surrounding prints; `None`
+  /// unless prints bracket `date`.
   pub fn reference_ratio(&self, date: NaiveDate, base_value: T) -> Option<T> {
-    let (prev_date, prev_val) = self.last_before(date)?;
+    let (before, after) = self.fixings.bracket(date);
+    let (prev_date, prev_val) = before?;
     if prev_date == date {
       return Some(prev_val / base_value);
     }
-    let next = self.fixings.range(date..).next().map(|(d, v)| (*d, *v))?;
-    if next.0 == date {
-      return Some(next.1 / base_value);
-    }
+    let (next_date, next_val) = after?;
     let prev_days = (date - prev_date).num_days() as f64;
-    let total_days = (next.0 - prev_date).num_days() as f64;
+    let total_days = (next_date - prev_date).num_days() as f64;
     let frac = T::from_f64_fast(prev_days / total_days);
-    let interp = prev_val + (next.1 - prev_val) * frac;
+    let interp = prev_val + (next_val - prev_val) * frac;
     Some(interp / base_value)
   }
 }
@@ -155,22 +120,10 @@ mod tests {
   }
 
   #[test]
-  fn fixing_history_lookup() {
-    let mut h: FixingHistory<f64> = FixingHistory::new();
-    h.add(d(2025, 1, 1), 300.0);
-    h.add(d(2025, 2, 1), 301.5);
-    assert_eq!(h.get(d(2025, 1, 1)), Some(300.0));
-    assert_eq!(h.get(d(2025, 1, 15)), None);
-    let (last_d, last_v) = h.last_before(d(2025, 1, 20)).unwrap();
-    assert_eq!(last_d, d(2025, 1, 1));
-    assert_eq!(last_v, 300.0);
-  }
-
-  #[test]
   fn reference_ratio_interpolates_linearly() {
-    let mut h: FixingHistory<f64> = FixingHistory::new();
-    h.add(d(2025, 1, 1), 300.0);
-    h.add(d(2025, 2, 1), 303.0);
+    let h = InflationIndex::<f64>::new(PriceIndex::CpiUsAllItems);
+    h.fixings.add_fixing(d(2025, 1, 1), 300.0);
+    h.fixings.add_fixing(d(2025, 2, 1), 303.0);
     let base = 300.0;
     let ratio = h.reference_ratio(d(2025, 1, 16), base).unwrap();
     let expected_index = 300.0 + 3.0 * 15.0 / 31.0;
@@ -179,8 +132,8 @@ mod tests {
 
   #[test]
   fn reference_ratio_no_extrapolation() {
-    let mut h: FixingHistory<f64> = FixingHistory::new();
-    h.add(d(2025, 1, 1), 300.0);
+    let h = InflationIndex::<f64>::new(PriceIndex::CpiUsAllItems);
+    h.fixings.add_fixing(d(2025, 1, 1), 300.0);
     assert!(h.reference_ratio(d(2025, 2, 1), 300.0).is_none());
   }
 }

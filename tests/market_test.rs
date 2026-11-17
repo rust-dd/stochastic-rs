@@ -169,7 +169,7 @@ fn helper_driven_curve_roundtrips_par_swap() {
   )
   .unwrap();
 
-  let implied_5y_par = curve.par_rate(5.0, 2);
+  let implied_5y_par = curve.par_rate(5.0, Frequency::SemiAnnual);
   assert!(
     (implied_5y_par - 0.04).abs() < 5e-3,
     "5Y par rate mismatch: got {implied_5y_par}"

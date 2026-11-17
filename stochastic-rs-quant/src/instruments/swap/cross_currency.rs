@@ -13,6 +13,23 @@ use crate::cashflows::NotionalSchedule;
 use crate::fx::Currency;
 use crate::traits::RealExt;
 
+/// One floating leg of a cross-currency swap, in its own currency.
+#[derive(Debug, Clone)]
+pub struct CurrencyLeg<T: RealExt> {
+  /// Currency the leg pays in.
+  pub currency: Currency,
+  /// Constant notional in `currency`.
+  pub notional: T,
+  /// Floating index the coupons fix on.
+  pub index: FloatingIndex<T>,
+  /// Spread over the index.
+  pub spread: T,
+  /// Accrual day count.
+  pub day_count: DayCountConvention,
+  /// Accrual and payment schedule.
+  pub schedule: Schedule,
+}
+
 /// Constant-notional cross-currency basis swap with domestic reporting currency.
 #[derive(Debug, Clone)]
 pub struct CrossCurrencyBasisSwap<T: RealExt> {
@@ -35,69 +52,34 @@ pub struct CrossCurrencyBasisSwap<T: RealExt> {
 }
 
 impl<T: RealExt> CrossCurrencyBasisSwap<T> {
-  /// Build a cross-currency basis swap. The initial notional exchange is assumed
-  /// to have already taken place or to be neutral at current spot.
+  /// A swap whose initial notional exchange is settled or neutral at spot; panics unless both
+  /// schedules hold at least two dates.
   pub fn new(
     direction: CrossCurrencySwapDirection,
-    domestic_currency: Currency,
-    foreign_currency: Currency,
     fx_spot_domestic_per_foreign: T,
-    domestic_schedule: &Schedule,
-    foreign_schedule: &Schedule,
-    domestic_notional: T,
-    domestic_index: FloatingIndex<T>,
-    domestic_spread: T,
-    domestic_day_count: DayCountConvention,
-    foreign_notional: T,
-    foreign_index: FloatingIndex<T>,
-    foreign_spread: T,
-    foreign_day_count: DayCountConvention,
+    domestic: CurrencyLeg<T>,
+    foreign: CurrencyLeg<T>,
     exchange_final_notionals: bool,
   ) -> Self {
+    let dates = domestic.schedule.adjusted_dates.len();
     assert!(
-      domestic_schedule.adjusted_dates.len() >= 2,
-      "domestic schedule must contain at least two dates"
+      dates >= 2,
+      "domestic.schedule must satisfy `adjusted_dates.len() >= 2`, got adjusted_dates.len() = {dates}"
     );
+    let dates = foreign.schedule.adjusted_dates.len();
     assert!(
-      foreign_schedule.adjusted_dates.len() >= 2,
-      "foreign schedule must contain at least two dates"
+      dates >= 2,
+      "foreign.schedule must satisfy `adjusted_dates.len() >= 2`, got adjusted_dates.len() = {dates}"
     );
-
-    let domestic_maturity = *domestic_schedule.adjusted_dates.last().unwrap();
-    let foreign_maturity = *foreign_schedule.adjusted_dates.last().unwrap();
-
-    let mut domestic_leg = Leg::floating_rate(
-      domestic_schedule,
-      NotionalSchedule::bullet(
-        domestic_schedule.adjusted_dates.len() - 1,
-        domestic_notional,
-      ),
-      domestic_index,
-      domestic_spread,
-      domestic_day_count,
-    );
-    let mut foreign_leg = Leg::floating_rate(
-      foreign_schedule,
-      NotionalSchedule::bullet(foreign_schedule.adjusted_dates.len() - 1, foreign_notional),
-      foreign_index,
-      foreign_spread,
-      foreign_day_count,
-    );
-
-    if exchange_final_notionals {
-      domestic_leg = domestic_leg.with_redemption(domestic_maturity, domestic_notional);
-      foreign_leg = foreign_leg.with_redemption(foreign_maturity, foreign_notional);
-    }
-
     Self {
       direction,
-      domestic_currency,
-      foreign_currency,
+      domestic_currency: domestic.currency,
+      foreign_currency: foreign.currency,
       fx_spot_domestic_per_foreign,
-      domestic_spread,
-      foreign_spread,
-      domestic_leg,
-      foreign_leg,
+      domestic_spread: domestic.spread,
+      foreign_spread: foreign.spread,
+      domestic_leg: floating_leg(domestic, exchange_final_notionals),
+      foreign_leg: floating_leg(foreign, exchange_final_notionals),
     }
   }
 
@@ -193,5 +175,20 @@ impl<T: RealExt> CrossCurrencyBasisSwap<T> {
         foreign_curves,
       )
       .net_npv
+  }
+}
+
+fn floating_leg<T: RealExt>(leg: CurrencyLeg<T>, exchange_final_notional: bool) -> Leg<T> {
+  let periods = leg.schedule.adjusted_dates.len() - 1;
+  let floating = Leg::floating_rate(
+    &leg.schedule,
+    NotionalSchedule::bullet(periods, leg.notional),
+    leg.index,
+    leg.spread,
+    leg.day_count,
+  );
+  match leg.schedule.adjusted_dates.last() {
+    Some(&maturity) if exchange_final_notional => floating.with_redemption(maturity, leg.notional),
+    _ => floating,
   }
 }

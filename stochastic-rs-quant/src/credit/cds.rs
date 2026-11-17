@@ -32,6 +32,7 @@ use std::fmt::Display;
 use chrono::NaiveDate;
 
 use super::survival_curve::SurvivalCurve;
+use crate::calendar::DateGenerationRule;
 use crate::calendar::DayCountConvention;
 use crate::calendar::Frequency;
 use crate::calendar::Schedule;
@@ -95,7 +96,7 @@ pub struct CreditDefaultSwap<T: RealExt> {
   pub premium_schedule: Schedule,
   /// Day count convention for the premium accrual.
   pub day_count: DayCountConvention,
-  /// Contract protection effective date (inclusive).
+  /// Protection and premium accrual start here (inclusive).
   pub effective_date: NaiveDate,
   /// Contract maturity (protection end, inclusive).
   pub maturity_date: NaiveDate,
@@ -146,7 +147,8 @@ impl<T: RealExt> CreditDefaultSwap<T> {
     }
   }
 
-  /// Build a vanilla running CDS with a quarterly schedule (standard post-2009); panics as `new`.
+  /// Running CDS on a plain `frequency` schedule from `effective_date` to `maturity_date`, unlike
+  /// [`Self::standard`]; panics as `new`.
   pub fn vanilla(
     direction: CdsPosition,
     notional: T,
@@ -159,6 +161,33 @@ impl<T: RealExt> CreditDefaultSwap<T> {
   ) -> Self {
     let schedule = crate::calendar::ScheduleBuilder::new(effective_date, maturity_date)
       .frequency(frequency)
+      .build();
+    Self::new(
+      direction,
+      notional,
+      spread,
+      recovery_rate,
+      schedule,
+      day_count,
+      effective_date,
+      maturity_date,
+    )
+  }
+
+  /// SNAC schedule: quarterly premiums on the unadjusted CDS rolls, the first accruing from the
+  /// step-in date `effective_date`; panics unless `maturity_date` is a roll date, or as `new`.
+  pub fn standard(
+    direction: CdsPosition,
+    notional: T,
+    spread: T,
+    recovery_rate: T,
+    effective_date: NaiveDate,
+    maturity_date: NaiveDate,
+    day_count: DayCountConvention,
+  ) -> Self {
+    let schedule = crate::calendar::ScheduleBuilder::new(effective_date, maturity_date)
+      .frequency(Frequency::Quarterly)
+      .rule(DateGenerationRule::Cds)
       .build();
     Self::new(
       direction,
@@ -206,7 +235,9 @@ impl<T: RealExt> CreditDefaultSwap<T> {
       if coupon_end <= valuation_date {
         continue;
       }
-      let alpha: T = self.day_count.year_fraction(coupon_start, coupon_end);
+      let alpha: T = self
+        .day_count
+        .year_fraction(coupon_start.max(self.effective_date), coupon_end);
       let payment_tau: T = tau_year_fraction(discount_day_count, valuation_date, coupon_end);
       let df_end = discount.discount_factor(payment_tau);
       let q_end = survival.survival_probability(tau_year_fraction(

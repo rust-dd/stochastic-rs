@@ -1,5 +1,7 @@
 use super::*;
 
+const BUSINESS_DAY_252_DT: f64 = 1.0 / 252.0;
+
 fn pricer() -> VarianceSwapPricer {
   VarianceSwapPricer {
     s: 100.0,

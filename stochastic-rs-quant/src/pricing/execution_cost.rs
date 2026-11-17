@@ -28,15 +28,15 @@ pub fn execution_adjusted_price<T: RealExt>(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::microstructure::ExecutionDirection;
+  use crate::order_book::Side;
 
   #[test]
   fn execution_cost_increases_price() {
     let exec = AlmgrenChrissParams {
+      side: Side::Sell,
       total_shares: 1_000.0,
       horizon: 1.0,
       n_intervals: 10,
-      direction: ExecutionDirection::Sell,
       volatility: 0.2,
       gamma: 1e-6,
       eta: 1e-3,

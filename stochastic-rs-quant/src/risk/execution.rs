@@ -4,10 +4,12 @@
 //! ```
 //! use ndarray::Array1;
 //! use stochastic_rs_quant::microstructure::AlmgrenChrissParams;
+//! use stochastic_rs_quant::order_book::Side;
 //! use stochastic_rs_quant::risk::{PnlOrLoss, VarMethod, liquidity_adjusted_var};
 //!
 //! let pnl_samples = Array1::<f64>::linspace(-5.0, 5.0, 50);
-//! let execution_params = AlmgrenChrissParams::<f64>::new(10_000.0, 1.0, 10, 0.02, 1e-6, 1e-5, 1e-6);
+//! let execution_params =
+//!     AlmgrenChrissParams::<f64>::new(Side::Sell, 10_000.0, 1.0, 10, 0.02, 1e-6, 1e-5, 1e-6);
 //!
 //! let var_plus_exec = liquidity_adjusted_var(
 //!     pnl_samples.view(),
@@ -49,16 +51,16 @@ mod tests {
   use ndarray::Array1;
 
   use super::*;
-  use crate::microstructure::ExecutionDirection;
+  use crate::order_book::Side;
 
   #[test]
   fn liquidity_adjusted_var_adds_expected_cost() {
     let samples = Array1::from_vec((0..1000).map(|i| -0.001 * i as f64).collect::<Vec<_>>());
     let exec = AlmgrenChrissParams {
+      side: Side::Sell,
       total_shares: 1_000.0,
       horizon: 1.0,
       n_intervals: 10,
-      direction: ExecutionDirection::Sell,
       volatility: 0.2,
       gamma: 1e-6,
       eta: 1e-3,
