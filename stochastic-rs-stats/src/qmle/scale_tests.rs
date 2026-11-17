@@ -156,3 +156,24 @@ fn a_decimal_scale_moves_the_gmm_fit_by_its_rounding_alone() {
     }
   }
 }
+
+/// On `X_{t+1} = a X_t + b` in doubles the GMM's `σ̂` is where its simplex stops on its way to 0,
+/// which moves with the scale, so it refuses the path as the CIR QMLE does.
+#[test]
+fn the_gmm_refuses_an_exact_fit_as_the_cir_qmle_does() {
+  let dt = 1.0 / 252.0;
+  let refused = Err(StatsError::DegenerateData("zero residual variance"));
+  for (a, b, start, n) in [(0.9, 0.1, 2.0, 200), (0.37, 1.1, 3.0, 12)] {
+    let mut x = vec![start; n];
+    for t in 1..n {
+      x[t] = a * x[t - 1] + b;
+    }
+    for c in [1.0, 1e-4, 1e4, 3.0, 0.7] {
+      let y = Array1::from_iter(x.iter().map(|v| c * v));
+      let qmle = fit_diffusion_qmle(y.view(), dt, DiffusionKind::Cir);
+      assert_eq!(qmle.map(|f| f.sigma), refused, "{a} X + {b} x{c}");
+      let gmm = fit_cir_gmm(y.view(), dt);
+      assert_eq!(gmm.map(|f| f.sigma), refused, "{a} X + {b} x{c}");
+    }
+  }
+}

@@ -26,6 +26,7 @@ use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use crate::StatsError;
 use crate::optim::nelder_mead;
+use crate::qmle::Ar1;
 use crate::qmle::Carrier;
 use crate::qmle::DiffusionKind;
 use crate::qmle::Transition;
@@ -66,12 +67,14 @@ impl GmmCirFit {
 }
 
 /// Two-step GMM of CIR every `dt`; `Err` below 5 points, a negative or non-finite one, a constant
-/// path, a singular `Ŝ` or a start, `Ŝ`, `J` or fit not finite; panics unless `0 < dt < ∞`.
+/// or exact-fit path, singular `Ŝ`, non-finite start, `Ŝ`, `J` or fit; panics unless `0 < dt < ∞`.
 pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCirFit, StatsError> {
   assert_dt(dt);
   // `Ŝ` sums one outer product per transition, so its four moments need four transitions. At unit
   // scale no moment leaves the double range, whatever the path's unit.
   let (x, unit) = unit_scaled(diffusion_path(series, DiffusionKind::Cir, 5)?);
+  // On an exact fit `σ̂` is where the simplex stops on its way to zero, which moves with the scale.
+  Ar1::of(&x, DiffusionKind::Cir)?;
   let nobs = x.len();
 
   // The `T − 1` moment rows `g_t` at `(θ, μ, σ)` and their column mean.
@@ -328,10 +331,10 @@ mod tests {
     );
   }
 
-  /// A path alternating between two values has two distinct moment rows, so `Ŝ` has rank 2.
+  /// A path of zeros with one spike has three distinct moment rows, so `Ŝ` has rank 3 at most.
   #[test]
   fn a_singular_weighting_matrix_is_an_err() {
-    let s = Array1::from_iter((0..100).map(|t| if t % 2 == 0 { 0.04 } else { 0.05 }));
+    let s = Array1::from_iter((0..100).map(|t| if t == 50 { 1.0 } else { 0.0 }));
     assert_eq!(
       fit_cir_gmm(s.view(), 1.0 / 252.0).unwrap_err(),
       StatsError::Singular("GMM weighting matrix")

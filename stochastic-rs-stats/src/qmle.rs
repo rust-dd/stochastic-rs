@@ -431,7 +431,7 @@ pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit
 }
 
 /// `x[1..]` regressed on `x[..n-1]` about their means, the closed form's slope and residuals.
-struct Ar1 {
+pub(crate) struct Ar1 {
   lagged_mean: f64,
   next_mean: f64,
   beta: f64,
@@ -441,7 +441,7 @@ struct Ar1 {
 impl Ar1 {
   /// The regression of `x`; `Err` on a constant `x[..n-1]` or `x[1..]`, a slope not finite or, for
   /// OU, not in `(0, 1)`, as no mean reversion fits it, or an exact fit.
-  fn of(x: &[f64], kind: DiffusionKind) -> Result<Self, StatsError> {
+  pub(crate) fn of(x: &[f64], kind: DiffusionKind) -> Result<Self, StatsError> {
     let m = x.len() - 1;
     let (lagged, next) = (&x[..m], &x[1..]);
     // The regressor's spread is the slope's denominator, and a constant regressand leaves the slope
