@@ -216,19 +216,19 @@ pub(crate) unsafe fn run<
       );
     }
     for step in (if args.step_first == 0 { 1 } else { 0 })..args.steps {
-      let counter = draws::opaque_step(step, global);
+      let step_word = draws::opaque_step(step, global);
       // Fractional increments replace the first `increments` components, which are not drawn.
       if F::NOISES > 0 && !FRACTIONAL {
-        input.noise[0] = args.sqrt_dt * draws::noise(global, counter, 0, key);
+        input.noise[0] = args.sqrt_dt * draws::noise(global, step_word, 0, key);
       }
       if F::NOISES > 1 && (!FRACTIONAL || args.increments < 2) {
-        input.noise[1] = args.sqrt_dt * draws::noise(global, counter, 1, key);
+        input.noise[1] = args.sqrt_dt * draws::noise(global, step_word, 1, key);
       }
       if F::NOISES > 2 {
-        input.noise[2] = args.sqrt_dt * draws::noise(global, counter, 2, key);
+        input.noise[2] = args.sqrt_dt * draws::noise(global, step_word, 2, key);
       }
       if F::NOISES > 3 {
-        input.noise[3] = args.sqrt_dt * draws::noise(global, counter, 3, key);
+        input.noise[3] = args.sqrt_dt * draws::noise(global, step_word, 3, key);
       }
       if FRACTIONAL {
         let length = if args.step_first == 0 {
@@ -244,7 +244,7 @@ pub(crate) unsafe fn run<
       }
       input.curve = curves(curve, args.n_curves, args.steps, step);
       if F::HAS_UNIFORMS {
-        let words = draws::words(global, counter, SITE_UNIFORMS, 0, key);
+        let words = draws::words(global, step_word, SITE_UNIFORMS, 0, key);
         input.uniform = [
           u01_f32(words[0]),
           u01_f32(words[1]),
@@ -299,22 +299,22 @@ pub(crate) unsafe fn run<
         }
       }
       if JUMPS && args.has_jumps != 0 && (F::READS_COUNT || F::READS_JUMP || F::READS_GAMMA) {
-        input.count = draws::poisson(global, counter, key, args.jump_lambda, args.dt);
+        input.count = draws::poisson(global, step_word, key, args.jump_lambda, args.dt);
       }
       if GAMMA && F::READS_GAMMA {
         if args.gamma_law > 0 {
           let shape = args.g1_shape + args.g1_per * input.count;
-          input.gamma[0] = draws::gamma(global, counter, key, 0, shape, args.g1_scale);
+          input.gamma[0] = draws::gamma(global, step_word, key, 0, shape, args.g1_scale);
         }
         if args.gamma_law > 1 {
           let shape = args.g2_shape + args.g2_per * input.count;
-          input.gamma[1] = draws::gamma(global, counter, key, 1, shape, args.g2_scale);
+          input.gamma[1] = draws::gamma(global, step_word, key, 1, shape, args.g2_scale);
         }
       }
       if JUMPS && F::READS_JUMP {
         input.jump = jumps::draw(
           global,
-          counter,
+          step_word,
           key,
           args.jump_law,
           args.jump_a,
