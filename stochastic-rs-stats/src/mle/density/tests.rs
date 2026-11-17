@@ -1,29 +1,14 @@
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::diffusion::ou::Ou;
-use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use super::*;
 use crate::mle::fit_mle;
 use crate::qmle::fit_ou_mle;
+use crate::qmle::test_support::cir;
 use crate::qmle::test_support::simulate_ou;
 
 fn ou(theta: f64, mu: f64, sigma: f64) -> Ou<f64, Deterministic> {
   Ou::new(theta, mu, sigma, 2, None, None, Deterministic::new(0))
-}
-
-fn cir(theta: f64, mu: f64, sigma: f64) -> Cir<f64, Deterministic> {
-  let floor = VarianceBoundary::Floor;
-  Cir::new(
-    theta,
-    mu,
-    sigma,
-    2,
-    None,
-    None,
-    floor,
-    Deterministic::new(0),
-  )
 }
 
 /// The mean and variance of `sde::dcKessler` as its source writes them (`R/dcApprox.R:37-39`).

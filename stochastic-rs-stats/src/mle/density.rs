@@ -219,7 +219,7 @@ impl DensityApprox {
     Some(-0.5 * z.ln() + ln_kernel - (2.0 * a_coeff.abs() * (2.0 * PI).sqrt()).ln())
   }
 
-  /// Kessler's (1997) second-order moments as `sde::dcKessler` (Iacus 2008) states them, the
+  /// Kessler's second-order moments as `sde::dcKessler` (2.0.21, with its errata) states them, the
   /// variance with its `x₀²` terms cancelled by hand; not positive, it leaves no density.
   /// $$
   /// E = x_0 + \mu\Delta + c\,\tfrac{\Delta^2}{2},\qquad

@@ -4,6 +4,15 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::gamma::SimdGamma;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
+use stochastic_rs_stochastic::diffusion::cir::Cir;
+use stochastic_rs_stochastic::params::VarianceBoundary;
+
+/// A CIR law for the density and fit tests; its path fields are unused.
+pub(crate) fn cir(theta: f64, mu: f64, sigma: f64) -> Cir<f64, Deterministic> {
+  let floor = VarianceBoundary::Floor;
+  let seed = Deterministic::new(0);
+  Cir::new(theta, mu, sigma, 2, None, None, floor, seed)
+}
 
 /// Exact OU transition: Gaussian with mean μ+(X−μ)e^{−θΔ} and variance σ²(1−e^{−2θΔ})/(2θ).
 pub(crate) fn simulate_ou(

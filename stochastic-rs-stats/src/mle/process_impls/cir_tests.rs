@@ -1,27 +1,11 @@
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_stochastic::diffusion::cir::Cir;
-use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use crate::mle::DensityApprox;
 use crate::mle::DiffusionModel;
 use crate::mle::MleFit;
 use crate::mle::fit_mle;
+use crate::qmle::test_support::cir;
 use crate::qmle::test_support::simulate_cir;
-
-fn cir(theta: f64, mu: f64, sigma: f64) -> Cir<f64, Deterministic> {
-  let floor = VarianceBoundary::Floor;
-  Cir::new(
-    theta,
-    mu,
-    sigma,
-    2,
-    None,
-    None,
-    floor,
-    Deterministic::new(0),
-  )
-}
 
 fn exact_fit(start: [f64; 3], path: &Array1<f64>, dt: f64) -> MleFit {
   let mut model = cir(start[0], start[1], start[2]);

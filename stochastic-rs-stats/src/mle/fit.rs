@@ -260,7 +260,7 @@ fn resolve_fit_outcome(
   (best_param, converged, iterations as usize)
 }
 
-/// L-BFGS-B MLE of `model`, left at the estimate, on a path every `dt`, in up to 4 searches. `Err`
+/// L-BFGS-B MLE of `model`, left at the estimate, in up to 4 searches; check `converged`. `Err`
 /// below 2 points, on a non-finite one or log-likelihood; panics unless one bound per parameter.
 /// $$
 /// -\sum_{i=1}^{N} \ln p(X_{t_i}\mid X_{t_{i-1}};\theta,\Delta t)
