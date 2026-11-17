@@ -93,10 +93,9 @@ fn flat(_t: f64) -> f64 {
   0.05
 }
 
-/// A Black–Karasinski reversion of exactly zero is the one value the kernels cannot step, so it
-/// samples on the host; any other `a` reaches them.
+/// A Black–Karasinski reversion of exactly zero reaches the kernels, which step its limit.
 #[test]
-fn a_zero_reversion_black_karasinski_keeps_to_the_host() {
+fn a_zero_reversion_black_karasinski_reaches_the_device() {
   let build = |a: f64| {
     BlackKarasinski::<f64, _>::new(
       flat as fn(f64) -> f64,
@@ -108,13 +107,7 @@ fn a_zero_reversion_black_karasinski_keeps_to_the_host() {
       Deterministic::new(11),
     )
   };
-  assert!(!build(0.0).device_ready());
-  assert!(
-    build(0.0)
-      .device_fallback()
-      .is_some_and(|why| why.contains("mean-reversion")),
-    "the reason should name the reversion speed"
-  );
+  assert!(build(0.0).device_ready() && build(0.0).device_fallback().is_none());
   assert!(build(0.1).device_ready());
 }
 

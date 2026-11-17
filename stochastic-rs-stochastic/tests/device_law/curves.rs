@@ -22,6 +22,7 @@ use super::common::Device;
 use super::common::M;
 use super::common::agrees;
 use super::common::all_finite;
+use super::common::means_agree;
 use super::common::slots;
 use super::common::terminal_mean;
 use super::common::within;
@@ -103,25 +104,34 @@ fn black_karasinski_stays_positive_and_agrees() {
   );
 }
 
-/// `a = 0` is the one reversion the kernels' mean term cannot take, so the device build samples on
-/// the host and is the Cpu build to the bit.
+/// `a = 0` takes the mean term's limit `θ dt`, so a zero reversion runs on the device and keeps the
+/// host's law.
 #[test]
-fn a_zero_reversion_keeps_black_karasinski_on_the_host() {
+fn a_zero_reversion_black_karasinski_runs_on_the_device() {
   let bk = |a: f32| {
     BlackKarasinski::<f32, _>::new(
       rising(),
       a,
       0.2,
-      65,
+      N,
       Some(0.03),
       Some(1.0),
       Deterministic::new(47),
     )
   };
-  assert!(!bk(0.0).device_ready() && !bk(0.0).on::<Device>().device_ready());
-  assert_eq!(bk(0.0).on::<Device>().sample_par(4), bk(0.0).sample_par(4));
-  assert_eq!(bk(0.0).on::<Device>().sample(), bk(0.0).sample());
-  assert!(bk(0.1).on::<Device>().device_ready());
+  assert!(bk(0.0).device_ready() && bk(0.0).on::<Device>().device_ready());
+  let device = bk(0.0).on::<Device>().sample_par(M);
+  within(
+    &device,
+    0.0,
+    f32::INFINITY,
+    "zero-reversion Black-Karasinski",
+  );
+  means_agree(
+    &bk(0.0).sample_par(M),
+    &device,
+    "zero-reversion Black-Karasinski terminal mean",
+  );
 }
 
 /// The CIR++ shift is added in the report, so the reported path must clear
@@ -339,9 +349,8 @@ fn hjm_agrees_with_the_cpu_law() {
       &format!("HJM {name} terminal spread"),
     );
   }
-  // The three rows take three independent shocks, so their terminal values
-  // are uncorrelated. A kernel feeding one hashed component to every row
-  // keeps each marginal above exactly right and fails only here.
+  // The three rows take independent shocks, so their terminals are uncorrelated; a kernel feeding
+  // one noise component to every row keeps each marginal right and fails only here.
   let row_corr = |paths: &[[Array1<f32>; 3]], a: usize, b: usize| {
     let last = paths[0][a].len() - 1;
     let (ma, mb) = (row_mean(paths, a), row_mean(paths, b));

@@ -4,6 +4,8 @@ mod frame;
 
 mod language;
 
+mod philox;
+
 #[cfg(test)]
 mod tests;
 
@@ -80,7 +82,11 @@ impl Shape {
         families::c_table_for(family),
       ]
       .iter()
-      .any(|block| reads(block, "u") || reads(block, "u2")),
+      .any(|block| {
+        ["u", "u2", "u3", "u4"]
+          .iter()
+          .any(|name| reads(block, name))
+      }),
       noises: family.noises() as u8,
       components: family.components() as u8,
     }

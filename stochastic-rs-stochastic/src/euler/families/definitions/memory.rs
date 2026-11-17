@@ -1,8 +1,8 @@
 macro_rules! euler_memory {
-  ($emit:ident; ($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $lv:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident); $($previous:tt)*) => {
+  ($emit:ident; ($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $u3:ident, $u4:ident, $lv:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident); $($previous:tt)*) => {
     euler_multifactor! {
       $emit;
-      ($params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $lv, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $pv, $pv2);
+      ($params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $u3, $u4, $lv, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $pv, $pv2);
       $($previous)*
   /// The rough Heston model in the two-term rational approximation of its
   /// kernel — a mean-reverting factor `y`, a local factor `z` and the memory
@@ -71,13 +71,8 @@ macro_rules! euler_memory {
     report { s, v }
     history { push (rho * dw + sqrt(negate(rho * rho - lit(1.0))) * dq) weights ($ct) },
 
-  /// Linear fractional stable motion: a moving average of α-stable
-  /// innovations under the weights `dt^d ((k+1)^d − k^d)`, `d = H − 1/α`,
-  /// which the host tabulates as `ct`. The innovation is the
-  /// Chambers–Mallows–Stuck draw from the step's two uniforms — the angle
-  /// `π (u − ½)`, the exponential `−ln u2` — scaled by the host-folded
-  /// `S · scale · dt^{1/α}`, `cos` written as a shifted `sin`, and the
-  /// uniforms clamped as the stable subordinator clamps them.
+  /// Linear fractional stable motion: α-stable Chambers–Mallows–Stuck innovations from the step's
+  /// two uniforms, averaged under the weights `dt^d ((k+1)^d − k^d)` the host tabulates as `ct`.
   108 => LinearFractionalStable { alpha, inv_alpha, tail_exp, b, scale_s, pi, half_pi }
     state (x)
     noise (dz)
@@ -85,10 +80,8 @@ macro_rules! euler_memory {
     report { x }
     history {
       push (
-        bind uu = min(max($u, lit(1e-7)), lit(0.9999999));
-        bind ee = min(max($u2, lit(1e-7)), lit(0.9999999));
-        bind va = pi * (uu - lit(0.5));
-        bind w = negate(ln(ee));
+        bind va = pi * ($u - lit(0.5));
+        bind w = negate(ln($u2));
         bind phi = alpha * (va + b);
         bind cs = max(sin(va + half_pi), lit(1e-20));
         bind ratio = max(sin(va - phi + half_pi) / w, lit(1e-30));
@@ -161,10 +154,10 @@ macro_rules! euler_memory {
     noise (dz)
     step {
       bind se = max(s, lit(1.0e-12));
-      bind d = beta * ln(max($u, lit(1.0e-7))) / se + lit(1.0);
+      bind d = beta * ln($u) / se + lit(1.0);
       bind pos = less(negate(d), lit(0.0));
       bind s1 = pick(pos, negate(ln(max(d, lit(1.0e-30)))) / beta, lit(1.0e30));
-      bind s2 = negate(ln(max($u2, lit(1.0e-7)))) / mu;
+      bind s2 = negate(ln($u2)) / mu;
       bind st = min(s1, s2);
       t + st,
       s * exp(negate(beta * st)) + alpha
@@ -218,18 +211,8 @@ macro_rules! euler_memory {
     }
     report { f0, f1, f2, f3 },
 
-  /// The inverse of an α-stable subordinator, `E(t) = inf{u : D(u) > t}`: the
-  /// table block builds `D` on a grid in `u` from positive-stable increments —
-  /// Kanter's form of the Chambers–Mallows–Stuck draw, its uniforms clamped
-  /// away from the ends of the unit interval, at scale `(c Δu)^{1/α}` — and the
-  /// step takes the interpolated first passage over the horizon's time. The
-  /// state is that inverse; there is nothing to step.
-  ///
-  /// The increment sums its powers and its scale as logarithms and raises them
-  /// once, for the reason
-  /// [`StableSubordinator`](Family::StableSubordinator) does: the factors
-  /// leave the representable range for small `α` well before their product
-  /// does, and `(c Δu)^{1/α}` underflows to zero before any of them.
+  /// The inverse α-stable subordinator `E(t) = inf{u : D(u) > t}`: a table of Kanter–CMS increments
+  /// of `D` in `u`, summed as logarithms as the subordinator is, inverted at each step's time.
   114 => InverseStableSubordinator { alpha, c, inv_alpha, one_minus_alpha, tail_exp, pi }
     state (x)
     noise (dz)
@@ -237,8 +220,8 @@ macro_rules! euler_memory {
     report { x }
     table {
       increment (
-        bind uu = min(max($uj, lit(1e-7)), lit(0.9999999)) * pi;
-        bind w = negate(ln(min(max($uv, lit(1e-7)), lit(0.9999999))));
+        bind uu = $uj * pi;
+        bind w = negate(ln($uv));
         bind lsin = ln(c * $tv) - ln(max(sin(uu), lit(1e-20)));
         bind ltail = ln(max(sin(one_minus_alpha * uu), lit(1e-20))) - ln(w);
         bind lg = inv_alpha * lsin + tail_exp * ltail;

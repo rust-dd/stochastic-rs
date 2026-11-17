@@ -1,8 +1,5 @@
-//! cudarc + NVRTC device path of the Euler engine: one CUDA thread per path,
-//! the whole recursion in the kernel, normals from the same counter hash of
-//! `(path, step, seed)` as the Metal kernel (so the two device back-ends
-//! agree seed for seed up to libm rounding), in `f32` or `f64`
-//! according to `T` — NVIDIA hardware has native double precision.
+//! cudarc + NVRTC Euler engine: one thread per path, in `f32` or `f64` after `T`, on the Metal
+//! kernels' Philox counters, so the two back-ends agree seed for seed up to libm rounding.
 
 use std::any::TypeId;
 use std::collections::HashMap;
@@ -143,7 +140,7 @@ const CUDA_HEADER: &str = r#"extern "C" __global__ void euler_paths_REAL(
     unsigned int family, unsigned int components, unsigned int noises,
     REAL x00, REAL x01, REAL x02, REAL x03,
     REAL dt, REAL sqrt_dt,
-    unsigned int seed, unsigned int steps, unsigned int paths,
+    unsigned int seed_lo, unsigned int seed_hi, unsigned int steps, unsigned int paths,
     unsigned int first_path,
     const REAL* __restrict__ incs, unsigned int increments,
     const REAL* __restrict__ curve, unsigned int n_curves,
@@ -402,7 +399,7 @@ fn run<R, O>(
   family: u32,
   components: u32,
   noises: u32,
-  seed: u32,
+  key: [u32; 2],
   first: usize,
   n: usize,
   m: usize,
@@ -520,7 +517,8 @@ where
       .arg(&x0[3])
       .arg(&dt)
       .arg(&sqrt_dt)
-      .arg(&seed)
+      .arg(&key[0])
+      .arg(&key[1])
       .arg(&steps)
       .arg(&paths)
       .arg(&first_path)
@@ -743,14 +741,8 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
     if m <= rows {
       return self.euler_kernel(process, 0, m, seed);
     }
-    // The pipelined batch hashes its own Gaussian increments and knows
-    // nothing of a fractional pipeline or a Markov lift, so a process with
-    // either goes chunk by chunk through the single launch instead, which
-    // runs the pipeline at the right row offset for each chunk. Sending it
-    // through the pipeline would silently step Brownian motion in place of
-    // the fractional or rough one. The history, series and table blocks live
-    // in the kernel's own per-path arrays and travel as launch scalars, so
-    // they ride the pipeline unchanged.
+    // The pipelined batch draws its own normals and runs no fGN pipeline or lift, so it would step
+    // Brownian motion in their place: such a process takes the single launch chunk by chunk.
     if process.fgn_spec().is_some() || process.lift_spec().is_some() {
       let mut out = Array2::<T>::zeros((m, n));
       // Through `over_chunks`, not a plain loop: a chunk that runs the card
@@ -860,7 +852,7 @@ fn device_paths<T: FloatExt, O>(
         (law, f(s1), f(c1), f(p1), f(s2), f(c2), f(p2))
       });
     let dt = dt.to_f64().unwrap_or(0.0);
-    let seed32 = (seed ^ (seed >> 32)) as u32;
+    let key = super::philox::key(seed);
     let p64: [f64; crate::euler::PARAM_SLOTS] =
       std::array::from_fn(|i| params[i].to_f64().unwrap_or(0.0));
     let streams = fgn.as_ref().map_or(1, |spec| spec.streams) as u32;
@@ -896,7 +888,7 @@ fn device_paths<T: FloatExt, O>(
         family,
         components,
         noises,
-        seed32,
+        key,
         first,
         n,
         m,
@@ -980,7 +972,7 @@ fn device_paths<T: FloatExt, O>(
       family,
       components,
       noises,
-      seed32,
+      key,
       first,
       n,
       m,
@@ -1037,7 +1029,7 @@ fn launch_chunk<R>(
   family: u32,
   components: u32,
   noises: u32,
-  seed: u32,
+  key: [u32; 2],
   first: usize,
   n: usize,
   m: usize,
@@ -1138,7 +1130,8 @@ where
       .arg(&x0[3])
       .arg(&dt)
       .arg(&sqrt_dt)
-      .arg(&seed)
+      .arg(&key[0])
+      .arg(&key[1])
       .arg(&steps)
       .arg(&paths)
       .arg(&first_path)
@@ -1192,7 +1185,7 @@ fn pipelined<R>(
   family: u32,
   components: u32,
   noises: u32,
-  seed: u32,
+  key: [u32; 2],
   n: usize,
   m: usize,
   rows: usize,
@@ -1311,7 +1304,7 @@ where
       family,
       components,
       noises,
-      seed,
+      key,
       first,
       n,
       len,
@@ -1427,7 +1420,7 @@ fn pipelined_paths<T: FloatExt>(
   let (components, noises) = (arity.components() as u32, arity.noises() as u32);
   let planes = components as usize;
   let dt = dt.to_f64().unwrap_or(0.0);
-  let seed32 = (seed ^ (seed >> 32)) as u32;
+  let key = super::philox::key(seed);
   let p64: [f64; crate::euler::PARAM_SLOTS] =
     std::array::from_fn(|i| params[i].to_f64().unwrap_or(0.0));
   if TypeId::of::<T>() == TypeId::of::<f64>() {
@@ -1441,7 +1434,7 @@ fn pipelined_paths<T: FloatExt>(
       family,
       components,
       noises,
-      seed32,
+      key,
       n,
       m,
       rows,
@@ -1488,7 +1481,7 @@ fn pipelined_paths<T: FloatExt>(
     family,
     components,
     noises,
-    seed32,
+    key,
     n,
     m,
     rows,

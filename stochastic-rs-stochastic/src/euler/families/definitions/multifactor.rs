@@ -1,5 +1,5 @@
 macro_rules! euler_multifactor {
-  ($emit:ident; ($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $lv:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident); $($previous:tt)*) => {
+  ($emit:ident; ($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $u3:ident, $u4:ident, $lv:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident); $($previous:tt)*) => {
     $emit! {
       $($previous)*
   /// The two-dimensional Wishart process by the exact Ahdida–Alfonsi step:
@@ -55,37 +55,21 @@ macro_rules! euler_multifactor {
     }
     report { a, b, c },
 
-  /// A bivariate Hawkes process with exponential excitation and one decay per
-  /// target, one event per step, by the superposition of exact clocks: each
-  /// target's excess intensity `s_i e^{−β_i w}` has its first arrival in closed
-  /// form (Dassios–Zhao) from one uniform, the two baselines together are a
-  /// Poisson clock of rate `μ₁ + μ₂` whose arrival takes a third uniform and
-  /// whose component a fourth, and the event is the earliest of the three
-  /// clocks. The two extra uniforms come from the four noise components: half
-  /// the sum of two squared standard normals is a unit exponential, and one
-  /// minus its negative exponential a uniform. The state carries the event
-  /// time, the two excess intensities and the mark of the event just taken;
-  /// the report is the time and the mark. A one-dimensional process sets the
-  /// second baseline and its excitations to zero, so its clocks never fire.
+  /// A bivariate Hawkes process, one event per step: the earliest of the targets' exact excess
+  /// clocks (Dassios–Zhao, from `u` and `u3`) and the baselines' clock (`u2`, its mark from `u4`).
   117 => HawkesEvents2 { mu1, mu2, a11, a12, a21, a22, b1, b2 }
     state (t, s1, s2, k)
-    noise (dz, dz2, dz3, dz4)
+    noise ()
     step {
-      bind z1 = dz / sqrt($dt);
-      bind z2 = dz2 / sqrt($dt);
-      bind z3 = dz3 / sqrt($dt);
-      bind z4 = dz4 / sqrt($dt);
-      bind u3 = min(max(negate(exp(negate((z1 * z1 + z2 * z2) * lit(0.5))) - lit(1.0)), lit(1.0e-7)), lit(0.9999999));
-      bind u4 = min(max(negate(exp(negate((z3 * z3 + z4 * z4) * lit(0.5))) - lit(1.0)), lit(1.0e-7)), lit(0.9999999));
       bind se1 = max(s1, lit(1.0e-12));
-      bind d1 = b1 * ln(max($u, lit(1.0e-7))) / se1 + lit(1.0);
+      bind d1 = b1 * ln($u) / se1 + lit(1.0);
       bind w1 = pick(less(negate(d1), lit(0.0)), negate(ln(max(d1, lit(1.0e-30)))) / b1, lit(1.0e30));
       bind se2 = max(s2, lit(1.0e-12));
-      bind d2 = b2 * ln(max(u3, lit(1.0e-7))) / se2 + lit(1.0);
+      bind d2 = b2 * ln($u3) / se2 + lit(1.0);
       bind w2 = pick(less(negate(d2), lit(0.0)), negate(ln(max(d2, lit(1.0e-30)))) / b2, lit(1.0e30));
-      bind w0 = negate(ln(max($u2, lit(1.0e-7)))) / (mu1 + mu2);
+      bind w0 = negate(ln($u2)) / (mu1 + mu2);
       bind w = min(w0, min(w1, w2));
-      bind base1 = less(u4 * (mu1 + mu2), mu1);
+      bind base1 = less($u4 * (mu1 + mu2), mu1);
       bind kn = pick(leq(w1, w), lit(0.0), pick(leq(w2, w), lit(1.0), pick(base1, lit(0.0), lit(1.0))));
       bind col1 = less(kn, lit(0.5));
       t + w,

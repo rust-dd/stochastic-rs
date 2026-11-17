@@ -221,10 +221,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1));
-    let decay = (-self.a * dt).exp();
     crate::euler::EulerSpec::LogMeanReverting {
-      decay,
-      a: self.a,
+      decay: (-self.a * dt).exp(),
+      pull: dt * expm1_over(-self.a * dt),
       sigma_eff: self.sigma * ou_step_std(self.a, dt) / dt.sqrt(),
     }
   }
@@ -352,12 +351,6 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
-  }
-
-  /// `a = 0` stays on the host: the kernels' mean term `(θ/a)(1 − e^{−a·dt})` is `0/0` there.
-  fn device_fallback(&self) -> Option<&'static str> {
-    (self.a == T::zero())
-      .then_some("a zero mean-reversion speed, where the kernels' mean term is 0/0")
   }
 }
 

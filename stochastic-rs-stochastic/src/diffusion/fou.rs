@@ -364,10 +364,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FouSampler<'_
   }
 }
 
-/// The Euler engine's view of fOU: the same OU family a Gaussian process
-/// uses, with the fractional increments supplied instead of hashed ones.
-/// Nothing about the recursion differs, which is the point — a step that
-/// multiplies by `dz` does not care where `dz` came from.
+/// The Euler engine's view of fOU: the Gaussian OU family with fractional increments in place of
+/// the kernel's normals; a step that multiplies by `dz` does not care where `dz` came from.
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
   crate::euler::EulerCoefficients<T> for Fou<T, S, B>
 {

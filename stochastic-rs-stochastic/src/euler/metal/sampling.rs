@@ -182,6 +182,6 @@ fn increments(fractional: Option<&(OutputRental, u32, usize)>) -> Increments<'_>
       streams: *streams,
       row: *row,
     },
-    None => Increments::Hashed,
+    None => Increments::Drawn,
   }
 }

@@ -220,6 +220,25 @@ fn cell_sum(
   }
 }
 
+/// One series term's gap, exponential, two uniforms and arrival time, drawn for path 0 under
+/// launch seed 11 from the Philox port exactly as the frame's preamble draws them.
+fn series_draws(term: u32) -> (f32, f32, f32, f32, f32) {
+  use super::philox::{
+    SITE_SERIES, SITE_SERIES_MARKS, SITE_SERIES_TIME, key, philox4x32_10, u01_f32,
+  };
+  use super::tests::philox::exp1_f32;
+
+  let words = |site| philox4x32_10([0, 0, site, term], key(11));
+  let (draws, marks) = (words(SITE_SERIES), words(SITE_SERIES_MARKS));
+  (
+    exp1_f32(draws[0], draws[1]),
+    exp1_f32(draws[2], draws[3]),
+    u01_f32(marks[0]),
+    u01_f32(marks[2]),
+    u01_f32(words(SITE_SERIES_TIME)[0]),
+  )
+}
+
 fn probe_curves() -> Vec<Vec<f32>> {
   (0..crate::euler::CURVE_SLOTS)
     .map(|k| {
@@ -274,6 +293,8 @@ impl PathSampler<f32> for ProbeSampler {
       1.3,
       0.5,
       0.5,
+      0.5,
+      0.5,
       0.0,
       0.0,
       0.0,
@@ -308,14 +329,11 @@ impl PathSampler<f32> for ProbeSampler {
     let mut series = vec![0.0f32; N];
     let mut terms: Vec<(f32, f32, f32, f32, usize)> = Vec::new();
     if family.has_series() {
-      let mut uniform = SimdUniform::<f32>::new(0.0, 1.0).seeded(&Deterministic::new(11));
       let mut gj = 0.0f32;
-      for _ in 0..PROBE_TERMS {
-        gj -= (uniform.sample() * 0.999998 + 1.0e-6).ln();
-        let ej = -(uniform.sample() * 0.999998 + 1.0e-6).ln();
-        let uj = uniform.sample();
-        let uv = uniform.sample();
-        let ratio = uniform.sample() * (N - 1) as f32;
+      for term in 1..=PROBE_TERMS {
+        let (gap, ej, uj, uv, time) = series_draws(term);
+        gj += gap;
+        let ratio = time * (N - 1) as f32;
         let cell = (ratio.ceil() as usize).clamp(1, N - 1);
         if family.series_live() {
           terms.push((gj, ej, uj, uv, cell));
@@ -384,9 +402,10 @@ impl PathSampler<f32> for ProbeSampler {
       }
       let mut cv = 0.0f32;
       if let Some(slot) = hist_slot {
-        let pushed =
-          super::families::host_history(family, &state, &params, self.dt, &noise, 0.5, 0.5)
-            .expect("a family with a history clause pushes a value");
+        let pushed = super::families::host_history(
+          family, &state, &params, self.dt, &noise, 0.5, 0.5, 0.5, 0.5,
+        )
+        .expect("a family with a history clause pushes a value");
         past.push(pushed);
         let weights = &curves[slot as usize];
         let hi = past.len() - 1;
@@ -410,6 +429,8 @@ impl PathSampler<f32> for ProbeSampler {
         0.0,
         0.7,
         1.3,
+        0.5,
+        0.5,
         0.5,
         0.5,
         lv,
@@ -450,6 +471,8 @@ impl PathSampler<f32> for ProbeSampler {
         0.0,
         0.7,
         1.3,
+        0.5,
+        0.5,
         0.5,
         0.5,
         0.0,
@@ -534,10 +557,8 @@ impl EulerCoefficients<f32> for Probe {
     })
   }
 
-  /// Every probe takes jumps, so the count's own hash stream runs on both
-  /// kernels whether or not the family under test reads it.
-  /// A series family draws the probes' fixed handful of terms per path; the
-  /// rest draw none.
+  /// Every probe takes jumps, so the count's Philox draws run on both kernels whether or not the
+  /// family reads them; a series family draws the probes' fixed handful of terms a path.
   fn series_terms(&self) -> Option<u32> {
     let (code, _) = self.spec.encode();
     super::families::Family::from_code(code)
@@ -1094,7 +1115,7 @@ fn every_family() -> Vec<Probe> {
     p(
       EulerSpec::LogMeanReverting {
         decay: 0.99,
-        a: 0.5,
+        pull: 0.02,
         sigma_eff: 0.02,
       },
       (0.03_f32).ln(),
@@ -1249,6 +1270,8 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
       1.3,
       0.5,
       0.5,
+      0.5,
+      0.5,
       0.0,
       0.0,
       0.0,
@@ -1281,14 +1304,11 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
     let mut series = vec![0.0f32; N];
     let mut terms: Vec<(f32, f32, f32, f32, usize)> = Vec::new();
     if family.has_series() {
-      let mut uniform = SimdUniform::<f32>::new(0.0, 1.0).seeded(&Deterministic::new(11));
       let mut gj = 0.0f32;
-      for _ in 0..PROBE_TERMS {
-        gj -= (uniform.sample() * 0.999998 + 1.0e-6).ln();
-        let ej = -(uniform.sample() * 0.999998 + 1.0e-6).ln();
-        let uj = uniform.sample();
-        let uv = uniform.sample();
-        let ratio = uniform.sample() * (N - 1) as f32;
+      for term in 1..=PROBE_TERMS {
+        let (gap, ej, uj, uv, time) = series_draws(term);
+        gj += gap;
+        let ratio = time * (N - 1) as f32;
         let cell = (ratio.ceil() as usize).clamp(1, N - 1);
         if family.series_live() {
           terms.push((gj, ej, uj, uv, cell));
@@ -1359,9 +1379,10 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
       }
       let mut cv = 0.0f32;
       if let Some(slot) = hist_slot {
-        let pushed =
-          super::families::host_history(family, &state, &params, self.dt, &noise, 0.5, 0.5)
-            .expect("a family with a history clause pushes a value");
+        let pushed = super::families::host_history(
+          family, &state, &params, self.dt, &noise, 0.5, 0.5, 0.5, 0.5,
+        )
+        .expect("a family with a history clause pushes a value");
         past.push(pushed);
         let weights = &curves[slot as usize];
         let hi = past.len() - 1;
@@ -1385,6 +1406,8 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
         0.0,
         0.7,
         1.3,
+        0.5,
+        0.5,
         0.5,
         0.5,
         lv,
@@ -1425,6 +1448,8 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
         0.0,
         0.7,
         1.3,
+        0.5,
+        0.5,
         0.5,
         0.5,
         0.0,

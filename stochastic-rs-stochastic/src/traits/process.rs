@@ -115,8 +115,8 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// guarantee, and it is what the crate's reproducibility suite tests.
 ///
 /// **Same seed, different backend.** *Never* identical, by construction. The
-/// host draws from this crate's SIMD ziggurat; a device kernel hashes its own
-/// normals from `(path, step, seed)`, and the fractional pipelines transform
+/// host draws from this crate's SIMD ziggurat; a device kernel draws its own
+/// normals from Philox counters, and the fractional pipelines transform
 /// their noise in a different order again. What the two share is the *law*,
 /// which is what the device-law suite compares — the terminal mean, the
 /// spread, the covariance, each against the host's own. A program that

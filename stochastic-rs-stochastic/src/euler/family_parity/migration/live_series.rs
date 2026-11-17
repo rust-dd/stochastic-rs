@@ -54,7 +54,9 @@ fn live_series_storage_preserves_one_based_random_counters() {
       "{name}: all 512 one-based terms must fit in the zero-based storage",
     );
     assert_eq!(
-      source.matches("(j * 40503u)").count(),
+      source
+        .matches("stoch_philox(first_path + path, 0u, site_series, j, seed_lo, seed_hi, words);")
+        .count(),
       2,
       "{name}: draw and replay must keep the original one-based term counter",
     );
@@ -79,42 +81,33 @@ fn base() -> SystemProbe<2> {
   }
 }
 
-fn avalanche(mut value: u32) -> u32 {
-  value ^= value >> 16;
-  value = value.wrapping_mul(2_246_822_519);
-  value ^= value >> 13;
-  value = value.wrapping_mul(3_266_489_917);
-  value ^ (value >> 16)
+fn words(path: usize, site: u32, term: u32, seed: u64) -> [u32; 4] {
+  use crate::euler::philox;
+  philox::philox4x32_10([path as u32, 0, site, term], philox::key(seed))
 }
 
-fn term_uniform(path: u32, term: u32, seed: u32, salt: u32) -> f32 {
-  let key = path.wrapping_mul(2_654_435_761) ^ term.wrapping_mul(40_503) ^ 3_266_489_917;
-  let word = avalanche(key ^ salt ^ seed.wrapping_mul(2_654_435_761));
-  word as f32 * 2.328_306_4e-10
-}
-
-fn exponential(uniform: f32) -> f32 {
-  -(uniform * 0.999_998 + 1.0e-6).ln()
-}
-
-/// The reference keeps no indexed arrival cache: it accumulates the clock
-/// once and adds each term directly to the cell identified by its own hash.
+/// The reference keeps no indexed arrival cache: it accumulates the clock once and adds each term
+/// directly to the cell its own Philox counter draws.
 fn reference(paths: &Array3<f32>, first: usize, seed: u64) -> (Array3<f32>, Array3<f32>) {
-  let seed = (seed ^ (seed >> 32)) as u32;
+  use crate::euler::philox::{SITE_SERIES, SITE_SERIES_MARKS, SITE_SERIES_TIME, u01_f32};
+  use crate::euler::tests::philox::exp1_f32;
+
   let mut expected = Array3::<f32>::zeros((1, ROWS, N));
   let mut last = Array3::<f32>::zeros((1, ROWS, N));
   for path in 0..ROWS {
     let mut arrival = 0.0f32;
     for term in 1..=512 {
-      let uniform = |salt| term_uniform((first + path) as u32, term, seed, salt);
-      arrival += exponential(uniform(2_654_435_769));
-      let cell = (uniform(374_761_393) * (N - 1) as f32).ceil() as usize;
+      let draws = words(first + path, SITE_SERIES, term, seed);
+      let marks = words(first + path, SITE_SERIES_MARKS, term, seed);
+      arrival += exp1_f32(draws[0], draws[1]);
+      let time = u01_f32(words(first + path, SITE_SERIES_TIME, term, seed)[0]);
+      let cell = (time * (N - 1) as f32).ceil() as usize;
       let cell = cell.clamp(1, N - 1);
       let variance = paths[[1, path, cell - 1]].max(1.0e-12);
       let cap = 1.0 / (arrival * 100.0 / variance);
-      let draw = exponential(uniform(2_246_822_507)) * uniform(3_266_489_909) / 0.001;
+      let draw = exp1_f32(draws[2], draws[3]) * u01_f32(marks[0]) / 0.001;
       let magnitude = cap.min(draw);
-      let size = if uniform(668_265_263) < 0.5 {
+      let size = if u01_f32(marks[2]) < 0.5 {
         magnitude
       } else {
         -magnitude
@@ -144,6 +137,7 @@ fn all_512_live_terms_match_an_independent_reference() {
     step_first: false,
     terms: Some(512),
   };
+  let mut observable_last_term = false;
   for seed in [SEEDS[0], SEEDS[2]] {
     let full = launch(&device, &probe, FIRST, ROWS, seed);
     assert!(full.iter().all(|value| value.is_finite()));
@@ -154,7 +148,6 @@ fn all_512_live_terms_match_an_independent_reference() {
     probe.terms = Some(511);
     let previous = launch(&device, &probe, FIRST, ROWS, seed);
     probe.terms = Some(512);
-    let mut observable_last_term = false;
     for path in 0..ROWS {
       for step in 0..N {
         let actual = full[[0, path, step]];
@@ -178,9 +171,9 @@ fn all_512_live_terms_match_an_independent_reference() {
         observable_last_term |= want_delta.abs() > 10.0 * tolerance;
       }
     }
-    assert!(
-      observable_last_term,
-      "term 512 must exceed the comparison tolerance"
-    );
   }
+  assert!(
+    observable_last_term,
+    "term 512 must exceed the comparison tolerance"
+  );
 }

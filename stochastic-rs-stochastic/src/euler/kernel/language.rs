@@ -15,6 +15,7 @@ pub(crate) struct Language<'a> {
   pub atan: &'a str,
   pub index: &'a str,
   pub wide: &'a str,
+  pub draws: &'a str,
 }
 
 pub(crate) fn cuda_language(real: &'static str) -> Language<'static> {
@@ -34,6 +35,7 @@ pub(crate) fn cuda_language(real: &'static str) -> Language<'static> {
       atan: "atanf",
       index: "unsigned long long",
       wide: "unsigned long long",
+      draws: super::philox::C_DRAWS_F32,
     }
   } else {
     Language {
@@ -51,12 +53,19 @@ pub(crate) fn cuda_language(real: &'static str) -> Language<'static> {
       atan: "atan",
       index: "unsigned long long",
       wide: "unsigned long long",
+      draws: super::philox::C_DRAWS_F64,
     }
   }
 }
 
 pub(crate) fn prelude(lang: &Language<'_>) -> String {
-  substitute(crate::euler::families::vocabulary::C_PRELUDE, lang)
+  format!(
+    "{}{}{}{}",
+    super::philox::sites(),
+    super::philox::C_PHILOX,
+    substitute(lang.draws, lang),
+    substitute(crate::euler::families::vocabulary::C_PRELUDE, lang)
+  )
 }
 
 pub(super) fn substitute(text: &str, lang: &Language<'_>) -> String {

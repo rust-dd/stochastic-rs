@@ -1,8 +1,8 @@
 macro_rules! euler_jump_schemes {
-  ($emit:ident; ($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $lv:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident); $($previous:tt)*) => {
+  ($emit:ident; ($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $u3:ident, $u4:ident, $lv:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident); $($previous:tt)*) => {
     euler_transformations! {
       $emit;
-      ($params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $lv, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $pv, $pv2);
+      ($params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $u3, $u4, $lv, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $pv, $pv2);
       $($previous)*
   /// `d ln S = (μ − λκ − ½σ²) dt + σ dW + Σ Y_i`, the jump sizes lognormal:
   /// Merton's jump diffusion in log-price. The jump sum is the kernel's, from
@@ -120,32 +120,14 @@ macro_rules! euler_jump_schemes {
     }
     report { x },
 
-  /// A positive-stable subordinator by the Chambers-Mallows-Stuck transform:
-  /// one uniform on `(0, π)` and one exponential, both from the step's own
-  /// uniforms, with no rejection. The two exponents depend on `α` alone and
-  /// are folded on the host, as are `π` and the scale — the latter as
-  /// `ln((c·dt)^{1/α})`, since the scale itself underflows to zero for `α`
-  /// below about 0.011 on a fine grid.
-  ///
-  /// The uniforms are clamped into the open interval at a bound `f32` can
-  /// hold below one: at exactly one the angle is `π`, whose sine is a small
-  /// *negative* in single precision, and the logarithm of that is a NaN. The
-  /// sines are floored for the same reason the clamp exists.
-  ///
-  /// The two powers and the scale are summed as logarithms and raised once,
-  /// rather than multiplied as three factors. Each factor leaves the
-  /// representable range long before their product does — at `α = 0.01` the
-  /// exponent is 100, so `sin(u)^{1/α}` underflows for `sin u < 8e-4` and the
-  /// tail factor overflows for `w < 7e-4` — and the product then came back
-  /// `+inf`, or NaN against an underflowed scale, where the factors would have
-  /// cancelled. `sin(αu)` stays outside: it is O(1) over the clamped range and
-  /// is the one factor that never needed a logarithm.
+  /// A positive-stable subordinator by Chambers–Mallows–Stuck from the step's two uniforms, its two
+  /// powers and scale summed as logarithms: each factor leaves `f32`'s range for small `α` first.
   65 => StableSubordinator { alpha, inv_alpha, one_minus_alpha, tail_exp, log_scale, pi }
     state (x)
     noise (dz)
     step {
-      bind uu = min(max($u, lit(1e-7)), lit(0.9999999)) * pi;
-      bind w = negate(ln(min(max($u2, lit(1e-7)), lit(0.9999999))));
+      bind uu = $u * pi;
+      bind w = negate(ln($u2));
       bind lsin = negate(ln(max(sin(uu), lit(1e-20))));
       bind ltail = ln(max(sin(one_minus_alpha * uu), lit(1e-20))) - ln(w);
       bind lg = log_scale + inv_alpha * lsin + tail_exp * ltail;

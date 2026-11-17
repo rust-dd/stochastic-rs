@@ -1,8 +1,8 @@
 macro_rules! euler_systems {
-  ($emit:ident; ($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $lv:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident); $($previous:tt)*) => {
+  ($emit:ident; ($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $u3:ident, $u4:ident, $lv:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $pv:ident, $pv2:ident); $($previous:tt)*) => {
     euler_jump_schemes! {
       $emit;
-      ($params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $lv, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $pv, $pv2);
+      ($params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $u3, $u4, $lv, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $pv, $pv2);
       $($previous)*
   /// `dS = μS dt + S√V dW`, `dV = κ(θ − V) dt + σV^p dB` with `corr(W, B) = ρ`
   /// and the variance truncated at zero: the Heston model under its Euler
@@ -181,14 +181,12 @@ macro_rules! euler_systems {
     step { x + $ct * $dt + sigma * dz }
     report { x },
 
-  /// The exact one-step Ornstein–Uhlenbeck transition in log space, reported
-  /// exponentiated: Black-Karasinski. `decay` is `exp(−a·dt)` and the noise
-  /// scale folds the exact transition standard deviation, both of which
-  /// depend on `dt` alone.
-  47 => LogMeanReverting { decay, a, sigma_eff }
+  /// Black-Karasinski's exact OU step in log space, reported exponentiated: `decay = e^{−a dt}`,
+  /// `pull` the host's `(1 − decay)/a` (`dt` at `a = 0`), the noise scale the step's deviation.
+  47 => LogMeanReverting { decay, pull, sigma_eff }
     state (y)
     noise (dz)
-    step { y * decay + ($ct / a) * negate(decay - lit(1.0)) + sigma_eff * dz }
+    step { y * decay + $ct * pull + sigma_eff * dz }
     report { exp(y) },
 
   /// A square-root diffusion shifted by a deterministic curve, truncated at

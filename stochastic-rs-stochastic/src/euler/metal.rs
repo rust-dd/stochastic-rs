@@ -13,7 +13,7 @@ use launch::{device_paths, launch_paths};
 type Result<T> = std::result::Result<T, DeviceError>;
 
 enum Increments<'a> {
-  Hashed,
+  Drawn,
   /// `streams` adjacent rows of `row` increments per path.
   Device {
     buffer: &'a Buffer<f32>,

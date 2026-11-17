@@ -101,7 +101,7 @@ impl Context {
     }
     let mut output = self.output.take().expect("sized output");
     let increments = match increments {
-      Increments::Hashed => &self.empty,
+      Increments::Drawn => &self.empty,
       Increments::Device { buffer, .. } => buffer,
     };
     let pipeline = &self.pipelines[&shape];
