@@ -110,12 +110,12 @@ impl MleProblem<'_> {
 }
 
 /// The objective at a point without a likelihood, above every sum [`ranked`] returns.
-const NO_LIKELIHOOD: f64 = 1e30;
+const NO_LIKELIHOOD: f64 = 1e100;
 
-/// `nll` up to `1e27` and its logarithmic continuation past it, which no finite sum takes beyond
-/// `6.5e29`: increasing and C¹, so the search orders the sums as they are and never meets `∞`.
+/// `nll` up to `1e97`, which no path's sum reaches, and its logarithmic continuation past it, at
+/// most `4.9e99`: increasing and C¹, so every finite sum ranks below the penalty and none is `∞`.
 fn ranked(nll: f64) -> f64 {
-  const KNEE: f64 = 1e27;
+  const KNEE: f64 = 1e97;
   if nll <= KNEE {
     nll
   } else {
