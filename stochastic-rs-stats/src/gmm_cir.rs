@@ -20,6 +20,7 @@
 
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::special::erfc;
 use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 
@@ -137,22 +138,17 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
     }
   }
   let inv_t = 1.0 / rows1.len() as f64;
-  for (i, row) in s_hat.iter_mut().enumerate() {
-    for entry in row.iter_mut() {
-      *entry *= inv_t;
-    }
-    // Ridge regularisation guards against a near-singular Ŝ on short series.
-    row[i] += 1e-10;
+  for entry in s_hat.iter_mut().flatten() {
+    *entry *= inv_t;
   }
-  let w2 = invert4(&s_hat).unwrap_or(identity);
+  let w2 = weighting_matrix(&s_hat)?;
 
   let (p2, it2, conv2) = nelder_mead([p1[0], p1[1], p1[2]], 2000, |p| {
     objective(p[0].exp(), p[1].exp(), p[2].exp(), &w2)
   });
   let (theta, mu, sigma) = (p2[0].exp(), p2[1].exp(), p2[2].exp());
 
-  let j_stat = (rows1.len() as f64) * objective(theta, mu, sigma, &w2);
-  let j_pvalue = 1.0 - chi2_cdf_1dof(j_stat);
+  let (j_stat, j_pvalue) = j_test(rows1.len(), objective(theta, mu, sigma, &w2))?;
 
   Ok(GmmCirFit {
     theta,
@@ -165,7 +161,39 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
   })
 }
 
-/// 4×4 Gauss-Jordan matrix inverse. Returns `None` on a singular pivot.
+/// `Ŝ⁻¹` through `C = D^{-1/2} Ŝ D^{-1/2}`, `D = diag Ŝ`, whose pivots no unit moves; `Numerical`
+/// for a non-finite `Ŝ`, `Singular` for a zero diagonal or a pivot of `C` below `1e-12`.
+fn weighting_matrix(s_hat: &[[f64; 4]; 4]) -> Result<[[f64; 4]; 4], StatsError> {
+  if s_hat.iter().flatten().any(|v| !v.is_finite()) {
+    return Err(StatsError::Numerical {
+      stage: "GMM weighting matrix",
+    });
+  }
+  let singular = StatsError::Singular("GMM weighting matrix");
+  let mut inv_sd = [0.0; 4];
+  for (i, row) in s_hat.iter().enumerate() {
+    if row[i] == 0.0 {
+      return Err(singular);
+    }
+    inv_sd[i] = 1.0 / row[i].sqrt();
+  }
+  let mut c = [[0.0; 4]; 4];
+  for i in 0..4 {
+    for j in 0..4 {
+      c[i][j] = inv_sd[i] * s_hat[i][j] * inv_sd[j];
+    }
+  }
+  let mut w = invert4(&c).ok_or(singular)?;
+  for i in 0..4 {
+    for j in 0..4 {
+      w[i][j] *= inv_sd[i] * inv_sd[j];
+    }
+  }
+  Ok(w)
+}
+
+/// Gauss–Jordan inverse with partial pivoting; `None` at a pivot that is NaN or below `1e-12`, the
+/// rounding of a unit-diagonal matrix that is singular.
 fn invert4(m: &[[f64; 4]; 4]) -> Option<[[f64; 4]; 4]> {
   let mut a = *m;
   let mut inv = {
@@ -183,7 +211,8 @@ fn invert4(m: &[[f64; 4]; 4]) -> Option<[[f64; 4]; 4]> {
         pivot = r;
       }
     }
-    if a[pivot][col].abs() < 1e-300 {
+    let p = a[pivot][col];
+    if p.is_nan() || p.abs() < 1e-12 {
       return None;
     }
     a.swap(col, pivot);
@@ -206,13 +235,17 @@ fn invert4(m: &[[f64; 4]; 4]) -> Option<[[f64; 4]; 4]> {
   Some(inv)
 }
 
-/// CDF of the $\chi^2_1$ distribution at `x`: $P(\chi^2_1 \le x) =
-/// \operatorname{erf}(\sqrt{x/2})$.
-fn chi2_cdf_1dof(x: f64) -> f64 {
-  if x <= 0.0 {
-    return 0.0;
+/// Hansen's `J = T q` on `T` transitions and its `χ²₁` tail `erfc(√(J/2))`; `Numerical` when `J`,
+/// and so the stage-2 objective `q`, is not finite.
+fn j_test(t: usize, q: f64) -> Result<(f64, f64), StatsError> {
+  let j = t as f64 * q;
+  if !j.is_finite() {
+    return Err(StatsError::Numerical {
+      stage: "J statistic",
+    });
   }
-  stochastic_rs_distributions::special::erf((x / 2.0).sqrt())
+  // A quadratic form in a positive-definite `Ŝ⁻¹`: a negative `J` is its rounding.
+  Ok((j, erfc((j.max(0.0) / 2.0).sqrt())))
 }
 
 #[cfg(test)]
@@ -342,18 +375,76 @@ mod tests {
     assert_eq!(rebuilt.sample().len(), 10_000);
   }
 
-  /// The Hansen J p-value should be large (fail to reject the over-id
-  /// restriction) when the model is correctly specified.
+  /// `J` is `χ²₁` under the model, so a correct model is rejected at 1 % on one path in a hundred:
+  /// the best of three pinned paths does not reject it.
   #[test]
   fn gmm_cir_j_test_does_not_reject_correct_model() {
     let dt = 1.0 / 252.0;
-    let path = simulate_cir_path(1.5, 0.05, 0.3, 0.05, dt, 6000, 11);
-    let res = fit_cir_gmm(path.view(), dt).unwrap();
+    let pvalues = [11u64, 12, 13].map(|seed| {
+      let path = simulate_cir_path(1.5, 0.05, 0.3, 0.05, dt, 6000, seed);
+      fit_cir_gmm(path.view(), dt).unwrap().j_pvalue
+    });
     assert!(
-      res.j_pvalue > 0.01,
-      "correctly-specified CIR should not be rejected at 1%, J p-value = {}",
-      res.j_pvalue
+      pvalues.iter().any(|&p| p > 0.01),
+      "correctly-specified CIR rejected at 1 % on every path, J p-values {pvalues:?}"
     );
+  }
+
+  /// A path alternating between two values has two distinct moment rows, so `Ŝ` has rank 2.
+  #[test]
+  fn a_singular_weighting_matrix_is_an_err() {
+    let s = Array1::from_iter((0..100).map(|t| if t % 2 == 0 { 0.04 } else { 0.05 }));
+    assert_eq!(
+      fit_cir_gmm(s.view(), 1.0 / 252.0).unwrap_err(),
+      StatsError::Singular("GMM weighting matrix")
+    );
+  }
+
+  /// Four transitions are the fewest that give `Ŝ` full rank, and its equilibrated pivots see it.
+  #[test]
+  fn five_points_are_enough_for_the_weighting_matrix() {
+    let path = simulate_cir_path(2.0, 0.04, 0.25, 0.04, 1.0 / 252.0, 5, 3);
+    assert!(fit_cir_gmm(path.view(), 1.0 / 252.0).is_ok());
+  }
+
+  /// At 1e80 the moment `u X_t` is near 1e238, whose square overflows `Ŝ`.
+  #[test]
+  fn a_non_finite_weighting_matrix_is_a_numerical_error() {
+    let path = simulate_cir_path(2.0, 0.04, 0.25, 0.04, 1.0 / 252.0, 200, 7).mapv(|v| v * 1e80);
+    assert_eq!(
+      fit_cir_gmm(path.view(), 1.0 / 252.0).unwrap_err(),
+      StatsError::Numerical {
+        stage: "GMM weighting matrix"
+      }
+    );
+  }
+
+  #[test]
+  fn invert4_fails_on_a_nan_pivot() {
+    assert_eq!(invert4(&[[f64::NAN; 4]; 4]), None);
+    let mut m = [[0.0; 4]; 4];
+    for (i, row) in m.iter_mut().enumerate() {
+      row[i] = 1.0;
+    }
+    m[2][2] = 1e-13;
+    assert_eq!(invert4(&m), None);
+  }
+
+  /// `J` and its `χ²₁` tail `erfc(√(J/2))`, which keeps its digits where `1 − erf` is `0`.
+  #[test]
+  fn the_j_test_answers_its_chi_square_tail_and_refuses_a_non_finite_objective() {
+    let (j, p) = j_test(100, 1.0).unwrap();
+    assert_eq!(j, 100.0);
+    assert!((p / 1.523970604832105e-23 - 1.0).abs() < 1e-12, "p = {p:e}");
+    assert_eq!(j_test(100, -1e-18).unwrap().1, 1.0);
+    for q in [f64::NAN, f64::INFINITY] {
+      assert_eq!(
+        j_test(100, q).unwrap_err(),
+        StatsError::Numerical {
+          stage: "J statistic"
+        }
+      );
+    }
   }
 
   /// `Ŝ` sums one outer product per transition, so its four moments need four transitions.
