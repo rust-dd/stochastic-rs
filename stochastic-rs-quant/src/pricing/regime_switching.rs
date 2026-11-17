@@ -175,15 +175,15 @@ impl RegimeSwitchingModel {
 /// - Kirkby, J.L. (PROJ\_Option\_Pricing\_Matlab)
 #[derive(Debug, Clone)]
 pub struct CosPricer {
-  /// Number of cosine expansion terms.
-  pub n: usize,
+  /// Cosine terms, as [`CosEngine`]'s: `None`, the default, follows the chf's decay.
+  pub n: Option<usize>,
   /// Grid half-width parameter (L). Controls the truncation of the density.
   pub l: f64,
 }
 
 impl Default for CosPricer {
   fn default() -> Self {
-    Self { n: 256, l: 12.0 }
+    Self { n: None, l: 12.0 }
   }
 }
 
@@ -489,7 +489,10 @@ mod tests {
   fn cos_agrees_with_lewis() {
     use super::super::fourier::LewisPricer;
 
-    let pricer = CosPricer { n: 512, l: 14.0 };
+    let pricer = CosPricer {
+      n: Some(512),
+      l: 14.0,
+    };
 
     let q_mat = array![[0.0]];
     let vols = array![0.2];

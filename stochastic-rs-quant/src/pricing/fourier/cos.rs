@@ -10,34 +10,32 @@ use num_complex::Complex64;
 use super::FourierModelExt;
 use crate::OptionType;
 
-/// Fang–Oosterlee (2008) COS pricer for any [`FourierModelExt`]: `n` terms (default 256) over `l`
-/// (default 10, §5.1) cumulant standard deviations, so understated `cumulants()` misprice silently.
+/// Fang–Oosterlee (2008) COS pricer for any [`FourierModelExt`] over `l` (default 10, §5.1) cumulant
+/// standard deviations, so understated `cumulants()` misprice silently.
 #[derive(Debug, Clone)]
 pub struct CosEngine {
-  /// Number of cosine expansion terms.
-  pub n: usize,
+  /// Cosine terms; `None`, the default, adds terms from 256 until `|chf| < 1e-9`, up to 2,048.
+  pub n: Option<usize>,
   /// Truncation half-width parameter (Fang-Oosterlee's `L`).
   pub l: f64,
 }
 
+/// Fang & Oosterlee's `N` for the smooth densities of §5.1; a heavy-tailed chf is still large there.
+const MIN_TERMS: usize = 256;
+const MAX_TERMS: usize = 2048;
+const CHF_FLOOR: f64 = 1e-9;
+
 impl Default for CosEngine {
   fn default() -> Self {
-    Self { n: 256, l: 10.0 }
+    Self { n: None, l: 10.0 }
   }
 }
 
 impl CosEngine {
-  /// Build a COS engine with `n` expansion terms and half-width `l`.
-  ///
-  /// # Panics
-  ///
-  /// Panics if `l <= 0.0` or `n < 2`: a non-positive truncation half-width
-  /// or fewer than 2 expansion terms cannot span a meaningful density
-  /// support, and would otherwise silently produce finite-looking garbage
-  /// instead of a price.
+  /// Exactly `n` terms over half-width `l`; panics unless `l > 0` and `n ≥ 2`.
   pub fn new(n: usize, l: f64) -> Self {
     assert!(l > 0.0 && n >= 2, "CosEngine requires l > 0 and n >= 2");
-    Self { n, l }
+    Self { n: Some(n), l }
   }
 
   /// `r` discounts and `r − q` carries the forward the drift-free `chf` is centred on; a call is
@@ -65,11 +63,15 @@ impl CosEngine {
 
     let i_unit = Complex64::i();
     let mut put = 0.0;
-    for k_idx in 0..self.n {
+    for k_idx in 0..self.n.unwrap_or(MAX_TERMS) {
       let kf = k_idx as f64;
       let u = kf * PI / bma;
 
-      let phi_y = model.chf(t, Complex64::new(u, 0.0)) * (i_unit * u * x).exp();
+      let phi = model.chf(t, Complex64::new(u, 0.0));
+      if self.n.is_none() && k_idx >= MIN_TERMS && phi.norm_sqr() < CHF_FLOOR * CHF_FLOOR {
+        break;
+      }
+      let phi_y = phi * (i_unit * u * x).exp();
       let f_k = (phi_y * (-i_unit * u * a).exp()).re;
 
       let weight = if k_idx == 0 { 0.5 } else { 1.0 };
@@ -170,6 +172,46 @@ mod tests {
       (price - reference).abs() < 1e-6,
       "COS Heston: got={price}, expected={reference}"
     );
+  }
+
+  /// A chf still above `1e-9` at term 256 (`σ = 1`, `ρ = −0.9`, widened by `√c4`) takes more
+  /// terms by default; an explicit `n` is the sum of exactly `n` terms.
+  #[test]
+  fn the_default_adds_terms_until_the_chf_has_decayed() {
+    let model = HestonFourier::new(HestonParams {
+      v0: 0.02,
+      kappa: 0.5,
+      theta: 0.09,
+      sigma: 1.0,
+      rho: -0.9,
+    });
+    for k in [80.0, 100.0, 120.0] {
+      let want = model.price_put(100.0, k, 0.05, 0.01, 2.0);
+      let adaptive = CosEngine::default().price(&model, 100.0, k, 0.05, 0.01, 2.0, OptionType::Put);
+      let fixed =
+        CosEngine::new(256, 10.0).price(&model, 100.0, k, 0.05, 0.01, 2.0, OptionType::Put);
+      assert!(
+        (adaptive - want).abs() < 5e-6,
+        "K={k}: {adaptive} vs {want}"
+      );
+      assert!((fixed - want).abs() > 1e-3, "K={k}: {fixed} vs {want}");
+    }
+  }
+
+  #[test]
+  fn the_default_stops_at_256_terms_where_the_chf_has_decayed() {
+    let model = HestonFourier::new(HestonParams {
+      v0: 0.04,
+      kappa: 1.5,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+    });
+    let adaptive =
+      CosEngine::default().price(&model, 100.0, 100.0, 0.05, 0.0, 1.0, OptionType::Put);
+    let fixed =
+      CosEngine::new(256, 10.0).price(&model, 100.0, 100.0, 0.05, 0.0, 1.0, OptionType::Put);
+    assert_eq!(adaptive, fixed);
   }
 
   #[test]
