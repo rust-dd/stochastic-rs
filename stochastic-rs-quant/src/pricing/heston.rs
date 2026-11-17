@@ -86,7 +86,7 @@ impl HestonPricer {
   }
 
   /// Call and put price at one query point: NaN for a negative or NaN `tau` or an `E_j[∫₀^τ v]`
-  /// past `1e5`; at `tau = 0` the payoff, which the `P_j` integrals, undamped there, do not resolve.
+  /// past `1e5`; at `tau = 0` the payoff, which the undamped `P_j` integrals do not resolve.
   ///
   /// $$
   /// C=Se^{-q\tau}P_1-Ke^{-r\tau}P_2,\qquad P=C+Ke^{-r\tau}-Se^{-q\tau}
