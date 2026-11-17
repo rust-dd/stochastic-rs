@@ -121,5 +121,5 @@ fn elerian_from_a_start_near_zero_is_of_the_exact_densitys_order() {
     }
   }
   let milstein = DensityApprox::Elerian.ln_density(&law, 1e-9, 0.05, 0.0, dt);
-  assert!((milstein + 274.2).abs() < 0.05, "{milstein}");
+  assert!((milstein + 273.476).abs() < 1e-3, "{milstein}");
 }

@@ -177,8 +177,13 @@ impl DensityApprox {
     }
   }
 
-  /// The Milstein step's log-density, `−∞` below its support, and `None` where the diffusion is
-  /// flat in `x` and the step Euler's; in logs, as its `cosh` overflows from `√(cz) ≈ 710`.
+  /// The Milstein step's log-density (Elerian 1998, Theorem 2.1), `−∞` below its support; `None`
+  /// where the diffusion is flat in `x` and the step Euler's. In logs: `cosh` overflows from 710.
+  /// $$
+  /// p(x) = \frac{z^{-1/2}\cosh\sqrt{cz}}{|A|\sqrt{2\pi}}\,e^{-(c+z)/2},\quad
+  /// z = \frac{x-B}{A},\quad A = \tfrac12\sigma\sigma_x\Delta,\quad
+  /// B = x_0 + \mu\Delta - A - \frac{\sigma}{2\sigma_x},\quad c = \frac{1}{\sigma_x^2\Delta}
+  /// $$
   fn ln_density_milstein(
     model: &dyn DiffusionModel,
     x0: f64,
@@ -211,7 +216,7 @@ impl DensityApprox {
     // `cosh(√(cz)) e^{−(c+z)/2} = ½ e^{−(√c − √z)²/2} (1 + e^{−2√(cz)})`.
     let gap = c.sqrt() - z.sqrt();
     let ln_kernel = -0.5 * gap * gap + (-2.0 * (c * z).sqrt()).exp().ln_1p();
-    Some(-0.5 * z.ln() + ln_kernel - (4.0 * a_coeff.abs() * (2.0 * PI).sqrt()).ln())
+    Some(-0.5 * z.ln() + ln_kernel - (2.0 * a_coeff.abs() * (2.0 * PI).sqrt()).ln())
   }
 
   /// Ref: Kessler (1997)
@@ -244,3 +249,6 @@ impl DensityApprox {
       .expect("Ait-Sahalia density not implemented for this model")
   }
 }
+
+#[cfg(test)]
+mod tests;
