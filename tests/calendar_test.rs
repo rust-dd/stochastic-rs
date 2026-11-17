@@ -10,6 +10,7 @@ use stochastic_rs::quant::calendar::business_day::BusinessDayConvention;
 use stochastic_rs::quant::calendar::day_count::DayCountConvention;
 use stochastic_rs::quant::calendar::holiday::Calendar;
 use stochastic_rs::quant::calendar::holiday::HolidayCalendar;
+use stochastic_rs::quant::calendar::schedule::DateGenerationRule;
 use stochastic_rs::quant::calendar::schedule::Frequency;
 use stochastic_rs::quant::calendar::schedule::ScheduleBuilder;
 
@@ -233,7 +234,7 @@ fn unadjusted_returns_same_date() {
 fn semi_annual_backward_schedule() {
   let schedule = ScheduleBuilder::new(d(2024, 1, 15), d(2026, 1, 15))
     .frequency(Frequency::SemiAnnual)
-    .backward()
+    .rule(DateGenerationRule::Backward)
     .build();
   // Expected: 2024-01-15, 2024-07-15, 2025-01-15, 2025-07-15, 2026-01-15
   assert_eq!(schedule.dates.len(), 5);
@@ -246,7 +247,7 @@ fn semi_annual_backward_schedule() {
 fn quarterly_forward_schedule() {
   let schedule = ScheduleBuilder::new(d(2024, 3, 1), d(2025, 3, 1))
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   // Expected: 2024-03-01, 2024-06-01, 2024-09-01, 2024-12-01, 2025-03-01
   assert_eq!(schedule.dates.len(), 5);
@@ -261,7 +262,7 @@ fn schedule_with_business_day_adjustment() {
     .frequency(Frequency::Quarterly)
     .calendar(cal)
     .convention(BusinessDayConvention::ModifiedFollowing)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   // Jan 1 is a TARGET holiday → adjusted to Jan 2 (Tue)
   assert_eq!(schedule.adjusted_dates[0], d(2024, 1, 2));
@@ -272,7 +273,7 @@ fn schedule_end_of_month() {
   let schedule = ScheduleBuilder::new(d(2024, 1, 31), d(2024, 7, 31))
     .frequency(Frequency::Monthly)
     .end_of_month(true)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   // Feb should be 29 (2024 is leap), Apr 30, Jun 30
   assert_eq!(schedule.dates[1], d(2024, 2, 29));
@@ -284,7 +285,7 @@ fn schedule_end_of_month() {
 fn schedule_year_fractions() {
   let schedule = ScheduleBuilder::new(d(2024, 1, 15), d(2025, 1, 15))
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let yfs: Vec<f64> = schedule.year_fractions(DayCountConvention::Actual360);
   assert_eq!(yfs.len(), 2);

@@ -15,6 +15,7 @@ use crate::calendar::day_count::days_between;
 use crate::calendar::holiday::Calendar;
 use crate::calendar::holiday::HolidayCalendar;
 use crate::calendar::holiday::JointMode;
+use crate::calendar::schedule::DateGenerationRule;
 use crate::calendar::schedule::Frequency;
 use crate::calendar::schedule::Schedule;
 use crate::calendar::schedule::ScheduleBuilder;
@@ -34,11 +35,18 @@ fn parse_day_count(name: &str) -> PyResult<DayCountConvention> {
     "ActActIcma" | "ActualActualICMA" | "ACT/ACT ICMA" | "ActualActualISMA" => {
       Ok(DayCountConvention::ActualActualIcma)
     }
-    "Bus252" | "Business252" | "BUS/252" => Ok(DayCountConvention::Business252),
+    "Bus252" | "Business252" | "BUS/252" => {
+      Ok(DayCountConvention::Business252(HolidayCalendar::B3))
+    }
     "Act364" | "Actual364" | "ACT/364" => Ok(DayCountConvention::Actual364),
     "NoLeap365" | "NL/365" => Ok(DayCountConvention::NoLeap365),
     "Act365L" | "Actual365Leap" | "ACT/365L" => Ok(DayCountConvention::Actual365Leap),
-    other => Err(PyValueError::new_err(format!("unknown DayCount: {other}"))),
+    other => match other.rsplit_once('/') {
+      Some(("Bus252" | "Business252" | "BUS/252", calendar)) => Ok(
+        DayCountConvention::Business252(parse_holiday_calendar(calendar)?),
+      ),
+      _ => Err(PyValueError::new_err(format!("unknown DayCount: {other}"))),
+    },
   }
 }
 
@@ -345,7 +353,7 @@ impl PyScheduleBuilder {
       .inner
       .take()
       .ok_or_else(|| PyValueError::new_err("ScheduleBuilder already consumed"))?;
-    self.inner = Some(b.forward());
+    self.inner = Some(b.rule(DateGenerationRule::Forward));
     Ok(())
   }
 
@@ -354,7 +362,7 @@ impl PyScheduleBuilder {
       .inner
       .take()
       .ok_or_else(|| PyValueError::new_err("ScheduleBuilder already consumed"))?;
-    self.inner = Some(b.backward());
+    self.inner = Some(b.rule(DateGenerationRule::Backward));
     Ok(())
   }
 
@@ -363,7 +371,11 @@ impl PyScheduleBuilder {
       .inner
       .take()
       .ok_or_else(|| PyValueError::new_err("ScheduleBuilder already consumed"))?;
-    self.inner = Some(b.imm(flag));
+    self.inner = Some(b.rule(if flag {
+      DateGenerationRule::Imm
+    } else {
+      DateGenerationRule::Backward
+    }));
     Ok(())
   }
 

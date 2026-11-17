@@ -280,7 +280,7 @@ impl<T: RealExt> RateHelper<T> for SwapRateHelper<T> {
       Some(BootstrapInstrument::Swap {
         maturity,
         rate,
-        frequency: self.fixed_frequency.periods_per_year(),
+        frequency: self.fixed_frequency,
       })
     }
   }
@@ -457,7 +457,7 @@ mod tests {
         rate, frequency, ..
       } => {
         assert!((rate - 0.04).abs() < 1e-12);
-        assert_eq!(frequency, 2);
+        assert_eq!(frequency, Frequency::SemiAnnual);
       }
       other => panic!("expected uniform BootstrapInstrument::Swap, got {other:?}"),
     }

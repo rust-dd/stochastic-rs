@@ -4,6 +4,7 @@
 
 use std::fmt::Display;
 
+use crate::calendar::Frequency;
 use crate::traits::RealExt;
 
 /// Compounding convention for interest rate calculations.
@@ -113,7 +114,7 @@ pub enum BootstrapInstrument<T: RealExt> {
   Swap {
     maturity: T,
     rate: T,
-    frequency: u32,
+    frequency: Frequency,
   },
   /// Par swap with an **explicit, calendar-adjusted** payment schedule.
   /// `payment_times` lists the year-fractions of every fixed-leg payment

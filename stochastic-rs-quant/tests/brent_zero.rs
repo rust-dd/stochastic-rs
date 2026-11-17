@@ -5,6 +5,7 @@ use chrono::NaiveDate;
 use ndarray::Array1;
 use stochastic_rs_distributions::brent::MACHEPS;
 use stochastic_rs_quant::QuantError;
+use stochastic_rs_quant::calendar::DateGenerationRule;
 use stochastic_rs_quant::calendar::DayCountConvention;
 use stochastic_rs_quant::calendar::Frequency;
 use stochastic_rs_quant::calendar::ScheduleBuilder;
@@ -41,7 +42,7 @@ fn quote(years: i32, recovery_rate: Option<f64>) -> CdsQuote {
 fn a_yield_lands_within_brents_bound_of_the_mpmath_root() {
   let schedule = ScheduleBuilder::new(d(2026, 6, 20), d(2036, 6, 20))
     .frequency(Frequency::Annual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let bond = FixedRateBond::<f64>::new(
     &schedule,

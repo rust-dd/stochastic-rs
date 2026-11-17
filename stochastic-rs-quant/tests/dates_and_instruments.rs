@@ -3,12 +3,20 @@
 use chrono::NaiveDate;
 use ndarray::array;
 use stochastic_rs_quant::OptionType;
+use stochastic_rs_quant::calendar::DateGenerationRule;
 use stochastic_rs_quant::calendar::DayCountConvention;
 use stochastic_rs_quant::calendar::Frequency;
+use stochastic_rs_quant::calendar::HolidayCalendar;
 use stochastic_rs_quant::calendar::ScheduleBuilder;
+use stochastic_rs_quant::calendar::date_math::cds_roll_on_or_before;
+use stochastic_rs_quant::calendar::date_math::imm_date;
+use stochastic_rs_quant::calendar::date_math::next_cds_roll;
+use stochastic_rs_quant::calendar::date_math::snap_to_imm;
 use stochastic_rs_quant::cashflows::FloatingIndex;
 use stochastic_rs_quant::cashflows::IborIndex;
 use stochastic_rs_quant::cashflows::RateTenor;
+use stochastic_rs_quant::credit::CdsPosition;
+use stochastic_rs_quant::credit::CreditDefaultSwap;
 use stochastic_rs_quant::curves::DiscountCurve;
 use stochastic_rs_quant::curves::InterpolationMethod;
 use stochastic_rs_quant::curves::MultiCurve;
@@ -21,6 +29,7 @@ use stochastic_rs_quant::instruments::CrossCurrencySwapDirection;
 use stochastic_rs_quant::instruments::CurrencyLeg;
 use stochastic_rs_quant::instruments::SwaptionDirection;
 use stochastic_rs_quant::instruments::VanillaInterestRateSwap;
+use stochastic_rs_quant::instruments::option::cms::hagan_linear_tsr_convexity_factor;
 use stochastic_rs_quant::microstructure::AlmgrenChrissParams;
 use stochastic_rs_quant::microstructure::optimal_execution;
 use stochastic_rs_quant::order_book::Side;
@@ -171,4 +180,146 @@ fn a_cross_currency_leg_needs_two_schedule_dates() {
     currency_leg(EUR, 1.0e6, d(2024, 1, 15)),
     false,
   );
+}
+
+fn cds_rolls() -> [NaiveDate; 6] {
+  [
+    d(2026, 3, 20),
+    d(2026, 6, 20),
+    d(2026, 9, 20),
+    d(2026, 12, 20),
+    d(2027, 3, 20),
+    d(2027, 6, 20),
+  ]
+}
+
+#[test]
+fn the_cds_rule_accrues_from_the_roll_on_or_before_the_effective_date() {
+  let s = ScheduleBuilder::new(d(2026, 5, 10), d(2027, 6, 20))
+    .frequency(Frequency::Quarterly)
+    .rule(DateGenerationRule::Cds)
+    .build();
+  assert_eq!(s.dates, cds_rolls());
+  assert_eq!(
+    [
+      d(2026, 5, 10),
+      d(2026, 3, 20),
+      d(2026, 3, 19),
+      d(2026, 1, 5)
+    ]
+    .map(cds_roll_on_or_before),
+    [
+      d(2026, 3, 20),
+      d(2026, 3, 20),
+      d(2025, 12, 20),
+      d(2025, 12, 20)
+    ]
+  );
+  assert_eq!(
+    [d(2026, 3, 20), d(2025, 12, 25)].map(next_cds_roll),
+    [d(2026, 6, 20), d(2026, 3, 20)]
+  );
+}
+
+#[test]
+fn a_standard_cds_pays_on_the_rolls_and_a_vanilla_one_keeps_its_plain_schedule() {
+  let standard = CreditDefaultSwap::<f64>::standard(
+    CdsPosition::Buyer,
+    1.0,
+    0.01,
+    0.4,
+    d(2026, 5, 10),
+    d(2027, 6, 20),
+    DayCountConvention::Actual360,
+  );
+  assert_eq!(standard.premium_schedule.dates, cds_rolls());
+  assert_eq!(standard.effective_date, d(2026, 5, 10));
+  let vanilla = CreditDefaultSwap::<f64>::vanilla(
+    CdsPosition::Buyer,
+    1.0,
+    0.01,
+    0.4,
+    d(2026, 5, 10),
+    d(2027, 6, 20),
+    Frequency::Quarterly,
+    DayCountConvention::Actual360,
+  );
+  assert_eq!(vanilla.premium_schedule.dates[0], d(2026, 5, 10));
+}
+
+#[test]
+#[should_panic(
+  expected = "termination must satisfy `termination == cds_roll_on_or_before(termination)`"
+)]
+fn a_standard_cds_matures_on_a_roll_date() {
+  CreditDefaultSwap::<f64>::standard(
+    CdsPosition::Buyer,
+    1.0,
+    0.01,
+    0.4,
+    d(2026, 5, 10),
+    d(2027, 6, 21),
+    DayCountConvention::Actual360,
+  );
+}
+
+#[test]
+fn the_imm_rule_lands_on_third_wednesdays() {
+  assert_eq!(
+    [3, 6, 9, 12].map(|m| imm_date(2026, m)),
+    [
+      d(2026, 3, 18),
+      d(2026, 6, 17),
+      d(2026, 9, 16),
+      d(2026, 12, 16)
+    ]
+  );
+  assert_eq!(snap_to_imm(d(2026, 5, 10)), d(2026, 6, 17));
+  let s = ScheduleBuilder::new(d(2026, 3, 1), d(2027, 3, 1))
+    .frequency(Frequency::Quarterly)
+    .rule(DateGenerationRule::Imm)
+    .build();
+  assert!(
+    s.dates.iter().all(|x| x == &snap_to_imm(*x)),
+    "{:?}",
+    s.dates
+  );
+}
+
+#[test]
+fn business_252_counts_the_named_calendars_business_days_and_icma_needs_a_reference_period() {
+  let bus = DayCountConvention::Business252(HolidayCalendar::B3);
+  // 2026-01-05 (Mon) to 2026-01-09 (Fri): four business days, no B3 holiday.
+  assert_eq!(bus.day_count(d(2026, 1, 5), d(2026, 1, 9)), 4);
+  // 20 to 22 April 2026 spans Tiradentes: one B3 business day, two weekdays.
+  assert_eq!(bus.day_count(d(2026, 4, 20), d(2026, 4, 22)), 1);
+  assert!((bus.year_fraction::<f64>(d(2026, 1, 5), d(2026, 1, 9)) - 4.0 / 252.0).abs() < 1e-15);
+  assert_eq!(bus.to_string(), "BUS/252/B3");
+  let icma = DayCountConvention::ActualActualIcma;
+  assert!(
+    icma
+      .year_fraction::<f64>(d(2026, 1, 1), d(2026, 7, 1))
+      .is_nan()
+  );
+  let half = DayCountConvention::year_fraction_icma::<f64>(
+    d(2026, 1, 1),
+    d(2026, 7, 1),
+    d(2026, 1, 1),
+    d(2026, 7, 1),
+    Frequency::SemiAnnual,
+  );
+  assert!((half - 0.5).abs() < 1e-15);
+  assert_eq!(
+    Frequency::from_periods_per_year(4),
+    Some(Frequency::Quarterly)
+  );
+  assert_eq!(Frequency::from_periods_per_year(3), None);
+}
+
+#[test]
+fn a_par_rate_and_a_cms_convexity_take_a_frequency() {
+  let annual = flat(0.03).par_rate(5.0, Frequency::Annual);
+  assert!((annual - (0.03_f64.exp() - 1.0)).abs() < 1e-12, "{annual}");
+  let lambda = hagan_linear_tsr_convexity_factor::<f64>(0.03, 10.0, Frequency::SemiAnnual);
+  assert!(lambda.is_finite() && lambda < 0.0, "{lambda}");
 }

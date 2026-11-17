@@ -3,6 +3,7 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::array;
+use stochastic_rs::quant::calendar::DateGenerationRule;
 use stochastic_rs::quant::calendar::DayCountConvention;
 use stochastic_rs::quant::calendar::Frequency;
 use stochastic_rs::quant::calendar::ScheduleBuilder;
@@ -26,7 +27,7 @@ fn bench_fixed_leg(c: &mut Criterion) {
   let valuation = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
   let schedule = ScheduleBuilder::new(valuation, NaiveDate::from_ymd_opt(2054, 1, 15).unwrap())
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let leg = Leg::fixed_rate(
     &schedule,
@@ -47,7 +48,7 @@ fn bench_floating_leg(c: &mut Criterion) {
   let valuation = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
   let schedule = ScheduleBuilder::new(valuation, NaiveDate::from_ymd_opt(2034, 1, 15).unwrap())
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let leg = Leg::floating_rate(
     &schedule,

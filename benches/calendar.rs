@@ -6,6 +6,7 @@ use stochastic_rs::quant::calendar::business_day::BusinessDayConvention;
 use stochastic_rs::quant::calendar::day_count::DayCountConvention;
 use stochastic_rs::quant::calendar::holiday::Calendar;
 use stochastic_rs::quant::calendar::holiday::HolidayCalendar;
+use stochastic_rs::quant::calendar::schedule::DateGenerationRule;
 use stochastic_rs::quant::calendar::schedule::Frequency;
 use stochastic_rs::quant::calendar::schedule::ScheduleBuilder;
 
@@ -52,7 +53,7 @@ fn bench_schedule_generation(c: &mut Criterion) {
         .frequency(Frequency::SemiAnnual)
         .calendar(cal.clone())
         .convention(BusinessDayConvention::ModifiedFollowing)
-        .backward()
+        .rule(DateGenerationRule::Backward)
         .build()
     })
   });

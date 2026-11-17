@@ -140,6 +140,26 @@ pub fn snap_to_imm(date: NaiveDate) -> NaiveDate {
   imm_date(date.year(), qmonth)
 }
 
+/// The CDS roll date (20 March, June, September or December, unadjusted) on or before `date`.
+pub fn cds_roll_on_or_before(date: NaiveDate) -> NaiveDate {
+  let month = date.month();
+  let mut roll_month = month - month % 3;
+  if roll_month == month && date.day() < 20 {
+    roll_month -= 3;
+  }
+  let (year, roll_month) = if roll_month == 0 {
+    (date.year() - 1, 12)
+  } else {
+    (date.year(), roll_month)
+  };
+  NaiveDate::from_ymd_opt(year, roll_month, 20).expect("the 20th of a quarter month exists")
+}
+
+/// The first CDS roll date after `date`.
+pub fn next_cds_roll(date: NaiveDate) -> NaiveDate {
+  add_months(cds_roll_on_or_before(date), 3, false)
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

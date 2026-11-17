@@ -6,6 +6,7 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::array;
+use stochastic_rs::quant::calendar::DateGenerationRule;
 use stochastic_rs::quant::calendar::DayCountConvention;
 use stochastic_rs::quant::calendar::Frequency;
 use stochastic_rs::quant::calendar::ScheduleBuilder;
@@ -42,7 +43,7 @@ fn bench_cap_npv(c: &mut Criterion) {
   let end = NaiveDate::from_ymd_opt(2034, 1, 15).unwrap();
   let schedule = ScheduleBuilder::new(valuation, end)
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let periods = schedule.adjusted_dates.len() - 1;
   let index = FloatingIndex::Ibor(IborIndex::new(
@@ -79,11 +80,11 @@ fn bench_european_swaption_black(c: &mut Criterion) {
   let end = NaiveDate::from_ymd_opt(2035, 1, 15).unwrap();
   let fixed_schedule = ScheduleBuilder::new(start, end)
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let float_schedule = ScheduleBuilder::new(start, end)
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let index = FloatingIndex::Ibor(IborIndex::new(
     "LIBOR_3M",
@@ -129,11 +130,11 @@ fn bench_european_swaption_sabr(c: &mut Criterion) {
   let end = NaiveDate::from_ymd_opt(2035, 1, 15).unwrap();
   let fixed_schedule = ScheduleBuilder::new(start, end)
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let float_schedule = ScheduleBuilder::new(start, end)
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let index = FloatingIndex::Ibor(IborIndex::new(
     "LIBOR_3M",

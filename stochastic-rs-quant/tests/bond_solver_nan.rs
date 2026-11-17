@@ -3,6 +3,7 @@
 
 use chrono::NaiveDate;
 use ndarray::array;
+use stochastic_rs_quant::calendar::DateGenerationRule;
 use stochastic_rs_quant::calendar::DayCountConvention;
 use stochastic_rs_quant::calendar::Frequency;
 use stochastic_rs_quant::calendar::ScheduleBuilder;
@@ -21,7 +22,7 @@ fn d(y: i32, m: u32, day: u32) -> NaiveDate {
 fn bond() -> FixedRateBond<f64> {
   let schedule = ScheduleBuilder::new(d(2024, 1, 15), d(2027, 1, 15))
     .frequency(Frequency::SemiAnnual)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   FixedRateBond::new(
     &schedule,
@@ -114,7 +115,7 @@ fn clean_price_wrappers_apply_the_same_policy() {
 fn amortizing_bond_z_spread_of_an_impossible_price_is_nan() {
   let schedule = ScheduleBuilder::new(d(2024, 1, 15), d(2025, 1, 15))
     .frequency(Frequency::Quarterly)
-    .forward()
+    .rule(DateGenerationRule::Forward)
     .build();
   let bond = AmortizingFixedRateBond::new(
     &schedule,
