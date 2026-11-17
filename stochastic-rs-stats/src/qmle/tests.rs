@@ -398,3 +398,17 @@ fn a_constant_regressor_is_degenerate_data() {
     StatsError::DegenerateData("constant series")
   );
 }
+
+/// `X_{t+1} = c` fits with slope 0, which rounding makes `±1e-31`: the slope test a coin flip.
+#[test]
+fn a_path_constant_after_its_first_point_is_degenerate_data() {
+  for v in [
+    vec![1.0, 0.7, 0.7, 0.7],
+    vec![0.11, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7],
+  ] {
+    assert_eq!(
+      fit_ou_mle(Array1::from(v).view(), 1.0 / 252.0).map(|f| (f.theta, f.sigma)),
+      Err(StatsError::DegenerateData("constant series"))
+    );
+  }
+}

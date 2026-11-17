@@ -330,8 +330,8 @@ pub(crate) fn ar1_start(
   Ok([theta0.ln(), p0, sigma_raw.clamp(1e-3, 10.0).ln()])
 }
 
-/// Closed-form OU / Vasicek MLE through the AR(1) below; `Err` below 4 points, on a non-finite one,
-/// a constant `x[..n - 1]`, a slope outside `(0, 1)` or an exact fit; panics unless `0 < dt < ∞`.
+/// Closed-form OU MLE; `Err` under 4 points, a non-finite one, a constant `x[..n-1]` or `x[1..]`, a
+/// slope not in `(0, 1)`, an exact fit or a `σ²` not in `(0, ∞)`; panics unless `0 < dt < ∞`.
 /// $$
 /// X_{t+\Delta} = \mu(1-\beta) + \beta X_t + \varepsilon_t,\qquad \beta = e^{-\theta\Delta}
 /// $$
@@ -345,8 +345,10 @@ pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit
   validate(&x, 4)?;
   let m = x.len() - 1;
   let (lagged, next) = (&x[..m], &x[1..]);
-  // The regressor's spread is the slope's denominator.
+  // The regressor's spread is the slope's denominator, and a constant regressand leaves the slope
+  // nothing but rounding.
   reject_constant(lagged, "constant series")?;
+  reject_constant(next, "constant series")?;
   let mf = m as f64;
 
   // About the means, as raw sums cancel where the level dwarfs the spread.
