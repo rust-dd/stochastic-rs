@@ -53,11 +53,11 @@ __device__ __forceinline__ void stoch_step_uniforms(unsigned int path, unsigned 
 // The fast log's error can take -log u below zero near u = 1, where the root would be NaN.
 __device__ __forceinline__ REAL stoch_exp1(unsigned int a, unsigned int b) {
     REAL e = ((a >> 9u) == 0u) ? (REAL)15.942385152878742 - STOCH_FAST_LOG(stoch_u01((a << 23u) | (b >> 9u))) : -STOCH_FAST_LOG(stoch_u01(a));
-    return e > (REAL)0 ? e : (REAL)0;
+    return e < (REAL)0 ? (REAL)0 : e;
 }
 __device__ __forceinline__ REAL stoch_exp1_accurate(unsigned int a, unsigned int b) {
     REAL e = ((a >> 9u) == 0u) ? (REAL)15.942385152878742 - STOCH_LOG(stoch_u01((a << 23u) | (b >> 9u))) : -STOCH_LOG(stoch_u01(a));
-    return e > (REAL)0 ? e : (REAL)0;
+    return e < (REAL)0 ? (REAL)0 : e;
 }
 __device__ __forceinline__ REAL stoch_normal(unsigned int a, unsigned int b, unsigned int c, unsigned int d) {
     return STOCH_SQRT((REAL)2 * stoch_exp1(a, b)) * STOCH_FAST_COS((REAL)6.283185307179586 * stoch_u01(c));
@@ -78,11 +78,11 @@ __device__ __forceinline__ void stoch_step_uniforms(unsigned int path, unsigned 
 }
 __device__ __forceinline__ REAL stoch_exp1(unsigned int a, unsigned int b) {
     REAL e = -STOCH_FAST_LOG(stoch_uniform(a, b));
-    return e > (REAL)0 ? e : (REAL)0;
+    return e < (REAL)0 ? (REAL)0 : e;
 }
 __device__ __forceinline__ REAL stoch_exp1_accurate(unsigned int a, unsigned int b) {
     REAL e = -STOCH_LOG(stoch_uniform(a, b));
-    return e > (REAL)0 ? e : (REAL)0;
+    return e < (REAL)0 ? (REAL)0 : e;
 }
 __device__ __forceinline__ REAL stoch_normal(unsigned int a, unsigned int b, unsigned int c, unsigned int d) {
     return STOCH_SQRT((REAL)2 * stoch_exp1(a, b)) * STOCH_FAST_COS((REAL)6.283185307179586 * stoch_uniform(c, d));

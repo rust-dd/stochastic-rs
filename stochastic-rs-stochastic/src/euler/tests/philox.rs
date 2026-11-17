@@ -9,6 +9,7 @@ use crate::euler::philox::philox4x32_10;
 use crate::euler::philox::u01_f32;
 use crate::euler::philox::u01_f32_zero_cell;
 use crate::euler::philox::u01_f64;
+use crate::traits::RealExt;
 
 /// `Exp(1)` from two words as the `f32` kernels draw it, with an accurate logarithm.
 pub(crate) fn exp1_f32(a: u32, b: u32) -> f32 {
@@ -17,7 +18,7 @@ pub(crate) fn exp1_f32(a: u32, b: u32) -> f32 {
   } else {
     -u01_f32(a).ln()
   };
-  e.max(0.0)
+  e.max_or_nan(0.0)
 }
 
 /// A standard normal from one call's words as the `f32` kernels draw it; the fourth is unused.
@@ -27,7 +28,7 @@ pub(crate) fn normal_f32(w: [u32; 4]) -> f32 {
 
 /// A standard normal from one call's words as the `f64` kernels draw it.
 pub(crate) fn normal_f64(w: [u32; 4]) -> f64 {
-  let e = (-u01_f64(w[0], w[1]).ln()).max(0.0);
+  let e = (-u01_f64(w[0], w[1]).ln()).max_or_nan(0.0);
   (2.0 * e).sqrt() * (std::f64::consts::TAU * u01_f64(w[2], w[3])).cos()
 }
 

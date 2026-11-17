@@ -27,7 +27,7 @@ pub(crate) fn exponential(first: u32, second: u32) -> f32 {
   } else {
     -math::ln(u01_f32(first))
   };
-  if e > 0.0 { e } else { 0.0 }
+  if e < 0.0 { 0.0 } else { e }
 }
 
 pub(crate) fn normal(words: [u32; 4]) -> f32 {

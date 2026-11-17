@@ -167,8 +167,9 @@ fn every_draw_goes_through_philox_on_the_path_the_step_and_a_site() {
     let prelude = prelude(&lang);
     let real = lang.real;
     assert!(
-      prelude.contains(&format!("return e > ({real})0 ? e : ({real})0;")),
-      "{name}: an exponential from the fast log is not held at zero"
+      prelude.contains(&format!("return e < ({real})0 ? ({real})0 : e;"))
+        && !prelude.contains(&format!("return e > ({real})0 ? e : ({real})0;")),
+      "{name}: an exponential from the fast log is not held at zero, or its floor drops a NaN"
     );
   }
 }
