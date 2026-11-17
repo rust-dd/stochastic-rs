@@ -133,8 +133,8 @@ fn finite_difference_jacobian_recovers_a_surface_on_each_side_of_the_feller_boun
   }
 }
 
-// The fitted Cui pricer sits 3.6e-8 from this Gil–Pelaez surface; the second clause ties the
-// reported rmse to the residuals the fit minimised.
+// The fitted Cui pricer sits 3.6e-8 from this Gil–Pelaez surface. The residuals are re-evaluated
+// through the coordinate round trip, which need not return the fit's bits: 1.7e-16 apart in rmse.
 #[test]
 fn reported_rmse_is_the_price_error_of_the_fitted_pricer() {
   let truth = &CASES[2];
@@ -150,7 +150,7 @@ fn reported_rmse_is_the_price_error_of_the_fitted_pricer() {
   let prices = residuals.slice(s![..quotes]);
   let price_rmse = (prices.dot(&prices) / quotes as f64).sqrt();
   assert!(
-    result.rmse() < 1e-6 && (result.rmse() - price_rmse).abs() <= 1e-9 * price_rmse,
+    result.rmse() < 1e-6 && (result.rmse() - price_rmse).abs() <= f64::EPSILON * SPOT,
     "rmse {:e}, the minimised price residuals' {price_rmse:e}",
     result.rmse()
   );
