@@ -1,5 +1,10 @@
+use std::f64::consts::PI;
+
 use super::*;
+use crate::pricing::bsm::BsmCoc;
+use crate::pricing::bsm::BsmPricer;
 use crate::pricing::heston::HestonParams;
+use crate::traits::ModelPricer;
 
 const TOL_FOURIER: f64 = 0.15;
 const TOL_TIGHT: f64 = 0.05;
@@ -188,34 +193,43 @@ fn carr_madan_heston_vs_analytical() {
   );
 }
 
-/// A cumulant-sized grid prices a moderate Heston ATM call within 1.0 of the default grid.
+/// A range inside the default grid leaves `eta` at 0.25, where Simpson's half-period image is
+/// 2.7e-3 on a spot of 100; the image grows with the step, to 0.56 at `eta = 0.59`.
 #[test]
-fn carr_madan_cumulant_sized_constructor() {
-  let model = HestonFourier::new(HestonParams {
-    v0: 0.04,
-    kappa: 2.0,
-    theta: 0.04,
-    sigma: 0.3,
-    rho: -0.7,
-  });
-  let cum_pricer = CarrMadanPricer::cumulant_sized(&model, 1.0, 100.0, 12.0);
-  assert!(cum_pricer.n.is_power_of_two(), "n must be power of two");
-  assert!(cum_pricer.n >= 4096, "n must be at least default 4096");
-  let price = cum_pricer.price_call(&model, 100.0, 100.0, 0.05, 0.0, 1.0);
-  assert!(
-    price.is_finite() && price > 0.0,
-    "cumulant_sized Carr-Madan must produce positive finite price, got {price}"
-  );
-  let default_pricer = CarrMadanPricer::default();
-  let default_price = default_pricer.price_call(&model, 100.0, 100.0, 0.05, 0.0, 1.0);
-  assert!(
-    (price - default_price).abs() < 1.0,
-    "cumulant_sized vs default Heston ATM should agree to within 1.0: cum={price}, def={default_price}"
-  );
+fn carr_madan_cumulant_sized_matches_black_scholes() {
+  let model = BsmFourier { sigma: 0.2 };
+  let closed = BsmPricer::new(0.2, BsmCoc::Merton1973);
+  for tau in [0.1, 0.5, 1.0, 5.0] {
+    let pricer = CarrMadanPricer::cumulant_sized(&model, tau, 100.0, 12.0);
+    assert_eq!((pricer.n, pricer.eta), (4096, 0.25), "tau = {tau}");
+    for k in [80.0, 100.0, 120.0] {
+      let price = pricer.price_call(&model, 100.0, k, 0.05, 0.01, tau);
+      let want = closed.price_call(100.0, k, 0.05, 0.01, tau);
+      assert!(
+        (price - want).abs() < 4e-3,
+        "tau = {tau}, K = {k}: {price} vs {want}"
+      );
+    }
+  }
 }
 
-/// Lord–Kahl (2010) §3.2: the grid spans `|ln s| + truncation_half_width(12)` either side of
-/// `ln K = 0`, so it brackets `ln s`.
+/// A range past the default grid's `4π` refines `eta` to cover it.
+#[test]
+fn carr_madan_cumulant_sized_widens_the_grid_for_a_long_maturity() {
+  let model = BsmFourier { sigma: 0.2 };
+  let closed = BsmPricer::new(0.2, BsmCoc::Merton1973);
+  let pricer = CarrMadanPricer::cumulant_sized(&model, 25.0, 100.0, 12.0);
+  let half_width = 100.0_f64.ln() + model.cumulants(25.0).truncation_half_width(12.0);
+  assert!(half_width > 4.0 * PI && (pricer.eta - PI / half_width).abs() < 1e-15);
+  for k in [80.0, 100.0, 120.0] {
+    let price = pricer.price_call(&model, 100.0, k, 0.05, 0.01, 25.0);
+    let want = closed.price_call(100.0, k, 0.05, 0.01, 25.0);
+    assert!((price - want).abs() < 5e-4, "K = {k}: {price} vs {want}");
+  }
+}
+
+/// Lord–Kahl (2010) §3.2: the grid spans at least `|ln s| + truncation_half_width(12)` either
+/// side of `ln K = 0`, so it brackets `ln s`.
 #[test]
 fn carr_madan_cumulant_sized_grid_brackets_log_spot() {
   let model = HestonFourier::new(HestonParams {
@@ -232,7 +246,7 @@ fn carr_madan_cumulant_sized_grid_brackets_log_spot() {
   let half_width = (log_strikes[log_strikes.len() - 1] - log_strikes[0]) / 2.0;
   let expected_half_width = s.ln().abs() + model.cumulants(t).truncation_half_width(12.0);
   assert!(
-    (half_width - expected_half_width).abs() < 0.1,
+    half_width > expected_half_width,
     "FFT half-width {half_width} against |ln s| + truncation_half_width(12) = {expected_half_width}"
   );
   let ln_s = s.ln();

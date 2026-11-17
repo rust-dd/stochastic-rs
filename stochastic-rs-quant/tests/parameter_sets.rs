@@ -65,8 +65,7 @@ fn every_heston_carrier_takes_the_same_params() {
     .npv();
   let pde = HestonAdiPricer::new(P).price_call(s, k, r, q, tau);
   assert!((fourier - exact).abs() < 1e-6, "{fourier}");
-  // HestonPricer integrates from φ = 1e-5; the dropped head is worth 1.27e-5 at P.
-  assert!((closed - exact).abs() < 2e-5, "{closed}");
+  assert!((closed - exact).abs() < 1e-10, "{closed}");
   assert!((closed - npv).abs() < 1e-12, "{closed} vs {npv}");
   assert!((closed - pde).abs() < 5e-2, "{closed} vs {pde}");
   assert_eq!(engine.params, P);

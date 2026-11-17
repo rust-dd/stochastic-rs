@@ -67,8 +67,8 @@ pub struct HestonAdiPricer {
 }
 
 impl HestonAdiPricer {
-  /// In 't Hout & Foulon's numerics (`m1 = 100`, `m2 = 50`, 50 MCS steps at `θ = ⅓`, damped);
-  /// panics unless `params` passes [`HestonParams::new`] with `kappa, theta > 0`; no Feller check.
+  /// In 't Hout & Foulon's mesh (`m1 = 100`, `m2 = 50`, 50 damped MCS steps at `θ = ⅓`); panics
+  /// unless `params` is valid with `kappa, theta > 0`. Their Feller assumption is not imposed.
   pub fn new(params: HestonParams) -> Self {
     let params = params.checked();
     let HestonParams { kappa, theta, .. } = params;

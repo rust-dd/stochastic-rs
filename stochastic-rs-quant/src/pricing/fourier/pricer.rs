@@ -73,8 +73,8 @@ impl CarrMadanPricer {
     }
   }
 
-  /// Lord–Kahl half-width `|ln s| + truncation_half_width(l_factor)` of the cumulants at `t`, about
-  /// `ln K = 0`; panics unless `s`, `l_factor` and `c₂` are finite and positive.
+  /// The default grid, with `eta` refined until it spans `|ln s| + truncation_half_width(l_factor)`
+  /// either side of `ln K = 0`; panics unless `s`, `l_factor` and `c₂` are finite and positive.
   ///
   /// Lord & Kahl (2010), "Complex logarithms in Heston-like models", Math. Finance 20(4), §3.2.
   ///
@@ -104,12 +104,13 @@ impl CarrMadanPricer {
       "cumulants.c2 must satisfy `c2.is_finite() && c2 > 0.0`, got c2 = {c2:?}"
     );
     let required_half_width = s.ln().abs() + cumulants.truncation_half_width(l_factor);
-    let n = 4096_usize;
-    let eta = PI / required_half_width;
+    let default = Self::default();
+    // Simpson's alternating weights image the damped price half a period away, `(S/3)e^{−απ/η}`:
+    // 0.56 on a spot of 100 at `η = 0.59`, so a narrow range must not coarsen `η`.
+    let eta = (PI / required_half_width).min(default.eta);
     Self {
-      n,
-      alpha: 0.75,
       eta: eta.max(0.001),
+      ..default
     }
   }
 
@@ -261,17 +262,15 @@ impl GilPelaezPricer {
     let ln_kf = (k / s).ln() - (r - q) * t;
 
     let i_unit = Complex64::i();
+    let phi_neg_i = model.chf(t, Complex64::new(0.0, -1.0));
+    let no_share_measure = phi_neg_i.norm() < 1e-30;
 
     let integrand_p1 = |u: f64| -> f64 {
-      if u.abs() < 1e-12 {
+      if u.abs() < 1e-12 || no_share_measure {
         return 0.0;
       }
       let xi = Complex64::new(u, -1.0);
       let phi = model.chf(t, xi);
-      let phi_neg_i = model.chf(t, Complex64::new(0.0, -1.0));
-      if phi_neg_i.norm() < 1e-30 {
-        return 0.0;
-      }
       let kernel = (-i_unit * u * ln_kf).exp() / (i_unit * u);
       (kernel * phi / phi_neg_i).re
     };
@@ -326,7 +325,7 @@ impl LewisPricer {
       (kernel * phi).re
     };
 
-    let integral = integrate_to_convergence(integrand, 1e-8, 1e-8);
+    let integral = integrate_to_convergence(integrand, 0.0, 1e-8);
 
     let call = s * disc * fwd_factor - sqrt_sk * disc * FRAC_1_PI * integral;
     floor_price(call)

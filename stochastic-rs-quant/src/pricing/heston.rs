@@ -5,10 +5,12 @@
 //! $$
 //!
 use std::f64::consts::FRAC_1_PI;
+use std::ops::Range;
 
 use implied_vol::DefaultSpecialFn;
 use implied_vol::ImpliedBlackVolatility;
 use num_complex::Complex64;
+use stochastic_rs_distributions::special::norm_cdf;
 
 use super::cf_quadrature::integrate_to_convergence;
 use crate::OptionType;
@@ -20,6 +22,23 @@ mod greeks;
 mod params;
 
 pub use params::HestonParams;
+
+/// Where the `P_j` integrals start: Gil–Pelaez's lower limit.
+const LOWER_LIMIT: f64 = 1e-8;
+/// Each panel's target for the tanh-sinh rule's own error estimate, which also passes a panel it
+/// has not resolved: isolated prices stay up to 1.8e-5 off on a spot of 100.
+const REST_TOLERANCE: f64 = 1e-10;
+/// Past this variance the Gaussian, `1/√w` wide, is narrower than the quadrature's smallest
+/// sub-panel: the control variate keeps this variance and no longer matches the mean.
+const CONTROL_VARIANCE_CAP: f64 = 2e3;
+/// The `E_j[∫v]` up to which the head the unmatched mean leaves below `LOWER_LIMIT` is its first
+/// order, `LOWER_LIMIT·u_j·(E_j[∫v] − w)`, to 5.9e-6 on a spot of 100; 5.7e-3 at `1e6`.
+const EXPECTED_VARIANCE_BOUND: f64 = 1e5;
+/// `√w` at which the walk, which ends near `φ = 8,000`, stops inside the Gaussian, `1/√w` wide,
+/// with an integrand it can no longer neglect.
+const UNCOVERED: Range<f64> = 1e-5..1e-3;
+/// Standard deviations `√w` from the money past which `P_j` is its Gaussian share to rounding.
+const FAR: f64 = 60.0;
 
 /// Heston (1993) semi-closed-form pricer; the query `(s, k, r, q, τ)` travels as arguments, so one
 /// instance prices a whole strike/maturity grid.
@@ -66,8 +85,8 @@ impl HestonPricer {
     self.params
   }
 
-  /// Call and put price at one query point, NaN for a negative or NaN `tau`; at `tau = 0` the
-  /// payoff, which the `P_j` integrals, undamped there, do not resolve.
+  /// Call and put price at one query point: NaN for a negative or NaN `tau` or an `E_j[∫₀^τ v]`
+  /// past `1e5`; at `tau = 0` the payoff, which the undamped `P_j` integrals do not resolve.
   ///
   /// $$
   /// C=Se^{-q\tau}P_1-Ke^{-r\tau}P_2,\qquad P=C+Ke^{-r\tau}-Se^{-q\tau}
@@ -81,8 +100,9 @@ impl HestonPricer {
         |option_type| vanilla_payoff(option_type, s * (-q * tau).exp(), k * (-r * tau).exp());
       return (payoff(OptionType::Call), payoff(OptionType::Put));
     }
-    let call = s * (-q * tau).exp() * self.p(1, tau, s, k, r, q)
-      - k * (-r * tau).exp() * self.p(2, tau, s, k, r, q);
+    let scale = self.rest_scale(tau, s, k, r, q);
+    let call = s * (-q * tau).exp() * self.p(1, tau, (s, k, r, q), scale)
+      - k * (-r * tau).exp() * self.p(2, tau, (s, k, r, q), scale);
     let put = call + k * (-r * tau).exp() - s * (-q * tau).exp();
 
     (call, put)
@@ -176,51 +196,59 @@ impl HestonPricer {
     }
   }
 
-  pub(self) fn d(&self, j: u8, phi: f64) -> Complex64 {
-    ((self.b(j) - self.params.rho * self.params.sigma * phi * Complex64::i()).powi(2)
-      - self.params.sigma.powi(2) * (2.0 * Complex64::i() * self.u(j) * phi - phi.powi(2)))
-    .sqrt()
+  /// `(f_j, D_j)` at `φ` in the Little-Trap form `g̃ = 1/g`, `e^{−dτ}`, which keeps the logarithm
+  /// on its principal branch at any `τ`.
+  /// Albrecher, Mayer, Schoutens & Tistaert (2007), "The Little Heston Trap", Wilmott, 83–92.
+  fn f_and_d(&self, j: u8, phi: f64, tau: f64, s: f64, r: f64, q: f64) -> (Complex64, Complex64) {
+    let HestonParams {
+      v0,
+      kappa,
+      theta,
+      sigma,
+      rho,
+    } = self.params;
+    let i = Complex64::i();
+    let b = self.b(j);
+    let d = ((b - rho * sigma * phi * i).powi(2)
+      - sigma.powi(2) * (2.0 * i * self.u(j) * phi - phi.powi(2)))
+    .sqrt();
+    let drift = b - rho * sigma * i * phi - d;
+    let g = drift / (b - rho * sigma * i * phi + d);
+    let decay = (-d * tau).exp();
+    let big_c = (r - q) * i * phi * tau
+      + (kappa * theta / sigma.powi(2))
+        * (drift * tau - 2.0 * ((1.0 - g * decay) / (1.0 - g)).ln());
+    let big_d = (drift / sigma.powi(2)) * ((1.0 - decay) / (1.0 - g * decay));
+    ((big_c + big_d * v0 + i * phi * s.ln()).exp(), big_d)
   }
 
-  /// Albrecher-Mayer-Schoutens-Tistaert (2007) "Little Heston Trap" form:
-  /// g̃ = 1/g_original keeps log-argument on the principal branch for all τ.
-  pub(self) fn g(&self, j: u8, phi: f64) -> Complex64 {
-    (self.b(j) - self.params.rho * self.params.sigma * Complex64::i() * phi - self.d(j, phi))
-      / (self.b(j) - self.params.rho * self.params.sigma * Complex64::i() * phi + self.d(j, phi))
+  /// `E_j[∫₀^τ v]` under `P_j`'s mean reversion `b_j`: its Gaussian control variate's variance.
+  fn mean_integrated_variance(&self, j: u8, tau: f64) -> f64 {
+    let x = self.b(j) * tau;
+    let (level, slope) = if x.abs() < 1e-4 {
+      (1.0 - 0.5 * x, 0.5 - x / 6.0)
+    } else {
+      let level = -(-x).exp_m1() / x;
+      (level, (1.0 - level) / x)
+    };
+    tau * (self.params.v0 * level + self.params.kappa * self.params.theta * tau * slope)
   }
 
-  pub(self) fn C(&self, j: u8, phi: f64, tau: f64, r: f64, q: f64) -> Complex64 {
-    (r - q) * Complex64::i() * phi * tau
-      + (self.params.kappa * self.params.theta / self.params.sigma.powi(2))
-        * ((self.b(j)
-          - self.params.rho * self.params.sigma * Complex64::i() * phi
-          - self.d(j, phi))
-          * tau
-          - 2.0
-            * ((1.0 - self.g(j, phi) * (-self.d(j, phi) * tau).exp()) / (1.0 - self.g(j, phi)))
-              .ln())
-  }
-
-  pub(self) fn D(&self, j: u8, phi: f64, tau: f64) -> Complex64 {
-    ((self.b(j) - self.params.rho * self.params.sigma * Complex64::i() * phi - self.d(j, phi))
-      / self.params.sigma.powi(2))
-      * ((1.0 - (-self.d(j, phi) * tau).exp())
-        / (1.0 - self.g(j, phi) * (-self.d(j, phi) * tau).exp()))
-  }
-
-  pub(self) fn f(&self, j: u8, phi: f64, tau: f64, s: f64, r: f64, q: f64) -> Complex64 {
-    (self.C(j, phi, tau, r, q)
-      + self.D(j, phi, tau) * self.params.v0
-      + Complex64::i() * phi * s.ln())
-    .exp()
-  }
-
-  pub(self) fn re(&self, j: u8, tau: f64, s: f64, k: f64, r: f64, q: f64) -> impl Fn(f64) -> f64 {
+  pub(self) fn re(
+    &self,
+    j: u8,
+    tau: f64,
+    (s, k, r, q): (f64, f64, f64, f64),
+    control_variance: f64,
+  ) -> impl Fn(f64) -> f64 {
     let self_ = *self;
+    let ln_forward = s.ln() + (r - q) * tau;
     move |phi: f64| -> f64 {
-      (self_.f(j, phi, tau, s, r, q) * (-Complex64::i() * phi * k.ln()).exp()
-        / (Complex64::i() * phi))
-        .re
+      let i_phi = Complex64::i() * phi;
+      let gaussian =
+        (i_phi * ln_forward + (self_.u(j) * i_phi - 0.5 * phi * phi) * control_variance).exp();
+      let (f, _) = self_.f_and_d(j, phi, tau, s, r, q);
+      ((f - gaussian) * (-i_phi * k.ln()).exp() / i_phi).re
     }
   }
 
@@ -235,28 +263,58 @@ impl HestonPricer {
   ) -> impl Fn(f64) -> f64 {
     let self_ = *self;
     move |phi: f64| -> f64 {
-      (self_.D(j, phi, tau)
-        * self_.f(j, phi, tau, s, r, q)
-        * (-Complex64::i() * phi * k.ln()).exp()
-        / (Complex64::i() * phi))
-        .re
+      let (f, big_d) = self_.f_and_d(j, phi, tau, s, r, q);
+      (big_d * f * (-Complex64::i() * phi * k.ln()).exp() / (Complex64::i() * phi)).re
     }
   }
 
-  /// Risk-neutral probability integral `P_j` in the original Heston semi-closed form.
-  ///
-  /// Source:
-  /// - Heston, S. L. (1993)
-  ///   https://doi.org/10.1093/rfs/6.2.327
-  pub(self) fn p(&self, j: u8, tau: f64, s: f64, k: f64, r: f64, q: f64) -> f64 {
-    0.5 + FRAC_1_PI * integrate_to_convergence(self.re(j, tau, s, k, r, q), 0.00001, 1e-8)
+  /// The factor that rescales `φ` so that the walk ends past the Gaussian, one for both `P_j`;
+  /// `None` where nothing is left to integrate, `FAR` from the money at a `√w` in `UNCOVERED`.
+  fn rest_scale(&self, tau: f64, s: f64, k: f64, r: f64, q: f64) -> Option<f64> {
+    let root = self.mean_integrated_variance(2, tau).sqrt();
+    // A chf that outlasts the Gaussian (`v0 ≪ σ²τ`) has no such scale, and `φ` stays as it is.
+    if !UNCOVERED.contains(&root) || self.f_and_d(2, 8.0 / root, tau, s, r, q).0.norm() >= 1e-8 {
+      return Some(1.0);
+    }
+    let log_moneyness = (s / k).ln() + (r - q) * tau;
+    (log_moneyness.abs() <= FAR * root).then_some(1e-2 / root)
+  }
+
+  /// Heston (1993)'s `P_j` less a Gaussian of variance `w = E_j[∫v]`, whose share is `N(d_j)`, a
+  /// step at `w = 0`: the rest vanishes at `φ → 0`, and almost everywhere at a `τ` of seconds.
+  pub(self) fn p(
+    &self,
+    j: u8,
+    tau: f64,
+    (s, k, r, q): (f64, f64, f64, f64),
+    scale: Option<f64>,
+  ) -> f64 {
+    let expected = self.mean_integrated_variance(j, tau);
+    if !expected.is_finite() || expected > EXPECTED_VARIANCE_BOUND {
+      return f64::NAN;
+    }
+    let w = expected.min(CONTROL_VARIANCE_CAP);
+    let log_moneyness = (s / k).ln() + (r - q) * tau + self.u(j) * w;
+    let d = if log_moneyness == 0.0 {
+      0.0
+    } else {
+      log_moneyness / w.sqrt()
+    };
+    let Some(scale) = scale else {
+      return norm_cdf(d);
+    };
+    let rest = self.re(j, tau, (s, k, r, q), w);
+    let scaled = |y: f64| scale * rest(scale * y);
+    let head = LOWER_LIMIT * self.u(j) * (expected - w);
+    let integral = integrate_to_convergence(scaled, LOWER_LIMIT / scale, REST_TOLERANCE);
+    norm_cdf(d) + FRAC_1_PI * (head + integral)
   }
 
   fn p_initial_variance_derivative(&self, j: u8, tau: f64, s: f64, k: f64, r: f64, q: f64) -> f64 {
     FRAC_1_PI
       * integrate_to_convergence(
         self.re_initial_variance_derivative(j, tau, s, k, r, q),
-        0.00001,
+        LOWER_LIMIT,
         1e-8,
       )
   }

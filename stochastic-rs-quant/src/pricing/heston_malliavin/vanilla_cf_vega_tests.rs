@@ -105,8 +105,8 @@ fn cf_helper_panics_on_a_zero_vol_of_vol() {
   );
 }
 
-/// Short-dated (`τ = 0.028`), low-variance (`v0 = 0.0109`) put vertical (hardest inversion): vegas
-/// agree to 6.2e-8 relative; the gap to scipy's `-3.4e-6` is the pricer's lower limit `phi = 1e-5`.
+/// Short-dated (`τ = 0.077`), low-variance (`v0 = 0.0109`) put vertical, the hardest inversion:
+/// the analytic vega agrees with scipy's `quad` to 6e-9 and with its own bumps to 1e-7 relative.
 #[test]
 fn short_dated_low_variance_vertical_agrees_with_its_own_bumps() {
   let model = HestonModel {
@@ -135,7 +135,7 @@ fn short_dated_low_variance_vertical_agrees_with_its_own_bumps() {
     HestonVanillaCfVegaMethod::AnalyticCharacteristicFunction
   );
   let scipy_quad_reference = 66.200_667_951_845_62;
-  assert!((estimate.value - scipy_quad_reference).abs() < 5e-6);
+  assert!((estimate.value - scipy_quad_reference).abs() < 1e-7);
   assert!(estimate.bump_stable, "estimate={estimate:?}");
   assert!(
     estimate.relative_bump_difference < 1e-7,

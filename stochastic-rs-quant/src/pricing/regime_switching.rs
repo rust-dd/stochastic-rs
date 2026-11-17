@@ -175,15 +175,15 @@ impl RegimeSwitchingModel {
 /// - Kirkby, J.L. (PROJ\_Option\_Pricing\_Matlab)
 #[derive(Debug, Clone)]
 pub struct CosPricer {
-  /// Number of cosine expansion terms.
-  pub n: usize,
+  /// Cosine terms, as [`CosEngine`]'s: `None`, the default, follows the chf's decay.
+  pub n: Option<usize>,
   /// Grid half-width parameter (L). Controls the truncation of the density.
   pub l: f64,
 }
 
 impl Default for CosPricer {
   fn default() -> Self {
-    Self { n: 256, l: 12.0 }
+    Self { n: None, l: 12.0 }
   }
 }
 
@@ -200,16 +200,8 @@ impl CosPricer {
     vols: &Array1<f64>,
     initial_state: usize,
   ) -> f64 {
-    let model = RegimeSwitchingModel {
-      q_matrix: q_matrix.clone(),
-      vols: vols.clone(),
-      initial_state,
-    };
-    CosEngine {
-      n: self.n,
-      l: self.l,
-    }
-    .price(&model, s, k, r, q_div, t, OptionType::Call)
+    let query = (s, k, r, q_div, t);
+    self.price(query, q_matrix, vols, initial_state, OptionType::Call)
   }
 
   /// Price a European put option under regime-switching diffusion.
@@ -224,6 +216,18 @@ impl CosPricer {
     vols: &Array1<f64>,
     initial_state: usize,
   ) -> f64 {
+    let query = (s, k, r, q_div, t);
+    self.price(query, q_matrix, vols, initial_state, OptionType::Put)
+  }
+
+  fn price(
+    &self,
+    (s, k, r, q_div, t): (f64, f64, f64, f64, f64),
+    q_matrix: &Array2<f64>,
+    vols: &Array1<f64>,
+    initial_state: usize,
+    option_type: OptionType,
+  ) -> f64 {
     let model = RegimeSwitchingModel {
       q_matrix: q_matrix.clone(),
       vols: vols.clone(),
@@ -233,7 +237,7 @@ impl CosPricer {
       n: self.n,
       l: self.l,
     }
-    .price(&model, s, k, r, q_div, t, OptionType::Put)
+    .price(&model, s, k, r, q_div, t, option_type)
   }
 }
 
@@ -485,7 +489,10 @@ mod tests {
   fn cos_agrees_with_lewis() {
     use super::super::fourier::LewisPricer;
 
-    let pricer = CosPricer { n: 512, l: 14.0 };
+    let pricer = CosPricer {
+      n: Some(512),
+      l: 14.0,
+    };
 
     let q_mat = array![[0.0]];
     let vols = array![0.2];
