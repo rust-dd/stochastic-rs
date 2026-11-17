@@ -145,12 +145,63 @@ def test_par_rate_takes_one_two_four_or_twelve_payments_a_year():
         curve.par_rate(5.0, 3)
 
 
+def test_schedule_builder_keeps_its_direction_under_imm_false_and_refuses_forward_imm():
+    import pytest
+
+    d = datetime.date
+
+    def build(*calls):
+        builder = _builder(d(2024, 2, 10), d(2026, 5, 1), "SemiAnnual")
+        for name, *args in calls:
+            getattr(builder, name)(*args)
+        return [str(x) for x in builder.build().dates]
+
+    forward = ["2024-02-10", "2024-08-10", "2025-02-10", "2025-08-10", "2026-02-10", "2026-05-01"]
+    backward = ["2024-02-10", "2024-05-01", "2024-11-01", "2025-05-01", "2025-11-01", "2026-05-01"]
+    imm = ["2024-03-20", "2024-06-19", "2024-12-18", "2025-06-18", "2025-12-17", "2026-06-17"]
+    assert build(("forward",), ("imm", False)) == forward
+    assert build(("imm", False), ("forward",)) == forward
+    assert build(("imm", False)) == backward
+    assert build(("imm", True), ("imm", False)) == backward
+    assert build(("backward",), ("imm", True)) == imm
+    assert build(("imm", True), ("backward",)) == imm
+    assert build(("forward",), ("imm", True), ("backward",)) == imm
+    for calls in ((("forward",), ("imm", True)), (("imm", True), ("forward",))):
+        with pytest.raises(ValueError, match="IMM schedules generate backward"):
+            build(*calls)
+
+
 def test_business_252_counts_its_calendars_business_days_and_icma_needs_a_reference_period():
     import math
 
     d = datetime.date
-    b3 = sr.DayCount("BUS/252")
-    assert (b3.day_count(d(2026, 1, 5), d(2026, 1, 9)), b3.year_fraction(d(2026, 1, 5), d(2026, 1, 9))) == (4, 4 / 252)
-    assert (b3.day_count(d(2026, 4, 20), d(2026, 4, 22)), repr(b3)) == (1, "DayCount(BUS/252/B3)")
+    bus = sr.DayCount("BUS/252")
+    assert (bus.day_count(d(2026, 1, 5), d(2026, 1, 9)), bus.year_fraction(d(2026, 1, 5), d(2026, 1, 9))) == (4, 4 / 252)
+    assert (bus.day_count(d(2026, 4, 20), d(2026, 4, 22)), repr(bus)) == (1, "DayCount(BUS/252/Brazil)")
     assert sr.DayCount("BUS/252/US").day_count(d(2026, 7, 2), d(2026, 7, 6)) == 1
     assert math.isnan(sr.DayCount("ACT/ACT ICMA").year_fraction(d(2026, 1, 1), d(2026, 7, 1)))
+
+
+def test_business_252_defaults_to_the_brazil_settlement_calendar_of_quantlib():
+    d = datetime.date
+    # QuantLib 1.43, Business252(Brazil(Settlement)).dayCount.
+    counts = [
+        (d(2026, 12, 23), d(2027, 1, 4), 6),
+        (d(2020, 1, 1), d(2030, 12, 31), 2755),
+        (d(2024, 11, 18), d(2024, 11, 22), 3),
+        (d(2023, 11, 17), d(2023, 11, 22), 3),
+        (d(2025, 2, 28), d(2025, 3, 6), 2),
+        (d(2027, 5, 24), d(2027, 5, 31), 4),
+        (d(2030, 12, 20), d(2030, 12, 31), 6),
+        (d(2022, 1, 3), d(2023, 1, 2), 251),
+        (d(2027, 1, 4), d(2026, 12, 23), -6),
+    ]
+    for name in ("BUS/252", "Bus252", "Business252", "BUS/252/Brazil"):
+        bus = sr.DayCount(name)
+        assert [bus.day_count(d1, d2) for d1, d2, _ in counts] == [count for _, _, count in counts]
+        assert bus.year_fraction(d(2020, 1, 1), d(2030, 12, 31)) == 10.932539682539682
+    # B3, the exchange, also closes on 24 and 31 December.
+    assert sr.DayCount("BUS/252/B3").day_count(d(2026, 12, 23), d(2027, 1, 4)) == 4
+    brazil, b3 = sr.Calendar.brazil(), sr.Calendar.b3()
+    assert [brazil.is_holiday(d(2026, 12, day)) for day in (24, 25, 31)] == [False, True, False]
+    assert [b3.is_holiday(d(2026, 12, day)) for day in (24, 25, 31)] == [True, True, True]

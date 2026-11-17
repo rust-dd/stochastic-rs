@@ -35,18 +35,21 @@ fn parse_day_count(name: &str) -> PyResult<DayCountConvention> {
     "ActActIcma" | "ActualActualICMA" | "ACT/ACT ICMA" | "ActualActualISMA" => {
       Ok(DayCountConvention::ActualActualIcma)
     }
-    "Bus252" | "Business252" | "BUS/252" => {
-      Ok(DayCountConvention::Business252(HolidayCalendar::B3))
-    }
     "Act364" | "Actual364" | "ACT/364" => Ok(DayCountConvention::Actual364),
     "NoLeap365" | "NL/365" => Ok(DayCountConvention::NoLeap365),
     "Act365L" | "Actual365Leap" | "ACT/365L" => Ok(DayCountConvention::Actual365Leap),
-    other => match other.rsplit_once('/') {
-      Some(("Bus252" | "Business252" | "BUS/252", calendar)) => Ok(
-        DayCountConvention::Business252(parse_holiday_calendar(calendar)?),
-      ),
-      _ => Err(PyValueError::new_err(format!("unknown DayCount: {other}"))),
-    },
+    other => {
+      let unknown = || PyValueError::new_err(format!("unknown DayCount: {other}"));
+      let prefix = ["Business252", "Bus252", "BUS/252"]
+        .into_iter()
+        .find(|prefix| other.starts_with(prefix))
+        .ok_or_else(unknown)?;
+      let calendar = match &other[prefix.len()..] {
+        "" => HolidayCalendar::Brazil,
+        rest => parse_holiday_calendar(rest.strip_prefix('/').ok_or_else(unknown)?)?,
+      };
+      Ok(DayCountConvention::Business252(calendar))
+    }
   }
 }
 
@@ -133,6 +136,7 @@ fn parse_holiday_calendar(name: &str) -> PyResult<HolidayCalendar> {
     "Hkex" | "HKEX" => Ok(HolidayCalendar::Hkex),
     "Asx" | "ASX" => Ok(HolidayCalendar::Asx),
     "Sgx" | "SGX" => Ok(HolidayCalendar::Sgx),
+    "Brazil" => Ok(HolidayCalendar::Brazil),
     "B3" => Ok(HolidayCalendar::B3),
     other => Err(PyValueError::new_err(format!(
       "unknown HolidayCalendar: {other}"
@@ -215,6 +219,13 @@ impl PyCalendar {
   }
 
   #[staticmethod]
+  fn brazil() -> Self {
+    Self {
+      inner: Calendar::new(HolidayCalendar::Brazil),
+    }
+  }
+
+  #[staticmethod]
   fn b3() -> Self {
     Self {
       inner: Calendar::new(HolidayCalendar::B3),
@@ -292,6 +303,8 @@ fn parse_stub(name: &str) -> PyResult<StubConvention> {
 #[pyclass(module = "stochastic_rs", name = "ScheduleBuilder")]
 pub struct PyScheduleBuilder {
   inner: Option<ScheduleBuilder>,
+  direction: DateGenerationRule,
+  imm: bool,
 }
 
 #[pymethods]
@@ -300,6 +313,8 @@ impl PyScheduleBuilder {
   fn new(effective: NaiveDate, termination: NaiveDate) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: Some(ScheduleBuilder::new(effective, termination)),
+      direction: DateGenerationRule::Backward,
+      imm: false,
     })
   }
 
@@ -349,42 +364,47 @@ impl PyScheduleBuilder {
   }
 
   fn forward(&mut self) -> PyResult<()> {
-    let b = self
-      .inner
-      .take()
-      .ok_or_else(|| PyValueError::new_err("ScheduleBuilder already consumed"))?;
-    self.inner = Some(b.rule(DateGenerationRule::Forward));
+    self.live()?;
+    self.direction = DateGenerationRule::Forward;
     Ok(())
   }
 
   fn backward(&mut self) -> PyResult<()> {
-    let b = self
-      .inner
-      .take()
-      .ok_or_else(|| PyValueError::new_err("ScheduleBuilder already consumed"))?;
-    self.inner = Some(b.rule(DateGenerationRule::Backward));
+    self.live()?;
+    self.direction = DateGenerationRule::Backward;
     Ok(())
   }
 
   fn imm(&mut self, flag: bool) -> PyResult<()> {
-    let b = self
-      .inner
-      .take()
-      .ok_or_else(|| PyValueError::new_err("ScheduleBuilder already consumed"))?;
-    self.inner = Some(b.rule(if flag {
-      DateGenerationRule::Imm
-    } else {
-      DateGenerationRule::Backward
-    }));
+    self.live()?;
+    self.imm = flag;
     Ok(())
   }
 
   fn build(&mut self) -> PyResult<PySchedule> {
-    let b = self
-      .inner
-      .take()
-      .ok_or_else(|| PyValueError::new_err("ScheduleBuilder already consumed"))?;
-    Ok(PySchedule { inner: b.build() })
+    self.live()?;
+    let rule = match (self.imm, self.direction) {
+      (true, DateGenerationRule::Forward) => {
+        return Err(PyValueError::new_err(
+          "IMM schedules generate backward: drop forward() or imm(True)",
+        ));
+      }
+      (true, _) => DateGenerationRule::Imm,
+      (false, direction) => direction,
+    };
+    let b = self.inner.take().expect("live builder");
+    Ok(PySchedule {
+      inner: b.rule(rule).build(),
+    })
+  }
+}
+
+impl PyScheduleBuilder {
+  fn live(&self) -> PyResult<()> {
+    match self.inner {
+      Some(_) => Ok(()),
+      None => Err(PyValueError::new_err("ScheduleBuilder already consumed")),
+    }
   }
 }
 

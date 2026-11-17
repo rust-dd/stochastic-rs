@@ -1,21 +1,13 @@
-//! Named rate indices and fixing history.
+//! Named overnight and IBOR benchmarks (SOFR, ESTR, SONIA, TONAR, Fed Funds, Euribor) with their
+//! day-count and calendar conventions, and the shared [`FixingHistory`] their coupons read.
 //!
-//! Factory functions for the standard overnight and IBOR-style benchmarks
-//! (SOFR, ESTR, SONIA, TONAR, Fed Funds, Euribor), with canonical
-//! day-count and calendar conventions attached to each. Historical fixings
-//! are stored in an observable [`FixingHistory`] so downstream coupons can
-//! pick up realised rates without rebuilding the index object.
+//! Reference: ISDA 2006 Definitions, standard floating rate options.
 //!
-//! Reference: ISDA 2006 Definitions — standard floating rate options.
+//! Reference: ARRC, "SOFR Floating Rate Notes Conventions Matrix" (2019).
 //!
-//! Reference: ARRC, "SOFR Floating Rate Notes Conventions Matrix"
-//! (2019) — SOFR / USD OIS conventions.
+//! Reference: Ametrano & Bianchetti, SSRN 2219548 (2013), Euribor conventions and curve tagging.
 //!
-//! Reference: Ametrano & Bianchetti, SSRN 2219548 (2013) — Euribor /
-//! LIBOR canonical conventions and curve tagging.
-//!
-//! Reference: Gellert & Schlögl, arXiv:2101.04308 (2021) — SOFR dynamics
-//! and fixing history treatment.
+//! Reference: Gellert & Schlögl, arXiv:2101.04308 (2021), SOFR dynamics and fixing history.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;

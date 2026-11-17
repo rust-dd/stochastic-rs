@@ -9,6 +9,7 @@ use chrono::Weekday;
 use ndarray::array;
 use stochastic_rs_quant::OptionType;
 use stochastic_rs_quant::calendar::BusinessDayConvention;
+use stochastic_rs_quant::calendar::Calendar;
 use stochastic_rs_quant::calendar::CalendarExt;
 use stochastic_rs_quant::calendar::DateGenerationRule;
 use stochastic_rs_quant::calendar::DayCountConvention;
@@ -26,6 +27,8 @@ use stochastic_rs_quant::cashflows::OvernightIndex;
 use stochastic_rs_quant::cashflows::RateTenor;
 use stochastic_rs_quant::credit::CdsPosition;
 use stochastic_rs_quant::credit::CreditDefaultSwap;
+use stochastic_rs_quant::credit::HazardInterpolation;
+use stochastic_rs_quant::credit::SurvivalCurve;
 use stochastic_rs_quant::curves::DiscountCurve;
 use stochastic_rs_quant::curves::InterpolationMethod;
 use stochastic_rs_quant::curves::MultiCurve;
@@ -262,6 +265,68 @@ fn a_standard_cds_pays_on_the_rolls_and_a_vanilla_one_keeps_its_plain_schedule()
 }
 
 #[test]
+fn a_standard_cds_and_a_vanilla_one_from_one_step_in_agree_on_the_fair_spread() {
+  let survival = SurvivalCurve::from_hazard_rates(
+    &array![1.0, 3.0, 5.0, 10.0],
+    &array![0.02, 0.02, 0.02, 0.02],
+    HazardInterpolation::PiecewiseConstantHazard,
+  );
+  let (discount, step_in) = (flat(0.03), d(2026, 5, 10));
+  for maturity in [d(2027, 6, 20), d(2031, 6, 20)] {
+    let standard = CreditDefaultSwap::<f64>::standard(
+      CdsPosition::Buyer,
+      1.0,
+      0.012,
+      0.4,
+      step_in,
+      maturity,
+      DayCountConvention::Actual360,
+    )
+    .valuation(
+      step_in,
+      DayCountConvention::Actual365Fixed,
+      &discount,
+      &survival,
+    );
+    let vanilla = CreditDefaultSwap::<f64>::vanilla(
+      CdsPosition::Buyer,
+      1.0,
+      0.012,
+      0.4,
+      step_in,
+      maturity,
+      Frequency::Quarterly,
+      DayCountConvention::Actual360,
+    )
+    .valuation(
+      step_in,
+      DayCountConvention::Actual365Fixed,
+      &discount,
+      &survival,
+    );
+    assert_eq!(standard.fair_spread, vanilla.fair_spread, "{maturity}");
+    assert_eq!(standard.risky_annuity, vanilla.risky_annuity, "{maturity}");
+    // A flat hazard's par spread is λ(1 − R) = 0.012, less the coupon's discrete-payment bias.
+    assert!(
+      (standard.fair_spread - 0.012).abs() < 2.5e-4,
+      "{}",
+      standard.fair_spread
+    );
+  }
+}
+
+#[test]
+#[should_panic(
+  expected = "frequency must satisfy `frequency.months() % 3 == 0`, got frequency = Monthly"
+)]
+fn the_cds_rule_steps_by_whole_quarters() {
+  ScheduleBuilder::new(d(2026, 5, 10), d(2027, 6, 20))
+    .frequency(Frequency::Monthly)
+    .rule(DateGenerationRule::Cds)
+    .build();
+}
+
+#[test]
 #[should_panic(
   expected = "termination must satisfy `termination == cds_roll_on_or_before(termination)`"
 )]
@@ -328,6 +393,80 @@ fn business_252_counts_the_named_calendars_business_days_and_icma_needs_a_refere
     Some(Frequency::Quarterly)
   );
   assert_eq!(Frequency::from_periods_per_year(3), None);
+}
+
+/// QuantLib 1.43 `Brazil(Settlement)`: its weekday holidays of 2020 to 2030, as `mmdd` per year.
+const BRAZIL_SETTLEMENT_HOLIDAYS: [(i32, &str); 11] = [
+  (
+    2020,
+    "0101 0224 0225 0410 0421 0501 0611 0907 1012 1102 1225",
+  ),
+  (2021, "0101 0215 0216 0402 0421 0603 0907 1012 1102 1115"),
+  (2022, "0228 0301 0415 0421 0616 0907 1012 1102 1115"),
+  (
+    2023,
+    "0220 0221 0407 0421 0501 0608 0907 1012 1102 1115 1225",
+  ),
+  (2024, "0101 0212 0213 0329 0501 0530 1115 1120 1225"),
+  (2025, "0101 0303 0304 0418 0421 0501 0619 1120 1225"),
+  (
+    2026,
+    "0101 0216 0217 0403 0421 0501 0604 0907 1012 1102 1120 1225",
+  ),
+  (2027, "0101 0208 0209 0326 0421 0527 0907 1012 1102 1115"),
+  (
+    2028,
+    "0228 0229 0414 0421 0501 0615 0907 1012 1102 1115 1120 1225",
+  ),
+  (
+    2029,
+    "0101 0212 0213 0330 0501 0531 0907 1012 1102 1115 1120 1225",
+  ),
+  (2030, "0101 0304 0305 0419 0501 0620 1115 1120 1225"),
+];
+
+#[test]
+fn the_brazil_settlement_calendar_and_its_business_252_count_match_quantlib() {
+  let brazil = Calendar::new(HolidayCalendar::Brazil);
+  let expected: Vec<NaiveDate> = BRAZIL_SETTLEMENT_HOLIDAYS
+    .iter()
+    .flat_map(|&(year, days)| {
+      days.split(' ').map(move |x| {
+        let mmdd = x.parse::<u32>().unwrap();
+        d(year, mmdd / 100, mmdd % 100)
+      })
+    })
+    .collect();
+  let closed: Vec<NaiveDate> = d(2020, 1, 1)
+    .iter_days()
+    .take_while(|x| *x <= d(2030, 12, 31))
+    .filter(|x| !brazil.is_weekend(*x) && brazil.is_holiday(*x))
+    .collect();
+  assert_eq!(closed, expected);
+  let bus = DayCountConvention::Business252(HolidayCalendar::Brazil);
+  let counts = [
+    (d(2026, 12, 23), d(2027, 1, 4), 6),
+    (d(2026, 4, 20), d(2026, 4, 22), 1),
+    (d(2020, 1, 1), d(2030, 12, 31), 2755),
+    (d(2024, 11, 18), d(2024, 11, 22), 3),
+    (d(2023, 11, 17), d(2023, 11, 22), 3),
+    (d(2025, 2, 28), d(2025, 3, 6), 2),
+    (d(2027, 5, 24), d(2027, 5, 31), 4),
+    (d(2030, 12, 20), d(2030, 12, 31), 6),
+    (d(2022, 1, 3), d(2023, 1, 2), 251),
+    (d(2027, 1, 4), d(2026, 12, 23), -6),
+  ];
+  for (d1, d2, count) in counts {
+    assert_eq!(bus.day_count(d1, d2), count, "{d1} to {d2}");
+  }
+  assert_eq!(
+    bus.year_fraction::<f64>(d(2020, 1, 1), d(2030, 12, 31)),
+    10.932539682539682
+  );
+  assert_eq!(bus.to_string(), "BUS/252/Brazil");
+  // B3, the exchange, also closes on 24 and 31 December.
+  let b3 = DayCountConvention::Business252(HolidayCalendar::B3);
+  assert_eq!(b3.day_count(d(2026, 12, 23), d(2027, 1, 4)), 4);
 }
 
 #[test]

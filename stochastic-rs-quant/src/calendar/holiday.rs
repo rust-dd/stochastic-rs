@@ -38,8 +38,10 @@ pub enum HolidayCalendar {
   /// Singapore Exchange (SGX) calendar. Rule-based holidays cover every year; lunar, Islamic and
   /// Hindu ones cover [`LUNAR_TABLE_YEARS`] (from 2028: lunar computed, Islamic/Hindu estimated).
   Sgx,
-  /// B3 / BoVespa (São Paulo) calendar. Black Awareness Day is a
-  /// holiday from 2024 onwards only.
+  /// Brazil's settlement calendar, the national holidays ANBIMA publishes, which Business/252
+  /// counts. Black Awareness Day is a holiday from 2024.
+  Brazil,
+  /// B3 / BoVespa (São Paulo), the exchange: [`Self::Brazil`] plus 24 and 31 December.
   B3,
 }
 
@@ -53,6 +55,7 @@ impl std::fmt::Display for HolidayCalendar {
       Self::Hkex => write!(f, "HKEX"),
       Self::Asx => write!(f, "ASX"),
       Self::Sgx => write!(f, "SGX"),
+      Self::Brazil => write!(f, "Brazil"),
       Self::B3 => write!(f, "B3"),
     }
   }
@@ -68,6 +71,7 @@ impl HolidayCalendar {
       Self::Hkex => lunar::is_hkex_holiday(date),
       Self::Asx => is_asx_holiday(date),
       Self::Sgx => lunar::is_sgx_holiday(date),
+      Self::Brazil => is_brazil_holiday(date),
       Self::B3 => is_b3_holiday(date),
     }
   }
@@ -627,10 +631,9 @@ fn is_asx_holiday(date: NaiveDate) -> bool {
   false
 }
 
-/// B3 (São Paulo / BoVespa) calendar. Brazilian holidays do **not**
-/// observe weekend-rollover — a fixed-date holiday on Saturday or Sunday
-/// stays on that day (no substitute).
-fn is_b3_holiday(date: NaiveDate) -> bool {
+/// Brazil's national holidays. A fixed-date holiday on a weekend stays on that day: Brazil has no
+/// substitute days.
+fn is_brazil_holiday(date: NaiveDate) -> bool {
   let (y, m, d) = (date.year(), date.month(), date.day());
 
   // New Year's Day.
@@ -690,22 +693,12 @@ fn is_b3_holiday(date: NaiveDate) -> bool {
     return true;
   }
 
-  // Christmas Eve (B3 closed full day, by exchange convention).
-  if m == 12 && d == 24 {
-    return true;
-  }
-
   // Christmas Day.
-  if m == 12 && d == 25 {
-    return true;
-  }
+  m == 12 && d == 25
+}
 
-  // New Year's Eve (B3 closed full day).
-  if m == 12 && d == 31 {
-    return true;
-  }
-
-  false
+fn is_b3_holiday(date: NaiveDate) -> bool {
+  is_brazil_holiday(date) || (date.month() == 12 && matches!(date.day(), 24 | 31))
 }
 
 #[cfg(test)]

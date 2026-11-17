@@ -37,7 +37,8 @@ pub enum DayCountConvention {
   /// Actual/Actual AFB (French): the denominator is 366 if Feb-29 is in the
   /// interval and 365 otherwise. AFB Master Agreement (1999).
   ActualActualAfb,
-  /// Business/252 (Brazil): the named calendar's business days in `[d1, d2)`, over 252.
+  /// Business/252: the named calendar's business days in `[d1, d2)`, over 252. Brazil's market
+  /// counts [`HolidayCalendar::Brazil`].
   Business252(HolidayCalendar),
   /// Actual/364: actual days divided by 364. Common in some commodity / repo
   /// markets that quote on a 4-week (28-day) cycle.

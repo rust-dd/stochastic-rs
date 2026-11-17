@@ -96,7 +96,7 @@ pub struct CreditDefaultSwap<T: RealExt> {
   pub premium_schedule: Schedule,
   /// Day count convention for the premium accrual.
   pub day_count: DayCountConvention,
-  /// Contract protection effective date (inclusive).
+  /// Protection and premium accrual start here (inclusive).
   pub effective_date: NaiveDate,
   /// Contract maturity (protection end, inclusive).
   pub maturity_date: NaiveDate,
@@ -174,7 +174,7 @@ impl<T: RealExt> CreditDefaultSwap<T> {
     )
   }
 
-  /// SNAC contract: quarterly premiums on the unadjusted CDS rolls, from the roll on or before the
+  /// SNAC schedule: quarterly premiums on the unadjusted CDS rolls, the first accruing from the
   /// step-in date `effective_date`; panics unless `maturity_date` is a roll date, or as `new`.
   pub fn standard(
     direction: CdsPosition,
@@ -235,7 +235,9 @@ impl<T: RealExt> CreditDefaultSwap<T> {
       if coupon_end <= valuation_date {
         continue;
       }
-      let alpha: T = self.day_count.year_fraction(coupon_start, coupon_end);
+      let alpha: T = self
+        .day_count
+        .year_fraction(coupon_start.max(self.effective_date), coupon_end);
       let payment_tau: T = tau_year_fraction(discount_day_count, valuation_date, coupon_end);
       let df_end = discount.discount_factor(payment_tau);
       let q_end = survival.survival_probability(tau_year_fraction(

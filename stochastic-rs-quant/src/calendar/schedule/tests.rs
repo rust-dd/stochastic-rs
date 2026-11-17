@@ -62,8 +62,6 @@ fn backward_dates_keep_their_day_where_imm_dates_snap() {
   .rule(DateGenerationRule::Imm)
   .build();
   use chrono::Datelike as _;
-  // Same length and final endpoint should match the IMM bucket of the
-  // termination, but the generic schedule keeps day-of-month 1.
   assert_eq!(s_plain.dates.len(), s_imm.dates.len());
   assert_eq!(s_plain.dates[0].day(), 1);
   assert_ne!(s_imm.dates[0].day(), 1);
@@ -71,9 +69,8 @@ fn backward_dates_keep_their_day_where_imm_dates_snap() {
 
 #[test]
 fn backward_long_first_merges_short_initial_stub() {
-  // Tenor = 2y + 1m → backward semi-annual yields a 1-month short stub at
-  // the front. `LongFirst` must absorb that stub into the next regular
-  // period, dropping the second date.
+  // 2y + 1m backward semi-annual leaves a 1-month front stub, which `LongFirst` merges into the
+  // next period by dropping the second date.
   let effective = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
   let termination = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap();
   let short = ScheduleBuilder::new(effective, termination)
@@ -118,9 +115,8 @@ fn backward_long_first_no_op_on_regular_grid() {
 
 #[test]
 fn forward_long_last_merges_short_trailing_stub() {
-  // Tenor = 2y + 1m forward semi-annual → 1-month short stub at the back.
-  // `LongLast` must absorb the stub into the previous regular period,
-  // dropping `dates[n-2]`.
+  // 2y + 1m forward semi-annual leaves a 1-month back stub, which `LongLast` merges into the
+  // previous period by dropping `dates[n-2]`.
   let effective = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
   let termination = NaiveDate::from_ymd_opt(2026, 2, 1).unwrap();
   let short = ScheduleBuilder::new(effective, termination)

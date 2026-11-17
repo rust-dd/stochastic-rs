@@ -161,8 +161,6 @@ pub fn optimal_execution<T: RealExt>(params: &AlmgrenChrissParams<T>) -> Almgren
   }
   let variance = params.volatility * params.volatility * tau * variance_acc;
 
-  // A buy is the sign reverse of a sell (Almgren–Chriss 2001, §2): all three series flip, so
-  // inventory runs from −X to 0 and trades and rates are negative.
   if params.side == Side::Buy {
     for k in 0..=n {
       inventory[k] = -inventory[k];
