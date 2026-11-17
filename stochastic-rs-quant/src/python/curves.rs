@@ -95,8 +95,8 @@ impl PyDiscountCurve {
     })
   }
 
-  /// A tenor's forecast curve against `discount`: `(maturity, rate)` deposits, `(start, end, rate)`
-  /// FRAs and `(rate, fixed_times, float_times)` swaps; an error's quote index counts them in turn.
+  /// A tenor's forecast curve on `discount` from `(maturity, rate)` deposits, `(start, end, rate)`
+  /// FRAs and `(rate, fixed_times, float_times)` swaps, which an error's index counts in turn.
   #[staticmethod]
   #[pyo3(signature = (discount, deposits, fras, swaps, interp="log_df"))]
   fn bootstrap_forecast(

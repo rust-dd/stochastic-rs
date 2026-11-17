@@ -108,8 +108,7 @@ pub fn cubic_spline_on_zero_rates<T: RealExt>(points: &[CurvePoint<T>], t: T) ->
   (-r * t).exp()
 }
 
-/// $S''(x_i)$ of the natural cubic spline through $(x_i, y_i)$, zero at both ends, by the Thomas
-/// algorithm on
+/// $S''(x_i)$ of the natural cubic spline through $(x_i, y_i)$, zero at both ends: the solution of
 ///
 /// $$
 /// h_{i-1} M_{i-1} + 2(h_{i-1} + h_i) M_i + h_i M_{i+1}

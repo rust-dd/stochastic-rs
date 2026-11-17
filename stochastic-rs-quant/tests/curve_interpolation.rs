@@ -96,7 +96,7 @@ fn the_cubic_spline_on_zero_rates_is_the_natural_spline() {
     (left - right).abs() < 1e-6,
     "one slope at a knot: {left}, {right}"
   );
-  // The second derivative vanishes at the last pillar: the zero rate is linear to first order.
+  // A natural spline has no curvature at its last pillar.
   let end =
     (curve.zero_rate(5.0) - 2.0 * curve.zero_rate(5.0 - 1e-3) + curve.zero_rate(5.0 - 2e-3)) / 1e-6;
   assert!(end.abs() < 1e-5, "{end}");
