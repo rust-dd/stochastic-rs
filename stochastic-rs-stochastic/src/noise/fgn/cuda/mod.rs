@@ -10,6 +10,7 @@ pub(crate) mod sampler;
 mod state;
 
 pub(crate) use state::PinnedHost;
+pub(crate) use state::frees;
 pub(crate) use state::release;
 
 #[cfg(test)]

@@ -392,3 +392,42 @@ fn a_release_racing_launches_never_panics_them() {
     single
   );
 }
+
+/// A release empties a cache holding its own device's kernels, or none: a launch racing an earlier
+/// release can leave per-size states behind with no kernels cached.
+#[test]
+fn a_release_frees_a_cache_of_its_ordinal_or_of_none() {
+  assert!(super::frees(Some(0), 0) && super::frees(None, 0) && super::frees(None, 3));
+  assert!(!super::frees(Some(1), 0));
+}
+
+/// The race's outcome, reproduced: per-size states with no kernels cached. A release frees them.
+#[test]
+fn a_release_frees_per_size_states_left_with_no_kernels_cached() {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use crate::process::fbm::Fbm;
+  use crate::sheet::fbs::Fbs;
+  use crate::traits::ProcessExt;
+
+  let _ = Fbm::<f32, _>::new(0.7, 64, Some(1.0), Deterministic::new(5))
+    .on::<Cuda>()
+    .sample_par(4);
+  let _ = Fbs::<f32, _>::new(0.7, 17, 9, 1.0, Deterministic::new(19))
+    .on::<Cuda>()
+    .sample();
+  super::state::forget_kernels();
+  crate::sheet::fbs::cuda::forget_kernels();
+  let sizes = || {
+    (
+      super::state::cached_sizes(),
+      crate::sheet::fbs::cuda::cached_sizes(),
+    )
+  };
+  assert!(
+    sizes().0 > 0 && sizes().1 > 0,
+    "the batches cached their sizes"
+  );
+  Cuda::default().release();
+  assert_eq!(sizes(), (0, 0), "a per-size state outlived the release");
+}

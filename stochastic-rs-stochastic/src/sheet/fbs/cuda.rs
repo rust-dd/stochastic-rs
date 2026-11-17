@@ -135,7 +135,7 @@ static GPU: Mutex<Option<Kernels>> = Mutex::new(None);
 /// Drops the sheet kernels, cuFFT plans and buffers cached for `ordinal`.
 pub(crate) fn release(ordinal: usize) {
   let mut gpu = GPU.lock();
-  if gpu.as_ref().is_some_and(|k| k.ordinal == ordinal) {
+  if crate::noise::fgn::cuda::frees(gpu.as_ref().map(|k| k.ordinal), ordinal) {
     invalidate(&mut gpu);
   }
 }
@@ -145,6 +145,16 @@ fn invalidate(gpu: &mut Option<Kernels>) {
   *gpu = None;
   SIZED_F32.lock().clear();
   SIZED_F64.lock().clear();
+}
+
+#[cfg(test)]
+pub(crate) fn cached_sizes() -> usize {
+  SIZED_F32.lock().len() + SIZED_F64.lock().len()
+}
+
+#[cfg(test)]
+pub(crate) fn forget_kernels() {
+  *GPU.lock() = None;
 }
 
 #[cfg(test)]

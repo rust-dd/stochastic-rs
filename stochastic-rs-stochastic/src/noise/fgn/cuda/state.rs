@@ -104,9 +104,15 @@ pub(super) fn staging<T>(slot: &mut Option<PinnedHost<T>>, len: usize) -> Result
 /// Drops the fGN kernels, cuFFT plans and buffers cached for `ordinal`.
 pub(crate) fn release(ordinal: usize) {
   let mut gpu = GPU.lock();
-  if gpu.as_ref().is_some_and(|k| k.ordinal == ordinal) {
+  if frees(gpu.as_ref().map(|k| k.ordinal), ordinal) {
     invalidate(&mut gpu);
   }
+}
+
+/// Whether a release for `ordinal` empties a cache whose kernels belong to `cached`; with none cached
+/// it does, since a launch racing an earlier release may have left per-size states behind.
+pub(crate) fn frees(cached: Option<usize>, ordinal: usize) -> bool {
+  cached.is_none_or(|cached| cached == ordinal)
 }
 
 /// Empties the cache: the per-size buffers and plans belong to the context that built them.
@@ -114,6 +120,16 @@ fn invalidate(gpu: &mut Option<GpuKernels>) {
   *gpu = None;
   SIZED_F32.lock().clear();
   SIZED_F64.lock().clear();
+}
+
+#[cfg(test)]
+pub(super) fn cached_sizes() -> usize {
+  SIZED_F32.lock().len() + SIZED_F64.lock().len()
+}
+
+#[cfg(test)]
+pub(super) fn forget_kernels() {
+  *GPU.lock() = None;
 }
 
 #[cfg(test)]
