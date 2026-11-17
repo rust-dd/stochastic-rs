@@ -119,18 +119,19 @@ impl<T: RealExt> RateHelper<T> for OisRateHelper<T> {
   fn to_instrument(&self, valuation_date: NaiveDate) -> Option<BootstrapInstrument<T>> {
     let rate = read_quote(&self.rate_quote)?;
     let day_count = self.index.index.day_count;
-    let payment_times: Vec<T> = self
+    let fixed_times: Vec<T> = self
       .payment_dates()
       .into_iter()
       .map(|d| day_count.year_fraction(valuation_date, d))
       .filter(|t| *t > T::zero())
       .collect();
-    if payment_times.is_empty() {
+    if fixed_times.is_empty() {
       return None;
     }
     Some(BootstrapInstrument::SwapWithSchedule {
       rate,
-      payment_times,
+      fixed_times,
+      float_times: Vec::new(),
     })
   }
 }
@@ -142,8 +143,9 @@ mod tests {
   use chrono::NaiveDate;
 
   use super::*;
+  use crate::curves::BootstrapSpec;
   use crate::curves::InterpolationMethod;
-  use crate::curves::bootstrap::bootstrap;
+  use crate::curves::bootstrap;
   use crate::market::indices::overnight;
   use crate::market::quote::SimpleQuote;
 
@@ -184,16 +186,15 @@ mod tests {
     assert_eq!(dates.len(), 3, "three annual payments: {dates:?}");
     assert!(dates.windows(2).all(|w| w[0] < w[1]));
     let Some(BootstrapInstrument::SwapWithSchedule {
-      payment_times,
-      rate,
+      fixed_times, rate, ..
     }) = long.to_instrument(settle)
     else {
       panic!("expected a scheduled swap")
     };
     assert_eq!(rate, 0.04);
     // Actual/360 year fractions of annual dates sit near 1.014 per year.
-    assert!((payment_times[0] - 365.0 / 360.0).abs() < 0.01);
-    assert!((payment_times[2] - 3.0 * 365.25 / 360.0).abs() < 0.02);
+    assert!((fixed_times[0] - 365.0 / 360.0).abs() < 0.01);
+    assert!((fixed_times[2] - 3.0 * 365.25 / 360.0).abs() < 0.02);
   }
 
   /// Par OIS rates implied by a flat 3 % continuously compounded discount
@@ -223,10 +224,10 @@ mod tests {
       let helper = OisRateHelper::new(handle(par), settle, maturity, overnight::sofr::<f64>());
       instruments.push(helper.to_instrument(settle).expect("quote present"));
     }
-    let curve = bootstrap(
+    let curve = bootstrap(BootstrapSpec::new(
       &instruments,
       InterpolationMethod::LogLinearOnDiscountFactors,
-    )
+    ))
     .unwrap();
     for inst in &instruments {
       let t = inst.maturity();

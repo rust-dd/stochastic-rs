@@ -21,7 +21,7 @@
 
 pub mod bootstrap;
 pub mod discount_curve;
-pub mod dual_curve;
+mod dual_curve;
 pub mod interpolation;
 pub(crate) mod linalg;
 pub mod multi_curve;
@@ -29,11 +29,10 @@ pub mod nelson_siegel;
 pub mod svensson;
 pub mod types;
 
+pub use bootstrap::BootstrapSpec;
+pub use bootstrap::IterativeOptions;
 pub use bootstrap::bootstrap;
-pub use bootstrap::bootstrap_iterative;
 pub use discount_curve::DiscountCurve;
-pub use dual_curve::ForecastInstrument;
-pub use dual_curve::bootstrap_forecast;
 pub use interpolation::interpolate_discount_factor;
 pub use multi_curve::MultiCurve;
 pub use nelson_siegel::NelsonSiegel;

@@ -77,13 +77,8 @@ impl<T: RealExt> CurveShift<T> {
     let points = base.points();
     let n = points.len();
     let times: Array1<T> = Array1::from_iter(points.iter().map(|p| p.time));
-    let base_rates: Array1<T> = Array1::from_iter(points.iter().map(|p| {
-      if p.time > T::zero() {
-        -p.discount_factor.ln() / p.time
-      } else {
-        T::zero()
-      }
-    }));
+    let base_rates: Array1<T> =
+      Array1::from_iter(points.iter().map(|p| -p.discount_factor.ln() / p.time));
 
     let shifted_rates = match self {
       Self::Parallel(amount) => base_rates.mapv(|r| r + *amount),
@@ -167,8 +162,8 @@ impl<T: RealExt> Scenario<T> {
   }
 
   /// Attach a curve shift keyed by curve name.
-  pub fn with_curve_shift(mut self, curve_key: impl Into<String>, shift: CurveShift<T>) -> Self {
-    self.curve_shifts.push((curve_key.into(), shift));
+  pub fn with_curve_shift(mut self, curve_name: impl Into<String>, shift: CurveShift<T>) -> Self {
+    self.curve_shifts.push((curve_name.into(), shift));
     self
   }
 
@@ -190,10 +185,10 @@ impl<T: RealExt> Scenario<T> {
   }
 
   /// Resolve a curve by applying every matching curve shift in order.
-  pub fn resolve_curve(&self, curve_key: &str, base: &DiscountCurve<T>) -> DiscountCurve<T> {
+  pub fn resolve_curve(&self, curve_name: &str, base: &DiscountCurve<T>) -> DiscountCurve<T> {
     let mut curve = base.clone();
     for (key, shift) in &self.curve_shifts {
-      if key == curve_key {
+      if key == curve_name {
         curve = shift.apply(&curve);
       }
     }

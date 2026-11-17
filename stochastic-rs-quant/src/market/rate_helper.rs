@@ -25,10 +25,10 @@ use crate::calendar::Frequency;
 use crate::calendar::ScheduleBuilder;
 use crate::calendar::SharedCalendar;
 use crate::curves::BootstrapInstrument;
+use crate::curves::BootstrapSpec;
 use crate::curves::DiscountCurve;
 use crate::curves::InterpolationMethod;
 use crate::curves::bootstrap;
-use crate::curves::bootstrap::finite_maturities;
 use crate::traits::RealExt;
 
 mod ois;
@@ -267,17 +267,18 @@ impl<T: RealExt> RateHelper<T> for SwapRateHelper<T> {
       // anchored at `valuation_date` (not `settlement_date`) so the curve
       // sees year-fractions relative to the bootstrap origin.
       let dates = self.built_schedule();
-      let payment_times: Vec<T> = dates
+      let fixed_times: Vec<T> = dates
         .iter()
         .skip(1)
         .map(|&d| self.day_count.year_fraction(valuation_date, d))
         .collect();
-      if payment_times.is_empty() {
+      if fixed_times.is_empty() {
         return None;
       }
       Some(BootstrapInstrument::SwapWithSchedule {
         rate,
-        payment_times,
+        fixed_times,
+        float_times: Vec::new(),
       })
     } else {
       let maturity = self
@@ -348,21 +349,25 @@ impl<T: RealExt> RateHelper<T> for FuturesRateHelper<T> {
   }
 }
 
-/// [`bootstrap()`] over the quoted helpers, skipping the rest; `InvalidQuote` at a helper's own
-/// index for a non-finite maturity.
+/// [`bootstrap()`] over the quoted helpers, skipping the rest; its errors, with `InvalidQuote`
+/// at the helper's own index.
 pub fn build_curve<T: RealExt>(
   helpers: &[&dyn RateHelper<T>],
   valuation_date: NaiveDate,
   method: InterpolationMethod,
 ) -> Result<DiscountCurve<T>, QuantError> {
-  let mut instruments = Vec::with_capacity(helpers.len());
-  for (index, helper) in helpers.iter().enumerate() {
-    if let Some(instrument) = helper.to_instrument(valuation_date) {
-      finite_maturities([(index, instrument.maturity())])?;
-      instruments.push(instrument);
-    }
-  }
-  bootstrap(&instruments, method)
+  let (origin, instruments): (Vec<usize>, Vec<BootstrapInstrument<T>>) = helpers
+    .iter()
+    .enumerate()
+    .filter_map(|(index, helper)| Some((index, helper.to_instrument(valuation_date)?)))
+    .unzip();
+  bootstrap(BootstrapSpec::new(&instruments, method)).map_err(|error| match error {
+    QuantError::InvalidQuote { index, reason } => QuantError::InvalidQuote {
+      index: origin[index],
+      reason,
+    },
+    other => other,
+  })
 }
 
 #[cfg(test)]
@@ -415,7 +420,7 @@ mod tests {
 
     let helpers: Vec<&dyn RateHelper<f64>> = vec![&dep, &fra, &swap];
     let curve = build_curve(&helpers, val_date, InterpolationMethod::LinearOnZeroRates).unwrap();
-    assert!(curve.len() >= 4);
+    assert_eq!(curve.len(), 3);
     let df_short = curve.discount_factor(0.25);
     let df_long = curve.discount_factor(2.0);
     assert!(df_short > df_long);
@@ -504,11 +509,10 @@ mod tests {
 
     match helper.to_instrument(val_date).unwrap() {
       BootstrapInstrument::SwapWithSchedule {
-        rate,
-        payment_times,
+        rate, fixed_times, ..
       } => {
         assert!((rate - 0.04).abs() < 1e-12);
-        assert_eq!(payment_times.len(), 4);
+        assert_eq!(fixed_times.len(), 4);
       }
       other => panic!("expected SwapWithSchedule, got {other:?}"),
     }

@@ -10,31 +10,49 @@ use ndarray::Array1;
 use super::types::CurvePoint;
 use crate::traits::RealExt;
 
-/// Linearly interpolate on zero rates.
-///
-/// Zero rates at knots: $r_i = -\ln D_i / t_i$. Between knots, $r(t)$ is linearly interpolated,
-/// then $D(t) = e^{-r(t)\,t}$.
-pub fn linear_on_zero_rates<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
-  if points.is_empty() {
-    return T::one();
-  }
-  if t <= points[0].time {
-    return points[0].discount_factor;
-  }
-  if t >= points[points.len() - 1].time {
-    let last = &points[points.len() - 1];
-    let r = -last.discount_factor.ln() / last.time;
-    return (-r * t).exp();
-  }
+/// The pillars after `t = 0`; one at `t = 0` is ignored, since the curve is 1 there.
+fn after_origin<T: RealExt>(points: &[CurvePoint<T>]) -> &[CurvePoint<T>] {
+  &points[points.partition_point(|p| p.time <= T::zero())..]
+}
 
+/// The value where no method interpolates: NaN for `t < 0`, 1 at `t = 0` or with no pillar, the
+/// first pillar's own, and the last zero rate held flat from the last pillar on.
+fn off_grid<T: RealExt>(points: &[CurvePoint<T>], t: T) -> Option<T> {
+  if t.is_nan() || t < T::zero() {
+    return Some(T::nan());
+  }
+  let (Some(first), Some(last)) = (points.first(), points.last()) else {
+    return Some(T::one());
+  };
+  if t == T::zero() {
+    Some(T::one())
+  } else if t == first.time {
+    Some(first.discount_factor)
+  } else if t >= last.time {
+    let r = -last.discount_factor.ln() / last.time;
+    Some((-r * t).exp())
+  } else {
+    None
+  }
+}
+
+/// `D₁^(t/t₁)`, the first pillar's zero rate held flat, for `t` before that pillar.
+fn flat_short_end<T: RealExt>(points: &[CurvePoint<T>], t: T) -> Option<T> {
+  let first = points.first()?;
+  (t < first.time).then(|| (first.discount_factor.ln() * (t / first.time)).exp())
+}
+
+/// $D(t) = e^{-r(t)\,t}$ with $r$ linear between the pillars' zero rates $r_i = -\ln D_i / t_i$
+/// and flat below the first; NaN for `t < 0`.
+pub fn linear_on_zero_rates<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
+  let points = after_origin(points);
+  if let Some(known) = off_grid(points, t).or_else(|| flat_short_end(points, t)) {
+    return known;
+  }
   let idx = points.partition_point(|p| p.time < t).saturating_sub(1);
   let (p0, p1) = (&points[idx], &points[idx + 1]);
 
-  let r0 = if p0.time > T::zero() {
-    -p0.discount_factor.ln() / p0.time
-  } else {
-    T::zero()
-  };
+  let r0 = -p0.discount_factor.ln() / p0.time;
   let r1 = -p1.discount_factor.ln() / p1.time;
 
   let w = (t - p0.time) / (p1.time - p0.time);
@@ -42,23 +60,13 @@ pub fn linear_on_zero_rates<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
   (-r * t).exp()
 }
 
-/// Log-linear interpolation on discount factors (piecewise constant forward rates).
-///
-/// $\ln D(t)$ is linearly interpolated between knots, which implies piecewise constant
-/// instantaneous forward rates.
+/// $\ln D(t)$ linear between pillars and from $(0, 1)$, so the forward rate is piecewise
+/// constant; NaN for `t < 0`.
 pub fn log_linear_on_discount_factors<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
-  if points.is_empty() {
-    return T::one();
+  let points = after_origin(points);
+  if let Some(known) = off_grid(points, t).or_else(|| flat_short_end(points, t)) {
+    return known;
   }
-  if t <= points[0].time {
-    return points[0].discount_factor;
-  }
-  if t >= points[points.len() - 1].time {
-    let last = &points[points.len() - 1];
-    let r = -last.discount_factor.ln() / last.time;
-    return (-r * t).exp();
-  }
-
   let idx = points.partition_point(|p| p.time < t).saturating_sub(1);
   let (p0, p1) = (&points[idx], &points[idx + 1]);
 
@@ -67,40 +75,24 @@ pub fn log_linear_on_discount_factors<T: RealExt>(points: &[CurvePoint<T>], t: T
   ln_d.exp()
 }
 
-/// Natural cubic spline on zero rates.
-///
-/// Fits a natural cubic spline (second derivative = 0 at boundaries) through the zero rate
-/// knots, then converts back to discount factors.
+/// The natural cubic spline through the pillars' zero rates, which are flat below the first
+/// pillar and linear between two; NaN for `t < 0`.
 pub fn cubic_spline_on_zero_rates<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
-  let n = points.len();
-  if n == 0 {
-    return T::one();
+  let points = after_origin(points);
+  if let Some(known) = off_grid(points, t).or_else(|| flat_short_end(points, t)) {
+    return known;
   }
-  if t <= points[0].time {
-    return points[0].discount_factor;
-  }
-  if t >= points[n - 1].time {
-    let last = &points[n - 1];
-    let r = -last.discount_factor.ln() / last.time;
-    return (-r * t).exp();
-  }
-  if n < 3 {
+  if points.len() < 3 {
     return linear_on_zero_rates(points, t);
   }
 
   let times: Vec<T> = points.iter().map(|p| p.time).collect();
   let rates: Vec<T> = points
     .iter()
-    .map(|p| {
-      if p.time > T::zero() {
-        -p.discount_factor.ln() / p.time
-      } else {
-        T::zero()
-      }
-    })
+    .map(|p| -p.discount_factor.ln() / p.time)
     .collect();
 
-  let m2 = natural_cubic_spline_coefficients(&times, &rates);
+  let m2 = natural_spline_second_derivatives(&times, &rates);
 
   let idx = points.partition_point(|p| p.time < t).saturating_sub(1);
   let h = times[idx + 1] - times[idx];
@@ -116,8 +108,13 @@ pub fn cubic_spline_on_zero_rates<T: RealExt>(points: &[CurvePoint<T>], t: T) ->
   (-r * t).exp()
 }
 
-/// Compute second derivatives for natural cubic spline (M = 0 at boundaries).
-fn natural_cubic_spline_coefficients<T: RealExt>(x: &[T], y: &[T]) -> Vec<T> {
+/// $S''(x_i)$ of the natural cubic spline through $(x_i, y_i)$, zero at both ends: the solution of
+///
+/// $$
+/// h_{i-1} M_{i-1} + 2(h_{i-1} + h_i) M_i + h_i M_{i+1}
+///   = 6 \left(\frac{y_{i+1} - y_i}{h_i} - \frac{y_i - y_{i-1}}{h_{i-1}}\right)
+/// $$
+fn natural_spline_second_derivatives<T: RealExt>(x: &[T], y: &[T]) -> Vec<T> {
   let n = x.len();
   let mut h = vec![T::zero(); n - 1];
   let mut alpha = vec![T::zero(); n];
@@ -129,9 +126,9 @@ fn natural_cubic_spline_coefficients<T: RealExt>(x: &[T], y: &[T]) -> Vec<T> {
     h[i] = x[i + 1] - x[i];
   }
 
-  let three = T::from_f64_fast(3.0);
+  let six = T::from_f64_fast(6.0);
   for i in 1..n - 1 {
-    alpha[i] = three / h[i] * (y[i + 1] - y[i]) - three / h[i - 1] * (y[i] - y[i - 1]);
+    alpha[i] = six / h[i] * (y[i + 1] - y[i]) - six / h[i - 1] * (y[i] - y[i - 1]);
   }
 
   for i in 1..n - 1 {
@@ -148,72 +145,22 @@ fn natural_cubic_spline_coefficients<T: RealExt>(x: &[T], y: &[T]) -> Vec<T> {
   m
 }
 
-/// Monotone convex interpolation on forward rates (Hagan & West, 2006,
-/// "Interpolation Methods for Curve Construction", Applied Mathematical
-/// Finance 13(2), 89-129).
-///
-/// Constructs a piecewise instantaneous forward rate curve $f(t)$ that:
-/// - Is positive whenever all discrete forwards are positive
-/// - Preserves monotonicity / convexity of the discrete forwards
-/// - Exactly reproduces the discrete forward rates (area preservation)
-///
-/// The discrete forward rate for interval $[t_{i-1}, t_i]$ is
-/// $f_i = (r(t_i) t_i - r(t_{i-1}) t_{i-1}) / (t_i - t_{i-1})$. Node
-/// forwards $f_i^-$ are computed as length-weighted averages of adjacent
-/// discrete forwards (HW eq.10), then clamped to $[0, 2 \min(f_i, f_{i+1})]$
-/// (HW eq.16) to guarantee a positivity-preserving interior. The
-/// interval-relative forward $G(x) = f(x) - f_i$ on $[0, 1]$ uses one of
-/// **four region forms** (HW Appendix, eqs 25-27 plus the no-correction
-/// cubic) chosen by the signs of $g_0 = f_{i-1}^- - f_i$ and
-/// $g_1 = f_i^- - f_i$:
-///
-/// - **Region 1 (no correction):** sign(g₁+2g₀) and sign(g₀+2g₁) differ →
-///   $G(x) = 3(g_0+g_1)x^2 - 2(g_1+2g_0)x + g_0$.
-/// - **Region 2 (flat-then-quadratic):** $g_0$ and $g_1+2g_0$ have opposite
-///   signs → flat $g_0$ on $[0, \eta]$, quadratic transition to $g_1$ on
-///   $[\eta, 1]$ with $\eta = (g_1+2g_0)/(g_1-g_0)$.
-/// - **Region 3 (quadratic-then-flat):** $g_1$ and $g_0+2g_1$ have opposite
-///   signs → quadratic transition from $g_0$ to $g_1$ on $[0, \eta]$, flat
-///   $g_1$ on $[\eta, 1]$ with $\eta = 3 g_1/(g_1-g_0)$.
-/// - **Region 4 (two-piece quadratic):** $g_0, g_1$ same sign → both pieces
-///   are quadratic, meeting at $\eta = g_1/(g_0+g_1)$ with apex
-///   $A = -(\eta g_0 + (1-\eta) g_1)/2$.
-///
-/// Each region preserves $\int_0^1 G(x) dx = 0$ (= area preservation
-/// $\int_{t_{i-1}}^{t_i} f(s) ds = h_i f_i$), so the resulting zero-rate
-/// curve exactly reproduces the input discount factors at the pillars.
-///
-/// Reference: Hagan & West (2006), §4 and Appendix. Cross-validated against
-/// the Google `tf-quant-finance` implementation
-/// (`rates/hagan_west/monotone_convex.py`).
+/// Hagan & West's monotone convex forward curve (2006, §4 and appendix) from the origin
+/// $\tau_0 = 0$, where $-\ln D = 0$; one pillar is a flat zero rate; NaN for `t < 0`.
 pub fn monotone_convex<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
-  let n = points.len();
-  if n == 0 {
-    return T::one();
+  let points = after_origin(points);
+  if let Some(known) = off_grid(points, t) {
+    return known;
   }
-  if t <= points[0].time {
-    return points[0].discount_factor;
-  }
-  if t >= points[n - 1].time {
-    let last = &points[n - 1];
-    let r = -last.discount_factor.ln() / last.time;
-    return (-r * t).exp();
-  }
-  if n < 3 {
+  if points.len() < 2 {
     return linear_on_zero_rates(points, t);
   }
 
-  let times: Vec<T> = points.iter().map(|p| p.time).collect();
-  let rt: Vec<T> = points
-    .iter()
-    .map(|p| {
-      if p.time > T::zero() {
-        -p.discount_factor.ln()
-      } else {
-        T::zero()
-      }
-    })
-    .collect();
+  let origin = std::iter::once((T::zero(), T::zero()));
+  let (times, rt): (Vec<T>, Vec<T>) = origin
+    .chain(points.iter().map(|p| (p.time, -p.discount_factor.ln())))
+    .unzip();
+  let n = times.len();
 
   let mut fwd = vec![T::zero(); n];
   for i in 1..n {
@@ -245,11 +192,8 @@ pub fn monotone_convex<T: RealExt>(points: &[CurvePoint<T>], t: T) -> T {
     }
   }
 
-  // `partition_point(|p| p.time < t)` returns the index of the first pillar
-  // with `time >= t`, i.e. the right endpoint of the interval containing t.
-  // Clamp to `1..n` so callers in the open (t_0, t_n) range always hit a
-  // valid bracketing pair `[idx-1, idx]`.
-  let idx = points.partition_point(|p| p.time < t).max(1).min(n - 1);
+  // The first knot at or after `t` is the right end of its interval, so `t` at a knot has x = 1.
+  let idx = times.partition_point(|time| *time < t).max(1).min(n - 1);
   let h = times[idx] - times[idx - 1];
   let x = (t - times[idx - 1]) / h;
 
@@ -360,7 +304,8 @@ fn integrate_g_hagan_west<T: RealExt>(g0: T, g1: T, x: T) -> T {
     + (g1 - a_apex) * diff * diff * diff / (three * one_minus_eta * one_minus_eta)
 }
 
-/// Interpolate a discount factor at time `t` using the given method.
+/// The discount factor at `t`, NaN for `t < 0`; a pillar at `t = 0` is ignored. Before the first
+/// pillar the zero rate is flat, except under `MonotoneConvex`, which shapes `[0, t₁]` too.
 pub fn interpolate_discount_factor<T: RealExt>(
   points: &[CurvePoint<T>],
   t: T,

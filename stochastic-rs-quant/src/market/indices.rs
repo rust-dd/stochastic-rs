@@ -239,7 +239,7 @@ pub mod ibor {
   /// Euribor with arbitrary tenor (months). Uses Actual/360 and the TARGET2
   /// calendar with 2 business day spot lag. See EMMI Euribor rulebook.
   pub fn euribor<T: RealExt>(tenor: RateTenor) -> NamedIborIndex<T> {
-    let name = format!("EURIBOR{}", tenor.curve_key());
+    let name = format!("EURIBOR{tenor}");
     let index = IborIndex::new(name, tenor, DayCountConvention::Actual360);
     NamedIborIndex::new(
       index,

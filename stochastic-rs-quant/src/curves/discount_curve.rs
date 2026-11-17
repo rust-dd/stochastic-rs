@@ -29,7 +29,8 @@ pub struct DiscountCurve<T: RealExt> {
 }
 
 impl<T: RealExt> DiscountCurve<T> {
-  /// A curve through `points`, which it sorts by time; panics unless every time is finite.
+  /// A curve through `points`, sorted by time, without a `t = 0` pillar (it is 1 there); panics
+  /// unless every time is finite and not negative and no two are equal.
   pub fn new(points: Vec<CurvePoint<T>>, method: InterpolationMethod) -> Self {
     if let Some(p) = points.iter().find(|p| !p.time.is_finite()) {
       panic!(
@@ -37,8 +38,21 @@ impl<T: RealExt> DiscountCurve<T> {
         p.time
       );
     }
+    if let Some(p) = points.iter().find(|p| p.time < T::zero()) {
+      panic!(
+        "points must satisfy `p.time >= T::zero()` for every p, got p.time = {:?}",
+        p.time
+      );
+    }
     let mut pts = points;
+    pts.retain(|p| p.time > T::zero());
     pts.sort_by(|a, b| ascending(&a.time, &b.time));
+    if let Some(w) = pts.windows(2).find(|w| w[0].time == w[1].time) {
+      panic!(
+        "points must satisfy `a.time != b.time` for every pair, got time = {:?} twice",
+        w[0].time
+      );
+    }
     Self {
       points: pts,
       method,
@@ -100,7 +114,7 @@ impl<T: RealExt> DiscountCurve<T> {
     self.method
   }
 
-  /// Interpolated discount factor at time `t`.
+  /// Discount factor at `t`, 1 for `t <= 0`; before the first pillar as the method's function says.
   pub fn discount_factor(&self, t: T) -> T {
     if t <= T::zero() {
       return T::one();

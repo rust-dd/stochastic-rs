@@ -18,5 +18,6 @@ pub use curve::YoyInflationCurve;
 pub use curve::ZeroCouponInflationCurve;
 pub use index::InflationIndex;
 pub use index::PriceIndex;
+pub use swap::InflationSwapValuation;
 pub use swap::YearOnYearInflationSwap;
 pub use swap::ZeroCouponInflationSwap;

@@ -38,6 +38,7 @@ pub use caplet::black_forward_floorlet;
 pub use caplet::caplet_price;
 pub use cms::CmsCaplet;
 pub use cms::CmsFloorlet;
+pub use cms::CmsValuation;
 pub use cms::hagan_linear_tsr_convexity_adjustment;
 pub use jamshidian::JamshidianHullWhiteSwaption;
 pub use jamshidian::price_jamshidian_hull_white;

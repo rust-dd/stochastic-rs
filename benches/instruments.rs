@@ -82,7 +82,7 @@ fn bench_swap_valuation(c: &mut Criterion) {
   let discount_curve = flat_curve(0.03, 30.5);
   let forecast_curve = flat_curve(0.0325, 30.5);
   let mut curves = MultiCurve::new(discount_curve);
-  curves.add_forecast("3M", forecast_curve);
+  curves.add_forecast(RateTenor::ThreeMonths, forecast_curve);
 
   c.bench_function("instruments_vanilla_swap_valuation", |b| {
     b.iter(|| swap.valuation(valuation, DayCountConvention::Actual365Fixed, &curves))
@@ -122,8 +122,8 @@ fn bench_basis_swap_valuation(c: &mut Criterion) {
   );
   let discount_curve = flat_curve(0.03, 10.5);
   let mut curves = MultiCurve::new(discount_curve);
-  curves.add_forecast("3M", flat_curve(0.032, 10.5));
-  curves.add_forecast("6M", flat_curve(0.034, 10.5));
+  curves.add_forecast(RateTenor::ThreeMonths, flat_curve(0.032, 10.5));
+  curves.add_forecast(RateTenor::SixMonths, flat_curve(0.034, 10.5));
 
   c.bench_function("instruments_basis_swap_valuation", |b| {
     b.iter(|| basis.valuation(valuation, DayCountConvention::Actual365Fixed, &curves))

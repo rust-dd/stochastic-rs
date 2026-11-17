@@ -28,7 +28,7 @@ fn cms_caplet_produces_finite_positive_price() {
     payment_delay: 0.25,
     vol: BlackVolatility::new(0.3_f64),
   };
-  let price = caplet.price();
+  let price = caplet.npv();
   assert!(price.is_finite() && price >= 0.0, "price={price}");
 
   let floorlet = CmsFloorlet {
@@ -43,7 +43,7 @@ fn cms_caplet_produces_finite_positive_price() {
     payment_delay: 0.25,
     vol: BlackVolatility::new(0.3_f64),
   };
-  assert!(floorlet.price().is_finite() && floorlet.price() > price * 0.5);
+  assert!(floorlet.npv().is_finite() && floorlet.npv() > price * 0.5);
 }
 
 #[test]

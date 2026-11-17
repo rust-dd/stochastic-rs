@@ -1,6 +1,10 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
+use crate::curves::BootstrapInstrument;
+use crate::curves::BootstrapSpec;
+use crate::curves::bootstrap;
+
 #[pyclass(name = "DiscountCurve", unsendable)]
 pub struct PyDiscountCurve {
   pub(super) inner: crate::curves::discount_curve::DiscountCurve<f64>,
@@ -20,7 +24,7 @@ impl PyDiscountCurve {
     let im = parse_interpolation(interp)?;
     let mat = maturities.as_array().to_owned();
     let zr = zero_rates.as_array().to_owned();
-    Ok(Self {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::curves::discount_curve::DiscountCurve::from_zero_rates(&mat, &zr, im),
     })
   }
@@ -74,25 +78,25 @@ impl PyDiscountCurve {
       ));
     }
     let method = parse_interpolation(interp)?;
-    let instruments: Vec<crate::curves::BootstrapInstrument<f64>> = payment_schedules
+    let instruments: Vec<BootstrapInstrument<f64>> = payment_schedules
       .into_iter()
       .zip(rates)
       .map(
-        |(payment_times, rate)| crate::curves::BootstrapInstrument::SwapWithSchedule {
+        |(fixed_times, rate)| BootstrapInstrument::SwapWithSchedule {
           rate,
-          payment_times,
+          fixed_times,
+          float_times: Vec::new(),
         },
       )
       .collect();
     Ok(Self {
-      inner: crate::curves::bootstrap(&instruments, method)
+      inner: bootstrap(BootstrapSpec::new(&instruments, method))
         .map_err(|e| PyValueError::new_err(e.to_string()))?,
     })
   }
 
-  /// Dual-curve bootstrap of a tenor's pseudo-discount curve against this
-  /// exogenous OIS `discount` curve: `deposits` as `(maturity, rate)`, `fras`
-  /// as `(start, end, rate)`, `swaps` as `(rate, fixed_times, float_times)`.
+  /// A tenor's forecast curve on `discount` from `(maturity, rate)` deposits, `(start, end, rate)`
+  /// FRAs and `(rate, fixed_times, float_times)` swaps, which an error's index counts in turn.
   #[staticmethod]
   #[pyo3(signature = (discount, deposits, fras, swaps, interp="log_df"))]
   fn bootstrap_forecast(
@@ -102,28 +106,27 @@ impl PyDiscountCurve {
     swaps: Vec<(f64, Vec<f64>, Vec<f64>)>,
     interp: &str,
   ) -> PyResult<Self> {
-    use crate::curves::dual_curve::ForecastInstrument;
     let method = parse_interpolation(interp)?;
-    let mut instruments: Vec<ForecastInstrument<f64>> = Vec::new();
+    let mut instruments: Vec<BootstrapInstrument<f64>> = Vec::new();
     instruments.extend(
       deposits
         .into_iter()
-        .map(|(maturity, rate)| ForecastInstrument::Deposit { maturity, rate }),
+        .map(|(maturity, rate)| BootstrapInstrument::Deposit { maturity, rate }),
     );
     instruments.extend(
       fras
         .into_iter()
-        .map(|(start, end, rate)| ForecastInstrument::Fra { start, end, rate }),
+        .map(|(start, end, rate)| BootstrapInstrument::Fra { start, end, rate }),
     );
     instruments.extend(swaps.into_iter().map(|(rate, fixed_times, float_times)| {
-      ForecastInstrument::Swap {
+      BootstrapInstrument::SwapWithSchedule {
         rate,
         fixed_times,
         float_times,
       }
     }));
     Ok(Self {
-      inner: crate::curves::dual_curve::bootstrap_forecast(&instruments, &discount.inner, method)
+      inner: bootstrap(BootstrapSpec::new(&instruments, method).discounting_with(&discount.inner))
         .map_err(|e| PyValueError::new_err(e.to_string()))?,
     })
   }
@@ -157,9 +160,13 @@ impl PyMultiCurve {
     })
   }
 
-  /// Registers `curve` as the forecast curve of `tenor` (e.g. `"3M"`).
-  fn add_forecast(&mut self, tenor: &str, curve: &PyDiscountCurve) {
-    self.inner.add_forecast(tenor, curve.inner.clone());
+  /// Registers `curve` under `tenor`, read without regard to case: `"O/N"` or `"ON"`, `"1M"`,
+  /// `"3M"`, `"6M"`, `"12M"` or `"1Y"`.
+  fn add_forecast(&mut self, tenor: &str, curve: &PyDiscountCurve) -> PyResult<()> {
+    self
+      .inner
+      .add_forecast(parse_tenor(tenor)?, curve.inner.clone());
+    Ok(())
   }
 
   /// OIS discount factor at `t`.
@@ -168,23 +175,32 @@ impl PyMultiCurve {
   }
 
   /// Simple forward projected from the tenor's forecast curve over
-  /// `[t1, t2]`; `None` for an unknown tenor.
-  fn projected_forward(&self, tenor: &str, t1: f64, t2: f64) -> Option<f64> {
-    self.inner.projected_forward(tenor, t1, t2)
+  /// `[t1, t2]`; `None` for a tenor with no curve.
+  fn projected_forward(&self, tenor: &str, t1: f64, t2: f64) -> PyResult<Option<f64>> {
+    Ok(self.inner.projected_forward(parse_tenor(tenor)?, t1, t2))
   }
 
   /// Forecast-minus-OIS simple forward spread over `[t1, t2]`.
-  fn basis_spread(&self, tenor: &str, t1: f64, t2: f64) -> Option<f64> {
-    self.inner.basis_spread(tenor, t1, t2)
+  fn basis_spread(&self, tenor: &str, t1: f64, t2: f64) -> PyResult<Option<f64>> {
+    Ok(self.inner.basis_spread(parse_tenor(tenor)?, t1, t2))
   }
 
   /// Fair fixed rate of a swap against `tenor` on the shared payment `schedule` (first entry =
-  /// start); `None` for an unknown tenor or under two dates.
-  fn fair_swap_rate(&self, tenor: &str, schedule: Vec<f64>) -> Option<f64> {
-    self
-      .inner
-      .fair_swap_rate(tenor, &ndarray::Array1::from_vec(schedule))
+  /// start); `None` for a tenor with no curve or under two dates.
+  fn fair_swap_rate(&self, tenor: &str, schedule: Vec<f64>) -> PyResult<Option<f64>> {
+    Ok(
+      self
+        .inner
+        .fair_swap_rate(parse_tenor(tenor)?, &ndarray::Array1::from_vec(schedule)),
+    )
   }
+}
+
+fn parse_tenor(tenor: &str) -> PyResult<crate::cashflows::RateTenor> {
+  tenor
+    .to_ascii_uppercase()
+    .parse()
+    .map_err(|e: crate::QuantError| PyValueError::new_err(e.to_string()))
 }
 
 #[pyclass(name = "NelsonSiegel", unsendable)]

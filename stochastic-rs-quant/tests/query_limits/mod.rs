@@ -5,18 +5,18 @@ use ndarray::Array1;
 use stochastic_rs_quant::OptionType;
 use stochastic_rs_quant::QuantError;
 use stochastic_rs_quant::calendar::Frequency;
+use stochastic_rs_quant::cashflows::RateTenor;
 use stochastic_rs_quant::credit::HazardInterpolation;
 use stochastic_rs_quant::credit::SurvivalCurve;
 use stochastic_rs_quant::credit::SurvivalPoint;
 use stochastic_rs_quant::curves::BootstrapInstrument;
+use stochastic_rs_quant::curves::BootstrapSpec;
 use stochastic_rs_quant::curves::CurvePoint;
 use stochastic_rs_quant::curves::DiscountCurve;
 use stochastic_rs_quant::curves::InterpolationMethod;
+use stochastic_rs_quant::curves::IterativeOptions;
 use stochastic_rs_quant::curves::MultiCurve;
 use stochastic_rs_quant::curves::bootstrap;
-use stochastic_rs_quant::curves::bootstrap_iterative;
-use stochastic_rs_quant::curves::dual_curve::ForecastInstrument;
-use stochastic_rs_quant::curves::dual_curve::bootstrap_forecast;
 use stochastic_rs_quant::market::RateHelper;
 use stochastic_rs_quant::market::build_curve;
 use stochastic_rs_quant::pricing::AssetOrNothingPricer;
@@ -423,21 +423,31 @@ fn a_multi_curve_leg_skips_an_empty_period_and_a_swap_rate_needs_two_dates() {
     )
   };
   let mut curves = MultiCurve::new(flat(0.04));
-  curves.add_forecast("3M", flat(0.045));
+  curves.add_forecast(RateTenor::ThreeMonths, flat(0.045));
   let schedule = Array1::from_vec(vec![0.5, 1.0, 2.0]);
   let repeated = Array1::from_vec(vec![0.5, 1.0, 1.0, 2.0]);
-  let pv = curves.pv_floating_leg("3M", &schedule, 1.0);
+  let pv = curves.pv_floating_leg(RateTenor::ThreeMonths, &schedule, 1.0);
   assert!(pv.is_some_and(f64::is_finite), "{pv:?}");
-  assert_eq!(curves.pv_floating_leg("3M", &repeated, 1.0), pv);
-  let rate = curves.fair_swap_rate("3M", &schedule);
-  assert!(rate.is_some_and(f64::is_finite), "{rate:?}");
-  assert_eq!(curves.fair_swap_rate("3M", &repeated), rate);
   assert_eq!(
-    curves.fair_swap_rate("3M", &Array1::from_vec(vec![1.0])),
+    curves.pv_floating_leg(RateTenor::ThreeMonths, &repeated, 1.0),
+    pv
+  );
+  let rate = curves.fair_swap_rate(RateTenor::ThreeMonths, &schedule);
+  assert!(rate.is_some_and(f64::is_finite), "{rate:?}");
+  assert_eq!(
+    curves.fair_swap_rate(RateTenor::ThreeMonths, &repeated),
+    rate
+  );
+  assert_eq!(
+    curves.fair_swap_rate(RateTenor::ThreeMonths, &Array1::from_vec(vec![1.0])),
     None
   );
-  assert_eq!(curves.fair_swap_rate("3M", &Array1::from_vec(vec![])), None);
-  let empty_period = curves.fair_swap_rate("3M", &Array1::from_vec(vec![1.0, 1.0]));
+  assert_eq!(
+    curves.fair_swap_rate(RateTenor::ThreeMonths, &Array1::from_vec(vec![])),
+    None
+  );
+  let empty_period =
+    curves.fair_swap_rate(RateTenor::ThreeMonths, &Array1::from_vec(vec![1.0, 1.0]));
   assert!(empty_period.is_some_and(f64::is_nan), "{empty_period:?}");
 }
 
@@ -449,11 +459,11 @@ fn a_multi_curve_leg_over_a_backward_period_is_nan() {
     InterpolationMethod::LogLinearOnDiscountFactors,
   );
   let mut curves = MultiCurve::new(flat.clone());
-  curves.add_forecast("3M", flat);
+  curves.add_forecast(RateTenor::ThreeMonths, flat);
   let backward = Array1::from_vec(vec![0.5, 2.0, 1.0]);
-  let pv = curves.pv_floating_leg("3M", &backward, 1.0);
+  let pv = curves.pv_floating_leg(RateTenor::ThreeMonths, &backward, 1.0);
   assert!(pv.is_some_and(f64::is_nan), "{pv:?}");
-  let rate = curves.fair_swap_rate("3M", &backward);
+  let rate = curves.fair_swap_rate(RateTenor::ThreeMonths, &backward);
   assert!(rate.is_some_and(f64::is_nan), "{rate:?}");
 }
 
@@ -469,9 +479,10 @@ fn a_bootstrap_quote_at_a_non_finite_maturity_is_an_invalid_quote() {
   };
   for bad in [f64::NAN, f64::INFINITY] {
     let quotes = [deposit(0.5), deposit(bad), deposit(1.0)];
-    assert!(rejects_quote_1(bootstrap(&quotes, method)), "{bad}");
+    let spec = BootstrapSpec::new(&quotes, method);
+    assert!(rejects_quote_1(bootstrap(spec)), "{bad}");
     assert!(
-      rejects_quote_1(bootstrap_iterative(&quotes, method, 1e-12, 100)),
+      rejects_quote_1(bootstrap(spec.iterative(IterativeOptions::default()))),
       "{bad}"
     );
     let swap = BootstrapInstrument::Swap {
@@ -480,7 +491,7 @@ fn a_bootstrap_quote_at_a_non_finite_maturity_is_an_invalid_quote() {
       frequency: Frequency::SemiAnnual,
     };
     assert!(
-      rejects_quote_1(bootstrap(&[deposit(0.5), swap], method)),
+      rejects_quote_1(bootstrap(BootstrapSpec::new(&[deposit(0.5), swap], method))),
       "{bad}"
     );
   }
@@ -489,20 +500,22 @@ fn a_bootstrap_quote_at_a_non_finite_maturity_is_an_invalid_quote() {
     &Array1::from_vec(vec![0.02; 3]),
     method,
   );
-  let swap = ForecastInstrument::Swap {
+  let swap = BootstrapInstrument::SwapWithSchedule {
     rate: 0.03,
     fixed_times: vec![1.0, f64::NAN],
     float_times: vec![0.5, 1.0, f64::NAN],
   };
   let quotes = [
-    ForecastInstrument::Deposit {
+    BootstrapInstrument::Deposit {
       maturity: 0.25,
       rate: 0.03,
     },
     swap,
   ];
-  assert!(rejects_quote_1(bootstrap_forecast(&quotes, &ois, method)));
-  assert!(bootstrap(&[deposit(0.5), deposit(1.0)], method).is_ok());
+  assert!(rejects_quote_1(bootstrap(
+    BootstrapSpec::new(&quotes, method).discounting_with(&ois)
+  )));
+  assert!(bootstrap(BootstrapSpec::new(&[deposit(0.5), deposit(1.0)], method)).is_ok());
 }
 
 #[test]

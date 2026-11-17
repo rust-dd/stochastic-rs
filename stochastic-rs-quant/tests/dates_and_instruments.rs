@@ -99,7 +99,7 @@ fn a_swap_and_a_swaption_share_one_direction_and_an_order_side_drives_execution(
     .frequency(Frequency::Quarterly)
     .build();
   let mut curves = MultiCurve::new(flat(0.03));
-  curves.add_forecast("3M", flat(0.03));
+  curves.add_forecast(RateTenor::ThreeMonths, flat(0.03));
   let npv = |direction| {
     VanillaInterestRateSwap::new(
       direction,
@@ -313,6 +313,54 @@ fn a_standard_cds_and_a_vanilla_one_from_one_step_in_agree_on_the_fair_spread() 
       standard.fair_spread
     );
   }
+}
+
+#[test]
+fn a_cds_skips_a_schedule_period_that_ends_before_its_effective_date() {
+  let survival = SurvivalCurve::from_hazard_rates(
+    &array![1.0, 3.0, 5.0, 10.0],
+    &array![0.02, 0.02, 0.02, 0.02],
+    HazardInterpolation::PiecewiseConstantHazard,
+  );
+  let (discount, valuation_date, effective) = (flat(0.03), d(2026, 5, 1), d(2026, 8, 1));
+  let rolls = cds_rolls().to_vec();
+  let early = CreditDefaultSwap::<f64>::new(
+    CdsPosition::Buyer,
+    1.0,
+    0.012,
+    0.4,
+    stochastic_rs_quant::calendar::Schedule {
+      dates: rolls.clone(),
+      adjusted_dates: rolls,
+    },
+    DayCountConvention::Actual360,
+    effective,
+    d(2027, 6, 20),
+  )
+  .valuation(
+    valuation_date,
+    DayCountConvention::Actual365Fixed,
+    &discount,
+    &survival,
+  );
+  let vanilla = CreditDefaultSwap::<f64>::vanilla(
+    CdsPosition::Buyer,
+    1.0,
+    0.012,
+    0.4,
+    effective,
+    d(2027, 6, 20),
+    Frequency::Quarterly,
+    DayCountConvention::Actual360,
+  )
+  .valuation(
+    valuation_date,
+    DayCountConvention::Actual365Fixed,
+    &discount,
+    &survival,
+  );
+  assert_eq!(early.fair_spread, vanilla.fair_spread);
+  assert_eq!(early.risky_annuity, vanilla.risky_annuity);
 }
 
 #[test]
