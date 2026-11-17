@@ -66,8 +66,8 @@ where
 {
 }
 
-/// The Euler engine's description of `distribution` when it is a law the kernels draw: `SimdNormal`,
-/// or `SimdExp` as the exponential size law; any other law stays on the host.
+/// The Euler engine's description of `distribution` when it is a law the kernels draw:
+/// `SimdNormal`, or `SimdExp` as the exponential size law; any other law stays on the host.
 pub(crate) fn device_jump_sizes<T: FloatExt, D: Any>(
   distribution: &D,
 ) -> Option<crate::euler::JumpSizes<T>> {

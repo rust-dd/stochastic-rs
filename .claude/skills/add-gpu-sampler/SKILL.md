@@ -250,11 +250,11 @@ NVRTC at runtime (`cuda/kernels.rs`), fusing RNG + scaling into
 one launch to avoid a memory round-trip. Four things carry over to a new
 kernel:
 
-- **Counter-based RNG** (a Philox-2×32 variant for fGN; Philox-4x32-10 for the
-  Euler body, `euler/philox.rs` in Rust and `euler/kernel/philox.rs` in C, on the
-  counter `(path, step, site, index)` under the whole seed), not cuRAND and no
-  per-thread state: the output must be a pure function of `(global index, seed)` or
-  the chunk-identity guarantee dies.
+- **Counter-based RNG** (Philox-4x32-10, `euler/philox.rs` in Rust and
+  `euler/kernel/philox.rs` in C, under the whole seed: the Euler body on the counter
+  `(path, step, site, index)`, the fGN and sheet pipelines on `(cell, which, site)` with
+  the batch-global cell), not cuRAND and no per-thread state: the output must be a
+  pure function of `(global index, seed)` or the chunk-identity guarantee dies.
 - **Fuse.** One launch for RNG + Box–Muller + `sqrt_eigenvalue` scaling,
   writing interleaved complex, rather than three round-trips.
 - **Pad to a power of two.** cuFFT and MPS are tuned for it; `Fgn::new`
