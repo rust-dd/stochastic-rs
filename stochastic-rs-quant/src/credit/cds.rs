@@ -232,7 +232,7 @@ impl<T: RealExt> CreditDefaultSwap<T> {
     for window in self.premium_schedule.adjusted_dates.windows(2) {
       let coupon_start = window[0];
       let coupon_end = window[1];
-      if coupon_end <= valuation_date {
+      if coupon_end <= valuation_date || coupon_end <= self.effective_date {
         continue;
       }
       let alpha: T = self
