@@ -194,7 +194,7 @@ fn carr_madan_heston_vs_analytical() {
 }
 
 /// A range inside the default grid leaves `eta` at 0.25, where Simpson's half-period image is
-/// 2.7e-3 on a spot of 100; at `eta = π / half-width` it was 0.56 at `τ = 0.1` and 0.17 at 1.
+/// 2.7e-3 on a spot of 100; the image grows with the step, to 0.56 at `eta = 0.59`.
 #[test]
 fn carr_madan_cumulant_sized_matches_black_scholes() {
   let model = BsmFourier { sigma: 0.2 };

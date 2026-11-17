@@ -20,7 +20,7 @@ pub struct CosEngine {
   pub l: f64,
 }
 
-/// Fang & Oosterlee's `N` for the smooth densities of §5.1; a slowly decaying chf needs more.
+/// The terms the default sums before the decay rule adds any; a slowly decaying chf needs more.
 const MIN_TERMS: usize = 256;
 const MAX_TERMS: usize = 2048;
 const CHF_FLOOR: f64 = 1e-9;

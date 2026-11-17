@@ -25,8 +25,8 @@ pub use params::HestonParams;
 
 /// Where the `P_j` integrals start: Gil–Pelaez's lower limit.
 const LOWER_LIMIT: f64 = 1e-8;
-/// The control variate leaves an integrand far below `P_j`'s own, whose panels pass a `1e-8` target
-/// early: two bumped prices then differed by 7.5e-9 on a spot of 720, and by 3e-12 at `1e-10`.
+/// Each panel's target for the tanh-sinh rule's own error estimate, which also passes a panel it
+/// has not resolved: isolated prices stay up to 1.8e-5 off on a spot of 100.
 const REST_TOLERANCE: f64 = 1e-10;
 /// Past this variance the Gaussian, `1/√w` wide, is narrower than the quadrature's smallest
 /// sub-panel: the control variate keeps this variance and no longer matches the mean.
@@ -194,7 +194,7 @@ impl HestonPricer {
   }
 
   /// `(f_j, D_j)` at `φ` in the Little-Trap form `g̃ = 1/g`, `e^{−dτ}`, which keeps the logarithm
-  /// on its principal branch at any `τ`; `d` and `g̃` are evaluated once per sample.
+  /// on its principal branch at any `τ`.
   /// Albrecher, Mayer, Schoutens & Tistaert (2007), "The Little Heston Trap", Wilmott, 83–92.
   fn f_and_d(&self, j: u8, phi: f64, tau: f64, s: f64, r: f64, q: f64) -> (Complex64, Complex64) {
     let HestonParams {
