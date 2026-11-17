@@ -106,15 +106,14 @@ A missing closed form is `None`, never a silent zero and never a panic.
 
 ## `Calibrator` and `CalibrationResult`
 
-Calibration is `Result`-based, with associated types for the initial guess, the parameter struct, the output and the error. Market data (prices, strikes, spots, …) goes to the calibrator's own constructor, not to `calibrate`:
+Calibration is `Result`-based, with associated types for the parameter struct, the output and the error. Market data (prices, strikes, spots, …) goes to the calibrator's own constructor, not to `calibrate`:
 
 ```rust
 pub trait Calibrator {
-  type InitialGuess;
   type Params: Clone;
   type Output: CalibrationResult<Params = Self::Params>;
   type Error: std::fmt::Debug + std::fmt::Display + Send + Sync + 'static;
-  fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error>;
+  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error>;
 }
 
 pub trait CalibrationResult {
@@ -134,10 +133,13 @@ pub trait CalibrationResult {
   fn max_error(&self) -> Option<f64> {
     None
   }
+  fn history(&self) -> &[CalibrationHistory<Self::Params>] {
+    &[]
+  }
 }
 ```
 
-`calibrate(None)` lets the calibrator pick its own initial guess. `CalibrationResult` carries the calibrated `Params` (via `.params()`), the RMSE and a convergence flag; `loss_score()`, `iterations()`, `message()` and `max_error()` are `None` unless the calibrator records them. The [Quant catalog](/docs/quant) lists the calibrators.
+`calibrate(None)` lets the calibrator pick its own start, and `calibrate(Some(p))` starts from a value of the type the fit returns. Every quant calibrator returns a `Calibrated<P>`: the parameters (`params`), the loss breakdown, whether the optimiser converged, its iteration count and stop message, the worst repricing error and, under `CalibrationOptions::with_record_history(true)`, the start and each accepted iterate (`history()`). Its error type is `QuantError`, and a fit that does not converge is `Ok` with `converged` false. The [Quant catalog](/docs/quant) lists the calibrators.
 
 ## `GreeksExt` and the `Greeks` aggregator
 

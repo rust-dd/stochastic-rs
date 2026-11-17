@@ -56,7 +56,7 @@ The `stochastic-rs-quant` crate covers pricing, calibration, vol surface constru
 | A vanilla surface plus exotics that need the right mix of local and stochastic volatility | `HestonSlvCalibrator` (Heston fit → Dupire local vol → leverage by the Guyon–Henry-Labordère particle method or the finite-volume forward Kolmogorov equation) | reprices the surface at any mixing fraction $\eta$ |
 | A trained surrogate | `HestonSurrogateCalibrator`, `RBergomiSurrogateCalibrator` (`ai` feature) | LM on the network's exact Jacobian |
 
-All of them except the `calibrate_essvi` function implement `Calibrator` (`calibrate(initial) -> Result<…>`) and hand their result to a pricer through `ToModel` / `ToShortRateModel`; `Regularization` adds a Tikhonov pull toward an anchor on the Heston, SABR and swaption calibrators.
+All of them except the `calibrate_essvi` function implement `Calibrator` (`calibrate(initial) -> Result<…>`) and hand their result to a pricer through `ToModel` / `ToShortRateModel`; `CalibrationOptions::with_regularization` adds a Tikhonov pull toward an anchor: residual rows on every Levenberg–Marquardt calibrator, a cost penalty on the Nelder–Mead ones (the swaption calibrators and the SABR caplet), and an `Unsupported` error from HSCM, rBergomi and Heston SLV, whose optimisers cannot take it.
 
 ## Examples
 

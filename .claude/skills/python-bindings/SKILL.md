@@ -345,7 +345,7 @@ When wrapping a distribution, confirm:
 - [ ] `#[pyo3(signature = (...))]` lists every parameter
 - [ ] Constructors validate inputs and return `PyResult<Self>` with
       `PyValueError::new_err`
-- [ ] Calibrators map inner `anyhow::Error` to `PyValueError`
+- [ ] Calibrators map the inner `QuantError` to `PyValueError` with its `Display` text
 - [ ] `m.add_class::<PyXxx>()` registered
 - [ ] Smoke test: construct + 1-2 method calls
 - [ ] Round-trip test where applicable (e.g. price → IV → price)
