@@ -15,11 +15,14 @@ use crate::StatsError;
 use crate::filtering::mcmc::random_walk_metropolis;
 use crate::qmle::Carrier;
 use crate::qmle::DiffusionKind;
+use crate::qmle::ar1_start;
 use crate::qmle::assert_dt;
 use crate::qmle::cir_of;
 use crate::qmle::diffusion_path;
+use crate::qmle::in_data_units;
 use crate::qmle::ou_of;
 use crate::qmle::quasi_log_likelihood;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
 /// Posterior means and equal-tailed 95 % intervals in the names of [`Ou`] and [`Cir`]: `theta` the
@@ -70,7 +73,7 @@ impl BayesianDiffusionFit {
 }
 
 /// Metropolis posterior, defined where the QMLE's regression refuses; `Err`s and panics as the
-/// QMLE's checks of `dt`, the path, its mean and spread, and as [`random_walk_metropolis`].
+/// QMLE's checks of `dt`, the path, its start and data scale, and as [`random_walk_metropolis`].
 pub fn fit_diffusion_bayesian<T: FloatExt>(
   series: ArrayView1<T>,
   dt: f64,
@@ -81,10 +84,12 @@ pub fn fit_diffusion_bayesian<T: FloatExt>(
   seed: u64,
 ) -> Result<BayesianDiffusionFit, StatsError> {
   assert_dt(dt);
-  let x = diffusion_path(series, kind, 4)?;
+  // At unit scale, as the QMLE: the chain's steps and its prior then hold in any unit of the path.
+  let (x, unit) = unit_scaled(diffusion_path(series, kind, 4)?);
   let carrier = Carrier::new(&x, kind)?;
-  // The speed about 1, the level about the path's mean and `σ` about 0.2.
-  let prior_mean = [0.0_f64, carrier.centre().1, (-1.6_f64)];
+  let [_, level, ln_sigma] = ar1_start(&x, dt, kind, carrier)?;
+  // The speed about 1, the level about the path's mean and `σ` about the regression's `σ₀`.
+  let prior_mean = [0.0_f64, level, ln_sigma];
   let tau = 4.0_f64;
   let inv_2tau2 = 1.0 / (2.0 * tau * tau);
 
@@ -129,13 +134,20 @@ pub fn fit_diffusion_bayesian<T: FloatExt>(
     sigmas.push(sigma);
   }
 
+  let in_units = |theta: f64, mu: f64, sigma: f64| in_data_units(kind, [theta, mu, sigma], unit);
+  let [theta_mean, mu_mean, sigma_mean] = in_units(mean(&thetas), mean(&mus), mean(&sigmas))?;
+  let theta_ci = credible_interval(&mut thetas);
+  let (mu_ci, sigma_ci) = (credible_interval(&mut mus), credible_interval(&mut sigmas));
+  let [_, mu_low, sigma_low] = in_units(theta_ci.0, mu_ci.0, sigma_ci.0)?;
+  let [_, mu_high, sigma_high] = in_units(theta_ci.1, mu_ci.1, sigma_ci.1)?;
+
   Ok(BayesianDiffusionFit {
-    theta_mean: mean(&thetas),
-    mu_mean: mean(&mus),
-    sigma_mean: mean(&sigmas),
-    theta_ci: credible_interval(&mut thetas),
-    mu_ci: credible_interval(&mut mus),
-    sigma_ci: credible_interval(&mut sigmas),
+    theta_mean,
+    mu_mean,
+    sigma_mean,
+    theta_ci,
+    mu_ci: (mu_low, mu_high),
+    sigma_ci: (sigma_low, sigma_high),
     acceptance_rate: mh.acceptance_rate,
     kind,
   })
@@ -153,6 +165,9 @@ fn credible_interval(v: &mut [f64]) -> (f64, f64) {
   let hi = v[((0.975 * n as f64) as usize).min(n - 1)];
   (lo, hi)
 }
+
+#[cfg(test)]
+mod scale_tests;
 
 #[cfg(test)]
 mod tests {
@@ -298,19 +313,6 @@ mod tests {
     assert_eq!(
       fit.unwrap_err(),
       StatsError::InsufficientData { needed: 4, got: 3 }
-    );
-  }
-
-  /// The mean of these finite points overflows, so the prior has no centre.
-  #[test]
-  fn an_overflowing_mean_is_a_numerical_start() {
-    let s = Array1::from(vec![1e308, 1.5e308, 1e308, 0.5e308, 1.2e308]);
-    let ou = DiffusionKind::OrnsteinUhlenbeck;
-    assert_eq!(
-      fit_diffusion_bayesian(s.view(), 1.0 / 252.0, ou, [0.1; 3], 100, 10, 1).unwrap_err(),
-      StatsError::Numerical {
-        stage: "starting point"
-      }
     );
   }
 
