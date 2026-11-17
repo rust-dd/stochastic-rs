@@ -75,6 +75,22 @@ impl<S: SeedExt> DiffusionModel for GbmIh<f64, S> {
     self.sigma * x
   }
 
+  fn drift_x(&self, _x: f64, _t: f64) -> f64 {
+    self.mu
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
+  }
+
+  fn diffusion_x(&self, _x: f64, _t: f64) -> f64 {
+    self.sigma
+  }
+
+  fn diffusion_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
+  }
+
   fn is_positive(&self) -> bool {
     true
   }
@@ -108,6 +124,22 @@ impl<S: SeedExt> DiffusionModel for Gbm<f64, S> {
 
   fn diffusion(&self, x: f64, _t: f64) -> f64 {
     self.sigma * x
+  }
+
+  fn drift_x(&self, _x: f64, _t: f64) -> f64 {
+    self.mu
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
+  }
+
+  fn diffusion_x(&self, _x: f64, _t: f64) -> f64 {
+    self.sigma
+  }
+
+  fn diffusion_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
   }
 
   fn is_positive(&self) -> bool {
@@ -163,6 +195,14 @@ impl<S: SeedExt> DiffusionModel for Ou<f64, S> {
 
   fn diffusion(&self, _x: f64, _t: f64) -> f64 {
     self.sigma
+  }
+
+  fn drift_x(&self, _x: f64, _t: f64) -> f64 {
+    -self.theta
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
   }
 
   fn exact_density(&self, x0: f64, xt: f64, _t0: f64, dt: f64) -> Option<f64> {

@@ -7,18 +7,12 @@ use stochastic_rs_stochastic::diffusion::ckls::Ckls;
 use stochastic_rs_stochastic::diffusion::modified_cir::ModifiedCir;
 use stochastic_rs_stochastic::diffusion::radial_ou::RadialOu;
 
+use super::off_zero;
+use super::power_x;
+use super::power_xx;
+use super::root_x;
+use super::root_xx;
 use crate::mle::DiffusionModel;
-
-/// `d/dx` of `c|x|^p`: below `p = 1` unbounded at zero, where the trait's fixed difference step
-/// misses it.
-fn power_x(c: f64, p: f64, x: f64) -> f64 {
-  c * p * x.signum() * x.abs().powf(p - 1.0)
-}
-
-/// `d²/dx²` of `c|x|^p`, unbounded at zero below `p = 2`.
-fn power_xx(c: f64, p: f64, x: f64) -> f64 {
-  c * p * (p - 1.0) * x.abs().powf(p - 2.0)
-}
 
 impl<S: SeedExt> DiffusionModel for Cir<f64, S> {
   fn num_params(&self) -> usize {
@@ -49,6 +43,14 @@ impl<S: SeedExt> DiffusionModel for Cir<f64, S> {
 
   fn diffusion(&self, x: f64, _t: f64) -> f64 {
     self.sigma * x.abs().sqrt()
+  }
+
+  fn drift_x(&self, _x: f64, _t: f64) -> f64 {
+    -self.theta
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
   }
 
   /// `σ/(2√x)`: unbounded at zero, so the trait's fixed difference step misses it below `1e-5`.
@@ -104,6 +106,14 @@ impl<S: SeedExt> DiffusionModel for Cev<f64, S> {
     self.sigma * x.abs().powf(self.gamma)
   }
 
+  fn drift_x(&self, _x: f64, _t: f64) -> f64 {
+    self.mu
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
+  }
+
   fn diffusion_x(&self, x: f64, _t: f64) -> f64 {
     power_x(self.sigma, self.gamma, x)
   }
@@ -149,6 +159,14 @@ impl<S: SeedExt> DiffusionModel for Ckls<f64, S> {
     self.theta3 * x.abs().powf(self.theta4)
   }
 
+  fn drift_x(&self, _x: f64, _t: f64) -> f64 {
+    self.theta2
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
+  }
+
   fn diffusion_x(&self, x: f64, _t: f64) -> f64 {
     power_x(self.theta3, self.theta4, x)
   }
@@ -187,6 +205,22 @@ impl<S: SeedExt> DiffusionModel for ModifiedCir<f64, S> {
   fn diffusion(&self, x: f64, _t: f64) -> f64 {
     self.sigma * (1.0 + x * x).sqrt()
   }
+
+  fn drift_x(&self, _x: f64, _t: f64) -> f64 {
+    -self.kappa
+  }
+
+  fn drift_xx(&self, _x: f64, _t: f64) -> f64 {
+    0.0
+  }
+
+  fn diffusion_x(&self, x: f64, _t: f64) -> f64 {
+    self.sigma * root_x(1.0 + x * x, 2.0 * x)
+  }
+
+  fn diffusion_xx(&self, x: f64, _t: f64) -> f64 {
+    self.sigma * root_xx(1.0 + x * x, 2.0 * x, 2.0)
+  }
 }
 
 impl<S: SeedExt> DiffusionModel for RadialOu<f64, S> {
@@ -212,12 +246,22 @@ impl<S: SeedExt> DiffusionModel for RadialOu<f64, S> {
   }
 
   fn drift(&self, x: f64, _t: f64) -> f64 {
-    let safe_x = if x.abs() < 1e-12 { 1e-12 } else { x };
+    let safe_x = off_zero(x);
     self.kappa / safe_x - safe_x
   }
 
   fn diffusion(&self, _x: f64, _t: f64) -> f64 {
     self.sigma
+  }
+
+  fn drift_x(&self, x: f64, _t: f64) -> f64 {
+    let safe_x = off_zero(x);
+    -self.kappa / (safe_x * safe_x) - 1.0
+  }
+
+  fn drift_xx(&self, x: f64, _t: f64) -> f64 {
+    let safe_x = off_zero(x);
+    2.0 * self.kappa / (safe_x * safe_x * safe_x)
   }
 
   fn is_positive(&self) -> bool {
