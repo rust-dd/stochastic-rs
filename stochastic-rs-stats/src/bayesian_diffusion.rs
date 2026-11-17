@@ -1,5 +1,5 @@
-//! Random-walk Metropolis on the QMLE's quasi-likelihood, a `N(·, 4²)` prior on each of `ln θ`,
-//! `ln σ` and the level, CIR's `ln μ` and OU's `(μ − x̄)/s` in the path's standard deviation `s`.
+//! Random-walk Metropolis on the QMLE's quasi-likelihood: `proposal_scale` and a `N(·, 4²)` prior
+//! act on `ln θ`, the level (CIR's `ln μ`, OU's `(μ − x̄)/s`, `s` the path's spread) and `ln σ`.
 //!
 //! Reference: Eraker, B. (2001), "MCMC analysis of diffusion models with application to finance", Journal of Business & Economic Statistics 19(2), 177-191.
 //! Reference: Robert, C. P. & Casella, G. (2004), Monte Carlo Statistical Methods, Springer, ch. 7 (random-walk Metropolis).
@@ -69,8 +69,8 @@ impl BayesianDiffusionFit {
   }
 }
 
-/// Metropolis posterior from the prior means, `proposal_scale` in the coordinates of the module
-/// doc; `Err`s and panics as [`crate::qmle::fit_diffusion_qmle`] and [`random_walk_metropolis`].
+/// Metropolis posterior, defined where the QMLE's regression refuses; `Err`s and panics as the
+/// QMLE's checks of `dt`, the path, its mean and spread, and as [`random_walk_metropolis`].
 pub fn fit_diffusion_bayesian<T: FloatExt>(
   series: ArrayView1<T>,
   dt: f64,
