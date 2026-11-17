@@ -82,54 +82,53 @@ fn a_maturity_of_seconds_prices_at_its_black_scholes_limit() {
   }
 }
 
-/// `(v0, κ, θ, σ, ρ)`, `τ`, then `(s, call)` at `K = 100`, `r = 0.05`, `q = 0` by Lewis quadrature
+const HEAVY: HestonParams = HestonParams {
+  v0: 0.02,
+  kappa: 0.5,
+  theta: 0.09,
+  sigma: 1.0,
+  rho: -0.9,
+};
+
+const POSITIVE: HestonParams = HestonParams {
+  v0: 0.04,
+  kappa: 1.0,
+  theta: 0.04,
+  sigma: 2.0,
+  rho: 0.6,
+};
+
+/// `(v0, κ, θ, σ, ρ)`, `τ`, `s` and the call at `K = 100`, `r = 0.05`, `q = 0` by Lewis quadrature
 /// at 30 digits (mpmath): a maturity of minutes, 42 standard deviations and 2 from the money.
-const MINUTES: [(HestonParams, f64, [(f64, f64); 2]); 4] = [
+const MINUTES: [(HestonParams, f64, f64, f64); 8] = [
+  (P, 1.4e-6, 101.0, 1.000006999999755),
+  (P, 1.4e-6, 100.05, 0.05015550439907494),
+  (HEAVY, 2.8e-6, 101.0, 1.00001399999902),
+  (HEAVY, 2.8e-6, 100.05, 0.05016745651580408),
   (
-    P,
-    1.4e-6,
-    [(101.0, 1.000006999999755), (100.05, 0.05015550439907494)],
-  ),
-  (
-    HestonParams {
-      v0: 0.02,
-      kappa: 0.5,
-      theta: 0.09,
-      sigma: 1.0,
-      rho: -0.9,
-    },
-    2.8e-6,
-    [(101.0, 1.00001399999902), (100.05, 0.05016745651580408)],
+    HestonParams { v0: 0.0025, ..P },
+    2.2e-5,
+    101.0,
+    1.0001099999395,
   ),
   (
     HestonParams { v0: 0.0025, ..P },
     2.2e-5,
-    [(101.0, 1.0001099999395), (100.05, 0.05025758985321513)],
+    100.05,
+    0.05025758985321513,
   ),
-  (
-    HestonParams {
-      v0: 0.04,
-      kappa: 1.0,
-      theta: 0.04,
-      sigma: 2.0,
-      rho: 0.6,
-    },
-    1.4e-6,
-    [(101.0, 1.000006999999755), (100.05, 0.05015106692168332)],
-  ),
+  (POSITIVE, 1.4e-6, 101.0, 1.000006999999755),
+  (POSITIVE, 1.4e-6, 100.05, 0.05015106692168332),
 ];
 
 #[test]
 fn a_maturity_of_minutes_matches_the_converged_integral() {
-  for (params, tau, cells) in MINUTES {
-    let pricer = HestonPricer::new(params);
-    for (s, want) in cells {
-      let got = pricer.price_call(s, 100.0, 0.05, 0.0, tau);
-      assert!(
-        (got - want).abs() < 1e-9,
-        "{params:?}, s = {s}, tau = {tau}: {got} vs {want}"
-      );
-    }
+  for (params, tau, s, want) in MINUTES {
+    let got = HestonPricer::new(params).price_call(s, 100.0, 0.05, 0.0, tau);
+    assert!(
+      (got - want).abs() < 1e-9,
+      "{params:?}, s = {s}, tau = {tau}: {got} vs {want}"
+    );
   }
 }
 
@@ -158,7 +157,7 @@ fn an_exploding_share_measure_variance_keeps_the_quadrature() {
   });
   // (τ, call at (100, 100, 0.05, 0)) by Lewis quadrature at 30 digits (mpmath).
   for (tau, want, tol) in [
-    (10.0, 40.309405418969645, 1e-9),
+    (10.0, 40.30940541896965, 1e-9),
     (30.0, 77.97317902193187, 1e-2),
   ] {
     let got = pricer.price_call(100.0, 100.0, 0.05, 0.0, tau);
