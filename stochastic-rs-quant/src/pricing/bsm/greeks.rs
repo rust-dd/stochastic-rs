@@ -234,8 +234,8 @@ impl BsmPricer {
     }
   }
 
-  /// Zeta — the exercise probability `N(d₂)` (call) or `N(−d₂)` (put), `1{s > k}` or `1{s < k}` at
-  /// `tau = 0`; Haug (2007), *The Complete Guide to Option Pricing Formulas*, ch. 2, p. 76.
+  /// Zeta — the in-the-money probability of Haug (2007), *The Complete Guide to Option Pricing
+  /// Formulas*: `N(d₂)` (call) or `N(−d₂)` (put), and `1{s > k}` or `1{s < k}` at `tau = 0`.
   pub fn zeta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
     if tau == 0.0 && self.v.is_finite() {
       return expiry_indicator(option_type, s * (self.b(r, q) * tau).exp(), k);
