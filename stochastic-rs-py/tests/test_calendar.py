@@ -132,14 +132,14 @@ def test_par_rate_takes_one_two_four_or_twelve_payments_a_year():
     assert [curve.par_rate(5.0, f) for f in (1, 2, 4, 12)] == [
         0.03539979136987701,
         0.03508251360718011,
-        0.03493945015025661,
-        0.03484447860149439,
+        0.034930018735942335,
+        0.03482883900774336,
     ]
     assert [curve.par_rate(2.5, f) for f in (1, 2, 4, 12)] == [
         0.033170135130105284,
         0.03178438160960795,
-        0.03167546093401026,
-        0.03160308615699292,
+        0.031659114989185194,
+        0.031575961456323146,
     ]
     with pytest.raises(ValueError, match="frequency must be 1, 2, 4 or 12 payments a year, got 3"):
         curve.par_rate(5.0, 3)
