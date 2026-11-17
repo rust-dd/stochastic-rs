@@ -499,28 +499,6 @@ fn ctrw_with_normal_jumps_agrees_with_the_cpu_law() {
   );
 }
 
-/// A hundred expected events per step is past the kernels' 64-event count, so the device build
-/// samples on the host and is the Cpu build to the bit.
-#[test]
-fn a_dense_ctrw_keeps_to_the_host_on_any_backend() {
-  let build = || {
-    Ctrw::<f32, _>::new(
-      CtrwWaitingLaw::Exponential { rate: 6400.0 },
-      CtrwJumpLaw::Normal {
-        mean: 1.0,
-        std: 0.01,
-      },
-      65,
-      Some(0.0),
-      Some(1.0),
-      Deterministic::new(179),
-    )
-  };
-  assert!(!build().on::<Device>().device_ready());
-  assert_eq!(build().on::<Device>().sample_par(4), build().sample_par(4));
-  assert_eq!(build().on::<Device>().sample(), build().sample());
-}
-
 /// Rademacher sizes are the one law the kernels sum by coin flips; a wrong
 /// sign convention or a dropped flip would move the spread, `scale √(rate t)`,
 /// while the mean stays at zero either way.

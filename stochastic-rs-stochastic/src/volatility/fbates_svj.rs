@@ -487,11 +487,17 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// What a device runs here: the grid fits the kernels'
-  /// per-path history. A longer grid samples on the host.
+  /// What a device runs here: a grid within the kernels' per-path history, and no more than 25
+  /// expected jumps a step. Anything else samples on the host.
   fn device_fallback(&self) -> Option<&'static str> {
     (!(self.n <= crate::euler::HISTORY_SLOTS))
       .then_some("a grid longer than the kernels' per-path history")
+      .or_else(|| {
+        crate::euler::count_fallback(
+          <Self as crate::euler::EulerSystem<T, 2>>::jump_intensity(self),
+          <Self as crate::euler::EulerSystem<T, 2>>::time_step(self),
+        )
+      })
   }
 }
 

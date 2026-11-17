@@ -8,6 +8,7 @@ mod device_law {
   pub(crate) mod coefficients;
   pub(crate) mod common;
   pub(crate) mod conditional_variance;
+  pub(crate) mod counts;
   pub(crate) mod curves;
   pub(crate) mod fractional;
   pub(crate) mod gaussian;

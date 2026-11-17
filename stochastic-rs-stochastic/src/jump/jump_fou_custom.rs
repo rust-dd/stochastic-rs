@@ -154,11 +154,17 @@ where
     }
   }
 
-  /// What a device runs here: exponential inter-arrivals and a
-  /// size law the kernels draw. Any other pair samples on the host.
+  /// What a device runs here: exponential inter-arrivals and a size law the kernels draw, at no
+  /// more than 25 expected a step. Anything else samples on the host.
   fn device_fallback(&self) -> Option<&'static str> {
     (!(self.device_intensity().is_some() && self.device_jump_sizes().is_some()))
       .then_some("an inter-arrival or size law the kernels do not draw")
+      .or_else(|| {
+        crate::euler::count_fallback(
+          self.device_intensity(),
+          <Self as crate::euler::EulerCoefficients<T>>::time_step(self),
+        )
+      })
   }
 }
 

@@ -2164,6 +2164,14 @@ pub(crate) fn launch_scalars(
   Ok((steps, paths, first_path))
 }
 
+/// The kernels count a step's arrivals up to 64, exact to `f32` while `intensity · dt` is at most
+/// 25, where the mass past 64 is about 2e-11; a process expecting more samples on the host.
+pub(crate) fn count_fallback<T: FloatExt>(intensity: Option<T>, dt: T) -> Option<&'static str> {
+  intensity
+    .is_some_and(|rate| rate * dt > T::from_usize_(25))
+    .then_some("more than 25 expected events per step, past the kernels' 64-event count")
+}
+
 /// How big a jump is, when a family declares jumps that carry a size: a normal or stable sum is one
 /// draw of the aggregated law, any other law's sizes are summed or compounded in a bounded loop.
 #[derive(Clone, Copy, Debug, PartialEq)]

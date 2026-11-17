@@ -352,10 +352,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   /// 64-event count; the other waiting laws are not memoryless and stay on the host.
   fn device_fallback(&self) -> Option<&'static str> {
     match self.waiting {
-      CtrwWaitingLaw::Exponential { rate } if rate * self.dt() <= T::from_usize_(25) => None,
-      CtrwWaitingLaw::Exponential { .. } => {
-        Some("more than 25 expected events per step, past the kernels' 64-event count")
-      }
+      CtrwWaitingLaw::Exponential { rate } => crate::euler::count_fallback(Some(rate), self.dt()),
       _ => Some("a waiting law that is not memoryless"),
     }
   }
