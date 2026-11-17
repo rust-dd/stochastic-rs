@@ -43,8 +43,8 @@ pub struct MleFit {
   /// [`params`](Self::params) still contains the best feasible point found.
   /// Inspect this field before trusting [`params`](Self::params) downstream.
   pub converged: bool,
-  /// Number of L-BFGS-B iterations performed. `0` when the model has no free
-  /// parameters to fit (trivially `converged = true` in that case).
+  /// L-BFGS-B iterations summed over every search run, at most 200 each: the first and up to three
+  /// more, kept or not. `0` when the model has no free parameters (trivially `converged = true`).
   pub iterations: usize,
 }
 
@@ -260,7 +260,7 @@ fn resolve_fit_outcome(
   (best_param, converged, iterations as usize)
 }
 
-/// L-BFGS-B MLE of `model`, left at the estimate, on a path every `dt`; check `converged`. `Err`
+/// L-BFGS-B MLE of `model`, left at the estimate, on a path every `dt`, in up to 4 searches. `Err`
 /// below 2 points, on a non-finite one or log-likelihood; panics unless one bound per parameter.
 /// $$
 /// -\sum_{i=1}^{N} \ln p(X_{t_i}\mid X_{t_{i-1}};\theta,\Delta t)
@@ -298,6 +298,7 @@ pub fn fit_mle(
     );
     // A search can stall where a parameter has no gradient, as a level at a speed near zero: it
     // runs again from the start's value of each such parameter, and the higher likelihood stays.
+    let mut iterations = fit.iterations;
     for _ in 0..STAGES {
       if !fit.converged {
         break;
@@ -308,15 +309,13 @@ pub fn fit_mle(
         break;
       }
       let next = search(problem, from);
+      iterations += next.iterations;
       if fit.cost - next.cost <= GAIN {
         break;
       }
-      fit = Search {
-        iterations: fit.iterations + next.iterations,
-        ..next
-      };
+      fit = next;
     }
-    (fit.params, fit.converged, fit.iterations)
+    (fit.params, fit.converged, iterations)
   };
 
   // A convergence signal at an infeasible iterate does not certify the
