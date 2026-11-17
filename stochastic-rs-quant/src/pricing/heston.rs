@@ -4,12 +4,9 @@
 //! \begin{aligned}dS_t&=\mu S_tdt+\sqrt{v_t}S_tdW_t^S\\dv_t&=\kappa(\theta-v_t)dt+\xi\sqrt{v_t}dW_t^v,\ d\langle W^S,W^v\rangle_t=\rho dt\end{aligned}
 //! $$
 //!
+use num_complex::Complex64;
 use std::f64::consts::FRAC_1_PI;
 use std::ops::Range;
-
-use implied_vol::DefaultSpecialFn;
-use implied_vol::ImpliedBlackVolatility;
-use num_complex::Complex64;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use super::cf_quadrature::integrate_to_convergence;
@@ -129,15 +126,13 @@ impl HestonPricer {
   ) -> f64 {
     let forward = s * ((r - q) * tau).exp();
     let undiscounted_price = c_price * (r * tau).exp();
-    ImpliedBlackVolatility::builder()
-      .option_price(undiscounted_price)
-      .forward(forward)
-      .strike(k)
-      .expiry(tau)
-      .is_call(option_type == OptionType::Call)
-      .build()
-      .and_then(|iv| iv.calculate::<DefaultSpecialFn>())
-      .unwrap_or(f64::NAN)
+    crate::vol_surface::implied::black_implied_vol(
+      undiscounted_price,
+      forward,
+      k,
+      tau,
+      option_type == OptionType::Call,
+    )
   }
 }
 

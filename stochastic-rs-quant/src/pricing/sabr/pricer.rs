@@ -1,6 +1,3 @@
-use implied_vol::DefaultSpecialFn;
-use implied_vol::ImpliedBlackVolatility;
-
 use crate::OptionType;
 use crate::pricing::bsm::BsmCoc;
 use crate::pricing::bsm::BsmPricer;
@@ -120,15 +117,13 @@ impl SabrPricer {
   ) -> f64 {
     let forward = self.forward(s, r, q, tau);
     let undiscounted_price = c_price * (r * tau).exp();
-    ImpliedBlackVolatility::builder()
-      .option_price(undiscounted_price)
-      .forward(forward)
-      .strike(k)
-      .expiry(tau)
-      .is_call(option_type == OptionType::Call)
-      .build()
-      .and_then(|iv| iv.calculate::<DefaultSpecialFn>())
-      .unwrap_or(f64::NAN)
+    crate::vol_surface::implied::black_implied_vol(
+      undiscounted_price,
+      forward,
+      k,
+      tau,
+      option_type == OptionType::Call,
+    )
   }
 }
 
