@@ -169,25 +169,60 @@ fn a_negative_level_is_the_closed_forms_at_every_scale() {
 }
 
 /// At `2^-532` every start residual's square underflows, so `σ₀` falls back to the `σ` whose
-/// stationary variance is the path's, `s √(2θ₀)`: a scale the data set, not a constant.
+/// stationary variance `v₁ σ²` is the path's: a scale the data set, not a constant.
 #[test]
 fn a_start_whose_residuals_underflow_takes_its_scale_from_the_path() {
   let dt = 1.0 / 252.0;
-  let x = simulate_ou(2.0, 0.5, 0.1, 0.5, dt, 1000, 11).mapv(|v| v * 2f64.powi(-532));
-  let xs = x.as_slice().unwrap();
-  let ou = DiffusionKind::OrnsteinUhlenbeck;
-  let [ln_theta, _, ln_sigma] = ar1_start(xs, dt, ou, Carrier::new(xs, ou).unwrap()).unwrap();
-  let mean = xs.iter().sum::<f64>() / xs.len() as f64;
-  let ss = xs[..xs.len() - 1]
-    .iter()
-    .map(|v| (v - mean).powi(2))
-    .sum::<f64>();
-  let want = ss.sqrt() * (2.0 * ln_theta.exp() / (xs.len() - 1) as f64).sqrt();
-  assert!(
-    (ln_sigma.exp() / want - 1.0).abs() < 1e-9,
-    "σ₀ = {:e} against {want:e}",
-    ln_sigma.exp()
-  );
+  let paths = [
+    (
+      DiffusionKind::OrnsteinUhlenbeck,
+      simulate_ou(2.0, 0.5, 0.1, 0.5, dt, 1000, 11),
+    ),
+    (
+      DiffusionKind::Cir,
+      simulate_cir(2.0, 0.5, 0.1, 0.5, dt, 1000, 11),
+    ),
+  ];
+  for (kind, path) in paths {
+    let x = path.mapv(|v| v * 2f64.powi(-532));
+    let xs = x.as_slice().unwrap();
+    let [ln_theta, _, ln_sigma] = ar1_start(xs, dt, kind, Carrier::new(xs, kind).unwrap()).unwrap();
+    let mean = xs.iter().sum::<f64>() / xs.len() as f64;
+    let ss = xs[..xs.len() - 1]
+      .iter()
+      .map(|v| (v - mean).powi(2))
+      .sum::<f64>();
+    let level = if kind == DiffusionKind::Cir {
+      mean
+    } else {
+      1.0
+    };
+    let v1 = level / (2.0 * ln_theta.exp());
+    let want = ss.sqrt() / ((xs.len() - 1) as f64 * v1).sqrt();
+    assert!(
+      (ln_sigma.exp() / want - 1.0).abs() < 1e-9,
+      "{kind:?}: σ₀ = {:e} against {want:e}",
+      ln_sigma.exp()
+    );
+  }
+}
+
+/// A CIR path scaled by `c` fits as `(θ, cμ, √c σ)`: the start's level is the path's mean, with no
+/// floor in the data's units, down to a mean near `1e-62`.
+#[test]
+fn a_cir_fit_moves_with_the_data_scale() {
+  let dt = 1.0 / 252.0;
+  let path = simulate_cir(2.0, 0.04, 0.2, 0.04, dt, 2000, 7);
+  let fit = |x: &Array1<f64>| fit_diffusion_qmle(x.view(), dt, DiffusionKind::Cir).unwrap();
+  let unit = fit(&path);
+  for k in [-30, -200] {
+    let c = 2f64.powi(k);
+    let q = fit(&path.mapv(|v| c * v));
+    let want = [unit.theta, c * unit.mu, c.sqrt() * unit.sigma];
+    for (a, b) in [q.theta, q.mu, q.sigma].into_iter().zip(want) {
+      assert!((a - b).abs() / b.abs() < 1e-4, "2^{k}: {a} against {b}");
+    }
+  }
 }
 
 #[test]

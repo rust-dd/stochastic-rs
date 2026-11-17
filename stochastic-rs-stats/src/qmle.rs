@@ -255,8 +255,8 @@ pub(crate) enum Carrier {
 }
 
 impl Carrier {
-  /// `kind`'s carrier on `x`; `Err` unless the mean and, for OU, the standard deviation are finite,
-  /// the deviation positive.
+  /// `kind`'s carrier on `x`; `Err` unless the mean is finite and, for CIR, positive, and OU's
+  /// standard deviation finite and positive.
   pub(crate) fn new(x: &[f64], kind: DiffusionKind) -> Result<Self, StatsError> {
     let mean = path_mean(x)?;
     match kind {
@@ -270,7 +270,11 @@ impl Carrier {
         }
         Ok(Self::Standardised { mean, spread })
       }
-      DiffusionKind::Cir => Ok(Self::Log { mean }),
+      // A non-negative path that is not constant has a positive mean, unless its sum underflows.
+      DiffusionKind::Cir if mean > 0.0 => Ok(Self::Log { mean }),
+      DiffusionKind::Cir => Err(StatsError::Numerical {
+        stage: "starting point",
+      }),
     }
   }
 
@@ -283,14 +287,11 @@ impl Carrier {
     [p[0].exp(), mu, p[2].exp()]
   }
 
-  /// The level at the path's mean, kept above zero for the logarithm, and its coordinate.
+  /// The level at the path's mean and its coordinate.
   pub(crate) fn centre(self) -> (f64, f64) {
     match self {
       Self::Standardised { mean, .. } => (mean, 0.0),
-      Self::Log { mean } => {
-        let mu = mean.max(1e-8);
-        (mu, mu.ln())
-      }
+      Self::Log { mean } => (mean, mean.ln()),
     }
   }
 
