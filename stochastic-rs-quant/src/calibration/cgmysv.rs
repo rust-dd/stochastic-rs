@@ -202,7 +202,6 @@ impl crate::traits::Calibrator for CgmysvCalibrator {
   }
 }
 
-/// One fit: the current point in bounds, the quotes' prices and the trail.
 struct CgmysvProblem<'a> {
   calibrator: &'a CgmysvCalibrator,
   params: Vec<f64>,

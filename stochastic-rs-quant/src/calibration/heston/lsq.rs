@@ -12,7 +12,6 @@ use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
 use crate::pricing::heston::HestonParams;
 
-/// One fit: the optimiser's point, the Feller row's weight, the quotes' prices and the trail.
 pub(super) struct HestonProblem<'a> {
   calibrator: &'a HestonCalibrator,
   point: HestonParams,

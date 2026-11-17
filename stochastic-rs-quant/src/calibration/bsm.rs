@@ -155,7 +155,6 @@ impl crate::traits::Calibrator for BsmCalibrator {
   }
 }
 
-/// One fit: the current point, the quotes' prices and the trail.
 struct BsmProblem<'a> {
   calibrator: &'a BsmCalibrator,
   params: BsmParams,

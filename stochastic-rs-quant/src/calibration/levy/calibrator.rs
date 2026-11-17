@@ -143,7 +143,6 @@ impl crate::traits::Calibrator for LevyCalibrator {
   }
 }
 
-/// One fit: the current point, the quotes' prices and the trail.
 struct LevyProblem<'a> {
   calibrator: &'a LevyCalibrator,
   params: LevyParams,

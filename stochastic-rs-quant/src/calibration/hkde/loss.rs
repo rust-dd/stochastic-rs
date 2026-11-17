@@ -24,7 +24,6 @@ use crate::traits::ModelPricer;
 
 const EPS: f64 = 1e-8;
 
-/// One fit: each quote's weight, the current point, the quotes' prices and the trail.
 pub(super) struct HkdeProblem<'a> {
   calibrator: &'a HkdeCalibrator,
   sqrt_weights: Vec<f64>,

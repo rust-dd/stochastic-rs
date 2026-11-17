@@ -173,7 +173,6 @@ impl crate::traits::Calibrator for SabrCalibrator {
   }
 }
 
-/// One fit: each quote's forward, the current point, the quotes' prices and the trail.
 struct SabrProblem<'a> {
   calibrator: &'a SabrCalibrator,
   market: Vec<f64>,

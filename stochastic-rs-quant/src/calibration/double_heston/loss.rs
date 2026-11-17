@@ -82,7 +82,6 @@ pub(super) fn double_heston_call_price(
   clip_negative(call)
 }
 
-/// One fit: the current point, the quotes' prices and the trail.
 pub(super) struct DoubleHestonProblem<'a> {
   calibrator: &'a DoubleHestonCalibrator,
   params: DoubleHestonParams,

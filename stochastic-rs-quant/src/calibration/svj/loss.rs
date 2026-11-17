@@ -85,7 +85,6 @@ pub(super) fn bates_call_price(p: &SvjParams, s: f64, k: f64, r: f64, q: f64, ta
   clip_negative(call)
 }
 
-/// One fit: the current point, the quotes' prices and the trail.
 pub(super) struct SvjProblem<'a> {
   calibrator: &'a SvjCalibrator,
   params: SvjParams,
