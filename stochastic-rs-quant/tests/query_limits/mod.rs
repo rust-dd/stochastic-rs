@@ -113,9 +113,9 @@ fn alpha_from_atm_vol_is_nan_for_query_data_outside_its_domain_and_panics_only_o
   assert!(alpha_from_atm_vol(0.2, -1.0, 1.0, 0.5, -0.3, 0.6).is_nan());
   assert!(alpha_from_atm_vol(0.0, 100.0, 1.0, 0.5, -0.3, 0.6).is_nan());
   assert!(alpha_from_atm_vol(0.2, 100.0, -1.0, 0.5, -0.3, 0.6).is_nan());
+  assert!(alpha_from_atm_vol(0.2, 100.0, f64::INFINITY, 0.5, -0.3, 0.6).is_nan());
+  assert!(alpha_from_atm_vol(0.2, 100.0, f64::NAN, 0.5, -0.3, 0.6).is_nan());
   assert!(alpha_from_atm_vol(0.2, 100.0, 1.0, 0.5, -0.3, 0.6).is_finite());
-  // Newton from α₀ = 0.2 runs to the negative root of 12.375α² − 18.59α − 0.2.
-  assert!(alpha_from_atm_vol(0.2, 100.0, 5.0, 1.0, 0.99, 10.0).is_nan());
   // β = 1, ν = 0: α is σ_ATM itself, however small.
   assert_eq!(alpha_from_atm_vol(1e-9, 1.0, 1.0, 1.0, 0.0, 0.0), 1e-9);
   let err = std::panic::catch_unwind(|| alpha_from_atm_vol(0.2, 100.0, 1.0, 0.5, 1.0, 0.6));
@@ -125,6 +125,24 @@ fn alpha_from_atm_vol_is_nan_for_query_data_outside_its_domain_and_panics_only_o
     msg,
     "rho must satisfy `rho > -1.0 && rho < 1.0`, got rho = 1.0"
   );
+}
+
+#[test]
+fn alpha_from_atm_vol_is_the_smallest_positive_root_and_nan_without_one() {
+  let close = |got: f64, want: f64| (got - want).abs() <= 8.0 * f64::EPSILON * want;
+  // Newton from α₀ ends at a negative root of 12.375α² − 18.59α − 0.2 and of a β = 0.5 cubic.
+  let alpha = alpha_from_atm_vol(0.2, 100.0, 5.0, 1.0, 0.99, 10.0);
+  assert!(close(alpha, 1.512871295794398), "{alpha}");
+  let alpha = alpha_from_atm_vol(0.2, 100.0, 30.0, 0.5, 0.95, 5.0);
+  assert!(close(alpha, 11.706371823748876), "{alpha}");
+  // Roots 0.05 and 1/15, where Newton from α₀ = 0.1 converges to the larger.
+  let alpha = alpha_from_atm_vol(0.1, 0.05, 30.0, 1.0, -0.8, 5.0);
+  assert!(close(alpha, 0.05000000000000115), "{alpha}");
+  // Newton stops short of a root: at the cubic's one positive root, and NaN with none.
+  let alpha = alpha_from_atm_vol(0.5, 1.0, 30.0, 0.2, -0.99, 1.0);
+  assert!(close(alpha, 2.1019952276218388), "{alpha}");
+  assert!(alpha_from_atm_vol(0.5, 0.05, 30.0, 1.0, -0.99, 0.1).is_nan());
+  assert!(alpha_from_atm_vol(0.2, 100.0, 5.0, 1.0, -0.99, 10.0).is_nan());
 }
 
 #[test]

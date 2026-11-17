@@ -1,3 +1,4 @@
+use stochastic_rs_distributions::brent;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::pricing::bsm::BsmCoc;
@@ -65,8 +66,8 @@ pub fn hagan_implied_vol(k: f64, f: f64, tau: f64, params: &SabrParams) -> f64 {
   }
 }
 
-/// Hagan et al. (2002) eq. A.69b: α at an ATM vol by Newton from `σ_ATM F^{1−β}`; NaN for `f ≤ 0`,
-/// `v_atm ≤ 0`, a negative or non-finite `tau` or no positive root; panics unless `rho ∈ (−1, 1)`.
+/// Hagan et al. (2002) eq. A.69b: α at an ATM vol, the cubic's smallest positive root, NaN with
+/// none and for `f ≤ 0`, `v_atm ≤ 0` or `tau ∉ [0, ∞)`; panics unless `rho ∈ (−1, 1)`.
 ///
 /// $$
 /// \frac{(1-\beta)^2 f_*^3}{24}\,\tau\;\alpha^3
@@ -88,10 +89,18 @@ pub fn alpha_from_atm_vol(v_atm: f64, f: f64, tau: f64, beta: f64, rho: f64, nu:
   let p2 = tau * f_.powi(2) * rho * beta * nu / 4.0;
   let p1 = (1.0 + tau * nu * nu * (2.0 - 3.0 * rho * rho) / 24.0) * f_;
   let p0 = -v_atm;
+  let cubic = |x: f64| p3 * x * x * x + p2 * x * x + p1 * x + p0;
+  // Rising from −σ_ATM at 0, the cubic crosses 0 below its first peak when that peak is ≥ 0.
+  let disc = p2 * p2 - 3.0 * p3 * p1;
+  let hump = (p2 < 0.0 && p1 > 0.0 && disc >= 0.0)
+    .then(|| p1 / (disc.sqrt() - p2))
+    .filter(|&peak| cubic(peak) >= 0.0);
 
-  let mut x = v_atm * f.powf(1.0 - beta);
+  let seed = v_atm * f.powf(1.0 - beta);
+  let mut x = seed;
+  let mut converged = false;
   for _ in 0..100 {
-    let fx = p3 * x * x * x + p2 * x * x + p1 * x + p0;
+    let fx = cubic(x);
     let dfx = 3.0 * p3 * x * x + 2.0 * p2 * x + p1;
     if dfx.abs() < 1e-15 {
       break;
@@ -99,14 +108,32 @@ pub fn alpha_from_atm_vol(v_atm: f64, f: f64, tau: f64, beta: f64, rho: f64, nu:
     let dx = fx / dfx;
     x -= dx;
     if dx.abs() < 1e-12 * x.abs().max(1e-12) {
+      converged = true;
       break;
     }
   }
-  if x.is_finite() && x > 0.0 {
-    x
-  } else {
-    f64::NAN
+  if converged && x > 0.0 && hump.is_none_or(|peak| x <= peak) {
+    return x;
   }
+
+  let (lo, hi) = match hump {
+    Some(peak) => (0.0, peak),
+    // Past the hump at most one positive root is left, and a positive lead coefficient has one.
+    None if p3 > 0.0 || p2 > 0.0 || (p2 == 0.0 && p1 > 0.0) => {
+      let (mut lo, mut hi) = (0.0, seed.max(f64::MIN_POSITIVE));
+      loop {
+        if !hi.is_finite() {
+          return f64::NAN;
+        }
+        if cubic(hi) > 0.0 {
+          break (lo, hi);
+        }
+        (lo, hi) = (hi, 2.0 * hi);
+      }
+    }
+    None => return f64::NAN,
+  };
+  brent::zero(lo, hi, f64::MIN_POSITIVE, cubic).unwrap_or(f64::NAN)
 }
 
 /// Black-Scholes(-Garman-Kohlhagen) price for FX under GK using BsmPricer.
