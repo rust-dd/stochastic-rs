@@ -55,7 +55,7 @@ fn live_series_storage_preserves_one_based_random_counters() {
     );
     assert_eq!(
       source
-        .matches("stoch_philox(first_path + path, 0u, site_series, j, seed_lo, seed_hi, w);")
+        .matches("stoch_philox(first_path + path, 0u, site_series, j, seed_lo, seed_hi, words);")
         .count(),
       2,
       "{name}: draw and replay must keep the original one-based term counter",

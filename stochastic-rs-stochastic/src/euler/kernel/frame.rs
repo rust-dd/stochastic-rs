@@ -70,7 +70,7 @@ const FRAME_LOCALS: &str = r#"    if (path >= paths) return;
     REAL u2 = (REAL)0;
     REAL u3 = (REAL)0;
     REAL u4 = (REAL)0;
-    unsigned int w[4];
+    unsigned int words[4];
     REAL lv = (REAL)0;
     REAL lift[3];
     lift[0] = (REAL)0; lift[1] = (REAL)0; lift[2] = (REAL)0;
@@ -102,8 +102,8 @@ REPORT
 
 const FRAME_NOISE: &str = r#"    for (unsigned int i = (step_first != 0u ? 0u : 1u); i < steps; i++) {
         for (unsigned int k = increments; k < NOISES; k++) {
-            stoch_philox(first_path + path, i, site_noise + k, 0u, seed_lo, seed_hi, w);
-            noise[k] = sqrt_dt * stoch_normal(w[0], w[1], w[2], w[3]);
+            stoch_philox(first_path + path, i, site_noise + k, 0u, seed_lo, seed_hi, words);
+            noise[k] = sqrt_dt * stoch_normal(words[0], words[1], words[2], words[3]);
         }
         if (increments != 0u) {
             unsigned int inc_len = steps;
@@ -124,11 +124,11 @@ const FRAME_NOISE: &str = r#"    for (unsigned int i = (step_first != 0u ? 0u : 
         if (n_curves > 7u) { ct7 = curve[(INDEX)7 * steps + i]; }
 "#;
 
-const FRAME_UNIFORMS: &str = r#"        stoch_philox(first_path + path, i, site_uniforms, 0u, seed_lo, seed_hi, w);
-        u = stoch_u01(w[0]);
-        u2 = stoch_u01(w[1]);
-        u3 = stoch_u01(w[2]);
-        u4 = stoch_u01(w[3]);"#;
+const FRAME_UNIFORMS: &str = r#"        stoch_philox(first_path + path, i, site_uniforms, 0u, seed_lo, seed_hi, words);
+        u = stoch_u01(words[0]);
+        u2 = stoch_u01(words[1]);
+        u3 = stoch_u01(words[2]);
+        u4 = stoch_u01(words[3]);"#;
 
 const FRAME_PROGRAM: &str = r#"        if (program_n != 0u) {
             for (unsigned int w = 0u; w < program_n; w++) {

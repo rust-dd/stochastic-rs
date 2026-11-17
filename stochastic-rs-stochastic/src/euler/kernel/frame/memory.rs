@@ -4,17 +4,17 @@ pub(super) const FRAME_SERIES_DRAW: &str = r#"    if (series_n != 0u) {
         for (unsigned int c = 0u; c < 4u; c++) { state[c] = x0[c]; }
         for (unsigned int k = 0u; k < 512u; k++) { block[k] = (REAL)0; }
         for (unsigned int j = 1u; j <= series_n; j++) {
-            stoch_philox(first_path + path, 0u, site_series, j, seed_lo, seed_hi, w);
-            gj += stoch_exp1(w[0], w[1]);
+            stoch_philox(first_path + path, 0u, site_series, j, seed_lo, seed_hi, words);
+            gj += stoch_exp1(words[0], words[1]);
             if (series_live != 0u) {
                 block[j - 1u] = gj;
             } else {
-                ej = stoch_exp1(w[2], w[3]);
-                stoch_philox(first_path + path, 0u, site_series_marks, j, seed_lo, seed_hi, w);
-                uj = stoch_uniform(w[0], w[1]);
-                uv = stoch_uniform(w[2], w[3]);
-                stoch_philox(first_path + path, 0u, site_series_time, j, seed_lo, seed_hi, w);
-                REAL ratio = stoch_uniform(w[0], w[1]) * (REAL)(steps - 1u);
+                ej = stoch_exp1(words[2], words[3]);
+                stoch_philox(first_path + path, 0u, site_series_marks, j, seed_lo, seed_hi, words);
+                uj = stoch_uniform(words[0], words[1]);
+                uv = stoch_uniform(words[2], words[3]);
+                stoch_philox(first_path + path, 0u, site_series_time, j, seed_lo, seed_hi, words);
+                REAL ratio = stoch_uniform(words[0], words[1]) * (REAL)(steps - 1u);
 SERIES
                 unsigned int cell = (unsigned int)ratio;
                 if ((REAL)cell < ratio) { cell += 1u; }
@@ -39,9 +39,9 @@ pub(super) const FRAME_TABLE_DRAW: &str = r#"    REAL iv = (REAL)0;
             tv = umax / (REAL)(table_n - 1u);
             block[0] = (REAL)0;
             for (unsigned int k = 1u; k < table_n; k++) {
-                stoch_philox(first_path + path, attempt, site_table, k, seed_lo, seed_hi, w);
-                uj = stoch_uniform(w[0], w[1]);
-                uv = stoch_uniform(w[2], w[3]);
+                stoch_philox(first_path + path, attempt, site_table, k, seed_lo, seed_hi, words);
+                uj = stoch_uniform(words[0], words[1]);
+                uv = stoch_uniform(words[2], words[3]);
 TABLE
                 block[k] = block[k - 1u] + table_inc[0];
             }
@@ -55,19 +55,19 @@ pub(super) const FRAME_SERIES_LIVE: &str = r#"        sj = (REAL)0;
         if (series_n != 0u) {
             if (series_live != 0u) {
                 for (unsigned int j = 1u; j <= series_n; j++) {
-                    stoch_philox(first_path + path, 0u, site_series_time, j, seed_lo, seed_hi, w);
-                    REAL ratio = stoch_uniform(w[0], w[1]) * (REAL)(steps - 1u);
+                    stoch_philox(first_path + path, 0u, site_series_time, j, seed_lo, seed_hi, words);
+                    REAL ratio = stoch_uniform(words[0], words[1]) * (REAL)(steps - 1u);
                     unsigned int cell = (unsigned int)ratio;
                     if ((REAL)cell < ratio) { cell += 1u; }
                     if (cell < 1u) { cell = 1u; }
                     if (cell > steps - 1u) { cell = steps - 1u; }
                     if (cell == i) {
-                        stoch_philox(first_path + path, 0u, site_series, j, seed_lo, seed_hi, w);
+                        stoch_philox(first_path + path, 0u, site_series, j, seed_lo, seed_hi, words);
                         gj = block[j - 1u];
-                        ej = stoch_exp1(w[2], w[3]);
-                        stoch_philox(first_path + path, 0u, site_series_marks, j, seed_lo, seed_hi, w);
-                        uj = stoch_uniform(w[0], w[1]);
-                        uv = stoch_uniform(w[2], w[3]);
+                        ej = stoch_exp1(words[2], words[3]);
+                        stoch_philox(first_path + path, 0u, site_series_marks, j, seed_lo, seed_hi, words);
+                        uj = stoch_uniform(words[0], words[1]);
+                        uv = stoch_uniform(words[2], words[3]);
 SERIES
                         sj += series_size[0];
                     }

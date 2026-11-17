@@ -145,8 +145,9 @@ fn every_draw_goes_through_philox_on_the_path_the_step_and_a_site() {
   for (name, lang) in languages() {
     let source = render(&lang);
     assert!(
-      source
-        .contains("stoch_philox(first_path + path, i, site_noise + k, 0u, seed_lo, seed_hi, w);"),
+      source.contains(
+        "stoch_philox(first_path + path, i, site_noise + k, 0u, seed_lo, seed_hi, words);"
+      ),
       "{name}: the noise is not one Philox call per component"
     );
     for forbidden in [
