@@ -4,13 +4,8 @@
 //! $$
 //! the historical and Monte Carlo estimators take it on the sample's own law, its tail mean.
 //!
-//! Reference: Acerbi & Tasche, "On the Coherence of Expected Shortfall",
-//! Journal of Banking & Finance, 26(7), 1487–1503 (2002).
-//! DOI: 10.1016/S0378-4266(02)00283-2
-//!
-//! Reference: Rockafellar & Uryasev, "Conditional Value-at-Risk for General
-//! Loss Distributions", Journal of Banking & Finance, 26(7), 1443–1471 (2002).
-//! DOI: 10.1016/S0378-4266(02)00271-6
+//! Acerbi & Tasche (2002), J. Bank. Financ. 26(7), doi:10.1016/S0378-4266(02)00283-2.
+//! Rockafellar & Uryasev (2002), J. Bank. Financ. 26(7), doi:10.1016/S0378-4266(02)00271-6.
 
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::ndtri;
