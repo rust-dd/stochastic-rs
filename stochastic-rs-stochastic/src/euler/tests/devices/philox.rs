@@ -138,19 +138,22 @@ fn metal_euler_increments_are_the_ports_normals() {
   }
 }
 
+/// A case's step uniforms are those of the path and step its counter's first two words name.
 #[cfg(feature = "cuda")]
-const C_KAT: &str = r#"extern "C" __global__ void philox_kat(const unsigned int* input, unsigned int* words,
+const C_KAT: &str = r#"extern "C" __global__ void philox_kat(const unsigned int* input, unsigned int* out,
     REAL* draws, unsigned int cases) {
     unsigned int c = blockIdx.x * blockDim.x + threadIdx.x;
     if (c >= cases) return;
     const unsigned int* in = input + 6u * c;
-    unsigned int w[4];
-    stoch_philox(in[0], in[1], in[2], in[3], in[4], in[5], w);
-    for (unsigned int k = 0u; k < 4u; k++) { words[4u * c + k] = w[k]; }
-    draws[4u * c] = stoch_u01(in[0]);
-    draws[4u * c + 1u] = stoch_uniform(in[0], in[1]);
-    draws[4u * c + 2u] = stoch_exp1(in[0], in[1]);
-    draws[4u * c + 3u] = stoch_normal(w[0], w[1], w[2], w[3]);
+    unsigned int words[4];
+    REAL uniforms[4];
+    stoch_philox(in[0], in[1], in[2], in[3], in[4], in[5], words);
+    for (unsigned int k = 0u; k < 4u; k++) { out[4u * c + k] = words[k]; }
+    draws[7u * c + 4u] = stoch_uniform(in[0], in[1]);
+    draws[7u * c + 5u] = stoch_exp1(in[0], in[1]);
+    draws[7u * c + 6u] = stoch_normal(words[0], words[1], words[2], words[3]);
+    stoch_step_uniforms(in[0], in[1], in[4], in[5], words, uniforms);
+    for (unsigned int k = 0u; k < 4u; k++) { draws[7u * c + k] = uniforms[k]; }
 }
 "#;
 
@@ -178,9 +181,9 @@ where
   let n = cases.len();
   let input = stream.clone_htod(&flat(cases)).unwrap();
   let mut words = stream.alloc_zeros::<u32>(4 * n).unwrap();
-  let mut draws = stream.alloc_zeros::<R>(4 * n).unwrap();
+  let mut draws = stream.alloc_zeros::<R>(7 * n).unwrap();
   let count = n as u32;
-  // SAFETY: the buffers hold `n` cases of six, four and four values, as the kernel reads them.
+  // SAFETY: the buffers hold `n` cases of six, four and seven values, as the kernel reads them.
   unsafe {
     stream
       .launch_builder(&function)
@@ -200,7 +203,7 @@ where
 #[cfg(feature = "cuda")]
 #[test]
 fn cuda_philox_reproduces_random123_and_the_port() {
-  use crate::euler::philox::{u01_f32, u01_f64, u01_f64_word};
+  use crate::euler::philox::{SITE_UNIFORMS, u01_f32, u01_f64};
   use crate::euler::tests::philox::{exp1_f32, normal_f32, normal_f64};
 
   let cases = cases();
@@ -213,46 +216,48 @@ fn cuda_philox_reproduces_random123_and_the_port() {
     if i < 3 {
       assert_eq!(port, RANDOM123[i], "Random123 vector {i}");
     }
-    let d = &draws32[4 * i..4 * i + 4];
+    let step = |index| philox4x32_10([counter[0], counter[1], SITE_UNIFORMS, index], *key);
+    let (high, low) = (step(0), step(1));
+    let d = &draws32[7 * i..7 * i + 7];
     assert_eq!(
-      d[0].to_bits(),
-      u01_f32(counter[0]).to_bits(),
-      "float case {i}"
+      d[..4].iter().map(|u| u.to_bits()).collect::<Vec<_>>(),
+      high.map(|w| u01_f32(w).to_bits()),
+      "float case {i}: the step uniforms"
     );
     assert_eq!(
-      d[1].to_bits(),
+      d[4].to_bits(),
       u01_f32(counter[0]).to_bits(),
       "float case {i}"
     );
     let host = exp1_f32(counter[0], counter[1]);
     assert!(
-      d[2] >= 0.0 && (d[2] - host).abs() <= 4e-6 * (1.0 + host),
+      d[5] >= 0.0 && (d[5] - host).abs() <= 4e-6 * (1.0 + host),
       "float case {i}"
     );
     let host = normal_f32(port);
     assert!(
-      (d[3] - host).abs() <= 2e-3 * (1.0 + host.abs()),
+      (d[6] - host).abs() <= 2e-3 * (1.0 + host.abs()),
       "float case {i}"
     );
-    let d = &draws64[4 * i..4 * i + 4];
+    let d = &draws64[7 * i..7 * i + 7];
     assert_eq!(
-      d[0].to_bits(),
-      u01_f64_word(counter[0]).to_bits(),
-      "double case {i}"
+      d[..4].iter().map(|u| u.to_bits()).collect::<Vec<_>>(),
+      [0, 1, 2, 3].map(|k| u01_f64(high[k], low[k]).to_bits()),
+      "double case {i}: the step uniforms"
     );
     assert_eq!(
-      d[1].to_bits(),
+      d[4].to_bits(),
       u01_f64(counter[0], counter[1]).to_bits(),
       "double case {i}"
     );
     let host = -u01_f64(counter[0], counter[1]).ln();
     assert!(
-      d[2] >= 0.0 && (d[2] - host).abs() <= 1e-12 * (1.0 + host),
+      d[5] >= 0.0 && (d[5] - host).abs() <= 1e-12 * (1.0 + host),
       "double case {i}"
     );
     let host = normal_f64(port);
     assert!(
-      (d[3] - host).abs() <= 1e-12 * (1.0 + host.abs()),
+      (d[6] - host).abs() <= 1e-12 * (1.0 + host.abs()),
       "double case {i}"
     );
   }

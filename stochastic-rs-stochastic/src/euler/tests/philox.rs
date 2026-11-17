@@ -8,7 +8,6 @@ use crate::euler::philox::key;
 use crate::euler::philox::philox4x32_10;
 use crate::euler::philox::u01_f32;
 use crate::euler::philox::u01_f64;
-use crate::euler::philox::u01_f64_word;
 
 /// `Exp(1)` from two words as the `f32` kernels draw it, with an accurate logarithm.
 pub(crate) fn exp1_f32(a: u32, b: u32) -> f32 {
@@ -76,8 +75,6 @@ fn the_uniforms_are_strictly_inside_the_unit_interval() {
     u01_f64(3, 5 << 12),
     ((3u64 << 20 | 5) * 2 + 1) as f64 * 0.5 * f64::EPSILON
   );
-  assert_eq!(u01_f64_word(0), 2f64.powi(-33));
-  assert_eq!(u01_f64_word(u32::MAX), 1.0 - 2f64.powi(-33));
 }
 
 #[test]

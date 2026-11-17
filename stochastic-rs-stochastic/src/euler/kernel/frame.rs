@@ -124,11 +124,12 @@ const FRAME_NOISE: &str = r#"    for (unsigned int i = (step_first != 0u ? 0u : 
         if (n_curves > 7u) { ct7 = curve[(INDEX)7 * steps + i]; }
 "#;
 
-const FRAME_UNIFORMS: &str = r#"        stoch_philox(first_path + path, i, site_uniforms, 0u, seed_lo, seed_hi, words);
-        u = stoch_u01(words[0]);
-        u2 = stoch_u01(words[1]);
-        u3 = stoch_u01(words[2]);
-        u4 = stoch_u01(words[3]);"#;
+const FRAME_UNIFORMS: &str = r#"        REAL uniforms[4];
+        stoch_step_uniforms(first_path + path, i, seed_lo, seed_hi, words, uniforms);
+        u = uniforms[0];
+        u2 = uniforms[1];
+        u3 = uniforms[2];
+        u4 = uniforms[3];"#;
 
 const FRAME_PROGRAM: &str = r#"        if (program_n != 0u) {
             for (unsigned int w = 0u; w < program_n; w++) {

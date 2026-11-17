@@ -45,6 +45,11 @@ pub(crate) const C_DRAWS_F32: &str = r#"__device__ __forceinline__ REAL stoch_u0
     return ((REAL)(a >> 9u) + (REAL)0.5) * (REAL)1.1920928955078125e-7;
 }
 __device__ __forceinline__ REAL stoch_uniform(unsigned int a, unsigned int b) { return stoch_u01(a); }
+__device__ __forceinline__ void stoch_step_uniforms(unsigned int path, unsigned int step,
+    unsigned int k0, unsigned int k1, unsigned int* words, REAL* u) {
+    stoch_philox(path, step, site_uniforms, 0u, k0, k1, words);
+    for (unsigned int k = 0u; k < 4u; k++) { u[k] = stoch_u01(words[k]); }
+}
 // The fast log's error can take -log u below zero near u = 1, where the root would be NaN.
 __device__ __forceinline__ REAL stoch_exp1(unsigned int a, unsigned int b) {
     REAL e = ((a >> 9u) == 0u) ? (REAL)15.942385152878742 - STOCH_FAST_LOG(stoch_u01(b)) : -STOCH_FAST_LOG(stoch_u01(a));
@@ -60,12 +65,16 @@ __device__ __forceinline__ REAL stoch_normal(unsigned int a, unsigned int b, uns
 "#;
 
 /// The `double` draws: a uniform and an exponential from 52 bits of two words, a normal from four,
-/// and the per-step uniform from one whole word.
-pub(crate) const C_DRAWS_F64: &str = r#"__device__ __forceinline__ REAL stoch_u01(unsigned int a) {
-    return ((REAL)a + (REAL)0.5) * (REAL)2.3283064365386963e-10;
-}
-__device__ __forceinline__ REAL stoch_uniform(unsigned int a, unsigned int b) {
+/// and a step's uniform `k` from word `k` of two calls.
+pub(crate) const C_DRAWS_F64: &str = r#"__device__ __forceinline__ REAL stoch_uniform(unsigned int a, unsigned int b) {
     return ((REAL)((((U64)a) << 20) | (U64)(b >> 12u)) + (REAL)0.5) * (REAL)2.220446049250313e-16;
+}
+__device__ __forceinline__ void stoch_step_uniforms(unsigned int path, unsigned int step,
+    unsigned int k0, unsigned int k1, unsigned int* words, REAL* u) {
+    unsigned int low[4];
+    stoch_philox(path, step, site_uniforms, 0u, k0, k1, words);
+    stoch_philox(path, step, site_uniforms, 1u, k0, k1, low);
+    for (unsigned int k = 0u; k < 4u; k++) { u[k] = stoch_uniform(words[k], low[k]); }
 }
 __device__ __forceinline__ REAL stoch_exp1(unsigned int a, unsigned int b) {
     REAL e = -STOCH_FAST_LOG(stoch_uniform(a, b));

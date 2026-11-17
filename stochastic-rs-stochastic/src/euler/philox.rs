@@ -79,8 +79,3 @@ pub fn u01_f32(word: u32) -> f32 {
 pub fn u01_f64(first: u32, second: u32) -> f64 {
   ((((first as u64) << 20) | (second >> 12) as u64) as f64 + 0.5) * f64::EPSILON
 }
-
-/// `(2w + 1)·2⁻³³` from one whole word, the `f64` kernels' per-step uniform.
-pub fn u01_f64_word(word: u32) -> f64 {
-  (word as f64 + 0.5) * (1.0 / 4_294_967_296.0)
-}

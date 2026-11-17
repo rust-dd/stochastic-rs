@@ -174,6 +174,32 @@ fn every_draw_goes_through_philox_on_the_path_the_step_and_a_site() {
 }
 
 #[test]
+fn a_step_draws_its_uniforms_from_one_call_in_float_and_two_in_double() {
+  for (name, lang) in languages() {
+    assert!(
+      render(&lang)
+        .contains("stoch_step_uniforms(first_path + path, i, seed_lo, seed_hi, words, uniforms);"),
+      "{name}: the step's uniforms are not the precision's own draw"
+    );
+  }
+  let calls = |real| {
+    prelude(&cuda_language(real))
+      .matches("stoch_philox(path, step, site_uniforms, ")
+      .count()
+  };
+  assert_eq!(
+    calls("float"),
+    1,
+    "a float uniform is one word's top 23 bits"
+  );
+  assert_eq!(
+    calls("double"),
+    2,
+    "a double uniform takes 52 bits of two calls' words"
+  );
+}
+
+#[test]
 fn every_intrinsic_is_named() {
   for (name, lang) in languages() {
     for (what, value) in [
