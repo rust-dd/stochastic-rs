@@ -191,6 +191,15 @@ impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
     T::from_f64_fast(transition::transition_pdf(theta, mu, sigma, t, r_t, r_next))
   }
 
+  /// Logarithm of [`transition_pdf`](Self::transition_pdf), finite where that underflows; NaN where it is NaN, `−∞` where it is `0`.
+  pub fn transition_ln_pdf(&self, t: T, r_t: T, r_next: T) -> T {
+    let [theta, mu, sigma, t, r_t, r_next] =
+      [self.theta, self.mu, self.sigma, t, r_t, r_next].map(|v| v.to_f64().unwrap());
+    T::from_f64_fast(transition::transition_ln_pdf(
+      theta, mu, sigma, t, r_t, r_next,
+    ))
+  }
+
   /// One exact transition draw after `t` from `r_t`; the conditional mean once the χ² parameters overflow.
   pub fn sample_transition<S2: SeedExt>(&self, t: T, r_t: T, seed: &S2) -> T {
     let [theta, mu, sigma, t, r_t] =
