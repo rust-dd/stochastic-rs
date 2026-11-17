@@ -65,7 +65,7 @@ pub(super) fn check<T: RealExt>(
       match whole_payments(*maturity, frequency.periods_per_year()) {
         Some(_) => Ok(()),
         None => bad(format!(
-          "maturity must be within 0.1 of a payment from a whole number of them, got maturity = {maturity:?}, frequency = {frequency}"
+          "maturity must satisfy `(maturity * frequency - payments).abs() < 0.1` for a whole number of payments, got maturity = {maturity:?}, frequency = {frequency}"
         )),
       }
     }

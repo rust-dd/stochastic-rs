@@ -89,9 +89,8 @@ fn single_curve_quotes_reproduce_the_discount_curve() {
   }
 }
 
-/// A tenor trading 50 bp above OIS: the bootstrap recovers its
-/// pseudo-discount factors at every pillar and the multi-curve basis reads
-/// the spread back.
+/// A tenor 50 bp above OIS: its pseudo-discount factors come back at every pillar and the
+/// multi-curve basis reads the spread.
 #[test]
 fn recovers_a_tenor_curve_with_basis_over_ois() {
   let ois = flat(0.02);
