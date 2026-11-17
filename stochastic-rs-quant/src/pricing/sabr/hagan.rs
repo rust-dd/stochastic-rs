@@ -66,8 +66,8 @@ pub fn hagan_implied_vol(k: f64, f: f64, tau: f64, params: &SabrParams) -> f64 {
   }
 }
 
-/// Hagan et al. (2002) eq. A.69b: α, the cubic's smallest positive root if it reprices `v_atm` to
-/// `√ε`, else NaN, as at `f ≤ 0`, `v_atm ≤ 0` or `tau ∉ [0, ∞)`; panics unless `rho ∈ (−1, 1)`.
+/// Hagan et al. (2002) eq. A.69b: α, the cubic's smallest positive root if it reprices `v_atm` to a
+/// relative `√ε`, else NaN as at `f ≤ 0`, `v_atm ≤ 0` or `tau ∉ [0, ∞)`; panics unless `|rho| < 1`.
 ///
 /// $$
 /// \frac{(1-\beta)^2 f_*^3}{24}\,\tau\;\alpha^3
