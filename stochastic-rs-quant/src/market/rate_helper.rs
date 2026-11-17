@@ -342,8 +342,8 @@ impl<T: RealExt> RateHelper<T> for FuturesRateHelper<T> {
   }
 }
 
-/// [`bootstrap`] over the quoted helpers, skipping the rest; `InvalidQuote` at a helper's own index
-/// for a non-finite maturity.
+/// [`bootstrap()`] over the quoted helpers, skipping the rest; `InvalidQuote` at a helper's own
+/// index for a non-finite maturity.
 pub fn build_curve<T: RealExt>(
   helpers: &[&dyn RateHelper<T>],
   valuation_date: NaiveDate,
