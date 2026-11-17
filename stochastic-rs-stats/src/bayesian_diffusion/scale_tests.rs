@@ -77,7 +77,7 @@ fn a_decimal_scale_keeps_the_posterior_by_the_qmle() {
   }
 }
 
-/// A path whose squares overflow has a posterior in its own unit; one whose interval's end or
+/// A path near `1e153` has its posterior in its own unit; one whose interval's end or
 /// whose `σ` passes the largest double there, or whose start has no finite `σ₀`, is a `Numerical`.
 #[test]
 fn a_path_at_the_double_ranges_end_has_a_posterior_or_a_numerical_err() {
