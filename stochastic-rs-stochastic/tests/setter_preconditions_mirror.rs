@@ -475,6 +475,14 @@ fn check(files: &[(String, String)]) -> (Vec<String>, usize, usize) {
       continue;
     }
     let taken = cands.iter().any(|n| n.params.contains(&s.arg));
+    let named = format!("Self::check_{0}({0});", s.arg);
+    if !taken && !s.have.is_empty() && s.have != [named.clone()] {
+      errors.push(format!(
+        "{}::{} ({}): `new` does not take `{}`, so the setter runs `{named}`, not {:?}",
+        s.ty, s.name, s.at, s.arg, s.have
+      ));
+      continue;
+    }
     if taken && !ok {
       let want = cands
         .iter()
@@ -629,6 +637,12 @@ fn a_setter_with_its_own_assert_or_without_the_check_fails() {
   let own = "    Self::check_mu(mu);\n    self.mu";
   let written = "    assert_entries(\"mu\", \"mu[i] > 0.0\", &mu, |v| v > 0.0);\n    self.mu";
   let (errors, ..) = check(&[("own.rs".into(), MIRROR.replacen(own, written, 1))]);
+  assert!(
+    errors.iter().any(|e| e.starts_with("Foo::with_mu")),
+    "{errors:?}"
+  );
+  let other = "    Self::check_sigma(mu);\n    self.mu";
+  let (errors, ..) = check(&[("other.rs".into(), MIRROR.replacen(own, other, 1))]);
   assert!(
     errors.iter().any(|e| e.starts_with("Foo::with_mu")),
     "{errors:?}"
