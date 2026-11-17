@@ -3501,7 +3501,6 @@ dependencies = [
  "quadrature",
  "rayon",
  "slsqp",
- "stochastic-rs-copulas",
  "stochastic-rs-core",
  "stochastic-rs-distributions",
  "stochastic-rs-stats",

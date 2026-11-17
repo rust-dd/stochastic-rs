@@ -24,10 +24,10 @@ use ndarray::Array2;
 use ndarray::ArrayView1;
 use owens_t::biv_norm;
 use rayon::prelude::*;
+use stochastic_rs_stochastic::mc::McEstimate;
 
 use crate::QuantError;
 use crate::error::check_grid_shape;
-use crate::mc::McEstimate;
 use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::FloatExt;
 

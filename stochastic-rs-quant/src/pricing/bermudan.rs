@@ -18,9 +18,9 @@ use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
+use stochastic_rs_stochastic::mc::McEstimate;
 use stochastic_rs_stochastic::params::Drift;
 
-use crate::mc::McEstimate;
 use crate::pricing::mc_stats::std_err_from_sums;
 use crate::traits::ProcessExt;
 

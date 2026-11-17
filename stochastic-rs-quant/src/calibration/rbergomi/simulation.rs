@@ -111,9 +111,9 @@ pub fn simulate_rbergomi_terminal_samples(
     .map(|path_idx| {
       let path_seed = seed
         .wrapping_add(0xD134_2543_DE82_EF95_u64.wrapping_mul((path_idx as u64).wrapping_add(1)));
-      let seed_ext = crate::simd_rng::Deterministic::new(path_seed);
+      let seed_ext = stochastic_rs_core::simd_rng::Deterministic::new(path_seed);
       let mut normal =
-        crate::distributions::normal::SimdNormal::<f64>::new(0.0, 1.0).seeded(&seed_ext);
+        stochastic_rs_distributions::normal::SimdNormal::<f64>::new(0.0, 1.0).seeded(&seed_ext);
       let dim = engine.dim();
       let mut z = vec![0.0_f64; dim];
       let mut xi = vec![0.0_f64; dim];

@@ -21,7 +21,6 @@ python = [
     "stochastic-rs-distributions/python",
     "stochastic-rs-stochastic/python",
     "stochastic-rs-stats/python",
-    "stochastic-rs-copulas/python",
 ]
 # Gates the SABR-smile HTML plotters (`SabrSmileCalibrator::plot`, `plot_many`); plotly is
 # optional so a caller that only calibrates compiles no plotting stack.
@@ -47,7 +46,6 @@ pyo3 = { workspace = true, optional = true }
 quadrature = { workspace = true }
 rayon = { workspace = true }
 slsqp = { workspace = true }
-stochastic-rs-copulas = { workspace = true }
 stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
 stochastic-rs-stats = { workspace = true }

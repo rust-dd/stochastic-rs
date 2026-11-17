@@ -72,7 +72,7 @@ impl<T: FloatExt> MtGreeks<T> {
     self.price_from_sampler(payoff, || {
       self
         .params
-        .sample_with_seed(crate::simd_rng::derive_seed(&mut seed_state))
+        .sample_with_seed(stochastic_rs_core::simd_rng::derive_seed(&mut seed_state))
     })
   }
 

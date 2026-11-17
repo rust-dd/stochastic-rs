@@ -8,7 +8,7 @@
 //! 4. Emit entry / exit signals around the supplied thresholds.
 //!
 //! For a formal mean-reversion check the residual $\varepsilon_t$ should be
-//! tested for unit-root with [`crate::stats::stationarity::adf::adf_test`].
+//! tested for unit-root with [`stochastic_rs_stats::stationarity::adf::adf_test`].
 //!
 //! Reference: Engle, Granger, "Co-Integration and Error Correction:
 //! Representation, Estimation, and Testing", Econometrica, 55(2), 251-276
