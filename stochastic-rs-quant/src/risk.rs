@@ -1,14 +1,10 @@
-//! # Risk Metrics
+//! Value at Risk, Expected Shortfall, drawdowns, performance ratios (Sharpe, Sortino, Information,
+//! Calmar), a scenario / stress-test engine and instrument Greeks by bump-and-reprice.
 //!
 //! $$
 //! \mathrm{VaR}_{\alpha}(L)=\inf\{\ell:\mathbb{P}(L>\ell)\le 1-\alpha\},\qquad
-//! \mathrm{ES}_{\alpha}(L)=\mathbb{E}[L\mid L\ge\mathrm{VaR}_{\alpha}(L)]
+//! \mathrm{ES}_{\alpha}(L)=\frac{1}{1-\alpha}\int_{\alpha}^{1}\mathrm{VaR}_{u}(L)\,du
 //! $$
-//!
-//! Portfolio-level Value at Risk, Expected Shortfall, drawdown analytics,
-//! performance ratios (Sharpe, Sortino, Information, Calmar), a light-weight
-//! scenario / stress-test engine, and instrument-level Greeks via
-//! bump-and-reprice.
 //!
 //! Reference: Jorion, "Value at Risk: The New Benchmark for Managing Financial
 //! Risk", 3rd ed., McGraw-Hill (2007).

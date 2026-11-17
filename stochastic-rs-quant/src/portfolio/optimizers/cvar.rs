@@ -15,9 +15,10 @@ use super::run_nelder_mead;
 use crate::QuantError;
 use crate::portfolio::types::PortfolioResult;
 use crate::portfolio::types::empty_result;
+use crate::risk::expected_shortfall::tail_mean;
 use crate::risk::var::validate_samples;
 
-/// Minus the mean of the worst `alpha` share of `returns` (a tail share, not a confidence level);
+/// Tail mean of the losses `−returns` over their worst `alpha` share (not a confidence level);
 /// `InsufficientData` if empty, `InvalidInput` if not finite; panics unless `0 < alpha < 0.5`.
 pub fn empirical_cvar(returns: &mut [f64], alpha: f64) -> Result<f64, QuantError> {
   assert!(
@@ -26,11 +27,8 @@ pub fn empirical_cvar(returns: &mut [f64], alpha: f64) -> Result<f64, QuantError
   );
   validate_samples(ArrayView1::from(&*returns), "empirical CVaR", 1)?;
   returns.sort_by(f64::total_cmp);
-  let cutoff = ((returns.len() as f64) * alpha).ceil() as usize;
-  let cutoff = cutoff.max(1).min(returns.len());
-  let tail_mean: f64 = returns[..cutoff].iter().sum::<f64>() / cutoff as f64;
-
-  Ok(-tail_mean)
+  let w = returns.len() as f64 * alpha;
+  Ok(tail_mean(returns.iter().map(|&r| -r), w))
 }
 
 /// The period count, `None` for no period or a non-finite return: the data `empirical_cvar`

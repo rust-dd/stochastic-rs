@@ -273,6 +273,14 @@ def test_empirical_cvar_rejects_an_empty_sample():
         sr.empirical_cvar(np.array([], dtype=np.float64), 0.05)
 
 
+def test_expected_shortfall_and_empirical_cvar_are_the_tail_mean():
+    import numpy as np
+
+    assert math.isclose(sr.ExpectedShortfall(-np.arange(1.0, 11.0)).value, 10.0, rel_tol=1e-15)
+    returns = np.array([0.0] * 28 + [-10.0, -2.0])
+    assert math.isclose(sr.empirical_cvar(returns, 0.05), 22.0 / 3.0, rel_tol=1e-15)
+
+
 def test_the_risk_classes_raise_value_error_on_short_or_non_finite_data():
     import numpy as np
 

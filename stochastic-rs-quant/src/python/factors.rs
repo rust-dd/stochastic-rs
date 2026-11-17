@@ -178,8 +178,8 @@ impl PyPairsStrategy {
   }
 }
 
-/// Minus the mean of the worst `alpha` share of `returns` (`0.05`: the worst 5 %, not a confidence
-/// level); `ValueError` for an empty or non-finite sample or an `alpha` outside `(0, 0.5)`.
+/// Tail mean of the losses `−returns` over their worst `alpha` share (`0.05`: the worst 5 %, not a
+/// confidence level); `ValueError` for an empty or non-finite sample or `alpha` outside `(0, 0.5)`.
 #[pyfunction]
 #[pyo3(signature = (returns, alpha))]
 pub fn empirical_cvar<'py>(
