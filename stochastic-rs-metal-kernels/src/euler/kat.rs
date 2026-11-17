@@ -1,9 +1,9 @@
-//! The generator, the family log and the stable law's cosine and jump as the GPU computes them,
-//! for the host to hold against the port, Random123 and `f64`.
+//! The generator, the family log and the stable law's sine, cosine and jump as the GPU computes
+//! them, for the host to hold against the port, Random123 and `f64`.
 
 use metal_oxide_device::{ReadBuffer, WriteBuffer, kernel};
 
-use super::draws::{cos_accurate, exponential, normal};
+use super::draws::{cos_accurate, exponential, normal, sin_accurate};
 use super::jumps::stable;
 use super::philox::{philox4x32_10, u01_f32};
 use super::vocabulary;
@@ -67,6 +67,20 @@ pub unsafe fn cos_kat(values: ReadBuffer<f32>, cosines: WriteBuffer<f32>, cases:
   // SAFETY: the caller sized both buffers for `cases` values, and `case < cases`.
   unsafe {
     cosines.store_unchecked(case, cos_accurate(values.load_unchecked(case)));
+  }
+}
+
+/// # Safety
+/// `values` and `sines` hold `cases` values each.
+#[kernel]
+pub unsafe fn sin_kat(values: ReadBuffer<f32>, sines: WriteBuffer<f32>, cases: u32) {
+  let case = crate::index();
+  if case >= cases {
+    return;
+  }
+  // SAFETY: the caller sized both buffers for `cases` values, and `case < cases`.
+  unsafe {
+    sines.store_unchecked(case, sin_accurate(values.load_unchecked(case)));
   }
 }
 
