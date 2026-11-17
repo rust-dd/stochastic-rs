@@ -17,7 +17,7 @@ fn ordinary() -> Merton1976Pricer {
 #[test]
 fn a_poisoned_query_poisons_the_greeks_and_not_only_the_price() {
   let m = ordinary();
-  let cases: [(&str, f64, f64, f64, f64, f64); 9] = [
+  let cases: [(&str, f64, f64, f64, f64, f64); 8] = [
     ("tau", S, K, R, Q, f64::NAN),
     ("r", S, K, f64::NAN, Q, TAU),
     ("s", f64::NAN, K, R, Q, TAU),
@@ -25,7 +25,6 @@ fn a_poisoned_query_poisons_the_greeks_and_not_only_the_price() {
     ("negative s", -S, K, R, Q, TAU),
     ("negative k", S, -K, R, Q, TAU),
     ("negative tau", S, K, R, Q, -TAU),
-    ("zero tau", S, K, R, Q, 0.0),
     ("infinite tau", S, K, R, Q, f64::INFINITY),
   ];
   for (name, s, k, r, q, tau) in cases {
@@ -115,7 +114,7 @@ fn a_poisoned_query_poisons_a_degenerate_models_greeks_too() {
   let m = Merton1976Pricer::new(0.0, 0.5, 0.4, 20, BsmCoc::Black1976);
   // Black1976 carries at b = 0, so S is the forward and the degenerate
   // terms are all at the singular strike.
-  let cases: [(&str, f64, f64, f64, f64, f64); 9] = [
+  let cases: [(&str, f64, f64, f64, f64, f64); 8] = [
     ("tau", S, S, R, Q, f64::NAN),
     ("r", S, S, f64::NAN, Q, TAU),
     ("s", f64::NAN, S, R, Q, TAU),
@@ -123,7 +122,6 @@ fn a_poisoned_query_poisons_a_degenerate_models_greeks_too() {
     ("negative s", -S, S, R, Q, TAU),
     ("negative k", S, -S, R, Q, TAU),
     ("negative tau", S, S, R, Q, -TAU),
-    ("zero tau", S, S, R, Q, 0.0),
     ("infinite tau", S, S, R, Q, f64::INFINITY),
   ];
   for (name, s, k, r, q, tau) in cases {

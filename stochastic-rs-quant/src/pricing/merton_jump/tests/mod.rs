@@ -215,6 +215,23 @@ fn merton_greeks_theta_charm_veta_nan_near_expiry() {
   );
 }
 
+/// An ordinary model off the strike and a frozen one at its forward: expired, each is worth its
+/// payoff and has no Greek.
+#[test]
+fn zero_tau_prices_the_payoff_and_no_greek() {
+  let frozen = Merton1976Pricer::new(0.0, 0.5, 0.4, 20, BsmCoc::Black1976);
+  for (m, k) in [(merton(0.5, 0.4, 10), K), (frozen, S)] {
+    assert_eq!(
+      m.call_put(S, k, R, Q, 0.0),
+      ((S - k).max(0.0), (k - S).max(0.0))
+    );
+    let greeks = m.greeks(S, k, R, Q, 0.0, OT).as_array();
+    for (greek, v) in Greeks::COMPONENT_NAMES.iter().zip(greeks) {
+      assert!(v.is_nan(), "k = {k}: {greek} must be NaN, got {v}");
+    }
+  }
+}
+
 /// Under [`BsmCoc::GarmanKohlhagen1983`] the query `(r, r − r_d + r_f)` carries at `r_d − r_f` and
 /// discounts at `r`, checked at `r ≠ r_d` against a hand-written closed form.
 #[test]

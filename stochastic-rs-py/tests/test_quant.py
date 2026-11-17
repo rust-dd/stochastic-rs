@@ -63,6 +63,13 @@ def test_bsm_pricer_prices_with_its_dividend_yield():
     assert abs(call - put - (100.0 * math.exp(-0.02) - 100.0 * math.exp(-0.03))) < 1e-10
 
 
+def test_an_expired_bsm_option_is_worth_its_payoff_and_has_no_greek():
+    pricer = sr.BSMPricer(s=110.0, v=0.2, k=100.0, r=0.05, tau=0.0)
+    assert pricer.price() == 10.0
+    assert sr.BSMPricer(s=100.0, v=0.2, k=100.0, r=0.05, tau=0.0).price() == 0.0
+    assert math.isnan(pricer.delta()) and math.isnan(pricer.vega()) and math.isnan(pricer.rho())
+
+
 def test_discount_curve_rates_are_nan_outside_their_domain():
     import numpy as np
 

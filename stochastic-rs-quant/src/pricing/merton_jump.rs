@@ -120,8 +120,11 @@ impl Merton1976Pricer {
   }
 
   /// Poisson-weighted series $\sum_{n=0}^{m-1} w_n \cdot V_{BS}(\sigma_n)$ with running-product
-  /// weights, so `m` may exceed the ≈ 21 terms an integer `n!` survives.
+  /// weights, so `m` may exceed the ≈ 21 terms an integer `n!` survives; the payoff at `tau = 0`.
   pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
+    if tau == 0.0 {
+      return self.base_bsm().call_put(s, k, r, q, tau);
+    }
     let mut call = 0.0;
     let mut put = 0.0;
 

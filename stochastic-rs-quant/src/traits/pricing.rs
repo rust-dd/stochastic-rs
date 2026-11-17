@@ -2,15 +2,8 @@
 
 use crate::OptionType;
 
-/// Aggregate Greek values — the return type shared by the pricers' inherent
-/// `greeks(s, k, r, q, tau, option_type)` aggregators and by
-/// [`GreeksExt::greeks`].
-///
-/// Members default to [`f64::NAN`] so consumers can identify Greeks the
-/// pricer does not expose. First-order: [`delta`](Self::delta),
-/// [`vega`](Self::vega), [`theta`](Self::theta), [`rho`](Self::rho).
-/// Second-order: [`gamma`](Self::gamma), [`vanna`](Self::vanna),
-/// [`charm`](Self::charm), [`volga`](Self::volga), [`veta`](Self::veta).
+/// Returned by the pricers' `greeks(…)` and [`GreeksExt::greeks`]: NaN for a Greek a pricer does
+/// not expose, and for every Greek at `tau = 0`, where an expired option has a value only.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Greeks {
   pub delta: f64,

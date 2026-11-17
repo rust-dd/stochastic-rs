@@ -4,6 +4,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
 use crate::traits::ModelPricer;
+use crate::traits::RealExt;
 use crate::traits::VanillaEuropeanCall;
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -87,16 +88,23 @@ impl BsmPricer {
     (d1, d2)
   }
 
-  /// Call and put price at one query point.
+  /// Call and put price at one query point: at `tau = 0` the payoff, NaN for a non-finite `v`.
   ///
   /// $$
   /// C=Se^{(b-r)\tau}N(d_1)-Ke^{-r\tau}N(d_2),\qquad
   /// P=-Se^{(b-r)\tau}N(-d_1)+Ke^{-r\tau}N(-d_2)
   /// $$
   pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
-    let (d1, d2) = self.d1_d2(s, k, r, q, tau);
     let carry = ((self.b(r, q) - r) * tau).exp();
     let disc = (-r * tau).exp();
+    if tau == 0.0 && self.v.is_finite() {
+      let (forward, strike) = (s * carry, k * disc);
+      return (
+        (forward - strike).max_or_nan(0.0),
+        (strike - forward).max_or_nan(0.0),
+      );
+    }
+    let (d1, d2) = self.d1_d2(s, k, r, q, tau);
 
     let call = s * carry * norm_cdf(d1) - k * disc * norm_cdf(d2);
     let put = -s * carry * norm_cdf(-d1) + k * disc * norm_cdf(-d2);

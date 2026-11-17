@@ -104,23 +104,13 @@ impl AnalyticHestonEngine {
     model.price_option(s, k, r, q, tau, opt.option_type)
   }
 
-  /// Bump-and-revalue Greeks, with `vanna`/`charm`/`volga`/`veta` left at
-  /// [`Greeks::nan`] because this engine does not compute them.
-  ///
-  /// `vega` is additionally `NaN` at `v0 <= 0`, where the `σ = √v0` chain
-  /// rule is undefined, and `theta` at a `tau` that is non-finite or not
-  /// larger than `bump`. Both are case 2 of the crate's [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails), as is the
-  /// all-`NaN` struct an unlinked market handle produces — see
-  /// [`read_quote`](Self::read_quote).
-  ///
-  /// Unlike [`HestonPricer`](crate::pricing::heston::HestonPricer)'s own
-  /// volatility-space Greeks, a *negative* `v0` is not rejected here: this
-  /// method fills one member of a struct whose others are finite and usable,
-  /// so panicking would take down the whole
-  /// [`PricingEngine::calculate`](crate::traits::PricingEngine::calculate)
-  /// call to report a single degenerate field.
+  /// Bump-and-revalue delta, gamma, vega and theta: all NaN at `tau = 0`, vega at `v0 <= 0`, theta
+  /// unless `tau` is finite and above `bump`; the other five fields stay NaN.
   fn finite_diff_greeks(&self, opt: &EuropeanOption) -> Greeks {
+    let tau = opt.tau_or_from_dates();
+    if tau == 0.0 {
+      return Greeks::nan();
+    }
     let s = Self::read_quote(&self.s);
     let h_s = (s.abs().max(1.0)) * self.bump;
     let p0 = self.price_at(None, None, None, opt);
@@ -141,7 +131,6 @@ impl AnalyticHestonEngine {
       f64::NAN
     };
 
-    let tau = opt.tau_or_from_dates();
     let theta = if tau.is_finite() && tau > self.bump {
       let h_t = tau * self.bump;
       let p_t_dn = self.price_at(None, None, Some(tau - h_t), opt);
@@ -242,6 +231,15 @@ mod tests {
       assert!(g.vega.is_nan(), "handle {missing}: vega {}", g.vega);
       assert!(g.theta.is_nan(), "handle {missing}: theta {}", g.theta);
     }
+  }
+
+  #[test]
+  fn an_expired_option_npvs_its_payoff_and_has_no_greek() {
+    let engine = AnalyticHestonEngine::with_constants(110.0, 0.05, 0.0, P);
+    let res = engine.calculate(&EuropeanOption::new_tau(100.0, OptionType::Call, 0.0));
+    assert_eq!(res.npv(), 10.0);
+    let greeks = res.greeks().unwrap().as_array();
+    assert!(greeks.iter().all(|g| g.is_nan()), "{greeks:?}");
   }
 
   #[test]

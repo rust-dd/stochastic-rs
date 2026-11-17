@@ -31,8 +31,8 @@ use crate::OptionType;
 use crate::traits::Greeks;
 use crate::traits::ModelPricer;
 
-/// Cash-or-nothing digital pays a fixed cash amount $Q$ when the option
-/// finishes in the money.
+/// Cash-or-nothing digital: pays the cash $Q$ when the option finishes strictly in the money, so
+/// nothing at `s = k`, which is its price at `tau = 0`.
 ///
 /// $$
 /// C_{\text{CoN}}=Qe^{-rT}N(d_2),\qquad P_{\text{CoN}}=Qe^{-rT}N(-d_2)
@@ -105,6 +105,9 @@ impl CashOrNothingPricer {
     tau: f64,
     option_type: OptionType,
   ) -> Greeks {
+    if tau == 0.0 {
+      return Greeks::nan();
+    }
     Greeks {
       delta: self.delta(s, k, r, q, tau, option_type),
       gamma: self.gamma(s, k, r, q, tau, option_type),
@@ -115,6 +118,9 @@ impl CashOrNothingPricer {
 
   /// Delta — $\partial V/\partial S$.
   pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let (_, d2) = bsm_d1_d2(s, k, r - q, self.sigma, tau);
     let disc = (-r * tau).exp();
     let denom = s * self.sigma * tau.sqrt();
@@ -124,6 +130,9 @@ impl CashOrNothingPricer {
 
   /// Gamma — $\partial^2 V/\partial S^2$.
   pub fn gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let (_, d2) = bsm_d1_d2(s, k, r - q, self.sigma, tau);
     let disc = (-r * tau).exp();
     let v = self.sigma;
@@ -136,6 +145,9 @@ impl CashOrNothingPricer {
 
   /// Vega — $\partial V/\partial \sigma$.
   pub fn vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let (d1, d2) = bsm_d1_d2(s, k, r - q, self.sigma, tau);
     let disc = (-r * tau).exp();
 
@@ -147,8 +159,12 @@ impl ModelPricer for CashOrNothingPricer {
   /// `cash`/`sigma` are model state; `(s, k, r, q, tau)` is the query, with
   /// $b = r - q$ fed into $d_2$.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    let (_, d2) = bsm_d1_d2(s, k, r - q, self.sigma, tau);
     let disc = (-r * tau).exp();
+    if tau == 0.0 && self.sigma.is_finite() {
+      let forward = s * ((r - q) * tau).exp();
+      return self.cash * disc * expiry_indicator(OptionType::Call, forward, k);
+    }
+    let (_, d2) = bsm_d1_d2(s, k, r - q, self.sigma, tau);
     self.cash * disc * norm_cdf(d2)
   }
 
@@ -156,14 +172,18 @@ impl ModelPricer for CashOrNothingPricer {
   /// $C_{\text{CoN}} + P_{\text{CoN}} = Qe^{-rT}$, not
   /// $C - Se^{-qT} + Ke^{-rT}$ — see `cash_call_put_parity`.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    let (_, d2) = bsm_d1_d2(s, k, r - q, self.sigma, tau);
     let disc = (-r * tau).exp();
+    if tau == 0.0 && self.sigma.is_finite() {
+      let forward = s * ((r - q) * tau).exp();
+      return self.cash * disc * expiry_indicator(OptionType::Put, forward, k);
+    }
+    let (_, d2) = bsm_d1_d2(s, k, r - q, self.sigma, tau);
     self.cash * disc * norm_cdf(-d2)
   }
 }
 
-/// Asset-or-nothing digital pays the underlying when the option finishes in
-/// the money.
+/// Asset-or-nothing digital: pays the underlying when the option finishes strictly in the money, so
+/// nothing at `s = k`, which is its price at `tau = 0`.
 ///
 /// $$
 /// C_{\text{AoN}}=Se^{(b-r)T}N(d_1),\qquad P_{\text{AoN}}=Se^{(b-r)T}N(-d_1)
@@ -231,6 +251,9 @@ impl AssetOrNothingPricer {
     tau: f64,
     option_type: OptionType,
   ) -> Greeks {
+    if tau == 0.0 {
+      return Greeks::nan();
+    }
     Greeks {
       delta: self.delta(s, k, r, q, tau, option_type),
       ..Greeks::nan()
@@ -239,6 +262,9 @@ impl AssetOrNothingPricer {
 
   /// Delta — $\partial V/\partial S$.
   pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
+    if tau == 0.0 {
+      return f64::NAN;
+    }
     let b = r - q;
     let d1 = bsm_d1(s, k, b, self.sigma, tau);
     let coc = ((b - r) * tau).exp();
@@ -257,8 +283,12 @@ impl ModelPricer for AssetOrNothingPricer {
   /// `sigma` is model state; `(s, k, r, q, tau)` is the query, $b = r - q$.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let b = r - q;
-    let d1 = bsm_d1(s, k, b, self.sigma, tau);
     let coc = ((b - r) * tau).exp();
+    if tau == 0.0 && self.sigma.is_finite() {
+      let forward = s * (b * tau).exp();
+      return s * coc * expiry_indicator(OptionType::Call, forward, k);
+    }
+    let d1 = bsm_d1(s, k, b, self.sigma, tau);
     s * coc * norm_cdf(d1)
   }
 
@@ -267,8 +297,12 @@ impl ModelPricer for AssetOrNothingPricer {
   /// `aon_call_put_parity` — not vanilla put-call parity.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let b = r - q;
-    let d1 = bsm_d1(s, k, b, self.sigma, tau);
     let coc = ((b - r) * tau).exp();
+    if tau == 0.0 && self.sigma.is_finite() {
+      let forward = s * (b * tau).exp();
+      return s * coc * expiry_indicator(OptionType::Put, forward, k);
+    }
+    let d1 = bsm_d1(s, k, b, self.sigma, tau);
     s * coc * norm_cdf(-d1)
   }
 }
@@ -458,6 +492,19 @@ impl ModelPricer for SuperSharePricer {
   fn price_put(&self, _s: f64, _k: f64, _r: f64, _q: f64, _tau: f64) -> f64 {
     f64::NAN
   }
+}
+
+/// `1` for a forward strictly past the strike, `0` at or short of it, as QuantLib's digital payoffs
+/// pay at expiry; NaN for a NaN forward or strike.
+fn expiry_indicator(option_type: OptionType, forward: f64, k: f64) -> f64 {
+  if forward.is_nan() || k.is_nan() {
+    return f64::NAN;
+  }
+  let in_the_money = match option_type {
+    OptionType::Call => forward > k,
+    OptionType::Put => forward < k,
+  };
+  if in_the_money { 1.0 } else { 0.0 }
 }
 
 /// $+1$ for a call, $-1$ for a put — the sign a digital Greek picks up
