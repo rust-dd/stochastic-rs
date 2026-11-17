@@ -176,7 +176,7 @@ pub(crate) fn quasi_log_likelihood(
 }
 
 /// QMLE every `dt`; `Err` below 4 points, on one non-finite or (CIR) negative, a constant path, a
-/// non-finite start or optimum, an OU slope ∉ `(0, 1)` or exact fit; panics unless `0 < dt < ∞`.
+/// non-finite start or optimum, an exact fit or OU slope ∉ `(0, 1)`; panics unless `0 < dt < ∞`.
 pub fn fit_diffusion_qmle<T: FloatExt>(
   series: ArrayView1<T>,
   dt: f64,
@@ -191,11 +191,9 @@ pub fn fit_diffusion_qmle<T: FloatExt>(
     -quasi_log_likelihood(&x, dt, kind, theta, mu, sigma)
   };
   let start = ar1_start(&x, dt, kind, carrier)?;
-  if kind == DiffusionKind::OrnsteinUhlenbeck {
-    // The OU quasi-likelihood is the exact one: with no slope in `(0, 1)` its supremum lies on a
-    // ridge or at the iid limit, and on an exact fit it grows without bound as `σ` falls.
-    Ar1::of(&x, kind)?;
-  }
+  // On an exact fit either quasi-likelihood grows without bound as `σ` falls, and OU's, the exact
+  // one, has its supremum on a ridge or at the iid limit unless the slope lies in `(0, 1)`.
+  Ar1::of(&x, kind)?;
 
   let (p, iterations, converged) = nelder_mead(start, 2000, neg_ll);
   let [theta, mu, sigma] = carrier.params(p);

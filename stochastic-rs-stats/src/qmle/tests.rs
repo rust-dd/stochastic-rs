@@ -362,6 +362,22 @@ fn the_ou_qmle_refuses_what_the_closed_form_refuses() {
   }
 }
 
+/// On an exact fit CIR's quasi-likelihood, as OU's, grows without bound as `σ` falls, so its QMLE
+/// refuses `X_{t+1} = 0.37 X_t + 1.1` in doubles by the same rule.
+#[test]
+fn a_cir_exact_fit_has_zero_residual_variance() {
+  let mut x = Array1::<f64>::zeros(12);
+  x[0] = 3.0;
+  for t in 1..12 {
+    x[t] = 0.37 * x[t - 1] + 1.1;
+  }
+  let fit = fit_diffusion_qmle(x.view(), 1.0 / 252.0, DiffusionKind::Cir);
+  assert_eq!(
+    fit.map(|f| (f.theta, f.sigma, f.converged)),
+    Err(StatsError::DegenerateData("zero residual variance"))
+  );
+}
+
 /// A negative lag-1 slope puts OU's supremum at the iid limit `θ → ∞`, no interior speed, so OU is
 /// refused as the closed form refuses it; CIR's start still takes the autocorrelation at its clamp.
 #[test]
