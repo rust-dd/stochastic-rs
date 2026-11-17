@@ -74,6 +74,20 @@ fn simulate_cir(
   path
 }
 
+/// `Ou` at speed 5, level −0.5 and `σ = 0.3`, 10 000 points over `t = 100`.
+fn negative_level_path() -> Array1<f64> {
+  Ou::<f64, _>::new(
+    5.0,
+    -0.5,
+    0.3,
+    10_000,
+    Some(-0.5),
+    Some(100.0),
+    Deterministic::new(5),
+  )
+  .sample()
+}
+
 /// A fit of `kind` at fixed parameters, for the conversions' preconditions.
 fn literal(kind: DiffusionKind) -> QmleFit {
   QmleFit {
@@ -167,29 +181,50 @@ fn qmle_cir_recovers_true_params() {
 }
 
 /// The fit's `theta` is the speed and `mu` the level, as in `Ou`, so the conversion hands them
-/// over.
+/// over; a level below zero is fitted as any other.
 #[test]
 fn an_ou_fit_round_trips_into_the_process_it_names() {
-  let truth = Ou::<f64, _>::new(
-    5.0,
-    0.5,
-    0.3,
-    10_000,
-    Some(0.5),
-    Some(100.0),
-    Deterministic::new(5),
-  );
-  let path = truth.sample();
+  let path = negative_level_path();
   let dt = 100.0 / 9_999.0;
   let fit = fit_diffusion_qmle(path.view(), dt, DiffusionKind::OrnsteinUhlenbeck).unwrap();
   assert!((fit.theta - 5.0).abs() < 1.5, "speed {}", fit.theta);
-  assert!((fit.mu - 0.5).abs() < 0.05, "level {}", fit.mu);
-  let rebuilt = fit.to_ou(10_000, Some(0.5), Some(100.0), Deterministic::new(6));
+  assert!((fit.mu + 0.5).abs() < 0.05, "level {}", fit.mu);
+  let rebuilt = fit.to_ou(10_000, Some(-0.5), Some(100.0), Deterministic::new(6));
   assert_eq!(
     (rebuilt.theta, rebuilt.mu, rebuilt.sigma),
     (fit.theta, fit.mu, fit.sigma)
   );
   assert_eq!(rebuilt.sample().len(), 10_000);
+}
+
+/// The QMLE meets the closed form at a level below zero, and a path scaled by 1e4 scales `mu` and
+/// `sigma` alone: the level is carried in the path's standard deviations.
+#[test]
+fn a_negative_level_is_the_closed_forms_at_every_scale() {
+  let path = negative_level_path();
+  let dt = 100.0 / 9_999.0;
+  let rel = |a: f64, b: f64| (a - b).abs() / b.abs();
+  let fit =
+    |x: &Array1<f64>| fit_diffusion_qmle(x.view(), dt, DiffusionKind::OrnsteinUhlenbeck).unwrap();
+  let unit = fit(&path);
+  for c in [1.0, 1e4] {
+    let x = path.mapv(|v| c * v);
+    let q = fit(&x);
+    let cf = fit_ou_mle(x.view(), dt).unwrap();
+    for (a, b) in [(q.theta, cf.theta), (q.mu, cf.mu), (q.sigma, cf.sigma)] {
+      assert!(
+        rel(a, b) < 1e-5,
+        "scale {c}: QMLE {a} against the closed form's {b}"
+      );
+    }
+    let scaled = [unit.theta, c * unit.mu, c * unit.sigma];
+    for (a, b) in [q.theta, q.mu, q.sigma].into_iter().zip(scaled) {
+      assert!(
+        rel(a, b) < 1e-5,
+        "scale {c}: {a} against the unit fit's {b}"
+      );
+    }
+  }
 }
 
 #[test]

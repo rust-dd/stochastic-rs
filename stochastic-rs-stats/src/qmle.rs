@@ -172,14 +172,15 @@ pub fn fit_diffusion_qmle<T: FloatExt>(
   assert_dt(dt);
   // Three points are two transitions, which the drift's two coefficients fit exactly.
   let x = diffusion_path(series, kind, 4)?;
-  // In logs, so that the speed, the level and `σ` stay positive.
+  let carrier = Carrier::new(&x, kind)?;
   let neg_ll = |p: &[f64; 3]| -> f64 {
-    -quasi_log_likelihood(&x, dt, kind, p[0].exp(), p[1].exp(), p[2].exp())
+    let [theta, mu, sigma] = carrier.params(*p);
+    -quasi_log_likelihood(&x, dt, kind, theta, mu, sigma)
   };
-  let start = ar1_start(&x, dt, kind)?;
+  let start = ar1_start(&x, dt, kind, carrier)?;
 
-  let (p, iterations, converged) = nelder_mead(start.map(f64::ln), 2000, neg_ll);
-  let (theta, mu, sigma) = (p[0].exp(), p[1].exp(), p[2].exp());
+  let (p, iterations, converged) = nelder_mead(start, 2000, neg_ll);
+  let [theta, mu, sigma] = carrier.params(p);
   let log_likelihood = -neg_ll(&p);
   if !log_likelihood.is_finite() {
     return Err(StatsError::Numerical {
@@ -229,12 +230,72 @@ pub(crate) fn path_mean(x: &[f64]) -> Result<f64, StatsError> {
   }
 }
 
-/// `[θ₀, μ₀, σ₀]`: the level at the mean, the speed from the lag-1 autocorrelation and `σ` from
-/// the residuals about both; `Err` unless each is finite before the clamp that would hide it.
-pub(crate) fn ar1_start(x: &[f64], dt: f64, kind: DiffusionKind) -> Result<[f64; 3], StatsError> {
+/// How the simplex and the chain carry `(θ, μ, σ)`: in logs, but OU's level as `x̄ + s p`, `s` the
+/// path's standard deviation, so that it takes either sign and moves with the data's scale.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Carrier {
+  Standardised { mean: f64, spread: f64 },
+  Log { mean: f64 },
+}
+
+impl Carrier {
+  /// `kind`'s carrier on `x`; `Err` unless the mean and, for OU, the standard deviation are finite,
+  /// the deviation positive.
+  pub(crate) fn new(x: &[f64], kind: DiffusionKind) -> Result<Self, StatsError> {
+    let mean = path_mean(x)?;
+    match kind {
+      DiffusionKind::OrnsteinUhlenbeck => {
+        let spread = (x.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / x.len() as f64).sqrt();
+        // Zero only when the deviations' squares underflow: a constant path is refused before.
+        if !spread.is_finite() || spread == 0.0 {
+          return Err(StatsError::Numerical {
+            stage: "starting point",
+          });
+        }
+        Ok(Self::Standardised { mean, spread })
+      }
+      DiffusionKind::Cir => Ok(Self::Log { mean }),
+    }
+  }
+
+  /// `[θ, μ, σ]` at the coordinates `p`.
+  pub(crate) fn params(self, p: [f64; 3]) -> [f64; 3] {
+    let mu = match self {
+      Self::Standardised { mean, spread } => mean + spread * p[1],
+      Self::Log { .. } => p[1].exp(),
+    };
+    [p[0].exp(), mu, p[2].exp()]
+  }
+
+  /// The level at the path's mean, kept above zero for the logarithm, and its coordinate.
+  pub(crate) fn centre(self) -> (f64, f64) {
+    match self {
+      Self::Standardised { mean, .. } => (mean, 0.0),
+      Self::Log { mean } => {
+        let mu = mean.max(1e-8);
+        (mu, mu.ln())
+      }
+    }
+  }
+
+  fn mean(self) -> f64 {
+    match self {
+      Self::Standardised { mean, .. } | Self::Log { mean } => mean,
+    }
+  }
+}
+
+/// The simplex's start `[ln θ₀, p₀, ln σ₀]`: the carrier's centre, the speed from the lag-1
+/// autocorrelation and `σ` from the residuals; `Err` unless each is finite before its clamp.
+pub(crate) fn ar1_start(
+  x: &[f64],
+  dt: f64,
+  kind: DiffusionKind,
+  carrier: Carrier,
+) -> Result<[f64; 3], StatsError> {
   let nobs = x.len();
-  let mean = path_mean(x)?;
-  let mu0 = mean.max(1e-8);
+  let mean = carrier.mean();
+  let (mu0, p0) = carrier.centre();
   let (mut num, mut den) = (0.0, 0.0);
   for t in 0..nobs - 1 {
     num += (x[t] - mean) * (x[t + 1] - mean);
@@ -263,7 +324,7 @@ pub(crate) fn ar1_start(x: &[f64], dt: f64, kind: DiffusionKind) -> Result<[f64;
       stage: "starting point",
     });
   }
-  Ok([theta0, mu0, sigma_raw.clamp(1e-3, 10.0)])
+  Ok([theta0.ln(), p0, sigma_raw.clamp(1e-3, 10.0).ln()])
 }
 
 /// Closed-form OU / Vasicek MLE through the AR(1) below; `Err` below 4 points, on a non-finite one,

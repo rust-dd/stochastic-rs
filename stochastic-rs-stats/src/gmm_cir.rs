@@ -25,6 +25,7 @@ use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use crate::StatsError;
 use crate::optim::nelder_mead;
+use crate::qmle::Carrier;
 use crate::qmle::DiffusionKind;
 use crate::qmle::ar1_start;
 use crate::qmle::assert_dt;
@@ -105,7 +106,12 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
     q
   };
 
-  let start = ar1_start(&x, dt, DiffusionKind::Cir)?;
+  let start = ar1_start(
+    &x,
+    dt,
+    DiffusionKind::Cir,
+    Carrier::new(&x, DiffusionKind::Cir)?,
+  )?;
 
   let identity = {
     let mut w = [[0.0; 4]; 4];
@@ -115,7 +121,7 @@ pub fn fit_cir_gmm<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<GmmCir
     w
   };
 
-  let (p1, it1, conv1) = nelder_mead(start.map(f64::ln), 2000, |p| {
+  let (p1, it1, conv1) = nelder_mead(start, 2000, |p| {
     objective(p[0].exp(), p[1].exp(), p[2].exp(), &identity)
   });
   let (theta1, mu1, s1) = (p1[0].exp(), p1[1].exp(), p1[2].exp());

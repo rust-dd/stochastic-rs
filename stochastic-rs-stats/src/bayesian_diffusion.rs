@@ -1,5 +1,5 @@
-//! Random-walk Metropolis posterior of an OU or CIR diffusion's `(θ, μ, σ)` on the QMLE's
-//! quasi-likelihood, with an independent `N(·, 4²)` prior on each of `ln θ`, `ln μ` and `ln σ`.
+//! Random-walk Metropolis on the QMLE's quasi-likelihood, a `N(·, 4²)` prior on each of `ln θ`,
+//! `ln σ` and the level, CIR's `ln μ` and OU's `(μ − x̄)/s` in the path's standard deviation `s`.
 //!
 //! Reference: Eraker, B. (2001), "MCMC analysis of diffusion models with application to finance", Journal of Business & Economic Statistics 19(2), 177-191.
 //! Reference: Robert, C. P. & Casella, G. (2004), Monte Carlo Statistical Methods, Springer, ch. 7 (random-walk Metropolis).
@@ -13,12 +13,12 @@ use stochastic_rs_stochastic::params::VarianceBoundary;
 
 use crate::StatsError;
 use crate::filtering::mcmc::random_walk_metropolis;
+use crate::qmle::Carrier;
 use crate::qmle::DiffusionKind;
 use crate::qmle::assert_dt;
 use crate::qmle::cir_of;
 use crate::qmle::diffusion_path;
 use crate::qmle::ou_of;
-use crate::qmle::path_mean;
 use crate::qmle::quasi_log_likelihood;
 use crate::traits::FloatExt;
 
@@ -68,8 +68,8 @@ impl BayesianDiffusionFit {
   }
 }
 
-/// Metropolis posterior of `(ln θ, ln μ, ln σ)` from the prior means, `Err` unless they and it are
-/// finite there; `Err`s and panics as [`crate::qmle::fit_diffusion_qmle`], also if `n_samples = 0`.
+/// Metropolis posterior from the prior means, `proposal_scale` in the coordinates of the module
+/// doc; `Err`s and panics as [`crate::qmle::fit_diffusion_qmle`] and [`random_walk_metropolis`].
 pub fn fit_diffusion_bayesian<T: FloatExt>(
   series: ArrayView1<T>,
   dt: f64,
@@ -81,16 +81,15 @@ pub fn fit_diffusion_bayesian<T: FloatExt>(
 ) -> Result<BayesianDiffusionFit, StatsError> {
   assert_dt(dt);
   let x = diffusion_path(series, kind, 4)?;
-
-  let sample_mean = path_mean(&x)?;
-  // The speed about 1, the level about the sample mean and `σ` about 0.2.
-  let prior_mean = [0.0_f64, sample_mean.max(1e-8).ln(), (-1.6_f64)];
+  let carrier = Carrier::new(&x, kind)?;
+  // The speed about 1, the level about the path's mean and `σ` about 0.2.
+  let prior_mean = [0.0_f64, carrier.centre().1, (-1.6_f64)];
   let tau = 4.0_f64;
   let inv_2tau2 = 1.0 / (2.0 * tau * tau);
 
   let log_post = |p: ArrayView1<f64>| -> f64 {
     let (lth, lmu, ls) = (p[0], p[1], p[2]);
-    let (theta, mu, sigma) = (lth.exp(), lmu.exp(), ls.exp());
+    let [theta, mu, sigma] = carrier.params([lth, lmu, ls]);
     if !(theta.is_finite() && mu.is_finite() && sigma.is_finite()) {
       return f64::NEG_INFINITY;
     }
@@ -122,9 +121,11 @@ pub fn fit_diffusion_bayesian<T: FloatExt>(
   let mut mus = Vec::with_capacity(n);
   let mut sigmas = Vec::with_capacity(n);
   for r in 0..n {
-    thetas.push(mh.samples[[r, 0]].exp());
-    mus.push(mh.samples[[r, 1]].exp());
-    sigmas.push(mh.samples[[r, 2]].exp());
+    let [theta, mu, sigma] =
+      carrier.params([mh.samples[[r, 0]], mh.samples[[r, 1]], mh.samples[[r, 2]]]);
+    thetas.push(theta);
+    mus.push(mu);
+    sigmas.push(sigma);
   }
 
   Ok(BayesianDiffusionFit {
@@ -227,16 +228,45 @@ mod tests {
     );
   }
 
+  /// A level below zero is the posterior's: the chain carries it in the path's standard deviations
+  /// about the mean, where `ln μ` held it above zero.
+  #[test]
+  fn a_negative_level_is_inside_the_credible_interval() {
+    let (tht, mt, st) = (1.5, -0.03, 0.15);
+    let dt = 1.0 / 252.0;
+    let ou = DiffusionKind::OrnsteinUhlenbeck;
+    let covered = [(9u64, 42u64), (11, 43), (13, 44)]
+      .iter()
+      .any(|&(path_seed, chain_seed)| {
+        let path = simulate_ou(tht, mt, st, mt, dt, 6000, path_seed);
+        let res = fit_diffusion_bayesian(
+          path.view(),
+          dt,
+          ou,
+          [0.08, 0.08, 0.04],
+          8_000,
+          2_000,
+          chain_seed,
+        )
+        .unwrap();
+        res.mu_ci.0 <= mt && mt <= res.mu_ci.1 && res.sigma_ci.0 <= st && st <= res.sigma_ci.1
+      });
+    assert!(
+      covered,
+      "no pinned path had both 95% credible intervals cover the truth"
+    );
+  }
+
   /// The posterior means are the speed and the level, as in `Ou`, so the conversion hands them
   /// over.
   #[test]
   fn a_bayesian_ou_fit_round_trips_into_the_process_it_names() {
     let truth = Ou::<f64, _>::new(
       5.0,
-      0.5,
+      -0.5,
       0.3,
       10_000,
-      Some(0.5),
+      Some(-0.5),
       Some(100.0),
       Deterministic::new(5),
     );
@@ -250,8 +280,8 @@ mod tests {
       "speed {}",
       fit.theta_mean
     );
-    assert!((fit.mu_mean - 0.5).abs() < 0.05, "level {}", fit.mu_mean);
-    let rebuilt = fit.to_ou(10_000, Some(0.5), Some(100.0), Deterministic::new(6));
+    assert!((fit.mu_mean + 0.5).abs() < 0.05, "level {}", fit.mu_mean);
+    let rebuilt = fit.to_ou(10_000, Some(-0.5), Some(100.0), Deterministic::new(6));
     assert_eq!(
       (rebuilt.theta, rebuilt.mu, rebuilt.sigma),
       (fit.theta_mean, fit.mu_mean, fit.sigma_mean)
