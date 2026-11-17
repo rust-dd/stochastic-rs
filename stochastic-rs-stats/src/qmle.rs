@@ -175,8 +175,8 @@ pub(crate) fn quasi_log_likelihood(
   ll
 }
 
-/// Gaussian QMLE every `dt`; `Err` below 4 points, on one non-finite or (CIR) negative, a constant
-/// path, a non-finite start or optimum, an OU slope ≥ 1 or exact fit; panics unless `0 < dt < ∞`.
+/// QMLE every `dt`; `Err` below 4 points, on one non-finite or (CIR) negative, a constant path, a
+/// non-finite start or optimum, an OU slope ∉ `(0, 1)` or exact fit; panics unless `0 < dt < ∞`.
 pub fn fit_diffusion_qmle<T: FloatExt>(
   series: ArrayView1<T>,
   dt: f64,
@@ -192,9 +192,9 @@ pub fn fit_diffusion_qmle<T: FloatExt>(
   };
   let start = ar1_start(&x, dt, kind, carrier)?;
   if kind == DiffusionKind::OrnsteinUhlenbeck {
-    // The OU quasi-likelihood is the exact one, so without mean reversion it peaks on a ridge in
-    // the level and on an exact fit it grows without bound as `σ` falls.
-    reject_exact_fit(&x[1..], &Ar1::of(&x)?.residuals, 1.0)?;
+    // The OU quasi-likelihood is the exact one: with no slope in `(0, 1)` its supremum lies on a
+    // ridge or at the iid limit, and on an exact fit it grows without bound as `σ` falls.
+    Ar1::of(&x, kind)?;
   }
 
   let (p, iterations, converged) = nelder_mead(start, 2000, neg_ll);
@@ -360,16 +360,10 @@ pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit
     next_mean,
     beta,
     residuals,
-  } = Ar1::of(&x)?;
-  if beta <= 0.0 {
-    return Err(StatsError::DegenerateData(
-      "series without positive autocorrelation",
-    ));
-  }
+  } = Ar1::of(&x, DiffusionKind::OrnsteinUhlenbeck)?;
   let mu = (next_mean - beta * lagged_mean) / (1.0 - beta);
   let theta = -beta.ln() / dt;
 
-  reject_exact_fit(&x[1..], &residuals, 1.0)?;
   let mf = residuals.len() as f64;
   let resid_var = residuals.iter().map(|r| r * r).sum::<f64>() / mf;
   let sigma2 = resid_var * 2.0 * theta / (1.0 - beta * beta);
@@ -404,9 +398,9 @@ struct Ar1 {
 }
 
 impl Ar1 {
-  /// The regression of `x`; `Err` on a constant `x[..n-1]` or `x[1..]`, or a slope not finite or of
-  /// at least 1, which no mean reversion fits.
-  fn of(x: &[f64]) -> Result<Self, StatsError> {
+  /// The regression of `x`; `Err` on a constant `x[..n-1]` or `x[1..]`, a slope not finite or, for
+  /// OU, not in `(0, 1)`, as no mean reversion fits it, or an exact fit.
+  fn of(x: &[f64], kind: DiffusionKind) -> Result<Self, StatsError> {
     let m = x.len() - 1;
     let (lagged, next) = (&x[..m], &x[1..]);
     // The regressor's spread is the slope's denominator, and a constant regressand leaves the slope
@@ -430,14 +424,20 @@ impl Ar1 {
         stage: "ar(1) slope",
       });
     }
-    if beta >= 1.0 {
+    if kind == DiffusionKind::OrnsteinUhlenbeck && beta >= 1.0 {
       return Err(StatsError::DegenerateData("series without mean reversion"));
+    }
+    if kind == DiffusionKind::OrnsteinUhlenbeck && beta <= 0.0 {
+      return Err(StatsError::DegenerateData(
+        "series without positive autocorrelation",
+      ));
     }
     let residuals = lagged
       .iter()
       .zip(next)
       .map(|(u, v)| (v - next_mean) - beta * (u - lagged_mean))
       .collect::<Vec<f64>>();
+    reject_exact_fit(next, &residuals, 1.0)?;
     Ok(Self {
       lagged_mean,
       next_mean,

@@ -288,7 +288,7 @@ fn an_overflowing_start_is_a_numerical_error() {
 }
 
 /// Here the CIR start reads `σ₀` near 2e78, where the step after the spike overflows the
-/// log-likelihood at every vertex the simplex tries; OU's variance does not grow with the state.
+/// log-likelihood at every vertex the simplex tries.
 #[test]
 fn a_non_finite_optimum_is_a_numerical_error() {
   let mut s = Array1::<f64>::zeros(1000);
@@ -299,11 +299,10 @@ fn a_non_finite_optimum_is_a_numerical_error() {
       stage: "quasi-log-likelihood"
     }
   );
-  assert!(fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).is_ok());
 }
 
 /// The mean, the autocorrelation and the speed are finite, but the residuals near 1.1e154 square
-/// past the largest double: `σ₀` is `∞` before its clamp to 10.
+/// past the largest double, so `σ₀` is `∞`.
 #[test]
 fn an_overflowing_sigma_start_is_a_numerical_error() {
   let s = Array1::from(vec![6e153, -6e153, 6e153, -6e153]);
@@ -345,6 +344,10 @@ fn the_ou_qmle_refuses_what_the_closed_form_refuses() {
       Array1::from_iter((0..12).map(|t| 1.1_f64.powi(t) + 0.01 * (t as f64).sin())),
       "series without mean reversion",
     ),
+    (
+      Array1::from_iter((0..12).map(|t| if t % 2 == 0 { 1.0 } else { -1.0 } + 0.01 * t as f64)),
+      "series without positive autocorrelation",
+    ),
     (Array1::from(vec![1.0, 0.7, 0.7, 0.7]), "constant series"),
   ];
   let dt = 1.0 / 252.0;
@@ -359,11 +362,20 @@ fn the_ou_qmle_refuses_what_the_closed_form_refuses() {
   }
 }
 
-/// A negative lag-1 autocorrelation is data, which the start's clamp to `[1e-4, 0.999]` takes.
+/// A negative lag-1 slope puts OU's supremum at the iid limit `θ → ∞`, no interior speed, so OU is
+/// refused as the closed form refuses it; CIR's start still takes the autocorrelation at its clamp.
 #[test]
-fn a_negative_autocorrelation_starts_at_the_clamp() {
+fn a_negative_autocorrelation_is_degenerate_for_ou_and_starts_cir_at_the_clamp() {
   let s = Array1::from(vec![0.05, 0.03, 0.06, 0.02, 0.07, 0.01]);
-  assert!(fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).is_ok());
+  let dt = 1.0 / 252.0;
+  let ou = fit_diffusion_qmle(s.view(), dt, DiffusionKind::OrnsteinUhlenbeck);
+  assert_eq!(
+    ou.map(|f| (f.theta, f.sigma, f.converged)),
+    Err(StatsError::DegenerateData(
+      "series without positive autocorrelation"
+    ))
+  );
+  assert!(fit_diffusion_qmle(s.view(), dt, DiffusionKind::Cir).is_ok());
 }
 
 /// Three points are two transitions, which the two AR(1) coefficients fit exactly.

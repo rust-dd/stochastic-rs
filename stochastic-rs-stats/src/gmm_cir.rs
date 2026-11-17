@@ -394,7 +394,7 @@ mod tests {
   }
 
   /// The mean, the autocorrelation and the speed are finite, but the residuals near 1.1e154
-  /// square past the largest double: `σ₀` is `∞` before its clamp to 10.
+  /// square past the largest double, so `σ₀` is `∞`.
   #[test]
   fn gmm_cir_answers_an_overflowing_sigma_start_with_a_numerical_error() {
     let s = Array1::from(vec![1.2e154, 0.0, 1.2e154, 0.0, 1.2e154]);
