@@ -22,8 +22,11 @@ use crate::input::validate;
 use crate::input::validate_domain;
 use crate::optim::nelder_mead;
 use crate::stationarity::common::reject_exact_fit;
+use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
 
+#[cfg(test)]
+mod scale_tests;
 #[cfg(test)]
 pub(crate) mod test_support;
 #[cfg(test)]
@@ -175,20 +178,21 @@ pub(crate) fn quasi_log_likelihood(
   ll
 }
 
-/// QMLE every `dt`; `Err` below 4 points, on one non-finite or (CIR) negative, a constant path, a
-/// non-finite start or optimum, an exact fit or OU slope ∉ `(0, 1)`; panics unless `0 < dt < ∞`.
+/// QMLE every `dt`; `Err` below 4 points, on one non-finite or (CIR) negative, a constant path, an
+/// exact fit, OU slope ∉ `(0, 1)` or start, optimum or fit not finite; panics unless `0 < dt < ∞`.
 pub fn fit_diffusion_qmle<T: FloatExt>(
   series: ArrayView1<T>,
   dt: f64,
   kind: DiffusionKind,
 ) -> Result<QmleFit, StatsError> {
   assert_dt(dt);
-  // Three points are two transitions, which the drift's two coefficients fit exactly.
-  let x = diffusion_path(series, kind, 4)?;
-  let carrier = Carrier::new(&x, kind)?;
+  // Three points are two transitions, which the drift's two coefficients fit exactly. At unit
+  // scale no square or conditional variance leaves the double range, whatever the path's unit.
+  let (x, unit) = unit_scaled(diffusion_path(series, kind, 4)?);
   // On an exact fit either quasi-likelihood grows without bound as `σ` falls, and OU's, the exact
   // one, has its supremum on a ridge or at the iid limit unless the slope lies in `(0, 1)`.
   Ar1::of(&x, kind)?;
+  let carrier = Carrier::new(&x, kind)?;
   let neg_ll = |p: &[f64; 3]| -> f64 {
     let [theta, mu, sigma] = carrier.params(*p);
     -quasi_log_likelihood(&x, dt, kind, theta, mu, sigma)
@@ -196,13 +200,13 @@ pub fn fit_diffusion_qmle<T: FloatExt>(
   let start = ar1_start(&x, dt, kind, carrier)?;
 
   let (p, iterations, converged) = nelder_mead(start, 2000, neg_ll);
-  let [theta, mu, sigma] = carrier.params(p);
-  let log_likelihood = -neg_ll(&p);
+  let log_likelihood = -neg_ll(&p) + log_density_shift(x.len() - 1, unit);
   if !log_likelihood.is_finite() {
     return Err(StatsError::Numerical {
       stage: "quasi-log-likelihood",
     });
   }
+  let [theta, mu, sigma] = in_data_units(kind, carrier.params(p), unit)?;
 
   Ok(QmleFit {
     theta,
@@ -232,6 +236,32 @@ pub(crate) fn diffusion_path<T: FloatExt>(
   }
   reject_constant(&x, "constant series")?;
   Ok(x)
+}
+
+/// `[θ, μ, σ]` of the path times `unit` in the path's own units, `x → cx` taking `μ` to `cμ` and
+/// `σ` to `cσ` (OU) or `√c σ` (CIR); `Err` when `μ` or `σ` is not finite there, or `σ` zero.
+pub(crate) fn in_data_units(
+  kind: DiffusionKind,
+  [theta, mu, sigma]: [f64; 3],
+  unit: f64,
+) -> Result<[f64; 3], StatsError> {
+  let sigma_unit = match kind {
+    DiffusionKind::OrnsteinUhlenbeck => unit,
+    DiffusionKind::Cir => unit.sqrt(),
+  };
+  let (mu, sigma) = (mu / unit, sigma / sigma_unit);
+  if !(mu.is_finite() && sigma.is_finite()) || sigma == 0.0 {
+    return Err(StatsError::Numerical {
+      stage: "data scale",
+    });
+  }
+  Ok([theta, mu, sigma])
+}
+
+/// What `transitions` log-densities of the path times `unit` lack of the path's own: a density of
+/// `cx` is `1/c` of that of `x`.
+fn log_density_shift(transitions: usize, unit: f64) -> f64 {
+  transitions as f64 * unit.ln()
 }
 
 /// The path's mean, which centres the start and the prior; `Err` when it overflows.
@@ -295,7 +325,7 @@ impl Carrier {
     }
   }
 
-  fn mean(self) -> f64 {
+  pub(crate) fn mean(self) -> f64 {
     match self {
       Self::Standardised { mean, .. } | Self::Log { mean } => mean,
     }
@@ -350,7 +380,7 @@ pub(crate) fn ar1_start(
 }
 
 /// Closed-form OU MLE; `Err` under 4 points, a non-finite one, a constant `x[..n-1]` or `x[1..]`, a
-/// slope not in `(0, 1)`, an exact fit or a `σ²` not in `(0, ∞)`; panics unless `0 < dt < ∞`.
+/// slope ∉ `(0, 1)`, an exact fit or a `μ` or `σ` outside the doubles; panics unless `0 < dt < ∞`.
 /// $$
 /// X_{t+\Delta} = \mu(1-\beta) + \beta X_t + \varepsilon_t,\qquad \beta = e^{-\theta\Delta}
 /// $$
@@ -362,6 +392,8 @@ pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit
     .collect::<Vec<f64>>();
   // Two coefficients fit two transitions exactly, leaving the residual variance nothing to read.
   validate(&x, 4)?;
+  // As the QMLE, so that the two refuse and fit alike at every scale of the path.
+  let (x, unit) = unit_scaled(x);
   let Ar1 {
     lagged_mean,
     next_mean,
@@ -384,13 +416,15 @@ pub fn fit_ou_mle<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> Result<QmleFit
   for r in &residuals {
     ll += -0.5 * ((2.0 * std::f64::consts::PI * var_eps).ln() + r * r / var_eps);
   }
+  let kind = DiffusionKind::OrnsteinUhlenbeck;
+  let [theta, mu, sigma] = in_data_units(kind, [theta, mu, sigma], unit)?;
 
   Ok(QmleFit {
     theta,
     mu,
     sigma,
-    kind: DiffusionKind::OrnsteinUhlenbeck,
-    log_likelihood: ll,
+    kind,
+    log_likelihood: ll + log_density_shift(residuals.len(), unit),
     iterations: 0,
     converged: true,
   })

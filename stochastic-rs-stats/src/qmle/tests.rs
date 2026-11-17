@@ -342,57 +342,6 @@ fn a_negative_cir_observation_is_invalid() {
   );
 }
 
-/// The sample mean of these finite points overflows, so the regression start is not finite.
-#[test]
-fn an_overflowing_start_is_a_numerical_error() {
-  let s = Array1::from(vec![1e308, 1.5e308, 1e308, 0.5e308, 1.2e308]);
-  assert_eq!(
-    fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).unwrap_err(),
-    StatsError::Numerical {
-      stage: "starting point"
-    }
-  );
-}
-
-/// Here the CIR start reads `σ₀` near 2e78, where the step after the spike overflows the
-/// log-likelihood at every vertex the simplex tries.
-#[test]
-fn a_non_finite_optimum_is_a_numerical_error() {
-  let mut s = Array1::<f64>::zeros(1000);
-  s[500] = 1e154;
-  assert_eq!(
-    fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::Cir).unwrap_err(),
-    StatsError::Numerical {
-      stage: "quasi-log-likelihood"
-    }
-  );
-}
-
-/// The slope is in `(0, 1)` and the mean, autocorrelation and speed finite, but the residuals near
-/// 1e153 over a variance scale near `dt` put `σ₀²` past the largest double.
-#[test]
-fn an_overflowing_sigma_start_is_a_numerical_error() {
-  let s = Array1::from(vec![1e153, 3e153, 5e153, 4e153, 2e153, 1e153, 2e153, 4e153]);
-  assert_eq!(
-    fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).unwrap_err(),
-    StatsError::Numerical {
-      stage: "starting point"
-    }
-  );
-}
-
-/// Deviations near 1e-170 square to zero, so the lag-1 autocorrelation is `0 / 0`.
-#[test]
-fn an_underflowing_autocorrelation_is_a_numerical_error() {
-  let s = Array1::from(vec![1e-170, 2e-170, 1.5e-170, 3e-170]);
-  assert_eq!(
-    fit_diffusion_qmle(s.view(), 1.0 / 252.0, DiffusionKind::OrnsteinUhlenbeck).unwrap_err(),
-    StatsError::Numerical {
-      stage: "starting point"
-    }
-  );
-}
-
 /// For OU the two fits are one estimator, so a path the closed form refuses gets its `Err` here.
 #[test]
 fn the_ou_qmle_refuses_what_the_closed_form_refuses() {
@@ -422,13 +371,21 @@ fn the_ou_qmle_refuses_what_the_closed_form_refuses() {
       Array1::from(vec![0.11, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7]),
       "constant series",
     ),
-    // At the double range's edge, where the start's `σ₀` overflows, the data's refusal comes first.
+    // Both read the path at unit scale, so its sums and squares stay in the double range.
     (
       Array1::from(vec![6e153, -6e153, 6e153, -6e153]),
       "series without positive autocorrelation",
     ),
     (
-      Array1::from(vec![1.2e154, 0.0, 1.2e154, 0.0, 1.2e154]),
+      Array1::from(vec![1.3e154, 0.0, 1.3e154, 0.0, 1.3e154]),
+      "series without positive autocorrelation",
+    ),
+    (
+      Array1::from(vec![1e308, 1.5e308, 1e308, 0.5e308, 1.2e308]),
+      "series without positive autocorrelation",
+    ),
+    (
+      Array1::from(vec![1e-170, 2e-170, 1.5e-170, 3e-170]),
       "series without positive autocorrelation",
     ),
   ];
