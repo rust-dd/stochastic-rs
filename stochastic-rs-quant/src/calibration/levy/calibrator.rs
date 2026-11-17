@@ -133,13 +133,13 @@ impl crate::traits::Calibrator for LevyCalibrator {
     };
     let (fitted, report) = minimize(problem, lm);
     let model = fitted.compute_model_prices();
-    Ok(report.calibrated(
+    report.calibrated(
       fitted.params,
       &fitted.market,
       &model,
       self.options.loss_metrics,
       fitted.trail.into_entries(),
-    ))
+    )
   }
 }
 

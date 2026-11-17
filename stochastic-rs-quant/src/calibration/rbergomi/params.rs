@@ -334,8 +334,6 @@ pub struct RBergomiCalibrationConfig {
   pub steps_per_year: usize,
   /// Number of exponentials in mSOE kernel approximation.
   pub msoe_terms: usize,
-  /// Max number of optimizer iterations.
-  pub max_iters: usize,
   /// Base learning rate for projected Adam.
   pub learning_rate: f64,
   /// Relative finite-difference bump for numeric gradient.
@@ -360,7 +358,6 @@ impl Default for RBergomiCalibrationConfig {
       paths: 1_024,
       steps_per_year: 128,
       msoe_terms: 12,
-      max_iters: 60,
       learning_rate: 0.05,
       finite_diff_eps: 1e-3,
       adam_beta1: 0.9,
@@ -371,14 +368,4 @@ impl Default for RBergomiCalibrationConfig {
       improvement_tol: 1e-6,
     }
   }
-}
-
-#[derive(Clone, Debug)]
-pub struct RBergomiCalibrationHistory {
-  pub iteration: usize,
-  pub params: RBergomiParams,
-  /// Pairs of `(maturity, W1)` for this iteration.
-  pub maturity_losses: Vec<(f64, f64)>,
-  /// Average Wasserstein loss across maturities.
-  pub loss: f64,
 }

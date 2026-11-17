@@ -469,3 +469,56 @@ fn the_levy_and_cgmysv_calibrators_take_quotes_and_params() {
     .unwrap();
   assert!(cg.rmse().is_finite() && cg.iterations.is_some_and(|n| n <= 5));
 }
+
+#[test]
+fn hscm_rbergomi_and_slv_share_the_shape() {
+  use ndarray::Array2;
+  use stochastic_rs_quant::calibration::heston_slv::HestonSlvCalibrator;
+  use stochastic_rs_quant::calibration::heston_stoch_corr::HscmCalibrator;
+  use stochastic_rs_quant::calibration::rbergomi::RBergomiCalibrator;
+  use stochastic_rs_quant::pricing::slv::ParticleMethod;
+  fn assert_send_sync<T: Send + Sync>() {}
+  assert_send_sync::<HscmCalibrator>();
+  assert_send_sync::<RBergomiCalibrator>();
+  assert_send_sync::<HestonSlvCalibrator>();
+  let heston = HestonParams {
+    v0: 0.04,
+    kappa: 2.0,
+    theta: 0.05,
+    sigma: 0.4,
+    rho: -0.6,
+  };
+  let (s, r, q) = (100.0, 0.02, 0.0);
+  let strikes = ndarray::Array1::linspace(70.0, 140.0, 36).to_vec();
+  let maturities = vec![0.25, 0.5, 0.75, 1.0];
+  let model = HestonFourier::new(heston);
+  let calls = Array2::from_shape_fn((4, 36), |(j, i)| {
+    model.price_call(s, strikes[i], r, q, maturities[j])
+  });
+  let fit = HestonSlvCalibrator::new(s, r, q, strikes, maturities, calls)
+    .with_mixing(0.5)
+    .with_heston_params(heston)
+    .with_particle_method(
+      ParticleMethod::default()
+        .with_particles(5_000)
+        .with_steps_per_year(50)
+        .with_seed(7),
+    )
+    .calibrate(None)
+    .unwrap();
+  assert!(fit.converged && fit.rmse() < 1.0 && fit.diagnostics.is_none());
+  assert_eq!((fit.params.r, fit.params.q), (r, q));
+  let pricer = fit.to_model().with_paths(4_000).with_steps_per_year(50);
+  assert!(pricer.price_call(s, 100.0, r, q, 0.5).is_finite());
+  let hscm = HscmCalibrator::new(s, r, q, heston_quotes(heston, s, r, q)[..9].to_vec())
+    .with_options(CalibrationOptions::default().with_max_iterations(3))
+    .calibrate(None)
+    .unwrap();
+  assert!(
+    hscm
+      .message
+      .as_deref()
+      .unwrap()
+      .starts_with("slsqp objective")
+  );
+}

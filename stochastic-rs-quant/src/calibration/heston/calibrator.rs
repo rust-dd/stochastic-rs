@@ -204,12 +204,12 @@ impl crate::traits::Calibrator for HestonCalibrator {
     let (fitted, report) = minimize(problem, lm);
     let params = fitted.effective_params();
     let model = self.compute_model_prices_for(&params).to_vec();
-    Ok(report.calibrated(
+    report.calibrated(
       params,
       &fitted.market,
       &model,
       self.options.loss_metrics,
       fitted.trail.into_entries(),
-    ))
+    )
   }
 }

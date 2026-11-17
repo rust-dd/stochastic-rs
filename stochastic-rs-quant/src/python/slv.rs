@@ -8,8 +8,9 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use super::PyMcEstimate;
-use crate::calibration::heston_slv::HestonSlvCalibrationResult;
+use crate::calibration::Calibrated;
 use crate::calibration::heston_slv::HestonSlvCalibrator;
+use crate::calibration::heston_slv::HestonSlvFit;
 use crate::pricing::heston::HestonParams;
 use crate::pricing::slv::FokkerPlanckMethod;
 use crate::pricing::slv::HestonSlvParams;
@@ -253,19 +254,19 @@ impl PyHestonSlvPricer {
 
 #[pyclass(name = "HestonSlvCalibrationResult")]
 pub struct PyHestonSlvCalibrationResult {
-  inner: HestonSlvCalibrationResult,
+  inner: Calibrated<HestonSlvFit, Option<Calibrated<HestonParams>>>,
 }
 
 #[pymethods]
 impl PyHestonSlvCalibrationResult {
   /// `(kappa, theta, sigma, rho, v0, eta)`.
   fn params(&self) -> (f64, f64, f64, f64, f64, f64) {
-    params_tuple(&self.inner.fit.params)
+    params_tuple(&self.inner.params.params)
   }
 
   fn leverage(&self) -> PyLeverageSurface {
     PyLeverageSurface {
-      inner: self.inner.fit.leverage.clone(),
+      inner: self.inner.params.leverage.clone(),
     }
   }
 
@@ -273,7 +274,7 @@ impl PyHestonSlvCalibrationResult {
   /// `(v0, kappa, theta, sigma, rho, converged, rmse)`, `None` when they
   /// were pinned.
   fn heston(&self) -> Option<(f64, f64, f64, f64, f64, bool, f64)> {
-    self.inner.heston.as_ref().map(|fit| {
+    self.inner.diagnostics.as_ref().map(|fit| {
       let p = &fit.params;
       (
         p.v0,
@@ -294,7 +295,7 @@ impl PyHestonSlvCalibrationResult {
 
   #[getter]
   fn max_error(&self) -> f64 {
-    self.inner.max_error
+    self.inner.max_error.expect("an SLV fit reprices its grid")
   }
 
   #[getter]
@@ -305,7 +306,7 @@ impl PyHestonSlvCalibrationResult {
   /// The rates the leverage is anchored to.
   #[getter]
   fn rates(&self) -> (f64, f64) {
-    (self.inner.r, self.inner.q)
+    (self.inner.params.r, self.inner.params.q)
   }
 
   /// The Monte Carlo pricer of the calibrated model, anchored to the
@@ -324,6 +325,24 @@ impl PyHestonSlvCalibrationResult {
 #[pyclass(name = "HestonSlvCalibrator")]
 pub struct PyHestonSlvCalibrator {
   inner: HestonSlvCalibrator,
+  heston_start: Option<HestonParams>,
+}
+
+impl PyHestonSlvCalibrator {
+  /// `heston_initial_guess` as a start; `calibrate` reads its Heston part only.
+  fn start(&self) -> Option<HestonSlvFit> {
+    let c = &self.inner;
+    self.heston_start.map(|heston| HestonSlvFit {
+      params: HestonSlvParams { heston, eta: c.eta },
+      leverage: LeverageSurface::new(
+        Array1::from_elem(1, c.s),
+        Array1::from_elem(1, 1.0),
+        ndarray::Array2::ones((1, 1)),
+      ),
+      r: c.r,
+      q: c.q,
+    })
+  }
 }
 
 #[pymethods]
@@ -399,21 +418,22 @@ impl PyHestonSlvCalibrator {
       if let Some(pinned) = heston {
         inner = inner.with_heston_params(heston_params(pinned));
       }
-      if let Some(guess) = heston_initial_guess {
-        inner = inner.with_heston_initial_guess(heston_params(guess));
-      }
       if let Some(lv) = local_vol {
         let lv = lv.as_array().to_owned();
         inner = inner.with_local_vol(lv);
       }
-      Ok(Self { inner })
+      let heston_start = heston_initial_guess.map(heston_params);
+      Ok(Self {
+        inner,
+        heston_start,
+      })
     })?
   }
 
   fn calibrate(&self) -> PyResult<PyHestonSlvCalibrationResult> {
     let inner = self
       .inner
-      .calibrate(None)
+      .calibrate(self.start())
       .map_err(|e| PyValueError::new_err(format!("Heston SLV calibration failed: {e}")))?;
     Ok(PyHestonSlvCalibrationResult { inner })
   }

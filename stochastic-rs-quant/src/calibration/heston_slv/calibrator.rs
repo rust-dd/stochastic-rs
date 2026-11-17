@@ -2,25 +2,44 @@ use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_distributions::traits::Grid2D;
 
-use super::result::HestonSlvCalibrationResult;
-use super::result::HestonSlvFit;
-use crate::CalibrationLossScore;
 use crate::OptionQuote;
 use crate::OptionType;
 use crate::QuantError;
 use crate::calibration::Calibrated;
+use crate::calibration::CalibrationOptions;
 use crate::calibration::heston::HestonCalibrator;
+use crate::calibration::quote::assert_spot_and_rates;
 use crate::error::check_grid_shape;
 use crate::pricing::dupire::Dupire;
 use crate::pricing::heston::HestonParams;
 use crate::pricing::slv::FokkerPlanckMethod;
 use crate::pricing::slv::HestonSlvParams;
+use crate::pricing::slv::HestonSlvPricer;
 use crate::pricing::slv::LeverageSurface;
 use crate::pricing::slv::ParticleMethod;
 use crate::pricing::slv::calibrate_leverage;
 use crate::pricing::slv::calibrate_leverage_fokker_planck;
 use crate::traits::Calibrator;
-use crate::traits::RealExt;
+use crate::traits::ToModel;
+
+/// The calibrated model: the parameters and the leverage that makes them reprice the surface.
+#[derive(Clone, Debug)]
+pub struct HestonSlvFit {
+  pub params: HestonSlvParams,
+  pub leverage: LeverageSurface,
+  /// The rates the leverage is anchored to.
+  pub r: f64,
+  pub q: f64,
+}
+
+impl ToModel for Calibrated<HestonSlvFit, Option<Calibrated<HestonParams>>> {
+  type Model = HestonSlvPricer;
+
+  fn to_model(&self) -> HestonSlvPricer {
+    let fit = &self.params;
+    HestonSlvPricer::new(fit.params, fit.leverage.clone(), fit.r, fit.q)
+  }
+}
 
 /// How the leverage surface is read off the local volatility: the
 /// Guyon–Henry-Labordère particle cloud, or the finite-volume solution of
@@ -74,9 +93,6 @@ pub struct HestonSlvCalibrator {
   pub eta: f64,
   /// Pinned Heston parameters; `None` fits them to the calls.
   pub heston_params: Option<HestonParams>,
-  /// Starting point of the Heston fit; `None` lets
-  /// [`HestonCalibrator`] pick its own.
-  pub heston_initial_guess: Option<HestonParams>,
   /// A local-volatility surface on the input grid; `None` reads it off the
   /// calls with [`Dupire`].
   pub local_vol: Option<Array2<f64>>,
@@ -84,9 +100,12 @@ pub struct HestonSlvCalibrator {
   pub dupire_eps: f64,
   /// How the leverage is calibrated and tuned.
   pub method: LeverageMethod,
+  /// The inner Heston fit's knobs; `regularization` is `Unsupported`.
+  pub options: CalibrationOptions,
 }
 
 impl HestonSlvCalibrator {
+  /// Panics unless `s` is finite and positive and `r`, `q` finite; `calibrate` checks the grid.
   pub fn new(
     s: f64,
     r: f64,
@@ -95,6 +114,7 @@ impl HestonSlvCalibrator {
     maturities: Vec<f64>,
     calls: Array2<f64>,
   ) -> Self {
+    assert_spot_and_rates(s, r, q);
     Self {
       s,
       r,
@@ -104,16 +124,20 @@ impl HestonSlvCalibrator {
       calls,
       eta: 1.0,
       heston_params: None,
-      heston_initial_guess: None,
       local_vol: None,
       dupire_eps: 1e-6,
       method: LeverageMethod::default(),
+      options: CalibrationOptions::default(),
     }
   }
 
-  /// The mixing fraction $\eta$: `0` is the pure local-volatility model, `1`
-  /// the Heston dynamics under a leverage correction.
+  /// The mixing fraction $\eta$: `0` is pure local volatility, `1` Heston under a leverage
+  /// correction; panics unless `eta` lies in `[0, 1]`.
   pub fn with_mixing(mut self, eta: f64) -> Self {
+    assert!(
+      (0.0..=1.0).contains(&eta),
+      "eta must satisfy `(0.0..=1.0).contains(&eta)`, got eta = {eta:?}"
+    );
     self.eta = eta;
     self
   }
@@ -121,13 +145,6 @@ impl HestonSlvCalibrator {
   /// Pin the Heston parameters instead of fitting them.
   pub fn with_heston_params(mut self, params: HestonParams) -> Self {
     self.heston_params = Some(params);
-    self
-  }
-
-  /// The starting point of the Heston fit, when the parameters are not
-  /// pinned.
-  pub fn with_heston_initial_guess(mut self, guess: HestonParams) -> Self {
-    self.heston_initial_guess = Some(guess);
     self
   }
 
@@ -146,8 +163,12 @@ impl HestonSlvCalibrator {
     self
   }
 
-  /// The Dupire denominator floor, [`Dupire::eps`].
+  /// The Dupire denominator floor, [`Dupire::eps`]; panics unless `eps` is finite and positive.
   pub fn with_dupire_eps(mut self, eps: f64) -> Self {
+    assert!(
+      eps.is_finite() && eps > 0.0,
+      "eps must satisfy `eps.is_finite() && eps > 0.0`, got eps = {eps:?}"
+    );
     self.dupire_eps = eps;
     self
   }
@@ -162,6 +183,11 @@ impl HestonSlvCalibrator {
   /// tuning.
   pub fn with_fokker_planck(mut self, method: FokkerPlanckMethod) -> Self {
     self.method = LeverageMethod::FokkerPlanck(method);
+    self
+  }
+
+  pub fn with_options(mut self, options: CalibrationOptions) -> Self {
+    self.options = options;
     self
   }
 
@@ -198,18 +224,6 @@ impl HestonSlvCalibrator {
         needed: 2,
         got: nt,
       });
-    }
-    if !(self.s.is_finite() && self.s > 0.0) {
-      return Err(QuantError::invalid(
-        "spot",
-        format!("must be finite and positive, got {}", self.s),
-      ));
-    }
-    if !(self.r.is_finite() && self.q.is_finite()) {
-      return Err(QuantError::invalid(
-        "rates",
-        format!("must be finite, got r = {}, q = {}", self.r, self.q),
-      ));
     }
     if !(self.eta.is_finite() && (0.0..=1.0).contains(&self.eta)) {
       return Err(QuantError::invalid(
@@ -295,7 +309,8 @@ impl HestonSlvCalibrator {
       return Ok((pinned, None));
     }
     let fit = HestonCalibrator::new(self.s, self.r, self.q, self.quotes())
-      .calibrate(initial.or(self.heston_initial_guess))?;
+      .with_options(self.options.clone())
+      .calibrate(initial)?;
     Ok((fit.params, Some(fit)))
   }
 
@@ -422,13 +437,18 @@ fn first_where(values: &[f64], bad: impl Fn(f64) -> bool) -> Option<(usize, f64)
 
 impl Calibrator for HestonSlvCalibrator {
   type Params = HestonSlvFit;
-  type Output = HestonSlvCalibrationResult;
+  type Output = Calibrated<HestonSlvFit, Option<Calibrated<HestonParams>>>;
   type Error = QuantError;
 
-  /// The Heston fit starts from `initial`'s Heston parameters (its leverage and `eta` unread);
-  /// parameters pinned by [`with_heston_params`](HestonSlvCalibrator::with_heston_params) skip it.
-  fn calibrate(&self, initial: Option<Self::Params>) -> Result<Self::Output, Self::Error> {
+  /// The Heston fit, the `diagnostics`, starts from `initial`'s Heston part (its leverage, `eta`
+  /// and rates unread); parameters pinned by `with_heston_params` skip it and leave `None`.
+  fn calibrate(&self, initial: Option<HestonSlvFit>) -> Result<Self::Output, QuantError> {
     self.validate()?;
+    if self.options.regularization.is_some() {
+      return Err(QuantError::Unsupported {
+        what: "regularization",
+      });
+    }
     let start = initial.map(|fit| fit.params.heston);
     let (heston, heston_fit) = self.heston(start)?;
     let params = HestonSlvParams {
@@ -438,25 +458,17 @@ impl Calibrator for HestonSlvCalibrator {
     let local_vol = self.local_vol_grid()?;
     let (leverage, model) = self.leverage_and_model_prices(&params, &local_vol)?;
     let market = self.calls.iter().copied().collect::<Vec<_>>();
-    let loss = CalibrationLossScore::compute(&market, &model);
-    let max_error = market
-      .iter()
-      .zip(model.iter())
-      .map(|(a, b)| (a - b).abs())
-      .fold(0.0, f64::max_or_nan);
     let leverage_finite = leverage.values().iter().all(|l| l.is_finite());
-    let converged =
-      heston_fit.as_ref().is_none_or(|f| f.converged) && leverage_finite && max_error.is_finite();
-
-    Ok(HestonSlvCalibrationResult {
-      fit: HestonSlvFit { params, leverage },
-      heston: heston_fit,
-      loss,
-      max_error,
-      converged,
-      s: self.s,
+    let fit = HestonSlvFit {
+      params,
+      leverage,
       r: self.r,
       q: self.q,
-    })
+    };
+    let mut fit = Calibrated::repriced(fit, &market, &model, self.options.loss_metrics, true);
+    fit.converged = heston_fit.as_ref().is_none_or(|f| f.converged)
+      && leverage_finite
+      && fit.max_error.is_some_and(f64::is_finite);
+    Ok(fit.with_diagnostics(heston_fit))
   }
 }

@@ -105,13 +105,15 @@ fn rosenbrock_converges_with_consistent_evaluation_counts() {
 fn the_report_builds_the_calibrated_fit() {
   use crate::traits::CalibrationResult;
   let (problem, report) = minimize(Rosenbrock::new(), LmOptions::default());
-  let fit = report.calibrated(
-    problem.x.to_vec(),
-    &[1.0, 2.0],
-    &[1.5, 2.0],
-    &LossMetric::ALL,
-    vec![],
-  );
+  let fit = report
+    .calibrated(
+      problem.x.to_vec(),
+      &[1.0, 2.0],
+      &[1.5, 2.0],
+      &LossMetric::ALL,
+      vec![],
+    )
+    .unwrap();
   assert!(fit.converged() && fit.history().is_empty());
   assert_eq!(fit.iterations(), Some(report.iterations));
   assert_eq!(fit.message(), Some("converged"));
@@ -183,7 +185,9 @@ fn an_iteration_cap_below_the_budget_stops_the_fit() {
   assert_eq!(report.reason, TerminationReason::MaxIter);
   assert!(report.evaluations < free_report.evaluations);
   assert!(distance_to_optimum(&capped.x) > distance_to_optimum(&free.x));
-  let fit = report.calibrated(capped.x.to_vec(), &[1.0], &[1.0], &LossMetric::ALL, vec![]);
+  let fit = report
+    .calibrated(capped.x.to_vec(), &[1.0], &[1.0], &LossMetric::ALL, vec![])
+    .unwrap();
   assert!(fit.iterations.unwrap() <= 2, "{:?}", fit.iterations);
   assert!(fit.iterations.unwrap() < report.evaluations);
 }
@@ -205,9 +209,14 @@ fn failed_trial_restores_the_last_accepted_parameters() {
 fn failed_initial_evaluation_is_reported_without_panicking() {
   let mut problem = Rosenbrock::new();
   problem.fail_at = Some(1);
-  let (_, report) = minimize(problem, LmOptions::default());
-  assert!(!report.converged);
+  let (problem, report) = minimize(problem, LmOptions::default());
+  assert!(!report.converged && !report.started);
   assert_eq!(report.evaluations, 1);
+  let fit = report.calibrated(problem.x.to_vec(), &[1.0], &[1.0], &[], vec![]);
+  assert!(
+    matches!(fit, Err(QuantError::Optimizer { .. })),
+    "a fit with no iterate is an error, got {fit:?}"
+  );
 }
 
 #[test]

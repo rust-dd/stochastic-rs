@@ -163,13 +163,13 @@ impl crate::traits::Calibrator for SabrCalibrator {
     };
     let (problem, report) = minimize(problem, lm);
     let model = problem.model_prices(&problem.params);
-    Ok(report.calibrated(
+    report.calibrated(
       problem.params,
       &problem.market,
       &model,
       self.options.loss_metrics,
       problem.trail.into_entries(),
-    ))
+    )
   }
 }
 

@@ -53,7 +53,7 @@ fn heston_slv_calibrates_a_vanilla_surface_and_prices_under_half_mixing() {
     "in-sample repricing rmse {}",
     result.rmse()
   );
-  assert!(result.leverage().covers(100.0, 0.5));
+  assert!(result.params.leverage.covers(100.0, 0.5));
 
   // The pricer is anchored to the calibration rates and reprices the market.
   let pricer = result.to_model().with_paths(4_000).with_steps_per_year(50);

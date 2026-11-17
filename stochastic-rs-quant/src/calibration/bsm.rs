@@ -145,13 +145,13 @@ impl crate::traits::Calibrator for BsmCalibrator {
         )
       })
       .collect::<Vec<_>>();
-    Ok(report.calibrated(
+    report.calibrated(
       params,
       &fitted.market,
       &model,
       self.options.loss_metrics,
       fitted.trail.into_entries(),
-    ))
+    )
   }
 }
 

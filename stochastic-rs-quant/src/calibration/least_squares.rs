@@ -23,6 +23,7 @@ use ndarray::Array2;
 
 use crate::CalibrationLossScore;
 use crate::LossMetric;
+use crate::QuantError;
 use crate::calibration::Calibrated;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::CalibrationOptions;
@@ -89,6 +90,8 @@ pub struct LmReport {
   /// Stepper iterations, one that rejects its trial included: the cap's unit.
   pub iterations: usize,
   pub reason: TerminationReason,
+  /// The start's residuals and Jacobian evaluated finite; without them the fit has no iterate.
+  pub started: bool,
 }
 
 impl LmReport {
@@ -103,7 +106,8 @@ impl LmReport {
     }
   }
 
-  /// The fit as a `Calibrated`: loss and worst error of `model` against `market`, and this stop.
+  /// The fit as a `Calibrated`: loss and worst error of `model` against `market`, and this stop;
+  /// `Optimizer` when the start left the optimiser nothing to step from.
   pub(crate) fn calibrated<P>(
     &self,
     params: P,
@@ -111,11 +115,19 @@ impl LmReport {
     model: &[f64],
     metrics: &[LossMetric],
     history: Vec<CalibrationHistory<P>>,
-  ) -> Calibrated<P> {
-    Calibrated::repriced(params, market, model, metrics, self.converged)
-      .with_iterations(self.iterations)
-      .with_message(self.message())
-      .with_history(history)
+  ) -> Result<Calibrated<P>, QuantError> {
+    if !self.started {
+      return Err(QuantError::Optimizer {
+        what: "levenberg-marquardt fit",
+        reason: "the start's residuals or Jacobian are not finite".into(),
+      });
+    }
+    Ok(
+      Calibrated::repriced(params, market, model, metrics, self.converged)
+        .with_iterations(self.iterations)
+        .with_message(self.message())
+        .with_history(history),
+    )
   }
 }
 
@@ -262,6 +274,7 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
         evaluations: 0,
         iterations: 0,
         reason: TerminationReason::SolverFailed,
+        started: false,
       },
     );
   }
@@ -271,7 +284,7 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
     .with_gradient_orthogonality_tolerance(gradient_tolerance)
     .with_relative_model_reduction_tolerance(tolerance)
     .with_relative_trust_radius_tolerance(tolerance);
-  let (best, reason, iterations) = if options.pivoted_qr {
+  let (best, reason, iterations, started) = if options.pivoted_qr {
     run(
       &objective,
       solver.with_pivoted_qr(),
@@ -292,6 +305,7 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
       evaluations: objective.evaluations.get(),
       iterations,
       reason,
+      started,
     },
   )
 }
@@ -302,13 +316,14 @@ fn run<'a, P, So>(
   initial: Array1<f64>,
   budget: usize,
   max_iter: usize,
-) -> (Array1<f64>, TerminationReason, usize)
+) -> (Array1<f64>, TerminationReason, usize, bool)
 where
   P: LeastSquaresProblem,
   So: Solver<&'a Objective<P>, NllsState<Array1<f64>>, Error = ()>,
 {
   let mut best = initial.clone();
   let mut iterations = 0;
+  let mut started = false;
   let reason = match Executor::new(objective, solver, NllsState::new(initial))
     .max_iter(max_iter as u64)
     .max_cost_evals(budget as u64)
@@ -316,6 +331,7 @@ where
   {
     Err(()) => TerminationReason::SolverFailed,
     Ok(mut stepper) => {
+      started = true;
       // `into_stepper` evaluated the start last, so the trail opens with it.
       objective.model.borrow_mut().accept();
       loop {
@@ -337,7 +353,7 @@ where
       }
     }
   };
-  (best, reason, iterations)
+  (best, reason, iterations, started)
 }
 
 #[cfg(test)]

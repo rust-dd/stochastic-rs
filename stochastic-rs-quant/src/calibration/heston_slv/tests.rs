@@ -75,8 +75,8 @@ fn calibrator(eta: f64) -> HestonSlvCalibrator {
 fn a_heston_surface_under_its_own_parameters_gives_unit_leverage_and_reprices() {
   let result = calibrator(1.0).calibrate(None).unwrap();
   assert!(result.converged());
-  assert!(result.heston.is_none(), "the parameters were pinned");
-  let lev = result.leverage();
+  assert!(result.diagnostics.is_none(), "the parameters were pinned");
+  let lev = &result.params.leverage;
   let mut central = Vec::new();
   for (j, &t) in lev.times().iter().enumerate() {
     if t < 0.2 {
@@ -125,7 +125,7 @@ fn the_fokker_planck_route_gives_unit_leverage_and_reprices() {
     .calibrate(None)
     .unwrap();
   assert!(result.converged());
-  let lev = result.leverage();
+  let lev = &result.params.leverage;
   let mut central = Vec::new();
   for (j, &t) in lev.times().iter().enumerate() {
     if t < 0.2 {
@@ -162,9 +162,9 @@ fn the_fokker_planck_route_gives_unit_leverage_and_reprices() {
 fn half_mixing_still_reprices_the_surface() {
   let result = calibrator(0.5).calibrate(None).unwrap();
   assert!(result.converged());
-  assert_eq!(result.slv_params().eta, 0.5);
+  assert_eq!(result.params.params.eta, 0.5);
   assert!(result.rmse() < 0.25, "repricing rmse {}", result.rmse());
-  let lev = result.leverage();
+  let lev = &result.params.leverage;
   let atm_late = lev.interpolate(100.0, 1.0);
   assert!(
     (0.5..1.5).contains(&atm_late),
@@ -203,7 +203,8 @@ fn a_supplied_local_vol_bypasses_dupire() {
   assert!(result.converged());
   assert!(
     result
-      .leverage()
+      .params
+      .leverage
       .values()
       .iter()
       .all(|l| (l - 1.0).abs() < 1e-12),
@@ -277,12 +278,12 @@ fn an_ssvi_surface_is_repriced_through_both_leverage_routes() {
       "{name}: worst error {}",
       result.max_error().unwrap()
     );
-    let atm = result.leverage().interpolate(100.0, 0.5);
+    let atm = result.params.leverage.interpolate(100.0, 0.5);
     assert!((0.5..2.0).contains(&atm), "{name}: ATM leverage {atm}");
   }
   let (a, b) = (
-    particle.leverage().interpolate(100.0, 0.5),
-    pde.leverage().interpolate(100.0, 0.5),
+    particle.params.leverage.interpolate(100.0, 0.5),
+    pde.params.leverage.interpolate(100.0, 0.5),
   );
   assert!(
     (a - b).abs() < 0.1,
@@ -306,22 +307,32 @@ fn the_heston_fit_runs_when_the_parameters_are_not_pinned() {
       },
       eta: 1.0,
     },
-    leverage: LeverageSurface::new(
-      Array1::from_vec(vec![S]),
-      Array1::from_vec(vec![1.0]),
-      Array2::ones((1, 1)),
-    ),
+    leverage: unit_leverage(),
+    r: R,
+    q: Q,
   };
   let result = HestonSlvCalibrator::new(S, R, Q, strikes, maturities, calls)
     .with_particle_method(method().with_particles(2_000))
     .calibrate(Some(guess))
     .unwrap();
-  let fit = result.heston.as_ref().expect("the parameters were fitted");
+  let fit = result
+    .diagnostics
+    .as_ref()
+    .expect("the parameters were fitted");
   let p = &fit.params;
   assert!(p.kappa > 0.0 && p.theta > 0.0 && p.sigma > 0.0 && p.rho.abs() < 1.0);
   assert!((p.v0 - 0.04).abs() < 0.02, "v0 = {}", p.v0);
-  assert_eq!(result.slv_params().heston.kappa, p.kappa);
+  assert_eq!(result.params.params.heston.kappa, p.kappa);
+  assert_eq!((result.params.r, result.params.q), (R, Q));
   assert!(result.rmse().is_finite());
+}
+
+fn unit_leverage() -> LeverageSurface {
+  LeverageSurface::new(
+    Array1::from_vec(vec![S]),
+    Array1::from_vec(vec![1.0]),
+    Array2::ones((1, 1)),
+  )
 }
 
 #[test]
@@ -355,8 +366,14 @@ fn bad_inputs_are_errors() {
       .with_heston_params(heston())
       .with_particle_method(method().with_particles(10))
   };
-  assert!(base().with_mixing(1.5).calibrate(None).is_err());
-  assert!(base().with_mixing(-0.1).calibrate(None).is_err());
+  for eta in [1.5, -0.1] {
+    let mut written = base();
+    written.eta = eta;
+    assert!(written.calibrate(None).is_err(), "a written eta = {eta}");
+  }
+  let mut written = base();
+  written.dupire_eps = 0.0;
+  assert!(written.calibrate(None).is_err(), "a written dupire_eps = 0");
   assert!(
     base()
       .with_local_vol(Array2::zeros((3, 3)))
@@ -399,17 +416,48 @@ fn a_heston_start_outside_its_domain_is_an_error() {
   let strikes = Array1::linspace(80.0, 120.0, 9).to_vec();
   let maturities = vec![0.25, 0.5];
   let calls = heston_surface(&strikes, &maturities);
-  let err = HestonSlvCalibrator::new(S, R, Q, strikes, maturities, calls)
-    .with_heston_initial_guess(HestonParams {
-      rho: f64::NAN,
-      ..heston()
-    })
-    .calibrate(None)
-    .unwrap_err();
+  let start = HestonSlvFit {
+    params: HestonSlvParams {
+      heston: HestonParams {
+        rho: f64::NAN,
+        ..heston()
+      },
+      eta: 1.0,
+    },
+    leverage: unit_leverage(),
+    r: R,
+    q: Q,
+  };
+  let calibrator = HestonSlvCalibrator::new(S, R, Q, strikes, maturities, calls);
+  let err = calibrator.calibrate(Some(start)).unwrap_err();
   assert!(
     matches!(&err, QuantError::InvalidInput { what: "start", .. }),
     "{err}"
   );
+  let pull = crate::calibration::Regularization::uniform(vec![0.0; 5], 1.0);
+  let options = crate::calibration::CalibrationOptions::default().with_regularization(pull);
+  assert_eq!(
+    calibrator
+      .with_options(options)
+      .calibrate(None)
+      .unwrap_err(),
+    QuantError::Unsupported {
+      what: "regularization"
+    }
+  );
+}
+
+#[test]
+#[should_panic(expected = "eta must satisfy `(0.0..=1.0).contains(&eta)`, got eta = 1.5")]
+fn a_mixing_fraction_outside_the_unit_interval_panics() {
+  let _ = HestonSlvCalibrator::new(S, R, Q, vec![90.0], vec![1.0], Array2::zeros((1, 1)))
+    .with_mixing(1.5);
+}
+
+#[test]
+#[should_panic(expected = "s must satisfy `s.is_finite() && s > 0.0`, got s = -1.0")]
+fn a_non_positive_spot_panics() {
+  let _ = HestonSlvCalibrator::new(-1.0, R, Q, vec![90.0], vec![1.0], Array2::zeros((1, 1)));
 }
 
 #[test]

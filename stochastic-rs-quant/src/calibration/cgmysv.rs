@@ -192,13 +192,13 @@ impl crate::traits::Calibrator for CgmysvCalibrator {
     let lm = self.options.lm(true, N_PARAMS)?;
     let (fitted, report) = minimize(CgmysvProblem::new(self, params), lm);
     let model = fitted.compute_model_prices();
-    Ok(report.calibrated(
+    report.calibrated(
       to_cgmysv_params(&fitted.params),
       &fitted.market,
       &model,
       self.options.loss_metrics,
       fitted.trail.into_entries(),
-    ))
+    )
   }
 }
 

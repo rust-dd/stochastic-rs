@@ -47,12 +47,10 @@
 //! <https://doi.org/10.1142/S0219024914500459>.
 
 mod calibrator;
-mod result;
 
 pub use calibrator::HestonSlvCalibrator;
+pub use calibrator::HestonSlvFit;
 pub use calibrator::LeverageMethod;
-pub use result::HestonSlvCalibrationResult;
-pub use result::HestonSlvFit;
 
 #[cfg(test)]
 mod tests;
