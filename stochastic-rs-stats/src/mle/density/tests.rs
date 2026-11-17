@@ -62,9 +62,8 @@ fn kesslers_moments_are_those_of_dc_kessler() {
           near(got.0, source.0, 1e-13) && near(got.1, source.1, 1e-8),
           "{x0}, {dt}: {got:?} for dcKessler's {source:?}"
         );
-        // The trait's second difference of a linear drift is rounding noise near `1e-6`.
         assert!(
-          near(got.0, mean, 1e-7) && near(got.1, var, 1e-7),
+          near(got.0, mean, 1e-13) && near(got.1, var, 1e-11),
           "{x0}, {dt}: {got:?} for ({mean}, {var})"
         );
       }
@@ -280,4 +279,35 @@ fn ozakis_law_at_a_zero_state_or_slope_is_his_eq_2_12() {
   let flat = Ckls::new(0.1, 0.0, 0.2, 0.5, 2, None, None, Deterministic::new(0));
   let no_slope = DensityApprox::moments_ozaki(&flat, 0.5, 0.0, dt);
   assert!(near(no_slope, (0.501, 0.02 * dt)), "{no_slope:?}");
+}
+
+/// An OU path about a level of `0.03` crosses zero, and at its law a monthly step carries the
+/// states just below zero across it: Ozaki's likelihood has no value there, and the fit is the `Err`.
+#[test]
+fn an_ozaki_fit_is_an_err_where_the_laws_steps_cross_zero() {
+  let dt = 1.0 / 12.0;
+  let path = simulate_ou(8.0, 0.03, 0.3, 0.03, dt, 1000, 1001);
+  let mut model = ou(8.0, 0.03, 0.3);
+  let fit = fit_mle(&mut model, path.view(), dt, DensityApprox::Ozaki, None);
+  let stage = "log-likelihood";
+  assert!(matches!(fit, Err(crate::StatsError::Numerical { stage: s }) if s == stage));
+}
+
+/// On a path that stays above zero Ozaki's fit converges, with the exact fit's `σ̂` to first order
+/// in `θΔ`.
+#[test]
+fn an_ozaki_fit_of_a_path_above_zero_converges_beside_the_exact_fit() {
+  let dt = 1.0 / 252.0;
+  let path = simulate_ou(2.0, 1.0, 0.3, 1.0, dt, 1000, 1001);
+  assert!(path.iter().all(|&x| x > 0.0));
+  let closed = fit_ou_mle(path.view(), dt).unwrap();
+  let mut model = ou(2.0, 1.0, 0.3);
+  let fit = fit_mle(&mut model, path.view(), dt, DensityApprox::Ozaki, None).unwrap();
+  assert!(fit.converged);
+  assert!(
+    (fit.params[2] / closed.sigma - 1.0).abs() < 0.02,
+    "σ̂ = {} for {}",
+    fit.params[2],
+    closed.sigma
+  );
 }
