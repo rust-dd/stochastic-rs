@@ -41,6 +41,8 @@ const FURTHEST: usize = 64;
 pub(super) struct Beside {
   /// The most one of them gains in log-likelihood.
   pub(super) gain: f64,
+  /// The rounding of the summed log-likelihood at the estimate, `ε √N (1 + |ℓ|)`.
+  pub(super) rounding: f64,
   /// One of them met a point without a likelihood.
   pub(super) walled: bool,
 }
@@ -229,8 +231,11 @@ impl<'a> MleProblem<'a> {
     let here = self.eval_nll(&self.units.scaled(&z));
     // A sum's rounding is no rise: below it the walk goes on, across a flat stretch.
     let rise = 16.0 * f64::EPSILON * (1.0 + here.abs());
+    // `N` additions each round a partial sum near `|ℓ|` by `ε/2`, and the roundings add as a walk.
+    let additions = (self.sample.len() - 1) as f64;
     let mut beside = Beside {
       gain: 0.0,
+      rounding: f64::EPSILON * additions.sqrt() * (1.0 + here.abs()),
       walled: false,
     };
     for i in 0..z.len() {

@@ -113,6 +113,20 @@ fn a_stationary_local_maximum_stays_converged() {
   assert!(best.converged);
 }
 
+/// A million one-minute points sum to `5.5e6`, whose rounding is the size of the fixed bar: a
+/// fit from the closed form, which ends within `1e-6` of it, is converged.
+#[test]
+fn a_fit_of_a_million_points_from_the_closed_form_is_converged() {
+  let dt = 1.0 / (252.0 * 390.0);
+  let path = simulate_ou(0.5, 1.0, 0.3, 1.0, dt, 1_000_000, 6);
+  let closed = fit_ou_mle(path.view(), dt).unwrap();
+  let start = [closed.theta, closed.mu, closed.sigma];
+  let fit = fit_ou(&path, dt, start, DensityApprox::Exact);
+  let short = closed.log_likelihood - fit.log_likelihood;
+  assert!(short.abs() < 1e-6, "{short} below");
+  assert_eq!((fit.converged, &*fit.message), (true, "converged"));
+}
+
 /// Beside the closed form no walk gains and none leaves the support; with `σ` one percent off
 /// the walk along it gains what the fit is short of, `n δ²`.
 #[test]
@@ -130,6 +144,12 @@ fn the_walk_beside_an_estimate_gains_what_one_parameter_is_short_of() {
   assert!(optimum.gain < 1e-8 && !optimum.walled, "{}", optimum.gain);
   let off = beside([closed.theta, closed.mu, 1.01 * closed.sigma]);
   assert!((0.08..0.11).contains(&off.gain), "{}", off.gain);
+  let rounding = f64::EPSILON * 999.0_f64.sqrt() * (1.0 + closed.log_likelihood);
+  assert!(
+    (off.rounding / rounding - 1.0).abs() < 1e-3,
+    "{}",
+    off.rounding
+  );
 }
 
 /// The stop's words are quant's, and a bound is named by its parameter.

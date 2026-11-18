@@ -30,8 +30,8 @@ pub struct MleFit {
   pub aic: f64,
   /// Bayesian Information Criterion.
   pub bic: f64,
-  /// The search stopped on its tolerances where no step along a parameter gains `1e-7` in
-  /// log-likelihood: stationary, not global. `false` leaves the best point found in `params`.
+  /// No step along one parameter gains `1e-7`, or the sum's rounding on a long path: stationary
+  /// along each parameter, not global. `false` leaves the best point found in `params`.
   pub converged: bool,
   /// `converged`, or why not: `not stationary`, `stopped at the bound of <name>`, `stopped at the
   /// edge of the law's support`, `evaluation budget exhausted`, `no numerical progress`, …
@@ -65,6 +65,10 @@ const GAIN: f64 = 1e-6;
 /// The most a step along one parameter gains in log-likelihood beside a converged estimate: on
 /// 117,768 fits the stationary ones read `2.3e-9` or less, and a stall anything up to 94.
 const STATIONARY: f64 = 1e-7;
+
+/// Roundings of the sum a gain must clear: on 366 fits of `1e4` to `3e6` points the walks beside
+/// an optimum gain `0.30` of one or less, and beside the stalls they flag `1.2` or more.
+const ROUNDINGS: f64 = 1.0;
 
 /// Searches after the first: each starts where the last one left a parameter unidentified.
 const STAGES: usize = 3;
@@ -224,7 +228,7 @@ pub fn fit_mle(
       let held = |i: &usize| lower[*i] < upper[*i] && (at[*i] <= lower[*i] || at[*i] >= upper[*i]);
       // The solver's own stop passes a stall: the likelihood beside the estimate decides.
       match (0..n_params).find(held) {
-        _ if beside.gain <= STATIONARY => Stop::Converged,
+        _ if beside.gain <= STATIONARY.max(ROUNDINGS * beside.rounding) => Stop::Converged,
         Some(held) => Stop::Bound(held),
         None if beside.walled => Stop::Edge,
         None => Stop::NotStationary,
