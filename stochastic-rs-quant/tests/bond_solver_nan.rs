@@ -36,7 +36,11 @@ fn bond() -> FixedRateBond<f64> {
 fn flat_curve(rate: f64) -> DiscountCurve<f64> {
   let times = array![0.0, 1.0, 2.0, 3.0, 4.0];
   let rates = array![rate, rate, rate, rate, rate];
-  DiscountCurve::from_zero_rates(&times, &rates, InterpolationMethod::LinearOnZeroRates)
+  DiscountCurve::from_zero_rates(
+    times.view(),
+    rates.view(),
+    InterpolationMethod::LinearOnZeroRates,
+  )
 }
 
 #[test]

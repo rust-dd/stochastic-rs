@@ -15,8 +15,8 @@ use stochastic_rs::simd_rng::Deterministic;
 fn cva_of_a_par_swap_under_hull_white() {
   // Flat 3 % curve, five-year annual payer swap of 1m notional at par.
   let curve = DiscountCurve::from_zero_rates(
-    &Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]),
-    &Array1::from_vec(vec![0.03; 4]),
+    Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]).view(),
+    Array1::from_vec(vec![0.03; 4]).view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   );
   let mut swap = HullWhiteSwapExposure::new(
@@ -35,8 +35,8 @@ fn cva_of_a_par_swap_under_hull_white() {
 
   // CVA against a 2 % flat hazard at 60 % LGD, and the symmetric FVA at a 50 bp funding spread.
   let counterparty = SurvivalCurve::from_hazard_rates(
-    &Array1::from_vec(vec![1.0, 5.0, 10.0]),
-    &Array1::from_vec(vec![0.02; 3]),
+    Array1::from_vec(vec![1.0, 5.0, 10.0]).view(),
+    Array1::from_vec(vec![0.02; 3]).view(),
     HazardInterpolation::PiecewiseConstantHazard,
   );
   let cva_value = cva(&profile, &counterparty, &curve, 0.6);

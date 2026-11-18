@@ -330,7 +330,7 @@ impl CurveSnapshot {
   pub(crate) fn rebuild(&self) -> DiscountCurve<f64> {
     let times = ndarray::Array1::from(self.times.clone());
     let rates = ndarray::Array1::from(self.rates.clone());
-    DiscountCurve::from_zero_rates(&times, &rates, self.method)
+    DiscountCurve::from_zero_rates(times.view(), rates.view(), self.method)
   }
 }
 
@@ -366,8 +366,8 @@ mod tests {
 
   fn curve() -> DiscountCurve<f64> {
     DiscountCurve::from_zero_rates(
-      &Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]),
-      &Array1::from_vec(vec![0.03; 4]),
+      Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]).view(),
+      Array1::from_vec(vec![0.03; 4]).view(),
       InterpolationMethod::LogLinearOnDiscountFactors,
     )
   }
@@ -533,8 +533,8 @@ mod tests {
   #[test]
   fn a_quote_whose_swap_rate_is_negative_has_no_black_price_and_is_refused() {
     let curve = DiscountCurve::from_zero_rates(
-      &Array1::from_vec(vec![1.0, 3.0, 5.0]),
-      &Array1::from_vec(vec![0.02, 0.02, -0.01]),
+      Array1::from_vec(vec![1.0, 3.0, 5.0]).view(),
+      Array1::from_vec(vec![0.02, 0.02, -0.01]).view(),
       InterpolationMethod::LogLinearOnDiscountFactors,
     );
     let quotes = quotes();
@@ -561,8 +561,8 @@ mod tests {
   #[test]
   fn a_quote_whose_swap_rate_is_nan_is_refused_as_well() {
     let curve = DiscountCurve::from_zero_rates(
-      &Array1::from_vec(vec![1.0, 3.0, 5.0]),
-      &Array1::from_vec(vec![0.02, f64::NAN, 0.02]),
+      Array1::from_vec(vec![1.0, 3.0, 5.0]).view(),
+      Array1::from_vec(vec![0.02, f64::NAN, 0.02]).view(),
       InterpolationMethod::LogLinearOnDiscountFactors,
     );
     let err = validate_swaption_quotes(&quotes(), &curve).unwrap_err();

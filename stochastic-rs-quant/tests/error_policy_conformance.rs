@@ -48,8 +48,8 @@ mod query_limits;
 
 fn flat_curve() -> DiscountCurve<f64> {
   DiscountCurve::from_zero_rates(
-    &Array1::from_vec(vec![0.5, 1.0, 5.0]),
-    &Array1::from_vec(vec![0.03; 3]),
+    Array1::from_vec(vec![0.5, 1.0, 5.0]).view(),
+    Array1::from_vec(vec![0.03; 3]).view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   )
 }
@@ -308,7 +308,13 @@ fn an_unsorted_maturity_grid_is_rejected() {
 #[should_panic(expected = "strikes must satisfy `strikes.windows(2).all(|w| w[0] < w[1])`")]
 fn a_price_grid_shares_the_ascending_axes_check() {
   let prices = Array2::from_elem((1, 2), 5.0);
-  let _ = ImpliedVolSurface::from_prices(vec![110.0, 90.0], vec![1.0], vec![100.0], &prices, true);
+  let _ = ImpliedVolSurface::from_prices(
+    vec![110.0, 90.0],
+    vec![1.0],
+    vec![100.0],
+    prices.view(),
+    true,
+  );
 }
 
 #[test]
@@ -356,7 +362,7 @@ fn an_unknown_method_string_is_invalid_input_listing_the_accepted_ones() {
 #[test]
 #[should_panic(expected = "MtM columns, one per exposure date: expected 3, got 2")]
 fn a_panicking_twin_panics_with_the_display_of_its_error() {
-  ExposureProfile::from_mtm(&Array2::zeros((2, 2)), vec![0.5, 1.0, 1.5], 0.95);
+  ExposureProfile::from_mtm(Array2::zeros((2, 2)).view(), vec![0.5, 1.0, 1.5], 0.95);
 }
 
 #[test]
@@ -436,8 +442,8 @@ fn a_cds_quote_outside_its_domain_is_an_invalid_quote_at_its_index_not_a_panic()
 #[test]
 fn a_recovery_that_rounds_to_one_in_the_curves_float_is_an_invalid_quote() {
   let curve = DiscountCurve::<f32>::from_zero_rates(
-    &Array1::from_vec(vec![0.5, 1.0, 5.0]),
-    &Array1::from_vec(vec![0.03; 3]),
+    Array1::from_vec(vec![0.5, 1.0, 5.0]).view(),
+    Array1::from_vec(vec![0.03; 3]).view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   );
   // Below 1 as an f64, 1.0 as the f32 the contract holds.

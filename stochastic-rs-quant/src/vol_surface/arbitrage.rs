@@ -86,7 +86,7 @@ pub fn check_butterfly_ssvi<T: RealExt>(params: &SsviParams<T>, theta: T, ks: &[
 ///
 /// Returns `(is_free, worst_violation)`.
 pub fn check_calendar_spread(
-  total_variance: &ndarray::Array2<f64>,
+  total_variance: ndarray::ArrayView2<f64>,
   maturities: &[f64],
 ) -> (bool, f64) {
   let nt = maturities.len();
@@ -194,7 +194,7 @@ mod tests {
     }
 
     let maturities = [0.25, 0.50, 1.0];
-    let (free, _worst) = check_calendar_spread(&surface, &maturities);
+    let (free, _worst) = check_calendar_spread(surface.view(), &maturities);
     assert!(free, "increasing thetas should be calendar-spread free");
   }
 }

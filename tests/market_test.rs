@@ -42,8 +42,8 @@ fn flat_curve(rate: f64, max_t: f64) -> DiscountCurve<f64> {
   let times = array![0.25_f64, 1.0, 2.0, 5.0, max_t];
   let rates = array![rate, rate, rate, rate, rate];
   DiscountCurve::from_zero_rates(
-    &times,
-    &rates,
+    times.view(),
+    rates.view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   )
 }

@@ -87,13 +87,13 @@ impl<'a> HestonProblem<'a> {
     } else {
       physical
     };
-    apply_chain_rule(physical, &to_optimizer_coordinates(free))
+    apply_chain_rule(physical, to_optimizer_coordinates(free).view())
   }
 }
 
 impl LeastSquaresProblem for HestonProblem<'_> {
   fn set_params(&mut self, params: &Array1<f64>) {
-    self.point = from_optimizer_coordinates(params);
+    self.point = from_optimizer_coordinates(params.view());
   }
 
   fn params(&self) -> Array1<f64> {
@@ -105,7 +105,7 @@ impl LeastSquaresProblem for HestonProblem<'_> {
     let free = self.free_params();
     let params_eff = calibrator.feller_projected(free);
     let c_model = calibrator.compute_model_prices_for(&params_eff);
-    let weighted_residuals = calibrator.weighted_residuals(&c_model);
+    let weighted_residuals = calibrator.weighted_residuals(c_model.view());
     let model = c_model.as_slice().expect("model prices are a fresh array");
     let options = &calibrator.options;
     self.trail.stage(
@@ -145,7 +145,7 @@ impl LeastSquaresProblem for HestonProblem<'_> {
     Some(match self.feller_row_weight {
       // w·σ(x) differentiates in the free coordinates, −w·σ(P(x)) through the projection as the price rows do.
       Some(weight) => {
-        let overshoot = apply_chain_rule(sigma_row(weight), &optimizer_coordinates)
+        let overshoot = apply_chain_rule(sigma_row(weight), optimizer_coordinates.view())
           + self.to_optimizer(sigma_row(-weight), &free);
         Array2::from_shape_fn((jacobian.nrows() + 1, jacobian.ncols()), |(i, j)| {
           if i < jacobian.nrows() {

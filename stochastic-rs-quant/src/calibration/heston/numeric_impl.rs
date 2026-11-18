@@ -1,5 +1,6 @@
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 use stochastic_rs_stats::StatsError;
 use stochastic_rs_stats::heston_mle::fit_heston_nmle;
 use stochastic_rs_stats::heston_mle::fit_heston_nmle_with_delta;
@@ -81,10 +82,10 @@ impl HestonCalibrator {
   }
 
   pub(super) fn residuals_for(&self, params: &HestonParams) -> Array1<f64> {
-    self.weighted_residuals(&self.compute_model_prices_for(params))
+    self.weighted_residuals(self.compute_model_prices_for(params).view())
   }
 
-  pub(super) fn weighted_residuals(&self, model: &Array1<f64>) -> Array1<f64> {
+  pub(super) fn weighted_residuals(&self, model: ArrayView1<f64>) -> Array1<f64> {
     Array1::from_iter(
       self
         .quotes
@@ -135,8 +136,8 @@ impl HestonCalibrator {
       let mut minus = coordinates.clone();
       plus[col] += h;
       minus[col] -= h;
-      let params_plus = project(from_optimizer_coordinates(&plus));
-      let params_minus = project(from_optimizer_coordinates(&minus));
+      let params_plus = project(from_optimizer_coordinates(plus.view()));
+      let params_minus = project(from_optimizer_coordinates(minus.view()));
 
       let r_plus = self.residuals_for(&params_plus);
       let r_minus = self.residuals_for(&params_minus);

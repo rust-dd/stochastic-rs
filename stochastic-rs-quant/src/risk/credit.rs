@@ -48,8 +48,8 @@ mod tests {
     let times = Array1::from(vec![1.0_f64, 5.0]);
     let hazards = Array1::from(vec![0.01_f64, 0.01]);
     let curve = SurvivalCurve::<f64>::from_hazard_rates(
-      &times,
-      &hazards,
+      times.view(),
+      hazards.view(),
       HazardInterpolation::PiecewiseConstantHazard,
     );
     let ecl_short = expected_credit_loss(&curve, 1.0, 0.6, 1_000.0);

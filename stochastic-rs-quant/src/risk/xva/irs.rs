@@ -163,7 +163,7 @@ impl HullWhiteSwapExposure {
     seed: S,
   ) -> ExposureProfile {
     ExposureProfile::from_mtm(
-      &self.mtm_matrix(curve, paths, seed),
+      self.mtm_matrix(curve, paths, seed).view(),
       self.payment_times.clone(),
       quantile,
     )

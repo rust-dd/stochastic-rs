@@ -350,7 +350,7 @@ impl McRainbowPricer {
         });
       }
     }
-    if !crate::linalg::is_spd_t(&self.rho) {
+    if !crate::linalg::is_spd_t(self.rho.view()) {
       return Err(QuantError::NotPositiveDefinite {
         what: "the correlation matrix rho",
       });

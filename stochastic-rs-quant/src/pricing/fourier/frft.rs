@@ -14,6 +14,7 @@
 use std::f64::consts::PI;
 
 use ndarray::Array1;
+use ndarray::ArrayView1;
 use ndrustfft::FftHandler;
 use ndrustfft::ndfft;
 use ndrustfft::ndifft;
@@ -27,7 +28,7 @@ use crate::traits::RealExt;
 /// `x.len()` must be a power of two. Recovers the standard forward DFT
 /// when `gamma == 1.0 / x.len() as f64`. Computed via the
 /// Bailey-Swarztrauber three-FFT convolution of length `2 * x.len()`.
-pub fn frft(x: &Array1<Complex64>, gamma: f64) -> Array1<Complex64> {
+pub fn frft(x: ArrayView1<Complex64>, gamma: f64) -> Array1<Complex64> {
   let n = x.len();
   assert!(n.is_power_of_two(), "FRFT length must be a power of two");
   // n power of two ⟹ m = 2n power of two, so the inner FFTs stay fast.
@@ -185,7 +186,7 @@ impl FrftCarrMadanPricer {
       input[j] = (-i_unit * v_j * b).exp() * psi * simpson;
     }
 
-    let output = frft(&input, gamma);
+    let output = frft(input.view(), gamma);
 
     let mut log_strikes = Array1::<f64>::zeros(n);
     let mut prices = Array1::<f64>::zeros(n);
@@ -254,7 +255,7 @@ mod tests {
   fn frft_reduces_to_dft_at_unit_gamma() {
     let n = 16usize;
     let x = Array1::from_shape_fn(n, |j| Complex64::new(j as f64, 0.5 * j as f64));
-    let frft_out = frft(&x, 1.0 / n as f64);
+    let frft_out = frft(x.view(), 1.0 / n as f64);
     // Direct DFT.
     let mut dft = Array1::<Complex64>::zeros(n);
     for (k, slot) in dft.iter_mut().enumerate() {

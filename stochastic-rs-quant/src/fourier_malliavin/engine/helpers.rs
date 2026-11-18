@@ -1,6 +1,7 @@
 //! Internal helpers: window resolution, bias-correction constant, and Fejér inversion.
 
 use ndarray::Array1;
+use ndarray::ArrayView1;
 use num_complex::Complex;
 
 use super::FmVol;
@@ -136,13 +137,13 @@ impl<T: RealExt> FmVol<T> {
       self.n_freq + m,
       self.max_freq
     );
-    convolution_coefficients(&self.dx, &self.dx, self.period, self.n_freq, m)
+    convolution_coefficients(self.dx.view(), self.dx.view(), self.period, self.n_freq, m)
   }
 }
 
 /// Fejér kernel inversion (internal helper).
 pub(super) fn fejer_inversion<T: RealExt>(
-  coeffs: &Array1<Complex<T>>,
+  coeffs: ArrayView1<Complex<T>>,
   m_freq: usize,
   period: T,
   tau: &[T],

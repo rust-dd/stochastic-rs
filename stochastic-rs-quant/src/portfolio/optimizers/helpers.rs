@@ -125,6 +125,6 @@ pub(super) fn mat_inverse(mat: &[Vec<f64>]) -> Option<Vec<Vec<f64>>> {
       .copied()
       .unwrap_or(0.0)
   });
-  let inv = crate::linalg::inverse_t(&m)?;
+  let inv = crate::linalg::inverse_t(m.view())?;
   Some((0..n).map(|i| inv.row(i).to_vec()).collect())
 }

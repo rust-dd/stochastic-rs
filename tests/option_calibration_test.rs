@@ -55,8 +55,11 @@ fn hw_calibration_recovers_self_consistent_params() {
 
   let times = array![0.0, 1.0, 2.0, 5.0, 10.0];
   let rates = array![0.03, 0.035, 0.038, 0.04, 0.042];
-  let curve =
-    DiscountCurve::from_zero_rates(&times, &rates, InterpolationMethod::LinearOnZeroRates);
+  let curve = DiscountCurve::from_zero_rates(
+    times.view(),
+    rates.view(),
+    InterpolationMethod::LinearOnZeroRates,
+  );
 
   let target_a = 0.08_f64;
   let target_sigma = 0.012_f64;

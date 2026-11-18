@@ -181,7 +181,7 @@ impl<T: FloatExt> MultiHestonParams<T> {
       corr[[i, d + i]] = self.assets[i].rho;
       corr[[d + i, i]] = self.assets[i].rho;
     }
-    if !crate::linalg::is_spd_t(&corr) {
+    if !crate::linalg::is_spd_t(corr.view()) {
       return Err(QuantError::NotPositiveDefinite {
         what: "the joint Brownian correlation matrix",
       });
@@ -296,7 +296,7 @@ impl<T: FloatExt> MultiHestonParams<T> {
       corr[[i, d + i]] = self.assets[i].rho;
       corr[[d + i, i]] = self.assets[i].rho;
     }
-    crate::linalg::spd_cholesky_lower_t(&corr).expect(
+    crate::linalg::spd_cholesky_lower_t(corr.view()).expect(
       "correlation matrix not positive-definite — call MultiHestonParams::validate() up-front",
     )
   }

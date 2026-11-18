@@ -20,8 +20,8 @@ fn forecast_curve(
 
 fn flat(rate: f64) -> DiscountCurve<f64> {
   DiscountCurve::from_zero_rates(
-    &Array1::from_vec(vec![0.25, 1.0, 5.0, 10.0]),
-    &Array1::from_vec(vec![rate; 4]),
+    Array1::from_vec(vec![0.25, 1.0, 5.0, 10.0]).view(),
+    Array1::from_vec(vec![rate; 4]).view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   )
 }

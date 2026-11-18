@@ -23,7 +23,7 @@ impl PyExposureProfile {
     quantile: f64,
   ) -> PyResult<Self> {
     Ok(Self {
-      inner: xva::ExposureProfile::try_from_mtm(&mtm.as_array().to_owned(), times, quantile)
+      inner: xva::ExposureProfile::try_from_mtm(mtm.as_array(), times, quantile)
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?,
     })
   }

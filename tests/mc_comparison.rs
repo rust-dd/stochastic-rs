@@ -526,7 +526,7 @@ fn lsm_vs_longstaff_schwartz_table1() {
     let paths = generate_gbm_paths(n_paths, n_steps, s0, r, sigma, tau);
     let exercise = (1..=n_steps).collect::<Vec<_>>();
     let am_price = BermudanLsmPricer::new(r, tau, n_basis)
-      .price(&paths, &exercise, payoff_put)
+      .price(paths.view(), &exercise, payoff_put)
       .mean;
     let eu_price = bs_put(s0, k, r, sigma, tau);
 
@@ -569,7 +569,7 @@ fn lsm_vs_ls2001_high_vol() {
     let paths = generate_gbm_paths(n_paths, n_steps, s0, r, sigma, tau);
     let exercise = (1..=n_steps).collect::<Vec<_>>();
     let am_price = BermudanLsmPricer::new(r, tau, n_basis)
-      .price(&paths, &exercise, payoff_put)
+      .price(paths.view(), &exercise, payoff_put)
       .mean;
     let eu_price = bs_put(s0, k, r, sigma, tau);
 

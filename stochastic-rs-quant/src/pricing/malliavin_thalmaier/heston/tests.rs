@@ -36,7 +36,7 @@ fn simulation_positive_prices() {
 fn malliavin_cov_positive_definite() {
   let params = two_asset_params();
   let paths = params.sample_with_seed(0xc0_aa_01);
-  let gamma = paths.malliavin_cov(&params.cross_corr, params.tau);
+  let gamma = paths.malliavin_cov(params.cross_corr.view(), params.tau);
   let determinant = gamma[[0, 0]] * gamma[[1, 1]] - gamma[[0, 1]] * gamma[[1, 0]];
   assert!(determinant > 0.0, "det(gamma) = {determinant}");
   assert!(gamma[[0, 0]] > 0.0);

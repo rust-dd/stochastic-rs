@@ -218,7 +218,7 @@ impl<'a> SvjProblem<'a> {
 
 impl LeastSquaresProblem for SvjProblem<'_> {
   fn set_params(&mut self, params: &Array1<f64>) {
-    self.reflections = periodic_slopes(params, &BOX);
+    self.reflections = periodic_slopes(params.view(), &BOX);
     self.params = SvjParams::from(params.clone()).projected();
   }
 
@@ -239,7 +239,7 @@ impl LeastSquaresProblem for SvjProblem<'_> {
 
   fn jacobian(&self) -> Option<Array2<f64>> {
     let jacobian = self.numeric_jacobian(&self.effective_params());
-    Some(scale_columns(jacobian, &self.reflections))
+    Some(scale_columns(jacobian, self.reflections.view()))
   }
 
   fn accept(&mut self) {

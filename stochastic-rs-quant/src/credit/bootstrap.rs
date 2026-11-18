@@ -114,8 +114,8 @@ pub fn bootstrap_hazard<T: RealExt>(
       trial_hazards.push(h_t);
 
       let curve = SurvivalCurve::from_hazard_rates(
-        &Array1::from(trial_times),
-        &Array1::from(trial_hazards),
+        Array1::from(trial_times).view(),
+        Array1::from(trial_hazards).view(),
         HazardInterpolation::PiecewiseConstantHazard,
       );
 
@@ -148,8 +148,8 @@ pub fn bootstrap_hazard<T: RealExt>(
   }
 
   Ok(SurvivalCurve::from_hazard_rates(
-    &Array1::from(times),
-    &Array1::from(hazards),
+    Array1::from(times).view(),
+    Array1::from(hazards).view(),
     HazardInterpolation::PiecewiseConstantHazard,
   ))
 }

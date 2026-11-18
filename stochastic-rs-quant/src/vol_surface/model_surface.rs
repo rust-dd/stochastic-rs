@@ -93,7 +93,7 @@ pub trait ModelSurface: VanillaEuropeanCall {
       strikes.to_vec(),
       maturities.to_vec(),
       forwards,
-      &prices,
+      prices.view(),
       true,
     )
   }
@@ -167,7 +167,7 @@ pub fn fourier_model_surface_fft_with(
     strikes.to_vec(),
     maturities.to_vec(),
     forwards,
-    &prices,
+    prices.view(),
     true,
   )
 }

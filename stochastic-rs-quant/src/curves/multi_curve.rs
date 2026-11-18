@@ -16,7 +16,7 @@
 //! \text{PV}_{\text{float}} = \sum_j D_{\text{OIS}}(t_j)\,\delta_j\,L_{\text{forecast}}(t_{j-1}, t_j)\,N
 //! $$
 
-use ndarray::Array1;
+use ndarray::ArrayView1;
 
 use super::discount_curve::DiscountCurve;
 use crate::cashflows::RateTenor;
@@ -78,7 +78,12 @@ impl<T: RealExt> MultiCurve<T> {
 
   /// PV of a floating leg paying forecast forwards over each `[tᵢ₋₁, tᵢ]` of `schedule`, discounted
   /// on OIS; `None` for an unknown `tenor`, NaN over a period that runs backwards.
-  pub fn pv_floating_leg(&self, tenor: RateTenor, schedule: &Array1<T>, notional: T) -> Option<T> {
+  pub fn pv_floating_leg(
+    &self,
+    tenor: RateTenor,
+    schedule: ArrayView1<T>,
+    notional: T,
+  ) -> Option<T> {
     let fc = self.forecast(tenor)?;
     let n = schedule.len();
     if n < 2 {
@@ -102,7 +107,7 @@ impl<T: RealExt> MultiCurve<T> {
   }
 
   /// Present value of a fixed leg using OIS discounting.
-  pub fn pv_fixed_leg(&self, schedule: &Array1<T>, fixed_rate: T, notional: T) -> T {
+  pub fn pv_fixed_leg(&self, schedule: ArrayView1<T>, fixed_rate: T, notional: T) -> T {
     let n = schedule.len();
     if n < 2 {
       return T::zero();
@@ -126,7 +131,7 @@ impl<T: RealExt> MultiCurve<T> {
   /// S = \frac{\sum_j D_{\text{OIS}}(t_j)\,\delta_j\,L_{\text{forecast}}(t_{j-1}, t_j)}
   ///          {\sum_j D_{\text{OIS}}(t_j)\,\delta_j}
   /// $$
-  pub fn fair_swap_rate(&self, tenor: RateTenor, schedule: &Array1<T>) -> Option<T> {
+  pub fn fair_swap_rate(&self, tenor: RateTenor, schedule: ArrayView1<T>) -> Option<T> {
     let fc = self.forecast(tenor)?;
     let n = schedule.len();
     if n < 2 {

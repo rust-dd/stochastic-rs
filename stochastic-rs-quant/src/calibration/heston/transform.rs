@@ -6,6 +6,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 
 use super::params::P_KAPPA;
 use super::params::P_SIGMA;
@@ -35,7 +36,7 @@ pub(super) fn to_optimizer_coordinates(params: &HestonParams) -> Array1<f64> {
   )
 }
 
-pub(super) fn from_optimizer_coordinates(coordinates: &Array1<f64>) -> HestonParams {
+pub(super) fn from_optimizer_coordinates(coordinates: ArrayView1<f64>) -> HestonParams {
   assert_eq!(
     coordinates.len(),
     PARAMETER_COUNT,
@@ -80,12 +81,12 @@ pub(super) fn at_units(units: [f64; PARAMETER_COUNT]) -> HestonParams {
 }
 
 pub(super) fn canonicalize(params: &HestonParams) -> HestonParams {
-  from_optimizer_coordinates(&to_optimizer_coordinates(params))
+  from_optimizer_coordinates(to_optimizer_coordinates(params).view())
 }
 
 pub(super) fn apply_chain_rule(
   mut physical_jacobian: Array2<f64>,
-  coordinates: &Array1<f64>,
+  coordinates: ArrayView1<f64>,
 ) -> Array2<f64> {
   assert_eq!(physical_jacobian.ncols(), PARAMETER_COUNT);
   assert_eq!(coordinates.len(), PARAMETER_COUNT);

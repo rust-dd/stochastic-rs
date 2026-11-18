@@ -84,8 +84,11 @@ fn bermudan_swaption_dominates_european_at_common_grid() {
 fn curve_fitted_hw_tree_reprices_zero_coupon_bond() {
   let times = array![0.0, 1.0, 2.0, 5.0, 10.0];
   let rates = array![0.02, 0.025, 0.03, 0.035, 0.04];
-  let curve =
-    DiscountCurve::from_zero_rates(&times, &rates, InterpolationMethod::LinearOnZeroRates);
+  let curve = DiscountCurve::from_zero_rates(
+    times.view(),
+    rates.view(),
+    InterpolationMethod::LinearOnZeroRates,
+  );
   let horizon: f64 = 5.0;
   let tree = CurveFittedHullWhiteTree::new(0.08_f64, 0.012, &curve, horizon, 200);
   let tree_price = tree.zero_coupon_bond_price();
@@ -97,8 +100,11 @@ fn curve_fitted_hw_tree_reprices_zero_coupon_bond() {
 fn jamshidian_hw_payer_receiver_parity() {
   let times = array![0.0, 1.0, 2.0, 5.0, 10.0];
   let rates = array![0.03, 0.035, 0.038, 0.04, 0.042];
-  let curve =
-    DiscountCurve::from_zero_rates(&times, &rates, InterpolationMethod::LinearOnZeroRates);
+  let curve = DiscountCurve::from_zero_rates(
+    times.view(),
+    rates.view(),
+    InterpolationMethod::LinearOnZeroRates,
+  );
   let expiry = 1.0_f64;
   let coupon_times: Vec<f64> = (1..=10).map(|i| expiry + 0.5 * i as f64).collect();
   let accrual_factors = vec![0.5_f64; coupon_times.len()];

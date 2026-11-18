@@ -76,3 +76,17 @@ fn the_heston_engine_and_the_adi_pricer_hand_out_their_checked_parameters() {
   assert_eq!(engine.pricer().vol_risk_premium(), 0.2);
   assert_eq!(HestonAdiPricer::new(P).params(), P);
 }
+
+#[test]
+fn a_curve_is_built_and_read_through_views() {
+  use ndarray::Array1;
+  use ndarray::s;
+  use stochastic_rs_quant::curves::DiscountCurve;
+  use stochastic_rs_quant::curves::InterpolationMethod;
+  let times = Array1::<f64>::from_vec(vec![1.0, 2.0, 5.0]);
+  let rates = Array1::from_vec(vec![0.03, 0.031, 0.033]);
+  let method = InterpolationMethod::LogLinearOnDiscountFactors;
+  let curve = DiscountCurve::from_zero_rates(times.view(), rates.view(), method);
+  let zero = curve.zero_rates(times.slice(s![..2]));
+  assert!((zero[0] - 0.03).abs() < 1e-12 && (zero[1] - 0.031).abs() < 1e-12);
+}

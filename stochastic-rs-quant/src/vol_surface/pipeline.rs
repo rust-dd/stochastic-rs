@@ -6,6 +6,7 @@
 //! Reference: Gatheral & Jacquier (2012), arXiv:1204.0646
 
 use ndarray::Array2;
+use ndarray::ArrayView2;
 
 use super::analytics::SmileAnalytics;
 use super::implied::ImpliedVolSurface;
@@ -96,7 +97,7 @@ pub fn build_surface(
   strikes: Vec<f64>,
   maturities: Vec<f64>,
   forwards: Vec<f64>,
-  prices: &Array2<f64>,
+  prices: ArrayView2<f64>,
   is_call: bool,
 ) -> VolSurfaceResult {
   let iv_surface = ImpliedVolSurface::from_prices(strikes, maturities, forwards, prices, is_call);

@@ -16,6 +16,7 @@
 //!
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView2;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::linalg::lstsq;
 use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
@@ -51,7 +52,7 @@ impl BermudanLsmPricer {
   /// in `paths` at which the holder may exercise.
   pub fn price<F>(
     &self,
-    paths: &Array2<f64>,
+    paths: ArrayView2<f64>,
     exercise_steps: &[usize],
     payoff: F,
   ) -> McEstimate<f64>
@@ -182,7 +183,7 @@ mod tests {
     let exercise: Vec<usize> = (1..=n_steps).collect();
     let bermudan = BermudanLsmPricer::new(r, t, 4);
     let payoff = |s: f64| (k - s).max(0.0);
-    let berm_price = bermudan.price(&paths, &exercise, payoff).mean;
+    let berm_price = bermudan.price(paths.view(), &exercise, payoff).mean;
 
     let mut eu_sum = 0.0;
     for i in 0..n_paths {
@@ -217,7 +218,7 @@ mod tests {
     for n_exercise in [2usize, 4, 12, 30, 60] {
       let stride = n_steps / n_exercise;
       let exercise: Vec<usize> = (1..=n_exercise).map(|i| i * stride).collect();
-      let p = bermudan.price(&paths, &exercise, payoff).mean;
+      let p = bermudan.price(paths.view(), &exercise, payoff).mean;
       assert!(
         p >= prev - 0.05,
         "n_exercise={n_exercise} gives {p}, prev={prev}"
@@ -240,7 +241,7 @@ mod tests {
     let paths = generate_gbm_paths(s0, r, 0.0, sigma, t, n_paths, n_steps);
     let bermudan = BermudanLsmPricer::new(r, t, 4);
     let payoff = |s: f64| (k - s).max(0.0);
-    let berm = bermudan.price(&paths, &[n_steps], payoff).mean;
+    let berm = bermudan.price(paths.view(), &[n_steps], payoff).mean;
 
     let mut eu_sum = 0.0;
     for i in 0..n_paths {

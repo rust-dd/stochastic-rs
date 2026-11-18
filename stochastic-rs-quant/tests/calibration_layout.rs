@@ -95,8 +95,8 @@ fn the_tree_calibrators_carry_their_fixed_inputs_in_params() {
   assert_send_sync::<BlackKarasinskiSwaptionCalibrator<'static>>();
   assert_send_sync::<G2ppSwaptionCalibrator<'static>>();
   let curve = DiscountCurve::from_zero_rates(
-    &Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]),
-    &Array1::from_vec(vec![0.03; 4]),
+    Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]).view(),
+    Array1::from_vec(vec![0.03; 4]).view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   );
   let quotes =

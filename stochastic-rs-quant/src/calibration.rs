@@ -9,6 +9,7 @@ use std::sync::OnceLock;
 use gauss_quad::GaussLegendre;
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 use stochastic_rs_distributions::RealExt;
 
 pub mod bsm;
@@ -172,7 +173,7 @@ pub(crate) fn periodic_slope(x: f64, c: f64, d: f64) -> f64 {
 }
 
 /// `periodic_slope` of each coordinate against its box.
-pub(crate) fn periodic_slopes(x: &Array1<f64>, bounds: &[(f64, f64)]) -> Array1<f64> {
+pub(crate) fn periodic_slopes(x: ArrayView1<f64>, bounds: &[(f64, f64)]) -> Array1<f64> {
   let slopes = x.iter().zip(bounds);
   slopes
     .map(|(&x, &(c, d))| periodic_slope(x, c, d))
@@ -180,7 +181,7 @@ pub(crate) fn periodic_slopes(x: &Array1<f64>, bounds: &[(f64, f64)]) -> Array1<
 }
 
 /// A Jacobian in projected parameters times `dθⱼ/dxⱼ`, column by column.
-pub(crate) fn scale_columns(mut jacobian: Array2<f64>, slopes: &Array1<f64>) -> Array2<f64> {
+pub(crate) fn scale_columns(mut jacobian: Array2<f64>, slopes: ArrayView1<f64>) -> Array2<f64> {
   for (mut column, slope) in jacobian.columns_mut().into_iter().zip(slopes) {
     column *= *slope;
   }

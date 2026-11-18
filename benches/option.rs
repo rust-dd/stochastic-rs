@@ -37,7 +37,11 @@ use stochastic_rs::quant::lattice::HullWhiteTreeModel;
 fn flat_curve(rate: f64, max_t: f64) -> DiscountCurve<f64> {
   let times = array![0.0, max_t / 4.0, max_t / 2.0, 3.0 * max_t / 4.0, max_t];
   let rates = array![rate, rate, rate, rate, rate];
-  DiscountCurve::from_zero_rates(&times, &rates, InterpolationMethod::LinearOnZeroRates)
+  DiscountCurve::from_zero_rates(
+    times.view(),
+    rates.view(),
+    InterpolationMethod::LinearOnZeroRates,
+  )
 }
 
 fn bench_cap_npv(c: &mut Criterion) {
@@ -206,8 +210,11 @@ fn bench_bermudan_swaption_hw_tree(c: &mut Criterion) {
 fn bench_jamshidian_hw_swaption(c: &mut Criterion) {
   let times = array![0.0, 1.0, 2.0, 5.0, 10.0];
   let rates = array![0.03, 0.035, 0.038, 0.04, 0.042];
-  let curve =
-    DiscountCurve::from_zero_rates(&times, &rates, InterpolationMethod::LinearOnZeroRates);
+  let curve = DiscountCurve::from_zero_rates(
+    times.view(),
+    rates.view(),
+    InterpolationMethod::LinearOnZeroRates,
+  );
   let expiry = 1.0_f64;
   let coupon_times: Vec<f64> = (1..=20).map(|i| expiry + 0.5 * i as f64).collect();
   let accrual_factors = vec![0.5_f64; coupon_times.len()];

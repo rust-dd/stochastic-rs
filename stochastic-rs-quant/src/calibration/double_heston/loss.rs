@@ -216,7 +216,7 @@ impl<'a> DoubleHestonProblem<'a> {
 impl LeastSquaresProblem for DoubleHestonProblem<'_> {
   fn set_params(&mut self, params: &Array1<f64>) {
     let factor = [P_V0, P_KAPPA, P_THETA, P_SIGMA, P_RHO];
-    self.reflections = periodic_slopes(params, &[factor, factor].concat());
+    self.reflections = periodic_slopes(params.view(), &[factor, factor].concat());
     self.params = DoubleHestonParams::from(params.clone()).projected();
   }
 
@@ -237,7 +237,7 @@ impl LeastSquaresProblem for DoubleHestonProblem<'_> {
 
   fn jacobian(&self) -> Option<Array2<f64>> {
     let jacobian = self.numeric_jacobian(&self.effective_params());
-    Some(scale_columns(jacobian, &self.reflections))
+    Some(scale_columns(jacobian, self.reflections.view()))
   }
 
   fn accept(&mut self) {

@@ -1,4 +1,5 @@
 use ndarray::Array1;
+use ndarray::ArrayView1;
 
 use crate::traits::RealExt;
 
@@ -181,7 +182,7 @@ impl SsviParams<f64> {
     Array1::from_vec(vec![self.rho, self.eta, self.gamma])
   }
 
-  pub(super) fn from_dvector(v: &Array1<f64>) -> Self {
+  pub(super) fn from_dvector(v: ArrayView1<f64>) -> Self {
     SsviParams {
       rho: v[0],
       eta: v[1],

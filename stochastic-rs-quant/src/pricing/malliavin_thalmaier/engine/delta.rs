@@ -76,9 +76,14 @@ impl<T: FloatExt> MtGreeks<T> {
       let terminal_slice = terminal
         .as_slice()
         .expect("terminal-price array must be contiguous");
-      let gamma_inv = paths.try_gamma_inv(&self.params.cross_corr, self.params.tau)?;
-      let weights =
-        paths.try_malliavin_weights(&gamma_inv, asset, self.params.r, self.params.tau, &spots)?;
+      let gamma_inv = paths.try_gamma_inv(self.params.cross_corr.view(), self.params.tau)?;
+      let weights = paths.try_malliavin_weights(
+        gamma_inv.view(),
+        asset,
+        self.params.r,
+        self.params.tau,
+        spots.view(),
+      )?;
       let g = match localization.as_ref() {
         Some(loc) => self.compute_g_localized(payoff, terminal_slice, loc),
         None => self.compute_g(payoff, terminal_slice),
@@ -163,7 +168,7 @@ impl<T: FloatExt> MtGreeks<T> {
       let terminal_slice = terminal
         .as_slice()
         .expect("terminal-price array must be contiguous");
-      let gamma_inv = paths.try_gamma_inv(&self.params.cross_corr, self.params.tau)?;
+      let gamma_inv = paths.try_gamma_inv(self.params.cross_corr.view(), self.params.tau)?;
       let g = match localization.as_ref() {
         Some(loc) => self.compute_g_localized(payoff, terminal_slice, loc),
         None => self.compute_g(payoff, terminal_slice),
@@ -173,8 +178,13 @@ impl<T: FloatExt> MtGreeks<T> {
         .map(|loc| self.pathwise_tail_gradient(payoff, terminal_slice, loc));
 
       for asset in 0..d {
-        let weights =
-          paths.try_malliavin_weights(&gamma_inv, asset, self.params.r, self.params.tau, &spots)?;
+        let weights = paths.try_malliavin_weights(
+          gamma_inv.view(),
+          asset,
+          self.params.r,
+          self.params.tau,
+          spots.view(),
+        )?;
         let mt_contribution = (0..d)
           .map(|i| g[[i, asset]] * weights[i])
           .fold(T::zero(), |accumulator, value| accumulator + value);

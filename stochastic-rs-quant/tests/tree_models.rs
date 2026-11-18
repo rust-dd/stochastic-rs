@@ -124,8 +124,8 @@ fn a_curve_fitted_tree_and_a_generic_caller_price_through_the_trait() {
   let payer = swaption(SwaptionDirection::Payer);
   assert_eq!(npv_on(&hw_tree(), &payer), HW_PAYER);
   let curve = stochastic_rs_quant::curves::DiscountCurve::from_zero_rates(
-    &ndarray::array![1.0, 5.0],
-    &ndarray::array![0.03, 0.035],
+    ndarray::array![1.0, 5.0].view(),
+    ndarray::array![0.03, 0.035].view(),
     stochastic_rs_quant::curves::InterpolationMethod::LinearOnZeroRates,
   );
   let fitted = CurveFittedHullWhiteTree::new(0.1, 0.012, &curve, 5.0, 20);

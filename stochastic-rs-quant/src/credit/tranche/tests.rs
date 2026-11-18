@@ -11,8 +11,8 @@ use crate::curves::InterpolationMethod;
 
 fn flat_survival(h: f64) -> SurvivalCurve<f64> {
   SurvivalCurve::from_hazard_rates(
-    &Array1::from_vec(vec![1.0, 5.0, 10.0]),
-    &Array1::from_vec(vec![h; 3]),
+    Array1::from_vec(vec![1.0, 5.0, 10.0]).view(),
+    Array1::from_vec(vec![h; 3]).view(),
     HazardInterpolation::PiecewiseConstantHazard,
   )
 }
@@ -29,8 +29,8 @@ fn homogeneous_pool(n: usize, hazard: f64, recovery: f64) -> Vec<PoolName> {
 
 fn discount() -> DiscountCurve<f64> {
   DiscountCurve::from_zero_rates(
-    &Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]),
-    &Array1::from_vec(vec![0.03; 4]),
+    Array1::from_vec(vec![0.5, 1.0, 5.0, 10.0]).view(),
+    Array1::from_vec(vec![0.03; 4]).view(),
     InterpolationMethod::LogLinearOnDiscountFactors,
   )
 }
