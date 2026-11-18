@@ -9,7 +9,9 @@ use stochastic_rs_stochastic::diffusion::nonlinear_sde::NonlinearSde;
 use stochastic_rs_stochastic::diffusion::pearson::Pearson;
 use stochastic_rs_stochastic::diffusion::quadratic::Quadratic;
 
-use super::off_zero;
+use super::pole_quadratic;
+use super::pole_quadratic_x;
+use super::pole_quadratic_xx;
 use super::power_x;
 use super::power_xx;
 use super::root_x;
@@ -311,7 +313,7 @@ impl<S: SeedExt> DiffusionModel for NonlinearSde<f64, S> {
   }
 
   fn drift(&self, x: f64, _t: f64) -> f64 {
-    self.am1 / off_zero(x) + self.a0 + self.a1 * x + self.a2 * x * x
+    pole_quadratic([self.am1, self.a0, self.a1, self.a2], x)
   }
 
   fn diffusion(&self, x: f64, _t: f64) -> f64 {
@@ -319,13 +321,11 @@ impl<S: SeedExt> DiffusionModel for NonlinearSde<f64, S> {
   }
 
   fn drift_x(&self, x: f64, _t: f64) -> f64 {
-    let safe_x = off_zero(x);
-    -self.am1 / (safe_x * safe_x) + self.a1 + 2.0 * self.a2 * x
+    pole_quadratic_x([self.am1, self.a0, self.a1, self.a2], x)
   }
 
   fn drift_xx(&self, x: f64, _t: f64) -> f64 {
-    let safe_x = off_zero(x);
-    2.0 * self.am1 / (safe_x * safe_x * safe_x) + 2.0 * self.a2
+    pole_quadratic_xx([self.am1, self.a0, self.a1, self.a2], x)
   }
 
   fn diffusion_x(&self, x: f64, _t: f64) -> f64 {
@@ -377,7 +377,7 @@ impl<S: SeedExt> DiffusionModel for AitSahalia<f64, S> {
   }
 
   fn drift(&self, x: f64, _t: f64) -> f64 {
-    self.am1 / off_zero(x) + self.a0 + self.a1 * x + self.a2 * x * x
+    pole_quadratic([self.am1, self.a0, self.a1, self.a2], x)
   }
 
   fn diffusion(&self, x: f64, _t: f64) -> f64 {
@@ -386,13 +386,11 @@ impl<S: SeedExt> DiffusionModel for AitSahalia<f64, S> {
   }
 
   fn drift_x(&self, x: f64, _t: f64) -> f64 {
-    let safe_x = off_zero(x);
-    -self.am1 / (safe_x * safe_x) + self.a1 + 2.0 * self.a2 * x
+    pole_quadratic_x([self.am1, self.a0, self.a1, self.a2], x)
   }
 
   fn drift_xx(&self, x: f64, _t: f64) -> f64 {
-    let safe_x = off_zero(x);
-    2.0 * self.am1 / (safe_x * safe_x * safe_x) + 2.0 * self.a2
+    pole_quadratic_xx([self.am1, self.a0, self.a1, self.a2], x)
   }
 
   fn diffusion_x(&self, x: f64, _t: f64) -> f64 {

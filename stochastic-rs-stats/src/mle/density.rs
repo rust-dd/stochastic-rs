@@ -43,7 +43,7 @@ pub enum DensityApprox {
   Exact,
   /// Euler-Maruyama (Gaussian with Euler moments).
   Euler,
-  /// Ozaki local-linearisation.
+  /// Ozaki local-linearisation; NaN where a step carries the state across zero.
   Ozaki,
   /// Shoji-Ozaki (second-order drift correction).
   ShojiOzaki,

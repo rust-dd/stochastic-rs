@@ -1,7 +1,5 @@
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::diffusion::ait_sahalia::AitSahalia;
-use stochastic_rs_stochastic::diffusion::cev::Cev;
-use stochastic_rs_stochastic::diffusion::ckls::Ckls;
 use stochastic_rs_stochastic::diffusion::feller_logistic::FellerLogistic;
 use stochastic_rs_stochastic::diffusion::feller_root::FellerRoot;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
@@ -23,14 +21,17 @@ use stochastic_rs_stochastic::diffusion::three_half::ThreeHalf;
 use stochastic_rs_stochastic::diffusion::verhulst::Verhulst;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 
+use super::derivative_tests::boxed;
+use super::derivative_tests::power_diffusions;
 use crate::mle::DiffusionModel;
-use crate::qmle::test_support::cir;
 
 /// `[μ′, μ″, σ′, σ″]` at a state.
 type Closed = fn(f64) -> [f64; 4];
 
-fn boxed(model: impl DiffusionModel + 'static) -> Box<dyn DiffusionModel> {
-  Box::new(model)
+/// The model of `derivative_tests`' row `name`, so both tables test one set of parameters.
+fn power(name: &str) -> Box<dyn DiffusionModel> {
+  let row = power_diffusions().into_iter().find(|row| row.0 == name);
+  row.expect("a power diffusion's row").1
 }
 
 /// The derivatives of `c√|g|` from `g`, `g′` and `g″`.
@@ -64,19 +65,15 @@ fn models() -> Vec<(&'static str, Box<dyn DiffusionModel>, Closed)> {
       boxed(Ou::new(2.0, 1.0, 0.3, 2, None, None, seed())),
       |_| [-2.0, 0.0, 0.0, 0.0],
     ),
-    ("Cir", boxed(cir(2.0, 0.04, 0.3)), |x| {
+    ("Cir", power("Cir"), |x| {
       [-2.0, 0.0, 0.15 / x.sqrt(), -0.075 / (x * x.sqrt())]
     }),
-    (
-      "Cev",
-      boxed(Cev::new(0.05, 0.3, 0.7, 2, one, None, seed())),
-      |x| [0.05, 0.0, 0.21 * x.powf(-0.3), -0.063 * x.powf(-1.3)],
-    ),
-    (
-      "Ckls",
-      boxed(Ckls::new(0.1, -0.5, 0.2, 1.5, 2, one, None, seed())),
-      |x| [-0.5, 0.0, 0.3 * x.sqrt(), 0.15 / x.sqrt()],
-    ),
+    ("Cev", power("Cev"), |x| {
+      [0.05, 0.0, 0.21 * x.powf(-0.3), -0.063 * x.powf(-1.3)]
+    }),
+    ("Ckls", power("Ckls"), |x| {
+      [-0.5, 0.0, 0.3 * x.sqrt(), 0.15 / x.sqrt()]
+    }),
     (
       "ModifiedCir",
       boxed(ModifiedCir::new(1.5, 0.4, 2, one, None, seed())),
