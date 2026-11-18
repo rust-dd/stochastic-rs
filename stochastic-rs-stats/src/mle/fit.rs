@@ -120,7 +120,7 @@ fn resolve_fit_outcome(
 }
 
 /// L-BFGS-B MLE of `model`, left at the estimate, in the start's units, up to 16 searches; check
-/// `converged`. `Err` below 2 points, on a non-finite one or log-likelihood; panics on a bound count.
+/// `converged`. `Err` below 2 points, a non-finite one or log-likelihood; panics on a bound count.
 /// $$
 /// -\sum_{i=1}^{N} \ln p(X_{t_i}\mid X_{t_{i-1}};\theta,\Delta t)
 /// $$
