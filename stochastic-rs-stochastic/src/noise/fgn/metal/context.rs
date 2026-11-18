@@ -169,7 +169,7 @@ impl Context {
       ..
     } = buffers;
     // SAFETY: tiles and column groups partition complete transforms; every tile thread reaches
-    // each barrier and shuffle. The planner bounds every buffer and the readout guards partial rows.
+    // each barrier and shuffle. The planner bounds each buffer; the readout guards partial rows.
     unsafe {
       sequence(|batch| {
         let Some(Scratch {

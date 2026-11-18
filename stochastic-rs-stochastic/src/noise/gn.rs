@@ -27,7 +27,7 @@ pub struct Gn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Horizon of the path; `None` is a unit horizon.
   /// The `n` increments span it, so `dt = t / n`.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -36,6 +36,7 @@ pub struct Gn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 /// No persisted cache: `sampler()` builds its Gaussian source fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> Gn<T, S> {
+  /// Panics unless `n >= 2` and a given `t` is positive and finite.
   pub fn new(n: usize, t: Option<T>, seed: S) -> Self {
     Self::check_n(n);
     check_t(t);
@@ -53,14 +54,14 @@ impl<T: FloatExt, S: SeedExt, B> Gn<T, S, B> {
     require!(n >= 1, n);
   }
 
-  /// Replace the number of increments `n`, all else unchanged.
+  /// Replace the number of increments `n`; panics unless `n >= 2`.
   pub fn with_increments(mut self, n: usize) -> Self {
     Self::check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -148,9 +149,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the draw happens in the kernel, on
-  /// the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device draws in its kernel, the host runs this process's own
+  /// sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }

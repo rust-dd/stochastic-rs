@@ -1,8 +1,6 @@
 //! # cudarc Native CUDA
 //!
-//! NVIDIA-optimized Fgn sampling via cudarc (cuFFT + NVRTC).
-//! Fused Philox RNG + eigenvalue scaling eliminates cuRAND dependency
-//! and one GPU memory round-trip.
+//! Fgn on cuFFT and NVRTC: a fused Philox draw and eigenvalue scale, no cuRAND, one copy fewer.
 //!
 mod convert;
 mod kernels;

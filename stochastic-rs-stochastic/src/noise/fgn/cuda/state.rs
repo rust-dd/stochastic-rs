@@ -30,16 +30,8 @@ unsafe impl Send for GpuKernels {}
 
 pub(super) static GPU: Mutex<Option<GpuKernels>> = Mutex::new(None);
 
-/// Cacheable page-locked host buffer for fast device→host transfers.
-///
-/// Allocated via the low-level driver with flags = 0 (cacheable). We avoid
-/// [`cudarc::driver::CudaContext::alloc_pinned`], which uses
-/// `CU_MEMHOSTALLOC_WRITECOMBINED`: write-combined memory is fast for host
-/// *writes* but very slow for the host *reads* we do when materialising the
-/// output `Array2`. Page-locking lets the driver DMA the result at full PCIe
-/// bandwidth instead of staging a pageable copy through a bounce buffer
-/// (~3.6 GB/s → ~20 GB/s on PCIe 4.0). Cached in the sized context so the
-/// (expensive) pinning happens once per parameter set, not per call.
+/// Cacheable page-locked host buffer, allocated with flags = 0: `alloc_pinned`'s write-combined
+/// memory is slow for the host reads done here. Cached per sized context, so pinning happens once.
 pub(crate) struct PinnedHost<T> {
   pub(crate) ptr: *mut T,
   pub(super) len: usize,
@@ -51,9 +43,8 @@ impl<T> PinnedHost<T> {
     self.len
   }
 
-  /// The first `len` elements, which the caller must have written or copied
-  /// into. `len` is not checked against the allocation: every caller sizes
-  /// the buffer through [`alloc`](Self::alloc) first.
+  /// The first `len` elements, which the caller must have written; `len` is not checked, since
+  /// every caller sizes the buffer through [`alloc`](Self::alloc) first.
   ///
   /// # Safety
   ///

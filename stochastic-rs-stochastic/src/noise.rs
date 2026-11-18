@@ -1,11 +1,5 @@
-//! # Noise
-//!
-//! Raw driving-noise generators consumed by the process modules rather than
-//! simulated as standalone SDEs: i.i.d. Gaussian increments (`gn`, `wn`),
-//! correlated Gaussian pairs (`cgns`) and `k`-dimensional correlated
-//! increments from a correlation matrix (`mcgns`), fractional-Gaussian-noise for
-//! rough/fractional processes (`fgn`, and its correlated pair `cfgns`).
-//! Each module's own header states its concrete increment law.
+//! Driving-noise generators the process modules consume: Gaussian increments (`gn`, `wn`),
+//! correlated pairs (`cgns`) and matrices (`mcgns`), fractional Gaussian noise (`fgn`, `cfgns`).
 //!
 pub mod cfgns;
 pub mod cgns;

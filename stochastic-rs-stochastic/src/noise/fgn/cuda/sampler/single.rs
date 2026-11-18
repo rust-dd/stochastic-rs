@@ -2,11 +2,8 @@ use cudarc::cufft;
 
 use super::*;
 
-/// The pipeline with the increments left on the device: the caller — the
-/// Euler engine — reads them from GPU memory instead of paying a round trip
-/// through the host, which is where most of a CUDA batch's time goes. The
-/// returned slice is a device-to-device copy of the cached output, so the
-/// per-size cache stays reusable.
+/// The pipeline with the increments left on the device, where the Euler engine reads them without
+/// a host round trip; the returned slice is a device copy, so the per-size cache stays reusable.
 pub(crate) fn sample_f32_device(
   sqrt_eigs: &[f32],
   n: usize,
@@ -70,9 +67,8 @@ pub(crate) fn sample_f32_device(
     },
   )?;
 
-  // 1. Fused generate normals + scale by eigenvalues
-  // One seed per batch; chunks continue the element count, so a batch
-  // produced in chunks equals one launch element for element.
+  // 1. Fused generate normals + scale by eigenvalues. One seed per batch; chunks continue the
+  // element count, so a chunked batch equals one launch element for element.
   let [seed_lo, seed_hi] = crate::euler::philox::key(seed);
   let first_cell = (first * traj_size) as u64;
   unsafe {
@@ -185,9 +181,8 @@ pub(super) fn sample_f32<T: FloatExt>(
   let profile = log::log_enabled!(log::Level::Trace);
   let tstart = std::time::Instant::now();
 
-  // 1. Fused generate normals + scale by eigenvalues
-  // One seed per batch; chunks continue the element count, so a batch
-  // produced in chunks equals one launch element for element.
+  // 1. Fused generate normals + scale by eigenvalues. One seed per batch; chunks continue the
+  // element count, so a chunked batch equals one launch element for element.
   let [seed_lo, seed_hi] = crate::euler::philox::key(seed);
   let first_cell = (first * traj_size) as u64;
   unsafe {
@@ -226,10 +221,8 @@ pub(super) fn sample_f32<T: FloatExt>(
       .launch(LaunchConfig::for_num_elems(args.grid_out))
       .map_err(|e| DeviceError::Launch(format!("extract: {e}")))?;
   }
-  // 4. DtoH. For large outputs, allocate + pre-fault the host buffer now while
-  // the async kernels above are still running, so the page faults overlap device
-  // compute; then DMA through the cached pinned staging and copy in parallel.
-  // Small outputs go direct.
+  // 4. DtoH. Large outputs pre-fault the host buffer while the kernels run, then DMA through the
+  // cached pinned staging and copy in parallel; small outputs go direct.
   let len = m * out_size;
   let prefaulted =
     (len * std::mem::size_of::<f32>() >= STAGING_MIN_BYTES).then(|| alloc_prefaulted::<f32>(len));

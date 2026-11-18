@@ -142,14 +142,8 @@ fn fgn_marginal_distribution_and_covariance_match_theory() {
   );
 }
 
-/// A single-precision sample keeps its long memory on a fine grid.
-///
-/// The circulant kernel is a second difference of `k^{2H}`, which cancels:
-/// in `f32` the three terms agree to six digits by `k ≈ 4000` and their
-/// combination is then exactly zero, which flattens the kernel and leaves
-/// the sampler drawing white noise. At `n = 16384` the pooled lag-one
-/// autocorrelation read −0.006 against a theoretical 0.3195 before the
-/// embedding was built in double precision — the sign itself was wrong.
+/// A single-precision sample keeps its long memory on a fine grid: an `f32` embedding cancels to
+/// zero by `k ≈ 4000`, and lag-one autocorrelation at `n = 16384` is then −0.006, not 0.3195.
 #[test]
 fn single_precision_keeps_its_covariance_on_a_fine_grid() {
   let theory = 0.5 * (2.0_f64.powf(1.4) - 2.0);
@@ -221,9 +215,8 @@ fn fgn_lag1_correlation_sign_matches_hurst_regime() {
   );
 }
 
-// `fbm_hurst_and_fractal_dimension_from_fgn_increments` lives in
-// `stochastic-rs-stats/tests/fractal_dim_validation.rs` because it exercises
-// the `FractalDim` estimator from the stats crate.
+// `fbm_hurst_and_fractal_dimension_from_fgn_increments` is in
+// `stochastic-rs-stats/tests/fractal_dim_validation.rs`: it runs the stats crate's `FractalDim`.
 
 fn cross_covariance(a: &[Vec<f64>], b: &[Vec<f64>], mean_a: f64, mean_b: f64) -> f64 {
   let mut s = 0.0;
@@ -237,10 +230,8 @@ fn cross_covariance(a: &[Vec<f64>], b: &[Vec<f64>], mean_a: f64, mean_b: f64) ->
   s / c as f64
 }
 
-/// Primary and secondary paths of `sample_pair` must each satisfy the
-/// target marginal law and be mutually independent. The latter is the
-/// Dietrich–Newsam (1997) / Kroese–Botev (2013 §2.2) claim — here we
-/// check the sample cross-correlation vanishes to within Monte-Carlo SE.
+/// Both paths of `sample_pair` follow the target marginal law and are independent, the claim of
+/// Dietrich–Newsam (1997) and Kroese–Botev (2013 §2.2): the cross-correlation is zero within SE.
 #[test]
 fn sample_pair_independent_paths_match_theory() {
   let h = 0.68_f64;

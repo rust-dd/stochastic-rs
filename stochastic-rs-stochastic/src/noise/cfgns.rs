@@ -17,11 +17,8 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Two correlated fractional Gaussian noises `Z = L η^H` on `n` points over
-/// `[0, t]`.
-///
-/// Fields are private: the fGN driver caches a spectrum derived from `hurst`, `n` and `t`, so
-/// parameters are read through getters and changed through the cache-rebuilding `with_*` setters.
+/// Two correlated fractional Gaussian noises `Z = L η^H` on `n` points over `[0, t]`. Fields are
+/// private: the fGN driver caches a spectrum of `hurst`, `n` and `t` that the setters rebuild.
 ///
 /// ```compile_fail,E0616
 /// use stochastic_rs_core::simd_rng::Unseeded;
@@ -49,6 +46,8 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
     require!(n >= 1, n);
   }
 
+  /// Panics unless `0 <= hurst <= 1`, `-1 <= rho <= 1`, `n >= 2`, a given `t` is positive and
+  /// finite, and every parameter is finite.
   pub fn new(hurst: T, rho: T, n: usize, t: Option<T>, seed: S) -> Self {
     Self::check_hurst(hurst);
     Self::check_rho(rho);
@@ -74,7 +73,8 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
     self
   }
 
-  /// Replace `n`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  /// Replace `n` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
+  /// panics unless `n >= 2`.
   pub fn with_increments(mut self, n: usize) -> Self {
     Self::check_n(n);
     self.n = n;
@@ -82,7 +82,8 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
     self
   }
 
-  /// Replace `t`; rebuilds the cache, so it is defined on `Cpu`; move with `on` afterwards.
+  /// Replace `t` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
+  /// panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -133,16 +134,15 @@ impl<T: FloatExt, S: SeedExt, B> Cfgns<T, S, B> {
     self.t
   }
 
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub fn seed(&self) -> &S {
     &self.seed
   }
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Cfgns<T, S, B> {
-  /// Core sampling — monomorphised per seed strategy, zero runtime branching.
-  /// Uses one paired fGN pass (real/imag of a single circulant FFT) for the two
-  /// independent fields; on a GPU backend they come from a batch of two.
+  /// One paired fGN pass (the real and imaginary parts of a single circulant FFT) gives the two
+  /// independent fields; a GPU backend takes them from a batch of two.
   #[inline]
   pub(crate) fn sample_impl<S2: SeedExt>(&self, seed: &S2) -> [Array1<T>; 2] {
     self
@@ -180,17 +180,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   where
     Self: 's;
 
-  /// A CPU sampler borrowing the process for its inner [`Fgn`] (`Arc`-shared
-  /// FFT plan + eigenvalues) and owning a seed derived once at
-  /// construction. Deriving (not cloning) is what decorrelates chunks: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart. The first
-  /// `sample` reproduces the legacy `sample_impl(&seed)` stream bit-for-bit
-  /// — `sample_impl`'s own use of the seed is what advances it, the same
-  /// tick the legacy code consumed from `self.seed` directly — and each
-  /// subsequent call advances the owned seed further for an independent
-  /// correlated pair.
+  /// A CPU sampler that borrows the process for its inner [`Fgn`] and owns a seed derived once,
+  /// which hash-scrambles chunk bases; `sample_impl` advances it, so each call gives a new pair.
   fn sampler(&self) -> CfgnsSampler<'_, T, S, B> {
     CfgnsSampler {
       cfgns: self,
@@ -198,10 +189,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
     }
   }
 
-  /// Through the Euler engine: on a device both rows are produced in the
-  /// kernel from the increments the fractional pipeline wrote to that same
-  /// device, on the host devices it is this process's own sampler, chunked
-  /// exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine: a device produces both rows in its kernel from the increments the
+  /// fractional pipeline wrote there; the host runs this process's own chunked sampler.
   fn sample(&self) -> [Array1<T>; 2] {
     crate::euler::EulerBackend::system_sample(&self.fgn.backend, self)
   }
@@ -223,9 +212,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   }
 }
 
-/// Reusable [`Cfgns`] sampling state: borrows the process for its inner [`Fgn`]
-/// (one paired fGN pass per call) and owns a seed derived once at
-/// construction.
+/// Reusable [`Cfgns`] sampling state: borrows the process for its inner [`Fgn`] (one paired fGN
+/// pass per call) and owns a seed derived once.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct CfgnsSampler<'a, T: FloatExt, S: SeedExt, B> {
@@ -265,11 +253,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for CfgnsSampler<
   }
 }
 
-/// The Euler engine's view of correlated fGn: the pair *is* the step, so the
-/// two-shock innovation family reports its own noise. Both rows come out of
-/// one embedding — they share a Hurst exponent — so the pipeline draws
-/// `2 · m` paths in the one batched call and the step reads its second stream
-/// from the buffer's next `paths` rows.
+/// The Euler engine's view: the pair is the step, so the two-shock innovation family reports its
+/// noise. One embedding gives both rows: `2 · m` paths per call, the second stream `paths` rows on.
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
   crate::euler::EulerSystem<T, 2> for Cfgns<T, S, B>
 {

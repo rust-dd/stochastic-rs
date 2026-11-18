@@ -27,7 +27,7 @@ pub struct Wn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub mu: Option<T>,
   /// Standard deviation of generated noise samples.
   pub sigma: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -35,6 +35,7 @@ pub struct Wn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Wn<T, S> {
+  /// Panics unless `n >= 1`, `sigma.is_none_or(|s| s >= 0)` and every parameter is finite.
   pub fn new(n: usize, mu: Option<T>, sigma: Option<T>, seed: S) -> Self {
     assert!(n >= 1, "n must satisfy `n >= 1`, got n = {n:?}");
     assert!(
@@ -139,9 +140,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine: on a device the draw happens in the kernel, on
-  /// the host devices it is this process's own sampler, chunked exactly as
-  /// `ProcessExt` chunks.
+  /// Through the Euler engine: a device draws in its kernel, the host runs this process's own
+  /// sampler, chunked as `ProcessExt` chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
