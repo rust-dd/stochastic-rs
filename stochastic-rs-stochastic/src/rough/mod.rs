@@ -1,10 +1,11 @@
+//! Riemann–Liouville fBM and its Volterra SDEs by Bilokon & Wong's (2026) Markov lift.
+//!
 //! $$
 //! X_t = X_0 + \frac{1}{\Gamma(H+1/2)}\int_0^t (t-s)^{H-1/2} f(X_s)\,ds
 //!          + \frac{1}{\Gamma(H+1/2)}\int_0^t (t-s)^{H-1/2} g(X_s)\,dW_s
 //! $$
 //!
-//! Riemann–Liouville fBM and its Volterra SDEs by Bilokon & Wong's (2026) algorithm, Gauss–Laguerre
-//! where Ma & Wu (2021) use Gauss–Legendre: $N' \approx \log N$ Markov factors, no stored history.
+//! Gauss–Laguerre where Ma & Wu (2021) use Gauss–Legendre: `N' ≈ log N` factors, no stored history.
 //!
 //! $$
 //! \Gamma(1/2-H)\, t^{H-1/2} \approx \sum_{l=1}^{N'} w_l\, e^{-x_l t},

@@ -1,9 +1,10 @@
+//! Fractional Black–Scholes in closed form, applied pointwise to an [`RlFbm`] path: no Euler step.
+//!
 //! $$
 //! S_t = S_0\,\exp\!\left(rt - \tfrac{1}{2}\sigma^2 t^{2H} + \sigma W^H_t\right)
 //! $$
 //!
-//! The closed-form solution of $dS_t = rS_t\,dt + \sigma S_t\,dW^H_t$ under Wick–Itô–Skorokhod
-//! integration (Hu & Øksendal 2003), applied pointwise to an [`RlFbm`] path: no Euler step.
+//! Solves `dS = rS dt + σS dW^H` under Wick–Itô–Skorokhod integration (Hu & Øksendal 2003).
 //!
 //! Reference: Bilokon & Wong (2026), §5.1
 //! Reference: Hu & Øksendal (2003), IDAQP 6, 1–32

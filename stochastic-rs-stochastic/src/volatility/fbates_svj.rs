@@ -1,11 +1,12 @@
+//! Rough Heston variance with Bates jumps in the log-price; returns `[S, v]`.
+//!
 //! $$
 //! d\ln S_t = (\mu - \lambda\kappa_J - \tfrac12 v_t)\,dt + \sqrt{v_t}\,dW_t^S + Z\,dN_t,\quad
 //! N_t \sim \text{Poisson}(\lambda),\ Z \sim \mathcal{N}(\nu, \omega^2),\
 //! \langle dW^S, dW^v \rangle = \rho\,dt,\ H \in (0, 0.5)
 //! $$
 //!
-//! Rough Heston variance with Bates jumps in the log-price; returns `[S, v]`. The convolution is
-//! this crate's own one-factor carrier plus an `O(n²)` memory sum, not a published scheme.
+//! The convolution is this crate's own one-factor carrier plus an `O(n²)` memory sum, unpublished.
 //!
 //! Reference: Gatheral et al. (2018), Quant. Fin. 18(6), 933–949, DOI 10.1080/14697688.2017.1393551
 //! Reference: El Euch & Rosenbaum (2019), Math. Finance 29(1), 3–38, DOI 10.1111/mafi.12173

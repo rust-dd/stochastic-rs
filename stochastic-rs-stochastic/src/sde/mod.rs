@@ -1,9 +1,10 @@
+//! Solves a custom `d`-dimensional Itô SDE from closures; a built-in model has its own struct.
+//!
 //! $$
 //! dX_t^i = a^i(X_t, t)\,dt + \sum_{j=1}^{d} b^{ij}(X_t, t)\,dW_t^j, \quad i = 1, \ldots, d
 //! $$
 //!
-//! Solves a custom $d$-dimensional Itô SDE from drift and diffusion closures; a built-in model has
-//! its own struct. Schemes: <https://stochastic.rust-dd.com/docs/processes#generic-sde-solver>.
+//! The schemes: <https://stochastic.rust-dd.com/docs/processes#generic-sde-solver>.
 //!
 //! Reference: Maruyama (1955), Rend. Circ. Mat. Palermo 4, 48–90
 //! Reference: Milstein (1974), Theory Probab. Appl. 19(3), 557–562

@@ -1,11 +1,12 @@
+//! Rough Bergomi, flat `ξ_0(t) = v_0²`, by the hybrid scheme at `κ = 1`: exact first term, `O(n²)`.
+//!
 //! $$
 //! dS_t = r S_t\,dt + S_t\sqrt{v_t}\,dW^1_t,\qquad
 //! v_t = v_0^2\exp\!\Bigl(\nu W^H_t - \tfrac12\nu^2 t^{2H}\Bigr),\qquad
 //! W^H_t = \sqrt{2H}\int_0^t (t-s)^{H-1/2}\,dW^2_s
 //! $$
 //!
-//! Rough Bergomi with a flat forward variance $\xi_0(t) = v_0^2$, by the hybrid scheme at
-//! $\kappa = 1$: the first term exact, the sum at the optimal $b_k^*$ (Proposition 2.8), $O(n^2)$.
+//! At the optimal $b_k^*$ (Proposition 2.8) the scheme's covariance error is second order in `Δ`.
 //!
 //! $$
 //! X_{t_i} = \int_{t_{i-1}}^{t_i} (t_i-s)^{\alpha}\,dW^2_s

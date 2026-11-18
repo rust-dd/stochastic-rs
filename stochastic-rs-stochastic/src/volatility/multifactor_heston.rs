@@ -1,3 +1,5 @@
+//! Multifactor Heston: one CIR factor cannot fit both skews and the ATM term structure (CHJ, 2009).
+//!
 //! $$
 //! \begin{aligned}
 //! \frac{dS_t}{S_t} &= \mu\,dt + \sum_{k=1}^{K} \sqrt{V_{k,t}}\,dW^{S}_{k,t}, \\
@@ -8,8 +10,7 @@
 //! \end{aligned}
 //! $$
 //!
-//! One CIR factor cannot fit the short skew, the long skew and the ATM variance term structure
-//! at once (CHJ, 2009). Asset by Euler, factors by full truncation (Lord-Koekkoek-van Dijk 2010).
+//! The asset steps by Euler, each variance factor by full truncation (Lord-Koekkoek-van Dijk 2010).
 //!
 //! Reference: Christoffersen, Heston & Jacobs (2009), Management Science 55(12), 1914-1932
 

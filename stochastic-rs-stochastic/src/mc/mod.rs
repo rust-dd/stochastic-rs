@@ -1,10 +1,11 @@
+//! Monte Carlo estimators: variance reduction, Brownian-bridge QMC paths and multi-level MC.
+//!
 //! $$
 //! \hat{\mu}_N = \frac{1}{N}\sum_{i=1}^{N} f(X_i),\quad
 //! \operatorname{Var}[\hat{\mu}_N] = \frac{\sigma^2}{N}
 //! $$
 //!
-//! Variance reduction, Brownian-bridge QMC paths over the `stochastic_rs_distributions::qmc`
-//! sequences and multi-level MC; the Longstaff–Schwartz pricer is quant's `BermudanLsmPricer`.
+//! QMC reads `stochastic_rs_distributions::qmc`; Longstaff–Schwartz is quant's `BermudanLsmPricer`.
 //!
 //! Reference: Glasserman (2003), Springer, DOI 10.1007/978-0-387-21617-1
 

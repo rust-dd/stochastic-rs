@@ -1,3 +1,5 @@
+//! Rough Heston: a Riemann–Liouville Volterra–CIR variance on one Markov lift, the price by Euler.
+//!
 //! $$
 //! \begin{aligned}
 //! dS_t &= \mu S_t\,dt + \sqrt{V_t}\,S_t\,dW^s_t,\qquad d\langle W^s, W^v\rangle_t = \rho\,dt \\
@@ -6,8 +8,7 @@
 //! \end{aligned}
 //! $$
 //!
-//! The variance, a Riemann–Liouville Volterra–CIR, steps by one Markov lift with drift
-//! $\kappa(\theta-V)$ and diffusion $\nu\sqrt{V^+}$; the price steps by Euler on $W^s$.
+//! The lift takes drift $\kappa(\theta-V)$ and diffusion $\nu\sqrt{V^+}$; the price steps on $W^s$.
 //!
 //! Reference: Bilokon & Wong (2026), §5.5
 //! Reference: El Euch & Rosenbaum (2019), Math. Finance 29, 3–38

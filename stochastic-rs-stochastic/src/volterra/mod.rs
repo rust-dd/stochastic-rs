@@ -1,9 +1,10 @@
+//! Stochastic Volterra equations, stepped at `O(nN')` through an exponential-sum kernel.
+//!
 //! $$
 //! X_t = X_0 + \int_0^t K(t-s)\,b(s,X_s)\,ds + \int_0^t K(t-s)\,\sigma(s,X_s)\,dW_s
 //! $$
 //!
-//! A weakly singular $K$ makes $X$ neither Markov nor a semimartingale, an $O(n^2)$ convolution;
-//! a [`VolterraKernel`]'s exponential sum makes it $N'$ factors [`VolterraLift`] steps at $O(nN')$.
+//! $X$ is neither Markov nor a semimartingale; [`VolterraLift`] steps [`VolterraKernel`]'s factors.
 //!
 //! $$
 //! K(t) \approx \sum_{l=1}^{N'} w_l\, e^{-x_l t},

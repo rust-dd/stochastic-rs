@@ -1,10 +1,11 @@
+//! The exact-kernel `O(n²)` scheme: the permanent oracle of `VolterraSde` and `VolterraLift`.
+//!
 //! $$
 //! X_{t_i} = X_0 + \sum_{j \le i} K(t_i - t_{j-1})
 //! \bigl[b(t_{j-1}, X_{j-1})\,\Delta t + \sigma(t_{j-1}, X_{j-1})\,\Delta W_j\bigr]
 //! $$
 //!
-//! The exact-kernel $O(n^2)$ scheme: the permanent oracle of `VolterraSde` and `VolterraLift`, and
-//! `Volterra`'s production sampler for a kernel the lift cannot represent, such as $H \ge 1/2$.
+//! Also `Volterra`'s production sampler for a kernel the lift cannot represent, such as `H ≥ 1/2`.
 //!
 //! Reference: Li, Huang & Hu (2020), arXiv:2004.04916, rate $\min\{1-\alpha,\,\tfrac12-\beta\}$
 use ndarray::Array1;

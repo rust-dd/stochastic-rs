@@ -1,3 +1,5 @@
+//! The Markov lift of a Volterra equation: `N'` exponential factors, `O(nN')` in place of `O(n²)`.
+//!
 //! $$
 //! \begin{aligned}
 //! X_{n+1} &= X_0 + \Bigl(\textstyle\int_0^{\delta t} K(u)\,du\Bigr) f(t_n, X_n) +
@@ -9,8 +11,7 @@
 //! \end{aligned}
 //! $$
 //!
-//! For any [`VolterraKernel`], whose weights carry every normalising constant: the history
-//! collapses into $N'$ exponential factors, $O(nN')$ where the direct convolution is $O(n^2)$.
+//! For any [`VolterraKernel`], whose weights carry every normalising constant.
 //!
 //! Reference: Abi Jaber & El Euch (2018), arXiv:1801.10359
 //! Reference: Bilokon & Wong (2026), J. Appl. Probab., doi:10.1017/jpr.2025.10071

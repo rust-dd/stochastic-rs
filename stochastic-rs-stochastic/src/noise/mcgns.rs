@@ -1,10 +1,11 @@
+//! `k` Brownian increment streams correlated by `ρ`'s lower Cholesky factor.
+//!
 //! $$
 //! \Delta W_t = L\,\varepsilon_t\sqrt{\Delta t},\quad
 //! \varepsilon_t\sim\mathcal N(0,I_k),\ LL^\top=\rho
 //! $$
 //!
-//! `k` Brownian increment streams correlated by `ρ`'s lower Cholesky factor: the driver of
-//! [`crate::diffusion::multi_gbm::MultiGbm`], generalising [`crate::noise::cgns::Cgns`].
+//! Drives [`crate::diffusion::multi_gbm::MultiGbm`] and generalises [`crate::noise::cgns::Cgns`].
 //!
 //! Reference: Glasserman (2003), Springer, §2.3.3, DOI 10.1007/978-0-387-21617-1
 

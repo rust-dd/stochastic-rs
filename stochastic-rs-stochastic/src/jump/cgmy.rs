@@ -1,9 +1,10 @@
+//! CGMY by Rosiński's series, stopped at `J` terms; `C` is an input, not a variance normalisation.
+//!
 //! $$
 //! \nu(dx)=C\left(e^{-Gx}x^{-1-Y}\mathbf 1_{x>0}+e^{-M|x|}|x|^{-1-Y}\mathbf 1_{x<0}\right)dx
 //! $$
 //!
-//! `C` is an input, not a variance normalisation, and the series stops at `J` terms. The drift
-//! `b_T` carries the mean compensator, with its `Γ(1 − Y)`, only for `Y < 1` and is 0 otherwise.
+//! The drift `b_T` carries the mean compensator, with its `Γ(1 − Y)`, only for `Y < 1`; else 0.
 //!
 //! $$
 //! X(t)=\sum_{j=1}^{J}\Big(\Big(\frac{Y\Gamma_j}{2CT}\Big)^{-1/Y}\wedge

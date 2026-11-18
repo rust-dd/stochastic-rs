@@ -1,10 +1,11 @@
+//! Volterra Heston variance, rough Heston under the Riemann–Liouville kernel, by full truncation.
+//!
 //! $$
 //! V_t = V_0 + \int_0^t K(t-s)\,\kappa(\theta - V_s)\,ds
 //!           + \int_0^t K(t-s)\,\nu\sqrt{V_s}\,dW_s
 //! $$
 //!
-//! The Volterra Heston variance leg, rough Heston under the Riemann–Liouville kernel, by full
-//! truncation at $V^+ = \max(V, 0)$ with a floored output: nonnegative always, and biased in law.
+//! Truncated at $V^+ = \max(V, 0)$ with a floored output: nonnegative always, and biased in law.
 //!
 //! Reference: Abi Jaber & El Euch, arXiv:1803.00477, the Volterra Heston model
 //! Reference: Lord, Koekkoek & van Dijk (2010), Quantitative Finance 10(2), full truncation

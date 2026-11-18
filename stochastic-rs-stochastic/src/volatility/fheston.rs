@@ -1,9 +1,10 @@
+//! Heston whose variance is driven by fractional Gaussian noise; rough Heston is `rough::RlHeston`.
+//!
 //! $$
 //! dS_t=\mu S_tdt+\sqrt{v_t}S_tdW_t,\quad dv_t=\kappa(\theta-v_t)dt+\xi\sqrt{v_t}dB_t^H
 //! $$
 //!
-//! A Heston model whose variance is driven by fractional Gaussian noise through a one-factor
-//! carrier plus an `O(n²)` memory sum, this crate's own scheme; rough Heston is `rough::RlHeston`.
+//! The variance is a one-factor carrier plus an `O(n²)` memory sum, this crate's own scheme.
 //!
 //! Reference: Gatheral et al. (2018), Quant. Fin. 18(6), 933–949, DOI 10.1080/14697688.2017.1393551
 //! Reference: El Euch & Rosenbaum (2019), Math. Finance 29(1), 3–38, DOI 10.1111/mafi.12173

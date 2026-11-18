@@ -1,9 +1,10 @@
+//! [`VolterraLift`] as a [`ProcessExt`]: any [`VolterraKernel`], time-and-state coefficients.
+//!
 //! $$
 //! X_t = X_0 + \int_0^t K(t-s)\,b(s,X_s)\,ds + \int_0^t K(t-s)\,\sigma(s,X_s)\,dW_s
 //! $$
 //!
-//! [`VolterraLift`] as a [`ProcessExt`]: any [`VolterraKernel`] with time-and-state coefficients
-//! at $O(nN')$. The cited rates are the literature's for this scheme class, not measured here.
+//! The cited rates are the literature's for this scheme class, not measured here.
 //!
 //! Reference: Abi Jaber & El Euch (2018), arXiv:1801.10359
 //! Reference: Li, Huang & Hu (2020), arXiv:2004.04916, rate $\min\{1-\alpha,\,\tfrac12-\beta\}$

@@ -1,9 +1,10 @@
+//! Riemann–Liouville fBM: unlike Mandelbrot–Van Ness fBm, its increments are not stationary near 0.
+//!
 //! $$
 //! W^H_t = \frac{1}{\Gamma(H+1/2)}\int_0^t (t-s)^{H-1/2}\,dW_s,\qquad H\in(0, 1/2)
 //! $$
 //!
-//! The kernel as a sum of $N' \approx \log n$ exponentials, stepped by a [`MarkovLift`] built
-//! once in `new`; unlike Mandelbrot–Van Ness fBm, its increments are not stationary near $t = 0$.
+//! The kernel is $N' \approx \log n$ exponentials, stepped by a [`MarkovLift`] built once in `new`.
 //!
 //! Reference: Bilokon & Wong (2026), doi:10.1017/jpr.2025.10071.
 

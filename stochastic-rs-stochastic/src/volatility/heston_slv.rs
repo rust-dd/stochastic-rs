@@ -1,3 +1,5 @@
+//! Heston under a leverage function and a mixing fraction `η` in `[0, 1]`, local volatility at 0.
+//!
 //! $$
 //! \begin{aligned}
 //! dS_t &= \mu S_t\,dt + L(t, S_t)\sqrt{V_t}\,S_t\,dW_t^S\\
@@ -6,8 +8,7 @@
 //! \end{aligned}
 //! $$
 //!
-//! Heston under a leverage $L(t, S)$, read at the step's start, and a mixing fraction
-//! $\eta \in [0, 1]$, local volatility at 0. `HestonLog` and quant's calibration run this scheme:
+//! $L(t, S)$ is read at the step's start; `HestonLog` and quant's calibration run this scheme:
 //!
 //! $$
 //! S_{n+1} = S_n \exp\bigl((\mu - \tfrac12 L^2 V_n^+)\Delta t + L\sqrt{V_n^+}\,\Delta W\bigr),\quad

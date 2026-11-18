@@ -1,3 +1,5 @@
+//! Bivariate Heston in log-prices `x_i`, as `FmVol` expects, after `Heston2D.m` of MATLAB's FSDA.
+//!
 //! $$
 //! \begin{aligned}
 //! dx^i_t &= \left(\mu_i - \tfrac{1}{2} v^i_t\right) dt + \sqrt{v^i_t}\, dW^i_t \\
@@ -5,8 +7,7 @@
 //! \end{aligned}
 //! $$
 //!
-//! After `Heston2D.m` of the MATLAB FSDA toolbox: the output is log-prices `x_i`, as `FmVol`
-//! expects, and a negative Euler variance is reflected or truncated, unlike MATLAB's raw Euler.
+//! A negative Euler variance is reflected or truncated, unlike MATLAB's raw Euler.
 //!
 //! Reference: Sanfelici & Toscano, arXiv:2402.00172
 

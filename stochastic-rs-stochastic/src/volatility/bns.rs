@@ -1,3 +1,5 @@
+//! Barndorff-Nielsen–Shephard volatility: an OU variance driven by a nonnegative Lévy subordinator.
+//!
 //! $$
 //! \begin{aligned}
 //! \frac{dS_t}{S_t} &= \mu\,dt + \sigma_t\,dW_t,\\
@@ -5,8 +7,7 @@
 //! \end{aligned}
 //! $$
 //!
-//! $Z$ is a non-negative Lévy subordinator (§2), here compound Poisson at rate $\nu$ on the
-//! $\lambda$-rescaled clock with $\mathrm{Gamma}(\omega, 1)$ jumps; leverage is not implemented.
+//! $Z$ is compound Poisson, rate `ν` on the `λ`-rescaled clock, `Gamma(ω, 1)` jumps; no leverage.
 //!
 //! $$
 //! N_i \sim \mathrm{Poisson}(\nu \cdot \lambda \cdot \Delta t),\quad

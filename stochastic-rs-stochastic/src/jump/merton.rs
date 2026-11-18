@@ -1,9 +1,10 @@
+//! Merton jump diffusion over any jump-size law `D`; `SimdNormal` is Merton's (1976) model.
+//!
 //! $$
 //! \frac{dS_t}{S_{t^-}}=(\mu-\lambda\kappa)dt+\sigma dW_t+(Y-1)dN_t
 //! $$
 //!
-//! The jump-size law `D` is any [`rand::distr::Distribution<T>`] that is `Send + Sync + 'static`.
-//! A device draws `SimdNormal`, Merton's (1976) model, and `SimdExp`; any other stays on the host.
+//! Devices draw `SimdNormal` and `SimdExp`; another `Send + Sync + 'static` law stays on the host.
 //!
 
 use std::any::Any;

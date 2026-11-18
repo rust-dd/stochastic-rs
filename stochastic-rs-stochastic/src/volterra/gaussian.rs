@@ -1,10 +1,11 @@
+//! A Gaussian process under a causal kernel; fBM is `K(t,s) = (t-s)^(H-1/2) / Γ(H+1/2)`.
+//!
 //! $$
 //! X_t = \int_0^t K(t,s)\,dW_s,\qquad
 //! \mathrm{Cov}(X_t, X_u) = \int_0^{\min(t,u)} K(t,s)\,K(u,s)\,ds
 //! $$
 //!
-//! A Gaussian process under a causal kernel; fBM is $K(t,s) = (t-s)^{H-1/2}/\Gamma(H+1/2)$. That
-//! kernel with $H < 1/2$ takes [`VolterraSde`]'s lift, any other [`reference_path`]'s $O(n^2)$ sum.
+//! With `H < 1/2` it takes [`VolterraSde`]'s lift, any other [`reference_path`]'s `O(n²)` sum.
 //!
 //! Reference: Decreusefond, Üstünel (1999), Stochastic Analysis of the Fractional Brownian Motion
 

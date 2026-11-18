@@ -1,11 +1,12 @@
+//! Merton jump diffusion stepped in the log-spot, which keeps `S_t > 0`.
+//!
 //! $$
 //! \ln\!\bigl(\tfrac{S_{t+dt}}{S_t}\bigr) = (\mu - \lambda\kappa_J - \tfrac12\sigma^2)\,dt
 //!   + \sigma\sqrt{dt}\,Z_1 + \sum_{j=1}^{K} Z_j
 //!
 //! $$
 //!
-//! where $K\sim\mathrm{Poisson}(\lambda\,dt)$, $Z_j\sim\mathcal{N}(\nu,\omega^2)$ and
-//! $\kappa_J = e^{\nu+\frac12\omega^2}-1$. The log-spot scheme guarantees $S_t > 0$.
+//! `K ~ Poisson(λ dt)`, `Z_j ~ N(ν, ω²)` and `κ_J = exp(ν + ω²/2) − 1`.
 //!
 
 use ndarray::Array1;

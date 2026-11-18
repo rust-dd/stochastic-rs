@@ -1,10 +1,11 @@
+//! CGMY on a CIR clock: `rho` is a loading on `v_t`, not a correlation, and may leave [-1, 1].
+//!
 //! $$
 //! L_t = Z_{V_t} + \rho v_t, \quad V_t = \int_0^t v_s ds,\qquad
 //! dv_t=\kappa(\eta-v_t)dt+\zeta\sqrt{v_t}dW_t.
 //! $$
 //!
-//! $Z$ is a standard Cgmy process independent of the Cir $v$, on $t_m = m\Delta t$ by Algorithm 1
-//! (`j = 1..J`, `Γ0 = 0`). `rho` is a loading on $v_t$, not a correlation: it may leave [-1, 1].
+//! $Z$ is a standard Cgmy independent of $v$, on `t_m = mΔt` by Algorithm 1 (`j = 1..J`, `Γ0 = 0`).
 //!
 //! Reference: Kim (2021), JRFM 14(2), 77, Algorithm 1, DOI 10.3390/jrfm14020077
 //! Reference: Glasserman (2003), §3.4.1 (the exact CIR step), DOI 10.1007/978-0-387-21617-1

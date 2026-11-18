@@ -1,9 +1,10 @@
+//! A volatility that is a polynomial of a Gaussian Volterra process; the price leg is not included.
+//!
 //! $$
 //! X_t = \int_0^t K(t-s)\,dW_s, \qquad \sigma_t = p(X_t) = \sum_{k=0}^{d} c_k X_t^k
 //! $$
 //!
-//! The volatility $\sigma_t$ alone, a polynomial of a Gaussian Volterra process: the price leg is
-//! not included. An `ExponentialKernel` makes $X$ the quintic model's exact OU process.
+//! An `ExponentialKernel` makes $X$ the quintic model's exact OU process.
 //!
 //! Reference: Abi Jaber, Illand & Li (2022), arXiv:2212.08297, joint SPX-VIX calibration
 //! Reference: Abi Jaber, Illand & Li (2022), arXiv:2212.10917, the quintic OU model

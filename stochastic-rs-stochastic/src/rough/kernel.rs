@@ -1,10 +1,11 @@
+//! The Riemann–Liouville kernel as an exponential sum, by one generalised Gauss–Laguerre rule.
+//!
 //! $$
 //! \Gamma(1/2-H)\, t^{H-1/2} = \int_0^\infty s^{-(H+1/2)}\, e^{-ts}\,ds
 //! \approx \sum_{l=1}^{N'} w_l\, e^{-x_l t}
 //! $$
 //!
-//! Generalised Gauss–Laguerre at $\alpha = -(H+1/2)$: the Bilokon–Wong (2026) substitution
-//! $f(s) = e^{s-ts}$ covers $(0,\infty)$ in one rule. Weights absorb $e^{x_l}/\Gamma(1/2-H)$.
+//! Bilokon–Wong's (2026) `f(s) = e^(s-ts)` at `α = -(H+1/2)`; weights absorb `e^(x_l) / Γ(1/2-H)`.
 use std::num::NonZeroUsize;
 
 use gauss_quad::laguerre::GaussLaguerre;

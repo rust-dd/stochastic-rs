@@ -1,3 +1,5 @@
+//! The Riemann–Liouville Markov lift: the history as a bounded state of `N' ≈ log n` factors.
+//!
 //! $$
 //! \begin{aligned}
 //! X_{n+1} &= X_0 + \frac{\delta t^{H+1/2} f(X_n)}{\Gamma(H+3/2)} +
@@ -9,7 +11,6 @@
 //! \end{aligned}
 //! $$
 //!
-//! Collapses the history into a bounded state of $N' \approx \log n$ exponential factors: it is
 //! [`VolterraLift`](crate::volterra::VolterraLift) for `RlKernel<T>` and $(x)$-only coefficients.
 //!
 //! Reference: Bilokon & Wong (2026), J. Appl. Probab., p. 16

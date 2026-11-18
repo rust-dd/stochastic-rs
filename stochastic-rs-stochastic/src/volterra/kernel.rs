@@ -1,9 +1,10 @@
+//! [`VolterraKernel`]: an exponential-sum representation plus the two closed forms a lift needs.
+//!
 //! $$
 //! K(t) \approx \sum_{l=1}^{N'} w_l\, e^{-x_l t},
 //! $$
 //!
-//! [`VolterraKernel`]: an exponential-sum representation plus the two closed forms a lift needs
-//! for the current step, which has no history yet, $K(\delta t)$ and $\int_0^{\delta t} K(u)\,du$.
+//! For the current step, which has no history: $K(\delta t)$ and $\int_0^{\delta t} K(u)\,du$.
 use ndarray::Array1;
 use stochastic_rs_distributions::special::gamma_p;
 

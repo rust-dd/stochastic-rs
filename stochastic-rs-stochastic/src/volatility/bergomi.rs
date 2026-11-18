@@ -1,9 +1,10 @@
+//! Single-factor log-normal Bergomi; `rough_bergomi::RoughBergomi` is the rough model.
+//!
 //! $$
 //! dS_t=S_t\sqrt{v_t}\,dW_t^1,\quad v_t = v_0^2\,\exp\!\bigl(\nu\,W_t^2 - \tfrac12\nu^2 t\bigr)
 //! $$
 //!
-//! Single-factor log-normal Bergomi, not Bergomi's (2009) one-factor model: `H = ½`, no mean
-//! reversion (`κ = 0`), flat `ξ_0(t) ≡ v_0²`; `rough_bergomi::RoughBergomi` is the rough model.
+//! Not Bergomi's (2009) one-factor model: `H = ½`, no mean reversion (`κ = 0`), flat `ξ_0 ≡ v_0²`.
 //!
 //! ```text
 //! v(t_i) = v_0² · exp(ν · Σ_{j<i} cgn2_j  −  ½ ν² t_i)

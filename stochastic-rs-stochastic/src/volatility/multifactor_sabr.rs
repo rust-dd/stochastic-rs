@@ -1,3 +1,5 @@
+//! SABR with piecewise-constant `beta`, `nu` and `rho` over the buckets that `knots` cut.
+//!
 //! $$
 //! \begin{aligned}
 //! dF_t &= \alpha_t\,F_t^{\beta(t)}\,dW^1_t,\\
@@ -6,8 +8,7 @@
 //! \end{aligned}
 //! $$
 //!
-//! SABR with piecewise-constant $\beta(t)$, $\nu(t)$, $\rho(t)$ over the buckets `knots` cut, the
-//! active one being the number of knots $\le t_i$; the forward steps by Euler, absorbed at 0.
+//! The active bucket is the number of knots $\le t_i$; the forward steps by Euler, absorbed at 0.
 //!
 //! $$
 //! \Delta W^1_i = z^1_i, \qquad
