@@ -2,8 +2,14 @@
 //! book, and an enum where a flag named the option type.
 
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_quant::CallPut;
 use stochastic_rs_quant::OptionType;
+use stochastic_rs_quant::calibration::SwaptionQuote;
+use stochastic_rs_quant::fx::CurrencyPair;
+use stochastic_rs_quant::fx::FxForward;
+use stochastic_rs_quant::fx::currency;
+use stochastic_rs_quant::instruments::SwaptionDirection;
 use stochastic_rs_quant::market::provider::ChainQuote;
 use stochastic_rs_quant::order_book::Depth;
 use stochastic_rs_quant::order_book::Execution;
@@ -16,6 +22,10 @@ use stochastic_rs_quant::pricing::bachelier::BachelierPricer;
 use stochastic_rs_quant::pricing::bjerksund_stensland::BjerksundStensland2002Pricer;
 use stochastic_rs_quant::pricing::bsm::BsmCoc;
 use stochastic_rs_quant::pricing::bsm::BsmPricer;
+use stochastic_rs_quant::pricing::fourier::BatesFourier;
+use stochastic_rs_quant::pricing::fourier::HkdeFourier;
+use stochastic_rs_quant::pricing::fourier::HkdeParams;
+use stochastic_rs_quant::pricing::fourier::SvjParams;
 use stochastic_rs_quant::pricing::heston::HestonParams;
 use stochastic_rs_quant::pricing::heston::HestonPricer;
 use stochastic_rs_quant::pricing::heston_stoch_corr::HestonStochCorrPricer;
@@ -25,6 +35,7 @@ use stochastic_rs_quant::pricing::merton_jump::Merton1976Pricer;
 use stochastic_rs_quant::pricing::quanto::QuantoPricer;
 use stochastic_rs_quant::pricing::sabr::SabrParams;
 use stochastic_rs_quant::pricing::sabr::SabrPricer;
+use stochastic_rs_quant::pricing::snell_envelope::SnellEnvelopePricer;
 use stochastic_rs_quant::traits::ModelPricer;
 use stochastic_rs_quant::vol_surface::ImpliedVolSurface;
 use stochastic_rs_quant::vol_surface::build_surface;
@@ -242,4 +253,98 @@ fn lambda_is_the_elasticity_of_the_option_it_is_asked_for() {
   let put = bsm.price_put(S, K, R, Q, TAU);
   let delta = bsm.delta(S, K, R, Q, TAU, OptionType::Put);
   assert_eq!(LAMBDA_PUT, delta * S / put);
+}
+
+#[test]
+fn the_vocabulary_is_one_word_per_concept() {
+  let bsm = BsmPricer {
+    sigma: 0.2,
+    b: BsmCoc::Merton1973,
+  };
+  let greeks = bsm.greeks(S, K, R, Q, TAU, OptionType::Call);
+  assert_eq!(greeks.volga, bsm.volga(S, K, R, Q, TAU));
+  assert_eq!(greeks.veta, bsm.veta(S, K, R, Q, TAU));
+  let merton = Merton1976Pricer::new(0.25, 1.0, 0.4, 50, BsmCoc::Merton1973);
+  assert_eq!(merton.sigma, 0.25);
+  assert_eq!(
+    merton.greeks(S, K, R, Q, TAU, OptionType::Put).volga,
+    merton.volga(S, K, R, Q, TAU)
+  );
+  assert_eq!(BachelierPricer::new(20.0).sigma, 20.0);
+  assert_eq!(AsianPricer::new(0.25).sigma, 0.25);
+  assert_eq!(BjerksundStensland2002Pricer::new(0.25).sigma, 0.25);
+  assert_eq!(SnellEnvelopePricer::new(0.25, 50).sigma, 0.25);
+  assert_eq!(GbmMalliavinPricer::new(0.2, 8, 4, 0.5, Unseeded).sigma, 0.2);
+  let quanto = QuantoPricer {
+    sigma: 0.2,
+    sigma_fx: 0.12,
+    rho: 0.3,
+    r_f: 0.05,
+    fixed_rate: 1.5,
+  };
+  assert_eq!(quanto, QuantoPricer::new(0.2, 0.12, 0.3, 0.05, 1.5));
+
+  let forward = FxForward::new(
+    CurrencyPair::new(currency::EUR, currency::USD),
+    1.1,
+    0.03,
+    0.01,
+    1.0,
+  );
+  assert_eq!((forward.r_d, forward.r_f), (0.03, 0.01));
+  let quote = SwaptionQuote {
+    tau: 1.0,
+    tenor: 2.0,
+    black_vol: 0.2,
+    fixed_accrual: 0.5,
+    direction: SwaptionDirection::Payer,
+    weight: None,
+  };
+  assert_eq!(quote.tau, 1.0);
+}
+
+#[test]
+fn the_jump_models_hold_their_params_privately() {
+  let svj = SvjParams {
+    v0: 0.04,
+    kappa: 1.5,
+    theta: 0.04,
+    sigma: 0.3,
+    rho: -0.7,
+    lambda: 0.5,
+    mu_j: -0.05,
+    sigma_j: 0.1,
+  };
+  let bates = BatesFourier::new(svj);
+  assert_eq!(bates.params(), svj);
+  assert_eq!(bates.price_call(S, K, R, Q, TAU), 5.684829693931341);
+  let hkde_params = HkdeParams {
+    v0: 0.04,
+    kappa: 1.5,
+    theta: 0.04,
+    sigma: 0.3,
+    rho: -0.7,
+    lambda: 0.5,
+    p_up: 0.4,
+    eta1: 10.0,
+    eta2: 5.0,
+  };
+  let hkde = HkdeFourier::new(hkde_params);
+  assert_eq!(hkde.params(), hkde_params);
+  assert_eq!(hkde.price_call(S, K, R, Q, TAU), 6.559356757760902);
+}
+
+#[test]
+#[should_panic(expected = "sigma must satisfy `sigma.is_finite() && sigma > 0.0`, got sigma = 0.0")]
+fn a_jump_model_names_its_vol_of_variance_sigma() {
+  let _ = BatesFourier::new(SvjParams {
+    v0: 0.04,
+    kappa: 1.5,
+    theta: 0.04,
+    sigma: 0.0,
+    rho: -0.7,
+    lambda: 0.5,
+    mu_j: -0.05,
+    sigma_j: 0.1,
+  });
 }

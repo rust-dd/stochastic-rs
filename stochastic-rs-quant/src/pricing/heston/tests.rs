@@ -472,8 +472,8 @@ fn heston_greeks_aggregate_matches_accessors() {
     assert_eq!(g.rho, m.rho(s, k, r, q, tau, ot), "rho");
     assert_eq!(g.vanna, m.vanna(s, k, r, q, tau), "vanna");
     assert_eq!(g.charm, m.charm(s, k, r, q, tau, ot), "charm");
-    assert_eq!(g.volga, m.volga(s, k, r, q, tau), "volga is vomma");
-    assert_eq!(g.veta, m.veta(s, k, r, q, tau), "veta is dvega_dtime");
+    assert_eq!(g.volga, m.volga(s, k, r, q, tau), "volga");
+    assert_eq!(g.veta, m.veta(s, k, r, q, tau), "veta");
     assert_ne!(g.volga, g.veta, "volga and veta must not be the same value");
   }
 }

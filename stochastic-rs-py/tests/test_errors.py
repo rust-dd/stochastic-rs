@@ -40,7 +40,7 @@ def test_hand_written_pricer_constructor_raises_value_error():
 def test_the_jump_fourier_models_refuse_parameters_outside_their_domain():
     with pytest.raises(ValueError, match=r"eta1 must satisfy `eta1\.is_finite\(\) && eta1 > 1\.0`, got eta1 = 0\.9"):
         sr.HKDEFourier(0.04, 1.5, 0.04, 0.3, -0.7, 0.5, 0.4, 0.9, 5.0)
-    with pytest.raises(ValueError, match=r"sigma_v must satisfy `sigma_v\.is_finite\(\) && sigma_v > 0\.0`, got sigma_v = 0\.0"):
+    with pytest.raises(ValueError, match=r"sigma must satisfy `sigma\.is_finite\(\) && sigma > 0\.0`, got sigma = 0\.0"):
         sr.BatesFourier(0.04, 1.5, 0.04, 0.0, -0.7, 0.5, -0.05, 0.1)
 
 

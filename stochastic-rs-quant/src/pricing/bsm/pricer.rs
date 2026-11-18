@@ -46,14 +46,14 @@ pub enum BsmCoc {
 #[derive(Debug, Clone, Copy)]
 pub struct BsmPricer {
   /// Volatility
-  pub v: f64,
+  pub sigma: f64,
   /// Cost-of-carry convention
   pub b: BsmCoc,
 }
 
 impl BsmPricer {
-  pub const fn new(v: f64, b: BsmCoc) -> Self {
-    Self { v, b }
+  pub const fn new(sigma: f64, b: BsmCoc) -> Self {
+    Self { sigma, b }
   }
 
   /// Cost of carry $b$ implied by the convention at the query's rates.
@@ -79,14 +79,14 @@ impl BsmPricer {
 
   /// $d_1$, $d_2$ at one query point.
   pub fn d1_d2(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
-    let d1 =
-      (1.0 / (self.v * tau.sqrt())) * ((s / k).ln() + (self.b(r, q) + 0.5 * self.v.powi(2)) * tau);
-    let d2 = d1 - self.v * tau.sqrt();
+    let d1 = (1.0 / (self.sigma * tau.sqrt()))
+      * ((s / k).ln() + (self.b(r, q) + 0.5 * self.sigma.powi(2)) * tau);
+    let d2 = d1 - self.sigma * tau.sqrt();
 
     (d1, d2)
   }
 
-  /// One leg at one query point: at `tau = 0` the payoff, NaN for a non-finite `v`.
+  /// One leg at one query point: at `tau = 0` the payoff, NaN for a non-finite `sigma`.
   ///
   /// $$
   /// C=Se^{(b-r)\tau}N(d_1)-Ke^{-r\tau}N(d_2),\qquad
@@ -95,7 +95,7 @@ impl BsmPricer {
   fn leg(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, option_type: OptionType) -> f64 {
     let carry = ((self.b(r, q) - r) * tau).exp();
     let disc = (-r * tau).exp();
-    if tau == 0.0 && self.v.is_finite() {
+    if tau == 0.0 && self.sigma.is_finite() {
       return vanilla_payoff(option_type, s * carry, k * disc);
     }
     let (d1, d2) = self.d1_d2(s, k, r, q, tau);
@@ -105,15 +105,8 @@ impl BsmPricer {
     }
   }
 
-  /// Black volatility implied by `price` at one query point.
-  ///
-  /// Depends on the cost-of-carry convention ([`b`](Self::b)) but *not* on
-  /// [`v`](Self::v) — it inverts the price for a volatility rather than
-  /// pricing at one, so any instance sharing the convention returns the
-  /// same answer.
-  ///
-  /// Returns [`f64::NAN`] when the price is outside the no-arbitrage bounds
-  /// the inversion can invert.
+  /// Black volatility implied by `c_price` under this convention's carry [`b`](Self::b), whatever
+  /// `sigma` is; NaN for a price outside the no-arbitrage bounds.
   #[allow(clippy::too_many_arguments)]
   pub fn implied_volatility(
     &self,

@@ -331,7 +331,9 @@ fn an_expired_american_option_is_worth_its_payoff() {
 }
 
 #[test]
-#[should_panic(expected = "v must satisfy `v.is_finite() && v > 0.0`, got v = -0.2")]
+#[should_panic(
+  expected = "sigma must satisfy `sigma.is_finite() && sigma > 0.0`, got sigma = -0.2"
+)]
 fn a_snell_lattice_with_a_non_positive_volatility_is_a_precondition() {
   SnellEnvelopePricer::new(-0.2, 100);
 }

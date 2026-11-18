@@ -28,35 +28,24 @@ use crate::traits::ModelPricer;
 #[derive(Debug, Clone, Copy)]
 pub struct AsianPricer {
   /// Volatility
-  pub v: f64,
+  pub sigma: f64,
 }
 
 impl AsianPricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `v` is negative or `NaN`. A negative volatility flips the sign of
-  ///   `1/(sigma*sqrt(tau))` and so of $d_1$, while $d_2 = d_1 -
-  ///   \sigma\sqrt\tau$ moves the other way: the two cross and the call
-  ///   comes back **negative**, which is not the price of anything — case 1
-  ///   of the crate's [failure
-  ///   convention](crate::traits::ModelPricer#how-pricing-fails).
-  ///
-  /// `v == 0` is accepted: the averaged underlying is then deterministic and
-  /// the closed form returns its discounted intrinsic forward value, which
-  /// is a degenerate limit rather than an invalid input.
-  pub fn new(v: f64) -> Self {
+  /// Panics unless `sigma >= 0`, as a negative volatility prices a negative call; at `sigma == 0`
+  /// the averaged underlying is deterministic and the price is its discounted intrinsic forward.
+  pub fn new(sigma: f64) -> Self {
     assert!(
-      v >= 0.0,
-      "AsianPricer::new: v must be a non-negative volatility (got {v})"
+      sigma >= 0.0,
+      "sigma must satisfy `sigma >= 0.0`, got sigma = {sigma:?}"
     );
-    Self { v }
+    Self { sigma }
   }
 
   /// Average-rate volatility $\sigma/\sqrt3$ and the adjusted cost of carry
   /// used by the closed form at the query's rates.
   fn averaged_vol_and_carry(&self, r: f64, q: f64) -> (f64, f64) {
-    let v = self.v / 3.0_f64.sqrt();
+    let v = self.sigma / 3.0_f64.sqrt();
     let b = 0.5 * (r - q - 0.5 * v.powi(2) / 6.0);
     (v, b)
   }
@@ -165,13 +154,13 @@ mod tests {
   /// underlying becomes deterministic and the closed form returns its
   /// discounted intrinsic forward value.
   #[test]
-  #[should_panic(expected = "AsianPricer::new: v must be a non-negative volatility (got -0.25)")]
+  #[should_panic(expected = "sigma must satisfy `sigma >= 0.0`, got sigma = -0.25")]
   fn new_rejects_negative_volatility() {
     let _ = AsianPricer::new(-0.25);
   }
 
   #[test]
-  #[should_panic(expected = "AsianPricer::new: v must be a non-negative volatility (got NaN)")]
+  #[should_panic(expected = "sigma must satisfy `sigma >= 0.0`, got sigma = NaN")]
   fn new_rejects_nan_volatility() {
     let _ = AsianPricer::new(f64::NAN);
   }

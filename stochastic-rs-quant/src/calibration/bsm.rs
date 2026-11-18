@@ -227,7 +227,7 @@ impl LeastSquaresProblem for BsmProblem<'_> {
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
-    // r = (C − M)/max(vega, floor): r′ = 1 − r·vomma/vega above the floor, vega/floor on it,
+    // r = (C − M)/max(vega, floor): r′ = 1 − r·volga/vega above the floor, vega/floor on it,
     // times dσ/dx.
     let BsmCalibrator {
       s,
@@ -245,8 +245,8 @@ impl LeastSquaresProblem for BsmProblem<'_> {
 
       let vega = model.vega(s, k, r, q, tau).abs();
       let slope = if vega > VEGA_FLOOR {
-        let vomma = model.vomma(s, k, r, q, tau);
-        1.0 - (c_model_i - quote.price) / vega * (vomma / vega)
+        let volga = model.volga(s, k, r, q, tau);
+        1.0 - (c_model_i - quote.price) / vega * (volga / vega)
       } else {
         vega / VEGA_FLOOR
       };

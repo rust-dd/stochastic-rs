@@ -89,14 +89,6 @@ pub(crate) fn assert_spot_and_rates(s: f64, r: f64, q: f64) {
   );
 }
 
-/// The first `(name, value, predicate, holds)` that fails, worded as a constructor panic.
-pub(crate) fn first_violation(checks: &[(&str, f64, &str, bool)]) -> Option<String> {
-  let (name, value, predicate, _) = checks.iter().find(|check| !check.3)?;
-  Some(format!(
-    "{name} must satisfy `{predicate}`, got {name} = {value:?}"
-  ))
-}
-
 /// `InvalidInput { what: "start" }` for the first field that is not finite.
 pub(crate) fn check_finite_start(fields: &[(&str, f64)]) -> Result<(), QuantError> {
   match fields.iter().find(|(_, value)| !value.is_finite()) {

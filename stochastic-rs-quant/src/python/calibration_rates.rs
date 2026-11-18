@@ -16,12 +16,12 @@ use crate::instruments::option::types::SwaptionDirection;
 use crate::traits::CalibrationResult;
 use crate::traits::Calibrator;
 
-/// `(expiry, tenor, black_vol, fixed_accrual, direction)` tuples, direction
+/// `(tau, tenor, black_vol, fixed_accrual, direction)` tuples, direction
 /// `"payer"` or `"receiver"`.
 fn parse_quotes(quotes: Vec<(f64, f64, f64, f64, String)>) -> PyResult<Vec<SwaptionQuote>> {
   quotes
     .into_iter()
-    .map(|(expiry, tenor, black_vol, fixed_accrual, direction)| {
+    .map(|(tau, tenor, black_vol, fixed_accrual, direction)| {
       let direction = match direction.to_ascii_lowercase().as_str() {
         "payer" | "p" => SwaptionDirection::Payer,
         "receiver" | "r" => SwaptionDirection::Receiver,
@@ -32,7 +32,7 @@ fn parse_quotes(quotes: Vec<(f64, f64, f64, f64, String)>) -> PyResult<Vec<Swapt
         }
       };
       Ok(SwaptionQuote {
-        expiry,
+        tau,
         tenor,
         black_vol,
         fixed_accrual,
@@ -59,7 +59,7 @@ pub struct PyHullWhiteSwaptionCalibrator {
 
 #[pymethods]
 impl PyHullWhiteSwaptionCalibrator {
-  /// `quotes` are `(expiry, tenor, black_vol, fixed_accrual, direction)`.
+  /// `quotes` are `(tau, tenor, black_vol, fixed_accrual, direction)`.
   /// `initial_rate` and `theta` are the tree model's time-0 short rate and drift offset.
   #[new]
   #[pyo3(signature = (quotes, curve, initial_rate, theta, notional=1.0))]
@@ -126,7 +126,7 @@ pub struct PyBlackKarasinskiSwaptionCalibrator {
 
 #[pymethods]
 impl PyBlackKarasinskiSwaptionCalibrator {
-  /// `quotes` are `(expiry, tenor, black_vol, fixed_accrual, direction)`;
+  /// `quotes` are `(tau, tenor, black_vol, fixed_accrual, direction)`;
   /// `steps_per_year` sets the tree resolution.
   #[new]
   #[pyo3(signature = (quotes, curve, initial_rate, long_run_rate, notional=1.0, steps_per_year=8, max_iters=400))]
@@ -205,7 +205,7 @@ pub struct PyG2ppSwaptionCalibrator {
 
 #[pymethods]
 impl PyG2ppSwaptionCalibrator {
-  /// `quotes` are `(expiry, tenor, black_vol, fixed_accrual, direction)`; `initial_rate` is φ; the
+  /// `quotes` are `(tau, tenor, black_vol, fixed_accrual, direction)`; `initial_rate` is φ; the
   /// tree has `(2L + 1)²` nodes on level `L`; `max_iters=None` is the fit's own cap, 1000.
   #[new]
   #[pyo3(signature = (quotes, curve, initial_rate, notional=1.0, steps_per_year=4, max_iters=None))]

@@ -313,13 +313,11 @@ fn new_rejects_zero_price_steps() {
   );
 }
 
-/// The PDE coefficients use `v²`, so a negative volatility prices as its
+/// The PDE coefficients use `σ²`, so a negative volatility prices as its
 /// own absolute value — the solver silently answers a question the caller
 /// did not ask rather than the one they did.
 #[test]
-#[should_panic(
-  expected = "FiniteDifferencePricer::new: v must be a non-negative volatility (got -0.25)"
-)]
+#[should_panic(expected = "sigma must satisfy `sigma >= 0.0`, got sigma = -0.25")]
 fn new_rejects_negative_volatility() {
   let _ = FiniteDifferencePricer::new(
     -0.25,

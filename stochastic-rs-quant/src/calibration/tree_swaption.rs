@@ -54,11 +54,11 @@ fn tree_swaption(
   notional: f64,
   steps_per_year: usize,
 ) -> (f64, usize, BermudanSwaption<f64>) {
-  let horizon = quote.expiry + quote.tenor;
+  let horizon = quote.tau + quote.tenor;
   let steps = ((horizon * steps_per_year as f64).round() as usize).max(1);
   let dt = horizon / steps as f64;
   let level = |t: f64| ((t / dt).round() as usize).min(steps);
-  let exercise = ExerciseSchedule::new(vec![level(quote.expiry)]);
+  let exercise = ExerciseSchedule::new(vec![level(quote.tau)]);
   let coupons = TreeCouponSchedule::new(
     market.coupon_times.iter().map(|&t| level(t)).collect(),
     vec![market.accrual; market.coupon_times.len()],

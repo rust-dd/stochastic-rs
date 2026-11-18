@@ -34,7 +34,7 @@ pub fn price_jamshidian_hull_white<T: RealExt>(
   direction: SwaptionDirection,
   strike: T,
   notional: T,
-  expiry: T,
+  tau: T,
   coupon_times: &[T],
   accrual_factors: &[T],
   mean_reversion: T,
@@ -50,13 +50,13 @@ pub fn price_jamshidian_hull_white<T: RealExt>(
     accrual_factors.len(),
     "coupon_times and accrual_factors must have equal length"
   );
-  assert!(expiry > T::zero(), "expiry must be strictly positive");
+  assert!(tau > T::zero(), "tau must be strictly positive");
   for &t in coupon_times {
-    assert!(t >= expiry, "coupon times must be on or after the expiry");
+    assert!(t >= tau, "coupon times must be on or after `tau`");
   }
 
   let a = mean_reversion;
-  let t0 = expiry;
+  let t0 = tau;
   let n = coupon_times.len();
 
   let cashflows: Vec<T> = (0..n)
@@ -183,7 +183,7 @@ pub struct JamshidianHullWhiteSwaption<T: RealExt> {
   /// Swap notional.
   pub notional: T,
   /// Time from valuation to exercise (years).
-  pub expiry: T,
+  pub tau: T,
   /// Fixed-leg coupon times $T_1 \le \dots \le T_n$ (years from valuation).
   pub coupon_times: Vec<T>,
   /// Fixed-leg accrual factors $\delta_i$.
@@ -201,7 +201,7 @@ impl<T: RealExt> JamshidianHullWhiteSwaption<T> {
     direction: SwaptionDirection,
     strike: T,
     notional: T,
-    expiry: T,
+    tau: T,
     coupon_times: Vec<T>,
     accrual_factors: Vec<T>,
     mean_reversion: T,
@@ -211,7 +211,7 @@ impl<T: RealExt> JamshidianHullWhiteSwaption<T> {
       direction,
       strike,
       notional,
-      expiry,
+      tau,
       coupon_times,
       accrual_factors,
       mean_reversion,
@@ -225,7 +225,7 @@ impl<T: RealExt> JamshidianHullWhiteSwaption<T> {
       self.direction,
       self.strike,
       self.notional,
-      self.expiry,
+      self.tau,
       &self.coupon_times,
       &self.accrual_factors,
       self.mean_reversion,

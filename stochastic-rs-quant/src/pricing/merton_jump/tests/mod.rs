@@ -30,7 +30,7 @@ fn merton_at(v: f64, lambda: f64, gamma: f64, m: usize) -> Merton1976Pricer {
 
 fn bumped_price(m: &Merton1976Pricer, ds: f64, dv: f64, dtau: f64) -> f64 {
   let mut p = *m;
-  p.v += dv;
+  p.sigma += dv;
   p.price_option(S + ds, K, R, Q, TAU + dtau, OT)
 }
 
@@ -40,7 +40,7 @@ fn bumped_price(m: &Merton1976Pricer, ds: f64, dv: f64, dtau: f64) -> f64 {
 #[test]
 fn merton_greeks_lambda_zero_equals_bs() {
   let m = merton(0.0, 0.4, 20);
-  let bs = BsmPricer::new(m.v, m.b);
+  let bs = BsmPricer::new(m.sigma, m.b);
 
   let cases = [
     (
@@ -66,12 +66,8 @@ fn merton_greeks_lambda_zero_equals_bs() {
       m.charm(S, K, R, Q, TAU, OT),
       bs.charm(S, K, R, Q, TAU, OT),
     ),
-    ("volga", m.volga(S, K, R, Q, TAU), bs.vomma(S, K, R, Q, TAU)),
-    (
-      "veta",
-      m.veta(S, K, R, Q, TAU),
-      bs.dvega_dtime(S, K, R, Q, TAU),
-    ),
+    ("volga", m.volga(S, K, R, Q, TAU), bs.volga(S, K, R, Q, TAU)),
+    ("veta", m.veta(S, K, R, Q, TAU), bs.veta(S, K, R, Q, TAU)),
   ];
   for (name, got, want) in cases {
     assert!((got - want).abs() < 1e-10, "{name}: got {got}, want {want}");
@@ -90,7 +86,7 @@ fn merton_greeks_match_finite_difference() {
     + bumped_price(&m, -h_s, 0.0, 0.0))
     / (h_s * h_s);
 
-  let h_v = m.v * 1e-4;
+  let h_v = m.sigma * 1e-4;
   let vega_fd = (bumped_price(&m, 0.0, h_v, 0.0) - bumped_price(&m, 0.0, -h_v, 0.0)) / (2.0 * h_v);
 
   let h_t = 1e-5;
@@ -260,7 +256,7 @@ fn merton_gk_carries_at_rd_minus_rf_and_discounts_at_r() {
 /// Cross-arch tolerance: the goldens route through `norm_cdf`.
 const TOL: f64 = 1e-12;
 
-/// Price and Greeks at `(100, 105, 0.05, 0, 0.5)`, `(v, λ, γ, m) = (0.2, 0.5, 0.4, 10)`: the call
+/// Price and Greeks at `(100, 105, 0.05, 0, 0.5)`, `(σ, λ, γ, m) = (0.2, 0.5, 0.4, 10)`: the call
 /// is the Gil-Pelaez value `4.276118`, the vol Greeks 60-digit mpmath derivatives.
 #[test]
 fn merton_pins_the_reference_price_and_greeks() {
@@ -309,8 +305,8 @@ fn merton_greeks_aggregate_matches_accessors() {
     assert_eq!(g.rho, m.rho(S, K, R, Q, TAU, ot), "rho");
     assert_eq!(g.vanna, m.vanna(S, K, R, Q, TAU), "vanna");
     assert_eq!(g.charm, m.charm(S, K, R, Q, TAU, ot), "charm");
-    assert_eq!(g.volga, m.volga(S, K, R, Q, TAU), "volga is vomma");
-    assert_eq!(g.veta, m.veta(S, K, R, Q, TAU), "veta is dvega_dtime");
+    assert_eq!(g.volga, m.volga(S, K, R, Q, TAU), "volga");
+    assert_eq!(g.veta, m.veta(S, K, R, Q, TAU), "veta");
     assert_ne!(g.volga, g.veta, "volga and veta must not be the same value");
   }
 }

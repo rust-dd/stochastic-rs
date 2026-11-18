@@ -172,15 +172,15 @@ fn build_surface_from_calibration_svj_multi_maturity() {
   use crate::OptionQuote;
   use crate::OptionType;
   use crate::calibration::svj::SvjCalibrator;
-  use crate::calibration::svj::SvjParams;
   use crate::pricing::fourier::BatesFourier;
+  use crate::pricing::fourier::SvjParams;
   use crate::traits::ModelPricer;
 
   let true_model = BatesFourier::new(SvjParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
-    sigma_v: 0.3,
+    sigma: 0.3,
     rho: -0.7,
     lambda: 0.5,
     mu_j: -0.1,

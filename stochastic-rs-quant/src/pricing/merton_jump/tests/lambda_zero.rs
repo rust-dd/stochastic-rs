@@ -1,10 +1,10 @@
 //! `lambda = 0` is the no-jump state, and the model there **is**
-//! Black-Scholes at the total volatility `v`.
+//! Black-Scholes at the total volatility `sigma`.
 //!
 //! The Poisson weights are `1, 0, 0, …`, so only the `n = 0` term survives,
-//! and with no jumps the whole variance is diffusive: `d² = v² - λz² = v²`.
+//! and with no jumps the whole variance is diffusive: `d² = σ² - λz² = σ²`.
 //! The Greeks have always answered that way. The price did not — it read
-//! the per-jump size `z = √(v²γ/λ)` first, which is `∞` at `gamma > 0` and
+//! the per-jump size `z = √(σ²γ/λ)` first, which is `∞` at `gamma > 0` and
 //! `NaN` at `gamma = 0`, and `λz²` then became `0·∞ = NaN`. Only the jump
 //! *variance rate* `λz²` ever enters the model, and that is `0` here
 //! whatever the size of a jump that never happens would have been.
@@ -43,7 +43,7 @@ fn merton_price_lambda_zero_equals_bs() {
 #[test]
 fn merton_price_and_greeks_agree_at_lambda_zero() {
   let m = merton(0.0, 0.4, 20);
-  let bs = BsmPricer::new(m.v, m.b);
+  let bs = BsmPricer::new(m.sigma, m.b);
   assert_eq!(
     m.price_call(S, K, R, Q, TAU),
     bs.price_call(S, K, R, Q, TAU)
@@ -71,8 +71,8 @@ fn merton_price_and_greeks_agree_at_lambda_zero() {
 /// holding it fixed while `lambda → 0⁺` sets `z² = γv²/λ → ∞`: the jumps
 /// get rarer and larger at once, keeping their share of the variance the
 /// whole way down. Every one of those models has diffusive volatility
-/// `v√(1-γ)`, and the surviving `n ≥ 1` terms carry weight `O(λ)`, so the
-/// price converges to Black-Scholes at `v√(1-γ)` — `3.3205` here, against
+/// `σ√(1-γ)`, and the surviving `n ≥ 1` terms carry weight `O(λ)`, so the
+/// price converges to Black-Scholes at `σ√(1-γ)` — `3.3205` here, against
 /// `4.5817` at `lambda = 0` itself.
 ///
 /// At `gamma = 0` there is no jump variance to strand and the two coincide,

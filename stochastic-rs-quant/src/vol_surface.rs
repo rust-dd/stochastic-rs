@@ -79,7 +79,8 @@
 //!
 //! ```
 //! use stochastic_rs_quant::{OptionQuote, OptionType};
-//! use stochastic_rs_quant::calibration::{SvjCalibrator, SvjParams};
+//! use stochastic_rs_quant::calibration::SvjCalibrator;
+//! use stochastic_rs_quant::pricing::fourier::SvjParams;
 //! use stochastic_rs_quant::pricing::fourier::BatesFourier;
 //! use stochastic_rs_quant::traits::{Calibrator, ModelPricer};
 //! use stochastic_rs_quant::vol_surface::build_surface_from_calibration;
@@ -88,7 +89,7 @@
 //! let r = 0.03;
 //! let q = 0.0;
 //! let true_params = SvjParams {
-//!     v0: 0.04, kappa: 1.5, theta: 0.04, sigma_v: 0.3, rho: -0.6,
+//!     v0: 0.04, kappa: 1.5, theta: 0.04, sigma: 0.3, rho: -0.6,
 //!     lambda: 0.3, mu_j: -0.05, sigma_j: 0.15,
 //! };
 //! let model_true = BatesFourier::new(true_params);
@@ -101,7 +102,7 @@
 //! // A reasonable initial guess keeps the optimiser fast; without one the fit
 //! // starts from a generic default and costs many more iterations.
 //! let initial = SvjParams {
-//!     v0: 0.05, kappa: 2.0, theta: 0.05, sigma_v: 0.4, rho: -0.4,
+//!     v0: 0.05, kappa: 2.0, theta: 0.05, sigma: 0.4, rho: -0.4,
 //!     lambda: 0.2, mu_j: -0.02, sigma_j: 0.1,
 //! };
 //! let cal = SvjCalibrator::new(s0, r, q, quotes).with_start(initial);

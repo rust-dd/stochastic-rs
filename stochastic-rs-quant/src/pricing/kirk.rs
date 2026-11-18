@@ -70,7 +70,7 @@ impl KirkSpreadPricer {
   }
 
   /// Spread call and put of forwards `f1`, `f2` at spread strike `x`, not an `(s, k, r, q, tau)`
-  /// query; Kirk's combined volatility weights $\sigma_2$ by $F_2/(F_2+X)$, so each query has its own.
+  /// query; Kirk's volatility weights $\sigma_2$ by $F_2/(F_2+X)$, so each query has its own.
   pub fn spread_call_put(&self, f1: f64, f2: f64, x: f64, r: f64, tau: f64) -> CallPut {
     // Ratio transformation: F = F1 / (F2 + X)
     let denom = f2 + x;

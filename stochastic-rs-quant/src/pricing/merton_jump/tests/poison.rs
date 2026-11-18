@@ -41,7 +41,7 @@ fn a_poisoned_query_poisons_the_greeks_and_not_only_the_price() {
 fn an_inadmissible_gamma_announces_itself_in_the_greeks_too() {
   for gamma in [-0.25, 1.5] {
     let m = Merton1976Pricer {
-      v: 0.2,
+      sigma: 0.2,
       lambda: 0.5,
       gamma,
       m: 20,
@@ -77,7 +77,7 @@ fn an_overflowing_poisson_weight_is_not_a_degenerate_term() {
 
 /// The same disagreement one layer down, on a model whose terms **are**
 /// degenerate — the configuration the narrowed floor still laundered,
-/// because `term.v == 0.0` is true there by construction.
+/// because `term.sigma == 0.0` is true there by construction.
 ///
 /// A frozen underlying has `σ_n = 0` for every `n`, so every closed form is
 /// `NaN` at every query, good or bad, and the floor could not tell the two

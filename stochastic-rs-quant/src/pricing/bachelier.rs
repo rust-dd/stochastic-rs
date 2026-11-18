@@ -33,12 +33,12 @@ use crate::traits::VanillaEuropeanCall;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BachelierPricer {
   /// Normal volatility σ_N.
-  pub v: f64,
+  pub sigma: f64,
 }
 
 impl BachelierPricer {
-  pub const fn new(v: f64) -> Self {
-    Self { v }
+  pub const fn new(sigma: f64) -> Self {
+    Self { sigma }
   }
 
   /// Forward `F = S e^{(r − q)τ}` the option is struck on.
@@ -50,7 +50,7 @@ impl BachelierPricer {
   pub fn vega(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     let forward = self.forward(s, r, q, tau);
     let sqrt_tau = tau.sqrt();
-    let d = (forward - k) / (self.v * sqrt_tau);
+    let d = (forward - k) / (self.sigma * sqrt_tau);
     (-r * tau).exp() * sqrt_tau * norm_pdf(d)
   }
 
@@ -74,13 +74,13 @@ impl BachelierPricer {
 
 impl ModelPricer for BachelierPricer {
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    (-r * tau).exp() * bachelier_forward_caplet(self.forward(s, r, q, tau), k, tau, self.v)
+    (-r * tau).exp() * bachelier_forward_caplet(self.forward(s, r, q, tau), k, tau, self.sigma)
   }
 
   /// The closed form $(K-F)\Phi(-d)+\sigma\sqrt\tau\,\varphi(d)$, not the parity default, which
   /// recomposes the put from the call.
   fn price_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
-    (-r * tau).exp() * bachelier_forward_floorlet(self.forward(s, r, q, tau), k, tau, self.v)
+    (-r * tau).exp() * bachelier_forward_floorlet(self.forward(s, r, q, tau), k, tau, self.sigma)
   }
 }
 

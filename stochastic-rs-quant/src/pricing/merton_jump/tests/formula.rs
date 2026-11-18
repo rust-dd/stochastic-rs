@@ -20,12 +20,12 @@ use super::*;
 
 /// Zero-size jumps are not jumps: at `gamma = 0` the whole variance is
 /// diffusive, `z = 0`, and `σ_n = d = v` for every term, so the Poisson
-/// series collapses to plain Black-Scholes at `v` **whatever `lambda`
+/// series collapses to plain Black-Scholes at `sigma` **whatever `lambda`
 /// is** — a jump that never moves the price cannot change what the option
 /// is worth.
 ///
 /// The decisive discriminator, and it needs no reference value: the
-/// superseded `√((d² + z²)·n/τ)` gives `σ_n = v√(n/τ)`, which prices the
+/// superseded `√((d² + z²)·n/τ)` gives `σ_n = σ√(n/τ)`, which prices the
 /// same option at 0.34 at `λ = 0.1` and at 16.20 at `λ = 10` — a
 /// four-and-a-half-fold spread across a parameter the payoff does not
 /// depend on, against a Black-Scholes value of 4.58.
@@ -65,13 +65,13 @@ fn merton_term_vol_at_zero_jumps_is_the_diffusive_volatility() {
 }
 
 /// Averaging the `n`-conditional variance over `N ~ Poisson(λτ)` returns
-/// the total variance the caller asked for: `d²τ + λτ·z² = v²τ`.
+/// the total variance the caller asked for: `d²τ + λτ·z² = σ²τ`.
 ///
-/// This is the identity `diffusive_std`'s `v² − λz²` subtraction exists to
-/// arrange, and it is what makes the `v` field the *total* volatility its
+/// This is the identity `diffusive_std`'s `σ² − λz²` subtraction exists to
+/// arrange, and it is what makes the `sigma` field the *total* volatility its
 /// name claims. Under the superseded formula the same average came to
-/// `(d² + z²)λτ`, which misses `v²τ` by −30 % to +40 % depending on
-/// `lambda` — so `v` was not the model's volatility at all.
+/// `(d² + z²)λτ`, which misses `σ²τ` by −30 % to +40 % depending on
+/// `lambda` — so `sigma` was not the model's volatility at all.
 #[test]
 fn merton_conditional_variance_averages_to_the_total() {
   for &(lambda, gamma) in &[(0.5, 0.4), (0.5, 0.3), (2.0, 0.6), (0.25, 0.8)] {
@@ -79,7 +79,7 @@ fn merton_conditional_variance_averages_to_the_total() {
     let mean_var = (0..m.m)
       .map(|n| m.poisson_weight(n, TAU) * m.term_vol(n, TAU).powi(2) * TAU)
       .sum::<f64>();
-    let total = m.v * m.v * TAU;
+    let total = m.sigma * m.sigma * TAU;
     assert!(
       (mean_var - total).abs() < 1e-15,
       "lambda={lambda} gamma={gamma}: mean conditional variance {mean_var}, total {total}"
@@ -91,12 +91,12 @@ fn merton_conditional_variance_averages_to_the_total() {
 /// `gamma` fixed while `lambda` grows shrinks each jump as `z² = γv²/λ`,
 /// so by the central limit theorem the compound Poisson part converges to
 /// a diffusion of variance rate `γv²` and the model tends to
-/// Black-Scholes at the total `v`.
+/// Black-Scholes at the total `sigma`.
 ///
 /// The approach is `O(1/λ)` — the jump part's excess kurtosis decays at
 /// that rate — so this pins the *rate* rather than a limit: quadrupling
 /// `lambda` must cut the gap by at least three. The superseded formula
-/// diverges instead of converging (`σ_n² ≈ (1−γ)v²λ`), so it fails on the
+/// diverges instead of converging (`σ_n² ≈ (1−γ)σ²λ`), so it fails on the
 /// magnitude before it fails on the rate.
 #[test]
 fn merton_dense_small_jumps_tend_to_black_scholes() {
@@ -117,7 +117,7 @@ fn merton_dense_small_jumps_tend_to_black_scholes() {
 /// The two worked examples Haug prints for this formula in *The Complete
 /// Guide to Option Pricing Formulas* (jump-diffusion section, §6.9.1 in the
 /// 2nd edition), reproduced at his own parameterisation — his `υ` is this
-/// pricer's total volatility `v`, his `γ` its jump-variance share `gamma`,
+/// pricer's total volatility `sigma`, his `γ` its jump-variance share `gamma`,
 /// and his terms carry at `b = r`, which is [`BsmCoc::Bsm1973`].
 ///
 /// This is the one pin in the crate whose expected value comes from
@@ -143,7 +143,7 @@ fn merton_matches_haugs_published_examples() {
 
 /// The whole series against a hand-written Merton (1976) reference that
 /// shares no code with the pricer: the Poisson weight is accumulated
-/// independently, `σ_n` is rebuilt from the public `v`/`lambda`/`gamma`
+/// independently, `σ_n` is rebuilt from the public `sigma`/`lambda`/`gamma`
 /// fields, and each term is a hand-written Black-Scholes call rather than
 /// a `BsmPricer` call.
 #[test]
@@ -151,8 +151,8 @@ fn merton_matches_a_hand_written_haug_series() {
   use stochastic_rs_distributions::special::norm_cdf;
 
   let m = merton(0.5, 0.4, 10);
-  let jump_var = m.v * m.v * m.gamma / m.lambda;
-  let diffusive_var = m.v * m.v - m.lambda * jump_var;
+  let jump_var = m.sigma * m.sigma * m.gamma / m.lambda;
+  let diffusive_var = m.sigma * m.sigma - m.lambda * jump_var;
   let lt = m.lambda * TAU;
   let disc = (-R * TAU).exp();
 

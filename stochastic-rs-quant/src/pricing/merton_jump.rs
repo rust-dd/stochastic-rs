@@ -6,7 +6,7 @@
 //! $$
 //!
 //! `d` is the diffusive volatility and `z` the per-jump log-size standard
-//! deviation, both implied by the total volatility `v` and the jump
+//! deviation, both implied by the total volatility `sigma` and the jump
 //! variance share `gamma`.
 //!
 //! Discount rate and cost of carry are the same in every term because the
@@ -55,7 +55,7 @@ mod greeks;
 #[derive(Debug, Clone, Copy)]
 pub struct Merton1976Pricer {
   /// Volatility
-  pub v: f64,
+  pub sigma: f64,
   /// Expected number of jumps
   pub lambda: f64,
   /// Percentage of the volatility due to jumps
@@ -96,12 +96,12 @@ enum TermRegime {
 }
 
 impl Merton1976Pricer {
-  /// Panics unless `v ≥ 0`, `lambda` is finite and `≥ 0`, `gamma ∈ [0, 1]` and `m ≥ 1`; at
-  /// `lambda = 0` the model is Black-Scholes at volatility `v`.
-  pub fn new(v: f64, lambda: f64, gamma: f64, m: usize, b: BsmCoc) -> Self {
+  /// Panics unless `sigma ≥ 0`, `lambda` is finite and `≥ 0`, `gamma ∈ [0, 1]` and `m ≥ 1`; at
+  /// `lambda = 0` the model is Black-Scholes at volatility `sigma`.
+  pub fn new(sigma: f64, lambda: f64, gamma: f64, m: usize, b: BsmCoc) -> Self {
     assert!(
-      v >= 0.0,
-      "Merton1976Pricer::new: v must be a non-negative volatility (got {v})"
+      sigma >= 0.0,
+      "sigma must satisfy `sigma >= 0.0`, got sigma = {sigma:?}"
     );
     assert!(
       lambda.is_finite() && lambda >= 0.0,
@@ -116,7 +116,7 @@ impl Merton1976Pricer {
       "Merton1976Pricer::new: m must be at least 1 (got {m})"
     );
     Self {
-      v,
+      sigma,
       lambda,
       gamma,
       m,
@@ -147,26 +147,26 @@ impl Merton1976Pricer {
     CallPut { call, put }
   }
 
-  /// Jump-size std `z` from giving a `gamma` share of the variance `v²` to jumps; `0` at
-  /// `lambda == 0`, the value at that point, not the `λ → 0⁺` limit (Black-Scholes at `v√(1 − γ)`).
+  /// Jump-size std `z` from giving a `gamma` share of the variance `σ²` to jumps; `0` at
+  /// `lambda == 0`, the value at that point, not the `λ → 0⁺` limit (Black-Scholes at `σ√(1 − γ)`).
   fn jump_size_std(&self) -> f64 {
     if self.lambda == 0.0 {
       return 0.0;
     }
-    (self.v.powi(2) * self.gamma / self.lambda).sqrt()
+    (self.sigma.powi(2) * self.gamma / self.lambda).sqrt()
   }
 
-  /// `√(v² − λz²)` with `λz² = v²γ` taken directly, as squaring `jump_size_std` back rounds below 0
-  /// at `gamma = 1`; `v` at `lambda = 0`, NaN where `z` is not real, as in a literal past `new`.
+  /// `√(σ² − λz²)` with `λz² = σ²γ` taken directly, as squaring `jump_size_std` back rounds below 0
+  /// at `gamma = 1`; `sigma` at `lambda = 0`, NaN where `z` is not real (a literal past `new`).
   fn diffusive_std(&self) -> f64 {
     let jump_variance_rate = if self.lambda == 0.0 {
       0.0
     } else if self.jump_size_std().is_nan() {
       f64::NAN
     } else {
-      self.v.powi(2) * self.gamma
+      self.sigma.powi(2) * self.gamma
     };
-    (self.v.powi(2) - jump_variance_rate).sqrt()
+    (self.sigma.powi(2) - jump_variance_rate).sqrt()
   }
 
   /// Per-term volatility of the `n`-jump-conditional Black-Scholes term,
@@ -185,10 +185,10 @@ impl Merton1976Pricer {
   /// expression above — and in particular $\sigma_0 = d$, the diffusive
   /// volatility, rather than `0`.
   ///
-  /// This is what makes `v` the total volatility the field claims it is.
+  /// This is what makes `sigma` the total volatility the field claims it is.
   /// Averaging the conditional variance over `N ~ Poisson(λτ)` gives
-  /// `d²τ + λτ·z² = v²τ` exactly, which is the identity
-  /// [`diffusive_std`](Self::diffusive_std)'s `v² − λz²` subtraction exists
+  /// `d²τ + λτ·z² = σ²τ` exactly, which is the identity
+  /// [`diffusive_std`](Self::diffusive_std)'s `σ² − λz²` subtraction exists
   /// to arrange; the subtraction is dead weight under any other `σ_n`.
   /// `merton_gamma_zero_is_black_scholes` and
   /// `merton_conditional_variance_averages_to_the_total` pin the two ends
@@ -208,10 +208,10 @@ impl Merton1976Pricer {
   }
 
   /// `BsmPricer` at this pricer's cost-of-carry convention and total
-  /// volatility `self.v` (the no-jump / Black-Scholes limit);
+  /// volatility `self.sigma` (the no-jump / Black-Scholes limit);
   /// [`term_bsm`](Self::term_bsm) swaps in the per-term volatility.
   fn base_bsm(&self) -> BsmPricer {
-    BsmPricer::new(self.v, self.b)
+    BsmPricer::new(self.sigma, self.b)
   }
 
   fn term_bsm(&self, n: usize, tau: f64) -> BsmPricer {
@@ -222,7 +222,7 @@ impl Merton1976Pricer {
   ///
   /// The three guards are what keep a *poisoned* query out of the two
   /// degenerate arms, where a limit expression would answer it with a
-  /// plausible number instead of propagating. At `v == 0` the term
+  /// plausible number instead of propagating. At `sigma == 0` the term
   /// volatility is exactly `0` for an infinite or negative `tau` just as
   /// much as for a good one — `(-0.0f64).sqrt()` is `-0.0`, which compares
   /// equal to `0.0` — and `d₁` is `NaN` for a non-positive `s` or `k` for a
@@ -234,7 +234,7 @@ impl Merton1976Pricer {
   /// leading `1/(σ√τ)` is `+∞`, so `d₁` is `±∞` for any non-zero numerator
   /// and `NaN` for a zero one, and cannot come out finite.
   fn term_regime(term: &BsmPricer, s: f64, k: f64, r: f64, q: f64, tau: f64) -> TermRegime {
-    if term.v != 0.0 || !(tau.is_finite() && tau > 0.0 && s > 0.0 && k > 0.0) {
+    if term.sigma != 0.0 || !(tau.is_finite() && tau > 0.0 && s > 0.0 && k > 0.0) {
       return TermRegime::Ordinary;
     }
     if term.d1_d2(s, k, r, q, tau).0.is_nan() {

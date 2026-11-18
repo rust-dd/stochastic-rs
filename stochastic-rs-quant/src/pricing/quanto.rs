@@ -29,9 +29,9 @@ use crate::traits::ModelPricer;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct QuantoPricer {
   /// Volatility σ_S of the foreign asset in its own currency.
-  pub v: f64,
+  pub sigma: f64,
   /// Volatility σ_E of the exchange rate (domestic units per foreign unit).
-  pub v_fx: f64,
+  pub sigma_fx: f64,
   /// Correlation ρ between the asset and the exchange rate.
   pub rho: f64,
   /// Foreign risk-free rate r_f.
@@ -42,10 +42,10 @@ pub struct QuantoPricer {
 }
 
 impl QuantoPricer {
-  pub const fn new(v: f64, v_fx: f64, rho: f64, r_f: f64, fixed_rate: f64) -> Self {
+  pub const fn new(sigma: f64, sigma_fx: f64, rho: f64, r_f: f64, fixed_rate: f64) -> Self {
     Self {
-      v,
-      v_fx,
+      sigma,
+      sigma_fx,
       rho,
       r_f,
       fixed_rate,
@@ -55,7 +55,7 @@ impl QuantoPricer {
   /// Cost of carry of the foreign asset under the domestic measure,
   /// `b = r_f − q − ρ σ_S σ_E`.
   pub fn carry(&self, q: f64) -> f64 {
-    self.r_f - q - self.rho * self.v * self.v_fx
+    self.r_f - q - self.rho * self.sigma * self.sigma_fx
   }
 
   /// Quanto forward `E_p · S · e^{bτ}`: the domestic-currency forward of
@@ -68,8 +68,8 @@ impl QuantoPricer {
   fn legs(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64, f64, f64) {
     let b = self.carry(q);
     let sqrt_tau = tau.sqrt();
-    let d1 = ((s / k).ln() + (b + 0.5 * self.v * self.v) * tau) / (self.v * sqrt_tau);
-    let d2 = d1 - self.v * sqrt_tau;
+    let d1 = ((s / k).ln() + (b + 0.5 * self.sigma * self.sigma) * tau) / (self.sigma * sqrt_tau);
+    let d2 = d1 - self.sigma * sqrt_tau;
     (s * ((b - r) * tau).exp(), k * (-r * tau).exp(), d1, d2)
   }
 }

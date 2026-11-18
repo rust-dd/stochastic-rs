@@ -1,7 +1,7 @@
 use ndarray::Array1;
 
 use super::super::periodic_map;
-use crate::calibration::quote::first_violation;
+use crate::pricing::fourier::HkdeParams;
 
 pub(super) const EPS: f64 = 1e-8;
 pub(super) const RHO_BOUND: f64 = 0.9999;
@@ -30,41 +30,17 @@ pub(super) const BOX: [(f64, f64); 9] = [
   P_V0, P_KAPPA, P_THETA, P_SIGMA_V, P_RHO, P_LAMBDA, P_P_UP, P_ETA1, P_ETA2,
 ];
 
-/// Hkde model parameters — Heston stochastic volatility augmented by a
-/// Kou double-exponential jump component.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct HkdeParams {
-  /// Initial variance $v_0$.
-  pub v0: f64,
-  /// Mean-reversion speed $\kappa$.
-  pub kappa: f64,
-  /// Long-run variance $\theta$.
-  pub theta: f64,
-  /// Volatility of variance $\sigma_v$.
-  pub sigma_v: f64,
-  /// Correlation $\rho$ between the price and variance Brownian motions.
-  pub rho: f64,
-  /// Poisson jump intensity $\lambda$.
-  pub lambda: f64,
-  /// Probability $p$ of an upward jump.
-  pub p_up: f64,
-  /// Upward jump rate $\eta_1>1$.
-  pub eta1: f64,
-  /// Downward jump rate $\eta_2>0$.
-  pub eta2: f64,
-}
-
 impl HkdeParams {
   /// Project the parameter vector onto the admissible set.
   ///
   /// The projection enforces the box bounds, the Feller condition
-  /// $2\kappa\theta\ge\sigma_v^2$ and the Kou finiteness requirement
+  /// $2\kappa\theta\ge\sigma^2$ and the Kou finiteness requirement
   /// $\eta_1>1$.
   pub fn project_in_place(&mut self) {
     self.v0 = periodic_map(self.v0, P_V0.0, P_V0.1).max(0.0);
     self.kappa = periodic_map(self.kappa, P_KAPPA.0, P_KAPPA.1).max(KAPPA_MIN);
     self.theta = periodic_map(self.theta, P_THETA.0, P_THETA.1).max(THETA_MIN);
-    self.sigma_v = periodic_map(self.sigma_v, P_SIGMA_V.0, P_SIGMA_V.1)
+    self.sigma = periodic_map(self.sigma, P_SIGMA_V.0, P_SIGMA_V.1)
       .abs()
       .max(SIGMA_V_MIN);
     self.rho = periodic_map(self.rho, P_RHO.0, P_RHO.1).clamp(-RHO_BOUND, RHO_BOUND);
@@ -73,12 +49,12 @@ impl HkdeParams {
     self.eta1 = periodic_map(self.eta1, P_ETA1.0, P_ETA1.1).max(ETA1_MIN);
     self.eta2 = periodic_map(self.eta2, P_ETA2.0, P_ETA2.1).max(ETA2_MIN);
 
-    if 2.0 * self.kappa * self.theta < self.sigma_v * self.sigma_v {
+    if 2.0 * self.kappa * self.theta < self.sigma * self.sigma {
       let sigma_star = (2.0 * self.kappa * self.theta).sqrt();
       if sigma_star >= P_SIGMA_V.0 {
-        self.sigma_v = sigma_star.min(P_SIGMA_V.1);
+        self.sigma = sigma_star.min(P_SIGMA_V.1);
       } else {
-        let theta_star = ((self.sigma_v * self.sigma_v) / (2.0 * self.kappa)).max(THETA_MIN) + EPS;
+        let theta_star = ((self.sigma * self.sigma) / (2.0 * self.kappa)).max(THETA_MIN) + EPS;
         self.theta = theta_star.min(P_THETA.1);
       }
     }
@@ -89,79 +65,12 @@ impl HkdeParams {
     self.project_in_place();
     self
   }
-
-  /// The first of [`HkdeFourier::new`](crate::pricing::fourier::HkdeFourier::new)'s checks these
-  /// values fail, in its panic's words; `None` if all pass.
-  pub(crate) fn violation(&self) -> Option<String> {
-    let Self {
-      v0,
-      kappa,
-      theta,
-      sigma_v,
-      rho,
-      lambda,
-      p_up,
-      eta1,
-      eta2,
-    } = *self;
-    first_violation(&[
-      (
-        "v0",
-        v0,
-        "v0.is_finite() && v0 >= 0.0",
-        v0.is_finite() && v0 >= 0.0,
-      ),
-      ("kappa", kappa, "kappa.is_finite()", kappa.is_finite()),
-      (
-        "theta",
-        theta,
-        "theta.is_finite() && theta >= 0.0",
-        theta.is_finite() && theta >= 0.0,
-      ),
-      (
-        "sigma_v",
-        sigma_v,
-        "sigma_v.is_finite() && sigma_v > 0.0",
-        sigma_v.is_finite() && sigma_v > 0.0,
-      ),
-      (
-        "rho",
-        rho,
-        "(-1.0..=1.0).contains(&rho)",
-        (-1.0..=1.0).contains(&rho),
-      ),
-      (
-        "lambda",
-        lambda,
-        "lambda.is_finite() && lambda >= 0.0",
-        lambda.is_finite() && lambda >= 0.0,
-      ),
-      (
-        "p_up",
-        p_up,
-        "(0.0..=1.0).contains(&p_up)",
-        (0.0..=1.0).contains(&p_up),
-      ),
-      (
-        "eta1",
-        eta1,
-        "eta1.is_finite() && eta1 > 1.0",
-        eta1.is_finite() && eta1 > 1.0,
-      ),
-      (
-        "eta2",
-        eta2,
-        "eta2.is_finite() && eta2 > 0.0",
-        eta2.is_finite() && eta2 > 0.0,
-      ),
-    ])
-  }
 }
 
 impl From<HkdeParams> for Array1<f64> {
   fn from(p: HkdeParams) -> Self {
     Array1::from_vec(vec![
-      p.v0, p.kappa, p.theta, p.sigma_v, p.rho, p.lambda, p.p_up, p.eta1, p.eta2,
+      p.v0, p.kappa, p.theta, p.sigma, p.rho, p.lambda, p.p_up, p.eta1, p.eta2,
     ])
   }
 }
@@ -172,7 +81,7 @@ impl From<Array1<f64>> for HkdeParams {
       v0: v[0],
       kappa: v[1],
       theta: v[2],
-      sigma_v: v[3],
+      sigma: v[3],
       rho: v[4],
       lambda: v[5],
       p_up: v[6],

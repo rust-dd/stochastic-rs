@@ -33,6 +33,8 @@ pub use heston::HestonFourier;
 pub(crate) use heston::factor_cd;
 pub use hybrid::BatesFourier;
 pub use hybrid::HkdeFourier;
+pub use hybrid::HkdeParams;
+pub use hybrid::SvjParams;
 pub use levy::CgmyFourier;
 pub use levy::KouFourier;
 pub use levy::MertonJdFourier;

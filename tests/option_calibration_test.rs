@@ -66,25 +66,22 @@ fn hw_calibration_recovers_self_consistent_params() {
 
   let quote_params: Vec<(f64, f64)> = vec![(1.0, 5.0), (2.0, 5.0), (3.0, 3.0)];
   let mut quotes = Vec::new();
-  for (expiry, tenor) in quote_params {
+  for (tau, tenor) in quote_params {
     let n_payments = (tenor * 2.0).round() as usize;
     let accrual = tenor / n_payments as f64;
-    let coupon_times: Vec<f64> = (1..=n_payments)
-      .map(|k| expiry + accrual * k as f64)
-      .collect();
+    let coupon_times: Vec<f64> = (1..=n_payments).map(|k| tau + accrual * k as f64).collect();
     let accruals = vec![accrual; n_payments];
     let annuity: f64 = coupon_times
       .iter()
       .map(|&t| curve.discount_factor(t) * accrual)
       .sum();
-    let fair_rate = (curve.discount_factor(expiry)
-      - curve.discount_factor(*coupon_times.last().unwrap()))
-      / annuity;
+    let fair_rate =
+      (curve.discount_factor(tau) - curve.discount_factor(*coupon_times.last().unwrap())) / annuity;
     let swpn = JamshidianHullWhiteSwaption::new(
       SwaptionDirection::Payer,
       fair_rate,
       1.0,
-      expiry,
+      tau,
       coupon_times,
       accruals,
       target_a,
@@ -92,10 +89,10 @@ fn hw_calibration_recovers_self_consistent_params() {
     );
     let model_price = swpn.price(&curve);
     let forward = fair_rate;
-    let tau_exp = expiry;
+    let tau_exp = tau;
     let implied_vol = implied_vol_solve(model_price / annuity, forward, forward, tau_exp);
     quotes.push(SwaptionQuote {
-      expiry,
+      tau,
       tenor,
       black_vol: implied_vol,
       fixed_accrual: 0.5,
@@ -164,7 +161,7 @@ fn sabr_caplet_calibration_recovers_self_consistent_params() {
   let target_nu = 0.45;
   let target_rho = -0.25;
   let forward = 0.04_f64;
-  let expiry = 2.0_f64;
+  let tau = 2.0_f64;
   let target = SabrParams {
     alpha: target_alpha,
     beta: target_beta,
@@ -175,7 +172,7 @@ fn sabr_caplet_calibration_recovers_self_consistent_params() {
   let strikes: Vec<f64> = (0..=10).map(|i| 0.02 + 0.004 * i as f64).collect();
   let market_vols: Vec<f64> = strikes
     .iter()
-    .map(|&k| hagan_implied_vol(k, forward, expiry, &target))
+    .map(|&k| hagan_implied_vol(k, forward, tau, &target))
     .collect();
 
   let start = SabrCapletParams {
@@ -187,7 +184,7 @@ fn sabr_caplet_calibration_recovers_self_consistent_params() {
     },
     shift: 0.0,
   };
-  let cal = SabrCapletCalibrator::new(forward, expiry, strikes, market_vols, start).with_options(
+  let cal = SabrCapletCalibrator::new(forward, tau, strikes, market_vols, start).with_options(
     CalibrationOptions::default()
       .with_max_iterations(800)
       .with_tolerance(1e-12),
@@ -278,7 +275,7 @@ fn sabr_caplet_calibration_recovers_self_consistent_params_negative_forward() {
 
   let shift = 0.02_f64;
   let forward = -0.0025_f64;
-  let expiry = 1.5_f64;
+  let tau = 1.5_f64;
   let target_beta = 0.5;
   let target_nu = 0.4;
   let target_rho = -0.3;
@@ -298,7 +295,7 @@ fn sabr_caplet_calibration_recovers_self_consistent_params_negative_forward() {
 
   let market_vols: Vec<f64> = strikes
     .iter()
-    .map(|&k| hagan_implied_vol(k + shift, shifted_forward, expiry, &target))
+    .map(|&k| hagan_implied_vol(k + shift, shifted_forward, tau, &target))
     .collect();
 
   let start = SabrCapletParams {
@@ -310,7 +307,7 @@ fn sabr_caplet_calibration_recovers_self_consistent_params_negative_forward() {
     },
     shift,
   };
-  let cal = SabrCapletCalibrator::new(forward, expiry, strikes, market_vols, start).with_options(
+  let cal = SabrCapletCalibrator::new(forward, tau, strikes, market_vols, start).with_options(
     CalibrationOptions::default()
       .with_max_iterations(800)
       .with_tolerance(1e-12),

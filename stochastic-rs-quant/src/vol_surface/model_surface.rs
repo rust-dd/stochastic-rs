@@ -184,6 +184,7 @@ mod tests {
   use crate::pricing::fourier::BatesFourier;
   use crate::pricing::fourier::DoubleHestonFourier;
   use crate::pricing::fourier::HestonFourier;
+  use crate::pricing::fourier::SvjParams;
   use crate::pricing::fourier::VarianceGammaFourier;
   use crate::pricing::heston::HestonParams;
   use crate::pricing::heston_stoch_corr::HestonStochCorrPricer;
@@ -354,16 +355,16 @@ mod tests {
 
   #[test]
   fn bates_via_model_surface() {
-    let model = BatesFourier {
+    let model = BatesFourier::new(SvjParams {
       v0: 0.04,
       kappa: 2.0,
       theta: 0.04,
-      sigma_v: 0.3,
+      sigma: 0.3,
       rho: -0.7,
       lambda: 0.5,
       mu_j: -0.1,
       sigma_j: 0.15,
-    };
+    });
 
     let strikes = vec![90.0, 95.0, 100.0, 105.0, 110.0];
     let maturities = vec![0.25, 0.5, 1.0];
@@ -576,7 +577,7 @@ mod tests {
         let iv = surface.ivs[[j, i]];
         assert!(
           (iv - 0.25).abs() < 5e-3,
-          "European FD should recover its own v: iv={iv} at T={t}, K={k}"
+          "European FD should recover its own sigma: iv={iv} at T={t}, K={k}"
         );
       }
     }

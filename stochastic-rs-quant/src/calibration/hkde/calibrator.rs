@@ -1,5 +1,4 @@
 use super::loss::HkdeProblem;
-use super::params::HkdeParams;
 use crate::OptionQuote;
 use crate::QuantError;
 use crate::calibration::Calibrated;
@@ -7,6 +6,7 @@ use crate::calibration::CalibrationOptions;
 use crate::calibration::least_squares::minimize;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::validate_quotes;
+use crate::pricing::fourier::HkdeParams;
 
 /// Heston–Kou fit to vanilla quotes by Levenberg–Marquardt, each price residual weighted by the
 /// square root of its quote's inverse Black vega (Agazzotti et al. 2025, eq. 13).
@@ -57,7 +57,7 @@ impl HkdeCalibrator {
       v0: 0.04,
       kappa: 1.5,
       theta: 0.04,
-      sigma_v: 0.3,
+      sigma: 0.3,
       rho: -0.5,
       lambda: 0.5,
       p_up: 0.4,

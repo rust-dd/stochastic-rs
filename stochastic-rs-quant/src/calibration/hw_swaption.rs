@@ -33,7 +33,7 @@ use crate::traits::ToShortRateModel;
 #[derive(Debug, Clone)]
 pub struct SwaptionQuote {
   /// Time from valuation to exercise in years.
-  pub expiry: f64,
+  pub tau: f64,
   /// Swap tenor in years (from exercise to final maturity).
   pub tenor: f64,
   /// Black-76 at-the-money-forward volatility.
@@ -46,7 +46,7 @@ pub struct SwaptionQuote {
   pub weight: Option<f64>,
 }
 
-/// `InvalidQuote` for an expiry, tenor or accrual not finite and `> 0`, a vol or weight not finite
+/// `InvalidQuote` for a `tau`, tenor or accrual not finite and `> 0`, a vol or weight not finite
 /// and `≥ 0`, over 100,000 payments or a negative or NaN swap rate; no quote is `InsufficientData`.
 pub(crate) fn validate_swaption_quotes(
   quotes: &[SwaptionQuote],
@@ -61,7 +61,7 @@ pub(crate) fn validate_swaption_quotes(
   }
   for (index, quote) in quotes.iter().enumerate() {
     let fields = [
-      ("expiry", quote.expiry, true),
+      ("tau", quote.tau, true),
       ("tenor", quote.tenor, true),
       ("fixed_accrual", quote.fixed_accrual, true),
       ("black_vol", quote.black_vol, false),
@@ -122,18 +122,18 @@ pub(crate) fn market_swaption(
   let n_payments = payment_count(quote);
   let accrual = quote.tenor / n_payments as f64;
   let coupon_times: Vec<f64> = (1..=n_payments)
-    .map(|k| quote.expiry + accrual * k as f64)
+    .map(|k| quote.tau + accrual * k as f64)
     .collect();
   let annuity: f64 = coupon_times
     .iter()
     .map(|&t| curve.discount_factor(t) * accrual)
     .sum::<f64>()
     * notional;
-  let p_exp = curve.discount_factor(quote.expiry);
+  let p_exp = curve.discount_factor(quote.tau);
   let p_end = curve.discount_factor(*coupon_times.last().expect("non-empty"));
   let fair_rate = (p_exp - p_end) / (annuity / notional).max(1e-14);
   let market_price =
-    annuity * black_forward_caplet(fair_rate, fair_rate, quote.expiry, quote.black_vol);
+    annuity * black_forward_caplet(fair_rate, fair_rate, quote.tau, quote.black_vol);
   MarketSwaption {
     fair_rate,
     coupon_times,
@@ -286,7 +286,7 @@ impl HullWhiteCost {
         quote.direction,
         market.fair_rate,
         self.notional,
-        quote.expiry,
+        quote.tau,
         &market.coupon_times,
         &accrual_factors,
         a,
@@ -375,8 +375,8 @@ mod tests {
   fn quotes() -> Vec<SwaptionQuote> {
     [(1.0, 2.0, 0.22), (2.0, 3.0, 0.20)]
       .into_iter()
-      .map(|(expiry, tenor, black_vol)| SwaptionQuote {
-        expiry,
+      .map(|(tau, tenor, black_vol)| SwaptionQuote {
+        tau,
         tenor,
         black_vol,
         fixed_accrual: 0.5,

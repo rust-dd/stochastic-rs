@@ -322,39 +322,39 @@ fn hkde_zero_jumps_equals_heston() {
     sigma: 0.1,
     rho: -0.6,
   });
-  let hkde = HkdeFourier {
+  let hkde = HkdeFourier::new(HkdeParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
-    sigma_v: 0.1,
+    sigma: 0.1,
     rho: -0.6,
-    lam: 0.0,
+    lambda: 0.0,
     p_up: 0.5,
     eta1: 10.0,
     eta2: 10.0,
-  };
+  });
   let pricer = CarrMadanPricer::default();
   let heston_price = pricer.price_call(&heston, 100.0, 100.0, 0.05, 0.0, 1.0);
   let hkde_price = pricer.price_call(&hkde, 100.0, 100.0, 0.05, 0.0, 1.0);
   assert!(
     (heston_price - hkde_price).abs() < TOL_TIGHT,
-    "Hkde(lam=0) vs Heston: hkde={hkde_price}, heston={heston_price}"
+    "Hkde(lambda=0) vs Heston: hkde={hkde_price}, heston={heston_price}"
   );
 }
 
 #[test]
 fn hkde_prices_positive() {
-  let model = HkdeFourier {
+  let model = HkdeFourier::new(HkdeParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
-    sigma_v: 0.3,
+    sigma: 0.3,
     rho: -0.7,
-    lam: 3.0,
+    lambda: 3.0,
     p_up: 0.4,
     eta1: 10.0,
     eta2: 5.0,
-  };
+  });
   let pricer = CarrMadanPricer::default();
   let price = pricer.price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
   assert!(
@@ -365,17 +365,17 @@ fn hkde_prices_positive() {
 
 #[test]
 fn hkde_call_decreases_with_strike() {
-  let model = HkdeFourier {
+  let model = HkdeFourier::new(HkdeParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
-    sigma_v: 0.3,
+    sigma: 0.3,
     rho: -0.7,
-    lam: 3.0,
+    lambda: 3.0,
     p_up: 0.4,
     eta1: 10.0,
     eta2: 5.0,
-  };
+  });
   let pricer = CarrMadanPricer::default();
   let p1 = pricer.price_call(&model, 100.0, 90.0, 0.05, 0.01, 1.0);
   let p2 = pricer.price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
@@ -388,17 +388,17 @@ fn hkde_call_decreases_with_strike() {
 
 #[test]
 fn hkde_lewis_vs_carr_madan() {
-  let model = HkdeFourier {
+  let model = HkdeFourier::new(HkdeParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
-    sigma_v: 0.3,
+    sigma: 0.3,
     rho: -0.7,
-    lam: 1.0,
+    lambda: 1.0,
     p_up: 0.4,
     eta1: 10.0,
     eta2: 5.0,
-  };
+  });
   let cm_price = CarrMadanPricer::default().price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
   let lw_price = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.01, 1.0);
   assert!(
@@ -443,17 +443,17 @@ fn double_heston_fourier_little_trap_long_maturity_high_rho() {
 /// diffusion part must stay on the principal log-branch under the Kou jump CF.
 #[test]
 fn hkde_fourier_little_trap_long_maturity_high_rho() {
-  let model = HkdeFourier {
+  let model = HkdeFourier::new(HkdeParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
-    sigma_v: 0.3,
+    sigma: 0.3,
     rho: -0.9,
-    lam: 1.5,
+    lambda: 1.5,
     p_up: 0.4,
     eta1: 10.0,
     eta2: 5.0,
-  };
+  });
   let call = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.0, 5.0);
   assert!(
     call.is_finite() && call > 0.0 && call < 100.0,
@@ -464,16 +464,16 @@ fn hkde_fourier_little_trap_long_maturity_high_rho() {
 /// The same stress on `BatesFourier`, whose Heston part stays on the principal branch under jumps.
 #[test]
 fn bates_fourier_little_trap_long_maturity_high_rho() {
-  let model = BatesFourier {
+  let model = BatesFourier::new(SvjParams {
     v0: 0.04,
     kappa: 2.0,
     theta: 0.04,
-    sigma_v: 0.3,
+    sigma: 0.3,
     rho: -0.9,
     lambda: 0.3,
     mu_j: -0.05,
     sigma_j: 0.15,
-  };
+  });
   let call = LewisPricer::price_call(&model, 100.0, 100.0, 0.05, 0.0, 5.0);
   assert!(
     call.is_finite() && call > 0.0 && call < 100.0,

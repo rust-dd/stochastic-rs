@@ -42,13 +42,13 @@ pub(super) fn bates_cf(p: &SvjParams, s: f64, r: f64, q: f64, tau: f64, u: Compl
   let iu = i * u;
   let rq = r - q;
 
-  let xi_h = Complex64::new(p.kappa, 0.0) - p.sigma_v * p.rho * iu;
-  let d = (xi_h * xi_h + p.sigma_v * p.sigma_v * (u * u + iu)).sqrt();
+  let xi_h = Complex64::new(p.kappa, 0.0) - p.sigma * p.rho * iu;
+  let d = (xi_h * xi_h + p.sigma * p.sigma * (u * u + iu)).sqrt();
 
   let exp_neg_dt = (-d * tau).exp();
   let g = (xi_h - d) / (xi_h + d);
 
-  let sigma_v2 = p.sigma_v * p.sigma_v;
+  let sigma_v2 = p.sigma * p.sigma;
 
   let c_heston = iu * (s.ln() + rq * tau)
     + (p.kappa * p.theta / sigma_v2)
@@ -172,8 +172,8 @@ impl<'a> SvjProblem<'a> {
           params_minus.theta = (x - h).max(THETA_MIN);
         }
         3 => {
-          params_plus.sigma_v = (x + h).abs().max(SIGMA_V_MIN);
-          params_minus.sigma_v = (x - h).abs().max(SIGMA_V_MIN);
+          params_plus.sigma = (x + h).abs().max(SIGMA_V_MIN);
+          params_minus.sigma = (x - h).abs().max(SIGMA_V_MIN);
         }
         4 => {
           let clamp = |y: f64| y.clamp(-RHO_BOUND, RHO_BOUND);

@@ -202,8 +202,8 @@ fn bsm_greeks_second_order_are_finite() {
   let model = BsmPricer::new(0.2, BsmCoc::Bsm1973);
   let vanna = model.vanna(s, k, r, 0.0, tau);
   let charm = model.charm(s, k, r, 0.0, tau, OptionType::Call);
-  let volga = model.vomma(s, k, r, 0.0, tau);
-  let veta = model.dvega_dtime(s, k, r, 0.0, tau);
+  let volga = model.volga(s, k, r, 0.0, tau);
+  let veta = model.veta(s, k, r, 0.0, tau);
   assert!(
     vanna.is_finite() && charm.is_finite() && volga.is_finite() && veta.is_finite(),
     "second-order Greeks should be finite at-the-money"
@@ -242,12 +242,8 @@ fn bsm_greeks_match_pre_refactor_goldens() {
       m.charm(s, k, r, q, tau, call),
       0.104_875_733_550_512_66,
     ),
-    ("vomma", m.vomma(s, k, r, q, tau), 0.411_960_901_932_774_2),
-    (
-      "dvega_dtime",
-      m.dvega_dtime(s, k, r, q, tau),
-      -22.138_208_955_842_344,
-    ),
+    ("volga", m.volga(s, k, r, q, tau), 0.411_960_901_932_774_2),
+    ("veta", m.veta(s, k, r, q, tau), -22.138_208_955_842_344),
     (
       "put delta",
       m.delta(s, k, r, q, tau, put),
@@ -363,13 +359,8 @@ fn bsm_one_model_prices_a_grid() {
   }
 }
 
-/// [`BsmPricer::greeks`] renames two members on the way into the
-/// [`Greeks`](crate::traits::Greeks) aggregate — `volga` is `vomma` and
-/// `veta` is `dvega_dtime`. Swapping those two lines in the aggregate is a
-/// silent, plausible-looking error, so every member is pinned against its
-/// accessor here. This is the mapping's only test; `AnalyticBsEngine` and
-/// the `mc_greeks_demo` example both route through `greeks()` rather than
-/// repeating it.
+/// Every member of the aggregate against its accessor: a swapped `volga` and `veta` would look
+/// plausible.
 #[test]
 fn bsm_greeks_aggregate_matches_accessors() {
   let (s, k, r, q, tau) = Q;
@@ -383,12 +374,8 @@ fn bsm_greeks_aggregate_matches_accessors() {
     assert_eq!(g.rho, m.rho(s, k, r, q, tau, ot), "rho");
     assert_eq!(g.vanna, m.vanna(s, k, r, q, tau), "vanna");
     assert_eq!(g.charm, m.charm(s, k, r, q, tau, ot), "charm");
-    assert_eq!(g.volga, m.vomma(s, k, r, q, tau), "volga is vomma");
-    assert_eq!(
-      g.veta,
-      m.dvega_dtime(s, k, r, q, tau),
-      "veta is dvega_dtime"
-    );
+    assert_eq!(g.volga, m.volga(s, k, r, q, tau), "volga");
+    assert_eq!(g.veta, m.veta(s, k, r, q, tau), "veta");
     // volga ≠ veta here, so a swapped pair cannot pass the equalities above by accident.
     assert_ne!(
       g.volga, g.veta,
@@ -418,7 +405,7 @@ fn merton_at_a_zero_yield_is_bsm_1973_bit_for_bit() {
       m.rho(s, k, r, 0.0, tau, ot),
       m.vanna(s, k, r, 0.0, tau),
       m.charm(s, k, r, 0.0, tau, ot),
-      m.vomma(s, k, r, 0.0, tau),
+      m.volga(s, k, r, 0.0, tau),
       m.implied_volatility(price, s, k, r, 0.0, tau, ot),
     ]
     .map(f64::to_bits)

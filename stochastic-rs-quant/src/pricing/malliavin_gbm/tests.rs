@@ -359,7 +359,7 @@ mod construction_validation {
   /// it biases the weight and the conditional expectation built on it.
   #[test]
   #[should_panic(
-    expected = "GbmMalliavinPricer::new: v must be a finite, non-negative volatility (got -0.2)"
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = -0.2"
   )]
   fn new_rejects_negative_volatility() {
     let _ = GbmMalliavinPricer::new(-0.2, 200, 100, 0.5, Unseeded);
@@ -367,7 +367,7 @@ mod construction_validation {
 
   #[test]
   #[should_panic(
-    expected = "GbmMalliavinPricer::new: v must be a finite, non-negative volatility (got inf)"
+    expected = "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = inf"
   )]
   fn new_rejects_an_infinite_volatility() {
     let _ = GbmMalliavinPricer::new(f64::INFINITY, 200, 100, 0.5, Unseeded);

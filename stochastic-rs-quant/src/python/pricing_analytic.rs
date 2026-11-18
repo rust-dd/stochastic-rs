@@ -4,7 +4,7 @@ use super::parse_option_type;
 use crate::pricing::heston::HestonParams;
 use crate::traits::ModelPricer;
 
-/// The Rust model holds `(v, coc)` only, so the wrapper carries the
+/// The Rust model holds `(sigma, coc)` only, so the wrapper carries the
 /// `(s, k, r, q, tau)` query and the option type that the Python-visible
 /// no-argument methods are defined at. Python's constructor signature is
 /// unchanged.
@@ -238,7 +238,7 @@ impl PySabrPricer {
   }
 }
 
-/// The Rust model holds `(v, lambda, gamma, m, coc)` only, so the wrapper
+/// The Rust model holds `(sigma, lambda, gamma, m, coc)` only, so the wrapper
 /// carries the `(s, k, r, q, tau)` query and the option type the
 /// Python-visible no-argument methods are defined at. Python's constructor
 /// signature is unchanged.

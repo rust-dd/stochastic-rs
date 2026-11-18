@@ -4,7 +4,7 @@ use pyo3::prelude::*;
 use super::parse_option_type;
 use crate::traits::ModelPricer;
 
-/// The Rust model holds `v` only, so the wrapper carries the
+/// The Rust model holds `sigma` only, so the wrapper carries the
 /// `(s, k, r, q, tau)` query the Python-visible no-argument methods are
 /// defined at. Python's constructor signature is unchanged.
 #[pyclass(name = "AsianPricer", unsendable)]
@@ -149,7 +149,7 @@ impl PyFloatingLookbackPricer {
   }
 }
 
-/// The Rust model holds `v` only, so the wrapper carries the
+/// The Rust model holds `sigma` only, so the wrapper carries the
 /// `(s, k, r, q, tau)` query and the option type the Python-visible
 /// no-argument methods are defined at. Python's constructor signature is
 /// unchanged.

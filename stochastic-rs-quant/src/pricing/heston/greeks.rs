@@ -159,7 +159,7 @@ impl HestonPricer {
       / (4.0 * hs * ht)
   }
 
-  /// Volga / vomma — $\partial^2 V/\partial\sigma^2$ (vega convexity).
+  /// Volga — $\partial^2 V/\partial\sigma^2$ (vega convexity).
   ///
   /// Returns `NaN` at `v0 == 0`, where the $\sigma=\sqrt{v_0}$ chain rule is
   /// undefined.
@@ -190,11 +190,7 @@ impl HestonPricer {
     -2.0 * self.params.v0.sqrt() * p_tau_v0
   }
 
-  /// Every Greek at one query point, in a single [`Greeks`] struct.
-  ///
-  /// The `volga → Greeks::volga` and `veta → Greeks::veta` mapping lives
-  /// here and nowhere else, so a caller cannot get it wrong by
-  /// hand-writing the nine-field literal.
+  /// Every Greek at one query point.
   pub fn greeks(
     &self,
     s: f64,

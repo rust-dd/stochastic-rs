@@ -543,3 +543,19 @@ def test_a_degenerate_sabr_vol_and_an_expired_option_keep_their_pairs():
     assert sr.BSMPricer(v=0.25, **expired).call_put() == (0.0, 5.0)
     assert sr.HestonPricer(**HESTON_MODEL, **expired).call_put() == (0.0, 5.0)
     assert sr.Merton1976Pricer(v=0.25, lambda_=1.0, gamma=0.4, **{**expired, "k": 95.0}).call_put() == (5.0, 0.0)
+
+
+def test_the_jump_fourier_models_keep_their_keywords_and_prices():
+    bates = dict(v0=0.04, kappa=1.5, theta=0.04, sigma_v=0.3, rho=-0.7, mu_j=-0.05, sigma_j=0.1)
+    kw = sr.BatesFourier(**{"lambda": 0.5}, **bates)
+    assert kw.price_call(100.0, 105.0, 0.05, 0.02, 0.75) == pytest.approx(5.684829693931341, rel=1e-12)
+    positional = sr.BatesFourier(0.04, 1.5, 0.04, 0.3, -0.7, 0.5, -0.05, 0.1)
+    assert positional.price_call(100.0, 95.0, 0.05, 0.02, 0.5) == pytest.approx(9.646596110277983, rel=1e-12)
+    hkde = dict(v0=0.04, kappa=1.5, theta=0.04, sigma_v=0.3, rho=-0.7, lam=0.5, p_up=0.4, eta1=10.0, eta2=5.0)
+    assert sr.HKDEFourier(**hkde).price_call(100.0, 105.0, 0.05, 0.02, 0.75) == pytest.approx(6.559356757760902, rel=1e-12)
+    positional = sr.HKDEFourier(0.04, 1.5, 0.04, 0.3, -0.7, 0.5, 0.4, 10.0, 5.0)
+    assert positional.price_call(100.0, 95.0, 0.05, 0.02, 0.5) == pytest.approx(10.316255526796901, rel=1e-12)
+    with pytest.raises(ValueError, match=r"lambda must satisfy `lambda\.is_finite\(\) && lambda >= 0\.0`, got lambda = -0\.5"):
+        sr.HKDEFourier(**{**hkde, "lam": -0.5})
+    with pytest.raises(ValueError, match=r"sigma must satisfy `sigma\.is_finite\(\) && sigma > 0\.0`, got sigma = -0\.3"):
+        sr.HKDEFourier(**{**hkde, "sigma_v": -0.3})

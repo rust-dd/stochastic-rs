@@ -122,7 +122,7 @@ Before writing code, determine which existing traits the new types should implem
 |---|---|---|
 | Single-underlying option pricer | `ModelPricer` | `price_call(s, k, r, q, tau)` / `price_put`. Vol-surface construction additionally requires the `VanillaEuropeanCall` marker (which carries `vanilla_call_forward`); `ModelSurface` blanket-impls over **that**, not over `ModelPricer` |
 | Short-rate / bond model | `ShortRatePricer` | `zero_coupon_price(r0, tau)` / `zero_yield` |
-| Multi-asset or path-dependent pricer | none — convention only | Model params on the struct, query passed to inherent `call_put(...)` / `price_call(...)`. A shared trait would abstract over nothing |
+| Multi-asset or path-dependent pricer | none — convention only | Model params on the struct, query passed to inherent `price_call(...)` / `price_put(...)`. A shared trait would abstract over nothing |
 | Fourier / characteristic-function model | `FourierModelExt` | Auto-gets `ModelPricer` **and** `VanillaEuropeanCall`, hence `ModelSurface`, via blanket impls |
 | Calibration result | `ToModel` | Connects to `build_surface_from_calibration()` pipeline |
 | Holiday / business-day calendar | `CalendarExt` | Plugs into `BusinessDayConvention::adjust()` and `ScheduleBuilder` |

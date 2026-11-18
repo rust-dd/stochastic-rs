@@ -97,7 +97,7 @@ impl Degenerate {
 #[derive(Debug, Clone, Copy)]
 pub struct GbmMalliavinPricer<S: SeedExt = Unseeded> {
   /// Volatility σ
-  pub v: f64,
+  pub sigma: f64,
   /// Number of Monte Carlo paths (M)
   pub n_paths: usize,
   /// Number of time steps (N)
@@ -129,33 +129,12 @@ impl<S: SeedExt> ModelPricer for GbmMalliavinPricer<S> {
 impl<S: SeedExt> VanillaEuropeanCall for GbmMalliavinPricer<S> {}
 
 impl<S: SeedExt> GbmMalliavinPricer<S> {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `v` is negative or `NaN`. Unlike the squared-only uses elsewhere
-  ///   in this crate, the Malliavin weight carries `+ sigma * t_eval`
-  ///   *linearly*, so a negative volatility is not absorbed — it biases the
-  ///   weight and every conditional expectation built on it.
-  /// - if `n_paths` is `0` — there is nothing to average, and
-  ///   `price_call_put_from_conditional` takes its `count == 0` branch and
-  ///   returns a fabricated `0.0` price.
-  /// - if `n_steps` is below `2` — the step size is `tau / (n_steps - 1)`,
-  ///   which is infinite at `1` (fabricating the same `0.0`) and underflows
-  ///   at `0`.
-  /// - if `t_eval` is not strictly positive, or `NaN`.
-  ///
-  /// Only the query-independent half of `0 < t_eval < tau` is checkable
-  /// here, since `tau` arrives per call; the upper half stays where it was,
-  /// with its own distinct wording, so an `expected` anchor on one cannot
-  /// be satisfied by the other.
-  ///
-  /// `seed` is unvalidated — it is a type, not a number, so there is no
-  /// invalid value to reject. See the type-level [Seeding](Self#seeding)
-  /// note for why it is the last parameter.
-  pub fn new(v: f64, n_paths: usize, n_steps: usize, t_eval: f64, seed: S) -> Self {
+  /// Panics unless `sigma` is finite and `>= 0` (the Malliavin weight carries it linearly),
+  /// `n_paths >= 1`, `n_steps >= 2` and `t_eval > 0`; `t_eval < tau` is checked per query.
+  pub fn new(sigma: f64, n_paths: usize, n_steps: usize, t_eval: f64, seed: S) -> Self {
     assert!(
-      v.is_finite() && v >= 0.0,
-      "GbmMalliavinPricer::new: v must be a finite, non-negative volatility (got {v})"
+      sigma.is_finite() && sigma >= 0.0,
+      "sigma must satisfy `sigma.is_finite() && sigma >= 0.0`, got sigma = {sigma:?}"
     );
     assert!(
       n_paths >= 1,
@@ -170,7 +149,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
       "GbmMalliavinPricer::new: t_eval must be strictly positive (got {t_eval})"
     );
     Self {
-      v,
+      sigma,
       n_paths,
       n_steps,
       t_eval,
@@ -261,7 +240,14 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     let mu = r - q;
 
     // Construct a Gbm process with Euler discretization on [0, T].
-    let gbm = Gbm::new(mu, self.v, self.n_steps, s, Some(tau), self.seed.clone());
+    let gbm = Gbm::new(
+      mu,
+      self.sigma,
+      self.n_steps,
+      s,
+      Some(tau),
+      self.seed.clone(),
+    );
 
     let m = self.n_paths;
     let n = self.n_steps;
@@ -346,7 +332,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
       if st.abs() < 1e-14 {
         coef[i] = 0.0;
       } else {
-        let num = (tau * w_t[i] - t_eval * w_final[i]) / (tau - t_eval) + self.v * t_eval;
+        let num = (tau * w_t[i] - t_eval * w_final[i]) / (tau - t_eval) + self.sigma * t_eval;
         coef[i] = num / st;
       }
     }
@@ -431,7 +417,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     // DeltaW = (T * W_t - t_eval * W_T) + (T - t_eval) * t_eval * σ
     let mut delta_w = Array1::<f64>::zeros(m);
     for i in 0..m {
-      delta_w[i] = tau * w_t[i] - t_eval * w_final[i] + (tau - t_eval) * t_eval * self.v;
+      delta_w[i] = tau * w_t[i] - t_eval * w_final[i] + (tau - t_eval) * t_eval * self.sigma;
     }
 
     // den_loc = payoff^2
@@ -439,7 +425,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
 
     // t2 = DeltaW / (t_eval * (T - t_eval) * σ * S_t)
     let mut t2 = Array1::<f64>::zeros(m);
-    let denom_scalar = t_eval * (tau - t_eval) * self.v;
+    let denom_scalar = t_eval * (tau - t_eval) * self.sigma;
     for i in 0..m {
       let st = s_t[i];
       if st.abs() > 1e-14 && denom_scalar.abs() > 1e-14 {
@@ -464,7 +450,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
     };
 
     // l1 scale
-    let sigma2 = self.v * self.v;
+    let sigma2 = self.sigma * self.sigma;
     let h = mu - 0.5 * sigma2;
     let t = t_eval;
     let numer_l = tau + sigma2 * t * (tau - t);
@@ -527,7 +513,7 @@ impl<S: SeedExt> GbmMalliavinPricer<S> {
         let s_curr = paths[[i, step]];
 
         let dw = if s_prev.abs() > 1e-14 {
-          (s_curr - s_prev - mu * s_prev * dt) / (self.v * s_prev)
+          (s_curr - s_prev - mu * s_prev * dt) / (self.sigma * s_prev)
         } else {
           0.0
         };

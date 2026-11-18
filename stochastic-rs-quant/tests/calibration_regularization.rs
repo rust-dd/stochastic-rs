@@ -9,13 +9,11 @@ use stochastic_rs_quant::calibration::double_heston::DoubleHestonCalibrator;
 use stochastic_rs_quant::calibration::double_heston::DoubleHestonParams;
 use stochastic_rs_quant::calibration::heston::HestonCalibrator;
 use stochastic_rs_quant::calibration::hkde::HkdeCalibrator;
-use stochastic_rs_quant::calibration::hkde::HkdeParams;
 use stochastic_rs_quant::calibration::levy::LevyCalibrator;
 use stochastic_rs_quant::calibration::levy::LevyModelType;
 use stochastic_rs_quant::calibration::levy::LevyParams;
 use stochastic_rs_quant::calibration::sabr::SabrCalibrator;
 use stochastic_rs_quant::calibration::svj::SvjCalibrator;
-use stochastic_rs_quant::calibration::svj::SvjParams;
 use stochastic_rs_quant::pricing::bsm::BsmCoc;
 use stochastic_rs_quant::pricing::bsm::BsmPricer;
 use stochastic_rs_quant::pricing::cgmysv::CgmysvModel;
@@ -24,7 +22,9 @@ use stochastic_rs_quant::pricing::fourier::BatesFourier;
 use stochastic_rs_quant::pricing::fourier::DoubleHestonFourier;
 use stochastic_rs_quant::pricing::fourier::HestonFourier;
 use stochastic_rs_quant::pricing::fourier::HkdeFourier;
+use stochastic_rs_quant::pricing::fourier::HkdeParams;
 use stochastic_rs_quant::pricing::fourier::MertonJdFourier;
+use stochastic_rs_quant::pricing::fourier::SvjParams;
 use stochastic_rs_quant::pricing::heston::HestonParams;
 use stochastic_rs_quant::pricing::sabr::SabrParams;
 use stochastic_rs_quant::pricing::sabr::SabrPricer;
@@ -111,7 +111,7 @@ fn svj_holds_lambda_at_its_anchor() {
     v0: 0.04,
     kappa: 1.5,
     theta: 0.04,
-    sigma_v: 0.3,
+    sigma: 0.3,
     rho: -0.7,
     lambda: 0.3,
     mu_j: -0.05,
@@ -153,7 +153,7 @@ fn hkde_holds_lambda_at_its_anchor() {
     v0: 0.04,
     kappa: 1.5,
     theta: 0.04,
-    sigma_v: 0.3,
+    sigma: 0.3,
     rho: -0.7,
     lambda: 0.5,
     p_up: 0.4,
