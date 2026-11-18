@@ -194,8 +194,8 @@ fn models() -> Vec<(&'static str, Box<dyn DiffusionModel>, Closed)> {
       |x| {
         let u = x - 0.3;
         let r = (0.25 + u * u).sqrt();
-        let first = 1.0 / r - x * u / r.powi(3);
-        let second = -(u + 2.0 * x - 0.3) / r.powi(3) + 3.0 * x * u * u / r.powi(5);
+        let first = 0.25 / r.powi(3);
+        let second = -0.75 * u / r.powi(5);
         [-0.08 * first, -0.08 * second, 0.0, 0.0]
       },
     ),

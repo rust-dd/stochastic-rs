@@ -115,7 +115,7 @@ fn the_structured_families_match_their_models() {
   );
 
   // Hyperbolic diffusion: ½σ² folded out of the drift.
-  let (beta, gamma, delta, m, sigma) = (0.5, 1.0, 1.0, 0.0, 0.3);
+  let (beta, gamma, delta, m, sigma) = (0.5, 1.0, 1.0, 0.4, 0.3);
   close(
     step1(
       Family::HyperbolicDiffusion,
@@ -124,7 +124,11 @@ fn the_structured_families_match_their_models() {
       dt,
       dz,
     ),
-    x + 0.5 * sigma * sigma * (beta - gamma * x / (delta * delta + (x - m) * (x - m)).sqrt()) * dt
+    x + 0.5
+      * sigma
+      * sigma
+      * (beta - gamma * (x - m) / (delta * delta + (x - m) * (x - m)).sqrt())
+      * dt
       + sigma * dz,
   );
 

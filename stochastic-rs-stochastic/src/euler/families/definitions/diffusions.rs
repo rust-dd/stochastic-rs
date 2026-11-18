@@ -287,7 +287,7 @@ macro_rules! euler_diffusions {
     state (x)
     noise (dz)
     step {
-      x + half_var * (beta - gamma * x / sqrt(delta * delta + (x - mu) * (x - mu))) * $dt
+      x + half_var * (beta - gamma * (x - mu) / sqrt(delta * delta + (x - mu) * (x - mu))) * $dt
         + sigma * dz
     }
     report { x },

@@ -1,10 +1,13 @@
-//! A hyperbolic-type diffusion with a skew term `beta` and a restoring term centred on `mu`.
+//! The hyperbolic diffusion: constant volatility, a bounded pull to `mu` and a skew `beta`.
 //!
 //! $$
-//! dX_t=\frac{\sigma^2}{2}\left(\beta-\frac{\gamma X_t}{\sqrt{\delta^2+(X_t-\mu)^2}}\right)dt
-//! +\sigma\,dW_t
+//! dX_t=\frac{\sigma^2}{2}
+//! \left(\beta-\frac{\gamma(X_t-\mu)}{\sqrt{\delta^2+(X_t-\mu)^2}}\right)dt+\sigma\,dW_t
 //! $$
 //!
+//! For `γ > |β|` and `δ > 0` its invariant law is hyperbolic, `∝ exp(−γ√(δ² + (x−μ)²) + β(x−μ))`.
+//!
+//! Reference: Bibby & Sørensen (2003), eq. (4.5), DOI 10.1016/B978-044450896-6.50008-X
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -22,17 +25,14 @@ use crate::traits::ProcessExt;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Hyperbolic2<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Drift-shape coefficient β, the constant term inside the bracket
-  /// `β − γX_t/√(δ²+(X_t−μ)²)`.
+  /// Skew β, the constant term inside the bracket `β − γ(X_t−μ)/√(δ²+(X_t−μ)²)`.
   pub beta: T,
-  /// Drift-shape coefficient γ scaling the restoring term inside the same
-  /// bracket.
+  /// Steepness γ of the restoring term inside the same bracket, the source's `α`.
   pub gamma: T,
   /// Curvature parameter δ > 0 of the hyperbolic restoring term near
   /// `X_t = μ`.
   pub delta: T,
-  /// Location parameter μ the restoring term is centered on — not a drift
-  /// rate; it enters only through `(X_t − μ)²`.
+  /// Location μ, where the restoring term vanishes — not a drift rate.
   pub mu: T,
   /// Diffusion scale σ multiplying `dW_t` (also rescales the drift bracket
   /// by `σ²/2`).
@@ -239,7 +239,7 @@ impl<T: FloatExt> Hyperbolic2Sampler<T> {
     for z in tail.iter_mut() {
       let r = (self.delta * self.delta + (prev - self.mu) * (prev - self.mu)).sqrt();
       let half = T::from_f64_fast(0.5);
-      let drift = half * self.sigma * self.sigma * (self.beta - self.gamma * prev / r);
+      let drift = half * self.sigma * self.sigma * (self.beta - self.gamma * (prev - self.mu) / r);
       let next = prev + drift * self.dt + self.sigma * *z;
       *z = next;
       prev = next;
@@ -270,3 +270,50 @@ py_process_1d!(PyHyperbolic2, Hyperbolic2,
   params: (beta: f64, gamma: f64, delta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>),
   device
 );
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+
+  /// Bibby & Sørensen (2003) eq. (4.5): the restoring term is `γ(X − μ)/√(δ² + (X − μ)²)`, zero
+  /// at `X = μ`, so with `β = 0` the first step from `μ` is the noise alone whatever `γ` is.
+  #[test]
+  fn the_restoring_term_vanishes_at_mu() {
+    let first = |gamma: f64| {
+      Hyperbolic2::new(
+        0.0,
+        gamma,
+        1.0,
+        2.0,
+        0.5,
+        9,
+        Some(2.0),
+        None,
+        Deterministic::new(3),
+      )
+      .sample()[1]
+    };
+    assert_eq!(first(0.0), first(5.0));
+  }
+
+  /// With `β = 0` the invariant hyperbolic law is symmetric about `μ`, the long-run mean.
+  #[test]
+  fn the_symmetric_law_is_centred_on_mu() {
+    let path = Hyperbolic2::new(
+      0.0,
+      2.0,
+      1.0,
+      2.0,
+      1.0,
+      200_001,
+      Some(2.0),
+      Some(2000.0),
+      Deterministic::new(5),
+    )
+    .sample();
+    let mean = path.sum() / path.len() as f64;
+    assert!((mean - 2.0).abs() < 0.25, "long-run mean {mean}");
+  }
+}
