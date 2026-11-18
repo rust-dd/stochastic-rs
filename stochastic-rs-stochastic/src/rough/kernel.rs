@@ -44,8 +44,8 @@ impl<T: FloatExt> RlKernel<T> {
     ((n.max(2) as f64).ln() as usize) + 20
   }
 
-  /// The kernel for Hurst $H$ on `degree` Laguerre nodes; panics unless $H \in (0, 1/2)$ and
-  /// `1 ≤ degree ≤` [`Self::MAX_STABLE_DEGREE`].
+  /// The kernel for Hurst $H$ on `degree` Laguerre nodes; panics unless `0 < hurst < 0.5` and
+  /// `1 <= degree <=` [`Self::MAX_STABLE_DEGREE`].
   #[must_use]
   pub fn new(hurst: T, degree: usize) -> Self {
     assert!(

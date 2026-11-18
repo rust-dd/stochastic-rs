@@ -49,7 +49,7 @@ pub struct ExponentialKernel<T: FloatExt> {
 }
 
 impl<T: FloatExt> ExponentialKernel<T> {
-  /// $K(t) = c\,e^{-\beta t}$; panics unless both are finite and $\beta > 0$.
+  /// $K(t) = c\,e^{-\beta t}$; panics unless both are finite and `beta > 0`.
   #[must_use]
   pub fn new(beta: T, c: T) -> Self {
     assert!(
@@ -110,7 +110,7 @@ pub struct GammaKernel<T: FloatExt> {
 
 impl<T: FloatExt> GammaKernel<T> {
   /// The kernel for Hurst $H$ tempered at rate $\lambda$, on [`RlKernel::new`]'s nodes; panics
-  /// unless $\lambda > 0$ is finite, and where [`RlKernel::new`] panics.
+  /// unless `lambda > 0` and `lambda` is finite, and where [`RlKernel::new`] panics.
   #[must_use]
   pub fn new(hurst: T, lambda: T, degree: usize) -> Self {
     assert!(

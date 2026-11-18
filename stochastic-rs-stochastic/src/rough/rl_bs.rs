@@ -50,7 +50,7 @@ pub struct RlBlackScholes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 impl<T: FloatExt, S: SeedExt> RlBlackScholes<T, S> {
   /// Panics unless every parameter is finite, `0 < hurst < 0.5`, `s0 > 0`, `sigma >= 0`, `n >= 2`,
-  /// a given `t` is positive and a given `degree` is in `1..=175`.
+  /// a given `t` is positive and a given `1 <= degree <= 175`.
   #[must_use]
   pub fn new(
     hurst: T,

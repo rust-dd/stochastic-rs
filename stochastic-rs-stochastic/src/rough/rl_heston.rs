@@ -73,7 +73,7 @@ fn build_markov<T: FloatExt>(
 
 impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
   /// Panics unless every parameter is finite, `0 < hurst < 0.5`, `|rho| <= 1`, `n >= 2`, a given
-  /// `t` is positive, a given `degree` is in `1..=175` and `kappa`, `theta`, `nu`, `v0` are `>= 0`.
+  /// `t` is positive, a given `1 <= degree <= 175` and `kappa`, `theta`, `nu`, `v0` are `>= 0`.
   #[must_use]
   pub fn new(
     hurst: T,

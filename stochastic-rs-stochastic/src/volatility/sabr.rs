@@ -127,7 +127,7 @@ impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
   }
 
   /// Replace `rho` and rebuild the cached correlated-Gaussian generator `cgns`, which the sampler
-  /// reads; panics unless `rho` is finite and in `[-1, 1]`.
+  /// reads; panics unless `-1 <= rho <= 1`.
   pub fn with_rho(mut self, rho: T) -> Self {
     Self::check_rho(rho);
     self.rho = rho;

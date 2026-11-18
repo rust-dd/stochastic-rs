@@ -89,7 +89,7 @@ impl<T> From<[Array1<T>; 3]> for DoubleHestonPaths<T> {
 
 impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
   /// Panics unless every parameter is finite, each `v*_0`, `kappa*`, `theta*`, `sigma*` is
-  /// non-negative, each `rho*` is in `[-1, 1]`, `n >= 2` and a given `t` is positive.
+  /// non-negative, each `-1 <= rho* <= 1`, `n >= 2` and a given `t` is positive.
   pub fn new(
     s0: T,
     v1_0: T,
@@ -247,7 +247,7 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   }
 
   /// Replace `rho1` and rebuild the first factor's cached generator `cgns1`, which the sampler
-  /// reads; panics unless `rho1` is finite and in `[-1, 1]`.
+  /// reads; panics unless `-1 <= rho1 <= 1`.
   pub fn with_rho1(mut self, rho1: T) -> Self {
     Self::check_rho1(rho1);
     self.rho1 = rho1;
@@ -277,7 +277,7 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   }
 
   /// Replace `rho2` and rebuild the second factor's cached generator `cgns2`, which the sampler
-  /// reads; panics unless `rho2` is finite and in `[-1, 1]`.
+  /// reads; panics unless `-1 <= rho2 <= 1`.
   pub fn with_rho2(mut self, rho2: T) -> Self {
     Self::check_rho2(rho2);
     self.rho2 = rho2;
