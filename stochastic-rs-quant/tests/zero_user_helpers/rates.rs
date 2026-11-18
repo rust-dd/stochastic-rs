@@ -145,8 +145,7 @@ fn zero_rates_from_points_is_minus_log_discount_over_time() {
   };
   let points = [point(0.5, 0.03), point(2.0, 0.035), point(10.0, 0.041)];
   let rates = zero_rates_from_points(&points);
-  for (rate, p) in rates.iter().zip(&points) {
-    assert_eq!(*rate, -p.discount_factor.ln() / p.time);
+  for (rate, expected) in rates.iter().zip([0.03, 0.035, 0.041]) {
+    assert!((rate - expected).abs() < 1e-15, "{rate} against {expected}");
   }
-  assert!((rates[2] - 0.041).abs() < 1e-15);
 }
