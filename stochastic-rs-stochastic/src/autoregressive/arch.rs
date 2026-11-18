@@ -31,7 +31,6 @@ use crate::traits::ProcessExt;
 /// - `omega`: Constant term.
 /// - `alpha`: Array of Arch coefficients.
 /// - `n`: Number of observations.
-/// - `m`: Optional batch size.
 #[derive(Debug, Clone)]
 pub struct Arch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Omega (constant term in variance)
@@ -48,7 +47,8 @@ pub struct Arch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Arch<T, S> {
-  /// Create a new Arch model.
+  /// Engle's (1982) ARCH(m). Panics unless `omega > 0` and every `alpha[i] >= 0`; loadings that
+  /// sum to one or more are accepted, and their variance may grow until it samples `∞` or NaN.
   pub fn new(omega: T, alpha: Array1<T>, n: usize, seed: S) -> Self {
     assert!(
       omega.is_finite(),
@@ -60,6 +60,7 @@ impl<T: FloatExt, S: SeedExt> Arch<T, S> {
       omega > T::zero(),
       "omega must satisfy `omega > T::zero()`, got omega = {omega:?}"
     );
+    check_alpha(&alpha);
     Self {
       backend: Cpu,
       omega,
@@ -70,7 +71,11 @@ impl<T: FloatExt, S: SeedExt> Arch<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Arch<T, S, B> {}
+/// One check for `new`, the samplers and a launch, which a field written after `new` reaches.
+#[track_caller]
+fn check_alpha<T: FloatExt>(alpha: &Array1<T>) {
+  assert_entries("alpha", "alpha[i] >= T::zero()", alpha, |v| v >= T::zero());
+}
 
 /// The Euler engine's view of ARCH(1). Higher orders read back more than one
 /// lag, which the engine's four state slots do not bound.
@@ -97,6 +102,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   /// first point: the state it starts from is the seed variance and the
   /// not-yet-warm marker, not a value the path reports.
   fn initial_state(&self) -> [T; 4] {
+    check_alpha(&self.alpha);
     [T::zero(), self.omega, T::zero(), T::zero()]
   }
 
@@ -240,6 +246,7 @@ impl<T: FloatExt> ArchSampler<T> {
       self.normal.fill_slice(slice);
     }
     let var_floor = T::from_f64_fast(1e-12);
+    check_alpha(&self.alpha);
 
     for t in 0..n {
       // compute sigma_t^2
@@ -250,11 +257,6 @@ impl<T: FloatExt> ArchSampler<T> {
           var_t += self.alpha[i - 1] * x_lag.powi(2);
         }
       }
-      assert!(
-        var_t.is_finite() && var_t > T::zero(),
-        "Arch produced non-positive or non-finite conditional variance at t={}",
-        t
-      );
       let sigma_t = var_t.max(var_floor).sqrt();
       out[t] = sigma_t * z[t];
     }
