@@ -45,6 +45,7 @@ fn sabr_params_new_names_the_broken_predicate() {
 #[test]
 fn every_heston_carrier_takes_the_same_params() {
   use stochastic_rs_quant::OptionType;
+  use stochastic_rs_quant::calendar::Maturity;
   use stochastic_rs_quant::instruments::equity::EuropeanOption;
   use stochastic_rs_quant::pricing::engines::AnalyticHestonEngine;
   use stochastic_rs_quant::pricing::fourier::GilPelaezPricer;
@@ -61,14 +62,18 @@ fn every_heston_carrier_takes_the_same_params() {
   let fourier = GilPelaezPricer::price_call(&HestonFourier::new(P), s, k, r, q, tau);
   let engine = AnalyticHestonEngine::with_constants(s, r, q, P);
   let npv = engine
-    .calculate(&EuropeanOption::new_tau(k, OptionType::Call, tau))
+    .calculate(&EuropeanOption::new(
+      k,
+      OptionType::Call,
+      Maturity::Tau(tau),
+    ))
     .npv();
   let pde = HestonAdiPricer::new(P).price_call(s, k, r, q, tau);
   assert!((fourier - exact).abs() < 1e-6, "{fourier}");
   assert!((closed - exact).abs() < 1e-10, "{closed}");
   assert!((closed - npv).abs() < 1e-12, "{closed} vs {npv}");
   assert!((closed - pde).abs() < 5e-2, "{closed} vs {pde}");
-  assert_eq!(engine.params, P);
+  assert_eq!(engine.pricer().params(), P);
   assert_eq!(HestonPricer::new(P).params(), P);
   assert_eq!(HestonFourier::new(P).params(), P);
 }

@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use ndarray::ArrayView1;
 use stochastic_rs::quant::OptionType;
+use stochastic_rs::quant::calendar::Maturity;
 use stochastic_rs::quant::fx::AtmConvention;
 use stochastic_rs::quant::fx::FxDeltaConvention;
 use stochastic_rs::quant::fx::FxMarketQuotes;
@@ -63,8 +64,8 @@ fn main() {
   let heston_engine =
     AnalyticHestonEngine::new(spot.clone(), rate.clone(), div.clone(), heston_params);
 
-  let call = EuropeanOption::new_tau(110.0, OptionType::Call, 1.0);
-  let put = EuropeanOption::new_tau(95.0, OptionType::Put, 1.0);
+  let call = EuropeanOption::new(110.0, OptionType::Call, Maturity::Tau(1.0));
+  let put = EuropeanOption::new(95.0, OptionType::Put, Maturity::Tau(1.0));
 
   let bs_call = bs_engine.calculate(&call);
   let heston_call = heston_engine.calculate(&call);

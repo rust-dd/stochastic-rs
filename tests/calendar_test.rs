@@ -6,6 +6,7 @@
 use chrono::Datelike;
 use chrono::NaiveDate;
 use stochastic_rs::quant::calendar::CalendarExt;
+use stochastic_rs::quant::calendar::Maturity;
 use stochastic_rs::quant::calendar::business_day::BusinessDayConvention;
 use stochastic_rs::quant::calendar::day_count::DayCountConvention;
 use stochastic_rs::quant::calendar::holiday::Calendar;
@@ -383,22 +384,22 @@ fn calendar_ext_trait_object() {
   assert_eq!(adjusted, d(2024, 1, 2));
 }
 
-struct MockPricer {
+struct DatedContract {
   eval: NaiveDate,
-  expiration: NaiveDate,
+  expiry: NaiveDate,
+  dcc: DayCountConvention,
 }
 
-impl stochastic_rs::traits::TimeExt for MockPricer {
-  fn tau(&self) -> Option<f64> {
-    None
+impl stochastic_rs::traits::TimeExt for DatedContract {
+  fn maturity(&self) -> Maturity {
+    Maturity::Dates {
+      eval: self.eval,
+      expiry: self.expiry,
+    }
   }
 
-  fn eval(&self) -> Option<NaiveDate> {
-    Some(self.eval)
-  }
-
-  fn expiration(&self) -> Option<NaiveDate> {
-    Some(self.expiration)
+  fn dcc(&self) -> DayCountConvention {
+    self.dcc
   }
 }
 
@@ -406,14 +407,15 @@ impl stochastic_rs::traits::TimeExt for MockPricer {
 fn time_ext_tau_with_dcc() {
   use stochastic_rs::traits::TimeExt;
 
-  let pricer = MockPricer {
+  let contract = DatedContract {
     eval: d(2024, 1, 15),
-    expiration: d(2024, 7, 15),
+    expiry: d(2024, 7, 15),
+    dcc: DayCountConvention::Actual365Fixed,
   };
 
-  let tau_365: f64 = pricer.tau_or_from_dates();
-  let tau_360: f64 = pricer.tau_with_dcc(DayCountConvention::Actual360);
-  let tau_act: f64 = pricer.tau_with_dcc(DayCountConvention::ActualActualIsda);
+  let tau_365: f64 = contract.tau();
+  let tau_360: f64 = contract.tau_with_dcc(DayCountConvention::Actual360);
+  let tau_act: f64 = contract.tau_with_dcc(DayCountConvention::ActualActualIsda);
 
   // 182 days: ACT/365 = 182/365 ≈ 0.4986
   assert!((tau_365 - 182.0 / 365.0).abs() < 1e-10);
@@ -425,58 +427,18 @@ fn time_ext_tau_with_dcc() {
   assert!(tau_360 > tau_365);
 }
 
-struct MockPricerWithDcc {
-  tau: Option<f64>,
-  eval: NaiveDate,
-  expiration: NaiveDate,
-  dcc: Option<DayCountConvention>,
-}
-
-impl stochastic_rs::traits::TimeExt for MockPricerWithDcc {
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn eval(&self) -> Option<NaiveDate> {
-    Some(self.eval)
-  }
-
-  fn expiration(&self) -> Option<NaiveDate> {
-    Some(self.expiration)
-  }
-
-  fn dcc(&self) -> Option<DayCountConvention> {
-    self.dcc
-  }
-}
-
 #[test]
-fn time_ext_dcc_override_switches_tau_or_from_dates() {
+fn time_ext_tau_reads_the_instruments_own_day_count() {
   use stochastic_rs::traits::TimeExt;
 
-  // Same dates, default vs Actual/360 override on a non-leap span.
-  let eval = d(2025, 1, 15);
-  let expiration = d(2025, 7, 15); // 181 days
-  let default = MockPricerWithDcc {
-    tau: None,
-    eval,
-    expiration,
-    dcc: None,
+  // 2025-01-15 → 2025-07-15 is 181 days.
+  let act360 = DatedContract {
+    eval: d(2025, 1, 15),
+    expiry: d(2025, 7, 15),
+    dcc: DayCountConvention::Actual360,
   };
-  let act360 = MockPricerWithDcc {
-    tau: None,
-    eval,
-    expiration,
-    dcc: Some(DayCountConvention::Actual360),
-  };
-  assert!(
-    (default.tau_or_from_dates() - 181.0 / 365.0).abs() < 1e-12,
-    "dcc() == None must fall back to Actual/365 Fixed"
-  );
-  assert!(
-    (act360.tau_or_from_dates() - 181.0 / 360.0).abs() < 1e-12,
-    "dcc() == Some(Actual360) must be used by tau_or_from_dates"
-  );
+  assert!((act360.tau() - 181.0 / 360.0).abs() < 1e-12);
+  assert!((act360.tau_with_dcc(DayCountConvention::Actual365Fixed) - 181.0 / 365.0).abs() < 1e-12);
 }
 
 #[test]
@@ -507,39 +469,27 @@ fn default_impls() {
   assert_eq!(Frequency::default(), Frequency::SemiAnnual);
 }
 
-/// `TimeExt::tau_or_from_dates` short-circuits on an explicit `tau`: the
-/// `(eval, expiration)` pair and the `dcc` override are both skipped, not
-/// merged. Pins the precedence branch of the trait default at
-/// `traits/time.rs`, which governs every `TimeExt` implementor in the
-/// workspace — including `EuropeanOption`, whose engine relies on it.
+/// A year-fraction maturity is returned as given, whatever day count the instrument or the caller
+/// names.
 #[test]
-fn time_ext_explicit_tau_wins_over_dates_and_dcc() {
+fn time_ext_a_year_fraction_ignores_every_day_count() {
   use stochastic_rs::traits::TimeExt;
 
-  // Dates and dcc chosen so that *either* date-derived tau (181/365 or
-  // 181/360) is far from the explicit 0.5 — a merged or ignored `tau`
-  // could not land on 0.5 by accident.
-  let pricer = MockPricerWithDcc {
-    tau: Some(0.5),
-    eval: d(2025, 1, 15),
-    expiration: d(2025, 7, 15),
-    dcc: Some(DayCountConvention::Actual360),
-  };
-  assert!(
-    (pricer.tau_or_from_dates() - 0.5).abs() < 1e-12,
-    "explicit tau must win over the date pair and the dcc override"
+  struct HalfYear;
+
+  impl TimeExt for HalfYear {
+    fn maturity(&self) -> Maturity {
+      Maturity::Tau(0.5)
+    }
+
+    fn dcc(&self) -> DayCountConvention {
+      DayCountConvention::Actual360
+    }
+  }
+
+  assert_eq!(HalfYear.tau(), 0.5);
+  assert_eq!(
+    HalfYear.tau_with_dcc(DayCountConvention::ActualActualIsda),
+    0.5
   );
-  assert!(
-    (pricer.tau_with_dcc(DayCountConvention::ActualActualIsda) - 0.5).abs() < 1e-12,
-    "explicit tau must win over an explicitly requested dcc too"
-  );
-  // The same mock without `tau` does use the dates, so the assertion above
-  // is about precedence and not about the mock being inert.
-  let dated = MockPricerWithDcc {
-    tau: None,
-    eval: d(2025, 1, 15),
-    expiration: d(2025, 7, 15),
-    dcc: Some(DayCountConvention::Actual360),
-  };
-  assert!((dated.tau_or_from_dates() - 181.0 / 360.0).abs() < 1e-12);
 }

@@ -49,7 +49,7 @@ const SPOT_CAP_STRIKES: f64 = 8.0;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HestonAdiPricer {
   /// `theta` is the paper's long-run variance `η`.
-  pub params: HestonParams,
+  params: HestonParams,
   /// Mesh intervals in `s`.
   pub m1: usize,
   /// Mesh intervals in `v`.
@@ -90,6 +90,10 @@ impl HestonAdiPricer {
       damping: true,
       barrier: None,
     }
+  }
+
+  pub fn params(&self) -> HestonParams {
+    self.params
   }
 
   /// Mesh intervals and time steps.

@@ -11,27 +11,8 @@ use num_complex::Complex64;
 use super::FourierModelExt;
 use crate::pricing::cf_quadrature::integrate_to_convergence;
 
-/// Floor a price at zero **without** swallowing a `NaN`.
-///
-/// A floor and a poison-check are different operations, and `f64::max` runs
-/// them together into one wrong answer: it returns the non-`NaN` operand, so
-/// `f64::NAN.max(0.0)` is `0.0`. A bare `.max(0.0)` therefore converts an
-/// undefined price into a plausible zero, which is precisely the sentinel
-/// [the failure convention](crate::traits::ModelPricer#how-pricing-fails)
-/// rules out.
-///
-/// The two conditions the three call sites face are genuinely different:
-///
-/// - A small **negative** price is quadrature or FFT round-off around a
-///   deep-wing value whose true price is a few ulp above zero. Zero is the
-///   right answer, and the floor stays.
-/// - A **`NaN`** price means an input was undefined — a `NaN` maturity
-///   arriving from [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt),
-///   a non-positive strike, a characteristic function that overflowed. There
-///   is no price to floor, so the `NaN` travels on.
-///
-/// Same shape as `VarianceSwapPricer::fair_strike_replication`'s floor and
-/// `CosEngine::price`'s, which close the identical trap.
+/// Floors quadrature or FFT round-off below zero at zero and lets a NaN through, which
+/// `f64::max` would turn into a plausible `0.0`.
 #[inline]
 fn floor_price(x: f64) -> f64 {
   if x.is_nan() { x } else { x.max(0.0) }
@@ -246,17 +227,8 @@ impl CarrMadanPricer {
 pub struct GilPelaezPricer;
 
 impl GilPelaezPricer {
-  /// Price a European call using double-exponential quadrature.
-  ///
-  /// This is the blanket [`ModelPricer::price_call`](crate::traits::ModelPricer)
-  /// for every [`FourierModelExt`] model, so it is the crate's busiest pricing
-  /// path.
-  ///
-  /// Returns [`f64::NAN`] when any of `s`, `k`, `r`, `q` or `t` is non-finite
-  /// — `tau` reaches it as one legitimately, since
-  /// [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) documents `NaN`
-  /// as its missing-data return. The result is otherwise floored at zero; see
-  /// `floor_price` for why the two are separate operations.
+  /// The blanket `ModelPricer::price_call` of every [`FourierModelExt`] model, by quadrature:
+  /// NaN for a non-finite `s`, `k`, `r`, `q` or `t`, otherwise floored at zero.
   pub fn price_call(model: &impl FourierModelExt, s: f64, k: f64, r: f64, q: f64, t: f64) -> f64 {
     // The carry e^{iu(r−q)t} of both integrands folds into the kernel's phase as ln(K/F).
     let ln_kf = (k / s).ln() - (r - q) * t;
@@ -399,10 +371,7 @@ mod tests {
     }
   }
 
-  /// Each of `s`, `k`, `r` and `tau` reaches the final floor as a `NaN` when
-  /// supplied as one, and `tau` is not hypothetical: `TimeExt::tau_or_from_dates`
-  /// documents `NaN` as its missing-data return, so an option whose expiry date
-  /// never resolved priced at exactly `0.0` here.
+  /// A NaN `s`, `k`, `r` or `tau` reaches the final floor as NaN, not as a price of `0.0`.
   #[test]
   fn gil_pelaez_preserves_nan_market_inputs() {
     let m = bsm();

@@ -15,6 +15,7 @@ pub mod business_day;
 pub mod date_math;
 pub mod day_count;
 pub mod holiday;
+pub mod maturity;
 pub mod schedule;
 
 pub use business_day::BusinessDayConvention;
@@ -27,6 +28,7 @@ pub use day_count::DayCountConvention;
 pub use holiday::Calendar;
 pub use holiday::HolidayCalendar;
 pub use holiday::LUNAR_TABLE_YEARS;
+pub use maturity::Maturity;
 pub use schedule::DateGenerationRule;
 pub use schedule::Frequency;
 pub use schedule::Schedule;

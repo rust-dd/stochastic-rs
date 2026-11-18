@@ -8,12 +8,7 @@ fn ordinary() -> Merton1976Pricer {
   merton(0.5, 0.4, 10)
 }
 
-/// `tau` is the one that arrives poisoned in normal operation:
-/// `TimeExt::tau_or_from_dates` returns `NaN` for an expiry that never
-/// resolved, and the crate has already closed the same route through the
-/// Fourier pricers. An option whose expiry did not resolve reported
-/// `delta = gamma = vega = rho = 0.0` — no risk at all — while its price
-/// reported `NaN`.
+/// A NaN query poisons every Greek with the price; none reports `0.0`, which reads as no risk.
 #[test]
 fn a_poisoned_query_poisons_the_greeks_and_not_only_the_price() {
   let m = ordinary();

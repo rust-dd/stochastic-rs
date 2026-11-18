@@ -153,10 +153,7 @@ fn bsm_iv_round_trip_across_strikes_and_maturities() {
   }
 }
 
-/// The date pair moved off the pricer: the caller resolves `(eval, expiry)`
-/// to `tau` through [`DayCountConvention`](crate::calendar::DayCountConvention)
-/// and passes it. Same numbers as when `BsmPricer` did it internally
-/// through `TimeExt`.
+/// The caller resolves `(eval, expiry)` to `tau` through a `DayCountConvention` and passes it.
 #[test]
 fn bsm_dates_match_tau_pricing() {
   use chrono::NaiveDate;
