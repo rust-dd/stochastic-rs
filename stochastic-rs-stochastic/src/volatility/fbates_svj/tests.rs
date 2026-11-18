@@ -99,3 +99,42 @@ fn reduces_to_rough_heston_without_jumps() {
   assert!(s.iter().all(|x| x.is_finite() && *x > 0.0));
   assert!(v.iter().all(|x| x.is_finite()));
 }
+
+fn with_rho_at(rho: f64) -> FbatesSvj<f64> {
+  FbatesSvj::new(
+    0.1_f64,
+    0.05,
+    100.0,
+    0.04,
+    0.04,
+    2.0,
+    0.3,
+    rho,
+    0.5,
+    -0.01,
+    0.1,
+    16,
+    Some(1.0),
+    Unseeded,
+  )
+}
+
+#[test]
+#[should_panic(expected = "rho must satisfy `rho >= -T::one() && rho <= T::one()`, got rho = 1.5")]
+fn new_refuses_a_correlation_above_one() {
+  let _ = with_rho_at(1.5);
+}
+
+#[test]
+#[should_panic(expected = "rho must satisfy `rho >= -T::one() && rho <= T::one()`, got rho = -1.5")]
+fn with_rho_refuses_a_correlation_below_minus_one() {
+  let _ = with_rho_at(-0.7).with_rho(-1.5);
+}
+
+#[test]
+fn the_correlation_bounds_are_accepted_and_sample() {
+  for rho in [-1.0, 1.0] {
+    let [s, v] = with_rho_at(rho).sample();
+    assert!(s.iter().chain(v.iter()).all(|x| x.is_finite()));
+  }
+}
