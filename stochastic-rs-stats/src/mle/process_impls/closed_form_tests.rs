@@ -24,7 +24,6 @@ use stochastic_rs_stochastic::params::VarianceBoundary;
 use super::derivative_tests::boxed;
 use super::derivative_tests::power_diffusions;
 use crate::mle::DiffusionModel;
-use crate::qmle::test_support::cir;
 
 /// `[μ′, μ″, σ′, σ″]` at a state.
 type Closed = fn(f64) -> [f64; 4];

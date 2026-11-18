@@ -1,0 +1,270 @@
+use std::convert::Infallible;
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::Ordering;
+
+use basin::BoxConstraints;
+use basin::CostFunction;
+use basin::Gradient;
+use ndarray::ArrayView1;
+use parking_lot::Mutex;
+
+use super::step_back::Walled;
+use crate::mle::DiffusionModel;
+use crate::mle::density::DensityApprox;
+
+/// Half of `χ²₁(0.95)`, the drop in log-likelihood at the end of a 95 % likelihood interval.
+const IDENTIFIED: f64 = 1.92;
+
+/// The objective at a point without a likelihood, above every sum [`ranked`] returns.
+pub(super) const NO_LIKELIHOOD: f64 = 1e100;
+
+/// A line search is not running, has met only points with a likelihood, or has met one without.
+const IDLE: u8 = 0;
+const CLEAN: u8 = 1;
+const WALLED: u8 = 2;
+
+/// `nll` up to `1e97`, far past any realistic path's sum, and its logarithmic continuation past it,
+/// at most `4.9e99`: increasing and C¹, so a finite sum ranks below the penalty and none is `∞`.
+pub(super) fn ranked(nll: f64) -> f64 {
+  const KNEE: f64 = 1e97;
+  if nll <= KNEE {
+    nll
+  } else {
+    KNEE * (1.0 + (nll / KNEE).ln())
+  }
+}
+
+/// The solver's coordinates: each parameter over its unit, with the caller's box in them.
+#[derive(Clone)]
+pub(super) struct Units {
+  box_low: Vec<f64>,
+  box_high: Vec<f64>,
+  scale: Vec<f64>,
+  low: Vec<f64>,
+  high: Vec<f64>,
+}
+
+impl Units {
+  /// The units of `start`: `|start|` for each parameter, and for one that starts at zero half
+  /// its box's width, or 1 where the box has no finite width.
+  fn new(lower: &[f64], upper: &[f64], start: &[f64]) -> Self {
+    let scale = (0..lower.len())
+      .map(|i| {
+        let (low, high) = (lower[i], upper[i]);
+        let from = start[i].clamp(low, high);
+        if from != 0.0 {
+          from.abs()
+        } else if low.is_finite() && high.is_finite() && high > low {
+          0.5 * (high - low)
+        } else {
+          1.0
+        }
+      })
+      .collect::<Vec<_>>();
+    Self {
+      box_low: lower.to_vec(),
+      box_high: upper.to_vec(),
+      low: lower.iter().zip(&scale).map(|(l, u)| l / u).collect(),
+      high: upper.iter().zip(&scale).map(|(h, u)| h / u).collect(),
+      scale,
+    }
+  }
+
+  /// The solver's coordinates of `params`, inside its box.
+  pub(super) fn of(&self, params: &[f64]) -> Vec<f64> {
+    (0..params.len())
+      .map(|i| {
+        let inside = params[i].clamp(self.box_low[i], self.box_high[i]);
+        (inside / self.scale[i]).clamp(self.low[i], self.high[i])
+      })
+      .collect()
+  }
+
+  /// The parameters at the solver's point `z`: inside the caller's box when `z` is inside the
+  /// solver's, and as they fall otherwise, which the fit then reports unconverged.
+  pub(super) fn params(&self, z: &[f64]) -> Vec<f64> {
+    let inside = (0..z.len()).all(|i| (self.low[i]..=self.high[i]).contains(&z[i]));
+    let params = self.scaled(z);
+    if !inside {
+      return params;
+    }
+    (0..z.len())
+      .map(|i| params[i].clamp(self.box_low[i], self.box_high[i]))
+      .collect()
+  }
+
+  /// The parameters at `z`; an end of the solver's box is the caller's bound to the bit, which
+  /// the product with the unit may miss by a rounding.
+  fn scaled(&self, z: &[f64]) -> Vec<f64> {
+    (0..z.len())
+      .map(|i| {
+        if z[i] == self.low[i] {
+          self.box_low[i]
+        } else if z[i] == self.high[i] {
+          self.box_high[i]
+        } else {
+          self.scale[i] * z[i]
+        }
+      })
+      .collect()
+  }
+}
+
+/// The negative log-likelihood over the box, which the solver reads in the units of a start.
+pub(super) struct MleProblem<'a> {
+  model: Mutex<&'a mut dyn DiffusionModel>,
+  sample: ArrayView1<'a, f64>,
+  dt: f64,
+  density: DensityApprox,
+  units: Units,
+  probe: AtomicU8,
+}
+
+impl<'a> MleProblem<'a> {
+  pub(super) fn new(
+    model: &'a mut dyn DiffusionModel,
+    sample: ArrayView1<'a, f64>,
+    dt: f64,
+    density: DensityApprox,
+    lower: &[f64],
+    upper: &[f64],
+    start: &[f64],
+  ) -> Self {
+    Self {
+      model: Mutex::new(model),
+      sample,
+      dt,
+      density,
+      units: Units::new(lower, upper, start),
+      probe: AtomicU8::new(IDLE),
+    }
+  }
+
+  pub(super) fn units(&self) -> Units {
+    self.units.clone()
+  }
+
+  /// `at` with each parameter the likelihood does not hold inside its box back at `start`'s
+  /// value, one whose move alone to an end costs less than [`IDENTIFIED`]; `at` under two such.
+  pub(super) fn loosened(&self, at: &[f64], start: &[f64]) -> Vec<f64> {
+    let here = self.eval_nll(at);
+    let mut from = at.to_vec();
+    if here >= NO_LIKELIHOOD {
+      return from;
+    }
+    let mut loose_ends = 0;
+    for i in 0..at.len() {
+      let ends = [self.units.box_low[i], self.units.box_high[i]];
+      if ends[0] >= ends[1] {
+        continue;
+      }
+      let loose = ends.map(|end| {
+        let mut moved = at.to_vec();
+        moved[i] = end;
+        self.eval_nll(&moved) - here < IDENTIFIED
+      });
+      if loose[0] || loose[1] {
+        from[i] = start[i];
+      }
+      loose_ends += usize::from(loose[0]) + usize::from(loose[1]);
+    }
+    // One loose end is an optimum at or beside a bound; a stall leaves two, as a speed and a level.
+    if loose_ends < 2 { at.to_vec() } else { from }
+  }
+
+  pub(super) fn eval_nll(&self, params: &[f64]) -> f64 {
+    if self.probe.load(Ordering::Relaxed) == WALLED {
+      return NO_LIKELIHOOD;
+    }
+    // Line-search probes can leave the box, even with a bounded solver.
+    let params = (0..params.len())
+      .map(|i| params[i].clamp(self.units.box_low[i], self.units.box_high[i]))
+      .collect::<Vec<_>>();
+    let mut model = self.model.lock();
+    model.set_params(&params);
+    let mut sum = 0.0;
+    for i in 1..self.sample.len() {
+      let t0 = (i - 1) as f64 * self.dt;
+      let ln_d = self
+        .density
+        .ln_density(&**model, self.sample[i - 1], self.sample[i], t0, self.dt);
+      // A density of zero, an infinite one and none at all are no likelihood.
+      if !ln_d.is_finite() {
+        return self.no_likelihood();
+      }
+      sum -= ln_d;
+    }
+    if sum.is_finite() {
+      ranked(sum)
+    } else {
+      self.no_likelihood()
+    }
+  }
+
+  fn no_likelihood(&self) -> f64 {
+    let _ = self
+      .probe
+      .compare_exchange(CLEAN, WALLED, Ordering::Relaxed, Ordering::Relaxed);
+    NO_LIKELIHOOD
+  }
+}
+
+impl Walled for MleProblem<'_> {
+  fn watch(&self, on: bool) {
+    self
+      .probe
+      .store(if on { CLEAN } else { IDLE }, Ordering::Relaxed);
+  }
+
+  fn walled(&self) -> bool {
+    self.probe.load(Ordering::Relaxed) == WALLED
+  }
+}
+
+impl CostFunction for MleProblem<'_> {
+  type Param = Vec<f64>;
+  type Output = f64;
+  type Error = Infallible;
+
+  fn cost(&self, z: &Self::Param) -> Result<Self::Output, Self::Error> {
+    Ok(self.eval_nll(&self.units.scaled(z)))
+  }
+}
+
+impl Gradient for MleProblem<'_> {
+  type Gradient = Vec<f64>;
+
+  fn gradient(&self, z: &Self::Param) -> Result<Self::Gradient, Self::Error> {
+    let (low, high) = (&self.units.low, &self.units.high);
+    let z = (0..z.len())
+      .map(|i| z[i].clamp(low[i], high[i]))
+      .collect::<Vec<_>>();
+    // The central difference's own optimum, `ε^{1/3}`, relative to the coordinate.
+    let step = f64::EPSILON.cbrt();
+    let mut grad = vec![0.0; z.len()];
+    for i in 0..z.len() {
+      let h = step * (1.0 + z[i].abs());
+      let mut z_plus = z.clone();
+      let mut z_minus = z.clone();
+      z_plus[i] = (z[i] + h).min(high[i]);
+      z_minus[i] = (z[i] - h).max(low[i]);
+      let actual_2h = z_plus[i] - z_minus[i];
+      if actual_2h > 0.0 {
+        let fp = self.eval_nll(&self.units.scaled(&z_plus));
+        let fm = self.eval_nll(&self.units.scaled(&z_minus));
+        grad[i] = (fp - fm) / actual_2h;
+      }
+    }
+    Ok(grad)
+  }
+}
+
+impl BoxConstraints for MleProblem<'_> {
+  fn lower(&self) -> &Self::Param {
+    &self.units.low
+  }
+
+  fn upper(&self) -> &Self::Param {
+    &self.units.high
+  }
+}

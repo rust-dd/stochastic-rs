@@ -3,6 +3,10 @@ use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::diffusion::ou::Ou;
 use stochastic_rs_stochastic::params::VarianceBoundary;
 
+use basin::Gradient;
+
+use super::problem::NO_LIKELIHOOD;
+use super::problem::ranked;
 use super::*;
 use crate::qmle::fit_ou_mle;
 use crate::qmle::test_support::simulate_ou;
@@ -66,14 +70,15 @@ fn bounded_mle_cost_rejects_negative_sigma_mirror_minimum() {
     VarianceBoundary::Floor,
     Deterministic::new(0),
   );
-  let problem = MleProblem {
-    model: Mutex::new(&mut model),
-    sample: sample.view(),
-    dt: 0.01,
-    density: DensityApprox::Euler,
-    lower: vec![1e-4, 1e-6, 1e-6],
-    upper: vec![50.0, 10.0, 10.0],
-  };
+  let problem = MleProblem::new(
+    &mut model,
+    sample.view(),
+    0.01,
+    DensityApprox::Euler,
+    &[1e-4, 1e-6, 1e-6],
+    &[50.0, 10.0, 10.0],
+    &[1.0, 0.1, 3.0],
+  );
   let positive = problem.eval_nll(&[1.0, 0.1, 3.0]);
   let negative = problem.eval_nll(&[1.0, 0.1, -3.0]);
   let boundary = problem.eval_nll(&[1.0, 0.1, 1e-6]);
@@ -95,16 +100,18 @@ fn bounded_mle_gradient_uses_the_feasible_boundary() {
     VarianceBoundary::Floor,
     Deterministic::new(0),
   );
-  let problem = MleProblem {
-    model: Mutex::new(&mut model),
-    sample: sample.view(),
-    dt: 0.01,
-    density: DensityApprox::Euler,
-    lower: vec![1e-4, 1e-6, 1e-6],
-    upper: vec![50.0, 10.0, 10.0],
-  };
-  let outside = problem.gradient(&vec![1.0, 0.1, 13.0]).unwrap();
-  let boundary = problem.gradient(&vec![1.0, 0.1, 10.0]).unwrap();
+  let problem = MleProblem::new(
+    &mut model,
+    sample.view(),
+    0.01,
+    DensityApprox::Euler,
+    &[1e-4, 1e-6, 1e-6],
+    &[50.0, 10.0, 10.0],
+    &[1.0, 0.1, 3.0],
+  );
+  // In the start's units `σ` is carried over 3, so its bound of 10 sits at `10/3`.
+  let outside = problem.gradient(&vec![1.0, 1.0, 13.0 / 3.0]).unwrap();
+  let boundary = problem.gradient(&vec![1.0, 1.0, 10.0 / 3.0]).unwrap();
 
   // At this upper bound the likelihood improves toward smaller sigma.
   assert!(boundary[2] > 0.0);
@@ -129,14 +136,15 @@ fn a_path_without_a_density_is_penalised_and_its_fit_an_err() {
     (ndarray::array![0.1, 0.2, 0.15], false),
     (ndarray::array![0.1, -0.2, 0.15], true),
   ] {
-    let problem = MleProblem {
-      model: Mutex::new(&mut model),
-      sample: sample.view(),
-      dt: 0.01,
-      density: DensityApprox::Exact,
-      lower: vec![1e-4, 1e-6, 1e-6],
-      upper: vec![50.0, 10.0, 10.0],
-    };
+    let problem = MleProblem::new(
+      &mut model,
+      sample.view(),
+      0.01,
+      DensityApprox::Exact,
+      &[1e-4, 1e-6, 1e-6],
+      &[50.0, 10.0, 10.0],
+      &[1.0, 0.1, 0.3],
+    );
     let nll = problem.eval_nll(&[1.0, 0.1, 0.3]);
     assert_eq!(nll == NO_LIKELIHOOD, penalised, "nll = {nll}");
     assert!(nll.is_finite());
@@ -201,14 +209,15 @@ fn an_underflowing_density_keeps_its_log_in_the_objective() {
     DensityApprox::Euler.density(&model, 0.5, 0.52, 0.0, 0.01),
     0.0
   );
-  let problem = MleProblem {
-    model: Mutex::new(&mut model),
-    sample: sample.view(),
-    dt: 0.01,
-    density: DensityApprox::Euler,
-    lower: vec![1e-4, -10.0, 1e-6],
-    upper: vec![50.0, 10.0, 10.0],
-  };
+  let problem = MleProblem::new(
+    &mut model,
+    sample.view(),
+    0.01,
+    DensityApprox::Euler,
+    &[1e-4, -10.0, 1e-6],
+    &[50.0, 10.0, 10.0],
+    &[1.0, 0.5, 0.5],
+  );
   let narrow = problem.eval_nll(&[1.0, 0.5, 1e-6]);
   let wider = problem.eval_nll(&[1.0, 0.5, 2e-6]);
   assert!(narrow > 1e10 && narrow < 1e12, "nll = {narrow}");
@@ -229,14 +238,15 @@ fn a_point_with_a_likelihood_ranks_below_one_without() {
     Some(1.0),
     Deterministic::new(0),
   );
-  let problem = MleProblem {
-    model: Mutex::new(&mut model),
-    sample: sample.view(),
-    dt: 0.01,
-    density: DensityApprox::Euler,
-    lower: vec![1e-4, -10.0, 1e-6],
-    upper: vec![50.0, 10.0, 10.0],
-  };
+  let problem = MleProblem::new(
+    &mut model,
+    sample.view(),
+    0.01,
+    DensityApprox::Euler,
+    &[1e-4, -10.0, 1e-6],
+    &[50.0, 10.0, 10.0],
+    &[1.0, 0.5, 0.5],
+  );
   let narrow = problem.eval_nll(&[1.0, 0.5, 1e-6]);
   let wider = problem.eval_nll(&[1.0, 0.5, 2e-6]);
   assert!(
