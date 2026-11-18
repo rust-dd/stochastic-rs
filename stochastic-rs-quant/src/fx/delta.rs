@@ -1,16 +1,9 @@
-//! FX delta conventions and ATM straddle conventions.
+//! FX delta conventions (spot or forward, raw or premium-adjusted) and ATM conventions, with
+//! $F = S e^{(r_d - r_f)\tau}$ and $D_f = e^{-r_f \tau}$.
 //!
-//! FX option markets quote volatility against *delta* rather than strike,
-//! and four delta conventions coexist: spot vs forward and "raw" vs
-//! premium-adjusted. ATM volatility additionally has multiple
-//! interpretations (forward, delta-neutral straddle, premium-adjusted DNS).
-//!
-//! Reference: D. Reiswich & U. Wystup, "FX Volatility Smile Construction",
-//! Wilmott Magazine (2010); Castagna, "FX Options and Smile Risk", Wiley (2010);
-//! Clark, "Foreign Exchange Option Pricing", Wiley (2011).
-//!
-//! Notation: forward $F = S e^{(r_d - r_f)\tau}$, base discount
-//! $D_f = e^{-r_f \tau}$.
+//! Reference: Reiswich & Wystup (2010), "FX Volatility Smile Construction", Wilmott Magazine
+//! Reference: Castagna (2010), "FX Options and Smile Risk", Wiley
+//! Reference: Clark (2011), "Foreign Exchange Option Pricing", Wiley
 
 use std::f64::consts::FRAC_2_PI;
 
@@ -32,10 +25,8 @@ pub enum FxDeltaConvention {
   /// Forward delta: $\Delta_{\text{fwd}} = \Phi(d_1)$.
   /// Standard for long-dated options.
   Forward,
-  /// Premium-adjusted spot delta:
-  /// $\Delta_{\text{spot,pa}} = e^{-r_f\tau}\,\frac{K}{F}\,\Phi(d_2)$.
-  /// Standard for currency pairs where the premium is paid in the base
-  /// currency (e.g. EUR/USD with USD-denominated premium).
+  /// Premium-adjusted spot delta $e^{-r_f\tau}\,\frac{K}{F}\,\Phi(d_2)$, for pairs whose premium
+  /// is paid in the base currency.
   SpotPremiumAdjusted,
   /// Premium-adjusted forward delta:
   /// $\Delta_{\text{fwd,pa}} = \frac{K}{F}\,\Phi(d_2)$.
@@ -56,10 +47,8 @@ pub enum AtmConvention {
   DeltaNeutralStraddlePremiumAdjusted,
 }
 
-/// Compute delta of a vanilla European FX option under the given convention.
-///
-/// `forward` is $F = S e^{(r_d - r_f)\tau}$, `r_f` is the foreign
-/// (base-currency) rate, `tau` is time to maturity in years.
+/// Delta of a vanilla European FX option under `convention`; `forward` is
+/// $F = S e^{(r_d - r_f)\tau}$ and `r_f` the foreign (base-currency) rate.
 pub fn delta(
   strike: f64,
   forward: f64,
@@ -114,8 +103,7 @@ pub fn strike_from_delta(
     FxDeltaConvention::Spot | FxDeltaConvention::Forward => unadjusted,
     FxDeltaConvention::SpotPremiumAdjusted | FxDeltaConvention::ForwardPremiumAdjusted => {
       // A call quote means the root past the delta's peak, a put's the root of a monotonic delta,
-      // both at or below the unadjusted strike. A negligible `t` leaves Brent's `6 macheps K`.
-      // Reiswich & Wystup (2010), "FX Volatility Smile Construction", CPQF Working Paper 20, §1.5.
+      // both at or below the unadjusted strike (Reiswich & Wystup 2010, CPQF WP 20, §1.5).
       let gap = |k: f64| delta(k, forward, sigma, tau, r_f, option_type, convention) - target_delta;
       let (lo, hi) = match option_type {
         OptionType::Call => (peak_strike(forward, sigma * tau.sqrt()), unadjusted),

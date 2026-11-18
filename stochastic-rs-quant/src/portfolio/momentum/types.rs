@@ -1,7 +1,4 @@
-//! Type definitions for momentum portfolio construction.
-//!
-//! Inputs and outputs used by signal generators, weighting schemes and
-//! the rank/optimizer-based portfolio engine.
+//! Inputs and outputs of the momentum signals, weighting schemes and portfolio engine.
 
 use crate::error::QuantError;
 

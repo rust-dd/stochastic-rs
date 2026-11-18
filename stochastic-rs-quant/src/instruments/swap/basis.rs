@@ -26,6 +26,8 @@ pub struct BasisSwap<T: RealExt> {
 
 impl<T: RealExt> BasisSwap<T> {
   /// Build a basis swap from two floating legs.
+  // One argument per term of the swap.
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     pay_schedule: &Schedule,
     receive_schedule: &Schedule,

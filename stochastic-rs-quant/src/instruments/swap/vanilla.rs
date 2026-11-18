@@ -30,6 +30,8 @@ pub struct VanillaInterestRateSwap<T: RealExt> {
 
 impl<T: RealExt> VanillaInterestRateSwap<T> {
   /// Build a vanilla fixed-versus-floating swap.
+  // One argument per term of the swap.
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     direction: SwaptionDirection,
     fixed_schedule: &Schedule,
@@ -74,6 +76,8 @@ impl<T: RealExt> VanillaInterestRateSwap<T> {
   }
 
   /// Build an overnight-indexed swap using the built-in overnight index type.
+  // One argument per term of the swap.
+  #[allow(clippy::too_many_arguments)]
   pub fn overnight_indexed(
     direction: SwaptionDirection,
     fixed_schedule: &Schedule,

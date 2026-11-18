@@ -1,17 +1,12 @@
-//! # Cash Flow Engine
+//! Coupons, legs and present value for fixed-income cash flows.
 //!
 //! $$
 //! \mathrm{PV}=\sum_{i=1}^{n} D(t_i)\,C_i,\qquad
 //! C_i=N_i\,\alpha_i\,L_i
 //! $$
 //!
-//! Coupon, leg, and present-value machinery for fixed-income cash flows.
-//!
-//! Reference: Brigo & Mercurio, "Interest Rate Models — Theory and Practice",
-//! Springer, 2nd ed. (2006). DOI: 10.1007/978-3-540-34604-3
-//!
-//! Reference: Henrard, "The Irony in the Derivation of the Standard Multicurve
-//! Framework", arXiv:1304.4474 (2013).
+//! Reference: Brigo & Mercurio (2006), 2nd ed., DOI 10.1007/978-3-540-34604-3
+//! Reference: Henrard (2013), arXiv:1304.4474
 
 use crate::curves::DiscountCurve;
 use crate::curves::MultiCurve;

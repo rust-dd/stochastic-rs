@@ -1,17 +1,7 @@
-//! Overnight-indexed-swap helper for discount-curve bootstrapping.
+//! OIS helper. On one curve the compounded floating leg telescopes to `D(t_0) − D(t_n)`, so
+//! the par condition `1 = S Σ δ_i D(t_i) + D(t_n)` needs the fixed-leg dates only.
 //!
-//! When one curve both discounts and forecasts the overnight leg, the
-//! compounded floating leg telescopes to `D(t_0) − D(t_n)`, so the OIS par
-//! condition is the swap equation on the **fixed** schedule alone,
-//! `1 = S Σ δ_i D(t_i) + D(t_n)`. That is why OIS quotes pin the discount
-//! curve in the multi-curve framework and why the helper only needs the
-//! fixed-leg dates. Market convention: a single payment at maturity up to
-//! one year, then annual fixed payments, accrued on the index day count
-//! (Actual/360 for SOFR, EFFR and €STR; Actual/365F for SONIA and TONAR).
-//!
-//! Reference: Ametrano, F. M. & Bianchetti, M. (2013), *Everything You Always
-//! Wanted to Know About Multiple Interest Rate Curve Bootstrapping but Were
-//! Afraid to Ask*, SSRN 2219548, §3.
+//! Reference: Ametrano & Bianchetti (2013), SSRN 2219548, §3
 
 use chrono::NaiveDate;
 
@@ -46,9 +36,8 @@ pub struct OisRateHelper<T: RealExt> {
 }
 
 impl<T: RealExt> OisRateHelper<T> {
-  /// Helper with the market conventions: single payment up to one year,
-  /// annual fixed payments beyond, modified-following adjustment on the
-  /// index calendar.
+  /// A helper on the market conventions: one payment up to a year, annual fixed payments
+  /// beyond, modified-following adjustment on the index calendar.
   pub fn new(
     rate_quote: Handle<dyn Quote<T>>,
     settlement_date: NaiveDate,
@@ -77,9 +66,8 @@ impl<T: RealExt> OisRateHelper<T> {
     self
   }
 
-  /// Whether the swap pays its fixed leg once, at maturity: OIS with a
-  /// tenor of twelve months or less are zero-coupon, longer ones pay
-  /// periodically.
+  /// Whether the fixed leg pays once, at maturity: a tenor of twelve months or less is
+  /// zero-coupon.
   pub fn is_single_payment(&self) -> bool {
     match self
       .settlement_date
@@ -90,9 +78,8 @@ impl<T: RealExt> OisRateHelper<T> {
     }
   }
 
-  /// Business-day-adjusted fixed-leg payment dates (excluding settlement):
-  /// the adjusted maturity alone for a zero-coupon tenor, otherwise the
-  /// backward-generated periodic schedule on the index calendar.
+  /// Adjusted fixed-leg payment dates without settlement: the maturity alone for a zero-coupon
+  /// tenor, otherwise the backward-generated schedule on the index calendar.
   pub fn payment_dates(&self) -> Vec<NaiveDate> {
     let schedule = ScheduleBuilder::new(self.settlement_date, self.maturity_date)
       .frequency(self.fixed_frequency)
@@ -197,9 +184,8 @@ mod tests {
     assert!((fixed_times[2] - 3.0 * 365.25 / 360.0).abs() < 0.02);
   }
 
-  /// Par OIS rates implied by a flat 3 % continuously compounded discount
-  /// curve are fed back through the helpers; the bootstrap must return the
-  /// same discount factors at every pillar.
+  /// The par OIS rates of a flat 3 % continuously compounded curve bootstrap back to its
+  /// discount factors at every pillar.
   #[test]
   fn bootstrap_from_ois_helpers_recovers_the_generating_curve() {
     let settle = date(2026, 1, 5);

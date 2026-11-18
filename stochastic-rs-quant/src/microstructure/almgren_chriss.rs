@@ -4,12 +4,13 @@
 //! $$
 //! x_k = X\,\frac{\sinh\bigl(\kappa(T-t_k)\bigr)}{\sinh(\kappa T)},
 //! \qquad
-//! \kappa = \frac{1}{\tau}\,\mathrm{arccosh}\!\left(1+\tfrac{\lambda\sigma^2\tau^2}{2\tilde\eta}\right),
+//! \kappa = \frac{1}{\tau}\,\mathrm{arccosh}\!\left(
+//!   1+\tfrac{\lambda\sigma^2\tau^2}{2\tilde\eta}\right),
 //! \qquad
 //! \tilde\eta = \eta - \gamma\tau/2.
 //! $$
 //!
-//! Almgren & Chriss (2001), J. Risk 3(2), 5–39, DOI 10.21314/JOR.2001.041.
+//! Reference: Almgren & Chriss (2001), J. Risk 3(2), 5–39, DOI 10.21314/JOR.2001.041
 
 use ndarray::Array1;
 
@@ -41,6 +42,8 @@ pub struct AlmgrenChrissParams<T: RealExt> {
 
 impl<T: RealExt> AlmgrenChrissParams<T> {
   /// Inputs with no half-spread cost (`epsilon = 0`).
+  // One argument per parameter of the model.
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     side: Side,
     total_shares: T,

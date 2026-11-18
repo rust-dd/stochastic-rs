@@ -52,13 +52,7 @@ pub(super) fn true_integrated_volvol(variance: ArrayView1<'_, f64>, dt: f64) -> 
 }
 
 /// Bivariate path matching the FSDA `Heston2D.m` parameter convention.
-pub(super) fn heston2d_paths() -> (
-  Array1<f64>,
-  Array1<f64>,
-  Array1<f64>,
-  Array1<f64>,
-  Array1<f64>,
-) {
+pub(super) fn heston2d_paths() -> [Array1<f64>; 5] {
   let n = 23401_usize;
   let horizon = 1.0_f64;
   let heston = Heston2D::<f64, _>::new(
@@ -77,5 +71,5 @@ pub(super) fn heston2d_paths() -> (
   let Heston2DPaths { x1, v1, x2, v2, .. } = heston.sample();
   let dt = horizon / (n as f64 - 1.0);
   let times = (0..n).map(|index| index as f64 * dt).collect::<Array1<_>>();
-  (x1, x2, times, v1, v2)
+  [x1, x2, times, v1, v2]
 }

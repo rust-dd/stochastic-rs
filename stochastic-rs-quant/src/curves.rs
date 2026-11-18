@@ -1,23 +1,16 @@
-//! # Yield Curve Construction
-//!
-//! Bootstrapping, parametric models, and multi-curve framework for interest rate term structures.
-//!
-//! Reference: Hagan & West, "Methods for Constructing a Yield Curve", Wilmott Magazine (2006).
-//!
-//! Reference: Nelson & Siegel, "Parsimonious Modeling of Yield Curves",
-//! Journal of Business, 60(4), 473-489 (1987).
-//!
-//! Reference: Svensson, "Estimating and Interpreting Forward Interest Rates: Sweden 1992-1994",
-//! IMF Working Paper 94/114 (1994).
-//!
-//! Reference: Bianchetti, "Two Curves, One Price", arXiv:0905.2770 (2009).
-//!
-//! Reference: Ametrano & Bianchetti, "Everything You Always Wanted to Know About
-//! Multiple Interest Rate Curve Bootstrapping but Were Afraid to Ask", SSRN 2219548 (2013).
+//! Bootstrapping, parametric models and the multi-curve framework for interest-rate term
+//! structures.
 //!
 //! $$
-//! D(t) = e^{-\int_0^t f(s)\,ds}, \quad r(t) = -\frac{\ln D(t)}{t}, \quad f(t_1, t_2) = -\frac{\ln D(t_2) - \ln D(t_1)}{t_2 - t_1}
+//! D(t) = e^{-\int_0^t f(s)\,ds}, \quad r(t) = -\frac{\ln D(t)}{t}, \quad
+//! f(t_1, t_2) = -\frac{\ln D(t_2) - \ln D(t_1)}{t_2 - t_1}
 //! $$
+//!
+//! Reference: Hagan & West (2006), "Methods for Constructing a Yield Curve", Wilmott Magazine
+//! Reference: Nelson & Siegel (1987), Journal of Business 60(4), 473–489
+//! Reference: Svensson (1994), "Estimating and Interpreting Forward Interest Rates", IMF WP 94/114
+//! Reference: Bianchetti (2009), "Two Curves, One Price", arXiv:0905.2770
+//! Reference: Ametrano & Bianchetti (2013), SSRN 2219548
 
 pub mod bootstrap;
 pub mod discount_curve;

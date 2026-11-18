@@ -1,4 +1,4 @@
-//! # Loss
+//! Absolute, squared and relative error means between market and model values.
 //!
 //! $$
 //! L=\frac1n\sum_{i=1}^n \ell(y_i,\hat y_i)
@@ -46,10 +46,8 @@ pub fn mpe(market: &[f64], model: &[f64]) -> f64 {
   (sum / market.len() as f64) * 100.0
 }
 
-/// Mean Relative Error: MRE = (1/N) Σ[(model_i - market_i) / market_i]
-///
-/// Returns `f64::NAN` when any `market_i` is approximately zero. See
-/// [`mpe`] for the rationale.
+/// Mean relative error `(1/N) Σ (model_i − market_i) / market_i`, NaN when any `market_i` is
+/// near zero.
 pub fn mre(market: &[f64], model: &[f64]) -> f64 {
   let sum: f64 = market
     .iter()
@@ -71,10 +69,8 @@ pub fn mrpe(market: &[f64], model: &[f64]) -> f64 {
   mre(market, model) * 100.0
 }
 
-/// Mean Absolute Percentage Error (in %): MAPE = (100/N) Σ[|market_i - model_i| / |market_i|]
-///
-/// Returns `f64::NAN` when any `market_i` is approximately zero. See
-/// [`mpe`] for the rationale.
+/// Mean absolute percentage error `(100/N) Σ |market_i − model_i| / |market_i|`, NaN when any
+/// `market_i` is near zero.
 pub fn mape(market: &[f64], model: &[f64]) -> f64 {
   let sum: f64 = market
     .iter()

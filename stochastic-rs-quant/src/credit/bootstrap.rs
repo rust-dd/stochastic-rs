@@ -1,22 +1,12 @@
-//! Hazard-rate bootstrapping from a CDS par-spread term structure.
+//! Piecewise-constant hazard curve from CDS par spreads sorted by maturity: each $h_k$ is the
+//! Brent root that reprices the $k$-th quote given $h_1,\ldots,h_{k-1}$.
 //!
-//! Reference: O'Kane & Turnbull, "Valuation of Credit Default Swaps", Lehman
-//! Brothers Quantitative Credit Research Quarterly (2003).
-//!
-//! Reference: ISDA, "The ISDA CDS Standard Model" (2009).
-//!
-//! Given a set of par-spread CDS quotes sorted by maturity, solve iteratively
-//! for a piecewise-constant hazard-rate curve
 //! $$
-//! h(t)=h_k\quad\text{for }t\in(t_{k-1},t_k],
+//! h(t)=h_k\quad\text{for }t\in(t_{k-1},t_k]
 //! $$
-//! such that the fair running spread of the $k$-th CDS matches its quoted
-//! level $s_k$, given all previously solved hazard levels
-//! $h_1,\ldots,h_{k-1}$.
 //!
-//! The fair-spread equation is monotone in $h_k$ (higher hazard → higher
-//! protection PV, higher fair spread), so Brent's bracketing method converges
-//! reliably.
+//! Reference: O'Kane & Turnbull (2003), "Valuation of Credit Default Swaps", Lehman Brothers QCR
+//! Reference: ISDA (2009), "The ISDA CDS Standard Model"
 
 use chrono::NaiveDate;
 use ndarray::Array1;

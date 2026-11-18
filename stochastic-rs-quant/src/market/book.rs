@@ -1,16 +1,11 @@
-//! # Order book → market data adapter
-//!
-//! Bridges [`crate::order_book::OrderBook`] to [`super::quote::SimpleQuote`]
-//! so a live limit-order book can drive observables in the pricing graph.
+//! Adapter from [`crate::order_book::OrderBook`] to [`super::quote::SimpleQuote`], so a live
+//! limit-order book can drive observables in the pricing graph.
 
 use crate::market::quote::SimpleQuote;
 use crate::order_book::OrderBook;
 
-/// Snapshot the mid-price of `book` into a [`SimpleQuote`].
-///
-/// Returns `None` if either side of the book is empty. The returned quote is
-/// disconnected from the book — call [`SimpleQuote::set_value`] on subsequent
-/// snapshots to drive observers.
+/// The mid-price of `book` as a [`SimpleQuote`], `None` when a side is empty. The quote is not
+/// linked to the book: later snapshots go through [`SimpleQuote::set_value`].
 pub fn mid_quote(book: &OrderBook) -> Option<SimpleQuote<f64>> {
   book.mid().map(SimpleQuote::new)
 }

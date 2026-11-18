@@ -1,9 +1,7 @@
-//! Schedule generation for coupon and payment dates.
+//! Coupon and payment date schedules with business-day adjustment, stubs and end-of-month
+//! preservation.
 //!
-//! Generates periodic date schedules with business day adjustment,
-//! stub handling, and end-of-month preservation.
-//!
-//! Reference: ISDA 2006 Definitions, Sections 4.15–4.16.
+//! Reference: ISDA 2006 Definitions, Sections 4.15–4.16
 
 use chrono::NaiveDate;
 
@@ -169,24 +167,8 @@ impl ScheduleBuilder {
     self
   }
 
-  /// Set the stub convention.
-  ///
-  /// **Defaults (when this method is not called):**
-  /// - [`DateGenerationRule::Backward`] → [`StubConvention::ShortFirst`]
-  /// - [`DateGenerationRule::Forward`] → [`StubConvention::ShortLast`]
-  ///
-  /// **Edge cases:**
-  /// - `LongFirst` / `LongLast` are **no-ops** when the schedule has no stub
-  ///   (i.e. when the total tenor is an integer multiple of the regular
-  ///   period). Detection is by comparing `months_between(stub_endpoints)`
-  ///   against the regular `period` — equal means no stub to merge.
-  /// - Long-merge applies only when the raw schedule has ≥ 3 dates; a
-  ///   2-date schedule (single period) is left untouched regardless of the
-  ///   chosen convention.
-  /// - Mixing a Long convention with the **opposite** direction (e.g.
-  ///   `Forward` + `LongFirst`) is allowed and merges the start-side stub
-  ///   if any was produced — useful when generating an end-anchored
-  ///   schedule but wanting the *first* irregular period absorbed.
+  /// Stub convention; unset, it is `ShortFirst` for backward and `ShortLast` for forward
+  /// generation. A long stub merges only when a stub exists and the schedule has ≥ 3 dates.
   pub fn stub(mut self, stub: StubConvention) -> Self {
     self.stub = Some(stub);
     self
@@ -252,9 +234,7 @@ impl ScheduleBuilder {
     raw_dates.sort();
     raw_dates.dedup();
 
-    // Apply long-stub merging when the user has explicitly requested it.
-    // Short-stub conventions (`ShortFirst` / `ShortLast`) match the default
-    // `generate_*` output, so no extra work is needed in those cases.
+    // The short-stub conventions are what generation produces; only a long stub needs a merge.
     let stub = self.stub.unwrap_or(match self.rule {
       DateGenerationRule::Forward => StubConvention::ShortLast,
       DateGenerationRule::Backward | DateGenerationRule::Imm | DateGenerationRule::Cds => {

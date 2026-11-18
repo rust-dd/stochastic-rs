@@ -10,11 +10,8 @@
 //!   d=\frac{F-K}{\sigma\sqrt{\tau}}
 //! $$
 //!
-//! Reference: F. Black, "The Pricing of Commodity Contracts", Journal of
-//! Financial Economics 3(1-2), 167-179 (1976).
-//!
-//! Reference: D. Brigo & F. Mercurio, "Interest Rate Models — Theory and
-//! Practice", Springer, 2nd ed. (2006), §1.5.
+//! Reference: Black (1976), "The Pricing of Commodity Contracts", J. Financ. Econ. 3(1-2), 167–179
+//! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., §1.5
 
 use stochastic_rs_distributions::special::norm_cdf;
 
@@ -23,7 +20,8 @@ use super::types::VolatilityQuoteKind;
 use super::volatility::VolatilityModel;
 use crate::traits::RealExt;
 
-/// Payoff where the closed form is undefined; NaN for a NaN rate or time, or a NaN vol while the option is still live.
+/// Payoff where the closed form is undefined; NaN for a NaN rate or time, or a NaN vol while
+/// the option is still live.
 fn intrinsic(moneyness: f64, t: f64, v: f64) -> f64 {
   if t.is_nan() || (t > 0.0 && v.is_nan()) {
     f64::NAN
@@ -100,12 +98,8 @@ pub fn bachelier_forward_floorlet<T: RealExt>(forward: T, strike: T, tau: T, sig
   T::from_f64_fast((k - f) * norm_cdf(-d) + sqrt_vt * pdf)
 }
 
-/// Caplet or floorlet price discounted to the valuation date.
-///
-/// `tau` is the year fraction from valuation date to the caplet expiry (the
-/// fixing date of the forward rate). `accrual_factor` is $\alpha$, the day
-/// count fraction for the coupon period. `discount_factor` is $P(t,t_p)$ to
-/// the payment date $t_p$.
+/// Caplet or floorlet price at the valuation date: `tau` runs to the forward's fixing date,
+/// `accrual_factor` is $\alpha$ and `discount_factor` is $P(t,t_p)$ to the payment date.
 #[allow(clippy::too_many_arguments)]
 pub fn caplet_price<T: RealExt, V: VolatilityModel<T> + ?Sized>(
   forward: T,

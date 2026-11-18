@@ -1,16 +1,9 @@
-//! Performance ratios — Sharpe, Sortino, Information Ratio, Calmar.
+//! Sharpe, Sortino, information and Calmar ratios; each takes the annualisation factor
+//! (periods per year) as an argument.
 //!
-//! Reference: Sharpe, "The Sharpe Ratio", Journal of Portfolio Management,
-//! 21(1), 49–58 (1994). DOI: 10.3905/jpm.1994.409501
-//!
-//! Reference: Sortino & van der Meer, "Downside Risk", Journal of Portfolio
-//! Management, 17(4), 27–31 (1991). DOI: 10.3905/jpm.1991.409343
-//!
-//! Reference: Young, "Calmar Ratio: A Smoother Tool", Futures Magazine (1991).
-//!
-//! All ratios accept an explicit annualisation factor (periods per year) so
-//! no `252`, `365`, or `12` constants are hard-coded — callers pass whatever
-//! matches their sampling frequency.
+//! Reference: Sharpe (1994), J. Portfolio Management 21(1), 49–58, DOI 10.3905/jpm.1994.409501
+//! Reference: Sortino & van der Meer (1991), J. Portfolio Management 17(4), 10.3905/jpm.1991.409343
+//! Reference: Young (1991), "Calmar Ratio: A Smoother Tool", Futures Magazine
 
 use ndarray::ArrayView1;
 
@@ -87,7 +80,7 @@ pub fn sortino_ratio<T: RealExt>(
 }
 
 /// Annualised Information Ratio against `benchmark`, NaN for a constant excess series; errors as
-/// [`sharpe_ratio`]'s over the excess returns, and `DimensionMismatch` for unequal lengths.
+/// [`sharpe_ratio`]'s, `Numerical` for an excess that overflows, `DimensionMismatch` for lengths.
 ///
 /// $$\mathrm{IR}=\frac{\overline{r-r_b}}{\sigma_{r-r_b}}\sqrt{k}.$$
 pub fn information_ratio<T: RealExt>(
@@ -102,8 +95,16 @@ pub fn information_ratio<T: RealExt>(
       got: benchmark.len(),
     });
   }
-  let diff = &returns.to_owned() - &benchmark.to_owned();
-  validate_samples(diff.view(), "information ratio", 2)?;
+  validate_samples(returns, "information ratio", 2)?;
+  validate_samples(benchmark, "information ratio", 2)?;
+  let diff = &returns - &benchmark;
+  if let Some(i) = diff.iter().position(|excess| !excess.is_finite()) {
+    finite(
+      diff[i],
+      "information ratio",
+      &format!("the excess return {i}"),
+    )?;
+  }
   if is_constant(diff.view()) {
     return Ok(T::nan());
   }
@@ -132,4 +133,31 @@ pub fn calmar_ratio<T: RealExt>(
     return Ok(T::nan());
   }
   Ok(annualised_return / mdd_abs)
+}
+
+#[cfg(test)]
+mod tests {
+  use ndarray::array;
+
+  use super::*;
+
+  /// Finite returns whose excess over the benchmark overflows are `Numerical`, not an invalid
+  /// sample; a non-finite return or benchmark value stays `InvalidInput`.
+  #[test]
+  fn an_excess_return_that_overflows_is_numerical() {
+    let returns = array![1e308, 0.01, -0.02];
+    let benchmark = array![-1e308, 0.0, 0.0];
+    let err = information_ratio(returns.view(), benchmark.view(), 252.0).unwrap_err();
+    assert_eq!(
+      err.to_string(),
+      "information ratio: the excess return 0 of finite samples overflows to inf"
+    );
+    for (r, b) in [
+      (array![0.01, f64::NAN, 0.0], array![0.0, 0.0, 0.0]),
+      (array![0.01, 0.02, 0.0], array![0.0, f64::INFINITY, 0.0]),
+    ] {
+      let err = information_ratio(r.view(), b.view(), 252.0).unwrap_err();
+      assert!(matches!(err, QuantError::InvalidInput { .. }), "{err}");
+    }
+  }
 }

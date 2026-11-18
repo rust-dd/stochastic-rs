@@ -1,11 +1,12 @@
-//! Expected Shortfall / Conditional VaR of the loss $L$ (Acerbi & Tasche 2002, (3.3)),
-//! $$
-//! \mathrm{ES}_{\alpha}(L)=\frac{1}{1-\alpha}\int_{\alpha}^{1}\mathrm{VaR}_{u}(L)\,du;
-//! $$
-//! the historical and Monte Carlo estimators take it on the sample's own law, its tail mean.
+//! Expected shortfall of the loss $L$ (Acerbi & Tasche 2002, (3.3)); the historical and Monte
+//! Carlo estimators take it on the sample's own law, its tail mean.
 //!
-//! Acerbi & Tasche (2002), J. Bank. Financ. 26(7), doi:10.1016/S0378-4266(02)00283-2.
-//! Rockafellar & Uryasev (2002), J. Bank. Financ. 26(7), doi:10.1016/S0378-4266(02)00271-6.
+//! $$
+//! \mathrm{ES}_{\alpha}(L)=\frac{1}{1-\alpha}\int_{\alpha}^{1}\mathrm{VaR}_{u}(L)\,du
+//! $$
+//!
+//! Reference: Acerbi & Tasche (2002), J. Bank. Financ. 26(7), DOI 10.1016/S0378-4266(02)00283-2
+//! Reference: Rockafellar & Uryasev (2002), J. Bank. Financ. 26(7), 10.1016/S0378-4266(02)00271-6
 
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::ndtri;

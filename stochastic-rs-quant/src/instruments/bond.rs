@@ -5,11 +5,8 @@
 //! D_{\mathrm{Mac}}=\frac{\sum_i t_i\,PV_i}{P}
 //! $$
 //!
-//! Reference: Fabozzi, "Fixed Income Mathematics", 4th ed. (2015).
-//!
-//! Reference: Ivanovski, Stojanovski & Ivanovska, "Interest Rate Risk of Bond
-//! Prices on Macedonian Stock Exchange - Empirical Test of the Duration,
-//! Modified Duration and Convexity and Bonds Valuation", arXiv:1206.6998 (2012).
+//! Reference: Fabozzi (2015), "Fixed Income Mathematics", 4th ed.
+//! Reference: Ivanovski, Stojanovski & Ivanovska (2012), arXiv:1206.6998
 
 pub mod amortizing;
 pub mod fixed_rate;

@@ -1,19 +1,12 @@
-//! Money-market deposit instrument.
+//! Money-market deposit at contract rate $R$ with accrual $\alpha$ from value date to maturity,
+//! discounted on the funding (OIS) curve.
 //!
 //! $$
 //! \text{NPV} = N\,\big(D(0,T_v)\,(1 + R\,\alpha) - 1\big)
 //! $$
 //!
-//! where $R$ is the contract rate, $\alpha$ the accrual factor from value
-//! date to maturity, and $D(0,\cdot)$ the discount factor on the funding
-//! (OIS) curve. At issuance $D(0,T_v) = 1$ so the expression reduces to
-//! $N\,\alpha\,(R - R^\star)\,D(0, T_m)$ with $R^\star$ the deposit's
-//! break-even rate.
-//!
-//! Reference: Brigo & Mercurio, "Interest Rate Models — Theory and
-//! Practice", Springer (2006), §1.4.
-//!
-//! Reference: Ametrano & Bianchetti, SSRN 2219548 (2013), §3.
+//! Reference: Brigo & Mercurio (2006), "Interest Rate Models", 2nd ed., §1.4
+//! Reference: Ametrano & Bianchetti (2013), SSRN 2219548, §3
 
 use chrono::NaiveDate;
 

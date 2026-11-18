@@ -1,11 +1,7 @@
-//! Principal-component factor extraction via singular-value decomposition.
+//! Principal-component factors from the SVD $X = U\Sigma V^\top$ of a centred $T\times N$ returns
+//! matrix: explained-variance ratios, loadings $V$ and factor scores $U\Sigma$.
 //!
-//! Given a centred returns matrix $X \in \mathbb R^{T\times N}$, decompose
-//! $X = U\Sigma V^\top$ and report explained-variance ratios, factor loadings
-//! ($V$) and time-series factor scores ($U\Sigma$).
-//!
-//! Reference: Jolliffe, "Principal Component Analysis", 2nd ed., Springer
-//! (2002). DOI: 10.1007/b98835
+//! Reference: Jolliffe (2002), "Principal Component Analysis", 2nd ed., DOI 10.1007/b98835
 
 use ndarray::Array1;
 use ndarray::Array2;

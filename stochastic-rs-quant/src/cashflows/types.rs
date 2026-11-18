@@ -1,7 +1,6 @@
 //! Cash flow periods, notionals, and rate index definitions.
 //!
-//! Reference: Henrard, "Interest Rate Modelling in the Multi-Curve Framework",
-//! Palgrave Macmillan (2014).
+//! Reference: Henrard (2014), "Interest Rate Modelling in the Multi-Curve Framework", Palgrave
 
 use std::fmt::Display;
 use std::str::FromStr;
@@ -124,15 +123,23 @@ impl<T: RealExt> NotionalSchedule<T> {
     }
   }
 
-  /// Linearly amortizing profile.
+  /// Linear profile falling from `start` to `end`; panics unless `start >= end`.
   pub fn amortizing(periods: usize, start: T, end: T) -> Self {
+    assert!(
+      start >= end,
+      "start must satisfy `start >= end`, got start = {start:?}, end = {end:?}"
+    );
     Self {
       notionals: linear_profile(periods, start, end),
     }
   }
 
-  /// Linearly accreting profile.
+  /// Linear profile rising from `start` to `end`; panics unless `start <= end`.
   pub fn accreting(periods: usize, start: T, end: T) -> Self {
+    assert!(
+      start <= end,
+      "start must satisfy `start <= end`, got start = {start:?}, end = {end:?}"
+    );
     Self {
       notionals: linear_profile(periods, start, end),
     }
@@ -407,9 +414,8 @@ fn linear_profile<T: RealExt>(periods: usize, start: T, end: T) -> Array1<T> {
   }
 }
 
-/// Generate an unadjusted coupon-period grid `[effective, ..., termination]`.
-/// Non-EOM (the coupons-on-anniversary convention used by the cashflow leg
-/// generators). For EOM-aware schedules use [`crate::calendar::ScheduleBuilder`].
+/// Unadjusted coupon-period grid `[effective, ..., termination]` on anniversaries, with no
+/// end-of-month rule.
 fn generate_unadjusted_schedule(
   effective: NaiveDate,
   termination: NaiveDate,

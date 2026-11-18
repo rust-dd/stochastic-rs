@@ -91,9 +91,8 @@ fn brownian_profile_matches_the_closed_forms() {
   assert!(best < 0.03, "worst relative deviation {best}");
 }
 
-/// CVA with flat hazard and flat discounting against the analytic EPE plugged
-/// into the same rectangle rule; DVA mirrors it and the funding adjustments
-/// cancel for a symmetric exposure.
+/// CVA at a flat hazard and flat discounting against the analytic EPE in the same rectangle
+/// rule; DVA mirrors it and the funding adjustments cancel on a symmetric exposure.
 #[test]
 fn adjustments_match_their_closed_forms_on_a_symmetric_exposure() {
   let (sigma, h, r, lgd) = (10.0, 0.02, 0.03, 0.6);

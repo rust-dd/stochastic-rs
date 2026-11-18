@@ -1,11 +1,9 @@
-//! # FX & Currencies
+//! ISO 4217 currencies, FX quoting conventions, cross rates and forwards by covered interest
+//! parity.
 //!
 //! $$
 //! F = S \cdot e^{(r_d - r_f)\,\tau}
 //! $$
-//!
-//! ISO 4217 currency definitions, FX quoting conventions, cross-rate
-//! computation, and forward pricing via covered interest parity.
 
 pub mod currency;
 pub mod delta;

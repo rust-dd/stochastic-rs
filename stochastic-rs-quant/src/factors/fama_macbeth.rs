@@ -1,15 +1,12 @@
-//! Fama-MacBeth two-pass cross-sectional regression for factor risk premia.
+//! Fama–MacBeth two-pass regression: time-series betas per asset, a cross-sectional regression
+//! per date, then the mean premium $\bar\gamma$ with error $\sqrt{\mathrm{Var}(\gamma_t)/T}$.
 //!
-//! 1. **Time-series regression** — for each asset $i$, estimate
-//!    $R_{i,t} = a_i + \beta_i^\top F_t + \varepsilon_{i,t}$ by OLS.
-//! 2. **Cross-sectional regression** — at each $t$, regress
-//!    $R_{i,t} = \gamma_{0,t} + \gamma_t^\top \beta_i + \eta_{i,t}$ to obtain
-//!    factor risk premia $\gamma_t$.
-//! 3. **Inference** — average $\bar\gamma = \tfrac{1}{T}\sum_t\gamma_t$ with
-//!    standard errors $\sqrt{\widehat{\mathrm{Var}}(\gamma_t) / T}$.
+//! $$
+//! R_{i,t} = a_i + \beta_i^\top F_t + \varepsilon_{i,t},\qquad
+//! R_{i,t} = \gamma_{0,t} + \gamma_t^\top \beta_i + \eta_{i,t}
+//! $$
 //!
-//! Reference: Fama, MacBeth, "Risk, Return, and Equilibrium: Empirical Tests",
-//! Journal of Political Economy, 81(3), 607-636 (1973). DOI: 10.1086/260061
+//! Reference: Fama & MacBeth (1973), J. Political Economy 81(3), 607–636, DOI 10.1086/260061
 
 use ndarray::Array1;
 use ndarray::Array2;

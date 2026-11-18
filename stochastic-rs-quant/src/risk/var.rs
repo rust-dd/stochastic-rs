@@ -1,19 +1,12 @@
-//! Value at Risk: parametric (Gaussian), historical simulation, and Monte-Carlo.
+//! Value at Risk, parametric, historical and Monte Carlo, loss-positive: the smallest loss
+//! threshold exceeded with probability at most $1-\alpha$. PnL samples take `PnlOrLoss::Pnl`.
 //!
-//! Reference: Jorion, "Value at Risk: The New Benchmark for Managing Financial
-//! Risk", 3rd ed., McGraw-Hill (2007).
-//!
-//! Reference: Basel Committee on Banking Supervision, "International Convergence
-//! of Capital Measurement and Capital Standards: A Revised Framework" (2006).
-//!
-//! The library adopts the standard *loss-positive* convention: VaR at level
-//! $\alpha\in(0,1)$ is the smallest threshold $\ell$ such that the probability
-//! of a loss larger than $\ell$ does not exceed $1-\alpha$:
 //! $$
 //! \mathrm{VaR}_{\alpha}(L)=\inf\{\ell\in\mathbb{R}:\mathbb{P}(L>\ell)\le 1-\alpha\}.
 //! $$
-//! When inputs are PnL samples (profit positive), pass `PnlOrLoss::Pnl` to
-//! automatically negate before ranking.
+//!
+//! Reference: Jorion (2007), "Value at Risk", 3rd ed., McGraw-Hill
+//! Reference: Basel Committee on Banking Supervision (2006), "A Revised Framework" (Basel II)
 
 use std::fmt::Display;
 

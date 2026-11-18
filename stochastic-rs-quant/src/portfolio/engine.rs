@@ -1,10 +1,8 @@
-//! # Portfolio Engine
+//! High-level orchestration API for optimizer selection and momentum pipelines.
 //!
 //! $$
 //! \mathbf{w}^\* = \operatorname{Optimize}(\mu, \Sigma, \rho)
 //! $$
-//!
-//! High-level orchestration API for optimizer selection and momentum pipelines.
 
 use super::momentum::DecileBucket;
 use super::momentum::ModelEstimate;
@@ -29,10 +27,8 @@ pub struct PortfolioEngineConfig {
   pub target_return: f64,
   /// Risk-free rate used in Sharpe computations and scoring.
   pub r: f64,
-  /// Tail proportion for CVaR optimizers — the **fraction of worst returns**
-  /// to average. Typical values: 0.01–0.10. **Note**: this is the opposite
-  /// convention from [`crate::risk`] (which uses `confidence = 1 - tail`).
-  /// Pass `1.0 - confidence` to translate. Asserted `< 0.5` at runtime.
+  /// Tail fraction of worst returns the CVaR optimizers average, below `0.5`; [`crate::risk`]
+  /// takes the opposite convention, `confidence = 1 − tail`.
   pub cvar_alpha: f64,
   /// Enable long-short variants when supported.
   pub allow_short: bool,

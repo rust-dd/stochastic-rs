@@ -1,22 +1,13 @@
-//! FX quoting and cross-rate conventions.
+//! FX quoting and cross rates. The base currency of a pair follows the market priority
+//! EUR > GBP > AUD > NZD > USD > CAD > CHF > NOK > SEK > JPY > rest.
 //!
-//! Market convention determines which currency is the base (unit) currency
-//! in a pair.  The standard priority order is:
-//!
-//! EUR > GBP > AUD > NZD > USD > CAD > CHF > NOK > SEK > JPY > rest
-//!
-//! Reference: BIS Triennial Central Bank Survey (2022); Thomson Reuters
-//! Spot FX quoting conventions.
+//! Reference: BIS Triennial Central Bank Survey (2022); Thomson Reuters spot FX quoting conventions
 
 use super::currency::Currency;
 use crate::traits::RealExt;
 
-/// An FX currency pair (base / quote).
-///
-/// The *rate* of the pair expresses how many units of the *quote* currency
-/// are needed to buy one unit of the *base* currency.
-///
-/// Example: EUR/USD = 1.10 means 1 EUR costs 1.10 USD.
+/// An FX pair base/quote: its rate is the units of quote currency that buy one unit of base
+/// (EUR/USD = 1.10 means 1 EUR costs 1.10 USD).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CurrencyPair {
   pub base: Currency,
@@ -66,23 +57,8 @@ impl std::fmt::Display for CurrencyPair {
   }
 }
 
-/// Compute a cross rate from two rates that share a common currency.
-///
-/// Given `pair1` with rate `rate1` and `pair2` with rate `rate2`, compute the
-/// implied rate for `pair1.base / pair2.base` (or the appropriate combination).
-///
-/// Both input pairs must share exactly one currency.
-///
-/// Example: EUR/USD = 1.10, USD/JPY = 150.0 → EUR/JPY = 165.0
-///
-/// **Caveat — base/quote ordering:** the constructed pair's `(base, quote)`
-/// is determined by which legs share a currency, **not** by FX market
-/// priority order (EUR > GBP > AUD > NZD > USD > CAD > CHF > JPY).
-/// Calling `cross_rate(usdjpy, ..., eurusd, ...)` with USD as the shared
-/// leg returns a `(JPY, EUR)` pair (JPY-base) rather than the
-/// market-conventional EUR-base. Callers who need market-priority
-/// normalization should post-process the result by checking
-/// `quote_priority` and inverting the pair + rate when required.
+/// Cross rate of two pairs that share exactly one currency (EUR/USD and USD/JPY give EUR/JPY).
+/// The result's base and quote follow the shared leg, not the market priority order.
 pub fn cross_rate<T: RealExt>(
   pair1: CurrencyPair,
   rate1: T,
@@ -95,9 +71,7 @@ pub fn cross_rate<T: RealExt>(
     return Some((pair, rate1 * rate2));
   }
   if pair1.base.code == pair2.base.code {
-    // (B/A)^-1 * B/C → A/B * ... → need (1/rate1) then A/B * B/C
-    // A/B = 1/rate1(B/A), then A/B * (nothing) ... let's think:
-    // pair1 = X/Y rate1, pair2 = X/Z rate2 → Y/Z = rate2/rate1
+    // X/Y at `rate1` and X/Z at `rate2` give Y/Z = rate2 / rate1.
     let pair = CurrencyPair::new(pair1.quote, pair2.quote);
     return Some((pair, rate2 / rate1));
   }

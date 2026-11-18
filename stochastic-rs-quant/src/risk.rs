@@ -31,7 +31,6 @@ pub use expected_shortfall::monte_carlo_es;
 pub use greeks::Sensitivities;
 pub use greeks::bucket_dv01;
 pub use greeks::central_difference;
-pub use greeks::finite_difference_greek;
 pub use greeks::forward_difference;
 pub use performance::calmar_ratio;
 pub use performance::information_ratio;

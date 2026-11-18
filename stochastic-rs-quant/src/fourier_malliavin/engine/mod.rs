@@ -1,15 +1,10 @@
-//! Struct-based Fourier-Malliavin volatility estimation engine.
+//! The Fourier–Malliavin engine: raw estimators in the FMVol MATLAB conventions, and the
+//! bias-corrected vol-of-vol estimators of Toscano et al., eq. (4), (11) and (51), for any period.
 //!
-//! References:
-//! - Sanfelici & Toscano (2024), arXiv:2402.00172.
-//! - Malliavin & Mancino (2002, 2009).
-//! - Mancino & Recchioni (2015).
-//! - Toscano, Livieri, Mancino & Marmi (2022), arXiv:2112.14529v3.
-//!
-//! The raw estimators retain the FmVol MATLAB conventions. The bias-corrected
-//! volatility-of-volatility estimators implement equations (4), (11), and
-//! (51) of Toscano et al., including the coefficient-level quarticity
-//! correction and the normalization for an arbitrary observation period.
+//! Reference: Sanfelici & Toscano (2024), arXiv:2402.00172
+//! Reference: Malliavin & Mancino (2002), Finance and Stochastics 6(1); (2009), Ann. Statist. 37(4)
+//! Reference: Mancino & Recchioni (2015)
+//! Reference: Toscano, Livieri, Mancino & Marmi (2022), arXiv:2112.14529v3
 
 use ndarray::Array1;
 use num_complex::Complex;
@@ -31,14 +26,9 @@ mod tests;
 #[cfg(test)]
 mod validation_tests;
 
-/// Fourier-Malliavin volatility estimation engine.
+/// Fourier–Malliavin engine: the Fourier coefficients of the price increments are computed once
+/// and every integrated and spot estimator reads them.
 ///
-/// Pre-computes the Fourier coefficients of price increments once, then
-/// exposes integrated and spot estimators as cheap method calls.
-///
-/// Generic over `T: RealExt` (`f32` / `f64`).
-///
-/// # Example
 /// ```
 /// use stochastic_rs_quant::fourier_malliavin::FmVol;
 ///
@@ -71,22 +61,14 @@ pub struct FmVol<T: RealExt> {
 }
 
 impl<T: RealExt> FmVol<T> {
-  /// Build an engine from irregularly spaced observations.
-  ///
-  /// Sets `N = floor(n/2)` and pre-computes every frequency needed by the
-  /// default raw and bias-corrected windows.
-  ///
-  /// Panics when input or default-frequency validation fails. Use
-  /// [`Self::try_new`] to receive the validation error.
+  /// An engine on irregularly spaced observations with `N = floor(n/2)`; panics where
+  /// [`Self::try_new`] returns an error.
   pub fn new(prices: &[T], times: &[T], period: T) -> Self {
     Self::try_new(prices, times, period).unwrap_or_else(|e| panic!("{e}"))
   }
 
-  /// Fallible variant of [`Self::new`].
-  ///
-  /// Prices and times must be finite, times must be strictly increasing and
-  /// span `period`, and the default frequency windows must lie below the
-  /// discrete Nyquist storage bound.
+  /// `Err` unless prices and times are finite, times strictly increase and span `period`, and
+  /// the default frequency windows lie below the discrete Nyquist storage bound.
   pub fn try_new(prices: &[T], times: &[T], period: T) -> Result<Self, QuantError> {
     let (n, mesh, origin) = validation::validate_irregular_inputs(prices, times, period)?;
     let big_n = n / 2;
@@ -104,12 +86,8 @@ impl<T: RealExt> FmVol<T> {
     })
   }
 
-  /// Build an engine from **uniformly spaced** observations (FFT-accelerated, O(n log n)).
-  ///
-  /// Assumes `t_l = l · T / n`; no explicit times array needed.
-  ///
-  /// Panics when input or default-frequency validation fails. Use
-  /// [`Self::try_new_uniform`] to receive the validation error.
+  /// An engine on uniformly spaced observations `t_l = l · T / n`, by FFT in O(n log n); panics
+  /// where [`Self::try_new_uniform`] returns an error.
   pub fn new_uniform(prices: &[T], period: T) -> Self {
     Self::try_new_uniform(prices, period).unwrap_or_else(|e| panic!("{e}"))
   }
@@ -133,14 +111,8 @@ impl<T: RealExt> FmVol<T> {
     })
   }
 
-  /// Build an engine with explicit cutting frequency *N* and maximum frequency.
-  ///
-  /// `max_freq` controls how high the Fourier coefficients are computed.
-  /// Must satisfy `max_freq ≥ n_freq`.
-  /// For spot leverage / volvol / quarticity you need `max_freq ≥ N + M + L`.
-  ///
-  /// Panics when input or frequency validation fails. Use
-  /// [`Self::try_with_freq`] to receive the validation error.
+  /// An engine with an explicit cutting frequency `N` and `max_freq ≥ n_freq` (spot leverage,
+  /// vol of vol and quarticity need `N + M + L`); panics where [`Self::try_with_freq`] errs.
   pub fn with_freq(prices: &[T], times: &[T], period: T, n_freq: usize, max_freq: usize) -> Self {
     Self::try_with_freq(prices, times, period, n_freq, max_freq).unwrap_or_else(|e| panic!("{e}"))
   }

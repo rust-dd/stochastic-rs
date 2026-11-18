@@ -37,17 +37,8 @@ impl<T: RealExt> FmVol<T> {
     ))
   }
 
-  /// Spot variance under the **FE** (Fourier-Estimator) Cesàro-kernel
-  /// convention: weight `1 − |k|/M`, i.e. effective bandwidth `M − 1`,
-  /// instead of the FM-convention weight `1 − |k|/(M+1)`.
-  ///
-  /// Matches the MATLAB FSDA `FE_spot_vol` / `FE_spot_vol_FFT` output
-  /// element-for-element. Use [`super::super::default_cutting_freq_fe`] for the
-  /// FE-style `(N, M)` defaults and pair with
-  /// [`FmVol::with_freq`] so that `max_freq ≥ N + M`.
-  ///
-  /// Panics if the window is invalid. Use [`Self::try_spot_variance_fe`] to
-  /// handle invalid input without panicking.
+  /// Spot variance with the FE Cesàro weight `1 − |k|/M` (MATLAB FSDA's `FE_spot_vol`), where FM
+  /// uses `1 − |k|/(M+1)`; panics where [`Self::try_spot_variance_fe`] returns an error.
   pub fn spot_variance_fe(&self, tau: &[T], m_freq: Option<usize>) -> Array1<T> {
     self
       .try_spot_variance_fe(tau, m_freq)
@@ -229,11 +220,8 @@ impl<T: RealExt> FmVol<T> {
     ))
   }
 
-  /// Bias-corrected spot volatility of volatility.
-  ///
-  /// Implements equation (11) of Toscano et al.: every Fourier coefficient
-  /// uses the inner `M`-Fejér derivative product and its matching unweighted
-  /// quarticity coefficient before the outer `L`-Fejér inversion.
+  /// Bias-corrected spot vol of vol, eq. (11) of Toscano et al.: the inner `M`-Fejér derivative
+  /// product less its unweighted quarticity coefficient, before the outer `L`-Fejér inversion.
   pub fn spot_volvol_bias_corrected(
     &self,
     tau: &[T],

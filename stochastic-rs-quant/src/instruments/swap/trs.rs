@@ -1,47 +1,18 @@
-//! Total Return Swap (TRS) — equity total-return leg vs floating-rate
-//! funding leg.
-//!
-//! In a TRS the *total-return receiver* receives the dividend + capital
-//! return on a reference asset and pays a floating funding leg
-//! `funding_rate + spread`. The fair spread at inception equates the
-//! present value of the two legs.
-//!
-//! # Pricing under continuous-time risk-neutrality
-//!
-//! The *total* return of an equity over a period — capital gain plus
-//! dividends paid — has expected gross return $e^{r\,\Delta t}$ under
-//! the risk-neutral measure (a self-financing position grows at the
-//! short rate regardless of the dividend yield). The relevant pricing
-//! forward is therefore the **total-return forward**:
+//! Total return swap: the receiver gets capital gain plus dividends, whose risk-neutral growth
+//! is $e^{r\Delta t}$ whatever the dividend yield, and pays `funding_rate + spread`.
 //!
 //! $$
-//! F_{\mathrm{TR}}(t) = S_0\,e^{r\,t}
+//! F_{\mathrm{TR}}(t) = S_0\,e^{r\,t},\qquad
+//! R_i = \frac{F_{\mathrm{TR}}(t_i)}{F_{\mathrm{TR}}(t_{i-1})} - 1 = e^{r\,\alpha_i} - 1
 //! $$
 //!
-//! and **not** the price-only forward $S_0\,e^{(r-q)t}$. Per-period
-//! expected total return is $R_i = F_{\mathrm{TR}}(t_i)/F_{\mathrm{TR}}(t_{i-1}) - 1
-//! = e^{r\,\alpha_i} - 1$. Discounted equity-leg value:
-//!
 //! $$
-//! \mathrm{PV}_{\mathrm{eq}} = N \sum_i D(t_i)\, R_i
-//! $$
-//!
-//! Funding leg (simple interest over each accrual):
-//!
-//! $$
+//! \mathrm{PV}_{\mathrm{eq}} = N \sum_i D(t_i)\, R_i,\qquad
 //! \mathrm{PV}_{\mathrm{fnd}} = N \sum_i D(t_i)\,\alpha_i\,(r_i + s)
 //! $$
 //!
-//! Note: dividend yield does **not** enter the total-return cashflow —
-//! it would only matter for a *price-return swap* (a different, less
-//! common instrument). To model that, replace `equity_drift_rate` with
-//! `r - q` and treat dividends as a separate leg.
-//!
-//! Reference: Hull, *Options, Futures, and Other Derivatives*, 11th ed.,
-//! §35.8 — Total return swaps.
-//! Reference: Brigo, Morini & Pallavicini, *Counterparty Credit Risk,
-//! Collateral and Funding*, Wiley (2013), §13 — TRS pricing under
-//! collateralised funding.
+//! Reference: Hull (2021), "Options, Futures, and Other Derivatives", 11th ed., §35.8
+//! Reference: Brigo et al. (2013), "Counterparty Credit Risk, Collateral and Funding", Wiley, §13
 
 use crate::traits::RealExt;
 
@@ -63,22 +34,15 @@ pub struct TrsPeriod<T: RealExt> {
   pub funding_rate: T,
 }
 
-/// Total Return Swap on a single equity reference (or basket NAV).
-///
-/// The model assumes the reference asset's *total wealth* (price plus
-/// reinvested dividends) follows $e^{r\,t}$ in expectation under the
-/// risk-neutral measure, where $r$ is `equity_drift_rate`. Dividend
-/// yield is therefore not a separate input — it is implicit in the
-/// total-return forward.
+/// Total return swap on one equity reference or a basket NAV. The reference's total wealth
+/// grows at `equity_drift_rate` in expectation, so the dividend yield is not an input.
 #[derive(Debug, Clone)]
 pub struct TotalReturnSwap<T: RealExt> {
   pub notional: T,
   /// Spot price of the reference asset.
   pub s: T,
-  /// Continuously-compounded drift of the *total wealth* of the
-  /// reference asset (capital + dividends). For a stock referenced
-  /// against an OIS-collateralised TRS this is the OIS rate;
-  /// for a USD-funded equity TRS it is typically the funding rate.
+  /// Continuously compounded drift of the reference's total wealth, capital plus dividends:
+  /// the OIS rate under OIS collateral, the funding rate for a funded TRS.
   pub equity_drift_rate: T,
   /// Accrual schedule — one entry per period.
   pub schedule: Vec<TrsPeriod<T>>,
@@ -191,10 +155,8 @@ mod tests {
 
   #[test]
   fn fair_spread_small_for_self_financing_continuous() {
-    // Self-financing: total wealth grows at the funding rate, so each
-    // period the TR receiver gets e^{r α}-1 vs the funding payer's r α.
-    // The gap is the simple-vs-continuous compounding correction
-    // 0.5 r² α + O(α³) — small but not zero.
+    // The receiver gets e^{rα} − 1 against the payer's rα: the gap is the compounding
+    // correction ½ r² α² + O(α³), small but not zero.
     let trs = TotalReturnSwap {
       notional: 1_000_000.0,
       s: 100.0,
@@ -214,10 +176,8 @@ mod tests {
 
   #[test]
   fn dividend_yield_does_not_enter_total_return() {
-    // Total-return swap pays the *total* return: capital + dividends.
-    // Dropping dividend_yield from the model is correct — under risk-
-    // neutral measure E[total return] = e^{r·dt}-1 regardless of q.
-    // (Smoke test: model has no `dividend_yield` field at all.)
+    // The swap pays capital plus dividends, and E[total return] = e^{r·dt} − 1 whatever q is,
+    // so the model has no dividend-yield field.
     let trs = TotalReturnSwap {
       notional: 1.0,
       s: 100.0,

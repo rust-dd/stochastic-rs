@@ -1,6 +1,5 @@
-//! Loss-distribution and tranche identities: binomial limit at zero
-//! correlation, all-or-nothing at full correlation, the Vasicek large-pool
-//! limit, whole-capital-structure conservation and spread monotonicity.
+//! Tranche identities: the binomial limit at zero correlation, all-or-nothing at full
+//! correlation, the large-pool limit, capital-structure conservation, spread monotonicity.
 
 use ndarray::Array1;
 use stochastic_rs_distributions::special::ndtri;
@@ -117,11 +116,8 @@ fn large_pool_matches_the_vasicek_limit() {
   );
 }
 
-/// Near-full correlation makes the pool default as one. The factor integrand
-/// is then almost a step in `Y`, so the Gauss–Hermite rule needs many nodes;
-/// the no-loss mass is checked against a fine Simpson integration of the
-/// same conditional probability, and the mass must sit at zero and at the
-/// full loss-given-default.
+/// At near-full correlation the pool defaults as one: the mass sits at zero and at the full
+/// loss, and the no-loss mass matches a fine Simpson integral of the conditional probability.
 #[test]
 fn full_correlation_is_all_or_nothing() {
   let pool = homogeneous_pool(20, 0.04, 0.4);

@@ -1,26 +1,13 @@
-//! # Vasicek
+//! Vasicek zero-coupon bond: `theta` is the mean-reversion speed and `mu` the long-run mean, as
+//! in the workspace's `Ou`, `Vasicek` process and `FouFit`.
 //!
 //! $$
 //! dr_t=\theta(\mu-r_t)dt+\sigma dW_t
 //! $$
-//!
-//! Field-name convention matches the SDE above:
-//! - `theta` is the **mean-reversion speed** (rate at which `r_t` reverts).
-//! - `mu` is the **long-run mean** (level the process reverts to).
-//!
-//! This matches the convention used elsewhere in the workspace
-//! (`stochastic_rs_stats::fou::FouFit`,
-//! `stochastic_rs_stochastic::diffusion::ou::Ou`,
-//! `stochastic_rs_stochastic::interest::vasicek::Vasicek`).
 use crate::traits::ShortRatePricer;
 
-/// Vasicek model for zero-coupon bond pricing.
-///
-/// `dR(t) = θ(μ − R(t)) dt + σ dW(t)` where `R(t)` is the short rate.
-///
-/// Holds only the model parameters — the short rate and maturity are the
-/// query, passed to [`ShortRatePricer::zero_coupon_price`], so one `Vasicek`
-/// prices an entire maturity grid instead of one struct per maturity.
+/// Vasicek parameters of `dR = θ(μ − R) dt + σ dW`; the short rate and the maturity are the query
+/// of [`ShortRatePricer::zero_coupon_price`], so one `Vasicek` prices a maturity grid.
 #[derive(Default, Debug)]
 pub struct Vasicek {
   /// Mean-reversion speed (κ in the SDE).
@@ -42,21 +29,8 @@ impl ShortRatePricer for Vasicek {
 }
 
 impl Vasicek {
-  /// Build a `Vasicek` bond pricer from an
-  /// [`stochastic_rs_stats::fou::FouFit`] (the output of
-  /// `fit_fou_filtered_variations` / `fit_fou_central_differences` / `fit_fou_power_variation`).
-  ///
-  /// Field correspondence: `theta = est.theta` (mean-reversion speed),
-  /// `mu = est.mu` (long-run level), `sigma = est.sigma`.
-  ///
-  /// **Caveat.** The fOU estimator can produce a Hurst exponent `H ≠ 0.5`,
-  /// but the closed-form Vasicek bond price `A − B·r` is derived for
-  /// **standard Brownian** noise (`H = 0.5`). For `H ≠ 0.5` this constructor
-  /// silently uses the drift / scale / level estimates with the standard-noise
-  /// pricer — accurate only as a Markov first-order approximation. For
-  /// genuine fractional pricing, use the rough-volatility models in
-  /// `stochastic_rs_stochastic::interest::fvasicek::Fvasicek` or
-  /// `stochastic_rs_stochastic::rough::*`.
+  /// `theta`, `mu` and `sigma` of a fractional OU fit. The bond formula assumes Brownian noise:
+  /// for a fitted `H ≠ 0.5` the price is a Markov first-order approximation.
   pub fn from_fou_estimate(est: &stochastic_rs_stats::fou::FouFit) -> Self {
     Self {
       theta: est.theta,

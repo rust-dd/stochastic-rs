@@ -1,27 +1,15 @@
-//! # Synthetic CDO tranche
+//! One-factor Gaussian copula tranche `[A, D]`: the conditional pool loss by the
+//! Andersen–Sidenius–Basu recursion, Gauss–Hermite over `Y`, and Vasicek's large-pool limit.
 //!
 //! $$
 //! \mathrm{ETL}(t; A, D) = \mathbb E\bigl[\min(\max(L_t - A, 0), D - A)\bigr],\qquad
 //! p_i(t \mid Y) = \Phi\!\left(\frac{\Phi^{-1}(p_i(t)) - \sqrt{\rho}\,Y}{\sqrt{1-\rho}}\right)
 //! $$
 //!
-//! One-factor Gaussian copula pricing of a tranche `[A, D]` on a pool of
-//! names. Conditional on the market factor `Y` the defaults are independent,
-//! so the portfolio loss distribution follows from the Andersen–Sidenius–Basu
-//! recursion on a loss grid, and the unconditional expected tranche loss is
-//! the Gauss–Hermite integral over `Y`. The protection leg pays the increase
-//! of the expected tranche loss between premium dates, the premium leg
-//! accrues the running spread on the expected outstanding tranche notional
-//! with the mid-period convention for defaults inside a period (O'Kane 2008,
-//! Ch. 17). The large-homogeneous-pool limit of Vasicek is provided as the
-//! `N → ∞` cross-check.
-//!
-//! References: Andersen, L., Sidenius, J. & Basu, S. (2003), *All your hedges
-//! in one basket*, Risk 16(11), 67–72; Laurent, J.-P. & Gregory, J. (2005),
-//! *Basket default swaps, CDOs and factor copulas*, Journal of Risk 7(4),
-//! 103–122; Vasicek, O. (2002), *Loan portfolio value*, Risk 15(12),
-//! 160–162; O'Kane, D. (2008), *Modelling Single-name and Multi-name Credit
-//! Derivatives*, Wiley, Ch. 12, 17–18.
+//! Reference: Andersen, Sidenius & Basu (2003), "All your hedges in one basket", Risk 16(11), 67–72
+//! Reference: Laurent & Gregory (2005), Journal of Risk 7(4), 103–122
+//! Reference: Vasicek (2002), "Loan portfolio value", Risk 15(12), 160–162
+//! Reference: O'Kane (2008), "Modelling Single- and Multi-name Credit Derivatives", Ch. 12, 17–18
 
 use std::num::NonZeroUsize;
 
@@ -193,10 +181,8 @@ impl CdoTranche {
     distribution
   }
 
-  /// Full valuation on `pool` with `discount`.
-  ///
-  /// The fair spread is NaN when the risky annuity is not positive, as it is
-  /// once the expected loss has consumed the tranche width.
+  /// Valuation on `pool` with `discount`; the fair spread is NaN when the risky annuity is not
+  /// positive, as once the expected loss has consumed the tranche width.
   pub fn valuation(&self, pool: &[PoolName], discount: &DiscountCurve<f64>) -> TrancheValuation {
     let width = self.detachment - self.attachment;
     let expected_loss: Vec<f64> = self
@@ -233,8 +219,7 @@ impl CdoTranche {
     self.valuation(pool, discount).upfront
   }
 
-  /// Vasicek large-homogeneous-pool limit of the expected tranche loss for a
-  /// pool with common default probability `p` and loss-given-default `lgd`:
+  /// Vasicek's large-homogeneous-pool expected tranche loss at default probability `p`:
   /// `E[min(max(lgd·Φ((Φ⁻¹(p) − √ρ Y)/√(1−ρ)) − A, 0), D − A)]`.
   pub fn large_pool_expected_tranche_loss(&self, p: f64, lgd: f64) -> f64 {
     let quad =
@@ -260,11 +245,8 @@ fn tranche_payoff(loss: f64, attachment: f64, detachment: f64) -> f64 {
   (loss - attachment).max(0.0).min(detachment - attachment)
 }
 
-/// Andersen–Sidenius–Basu recursion: distribution of the pool loss on the
-/// grid `0..=buckets` given independent defaults with probabilities `p_i`.
-/// A name's loss of `k + f` grid units is booked as `k + 1` units with
-/// probability `f` and `k` units otherwise, which keeps the expected loss
-/// exact on any grid instead of rounding it.
+/// Andersen–Sidenius–Basu pool-loss distribution on `0..=buckets` for independent defaults. A
+/// loss of `k + f` units books `k + 1` with probability `f`, so the expected loss is exact.
 fn asb_recursion(conditional_pd: &[f64], loss_units: &[(usize, f64)], buckets: usize) -> Vec<f64> {
   let mut dist = vec![0.0; buckets + 1];
   dist[0] = 1.0;

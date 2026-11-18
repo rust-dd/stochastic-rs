@@ -1,31 +1,16 @@
-//! # Factor Models & Statistical Arbitrage
-//!
-//! Principal-component factor extraction, well-conditioned covariance
-//! estimation via Ledoit-Wolf shrinkage, two-pass Fama-MacBeth cross-sectional
-//! regression, and a self-contained cointegrated pairs-trading framework.
+//! Principal-component factors, Ledoit–Wolf shrinkage covariance, the two-pass Fama–MacBeth
+//! regression and cointegrated pairs trading.
 //!
 //! $$
 //! \hat\Sigma_{LW} = \alpha\,\bar s\,I + (1-\alpha)\,S,\qquad
 //! \alpha = \min\!\bigl(1,\,b^2 / d^2\bigr).
 //! $$
 //!
-//! SVD and least squares run on the pure-Rust `faer`, in every build.
-//!
-//! # References
-//! - Ledoit, Wolf, "A Well-Conditioned Estimator for Large-Dimensional
-//!   Covariance Matrices", Journal of Multivariate Analysis, 88(2), 365-411
-//!   (2004). DOI: 10.1016/S0047-259X(03)00096-4
-//! - Ledoit, Wolf, "Honey, I Shrunk the Sample Covariance Matrix", Journal of
-//!   Portfolio Management, 30(4), 110-119 (2004).
-//!   DOI: 10.3905/jpm.2004.110
-//! - Fama, MacBeth, "Risk, Return, and Equilibrium: Empirical Tests", Journal
-//!   of Political Economy, 81(3), 607-636 (1973). DOI: 10.1086/260061
-//! - Engle, Granger, "Co-Integration and Error Correction: Representation,
-//!   Estimation, and Testing", Econometrica, 55(2), 251-276 (1987).
-//!   DOI: 10.2307/1913236
-//! - Gatev, Goetzmann, Rouwenhorst, "Pairs Trading: Performance of a
-//!   Relative-Value Arbitrage Rule", Review of Financial Studies, 19(3),
-//!   797-827 (2006). DOI: 10.1093/rfs/hhj020
+//! Reference: Ledoit & Wolf (2004), J. Multivariate Anal. 88(2), DOI 10.1016/S0047-259X(03)00096-4
+//! Reference: Ledoit & Wolf (2004), J. Portfolio Management 30(4), DOI 10.3905/jpm.2004.110
+//! Reference: Fama & MacBeth (1973), J. Political Economy 81(3), 607–636, DOI 10.1086/260061
+//! Reference: Engle & Granger (1987), Econometrica 55(2), 251–276, DOI 10.2307/1913236
+//! Reference: Gatev, Goetzmann & Rouwenhorst (2006), Rev. Financ. Stud. 19(3), 10.1093/rfs/hhj020
 
 pub mod fama_macbeth;
 pub mod pairs;

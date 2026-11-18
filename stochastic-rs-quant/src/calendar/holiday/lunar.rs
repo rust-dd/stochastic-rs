@@ -1,12 +1,10 @@
 //! HKEX and SGX calendars; their lunisolar, Islamic and Hindu holidays are tabulated per year.
+//! Ungazetted SGX dates are estimates (Vesak, Hari Raya by MABIMS, Deepavali).
 //!
-//! Hong Kong: General Holidays Ordinance (Cap. 149), Schedule and s 6(2); gov.hk and HKEX lists.
-//! Hong Kong Observatory, Gregorian–lunar calendar conversion tables.
-//! Singapore: Holidays Act 1998, ss 4(2) and 5(2); MOM public-holiday and SGX CDP settlement lists.
-//! Office of the Mufti, Singapore, "Determining the Beginning of Ramadan 1445H/2024", 2024.
-//!
-//! Ungazetted SGX dates are estimates: Vesak on day 15 of lunar month 4, Hari Raya by MABIMS
-//! (altitude ≥ 3°, elongation ≥ 6.4° at sunset), Deepavali on Naraka Chaturdashi (Lahiri ayanamsa).
+//! Reference: Hong Kong General Holidays Ordinance (Cap. 149), Schedule and s 6(2); HKEX lists
+//! Reference: Hong Kong Observatory, Gregorian–lunar calendar conversion tables
+//! Reference: Singapore Holidays Act 1998, ss 4(2) and 5(2); MOM and SGX CDP settlement lists
+//! Reference: Office of the Mufti, Singapore (2024), "Determining the Beginning of Ramadan 1445H"
 
 use chrono::Datelike;
 use chrono::Duration;
@@ -38,13 +36,13 @@ enum LunarHoliday {
   ChungYeung,
   /// SGX: the two days of Chinese New Year.
   ChineseNewYear,
-  /// SGX: Vesak Day.
+  /// SGX: Vesak Day; an ungazetted year is estimated as day 15 of lunar month 4.
   Vesak,
-  /// SGX: Hari Raya Puasa (Eid al-Fitr).
+  /// SGX: Hari Raya Puasa (Eid al-Fitr); ungazetted, by MABIMS: altitude ≥ 3°, elongation ≥ 6.4°.
   EidAlFitr,
-  /// SGX: Hari Raya Haji (Eid al-Adha).
+  /// SGX: Hari Raya Haji (Eid al-Adha); ungazetted, by the same MABIMS criterion at sunset.
   EidAlAdha,
-  /// SGX: Deepavali.
+  /// SGX: Deepavali; ungazetted, on Naraka Chaturdashi with the Lahiri ayanamsa.
   Deepavali,
 }
 
