@@ -41,9 +41,10 @@ pub fn max_drawdown<T: RealExt>(equity: ArrayView1<T>) -> T {
   T::min_or_nan_fold(running_drawdown(equity).iter().copied())
 }
 
-/// Longest run of consecutive observations strictly below the running peak, the peak itself
-/// excluded; [`max_peak_to_recovery_duration`] measures peak to recovery.
-pub fn max_drawdown_duration<T: RealExt>(equity: ArrayView1<T>) -> usize {
+/// Longest run of consecutive observations strictly below the running peak, the peak excluded;
+/// `InsufficientData` for an empty series, `InvalidInput` for a non-finite value.
+pub fn max_drawdown_duration<T: RealExt>(equity: ArrayView1<T>) -> Result<usize, QuantError> {
+  validate_samples(equity, "drawdown duration", 1)?;
   let mut peak = T::neg_infinity();
   let mut current = 0usize;
   let mut longest = 0usize;
@@ -58,16 +59,16 @@ pub fn max_drawdown_duration<T: RealExt>(equity: ArrayView1<T>) -> usize {
       }
     }
   }
-  longest
+  Ok(longest)
 }
 
-/// Longest distance in observations from a peak to the next value at or above it; an
-/// unrecovered tail counts `equity.len() - 1 - peak_index`, and a rising series gives `0`.
-pub fn max_peak_to_recovery_duration<T: RealExt>(equity: ArrayView1<T>) -> usize {
+/// Longest distance from a peak to the next value at or above it; an unrecovered tail counts
+/// `equity.len() - 1 - peak_index`. Errors as [`max_drawdown_duration`]'s.
+pub fn max_peak_to_recovery_duration<T: RealExt>(
+  equity: ArrayView1<T>,
+) -> Result<usize, QuantError> {
+  validate_samples(equity, "drawdown duration", 1)?;
   let n = equity.len();
-  if n == 0 {
-    return 0;
-  }
   let mut peak = T::neg_infinity();
   let mut peak_idx: usize = 0;
   let mut been_below = false;
@@ -93,7 +94,7 @@ pub fn max_peak_to_recovery_duration<T: RealExt>(equity: ArrayView1<T>) -> usize
       longest = dist;
     }
   }
-  longest
+  Ok(longest)
 }
 
 /// Full drawdown statistics for an equity series.
@@ -134,7 +135,7 @@ impl<T: RealExt> DrawdownStats<T> {
       series,
       max,
       max_index,
-      longest_duration: max_drawdown_duration(equity),
+      longest_duration: max_drawdown_duration(equity)?,
       average,
     })
   }
@@ -148,4 +149,34 @@ pub fn equity_from_returns<T: RealExt>(returns: ArrayView1<T>, start: T) -> Arra
     out[i + 1] = out[i] * (T::one() + r);
   }
   out
+}
+
+#[cfg(test)]
+mod tests {
+  use ndarray::array;
+
+  use super::*;
+
+  /// A NaN compares below every peak, so both durations counted it as under water.
+  #[test]
+  fn a_duration_refuses_an_empty_series_and_a_non_finite_value() {
+    for duration in [max_drawdown_duration, max_peak_to_recovery_duration] {
+      let err = duration(array![100.0, f64::NAN, 90.0, 120.0].view()).unwrap_err();
+      assert_eq!(err.to_string(), "invalid samples: sample 1 is NaN");
+      let err = duration(Array1::<f64>::zeros(0).view()).unwrap_err();
+      assert!(
+        matches!(err, QuantError::InsufficientData { got: 0, .. }),
+        "{err}"
+      );
+    }
+  }
+
+  #[test]
+  fn the_durations_of_a_dip_and_of_an_unrecovered_tail() {
+    let dip = array![100.0, 90.0, 80.0, 95.0, 101.0, 99.0];
+    assert_eq!(max_drawdown_duration(dip.view()).unwrap(), 3);
+    assert_eq!(max_peak_to_recovery_duration(dip.view()).unwrap(), 4);
+    let stats = DrawdownStats::from_equity(dip.view()).unwrap();
+    assert_eq!(stats.longest_duration, 3);
+  }
 }
