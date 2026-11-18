@@ -468,6 +468,7 @@ fn mle_result_display() {
     aic: 206.0,
     bic: 220.0,
     converged: true,
+    message: "converged".into(),
     iterations: 42,
   };
   let s = format!("{}", result);

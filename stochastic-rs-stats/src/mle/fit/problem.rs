@@ -34,6 +34,17 @@ pub(super) fn ranked(nll: f64) -> f64 {
   }
 }
 
+/// Steps of a walk beside an estimate: `4⁶⁴` times the gradient's step, past any box that matters.
+const FURTHEST: usize = 64;
+
+/// What the walks of [`MleProblem::beside`] found.
+pub(super) struct Beside {
+  /// The most one of them gains in log-likelihood.
+  pub(super) gain: f64,
+  /// One of them met a point without a likelihood.
+  pub(super) walled: bool,
+}
+
 /// The solver's coordinates: each parameter over its unit, with the caller's box in them.
 #[derive(Clone)]
 pub(super) struct Units {
@@ -206,6 +217,41 @@ impl<'a> MleProblem<'a> {
     }
     // One loose end is an optimum at or beside a bound; a stall leaves two, as a speed and a level.
     if loose_ends < 2 { at.to_vec() } else { from }
+  }
+
+  /// What steps along one parameter find beside `at`, in the problem's units: from the
+  /// gradient's step, either way, four times further while the cost is not above `at`'s.
+  pub(super) fn beside(&self, at: &[f64]) -> Beside {
+    let (low, high) = (&self.units.low, &self.units.high);
+    let z = self.units.of(at);
+    let here = self.eval_nll(&self.units.scaled(&z));
+    // A sum's rounding is no rise: below it the walk goes on, across a flat stretch.
+    let rise = 16.0 * f64::EPSILON * (1.0 + here.abs());
+    let mut beside = Beside {
+      gain: 0.0,
+      walled: false,
+    };
+    for i in 0..z.len() {
+      for side in [1.0, -1.0] {
+        let mut step = side * f64::EPSILON.cbrt() * (1.0 + z[i].abs());
+        let mut moved = z.clone();
+        for _ in 0..FURTHEST {
+          let to = (z[i] + step).clamp(low[i], high[i]);
+          if to == moved[i] || !to.is_finite() {
+            break;
+          }
+          moved[i] = to;
+          let cost = self.eval_nll(&self.units.scaled(&moved));
+          beside.walled |= cost >= NO_LIKELIHOOD;
+          if cost > here + rise {
+            break;
+          }
+          beside.gain = beside.gain.max(here - cost);
+          step *= 4.0;
+        }
+      }
+    }
+    beside
   }
 
   pub(super) fn eval_nll(&self, params: &[f64]) -> f64 {
