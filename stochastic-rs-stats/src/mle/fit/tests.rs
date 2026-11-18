@@ -2,6 +2,7 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::diffusion::ou::Ou;
 use stochastic_rs_stochastic::params::VarianceBoundary;
+use stochastic_rs_stochastic::process::bm::Bm;
 
 use basin::Gradient;
 
@@ -55,6 +56,31 @@ fn mle_converges_at_initial_brownian_drift_optimum() {
   assert_eq!(result.iterations, 0);
   assert_eq!(result.params, ndarray::array![0.0]);
   assert_eq!(model.mu, 0.0);
+}
+
+/// A model without parameters has nothing to search: its fit is the path's likelihood under the
+/// model as it stands, with no iteration, and its criteria carry no parameter's penalty.
+#[test]
+fn a_model_without_parameters_is_fitted_without_a_search() {
+  let dt = 1.0 / 252.0;
+  let path = simulate_ou(2.0, 1.0, 0.3, 1.0, dt, 200, 1);
+  let steps = (1..path.len()).map(|i| (path[i] - path[i - 1]).powi(2));
+  let want = -0.5 * (199.0 * (std::f64::consts::TAU * dt).ln() + steps.sum::<f64>() / dt);
+  for (density, bounds) in [
+    (DensityApprox::Exact, None),
+    (DensityApprox::Euler, Some(vec![])),
+  ] {
+    let mut bm = Bm::new(2, None, Deterministic::new(0));
+    let fit = fit_mle(&mut bm, path.view(), dt, density, bounds).unwrap();
+    assert!(fit.converged && fit.iterations == 0 && fit.params.is_empty());
+    assert!(
+      (fit.log_likelihood / want - 1.0).abs() < 1e-12,
+      "{} for {want}",
+      fit.log_likelihood
+    );
+    let twice = -2.0 * fit.log_likelihood;
+    assert_eq!((fit.nobs, fit.aic, fit.bic), (199, twice, twice));
+  }
 }
 
 #[test]
