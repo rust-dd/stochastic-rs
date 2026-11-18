@@ -17,18 +17,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   where
     Self: 's;
 
-  /// Derives (not clones) `self.seed` into the returned sampler: the
-  /// derived value is `self.seed`'s *mixed* next tick, not a raw snapshot,
-  /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
-  /// relative to each other rather than one raw stride apart.
-  ///
-  /// Re-validates `tenor`/`l0`/`sigma` jointly before doing anything else:
-  /// the `with_*` setters for these three fields (deliberately, see their
-  /// own docs) only check each field's own internal invariant, not their
-  /// combined shape, since doing that eagerly would make it impossible to
-  /// change the Libor count via chained setters. This restores a clean
-  /// `assert_eq!`-quality panic for a leftover mismatch at sample time,
-  /// instead of an opaque out-of-bounds index panic from `fill_matrix`.
+  /// Derives `self.seed` into the sampler, never clones it, so chunks are decorrelated. It
+  /// re-validates `tenor`, `l0` and `sigma` jointly, which the setters leave to sampling.
   fn sampler(&self) -> LmmSampler<T, S> {
     self.validate_lmm_inputs();
     LmmSampler {
@@ -42,9 +32,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Through the Euler engine when the curve fits a launch's four slots; a
-  /// wider one keeps the process on the host, chunked exactly as
-  /// [`ProcessExt`] chunks.
+  /// Through the Euler engine when the curve fits a launch's four slots; a wider one stays on
+  /// the host, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array2<T> {
     if self.device_ready() {
       rows_to_matrix(self.backend.system_sample(&LmmLaunch(self)), self.l0.len())
@@ -113,11 +102,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`Lmm`] sampling state: owns the tenor structure, the initial
-/// forward curve, the per-Libor volatilities, the optional Cholesky factor and
-/// the seed source so a Monte-Carlo loop reuses the output matrix. The full
-/// spot-LIBOR drift-coupling and frozen-drift log-Euler stepping live in
-/// [`LmmSampler::fill_matrix`] unchanged.
+/// Reusable [`Lmm`] sampling state: the tenor, the initial curve, the volatilities, the Cholesky
+/// factor and the seed source; [`LmmSampler::fill_matrix`] holds the drift coupling and the step.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct LmmSampler<T: FloatExt, S: SeedExt> {
@@ -189,10 +175,8 @@ impl<T: FloatExt, S: SeedExt> LmmSampler<T, S> {
       }
       let eta_idx = eta.saturating_sub(1).min(m); // index into Libor vector
 
-      // Drift summation: for each alive n in [eta_idx..m), compute
-      //   μ_n(t) = σ_n · Σ_{j=eta_idx..=n} (δ_j ρ_{n,j} σ_j L_j) / (1 + δ_j L_j).
-      // For correlation = identity ρ_{n,j} = δ_{n,j} (Kronecker), so the sum
-      // collapses to the j=n term.
+      // μ_n(t) = σ_n · Σ_{j=eta_idx..=n} (δ_j ρ_{n,j} σ_j L_j) / (1 + δ_j L_j) for each alive n;
+      // under the identity correlation the sum is its j = n term.
       let mut next = prev.clone();
       for n in eta_idx..m {
         if self.sigma[n] <= T::zero() {
@@ -203,10 +187,7 @@ impl<T: FloatExt, S: SeedExt> LmmSampler<T, S> {
         let mut drift = T::zero();
         match &self.chol {
           Some(_chol) => {
-            // Full correlated drift sum.
-            // ρ_{n,j} is recovered as Σ_p chol_{n,p} chol_{j,p}.
-            // We apply the formula directly using the original ρ matrix
-            // reconstructed from the Cholesky factor on the fly.
+            // The full correlated sum, with ρ_{n,j} = Σ_p chol_{n,p} chol_{j,p} rebuilt here.
             let chol_ref = self.chol.as_ref().unwrap();
             for j in eta_idx..=n {
               let mut rho_nj = T::zero();
@@ -232,9 +213,8 @@ impl<T: FloatExt, S: SeedExt> LmmSampler<T, S> {
         next[n] = prev[n] * log_inc.exp();
       }
 
-      // Freeze any Libor whose reset has just passed (T_n ≤ t_now + dt).
-      // Their forward is locked at the value at reset time.
-      // We model this by leaving prev[n] untouched once T_n is in the past.
+      // A Libor whose reset has passed (T_n ≤ t_now + dt) is frozen at its reset value:
+      // `prev[n]` is left untouched from then on.
       let t_next = t_now + dt;
       for n in 0..m {
         if self.tenor[n] <= t_now {

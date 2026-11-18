@@ -1,5 +1,3 @@
-//! # Interest
-//!
 //! Short-rate, affine, HJM and LIBOR-market models for fixed income; each module's header states
 //! its SDE.
 //!

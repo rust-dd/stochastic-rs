@@ -1,40 +1,12 @@
-//! # Fvasicek
+//! The fractional OU with the short rate as its state: this type holds a [`Fou`] (`a` = `theta`,
+//! `b` = `mu`) and samples through it, on a child seed that [`Fvasicek::new`] derives.
 //!
 //! $$
 //! dr_t=a(b-r_t)dt+\sigma dB_t^H
 //! $$
 //!
-//! ## Same SDE as [`Fou`]
-//!
-//! What Vasicek named is the term-structure reading of the equation, not the
-//! equation: `dr = a(b − r)dt + σ dB^H` is the fractional Ornstein-Uhlenbeck
-//! process with the short rate as its state. The dictionary is `a = `
-//! [`theta`](Fvasicek::theta) `= ` [`Fou::theta`] (reversion speed), `b = `
-//! [`mu`](Fvasicek::mu) `= ` [`Fou::mu`] (the level reverted to), `σ = `
-//! [`sigma`](Fvasicek::sigma) `= ` [`Fou::sigma`], `H = `
-//! [`hurst`](Fvasicek::hurst) `= ` [`Fou::hurst`], and `r = X`.
-//!
-//! So this type re-derives nothing. It holds a [`Fou`], its sampler *is*
-//! [`FouSampler`], and both the Euler family and the fGN pipeline it reports
-//! come from that process. The separate identity is the short-rate
-//! application — the same reason [`Vasicek`](super::vasicek::Vasicek) is
-//! distinct from [`Ou`](crate::diffusion::ou::Ou).
-//!
-//! The random stream is the one thing not shared: [`Fvasicek::new`] derives a
-//! child seed for the embedded `Fou`, so the two built from one
-//! [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic) seed are
-//! independent draws of the same law.
-//!
-//! References:
-//! - Vasicek O. (1977) — *An Equilibrium Characterization of the Term
-//!   Structure*, Journal of Financial Economics 5(2), 177–188,
-//!   DOI: 10.1016/0304-405X(77)90016-2 — the (non-fractional) short-rate
-//!   model this generalises.
-//! - Cheridito P., Kawaguchi H., Maejima M. (2003) — *Fractional
-//!   Ornstein-Uhlenbeck Processes*, Electronic Journal of Probability 8,
-//!   paper 3, 1–14, DOI: 10.1214/EJP.v8-125 — the fractional-noise
-//!   driver ([`Fou`]) this file wraps under
-//!   short-rate parameter names.
+//! Reference: Vasicek (1977), J. Financ. Econ. 5(2), 177–188, DOI 10.1016/0304-405X(77)90016-2
+//! Reference: Cheridito, Kawaguchi & Maejima (2003), EJP 8, paper 3, 1–14, DOI 10.1214/EJP.v8-125
 //!
 
 use ndarray::Array1;
@@ -52,9 +24,7 @@ use crate::traits::ProcessExt;
 pub struct Fvasicek<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
-  /// Mean-reversion speed (`a` in the module header's `a(b-r_t)dt`) —
-  /// despite the name, this is the wrapped [`Fou::theta`] (speed), fed
-  /// straight through to it.
+  /// Mean-reversion speed, `a` in the module's `a(b − r_t)dt`: the wrapped [`Fou::theta`].
   pub theta: T,
   /// Long-run mean level (`b` in the module header) — the wrapped
   /// [`Fou::mu`], the level `r` reverts to.
@@ -67,16 +37,10 @@ pub struct Fvasicek<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub x0: Option<T>,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)), kept
-  /// for API symmetry with every other process in the crate. Sampling
-  /// itself never reads this field directly — [`Fvasicek::new`] derives a
-  /// child seed from it once, at construction, to seed [`fou`](Self::fou),
-  /// which is what all sampling actually consults — including chunk
-  /// decorrelation, via `fou`'s own `sampler()`.
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
+  /// Sampling reads [`fou`](Self::fou)'s child seed, derived from this one in [`Fvasicek::new`].
   pub seed: S,
-  /// Wrapped fractional-OU process carrying the actual sampling state;
-  /// see module header — `Fvasicek` is `Fou` under short-rate-model
-  /// parameter names.
+  /// The wrapped fractional OU, which carries the sampling state.
   pub fou: Fou<T, S>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -84,6 +48,7 @@ pub struct Fvasicek<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Fvasicek<T, S> {
+  /// Panics unless a given `t` is positive and finite and every parameter is finite.
   pub fn new(
     hurst: T,
     theta: T,
@@ -133,10 +98,8 @@ impl<T: FloatExt, S: SeedExt> Fvasicek<T, S> {
   }
 }
 
-/// The Euler engine's view of the fractional Vasicek model. It is the wrapped
-/// [`Fou`] under short-rate names, so the family, the state, the grid and the
-/// increment pipeline all come from that process rather than being restated
-/// here.
+/// The Euler engine's view: the wrapped [`Fou`] under short-rate names, so the family, the state,
+/// the grid and the increment pipeline all come from that process.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Fvasicek<T, S, B>
 {
@@ -156,9 +119,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     crate::euler::EulerCoefficients::horizon(&self.fou)
   }
 
-  /// The one thing not taken from the embedded `Fou`: its seed is a child of
-  /// this one, so reading it here would give an `Fvasicek` the stream of the
-  /// `Fou` it holds rather than its own.
+  /// Not taken from the embedded `Fou`, whose seed is a child of this one: reading it here would
+  /// give an `Fvasicek` the stream of the `Fou` it holds.
   fn device_seed(&self) -> u64 {
     crate::euler::draw_seed(&self.seed)
   }
@@ -192,22 +154,16 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   where
     Self: 's;
 
-  /// Builds and owns the wrapped [`Fou`]'s own sampler *once*, rather than
-  /// calling [`Fou::sample`] (which would call `Fou::sampler()` fresh, and
-  /// hence derive a new seed basis, on every path). Owning it here is what
-  /// makes `sample_par`/`sample_map`'s chunked fan-out deterministic: each
-  /// chunk's `FvasicekSampler` is built sequentially, so each owns a
-  /// distinct `FouSampler` basis; repeat calls on one sampler reuse and
-  /// advance that same inner sampler, exactly as a standalone `Fou` would.
+  /// Owns the wrapped [`Fou`]'s sampler, built once; [`Fou::sample`] would derive a new basis on
+  /// every path. Chunks are built in sequence, so each owns a distinct `FouSampler` basis.
   fn sampler(&self) -> FvasicekSampler<'_, T, S> {
     FvasicekSampler {
       fou: self.fou.sampler(),
     }
   }
 
-  /// Through the Euler engine: on a device the fractional increments and the
-  /// mean-reverting recursion run in one launch, on the host devices it is
-  /// the wrapped process's own sampler.
+  /// Through the Euler engine: a device runs the fractional increments and the recursion in one
+  /// launch, the host runs the wrapped process's own sampler.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }

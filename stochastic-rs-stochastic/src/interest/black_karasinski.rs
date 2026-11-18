@@ -1,33 +1,11 @@
-//! # Black-Karasinski
+//! The log-rate is a Hull-White-style Gaussian process, so `r_t = exp(Y_t)` is positive with no
+//! boundary policy; it is stepped by the exact OU transition with `theta` frozen over each step.
 //!
 //! $$
 //! d\ln r_t=\bigl(\theta(t)-a\ln r_t\bigr)dt+\sigma\,dW_t
 //! $$
 //!
-//! Black & Karasinski (1991), *Bond and Option Pricing when Short Rates
-//! are Lognormal*: the short rate itself is never simulated directly — its
-//! logarithm follows a Hull-White-style mean-reverting Gaussian process, so
-//! `r_t = exp(Y_t)` is strictly positive by construction, with no boundary
-//! condition, floor, or reflection needed (unlike [`Cir`](crate::diffusion::cir::Cir)
-//! / [`CirPlusPlus`](crate::interest::cir_pp::CirPlusPlus) / [`Bessel`](crate::diffusion::bessel::Bessel),
-//! whose positivity is only *probabilistic* and needs an explicit boundary
-//! policy).
-//!
-//! Same `theta`/`a` convention as [`HullWhite`](crate::interest::hull_white::HullWhite)'s
-//! `theta`/`alpha`: [`theta`](BlackKarasinski::theta) is the additive
-//! time-dependent drift target function, [`a`](BlackKarasinski::a) the
-//! mean-reversion speed multiplying `-ln(r_t)`.
-//!
-//! Unlike `HullWhite`'s own Euler-Maruyama step, the log-rate `Y_t` here is
-//! stepped with the *exact* one-step Gaussian transition of an
-//! Ornstein-Uhlenbeck process with `theta` frozen at each step's own
-//! evaluation point (the standard "exact Gaussian short rate" scheme): for
-//! constant `theta` this has zero discretization bias at any step size,
-//! strictly improving on Euler.
-//!
-//! A lattice (trinomial-tree) engine for the same model already exists at
-//! `stochastic-rs-quant::lattice::short_rate::black_karasinski::BlackKarasinskiTree`;
-//! this type is the missing Monte-Carlo path simulator for it.
+//! Reference: Black & Karasinski (1991), "Bond and Option Pricing when Short Rates are Lognormal"
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -47,18 +25,11 @@ use crate::traits::Fn1D;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Black-Karasinski log-short-rate process.
-///
-/// `d ln(r_t) = (theta(t) - a * ln(r_t)) * dt + sigma * dW_t`, reported as
-/// `r_t = exp(ln(r_t))`.
-///
-/// See the module doc for the `theta`/`a` naming convention (shared with
-/// [`HullWhite`](crate::interest::hull_white::HullWhite)) and the exact-OU
-/// discretization.
+/// Black-Karasinski: `d ln r_t = (θ(t) − a ln r_t) dt + σ dW_t`, reported as `r_t = exp(ln r_t)`
+/// and stepped by the exact OU transition.
 #[derive(Debug, Clone)]
 pub struct BlackKarasinski<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Time-dependent additive drift target θ(t), fitted to the initial term
-  /// structure of the log-rate — same role as
+  /// Time-dependent drift target θ(t), fitted to the initial term structure of the log-rate, as
   /// [`HullWhite::theta`](crate::interest::hull_white::HullWhite::theta).
   pub theta: Fn1D<T>,
   /// Mean-reversion speed of the log-rate, `HullWhite::alpha`'s role; `a = 0` is the Brownian
@@ -68,9 +39,8 @@ pub struct BlackKarasinski<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Number of points sampled along the path.
   pub n: usize,
-  /// Initial short rate r₀. Must be `> 0` so `ln(r0)` is defined; every
-  /// subsequent path point is `exp(...)` and so is positive unconditionally
-  /// regardless of `r0`.
+  /// Initial short rate r₀, `> 0` so that `ln(r0)` is defined; every later point is an `exp` and
+  /// positive whatever `r0`.
   pub r0: Option<T>,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
@@ -88,12 +58,11 @@ fn default_theta<T: FloatExt>(_t: T) -> T {
   T::from_f64_fast(0.05)
 }
 
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `BlackKarasinski::default().with_a(0.6)`. No persisted cache:
-/// `sampler()` computes its exact-OU decay/std fresh from `self` and
-/// borrows `&self.theta` directly every call.
+/// Every field has a `with_*` setter (`BlackKarasinski::default().with_a(0.6)`); nothing is
+/// cached, since `sampler()` computes the exact-OU decay and deviation from `self` on every call.
 impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
-  /// Create a new BlackKarasinski process; a negative `a` is accepted with a `log::warn!`.
+  /// A negative `a` is accepted with a `log::warn!`. Panics unless `n >= 2`, a given `t` is
+  /// positive and finite, and every parameter is finite.
   pub fn new(
     theta: impl Into<Fn1D<T>>,
     a: T,
@@ -144,35 +113,35 @@ impl<T: FloatExt, S: SeedExt, B> BlackKarasinski<T, S, B> {
     self
   }
 
-  /// Replace `a`, all else unchanged.
+  /// Replace `a`; panics unless `a` is finite.
   pub fn with_a(mut self, a: T) -> Self {
     Self::check_a(a);
     self.a = a;
     self
   }
 
-  /// Replace `sigma`, all else unchanged.
+  /// Replace `sigma`; panics unless `sigma` is finite.
   pub fn with_sigma(mut self, sigma: T) -> Self {
     Self::check_sigma(sigma);
     self.sigma = sigma;
     self
   }
 
-  /// Replace `r0`, all else unchanged.
+  /// Replace `r0`; panics unless `r0` is finite.
   pub fn with_r0(mut self, r0: Option<T>) -> Self {
     Self::check_r0(r0);
     self.r0 = r0;
     self
   }
 
-  /// Replace `n`, the grid points along the path, all else unchanged.
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
     self
   }
 
-  /// Replace the simulation horizon `t`, all else unchanged.
+  /// Replace the simulation horizon `t`; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -202,10 +171,8 @@ impl<T: FloatExt> Default for BlackKarasinski<T, Unseeded> {
   }
 }
 
-/// The Euler engine's view of Black-Karasinski. The recursion is the exact
-/// Ornstein-Uhlenbeck transition in log space, so the decay factor and the
-/// transition's own standard deviation are folded here; the kernel's noise
-/// carries `√dt`, which the folded scale divides back out.
+/// The Euler engine's view: the exact OU transition in log space, with the decay and the
+/// transition's deviation folded here; the kernel's noise carries `√dt`, which the scale undoes.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for BlackKarasinski<T, S, B>
 {
@@ -251,7 +218,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-/// The exact OU step's deviation over `dt`; `exp_m1` keeps its digits at a one-minute step in `f32`.
+/// The exact OU step's deviation over `dt`; `exp_m1` keeps its digits at a one-minute step in
+/// `f32`.
 pub(crate) fn ou_step_std<T: FloatExt>(a: T, dt: T) -> T {
   (dt * expm1_over(-(a + a) * dt)).sqrt()
 }
@@ -372,10 +340,8 @@ impl<T: FloatExt> BlackKarasinskiSampler<'_, T> {
     let tail = &mut out[1..];
     self.normal.fill_slice(tail);
 
-    // `prev_log` tracks Y_t = ln(r_t) — the exact-OU recursion runs in log
-    // space and only the reported value is exponentiated, mirroring how
-    // `BesselSampler` tracks its own state in squared space (see
-    // `crate::diffusion::bessel`).
+    // `prev_log` tracks Y_t = ln(r_t): the exact-OU recursion runs in log space and only the
+    // reported value is exponentiated.
     let mut prev_log = self.r0.ln();
     for (k, z) in tail.iter_mut().enumerate() {
       let i = k + 1;

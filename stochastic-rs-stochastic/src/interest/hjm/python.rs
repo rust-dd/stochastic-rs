@@ -95,9 +95,8 @@ impl PyHjm {
     })
   }
 
-  /// `m` independent paths as three `(m, n)` arrays — short rate, bond
-  /// price and forward rate. The GIL is released while the paths are
-  /// generated; the Python callables re-acquire it per evaluation.
+  /// `m` independent paths as three `(m, n)` arrays: short rate, bond price and forward rate.
+  /// The GIL is released meanwhile; the Python callables re-acquire it per evaluation.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,

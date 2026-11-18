@@ -17,20 +17,12 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-/// Duffie–Kan two-factor model with an exponential-inter-arrival jump
-/// overlay on the auxiliary factor `x_t`. The per-factor drift and
-/// diffusion-loading coefficients below (`a1..c2`, `alpha`/`beta`/`gamma`)
-/// are the concrete, fixed-numeric form of the module header's abstract
-/// `K(Θ-X)dt+√(A+BX)dW` — see each field's own doc for exactly which term
-/// it multiplies.
-///
-/// Every field has a matching `with_*` builder setter, e.g.
-/// `DuffieKanJumpExp::new(..).with_rho(-0.5).with_lambda(0.8)`.
+/// Duffie–Kan with exponential-inter-arrival jumps on the auxiliary factor `x_t`: `a1..c2`,
+/// `alpha`, `beta`, `gamma` are the numeric form of the module's `K(Θ-X)dt+√(A+BX)dW`.
 #[derive(Debug, Clone)]
 pub struct DuffieKanJumpExp<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Diffusion-loading coefficient on `r_t`, shared between both factors'
-  /// diffusion scaling (multiplies `r` inside `alpha*r + beta*x + gamma`,
-  /// itself scaled again by `sigma1`/`sigma2`).
+  /// Loading on `r_t` inside the shared diffusion scale `alpha*r + beta*x + gamma`, which
+  /// `sigma1` and `sigma2` scale again.
   pub alpha: T,
   /// Diffusion-loading coefficient on `x_t`, shared between both factors'
   /// diffusion scaling.
@@ -76,7 +68,7 @@ pub struct DuffieKanJumpExp<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub x0: Option<T>,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
   /// Correlated Gaussian noise generator for the diffusion part.
   cgns: Cgns<T>,
@@ -86,6 +78,7 @@ pub struct DuffieKanJumpExp<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> DuffieKanJumpExp<T, S> {
+  /// Panics unless `n >= 2`, a given `t` is positive and finite, and every parameter is finite.
   pub fn new(
     alpha: T,
     beta: T,
@@ -216,30 +209,29 @@ impl<T: FloatExt, S: SeedExt, B> DuffieKanJumpExp<T, S, B> {
     require!(x0.is_none_or(|v| v.is_finite()), x0);
   }
 
-  /// Replace `alpha`, all else unchanged.
+  /// Replace `alpha`; panics unless `alpha` is finite.
   pub fn with_alpha(mut self, alpha: T) -> Self {
     Self::check_alpha(alpha);
     self.alpha = alpha;
     self
   }
 
-  /// Replace `beta`, all else unchanged.
+  /// Replace `beta`; panics unless `beta` is finite.
   pub fn with_beta(mut self, beta: T) -> Self {
     Self::check_beta(beta);
     self.beta = beta;
     self
   }
 
-  /// Replace `gamma`, all else unchanged.
+  /// Replace `gamma`; panics unless `gamma` is finite.
   pub fn with_gamma(mut self, gamma: T) -> Self {
     Self::check_gamma(gamma);
     self.gamma = gamma;
     self
   }
 
-  /// Replace `rho`; rebuilds the cached correlated-Gaussian generator
-  /// (`cgns`) so the new correlation actually reaches the sampler instead
-  /// of a stale one computed from the old `rho`.
+  /// Replace `rho` and rebuild the correlated-Gaussian generator `cgns`, which would otherwise
+  /// keep the old correlation; panics unless `rho` is finite.
   pub fn with_rho(mut self, rho: T) -> Self {
     Self::check_rho(rho);
     self.rho = rho;
@@ -247,92 +239,92 @@ impl<T: FloatExt, S: SeedExt, B> DuffieKanJumpExp<T, S, B> {
     self
   }
 
-  /// Replace `a1`, all else unchanged.
+  /// Replace `a1`; panics unless `a1` is finite.
   pub fn with_a1(mut self, a1: T) -> Self {
     Self::check_a1(a1);
     self.a1 = a1;
     self
   }
 
-  /// Replace `b1`, all else unchanged.
+  /// Replace `b1`; panics unless `b1` is finite.
   pub fn with_b1(mut self, b1: T) -> Self {
     Self::check_b1(b1);
     self.b1 = b1;
     self
   }
 
-  /// Replace `c1`, all else unchanged.
+  /// Replace `c1`; panics unless `c1` is finite.
   pub fn with_c1(mut self, c1: T) -> Self {
     Self::check_c1(c1);
     self.c1 = c1;
     self
   }
 
-  /// Replace `sigma1`, all else unchanged.
+  /// Replace `sigma1`; panics unless `sigma1` is finite.
   pub fn with_sigma1(mut self, sigma1: T) -> Self {
     Self::check_sigma1(sigma1);
     self.sigma1 = sigma1;
     self
   }
 
-  /// Replace `a2`, all else unchanged.
+  /// Replace `a2`; panics unless `a2` is finite.
   pub fn with_a2(mut self, a2: T) -> Self {
     Self::check_a2(a2);
     self.a2 = a2;
     self
   }
 
-  /// Replace `b2`, all else unchanged.
+  /// Replace `b2`; panics unless `b2` is finite.
   pub fn with_b2(mut self, b2: T) -> Self {
     Self::check_b2(b2);
     self.b2 = b2;
     self
   }
 
-  /// Replace `c2`, all else unchanged.
+  /// Replace `c2`; panics unless `c2` is finite.
   pub fn with_c2(mut self, c2: T) -> Self {
     Self::check_c2(c2);
     self.c2 = c2;
     self
   }
 
-  /// Replace `sigma2`, all else unchanged.
+  /// Replace `sigma2`; panics unless `sigma2` is finite.
   pub fn with_sigma2(mut self, sigma2: T) -> Self {
     Self::check_sigma2(sigma2);
     self.sigma2 = sigma2;
     self
   }
 
-  /// Replace `lambda`, all else unchanged.
+  /// Replace `lambda`; panics unless `lambda` is finite.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     Self::check_lambda(lambda);
     self.lambda = lambda;
     self
   }
 
-  /// Replace `jump_scale`, all else unchanged.
+  /// Replace `jump_scale`; panics unless `jump_scale` is finite.
   pub fn with_jump_scale(mut self, jump_scale: T) -> Self {
     Self::check_jump_scale(jump_scale);
     self.jump_scale = jump_scale;
     self
   }
 
-  /// Replace `r0`, all else unchanged.
+  /// Replace `r0`; panics unless `r0` is finite.
   pub fn with_r0(mut self, r0: Option<T>) -> Self {
     Self::check_r0(r0);
     self.r0 = r0;
     self
   }
 
-  /// Replace `x0`, all else unchanged.
+  /// Replace `x0`; panics unless `x0` is finite.
   pub fn with_x0(mut self, x0: Option<T>) -> Self {
     Self::check_x0(x0);
     self.x0 = x0;
     self
   }
 
-  /// Replace `n`, the grid points along the path; rebuilds the cached correlated-Gaussian
-  /// generator, whose length and step size derive from `n`.
+  /// Replace `n`, the grid points along the path, and rebuild the correlated-Gaussian generator,
+  /// whose length and step size derive from it; panics unless `n >= 2`.
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
     self.n = n;
@@ -340,8 +332,8 @@ impl<T: FloatExt, S: SeedExt, B> DuffieKanJumpExp<T, S, B> {
     self
   }
 
-  /// Replace the simulation horizon `t`; rebuilds the cached
-  /// correlated-Gaussian generator's step size, which derives from `t`.
+  /// Replace the horizon `t` and rebuild the correlated-Gaussian generator, whose step size
+  /// derives from it; panics unless `t`, when given, is positive and finite.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
     self.t = t;
@@ -356,10 +348,8 @@ impl<T: FloatExt, S: SeedExt, B> DuffieKanJumpExp<T, S, B> {
   }
 }
 
-/// The Euler engine's view of the jump-augmented Duffie-Kan model. The host
-/// walks its jump times sequentially; the exponential waiting time is
-/// memoryless, so the number a step sees is Poisson with mean `λ·dt` and the
-/// kernel draws it that way.
+/// The Euler engine's view. The host walks its jump times in sequence; the exponential wait is
+/// memoryless, so a step sees a Poisson count of mean `λ·dt`, which is how the kernel draws it.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for DuffieKanJumpExp<T, S, B>
 {
