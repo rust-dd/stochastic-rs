@@ -71,8 +71,6 @@ impl<T: FloatExt, S: SeedExt> GammaSubordinator<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> GammaSubordinator<T, S, B> {}
-
 /// The Euler engine's view of the gamma subordinator.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for GammaSubordinator<T, S, B>

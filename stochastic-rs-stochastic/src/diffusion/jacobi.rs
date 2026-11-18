@@ -96,8 +96,6 @@ impl<T: FloatExt, S: SeedExt> Jacobi<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Jacobi<T, S, B> {}
-
 /// The Euler engine's view of the Jacobi diffusion.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Jacobi<T, S, B>

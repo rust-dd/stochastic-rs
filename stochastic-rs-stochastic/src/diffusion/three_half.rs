@@ -76,8 +76,6 @@ impl<T: FloatExt, S: SeedExt> ThreeHalf<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> ThreeHalf<T, S, B> {}
-
 /// The Euler engine's view of the 3/2 model.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for ThreeHalf<T, S, B>

@@ -95,8 +95,6 @@ impl<T: FloatExt, S: SeedExt> Quadratic<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Quadratic<T, S, B> {}
-
 /// The Euler engine's view of the quadratic-drift diffusion.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Quadratic<T, S, B>

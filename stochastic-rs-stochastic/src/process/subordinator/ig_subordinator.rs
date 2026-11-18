@@ -72,8 +72,6 @@ impl<T: FloatExt, S: SeedExt> IgSubordinator<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> IgSubordinator<T, S, B> {}
-
 /// The Euler engine's view of the inverse-Gaussian subordinator.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for IgSubordinator<T, S, B>

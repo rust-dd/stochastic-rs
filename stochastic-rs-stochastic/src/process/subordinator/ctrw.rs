@@ -144,8 +144,6 @@ impl<T: FloatExt, S: SeedExt> Ctrw<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Ctrw<T, S, B> {}
-
 #[derive(Debug)]
 enum WaitingSampler<T: FloatExt> {
   Exp(Seeded<SimdExp<T>>),

@@ -83,8 +83,6 @@ impl<T: FloatExt, S: SeedExt> VanEmmerich<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> VanEmmerich<T, S, B> {}
-
 /// The Euler engine's view of the Van Emmerich stochastic correlation
 /// process.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>

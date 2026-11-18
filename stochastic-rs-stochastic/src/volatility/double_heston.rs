@@ -101,7 +101,6 @@ impl<T> From<[Array1<T>; 3]> for DoubleHestonPaths<T> {
 }
 
 impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
-  #[allow(clippy::too_many_arguments)]
   pub fn new(
     s0: T,
     v1_0: T,

@@ -77,8 +77,6 @@ impl<T: FloatExt, S: SeedExt> LinearSde<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> LinearSde<T, S, B> {}
-
 /// The Euler engine's view of the linear scalar SDE.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for LinearSde<T, S, B>

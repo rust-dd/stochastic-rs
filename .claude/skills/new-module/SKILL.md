@@ -112,7 +112,7 @@ Before writing code, determine which existing traits the new types should implem
 | Type | Required trait | Effect |
 |---|---|---|
 | Any stochastic process | `ProcessExt<T: FloatExt>: Send + Sync + crate::traits::Sealed` | Gets `sample()`, `sample_map(m, f)`, `sample_par(m)` (rayon parallel). GPU backends are selected with `.on::<B>()`, not by a `sample_cuda` method |
-| Process with Malliavin support | `MalliavinExt<T>` or `Malliavin2DExt<T>` | Malliavin derivative computation |
+| Process with Malliavin support | an inherent `malliavin()` returning `Malliavin<T, O>` (`stochastic-rs-stochastic/src/malliavin.rs`) | The sampled path and `D_t X_T` along it; there is no Malliavin trait |
 | Probability distribution | `DistributionExt` | CF, PDF, CDF, moments |
 | SIMD-accelerated distribution | `DistributionSampler<T>` (`stochastic-rs-distributions/src/traits/distribution.rs`) | Requires `fill_slice()` + `fork()`; `sample_matrix()` / `sample_n()` are provided |
 

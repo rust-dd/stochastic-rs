@@ -355,7 +355,6 @@ impl<T: FloatExt> SarimaSampler<T> {
 /// seasonal and the plain inverse differences. Linear in `noise`, so run on a
 /// unit impulse it yields the impulse response a device convolves the
 /// innovations with.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn sarima_filter<T: FloatExt>(
   noise: &Array1<T>,
   non_seasonal_ar_coefs: &Array1<T>,

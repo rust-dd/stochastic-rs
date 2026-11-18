@@ -92,8 +92,6 @@ impl<T: FloatExt, S: SeedExt> Ckls<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Ckls<T, S, B> {}
-
 /// The Euler engine's view of CKLS: four parameters, one declaration, and
 /// every backend serves it.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>

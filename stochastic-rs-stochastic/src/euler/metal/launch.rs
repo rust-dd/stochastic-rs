@@ -6,7 +6,6 @@ use crate::device::metal::bindings::EulerArgs;
 use crate::euler::EulerSpec;
 
 /// Lends the completed plane-major output to `finish` with its component count.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn launch_paths<O>(
   ordinal: usize,
   spec: EulerSpec<f32>,
@@ -150,7 +149,6 @@ fn validate_curve_extent(steps: u32, curves: usize) -> Result<()> {
 }
 
 /// Returns an owned `components × m × n` output array.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn device_paths(
   ordinal: usize,
   spec: EulerSpec<f32>,

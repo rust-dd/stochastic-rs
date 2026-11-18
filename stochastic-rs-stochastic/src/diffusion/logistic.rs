@@ -71,8 +71,6 @@ impl<T: FloatExt, S: SeedExt> Logistic<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Logistic<T, S, B> {}
-
 /// The Euler engine's view of logistic growth.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Logistic<T, S, B>

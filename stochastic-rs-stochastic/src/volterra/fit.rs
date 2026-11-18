@@ -312,5 +312,4 @@ fn cholesky_solve(a: &mut Array2<f64>, b: &mut [f64], n: usize) -> bool {
 }
 
 #[cfg(test)]
-#[path = "fit_tests.rs"]
 mod tests;

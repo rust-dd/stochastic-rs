@@ -66,8 +66,6 @@ impl<T: FloatExt, S: SeedExt> HoLee<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> HoLee<T, S, B> {}
-
 /// The Euler engine's view of Ho-Lee. Both drift forms — a constant `θ` or
 /// the forward curve's slope plus `σ²t` — are one value per grid point, so
 /// both reach the device the same way.

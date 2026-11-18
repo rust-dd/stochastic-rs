@@ -282,12 +282,15 @@ seed it advances is the process's own. Examples: `MultiGbmLaunch`, `McgnsLaunch`
 
 ## 4. Tests
 
-**4a. Device law** — `tests/device_law/<group>.rs`, declared
-`pub(crate) mod <group>;` inside the `mod device_law { .. }` block of
+**4a. Device law** — a leaf file of `tests/device_law/`: `<group>.rs`, or
+`<group>/<part>.rs` for the three groups that are thin parents (`fractional/{correlated,driven,volterra}.rs`,
+`levy/{arrivals,subordinators}.rs`, `systems/{affine,heston,jumps,regimes,volatility}.rs`); never the
+parent. A new group is declared `pub(crate) mod <group>;` inside the `mod device_law { .. }` block of
 `tests/device_law.rs`. The binary is gated `#![cfg(device_backend)]` (an alias the crate's
 `build.rs` emits) and is `f32` throughout. Groups — pick by what the comparison must allow for,
-not by source directory: `bounded`, `conditional_variance`, `curves`, `fractional`,
-`gaussian`, `jumps`, `levy`, `memory`, `rows`, `systems`. Helpers in
+not by source directory: `bounded`, `coefficients`, `conditional_variance`, `counts`, `curves`,
+`fractional`, `gaussian`, `jumps`, `levy`, `memory`, `rows`, `seed`, `series`, `sheet`, `stable`,
+`systems`. Helpers in
 `device_law/common.rs`, reached with `use super::common::..`: `Device` (Cuda, else
 Metal), `M = 4_000`, `terminal_mean`, `terminal_std`, `agrees(host, device, tol, what)`
 (relative error), `all_finite`, `within`.
@@ -446,11 +449,11 @@ What does go stale:
    drops fully-qualified `add_class` lines — another reason to register in the
    bare-ident form.
 4. `website/content/docs/concepts/gpu-support.mdx` — the support-matrix rows
-   `83 processes` (one component), `33 processes` (systems), the explicit
-   fractional name list with its `(11, counted above)`, and `the remaining 14
-   processes`; the prose sentence opening `The 116 processes on the engine cover
-   ...`; for a host-only process, the matching bullet under "What stays on the
-   host, and why"; and, for a new *family*, `the engine's **110 families**`.
+   `89 processes` (one component) and `38 processes` (systems), the explicit
+   fractional name list with its `(11, counted above)`, and the prose sentence
+   `the other 127 through the Euler engine`, whose list of what the engine covers
+   follows it; for a configuration that stays on the host, the matching bullet
+   under "What stays on the host". The page carries no family count.
 5. `notebooks/colab_cuda_check.ipynb`, cell index 5 — a prose enumeration with no
    hard counts; insert the name into the paragraph matching its family. Edit
    through Python, keeping the file's own formatting:
@@ -595,7 +598,7 @@ no host-only form — check the nine documented ways round the cap:
 - [ ] `EulerCoefficients`/`EulerSystem` impl; `draw_seed`; `host_sample` calls the sampler **and** `advance_chunk_seed`
 - [ ] `family_name` arm and a probe in the arity-matching `every_*_family()` list
 - [ ] All five `ProcessExt` methods overridden through the backend; a configuration the kernels cannot carry answers `device_ready()` (a `ProcessExt` override) and falls back to the host in every one of them, never a panic; the hook's `assert!` names the bypass
-- [ ] Device-law case in the right `device_law/<group>.rs`; statistic moves with every parameter; tolerance not padded
+- [ ] Device-law case in the right leaf of `device_law/` (`<group>.rs`, or `<group>/<part>.rs` under `fractional`, `levy`, `systems`); statistic moves with every parameter; tolerance not padded
 - [ ] **Sabotage-verified**: term scaled by `lit(3.0)` → test fails → reverted, `cmp` clean
 - [ ] Chunk-invariance test extended if the family is fGN-fed
 - [ ] `guard!` line added; that tree's per-directory count and total bumped

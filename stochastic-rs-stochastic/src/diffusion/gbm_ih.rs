@@ -96,8 +96,6 @@ impl<T: FloatExt, S: SeedExt> GbmIh<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> GbmIh<T, S, B> {}
-
 /// The Euler engine's view of geometric Brownian motion over a term structure
 /// of volatilities. The host reads the term structure by increment index, so
 /// the curve is shifted by one: the value the kernel binds at step `i` is the

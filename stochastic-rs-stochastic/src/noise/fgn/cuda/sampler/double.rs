@@ -4,7 +4,6 @@ use super::*;
 
 /// The double-precision pipeline with the increments left on the device, as
 /// in [`sample_f32_device`].
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn sample_f64_device(
   sqrt_eigs: &[f64],
   n: usize,

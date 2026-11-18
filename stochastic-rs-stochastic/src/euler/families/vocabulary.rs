@@ -1,6 +1,5 @@
 //! Function vocabulary for host evaluation and CUDA source generation.
 
-#[allow(dead_code)]
 pub(crate) mod ops {
   use crate::traits::FloatExt;
 

@@ -58,8 +58,6 @@ impl<T: FloatExt, S: SeedExt> Cbms<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Cbms<T, S, B> {}
-
 /// The Euler engine's view of a correlated Brownian pair: the shocks are
 /// drawn independently and correlated in the step, which is what the
 /// correlated-noise source does on the host.

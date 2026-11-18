@@ -97,7 +97,6 @@ impl<T> From<[Array1<T>; 3]> for HestonStochCorrPaths<T> {
 }
 
 impl<T: FloatExt, S: SeedExt> HestonStochCorr<T, S> {
-  #[allow(clippy::too_many_arguments)]
   pub fn new(
     r: T,
     s0: T,

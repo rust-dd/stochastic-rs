@@ -435,5 +435,4 @@ where
 }
 
 #[cfg(test)]
-#[path = "gaussian_polynomial_tests.rs"]
 mod tests;

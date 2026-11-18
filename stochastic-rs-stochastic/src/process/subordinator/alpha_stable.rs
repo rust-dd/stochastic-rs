@@ -71,8 +71,6 @@ impl<T: FloatExt, S: SeedExt> AlphaStableSubordinator<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> AlphaStableSubordinator<T, S, B> {}
-
 /// The Euler engine's view of the positive-stable subordinator. Every
 /// exponent the transform needs depends on `α` alone, and the scale on `c`
 /// and `dt`, so all five travel as parameters and the step is one expression.

@@ -2,7 +2,6 @@ use super::*;
 
 /// The generated step with the two program values a family reads as `pv` and
 /// `pv2`, the rest of the frame at zero.
-#[allow(clippy::too_many_arguments)]
 fn step_program(
   family: Family,
   state: [f64; 4],

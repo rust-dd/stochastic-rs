@@ -8,18 +8,23 @@ description: Development rules for stochastic-rs — enforces project convention
 ## 1. Follow folder structure
 
 ```
-src/
-  stochastic/       — stochastic processes (diffusion, volatility, jump, noise, interest, autoregressive, correlation, malliavin, sheet)
-  quant/            — quantitative finance (pricing, bonds, portfolio, strategies, calendar, fx, order_book, loss)
-  stats/            — statistical estimators and tests (stationarity, normality, spectral, MLE, KDE)
-  distributions/    — probability distributions
-  copulas/          — copula models (bivariate, multivariate, univariate, empirical, correlation)
-  ai/               — neural network based models (volatility calibration)
-  traits.rs         — core traits (FloatExt, ProcessExt, MalliavinExt, etc.)
-  macros.rs         — helper macros
-benches/            — criterion benchmarks
-tests/              — integration & comparison tests
+stochastic-rs/                        (workspace root + umbrella: re-exports, benches/, tests/)
+├── stochastic-rs-core/               — simd_rng (foundation)
+├── stochastic-rs-distributions/      — FloatExt/SimdFloatExt + distributions + qmc (Sobol/Halton)
+├── stochastic-rs-stochastic/         — ProcessExt + the processes (diffusion, volatility, jump, noise, interest, …)
+├── stochastic-rs-copulas/            — BivariateExt + copulas
+├── stochastic-rs-stats/              — estimators and tests
+├── stochastic-rs-quant/              — pricing/calibration/vol_surface + ModelPricer/ShortRatePricer/ToModel
+├── stochastic-rs-ai/                 — experimental neural surrogates (feature-gated upstream)
+└── stochastic-rs-py/                 — pyo3 cdylib, built via `maturin`
 ```
+
+Each sub-crate keeps its traits in its own `src/traits.rs` (`FloatExt` in distributions, `ProcessExt` in
+stochastic) and the umbrella's `src/traits.rs` mirrors them; a Malliavin derivative is the plain struct
+`Malliavin<T, O>` a process's inherent `malliavin()` returns, not a trait.
+
+A source file stays at or under 600 lines; the two ruled exceptions are
+`stochastic-rs-stochastic/src/euler/spec.rs` (one enum) and `src/euler/spec/encode.rs` (one `match`).
 
 Place new code in the appropriate existing module. Do not create top-level modules without explicit approval.
 

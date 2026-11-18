@@ -142,8 +142,6 @@ impl<T: FloatExt, S: SeedExt> Hjm<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Hjm<T, S, B> {}
-
 /// The Euler engine's view: the seven coefficient functions are functions of
 /// time alone — every `Fn2D` is called at the fixed horizon — so the host
 /// tabulates them per grid point and the kernel steps three rows under six

@@ -299,9 +299,9 @@ kernel:
 - `euler/` — `coefficients.rs` (`EulerCoefficients`), `kernel_trait.rs` (`EulerKernel`),
   `backend.rs` (`EulerBackend`, the `host_euler_backend!` and `kernel_euler_backend!` macros).
 - `noise/fgn/cuda/` — `mod.rs`, `kernels.rs` (NVRTC sources),
-  `sampler.rs`, `state.rs`, `convert.rs`, `tests.rs`. The most complete
-  fGN backend, and the only one with the two-stream pipeline.
-- `noise/fgn/metal.rs`, `noise/fgn/accelerate.rs` — the other two.
+  `sampler/{single,double}.rs`, `state.rs`, `convert.rs`, `tests.rs`. The most
+  complete fGN backend, and the only one with the two-stream pipeline.
+- `noise/fgn/metal/` (`context.rs`, `pool.rs`, `sampling.rs`), `noise/fgn/accelerate.rs` — the other two.
 - `euler/kernel.rs`, `euler/cuda.rs`, `euler/metal.rs` — the Euler engine's
   shared body and its devices.
 - `macros.rs`'s `backend_switch!` — generates `.on::<B>()` and

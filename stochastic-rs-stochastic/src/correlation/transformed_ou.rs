@@ -148,8 +148,6 @@ impl<T: FloatExt, S: SeedExt> TransformedOu<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> TransformedOu<T, S, B> {}
-
 /// The Euler engine's view: the step is the plain Ornstein-Uhlenbeck one and
 /// the bounded map lives in the report, so the state travels in X-space and
 /// only the reported point is a correlation. The transform is carried as a

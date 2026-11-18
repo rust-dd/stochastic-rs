@@ -71,8 +71,6 @@ impl<T: FloatExt, S: SeedExt> Hyperbolic<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Hyperbolic<T, S, B> {}
-
 /// The Euler engine's view of the hyperbolic-drift process.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Hyperbolic<T, S, B>

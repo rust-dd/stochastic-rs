@@ -101,8 +101,6 @@ impl<T: FloatExt, S: SeedExt> Pearson<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Pearson<T, S, B> {}
-
 /// The Euler engine's view of the Pearson diffusion. The diffusion's leading
 /// `2κ` depends on no state, so it is folded here rather than recomputed on
 /// every step of every path.

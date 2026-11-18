@@ -82,7 +82,6 @@ fn sample(launch: Launch<'_>) -> Result<(OutputRental, usize)> {
   Ok((output, out_size))
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn sample_f32_buffer(
   sqrt_eigs: &[f32],
   n: usize,
