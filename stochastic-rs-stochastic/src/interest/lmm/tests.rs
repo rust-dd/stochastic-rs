@@ -71,27 +71,50 @@ fn lmm_seeded_is_deterministic() {
   }
 }
 
-#[test]
-fn cholesky_lower_recovers_identity() {
-  let rho = Array2::<f64>::eye(4);
-  let l = cholesky_lower::<f64>(&rho);
-  for i in 0..4 {
-    for j in 0..4 {
-      let expected: f64 = if i == j { 1.0 } else { 0.0 };
-      assert!((l[(i, j)] - expected).abs() < 1e-12_f64);
-    }
-  }
+fn three_libors() -> Lmm<f64> {
+  Lmm::new(
+    ndarray::array![0.0, 0.5, 1.0, 1.5],
+    ndarray::array![0.03, 0.03, 0.03],
+    ndarray::array![0.2, 0.2, 0.2],
+    16,
+    Some(1.0),
+    Unseeded,
+  )
 }
 
 #[test]
-fn cholesky_lower_recovers_2x2() {
-  let rho: Array2<f64> = ndarray::array![[1.0, 0.6], [0.6, 1.0]];
-  let l = cholesky_lower::<f64>(&rho);
+#[should_panic(
+  expected = "rho[(0, 0)] must satisfy `(rho[(i, i)] - T::one()).abs() <= tol`, got rho[(0, 0)] = 4.0"
+)]
+fn a_covariance_matrix_is_refused_as_a_correlation() {
+  let _ = three_libors().with_correlation(Array2::<f64>::eye(3) * 4.0);
+}
+
+#[test]
+#[should_panic(
+  expected = "rho[(1, 0)] must satisfy `(rho[(i, j)] - rho[(j, i)]).abs() <= tol`, got rho[(1, 0)] = 0.2, rho[(0, 1)] = 0.6"
+)]
+fn an_asymmetric_matrix_is_refused_as_a_correlation() {
+  let rho = ndarray::array![[1.0, 0.6, 0.0], [0.2, 1.0, 0.0], [0.0, 0.0, 1.0]];
+  let _ = three_libors().with_correlation(rho);
+}
+
+#[test]
+#[should_panic(
+  expected = "rho[(0, 1)] must satisfy `rho[(i, j)].is_finite()`, got rho[(0, 1)] = NaN"
+)]
+fn a_nan_correlation_is_refused_by_name() {
+  let rho = ndarray::array![[1.0, f64::NAN, 0.0], [f64::NAN, 1.0, 0.0], [0.0, 0.0, 1.0]];
+  let _ = three_libors().with_correlation(rho);
+}
+
+#[test]
+fn a_correlation_is_factored_into_its_lower_cholesky() {
+  let rho = ndarray::array![[1.0, 0.6, 0.3], [0.6, 1.0, 0.5], [0.3, 0.5, 1.0]];
+  let l = three_libors()
+    .with_correlation(rho.clone())
+    .chol
+    .expect("set");
   let recon = l.dot(&l.t());
-  for i in 0..2 {
-    for j in 0..2 {
-      let diff: f64 = recon[(i, j)] - rho[(i, j)];
-      assert!(diff.abs() < 1e-12_f64);
-    }
-  }
+  assert!((&recon - &rho).iter().all(|d| d.abs() < 1e-12));
 }

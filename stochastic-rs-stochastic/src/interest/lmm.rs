@@ -70,6 +70,8 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
+use crate::linalg::cholesky_lower;
+use crate::linalg::validate_correlation;
 use crate::precondition::assert_entries;
 use crate::precondition::check_n;
 use crate::precondition::check_t;
@@ -185,19 +187,16 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
     Self::check_lengths(&self.tenor, &self.l0, &self.sigma);
   }
 
-  /// Attach a forward correlation matrix `rho` (`M × M`, symmetric,
-  /// positive-definite). Panics if shape is wrong or Cholesky fails.
+  /// Sets the forwards' correlation `rho` (`M × M`) and factors it. Panics unless `rho` is a
+  /// finite, symmetric, unit-diagonal, positive-definite matrix with `M = l0.len()` rows.
   pub fn with_correlation(mut self, rho: Array2<T>) -> Self {
     assert!(
       rho.nrows() == self.l0.len(),
       "rho.nrows() must satisfy `rho.nrows() == l0.len()`, got rho.nrows() = {:?}",
       rho.nrows()
     );
-    assert!(
-      rho.ncols() == self.l0.len(),
-      "rho.ncols() must satisfy `rho.ncols() == l0.len()`, got rho.ncols() = {:?}",
-      rho.ncols()
-    );
+    assert_entries("rho", "rho[(i, j)].is_finite()", &rho, |v| v.is_finite());
+    validate_correlation(&rho);
     self.chol = Some(cholesky_lower(&rho));
     self
   }
@@ -455,32 +454,6 @@ fn rows_to_matrix<T: FloatExt>(slots: [Array1<T>; 4], m: usize) -> Array2<T> {
 }
 
 backend_switch!([T: FloatExt, S: SeedExt] Lmm<T, S> { tenor, l0, sigma, chol, n, t, seed } via euler);
-
-/// Lower-triangular Cholesky decomposition of a symmetric positive-definite
-/// matrix. Hand-rolled (no linalg dependency); panics if `rho` is not PSD.
-///
-/// Used inline by [`Lmm::with_correlation`].
-fn cholesky_lower<T: FloatExt>(rho: &Array2<T>) -> Array2<T> {
-  let m = rho.nrows();
-  assert_eq!(rho.ncols(), m, "correlation must be square");
-  let mut l = Array2::<T>::zeros((m, m));
-  for i in 0..m {
-    for j in 0..=i {
-      let mut sum = T::zero();
-      for k in 0..j {
-        sum += l[(i, k)] * l[(j, k)];
-      }
-      let v = rho[(i, j)] - sum;
-      if i == j {
-        assert!(v > T::zero(), "correlation matrix not positive-definite");
-        l[(i, j)] = v.sqrt();
-      } else {
-        l[(i, j)] = v / l[(j, j)];
-      }
-    }
-  }
-  l
-}
 
 mod sampler;
 
