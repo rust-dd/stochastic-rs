@@ -73,11 +73,8 @@ fn fgn_with_seed_matches_fresh_construction() {
   assert_eq!(want, got);
 }
 
-/// `T::default().with_x(v)` round-trip rooted in `Default`, not the
-/// `fgn_base()` helper the bit-exact FFT-cache-rebuild tests above need
-/// (those require literal, hand-chosen fixtures for the fresh-construction
-/// comparisons; this one exercises the wave's own headline "same model, one
-/// parameter changed" form directly).
+/// A `Default`-rooted `with_hurst` round-trip; the FFT-cache tests above need the literal
+/// fixtures of `fgn_base()`.
 #[test]
 fn fgn_default_with_hurst_round_trip() {
   let base = Fgn::<f64>::default();

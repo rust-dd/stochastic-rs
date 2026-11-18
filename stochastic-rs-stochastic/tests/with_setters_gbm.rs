@@ -65,9 +65,8 @@ fn gbm_with_mu_rebuilds_terminal_lognormal_cache() {
   assert_eq!(fields(&got), fields(&expected));
 
   let want = Gbm::new(0.08, 0.2, 64, 100.0, Some(1.0), Unseeded);
-  // Cache-value check: `mean()` reads `ln_mu`/`ln_sigma` directly, so a
-  // stale cache (still keyed on the old mu=0.05) would disagree here even
-  // though `got.mu` itself already reads correctly.
+  // `mean()` reads `ln_mu`/`ln_sigma`, so a stale cache keyed on the old mu = 0.05 disagrees
+  // here even though `got.mu` already reads correctly.
   assert_eq!(got.mean(), want.mean());
 
   let want_seeded = Gbm::new(0.08, 0.2, 64, 100.0, Some(1.0), Deterministic::new(7)).sample();
@@ -124,14 +123,8 @@ fn gbm_with_seed_matches_fresh_construction() {
   assert_eq!(want, got);
 }
 
-/// `T::default().with_x(v)` round-trip rooted in `Default`, not the
-/// `gbm_base()` helper the bit-exact cache tests above need (those require
-/// literal, hand-chosen fixtures for the fresh-construction comparisons;
-/// this one exercises the wave's own headline "same model, one parameter
-/// changed" form directly). Compares via the `GbmFields` mirror (not a
-/// `Gbm { .., ..Gbm::default() }` struct-update literal): `Gbm` has private
-/// cache fields (`ln_mu`/`ln_sigma`), so that literal wouldn't even compile
-/// from this external test crate.
+/// A `Default`-rooted `with_x0` round-trip. It compares through the `GbmFields` mirror: `Gbm`
+/// has private cache fields (`ln_mu`, `ln_sigma`), so a struct-update literal would not compile.
 #[test]
 fn gbm_default_with_x0_round_trip() {
   let base = Gbm::<f64>::default();

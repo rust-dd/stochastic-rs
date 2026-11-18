@@ -1,7 +1,5 @@
-//! TDD tests for A1-c Task 4: `with_*` builder setters on `Vg`
-//! (`jump/vg.rs`). No persisted cache: `sampler()` builds its gamma
-//! subordinator and Gaussian source fresh from `self.{nu,n,t,seed}` on
-//! every call. `new()`'s one assert (`nu > 0`) is replicated in `with_nu`.
+//! `with_*` setters on `Vg` (`jump/vg.rs`), which caches nothing: `sampler()` builds its gamma
+//! subordinator and Gaussian source per call. `with_nu` repeats `new()`'s `nu > 0`.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;

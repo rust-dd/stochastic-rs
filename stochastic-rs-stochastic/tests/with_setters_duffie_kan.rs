@@ -38,11 +38,8 @@ fn dk_base() -> DuffieKan<f64> {
   dk_base_seeded(Unseeded)
 }
 
-// A plain tuple would be more concise, but `std` only implements
-// `Debug`/`PartialEq` for tuples up to arity 12 — this type has more
-// comparable fields than that, so a named snapshot struct it is (it also
-// gives a field-by-field diff on failure instead of a positional tuple
-// dump).
+// A named snapshot struct: `std` implements `Debug`/`PartialEq` for tuples up to arity 12 only,
+// and a struct gives a field-by-field diff on failure.
 #[derive(Debug, PartialEq)]
 struct DkFields {
   alpha: f64,
