@@ -20,6 +20,7 @@ use crate::calibration::least_squares::Trail;
 use crate::calibration::least_squares::minimize;
 use crate::calibration::quote::assert_spot_and_rates;
 use crate::calibration::quote::validate_quotes;
+use crate::calibration::scale_columns;
 use crate::pricing::sabr::SabrParams;
 use crate::pricing::sabr::SabrPricer;
 use crate::pricing::sabr::forward_fx;
@@ -160,6 +161,7 @@ impl crate::traits::Calibrator for SabrCalibrator {
         .map(|quote| forward_fx(self.s, quote.tau, self.r, self.q))
         .collect(),
       params: start.unwrap_or(DEFAULT_START).projected(),
+      reflections: Array1::ones(3),
       trail: Trail::new(),
     };
     let (problem, report) = minimize(problem, lm);
@@ -179,6 +181,8 @@ struct SabrProblem<'a> {
   market: Vec<f64>,
   forwards: Vec<f64>,
   params: SabrParams,
+  /// `dθⱼ/dxⱼ` of the reflections `α = |x₀|`, `ν = |x₁|` at the optimiser's raw coordinates.
+  reflections: Array1<f64>,
   trail: Trail<SabrParams>,
 }
 
@@ -243,6 +247,8 @@ impl SabrProblem<'_> {
 
 impl LeastSquaresProblem for SabrProblem<'_> {
   fn set_params(&mut self, x: &Array1<f64>) {
+    let sign = |x: f64| if x < 0.0 { -1.0 } else { 1.0 };
+    self.reflections = ndarray::array![sign(x[0]), sign(x[1]), 1.0];
     self.params = SabrParams {
       alpha: x[0],
       beta: self.params.beta,
@@ -267,7 +273,8 @@ impl LeastSquaresProblem for SabrProblem<'_> {
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
-    Some(self.numeric_jacobian(&self.params))
+    let jacobian = self.numeric_jacobian(&self.params);
+    Some(scale_columns(jacobian, &self.reflections))
   }
 
   fn accept(&mut self) {

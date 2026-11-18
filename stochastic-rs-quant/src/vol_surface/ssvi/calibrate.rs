@@ -113,7 +113,7 @@ impl LeastSquaresProblem for SsviLmProblem {
   /// Closed-form Jacobian of the SSVI total-variance residual w.r.t. the global
   /// parameters $(\rho, \eta, \gamma)$.
   ///
-  /// Let $\phi(\theta) = \eta \theta^{-\gamma}$ and
+  /// Let $\phi(\theta) = \eta\,\theta^{-\gamma}(1+\theta)^{\gamma-1}$ and
   /// $r = \sqrt{(\phi k + \rho)^2 + 1 - \rho^2}$. Then:
   ///
   /// $$
@@ -121,7 +121,7 @@ impl LeastSquaresProblem for SsviLmProblem {
   /// \partial_{\rho} w &= \tfrac{\theta}{2}\left(\phi k + \tfrac{\phi k}{r}\right) \\
   /// \partial_{\phi} w &= \tfrac{\theta k}{2}\left(\rho + \tfrac{\phi k + \rho}{r}\right) \\
   /// \partial_{\eta} w &= \partial_{\phi} w \cdot \phi / \eta \\
-  /// \partial_{\gamma} w &= -\partial_{\phi} w \cdot \phi \ln \theta.
+  /// \partial_{\gamma} w &= -\partial_{\phi} w \cdot \phi \ln\frac{\theta}{1+\theta}.
   /// \end{aligned}
   /// $$
   fn jacobian(&self) -> Option<Array2<f64>> {
@@ -141,8 +141,8 @@ impl LeastSquaresProblem for SsviLmProblem {
         }
         continue;
       }
-      let phi = p.eta * theta.powf(-p.gamma);
-      let log_theta = theta.ln();
+      let phi = p.phi(theta);
+      let log_ratio = (theta / (1.0 + theta)).ln();
 
       for i in 0..slice.log_moneyness.len() {
         let k = slice.log_moneyness[i];
@@ -158,7 +158,7 @@ impl LeastSquaresProblem for SsviLmProblem {
         } else {
           0.0
         };
-        let dw_dgamma = -dw_dphi * phi * log_theta;
+        let dw_dgamma = -dw_dphi * phi * log_ratio;
 
         jac[(idx, 0)] = dw_drho;
         jac[(idx, 1)] = dw_deta;
@@ -169,5 +169,44 @@ impl LeastSquaresProblem for SsviLmProblem {
     }
 
     Some(jac)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::calibration::least_squares::tests::jacobian_error;
+
+  /// The unconstrained SSVI Jacobian at a start, at the truth and at a far point.
+  #[test]
+  fn the_jacobian_is_the_slope_of_the_residuals() {
+    let truth = SsviParams::<f64> {
+      rho: -0.4,
+      eta: 1.2,
+      gamma: 0.4,
+    };
+    let log_moneyness = vec![-0.3, -0.1, 0.0, 0.1, 0.3];
+    let slices = [0.02, 0.05, 0.12]
+      .into_iter()
+      .map(|theta| SsviSliceF64 {
+        total_variance: log_moneyness
+          .iter()
+          .map(|&k| truth.total_variance(k, theta))
+          .collect(),
+        log_moneyness: log_moneyness.clone(),
+        theta,
+      })
+      .collect();
+    let params = truth.into_dvector();
+    let mut problem = SsviLmProblem { slices, params };
+    let points = [
+      ndarray::array![0.0, 1.0, 0.5],
+      ndarray::array![-0.4, 1.2, 0.4],
+      ndarray::array![0.9, 4.0, 0.9],
+    ];
+    for point in points {
+      let error = jacobian_error(&mut problem, &point, |_, _| 1e-6);
+      assert!(error < 1e-8, "{point}: {error:e}");
+    }
   }
 }

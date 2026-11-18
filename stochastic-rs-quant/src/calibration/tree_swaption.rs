@@ -36,6 +36,7 @@ use crate::calibration::Regularization;
 use crate::calibration::nelder_mead_fit;
 use crate::calibration::periodic_map;
 use crate::calibration::quote::check_finite_start;
+use crate::calibration::start_vertex;
 use crate::curves::DiscountCurve;
 use crate::instruments::option::bermudan::BermudanSwaption;
 use crate::instruments::option::types::ExerciseSchedule;
@@ -200,7 +201,8 @@ impl crate::traits::Calibrator for BlackKarasinskiSwaptionCalibrator<'_> {
     validate_swaption_quotes(self.quotes, self.curve)?;
     let problem = self.cost(&start, self.options.regularization_for(2)?);
     let (a0, s0) = (start.mean_reversion, start.sigma);
-    let simplex = vec![vec![a0, s0], vec![a0 * 1.5, s0], vec![a0, s0 * 1.5]];
+    let step = |x: f64| start_vertex(x, 1.5);
+    let simplex = vec![vec![a0, s0], vec![step(a0), s0], vec![a0, step(s0)]];
     nelder_mead_fit(problem.clone(), simplex, &self.options, 400, |x| {
       let (mean_reversion, sigma) = (x[0].abs().max(1e-6), x[1].abs().max(1e-6));
       let (market, model) = problem.price_series(mean_reversion, sigma);
@@ -312,8 +314,8 @@ pub struct G2ppSwaptionCalibrator<'a> {
   /// Tree levels per year.
   pub steps_per_year: usize,
   pub start: G2ppParams,
-  /// Nelder–Mead: `max_iterations` (default 400), `tolerance` its spread; pull `(a, b, σ, η, ρ)`,
-  /// and `patience` is `Unsupported`.
+  /// Nelder–Mead: `max_iterations` (default 1000), `tolerance` its relative spread; pull
+  /// `(a, b, σ, η, ρ)`, and `patience` is `Unsupported`.
   pub options: CalibrationOptions,
 }
 
@@ -380,11 +382,11 @@ impl crate::traits::Calibrator for G2ppSwaptionCalibrator<'_> {
       v[i] = if i == 4 {
         x0[4] - 0.25_f64.copysign(x0[4])
       } else {
-        x0[i] * 1.5
+        start_vertex(x0[i], 1.5)
       };
       simplex.push(v);
     }
-    nelder_mead_fit(problem.clone(), simplex, &self.options, 400, |x| {
+    nelder_mead_fit(problem.clone(), simplex, &self.options, 1000, |x| {
       let params = problem.params(x);
       let (market, model) = problem.price_series(&params);
       (params, market, model)

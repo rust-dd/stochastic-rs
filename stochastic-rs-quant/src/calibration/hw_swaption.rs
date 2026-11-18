@@ -21,6 +21,7 @@ use crate::calibration::CalibrationOptions;
 use crate::calibration::Regularization;
 use crate::calibration::nelder_mead_fit;
 use crate::calibration::quote::check_finite_start;
+use crate::calibration::start_vertex;
 use crate::curves::DiscountCurve;
 use crate::instruments::option::caplet::black_forward_caplet;
 use crate::instruments::option::jamshidian::price_jamshidian_hull_white;
@@ -246,7 +247,8 @@ impl crate::traits::Calibrator for HullWhiteSwaptionCalibrator<'_> {
       regularization: self.options.regularization_for(2)?,
     };
     let (a0, s0) = (start.mean_reversion, start.sigma);
-    let simplex = vec![vec![a0, s0], vec![a0 * 1.5, s0], vec![a0, s0 * 1.5]];
+    let step = |x: f64| start_vertex(x, 1.5);
+    let simplex = vec![vec![a0, s0], vec![step(a0), s0], vec![a0, step(s0)]];
     nelder_mead_fit(problem.clone(), simplex, &self.options, 400, |x| {
       let (mean_reversion, sigma) = (x[0].abs(), x[1].abs());
       let (market, model) = problem.price_series(mean_reversion, sigma);
@@ -433,6 +435,25 @@ mod tests {
       (recorded.iterations.unwrap(), recorded.params)
     );
     assert_eq!(last.loss.get(crate::LossMetric::Rmse), recorded.rmse());
+  }
+
+  /// At `σ = 1e-14` every price is zero and the cost is flat in both parameters.
+  #[test]
+  fn a_start_on_the_volatility_floor_still_reaches_the_fit() {
+    let (curve, quotes) = (curve(), quotes());
+    let calibrator = HullWhiteSwaptionCalibrator::new(&quotes, &curve, 1.0, START);
+    let reference = calibrator.calibrate(None).unwrap();
+    let floor = HullWhiteParams {
+      sigma: 1e-14,
+      ..START
+    };
+    let fit = calibrator.calibrate(Some(floor)).unwrap();
+    assert!(reference.converged && fit.converged, "{:?}", fit.message);
+    assert!(
+      fit.rmse() < 1e-6 * quotes.len() as f64,
+      "rmse {}",
+      fit.rmse()
+    );
   }
 
   #[test]

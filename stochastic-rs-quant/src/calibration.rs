@@ -7,6 +7,8 @@
 use std::sync::OnceLock;
 
 use gauss_quad::GaussLegendre;
+use ndarray::Array1;
+use ndarray::Array2;
 use stochastic_rs_distributions::RealExt;
 
 pub mod bsm;
@@ -56,6 +58,7 @@ pub use levy::LevyModelType;
 pub use levy::LevyParams;
 pub(crate) use nelder_mead::nelder_mead_fit;
 pub(crate) use nelder_mead::run_nelder_mead;
+pub(crate) use nelder_mead::start_vertex;
 pub use regularization::Regularization;
 pub use sabr::SabrCalibrator;
 pub use sabr_caplet::SabrCapletCalibrator;
@@ -156,6 +159,32 @@ pub(crate) fn clip_negative(price: f64) -> f64 {
   } else {
     price
   }
+}
+
+/// `d periodic_map / dx`: −1 where `x` lies an odd number of ranges outside `[c, d]`.
+pub(crate) fn periodic_slope(x: f64, c: f64, d: f64) -> f64 {
+  let reflections = ((x - c) / (d - c)).floor() as i64;
+  if (c <= x && x <= d) || reflections % 2 == 0 {
+    1.0
+  } else {
+    -1.0
+  }
+}
+
+/// `periodic_slope` of each coordinate against its box.
+pub(crate) fn periodic_slopes(x: &Array1<f64>, bounds: &[(f64, f64)]) -> Array1<f64> {
+  let slopes = x.iter().zip(bounds);
+  slopes
+    .map(|(&x, &(c, d))| periodic_slope(x, c, d))
+    .collect()
+}
+
+/// A Jacobian in projected parameters times `dθⱼ/dxⱼ`, column by column.
+pub(crate) fn scale_columns(mut jacobian: Array2<f64>, slopes: &Array1<f64>) -> Array2<f64> {
+  for (mut column, slope) in jacobian.columns_mut().into_iter().zip(slopes) {
+    column *= *slope;
+  }
+  jacobian
 }
 
 /// Periodic linear extension mapping `x` into `[c, d]`.

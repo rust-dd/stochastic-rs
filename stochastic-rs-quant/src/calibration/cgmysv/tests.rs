@@ -212,3 +212,57 @@ fn the_natural_jacobian_matches_central_differences() {
   let worst = worst_relative_error(&analytic, &numeric);
   assert!(worst < 1e-6, "{worst:e}");
 }
+
+/// The iterate where the fit stalled on glibc, in `(α, λ₊, λ₋, κ, η, ζ, ρ, v₀)`.
+const STALLED: [f64; 8] = [
+  0.591203583519947,
+  22.88796593498391,
+  3.5756432849914654,
+  1.7507022596640776,
+  0.07989722351382043,
+  0.39842728458201776,
+  -1.7672945556843604,
+  0.009934101706378984,
+];
+
+/// At `STALLED` the Lewis price of K = 2525 jumps by 3.3e-5 within 8.75e-7 of η: a `1e-6` stencil
+/// put the η column 10 % off; a parameter step of `2e-3·|θ|` reads each column within 6.3e-3.
+#[test]
+fn the_jacobian_is_the_slope_of_the_residuals_above_the_quadratures_jumps() {
+  use crate::calibration::least_squares::tests::jacobian_error;
+  let (s, r, q, tau) = (2488.11, 0.01213, 0.01884, 28.0 / 365.0);
+  let calibrator = CgmysvCalibrator::new(s, r, q, synthetic(s, r, q, tau));
+  let mut problem = problem(&calibrator);
+  for natural in [STALLED.to_vec(), to_vec(&known_params()), default_params()] {
+    problem.params = natural.clone();
+    let x = problem.params();
+    problem.set_params(&x);
+    let factors = problem.logistic_factors().collect::<Vec<_>>();
+    let step = |j: usize, _| 2e-3 * natural[j].abs() / factors[j];
+    let error = jacobian_error(&mut problem, &x, step);
+    assert!(error < 2e-2, "{natural:?}: {error:e}");
+  }
+}
+
+/// Each coordinate saturated to within 1e-3 of an end of its logistic map.
+#[test]
+fn the_jacobian_is_the_slope_of_the_residuals_beside_each_bound() {
+  use crate::calibration::least_squares::tests::jacobian_error;
+  let quotes = vec![OptionQuote::new(100.0, 0.5, 5.0, OptionType::Call)];
+  let calibrator = CgmysvCalibrator::new(100.0, 0.02, 0.0, quotes);
+  let mut problem = problem(&calibrator);
+  let start = problem.params();
+  for coordinate in 0..N_PARAMS {
+    for end in [-6.9, 6.9] {
+      let mut point = start.clone();
+      point[coordinate] = end;
+      problem.set_params(&point);
+      // The model has no price where `E[e^L]` is infinite, at the low end of `λ₊`.
+      if problem.residuals().unwrap().iter().any(|r| r.is_nan()) {
+        continue;
+      }
+      let error = jacobian_error(&mut problem, &point, |_, _| 1e-2);
+      assert!(error < 2e-2, "coordinate {coordinate} at {end}: {error:e}");
+    }
+  }
+}

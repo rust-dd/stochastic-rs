@@ -255,6 +255,7 @@ fn a_pull_appends_its_rows_and_their_scaled_jacobian() {
     coordinates: RefCell::new(None),
     evaluations: Cell::new(0),
     norm: Cell::new(0.0),
+    sizes: RefCell::new(Array1::zeros(2)),
     flat: Cell::new(false),
     regularization: Some(Regularization::new(vec![0.5, 2.0], vec![4.0, 9.0])),
   };
@@ -334,6 +335,57 @@ pub(crate) fn worst_relative_error(a: &Array2<f64>, b: &Array2<f64>) -> f64 {
   f64::max_or_nan_fold(a.iter().zip(b).map(ratio))
 }
 
+/// MINPACK's `chkder` as a test: the worst column's `‖J − D‖/‖D‖` at `x`, `D` the central
+/// difference of the residuals over `step(x_j)`; two zero columns read 0.
+pub(crate) fn jacobian_error<P: LeastSquaresProblem>(
+  problem: &mut P,
+  x: &Array1<f64>,
+  step: impl Fn(usize, f64) -> f64,
+) -> f64 {
+  let mut at = |y: &Array1<f64>| {
+    problem.set_params(y);
+    problem.residuals().expect("residuals beside the point")
+  };
+  let columns = (0..x.len())
+    .map(|column| {
+      let h = step(column, x[column]);
+      let (mut up, mut down) = (x.clone(), x.clone());
+      up[column] += h;
+      down[column] -= h;
+      (at(&up) - at(&down)) / (2.0 * h)
+    })
+    .collect::<Vec<_>>();
+  problem.set_params(x);
+  let jacobian = problem.jacobian().expect("a Jacobian at the point");
+  let norm = |v: &Array1<f64>| v.dot(v).sqrt();
+  f64::max_or_nan_fold(columns.iter().enumerate().map(|(j, difference)| {
+    let gap = norm(&(&jacobian.column(j) - difference));
+    let scale = norm(difference);
+    if scale == 0.0 { gap } else { gap / scale }
+  }))
+}
+
+/// `base`, then per coordinate a point 1 % inside each bound and, where the box reflects, the
+/// mirror image of `base` below the lower bound.
+pub(crate) fn box_points(
+  base: &Array1<f64>,
+  bounds: &[(f64, f64)],
+  reflecting: &[bool],
+) -> Vec<(String, Array1<f64>)> {
+  let mut points = vec![("base".to_string(), base.clone())];
+  for (j, &(lower, upper)) in bounds.iter().enumerate() {
+    let inset = 0.01 * (upper - lower);
+    let mirror = reflecting[j].then_some(("mirror", 2.0 * lower - base[j]));
+    let sides = [("lower", lower + inset), ("upper", upper - inset)];
+    for (side, value) in sides.into_iter().chain(mirror) {
+      let mut point = base.clone();
+      point[j] = value;
+      points.push((format!("{side} {j}"), point));
+    }
+  }
+  points
+}
+
 struct Flat;
 
 impl LeastSquaresProblem for Flat {
@@ -364,4 +416,64 @@ fn residuals_that_no_parameter_moves_are_not_a_convergence() {
     assert!(!report.converged, "{report:?}");
     assert_eq!(report.message(), "flat objective");
   }
+}
+
+/// `r = [slope·(x − target), offset]` with the Jacobian's sign as given.
+struct Line {
+  x: f64,
+  target: f64,
+  offset: f64,
+  jacobian_sign: f64,
+}
+
+impl LeastSquaresProblem for Line {
+  fn set_params(&mut self, x: &Array1<f64>) {
+    self.x = x[0];
+  }
+
+  fn params(&self) -> Array1<f64> {
+    Array1::from_vec(vec![self.x])
+  }
+
+  fn residuals(&mut self) -> Option<Array1<f64>> {
+    Some(Array1::from_vec(vec![self.x - self.target, self.offset]))
+  }
+
+  fn jacobian(&self) -> Option<Array2<f64>> {
+    Some(Array2::from_shape_vec((2, 1), vec![self.jacobian_sign, 0.0]).unwrap())
+  }
+}
+
+/// Every trial of a wrong-signed Jacobian goes uphill, the trust region collapses, and Moré's
+/// (8.3) passes at the start.
+#[test]
+fn a_collapsed_trust_region_away_from_a_stationary_point_is_not_converged() {
+  let line = Line {
+    x: 1.0,
+    target: 3.0,
+    offset: 1.0,
+    jacobian_sign: -1.0,
+  };
+  let (fitted, report) = minimize(line, LmOptions::default());
+  assert!(report.converged && report.stationarity > 0.5, "{report:?}");
+  assert_eq!((fitted.x, report.message()), (1.0, "not stationary"));
+  let fit = report
+    .calibrated(fitted.x, &[3.0], &[1.0], &[], Vec::new())
+    .unwrap();
+  assert!(!fit.converged);
+  assert_eq!(fit.message.as_deref(), Some("not stationary"));
+}
+
+/// The minimum at `1e-12` is small against `ε‖r‖/‖J‖`, which is not a flat residual.
+#[test]
+fn a_minimum_near_the_origin_is_not_flat() {
+  let line = Line {
+    x: 1.0,
+    target: 1e-12,
+    offset: 1e5,
+    jacobian_sign: 1.0,
+  };
+  let (fitted, report) = minimize(line, LmOptions::default());
+  assert!(report.converged, "{report:?}");
+  assert!((fitted.x - 1e-12).abs() < 1e-15, "{}", fitted.x);
 }

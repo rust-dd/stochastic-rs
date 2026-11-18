@@ -19,6 +19,7 @@ use crate::calibration::Calibrated;
 use crate::calibration::CalibrationOptions;
 use crate::calibration::Regularization;
 use crate::calibration::nelder_mead_fit;
+use crate::calibration::start_vertex;
 use crate::instruments::option::ShiftedSabrVolatility;
 use crate::pricing::sabr::SabrParams;
 use crate::pricing::sabr::SabrPricer;
@@ -203,8 +204,8 @@ impl crate::traits::Calibrator for SabrCapletCalibrator {
     } = start.sabr;
     let simplex = vec![
       vec![a0, nu0, rho0],
-      vec![a0 * 1.3, nu0, rho0],
-      vec![a0, nu0 * 1.5, rho0],
+      vec![start_vertex(a0, 1.3), nu0, rho0],
+      vec![a0, start_vertex(nu0, 1.5), rho0],
       vec![a0, nu0, (rho0 + 0.2).clamp(-0.99, 0.99)],
     ];
     nelder_mead_fit(cost.clone(), simplex, &self.options, 600, |x| {

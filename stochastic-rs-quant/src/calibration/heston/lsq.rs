@@ -5,12 +5,24 @@ use super::calibrator::HestonCalibrator;
 use super::params::HestonJacobianMethod;
 use super::params::feller_sigma_cap;
 use super::transform::apply_chain_rule;
+use super::transform::at_units;
 use super::transform::canonicalize;
 use super::transform::from_optimizer_coordinates;
 use super::transform::to_optimizer_coordinates;
+use super::transform::units;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
+use crate::calibration::least_squares::column_cosines;
 use crate::pricing::heston::HestonParams;
+
+const NAMES: [&str; 5] = ["v0", "kappa", "theta", "sigma", "rho"];
+
+/// Within this of an end of its box a coordinate's logistic slope is under 1e-3 of the box; the
+/// same bound on its orthogonality measure tells a stop on the box from one against it.
+const SATURATED: f64 = 1e-3;
+
+/// Where a saturated coordinate restarts: the slope there is 0.005 of the box.
+const RESEAT: f64 = 0.005;
 
 pub(super) struct HestonProblem<'a> {
   calibrator: &'a HestonCalibrator,
@@ -41,6 +53,25 @@ impl<'a> HestonProblem<'a> {
   /// undoes Feller.
   pub(super) fn effective_params(&self) -> HestonParams {
     self.calibrator.feller_projected(self.free_params())
+  }
+
+  /// The stop with each saturated coordinate whose descent direction points into the box moved
+  /// `RESEAT` of the box inside, and the first such parameter's name; `None` when none is.
+  pub(super) fn reseated(&mut self) -> Option<(HestonParams, &'static str)> {
+    let (residuals, jacobian) = (self.residuals()?, self.jacobian()?);
+    let cosines = column_cosines(&residuals, &jacobian);
+    let mut units = units(&self.free_params());
+    let mut name = None;
+    for (j, unit) in units.iter_mut().enumerate() {
+      let (low, high) = (*unit < SATURATED, *unit > 1.0 - SATURATED);
+      // The cost falls along −Jⱼᵀr, which is inward for a negative cosine at the lower end.
+      let inward = if low { -cosines[j] } else { cosines[j] };
+      if (low || high) && inward > SATURATED {
+        *unit = if low { RESEAT } else { 1.0 - RESEAT };
+        name.get_or_insert(NAMES[j]);
+      }
+    }
+    name.map(|name| (at_units(units), name))
   }
 
   /// A Jacobian in the physical parameters, through the Feller cap where it binds, in the

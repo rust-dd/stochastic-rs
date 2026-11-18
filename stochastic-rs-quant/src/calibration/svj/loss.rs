@@ -9,6 +9,7 @@ use super::calibrator::KAPPA_MIN;
 use super::calibrator::SIGMA_V_MIN;
 use super::calibrator::SvjCalibrator;
 use super::calibrator::THETA_MIN;
+use super::params::BOX;
 use super::params::P_MU_J;
 use super::params::P_SIGMA_J;
 use super::params::RHO_BOUND;
@@ -17,6 +18,8 @@ use crate::calibration::clip_negative;
 use crate::calibration::integrate_gl_to_convergence;
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::Trail;
+use crate::calibration::periodic_slopes;
+use crate::calibration::scale_columns;
 
 /// Bates/SVJ characteristic function $\phi_T(\xi)$.
 ///
@@ -88,6 +91,8 @@ pub(super) fn bates_call_price(p: &SvjParams, s: f64, k: f64, r: f64, q: f64, ta
 pub(super) struct SvjProblem<'a> {
   calibrator: &'a SvjCalibrator,
   params: SvjParams,
+  /// `dθⱼ/dxⱼ` of the box's reflection at the optimiser's raw coordinates.
+  reflections: Array1<f64>,
   pub(super) market: Vec<f64>,
   pub(super) trail: Trail<SvjParams>,
 }
@@ -97,6 +102,7 @@ impl<'a> SvjProblem<'a> {
     Self {
       calibrator,
       params: start,
+      reflections: Array1::ones(8),
       market: calibrator.quotes.iter().map(|quote| quote.price).collect(),
       trail: Trail::new(),
     }
@@ -212,6 +218,7 @@ impl<'a> SvjProblem<'a> {
 
 impl LeastSquaresProblem for SvjProblem<'_> {
   fn set_params(&mut self, params: &Array1<f64>) {
+    self.reflections = periodic_slopes(params, &BOX);
     self.params = SvjParams::from(params.clone()).projected();
   }
 
@@ -231,7 +238,8 @@ impl LeastSquaresProblem for SvjProblem<'_> {
   }
 
   fn jacobian(&self) -> Option<Array2<f64>> {
-    Some(self.numeric_jacobian(&self.effective_params()))
+    let jacobian = self.numeric_jacobian(&self.effective_params());
+    Some(scale_columns(jacobian, &self.reflections))
   }
 
   fn accept(&mut self) {
