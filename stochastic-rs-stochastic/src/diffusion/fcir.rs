@@ -52,8 +52,8 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
     require!(hurst.is_finite(), hurst);
   }
 
-  /// `Cir::new`'s Feller contract; no setter repeats it. Panics unless `0 <= hurst <= 1`, `n >= 2`,
-  /// a given `t` is positive and finite, and every parameter is finite.
+  /// [`Cir::new`](super::cir::Cir::new)'s Feller contract; no setter repeats it. Panics unless
+  /// `0 <= hurst <= 1`, `n >= 2`, a given `t` is positive and finite, every parameter is finite.
   #[must_use]
   pub fn new(
     hurst: T,

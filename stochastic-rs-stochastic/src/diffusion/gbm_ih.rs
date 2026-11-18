@@ -1,7 +1,7 @@
 //! Inhomogeneous GBM: a constant drift and a volatility given per step by `sigmas`.
 //!
 //! $$
-//! dS_t=\mu(t)S_t\,dt+\sigma(t)S_t\,dW_t
+//! dS_t=\mu S_t\,dt+\sigma(t)S_t\,dW_t
 //! $$
 //!
 
@@ -31,7 +31,7 @@ pub struct GbmIh<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub sigma: T,
   /// Number of points sampled along the inhomogeneous-GBM path.
   pub n: usize,
-  /// Initial value; `None` starts at zero.
+  /// Initial value; `None` starts at zero, where the path stays.
   pub x0: Option<T>,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,

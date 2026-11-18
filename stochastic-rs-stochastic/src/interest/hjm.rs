@@ -1,4 +1,4 @@
-//! HJM-style Euler simulator of short rate, bond price and forward rate; no drift restriction.
+//! HJM-style Euler paths of short rate, bond price and forward rate; drift condition not enforced.
 //!
 //! $$
 //! df(t,T)=\alpha(t,T)dt+\sigma(t,T)\,dW_t
