@@ -3,6 +3,7 @@
 use super::OneFactorShortRateModel;
 use super::common::build_one_factor_trinomial_tree;
 use super::common::price_one_factor_zcb;
+use crate::calibration::tree_swaption::BlackKarasinskiParams;
 use crate::lattice::tree::TrinomialTree;
 use crate::traits::RealExt;
 
@@ -20,13 +21,13 @@ pub struct BlackKarasinskiTreeModel<T: RealExt> {
 }
 
 impl<T: RealExt> BlackKarasinskiTreeModel<T> {
-  /// Construct a Black-Karasinski tree model from rate levels.
-  pub fn new(initial_rate: T, mean_reversion: T, long_run_rate: T, sigma: T) -> Self {
+  /// `theta_log` is the log of `params.long_run_rate`.
+  pub fn new(params: BlackKarasinskiParams) -> Self {
     Self {
-      initial_rate,
-      mean_reversion,
-      theta_log: long_run_rate.ln(),
-      sigma,
+      initial_rate: T::from_f64_fast(params.initial_rate),
+      mean_reversion: T::from_f64_fast(params.mean_reversion),
+      theta_log: T::from_f64_fast(params.long_run_rate).ln(),
+      sigma: T::from_f64_fast(params.sigma),
     }
   }
 }

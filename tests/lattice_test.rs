@@ -4,6 +4,9 @@
 //! checked against analytic Gaussian-model bond prices or deterministic limits.
 
 use ndarray::Array1;
+use stochastic_rs::quant::calibration::BlackKarasinskiParams;
+use stochastic_rs::quant::calibration::G2ppParams;
+use stochastic_rs::quant::calibration::HullWhiteParams;
 use stochastic_rs::quant::lattice::BinomialTree;
 use stochastic_rs::quant::lattice::BlackKarasinskiTree;
 use stochastic_rs::quant::lattice::BlackKarasinskiTreeModel;
@@ -59,7 +62,16 @@ fn hull_white_tree_matches_vasicek_zero_coupon_formula() {
   let theta: f64 = 0.05;
   let sigma: f64 = 0.02;
   let maturity: f64 = 5.0;
-  let tree = HullWhiteTree::new(HullWhiteTreeModel::new(r0, a, theta, sigma), maturity, 400);
+  let tree = HullWhiteTree::new(
+    HullWhiteTreeModel::new(HullWhiteParams {
+      mean_reversion: a,
+      sigma,
+      initial_rate: r0,
+      theta,
+    }),
+    maturity,
+    400,
+  );
 
   let lattice_price = tree.zero_coupon_bond_price();
   let b = (1.0 - (-a * maturity).exp()) / a;
@@ -79,7 +91,12 @@ fn black_karasinski_tree_matches_low_vol_deterministic_limit() {
   let sigma: f64 = 1e-6;
   let maturity: f64 = 3.0;
   let tree = BlackKarasinskiTree::new(
-    BlackKarasinskiTreeModel::new(r0, mean_reversion, long_run_rate, sigma),
+    BlackKarasinskiTreeModel::new(BlackKarasinskiParams {
+      mean_reversion,
+      sigma,
+      initial_rate: r0,
+      long_run_rate,
+    }),
     maturity,
     240,
   );
@@ -104,7 +121,18 @@ fn black_karasinski_tree_matches_low_vol_deterministic_limit() {
 #[test]
 fn g2pp_tree_matches_independent_factor_reference_when_rho_zero() {
   let maturity = 4.0;
-  let model = G2ppTreeModel::new(0.01, 0.015, 0.005, 0.4, 0.8, 0.02, 0.015, 0.0);
+  let model = G2ppTreeModel::new(
+    0.01,
+    0.015,
+    G2ppParams {
+      mean_reversion_x: 0.4,
+      mean_reversion_y: 0.8,
+      sigma_x: 0.02,
+      sigma_y: 0.015,
+      rho: 0.0,
+      phi: 0.005,
+    },
+  );
   let tree = G2ppTree::new(model.clone(), maturity, 240);
   let lattice_price = tree.zero_coupon_bond_price();
 

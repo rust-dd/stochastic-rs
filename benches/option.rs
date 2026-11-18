@@ -10,6 +10,8 @@ use stochastic_rs::quant::calendar::DateGenerationRule;
 use stochastic_rs::quant::calendar::DayCountConvention;
 use stochastic_rs::quant::calendar::Frequency;
 use stochastic_rs::quant::calendar::ScheduleBuilder;
+use stochastic_rs::quant::calibration::G2ppParams;
+use stochastic_rs::quant::calibration::HullWhiteParams;
 use stochastic_rs::quant::cashflows::FloatingIndex;
 use stochastic_rs::quant::cashflows::IborIndex;
 use stochastic_rs::quant::cashflows::Leg;
@@ -177,7 +179,12 @@ fn bench_bermudan_swaption_hw_tree(c: &mut Criterion) {
   let horizon: f64 = 10.0;
   let steps: usize = 100;
   let dt: f64 = horizon / steps as f64;
-  let model = HullWhiteTreeModel::new(0.04_f64, 0.1, 0.04, 0.015);
+  let model = HullWhiteTreeModel::new(HullWhiteParams {
+    mean_reversion: 0.1,
+    sigma: 0.015,
+    initial_rate: 0.04,
+    theta: 0.04,
+  });
   let tree = HullWhiteTree::new(model, horizon, steps);
   let coupon_levels: Vec<usize> = (5..=steps).step_by(5).collect();
   let accrual_factors = vec![dt * 5.0; coupon_levels.len()];
@@ -223,7 +230,18 @@ fn bench_bermudan_swaption_g2pp_tree(c: &mut Criterion) {
   let horizon: f64 = 10.0;
   let steps: usize = 60;
   let dt: f64 = horizon / steps as f64;
-  let model = G2ppTreeModel::new(0.0_f64, 0.0, 0.04, 0.1, 0.5, 0.01, 0.005, -0.3);
+  let model = G2ppTreeModel::new(
+    0.0_f64,
+    0.0,
+    G2ppParams {
+      mean_reversion_x: 0.1,
+      mean_reversion_y: 0.5,
+      sigma_x: 0.01,
+      sigma_y: 0.005,
+      rho: -0.3,
+      phi: 0.04,
+    },
+  );
   let tree = G2ppTree::new(model, horizon, steps);
   let coupon_levels: Vec<usize> = (6..=steps).step_by(6).collect();
   let accrual_factors = vec![dt * 6.0; coupon_levels.len()];

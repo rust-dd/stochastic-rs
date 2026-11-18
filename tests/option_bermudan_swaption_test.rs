@@ -7,6 +7,8 @@
 use chrono::NaiveDate;
 use ndarray::array;
 use stochastic_rs::quant::calendar::DayCountConvention;
+use stochastic_rs::quant::calibration::G2ppParams;
+use stochastic_rs::quant::calibration::HullWhiteParams;
 use stochastic_rs::quant::curves::DiscountCurve;
 use stochastic_rs::quant::curves::InterpolationMethod;
 use stochastic_rs::quant::instruments::BermudanSwaption;
@@ -37,7 +39,12 @@ fn bermudan_swaption_dominates_european_at_common_grid() {
   let horizon: f64 = 5.0;
   let steps: usize = 20;
   let dt: f64 = horizon / steps as f64;
-  let model = HullWhiteTreeModel::new(0.04_f64, 0.1, 0.04, 0.01);
+  let model = HullWhiteTreeModel::new(HullWhiteParams {
+    mean_reversion: 0.1,
+    sigma: 0.01,
+    initial_rate: 0.04,
+    theta: 0.04,
+  });
   let tree = HullWhiteTree::new(model, horizon, steps);
 
   let coupon_levels: Vec<usize> = (4..=steps).step_by(4).collect();
@@ -152,10 +159,26 @@ fn g2pp_bermudan_matches_hw_when_second_factor_vanishes() {
   let a = 0.1_f64;
   let sigma = 0.012_f64;
   let theta = 0.05_f64;
-  let hw_model = HullWhiteTreeModel::new(theta, a, theta, sigma);
+  let hw_model = HullWhiteTreeModel::new(HullWhiteParams {
+    mean_reversion: a,
+    sigma,
+    initial_rate: theta,
+    theta,
+  });
   let hw_tree = HullWhiteTree::new(hw_model, horizon, steps);
 
-  let g2pp_model = G2ppTreeModel::new(0.0, 0.0, theta, a, 50.0, sigma, 1e-10, 0.0);
+  let g2pp_model = G2ppTreeModel::new(
+    0.0,
+    0.0,
+    G2ppParams {
+      mean_reversion_x: a,
+      mean_reversion_y: 50.0,
+      sigma_x: sigma,
+      sigma_y: 1e-10,
+      rho: 0.0,
+      phi: theta,
+    },
+  );
   let g2pp_tree = G2ppTree::new(g2pp_model, horizon, steps);
 
   let coupon_levels: Vec<usize> = (4..=steps).step_by(4).collect();
@@ -182,7 +205,18 @@ fn g2pp_bermudan_matches_hw_when_second_factor_vanishes() {
 fn bench_g2pp_bermudan(rho: f64) -> f64 {
   let (horizon, steps) = (10.0_f64, 60_usize);
   let dt = horizon / steps as f64;
-  let model = G2ppTreeModel::new(0.0_f64, 0.0, 0.04, 0.1, 0.5, 0.01, 0.005, rho);
+  let model = G2ppTreeModel::new(
+    0.0_f64,
+    0.0,
+    G2ppParams {
+      mean_reversion_x: 0.1,
+      mean_reversion_y: 0.5,
+      sigma_x: 0.01,
+      sigma_y: 0.005,
+      rho,
+      phi: 0.04,
+    },
+  );
   let tree = G2ppTree::new(model, horizon, steps);
   let coupon_levels = (6..=steps).step_by(6).collect::<Vec<_>>();
   let accrual_factors = vec![dt * 6.0; coupon_levels.len()];
@@ -214,7 +248,12 @@ fn calendar_bermudan_matches_manual_levels() {
   let horizon = 5.0_f64;
   let steps = 20;
   let dt = horizon / steps as f64;
-  let model = HullWhiteTreeModel::new(0.04_f64, 0.1, 0.04, 0.01);
+  let model = HullWhiteTreeModel::new(HullWhiteParams {
+    mean_reversion: 0.1,
+    sigma: 0.01,
+    initial_rate: 0.04,
+    theta: 0.04,
+  });
   let tree = HullWhiteTree::new(model, horizon, steps);
 
   let exercise_dates: Vec<NaiveDate> = (1..=4).map(|i| d(2024 + i, 1, 15)).collect();
@@ -240,7 +279,12 @@ fn bermudan_payer_zero_value_deep_out_of_the_money() {
   let horizon: f64 = 5.0;
   let steps: usize = 40;
   let dt: f64 = horizon / steps as f64;
-  let model = HullWhiteTreeModel::new(0.02_f64, 0.05, 0.02, 0.005);
+  let model = HullWhiteTreeModel::new(HullWhiteParams {
+    mean_reversion: 0.05,
+    sigma: 0.005,
+    initial_rate: 0.02,
+    theta: 0.02,
+  });
   let tree = HullWhiteTree::new(model, horizon, steps);
 
   let coupon_levels: Vec<usize> = (4..=steps).step_by(4).collect();

@@ -182,8 +182,7 @@ impl ToShortRateModel for Calibrated<HullWhiteParams> {
   type Model = HullWhiteTreeModel<f64>;
 
   fn to_short_rate_model(&self) -> Self::Model {
-    let p = &self.params;
-    HullWhiteTreeModel::new(p.initial_rate, p.mean_reversion, p.theta, p.sigma)
+    HullWhiteTreeModel::new(self.params)
   }
 }
 
