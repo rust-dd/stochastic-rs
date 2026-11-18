@@ -9,7 +9,7 @@
 //! Reference: Andersen, Sidenius & Basu (2003), "All your hedges in one basket", Risk 16(11), 67–72
 //! Reference: Laurent & Gregory (2005), Journal of Risk 7(4), 103–122
 //! Reference: Vasicek (2002), "Loan portfolio value", Risk 15(12), 160–162
-//! Reference: O'Kane (2008), "Modelling Single- and Multi-name Credit Derivatives", Ch. 12, 17–18
+//! Reference: O'Kane (2008), Modelling Single-name and Multi-name Credit Derivatives, Ch. 12, 17–18
 
 use std::num::NonZeroUsize;
 
