@@ -195,10 +195,12 @@ impl<T: RealExt> Quote<T> for DerivedQuote<T> {
   }
 }
 
+type Combine<T> = Arc<dyn Fn(&[T]) -> T + Send + Sync>;
+
 /// Quote computed from a slice of underlying quotes.
 pub struct CompositeQuote<T: RealExt> {
   inputs: Vec<Arc<dyn Quote<T>>>,
-  f: Arc<dyn Fn(&[T]) -> T + Send + Sync>,
+  f: Combine<T>,
   observable: ObservableBase,
 }
 

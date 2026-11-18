@@ -111,7 +111,7 @@ fn integrated_quarticity_is_positive_on_heston_path() {
 
 #[test]
 fn bivariate_heston_covariance_matches_pathwise_reference() {
-  let (x1, x2, _, v1, v2) = heston2d_paths();
+  let [x1, x2, _, v1, v2] = heston2d_paths();
   let engine1 = FmVol::new_uniform(x1.as_slice().unwrap(), 1.0);
   let engine2 = FmVol::new_uniform(x2.as_slice().unwrap(), 1.0);
   let dt = 1.0 / (x1.len() - 1) as f64;

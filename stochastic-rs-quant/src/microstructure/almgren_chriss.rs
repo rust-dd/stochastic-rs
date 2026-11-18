@@ -42,6 +42,8 @@ pub struct AlmgrenChrissParams<T: RealExt> {
 
 impl<T: RealExt> AlmgrenChrissParams<T> {
   /// Inputs with no half-spread cost (`epsilon = 0`).
+  // One argument per parameter of the model.
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     side: Side,
     total_shares: T,

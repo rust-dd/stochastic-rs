@@ -124,6 +124,8 @@ pub fn build_portfolio_target_with_corr(
 }
 
 /// Internal target-return momentum builder shared by engine and public wrappers.
+// The engine's configuration and the wrappers' inputs, forwarded as they are.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_portfolio_target_internal(
   scores: &[MomentumScore],
   target_return: f64,

@@ -35,6 +35,8 @@ struct FixingInner<T: RealExt> {
   observable: ObservableBase,
 }
 
+type DatedFixing<T> = (NaiveDate, T);
+
 /// Observable map of realised fixings by fixing date, cheap to clone (a shared `Arc`); coupons
 /// read past fixings from it and pricers refresh when one arrives.
 pub struct FixingHistory<T: RealExt> {
@@ -125,7 +127,7 @@ impl<T: RealExt> FixingHistory<T> {
   pub(crate) fn bracket(
     &self,
     date: NaiveDate,
-  ) -> (Option<(NaiveDate, T)>, Option<(NaiveDate, T)>) {
+  ) -> (Option<DatedFixing<T>>, Option<DatedFixing<T>>) {
     let map = self.inner.fixings.read().expect("fixings poisoned");
     let before = map.range(..=date).next_back().map(|(d, v)| (*d, *v));
     let after = map.range(date..).next().map(|(d, v)| (*d, *v));

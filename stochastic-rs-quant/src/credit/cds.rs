@@ -98,6 +98,8 @@ pub struct CreditDefaultSwap<T: RealExt> {
 impl<T: RealExt> CreditDefaultSwap<T> {
   /// Build a running-spread CDS using the provided premium schedule; panics unless
   /// `0 ≤ recovery_rate < 1`, the schedule has two dates and `effective_date < maturity_date`.
+  // One argument per term of the contract.
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     direction: CdsPosition,
     notional: T,
@@ -137,6 +139,8 @@ impl<T: RealExt> CreditDefaultSwap<T> {
 
   /// Running CDS on a plain `frequency` schedule from `effective_date` to `maturity_date`, unlike
   /// [`Self::standard`]; panics as `new`.
+  // One argument per term of the contract.
+  #[allow(clippy::too_many_arguments)]
   pub fn vanilla(
     direction: CdsPosition,
     notional: T,
