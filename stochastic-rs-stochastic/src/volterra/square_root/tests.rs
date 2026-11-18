@@ -3,11 +3,8 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use super::*;
 use crate::rough::kernel::RlKernel;
 
-/// Parameters that violate the Feller condition hard: $2\kappa\theta = 0.02$
-/// against $\nu^2 = 0.25$, so the process is pushed onto the boundary
-/// repeatedly rather than incidentally. Any nonnegativity claim that only
-/// holds at comfortable parameters is worthless, so everything here runs at
-/// these.
+/// Parameters that violate the Feller condition hard, $2\kappa\theta = 0.02$ against
+/// $\nu^2 = 0.25$, so the process is pushed onto the boundary repeatedly.
 const KAPPA: f64 = 0.5;
 const THETA: f64 = 0.02;
 const NU: f64 = 0.5;
@@ -32,9 +29,8 @@ fn process(seed: u64) -> VolterraSquareRoot<f64, RlKernel<f64>, Deterministic> {
   )
 }
 
-/// The type's entire reason to exist: the output is nonnegative at parameters
-/// where the naive scheme is not. Checked across many paths, not one, because
-/// a single path can easily avoid the boundary by luck.
+/// The output is nonnegative where the naive scheme is not, checked across many paths since one
+/// path can avoid the boundary by luck.
 #[test]
 fn output_is_nonnegative_under_a_violated_feller_condition() {
   let paths = process(42).sample_par(PATHS);
@@ -51,16 +47,8 @@ fn output_is_nonnegative_under_a_violated_feller_condition() {
   );
 }
 
-/// The guard above is only meaningful if the thing it guards against actually
-/// happens here. This runs the same lift, kernel and parameters, with the
-/// coefficients evaluated on the raw state instead of
-/// $V^+$ — and asserts it **does** go negative. The seed is *not* bit-identical
-/// to the paired test's: `sampler()` builds its `Gn` from `seed.derive()` and
-/// this constructs one directly, so the draws differ. That is immaterial here —
-/// 400 independent paths under a 12.5x Feller violation go negative under
-/// either derivation — but the claim is "same model, unprotected", not "same
-/// numbers". If this ever stops failing, the nonnegativity test above has
-/// become vacuous and both need revisiting.
+/// The same lift, kernel and parameters with the coefficients on the raw state do go negative, so
+/// the test above is not vacuous; its draws differ from these, which 400 paths make immaterial.
 #[test]
 fn the_untruncated_scheme_does_go_negative_at_the_same_parameters() {
   use crate::noise::gn::Gn;

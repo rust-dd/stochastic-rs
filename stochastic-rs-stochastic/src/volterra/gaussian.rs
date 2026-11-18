@@ -1,32 +1,12 @@
-//! # Volterra Process
-//!
 //! $$
-//! X_t = \int_0^t K(t,s)\,dW_s
+//! X_t = \int_0^t K(t,s)\,dW_s,\qquad
+//! \mathrm{Cov}(X_t, X_u) = \int_0^{\min(t,u)} K(t,s)\,K(u,s)\,ds
 //! $$
 //!
-//! Gaussian process driven by a deterministic causal kernel $K(t,s)$ for $s \le t$.
-//! Fractional Brownian motion is the special case $K(t,s) = (t-s)^{H-1/2}/\Gamma(H+1/2)$.
+//! A Gaussian process under a causal kernel; fBM is $K(t,s) = (t-s)^{H-1/2}/\Gamma(H+1/2)$. That
+//! kernel with $H < 1/2$ takes [`VolterraSde`]'s lift, any other [`reference_path`]'s $O(n^2)$ sum.
 //!
-//! Covariance: $\mathrm{Cov}(X_t, X_u) = \int_0^{\min(t,u)} K(t,s)\,K(u,s)\,ds$
-//!
-//! For [`VolterraKernelSpec::FractionalBM`] with $H \in (0, 1/2)$ — where
-//! [`RlKernel`] applies — sampling delegates to [`VolterraSde`] with
-//! $b\equiv0$, $\sigma\equiv1$, solved at $O(nN')$ by the Markov lift
-//! instead of the direct $O(n^2)$ convolution below. Every other case —
-//! $H \ge 1/2$ (the reproducibility guard exercises exactly this,
-//! at $H=0.7$), [`VolterraKernelSpec::PowerLaw`], and
-//! [`VolterraKernelSpec::Exponential`] — has no
-//! [`crate::volterra::VolterraKernel`] representation available in this
-//! crate and falls back to [`reference_path`], the same $O(n^2)$
-//! discretisation $X_{t_i} \approx \sum_{j=1}^{i} K(t_i,
-//! t_{j-1})\,\Delta W_j$ this type always used, now reused rather than
-//! duplicated. That fallback preserves the exact driving-randomness stream
-//! these three cases always drew (see `ReferenceVolterraSampler`'s own
-//! `fill_path`), so their sampled output is unchanged; only $H<1/2$'s
-//! output changes.
-//!
-//! Reference:
-//! - Decreusefond, L. & Üstünel, A. S. (1999), "Stochastic Analysis of the Fractional Brownian Motion"
+//! Reference: Decreusefond, Üstünel (1999), Stochastic Analysis of the Fractional Brownian Motion
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -81,8 +61,7 @@ impl<T: FloatExt> VolterraKernelSpec<T> {
 }
 
 /// [`VolterraKernelSpec`] with its parameter-derived terms evaluated once by
-/// [`VolterraKernelSpec::prepare`] and reused for every `(i, j)` pair the
-/// sampling loop consults.
+/// [`VolterraKernelSpec::prepare`] for every `(i, j)` pair of the sampling loop.
 #[derive(Clone, Copy, Debug)]
 enum PreparedVolterraKernel<T: FloatExt> {
   FractionalBM { exp: T, gamma_val: T },
@@ -104,9 +83,8 @@ impl<T: FloatExt> PreparedVolterraKernel<T> {
   }
 }
 
-/// Which engine a constructed [`Volterra`] drives its sampling through,
-/// decided once from [`VolterraKernelSpec`] at construction time — see the
-/// module doc for which kernels take which branch.
+/// The engine a [`Volterra`] samples through, decided once from its [`VolterraKernelSpec`] at
+/// construction.
 #[derive(Clone, Debug)]
 enum VolterraEngine<T: FloatExt> {
   /// $H \in (0, 1/2)$: an [`RlKernel`], driving
@@ -138,10 +116,8 @@ pub struct Volterra<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Volterra<T, S> {
-  /// `kernel`'s own engine (an internal, private `VolterraEngine` — either
-  /// the Markov lift or the direct convolution, see the module doc for
-  /// which kernels take which branch) is prepared once here, reused by
-  /// every subsequent [`sampler`](ProcessExt::sampler) call.
+  /// Prepares the kernel's engine, the Markov lift or the direct convolution, once here. Panics
+  /// unless `n >= 2` and a given `t` is positive and finite.
   pub fn new(kernel: VolterraKernelSpec<T>, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     assert!(
@@ -221,10 +197,8 @@ impl<T: FloatExt, S: SeedExt, B> Volterra<T, S, B> {
   }
 }
 
-/// The Euler engine's view of both branches: fBm under the Markov lift in
-/// the lift branch — the same family `RlFbm` rides — and the reference
-/// convolution in the other, run by the history block against the kernel
-/// tabulated on the grid.
+/// The Euler engine's view of both branches: fBm under the Markov lift, the family `RlFbm` rides,
+/// and the reference convolution, run by the history block on the kernel tabulated on the grid.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Volterra<T, S, B>
 {
@@ -330,10 +304,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Through the Euler engine: the lift branch's lift and the reference
-  /// branch's convolution both run in the kernel; a reference grid longer
-  /// than the kernels' history keeps the process on its own sampler, chunked
-  /// exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine: the lift or the reference convolution runs in the kernel; a
+  /// reference grid longer than the kernels' history stays on the host's chunked sampler.
   fn sample(&self) -> Array1<T> {
     if self.device_ready() {
       self.backend.euler_sample(self)
@@ -388,10 +360,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// What a device runs here: the lift branch when it has a
-  /// lift to replay — it has none on a single-point grid — and the reference
-  /// branch when the grid fits the kernels' per-path history. Anything else
-  /// samples on the host.
+  /// What a device runs: the lift branch when it has a lift to replay (none on a single-point
+  /// grid) and the reference branch when the grid fits the kernels' per-path history.
   fn device_fallback(&self) -> Option<&'static str> {
     let ready = match self.engine {
       VolterraEngine::Lift(_) => self.lift.is_some(),
@@ -436,15 +406,8 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for VolterraSampler<T, S> {
   }
 }
 
-/// The pre-lift $O(n^2)$ direct-convolution sampler: the owned Gaussian
-/// source for the Brownian increments plus the precomputed time step and
-/// prepared kernel (see [`PreparedVolterraKernel`] — built once here rather
-/// than re-derived on every kernel evaluation).
-///
-/// $X_{t_i} = \sum_{j=1}^{i} K(t_i, t_{j-1})\,\Delta W_j$, complexity $O(n^2)$
-/// due to the full-history convolution, now delegated to
-/// [`reference_path`] — see [`fill_path`](Self::fill_path) for how the
-/// pre-lift driving-randomness draw is preserved exactly.
+/// The $O(n^2)$ direct-convolution sampler, $X_{t_i} = \sum_{j=1}^{i} K(t_i, t_{j-1})\,\Delta W_j$
+/// through [`reference_path`]: the Gaussian source, the time step and the prepared kernel.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct ReferenceVolterraSampler<T: FloatExt> {
@@ -456,16 +419,8 @@ pub struct ReferenceVolterraSampler<T: FloatExt> {
 }
 
 impl<T: FloatExt> ReferenceVolterraSampler<T> {
-  /// Draws `self.n` scaled Gaussian increments exactly as this sampler
-  /// always did (`dw[0]` unused — a pre-existing quirk kept unchanged so
-  /// this refactor draws no fewer, no more, and no differently-ordered
-  /// random values), then hands `reference_path` the length-`n-1` tail
-  /// `&dw[1..]`. Since `PreparedVolterraKernel::eval(t, s)` is already a
-  /// pure function of `t - s`, `|tau| kernel.eval(tau, T::zero())` reduces
-  /// to the identical stationary kernel this sampler's own inline loop used
-  /// to call directly, and the accumulation order (ascending `k`/`j`,
-  /// [`Self::n`]'s own dt) is unchanged — so output is bit-identical to the
-  /// pre-refactor implementation.
+  /// Draws `self.n` scaled Gaussian increments, of which `dw[0]` is unused, and hands
+  /// `reference_path` the tail `&dw[1..]`: the draw count and order the pinned streams depend on.
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;

@@ -1,66 +1,17 @@
-//! # Volterra square-root process
-//!
 //! $$
 //! V_t = V_0 + \int_0^t K(t-s)\,\kappa(\theta - V_s)\,ds
 //!           + \int_0^t K(t-s)\,\nu\sqrt{V_s}\,dW_s
 //! $$
 //!
-//! The variance leg of the Volterra Heston model (Abi Jaber & El Euch,
-//! *Markovian structure of the Volterra Heston model*, arXiv:1803.00477), and
-//! the rough Heston model when $K$ is the Riemann–Liouville kernel.
+//! The Volterra Heston variance leg, rough Heston under the Riemann–Liouville kernel, by full
+//! truncation at $V^+ = \max(V, 0)$ with a floored output: nonnegative always, and biased in law.
 //!
-//! ## Why this type exists rather than a plain [`VolterraSde`](super::volterra_sde::VolterraSde)
-//!
-//! Two reasons. First, `VolterraSde`'s coefficients are
-//! [`Fn2D`](crate::traits::Fn2D)`::Native`, a bare `fn` pointer, so it cannot
-//! carry $\kappa$, $\theta$ and $\nu$ — a closure over the parameters is
-//! required. Second, and more importantly, $\sqrt{V}$ is not Lipschitz at the
-//! origin and a naive discretisation of the lifted system drives $V$ negative
-//! whenever the Feller condition is violated, at which point the diffusion
-//! coefficient is undefined.
-//!
-//! ## The scheme, and exactly what it guarantees
-//!
-//! This uses **full truncation** — Lord, Koekkoek & van Dijk (2010),
-//! *A comparison of biased simulation schemes for stochastic volatility
-//! models*, Quantitative Finance 10(2) — evaluating both coefficients at
-//! $V^+ = \max(V, 0)$, plus a floor on the reported path.
-//!
-//! What that buys: the output is nonnegative by construction, always, at any
-//! parameters. What it costs: the scheme is **biased**. Full truncation is the
-//! least-biased member of the fix-it-by-truncating family, not an exact-law
-//! method, and this type does not claim otherwise.
-//!
-//! ## The exact-law alternatives, and why they are not here
-//!
-//! Two routes in the literature preserve the law rather than merely the sign,
-//! and both are worth having:
-//!
-//! - **Abi Jaber, Bayer & Breneis (2024)**, *State spaces of multifactor
-//!   approximations of nonnegative Volterra processes*, arXiv:2412.17526 —
-//!   the state space of the multifactor approximation is an explicit linear
-//!   transformation of the nonnegative orthant, so the invariant region can be
-//!   enforced exactly instead of by clipping.
-//! - **Abi Jaber (2024)**, arXiv:2412.11264 — simulate the **integrated**
-//!   square-root process first; nonnegativity then comes for free, and the
-//!   Inverse-Gaussian limit is exact in two regimes with a single time step.
-//!   That exactness result is for the **classical** square-root process.
-//! - **Abi Jaber & Attal (2025)**, *iVi*, arXiv:2504.19885 — the Volterra
-//!   generalisation of the same idea, which proves **weak convergence** with
-//!   few time steps rather than exactness. The distinction matters: citing the
-//!   two together would credit iVi with a stronger result than it claims.
-//!
-//! Both hinge on explicit constructions from those papers, and implementing
-//! either from a paraphrase would produce something that resembles the method
-//! without being it. They are deferred deliberately, not overlooked.
-//!
-//! ## Hitting zero is not necessarily a bug
-//!
-//! Friesen, Gerhold & Wiedermann (2026), *Boundary behaviour of the Volterra
-//! square-root process*, arXiv:2606.07290, give a **time-dependent** Feller
-//! condition, and show that for rough kernels the boundary genuinely **can**
-//! be attained. A path touching zero is therefore a property of the model at
-//! those parameters, not evidence of a broken scheme.
+//! Reference: Abi Jaber & El Euch, arXiv:1803.00477, the Volterra Heston model
+//! Reference: Lord, Koekkoek & van Dijk (2010), Quantitative Finance 10(2), full truncation
+//! Reference: Abi Jaber, Bayer & Breneis (2024), arXiv:2412.17526, the exact state space
+//! Reference: Abi Jaber (2024), arXiv:2412.11264, the integrated classical square-root process
+//! Reference: Abi Jaber & Attal (2025), arXiv:2504.19885, iVi: weak convergence, not exactness
+//! Reference: Friesen, Gerhold & Wiedermann (2026), arXiv:2606.07290, rough kernels reach zero
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -97,11 +48,10 @@ where
   pub v0: T,
   /// Horizon of the path; `None` is a unit horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// The seed: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic).
   pub seed: S,
-  /// The Markov lift of `kernel` at the grid spacing: the host sampler steps
-  /// it and a device replays it node by node, so both run one object. The
-  /// grid setters rebuild it; a direct write to `n` or `t` leaves it stale.
+  /// The Markov lift of `kernel` at the grid spacing, which the host steps and a device replays
+  /// node by node. The grid setters rebuild it; a direct write to `n` or `t` leaves it stale.
   pub(crate) lift: VolterraLift<T, K>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -166,7 +116,7 @@ where
     require!(v0 >= T::zero(), v0);
   }
 
-  /// Replace `kappa`, all else unchanged.
+  /// Replace `kappa`; panics unless `kappa > 0` and `kappa` is finite.
   #[must_use]
   pub fn with_kappa(mut self, kappa: T) -> Self {
     Self::check_kappa(kappa);
@@ -174,7 +124,7 @@ where
     self
   }
 
-  /// Replace `theta`, all else unchanged.
+  /// Replace `theta`; panics unless `theta >= 0` and `theta` is finite.
   #[must_use]
   pub fn with_theta(mut self, theta: T) -> Self {
     Self::check_theta(theta);
@@ -182,7 +132,7 @@ where
     self
   }
 
-  /// Replace `nu`, all else unchanged.
+  /// Replace `nu`; panics unless `nu > 0` and `nu` is finite.
   #[must_use]
   pub fn with_nu(mut self, nu: T) -> Self {
     Self::check_nu(nu);
@@ -190,7 +140,7 @@ where
     self
   }
 
-  /// Replace `n`, the grid points along the path, all else unchanged.
+  /// Replace `n`, the grid points along the path; panics unless `n >= 2`.
   #[must_use]
   pub fn with_points(mut self, n: usize) -> Self {
     check_n(n);
@@ -199,7 +149,7 @@ where
     self
   }
 
-  /// Replace the initial variance $V_0$, all else unchanged.
+  /// Replace the initial variance $V_0$; panics unless `v0 >= 0` and `v0` is finite.
   #[must_use]
   pub fn with_v0(mut self, v0: T) -> Self {
     Self::check_v0(v0);
@@ -207,7 +157,7 @@ where
     self
   }
 
-  /// Replace `t`, all else unchanged.
+  /// Replace `t`; panics unless `t`, when given, is positive and finite.
   #[must_use]
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     check_t(t);
@@ -310,9 +260,8 @@ where
     }
   }
 
-  /// Through the Euler engine: on a device the lift is replayed in the
-  /// kernel, on the host devices it is this process's own sampler, chunked
-  /// exactly as [`ProcessExt`] chunks.
+  /// Through the Euler engine: a device replays the lift in its kernel, the host runs this
+  /// process's own sampler, chunked as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
     self.backend.euler_sample(self)
   }
@@ -381,14 +330,8 @@ where
   }
 }
 
-/// $x^+ = \max(x, 0)$, written as an explicit comparison rather than
-/// `T::max`.
-///
-/// The difference matters: `f64::max` returns the non-NaN operand, so a NaN
-/// state would be silently rewritten to `0` and the failure that produced it
-/// would vanish. Here a NaN falls through unchanged and surfaces in the
-/// output, where a caller can see it. This crate has twice shipped bugs that
-/// `f64::max` hid in exactly this way.
+/// $x^+ = \max(x, 0)$ as an explicit comparison: `T::max` returns the non-NaN operand and would
+/// rewrite a NaN state to `0`, where here it falls through to the output.
 #[inline]
 fn truncate<T: FloatExt>(x: T) -> T {
   if x > T::zero() {

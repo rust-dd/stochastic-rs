@@ -6,9 +6,7 @@ use super::RlKernel;
 use super::SumOfExponentials;
 use super::VolterraKernel;
 
-/// Test-only union of the three implementors so a single loop can drive all
-/// of them through the shared [`VolterraKernel`] interface, exactly as a
-/// generic caller would.
+/// The three implementors in one enum, so one loop drives them through [`VolterraKernel`].
 #[derive(Clone)]
 enum AnyKernel {
   Exponential(ExponentialKernel<f64>),
@@ -50,11 +48,8 @@ impl VolterraKernel<f64> for AnyKernel {
   }
 }
 
-/// One representative instance of each implementor defined in this module.
-/// `GammaKernel`'s degree (100) is chosen empirically to clear the 5e-3
-/// fit tolerance down to `t=1e-2`, the smallest `t` exercised below: its
-/// exponential sum is the RL sum for the same Hurst, so it inherits the RL
-/// fit's own convergence — `degree=40` misses by ~5x at `t=1e-2`.
+/// One instance of each implementor. `GammaKernel`'s degree 100 clears the 5e-3 tolerance down
+/// to `t=1e-2`: its sum is the RL sum, and `degree=40` misses by about 5x there.
 fn kernels_under_test() -> Vec<(&'static str, AnyKernel)> {
   vec![
     (
@@ -75,9 +70,8 @@ fn kernels_under_test() -> Vec<(&'static str, AnyKernel)> {
   ]
 }
 
-/// `ExponentialKernel` is representable exactly by one exponential, so its
-/// approximation must reproduce `evaluate` to floating-point noise, not to a
-/// quadrature tolerance.
+/// `ExponentialKernel` is one exponential, so its sum reproduces `evaluate` to floating-point
+/// noise, not to a quadrature tolerance.
 #[test]
 fn exponential_kernel_is_exact_at_degree_one() {
   let k = ExponentialKernel::<f64>::new(1.7, 2.3);
@@ -88,9 +82,8 @@ fn exponential_kernel_is_exact_at_degree_one() {
   }
 }
 
-/// `integral_from_zero` must agree with a fine numerical quadrature of
-/// `evaluate`, for every kernel — this is the term that replaces
-/// `MarkovLift`'s hard-wired `dt^{H+1/2} / Γ(H+3/2)`.
+/// `integral_from_zero` agrees with a fine quadrature of `evaluate` for every kernel: the term
+/// that generalises `MarkovLift`'s `dt^{H+1/2} / Γ(H+3/2)`.
 #[test]
 fn integral_from_zero_matches_numerical_quadrature() {
   let dt = 0.01_f64;
@@ -113,9 +106,8 @@ fn integral_from_zero_matches_numerical_quadrature() {
   }
 }
 
-/// The exponential-sum fit must actually approximate the kernel it claims to.
-/// Reference for the tolerance: the existing `rough/kernel.rs` test asserts
-/// `rel < 5e-3` for the RL kernel on the same kind of grid.
+/// The exponential-sum fit approximates its kernel within `rel < 5e-3`, the tolerance
+/// `rough/kernel.rs` asserts for the RL kernel on the same kind of grid.
 #[test]
 fn exponential_sum_approximates_the_kernel() {
   for (name, k) in kernels_under_test() {
@@ -145,10 +137,8 @@ fn gamma_kernel_rejects_non_positive_lambda() {
   let _ = GammaKernel::<f64>::new(0.3, 0.0, 10);
 }
 
-/// `GammaKernel::new` raises Hurst validation itself only in its own
-/// `lambda` check; the Hurst range is enforced by the `RlKernel::new` call
-/// inside it, and must still surface here as a panic, not e.g. a silent
-/// `NaN` from an out-of-range Laguerre `alpha`.
+/// `GammaKernel::new` checks `lambda` itself; the Hurst range is enforced by the `RlKernel::new`
+/// inside it and surfaces here as a panic, not as a `NaN` from an out-of-range Laguerre `alpha`.
 #[test]
 #[should_panic(expected = "hurst must satisfy `hurst > 0.0 && hurst < 0.5`, got hurst = 0.7")]
 fn gamma_kernel_rejects_hurst_out_of_range() {

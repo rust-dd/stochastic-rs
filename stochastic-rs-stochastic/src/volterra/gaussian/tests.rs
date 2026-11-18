@@ -40,9 +40,8 @@ fn volterra_fbm_h05_is_bm() {
 
 #[test]
 fn volterra_seeded_deterministic() {
-  // Two separately built instances with the same seed reproduce each other's first path.
-  // (Same instance, repeated `.sample()` calls advance the seed state and produce
-  // different paths — that is the desired behaviour for Monte Carlo reuse.)
+  // Two instances built with one seed share their first path; repeated calls on one instance
+  // advance the seed and differ.
   let v1 = Volterra::<f64, Deterministic>::new(
     VolterraKernelSpec::FractionalBM { h: 0.7 },
     50,
@@ -58,10 +57,8 @@ fn volterra_seeded_deterministic() {
   assert_eq!(v1.sample(), v2.sample());
 }
 
-/// `H = 0.7` is exactly the value the reproducibility guard
-/// (`tests/reproducibility_all_processes/volterra.rs`) instantiates
-/// `Volterra::fbm` at — the fallback path this pins, since `RlKernel`
-/// cannot represent `H >= 0.5`.
+/// `H = 0.7` is the value the reproducibility guard instantiates `Volterra::fbm` at: the
+/// fallback path, since `RlKernel` cannot represent `H >= 0.5`.
 #[test]
 fn h_above_half_still_uses_reference_fallback_and_stays_finite() {
   let v = Volterra::<f64, Deterministic>::new(
@@ -76,10 +73,8 @@ fn h_above_half_still_uses_reference_fallback_and_stays_finite() {
   assert!(path.iter().all(|v| v.is_finite()));
 }
 
-/// Kernels this crate has no [`crate::volterra::VolterraKernel`]
-/// representation for (arbitrary power-law exponent) must still route
-/// through the reference fallback rather than panicking or silently
-/// misbehaving.
+/// A kernel with no [`crate::volterra::VolterraKernel`] representation (an arbitrary power-law
+/// exponent) takes the reference fallback and does not panic.
 #[test]
 fn power_law_kernel_uses_reference_fallback() {
   let v = Volterra::<f64, Deterministic>::new(
