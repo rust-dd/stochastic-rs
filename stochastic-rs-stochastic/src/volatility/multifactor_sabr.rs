@@ -61,8 +61,8 @@ pub struct MultifactorSabr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> MultifactorSabr<T, S> {
-  /// Panics unless every value is finite, `beta`, `rho`, `nu` have `knots.len() + 1` entries,
-  /// each `nu >= 0`, each `|rho| < 1`, `n >= 2` and a given `t` is positive.
+  /// Panics unless all are finite, `beta`, `rho`, `nu` are `knots.len() + 1` long, a given `t > 0`,
+  /// `alpha0 >= 0`, `0 <= beta <= 1`, `nu >= 0`, `|rho| < 1`, `knots[i - 1] < knots[i]`, `n >= 2`.
   pub fn new(
     f0: Option<T>,
     alpha0: Option<T>,

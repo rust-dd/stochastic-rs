@@ -219,7 +219,7 @@ fn warn_on_feller_violation<T: FloatExt>(
 
 impl<T: FloatExt, S: SeedExt> Heston2D<T, S> {
   /// Panics unless every entry is finite, `v0 > 0`, `kappa`, `theta`, `sigma` are non-negative,
-  /// `rho` is a positive semidefinite correlation, `n >= 2` and a given `t` is positive.
+  /// `rho` is a positive semidefinite correlation, `n >= 2`, a given `t` is positive and finite.
   pub fn new(
     x0: [T; 2],
     v0: [T; 2],

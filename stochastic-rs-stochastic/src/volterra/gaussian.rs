@@ -117,8 +117,8 @@ pub struct Volterra<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 }
 
 impl<T: FloatExt, S: SeedExt> Volterra<T, S> {
-  /// Prepares the kernel's engine, the Markov lift or the direct convolution, once here. Panics
-  /// unless `n >= 2` and a given `t` is positive and finite.
+  /// Builds the kernel's engine once. Panics unless `n >= 2`, a given `t` is positive and finite,
+  /// and the kernel's parameter is finite with `0 < h < 1`, `gamma > -0.5` or `beta > 0`.
   pub fn new(kernel: VolterraKernelSpec<T>, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n:?}");
     assert!(

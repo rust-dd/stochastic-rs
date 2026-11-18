@@ -54,7 +54,7 @@ fn build_markov<T: FloatExt>(
 
 impl<T: FloatExt, S: SeedExt> RlFbm<T, S> {
   /// An RL-fBM generator on an $n$-point grid; the [`MarkovLift`] is built once here. Panics unless
-  /// `0 < hurst < 0.5`, `n >= 2`, a given `t` is positive and a given `degree` is in `1..=175`.
+  /// `0 < hurst < 0.5`, `n >= 2`, a given `t` is positive and finite, a given `1 <= degree <= 175`.
   #[must_use]
   pub fn new(hurst: T, n: usize, t: Option<T>, degree: Option<usize>, seed: S) -> Self {
     assert!(

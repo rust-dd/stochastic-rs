@@ -36,7 +36,7 @@ pub struct Gn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 
 /// No persisted cache: `sampler()` builds its Gaussian source fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> Gn<T, S> {
-  /// Panics unless `n >= 2` and a given `t` is positive and finite.
+  /// Panics unless `n >= 1` and a given `t` is positive and finite.
   pub fn new(n: usize, t: Option<T>, seed: S) -> Self {
     Self::check_n(n);
     check_t(t);
@@ -54,7 +54,7 @@ impl<T: FloatExt, S: SeedExt, B> Gn<T, S, B> {
     require!(n >= 1, n);
   }
 
-  /// Replace the number of increments `n`; panics unless `n >= 2`.
+  /// Replace the number of increments `n`; panics unless `n >= 1`.
   pub fn with_increments(mut self, n: usize) -> Self {
     Self::check_n(n);
     self.n = n;

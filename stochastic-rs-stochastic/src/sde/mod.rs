@@ -139,8 +139,8 @@ where
   F: Fn(&Array1<T>, T) -> Array1<T>,
   G: Fn(&Array1<T>, T) -> Array2<T>,
 {
-  /// `[n_paths, steps + 1, dim]` paths from `x0` at `t0` to `t1`, `dt = (t1 − t0) / steps`, drawn
-  /// from `seed`; panics unless `t0 < t1` with a finite span and `steps ≥ 1`.
+  /// `[n_paths, steps + 1, dim]` paths from `x0` over `[t0, t1]`, drawn from `seed`; panics unless
+  /// `t0 < t1`, `t1 - t0` is finite, `steps >= 1` and, for fractional noise, `0 <= hursts[d] <= 1`.
   pub fn solve<S: SeedExt>(
     &self,
     x0: &Array1<T>,

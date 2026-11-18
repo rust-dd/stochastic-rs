@@ -46,7 +46,7 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
     require!(n >= 1, n);
   }
 
-  /// Panics unless `0 <= hurst <= 1`, `-1 <= rho <= 1`, `n >= 2`, a given `t` is positive and
+  /// Panics unless `0 <= hurst <= 1`, `-1 <= rho <= 1`, `n >= 1`, a given `t` is positive and
   /// finite, and every parameter is finite.
   pub fn new(hurst: T, rho: T, n: usize, t: Option<T>, seed: S) -> Self {
     Self::check_hurst(hurst);
@@ -74,7 +74,7 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
   }
 
   /// Replace `n` and rebuild the cache, so it is defined on `Cpu` (move with `on` afterwards);
-  /// panics unless `n >= 2`.
+  /// panics unless `n >= 1`.
   pub fn with_increments(mut self, n: usize) -> Self {
     Self::check_n(n);
     self.n = n;
