@@ -35,9 +35,8 @@ pub use profile::kernel_profile;
 
 type Result<T> = std::result::Result<T, DeviceError>;
 
-/// Which cached output buffer a precision uses. Implemented for the two the
-/// kernels are rendered in; `cudarc`'s slices are typed, so the cache is one
-/// array per precision rather than one of bytes.
+/// Which cached output buffer a precision uses, for the two the kernels are rendered in:
+/// `cudarc`'s slices are typed, so the cache is one array per precision, not one of bytes.
 trait CachedOut: DeviceRepr + ValidAsZeroBits + Copy {
   fn slots(kernels: &mut Kernels) -> &mut [Option<CudaSlice<Self>>; 2];
 
@@ -74,9 +73,8 @@ fn take_output<R: CachedOut>(
 ) -> Result<CudaSlice<R>> {
   match R::slots(kernels)[slot].take() {
     Some(buffer) if buffer.len() >= len => Ok(buffer),
-    // The old buffer is released *before* the larger one is asked for: held
-    // across the allocation, a batch that doubles needs both at once, and
-    // the peak is what fails first on a card that is nearly full.
+    // The old buffer is released before the larger one is requested: held across the allocation,
+    // a batch that doubles needs both at once, and that peak fails first on a nearly full card.
     held => {
       drop(held);
       stream
@@ -114,10 +112,8 @@ fn return_staging<R: CachedOut>(kernels: &mut Kernels, slot: usize, buffer: Pinn
   R::staging(kernels)[slot] = Some(buffer);
 }
 
-/// A driver failure as a [`DeviceError`], with the one code a caller can act
-/// on kept apart: an allocation that ran out of memory is retried by the
-/// engine's batch loop with a smaller chunk, where every other code is the
-/// same however the batch is cut.
+/// A driver failure as a [`DeviceError`], with out-of-memory kept apart: the engine's batch loop
+/// retries it with a smaller chunk, while every other code is the same however the batch is cut.
 fn driver_error(what: &str, e: DriverError) -> DeviceError {
   if e.0 == cudarc::driver::sys::CUresult::CUDA_ERROR_OUT_OF_MEMORY {
     DeviceError::OutOfMemory(format!("{what}: {e}"))
@@ -126,12 +122,8 @@ fn driver_error(what: &str, e: DriverError) -> DeviceError {
   }
 }
 
-/// Threads per block. The kernel carries a path's whole state — the four
-/// components, the 512-slot history block, the program stack — in registers
-/// and local memory, so occupancy is bounded by register pressure long before
-/// it is bounded by threads. `LaunchConfig::for_num_elems` asks for 1024,
-/// which on that footprint spills or is refused outright by the driver; 256
-/// is the largest block that leaves every family room.
+/// Threads per block. A path's whole state lives in registers and local memory, so register
+/// pressure bounds occupancy: 1024 spills or is refused, and 256 leaves every family room.
 const BLOCK: u32 = 256;
 
 /// One thread per path, in blocks of [`BLOCK`].
@@ -184,14 +176,8 @@ struct Kernels {
   /// Second stream of the batch pipeline: chunk `k + 1` computes on one
   /// while chunk `k` copies back on the other.
   stream_b: Arc<CudaStream>,
-  /// The launches' output buffers, kept between calls: slot 0 for a single
-  /// launch, slots 0 and 1 for the two-stream pipeline.
-  ///
-  /// `alloc_zeros` per launch both allocates and clears; on Metal the same
-  /// allocation was the single largest cost of a batch — three to four times
-  /// the kernel at a hundred thousand paths — and there is no reason CUDA
-  /// pays it either. The kernel writes every element it is asked for, so a
-  /// reused buffer needs no clearing.
+  /// The launches' output buffers, kept between calls: slot 0 for a single launch, 0 and 1 for the
+  /// two-stream pipeline. The kernel writes every element it is asked for, so reuse needs no clear.
   out_f32: [Option<CudaSlice<f32>>; 2],
   out_f64: [Option<CudaSlice<f64>>; 2],
 
@@ -200,19 +186,13 @@ struct Kernels {
   staging_f32: [Option<PinnedHost<f32>>; 2],
   staging_f64: [Option<PinnedHost<f64>>; 2],
 
-  /// One compiled kernel per launch shape and precision, built on first use.
-  ///
-  /// A T4 reports what the monolithic body costs: 80 registers and 3552 bytes
-  /// of local memory per thread in `f32`, 130 and 7104 in `f64` — three and
-  /// one block per multiprocessor. A kernel rendered for one family carries
-  /// that family's step alone and declares only the scratch it reaches, which
-  /// is where the occupancy comes back.
+  /// One compiled kernel per launch shape and precision, built on first use. One family's step
+  /// alone needs far fewer registers than the monolith (80 in `f32`, 130 in `f64` on a T4).
   functions: HashMap<(Shape, &'static str), CudaFunction>,
 }
 
-/// SAFETY: the raw driver handles inside are only ever reached through this
-/// mutex, and the two streams are ordered against each other by the explicit
-/// synchronise each chunk's drain performs before its slot is reused.
+/// SAFETY: the raw driver handles inside are reached only through this mutex, and each chunk's
+/// drain synchronises the two streams before its slot is reused.
 unsafe impl Send for Kernels {}
 
 static KERNELS: Mutex<Option<Kernels>> = Mutex::new(None);
@@ -361,12 +341,8 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
     )
   }
 
-  /// The launch's rows lent to `f` rather than copied out.
-  ///
-  /// The page-locked landing buffer is what `f` reads, so the batch crosses
-  /// the bus once and is not copied again on this side. That second copy is
-  /// the larger of the two on a host with slow pages: forty megabytes of
-  /// fresh `Vec` is ten thousand first-touch faults before a byte moves.
+  /// The launch's rows lent to `f`, not copied out: `f` reads the page-locked landing buffer, so
+  /// the batch crosses the bus once. A second copy into a fresh `Vec` costs more than the bus.
   fn euler_kernel_lend<P: EulerCoefficients<T>, O>(
     &self,
     process: &P,
@@ -433,9 +409,8 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.series_terms(),
       process.table_spec(),
       process.program_spec(),
-      // `check_arity` allows a family to step *more* components than the
-      // process returns, so the array is shaped by what the launch wrote —
-      // not by `D`, which is only the count the caller will read back out.
+      // `check_arity` lets a family step more components than the process returns, so the array
+      // is shaped by what the launch wrote, not by `D`.
       |data, planes| {
         Array3::from_shape_vec((planes, m, process.grid_points()), data.to_vec())
           .expect("the kernel returns components * m * n values")
@@ -482,9 +457,8 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
     // Brownian motion in their place: such a process takes the single launch chunk by chunk.
     if process.fgn_spec().is_some() || process.lift_spec().is_some() {
       let mut out = Array2::<T>::zeros((m, n));
-      // Through `over_chunks`, not a plain loop: a chunk that runs the card
-      // out of memory is retried at half the size, which is the whole point
-      // of that helper and was unwired on the back-end it was written for.
+      // Through `over_chunks`, not a plain loop: a chunk that runs the card out of memory is
+      // retried at half the size.
       crate::device::over_chunks(m, rows, |first, len| {
         let chunk = self.euler_kernel(process, first, len, seed)?;
         out

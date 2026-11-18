@@ -19,13 +19,11 @@ pub enum JumpSizes<T: FloatExt> {
   /// Kou's double-exponential sizes: up with probability `p_up` at rate
   /// `eta_up`, down otherwise at rate `eta_down`.
   DoubleExponential { p_up: T, eta_up: T, eta_down: T },
-  /// A tempered-stable subordinator's sizes: a candidate `ε u^{−1/α}` kept
-  /// with probability `exp(−μ·candidate)`, so the sum is over the accepted
-  /// ones. `neg_inv_alpha` is `−1/α`, which depends on `α` alone.
+  /// A tempered-stable subordinator's sizes: a candidate `ε u^{−1/α}` is kept with probability
+  /// `exp(−μ·candidate)` and the kept ones are summed. `neg_inv_alpha` is `−1/α`.
   TemperedStable { eps: T, neg_inv_alpha: T, mu: T },
-  /// Normal sizes compounded multiplicatively, `∏ (1 + mean + sd·z_j) − 1`
-  /// over the step's jumps: what a jump that multiplies the state needs, and
-  /// what a single aggregated normal cannot express once a step sees two.
+  /// Normal sizes compounded multiplicatively, `∏ (1 + mean + sd·z_j) − 1` over the step's
+  /// jumps: one aggregated normal cannot express a multiplying jump once a step sees two.
   NormalProduct { mean: T, sd: T },
   /// [`DoubleExponential`](JumpSizes::DoubleExponential) sizes compounded
   /// multiplicatively, `∏ (1 + y_j) − 1`.
@@ -49,9 +47,8 @@ pub enum JumpSizes<T: FloatExt> {
 }
 
 impl<T: FloatExt> JumpSizes<T> {
-  /// The law code and the three scalars the kernels read it through. Public
-  /// because [`EulerKernel`] is: a device implemented outside this crate has
-  /// to pass the same five values its launch takes.
+  /// The law code and the three scalars the kernels read it through. Public as [`EulerKernel`]
+  /// is: a device outside this crate passes the same values to its launch.
   pub fn encode(&self) -> (u32, T, T, T) {
     match *self {
       JumpSizes::Normal { mean, sd } => (1, mean, sd, T::zero()),
@@ -124,21 +121,13 @@ impl<T: FloatExt> JumpSizes<T> {
   }
 }
 
-/// The Gamma draws a family reads as `gm` and `gm2`, when its increment is a
-/// gamma variate rather than a Gaussian one.
-///
-/// Each is one Marsaglia-Tsang draw of `Gamma(shape, scale)`, with the
-/// shape-below-one boost that method prescribes. A process that needs one
-/// draw declares [`second`](Self::second) as `None`; the bilateral gamma
-/// processes, whose increment is the difference of two, declare both.
+/// The Gamma draws a family reads as `gm` and `gm2`, each one Marsaglia-Tsang draw of
+/// `Gamma(shape, scale)` with the boost for a shape below one. `second` is `None` for one draw.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[doc(hidden)]
 pub struct GammaDraws<T: FloatExt> {
-  /// The shape, scale and per-jump shape of `gm`. The shape the kernel uses
-  /// is `shape + per_jump · nj`, which is what a compound sum of gamma jumps
-  /// needs: the sum of `k` of them is one draw whose shape is `k` times the
-  /// single jump's. A process whose shape does not depend on the jump count
-  /// leaves the third term at zero.
+  /// The shape, scale and per-jump shape of `gm`. The kernel's shape is `shape + per_jump · nj`:
+  /// a sum of `k` gamma jumps is one draw with `k` times the shape. Zero for no jump dependence.
   pub first: (T, T, T),
   /// The same three for `gm2`, when the family reads a second draw.
   pub second: Option<(T, T, T)>,

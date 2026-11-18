@@ -5,9 +5,8 @@ use stochastic_rs_distributions::uniform::SimdUniform;
 use super::*;
 use crate::traits::PathSampler;
 
-/// The host stream for a [`Probe`]: this crate's Gaussian generator feeding
-/// the family's own generated host step, which is the same expression the
-/// kernels run.
+/// The host stream for a [`Probe`]: this crate's Gaussian generator feeding the family's own
+/// generated host step, the expression the kernels run.
 pub(crate) struct ProbeSampler {
   spec: EulerSpec<f32>,
   x0: f32,
@@ -79,10 +78,8 @@ impl PathSampler<f32> for ProbeSampler {
     // exactly as the frame does.
     let hist_slot = family.history_slot();
     let mut past = Vec::<f32>::new();
-    // The series a `series` family sums into its grid cells, from a uniform
-    // stream of its own, exactly as the frame's preamble does; a live family
-    // keeps the terms and sizes them in the step of their cell against the
-    // state there.
+    // The series a `series` family sums into its grid cells, from its own uniform stream as in
+    // the frame's preamble; a live family keeps the terms and sizes them in their cell's step.
     let mut series = vec![0.0f32; N];
     let mut terms: Vec<(f32, f32, f32, f32, usize)> = Vec::new();
     if family.has_series() {

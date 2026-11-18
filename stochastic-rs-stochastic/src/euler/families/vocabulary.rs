@@ -57,9 +57,8 @@ pub(crate) mod ops {
     v.abs()
   }
 
-  /// `−v`. A literal may never sit on the left of an operator — the compiler
-  /// cannot infer its type there — so a step that needs `c − f(x)` writes
-  /// `negate(f(x) − lit(c))`, which is the same value in IEEE arithmetic.
+  /// `−v`. The compiler cannot infer a literal's type on an operator's left, so a step that
+  /// needs `c − f(x)` writes `negate(f(x) − lit(c))`, the same value in IEEE arithmetic.
   #[inline(always)]
   pub(crate) fn negate<T: FloatExt>(v: T) -> T {
     T::zero() - v
@@ -108,9 +107,8 @@ pub(crate) mod ops {
     if a < b { a } else { b }
   }
 
-  /// A numeric literal. Each target spells one differently — `T::from_f64_fast`
-  /// on the host, a cast in C — so a family writes
-  /// `lit(0.5)` and the emitters agree on what it means.
+  /// A numeric literal. Each target spells one differently (`T::from_f64_fast` on the host, a
+  /// cast in C), so a family writes `lit(0.5)` and the emitters agree on its meaning.
   #[inline(always)]
   pub(crate) fn lit<T: FloatExt>(v: f64) -> T {
     T::from_f64_fast(v)

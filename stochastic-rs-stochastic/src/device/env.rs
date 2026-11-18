@@ -1,7 +1,7 @@
 use super::error::DeviceError;
 
 #[cfg_attr(not(any(device_backend, feature = "python")), allow(dead_code))]
-/// `STOCHASTIC_RS_DEVICE` as an ordinal: unset is `0`, anything but a non-negative integer is refused.
+/// `STOCHASTIC_RS_DEVICE` as an ordinal: unset is `0`; only a non-negative integer is accepted.
 pub(crate) fn device_from_env(value: Option<&str>) -> Result<usize, DeviceError> {
   let Some(raw) = value else {
     return Ok(0);
@@ -22,7 +22,7 @@ pub(crate) fn env_ordinal() -> Result<usize, DeviceError> {
 pub const DEFAULT_BATCH_BUDGET_BYTES: usize = 1 << 30;
 
 #[cfg_attr(not(any(device_backend, feature = "python")), allow(dead_code))]
-/// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` as a budget: unset is the default, anything but a positive integer is refused.
+/// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` as a budget: unset is the default, else a positive integer.
 pub(crate) fn budget_from_env(value: Option<&str>) -> Result<usize, DeviceError> {
   let Some(raw) = value else {
     return Ok(DEFAULT_BATCH_BUDGET_BYTES);
@@ -41,7 +41,7 @@ pub(crate) fn env_budget() -> Result<usize, DeviceError> {
 }
 
 #[cfg_attr(not(any(device_backend, feature = "python")), allow(dead_code))]
-/// `name`'s value, `None` when unset; a value that is not unicode is a `Config` error, never read as unset.
+/// `name`'s value, `None` when unset; a non-unicode value is a `Config` error, never read as unset.
 fn env_text(name: &str) -> Result<Option<String>, DeviceError> {
   match std::env::var(name) {
     Ok(value) => Ok(Some(value)),

@@ -51,8 +51,8 @@ impl SeedExt for SharedSeed {
   }
 }
 
-/// Where a Python-side process samples: for a GPU the ordinal (the name's, else `STOCHASTIC_RS_DEVICE`)
-/// and the batch budget in bytes (`STOCHASTIC_RS_DEVICE_BATCH_BYTES`), for `"cuda"` and `"cuda:1"` alike.
+/// Where a Python-side process samples. A GPU carries its ordinal (the name's, else
+/// `STOCHASTIC_RS_DEVICE`) and its batch budget in bytes (`STOCHASTIC_RS_DEVICE_BATCH_BYTES`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Device {
   Cpu,
@@ -62,10 +62,8 @@ pub enum Device {
 }
 
 impl Device {
-  /// Parses `device=` for a process of `dtype`: the name is checked against
-  /// the build (`ValueError` with a rebuild hint), a single-precision device
-  /// under a `float64` process asks for `dtype="f32"` (`ValueError`), and the
-  /// device is probed (`RuntimeError` with the runtime's own message).
+  /// Parses `device=` for a process of `dtype`: `ValueError` for a name the build lacks or an
+  /// `f32` device under `float64`, `RuntimeError` with the runtime's message if the probe fails.
   pub fn parse(name: Option<&str>, dtype: &str) -> PyResult<Self> {
     let device = Self::parse_name(name.unwrap_or("cpu"))?;
     if device.single_precision() && dtype != "f32" {

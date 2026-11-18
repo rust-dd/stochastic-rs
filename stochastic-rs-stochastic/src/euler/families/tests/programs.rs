@@ -40,9 +40,8 @@ fn cheyette_step_is_euler_with_the_program_volatility() {
   assert!((next[1] - (y + (s * s - 2.0 * kappa * y) * dt)).abs() < 1e-15);
 }
 
-/// The SLV spot steps its logarithm under the program's value as the
-/// leverage of the step's start, and the variance under the mixed vol-of-vol
-/// with the two shocks correlated in the step.
+/// The SLV spot steps its logarithm under the program's value as the leverage at the step's
+/// start, and the variance under the mixed vol-of-vol, the two shocks correlated in the step.
 #[test]
 fn heston_slv_step_is_the_log_euler_scheme_under_the_program_leverage() {
   let (mu, kappa, theta, sigma, rho) = (0.03_f64, 2.0_f64, 0.04_f64, 0.21_f64, -0.6_f64);

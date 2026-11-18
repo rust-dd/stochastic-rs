@@ -118,9 +118,8 @@ pub(super) fn every_three_component_family() -> Vec<SystemProbe<3>> {
   ]
 }
 
-/// One probe per four-component family. The Bergomi variance is a function of
-/// the running sum of its own increments, so that sum and the elapsed time
-/// travel as two further components; the probe compares all four.
+/// One probe per four-component family. The Bergomi variance is a function of the running sum
+/// of its increments, so that sum and the elapsed time travel as two further components.
 pub(super) fn every_four_component_family() -> Vec<SystemProbe<4>> {
   let two_asset = |sym| {
     let (mu1, mu2) = (0.03, 0.02);

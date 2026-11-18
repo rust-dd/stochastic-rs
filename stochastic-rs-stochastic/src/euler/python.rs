@@ -1,14 +1,11 @@
-//! Python surface of the device layer: probing a device and choosing the
-//! ordinal. Sampling on a device goes through the process classes'
-//! `device=` argument.
+//! Python surface of the device layer: probing a device and choosing the ordinal.
+//!
+//! Sampling on a device goes through the process classes' `device=` argument.
 
 use pyo3::prelude::*;
 
-/// Opens the named device (`"cpu"`, `"accelerate"`, `"cuda"`, `"metal"`,
-/// optionally with `:ordinal`) and describes it
-/// as a dict with `backend`, `name`, `precisions` and `ordinal`; raises
-/// `RuntimeError` with the device's own message when it cannot be used,
-/// `ValueError` for a device this build does not carry.
+/// Describes the named device (`"cpu"`, `"accelerate"`, `"cuda"`, `"metal"`, optionally
+/// `:ordinal`) as a dict; `RuntimeError` if it cannot be used, `ValueError` if the build lacks it.
 #[pyfunction]
 pub fn probe_device<'py>(
   py: Python<'py>,

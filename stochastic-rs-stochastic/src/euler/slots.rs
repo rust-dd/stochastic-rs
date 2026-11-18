@@ -1,17 +1,11 @@
 use super::*;
 
-/// How many scalar parameters one family may carry. The layout is the
-/// kernels' ABI and stays inside the crate, so it can widen again without a
-/// breaking change.
-/// The streams a correlated four-component family can carry; a model with
-/// more stays on its host sampler whatever the backend.
+/// The streams a correlated four-component family can carry; a model with more stays on its
+/// host sampler whatever the backend.
 pub(crate) const CORRELATED_STREAMS: usize = 4;
 
-/// A lower Cholesky factor of at most [`CORRELATED_STREAMS`] rows, packed
-/// row-major into the ten lower-triangle slots the correlated families take
-/// (`l00, l10, l11, l20, ...`). Rows the factor does not have get a unit
-/// diagonal, which is what leaves a padded component equal to its own shock
-/// and, with zero drift and volatility, constant.
+/// A lower Cholesky factor of at most [`CORRELATED_STREAMS`] rows, packed row-major into ten
+/// lower-triangle slots. A missing row gets a unit diagonal, so a padded component is constant.
 pub(crate) fn pack_cholesky<T: FloatExt>(chol: &ndarray::Array2<T>) -> [T; 10] {
   let k = chol.nrows();
   assert!(
@@ -35,18 +29,13 @@ pub(crate) fn pack_cholesky<T: FloatExt>(chol: &ndarray::Array2<T>) -> [T; 10] {
   out
 }
 
-/// The most nodes a Markov lift may carry on a device: one past
-/// [`crate::rough::RlKernel::MAX_STABLE_DEGREE`], since the kernels hold the
-/// lift's two state vectors in fixed per-thread arrays of this length.
+/// The most nodes a Markov lift may carry on a device, one past `RlKernel::MAX_STABLE_DEGREE`:
+/// the kernels hold the lift's two state vectors in fixed per-thread arrays of this length.
 #[doc(hidden)]
 pub const LIFT_SLOTS: usize = 176;
 
-/// What a device needs to run the Markov lift of a rough Volterra kernel for a
-/// process: the per-node constants the host precomputed and the two boundary
-/// terms, exactly the quantities [`crate::volterra::lift::VolterraLift`] steps
-/// with. The family declares the drift, the diffusion and the driving shock;
-/// the frame keeps the `2 · degree` lift states per path and hands the family
-/// the lifted value as `lv` each step.
+/// What a device needs to run a rough kernel's Markov lift: the per-node constants and the two
+/// boundary terms `VolterraLift` steps with. The frame hands the family the lifted value as `lv`.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct LiftSpec<'a, T> {
@@ -64,9 +53,8 @@ pub struct LiftSpec<'a, T> {
   pub x0: T,
 }
 
-/// The lift tables and scalars a launch binds: `[decay, weight, drift_scale]`
-/// (empty when the process has no lift), the `has_lift` flag, the node count
-/// and the two boundary terms plus the start the lift adds back each step.
+/// The lift tables and scalars a launch binds: `[decay, weight, drift_scale]` (empty without a
+/// lift), the `has_lift` flag, the node count, the two boundary terms and the start added back.
 #[cfg_attr(not(device_backend), allow(dead_code))]
 pub(crate) fn encode_lift<'a, T: FloatExt>(
   lift: Option<&LiftSpec<'a, T>>,
@@ -93,19 +81,13 @@ pub(crate) fn encode_lift<'a, T: FloatExt>(
   }
 }
 
-/// The floats a launch's program buffer holds: the two programs' lengths,
-/// then each program's `(opcode, constant)` pairs — room for two programs of
-/// [`Program::MAX_OPS`] operations each.
+/// The floats a launch's program buffer holds: the two programs' lengths, then each program's
+/// `(opcode, constant)` pairs, with room for two programs of [`Program::MAX_OPS`] operations.
 #[doc(hidden)]
 pub const PROGRAM_SLOTS: usize = 2 + 4 * Program::MAX_OPS;
 
-/// The programs a launch interprets in its kernel: a coefficient of time and
-/// state written as an [`Expr`](stochastic_rs_distributions::traits::Expr)
-/// and compiled, and an optional second one. Before every step the kernel
-/// evaluates each at the launch's first curve `ct` and the first state slot
-/// and hands the values to the family as `pv` and `pv2` — the local
-/// volatility of a Cheyette model, the drift and diffusion of a Volterra
-/// equation.
+/// The one or two compiled `Expr` programs a launch interprets. Before every step the kernel
+/// evaluates each at the first curve `ct` and the first state slot and passes `pv` and `pv2`.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct ProgramSpec<'a> {
@@ -139,25 +121,18 @@ pub(crate) fn encode_programs<T: FloatExt>(spec: Option<&ProgramSpec<'_>>) -> (V
   (out, if spec.second.is_some() { 2 } else { 1 })
 }
 
-/// How many time-varying coefficients a kernel binds per launch, which is the
-/// most a process's `curves()` may return. Public because that hook is: an
-/// out-of-tree process needs the cap it is held to. A family
-/// names them `ct` and `ct1` through `ct7`; a launch pays one buffer read per
-/// declared curve per step, so declaring fewer costs less.
+/// How many time-varying coefficients a kernel binds per launch, the most `curves()` may
+/// return (`ct`, `ct1` … `ct7`); each declared curve costs one buffer read per step.
 #[doc(hidden)]
 pub const CURVE_SLOTS: usize = 8;
 
-/// The most grid points a family with a `history` clause steps on a device:
-/// the kernels keep each path's pushed values in an array of this many slots
-/// and convolve them with the family's weight curve every step. A longer grid
-/// stays on the host, which the process's own guard decides.
+/// The most grid points a family with a `history` clause steps on a device: the kernels keep
+/// each path's pushed values in an array this long. A longer grid stays on the host.
 #[doc(hidden)]
 pub const HISTORY_SLOTS: usize = 512;
 
-/// The curve slot the launch's family reads its history weights from, or the
-/// kernels' "none" sentinel; a history family whose grid exceeds
-/// [`HISTORY_SLOTS`] never reaches a launch through `ProcessExt`, so an
-/// oversize grid here is a caller bypassing that guard.
+/// The curve slot the family reads its history weights from, or the kernels' "none" sentinel.
+/// `ProcessExt` keeps a grid past [`HISTORY_SLOTS`] on the host, so one here bypassed that guard.
 #[cfg_attr(not(device_backend), allow(dead_code))]
 pub(crate) fn history_slot(family: u32, n: usize) -> u32 {
   match families::Family::from_code(family).and_then(families::Family::history_slot) {
@@ -172,18 +147,13 @@ pub(crate) fn history_slot(family: u32, n: usize) -> u32 {
   }
 }
 
-/// The most grid points a family with a `series` clause steps on a device:
-/// the kernels sum each path's terms into an array of this many cells. A
-/// longer grid stays on the host, which the process's own guard decides.
+/// The most grid points a family with a `series` clause steps on a device: the kernels sum
+/// each path's terms into an array of this many cells. A longer grid stays on the host.
 #[doc(hidden)]
 pub const SERIES_SLOTS: usize = 512;
 
-/// How many series terms the launch draws per path, or zero for a family
-/// without a `series` clause. A family with one is never launched without a
-/// count and a family without one never with — either would be a process
-/// declaring the wrong family — and a grid beyond [`SERIES_SLOTS`] never
-/// reaches a launch through `ProcessExt`, so an oversize one here is a caller
-/// bypassing that guard.
+/// How many series terms the launch draws per path, zero for a family without a `series`
+/// clause. A count without the clause, the reverse, or a grid past [`SERIES_SLOTS`] is refused.
 #[cfg_attr(not(device_backend), allow(dead_code))]
 pub(crate) fn series_terms(family: u32, n: usize, terms: Option<u32>) -> u32 {
   let family = families::Family::from_code(family);
@@ -215,16 +185,13 @@ pub(crate) fn series_live(family: u32) -> u32 {
   u32::from(families::Family::from_code(family).is_some_and(families::Family::series_live))
 }
 
-/// The most points a family with a `table` clause builds per path on a
-/// device: the kernels keep the table in an array of this many entries. A
-/// finer table stays on the host, which the process's own guard decides.
+/// The most points a family with a `table` clause builds per path on a device: the kernels
+/// keep the table in an array of this many entries. A finer table stays on the host.
 #[doc(hidden)]
 pub const TABLE_SLOTS: usize = 512;
 
-/// What a family with a `table` clause has the frame build per path before
-/// the steps: a monotone table of `points` values over `[0, u_max]` — a
-/// non-positive `u_max` meaning the horizon, one at least — grown by doubling
-/// until it reaches the horizon.
+/// What a `table` family has the frame build per path before the steps: a monotone table of
+/// `points` values over `[0, u_max]` (non-positive means the horizon), doubled until it reaches it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[doc(hidden)]
 pub struct TableSpec<T> {
@@ -232,10 +199,8 @@ pub struct TableSpec<T> {
   pub u_max: T,
 }
 
-/// The table's point count and starting extent for a launch, zero and zero
-/// for a family without a `table` clause. A family with one is never launched
-/// without a spec and a family without one never with, and a table beyond
-/// [`TABLE_SLOTS`] never reaches a launch through `ProcessExt`.
+/// The table's point count and starting extent for a launch, zeros for a family without a
+/// `table` clause. A spec without the clause, the reverse, or one past [`TABLE_SLOTS`] is refused.
 #[cfg_attr(not(device_backend), allow(dead_code))]
 pub(crate) fn table_terms<T: FloatExt>(family: u32, spec: Option<TableSpec<T>>) -> (u32, T) {
   let has_table = families::Family::from_code(family).is_some_and(families::Family::has_table);
@@ -256,14 +221,8 @@ pub(crate) fn table_terms<T: FloatExt>(family: u32, spec: Option<TableSpec<T>>) 
   }
 }
 
-/// The curve buffer a launch binds: the declared curves laid end to end, each
-/// padded to `n` values, so the kernel reads curve `k` at step `i` from
-/// `curve[k * n + i]`. Returns the flattened values and how many curves they
-/// hold; an empty buffer and zero when the family declares none.
-///
-/// A curve shorter than the grid is extended with its last value rather than
-/// read out of bounds — a host tabulation that stops one short is a
-/// declaration slip, not a reason to fault a kernel.
+/// The declared curves laid end to end, each padded to `n` values with its last one, so the
+/// kernel reads curve `k` at step `i` from `curve[k * n + i]`; returns the values and the count.
 #[cfg_attr(not(device_backend), allow(dead_code))]
 pub(crate) fn flatten_curves<T: FloatExt>(curves: Option<Vec<Vec<T>>>, n: usize) -> (Vec<T>, u32) {
   let Some(curves) = curves else {
@@ -284,9 +243,8 @@ pub(crate) fn flatten_curves<T: FloatExt>(curves: Option<Vec<Vec<T>>>, n: usize)
 
 pub(crate) const PARAM_SLOTS: usize = 20;
 
-/// What a device needs to run the fGN pipeline for a process whose increments
-/// are fractional: the precomputed circulant eigenvalues and the grid they
-/// were built for.
+/// What a device needs to run the fGN pipeline for a process with fractional increments: the
+/// precomputed circulant eigenvalues and the grid they were built for.
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct FgnSpec<'a, T> {
@@ -300,11 +258,7 @@ pub struct FgnSpec<'a, T> {
   pub hurst: f64,
   /// The horizon the increments are scaled to.
   pub t: f64,
-  /// How many independent fGN streams the family's noise components read.
-  /// One feeds `noise[0]`; a second feeds `noise[1]`, which is what a
-  /// correlated fractional pair needs — its two rows share a Hurst
-  /// exponent, so they share this embedding and the device draws
-  /// `streams * m` paths in the one batched call rather than running the
-  /// pipeline twice.
+  /// How many independent fGN streams the noise components read: one feeds `noise[0]`, a second
+  /// `noise[1]`. A correlated pair shares one embedding, drawn as `streams * m` paths in one call.
   pub streams: usize,
 }

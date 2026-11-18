@@ -2,13 +2,8 @@ use std::any::TypeId;
 
 use super::*;
 
-/// One launch, with `finish` run over the values it wrote.
-///
-/// The finisher is what lets a caller that only reads the batch — a mapped
-/// fold, say — never see a copy of it: the page-locked landing buffer is lent
-/// for the call and taken back after, where a caller that wants to own the
-/// values copies them itself. On a host with slow pages that copy is the
-/// larger part of the wall, bigger than the bus crossing it follows.
+/// One launch, with `finish` run over the values it wrote: the page-locked landing buffer is
+/// lent for the call, so a caller that only reads the batch never pays a copy of it.
 fn run<R, O>(
   ordinal: usize,
   real: &'static str,
@@ -80,9 +75,8 @@ where
     .clone_htod(&params[..])
     .map_err(|e| driver_error("htod params", e))?;
   let sqrt_dt = dt.sqrt();
-  // The kernel always binds the increment pointer; an unused slot gets one
-  // element rather than a null. A supplied slice was written on this device by
-  // the fGN pipeline and is bound where it lies.
+  // The kernel always binds the increment pointer, so an unused slot gets one element, not a
+  // null. A supplied slice was written on this device by the fGN pipeline and is bound in place.
   let owned;
   let d_incs = match increments {
     Some((slice, _)) => slice,
@@ -177,10 +171,8 @@ where
       .launch(paths_config(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
-  // Only this launch's own rows: the buffer may be larger, having been grown
-  // by an earlier one. The copy goes to page-locked memory and the `Vec` is
-  // filled from there — a plain `clone_dtoh` would allocate that `Vec` per
-  // launch and copy into pageable pages the driver then stages itself.
+  // Only this launch's rows: an earlier launch may have grown the buffer. The copy goes through
+  // page-locked memory; `clone_dtoh` would allocate per launch and copy into pageable pages.
   let mut staging = {
     let mut guard = KERNELS.lock();
     take_staging::<R>(lender(&mut guard, &context)?, 0, out_len)?

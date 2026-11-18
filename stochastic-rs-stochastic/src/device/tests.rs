@@ -10,9 +10,6 @@ fn cpu_marker_is_a_backend() {
   assert_backend::<Cpu>();
 }
 
-/// The marker trait alone must stay algorithm-free: this compiles because
-/// `Cpu` has the fGN capability, and a future device that lacks it can
-/// still be a [`Backend`] for the capabilities it does have.
 #[test]
 fn lru_slot_keeps_four_and_promotes_hits() {
   let mut cache: Vec<usize> = Vec::new();

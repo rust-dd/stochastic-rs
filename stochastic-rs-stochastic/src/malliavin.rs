@@ -1,4 +1,5 @@
 //! The Malliavin derivative of a process along a path it samples.
+//!
 //! Reference: Nualart, D. (2006), *The Malliavin Calculus and Related Topics*, 2nd ed., §2.2.
 
 use ndarray::Array1;

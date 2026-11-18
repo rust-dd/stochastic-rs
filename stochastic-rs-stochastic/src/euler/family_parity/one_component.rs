@@ -1,9 +1,7 @@
 use super::*;
 
-/// One probe per family, parametrised so the recursion stays in a regime
-/// where a step that is merely wrong looks different from a step that is
-/// right: away from a boundary the family would clamp to anyway, and with a
-/// diffusion large enough to move the state over 64 points.
+/// One probe per family, in a regime where a wrong step looks different from a right one: away
+/// from a boundary the family clamps to, with a diffusion that moves the state over 64 points.
 pub(super) fn every_family() -> Vec<Probe> {
   let p = |spec, x0| Probe {
     spec,

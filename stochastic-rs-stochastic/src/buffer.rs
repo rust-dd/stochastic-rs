@@ -1,12 +1,5 @@
-//! Uninitialised-allocation helper — the single home of the
-//! `uninit → write-all → assume_init` unsafe pattern.
-//!
-//! Samplers allocate their outputs through it instead of `Array1::zeros`:
-//! the zeroing pass costs 3.5–6% of a full `sample()` (more around
-//! cache-boundary sizes) and every element is overwritten anyway.
-//!
-//! Crate-private: `fill` gets an uninitialised slice and must write every element, which only the
-//! crate's own call sites guarantee.
+//! The one home of the `uninit → write-all → assume_init` pattern; zeroing costs 3.5–6% of a call.
+//! Crate-private, because `fill` must write every element and only the crate's call sites do:
 //!
 //! ```compile_fail,E0603
 //! use stochastic_rs_stochastic::buffer::array1_from_fill;
@@ -16,11 +9,8 @@ use ndarray::Array1;
 
 use crate::traits::FloatExt;
 
-/// Allocates an `Array1<T>` without zero-initialisation and fills it.
-///
-/// `fill` receives the whole buffer and **must write every element**; the
-/// closure-based shape makes a partial write a local bug rather than a
-/// scattered-callsite audit.
+/// Allocates an `Array1<T>` without zeroing; `fill` receives the whole buffer and must write
+/// every element.
 pub(crate) fn array1_from_fill<T: FloatExt>(n: usize, fill: impl FnOnce(&mut [T])) -> Array1<T> {
   let mut arr = Array1::<T>::uninit(n);
   // SAFETY: FloatExt elements are plain floats — no invalid bit patterns, no

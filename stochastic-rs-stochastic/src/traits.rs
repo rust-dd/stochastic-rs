@@ -1,7 +1,6 @@
-//! # Stochastic process traits
+//! Process traits: `ProcessExt` and its markers in [`process`], [`PathSampler`] in [`sampler`].
 //!
-//! [`process`] holds `ProcessExt` and the dimensional markers, [`sampler`] holds [`PathSampler`];
-//! upstream traits are re-exported so a call site writes `crate::traits::FloatExt`.
+//! Upstream traits are re-exported, so a call site writes `crate::traits::FloatExt`.
 
 pub mod process;
 pub mod sampler;

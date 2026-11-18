@@ -26,10 +26,8 @@ pub trait EulerBackend<T: FloatExt>: Backend {
     f: impl Fn(&Array1<T>) -> R + Sync,
   ) -> Result<Vec<R>, DeviceError>;
 
-  /// [`try_euler_paths_map`](Self::try_euler_paths_map) where the callback
-  /// borrows the row. A device chunk is one `m × n` block already in host
-  /// memory, so a view hands the callback that memory and the batch is
-  /// traversed once; the owning form copies every row out of it first.
+  /// [`try_euler_paths_map`](Self::try_euler_paths_map) with a borrowed row: a device chunk is
+  /// one `m × n` block in host memory, so a view reads it once where the owning form copies rows.
   fn try_euler_paths_map_view<P: EulerCoefficients<T>, R: Send>(
     &self,
     process: &P,
@@ -220,10 +218,8 @@ host_euler_backend!(Cpu);
 #[cfg(accelerate_backend)]
 host_euler_backend!(crate::device::Accelerate);
 
-/// A device kernel is an Euler backend: one seed per call, chunks to the
-/// handle's budget, the map applied per chunk in parallel. One impl per
-/// handle rather than a blanket one, which coherence would not allow beside
-/// the host impls above.
+/// A device kernel is an Euler backend: one seed per call, chunks to the handle's budget, the map
+/// applied per chunk in parallel. One impl per handle: coherence forbids a blanket one here.
 #[cfg(device_backend)]
 macro_rules! kernel_euler_backend {
   ($handle:ty, [$($gen:tt)*] $scalar:ty) => {
@@ -262,12 +258,8 @@ macro_rules! kernel_euler_backend {
       // `over_chunks`, so a chunk too large for the device is retried at half
       // the size rather than failing the batch.
       crate::device::over_chunks(m, rows, |first, len| {
-        // One buffer per rayon worker, not one allocation per path: the
-        // closure takes an owned array, and allocating a fresh one for every
-        // path costs about 68 ns — at a batch of a hundred thousand short
-        // paths that was more than the kernel. The copy into it is the price
-        // of an owned array; `try_euler_paths_map_view` below is the same
-        // walk without it.
+        // One buffer per rayon worker, not one allocation per path (about 68 ns each, more than
+        // the kernel on short paths); `try_euler_paths_map_view` is the same walk without the copy.
         let chunk = <Self as EulerKernel<$scalar>>::euler_kernel_lend(
           self,
           process,
@@ -277,9 +269,8 @@ macro_rules! kernel_euler_backend {
           |view| {
             let n = view.ncols();
             match view.as_slice() {
-              // The lent batch is contiguous, so the rows are chunks of one
-              // slice: rayon splits them where they are instead of being fed
-              // a vector of two hundred thousand views built first.
+              // The lent batch is contiguous, so rayon splits one slice into rows where it lies
+              // instead of being fed a vector of views built first.
               Some(flat) => flat
                 .par_chunks(n.max(1))
                 .map_init(
@@ -326,9 +317,8 @@ macro_rules! kernel_euler_backend {
       // `over_chunks`, so a chunk too large for the device is retried at half
       // the size rather than failing the batch.
       crate::device::over_chunks(m, rows, |first, len| {
-        // The chunk is the launch as the device holds it: on a unified-memory
-        // device that is the buffer the kernel wrote, so the batch is read
-        // once, where it lies, and nothing is copied or allocated per path.
+        // The chunk is the launch as the device holds it: on unified memory, the buffer the
+        // kernel wrote, read once where it lies with no copy or allocation per path.
         let chunk = <Self as EulerKernel<$scalar>>::euler_kernel_lend(
           self,
           process,

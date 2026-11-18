@@ -5,14 +5,8 @@ pub(crate) fn chunk_rows(budget: usize, n: usize, elem: usize) -> usize {
   (budget / (n.max(1) * elem.max(1))).max(1)
 }
 
-/// Runs `chunk(first, len)` over `m` rows, halving the chunk each time the
-/// device answers that it is out of memory, down to a single row.
-///
-/// The budget a handle carries is a guess — a fixed default, or a number the
-/// caller chose — and a guess that is too large is otherwise a hard failure
-/// on a device that would have served a smaller launch. Halving is safe here
-/// and nowhere else in the crate: an engine chunk is bit-identical however
-/// the batch is cut, so the retry produces the same paths.
+/// Runs `chunk(first, len)` over `m` rows, halving the chunk on each out-of-memory answer down to
+/// one row; safe because an engine chunk is bit-identical however the batch is cut.
 pub(crate) fn over_chunks(
   m: usize,
   rows: usize,

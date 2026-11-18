@@ -4,9 +4,8 @@
 use super::vocabulary::C_PRELUDE;
 use super::*;
 
-/// The generated step and report take the whole state and noise vectors, so
-/// a one-component family is exercised through these two shims rather than by
-/// spelling the four slots out at every call.
+/// The generated step and report take the whole state and noise vectors; these two shims
+/// exercise a one-component family without spelling out the four slots.
 fn step1(family: Family, x: f64, params: &[f64], dt: f64, dz: f64) -> f64 {
   let mut out = [0.0; 4];
   host_step(
@@ -85,9 +84,8 @@ fn report1(family: Family, x: f64, params: &[f64]) -> f64 {
   out[0]
 }
 
-/// The family codes are the kernels' ABI: the generated C compares against
-/// these numbers, so they are pinned rather than derived from declaration
-/// order by accident.
+/// The family codes are the kernels' ABI: the generated C compares against these numbers, so
+/// they are pinned, not left to declaration order.
 #[test]
 fn the_family_codes_are_pinned() {
   assert_eq!(Family::GeometricBrownian.code(), 0);

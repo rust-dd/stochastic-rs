@@ -13,10 +13,8 @@ fn cir_closed(x: f64, kappa: f64, theta: f64, sigma: f64, dt: f64, dz: f64) -> f
   x + kappa * (theta - positive) * dt + sigma * positive.sqrt() * dz
 }
 
-/// The generated host step is the same operations in the same order as the
-/// closed form, so it must agree bit for bit rather than approximately. The
-/// closed forms take the noise **increment**, as the declarations do: the
-/// diffusion multiplies by `dz`, not by `sqrt_dt` and then by a normal.
+/// The generated host step is the closed form's operations in the same order, so it agrees bit
+/// for bit. The closed forms take the noise increment `dz`, as the declarations do.
 #[test]
 fn the_host_step_matches_the_closed_forms() {
   let (dt, sqrt_dt) = (1.0 / 253.0, (1.0f64 / 253.0).sqrt());
@@ -55,21 +53,14 @@ fn the_host_report_truncates_only_the_square_root_family() {
   assert_eq!(report1(Family::SquareRoot, 0.25, p), 0.25);
 }
 
-/// Almost every family is the closed form's own operations in the same
-/// order, so bit equality is the right assertion. Where a declaration had to
-/// reassociate — a literal may not sit on the left of an operator, so
-/// `r·X(1 − X/K)` is written `r·X·((K − X)/K)` — the two agree to floating
-/// point noise instead, which this asserts explicitly rather than papering
-/// over with a loose tolerance everywhere.
+/// For a declaration that had to reassociate (no literal on an operator's left, so
+/// `r·X(1 − X/K)` is written `r·X·((K − X)/K)`): agreement to rounding, not bit equality.
 fn close(a: f64, b: f64) {
   assert!((a - b).abs() <= 1e-12 * a.abs().max(1.0), "{a} vs {b}");
 }
 
-/// The families with enough structure to be worth mis-transcribing: a folded
-/// constant, a guarded division, a state stepped in a transformed space.
-/// Each closed form here is written from the model, not from the
-/// declaration, so a declaration that drifts from the paper fails here
-/// rather than in a device comparison where noise could hide it.
+/// The families with a folded constant, a guarded division or a transformed state. Each closed
+/// form is written from the model, not the declaration, so a drift from the paper fails here.
 #[test]
 fn the_structured_families_match_their_models() {
   let (dt, dz) = (1.0 / 253.0, 0.031);
@@ -136,9 +127,8 @@ fn the_structured_families_match_their_models() {
   );
 }
 
-/// The families that clamp, truncate or reflect: what matters is that the
-/// boundary is applied where the model applies it — to the coefficients, to
-/// the result, or to both.
+/// The families that clamp, truncate or reflect: the boundary is applied where the model
+/// applies it, to the coefficients, to the result, or to both.
 #[test]
 fn the_bounded_families_apply_their_boundaries() {
   let (dt, dz) = (1.0 / 253.0, 0.4);
@@ -183,9 +173,8 @@ fn the_bounded_families_apply_their_boundaries() {
   );
 }
 
-/// Three independent forwards with the first past its reset: it stays, the
-/// live ones take the frozen-drift log-Euler step with their own drift, and
-/// the absent fourth slot never moves.
+/// Three independent forwards with the first past its reset: it stays, the live ones take the
+/// frozen-drift log-Euler step with their own drift, and the absent fourth slot never moves.
 #[test]
 fn libor_market_step_freezes_reset_rates_and_steps_the_live_ones() {
   let (sigma, delta) = ([0.2_f64, 0.25, 0.3, 0.0], [0.5_f64, 0.75, 0.25, 0.0]);

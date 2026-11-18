@@ -1,8 +1,7 @@
 use super::*;
 
-/// The emitted C binds every parameter as a local in declaration order and
-/// then assigns the step, which is what makes the same tokens compile in both
-/// languages.
+/// The emitted C binds every parameter as a local in declaration order and then assigns the
+/// step, which is what makes the same tokens compile in both languages.
 #[test]
 fn the_emitted_c_binds_parameters_and_steps() {
   assert!(C_STEP.contains("if (family == 0u) {"));
@@ -31,9 +30,8 @@ fn the_emitted_c_reports_per_family() {
   assert!(C_REPORT.contains("reported[0] = __n0;"));
 }
 
-/// A `bind` becomes a local in every language: a `let` on the host, a
-/// `const REAL` in the emitted C. Without that the clamped
-/// state a family names once would have to be spelled out at each use.
+/// A `bind` becomes a local in every language: a `let` on the host, a `const REAL` in the
+/// emitted C, so a family names a clamped state once.
 #[test]
 fn a_bind_becomes_a_c_local() {
   assert!(C_STEP.contains("const REAL xi = positive(x);"));
@@ -47,9 +45,8 @@ fn a_bind_becomes_a_c_local() {
   );
 }
 
-/// A report may name the family's parameters, which is what lets the
-/// displaced diffusion step the shifted variable and report the shift back
-/// out.
+/// A report may name the family's parameters, which lets the displaced diffusion step the
+/// shifted variable and report the shift back out.
 #[test]
 fn a_report_sees_the_family_parameters() {
   assert!(C_REPORT.contains("const REAL beta = params[2];"));

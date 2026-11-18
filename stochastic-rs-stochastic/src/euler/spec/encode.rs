@@ -1,10 +1,8 @@
 use super::*;
 
 impl<T: FloatExt> EulerSpec<T> {
-  /// Family code and the four parameter slots the device kernels read. The
-  /// layout is the kernels' ABI and stays inside the crate, so it can widen
-  /// for a new family without a breaking change. Only the device kernels
-  /// read it, so a build without any device feature has no caller.
+  /// Family code and the parameter slots the device kernels read, the kernels' ABI: it stays
+  /// inside the crate, so it can widen. A build without a device feature has no caller.
   #[cfg_attr(not(device_backend), allow(dead_code))]
   pub(crate) fn encode(&self) -> (u32, [T; PARAM_SLOTS]) {
     use families::Family;

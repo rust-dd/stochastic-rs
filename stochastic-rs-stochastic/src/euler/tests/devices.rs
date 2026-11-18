@@ -141,9 +141,8 @@ fn metal_fractional_chunks_are_bit_identical_to_one_launch() {
     "fBM: two paths of one batch are identical, so a chunk repeated itself"
   );
 
-  // The two-stream launches: each path takes two rows of the embedding, so
-  // a chunk that advances by one row a path hands its own second stream to
-  // the next chunk as that chunk's first.
+  // The two-stream launches: each path takes two rows of the embedding, so a chunk that advanced
+  // by one row a path would hand its second stream to the next chunk as that chunk's first.
   let cfbms = || Cfbms::<f32, _>::new(0.7, 0.0, N, Some(1.0), Deterministic::new(5)).on::<Metal>();
   let pairs = cfbms().sample_par(M);
   assert_eq!(
@@ -171,10 +170,8 @@ fn metal_fractional_chunks_are_bit_identical_to_one_launch() {
   );
 }
 
-/// [`metal_fractional_chunks_are_bit_identical_to_one_launch`] on CUDA. The
-/// two backends advance the pipeline's counter by different means — Metal
-/// offsets the seed, CUDA offsets the row index — so the invariant is
-/// asserted separately on each rather than assumed to carry over.
+/// [`metal_fractional_chunks_are_bit_identical_to_one_launch`] on CUDA, asserted separately:
+/// Metal offsets the seed to advance the pipeline's counter, CUDA offsets the row index.
 #[cfg(feature = "cuda")]
 #[test]
 fn cuda_fractional_chunks_are_bit_identical_to_one_launch() {
@@ -203,9 +200,8 @@ fn cuda_fractional_chunks_are_bit_identical_to_one_launch() {
     "fBM: two paths of one batch are identical, so a chunk repeated itself"
   );
 
-  // The two-stream launches: each path takes two rows of the embedding, so
-  // a chunk that advances by one row a path hands its own second stream to
-  // the next chunk as that chunk's first.
+  // The two-stream launches: each path takes two rows of the embedding, so a chunk that advanced
+  // by one row a path would hand its second stream to the next chunk as that chunk's first.
   let cfbms = || Cfbms::<f32, _>::new(0.7, 0.0, N, Some(1.0), Deterministic::new(5)).on::<Cuda>();
   let pairs = cfbms().sample_par(M);
   assert_eq!(
