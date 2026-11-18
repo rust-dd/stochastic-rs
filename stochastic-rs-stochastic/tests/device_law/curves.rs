@@ -1,8 +1,5 @@
-//! The processes whose coefficients vary with time. The host tabulates one
-//! value per grid point and the kernel binds it per step, so what these cases
-//! pin is that the device reads the same entry the host's own loop reads: an
-//! off-by-one in that indexing shifts the whole term structure and shows up
-//! as a different terminal law.
+//! The processes whose coefficients vary with time: the host tabulates one value per grid point
+//! and the kernel binds it per step, so an off-by-one index would show as another terminal law.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -230,9 +227,8 @@ fn two_factor_cir_agrees_with_the_cpu_law() {
   );
 }
 
-/// The bridge pins its endpoint: the curve's last entry makes the step's own
-/// variance ratio zero and its drift the whole remaining gap, so the device
-/// lands on `xt` for the same reason the host assigns it.
+/// The bridge pins its endpoint: the curve's last entry makes the step's variance ratio zero and
+/// its drift the whole remaining gap, so the device lands on `xt` as the host does.
 #[test]
 fn brownian_bridge_lands_on_its_endpoint() {
   use stochastic_rs_stochastic::process::brownian_bridge::BrownianBridge;
@@ -259,12 +255,8 @@ fn brownian_bridge_lands_on_its_endpoint() {
   );
 }
 
-/// Heath-Jarrow-Morton is the first family to bind six curves at once — the
-/// short rate, the bond price and the forward rate each take a drift and a
-/// diffusion that vary with time — so beyond the usual agreement this case
-/// pins that every slot reached the kernel: each coefficient is given a
-/// distinct time dependence and each row's terminal mean is compared, since a
-/// slot read from its neighbour would move one row and leave the others.
+/// Heath-Jarrow-Morton binds six curves at once. Each coefficient gets a distinct time
+/// dependence and each row's terminal mean is compared: a slot read from its neighbour moves one.
 #[test]
 fn hjm_agrees_with_the_cpu_law() {
   fn a(t: f32) -> f32 {

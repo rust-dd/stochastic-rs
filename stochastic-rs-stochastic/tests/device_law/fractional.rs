@@ -1,8 +1,5 @@
-//! The fGN-driven processes reach a device through the Euler engine: the
-//! device runs the fractional-noise pipeline itself, keeps the increments in
-//! its own memory and hands them to the same families that serve the Gaussian
-//! processes. The two sides draw different streams, so what is pinned here is
-//! the law and the boundary, not the path.
+//! The fGN-driven processes on a device: it runs the fractional-noise pipeline and hands the
+//! increments to the Gaussian families. The streams differ, so the law and boundary are pinned.
 
 use stochastic_rs_stochastic::traits::ProcessExt;
 

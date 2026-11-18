@@ -4,10 +4,8 @@ use stochastic_rs_stochastic::diffusion::regime_switching::RegimeSwitchingDiffus
 
 use super::*;
 
-/// Three volatility regimes under a generator `Q`. The spot's law is checked
-/// as usual; what pins the chain is the terminal occupancy of each regime and
-/// the mean number of switches along a path — a launch drawing successors from
-/// the wrong row keeps every spot marginal plausible and moves both.
+/// Three volatility regimes under a generator `Q`. Each regime's terminal occupancy and the
+/// mean number of switches pin the chain: a successor drawn from the wrong row moves both.
 #[test]
 fn regime_switching_agrees_with_the_cpu_law() {
   let build = || {

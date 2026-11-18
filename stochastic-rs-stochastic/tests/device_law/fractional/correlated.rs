@@ -6,12 +6,8 @@ use stochastic_rs_stochastic::process::cfbms::Cfbms;
 
 use super::*;
 
-/// The correlated fractional pair is the only family that reads two streams
-/// out of one embedding: the device draws `2 · m` paths in a single batched
-/// call and the step takes its second stream from the buffer's next `paths`
-/// rows. Both the marginal spread and the pair's own correlation are checked,
-/// since a mis-indexed second block would keep the marginals right and lose
-/// exactly the correlation.
+/// The correlated fractional pair reads two streams from one embedding, the second from the
+/// buffer's next `paths` rows; a mis-indexed block keeps the marginals and loses the correlation.
 #[test]
 fn correlated_fbm_agrees_with_the_cpu_law() {
   // At t = 4, not 1, fBm's terminal spread t^H = 2.64 parts from Brownian motion's 2.00, so a
@@ -80,11 +76,8 @@ fn correlated_fbm_agrees_with_the_cpu_law() {
   );
 }
 
-/// Correlated fGn is the one process whose output *is* the noise: every grid
-/// point is a draw, so the frame steps before it writes the first point and
-/// each point consumes one increment rather than `steps - 1` of them. The
-/// statistics are taken over all points of all paths, since no single index
-/// is more meaningful than another for a noise process.
+/// Correlated fGn's output is the noise: the frame steps before the first point and each point
+/// consumes one increment, so the statistics are taken over all points of all paths.
 #[test]
 fn correlated_fgn_agrees_with_the_cpu_law() {
   let build = || Cfgns::<f32, _>::new(0.7, -0.4, N, Some(1.0), Deterministic::new(31));
@@ -152,10 +145,8 @@ fn correlated_fgn_agrees_with_the_cpu_law() {
   );
 }
 
-/// The complex fOU reaches the engine through a two-component view of its own
-/// real and imaginary rows, since the process itself reports one complex path.
-/// Both parts mean-revert to zero, so the terminal spread of each is what
-/// carries the law.
+/// The complex fOU reaches the engine through a two-component view of its real and imaginary
+/// rows. Both parts revert to zero, so each terminal spread carries the law.
 #[test]
 fn complex_fou_agrees_with_the_cpu_law() {
   let build = || {
@@ -195,10 +186,8 @@ fn complex_fou_agrees_with_the_cpu_law() {
       / n)
       .sqrt()
   };
-  // The terminal mean is the only statistic that sees `omega`: the path
-  // decays as `Z0 exp(-(lambda - i omega) T)`, so the rotation shows up as
-  // the balance between the parts and nowhere in either spread. Comparing
-  // the spreads alone passes with `omega` negated, or dropped entirely.
+  // Only the terminal mean sees `omega`: the path decays as `Z0 exp(-(lambda - i omega) T)`, so
+  // the rotation is the balance between the parts. The spreads pass with `omega` negated.
   let part_mean = |paths: &[Array1<num_complex::Complex<f32>>], im: bool| {
     let last = paths[0].len() - 1;
     let part = |z: &num_complex::Complex<f32>| if im { z.im as f64 } else { z.re as f64 };

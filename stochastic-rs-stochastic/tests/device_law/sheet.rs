@@ -1,9 +1,5 @@
-//! The sheet: a two-dimensional field rather than a path, produced by the
-//! device's own circulant-embedding pipeline rather than the Euler engine.
-//! What the device has to reproduce is the field's law point by point — the
-//! spread at grid points and of the differences between them — against the
-//! host sampler. The spread is read as an interquartile range, the robust
-//! statistic every field case uses.
+//! The sheet, a two-dimensional field from the device's own circulant-embedding pipeline: its
+//! spread at grid points and of their differences, read as interquartile ranges, against the host.
 
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -39,9 +35,8 @@ fn increment_spread(sheets: &[Array2<f32>], p: (usize, usize), q: (usize, usize)
   iqr(sheets.iter().map(|s| (s[p] - s[q]) as f64).collect())
 }
 
-/// The device pipeline carries the host field's law: every sheet has the
-/// grid's shape and finite values, the grid points are centred where the
-/// host's are, and their spreads and the spreads of their differences agree.
+/// The device pipeline carries the host field's law: every sheet has the grid's shape and
+/// finite values, and the grid points' centres, spreads and difference spreads agree.
 #[test]
 fn the_sheet_pipeline_matches_the_cpu_field() {
   let build = || Fbs::<f32, _>::new(0.7, 17, 9, 1.0, Deterministic::new(19));
@@ -87,9 +82,8 @@ fn a_device_sheet_does_not_depend_on_its_batch_size() {
   assert_eq!(seven[..], eight[..7], "a sheet moved with its batch's size");
 }
 
-/// A grid whose embedding sides are not powers of two has no radix-2
-/// transform; the device build samples on the host and is the host build to
-/// the bit.
+/// A grid whose embedding sides are not powers of two has no radix-2 transform; the device
+/// build samples on the host and is the host build to the bit.
 #[test]
 fn a_grid_off_the_powers_of_two_keeps_the_sheet_on_the_host() {
   let build = || Fbs::<f32, _>::new(0.7, 12, 9, 1.0, Deterministic::new(23));

@@ -10,10 +10,8 @@ use stochastic_rs_stochastic::process::cbms::Cbms;
 
 use super::*;
 
-/// Two Ornstein-Uhlenbeck factors on one clock, both reverting toward zero.
-/// Their terminal means are near zero, where a relative comparison is the
-/// ratio of two numbers that are both mostly sampling noise, so what is
-/// compared is the spread each factor's own reversion speed sets.
+/// Two Ornstein-Uhlenbeck factors on one clock, both reverting to zero: their terminal means
+/// are mostly sampling noise, so the spread each factor's reversion speed sets is compared.
 #[test]
 fn two_scale_ornstein_uhlenbeck_agrees_with_the_cpu_law() {
   let build = || {
@@ -51,9 +49,8 @@ fn two_scale_ornstein_uhlenbeck_agrees_with_the_cpu_law() {
   }
 }
 
-/// A correlated Brownian pair: both marginals are driftless, so the spread is
-/// what carries the law, and the pair's own correlation is what the second
-/// component's step exists to reproduce.
+/// A correlated Brownian pair: both marginals are driftless, so the spread carries the law,
+/// and the pair's correlation is what the second component's step exists to reproduce.
 #[test]
 fn correlated_brownian_agrees_with_the_cpu_law() {
   let build = || Cbms::<f32, _>::new(-0.5, 253, Some(1.0), Deterministic::new(61));
@@ -143,9 +140,8 @@ fn duffie_kan_agrees_with_the_cpu_law() {
   }
 }
 
-/// The two-dimensional Wishart process by its exact step on both machines:
-/// the terminal mean of every entry has a closed form both have to hit, the
-/// spreads have to agree, and the device path has to stay in the cone.
+/// The two-dimensional Wishart process by its exact step on both machines: every entry's
+/// terminal mean hits its closed form, the spreads agree, and the device path stays in the cone.
 #[test]
 fn wishart_agrees_with_the_cpu_law_and_its_closed_form_mean() {
   let build = || {
@@ -211,10 +207,8 @@ fn wishart_agrees_with_the_cpu_law_and_its_closed_form_mean() {
   }
 }
 
-/// Below a degree of three the host's step can take its rank-adaptive branch
-/// and below two its Poisson mixture, neither of which a family carries; the
-/// device build samples on the host and is the host build to the bit. So
-/// does a one-dimensional process, which the two-slot family does not fit.
+/// Below degree three the host's step can take its rank-adaptive branch and below two its
+/// Poisson mixture, which no family carries, and one dimension does not fit: all stay on the host.
 #[test]
 fn a_low_degree_or_one_dimension_keeps_wishart_on_the_host() {
   let low = || {

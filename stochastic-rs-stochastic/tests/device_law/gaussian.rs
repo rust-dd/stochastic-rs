@@ -1,6 +1,5 @@
-//! The unbounded single-state diffusions: nothing in their families clamps,
-//! so the terminal mean — or, where a process reverts to zero, the terminal
-//! standard deviation — is the whole comparison.
+//! The unbounded single-state diffusions: nothing clamps, so the terminal mean, or the terminal
+//! standard deviation where a process reverts to zero, is the whole comparison.
 
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::correlation::transformed_ou::Transformation;
@@ -281,11 +280,8 @@ fn hyperbolic_diffusion_agrees_with_the_cpu_law() {
   );
 }
 
-/// Parametrised as a short rate reverting to 5% at speed 3, where the
-/// terminal mean is a statistic two independent streams can agree on. The
-/// model's `a₋₁/X` drift makes a weakly-reverting parametrisation dominated
-/// by near-zero excursions, whose terminal mean is heavy-tailed enough that
-/// no tolerance would mean anything.
+/// Parametrised as a short rate reverting to 5% at speed 3: under weak reversion the `a₋₁/X`
+/// drift's near-zero excursions make the terminal mean too heavy-tailed for any tolerance.
 #[test]
 fn ait_sahalia_agrees_with_the_cpu_law() {
   let build = || {
@@ -357,9 +353,8 @@ fn brownian_motion_agrees_with_the_cpu_law() {
   );
 }
 
-/// Merton's jump diffusion: the device draws its own Poisson count per step
-/// and aggregates the jump sizes into one normal, as the host sampler does,
-/// so the terminal mean carries both the diffusion and the jump compensator.
+/// Merton's jump diffusion: the device draws a Poisson count per step and aggregates the sizes
+/// into one normal, as the host does, so the terminal mean carries diffusion and compensator.
 #[test]
 fn merton_jump_diffusion_agrees_with_the_cpu_law() {
   let build = || {
@@ -389,10 +384,8 @@ fn merton_jump_diffusion_agrees_with_the_cpu_law() {
   );
 }
 
-/// The transformed Ornstein-Uhlenbeck steps in X-space and reports through a
-/// bounded map, so what the kernel must reproduce is the map, not just the
-/// recursion: both branches are checked, since only one of them exercises the
-/// `atan` the engine's vocabulary gained for it.
+/// The transformed Ornstein-Uhlenbeck steps in X-space and reports through a bounded map, so
+/// the kernel must reproduce the map: both branches are checked, as only one exercises `atan`.
 #[test]
 fn transformed_ou_agrees_with_the_cpu_law() {
   for transform in [Transformation::Tanh, Transformation::Arctan] {
@@ -432,14 +425,8 @@ fn transformed_ou_agrees_with_the_cpu_law() {
   }
 }
 
-/// The two map forms agree, on the device and on the host.
-///
-/// `sample_map_view` hands the callback a row of the launch buffer where
-/// `sample_map` hands it a copy, which is the whole point of it — one
-/// traversal of a device batch instead of two. Three processes stand for the
-/// three routes a map can take: a plain diffusion through the engine, a
-/// fractional one whose rows come from the fGN pipeline, and a Gaussian one
-/// on the host.
+/// The two map forms agree on the device and on the host, over the three routes a map takes: a
+/// plain diffusion through the engine, a fractional one from the fGN pipeline, a host one.
 #[test]
 fn the_two_map_forms_agree() {
   map_forms_agree(

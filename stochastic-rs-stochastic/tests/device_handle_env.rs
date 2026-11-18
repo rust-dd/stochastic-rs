@@ -1,5 +1,5 @@
-//! A device handle reads `STOCHASTIC_RS_DEVICE` / `STOCHASTIC_RS_DEVICE_BATCH_BYTES` in `from_env` alone. One
-//! test in a binary of its own, so no other thread touches the environment while `set_var` runs.
+//! A device handle reads `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES` in
+//! `from_env` alone. One test in its own binary, so no other thread is alive during `set_var`.
 
 #![cfg(device_backend)]
 

@@ -9,10 +9,8 @@ use stochastic_rs_stochastic::process::poisson::Poisson;
 
 use super::*;
 
-/// The Hawkes jump diffusion carries its own intensity as a second component
-/// the kernel excites and mean-reverts. At most one jump per step, as the
-/// host's Bernoulli test takes it, so what the terminal mean pins is that the
-/// device's excitement loop matches the host's.
+/// The Hawkes jump diffusion carries its intensity as a second component the kernel excites
+/// and reverts, at most one jump per step as in the host's Bernoulli test.
 #[test]
 fn hawkes_jump_diffusion_agrees_with_the_cpu_law() {
   let build = || {
@@ -42,11 +40,8 @@ fn hawkes_jump_diffusion_agrees_with_the_cpu_law() {
   );
 }
 
-/// Poisson in count mode is a running sum of exponential inter-arrival times,
-/// which the kernel draws by inverse CDF from its own uniform. The terminal
-/// arrival time of `n - 1` of them is Gamma(n - 1, 1/lambda), so its mean and
-/// spread are what carry the law. Horizon mode has no grid and stays on the
-/// host whatever the backend, which the last assertion pins.
+/// Poisson in count mode sums exponential waits drawn by inverse CDF, so the last of `n - 1`
+/// arrivals is Gamma(n - 1, 1/lambda). Horizon mode has no grid and stays on the host.
 #[test]
 fn poisson_arrivals_agree_with_the_cpu_law() {
   let build = || Poisson::<f32, _>::new(4.0, Horizon::Events(N - 1), Deterministic::new(71));
@@ -80,11 +75,8 @@ fn poisson_arrivals_agree_with_the_cpu_law() {
   assert_eq!(horizon[0], 0.0, "horizon mode still starts at the origin");
 }
 
-/// Hawkes in count mode: the host thins Ogata's proposals, the kernel runs
-/// the exact two-uniform recursion, and both are the process with intensity
-/// `mu + Σ alpha e^{-beta (t - t_k)}` — so the time of the last event, whose
-/// mean the branching ratio sets, and the clustering of the waits, which the
-/// excitation alone produces, have to agree.
+/// Hawkes in count mode: the host thins Ogata's proposals and the kernel runs the exact
+/// two-uniform recursion, so the last event's time and the clustering of the waits must agree.
 #[test]
 fn hawkes_agrees_with_the_cpu_law() {
   const EVENTS: usize = 64;
@@ -112,11 +104,8 @@ fn hawkes_agrees_with_the_cpu_law() {
       .all(|p| p.windows(2).into_iter().all(|w| w[1] >= w[0])),
     "an event time went backwards"
   );
-  // A wait is positive, but the sum is `f32`: past `t ≈ 40` a wait under
-  // `t · 2⁻²⁴ ≈ 2e-6` rounds away, and with an intensity around 3 that is
-  // `≈ 1e-5` of the waits — the host sampler shows the same handful on this
-  // batch. What a broken stream would give is a *rate*, not a handful, so the
-  // bound is three orders above the arithmetic's own.
+  // In `f32` a wait under `t · 2⁻²⁴ ≈ 2e-6` rounds away past `t ≈ 40`, about `1e-5` of the waits
+  // on host and device alike. A broken stream gives a rate, so the bound is three orders above.
   let ties = |paths: &[Array1<f32>]| {
     paths
       .iter()
@@ -141,9 +130,8 @@ fn hawkes_agrees_with_the_cpu_law() {
     0.06,
     "Hawkes last event time spread",
   );
-  // The waits' coefficient of variation is one for a Poisson stream and
-  // above it under excitation; it is the statistic the excitation moves and
-  // the baseline does not.
+  // The waits' coefficient of variation is one for a Poisson stream and above it under
+  // excitation: the statistic the excitation moves and the baseline does not.
   let clustering = |paths: &[Array1<f32>]| {
     let waits: Vec<f64> = paths
       .iter()
@@ -168,11 +156,8 @@ fn hawkes_horizon_mode_keeps_the_process_on_the_host() {
   assert_eq!(build().on::<Device>().sample_par(8), build().sample_par(8));
 }
 
-/// The bivariate Hawkes process in count mode, its two components on one
-/// launch: every path carries the right number of events split across the
-/// components, each component's list opens at the origin and advances, and
-/// the last event's time, its spread and the share of events on the first
-/// component agree with the host's thinning sampler.
+/// The bivariate Hawkes process in count mode on one launch: each path's event count and
+/// split, the last event's time and spread, and the first component's share agree with the host.
 #[test]
 fn bivariate_hawkes_agrees_with_the_cpu_law() {
   const EVENTS: usize = 64;
@@ -199,9 +184,8 @@ fn bivariate_hawkes_agrees_with_the_cpu_law() {
       );
     }
   }
-  // As in the univariate case, a wait below `t · 2⁻²⁴` rounds away in `f32`;
-  // the bound is three orders above that rate, so a stream that stalled would
-  // still fail here.
+  // As in the univariate case a wait below `t · 2⁻²⁴` rounds away in `f32`; the bound is three
+  // orders above that rate, so a stalled stream still fails here.
   let ties = |paths: &[Vec<Array1<f32>>]| {
     paths
       .iter()

@@ -1,19 +1,12 @@
-//! What the law suite covers, and what it does not.
-//!
-//! The August 2026 coverage audit put 77 of 125 sampler types on "runs and is
-//! deterministic" and nothing more. A number nobody can see does not move, so
-//! this case reads the crate's own sources for the processes that exist,
-//! subtracts the ones a law case names, and holds the covered count to a
-//! floor that may only be raised. Run it with `--nocapture` to print what is
-//! still outstanding.
+//! What the law suite covers: the processes the crate's sources declare less the ones a law case
+//! names, with the covered count held to a floor. `--nocapture` prints what is outstanding.
 
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
-/// The processes a case in this suite states a closed form for. Adding a name
-/// here without a case to back it is the one way to make this test lie, so it
-/// is the list a reviewer reads first.
+/// The processes a case in this suite states a closed form for. A name here without a case
+/// behind it makes this test lie, so it is the list a reviewer reads first.
 const COVERED: &[&str] = &[
   "Ar",
   "Agarch",
@@ -71,10 +64,8 @@ fn declared_processes() -> BTreeSet<String> {
         continue;
       }
       let text = fs::read_to_string(&path).expect("a source file is readable");
-      // The implementation header may wrap, so the name is taken from the
-      // `for` that follows the trait rather than from one line of the file —
-      // but only while still inside that header, or a mention in a doc
-      // comment would claim the next `impl` in the file as a process.
+      // The implementation header may wrap, so the name is taken from the `for` after the trait,
+      // but only inside that header: a doc-comment mention must not claim the next `impl`.
       for (offset, _) in text.match_indices("ProcessExt<T>") {
         // The window is trimmed back to a character boundary: these
         // sources carry σ and θ in their doc comments.
@@ -102,9 +93,8 @@ fn declared_processes() -> BTreeSet<String> {
   found
 }
 
-/// The covered set only grows, and every name in it is a process the crate
-/// actually declares — a renamed process must not quietly leave the list
-/// looking full.
+/// The covered set only grows, and every name in it is a process the crate declares: a renamed
+/// process must not leave the list looking full.
 #[test]
 fn the_law_suite_covers_what_it_claims() {
   let declared = declared_processes();

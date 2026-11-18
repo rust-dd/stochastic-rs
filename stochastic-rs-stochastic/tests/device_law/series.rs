@@ -1,7 +1,5 @@
-//! Device laws of the tempered-stable processes built from their shot-noise
-//! series: the host draws every term for the horizon and sorts them onto the
-//! grid, the engine's series block draws the same terms per path and sums
-//! them into the cells they fall in, so the two are one law on two machines.
+//! Device laws of the tempered-stable processes built from their shot-noise series: the host
+//! sorts every term onto the grid and the series block sums the same terms into their cells.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -35,9 +33,8 @@ fn std_at(paths: &[Array1<f32>], at: usize) -> f64 {
     .sqrt()
 }
 
-/// The terminal mean against the terminal spread rather than against itself:
-/// the drift and the asymmetric jumps set it near zero, where a ratio would
-/// see nothing but noise.
+/// The terminal mean against the terminal spread, not against itself: the drift and the
+/// asymmetric jumps set it near zero, where a ratio would see only noise.
 fn mean_agrees(host: &[Array1<f32>], device: &[Array1<f32>], what: &str) {
   let (h, d) = (terminal_mean(host), terminal_mean(device));
   let scale = terminal_std(host);
@@ -59,9 +56,8 @@ fn law_agrees(host: &[Array1<f32>], device: &[Array1<f32>], x0: f32, what: &str)
     0.06,
     &format!("{what} terminal spread"),
   );
-  // A quarter of the way in as well: the series' terms land by arrival
-  // time, and a kernel filing them into the wrong cells would keep the
-  // terminal law while moving this one.
+  // A quarter of the way in as well: the series' terms land by arrival time, and a kernel
+  // filing them into the wrong cells would keep the terminal law while moving this one.
   agrees(
     std_at(host, N / 4),
     std_at(device, N / 4),

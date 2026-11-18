@@ -118,9 +118,8 @@ fn fjacobi_stays_in_the_unit_interval() {
   );
 }
 
-/// Fractional Brownian motion is the additive family fed fractional
-/// increments, and its mean is zero by construction, so the spread carries
-/// the law.
+/// Fractional Brownian motion is the additive family fed fractional increments; its mean is
+/// zero by construction, so the spread carries the law.
 #[test]
 fn fbm_agrees_with_the_cpu_law() {
   let build = || Fbm::<f32, _>::new(0.7, N, Some(1.0), Deterministic::new(9));
@@ -134,9 +133,8 @@ fn fbm_agrees_with_the_cpu_law() {
   );
 }
 
-/// The fractional Vasicek is the fOU under short-rate names, and it reaches
-/// the device through the wrapped process's own increment pipeline rather
-/// than one of its own.
+/// The fractional Vasicek is the fOU under short-rate names and reaches the device through the
+/// wrapped process's increment pipeline, not one of its own.
 #[test]
 fn fractional_vasicek_agrees_with_the_cpu_law() {
   let build = || {
@@ -198,10 +196,8 @@ fn jump_fou_agrees_with_the_cpu_law() {
   );
 }
 
-/// Exponential inter-arrivals are Poisson arrivals and exponential sizes a
-/// law the kernels draw, so this pair of user-supplied laws runs on the
-/// device; the host's event loop and the kernel's per-step count are the
-/// same law.
+/// Exponential inter-arrivals are Poisson arrivals and exponential sizes a law the kernels
+/// draw, so this pair of user-supplied laws runs on the device.
 #[test]
 fn jump_fou_custom_with_exponential_laws_agrees_with_the_cpu_law() {
   let build = || {
