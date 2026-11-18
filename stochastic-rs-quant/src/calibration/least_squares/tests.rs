@@ -462,13 +462,14 @@ fn a_collapsed_trust_region_away_from_a_stationary_point_is_not_converged() {
     .unwrap();
   assert!(!fit.converged);
   assert_eq!(fit.message.as_deref(), Some("not stationary"));
-  let exact = report.settled(3e-8, &[3.0]);
+  let exact = report.settled(3e-8, &[3.0], PRICER_ACCURACY);
   assert_eq!((exact.converged, exact.message()), (true, "converged"));
-  let short = report.settled(4e-8, &[3.0]);
+  let short = report.settled(4e-8, &[3.0], PRICER_ACCURACY);
   assert_eq!(
     (short.converged, short.message()),
     (false, "not stationary")
   );
+  assert!(report.settled(4e-8, &[3.0], 2e-8).converged);
 }
 
 /// The minimum at `1e-12` is small against `ε‖r‖/‖J‖`, which is not a flat residual.

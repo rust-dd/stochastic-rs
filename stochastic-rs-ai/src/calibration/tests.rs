@@ -140,6 +140,33 @@ fn a_surrogate_fit_stopped_short_of_a_stationary_point_is_not_converged() {
   );
 }
 
+/// An exact fit rests on the f32 network's rounding, about `7e-8` of the surface, and that
+/// noise's angle to the Jacobian fails the first-order check.
+#[test]
+fn an_exact_surrogate_fit_is_converged_on_the_networks_rounding_noise() {
+  for seed in [5, 7, 8] {
+    let model = trained_heston(seed);
+    let truth = box_point(&heston::PARAM_LB, &heston::PARAM_UB, &[0.4; 5]);
+    let truth32: Vec<f32> = truth.iter().map(|&v| v as f32).collect();
+    let target: Vec<f64> = model
+      .nn()
+      .predict_surface(&truth32)
+      .unwrap()
+      .iter()
+      .map(|&v| v as f64)
+      .collect();
+    let calibrator = SurrogateCalibrator::new(&model, target).unwrap();
+    let result = calibrator.calibrate(None).unwrap();
+    assert!(result.rmse < 1e-7, "seed {seed}: rmse {}", result.rmse);
+    assert_eq!(
+      (result.converged, result.message()),
+      (true, Some("converged")),
+      "seed {seed}: rmse {}",
+      result.rmse
+    );
+  }
+}
+
 /// The typed Heston bridge maps the surrogate order `[v0, ρ, σ, θ, κ]` onto
 /// `HestonParams` and hands the fitted parameters to the Fourier pricer.
 #[test]
