@@ -1,8 +1,8 @@
 //! Random-walk Metropolis on the QMLE's quasi-likelihood: `proposal_scale` acts on `ln θ`, the
 //! level (CIR's `ln μ`, OU's `(μ − x̄)/s`, `s` the path's spread) and `ln σ`.
 //!
-//! Reference: Eraker, B. (2001), "MCMC analysis of diffusion models with application to finance", Journal of Business & Economic Statistics 19(2), 177-191.
-//! Reference: Robert, C. P. & Casella, G. (2004), Monte Carlo Statistical Methods, Springer, ch. 7 (random-walk Metropolis).
+//! Reference: Eraker (2001), Journal of Business & Economic Statistics 19(2), 177-191.
+//! Reference: Robert, Casella (2004), Monte Carlo Statistical Methods, Springer, ch. 7.
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -21,6 +21,7 @@ use crate::qmle::cir_of;
 use crate::qmle::diffusion_path;
 use crate::qmle::in_data_units;
 use crate::qmle::ou_of;
+use crate::qmle::path_spread;
 use crate::qmle::quasi_log_likelihood;
 use crate::stationarity::common::unit_scaled;
 use crate::traits::FloatExt;
@@ -94,8 +95,8 @@ pub fn fit_diffusion_bayesian<T: FloatExt>(
   let (x, unit) = unit_scaled(diffusion_path(series, kind, 4)?);
   let carrier = Carrier::new(&x, kind)?;
   let start = ar1_start(&x, dt, kind, carrier)?;
-  let [_, level, ln_sigma] = start;
-  let level_prior = LevelPrior::new(&x, carrier, level)?;
+  let ln_sigma = start[2];
+  let level_prior = LevelPrior::new(&x, carrier)?;
   let tau = 4.0_f64;
   let inv_2tau2 = 1.0 / (2.0 * tau * tau);
 
@@ -163,7 +164,7 @@ pub fn fit_diffusion_bayesian<T: FloatExt>(
 /// \pi(\rho) \propto (1-\rho^2)^{-1/2}, \qquad
 /// \ln\pi(q) = q - \theta\Delta - \tfrac12\ln\left(1 - e^{-2\theta\Delta}\right)
 /// $$
-/// Reference: Lee (2005), as above; Berger, Yang (1994), Econometric Theory 10, 461-482 (abstract).
+/// Reference: Lee (2005), as above.
 fn speed_log_prior(ln_theta: f64, dt: f64) -> f64 {
   let rate = ln_theta.exp() * dt;
   if rate == 0.0 {
@@ -177,22 +178,17 @@ fn speed_log_prior(ln_theta: f64, dt: f64) -> f64 {
 /// keeps `μ > 0` and brings its Jacobian `μ`.
 #[derive(Clone, Copy)]
 enum LevelPrior {
-  Standardised { centre: f64 },
+  Standardised,
   Log { mean: f64, spread: f64 },
 }
 
 impl LevelPrior {
   /// `Err` for a CIR path whose spread is not finite and positive, as OU's carrier.
-  fn new(x: &[f64], carrier: Carrier, centre: f64) -> Result<Self, StatsError> {
+  fn new(x: &[f64], carrier: Carrier) -> Result<Self, StatsError> {
     match carrier {
-      Carrier::Standardised { .. } => Ok(Self::Standardised { centre }),
+      Carrier::Standardised { .. } => Ok(Self::Standardised),
       Carrier::Log { mean } => {
-        let spread = (x.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / x.len() as f64).sqrt();
-        if !spread.is_finite() || spread == 0.0 {
-          return Err(StatsError::Numerical {
-            stage: "starting point",
-          });
-        }
+        let spread = path_spread(x, mean)?;
         Ok(Self::Log { mean, spread })
       }
     }
@@ -200,7 +196,7 @@ impl LevelPrior {
 
   fn ln_density(self, q: f64, mu: f64) -> f64 {
     match self {
-      Self::Standardised { centre } => -(q - centre).powi(2) / 32.0,
+      Self::Standardised => -q.powi(2) / 32.0,
       Self::Log { mean, spread } => q - ((mu - mean) / spread).powi(2) / 32.0,
     }
   }

@@ -276,6 +276,18 @@ fn path_mean(x: &[f64]) -> Result<f64, StatsError> {
   }
 }
 
+/// The path's standard deviation about `mean`; `Err` unless it is finite and positive. It is zero
+/// only when the deviations' squares underflow: a constant path is refused before.
+pub(crate) fn path_spread(x: &[f64], mean: f64) -> Result<f64, StatsError> {
+  let spread = (x.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / x.len() as f64).sqrt();
+  if !spread.is_finite() || spread == 0.0 {
+    return Err(StatsError::Numerical {
+      stage: "starting point",
+    });
+  }
+  Ok(spread)
+}
+
 /// How the simplex and the chain carry `(θ, μ, σ)`: in logs, but OU's level as `x̄ + s p`, `s` the
 /// path's standard deviation, so that it takes either sign and moves with the data's scale.
 #[derive(Debug, Clone, Copy)]
@@ -291,13 +303,7 @@ impl Carrier {
     let mean = path_mean(x)?;
     match kind {
       DiffusionKind::OrnsteinUhlenbeck => {
-        let spread = (x.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / x.len() as f64).sqrt();
-        // Zero only when the deviations' squares underflow: a constant path is refused before.
-        if !spread.is_finite() || spread == 0.0 {
-          return Err(StatsError::Numerical {
-            stage: "starting point",
-          });
-        }
+        let spread = path_spread(x, mean)?;
         Ok(Self::Standardised { mean, spread })
       }
       // A non-negative path that is not constant has a positive mean, unless its sum underflows.

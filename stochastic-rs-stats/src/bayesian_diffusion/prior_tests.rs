@@ -1,29 +1,20 @@
 use ndarray::Array1;
-use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
 use crate::qmle::fit_diffusion_qmle;
-use crate::qmle::test_support::cir;
+use crate::qmle::test_support::simulate_cir;
 use crate::qmle::test_support::simulate_ou;
 
 const OU: DiffusionKind = DiffusionKind::OrnsteinUhlenbeck;
 const DT: f64 = 1.0 / 252.0;
 const STEP: [f64; 3] = [0.3, 0.3, 0.05];
 
-/// A CIR path by the law's own transition draws, each step on its own stream.
 fn cir_path(law: [f64; 3], n: usize, seed: u64) -> Array1<f64> {
-  let model = cir(law[0], law[1], law[2]);
-  let mut path = Array1::zeros(n);
-  path[0] = law[1];
-  for t in 1..n {
-    let stream = seed.wrapping_mul(1_000_003) ^ (t as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15);
-    path[t] = model.sample_transition(DT, path[t - 1], &Deterministic::new(stream));
-  }
-  path
+  simulate_cir(law[0], law[1], law[2], law[1], DT, n, seed)
 }
 
-/// Four years of daily data do not exclude a speed of zero, and a prior flat in `ln θ` kept its
-/// mass there: under Jeffreys' the posterior mean is above 0.4 of the QMLE, and `σ` beside it.
+/// Four years of daily data do not exclude a speed of zero: under Jeffreys' prior the posterior
+/// mean speed is still above 0.4 of the QMLE's, with `σ` beside the QMLE's.
 #[test]
 fn the_posterior_speed_is_identified_on_a_thousand_points() {
   let path = simulate_ou(2.0, 0.5, 0.3, 0.5, DT, 1000, 5);
@@ -46,7 +37,7 @@ fn the_posterior_speed_is_identified_on_a_thousand_points() {
 }
 
 /// CIR's level prior is the path's own spread about its mean, so the posterior mean level stays
-/// by the path where a log-normal of log-spread 4 put it at up to 66 times the path's mean.
+/// within a factor of 2 of the path's mean.
 #[test]
 fn the_posterior_cir_level_stays_by_the_path() {
   let path = cir_path([2.0, 0.04, 0.2], 1000, 5);
